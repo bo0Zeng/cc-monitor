@@ -32,6 +32,7 @@ const FAMILY_B = [
   // 账号分节：复制账号目录路径 · 本机不开终端窗口时把登录那一行复制给人自己跑。〔账号库收进后端〕rc 片段那两处待贴块
   //   随功能删了（账号别名由后端自动写进别名文件），它从族 AB 回到族 B。
   "src/frontend/ui/settings/accounts-section.ts",
+  "src/frontend/ui/settings/profiles-list.ts", // 别名清单：复制要删的 .bashrc 行号（人自己去删，cc-monitor 不改它）
 ];
 
 /**

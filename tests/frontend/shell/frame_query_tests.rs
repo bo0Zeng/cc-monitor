@@ -411,11 +411,6 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "交那台机器写那个值：同上一行（`set_backend_exit_policy` 删了），画的仍是后端写完读回来的那一份",
     ),
     (
-        "ccm-print",
-        "别名预览：生来就走通道（没有过 monitor 那一条）—— 后端应答就是成品（`ccm --print` 那一行），\
-         界面 `settings/machine-aliases.ts::previewAlias` 原样上屏",
-    ),
-    (
         "accounts-add",
         "账号库那一族：生来就走通道（从没过 monitor）—— 那台后端做完回成品，界面 `account-ops.ts` 按生成的线上类型收",
     ),
@@ -590,26 +585,28 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "新帧命令：别名那一族（规则 · 方言 · 围栏住那台后端 `assets/aliases/`），monitor 那六条 Tauri 命令删了",
     ),
     (
-        "aliases-install",
-        "新帧命令：别名那一族（规则 · 方言 · 围栏住那台后端 `assets/aliases/`），monitor 那六条 Tauri 命令删了",
+        "profiles-read",
+        "新帧命令：设置窗「别名与配置文件」那一页（配置文件按「基于」排成树，合并只在那台后端 `assets/aliases/page.rs`）；前端 `src/frontend/ui/profiles-reads.ts` 问",
+    ),
+    (
+        "profiles-resolve",
+        "新帧命令：设置窗「别名与配置文件」那一页（配置文件按「基于」排成树，合并只在那台后端 `assets/aliases/page.rs`）；前端 `src/frontend/ui/profiles-reads.ts` 问",
+    ),
+    (
+        "profiles-impact",
+        "新帧命令：设置窗「别名与配置文件」那一页（配置文件按「基于」排成树，合并只在那台后端 `assets/aliases/page.rs`）；前端 `src/frontend/ui/profiles-reads.ts` 问",
+    ),
+    (
+        "profiles-bases",
+        "新帧命令：设置窗「别名与配置文件」那一页（配置文件按「基于」排成树，合并只在那台后端 `assets/aliases/page.rs`）；前端 `src/frontend/ui/profiles-reads.ts` 问",
+    ),
+    (
+        "profiles-write",
+        "新帧命令：设置窗「别名与配置文件」那一页（配置文件按「基于」排成树，合并只在那台后端 `assets/aliases/page.rs`）；前端 `src/frontend/ui/profiles-reads.ts` 问",
     ),
     (
         "aliases-read",
         "新帧命令：别名那一族（规则 · 方言 · 围栏住那台后端 `assets/aliases/`），monitor 那六条 Tauri 命令删了",
-    ),
-    (
-        "aliases-render",
-        "新帧命令：别名那一族（规则 · 方言 · 围栏住那台后端 `assets/aliases/`），monitor 那六条 Tauri 命令删了",
-    ),
-    (
-        "aliases-to-form",
-        "新帧命令：别名表单与参数互转住那台后端（`assets/aliases/form.rs`，按 ccm 自己的解析器走）；\
-         前端 `src/frontend/ui/alias-reads.ts::aliasToForm` 问，界面那两份自抄的 ccm 文法删了",
-    ),
-    (
-        "aliases-from-form",
-        "新帧命令：别名表单与参数互转住那台后端（`assets/aliases/form.rs`，按 ccm 自己的解析器走）；\
-         前端 `src/frontend/ui/alias-reads.ts::aliasFromForm` 问，界面那两份自抄的 ccm 文法删了",
     ),
     (
         "powershell-policy-set",

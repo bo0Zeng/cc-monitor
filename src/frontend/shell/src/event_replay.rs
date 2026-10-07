@@ -90,6 +90,10 @@ pub const SESSION_TAP_KIND: &str = "session-tap";
 /// TS 那一侧的同一个串住 `src/frontend/ui/session-accounts-poll.ts::ACCOUNTS_CHANGED_KIND`（两侧对拍在 `session-accounts-poll.vitest.ts`）。
 pub const ACCOUNTS_CHANGED_KIND: &str = "accounts-changed";
 
+/// 本文件认的又一个流标签：那台机器上「配置文件（`profiles.toml`）变了」（格体同账号那一种，没有留存）。
+/// TS 那一侧的同一个串住 `src/frontend/ui/settings/profiles-reads.ts::PROFILES_CHANGED_KIND`。
+pub const PROFILES_CHANGED_KIND: &str = "profiles-changed";
+
 /// 本文件认的又一种流：那台机器上「某个会话的任务清单变了」（格体 `{"sid": …}`，没有留存）。
 /// TS 那一侧的同一个串住 `src/frontend/ui/tasks-stream.ts::SESSION_TASKS_KIND`（两侧对拍在 `tests/frontend/ui/events-tap.vitest.ts`）。
 pub const SESSION_TASKS_KIND: &str = "session-tasks";
@@ -106,6 +110,9 @@ pub const PROBE_PROGRESS_KIND: &str = "probe-progress";
 
 /// `accounts-changed` 流里那一格 `Frame` 的体（不透明于通道；前端只认「来了一格」，体给日志看）。
 const ACCOUNTS_CHANGED_BODY: &[u8] = br#"{"accounts_changed":true}"#;
+
+/// `profiles-changed` 流里那一格的体（同上，前端只认「来了一格」）。
+const PROFILES_CHANGED_BODY: &[u8] = br#"{"profiles_changed":true}"#;
 
 pub struct EventReplay {
     inner: Mutex<Inner>,
@@ -169,6 +176,8 @@ enum SubKind {
     Tap,
     /// `accounts-changed`：只收看得见 / 看不见与「那台账号清单变了」那一格，没有留存。
     AccountsChanged,
+    /// `profiles-changed`：只收看得见 / 看不见与「那台配置文件变了」那一格，没有留存。
+    ProfilesChanged,
     /// `session-tasks`：只收看得见 / 看不见与「那台某个会话的任务清单变了」那几格，没有留存。
     Tasks,
     /// `quota-changed`：只收看得见 / 看不见与「那台额度账 / 某个会话的轮换变了」那几格，没有留存。
@@ -417,6 +426,8 @@ enum Stream {
     Tap,
     /// `accounts-changed`。
     AccountsChanged,
+    /// `profiles-changed`。
+    ProfilesChanged,
     /// `session-tasks`。
     Tasks,
     /// `quota-changed`。
@@ -435,6 +446,9 @@ fn parse_kind(kind: &str) -> Result<Stream, ()> {
     }
     if kind == ACCOUNTS_CHANGED_KIND {
         return Ok(Stream::AccountsChanged);
+    }
+    if kind == PROFILES_CHANGED_KIND {
+        return Ok(Stream::ProfilesChanged);
     }
     if kind == SESSION_TASKS_KIND {
         return Ok(Stream::Tasks);
@@ -782,6 +796,7 @@ impl EventReplay {
             Ok(Stream::Lines(o)) => (o, SubKind::Lines),
             Ok(Stream::Tap) => (None, SubKind::Tap),
             Ok(Stream::AccountsChanged) => (None, SubKind::AccountsChanged),
+            Ok(Stream::ProfilesChanged) => (None, SubKind::ProfilesChanged),
             Ok(Stream::Tasks) => (None, SubKind::Tasks),
             Ok(Stream::Quota) => (None, SubKind::Quota),
             Ok(Stream::Probe(ticket)) => (Some(ticket), SubKind::Probe),
@@ -1027,6 +1042,17 @@ impl EventReplay {
     /// 那台机器的后端说「账号清单变了」（`accounts_changed` 帧）⇒ 订了那台 `accounts-changed` 的
     /// 每条订阅收一格 `Frame`（有 credit 当场交；没有 ⇒ 丢、位置照占、下一次交之前原位 `Gap` —— 与实时行同一套）。
     pub fn accounts_changed(&self, origin: &crate::origin::Origin) {
+        self.no_payload_changed(origin, SubKind::AccountsChanged, ACCOUNTS_CHANGED_BODY);
+    }
+
+    /// 那台机器的后端说「配置文件变了」（`profiles_changed` 帧）⇒ 订了那台 `profiles-changed` 的每条订阅收一格（同 `accounts-changed`）。
+    pub fn profiles_changed(&self, origin: &crate::origin::Origin) {
+        self.no_payload_changed(origin, SubKind::ProfilesChanged, PROFILES_CHANGED_BODY);
+    }
+
+    /// 无载荷的「那台某样东西变了」：订了那台那一种流的每条订阅收一格 `body`（有 credit 当场交；没有 ⇒ 丢、位置照占、
+    /// 下一次交之前原位 `Gap` —— 与实时行同一套）。
+    fn no_payload_changed(&self, origin: &crate::origin::Origin, kind: SubKind, body: &[u8]) {
         let origin = origin.as_wire_str();
         let (sink, plans) = {
             let mut inner = self.inner.lock();
@@ -1036,9 +1062,9 @@ impl EventReplay {
             let plans: Vec<(String, u64, Vec<Item>)> = inner
                 .subs
                 .iter_mut()
-                .filter(|s| s.kind == SubKind::AccountsChanged && s.origin == origin)
+                .filter(|s| s.kind == kind && s.origin == origin)
                 .map(|s| {
-                    let items = plan_live(s, vec![Body(ACCOUNTS_CHANGED_BODY.to_vec())]);
+                    let items = plan_live(s, vec![Body(body.to_vec())]);
                     (s.label.clone(), s.id, items)
                 })
                 .filter(|(_, _, items)| !items.is_empty())

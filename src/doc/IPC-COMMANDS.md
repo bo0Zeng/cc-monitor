@@ -136,6 +136,12 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 （无字段）
 
+### `profiles_changed`
+
+**这台机器上的配置文件（`~/.cc-monitor/profiles.toml`）变了**（别处改了它，或设置窗刚写了它）。
+
+（无字段）
+
 ### `quota_changed`
 
 **这台的额度账显示得出来的那几格变了**（某个号的用量取整后的百分比 · 重置时刻 · 状态 · 被拒）。
@@ -2300,107 +2306,102 @@ cc-bus 钩子诊断。
 
 ### 4.6 别名
 
-#### `aliases-render`
-
-清单 → 别名文件的样子（每条只有名字，规则住配置文件 `profiles.toml`）。
-
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --aliases-render`
-
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `aliases` | → | 清单：每条 `{name, args, restTo}` ＝ 配置文件里一段自己写的那几项（`args` 是 ccm argv 的写法；「基于」不在这里，存的时候按名字从盘上那一段接上；`restTo` 只收 `agent`） |
-| `collisions` | ← | 撞名提示（自带别名块 · **这台** `PATH` 上的同名程序 · PowerShell 内建别名；只出声、不拦） |
-| `fileText` | ← | 整份别名文件 |
-| `lines` | ← | 写进别名文件的那几行：每条只有名字，只把调用交给 `ccm @名字`；POSIX 上只有撞名的那几条进文件，其余是 `~/.cc-monitor/bin/<名>` → `ccm` 的链接；PowerShell 每条一个函数 |
-| `problems` | ← | 不合格的那几条 `{name, message}`（逐项判；几项之间的组合存的时候连「基于」整份判。非空时 `aliases-install` 一个字节都不写） |
-| `shell` | → | `posix` / `powershell`（这台后端不在 Windows ⇒ `powershell` 拒） |
-
-码：`bad_args` · `refused`
-
-#### `aliases-to-form`
-
-一条别名摊成表单那几格。
-
-收 `args` · 可撤 · CLI：`ccm -- --aliases-to-form`
-
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `account` | ← | 空 = 不指定 |
-| `agent` | ← | 哪一家 agent |
-| `alias` | → | 一条别名 `{name, args, restTo}`（同 `aliases-render` 清单里的一条） |
-| `args` | → | 别名的参数串（数组） |
-| `at` | ← | `cwdIf` 的一项：在哪个目录 |
-| `base` | ← | 显式不带账号 |
-| `busNote` | ← | cc-bus 登记的备注 |
-| `busRegister` | ← | 登记进 cc-bus |
-| `ccmOther` | ← | 表单没有格子的 ccm 参数，一串 |
-| `cwd` | ← | 空 = 当前目录 |
-| `cwdIf` | ← | `[{at, to}]`，按序 |
-| `detach` | ← | 起完不接进去 |
-| `form` | ← | 表单那几格：`name` · `cwdIf` |
-| `launcher` | ← | 启动器 |
-| `model` | ← | 模型 |
-| `name` | → ← | 别名名 |
-| `passthru` | ← | 交给 agent 的其余参数，一串 |
-| `restTo` | → | 最后那段参数交给谁：`agent` · `ccm` |
-| `tmux` | ← | `none` / `auto` / `named` / `base` / `attach` |
-| `tmuxName` | ← | tmux 会话名 |
-| `tmuxSize` | ← | tmux 窗口尺寸 |
-| `to` | ← | `cwdIf` 的一项：换到哪个目录 |
-
-码：`bad_args`
-
-#### `aliases-from-form`
-
-表单拼回一条别名。
-
-收 `args` · 可撤 · CLI：`ccm -- --aliases-from-form`
-
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `alias` | ← | 拼出来的那一条 `{name, args, restTo}` |
-| `form` | → | 表单那几格（同 `aliases-to-form` 的 `form`） |
-| `orig` | → | 必给：正在改的那一条（`aliases-to-form` 收的那一条），新增 ⇒ `null` |
-
-码：`bad_args` · `refused`
-
 #### `aliases-read`
 
-读回清单 ＋ 启动文件候选。
+启动文件候选（接入那一格）。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --aliases-read`
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `accounts` | ← | 这台的账号表（具名号，按账号库的顺序；没有账号库 ⇒ `[]`） |
-| `aliasPath` | ← | 这台上那份配置文件（`profiles.toml`）的路径 |
-| `aliases` | ← | 读回的清单：每段自己写的那几项（配置文件不在 ⇒ 首建会带上的 `cc` · `cct`，没有 tmux 的目标只有 `cc`；不在而旧形状的别名文件在 ⇒ 先一次性迁移再读） |
-| `exists` | ← | 配置文件在不在 |
-| `fingerprint` | ← | 盘上那份配置文件的指纹（不透明的串：长度 ＋ 一个 64 位散列；不在 ⇒ `null`），存的时候交回 `aliases-install` |
-| `groups` | ← | 与 `aliases` 逐条对应：这一段自己只写了号（可再加 tmux）⇒ `{account, tmux}`，号与 tmux 按合并下来的算，其余 ⇒ `null`（不看名字；界面照这一格分组） |
-| `missing` | ← | 账号表里的号缺哪一条：`{account, tmux, alias}`（`alias` 就是点「加上」要加进清单的那一条；没有 tmux 的目标只看 `<号>cc`） |
+| `home` | ← | 这台的家目录 |
 | `otherRc` | ← | `rcPath` 过了围栏之后的绝对路径 |
-| `rcCandidates` | ← | 启动文件候选（方言答列哪几份）：每份 `{path, sourced, exists, block, unreadable, policy}`，`block` = 别名块现状 `{present, version, outdated, conflictingFunctions, manualCleanupHint}`（`conflictingFunctions` = 块外自己定义的、与清单里某条同名的函数 `{name, line, wins}`；`wins` = 新开的终端里敲这个名字起的是哪一个：`yours`（你写的）· `list`（清单那条）· `unclear`（说不清） |
+| `rcCandidates` | ← | 启动文件候选（方言答列哪几份）：每份 `{path, sourced, exists, block, unreadable, policy}`，`block` = 别名块现状 `{present, version, outdated, conflictingFunctions, manualCleanupHint}`（`conflictingFunctions` = 块外自己定义的、与配置文件里某一段同名的函数 `{name, line, wins}`；`wins` = 新开的终端里敲这个名字起的是哪一个：`yours`（你写的）· `list`（清单那条）· `unclear`（说不清）） |
 | `rcPath` | → | 人另指的那一份（`null` = 不指）：过围栏（只许落在 home 之内 · 符号链接不许跑出去）后并进候选 |
-| `shell` | → | 同 `aliases-render` |
-| `unparsed` | ← | 配置文件里写错的那几处（段名 ＋ 第几行 ＋ 原因） |
+| `shell` | → | `posix` / `powershell`（这台后端不在 Windows ⇒ `powershell` 拒） |
 
 码：`bad_args` · `refused`
 
-#### `aliases-install`
+#### `profiles-read`
 
-存清单进配置文件（按条目改，手写的注释与排版留着），照它重写别名文件、补链接。
+读回配置文件整份：每段自己写的几项 · 能不能用 · 链接还是终端函数 · 表单回填。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --aliases-install`
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --profiles-read`
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `aliasPath` | ← | 配置文件的路径 |
-| `aliases` | → | 同 `aliases-render`（有一条不合格、清单里没了的那一段还被别的段基于、或改完整份合不下来 ⇒ 整批不写、`refused`） |
-| `fingerprint` | → | 必给（字符串或 `null`）：读回时配置文件的指纹（`aliases-read` 的 `fingerprint`）；盘上此刻不是那一份 ⇒ `stale` |
-| `reload` | ← | 这种 shell 的别名文件真改了 ⇒ 给人的那一句「已开的终端要运行「. <别名文件>」或新开一个」；只动了配置文件或链接 ⇒ `null`（规则每次起会话现读，链接马上能用） |
-| `shell` | → | 同 `aliases-render`（有一条不合格 ⇒ 整批不写、`refused`） |
-| `wroteAliasFile` | ← | 配置文件 / 别名文件 / 链接动没动（内容一致就一个字节不写） |
+| `accounts` | ← | 这台的账号表（具名号，按账号库的顺序；表单「账号」那一格的选项） |
+| `binDir` | ← | 链接住的目录（`~/.cc-monitor/bin`） |
+| `exists` | ← | 配置文件在不在 |
+| `fileProblem` | ← | TOML 本身写坏 ⇒ `{line, message}`（这时 `profiles` 为空、不能按条目改）；否则 `null` |
+| `fingerprint` | ← | 盘上那份的指纹（不在 ⇒ `null`），存的时候交回 `profiles-write` |
+| `home` | ← | 这台的家目录（界面拿它把路径写成 `~/…`） |
+| `migrated` | ← | 旧别名清单一次性转进来之后那张说明 `{count, path, skipped}`（「知道了」之后 `null`） |
+| `modified` | ← | 盘上那份的修改时间（Unix 秒；不在 ⇒ `null`） |
+| `path` | ← | 配置文件的路径 |
+| `profiles` | ← | 每段 `{name, from, own: [{key, slot, vals, line}], agent, usable, problem: {line, message} \| null, kind: link/function, functionWhy, functionLine, said, form, accountShape}`：`accountShape` 是「账号那一形」`{account, tmux}`（自己只写了号、可再加 tmux，按合并下来的算；其余 `null`）：`said` 是树里那一行（自己写的几项，「标签 值」）；`form` 是表单回填（没写的格 `null` ＝ 继承）；`problem` 的原话与终端里敲这个名字得到的同一句 |
+| `seed` | ← | 配置文件不在时首建那两条的预览（同 `profiles` 一条的形状；在 ⇒ `[]`） |
+
+码：`refused`
+
+#### `profiles-resolve`
+
+一段合下来的合并表与「等于」那一行（可按未存的表单算）。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --profiles-resolve`
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `at` | → | 假设在这个目录敲（`~` 打头按这台家目录展开；`null` ＝ 家目录） |
+| `chain` | ← | 继承链（父 → 子） |
+| `edit` | → | 未存的表单（同 `profiles-read` 一段的 `form`；`null` ＝ 按盘上那份算） |
+| `line` | ← | 这台后端算的「等于」那一行（同 `ccm @名 -- --ccm-print`）；算不出 ⇒ `null` |
+| `lineError` | ← | 算不出那一行时 ccm 的原话 |
+| `name` | → ← | 哪一段（带 `edit` 时是正在改的那一段原来的名字，新增写表单里的名字） |
+| `problem` | ← | 合不下来 ⇒ 那一句（同终端里敲这个名字）；否则 `null` |
+| `rows` | ← | 合并表 `[{key, slot, label, vals, said, from, overriddenBy}]`：父 → 子、层内照写的顺序；被后来那一层盖掉的也在，`overriddenBy` 是盖掉它的那一段 |
+
+码：`bad_args` · `refused`
+
+#### `profiles-impact`
+
+这几处改动会让哪几段合下来变（改前改后）。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --profiles-impact`
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `affected` | ← | 改动直接点名的那几段之外、合下来会变的 `[{name, changes: [{slot, label, before, after}], problem}]`（变得合不下来 ⇒ `problem` 是那一句） |
+| `changes` | → | 同 `profiles-write` 的 `changes`（一个字节不写） |
+
+码：`bad_args` · `refused`
+
+#### `profiles-bases`
+
+「基于」下拉能选的几段（选了不成圈）。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --profiles-bases`
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `bases` | ← | `[{name, from, said, selectable}]`：选了不会绕成圈的那几段 ＋ 自己（`selectable: false`） |
+| `name` | → | 正在改 / 新建的那一段的名字 |
+
+码：`bad_args` · `refused`
+
+#### `profiles-write`
+
+按条目改配置文件（手写的注释与排版留着），照它补链接 / 终端函数。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --profiles-write`
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `changes` | → | 依次做的改动：`{op: "set", was, form}`（新增 `was: null`；名字变了 ⇒ 改名，基于它的跟着改）· `{op: "remove", name, children}`（还被基于 ⇒ `children` 必给：`reparent` 改成基于它的父 · `cascade` 一起删）· `{op: "init", seed}`（配置文件不在时建：`seed` ⇒ 带首建那两条）· `{op: "ackMigrated"}`（迁移说明知道了）。改完多出坏处 ⇒ 整批不写、`refused` |
+| `fingerprint` | → ← | 入：必给（字符串或 `null`），读回时的指纹；盘上此刻不是那一份 ⇒ `stale`。出：写完那一份的指纹 |
+| `modified` | ← | 写完那一份的修改时间（Unix 秒） |
+| `reload` | ← | 终端函数那份文件真改了 ⇒ 给人的那一句「已开的终端要重读」；否则 `null` |
+| `wrote` | ← | 配置文件 / 终端函数文件 / 链接动没动 |
 
 码：`bad_args` · `refused` · `stale`
 
@@ -3370,11 +3371,7 @@ cc-bus 钩子诊断。
 | `--aliases-block-install` | ＝ 帧命令 `aliases-block-install`：别名块装进人选的那份启动文件 |
 | `--aliases-block-remove` | ＝ 帧命令 `aliases-block-remove`：别名块卸掉 |
 | `--aliases-block-render` | ＝ 帧命令 `aliases-block-render`：别名块预览 |
-| `--aliases-from-form` | ＝ 帧命令 `aliases-from-form`：表单拼回一条别名 |
-| `--aliases-install` | ＝ 帧命令 `aliases-install`：存清单进配置文件（按条目改，手写的注释与排版留着），照它重写别名文件、补链接 |
-| `--aliases-read` | ＝ 帧命令 `aliases-read`：读回清单 ＋ 启动文件候选 |
-| `--aliases-render` | ＝ 帧命令 `aliases-render`：清单 → 别名文件的样子（每条只有名字，规则住配置文件 `profiles.toml`） |
-| `--aliases-to-form` | ＝ 帧命令 `aliases-to-form`：一条别名摊成表单那几格 |
+| `--aliases-read` | ＝ 帧命令 `aliases-read`：启动文件候选（接入那一格） |
 | `--apikey-key-set` | ＝ 帧命令 `apikey-key-set`：给一个账号写 key，写完读回 |
 | `--apikey-read` | ＝ 帧命令 `apikey-read`：上游选择凭据文件在这台的状态 |
 | `--assets-catalog` | ＝ 帧命令 `assets-catalog`：资产目录 |
@@ -3465,6 +3462,11 @@ cc-bus 钩子诊断。
 | `--ping` | ＝ 帧命令 `ping`：问活：零载荷，回 `ok` |
 | `--place-verdict` | ＝ 帧命令 `place-verdict`：本机那一份放不放 |
 | `--powershell-policy-set` | ＝ 帧命令 `powershell-policy-set`：那一代 PowerShell 的执行策略设成当前用户 `RemoteSigned` |
+| `--profiles-bases` | ＝ 帧命令 `profiles-bases`：「基于」下拉能选的几段（选了不成圈） |
+| `--profiles-impact` | ＝ 帧命令 `profiles-impact`：这几处改动会让哪几段合下来变（改前改后） |
+| `--profiles-read` | ＝ 帧命令 `profiles-read`：读回配置文件整份：每段自己写的几项 · 能不能用 · 链接还是终端函数 · 表单回填 |
+| `--profiles-resolve` | ＝ 帧命令 `profiles-resolve`：一段合下来的合并表与「等于」那一行（可按未存的表单算） |
+| `--profiles-write` | ＝ 帧命令 `profiles-write`：按条目改配置文件（手写的注释与排版留着），照它补链接 / 终端函数 |
 | `--pubkey-push` | ＝ 帧命令 `pubkey-push`：把本机公钥推进那台的 `authorized_keys` |
 | `--quota-probe` | ＝ 帧命令 `quota-probe`：用某个号查一次额度 |
 | `--quota-read` | ＝ 帧命令 `quota-read`：这台的额度账 |

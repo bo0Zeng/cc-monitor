@@ -51,7 +51,7 @@ fn key_of(f: &'static str) -> &'static str {
     f.trim_start_matches('-')
 }
 
-fn flag_of(key: &str) -> Option<&'static str> {
+pub(crate) fn flag_of(key: &str) -> Option<&'static str> {
     PROFILE_FLAGS.iter().copied().find(|f| key_of(f) == key)
 }
 
@@ -539,11 +539,56 @@ pub(crate) fn remove_profile(doc: &mut DocumentMut, name: &str) {
     doc.remove(name);
 }
 
+/// 一段原地改名：键换掉，位置 · 段头前的注释 · 各项一个字节不动。新名字已有 ⇒ 那一句。
+pub(crate) fn rename_profile(doc: &mut DocumentMut, from: &str, to: &str) -> Result<(), String> {
+    name_ok(to)?;
+    if doc.contains_key(to) {
+        return Err(copy_text("beProfile.rename.taken", &[("name", to)]));
+    }
+    let (key, item) = doc
+        .as_table_mut()
+        .remove_entry(from)
+        .ok_or_else(|| copy_text("beProfile.chain.unknown", &[("name", from)]))?;
+    let mut new_key = toml_edit::Key::new(to);
+    *new_key.leaf_decor_mut() = key.leaf_decor().clone();
+    doc.as_table_mut().insert_formatted(&new_key, item);
+    Ok(())
+}
+
+/// 只改一段的「基于」。
+pub(crate) fn set_from(
+    doc: &mut DocumentMut,
+    name: &str,
+    from: Option<&str>,
+) -> Result<(), String> {
+    let t = doc
+        .get_mut(name)
+        .and_then(Item::as_table_mut)
+        .ok_or_else(|| copy_text("beProfile.chain.unknown", &[("name", name)]))?;
+    match from {
+        Some(f) => set_key(t, FROM_KEY, f.into()),
+        None => {
+            t.remove(FROM_KEY);
+        }
+    }
+    Ok(())
+}
+
 /// 对配置文件的一处改动（设置窗存一下、建号删号那一刻、迁移，都折成这几种）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Change {
     Set(ProfileEdit),
     Remove(String),
+    /// 改名：那一段原地换个名字（位置、注释、各项一个字节不动）。
+    Rename {
+        from: String,
+        to: String,
+    },
+    /// 只改一段的「基于」（`None` ＝ 不基于谁）；别的项一个字节不动。
+    SetFrom {
+        name: String,
+        from: Option<String>,
+    },
 }
 
 /// 在 `text`（不在 ⇒ 新建，开头带一段说明注释）上依次做 `changes`，回改完的全文。没动的段一个字节不动。
@@ -559,6 +604,8 @@ pub(crate) fn apply_changes(text: Option<&str>, changes: &[Change]) -> Result<St
         match c {
             Change::Set(e) => set_profile(&mut doc, e)?,
             Change::Remove(n) => remove_profile(&mut doc, n),
+            Change::Rename { from, to } => rename_profile(&mut doc, from, to)?,
+            Change::SetFrom { name, from } => set_from(&mut doc, name, from.as_deref())?,
         }
     }
     Ok(doc.to_string())

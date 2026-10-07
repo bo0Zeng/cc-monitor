@@ -23,48 +23,19 @@
  * PowerShell 那一侧的握手终端数 · 执行策略 · 用户级 PATH · 自动打开 monitor 收在「终端接入」里。
  */
 import { commands } from "../ipc/commands";
-import { chan } from "../../../comms/inward/chan";
-import { budgetWithin, jsonBody, readJson, saidOf } from "../ipc/chan-caller";
 import { isLocalOrigin } from "../ipc/origin";
 import { toast } from "../kit/toast"; // `K-R135`：用户级 PATH 那一格的失败要出声
 import { buildPasteBlock } from "../paste-block";
-import { DEFAULT_AGENT, listAgents } from "../agent-profile";
-// 别名六问走通道、那台后端出成品（`../alias-reads`）；类型随成品住那边。
-import type {
-  AccountShape,
-  Alias,
-  AliasForm,
-  AliasRender,
-  ClashWins,
-  CwdCase,
-  ExecPolicy,
-  MissingAlias,
-  NameClash,
-  PsHost,
-  StartupFile,
-  Shell,
-  TmuxMode,
-} from "../alias-reads";
+// 接入那几问走通道、那台后端出成品（`../alias-reads`）；类型随成品住那边。
+import type { ExecPolicy, PsHost, StartupFile, Shell } from "../alias-reads";
 import { confirmDialog, type ConfirmFn } from "../kit/dialog";
 import { toggleSwitch } from "../kit/switch";
-import {
-  AliasesStale,
-  aliasFromForm,
-  aliasToForm,
-  allowLocalScripts,
-  emptyForm,
-  installAliasBlock,
-  installAliases,
-  readAliases,
-  removeAliasBlock,
-  renderAliasBlock,
-  renderAliases,
-} from "../alias-reads";
+import { allowLocalScripts, installAliasBlock, readAliases, removeAliasBlock, renderAliasBlock } from "../alias-reads";
+import { buildProfilesList, type ProfileClash } from "./profiles-list";
 import type { Origin } from "../generated/Origin";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { cfgRow, type CfgDot, type CfgRow } from "./cfg-row";
 import { homeShort } from "../kit/path";
-import { accountAvatarEl } from "../account-color";
 import { hostOs } from "./host-os";
 import { copyText } from "../copy-table";
 import { recordFacet, LOCAL_MACHINE_KEY } from "./machine-status";
@@ -98,51 +69,6 @@ export function buildUnknownOsAliasBlock(): HTMLElement {
   return wrap;
 }
 
-/** 问一次预览（`ccm-print`）最多等多久：读一份账号库 ＋ 问一次会话快照，秒级内。 */
-const PREVIEW_BUDGET_MS = 10_000;
-
-/**
- * **一条别名实际会执行什么**：问那台机器的后端（帧命令 `ccm-print`，与终端里 `ccm -- --ccm-print` 同一个计划函数；
- * 语境是「家目录里的一个新终端」）。`line` 原样上屏，本文件一个字节的 shell 都不拼。
- */
-export async function previewAlias(origin: Origin, a: Alias): Promise<string> {
-  try {
-    const budget = budgetWithin(PREVIEW_BUDGET_MS);
-    const body = jsonBody({ args: a.args });
-    const reply = await chan.call(origin, "ccm-print", body, budget);
-    const got = readJson(reply) as { line?: unknown };
-    return copyText("machineAliases.aliasPreview.line", {
-      line: typeof got.line === "string" ? got.line : "",
-    });
-  } catch (e) {
-    return copyText("machineAliases.aliasPreview.failed", {
-      reason: saidOf(e, copyText("machineAliases.aliasPreview.tooOld")),
-    });
-  }
-}
-
-/**
- * 「在哪起」各项**撞名时会怎样**（下拉的选项只有名字，没有一句说撞了会怎样）。
- *
- * 规则不在这里：取名与退让住后端 `control/ccm/plan.rs::build`。这里只把那几条路的态度说成人话 ——
- * `stepsAside` 那一格与后端逐条对拍（`tests/frontend/ui/settings/machine-aliases-naming.vitest.ts` 读后端原文，两向相等），
- * 说明里「依次试」出现 ⇔ 它为真；不取名的两项（当前终端 · 接回）记 `null`。
- */
-// ⚠ `text` 是取文函数、不是模块加载时就取好的串：模块顶层调 `copyText` 会让打包器把本模块挪进主窗口也要的共享块。
-export const TMUX_NAMING: Record<TmuxMode, { stepsAside: boolean | null; text: () => string }> = {
-  none: { stepsAside: null, text: () => copyText("machineAliases.tmuxNaming.none") },
-  auto: { stepsAside: true, text: () => copyText("machineAliases.tmuxNaming.auto") },
-  named: { stepsAside: false, text: () => copyText("machineAliases.tmuxNaming.named") },
-  base: { stepsAside: true, text: () => copyText("machineAliases.tmuxNaming.base") },
-  attach: { stepsAside: null, text: () => copyText("machineAliases.tmuxNaming.attach") },
-};
-
-/** 给人看的那一串参数（带空格的值加引号）。**只是显示**，写进 shell 的那一份由后端渲染。 */
-export function describeArgs(args: readonly string[]): string {
-  if (!args.length) return copyText("machineAliases.describeArgs.none");
-  return args.map((a) => (/[\s'"]/.test(a) ? JSON.stringify(a) : a)).join(" ");
-}
-
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
   className: string,
@@ -165,285 +91,6 @@ function button(label: string, variant: string, onClick: () => void): HTMLButton
   return b;
 }
 
-/** 账号下拉里「不用任何账号」那一项的值：只是个记号（那一项按元素认，见表单），不是 ccm 参数。 */
-const BASE_OPTION = "(base)";
-
-/** 同一条别名（名字 ＋ 参数 ＋ 交给谁逐格相等）。 */
-const sameAlias = (a: Alias, b: Alias): boolean =>
-  a.name === b.name && a.restTo === b.restTo && a.args.length === b.args.length && a.args.every((w, i) => w === b.args[i]);
-
-
-/**
- * 一条别名的那张表单（「＋ 新增别名」与「改」共用）：名字 · 账号（那台的账号表）· 在哪起 · 工作目录（分情况 ＋ 其余情况）·
- * ▸ 更多；下一行实时「会执行：…」与这一条的问题 / 撞名；[保存] 一步写到那台、[取消]。
- * 每改一格（`change`）问一次后端 —— 没有定时器，每一次都是一个人的动作触发的。
- */
-interface FormHost {
-  shell: Shell;
-  hasTmux: boolean;
-  /** 表单头上那一句（「新增别名」·「改 alphacc」）。 */
-  title: string;
-  accounts: () => readonly string[];
-  /** 表单 → 一条别名（那台后端拼；「改」时带着原来那条）。拼不出 ⇒ 抛那句话。 */
-  render: (f: AliasForm) => Promise<Alias>;
-  /** 这一条按表单现在的样子放进清单后，问后端这一条的问题与撞名。 */
-  check: (a: Alias) => Promise<string[]>;
-  preview: (a: Alias) => Promise<string>;
-  save: (a: Alias) => Promise<string | null>;
-  cancel: () => void;
-}
-
-function buildAliasForm(initial: AliasForm, host: FormHost): HTMLElement {
-  const box = el("div", "cfg-form");
-  box.dataset.role = "alias-form";
-  const grid = el("div", "cfg-fg");
-  const text = (placeholder: string, value = "", title = ""): HTMLInputElement => {
-    const i = el("input", "");
-    i.type = "text";
-    i.placeholder = placeholder;
-    i.value = value;
-    if (title) i.title = title;
-    return i;
-  };
-  const select = (pairs: Array<[string, string]>): HTMLSelectElement => {
-    const s = el("select", "");
-    for (const [v, t] of pairs) {
-      const o = el("option", "", t);
-      o.value = v;
-      s.appendChild(o);
-    }
-    return s;
-  };
-  const nameIn = text(copyText("machineAliases.form.nameHint"), initial.name);
-  nameIn.dataset.role = "name";
-  const acctSel = select([
-    ["", copyText("machineAliases.form.accountNone")],
-    [BASE_OPTION, copyText("machineAliases.form.accountBase")],
-    ...host.accounts().map((a): [string, string] => [a, copyText("machineAliases.form.accountNamed", { name: a })]),
-  ]);
-  acctSel.dataset.role = "account";
-  // 「不用任何账号」那一项按元素认、不按值认（值只是个记号，不与任何号名相撞）。
-  const baseOpt = acctSel.options[1];
-  const isBase = (): boolean => acctSel.options[acctSel.selectedIndex] === baseOpt;
-  // 别名里写的号不在这台的账号表里（手编的 / 号删了）：照原样摆一项，不悄悄变成「不指定」。
-  let picked = initial.account
-    ? [...acctSel.options].find((o) => o !== baseOpt && o.value === initial.account)
-    : initial.base
-      ? baseOpt
-      : acctSel.options[0];
-  if (!picked) {
-    picked = el("option", "", copyText("machineAliases.form.accountNamed", { name: initial.account }));
-    picked.value = initial.account;
-    acctSel.appendChild(picked);
-  }
-  picked.selected = true;
-  const tmuxSel = select([
-    ["none", copyText("machineAliases.form.tmuxNone")],
-    ["auto", copyText("machineAliases.form.tmuxAuto")],
-    ["named", copyText("machineAliases.form.tmuxNamed")],
-    ["base", copyText("machineAliases.form.tmuxBase")],
-    ["attach", copyText("machineAliases.form.tmuxAttach")],
-  ]);
-  tmuxSel.dataset.role = "where";
-  for (const o of [...tmuxSel.options]) o.title = TMUX_NAMING[o.value as TmuxMode].text();
-  // 能力（不是方言）：PowerShell 目标 ⇔ Windows ⇔ 没有 tmux ⇒ tmux 那一族（含接回）整组不给选（后端能力闸是真判定）。
-  if (!host.hasTmux) {
-    for (const o of [...tmuxSel.options]) if (o.value !== "none") o.disabled = true;
-    tmuxSel.title = copyText("machineAliases.buildAliasManager.noTmux");
-  }
-  tmuxSel.value = host.hasTmux ? initial.tmux : "none";
-  const tmuxNameIn = text(copyText("machineAliases.form.tmuxName"), initial.tmuxName);
-  // 挂钩用 `data-role` 不用类名：这一行的外观就是 `.cfg-hint`。
-  const tmuxHint = el("div", "cfg-hint");
-  tmuxHint.dataset.role = "tmux-naming";
-  const field = (label: string, ...ctl: HTMLElement[]): void => {
-    const cell = el("div", "cfg-fc");
-    cell.append(...ctl);
-    grid.append(el("div", "cfg-fl", label), cell);
-  };
-  field(copyText("machineAliases.form.labelName"), nameIn, el("div", "cfg-hint", host.shell === "powershell" ? copyText("machineAliases.form.nameHelpPs") : copyText("machineAliases.form.nameHelp")));
-  field(copyText("machineAliases.form.labelAccount"), acctSel);
-  field(copyText("machineAliases.form.labelWhere"), tmuxSel, tmuxNameIn, tmuxHint);
-
-  // ── 工作目录：分情况 ＋ 其余情况 ──
-  const cwdBox = el("div", "cfg-cases");
-  cwdBox.dataset.role = "cwd";
-  const cases = el("div", "");
-  const caseRows: Array<{ at: HTMLInputElement; to: HTMLInputElement; row: HTMLElement }> = [];
-  const addCase = (c: CwdCase): void => {
-    const row = el("div", "cfg-cr");
-    row.dataset.role = "cwd-case";
-    const at = text(copyText("machineAliases.form.cwdAt"), c.at);
-    const to = text(copyText("machineAliases.form.cwdTo"), c.to);
-    const entry = { at, to, row };
-    const drop = button(copyText("machineAliases.form.cwdDrop"), "", () => {
-      caseRows.splice(caseRows.indexOf(entry), 1);
-      row.remove();
-      changed();
-    });
-    drop.title = copyText("machineAliases.form.cwdDropHint");
-    row.append(
-      el("span", "", copyText("machineAliases.form.cwdIn")),
-      at,
-      el("span", "", copyText("machineAliases.form.cwdArrow")),
-      to,
-      drop,
-    );
-    for (const i of [at, to]) i.addEventListener("change", () => changed());
-    caseRows.push(entry);
-    cases.appendChild(row);
-  };
-  for (const c of initial.cwdIf) addCase(c);
-  const addCaseBtn = button(copyText("machineAliases.form.cwdAdd"), "", () => {
-    addCase({ at: "", to: "" });
-  });
-  const elseRow = el("div", "cfg-cr");
-  elseRow.dataset.role = "cwd-else";
-  const radio = (label: string, checked: boolean): HTMLInputElement => {
-    const r = el("input", "");
-    r.type = "radio";
-    r.name = `cwd-else-${Math.random().toString(36).slice(2)}`;
-    r.checked = checked;
-    const l = el("label", "");
-    l.append(r, label);
-    elseRow.appendChild(l);
-    return r;
-  };
-  elseRow.appendChild(el("span", "", copyText("machineAliases.form.cwdElse")));
-  const hereR = radio(copyText("machineAliases.form.cwdHere"), initial.cwd === "");
-  const dirR = radio(copyText("machineAliases.form.cwdDir"), initial.cwd !== "");
-  dirR.name = hereR.name;
-  const cwdIn = text(copyText("machineAliases.form.cwd"), initial.cwd);
-  elseRow.appendChild(cwdIn);
-  cwdBox.append(cases, addCaseBtn, elseRow);
-  field(copyText("machineAliases.form.cwdTitle"), cwdBox);
-
-  // ── ▸ 更多 ──
-  const adv = el("details", "ccm-alias-gen");
-  adv.appendChild(el("summary", "", copyText("machineAliases.form.more")));
-  const advGrid = el("div", "cfg-adv");
-  const agentSel = select([
-    ["", copyText("machineAliases.form.agentNone", { agent: DEFAULT_AGENT })],
-    ...listAgents().map((a): [string, string] => [a, `agent：${a}`]),
-  ]);
-  // 写的 agent 不是注册表里的一家：照原样摆一项（不可选），存的时候后端会拒、说出认得的几家。
-  if (initial.agent && !listAgents().includes(initial.agent)) {
-    const o = el("option", "", copyText("machineAliases.form.agentUnknown", { agent: initial.agent }));
-    o.value = initial.agent;
-    o.disabled = true;
-    o.dataset.role = "agent-unknown";
-    agentSel.appendChild(o);
-  }
-  agentSel.value = initial.agent;
-  const modelIn = text(copyText("machineAliases.form.model"), initial.model);
-  const launcherIn = text(copyText("machineAliases.form.launcher"), initial.launcher);
-  const sizeIn = text(copyText("machineAliases.form.tmuxSize"), initial.tmuxSize);
-  const detachCk = el("input", "");
-  detachCk.type = "checkbox";
-  detachCk.checked = initial.detach;
-  const detachLabel = el("label", "");
-  detachLabel.append(detachCk, copyText("machineAliases.form.detach"));
-  const busCk = el("input", "");
-  busCk.type = "checkbox";
-  busCk.checked = initial.busRegister;
-  const busLabel = el("label", "");
-  busLabel.append(busCk, copyText("machineAliases.form.busRegister"));
-  const busNoteIn = text(copyText("machineAliases.form.busNote"), initial.busNote);
-  const passIn = text(copyText("machineAliases.form.passthru"), initial.passthru);
-  advGrid.append(agentSel, modelIn, launcherIn, sizeIn, detachLabel, busLabel, busNoteIn, passIn);
-  adv.appendChild(advGrid);
-
-  // ── 会执行：… · 这一条的问题 / 撞名 · [保存] [取消] ──
-  field("", adv);
-  const wouldRun = el("pre", "ccm-alias-preview");
-  wouldRun.dataset.role = "would-run";
-  const wouldLabel = el("div", "cfg-hint", copyText("machineAliases.form.wouldRun"));
-  const notes = el("div", "cfg-hint");
-  notes.dataset.role = "form-notes";
-  const actions = el("div", "cfg-acts");
-  const saveBtn = button(copyText("machineAliases.form.save"), "settings-btn-primary", () => void onSave());
-  const cancelBtn = button(copyText("machineAliases.form.cancel"), "", () => host.cancel());
-  actions.append(saveBtn, cancelBtn, el("span", "cfg-hint", host.shell === "powershell" ? copyText("machineAliases.form.saveHintPs") : copyText("machineAliases.form.saveHint")));
-  box.append(el("div", "cfg-form-title", host.title), grid, wouldLabel, wouldRun, notes, actions);
-
-  const read = (): AliasForm => ({
-    name: nameIn.value,
-    cwdIf: caseRows.map((c) => ({ at: c.at.value, to: c.to.value })),
-    cwd: dirR.checked ? cwdIn.value : "",
-    account: isBase() ? "" : acctSel.value,
-    base: isBase(),
-    tmux: tmuxSel.value as TmuxMode,
-    tmuxName: tmuxNameIn.value,
-    agent: agentSel.value,
-    model: modelIn.value,
-    launcher: launcherIn.value,
-    tmuxSize: sizeIn.value,
-    detach: detachCk.checked,
-    busRegister: busCk.checked,
-    busNote: busNoteIn.value,
-    passthru: passIn.value,
-    // 表单没有格子的 ccm 参数：原样带着走（那台后端放回原位）。
-    ccmOther: initial.ccmOther,
-  });
-
-  /** 控件上把必被拒的组合先关掉（后端校验才是真判定）：接回会话只单放 `--attach`；不进 tmux ⇒ 容器那几格关；不 --detach ⇒ 登记关。 */
-  const syncEnabled = (): void => {
-    const mode = tmuxSel.value as TmuxMode;
-    const attach = mode === "attach";
-    const inTmux = mode !== "none" && !attach;
-    tmuxHint.textContent = TMUX_NAMING[mode].text();
-    tmuxNameIn.disabled = !(mode === "named" || mode === "base");
-    for (const c of [acctSel, agentSel, modelIn, launcherIn, passIn, cwdIn, hereR, dirR, addCaseBtn]) c.disabled = attach;
-    for (const c of caseRows) c.at.disabled = c.to.disabled = attach;
-    cwdIn.disabled = attach || !dirR.checked;
-    sizeIn.disabled = !inTmux;
-    detachCk.disabled = !inTmux;
-    busCk.disabled = !inTmux || !detachCk.checked;
-    busNoteIn.disabled = busCk.disabled || !busCk.checked;
-  };
-
-  let seq = 0;
-  const changed = (): void => {
-    syncEnabled();
-    const mine = ++seq;
-    void host.render(read()).then(
-      (a) => {
-        if (mine !== seq) return;
-        void host.preview(a).then((t) => {
-          if (mine === seq) wouldRun.textContent = t;
-        });
-        void host.check(a).then((lines) => {
-          if (mine === seq) notes.textContent = lines.join("\n");
-        });
-      },
-      (e: unknown) => {
-        if (mine !== seq) return;
-        wouldRun.textContent = "";
-        notes.textContent = e instanceof Error ? e.message : String(e);
-      },
-    );
-  };
-  for (const c of [nameIn, acctSel, tmuxSel, tmuxNameIn, cwdIn, hereR, dirR, agentSel, modelIn, launcherIn, sizeIn, detachCk, busCk, busNoteIn, passIn]) {
-    c.addEventListener("change", () => changed());
-  }
-
-  const onSave = async (): Promise<void> => {
-    saveBtn.disabled = true;
-    let said: string | null;
-    try {
-      said = await host.save(await host.render(read()));
-    } catch (e) {
-      said = e instanceof Error ? e.message : String(e);
-    }
-    saveBtn.disabled = false;
-    if (said !== null) notes.textContent = said;
-  };
-
-  syncEnabled();
-  changed();
-  return box;
-}
-
 /**
  * 已经露出来读过的那几组别名（本机那一组与每张远端卡各一组）。别处改了那台的别名清单（账号增删）、
  * 或回到那一页时按机器重读 —— 不然清单与指纹停在第一次读的那一刻，「加上」拿旧指纹去写就被说「被别处改过」。
@@ -457,20 +104,6 @@ export function rereadAliases(origin: Origin): void {
     else if (m.origin() === origin) m.reread();
   }
 }
-
-/** 同名那一行里「现在敲它起的是哪一个」（后端给码，界面按码取句）。 */
-const CLASH_NOW: Record<ClashWins, () => string> = {
-  yours: () => copyText("machineAliases.clash.nowYours"),
-  list: () => copyText("machineAliases.clash.nowList"),
-  unclear: () => copyText("machineAliases.clash.nowUnclear"),
-};
-
-/** 点开那一条时同名那一句。 */
-const CLASH_DETAIL: Record<ClashWins, (a: { path: string; line: string; name: string }) => string> = {
-  yours: (a) => copyText("machineAliases.clash.detailYours", { path: a.path, line: a.line, name: a.name }),
-  list: (a) => copyText("machineAliases.clash.detailList", { path: a.path, line: a.line, name: a.name }),
-  unclear: (a) => copyText("machineAliases.clash.detailUnclear", { path: a.path, line: a.line, name: a.name }),
-};
 
 /** 别名那一组的入参。两个平台同一份，`platform` 是入参；本机远端同一份，`origin` 是入参。 */
 export interface AliasManagerSpec {
@@ -493,7 +126,6 @@ export interface AliasManager {
 
 export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
   const shell = opts.platform;
-  const hasTmux = shell === "posix";
   // 只本机挂的几格（平台格 · 本机 ccm 入口 · 用系统编辑器打开）问的是 monitor 这台，远端不挂。
   const local = isLocalOrigin(opts.origin());
   const group = el("div", "cfg");
@@ -572,30 +204,20 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
   access.append(pathCcm, accessRows, panel, accessWarn, cleanupHint, rcPolicy, allowBtn, accessNote);
   body.appendChild(access);
 
-  // 块外与清单同名的那一行：现在敲它起的是哪一个（后端比的先后，界面按码取句）。
-  const clashBox = document.createElement("div");
-  clashBox.className = "cfg-clash";
-  clashBox.hidden = true;
-  const clash = el("div", "cfg-line cfg-line-warn");
-  clash.dataset.role = "clash";
-  clashBox.appendChild(clash);
-  body.appendChild(clashBox);
-
-  // ═══ 清单 ═══
-  const listHead = el("div", "cfg-list-head");
-  listHead.append(
-    el("span", "cfg-list-title", copyText("machineAliases.list.title")),
-    button(copyText("machineAliases.list.add"), "", () => openForm(null)),
-  );
-  const status = el("div", "cfg-hint machine-aliases-status");
-  const problemsBox = el("div", "cfg-hint machine-aliases-problems");
-  const newSlot = el("div", "");
-  newSlot.dataset.role = "new-slot";
-  const listBox = el("div", "machine-aliases-list");
+  // ═══ 清单（配置文件按「基于」排成树）═══
+  const profiles = buildProfilesList({
+    origin: opts.origin,
+    local,
+    confirm: opts.confirm,
+    onHead: (text) => {
+      headText = text;
+      renderStatus();
+    },
+  });
   const writes = document.createElement("div");
   writes.className = "cfg-writes";
   writes.dataset.role = "writes";
-  body.append(listHead, status, problemsBox, newSlot, listBox, writes);
+  body.append(profiles.element, writes);
 
   // ═══ Windows 终端（只本机 PowerShell）═══
   let winRow: CfgRow | null = null;
@@ -607,12 +229,8 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
   }
 
   // ── 状态 ──
-  let list: Alias[] = [];
-  let groups: Array<AccountShape | null> = [];
-  let said: string[] = [];
-  let accounts: string[] = [];
-  let missing: MissingAlias[] = [];
-  let fingerprint: string | null = null;
+  /** 头部那一行（清单读回之后由它给：`N 条 · 规则住 … · 改了下次起会话就生效`）。 */
+  let headText = "";
   let cands: StartupFile[] = [];
   let home: string | null = null;
   /** 路径写成家目录打头的短形（家目录由那台后端给）。 */
@@ -622,262 +240,8 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
   let chosen: string | null = null;
   /** 人另指的那一份（原样的输入串；后端过围栏）。一旦指过，之后每次读回都带着它。 */
   let otherRc: string | null = null;
-  /** 正开着的那张表单：`orig` = 正在改的那一条（新增 ⇒ `null`）。 */
-  let form: { orig: Alias | null; el: HTMLElement } | null = null;
-  /** 点开看「等于什么 · 会执行什么」的那一条（按名字记，重读后照样开着）。 */
-  let selected: string | null = null;
   /** 接上那一行下面开着哪一块。 */
   let panelOpen: "preview" | "uninstall" | "choose" | "paste" | null = null;
-
-  /** 存一份新清单：带读回时的指纹；成了 ⇒ 重读；被别处改过 ⇒ 重读、回那句话（表单留着）。 */
-  const store = async (next: Alias[]): Promise<string | null> => {
-    try {
-      const done = await installAliases(opts.origin(), next, shell, fingerprint);
-      // 写进了别名文件 ⇒ 照后端回的那一句说「已开的终端要重读别名」（新开的终端自己认得）。
-      if (done.reload) toast(copyText("machineAliases.save.done"), done.reload, { level: "info" });
-    } catch (e) {
-      await readBack();
-      return e instanceof AliasesStale
-        ? copyText("machineAliases.save.stale", { why: e.message })
-        : copyText("machineAliases.write.failed", { e: String(e instanceof Error ? e.message : e) });
-    }
-    await readBack();
-    return null;
-  };
-
-  const closeForm = (): void => {
-    form?.el.remove();
-    form = null;
-  };
-
-  /**
-   * 「＋ 新增别名」（`orig = null`，在清单顶上展开）与「改」（在那一行下面展开）共用同一张表单。
-   * 「改」先问那台后端把这一条摊成表单（打不开 ⇒ 状态行说一句）；新增是一张空表单，就地展开。
-   */
-  let opening = 0;
-  const openForm = (orig: Alias | null, after?: HTMLElement): void => {
-    closeForm();
-    row.setOpen(true);
-    const ticket = ++opening;
-    if (!orig) {
-      mountForm(null, emptyForm());
-      return;
-    }
-    void aliasToForm(opts.origin(), orig).then(
-      (initial) => {
-        if (ticket === opening) mountForm(orig, initial, after);
-      },
-      (e: unknown) => {
-        if (ticket === opening)
-          status.textContent = copyText("machineAliases.form.openFailed", { e: e instanceof Error ? e.message : String(e) });
-      },
-    );
-  };
-  const mountForm = (orig: Alias | null, initial: AliasForm, after?: HTMLElement): void => {
-    closeForm();
-    const f = buildAliasForm(initial, {
-      shell,
-      hasTmux,
-      title: orig ? copyText("machineAliases.form.titleEdit", { name: orig.name }) : copyText("machineAliases.form.titleNew"),
-      accounts: () => accounts,
-      render: (form) => aliasFromForm(opts.origin(), form, orig),
-      check: async (a) => {
-        const at = orig ? list.findIndex((x) => sameAlias(x, orig)) : -1;
-        const next = at >= 0 ? list.map((x, i) => (i === at ? a : x)) : [...list, a];
-        try {
-          const r = await renderAliases(opts.origin(), next, shell);
-          return [
-            ...r.problems.filter((p) => p.name === a.name).map((p) => `✗ ${p.message}`),
-            ...r.collisions.filter((c) => c.includes(a.name)).map((c) => `⚠ ${c}`),
-          ];
-        } catch (e) {
-          return [copyText("machineAliases.changed.failed", { e: String(e instanceof Error ? e.message : e) })];
-        }
-      },
-      preview: (a) => previewAlias(opts.origin(), a),
-      save: async (a) => {
-        const at = form?.orig ? list.findIndex((x) => sameAlias(x, form!.orig!)) : -1;
-        const next = at >= 0 ? list.map((x, i) => (i === at ? a : x)) : [...list, a];
-        const said = await store(next);
-        if (said === null) closeForm();
-        return said;
-      },
-      cancel: closeForm,
-    });
-    form = { orig, el: f };
-    if (after) after.after(f);
-    else newSlot.appendChild(f);
-  };
-
-  /** 这一条在块外有没有同名的（取第一处）。 */
-  const clashOf = (name: string): { path: string; c: NameClash } | null => {
-    for (const s of cands) for (const c of s.block.conflictingFunctions) if (c.name === name) return { path: s.path, c };
-    return null;
-  };
-
-  /** 点开一条：敲它等于什么 · 那台现算的会执行什么 · 和你写的同名时那一句 ·［改］［删］。 */
-  const detail = (a: Alias, i: number, withHead: boolean): HTMLElement => {
-    const d = el("div", "cfg-detail");
-    d.dataset.role = "alias-detail";
-    if (withHead) {
-      const h = el("div", "cfg-detail-head");
-      h.append(el("code", "cfg-alias-name", a.name), el("span", "cfg-alias-said", said[i] ?? ""));
-      h.append(...actions(a, () => d));
-      d.appendChild(h);
-    }
-    const kv = el("div", "cfg-kv");
-    kv.append(
-      el("span", "", copyText("machineAliases.detail.equals", { name: a.name })),
-      el("code", "", copyText("machineAliases.detail.equalsLine", { args: describeArgs(a.args) })),
-      el("span", "", copyText("machineAliases.detail.runs")),
-    );
-    const runs = el("code", "ccm-alias-preview");
-    runs.dataset.role = "alias-preview";
-    runs.textContent = copyText("machineAliases.aliasPreview.asking");
-    kv.appendChild(runs);
-    d.append(kv, el("div", "cfg-hint", copyText("machineAliases.aliasPreview.hint")));
-    void previewAlias(opts.origin(), a).then((t) => {
-      runs.textContent = t;
-    });
-    const hit = clashOf(a.name);
-    if (hit) {
-      d.appendChild(
-        el("div", "cfg-note cfg-note-warn", CLASH_DETAIL[hit.c.wins]({ path: short(hit.path), line: String(hit.c.line), name: a.name })),
-      );
-    }
-    return d;
-  };
-
-  const actions = (a: Alias, after: () => HTMLElement): HTMLElement[] => [
-    button(copyText("machineAliases.list.edit"), "cfg-link", () => openForm(a, after())),
-    button(copyText("machineAliases.list.delete"), "cfg-link cfg-link-danger", () => {
-      void store(list.filter((x) => !sameAlias(x, a))).then((said) => {
-        if (said !== null) status.textContent = said;
-      });
-    }),
-  ];
-
-  /** 「其他」里一行：名字 · 人话（被你写的盖 / 和你写的同名）·［改］［删］；点这一行展开它的详情。 */
-  const otherRow = (a: Alias, i: number): HTMLElement => {
-    const box = el("div", "cfg-arow-wrap");
-    const r = el("div", "cfg-arow machine-aliases-row");
-    r.dataset.name = a.name;
-    r.tabIndex = 0;
-    const s = el("span", "cfg-alias-said", said[i] ?? "");
-    const hit = clashOf(a.name);
-    if (hit) s.appendChild(el("span", "cfg-alias-warn", hit.c.wins === "yours" ? copyText("machineAliases.clash.tagCovered") : copyText("machineAliases.clash.tagSame")));
-    r.append(el("code", "cfg-alias-name", a.name), s);
-    const acts = el("span", "cfg-arow-acts");
-    acts.append(...actions(a, () => box));
-    r.appendChild(acts);
-    const open = (): void => {
-      selected = selected === a.name ? null : a.name;
-      renderList();
-    };
-    r.addEventListener("click", open);
-    r.addEventListener("keydown", (ev) => {
-      if (ev.key === "Enter" && !ev.isComposing) open();
-    });
-    r.setAttribute("aria-expanded", String(selected === a.name));
-    box.appendChild(r);
-    if (selected === a.name) box.appendChild(detail(a, i, false));
-    return box;
-  };
-
-  /** 账号表：号 × 「在当前终端启动」「在 tmux 里起」（PowerShell 只一列），格子里是别名名字；缺的那一格「＋ 添加 …」。 */
-  const accountTable = (): HTMLElement => {
-    const box = el("div", "");
-    box.dataset.role = "group-accounts";
-    const grp = el("div", "cfg-grp");
-    grp.append(
-      el("span", "cfg-grp-title", copyText("machineAliases.list.groupAccounts")),
-      el("span", "cfg-hint", hasTmux ? copyText("machineAliases.list.groupAccountsHint") : copyText("machineAliases.list.groupAccountsHintOne")),
-    );
-    box.appendChild(grp);
-    if (!accounts.length) {
-      box.appendChild(el("div", "cfg-hint", copyText("machineAliases.list.noAccounts")));
-      return box;
-    }
-    const tab = el("div", hasTmux ? "cfg-atab" : "cfg-atab cfg-atab-one");
-    tab.append(
-      el("div", "cfg-th", copyText("machineAliases.list.colAccount")),
-      el("div", "cfg-th", shell === "powershell" ? copyText("machineAliases.list.colHereWindow") : copyText("machineAliases.list.colHere")),
-    );
-    if (hasTmux) tab.appendChild(el("div", "cfg-th", copyText("machineAliases.list.colTmux")));
-    let picked: { a: Alias; i: number } | null = null;
-    const cell = (acc: string, tmux: boolean): HTMLElement => {
-      const td = el("div", "cfg-td");
-      list.forEach((a, i) => {
-        const g = groups[i];
-        if (!g || !inTable(i) || g.account !== acc || g.tmux !== tmux) return;
-        const p = button(a.name, "cfg-pill", () => {
-          selected = selected === a.name ? null : a.name;
-          renderList();
-        });
-        p.dataset.name = a.name;
-        p.setAttribute("aria-pressed", String(selected === a.name));
-        if (selected === a.name) picked = { a, i };
-        td.appendChild(p);
-      });
-      if (!td.childElementCount) {
-        const m = missing.find((x) => x.account === acc && x.tmux === tmux);
-        if (m) {
-          const add = button(copyText("machineAliases.list.addMissing", { name: m.alias.name }), "cfg-pill cfg-pill-add", () => {
-            void store([...list, m.alias]).then((said) => {
-              if (said !== null) status.textContent = said;
-            });
-          });
-          add.dataset.role = "alias-missing";
-          td.appendChild(add);
-        }
-      }
-      return td;
-    };
-    for (const acc of accounts) {
-      const who = el("div", "cfg-td cfg-who");
-      who.append(accountAvatarEl(acc, { size: 18 }), el("span", "cfg-acct", acc));
-      tab.append(who, cell(acc, false));
-      if (hasTmux) tab.appendChild(cell(acc, true));
-    }
-    box.appendChild(tab);
-    const p = picked as { a: Alias; i: number } | null;
-    if (p) box.appendChild(detail(p.a, p.i, true));
-    return box;
-  };
-
-  /** 账号表里那一格画不画它：后端认的账号那一形；这台没有 tmux（表只一列）时 tmux 那一形落回「其他」，不藏起来。 */
-  const inTable = (i: number): boolean => groups[i] !== null && groups[i] !== undefined && (hasTmux || !groups[i]!.tmux);
-
-  /** 两组：账号（后端认的那一形，排成表）· 其他（其余全部，按文件里的顺序）。 */
-  const renderList = (): void => {
-    listBox.textContent = "";
-    const otherBox = el("div", "");
-    otherBox.dataset.role = "group-other";
-    otherBox.appendChild(el("div", "cfg-grp cfg-grp-title", copyText("machineAliases.list.groupOther")));
-    const rows = el("div", "cfg-arows");
-    list.forEach((a, i) => {
-      if (!inTable(i)) rows.appendChild(otherRow(a, i));
-    });
-    if (!rows.childElementCount) rows.appendChild(el("div", "cfg-hint", copyText("machineAliases.list.empty")));
-    otherBox.appendChild(rows);
-    listBox.append(accountTable(), otherBox);
-    if (form?.orig && !form.el.isConnected) closeForm();
-  };
-
-  /** 整份清单的问题与撞名（只出声、不拦：`cc` 在多数机器上是 C 编译器，盖不盖由人定）。 */
-  const renderProblems = async (): Promise<void> => {
-    let r: AliasRender;
-    try {
-      r = await renderAliases(opts.origin(), list, shell);
-    } catch (e) {
-      problemsBox.textContent = copyText("machineAliases.changed.failed", { e: String(e instanceof Error ? e.message : e) });
-      return;
-    }
-    problemsBox.textContent = [
-      ...r.problems.map((p) => `✗ ${p.name}：${p.message}`),
-      ...r.collisions.map((c) => `⚠ ${c}`),
-    ].join("\n");
-  };
 
   /** 接上装进哪一份。 */
   const target = (): StartupFile | undefined =>
@@ -1007,25 +371,11 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
     if (panelOpen) void paintPanel();
   };
 
-  /** 同名那一行：名字们 · 在哪份文件 · 现在敲它们起的是哪一个（各自不同 ⇒ 点开那一条看）。 */
+  /** 块外与清单同名的那几条：交给清单那一块画（三个选择）。 */
   const renderClash = (): void => {
-    const hits = new Map<string, { path: string; wins: NameClash["wins"] }>();
-    for (const c of cands) for (const f of c.block.conflictingFunctions) if (!hits.has(f.name)) hits.set(f.name, { path: c.path, wins: f.wins });
-    clashBox.hidden = hits.size === 0;
-    clash.replaceChildren();
-    if (!hits.size) return;
-    const all = [...hits.values()];
-    const wins = new Set(all.map((h) => h.wins));
-    const paths = new Set(all.map((h) => h.path));
-    const now = wins.size > 1 ? copyText("machineAliases.clash.mixed") : CLASH_NOW[all[0].wins]();
-    const d = el("span", "cfg-dot");
-    d.dataset.dot = "warn";
-    const names = [...hits.keys()].join(copyText("accountsMcp.list.sep"));
-    const path = paths.size === 1 ? short(all[0].path) : copyText("machineAliases.clash.manyFiles");
-    clash.append(
-      d,
-      el("span", "cfg-line-text", hits.size > 1 ? copyText("machineAliases.clash.lineMany", { names, path, now }) : copyText("machineAliases.clash.lineOne", { names, path, now })),
-    );
+    const hits = new Map<string, ProfileClash>();
+    for (const c of cands) for (const f of c.block.conflictingFunctions) if (!hits.has(f.name)) hits.set(f.name, { name: f.name, path: c.path, line: f.line, wins: f.wins });
+    profiles.setClashes([...hits.values()]);
   };
 
   /** 页尾那一句：接上之后会动哪份文件、什么时候动。 */
@@ -1035,29 +385,24 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
     if (t) writes.textContent = copyText("machineAliases.writes.line", { path: short(t.path) });
   };
 
-  /** 收着时那一行的现状与主动作。 */
+  /** 收着时那一行：清单给的那一句（条数 · 规则住哪 · 下次起会话生效）＋ 同名提示；点的颜色与主动作看接入那一格。 */
   const renderStatus = (): void => {
     const on = cands.filter((c) => c.block.present);
-    const n = String(list.length);
     const names = [...new Set(cands.flatMap((c) => c.block.conflictingFunctions.map((f) => f.name)))];
     const tail = names.length ? copyText("machineAliases.status.clashTail", { names: names.join(copyText("accountsMcp.list.sep")) }) : "";
     const t = target();
     let dot: CfgDot;
-    let text: string;
     if (on.some((c) => c.block.outdated)) {
       dot = "warn";
-      text = copyText("machineAliases.status.outdated", { n, path: short(on.find((c) => c.block.outdated)!.path) });
       row.setAction(button(copyText("machineAliases.status.update"), "settings-btn-primary", () => row.setOpen(true)));
     } else if (on.length) {
       dot = "ok";
-      text = shell === "powershell" ? copyText("machineAliases.status.onWindow", { n }) : copyText("machineAliases.status.on", { n });
-      row.setAction(button(copyText("machineAliases.status.add"), "", () => openForm(null)));
+      row.setAction(null);
     } else {
       dot = "off";
-      text = shell === "powershell" ? copyText("machineAliases.status.offWindow", { n }) : copyText("machineAliases.status.off", { n });
       row.setAction(t ? button(copyText("machineAliases.status.connect", { path: short(t.path) }), "settings-btn-primary", () => row.setOpen(true)) : null);
     }
-    row.setStatus(names.length ? "warn" : dot, text + tail);
+    row.setStatus(names.length ? "warn" : dot, headText + tail);
   };
 
   const fillRcOptions = (): void => {
@@ -1089,29 +434,18 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
     );
   };
 
-  /** 读回口：清单 · 归组 · 人话 · 账号表 · 缺的 · 指纹 · 启动文件候选一次到；认不出的行原样说出来（下一次存时它会被去掉）。 */
+  /** 读回口：启动文件候选（接入那一格）。清单那一块自己读配置文件（`profiles-read`）。 */
   const readBack = async (): Promise<void> => {
     try {
       const got = await readAliases(opts.origin(), shell, otherRc);
       home = got.home;
-      list = got.aliases;
-      groups = got.groups;
-      said = got.said;
-      accounts = got.accounts;
-      missing = got.missing;
-      fingerprint = got.fingerprint;
       cands = got.rcCandidates;
-      const head = got.exists ? "" : copyText("machineAliases.readBack.missing", { path: short(got.aliasPath) });
-      const bad = got.unparsed.map((u) => copyText("machineAliases.readBack.unknownLine", { u }));
-      status.textContent = [head, ...bad].filter(Boolean).join("\n");
       refreshBound();
     } catch (e) {
-      status.textContent = copyText("machineAliases.readBack.failed", { e: String(e instanceof Error ? e.message : e) });
+      accessWarn.textContent = copyText("machineAliases.readBack.failed", { e: String(e instanceof Error ? e.message : e) });
       row.setStatus("warn", copyText("machineAliases.status.readFailed"));
     }
-    renderList();
     renderAccess();
-    await renderProblems();
   };
 
   const load = async (): Promise<void> => {
@@ -1127,7 +461,7 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
         pathCcm.textContent = copyText("machineAliases.load.ccmFailed", { e: String(e) });
       }
     }
-    await readBack();
+    await Promise.all([readBack(), profiles.load()]);
   };
 
   /** 「其它文件」：交给读回口过围栏、并进候选，然后选中它。过不了围栏 ⇒ 原话上屏，候选不动。 */
@@ -1251,7 +585,6 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
   };
 
   row.setStatus("off", copyText("cfgPage.row.reading"));
-  renderList();
   const reread = (): void => {
     psExtras?.loadNow();
     void load();

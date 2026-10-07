@@ -1015,16 +1015,15 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--files-link",
     "--cc-bus-install-state",
     "--skill-install-apply",
-    "--aliases-render",
     "--aliases-read",
-    "--aliases-install",
     "--aliases-block-render",
     "--aliases-block-install",
     "--aliases-block-remove",
-    // 别名表单两向（`inbound::REGISTRY` 的 `aliases-to-form` / `aliases-from-form`，纯）派生的 CLI 面，入参从 stdin 读。
-    // ⚠ 加这两行会逼出一次 `BUILD_ID` bump（`build_id_guard`）—— 本路**不 bump**，合并那一拍统一做。
-    "--aliases-to-form",
-    "--aliases-from-form",
+    "--profiles-read",
+    "--profiles-resolve",
+    "--profiles-impact",
+    "--profiles-bases",
+    "--profiles-write",
     // 帧面 `powershell-policy-set` 派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     "--powershell-policy-set",
     // 资产目录那两条（`inbound::REGISTRY` 的 `assets-catalog` / `assets-catalog-merge`）派生的 CLI 面。
@@ -2001,6 +2000,8 @@ pub const EMITS: &[&str] = &[
     // `tmux_sessions` / `tmux_session_closed` 两格删了：tmux 快照只喂这台的会话账本、不上线（`wire.rs` 那一处墓碑）。
     // 账号清单变了（watcher 盯 manifest 所在目录，登记 = 承诺真发，已接线）。
     "accounts_changed",
+    // 配置文件变了（watcher 盯它所在目录，登记 = 承诺真发，已接线）。
+    "profiles_changed",
     // 这台的额度账显示得出来的那几格变了（中转记账那一路真发，走 tap 那条可丢的通道；登记 = 承诺真发）。
     "quota_changed",
     // 某个会话的轮换 / 「账号」格变了（换号那一路与帧面改轮换那一路真发，走 tap 那条可丢的通道；登记 = 承诺真发）。

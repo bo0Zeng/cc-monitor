@@ -293,6 +293,11 @@ fn backend_entries(
             DataClass::Truth,
         ),
         file(
+            rr::PROFILES_MIGRATED_REL,
+            copy_text("rsDataPaths.backend.profilesMigrated", &[]),
+            DataClass::Truth,
+        ),
+        file(
             rr::POSIX_ALIASES_REL,
             copy_text("rsDataPaths.backend.aliasesPosix", &[]),
             DataClass::Truth,

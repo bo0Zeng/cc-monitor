@@ -863,27 +863,9 @@ const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
          按文件画的引用图因此连到了 tmux；本族不问 tmux、不起 tmux（tmux 那几格是能力闸，按方言判，`Caps::of`）",
     ),
     (
-        "aliases-install",
-        "别名那一族（`assets/aliases/`）只从 `control/ccm/mod.rs` 取 `SUBCOMMAND_WORD` 那一个词（命令名 `ccm`）——\
-         按文件画的引用图因此连到了 tmux；本族不问 tmux、不起 tmux（tmux 那几格是能力闸，按方言判，`Caps::of`）",
-    ),
-    (
         "aliases-read",
         "别名那一族（`assets/aliases/`）只从 `control/ccm/mod.rs` 取 `SUBCOMMAND_WORD` 那一个词（命令名 `ccm`）——\
          按文件画的引用图因此连到了 tmux；本族不问 tmux、不起 tmux（tmux 那几格是能力闸，按方言判，`Caps::of`）",
-    ),
-    (
-        "aliases-render",
-        "别名那一族（`assets/aliases/`）只从 `control/ccm/mod.rs` 取 `SUBCOMMAND_WORD` 那一个词（命令名 `ccm`）——\
-         按文件画的引用图因此连到了 tmux；本族不问 tmux、不起 tmux（tmux 那几格是能力闸，按方言判，`Caps::of`）",
-    ),
-    (
-        "aliases-to-form",
-        "别名表单两向住 `assets/aliases/`（引用图按文件算，因此连带）；本身是纯函数，只问 ccm 的解析器 `argv.rs`，不碰 tmux",
-    ),
-    (
-        "aliases-from-form",
-        "别名表单两向住 `assets/aliases/`（引用图按文件算，因此连带）；本身是纯函数，只问 ccm 的解析器 `argv.rs`，不碰 tmux",
     ),
     (
         "powershell-policy-set",
@@ -951,6 +933,27 @@ const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
         "ccm-probe",
         "同 `ccm-print` 那一族（`control/ccm/mod.rs`）：`--ccm-probe` 那几行里 `capabilities=` 按本二进制的平台档摘掉 tmux 载体，\
          不问 tmux server；命令本身恒答",
+    ),
+    (
+        "profiles-resolve",
+        "设置窗合并预览的「等于」那一行：与 `ccm-print` 同一个 `control/ccm/mod.rs::plan_of`，经会话快照做铸名避让 —— \
+         问不到 ⇒ 不退让、照算；它的能力是合并与渲计划，不是 tmux",
+    ),
+    (
+        "profiles-read",
+        "别名那一族（`assets/aliases/page.rs`）与 `profiles-resolve` 同文件 —— 按文件画的引用图因此连到了 tmux；本条只读配置文件，不问 tmux",
+    ),
+    (
+        "profiles-impact",
+        "同 `profiles-read`：只在内存里合并比对，不问 tmux",
+    ),
+    (
+        "profiles-bases",
+        "同 `profiles-read`：只看「基于」那条链，不问 tmux",
+    ),
+    (
+        "profiles-write",
+        "同 `profiles-read`：按条目改配置文件、补链接，不问 tmux",
     ),
     (
         "ccm-print",

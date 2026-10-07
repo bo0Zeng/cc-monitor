@@ -4908,11 +4908,6 @@
       "zh": "用不了这份：{e}",
       "args": ["e"]
     },
-    "machineAliases.write.failed": {
-      "kind": "error",
-      "zh": "写入失败：{e}",
-      "args": ["e"]
-    },
     "machineAliases.load.ccmFailed": {
       "kind": "error",
       "zh": "查不了本机终端里的 ccm：{e}",
@@ -4923,16 +4918,6 @@
       "kind": "error",
       "zh": "读不了这台机器上的别名文件：{e}",
       "args": ["e"]
-    },
-    "machineAliases.readBack.unknownLine": {
-      "kind": "body",
-      "zh": "认不出这一行，写入时它会被去掉：{u}",
-      "args": ["u"]
-    },
-    "machineAliases.readBack.missing": {
-      "kind": "body",
-      "zh": "{path} 还不存在",
-      "args": ["path"]
     },
     "machineAliases.rc.tagNew": {
       "kind": "control",
@@ -4948,42 +4933,6 @@
       "kind": "control",
       "zh": "已经接上了",
       "args": []
-    },
-    "machineAliases.changed.failed": {
-      "kind": "error",
-      "zh": "生成失败：{e}",
-      "args": ["e"]
-    },
-    "machineAliases.list.delete": {
-      "kind": "action",
-      "zh": "删",
-      "args": []
-    },
-    "machineAliases.list.edit": {
-      "kind": "action",
-      "zh": "改",
-      "args": []
-    },
-    "machineAliases.list.empty": {
-      "kind": "body",
-      "zh": "其余别名见上",
-      "args": []
-    },
-    "machineAliases.form.save": {
-      "kind": "action",
-      "zh": "保存",
-      "args": []
-    },
-    "machineAliases.form.accountNamed": {
-      "kind": "control",
-      "zh": "账号：{name}",
-      "args": ["name"]
-    },
-    "machineAliases.buildAliasManager.noTmux": {
-      "kind": "body",
-      "zh": "这台机器上没有 tmux",
-      "args": [],
-      "limited": ["tmux"]
     },
     "machineAliases.rc.openHint": {
       "kind": "body",
@@ -5021,106 +4970,6 @@
       "zh": "整段贴到文件末尾；这一段只让终端认得 ccm 并接上别名文件，清单以后怎么改都不用再贴。",
       "args": [],
       "limited": ["ccm"]
-    },
-    "machineAliases.form.passthru": {
-      "kind": "control",
-      "zh": "原样交给 agent 的参数，放在 -- 左边",
-      "args": []
-    },
-    "machineAliases.form.busNote": {
-      "kind": "control",
-      "zh": "cc-bus 备注",
-      "args": []
-    },
-    "machineAliases.form.busRegister": {
-      "kind": "control",
-      "zh": " 登记到 cc-bus（--bus-register）",
-      "args": []
-    },
-    "machineAliases.form.detach": {
-      "kind": "control",
-      "zh": " 建完就返回（--detach）",
-      "args": []
-    },
-    "machineAliases.form.tmuxSize": {
-      "kind": "control",
-      "zh": "--tmux-size，如 200x50",
-      "args": [],
-      "limited": ["tmux"]
-    },
-    "machineAliases.form.launcher": {
-      "kind": "control",
-      "zh": "--launcher，留空就不带",
-      "args": []
-    },
-    "machineAliases.form.model": {
-      "kind": "control",
-      "zh": "--model，留空就不带",
-      "args": []
-    },
-    "machineAliases.form.more": {
-      "kind": "title",
-      "zh": "更多参数",
-      "args": []
-    },
-    "machineAliases.form.agentUnknown": {
-      "kind": "control",
-      "zh": "不认识的 agent：{agent}",
-      "args": ["agent"]
-    },
-    "machineAliases.form.agentNone": {
-      "kind": "control",
-      "zh": "agent：不指定，默认 {agent}",
-      "args": ["agent"]
-    },
-    "machineAliases.form.tmuxName": {
-      "kind": "control",
-      "zh": "tmux 会话名",
-      "args": [],
-      "limited": ["tmux"]
-    },
-    "machineAliases.form.tmuxBase": {
-      "kind": "control",
-      "zh": "进 tmux，以某个名字为底",
-      "args": [],
-      "limited": ["tmux"]
-    },
-    "machineAliases.form.tmuxNamed": {
-      "kind": "control",
-      "zh": "进 tmux，用指定的名字",
-      "args": [],
-      "limited": ["tmux"]
-    },
-    "machineAliases.form.tmuxAuto": {
-      "kind": "control",
-      "zh": "进 tmux，自动取名",
-      "args": [],
-      "limited": ["tmux"]
-    },
-    "machineAliases.form.tmuxNone": {
-      "kind": "control",
-      "zh": "在当前终端起",
-      "args": []
-    },
-    "machineAliases.form.accountBase": {
-      "kind": "control",
-      "zh": "账号：显式不带（--base）",
-      "args": []
-    },
-    "machineAliases.form.accountNone": {
-      "kind": "control",
-      "zh": "账号：不指定",
-      "args": []
-    },
-    "machineAliases.form.cwd": {
-      "kind": "control",
-      "zh": "完整路径，或 ~ 开头",
-      "args": []
-    },
-    "machineAliases.form.nameHint": {
-      "kind": "body",
-      "zh": "如 alphacct",
-      "args": []
     },
     "cfgPage.head.intro": {
       "kind": "body",
@@ -5400,16 +5249,6 @@
       "zh": "会从 {path} 删除 cc-monitor 加的那几行 · 你写的行不动：",
       "args": ["path"]
     },
-    "machineAliases.clash.lineOne": {
-      "kind": "body",
-      "zh": "{names}：你在 {path} 有同名定义 · 敲它起的是{now}。",
-      "args": ["names", "path", "now"]
-    },
-    "machineAliases.clash.lineMany": {
-      "kind": "body",
-      "zh": "{names}：你在 {path} 有同名定义 · 敲它们起的是{now}。",
-      "args": ["names", "path", "now"]
-    },
     "machineAliases.clash.manyFiles": {
       "kind": "body",
       "zh": "几份启动文件里",
@@ -5435,119 +5274,6 @@
       "zh": "哪一个说不清 · 别名块在另一份文件里",
       "args": []
     },
-    "machineAliases.clash.detailYours": {
-      "kind": "body",
-      "zh": "你在 {path} 第 {line} 行也写了 {name} · 现在敲 {name} 生效：你写的 · 此条被盖",
-      "args": ["path", "line", "name"]
-    },
-    "machineAliases.clash.detailList": {
-      "kind": "body",
-      "zh": "你在 {path} 第 {line} 行也写了 {name} · 现在敲 {name} 生效：此条 · 你写的被盖",
-      "args": ["path", "line", "name"]
-    },
-    "machineAliases.clash.detailUnclear": {
-      "kind": "body",
-      "zh": "你在 {path} 第 {line} 行也写了 {name} · 别名块在另一份文件里，说不清哪个生效",
-      "args": ["path", "line", "name"]
-    },
-    "machineAliases.clash.tagCovered": {
-      "kind": "body",
-      "zh": " · 被你写的盖",
-      "args": []
-    },
-    "machineAliases.clash.tagSame": {
-      "kind": "body",
-      "zh": " · 和你写的同名",
-      "args": []
-    },
-    "machineAliases.detail.equals": {
-      "kind": "body",
-      "zh": "敲 {name} 等于",
-      "args": ["name"]
-    },
-    "machineAliases.detail.equalsLine": {
-      "kind": "body",
-      "zh": "ccm {args}",
-      "args": ["args"],
-      "limited": ["ccm"]
-    },
-    "machineAliases.detail.runs": {
-      "kind": "body",
-      "zh": "会执行",
-      "args": []
-    },
-    "machineAliases.form.titleNew": {
-      "kind": "title",
-      "zh": "新增别名",
-      "args": []
-    },
-    "machineAliases.form.titleEdit": {
-      "kind": "title",
-      "zh": "改 {name}",
-      "args": ["name"]
-    },
-    "machineAliases.form.labelName": {
-      "kind": "control",
-      "zh": "名字",
-      "args": []
-    },
-    "machineAliases.form.labelAccount": {
-      "kind": "control",
-      "zh": "账号",
-      "args": []
-    },
-    "machineAliases.form.labelWhere": {
-      "kind": "control",
-      "zh": "终端",
-      "args": []
-    },
-    "machineAliases.form.nameHelp": {
-      "kind": "body",
-      "zh": "在终端里敲的那个词。",
-      "args": []
-    },
-    "machineAliases.form.nameHelpPs": {
-      "kind": "body",
-      "zh": "在 PowerShell 里敲的那个词。不分大小写。",
-      "args": [],
-      "limited": ["PowerShell"]
-    },
-    "machineAliases.form.saveHint": {
-      "kind": "body",
-      "zh": "保存即写入这台 · 已开的终端需 source 别名文件",
-      "args": []
-    },
-    "machineAliases.form.saveHintPs": {
-      "kind": "body",
-      "zh": "保存即写入这台 · 已开的窗口需重开",
-      "args": []
-    },
-    "machineAliases.list.colAccount": {
-      "kind": "title",
-      "zh": "账号",
-      "args": []
-    },
-    "machineAliases.list.colHere": {
-      "kind": "title",
-      "zh": "在当前终端启动",
-      "args": []
-    },
-    "machineAliases.list.colHereWindow": {
-      "kind": "title",
-      "zh": "在当前窗口启动",
-      "args": []
-    },
-    "machineAliases.list.colTmux": {
-      "kind": "title",
-      "zh": "在 tmux 里起",
-      "args": [],
-      "limited": ["tmux"]
-    },
-    "machineAliases.list.groupAccountsHintOne": {
-      "kind": "body",
-      "zh": "新建账号时自动加这一条 · 删账号时一起删",
-      "args": []
-    },
     "machineAliases.preview.failedLine": {
       "kind": "error",
       "zh": "这台答不了：{e}",
@@ -5558,31 +5284,6 @@
       "zh": "目标文件",
       "args": []
     },
-    "machineAliases.status.on": {
-      "kind": "body",
-      "zh": "{n} 条 · 新开的终端里能用",
-      "args": ["n"]
-    },
-    "machineAliases.status.onWindow": {
-      "kind": "body",
-      "zh": "{n} 条 · 新开的窗口里能用",
-      "args": ["n"]
-    },
-    "machineAliases.status.off": {
-      "kind": "body",
-      "zh": "{n} 条 · 新开的终端不认",
-      "args": ["n"]
-    },
-    "machineAliases.status.offWindow": {
-      "kind": "body",
-      "zh": "{n} 条 · 新开的窗口不认",
-      "args": ["n"]
-    },
-    "machineAliases.status.outdated": {
-      "kind": "body",
-      "zh": "{n} 条 · {path} cc-monitor 那几行要更新 · 新别名不认",
-      "args": ["n", "path"]
-    },
     "machineAliases.status.clashTail": {
       "kind": "body",
       "zh": " · {names} 和你写的同名",
@@ -5591,11 +5292,6 @@
     "machineAliases.status.readFailed": {
       "kind": "error",
       "zh": "读不出这台的别名",
-      "args": []
-    },
-    "machineAliases.status.add": {
-      "kind": "action",
-      "zh": "＋ 新增",
       "args": []
     },
     "machineAliases.status.connect": {
@@ -5652,11 +5348,6 @@
       "zh": "会动：{path} 末尾 cc-monitor 那几行 · 接上时写一次 · 清单变动不再改它",
       "args": ["path"]
     },
-    "machineAliases.form.wouldRun": {
-      "kind": "body",
-      "zh": "会执行（家目录里新开一个终端敲它时）",
-      "args": []
-    },
     "machineAliases.access.connect": {
       "kind": "action",
       "zh": "接入",
@@ -5703,132 +5394,10 @@
       "zh": "自己贴",
       "args": []
     },
-    "machineAliases.aliasPreview.hint": {
-      "kind": "body",
-      "zh": "「会执行」：家目录新开终端时那台现算 · 后接的参数交给 claude",
-      "args": []
-    },
-    "machineAliases.form.openFailed": {
-      "kind": "error",
-      "zh": "打不开这一条：{e}",
-      "args": ["e"]
-    },
     "machineAliases.form.cancel": {
       "kind": "action",
       "zh": "取消",
       "args": []
-    },
-    "machineAliases.form.cwdTitle": {
-      "kind": "body",
-      "zh": "工作目录",
-      "args": []
-    },
-    "machineAliases.form.cwdIn": {
-      "kind": "body",
-      "zh": "在",
-      "args": []
-    },
-    "machineAliases.form.cwdAt": {
-      "kind": "body",
-      "zh": "在哪个目录敲，如 ~",
-      "args": []
-    },
-    "machineAliases.form.cwdArrow": {
-      "kind": "body",
-      "zh": "敲 → 进",
-      "args": []
-    },
-    "machineAliases.form.cwdTo": {
-      "kind": "body",
-      "zh": "进哪个目录",
-      "args": []
-    },
-    "machineAliases.form.cwdDrop": {
-      "kind": "action",
-      "zh": "×",
-      "args": []
-    },
-    "machineAliases.form.cwdDropHint": {
-      "kind": "body",
-      "zh": "去掉这一种情况",
-      "args": []
-    },
-    "machineAliases.form.cwdAdd": {
-      "kind": "action",
-      "zh": "＋ 按所在目录分一种情况",
-      "args": []
-    },
-    "machineAliases.form.cwdElse": {
-      "kind": "body",
-      "zh": "其余情况 →",
-      "args": []
-    },
-    "machineAliases.form.cwdHere": {
-      "kind": "body",
-      "zh": "当前目录",
-      "args": []
-    },
-    "machineAliases.form.cwdDir": {
-      "kind": "body",
-      "zh": "进",
-      "args": []
-    },
-    "machineAliases.form.tmuxAttach": {
-      "kind": "body",
-      "zh": "接回一个 tmux 会话（敲的时候跟上会话名）",
-      "args": [],
-      "limited": ["tmux"]
-    },
-    "machineAliases.list.title": {
-      "kind": "title",
-      "zh": "清单",
-      "args": []
-    },
-    "machineAliases.list.add": {
-      "kind": "action",
-      "zh": "＋ 新增别名",
-      "args": []
-    },
-    "machineAliases.list.groupAccounts": {
-      "kind": "title",
-      "zh": "账号",
-      "args": []
-    },
-    "machineAliases.list.groupAccountsHint": {
-      "kind": "body",
-      "zh": "新建账号时自动加这两条 · 删账号时一起删",
-      "args": []
-    },
-    "machineAliases.list.groupOther": {
-      "kind": "title",
-      "zh": "其他",
-      "args": []
-    },
-    "machineAliases.list.addMissing": {
-      "kind": "action",
-      "zh": "＋ 添加 {name}",
-      "args": ["name"]
-    },
-    "machineAliases.list.noAccounts": {
-      "kind": "body",
-      "zh": "无账号",
-      "args": []
-    },
-    "machineAliases.save.stale": {
-      "kind": "error",
-      "zh": "没存上：{why} 已经重新读了一遍，看一眼再存。",
-      "args": ["why"]
-    },
-    "machineAliases.save.done": {
-      "kind": "body",
-      "zh": "已保存别名",
-      "args": []
-    },
-    "machineAliases.tmuxNaming.attach": {
-      "kind": "body",
-      "zh": "接回一个已有的 tmux 会话：会话名在敲的时候跟上（如 cca 会话名）。",
-      "args": [],
-      "limited": ["tmux"]
     },
     "machineAliases.unknownOs.said": {
       "kind": "body",
@@ -5836,14 +5405,535 @@
       "args": [],
       "limited": ["PowerShell"]
     },
-    "machineAliases.manager.title": {
+    "profilesPage.chip.function": {
+      "kind": "control",
+      "zh": "终端函数",
+      "args": []
+    },
+    "profilesPage.chip.unusable": {
+      "kind": "control",
+      "zh": "现在不能用",
+      "args": []
+    },
+    "profilesPage.clash.copied": {
+      "kind": "body",
+      "zh": "已复制要删的行号",
+      "args": []
+    },
+    "profilesPage.clash.copyLines": {
+      "kind": "action",
+      "zh": "复制要删的行号",
+      "args": []
+    },
+    "profilesPage.clash.keepBoth": {
       "kind": "title",
+      "zh": "两个都留着",
+      "args": []
+    },
+    "profilesPage.clash.keepBothHint": {
+      "kind": "body",
+      "zh": "新开的终端敲这个名字起的还是你写的那个。",
+      "args": []
+    },
+    "profilesPage.clash.rename": {
+      "kind": "title",
+      "zh": "把清单里那几条改个名",
+      "args": []
+    },
+    "profilesPage.clash.renameHint": {
+      "kind": "body",
+      "zh": "比如把 {name} 改成 c{name}，两边都能用。",
+      "args": ["name"]
+    },
+    "profilesPage.clash.title": {
+      "kind": "title",
+      "zh": "{names}：{path} 第 {lines} 行有同名定义 · 生效：{now}",
+      "args": ["names", "path", "lines", "now"]
+    },
+    "profilesPage.clash.useList": {
+      "kind": "title",
+      "zh": "用清单里的 · 推荐",
+      "args": []
+    },
+    "profilesPage.clash.useListHint": {
+      "kind": "body",
+      "zh": "你那几行留在原处不动，cc-monitor 不改它；清单里已有 {names}。你自己删掉那几行后就是清单的生效。",
+      "args": ["names"]
+    },
+    "profilesPage.edited.look": {
+      "kind": "action",
+      "zh": "看配置文件",
+      "args": []
+    },
+    "profilesPage.edited.line": {
+      "kind": "body",
+      "zh": "配置文件 {time} 改过，不是在这里改的；清单已按新内容列出。你写的注释在这里改别名时会留着。",
+      "args": ["time"]
+    },
+    "profilesPage.edited.lineOpen": {
+      "kind": "body",
+      "zh": "配置文件 {time} 在别处改过；关了表单之后清单按新内容列出。",
+      "args": ["time"]
+    },
+    "profilesPage.file.at": {
+      "kind": "error",
+      "zh": "第 {line} 行：{e}",
+      "args": ["line", "e"]
+    },
+    "profilesPage.file.broken": {
+      "kind": "title",
+      "zh": "配置文件写坏了，整份不能用",
+      "args": []
+    },
+    "profilesPage.form.addCase": {
+      "kind": "action",
+      "zh": "加一条",
+      "args": []
+    },
+    "profilesPage.form.back": {
+      "kind": "action",
+      "zh": "回到继承",
+      "args": []
+    },
+    "profilesPage.form.cancel": {
+      "kind": "action",
+      "zh": "取消",
+      "args": []
+    },
+    "profilesPage.form.caseArrow": {
+      "kind": "body",
+      "zh": "敲进",
+      "args": []
+    },
+    "profilesPage.form.caseAt": {
+      "kind": "control",
+      "zh": "在哪个目录",
+      "args": []
+    },
+    "profilesPage.form.caseDrop": {
+      "kind": "action",
+      "zh": "✕",
+      "args": []
+    },
+    "profilesPage.form.caseIn": {
+      "kind": "body",
+      "zh": "在",
+      "args": []
+    },
+    "profilesPage.form.caseTo": {
+      "kind": "control",
+      "zh": "进哪个目录",
+      "args": []
+    },
+    "profilesPage.form.chain": {
+      "kind": "body",
+      "zh": "ccm @{name} ＝ {chain} 合下来",
+      "args": ["name", "chain"],
+      "limited": ["ccm"]
+    },
+    "profilesPage.form.change": {
+      "kind": "action",
+      "zh": "改",
+      "args": []
+    },
+    "profilesPage.form.discard": {
+      "kind": "action",
+      "zh": "丢掉",
+      "args": []
+    },
+    "profilesPage.form.discardBody": {
+      "kind": "body",
+      "zh": "表单里改的还没存。",
+      "args": []
+    },
+    "profilesPage.form.discardTitle": {
+      "kind": "title",
+      "zh": "丢掉没存的改动",
+      "args": []
+    },
+    "profilesPage.form.from": {
+      "kind": "control",
+      "zh": "基于",
+      "args": []
+    },
+    "profilesPage.form.fromHelp": {
+      "kind": "body",
+      "zh": "下拉只列不会绕成圈的那几条。",
+      "args": []
+    },
+    "profilesPage.form.fromNone": {
+      "kind": "control",
+      "zh": "不基于谁",
+      "args": []
+    },
+    "profilesPage.form.fromSelf": {
+      "kind": "body",
+      "zh": "自己",
+      "args": []
+    },
+    "profilesPage.form.impactHint": {
+      "kind": "body",
+      "zh": "会连带 {n} 条",
+      "args": ["n"]
+    },
+    "profilesPage.form.inheritChip": {
+      "kind": "control",
+      "zh": "继承",
+      "args": []
+    },
+    "profilesPage.form.inheritNone": {
+      "kind": "body",
+      "zh": "继承：没写",
+      "args": []
+    },
+    "profilesPage.form.inherit": {
+      "kind": "body",
+      "zh": "继承：{value}（来自 {from}）",
+      "args": ["value", "from"]
+    },
+    "profilesPage.form.more": {
+      "kind": "control",
+      "zh": "更多",
+      "args": []
+    },
+    "profilesPage.form.name": {
+      "kind": "control",
+      "zh": "名字",
+      "args": []
+    },
+    "profilesPage.form.nameHelp": {
+      "kind": "body",
+      "zh": "在终端里敲的那个词。",
+      "args": []
+    },
+    "profilesPage.form.nameHint": {
+      "kind": "control",
+      "zh": "比如 betacct",
+      "args": []
+    },
+    "profilesPage.form.renameHint": {
+      "kind": "body",
+      "zh": "改名：基于它的 {n} 条跟着改成基于 {name}",
+      "args": ["n", "name"]
+    },
+    "profilesPage.form.reread": {
+      "kind": "action",
+      "zh": "重新读",
+      "args": []
+    },
+    "profilesPage.form.save": {
+      "kind": "action",
+      "zh": "保存",
+      "args": []
+    },
+    "profilesPage.form.saveHintEdit": {
+      "kind": "body",
+      "zh": "只改配置文件里 [{name}] 那一段",
+      "args": ["name"]
+    },
+    "profilesPage.form.saveHintNew": {
+      "kind": "body",
+      "zh": "只往配置文件加一段 [{name}] · 新开和已开的终端都马上能用",
+      "args": ["name"]
+    },
+    "profilesPage.form.stale": {
+      "kind": "error",
+      "zh": "没保存：配置文件在你打开之后被别处改过。你填的还在。",
+      "args": []
+    },
+    "profilesPage.form.titleEdit": {
+      "kind": "title",
+      "zh": "改 {name}",
+      "args": ["name"]
+    },
+    "profilesPage.form.titleNew": {
+      "kind": "title",
+      "zh": "新增别名",
+      "args": []
+    },
+    "profilesPage.form.tmuxBase": {
+      "kind": "control",
+      "zh": "tmux · 以名为底取名",
+      "args": [],
+      "limited": ["tmux"]
+    },
+    "profilesPage.form.tmuxName": {
+      "kind": "control",
+      "zh": "tmux 会话名",
+      "args": [],
+      "limited": ["tmux"]
+    },
+    "profilesPage.form.tmuxNamed": {
+      "kind": "control",
+      "zh": "tmux · 名称固定",
+      "args": [],
+      "limited": ["tmux"]
+    },
+    "profilesPage.form.unnamed": {
+      "kind": "body",
+      "zh": "没起名",
+      "args": []
+    },
+    "profilesPage.function.title": {
+      "kind": "title",
+      "zh": "{name} · 终端函数",
+      "args": ["name"]
+    },
+    "profilesPage.head.line": {
+      "kind": "body",
+      "zh": "{n} 条 · 规则住 {path} · 改了下次起会话就生效",
+      "args": ["n", "path"]
+    },
+    "profilesPage.head.none": {
+      "kind": "body",
+      "zh": "还没有配置文件",
+      "args": []
+    },
+    "profilesPage.impact.colAfter": {
+      "kind": "control",
+      "zh": "改后",
+      "args": []
+    },
+    "profilesPage.impact.colBefore": {
+      "kind": "control",
+      "zh": "改前",
+      "args": []
+    },
+    "profilesPage.impact.colName": {
+      "kind": "control",
       "zh": "别名",
       "args": []
     },
-    "machineAliases.describeArgs.none": {
+    "profilesPage.impact.hide": {
+      "kind": "action",
+      "zh": "收起改前改后",
+      "args": []
+    },
+    "profilesPage.impact.line": {
       "kind": "body",
-      "zh": "不带参数",
+      "zh": "改 {name} 会连带 {n} 条：{names}",
+      "args": ["name", "n", "names"]
+    },
+    "profilesPage.impact.none": {
+      "kind": "body",
+      "zh": "无",
+      "args": []
+    },
+    "profilesPage.impact.show": {
+      "kind": "action",
+      "zh": "看每条改前改后",
+      "args": []
+    },
+    "profilesPage.list.add": {
+      "kind": "action",
+      "zh": "＋ 新增别名",
+      "args": []
+    },
+    "profilesPage.list.empty": {
+      "kind": "body",
+      "zh": "配置文件里一段都没有",
+      "args": []
+    },
+    "profilesPage.list.hint": {
+      "kind": "body",
+      "zh": "按「基于」排成树 · 子那一条只写和父不一样的",
+      "args": []
+    },
+    "profilesPage.list.open": {
+      "kind": "action",
+      "zh": "打开配置文件",
+      "args": []
+    },
+    "profilesPage.list.title": {
+      "kind": "title",
+      "zh": "清单",
+      "args": []
+    },
+    "profilesPage.merge.asking": {
+      "kind": "body",
+      "zh": "正在问这台…",
+      "args": []
+    },
+    "profilesPage.merge.at": {
+      "kind": "control",
+      "zh": "假设在这个目录敲：",
+      "args": []
+    },
+    "profilesPage.merge.colFrom": {
+      "kind": "control",
+      "zh": "来自",
+      "args": []
+    },
+    "profilesPage.merge.colItem": {
+      "kind": "control",
+      "zh": "项",
+      "args": []
+    },
+    "profilesPage.merge.colValue": {
+      "kind": "control",
+      "zh": "值",
+      "args": []
+    },
+    "profilesPage.merge.equals": {
+      "kind": "body",
+      "zh": "敲 {name} 等于",
+      "args": ["name"]
+    },
+    "profilesPage.merge.hint": {
+      "kind": "body",
+      "zh": "合并与「等于」都是这台后端算的（同 ccm @{name} -- --ccm-print）",
+      "args": ["name"],
+      "limited": ["ccm"]
+    },
+    "profilesPage.merge.overridden": {
+      "kind": "body",
+      "zh": "被 {by} 盖掉",
+      "args": ["by"]
+    },
+    "profilesPage.merge.titleBare": {
+      "kind": "title",
+      "zh": "{name} 合下来",
+      "args": ["name"]
+    },
+    "profilesPage.merge.title": {
+      "kind": "title",
+      "zh": "{name} 合下来 · 继承链 {chain}",
+      "args": ["name", "chain"]
+    },
+    "profilesPage.migrated.ack": {
+      "kind": "action",
+      "zh": "知道了",
+      "args": []
+    },
+    "profilesPage.migrated.line": {
+      "kind": "body",
+      "zh": "别名改存在配置文件：{n} 条已转进 {path}。每条一段，规则以后只写在那里。",
+      "args": ["n", "path"]
+    },
+    "profilesPage.open.failed": {
+      "kind": "error",
+      "zh": "打不开配置文件",
+      "args": []
+    },
+    "profilesPage.open.failedBody": {
+      "kind": "error",
+      "zh": "{path}：{e}",
+      "args": ["e", "path"]
+    },
+    "profilesPage.read.failed": {
+      "kind": "error",
+      "zh": "读不了配置文件：{e}",
+      "args": ["e"]
+    },
+    "profilesPage.remove.ask": {
+      "kind": "body",
+      "zh": "{name} 还被 {n} 条基于：{kids}。删了它，它们怎么办？",
+      "args": ["name", "n", "kids"]
+    },
+    "profilesPage.remove.cancel": {
+      "kind": "action",
+      "zh": "不删了",
+      "args": []
+    },
+    "profilesPage.remove.cancelHint": {
+      "kind": "body",
+      "zh": "Esc 也是这个。",
+      "args": []
+    },
+    "profilesPage.remove.cascade": {
+      "kind": "title",
+      "zh": "一起删",
+      "args": []
+    },
+    "profilesPage.remove.cascadeHint": {
+      "kind": "body",
+      "zh": "连同 {kids}，{n} 条一起删。",
+      "args": ["kids", "n"]
+    },
+    "profilesPage.remove.confirmBody": {
+      "kind": "body",
+      "zh": "只删配置文件里那一段，别的段一个字节不动。",
+      "args": []
+    },
+    "profilesPage.remove.confirmTitle": {
+      "kind": "title",
+      "zh": "删 {name}",
+      "args": ["name"]
+    },
+    "profilesPage.remove.goCascade": {
+      "kind": "action",
+      "zh": "{n} 条一起删",
+      "args": ["n"]
+    },
+    "profilesPage.remove.goReparent": {
+      "kind": "action",
+      "zh": "改成基于 {parent} 并删 {name}",
+      "args": ["parent", "name"]
+    },
+    "profilesPage.remove.goReparentRoot": {
+      "kind": "action",
+      "zh": "改成不基于谁并删 {name}",
+      "args": ["name"]
+    },
+    "profilesPage.remove.reparentHint": {
+      "kind": "body",
+      "zh": "{name} 自己那几项（{items}）会从它们身上没了。",
+      "args": ["name", "items"]
+    },
+    "profilesPage.remove.reparent": {
+      "kind": "title",
+      "zh": "改成基于 {parent} · 推荐",
+      "args": ["parent"]
+    },
+    "profilesPage.remove.reparentRoot": {
+      "kind": "title",
+      "zh": "改成不基于谁 · 推荐",
+      "args": []
+    },
+    "profilesPage.row.delete": {
+      "kind": "action",
+      "zh": "删",
+      "args": []
+    },
+    "profilesPage.row.edit": {
+      "kind": "action",
+      "zh": "改",
+      "args": []
+    },
+    "profilesPage.save.done": {
+      "kind": "body",
+      "zh": "已存",
+      "args": []
+    },
+    "profilesPage.seed.blank": {
+      "kind": "action",
+      "zh": "从空的开始",
+      "args": []
+    },
+    "profilesPage.seed.create": {
+      "kind": "action",
+      "zh": "建这两条",
+      "args": []
+    },
+    "profilesPage.seed.hint": {
+      "kind": "body",
+      "zh": "别名是 ccm 的具名配置：一条一组选项，可以基于另一条。先建这两条？",
+      "args": [],
+      "limited": ["ccm"]
+    },
+    "profilesPage.seed.where": {
+      "kind": "body",
+      "zh": "写 {path}",
+      "args": ["path"]
+    },
+    "profilesPage.list.sep": {
+      "kind": "body",
+      "zh": " · ",
+      "args": []
+    },
+    "machineAliases.manager.title": {
+      "kind": "title",
+      "zh": "别名",
       "args": []
     },
     "machineAliases.powershell.blockAfterInstall": {
@@ -10138,16 +10228,6 @@
       "args": [],
       "limited": ["Claude Code"]
     },
-    "rsAccountAliases.install.listSep": {
-      "kind": "body",
-      "zh": "；",
-      "args": []
-    },
-    "rsAccountAliases.install.invalid": {
-      "kind": "error",
-      "zh": "有 {count} 条别名不合格，一条都没写：{list}",
-      "args": ["count", "list"]
-    },
     "rsAccountAliases.install.changedElsewhere": {
       "kind": "error",
       "zh": "{path} 在这一页读到它之后被别处改过，这次没写。",
@@ -10157,21 +10237,6 @@
       "kind": "body",
       "zh": "已开的终端要运行「. {path}」或新开一个",
       "args": ["path"]
-    },
-    "rsAccountAliases.said.base": {
-      "kind": "body",
-      "zh": "~/.claude",
-      "args": []
-    },
-    "rsAccountAliases.said.defaultAccount": {
-      "kind": "body",
-      "zh": "默认账号",
-      "args": []
-    },
-    "rsAccountAliases.said.account": {
-      "kind": "body",
-      "zh": "{account} 账号",
-      "args": ["account"]
     },
     "rsAccountAliases.said.hereTerminal": {
       "kind": "body",
@@ -10183,115 +10248,9 @@
       "zh": "当前窗口",
       "args": []
     },
-    "rsAccountAliases.said.tmuxAuto": {
-      "kind": "body",
-      "zh": "tmux · 自动取名",
-      "args": [],
-      "limited": ["tmux"]
-    },
-    "rsAccountAliases.said.tmuxNamed": {
-      "kind": "body",
-      "zh": "tmux 会话 {name}",
-      "args": ["name"],
-      "limited": ["tmux"]
-    },
-    "rsAccountAliases.said.tmuxBase": {
-      "kind": "body",
-      "zh": "tmux · 以 {name} 为底",
-      "args": ["name"],
-      "limited": ["tmux"]
-    },
-    "rsAccountAliases.said.attach": {
-      "kind": "body",
-      "zh": "接回已有 tmux 会话",
-      "args": [],
-      "limited": ["tmux"]
-    },
-    "rsAccountAliases.said.attachHow": {
-      "kind": "body",
-      "zh": "敲 {alias} 会话名",
-      "args": ["alias"]
-    },
-    "rsAccountAliases.said.cwdIf": {
-      "kind": "body",
-      "zh": "在 {at} 敲就进 {to}",
-      "args": ["at", "to"]
-    },
-    "rsAccountAliases.said.cwd": {
-      "kind": "body",
-      "zh": "进 {dir}",
-      "args": ["dir"]
-    },
-    "rsAccountAliases.said.cwdElse": {
-      "kind": "body",
-      "zh": "其余进 {dir}",
-      "args": ["dir"]
-    },
-    "rsAccountAliases.said.agent": {
-      "kind": "body",
-      "zh": "用 {agent}",
-      "args": ["agent"]
-    },
-    "rsAccountAliases.said.model": {
-      "kind": "body",
-      "zh": "模型 {model}",
-      "args": ["model"]
-    },
-    "rsAccountAliases.said.launcher": {
-      "kind": "body",
-      "zh": "用 {launcher} 起",
-      "args": ["launcher"]
-    },
-    "rsAccountAliases.said.size": {
-      "kind": "body",
-      "zh": "窗口 {size}",
-      "args": ["size"]
-    },
-    "rsAccountAliases.said.detach": {
-      "kind": "body",
-      "zh": "启动后返回",
-      "args": []
-    },
-    "rsAccountAliases.said.bus": {
-      "kind": "body",
-      "zh": "在 cc-bus 上线",
-      "args": []
-    },
-    "rsAccountAliases.said.passthru": {
-      "kind": "body",
-      "zh": "另带 {args}",
-      "args": ["args"]
-    },
-    "rsAccountAliases.said.ccmOther": {
-      "kind": "body",
-      "zh": "ccm 另带 {args}",
-      "args": ["args"],
-      "limited": ["ccm"]
-    },
     "rsAccountAliases.said.sep": {
       "kind": "body",
       "zh": " · ",
-      "args": []
-    },
-    "rsAccountAliases.render.duplicate": {
-      "kind": "body",
-      "zh": "同一个名字出现了两次 —— 后一条会盖掉前一条",
-      "args": []
-    },
-    "rsAccountAliases.check.noTmux": {
-      "kind": "error",
-      "zh": "这台机器上没有 tmux —— {flags} 都用不了",
-      "args": ["flags"],
-      "limited": ["tmux"]
-    },
-    "rsAccountAliases.check.controlChar": {
-      "kind": "error",
-      "zh": "参数里有换行或控制字符",
-      "args": []
-    },
-    "rsAccountAliases.check.badName": {
-      "kind": "error",
-      "zh": "名字只能用字母、数字、下划线，而且不能以数字开头",
       "args": []
     },
     "rsAccountAliases.file.empty": {
@@ -11593,26 +11552,6 @@
     "machineAliases.aliasPreview.asking": {
       "kind": "body",
       "zh": "正在问这台机器的后端…",
-      "args": []
-    },
-    "machineAliases.aliasPreview.line": {
-      "kind": "body",
-      "zh": "{line}",
-      "args": ["line"]
-    },
-    "machineAliases.aliasPreview.failed": {
-      "kind": "error",
-      "zh": "预览不了：{reason}",
-      "args": ["reason"]
-    },
-    "machineAliases.aliasPreview.tooOld": {
-      "kind": "error",
-      "zh": "这台机器的后端太旧，预览不了。重启一次 cc-monitor 换上新后端再试",
-      "args": []
-    },
-    "machineAliases.tmuxNaming.none": {
-      "kind": "body",
-      "zh": "就在当前终端里起，不另开会话。",
       "args": []
     },
     "machineAliases.tmuxNaming.auto": {
@@ -13107,12 +13046,6 @@
       "kind": "error",
       "zh": "交给 agent 的参数里有引号没配对。带空格的参数用一对单引号或双引号括起来",
       "args": []
-    },
-    "beAliasForm.ccmOther.unbalanced": {
-      "kind": "error",
-      "zh": "其它 ccm 参数里有引号没配对。带空格的参数用一对单引号或双引号括起来",
-      "args": [],
-      "limited": ["ccm"]
     },
     "beArgv.parse.unknownRight": {
       "kind": "error",
@@ -22388,6 +22321,145 @@
       "zh": "args 要写字符串数组，是交给 agent 的那几个词",
       "args": []
     },
+    "beProfile.slot.account": {
+      "kind": "control",
+      "zh": "账号",
+      "args": []
+    },
+    "beProfile.slot.tmux": {
+      "kind": "control",
+      "zh": "在哪起",
+      "args": []
+    },
+    "beProfile.slot.cwdIf": {
+      "kind": "control",
+      "zh": "按目录",
+      "args": []
+    },
+    "beProfile.slot.cwd": {
+      "kind": "control",
+      "zh": "其余进哪",
+      "args": []
+    },
+    "beProfile.slot.agent": {
+      "kind": "control",
+      "zh": "agent",
+      "args": []
+    },
+    "beProfile.slot.args": {
+      "kind": "control",
+      "zh": "交给 agent",
+      "args": []
+    },
+    "beProfile.slot.launcher": {
+      "kind": "control",
+      "zh": "启动器",
+      "args": []
+    },
+    "beProfile.slot.tmuxSize": {
+      "kind": "control",
+      "zh": "tmux 尺寸",
+      "args": [],
+      "limited": ["tmux"]
+    },
+    "beProfile.slot.detach": {
+      "kind": "control",
+      "zh": "起完不接进去",
+      "args": []
+    },
+    "beProfile.slot.busRegister": {
+      "kind": "control",
+      "zh": "登记进 cc-bus",
+      "args": []
+    },
+    "beProfile.slot.busNote": {
+      "kind": "control",
+      "zh": "cc-bus 备注",
+      "args": []
+    },
+    "beProfile.said.slot": {
+      "kind": "body",
+      "zh": "{label} {val}",
+      "args": ["label", "val"]
+    },
+    "beProfile.val.base": {
+      "kind": "body",
+      "zh": "不用账号",
+      "args": []
+    },
+    "beProfile.val.tmuxAuto": {
+      "kind": "body",
+      "zh": "tmux · 自动取名",
+      "args": [],
+      "limited": ["tmux"]
+    },
+    "beProfile.val.tmuxNamed": {
+      "kind": "body",
+      "zh": "tmux · 名称固定 {name}",
+      "args": ["name"],
+      "limited": ["tmux"]
+    },
+    "beProfile.val.tmuxBase": {
+      "kind": "body",
+      "zh": "tmux · 以 {name} 为底取名",
+      "args": ["name"],
+      "limited": ["tmux"]
+    },
+    "beProfile.val.cwdIf": {
+      "kind": "body",
+      "zh": "在 {at} 敲进 {to}",
+      "args": ["at", "to"]
+    },
+    "beProfile.val.cwd": {
+      "kind": "body",
+      "zh": "进 {dir}",
+      "args": ["dir"]
+    },
+    "beProfile.said.plus": {
+      "kind": "body",
+      "zh": "+ {val}",
+      "args": ["val"]
+    },
+    "beProfile.val.on": {
+      "kind": "body",
+      "zh": "开",
+      "args": []
+    },
+    "beProfile.form.tmuxName": {
+      "kind": "error",
+      "zh": "在哪起选了固定名 / 以名为底，要写那个名",
+      "args": []
+    },
+    "beProfile.function.always": {
+      "kind": "body",
+      "zh": "这台的终端只认函数，每条都写成函数",
+      "args": []
+    },
+    "beProfile.function.at": {
+      "kind": "body",
+      "zh": "写在 {path}：{line}",
+      "args": ["path", "line"]
+    },
+    "beProfile.rename.taken": {
+      "kind": "error",
+      "zh": "已经有一条叫 {name}",
+      "args": ["name"]
+    },
+    "beProfile.chain.self": {
+      "kind": "error",
+      "zh": "{name} 不能基于自己",
+      "args": ["name"]
+    },
+    "beProfile.init.exists": {
+      "kind": "error",
+      "zh": "配置文件已经在了：{path}",
+      "args": ["path"]
+    },
+    "rsDataPaths.backend.profilesMigrated": {
+      "kind": "body",
+      "zh": "旧别名清单转进配置文件时的说明（设置窗说一次后删）",
+      "args": []
+    },
     "beProfile.value.unknown": {
       "kind": "error",
       "zh": "未知选项 {key}",
@@ -22460,21 +22532,10 @@
       "zh": "旧别名文件里这一行认不出，没有转进配置文件：{line}",
       "args": ["line"]
     },
-    "beProfile.said.from": {
-      "kind": "body",
-      "zh": "基于 {from}；{said}",
-      "args": ["from", "said"]
-    },
     "beProfile.install.basedOn": {
       "kind": "error",
       "zh": "{name} 还被 {children} 基于着，不能删；先把它们改成基于别的、或一起删掉",
       "args": ["children", "name"]
-    },
-    "rsAccountAliases.check.restToCcm": {
-      "kind": "error",
-      "zh": "接回会话那一形不再做成别名。要接回直接敲 ccm -- --attach <会话名>",
-      "args": [],
-      "limited": ["ccm"]
     },
     "rsDataPaths.backend.profiles": {
       "kind": "body",

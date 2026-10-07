@@ -410,6 +410,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
         ],
         both(Frame::Cancelled { id: s("q1") }),
         both(Frame::AccountsChanged),
+        both(Frame::ProfilesChanged),
         both(Frame::QuotaChanged),
         both(Frame::RotationChanged { sid: s("s1") }),
         both(Frame::TasksChanged { sid: s("s1") }),
@@ -641,6 +642,7 @@ fn link_frames_have_exactly_these_bytes() {
             "{\"kind\":\"link_end\",\"link\":\"m1.0-3\",\"error\":\"读链路下行失败\"}\n",
         ),
         (Frame::AccountsChanged, "{\"kind\":\"accounts_changed\"}\n"),
+        (Frame::ProfilesChanged, "{\"kind\":\"profiles_changed\"}\n"),
         (Frame::QuotaChanged, "{\"kind\":\"quota_changed\"}\n"),
         (
             Frame::RotationChanged { sid: "s1".into() },

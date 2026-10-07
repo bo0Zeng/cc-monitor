@@ -85,6 +85,9 @@ pub const PS_ALIASES_REL: &str = ".cc-monitor/aliases.ps1";
 /// 〔同上〕配置文件：一段一组 ccm 选项、可「基于」另一段（后端 `assets/aliases/profile.rs` 读写；用户也可以手改）。
 pub const PROFILES_REL: &str = ".cc-monitor/profiles.toml";
 
+/// 〔同上〕旧别名清单一次性转进配置文件之后那张说明（转了几条 · 转不进去的几条；设置窗页首说一次，「知道了」后删）。
+pub const PROFILES_MIGRATED_REL: &str = ".cc-monitor/profiles-migrated.json";
+
 /// 〔同上〕skill 装记录（后端 `assets/skill_ledger.rs` 写；卸的时候按它删）。
 pub const SKILL_LEDGER_REL: &str = ".cc-monitor/skill-installs.json";
 

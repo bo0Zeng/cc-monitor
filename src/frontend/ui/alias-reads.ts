@@ -1,50 +1,22 @@
 /**
- * 别名一族八问**走通道，那台后端出成品**：
+ * 别名接入那几问**走通道，那台后端出成品**（清单那一半在 `./profiles-reads`）：
  *
  * | 做什么 | 帧命令 | 成品 |
  * |---|---|---|
- * | 清单 → 代码（纯） | `aliases-render` | [`AliasRender`] |
- * | 读回清单（＋ 归组 · 账号表 · 缺的 · 指纹）＋ 启动文件候选 | `aliases-read` | [`AliasListing`] |
- * | 写别名文件（带读回时的指纹；盘上被别处改过 ⇒ [`AliasesStale`]） | `aliases-install` | [`AliasInstallReport`] |
+ * | 启动文件候选（各带别名块的现状 · 块外同名函数 · 执行策略） | `aliases-read` | [`AliasListing`] |
  * | 别名块预览（纯） | `aliases-block-render` | `{text}` |
  * | 别名块装 / 卸 | `aliases-block-install` / `-remove` | `{}` |
  * | 执行策略设成当前用户 `RemoteSigned`（用户确认后） | `powershell-policy-set` | [`PolicySet`] |
- * | 一条别名 → 表单那几格（纯） | `aliases-to-form` | [`AliasForm`] |
- * | 表单 → 一条别名（纯；带上正在改的那一条，没动的照原样留） | `aliases-from-form` | [`Alias`] |
  *
- * 从前是 monitor 的六条 Tauri 命令（`aliases_*`，规则与方言在 monitor 一份、事实问那台后端）；规则 · 方言 · 围栏整族进了
- * 那台后端（`src/backend/assets/aliases/`），这里只按形状严格收。**前端不做安全判断**。
+ * 规则 · 方言 · 围栏整族在那台后端（`src/backend/assets/aliases/`），这里只按形状严格收。**前端不做安全判断**。
  * 「这台已握手的终端数」不是那台盘上的事实（住 monitor 进程里）⇒ 不在成品里，另问 monitor（`commands.bound_terminal_count`）。
  */
-import { chan, ChanError } from "../../comms/inward/chan";
-import { budgetWithin, jsonBody, readJson, refusalOf, ReplyUnreadable, saidFrom } from "./ipc/chan-caller";
+import { chan } from "../../comms/inward/chan";
+import { budgetWithin, jsonBody, readJson, ReplyUnreadable, saidFrom } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
 
 /** 方言：别名文件、别名块、source 那一行问的是同一个问题（线上名与后端 `dialect::Shell` 逐字）。 */
 export type Shell = "posix" | "powershell";
-
-/** 调用时跟在别名后面的词交给谁（线上名与后端 `dialect::RestTo` 逐字）：缺省 claude；ccm 只有接回会话那一形。 */
-export type RestTo = "agent" | "ccm";
-
-/** 一条别名：名字 ＋ 原样的 ccm argv ＋ 调用时的词交给谁。 */
-export interface Alias {
-  name: string;
-  args: string[];
-  restTo: RestTo;
-}
-
-/** 读回清单里一条的归组（后端认的「账号那一形」）。 */
-export interface AccountShape {
-  account: string;
-  tmux: boolean;
-}
-
-/** 账号表里一个号缺的那一条：点「加上」就把 `alias` 加进清单。 */
-export interface MissingAlias {
-  account: string;
-  tmux: boolean;
-  alias: Alias;
-}
 
 /** 同名两条里新开的终端敲它起的是哪一个：你写的 · 清单那条 · 说不清（后端比行号，界面按码取句）。 */
 export type ClashWins = "yours" | "list" | "unclear";
@@ -54,24 +26,6 @@ export interface NameClash {
   name: string;
   line: number;
   wins: ClashWins;
-}
-
-/** 进不了代码的那一条为什么进不了。 */
-export interface AliasProblem {
-  name: string;
-  message: string;
-}
-
-/** 清单 → 代码那一跳的成品。 */
-export interface AliasRender {
-  /** 整份文件（写入那一跳原样落盘的就是它）。 */
-  fileText: string;
-  /** 每条合格别名的写法，按清单顺序。 */
-  lines: string[];
-  /** 不合格的那几条（非空时写入那一跳一个字节都不写）。 */
-  problems: AliasProblem[];
-  /** 名字撞了的提示，一条一句（只出声、不拦）。 */
-  collisions: string[];
 }
 
 /** 一份启动文件里别名块的现状。 */
@@ -117,77 +71,14 @@ export interface PolicySet {
   setError: string | null;
 }
 
-/** 读回口的成品。 */
+/** 读回口的成品：启动文件候选。 */
 export interface AliasListing {
-  /** 这台的家目录（只拿来把路径写成 `~/…`）。 */
+  /** 这台的家目录（把路径写成 `~/…` 短形用）。 */
   home: string;
-  aliasPath: string;
-  exists: boolean;
-  /** 不在盘上 ⇒ 首建会带上的那几条。 */
-  aliases: Alias[];
-  /** 与 `aliases` 逐条对应：账号那一形 ⇒ `{account, tmux}`，其余 ⇒ `null`（界面照画，不自己认）。 */
-  groups: Array<AccountShape | null>;
-  /** 与 `aliases` 逐条对应：这一条用人话怎么说（后端拼好，界面照画）。 */
-  said: string[];
-  /** 这台的账号表。 */
-  accounts: string[];
-  missing: MissingAlias[];
-  /** 盘上那份的指纹（不在 ⇒ `null`）；存的时候原样交回。 */
-  fingerprint: string | null;
-  unparsed: string[];
   rcCandidates: StartupFile[];
   /** 人另指的那一份过了围栏之后的绝对路径。 */
   otherRc: string | null;
 }
-
-/** 写入那一跳的成品。 */
-export interface AliasInstallReport {
-  aliasPath: string;
-  wroteAliasFile: boolean;
-  /** 真写了 ⇒ 后端给人的那一句（已开的终端要重读别名文件或新开一个）；没写 ⇒ `null`。 */
-  reload: string | null;
-}
-
-/** 「在哪起」那一格（线上名与后端 `form::TmuxMode` 逐字）：当前终端 · tmux 三种取名 · 接回一个 tmux 会话。 */
-export type TmuxMode = "none" | "auto" | "named" | "base" | "attach";
-
-/** 工作目录的一种情况：在 `at` 敲 → 进 `to`。 */
-export interface CwdCase {
-  at: string;
-  to: string;
-}
-
-/**
- * 表单那几格（线上形状与后端 `assets/aliases/form.rs::AliasForm` 逐字）。**只是编辑界面** —— 合不合格由那台后端判；
- * 与参数怎么互转也只在那台后端（`aliases-to-form` / `aliases-from-form`），这里一个 ccm 参数都不认。
- */
-export interface AliasForm {
-  name: string;
-  /** 按所在目录分的那几种情况，按序（第一条对上的算）。 */
-  cwdIf: CwdCase[];
-  /** 其余情况进哪；`""` = 当前目录。 */
-  cwd: string;
-  /** 账号名；`""` = 不指定。 */
-  account: string;
-  /** 显式不带账号。 */
-  base: boolean;
-  tmux: TmuxMode;
-  tmuxName: string;
-  agent: string;
-  model: string;
-  launcher: string;
-  tmuxSize: string;
-  detach: boolean;
-  busRegister: boolean;
-  busNote: string;
-  /** 交给 agent 的其余参数（一串，写法由后端切）。 */
-  passthru: string;
-  /** 表单没有格子的 ccm 参数（一串）：原样带着走。 */
-  ccmOther: string;
-}
-
-/** 存的那一刻盘上那份不是读回时那一份（被别处改过）⇒ 什么都没写；界面重读再让人存。 */
-export class AliasesStale extends Error {}
 
 const isObj = (v: unknown): v is Record<string, unknown> =>
   v !== null && typeof v === "object" && !Array.isArray(v);
@@ -196,33 +87,8 @@ const sameKeys = (o: Record<string, unknown>, want: readonly string[]): boolean 
   const w = [...want].sort();
   return got.length === w.length && got.every((k, i) => k === w[i]);
 };
-const strs = (v: unknown): v is string[] => Array.isArray(v) && v.every((x) => typeof x === "string");
 const optStr = (v: unknown): v is string | null => v === null || typeof v === "string";
 const bad = (): Error => new ReplyUnreadable("aliases reply shape");
-
-function decodeAlias(v: unknown): Alias {
-  if (
-    !isObj(v) ||
-    !sameKeys(v, ["name", "args", "restTo"]) ||
-    typeof v.name !== "string" ||
-    !strs(v.args) ||
-    (v.restTo !== "agent" && v.restTo !== "ccm")
-  )
-    throw bad();
-  return { name: v.name, args: v.args, restTo: v.restTo };
-}
-
-function decodeShape(v: unknown): AccountShape | null {
-  if (v === null) return null;
-  if (!isObj(v) || !sameKeys(v, ["account", "tmux"]) || typeof v.account !== "string" || typeof v.tmux !== "boolean") throw bad();
-  return { account: v.account, tmux: v.tmux };
-}
-
-function decodeMissing(v: unknown): MissingAlias {
-  if (!isObj(v) || !sameKeys(v, ["account", "tmux", "alias"]) || typeof v.account !== "string" || typeof v.tmux !== "boolean")
-    throw bad();
-  return { account: v.account, tmux: v.tmux, alias: decodeAlias(v.alias) };
-}
 
 const WINS: readonly string[] = ["yours", "list", "unclear"];
 
@@ -237,25 +103,6 @@ function decodeClash(v: unknown): NameClash {
   )
     throw bad();
   return { name: v.name, line: v.line, wins: v.wins as ClashWins };
-}
-
-/** `aliases-render` 的成品。严格收。 */
-export function decodeAliasRender(v: unknown): AliasRender {
-  if (
-    !isObj(v) ||
-    !sameKeys(v, ["fileText", "lines", "problems", "collisions"]) ||
-    typeof v.fileText !== "string" ||
-    !strs(v.lines) ||
-    !strs(v.collisions) ||
-    !Array.isArray(v.problems)
-  )
-    throw bad();
-  const problems = v.problems.map((p) => {
-    if (!isObj(p) || !sameKeys(p, ["name", "message"]) || typeof p.name !== "string" || typeof p.message !== "string")
-      throw bad();
-    return { name: p.name, message: p.message };
-  });
-  return { fileText: v.fileText, lines: v.lines, problems, collisions: v.collisions };
 }
 
 function decodeBlockState(v: unknown): BlockState {
@@ -320,212 +167,21 @@ export function decodePolicySet(v: unknown): PolicySet {
 
 /** `aliases-read` 的成品。严格收。 */
 export function decodeAliasListing(v: unknown): AliasListing {
-  if (
-    !isObj(v) ||
-    !sameKeys(v, [
-      "home",
-      "aliasPath",
-      "exists",
-      "aliases",
-      "groups",
-      "said",
-      "accounts",
-      "missing",
-      "fingerprint",
-      "unparsed",
-      "rcCandidates",
-      "otherRc",
-    ]) ||
-    typeof v.home !== "string" ||
-    typeof v.aliasPath !== "string" ||
-    typeof v.exists !== "boolean" ||
-    !Array.isArray(v.aliases) ||
-    !Array.isArray(v.groups) ||
-    v.groups.length !== v.aliases.length ||
-    !strs(v.said) ||
-    v.said.length !== v.aliases.length ||
-    !strs(v.accounts) ||
-    !Array.isArray(v.missing) ||
-    !optStr(v.fingerprint) ||
-    !strs(v.unparsed) ||
-    !Array.isArray(v.rcCandidates) ||
-    !optStr(v.otherRc)
-  )
+  if (!isObj(v) || !sameKeys(v, ["home", "rcCandidates", "otherRc"]) || typeof v.home !== "string" || !Array.isArray(v.rcCandidates) || !optStr(v.otherRc))
     throw bad();
-  return {
-    home: v.home,
-    aliasPath: v.aliasPath,
-    exists: v.exists,
-    aliases: v.aliases.map(decodeAlias),
-    groups: v.groups.map(decodeShape),
-    said: v.said,
-    accounts: v.accounts,
-    missing: v.missing.map(decodeMissing),
-    fingerprint: v.fingerprint,
-    unparsed: v.unparsed,
-    rcCandidates: v.rcCandidates.map(decodeStartupFile),
-    otherRc: v.otherRc,
-  };
+  return { home: v.home, rcCandidates: v.rcCandidates.map(decodeStartupFile), otherRc: v.otherRc };
 }
 
-const FORM_KEYS = [
-  "name",
-  "cwdIf",
-  "cwd",
-  "account",
-  "base",
-  "tmux",
-  "tmuxName",
-  "agent",
-  "model",
-  "launcher",
-  "tmuxSize",
-  "detach",
-  "busRegister",
-  "busNote",
-  "passthru",
-  "ccmOther",
-] as const;
-const TMUX_MODES: readonly string[] = ["none", "auto", "named", "base", "attach"];
-
-/** `aliases-to-form` 的成品里那张表单。严格收。 */
-export function decodeAliasForm(v: unknown): AliasForm {
-  if (!isObj(v) || !sameKeys(v, FORM_KEYS) || !Array.isArray(v.cwdIf) || typeof v.tmux !== "string" || !TMUX_MODES.includes(v.tmux))
-    throw bad();
-  const texts = ["name", "cwd", "account", "tmuxName", "agent", "model", "launcher", "tmuxSize", "busNote", "passthru", "ccmOther"] as const;
-  const flags = ["base", "detach", "busRegister"] as const;
-  if (!texts.every((k) => typeof v[k] === "string") || !flags.every((k) => typeof v[k] === "boolean")) throw bad();
-  const cwdIf = v.cwdIf.map((c) => {
-    if (!isObj(c) || !sameKeys(c, ["at", "to"]) || typeof c.at !== "string" || typeof c.to !== "string") throw bad();
-    return { at: c.at, to: c.to };
-  });
-  const t = (k: (typeof texts)[number]): string => v[k] as string;
-  const b = (k: (typeof flags)[number]): boolean => v[k] as boolean;
-  return {
-    name: t("name"),
-    cwdIf,
-    cwd: t("cwd"),
-    account: t("account"),
-    base: b("base"),
-    tmux: v.tmux as TmuxMode,
-    tmuxName: t("tmuxName"),
-    agent: t("agent"),
-    model: t("model"),
-    launcher: t("launcher"),
-    tmuxSize: t("tmuxSize"),
-    detach: b("detach"),
-    busRegister: b("busRegister"),
-    busNote: t("busNote"),
-    passthru: t("passthru"),
-    ccmOther: t("ccmOther"),
-  };
-}
-
-/** 「＋ 新增别名」那张空表单（与 `aliases-to-form` 收一条空白别名答的那一张逐格相等，金样钉着）。 */
-export function emptyForm(): AliasForm {
-  return {
-    name: "",
-    cwdIf: [],
-    cwd: "",
-    account: "",
-    base: false,
-    tmux: "none",
-    tmuxName: "",
-    agent: "",
-    model: "",
-    launcher: "",
-    tmuxSize: "",
-    detach: false,
-    busRegister: false,
-    busNote: "",
-    passthru: "",
-    ccmOther: "",
-  };
-}
-
-/** `aliases-install` 的成品。严格收。 */
-export function decodeAliasInstallReport(v: unknown): AliasInstallReport {
-  if (
-    !isObj(v) ||
-    !sameKeys(v, ["aliasPath", "wroteAliasFile", "reload"]) ||
-    typeof v.aliasPath !== "string" ||
-    typeof v.wroteAliasFile !== "boolean" ||
-    (v.reload !== null && typeof v.reload !== "string")
-  )
-    throw bad();
-  return { aliasPath: v.aliasPath, wroteAliasFile: v.wroteAliasFile, reload: v.reload };
-}
-
-/** 六问的期限：读几份小文件 / 写一份 / 起一次 PowerShell 问内建别名（秒级）。给 30 秒。 */
+/** 这几问的期限：读几份小文件 / 写一份 / 起一次 PowerShell 问内建别名（秒级）。给 30 秒。 */
 const ALIAS_BUDGET_MS = 30_000;
 const said = (e: unknown, origin: Origin): Error => new Error(saidFrom(e, origin));
 
-/** 清单 → 代码（纯：一个字节都不写）。 */
-export async function renderAliases(origin: Origin, aliases: Alias[], shell: Shell): Promise<AliasRender> {
-  try {
-    const body = jsonBody({ aliases, shell });
-    const budget = budgetWithin(ALIAS_BUDGET_MS);
-    return decodeAliasRender(readJson(await chan.call(origin, "aliases-render", body, budget)));
-  } catch (e) {
-    throw said(e, origin);
-  }
-}
-
-/** 读回那台上的别名文件 ＋ 启动文件候选；`rcPath` = 人另指的那一份（那台后端过围栏）。 */
+/** 读回那台上的启动文件候选；`rcPath` = 人另指的那一份（那台后端过围栏）。 */
 export async function readAliases(origin: Origin, shell: Shell, rcPath: string | null): Promise<AliasListing> {
   try {
     const body = jsonBody({ shell, rcPath });
     const budget = budgetWithin(ALIAS_BUDGET_MS);
     return decodeAliasListing(readJson(await chan.call(origin, "aliases-read", body, budget)));
-  } catch (e) {
-    throw said(e, origin);
-  }
-}
-
-/** 写别名文件（收清单不收代码）；`fingerprint` = 读回时那份的指纹。盘上被别处改过 ⇒ 抛 [`AliasesStale`]。 */
-export async function installAliases(
-  origin: Origin,
-  aliases: Alias[],
-  shell: Shell,
-  fingerprint: string | null,
-): Promise<AliasInstallReport> {
-  try {
-    const body = jsonBody({ aliases, shell, fingerprint });
-    const budget = budgetWithin(ALIAS_BUDGET_MS);
-    return decodeAliasInstallReport(readJson(await chan.call(origin, "aliases-install", body, budget)));
-  } catch (e) {
-    const err = e instanceof ChanError ? e.error : null;
-    if (err && err.layer === "peer" && err.why === "refused" && refusalOf(err.body)?.code === "stale") {
-      throw new AliasesStale(saidFrom(e, origin));
-    }
-    throw said(e, origin);
-  }
-}
-
-/** 一条别名 → 表单那几格（「改」那一下）：怎么切、认不得的词放哪，全在那台后端。 */
-export async function aliasToForm(origin: Origin, alias: Alias): Promise<AliasForm> {
-  try {
-    const body = jsonBody({ alias });
-    const budget = budgetWithin(ALIAS_BUDGET_MS);
-    const v = readJson(await chan.call(origin, "aliases-to-form", body, budget));
-    if (!isObj(v) || !sameKeys(v, ["form"])) throw bad();
-    return decodeAliasForm(v.form);
-  } catch (e) {
-    throw said(e, origin);
-  }
-}
-
-/**
- * 表单 → 一条别名。`orig` = 正在改的那一条（新增 ⇒ `null`）：那台后端按它把没动过的那几组原样留下。
- * 一格文本的引号没配对 ⇒ 抛那台后端那句话。
- */
-export async function aliasFromForm(origin: Origin, form: AliasForm, orig: Alias | null): Promise<Alias> {
-  try {
-    const body = jsonBody({ form, orig });
-    const budget = budgetWithin(ALIAS_BUDGET_MS);
-    const v = readJson(await chan.call(origin, "aliases-from-form", body, budget));
-    if (!isObj(v) || !sameKeys(v, ["alias"])) throw bad();
-    return decodeAlias(v.alias);
   } catch (e) {
     throw said(e, origin);
   }

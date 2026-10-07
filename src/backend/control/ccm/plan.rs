@@ -151,8 +151,12 @@ impl Env {
     ///
     /// 其余照这台机器的真值：账号库 manifest · `CCM_ENV` · cc-bus 脚本目录。
     pub(crate) fn for_preview() -> Self {
+        Self::for_preview_in(home_of(|k| std::env::var(k).ok()))
+    }
+
+    /// 同 [`Env::for_preview`]，家目录由调用方给（设置窗那一页按这台文件管理面答的家目录算）。
+    pub(crate) fn for_preview_in(home: String) -> Self {
         use super::argv::Defaults;
-        let home = home_of(|k| std::env::var(k).ok());
         let get = |k: &str| std::env::var(k).ok().filter(|v| !v.is_empty());
         let pick = |k: &str, fallback: String| -> String { get(k).unwrap_or(fallback) };
         Env {
@@ -679,7 +683,7 @@ fn absolute_from(d: &str, pwd: &str) -> String {
 }
 
 /// 打头的 `~` / `~/…` 换成家目录（家目录说不出 ⇒ 原样）。
-fn expand_home(p: &str, home: &str) -> String {
+pub(crate) fn expand_home(p: &str, home: &str) -> String {
     if home.is_empty() {
         return p.to_string();
     }

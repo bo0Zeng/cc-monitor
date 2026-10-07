@@ -102,7 +102,7 @@ export class FakeBackend {
           this.send(sub, [{ t: "unseen", idx: 1, tag: "read", why: "Dropped" }]);
         }, 1500);
       }
-    } else if (sub.kind === "session-tap" || sub.kind === "accounts-changed" || sub.kind === "session-tasks" || sub.kind === "quota-changed") {
+    } else if (sub.kind === "session-tap" || sub.kind === "accounts-changed" || sub.kind === "profiles-changed" || sub.kind === "session-tasks" || sub.kind === "quota-changed") {
       this.send(sub, [{ t: "seen", from: null }]);
     } else {
       this.miss(`订阅 ${sub.kind}`);

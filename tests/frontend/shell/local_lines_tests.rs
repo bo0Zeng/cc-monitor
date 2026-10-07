@@ -134,6 +134,7 @@ const FRAMES: &[(&str, &str)] = &[
     ),
     ("cancelled", r#"{"kind":"cancelled","id":"cf1-no-such-id"}"#),
     ("accounts_changed", r#"{"kind":"accounts_changed"}"#),
+    ("profiles_changed", r#"{"kind":"profiles_changed"}"#),
     (
         "link_data",
         r#"{"kind":"link_data","link":"cf1-no-such-link","data":"aGk="}"#,

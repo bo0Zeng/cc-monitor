@@ -61,6 +61,8 @@ export interface World {
   machines: string[];
   /** 订阅时看不见的那几台（流里第一格 `unseen`）。 */
   unseenMachines: string[];
+  /** 配置文件那一页换哪种样子（`fake/profiles.ts`；不给 ⇒ 照设计稿那台的清单）。 */
+  profiles?: "normal" | "broken" | "syntax" | "empty" | "migrated" | "edited" | "stale";
   /** 历史清单问不到的那几台（`history-list` 带它 ⇒ 答 `unreachable`）。 */
   historyDown?: string[];
   /** 会话流被那台后端关掉的那几台（流里第一格 `closed`）。 */

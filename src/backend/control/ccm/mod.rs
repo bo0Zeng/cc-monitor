@@ -501,6 +501,20 @@ pub(crate) fn answer_print(
     Ok(serde_json::json!({ "line": plan::render_for(&plan, plan::terminal_shell()) }))
 }
 
+/// 设置窗合并预览的「等于」那一行：合好的意图 ＋「假设在这个目录敲」（`at`：`~` 打头按这台家目录展开；空 ⇒ 家目录）。
+/// 与 [`answer_print`] 同一个 [`plan_of`] ＋ `plan::render_for`，环境同 [`Env::for_preview`]，只换了敲的那个目录。
+pub(crate) fn preview_resolved(p: Parsed, home: &str, at: Option<&str>) -> Result<String, String> {
+    let Parsed::Opts(o) = p else {
+        return Err(copy_text("beCcm.preview.noSession", &[]));
+    };
+    let mut env = Env::for_preview_in(home.to_string());
+    if let Some(a) = at.map(str::trim).filter(|a| !a.is_empty()) {
+        env.pwd = plan::expand_home(a, &env.home);
+    }
+    let plan = plan_of(&o, env, false).map_err(|Die(m)| m)?;
+    Ok(plan::render_for(&plan, plan::terminal_shell()))
+}
+
 /// 帧命令 `terminal-name-mint`：**起会话要一个终端名 —— 问这台**（这一版宿主只有 tmux，铸的是 tmux 会话名）。
 ///
 /// 入：`{"cwd": "<目录>"}`（起新会话 / 全新 resume：基名 `<项目名>-cc`）或 `{"forkOf": "<源会话的 tmux 名，或它的 cwd>"}`

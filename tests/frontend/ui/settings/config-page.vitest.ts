@@ -87,7 +87,7 @@ describe("别名与配置文件 · 账号与扩展", () => {
     expect(calls).toEqual([]);
     show(el);
     await settle();
-    const ops = calls.map((c) => `${c[0]}@${c[1]}`).filter((o) => !o.startsWith("aliases-") && !o.startsWith("ccm-"));
+    const ops = calls.map((c) => `${c[0]}@${c[1]}`).filter((o) => !o.startsWith("aliases-") && !o.startsWith("profiles-") && !o.startsWith("ccm-"));
     expect(ops.sort()).toEqual(["accounts-mcp-read@devbox", "ext-list@<local>"]);
   });
 

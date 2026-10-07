@@ -28,19 +28,6 @@ pub(crate) fn alias_name(account: &str, tmux: bool) -> Option<String> {
     })
 }
 
-/// 一个号那一条别名的参数。
-pub(crate) fn alias_args(account: &str, tmux: bool) -> Vec<String> {
-    let mut v = vec![
-        flag::END.to_string(),
-        flag::ACCOUNT.to_string(),
-        account.to_string(),
-    ];
-    if tmux {
-        v.push(flag::TMUX.to_string());
-    }
-    v
-}
-
 /// 这一段是不是「账号那一形」：自己只写了号（可再加 tmux），没有交给 agent 的词 ⇒ `(号, 是否 tmux)`，号与 tmux 按合并下来的算
 /// （`alphacct` 基于 `cct` 只写了号，也是「z 号 ＋ tmux」）。**不看名字**（名字是用户可改的）；合不下来的那一段不算。
 pub(crate) fn shape_of(book: &Book, p: &Profile) -> Option<(String, bool)> {
