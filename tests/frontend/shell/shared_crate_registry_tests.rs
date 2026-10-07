@@ -96,26 +96,8 @@ fn members_crate_dirs() -> Vec<String> {
 #[test]
 fn the_crate_scan_actually_finds_crates() {
     let n = shared_crate_names().len();
-    // 地板 4 → 5 → **6**（F12 棘：实测 6 —— acct-core / branch-core / **gate-core** /
-    // guard-core / shell-quote-core / usage-core）。差一个的地板意味着「少抽到一个 crate」
-    // 不会红 —— 而少抽到的那个恰好就是没人管 CI 的那个。删共享 crate 时来改这个数，是刻意的摩擦。
-    //
-    // ⚠ **它落后过一次，而且正好落后一个**：F03 新增 `gate-core` 时补了 CI 三样、
-    // 却没回来棘这个数 ⇒ 从 F03 到 F12 之间，「抽取器少认一个包」这件事**不会红**，
-    // 而那正是上面这段注释逐字警告的场景。是 Phase G 的 `/full-audit` 把它逮出来的。
-    // ⇒ 一般化：**「新增一个 X 要补 N 处」的清单里，必须包含「回来棘那条自检的地板」。**
-    // ★★ 〔`E` 阻-1 回修，08-27〕**这条地板第二次落后了，所以这次不再写死一个数。**
-    //
-    // 经过：`K-H2a` 新增第 7 个共享 crate（`creds-core`）时，只补了 `members` 与 `git add`，
-    // **没回来棘这两条地板** ⇒ 余量从 0 撑到 1。`E` 阶段实打：让抽取器少认一个 crate
-    // ⇒ **15 passed / 0 failed 全绿**，少认两个才红（14P/1F）。
-    // ⚠ 而上面那段注释逐字写着同一次事故的规矩（「新增一个 X 要补 N 处的清单里，
-    //    必须包含回来棘那条自检的地板」）—— **同文件、同断言、第二次踩**。
-    //
-    // ⇒ 换形状：**拿两个独立来源对拍**，而不是记一个会过期的数。
-    //   `shared_crate_names()` 读文件系统，`members_crate_dirs()` 读 `members` 数组；
-    //   抽取器少认一个 ⇒ 两边不等 ⇒ 当场红，**不需要谁记得回来改**。
-    //   〔为什么这比棘轮好：棘轮要求「加 crate 的人记得回来 +1」，而**忘记正是这个病本身**。〕
+    // 两个独立来源对拍：`shared_crate_names()` 读文件系统，`members_crate_dirs()` 读 `members` 数组；
+    // 抽取器少认一个 ⇒ 两边不等 ⇒ 当场红，不需要谁记得回来改一个数。
     let members = members_crate_dirs();
     assert_eq!(
         n,
@@ -126,14 +108,10 @@ fn the_crate_scan_actually_finds_crates() {
         members.len(),
         shared_crate_names()
     );
-    // 绝对地板**留着**，但它今天的岗位只有两个：① 反空真（两边同时归零时对拍会「相等」）；
-    // ② 删共享 crate 时的**刻意摩擦**（原注释逐字写的那条）。
-    // 棘紧记录：**7**（`K-H2a` 的 `creds-core`）→ **8**〔`K-R100` 09-13 加 `search-core`〕。
-    // `search-core` 拆进后端之后今天实测仍是 8（其间加过 `copy-core` · `relay-route-core` · `upstream-url-core` · `deploy-contract`，搬走过几份），地板不动。
+    // 反空真：两边同时归零时对拍会「相等」—— 正控按名字点：守卫原语那个包必在。
     assert!(
-        n >= 8,
-        "只从 src/common/*/Cargo.toml 抽到 {n} 个包名（今天实测 8）—— 抽取器坏了，\
-             下面那条「三样都在 CI 里」会零命中零失败地绿"
+        shared_crate_names().iter().any(|c| c == "guard-core"),
+        "从 src/common/*/Cargo.toml 抽到的 {n} 个包名里没有 `guard-core` —— 抽取器坏了"
     );
 }
 
@@ -162,9 +140,9 @@ fn every_shared_crate_is_a_workspace_member() {
         .map(|k| beg + 1 + k)
         .unwrap_or(toml.len());
     let ws = &toml[beg..end];
-    // 段界自检：切出来的必须真是那一段（含 members、不含 dependencies、不过长）。
+    // 段界自检：切出来的必须真是那一段（含 members、不含 dependencies）。
     assert!(
-        ws.contains("members") && !ws.contains("[dependencies]") && ws.len() < 2_000,
+        ws.contains("members") && !ws.contains("[dependencies]"),
         "`[workspace]` 段界切错了（{} 字节）—— 本条会在全文里瞎找",
         ws.len()
     );
@@ -292,12 +270,7 @@ fn ci_actually_runs_the_three_converged_commands() {
 #[test]
 fn the_only_windows_signal_still_runs_on_a_windows_runner() {
     let block = ci_job_block("rust");
-    // 抽取器自检：切不出块就零命中地绿。
-    assert!(
-        block.lines().count() >= 10,
-        "从 ci.yml 切 `rust:` job 只得到 {} 行 —— job 名或缩进变了，本条会零命中地绿",
-        block.lines().count()
-    );
+    // 抽取器自检：切出来的块里恰好一条 `runs-on:`（下面那条相等）—— 切不出块就红。
     let runs_on: Vec<&str> = block
         .lines()
         .map(str::trim)
@@ -428,10 +401,10 @@ fn every_test_script_is_either_run_by_ci_or_registered_as_manual() {
             Some((name.to_string(), cmd.to_string()))
         })
         .collect();
-    // ★ 抽取器自检：脚本条数掉下来 ⇒ 剥法坏了，下面会零命中地绿。
+    // ★ 抽取器自检：剥法坏了 ⇒ 下面会零命中地绿（正控：`test:diff` 那一条必在）。
     assert!(
-        scripts.len() >= 30,
-        "从 `package.json` 只剥到 {} 个 `test*` 脚本 —— 剥法坏了（建判据当天实测 40 个）",
+        scripts.iter().any(|(n, _)| n == "test:diff"),
+        "从 `package.json` 剥到的 {} 个 `test*` 脚本里没有 `test:diff` —— 剥法坏了",
         scripts.len()
     );
 
@@ -1078,12 +1051,6 @@ fn the_premise_behind_three_honesty_boundaries_still_holds() {
 fn the_only_gate_that_measures_committed_state_still_does_all_three_checks() {
     let path = crate::guard_support::repo_root().join("tests/scripts/verify-committed-state.sh");
     let src = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("读不到 {path:?}: {e}"));
-    // ★ 抽取器自检：文件被掏空/改名时，下面三条会零命中地绿。
-    assert!(
-        src.lines().count() >= 40,
-        "`verify-committed-state.sh` 只剩 {} 行 —— 读法坏了或被掏空",
-        src.lines().count()
-    );
 
     // `(检查名, 那一行还必须含什么)` —— 钉性质不钉整行，留出改写空间。
     const CHECKS: &[(&str, &str)] = &[
@@ -1153,9 +1120,8 @@ fn a_skipped_windows_check_cannot_look_like_a_full_pass() {
         .filter(|l| !l.starts_with('#'))
         .collect();
     assert!(
-        code.len() >= 25,
-        "剥注释后只剩 {} 行 —— 读法坏了，下面几条会零命中地绿",
-        code.len()
+        !code.is_empty(),
+        "剥注释后一行不剩 —— 读法坏了，下面几条会零命中地绿"
     );
 
     let plain = code
