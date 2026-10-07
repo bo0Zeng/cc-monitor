@@ -31,7 +31,8 @@ import type { ToolCard } from "../generated/ToolCard";
 import type { ChildRunTag } from "../generated/ChildRunTag";
 import type { ToolStep } from "../generated/ToolStep";
 import type { StepResult } from "../generated/StepResult";
-import { awaitedFor, buildStepLine, buildThinkingLine, durBetween, markAwaiting, settleStepLine } from "./step-line";
+import { awaitedFor, buildStepLine, buildThinkingLine, durBetween, paintWaiting, settleStepLine } from "./step-line";
+import type { PendingCall, RetryOutcome } from "../session-reads";
 import { buildApiErrorCard, buildApiRetryCard } from "./api-error";
 import { LS_KEYS, safeGet, safeSet } from "../local-storage";
 import { firstLineOf, formatTimestampShort, jsonPrefix } from "../format";
@@ -128,6 +129,10 @@ export interface RenderContext {
    * 这个会话此刻在等你什么（会话事实 `needs`，后端成品）：在等批准的那一步（`call`）建出来时就画成「在等你批准」。
    * 没有 ⇒ 不画。
    */
+  /** 这一步还没结果时的样子（会话事实 `pending[]` 里它那一条的 `state` · `why`）；事实里还没有它 ⇒ `undefined`（不画）。 */
+  stepWait?: (call: string) => Pick<PendingCall, "state" | "why"> | undefined;
+  /** 一串重试的结局（会话事实 `retries`，按首条重试记录的 uuid）；事实里还没有 ⇒ `undefined`。 */
+  retryOutcome?: (id: string) => RetryOutcome | undefined;
   needs?: { kind: string; call: string | null; sinceMs: number | null } | null;
   /** 父记录路径：派出子运行的那张卡按它（＋ 工具调用 id）读那个子运行的记录 */
   parentPath: string;
@@ -328,6 +333,8 @@ export function renderMessage(rec: JsonlRecord, ctx: RenderContext): RenderResul
             reason: rec.apiReason,
             retryAttempt: rec.retryAttempt,
             maxRetries: rec.maxRetries,
+            id: rec.uuid ?? undefined,
+            outcome: rec.uuid ? ctx.retryOutcome?.(rec.uuid) : undefined,
           }),
         };
       }
@@ -610,11 +617,13 @@ function buildToolUseCard(
   // 一步一行（§5.2.3）：主参数与说明是后端给的（`toolSteps`）；没有那一格（老后端）⇒ 工具名 ＋ 入参一句兜底。
   const s = document.createElement("summary");
   s.className = "block-summary block-step";
-  const line = buildStepLine(block.name, step, summary);
+  const line = buildStepLine(block.name, step, summary, block.id);
   s.appendChild(line);
   d.appendChild(s);
+  // 会话事实已经说了这一步是什么样子 ⇒ 建出来就照画；还没说 ⇒ 不画状态，等事实（不按「没有结果」当在跑）。
+  const w = ctx.stepWait?.(block.id);
   const n = ctx.needs;
-  if (n?.kind === "approve" && n.call === block.id) markAwaiting(line, awaitedFor(n.sinceMs, Date.now()));
+  if (w) paintWaiting(line, w.state, n?.call === block.id ? awaitedFor(n.sinceMs, Date.now()) : null, n?.kind === "approve", w.why);
 
   const wrap = document.createElement("div");
   wrap.className = "block-body-wrap";

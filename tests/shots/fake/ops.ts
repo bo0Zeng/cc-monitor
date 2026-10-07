@@ -331,7 +331,26 @@ export function defaultOps(): Record<string, OpHandler> {
         const sp = (r as { userText?: { speaker?: { kind?: string; handback?: boolean; from?: string } } }).userText?.speaker;
         if (sp?.kind === "agentMessage" && sp.handback === true && sp.from && !handedBack.includes(sp.from)) handedBack.push(sp.from);
       }
-      return { agent: s?.agent ?? "claude", end: layout(recs).end, forkedFrom: null, projectDir: s?.cwd ?? null, touchedFiles: [...touched], usage, writers: [], pending, lastSay, needs, handedBack };
+      // 每步状态（同后端 `facts_query::settle_pending`）：在等的那一步 ⇒ 在等你；会话活着 ⇒ 在跑；否则状态不明（没有进程）。
+      const live = s?.status === "busy" || s?.status === "waiting";
+      const steps = pending.map((p) =>
+        needs?.call === p.id ? { ...p, state: "awaiting", why: null } : live ? { ...p, state: "running", why: null } : { ...p, state: "unclear", why: "noWriter" },
+      );
+      // 一串串重试的结局（同后端 `facts_query::note_retry`）：按首条 uuid；下文是正常回复 ⇒ 接上 · 报错那条 ⇒ 没接上 · 人发一句 ⇒ 中断。
+      const retries: { id: string; outcome: string }[] = [];
+      for (const r of recs) {
+        const open = retries.at(-1)?.outcome === "retrying";
+        const rr = r as { type: string; subtype?: string; uuid?: string; isApiErrorMessage?: boolean; isMeta?: boolean; message?: { content?: unknown } };
+        if (rr.type === "system" && rr.subtype === "api_error") {
+          if (!open && rr.uuid) retries.push({ id: rr.uuid, outcome: "retrying" });
+        } else if (open && rr.type === "assistant") {
+          retries.at(-1)!.outcome = rr.isApiErrorMessage ? "failed" : "recovered";
+        } else if (open && rr.type === "user" && !rr.isMeta) {
+          const c = rr.message?.content;
+          if (!(Array.isArray(c) && (c as { type: string }[]).some((b) => b.type === "tool_result"))) retries.at(-1)!.outcome = "interrupted";
+        }
+      }
+      return { agent: s?.agent ?? "claude", end: layout(recs).end, forkedFrom: null, projectDir: s?.cwd ?? null, touchedFiles: [...touched], usage, writers: live ? [4242] : [], pending: steps, lastSay, needs, handedBack, retries };
     },
     "history-run": (_o, req, w) => {
       const s = sessionByPath(w, req.parent);

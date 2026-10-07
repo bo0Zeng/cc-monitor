@@ -1220,6 +1220,21 @@
   font-size: var(--font-size-small);
 }
 
+/* 报错卡上去它的终端那两颗：只在所在消息流根上标了能用时出（标记由宿主按会话头那一道设）。 */
+.api-error-acts {
+  margin-left: 8px;
+}
+
+.api-error-acts > [data-act] {
+  display: none;
+}
+
+[data-can-front="1"] .api-error-acts > [data-act="front"],
+[data-can-attach="1"] .api-error-acts > [data-act="attach"] {
+  display: inline-flex;
+}
+
+
 .api-error-raw > summary {
   margin-top: 4px;
   color: var(--text-2);
@@ -1236,8 +1251,9 @@
   word-break: break-word;
 }
 
-/* 形态 2：重试细条（相邻的并成一条）：在重试 左 2px 琥珀 · 接上了变淡 · 没接上收起（次数进报错卡）。 */
-.card-api-retry[data-state="recovered"] {
+/* 形态 2：重试细条（相邻的并成一条）：在重试 左 2px 琥珀 · 接上了 / 中断了变淡 · 没接上收起（次数进报错卡）。 */
+.card-api-retry[data-state="recovered"],
+.card-api-retry[data-state="interrupted"] {
   border-left-color: var(--border-medium);
   color: var(--text-faint);
 }

@@ -3,15 +3,24 @@
  *
  * 判定都在后端：主参数与说明是 assistant 记录成品的 `toolSteps`，结果一句的数是 user 记录成品的 `toolResults`；
  * 这里只把它们排成一行、按 id 配对（同一步的两段拼回去）、把两条记录的时刻相减成耗时。界面不认入参与结果的结构。
+ * 还没有结果的那一步是什么样子（在跑 · 在等你 · 状态不明）读会话事实的 `pending[].state`（[`paintWaiting`]）；事实到之前不画状态，
+ * 不按「没有结果」当它在跑。
  */
 import type { ToolStep } from "../generated/ToolStep";
 import type { StepResult } from "../generated/StepResult";
 import { icon, type IconName } from "../kit/icon";
 import { spinner } from "../kit/progress";
 import { copyText } from "../copy-table";
+import type { StepWait, UnclearWhy } from "../session-reads";
 
-/** 一步的状态：在跑 · 成功 · 失败 · 人没批准 · 认不出的工具（结果到了也只给原文）。 */
-export type StepState = "running" | "ok" | "failed" | "rejected" | "unknown";
+/**
+ * 一步的状态。结果到了：成功 · 失败 · 人没批准 · 认不出的工具（只给原文）；还没结果：事实还没到（`pending`，不画）·
+ * 在跑 · 在等你（`awaiting`，[`markAwaiting`]）· 状态不明（`unclear`）—— 后三种只照会话事实画。
+ */
+export type StepState = "pending" | "running" | "unclear" | "ok" | "failed" | "rejected" | "unknown";
+
+/** 还没结果的那几种（会话事实一到就按它重画）。 */
+const WAITING = new Set(["pending", "running", "awaiting", "unclear"]);
 
 /** 耗时：< 10 秒一位小数（`0.3s`）· < 1 分整秒（`41s`）· 其余 `3m02s`。 */
 export function fmtStepDur(ms: number): string {
@@ -43,8 +52,11 @@ export function stateOf(step: ToolStep | undefined, res: StepResult | undefined,
 export function stepRight(step: ToolStep | undefined, res: StepResult | undefined, state: StepState, durMs: number | null): string {
   const dur = durMs === null ? "" : fmtStepDur(durMs);
   switch (state) {
+    case "pending":
     case "running":
       return "";
+    case "unclear":
+      return copyText("stream.step.unclear");
     case "rejected":
       return copyText("stream.step.rejected");
     case "failed":
@@ -72,7 +84,8 @@ export function middleEllipsis(p: string, max = 72): string {
   return `${p.slice(0, room)}…${tail}`;
 }
 
-const ICON_OF: Record<Exclude<StepState, "running">, IconName> = {
+const ICON_OF: Record<Exclude<StepState, "running" | "pending">, IconName> = {
+  unclear: "question",
   ok: "check",
   failed: "failed",
   rejected: "close",
@@ -81,11 +94,13 @@ const ICON_OF: Record<Exclude<StepState, "running">, IconName> = {
 
 /**
  * 一步那一行（放进 `<summary>`）。没有 `toolSteps` 那一格（老后端）⇒ 工具名 ＋ 调用方给的一句兜底。
- * 返回的那一行之后由 [`settleStepLine`] 按结果改状态与右侧小字。
+ * `call` ＝ 这一步的调用 id（会话事实按它说这一步还没结果时是什么样子）。
+ * 返回的那一行之后由 [`settleStepLine`] 按结果改、由 [`paintWaiting`] 按事实改。
  */
-export function buildStepLine(name: string, step: ToolStep | undefined, fallbackArg: string): HTMLElement {
+export function buildStepLine(name: string, step: ToolStep | undefined, fallbackArg: string, call?: string): HTMLElement {
   const row = document.createElement("span");
   row.className = "step-line";
+  if (call) row.dataset.call = call;
   const ic = document.createElement("span");
   ic.className = "step-icon";
   const tool = document.createElement("span");
@@ -106,14 +121,15 @@ export function buildStepLine(name: string, step: ToolStep | undefined, fallback
   const right = document.createElement("span");
   right.className = "step-right";
   row.appendChild(right);
-  paint(row, "running", "");
+  paint(row, "pending", "");
   return row;
 }
 
 function paint(row: HTMLElement, state: StepState, right: string): void {
   row.dataset.state = state;
   const ic = row.querySelector<HTMLElement>(".step-icon");
-  ic?.replaceChildren(state === "running" ? spinner() : icon(ICON_OF[state], "compact"));
+  if (state === "pending") ic?.replaceChildren();
+  else ic?.replaceChildren(state === "running" ? spinner() : icon(ICON_OF[state], "compact"));
   const r = row.querySelector<HTMLElement>(".step-right");
   if (r) r.textContent = right;
 }
@@ -150,11 +166,24 @@ export function awaitedFor(sinceMs: number | null, now: number): string | null {
 }
 
 /**
- * 后端说这个会话在等你批准的正是这一步（会话事实 `needs.call`）：琥珀点 · 说明位「等你批准」· 右侧已等多久。
- * 只改还在跑的那一行（结果已经到了的不动）。
+ * 会话事实说这一步还没结果时是什么样子（`pending[].state`；不在 `pending` 里 ⇒ 状态不明）⇒ 照画。结果已经到了的不动。
+ * 在等你：琥珀点 · 说明位「等你批准」（等的不是批准 ⇒「在等你」）· 右侧已等多久。状态不明：悬停说后端给的原因（`why`）。
  */
-export function markAwaiting(row: HTMLElement, waited: string | null): void {
-  if (row.dataset.state !== "running" && row.dataset.state !== "awaiting") return;
+export function paintWaiting(row: HTMLElement, state: StepWait, waited: string | null, approve: boolean, why: UnclearWhy | null = null): void {
+  if (!WAITING.has(row.dataset.state ?? "")) return;
+  if (state === "awaiting") {
+    markAwaiting(row, waited, approve);
+    return;
+  }
+  row.querySelector(".step-await")?.remove();
+  paint(row, state, stepRight(undefined, undefined, state, null));
+  const r = row.querySelector<HTMLElement>(".step-right");
+  if (!r) return;
+  if (state === "unclear" && why) r.title = why === "noWriter" ? copyText("stream.step.unclearNoWriter") : copyText("stream.step.unclearUntracked");
+  else r.removeAttribute("title");
+}
+
+function markAwaiting(row: HTMLElement, waited: string | null, approve: boolean): void {
   row.dataset.state = "awaiting";
   const dot = document.createElement("span");
   dot.className = "step-await-dot";
@@ -165,14 +194,8 @@ export function markAwaiting(row: HTMLElement, waited: string | null): void {
     w.className = "step-await";
     row.insertBefore(w, row.querySelector(".step-right"));
   }
-  w.textContent = copyText("stream.step.awaiting");
+  w.textContent = approve ? copyText("stream.step.awaiting") : copyText("stream.step.awaitingYou");
   const r = row.querySelector<HTMLElement>(".step-right");
   if (r) r.textContent = waited ?? "";
 }
 
-/** 不再等这一步了（批了 / 换成等别的）⇒ 回到在跑（结果到了由 [`settleStepLine`] 定）。 */
-export function clearAwaiting(row: HTMLElement): void {
-  if (row.dataset.state !== "awaiting") return;
-  row.querySelector(".step-await")?.remove();
-  paint(row, "running", "");
-}

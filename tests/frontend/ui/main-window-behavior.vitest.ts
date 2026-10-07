@@ -2,8 +2,8 @@
 // 顶栏远端文件选单 · 命令面板里的机器名 · 工具组收着时说出失败与子 agent · 命令卡展开显示命令本身。
 // 行为口径：同一时刻同一层只开一块；看得见 ⇔ 在 Esc 弹层栈上，Esc 一次只关最上一层；浮层躲窗口边、贴边内缩 8px；
 // 收起后看不见的动作在右键菜单里有；「说不清」是一个单独的状态，不并进「已结束」。
-import { buildApiErrorCard, buildApiRetryCard, mergeRetry, settleRetry } from "../../../src/frontend/ui/cards/api-error";
-import { buildStepLine, clearAwaiting, fmtStepDur, markAwaiting, middleEllipsis, settleStepLine, stateOf, stepRight } from "../../../src/frontend/ui/cards/step-line";
+import { applyRetries, buildApiErrorCard, buildApiRetryCard, mergeRetry } from "../../../src/frontend/ui/cards/api-error";
+import { buildStepLine, fmtStepDur, middleEllipsis, paintWaiting, settleStepLine, stateOf, stepRight } from "../../../src/frontend/ui/cards/step-line";
 import { applyHandedBack, mergeNotice } from "../../../src/frontend/ui/cards/speaker-bar";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
@@ -536,58 +536,82 @@ describe("快捷键翻「自动跟随 / 自动切到前台」：说一句翻成�
   });
 });
 
-// 重试细条与报错卡：原因一词是后端给的种类；相邻并条与结局是排版。
-describe("重试细条：相邻并成一条 · 接上 / 没接上", () => {
-  it("相邻重试并成一条：次数取后来的、起始留前一条；接上了 ⇒ 重试 ×N 后恢复", () => {
-    const a = buildApiRetryCard({ timeLabel: "02:10", reason: "overloaded", retryAttempt: 1, maxRetries: 10 });
+// 重试细条与报错卡：原因一词是后端给的种类；相邻并条是排版；一串的结局是会话事实（`retries`，按首条的 id 读）。
+describe("重试细条：相邻并成一条 · 结局照会话事实", () => {
+  const stream = (...els: HTMLElement[]) => {
+    const root = document.createElement("div");
+    root.append(...els);
+    return root;
+  };
+  it("相邻重试并成一条：次数取后来的、起始留前一条；事实说接上了 ⇒ 重试 ×N 后恢复；后面来什么都不自己判", () => {
+    const a = buildApiRetryCard({ timeLabel: "02:10", reason: "overloaded", retryAttempt: 1, maxRetries: 10, id: "r1" });
     expect(a.textContent).toBe("服务器过载 · 重试 1/10 · 02:10 起");
-    mergeRetry(a, buildApiRetryCard({ timeLabel: "02:11", reason: "overloaded", retryAttempt: 3, maxRetries: 10 }));
+    mergeRetry(a, buildApiRetryCard({ timeLabel: "02:11", reason: "overloaded", retryAttempt: 3, maxRetries: 10, id: "r2" }));
     expect(a.textContent).toBe("服务器过载 · 重试 3/10 · 02:10 起");
-    settleRetry(a, document.createElement("div"));
+    const root = stream(a, document.createElement("div"));
+    applyRetries(root, new Map([["r2", "recovered"]]));
+    expect(a.dataset.state, "按首条的 id 读，并进来的那条的 id 不算").toBe("retrying");
+    applyRetries(root, new Map([["r1", "recovered"]]));
     expect(a.textContent).toBe("服务器过载 · 重试 ×3 后恢复 · 02:11");
+    applyRetries(root, new Map([["r1", "interrupted"]]));
+    expect(a.textContent).toBe("服务器过载 · 重试 ×3 后中断 · 02:11");
   });
 
-  it("后面是报错卡 ⇒ 细条收起、次数进报错卡；报错卡标题带原因、原文进折叠", () => {
-    const bar = buildApiRetryCard({ timeLabel: "02:10", reason: "overloaded", retryAttempt: 10, maxRetries: 10 });
+  it("建卡时事实已经到了 ⇒ 照它画", () => {
+    const a = buildApiRetryCard({ timeLabel: "02:10", reason: "network", retryAttempt: 2, maxRetries: 10, id: "r1", outcome: "recovered" });
+    expect(a.textContent).toBe("网络中断 · 重试 ×2 后恢复 · 02:10");
+  });
+
+  it("事实说没接上 ⇒ 细条收起、次数进紧跟着的报错卡（那两颗终端按钮不被冲掉）；报错卡标题带原因、原文进折叠", () => {
+    const bar = buildApiRetryCard({ timeLabel: "02:10", reason: "overloaded", retryAttempt: 10, maxRetries: 10, id: "r1" });
     const card = buildApiErrorCard({ timeLabel: "02:12", reason: "overloaded", text: "API Error: Overloaded", status: 529 });
-    settleRetry(bar, card);
+    applyRetries(stream(bar, card), new Map([["r1", "failed"]]));
     expect(bar.dataset.state).toBe("failed");
     expect(card.querySelector(".api-error-label")?.textContent).toBe("本轮中断 · 服务器过载");
-    expect(card.querySelector(".api-error-next")?.textContent).toBe("重试 10/10 后停止 · 终端里重发可继续");
+    expect(card.querySelector(".api-error-next-text")?.textContent).toBe("重试 10/10 后停止 · 终端里重发可继续");
+    expect(card.querySelectorAll(".api-error-acts [data-act]").length).toBe(2);
     expect(card.querySelector(".api-error-body")?.textContent).toBe("529 · API Error: Overloaded");
   });
 });
 
-// 后端说在等你批准的正是这一步（会话事实 `needs.call`）：琥珀点 · 说明位「等你批准」· 右侧已等多久；不等了回到在跑；结果到了照结果。
-describe("一步「在等你批准」", () => {
-  it("★ 在跑的那一行 ⇒ 等你批准（说明位换掉）；不等了 ⇒ 回到在跑；结果到了 ⇒ 照结果、那三个字去掉；已有结果的那一行不改", () => {
-    const row = buildStepLine("Bash", { tool: "Bash", arg: "rm -rf build/", note: "清掉构建目录", known: true } as never, "");
-    markAwaiting(row, "2m");
+// 还没结果的那一步什么样子只照会话事实画（`pending[].state`）：在跑 · 在等你 · 状态不明；事实到之前不画状态（不当它在跑）；结果到了照结果。
+describe("一步还没结果时：照会话事实画", () => {
+  const icon = (row: HTMLElement) => row.querySelector(".step-icon")!.firstElementChild?.tagName.toLowerCase() ?? "";
+  it("★ 刚建出来不画状态；事实说在跑 ⇒ 转圈；在等你批准 ⇒ 琥珀点「等你批准」＋ 已等多久；等的不是批准 ⇒「在等你」；状态不明 ⇒ 问号「状态不明」；结果到了照结果、之后的事实不改它", () => {
+    const row = buildStepLine("Bash", { tool: "Bash", arg: "rm -rf build/", note: "清掉构建目录", known: true } as never, "", "t1");
+    expect([row.dataset.state, row.dataset.call, icon(row)], "事实到之前不当它在跑").toEqual(["pending", "t1", ""]);
+    paintWaiting(row, "running", null, false);
+    expect([row.dataset.state, row.querySelector(".step-icon [role=progressbar], .step-icon > span") !== null]).toEqual(["running", true]);
+    paintWaiting(row, "awaiting", "2m", true);
     expect([row.dataset.state, row.querySelector(".step-await")?.textContent, row.querySelector(".step-right")?.textContent]).toEqual(["awaiting", "等你批准", "2m"]);
     expect(row.querySelector(".step-icon .step-await-dot"), "琥珀点").not.toBeNull();
-    clearAwaiting(row);
-    expect([row.dataset.state, row.querySelector(".step-await")]).toEqual(["running", null]);
-    markAwaiting(row, null);
+    paintWaiting(row, "awaiting", null, false);
+    expect(row.querySelector(".step-await")?.textContent).toBe("在等你");
+    paintWaiting(row, "unclear", null, false, "untracked");
+    expect([row.dataset.state, row.querySelector(".step-await"), row.querySelector(".step-right")?.textContent, icon(row)]).toEqual(["unclear", null, "状态不明", "svg"]);
+    expect(row.querySelector<HTMLElement>(".step-right")?.title, "悬停说后端给的原因").toBe("这一家不留进程记录，判不了在不在跑");
+    paintWaiting(row, "unclear", null, false, "noWriter");
+    expect(row.querySelector<HTMLElement>(".step-right")?.title).toBe("没有进程在跑这个会话");
     settleStepLine(row, undefined, { ok: true } as never, false, 1200);
     expect([row.dataset.state, row.querySelector(".step-await")]).toEqual(["ok", null]);
-    markAwaiting(row, "1m");
+    paintWaiting(row, "running", null, false);
     expect(row.dataset.state, "结果已经到了的那一行不改").toBe("ok");
   });
 
-  it("★ 会话事实比那一步的卡先到：建卡时就照 needs.call 画成等你批准（别的步照常在跑）", () => {
-    const c = { ...ctx(), needs: { kind: "approve", call: "t2", sinceMs: Date.now() - 65_000 } };
-    const use = { ...(toolCalls([{ id: "t1", name: "Bash", input: {} }, { id: "t2", name: "Bash", input: {} }]) as object) } as unknown as JsonlRecord;
+  it("★ 会话事实比那一步的卡先到：建卡时就照它画（事实里没有的那一步不画，等下一份事实）", () => {
+    const c = { ...ctx(), needs: { kind: "approve", call: "t2", sinceMs: Date.now() - 65_000 }, stepWait: (id: string) => ({ t1: { state: "running", why: null }, t2: { state: "awaiting", why: null } } as Record<string, { state: "running" | "awaiting"; why: null }>)[id] };
+    const use = { ...(toolCalls([{ id: "t1", name: "Bash", input: {} }, { id: "t2", name: "Bash", input: {} }, { id: "t3", name: "Bash", input: {} }]) as object) } as unknown as JsonlRecord;
     const r = renderMessage(use, c);
     if (r.kind !== "tool-group") throw new Error(r.kind);
-    const st = [0, 1].map((i) => r.units[i].querySelector<HTMLElement>(".step-line")!.dataset.state);
-    expect(st).toEqual(["running", "awaiting"]);
+    const st = [0, 1, 2].map((i) => r.units[i].querySelector<HTMLElement>(".step-line")!.dataset.state);
+    expect(st).toEqual(["running", "awaiting", "pending"]);
     expect(r.units[1].querySelector(".step-right")?.textContent).toBe("1m05s");
   });
 });
 
 // 过程里的一步一行：主参数 · 说明 · 结果一句都是后端给的；界面只排、按 id 配对、时刻相减。
 describe("一步一行：后端的 toolSteps / toolResults 排成一行", () => {
-  it("★ 发出时在跑（转圈）；结果到了 ⇒ 对勾 ＋ 右侧小字（改动 +N −M · 读了几行 · 否则耗时）；失败 ⇒ 叉 ＋「失败 · 耗时」", () => {
+  it("★ 发出时不画状态（等会话事实）；结果到了 ⇒ 对勾 ＋ 右侧小字（改动 +N −M · 读了几行 · 否则耗时）；失败 ⇒ 叉 ＋「失败 · 耗时」", () => {
     const c = ctx();
     const use = {
       ...(toolCalls([
@@ -606,7 +630,7 @@ describe("一步一行：后端的 toolSteps / toolResults 排成一行", () => 
     const r = renderMessage(use, c);
     if (r.kind !== "tool-group") throw new Error(r.kind);
     const line = (i: number) => r.units[i].querySelector<HTMLElement>(".step-line")!;
-    expect([line(0).dataset.state, line(0).querySelector(".step-arg")?.textContent, line(0).querySelector(".step-note")?.textContent]).toEqual(["running", "rg -n x src", "找调用点"]);
+    expect([line(0).dataset.state, line(0).querySelector(".step-arg")?.textContent, line(0).querySelector(".step-note")?.textContent]).toEqual(["pending", "rg -n x src", "找调用点"]);
     const res = {
       ...(results([
         { id: "t1", text: "…" },

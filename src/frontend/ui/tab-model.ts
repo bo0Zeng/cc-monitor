@@ -19,7 +19,7 @@ import type { FactsSource } from "./views/facts-source";
 import type { ToolUseSeen } from "./cards/index";
 import type { Origin } from "./ipc/origin";
 import type { SessionState } from "./tab-session-state";
-import type { Needs, PendingCall, UsageFact } from "./session-reads";
+import type { Needs, PendingCall, RetryOutcome, UsageFact } from "./session-reads";
 
 // 原先这里是 `TabStatus = "live" | "archived"`（与下面的 `tmuxIdle` 一起挤着两个轴）。
 //   会话状态改住 `tab-session-state.ts` 的 `SessionState`（活性 × 可恢复性），字段是 `Tab.state`。
@@ -119,6 +119,8 @@ export interface Tab {
   pending: PendingCall[];
   /** 最后一段正文的头一行（后端 `lastSay`）：悬停卡「它最后一句」。 */
   lastSay: { text: string; at: string | null } | null;
+  /** 一串一串重试的结局（后端 `retries`：首条重试记录的 uuid → 结局）：消息流里的重试细条按它画。 */
+  retries: ReadonlyMap<string, RetryOutcome>;
   /**
    * 这份会话的事实从哪来：问后端要（`views/facts-source.ts`）。
    * 上面四样（分叉血缘 · agent 列表 · 改动文件集 · 最新 usage）只经它落下来 —— `onLine` 上不再有旁路记账员。

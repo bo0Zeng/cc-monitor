@@ -5,12 +5,26 @@ import type { Scene } from "./index";
 import type { World } from "../fake/types";
 import { defaultWorld } from "../fake/world";
 import { emit } from "@tauri-apps/api/event";
+import { Convo } from "../fake/records";
 import { click, mainReady, openTab, waitFor, sleep } from "./helpers";
 
 const ALL_TABS = 7;
 
 function scene(id: string, title: string, desc: string, act: Scene["act"], world: () => World = defaultWorld): Scene {
   return { id, page: "index", dir: "主窗口-状态栏与抽屉", title, desc, width: 1280, height: 800, world, act };
+}
+
+/** gpu-01 上那个会话 Claude 已退出、tmux 还在，最后一轮报错中断了。 */
+function exitedErrorWorld(): World {
+  const w = defaultWorld();
+  const s = w.sessions[5];
+  const c = new Convo(s.sid, s.cwd, "2026-10-01T07:00:00Z");
+  c.title("排序模型训练脚本");
+  c.user("训练脚本加断点续训。");
+  c.say("我先看一下现在的训练循环。");
+  c.apiError(529, "API Error: 529 {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"}}");
+  s.records = c.records;
+  return w;
 }
 
 function emptyWorld(): World {
@@ -92,4 +106,11 @@ export const DRAWER_SCENES: Scene[] = [
     await openTab(2);
     await sleep(900);
   }),
+  scene("error-card-terminal", "报错卡 · 去它的终端", "远端会话 Claude 已退出、tmux 还在：报错卡上出［在终端里打开］（与会话头同一道；这台不是 Windows ⇒ 没有［切到终端］）", async () => {
+    await mainReady(ALL_TABS);
+    await openTab(5);
+    await waitFor(".card-api-error");
+    document.querySelector<HTMLElement>(".card-api-error")?.scrollIntoView({ block: "center" });
+    await sleep(600);
+  }, exitedErrorWorld),
 ];

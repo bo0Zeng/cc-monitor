@@ -90,11 +90,6 @@ export class RecordTimeline {
     return idx;
   }
 
-  /** 查 idx 处 entry 的左右邻居（tool-group 后处理合并要用） */
-  neighborsAt(idx: number): { prev: TimelineEntry | null; next: TimelineEntry | null } {
-    return { prev: this.near(idx - 1, -1), next: this.near(idx + 1, 1) };
-  }
-
   /** 从 `i` 起朝 `dir` 找第一个不是旁注的条目。 */
   private near(i: number, dir: -1 | 1): TimelineEntry | null {
     while (i >= 0 && i < this.entries.length && this.entries[i].kind === "aside") i += dir;

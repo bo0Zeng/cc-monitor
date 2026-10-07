@@ -35,7 +35,7 @@ import { extractBranchRecord, type BranchRecord } from "./branching";
 import { observeForEnhance } from "./render";
 import { applyIntrinsicSize } from "./height-estimate";
 import { saidByHuman } from "./speaker";
-import { isRetryBar, mergeRetry, settleRetry } from "./cards/api-error";
+import { isRetryBar, mergeRetry } from "./cards/api-error";
 import { buildInjectedLine, isNoticeLine, mergeNotice } from "./cards/speaker-bar";
 import type { RecordTimeline } from "./record-timeline";
 import type { JsonlLinePayload } from "./events";
@@ -414,13 +414,12 @@ export function renderContentRecord(
       sink.onCardRendered?.(result.element, message); // F62：viewer 挂分支按钮
       applyIntrinsicSize(result.element); // Batch13-F38：c-v 估高初值
       const tEstimate = probe ? performance.now() : 0;
-      const at = sink.timeline.insert({
+      sink.timeline.insert({
         seq: payload.seq,
         element: result.element,
         kind: "card",
         toolGroup: null,
       });
-      settleRetryAround(sink.timeline, at, result.element);
       if (sink.enhanceRoot) observeForEnhance(result.element, sink.enhanceRoot);
       const tMount = probe ? performance.now() : 0;
 
@@ -488,13 +487,12 @@ export function renderContentRecord(
       markCardUuid(group.root, message);
       applyIntrinsicSize(group.root); // Batch13-F38：折叠组 = summary 常数
       const tEstimate = probe ? performance.now() : 0;
-      const at = sink.timeline.insert({
+      sink.timeline.insert({
         seq: payload.seq,
         element: group.root,
         kind: "tool-group",
         toolGroup: group,
       });
-      settleRetryAround(sink.timeline, at, group.root);
       if (sink.enhanceRoot) observeForEnhance(group.root, sink.enhanceRoot);
       const tMount = probe ? performance.now() : 0;
       if (probe) {
@@ -514,16 +512,6 @@ export function renderContentRecord(
       return;
     }
   }
-}
-
-/**
- * 一串重试后面来了别的（或别的前面插进来一串重试 —— 重放时老块后到）：那一串就有了结局（接上了 / 没接上）。
- * 只看紧挨着的那一个邻居：相邻合并是排版，原因判定在后端。
- */
-function settleRetryAround(timeline: RecordTimeline, at: number, el: HTMLElement): void {
-  const { prev, next } = timeline.neighborsAt(at);
-  if (!isRetryBar(el) && prev && isRetryBar(prev.element) && prev.element.dataset.state === "retrying") settleRetry(prev.element, el);
-  if (isRetryBar(el) && next && !isRetryBar(next.element)) settleRetry(el, next.element);
 }
 
 /**

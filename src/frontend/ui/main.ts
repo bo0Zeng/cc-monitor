@@ -90,7 +90,7 @@ import { FOCUS_SESSION_EVENT, openNewSession, setNewSessionPlaceholder } from ".
 import { copyText } from "./copy-table";
 import { appStore } from "./app-store";
 import { OverlayRouter } from "./overlay-router";
-import { SessionHead } from "./session-head";
+import { SessionHead, terminalActsOf } from "./session-head";
 import { NeedsBar, NeedsWatch } from "./needs-bar";
 import { notifySend } from "./turn-notify";
 
@@ -257,6 +257,7 @@ window.addEventListener("DOMContentLoaded", async () => {
       queueMicrotask(() => {
         sessionHead.render();
         terminalPage.sessionChanged();
+        paintTerminalActs();
         needsBar.render();
         needsWatch.observe(tabs.tabsInOrder());
       });
@@ -433,10 +434,26 @@ window.addEventListener("DOMContentLoaded", async () => {
   };
   void loadContextLimits();
   activeTab = () => tabs.activeTab();
+  // 报错卡上去它的终端那两颗：当前会话的消息流根上标「能不能」（与会话头同一道），点了交 `tabs`。
+  function paintTerminalActs(): void {
+    const t = tabs.activeTab();
+    if (!t) return;
+    const acts = terminalActsOf(t);
+    t.streamEl.dataset.canFront = acts.front ? "1" : "0";
+    t.streamEl.dataset.canAttach = acts.attach ? "1" : "0";
+  }
+  streamRoot.addEventListener("click", (e) => {
+    const b = (e.target as HTMLElement | null)?.closest?.<HTMLElement>(".api-error-acts [data-act]");
+    const sid = tabs.activeSessionId();
+    if (!b || sid === null) return;
+    if (b.dataset.act === "front") tabs.frontFor(sid);
+    else if (b.dataset.act === "attach") tabs.attachInTerminal(sid);
+  });
   tabs.active.subscribe((a) => {
     // 切了 tab ⇒ 会话头 · 「需要你」钉条 · 抽屉的终端页换成这一个。
     sessionHead.render();
     terminalPage.sessionChanged();
+    paintTerminalActs();
     needsBar.render();
     usageHud.setActive(a.model, a.promptTokens, a.contextLimit, a.limitFrom);
     usageHud.setUnavailable(a.unavailable);

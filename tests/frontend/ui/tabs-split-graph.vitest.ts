@@ -102,6 +102,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/kit/toast.ts", // bringActiveTerminalToFront：非 Windows 说一句实话
     "src/frontend/ui/new-session.ts", // forkFrom：消息流「从这里分叉」开起新会话框（分叉随起会话那一个请求写）
     "src/frontend/ui/launch-slot.ts", // 起新会话之后的占位标签页：栏末那几行与盖在消息流上的那一页（报到了换成真的）
+    "src/frontend/ui/cards/api-error.ts", // applyRetries：会话事实说的每串重试的结局 ⇒ 消息流里的重试细条照画
     "src/frontend/ui/cards/speaker-bar.ts", // applyHandedBack：会话事实说哪几个子运行交回了 ⇒ 它们的收场通知收起（同一个子运行只报一次）
     "src/frontend/ui/front-pop.ts", // ↗ 的回执：「查找终端…」· 对勾 · 结局浮层
     "src/frontend/ui/front-result.ts", // ↗ 结局族 ⇒ 浮层的标题 · 正文 · 按钮
