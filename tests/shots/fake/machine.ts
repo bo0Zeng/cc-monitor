@@ -198,7 +198,7 @@ export function machineOps(): Record<string, OpHandler> {
               atMs: Date.now() - 2 * 24 * 3600 * 1000,
               value: {
                 home: HOME,
-                changedFiles: [{ path: "~/.bashrc", what: "ccm 命令入口", undo: { page: "machine", tab: "config", anchor: "connect-terminal" } }],
+                changedFiles: [BASHRC_CHANGED],
                 todo: [],
                 tmux: true,
                 chores: 0,
@@ -212,12 +212,12 @@ export function machineOps(): Record<string, OpHandler> {
           : null,
     }),
     "data-report": (o, _r, w) => {
-      if (w.unseenMachines.includes(o)) throw new Error(`${o} 连不上`);
+      if (w.unseenMachines.includes(o)) throw new Error(`${o} unreachable`);
       const todo = o === "devbox" ? DEVBOX_CHORES : o === "<local>" ? LOCAL_CHORES : [];
       return {
         home: HOME,
         changedFiles: [
-          { path: "~/.bashrc", what: "ccm 命令入口", undo: { page: "machine", tab: "config", anchor: "connect-terminal" } },
+          BASHRC_CHANGED,
           { path: "~/.claude/skills/cc-bus", what: "cc-bus", undo: { page: "ext" } },
         ],
         todo,
@@ -259,6 +259,9 @@ export function machineOps(): Record<string, OpHandler> {
     },
   };
 }
+
+/** 「改过你的文件」里那一行 ~/.bashrc（data-report 与离线那台的上次值共用）。 */
+const BASHRC_CHANGED = { path: "~/.bashrc", what: "ccm 命令入口", undo: { page: "machine", tab: "config", anchor: "connect-terminal" } };
 
 /** 那台的状态成品（形状同 `tests/__fixtures__/machine-state.golden.json`）：看不见的那台 ＝ 密钥被拒。 */
 function machineOf(origin: string, w: World): Record<string, unknown> {
