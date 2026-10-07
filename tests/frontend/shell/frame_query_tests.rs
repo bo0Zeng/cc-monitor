@@ -338,12 +338,6 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "后端出成品 `{diagnosis, snippet, source}`（`observe/cc_bus_hooks.rs`，读那台自己的 `settings.json` ＋ stat，只读）；\
          前端 `src/frontend/ui/cc-bus-hooks-reads.ts::fetchHooksReport` 问（扩展页 cc-bus 那一行每台一问）、`decodeHooksReport` 按恰好的键集合收，monitor 这一侧零发送点",
     ),
-    // 直接敲的 claude 也走中转（可选、生成让你贴）：生来就走通道（从没过 monitor）。
-    (
-        "relay-optin",
-        "后端出成品 `{state, note, missing, source, snippet, listening}`（`accounts/upstream_select/endpoint.rs::answer_optin`，读那台用户级设置文件 ＋ 钥匙文件，只读）；\
-         前端 `src/frontend/ui/relay-optin-reads.ts::fetchRelayOptin` 问（机器页「终端」栏那一块展开时问当前那台）、`decodeRelayOptin` 按恰好的键集合收，monitor 这一侧零发送点",
-    ),
     // 〔⑬「monitor 零 SSH」〕公钥推送：本机后端读 `.pub` · 组请求 · 经那台后端写或一次 exec，界面直接问本机。
     (
         "pubkey-push",
@@ -353,8 +347,14 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     // 文件与数据：同一份足迹重排的成品（`src/backend/footprint/data.rs`）。
     (
         "data-report",
-        "后端出成品 `{home, changedFiles, needsInstall, tmux, chores}`；前端 `src/frontend/ui/settings/data-reads.ts::readDataReport` 问、\
+        "后端出成品 `{home, changedFiles, todo, tmux, chores}`；前端 `src/frontend/ui/settings/data-reads.ts::readDataReport` 问、\
          `decodeDataReport` 按恰好的键集合收；monitor 这一侧零发送点，本机那一栏只答它自己那台那几行的事实（`footprint_client_facts`）",
+    ),
+    // 「要你动手」记下的一个选择：后端写它自己的 `~/.cc-monitor/chores.json`。
+    (
+        "chores-mark",
+        "后端读—改—写自己那份小文件（`src/backend/footprint/chores/marks.rs`）；前端 `src/frontend/ui/settings/data-reads.ts::markChore` 问\
+         （「要你动手」里［不用了］［还是要做］· 别名页［我自己贴］［改由 cc-monitor 接上］），monitor 这一侧零发送点",
     ),
     // 换 Claude 目录前那一问：后端 stat 两次回码。
     (

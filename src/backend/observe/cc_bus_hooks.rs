@@ -39,7 +39,7 @@ pub(crate) enum HookState {
 
 impl HookState {
     /// 只有这两种算「能用」；`PathMissing` 刻意不算。
-    fn is_working(&self) -> bool {
+    pub(crate) fn is_working(&self) -> bool {
         matches!(
             self,
             HookState::InstalledViaPath { .. } | HookState::InstalledAtPath { .. }

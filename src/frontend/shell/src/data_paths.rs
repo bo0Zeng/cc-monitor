@@ -313,6 +313,11 @@ fn backend_entries(
             DataClass::Truth,
         ),
         file(
+            rr::CHORES_REL,
+            copy_text("rsDataPaths.backend.chores", &[]),
+            DataClass::Truth,
+        ),
+        file(
             rr::ASSET_CATALOG_REL,
             copy_text("rsDataPaths.backend.assetCatalog", &[]),
             DataClass::Cache,

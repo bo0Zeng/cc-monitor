@@ -814,6 +814,12 @@ fn every_comment_stripping_transformer_is_registered() {
         // `LegacyRcKind::Comment`（`K-R57` 现打用户 `~/.bashrc`：14 行里 4 行是注释，
         // 那 4 行也该让用户看见）。⇒ 共享原语在这里不是「不够」，是**用了就把活做反了**。
         (
+            // 「要你动手」失效行那一件（`src/backend/platform/shell/posix.rs`）。
+            "posix.rs::dead_source_lines",
+            "不是剥法：逐行找启动文件里 `source` / `.` 指向的文件不在的那几行、原文原样带回去指名；\
+                 注释行跳过是因为注释里的 `source` 不生效，不是要丢掉它们（`strip_comment_lines` 不回行号与原文）",
+        ),
+        (
             // 随别名块进了那台后端（`src/backend/assets/aliases/block.rs`）。
             "block.rs::scan_legacy_rc_lines",
             "不是剥法，是**反过来**：它逐行指名 rc 里提到 `ccm` 的行（含注释行），\

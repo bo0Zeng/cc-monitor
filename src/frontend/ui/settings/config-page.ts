@@ -20,6 +20,7 @@ import { extList, type ExtList } from "../ext-reads";
 import { CONFIG_SHOWN_EVENT, SETTINGS_GO_EVENT } from "./events";
 import { buildAliasManager, type AliasManagerSpec } from "./machine-aliases";
 import { cfgRow, type CfgRow } from "./cfg-row";
+import { readDataReport } from "./data-reads";
 
 
 function cap(text: string): HTMLElement {
@@ -204,6 +205,56 @@ export interface ConfigPageSpec extends AliasManagerSpec {
   machine: () => string;
 }
 
+/**
+ * 页首指路条（「{machine} 上有 N 件要你动手 · 另 M 件可选」［去「文件与数据」］）与页尾一句（「cc-monitor 在 {machine} 上改过你的 N 个文件」［去看］）：
+ * 都读那台的 `data-report`（同一份成品，件数不另数）；读不到 ⇒ 两处都不出。
+ */
+function buildDataPointers(spec: ConfigPageSpec, onSelfPaste: (c: { state: string } | null) => void): { head: HTMLElement; foot: HTMLElement; load(): void } {
+  const head = document.createElement("div");
+  head.className = "cfg-pointer";
+  head.dataset.role = "chores-pointer";
+  head.hidden = true;
+  const foot = document.createElement("div");
+  foot.className = "cfg-foot-pointer";
+  foot.dataset.role = "changed-pointer";
+  foot.hidden = true;
+  const go = (el: HTMLElement, anchor: string): void => {
+    el.dispatchEvent(new CustomEvent(SETTINGS_GO_EVENT, { bubbles: true, detail: { page: "data", anchor } }));
+  };
+  const load = (): void => {
+    readDataReport(spec.origin()).then(
+      (r) => {
+        const open = r.todo.filter((c) => c.state !== "done" && c.state !== "declined");
+        const optional = open.filter((c) => c.kind === "optional" || c.kind === "installOptional").length;
+        const machine = spec.machine();
+        head.hidden = r.chores === 0 && optional === 0;
+        head.replaceChildren();
+        if (!head.hidden) {
+          const dot = document.createElement("span");
+          dot.className = "data-dot";
+          dot.dataset.tone = r.chores > 0 ? "bad" : "muted";
+          const text = r.chores > 0 ? copyText("cfgPage.pointer.chores", { machine, n: r.chores, m: optional }) : copyText("cfgPage.pointer.optional", { machine, m: optional });
+          head.append(dot, line("cfg-pointer-text", text), button({ label: copyText("cfgPage.pointer.go"), size: "compact", onClick: () => go(head, `chores:${spec.origin()}`) }));
+        }
+        foot.hidden = r.changedFiles.length === 0;
+        foot.replaceChildren();
+        if (!foot.hidden) {
+          foot.append(
+            line("cfg-hint", copyText("cfgPage.pointer.changed", { machine, n: r.changedFiles.length })),
+            link(copyText("cfgPage.pointer.changedGo"), () => go(foot, `placed:${spec.origin()}`)),
+          );
+        }
+        onSelfPaste(r.todo.find((c) => c.id === "self-paste") ?? null);
+      },
+      () => {
+        head.hidden = true;
+        foot.hidden = true;
+      },
+    );
+  };
+  return { head, foot, load };
+}
+
 /** 整一栏。 */
 export function buildConfigPage(spec: ConfigPageSpec): HTMLElement {
   const root = document.createElement("div");
@@ -211,6 +262,8 @@ export function buildConfigPage(spec: ConfigPageSpec): HTMLElement {
   root.dataset.configShown = "";
   root.appendChild(line("cfg-intro", copyText("cfgPage.head.intro")));
   const terminal = buildAliasManager(spec);
+  const pointers = buildDataPointers(spec, (c) => terminal.setSelfPaste(c));
+  root.appendChild(pointers.head);
   root.append(cap(copyText("cfgPage.cap.terminal")), terminal.element);
   const go = (el: HTMLElement): void => {
     el.dispatchEvent(new CustomEvent(SETTINGS_GO_EVENT, { bubbles: true, detail: { page: "ext" } }));
@@ -220,7 +273,7 @@ export function buildConfigPage(spec: ConfigPageSpec): HTMLElement {
   const acctBox = document.createElement("div");
   acctBox.className = "cfg";
   acctBox.append(mcp.row.element, ext.row.element);
-  root.append(cap(copyText("cfgPage.cap.accounts")), acctBox);
+  root.append(cap(copyText("cfgPage.cap.accounts")), acctBox, pointers.foot);
   let shown = false;
   root.addEventListener(CONFIG_SHOWN_EVENT, () => {
     if (!shown) {
@@ -229,6 +282,7 @@ export function buildConfigPage(spec: ConfigPageSpec): HTMLElement {
     } else terminal.reread();
     mcp.load();
     ext.load();
+    pointers.load();
   });
   return root;
 }

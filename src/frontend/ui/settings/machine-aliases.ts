@@ -25,7 +25,8 @@
 import { commands } from "../ipc/commands";
 import { isLocalOrigin } from "../ipc/origin";
 import { toast } from "../kit/toast"; // `K-R135`：用户级 PATH 那一格的失败要出声
-import { buildPasteBlock } from "../paste-block";
+import { markChore } from "./data-reads";
+import { SETTINGS_GO_EVENT } from "./events";
 // 接入那几问走通道、那台后端出成品（`../alias-reads`）；类型随成品住那边。
 import type { ExecPolicy, PsHost, StartupFile, Shell } from "../alias-reads";
 import { confirmDialog, type ConfirmFn } from "../kit/dialog";
@@ -122,6 +123,8 @@ export interface AliasManager {
   element: HTMLElement;
   load(): void;
   reread(): void;
+  /** 「要你动手」里「让终端认得 ccm 和别名」那一件的态（这台没选自己贴 ⇒ `null`）。 */
+  setSelfPaste(c: { state: string } | null): void;
 }
 
 export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
@@ -186,21 +189,6 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
       : []),
   );
   chooser.append(rcSel, otherIn, chooserBtns, otherErr);
-  // 「自己贴」：给的是接上那几行（与「接上」那一跳同一份渲染），不是整份清单。
-  let pasteText = "";
-  const paste = buildPasteBlock({
-    text: () => pasteText,
-    target: shell === "powershell" ? copyText("machineAliases.powershell.pasteTarget") : copyText("machineAliases.posix.pasteTarget"),
-    mergeNote: copyText("machineAliases.paste.mergeNote"),
-    activation: shell === "powershell" ? copyText("machineAliases.powershell.pasteActivation") : copyText("machineAliases.posix.pasteActivation"),
-    invalidReason: () => (pasteText ? null : copyText("machineAliases.invalid.notYet")),
-    multiline: true,
-    rows: 4,
-    className: "ccm-alias-gen-out",
-  });
-  const pasteBox = document.createElement("div");
-  pasteBox.className = "ccm-rc-paste";
-  pasteBox.appendChild(paste.element);
   access.append(pathCcm, accessRows, panel, accessWarn, cleanupHint, rcPolicy, allowBtn, accessNote);
   body.appendChild(access);
 
@@ -241,7 +229,9 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
   /** 人另指的那一份（原样的输入串；后端过围栏）。一旦指过，之后每次读回都带着它。 */
   let otherRc: string | null = null;
   /** 接上那一行下面开着哪一块。 */
-  let panelOpen: "preview" | "uninstall" | "choose" | "paste" | null = null;
+  let panelOpen: "preview" | "uninstall" | "choose" | null = null;
+  /** 「要你动手」里「让终端认得 ccm 和别名」那一件（这台选了自己贴才有；那台后端答的）。 */
+  let selfPaste: { state: string } | null = null;
 
   /** 接上装进哪一份。 */
   const target = (): StartupFile | undefined =>
@@ -263,10 +253,6 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
     if (!panelOpen || !t) return;
     if (panelOpen === "choose") {
       panel.append(el("div", "cfg-panel-title", copyText("machineAliases.rc.chooseTitle")), chooser);
-      return;
-    }
-    if (panelOpen === "paste") {
-      panel.appendChild(pasteBox);
       return;
     }
     const code = el("pre", "cfg-code");
@@ -336,7 +322,12 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
         ),
       );
     }
-    if (!on.length || (t && !t.block.present)) {
+    if (!on.length && t && selfPaste && selfPaste.state !== "done") {
+      const tp = t.path;
+      accessRows.appendChild(
+        lineOf("warn", copyText("machineAliases.selfPaste.waiting"), button(copyText("machineAliases.selfPaste.go"), "", goChores), linkBtn(copyText("machineAliases.selfPaste.undo"), () => void onUnSelfPaste(tp))),
+      );
+    } else if (!on.length || (t && !t.block.present)) {
       const connect = t
         ? button(copyText("machineAliases.access.connectTo", { path: short(t.path) }), "settings-btn-primary ccm-access-connect", () => void runRc("install", t.path))
         : null;
@@ -511,18 +502,33 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
   };
 
   /** 「自己贴」：问后端要接上那几行（与「接上」那一跳同一份渲染），给人自己贴。 */
+  /** 「我自己贴」：交那台记下，去「要你动手」里那一件（要贴的几行、贴在哪、存盘后自己认出都在那里）。 */
+  const goChores = (): void => {
+    wrap.dispatchEvent(new CustomEvent(SETTINGS_GO_EVENT, { bubbles: true, detail: { page: "data", anchor: `chores:${opts.origin()}` } }));
+  };
   const onSelfPaste = async (): Promise<void> => {
     const t = target();
     if (!t) return;
     try {
-      pasteText = await renderAliasBlock(opts.origin(), t.path);
+      await markChore(opts.origin(), { op: "selfPaste", rc: t.path });
     } catch (e) {
-      pasteText = "";
-      toast(copyText("machineAliases.preview.failed"), String(e instanceof Error ? e.message : e));
+      toast(copyText("machineAliases.selfPaste.failed"), e instanceof Error ? e.message : String(e), { level: "error" });
+      return;
     }
-    panelOpen = "paste";
-    await paintPanel();
-    paste.refresh();
+    selfPaste = { state: "todo" };
+    renderAccess();
+    goChores();
+  };
+  /** 改回让 cc-monitor 接上：撤掉那条记录，再照常接上。 */
+  const onUnSelfPaste = async (path: string): Promise<void> => {
+    try {
+      await markChore(opts.origin(), { op: "unselfPaste" });
+    } catch (e) {
+      toast(copyText("machineAliases.selfPaste.failed"), e instanceof Error ? e.message : String(e), { level: "error" });
+      return;
+    }
+    selfPaste = null;
+    await runRc("install", path);
   };
 
   /** 执行策略那一行：只在它会挡住块（或说不清）时出声；不会挡 ⇒ 不占地方。 */
@@ -603,6 +609,10 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
     },
     reread() {
       if (loadedOnce) reread();
+    },
+    setSelfPaste(c) {
+      selfPaste = c;
+      if (loadedOnce) renderAccess();
     },
   };
 }

@@ -5,6 +5,7 @@
  *
  * 那几条读口 / 写口整块换成假的（`vi.mock`）：这里只量「拿到这些事实，画成什么样、交出去什么」。
  */
+import { noteMachineTmux } from "../../../../src/frontend/ui/resume-defaults";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -380,6 +381,19 @@ describe("登录与指路", () => {
     buttonNamed(rowOf(el, "b"), "在 tmux 里登录").click();
     await settle();
     expect(loginInTmux).toHaveBeenCalledWith("devbox", "b", "/h/.cc-monitor/accounts/z");
+  });
+
+  it("那台说了没有 tmux ⇒ 开不了终端窗口时只说那一句，不出［在 tmux 里登录］", async () => {
+    noteMachineTmux("devbox", false);
+    fetchAccounts.mockResolvedValue(state({ accounts: [acct({ name: "work", isDefault: true }), acct({ name: "b", loggedIn: false, authReady: false })] }));
+    openLoginWindow.mockResolvedValue("noWindow");
+    const el = await mount();
+    buttonNamed(rowOf(el, "b"), "更多操作 · b").click();
+    [...document.querySelectorAll<HTMLElement>("[role=menuitem]")].find((m) => m.textContent?.includes("重新登录…"))!.click();
+    await settle();
+    expect(rowOf(el, "b").textContent).toContain("本机无法开终端窗口");
+    expect([...rowOf(el, "b").querySelectorAll("button")].some((b) => b.textContent === "在 tmux 里登录")).toBe(false);
+    noteMachineTmux("devbox", true);
   });
 
   it("开了登录窗口 ⇒ 那一行「等待终端登录…」＋［重新打开登录窗口］；后端推来已登录 ⇒ 行变回正常", async () => {

@@ -83,3 +83,45 @@ pub(crate) fn home_relative(raw: &str) -> Option<&str> {
         .into_iter()
         .find_map(|pat| raw.strip_prefix(pat))
 }
+
+/// 启动文件里 cc-monitor 围栏之外、确证失效的行：`source X` / `. X` 而 X 不在（`~` · `$HOME` · `${HOME}` 按这台家目录展开；
+/// 带别的变量 / 相对路径的说不清，不报）。
+pub(crate) fn dead_source_lines(
+    text: &str,
+    home: Option<&std::path::Path>,
+) -> Vec<(usize, String)> {
+    let mut out = Vec::new();
+    let mut inside = false;
+    for (i, line) in text.lines().enumerate() {
+        let l = line.trim_start();
+        if l.starts_with("# === cc-monitor") {
+            inside = l.contains("BEGIN");
+            continue;
+        }
+        if inside || l.starts_with('#') {
+            continue;
+        }
+        let rest = l.strip_prefix("source ").or_else(|| l.strip_prefix(". "));
+        let Some(target) = rest.and_then(|r| r.split_whitespace().next()) else {
+            continue;
+        };
+        let target = target.trim_matches(|c| c == '"' || c == '\'');
+        let expanded: Option<std::path::PathBuf> = if let Some(r) = target
+            .strip_prefix("~/")
+            .or_else(|| target.strip_prefix("$HOME/"))
+            .or_else(|| target.strip_prefix("${HOME}/"))
+        {
+            home.map(|h| h.join(r))
+        } else if target.starts_with('/') && !target.contains('$') {
+            Some(std::path::PathBuf::from(target))
+        } else {
+            None
+        };
+        if let Some(p) = expanded {
+            if !p.exists() {
+                out.push((i + 1, line.to_string()));
+            }
+        }
+    }
+    out
+}

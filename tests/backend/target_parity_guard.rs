@@ -808,6 +808,14 @@ fn handler_files_of(
 /// 够得着 tmux、却**不**声明 `no_tmux` 的命令 —— 逐条写理由（tmux 在它那里是可选的：问不到就降级，命令本身照做）。
 const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
     (
+        "data-report",
+        "文件与数据：`tmux` 那一格问这台有没有 tmux（与起新会话框同一个判法），没 tmux ⇒ `tmux: false`、别的几格照答",
+    ),
+    (
+        "footprint-report",
+        "足迹：与 `data-report` 同住 `footprint/mod.rs`（引用图按文件取），它自己不问 tmux（tmux 那一行只 stat PATH）",
+    ),
+    (
         "session-new",
         "起新会话：tmux 那一形没 tmux ⇒ `place` 那一格不行（`place_unavailable`），开终端那一形本来用不着 tmux（Windows 本机照做）",
     ),

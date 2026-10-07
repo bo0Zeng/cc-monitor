@@ -18,6 +18,11 @@ export function noteMachineTmux(origin: Origin, has: boolean): void {
   tmuxOn.set(origin, has);
 }
 
+/** 那台有没有 tmux：答过 ⇒ 那一答；没问到 ⇒ `null`（不知道，不当没有）。 */
+export function machineHasTmux(origin: Origin): boolean | null {
+  return tmuxOn.get(origin) ?? null;
+}
+
 /** 默认在不在 tmux 里：照那一格；那台说了没有 tmux ⇒ 不用 tmux（没问到 ⇒ 照那一格）。 */
 export function resumeInTmuxFor(origin: Origin | undefined): boolean {
   return inTmux && (origin === undefined || tmuxOn.get(origin) !== false);

@@ -88,6 +88,9 @@ pub const PROFILES_REL: &str = ".cc-monitor/profiles.toml";
 /// 〔同上〕旧别名清单一次性转进配置文件之后那张说明（转了几条 · 转不进去的几条；设置窗页首说一次，「知道了」后删）。
 pub const PROFILES_MIGRATED_REL: &str = ".cc-monitor/profiles-migrated.json";
 
+/// 〔同上〕「要你动手」里记下的选择：点过「不用了」的那几件 · 选了「我自己贴」的那份启动文件（后端 `footprint/chores/marks.rs` 写）。
+pub const CHORES_REL: &str = ".cc-monitor/chores.json";
+
 /// 〔同上〕skill 装记录（后端 `assets/skill_ledger.rs` 写；卸的时候按它删）。
 pub const SKILL_LEDGER_REL: &str = ".cc-monitor/skill-installs.json";
 

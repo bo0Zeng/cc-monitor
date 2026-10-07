@@ -16,13 +16,21 @@ import { banner } from "../kit/banner";
 import { homeShort } from "../kit/path";
 import { copyText } from "../copy-table";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
-import { hostKey, readRemoteConfig } from "../remote-config";
+import { findHostByOrigin, hostKey, readRemoteConfig } from "../remote-config";
 import { noteMachineTmux } from "../resume-defaults";
-import { readDataReport, type DataReport, type NeedsInstall } from "./data-reads";
+import { markChore, readDataReport, type Chore, type ChoreState, type DataReport } from "./data-reads";
+import { choreRow } from "./chore-row";
+import { fold } from "../kit/fold";
+import { toast } from "../kit/toast";
+import { revealInFolder } from "../reveal-in-folder";
+import { openFileWindow } from "../file-window";
 import type { SettingsTarget } from "./open-settings";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
 export type DataTab = "chores" | "placed";
+
+/** 从别处带进来时段头高亮多久（与设置窗跳锚点同值）。 */
+const FOCUS_HIGHLIGHT_MS = 1500;
 
 export interface DataPageHost {
   /** 本机「Claude 目录」那一块（宿主建、宿主存）。 */
@@ -59,6 +67,15 @@ export class DataPage {
   private machines: Machine[] = [{ origin: LOCAL_ORIGIN, name: copyText("remote.cards.local") }];
   private readings = new Map<Origin, Reading>();
   private picked: Origin = LOCAL_ORIGIN;
+  /** 点过复制、那台还没认出已做的那几件（界面只多记这一样）。键 ＝ 机器 ＋ 件。 */
+  private readonly copied = new Set<string>();
+  /** 展开着的那几件（重画不收起）。 */
+  private readonly openRows = new Set<string>();
+  /** 上一趟每件的态（认出「已做」那一句按它比）。 */
+  private readonly lastState = new Map<string, ChoreState>();
+  private readonly recognized = new Map<Origin, string[]>();
+  /** 带进来的「滚到那台」还没落（那一段还没画出来）。 */
+  private pendingFocus: Origin | null = null;
   private generation = 0;
 
   constructor(host: DataPageHost) {
@@ -120,6 +137,37 @@ export class DataPage {
     this.showTab();
   }
 
+  /**
+   * 带目的地进来：`chores:<origin>` ⇒ 要你动手那一栏、滚到那台那一段、段头高亮 1.5 秒；`placed:<origin>` ⇒ 放了什么那一栏、选中那台。
+   * 那台那一段还没画出来（机器表 / 那台还没读回）⇒ 记着，读回来再落。
+   */
+  focus(anchor: string): void {
+    const [kind, ...rest] = anchor.split(":");
+    const origin = rest.join(":");
+    if (kind === "placed") {
+      this.picked = origin;
+      this.openTab("placed");
+      this.paintPlaced();
+      return;
+    }
+    if (kind !== "chores") return;
+    this.openTab("chores");
+    this.pendingFocus = origin;
+    this.landFocus();
+  }
+
+  private landFocus(): void {
+    const origin = this.pendingFocus;
+    if (origin === null) return;
+    const sec = [...this.choresPane.querySelectorAll<HTMLElement>(".data-machine")].find((e) => e.dataset.machine === origin);
+    if (!sec || !this.readings.has(origin)) return;
+    this.pendingFocus = null;
+    sec.scrollIntoView?.({ block: "start" });
+    const head = sec.querySelector<HTMLElement>(".data-machine-head");
+    head?.classList.add("settings-highlight");
+    window.setTimeout(() => head?.classList.remove("settings-highlight"), FOCUS_HIGHLIGHT_MS);
+  }
+
   private async refresh(): Promise<void> {
     const gen = ++this.generation;
     try {
@@ -138,6 +186,7 @@ export class DataPage {
         }
         if (gen !== this.generation) return;
         this.readings.set(m.origin, r);
+        this.noteRecognized(m.origin, r);
         if (r.ok && r.report.tmux !== null) noteMachineTmux(m.origin, r.report.tmux);
       }),
     );
@@ -147,6 +196,7 @@ export class DataPage {
     this.paintTabs(total);
     this.paintChores();
     this.paintPlaced();
+    this.landFocus();
   }
 
   /** 进角标的件数：各台 `chores` 相加（读不到的那台不算）。 */
@@ -181,18 +231,34 @@ export class DataPage {
 
   // ── 要你动手 ──────────────────────────────────────────────────────────────
 
+  private key(origin: Origin, id: string): string {
+    return `${origin}\u0000${id}`;
+  }
+
+  /** 这一趟新认出「已做」的那几件（上一趟没做 / 过期，这一趟已做）：段头下一行说一句。 */
+  private noteRecognized(origin: Origin, r: Reading): void {
+    if (!r.ok) return;
+    const names: string[] = [];
+    for (const c of r.report.todo) {
+      const k = this.key(origin, c.id);
+      const was = this.lastState.get(k);
+      if (c.state === "done" && (was === "todo" || was === "expired")) names.push(c.name);
+      if (c.state !== "todo") this.copied.delete(k);
+      this.lastState.set(k, c.state);
+    }
+    this.recognized.set(origin, names);
+  }
+
   private paintChores(): void {
     const pane = this.choresPane;
     pane.replaceChildren();
-    const all = [...this.readings.values()].flatMap((r) => (r.ok ? r.report.needsInstall : []));
+    const all = [...this.readings.values()].flatMap((r) => (r.ok ? r.report.todo : []));
     const head = document.createElement("div");
     head.className = "data-summary";
     const lead = document.createElement("span");
-    lead.textContent = copyText("dataPage.chores.open", { n: all.length });
+    lead.textContent = copyText("dataPage.chores.open", { n: all.filter((c) => c.state !== "done" && c.state !== "declined").length });
     head.appendChild(lead);
-    const must = all.filter((n) => n.required).length;
-    if (must > 0) head.appendChild(tag(copyText("dataPage.chores.countInstall", { n: must })));
-    if (all.length - must > 0) head.appendChild(tag(copyText("dataPage.chores.countOptional", { n: all.length - must })));
+    for (const t of countTags(all)) head.appendChild(t);
     const sp = document.createElement("span");
     sp.className = "data-sp";
     head.appendChild(sp);
@@ -214,12 +280,7 @@ export class DataPage {
     name.textContent = m.name;
     head.appendChild(name);
     const r = this.readings.get(m.origin);
-    if (r?.ok) {
-      const must = r.report.needsInstall.filter((n) => n.required).length;
-      const opt = r.report.needsInstall.length - must;
-      if (must > 0) head.appendChild(tag(copyText("dataPage.chores.countInstall", { n: must })));
-      if (opt > 0) head.appendChild(tag(copyText("dataPage.chores.countOptional", { n: opt })));
-    }
+    if (r?.ok) for (const t of countTags(r.report.todo)) head.appendChild(t);
     const sp = document.createElement("span");
     sp.className = "data-sp";
     head.appendChild(sp);
@@ -234,49 +295,100 @@ export class DataPage {
     sec.appendChild(head);
     if (!r) {
       sec.appendChild(note(copyText("dataPage.chores.reading")));
-    } else if (!r.ok) {
-      sec.appendChild(note(copyText("dataPage.chores.offline", { machine: m.name })));
-    } else if (r.report.needsInstall.length === 0) {
-      sec.appendChild(note(copyText("dataPage.chores.none")));
-    } else {
-      const card = document.createElement("div");
-      card.className = "data-card";
-      for (const n of r.report.needsInstall) card.appendChild(this.installRow(n));
-      sec.appendChild(card);
+      return sec;
     }
+    if (!r.ok) {
+      sec.appendChild(note(copyText("dataPage.chores.offline", { machine: m.name })));
+      return sec;
+    }
+    const seen = this.recognized.get(m.origin) ?? [];
+    if (seen.length) {
+      const ok = document.createElement("div");
+      ok.className = "data-recognized";
+      ok.textContent = copyText("dataPage.chores.recognized", { names: seen.join(copyText("dataPage.chores.sep")) });
+      sec.appendChild(ok);
+    }
+    const active = r.report.todo.filter((c) => c.state !== "done" && c.state !== "declined");
+    const done = r.report.todo.filter((c) => c.state === "done");
+    const declined = r.report.todo.filter((c) => c.state === "declined");
+    const card = document.createElement("div");
+    card.className = "data-card";
+    if (active.length === 0) card.appendChild(note(copyText("dataPage.chores.noneOn", { machine: m.name })));
+    for (const c of active) card.appendChild(this.row(m.origin, c));
+    for (const [list, which, title] of [
+      [done, "done", copyText("dataPage.chores.doneN", { n: done.length })],
+      [declined, "declined", copyText("dataPage.chores.declinedN", { n: declined.length })],
+    ] as const) {
+      if (!list.length) continue;
+      const k = this.key(m.origin, `\u0000${which}`);
+      const inner = document.createElement("div");
+      for (const c of list) inner.appendChild(this.row(m.origin, c));
+      card.appendChild(fold({ title, open: this.openRows.has(k), body: inner, bare: true, onToggle: (o) => (o ? this.openRows.add(k) : this.openRows.delete(k)) }));
+    }
+    sec.appendChild(card);
     return sec;
   }
 
-  /** 一件「要装」：状态点 · 名字 · 类 · 下一行 位置小标签 ＋ 一句为什么 · ［安装方法］（开那个工具自己的安装说明）。 */
-  private installRow(n: NeedsInstall): HTMLElement {
-    const row = document.createElement("div");
-    row.className = "data-item";
-    row.dataset.chore = n.id;
-    const dot = document.createElement("span");
-    dot.className = "data-dot";
-    dot.dataset.tone = n.required ? "warn" : "muted";
-    row.appendChild(dot);
-    const body = document.createElement("div");
-    body.className = "data-item-body";
-    const title = document.createElement("div");
-    title.className = "data-item-title";
-    title.textContent = copyText("dataPage.install.title", { name: n.name });
-    title.appendChild(tag(n.required ? copyText("dataPage.install.kind") : copyText("dataPage.install.kindOptional")));
-    const sub = document.createElement("div");
-    sub.className = "data-item-sub";
-    const loc = document.createElement("code");
-    loc.className = "data-loc";
-    loc.textContent = n.what;
-    const why = document.createElement("span");
-    why.textContent = n.required ? copyText("dataPage.install.whyRequired") : copyText("dataPage.install.whyOptional");
-    sub.append(loc, why);
-    body.append(title, sub);
-    row.appendChild(body);
-    if (n.howUrl) {
-      const url = n.howUrl;
-      row.appendChild(button({ label: copyText("dataPage.install.how"), size: "compact", onClick: () => void openUrl(url) }));
+  private row(origin: Origin, c: Chore): HTMLElement {
+    const k = this.key(origin, c.id);
+    return choreRow(c, {
+      open: this.openRows.has(k),
+      copied: this.copied.has(k),
+      onToggle: (o) => {
+        if (o) this.openRows.add(k);
+        else this.openRows.delete(k);
+        this.paintChores();
+      },
+      onCopied: (text, ids) => void this.copyFor(origin, text, ids),
+      onGo: (x) => this.go(origin, x),
+      onOpenFile: (path) => void this.openFile(origin, path),
+      onDecline: (x, yes) => void this.decline(origin, x, yes),
+      onRecheck: () => void this.refresh(),
+    });
+  }
+
+  private async copyFor(origin: Origin, text: string, ids: string[]): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (e) {
+      toast(copyText("dataPage.chore.copyFailed"), String(e), { level: "error" });
+      return;
     }
-    return row;
+    for (const id of ids) this.copied.add(this.key(origin, id));
+    this.paintChores();
+  }
+
+  private go(origin: Origin, c: Chore): void {
+    if (c.action === "how" && c.howUrl) {
+      void openUrl(c.howUrl);
+      return;
+    }
+    const g = c.go;
+    if (!g) return;
+    this.host.goTo(g.page === "machine" ? { machine: origin, tab: g.tab, anchor: g.anchor } : { page: g.page, anchor: g.anchor });
+  }
+
+  private async openFile(origin: Origin, path: string): Promise<void> {
+    try {
+      if (isLocalOrigin(origin)) {
+        await revealInFolder(path);
+        return;
+      }
+      const host = findHostByOrigin((await readRemoteConfig()).hosts, origin);
+      if (host) await openFileWindow(host, { revealFile: path });
+    } catch (e) {
+      toast(copyText("dataPage.chore.openFailed"), String(e), { level: "error" });
+    }
+  }
+
+  private async decline(origin: Origin, c: Chore, yes: boolean): Promise<void> {
+    try {
+      await markChore(origin, { op: yes ? "decline" : "undecline", id: c.id });
+    } catch (e) {
+      toast(copyText("dataPage.chore.markFailed"), e instanceof Error ? e.message : String(e), { level: "error" });
+      return;
+    }
+    await this.refresh();
   }
 
   // ── cc-monitor 放了什么 ────────────────────────────────────────────────────
@@ -357,12 +469,39 @@ function undoWhere(u: { page: string; tab?: string }): string {
   return u.page;
 }
 
-/** 有事的分量：进角标的件 ＞ 可选的件 ＞ 读不到 ＞ 没事。 */
+/** 有事的分量：进角标的件 ＞ 别的没做完的件 ＞ 读不到 ＞ 没事。 */
 function weight(r: Reading | undefined): number {
   if (!r) return 0;
   if (!r.ok) return 1;
-  const must = r.report.needsInstall.filter((n) => n.required).length;
-  return must * 100 + r.report.needsInstall.length * 2;
+  const open = r.report.todo.filter((c) => c.state !== "done" && c.state !== "declined").length;
+  return r.report.chores * 100 + open * 2;
+}
+
+/** 各类的数：要做（含过期）· 要你定 · 要装 · 可选（含要装 · 可选）· 已做；0 的不出。 */
+function countTags(list: readonly Chore[]): HTMLElement[] {
+  const open = list.filter((c) => c.state !== "done" && c.state !== "declined");
+  const n = {
+    must: open.filter((c) => c.kind === "must" || c.state === "expired").length,
+    decide: open.filter((c) => c.kind === "decide").length,
+    install: open.filter((c) => c.kind === "install").length,
+    optional: open.filter((c) => (c.kind === "optional" || c.kind === "installOptional") && c.state !== "expired").length,
+    done: list.filter((c) => c.state === "done").length,
+  };
+  const said: Record<keyof typeof n, (n: number) => string> = {
+    must: (x) => copyText("dataPage.chores.countMust", { n: x }),
+    decide: (x) => copyText("dataPage.chores.countDecide", { n: x }),
+    install: (x) => copyText("dataPage.chores.countInstall", { n: x }),
+    optional: (x) => copyText("dataPage.chores.countOptional", { n: x }),
+    done: (x) => copyText("dataPage.chores.countDone", { n: x }),
+  };
+  const out: HTMLElement[] = [];
+  for (const k of ["must", "decide", "install", "optional", "done"] as const) {
+    if (n[k] === 0) continue;
+    const t = tag(said[k](n[k]));
+    t.dataset.kind = k;
+    out.push(t);
+  }
+  return out;
 }
 
 function section(title: string, sub: string): HTMLElement {

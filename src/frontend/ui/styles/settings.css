@@ -1595,13 +1595,6 @@ body.settings-window-mode .settings-panel {
   content: var(--mark-open);
 }
 
-/* T03 迁移后这个 class 挂在 paste-block 的根 div 上，不再是 .ccm-alias-gen-grid 的
-   flex 子项——`flex-basis` 已无意义（删），`font-family` 若留在根上会**下渗到三行灰字**
-   （那三个 div 没自设字体）。所以只给输出面本身设等宽。 */
-.ccm-alias-gen-out > .paste-block-out {
-  color: var(--text-2);
-}
-
 /* === T03 待贴文本统一组件 ===
    三句话（贴到哪 / 怎么合并 / 怎样才生效）常驻屏幕而不是只在 toast 里闪一下；
    warning 用 warn 色——它说的是"你选的形态与盘上现状冲突"，是需要看见的提醒。 */
@@ -1855,23 +1848,6 @@ body.settings-window-mode .settings-panel {
   }
   .ext-hook-snippet {
     margin-top: 4px;
-  }
-  /* 机器页「终端」栏：让直接敲的 claude 也走中转（可选）—— 状态行的三种语气。 */
-  .relay-optin {
-    margin: 6px 0;
-  }
-  .relay-optin-state {
-    margin: 4px 0;
-    font-size: var(--font-size-small);
-  }
-  .relay-optin-state.is-ok {
-    color: var(--success);
-  }
-  .relay-optin-state.is-bad {
-    color: var(--error);
-  }
-  .relay-optin-state.is-unknown {
-    color: var(--warn);
   }
   /* 确认卡上「装到哪」：不能选的那几项置灰、旁注为什么。 */
   .ext-targets {
@@ -3129,5 +3105,119 @@ body.settings-window-mode .settings-panel {
   width: 100%;
   box-sizing: border-box;
   resize: vertical;
+}
+
+/* 「要你动手」一件（v2 §3）：收着一行（点 · 名字 · 类 · 位置 · 现状 · 主按钮 · 展开）· 点开五段 */
+.data-dot[data-tone="bad"] {
+  background: var(--error);
+  border-color: var(--error);
+}
+.data-dot[data-tone="ok"] {
+  background: var(--success);
+  border-color: var(--success);
+}
+.data-summary [data-kind="must"],
+.data-machine-head [data-kind="must"],
+.data-item-title [data-kind="must"] {
+  color: var(--error-text);
+  border-color: var(--error);
+}
+.data-summary [data-kind="decide"],
+.data-machine-head [data-kind="decide"],
+.data-item-title [data-kind="decide"],
+.data-summary [data-kind="install"],
+.data-machine-head [data-kind="install"],
+.data-item-title [data-kind="install"] {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+.data-summary [data-kind="done"],
+.data-machine-head [data-kind="done"] {
+  color: var(--success);
+  border-color: var(--success);
+}
+.data-item.chore-item {
+  display: block;
+}
+.chore-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.chore-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: var(--space-2) 0 var(--space-1) 18px;
+}
+.chore-why {
+  color: var(--text-2);
+}
+.chore-steps {
+  margin: 0;
+  padding-left: 20px;
+}
+.chore-diff {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-small);
+  background: var(--bg-2);
+  border-radius: var(--radius-s);
+  padding: var(--space-1) 0;
+  overflow-x: auto;
+}
+.chore-diff-line {
+  display: flex;
+  gap: var(--space-3);
+  padding: 0 var(--space-3);
+  white-space: pre;
+}
+.chore-diff-line[data-op="add"] {
+  background: var(--diff-add-bg);
+  box-shadow: inset 2px 0 0 var(--diff-add-gutter);
+}
+.chore-diff-line[data-op="del"] {
+  background: var(--diff-del-bg);
+  box-shadow: inset 2px 0 0 var(--diff-del-gutter);
+}
+.chore-diff-n {
+  min-width: 3ch;
+  text-align: right;
+  color: var(--text-2);
+}
+.chore-acts,
+.chore-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.data-card > .data-note {
+  padding: 10px 12px;
+}
+.data-recognized {
+  border-left: 2px solid var(--success);
+  padding: var(--space-1) var(--space-3);
+  margin-bottom: var(--space-2);
+  color: var(--text-2);
+}
+
+/* 别名与配置文件页首的指路条与页尾一句（读 data-report） */
+.cfg-pointer:not([hidden]) {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  border: 1px solid var(--warn);
+  border-radius: var(--radius-m);
+  padding: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-3);
+}
+.cfg-pointer-text {
+  flex: 1;
+}
+.cfg-foot-pointer:not([hidden]) {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
 }
 }

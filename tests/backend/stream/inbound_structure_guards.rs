@@ -326,6 +326,8 @@ fn every_registered_command_declares_its_run_kind() {
                 | "data-report"
                 // 换 Claude 目录前那一问：stat 两次。
                 | "agent-home-check"
+                // 「要你动手」记下的选择：读—改—写后端自己那份小文件（同步文件 I/O）。
+                | "chores-mark"
                 // 别名预览：读账号库 manifest ＋ 问会话快照（同步 I/O），不起进程。
                 | "ccm-print"
                 // MCP 同步的判定：对可疑路径逐条 stat、在 PATH 上找名字（同步文件 I/O）。
@@ -543,6 +545,7 @@ fn every_registered_command_declares_its_run_kind() {
         "footprint-report",
         "data-report",
         "agent-home-check",
+        "chores-mark",
         // 别名预览（阻塞档，理由在上面 `expected_blocking`）。
         "ccm-print",
         // 资产目录两条（阻塞档，理由在上面 `expected_blocking`）。

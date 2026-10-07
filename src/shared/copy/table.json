@@ -4853,11 +4853,6 @@
       "args": [],
       "limited": ["git", "ccm"]
     },
-    "machineAliases.invalid.notYet": {
-      "kind": "body",
-      "zh": "还没生成。",
-      "args": []
-    },
     "machineAliases.openRc.failedBody": {
       "kind": "error",
       "zh": "{e}\n路径：{path}",
@@ -4866,11 +4861,6 @@
     "machineAliases.openRc.failed": {
       "kind": "error",
       "zh": "打开失败",
-      "args": []
-    },
-    "machineAliases.preview.failed": {
-      "kind": "error",
-      "zh": "预览失败",
       "args": []
     },
     "machineAliases.runRc.removeFailed": {
@@ -4964,12 +4954,6 @@
       "kind": "control",
       "zh": "其它文件：绝对路径，或 ~/ 开头",
       "args": []
-    },
-    "machineAliases.paste.mergeNote": {
-      "kind": "body",
-      "zh": "整段贴到文件末尾；这一段只让终端认得 ccm 并接上别名文件，清单以后怎么改都不用再贴。",
-      "args": [],
-      "limited": ["ccm"]
     },
     "cfgPage.head.intro": {
       "kind": "body",
@@ -6970,16 +6954,6 @@
       "zh": "{machine} 离线 · 未检查",
       "args": ["machine"]
     },
-    "dataPage.chores.none": {
-      "kind": "body",
-      "zh": "无",
-      "args": []
-    },
-    "dataPage.install.title": {
-      "kind": "body",
-      "zh": "缺 {name}",
-      "args": ["name"]
-    },
     "dataPage.install.kind": {
       "kind": "body",
       "zh": "要装",
@@ -6988,16 +6962,6 @@
     "dataPage.install.kindOptional": {
       "kind": "body",
       "zh": "要装 · 可选",
-      "args": []
-    },
-    "dataPage.install.whyRequired": {
-      "kind": "body",
-      "zh": "缺了起不了会话",
-      "args": []
-    },
-    "dataPage.install.whyOptional": {
-      "kind": "body",
-      "zh": "缺了少一个功能",
       "args": []
     },
     "dataPage.install.how": {
@@ -11472,28 +11436,6 @@
       "zh": "{what} 长度非法（1..=64）",
       "args": ["what"]
     },
-    "machineAliases.powershell.pasteActivation": {
-      "kind": "body",
-      "zh": "开一个新的 PowerShell 窗口。",
-      "args": [],
-      "limited": ["PowerShell"]
-    },
-    "machineAliases.powershell.pasteTarget": {
-      "kind": "body",
-      "zh": "$PROFILE（PowerShell 启动时读的那份脚本）",
-      "args": [],
-      "limited": ["PowerShell"]
-    },
-    "machineAliases.posix.pasteActivation": {
-      "kind": "body",
-      "zh": "source 它，或开一个新终端。",
-      "args": []
-    },
-    "machineAliases.posix.pasteTarget": {
-      "kind": "body",
-      "zh": "~/.bashrc（或你实际用的 shell 配置文件）",
-      "args": []
-    },
     "machineAliases.aliasPreview.asking": {
       "kind": "body",
       "zh": "正在问这台机器的后端…",
@@ -13852,93 +13794,6 @@
       "kind": "body",
       "zh": "这台的中转不收不带账号的 claude 请求，生成不了要贴的内容。",
       "args": []
-    },
-    "relayOptin.section.title": {
-      "kind": "title",
-      "zh": "让直接敲的 claude 也走中转（可选）",
-      "args": []
-    },
-    "relayOptin.section.intro": {
-      "kind": "body",
-      "zh": "经 cc-monitor 或 ccm 起的会话已经走中转。直接在终端里敲 claude 起的不走：cc-monitor 要等它写进会话记录才看得到，比终端慢。要它也走，就把下面这一段合并进这台的设置文件；cc-monitor 不替你改这份文件。",
-      "args": [],
-      "limited": ["ccm"]
-    },
-    "relayOptin.read.loading": {
-      "kind": "body",
-      "zh": "正在读这台的设置…",
-      "args": []
-    },
-    "relayOptin.read.failed": {
-      "kind": "error",
-      "zh": "读不了这台装没装：{said}",
-      "args": ["said"]
-    },
-    "relayOptin.state.installed": {
-      "kind": "body",
-      "zh": "已装：这台设置文件里写的就是这台中转现在的地址。",
-      "args": []
-    },
-    "relayOptin.state.stale": {
-      "kind": "body",
-      "zh": "贴的内容过期了。这台的中转换了钥匙或端口，原来那一段已经连不上；把下面新的一段换进去。",
-      "args": []
-    },
-    "relayOptin.state.absent": {
-      "kind": "body",
-      "zh": "没装：直接敲的 claude 不走中转。",
-      "args": []
-    },
-    "relayOptin.state.other": {
-      "kind": "body",
-      "zh": "这份文件里设了别的上游地址，不是这台的中转。贴下面这一段会换掉它。",
-      "args": []
-    },
-    "relayOptin.relay.notListening": {
-      "kind": "body",
-      "zh": "这台的中转此刻没在运行。贴了也发不出请求，等这台的 cc-monitor 后端起来。",
-      "args": []
-    },
-    "relayOptin.snippet.target": {
-      "kind": "body",
-      "zh": "{source} 的 env 段",
-      "args": ["source"]
-    },
-    "relayOptin.snippet.merge": {
-      "kind": "body",
-      "zh": "要合并进 env 那一段，不是整份覆盖。没有那一段就新加；这份文件里还有别的设置，覆盖会把它们删掉。",
-      "args": []
-    },
-    "relayOptin.snippet.activation": {
-      "kind": "body",
-      "zh": "改完新开的 claude 会话才生效（已经开着的不会重读它）。",
-      "args": []
-    },
-    "relayOptin.costs.title": {
-      "kind": "title",
-      "zh": "代价",
-      "args": []
-    },
-    "relayOptin.cost.backend": {
-      "kind": "body",
-      "zh": "这台的 cc-monitor 后端没在跑时，直接敲的 claude 发不出请求。要用它，就得让这台的后端一直在跑。",
-      "args": []
-    },
-    "relayOptin.cost.key": {
-      "kind": "body",
-      "zh": "中转的钥匙会写进这份文件。能读这份文件的程序，都能经这台的中转发请求。",
-      "args": []
-    },
-    "relayOptin.cost.allAccounts": {
-      "kind": "body",
-      "zh": "各号的设置文件都链回这一份：对这台所有号同时生效。",
-      "args": []
-    },
-    "relayOptin.cost.apiKey": {
-      "kind": "body",
-      "zh": "只对用订阅登录的号有用。用 API key 的号，key 只在用 ccm 起会话时才换得上；而这份文件会盖过 ccm 交给会话的地址，贴了之后这台用 API key 的号就换不上 key 了。要用这些号，先把这一行删掉。",
-      "args": [],
-      "limited": ["ccm"]
     },
     "beUpstreamEndpoint.relay.thisMachine": {
       "kind": "body",
@@ -22522,6 +22377,439 @@
       "kind": "body",
       "zh": "已改 {n}",
       "args": ["n"]
+    },
+    "beChore.staleCcm.name": {
+      "kind": "title",
+      "zh": "终端里的 ccm 是旧的一份",
+      "args": [],
+      "limited": ["ccm"]
+    },
+    "beChore.staleCcm.said": {
+      "kind": "body",
+      "zh": "非 cc-monitor 放置 · 先于 cc-monitor 那份",
+      "args": []
+    },
+    "beChore.staleCcm.why": {
+      "kind": "body",
+      "zh": "敲 ccm 和别名先找到的是 {path}：不是 cc-monitor 放的，起的会话 cc-monitor 管不到",
+      "args": ["path"],
+      "limited": ["ccm"]
+    },
+    "beChore.staleCcm.step": {
+      "kind": "body",
+      "zh": "复制下面这一行，到这台的终端里跑",
+      "args": []
+    },
+    "beChore.selfPaste.name": {
+      "kind": "title",
+      "zh": "让终端认得 ccm 和别名",
+      "args": [],
+      "limited": ["ccm"]
+    },
+    "beChore.selfPaste.loc": {
+      "kind": "body",
+      "zh": "{path} 末尾 {n} 行（第 {line} 行之后）",
+      "args": ["path", "n", "line"]
+    },
+    "beChore.selfPaste.said": {
+      "kind": "body",
+      "zh": "等你贴 {n} 行",
+      "args": ["n"]
+    },
+    "beChore.selfPaste.why": {
+      "kind": "body",
+      "zh": "你选了自己贴；贴好之前，新开的终端认不出别名",
+      "args": []
+    },
+    "beChore.selfPaste.step": {
+      "kind": "body",
+      "zh": "在第 {line} 行之后贴下面 {n} 行",
+      "args": ["line", "n"]
+    },
+    "beChore.selfPaste.stepSave": {
+      "kind": "body",
+      "zh": "存盘 · 新开的终端生效",
+      "args": []
+    },
+    "beChore.clash.name": {
+      "kind": "title",
+      "zh": "{name} 重名 · 你写的 / 清单",
+      "args": ["name"]
+    },
+    "beChore.clash.loc": {
+      "kind": "body",
+      "zh": "{path} 第 {line} 行",
+      "args": ["path", "line"]
+    },
+    "beChore.clash.winsYours": {
+      "kind": "body",
+      "zh": "生效：你写的 · 清单那条被盖",
+      "args": []
+    },
+    "beChore.clash.winsList": {
+      "kind": "body",
+      "zh": "生效：清单 · 你写的那条被盖",
+      "args": []
+    },
+    "beChore.clash.winsUnclear": {
+      "kind": "body",
+      "zh": "生效：说不清 · 两份文件谁先读不定",
+      "args": []
+    },
+    "beChore.clash.why": {
+      "kind": "body",
+      "zh": "现在敲 {name} 起的是后定义的那一个；没生效的那一条白放着",
+      "args": ["name"]
+    },
+    "beChore.install.saidRequired": {
+      "kind": "body",
+      "zh": "缺了起不了会话",
+      "args": []
+    },
+    "beChore.install.saidOptional": {
+      "kind": "body",
+      "zh": "缺了少一个功能",
+      "args": []
+    },
+    "beChore.dead.name": {
+      "kind": "title",
+      "zh": "{file} · {n} 行失效",
+      "args": ["file", "n"]
+    },
+    "beChore.dead.loc": {
+      "kind": "body",
+      "zh": "{path} 第 {lines} 行",
+      "args": ["path", "lines"]
+    },
+    "beChore.dead.said": {
+      "kind": "body",
+      "zh": "指向的文件已不存在 · 无影响",
+      "args": []
+    },
+    "beChore.dead.why": {
+      "kind": "body",
+      "zh": "这几行指向的文件已经不在了，留着不碍事",
+      "args": []
+    },
+    "beChore.dead.step": {
+      "kind": "body",
+      "zh": "第 {n} 行：{text}",
+      "args": ["n", "text"]
+    },
+    "beChore.relay.name": {
+      "kind": "title",
+      "zh": "直接敲的 claude 也实时显示",
+      "args": []
+    },
+    "beChore.relay.loc": {
+      "kind": "body",
+      "zh": "{path} · env",
+      "args": ["path"]
+    },
+    "beChore.relay.why": {
+      "kind": "body",
+      "zh": "在终端里直接敲起的会话，要等写进记录才显示，慢一拍；贴好这一行之后也实时显示",
+      "args": []
+    },
+    "beChore.relay.saidTodo": {
+      "kind": "body",
+      "zh": "当前：写入记录后才显示",
+      "args": []
+    },
+    "beChore.relay.saidExpired": {
+      "kind": "body",
+      "zh": "贴过的地址不是这台现在的",
+      "args": []
+    },
+    "beChore.relay.saidDone": {
+      "kind": "body",
+      "zh": "已实时显示",
+      "args": []
+    },
+    "beChore.relay.saidBlocked": {
+      "kind": "body",
+      "zh": "这台的中转还没起来过 · 起来之后再查",
+      "args": []
+    },
+    "beChore.hooks.name": {
+      "kind": "title",
+      "zh": "cc-bus 自动收信",
+      "args": []
+    },
+    "beChore.hooks.loc": {
+      "kind": "body",
+      "zh": "{path} · hooks",
+      "args": ["path"]
+    },
+    "beChore.hooks.why": {
+      "kind": "body",
+      "zh": "会话开始时登记，每轮结束时收信",
+      "args": []
+    },
+    "beChore.hooks.said": {
+      "kind": "body",
+      "zh": "会话开始上线 · 每轮结束收信",
+      "args": []
+    },
+    "beChore.hooks.saidBlocked": {
+      "kind": "body",
+      "zh": "先装 cc-bus",
+      "args": []
+    },
+    "beChore.step.open": {
+      "kind": "body",
+      "zh": "打开 {path}",
+      "args": ["path"]
+    },
+    "beChore.step.insert": {
+      "kind": "body",
+      "zh": "在第 {line} 行后面加下面 {n} 行",
+      "args": ["line", "n"]
+    },
+    "beChore.step.replace": {
+      "kind": "body",
+      "zh": "把第 {line} 行换成下面 {n} 行",
+      "args": ["line", "n"]
+    },
+    "beChore.step.save": {
+      "kind": "body",
+      "zh": "存盘 · 新开的会话生效",
+      "args": []
+    },
+    "beChore.marks.mkdirFailed": {
+      "kind": "error",
+      "zh": "建不了 {dir}：{e}",
+      "args": ["dir", "e"]
+    },
+    "beChore.marks.noHome": {
+      "kind": "error",
+      "zh": "这台的家目录解析不出来，记不下这个选择",
+      "args": []
+    },
+    "rsDataPaths.backend.chores": {
+      "kind": "body",
+      "zh": "要你动手里记下的选择 · 不用了的几件 · 自己贴的启动文件",
+      "args": []
+    },
+    "dataPage.kind.must": {
+      "kind": "control",
+      "zh": "要做",
+      "args": []
+    },
+    "dataPage.kind.decide": {
+      "kind": "control",
+      "zh": "要你定",
+      "args": []
+    },
+    "dataPage.kind.optional": {
+      "kind": "control",
+      "zh": "可选",
+      "args": []
+    },
+    "dataPage.state.expired": {
+      "kind": "control",
+      "zh": "过期 · 要做",
+      "args": []
+    },
+    "dataPage.state.blocked": {
+      "kind": "control",
+      "zh": "先决未满足",
+      "args": []
+    },
+    "dataPage.state.copied": {
+      "kind": "control",
+      "zh": "已复制 · 等你贴",
+      "args": []
+    },
+    "dataPage.chores.countMust": {
+      "kind": "control",
+      "zh": "要做 {n}",
+      "args": ["n"]
+    },
+    "dataPage.chores.countDecide": {
+      "kind": "control",
+      "zh": "要你定 {n}",
+      "args": ["n"]
+    },
+    "dataPage.chores.countDone": {
+      "kind": "control",
+      "zh": "已做 {n}",
+      "args": ["n"]
+    },
+    "dataPage.chores.recognized": {
+      "kind": "body",
+      "zh": "已识别：{names} 已做",
+      "args": ["names"]
+    },
+    "dataPage.chores.sep": {
+      "kind": "body",
+      "zh": "、",
+      "args": []
+    },
+    "dataPage.chores.noneOn": {
+      "kind": "body",
+      "zh": "{machine} · 无",
+      "args": ["machine"]
+    },
+    "dataPage.chores.doneN": {
+      "kind": "control",
+      "zh": "已做的 {n}",
+      "args": ["n"]
+    },
+    "dataPage.chores.declinedN": {
+      "kind": "control",
+      "zh": "不做的 {n}",
+      "args": ["n"]
+    },
+    "dataPage.chore.copyCommand": {
+      "kind": "action",
+      "zh": "复制命令",
+      "args": []
+    },
+    "dataPage.chore.copySnippet": {
+      "kind": "action",
+      "zh": "复制片段",
+      "args": []
+    },
+    "dataPage.chore.locate": {
+      "kind": "action",
+      "zh": "看在哪…",
+      "args": []
+    },
+    "dataPage.chore.decide": {
+      "kind": "action",
+      "zh": "去定…",
+      "args": []
+    },
+    "dataPage.chore.installFirst": {
+      "kind": "action",
+      "zh": "先装 cc-bus",
+      "args": []
+    },
+    "dataPage.chore.undecline": {
+      "kind": "action",
+      "zh": "还是要做",
+      "args": []
+    },
+    "dataPage.chore.expand": {
+      "kind": "action",
+      "zh": "展开",
+      "args": []
+    },
+    "dataPage.chore.collapse": {
+      "kind": "action",
+      "zh": "收起",
+      "args": []
+    },
+    "dataPage.chore.diff": {
+      "kind": "aria",
+      "zh": "改动",
+      "args": []
+    },
+    "dataPage.chore.maskHint": {
+      "kind": "body",
+      "zh": "钥匙已遮住 · 复制的是真内容",
+      "args": []
+    },
+    "dataPage.chore.copyLines": {
+      "kind": "action",
+      "zh": "复制这几行",
+      "args": []
+    },
+    "dataPage.chore.copyPosition": {
+      "kind": "action",
+      "zh": "复制位置",
+      "args": []
+    },
+    "dataPage.chore.copyWhole": {
+      "kind": "action",
+      "zh": "复制改好的整份文件",
+      "args": []
+    },
+    "dataPage.chore.copyWholeN": {
+      "kind": "action",
+      "zh": "复制改好的整份文件 · 含 {n} 件",
+      "args": ["n"]
+    },
+    "dataPage.chore.openFile": {
+      "kind": "action",
+      "zh": "打开这份文件",
+      "args": []
+    },
+    "dataPage.chore.decline": {
+      "kind": "action",
+      "zh": "不用了",
+      "args": []
+    },
+    "dataPage.chore.autoDetect": {
+      "kind": "body",
+      "zh": "存盘后这里自己认出",
+      "args": []
+    },
+    "dataPage.chore.recheck": {
+      "kind": "action",
+      "zh": "再查一遍",
+      "args": []
+    },
+    "dataPage.chore.copyFailed": {
+      "kind": "error",
+      "zh": "复制失败",
+      "args": []
+    },
+    "dataPage.chore.openFailed": {
+      "kind": "error",
+      "zh": "打不开这份文件",
+      "args": []
+    },
+    "dataPage.chore.markFailed": {
+      "kind": "error",
+      "zh": "没记下这个选择",
+      "args": []
+    },
+    "machineAliases.selfPaste.waiting": {
+      "kind": "body",
+      "zh": "已选自己贴 · 照「要你动手」那一件贴好存盘 · 自动识别",
+      "args": []
+    },
+    "machineAliases.selfPaste.go": {
+      "kind": "action",
+      "zh": "去看…",
+      "args": []
+    },
+    "machineAliases.selfPaste.undo": {
+      "kind": "action",
+      "zh": "改由 cc-monitor 接上",
+      "args": []
+    },
+    "machineAliases.selfPaste.failed": {
+      "kind": "error",
+      "zh": "没记下「自己贴」",
+      "args": []
+    },
+    "cfgPage.pointer.chores": {
+      "kind": "body",
+      "zh": "{machine} 上有 {n} 件要你动手 · 另 {m} 件可选",
+      "args": ["machine", "n", "m"]
+    },
+    "cfgPage.pointer.optional": {
+      "kind": "body",
+      "zh": "{machine} 上另有 {m} 件可选",
+      "args": ["machine", "m"]
+    },
+    "cfgPage.pointer.go": {
+      "kind": "action",
+      "zh": "去「文件与数据」",
+      "args": []
+    },
+    "cfgPage.pointer.changed": {
+      "kind": "body",
+      "zh": "cc-monitor 在 {machine} 上改过你的 {n} 个文件",
+      "args": ["machine", "n"]
+    },
+    "cfgPage.pointer.changedGo": {
+      "kind": "action",
+      "zh": "去看",
+      "args": []
     }
   }
 }

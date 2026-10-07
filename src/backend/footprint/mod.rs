@@ -13,6 +13,7 @@
 //! 查钩子字样的文件最多 [`MAX_HOOK_FILE_BYTES`] 字节（内容一个字节都不回）。
 
 pub(crate) mod agent_home_check;
+pub(crate) mod chores;
 pub(crate) mod data;
 pub(crate) mod registry;
 pub(crate) mod rows;
@@ -52,11 +53,18 @@ pub(crate) fn answer_with(
     Ok(json!(report_with(get, agent_home, args)?))
 }
 
-/// 「文件与数据」那一份成品（帧面 `data-report`）：同一份足迹按「改过你的文件 · 要装 · 有没有 tmux」重排（[`data`]）。
-pub(crate) fn data_answer(args: &Value) -> FootprintAnswer {
+/// 「文件与数据」那一份成品（帧面 `data-report`）：同一份足迹按「改过你的文件 · 要你动手 · 有没有 tmux」重排（[`data`] · [`chores`]）。
+/// `door` 是这台的文件管理面（别名块的候选经它读）。
+pub(crate) fn data_answer(door: &dyn crate::assets::door::Door, args: &Value) -> FootprintAnswer {
     let get = |k: &str| std::env::var(k).ok();
     let report = report_with(&get, &crate::observe::history_query::agent_home(), args)?;
-    Ok(json!(data::shape(&report)))
+    let todo = chores::chores(&chores::gather::facts(door, data::needs_install(&report)));
+    let tmux = match crate::control::terminals::rows_here() {
+        Ok(Some(_)) => Some(true),
+        Ok(None) => Some(false),
+        Err(_) => None,
+    };
+    Ok(data::shape(&report, todo, tmux))
 }
 
 /// 整份足迹（两种问法共用这一份）。
