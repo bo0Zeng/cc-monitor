@@ -1,38 +1,21 @@
-//! F04c：**「这条命令能不能回落」的唯一判定**（monitor 侧走后端的所有控制命令共用）。
+//! 「这条命令能不能回落」的唯一判定（monitor 侧走后端的所有控制命令共用）。`CallError`（问后端失败的原因）与在等应答的上限 [`MAX_PENDING`]
+//! 也住这里：客户端（壳里 `inbound_client.rs`）造它们，分流规则读它们 —— 一套词一个家。
 //!
-//! `CallError`（问后端失败的原因）与在等应答的上限 [`MAX_PENDING`] 也住这里：客户端（壳里 `inbound_client.rs`）
-//! 造它们，分流规则读它们 —— 一套词一个家。
+//! 只能有一份：两份实现会漂，而漂开的后果是静默的权限旁路 —— 把后端的一次 `wrong_owner` 当成「backend 不可用」回落到另一条路再做一次，
+//! 等于把一次被门拒绝洗成成功。由 `every_backend_sender_is_registered_and_uses_the_one_router` 钉住（它遍历目录发现发送端，不靠手写清单）。
 //!
-//! # 为什么它必须只有一份
-//!
-//! F04b 给 `kill` 定下了三态分流，F04c 给 `send-keys` 也要同一套。**这条规则一旦有两份实现，
-//! 它们就会漂**，而漂开的后果不是「行为不一致」这么轻 —— 它是**静默的权限旁路**：
-//! 把后端的一次 `wrong_owner` 当成「backend 不可用」而回落到 SSH 路再做一次，
-//! 等于把**一次被门拒绝洗成另一条路的成功**。
-//! 今天两条路的门恰好等价（都是 §34 三道门）所以功能上看不出差别 —— **那正是它危险的地方**。
-//!
-//! ⇒ 同 `gate-core` 的手法（定框 C1「一份代码、两种承载」的同一条纪律）：判定收成一份，
-//! 调用方只负责给「拒绝该怎么对用户说」。由 `every_backend_sender_is_registered_and_uses_the_one_router`
-//! 钉住 —— ⚠ **它的发现机制是遍历目录，不是手写清单**（F12 的 `/full-audit` 逮到手写那版
-//! 漏掉了第三个发送端，见那条判据的头注）。
-//!
-//! # 分界线不是「成功/失败」，是「**能不能证明这条命令根本没发出去**」
-//!
-//! 逐档读 `inbound_client::call` 的源码定的（不是猜）：
+//! # 分界线是「能不能证明这条命令根本没发出去」
 //!
 //! | 档 | 在 `call` 里的位置 | 判定 |
 //! |---|---|---|
-//! | `client_for(origin) == None` | 连 client 都没有，一个字节没发 | **证明没发出去** ⇒ 可回落 |
-//! | `Unsupported` | `call` 第一行 `if !self.accepts(cmd)`，早于 `next_id`/`register`/`send` | **证明没发出去** ⇒ 可回落（旧后端） |
-//! | `TooManyPending` | `register(&id)` 失败，仍早于 `writes.send` | **证明没发出去** ⇒ 可回落 |
-//! | `Disconnected` | **两个产地**：写队列 send 失败（没入队）**或** 等应答时 `rx` 掉了（已发出） | 分不开 ⇒ 按最坏算 ⇒ **不回落** |
-//! | `Timeout` | **两个产地**：写入段超时（源码逐字写着「backend 没见过这条命令」）**或** 等应答段超时（可能已执行） | 分不开 ⇒ 按最坏算 ⇒ **不回落** |
-//! | `Cancelled` / `Remote{..}` | backend 说过话了 | **不回落** |
+//! | `client_for(origin) == None` | 连 client 都没有，一个字节没发 | 证明没发出去 ⇒ 可回落 |
+//! | `Unsupported` | `call` 第一行 `if !self.accepts(cmd)`，早于 `next_id`/`register`/`send` | 证明没发出去 ⇒ 可回落（旧后端） |
+//! | `TooManyPending` | `register(&id)` 失败，仍早于 `writes.send` | 证明没发出去 ⇒ 可回落 |
+//! | `Disconnected` | 两个产地：写队列 send 失败（没入队）或 等应答时 `rx` 掉了（已发出） | 分不开 ⇒ 按最坏算 ⇒ 不回落 |
+//! | `Timeout` | 两个产地：写入段超时或 等应答段超时（可能已执行） | 分不开 ⇒ 按最坏算 ⇒ 不回落 |
+//! | `Cancelled` / `Remote{..}` | backend 说过话了 | 不回落 |
 //!
-//! ⚠ **诚实边界**（F04b 记的，仍未变）：`Timeout` 与 `Disconnected` 各有两个产地，
-//! 一个能证明没发出去、一个不能，而**类型上分不开**。这里只能按最坏的那个处理 ⇒
-//! 一次写入段超时会让用户拿到错误而不是回落。要修得在 `inbound_client` 那边把两个产地
-//! 分成两个变体 —— **那是它自己的活**。记在这里，别让下一个人以为是漏了。
+//! `Timeout` 与 `Disconnected` 的两个产地类型上分不开 ⇒ 一次写入段超时会让用户拿到错误而不是回落；要修得在 `inbound_client` 那边分成两个变体。
 
 use crate::chan::wire::{self as w, Withdraw};
 use copy_core::copy_text;
@@ -130,26 +113,20 @@ impl std::fmt::Display for CallError {
 /// 一条走后端的控制命令**失败时**的结局，分界线见模块头注（成功那一态由调用方的 `Ok` 自己装，这里不另设）。
 #[derive(Debug, PartialEq, Eq)]
 pub enum Routed {
-    /// **证明**这条命令没发出去 ⇒ 调用方可以回落到过渡期的 SSH 路径（C7）。
-    /// 带上原因只为诊断，**不参与分流判断**。
+    /// 证明这条命令没发出去 ⇒ 调用方可以回落。带上原因只为诊断，不参与分流判断。
     NoChannel(String),
     /// backend 说了话（拒绝 / 失败），**或者**我们无法证明它没执行 ⇒
     /// **不许回落**，把这句话原样交给用户。
     Refused(String),
 }
 
-/// ★★ **分层判定的唯一一份**〔面 A 通道那一拍，2026-09-24〕：`inbound_client::CallError`
-/// ⇒ 三层（传输错 · 对端错 · 我们自己错）＋ `reach` 三档 ＋ `why`。
-///
-/// 🔴 **它是全仓唯一 `match` `inbound_client::CallError` 的地方。** 旧的三态
-/// （[`route_call_error`]）从它收拢出来，通道的生产句柄（`chan/host.rs`）直接用它 ——
-/// 「能不能证明没发出去」从此只有一个答案，不再是两份实现靠对拍保平安。
-///
-/// `hop` 是调用方那一侧给这一跳的编号（`HopId.idx`，位置由调用方定）。
+/// 分层判定的唯一一份：`inbound_client::CallError` ⇒ 三层（传输错 · 对端错 · 我们自己错）＋ `reach` 三档 ＋ `why`。
+/// 全仓唯一 `match` `inbound_client::CallError` 的地方：三态的 [`route_call_error`] 从它收拢出来，通道的生产句柄（`chan/host.rs`）直接用它。
+/// `hop` 是调用方那一侧给这一跳的编号（`HopId.idx`）。
 ///
 /// | 进来的 | 分层结果 | 理由（与模块头注那张表逐档对应） |
 /// |---|---|---|
-/// | `Unsupported` | `Peer{Unsupported}` | 对端**事前**就说不认（`hello.commands`），一个字节没发 |
+/// | `Unsupported` | `Peer{Unsupported}` | 对端事前就说不认（`hello.commands`），一个字节没发 |
 /// | `Unavailable{code}` | `Peer{Refused{body}}`，body = `{"code","message"}` | 对端握手时说过这台做不到（`hello.unavailable`），本侧没发；同对端事后回那个码 |
 /// | `TooManyPending` | `Hop{write, NotSent, Overrun}` | 本侧在飞上限顶满，早于入队 |
 /// | `Disconnected` | `Hop{read, Unknown, Dropped}` | 两个产地分不开 ⇒ 拿不准一律 `Unknown` |
@@ -157,8 +134,7 @@ pub enum Routed {
 /// | `Cancelled` | `Ours{Cancelled}` | 撤单源自本侧（后端只是确认了它）；副作用状态未知，不是回滚 |
 /// | `Remote{code,message}` | `Peer{Refused{body}}`，body = `{"code","message"}` 的 JSON | 对端说了话；body 对通道不透明 |
 ///
-/// 附带的 [`Detail`] 是**给人看的那句话的原料**，只为让收拢出来的三态逐字节不变；
-/// 它**不参与**任何分流判断（分流只看 `error`）。
+/// 附带的 [`Detail`] 是给人看的那句话的原料，不参与任何分流判断（分流只看 `error`）。
 pub fn layer_call_error(e: &CallError, hop: u8) -> Layered {
     let at = |tag: &'static str| w::HopId { idx: hop, tag };
     let text = |s: String| Detail::Text(s);
@@ -233,7 +209,7 @@ pub fn layer_call_error(e: &CallError, hop: u8) -> Layered {
     }
 }
 
-/// 对端拒绝体 `{code, message}`；带了 `data` 的那几个码再多一格 `data`（没有 ⇒ 字节与从前逐字相同）。
+/// 对端拒绝体 `{code, message}`；带了 `data` 的那几个码再多一格 `data`。
 fn refusal_body(code: &str, message: &str, data: Option<&str>) -> Vec<u8> {
     let mut v = serde_json::json!({ "code": code, "message": message });
     if let Some(d) = data.and_then(|d| serde_json::from_str::<serde_json::Value>(d).ok()) {

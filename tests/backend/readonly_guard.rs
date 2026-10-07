@@ -306,8 +306,12 @@ mod tests {
         ("no_timer_guard", "守卫：零定时器护栏"),
         ("plugin_walk_fixture", "守卫 ＋ 夹具：最小假插件走通全流程"),
         (
+            "protocol_doc_gen",
+            "守卫：协议参考 IPC-COMMANDS.md 由它从代码生成、逐字节比（只有设了重生成开关才写回那一份文档）",
+        ),
+        (
             "protocol_doc_guard",
-            "守卫：IPC-PROTOCOL.md 与真实协议面的对拍",
+            "守卫：协议面本身的几条（协议级码闭集 · serde 类型登记 · 子进程旗标 · EMITS 子集）",
         ),
         ("ratchet_guard", "守卫：那几张登记表的断言行逐字没动"),
         (

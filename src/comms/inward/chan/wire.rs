@@ -28,7 +28,7 @@
 //!
 //! - **不买「对端一定按这份协议说话」**：解不出来的头一律是 [`OursFault::Broken`]，
 //!   不猜、不补默认值。
-//! - **不买版本协商**：头里没有协议版本号。今天两端都编自同一个 `comms-inward`（从前是同一个 `monitor_lib`），
+//! - **不买版本协商**：头里没有协议版本号。两端都编自同一个 `comms-inward`；
 //!   将来两端能分开升级那一天要补 —— 登记为欠账，不假装已有。
 //! - **不买 `HopId.tag` 的开放集合**：线上只认 `open | auth | write | read | wait` 这五个
 //!   （`§3.3.0` 逐字），认不出的标签当作协议坏了，不当作新标签收下。
@@ -218,7 +218,7 @@ impl From<OursFault> for CallError {
 impl std::fmt::Display for CallError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            // 照 CP1 台账改：不再把「第 N 跳」与枚举名（{:?}）原样上屏，每一格给一句人话；
+            // 不把「第 N 跳」与枚举名（{:?}）原样上屏，每一格给一句人话；
             // 跳号与标签留给日志（调用方要细节时自己拿 `at` / `reach`）。
             CallError::Hop {
                 why,

@@ -1380,13 +1380,8 @@ fn root_anchored_literals(rel: &str, raw: &str) -> Vec<(usize, String, String)> 
 /// **按设计必须不在**的路径字面量：判据用它钉「这个文件删了、长回来就红」（`!root.join(..).is_file()`），
 /// 下面那条「字面量必须解析得到」对它们反着核 —— 在表里的必须**不存在**，存在了就红；表里的行在盘上用不到也红（两向）。
 /// 加一行 = 显式声明「这一处是反向量法」，不是给路径断了的扫描开后门。
-const ABSENT_BY_DESIGN: &[(&str, &str)] = &[
-    // LR2：TS 座 `session-backend.ts` 按删了；`doc_claim_registry_tests.rs` 两处量「它必须不在」。
-    (
-        "tests/frontend/shell/doc_claim_registry_tests.rs",
-        "src/session-backend.ts",
-    ),
-];
+// 量「`session-backend.ts` 必须不在」的那两处随状态列那一族判据删了 ⇒ 今天没有反向量法的路径。
+const ABSENT_BY_DESIGN: &[(&str, &str)] = &[];
 
 /// T2：扫描层每一处以仓内根为基的路径字面量都指得到盘上东西（`ABSENT_BY_DESIGN` 里的反着核）。
 #[test]
