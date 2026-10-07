@@ -219,7 +219,7 @@ describe("SE1 清单问后端要：顺序是后端给的，前端不攒", () => 
     await settleOutline();
     expect(rowsOf().length).toBe(0);
     expect(toggleOf().disabled).toBe(true);
-    expect(toggleOf().title).toContain("这台机器上的后端版本旧");
+    expect(toggleOf().title).toContain("本机的后端版本旧");
     expect(outlineCalls().length, "结构性失败只该要一次").toBe(1);
     vi.mocked(invoke).mockClear();
     feed(userLine(101, "u101", "又说一句"));

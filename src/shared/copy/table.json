@@ -199,6 +199,16 @@
       "zh": "…",
       "args": []
     },
+    "peerVersion.said.old": {
+      "kind": "error",
+      "zh": "{machine} 的后端版本旧，需要更新",
+      "args": ["machine"]
+    },
+    "peerVersion.said.unreadable": {
+      "kind": "error",
+      "zh": "{machine} 的后端回的内容读不懂",
+      "args": ["machine"]
+    },
     "rsToolRegistry.tools.accountsName": {
       "kind": "title",
       "zh": "多账号账号库",
@@ -1822,11 +1832,6 @@
       "zh": "连不上 {machine} 的后端，这次没有执行。等它连上之后再试。",
       "args": ["machine"]
     },
-    "control.channel.oldBackend": {
-      "kind": "error",
-      "zh": "{machine} 的后端版本不对，需要更新。",
-      "args": ["machine"]
-    },
     "control.channel.unsure": {
       "kind": "error",
       "zh": "不知道 {machine} 那边做完了没有：连接断了，或者等回复超时。刷新会话列表后再决定要不要重试。",
@@ -1871,11 +1876,6 @@
       "kind": "error",
       "zh": "这次操作没有完成，cc-monitor 内部出错了。",
       "args": []
-    },
-    "control.reply.unreadable": {
-      "kind": "error",
-      "zh": "{machine} 的后端回的内容读不懂，多半是它的版本不对，需要更新。",
-      "args": ["machine"]
     },
     "terminalReads.preview.noTmux": {
       "kind": "error",
@@ -4095,11 +4095,6 @@
       "zh": "查不到记录还在不在，照常 resume",
       "args": []
     },
-    "tabSessionActions.recordUnknown.oldBackend": {
-      "kind": "error",
-      "zh": "这台机器上的后端版本旧，问不了会话记录还在不在。重装后端之后就有。",
-      "args": []
-    },
     "tabSessionActions.who.local": {
       "kind": "body",
       "zh": "本机",
@@ -4158,11 +4153,6 @@
     "accountChip.menu.notEnabled": {
       "kind": "body",
       "zh": "该远端尚未启用多账号",
-      "args": []
-    },
-    "accountChip.menu.backendOld": {
-      "kind": "body",
-      "zh": "远端后端需要更新才能用多账号",
       "args": []
     },
     "accountChip.menu.queryFailed": {
@@ -4230,11 +4220,6 @@
       "zh": " · 已是默认",
       "args": []
     },
-    "accountsDecode.bad.trust": {
-      "kind": "error",
-      "zh": "信任检查的回答格式不对，可能是后端版本不对",
-      "args": []
-    },
     "accountsDecode.where.nth": {
       "kind": "body",
       "zh": "第 {i} 个账号",
@@ -4244,11 +4229,6 @@
       "kind": "body",
       "zh": "顶层",
       "args": []
-    },
-    "accountsDecode.bad.list": {
-      "kind": "error",
-      "zh": "账号清单的格式不对（{what}），可能是后端版本不对",
-      "args": ["what"]
     },
     "agentProfile.lookup.unknown": {
       "kind": "error",
@@ -4445,31 +4425,6 @@
       "zh": "不是恰好 present / root 两格",
       "args": []
     },
-    "ccBusHooks.fetch.oldBackend": {
-      "kind": "error",
-      "zh": "这台机器上的后端版本旧，还做不了钩子诊断。重装后端之后就有。",
-      "args": []
-    },
-    "sessionReads.inputs.oldBackend": {
-      "kind": "error",
-      "zh": "这台机器上的后端版本旧，还列不出大纲。重装后端之后就有。",
-      "args": []
-    },
-    "sessionReads.find.oldBackend": {
-      "kind": "error",
-      "zh": "这台机器上的后端版本旧，还不能在会话里查找。重装后端之后就有。",
-      "args": []
-    },
-    "sessionReads.facts.oldBackend": {
-      "kind": "error",
-      "zh": "这台机器上的后端版本旧，还给不出这些。重装后端之后就有。",
-      "args": []
-    },
-    "recordReads.ask.oldBackend": {
-      "kind": "error",
-      "zh": "那台机器的后端太旧，读不了会话记录，需要更新。",
-      "args": []
-    },
     "sessionReads.missing.facts": {
       "kind": "error",
       "zh": "缺了几格、多了几格，或有一格类型不对",
@@ -4495,11 +4450,6 @@
       "zh": "缺 from / end / turns 字段，或某一轮的字段不对",
       "args": []
     },
-    "sessionReads.turns.oldBackend": {
-      "kind": "error",
-      "zh": "这台机器上的后端版本旧，还给不出每轮的摘要。重装后端之后就有。",
-      "args": []
-    },
     "sessionReads.missing.inputs": {
       "kind": "error",
       "zh": "缺 from / end / entries 字段",
@@ -4513,16 +4463,6 @@
     "sessionReads.missing.find": {
       "kind": "error",
       "zh": "缺 total / hits 字段",
-      "args": []
-    },
-    "sessionReads.ctor.badShape": {
-      "kind": "error",
-      "zh": "{op} 回来的内容{what}，两边版本可能对不上",
-      "args": ["op", "what"]
-    },
-    "sessionReads.ctor.unreadable": {
-      "kind": "error",
-      "zh": "那台机器的后端回的内容读不懂。多半是它的版本不对，需要更新。",
       "args": []
     },
     "skeletonView.ledgerFromIndex.noIndex": {
@@ -8069,16 +8009,6 @@
       "zh": "那台机器的后端太旧，看不了退出行为，需要更新。",
       "args": []
     },
-    "pubkeyPush.backend.tooOld": {
-      "kind": "error",
-      "zh": "本机后端太旧，推送不了公钥。重启 cc-monitor 就会换上新的后端。",
-      "args": []
-    },
-    "pubkeyPush.reply.badShape": {
-      "kind": "error",
-      "zh": "本机后端回的推送结果读不懂，多半是后端版本不对。",
-      "args": []
-    },
     "bePubkey.add.noOutcome": {
       "kind": "error",
       "zh": "{machine} 的后端没说公钥加没加上。",
@@ -9679,11 +9609,6 @@
       "zh": "第 {i} 条命中的格式不对：只认字符串或 b16 编码的对象",
       "args": ["i"]
     },
-    "rsCcBus.tooOld.for": {
-      "kind": "error",
-      "zh": "{machine} 的后端版本太旧，不支持这个操作。{outcome}；把这台的后端升到新版就能用。",
-      "args": ["machine", "outcome"]
-    },
     "rsCcBus.machine.local": {
       "kind": "body",
       "zh": "本机",
@@ -10686,11 +10611,6 @@
       "zh": "这份文件太大（{bytes} 字节，上限 {cap}），没有动。",
       "args": ["bytes", "cap"]
     },
-    "rsUserFiles.ask.notDone": {
-      "kind": "error",
-      "zh": "这一步没做",
-      "args": []
-    },
     "rsUserFiles.ask.backendDown": {
       "kind": "error",
       "zh": "{who} 的后端没连上，这一步要经它来写（{why}）—— 一个字节都没动。先在设置里把这台机器的后端起起来再点一次",
@@ -10845,11 +10765,6 @@
       "kind": "error",
       "zh": "本机后端不在，远端连不了：等了 {ms} 毫秒还没连上本机后端。到设置 → 后端里看本机后端的状态",
       "args": ["ms"]
-    },
-    "rsDialHost.local.tooOld": {
-      "kind": "error",
-      "zh": "本机后端太旧，远端连不了。停掉旧的本机后端、重开 monitor 后再试。",
-      "args": []
     },
     "rsLinkMux.b64.badChar": {
       "kind": "error",
@@ -11504,20 +11419,10 @@
       "zh": "启动失败，原因不明",
       "args": []
     },
-    "rsBackendPolicy.call.noData": {
-      "kind": "error",
-      "zh": "[{machine}] 的后端回答里没有数据，多半是版本不对",
-      "args": ["machine"]
-    },
     "rsBackendPolicy.call.failed": {
       "kind": "error",
       "zh": "[{machine}] 问退出策略失败：{message}",
       "args": ["machine", "message"]
-    },
-    "rsBackendPolicy.call.tooOld": {
-      "kind": "error",
-      "zh": "[{machine}] 的后端太旧，重装那台机器的后端之后再试",
-      "args": ["machine"]
     },
     "beSshConfig.host.sshGExit": {
       "kind": "error",
@@ -12199,24 +12104,9 @@
       "zh": "搜索失败 · {why}",
       "args": ["why"]
     },
-    "history.search.mergeBadShape": {
-      "kind": "error",
-      "zh": "读不懂本机后端回的搜索结果，多半是后端版本不对",
-      "args": []
-    },
     "history.search.searching": {
       "kind": "body",
       "zh": "搜索中…",
-      "args": []
-    },
-    "historyReads.reason.fallback": {
-      "kind": "error",
-      "zh": "本机后端版本旧，读不了历史清单，需要更新。",
-      "args": []
-    },
-    "historyReads.shape.unreadable": {
-      "kind": "error",
-      "zh": "本机后端回的历史清单读不懂。多半是后端版本不对，重装后端试试",
       "args": []
     },
     "history.search.summary": {
@@ -12244,36 +12134,6 @@
       "zh": "起不了会话：账号 {account} 在{where}的 API key 表里有一行，但{where}的中转没在运行（{why}）。\n先让那台机器的后端（本机：设置 → 本机后端）与它的中转起来再试，或把这个账号那一行从那台机器的凭据文件里去掉。",
       "args": ["account", "where", "why"]
     },
-    "apikeyReads.status.badShape": {
-      "kind": "error",
-      "zh": "读不懂那台后端回的凭据文件状态，多半是它的版本不对",
-      "args": []
-    },
-    "apikeyReads.write.badShape": {
-      "kind": "error",
-      "zh": "读不懂那台后端回的写入结果，多半是它的版本不对",
-      "args": []
-    },
-    "apikeyReads.routing.badShape": {
-      "kind": "error",
-      "zh": "读不懂那台后端回的账号表情况，多半是它的版本不对",
-      "args": []
-    },
-    "apikeyReads.backend.tooOld": {
-      "kind": "error",
-      "zh": "那台机器的后端太旧，重装那台机器的后端之后再试",
-      "args": []
-    },
-    "remoteProbe.reply.badShape": {
-      "kind": "error",
-      "zh": "读不懂本机后端回的测试结果，多半是后端版本不对",
-      "args": []
-    },
-    "remoteProbe.backend.tooOld": {
-      "kind": "error",
-      "zh": "本机后端太旧，测试不了连接。重启 cc-monitor 换上新后端再试",
-      "args": []
-    },
     "startupActive.gone.title": {
       "kind": "title",
       "zh": "上次所在的会话这次没出现",
@@ -12283,26 +12143,6 @@
       "kind": "body",
       "zh": "每台机器都报完了在跑的会话，里面没有 {sid}。这次留在当前的标签页",
       "args": ["sid"]
-    },
-    "portForwardReads.reply.badShape": {
-      "kind": "error",
-      "zh": "读不懂本机后端回的转发清单，多半是后端版本不对",
-      "args": []
-    },
-    "portForwardReads.backend.tooOld": {
-      "kind": "error",
-      "zh": "本机后端太旧，用不了端口转发。重启 cc-monitor 换上新后端再试",
-      "args": []
-    },
-    "sshConfigReads.reply.badShape": {
-      "kind": "error",
-      "zh": "读不懂本机后端回的 ssh 配置，多半是后端版本不对",
-      "args": []
-    },
-    "sshConfigReads.backend.tooOld": {
-      "kind": "error",
-      "zh": "本机后端太旧，读不了 ssh 配置。重启 cc-monitor 换上新后端再试",
-      "args": []
     },
     "rsHistory.launch.noSessionName": {
       "kind": "error",
@@ -12318,11 +12158,6 @@
       "kind": "body",
       "zh": "这个会话超过 {max} 字节上限，后面的内容没有显示。只读到了前 {read} 字节（{lines} 行），完整的会话记录仍在那台机器上。",
       "args": ["max", "read", "lines"]
-    },
-    "rsFrameQuery.reply.badShape": {
-      "kind": "error",
-      "zh": "{who}的回答读不懂，多半是后端版本不对",
-      "args": ["who"]
     },
     "rsFrameQuery.readPage.stuck": {
       "kind": "error",
@@ -12358,16 +12193,6 @@
       "kind": "error",
       "zh": "{who}没在 {secs} 秒内答完，已停下",
       "args": ["who", "secs"]
-    },
-    "rsFrameQuery.call.tooOld": {
-      "kind": "error",
-      "zh": "{who}的后端太旧，重装那台机器的后端之后再试",
-      "args": ["who"]
-    },
-    "accounts.oldBackend.trust": {
-      "kind": "error",
-      "zh": "那台机器的后端版本过旧，做不了信任检查。重装那台机器的后端之后再试",
-      "args": []
     },
     "accounts.local.scopeHint": {
       "kind": "body",
@@ -12412,11 +12237,6 @@
     "accounts.local.heading": {
       "kind": "title",
       "zh": "这台机器上的账号",
-      "args": []
-    },
-    "accounts.oldBackend.accounts": {
-      "kind": "error",
-      "zh": "那台机器的后端版本过旧，读不了账号清单。重装那台机器的后端之后再试",
       "args": []
     },
     "accounts.setModel.invalid": {
@@ -12542,11 +12362,6 @@
     "accounts.deriveUi.unavailable": {
       "kind": "error",
       "zh": "账号功能暂不可用",
-      "args": []
-    },
-    "accounts.deriveUi.needsUpdate": {
-      "kind": "error",
-      "zh": "远端后端需要更新",
       "args": []
     },
     "rsToolRegistry.environment.managedWhy": {
@@ -14108,11 +13923,6 @@
       "zh": "读不了这台装没装：{said}",
       "args": ["said"]
     },
-    "relayOptin.fetch.oldBackend": {
-      "kind": "error",
-      "zh": "那台机器的后端太旧，答不了这一项，需要更新。",
-      "args": []
-    },
     "relayOptin.state.installed": {
       "kind": "body",
       "zh": "已装：这台设置文件里写的就是这台中转现在的地址。",
@@ -14377,26 +14187,6 @@
       "kind": "error",
       "zh": "拿不到中转钥匙（{e}），中转没有起：没有钥匙的话谁都能用它",
       "args": ["e"]
-    },
-    "terminalOpen.backend.tooOld": {
-      "kind": "error",
-      "zh": "本机后端太旧，给远端开不了终端。重启 cc-monitor 换上新后端再试",
-      "args": []
-    },
-    "terminalOpen.reply.badShape": {
-      "kind": "error",
-      "zh": "读不懂本机后端回的开终端结果，多半是后端版本不对",
-      "args": []
-    },
-    "tmuxMint.backend.tooOld": {
-      "kind": "error",
-      "zh": "那台机器的后端太旧，给新会话取不了名。重装那台机器的后端之后再试",
-      "args": []
-    },
-    "tmuxMint.reply.badShape": {
-      "kind": "error",
-      "zh": "读不懂那台后端取的会话名，多半是它的版本不对",
-      "args": []
     },
     "tmuxMint.refused.title": {
       "kind": "error",
@@ -16036,11 +15826,6 @@
       "zh": "这台机器的后端没答出 home 在哪",
       "args": []
     },
-    "mcpReads.backend.tooOld": {
-      "kind": "error",
-      "zh": "那台机器的后端太旧，重装那台机器的后端之后再试",
-      "args": []
-    },
     "beMcpSyncFlow.apply.stale": {
       "kind": "error",
       "zh": "要写的那份配置在你看差异之后又被改过了。这一趟一个字节都没写，重新看一次差异再决定。",
@@ -16116,11 +15901,6 @@
       "zh": "删「{at}」时停下了：{why}。{done}。",
       "args": ["at", "why", "done"]
     },
-    "assetsSyncReads.reply.badShape": {
-      "kind": "error",
-      "zh": "读不懂本机后端回的同步结果，多半是后端版本不对。",
-      "args": []
-    },
     "beSkillFlow.stopped.listSep": {
       "kind": "body",
       "zh": "、",
@@ -16140,11 +15920,6 @@
       "kind": "error",
       "zh": "读不懂 PowerShell 答的执行策略：{out}",
       "args": ["out"]
-    },
-    "aliasReads.reply.badShape": {
-      "kind": "error",
-      "zh": "读不懂那台后端回的别名内容，多半是它的版本不对。",
-      "args": []
     },
     "rsProfileInstaller.preview.what": {
       "kind": "body",
@@ -16456,11 +16231,6 @@
       "zh": "这台没建账号库：全局的 MCP 由 Claude 自己管，这里只读。",
       "args": []
     },
-    "extReads.backend.tooOld": {
-      "kind": "error",
-      "zh": "那台后端比这一页旧，认不得这一问。到「机器」里把它的后端更新一下。",
-      "args": []
-    },
     "beExt.card.blocked": {
       "kind": "body",
       "zh": "这台上的 {path} 盖不了（{why}），这一个 skill 就不装了。",
@@ -16670,11 +16440,6 @@
       "kind": "error",
       "zh": "没能和别的机器对上（{e}），表里是上次对上时的样子。",
       "args": ["e"]
-    },
-    "extReads.reply.badShape": {
-      "kind": "error",
-      "zh": "读不懂后端回的这一份，多半是两边版本不一样。这一趟什么都没写。",
-      "args": []
     },
     "extPage.card.confirmRemove": {
       "kind": "action",

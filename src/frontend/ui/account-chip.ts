@@ -338,7 +338,7 @@ export class AccountChip {
       // 未启用 / 需更新：只给一条「去设置 / 管理」。
       const info =
         ui.kind === "needs-update"
-          ? copyText("accountChip.menu.backendOld")
+          ? ui.reason
           : ui.kind === "query-failed"
             ? copyText("accountChip.menu.queryFailed", { reason: ui.reason })
             : copyText("accountChip.menu.notEnabled");

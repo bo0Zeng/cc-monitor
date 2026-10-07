@@ -18,9 +18,8 @@
  * ⚠ 账号 id 只由后端推：前端交 `configDir`，一个字都不从它推账号 id（`KH2C1`）。
  */
 import { chan } from "../../comms/inward/chan";
-import { budgetWithin, jsonBody, readJson, saidOf } from "./ipc/chan-caller";
+import { budgetWithin, jsonBody, readJson, ReplyUnreadable, saidFrom } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
-import { copyText } from "./copy-table";
 
 /**
  * 那份凭据文件的状态（**只有掩码**，前端永远拿不到明文：`KS6`）。
@@ -70,7 +69,7 @@ export function decodeApikeyStatus(v: unknown): ApikeyCredentialsStatus {
     !nullableStr(v.notice) ||
     !nullableStr(v.problem)
   ) {
-    throw new Error(copyText("apikeyReads.status.badShape"));
+    throw new ReplyUnreadable("apikeyReads reply shape");
   }
   return {
     configured: v.configured,
@@ -90,7 +89,7 @@ export function decodeApikeyRouting(v: unknown): ApikeyRoutingView {
     !v.routed.every((d) => typeof d === "string") ||
     typeof v.running !== "boolean"
   ) {
-    throw new Error(copyText("apikeyReads.routing.badShape"));
+    throw new ReplyUnreadable("apikeyReads reply shape");
   }
   return { routed: v.routed as string[], running: v.running };
 }
@@ -101,8 +100,6 @@ export function decodeApikeyRouting(v: unknown): ApikeyRoutingView {
  */
 const APIKEY_BUDGET_MS = 10_000;
 
-/** 那台后端比这两问老（不认这条命令）时的那句话。 */
-const APIKEY_OLD_BACKEND = copyText("apikeyReads.backend.tooOld");
 
 /** 那台机器上那份凭据文件的状态。问不到 / 形状不对 ⇒ 抛一句人话（不退化成「没配」）。 */
 export async function readApikeyStatus(
@@ -114,7 +111,7 @@ export async function readApikeyStatus(
     const reply = await chan.call(origin, "apikey-read", body, budget);
     return decodeApikeyStatus(readJson(reply));
   } catch (e) {
-    throw new Error(saidOf(e, APIKEY_OLD_BACKEND));
+    throw new Error(saidFrom(e, origin));
   }
 }
 
@@ -130,7 +127,7 @@ export async function fetchApikeyRouting(
     const reply = await chan.call(origin, "apikey-routing", body, budget);
     return decodeApikeyRouting(readJson(reply));
   } catch (e) {
-    throw new Error(saidOf(e, APIKEY_OLD_BACKEND));
+    throw new Error(saidFrom(e, origin));
   }
 }
 
@@ -152,7 +149,7 @@ export function decodeApikeyWritten(v: unknown): ApikeyWritten {
     typeof v.masked !== "string" ||
     !nullableStr(v.baseUrl)
   ) {
-    throw new Error(copyText("apikeyReads.write.badShape"));
+    throw new ReplyUnreadable("apikeyReads reply shape");
   }
   return { account: v.account, path: v.path, masked: v.masked, baseUrl: v.baseUrl };
 }
@@ -174,6 +171,6 @@ export async function writeApikeyKey(
     const reply = await chan.call(origin, "apikey-key-set", body, budget);
     return decodeApikeyWritten(readJson(reply));
   } catch (e) {
-    throw new Error(saidOf(e, APIKEY_OLD_BACKEND));
+    throw new Error(saidFrom(e, origin));
   }
 }

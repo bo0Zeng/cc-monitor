@@ -65,7 +65,7 @@ import { stripComments } from "../../test-support/strip-comments.ts";
 type JudgmentId =
   | "J1" | "J2" | "J3" | "J4" | "J5" | "J6" | "J7"
   | "J9" | "J10" | "J11" | "J12" | "J13" | "J14" | "J15" | "J16"
-  | "J17" | "J18" | "J19" | "J20" | "J21";
+  | "J17" | "J18" | "J19" | "J20" | "J21" | "J22";
 
 /** TS 孪生的规则指纹：一段字面子串（在**剥过注释**的生产代码里数）。`file` 缺席 = 全体生产段合计。 */
 interface Needle {
@@ -475,6 +475,19 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     ],
     rustGone: ["src/frontend/shell/src/backend_policy.rs::describe_health"],
   },
+  J22: {
+    what: "因对方版本说不成的两个码（版本旧 / 回的认不出）各取哪一句、本机怎么称呼",
+    // 两侧各一个取句口，取的是表里同两条键（`peerVersion.said.*`）与同一个本机称呼（`control.machine.local`）。
+    homes: ["copy-core::backend_old", "copy-core::reply_unreadable", "copy-core::local_machine"],
+    status: "mirror",
+    defs: ["peerVersionSaid"],
+    needles: [],
+    parity: {
+      via: "src/shared/copy/table.json",
+      tests: ["tests/common/copy-core/lib_tests.rs", "tests/frontend/ui/ipc/peer-version.vitest.ts"],
+    },
+    why: "「各命令因对方版本拒绝时回一个统一码（不各自拼句）」—— 界面与 Rust 两侧都出这两句，取的是同一张表",
+  },
 };
 
 /** `NONE` = 登记时逐个读过规则、在 TS 生产段按规则搜过，没有孪生。 */
@@ -511,7 +524,10 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
   // `codex-token-core` 那一格删了：它搬进后端成模块（`agents/codex/token.rs`），不再是共享 crate，不在本表人群里。
   // `chan-core` 那一格删了：通道成了通信层 crate `comms-inward`（住 `src/comms/inward/`，不在 `src/common/` 的人群里）。
   "copy-core": {
+    backend_old: "J22",
     copy_text: "J11",
+    local_machine: "J22",
+    reply_unreadable: "J22",
     TABLE_JSON: NONE,
   },
   "creds-core": {

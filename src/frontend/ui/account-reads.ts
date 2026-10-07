@@ -10,14 +10,13 @@
 import { putAccounts } from "./app-store";
 import { LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { chan } from "../../comms/inward/chan";
-import { budgetWithin, isOldBackend, jsonBody, linesOf, readJson, saidOf } from "./ipc/chan-caller";
+import { budgetWithin, isOldBackend, jsonBody, linesOf, readJson, saidFrom } from "./ipc/chan-caller";
 import { DEFAULT_AGENT, lookupAgentProfile, type AgentProfileRow } from "./agent-profile";
 import { AGENT_PROFILE_TABLE } from "./generated/agent-profile-table";
 import { decodeAccountsList, decodeTrust } from "./accounts-decode";
 import type { AccountsState, SessionAccount } from "./accounts";
 // API key 那两问的成品（`apikey-routing`）住 `apikey-reads.ts`；本文件只给账号面包一层（`agent` 与账号清单同一个出处）。
 import { fetchApikeyRouting, type ApikeyRoutingView } from "./apikey-reads";
-import { copyText } from "./copy-table";
 
 const ACCOUNTS_TTL_MS = 30_000; // 账号列表极少变（迁移/登录才变），缓存久一点省 SSH
 const SESSION_ACCOUNTS_TTL_MS = 8_000; // 会话账号归属随起停变，照 tabs.ts tmuxCache 的 8s
@@ -42,7 +41,7 @@ const lastGood = new Map<string, { meta: NonNullable<AccountsState["meta"]>; acc
  *
  * `agent`：这次起会话的是哪一家（适配器 id）。并表只认那一家的行（条 49），后端不猜 ⇒ 由这里带过去。
  * 失败（没有控制通道 / 后端不认 / 对端说不行 / 期限到 / 形状对不上）⇒ `available:false` ＋ 一句人话（通道那一层的说法
- * 住 `ipc/chan-caller.ts::saidOf`，不在账号面再写一份）；「不可用」不是错误（前端据此降级，不弹错）。
+ * 住 `ipc/chan-caller.ts::saidFrom`，不在账号面再写一份）；「不可用」不是错误（前端据此降级，不弹错）。
  */
 export async function fetchAccounts(origin: Origin, force = false): Promise<AccountsState> {
   const now = Date.now();
@@ -70,7 +69,7 @@ export async function fetchAccounts(origin: Origin, force = false): Promise<Acco
     state = {
       origin,
       available: false,
-      error: saidOf(e, accountsOldBackend()),
+      error: saidFrom(e, origin),
       oldBackend: isOldBackend(e),
       meta: null,
       accounts: [],
@@ -91,9 +90,6 @@ const ACCOUNTS_BUDGET_MS = 30_000;
 /** 信任预检那一问的期限：30 秒 —— 与它上一个住址（逐次拨号那条的 `LIST_TIMEOUT`）同值。 */
 const TRUST_BUDGET_MS = 30_000;
 
-/** 那台后端比「账号清单上帧面」还老（不认这条命令）时的那句话。含「过旧」⇒ [`deriveUi`] 落「需更新」那一档。 */
-// 取值器、用到时才取文（模块顶层不留取文口调用 —— 顶层调用会让 Rollup 挪 chunk）。
-const accountsOldBackend = (): string => copyText("accounts.oldBackend.accounts");
 
 /**
  * 账号库那一家（适配器 id，后端并 apikey 表时认它）：新会话默认起的那一家 —— 账号 chip · 设置页 · 「新会话默认」说的都是它。
@@ -261,7 +257,7 @@ export async function checkTrust(
       available: false,
       trusted: false,
       known: false,
-      error: saidOf(e, copyText("accounts.oldBackend.trust")),
+      error: saidFrom(e, origin),
     };
   }
 }

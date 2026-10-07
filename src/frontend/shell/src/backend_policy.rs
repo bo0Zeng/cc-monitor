@@ -76,10 +76,9 @@ async fn exit_policy_call(
         return Err(said(no_channel(origin)));
     };
     if !client.accepts(cmd) {
-        return Err(copy_text(
-            "rsBackendPolicy.call.tooOld",
-            &[("machine", &origin.to_string())],
-        ));
+        return Err(copy_core::backend_old(&crate::cc_bus::machine_label(
+            origin,
+        )));
     }
     let data = client.call(cmd, args, budget).await.map_err(|e| {
         said(route_call_error(&e, |_code, message| {
@@ -92,12 +91,7 @@ async fn exit_policy_call(
             )
         }))
     })?;
-    data.ok_or_else(|| {
-        copy_text(
-            "rsBackendPolicy.call.noData",
-            &[("machine", &origin.to_string())],
-        )
-    })
+    data.ok_or_else(|| copy_core::reply_unreadable(&crate::cc_bus::machine_label(origin)))
 }
 
 /// 三态里给人看的那句话（同 `frame_query::said`）。`Done` 在本族走不到。

@@ -109,10 +109,8 @@ impl BackendDoor {
             )));
         };
         if !client.accepts(cmd) {
-            return Err(Refused::Other(crate::cc_bus::describe_backend_too_old_for(
+            return Err(Refused::Other(crate::cc_bus::describe_backend_too_old(
                 wire,
-                cmd,
-                &copy_text("rsUserFiles.ask.notDone", &[]),
             )));
         }
         // 请求一行装不装得下：后端一行上限 1 MiB（`inbound::MAX_LINE_BYTES`，本侧的镜像是

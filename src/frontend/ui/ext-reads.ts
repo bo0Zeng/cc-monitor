@@ -12,9 +12,8 @@
  * `tests/__fixtures__/ext-flow.golden.json` 钉），不比较、不推断。形状不对 ⇒ 抛「两端版本对不上」。
  */
 import { chan, ChanError, type Budget } from "../../comms/inward/chan";
-import { budgetWithin, jsonBody, readJson, refusalOf, saidOf } from "./ipc/chan-caller";
+import { budgetWithin, jsonBody, readJson, refusalOf, saidFrom, unreadableFrom } from "./ipc/chan-caller";
 import { LOCAL_ORIGIN, type Origin } from "./ipc/origin";
-import { copyText } from "./copy-table";
 import type { ExtBring } from "./generated/ExtBring";
 import type { ExtBuiltin } from "./generated/ExtBuiltin";
 import type { ExtCard } from "./generated/ExtCard";
@@ -34,7 +33,7 @@ import type { ExtUninstallCard } from "./generated/ExtUninstallCard";
 export type { ExtBring, ExtBuiltin, ExtCard, ExtCell, ExtDone, ExtKind, ExtList, ExtLoc, ExtMachine, ExtPlace, ExtRow, ExtScope, ExtSlot, ExtTarget, ExtUninstallCard };
 
 type Obj = Record<string, unknown>;
-const bad = (): Error => new Error(copyText("extReads.reply.badShape"));
+const bad = (): Error => unreadableFrom(LOCAL_ORIGIN, "ext reply shape");
 const isObj = (v: unknown): v is Obj => v !== null && typeof v === "object" && !Array.isArray(v);
 function obj(v: unknown, keys: readonly string[]): Obj {
   if (!isObj(v)) throw bad();
@@ -184,7 +183,7 @@ export class ExtRefused extends Error {
 function refused(e: unknown): ExtRefused {
   const err = e instanceof ChanError ? e.error : null;
   const code = err && err.layer === "peer" && err.why === "refused" ? (refusalOf(err.body)?.code ?? null) : null;
-  return new ExtRefused(saidOf(e, copyText("extReads.backend.tooOld")), code);
+  return new ExtRefused(saidFrom(e, LOCAL_ORIGIN), code);
 }
 
 /** 读一趟：表在本机后端，远端慢时同步那一趟另走（`assets-sync-reads.ts`）。 */

@@ -18,11 +18,10 @@
  * 3. **期限与翻页**：一件事一个期限，翻页只把后端交回的续点（`next` / `nextSeq`）原样交回去。
  */
 import { chan } from "../../comms/inward/chan";
-import { budgetWithin, jsonBody, readJson, saidOf } from "./ipc/chan-caller";
+import { budgetWithin, jsonBody, readJson, ReplyUnreadable, saidFrom } from "./ipc/chan-caller";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
 import type { JsonlLinePayload } from "./generated/JsonlLinePayload";
 import type { JsonlRecord } from "./generated/JsonlRecord";
-import { copyText } from "./copy-table";
 
 /** 一个子运行记录里的一条：渲染模型里的样子 ＋ 它的对账键（撤那个子运行的活卡用）。 */
 export interface RunRecordRow {
@@ -77,10 +76,9 @@ const exactKeys = (v: Record<string, unknown>, keys: readonly string[]): boolean
   return got.length === want.length && got.every((k, i) => k === want[i]);
 };
 
-/** 应答形状不对：给人看的那句不带内部名；哪条命令进日志。 */
+/** 应答形状不对：哪条命令只进细目（给人看的那句由 [`answered`] 按码取）。 */
 function badShape(op: string): never {
-  console.warn(`[record-reads] ${op} 的应答形状不对`);
-  throw new Error(copyText("sessionReads.ctor.unreadable"));
+  throw new ReplyUnreadable(`${op} reply shape`);
 }
 
 /** 一条记录行（后端 `record_page::record_lines`）⇒ 载荷；`origin` 由问的那一方打上。 */
@@ -180,12 +178,12 @@ export function decodeDrift(v: unknown): RecordDriftFace[] {
   });
 }
 
-/** 一问的结局 ⇒ JSON；失败 ⇒ 抛一个给人看的 `Error`（说法归调用方：`ipc/chan-caller.ts::saidOf`）。 */
-async function answered(reply: Promise<Uint8Array>): Promise<unknown> {
+/** 一问的结局 ⇒ 按形状收好的成品；失败 ⇒ 抛一个给人看的 `Error`（`ipc/chan-caller.ts::saidFrom`）。 */
+async function answered<T>(origin: Origin, reply: Promise<Uint8Array>, decode: (v: unknown) => T): Promise<T> {
   try {
-    return readJson(await reply);
+    return decode(readJson(await reply));
   } catch (e) {
-    throw new Error(saidOf(e, copyText("recordReads.ask.oldBackend")));
+    throw new Error(saidFrom(e, origin));
   }
 }
 
@@ -205,7 +203,7 @@ export async function readWholeSession(
   let total = 0;
   for (;;) {
     const body = jsonBody({ path: jsonlPath, offset, seq, whole: true });
-    const page = decodePage(origin, await answered(chan.call(origin, "history-page", body, budget)));
+    const page = await answered(origin, chan.call(origin, "history-page", body, budget), (v) => decodePage(origin, v));
     if (cancelled()) return total;
     if (page.payloads.length > 0) onChunk(page.payloads);
     total += page.payloads.length;
@@ -229,7 +227,7 @@ export async function readRange(
   let seq = seqBase;
   for (;;) {
     const body = jsonBody({ path: jsonlPath, offset: at, until, seq });
-    const page = decodePage(origin, await answered(chan.call(origin, "history-page", body, budget)));
+    const page = await answered(origin, chan.call(origin, "history-page", body, budget), (v) => decodePage(origin, v));
     out.push(...page.payloads);
     if (page.eof || page.next <= at) return out;
     at = page.next;
@@ -249,7 +247,7 @@ export async function readLines(
   if (until !== undefined) args.until = until;
   const body = jsonBody(args);
   const budget = budgetWithin(leftMs);
-  return decodeLines(origin, await answered(chan.call(origin, "history-lines", body, budget)));
+  return await answered(origin, chan.call(origin, "history-lines", body, budget), (v) => decodeLines(origin, v));
 }
 
 /** 一个子运行要读哪一个：子运行本身（运行表里那一格）‖ 派出它的那次工具调用（后端在父记录里找派出链接）。 */
@@ -259,12 +257,12 @@ export type RunWhich = { run: string; tool?: string } | { run?: string; tool: st
 export async function loadRunPage(origin: Origin, parentJsonlPath: string, which: RunWhich, from = 0): Promise<RunPage> {
   const body = jsonBody({ parent: parentJsonlPath, ...which, from });
   const budget = budgetWithin(PIECE_BUDGET_MS);
-  return decodeRun(await answered(chan.call(origin, "history-run", body, budget)));
+  return await answered(origin, chan.call(origin, "history-run", body, budget), decodeRun);
 }
 
 /** **那台后端的漂移账**（看不懂的记录类型）。 */
 export async function readRecordDrift(origin: Origin): Promise<RecordDriftFace[]> {
   const body = jsonBody({});
   const budget = budgetWithin(DRIFT_BUDGET_MS);
-  return decodeDrift(await answered(chan.call(origin, "drift-report", body, budget)));
+  return await answered(origin, chan.call(origin, "drift-report", body, budget), decodeDrift);
 }

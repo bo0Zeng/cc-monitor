@@ -5,7 +5,7 @@
  * 请求问对那台、说对那条、参数原样。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { copyText } from "../../../src/frontend/ui/copy-table";
+import { peerVersionSaid, ReplyUnreadable } from "../../../src/frontend/ui/ipc/chan-caller";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -65,7 +65,7 @@ describe("金样：表单两向（后端现算过的那几条）", () => {
   });
   it("表单严格收：多一格 / 缺一格 / 类型不对 / 认不得的「在哪起」⇒ 抛", () => {
     const f = FORM_CASES[1].form;
-    const bad = copyText("aliasReads.reply.badShape");
+    const bad = ReplyUnreadable;
     expect(() => decodeAliasForm({ ...f, extra: 1 })).toThrow(bad);
     const { ccmOther: _c, ...short } = f;
     expect(() => decodeAliasForm(short)).toThrow(bad);
@@ -78,20 +78,20 @@ describe("金样：表单两向（后端现算过的那几条）", () => {
 describe("严格收", () => {
   it("多一格 / 缺一格 / 类型不对 ⇒ 抛（每一层都查）", () => {
     const r = G.readReply as Record<string, unknown>;
-    expect(() => decodeAliasListing({ ...r, boundTerminals: 2 })).toThrow(copyText("aliasReads.reply.badShape"));
+    expect(() => decodeAliasListing({ ...r, boundTerminals: 2 })).toThrow(ReplyUnreadable);
     const { otherRc: _o, ...short } = r;
-    expect(() => decodeAliasListing(short)).toThrow(copyText("aliasReads.reply.badShape"));
+    expect(() => decodeAliasListing(short)).toThrow(ReplyUnreadable);
     const cands = r.rcCandidates as Record<string, unknown>[];
     const c0 = cands[0] as Record<string, unknown>;
     expect(() => decodeAliasListing({ ...r, rcCandidates: [{ ...c0, block: { ...(c0.block as object), extra: 1 } }] })).toThrow(
-      copyText("aliasReads.reply.badShape"),
+      ReplyUnreadable,
     );
-    expect(() => decodeAliasRender({ ...G.renderReply, collisions: [1] })).toThrow(copyText("aliasReads.reply.badShape"));
-    expect(() => decodeAliasInstallReport({ ...G.installReply, wroteAliasFile: "yes" })).toThrow(copyText("aliasReads.reply.badShape"));
+    expect(() => decodeAliasRender({ ...G.renderReply, collisions: [1] })).toThrow(ReplyUnreadable);
+    expect(() => decodeAliasInstallReport({ ...G.installReply, wroteAliasFile: "yes" })).toThrow(ReplyUnreadable);
     // 归组与清单不等长 ⇒ 对不上哪一条是哪一组，不猜。
-    expect(() => decodeAliasListing({ ...r, groups: [] })).toThrow(copyText("aliasReads.reply.badShape"));
+    expect(() => decodeAliasListing({ ...r, groups: [] })).toThrow(ReplyUnreadable);
     const a0 = (r.aliases as Record<string, unknown>[])[0];
-    expect(() => decodeAliasListing({ ...r, aliases: [{ ...a0, restTo: "claude" }] })).toThrow(copyText("aliasReads.reply.badShape"));
+    expect(() => decodeAliasListing({ ...r, aliases: [{ ...a0, restTo: "claude" }] })).toThrow(ReplyUnreadable);
   });
   it("存的时候那台说 `stale`（盘上被别处改过）⇒ 抛 AliasesStale（界面据此重读）；别的拒绝照旧是普通的错", async () => {
     invokeMock.mockRejectedValueOnce(refusedReply("stale", "被别处改过"));
@@ -103,9 +103,9 @@ describe("严格收", () => {
   });
   it("块那三口：预览只收 `{text}`；装 / 卸只收 `{}`", async () => {
     invokeMock.mockResolvedValueOnce(chanReply({ text: "x", more: 1 }));
-    await expect(renderAliasBlock("devbox", "~/.bashrc")).rejects.toThrow(copyText("aliasReads.reply.badShape"));
+    await expect(renderAliasBlock("devbox", "~/.bashrc")).rejects.toThrow(peerVersionSaid("reply_unreadable", "devbox"));
     invokeMock.mockResolvedValueOnce(chanReply({ ok: true }));
-    await expect(removeAliasBlock("devbox", "~/.bashrc")).rejects.toThrow(copyText("aliasReads.reply.badShape"));
+    await expect(removeAliasBlock("devbox", "~/.bashrc")).rejects.toThrow(peerVersionSaid("reply_unreadable", "devbox"));
   });
 });
 
@@ -149,7 +149,7 @@ describe("请求：问对那台、说对那条、参数原样", () => {
       ["<local>", "aliases-from-form", { form: emptyForm(), orig: null }],
     ]);
     invokeMock.mockResolvedValueOnce(chanReply({ form: c.form, more: 1 }));
-    await expect(aliasToForm("devbox", c.alias as never)).rejects.toThrow(copyText("aliasReads.reply.badShape"));
+    await expect(aliasToForm("devbox", c.alias as never)).rejects.toThrow(peerVersionSaid("reply_unreadable", "devbox"));
     invokeMock.mockRejectedValueOnce(refusedReply("refused", "交给 agent 的参数里有引号没配对。"));
     await expect(aliasFromForm("devbox", c.form as never, null)).rejects.toThrow("交给 agent 的参数里有引号没配对。");
   });
