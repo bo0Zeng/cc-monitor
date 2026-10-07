@@ -191,8 +191,6 @@ const UNIT: &[&str] = &[
     "tests/frontend/ui/events-burst.vitest.ts",
     "tests/frontend/ui/events-yield.vitest.ts",
     "tests/frontend/ui/file-window.vitest.ts",
-    "tests/frontend/ui/fork-ask.vitest.ts",
-    "tests/frontend/ui/fork-start.vitest.ts",
     "tests/frontend/ui/format.test.ts",
     "tests/frontend/ui/front-result.vitest.ts",
     "tests/frontend/ui/height-estimate.vitest.ts",
@@ -200,6 +198,9 @@ const UNIT: &[&str] = &[
     "tests/frontend/ui/keybindings/actions.vitest.ts",
     "tests/frontend/ui/keybindings/scope.vitest.ts",
     "tests/frontend/ui/launch-arrival.vitest.ts", // 起会话的真成功正信号（纯函数 ＋ 假定时器，不碰真窗口）
+    "tests/frontend/ui/new-session.vitest.ts", // 起新会话框（DOM ＋ 替身通道，不起会话、不碰真窗口）
+    "tests/backend/control/session_new_tests.rs", // 起新会话一个请求（替身 Deps：tmux 名单 · 铸名 · 起 ccm · 写分支记录全是替身）
+    "tests/backend/faces/session_new_face_tests.rs", // 起新会话框的这台事实（纯函数：最近目录怎么排 · 能起哪几家）
     "tests/frontend/ui/launcher-diagnostics.vitest.ts",
     "tests/frontend/ui/live-window.vitest.ts",
     "tests/frontend/ui/reconcile-shell.vitest.ts",
@@ -317,7 +318,6 @@ const SCAN: &[&str] = &[
     "tests/frontend/ui/kit/dialog.vitest.ts", // D1 生产 TS 零原生 confirm/prompt（AST 扫）· D1b 对话框必 await ＋ 调用方清单
     "tests/frontend/ui/bg-flat.vitest.ts", // tab 栏通用代码零 bg 分叉（扫 `src/frontend/ui/tabs.ts` ＋ `src/tab-*.ts`）· CSS 零 `.tab-bg`
     "tests/frontend/ui/account-availability-guard.vitest.ts",
-    "tests/frontend/ui/account-base-semantics.vitest.ts",
     "tests/frontend/ui/account-chip.vitest.ts",
     "tests/frontend/ui/accounts-decode.vitest.ts", // 读跨语言金样（`tests/__fixtures__/accounts.golden.json`）
     "tests/frontend/ui/quota-lines.vitest.ts", // 读跨语言金样（`tests/__fixtures__/quota-text.golden.json`）
@@ -493,7 +493,6 @@ const SCAN: &[&str] = &[
     "tests/frontend/ui/css-modules.vitest.ts",
     "tests/frontend/ui/entry-graphs.vitest.ts",
     "tests/frontend/ui/events-batch-schedule.vitest.ts",
-    "tests/frontend/ui/fork-flow.vitest.ts",
     "tests/frontend/ui/generated-boundary-guard.vitest.ts",
     "tests/frontend/ui/gray-light-wiring.vitest.ts",
     "tests/frontend/ui/identifier-rules-parity.vitest.ts", // 读共用金样（仓内文本）⇒ 扫描层
