@@ -1694,8 +1694,16 @@ export class TabManager {
   }
 
   /** 起新会话：那台回了「起好了 / 开窗」⇒ 长出一个占位标签页、主区换成它（报到了换成真的）。 */
-  addLaunchSlot(spec: SlotSpec): void {
+  /**
+   * 长一行占位标签页；认的是 sid、而那个会话已有标签页（恢复一条已结束的）⇒ 不长，直接切过去，回 `false`（没接）。
+   */
+  addLaunchSlot(spec: SlotSpec): boolean {
+    if ("sid" in spec.match && this.store.tabs.has(spec.match.sid)) {
+      this.switchTo(spec.match.sid);
+      return false;
+    }
     this.slots.add(spec);
+    return true;
   }
 
   /** 这一键此刻要不要让开：占位标签页那一页显着、而它作用于当前会话（底下那个真标签页不是你看着的那个）。 */

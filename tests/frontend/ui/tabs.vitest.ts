@@ -5544,6 +5544,20 @@ describe("起新会话的占位标签页接在标签页栏里", () => {
     expect(shown).toEqual([true, false]);
   });
 
+  it("★ 恢复一条已有标签页的会话（按 sid 认）⇒ 不长占位页，直接切到那个标签页、回「没接」；按目录认的新起照旧长", () => {
+    const tm = makeTM();
+    tm.createSkeletonTab("a", "/p/a", LOCAL_ORIGIN, null, null);
+    tm.createSkeletonTab("s1", "/p/s1", LOCAL_ORIGIN, null, null);
+    tm.switchTo("a");
+    const taken = tm.addLaunchSlot({ origin: LOCAL_ORIGIN, cwd: "/p", tmuxName: null, agent: "claude", match: { sid: "s1" } });
+    expect(taken, "已有标签页 ⇒ 不接").toBe(false);
+    expect(tm.debugSlots().ids, "没长占位页").toEqual([]);
+    expect(tm.activeSessionId(), "切到了那个标签页").toBe("s1");
+    expect(tm.addLaunchSlot({ origin: LOCAL_ORIGIN, cwd: "/p", tmuxName: null, agent: "claude", match: { sid: "s9" } }), "没有那个标签页 ⇒ 照旧长").toBe(true);
+    expect(tm.addLaunchSlot({ origin: LOCAL_ORIGIN, cwd: "/p", tmuxName: null, agent: "claude", match: { cwd: "/p" } })).toBe(true);
+    expect(tm.debugSlots().ids).toEqual([1, 2]);
+  });
+
   it("★ 占位那一页显着 ⇒ 作用于当前会话的快捷键（查找 · 折叠 · 翻轮 · 到底 · 关 · 开目录 · 开窗 · 菜单 · 切到终端）不落到底下那个真标签页；全局的照常", () => {
     const tm = makeTM();
     tm.createSkeletonTab("a", "/p/a", LOCAL_ORIGIN, null, null);

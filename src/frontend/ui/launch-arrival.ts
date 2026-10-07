@@ -69,9 +69,12 @@ export interface ArrivalSpec {
   slot?: { cwd: string; agent: string };
 }
 
-/** 主窗口：长出占位标签页（`main.ts` 装一次，同起新会话那一件）；别的窗口没有 ⇒ 照旧到点说一句。 */
-let slots: ((spec: SlotSpec) => void) | null = null;
-export function setArrivalSlots(fn: ((spec: SlotSpec) => void) | null): void {
+/**
+ * 主窗口：长出占位标签页（`main.ts` 装一次，同起新会话那一件）；别的窗口没有 ⇒ 照旧到点说一句。
+ * 回 `false` ＝ 没接（那个会话已有标签页，切过去了）⇒ 照旧到点说一句。
+ */
+let slots: ((spec: SlotSpec) => boolean) | null = null;
+export function setArrivalSlots(fn: ((spec: SlotSpec) => boolean) | null): void {
   slots = fn;
 }
 
@@ -176,8 +179,7 @@ export function expectArrival(spec: ArrivalSpec): void {
  */
 export function watchArrival(spec: ArrivalSpec): void {
   if (slots && spec.slot && spec.ticket === undefined && (spec.from === undefined || spec.from === MAIN_WINDOW)) {
-    slots({ origin: spec.origin, cwd: spec.slot.cwd, tmuxName: spec.tmuxName, agent: spec.slot.agent, match: spec.match });
-    return;
+    if (slots({ origin: spec.origin, cwd: spec.slot.cwd, tmuxName: spec.tmuxName, agent: spec.slot.agent, match: spec.match })) return;
   }
   const p: Pending = {
     ...spec,

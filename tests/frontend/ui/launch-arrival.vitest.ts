@@ -192,7 +192,7 @@ describe("主窗口里发起的（恢复 · cc-bus 派生 · 开窗 resume）⇒
   });
 
   it("★ 带着占位要的两样（目录 · 哪一家）、发起方是主窗口 ⇒ 交占位标签页（同起新会话那一件）、自己不计时；别的窗口发起的照旧", async () => {
-    const slot = vi.fn();
+    const slot = vi.fn((_spec: unknown) => true);
     setArrivalSlots(slot);
     watchArrival(spec({ match: { sid: "s1" }, tmuxName: "orders-cc", slot: { cwd: "/w/orders", agent: "claude" } }));
     watchArrival(spec({ match: { cwd: "/w/x" }, from: "main", slot: { cwd: "/w/x", agent: "codex" } }));
@@ -207,5 +207,14 @@ describe("主窗口里发起的（恢复 · cc-bus 派生 · 开窗 resume）⇒
     setArrivalSlots(null);
     watchArrival(spec({ match: { sid: "s8" }, slot: { cwd: "/w/s", agent: "claude" } }));
     expect(slot, "没有占位标签页（不是主窗口）⇒ 照旧").toHaveBeenCalledTimes(2);
+  });
+
+  it("★ 占位那一件不接（已有那个会话的标签页，切过去了）⇒ 照旧计时：到点没报到说「没看到」", async () => {
+    const slot = vi.fn(() => false);
+    setArrivalSlots(slot);
+    watchArrival(spec({ match: { sid: "s1" }, tmuxName: null, slot: { cwd: "/w/orders", agent: "claude" } }));
+    expect(slot).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(ARRIVAL_BUDGET_MS + 1);
+    expect(toast, "没接 ⇒ 到点照常说").toHaveBeenCalledTimes(1);
   });
 });
