@@ -185,7 +185,16 @@ export const SETTINGS_SCENES: Scene[] = [
   page("settings-general", "设置 · 通用", "通用：行为 · 恢复命令 · 高级", "general"),
   page("settings-appearance", "设置 · 外观", "外观：字 · 颜色 · 快捷键", "appearance"),
   page("settings-logs", "设置 · 日志", "日志：开关、级别、日志文件", "logs"),
-  page("settings-data", "设置 · 文件与数据 · 要你动手", "文件与数据第一栏：每台一段 · 要装 / 要装 · 可选 ·［安装方法］· 连不上的那台离线未检查", "data"),
+  page("settings-data", "设置 · 文件与数据 · 要你动手", "文件与数据第一栏：顶上各类数 · 每台一段（急的在前）· 每件 点 · 名字 · 类 · 位置 · 现状 · 主按钮 · 已做的折起 · 连不上的那台离线未检查", "data"),
+  settings("settings-data-chore-open", "设置 · 要你动手 · 实时显示点开", "点开一件：为什么 · 怎么做 · diff（钥匙遮住）· 复制这几行 / 复制改好的整份文件（含 2 件）· 不用了 · 存盘后自己认出", async () => {
+    await go("data");
+    await sleep(500);
+    const row = document.querySelector<HTMLElement>('.settings-page:not([hidden]) [data-machine="devbox"] [data-chore="relay"]');
+    row?.querySelector<HTMLButtonElement>("[aria-expanded]")?.click();
+    await sleep(300);
+    document.querySelector<HTMLElement>('.settings-page:not([hidden]) [data-machine="devbox"] [data-chore="relay"]')?.scrollIntoView({ block: "start" });
+    await sleep(400);
+  }),
   settings("settings-data-placed", "设置 · 文件与数据 · 放了什么", "第二栏：机器 chip · Claude 目录 · 改过你的文件（撤回在哪 ［前往］）· cc-monitor 的文件", async () => {
     await go("data");
     await click(await byText(".settings-page:not([hidden]) button", "cc-monitor 放了什么"));
@@ -282,11 +291,10 @@ export const SETTINGS_SCENES: Scene[] = [
   }),
   settings("settings-general-advanced", "设置 · 通用 · 高级", "通用页展开「高级：上下文上限」", async () => {
     await go("general");
-    const d = document.querySelector<HTMLDetailsElement>(".settings-page:not([hidden]) details");
-    if (d) {
-      d.open = true;
-      d.dispatchEvent(new Event("toggle"));
-      d.scrollIntoView({ block: "start" });
+    const head = document.querySelector<HTMLElement>('.settings-page:not([hidden]) [data-anchor="context-limits"] [aria-expanded]');
+    if (head) {
+      head.click();
+      head.scrollIntoView({ block: "start" });
     }
     await sleep(700);
   }),

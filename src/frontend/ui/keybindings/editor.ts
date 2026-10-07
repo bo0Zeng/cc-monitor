@@ -56,7 +56,11 @@ export class KeybindingsEditor implements OverlayHandle {
     { chordCell: HTMLElement; recordBtn: HTMLButtonElement; resetBtn: HTMLButtonElement }
   >();
 
-  constructor() {
+  /** 每次改动落盘之后（外面据此实时重数「已改 N 项」）。 */
+  private readonly onChange?: () => void;
+
+  constructor(opts: { onChange?: () => void } = {}) {
+    this.onChange = opts.onChange;
     this.overlay = this.build();
     document.body.appendChild(this.overlay);
   }
@@ -180,6 +184,7 @@ export class KeybindingsEditor implements OverlayHandle {
   private buildActionRow(action: Action): HTMLElement {
     const tr = document.createElement("tr");
     tr.className = "kb-editor-row";
+    tr.dataset.actionId = action.id;
     if (!action.available) tr.classList.add("kb-editor-row-disabled");
 
     // 动作名
@@ -327,7 +332,12 @@ export class KeybindingsEditor implements OverlayHandle {
     this.refreshRow(id);
   }
 
+  /** 单条恢复默认：默认键已被别的动作占着 ⇒ 与录新键同一条撞键确认（[`applyChord`]）；默认未绑 ⇒ 直接删覆盖。 */
   private async resetOne(action: Action): Promise<void> {
+    if (action.default !== null) {
+      await this.applyChord(action, action.default);
+      return;
+    }
     dispatcher.setOverride(action.id as ActionId, "");
     await this.persist();
     this.refreshRow(action.id as ActionId);
@@ -363,6 +373,7 @@ export class KeybindingsEditor implements OverlayHandle {
       // applyOverrides 热生效（否则跨窗后「改即生效」退化成要重启）。同窗（本编辑器所在
       // dispatcher）已即时生效，此广播是给**别的**窗口（主窗口）用的。
       void emit(SETTINGS_APPLIED_EVENT);
+      this.onChange?.();
     } catch (e) {
       console.warn("[keybindings] persist failed:", e);
       // 从前只记日志：这次改的键位眼下生效、重启就回去，界面一句不说（E §3.3）。

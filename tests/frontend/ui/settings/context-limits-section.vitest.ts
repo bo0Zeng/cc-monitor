@@ -19,6 +19,7 @@ vi.mock("@tauri-apps/api/event", () => ({ emit: vi.fn(async (n: string) => void 
 
 import { ContextLimitsSection, limitsToText, textToLimits } from "../../../../src/frontend/ui/settings/context-limits-section";
 import { readContextLimits } from "../../../../src/frontend/ui/views/context-limit";
+import { copyText } from "../../../../src/frontend/ui/copy-table";
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
@@ -55,5 +56,23 @@ describe("FIX4 · contextLimits 的入口", () => {
     ]);
     expect(emitted).toEqual(["settings-applied", "settings-applied"]);
     expect(s.element.textContent).toContain("第 1 行读不懂");
+  });
+
+  it("照稿 35 折着：标题「高级：上下文上限」、右侧「已改 N」（N ＝ 覆盖几条，0 不写）；展开才见文本框；存了数跟着变；reveal() 展开", async () => {
+    const s = new ContextLimitsSection();
+    await flush();
+    const head = s.element.querySelector<HTMLElement>("[aria-expanded]")!;
+    expect(head.getAttribute("aria-expanded")).toBe("false");
+    expect(head.textContent).toContain(copyText("contextLimits.editor.title"));
+    expect(head.textContent).toContain(copyText("contextLimits.editor.count", { n: 1 }));
+    expect(s.element.querySelector("textarea")!.closest("[hidden]")).not.toBeNull();
+    s.element.querySelector("textarea")!.value = "a = 1\nb = 2";
+    await s.save();
+    expect(head.textContent).toContain(copyText("contextLimits.editor.count", { n: 2 }));
+    s.element.querySelector("textarea")!.value = "";
+    await s.save();
+    expect(head.textContent).not.toContain(copyText("contextLimits.editor.count", { n: 0 }));
+    s.reveal();
+    expect(head.getAttribute("aria-expanded")).toBe("true");
   });
 });

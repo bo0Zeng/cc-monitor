@@ -43,28 +43,32 @@ fn report(rows: Vec<SurfaceRow>) -> ConfigSurfaceReport {
 
 #[test]
 fn 改过你的文件只算装口放的且今天在的且不在自己家里的() {
-    let got = shape(&report(vec![
-        row("ccm", EnvTier::AppInstalls, "~/.bashrc", present()),
-        row(
-            "ccm",
-            EnvTier::AppInstalls,
-            "~/.cc-monitor/bin/ccm",
-            present(),
-        ),
-        row(
-            "skill-install",
-            EnvTier::AppInstalls,
-            "~/.claude/skills",
-            SurfaceState::Absent,
-        ),
-        row(
-            "cc-bus",
-            EnvTier::AppInstalls,
-            "~/.claude/skills/cc-bus",
-            present(),
-        ),
-        row("project-mcp", EnvTier::AppInstalls, ".mcp.json", present()),
-    ]));
+    let got = shape(
+        &report(vec![
+            row("ccm", EnvTier::AppInstalls, "~/.bashrc", present()),
+            row(
+                "ccm",
+                EnvTier::AppInstalls,
+                "~/.cc-monitor/bin/ccm",
+                present(),
+            ),
+            row(
+                "skill-install",
+                EnvTier::AppInstalls,
+                "~/.claude/skills",
+                SurfaceState::Absent,
+            ),
+            row(
+                "cc-bus",
+                EnvTier::AppInstalls,
+                "~/.claude/skills/cc-bus",
+                present(),
+            ),
+            row("project-mcp", EnvTier::AppInstalls, ".mcp.json", present()),
+        ]),
+        vec![],
+        None,
+    );
     let paths: Vec<&str> = got["changedFiles"]
         .as_array()
         .unwrap()
@@ -82,7 +86,7 @@ fn 改过你的文件只算装口放的且今天在的且不在自己家里的()
 
 #[test]
 fn 要装只报确实缺的_查不动的不算缺_缺了起不了会话的才进角标() {
-    let got = shape(&report(vec![
+    let got = needs_install(&report(vec![
         row(
             "claude-cli",
             EnvTier::UserInstallsWePrompt,
@@ -110,39 +114,33 @@ fn 要装只报确实缺的_查不动的不算缺_缺了起不了会话的才进
             present(),
         ),
     ]));
-    let ids: Vec<&str> = got["needsInstall"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|n| n["id"].as_str().unwrap())
-        .collect();
+    let ids: Vec<&str> = got.iter().map(|n| n["id"].as_str().unwrap()).collect();
     assert_eq!(
         ids,
-        vec!["claude-cli", "tmux"],
-        "查不动的说成缺 ＝ 对能用的环境报假警报"
+        vec!["claude-cli"],
+        "查不动的说成缺 ＝ 对能用的环境报假警报；tmux 一律可选，缺了不进「要装」，只走 tmux 那一格"
     );
-    assert_eq!(got["needsInstall"][0]["required"], json!(true));
-    assert_eq!(got["needsInstall"][1]["required"], json!(false));
-    assert_eq!(got["chores"], json!(1), "进角标的只算缺了起不了会话的");
-    assert_eq!(got["tmux"], json!(false));
+    assert_eq!(got[0]["required"], json!(true));
 }
 
 #[test]
-fn 有没有_tmux_三态() {
-    let t = |s| {
-        shape(&report(vec![row(
-            "tmux",
-            EnvTier::UserInstallsWePrompt,
-            "tmux",
-            s,
-        )]))["tmux"]
-            .clone()
-    };
-    assert_eq!(t(present()), json!(true));
-    assert_eq!(t(SurfaceState::Absent), json!(false));
-    assert_eq!(
-        t(SurfaceState::Undetermined { why: "x".into() }),
-        json!(null),
-        "查不动不许说成没有"
-    );
+fn 成品五格_tmux_原样带_角标数照各件算() {
+    let todo = vec![
+        json!({"kind": "must", "state": "todo"}),
+        json!({"kind": "optional", "state": "todo"}),
+        json!({"kind": "decide", "state": "done"}),
+    ];
+    for tmux in [Some(true), Some(false), None] {
+        let got = shape(&report(vec![]), todo.clone(), tmux);
+        let mut keys: Vec<&str> = got
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        keys.sort();
+        assert_eq!(keys, vec!["changedFiles", "chores", "home", "tmux", "todo"]);
+        assert_eq!(got["tmux"], json!(tmux), "查不动不许说成没有");
+        assert_eq!(got["chores"], json!(1));
+    }
 }

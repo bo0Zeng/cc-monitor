@@ -15,7 +15,7 @@ import { copyText } from "../copy-table";
 import { homeShort } from "../kit/path";
 import { select as kitSelect } from "../kit/select";
 import { LS_KEYS, safeGetJson, safeSetJson } from "../local-storage";
-import { toast } from "../kit/toast";
+import { toast, undoToast } from "../kit/toast";
 import { confirmDialog, type ConfirmFn } from "../kit/dialog";
 import type { Origin } from "../generated/Origin";
 import type { ClashWins } from "../alias-reads";
@@ -239,6 +239,8 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
   let at = "~";
   let resolved: Resolved | null = null;
   let form: FormState | null = null;
+  /** 删了、还在 8 秒撤销期里的那几条（清单里先不画；到点才真交 remove）。 */
+  const pendingRemove = new Set<string>();
   let removing: { name: string; kids: string[]; pick: "reparent" | "cascade"; impact: Affected[] | null; open: boolean } | null = null;
   let impact: { names: string[]; rows: Affected[]; open: boolean } | null = null;
   let editedElsewhere = false;
@@ -463,7 +465,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
     }
     const tree = el("div", "prof-tree");
     tree.dataset.role = "tree";
-    const lines = treeOf(book.profiles);
+    const lines = treeOf(book.profiles.filter((p) => !pendingRemove.has(p.name)));
     const wide = window.matchMedia?.(WIDE).matches ?? true;
     lines.forEach((t, i) => {
       tree.appendChild(treeRow(t, i, lines));
@@ -573,6 +575,8 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
   const clashCard = (): HTMLElement => {
     const card = el("div", "prof-card prof-card-warn");
     card.dataset.role = "clash";
+    // 「要你动手」里同名那一件［去定…］带 `clash` 锚点跳到这里。
+    card.dataset.anchor = "clash";
     const names = [...new Set(clashes.map((c) => c.name))];
     const paths = [...new Set(clashes.map((c) => c.path))];
     const lines = clashes.map((c) => String(c.line)).join(copyText("profilesPage.list.sep"));
@@ -614,8 +618,17 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
   const startRemove = async (name: string): Promise<void> => {
     const kids = kidsOf(name);
     if (!kids.length) {
-      const yes = await (opts.confirm ?? confirmDialog)({ title: copyText("profilesPage.remove.confirmTitle", { name }), action: copyText("profilesPage.row.delete"), danger: true, body: copyText("profilesPage.remove.confirmBody") });
-      if (yes) await commit([{ op: "remove", name }]);
+      // 撤得回 ⇒ 直接删 ＋ 8 秒撤销（撤销 ＝ 不提交）。
+      pendingRemove.add(name);
+      render();
+      undoToast(
+        copyText("profilesPage.remove.done", { name }),
+        () => {
+          pendingRemove.delete(name);
+          render();
+        },
+        () => void commit([{ op: "remove", name }]).finally(() => pendingRemove.delete(name)),
+      );
       return;
     }
     removing = { name, kids, pick: "reparent", impact: null, open: false };

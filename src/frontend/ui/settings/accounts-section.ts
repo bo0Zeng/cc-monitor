@@ -13,6 +13,7 @@ import { recordFacet, LOCAL_MACHINE_KEY } from "./machine-status";
 import { SETTINGS_APPLIED_EVENT, OPEN_ACCOUNT_PANEL_EVENT, SETTINGS_GO_EVENT } from "./events";
 import { renderNewAccountForm, checkBaseUrl, type NewAccountForm, type NewAccountRequest } from "./account-new-form";
 import { openLoginWindow, loginInTmux } from "./account-login";
+import { machineHasTmux } from "../resume-defaults";
 import { accountRowKind, deriveUi, effectiveDefault, type Account, type AccountsState } from "../accounts";
 import { accountsAgentProfile, fetchAccounts, invalidateAccountsCache, launchAgentId } from "../account-reads";
 import { setModelForAccount, getModelForAccount } from "../account-prefs";
@@ -509,7 +510,9 @@ export class AccountsSection {
         const why = document.createElement("span");
         why.className = "acct-row-why";
         why.textContent = copyText("acctPage.login.noWindow");
-        act.append(why, button({ label: copyText("acctPage.login.inTmux"), size: "compact", onClick: stop(() => void this.tmuxLogin(origin, a)) }));
+        act.append(why);
+        // 那台说了没有 tmux ⇒ 不出［在 tmux 里登录］（tmux 一律可选，不画成「要装」）。
+        if (machineHasTmux(origin) !== false) act.appendChild(button({ label: copyText("acctPage.login.inTmux"), size: "compact", onClick: stop(() => void this.tmuxLogin(origin, a)) }));
       } else if (waiting) {
         act.appendChild(button({ label: copyText("acctPage.login.reopen"), size: "compact", onClick: stop(() => void this.login(origin, a)) }));
       } else if (!a.isDefault) {

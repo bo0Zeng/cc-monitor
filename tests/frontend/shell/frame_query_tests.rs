@@ -338,12 +338,6 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "后端出成品 `{diagnosis, snippet, source}`（`observe/cc_bus_hooks.rs`，读那台自己的 `settings.json` ＋ stat，只读）；\
          前端 `src/frontend/ui/cc-bus-hooks-reads.ts::fetchHooksReport` 问（扩展页 cc-bus 那一行每台一问）、`decodeHooksReport` 按恰好的键集合收，monitor 这一侧零发送点",
     ),
-    // 直接敲的 claude 也走中转（可选、生成让你贴）：生来就走通道（从没过 monitor）。
-    (
-        "relay-optin",
-        "后端出成品 `{state, note, missing, source, snippet, listening}`（`accounts/upstream_select/endpoint.rs::answer_optin`，读那台用户级设置文件 ＋ 钥匙文件，只读）；\
-         前端 `src/frontend/ui/relay-optin-reads.ts::fetchRelayOptin` 问（机器页「终端」栏那一块展开时问当前那台）、`decodeRelayOptin` 按恰好的键集合收，monitor 这一侧零发送点",
-    ),
     // 〔⑬「monitor 零 SSH」〕公钥推送：本机后端读 `.pub` · 组请求 · 经那台后端写或一次 exec，界面直接问本机。
     (
         "pubkey-push",
@@ -353,8 +347,20 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     // 文件与数据：同一份足迹重排的成品（`src/backend/footprint/data.rs`）。
     (
         "data-report",
-        "后端出成品 `{home, changedFiles, needsInstall, tmux, chores}`；前端 `src/frontend/ui/settings/data-reads.ts::readDataReport` 问、\
+        "后端出成品 `{home, changedFiles, todo, tmux, chores}`；前端 `src/frontend/ui/settings/data-reads.ts::readDataReport` 问、\
          `decodeDataReport` 按恰好的键集合收；monitor 这一侧零发送点，本机那一栏只答它自己那台那几行的事实（`footprint_client_facts`）",
+    ),
+    // 「要你动手」记下的一个选择：后端写它自己的 `~/.cc-monitor/chores.json`。
+    (
+        "chores-mark",
+        "后端读—改—写自己那份小文件（`src/backend/footprint/chores/marks.rs`）；前端 `src/frontend/ui/settings/data-reads.ts::markChore` 问\
+         （「要你动手」里［不用了］［还是要做］· 别名页［我自己贴］［改由 cc-monitor 接上］），monitor 这一侧零发送点",
+    ),
+    // 换 Claude 目录前那一问：后端 stat 两次回码。
+    (
+        "agent-home-check",
+        "后端回码 `{state}`（`src/backend/footprint/agent_home_check.rs`）；前端 `src/frontend/ui/settings/claude-dir-check.ts::claudeDirProblem` 问、按码取那一句；\
+         monitor 这一侧零发送点（界面不再自己问两次 `files-stat` 去判）",
     ),
     // 足迹：成品由那台后端出（申报表 ＋ 判定进了后端）。
     (
@@ -621,12 +627,6 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "列一个目录：后端 `files/mod.rs::answer_ls` 出 `{entries, truncated}`；主界面只在 `$PROFILE` 备份那一格用它认备份名，\
          判读（「名字里有 `.ccm-backup-`」）住 `profile-backups.ts`",
     ),
-    // 基数 → 增量 +1：设置里填的 Claude 数据目录存之前问本机后端那个路径在不在（`src/frontend/ui/settings/claude-dir-check.ts`）。
-    (
-        "files-stat",
-        "一个路径的元数据：后端 `files/mod.rs` 出 `{kind, …}`；设置窗只看 `kind` 是不是目录、问不到时拒的码是不是「读不到」，\
-         判读住 `claude-dir-check.ts`",
-    ),
 ];
 
 /// monitor 生产段里**拼写与某条已迁帧命令相同、却不是发送点**的字面量 —— `(拼写, 处数, 为什么)`。
@@ -671,12 +671,6 @@ const ASKED_BY_MONITOR_ITSELF: &[(&str, usize, &str)] = &[
         "files-ls",
         1,
         "文件窗口列目录（`filewin/source.rs::CMD_LS`）：窗口进程自己问那台后端，不是替主界面转",
-    ),
-    // 文件窗口问一个路径的元数据走它自己的那几问（`filewin/props.rs::CMD_STAT` · `transfer.rs` · `writeops.rs`），不是替主界面转。
-    (
-        "files-stat",
-        3,
-        "文件窗口（属性框 · 传输前探目标 · 改权限前读现值）各问一次那台后端，窗口进程自己的事",
     ),
     // 文件窗口「在此打开终端」。窗口只交意图（经通道 `terminal-open`），
     //   monitor 接下来补机器事实、问本机后端渲那一行、开窗（`chan/host.rs::TERMINAL_SSH`）—— 与主界面开终端同一条路。

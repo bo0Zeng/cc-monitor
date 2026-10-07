@@ -361,7 +361,7 @@ describe("P2s backend 开关区", () => {
     // ⚠ 原来缺席 ⇒ 画「— 无记录」—— 那是一条**前端的回落判定**（缺格当无记录）。
     //   `backend_status` 是 monitor 自己的命令、与界面同一个构建，缺格只能是程序错 ⇒ 说出来（D7 / D11），
     //   更不许补一个「四个 0」去让谁判出「没崩过」（「答不出来」与「没崩过」不许混用）。
-    const badShape = (COPY_TABLE.entries as Record<string, { zh: string }>)["backend.health.badShape"]!.zh;
+    const badShape = copyText("peerVersion.said.unreadable", { machine: copyText("control.machine.local") });
     const unknown = FACE["无记录"]!;
     for (const [what, health] of [
       ["缺席", undefined],

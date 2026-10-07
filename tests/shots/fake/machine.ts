@@ -187,22 +187,20 @@ export function machineOps(): Record<string, OpHandler> {
     "ssh-config-aliases": () => ({ aliases: ["devbox", "gpu-01", "win-laptop", "bastion"] }),
     "exit-policy-read": () => ({ state: "absent", killOnExit: false, reason: null, path: null, said: copyText("backendPolicy.exit.unattended") }),
     "footprint-report": () => footprint(),
-    // 文件与数据：devbox 缺 tmux（可选）；本机缺 Claude Code 之外都齐；改过 ~/.bashrc 与扩展装的 skill。
-    "data-report": (o) => ({
-      home: HOME,
-      changedFiles: [
-        { path: "~/.bashrc", what: "ccm 命令入口", undo: { page: "machine", tab: "config", anchor: "connect-terminal" } },
-        { path: "~/.claude/skills/cc-bus", what: "cc-bus", undo: { page: "ext" } },
-      ],
-      needsInstall:
-        o === "devbox"
-          ? [{ id: "tmux", name: "tmux", what: "tmux", required: false, howUrl: "https://github.com/tmux/tmux/wiki/Installing" }]
-          : o === "<local>"
-            ? [{ id: "claude-cli", name: "Claude Code", what: "claude", required: true, howUrl: "https://docs.anthropic.com/en/docs/claude-code/setup" }]
-            : [],
-      tmux: o !== "devbox",
-      chores: o === "<local>" ? 1 : 0,
-    }),
+    // 文件与数据：devbox 照稿 25 那六件（旧 ccm · 两条重名 · 失效行 · 实时显示 · 收信）；本机缺一个可选的开终端工具、实时显示已做；改过 ~/.bashrc 与扩展装的 skill。
+    "data-report": (o) => {
+      const todo = o === "devbox" ? DEVBOX_CHORES : o === "<local>" ? LOCAL_CHORES : [];
+      return {
+        home: HOME,
+        changedFiles: [
+          { path: "~/.bashrc", what: "ccm 命令入口", undo: { page: "machine", tab: "config", anchor: "connect-terminal" } },
+          { path: "~/.claude/skills/cc-bus", what: "cc-bus", undo: { page: "ext" } },
+        ],
+        todo,
+        tmux: o !== "win-laptop",
+        chores: todo.filter((c) => ["must", "install", "decide"].includes(c.kind) && (c.state === "todo" || c.state === "expired")).length,
+      };
+    },
     "sessions-where": (_o, req, w) => ({
       results: (req.sids as string[]).map((sid) => {
         const s = w.sessions.find((x) => x.sid === sid);
@@ -333,3 +331,40 @@ function tryMachineTable(edits: Record<string, unknown>[], w: World): Record<str
   }
   return null;
 }
+
+/** 「要你动手」一件（假后端照 `footprint/chores` 的成品形状）。 */
+function chore(over: Record<string, unknown>): Record<string, unknown> & { kind: string; state: string } {
+  return { id: "", kind: "optional", state: "todo", name: "", loc: "", said: "", why: "", steps: [], diff: [], copy: null, whole: null, wholeCovers: [], file: null, go: null, howUrl: null, mask: null, action: "copySnippet", ...over } as Record<string, unknown> & { kind: string; state: string };
+}
+
+const SETTINGS = `${HOME}/.claude/settings.json`;
+const WHOLE = '{\n  "env": {\n    "ANTHROPIC_BASE_URL": "http://127.0.0.1:8788/k/9f3c2a71/claude",\n    "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "32000"\n  }\n}\n';
+const DEVBOX_CHORES = [
+  chore({ id: "stale-ccm", kind: "must", name: "终端里的 ccm 是旧的一份", loc: "/usr/local/bin/ccm", said: "非 cc-monitor 放置 · 先于 cc-monitor 那份", why: "敲 ccm 和别名先找到的是 /usr/local/bin/ccm：不是 cc-monitor 放的，起的会话 cc-monitor 管不到", steps: ["复制下面这一行，到这台的终端里跑"], copy: "sudo rm '/usr/local/bin/ccm'", action: "copyCommand" }),
+  chore({ id: "clash:cc", kind: "decide", name: "cc 重名 · 你写的 / 清单", loc: "~/.bashrc 第 125 行", said: "生效：你写的 · 清单那条被盖", why: "现在敲 cc 起的是后定义的那一个；没生效的那一条白放着", copy: `${HOME}/.bashrc:125`, file: `${HOME}/.bashrc`, go: { page: "machine", tab: "config", anchor: "clash" }, action: "decide" }),
+  chore({ id: "clash:cct", kind: "decide", name: "cct 重名 · 你写的 / 清单", loc: "~/.bashrc 第 129 行", said: "生效：你写的 · 清单那条被盖", why: "现在敲 cct 起的是后定义的那一个；没生效的那一条白放着", copy: `${HOME}/.bashrc:129`, file: `${HOME}/.bashrc`, go: { page: "machine", tab: "config", anchor: "clash" }, action: "decide" }),
+  chore({ id: `dead:${HOME}/.bashrc`, name: ".bashrc · 2 行失效", loc: "~/.bashrc 第 118, 119 行", said: "指向的文件已不存在 · 无影响", why: "这几行指向的文件已经不在了，留着不碍事", steps: ["第 118 行：source ~/.old-ccm.sh", "第 119 行：. ~/bin/ccm-env"], copy: `${HOME}/.bashrc:118`, file: `${HOME}/.bashrc`, action: "locate" }),
+  chore({
+    id: "relay",
+    name: "直接敲的 claude 也实时显示",
+    loc: "~/.claude/settings.json · env",
+    said: "当前：写入记录后才显示",
+    why: "在终端里直接敲起的会话，要等写进记录才显示，慢一拍；贴好这一行之后也实时显示",
+    steps: ["打开 ~/.claude/settings.json", "在第 2 行后面加下面 1 行", "存盘 · 新开的会话生效"],
+    diff: [
+      { n: 2, op: "same", text: '  "env": {' },
+      { n: null, op: "add", text: '    "ANTHROPIC_BASE_URL": "http://127.0.0.1:8788/k/9f3c2a71/claude",' },
+      { n: 3, op: "same", text: '    "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "32000"' },
+    ],
+    copy: '    "ANTHROPIC_BASE_URL": "http://127.0.0.1:8788/k/9f3c2a71/claude",',
+    whole: WHOLE,
+    wholeCovers: ["relay", "cc-bus-hooks"],
+    file: SETTINGS,
+    mask: "9f3c2a71",
+  }),
+  chore({ id: "cc-bus-hooks", name: "cc-bus 自动收信", loc: "~/.claude/settings.json · hooks", said: "会话开始上线 · 每轮结束收信", why: "会话开始时登记，每轮结束时收信", steps: ["打开 ~/.claude/settings.json", "在第 5 行后面加下面 12 行", "存盘 · 新开的会话生效"], copy: '"hooks": {}', whole: WHOLE, wholeCovers: ["relay", "cc-bus-hooks"], file: SETTINGS }),
+];
+const LOCAL_CHORES = [
+  chore({ id: "install:xdg-terminal-exec", kind: "installOptional", name: "xdg-terminal-exec", loc: "xdg-terminal-exec", said: "缺了少一个功能", action: "how", howUrl: "https://gitlab.freedesktop.org/terminal-wg/specifications" }),
+  chore({ id: "relay", state: "done", name: "直接敲的 claude 也实时显示", loc: "~/.claude/settings.json · env", said: "已实时显示", file: SETTINGS }),
+];

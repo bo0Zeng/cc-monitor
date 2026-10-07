@@ -55,9 +55,9 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
       chan: {
         subscribe: () => Promise.resolve({ want: () => undefined, stop: () => undefined }),
         call: (origin: string, op: string, body: Uint8Array) => {
-          const args = JSON.parse(new TextDecoder().decode(body)) as { args: string[] };
+          const args = JSON.parse(new TextDecoder().decode(body)) as { args?: string[] };
           seen.push({ cmd: `chan:${op}`, args: { origin, ...args } });
-          return Promise.resolve(new TextEncoder().encode(JSON.stringify({ line: `LINE ${args.args.join(" ")}` })));
+          return Promise.resolve(new TextEncoder().encode(JSON.stringify({ line: `LINE ${(args.args ?? []).join(" ")}` })));
         },
       },
     }));
@@ -246,6 +246,7 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
     await open(el);
     // 同名函数交给清单那一块画（三个选择）：标题里说生效的是哪一个（按后端给的码取句）。
     const clash = el.querySelector<HTMLElement>('[data-role="clash"]')!;
+    expect(clash.dataset.anchor, "「要你动手」同名那一件［去定…］落不到这里").toBe("clash");
     expect(clash.textContent).toContain(copyText("machineAliases.clash.nowYours"));
     expect(clash.textContent).toContain("~/rc-a");
     const access = el.querySelector<HTMLElement>('[data-role="access"]')!;
@@ -260,15 +261,22 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
     expect(el.querySelector('[data-role="clash"]')!.textContent).toContain(copyText("machineAliases.clash.nowList"));
   });
 
-  it("「我自己贴」给的是接入那几行（问后端要块的渲染），整份清单从不上屏", async () => {
+  it("「我自己贴」交那台记下、去「要你动手」那一件（不再就地弹代码）；那一行变「已选自己贴」；［改由 cc-monitor 接上］撤记录再照常接上", async () => {
     const el = await mount();
+    const went: unknown[] = [];
+    el.addEventListener("settings-go", (e) => went.push((e as CustomEvent).detail));
     await open(el);
     clickText(el, "自己贴");
     await flush();
-    expect(seen.filter((c) => c.cmd === "aliases_block_render").map((c) => c.args)).toEqual([{ origin: "<local>", rcPath: "/h/rc-a" }]);
-    const out = el.querySelector<HTMLTextAreaElement>(".ccm-rc-paste textarea")!;
-    expect(out.value).toBe("# 接入那几行 → /h/rc-a");
-    expect(el.innerHTML).not.toContain("整份别名文件不该出现在界面上");
+    expect(seen.filter((c) => c.cmd === "chan:chores-mark").map((c) => c.args)).toEqual([{ origin: "<local>", op: "selfPaste", rc: "/h/rc-a" }]);
+    expect(seen.some((c) => c.cmd === "aliases_block_render"), "不再就地渲染那几行").toBe(false);
+    expect(went).toEqual([{ page: "data", anchor: "chores:<local>" }]);
+    const access = el.querySelector<HTMLElement>('[data-role="access"]')!;
+    expect(access.textContent).toContain(copyText("machineAliases.selfPaste.waiting"));
+    clickText(access, copyText("machineAliases.selfPaste.undo"));
+    await flush();
+    expect(seen.filter((c) => c.cmd === "chan:chores-mark").at(-1)!.args).toEqual({ origin: "<local>", op: "unselfPaste" });
+    expect(seen.filter((c) => c.cmd === "aliases_block_install").map((c) => (c.args as { rcPath: string }).rcPath)).toEqual(["/h/rc-a"]);
   });
 
   it("换一份：其它文件交给读回口过围栏、选中它再接入；过不了围栏 ⇒ 原话上屏", async () => {
@@ -313,8 +321,8 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
     await flush();
     clickText(el, "自己贴");
     await flush();
-    const sent = seen.filter((c) => c.cmd.startsWith("aliases_") || c.cmd.startsWith("profiles_"));
-    expect(new Set(sent.map((c) => c.cmd))).toEqual(new Set(["aliases_read", "profiles_read", "aliases_block_render", "aliases_block_install", "aliases_block_remove"]));
+    const sent = seen.filter((c) => c.cmd.startsWith("aliases_") || c.cmd.startsWith("profiles_") || c.cmd === "chan:chores-mark");
+    expect(new Set(sent.map((c) => c.cmd))).toEqual(new Set(["aliases_read", "profiles_read", "aliases_block_render", "aliases_block_install", "aliases_block_remove", "chan:chores-mark"]));
     expect(sent.filter((c) => (c.args as { origin?: string }).origin !== "devbox"), "有一发没带那台的 origin").toEqual([]);
     expect(seen.filter((c) => !sent.includes(c)), "远端卡问了只有本机才答得了的事").toEqual([]);
     expect(done).toEqual(["install:ok", "remove:ok"]);

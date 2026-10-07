@@ -282,13 +282,6 @@ const DESCENDING_SPECIFICITY_EXCEPTIONS: readonly {
     kind: "harmless",
     why: "〔AR1 判〕`:hover:not(:disabled)` 与 `:disabled` 互斥（同一颗按钮同一刻只落一边），且两边属性不相交（前者只设底色 / 字色 / 边框色，后者只设 `cursor` / `opacity`）",
   },
-  {
-    file: "src/frontend/ui/styles/settings.css",
-    later: ".paste-block-out",
-    earlier: ".ccm-alias-gen-out > .paste-block-out",
-    kind: "harmless",
-    why: "〔AR1 判〕属性不相交：前者只设 `color`，后者设字体 / 宽度 / 换行 / 横向滚动，先后翻转不改变任何一个声明的胜负",
-  },
 ];
 
 const NDS = "no-descending-specificity";

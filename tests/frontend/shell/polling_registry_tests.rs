@@ -435,6 +435,7 @@ const SCHEDULING_SITES: &[(&str, &str, usize, &str)] = &[
     //   `main.ts`，而它也要这段代理；设置窗没有代码块，不加载它）。
     //   **一处都没多、一处都没少，只是换了文件**：3 = 1 ＋ 2。
     ("src/frontend/ui/entry-render-common.ts", "setTimeout", 2, "① ② 1.2s 后把「已复制」/「失败」还原成「复制」。一次性 UI 反馈。"),
+    ("src/frontend/ui/settings/data-page.ts", "setTimeout", 1, "文件与数据从别处带进来滚到那台那一段：段头高亮 1.5 秒后摘掉（一次性 UI 反馈，不取数）。"),
     ("src/frontend/ui/settings/accounts-section.ts", "setTimeout", 1, "账号页收到后端推来的 `accounts-changed` / `quota-changed`：300ms 内的几帧合成一次重读（每来一帧重排一次，不自链、不取数）。一次性合批，不是 data-poll。"),
     ("src/frontend/ui/settings/panel.ts", "setTimeout", 1, "带目的地打开：1.5s 后撤掉那一节的高亮。一次性 UI 反馈。"),
     // `cc_integration.ts` 并进 `machine-aliases.ts`（终端集成成了 PowerShell 那一侧的别名块）⇒ 那一处跟着换文件：一处没多一处没少。

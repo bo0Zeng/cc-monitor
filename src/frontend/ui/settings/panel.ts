@@ -27,7 +27,6 @@ import { claudeDirIn, setClaudeDirOverride } from "../paths";
 import { loadConfig } from "../config";
 import { AccountsSection } from "./accounts-section";
 import { ExtSection } from "./ext-section"; // 顶层「扩展」：跨机器的 skill / MCP，一张表 ＋ 一个抽屉
-import { RelayOptinSection } from "./relay-optin-section"; // 「终端」栏：直接敲的 claude 也走中转（可选、生成让你贴）
 import { DiagnosticsSection } from "./diagnostics-section";
 import { makeSkeleton } from "./skeleton";
 import { SettingsRouter } from "./router";
@@ -37,7 +36,7 @@ import type { IconName } from "../kit/icon";
 import { createRestartBar, markRestartNeeded } from "./restart-notice";
 import { claudeDirProblem } from "./claude-dir-check";
 import { createUnknownKeysBar, rerenderUnknownKeys } from "./unknown-keys-notice"; // 🔴 P12：未知键要出声
-import { getCurrentMachine, setCurrentMachine } from "./machine-context";
+import { setCurrentMachine } from "./machine-context";
 import { LOCAL_ORIGIN, isLocalOrigin } from "../ipc/origin";
 import { toast } from "../kit/toast";
 import { toggleSwitch } from "../kit/switch";
@@ -192,6 +191,9 @@ const SETTINGS_TARGET_EVENT = "settings-target";
 const MACHINE_TAB_OF_TARGET: Record<string, string> = { acct: "acct", config: "config" };
 /** 顶层「扩展」页的路由 id。 */
 
+/** 带目的地跳到一节时发给那一节的事件：折着的那一节据此展开。 */
+const REVEAL_EVENT = "settings-reveal";
+
 export class SettingsPanel {
   private el: HTMLElement;
   /** S2：页面路由器。`open()` 每次回落地页（计划指定不记忆上次停在哪一页）。 */
@@ -287,7 +289,6 @@ export class SettingsPanel {
   /** 后端报来的各台状态成品（按后端那套名字）。 */
   private readonly machineOf = new Map<string, MachineState>();
   /** 「终端」栏「直接敲的 claude 也走中转」那一块：回到机器页时展开过就重问。 */
-  private relayOptin?: RelayOptinSection;
 
   // 通用页「行为」那几个开关与「恢复」那一组（拨了马上存；存失败拇指退回 ＋ 行下一句）
   private autoFollowSw!: SwitchHandle;
@@ -704,6 +705,11 @@ export class SettingsPanel {
     this.pendingTarget = null;
     if (!pageId) return;
     this.router.navigate(pageId);
+    // 文件与数据那一页的锚点带着机器（`chores:<origin>` · `placed:<origin>`）：交给那一页落（那一段可能还没读回来）。
+    if (pageId === PAGE.data && t.anchor && /^(chores|placed):/.test(t.anchor)) {
+      this.dataPage?.focus(t.anchor);
+      return;
+    }
     const tabs = this.machinePages.get(pageId)?.tabs;
     const tabId = t.tab ? MACHINE_TAB_OF_TARGET[t.tab] : undefined;
     if (tabs && tabId) tabs.navigate(`${pageId}#${tabId}`);
@@ -714,6 +720,7 @@ export class SettingsPanel {
       (tabs && tabId ? tabs.navButtonOf(`${pageId}#${tabId}`) : null) ??
       page.querySelector<HTMLElement>(":scope > .settings-page-head");
     if (!spot) return;
+    spot.dispatchEvent(new Event(REVEAL_EVENT));
     spot.scrollIntoView?.({ block: "nearest" });
     spot.classList.add("settings-highlight");
     window.setTimeout(() => spot.classList.remove("settings-highlight"), SETTINGS_HIGHLIGHT_MS);
@@ -993,7 +1000,16 @@ export class SettingsPanel {
     const generalPage = document.createElement("div");
     generalPage.appendChild(this.safeBlock(copyText("settingsPanel.group.behavior"), () => this.buildBehaviorGroup()));
     generalPage.appendChild(this.safeBlock(copyText("settingsPanel.group.resume"), () => this.buildResumeGroup()));
-    const limitsBlock = this.safeBlock(copyText("contextLimits.editor.title"), () => new ContextLimitsSection().element, { untitled: true });
+    let limits: ContextLimitsSection | null = null;
+    const limitsBlock = this.safeBlock(
+      copyText("contextLimits.editor.title"),
+      () => {
+        limits = new ContextLimitsSection();
+        return limits.element;
+      },
+      { untitled: true },
+    );
+    limitsBlock.addEventListener(REVEAL_EVENT, () => limits?.reveal());
     // 主窗口［设上限］开 `{page: "general", anchor: "context-limits"}`：落到这一节（展开）并高亮。
     limitsBlock.dataset.anchor = "context-limits";
     generalPage.appendChild(limitsBlock);
@@ -1203,21 +1219,7 @@ export class SettingsPanel {
           },
         ),
       },
-      // 机器页「终端」栏：让直接敲的 claude 也走中转（可选、生成让你贴）。本机远端同一块，跟当前机器走；
-      //   构造零 I/O，第一次展开才问那台（要贴的那一段带着中转钥匙，不展开不进界面）。
-      {
-        appliesTo: "both",
-        tab: "term",
-        el: this.safeBlock(
-          copyText("relayOptin.section.title"),
-          () => {
-            const sec = new RelayOptinSection();
-            this.relayOptin = sec;
-            return sec.element;
-          },
-          { untitled: true },
-        ),
-      },
+      // 「让直接敲的 claude 也走中转」搬进「文件与数据 → 要你动手」（那台后端出改法，`footprint/chores`）。
       // 〔资产目录 · 插件〕三块搬走了：skill / MCP 是跨机器的一类对象，住顶层「扩展」页（一张表 ＋ 一个抽屉）；
       //   插件只读列表没有可做的事，先拿掉。
       // cc-bus 钩子那一块拿掉了：cc-bus 是扩展页里的一行，它的内置备注下面每台一行钩子状态与要加的内容。
@@ -1331,14 +1333,12 @@ export class SettingsPanel {
       // 页 id 建卡时定死、不跟着改名走 ⇒ 这页讲的是哪台问机器列表（改过名的是新名；刚导入的是它的别名）。
       // 还没填主机地址的卡不是一台连得上的机器 ⇒ 不切当前机器、不把按机器的那几块搬过来（它们会去问一台不存在的机器）。
       if (!isLocal && this.remoteSection?.isUnconfiguredPage(id)) return;
-      const before = getCurrentMachine();
       setCurrentMachine(
         isLocal ? LOCAL_ORIGIN : (this.remoteSection?.originOfPage(id) ?? id.slice(MACHINE_PAGE_PREFIX.length)),
       );
       // 回到机器页 ＝ 展开过的那几块重读一次（照提示在终端里改完回来，不该还是旧的）。
       // 换了机器的由各块自己的订阅重读，这里只管同一台再进来；本机别名块不跟机器走，进本机页就重读。
       if (isLocal) rereadAliases(LOCAL_ORIGIN);
-      if (getCurrentMachine() === before) this.relayOptin?.rereadIfOpened();
       const page = router.pageContentOf(id);
       if (page) this.movePerMachineTo(page, isLocal, id);
     });
@@ -1561,7 +1561,7 @@ export class SettingsPanel {
     openBtn.className = "settings-btn";
     openBtn.textContent = copyText("settingsPanel.keybindings.open");
     openBtn.addEventListener("click", () => {
-      if (!this.kbEditor) this.kbEditor = new KeybindingsEditor();
+      if (!this.kbEditor) this.kbEditor = new KeybindingsEditor({ onChange: () => this.refreshKbChip() });
       this.kbEditor.open();
     });
     row.appendChild(openBtn);

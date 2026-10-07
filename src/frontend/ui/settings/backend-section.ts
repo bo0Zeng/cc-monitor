@@ -36,7 +36,7 @@
 
 import { commands, type StopAnswer } from "../ipc/commands";
 import { chan } from "../../../comms/inward/chan";
-import { budgetWithin, jsonBody, readJson, saidOf } from "../ipc/chan-caller";
+import { budgetWithin, jsonBody, peerVersionSaid, readJson, saidFrom, unreadableFrom } from "../ipc/chan-caller";
 import { isLocalOrigin, type Origin } from "../ipc/origin";
 import { hostOs } from "./host-os";
 import { noteLocalCcm } from "./machine-aliases"; // 本机 ccm 那一格的唯一写点
@@ -108,14 +108,9 @@ function readExitAnswer(raw: unknown): ExitAnswer | null {
 /** 「退出行为」那两问的期限：10 秒 —— 与它们上一个住址（monitor `backend_policy::EXIT_POLICY_BUDGET`）同值。 */
 const EXIT_POLICY_BUDGET_MS = 10_000;
 
-/** 那台后端比「退出行为」搬过去还老（不认这两条命令）时的那句话。 */
-// 做成函数、用到时才取文（模块顶层不留取文口调用 —— 顶层调用会让 Rollup 把设置面板挪进主窗共享 chunk）。
-const EXIT_POLICY_OLD_BACKEND = (): string =>
-  copyText("backend.exitPolicy.oldBackend");
-
 /**
  * 问那台机器（本机也一样）「退出行为」那个值：后端 `exit-policy-read`，经通道。
- * 回后端那份原样（交给 [`readExitAnswer`] 收）。**失败就抛**（一句人话，通道那一层的说法住 `chan-caller.ts::saidOf`）。
+ * 回后端那份原样（交给 [`readExitAnswer`] 收）。**失败就抛**（一句人话，说法按码取，住 `chan-caller.ts::saidFrom`）。
  */
 async function askExitPolicy(origin: Origin): Promise<unknown> {
   try {
@@ -123,7 +118,7 @@ async function askExitPolicy(origin: Origin): Promise<unknown> {
     const budget = budgetWithin(EXIT_POLICY_BUDGET_MS);
     return readJson(await chan.call(origin, "exit-policy-read", body, budget));
   } catch (e) {
-    throw new Error(saidOf(e, EXIT_POLICY_OLD_BACKEND()));
+    throw new Error(saidFrom(e, origin));
   }
 }
 
@@ -134,7 +129,7 @@ async function putExitPolicy(origin: Origin, kill: boolean): Promise<unknown> {
     const budget = budgetWithin(EXIT_POLICY_BUDGET_MS);
     return readJson(await chan.call(origin, "exit-policy-set", body, budget));
   } catch (e) {
-    throw new Error(saidOf(e, EXIT_POLICY_OLD_BACKEND()));
+    throw new Error(saidFrom(e, origin));
   }
 }
 
@@ -163,10 +158,10 @@ async function askBackendLog(origin: Origin): Promise<BackendLog> {
     const budget = budgetWithin(EXIT_POLICY_BUDGET_MS);
     raw = readJson(await chan.call(origin, "backend-log", body, budget));
   } catch (e) {
-    throw new Error(saidOf(e, copyText("backend.log.oldBackend")));
+    throw new Error(saidFrom(e, origin));
   }
   const log = readBackendLog(raw);
-  if (!log) throw new Error(copyText("backend.log.badShape"));
+  if (!log) throw unreadableFrom(origin, "backend-log reply shape");
   return log;
 }
 
@@ -613,7 +608,7 @@ export class BackendSection {
     for (const extra of col.querySelectorAll("[data-health-extra]")) extra.remove();
     const face = decodeHealthFace(raw);
     if (face === null) {
-      el.textContent = copyText("backend.health.badShape");
+      el.textContent = peerVersionSaid("reply_unreadable", origin);
       delete el.dataset.health;
       console.warn(`[PB1] ${origin} 的健康读数形状不对：${JSON.stringify(raw)}`);
       return;
@@ -735,7 +730,7 @@ export class BackendSection {
   private async toggleKill(origin: string, want: boolean): Promise<boolean> {
     try {
       const back = readExitAnswer(await putExitPolicy(origin, want));
-      if (back === null) throw new Error(copyText("backend.policy.badShape"));
+      if (back === null) throw new Error(peerVersionSaid("reply_unreadable", origin));
       // 开关变了 ⇒ 那句「退出时会发生什么」也变了，同一拍重画。
       void this.paintStatus(origin);
       return true;

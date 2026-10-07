@@ -913,6 +913,13 @@ mod tests {
              读不懂的那份不覆盖。入口两扇：中转换号那一路（上游选择）· 帧面改轮换 / 现在就换那一路",
         ),
         (
+            "footprint/chores/marks.rs",
+            "**「要你动手」记下的选择** `~/.cc-monitor/chores.json`：点过「不用了」的那几件 · 选了「我自己贴」的那份启动文件。\
+             文件名 / 格式 / 落点都是本仓定的、只有后端读它 ⇒ 后端**自己的**状态，不是用户数据。在跨进程锁里读盘 → 改 → \
+             经 `own_state` 原子写（`O_EXCL` 临时文件 · 0600 · 写满 → 挪过去）；只建 `~/.cc-monitor` 那一层；读不懂的那份不覆盖。\
+             线上入口只有命令表资产那一族的 `chores-mark`（＋ 派生的 CLI 面）",
+        ),
+        (
             "assets/skill_ledger.rs",
             "**skill 装记录** `~/.cc-monitor/skill-installs.json`：从别的机器装到这台的 skill，装时写进了哪几个文件 \
              （各自的摘要 ＋ 装之前在不在）。只删装时写进去的文件 —— 卸只删这里记着的。文件名 / 格式 / 落点都是本仓定的、\
@@ -1127,6 +1134,12 @@ mod tests {
         (
             "assets/skill_ledger.rs",
             "skill_ledger::answer_",
+            "stream/inbound/registry/assets.rs",
+        ),
+        // 「要你动手」记下的选择：一条写口 `answer_mark`（`mark_at` 是它的本体，判据直接喂临时目录）。
+        (
+            "footprint/chores/marks.rs",
+            "marks::answer_mark",
             "stream/inbound/registry/assets.rs",
         ),
         // 起会话用的号：留便条只从 ccm 最终那一跳进，认便条记账只从观测侧进。

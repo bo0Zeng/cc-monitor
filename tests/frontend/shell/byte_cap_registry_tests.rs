@@ -904,6 +904,20 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "拒收+回错",
     ),
     // skill 装记录那份文件：超了当读不懂 ⇒ 不覆盖、`ledger_unreadable`（读的人也不许把它说成「什么都没装过」）。
+    // 「要你动手」收事实时读用户的启动文件 / 设置文件：超了跳过那一份（`warn!` 带路径），那一件不出改法。
+    (
+        "src/backend/footprint/chores/gather.rs",
+        "READ_CAP",
+        "「要你动手」读一份用户启动文件 / 设置文件（`~/.bashrc` · `~/.claude/settings.json`）",
+        "跳过+说清",
+    ),
+    // 「要你动手」记下的选择：超了当读不懂 ⇒ 不覆盖、`marks_unreadable`；判的时候照没记算。
+    (
+        "src/backend/footprint/chores/marks.rs",
+        "MAX_BYTES",
+        "后端自有的「要你动手」选择 `~/.cc-monitor/chores.json`（读不出来就不覆盖）",
+        "拒收+回错",
+    ),
     (
         "src/backend/assets/skill_ledger.rs",
         "MAX_BYTES",

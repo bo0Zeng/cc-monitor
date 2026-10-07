@@ -8,11 +8,10 @@
  * 〔墓碑 —— 从前是 Tauri 命令 `config_surface_report`〔散文墓碑〕（判定住 monitor），类型是 ts-rs 生成物。〕
  */
 import { chan, ChanError } from "../../../comms/inward/chan";
-import { budgetWithin, jsonBody, readJson, saidOf } from "../ipc/chan-caller";
+import { budgetWithin, jsonBody, readJson, ReplyUnreadable, saidFrom } from "../ipc/chan-caller";
 import { commands } from "../ipc/commands";
 import { isLocalOrigin, type Origin } from "../ipc/origin";
 import { LOCAL_ORIGIN } from "../backend-policy";
-import { copyText } from "../copy-table";
 import { exactKeys, isObj } from "../ipc/decode";
 
 /** app 与一个环境项的关系（四档，后端 `footprint/registry.rs::EnvTier` 派生）。 */
@@ -62,7 +61,7 @@ export const FOOTPRINT_BUDGET_MS = 20_000;
 const TIERS: readonly string[] = ["AppInstalls", "AppShipsNoInstallerYet", "UserInstallsWePrompt", "AppOnlyChecks"];
 
 function bad(): never {
-  throw new Error(copyText("configSurface.refresh.badShape"));
+  throw new ReplyUnreadable("footprint-report reply shape");
 }
 
 function obj(v: unknown, keys: readonly string[]): Record<string, unknown> {
@@ -142,9 +141,6 @@ export function decodeFootprint(v: unknown): ConfigSurfaceReport {
   };
 }
 
-/** 那台后端比这条命令老（不认它）时那句话。 */
-const OLD_BACKEND = (): string => copyText("configSurface.backend.tooOld");
-
 /** 那台的后端答不了这一问（不认这条命令）—— 界面说「这台还答不了」，不当失败弹。 */
 export class FootprintUnanswered extends Error {}
 
@@ -156,9 +152,13 @@ async function ask(origin: Origin, args: Record<string, unknown>): Promise<Confi
     reply = await chan.call(origin, "footprint-report", body, budget);
   } catch (e) {
     const unanswered = e instanceof ChanError && e.error.layer === "peer" && e.error.why === "unsupported";
-    throw unanswered ? new FootprintUnanswered(saidOf(e, OLD_BACKEND())) : new Error(saidOf(e, OLD_BACKEND()));
+    throw unanswered ? new FootprintUnanswered(saidFrom(e, origin)) : new Error(saidFrom(e, origin));
   }
-  return decodeFootprint(readJson(reply));
+  try {
+    return decodeFootprint(readJson(reply));
+  } catch (e) {
+    throw new Error(saidFrom(e, origin));
+  }
 }
 
 /** 按机器问足迹（本机那一栏：monitor 事实一次 ＋ 本机后端一次；远端一次；见头注）。问不到 / 形状不对 ⇒ 抛一句人话。 */

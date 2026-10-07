@@ -45,10 +45,13 @@ const EXT = {
 
 const calls: Array<[string, string, unknown]> = [];
 let mcp: Record<string, unknown> = VIEW;
+const chore = (id: string, kind: string, state = "todo") => ({ id, kind, state, name: id, loc: "", said: "", why: "", steps: [], diff: [], copy: null, whole: null, wholeCovers: [], file: null, go: null, howUrl: null, mask: null, action: "copySnippet" });
+let data: Record<string, unknown> | null = null;
 
 beforeEach(() => {
   calls.length = 0;
   mcp = VIEW;
+  data = null;
   invokeMock.mockReset();
   askConfirmMock.mockReset();
   askConfirmMock.mockResolvedValue(true);
@@ -56,6 +59,7 @@ beforeEach(() => {
     if (cmd !== "chan_call") return Promise.reject(new Error(`no ${cmd}`));
     calls.push([args.op, args.origin, chanArgsJson(args)]);
     if (args.op === "ext-list") return Promise.resolve(chanReply(EXT));
+    if (args.op === "data-report" && data) return Promise.resolve(chanReply(data));
     if (args.op === "accounts-mcp-sync") return Promise.resolve(chanReply({ ...VIEW, sync: (chanArgsJson(args) as { on: boolean }).on, conflicts: [] }));
     if (args.op.startsWith("accounts-mcp-")) return Promise.resolve(chanReply(args.op === "accounts-mcp-read" ? mcp : { ...VIEW, conflicts: [], changed: ["q"] }));
     return Promise.reject(new Error(`no ${args.op}`));
@@ -88,7 +92,32 @@ describe("别名与配置文件 · 账号与扩展", () => {
     show(el);
     await settle();
     const ops = calls.map((c) => `${c[0]}@${c[1]}`).filter((o) => !o.startsWith("aliases-") && !o.startsWith("profiles-") && !o.startsWith("ccm-"));
-    expect(ops.sort()).toEqual(["accounts-mcp-read@devbox", "ext-list@<local>"]);
+    expect(ops.sort()).toEqual(["accounts-mcp-read@devbox", "data-report@devbox", "ext-list@<local>"]);
+  });
+
+  it("★ 页首指路条与页尾一句读那台 data-report：N 件要你动手 · 另 M 件可选［去「文件与数据」］· 改过你的 K 个文件［去看］；点了带上那台去那一栏", async () => {
+    data = { home: "/h", changedFiles: [{ path: "~/.bashrc", what: "w", undo: null }, { path: "~/.x", what: "w", undo: null }], todo: [chore("a", "must"), chore("b", "decide"), chore("c", "optional"), chore("d", "optional", "done")], tmux: true, chores: 2 };
+    const el = page();
+    const went: unknown[] = [];
+    el.addEventListener(SETTINGS_GO_EVENT, (e) => went.push((e as CustomEvent).detail));
+    show(el);
+    await settle();
+    const head = el.querySelector<HTMLElement>('[data-role="chores-pointer"]')!;
+    expect(head.hidden).toBe(false);
+    expect(head.textContent).toContain(copyText("cfgPage.pointer.chores", { machine: "devbox", n: 2, m: 1 }));
+    byText(head, copyText("cfgPage.pointer.go"))!.click();
+    const foot = el.querySelector<HTMLElement>('[data-role="changed-pointer"]')!;
+    expect(foot.textContent).toContain(copyText("cfgPage.pointer.changed", { machine: "devbox", n: 2 }));
+    byText(foot, copyText("cfgPage.pointer.changedGo"))!.click();
+    expect(went).toEqual([{ page: "data", anchor: "chores:devbox" }, { page: "data", anchor: "placed:devbox" }]);
+  });
+
+  it("读不到 data-report ⇒ 指路条与页尾都不出（不猜件数）", async () => {
+    const el = page();
+    show(el);
+    await settle();
+    expect(el.querySelector<HTMLElement>('[data-role="chores-pointer"]')!.hidden).toBe(true);
+    expect(el.querySelector<HTMLElement>('[data-role="changed-pointer"]')!.hidden).toBe(true);
   });
 
   it("共用 MCP 挂 shared-mcp 锚点；收着时说两边都改的那一条、给［选一版…］；点开列名字、冲突与提示、新会话生效", async () => {

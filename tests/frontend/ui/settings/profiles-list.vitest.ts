@@ -44,6 +44,7 @@ describe("buildProfilesList", () => {
   let book: ProfilesBook;
   let writes: Array<{ changes: ProfileOp[]; fingerprint: string | null }>;
   let staleOnce: boolean;
+  let undoToasts: Array<{ title: string; undo: () => void; commit: () => void }>;
 
   beforeEach(() => {
     writes = [];
@@ -63,7 +64,14 @@ describe("buildProfilesList", () => {
     };
     vi.resetModules();
     vi.doMock("@tauri-apps/plugin-opener", () => ({ openPath: vi.fn() }));
-    vi.doMock("../../../../src/frontend/ui/kit/toast", () => ({ toast: () => undefined }));
+    undoToasts = [];
+    vi.doMock("../../../../src/frontend/ui/kit/toast", () => ({
+      toast: () => undefined,
+      undoToast: (title: string, undo: () => void, commit: () => void) => {
+        undoToasts.push({ title, undo, commit });
+        return () => undefined;
+      },
+    }));
     vi.doMock("../../../../src/comms/inward/chan", () => ({
       ChanError: class ChanError extends Error {},
       chan: { subscribe: () => Promise.resolve({ want: () => undefined, stop: () => undefined }), call: () => Promise.reject(new Error("不该直接问")) },
@@ -165,7 +173,7 @@ describe("buildProfilesList", () => {
     expect(el.querySelector('[data-role="profile-form"]')).not.toBeNull();
   });
 
-  it("删一条被别人基于的：三个选择、默认推荐改成基于它的父；点执行交 remove + reparent；没人基于的问一句再删", async () => {
+  it("删一条被别人基于的：三个选择、默认推荐改成基于它的父；点执行交 remove + reparent", async () => {
     const { el } = await mount();
     el.querySelector<HTMLElement>('.prof-trow[data-name="cct"] .cfg-link-danger')!.click();
     await flush();
@@ -175,7 +183,28 @@ describe("buildProfilesList", () => {
     [...r.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("profilesPage.remove.goReparent", { parent: "cc", name: "cct" }))!.click();
     await flush();
     expect(writes.at(-1)!.changes).toEqual([{ op: "remove", name: "cct", children: "reparent" }]);
+  });
+
+  it("N10 删一条没人基于的：不问，直接从清单里拿掉 ＋ 8 秒撤销；撤销 ⇒ 原样回来、一个字节不写；到点 ⇒ 才真交 remove", async () => {
+    let asked = 0;
+    const { el } = await mount(() => {
+      asked += 1;
+      return true;
+    });
+    const before = writes.length;
     el.querySelector<HTMLElement>('.prof-trow[data-name="pcc"] .cfg-link-danger')!.click();
+    await flush();
+    expect(asked).toBe(0);
+    expect(el.querySelector('.prof-trow[data-name="pcc"]')).toBeNull();
+    expect(writes.length).toBe(before);
+    expect(undoToasts.at(-1)!.title).toBe(copyText("profilesPage.remove.done", { name: "pcc" }));
+    undoToasts.at(-1)!.undo();
+    await flush();
+    expect(el.querySelector('.prof-trow[data-name="pcc"]')).not.toBeNull();
+    expect(writes.length).toBe(before);
+    el.querySelector<HTMLElement>('.prof-trow[data-name="pcc"] .cfg-link-danger')!.click();
+    await flush();
+    undoToasts.at(-1)!.commit();
     await flush();
     expect(writes.at(-1)!.changes).toEqual([{ op: "remove", name: "pcc" }]);
   });

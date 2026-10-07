@@ -4,6 +4,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { ChanError } from "../../../../src/comms/inward/chan";
+import * as chanCaller from "../../../../src/frontend/ui/ipc/chan-caller";
 import { ReplyUnreadable, peerVersionCodeOf, saidFrom } from "../../../../src/frontend/ui/ipc/chan-caller";
 import TABLE from "../../../../src/shared/copy/table.json";
 
@@ -40,21 +41,18 @@ describe("两个码", () => {
   });
 });
 
+describe("调用方不再自拼「版本旧」那一句", () => {
+  it("chan-caller 不再导出带一句旧话的 saidOf（各处一律 saidFrom 按码取）", () => {
+    expect(Object.keys(chanCaller)).not.toContain("saidOf");
+  });
+});
+
 describe("文案表里这一族只剩两句", () => {
   // 不在这一族的：机器状态词（要更新 / 版本较新）、部署换版本、文件格式版本、cc-bus / ccm 自己的版本 —— 它们不是「这条命令因对方版本说不成」。
   const FAMILY = /后端(版本)?(太旧|过旧|旧了|版本旧|版本不对|版本对不上)|多半是.{0,6}版本|可能是.{0,6}版本|版本可能对不上|两边版本不一样|多半太旧/;
-  // 设置窗那几处还在用的旧句（那一路换成按码取之后删）。
-  const PENDING = new Set([
-    "backend.exitPolicy.oldBackend",
-    "backend.log.oldBackend",
-    "backend.policy.badShape",
-    "configSurface.backend.tooOld",
-    "configSurface.refresh.badShape",
-    "machineAliases.aliasPreview.tooOld",
-  ]);
   it("新增一条自拼的「后端太旧 / 多半是版本不对」⇒ 红", () => {
     const hits = Object.entries(TABLE.entries as Record<string, { zh: string }>)
-      .filter(([k, v]) => FAMILY.test(v.zh) && !k.startsWith("peerVersion.") && !PENDING.has(k))
+      .filter(([k, v]) => FAMILY.test(v.zh) && !k.startsWith("peerVersion."))
       .map(([k]) => k)
       .sort();
     expect(hits).toEqual(EXPECTED_REMAINING);

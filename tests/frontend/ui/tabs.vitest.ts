@@ -4639,7 +4639,7 @@ describe("〔CF2〕没接骨架的 tab：按行号往下取", () => {
     await settle();
     expect(asks().length, "第一次失败之后的下一次上翻该再问一次").toBe(2);
     expect(asks()[1]).toEqual(asks()[0]);
-    // 失败经通道那一跳说（`chan-caller.ts::saidOf` 带上对端的码），原因那一句原样在里面。
+    // 失败经通道那一跳说（`chan-caller.ts::saidFrom` 带上对端的码），原因那一句原样在里面。
     expect(t.window.belowState).toEqual({ kind: "failed", reason: expect.stringContaining("那台后端还不认这条查询") });
     expect(t.stream.contentElement.querySelector(".stream-more-above")?.textContent).toContain(
       "那台后端还不认这条查询",

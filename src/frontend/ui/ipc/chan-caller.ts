@@ -109,7 +109,7 @@ export function peerVersionCodeOf(e: unknown): PeerVersionCode | null {
 }
 
 /**
- * 问 `origin` 那台的一次查询失败了 ⇒ 给人看的那句话。两个码按码取句（[`peerVersionSaid`]），其余按层说（同 [`saidOf`]）。
+ * 问 `origin` 那台的一次查询失败了 ⇒ 给人看的那句话。两个码按码取句（[`peerVersionSaid`]），其余按层说（[`saidByLayer`]）。
  */
 export function saidFrom(e: unknown, origin: Origin): string {
   const code = peerVersionCodeOf(e);
@@ -117,21 +117,20 @@ export function saidFrom(e: unknown, origin: Origin): string {
     if (code === "reply_unreadable") console.warn(`reply unreadable from ${origin}:`, e instanceof Error ? e.message : e);
     return peerVersionSaid(code, origin);
   }
-  return saidOf(e, "");
+  return saidByLayer(e);
 }
 
 /**
- * 一次经通道的查询失败了 ⇒ 给人看的那句话（「说法归调用方」）。
- *
- * 各调用方共用这一份「按层说」，只各自给出「那台后端比这条查询老」时那句话（它们说的功能不同）。
- * 不是 `ChanError` 的（调用方自己抛的，如应答形状不对）原样用它的 `message`。
+ * 不落在两个码上的失败 ⇒ 按层说的那一句（[`saidFrom`] 的另一支）。
+ * 不是 `ChanError` 的（调用方自己抛的）原样用它的 `message`。
  */
-export function saidOf(e: unknown, oldBackendSays: string): string {
+function saidByLayer(e: unknown): string {
   if (!(e instanceof ChanError)) return e instanceof Error ? e.message : String(e);
   const err = e.error;
   switch (err.layer) {
     case "peer": {
-      if (unsupported(err)) return oldBackendSays;
+      // 「不认这条命令」由 [`saidFrom`] 先按码接走，到不了这里。
+      if (unsupported(err)) return copyText("chanCaller.said.error");
       // 对端答了一个错误 ⇒ 就说它那一句（码不上屏：调用方要按码分支的自己读 `refusalOf`）。
       const r = refusalOf(err.body);
       return r && r.message.trim() !== "" ? r.message : copyText("chanCaller.said.error");
@@ -149,13 +148,13 @@ export function saidOf(e: unknown, oldBackendSays: string): string {
 
 /**
  * 这一次失败是不是「那台后端比这条查询老」（对端**事前**就说不认这条命令）。按层判、不看文字；
- * 「需要更新」只许从这里来 —— 够不着 / 期限到 / 对端说不行都不是它（那几形照 [`saidOf`] 说查询失败的原因）。
+ * 「需要更新」只许从这里来 —— 够不着 / 期限到 / 对端说不行都不是它（那几形照 [`saidByLayer`] 说查询失败的原因）。
  */
 export function isOldBackend(e: unknown): boolean {
   return e instanceof ChanError && unsupported(e.error);
 }
 
-/** 那一形的唯一判法（[`saidOf`] 与 [`isOldBackend`] 共用；类型守卫 ⇒ 另一支里 `body` 可读）。 */
+/** 那一形的唯一判法（[`peerVersionCodeOf`] 与 [`isOldBackend`] 共用；类型守卫 ⇒ 另一支里 `body` 可读）。 */
 function unsupported(err: CallError): err is Extract<CallError, { why: "unsupported" }> {
   return err.layer === "peer" && err.why === "unsupported";
 }

@@ -47,7 +47,7 @@ vi.mock("@tauri-apps/api/webviewWindow", () => ({
 
 import { invoke } from "@tauri-apps/api/core";
 import { ChanError, chan, decodeFail, decodeItem, remaining, type CallError, type Item } from "../../../src/comms/inward/chan";
-import { budgetWithin, saidOf } from "../../../src/frontend/ui/ipc/chan-caller";
+import { budgetWithin, saidFrom } from "../../../src/frontend/ui/ipc/chan-caller";
 import { REPO_ROOT } from "../../test-support/repo-root";
 import { stripComments } from "../../test-support/strip-comments";
 
@@ -162,7 +162,7 @@ describe("〔C4a〕webview 通道客户端", () => {
       ac.abort();
       const e = await failOf(p);
       expect(e, op).toEqual(runsOn ? { layer: "ours", why: "Cancelled", runsOn: true } : { layer: "ours", why: "Cancelled" });
-      expect(saidOf(new ChanError(e), "旧").includes("可能还在跑"), op).toBe(runsOn);
+      expect(saidFrom(new ChanError(e), "net2-m").includes("可能还在跑"), op).toBe(runsOn);
     }
     answer(new ArrayBuffer(0));
     // monitor 交回的那一形（`WireErr::OursRunsOn`）解回同一格。
