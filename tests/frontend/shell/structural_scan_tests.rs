@@ -1566,11 +1566,6 @@ fn every_symbol_address_in_the_sources_still_resolves() {
     /// 下面有一条保鲜自检把「已经不需要的例外」揪出来 —— 例外表自己也会腐。
     const EXCEPTIONS: &[(&str, &str)] = &[
         (
-            "Hello",
-            "它是 `Frame` 的**枚举变体**，不是一处 item 声明；本口径只认 \
-                 `fn/struct/enum/const/static/trait/mod/type` 的声明行",
-        ),
-        (
             "resolve_claude_dir",
             "**历史句**：那句话逐字写的就是「从它**原样搬来**」——今天它已经改名并搬进 \
                  agent 适配层。删掉这个地址反而丢掉「这段逻辑是从哪儿来的」",
