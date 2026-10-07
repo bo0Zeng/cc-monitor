@@ -298,3 +298,30 @@ pub fn parse_target(target: &str) -> Option<Parsed<'_>> {
 #[cfg(test)]
 #[path = "../../../../tests/common/relay-route-core/lib_tests.rs"]
 mod tests;
+
+/// 〔「家里的都进这一份」〕后端在这台自己家里放的每一样：`(名字, 相对家目录, 是目录, 删了会丢)`。名字是闭集（界面按它取说法）；
+/// 后端落点由它所在的 `bin` 那一行代表；只住 monitor 那一侧的（监听口进程记录 · API key 表 · 后端错误输出）不在这里。
+/// 后端「文件与数据」那一份成品逐样 stat 它（`footprint/data.rs::own_rows`）。
+pub const OWN_HOME_ENTRIES: &[(&str, &str, bool, bool)] = &[
+    ("bin", ".cc-monitor/bin", true, false),
+    ("staging", STAGING_DIR_REL, true, false),
+    ("relayKey", KEY_FILE_REL, false, true),
+    ("listenToken", LISTEN_TOKEN_FILE_REL, false, true),
+    ("policy", BACKEND_POLICY_REL, false, true),
+    ("profiles", PROFILES_REL, false, true),
+    ("profilesMigrated", PROFILES_MIGRATED_REL, false, true),
+    ("aliasesPosix", POSIX_ALIASES_REL, false, true),
+    ("aliasesPs", PS_ALIASES_REL, false, true),
+    ("skillLedger", SKILL_LEDGER_REL, false, true),
+    ("chores", CHORES_REL, false, true),
+    ("lastSeen", LAST_SEEN_REL, false, false),
+    ("assetCatalog", ASSET_CATALOG_REL, false, false),
+    ("quota", QUOTA_LEDGER_REL, false, true),
+    ("rotation", ROTATION_REL, false, true),
+    ("launchAccounts", LAUNCH_ACCOUNTS_REL, false, true),
+    ("launchNotes", LAUNCH_NOTES_DIR_REL, true, false),
+    ("knownHosts", KNOWN_HOSTS_REL, false, false),
+    ("accounts", ACCOUNTS_DIR_REL, true, true),
+    ("accountsMcp", ACCOUNTS_MCP_REL, false, true),
+    ("extBackups", EXT_BACKUPS_DIR_REL, true, true),
+];

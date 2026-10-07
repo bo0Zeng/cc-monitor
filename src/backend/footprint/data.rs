@@ -82,41 +82,9 @@ pub(crate) fn needs_install(report: &ConfigSurfaceReport) -> Vec<Value> {
     report.rows.iter().filter_map(missing).collect()
 }
 
-/// 自己家里的那几样：`(id, 相对家目录, 是目录, 删了会丢)`。名字各取契约常量（`relay_route_core`，后端按同一份落盘）；
-/// 后端落点由它所在的 `bin/` 那一行代表。只住 monitor 那一侧的（监听口进程记录 · API key 表 · 后端错误输出）不在这里。
-fn own_table() -> [(&'static str, &'static str, bool, bool); 21] {
-    use relay_route_core as rr;
-    let bin = rr::BACKEND_LANDING_REL
-        .rsplit_once('/')
-        .map_or(rr::BACKEND_LANDING_REL, |(d, _)| d);
-    [
-        ("bin", bin, true, false),
-        ("staging", rr::STAGING_DIR_REL, true, false),
-        ("relayKey", rr::KEY_FILE_REL, false, true),
-        ("listenToken", rr::LISTEN_TOKEN_FILE_REL, false, true),
-        ("policy", rr::BACKEND_POLICY_REL, false, true),
-        ("profiles", rr::PROFILES_REL, false, true),
-        ("profilesMigrated", rr::PROFILES_MIGRATED_REL, false, true),
-        ("aliasesPosix", rr::POSIX_ALIASES_REL, false, true),
-        ("aliasesPs", rr::PS_ALIASES_REL, false, true),
-        ("skillLedger", rr::SKILL_LEDGER_REL, false, true),
-        ("chores", rr::CHORES_REL, false, true),
-        ("lastSeen", rr::LAST_SEEN_REL, false, false),
-        ("assetCatalog", rr::ASSET_CATALOG_REL, false, false),
-        ("quota", rr::QUOTA_LEDGER_REL, false, true),
-        ("rotation", rr::ROTATION_REL, false, true),
-        ("launchAccounts", rr::LAUNCH_ACCOUNTS_REL, false, true),
-        ("launchNotes", rr::LAUNCH_NOTES_DIR_REL, true, false),
-        ("knownHosts", rr::KNOWN_HOSTS_REL, false, false),
-        ("accounts", rr::ACCOUNTS_DIR_REL, true, true),
-        ("accountsMcp", rr::ACCOUNTS_MCP_REL, false, true),
-        ("extBackups", rr::EXT_BACKUPS_DIR_REL, true, true),
-    ]
-}
-
-/// 这台家里那几样各一行 `{id, path, dir, class, exists, size}`：`path` 写成 `~/…`；目录不算大小（不递归，免得大目录卡住）。
+/// 这台家里那几样（契约里那一份 `relay_route_core::OWN_HOME_ENTRIES`）各一行 `{id, path, dir, class, exists, size}`：`path` 写成 `~/…`；目录不算大小（不递归，免得大目录卡住）。
 pub(crate) fn own_rows(home: &std::path::Path) -> Vec<Value> {
-    own_table()
+    relay_route_core::OWN_HOME_ENTRIES
         .iter()
         .map(|&(id, rel, dir, truth)| {
             let p = home.join(rel);
