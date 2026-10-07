@@ -848,7 +848,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// p8z-window-label：session-terminals 每个终端多回 window（接入块 v8 设的 LC_CCM_WINDOW，只认 <数字>-<数字>）。
 ///
 /// p9a-chores：data-report 换形（todo ＝ 要你动手各件成品 · chores 角标）；新命令 chores-mark（chores.json）与 agent-home-check（Claude 目录像不像由后端判）。
-pub const BUILD_ID: &str = "p9a-chores";
+///
+/// p9b-background-activity：session_added / session_status 多 background / activity（适配层翻）；invalid_args 收进 bad_args；删帧命令 deploy-retired 与旧装法清理链。
+pub const BUILD_ID: &str = "p9b-background-activity";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
