@@ -2425,13 +2425,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ("src/doc/INVARIANTS.md", "build_local_ps_command", 1),
         ("src/backend/README.md", "proc_claude_config_dir", 1),
         (
-            "src/backend/observe/accounts_query.rs",
-            "proc_claude_config_dir",
-            1,
-        ),
-        ("src/backend/platform/mod.rs", "proc_claude_config_dir", 1),
-        ("src/backend/platform/proc.rs", "proc_claude_config_dir", 1),
-        (
             "tests/backend/agent_boundary_guard.rs",
             "proc_claude_config_dir",
             1,
