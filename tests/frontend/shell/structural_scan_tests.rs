@@ -2421,6 +2421,25 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         //      「代码里没有这个名字」这件事该由本表说出来，而不是靠一处夹具替它遮着。
         //    ⚠ 这正是本条头注那句话的又一个实例：一个名字「在代码里出现过」不等于它活着。
         ("src/frontend/shell/README.md", "daemonless_stream_loop", 1),
+        // 本机读面登记那段改数史删了 —— 它的失败文案里那两个旧名一直替下面这几处散文遮着「还活着」。
+        ("src/backend/README.md", "proc_claude_config_dir", 1),
+        (
+            "src/backend/observe/accounts_query.rs",
+            "proc_claude_config_dir",
+            1,
+        ),
+        ("src/backend/platform/mod.rs", "proc_claude_config_dir", 1),
+        ("src/backend/platform/proc.rs", "proc_claude_config_dir", 1),
+        (
+            "tests/backend/agent_boundary_guard.rs",
+            "proc_claude_config_dir",
+            1,
+        ),
+        (
+            "src/frontend/shell/src/local_read_surface_registry.rs",
+            "list_history_projects",
+            1,
+        ),
         (
             "tests/frontend/shell/doc_claim_registry_tests.rs",
             "daemonless_stream_loop",
@@ -2932,11 +2951,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "tests/frontend/shell/local_origin_registry_tests.rs",
             "create_remote_branch_session",
             2,
-        ),
-        (
-            "tests/frontend/shell/local_read_surface_registry_tests.rs",
-            "create_branch_session",
-            1,
         ),
         (
             "tests/comms/inward/origin_tests.rs",
@@ -4703,8 +4717,8 @@ fn every_prose_tombstone_mark_is_registered() {
         // `src/frontend/shell/src/remote_history.rs` 出表：那份文件随记录解释进后端删了（或墓碑随被守的东西整轴退役）
         (
             "tests/frontend/shell/local_read_surface_registry_tests.rs",
-            10,
-        ), // 7 → 10：足迹三处（判定 · 申报表 · 探针）随进后端删了 // 两边各自贴的墓碑相加，按盘上现数（跑出来核过） 6 → 7 // 两边各自贴的墓碑相加，按盘上现数（跑出来核过） // +2：`aliases_read` / `aliases_install` 两行摘除的旧墓碑补上标记（它们的符号随别名进后端没了） // // +1：`.claude.json` 三候选的 home 读去掉 // +1：`accounts.rs` 那一行摘掉处的「降级说明」旧名 // 棘轮史里 E79 那一格
+            5,
+        ),
         // ▸ 下面这 5 份是 `P14` 立件的**直接证据**：它们在 `TOMBSTONED` 里一行都没有
         //   ⇒ 它们的标记**没有一处**落在死名人群上 ⇒ 在本条之前按构造零判据。
         //   逐份是：本模块生产侧那份（标记的定义处）· 本文件（那一处带标记的墓碑，
@@ -4774,7 +4788,7 @@ fn every_prose_tombstone_mark_is_registered() {
         //   那三个名字同时要进 `TOMBSTONED`，两张表单位不同，各记各的）。
         ("src/frontend/filewin/src/source.rs", 5), // 4 → 5（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
         ("src/frontend/filewin/src/fonts.rs", 2), // 0 → 2（探针来路里那两句「存不回去」的函数名随只读一档删了）
-        ("src/frontend/shell/src/history.rs", 8), // 9 → 8：展开一个项目那条命令的名字从头注里去掉 // 4 → 9 // 9 → 4 // 两边各自贴的墓碑相加，按盘上现数（跑出来核过） // +1：configDir 校验头注原先「照抄 TS 侧 `isValidConfigDir`」那句（TS 那份删了） // 主线 18 ＋ LOC1a +1（分叉 exec 那一趟的结果解释删了）// 主线 15 ＋ US1 +3 // +1：本机 kill 那句点的旧发送端 // +1：记录那一问的 Tauri 命令与答案形状退役，原处留一块 // +1：本机删会话那道路径守卫整段搬去后端 // +3：本机分叉的实现（`branch_impl` / `write_branch_file` / `read_jsonl_values`）交给后端 ·本机账号参照实现删了（list_from_dir 一族 ＋ accounts.rs 整份），点旧名的散文挂墓碑 ·历史清单与注解搬进本机常驻后端，点旧名的散文挂墓碑 // 20 → 15
+        ("src/frontend/shell/src/history.rs", 7),
         ("src/frontend/shell/src/launch.rs", 2), // 8 → 2：六处随开窗的平台臂进了 `platform/terminal.rs` //7 → 8：开终端 ssh 外壳进本机后端，点旧名的散文挂墓碑  // 1 → 7
         ("src/frontend/shell/src/lib.rs", 36), // 37 → 36：全景问 · 写 · 撤那一跳的墓碑随代码全景整条摘掉删了 // 35 → 37：`mod agent_dispatch_registry;` 那一行换成一块墓碑 ＋ 跨轨对拍锚点 `agent_profile_parity` 那一句挂一块 // 31 → 35 // 30 → 31：足迹三个 mod 删了那一块 // 29 → 30：`mod panorama_call;` 换成一块墓碑 // +2：`mod pubkey;` 与 `push_public_key` 注册那一行各换成一块墓碑 // 26 → 27：`mod acct_iso_deploy` 那一行换成一块墓碑 // // 两边各自贴的墓碑相加，按盘上现数（跑出来核过） 21 → 26 // 两边各自贴的墓碑相加，按盘上现数（跑出来核过） // 基数 16 ＋ 主线 +1 ＋ MIG-3a +2 ＋ MIG-2 +1（`apikey_remote` 整删）⇒ 20 // +1：`mod stop_grace;` 那一行换成一块墓碑（「请它收尾 → 等 → 强杀」搬进一次性 `--resident-stop`）。 〔删 `fenced_block::apply` 那一族〕主线 13 ＋ 本路 +2（`verified_write` 模块删了那一行：`verified_write` · `fenced_block::apply` 各一）⇒ 15。主线原注：基数 10 ＋ LOC1b +3 ＋ HX2 ±0 ⇒ 13。LOC1b 原注：+2：本机判活那一段（`SessionMap::load_with_changes` 起步 · `app.manage(session_map)`）删了，原处各挂一块 // 主线 10 ＋ LOC1b +1（`mod search;` 那一行挂一块，本机内存索引删了） // +1 // +1：`write_apikey_credentials_key` 头注里「整段论证见」那个旧写口 // 主线 7 ＋ 本路 +1 ⇒ 8（本机账号参照实现删了（list_from_dir 一族 ＋ accounts.rs 整份），点旧名的散文挂墓碑） // 主线 6 ＋ 本路 +1（独立窗口的定向重放命令退役那一段）// +2（「终端集成」五条命令退役：注册表旁一句 ＋ 原住址一句；合并主线 636cc1a0 按两边增量相加 4 + 2） // 1 → 2（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）· +1：`sftp_move_ledger` 退役 · +1：`plugins` 模块删了，那一行挂一块（合并按两边增量相加 ⇒ 4） ｜ HX2 原注：±0：`write_apikey_credentials_key` 整条删，原处换一块墓碑（点旧命令名 ＋ `KH2C1` 那条旧判据名）// +1 // +1：`write_apikey_credentials_key` 头注里「整段论证见」那个旧写口 // 主线 7 ＋ 本路 +1 ⇒ 8（本机账号参照实现删了（list_from_dir 一族 ＋ accounts.rs 整份），点旧名的散文挂墓碑） // 主线 6 ＋ 本路 +1（独立窗口的定向重放命令退役那一段）// +2（「终端集成」五条命令退役：注册表旁一句 ＋ 原住址一句；合并主线 636cc1a0 按两边增量相加 4 + 2） // 1 → 2（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）· +1：`sftp_move_ledger` 退役 · +1：`plugins` 模块删了，那一行挂一块（合并按两边增量相加 ⇒ 4） // 16 → 17
         ("src/frontend/shell/src/local_backend_host.rs", 3), // 〔🔴-3〕+1：中转「在不在」那一行原先点着已删的回环探针，改成今天由后端答、旧名留一块 // +1：`relay_running` 一族退役那一块 // +1：`fresh_token` 头注里「不需要密码学随机数」那一段整段删，原处留一块（合并按两边增量相加：1 ＋ 1 ＋ 1）// −1：宿主不再铸钥匙，`fresh_token` 连同那一块删了
@@ -4836,7 +4850,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/frontend/shell/src/asset_sync.rs", 2), // +2：`AssetsSynced` 那几个形状 ＋ 界面那条 Tauri 命令随同步那一问走通道删了
         ("tests/frontend/shell/asset_sync_tests.rs", 1), // +1：「应答缺格就报错不猜」那一条挪到界面（`parse_reply` 删了）
         ("src/frontend/shell/src/user_files.rs", 8), // +2：读改写那一环（`edit` / `Edited`）删了，原地一块 // 两边各自贴的墓碑相加，按盘上现数（跑出来核过） // +2：`rename` / `stat_kind` 两形零调用方删了，trait 上留墓碑 // // +1：`rel_under` / `join_under` 随别名进后端删了，留一句墓碑 // // +1：列目录那一形（list_dir）随收件箱进后端删了，trait 上留一句墓碑 // // +1：只删空目录那一形随卸 skill 进后端删了
-        ("tests/frontend/shell/parity_ledger_tests.rs", 64),
+        ("tests/frontend/shell/parity_ledger_tests.rs", 63),
         ("tests/frontend/shell/plugin_class_registry_tests.rs", 2), // 3 → 2：`code-picture` 那一格整行删了，挂着的旧测试名墓碑随之没了 // 2 → 3：`code-picture` 那一格对上之后，旧测试名挂墓碑
         ("tests/frontend/shell/polling_registry_tests.rs", 1),
         // +1：`rollback_note_matches_what_actually_happened` 搬走的那块墓碑。

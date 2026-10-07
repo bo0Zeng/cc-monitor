@@ -677,7 +677,7 @@ fn local_or_both_commands_take_no_remote_only_parameter() {
     //   （本机跑同一条命令串，只是不包进 ssh）；
     // - devbench F03 的 skill 接入面 **+3**（`list_skills` / `read_skill_file` /〔散文墓碑〕
     //   `write_skill_file`，都 `Local`）；〔散文墓碑〕〔MIG-3a 随收件箱进后端退役 −3〕
-    // - E79 的 `list_local_session_accounts` **+1**；〔散文墓碑〕〔C4a 随「本机与远端同一条路」退役 −1〕
+    // - E79 那条本机会话账号命令 **+1**；〔C4a 随「本机与远端同一条路」退役 −1〕
     // - U-CC1 的 `drift_ledger_report` **+1**，`Both` —— 本地行与远端行都经同一个
     //   `parse_line` 喂进同一个进程内账本；
     // - F08 的 `account_usage_local` **+1** —— 它补平了 `usage.per-account` 那条 ParityDebt；  〔散文墓碑〕
