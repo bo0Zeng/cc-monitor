@@ -158,6 +158,13 @@ fn the_link_codec_matches_the_rfc_4648_test_vectors() {
     for bad in ["A", "AA=", "A===", "Zg==Zg==", "Zm9v!A==", "===="] {
         assert!(b64_decode(bad).is_err(), "{bad:?} 该被拒");
     }
+    // 每个字节值单放在一组的末位：字母表里的 64 个认、`=` 当补位，别的一律拒。
+    let alphabet = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    for c in 0..=255u8 {
+        let quad = String::from_utf8_lossy(&[b'A', b'A', b'A', c]).into_owned();
+        let ok = b64_decode(&quad).is_ok();
+        assert_eq!(ok, alphabet.contains(&c) || c == b'=', "字节 {c:#04x}");
+    }
 }
 
 /// 上行步长与后端一块的上限同一个数；窗口落在后端肯收的区间里（`[LINK_CHUNK_BYTES, MAX_WINDOW]`，出了区间后端拒开）。
