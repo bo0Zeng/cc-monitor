@@ -387,6 +387,10 @@ fn every_registered_command_declares_its_run_kind() {
                 | "sessions-stop"
                 | "sessions-start"
                 | "sessions-where"
+                // 起新会话：起 tmux 子进程 · 读账号清单 · 写分支记录 · 扫各家记录目录（同步 I/O）。
+                | "session-new"
+                | "session-new-facts"
+                | "session-new-dir"
         );
         let is_blocking = matches!(spec.run, Run::Blocking(_) | Run::BlockingData(_));
         assert_eq!(
@@ -600,6 +604,10 @@ fn every_registered_command_declares_its_run_kind() {
         "sessions-stop",
         "sessions-start",
         "sessions-where",
+        // 起新会话那三问：阻塞。
+        "session-new",
+        "session-new-facts",
+        "session-new-dir",
         // 换号重启：可撤档（步与步之间 await，起 tmux 的几步自己挪到阻塞线程池）。
         "session-restart",
         // 现在就换：异步（重启换那一半等 `session-restart`；不重启换那一半自己挪到阻塞线程池）。

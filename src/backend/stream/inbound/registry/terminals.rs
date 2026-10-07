@@ -323,6 +323,84 @@ pub(super) const SPECS: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
+    // **起新会话 —— 全产品一个请求**（`control/session_new.rs`，宿主 `faces/session_new_face.rs`）：这台判目录 · 号（选不了带替代号）·
+    //   终端名 · 分叉（只在这一步写分支记录）· 起；回「起好了 / 要开窗跑那一行」，某一格不行 ⇒ 失败信封 `data.field` 说是哪一格。
+    CommandSpec {
+        name: "session-new",
+        doc_anchor: Some("#### `session-new` / `session-new-facts` / `session-new-dir`"),
+        codes: &[
+            "bad_args",
+            "unknown_agent",
+            "bad_command",
+            "no_dir",
+            "account_unavailable",
+            "place_unavailable",
+            "bad_tmux_name",
+            "tmux_taken",
+            "unobservable",
+            "fork_failed",
+            "refused",
+            "start_failed",
+            "child_timed_out",
+        ],
+        fields: &[
+            "account",
+            "agent",
+            "cmd",
+            "command",
+            "configDir",
+            "cwd",
+            "field",
+            "forkFrom",
+            "kind",
+            "local",
+            "model",
+            "models",
+            "name",
+            "outcome",
+            "place",
+            "session",
+            "sid",
+            "tmuxName",
+            "unavailable",
+            "uuid",
+        ],
+        takes_input: true,
+        run: Run::BlockingData(|r| {
+            crate::faces::session_new_face::answer(&r.args)
+                .map(Some)
+                .map_err(failed)
+        }),
+    },
+    // 起新会话框打开时问一次：这台最近用过的目录 · 有没有 tmux · 能起哪几家 · 分叉源会话的三格（只读，不写分支记录）。
+    CommandSpec {
+        name: "session-new-facts",
+        doc_anchor: Some("#### `session-new` / `session-new-facts` / `session-new-dir`"),
+        codes: &["bad_args", "fork_failed"],
+        fields: &[
+            "agent", "agents", "at", "cwd", "fork", "forkOf", "lastMs", "launch", "recent",
+            "start", "tmux", "turn",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::faces::session_new_face::facts(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 工作目录那一格失焦时问：在不在 · 这台此刻会给它铸的终端名（没 tmux ⇒ `null`）。
+    CommandSpec {
+        name: "session-new-dir",
+        doc_anchor: Some("#### `session-new` / `session-new-facts` / `session-new-dir`"),
+        codes: &["bad_args"],
+        fields: &["cwd", "exists", "forkOf", "tmuxName"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::faces::session_new_face::dir(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
     // 动一个会话之前会打断什么（`observe/interrupts_query.rs`）：按族答，界面只画。只读。
     CommandSpec {
         name: "session-interrupts",

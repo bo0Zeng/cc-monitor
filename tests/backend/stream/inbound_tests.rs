@@ -828,6 +828,10 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "sessions-stop",
         "sessions-start",
         "sessions-where",
+        // 起新会话那三问：起 tmux · 读账号清单 · 写分支记录 · 扫记录目录，阻塞档。
+        "session-new",
+        "session-new-facts",
+        "session-new-dir",
         // 换号重启：可撤档（步与步之间 await；起 tmux 那几步自己挪到阻塞线程池）。
         "session-restart",
         // 现在就换：异步（重启换那一半等 `session-restart`；不重启换那一半自己挪到阻塞线程池）。

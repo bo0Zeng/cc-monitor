@@ -831,6 +831,18 @@ fn handler_files_of(
 /// 够得着 tmux、却**不**声明 `no_tmux` 的命令 —— 逐条写理由（tmux 在它那里是可选的：问不到就降级，命令本身照做）。
 const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
     (
+        "session-new",
+        "起新会话：tmux 那一形没 tmux ⇒ `place` 那一格不行（`place_unavailable`），开终端那一形本来用不着 tmux（Windows 本机照做）",
+    ),
+    (
+        "session-new-facts",
+        "起新会话框的这台事实：没 tmux ⇒ `tmux: false`、只剩开终端那一形，别的几格照答",
+    ),
+    (
+        "session-new-dir",
+        "目录那一问：没 tmux ⇒ `tmuxName: null`（没有名字可铸），目录在不在照答",
+    ),
+    (
         "terminals-list",
         "终端名单：没 tmux ⇒ 这台没有 tmux 终端、答空名单（不是错）；托管终端做出来后名单里还有它们",
     ),

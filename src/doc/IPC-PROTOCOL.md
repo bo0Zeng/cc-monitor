@@ -898,6 +898,64 @@ F04b 先把它从**主路**降为一次性回落，本件把它整块拿掉 ⇒ 
 命令级码只有两个：`invalid_args`（`sids` / `items` 空、超过 64 个、有重复、sid 形状不对、字段认不出、`client` 形状不对）· `unobservable`（这台的 tmux 名单看不见 —— 不是零会话）。
 只给界面用：命令行那一侧没有这两条（逐个 `--kill` / 直接敲 `ccm` 就是它们）。
 
+#### `session-new` / `session-new-facts` / `session-new-dir`：起新会话（全产品一个框、一个请求）
+
+```text
+→ {"id":"n1","cmd":"session-new-facts","args":{"forkOf":"0473c3a0-…","at":"9a1b2c3d-…"}}
+← {"kind":"reply","id":"n1","ok":true,"data":{"recent":[{"cwd":"/home/u/srv/orders","lastMs":1759700000000}],
+     "tmux":true,"agents":["claude","codex"],
+     "fork":{"agent":"claude","launch":{"cwd":{"kind":"known","value":"/home/u/srv/orders","from":"record"},
+                                       "account":{"kind":"known","value":"work","from":"process"},
+                                       "terminal":{"kind":"unknown","why":"exited"}},
+             "turn":9,"start":"2026-10-06T02:05:11.000Z"}}}
+→ {"id":"n2","cmd":"session-new-dir","args":{"cwd":"~/srv/billing"}}
+← {"kind":"reply","id":"n2","ok":true,"data":{"exists":true,"tmuxName":"billing-cc-2"}}
+→ {"id":"n3","cmd":"session-new","args":{"agent":"claude","cwd":"~/srv/billing","account":{"kind":"named","name":"work"},
+     "place":"tmux","local":false}}
+← {"kind":"reply","id":"n3","ok":true,"data":{"outcome":"started","session":"billing-cc-2","sid":null,"cmd":null,
+     "account":{"name":"work","configDir":"/home/u/.cc/work","model":null},"agent":"claude"}}
+← {"kind":"reply","id":"n4","ok":false,"code":"account_unavailable","message":"…",
+     "data":{"field":"account","unavailable":{"requested":"personal","pinned":true,"listKnown":true,"alternative":"work"}}}
+```
+
+`session-new-facts`（框打开时问一次，只读）：
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `forkOf` | → | 可缺。分叉那一形：源会话 sid（只读它的三格，不写任何东西） |
+| `at` | → | 可缺（随 `forkOf`）。从哪条消息处分叉：`fork` 里多说那一条在第几轮、那一轮几点起 |
+| `recent` | ← | 这台最近用过的工作目录（各家记录里的，新的在前、同一个目录一次、最多 8 个；`lastMs` 是那个目录最近一次会话的修改时刻） |
+| `tmux` | ← | 这台有没有 tmux（`false` ⇒ 只能开终端窗口） |
+| `agents` | ← | 这台能起的几家（注册表里由我们起的、默认启动器在这台 `PATH` 上找得到的；注册表序）。多于一家界面才出「agent」那一行 |
+| `fork` | ← | 没给 `forkOf` ⇒ `null`；给了 ⇒ `{agent, launch, turn, start}`：源会话是哪一家 · 三格（形状同 `session-fork` 的 `launch`）· `at` 那一条在第几轮（轮的口径同 `history-turns`；没给 `at` / 找不到 ⇒ `null`）· 那一轮你那句的时刻（同上 ⇒ `null`） |
+
+`session-new-dir`（工作目录那一格失焦时问）：`{cwd, forkOf?}` ⇒ `{exists, tmuxName}`。`cwd` 里开头的 `~` 按这台的家目录读；
+`tmuxName` ＝ 这台此刻会给它铸的终端名（分叉那一形从源会话此刻的终端名铸），没 tmux / 名单看不见 ⇒ `null`。
+
+`session-new`（点［新建］）：
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `agent` | → | 哪一家（线上的 kind）。必填，空 ⇒ `unknown_agent`（不落默认那一家） |
+| `cwd` | → | 工作目录（开头的 `~` 按这台的家目录读）。不在 ⇒ `no_dir`，不替你建 |
+| `account` | → | 可缺 ＝ 跟随（分叉跟源会话上次的号；新起的 ⇒ 这台的默认号）· `{kind:"base"}` · `{kind:"named", name}` |
+| `place` | → | `tmux`（在这台 tmux 里后台起，关终端不断）· `window`（开一个新终端窗口直接跑） |
+| `tmuxName` | → | 可缺 ⇒ 这台铸。给了 ⇒ 核写法（`bad_tmux_name`）与不占用（`tmux_taken`）。分叉不收这一格（`bad_args`） |
+| `command` | → | 启动命令；空 / 缺 ⇒ 那一家的默认启动器。过命令片段白名单（`bad_command`） |
+| `forkFrom` | → | 可缺。`{sid, uuid}`：从源会话那条消息处分叉 —— 前面几格全过了才写分支记录（某一格不行 ⇒ 什么都不写），起的是分叉出来的新会话 |
+| `models` | → | 可缺。这台的模型偏好表（号 → 模型，用户设置的原值） |
+| `local` | → | 发请求的界面就在这台上（开窗那一形本机与远端渲法不同） |
+| `outcome` | ← | `started`（tmux 里起好了，`session` 是会话名）· `open`（界面开一个终端跑 `cmd`） |
+| `sid` | ← | 分叉出来的新会话 sid；新起的 ⇒ `null`（报到之前说不出） |
+| `account` | ← | 实际用的号（账号 0 / 不指定 ⇒ `null`） |
+| `agent` | ← | 起的是哪一家 |
+
+失败信封的 `data`（每个码都带）：`{field, unavailable}`。`field` ＝ 不行的那一格：`agent`（`unknown_agent`）· `command`（`bad_command`）·
+`cwd`（`no_dir`）· `account`（`account_unavailable`，`unavailable` 是那一形、带替代号：选不了 ⇒ 不起、不悄悄换号）·
+`place`（`place_unavailable`）· `tmuxName`（`bad_tmux_name` · `tmux_taken`，起的那一刻名字被抢也落这里）；整体的 ⇒ `null`：
+`unobservable`（看不见 tmux 名单，不拿空名单铸名）· `fork_failed` · `refused`（那一行渲不出）· `start_failed`（`ccm` 起不来，`message` 是它的原话）· `child_timed_out`。
+`bad_args`：形状解不出（多送一格也算）时不带 `data`。会话报没报到由界面等那台的会话流。
+
 #### `session-restart`：换号重启（在会话所在那台一口气做完）
 
 ```text

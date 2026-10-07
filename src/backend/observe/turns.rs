@@ -228,6 +228,30 @@ pub(crate) fn scan_turns<R: std::io::BufRead>(
     Ok((count, end))
 }
 
+/// 某一条记录（`uuid`）落在第几轮、那一轮从何时起（分叉框顶上那一句）。轮的口径同 [`scan_turns`]：你说的一句起一轮。
+/// 找不到那一条 / 它在第一句之前 ⇒ `None`。
+pub(crate) fn turn_at<R: std::io::BufRead>(r: R, uuid: &str) -> Option<(u64, String)> {
+    let tree = crate::agents::record_tree_kind().unwrap_or_default();
+    let mut n: u64 = 0;
+    let mut start = String::new();
+    for line in r.lines() {
+        let line = line.ok()?;
+        let Ok(v) = serde_json::from_str::<Value>(line.trim_start_matches('\u{feff}').trim())
+        else {
+            continue;
+        };
+        let spoke = crate::agents::user_text_of(tree, &v);
+        if let Some(said) = user_input_given(&v, spoke.as_ref()) {
+            n += 1;
+            start = said.timestamp;
+        }
+        if v.get("uuid").and_then(Value::as_str) == Some(uuid) {
+            return (n > 0).then_some((n, start));
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 #[path = "../../../tests/backend/observe/turns_tests.rs"]
 mod tests;

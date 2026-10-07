@@ -1509,6 +1509,36 @@
       "zh": "家目录未知，找不到 ~/.cc-monitor/bin/ccm，没有起会话。",
       "args": []
     },
+    "beSessionNew.agent.missing": {
+      "kind": "error",
+      "zh": "没说起哪一家 agent，没有起。",
+      "args": []
+    },
+    "beSessionNew.cwd.missing": {
+      "kind": "error",
+      "zh": "目录不存在：{cwd}，没有起。",
+      "args": ["cwd"]
+    },
+    "beSessionNew.fork.noTree": {
+      "kind": "error",
+      "zh": "这台没有会话记录树，找不到要分叉的那个会话。",
+      "args": []
+    },
+    "beSessionNew.place.noTmux": {
+      "kind": "error",
+      "zh": "这台没有 tmux，只能开终端窗口。",
+      "args": []
+    },
+    "beSessionNew.tmux.taken": {
+      "kind": "error",
+      "zh": "tmux 会话名 {name} 已占用，没有起。",
+      "args": ["name"]
+    },
+    "beSessionNew.tmux.badName": {
+      "kind": "error",
+      "zh": "tmux 会话名 {name} 不能用（不许以 - 开头，不许带 . : = * ? 和控制字符）。",
+      "args": ["name"]
+    },
     "beResident.token.noRandom": {
       "kind": "error",
       "zh": "取不到系统随机数，做不出常驻后端的钥匙。没有起。",
