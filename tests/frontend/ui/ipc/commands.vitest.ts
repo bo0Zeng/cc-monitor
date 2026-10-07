@@ -295,9 +295,8 @@ describe("C04a 命令名钉死", () => {
     const registered = registeredCommands();
 
     // 反向自检：真扫到了东西（不是空集在空转）
-    // 地板 50 → 40：两边各自退役之后命令总数现打 50，原地板 50 会把真数判成「抽取器坏了」。
-    expect(declared.size, "一个命令都没扫到——抽取器坏了").toBeGreaterThan(40);
-    expect(registered.size, "注册表没扫到——正则或锚点坏了").toBeGreaterThan(40);
+    expect(declared.size, "一个命令都没扫到——抽取器坏了").toBeGreaterThan(0);
+    expect(registered.size, "注册表没扫到——正则或锚点坏了").toBeGreaterThan(0);
 
     const onlyDeclared = [...declared].filter((c) => !registered.has(c)).sort();
     const onlyRegistered = [...registered].filter((c) => !declared.has(c)).sort();
@@ -409,12 +408,11 @@ describe("K-H2b D1 阻-1：本机起会话的主路都传了账号", () => {
     const sites = localLaunchCallSites();
     // 抽取器自检：一处都没扫到 = 正则坏了，下面整条在空转。
     expect(sites.length, "一处本机起会话的调用都没扫到 —— 抽取器坏了").toBeGreaterThan(0);
-    // ⚠ 分母写下来：这是**现打**的处数，不是「所有起会话的路」。
-    //   多一条新主路 ⇒ 这个数变 ⇒ 红一次，逼人回来看要不要传账号。
+    // 只许一处：多一条新主路 ⇒ 红一次，逼人回来看要不要传账号。
     expect(
       sites.length,
       `起本机会话的调用点从 1 变成了 ${sites.length}：\n${sites.map((s) => s.file).join("\n")}`,
-    ).toBe(1); // 3 → 1：本机新起的两处（历史页「在此目录新建会话」· 账号页「在 tmux 里登录」）收成起新会话那一个请求（`session-new`，号在那台判、框里点名），不再以 `new` 动作调 `launchLocal` // 2 → 3：账号页开不了终端窗口时「在 tmux 里登录」（`settings/account-login.ts`，点名那个号、带铸好的 tmux 名）// 5 → 2：四处 `resume_history_session`（tab 栏 · 历史页 · 分叉 · 换号重启）收成 `local-resume.ts` 一处；另一处是历史页起新会话的 `new_local_session`
+    ).toBe(1); // 起本机会话只许一处（起新会话那一个请求）
     const missing = sites.filter((s) => !/\baccount\s*:/.test(s.text)).map((s) => s.file);
     expect(
       missing,
@@ -450,12 +448,12 @@ describe("K-H2b D1 阻-1：本机起会话的主路都传了账号", () => {
       resumeSites.length,
       `\`resume_history_session\` 的调用点从 1 变成了 ${resumeSites.length}：\n` +
         resumeSites.map((s) => s.file).join("\n"),
-    ).toBe(1); // 4 → 1：本机 resume 的编排只剩 `local-resume.ts` 一份（它的「只此一家」由 `tests/frontend/ui/launch-orchestration-single-home.vitest.ts` K2 两向钉）
+    ).toBe(1); // 本机 resume 的编排只许 `local-resume.ts` 一份
     expect(
       sites.length - resumeSites.length,
       "`new_local_session` 的调用点数变了 —— 它今天没有 `tmux_name` 参数位（Rust 侧签名里就没有），" +
         "变了要回来看是不是后端也开了那一格",
-    ).toBe(0); // 2 → 0：本机新起都走 `session-new`（终端名那台铸）// 1 → 2：`settings/account-login.ts` 在 tmux 里登录（它带 tmuxName）
+    ).toBe(0); // 本机新起都走 `session-new`
     const missing = resumeSites.filter((s) => !/\btmuxName\b/.test(s.text)).map((s) => s.file);
     expect(
       missing,

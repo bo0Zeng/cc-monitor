@@ -314,12 +314,7 @@ fn every_write_site_is_declared_and_installers_name_a_real_tool() {
             found.push((stem.clone(), f));
         }
     }
-    // ★ 抽取器自检：扫不到东西时下面整条会零命中地绿。
-    assert!(
-        found.len() >= 15,
-        "全树只找到 {} 个写盘落点（08-07 实测 19 个「文件::函数」）—— 抽取器坏了，本条此刻无效",
-        found.len()
-    );
+    // 抽取器坏了扫不到东西 ⇒ 下面反向那一条（申报的落点必须真在）红。
 
     let missing: Vec<String> = found
         .iter()
@@ -365,16 +360,10 @@ fn every_write_site_is_declared_and_installers_name_a_real_tool() {
                  要么 id 写错了，要么那个工具被删了而真实的安装动作还留着 —— 后者更值得查。"
         );
     }
-    // 常驻自检：一条安装动作都没有时，上面那个循环空转，而它看起来照样绿。
-    // 5 → 1（地板改成相等）：`ccm` 的三行（远端入口那一份落点原语与
-    //   `profile_installer.rs` 两个原语）· `project-mcp` 的一行 · `cc-bus` 的一行（`deploy_into`〔散文墓碑〕，装 cc-bus 今天在本机后端）
-    //   随「用户文件改经后端写」走了，剩本机那条 `ccm` 入口（写的是我们自己的目录）。
-    // 1 → 0：本机 `ccm` 不再是「装的一份副本」，就是后端本身（`extract_embedded_to`，`None` 那一档：monitor 自己的部署物）。
-    //   ⇒ 这张表今天没有安装动作；循环空转由上面「每条都在 `SITE_CLASS` 里」那两向相等兜着。
+    // 申报表里今天没有安装动作（monitor 不往用户机器上装东西，装归后端）。
     assert_eq!(
         checked, 0,
-        "申报表里的「安装动作」条数变了（实得 {checked}）—— \
-             要么真收口了（那很好，把这个数调下来），要么有人把它们改成了 `None` 绕过对拍。"
+        "申报表里又有了「安装动作」（{checked} 条）—— monitor 不往用户机器上装东西，装归后端"
     );
 }
 

@@ -131,12 +131,7 @@ fn every_webview_permission_is_registered() {
                 .to_string(),
         })
         .collect();
-    // 抽取器自检：一条都没抽到 ⇒ 下面整条空转。
-    assert!(
-        names.len() >= 5,
-        "只抽到 {} 条权限（08-08 实测 9）—— 抽取器坏了，本条此刻无效：{names:?}",
-        names.len()
-    );
+    // 抽取器坏了抽不到东西 ⇒ 下面反向那一条（登记的必须真在清单里）红。
 
     let extra: Vec<&String> = names
         .iter()
@@ -654,18 +649,7 @@ fn probe_slot_verdict(tag: &str, body: &[u8]) -> Option<String> {
 /// 改名成 `config.toml` 行为相同；两个都删 ⇒ `no such command`。
 ///
 /// ⚠ 加一个发起面（新 crate、某个 job 换 cwd）就回这张表补一格。
-/// **⚠ 把「叫你回来的是哪一条」说准**〔`D4` 08-29 逮到上一版这句话说宽了：
-/// 它把功劳记在 `slots.len() == 6` 上，而本文件下面的代码注释自己就称它「表面量」〕：
-/// - **加/删**一格 ⇒ `slots.len() == 6` 那条自检开火。08-29 现打：`CARGO_CFG_NAMES`
-///   去掉一个文件名 ⇒ **红**，报文逐字「本条的人群应当是 3 个发起面 × cargo 认的
-///   2 种文件名 = 6 格，实得 3」。
-/// - **换**一格 ⇒ `len == 6` **一声不吭**（格数仍是 6），开火的是**探针⑨**。08-29 现打：
-///   `CARGO_CFG_DIRS` 的 `src/frontend/shell` 换成 `e2e` ⇒ **红**，报文逐字「本条的人群**逐格**变了。」
-///   ⚠ 这里刻意**不写行号** —— 行号是本文件自己每加一行注释就变的量（`brief` 12），
-///   写进头注下一轮自动变假；认那条 assert 认**报文**。
-///
-/// ⇒ `len == 6` 只买「**个数**」那一半（`testing.md` 硬规则 6 说的表面量正是它），
-/// 买「**身份**」那一半的是探针⑨。两条都要，**别把后者的功劳记到前者头上**。
+/// 叫你回来的是下面那条按字面量逐格钉人群的断言（加 / 删 / 换一格都红）。
 ///
 /// ## ③ 这一格有**四维**，改它之前先看这张表〔`K21` 收紧后的第一条，`D2` 08-28〕
 ///
@@ -675,10 +659,10 @@ fn probe_slot_verdict(tag: &str, body: &[u8]) -> Option<String> {
 ///
 /// | 维 | 这一步做什么 | 被绕过过没有 | 今天靠什么守 |
 /// |---|---|---|---|
-/// | ① **读文件** | 6 格 = 3 发起面 × 2 文件名 | ✅ `include` 把 6 格之外的文件拉进来 | 人群由数组算出（`slots.len() == 6` 自检）+ `CARGO_BLINDING_KEYS` 判红 |
+/// | ① **读文件** | 6 格 = 3 发起面 × 2 文件名 | ✅ `include` 把 6 格之外的文件拉进来 | 人群按字面量逐格钉住 + `CARGO_BLINDING_KEYS` 判红 |
 /// | ② **预处理** | 剥注释 → 解转义 | ✅ 多行串让剥注释把真键**整行切掉**（`D2`） | [`strip_toml_comments`] **fail-closed**：看不懂就判红 |
 /// | ③ **匹配** | 整词扫那三个键 | ✅ `"runner"` 转义拼键（`D1`） | [`decode_toml_escapes`] 解码 + [`backslash_in_key_position`] 兜底 |
-/// | ④ **判定** | 收集 offender → `assert!` | ✅ 被绕过**两次**；`K-R5` 09-02 之前**装配这一层零常驻覆盖** —— 见紧接着这张表的那一段 | **二十一组**常驻探针 ①–㉑（⑩–㉑ 是 `K-R5` 09-02 补的；**加/删探针就回来改这个数**） |
+/// | ④ **判定** | 收集 offender → `assert!` | ✅ 被绕过**两次**；`K-R5` 09-02 之前**装配这一层零常驻覆盖** —— 见紧接着这张表的那一段 | 常驻探针 ①–㉑（⑩–㉑ 是 `K-R5` 09-02 补的） |
 ///
 /// 🔴 **维 ④ 那一格：别再写「还没被绕过」**〔`D4` 08-29 逮到，而写下那句话的
 /// 那个 commit 自己的账里就记着一次；**当时那个「九组」**（今天是二十一组，见上表）
@@ -1054,10 +1038,10 @@ fn the_build_time_execution_surface_stays_registered() {
         .get("scripts")
         .and_then(|s| s.as_object())
         .expect("`package.json` 里没有 `scripts` —— 形状变了，本条会零命中地绿");
-    // 抽取器自检：脚本表塌了的话下面那条就是废话。
+    // 抽取器自检：脚本表塌了的话下面那条就是废话（正控：生成类型那一条必在）。
     assert!(
-        scripts.len() >= 20,
-        "`package.json` 只解析出 {} 条 script（08-08 实测 60+）—— 读法坏了",
+        scripts.contains_key("gen:types"),
+        "`package.json` 的 scripts 里没解析出 `gen:types`（解析出 {} 条）—— 读法坏了",
         scripts.len()
     );
     let hooks: Vec<&str> = LIFECYCLE
@@ -1083,20 +1067,7 @@ fn the_build_time_execution_surface_stays_registered() {
             slots.push(format!("{dir}/.cargo/{name}"));
         }
     }
-    assert_eq!(
-        slots.len(),
-        6,
-        "本条的人群应当是 3 个发起面 × cargo 认的 2 种文件名 = 6 格，实得 {}：{slots:?}\n\
-             ⚠ 动了那两个数组就回本条头注，把那张「谁从这里发起 cargo」的表一起改 ——\n\
-             只改数组不改头注 = 下一个人读不出「为什么是 6 不是 7」。",
-        slots.len()
-    );
-    // 探针⑨：**人群的身份**，不是它的个数〔`K-G2` `D3` 补，08-28；`K22`〕。
-    // ⚠ 上面那条 `slots.len() == 6` 是一个**表面量**（`testing.md` 硬规则 6）——
-    //   `D3` 现打：把 `CARGO_CFG_DIRS` 的 `src/backend` 换成 `e2e`，格数仍是 6
-    //   ⇒ 上面那条照过，而**真 `runner` 放进 `src/backend/.cargo/config.toml`
-    //   判据也照绿** —— 那一格正是 `KG2B` 这一件买来的。
-    //   ⇒ 人群必须按**字面量逐格**钉住，个数只是它的副产品。
+    // 人群按**字面量逐格**钉住（换一格而格数不变也要红）。
     let want_slots: &[&str] = &[
         "./.cargo/config.toml",
         "./.cargo/config",
@@ -1109,7 +1080,6 @@ fn the_build_time_execution_surface_stays_registered() {
         slots.iter().map(String::as_str).collect::<Vec<_>>(),
         want_slots,
         "本条的人群**逐格**变了。\n\
-             ⚠ 换掉一格而不改格数，上面那条 `len == 6` 一个字都不会说 —— 这一条才认得出来。\n\
              真要改（新发起面 / cargo 换了认的文件名）：连本条头注那张\n\
              「谁从这里发起 cargo」的表一起改，并把新的尺子读数写进去。"
     );

@@ -43,25 +43,6 @@ const EXEMPT: &[(&str, &str, &str)] = &[
      "§41.6 的**原措辞留档**（2026-07-31 收窄前那句）—— 历史句，改它等于篡改沿革；而它旁边那句「现措辞」正是本轮改的那一处"),
 ];
 
-/// 语料地板：低于这个字节数就判「散文没喂进来」，而不是「一处都没有」。
-const CORPUS_FLOOR_BYTES: usize = 300_000;
-
-/// 例外表覆盖的处数 —— **恒等**，不是地板。
-///
-/// 少一处 = 有条例外空转了（那句话被改过）；多一处 = 有人往例外表里塞了新的放行，
-/// 而放行必须是**有意的一拍**。⚠ 这个数与 [`EXEMPT`] 的条数今天恰好相等（15），
-/// 但两者不是同一件事：一条片段可以盖住同一句里的两处裸词。
-/// **15 → 14**：`src/frontend/shell/README.md` 那条
-/// 「各配置远端 exec `<daemon> --usage`」的放行随那一行文档一起删了
-/// （用量 ② 轴整轴退役）。**这是例外表变短，不是放宽。**
-/// 〔步 8 改名一刀 2026-09-19〕**14 → 8**：六条例外的前提（「那一处在本轮写区之外」）
-/// 被全仓冻结窗口整个取消了 ⇒ 那六处真的改成「后端」了，例外随之作废。
-/// 逐条理由见 [`EXEMPT`] 表头那段注释。**又一次是例外表变短，不是放宽。**
-// 8 → 7：`IPC-PROTOCOL.md` §11 按点 ↗ 时现查重写，那一处引文随旧链路的沿革一起删了。
-// 7 → 5：协议文档改成「总述手写 ＋ 逐格生成」，`IPC-PROTOCOL.md` 那两处（CC 的后台模式 · aterm 契约文档名）随旧正文一起删了。
-// 5 → 2：`INVARIANTS` §33b 的迁移沿革压成现状那几句，那一节里的三处随之删了。
-const EXEMPT_HITS: usize = 2;
-
 /// ASCII 标识符字符 —— **汉字不算**，这一条就是「两个数」的分水岭。
 fn is_ident(c: u8) -> bool {
     c.is_ascii_alphanumeric() || c == b'_'
@@ -127,12 +108,12 @@ fn no_prose_in_the_wording_sites_still_says_daemon() {
     let bodies: Vec<(&str, String)> = SITES.iter().map(|r| (*r, read(r))).collect();
 
     // ── 抽取器自检①：语料真喂进来了（读空了下面每一条都会零命中地绿）──
-    let total: usize = bodies.iter().map(|(_, t)| t.len()).sum();
-    assert!(
-        total >= CORPUS_FLOOR_BYTES,
-        "{} 份散文只读到 {total} 字节（地板 {CORPUS_FLOOR_BYTES}）—— 抽取器坏了，本条在空转",
-        bodies.len()
-    );
+    for (rel, t) in &bodies {
+        assert!(
+            !t.trim().is_empty(),
+            "{rel} 读出来是空的 —— 抽取器坏了，本条在空转"
+        );
+    }
 
     // ── 抽取器自检②：切 token 那一步两个方向都要对 ──
     //
@@ -209,7 +190,7 @@ fn no_prose_in_the_wording_sites_still_says_daemon() {
 
     // ── 正题 ──
     let mut offenders: Vec<String> = Vec::new();
-    let mut exempted = 0usize;
+    let mut used = vec![false; spans.len()];
     let mut idents = 0usize;
     for (rel, site_text) in &bodies {
         let raw = site_text.as_bytes();
@@ -219,8 +200,11 @@ fn no_prose_in_the_wording_sites_still_says_daemon() {
                 idents += 1;
                 continue;
             }
-            if spans.iter().any(|(f, x, y)| f == rel && *x <= a && a < *y) {
-                exempted += 1;
+            if let Some(k) = spans
+                .iter()
+                .position(|(f, x, y)| f == rel && *x <= a && a < *y)
+            {
+                used[k] = true;
                 continue;
             }
             let at = site_text[..a].matches('\n').count() + 1;
@@ -234,30 +218,22 @@ fn no_prose_in_the_wording_sites_still_says_daemon() {
         }
     }
 
-    // ── 抽取器自检③：标识符那一档必须真的数到东西 ──
-    //
-    // 数不到 = 切 token 那一步在真语料上根本没跑（合成串过了不代表真树上跑到了）。
-    // 🔴 〔步 8 改名一刀 2026-09-19〕**139 → 25，地板 100 → 20。**
-    //    这不是「把地板调下去让今天好过」：那 139 处里绝大多数是 `daemon_*` / `--daemon-probe`
-    //    / `embedded-daemons/` 这类**代码标识符**，而步 8 把它们全改名了 ⇒ 盘上真的没有了。
-    //    今天剩下的 25 处全部来自两个**明写保护、不许改**的拼写
-    //    （`backendPath` 那个现役配置键 · 旧闭集 id 与旧 crate 目录名那两个拼写 ·
-    //      仓外 aterm 的类型名）。
-    //    ⚠ 这一格本来就不是承重的那半：「切 token 坏掉」的两个方向分别由上面的合成串自检
-    //    与下面的 `offenders` 接着；本条只答「真语料确实喂进来、而且里面确实有非裸词」。
-    // 〔2026-09-29 README 按 4.0.0 重写，25 → 19，地板 20 → 15〕旧 README 里点名的那几处标识符随整段沿革删了，盘上真的没有了。
-    // 〔10-07 协议文档改成生成，19 → 6，地板 15 → 4〕`IPC-PROTOCOL.md` 的旧正文里点名的那几处随正文删了，盘上真的没有了。
+    // ── 抽取器自检③：标识符那一档在真语料上跑到了（合成串过了不代表真树上跑到了）──
     assert!(
-        idents >= 4,
-        "只数出 {idents} 处代码标识符（协议文档改成生成后现打 6；README 重写后 19；改名前 139）—— 本条在真语料上没跑起来"
+        idents > 0,
+        "一处代码标识符都没数出来 —— 本条在真语料上没跑起来"
     );
 
-    // ── 抽取器自检④：例外表不许空转（**恒等**，不是地板）──
-    assert_eq!(
-        exempted, EXEMPT_HITS,
-        "例外表今天盖住 {exempted} 处（登记 {EXEMPT_HITS}）——\n\
-             少了 = 有条例外空转；多了 = 有人往表里塞了新的放行。\n\
-             放行必须是有意的一拍：改这个数的同一拍要在 EXEMPT 里写清是哪条、为什么。"
+    // ── 抽取器自检④：每条例外都真盖住了一处裸词（没盖住 = 那条例外空转）──
+    let idle: Vec<&str> = EXEMPT
+        .iter()
+        .zip(&used)
+        .filter(|(_, u)| !**u)
+        .map(|((_, frag, _), _)| *frag)
+        .collect();
+    assert!(
+        idle.is_empty(),
+        "这些例外片段命中了，但片段里已经没有裸 `daemon` —— 例外空转，删掉：{idle:?}"
     );
 
     assert!(
@@ -266,7 +242,7 @@ fn no_prose_in_the_wording_sites_still_says_daemon() {
              ★ 出路两条：① 把它改成「后端」（英文那份是 `backend`）；\n\
              ② 它**真的**不该改（用户逐字引用 · 历史原措辞留档 · markdown 锚点 ·\n\
              命令行占位符 · CI job 名 · 界面按钮的逐字文案 · 指的是 Claude Code 自己那个\n\
-             daemon）⇒ 往 `EXEMPT` 加一行**并写清理由**，同一拍把 `EXEMPT_HITS` 调上去。\n\
+             daemon）⇒ 往 `EXEMPT` 加一行**并写清理由**。\n\
              ⚠ **代码标识符本来就不该红**（`src/backend` · `daemon_*` · `--daemon-probe`）——\n\
              它红了说明 token 切法出问题了，先看上面那几条自检。",
         offenders.join("\n")

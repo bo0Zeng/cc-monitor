@@ -6095,10 +6095,16 @@ backend 今天**只在一处**开子系统（`dial/sftp.rs`，SFTP 住本机常�
         out
     }
 
-    /// 扫描面地板：份数与字节数各一条。**两条都要** —— 份数挡「树没扫到」，
-    /// 字节数挡「每一份都被剥空」（`guard_support` 那条头注记着这两者互相掩盖过）。
-    const TREE_FILE_FLOOR: usize = 37;
-    const TREE_BYTE_FLOOR: usize = 80_000;
+    /// 扫描面正控：入口 `main.rs` 在人群里且剥完不是空的 —— 挡「树没扫到」与「每一份都被剥空」
+    /// （`guard_support` 那条头注记着这两者互相掩盖过）。
+    fn assert_tree_is_real(tree: &[(String, String)]) {
+        assert!(
+            tree.iter()
+                .any(|(rel, prod)| rel == "main.rs" && prod.contains("fn main")),
+            "扫描面里没有剥完仍带 `fn main` 的 `main.rs`（扫到 {} 份）—— 抽取坏了，本条在空转",
+            tree.len()
+        );
+    }
 
     // ── `KR79D3`：**盲区读数** ────────────────────────────────────────────────
 
@@ -6444,16 +6450,7 @@ backend 今天**只在一处**开子系统（`dial/sftp.rs`，SFTP 住本机常�
     #[test]
     fn the_remote_write_lives_in_exactly_one_file_and_its_roots_are_exactly_staging_and_bin() {
         let tree = production_tree();
-        let bytes: usize = tree.iter().map(|(_, c)| c.len()).sum();
-        assert!(
-            tree.len() >= TREE_FILE_FLOOR,
-            "只扫到 {} 份源文件（地板 {TREE_FILE_FLOOR}）—— 抽取坏了，本条在空转",
-            tree.len()
-        );
-        assert!(
-            bytes >= TREE_BYTE_FLOOR,
-            "扫描面只有 {bytes} 字节（地板 {TREE_BYTE_FLOOR}）—— 每一份都被剥空了，本条在空转"
-        );
+        assert_tree_is_real(&tree);
         let found: std::collections::BTreeSet<String> = tree
             .iter()
             .filter(|(_, prod)| violates_remote_write_layer(prod).is_some())
@@ -6501,7 +6498,7 @@ backend 今天**只在一处**开子系统（`dial/sftp.rs`，SFTP 住本机常�
             "远端写根与「暂存区 ＋ 部署目录」那两处对不上 —— 多一处 = 写能力扩散；少一处 = 暂存区或部署落不下去"
         );
         println!(
-            "SR1b：本趟扫 {} 份生产段源文件 / {bytes} 字节，远端写只在 {:?}，写根 {:?}",
+            "SR1b：本趟扫 {} 份生产段源文件，远端写只在 {:?}，写根 {:?}",
             tree.len(),
             found,
             got
@@ -6661,11 +6658,7 @@ backend 今天**只在一处**开子系统（`dial/sftp.rs`，SFTP 住本机常�
     #[test]
     fn the_blind_spot_reading_carries_a_denominator_for_every_layer_it_can_count() {
         let tree = production_tree();
-        assert!(
-            tree.len() >= TREE_FILE_FLOOR,
-            "语料只有 {} 份 —— 下面整张读数在空转",
-            tree.len()
-        );
+        assert_tree_is_real(&tree);
         let mut lines: Vec<String> = Vec::new();
         let mut countable = 0usize;
         let mut uncountable = 0usize;

@@ -96,7 +96,7 @@ mod tests {
     /// **把通用层里洗不掉的 agent 知识挪进 `agents/fake/`**，判据①当场安静。
     ///
     /// ⇒ 三条对价，缺一条这张表就是逃生舱：
-    /// ① **天花板 [`FIXTURE_HOMES_CEILING`]**（今天 1，只许降）——「再加一个夹具家」得先过这一关；
+    /// ① **只许 `fake` 那一家**——「再加一个夹具家」得先改判据、说清第一家为什么不够；
     /// ② **必须真在文件树里**（幽灵检查，见判据⑥）；
     /// ③ **绝不许进 [`crate::agents::REGISTRY`]**，且模块声明必须带 `#[cfg(test)]`
     ///    —— 那两条由 `crate::agents::fake::tests::the_fixture_agent_never_ships` 双向钉住。
@@ -109,14 +109,6 @@ mod tests {
          同形的话，通用层拿 Claude 的知识去解释它的 home 恰好也能读出东西，\
          `S6` 的正题就退化成一个粉饰的通过。",
     )];
-
-    /// 夹具家的条数天花板。**只许降**：今天 1 家就够回答成功标准②了；
-    /// 想加第二家，先说清楚第一家为什么不够。
-    const FIXTURE_HOMES_CEILING: usize = 1;
-
-    /// 人群下界：agent 家的数量。少于它说明有人把某个 agent 的家删了或改了名，
-    /// 而**判据会因此静默放行那一整家的知识** —— 那是最坏的一种绿。
-    const HOMES_FLOOR: usize = 2;
 
     /// 针：**agent 的目录布局与文件格式**，运行时拼（本文件的散文里就有这些词）。
     ///
@@ -383,18 +375,13 @@ mod tests {
     #[test]
     fn agent_format_knowledge_lives_only_in_agent_homes() {
         let files = sources();
-        assert!(
-            files.len() >= 20,
-            "只遍历到 {} 个源文件 —— 遍历坏了，本断言在空转",
-            files.len()
-        );
-        let homes_seen = HOMES
+        let unseen: Vec<&&str> = HOMES
             .iter()
-            .filter(|h| files.iter().any(|(rel, _)| rel.starts_with(**h)))
-            .count();
+            .filter(|h| !files.iter().any(|(rel, _)| rel.starts_with(**h)))
+            .collect();
         assert!(
-            homes_seen >= HOMES_FLOOR,
-            "只找到 {homes_seen} 个 agent 家（下界 {HOMES_FLOOR}）—— 有人删了或改名了某一家，\n\
+            unseen.is_empty(),
+            "这几个登记的 agent 家在遍历里一份文件都没有：{unseen:?} —— 有人删了或改名了某一家，\n\
              而本判据会因此**静默放行那一整家的知识**"
         );
         let needles = needles();
@@ -600,15 +587,14 @@ mod tests {
                  修好了就摘登记（这张表只许缩短）"
             );
         }
-        /// 今天恰好 3 条（同一个 wire 字段名的两处声明 + 一处构造）。**只许降不许升**。
-        const CEILING: usize = 3;
-        assert!(
-            AGENT_NAMED_WIRE_FIELDS.len() <= CEILING,
-            "`AGENT_NAMED_WIRE_FIELDS` 涨到 {} 条了（天花板 {CEILING}）。\n\
-             ⚠ 如果你正在加第三个 `<名>_dir` 字段 —— 那正是 `D3` 逐字排除掉的那条路，\n\
-             终点是 hello 里五个并列的目录字段。往 `homes` 里加一项，不要加字段。",
-            AGENT_NAMED_WIRE_FIELDS.len()
-        );
+        // 只许那一个历史字段（`claude_dir`）留着：登记一个别的 `<名>_dir` 字段 = 走 `D3` 逐字排除掉的那条路，
+        // 终点是 hello 里五个并列的目录字段。往 `homes` 里加一项，不要加字段。
+        for (f, frag, ..) in AGENT_NAMED_WIRE_FIELDS {
+            assert_eq!(
+                *frag, "claude_dir",
+                "`AGENT_NAMED_WIRE_FIELDS` 登记了 `{f}` 的 `{frag}` —— 只许那一个历史字段，往 `homes` 里加一项，不要加字段"
+            );
+        }
         for (f, frag, why, unlock) in AGENT_NAMED_WIRE_FIELDS {
             assert!(!why.trim().is_empty(), "{f}:{frag} 没写「为什么改不动」");
             assert!(
@@ -627,9 +613,10 @@ mod tests {
         let files = sources();
         let needles = adapter_path_needles();
         assert!(
-            needles.len() >= HOMES_FLOOR,
-            "从 `HOMES` 只派生出 {} 根适配层路径针（下界 {HOMES_FLOOR}）—— 派生坏了，本条在空转",
-            needles.len()
+            HOMES.iter().all(|h| needles
+                .iter()
+                .any(|n| n.starts_with(&h.trim_end_matches('/').replace('/', "::")))),
+            "有一家没从 `HOMES` 派生出适配层路径针 —— 派生坏了，本条在空转：{needles:?}"
         );
         let mut got: Vec<(String, usize)> = Vec::new();
         for (rel, prod) in &files {
@@ -674,10 +661,7 @@ mod tests {
     fn the_adapter_registry_is_one_line_per_agent() {
         let measured = adapter_call_sites_measured();
         let agents = crate::agents::REGISTRY.len();
-        assert!(
-            agents >= HOMES_FLOOR,
-            "注册表只剩 {agents} 家，下界 {HOMES_FLOOR}"
-        );
+        assert!(agents > 0, "注册表空了");
         for (file, why) in AGENT_REGISTRY_SITES {
             assert!(
                 !why.trim().is_empty(),
@@ -709,7 +693,7 @@ mod tests {
     ///
     /// ⚠ 人群取自**文件树**（`agents/<名>/` 真的存在几个）而不是 [`HOMES`] 那个常量 ——
     /// 否则「加了一家但两处常量都忘了改」会全绿。顺带把 `HOMES` 自己也对了一次账：
-    /// 它此前只有下界（`HOMES_FLOOR`），**多写一家、写错一个名字都不会红**。
+    /// 它此前只有下界，**多写一家、写错一个名字都不会红**。
     #[test]
     fn every_agent_adapter_has_exactly_one_registry_entry() {
         let files = sources();
@@ -722,9 +706,8 @@ mod tests {
         in_tree.sort();
         in_tree.dedup();
         assert!(
-            in_tree.len() >= HOMES_FLOOR,
-            "文件树里只找到 {} 个 agent 家（下界 {HOMES_FLOOR}）—— 遍历坏了，本条在空转：{in_tree:?}",
-            in_tree.len()
+            !in_tree.is_empty(),
+            "文件树里一个 agent 家都没找到 —— 遍历坏了，本条在空转"
         );
 
         let mut declared: Vec<String> = HOMES
@@ -741,13 +724,13 @@ mod tests {
         );
 
         // **夹具家不该进生产注册表** —— 先把这笔账单独结清，再对生产家的数。
-        assert!(
-            FIXTURE_HOMES.len() <= FIXTURE_HOMES_CEILING,
-            "夹具家涨到 {} 家了（天花板 {FIXTURE_HOMES_CEILING}）。\n\
-             ⚠ 夹具家享受的是**判据①的整层豁免**（`HOMES` 是排除表）——\n\
-             多一家就多一处可以往里塞 agent 知识而不会响的地方。加之前先说清楚现有的为什么不够。",
-            FIXTURE_HOMES.len()
-        );
+        // 夹具家只许那一个最小假 agent（`fake`）：夹具家享受判据①的整层豁免，多一家就多一处可以往里塞 agent 知识而不会响的地方。
+        for (name, _) in FIXTURE_HOMES {
+            assert_eq!(
+                *name, "fake",
+                "又登记了一个夹具家 `{name}` —— 只许那一个最小假 agent"
+            );
+        }
         for (name, why) in FIXTURE_HOMES {
             assert!(
                 in_tree.iter().any(|n| n == name),

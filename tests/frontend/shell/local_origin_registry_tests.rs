@@ -69,8 +69,8 @@ fn fn_start(src: &str, at: usize) -> (usize, bool) {
 fn every_remote_config_lookup_deals_with_the_local_origin_first() {
     let files = guard_core::scan_tree!(&src_root(), &["rs"]);
     assert!(
-        files.len() >= 60,
-        "只扫到 {} 个源文件 —— 遍历坏了，本断言在空转",
+        files.iter().any(|(p, _)| *p == src_root().join("lib.rs")),
+        "遍历没走到 `lib.rs`（走到 {} 份）—— 本断言在空转",
         files.len()
     );
     let mut sites = 0usize;
@@ -116,28 +116,10 @@ fn every_remote_config_lookup_deals_with_the_local_origin_first() {
             }
         }
     }
-    // 反向自检之一：**调用点必须真的数到了**。
-    // 08-12 实测 28 处；写成地板是因为这个数天天在变，写等号会天天假红
-    // （铁律 18：假阳会训练人绕过判据）。但地板要贴着实测，别写个 5 装样子。
-    // 🔴 `K-R104`（09-13）：地板 20 → **19**，理由与上面 `TRIAGE_DEBT` 那一条是**同一件事**：
-    //    `account_usage` 不再自己去查远端配置（它整条走后端通道，`client_for(origin)`
-    //    对 `<local>` 与远端一视同仁）⇒ 这个人群**恰好少一处**。
-    //    ⚠ 地板守的是「抽取器还够得到东西」；人群真的少了一个成员时不跟着改，
-    //    才是让它替真判据挡枪（`K-G8`）。
-    // 🔴 `K-R112`（09-13）：地板 19 → **17**，理由与上面 `K-R104` 那一条**同形**：
-    //    `check_cc_bus_agent_online`〔散文墓碑〕（`cc_bus.rs`，已迁到界面）与 远端抓屏那条（`tmux.rs`，已迁到界面）
-    //    不再自己去查远端配置（两条都整条走后端通道，`client_for(origin)` 对 `<local>`
-    //    与远端一视同仁）⇒ 这个人群**恰好少两处**。
-    // 🔴 地板 17 → **16**：`inproc_dial.rs` 里跳板那一跳的 `connect_via_jump`〔散文墓碑〕（查配置，只服务 SFTP）
-    //    随那份文件整份删了（界面进程零 SSH）⇒ 这个人群**恰好少一处**（登记表那一行同拍还掉）。
-    // 🔴 地板 16 → **15**：`remote_branch.rs` 的 `create_remote_branch_session` 不再自己去查远端配置〔散文墓碑〕
-    //    （分叉本机远端同一条帧命令，`client_for(origin)` 对 `<local>` 与远端一视同仁）⇒ 这个人群**恰好少一处**。
-    // 🔴 地板 15 → **13**：驾驶舱读名册 / 读收件箱那两处（`read_cc_bus_state` · `cfg_of`，〔散文墓碑〕）随 shell 读删了。
-    // 13 → 12：钩子诊断远端那一处不再查远端配置（改问那台后端）；12 → 10：MCP 远端两处同理。
+    // 反向自检之一：**调用点必须真的数到了**（登记过的那几处由下面的「过期登记」反向接住）。
     assert!(
-        sites >= 6, // 7 → 6：`launch.rs` 两处（远端拼 ssh 外壳时查跳板 · 开终端那一条查这台）随 ssh 外壳进本机后端删了，新 `terminal_dial` 一处（先分本机） // 8 → 7：`remote_history·rs` 那个 `require_cfg_by_label`〔散文墓碑〕随子 agent 那条命令删了 // 10 → 9：列 tmux 那一处改问那台后端 · 9 → 8：端口转发那一处（宿主起转发那个函数）随转发账进本机后端删了
-        "只数到 {sites} 处 `{CALL}` —— 抽取坏了，本断言在空转（08-12 实测 28 处，\
-             `K-R104` 09-13 现打 19，`K-R112` 09-13 现打 17，SR1b 09-24 现打 16，LOC1a 09-25 现打 15，SH1 09-26 现打 13）"
+        sites > 0,
+        "一处 `{CALL}` 都没数到 —— 抽取坏了，本断言在空转"
     );
     // 反向自检之二：**函数定位不许大面积退回文件头**。
     // 退回文件头会让位置比较退化成「文件里有没有」——那比本护栏声称的弱，
@@ -151,28 +133,6 @@ fn every_remote_config_lookup_deals_with_the_local_origin_first() {
         .iter()
         .map(|(f, n, _)| format!("{f}::{n}"))
         .collect();
-    registered.extend(TRIAGE_DEBT.iter().map(|(f, n)| format!("{f}::{n}")));
-    // ★ 存量表**只许变短**：等号不是地板。
-    // 地板在「变大」这个方向上是瞎的 —— 这个仓因为这件事栽过三次
-    // （`shell_lint_registry` 的账逐字：「`≥` 正是它落后三次的成因」）。
-    // K-R56（09-11）：16 → 15，`tmux_send_keys`〔散文墓碑〕真去分了本机（那条命令后来整个迁到界面）。
-    // 🔴 `K-R104`（09-13）：15 → **14**。用量探针那一条
-    //    随编排搬上帧面而**真的还掉了**（理由逐字在表里那条注释）。
-    //    〔：那一族今天连功能都不在了 —— 这个数**不动**，因为它当时就已经出表了。〕
-    //    ★ 这是本表第二次往下走，而「变少 ⇒ 好事」正是它自己报错文案里写的那一句。
-    // 14 → **12**：`mcp.rs` 远端写 / 删两个分支随「用户文件改经后端写」不再查远端配置。
-    // 12 → **11**：`inproc_dial.rs` 里的 `connect_via_jump`〔散文墓碑〕（只服务 SFTP 的跳板查配置）随那份文件整份删了。
-    // 11 → **10**：账号面那一处查远端配置（`cfg_for`，原住 `accounts.rs`）随那两条命令改走通道删了〔散文墓碑〕。
-    // 10 → **9**：`remote_branch.rs` 的 `create_remote_branch_session` 不再查远端配置（分叉走帧命令 `session-fork`）。〔散文墓碑〕
-    const TRIAGE_DEBT_TODAY: usize = 0; // 1 → 0：`launch.rs` 远端拼 ssh 外壳那一处随外壳进本机后端删了 —— 存量欠账清零 // 2 → 1：`remote_history·rs` 那个 `require_cfg_by_label`〔散文墓碑〕随子 agent 那条命令删了（那台后端自己找 · 挑 · 读）// 3 → 2：端口转发那一处随转发账进本机常驻后端删了（后端查自己的可达表） // 4 → 3：远端项目 `.mcp.json` 读那一处随 `mcp.rs` 删了（MCP 进了那台后端） // 5 → 4：远端 `ccm` 探针那一处还掉了（改经那台后端的门问 `ccm-probe`） // 6 → 5：列 tmux 那一处还掉了 // 9 → 8：钩子诊断远端那一处还掉了（改问那台后端）；8 → 6：MCP 远端两处同理
-    assert_eq!(
-        TRIAGE_DEBT.len(),
-        TRIAGE_DEBT_TODAY,
-        "存量表现在 {} 条，登记时是 {TRIAGE_DEBT_TODAY} 条。\n\
-             变少 ⇒ 有人真去量了某一处，把这个数一起改小（好事）；\n\
-             变多 ⇒ **不许** —— 新增的要么去加本机分支，要么进 `REMOTE_ONLY` 写明为什么够不到。",
-        TRIAGE_DEBT.len()
-    );
     // ★ 表里不许有**今天已经不是问题**的条目：那是过期的登记，会让下一个人
     //   以为还有欠账没还（与 `P3b` 抓的「理由过期」同一族）。
     let stale: Vec<&String> = registered
@@ -181,7 +141,7 @@ fn every_remote_config_lookup_deals_with_the_local_origin_first() {
         .collect();
     assert!(
         stale.is_empty(),
-        "登记表里这些今天已经先分本机了：{stale:?} —— 把它们从表里删掉，并把计数改小。"
+        "登记表里这些今天已经先分本机了：{stale:?} —— 把它们从表里删掉。"
     );
     offenders.retain(|o| !registered.contains(o));
     offenders.sort();

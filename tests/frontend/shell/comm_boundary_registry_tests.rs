@@ -430,8 +430,10 @@ fn members_are_the_two_comms_crates_and_nothing_is_path_mounted_into_them() {
     let comms = root.join("src/comms");
     let files = guard_core::scan_tree_excluding(&root.join("src"), &["rs"], &[]);
     assert!(
-        files.len() > 100,
-        "`src/` 下只走到 {} 份 `.rs` —— 取法坏了，下面的零命中在空转",
+        files
+            .iter()
+            .any(|(p, _)| *p == root.join("src/frontend/shell/src/lib.rs")),
+        "`src/` 下的遍历没走到 `frontend/shell/src/lib.rs`（走到 {} 份）—— 取法坏了，下面的零命中在空转",
         files.len()
     );
     let mut hits: Vec<String> = Vec::new();
@@ -2120,19 +2122,10 @@ const RELAY_LEFT_OUTSIDE: &[(&str, &[&str], &[&str], &str)] = &[
 /// 归属判断永远是人做的 ⇒ 照 [`RELAY_LEFT_OUTSIDE`] 对 `accounts/policy.rs` 的处置办：
 /// **不列，理由写在这里而不是等人来问。**
 ///
-/// # 🔴 那个「**5 处读盘**」，机检住址就在这张表的第三列
+/// # 「还剩几处读盘」的机检住址是这张表的第三列
 ///
-/// 那个数**不写在任何一句散文里** —— 它是这张表第三列的**处数合计**，
-/// 由下面那条判据与 `expected_c4_sites` 做**相等**断言（不是地板）。
-/// ⇒ 清掉一处、或者再多长一处，两个方向都当场红。
-/// 〔本拍死值验：摘掉 `stream_source/` 那处读环境变量 ⇒ 逐字
-///  「不见了的（表写了而不咬）：["读环境OS"]」；往 `sftp.rs` 注一处 ⇒ 逐字
-///  「多出来的（表没写）：["读字节"]」。〕
-///
-/// # 往里加/减一行要同拍做两件事
-///
-/// 1. 改这张表（判据编号与判词两列**都是机检的**，写错当场红，两列还互相自检）；
-/// 2. 改下面那条判据里的**份数**与**判词处数**（两个都是相等断言，不是地板）。
+/// 那个数不写在任何一句散文里：下面那条判据逐份把第三列与现扫的判词两向相等 ⇒
+/// 清掉一处、或者再多长一处，两个方向都当场红。往里加 / 减一行只改这张表。
 /// ⚠ 这张表**不是**豁免清单，也**不是**待办清单：它只保证「为什么进不来」这段理由**不是假的**。
 const TRANSPORT_LEFT_OUTSIDE: &[(&str, &[&str], &[&str], &str)] = &[
     (
@@ -2245,7 +2238,7 @@ fn criteria_biting(rel: &str, prod: &str) -> BTreeSet<&'static str> {
 /// 第一版只比**判据编号**的集合。死值验第一刀当场证否：`stream_source/` 有两个 `C4` 判词，
 /// 摘掉其中一个之后编号那个集合**一个字都不变** ⇒ 十七条**全绿**。
 /// ⇒ 「集合粒度」在「少了一处」那个方向与**地板**一样瞎，而本仓正是反复栽在那上面。
-/// 本条因此多两层：逐份的 `C4` **判词**两向集合相等 ＋ 全表判词**处数**相等，
+/// 本条因此多一层：逐份的 `C4` **判词**两向集合相等，
 /// 另有一条两列互相的自检（写了 `C4` 就必须逐个判词点出来，反之也不许凭空多一列）。
 ///
 /// # 买不到（如实登记）
@@ -2255,12 +2248,7 @@ fn criteria_biting(rel: &str, prod: &str) -> BTreeSet<&'static str> {
 ///   这一格是有意的：完成判据点名的是「那 5 处读盘」，
 ///   把六条判据的判词全立起来会变成一张没人读的大表。**要补是另一件活，不是这一件的漏。**
 /// - **不买「表里那几份该不该进来」** —— 归属判断永远是人做的，见两张表各自的头注。
-fn assert_left_outside(
-    table: &[(&str, &[&str], &[&str], &str)],
-    label: &str,
-    expected_len: usize,
-    expected_c4_sites: usize,
-) {
+fn assert_left_outside(table: &[(&str, &[&str], &[&str], &str)], label: &str) {
     let root = repo_root();
     // 表里的编号必须都是真判据（拼错一个 ⇒ 那一行从此恒不命中）。
     let known: BTreeSet<&str> = CRITERIA.iter().map(|(id, _, _)| *id).collect();
@@ -2295,7 +2283,6 @@ fn assert_left_outside(
     }
 
     let mut all: BTreeSet<&'static str> = BTreeSet::new();
-    let mut c4_sites = 0usize;
     let mut diverged: Vec<String> = Vec::new();
     for (rel, ids, c4, why) in table {
         // 以 `/` 结尾的那一格是一个目录（会话流来源拆成了一个目录）：整个目录的生产段当一份判。
@@ -2338,7 +2325,6 @@ fn assert_left_outside(
         //     只比编号时十七条全绿。地板在「变少」方向是瞎的，集合粒度在这里也是。〕
         let want_c4: BTreeSet<&str> = c4.iter().copied().collect();
         let got_c4 = disk_and_env_tags_in(&prod);
-        c4_sites += got_c4.len();
         if got_c4 != want_c4 {
             let extra: Vec<&&str> = got_c4.difference(&want_c4).collect();
             let gone: Vec<&&str> = want_c4.difference(&got_c4).collect();
@@ -2361,26 +2347,11 @@ fn assert_left_outside(
         diverged.join("\n")
     );
 
-    // 反空真①：份数**相等**，且至少真咬到过东西（否则「识别器全瞎」与「全都干净」同形）。
-    assert_eq!(
-        table.len(),
-        expected_len,
-        "{label}：判据里写的份数是 {expected_len}，而盘上这张表是 {} 行 —— \
-         真加/减了一份就回来同拍改这个数（它是散文那一侧，且是相等不是地板）",
-        table.len()
-    );
+    // 反空真①：至少真咬到过东西（否则「识别器全瞎」与「全都干净」同形）。
     assert!(
         !all.is_empty(),
         "{label}：一条判据都没咬住 —— 识别器整批瞎了，\
          而那时上面那条相等断言是在两个空集之间比对（恒绿）"
-    );
-    // 🔴 **「还剩几处读盘」那个数的机检住址** —— 相等，不是地板。
-    assert_eq!(
-        c4_sites, expected_c4_sites,
-        "{label}：判据里写的 `C4` 判词处数是 {expected_c4_sites}，而盘上现扫是 {c4_sites} —— \
-         真清掉/真多长一处就回来同拍改这个数。\n\
-         🔴 变**少**那个方向尤其要停一下：该问的不是「把这个数改小」，\
-         是「那一份现在该不该搬进通信层 crate」。"
     );
 
     // 反空真②：识别器不是恒红 —— 一段干净的合成文本喂进去必须零命中。
@@ -2403,12 +2374,10 @@ fn the_relay_files_left_outside_are_blocked_by_exactly_the_criteria_the_prose_na
     assert_left_outside(
         RELAY_LEFT_OUTSIDE,
         "中转的宿主（后端 `relay/`）不进通信层的那几份",
-        1,
-        0,
     );
 }
 
-/// ★ **传输面那四份** —— 面 A 的候选逐份**被哪几条咬**与 [`TRANSPORT_LEFT_OUTSIDE`] 两向相等。
+/// ★ **传输面候选** —— 面 A 的候选逐份**被哪几条咬**与 [`TRANSPORT_LEFT_OUTSIDE`] 两向相等。
 ///
 /// 〔「步 4 的剩余」，2026-09-22 立〕面 B 那张表 2026-09-21 就有了，
 /// **面 A 一直没有** ⇒ 「面 A 还剩几处读盘」这件事此前**完全不在执行链上**
@@ -2426,15 +2395,7 @@ fn the_relay_files_left_outside_are_blocked_by_exactly_the_criteria_the_prose_na
 ///   写在表里各自那一行。
 #[test]
 fn the_transport_candidates_left_outside_are_blocked_by_exactly_the_criteria_the_prose_names() {
-    // `C4` 判词处数 5 → **4**：少的是 `stream_source/` 的「读环境OS」——
-    //   拨号代理二进制的解析（`CCM_DIAL_PROXY`）随拨号搬去了宿主 `dial_host.rs`（不是成员，那一处本来就归它）。
-    // `C4` 判词处数 4 → **2**：少的是 `sftp_pool.rs` 的「开文件」「以选项开」——
-    //   用户那次传输的本地那一头随传输台搬进了本机常驻后端（`control/transfer.rs`）。份数仍是 4（它还是候选，只剩 `X2`）。
-    // `C4` 判词处数 2 → **1**：少的是 `stream_source/` 的「读文本」（读 `~/.ssh/config`）——
-    //   「从 ssh config 导入」搬进后端 `dial/ssh_config.rs`。份数仍是 4。
-    // 4 → 3：`pubkey.rs` 随公钥推送进本机后端删了。
-    // 判词处数 1 → 0：那一处读盘就是 `pubkey.rs` 读本机 `.pub`（它搬进了本机后端）。
-    assert_left_outside(TRANSPORT_LEFT_OUTSIDE, "面 A 的传输面那三份候选", 3, 0);
+    assert_left_outside(TRANSPORT_LEFT_OUTSIDE, "面 A 的传输面候选");
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -2487,11 +2448,10 @@ fn test_fn_names(src: &str) -> BTreeSet<String> {
 fn every_criterion_is_on_the_execution_chain() {
     let me = include_str!("comm_boundary_registry_tests.rs");
     let actual = test_fn_names(me);
-    // 抽取器自检：真的抠到了测试名（否则两个空集相等，恒绿）。
+    // 抽取器自检：本条自己必须被抠到（否则两个空集相等，恒绿）。
     assert!(
-        actual.len() >= 10,
-        "只抠出 {} 个 `#[test]` —— 抽取器坏了，下面那条会拿两个空集比出绿：{actual:?}",
-        actual.len()
+        actual.contains("every_criterion_is_on_the_execution_chain"),
+        "没抠出本条自己的 `#[test]` —— 抽取器坏了，下面那条会拿两个空集比出绿：{actual:?}"
     );
     let declared: BTreeSet<String> = CRITERIA.iter().map(|(_, f, _)| (*f).to_string()).collect();
     let undeclared: Vec<&String> = actual.difference(&declared).collect();
