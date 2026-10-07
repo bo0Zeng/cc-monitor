@@ -184,8 +184,6 @@ export interface StartItem {
   sid: string;
   cwd: string;
   account?: AccountAsk;
-  fresh_terminal?: boolean;
-  fork_of?: string;
 }
 
 /** 起会话带的那几样（用户设置的原值）：哪一家 · resume 命令 · 那台的模型偏好表。标签页里的会话都是流跟的那一家。批量起与换号重启共用。 */

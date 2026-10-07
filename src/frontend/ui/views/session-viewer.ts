@@ -35,8 +35,7 @@ import { findInSession, readSessionIndex, type SessionIndexResult } from "../ses
 import { readLines, readWholeSession } from "../record-reads";
 import { followSession, type FollowEvent } from "../events";
 import { attachBranchButton } from "../branch-button";
-import { runForkFlow } from "../fork-flow"; // G6：分叉完把新会话起起来（E78 起连反馈也在里面）
-import type { BranchResult } from "../session-writes";
+import { openNewSession } from "../new-session";
 // 大纲的清单问后端要（判定只住后端），实时 tab 用的是同一个类
 import { OutlineSource } from "./outline-source";
 // 「你说过的话」清单界面与实时 tab 同一个类（`UserInputPanel`），这里只换开法：工具行一颗按钮 ＋ kit 浮层。
@@ -124,10 +123,6 @@ interface JsonlLinePayload {
   seq: number;
   message: JsonlRecord;
 }
-
-// C04d 批 6a：手写的 `BranchResult` 镜像已删——**包装层的签名直接提供它**，
-// 本文件不再需要本地标注（生成物仍被 ipc/commands.ts 的 import 链消费）。
-
 
 /** 内容头（设计稿乙4-④）：内容由宿主按那一行的事实拼好，查看器只摆位置。 */
 export interface ViewerHead {
@@ -410,7 +405,7 @@ export class SessionViewer {
       onCardRendered: opts.suppressBranch
         ? undefined
         : (el, msg) =>
-            this.attachBranchButton(el, msg, opts.jsonlPath, opts.cwd, opts.origin),
+            this.attachBranchButton(el, msg, opts.jsonlPath, opts.origin),
     };
     this.renderCtx = ctx;
     this.renderSink = sink;
@@ -612,7 +607,6 @@ export class SessionViewer {
     cardEl: HTMLElement,
     message: JsonlRecord,
     jsonlPath: string,
-    cwd: string | undefined,
     origin: Origin,
   ): void {
     if (message.type !== "user" && message.type !== "assistant") return;
@@ -620,22 +614,11 @@ export class SessionViewer {
     if (!uuid) return;
     attachBranchButton(cardEl, {
       uuid,
-      // 两条路都只认 sid（本机那条也收成 sid 了）。查看器手上没有独立的
-      // sid 字段，但历史会话的文件名**就是** sid（`remote_history::jsonl_stem` 是同一口径），
-      // 所以从路径取。
-      sourceSessionId: sidFromJsonlPath(jsonlPath),
-      origin,
-      cwd,
-      onForked: (res) => void this.startForkedSession(res, sidFromJsonlPath(jsonlPath), origin),
+      // 查看器手上没有独立的 sid 字段，但历史会话的文件名**就是** sid（`remote_history::jsonl_stem` 是同一口径），所以从路径取。
+      // 与实时 tab 那条开同一个框（分叉记录在框里点［新建］那一步才写）。
+      onFork: (at) =>
+        void openNewSession({ origin, fork: { sid: sidFromJsonlPath(jsonlPath), uuid: at, title: this.titleEl.textContent ?? "" } }),
     });
-  }
-
-  /**
-   * 分叉产出新会话文件之后 —— **起它**（不碰原会话）。与实时 tab 那条走**同一个** `runForkFlow`，两处行为不许分裂；
-   * 起会话要的三格那台已推好（`res.launch`）。
-   */
-  private async startForkedSession(res: BranchResult, sourceSessionId: string, origin: Origin): Promise<void> {
-    await runForkFlow({ origin, newSessionId: res.sessionId, sourceSessionId, launch: res.launch });
   }
 
   /** F39:增量批后幂等重建 fold(branchRecords 全量;未渲染 uuid 的卡不在 DOM,自然跳过) */

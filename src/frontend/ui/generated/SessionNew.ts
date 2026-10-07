@@ -25,4 +25,8 @@ account: LaunchedAccount | null,
 /**
  * 起的是哪一家。
  */
-agent: string, };
+agent: string, 
+/**
+ * 起在哪个目录（`~` 已按这台的家目录展开：认报到的会话按它）。
+ */
+cwd: string, };

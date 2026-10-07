@@ -98,7 +98,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/control-said.ts", // ↗ 结局浮层里的机器名（`machineName`）
     "src/frontend/ui/copy-table.ts", // W 关掉之后那条「已关闭 · 撤销」
     "src/frontend/ui/kit/toast.ts", // bringActiveTerminalToFront：非 Windows 说一句实话
-    "src/frontend/ui/fork-flow.ts", // startForkedSession（E78：fork-flow.vitest 钉「tabs.ts 调 runForkFlow」）
+    "src/frontend/ui/new-session.ts", // forkFrom：消息流「从这里分叉」开起新会话框（分叉随起会话那一个请求写）
     "src/frontend/ui/front-pop.ts", // ↗ 的回执：「查找终端…」· 对勾 · 结局浮层
     "src/frontend/ui/front-result.ts", // ↗ 结局族 ⇒ 浮层的标题 · 正文 · 按钮
     "src/frontend/ui/ipc/origin.ts", // 本机 / 远端只经这一处判（线上缺省 = 本机的那一下表示法转换也在这里）
@@ -225,7 +225,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/remote-launch-run.ts",
     "src/frontend/ui/resume-menu.ts", // 「恢复 ▸」那一组选项怎么摆（历史页「恢复 ▾」同一个组件）
     "src/frontend/ui/launch-account.ts", // 勾着的号 ⇒ 交那台判的那一问（`askOf`：本机在 tmux 里那一条要它）
-    "src/frontend/ui/new-session-in.ts", // 「恢复 ▸」最底下「在此目录新建会话」（历史页同一条）
+    "src/frontend/ui/new-session.ts", // 「恢复 ▸」最底下「在此目录新建会话」：开起新会话框（历史页同一个）
     "src/frontend/ui/tab-bar-prefs.ts", // 「加入集合 / 新建集合」到上界 ⇒ `sayCollectionRefusal`
     "src/frontend/ui/tab-collections.ts",
     "src/frontend/ui/kit/menu.ts",

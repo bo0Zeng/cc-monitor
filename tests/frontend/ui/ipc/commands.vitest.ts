@@ -413,8 +413,8 @@ describe("K-H2b D1 阻-1：本机起会话的主路都传了账号", () => {
     //   多一条新主路 ⇒ 这个数变 ⇒ 红一次，逼人回来看要不要传账号。
     expect(
       sites.length,
-      `起本机会话的调用点从 3 变成了 ${sites.length}：\n${sites.map((s) => s.file).join("\n")}`,
-    ).toBe(3); // 2 → 3：账号页开不了终端窗口时「在 tmux 里登录」（`settings/account-login.ts`，点名那个号、带铸好的 tmux 名）// 5 → 2：四处 `resume_history_session`（tab 栏 · 历史页 · 分叉 · 换号重启）收成 `local-resume.ts` 一处；另一处是历史页起新会话的 `new_local_session`
+      `起本机会话的调用点从 1 变成了 ${sites.length}：\n${sites.map((s) => s.file).join("\n")}`,
+    ).toBe(1); // 3 → 1：本机新起的两处（历史页「在此目录新建会话」· 账号页「在 tmux 里登录」）收成起新会话那一个请求（`session-new`，号在那台判、框里点名），不再以 `new` 动作调 `launchLocal` // 2 → 3：账号页开不了终端窗口时「在 tmux 里登录」（`settings/account-login.ts`，点名那个号、带铸好的 tmux 名）// 5 → 2：四处 `resume_history_session`（tab 栏 · 历史页 · 分叉 · 换号重启）收成 `local-resume.ts` 一处；另一处是历史页起新会话的 `new_local_session`
     const missing = sites.filter((s) => !/\baccount\s*:/.test(s.text)).map((s) => s.file);
     expect(
       missing,
@@ -455,7 +455,7 @@ describe("K-H2b D1 阻-1：本机起会话的主路都传了账号", () => {
       sites.length - resumeSites.length,
       "`new_local_session` 的调用点数变了 —— 它今天没有 `tmux_name` 参数位（Rust 侧签名里就没有），" +
         "变了要回来看是不是后端也开了那一格",
-    ).toBe(2); // 1 → 2：`settings/account-login.ts` 在 tmux 里登录（它带 tmuxName）
+    ).toBe(0); // 2 → 0：本机新起都走 `session-new`（终端名那台铸）// 1 → 2：`settings/account-login.ts` 在 tmux 里登录（它带 tmuxName）
     const missing = resumeSites.filter((s) => !/\btmuxName\b/.test(s.text)).map((s) => s.file);
     expect(
       missing,
@@ -538,11 +538,10 @@ describe("本机起会话的主路：交「跟随」给本机后端、界面一�
     document.querySelectorAll("[role=menu]").forEach((n) => n.remove());
   });
 
-  it("★ 历史页 resume / 起新会话 · tab 栏 resume：交的都是「跟随」，界面一条 pin 都不写", async () => {
+  // 起新会话不在这里：它走 `session-new` 那一个请求（框里的号是点名的那一个，见 `new-session.vitest.ts`）。
+  it("★ 历史页 resume · tab 栏 resume：交的都是「跟随」，界面一条 pin 都不写", async () => {
     await clickRowAction("恢复");
     expect(payloadOf("resume_history_session").account).toEqual({ kind: "follow" });
-    await clickRowAction("在此目录新建会话");
-    expect(payloadOf("new_local_session").account).toEqual({ kind: "follow" });
     await resumeLocalTab("t1");
     expect(localLaunchCalls(invokeMock.mock.calls, "resume_history_session").map((c) => c.account)).toEqual([
       { kind: "follow" },

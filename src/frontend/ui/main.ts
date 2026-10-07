@@ -77,6 +77,7 @@ import type { FrontendReadyPayload } from "./generated/FrontendReadyPayload";
 import { currentAccountForBadge } from "./accounts";
 import { fetchSessionAccounts, fetchAccounts } from "./account-reads";
 import { bindLaunchArrivals, noteLive } from "./launch-arrival";
+import { FOCUS_SESSION_EVENT, openNewSession, setNewSessionFocus } from "./new-session";
 import { copyText } from "./copy-table";
 import { appStore } from "./app-store";
 import { OverlayRouter } from "./overlay-router";
@@ -297,6 +298,13 @@ window.addEventListener("DOMContentLoaded", async () => {
   // ↗ 浮层的两颗：［接上终端］直达设置那一节 ·［更新］开那台机器页（更新那一颗只住机器卡上）。
   tabs.onConnectTerminal = () => void openSettingsWindow(undefined, dest.connectTerminalOf(LOCAL_ORIGIN));
   tabs.onUpdateMachine = (origin) => void openSettingsWindow(undefined, dest.machineOf(origin));
+  // 起新会话：那台报出新会话 ⇒ 切过去（在主窗口里起的直接切；在设置 / 查看窗里起的点了［切过去］再切，先把主窗口拉到前面）。
+  setNewSessionFocus((_origin, sid) => tabs.switchTo(sid));
+  void listen<{ origin: string; sid: string }>(FOCUS_SESSION_EVENT, (e) => {
+    const w = getCurrentWindow();
+    void w.unminimize().then(() => w.setFocus()).catch(() => {});
+    tabs.switchTo(e.payload.sid);
+  });
   // 设置窗账号页「时间轴 · 默认轮换」⇒ 主窗口拉到前面、开账号面板滚到那一节（只开不写）。
   void listen<OpenAccountPanel>(OPEN_ACCOUNT_PANEL_EVENT, (e) =>
     jumpToAccountPanel(e.payload, {
@@ -555,6 +563,17 @@ window.addEventListener("DOMContentLoaded", async () => {
       );
     }
     cmds.push(
+      {
+        id: "new-session",
+        group: "open",
+        icon: "plus",
+        title: copyText("main.cmd.newSession"),
+        keywords: copyText("main.cmd.newSessionKeywords"),
+        run: () => {
+          const t = tabs.activeTab();
+          void openNewSession(t ? { origin: t.origin, cwd: t.projectDir ?? undefined } : {});
+        },
+      },
       { id: "open-history", group: "open", icon: "history", title: copyText("main.cmd.openHistory"), keywords: copyText("main.cmd.historyKeywords"), hint: chordHint("app.toggle-history"), run: () => overlays.open("history") },
       { id: "open-grid", group: "open", icon: "grid", title: copyText("main.cmd.openGrid"), keywords: copyText("main.cmd.gridKeywords"), run: () => overlays.open("grid") },
       { id: "open-cc-bus", group: "open", icon: "bus", title: copyText("main.cmd.openCcBus"), keywords: copyText("main.cmd.ccBusKeywords"), hint: chordHint("app.open-cc-bus"), run: () => overlays.open("cc-bus") },

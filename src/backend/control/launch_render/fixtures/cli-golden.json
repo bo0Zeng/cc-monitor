@@ -831,46 +831,6 @@
       "out": "tmux send-keys -t '=cc-s1:' 'ccm --resume s1 -- --ccm-agent claude --base' Enter; tmux attach -t '=cc-s1:'"
     },
     {
-      "name": "path:远端开新会话",
-      "caps": [
-        "new",
-        "resume",
-        "attach",
-        "tmux",
-        "account",
-        "model",
-        "cwd",
-        "agent",
-        "launcher",
-        "ccm-sid",
-        "print",
-        "detach",
-        "tmux-size"
-      ],
-      "req": {
-        "agent": "claude",
-        "action": {
-          "kind": "new"
-        },
-        "container": {
-          "kind": "tmux",
-          "name": "w-cc",
-          "send_into": false
-        },
-        "cwd": "/p",
-        "account": {
-          "kind": "follow"
-        },
-        "ccmSid": null,
-        "model": null,
-        "models": {},
-        "launcher": "claude",
-        "defaultLauncher": "claude"
-      },
-      "ok": true,
-      "out": "ccm -- new --ccm-tmux=w-cc --ccm-agent claude --base --cwd /p"
-    },
-    {
       "name": "path:远端接回",
       "caps": [
         "new",

@@ -114,6 +114,8 @@ pub struct SessionNew {
     pub account: Option<LaunchedAccount>,
     /// 起的是哪一家。
     pub agent: String,
+    /// 起在哪个目录（`~` 已按这台的家目录展开：认报到的会话按它）。
+    pub cwd: String,
 }
 
 /// 写分支记录：`(源 sid, 消息 uuid)` ⇒ 新 sid；不成 ⇒ `(码, 那一句)`。
@@ -125,10 +127,6 @@ fn fail(code: &'static str, said: String, field: Option<SessionNewField>) -> Fai
         unavailable: None,
     };
     (code, said, serde_json::to_value(data).ok())
-}
-
-fn said(key: &str, vars: &[(&str, &str)]) -> String {
-    copy_core::copy_text(key, vars)
 }
 
 /// `~` / `~/…` ⇒ 这台的家目录下（界面显示的目录常写成 `~/…`）。家说不出 ⇒ 原样。
@@ -161,7 +159,7 @@ pub(crate) fn answer(
     if req.agent.trim().is_empty() {
         return Err(fail(
             "unknown_agent",
-            said("beSessionNew.agent.missing", &[]),
+            copy_core::copy_text("beSessionNew.agent.missing", &[]),
             Some(SessionNewField::Agent),
         ));
     }
@@ -176,7 +174,7 @@ pub(crate) fn answer(
     if let Some(c) = command.and_then(shell_quote_core::launcher_refused_char) {
         return Err(fail(
             "bad_command",
-            said(
+            copy_core::copy_text(
                 "rsHistory.launcher.badChars",
                 &[
                     ("launcher", &format!("{:?}", command.unwrap_or_default())),
@@ -191,7 +189,7 @@ pub(crate) fn answer(
     if cwd.is_empty() || !(deps.local_facts.is_dir)(&cwd) {
         return Err(fail(
             "no_dir",
-            said("beSessionNew.cwd.missing", &[("cwd", req.cwd.trim())]),
+            copy_core::copy_text("beSessionNew.cwd.missing", &[("cwd", req.cwd.trim())]),
             Some(SessionNewField::Cwd),
         ));
     }
@@ -249,6 +247,7 @@ pub(crate) fn answer(
         cmd,
         account: launched.clone(),
         agent: kind.to_string(),
+        cwd: cwd.clone(),
     };
     let out = match name {
         Some(name) => {
@@ -277,7 +276,7 @@ pub(crate) fn answer(
                 Ok((3, _, _)) => {
                     return Err(fail(
                         "tmux_taken",
-                        said("beSessionNew.tmux.taken", &[("name", &name)]),
+                        copy_core::copy_text("beSessionNew.tmux.taken", &[("name", &name)]),
                         Some(SessionNewField::TmuxName),
                     ))
                 }
@@ -337,7 +336,7 @@ fn tmux_name(req: &NewRequest, cwd: &str, deps: &Deps) -> Result<String, Failed>
         Ok(None) => {
             return Err(fail(
                 "place_unavailable",
-                said("beSessionNew.place.noTmux", &[]),
+                copy_core::copy_text("beSessionNew.place.noTmux", &[]),
                 Some(SessionNewField::Place),
             ))
         }
@@ -353,14 +352,14 @@ fn tmux_name(req: &NewRequest, cwd: &str, deps: &Deps) -> Result<String, Failed>
         if crate::control::gate_rules::new_tmux_name_issue(n).is_some() {
             return Err(fail(
                 "bad_tmux_name",
-                said("beSessionNew.tmux.badName", &[("name", n)]),
+                copy_core::copy_text("beSessionNew.tmux.badName", &[("name", n)]),
                 Some(SessionNewField::TmuxName),
             ));
         }
         if taken(n) {
             return Err(fail(
                 "tmux_taken",
-                said("beSessionNew.tmux.taken", &[("name", n)]),
+                copy_core::copy_text("beSessionNew.tmux.taken", &[("name", n)]),
                 Some(SessionNewField::TmuxName),
             ));
         }
@@ -379,7 +378,7 @@ fn tmux_name(req: &NewRequest, cwd: &str, deps: &Deps) -> Result<String, Failed>
     if taken(&name) {
         return Err(fail(
             "tmux_taken",
-            said("beSessionNew.tmux.taken", &[("name", &name)]),
+            copy_core::copy_text("beSessionNew.tmux.taken", &[("name", &name)]),
             Some(SessionNewField::TmuxName),
         ));
     }
@@ -423,7 +422,8 @@ fn wire_req(
 }
 
 fn own_entry(deps: &Deps) -> Result<String, String> {
-    (deps.local_facts.entry)().ok_or_else(|| said("beLaunchRender.entry.noHome", &[]))
+    (deps.local_facts.entry)()
+        .ok_or_else(|| copy_core::copy_text("beLaunchRender.entry.noHome", &[]))
 }
 
 /// `session-new-dir` 的本体：`{cwd, forkOf?}` ⇒ `{exists, tmuxName}`（目录在不在 · 这台此刻会给它铸的终端名；没 tmux ⇒ `null`）。

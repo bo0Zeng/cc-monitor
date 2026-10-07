@@ -36,7 +36,7 @@ import { deleteSession } from "../session-writes";
 import { askOf, type AccountAsk } from "../launch-account";
 import { revealInFolder } from "../reveal-in-folder";
 import { resumeHistoryRow } from "../history-resume";
-import { newSessionIn } from "../new-session-in";
+import { openNewSession } from "../new-session";
 import { groupHead, hitsBlock, labelOf, machineTag, rowBadges, rowKey, sectionHead, sessionRow, strip, type RowHooks } from "./history-rows";
 import { sectionKey, sectionLabel, spanText } from "./history-time";
 import s from "./history.module.css";
@@ -705,7 +705,7 @@ export class HistoryView {
             else this.openGroups.add(gk);
             this.renderNow();
           },
-          onNew: () => void newSessionIn(g.origin, g.projectPath, g.agent),
+          onNew: () => void openNewSession({ origin: g.origin ?? LOCAL_ORIGIN, cwd: g.projectPath, agent: g.agent }),
           onRetry: () => this.refresh(true, keyOf(g.origin)),
         }),
       );
@@ -969,7 +969,7 @@ export class HistoryView {
       onChange: (p) => {
         if (main.getAttribute("aria-disabled") !== "true") main.title = resumeHint(accounts, p);
       },
-      newInDir: () => void newSessionIn(r.origin, r.projectPath, r.agent),
+      newInDir: () => void openNewSession({ origin: r.origin ?? LOCAL_ORIGIN, cwd: r.projectPath, agent: r.agent }),
     });
   }
 
@@ -1056,7 +1056,7 @@ export class HistoryView {
       { label: r.hidden ? copyText("history.menu.unhide") : copyText("history.menu.hide"), onClick: () => void this.hide(r) },
       { label: "", divider: true },
       ...(r.origin ? [] : [{ label: copyText("history.menu.openDir"), icon: "folder" as const, onClick: () => void revealInFolder(r.projectPath) }]),
-      { label: copyText("history.menu.newInDir"), onClick: () => void newSessionIn(r.origin, r.projectPath, r.agent) },
+      { label: copyText("history.menu.newInDir"), onClick: () => void openNewSession({ origin: r.origin ?? LOCAL_ORIGIN, cwd: r.projectPath, agent: r.agent }) },
       { label: "", divider: true },
       {
         label: copyText("history.menu.delete"),

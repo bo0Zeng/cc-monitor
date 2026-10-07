@@ -1569,60 +1569,6 @@ body.settings-window-mode .settings-panel {
   font-family: var(--font-mono);
 }
 
-/* F53：「开新 Claude」launcher 即席弹框（全屏遮罩 + 居中卡片）。`--z-overlay` > 设置面板
-   （`--z-view`）—— 从设置里点开,低值会被右侧 360px 抽屉盖住（F58 D-R1 一并修）。 */
-.launcher-back {
-  position: fixed;
-  inset: 0;
-  z-index: var(--z-overlay);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--overlay-backdrop);
-}
-
-.launcher-box {
-  width: min(90%, 460px);
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 16px 18px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-l);
-}
-
-.launcher-title {
-  font-weight: 600;
-  font-size: var(--font-size-base);
-}
-
-.launcher-field {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: var(--font-size-small);
-  opacity: 0.9;
-}
-
-.launcher-field input,
-.launcher-field select {
-  padding: 6px 8px;
-  background: var(--field-bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-s);
-  color: inherit;
-  font-family: ui-monospace, monospace;
-  font-size: var(--font-size-mono);
-}
-
-.launcher-foot {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 4px;
-}
-
 .pf-overlay {
   position: fixed;
   inset: 0;

@@ -15,7 +15,6 @@ import { MessageStream } from "./stream";
 import { reconcilePendingToolResults, type RenderContext } from "./cards";
 import { BranchFolder } from "./branch-fold";
 import { attachBranchButton } from "./branch-button"; // G4：实时会话的分叉入口
-import type { BranchResult } from "./session-writes";
 import type { JsonlLinePayload } from "./events";
 import { RecordTimeline } from "./record-timeline";
 import { SeqSet, TailWindow, type SkeletonLedger, type TakeBudget } from "./live-window";
@@ -70,7 +69,8 @@ export interface TabStreamHost {
   /** 真用户输入上屏 ⇒ 自动跟随（路由那一半）。 */
   userActive(sessionId: string): void;
   /** G6：分叉产出新会话文件之后 —— 起它。 */
-  startForkedSession(tab: Tab, res: BranchResult): Promise<void>;
+  /** 从这条消息处分叉：开起新会话框的分叉那一形。 */
+  forkFrom(tab: Tab, uuid: string): void;
   /** 这个会话的运行表里那个运行叫什么（agent 来话的事件条起名用；表里没有 ⇒ `undefined`，用来话自带的名字）。 */
   runLabelOf(sid: string, run: string): string | undefined;
 }
@@ -590,10 +590,7 @@ export class TabStreamView {
         if (!msg.uuid) return;
         attachBranchButton(el, {
           uuid: msg.uuid,
-          sourceSessionId: tab.sessionId,
-          origin: tab.origin,
-          cwd: tab.projectDir ?? undefined,
-          onForked: (res) => void this.host.startForkedSession(tab, res),
+          onFork: (uuid) => this.host.forkFrom(tab, uuid),
         });
       },
     };
@@ -849,10 +846,7 @@ export class TabStreamView {
         if (!msg.uuid) return;
         attachBranchButton(el, {
           uuid: msg.uuid,
-          sourceSessionId: tab.sessionId,
-          origin: tab.origin,
-          cwd: tab.projectDir ?? undefined,
-          onForked: (res) => void this.host.startForkedSession(tab, res),
+          onFork: (uuid) => this.host.forkFrom(tab, uuid),
         });
       },
     };

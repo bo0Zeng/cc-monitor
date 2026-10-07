@@ -19,7 +19,7 @@ import {
 } from "./tab-collections";
 import { sayCollectionRefusal } from "./tab-bar-prefs";
 import { defaultPick, resumeAccounts, resumeMenuItems, type ResumeAccounts, type ResumePick } from "./resume-menu";
-import { newSessionIn } from "./new-session-in";
+import { openNewSession } from "./new-session";
 import { askOf } from "./launch-account";
 import { runRemoteAttach } from "./remote-launch-run";
 // 标签页里的会话都是流跟的那一家（记录树那一家）。
@@ -317,7 +317,7 @@ export class TabMenu {
       accounts,
       pick,
       run: (p) => void this.runResume(sid, p),
-      newInDir: t && dir ? () => void newSessionIn(isLocalOrigin(t.origin) ? undefined : t.origin, dir, ACTIVE_AGENT) : undefined,
+      newInDir: t && dir ? () => void openNewSession({ origin: t.origin, cwd: dir }) : undefined,
     });
   }
 

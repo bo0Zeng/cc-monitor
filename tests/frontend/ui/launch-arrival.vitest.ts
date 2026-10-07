@@ -116,16 +116,16 @@ describe("FIX4 ④ 带票的等", () => {
   });
   const done = () => vi.mocked(emit).mock.calls.filter((c) => c[0] === "launch-arrival-done").map((c) => c[1]);
 
-  it("等到了 ⇒ 回 arrived:true、`arrived: null` 时自己不说话；没等到 ⇒ 回 arrived:false 并照常说没看到", async () => {
+  it("等到了 ⇒ 回报出来的那个 sid、`arrived: null` 时自己不说话；没等到 ⇒ 回 null 并照常说没看到", async () => {
     watchArrival(spec({ match: { sid: "s1" }, arrived: null, ticket: "T1" }));
     noteLive("devbox", "s1", seen(null));
-    expect(done()).toEqual([{ ticket: "T1", arrived: true }]);
+    expect(done()).toEqual([{ ticket: "T1", sid: "s1" }]);
     expect(toast).not.toHaveBeenCalled();
     watchArrival(spec({ match: { sid: "s2" }, arrived: null, ticket: "T2" }));
     await vi.advanceTimersByTimeAsync(ARRIVAL_BUDGET_MS + 1);
     expect(done()).toEqual([
-      { ticket: "T1", arrived: true },
-      { ticket: "T2", arrived: false },
+      { ticket: "T1", sid: "s1" },
+      { ticket: "T2", sid: null },
     ]);
     expect(toast.mock.calls.map((c) => c[0])).toEqual(["命令发出去了，但没看到会话起来"]);
   });

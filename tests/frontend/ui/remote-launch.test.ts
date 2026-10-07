@@ -11,7 +11,6 @@ import {
   planResumeDirect,
   planResumeTmux,
   planResumeIntoExistingTmux,
-  planLauncher,
   planAttach,
 } from "../../../src/frontend/ui/launch-requests.ts";
 import { buildCliRenderRequest } from "../../../src/frontend/ui/launch-cli-wire.ts";
@@ -66,13 +65,6 @@ test("就地 resume：容器 send-into、不重打身份标记、没有 cwd", ()
   eq(r.container, { kind: "tmux", name: "cc-abc", send_into: true });
   eq(r.ccmSid, null);
   eq(r.cwd, null);
-});
-
-test("开新会话：动作 new、容器 create、没选账号 ⇒ 跟随（那台判：没有上次的号 ⇒ 它的默认号）", () => {
-  const r = req(planLauncher("claude", "/p", " w-cc ", "claude"));
-  eq(r.action, { kind: "new" });
-  eq(r.container, { kind: "tmux", name: "w-cc", send_into: false });
-  eq(r.account, { kind: "follow" });
 });
 
 test("接回：不起 agent ⇒ 不带账号修饰", () => {

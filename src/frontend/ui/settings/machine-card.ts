@@ -25,18 +25,12 @@ import type { MachineFault } from "../generated/MachineFault";
 import { askInterrupts, interruptRows } from "./interrupts";
 // E80：`ConnectStage` 直连生成物，不再绕道 `remote-section`（那条绕道是 import 环的一半）。
 import type { ConnectStage } from "../generated/ConnectStage";
-import { DEFAULT_AGENT, defaultLauncherOf } from "../agent-profile";
-// 铸名口（列名单 ＋ 避让 ＋ 「列不出 ⇒ 不起」）本机远端同一个家。
-import { mintFreshTmuxName, refuseUnmintable } from "../terminal-name-mint";
-import { isSelectable, currentWorkingAccount } from "../accounts";
-import { fetchAccounts } from "../account-reads";
-import { chosenAccount } from "../launch-account";
-import { runRemoteLauncher } from "../remote-launch-run";
+// 起新会话：全产品一个框（机器卡 ⋯「新建会话…」开它，机器锁定）。
+import { openNewSession } from "../new-session";
 import { probeMachine, ProbeStalled, type ConnTestResult, type ProbeStop } from "../remote-probe";
 import { pushPublicKey } from "../pubkey-push";
 import type { ResolvedHost } from "../ssh-config-reads";
 import { confirmDialog } from "../kit/dialog";
-import { dispatcher, type OverlayHandle } from "../keybindings/registry";
 import { copyText } from "../copy-table";
 import { fold, setFoldSummary } from "../kit/fold";
 import { button, setButtonLabel } from "../kit/button";
@@ -852,9 +846,14 @@ export class MachineCard {
     void this.onPushPubkey(this.testButton);
   }
 
-  /** ⋯ →「新建会话…」。 */
+  /** ⋯ →「新建会话…」：开起新会话框（机器锁定在这一台；没填地址 / 用户 ⇒ 在连接设置下面说一句）。 */
   openLauncher(): void {
-    this.openLauncherDialog();
+    const cfg = this.collect();
+    if (!cfg.host || !cfg.user) {
+      this.showResultText(copyText("machineCard.launch.needHost"));
+      return;
+    }
+    void openNewSession({ origin: cfg.label.trim() || cfg.host, lockMachine: true });
   }
 
   /** ⋯ →「打开文件」：没填地址 / 用户 ⇒ 在连接设置下面说一句。 */
@@ -1013,181 +1012,6 @@ export class MachineCard {
         ? copyText("machineCard.pushKey.added", { path: r.pubPath })
         : copyText("machineCard.pushKey.already", { path: r.pubPath });
     });
-  }
-
-  /**
-   * F53：「开新 Claude」即席弹框——填工作目录 / tmux 会话名 / 启动命令,在远端 tmux 里启动
-   * 一个全新 Claude 会话。不存预设(不动 config)。origin 用 label(空则 host,后端按 origin_label
-   * 选台);host 未保存时 launch 会失败→runRemoteLauncher 回退复制命令(仍可用)。
-   */
-  private openLauncherDialog(): void {
-    const cfg = this.collect();
-    if (!cfg.host || !cfg.user) {
-      this.showResultText(copyText("machineCard.launch.needHost"));
-      return;
-    }
-    const origin = cfg.label.trim() || cfg.host;
-
-    const back = document.createElement("div");
-    back.className = "launcher-back";
-    // 压进 Esc 栈：Esc 只关这个框，不连带关设置窗。
-    const layer: OverlayHandle = { handleEsc: () => (close(), true) };
-    const close = (): void => {
-      dispatcher.popOverlay(layer);
-      back.remove();
-    };
-    const box = document.createElement("div");
-    box.className = "launcher-box";
-    const title = document.createElement("div");
-    title.className = "launcher-title";
-    title.textContent = copyText("machineCard.launch.title", { machine: origin });
-    box.appendChild(title);
-
-    const mkField = (
-      labelText: string,
-      placeholder: string,
-      hint = "",
-    ): HTMLInputElement => {
-      const row = document.createElement("label");
-      row.className = "launcher-field";
-      const span = document.createElement("span");
-      span.textContent = labelText;
-      const input = document.createElement("input");
-      input.type = "text";
-      input.placeholder = placeholder;
-      if (hint) input.title = hint;
-      input.spellcheck = false;
-      row.append(span, input);
-      box.appendChild(row);
-      return input;
-    };
-    // 〔WIN3 §2〕占位只放一句短的（长的那句在 460 px 的框里被截掉），例子挪到悬停说明。
-    const cwdInput = mkField(
-      copyText("machineCard.launch.cwd"),
-      copyText("machineCard.launch.cwdHint"),
-      copyText("machineCard.launch.cwdTitle"),
-    );
-    const nameInput = mkField(copyText("machineCard.launch.tmuxName"), copyText("machineCard.launch.tmuxNameHint"));
-    const cmdInput = mkField(
-      copyText("machineCard.launch.command"),
-      copyText("machineCard.launch.commandHint"),
-    );
-    // 工作目录填定 → 预览留空时将用的名字(placeholder)。名字问那台后端铸（与点「开始」时同一问）；
-    //   问不到 / 目录又改了 ⇒ 退回「自动生成」那一句。按 `change`（填完离开）问、不按每个键问。
-    cwdInput.addEventListener("change", () => {
-      const cwd = cwdInput.value.trim();
-      nameInput.placeholder = copyText("machineCard.launch.tmuxNameAuto");
-      if (!cwd) return;
-      void mintFreshTmuxName(origin, cwd).then((m) => {
-        if (m.ok && cwdInput.value.trim() === cwd) {
-          nameInput.placeholder = copyText("machineCard.launch.tmuxNameDerived", { name: m.name });
-        }
-      });
-    });
-
-    // A4：账号下拉。异步填充——账号库不可用（旧 backend / 未启用）则整行不显 → 不注入
-    // configDir → 行为与旧版逐字节一致（§7 降级）。选中某账号 = 起会话时注入其 CLAUDE_CONFIG_DIR。
-    const acctRow = document.createElement("label");
-    acctRow.className = "launcher-field";
-    acctRow.style.display = "none";
-    const acctSpan = document.createElement("span");
-    acctSpan.textContent = copyText("machineCard.launch.account");
-    const acctSelect = document.createElement("select");
-    acctSelect.className = "launcher-acct-select";
-    acctRow.append(acctSpan, acctSelect);
-    box.appendChild(acctRow);
-    void (async () => {
-      try {
-        const state = await fetchAccounts(origin);
-        if (!state.available) return;
-        const sel = state.accounts.filter(isSelectable);
-        if (sel.length < 1) return;
-        const none = document.createElement("option");
-        none.value = "";
-        // U8：说清后果——「不指定」= 用远端 ~/.claude 那套基座凭据，**不受当前账号影响**。
-        //
-        // ⚠ audit-0805 F12：这段注释一直是对的，**它下面那句给用户看的文案却是错的** ——
-        // 原文写「用远端已登录的那个，不注入 CLAUDE_CONFIG_DIR」，两处都不准：
-        //   ① 「不注入」**弱于事实**：CLI 路会发 `--base`，而 ccm 收到 `--base` 是
-        //      **`unset CLAUDE_CONFIG_DIR`**（`shared/ccm:674` 送进 tmux 的载荷行 + `:709`
-        //      会话级 env，两处都 unset）。远端 shell 里若有一行
-        //      `export CLAUDE_CONFIG_DIR=<某账号>`，「不注入」会继承它，「unset」则落回基座
-        //      —— **两者落到的是不同的账号**。
-        //   ② 「已登录的那个」**在主路径上是假的**：它落 `~/.claude`，而基座常常没凭据。
-        // ⇒ 改成描述事实。判据 `account-base-semantics.vitest.ts` 钉住它不许说回去。
-// ⚠ **不许写「基座」**：那是内部叫法，`settings/base-wording-guard.vitest.ts`（S8）明令禁止。
-//   两条判据是互补的 —— S8 钉**词汇**（别用内部黑话），本轮这条钉**真伪**（别说假话）。
-        // ⚠ 兜底渲染路（不发 `--base`）才是**真的不注入**（继承 rc / tmux server 的值）；
-        //   文案按**主路径**（CLI 渲染，`ACCOUNT_DIMENSION.applies` 恒真 ⇒ 必发 flag）写。
-        none.textContent =
-          copyText("machineCard.launch.accountBase");
-        acctSelect.appendChild(none);
-        for (const a of sel) {
-          const opt = document.createElement("option");
-          opt.value = a.name;
-          opt.textContent = a.email ? `${a.name} · ${a.email}` : a.name;
-          acctSelect.appendChild(opt);
-        }
-        // 预选当前账号（若它可选）——用户可改或选「不指定」。
-        const def = currentWorkingAccount(state);
-        if (def && isSelectable(def)) acctSelect.value = def.name;
-        acctRow.style.display = "";
-      } catch {
-        /* 账号库拿不到 → 不显账号行，默认起会话仍可用 */
-      }
-    })();
-
-    const foot = document.createElement("div");
-    foot.className = "launcher-foot";
-    const cancel = document.createElement("button");
-    cancel.type = "button";
-    cancel.className = "settings-btn";
-    cancel.textContent = copyText("machineCard.launch.cancel");
-    cancel.addEventListener("click", close);
-    const start = document.createElement("button");
-    start.type = "button";
-    start.className = "settings-btn settings-btn-primary";
-    start.textContent = copyText("machineCard.launch.start");
-    start.addEventListener("click", () => {
-      void (async () => {
-      const cwd = cwdInput.value.trim();
-      // F13（用户 2026-08-03：「为什么会撞名? 要撞名检查」）：**默认名必须过铸名口。**
-      // 同一个 cwd 点两次「开始」会派生出同名 ⇒ 撞上远端 `create-or-attach` 的幂等闸
-      // ⇒ **静默接进第一个会话，而用户以为开了新的**（issue #76 那一族）。
-      //
-      // 用户显式填的名字**不动**（那是他的意思，撞了也是他要的复用）；
-      // 只有**我们替他派生**的那个默认名才过铸名口。
-      // 铸名收进 `terminal-name-mint.ts`（与 `remote-launch-run.ts::runNewSessionRemote` 先前是逐字副本）；
-      // 先前「列不出名单 ⇒ 空集铸名、不避让」正是 #76 的形状 ⇒ 列不出就不起、说清。
-      const typed = nameInput.value.trim();
-      let name = typed;
-      if (!name) {
-        const minted = await mintFreshTmuxName(origin, cwd);
-        if (!minted.ok) {
-          refuseUnmintable(origin, minted.why);
-          return;
-        }
-        name = minted.name;
-      }
-      // 新起：程序还不能选 ⇒ 起默认那一家。
-      const command = cmdInput.value.trim() || defaultLauncherOf(DEFAULT_AGENT);
-      const accName = acctSelect.value; // "" = 不指定
-      close();
-      // 选的号那台判（选不了 ⇒ 不起、说清、给显式选择）；「不指定」⇒ 账号 0。
-      await runRemoteLauncher(origin, DEFAULT_AGENT, cwd, name, command, { account: chosenAccount(accName || null) });
-      })();
-    });
-    foot.append(cancel, start);
-    box.appendChild(foot);
-
-    // 点遮罩空白取消；Esc 走上面那一层。
-    back.addEventListener("click", (e) => {
-      if (e.target === back) close();
-    });
-    back.appendChild(box);
-    dispatcher.pushOverlay(layer);
-    document.body.appendChild(back);
-    cwdInput.focus();
   }
 
   /** 在结果区显示一行提示（缺字段 / 取消等）。 */

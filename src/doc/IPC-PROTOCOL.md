@@ -913,7 +913,7 @@ F04b 先把它从**主路**降为一次性回落，本件把它整块拿掉 ⇒ 
 → {"id":"n3","cmd":"session-new","args":{"agent":"claude","cwd":"~/srv/billing","account":{"kind":"named","name":"work"},
      "place":"tmux","local":false}}
 ← {"kind":"reply","id":"n3","ok":true,"data":{"outcome":"started","session":"billing-cc-2","sid":null,"cmd":null,
-     "account":{"name":"work","configDir":"/home/u/.cc/work","model":null},"agent":"claude"}}
+     "account":{"name":"work","configDir":"/home/u/.cc/work","model":null},"agent":"claude","cwd":"/home/u/srv/billing"}}
 ← {"kind":"reply","id":"n4","ok":false,"code":"account_unavailable","message":"…",
      "data":{"field":"account","unavailable":{"requested":"personal","pinned":true,"listKnown":true,"alternative":"work"}}}
 ```
@@ -949,6 +949,7 @@ F04b 先把它从**主路**降为一次性回落，本件把它整块拿掉 ⇒ 
 | `sid` | ← | 分叉出来的新会话 sid；新起的 ⇒ `null`（报到之前说不出） |
 | `account` | ← | 实际用的号（账号 0 / 不指定 ⇒ `null`） |
 | `agent` | ← | 起的是哪一家 |
+| `cwd` | ← | 起在哪个目录（`~` 已展开；界面按它认报到的会话） |
 
 失败信封的 `data`（每个码都带）：`{field, unavailable}`。`field` ＝ 不行的那一格：`agent`（`unknown_agent`）· `command`（`bad_command`）·
 `cwd`（`no_dir`）· `account`（`account_unavailable`，`unavailable` 是那一形、带替代号：选不了 ⇒ 不起、不悄悄换号）·

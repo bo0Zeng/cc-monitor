@@ -130,6 +130,7 @@ fn a_new_session_in_tmux_is_minted_from_the_directory_and_started_detached() {
     assert_eq!(out["session"], "proj-cc-2");
     assert_eq!(out["sid"], Value::Null);
     assert_eq!(out["agent"], "claude");
+    assert_eq!(out["cwd"], "/srv/proj");
     assert_eq!(
         out["account"]["name"], "work",
         "跟随、没有上次的号 ⇒ 这台的默认号"
@@ -307,9 +308,13 @@ fn a_window_launch_hands_back_the_line_and_starts_nothing() {
     assert!(rig.ccm.borrow().is_empty() && rig.mints.borrow().is_empty());
     let out = rig
         .call(req(
-            json!({ "place": "window", "local": true, "command": "claude --verbose" }),
+            json!({ "place": "window", "local": true, "command": "claude --verbose", "cwd": "~/srv" }),
         ))
         .unwrap();
+    assert_eq!(
+        out["cwd"], "/h/srv",
+        "报回来的是展开过的目录（界面按它认报到的会话）"
+    );
     let cmd = out["cmd"].as_str().unwrap();
     assert!(
         cmd.contains("claude --verbose") && !cmd.contains("--ccm-tmux"),

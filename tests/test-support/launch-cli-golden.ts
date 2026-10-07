@@ -13,7 +13,6 @@ import type { LaunchContext } from "../../src/frontend/ui/launch-types.ts";
 import { buildCliRenderRequest } from "../../src/frontend/ui/launch-cli-wire.ts";
 import {
   planAttach,
-  planLauncher,
   planResumeDirect,
   planResumeIntoExistingTmux,
   planResumeTmux,
@@ -112,9 +111,6 @@ export const CLI_GOLDEN_CASES: readonly CliGoldenCase[] = [
   { name: "path:就地 resume 回落那一整串（外层只包那一行）", caps: ALL_CAPS,
     ctx: planResumeIntoExistingTmux(DEFAULT_AGENT, "s1", "cc-s1", "claude", {}),
     ok: true, out: `tmux send-keys -t '=cc-s1:' 'ccm --resume s1 -- --ccm-agent claude --base' Enter; tmux attach -t '=cc-s1:'` },
-  { name: "path:远端开新会话", caps: ALL_CAPS,
-    ctx: planLauncher(DEFAULT_AGENT, "/p", "w-cc", "claude", {}),
-    ok: true, out: `ccm -- new --ccm-tmux=w-cc --ccm-agent claude --base --cwd /p` },
   { name: "path:远端接回", caps: ALL_CAPS, ctx: planAttach(DEFAULT_AGENT, "cc-s1"), ok: true, out: "ccm -- --attach cc-s1" },
   // ---- `ccm-print-parity` 的四个场景（那套 e2e 按名取 `out`） ----
   { name: "print-parity:resumeTmuxWithIdentity", caps: ALL_CAPS, ctx: base({

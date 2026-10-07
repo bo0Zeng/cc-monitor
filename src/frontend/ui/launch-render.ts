@@ -60,14 +60,13 @@ export async function renderCli(origin: Origin, req: CliRenderRequest): Promise<
   return { cmd: v.cmd, account };
 }
 
-/** 本机起会话那一问的动作。 */
-export type LocalLaunchAction = { kind: "new" } | { kind: "resume"; sid: string } | { kind: "attach" };
+/** 本机起会话那一问的动作（新起走 `session-new` 那一个请求，不经这里）。 */
+export type LocalLaunchAction = { kind: "resume"; sid: string } | { kind: "attach" };
 
 export interface LocalLaunchRequest {
   /** 这个会话是哪一家（线上的 kind）。 */
   agent: string;
   action: LocalLaunchAction;
-  /** 只用来核「新起」那一格的目录在不在。 */
   cwd: string | null;
   /** 自定义启动命令（空 / `null` = 没设）。 */
   launcher: string | null;
@@ -111,7 +110,7 @@ export async function planLocalLaunch(req: LocalLaunchRequest): Promise<LocalLau
 
 /** 本机起一个会话：问本机后端要那一行，交 monitor 在 `cwd` 开一个终端窗口跑它。回那份成品（`preflight` 说不起 ⇒ `null`，没开窗）。
  *  `preflight(configDir)`：开窗之前问一句（收的是本机后端判出来的那个号的目录；账号 0 / 不指定 ⇒ `undefined`）。失败抛（已说成一句）。
- *  ⚠ 类型上只收「新起 / resume」：接回（attach）只许经 [`planLocalLaunch`] 产串、交调用方自己那一跳开终端
+ *  ⚠ 类型上只收 resume：接回（attach）只许经 [`planLocalLaunch`] 产串、交调用方自己那一跳开终端
  *  （`K-R106`：接回不是一次拉起，原先 monitor `launch_local` 入口那道闸今天是这条签名）。 */
 export async function launchLocal(
   req: LocalLaunchRequest & { action: Exclude<LocalLaunchAction, { kind: "attach" }> },

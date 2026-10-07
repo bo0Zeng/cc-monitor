@@ -61,6 +61,7 @@ import arrowsOutLineVertical from "@phosphor-icons/core/assets/regular/arrows-ou
 import userCircle from "@phosphor-icons/core/assets/regular/user-circle.svg?raw";
 import bell from "@phosphor-icons/core/assets/regular/bell.svg?raw";
 import arrowCounterClockwise from "@phosphor-icons/core/assets/regular/arrow-counter-clockwise.svg?raw";
+import gitFork from "@phosphor-icons/core/assets/regular/git-fork.svg?raw";
 import s from "./icon.module.css";
 
 const SVG = {
@@ -118,6 +119,7 @@ const SVG = {
   expand: arrowsOutLineVertical,
   account: userCircle,
   bell: bell,
+  fork: gitFork,
 } as const;
 
 export type IconName = keyof typeof SVG;

@@ -30,8 +30,6 @@ import { toast as showActionFailureToast } from "../../../src/frontend/ui/kit/to
 import { expectArrival } from "../../../src/frontend/ui/launch-arrival";
 import {
   runRemoteResume,
-  runNewSessionRemote,
-  runRemoteLauncher,
   runRemoteAttach,
   POSIX_NO_WINDOW_MARKER,
 } from "../../../src/frontend/ui/remote-launch-run";
@@ -113,24 +111,6 @@ describe("每条远端起会话路径：问那台要那一行，原样交给终�
     expect(arrivalMock).toHaveBeenCalledWith(expect.objectContaining({ origin: "devbox", match: { sid: "sid-1" }, tmuxName: null }));
   });
 
-  it("开新会话（机器卡片 · 历史页）：名字问那台铸、动作 new、按工作目录认", async () => {
-    await runNewSessionRemote("devbox", "claude", "/p", "");
-    expect(mint.mintFreshTmuxName).toHaveBeenCalledWith("devbox", "/p");
-    const [req] = requests();
-    expect(req.action).toEqual({ kind: "new" });
-    expect(req.container).toEqual({ kind: "tmux", name: "w-cc", send_into: false });
-    expect(term.openTerminal).toHaveBeenCalledWith("devbox", lineFor(req));
-    expect(arrivalMock).toHaveBeenCalledWith(expect.objectContaining({ match: { cwd: "/p" } }));
-  });
-
-  it("铸不出名字 ⇒ 不起、出声，不自己拼一个", async () => {
-    mint.mintFreshTmuxName.mockResolvedValue({ ok: false, why: "那台不可达" });
-    await runNewSessionRemote("devbox", "claude", "/p", "");
-    expect(mint.refuseUnmintable).toHaveBeenCalledWith("devbox", "那台不可达");
-    expect(render.renderCli).not.toHaveBeenCalled();
-    expect(term.openTerminal).not.toHaveBeenCalled();
-  });
-
   it("接回：动作 attach，交给终端的就是那一行", async () => {
     await runRemoteAttach("devbox", "claude", "cc-x");
     const [req] = requests();
@@ -180,7 +160,7 @@ describe("失败怎么说", () => {
 
   it("后端说这是既定设计（POSIX 不开窗口）⇒ 标题不叫失败", async () => {
     term.openTerminal.mockRejectedValue(new Error(`${POSIX_NO_WINDOW_MARKER}，命令交给你`));
-    await runRemoteLauncher("<local>", "claude", "/p", "w-cc", "claude");
+    await runRemoteResume("<local>", "claude", "sid-1", "/p", "claude");
     expect(String(toastMock.mock.calls[0][0])).not.toMatch(/失败/);
   });
 });
