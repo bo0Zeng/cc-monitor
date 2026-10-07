@@ -453,6 +453,8 @@ pub(crate) struct ChildLink {
     pub(crate) end: Option<RunEnd>,
     /// 派出那一方收到的报错原话（失败收场时，说得出才有）。
     pub(crate) error: Option<String>,
+    /// 后台派出：派出那一方当场拿到的只是「已启动」，没等它。
+    pub(crate) background: bool,
 }
 
 /// 记录成品里「这次工具调用派出了一个子运行」的那一格（父侧工具调用 id ⇒ 它）：界面按它给那张工具卡起名，不认工具名与入参。

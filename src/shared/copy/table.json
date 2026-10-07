@@ -4260,6 +4260,166 @@
       "zh": "一个都没有",
       "args": []
     },
+    "agentWindow.title.local": {
+      "kind": "title",
+      "zh": "{label} · {state} · {session}",
+      "args": ["label", "state", "session"]
+    },
+    "agentWindow.title.remote": {
+      "kind": "title",
+      "zh": "{label} · {state} · {session} · {machine}",
+      "args": ["label", "state", "session", "machine"]
+    },
+    "agentWindow.back.label": {
+      "kind": "action",
+      "zh": "回到派出它的地方",
+      "args": []
+    },
+    "agentWindow.back.hint": {
+      "kind": "body",
+      "zh": "主会话派的 → 主窗口 · agent 派的 → 其窗口",
+      "args": []
+    },
+    "agentWindow.status.live": {
+      "kind": "body",
+      "zh": "只读 · 实时",
+      "args": []
+    },
+    "agentWindow.status.plain": {
+      "kind": "body",
+      "zh": "只读",
+      "args": []
+    },
+    "agentWindow.status.session": {
+      "kind": "body",
+      "zh": "会话 {session}",
+      "args": ["session"]
+    },
+    "agentWindow.why.waiting": {
+      "kind": "body",
+      "zh": "等 {tool} · {dur}",
+      "args": ["tool", "dur"]
+    },
+    "agentWindow.why.waitingNote": {
+      "kind": "body",
+      "zh": "等待期间无新记录属正常",
+      "args": []
+    },
+    "agentWindow.why.done": {
+      "kind": "body",
+      "zh": "完成 · 结果已交回",
+      "args": []
+    },
+    "agentWindow.why.failed": {
+      "kind": "body",
+      "zh": "失败 · 交回报错",
+      "args": []
+    },
+    "agentWindow.why.stopped": {
+      "kind": "body",
+      "zh": "已中止 · 无结果",
+      "args": []
+    },
+    "agentWindow.why.quiet": {
+      "kind": "body",
+      "zh": "未收到结束 · 记录 {dur} 无更新",
+      "args": ["dur"]
+    },
+    "agentWindow.why.orphaned": {
+      "kind": "body",
+      "zh": "未收到结束 · 会话已退出",
+      "args": []
+    },
+    "agentWindow.end.done": {
+      "kind": "body",
+      "zh": "结果已交回",
+      "args": []
+    },
+    "agentWindow.end.failed": {
+      "kind": "body",
+      "zh": "交回报错",
+      "args": []
+    },
+    "agentWindow.end.stopped": {
+      "kind": "body",
+      "zh": "无结果",
+      "args": []
+    },
+    "agentWindow.end.quiet": {
+      "kind": "body",
+      "zh": "记录 {dur} 无更新",
+      "args": ["dur"]
+    },
+    "agentWindow.end.orphaned": {
+      "kind": "body",
+      "zh": "会话已退出",
+      "args": []
+    },
+    "agentWindow.why.refresh": {
+      "kind": "action",
+      "zh": "刷新",
+      "args": []
+    },
+    "agentWindow.facts.started": {
+      "kind": "body",
+      "zh": "{time} 起",
+      "args": ["time"]
+    },
+    "agentWindow.facts.running": {
+      "kind": "body",
+      "zh": "已跑 {dur}",
+      "args": ["dur"]
+    },
+    "agentWindow.facts.took": {
+      "kind": "body",
+      "zh": "用时 {dur}",
+      "args": ["dur"]
+    },
+    "agentWindow.facts.active": {
+      "kind": "body",
+      "zh": "最近 {dur} 前",
+      "args": ["dur"]
+    },
+    "agentWindow.facts.calls": {
+      "kind": "body",
+      "zh": "工具 ×{n}",
+      "args": ["n"]
+    },
+    "agentWindow.facts.kids": {
+      "kind": "body",
+      "zh": "agent ×{n}",
+      "args": ["n"]
+    },
+    "agentWindow.facts.background": {
+      "kind": "body",
+      "zh": "后台派出",
+      "args": []
+    },
+    "agentWindow.kids.title": {
+      "kind": "title",
+      "zh": "它派出的 agent",
+      "args": []
+    },
+    "agentWindow.brief.fromMain": {
+      "kind": "title",
+      "zh": "主会话派给它的话",
+      "args": []
+    },
+    "agentWindow.brief.fromAgent": {
+      "kind": "title",
+      "zh": "「{parent}」派给它的话",
+      "args": ["parent"]
+    },
+    "agentWindow.brief.more": {
+      "kind": "action",
+      "zh": "展开全部",
+      "args": []
+    },
+    "agentWindow.brief.less": {
+      "kind": "action",
+      "zh": "收起",
+      "args": []
+    },
     "agentsPanel.render.summary": {
       "kind": "action",
       "zh": "agent {n} · {running} 在跑",
@@ -16728,7 +16888,7 @@
     },
     "runs.state.stopped": {
       "kind": "body",
-      "zh": "已停止",
+      "zh": "已中止",
       "args": []
     },
     "runs.state.unknown": {

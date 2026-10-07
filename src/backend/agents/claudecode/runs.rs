@@ -186,6 +186,7 @@ fn result_link(v: &Value) -> Vec<super::super::ChildLink> {
                     (!launched).then_some(RunEnd::Done)
                 },
                 error: failed.then(|| texts(b.get("content"))).flatten(),
+                background: launched,
                 ..ChildLink::default()
             })
         })

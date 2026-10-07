@@ -9,6 +9,7 @@
 //! | 收场 | `{"kind":"settled","lane":…,"how":"ok"/"bad"/"halted"}`（派出那一方说的）；子运行自己 `over: "cut"` ＝ 被叫停 |
 //! | 子运行记录住址 | `<父记录去后缀>.lanes/<lane>.ndjson` |
 //! | 时刻 | `clock`（自 1970 起的秒） |
+//! | 后台派出 | `spawned` 不带 `fin` |
 //! | 交回工具结果 · 报错原话 | 子运行 `back: true` · `why`（子运行 `over: "bad"` 或派出那一方 `fin: "bad"` 时） |
 //! | 流协议 | `{"ev":"open","rid":…}` · `{"ev":"part","at":i,"is":"call"|"words","call":…}` · `{"ev":"chunk","at":i,"txt":…}` · `{"ev":"shut"}` · `{"ev":"fail"}` |
 
@@ -92,6 +93,7 @@ fn child_link(v: &Value) -> Vec<ChildLink> {
             error: (how("fin") == Some(RunEnd::Failed))
                 .then(|| s(v, "why").map(str::to_string))
                 .flatten(),
+            background: s(v, "fin").is_none(),
             ..ChildLink::default()
         }],
         _ => Vec::new(),

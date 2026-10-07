@@ -1389,12 +1389,13 @@ async fn open_session_in_new_window(
         let _ = w.request_user_attention(Some(tauri::UserAttentionType::Informational));
         return Ok(());
     }
-    let mut query = format!("viewer={session_id}&origin={origin_q}");
-    if let Some(r) = &run {
-        query.push_str("&run=");
-        query.push_str(&pct_encode(r));
-    }
-    let url = tauri::WebviewUrl::App(format!("viewer.html?{query}").into());
+    let run_q = run
+        .as_deref()
+        .map(|r| format!("&run={}", pct_encode(r)))
+        .unwrap_or_default();
+    let url = tauri::WebviewUrl::App(
+        format!("viewer.html?viewer={session_id}&origin={origin_q}{run_q}").into(),
+    );
     let mut builder = tauri::WebviewWindowBuilder::new(&app, &label, url)
         .title(if title.is_empty() {
             "cc-monitor"

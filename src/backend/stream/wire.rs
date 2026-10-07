@@ -712,6 +712,18 @@ pub struct RunInfo {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional))]
     pub error: Option<String>,
+    /// 它调了几次工具（它自己的记录里数的；零 ⇒ 不上线）。
+    #[serde(skip_serializing_if = "is_zero")]
+    #[cfg_attr(test, ts(optional, as = "Option<u32>"))]
+    pub calls: u32,
+    /// 派出那一方没等它、接着做自己的事（后台派出；否则不上线）。
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    #[cfg_attr(test, ts(optional, as = "Option<bool>"))]
+    pub background: bool,
+}
+
+fn is_zero(n: &u32) -> bool {
+    *n == 0
 }
 
 /// 子运行的五态。收场的三态以派出那一方说的为准（子记录自己写出终局也算，先到先算）。

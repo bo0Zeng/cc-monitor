@@ -16,6 +16,12 @@ const REGISTERED: &[(&str, &str, &str)] = &[
     //    买不到的一格写在 `session-accounts-poll.ts` 头注：别处改了默认账号、而这台上没有会话起停时，
     //    账号清单要等下一次握手 / 起停 / 本 UI 操作才刷新。
     (
+        "src/frontend/ui/views/agent-window.ts",
+        "ui-clock",
+        "每分钟重画一次 agent 窗口的标题区（已跑 · 最近 · 等了多久都只写到分钟）。**不取数** —— 只按已有的运行表重画；\
+             运行表走会话流的帧。关窗即清。",
+    ),
+    (
         "src/frontend/ui/views/grid-monitor.ts",
         "ui-clock",
         "1s 重绘一次网格。**不取数** —— 只把已有状态（相对时间等）重画；\
@@ -460,6 +466,7 @@ const SCHEDULING_SITES: &[(&str, &str, usize, &str)] = &[
     // 2 → 4：↗ 的「进行中」两处（`frontOnce`：超过 300ms 才进 · 进了至少停 400ms），都是一次性。
     ("src/frontend/ui/terminal-page.ts", "setTimeout", 2, "① 底部抽屉终端页：送字送键之后 0.5 · 1.5 · 3 秒各再抓一屏（一次动作三次、换会话 / 收起即清，不自链、开着不轮询）② 「已送达」2 秒后收。一次性。"),
     ("src/frontend/ui/tab-session-actions.ts", "setTimeout", 3, "⑧ `shellFront`：↗ 壳那一跳的期限（到点落成「无应答」，本机 / 远端两条共用这一处）。一次性，不是周期取数。编号沿用 `tabs.ts` 那一行拆开之前的原号。⑩ ⑪ `frontOnce`：↗ 在飞超过 300ms 才把按钮换成「进行中」· 进了之后至少停 400ms 再收（防闪），一次性。"),
+    ("src/frontend/ui/views/agent-window.ts", "setInterval", 1, "每分钟重画标题区（时长只写到分钟）。**ui-clock，不取数**，见 `REGISTERED` 那条。"),
     ("src/frontend/ui/views/grid-monitor.ts", "setInterval", 1, "1s 重绘 —— 按格差量（没变的一拍零 DOM 写），不再整表重建。**ui-clock，不取数**，见 `REGISTERED` 那条。"),
     // 历史页照稿重做：旧页那一处 rAF（展开 / 收起后合并重画）随旧页删了。
     ("src/frontend/ui/views/history.ts", "setTimeout", 3, "① 敲字之后停 150 ms 才问清单（`queryTimer`，再敲就重来）② 方向键走行时停 200 ms 才读右边（`previewTimer`，快速划过不读）③ 焦点离开列表那一下推到下一拍再看焦点去了哪（`focusout` 时 `activeElement` 还没换）。都是一次性，不取数、不是节拍器。"),

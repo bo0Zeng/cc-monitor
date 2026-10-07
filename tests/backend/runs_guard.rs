@@ -289,6 +289,8 @@ fn fake() -> Shape {
             let by = matches!(v["kind"].as_str(), Some("spawned" | "settled"));
             if by {
                 with(line, &[("by", run.into()), ("back", true.into())])
+            } else if v["kind"].as_str() == Some("spawn") {
+                with(line, &[("lane", run.into()), ("use", "dispatch".into())])
             } else {
                 with(line, &[("lane", run.into())])
             }
@@ -1279,6 +1281,12 @@ fn extra_cells_scenario(shape: &Shape) {
     track.on_path(&g3);
 
     let i = info_of(&book, "g1");
+    assert_eq!(
+        (i.calls, i.background, info_of(&book, "g2").background),
+        (3, true, false),
+        "[{}] 调了几次工具（Bash · 派出孙运行那次 · Read）；后台派出的才是后台",
+        shape.name
+    );
     assert_eq!(
         (i.state, i.waiting, i.active_ms, i.why, i.ended_ms),
         (RunState::Running, None, at(130), None, None),

@@ -22,6 +22,7 @@ import { buildBashInputCard, buildBashOutputCard } from "./bash";
 import { buildCompactSummaryCard } from "./compact";
 import { buildAgentBar, buildCoordinatorBar, buildInterruptLine, buildNoticeLine, buildPeerBar } from "./speaker-bar";
 import { drawsCard } from "../speaker";
+import { buildBriefCard } from "./brief";
 import { buildAgentCard } from "./subagent";
 import { buildDiffBody } from "./diff";
 import { buildInteractiveCard, settleInteractive } from "./interactive";
@@ -156,6 +157,10 @@ export interface RenderContext {
   toolUseElements: Map<string, HTMLElement>;
   /** 派出子运行的那几张卡（父侧工具调用 id → 卡）；不需要按运行表标卡的调用方不给。 */
   runCards?: Map<string, HTMLElement>;
+  /**
+   * 派活的那段话（子运行记录里那一条）是谁派的：某个 agent ⇒ 它的标签；主会话 ⇒ `null`。不给 ⇒ 当主会话派的。
+   */
+  briefFrom?: string | null;
   /** 运行 id ⇒ 运行表里的标签（agent 来话的事件条起名用；宿主不给 ⇒ 用来话自带的名字）。 */
   runLabelOf?: (run: string) => string | undefined;
   /**
@@ -233,8 +238,12 @@ export function renderMessage(rec: JsonlRecord, ctx: RenderContext): RenderResul
           return { kind: "card", element: buildNoticeLine(speaker, rec.timestamp) };
         case "interrupt":
           return { kind: "card", element: buildInterruptLine(rec.timestamp) };
+        case "agentTask":
+          // 派给子 agent 的活：不是用户说的，画成带抬头的框（谁派的 · 几点派的）。
+          if (!said.text) return { kind: "skip" };
+          return { kind: "card", element: buildBriefCard(said.text, rec.timestamp, ctx.briefFrom ?? null) };
         default:
-          // 人说的话 · 派给子 agent 的活：用户气泡；没有正文（只有图片之类）不建卡。
+          // 人说的话：用户气泡；没有正文（只有图片之类）不建卡。
           if (!said.text) return { kind: "skip" };
           return { kind: "card", element: buildUserCard(rec, said.text, said.pasted) };
       }

@@ -237,6 +237,9 @@ impl Sess {
         } else if m.answered || m.did.is_some() {
             r.info.waiting = None;
         }
+        if matches!(m.did, Some(crate::agents::RunDid::Tool { .. })) {
+            r.info.calls = r.info.calls.saturating_add(1);
+        }
         if m.did.is_some() {
             r.info.last = m.did;
         }
@@ -290,6 +293,7 @@ impl Sess {
                 let r = self.slot(&run, at);
                 let before = r.info.clone();
                 r.info.tool = Some(tool);
+                r.info.background |= l.background;
                 if let Some(sp) = &known {
                     Self::spawned(r, sp);
                 }

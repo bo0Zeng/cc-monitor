@@ -38,4 +38,12 @@ why?: RunWhy,
 /**
  * 失败收场时的报错原话（说得出才有；至多 `observe::runs::ERROR_CHARS` 个字）。
  */
-error?: string, };
+error?: string, 
+/**
+ * 它调了几次工具（它自己的记录里数的；零 ⇒ 不上线）。
+ */
+calls?: number, 
+/**
+ * 派出那一方没等它、接着做自己的事（后台派出；否则不上线）。
+ */
+background?: boolean, };

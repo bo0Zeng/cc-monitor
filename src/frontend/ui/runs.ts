@@ -142,7 +142,7 @@ function didOf(v: unknown): RunDid | null {
 function runOf(v: unknown): RunInfo | null {
   if (!isObj(v) || !isStr(v.run) || !isState(v.state)) return null;
   const out: RunInfo = { run: v.run, state: v.state };
-  const known = new Set<string>([...RUN_REQUIRED, ...RUN_TEXT, ...RUN_TIMES, "last", "why"]);
+  const known = new Set<string>([...RUN_REQUIRED, ...RUN_TEXT, ...RUN_TIMES, "last", "why", "calls", "background"]);
   for (const k of Object.keys(v)) if (!known.has(k)) return null;
   for (const k of RUN_TEXT) {
     if (v[k] === undefined) continue;
@@ -160,6 +160,14 @@ function runOf(v: unknown): RunInfo | null {
     const d = didOf(v.last);
     if (!d) return null;
     out.last = d;
+  }
+  if (v.calls !== undefined) {
+    if (!isMs(v.calls)) return null;
+    out.calls = v.calls;
+  }
+  if (v.background !== undefined) {
+    if (typeof v.background !== "boolean") return null;
+    out.background = v.background;
   }
   if (v.why !== undefined) {
     if (!WHYS.includes(v.why as RunWhy)) return null;

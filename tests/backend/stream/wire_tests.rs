@@ -493,6 +493,8 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                     ended_ms: Some(3_000),
                     why: Some(RunWhy::Reported),
                     error: Some(s("boom")),
+                    calls: 7,
+                    background: true,
                 }],
                 ended: vec![RunEnded {
                     run: s("a0"),
@@ -781,6 +783,8 @@ fn session_runs_frames_have_exactly_these_bytes() {
                 waiting: Some("Bash".into()),
                 started_ms: Some(1_000),
                 active_ms: Some(2_000),
+                calls: 3,
+                background: true,
                 ..RunInfo::default()
             },
             RunInfo {
@@ -809,7 +813,7 @@ fn session_runs_frames_have_exactly_these_bytes() {
     };
     assert_eq!(
         to_line(&f).unwrap(),
-        "{\"kind\":\"session_runs\",\"sid\":\"s1\",\"runs\":[{\"run\":\"a1\",\"label\":\"scan\",\"kind\":\"Explore\",\"tool\":\"t1\",\"parent\":\"a0\",\"state\":\"running\",\"last\":{\"t\":\"tool\",\"name\":\"Bash\"},\"waiting\":\"Bash\",\"started_ms\":1000,\"active_ms\":2000},{\"run\":\"a2\",\"state\":\"failed\",\"last\":{\"t\":\"say\"},\"started_ms\":1000,\"active_ms\":2000,\"ended_ms\":3000,\"why\":\"reported\",\"error\":\"boom\"},{\"run\":\"a3\",\"state\":\"unknown\",\"why\":\"quiet\"}],\"ended\":[{\"run\":\"a0\",\"tool\":\"t0\",\"state\":\"failed\"}]}\n"
+        "{\"kind\":\"session_runs\",\"sid\":\"s1\",\"runs\":[{\"run\":\"a1\",\"label\":\"scan\",\"kind\":\"Explore\",\"tool\":\"t1\",\"parent\":\"a0\",\"state\":\"running\",\"last\":{\"t\":\"tool\",\"name\":\"Bash\"},\"waiting\":\"Bash\",\"started_ms\":1000,\"active_ms\":2000,\"calls\":3,\"background\":true},{\"run\":\"a2\",\"state\":\"failed\",\"last\":{\"t\":\"say\"},\"started_ms\":1000,\"active_ms\":2000,\"ended_ms\":3000,\"why\":\"reported\",\"error\":\"boom\"},{\"run\":\"a3\",\"state\":\"unknown\",\"why\":\"quiet\"}],\"ended\":[{\"run\":\"a0\",\"tool\":\"t0\",\"state\":\"failed\"}]}\n"
     );
     assert!(
         !f.loss_is_recoverable(),
