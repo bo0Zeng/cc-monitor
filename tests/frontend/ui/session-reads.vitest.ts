@@ -11,6 +11,7 @@
  * 买不到：真 Tauri IPC 与真后端（后端那一侧的判据在 Rust 里；monitor 那一跳由 `webview_tests` 量）。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { ReplyUnreadable } from "../../../src/frontend/ui/ipc/chan-caller";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -70,13 +71,13 @@ describe("〔C4b〕会话读面三问：按形状收", () => {
   });
 
   it("★ 形状不对 ⇒ 抛（缺键 / 类型不对 / 条目缺字段），不补默认值", () => {
-    expect(() => decodeIndex({ from: 0, end: 1 })).toThrow(/读不懂/);
-    expect(() => decodeIndex({ from: 0, end: 1, rows: [{ o: 0 }] })).toThrow(/读不懂/);
-    expect(() => decodeUserInputs({ from: 0, end: "1", entries: [] })).toThrow(/读不懂/);
-    expect(() => decodeUserInputs({ from: 0, end: 1, entries: [{ uuid: "a", excerpt: "b" }] })).toThrow(/读不懂/);
-    expect(() => decodeFind({ lines: [] })).toThrow(/读不懂/);
-    expect(() => decodeFind({ total: 1, hits: [{ uuid: "a" }] })).toThrow(/读不懂/);
-    expect(() => decodeFind({ total: 1, hits: [{ uuid: "a", kind: "user", before: "", matched: "x", after: "", turn: "1", tsMs: 0 }] })).toThrow(/读不懂/);
+    expect(() => decodeIndex({ from: 0, end: 1 })).toThrow(ReplyUnreadable);
+    expect(() => decodeIndex({ from: 0, end: 1, rows: [{ o: 0 }] })).toThrow(ReplyUnreadable);
+    expect(() => decodeUserInputs({ from: 0, end: "1", entries: [] })).toThrow(ReplyUnreadable);
+    expect(() => decodeUserInputs({ from: 0, end: 1, entries: [{ uuid: "a", excerpt: "b" }] })).toThrow(ReplyUnreadable);
+    expect(() => decodeFind({ lines: [] })).toThrow(ReplyUnreadable);
+    expect(() => decodeFind({ total: 1, hits: [{ uuid: "a" }] })).toThrow(ReplyUnreadable);
+    expect(() => decodeFind({ total: 1, hits: [{ uuid: "a", kind: "user", before: "", matched: "x", after: "", turn: "1", tsMs: 0 }] })).toThrow(ReplyUnreadable);
   });
 
   it("★★ 失败种类只看通道的层：不认 ⇒ oldBackend · 装不下 ⇒ truncated · 其余 ⇒ transport", () => {
@@ -215,30 +216,30 @@ describe("〔STC〕第五问：会话事实", () => {
   it("★ 形状不对 ⇒ 抛：缺一格 / 多一格 / 类型不对（成品要原样当令牌交回去，不能收一份后端不认的）", () => {
     const good = golden["history-facts"] as Record<string, unknown>;
     const without = (k: string) => Object.fromEntries(Object.entries(good).filter(([x]) => x !== k));
-    expect(() => decodeFacts(without("usage"))).toThrow(/读不懂/);
-    expect(() => decodeFacts({ ...good, extra: 1 })).toThrow(/读不懂/);
-    expect(() => decodeFacts({ ...good, end: "729" })).toThrow(/读不懂/);
-    expect(() => decodeFacts({ ...good, touchedFiles: [1] })).toThrow(/读不懂/);
-    expect(() => decodeFacts({ ...good, usage: { promptTokens: 1 } })).toThrow(/读不懂/);
+    expect(() => decodeFacts(without("usage"))).toThrow(ReplyUnreadable);
+    expect(() => decodeFacts({ ...good, extra: 1 })).toThrow(ReplyUnreadable);
+    expect(() => decodeFacts({ ...good, end: "729" })).toThrow(ReplyUnreadable);
+    expect(() => decodeFacts({ ...good, touchedFiles: [1] })).toThrow(ReplyUnreadable);
+    expect(() => decodeFacts({ ...good, usage: { promptTokens: 1 } })).toThrow(ReplyUnreadable);
     const u = good.usage as Record<string, unknown>;
-    expect(() => decodeFacts({ ...good, usage: { ...u, limitFrom: "guess" } }), "上限来路只认那五种").toThrow(/读不懂/);
+    expect(() => decodeFacts({ ...good, usage: { ...u, limitFrom: "guess" } }), "上限来路只认那五种").toThrow(ReplyUnreadable);
     expect(decodeFacts({ ...good, usage: { ...u, limitFrom: "relay" } }).usage?.limitFrom).toBe("relay");
-    expect(() => decodeFacts({ ...good, usage: { ...u, limit: "1M" } })).toThrow(/读不懂/);
-    expect(() => decodeFacts({ ...good, projectDir: 1 })).toThrow(/读不懂/);
-    expect(() => decodeFacts({ ...good, writers: ["4711"] }), "pid 只收数").toThrow(/读不懂/);
+    expect(() => decodeFacts({ ...good, usage: { ...u, limit: "1M" } })).toThrow(ReplyUnreadable);
+    expect(() => decodeFacts({ ...good, projectDir: 1 })).toThrow(ReplyUnreadable);
+    expect(() => decodeFacts({ ...good, writers: ["4711"] }), "pid 只收数").toThrow(ReplyUnreadable);
     expect(decodeFacts({ ...good, writers: [11, 12] }).writers).toEqual([11, 12]);
     expect(decodeFacts({ ...good, usage: null, forkedFrom: null, projectDir: null }).usage).toBeNull(); // null 是合法的「没有」
     // 需要你：种类只认那四种，三格恰好；没结果的调用逐条恰好四格。
     const needs = { kind: "approve", tool: "Bash", call: "toolu_1", what: "rm -rf build/", sinceMs: 42 };
     expect(decodeFacts({ ...good, needs }).needs).toEqual(needs);
-    expect(() => decodeFacts({ ...good, needs: { ...needs, kind: "guess" } }), "种类只认那四种").toThrow(/读不懂/);
-    expect(() => decodeFacts({ ...good, needs: { kind: "plan", tool: null, what: null } }), "缺 sinceMs").toThrow(/读不懂/);
-    expect(() => decodeFacts({ ...good, pending: [{ id: "x", name: "Bash", what: null }] }), "缺 at").toThrow(/读不懂/);
-    expect(() => decodeFacts({ ...good, lastSay: { text: 1, at: null } })).toThrow(/读不懂/);
+    expect(() => decodeFacts({ ...good, needs: { ...needs, kind: "guess" } }), "种类只认那四种").toThrow(ReplyUnreadable);
+    expect(() => decodeFacts({ ...good, needs: { kind: "plan", tool: null, what: null } }), "缺 sinceMs").toThrow(ReplyUnreadable);
+    expect(() => decodeFacts({ ...good, pending: [{ id: "x", name: "Bash", what: null }] }), "缺 at").toThrow(ReplyUnreadable);
+    expect(() => decodeFacts({ ...good, lastSay: { text: 1, at: null } })).toThrow(ReplyUnreadable);
     // 交回了的子运行：只收字符串数组，缺了也不行（成品要原样当令牌交回去）。
-    expect(() => decodeFacts(without("handedBack")), "缺 handedBack").toThrow(/读不懂/);
-    expect(() => decodeFacts({ ...good, handedBack: [7] }), "id 只收字符串").toThrow(/读不懂/);
-    expect(() => decodeFacts({ ...good, handedBack: "ag-7" })).toThrow(/读不懂/);
+    expect(() => decodeFacts(without("handedBack")), "缺 handedBack").toThrow(ReplyUnreadable);
+    expect(() => decodeFacts({ ...good, handedBack: [7] }), "id 只收字符串").toThrow(ReplyUnreadable);
+    expect(() => decodeFacts({ ...good, handedBack: "ag-7" })).toThrow(ReplyUnreadable);
   });
 
   it("★ 说对的帧命令、对的请求体：没有令牌 ⇒ 只带 path；有 ⇒ 令牌原样放进 prior；失败折成 available:false ＋ 种类", async () => {
@@ -311,9 +312,9 @@ describe("主窗口第 2 批：每轮的摘要", () => {
   it("★ 形状不对 ⇒ 抛：多一格 / 少一格 / 类型不对；要不到 ⇒ available:false（不猜）", async () => {
     const good = golden["history-turns"] as { turns: Record<string, unknown>[] };
     const turn = good.turns[0];
-    expect(() => decodeTurns({ ...good, extra: 1 })).toThrow(/读不懂/);
-    expect(() => decodeTurns({ ...good, turns: [{ ...turn, done: "yes" }] })).toThrow(/读不懂/);
-    expect(() => decodeTurns({ ...good, turns: [Object.fromEntries(Object.entries(turn).filter(([k]) => k !== "reply"))] })).toThrow(/读不懂/);
+    expect(() => decodeTurns({ ...good, extra: 1 })).toThrow(ReplyUnreadable);
+    expect(() => decodeTurns({ ...good, turns: [{ ...turn, done: "yes" }] })).toThrow(ReplyUnreadable);
+    expect(() => decodeTurns({ ...good, turns: [Object.fromEntries(Object.entries(turn).filter(([k]) => k !== "reply"))] })).toThrow(ReplyUnreadable);
     invokeMock.mockReset().mockResolvedValueOnce(chanReply(golden["history-turns"]));
     const ok = await readTurns("devbox" as never, "/p/s.jsonl", 0);
     expect(ok.available && ok.turns.length).toBe(2);

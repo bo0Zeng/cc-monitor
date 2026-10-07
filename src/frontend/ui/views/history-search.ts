@@ -23,9 +23,8 @@
  */
 import { commands } from "../ipc/commands";
 import { chan } from "../../../comms/inward/chan";
-import { budgetWithin, jsonBody, linesOf, readJson } from "../ipc/chan-caller";
+import { budgetWithin, jsonBody, linesOf, readJson, ReplyUnreadable } from "../ipc/chan-caller";
 import { isLocalOrigin, LOCAL_ORIGIN } from "../ipc/origin";
-import { copyText } from "../copy-table";
 import { canOk, type HistoryCan } from "../history-list-reads";
 
 /**
@@ -260,7 +259,7 @@ function sessionHitsOf(v: unknown): SessionHits | null {
  */
 export function decodeMerged(v: unknown): Omit<SearchResult, "failedHosts" | "unreadable" | "skipped"> {
   const bad = (): never => {
-    throw new Error(copyText("history.search.mergeBadShape"));
+    throw new ReplyUnreadable("history-search-merge reply shape");
   };
   if (v === null || typeof v !== "object" || Array.isArray(v)) bad();
   const o = v as Record<string, unknown>;

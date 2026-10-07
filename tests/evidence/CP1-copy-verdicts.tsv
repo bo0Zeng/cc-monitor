@@ -79,7 +79,6 @@ src/comms/inward/chan/router.rs:182	编号 {id} 还在飞，又来了一次	保�
 src/comms/inward/chan/router.rs:203	编号 {id} 还在飞，又来了一次	保留	[不对外] 只进日志（host.rs 的 tracing::warn），客户端违约
 src/comms/inward/chan/router.rs:232	客户端发来了一帧只该由路由器发的头	保留	[不对外] 只进日志（host.rs 的 tracing::warn），客户端违约
 src/comms/inward/chan/wire.rs:306	Key(<不打印>)	保留	[不对外] Key 的 Debug，刻意不打印内容
-src/frontend/ui/session-reads.ts:251	这台机器上的后端版本旧，还给不出骨架索引（重装后端之后就有）	保留	[不对外] 只进 console.info（骨架未接的原因），界面行为是退回尾部窗口；替掉 monitor 那一句「对面后端不认 --index」
 src/backend/control/cc_bus.rs:782	已 spawn:	保留	[不对外] 在 cc-spawn 回显里认新会话名字的匹配串（spawned_id_of），只决定回值里的 id，不是展示文本
 src/backend/control/exit_policy.rs:105	读 {} 失败：{e}	保留	[不对外] 「读不出来」的原因：只进线上 `reason` 一格与后端日志，界面只说 EXIT_UNREADABLE 那一句、不显示它
 src/backend/control/exit_policy.rs:109	{} 不是 JSON：{e}	保留	[不对外] 同上：`reason` 一格与日志，界面不显示

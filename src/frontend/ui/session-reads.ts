@@ -29,7 +29,7 @@
  * （[`readSessionFacts`] 的 `prior`）—— 本文件与调用方都不读它、不改它、不合并它，只原样交回去。
  */
 import { chan, ChanError, type CallError } from "../../comms/inward/chan";
-import { budgetWithin, jsonBody, readJson, refusalOf, saidOf } from "./ipc/chan-caller";
+import { budgetWithin, jsonBody, readJson, refusalOf, ReplyUnreadable, saidFrom } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
 import type { SkeletonFacts } from "./height-estimate";
 import { copyText } from "./copy-table";
@@ -196,15 +196,11 @@ const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFin
 const isStr = (v: unknown): v is string => typeof v === "string";
 const strOrNull = (x: unknown): x is string | null => x === null || isStr(x);
 
-/**
- * 应答形状不对。给人看的那句（`message`）不带内部名；哪条命令、缺了什么住 `detail`，只进日志。
- */
-class ShapeError extends Error {
-  readonly detail: string;
+/** 应答形状不对（那台回的东西认不出）。`message` 只是细目（哪条命令、缺了什么，进日志）；给人看的那句由 [`reasonOf`] 按码取。 */
+class ShapeError extends ReplyUnreadable {
   constructor(op: string, what: string) {
-    super(copyText("sessionReads.ctor.unreadable"));
+    super(`${op} reply: ${what}`);
     this.name = "ShapeError";
-    this.detail = copyText("sessionReads.ctor.badShape", { op, what });
   }
 }
 
@@ -401,13 +397,9 @@ export function failureOf(e: CallError): OutlineFailure {
   }
 }
 
-/**
- * 一次失败 ⇒ 给人看的那句话。按层说的那一份住 `ipc/chan-caller.ts::saidOf`（各调用方共用）；
- * 本文件只加一格：应答形状不对时，哪一格不对进日志（给人看的那句不带内部名）。
- */
-export function reasonOf(e: unknown, oldBackendSays: string): string {
-  if (e instanceof ShapeError) console.warn(`[session-reads] ${e.detail}`);
-  return saidOf(e, oldBackendSays);
+/** 问 `origin` 那台的一次失败 ⇒ 给人看的那句话（`ipc/chan-caller.ts::saidFrom`，各调用方共用）。 */
+export function reasonOf(e: unknown, origin: Origin): string {
+  return saidFrom(e, origin);
 }
 
 // ─── 三问 ───
@@ -427,7 +419,7 @@ export async function findInSession(
     const { total, hits } = decodeFind(readJson(reply));
     return { available: true, hits, total };
   } catch (e) {
-    const reason = reasonOf(e, copyText("sessionReads.find.oldBackend"));
+    const reason = reasonOf(e, origin);
     return { available: false, reason, hits: [], total: 0 };
   }
 }
@@ -442,7 +434,7 @@ export async function listUserInputs(origin: Origin, jsonlPath: string, fromOffs
     return { available: true, from, end, entries };
   } catch (e) {
     const failure: OutlineFailure = e instanceof ChanError ? failureOf(e.error) : "transport";
-    const reason = reasonOf(e, copyText("sessionReads.inputs.oldBackend"));
+    const reason = reasonOf(e, origin);
     return { available: false, reason, failure, from: fromOffset, end: fromOffset, entries: [] };
   }
 }
@@ -458,7 +450,7 @@ export async function readTurns(origin: Origin, jsonlPath: string, fromOffset: n
     const reply = await chan.call(origin, "history-turns", body, budget);
     return { available: true, ...decodeTurns(readJson(reply)) };
   } catch (e) {
-    return { available: false, reason: reasonOf(e, copyText("sessionReads.turns.oldBackend")) };
+    return { available: false, reason: reasonOf(e, origin) };
   }
 }
 
@@ -471,7 +463,7 @@ export async function readSessionIndex(origin: Origin, jsonlPath: string, fromOf
     const { from, end, rows } = decodeIndex(readJson(reply));
     return { available: true, from, end, rows };
   } catch (e) {
-    const reason = reasonOf(e, "这台机器上的后端版本旧，还给不出骨架索引（重装后端之后就有）");
+    const reason = reasonOf(e, origin);
     const failure: OutlineFailure = e instanceof ChanError ? failureOf(e.error) : "transport";
     return { available: false, reason, failure, from: fromOffset, end: fromOffset, rows: [] };
   }
@@ -497,7 +489,7 @@ export async function readSessionFacts(
     return { available: true, facts: decodeFacts(readJson(reply)) };
   } catch (e) {
     const failure: OutlineFailure = e instanceof ChanError ? failureOf(e.error) : "transport";
-    return { available: false, reason: reasonOf(e, copyText("sessionReads.facts.oldBackend")), failure };
+    return { available: false, reason: reasonOf(e, origin), failure };
   }
 }
 

@@ -160,7 +160,7 @@ pub(crate) async fn call(
     // 能力协商放在发之前：「这台的后端太旧」是问得出答案的，
     // 不许与超时同形。
     if !client.accepts(cmd) {
-        return Err(copy_text("rsFrameQuery.call.tooOld", &[("who", &who)]));
+        return Err(copy_core::backend_old(&who));
     }
     if deadline.passed() {
         return Err(deadline.overdue(&who));
@@ -185,7 +185,7 @@ pub(crate) async fn call(
                 }
             }))
         })?;
-    data.ok_or_else(|| copy_text("rsFrameQuery.reply.badShape", &[("who", &who)]))
+    data.ok_or_else(|| copy_core::reply_unreadable(&who))
 }
 
 /// 三态里给人看的那句话。`Done` 在本族走不到（查询不产「已完成」这一档）。
@@ -239,7 +239,7 @@ pub(crate) async fn tail(
     let num = |k: &str| {
         data.get(k)
             .and_then(Value::as_u64)
-            .ok_or_else(|| copy_text("rsFrameQuery.reply.badShape", &[("who", &who)]))
+            .ok_or_else(|| copy_core::reply_unreadable(&who))
     };
     let plan = TailPlan {
         total: num("total")?,
@@ -330,7 +330,7 @@ pub(crate) async fn read_page(
     let next = data.get("next").and_then(Value::as_u64);
     let eof = data.get("eof").and_then(Value::as_bool);
     let (Some(rows), Some(next), Some(eof)) = (rows, next, eof) else {
-        return Err(copy_text("rsFrameQuery.reply.badShape", &[("who", &who)]));
+        return Err(copy_core::reply_unreadable(&who));
     };
     if !eof && next <= offset {
         return Err(copy_text(

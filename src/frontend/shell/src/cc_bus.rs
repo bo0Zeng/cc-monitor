@@ -28,10 +28,7 @@ pub(crate) fn machine_label(origin: &str) -> String {
     }
 }
 
-/// 「这台的后端太旧」讲成人话 —— **能力协商的结论**，纯函数。
-///
-/// cc-bus 写面迁到界面之后它不再服务 cc-bus 自己，但别的几处发送端（`user_files`）
-/// 仍借它说「那台后端太旧」—— 留在原住址，不为挪而挪。MCP 推拉与 skill 装那两处随 D 组进后端走了。
+/// 「这台的后端太旧」讲成人话 —— **能力协商的结论**，纯函数（那一句是全产品同一句，`copy_core::backend_old`）。
 ///
 /// # 🔴 它为什么必须与超时 / 断连长得不一样
 ///
@@ -39,14 +36,8 @@ pub(crate) fn machine_label(origin: &str) -> String {
 /// 而「超时」「连接断了」是**问不出答案**的事。把它们压成同一句「发消息失败」，
 /// 就是本工作区最贵的那一形 —— **一个值装了两件事**：用户拿到它既不知道该升级，
 /// 也不知道该重试，只能两样都试一遍。
-pub(crate) fn describe_backend_too_old_for(origin: &str, _cmd: &str, outcome: &str) -> String {
-    copy_text(
-        "rsCcBus.tooOld.for",
-        &[
-            ("machine", &(machine_label(origin)).to_string()),
-            ("outcome", &outcome.to_string()),
-        ],
-    )
+pub(crate) fn describe_backend_too_old(origin: &str) -> String {
+    copy_core::backend_old(&machine_label(origin))
 }
 
 #[cfg(test)]

@@ -7,7 +7,7 @@
  */
 import type { Origin } from "./ipc/origin";
 import { chan } from "../../comms/inward/chan";
-import { budgetWithin, jsonBody, readJson, saidOf } from "./ipc/chan-caller";
+import { budgetWithin, jsonBody, readJson, ReplyUnreadable, saidFrom } from "./ipc/chan-caller";
 import { copyText } from "./copy-table";
 
 export type HookState =
@@ -30,7 +30,7 @@ const HOOKS_DIAG_BUDGET_MS = 30_000;
  */
 export function decodeHooksReport(v: unknown): HooksReport {
   const bad = (what: string): never => {
-    throw new Error(`hooks-diag reply shape mismatch: ${what}`); // 程序员错误，刻意英文
+    throw new ReplyUnreadable(`hooks-diag reply shape mismatch: ${what}`);
   };
   const obj = (x: unknown, what: string, keys: string[]): Record<string, unknown> => {
     if (x === null || typeof x !== "object" || Array.isArray(x)) return bad(`${what} is not an object`);
@@ -81,7 +81,7 @@ export async function fetchHooksReport(origin: Origin): Promise<HooksReport> {
     const budget = budgetWithin(HOOKS_DIAG_BUDGET_MS);
     return decodeHooksReport(readJson(await chan.call(origin, "hooks-diag", body, budget)));
   } catch (e) {
-    throw new Error(saidOf(e, copyText("ccBusHooks.fetch.oldBackend")));
+    throw new Error(saidFrom(e, origin));
   }
 }
 

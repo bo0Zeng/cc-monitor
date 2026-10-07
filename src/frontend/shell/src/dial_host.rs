@@ -84,7 +84,7 @@ pub(crate) async fn local_backend_accepting(cmd: &str) -> Result<Arc<InboundClie
     for attempt in 0..LOCAL_WAIT_TRIES {
         if let Some(c) = inbound_client::client_for(local) {
             if !c.accepts(cmd) {
-                return Err(copy_text("rsDialHost.local.tooOld", &[]));
+                return Err(copy_core::backend_old(&copy_core::local_machine()));
             }
             return Ok(c);
         }
