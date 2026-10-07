@@ -763,7 +763,7 @@ fn pending_count_in(src: &str) -> Option<usize> {
 
 /// 跑一条**只读**的 git，回它的 stdout。
 ///
-/// 🔴 **两种「问不到」分开报**，它们在类型上不是一回事（照 `dial_home_registry_tests.rs::git_read`
+/// 🔴 **两种「问不到」分开报**，它们在类型上不是一回事（照拨号那一族从前那份 `git_read`
 /// 那条逐字记着的实测）：机器上没有 `git` 时 [`std::process::Command`] 给的是
 /// `io::Error(NotFound)`，**不是**一个非零退出码。
 ///

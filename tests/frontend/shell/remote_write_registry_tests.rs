@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 fn repo_root() -> PathBuf {
     // 住址唯一源：`crate::guard_support`（头注写着 24 份副本怎么一起漂的）。
