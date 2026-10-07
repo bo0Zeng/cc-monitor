@@ -583,7 +583,7 @@ fn us1_a_broken_file_is_surfaced_instead_of_looking_unconfigured() {
     assert_eq!(s1["configured"], json!(true));
     assert!(!s1.to_string().contains("0123456789"), "回了明文：{s1}");
     assert!(
-        s1["masked"].as_str().unwrap().contains('*'),
+        s1["masked"].as_str().unwrap().contains('•'),
         "掩码里没有遮蔽符：{s1}"
     );
     std::fs::write(&p, b"{\"api_key\": }").expect("改坏");

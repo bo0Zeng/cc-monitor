@@ -651,26 +651,29 @@ fn a_debug_print_never_carries_the_plaintext_or_its_length() {
 }
 
 #[test]
-fn masking_keeps_only_the_two_ends_and_swallows_short_keys_whole() {
+fn masking_keeps_only_the_last_four_and_swallows_short_keys_whole() {
     let long = SecretKey::new("sk-ant-api03-ABCDEFGHIJKLMNOP");
     let m = long.masked();
-    assert!(m.starts_with("sk-a"), "前 4 位应当留着，实得 {m}");
-    assert!(m.ends_with("MNOP"), "后 4 位应当留着，实得 {m}");
-    assert!(!m.contains("api03-ABCDEFGHIJKL"), "中段没被遮住：{m}");
+    assert_eq!(m, "••••••••MNOP", "只留末四位、遮掉的那段定长");
+    assert!(!m.contains("sk-a"), "前缀漏出去了：{m}");
+    // 长度不漏：长短两把 key 掩码一样长。
     assert_eq!(
-        m.chars().count(),
-        "sk-ant-api03-ABCDEFGHIJKLMNOP".chars().count()
+        SecretKey::new("sk-0123456789-wxyz")
+            .masked()
+            .chars()
+            .count(),
+        m.chars().count()
     );
 
-    // ★ 短 key **整条遮掉**：留前后各 4 位等于把一把 8 字符的 key 交出去。
+    // ★ 短 key **整条遮掉**：留末四位等于把一把 8 字符的 key 交出去一半。
     let short = SecretKey::new("abcdefgh");
-    assert_eq!(short.masked(), "********");
+    assert_eq!(short.masked(), "••••••••");
     assert!(
-        !short.masked().contains("abcd"),
-        "短 key 的前缀漏出去了：{}",
+        !short.masked().contains("efgh"),
+        "短 key 的后缀漏出去了：{}",
         short.masked()
     );
-    // 非空对照：空的就是空的，不是一串星号。
+    // 非空对照：空的就是空的，不是一串点。
     assert_eq!(SecretKey::new("   ").masked(), "");
 }
 

@@ -368,6 +368,8 @@ function productAccount(a: Record<string, unknown>): Record<string, unknown> {
   out.loggedIn = a.loggedIn ?? false;
   out.authKind = a.authKind ?? "subscription";
   out.authReady = a.authReady ?? out.loggedIn;
+  out.keyMasked = a.keyMasked ?? null;
+  out.baseUrl = a.baseUrl ?? null;
   return out;
 }
 
@@ -398,6 +400,7 @@ export async function accountReadReply(which: AccountRead, res: unknown): Promis
     error: m?.error ?? null,
     unsupported: m?.unsupported ?? null,
     nextDefault: m?.nextDefault ?? null,
+    home: m?.home ?? null,
   };
   return chanReply({ meta, accounts, notice: r.notice ?? null });
 }

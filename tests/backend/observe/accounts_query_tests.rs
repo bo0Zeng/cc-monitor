@@ -1400,6 +1400,17 @@ fn the_list_product_carries_exactly_what_the_cli_arm_prints() {
     let o = cli_meta.as_object_mut().unwrap();
     assert_eq!(o.remove("kind"), Some(serde_json::json!("accounts-meta")));
     assert_eq!(o.remove("accountZeroAware"), Some(serde_json::json!(true)));
+    // 成品比 CLI 多出的只有帧面那三格（家目录 · 每号 key 掩码与端点），其余逐格同一份扫描。
+    let mut product = product;
+    assert_eq!(
+        product["meta"].as_object_mut().unwrap().remove("home"),
+        Some(serde_json::Value::Null)
+    );
+    for a in product["accounts"].as_array_mut().unwrap() {
+        let o = a.as_object_mut().unwrap();
+        assert_eq!(o.remove("keyMasked"), Some(serde_json::Value::Null));
+        assert_eq!(o.remove("baseUrl"), Some(serde_json::Value::Null));
+    }
     assert_eq!(product["meta"], cli_meta, "成品 meta 与 CLI 首行不是同一份");
     let cli_rows: Vec<serde_json::Value> = cli[1..]
         .iter()
@@ -1520,6 +1531,71 @@ fn the_trust_product_answers_through_the_same_function_as_the_cli_arm() {
     let _ = fs::remove_dir_all(&root);
 }
 
+/// 金样那份 apikey 表：`acct-b` 一行（key ＋ 端点）· `acct-a` 一行只有端点（订阅号不带出去）。经真读口 `key_facts_at` 读回。
+fn golden_key_facts(root: &Path) -> Vec<crate::accounts::upstream_select::file_face::KeyFact> {
+    let p = root.join("apikey-credentials.json");
+    fs::write(
+        &p,
+        r#"{"accounts":{"acct-b":{"api_key":"sk-ant-0123456789-a1b2","base_url":"https://api.example.com"},"acct-a":{"base_url":"https://x.example.com"}}}"#,
+    )
+    .unwrap();
+    crate::accounts::upstream_select::file_face::key_facts_at(&p)
+}
+
+/// ★★ API 号带出那台表里的掩码（只留末四位）与端点；订阅号 · 表里没它 · 只配了端点没配 key 的那一格是 `null`；
+/// 明文一个字节不出去。
+#[test]
+fn the_list_product_carries_each_api_accounts_masked_key_and_address() {
+    let (root, accts) = c4c_fixture("c4c-keys", true);
+    let facts = golden_key_facts(&root);
+    let v = list_product_with(
+        &accts,
+        Some(&root.join("home")),
+        &["acct-b".to_string()],
+        &facts,
+        "claude-code",
+        "claude-code",
+    );
+    assert!(!v.to_string().contains("0123456789"), "回了明文：{v}");
+    let row = |n: &str| {
+        v["accounts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|a| a["name"] == n)
+            .cloned()
+            .unwrap()
+    };
+    assert_eq!(row("b")["keyMasked"], "••••••••a1b2");
+    assert_eq!(row("b")["baseUrl"], "https://api.example.com");
+    assert!(
+        row("a")["keyMasked"].is_null() && row("a")["baseUrl"].is_null(),
+        "订阅号不带"
+    );
+    assert_eq!(
+        v["meta"]["home"],
+        root.join("home").to_string_lossy().as_ref()
+    );
+    // 表里没有它那一行 ⇒ 两格 null（照样是 api-key 号）。
+    let none = list_product_with(
+        &accts,
+        None,
+        &["acct-b".to_string()],
+        &[],
+        "claude-code",
+        "claude-code",
+    );
+    let b = none["accounts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|a| a["name"] == "b")
+        .cloned()
+        .unwrap();
+    assert!(b["keyMasked"].is_null() && b["baseUrl"].is_null() && none["meta"]["home"].is_null());
+    let _ = fs::remove_dir_all(&root);
+}
+
 /// ★★ **跨语言金样**：两条成品对同一份夹具 == `tests/__fixtures__/accounts.golden.json`（夹具根替换成 `<root>`）。
 /// 那份金样的另一个读者是 TS 解码器（`tests/frontend/ui/accounts-decode.vitest.ts`）⇒ 两侧异源：后端改一个键名本条红，
 /// TS 解码器改一个键名那边红。金样手写落盘（本条红时印出现打的成品，人读过再改）。
@@ -1533,7 +1609,14 @@ fn the_account_products_match_the_cross_language_golden() {
     .unwrap();
     let dir = accts.join("acct-a").to_string_lossy().to_string();
     let got = serde_json::json!({
-        "accounts-list": list_product_at(&accts, &["acct-b".to_string()], "claude-code", "claude-code"),
+        "accounts-list": list_product_with(
+            &accts,
+            Some(&root.join("home")),
+            &["acct-b".to_string()],
+            &golden_key_facts(&root),
+            "claude-code",
+            "claude-code",
+        ),
         "accounts-trust": trust_product_at(&accts, Some(&dir), "/w/p").unwrap(),
     });
     let got: serde_json::Value = serde_json::from_str(

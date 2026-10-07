@@ -2646,4 +2646,28 @@ body.settings-window-mode .settings-panel {
   color: var(--text-2);
   font-size: var(--font-size-small);
 }
+
+.acct-key-host {
+  color: var(--text-2);
+}
+
+.acct-mcp-line {
+  display: flex;
+  align-items: center;
+  padding: 0 var(--space-2);
+  color: var(--text-2);
+  font-size: var(--font-size-small);
+}
+
+.acct-mcp-line .acct-pointer-link {
+  padding: 0;
+  background: none;
+  color: var(--text-2);
+}
+
+.acct-mcp-line .acct-pointer-link:hover,
+.acct-mcp-line .acct-pointer-link:focus-visible {
+  color: var(--text);
+  text-decoration: underline;
+}
 }

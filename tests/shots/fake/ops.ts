@@ -36,7 +36,7 @@ const textOf = (r: JsonlRecord): string => {
 export const ACCOUNTS = [
   { name: "work", email: "work@example.com", authKind: "subscription", isDefault: true },
   { name: "personal", email: "me@example.com", authKind: "subscription", isDefault: false },
-  { name: "api", email: "", authKind: "api-key", isDefault: false },
+  { name: "api", email: "", authKind: "api-key", isDefault: false, keyMasked: "••••••••a1b2", baseUrl: "https://api.example.com" },
 ];
 
 export function defaultOps(): Record<string, OpHandler> {
@@ -52,6 +52,8 @@ export function defaultOps(): Record<string, OpHandler> {
         loggedIn: a.authKind === "subscription",
         authKind: a.authKind,
         authReady: true,
+        keyMasked: a.keyMasked ?? null,
+        baseUrl: a.baseUrl ?? null,
       })),
       meta: {
         enabled: true,
@@ -64,6 +66,7 @@ export function defaultOps(): Record<string, OpHandler> {
         // 那台 Windows：做不了多账号（后端那一句）。
         unsupported: origin === "win-laptop" ? "Windows 不支持多账号" : null,
         nextDefault: ACCOUNTS.find((a) => !a.isDefault)?.name ?? null,
+        home: "/home/user",
       },
       notice: null,
     }),

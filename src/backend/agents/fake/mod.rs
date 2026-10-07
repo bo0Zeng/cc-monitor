@@ -128,6 +128,7 @@ pub(crate) const LAUNCH: crate::agents::LaunchFace = crate::agents::LaunchFace {
     needs_bus_id: true,
     has_identity: true,
     has_pidfiles: false,
+    models: None,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

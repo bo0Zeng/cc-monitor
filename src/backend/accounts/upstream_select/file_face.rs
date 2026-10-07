@@ -309,6 +309,39 @@ pub(crate) fn rows_at_with(path: &Path, get: &dyn Fn(&str) -> Option<String>) ->
     table.ids_of(super::CREDENTIALS_FILE_AGENT)
 }
 
+/// 这台那份表里一行的**给人看的那两格**：账号 id · 掩码（[`SecretKey::masked`]，只留末四位）· 端点。key 本体不出本函数。
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct KeyFact {
+    pub id: String,
+    pub masked: Option<String>,
+    pub base_url: Option<String>,
+}
+
+/// 这台那份表里每一行的 [`KeyFact`]（`accounts-list` 给每个 API 号带出去）。推不出路径 / 读不动 / 解析不了 ⇒ 零条
+/// （坏文件那句话由 `apikey-read` 的 `problem` 说）。
+pub(crate) fn machine_key_facts() -> Vec<KeyFact> {
+    machine_path().map(|p| key_facts_at(&p)).unwrap_or_default()
+}
+
+/// [`machine_key_facts`] 的本体，路径是参数。
+pub(crate) fn key_facts_at(path: &Path) -> Vec<KeyFact> {
+    let Ok(Some(doc)) = read_doc(path) else {
+        return Vec::new();
+    };
+    store::read_accounts(&doc)
+        .into_iter()
+        .map(|e| KeyFact {
+            masked: e
+                .key
+                .as_ref()
+                .filter(|k| k.is_configured())
+                .map(SecretKey::masked),
+            base_url: e.base_url,
+            id: e.id,
+        })
+        .collect()
+}
+
 /// 读一次、解析一次。`Ok(None)` = 文件不在（还没配）；空文件 = 空对象。
 fn read_doc(path: &Path) -> Result<Option<Map<String, Value>>, (&'static str, String)> {
     let raw = match std::fs::read_to_string(path) {

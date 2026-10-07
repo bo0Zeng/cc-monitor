@@ -4,10 +4,12 @@
       {
         "authKind": "subscription",
         "authReady": false,
+        "baseUrl": null,
         "configDir": null,
         "email": "",
         "exists": true,
         "isDefault": false,
+        "keyMasked": null,
         "loggedIn": false,
         "mode": "isolated",
         "name": "zero"
@@ -15,10 +17,12 @@
       {
         "authKind": "subscription",
         "authReady": true,
+        "baseUrl": null,
         "configDir": "<root>/accts/acct-a",
         "email": "a@x",
         "exists": true,
         "isDefault": true,
+        "keyMasked": null,
         "loggedIn": true,
         "mode": "isolated",
         "name": "a"
@@ -26,10 +30,12 @@
       {
         "authKind": "api-key",
         "authReady": true,
+        "baseUrl": "https://api.example.com",
         "configDir": "<root>/accts/acct-b",
         "email": "",
         "exists": true,
         "isDefault": false,
+        "keyMasked": "••••••••a1b2",
         "loggedIn": false,
         "mode": "isolated",
         "name": "b"
@@ -40,6 +46,7 @@
       "count": 3,
       "enabled": true,
       "error": null,
+      "home": "<root>/home",
       "manifestPath": "<root>/accts/accounts.json",
       "nextDefault": "b",
       "sharedStore": "<root>/shared",

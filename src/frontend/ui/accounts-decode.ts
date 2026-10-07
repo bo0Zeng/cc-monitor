@@ -42,7 +42,7 @@ export function decodeAccountsList(v: unknown): {
   const m = v.meta;
   if (
     !isObj(m) ||
-    !sameKeys(m, ["enabled", "acctsDir", "manifestPath", "updatedAt", "sharedStore", "count", "error", "unsupported", "nextDefault"]) ||
+    !sameKeys(m, ["enabled", "acctsDir", "manifestPath", "updatedAt", "sharedStore", "count", "error", "unsupported", "nextDefault", "home"]) ||
     typeof m.enabled !== "boolean" ||
     typeof m.acctsDir !== "string" ||
     typeof m.manifestPath !== "string" ||
@@ -51,7 +51,8 @@ export function decodeAccountsList(v: unknown): {
     typeof m.count !== "number" ||
     !nullableStr(m.error) ||
     !nullableStr(m.unsupported) ||
-    !nullableStr(m.nextDefault)
+    !nullableStr(m.nextDefault) ||
+    !nullableStr(m.home)
   ) {
     return bad("meta");
   }
@@ -70,6 +71,8 @@ export function decodeAccountsList(v: unknown): {
         "loggedIn",
         "authKind",
         "authReady",
+        "keyMasked",
+        "baseUrl",
       ]) ||
       typeof a.name !== "string" ||
       typeof a.email !== "string" ||
@@ -79,7 +82,9 @@ export function decodeAccountsList(v: unknown): {
       typeof a.exists !== "boolean" ||
       typeof a.loggedIn !== "boolean" ||
       !AUTH_KINDS.includes(a.authKind as AuthKind) ||
-      typeof a.authReady !== "boolean"
+      typeof a.authReady !== "boolean" ||
+      !nullableStr(a.keyMasked) ||
+      !nullableStr(a.baseUrl)
     ) {
       return bad(copyText("accountsDecode.where.nth", { i }));
     }
@@ -93,6 +98,8 @@ export function decodeAccountsList(v: unknown): {
       loggedIn: a.loggedIn,
       authKind: a.authKind as AuthKind,
       authReady: a.authReady,
+      keyMasked: a.keyMasked,
+      baseUrl: a.baseUrl,
     };
   });
   const meta: AccountsMeta = {
@@ -105,6 +112,7 @@ export function decodeAccountsList(v: unknown): {
     error: m.error,
     unsupported: m.unsupported,
     nextDefault: m.nextDefault,
+    home: m.home,
   };
   return { meta, accounts, notice: v.notice };
 }

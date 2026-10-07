@@ -104,8 +104,10 @@ function acctOps(aw: AcctWorld, w: () => World): Record<string, OpHandler> {
         loggedIn: a.kind === "sub",
         authKind: a.kind === "api" ? "api-key" : "subscription",
         authReady: true,
+        keyMasked: a.kind === "api" ? "••••••••a1b2" : null,
+        baseUrl: a.kind === "api" ? "https://api.example.com" : null,
       })),
-      meta: { enabled: true, acctsDir: "/home/user/.cc-monitor/accounts", manifestPath: "/home/user/.cc-monitor/accounts/accounts.json", updatedAt: "2026-10-01T08:00:00Z", sharedStore: null, count: aw.accounts.length, error: null, unsupported: null, nextDefault: null },
+      meta: { enabled: true, acctsDir: "/home/user/.cc-monitor/accounts", manifestPath: "/home/user/.cc-monitor/accounts/accounts.json", updatedAt: "2026-10-01T08:00:00Z", sharedStore: null, count: aw.accounts.length, error: null, unsupported: null, nextDefault: null, home: "/home/user" },
       notice: null,
     }),
     "quota-read": () => ({

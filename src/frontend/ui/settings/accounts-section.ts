@@ -10,12 +10,12 @@
 import { emit } from "@tauri-apps/api/event";
 import { getCurrentMachine, subscribeMachine } from "./machine-context";
 import { recordFacet, LOCAL_MACHINE_KEY } from "./machine-status";
-import { SETTINGS_APPLIED_EVENT, OPEN_ACCOUNT_PANEL_EVENT } from "./events";
+import { SETTINGS_APPLIED_EVENT, OPEN_ACCOUNT_PANEL_EVENT, SETTINGS_GO_EVENT } from "./events";
 import { renderNewAccountForm, checkBaseUrl, type NewAccountForm, type NewAccountRequest } from "./account-new-form";
 import { openLoginWindow, loginInTmux } from "./account-login";
 import { localShell } from "./machine-aliases";
 import { accountRowKind, deriveUi, effectiveDefault, type Account, type AccountsState } from "../accounts";
-import { fetchAccounts, invalidateAccountsCache, launchAgentId } from "../account-reads";
+import { accountsAgentProfile, fetchAccounts, invalidateAccountsCache, launchAgentId } from "../account-reads";
 import { setModelForAccount, getModelForAccount } from "../account-prefs";
 import { accountAvatarEl } from "../account-color";
 import { readQuota } from "../quota-reads";
@@ -39,6 +39,7 @@ import { openMenu, type MenuItem } from "../kit/menu";
 import { spinner } from "../kit/progress";
 import { tag } from "../kit/badge";
 import { toast } from "../kit/toast";
+import { homeShort } from "../kit/path";
 import { copyText } from "../copy-table";
 import { machineName, saidOfControl } from "../control-said";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
@@ -286,7 +287,7 @@ export class AccountsSection {
     const v = this.verifyBar(f);
     if (v) out.push(v);
     if (ui.notice) out.push(banner("warn", ui.notice));
-    out.push(this.table(f, false), this.pointer(f.origin));
+    out.push(this.table(f, false), this.pointer(f.origin), this.mcpLine(f.origin));
     this.body.replaceChildren(...out);
   }
 
@@ -426,6 +427,24 @@ export class AccountsSection {
     t.textContent = copyText("acctPage.pointer.where");
     box.appendChild(t);
     return box;
+  }
+
+  /** 表下一行「共用 MCP：别名与配置文件」：点了切到同一台的「别名与配置文件」栏。 */
+  private mcpLine(origin: Origin): HTMLElement {
+    const line = document.createElement("div");
+    line.className = "acct-mcp-line";
+    const t = document.createElement("span");
+    t.textContent = copyText("acctPage.mcp.where");
+    const go = document.createElement("button");
+    go.type = "button";
+    go.className = "acct-pointer-link";
+    go.dataset.go = "config";
+    go.textContent = copyText("machinePage.tab.config");
+    go.addEventListener("click", () => {
+      this.element.dispatchEvent(new CustomEvent(SETTINGS_GO_EVENT, { bubbles: true, detail: { machine: origin, tab: "config", anchor: "shared-mcp" } }));
+    });
+    line.append(t, go);
+    return line;
   }
 
   // ───────────────────────────── 表 ─────────────────────────────
@@ -573,20 +592,33 @@ export class AccountsSection {
       line(copyText("acctPage.detail.commands"), mono(cmds.join(copyText("kit.text.sep"))), copy);
     }
     if (accountRowKind(a) === "apikey") line(copyText("acctPage.detail.apikey"), this.keyEditor(origin, a, readonly));
-    // 默认模型：键 ＝ 这台 ＋ 这个号（改完即存，空 ＝ 跟着 Claude 的默认）。
-    const model = document.createElement("input");
-    model.type = "text";
+    // 默认模型：键 ＝ 这台 ＋ 这个号（选中即存；第一项 ＝ 跟着这一家自己的默认）。选项是这一家认得的模型（后端画像）；
+    // 盘上存的那个不在里面 ⇒ 照样多列它一项（不丢用户自己写的）。
+    const profile = accountsAgentProfile();
+    const model = document.createElement("select");
     model.className = "acct-detail-model";
-    model.placeholder = copyText("acctPage.detail.modelDefault");
     model.setAttribute("aria-label", copyText("acctPage.detail.model"));
     model.disabled = readonly;
+    const fill = (saved: string | undefined): void => {
+      const names = [...(profile?.models ?? [])];
+      if (saved && !names.includes(saved)) names.push(saved);
+      const opt = (value: string, label: string): HTMLOptionElement => {
+        const o = document.createElement("option");
+        o.value = value;
+        o.textContent = label;
+        return o;
+      };
+      model.replaceChildren(opt("", copyText("acctPage.detail.modelDefault", { agent: profile?.displayName ?? "" })), ...names.map((n) => opt(n, n)));
+      model.value = saved ?? "";
+    };
+    fill(undefined);
     void getModelForAccount(origin, a.name).then((m) => {
-      if (m && document.activeElement !== model) model.value = m;
+      if (document.activeElement !== model) fill(m);
     });
     const modelErr = document.createElement("span");
     modelErr.className = "acct-detail-err";
     model.addEventListener("change", () => {
-      void setModelForAccount(origin, a.name, model.value.trim() || null).then(
+      void setModelForAccount(origin, a.name, model.value || null).then(
         () => (modelErr.textContent = ""),
         (e: unknown) => (modelErr.textContent = saidOfControl(e)),
       );
@@ -597,7 +629,7 @@ export class AccountsSection {
     line(copyText("acctPage.detail.model"), model, scope, modelErr);
     if (a.configDir !== null) {
       const dir = a.configDir;
-      line(copyText("acctPage.detail.dir"), mono(dir), button({ label: revealLabel(origin), kind: "ghost", size: "compact", onClick: () => void this.reveal(origin, dir) }));
+      line(copyText("acctPage.detail.dir"), mono(homeShort(dir, f.state.meta?.home)), button({ label: revealLabel(origin), kind: "ghost", size: "compact", onClick: () => void this.reveal(origin, dir) }));
       const del = button({ label: copyText("acctPage.menu.remove", { name: a.name }), kind: "danger-text", size: "compact", onClick: () => void this.remove(f, a) });
       if (readonly) setDisabled(del, copyText("acctPage.offline.hover"));
       const foot = document.createElement("div");
@@ -612,7 +644,15 @@ export class AccountsSection {
   private keyEditor(origin: Origin, a: Account, readonly: boolean): HTMLElement {
     const box = document.createElement("div");
     box.className = "acct-key";
-    const shown = mono(copyText("acctPage.detail.keyHidden"));
+    const shown = mono("");
+    const host = document.createElement("span");
+    host.className = "acct-key-host";
+    const show = (masked: string | null, baseUrl: string | null): void => {
+      shown.textContent = masked ?? copyText("acctPage.row.keyNotSaved");
+      host.textContent = baseUrl ? hostOf(baseUrl) : "";
+      host.hidden = !baseUrl;
+    };
+    show(a.keyMasked ?? null, a.baseUrl ?? null);
     const change = button({ label: copyText("acctPage.detail.keyChange"), size: "compact" });
     if (readonly) setDisabled(change, copyText("acctPage.offline.hover"));
     const form = document.createElement("div");
@@ -650,7 +690,7 @@ export class AccountsSection {
           const w = await writeApikeyKey(origin, dir, k, b.value);
           keyIn.value = "";
           form.hidden = true;
-          shown.textContent = w.baseUrl ? `${w.masked} ${hostOf(w.baseUrl)}` : w.masked;
+          show(w.masked || null, w.baseUrl);
           keyF.setError(null);
         } catch (e) {
           keyF.setError(saidOfControl(e));
@@ -659,7 +699,7 @@ export class AccountsSection {
         }
       })();
     });
-    box.append(shown, change, form);
+    box.append(shown, host, change, form);
     return box;
   }
 
@@ -829,10 +869,10 @@ function quotaOf(quota: QuotaRead, agent: string, account: string): QuotaShow | 
   return u ? { kind: u.kind, state: "unseen", stale: false, slots: [], login: u.login } : null;
 }
 
-/** 第二行：`订阅 · {email}` ／ `API key` ／ `订阅 · 等待终端登录…` ／ `订阅 · 未登录`。 */
+/** 第二行：`订阅 · {email}` ／ `API key · {地址}` ／ `订阅 · 等待终端登录…` ／ `订阅 · 未登录`。 */
 function kindLine(a: Account, waiting: boolean): string {
   const kind = accountRowKind(a);
-  if (kind === "apikey") return copyText("acctPage.row.apikey");
+  if (kind === "apikey") return a.baseUrl ? copyText("acctPage.row.apikeyAt", { host: hostOf(a.baseUrl) }) : copyText("acctPage.row.apikey");
   if (waiting) return copyText("acctPage.row.waiting");
   if (kind === "notLoggedIn") return copyText("acctPage.row.notLoggedIn");
   return a.email ? copyText("acctPage.row.sub", { email: a.email }) : copyText("acctPage.row.subNoEmail");

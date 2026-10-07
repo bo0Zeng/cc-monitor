@@ -197,6 +197,17 @@ export const SETTINGS_SCENES: Scene[] = [
     await click(await byText('[data-account="work"] button', "删除 work…"));
     await sleep(600);
   }, acctWorld()),
+  settings("settings-acct-mcp-go", "设置 · 账号 · 共用 MCP 指过去", "账号表下「共用 MCP：别名与配置文件」点了：切到同一台的「别名与配置文件」栏", async () => {
+    await go("machine:devbox", "machine:devbox#acct");
+    await click(".settings-page:not([hidden]) .acct-mcp-line button");
+    await sleep(600);
+  }, acctWorld()),
+  settings("settings-appearance-kb-anchor", "设置 · 外观 · 快捷键那一节（带锚点打开）", "主窗口快捷键一览的「改快捷键…」开 {page: appearance, anchor: keybindings}：落到快捷键那一节并高亮", async () => {
+    await waitFor(".settings-nav");
+    await sleep(1500);
+    await emit("settings-target", JSON.stringify({ page: "appearance", anchor: "keybindings" }));
+    await sleep(500);
+  }),
   settings("settings-acct-verify", "设置 · 账号 · 打开时核出对不上", "personal 的登录信息缺失：表上方一条警告条 ＋［修复…］", async () => go("machine:devbox", "machine:devbox#acct"), acctWorld(true)),
   page("settings-machine-config", "设置 · 远端 · 别名与配置文件", "devbox 的「别名与配置文件」栏", "machine:devbox", "machine:devbox#config"),
   settings("settings-machine-menu", "设置 · 机器 ⋯ 菜单", "机器列表里 devbox 那一行的 ⋯", async () => {

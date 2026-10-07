@@ -20790,6 +20790,11 @@
       "zh": "API key",
       "args": []
     },
+    "acctPage.row.apikeyAt": {
+      "kind": "body",
+      "zh": "API key · {host}",
+      "args": ["host"]
+    },
     "acctPage.row.waiting": {
       "kind": "body",
       "zh": "订阅 · 等待终端登录…",
@@ -20860,11 +20865,6 @@
       "zh": "API key",
       "args": []
     },
-    "acctPage.detail.keyHidden": {
-      "kind": "body",
-      "zh": "••••",
-      "args": []
-    },
     "acctPage.detail.keyChange": {
       "kind": "action",
       "zh": "更换…",
@@ -20887,8 +20887,8 @@
     },
     "acctPage.detail.modelDefault": {
       "kind": "control",
-      "zh": "Claude 默认",
-      "args": []
+      "zh": "{agent} 默认",
+      "args": ["agent"]
     },
     "acctPage.detail.modelScope": {
       "kind": "body",
@@ -21058,6 +21058,11 @@
     "acctPage.pointer.where": {
       "kind": "body",
       "zh": "在主窗口的账号面板里",
+      "args": []
+    },
+    "acctPage.mcp.where": {
+      "kind": "body",
+      "zh": "共用 MCP：",
       "args": []
     },
     "acctPage.default.done": {

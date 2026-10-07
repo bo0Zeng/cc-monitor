@@ -30,3 +30,9 @@ export interface OpenAccountPanel {
   machine: string;
   anchor: "timeline" | "default-rotation";
 }
+
+/**
+ * 设置窗里一节要带目的地跳到别处（同一窗口内，DOM 冒泡事件；`detail` 是 `SettingsTarget` 那一形）：设置窗外框收到就落过去。
+ * 例：账号页表下「共用 MCP：别名与配置文件」⇒ 同一台的「别名与配置文件」栏。
+ */
+export const SETTINGS_GO_EVENT = "settings-go";

@@ -24,7 +24,8 @@ vi.mock("../../../src/frontend/ui/config", () => ({ loadConfig: vi.fn().mockReso
 import { invoke } from "@tauri-apps/api/core";
 import { decodeAccountsList, decodeTrust } from "../../../src/frontend/ui/accounts-decode";
 import { deriveUi } from "../../../src/frontend/ui/accounts";
-import { __resetAccountsCacheForTest, checkTrust, fetchAccounts } from "../../../src/frontend/ui/account-reads";
+import { __resetAccountsCacheForTest, accountsAgentProfile, checkTrust, fetchAccounts, launchAgentId } from "../../../src/frontend/ui/account-reads";
+import { AGENT_PROFILE_TABLE } from "../../../src/frontend/ui/generated/agent-profile-table";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { REPO_ROOT } from "../../test-support/repo-root";
 import {
@@ -71,9 +72,25 @@ describe("金样：后端出的成品，TS 这一侧读得懂", () => {
       ["a", "<root>/accts/acct-a", "subscription", true],
       ["b", "<root>/accts/acct-b", "api-key", true],
     ]);
+    expect(got.meta.home, "那台的家目录（缩 ~ 用）没收进来").toBe("<root>/home");
+    expect(got.accounts.map((a) => [a.name, a.keyMasked, a.baseUrl]), "API 号的掩码与端点没收进来").toEqual([
+      ["zero", null, null],
+      ["a", null, null],
+      ["b", "••••••••a1b2", "https://api.example.com"],
+    ]);
   });
   it("accounts-trust：两格照收", () => {
     expect(decodeTrust(golden["accounts-trust"])).toEqual({ trusted: true, known: true });
+  });
+});
+
+describe("账号页那一家的画像", () => {
+  it("与起会话交的适配器 id 同一个出处：叫法与认得的模型都读后端生成的画像表（不写死）", () => {
+    const p = accountsAgentProfile();
+    const row = AGENT_PROFILE_TABLE.find((r) => r.adapterId === launchAgentId());
+    expect(p, "查不到账号页那一家的画像").not.toBeNull();
+    expect(p).toBe(row);
+    expect(p!.models?.length, "那一家认得的模型一个都没有（下拉只剩「默认」）").toBeGreaterThan(0);
   });
 });
 
@@ -88,6 +105,9 @@ describe("严格收：形状不对就抛，不补值", () => {
     ["账号缺 authReady", { ...good, accounts: [{ ...acct0, authReady: undefined }] }],
     ["账号 authKind 认不出", { ...good, accounts: [{ ...acct0, authKind: "bedrock" }] }],
     ["账号多一格", { ...good, accounts: [{ ...acct0, token: "x" }] }],
+    ["账号缺 keyMasked", { ...good, accounts: [{ ...acct0, keyMasked: undefined }] }],
+    ["账号 baseUrl 类型不对", { ...good, accounts: [{ ...acct0, baseUrl: 3 }] }],
+    ["meta 缺 home", { ...good, meta: { ...(good.meta as object), home: undefined } }],
     ["notice 类型不对", { ...good, notice: 3 }],
   ];
   for (const [why, v] of cases) {
