@@ -3381,6 +3381,7 @@ cc-bus 钩子诊断。
 | `--accounts-set-default` | ＝ 帧命令 `accounts-set-default`：设默认号 |
 | `--accounts-trust` | ＝ 帧命令 `accounts-trust`：换号前的信任预检 |
 | `--accounts-verify` | ＝ 帧命令 `accounts-verify`：核对账号库 |
+| `--agent-home-check` | ＝ 帧命令 `agent-home-check`：那个目录能不能当 agent 家目录 |
 | `--aliases-block-install` | ＝ 帧命令 `aliases-block-install`：别名块装进人选的那份启动文件 |
 | `--aliases-block-remove` | ＝ 帧命令 `aliases-block-remove`：别名块卸掉 |
 | `--aliases-block-render` | ＝ 帧命令 `aliases-block-render`：别名块预览 |
