@@ -88,6 +88,9 @@ pub const POSIX_ALIASES_REL: &str = ".cc-monitor/aliases.sh";
 /// 〔同上〕别名块文件：PowerShell 读的那一份。
 pub const PS_ALIASES_REL: &str = ".cc-monitor/aliases.ps1";
 
+/// 〔同上〕配置文件：一段一组 ccm 选项、可「基于」另一段（后端 `assets/aliases/profile.rs` 读写；用户也可以手改）。
+pub const PROFILES_REL: &str = ".cc-monitor/profiles.toml";
+
 /// 〔同上〕skill 装记录（后端 `assets/skill_ledger.rs` 写；卸的时候按它删）。
 pub const SKILL_LEDGER_REL: &str = ".cc-monitor/skill-installs.json";
 

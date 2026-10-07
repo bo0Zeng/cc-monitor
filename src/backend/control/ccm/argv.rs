@@ -330,27 +330,107 @@ pub(crate) fn apply_word(o: &mut Opts, w: &Word, at: usize) -> Result<Option<Ear
     Ok(None)
 }
 
+/// `--` 右边认得的全部词（配置文件那一侧拿它对词表）。
+pub(crate) fn right_words() -> &'static [&'static str] {
+    RIGHT_WORDS
+}
+
 /// 这套 argv 的唯一解析口。
 ///
 /// 格式 `ccm [交给 claude 的…] -- [ccm 自己的…]`：没有 `--` ⇒ 整行原样交 agent（[`Opts::passthru`]，一个词都不拦）；
 /// 有 ⇒ 按最后一个 `--` 切（[`last_end`]），左边原样交 agent（claude 自己的 `--` 照写，没有 ccm 部分时末尾补一个空 `--`），
 /// 右边逐词只认 ccm 表（壳层选项 ＋ `--ccm-*` 诊断口），认不得就报错、不猜。
-/// 逐词那一圈是 [`word_at`]（几个词）＋ [`apply_word`]（什么意思）。
+/// 逐词那一圈是 [`word_at`]（几个词）＋ [`apply_word`]（什么意思）。没有配置层的 [`parse_layered`]。
 pub(crate) fn parse(args: &[String]) -> Result<Parsed, Die> {
+    parse_layered(&[], args).map(|(p, _)| p)
+}
+
+/// 一层配置（配置文件里的一段）：名字 ＋ 交给 agent 的词 ＋ ccm 的词（`--` 右边那种写法）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Layer {
+    pub(crate) name: String,
+    pub(crate) agent: Vec<String>,
+    pub(crate) ccm: Vec<String>,
+}
+
+/// 合并结果里的一项来自哪一层：`layer` 是那一段的名字，空串 ＝ 命令行当场给的。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Origin {
+    pub(crate) flag: &'static str,
+    pub(crate) vals: Vec<String>,
+    pub(crate) layer: String,
+}
+
+/// 同一格的几个词：后来的一层写了其中任何一个，前面几层写的这一格整格作废。
+/// 号（`--account` / `--base`）是一格；tmux 会话名（`--ccm-tmux[=名]` / `--tmux-base`）是一格；其余每个词自成一格。
+fn slot_of(f: &'static str) -> &'static str {
+    match f {
+        flag::BASE => flag::ACCOUNT,
+        flag::TMUX_BASE => flag::TMUX,
+        other => other,
+    }
+}
+
+/// **继承合并的唯一住址**：`layers` 按父 → 子排好（配置文件里「基于」那条链），`args` 是命令行当场给的（同 [`parse`] 的写法），
+/// 最后盖上去。合并规则：
+/// - 交给 agent 的词：父在前、子在后，命令行 `--` 左边那串接在最后；
+/// - `--cwd-if`：子那一层的规则排在父的前面（同一个「在哪」子的先对上），各层内照写的顺序；
+/// - 其余每一格（[`slot_of`]）：后来的一层写了就整格盖掉前面几层的；开关只能打开（写了就是开）。
+///
+/// 合并完照 [`parse`] 同一套逐词落意图 ＋ [`finish`] 收尾；每一项来自哪一层一并交回（设置窗的合并预览照画）。
+pub(crate) fn parse_layered(
+    layers: &[Layer],
+    args: &[String],
+) -> Result<(Parsed, Vec<Origin>), Die> {
     let (left, right): (&[String], &[String]) = match last_end(args) {
         Some(k) => (&args[..k], &args[k + 1..]),
         None => (args, &[]),
     };
-    let mut o = blank_opts(left);
-    let mut i = 0;
-    while i < right.len() {
-        let w = word_at(right, i)?;
-        if let Some(e) = apply_word(&mut o, &w, i)? {
-            return Ok(Parsed::Early(e));
+    let cmd = Layer {
+        name: String::new(),
+        agent: left.to_vec(),
+        ccm: right.to_vec(),
+    };
+    let mut agent = Vec::new();
+    // `(哪一层, 在那一层右边的位置, 那一组词)`
+    let mut kept: Vec<(usize, usize, Word)> = Vec::new();
+    let mut rules: Vec<(usize, usize, Word)> = Vec::new();
+    for (li, l) in layers.iter().chain(std::iter::once(&cmd)).enumerate() {
+        agent.extend(l.agent.iter().cloned());
+        // 逐词先落一遍草稿：报错与立即结束的先后与只有命令行时逐字一样。
+        let mut scratch = blank_opts(&[]);
+        let mut mine = Vec::new();
+        let mut i = 0;
+        while i < l.ccm.len() {
+            let w = word_at(&l.ccm, i)?;
+            if let Some(e) = apply_word(&mut scratch, &w, i)? {
+                return Ok((Parsed::Early(e), Vec::new()));
+            }
+            i += w.len;
+            mine.push((li, i - w.len, w));
         }
-        i += w.len;
+        let (own_rules, own): (Vec<_>, Vec<_>) = mine
+            .into_iter()
+            .partition(|(_, _, w)| w.flag == flag::CWD_IF);
+        for (_, _, w) in &own {
+            let s = slot_of(w.flag);
+            kept.retain(|(lj, _, k)| *lj == li || slot_of(k.flag) != s);
+        }
+        kept.extend(own);
+        rules.splice(0..0, own_rules);
     }
-    Ok(Parsed::Opts(Box::new(finish(o)?)))
+    let name = |li: usize| layers.get(li).map(|l| l.name.clone()).unwrap_or_default();
+    let mut o = blank_opts(&agent);
+    let mut origins = Vec::new();
+    for (li, at, w) in rules.iter().chain(&kept) {
+        apply_word(&mut o, w, *at)?;
+        origins.push(Origin {
+            flag: w.flag,
+            vals: w.vals.clone(),
+            layer: name(*li),
+        });
+    }
+    Ok((Parsed::Opts(Box::new(finish(o)?)), origins))
 }
 
 /// 逐词落完之后的收尾：认是哪一家、按那一家的写法认 resume、组合校验。[`parse`] 与别名校验（`assets/aliases::check_alias`）共用。
@@ -434,6 +514,12 @@ fn validate(o: &Opts) -> Result<(), Die> {
     if !o.bus_note.is_empty() && !o.bus_register {
         return die(&copy_text("beArgv.validate.noteNeedsRegister", &[]));
     }
+    check_values(o)
+}
+
+/// 每一格自己的值合不合法（与别的格怎么组合无关）：起会话时 [`validate`] 收尾要过，配置文件逐项读的时候也过这一道
+/// （写错报到那一行，`assets/aliases/profile.rs`）。没给的格不看。
+pub(crate) fn check_values(o: &Opts) -> Result<(), Die> {
     if !o.tmux_size.is_empty() && parse_size(&o.tmux_size).is_none() {
         // 尺寸会被拼进 `tmux new-session -x W -y H`，**必须**只允许纯数字，否则就是一条注入面。
         return die(copy_text(

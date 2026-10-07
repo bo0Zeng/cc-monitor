@@ -3027,8 +3027,10 @@ monitor（宿主，只交事实）在**每台**远端流握手成功那一刻交
 
 **别名清单只跟着账号表里号的增减走**（建号 · 删号 · 回滚都是它的特例，实现只有一处：比前后账号表）：新出现的号加 `<名>cc`（`-- --account <号>`）
 与 `<名>cct`（再带 `--ccm-tmux`；没有 tmux 的那一份别名文件只加 `<名>cc`），名字被别的别名占着就跳过；消失的号删掉参数指向它的全部（不论名字）。
-修复 · 设默认 · 隔离不动清单；平时不回补（改了名、删掉其中一条都保持原样）。这台说哪几种 shell 就改哪几份别名文件（Windows 上 `aliases.sh` 与 `aliases.ps1` 两份）。
-别名文件还不在 ⇒ 先带上首建那几条（`cc` · `cct` · `cca`；PowerShell 那一份只有 `cc`）。
+修复 · 设默认 · 隔离不动清单；平时不回补（改了名、删掉其中一条都保持原样）。清单住配置文件 `~/.cc-monitor/profiles.toml`（一份，两种 shell 共用）：
+建号加的两段基于 `cc` / `cct`（在的话）、只写自己的号；删号删掉合下来用这个号的全部段，基于被删那一段的改成基于它基于的那一段。
+改完照配置文件重写别名文件、补链接（见 `aliases-install`）。配置文件还不在 ⇒ 先带上首建那几段（`cc` · `cct`；没有 tmux 的目标只有 `cc`）。
+`aliases[]` 恰一条（配置文件那一份）；`aliases[].path` 是配置文件的路径。配置文件里有写错的地方 ⇒ 不动它、`note` 说一句。
 
 ```text
 → {"id":"a1","cmd":"accounts-init","args":{"name":"z","dryRun":true}}
@@ -3073,7 +3075,7 @@ monitor（宿主，只交事实）在**每台**远端流握手成功那一刻交
 | `configDir` | ← | 那个号的配置目录（`account` 里） |
 | `loginCmd` | ← | 订阅号没导入凭据时：在终端里跑这一行登录（`'<家>/.cc-monitor/bin/ccm' -- --account '<名>'`，claude 自己的登录界面）；否则 `null` |
 | `keyMasked` · `keyProblem` | ← | API 号：写进 apikey 表之后的掩码；号建好了 key 却没写进去时那一句（界面据此让人在那一行重填） |
-| `applied` · `steps` · `notes` · `backup` · `aliasNames` · `aliases` | ← | 同 `accounts-init`；别名文件真改了（`aliases[].changed`）⇒ `notes` 每份多一句「已开的终端要运行「. <那份文件>」或新开一个」（同 `aliases-install` 的 `reload`） |
+| `applied` · `steps` · `notes` · `backup` · `aliasNames` · `aliases` | ← | 同 `accounts-init`；别名文件真改了（与系统命令同名的那几条才住它）⇒ `notes` 每份多一句「已开的终端要运行「. <那份文件>」或新开一个」（同 `aliases-install` 的 `reload`）；只动了链接的不叫人重读 |
 
 号的目录：链齐共享项；身份之外那几份本机状态从共享库复制成它自己的一份（共享库那份是模板）；身份本体绝不从别的号复制。
 
@@ -3665,10 +3667,11 @@ cc-monitor 装的：skill 按装记录逐文件删（带逐字节 `expect`），
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `aliases` | → | 清单：每条 `{name, args, restTo}`（`args` 是原样的 ccm argv；`restTo` = 调用时跟的词交给谁：`agent` 接在 `--` 左边（交给 agent），`ccm` 接在右边末尾 —— 只许单放 `--attach` 那一形，即 `cca`） |
+| `aliases` | → | 清单：每条 `{name, args, restTo}` ＝ 配置文件里一段自己写的那几项（`args` 是 ccm argv 的写法：`--` 左边交给 agent，右边是 ccm 选项；「基于」那一层不在这里，存的时候按名字从盘上那一段接上）；`restTo` 只收 `agent`（`ccm` 那一形 ⇒ 这一条不合格） |
 | `shell` | → | `posix` / `powershell`（这台后端不在 Windows ⇒ `powershell` 拒） |
 | `fileText` · `lines` | ← | 整份文件 · 每条合格别名的写法 |
-| `problems` | ← | 不合格的那几条 `{name, message}`（非空时 `aliases-install` 一个字节都不写） |
+| `problems` | ← | 不合格的那几条 `{name, message}`（逐项判；几项之间怎么组合要连「基于」那一层一起看，存的时候整份判。非空时 `aliases-install` 一个字节都不写） |
+| `fileText` · `lines` | ← | 别名文件全文 · 写进它的那几行：每条只有名字（`名字() { ccm @名字 "$@"; }`，PowerShell `& ccm '@名字' $RemainingArgs`），规则住配置文件。POSIX 上只有与系统命令 / 自带片段撞名的那几条进文件，其余做成 `~/.cc-monitor/bin/<名>` → `ccm` 的链接（ccm 被叫成 `<名>` ⇒ 等同 `ccm @<名>`）；PowerShell 每条一个函数 |
 | `collisions` | ← | 撞名提示（自带别名块 · **这台** `PATH` 上的同名程序 · PowerShell 内建别名；只出声、不拦） |
 
 一个字节都不写。规则 · 方言住 `assets/aliases/`（`mod.rs` · `dialect.rs`）。错误码：`bad_args` · `refused`（这台不说那种方言）。⚠ **CLI 面也有它**（`--aliases-render`）。
@@ -3684,32 +3687,33 @@ cc-monitor 装的：skill 按装记录逐文件删（带逐字节 `expect`），
 |---|---|---|
 | `shell` | → | 同 `aliases-render` |
 | `rcPath` | → | 人另指的那一份（`null` = 不指）：过围栏（只许落在 home 之内 · 符号链接不许跑出去）后并进候选 |
-| `home` · `aliasPath` · `exists` · `aliases` · `unparsed` | ← | 这台的家目录（界面只拿它把路径写成 `~/…`）· 这台上那份别名文件的路径 · 在不在 · 读回的清单（不在 ⇒ 首建会带上的 `cc` · `cct` · `cca`，PowerShell 只有 `cc`）· 认不出的行（原文带原因） |
+| `home` · `aliasPath` · `exists` · `aliases` · `unparsed` | ← | 这台的家目录（界面只拿它把路径写成 `~/…`）· 这台上那份配置文件（`profiles.toml`）的路径 · 在不在 · 读回的清单（每段自己写的那几项；不在 ⇒ 首建会带上的 `cc` · `cct`，没有 tmux 的目标只有 `cc`）· 配置文件里写错的那几处（段名 ＋ 第几行 ＋ 原因）。配置文件还不在、旧形状的别名文件在 ⇒ 读之前先一次性迁移（每条转成一段，转不进去的记日志） |
 | `groups` | ← | 与 `aliases` 逐条对应：参数恰是「某号」或「某号 ＋ tmux」⇒ `{account, tmux}`，其余 ⇒ `null`（只看参数，不看名字；界面照这一格分组） |
 | `said` | ← | 与 `aliases` 逐条对应：这一条用人话怎么说（`z 账号 · 当前终端 · 在 ~ 敲就进 ~/文档/x`）。与 `aliases-to-form` 同一个解析器拼，界面照画、不拼句 |
 | `accounts` | ← | 这台的账号表（具名号，按账号库的顺序；没有账号库 ⇒ `[]`） |
 | `missing` | ← | 账号表里的号缺哪一条：`{account, tmux, alias}`（`alias` 就是点「加上」要加进清单的那一条；没有 tmux 的目标只看 `<号>cc`） |
-| `fingerprint` | ← | 盘上那份别名文件的指纹（不透明的串：长度 ＋ 一个 64 位散列；不在 ⇒ `null`），存的时候交回 `aliases-install` |
+| `fingerprint` | ← | 盘上那份配置文件的指纹（不透明的串：长度 ＋ 一个 64 位散列；不在 ⇒ `null`），存的时候交回 `aliases-install` |
 | `rcCandidates` | ← | 启动文件候选（方言答列哪几份）：每份 `{path, sourced, exists, block, unreadable, policy}`，`block` = 别名块现状 `{present, version, outdated, conflictingFunctions, manualCleanupHint}`（`conflictingFunctions` = 块外自己定义的、与清单里某条同名的函数 `{name, line, wins}`；`wins` = 新开的终端里敲这个名字起的是哪一个：`yours`（你写的）· `list`（清单那条）· `unclear`（说不清）。后定义的算数：只在同一份文件里比别名块与那一行的行号；哪一份候选都没接上别名文件 ⇒ `yours`；别名块在另一份文件里 ⇒ `unclear`）；`policy`（只有 `$PROFILE` 那几份有）= 加载它的那一代 PowerShell 的执行策略，现问 `{host, effective, loads, groupPolicy, error}`（`host` = `powershell` / `pwsh`；`loads` = 这一档下它会不会跑这份未签名的本地文件，说不清 ⇒ `null`；`groupPolicy` = 组策略钉着） |
 | `otherRc` | ← | `rcPath` 过了围栏之后的绝对路径 |
 
 读经本进程文件管理面（`files-home` · `files-peek` · `files-stat`）。已握手的终端数不在这里（住 monitor 进程里）。错误码：`bad_args` · `refused`。⚠ **CLI 面也有它**（`--aliases-read`）。
 
-#### `aliases-install`：写别名文件（MIG-3a，09-28，**写用户文件**）
+#### `aliases-install`：存清单进配置文件、照它生成别名（MIG-3a，09-28；10-07 改存配置文件，**写用户文件**）
 
 ```text
 → {"id":"a3","cmd":"aliases-install","args":{"aliases":[…],"shell":"posix","fingerprint":"41-5b6a…"}}
-← {"kind":"reply","id":"a3","ok":true,"data":{"aliasPath":"/home/u/.cc-monitor/aliases.sh","wroteAliasFile":true,"reload":"已开的终端要运行「. /home/u/.cc-monitor/aliases.sh」或新开一个"}}
+← {"kind":"reply","id":"a3","ok":true,"data":{"aliasPath":"/home/u/.cc-monitor/profiles.toml","wroteAliasFile":true,"reload":null}}
 ```
 
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `aliases` · `shell` | → | 同 `aliases-render`（有一条不合格 ⇒ 整批不写、`refused`） |
-| `fingerprint` | → | 必给（字符串或 `null`）：读回时那份的指纹（`aliases-read` 的 `fingerprint`）。盘上此刻不是那一份（被别处改过 / 删了 / 新出现了）⇒ `stale`、一个字节不写 |
-| `aliasPath` · `wroteAliasFile` | ← | 写到哪 · 真写了没有（内容一致就一个字节不写） |
-| `reload` | ← | 真写了 ⇒ 给人的那一句「已开的终端要运行「. <aliasPath>」或新开一个」（已开着的终端不会自己重读）；没写 ⇒ `null` |
+| `fingerprint` | → | 必给（字符串或 `null`）：读回时配置文件的指纹（`aliases-read` 的 `fingerprint`）。盘上此刻不是那一份（被别处改过 / 删了 / 新出现了）⇒ `stale`、一个字节不写 |
+| — | | 按条目改：清单里每条是一段（意思没变的项一个字节不动，手写的注释与排版留着），清单里没了的那一段删掉；还有别的段基于它 ⇒ `refused`。改完整份合不下来（环 · 基于的不存在 · 几项组合不对）⇒ `refused`、一个字节不写 |
+| `aliasPath` · `wroteAliasFile` | ← | 配置文件的路径 · 配置文件 / 别名文件 / 链接动没动（内容一致就一个字节不写） |
+| `reload` | ← | 这种 shell 的别名文件真改了 ⇒ 给人的那一句「已开的终端要运行「. <别名文件>」或新开一个」（已开着的终端不会自己重读）；只动了配置文件或链接 ⇒ `null`（规则每次起会话现读、链接马上能用） |
 
-写经本进程 `files-put`（读改写一次、CAS，逐级补目录、不备份：那是 cc-monitor 自己的文件）。错误码：`bad_args` · `refused` · `stale`（界面重读再让人存）。⚠ **CLI 面也有它**（`--aliases-install`）。
+配置文件与别名文件都写经本进程 `files-put`（读改写一次、CAS，逐级补目录、不备份）；链接经 `files-ls` · `files-stat` · `files-link` · `files-delete`，只动那个目录里指向 `ccm` 的链接，同名的别的文件不碰、说一句。错误码：`bad_args` · `refused` · `stale`（界面重读再让人存）。⚠ **CLI 面也有它**（`--aliases-install`）。
 
 #### `aliases-block-render`：别名块预览（MIG-3a，09-28，**纯**）
 

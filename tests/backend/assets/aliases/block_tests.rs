@@ -1270,9 +1270,9 @@ fn the_powershell_block_never_touches_the_session_path_again() {
 }
 
 /// ★★ **两臂的 `cc` 走同一条路**：`cc` 今天是清单里首建就带的一条（[`super::super::first_aliases`]），
-/// 两种方言都由同一个渲染器写出 —— POSIX `cc() { ccm "$@"; }`、PowerShell `& ccm $RemainingArgs`
+/// 两种方言都由同一个渲染器写出 —— POSIX `cc() { ccm @cc "$@"; }`、PowerShell `& ccm '@cc' $RemainingArgs`
 /// （`K33`「所有命令只许有一处」＋ `K28`「一切对外都经后端」）。PowerShell 的别名块里**一条调用行都没有**
-/// （`cc` 不再住块里）；没有 tmux 的那一臂首建不带 `cct` / `cca`（「名字在、行为不在」的壳比没有更坏，`K-R129`）。
+/// （`cc` 不再住块里）；没有 tmux 的那一臂首建不带 `cct`（「名字在、行为不在」的壳比没有更坏，`K-R129`）。
 ///
 /// 🔴 诚实边界：证的是「生成的文本指向 `ccm`」，不是「敲下去真起得来」（要一台 Windows）。
 #[test]
@@ -1283,17 +1283,24 @@ fn the_powershell_cc_goes_through_ccm_exactly_like_the_posix_one() {
         first_aliases(sh)
             .into_iter()
             .find(|a| a.name == "cc")
-            .map(|a| render_line(&a, sh))
+            .map(|a| render_line(&a.name, sh))
             .expect("首建那几条里该有 `cc`")
     };
-    assert_eq!(cc_of(Shell::Posix), format!("cc() {{ {word} \"$@\"; }}"));
+    assert_eq!(
+        cc_of(Shell::Posix),
+        format!("cc() {{ {word} @cc \"$@\"; }}")
+    );
     let ps = cc_of(Shell::PowerShell);
     let invokes: Vec<&str> = ps
         .lines()
         .map(str::trim)
         .filter(|l| l.starts_with("& "))
         .collect();
-    assert_eq!(invokes, vec![format!("& {word} $RemainingArgs")], "{ps}");
+    assert_eq!(
+        invokes,
+        vec![format!("& {word} '@cc' $RemainingArgs")],
+        "{ps}"
+    );
     let block = render_cc_code(std::path::Path::new("/_"));
     assert!(
         !block.lines().any(|l| l.trim().starts_with("& ")),
@@ -1301,7 +1308,7 @@ fn the_powershell_cc_goes_through_ccm_exactly_like_the_posix_one() {
     );
     let names =
         |sh: Shell| -> Vec<String> { first_aliases(sh).into_iter().map(|a| a.name).collect() };
-    assert_eq!(names(Shell::Posix), ["cc", "cct", "cca"]);
+    assert_eq!(names(Shell::Posix), ["cc", "cct"]);
     assert_eq!(names(Shell::PowerShell), ["cc"]);
 }
 

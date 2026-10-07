@@ -12,10 +12,13 @@
 //!
 //! # 怎么进到这里
 //!
-//! **只经 [`route`] 这一处**，而且**只看 argv、不看 `argv[0]`**：
-//! 打头是 `--` 且紧跟一个后端词 ⇒ 后端（流 / 子命令）；其余一律是 ccm 这一趟
-//! （没有 `--` ⇒ 整行交给 claude）。落点叫 `ccm` 还是开发树里的 `cc-monitor-backend`
-//! 走的是同一条规则。旧的「basename 是 `ccm`」与「`<bin> ccm …` 子命令词」两条入口〔散文墓碑〕。
+//! **只经 [`route`] 这一处**，分流看两样：
+//! - **被叫成什么**（`argv[0]` 的名字）：是 ccm 自己（`ccm` / 后端本名，[`is_own_name`]）⇒ 往下看参数；
+//!   是别的名字（`~/.cc-monitor/bin/<名>` 那条指向 ccm 的链接）⇒ 等同 `ccm @<名> …`，参数一律归 ccm 这一趟。
+//! - **参数**：打头是 `--` 且紧跟一个后端词 ⇒ 后端（流 / 子命令）；其余一律是 ccm 这一趟
+//!   （没有 `--` ⇒ 整行交给 claude；打头是 `@<名>` ⇒ 用配置文件里那一段，见 `assets/aliases/profile.rs`）。
+//!
+//! 实现只有这一处：链接、`@<名>`、直接敲的 `ccm …` 都落到同一个 [`run`]。
 //!
 //! ⚠ **它不是一条 wire 子命令**，所以**不进 `main::SUBCOMMANDS`**、也不进
 //! `src/doc/IPC-PROTOCOL.md` §10：那份文档是 monitor↔backend 的**冻结线上契约**，
@@ -187,13 +190,34 @@ pub(crate) fn own_source() -> &'static str {
 }
 
 /// 这个二进制在终端里的名字（`~/.cc-monitor/bin/ccm`）。预览语境里「叫的是 `ccm`」就是它（`plan::Env::for_preview`）。
-/// 分流**不看**名字：它只剩「名字」这一个意思，不再是入口②（`cc-monitor-backend ccm …`〔散文墓碑〕）的子命令词。
 pub(crate) const SUBCOMMAND_WORD: &str = "ccm";
+
+/// 用配置文件里那一段的写法：`@<名>` 打头（[`PROFILE_SIGIL`] ＋ 段名）。
+pub(crate) const PROFILE_SIGIL: char = '@';
+
+/// 这个名字是不是 ccm 自己（`ccm` · 后端本名 `cc-monitor-backend` 及旧版释放的 `cc-monitor-backend-<build>`）。
+/// 不是 ⇒ 被叫成这个名字等同 `@<名>`（[`route`]）；配置文件也不收这几个名字当段名。
+pub(crate) fn is_own_name(name: &str) -> bool {
+    name == SUBCOMMAND_WORD || name.starts_with(env!("CARGO_PKG_NAME"))
+}
+
+/// 被叫成的那个名字若是一段配置的名字 ⇒ 那个名字（`argv[0]` 取最后一段；Windows 上去掉 `.exe`）。
+/// 是 ccm 自己、或根本当不了配置名（形状不对）⇒ `None`，照 ccm 本身走。
+pub(crate) fn profile_called(argv0: &str) -> Option<String> {
+    let base = argv0.rsplit(['/', '\\']).next().unwrap_or(argv0);
+    let base = base
+        .len()
+        .checked_sub(4)
+        .filter(|&k| base.is_char_boundary(k) && base[k..].eq_ignore_ascii_case(".exe"))
+        .map_or(base, |k| &base[..k]);
+    (!is_own_name(base) && crate::assets::aliases::profile::name_ok(base).is_ok())
+        .then(|| base.to_string())
+}
 
 /// 这一趟交给谁：ccm（壳）还是后端 —— **唯一的分流口**（`main.rs` 只认它）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Entry {
-    /// 当 `ccm` 用：交给 [`run`] 的那串 argv（`[交给 claude 的…] -- [ccm 自己的…]`）。
+    /// 当 `ccm` 用：交给 [`run`] 的那串 argv（`[@<名>] [交给 claude 的…] -- [ccm 自己的…]`）。
     Ccm(Vec<String>),
     /// 当后端用：一次性子命令或流模式的 argv（已去掉打头的 `--`）。
     Backend(Vec<String>),
@@ -204,16 +228,20 @@ pub(crate) fn is_backend_word(w: &str) -> bool {
     crate::SUBCOMMANDS.contains(&w) || crate::STREAM_FLAGS.contains(&w)
 }
 
-/// 〔「路由不看 argv0」〕分流**只看 argv**，与二进制叫什么名字无关（`~/.cc-monitor/bin/ccm` 与开发树的
-/// `cc-monitor-backend` 同一条规则）：打头的 `--` 紧跟后端词（一次性子命令 / 流模式旗标）⇒ 后端（argv = `--` 之后那一串；
-/// 第一个 `--` 就是分隔，后端子命令自己的参数里再出现 `--` 也不会被误切）；其余一律当 ccm（`argv::parse` 切两半，没有 `--` 整行交 claude）。
-/// ⇒ 叫后端的每一处都带打头的 `--`；零参数是「起一个 claude」，不再是流模式。
+/// 分流：`argv0` 是这个进程被叫成的名字，`args` 是其后那一串。
+/// - 被叫成一段配置的名字（[`profile_called`]）⇒ ccm，前面补上 `@<名>`（参数一个都不进后端）；
+/// - 打头的 `--` 紧跟后端词（一次性子命令 / 流模式旗标）⇒ 后端（argv = `--` 之后那一串；
+///   第一个 `--` 就是分隔，后端子命令自己的参数里再出现 `--` 也不会被误切）；
+/// - 其余一律当 ccm（`argv::parse` 切两半，没有 `--` 整行交 claude）。零参数是「起一个 claude」。
 ///
 /// 🔴 **它必须排在 `split_stream_flags` 之前**：那一步会把 `--with-bg` / `--tail-only`
 /// 从 argv 里**任意位置**剥掉，而 `ccm --tail-only` 里那个是要原样交给 agent 的。
-/// 〔墓碑 —— E2 第一版按「名字是 `ccm` 时 `args[0]` ∈ 后端词」分流（`routes_to_backend`〔散文墓碑〕）；后来一版还按名字分两支
-/// （名字不是 `ccm` 时裸词进后端、首词 `ccm` 进 ccm）。今天都不在了。〕
-pub fn route(args: &[String]) -> Entry {
+pub fn route(argv0: &str, args: &[String]) -> Entry {
+    if let Some(name) = profile_called(argv0) {
+        let mut v = vec![format!("{PROFILE_SIGIL}{name}")];
+        v.extend(args.iter().cloned());
+        return Entry::Ccm(v);
+    }
     if args.first().map(String::as_str) == Some(argv::flag::END)
         && args.get(1).is_some_and(|w| is_backend_word(w))
     {
@@ -223,18 +251,45 @@ pub fn route(args: &[String]) -> Entry {
 }
 
 /// [`route`] 的 ccm 那一支（给只关心「是不是在当 ccm 用」的调用方）。
-pub fn intercept(args: &[String]) -> Option<Vec<String>> {
-    match route(args) {
+pub fn intercept(argv0: &str, args: &[String]) -> Option<Vec<String>> {
+    match route(argv0, args) {
         Entry::Ccm(v) => Some(v),
         Entry::Backend(_) => None,
     }
 }
 
 /// 「我是被怎么叫进 `ccm` 模式的」—— 容器路要在 pane 里**把自己再叫一次**，叫法就是这一段 ＋ 内层参数（`plan::build` 那条 `inner`）。
-/// 只剩一个入口（分流不看名字）⇒ 恒是 `[argv0]`。
-/// 〔墓碑 —— CC1 那一版要从 argv 里取「入口吃掉的那一段」，因为入口②（`<bin> ccm …`）多一个子命令词。〕
+/// 恒是 `[argv0]`；被叫成一段配置的名字时换成同一目录下的 `ccm`（内层参数已经是合并好的完整选项，再叫一次那个名字会把配置叠两遍）。
 pub(crate) fn self_invocation(argv: &[String]) -> Vec<String> {
-    argv.first().cloned().into_iter().collect()
+    argv.first()
+        .map(|a0| match profile_called(a0) {
+            Some(name) => format!("{}{SUBCOMMAND_WORD}", &a0[..a0.len() - name.len()]),
+            None => a0.clone(),
+        })
+        .into_iter()
+        .collect()
+}
+
+/// 这一趟的意图：`@<名>` 打头 ⇒ 配置文件里那一段合并上命令行当场给的（`book` 只在这一形才读）；否则照 [`argv::parse`]。
+/// `@` 后面那段当不了配置名（`@README.md 讲讲`）⇒ 不是配置，整行照旧交 agent。
+pub(crate) fn parse_entry(
+    args: &[String],
+    book: impl FnOnce() -> Result<crate::assets::aliases::profile::Book, String>,
+) -> Result<Parsed, Die> {
+    use crate::assets::aliases::profile;
+    let named = args
+        .first()
+        .and_then(|a| a.strip_prefix(PROFILE_SIGIL))
+        .filter(|n| profile::name_ok(n).is_ok());
+    match named {
+        Some(name) => {
+            let b = book().map_err(Die)?;
+            profile::resolve(&b, name, &args[1..])
+                .map(|r| r.parsed)
+                .map_err(Die)
+        }
+        None => argv::parse(args),
+    }
 }
 
 /// 没有终端可交互、又没有 `--` ⇒ 不起 claude 时的退出码（与下面 [`run`] 那四档分开）。
@@ -263,11 +318,11 @@ pub fn run(args: &[String], process_argv: &[String], running: RunningScan) -> i3
         eprintln!("{}", copy_text("beCcm.noTerminal.say", &[]));
         return EXIT_NO_TERMINAL;
     }
-    let parsed = match argv::parse(args) {
+    let env = Env::from_process(process_argv);
+    let parsed = match parse_entry(args, || crate::assets::aliases::profile::read_at(&env.home)) {
         Ok(p) => p,
         Err(Die(msg)) => return die(&msg),
     };
-    let env = Env::from_process(process_argv);
     match parsed {
         Parsed::Early(Early::Version) => {
             println!("ccm {CCM_VERSION}");
@@ -430,7 +485,9 @@ pub(crate) fn answer_print(
         }
         argv.push(w.to_string());
     }
-    let o = match argv::parse(&argv) {
+    let o = match parse_entry(&argv, || {
+        crate::assets::aliases::profile::read_at(&Env::for_preview().home)
+    }) {
         Ok(Parsed::Opts(o)) => o,
         Ok(Parsed::Early(_)) => {
             return Err((

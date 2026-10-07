@@ -1,17 +1,23 @@
-//! 账号的两条别名：名字怎么起 · 建号加两条（同一形已有就不加、名字被占就跳过）· 删号删掉指向它的全部 · 账号那一形怎么认。
-use super::*;
+//! 账号的两段配置：名字怎么起 · 建号加两段（基于 `cc` / `cct`、只写自己的号；同一形已有就不加、名字被占就跳过）·
+//! 删号删掉合下来用它的全部（基于被删那一段的改指向）· 账号那一形怎么认。
 
-fn e(name: &str, args: &[&str]) -> Entry {
-    (
-        name.to_string(),
-        args.iter().map(|s| s.to_string()).collect(),
-        RestTo::Agent,
-    )
-}
+use super::*;
+use crate::assets::aliases::profile::parse_book;
 
 fn exact(a: &str, b: &str) -> bool {
     a == b
 }
+
+fn set(name: &str, from: Option<&str>, ccm: &[&str]) -> Change {
+    Change::Set(ProfileEdit {
+        name: name.to_string(),
+        from: from.map(str::to_string),
+        agent: Vec::new(),
+        ccm: ccm.iter().map(|s| s.to_string()).collect(),
+    })
+}
+
+const BASE: &str = "[cc]\ncwd-if = [\"~\", \"/w\"]\n[cct]\nfrom = \"cc\"\nccm-tmux = true\n";
 
 #[test]
 fn alias_names_follow_the_shell_function_rules() {
@@ -29,90 +35,78 @@ fn alias_names_follow_the_shell_function_rules() {
 }
 
 #[test]
-fn adding_an_account_appends_its_two_and_leaves_everything_else() {
-    let cur = vec![
-        e("mine", &["--", "--ccm-tmux"]),
-        e("alphacc", &["--", "--account", "z"]),
-    ];
-    let r = on_add(&cur, "b", true, &exact);
+fn adding_an_account_bases_its_two_on_cc_and_cct_and_writes_only_the_account() {
+    let b = parse_book(BASE);
+    let r = plan_add(&b, "b", true, &exact);
     assert_eq!(
-        r.list,
+        r.changes,
         vec![
-            e("mine", &["--", "--ccm-tmux"]),
-            e("alphacc", &["--", "--account", "z"]),
-            e("betacc", &["--", "--account", "b"]),
-            e("betacct", &["--", "--account", "b", "--ccm-tmux"]),
+            set("betacc", Some("cc"), &["--account", "b"]),
+            set("betacct", Some("cct"), &["--account", "b"]),
         ]
     );
     assert_eq!(r.added, ["betacc", "betacct"]);
     assert!(r.skipped.is_empty());
     // 没有 tmux 的目标只加 `<号>cc`。
-    let r = on_add(&[], "b", false, &exact);
-    assert_eq!(r.added, ["betacc"]);
-    // 同一形已在（用户改了名）⇒ 不再加，也不算跳过。
-    let renamed = vec![e("bee", &["--", "--ccm-tmux", "--account", "b"])];
-    let r = on_add(&renamed, "b", true, &exact);
-    assert_eq!(r.added, ["betacc"]);
+    assert_eq!(plan_add(&b, "b", false, &exact).added, ["betacc"]);
+    // 没有 cc / cct 那两段 ⇒ 不基于谁，tmux 那一段自己写上 tmux。
+    let r = plan_add(&parse_book(""), "b", true, &exact);
+    assert_eq!(
+        r.changes,
+        vec![
+            set("betacc", None, &["--account", "b"]),
+            set("betacct", None, &["--account", "b", "--ccm-tmux"]),
+        ]
+    );
+}
+
+#[test]
+fn an_existing_profile_of_the_same_shape_counts_whatever_its_name() {
+    let b = parse_book(&format!("{BASE}[bee]\nfrom = \"cct\"\naccount = \"b\"\n"));
+    let r = plan_add(&b, "b", true, &exact);
+    assert_eq!(r.added, ["betacc"], "bee 已经是「b 号 ＋ tmux」");
     assert!(r.skipped.is_empty());
 }
 
 #[test]
-fn a_name_held_by_another_alias_is_skipped_not_overwritten() {
-    let cur = vec![e("alphacct", &["--", "--cwd", "/x"])];
-    let r = on_add(&cur, "z", true, &exact);
+fn a_name_held_by_another_profile_is_skipped_not_overwritten() {
+    let b = parse_book(&format!("{BASE}[alphacct]\ncwd = \"/x\"\n"));
+    let r = plan_add(&b, "z", true, &exact);
     assert_eq!(r.added, ["alphacc"]);
     assert_eq!(r.skipped, ["alphacct"]);
-    assert_eq!(r.list[0], cur[0]);
-    // PowerShell 认同名不分大小写：`ZCC` 占着 ⇒ `alphacc` 跳过。
-    let ps = vec![e("ZCC", &[])];
-    let r = on_add(&ps, "z", false, &|a: &str, b: &str| {
-        a.eq_ignore_ascii_case(b)
-    });
-    assert_eq!(r.skipped, ["alphacc"]);
 }
 
 #[test]
-fn removing_an_account_drops_every_alias_that_points_at_it_whatever_its_name() {
-    let cur = vec![
-        e("cc", &[]),
-        e("alphacc", &["--", "--account", "z"]),
-        e("work", &["-p", "--", "--cwd", "/w", "--account", "z"]),
-        e("zz", &["--", "--account", "zz"]),
-        e("betacc", &["--", "--account", "b"]),
-        // 交给 claude 的那一半里出现 `--account z` 不算指向。
-        e("odd", &["--account", "z"]),
-    ];
-    let (kept, gone) = on_remove(&cur, "z");
-    assert_eq!(gone, ["alphacc", "work"]);
-    let names: Vec<&str> = kept.iter().map(|x| x.0.as_str()).collect();
-    assert_eq!(names, ["cc", "zz", "betacc", "odd"]);
+fn removing_an_account_drops_every_profile_that_ends_up_using_it_and_repoints_the_rest() {
+    let b = parse_book(&format!(
+        "{BASE}[alphacc]\nfrom = \"cc\"\naccount = \"z\"\n[zt]\nfrom = \"alphacc\"\nccm-tmux = true\n\
+         [other]\nfrom = \"alphacc\"\naccount = \"y\"\n[yy]\naccount = \"y\"\n"
+    ));
+    let r = plan_remove(&b, "z");
+    assert_eq!(r.removed, ["alphacc", "zt"], "zt 基于 alphacc，合下来也是 z 号");
+    assert!(r.changes.contains(&Change::Remove("alphacc".into())));
+    assert!(
+        r.changes
+            .contains(&set("other", Some("cc"), &["--account", "y"])),
+        "other 换了号、留着，改成基于 alphacc 基于的 cc：{:?}",
+        r.changes
+    );
+    assert!(!r
+        .changes
+        .iter()
+        .any(|c| matches!(c, Change::Set(e) if e.name == "yy")));
 }
 
 #[test]
-fn the_account_shape_is_exactly_one_account_with_or_without_tmux() {
-    let sv = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<_>>();
-    let c = RestTo::Agent;
-    assert_eq!(
-        shape_of(&sv(&["--", "--account", "z"]), c),
-        Some(("z".into(), false))
-    );
-    assert_eq!(
-        shape_of(&sv(&["--", "--account", "z", "--ccm-tmux"]), c),
-        Some(("z".into(), true))
-    );
-    assert_eq!(
-        shape_of(&sv(&["--", "--ccm-tmux", "--account", "z"]), c),
-        Some(("z".into(), true))
-    );
-    for not in [
-        &["--", "--account", "z", "--cwd", "/x"][..],
-        &["-p", "--", "--account", "z"],
-        &["--", "--ccm-tmux"],
-        &["--account", "z"],
-        &["--", "--account"],
-        &[],
-    ] {
-        assert_eq!(shape_of(&sv(not), c), None, "{not:?}");
-    }
-    assert_eq!(shape_of(&sv(&["--", "--account", "z"]), RestTo::Ccm), None);
+fn the_account_shape_is_own_account_plus_maybe_tmux_judged_on_the_merged_result() {
+    let b = parse_book(&format!(
+        "{BASE}[alphacc]\nfrom = \"cc\"\naccount = \"z\"\n[alphacct]\nfrom = \"cct\"\naccount = \"z\"\n\
+         [mixed]\naccount = \"z\"\ncwd = \"/x\"\n[talk]\naccount = \"z\"\nargs = [\"--model\", \"x\"]\n"
+    ));
+    let shape = |n: &str| shape_of(&b, b.find(n).unwrap());
+    assert_eq!(shape("alphacc"), Some(("z".into(), false)));
+    assert_eq!(shape("alphacct"), Some(("z".into(), true)));
+    assert_eq!(shape("mixed"), None);
+    assert_eq!(shape("talk"), None);
+    assert_eq!(shape("cct"), None);
 }

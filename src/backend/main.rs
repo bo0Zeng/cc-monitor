@@ -85,7 +85,7 @@ async fn main() {
     // ★★ `K-R48`（09-11）：**当 `ccm` 用的那一趟，在这里就整条分出去。**
     //
     // 〔用@09-11 `K33`〕「后端**只有一个**，**不要有什么 bash 脚本**，**不要有什么单独的 ccm**。」
-    // ⇒ 终端里敲的 `ccm` 就是本二进制（分流只看 argv、不看名字）。
+    // ⇒ 终端里敲的 `ccm` 就是本二进制；被叫成一段配置的名字（`~/.cc-monitor/bin/<名>` 那条链接）⇒ 等同 `ccm @<名>`。
     //
     // 🔴 **三个「必须排在前面」，一个都不是排版**：
     //   ① 排在 `tracing_subscriber` 之前 —— 一次性模式的 stderr 是给人看的，
@@ -98,7 +98,7 @@ async fn main() {
     let process_argv: Vec<String> = std::env::args().collect();
     let backend_args: Vec<String> = {
         let rest: Vec<String> = process_argv.iter().skip(1).cloned().collect();
-        match control::ccm::route(&rest) {
+        match control::ccm::route(process_argv.first().map_or("", String::as_str), &rest) {
             // resume 判「在别处跑着」用观测层那一份扫描（control 不引用 observe ⇒ 由入口注入）。
             control::ccm::Entry::Ccm(ccm_args) => {
                 std::process::exit(control::ccm::run(&ccm_args, &process_argv, |dir| {
@@ -207,6 +207,8 @@ async fn main() {
     );
     // 全文搜索的常驻索引起来就后台建（两条载体都要；一次性线程，建完就退）。
     observe::search_query::warm_in_background(agent_home.clone());
+    // 别名清单换了存法（配置文件 `profiles.toml`）：这台的配置文件还不在、旧形状的别名文件在 ⇒ 起来时一次性转过去（迁完就不再看旧文件）。
+    assets::aliases::migrate_here();
 
     // ★★ `K-P1`：**同一个流模式，两种载体**。
     //
