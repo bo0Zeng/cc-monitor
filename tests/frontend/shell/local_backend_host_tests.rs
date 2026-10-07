@@ -518,13 +518,23 @@ fn the_local_backend_host_can_be_stopped_and_started_again() {
     // ── 起 ────────────────────────────────────────────────────────
     *LOCAL_BACKEND.lock().expect("锁") = Some(spawn());
     assert!(wait_channel(true), "5s 内通道没登记上 —— backend 没起来");
-    let pid1 = tauri::async_runtime::block_on(crate::backend_control::backend_status(
-        crate::inbound_client::LOCAL_ORIGIN.into(),
-    ))
-    .expect("查状态")
-    .get("pid")
-    .and_then(|v| v.as_u64())
-    .expect("起来了却没有 pid") as u32;
+    // 通道先登记、pid 后落盘：等状态里出现 pid（同一个 5s 上限），不在登记的那一刻就问死。
+    let status_pid = || {
+        tauri::async_runtime::block_on(crate::backend_control::backend_status(
+            crate::inbound_client::LOCAL_ORIGIN.into(),
+        ))
+        .expect("查状态")
+        .get("pid")
+        .and_then(|v| v.as_u64())
+    };
+    let pid1 = (0..100)
+        .find_map(|_| {
+            status_pid().or_else(|| {
+                std::thread::sleep(Duration::from_millis(50));
+                None
+            })
+        })
+        .expect("5s 内状态里一直没有 pid —— backend 起来了却没报 pid") as u32;
     assert!(alive(pid1), "状态给了 pid={pid1}，但 /proc 里没有这个进程");
     // ★ `K-R7`：本条改成 `#[ignore]` 之后由 `tests/e2e/local-backend-supervise.sh` 驱动，
     //   而那个脚本的收尾自检是「**标记数 < 跑成的测试数 ⇒ 有测试提前退出**」

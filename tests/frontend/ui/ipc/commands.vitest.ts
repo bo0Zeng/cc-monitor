@@ -922,7 +922,10 @@ function filesWithLiteral(want: string): string[] {
   for (const f of walk(resolve(REPO_ROOT, "src"), ".ts")) {
     const rel = f.slice(REPO_ROOT.length + 1);
     if (rel.startsWith("src/frontend/shell/") || rel.startsWith("src/backend/")) continue;
-    if (stringLiteralHits(rel, readFileSync(f, "utf8"), want) > 0) out.push(rel);
+    const src = readFileSync(f, "utf8");
+    // 字面量命中必含这个子串：先按子串筛，只对含它的那几份做词法扫描（负载下整树词法扫描会超时）。
+    if (!src.includes(want)) continue;
+    if (stringLiteralHits(rel, src, want) > 0) out.push(rel);
   }
   return out.sort();
 }
