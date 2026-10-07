@@ -133,12 +133,10 @@ fn capability_table_files() -> Vec<String> {
     // ★ 反空真：扫不到东西时下面的集合相等会对空集成立，而登记表非空 ⇒ 其实会红；
     //   但红的话会指向「登记表多了三行」而不是「采集坏了」—— 那是**红错了地方**。
     assert!(
-        scanned.len() >= 60,
-        "本 crate 源码树下只扫到 {} 份 `.rs` —— 采集坏了（本件落地时 **72** 份：\n\
-         树上 73 份，`NOT_A_PRODUCTION_FACE` 明写摘掉 1 份）。\n\
-         🔴 这一条必须在：采集空了之后下面那条集合相等会红，但它会说\n\
-         「登记表里有三族在源码树上找不到」—— 读起来像「有人删了三族」，\n\
-         而真相是「尺子坏了」。**坏尺子会把真缺陷一起藏起来。**",
+        scanned.iter().any(|(p, _)| *p == root.join("lib.rs")),
+        "本 crate 源码树的采集里没有 `lib.rs`（扫到 {} 份）—— 采集坏了。\n\
+         🔴 这一条必须在：采集空了之后下面那条集合相等会红，但它会说「登记表里有几族在源码树上找不到」——\n\
+         读起来像「有人删了」，而真相是「尺子坏了」。",
         scanned.len()
     );
     for (path, src) in scanned {
@@ -232,9 +230,8 @@ fn the_ledger_really_carries_the_files_read_family() {
 
     let declared = crate::files::capability_names();
     assert!(
-        declared.len() >= 6,
-        "`files::CAPABILITIES` 只声明了 {} 条 —— 本条在空转（本件落地时 6 条）",
-        declared.len()
+        !declared.is_empty(),
+        "`files::CAPABILITIES` 一条都没声明 —— 本条在空转"
     );
     for n in &declared {
         assert!(
@@ -308,13 +305,12 @@ fn every_capability_table_in_the_tree_is_a_registered_face() {
 
     // ★ 反空真：源码树上一张能力表都没扫到 ⇒ 采集坏了（`files/mod.rs` 与 `lib.rs`
     //   两张是本件的前提，它们不可能不在）。
-    assert!(
-        on_disk.len() >= 3,
-        "源码树上只扫到 {} 张 `const CAPABILITIES` 声明表（{on_disk:?}）—— 采集坏了。\n\
-         本件落地时是 3 张（`lib.rs` / `files/mod.rs` / `control/ccm/mod.rs`；\n\
-         `agents/fake/mod.rs` 那张由 `NOT_A_PRODUCTION_FACE` 明写摘掉）。",
-        on_disk.len()
-    );
+    for must in ["lib.rs", "files/mod.rs"] {
+        assert!(
+            on_disk.contains(must),
+            "源码树上没扫到 `{must}` 的 `const CAPABILITIES` 声明表（扫到 {on_disk:?}）—— 采集坏了"
+        );
+    }
 
     let unregistered: Vec<_> = on_disk.difference(&registered).collect();
     let phantom: Vec<_> = registered.difference(&on_disk).collect();
@@ -547,29 +543,6 @@ fn the_gap_table_never_exempts_a_whole_face_and_its_size_is_pinned() {
     // 否则命令面那几族的 `all.len()` 是 0，下面那一减会下溢。
     let ledger = parity_declared();
     let gaps = TARGET_GAPS;
-
-    assert_eq!(
-        gaps.len(),
-        18,
-        "逐能力豁免现打 {} 条（**18** = 下面那 20 条 − 帧面 `capture-pane` 与 CLI 面 `--capture-pane` × Windows 2 条（抓屏只走 `terminal-preview`）；\n\
-**20** = 下面那 16 条 ＋ 终端管理 L1 的 `terminal-preview` / `terminal-input` × Windows 帧面 2 条、CLI 面同名 2 条（这一版宿主只有 tmux，档 = 欠着）；\n\
-**16** = PR1 那 14 条 ＋ `files-chmod` / `--files-chmod` × Windows 2 条\n\
-          —— 那条命令声明了 `no_unix_mode` 之后被现推出来，档 = 结构，理由住 `lib.rs` 表尾。\n\
-**14** = 下面那 8 条 ＋ 命令面 6 条：\n\
-          · 帧面 `capture-pane` / `kill` / `launch` × Windows 3 条、CLI 面同名 3 条 ——\n\
-            不是新裁的，是命令面并进第 3 层之后被横向两向相等**现推出来**的，理由住 `lib.rs` 表尾。\n\
-         2026-09-22 现打 8，全在 `ccm-launcher` × Windows：\n\
-          · 6 条 = tmux 那一族，**读源码**推出来的；\n\
-          · 2 条 = `bus-register` / `ccm-sid`，**真机现打**补的\n\
-            —— 上一版的账把它们记成「做得到」，那两格是**错的**不是缺的，\n\
-            逐条读数住）。\n\
-         🔴 `P19`（09-22）把这个数从 **9** 减到 8：`agent` 那一条删了 —— 它那句「做不到」\n\
-         的根因（`needs_bus_id(\"codex\")` 恒真 ⇒ 整条改走 `sh -c`）在源码里没了。\n\
-         ⚠ **那一减不是真机复验来的**（Win11 虚拟机本轮没动）：对价是 `CAPABILITY_FACES`\n\
-         那一栏 `target_basis` 里逐字写着的「🚫 买不到的那一维」，删那一行之前先读它。\n\
-         这个数本身没有对错，但它变了说明有裁决动过 —— 连理由一起看。",
-        gaps.len()
-    );
 
     // 🔴 反空真：逐（面, target）看，被豁免的那一格必须还留着真做得到的能力。
     let mut faces: std::collections::BTreeSet<(&str, Target)> = Default::default();

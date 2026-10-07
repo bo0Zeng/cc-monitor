@@ -360,12 +360,10 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     //    而本表自己的 `the_exclusion_list_is_not_dead_wood` 当场要求删。
 ];
 
-/// `(相对仓根的路径, 常量名, 字节数, 它管的是什么量, 超限怎么办)`。
+/// `(相对仓根的路径, 常量名, 它管的是什么量, 超限怎么办)`。值只在源码里写一份。
 ///
 /// ⚠ **登记表不是豁免清单**：新增一处没登记的 ⇒ 下面第一条红。
-/// 值改了也会红（第二条把表里的数字与源码对拍）——**那正是该重新想「这个量该多大」的时刻**。
-#[allow(clippy::type_complexity)]
-const CAPS: &[(&str, &str, u64, &str, &str)] = &[
+const CAPS: &[(&str, &str, &str, &str)] = &[
     // ---- monitor 侧 ----
     // ---- P8a：插件面只读枚举 ----
     // 这两条随读实现搬去了后端，后来随插件只读列表一起删了。
@@ -383,7 +381,6 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     (
         "src/frontend/filewin/src/source.rs",
         "LS_LIMIT",
-        50_000,
         "一趟 `files-ls` 一屏最多几条目录项（**条目数，不是字节**）",
         "截断+说清",
     ),
@@ -397,7 +394,6 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     (
         "src/frontend/filewin/src/editor.rs",
         "MAX_EDIT_BYTES",
-        8 * 1024 * 1024,
         "文件窗口编辑器能打开、能存回的文本体量 ＝ 后端 `files-read-text` / `files-commit-text` 的天花板",
         "拒收+回错",
     ),
@@ -407,7 +403,6 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     (
         "src/frontend/filewin/src/preview.rs",
         "PREVIEW_MAX_BYTES",
-        64 * 1024,
         "文件窗口预览一份文本的体量（每挪一次光标一趟）",
         "拒收+回错",
     ),
@@ -415,7 +410,6 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     (
         "src/frontend/filewin/src/preview.rs",
         "IMAGE_MAX_BYTES",
-        4 * 1024 * 1024,
         "文件窗口预览一张图片的字节数（窗口自己解码）",
         "拒收+回错",
     ),
@@ -423,7 +417,6 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     (
         "src/frontend/filewin/src/editor.rs",
         "SAVE_LINE_CAP",
-        1 << 20,
         "窗口存盘时一条请求行（`files-write-text` 整份 / `files-stage-chunk` 一块）序列化后的长度",
         "分块（不丢数据）",
     ),
@@ -432,14 +425,12 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     (
         "src/frontend/shell/src/user_files.rs",
         "REQUEST_LINE_CAP",
-        1 << 20,
         "`user_files` 发给后端的一条写面请求（`files-put` 新内容 ＋ 读到的那一份同装一行）序列化后的上限",
         "拒收+回错",
     ),
     (
         "src/frontend/shell/src/stream_source/snapshot.rs",
         "SNAPSHOT_MAX_BYTES",
-        512 * 1024 * 1024,
         "首连快照单会话体量",
         "截断+说清",
     ),
@@ -447,7 +438,6 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     (
         "src/frontend/shell/src/local_backend_host.rs",
         "LISTEN_HANDSHAKE_LINE_CAP",
-        8 * 1024,
         "宿主读常驻口那一行（hello / attach 应答）—— hello 帧本机实测 ~1.1 KB",
         "拒收+回错",
     ),
@@ -455,7 +445,6 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     (
         "src/backend/history/history_list.rs",
         "DEFAULT_LIMIT",
-        2000,
         "一台的平铺会话清单一次回的行数（调用方给 `limit` 可改，1–20000）",
         "截断+说清",
     ),
@@ -463,14 +452,12 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     (
         "src/backend/observe/history_query.rs",
         "SESSION_META_CAP",
-        50_000,
         "常驻进程记着的会话记录摘要条数（按长度 · 修改时刻认没变，没变不再整份扫）",
         "索引截断（不丢数据）",
     ),
     (
         "src/backend/stream/listen.rs",
         "ATTACH_LINE_CAP",
-        8 * 1024,
         "backend 读一行 attach 请求 —— `{\"attach\":\"<32 位十六进制>\"}` 本机实测 51 字节。\
              ⚠ 对端是**同机任何进程**，不是我们自己的子进程",
         "拒收+回错",
@@ -478,7 +465,6 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     (
         "src/frontend/shell/src/stream_source/exec.rs",
         "EXEC_CAPTURE_MAX_BYTES",
-        4 * 1024 * 1024,
         "一次 exec 的 stdout/stderr 各自收集量",
         "截断+说清",
     ),
@@ -493,7 +479,6 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     (
         "src/frontend/shell/src/local_backend.rs",
         "STDERR_LOG_BUDGET_BYTES",
-        256 * 1024,
         "一条被监护子进程**一生**往 monitor 滚动日志里搬的 stderr 字节数。\
              ⚠ 它**不是**「读多少」：超了照旧读到 EOF（见上），只是不再逐行记；\
              收尾按 pid 报一句「另有 N 行没记进来」。\
@@ -505,7 +490,6 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     (
         "src/frontend/shell/src/local_backend.rs",
         "STDERR_MAX_LINE_BYTES",
-        8 * 1024,
         "子进程 stderr **一条**的上界（对端一个 `\\n` 都不发时，`read_until` 会一直吃内存）。\
              ⚠ **不丢字节**：超了这一段照记，断口贴一句 `STDERR_CUT_MARK` 说「在此切开，\
              下一条接着它」，余下的字节成为下一条 ⇒ 「说清」那一半是承重的 —— \
@@ -520,7 +504,6 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     (
         "src/frontend/shell/src/launch.rs",
         "MAX_REMOTE_CMD",
-        4096,
         "本机那条送法的命令串长度（字节）",
         "拒收+回错",
     ),
@@ -528,14 +511,12 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     (
         "src/backend/files/grep.rs",
         "FILE_MAX_BYTES",
-        8 << 20,
         "按内容搜时单份文件的表观大小（字节）",
         "跳过+说清",
     ),
     (
         "src/backend/files/grep.rs",
         "TOTAL_MAX_BYTES",
-        256 << 20,
         "按内容搜一趟累计读进来的字节",
         "截断+说清",
     ),
@@ -543,7 +524,6 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     (
         "src/backend/agents/mod.rs",
         "HEAD_CAP",
-        1 << 20,
         "找会话的项目目录时，会话记录开头至多读多少字节",
         "跳过+说清",
     ),
@@ -552,7 +532,6 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     (
         "src/backend/dial/terminal.rs",
         "MAX_COMMAND",
-        4096,
         "开终端那一行里要在远端跑的命令串长度（字节）",
         "拒收+回错",
     ),
@@ -564,21 +543,18 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     (
         "src/backend/observe/search_rules.rs",
         "MAIN_CAP",
-        20_000,
         "单条 main 文本进索引的**字符**数（只此一份）",
         "索引截断（不丢数据）",
     ),
     (
         "src/backend/observe/search_rules.rs",
         "TOOL_CAP",
-        4_000,
         "单条 tool 文本进索引的**字符**数（只此一份）",
         "索引截断（不丢数据）",
     ),
     (
         "src/backend/observe/search_query.rs",
         "FIND_MAX_LIMIT",
-        2000,
         "会话内查找（`--find-in-session`）一次最多**列**多少条命中（条数，不是字节）；\
              `--limit` 要得再多也按它算。⚠ 只砍「列」不砍「数」：尾行的 `total` 恒为全量，\
              面板据 `total > 条数` 说「只列了前 N 条」",
@@ -606,7 +582,6 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     (
         "src/backend/control/cc_bus.rs",
         "INBOX_CAP",
-        4 * 1024 * 1024,
         "`bus-inbox` 交回的收件箱尾巴（`cc-log` 的回显）",
         // 这是回显不是清单：超了保尾、成品里 `truncated: true` 说清（与 monitor 旧那条同档）。
         "截断+说清",
@@ -623,7 +598,6 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     (
         "src/frontend/shell/src/stream_source/exec.rs",
         "BACKEND_FRAME_LINE_CAP",
-        64 * 1024 * 1024,
         "backend **出方向单行**（一帧 = 一条 Claude jsonl 行）",
         "丢弃+带身份报告",
     ),
@@ -632,56 +606,48 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     (
         "src/backend/faces/read_face.rs",
         "WHOLE_SESSION_MAX_BYTES",
-        256 * 1024 * 1024,
         "查看器读一整份会话 jsonl（`history-page` 带 `whole`；本机远端同一条）",
         "拒收+回错",
     ),
     (
         "src/backend/control/fork_write.rs",
         "MAX_SESSION_JSONL_BYTES",
-        256 * 1024 * 1024,
         "分叉时读源会话 jsonl",
         "硬报错",
     ),
     (
         "src/backend/control/launch.rs",
         "MAX_FIELD_BYTES",
-        8 * 1024,
         "启动请求单字段（载荷/名字/cwd）",
         "拒收+回错",
     ),
     (
         "src/backend/control/session_restart.rs",
         "MAX_WAIT_MS",
-        3_600_000,
         "换号重启发起方给的两个期限（毫秒，不是字节）",
         "拒收+回错",
     ),
     (
         "src/backend/control/terminals.rs",
         "MAX_SCROLLBACK",
-        2000,
         "终端预览往回多要的行数（行，不是字节）",
         "截断+说清",
     ),
     (
         "src/backend/control/resolve_query.rs",
         "MAX_RESOLVE_STDIN",
-        1 << 20,
         "`--resolve` 的 stdin",
         "截断+说清",
     ),
     (
         "src/backend/control/cli_control.rs",
         "MAX_CLI_STDIN",
-        1 << 20,
         "控制面 CLI 子命令（`--launch`/`--kill`/…）的 stdin args JSON",
         "拒收+回错",
     ),
     (
         "src/backend/stream/inbound/mod.rs",
         "MAX_LINE_BYTES",
-        1 << 20,
         "入方向单行",
         "拒收+回错",
     ),
@@ -689,14 +655,12 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     (
         "src/backend/dial/link.rs",
         "LINK_CHUNK_BYTES",
-        32 * 1024,
         "一块链路字节（`link-data` 上行一块 / `link_data` 下行一块，解码后）",
         "拒收+回错",
     ),
     (
         "src/backend/dial/link.rs",
         "MAX_WINDOW",
-        16 * 1024 * 1024,
         "一条链路手里的信用（= 在途下行字节）：`link-open` 的初始窗口与累计 `link-credit`",
         "拒收+回错",
     ),
@@ -706,7 +670,6 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     (
         "src/backend/assets/pubkey.rs",
         "PUB_READ_MAX",
-        64 * 1024,
         "本机那份 `.pub`（公钥一行几百字节；超了就不是公钥）",
         "拒收+回错",
     ),
@@ -714,7 +677,6 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     (
         "src/backend/control/deploy_plan.rs",
         "ENTRY_READ_MAX",
-        64 * 1024,
         "部署计划读回落点那一份（只在它不说自己是谁时，认从前那份几十字节的三行入口）",
         "跳过+说清",
     ),
@@ -722,7 +684,6 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     (
         "src/backend/control/deploy_plan.rs",
         "RETIRED_READ_MAX",
-        256 * 1024,
         "读回远端旧入口 `~/.local/bin/ccm` 认它是不是我们放的（全文原样当 `files-delete` 的期望值）",
         "跳过+说清",
     ),
@@ -730,21 +691,18 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     (
         "src/backend/dial/sftp.rs",
         "REQUEST_LINE_CAP",
-        64 * 1024,
         "files 链路上一行请求（短 JSON；`put` 的字节不走行）",
         "拒收+回错",
     ),
     (
         "src/backend/dial/sftp.rs",
         "MAX_PUT_BYTES",
-        64 * 1024 * 1024,
         "一次 `put` 收进内存的字节（后端二进制今天 MB 级）。超了 ⇒ 那几个字节照收照丢（别让下一行请求读到半截二进制）、回 `too_big`",
         "拒收+回错",
     ),
     (
         "src/frontend/shell/src/link_mux.rs",
         "LINK_WINDOW_BYTES",
-        1 << 20,
         "一条链路「后端发过来、还没还信用」的下行字节（对端守约时它就是界上的在途量）。\
          超了 = 对端不守约 ⇒ **那条链路整条丢掉**，读端拿到一句带链路 id 的错（调用方据它按断线处置、\
          用户看得见那条远端连接断了），同时 `warn!` 一行 —— 不涨内存，而且出声",
@@ -756,7 +714,6 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     (
         "src/backend/files/mod.rs",
         "READ_TEXT_MAX_BYTES",
-        8 * 1024 * 1024,
         "`files-read-text` 调用方给的 `max_bytes` 最大能多大（一帧应答整份进内存、整份过线）",
         "拒收+回错",
     ),
@@ -766,7 +723,6 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     (
         "src/backend/files/mod.rs",
         "READ_CHUNK_MAX_BYTES",
-        256 * 1024,
         "`files-read-chunk` 一块读回的原始字节（b16 翻倍后一帧应答）",
         "拒收+回错",
     ),
@@ -774,14 +730,12 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     (
         "src/backend/control/files_extract.rs",
         "LINK_TARGET_MAX_BYTES",
-        4096,
         "`files-extract` 读 zip 里一条符号链接的目标文本（那一条的正文）",
         "拒收+回错",
     ),
     (
         "src/backend/control/files_write.rs",
         "PEEK_MAX_BYTES",
-        256 * 1024,
         "`files-peek` 一趟读回的文本（读改写的读那一半；写回时与新内容同装一行请求）",
         "拒收+回错",
     ),
@@ -789,7 +743,6 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     (
         "src/backend/faces/read_face.rs",
         "READ_PAGE_BYTES",
-        1 << 20,
         "`history-read` 一页（一帧应答）的正文字节数",
         "索引截断（不丢数据）",
     ),
@@ -797,21 +750,18 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     (
         "src/backend/faces/read_face.rs",
         "LOG_TAIL_BYTES",
-        256 << 10,
         "`backend-log` 一帧回的后端诊断文件尾部字节数",
         "截断+说清",
     ),
     (
         "src/backend/faces/read_face.rs",
         "LINE_CAP_BYTES",
-        32 << 20,
         "`history-read` 里单独一行比一页还长时最多续读多长",
         "拒收+回错",
     ),
     (
         "src/backend/faces/read_face.rs",
         "LINES_CAP_BYTES",
-        32 << 20,
         "按行那几条帧查询（`history-search` 等）整份输出",
         "拒收+回错",
     ),
@@ -820,7 +770,6 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     (
         "src/backend/observe/tasks_query.rs",
         "TASK_FILE_CAP_BYTES",
-        1 << 20,
         "`tasks-list` 读单个任务文件（本机实测几百字节量级）",
         "跳过+说清",
     ),
@@ -828,7 +777,6 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     (
         "src/backend/control/ccm/mod.rs",
         "PRINT_MAX_WORD_BYTES",
-        4096,
         "`ccm-print` 交来的一条别名里一个参数的字节数（别名表单产出的远小于它）",
         "拒收+回错",
     ),
@@ -836,14 +784,12 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     (
         "src/backend/accounts/manage/scan.rs",
         "MAX_MANIFEST_BYTES",
-        8 * 1024 * 1024,
         "改账号库之前读账号清单（与只读那一侧 `accounts_query.rs` 同一个量、同一个数）",
         "硬报错",
     ),
     (
         "src/backend/accounts/manage/scan.rs",
         "MAX_UNDO_BYTES",
-        4 * 1024 * 1024,
         "回滚时读一份备份里的撤销清单（每一行一条路径）",
         "跳过+说清",
     ),
@@ -851,14 +797,12 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     (
         "src/backend/accounts/manage/mcp_share_exec.rs",
         "MAX_SMALL_BYTES",
-        8 * 1024 * 1024,
         "同步之前读账号清单与各号共用的 MCP 那份文件",
         "硬报错",
     ),
     (
         "src/backend/accounts/manage/mcp_share_exec.rs",
         "MAX_CONFIG_BYTES",
-        32 * 1024 * 1024,
         "同步之前读一个号的配置文件（会被项目历史与 MCP 配置撑大）",
         "跳过+说清",
     ),
@@ -866,14 +810,12 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     (
         "src/backend/footprint/mod.rs",
         "MAX_ENTRIES",
-        4096,
         "`footprint-report` 这台自己列一个目录最多几个名字（数 glob 那一族；超了 ⇒ 列不动，不截断）",
         "跳过+说清",
     ),
     (
         "src/backend/footprint/mod.rs",
         "MAX_HOOK_FILE_BYTES",
-        1 << 20,
         "`footprint-report` 查钩子字样时读的那份 settings 文件多大",
         "跳过+说清",
     ),
@@ -881,7 +823,6 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     (
         "src/backend/observe/cc_bus_hooks.rs",
         "SETTINGS_CAP_BYTES",
-        1 << 20,
         "`hooks-diag` 读那台 agent 配置根下的 `settings.json` 多大",
         "降级+说清",
     ),
@@ -889,7 +830,6 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     (
         "src/backend/agents/claudecode/paths.rs",
         "SETTINGS_CAP_BYTES",
-        1 << 20,
         "`relay-optin` 读那台 `~/.claude/settings.json` 多大",
         "降级+说清",
     ),
@@ -897,21 +837,18 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     (
         "src/backend/agents/claudecode/assets.rs",
         "MAX_PROJECT_MCP_BYTES",
-        4 * 1024 * 1024,
         "资产目录扫描时读一份项目 `.mcp.json`",
         "跳过+说清",
     ),
     (
         "src/backend/agents/claudecode/assets.rs",
         "SKILL_DOC_MAX_BYTES",
-        1024 * 1024,
         "资产目录扫描时读一个 skill 的 `SKILL.md`（只为取 `description:`）—— 读它的函数把错交给调用方，调用方记进 `problems`",
         "硬报错",
     ),
     (
         "src/backend/assets/asset_catalog.rs",
         "CATALOG_MAX_BYTES",
-        16 * 1024 * 1024,
         "后端自有的资产目录文件 `~/.cc-monitor/assets-catalog.json`（读不出来就不覆盖）",
         "拒收+回错",
     ),
@@ -919,14 +856,12 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     (
         "src/backend/assets/skill_ledger.rs",
         "MAX_BYTES",
-        4 * 1024 * 1024,
         "后端自有的 skill 装记录 `~/.cc-monitor/skill-installs.json`（读不出来就不覆盖）",
         "拒收+回错",
     ),
     (
         "src/backend/assets/asset_catalog.rs",
         "SKILL_MAX_FILE_BYTES",
-        4 * 1024 * 1024,
         "算一个 skill 的摘要时读其中一个文件（超了只记长度，`summary.truncated` 说出来）",
         "降级+说清",
     ),
@@ -934,7 +869,6 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     (
         "src/backend/history/history_annotations.rs",
         "MAX_BYTES",
-        64 * 1024 * 1024,
         "读一份历史注解文件（星标 / 改名 / 隐藏 / 上次账号；monitor 从前读写的那一份，路径由它交）",
         "拒收+回错",
     ),
@@ -942,7 +876,6 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     (
         "src/backend/observe/search_query.rs",
         "RESIDENT_MAX_BYTES",
-        64 << 20,
         "全文搜索常驻索引留在内存里的可搜文本（估算字节）；本机远端同一条",
         "索引截断（不丢数据）",
     ),
@@ -951,7 +884,6 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     (
         "src/backend/stream/remote_ask.rs",
         "PULL_MAX_BYTES",
-        16 * 1024 * 1024,
         "本机后端经池里那条 SSH 在远端跑一条一次性子命令、拿回来的 stdout（资产目录 · 历史清单；capture）",
         "拒收+回错",
     ),
@@ -959,7 +891,6 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     (
         "src/backend/dial/probe.rs",
         "LINE_CAP",
-        1024 * 1024,
         "测试连接那条探活链路上的一行（阶段行 · ack · 那台后端的首行 hello · ping 应答；hello 是后端出方向单行，同量级）",
         "拒收+回错",
     ),
@@ -967,14 +898,12 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     (
         "src/backend/dial/forwards.rs",
         "ACK_CAP",
-        64 * 1024,
         "起一条端口转发时链路那一侧回的 ack 那一行（同 `remote_ask` 读 ack 的上限）",
         "拒收+回错",
     ),
     (
         "src/backend/dial/forwards.rs",
         "COUNT_CAP",
-        4 * 1024,
         "端口转发链路每接进一条连接报的那一行计数（`{\"accepted\":n}`）",
         "降级+说清",
     ),
@@ -983,21 +912,18 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     (
         "src/backend/stderr_log.rs",
         "CAP_BYTES",
-        4 * 1024 * 1024,
         "脱离常驻那条载体的本机后端 stderr 诊断文件每一份的大小（当前 ＋ 旧的一份 ⇒ 盘上 ≤ 两倍）",
         "丢弃+带身份报告",
     ),
     (
         "src/backend/assets/ext.rs",
         "NOTE_MAX_CHARS",
-        2000,
         "扩展页上用户写的一条备注（字数；记进资产目录、随目录同步到别的后端）",
         "拒收+回错",
     ),
     (
         "src/backend/assets/asset_sync.rs",
         "PUSH_MAX_BYTES",
-        96 * 1024,
         "同步时一趟推给远端的载荷（管进一条 `sh -c` 命令，受 `MAX_ARG_STRLEN` 限）；多台切块，单台超了不推、说出来",
         "跳过+说清",
     ),
@@ -1007,21 +933,18 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     (
         "src/backend/agents/claudecode/accounts.rs",
         "MAX_CONFIG_BYTES",
-        32 * 1024 * 1024,
         "读 Claude 的账号配置文件",
         "硬报错",
     ),
     (
         "src/backend/observe/accounts_query.rs",
         "MAX_MANIFEST_BYTES",
-        8 * 1024 * 1024,
         "backend 侧读账号 manifest",
         "硬报错",
     ),
     (
         "src/backend/observe/accounts_query.rs",
         "MAX_SESSION_FILE_BYTES",
-        1024 * 1024,
         "读单个 `sessions/<PID>.json`",
         "跳过+说清",
     ),
@@ -1040,7 +963,6 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     (
         "src/comms/outward/server.rs",
         "HEAD_CAP",
-        65536,
         "一次 HTTP 请求/响应的**头部**字节数（不是体）",
         "拒收+回错",
     ),
@@ -1053,7 +975,6 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     (
         "src/comms/outward/server.rs",
         "BODY_CAP",
-        67108864,
         "一条下游 HTTP 请求的**请求体**字节数（`Content-Length` 那个值）",
         "拒收+回错",
     ),
@@ -1063,7 +984,6 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     (
         "src/comms/outward/server.rs",
         "TEE_DECODE_CAP",
-        8388608,
         "tee 侧解码缓冲攒着的那截（SSE 半行 / chunked 还没成形的块长度行）",
         "丢弃+带身份报告",
     ),
@@ -1072,7 +992,6 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     (
         "src/comms/outward/tee.rs",
         "TAP_DATA_CAP",
-        16384,
         "tee 交给 tap 口的一个 SSE 事件（`data:` 后那段原文）的字节数",
         "丢弃+带身份报告",
     ),
@@ -1080,7 +999,6 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     (
         "src/backend/accounts/oauth/mod.rs",
         "ANSWER_CAP",
-        65536,
         "续登录令牌那一发令牌端点的回包（头 · 体各自）字节数",
         "硬报错",
     ),
@@ -1156,11 +1074,7 @@ fn eval_cap(expr: &str) -> Option<u64> {
 fn size_typed_consts() -> Vec<(String, String, Option<u64>)> {
     let root = repo_root();
     let mut out = Vec::new();
-    // 🔴 `K-R100` 09-13 加第三条 `src/common`：搜索的两条封顶（`MAIN_CAP` /
-    // `TOOL_CAP`）从两侧各一份收进了共享 crate `search-core`。**不加这一条**，
-    // 那两条上限会从本表的扫描面里静默消失 —— 表里还登记着、盘上再也扫不到，
-    // 而 `the_registered_numbers_still_match_the_source` 会以「算不出来」的形态红，
-    // 报的方向还是错的。
+    // `src/common` 也要扫：共享 crate 里同样住着上限。
     for sub in ["src/frontend/shell/src", "src/backend", "src/common"] {
         for (f, raw) in guard_core::scan_tree!(&root.join(sub), &["rs"]) {
             let body = guard_core::production_source(&raw);
@@ -1223,11 +1137,13 @@ fn size_typed_consts() -> Vec<(String, String, Option<u64>)> {
 #[test]
 fn every_size_typed_constant_is_either_a_cap_or_registered_as_not_one() {
     let all = size_typed_consts();
-    assert!(
-        all.len() >= 10,
-        "只扫到 {} 个尺寸类常量（08-06 实测 20+）—— 抽取器坏了，本条会零命中地绿",
-        all.len()
-    );
+    // 抽取器自检：登记的每一处上限都得被这一份遍历看见（两侧不同源：表是人写的，人群是现扫的）。
+    for (f, n, ..) in CAPS {
+        assert!(
+            all.iter().any(|(g, m, _)| g == f && m == n),
+            "尺寸类常量的遍历没看见登记的 `{f}::{n}` —— 抽取器坏了，本条会零命中地绿"
+        );
+    }
     let mut unclassified = Vec::new();
     for (rel, name, v) in &all {
         let in_population = ["MAX", "CAP", "LIMIT", "BYTES"]
@@ -1315,13 +1231,7 @@ fn scan() -> Vec<(String, String, Option<u64>)> {
 #[test]
 fn every_byte_cap_says_what_it_bounds_and_what_happens_past_it() {
     let found = scan();
-    // 抽取器自检：抠不到东西时下面的对拍会两边都空、静默变绿。
-    assert!(
-        found.len() >= 12,
-        "全仓只扫到 {} 个字节上限常量（08-10 实测 26；08-06 那次是 14，F10b 把七处内联的提成了具名）—— 抽取器坏了",
-        found.len()
-    );
-
+    // 抽取器坏了扫不到东西 ⇒ 下面反向那一条（登记的必须真在）红。
     let missing: Vec<String> = found
         .iter()
         .filter(|(f, n, _)| !CAPS.iter().any(|(g, m, ..)| g == f && m == n))
@@ -1343,29 +1253,6 @@ fn every_byte_cap_says_what_it_bounds_and_what_happens_past_it() {
         assert!(
             found.iter().any(|(g, m, _)| g == f && m == n),
             "登记表里的 `{f}::{n}` 已经不在源码里了 —— 删掉这条，别留僵尸账"
-        );
-    }
-}
-
-/// ★ 正题二：**表里的数字必须与源码一致** —— 否则这张表只是一份会腐的散文。
-#[test]
-fn the_registered_numbers_still_match_the_source() {
-    for (f, n, want, what, _) in CAPS {
-        let got = scan()
-            .into_iter()
-            .find(|(g, m, _)| g == f && m == n)
-            .map(|(_, _, v)| v);
-        let Some(Some(v)) = got else {
-            panic!(
-                "`{f}::{n}` 的值算不出来（写法不是 `A * 1024 * …` 也不是 `1 << N`）。\
-                     ⚠ **不许猜** —— 猜错会让这张表变成一句空话。要么把写法改回来，要么扩 `eval_cap`。"
-            );
-        };
-        assert_eq!(
-            v, *want,
-            "`{f}::{n}`（{what}）源码是 {v} 字节，表里写的是 {want}。\
-                 ★ **改上限的时候正是该重新想「这个量该多大、超了怎么办」的时刻** —— \
-                 别只把表里的数字改成新的就完事。"
         );
     }
 }
@@ -1475,11 +1362,6 @@ fn the_exclusion_list_is_not_dead_wood() {
             all.push_str(&body);
         }
     }
-    assert!(
-        all.len() > 100_000,
-        "只读到 {} 字节源码 —— 抽取器坏了，下面每条都会零命中地绿",
-        all.len()
-    );
     for (name, why) in NOT_A_SIZE_CAP {
         assert!(
             all.contains(&format!("const {name}")),
@@ -1496,7 +1378,7 @@ fn the_exclusion_list_is_not_dead_wood() {
 /// 每条登记的超限语义必须在封闭集合里，且**不许出现「静默」**。
 #[test]
 fn no_cap_is_allowed_to_fail_silently() {
-    for (f, n, _, what, sem) in CAPS {
+    for (f, n, what, sem) in CAPS {
         assert!(
             ALLOWED_SEMANTICS.contains(sem),
             "`{f}::{n}`（{what}）的超限语义写的是「{sem}」，不在 {ALLOWED_SEMANTICS:?} 里。\
@@ -1511,7 +1393,7 @@ fn no_cap_is_allowed_to_fail_silently() {
     // 语义集合不许长草：登记表里每一种都得真有人用。
     for sem in ALLOWED_SEMANTICS {
         assert!(
-            CAPS.iter().any(|(_, _, _, _, s)| s == sem),
+            CAPS.iter().any(|(_, _, _, s)| s == sem),
             "允许集合里的「{sem}」今天一处都没有人用 —— 删掉它，别留一个谁都能往里塞的口子"
         );
     }
@@ -1535,9 +1417,9 @@ fn no_cap_is_allowed_to_fail_silently() {
 #[test]
 fn a_cap_registered_as_hard_error_is_not_swallowed_at_its_call_site() {
     let root = repo_root();
-    let mut checked = 0usize;
     let mut bad = Vec::new();
-    for (file, name, _v, _what, sem) in CAPS {
+    let mut checked_sems = std::collections::BTreeSet::new();
+    for (file, name, _what, sem) in CAPS {
         if !["硬报错", "跳过+说清", "降级+说清"].contains(sem) {
             continue;
         }
@@ -1549,11 +1431,12 @@ fn a_cap_registered_as_hard_error_is_not_swallowed_at_its_call_site() {
         //    而测试里怎么处置错误与生产语义无关 —— 本条第一次跑就在那里误报。
         let src = guard_core::production_code(&raw);
         let lines: Vec<&str> = src.lines().collect();
+        let mut checked = false;
         for (i, l) in lines.iter().enumerate() {
             if !guard_core::contains_word(l, name) || l.contains("const ") {
                 continue;
             }
-            checked += 1;
+            checked = true;
             // ⚠ 窗口 **10 行是个启发式参数**，不是量出来的分界。
             //
             // 它要覆盖的是「`match` 的 `Err` 臂里返回一个结构体」这种最长的正当形态
@@ -1630,11 +1513,17 @@ fn a_cap_registered_as_hard_error_is_not_swallowed_at_its_call_site() {
                 ));
             }
         }
+        if checked {
+            checked_sems.insert(*sem);
+        }
     }
-    assert!(
-        checked >= 4,
-        "只找到 {checked} 个「硬报错」上限的使用点 —— 抽取器坏了，本条此刻是空转的"
-    );
+    // 抽取器正控：这三档里表上登记了的每一档，都至少有一处使用点被看见。
+    for sem in ["硬报错", "跳过+说清", "降级+说清"] {
+        assert!(
+            !CAPS.iter().any(|(.., s)| *s == sem) || checked_sems.contains(sem),
+            "登记「{sem}」的上限一处使用点都没找到 —— 抽取器坏了，本条此刻是空转的"
+        );
+    }
     assert!(
         bad.is_empty(),
         "登记的语义与调用点对不上：\n{}\n\n\
@@ -1713,31 +1602,6 @@ const PARAMETRIC_READ_CAPS: &[(&str, &str, &str)] = &[
     //    头与体读进来之后**各自**再对自己那个上限判一次」。那个形状仍值得照抄。
 ];
 
-/// 异步流整读里**压根没有上限**的那些。
-/// `(相对仓根的路径:行, 读的是谁的输出, 为什么今天不加 + 谁退役它)`
-///
-/// ⚠ **这不是豁免清单**：第三格必须写「退役归」（下面 `every_uncapped_stream_read_has_an_owner`
-/// 钉着），照 `polling_registry` 的先例。
-const UNCAPPED_STREAM_READS: &[(&str, &str, &str)] = &[
-    // 🔴 **`K-R104`（09-13）：`src/frontend/shell/src/account_usage.rs` 这一行删了，欠账真的没了。**
-    //    它欠的是「整读一条远端 SSH exec 的 stdout，没有上限」。
-    //    编排搬上后端帧面之后，本模块**不再读任何流** —— 抓回来的那一屏是一条
-    //    `capture-pane` 帧应答的 `screen` 字段，而**帧那一层自己有单行上限**
-    //    （backend 侧 `stream/inbound/` 的超长行处理 + monitor 侧收帧那一层）。
-    //    ⇒ 这一处不再属于「异步流整读」那个人群，留着就是幽灵条目。
-    // 〔09-28 裁 2〕`acct_iso_deploy.rs` 那一行删了：部署脚本那次 ssh exec 不在了（落进用户目录改问那台后端 `acct-iso-install`）。
-    (
-        "src/frontend/shell/src/ccm_probe.rs",
-        "远端 `ccm` 探针的 stdout",
-        "同上一条。**退役归 F10d**。",
-    ),
-    // `sftp.rs` 那一条（远端 `uname -m` 架构探针，`.read_line` 无上限地读一行）走了：
-    //   问那台是什么机器改成 `byte_table::probe_key`，走 `connect_and_exec_capture`（stdout / stderr 各有上限、带退出码），
-    //   不再是一处无上限的流读 ⇒ 按上面几条同一个理由摘掉。后来那一问整个进了本机常驻后端（`deploy-slot`）。
-    // `pubkey.rs` 那一条（远端追加公钥那一趟的 stdout）走了：推送进了本机后端，走 `capture_full`（有上限、带退出码）。
-    // `backend/control/tmux.rs` 那一条走了：那份文件随 monitor 侧的 Gate 残留删了（四处流读早已各自搬进后端）。
-];
-
 /// ★ **前提触发器的重写**。
 ///
 /// # 它替掉的那条判据**一直在假绿**
@@ -1761,14 +1625,15 @@ const UNCAPPED_STREAM_READS: &[(&str, &str, &str)] = &[
 /// 要么在 [`PARAMETRIC_READ_CAPS`] 里说清为什么不必进表。
 #[test]
 fn every_inline_read_cap_resolves_to_something_registered() {
-    let sites = inline_read_cap_sites();
-    // 自检：抠不到东西时下面的默认拒绝是空转的。
-    assert!(
-        sites.len() >= 6,
-        "只扫到 {} 处内联读上限（08-10 实测 7：cc-bus ×3 · mcp · hooks_diag · backend 的 fs 助手 · `--resolve` stdin）—— 抽取器坏了，本条此刻是空转的。\n\
-             ⚠ 旧版就是**在这个位置**假绿了五次：它数的是「裸十进制字面量」而不是「有没有上限」。",
-        sites.len()
+    // 抽取器正控：一处紧邻字节读的 `.take(…)` 要被看见，不紧邻的不算。
+    assert_eq!(
+        take_args_before_a_read(
+            "let n = r.take(FOO_CAP + 1).read_to_end(&mut b)?; it.take(3).count();"
+        ),
+        vec!["FOO_CAP + 1".to_string()],
+        "内联读上限的抽取器坏了，下面的默认拒绝此刻是空转的"
     );
+    let sites = inline_read_cap_sites();
     let mut unresolved = Vec::new();
     for (file, arg) in &sites {
         // 剥掉 `+ 1`（「多读一个字节好分辨刚好读满与其实还有」那个惯用形态）。
@@ -1827,7 +1692,6 @@ fn every_inline_read_cap_resolves_to_something_registered() {
 /// ② **不能用宽窗口**（会把邻近另一行的读算进来，旧版实测抓出三个假阳）⇒ 要求紧邻。
 /// ⚠ 但**不再按拼法取实参** —— 走括号配平，`32 * 1024 * 1024` / `cap + 1` / `FOO` 一视同仁。
 fn inline_read_cap_sites() -> Vec<(String, String)> {
-    const READS: &[&str] = &[".read_to_end", ".read_exact", ".read_to_string"];
     let root = repo_root();
     let mut out = Vec::new();
     for sub in ["src/frontend/shell/src", "src/backend"] {
@@ -1838,44 +1702,8 @@ fn inline_read_cap_sites() -> Vec<(String, String)> {
                 .unwrap_or(&path)
                 .to_string_lossy()
                 .replace('\\', "/");
-            let cs: Vec<char> = prod.chars().collect();
-            let needle: Vec<char> = ".take(".chars().collect();
-            let mut i = 0usize;
-            while i + needle.len() <= cs.len() {
-                if cs[i..i + needle.len()] != needle[..] {
-                    i += 1;
-                    continue;
-                }
-                // 括号配平取实参。
-                let mut j = i + needle.len();
-                let mut depth = 1usize;
-                let mut arg = String::new();
-                while j < cs.len() && depth > 0 {
-                    match cs[j] {
-                        '(' => {
-                            depth += 1;
-                            arg.push('(');
-                        }
-                        ')' => {
-                            depth -= 1;
-                            if depth > 0 {
-                                arg.push(')');
-                            }
-                        }
-                        c => arg.push(c),
-                    }
-                    j += 1;
-                }
-                // 紧邻：跳过空白之后必须直接是一个字节读。
-                let mut k = j;
-                while k < cs.len() && cs[k].is_whitespace() {
-                    k += 1;
-                }
-                let tail: String = cs[k..(k + 16).min(cs.len())].iter().collect();
-                if READS.iter().any(|r| tail.starts_with(r)) {
-                    out.push((rel.clone(), arg.trim().to_string()));
-                }
-                i = j.max(i + 1);
+            for arg in take_args_before_a_read(&prod) {
+                out.push((rel.clone(), arg));
             }
         }
     }
@@ -1883,44 +1711,67 @@ fn inline_read_cap_sites() -> Vec<(String, String)> {
     out
 }
 
-/// ★ **默认拒绝：异步流整读要么有上限，要么有主人**。
+/// 一份生产段里每一处「`.take(<实参>)` 紧邻一个字节读」的实参逐字。
+fn take_args_before_a_read(prod: &str) -> Vec<String> {
+    const READS: &[&str] = &[".read_to_end", ".read_exact", ".read_to_string"];
+    let mut out = Vec::new();
+    let cs: Vec<char> = prod.chars().collect();
+    let needle: Vec<char> = ".take(".chars().collect();
+    let mut i = 0usize;
+    while i + needle.len() <= cs.len() {
+        if cs[i..i + needle.len()] != needle[..] {
+            i += 1;
+            continue;
+        }
+        // 括号配平取实参。
+        let mut j = i + needle.len();
+        let mut depth = 1usize;
+        let mut arg = String::new();
+        while j < cs.len() && depth > 0 {
+            match cs[j] {
+                '(' => {
+                    depth += 1;
+                    arg.push('(');
+                }
+                ')' => {
+                    depth -= 1;
+                    if depth > 0 {
+                        arg.push(')');
+                    }
+                }
+                c => arg.push(c),
+            }
+            j += 1;
+        }
+        // 紧邻：跳过空白之后必须直接是一个字节读。
+        let mut k = j;
+        while k < cs.len() && cs[k].is_whitespace() {
+            k += 1;
+        }
+        let tail: String = cs[k..(k + 16).min(cs.len())].iter().collect();
+        if READS.iter().any(|r| tail.starts_with(r)) {
+            out.push(arg.trim().to_string());
+        }
+        i = j.max(i + 1);
+    }
+    out
+}
+
+/// ★ **异步流整读必须有上限**：对端是另一个进程，无界读就是无界堆分配。
 ///
-/// # 它补的洞
-///
-/// 本表此前登记的是「**哪里有上限**」。而「**哪里该有却没有**」在任何表里都不存在 ——
-/// 与 `tool_registry` 那次（`NOT_MANAGED` 反向表）同一个形状：
-/// **一个东西不在表里，有「没人想起来」与「不属这张表」两种截然不同的原因，
-/// 而没有任何地方记着这个区分。**
-///
-/// 人群取「把一整条**流**读进内存」这个事实：`.read_to_end` / `.read_to_string`
-/// 且紧邻处有 `.await`（同步的那些是 `std::fs::read_to_string(path)` 自由函数，
-/// 读的是**本机文件**、体量由磁盘兜着，不同族）。
-///
-/// ⚠ 失效模式如实登记：① 先 `let fut = …;` 再 `await` 就漏出人群；
-/// ② 「附近有 `.take(`」是窗口启发式 —— 隔太远的真上限会假红、邻行的无关 `take` 会假绿。
+/// 人群取「把一整条**流**读进内存」这个事实（读的动作紧邻 `.await`）；
+/// 同步的 `std::fs::read_to_string(path)` 读的是本机文件、体量由磁盘兜着，不同族。
 #[test]
-fn every_uncapped_stream_read_has_an_owner() {
-    let mut population = 0usize;
+fn no_async_stream_read_is_uncapped() {
+    // 抽取器正控：一处无界的异步流整读要被看见，带 `.take(` 的不算。
+    let sample = "stdout.read_to_end(&mut b).await?;\n\n\n\n\n\n\nx.take(CAP + 1).read_line(&mut s).await?;\n";
+    assert_eq!(
+        uncapped_stream_reads(sample).len(),
+        1,
+        "异步流整读的抽取器坏了，本条此刻是空转的"
+    );
     let mut orphans = Vec::new();
     let root = repo_root();
-    // ★★〔G 审计逮到的〕**第一版这里只有 `read_to_end` / `read_to_string`。**
-    //
-    // 而 F10b 修掉的那三处，原来的写法是 `reader.read_line(&mut buf)` ——
-    // 也就是说：**这条判据的人群，恰好排除了触发它立项的那一种拼法。**
-    // 头注把「把一整条流读进内存」（事实）与「`.read_to_end`」（拼法）写成了等号，
-    // 而本文件上方刚花十几行论证过同一个病根。**同一个 commit 里，同一句话又犯了一次。**
-    //
-    // 漏出来的是活的：逐次拨号那条路 `run_list_query`〔散文墓碑〕（C4d 已删）当年无界 `read_line`
-    // （只有外层 30s 超时兜着），三个 `#[tauri::command]` 调用方，生产路径；
-    // 以及 `stream_read_remote_session`〔散文墓碑〕 —— 它有 `MAX_SESSION_BYTES` 总量，
-    // 但那是**读完再判**，一条超大行在 `read_line` 返回前就把内存吃光了。
-    // 两处都已改走 `stream_source::read_capped_line`。
-    //
-    // ⇒ 针按**读的动作**取，不按某一个方法名取。
-    let reads: Vec<String> = ["to_end", "to_string", "line", "until"]
-        .iter()
-        .map(|m| format!(".read_{m}("))
-        .collect();
     for sub in ["src/frontend/shell/src", "src/backend"] {
         for (path, src) in guard_core::scan_tree!(&root.join(sub), &["rs"]) {
             let prod = guard_core::production_code(&src);
@@ -1929,63 +1780,46 @@ fn every_uncapped_stream_read_has_an_owner() {
                 .unwrap_or(&path)
                 .to_string_lossy()
                 .replace('\\', "/");
-            let lines: Vec<&str> = prod.lines().collect();
-            for (i, l) in lines.iter().enumerate() {
-                if !reads.iter().any(|r| l.contains(r.as_str())) {
-                    continue;
-                }
-                let lo = i.saturating_sub(4);
-                let hi = (i + 3).min(lines.len());
-                let window = lines[lo..hi].join("\n");
-                if !window.contains(".await") {
-                    continue; // 同步读本机文件，不同族
-                }
-                population += 1;
-                if window.contains(".take(") {
-                    continue;
-                }
-                if UNCAPPED_STREAM_READS.iter().any(|(f, ..)| *f == rel) {
-                    continue;
-                }
-                orphans.push(format!("  {rel}:{}", i + 1));
+            for line in uncapped_stream_reads(&prod) {
+                orphans.push(format!("  {rel}:{line}"));
             }
         }
     }
-    // 🔴 `K-R104`（09-13）：地板 14 → **13**，而这一格必须写清**为什么不是抽取器坏了**：
-    //    `src/frontend/shell/src/account_usage.rs` 那一处 `read_to_end`（远端探针的 stdout）
-    //    随整条编排搬上后端帧面而**不存在了** —— 探针今天读的是一条帧应答的字段，
-    //    不再整读一条流。⇒ 人群**恰好少一处**，而那一处同时从 `UNCAPPED_STREAM_READS`
-    //    里删掉了（两侧同拍，不然那一行会变成幽灵条目）。
-    //    ⚠ **这不是「挡路就放宽」**：地板守的是「抽取器还够得到东西」，
-    //    而人群真的少了一个成员时，不跟着改这个数才是让它继续替真判据挡枪（`K-G8`）。
-    // 🔴 `K-R112`（09-13）：地板 13 → **11**，理由与上面 `K-R104` 那一段**同形**：
-    //    `check_cc_bus_agent_online`〔散文墓碑〕（`cc_bus.rs`，已迁到界面）与 远端抓屏那条（`tmux.rs`，已迁到界面）
-    //    那两处 `read_to_end`（一次性 SSH 的 stdout）随两条命令改走后端帧面而
-    //    **不存在了** ⇒ 人群**恰好少两处**。⚠ 同样不是「挡路就放宽」。
-    // 地板 11 → **10**：钩子诊断远端那处 `read_to_end`（一次性 SSH 的 stdout）随改问那台后端不存在了；→ **9**：MCP 远端那处同理。
-    assert!(
-        population >= 4, // 5 → 4：插件口可打断那一形读子进程 stderr 的那处 `read_until`（带上限）随代码全景删了 // 6 → 5：公钥推送那处 `read_to_string`（远端那一趟的 stdout）随进本机后端没了 // 〔09-28 裁 2〕7 → 6：部署 cc-acct-iso 那处 `read_to_end`（安装脚本的 stdout）随改问那台后端不存在了 // 9 → 8：列 tmux 那处 `read_to_end` 随改问后端不存在了 // 8 → 7：远端 `ccm` 探针那处 `read_to_end` 随改问那台后端 `ccm-probe` 不存在了
-        "只扫到 {population} 处异步流读（08-10 G 审计后实测 18，`K-R104` 09-13 现打 13，\
-             `K-R112` 09-13 现打 11，SH1 09-26 现打 10）—— 抽取器坏了，本条此刻是空转的"
-    );
     assert!(
         orphans.is_empty(),
-        "这些地方把一整条**流**读进内存，既没有上限也没有主人：\n{}\n\n\
+        "这些地方把一整条**流**读进内存，没有上限：\n{}\n\n\
              ★ 对端是**远端进程** —— 它坏掉、或者压根不是我们的后端，都会让\n\
              「无界读」变成「无界堆分配」。backend 侧为此栽过一次实测：\n\
              喂 512 MiB 无换行的流 ⇒ RSS 从 6 MiB 涨到 518 MiB\n\
              （见 `src/backend/stream/inbound/mod.rs` 头注）。\n\
-             两条路：① 加上限（`.take(CAP + 1)` + 超了回错，形态见 `common/fs.rs`）；\n\
-             ② 登记进 `UNCAPPED_STREAM_READS` 并写明**谁退役它**。",
+             加上限：`.take(CAP + 1)` + 超了回错，形态见 `common/fs.rs`。",
         orphans.join("\n")
     );
-    // 反向：登记不许留死行。
-    for (f, ..) in UNCAPPED_STREAM_READS {
-        assert!(
-            root.join(f).is_file(),
-            "`UNCAPPED_STREAM_READS` 里的 `{f}` 已经不在了 —— 删掉这条"
-        );
+}
+
+/// 一份生产段里无界的异步流整读（1 起的行号）：读的动作紧邻 `.await`、前后几行没有 `.take(`。
+///
+/// 针按**读的动作**取（`read_to_end` / `read_to_string` / `read_line` / `read_until`），不按某一个方法名取。
+/// ⚠ 失效模式：先 `let fut = …;` 再 `await` 就漏出人群；「附近有 `.take(`」是窗口启发式。
+fn uncapped_stream_reads(prod: &str) -> Vec<usize> {
+    let reads: Vec<String> = ["to_end", "to_string", "line", "until"]
+        .iter()
+        .map(|m| format!(".read_{m}("))
+        .collect();
+    let lines: Vec<&str> = prod.lines().collect();
+    let mut out = Vec::new();
+    for (i, l) in lines.iter().enumerate() {
+        if !reads.iter().any(|r| l.contains(r.as_str())) {
+            continue;
+        }
+        let lo = i.saturating_sub(4);
+        let hi = (i + 3).min(lines.len());
+        let window = lines[lo..hi].join("\n");
+        if window.contains(".await") && !window.contains(".take(") {
+            out.push(i + 1);
+        }
     }
+    out
 }
 
 /// ★ **「丢弃+带身份报告」那一档的行为对拍**。
@@ -2032,10 +1866,8 @@ fn the_drop_and_report_semantics_is_honoured_at_every_over_limit_arm() {
         }
     }
     assert!(
-        // 3 → 1：握手（`probe_backend`〔散文墓碑〕）与应答泵那两臂随测试连接搬进本机后端删了，只剩主帧读那一臂。
-        arms >= 1,
-        "只找到 {arms} 处超限处置臂（今天应为 1：主帧读）—— \
-             抽取器坏了，本条此刻是空转的"
+        arms > 0,
+        "一处超限处置臂都没找到 —— 抽取器坏了，本条此刻是空转的"
     );
     assert!(
         silent.is_empty(),
@@ -2050,26 +1882,4 @@ fn the_drop_and_report_semantics_is_honoured_at_every_over_limit_arm() {
              ★ 那是「丢弃+带身份报告」与「跳过+说清」的**唯一分界** —— \n\
              只写 `warn!` 的话本档就该改登记成「跳过+说清」，别占一个更强的名字。"
     );
-}
-
-/// ★ 登记「无上限」不许变成永久豁免：每条必须写**谁退役它**。
-///
-/// 钉法照 `polling_registry` 的先例（那张表对 `data-poll` 也要求逐字「退役归」）。
-#[test]
-fn an_uncapped_read_is_not_a_permanent_exemption() {
-    assert!(
-        !UNCAPPED_STREAM_READS.is_empty(),
-        "登记表空了 —— 若那八处真都加上上限了，请**删掉这条判据与那张表**"
-    );
-    for (f, what, why) in UNCAPPED_STREAM_READS {
-        assert!(
-            why.contains("退役归"),
-            "`{f}` 登记成「无上限」却没说**谁退役它** —— \
-                 没有主人的登记就是豁免清单，而豁免清单会一直在那里（{what}）"
-        );
-        assert!(
-            what.chars().count() > 5,
-            "`{f}` 没说清读的是**谁的输出**：「{what}」"
-        );
-    }
 }

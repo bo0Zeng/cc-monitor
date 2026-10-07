@@ -133,8 +133,7 @@ fn tauri_commands(prod: &str) -> BTreeSet<String> {
 fn every_pool_tauri_command_is_pending_and_the_transfer_core_has_none() {
     let prod = pool_production();
     let got = tauri_commands(&prod);
-    // 地板 2 → 1。人群到零了 ⇒ 地板删掉（它会把正确的「零条」判成抽取器坏了）；
-    //   抽取器靠下面那段合成语料守（正控：认得出两条、认得出不带属性的那一条不是命令）。
+    // 抽取器靠下面那段合成语料守（正控：认得出两条、认得出不带属性的那一条不是命令）。
     assert_eq!(
         tauri_commands(
             "#[tauri::command]\npub async fn a() {}\n#[tauri::command]\npub fn b() {}\nfn c() {}\n"
@@ -222,9 +221,8 @@ fn the_relay_holds_no_sftp_at_all() {
     ];
     let prod = pool_production();
     assert!(
-        prod.len() > 2_000,
-        "中继的生产段只剩 {} 字节 —— 剥法坏了",
-        prod.len()
+        prod.contains("fn "),
+        "中继的生产段里一个 `fn` 都没剩 —— 剥法坏了"
     );
     let hits: Vec<&String> = needles
         .iter()

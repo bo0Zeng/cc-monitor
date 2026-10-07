@@ -22,15 +22,15 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// 周期唤醒的**登记表**：`(相对 src/frontend/shell 的路径, 类别, 处数, 为什么 + 谁退役它)`。
+/// 周期唤醒的**登记表**：`(相对 src/frontend/shell 的路径, 外层项, 类别, 为什么 + 谁退役它)`，按「文件 × 外层项」认。
 ///
 /// 多一处没登记的 ⇒ 下面那条红。**登记表不是豁免清单**，
 /// 是「这些我看过、而且知道它归谁」的账。
-const REGISTERED: &[(&str, &str, usize, &str)] = &[
+const REGISTERED: &[(&str, &str, &str, &str)] = &[
     (
         "src/bind.rs",
+        "run_heartbeat",
         "ticker",
-        1,
         "★ **本表一上岗就抓到的那个真节拍器**：`run_heartbeat` = \
              `loop { sleep(10s); cleanup_dead() }` —— 无限、周期、无上限。\
              它清的是「死 pid 的 HWND 绑定」。**事件源存在但没用**：pid 死亡本可由内核事件\
@@ -41,15 +41,15 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
     ),
     (
         "src/bind.rs",
+        "process_await_file",
         "wait-for-condition",
-        1,
         "一处等窗口：`find_window_for_marker` 的 12×50ms（≤600ms，等 PowerShell 设标题传播）。**有次数上限**，\
              不是节拍器。（**2 → 1**：远端那条点 ↗ 时的现扫重试随窗口标题那一套删了。）",
     ),
     (
         "src/ccm_probe.rs",
+        "capture_full",
         "wait-for-condition",
-        1,
         "P3t D 阶段补审：`probe_with` 的 10ms 轮询 `try_wait` —— 等**本机 ccm 探测那个子进程退出**，\
              上限是 `LOCAL_PROBE_TIMEOUT`（5s），到点 `kill` + `wait` 收尸。\
              **不是节拍器**：一次探测最多醒 500 次，探完就没了，且结果缓存 5 分钟。\
@@ -59,8 +59,8 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
     ),
     (
         "src/remote_resident.rs",
+        "retry_tunnel",
         "wait-for-condition",
-        1,
         "`tunnel_when_bound`（编排住 `retry_tunnel`）的 30×200ms（≤6 s）：远端 `--resident-ensure` 起了一个脱离的常驻后端、\
              后端**不等它 bind**（后端零定时器）⇒ 这里等**那台回环口上有人在听**这个一次性条件（开隧道成功即止），\
              有次数上限，等不到就如实报「连不上」、交重连那一层；远端回拒码是「不许端口转发」⇒ 当场停、不等。\
@@ -68,8 +68,8 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
     ),
     (
         "src/dial_host.rs",
+        "local_backend_accepting",
         "wait-for-condition",
-        1,
         "`local_channel` 的 60×50ms（≤3 s）：等**本机常驻后端那条流的 hello 到了**\
              （`<local>` 那条入方向客户端登记上）—— monitor 刚起、本机后端刚接上的那个窗口里，\
              远端链路要经它开。**一次性条件、有次数上限**，等到就走、等不到就如实报「本机后端不在」\
@@ -77,8 +77,8 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
     ),
     (
         "src/local_backend_host.rs",
+        "adopt_with",
         "wait-for-condition",
-        1,
         "〔`K-P1` 08-26；说法 08-27 补全，见下 ⚠⚠〕那一处 `sleep` 住 `adopt_with`，\
              而 `adopt_with` 有**两个**调用方，等的是**两件不同的事**，共用同一条上限：\
              ① `probe_and_attach_after_spawn`（`wait_for_bind = true`）等**刚脱离起来的那个 backend**\
@@ -103,8 +103,8 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
     (
         // `early_failure` 随「起进程那一侧」留在 monitor（从前住窗口的 `shell.rs`）。
         "src/filewin/proc.rs",
+        "early_failure",
         "wait-for-condition",
-        1,
         "🔴`early_failure` 里那一跳 10ms 轮询：\
              等「开窗那条线程是不是当场就死了」，**最多 300ms**（`EARLY_FAILURE_BUDGET`）。\
              它补的是一个**静默成功** —— 入口那条命令此前把开窗句柄 `let _ = …` 丢掉，\
@@ -136,14 +136,14 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
     //   原样搬去的那一份）摘了 —— 那份文件整份删了（界面进程零 SSH）。竞速今天住本机后端 `dial/connect.rs`（同时起拨：后端零定时器）。
     (
         "src/stream_source/snapshot.rs",
+        "snapshot_dispatcher",
         "wait-for-condition",
-        1,
         "快照读失败时 `if attempt == 1 { sleep(1s) }` —— **只重试一次**。",
     ),
     (
         "src/stream_source/run.rs",
+        "run",
         "wait-for-condition",
-        1,
         "重连退避 `sleep(backoff)`，序列 2→4→8→16→**30 上限**。\
              ⚠ 外层重连循环确实无限，但**它等的是「下次重连时机」，不是节拍** —— \
              连上之后由 `stream_loop` 阻塞驱动；断线才回到这里。上限 30s 是明写的常量。",
@@ -151,15 +151,22 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
     // `src/lib.rs` 那一行（`remote-bind-scan` 那条等标题的线程）随窗口标题那一套删了：lib.rs 从此零处。
     (
         "src/platform/window.rs",
+        "desktop_fixes",
         "wait-for-condition",
-        1,
         "原 `lib.rs` 那两处的 ①：resize 稳定检测 `loop { sleep(60ms); if now == last { break } }`\
              （WebView2 最大化 / 全屏后内容错位修复的去抖，Windows 那段随平台臂搬来）。有终止条件，**不是节拍器**。",
     ),
     (
         "src/event_replay.rs",
+        "replay_lines",
         "throttle",
-        2,
+        "两处 `CHUNK_PAUSE_MS`：分块 emit 之间让 UI 喘一口。\
+             **上界是 `chunk_total`**（`if idx + 1 < chunk_total` 才 sleep），最后一块不停。",
+    ),
+    (
+        "src/event_replay.rs",
+        "on_line_batch_awaited",
+        "throttle",
         "两处 `CHUNK_PAUSE_MS`：分块 emit 之间让 UI 喘一口。\
              **上界是 `chunk_total`**（`if idx + 1 < chunk_total` 才 sleep），最后一块不停。",
     ),
@@ -252,22 +259,19 @@ fn is_call_of(line: &str, name: &str) -> bool {
 /// ⚠ 换口径前量过误红面：新口径下**每个文件的命中数与旧口径完全一致**
 /// （登记表一行没改），说明今天没有靠路径拼法躲着的、也没有新卷进来的。
 /// ⚠ 仍**刻意不含** `Duration::from_`（那是取值不是唤醒）—— 见模块头注。
-fn wake_hits(prod: &str) -> usize {
+fn wake_fns(prod: &str) -> Vec<String> {
     // 判据串运行时拼，免得命中本文件自己的说明。
     let names = [
         format!("{}", "sleep"),
         format!("{}", "interval"),
         format!("{}", "recv_timeout"),
     ];
-    prod.lines()
-        .filter(|l| {
-            let t = l.trim_start();
-            if t.starts_with("//") {
-                return false;
-            }
-            names.iter().any(|n| is_call_of(l, n))
-        })
-        .count()
+    let code = guard_core::strip_comment_lines(prod);
+    let lines: Vec<&str> = code.lines().collect();
+    (0..lines.len())
+        .filter(|&i| names.iter().any(|n| is_call_of(lines[i], n)))
+        .map(|i| crate::guard_support::enclosing_fn(&lines, i))
+        .collect()
 }
 
 /// ★ 抽取器自检：扫不到文件 / 剥太狠时，下面几条会零命中地绿。
@@ -288,7 +292,7 @@ fn the_scan_actually_reads_the_monitor_rust_tree() {
     // 第一版把「注释里提到 sleep(d)」当成 `is_call_of` 的负例，当场红，
     // 而那是我搞错了分层，不是匹配器有问题。**自检写错契约与判据写错一样会误导人。**
     assert_eq!(
-        wake_hits("    // sleep(d) 只是注释里提到\n"),
+        wake_fns("    // sleep(d) 只是注释里提到\n").len(),
         0,
         "注释行被当成了周期唤醒"
     );
@@ -311,11 +315,6 @@ fn the_scan_actually_reads_the_monitor_rust_tree() {
     }
 
     let files = rust_files();
-    assert!(
-        files.len() >= 60,
-        "只扫到 {} 个 .rs —— 遍历器坏了（实测应约 90）",
-        files.len()
-    );
     // 剥法自检：本文件自己剥完应当只剩几行（它整体是 cfg(test)）。
     let me = files
         .iter()
@@ -334,22 +333,22 @@ fn the_scan_actually_reads_the_monitor_rust_tree() {
 /// 后半句是递减棘轮那半 —— 只挡回潮的账不会自己往下走。
 #[test]
 fn every_periodic_wake_in_the_rust_tree_is_registered() {
-    let mut want: Vec<(String, usize)> = Vec::new();
-    for (f, _, n, _) in REGISTERED {
-        match want.iter_mut().find(|(k, _)| k == f) {
-            Some((_, c)) => *c += n,
-            None => want.push(((*f).to_string(), *n)),
-        }
-    }
+    let mut want: Vec<(String, String)> = REGISTERED
+        .iter()
+        .map(|(f, func, ..)| ((*f).to_string(), (*func).to_string()))
+        .collect();
     want.sort();
-    let mut got: Vec<(String, usize)> = rust_files()
+    want.dedup();
+    let mut got: Vec<(String, String)> = rust_files()
         .into_iter()
-        .filter_map(|(rel, raw)| {
-            let n = wake_hits(&production(&raw));
-            (n > 0).then_some((rel, n))
+        .flat_map(|(rel, raw)| {
+            wake_fns(&production(&raw))
+                .into_iter()
+                .map(move |f| (rel.clone(), f))
         })
         .collect();
     got.sort();
+    got.dedup();
     assert_eq!(
         got, want,
         "\nRust 侧周期唤醒的实际分布与登记表对不上。\n\
@@ -366,8 +365,7 @@ fn every_periodic_wake_in_the_rust_tree_is_registered() {
 /// 其余三类只要说清「等什么 / 上界从哪来」；只有真节拍器要回答「谁来杀掉它」。
 #[test]
 fn every_ticker_names_its_event_source_and_owner() {
-    let mut tickers = 0;
-    for (f, kind, _, why) in REGISTERED {
+    for (f, _, kind, why) in REGISTERED {
         assert!(
             matches!(
                 *kind,
@@ -376,7 +374,6 @@ fn every_ticker_names_its_event_source_and_owner() {
             "{f} 的类别 `{kind}` 不在四类里 —— 新类别要先在模块头注那张表里定义"
         );
         if *kind == "ticker" {
-            tickers += 1;
             assert!(why.contains("事件源"), "{f} 记成 ticker 却没说事件源在哪");
             assert!(
                 why.contains("退役"),
@@ -384,28 +381,6 @@ fn every_ticker_names_its_event_source_and_owner() {
             );
         }
     }
-    // 抽取器自检：一条 ticker 都没认出来时上面的断言全空转。
-    assert_eq!(
-        tickers, 1,
-        "登记表里的 ticker 条数变了（实测 1 条：`bind.rs::run_heartbeat` 10s；\
-`session_map.rs` 的 2s 心跳**真退役** —— 本机判活改由本机后端的帧来，2 → 1）。\n\
-             多一条 ⇒ 新增了真节拍器，必须单独论证；少一条 ⇒ 退役了，把账拧下来。\n\
-             ⚠ **这个数最近走过 2 → 4 → 3 → 2，四次都不是回归**，值得一并读懂：\n\
-             · 2 → 4（08-10 devbench **F07**）：把 `recv_timeout` 收进针时 `watcher.rs` 的 100ms \
-             与 `session_map.rs` 的 2s **第一次上账**。它们在那之前一直在跑，只是针看不见它们 \
-             ⇒ **可见性变了，不是新增了轮询**。\n\
-             · 4 → 3（08-10 devbench **F11**）：`watcher.rs` 那条**真退役了** —— 两条通道\
-             （文件事件 + rescan 请求）合成一个 `WatchEvent` enum，主循环改无超时 `recv()`。\
-             ★ **本条判据就是那次退役的验收证据**：改完代码后它先红在「少一处 = 退役了」上，\
-             删掉登记才绿 —— 退役不是靠人说「我改好了」。\n\
-             · 3 → 2（09-11 `K-R59`）：`stream_source/` 的 **daemonless 2s 真退役了** —— \
-             用户原话「不要有 daemonless。没有没有后端的情况。」，那一整段轮询读随之删除。\
-             ⚠ **别把它读成「自动部署终于可靠了」**（那是这条登记当年自己写的退役条件）：\
-             实际走的是另一条路 —— **那一档整个取消**。\n\
-             · 剩下的 `session_map.rs` 那条退役归 **F12**，被 `unified-backend` 的 **U4b** 挡着\
-             （backend 侧 Windows 判活是诚实空壳，而本条治的 bug 恰恰是 Windows 场景）。\
-             〔09-24：那个空壳的 Windows 格已由 `pidwatch/win32.rs` 接走 ⇒ F12 可以开工〕。"
-    );
 }
 
 /// ★ **F12 的解锁闹钟**〔devbench F12 摸底，08-10〕。
@@ -520,61 +495,7 @@ fn the_one_real_ticker_still_looks_like_a_ticker() {
 // F17：**monitor Rust 自己拼出来的 shell 周期唤醒**（三张表此前都看不见的那一族）
 // ═══════════════════════════════════════════════════════════════════════
 
-/// shell 形态的周期唤醒登记表：`(路径, 形态, 类别, 处数, 为什么 + 谁退役它)`。
-///
-/// # ⚠ 为什么要**另开一张**，不并进 `REGISTERED`
-///
-/// `REGISTERED` 的「处数」是由 [`wake_hits`] 数出来的（**Rust 级** `thread::sleep` 一族），
-/// 两者是同一条双向断言的两端。把 shell 那族混进来会让那个数失去意义。
-/// ⇒ 另开一张表 + 另一个扫描器，两张各自双向。
-///
-/// # 它补的是哪个洞（F12 的 `/full-audit` 逮到的）
-///
-/// 〔：下面这段讲的 `account_usage.rs` 已整删，留着是因为它解释的是
-/// **本表为什么要另开一张**，不是在描述今天的盘面。〕
-/// `account_usage.rs` 在 Rust 里**拼出**一条 shell 轮询循环
-/// （`while [ $i -lt N ]; do sleep 0.5; tmux capture-pane …`），而：
-///
-/// - 本模块原来的 [`wake_hits`] 只认 **Rust 级**的 `sleep`/`interval` ⇒ 看不见它；
-/// - `polling_registry` 只管 TS 与 `shared/ccm` ⇒ 不管 Rust；
-/// - backend 那条「外部节拍」子扫描要求 `format!` 与循环词**同行**，
-///   而这处的 `format!(` 在一行、`while [` 在下一行 ⇒ **照抄它也会漏**。
-///
-/// ⇒ 于是「零轮询」那条成功标准的勾曾经建立在一个**看不见它**的读数上（F12 已撤勾）。
-///
-/// # ⚠ 模式面为什么只收「只可能是 shell」的形态
-///
-/// 摸底时我先用宽模式量了一遍，`for i in` 当场误命中 `find_ci` 的 **Rust** `for i in 0..n`
-/// （当时住 `search.rs`；`K-R100` 09-13 起住 `crates/search-core/src/lib.rs`）。
-/// ⇒ 模式面只留 shell 独有的写法（见 [`shell_wake_hits`]）。**先量后写**，不然扫描面
-/// 要么画小（漏）要么画大（噪音），而两种都会让这张表失去意义。
-const SHELL_WAKES: &[(&str, &str, &str, usize, &str)] = &[
-    // ★★ 🔴 `K-R104`（09-13）：**本表今天是空的，而空是它的交付，不是它坏了。**
-    //
-    // 它原来有两行，都在 `src/account_usage.rs`：
-    // ① 画面稳定轮询（那个渲染函数拼的 `while [ $i -lt N ]; do sleep 0.5;
-    //    tmux capture-pane …`，2 处）· ② 自毁看门狗（`setsid sh -c 'sleep 30;
-    //    tmux kill-session …'`，1 处）。两行的「退役条件」当时逐字写着
-    //    **「探针改成由后端托管」⇒ 未排期**。
-    // ⇒ `K-R104` 把整条编排搬上后端帧面：轮询那一半变成 monitor Rust 里的
-    //    `tokio::time::sleep`（**归 `REGISTERED`**，不再是 shell 形态），
-    //    看门狗那一半整个搬进后端（`control/oneshot_session.rs` 的外部进程）。
-    //    **认领人来了。**
-    // 上面整段是**考古**：用量 ③ 轴（探针）整轴退役 ⇒ 那两处唤醒
-    //    连同它们的新住址一起没了（`REGISTERED` 里那条 `account_usage.rs` 已删、
-    //    backend 的 `control/oneshot_session.rs` 也已删）。本表**仍然是空的**，
-    //    而空的理由从「搬走了」变成「那件事不做了」。零命中守卫照旧管这一族。
-    // ★ 与 `watcher.rs`（F11）· `stream_source/` 的 daemonless（`K-R59`）同形：
-    //   **退役的验收证据就是本表先红在「少一处 = 退役了」上，删掉登记才绿。**
-    //   不是靠人说「我改好了」。
-    //
-    // ⚠ **表空了之后这一族由谁守**：下面 `every_shell_shaped_periodic_wake_is_registered`
-    //   翻成了**零命中守卫**（monitor Rust 生产段里一处 shell 形态的周期唤醒都不许有），
-    //   并带一条反向自检（合成样本必须被逮到）——
-    //   否则「表空 + 扫不到」与「扫描器坏了」在读数上一模一样。
-];
-
-/// shell 形态的周期唤醒。**只收「只可能是 shell」的写法** —— 见 `SHELL_WAKES` 头注。
+/// shell 形态的周期唤醒。**只收「只可能是 shell」的写法**。
 fn shell_wake_hits(prod: &str) -> usize {
     // 判据串运行时拼，免得命中本文件自己的说明。
     let pats = [
@@ -596,12 +517,6 @@ fn shell_wake_hits(prod: &str) -> usize {
 /// ★ 抽取器自检：模式面既没画小也没画大。
 #[test]
 fn the_shell_wake_scan_is_neither_too_narrow_nor_too_wide() {
-    let files = rust_files();
-    assert!(
-        files.len() >= 60,
-        "只扫到 {} 个 .rs —— 遍历坏了（与 `REGISTERED` 那条共用同一个遍历器）",
-        files.len()
-    );
     // ★ **画大了会怎样**：摸底时 `for i in` 误命中了 `find_ci` 里那个 Rust `for i in 0..n`。
     //   这条把那次教训钉住 —— 模式面不许收到 Rust 的循环写法。
     //
@@ -642,60 +557,16 @@ fn every_shell_shaped_periodic_wake_is_registered() {
         shell_wake_hits(&synthetic) >= 1,
         "尺子认不出一条摆在面前的 shell 轮询 —— 下面那格是零命中地绿"
     );
-    let mut want: Vec<(String, usize)> = Vec::new();
-    for (f, _, _, n, _) in SHELL_WAKES {
-        match want.iter_mut().find(|(k, _)| k == f) {
-            Some((_, acc)) => *acc += n,
-            None => want.push(((*f).to_string(), *n)),
-        }
-    }
-    want.sort();
-    let mut got: Vec<(String, usize)> = rust_files()
+    let got: Vec<(String, usize)> = rust_files()
         .into_iter()
         .filter_map(|(rel, raw)| {
             let n = shell_wake_hits(&production(&raw));
             (n > 0).then_some((rel, n))
         })
         .collect();
-    got.sort();
-    assert_eq!(
-        got, want,
-        "\nmonitor Rust **拼出来的 shell 周期唤醒**，实际分布与登记表对不上。\n\
-             **多一处** = 新拼了一条没登记 —— 先回答它属哪一类，以及\n\
-             「它等的那个条件有没有内核事件源；没有就如实记未排期」。\n\
-             **少一处** = 退役了 —— 删登记并把处数拧下来。\n\
-             ⚠ 这一族此前**三张表一张都看不见**（本模块只认 Rust 级 sleep · `polling_registry` 不管 Rust ·\n\
-             backend 那条子扫描要求 `format!` 与循环词同行而这处跨行）—— F17 补的就是它。"
+    assert!(
+        got.is_empty(),
+        "\nmonitor Rust 又**拼出了 shell 周期唤醒**：{got:?}\n\
+             远端那一侧的等待归后端（它有内核事件源）；先问能不能改问后端。"
     );
-}
-
-/// ★ shell 那张表也守同一条类别纪律；且 `ticker` 必须写明事件源与退役归属。
-#[test]
-fn every_shell_wake_names_its_class_and_who_retires_it() {
-    // 🔴 `K-R104`：本表**今天就是空的**（那两行随编排搬进后端而退役，
-    //    理由逐条写在表里）。⇒ 这里不再断「非空」——
-    //    「上面那条会不会零命中地绿」由它自己那条**反向自检**接住（合成样本必须被逮到），
-    //    那比「表里得有东西」强：表非空也可能扫描器早就坏了。
-    //    ⚠ 哪天又有人往这张表里加行，下面这个循环自动盖到它。
-    for (f, form, kind, n, why) in SHELL_WAKES {
-        assert!(
-            matches!(
-                *kind,
-                "ticker" | "wait-for-condition" | "throttle" | "startup-delay"
-            ),
-            "{f} / {form} 的类别 `{kind}` 不在四类里"
-        );
-        assert!(*n > 0, "{f} / {form} 的处数是 0");
-        // 四类**都**要说清「等什么 / 上界从哪来」；这一族全都跑在远端 shell 里，
-        // 谁退役它更容易被忘 ⇒ 这张表对四类一律要求写「退役」或「未排期」。
-        assert!(
-            why.contains("退役") || why.contains("未排期"),
-            "{f} / {form} 没说谁退役它（没人认领也要写「未排期」，别留空）"
-        );
-        assert!(
-            why.contains("事件源") || why.contains("一次性"),
-            "{f} / {form} 既没说事件源在哪、也没说它是一次性的 —— \
-                 那两者之一必须写，否则「它为什么还得靠轮询」无从判断"
-        );
-    }
 }

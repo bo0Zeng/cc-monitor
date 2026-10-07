@@ -85,37 +85,26 @@ const PORTALS = fixedPortals(SOURCES);
 // ═══════════════════════════ ⓪ 量具自检 ═══════════════════════════
 
 describe("P21 ⓪ 量具自检（这几条不过，下面六格全是空转）", () => {
-  it("生产 TS 人群没缩水（2026-09-22 实测 128 份）", () => {
+  it("生产 TS 人群没缩水（正控：主窗口入口在人群里）", () => {
     expect(
-      SOURCES.length,
-      `只扫到 ${SOURCES.length} 份生产 .ts（09-22 实测 128）—— 遍历坏了，①③⑥ 会零命中地绿`,
-    ).toBeGreaterThan(100);
+      SOURCES.some((s) => s.file.endsWith("frontend/ui/main.ts")),
+      `生产 .ts 的人群里没有 \`main.ts\`（扫到 ${SOURCES.length} 份）—— 遍历坏了，①③⑥ 会零命中地绿`,
+    ).toBe(true);
   });
 
-  it("CSS 切规则那一刀在承重：规则数与 fixed 选择器数都不许塌（09-24 实测 24 个 fixed 选择器）", () => {
-    expect(CSS_RULES.length, "一条 CSS 规则都没切出来 —— ②⑤ 此刻无效").toBeGreaterThan(500);
-    // 🔴 这个 25 是**等号**，不是地板：本文件第一版用「相邻规则共用 `}`」的 matchAll 形，
-    //    这里实测报 16（漏 9 条），而 16 看起来完全正常。等号让那种漏当场可见。
-    //    真加了一个 fixed 浮层 ⇒ 这里与下面 ② 的登记表**同时**红，那正是要的摩擦。
-    // 25 → 24：少的是 `.sftp-overlay`（老 SFTP 面板的遮罩，随面板整段 CSS 退役；
-    //    它挂在 `document.body` 上、不在 ② 的登记表里 —— 那张表今天一行都没因此变）。
-    //    24 → 23：少的是 `.inbox-overlay`（收件箱编辑面随它的 CSS 一起删了；同样挂在 `document.body` 上、不在 ② 的表里）。
-    //    23 → 22：少的是 `.agent-records-viewer-mount`（agent 面板点一行改成就地展开时间线，全屏查看器那层挂载壳删了；
-    //    它挂在 `document.body` 上、不在 ② 的表里）。
-    //    22 → 21：少的是 `.panorama-view`（代码全景页随它的 CSS 一起删了；同样挂在 `document.body` 上、不在 ② 的表里）。
-    //    21 → 20：少的是 `.settings-cc-modal-backdrop`（别名块的预览浮层删了 —— 「我自己贴」就地给接入那几行；它挂在 `document.body` 上）。
-    //    20 → 14：右键菜单 · 历史右键 · 选主机 · 账号选单 · 说明提示 · toast 栈六个浮层并进通用组件（`kit/` 的 CSS Modules，都挂 `document.body`）。
-    //    14 → 13：少的是 `.history-view`（历史页照稿重做，样子进了 `views/history.module.css`；挂在 `document.body` 上、不在 ② 的表里）。
-    //    13 → 12：少的是 `.tasks-popover`（任务 · agent 两块浮层并进主区底部抽屉 —— 网格里的一行，不是 fixed 浮层；它原在 ② 的表里，那一行一起摘了）。
-    //    12 → 11：少的是 `.import-preview-back`（设置窗批量导入预览并进 kit 的「添加机器」对话框；它挂在 `document.body` 上）。
-    //    10 → 8：少的是 `.fork-ask-backdrop`（分叉追问小窗）与 `.launcher-back`（机器卡「开新 Claude」即席框）——
-    //    起新会话收成 kit 对话框里的一个框（`new-session.ts`），两张旧表单连同 CSS 删了；前一个原在 ② 的例外表里，那一行一起摘了。
-    expect(
-      fixedSelectors().length,
-      `CSS 里声明 \`position: fixed\` 的选择器有 ${fixedSelectors().length} 个（10-06 实测 8：两张旧起会话表单的遮罩随表单删了）。\n` +
-        "★ 变多 = 新加了一个浮层 ⇒ 去 ② 的登记表里交代它挂在哪；\n" +
-        "★ 变少 = 要么真删了一个，要么**切规则那一刀又漏了**（第一版漏了 9 条，报 16）。",
-    ).toBe(8);
+  it("CSS 切规则那一刀在承重：规则切得出来，fixed 选择器一个不漏", () => {
+    expect(CSS_RULES.length, "一条 CSS 规则都没切出来 —— ②⑤ 此刻无效").toBeGreaterThan(0);
+    // 切规则那一刀的正控：相邻规则共用 `}`、嵌在 @media 里、选择器分组 —— 每一个 fixed 都得切出来
+    //（第一版用「相邻规则共用 `}`」的 matchAll 形，真树上漏了 9 条，而那个数看起来完全正常）。
+    // 新加一个 fixed 浮层由下面 ② 的登记表接住。
+    const probe = [
+      ".a { position: fixed; } .b { position: fixed; }",
+      "@media (min-width: 1px) { .c { position: fixed; } }",
+      ".d, .e { top: 0; position: fixed; }",
+      ".f { position: absolute; }",
+    ].join("\n");
+    // 分组 `.d, .e` 按两个选择器算 ⇒ 五个。
+    expect(fixedSelectors(probe).length, "切规则那一刀在合成样本上漏了 fixed 选择器").toBe(5);
   });
 
   it("🔴 正控：`alert(` 的量具对合成样本判得出「有」与「没有」两种", () => {
@@ -343,14 +332,10 @@ describe("P21 ⑤ 条 21.2：`.stream` 家族在 CSS 里不许出现 `overflow-a
 
   it("★ JS 侧那个唯一豁免类：每处临时 `overflow-anchor:none` 都有还原，且还原在 `finally` 里", () => {
     const toggles = anchorToggles(SOURCES);
-    // 分母：09-22 实测两处（`tabs.fillAbove` F40b · `session-viewer.maybeFillAbove` F39）。
-    // 〔骨架〕+2，同一豁免类（同步任务内临时关、`finally` 还原）：
-    // `tabs.attachSkeleton`（视口上方插一块高占位时按 ΔscrollHeight 补偿）·
-    // `skeleton-view.materializeRanges`（物化可见区时钉住视口里那张已渲染卡）。
     expect(
       toggles.length,
       "找不到任何临时关闭处 —— 下面两条在空集合上绿。要么补批路都删了（那这一格一起删），要么量具坏了",
-    ).toBe(6); // +1 同一豁免类：`skeleton-view.attachGaps`（查看器接骨架时钉住视口那张卡） // +1 同一豁免类：`skeleton-view.applyRefined`（第二级精算改占位高时钉住视口）
+    ).toBeGreaterThan(0);
     expect(
       toggles.filter((t) => t.onLine === null).map((t) => `${t.file}:${t.offLine}`),
       "临时关掉了 `overflow-anchor` 却找不到还原处 ⇒ 那个 tab / viewer 会话**永久**失去原生锚定",

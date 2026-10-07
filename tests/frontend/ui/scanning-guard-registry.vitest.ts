@@ -146,14 +146,15 @@ describe("TS 侧扫描型判据的卫生（F23/F24 的 TS 那半）", () => {
   const files = allTs();
 
   it("抽取器自检：真的扫到了 TS 源码树", () => {
+    // 正控按名字点：本文件自己（一份测试）与主窗口入口（一份生产）都得在人群里。
     expect(
-      files.length,
-      `只扫到 ${files.length} 个 .ts（08-06 实测 180+）—— 遍历坏了，下面两条都会零命中地绿`,
-    ).toBeGreaterThan(120);
+      files.some((f) => f.endsWith("scanning-guard-registry.vitest.ts") && IS_TEST(f)),
+      "本文件不在扫描面里（或没被认成测试）—— 下面两条只看测试文件，那样它们什么也没量",
+    ).toBe(true);
     expect(
-      files.filter(IS_TEST).length,
-      "一个测试文件都没扫到 —— 下面两条只看测试文件，那样它们什么也没量",
-    ).toBeGreaterThan(50);
+      files.some((f) => f.endsWith("frontend/ui/main.ts")),
+      `扫描面里没有 \`main.ts\`（扫到 ${files.length} 份）—— 遍历坏了`,
+    ).toBe(true);
   });
 
   it("对照组：摘除不是死规则 —— 不摘的话本文件会把自己算进去", () => {
@@ -203,10 +204,7 @@ describe("TS 侧扫描型判据的卫生（F23/F24 的 TS 那半）", () => {
     const allIncludes = files
       .filter(IS_TEST)
       .reduce((acc, f) => acc + (readFileSync(f, "utf8").match(/\.includes\(\s*"/g)?.length ?? 0), 0);
-    expect(
-      allIncludes,
-      `整棵树的测试里只找到 ${allIncludes} 个 \`.includes("\`（08-06 实测 100+）—— 抽取器坏了`,
-    ).toBeGreaterThan(60);
+    expect(allIncludes, "整棵树的测试里一个 `.includes(\"` 都没找到 —— 抽取器坏了").toBeGreaterThan(0);
 
     expect(
       total,

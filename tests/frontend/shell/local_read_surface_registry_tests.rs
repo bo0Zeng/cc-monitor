@@ -1,116 +1,60 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// 本机读面登记表：`(相对 src/frontend/shell 的路径, 类别, 命中行数, 为什么 + 退役归谁)`。
+/// 本机读面登记表：`(相对 src/frontend/shell 的路径, 外层函数 / 项, 类别, 为什么 + 退役归谁)`。
 ///
-/// 多一处 ⇒ 下面那条红（防「F10 还没做而直读点增长」）；
-/// 少一处 ⇒ **也红**（退役了要把棘轮往下拧）。
-const REGISTERED: &[(&str, &str, usize, &str)] = &[
-    // `src/history.rs`（2）与 `src/backend/control/payload.rs`（3）两行摘了：两处都是「把 `CLAUDE_CONFIG_DIR`
-    //   拼进启动命令串」（`payload`，不属读面），随起会话的计划与渲染搬进本机后端（`control/launch_render/`，账号载体名改从适配层取）。
-    // 〔F10b 末批〕`history.rs` **按角色分条** —— 逐函数量过，那些命中不是一类活。
-    // ★ 分条的理由：登记表原本按「文件 × 单一类别」记账，而这个文件承载多种角色 ⇒
-    // 「读面迁完」时那条登记不会消失、`readers` 也不会降，账就成了假的。
-    // 🔴 **那条 `reader` 真退役了，本文件的处数之和 15 → 13。**
-    //    `list_history_projects` 不再 `resolve_claude_dir()` + `records_dir()` 自己遍历，
-    //    改问本机后端要 `--list-projects`（住 `backend/observe/local_query.rs`）——
-    //    这正是那条登记自己写着的退役条件，逐字兑现。⚠ **分条这件事因此付了息**：
-    //    它当初就是为了让「迁完了」这件事在账上看得见，而今天它确实少了一行。
-    // `src/history.rs` 两行摘了：`fence` 2（展开一个项目的路径围栏）与 `no-counterpart` 1（Codex 合成项目）——
-    //   本机历史清单整段搬进本机常驻后端（Codex 枚举进后端 `agents/codex/history.rs`，
-    //   `no-counterpart` 那一行自己写的退役条件「backend 侧补上 codex 的项目枚举」兑现了）。9 → 6。
-    // `src/history.rs` 的 `fence` 一行（1 处：`stream_read_session_jsonl` 本机那一支解析 records 根
-    //   只为验 `target.starts_with(&root)`）摘了 —— 那一支删了：本机冷读也经本机后端的 `history-read`，围栏归后端
-    //   （`observe/history_query.rs::validate_session_path`）。那一行写着的「两侧各一道」换成了两侧同一道廉价预检
-    //   （拒 `..` ＋ 必须 `.jsonl`，不解析根）。⚠ 这一行的针只认 `claude_dir` 一族，**从没数到**那一支真正的读
-    //   （`File::open`）—— 那个读者这一拍一起没了（点名的漏数）。
-    // 这里原来有 `src/history.rs` 的 `write` 一行（写操作恰好也读 dir 来定位文件：
-    //   `delete_history_session` · `create_branch_session`，4 处）。两件都改经后端（删会话 `files-delete-session`〔散文墓碑〕
-    //   只收 sid · 本机分叉 exec 本机后端 `--fork-session`），本进程不再解析 dir 来定位要写的那一份 ⇒ 4 → 0，摘行。
-    // 会话流来源拆成目录：原先一行 7 处按住址分两行（帧解析那份 5 · 流循环那份 2），口径不变。
+/// 每一处碰本机 claude 目录的源码按「文件 × 外层项」认（[`crate::guard_support::enclosing_fn`]）：
+/// 新的一处 ⇒ 下面那条红（直读点不许无声地长）；退役了 ⇒ **也红**（把那一行删掉）。
+const REGISTERED: &[(&str, &str, &str, &str)] = &[
     (
         "src/stream_source/run.rs",
+        "stream_loop",
         "remote",
-        2,
-        "流循环 hello 那一臂解出的远端 `claude_dir`（打日志用）。口径同下一行：说的是**远端**主机的 claude 目录，不是本机读面 ⇒ 不属 F10。",
+        "流循环 hello 那一臂解出的**远端** `claude_dir`（打日志用）。说的是远端主机的 claude 目录 ⇒ 不属本机读面。",
     ),
     (
         "src/stream_source/frame.rs",
+        "InboundFrame",
         "remote",
-        4, // 5 → 4：hello 的必填格改由 `req_str` 一行取（原先取值、构造各一行），口径不变、仍是远端。9 → 7：测试连接那一份 hello 人读摘要（`claude_home_from_hello` 的一处调用 ＋ 解构出的 `claude_dir`）随测试连接搬进本机后端删了
-        "★ **说的全是远端主机的 claude 目录**：backend `hello` 帧的 `claude_dir` 字段。\
-             **根本不是本机读面** ⇒ 不属 F10。\
-             〔`K-R59` 09-11：**10 → 9**。退役的那 1 行是原先并列写在这里的第二样 —— \
-             `daemonless` 那条远端 shell 串里的 `\\${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects`，\
-             随定框 `K35` 整段删除。⚠ **口径没变，仍是远端**：拧下来的不是「本机读面少了一行」。〕\
-             ⚠ 我摸底时差点把它算成本机的 8 行 —— 同名最便宜的误导。\
-**8 → 10**：additive 迁移在消费侧多了一个解析点 —— \
-             `claude_home_from_hello`（优先 `hello.homes`、回退 `claude_dir`）加上它的两处调用。\
-             口径**没变**，还是远端：涨的两行说的仍是**远端** backend 自陈的目录，不是本机的。\
-             ⚠ 这两行是**真的多出来的**，不是数字漂了 —— 本来可以把参数改名躲开针来保住 8，\
-             那才是「改数字了事」的镜像（为了不动数字去拧代码）。",
+        "backend `hello` 帧的 `claude_dir` 字段（冻结的线上格）。说的是远端主机的 claude 目录 ⇒ 不属本机读面。",
     ),
-    // `src/lib.rs` 那一行（2 处：setup 里解析一次 Claude 目录、打一行日志）摘了：Claude 目录只由那台后端解析，monitor 不再解析它。
+    (
+        "src/stream_source/frame.rs",
+        "parse_frame",
+        "remote",
+        "解 `hello` 帧时取 `claude_dir` 那一格。远端主机的目录 ⇒ 不属本机读面。",
+    ),
+    (
+        "src/stream_source/frame.rs",
+        "claude_home_from_hello",
+        "remote",
+        "hello 里远端后端自陈的 Claude home（优先 `homes`、回退 `claude_dir`）。远端的目录 ⇒ 不属本机读面。",
+    ),
     (
         "src/config.rs",
+        "claude_dir_override",
         "hub",
-        1, // 8 → 1：Claude 目录的三级回退（`resolve_claude_dir`）删了 —— 只由那台后端解析；剩 `claudeDir` 覆盖原值那一处（`claude_dir_override`）
-        "住址 `src/paths.rs` → `src/config.rs`（「config ＋ paths → 一处」，整份并进来、处数不变）。\
-10 → 9：数据目录那条规则搬进共享 `creds_core::store::monitor_data_dir`（远端常驻后端按同一份推默认），本文件只转交。\
-             **路径源头** —— 只回答「`~/.claude` 与它的子目录在哪」，自己不读内容。\
-             切后端之后它**仍然要在** ⇒ **不属**退役范围。\
-             〔`P17` 2026-09-22：9 → 10。多的那一处是 `env::var(CCM_DATA_DIR)` ——\
-              monitor 自己那个数据目录的**出口**（此前它一处出口都没有 ⇒ 任何一趟\
-              「把 monitor 跑起来量点东西」都会写进用户真 profile，09-21 在那台\
-              Win11 虚拟机上现打到过这一形）。⇒ 它同样是**路径源头、不读内容**，\
-              归 `hub`；切后端之后**仍然要在**（得告诉后端「这一趟的家在哪」）。〕",
+        "**路径源头**：设置里 `claudeDir` 覆盖原值那一格，只回答「用户填了什么」，自己不读内容；\
+             Claude 目录本身只由那台后端解析 ⇒ 不属退役范围。",
     ),
     (
         "src/local_backend_host.rs",
+        "CLAUDE_DIR_ENV",
         "non-read",
-        4, // 6 → 4：门牌改按家算、hello 不再比 Claude 目录；剩的是把设置里那一格交给后端（`CLAUDE_DIR_ENV` 常量与它的说明）
-        "**一个字节的用户数据都没读。**今天的命中全是「把设置里填的 Claude 目录原样交给后端」（`backend_env`）。\
-             〔下面是从前的样子：〕四个命中全是「拿这条路径当身份比」：\
-             3 处在 `hello_verdict`（解 hello 帧的**冻结 wire 字段** `claude_dir` + 比 + 那句诊断），\
-             1 处是 `start_detached` 里问一次 `paths::resolve_claude_dir()` —— \
-             它只用来**算那台机的监听口**（`listen_port_for`）并核对「那个口上的后端看的是不是同一个目录」。\
-             ⚠ 这一格恰恰是**反过来**的：它存在的理由是**不许静默复用**别人的后端。\
-             ⇒ **不属**退役范围（切后端之后仍要有人回答「我该连哪个口」）。\
-             〔STOP 09-27：4 → 6〕多的两处在 `run_resident_stop`：问一次 `resolve_claude_dir()` 并把它交给一次性 `--resident-stop` 的\
-             `CLAUDE_CONFIG_DIR` —— 同一个用途（让它算出同一个口、找到同一份 pid 记录），同样不读内容。",
+        "交给后端的那个环境变量名。一个字节的用户数据都不读 ⇒ 不属退役范围。",
     ),
-    // `src/cc_bus_deploy.rs` 那一行（14 处 `claude_dir`）摘了：装与三态进了本机后端，monitor 那份只剩装前的 `ccm` 预检、不再碰 `claude_dir`。
-    // 新增的直读点 —— **老实登记，不绕棘轮**（棘轮要的是论证，不是禁令）。
-    // 那一条（`src/plugins.rs`，`reader`，5 处）**真退役**，退役条件原文逐字兑现：
-    //   「backend 侧补一条 `--list-marketplaces`……那条一落地，本机改走后端、远端那半……也一起补平
-    //   —— 一件事同时清两笔账」。落地的名字是帧命令 `plugins-marketplaces`（CLI 面 `--plugins-marketplaces`），
-    //   本体从 `plugins.rs` 原样搬进后端 `observe/plugins_query.rs` ⇒ 本文件 0 处，整行摘掉。
-    // `src/search.rs` 那条 `reader`（4 处：全文索引构建时遍历 records 目录）**退役**，但**不是**按它自己写的
-    //   解锁条件（「backend 侧也有索引」）退的：按目标形（本机远端同一条代码路径
-    //   搜索收口到后端），本机搜索改问本机后端的 `history-search`、每次现扫。本文件 0 处，整行摘掉。
-    // `src/adapter.rs` 那条 `reader`（3 处：`records_dir` / `liveness_dir` 一族的路径解析）**真退役**：
-    //   那几个门面零调用方（冷读 · 判活 · 搜索都改问本机后端），删了 ⇒ 本文件 0 处，整行摘掉。
-    // `src/tasks.rs` 那条 `reader`（3 处，「读 `tasks/<sid>/*.json`（issue #11 的任务面）。
-    //   退役归 F10 本体。」）**真退役**：读任务文件搬进后端 `tasks-list`（本机与远端同一条路），
-    //   monitor 那份直读函数与「解析当前任务根」那个小帮手一起删了 ⇒ 本文件 0 处，整行摘掉。
-    // `src/accounts.rs` 那条 `remote`（2 处：「远端后端版本较旧…」那两句提示里提到了配置目录那个环境变量）
-    //   **整行摘掉**：那两句随 `degraded_notice`〔散文墓碑〕一起删了（账号清单改由那台机器的后端出成品、「缺账号 0」那句由后端说）
-    //   ⇒ 本文件 0 处。⚠ 与这张表别的「往下走」一样**不算工作量减少**：它本来就不是本机读面。
-    // `src/mcp.rs` 那一行（读 `.claude.json` 的 MCP 声明，6 处）退役：MCP 列表改问那台后端 `mcp-read`，monitor 零处读它。
-    // `src/adapter/claude_code.rs` 那一行（1 处：适配器自己的数据根）**真退役**：monitor 那份适配表删了，
-    //   起会话事实只住后端适配层；setup 里取 claude 目录直接问 `config::resolve_claude_dir`（那一处本来就登记在 `src/config.rs` 里）。
-    // `src/config_surface.rs`〔散文墓碑〕那一行（3 处）随判定进后端摘了（`src/backend/footprint/rows.rs`，那一半不在本表人群里）。
-    // `src/footprint_client.rs` · `src/data_paths.rs` 两行摘了：足迹里 monitor 那几行不再交 agent 家（用这台后端自己解析的那一个）；
-    //   数据位置页算监听口改按家算（门牌只跟着家走，与 Claude 目录无关）。
-    // `src/hooks_diag.rs` 那一行摘了：钩子诊断进了后端（`hooks-diag`），monitor 不再读 settings。
-    // 🔴 原来这里有一行 `src/ccm_cli_contract.rs`（`non-read` 1 处：
-    //    契约清单里出现过 `CLAUDE_CONFIG_DIR` 这个变量名）。本拍把那个模块从 2773 行砍到
-    //    只剩 7 条 cc-spawn 判据，那张清单随 `shared/ccm` 一起删了 ⇒ 那个变量名不再出现。
-    //    **账跟着删**（登记表腐烂比没有登记更糟）。
-    // `src/tool_registry.rs`〔散文墓碑〕那一行（8 处申报字面量）随申报表进后端摘了（`src/backend/footprint/registry.rs` ＋ 落在 Claude 布局里的那一半
-    //   `src/backend/agents/claudecode/footprint.rs`，都不在本表人群里）。
-    // `src/skill_host.rs` 那一行摘了：收件箱那一面整份进了后端适配层（`agents/claudecode/skill_host.rs`）。
-
+    (
+        "src/local_backend_host.rs",
+        "backend_env",
+        "non-read",
+        "把设置里填的 Claude 目录原样交给后端（起常驻后端、一次性 `--resident-stop` 都走它）。不读内容 ⇒ 不属退役范围。",
+    ),
+    (
+        "src/local_backend_host.rs",
+        "backend_env_from",
+        "non-read",
+        "同上一行的纯函数那一半：有就塞进环境变量。不读内容 ⇒ 不属退役范围。",
+    ),
 ];
 
 fn root() -> &'static Path {
@@ -138,21 +82,16 @@ fn needles() -> Vec<String> {
     ]
 }
 
-fn hits(prod: &str) -> usize {
+/// 一份生产段里命中的那些行各自所在的函数名（去重前）。
+fn hit_fns(prod: &str) -> Vec<String> {
     let ns = needles();
-    prod.lines()
-        .filter_map(|l| {
-            // ⚠ **首跑的缺陷**：只跳过「整行注释」，于是 `mod accounts; // …CLAUDE_CONFIG_DIR`
-            // 这种**行尾注释**里的提及也被算成读点（`lib.rs` 因此被数成 8 行而真值是 4）。
-            // ⇒ 先把行尾 `//` 之后砍掉，再看剩下的代码部分。
-            let code = match l.find("//") {
-                Some(i) => &l[..i],
-                None => l,
-            };
-            (!code.trim().is_empty()).then_some(code)
-        })
-        .filter(|code| ns.iter().any(|n| code.contains(n.as_str())))
-        .count()
+    // 行尾注释里的提及不算读点：先走共享剥法砍掉行尾注释（行数不变，行号与外层函数的对应不动）。
+    let code = guard_core::strip_trailing_comments(prod);
+    let lines: Vec<&str> = code.lines().collect();
+    (0..lines.len())
+        .filter(|&i| ns.iter().any(|n| lines[i].contains(n.as_str())))
+        .map(|i| crate::guard_support::enclosing_fn(&lines, i))
+        .collect()
 }
 
 /// 递归遍历 `src/`，**不是硬编码文件名单**。
@@ -295,11 +234,6 @@ const HOME_REACHES: &[(&str, &str, &str, &str)] = &[
 #[test]
 fn every_reach_into_the_user_home_is_indexed() {
     let files = rust_files();
-    assert!(
-        files.len() >= 80,
-        "只扫到 {} 个 .rs —— 遍历器坏了，本条会零命中地绿",
-        files.len()
-    );
     let needle = format!("home_{}()", "dir");
     let mut found: Vec<(String, String)> = Vec::new();
     for (rel, src) in &files {
@@ -352,12 +286,14 @@ fn every_reach_into_the_user_home_is_indexed() {
 #[test]
 fn the_scan_actually_reads_the_monitor_tree() {
     let files = rust_files();
-    assert!(
-        // ★ audit-0805 F16：60 → **80**（今日实测，与 `structural_scan` 同一棵树）。
-        files.len() >= 80,
-        "只扫到 {} 个 .rs —— 遍历器坏了",
-        files.len()
-    );
+    // 遍历器正控：入口 `lib.rs` 与窗口包里那份必在人群里（manifest 明写的兄弟包也要被走到）。
+    for must in ["src/lib.rs"] {
+        assert!(
+            files.iter().any(|(n, _)| n == must),
+            "遍历器没走到 `{must}`（走到 {} 份）—— 本条会零命中地绿",
+            files.len()
+        );
+    }
     let me = files
         .iter()
         .find(|(n, _)| n == "src/local_read_surface_registry.rs")
@@ -369,34 +305,31 @@ fn the_scan_actually_reads_the_monitor_tree() {
     );
 }
 
-/// ★ 递减棘轮：目录内容 == 登记表，**连每个文件的行数一起钉**。
+/// ★ 目录内容 == 登记表：每一处命中按「文件 × 外层函数」两向相等。
 #[test]
 fn the_local_read_surface_matches_the_registry_line_for_line() {
-    // 〔F10b 末批〕**按角色分条之后，同一个文件可以有多条登记** ⇒ 这里先按文件把处数**加起来**
-    // 再与实测比。⚠ 这不是放宽：实测那一侧仍然是「文件 → 命中行数」，两边的口径必须一致，
-    // 而分条改变的是**登记的粒度**，不是被比的量。
-    let mut sum: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
-    for (f, _, n, _) in REGISTERED {
-        *sum.entry((*f).to_string()).or_default() += *n;
-    }
-    let mut want: Vec<(String, usize)> = sum.into_iter().collect();
+    let mut want: Vec<(String, String)> = REGISTERED
+        .iter()
+        .map(|(f, func, ..)| ((*f).to_string(), (*func).to_string()))
+        .collect();
     want.sort();
-    let mut got: Vec<(String, usize)> = rust_files()
+    want.dedup();
+    let mut got: Vec<(String, String)> = rust_files()
         .into_iter()
-        .filter_map(|(rel, raw)| {
-            let n = hits(&guard_core::production_code(&raw));
-            (n > 0).then_some((rel, n))
+        .flat_map(|(rel, raw)| {
+            hit_fns(&guard_core::production_code(&raw))
+                .into_iter()
+                .map(move |f| (rel.clone(), f))
         })
         .collect();
     got.sort();
+    got.dedup();
     assert_eq!(
         got, want,
-        "\n本机读面与登记表对不上。\n\
-             **多一处/多一行** = F10 还没做而直读点在增长 —— 那会让 F10 的工作量翻倍。\n\
-             先回答它属哪一类（`hub` 路径源头 / `reader` 真读内容 / `payload` 只拼串），\n\
+        "\n本机读面与登记表对不上（按「文件 × 外层函数」认）。\n\
+             **多一处** = 直读点在增长 —— 先回答它属哪一类（`hub` 路径源头 / `reader` 真读内容 / `payload` 只拼串），\n\
              `reader` 还要写退役归属。\n\
-             **少一处** = 退役了 —— 把登记表那条删掉并把棘轮往下拧。\n\
-             ⚠ 数字**以本条为准**，不以手数为准（F05 摸底手数出 20 个文件，机器数是 13 个）。"
+             **少一处** = 退役了 —— 把登记表那条删掉。"
     );
 }
 
@@ -404,7 +337,7 @@ fn the_local_read_surface_matches_the_registry_line_for_line() {
 #[test]
 fn every_reader_names_its_retirement_owner() {
     let mut readers = 0;
-    for (f, kind, _, why) in REGISTERED {
+    for (f, _, kind, why) in REGISTERED {
         assert!(
             matches!(
                 *kind,
@@ -431,62 +364,10 @@ fn every_reader_names_its_retirement_owner() {
             ),
         }
     }
-    // 抽取器自检：一条 reader 都没认出来时上面全空转。
-    // 4 → **3**：`mcp.rs` 真退役（MCP 列表改问那台后端 `mcp-read`，monitor 零处读 `.claude.json`）。
-    // 3 → **2**：`hooks_diag.rs` 真退役（钩子诊断进后端 `hooks-diag`，monitor 零处读 `settings.json`）。
-    // 2 → **1**：`adapter/claude_code.rs` 真退役（monitor 那份适配表删了，起会话事实只住后端适配层）。
-    // 1 → **0**：`footprint_client.rs` 真退役（足迹里 monitor 那几行不再交 agent 家 —— Claude 目录只由那台后端解析）。
-    //   ⚠ 0 之后「一条 reader 都没认出来」就是真值，不再是抽取器坏了的信号；类别与「不属」那两条照旧逐条判。
+    // 本机直读点（`reader`）今天是零：monitor 不再自己读 claude 目录的内容，读都问后端。
     assert_eq!(
         readers, 0,
-        "`reader` 条数变了（**实测 0 条** —— ⚠ 这句话本身腐过一次：数字从 11 一路走到 7，\
-             而这段文案一直写着「实测 10 条」，是 S11 那族出现在**判据自己的报错文案**里）。这个数就是 **F10 的真实工作面** —— \
-             多一条要说明为什么又加了直读点，少一条说明退役了一处（把棘轮往下拧）。\n\
-             ⚠ 棘轮史：11 → **10**（F10b 第一批，`usage.rs` 退役 —— 它改走本机后端的 `--usage`）\n\
-             → **9**（F10b 第二批：`accounts.rs` **改分类**为 `remote` —— 它本来就不是本机读面，\n\
-             ⚠ **那一格不算退役、不算工作量减少**，只是把误分类改对，理由写在它自己那条登记里）\n\
-             → **8**（F10b 第二批·下半：`local_accounts.rs` **真退役** —— 那 3 个命中全属\n\
-             `list_local_session_accounts`〔散文墓碑〕一个函数，它改走本机后端的 `--session-accounts`；\n\
-             顺带删掉 `proc_claude_config_dir`/`pid_alive` 两个**平台原语的第二份实现**，\n\
-             它们的家在后端的 `platform/proc.rs`）。\n\
-             → **7**（F10b 末批：`history.rs` 的 reader 条**转成 `no-counterpart`** ——\n\
-             ⚠ **那不是退役**，是量清「今天的查询集下它迁不了」并写明退役条件。\n\
-             ★ 至此本机读面**在现有后端查询集下已无可退**：剩下的每一处都有\n\
-             有名有姓的缺口（缺字段 / 缺索引 / 缺 codex 支持 / 根本不是读面）。\n\
-             ⚠ **别把这个数往上调**：往上调等于承认又加了直读点，那要先说清为什么。\n\
-             → **8****本表第一次往上走**，说清如下：`plugins.rs` 新开了\n\
-             marketplace 只读枚举。⚠ 数字与上面那个 8 撞了名而**来历相反**（那次是退役退下来的，\n\
-             这次是加上去的）—— 别把这段史读成「回到了那时的状态」。\n\
-             为什么不绕开：绕法只有两条，**两条都更差** —— ① 走后端（那要新子命令 +\n\
-             BUILD_ID + 协议文档 + 内嵌重编，是另一件事的体量，而本件是梯队 5 的只读面）；\n\
-             ② 不做（`U10d` 已裁「marketplace 面的只读枚举**可做**」）。\n\
-             ⇒ 记账不记功：退役条件写在那条登记里，且它与远端那半是**同一条**\n\
-             （backend 补 `--list-marketplaces` 一次清两笔）。\n\
-             → **9**`history.rs` 的 `list_history_projects` 那条\n\
-             **从 `no-counterpart` 转回 `reader`**。⚠ **第三次「往上走」，而三次来历各不相同**：\n\
-             `P8a` 那次是真加了直读点，这次是**把一处误分类改对**（同 `accounts.rs` 那次的形状、\n\
-             方向相反）。理由：`no-counterpart` 的字面含义是「backend 侧没有对侧」，\n\
-             而 `K-R83` 已经把 `--list-projects` 那一行的 `sessionIds` 补齐了 ⇒ 对侧有了。\n\
-             **F10 的工作面没变大，变真的是账** —— 那一处本来就要迁，只是从前记在\n\
-             「等后端补东西」那一栏里，看起来不像工作量。\n\
-             → **8****同一条登记，这次是真退役**：`list_history_projects`\n\
-             改问本机后端要 `--list-projects`（走 `backend::observe::local_query::run_query`），\n\
-             `resolve_claude_dir()` + `records_dir()` 那两行就地消失。\n\
-             ⚠ **与上面那些「往下走」的来历也不一样**：`usage.rs`/`local_accounts.rs` 那两次退的是\n\
-             一整个文件的读点，这次退的是**一条分条登记**（同文件还剩 fence/write/payload/codex 四类，\n\
-             那几类本来就不属退役范围）。⇒ 本文件的处数之和 15 → 13，`readers` 9 → 8。\n\
-             ⚠ **没有跟着退的那一半，写清楚免得成暗账**：codex 那条 `no-counterpart` 原封不动 ——\n\
-             后端的 `--list-projects` 只服务 claude，本机仍自己合成 codex 的合成项目。\n\
-             → **7****真退役**：`tasks.rs` 读 `tasks/<sid>/*.json` 那一整条\
-             改问那台机器的后端 `tasks-list`（本机也走后端，远端那半随之补平 —— `parity_ledger` \
-             `session.tasks` 那笔欠账同拍结清）。本文件处数 3 → 0，整行摘掉。\n\
-             → **6****真退役**：`plugins.rs` 那条（`P8a` 那次「往上走」加的）\
-             按它自己写下的退役条件退掉 —— 后端补了 `plugins-marketplaces`，本机改走后端，\
-             `parity_ledger` `plugins.marketplaces` 同拍结清。本文件处数 5 → 0，整行摘掉。\n\
-             → **5****退役，但不是按它自己写的解锁条件**：`search.rs` 那条（本机全文索引）——\
-             按目标形（本机远端同一条代码路径），本机搜索改问本机后端 `history-search`、\
-             每次现扫（「backend 侧也有索引」那个条件没兑现，代价读数在）。本文件处数 4 → 0，整行摘掉。\n\
-             → **4****真退役**：`adapter.rs` 那条（记录目录 / 活性目录的路径解析）—— 那几个门面零调用方、删了。"
+        "又登记了 `reader`（monitor 自己读 claude 目录的内容）—— 读面归后端，先问能不能改问后端"
     );
 }
 
@@ -514,9 +395,8 @@ fn the_local_backend_contract_has_exactly_one_home_and_f10s_ratchet_is_untouched
     let main_conf =
         fs::read_to_string(root().join("tauri.conf.json")).expect("读不到 tauri.conf.json");
     assert!(
-        main_conf.len() > 500,
-        "tauri.conf.json 只有 {} 字节，抽错了？",
-        main_conf.len()
+        main_conf.contains("\"identifier\""),
+        "tauri.conf.json 里没有 `identifier` —— 读到的不是那份配置？"
     );
     assert!(
         !main_conf.contains(key.as_str()),

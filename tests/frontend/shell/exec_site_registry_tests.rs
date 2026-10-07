@@ -186,19 +186,8 @@ fn every_remote_exec_declares_where_its_command_came_from() {
         }
     }
     assert!(
-        // 逐次拨号那条路（`remote_history.rs` 那一处）删了 ⇒ −1；主线 11（DP1 −1）＋ 本路 −1 ⇒ 10。
-        // 驾驶舱两条 shell 读删了 ⇒ 10 → 8；钩子诊断远端那条改问后端 ⇒ 7；MCP 远端读改问后端 ⇒ 6；列 tmux ⇒ 5。
-        // 5 → 4：远端 `ccm` 探针改问那台后端 `ccm-probe`（`probe_ccm_cli` 那一处 `connect_and_exec_cmd` 不在了）。〔散文墓碑〕
-        // 4 → 3：远端流模式那一处（起随 SSH 生死的流模式后端）随那一形删了。
-        // 〔09-28 裁 2〕3 → 2：部署 cc-acct-iso 那两步（跑安装脚本 · 核 PATH）换成那台后端的 `acct-iso-install`（`exec_collect` 那一处不在了）。
-        // 2 → 0：公钥推送进了本机后端（`pubkey-push`），原语随之删了⇒ **零处**：monitor 不再开一次性 exec 字节流。
         found.is_empty(),
-        "该是零处，却找到 {} 处 `connect_and_exec_cmd(`（原语已删；08-07 实测 16；\
-             **`K-R112` 09-13 现打 14** —— 查在线与抓屏那两处改走后端帧面之后各少一处；\
-             **`C1` 09-24 现打 12** —— 读会话与快照那两处改走长连接之后各少一处；\
-             **`DP1` 09-25 现打 11** —— 部署前问机器那一处改走 `connect_and_exec_capture`；\
-             **`C4d` 09-25 合并后现打 10** —— 逐次拨号那条路删了）\
-             —— 有人把一次性 exec 字节流的原语加回来了",
+        "找到 {} 处 `connect_and_exec_cmd(`（原语已删）—— 有人把一次性 exec 字节流的原语加回来了",
         found.len()
     );
     // 正控：同一个抽取形状在合成语料上数得出（零处不是因为尺子瞎了）。
@@ -300,19 +289,6 @@ fn every_remote_exec_declares_where_its_command_came_from() {
         [0, 0, 0, 0],
         "四类里又长出了样本 —— 回来把它放回自检"
     );
-    for (i, name) in ["Const", "Builder", "Quoted", "PassThrough"]
-        .iter()
-        .enumerate()
-        .filter(|_| false)
-    // 四类都收敛到零（原语删了）⇒ 没有哪一类还该有活样本
-    {
-        assert!(
-            per_class[i] >= 1,
-            "`{name}` 这一类今天一个样本都没有（08-07 实测 5/6/5/3；\
-                 **`K-R112` 09-13 现打 5/1/5/3** —— `Builder` 那一类只剩 `pubkey.rs` 一个）—— \
-                 那一支的机检在空转，而它看起来照样绿。真收敛掉了就把这条自检一起改。"
-        );
-    }
 }
 
 // ═════════════════════════════════════════════════════════════════════════════

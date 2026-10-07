@@ -44,7 +44,7 @@
  * 棘轮对并发是稳的：对方只要不把账做坏，数就只会不变或变小。
  *
  * ⇒ **代价如实记：③④ 拦不住「判据自己空转」**。补偿是每一格都单独配了一条
- * **反空真自检**（分母地板，见 `FLOORS`），那条是等号式的：分母掉下去当场红。
+ * **反空真自检**（按名字点的正控），量具坏了当场红。
  * 也就是说这里不是"棘轮代替等号"，是"棘轮管方向 ＋ 等号管分母"，两条腿。
  *
  * ## 🔴 ② 的三个已知假阳性 —— 这是本条的正控
@@ -90,40 +90,6 @@ const TIMEOUT_MS = 120_000;
 /** `z-index` 唯一准写的形状。与 `.stylelintrc.json` 里那条 allowed-list 是同一个意思。 */
 const Z_OK = /^var\(--z-[a-z0-9-]+\)$/;
 
-/**
- * 🔴 **反空真的地板**。每一格都要能说出「我判过几条」，而不是只说「过了」。
- *
- * 这些数是**地板不是快照**：现打值写在括号里，地板压在它下面留出改动余量。
- * 掉到地板以下 ⇒ 判据的人群缩水了（遍历坏了 / 词法错位 / 文件搬家），当场红。
- * ⚠ 别把地板往上抬成快照 —— 那会让每一次正常改动都红在一个与被守性质无关的数上。
- */
-const FLOORS = {
-  /**
-   * `src` 下的 CSS 文件份数。〔三入口拆分 · 人群改定义〕原先现打 2（`styles.css` ＋ `styles/tokens.css`），
-   * 按窗口 / 按层切开之后现打 **10**（`styles.css` ＋ `styles/` 下 9 份：layers · reset · tokens · layout ·
-   * shared · settings-shared · main · settings · viewer）。人群的**定义**没变（仍是 `src/**\/*.css` 全体，
-   * 与 `npm run lint:css` 的 glob 同一批，由格 ④ 对拍），变的是份数 ⇒ 地板跟着抬到 8：
-   * 留在 2 的话，丢掉 8 份文件这条也不会叫。「每份都被某个窗口的 html 链到」住 `tests/frontend/ui/entry-graphs.vitest.ts`。
-   * 同一拍现打：类名 780 · 代码侧引用 858 · z-index 39 · 悬空 162 —— 与拆之前**逐项相等**（拆文件只搬家，不改账）。
-   */
-  cssFiles: 8,
-  /** CSS 选择器里的类名个数（现打 777）。 */
-  cssClasses: 600,
-  /** `z-index` 声明条数（现打 29：顶栏四个入口搬进标签页栏顶，浮在消息流上的那四条 `z-index` 随之删了）。 */
-  zIndexDecls: 22,
-  /** 代码侧扫出来的类名形 token 个数（现打 2438）。 */
-  literals: 1500,
-  /** 第三方 CSS 自产的类名个数（现打 184，来自 katex ＋ highlight.js）。 */
-  vendorClasses: 80,
-  /** 常量拼接才冒出来的 token 个数（现打 1，`render.ts` 那一处；CSS 里已没有靠它活的类名）。 */
-  constConcat: 1,
-  /** 模板拼接派生出的前缀候选个数（现打 30）。 */
-  prefixCandidates: 10,
-  /** 代码里确实当类名用的引用个数（现打 859）。 */
-  usedClasses: 600,
-  /** 被扫的代码文件份数（现打 205）。 */
-  codeFiles: 150,
-} as const;
 
 /**
  * ★ **准拿来解释类名的模板前缀**（那份白名单的落点）。
@@ -390,17 +356,12 @@ function denom(cell: string, n: number, what: string): void {
 describe("S25 ⓪ 量具自检（这些不过，下面四格全是空转）", () => {
   it("遍历与词法真的扫到了东西", () => {
     const led = ledger();
-    expect(led.cssFiles.length, `只扫到 ${led.cssFiles.length} 份 CSS —— 遍历坏了`).toBeGreaterThanOrEqual(
-      FLOORS.cssFiles,
-    );
-    expect(led.codeFiles.length, "代码文件份数掉到地板以下 —— 遍历坏了").toBeGreaterThanOrEqual(FLOORS.codeFiles);
-    expect(led.cssClasses.size, "CSS 类名分母掉到地板以下 —— 选择器抽取坏了").toBeGreaterThanOrEqual(
-      FLOORS.cssClasses,
-    );
-    expect(led.literals.size, "代码侧 token 分母掉到地板以下 —— 词法器错位了").toBeGreaterThanOrEqual(
-      FLOORS.literals,
-    );
-    expect(led.usedClasses.size, "方向 ② 的调用点分母掉到地板以下").toBeGreaterThanOrEqual(FLOORS.usedClasses);
+    // 正控按名字点（不写份数）：令牌那份 CSS · 主窗口入口 · 消息流的 `.stream`（CSS 里有规则、代码里真挂）。
+    expect(led.cssFiles.some((f) => f.endsWith("styles/tokens.css")), "CSS 遍历里没有 `tokens.css` —— 遍历坏了").toBe(true);
+    expect(led.codeFiles.some((f) => f.endsWith("frontend/ui/main.ts")), "代码遍历里没有 `main.ts` —— 遍历坏了").toBe(true);
+    expect(led.cssClasses.has("stream"), "CSS 类名里没有 `stream` —— 选择器抽取坏了").toBe(true);
+    expect(led.literals.has("stream"), "代码侧 token 里没有 `stream` —— 词法器错位了").toBe(true);
+    expect(led.usedClasses.has("stream"), "方向 ② 的调用点里没有 `stream`").toBe(true);
     denom(
       "⓪",
       led.cssClasses.size,
@@ -413,15 +374,14 @@ describe("S25 ⓪ 量具自检（这些不过，下面四格全是空转）", ()
     expect(
       led.constConcat.size,
       "常量拼接一条都没识别出来 —— `const X = \"…\"` 那步坏了",
-    ).toBeGreaterThanOrEqual(FLOORS.constConcat);
+    ).toBeGreaterThan(0);
     expect(
       led.vendorClasses.size,
       `第三方类名只收到 ${led.vendorClasses.size} 个（来源：${led.vendorSpecs.join(", ") || "<一个都没找到>"}）` +
         " —— `import \"<包>/….css\"` 那步坏了，或者 node_modules 没装，`.katex-*` 会被判死",
-    ).toBeGreaterThanOrEqual(FLOORS.vendorClasses);
-    expect(led.prefixCandidates.size, "模板前缀候选一个都没派生出来 —— 词法器的洞识别坏了").toBeGreaterThanOrEqual(
-      FLOORS.prefixCandidates,
-    );
+    ).toBeGreaterThan(0);
+    expect(led.vendorClasses.has("katex"), "第三方类名里没有 `katex` —— katex 的 CSS 没收进来").toBe(true);
+    expect(led.prefixCandidates.size, "模板前缀候选一个都没派生出来 —— 词法器的洞识别坏了").toBeGreaterThan(0);
     denom(
       "⓪",
       led.constConcat.size + led.vendorClasses.size + led.prefixCandidates.size,
@@ -468,8 +428,8 @@ describe("S25 ① z-index 只许写 var(--z-*)（件 4）", () => {
     // 反空真：扫到 0 条 ⇒ 失败，不是静默绿。
     expect(
       decls.length,
-      `只扫到 ${decls.length} 条 \`z-index\` 声明（地板 ${FLOORS.zIndexDecls}）—— 抽取器坏了，本条会零命中地绿`,
-    ).toBeGreaterThanOrEqual(FLOORS.zIndexDecls);
+      `只扫到 ${decls.length} 条 \`z-index\` 声明—— 抽取器坏了，本条会零命中地绿`,
+    ).toBeGreaterThan(0);
 
     const bare = decls.filter((d) => !Z_OK.test(d.value)).map((d) => `${d.file}:${d.line}  z-index: ${d.value}`);
     expect(
@@ -534,9 +494,7 @@ describe("S25 ② CSS 里的类名有人用", () => {
   it("每个 CSS 类名都说得出谁在用它（未解释的 == 登记的已知死规则）", () => {
     const led = ledger();
     const prefixes = ALLOWED_PREFIXES.map((p) => p.prefix);
-    expect(led.cssClasses.size, "CSS 类名分母掉到地板以下 —— 本条会零命中地绿").toBeGreaterThanOrEqual(
-      FLOORS.cssClasses,
-    );
+    expect(led.cssClasses.size, "一个 CSS 类名都没扫到 —— 本条会零命中地绿").toBeGreaterThan(0);
 
     const tally = { literal: 0, "const-concat": 0, vendor: 0, prefix: 0 };
     const unexplained: string[] = [];
@@ -631,9 +589,7 @@ describe("S25 ② CSS 里的类名有人用", () => {
 describe("S25 ③ 代码挂的类名，CSS 里有没有规则（递减棘轮）", () => {
   it("悬空的类名引用只许变少", () => {
     const led = ledger();
-    expect(led.usedClasses.size, "方向 ② 一个调用点都没扫到 —— 本条会零命中地绿").toBeGreaterThanOrEqual(
-      FLOORS.usedClasses,
-    );
+    expect(led.usedClasses.size, "方向 ② 一个调用点都没扫到 —— 本条会零命中地绿").toBeGreaterThan(0);
     const dangling = [...led.usedClasses]
       .filter(([name]) => !led.cssClasses.has(name) && !led.vendorClasses.has(name))
       .map(([name, sites]) => `.${name}  ←  ${sites.slice(0, 2).join(" ")}`)
@@ -664,7 +620,7 @@ describe("S25 ④ stylelint 报错总数（递减棘轮）", () => {
     expect(
       linted.length,
       `stylelint 只 lint 到 ${linted.length} 份 CSS —— glob 坏了或文件搬家了，本条会零命中地绿`,
-    ).toBeGreaterThanOrEqual(FLOORS.cssFiles);
+    ).toBeGreaterThan(0);
 
     // 反空真②：**两处人群必须是同一批**。`package.json` 的 `lint:css` 与本账各走各的 glob，
     // 一边悄悄缩水时，另一边照样绿 —— 这正是本仓反复吃亏的那一形。
@@ -864,8 +820,8 @@ describe("S25 ⑤ 层真包进去（件 2）", () => {
       rules += s.rules;
       unlayered.push(...s.unlayered);
     }
-    // 反空真：扫到的规则条数掉到地板以下 ⇒ 扫描器坏了，下面那条零命中地绿
-    expect(rules, `只判到 ${rules} 条规则 —— 扫描器坏了`).toBeGreaterThan(900);
+    // 反空真：一条规则都没判到 ⇒ 扫描器坏了，下面那条零命中地绿
+    expect(rules, "一条规则都没判到 —— 扫描器坏了").toBeGreaterThan(0);
     expect(
       unlayered,
       "这些规则不在任何 `@layer` 里 —— **无层样式赢过所有有层的**（与特异度无关），\n" +

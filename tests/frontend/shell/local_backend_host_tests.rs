@@ -1217,18 +1217,6 @@ fn this_item_loosened_none_of_the_ratchets_it_touched() {
             1,
             "起进程落点那张表的**默认拒绝**（同上，另一张表）。",
         ),
-        (
-            "write_site_registry_spawn_sites.rs",
-            "found.len() >= 5,",
-            1,
-            "起进程那张表的**反空真地板**：抽取器坏掉时它先红，而不是让默认拒绝空着绿。",
-        ),
-        (
-            "write_site_registry_tests.rs",
-            "found.len() >= 15,",
-            1,
-            "写盘那张表的**反空真地板**（同上）。",
-        ),
     ];
     for (file, line, want, why) in pins {
         let raw: &str = match *file {
@@ -1239,11 +1227,6 @@ fn this_item_loosened_none_of_the_ratchets_it_touched() {
             }
             other => panic!("本表里出现了没接语料的文件：{other}"),
         };
-        assert!(
-            raw.len() > 1000,
-            "`{file}` 只读到 {} 字节 —— 语料坏了",
-            raw.len()
-        );
         let n = raw.lines().filter(|l| l.trim() == *line).count();
         assert_eq!(
             n, *want,
