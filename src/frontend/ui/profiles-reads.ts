@@ -13,6 +13,7 @@
  */
 import { chan, ChanError } from "../../comms/inward/chan";
 import { budgetWithin, jsonBody, readJson, refusalOf, ReplyUnreadable, saidFrom } from "./ipc/chan-caller";
+import { exactKeys, isObj } from "./ipc/decode";
 import type { Origin } from "./ipc/origin";
 
 /** 配置文件变了的那一种流（与 Rust `event_replay.rs::PROFILES_CHANGED_KIND` 同一个串）。 */
@@ -136,12 +137,6 @@ export interface WriteDone {
 /** 存的那一刻盘上那份不是读回时那一份（被别处改过）⇒ 一个字节没写；界面重读、表单留着。 */
 export class ProfilesStale extends Error {}
 
-const isObj = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === "object" && !Array.isArray(v);
-const sameKeys = (o: Record<string, unknown>, want: readonly string[]): boolean => {
-  const got = Object.keys(o).sort();
-  const w = [...want].sort();
-  return got.length === w.length && got.every((k, i) => k === w[i]);
-};
 const strs = (v: unknown): v is string[] => Array.isArray(v) && v.every((x) => typeof x === "string");
 const optStr = (v: unknown): v is string | null => v === null || typeof v === "string";
 const optNum = (v: unknown): v is number | null => v === null || typeof v === "number";
@@ -150,27 +145,27 @@ const isSlot = (v: unknown): v is SlotId => typeof v === "string" && (SLOT_IDS a
 
 function decodeForm(v: unknown): ProfileForm {
   const keys = ["name", "from", "account", "tmux", "cwdIf", "cwd", "agent", "args", "launcher", "tmuxSize", "detach", "busRegister", "busNote"];
-  if (!isObj(v) || !sameKeys(v, keys) || typeof v.name !== "string" || typeof v.detach !== "boolean" || typeof v.busRegister !== "boolean") throw bad();
+  if (!isObj(v) || !exactKeys(v, keys) || typeof v.name !== "string" || typeof v.detach !== "boolean" || typeof v.busRegister !== "boolean") throw bad();
   const texts = ["from", "cwd", "agent", "args", "launcher", "tmuxSize", "busNote"] as const;
   if (!texts.every((k) => optStr(v[k]))) throw bad();
   let account: AccountPick | null = null;
   if (v.account !== null) {
     const a = v.account;
-    if (isObj(a) && a.kind === "base" && sameKeys(a, ["kind"])) account = { kind: "base" };
-    else if (isObj(a) && a.kind === "account" && sameKeys(a, ["kind", "name"]) && typeof a.name === "string") account = { kind: "account", name: a.name };
+    if (isObj(a) && a.kind === "base" && exactKeys(a, ["kind"])) account = { kind: "base" };
+    else if (isObj(a) && a.kind === "account" && exactKeys(a, ["kind", "name"]) && typeof a.name === "string") account = { kind: "account", name: a.name };
     else throw bad();
   }
   let tmux: TmuxPick | null = null;
   if (v.tmux !== null) {
     const t = v.tmux;
-    if (!isObj(t) || !sameKeys(t, ["mode", "name"]) || typeof t.name !== "string" || (t.mode !== "auto" && t.mode !== "fixed" && t.mode !== "base")) throw bad();
+    if (!isObj(t) || !exactKeys(t, ["mode", "name"]) || typeof t.name !== "string" || (t.mode !== "auto" && t.mode !== "fixed" && t.mode !== "base")) throw bad();
     tmux = { mode: t.mode, name: t.name };
   }
   let cwdIf: CwdCase[] | null = null;
   if (v.cwdIf !== null) {
     if (!Array.isArray(v.cwdIf)) throw bad();
     cwdIf = v.cwdIf.map((c) => {
-      if (!isObj(c) || !sameKeys(c, ["at", "to"]) || typeof c.at !== "string" || typeof c.to !== "string") throw bad();
+      if (!isObj(c) || !exactKeys(c, ["at", "to"]) || typeof c.at !== "string" || typeof c.to !== "string") throw bad();
       return { at: c.at, to: c.to };
     });
   }
@@ -194,13 +189,13 @@ function decodeForm(v: unknown): ProfileForm {
 
 function decodeProblem(v: unknown): Problem | null {
   if (v === null) return null;
-  if (!isObj(v) || !sameKeys(v, ["line", "message"]) || !optNum(v.line) || typeof v.message !== "string") throw bad();
+  if (!isObj(v) || !exactKeys(v, ["line", "message"]) || !optNum(v.line) || typeof v.message !== "string") throw bad();
   return { line: v.line, message: v.message };
 }
 
 function decodeShape(v: unknown): { account: string; tmux: boolean } | null {
   if (v === null) return null;
-  if (!isObj(v) || !sameKeys(v, ["account", "tmux"]) || typeof v.account !== "string" || typeof v.tmux !== "boolean") throw bad();
+  if (!isObj(v) || !exactKeys(v, ["account", "tmux"]) || typeof v.account !== "string" || typeof v.tmux !== "boolean") throw bad();
   return { account: v.account, tmux: v.tmux };
 }
 
@@ -208,7 +203,7 @@ function decodeRow(v: unknown): ProfileRow {
   const keys = ["name", "from", "own", "agent", "usable", "problem", "kind", "functionWhy", "functionLine", "said", "form", "accountShape"];
   if (
     !isObj(v) ||
-    !sameKeys(v, keys) ||
+    !exactKeys(v, keys) ||
     typeof v.name !== "string" ||
     !optStr(v.from) ||
     !Array.isArray(v.own) ||
@@ -221,7 +216,7 @@ function decodeRow(v: unknown): ProfileRow {
   )
     throw bad();
   const own = v.own.map((o) => {
-    if (!isObj(o) || !sameKeys(o, ["key", "slot", "vals", "line"]) || typeof o.key !== "string" || !isSlot(o.slot) || !strs(o.vals) || typeof o.line !== "number")
+    if (!isObj(o) || !exactKeys(o, ["key", "slot", "vals", "line"]) || typeof o.key !== "string" || !isSlot(o.slot) || !strs(o.vals) || typeof o.line !== "number")
       throw bad();
     return { key: o.key, slot: o.slot, vals: o.vals, line: o.line };
   });
@@ -246,7 +241,7 @@ export function decodeBook(v: unknown): ProfilesBook {
   const keys = ["home", "path", "exists", "fingerprint", "modified", "fileProblem", "profiles", "seed", "migrated", "binDir", "accounts"];
   if (
     !isObj(v) ||
-    !sameKeys(v, keys) ||
+    !exactKeys(v, keys) ||
     typeof v.home !== "string" ||
     typeof v.path !== "string" ||
     typeof v.exists !== "boolean" ||
@@ -261,7 +256,7 @@ export function decodeBook(v: unknown): ProfilesBook {
   let migrated: Migrated | null = null;
   if (v.migrated !== null) {
     const m = v.migrated;
-    if (!isObj(m) || !sameKeys(m, ["count", "path", "skipped"]) || typeof m.count !== "number" || typeof m.path !== "string" || !strs(m.skipped)) throw bad();
+    if (!isObj(m) || !exactKeys(m, ["count", "path", "skipped"]) || typeof m.count !== "number" || typeof m.path !== "string" || !strs(m.skipped)) throw bad();
     migrated = { count: m.count, path: m.path, skipped: m.skipped };
   }
   return {
@@ -281,12 +276,12 @@ export function decodeBook(v: unknown): ProfilesBook {
 
 /** `profiles-resolve` 的成品。严格收。 */
 export function decodeResolved(v: unknown): Resolved {
-  if (!isObj(v) || !sameKeys(v, ["chain", "rows", "line", "lineError", "problem"]) || !strs(v.chain) || !Array.isArray(v.rows) || !optStr(v.line) || !optStr(v.lineError) || !optStr(v.problem))
+  if (!isObj(v) || !exactKeys(v, ["chain", "rows", "line", "lineError", "problem"]) || !strs(v.chain) || !Array.isArray(v.rows) || !optStr(v.line) || !optStr(v.lineError) || !optStr(v.problem))
     throw bad();
   const rows = v.rows.map((r) => {
     if (
       !isObj(r) ||
-      !sameKeys(r, ["key", "slot", "label", "vals", "said", "from", "overriddenBy"]) ||
+      !exactKeys(r, ["key", "slot", "label", "vals", "said", "from", "overriddenBy"]) ||
       typeof r.key !== "string" ||
       !isSlot(r.slot) ||
       typeof r.label !== "string" ||
@@ -303,11 +298,11 @@ export function decodeResolved(v: unknown): Resolved {
 
 /** `profiles-impact` 的成品。严格收。 */
 export function decodeImpact(v: unknown): Affected[] {
-  if (!isObj(v) || !sameKeys(v, ["affected"]) || !Array.isArray(v.affected)) throw bad();
+  if (!isObj(v) || !exactKeys(v, ["affected"]) || !Array.isArray(v.affected)) throw bad();
   return v.affected.map((a) => {
-    if (!isObj(a) || !sameKeys(a, ["name", "changes", "problem"]) || typeof a.name !== "string" || !Array.isArray(a.changes) || !optStr(a.problem)) throw bad();
+    if (!isObj(a) || !exactKeys(a, ["name", "changes", "problem"]) || typeof a.name !== "string" || !Array.isArray(a.changes) || !optStr(a.problem)) throw bad();
     const changes = a.changes.map((c) => {
-      if (!isObj(c) || !sameKeys(c, ["slot", "label", "before", "after"]) || !isSlot(c.slot) || typeof c.label !== "string" || typeof c.before !== "string" || typeof c.after !== "string")
+      if (!isObj(c) || !exactKeys(c, ["slot", "label", "before", "after"]) || !isSlot(c.slot) || typeof c.label !== "string" || typeof c.before !== "string" || typeof c.after !== "string")
         throw bad();
       return { slot: c.slot, label: c.label, before: c.before, after: c.after };
     });
@@ -317,9 +312,9 @@ export function decodeImpact(v: unknown): Affected[] {
 
 /** `profiles-bases` 的成品。严格收。 */
 export function decodeBases(v: unknown): Base[] {
-  if (!isObj(v) || !sameKeys(v, ["bases"]) || !Array.isArray(v.bases)) throw bad();
+  if (!isObj(v) || !exactKeys(v, ["bases"]) || !Array.isArray(v.bases)) throw bad();
   return v.bases.map((b) => {
-    if (!isObj(b) || !sameKeys(b, ["name", "from", "said", "selectable"]) || typeof b.name !== "string" || !optStr(b.from) || typeof b.said !== "string" || typeof b.selectable !== "boolean")
+    if (!isObj(b) || !exactKeys(b, ["name", "from", "said", "selectable"]) || typeof b.name !== "string" || !optStr(b.from) || typeof b.said !== "string" || typeof b.selectable !== "boolean")
       throw bad();
     return { name: b.name, from: b.from, said: b.said, selectable: b.selectable };
   });
@@ -327,7 +322,7 @@ export function decodeBases(v: unknown): Base[] {
 
 /** `profiles-write` 的成品。严格收。 */
 export function decodeWriteDone(v: unknown): WriteDone {
-  if (!isObj(v) || !sameKeys(v, ["wrote", "fingerprint", "modified", "reload"]) || typeof v.wrote !== "boolean" || !optStr(v.fingerprint) || !optNum(v.modified) || !optStr(v.reload))
+  if (!isObj(v) || !exactKeys(v, ["wrote", "fingerprint", "modified", "reload"]) || typeof v.wrote !== "boolean" || !optStr(v.fingerprint) || !optNum(v.modified) || !optStr(v.reload))
     throw bad();
   return { wrote: v.wrote, fingerprint: v.fingerprint, modified: v.modified, reload: v.reload };
 }
