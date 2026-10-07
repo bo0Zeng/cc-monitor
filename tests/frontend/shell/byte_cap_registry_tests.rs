@@ -917,6 +917,12 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
     ),
     // 〔第二问〕全文搜索常驻索引的上界：按最近优先留，留不下的那几份照搜、只是不留（下一问再读）。
     (
+        "src/backend/observe/record_scan.rs",
+        "MAX_BYTES",
+        "冷开会话那几问共用的扫描图留在内存里的估算字节（超了先淘汰最久没用的；单张比它还大就不留、每次现扫）",
+        "索引截断（不丢数据）",
+    ),
+    (
         "src/backend/observe/search_query.rs",
         "RESIDENT_MAX_BYTES",
         "全文搜索常驻索引留在内存里的可搜文本（估算字节）；本机远端同一条",
