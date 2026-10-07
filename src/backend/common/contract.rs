@@ -1,5 +1,5 @@
 //! 契约错的那一句话：调用方是我们自己的代码（monitor / 前端 / 另一台后端）发来的请求格式不对 —— 缺字段、类型不对、越界、链路 id 重复 ……
-//! 用户手上没有东西造得出它们，只有版本错位或我们的 bug 才会出现（线上 `code`：`bad_args` / `invalid_args` / `bad_request`）。
+//! 用户手上没有东西造得出它们，只有版本错位或我们的 bug 才会出现（线上 `code`：`bad_args` / `bad_request`）。
 //!
 //! 进文案表的只有一句（`beContract.malformed.say`「请求格式不对：{detail}」）；`detail` 是给报 bug 的人看的诊断，写英文、不进表。
 //! 调用处写 `contract::malformed("missing `to`")`，一眼认得出「这是契约错，不是对用户说的话」。

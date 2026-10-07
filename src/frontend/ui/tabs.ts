@@ -39,7 +39,8 @@ import {
   TERMINAL_FRONT_UNAVAILABLE_TITLE,
   TERMINAL_FRONT_UNAVAILABLE_DETAIL,
 } from "./terminal-front";
-import { computeTitleFor, isBgKind, type Tab, type TabsSummary } from "./tab-model";
+import { computeTitleFor, type Tab, type TabsSummary } from "./tab-model";
+import type { SessionActivity } from "./generated/SessionActivity";
 import { ENDED, LIVE, RECONNECTABLE, closesWithoutMenu, containerEvent, isLive, isResumeOnly, hasTerminal, inTmux, nextState, type StateEvent } from "./tab-session-state";
 import type { SessionContainer } from "./generated/SessionContainer";
 import { isLocalOrigin, isRemoteOrigin, LOCAL_ORIGIN, originFromWire, type Origin } from "./ipc/origin";
@@ -201,8 +202,8 @@ export class TabManager {
    */
   private readonly prefs = new TabBarPrefs(this.store, {
     refreshTabBar: () => this.refreshTabBar(),
-    createSkeletonTab: (sid, projectDir, origin, kind, name) =>
-      this.createSkeletonTab(sid, projectDir, origin, kind, name),
+    createSkeletonTab: (sid, projectDir, origin, background, name) =>
+      this.createSkeletonTab(sid, projectDir, origin, background, name),
     resumeTab: (sid) => this.actions.resumeTab(sid),
   });
 
@@ -476,14 +477,14 @@ export class TabManager {
     sessionId: string,
     projectDir: string | null,
     origin: Origin,
-    kind: string | null = null,
+    background: boolean | null = null,
     name: string | null = null,
     // E73：`null` = 没说（旧 backend / 存量会话）= 视为可以。只有显式 `false` 才记账。
     attachable: boolean | null = null,
   ): void {
     if (attachable === false) this.store.notAttachableSids.add(sessionId);
     else this.store.notAttachableSids.delete(sessionId);
-    this.ensureTab(sessionId, projectDir, "", origin, kind, name);
+    this.ensureTab(sessionId, projectDir, "", origin, background, name);
   }
 
   /**
@@ -540,7 +541,7 @@ export class TabManager {
         origin: tab.origin,
         cwd: tab.projectDir,
         state: tab.state, // 两轴原样交出去：cell 与 tab-bar 读同一份、经同一组谓词
-        activityStatus: tab.activity?.status ?? null,
+        activity: tab.activity?.doing ?? null,
         waitingFor: tab.activity?.waitingFor ?? null,
         runningAgents: runs.filter((r) => r.state === "running").length,
         totalAgents: runs.length,
@@ -550,7 +551,7 @@ export class TabManager {
             : null,
         contextTokens: tab.latestPromptTokens,
         unread: tab.unread,
-        kind: tab.kind,
+        background: tab.background,
         account: this.store.sessionAccountsByS.get(tab.sessionId)?.account ?? null,
       });
     }
@@ -646,7 +647,7 @@ export class TabManager {
     projectDir: string | null,
     sourcePath: string,
     origin: Origin = LOCAL_ORIGIN,
-    kind: string | null = null,
+    background: boolean | null = null,
     bgName: string | null = null,
   ): Tab {
     this.settleClose(sessionId); // 撤销期里关掉的那个又来了 ⇒ 先把旧的收干净，再按新的建
@@ -686,8 +687,8 @@ export class TabManager {
       // 反向(bg 后到)绝不降格。
       // 〔「删掉树」〕升格**不动位置**:原先这里还把它摘下来按宿主重新挂树,
       // 树删了之后位置与 kind 无关。
-      if (kind !== null && !isBgKind(kind) && isBgKind(tab.kind)) {
-        tab.kind = kind;
+      if (background === false && tab.background) {
+        tab.background = false;
         tab.bgName = null;
         tab.title = this.computeTitle(tab);
         this.refreshTabBar();
@@ -711,7 +712,7 @@ export class TabManager {
       projectDir,
       null,
       isRemoteOrigin(origin) ? origin : null,
-      kind,
+      background ?? false,
       bgName,
     );
 
@@ -729,7 +730,7 @@ export class TabManager {
 
     tab = {
       sessionId,
-      kind,
+      background: background ?? false,
       bgName,
       title,
       projectDir,
@@ -841,7 +842,7 @@ export class TabManager {
       tab.projectDir,
       tab.aiTitle,
       isRemoteOrigin(tab.origin) ? tab.origin : null,
-      tab.kind,
+      tab.background,
       tab.bgName,
       tab.forkedFromSessionId,
     );
@@ -1303,16 +1304,15 @@ export class TabManager {
   }
 
   /**
-   * issue #23：红绿灯状态更新（activity 格 事件 / 启动快照两路汇入）。
-   * status=null（旧版 CC 无字段）视为未知 → 清空回绿点现状。Tab 还没建则暂存
+   * 红绿灯状态更新（会话流的 activity 格）。`doing = null`（说不清）→ 清空回默认绿点。Tab 还没建则暂存
    * （pendingActivity，ensureTab 落实）。无变化不重绘。
    */
   updateActivity(
     sessionId: string,
-    status: string | null,
+    doing: SessionActivity | null,
     waitingFor: string | null,
   ): void {
-    const act = status === null ? null : { status, waitingFor };
+    const act = doing === null ? null : { doing, waitingFor };
     const tab = this.store.tabs.get(sessionId);
     if (!tab) {
       if (act) this.store.pendingActivity.set(sessionId, act);
@@ -1327,14 +1327,14 @@ export class TabManager {
     // 之前的陈旧 activity 值不同，否则被早退跳过、回不到活。回到活即使 activity 没变也要重绘。
     const clearedIdle = act !== null && this.applyState(tab, "activity");
     if (
-      tab.activity?.status === act?.status &&
+      tab.activity?.doing === act?.doing &&
       tab.activity?.waitingFor === act?.waitingFor
     ) {
       if (clearedIdle) this.refreshTabBar();
       return;
     }
     // 需要你的种类与那一句在会话事实里（后端配着记录判）：状态一变就再要一份；不在等了 ⇒ 手上那份当场作废（不等回包）。
-    if (act?.status !== "waiting") tab.needs = null;
+    if (act?.doing !== "needs_you") tab.needs = null;
     tab.facts.markStale();
     void tab.facts.refresh();
     tab.activity = act;

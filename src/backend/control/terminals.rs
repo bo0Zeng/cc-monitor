@@ -705,7 +705,7 @@ fn bool_arg(args: &Value, k: &str, default: bool) -> Result<bool, CmdErr> {
         None => Ok(default),
         Some(Value::Bool(b)) => Ok(*b),
         Some(_) => Err((
-            "invalid_args",
+            "bad_args",
             crate::common::contract::malformed(&format!("`{k}` must be a boolean")),
         )),
     }
@@ -734,7 +734,7 @@ pub(crate) fn preview_on(on: On<'_>, args: &Value) -> Result<Value, CmdErr> {
     let asked = match args.get("scrollback") {
         None => 0,
         Some(v) => v.as_u64().ok_or((
-            "invalid_args",
+            "bad_args",
             crate::common::contract::malformed("`scrollback` must be a non-negative integer"),
         ))?,
     };
@@ -780,7 +780,7 @@ pub(crate) enum Input {
 }
 
 pub(crate) fn input_of(args: &Value) -> Result<Input, CmdErr> {
-    let bad = |m: &str| ("invalid_args", crate::common::contract::malformed(m));
+    let bad = |m: &str| ("bad_args", crate::common::contract::malformed(m));
     match (args.get("text"), args.get("key")) {
         (Some(Value::String(t)), None) => {
             super::launch::check_input_text(t)?;
@@ -819,7 +819,7 @@ pub(crate) fn input_reply(result: &str, why: Option<&str>, screen: Option<&str>)
 
 /// 帧面 / CLI 面入口：`terminal-input`。入 `{terminal | sid, text, enter?: true | key, seen_screen?, take?, client?}`。
 /// 送不了的（不在名单 · 别的前端的 · 不归我们管 · 画面变了 · 已经没了）回 `result: "refused"` ＋ `why`，不是错；
-/// 形状不对才是错（`bad_target` · `invalid_args`）。`take` 在 tmux 上无所谓（各端都能打字）。
+/// 形状不对才是错（`bad_target` · `bad_args`）。`take` 在 tmux 上无所谓（各端都能打字）。
 pub(crate) fn input_on(on: On<'_>, args: &Value) -> Result<Value, CmdErr> {
     let target = target_of(args)?;
     let input = input_of(args)?;
@@ -830,7 +830,7 @@ pub(crate) fn input_on(on: On<'_>, args: &Value) -> Result<Value, CmdErr> {
         Some(Value::String(s)) => Some(s.clone()),
         Some(_) => {
             return Err((
-                "invalid_args",
+                "bad_args",
                 crate::common::contract::malformed("`seen_screen` must be a string"),
             ))
         }

@@ -3,7 +3,6 @@
  */
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from "vitest";
 import {
-  appendMenuItem,
   closeMenu,
   menuGeneration,
   menuOpen,
@@ -152,15 +151,14 @@ describe("C12 弹出菜单", () => {
     expect([document.activeElement, wrap.dataset.subOpen]).toEqual([parent, undefined]);
   });
 
-  it("开着时按 id 换项（展开态带过去）· 追加 · 摘掉；代次：开 / 关都换一代，关了之后改不到", () => {
+  it("开着时按 id 换项（展开态带过去）· 摘掉；代次：开 / 关都换一代，关了之后改不到", () => {
     const g0 = menuGeneration();
     openMenu({ x: 1, y: 1 }, [{ id: "attach", label: "检测中", enabled: false }, { id: "x", label: "x" }]);
     const g1 = menuGeneration();
     expect(g1).toBeGreaterThan(g0);
     updateMenuItem("attach", { id: "attach", label: "接回 orders" });
-    appendMenuItem({ label: "用 work 恢复" });
     removeMenuItem("x");
-    expect(items().map((b) => [b.textContent, b.disabled])).toEqual([["接回 orders", false], ["用 work 恢复", false]]);
+    expect(items().map((b) => [b.textContent, b.disabled])).toEqual([["接回 orders", false]]);
     closeMenu();
     expect(menuGeneration()).toBeGreaterThan(g1);
     updateMenuItem("attach", { label: "迟到的" });

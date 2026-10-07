@@ -218,7 +218,6 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
       { text: "/^[A-Za-z0-9_][A-Za-z0-9_-]*$/", count: 0, file: "src/frontend/ui/launch-requests.ts" },
       { text: "[*?=]", count: 0 },
       { text: 'target === ""', count: 0, file: "src/frontend/ui/tmux-control.ts" },
-      // `sendInto` 那一格也零（空名 / 空载荷交后端，回落那一跳由 Rust 渲染器拒）。
       { text: '.trim() === ""', count: 0, file: "src/frontend/ui/tmux-control.ts" },
     ],
     // 禁字集字面量只住 gate-core 一处；后端 plan.rs 那份自己的不许长回来。
@@ -327,17 +326,10 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   J13: {
     what: "一次失败能否证明一个字节没发出",
     homes: ["src/comms/inward/backend_route.rs::route_call_error"],
-    // 登记「镜像 ＋ 金样」：Rust 侧把每一种失败分层上线、连同判出的「可回落」写成金样，TS 读同一份逐行判。
-    status: "mirror",
+    // 界面那一份（`provablyNotSent`）随它唯一的调用方「就地 resume」一起删了 ⇒ mirror → zero。
+    status: "zero",
     defs: ["provablyNotSent"],
     needles: [],
-    parity: {
-      via: "tests/__fixtures__/reach-collapse.golden.json",
-      // Rust 侧读金样对拍 `route_call_error` 的是 `chan/webview_tests.rs`（`backend_route_tests.rs` 只在注释里提到它 ——
-      //   ⑥ 只认代码里的提及，第一版登记成那一份时 ⑥ 没逮到，改成只认代码之后才逮到）。
-      tests: ["tests/frontend/shell/chan/webview_tests.rs", "tests/frontend/ui/tmux-control.vitest.ts"],
-    },
-    why: "「失败要显式、归因要准确」：这是调用方对自己那一次调用的归因，失败时恰恰问不了对端 —— 只能在调用方判，两份由金样钉",
   },
   J14: {
     what: "中转钥匙文件的相对路径",
@@ -733,11 +725,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
   },
   // 部署那一族的契约（`deploy-core` 拆开：判定那一半进了后端 `control/deploy_plan.rs`，这里只剩两侧对上的形状）。TS 侧零处判部署 ⇒ 全 NONE。
   "deploy-contract": {
-    LAUNCHER_MARK: NONE, // 旧入口两形的记号（文件格式；认不认得出是后端判）
+    LAUNCHER_MARK: NONE, // 从前那份入口两形的记号（文件格式；认不认得出是后端判）
     SHIM_MARK: NONE,
-    LEGACY_BACKEND_REL: NONE,
-    LEGACY_ENTRY_REL: NONE, // 旧入口路径（契约：后端判去向 · monitor 照删 · 足迹一行）
-    LEGACY_BACKEND_WORD: NONE,
     LINES: NONE,
     UNAME_CMD: NONE,
     STAMP_OPEN: NONE, // 身份戳界标（后端拼戳 · monitor 扫字节两侧同一份；TS 不扫字节）

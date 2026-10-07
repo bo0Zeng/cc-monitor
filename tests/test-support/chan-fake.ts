@@ -852,7 +852,7 @@ export function withTmuxReads(
 // （形参 `{origin, cwd}` / `{origin, forkOf}`），替身答一个**名字**。派生 ＋ 避让的规则只在后端（`control/ccm/plan.rs`）⇒
 // 这里**不重抄**：判据自己写死「那台铸了什么」，钉的是前端问了谁、问的什么、用的是不是它铸回来的、问不到时怎么办。
 // - 名字（字符串）⇒ 成品 `{name}`；`{ bad: v }` ⇒ 原样回 `v`（形状不认那一格）；
-// - `undefined`（替身没答）⇒ 那台没有控制通道（问不到）；抛 ⇒ 那台后端拒（码 `invalid_args`，原话带着）。
+// - `undefined`（替身没答）⇒ 那台没有控制通道（问不到）；抛 ⇒ 那台后端拒（码 `bad_args`，原话带着）。
 /** 一发 `chan_call` 若是铸名那一问 ⇒ `["tmux_name_mint", {origin, …入参}]`；否则 `null`。 */
 export function tmuxMintOf(cmd: string, args: unknown): [string, Record<string, unknown>] | null {
   if (!isChanCall(cmd, args, "terminal-name-mint")) return null;
@@ -865,7 +865,7 @@ async function tmuxMintProduct(got: Promise<unknown> | unknown): Promise<ArrayBu
   try {
     v = await got;
   } catch (e) {
-    throw refusedReply("invalid_args", wordsOf(e));
+    throw refusedReply("bad_args", wordsOf(e));
   }
   if (v === undefined) throw NO_CHANNEL;
   if (typeof v === "string") return chanReply({ name: v });

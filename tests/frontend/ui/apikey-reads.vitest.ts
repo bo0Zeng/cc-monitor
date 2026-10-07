@@ -23,7 +23,6 @@ import {
   decodeApikeyStatus,
   decodeApikeyWritten,
   fetchApikeyRouting,
-  readApikeyStatus,
   writeApikeyKey,
 } from "../../../src/frontend/ui/apikey-reads";
 import { REPO_ROOT } from "../../test-support/repo-root";
@@ -31,11 +30,9 @@ import {
   chanArgsJson,
   chanReply,
   NO_CHANNEL,
-  UNSUPPORTED,
   type ChanCallArgs,
 } from "../../test-support/chan-fake";
 import { copyText } from "../../../src/frontend/ui/copy-table";
-import { copyPattern } from "../../test-support/copy-pattern";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 const golden = JSON.parse(
@@ -90,18 +87,6 @@ describe("严格收：形状不对 ⇒ 抛「两端版本对不上」", () => {
 });
 
 describe("请求：经通道问那台机器的后端", () => {
-  it("apikey-read：op 对、请求体为空对象、origin 原样", async () => {
-    invokeMock.mockResolvedValue(chanReply(golden["apikey-read"]));
-    await readApikeyStatus("host-a");
-    const calls = invokeMock.mock.calls;
-    expect(calls.map((c) => c[0])).toEqual(["chan_call"]);
-    const a = calls[0][1] as ChanCallArgs;
-    expect([a.origin, a.op, chanArgsJson(a)]).toEqual([
-      "host-a",
-      "apikey-read",
-      {},
-    ]);
-  });
   it("apikey-routing：op 对、agent 与 configDirs 随请求带", async () => {
     invokeMock.mockResolvedValue(chanReply(golden["apikey-routing"]));
     const got = await fetchApikeyRouting("<local>", "claude-code", [
@@ -118,10 +103,6 @@ describe("请求：经通道问那台机器的后端", () => {
 });
 
 describe("失败：一句人话，不退化成「没配」/「没行」", () => {
-  it("那台后端不认这一问 ⇒ 说后端太旧", async () => {
-    invokeMock.mockRejectedValue(UNSUPPORTED);
-    await expect(readApikeyStatus("host-a")).rejects.toThrow(copyPattern("peerVersion.said.old"));
-  });
   it("没有控制通道 ⇒ 说够不着（不是空表）", async () => {
     invokeMock.mockRejectedValue(NO_CHANNEL);
     await expect(

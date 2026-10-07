@@ -87,9 +87,9 @@ pub(crate) enum LocalStep {
     Lost,
 }
 
-/// `bg` 会话要不要藏：`kind` 在且不是 `interactive` 才算非交互；旧 CC 不写 kind ⇒ 当交互。
-fn local_hides(kind: Option<&str>, show_bg: bool) -> bool {
-    !show_bg && kind.is_some_and(|k| k != "interactive")
+/// 后台会话要不要藏：没开「显示后台会话」就藏（是不是后台由后端判好，`session_added.background`）。
+fn local_hides(background: bool, show_bg: bool) -> bool {
+    !show_bg && background
 }
 
 /// 本机那条流上的一件东西 ⇒ 交 `session_book` 的成品（**纯**；藏起来的 bg 会话不进）。
@@ -107,26 +107,26 @@ pub(crate) fn local_product(
         LocalItem::LineLost => None,
         LocalItem::Frame(InboundFrame::SessionAdded {
             sid,
-            session_kind,
+            background,
             attachable,
             cwd,
             project_dir,
             name,
-            status,
+            activity,
             waiting_for,
             container,
             pid,
             ..
-        }) => (!local_hides(session_kind.as_deref(), show_bg)).then(|| BookIn::Live {
+        }) => (!local_hides(*background, show_bg)).then(|| BookIn::Live {
             origin: origin(),
             sid: sid.clone(),
             meta: LiveMeta {
-                kind: session_kind.clone(),
+                background: *background,
                 attachable: *attachable,
                 cwd: cwd.clone(),
                 project_dir: project_dir.clone(),
                 name: name.clone(),
-                status: status.clone(),
+                activity: *activity,
                 waiting_for: waiting_for.clone(),
                 container: container.clone(),
                 pid: *pid,
@@ -134,12 +134,12 @@ pub(crate) fn local_product(
         }),
         LocalItem::Frame(InboundFrame::SessionStatus {
             sid,
-            status,
+            activity,
             waiting_for,
         }) => (!hidden.contains(sid)).then(|| BookIn::Status {
             origin: origin(),
             sid: sid.clone(),
-            status: status.clone(),
+            activity: *activity,
             waiting_for: waiting_for.clone(),
         }),
         LocalItem::Frame(InboundFrame::SessionState { sid, state }) => (!hidden.contains(sid))
@@ -162,31 +162,11 @@ pub(crate) fn local_product(
     }
 }
 
-/// 本机宣告的会话 `kind` 既不是 `interactive` 也不是 `bg` ⇒ 记一笔漂移账（记在本机名下）。
-///
-/// 本机那条流是唯一看得见 `kind` 的地方。**排他 ≠ 无声**（U-CC1）：只记账，不改行为。
-fn book_unknown_local_kind(item: &LocalItem) {
-    if let LocalItem::Frame(InboundFrame::SessionAdded {
-        session_kind: Some(k),
-        ..
-    }) = item
-    {
-        if k != "interactive" && k != "bg" {
-            crate::drift_ledger::record(
-                &crate::origin::Origin::local(),
-                crate::drift_ledger::DriftFace::UnknownSessionKind,
-                k,
-                None,
-            );
-        }
-    }
-}
-
 /// 本机消费者的**纯分派核**：一件东西 × 「显示 bg 吗」× 「藏起来的 sid」⇒ 怎么处置。
 ///
 /// 为什么 bg 在这里藏而不在后端那边按旗标分：本机常驻后端**跨 monitor 存活**，`adopt` 只比
 /// `build_id` 与家目录、不比起参 ⇒ 起参里的 `--with-bg` 挡不住「用户关了 bg 显示、却接上了一个按开着起的后端」。
-/// 于是两条载体一律带 `--with-bg`，显示与否在这一侧按 `session_added.session_kind` 定（协议序保证宣告先于行）。
+/// 于是两条载体一律带 `--with-bg`，显示与否在这一侧按 `session_added.background` 定（协议序保证宣告先于行）。
 pub(crate) fn local_step(
     item: LocalItem,
     show_bg: bool,
@@ -223,12 +203,12 @@ pub(crate) fn local_step(
         }
         LocalItem::Frame(InboundFrame::SessionAdded {
             sid,
-            session_kind,
+            background,
             path,
             lines,
             ..
         }) => {
-            if local_hides(session_kind.as_deref(), show_bg) {
+            if local_hides(background, show_bg) {
                 hidden.insert(sid);
                 LocalStep::Skip
             } else {
@@ -300,7 +280,6 @@ pub(crate) async fn consume_local(
             }
             // 本机起停的成品：先交 `session_book`（它按 `hidden` 滤，而下面 `local_step` 会改 `hidden`）。
             //   流断 / 去向那两件先冲掉残批再交（与远端同序：行先落、再说「离开了 / 看不见了」）。
-            book_unknown_local_kind(&item);
             if matches!(
                 item,
                 LocalItem::StreamEnded | LocalItem::Frame(InboundFrame::SessionState { .. })

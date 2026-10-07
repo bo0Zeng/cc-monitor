@@ -2104,13 +2104,10 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
     if pidfile_cwd(&bytes).is_some_and(|c| super::history_query::hidden_cwd(&c)) {
         return false;
     }
-    // Batch6-F21: interactivity gate. CC 2.1.x 的后端后台任务
-    // (--fork-session --resume) **会**写 sessions/<PID>.json（kind:"bg" +
-    // jobId）——"子会话不注册 pidfile"的旧假设已过期。bg 进程是自己 pidfile
-    // 的真作者（F20 身份证据对它们正确地放行），但不是交互会话、不该成 tab。
-    // 保守规则（与本地 session_map 一字一致）：kind 字段存在且非 "interactive"
-    // 才排除；旧 CC 不写该字段 → 放行。
-    if let Some(kind) = non_interactive_kind(&bytes) {
+    // 后台会话（适配层判，`agents::pidfile_background`）是自己 pidfile 的真作者（身份证据对它们正确地放行），
+    // 但不是交互会话：没开 `--with-bg` ⇒ 不成 tab。
+    let background = is_background(&bytes);
+    if background {
         if !state.with_bg {
             // 审计 S1：若该 key 此前以 interactive 身份被 track（原地翻 kind /
             // PID 复用写同路径），对称走退休路径——与 F22-① 一致，免掉 poll 的
@@ -2120,7 +2117,7 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
                 retire_sid_if_unreferenced(&old.sid, RemovalCause::Gone, state, sink);
             }
             tracing::debug!(
-                "sessions json skipped (kind={kind}): {} pid {pid} is a non-interactive claude (bg task)",
+                "sessions json skipped (background): {} pid {pid} is a non-interactive session",
                 path.display()
             );
             return false;
@@ -2147,6 +2144,7 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
             sink.send(Frame::SessionStatus {
                 sid: sid.clone(),
                 status: new_status,
+                activity: meta.as_ref().and_then(crate::agents::pidfile_activity),
                 waiting_for: new_waiting,
                 // Claude pidfile 路 → 判活权威、省略 liveness_confidence（缺=authoritative）。DG2 判活/DG1
                 // Codex 会话时才发 heuristic。
@@ -2250,6 +2248,7 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
         agent_kind: None,
         liveness_confidence: None,
         session_kind: meta_str("kind"),
+        background,
         // E73：pidfile 的 `attachable`。**只认真正的布尔** —— 字符串 "false" 之类当没写
         //（缺席 = true = 照旧），宁可少一次门控也不要把一个拼错的值当成"不可 attach"。
         attachable: meta
@@ -2265,6 +2264,7 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
         path: jsonls.first().map(|p| p.to_string_lossy().into_owned()),
         lines: first_lines,
         status: meta_str("status"),
+        activity: meta.as_ref().and_then(crate::agents::pidfile_activity),
         waiting_for: meta_str("waitingFor"),
         // 判不了 ⇒ `None` ⇒ 不上线（与本字段加进来之前逐字节相同）。
         container,
@@ -2779,9 +2779,17 @@ fn pidfile_cwd(bytes: &[u8]) -> Option<String> {
         .map(str::to_string)
 }
 
-/// `kind` 在且不是 `interactive` ⇒ `Some(kind)`（后台任务，不是交互会话）；缺字段（旧 CC）⇒ `None` 放行。
-fn non_interactive_kind(bytes: &[u8]) -> Option<String> {
-    parse_kind(bytes).filter(|k| k != "interactive")
+/// 这份 pidfile 说的是后台会话（适配层判）；读不成 JSON ⇒ 不是。
+fn is_background(bytes: &[u8]) -> bool {
+    serde_json::from_slice::<serde_json::Value>(bytes)
+        .is_ok_and(|v| crate::agents::pidfile_background(&v))
+}
+
+/// 这份 pidfile 说的此刻在干什么（适配层翻）；读不成 JSON / 说不清 ⇒ `None`。
+fn activity(bytes: &[u8]) -> Option<crate::agents::SessionActivity> {
+    serde_json::from_slice::<serde_json::Value>(bytes)
+        .ok()
+        .and_then(|v| crate::agents::pidfile_activity(&v))
 }
 
 /// **一次性扫描**：`<agent_home>/sessions/` 下此刻活着的交互会话 `(sid, pid)` —— 判活与起步初扫同一条
@@ -2799,15 +2807,13 @@ pub fn running_sessions(agent_home: &Path) -> Vec<(String, u32)> {
             let pid = file_stem_str(&p)?.parse::<u32>().ok()?;
             let bytes = std::fs::read(&p).ok()?;
             let sid = parse_session_id(&bytes)?;
-            (pid_alive(pid)
-                && non_interactive_kind(&bytes).is_none()
-                && add_time_check(pid, &bytes, &p).is_ok())
-            .then_some((sid, pid))
+            (pid_alive(pid) && !is_background(&bytes) && add_time_check(pid, &bytes, &p).is_ok())
+                .then_some((sid, pid))
         })
         .collect()
 }
 
-/// `sid` 那个会话此刻有没有一轮在跑：活着的交互会话 pidfile 里 `status` 是 `busy`（判活同 [`running_sessions`]）。
+/// `sid` 那个会话此刻有没有一轮在跑：活着的交互会话 pidfile 说在干活（判活同 [`running_sessions`]）。
 pub(crate) fn session_busy(agent_home: &Path, sid: &str) -> bool {
     let dir = pidfile_dir(agent_home);
     let Ok(entries) = std::fs::read_dir(&dir) else {
@@ -2825,18 +2831,11 @@ pub(crate) fn session_busy(agent_home: &Path, sid: &str) -> bool {
                 return false;
             };
             parse_session_id(&bytes).as_deref() == Some(sid)
-                && parse_status(&bytes).as_deref() == Some("busy")
+                && activity(&bytes) == Some(crate::agents::SessionActivity::Working)
                 && pid_alive(pid)
-                && non_interactive_kind(&bytes).is_none()
+                && !is_background(&bytes)
                 && add_time_check(pid, &bytes, &p).is_ok()
         })
-}
-
-/// Parse the pidfile's `kind` field ("interactive" / "bg" …，Batch6-F21)。
-/// None = 字段缺失（旧 CC）或不可读 → 调用方放行。
-fn parse_kind(bytes: &[u8]) -> Option<String> {
-    let v: serde_json::Value = serde_json::from_slice(bytes).ok()?;
-    v.get("kind")?.as_str().map(str::to_string)
 }
 
 /// Parse the pidfile's `procStart` field as starttime ticks. CC writes it as a
@@ -2858,12 +2857,6 @@ fn file_mtime_epoch(path: &Path) -> Option<u64> {
         .duration_since(std::time::UNIX_EPOCH)
         .ok()
         .map(|d| d.as_secs())
-}
-
-/// pidfile 的 `status`（busy / idle / shell / waiting）；缺或不可读 ⇒ `None`。
-fn parse_status(bytes: &[u8]) -> Option<String> {
-    let v: serde_json::Value = serde_json::from_slice(bytes).ok()?;
-    v.get("status")?.as_str().map(str::to_string)
 }
 
 /// Pure parse of the `sessionId` field out of a sessions JSON blob.

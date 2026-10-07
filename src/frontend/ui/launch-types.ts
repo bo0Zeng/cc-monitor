@@ -6,8 +6,8 @@
  * 环境、中转地址、身份标记由那台机器上的 `ccm` 自己做，界面一句 shell 都不拼。
  */
 
-/** 起会话就是起会话，attach 就是 attach，不要 `or`。`send-into` = 往已有的空 tmux 会话里就地 resume。 */
-export type TmuxMode = "create" | "send-into" | "attach-only";
+/** 起会话就是起会话，attach 就是 attach，不要 `or`。 */
+export type TmuxMode = "create" | "attach-only";
 
 export type LaunchContainer = { kind: "none" } | { kind: "tmux"; name: string; mode: TmuxMode };
 

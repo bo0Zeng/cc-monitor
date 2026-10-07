@@ -754,7 +754,7 @@ mod tests {
     ///
     /// `bad_request` 今天一词两义：协议级（信封 JSON 坏了 ⇒「**客户端代码写错了**，别重试」）
     /// vs 命令级（参数不合适 ⇒ 可能是用户输入）。客户端拿到的只有 `code` 字符串，分不出来。
-    /// U8a-2b 已经把 `launch` 的形状错误改名成 `invalid_args`；本条把这条分层**钉住**。
+    /// 命令级的形状错误叫 `bad_args`（全部命令一个码）；本条把这条分层**钉住**。
     ///
     /// ⚠ **`resolve` 是登记在案的例外**：它的命令级 parse 错误仍叫 `bad_request`，
     /// 因为一次性 `--resolve` 与仓外 aterm 的契约冻结在 2026-07-18，两条路复用同一个纯函数。
@@ -978,5 +978,37 @@ mod tests {
                 "`{k}` 已经在 `EMITS` 里了，却还留在豁免表 —— 豁免表过期了"
             );
         }
+    }
+
+    /// 「参数不对」只有一个码（`bad_args`）：注册表里没有一条命令声明 `invalid_args`，后端生产段也零处拼它
+    /// （正控：`bad_args` 真有人声明；扫描器在同一批文件里找得到 `"bad_args"`）。
+    #[test]
+    fn bad_arguments_have_exactly_one_code() {
+        let reg = crate::stream::inbound::REGISTRY;
+        let both: Vec<&str> = reg
+            .iter()
+            .filter(|s| s.codes.contains(&"invalid_args"))
+            .map(|s| s.name)
+            .collect();
+        assert!(both.is_empty(), "这几条还声明 `invalid_args`：{both:?}");
+        assert!(
+            reg.iter().any(|s| s.codes.contains(&"bad_args")),
+            "正控：一条声明 `bad_args` 的命令都没有"
+        );
+        let root = crate::guard_support::src_root();
+        let mut hits = Vec::new();
+        let mut control = false;
+        for (at, raw) in guard_core::scan_tree!(&root, &["rs"]) {
+            let prod = crate::guard_support::production_code(&raw);
+            control |= prod.contains("\"bad_args\"");
+            if prod.contains("\"invalid_args\"") {
+                hits.push(at.display().to_string());
+            }
+        }
+        assert!(
+            control,
+            "正控：生产段里一处 `\"bad_args\"` 都没扫到 —— 扫描器坏了"
+        );
+        assert!(hits.is_empty(), "生产段还在发 `invalid_args`：{hits:?}");
     }
 }

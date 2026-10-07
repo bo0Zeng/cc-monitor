@@ -481,10 +481,6 @@ fn the_plan_decoder_reads_the_golden() {
         p.action
     );
     assert_eq!(
-        p.legacy,
-        deploy_contract::LegacyVerdict::Unknown("placeholder".into())
-    );
-    assert_eq!(
         p.leftovers,
         vec![".cc-monitor/bin/ccm.1-2-3.tmp".to_string()]
     );
@@ -502,7 +498,6 @@ fn the_plan_decoder_reads_the_golden() {
         extra,
         with("action", serde_json::json!("overwrite")),
         with("action", serde_json::json!("skip")),
-        with("legacy", serde_json::json!("remove")),
         with("os", serde_json::json!("Plan9")),
         with("expected", serde_json::json!("")),
         with("leftovers", serde_json::json!("ccm.1-2-3.tmp")),
@@ -513,15 +508,10 @@ fn the_plan_decoder_reads_the_golden() {
     let skip = {
         let mut x = skip;
         x["theirs"] = serde_json::Value::Null;
-        x["legacy"] = serde_json::json!("absent");
-        x["legacy_why"] = serde_json::Value::Null;
         x
     };
-    let p = decode_plan(&skip).expect("skip ＋ absent 那一形解不开");
-    assert_eq!(
-        (p.action, p.legacy),
-        (DeployAction::Skip, deploy_contract::LegacyVerdict::Absent)
-    );
+    let p = decode_plan(&skip).expect("skip 那一形解不开");
+    assert_eq!(p.action, DeployAction::Skip);
 }
 
 /// 要求：「部署失败留下半截 …tmp，之后连上也不清」⇒「下次连上清旧的」。

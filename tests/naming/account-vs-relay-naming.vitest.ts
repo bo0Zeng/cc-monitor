@@ -166,8 +166,8 @@ export const ACCOUNT_NAMES: AccountName[] = [
   {
     old: "fetchLocalRelayRouting",
     re: ident("fetchLocalRelayRouting"),
-    fresh: "fetchLocalApikeyRouting",
-    freshRe: ident("fetchLocalApikeyRouting"),
+    fresh: "fetchMachineApikeyRouting",
+    freshRe: ident("fetchMachineApikeyRouting"),
     kind: "函数",
     why: "`apikey_routing_for` 的前端取数口",
     state: "done",

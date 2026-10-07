@@ -523,7 +523,7 @@ pub(crate) fn preview_resolved(p: Parsed, home: &str, at: Option<&str>) -> Resul
 /// `--ccm-print` 同一份 [`plan::mint_tmux_name`] ⇒ 界面铸出来的名字与终端里敲 `ccm` 在同一目录铸的**同一个**。
 /// 这台没装 tmux ⇒ 一个名字都没占 ⇒ 交基名（起不起得来归起会话那一步说）。
 ///
-/// 码：`invalid_args`（两格都没给 / 都给了 / 不是字符串）。前端问不到（链路断 · 那台后端比这一问老）⇒ 不铸名、不起、说清
+/// 码：`bad_args`（两格都没给 / 都给了 / 不是字符串）。前端问不到（链路断 · 那台后端比这一问老）⇒ 不铸名、不起、说清
 /// （`src/frontend/ui/terminal-name-mint.ts`：空集铸名就是「不避让」，issue #76 的形状）。
 pub(crate) fn answer_terminal_name_mint(
     args: &serde_json::Value,
@@ -542,7 +542,7 @@ pub(crate) fn terminal_name_mint_with(
         (None, Some(source)) => plan::fork_tmux_base(source),
         _ => {
             return Err((
-                "invalid_args",
+                "bad_args",
                 crate::common::contract::malformed(
                     "give exactly one of `cwd` / `forkOf` (a string)",
                 ),

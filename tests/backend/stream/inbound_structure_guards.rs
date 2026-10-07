@@ -462,8 +462,6 @@ fn every_registered_command_declares_its_run_kind() {
         "deploy-plan",
         // 远端常驻后端 hello 的新旧：纯判定，不碰盘不拨号。
         "resident-verdict",
-        // 那台旧入口的去向：真异步（SFTP stat ＋ 读回），在 await 点可取消。
-        "deploy-retired",
         // 可达表登记：纯内存，普通 spawn。
         "remote-reach",
         // 端口转发：起 = 真异步（查可达表 · 开链路 · 等 ack），停 / 列 = 纯内存一把锁。

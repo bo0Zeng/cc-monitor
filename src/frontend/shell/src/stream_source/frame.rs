@@ -95,10 +95,11 @@ pub enum InboundFrame {
         /// 对账键（后端 `rid`，原样转交）。
         rid: Option<String>,
     },
-    /// 远端新出现一个 session 文件。附带 pidfile 元信息（additive）；旧后端缺字段 → None（保守视为交互）。
+    /// 远端新出现一个 session 文件。附带 pidfile 元信息。
     SessionAdded {
         sid: String,
-        session_kind: Option<String>,
+        /// 后台会话（后端判好的；缺 ＝ 交互）。
+        background: bool,
         /// attach 进去对人有没有意义（additive）。缺席 = true。语义与来源见 `src/backend/stream/wire.rs` 的同名字段 + `src/doc/IPC-PROTOCOL.md` §9.3。
         attachable: Option<bool>,
         /// pidfile 记的起会话目录（认「我刚起的那条」用）。
@@ -110,8 +111,8 @@ pub enum InboundFrame {
         path: Option<String>,
         /// backend prime 时的完整行数 L（快照完整性校验）。
         lines: Option<u64>,
-        /// 宣告时的初始 status / waitingFor（连接建立灯就对）。
-        status: Option<String>,
+        /// 宣告时此刻在干什么 ＋ 在等什么（连接建立灯就对）。
+        activity: Option<crate::session_book::SessionActivity>,
         waiting_for: Option<String>,
         /// 〔additive〕这条活会话住在什么容器里（`{host, terminal?}`）。缺席 ⇒ `None` = 不知道（**不是**「不在任何宿主里」）；
         /// 不认识的宿主 ⇒ `Other`（不吞）。
@@ -133,7 +134,7 @@ pub enum InboundFrame {
     /// 会话 status 变化（远端红绿灯）。
     SessionStatus {
         sid: String,
-        status: Option<String>,
+        activity: Option<crate::session_book::SessionActivity>,
         waiting_for: Option<String>,
     },
     /// 远端一个 session 文件消失。monitor 只拿它当内容流的边界（残批先冲、快照作废）；
@@ -312,6 +313,30 @@ fn req_word<T>(o: &Obj, kind: &str, key: &str, read: fn(&str) -> Option<T>) -> R
     read(&w).ok_or_else(|| bad(kind, format!("`{key}` = `{w}` is not a known value")))
 }
 
+/// 可缺的词：缺 ⇒ `None`；在但不是串 / 认不出 ⇒ 契约对不上。
+fn opt_word<T>(
+    o: &Obj,
+    kind: &str,
+    key: &str,
+    read: fn(&str) -> Option<T>,
+) -> Result<Option<T>, Unread> {
+    match o.get(key) {
+        None => Ok(None),
+        Some(_) => req_word(o, kind, key, read).map(Some),
+    }
+}
+
+/// 可缺的布尔：缺 ⇒ `None`；在但不是布尔 ⇒ 契约对不上。
+fn opt_bool(o: &Obj, kind: &str, key: &str) -> Result<Option<bool>, Unread> {
+    match o.get(key) {
+        None => Ok(None),
+        Some(v) => v
+            .as_bool()
+            .map(Some)
+            .ok_or_else(|| bad(kind, format!("`{key}` is not a bool"))),
+    }
+}
+
 /// `line` 帧的解码结构（最热的那一种：按类型直解，成品 `message` 以原文收下、不建 `Value`）。
 /// 必填格不带 `#[serde(default)]`：缺了就是契约对不上。
 #[derive(serde::Deserialize)]
@@ -410,7 +435,7 @@ pub fn parse_frame(line: &str) -> Result<InboundFrame, Unread> {
             let opt = |key: &str| obj.get(key).and_then(|v| v.as_str()).map(str::to_string);
             InboundFrame::SessionAdded {
                 sid: req_str(obj, k, "sid")?,
-                session_kind: opt("session_kind"),
+                background: opt_bool(obj, k, "background")?.unwrap_or(false),
                 // 只认真正的布尔；字符串 "false" 之类当没写（缺席 = true）。
                 attachable: obj.get("attachable").and_then(|x| x.as_bool()),
                 cwd: opt("cwd"),
@@ -418,7 +443,12 @@ pub fn parse_frame(line: &str) -> Result<InboundFrame, Unread> {
                 name: opt("name"),
                 path: opt("path"),
                 lines: obj.get("lines").and_then(|v| v.as_u64()),
-                status: opt("status"),
+                activity: opt_word(
+                    obj,
+                    k,
+                    "activity",
+                    crate::session_book::SessionActivity::from_wire,
+                )?,
                 waiting_for: opt("waiting_for"),
                 // 开放联合：认得的宿主 · 不在宿主里 · 其它（原词带着）；形状不对 ⇒ 整帧 `BadShape`。
                 container: match obj.get("container") {
@@ -450,7 +480,12 @@ pub fn parse_frame(line: &str) -> Result<InboundFrame, Unread> {
             let opt = |key: &str| obj.get(key).and_then(|v| v.as_str()).map(str::to_string);
             InboundFrame::SessionStatus {
                 sid: req_str(obj, k, "sid")?,
-                status: opt("status"),
+                activity: opt_word(
+                    obj,
+                    k,
+                    "activity",
+                    crate::session_book::SessionActivity::from_wire,
+                )?,
                 waiting_for: opt("waiting_for"),
             }
         }

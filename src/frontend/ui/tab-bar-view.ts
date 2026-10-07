@@ -12,7 +12,7 @@
 import { sessionBadge, shouldShowAccountBadge, detectAccountMismatch } from "./accounts";
 import { accountAvatarEl } from "./account-color";
 import type { TabCollection } from "./tab-collections";
-import { activityLightClass } from "./session-status";
+import { activityFace } from "./session-status";
 import { terminalFrontAvailable } from "./terminal-front";
 import { isRemoteOrigin } from "./ipc/origin";
 import { closesWithoutMenu, hasTerminal, isLive, stateView } from "./tab-session-state";
@@ -841,8 +841,7 @@ export class TabBarView {
     const pinned = tab.pinned;
     const hasCwd = !!tab.projectDir;
     const remote = isRemoteOrigin(tab.origin);
-    const actStatus = tab.activity?.status ?? null;
-    const lightClass = isLive(tab.state) ? activityLightClass(actStatus) : "";
+    const lightClass = isLive(tab.state) ? activityFace(tab.activity?.doing ?? null).light : "";
     const reconnectable = view.reconnectable;
     const dot = dotOf(tab);
     const n = needsOf(tab);

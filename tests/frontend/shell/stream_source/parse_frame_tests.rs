@@ -1,4 +1,5 @@
 use super::*;
+use crate::session_book::SessionActivity;
 
 /// hello 帧解析：取 v / build_id / host_arch / claude_dir（#33 起捕获 build_id）。
 #[test]
@@ -438,14 +439,14 @@ fn known_kind_with_extra_fields_still_parses() {
         frame,
         InboundFrame::SessionAdded {
             sid: "s-9".to_string(),
-            session_kind: None,
+            background: false,
             attachable: None,
             cwd: None,
             project_dir: None,
             name: None,
             path: None,
             lines: None,
-            status: None,
+            activity: None,
             waiting_for: None,
             container: None,
             pid: None,
@@ -453,24 +454,23 @@ fn known_kind_with_extra_fields_still_parses() {
     );
 }
 
-/// Batch7-F24：p1e backend 的 session_added 附加元信息正确解析；
-/// 旧后端缺字段 → None（上一测试已覆盖）。
+/// session_added 附加元信息正确解析：读后端判好的 `background` / `activity`，不读 pidfile 原词（`session_kind` · `status`）。
 #[test]
 fn session_added_metadata_parses() {
-    let line = r#"{"kind":"session_added","sid":"s-bg","session_kind":"bg","cwd":"/proj/x","project_dir":"/proj","name":"评估任务","path":"/home/u/.claude/projects/p/s-bg.jsonl","lines":42}"#;
+    let line = r#"{"kind":"session_added","sid":"s-bg","session_kind":"interactive","background":true,"status":"busy","activity":"needs_you","cwd":"/proj/x","project_dir":"/proj","name":"评估任务","path":"/home/u/.claude/projects/p/s-bg.jsonl","lines":42}"#;
     let frame = parse_frame(line).expect("must parse");
     assert_eq!(
         frame,
         InboundFrame::SessionAdded {
             sid: "s-bg".to_string(),
-            session_kind: Some("bg".to_string()),
+            background: true,
             attachable: None,
             cwd: Some("/proj/x".to_string()),
             project_dir: Some("/proj".to_string()),
             name: Some("评估任务".to_string()),
             path: Some("/home/u/.claude/projects/p/s-bg.jsonl".to_string()),
             lines: Some(42),
-            status: None,
+            activity: Some(SessionActivity::NeedsYou),
             waiting_for: None,
             container: None,
             pid: None,
@@ -478,28 +478,39 @@ fn session_added_metadata_parses() {
     );
 }
 
-/// Batch9-F27：session_status 帧解析 + session_added 初始 status。
+/// session_status 帧：读 `activity`（不读原词 `status`）；缺 ⇒ 说不清。
 #[test]
 fn session_status_frame_parses() {
-    let line = r#"{"kind":"session_status","sid":"s-1","status":"waiting","waiting_for":"permission prompt"}"#;
+    let line = r#"{"kind":"session_status","sid":"s-1","status":"busy","activity":"needs_you","waiting_for":"permission prompt"}"#;
     assert_eq!(
         parse_frame(line),
         Ok(InboundFrame::SessionStatus {
             sid: "s-1".to_string(),
-            status: Some("waiting".to_string()),
+            activity: Some(SessionActivity::NeedsYou),
             waiting_for: Some("permission prompt".to_string()),
         })
     );
-    // 缺 waiting_for → None
     let line = r#"{"kind":"session_status","sid":"s-2","status":"busy"}"#;
     assert_eq!(
         parse_frame(line),
         Ok(InboundFrame::SessionStatus {
             sid: "s-2".to_string(),
-            status: Some("busy".to_string()),
+            activity: None,
             waiting_for: None,
         })
     );
+}
+
+/// `activity` 认不出的词 · `background` 不是布尔 ⇒ 两端契约对不上（整帧不认），不猜。
+#[test]
+fn session_judgments_off_contract_are_bad_shape() {
+    for line in [
+        r#"{"kind":"session_status","sid":"s","activity":"busy"}"#,
+        r#"{"kind":"session_added","sid":"s","activity":"waiting"}"#,
+        r#"{"kind":"session_added","sid":"s","background":"true"}"#,
+    ] {
+        assert!(parse_frame(line).is_err(), "认了一帧契约外的：{line}");
+    }
 }
 
 /// session_removed 映射到对应 variant。monitor 不再读 `cause`（去向由后端裁成 `session_state`）：带不带都解成同一形。

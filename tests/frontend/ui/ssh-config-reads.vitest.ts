@@ -14,14 +14,7 @@ import { resolve } from "node:path";
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 import { invoke } from "@tauri-apps/api/core";
-import {
-  decodeAliases,
-  decodeImport,
-  decodeResolved,
-  importSshHosts,
-  listSshHostAliases,
-  resolveSshHost,
-} from "../../../src/frontend/ui/ssh-config-reads";
+import { decodeImport, importSshHosts } from "../../../src/frontend/ui/ssh-config-reads";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/backend-policy";
 import { REPO_ROOT } from "../../test-support/repo-root";
 import { chanArgsJson, chanReply, NO_CHANNEL, type ChanCallArgs } from "../../test-support/chan-fake";
@@ -36,47 +29,28 @@ beforeEach(() => {
 });
 
 describe("金样：后端出的成品，TS 这一侧读得懂", () => {
-  it("三条成品照收", () => {
-    expect(decodeAliases(golden["ssh-config-aliases"])).toEqual(["devbox-lan", "devbox-wan", "pi"]);
-    expect(decodeResolved(golden["ssh-config-resolve"]).proxyJump).toBe("bastion");
+  it("导入预览照收", () => {
     const groups = decodeImport(golden["ssh-config-import"]);
     expect(groups.map((g) => g.label)).toEqual(["devbox", "pi"]);
     expect(groups[0]!.members.map((m) => m.alias)).toEqual(["devbox-lan", "devbox-wan"]);
   });
 });
 
-describe("严格收", () => {
-  it.each([
-    ["多一格", { ...(golden["ssh-config-resolve"] as object), extra: 1 }],
-    ["缺一格", { host: "h", port: 22, user: "u", keyPath: null }],
-    ["端口不是整数", { ...(golden["ssh-config-resolve"] as object), port: "22" }],
-  ])("ssh-config-resolve · %s ⇒ 抛", (_n, v) => {
-    expect(() => decodeResolved(v)).toThrow();
-  });
-  it("别名清单里混了非字符串 ⇒ 抛", () => {
-    expect(() => decodeAliases({ aliases: ["a", 1] })).toThrow();
-  });
-});
-
 describe("请求", () => {
-  it("三问都问本机那台、对的帧命令与请求体", async () => {
+  it("问本机那台、对的帧命令与请求体", async () => {
     const seen: { op: string; origin: string; body: unknown }[] = [];
     invokeMock.mockImplementation((cmd: string, args: ChanCallArgs) => {
       expect(cmd).toBe("chan_call");
       seen.push({ op: args.op, origin: args.origin, body: chanArgsJson(args) });
       return Promise.resolve(chanReply(golden[args.op]));
     });
-    await listSshHostAliases();
-    await resolveSshHost("devbox-lan");
     await importSshHosts([{ host: "pi.local", user: "pi", port: 22 }]);
     expect(seen).toEqual([
-      { op: "ssh-config-aliases", origin: LOCAL_ORIGIN, body: {} },
-      { op: "ssh-config-resolve", origin: LOCAL_ORIGIN, body: { alias: "devbox-lan" } },
       { op: "ssh-config-import", origin: LOCAL_ORIGIN, body: { known: [{ host: "pi.local", user: "pi", port: 22 }] } },
     ]);
   });
   it("本机后端不在 ⇒ 抛（不是空清单）", async () => {
     invokeMock.mockRejectedValue(NO_CHANNEL);
-    await expect(listSshHostAliases()).rejects.toThrow();
+    await expect(importSshHosts([])).rejects.toThrow();
   });
 });

@@ -19,7 +19,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "link-open",
         summary: "开一条链路",
         codes: &[
-            "invalid_args",
+            "bad_args",
             "unsupported_use",
             "duplicate_link",
             "too_many_links",
@@ -31,7 +31,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     CommandSpec {
         name: "link-data",
         summary: "往链路里送一块上行字节",
-        codes: &["invalid_args", "no_such_link", "link_busy", "link_closed"],
+        codes: &["bad_args", "no_such_link", "link_busy", "link_closed"],
         fields: &[arg("data", "无"), arg("link", "链路 id")],
         takes_input: true,
         run: Run::Builtin,
@@ -39,7 +39,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     CommandSpec {
         name: "link-credit",
         summary: "还下行信用",
-        codes: &["invalid_args", "no_such_link"],
+        codes: &["bad_args", "no_such_link"],
         fields: &[arg("bytes", "客户端读走了多少字节（累计信用不超过 16 MiB）"), arg("link", "链路 id")],
         takes_input: true,
         run: Run::Builtin,
@@ -47,7 +47,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     CommandSpec {
         name: "link-close",
         summary: "关一条链路",
-        codes: &["invalid_args"],
+        codes: &["bad_args"],
         fields: &[arg("link", "链路 id；关不存在的也回 `ok`")],
         takes_input: true,
         run: Run::Builtin,

@@ -134,10 +134,7 @@ export class TabStore {
    * 固定复活时据它分：报完了 ⇒ 已结束（它不在清单里，不然 tab 早就被建成活的了）；没报完 ⇒ 说不清。
    */
   readonly seenOrigins = new Set<string>();
-  readonly pendingActivity = new Map<
-    string,
-    { status: string; waitingFor: string | null }
-  >();
+  readonly pendingActivity = new Map<string, NonNullable<Tab["activity"]>>();
 
   /** 「tab 集合变了」那一格。建在唯一的 pub-sub 原语上（`app-store.ts::Slice`），同值不通知。 */
   private readonly tabsSlice = new Slice<TabsSummary>({ total: 0, live: 0, dead: 0 }, sameSummary);

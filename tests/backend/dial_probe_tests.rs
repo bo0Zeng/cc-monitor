@@ -185,7 +185,7 @@ async fn a_probe_without_a_valid_ticket_is_refused_before_dialling() {
             &tx,
         )
         .await;
-        assert_eq!(r.map_err(|(c, _)| c), Err("invalid_args"), "票 {bad} 该拒");
+        assert_eq!(r.map_err(|(c, _)| c), Err("bad_args"), "票 {bad} 该拒");
     }
     drop(tx);
     assert!(rx.recv().await.is_none(), "拒了就一格都不推");

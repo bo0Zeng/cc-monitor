@@ -215,7 +215,7 @@ describe("live 格的项目目录交到处理器", () => {
       onBatchEnd: vi.fn(),
     } as never, STREAMS);
     const live = (origin: string, projectDir: string | null) => ({
-      live: { session_id: `s-${origin}`, origin, kind: null, attachable: null, cwd: "/launched", project_dir: projectDir, name: null },
+      live: { session_id: `s-${origin}`, origin, background: false, attachable: null, cwd: "/launched", project_dir: projectDir, name: null },
     });
     streamFake.lifecycle([live("<local>", "/a/proj"), live("pi", null)]);
     await vi.runAllTimersAsync();

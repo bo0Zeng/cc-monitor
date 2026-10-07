@@ -583,7 +583,7 @@ describe("K-H2b D2 阻-7：本机那一档 not-ready 仍然整个隐藏", () => 
     vi.spyOn(readsMod, "fetchLocalAccounts").mockResolvedValue(
       state({ accounts: [acct({ name: "acct-a", isDefault: true, configDir: "/h/.claude-alt/acct-a" })] }),
     );
-    vi.spyOn(readsMod, "fetchLocalApikeyRouting").mockResolvedValue({ routed: [], running: false });
+    vi.spyOn(readsMod, "fetchMachineApikeyRouting").mockResolvedValue({ routed: [], running: false });
     const chip = new AccountChip({ openSettings: () => {} });
     await chip.refresh();
     await chip.openMenu();
@@ -623,7 +623,7 @@ describe("K-H2b D4 阻-4：chip 能列出来的号，命令面板也能列出来
     vi.spyOn(readsMod, "fetchLocalAccounts").mockResolvedValue(
       state({ accounts: accounts.map((a) => ({ ...a, isDefault: a.name === defaultName })) }),
     );
-    vi.spyOn(readsMod, "fetchLocalApikeyRouting").mockResolvedValue({ routed: [], running: false });
+    vi.spyOn(readsMod, "fetchMachineApikeyRouting").mockResolvedValue({ routed: [], running: false });
     const chip = new AccountChip({ openSettings: () => {} });
     await chip.refresh();
     return chip;
@@ -687,7 +687,7 @@ describe("K-H2b D4 阻-4：chip 能列出来的号，命令面板也能列出来
       ...state({ accounts: []}),
       meta: { enabled: false, acctsDir: "", manifestPath: "", updatedAt: null, sharedStore: null, count: 0, error: null },
     } as unknown as AccountsState);
-    vi.spyOn(readsMod, "fetchLocalApikeyRouting").mockResolvedValue({ routed: [], running: false });
+    vi.spyOn(readsMod, "fetchMachineApikeyRouting").mockResolvedValue({ routed: [], running: false });
     const chip = new AccountChip({ openSettings: () => {} });
     await chip.refresh();
     expect(

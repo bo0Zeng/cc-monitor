@@ -2,7 +2,7 @@
 //!
 //! 核原文：「链路四条」逐字「下行逐链路信用 —— `link-open` 给初始窗口，后端发一块扣一块，扣不到就等」·
 //! 「上行一次一块：`link-data` 的应答在那块**写进链路之后**才回」；`link-open` 小节逐字列出错误 code
-//! 「`invalid_args` · `unsupported_use` · `duplicate_link` · `too_many_links`」—— 本族逐句判的就是这几句。
+//! 「`bad_args` · `unsupported_use` · `duplicate_link` · `too_many_links`」—— 本族逐句判的就是这几句。
 //! ⚠ `§42` 自己的机检只核字段名落在哪一节、不核行为；契约里**行为**那一半不漂，靠的是本族。
 //! 为什么要有链路（本机一个常驻后端持 SSH 并复用）住。〔JA1 点址 2026-09-24〕
 //!
@@ -321,21 +321,18 @@ async fn open_refuses_what_it_should_with_a_code() {
         _ => String::new(),
     };
     let dial = serde_json::json!({"machine": {"host":"127.0.0.1","port":1,"user":"u"}});
-    assert_eq!(
-        code(table.open("a", &serde_json::json!({}))),
-        "invalid_args"
-    );
+    assert_eq!(code(table.open("a", &serde_json::json!({}))), "bad_args");
     assert_eq!(
         code(table.open("a", &serde_json::json!({"link": ""}))),
-        "invalid_args"
+        "bad_args"
     );
     assert_eq!(
         code(table.open("a", &serde_json::json!({"link": "x"}))),
-        "invalid_args"
+        "bad_args"
     );
     assert_eq!(
         code(table.open("a", &serde_json::json!({"link": "x", "dial": {"host": 1}}))),
-        "invalid_args"
+        "bad_args"
     );
     // 窗口：缺席 / 小于一块 / 大于上限 ⇒ 拒收＋回错（不替对端夹）。
     for w in [
@@ -348,7 +345,7 @@ async fn open_refuses_what_it_should_with_a_code() {
                 "a",
                 &serde_json::json!({"link": "w", "window": w, "dial": dial})
             )),
-            "invalid_args",
+            "bad_args",
             "窗口 {w} 该被拒"
         );
     }
@@ -393,7 +390,7 @@ async fn open_refuses_what_it_should_with_a_code() {
     let room = MAX_WINDOW - LINK_CHUNK_BYTES as u64;
     assert_eq!(
         code(table.credit("a", &serde_json::json!({"link": "cr", "bytes": room + 1}))),
-        "invalid_args",
+        "bad_args",
         "多还一字节该被拒"
     );
     assert!(matches!(
@@ -405,16 +402,12 @@ async fn open_refuses_what_it_should_with_a_code() {
     let bad = table.data("a", &serde_json::json!({"link": "dup", "data": "A"}));
     assert_eq!(
         bad.map(code).as_deref(),
-        Some("invalid_args"),
+        Some("bad_args"),
         "坏 base64 没被拒"
     );
     let huge = crate::stream::wire::b64_encode(&vec![0u8; LINK_CHUNK_BYTES + 1]);
     let too_big = table.data("a", &serde_json::json!({"link": "dup", "data": huge}));
-    assert_eq!(
-        too_big.map(code).as_deref(),
-        Some("invalid_args"),
-        "超块没被拒"
-    );
+    assert_eq!(too_big.map(code).as_deref(), Some("bad_args"), "超块没被拒");
 }
 
 /// ★ L1（不起 sshd 的那一半）：走**真的** `open` ＋ 真 russh，拨一个没人听的回环口 ⇒

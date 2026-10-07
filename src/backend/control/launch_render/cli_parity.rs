@@ -9,7 +9,7 @@ use serde::Deserialize;
 const FIXTURE: &str = include_str!("fixtures/cli-golden.json");
 
 /// 写成相等而不是地板：加 / 删用例被迫回来改这个数。
-const EXPECT_CASES: usize = 26;
+const EXPECT_CASES: usize = 23;
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]

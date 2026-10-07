@@ -20,8 +20,8 @@ export function session(n: number, origin: string, cwd: string, c: Convo | null,
     origin,
     cwd,
     name: null,
-    kind: null,
-    status: "idle",
+    background: false,
+    activity: "idle",
     waitingFor: null,
     container: { form: "hosted", host: "tmux", terminal: "tmux-1-1" },
     records: c ? c.records : [],
@@ -182,7 +182,7 @@ export function answerConvo(sid: string, cwd: string): Convo {
 export function defaultWorld(): World {
   const rich = richConvo(sidOf(1), "/home/user/work/orders");
   const s1 = session(1, LOCAL, "/home/user/work/orders", rich.convo, {
-    status: "busy",
+    activity: "working",
     relay: "std", // 本机中转看见了它的请求、没带扩展上下文那一项 ⇒ 默认 200k
     runs: [
       { run: "agent-a1", label: "补重试的单元测试", kind: "general-purpose", tool: rich.agentTool, state: "done", last: { t: "say" } },
@@ -198,12 +198,12 @@ export function defaultWorld(): World {
   });
   const sessions: SessionSpec[] = [
     s1,
-    session(2, LOCAL, "/home/user/work/web-console", waitingConvo(sidOf(2)), { status: "waiting", waitingFor: "permission prompt", waitingSinceMs: Date.now() - 120_000 }),
-    session(3, LOCAL, "/home/user/work/notes", smallConvo(sidOf(3), "/home/user/work/notes", "周报草稿", "把这周的提交整理成周报。", "整理好了，按模块分了三段。"), { status: "idle", ended: true }),
-    session(4, "devbox", "/srv/app/billing", smallConvo(sidOf(4), "/srv/app/billing", "账单导出改成流式", "导出大账单时内存会涨到 4G，改成流式写。", "改成边查边写 CSV，峰值内存降到 120M。", 140_000), { status: "busy", relay: "wide" }),
-    session(5, "devbox", "/srv/app/gateway", smallConvo(sidOf(5), "/srv/app/gateway", "网关限流配置", "给 /api/search 加每用户限流。", "已加：每用户每秒 5 次，突发 10。"), { status: "idle", kind: "bg" }),
-    session(6, "gpu-01", "/data/train/ranker", smallConvo(sidOf(6), "/data/train/ranker", "排序模型训练脚本", "训练脚本加断点续训。", "加好了：每 500 步存一次，启动时自动找最新的检查点。", 96_000), { status: "idle", idle: true }),
-    session(7, "win-laptop", "C:\\Users\\user\\work\\desktop-app", smallConvo(sidOf(7), "C:\\Users\\user\\work\\desktop-app", "安装包签名", "安装包要加代码签名。", "签名步骤加进打包脚本了，证书从环境变量读。"), { status: "shell" }),
+    session(2, LOCAL, "/home/user/work/web-console", waitingConvo(sidOf(2)), { activity: "needs_you", waitingFor: "permission prompt", waitingSinceMs: Date.now() - 120_000 }),
+    session(3, LOCAL, "/home/user/work/notes", smallConvo(sidOf(3), "/home/user/work/notes", "周报草稿", "把这周的提交整理成周报。", "整理好了，按模块分了三段。"), { activity: "idle", ended: true }),
+    session(4, "devbox", "/srv/app/billing", smallConvo(sidOf(4), "/srv/app/billing", "账单导出改成流式", "导出大账单时内存会涨到 4G，改成流式写。", "改成边查边写 CSV，峰值内存降到 120M。", 140_000), { activity: "working", relay: "wide" }),
+    session(5, "devbox", "/srv/app/gateway", smallConvo(sidOf(5), "/srv/app/gateway", "网关限流配置", "给 /api/search 加每用户限流。", "已加：每用户每秒 5 次，突发 10。"), { activity: "idle", background: true }),
+    session(6, "gpu-01", "/data/train/ranker", smallConvo(sidOf(6), "/data/train/ranker", "排序模型训练脚本", "训练脚本加断点续训。", "加好了：每 500 步存一次，启动时自动找最新的检查点。", 96_000), { activity: "idle", idle: true }),
+    session(7, "win-laptop", "C:\\Users\\user\\work\\desktop-app", smallConvo(sidOf(7), "C:\\Users\\user\\work\\desktop-app", "安装包签名", "安装包要加代码签名。", "签名步骤加进打包脚本了，证书从环境变量读。"), { activity: "idle" }),
   ];
   return {
     machines: [LOCAL, ...REMOTES],

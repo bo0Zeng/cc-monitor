@@ -187,7 +187,7 @@ fn the_live_cell_carries_the_project_dir() {
     let first = |o: &Out| serde_json::to_string(&o.frames()[0]).unwrap();
     assert_eq!(
         first(&with),
-        r#"{"live":{"session_id":"a","origin":"pi","kind":null,"attachable":null,"cwd":null,"project_dir":"/a/proj","name":null}}"#
+        r#"{"live":{"session_id":"a","origin":"pi","background":false,"attachable":null,"cwd":null,"project_dir":"/a/proj","name":null}}"#
     );
 }
 

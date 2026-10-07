@@ -277,25 +277,6 @@ export function accountStatusBadge(
   return { text: copyText("accounts.badge.signedIn"), warn: false, title: "" };
 }
 
-/**
- * 「打开该账号终端」那个按钮的文案（A6）。
- *
- * 与徽章同一个道理：对 api-key 号说「去登录」是**假话** —— 它不需要 `/login`，
- * `/login` 也修不了它缺端点这件事。
- */
-export function accountLoginActionLabel(a: Account): { label: string; title: string } {
-  if (a.authKind === "api-key") {
-    return {
-      label: copyText("accounts.loginAction.openTerminal"),
-      title: copyText("accounts.loginAction.openTerminalHint"),
-    };
-  }
-  return {
-    label: a.authReady ? copyText("accounts.loginAction.loginTerminal") : copyText("accounts.loginAction.goLogin"),
-    title: copyText("accounts.loginAction.loginHint"),
-  };
-}
-
 /** 某账号是否可被选为默认 / 用来起会话。 */
 export function isSelectable(a: Account): boolean {
   // 账号 0（mode "bare"）在这里**天然落选**。
@@ -373,16 +354,6 @@ export function accountConfigDir(state: AccountsState, name: string): string | n
   const acc = state.accounts.find((a) => a.name === name);
   if (!acc || !isSelectable(acc)) return null;
   return acc.configDir || null;
-}
-
-/**
- * Z01：这个账号是不是账号 0（「不设 CLAUDE_CONFIG_DIR」这个状态本身）。
- *
- * 判据是**结构性**的（`configDir` 缺席），**不认名字**——manifest 想把它叫什么都行，
- * 前端不硬编码 "0"。空串**不算**：那是非法拼法，backend 侧已挡掉。
- */
-export function isAccountZero(a: Account): boolean {
-  return a.configDir === null || a.configDir === undefined;
 }
 
 /** 账号徽章文本（tab 行用）：账号名首字符（ASCII 取前 2，其它取 1 个 code point）。 */
@@ -464,78 +435,4 @@ export function shouldShowAccountBadge(
   if (isLocalOrigin(origin)) return false; // 本地会话 A7 前不支持
   return readyOrigins.has(origin);
 }
-
-/**
- * `N-F1b` `NF1bD2`：**本机那条路上的界面文案，只此一家。**
- *
- * # 为什么它住在这儿而不住面板里
- *
- * 远端那套文案早就住在本模块（`deriveUi` 那几句、`accountStatusBadge` 那一族），
- * 而面板只调。本机这一支要照同一个形状长，理由不是对称好看，是**它有一个真的对侧**：
- * 只要本机那句话散在面板里，「这一句在讲哪台机器」就没有任何东西钉着 ——
- * 而本仓已经有过一次教训，`accounts-section.ts` 那句
- * 「账号功能在远端 Linux 上——先在「连接」组配一台远端」是**唯一**能说的话，
- * 于是一台本来就有账号的机器上，用户看到的是「你先去买一台远端」。
- *
- * # 🔴 这里的每一句都不许出现「远端」两个字
- *
- * 判据住 `tests/frontend/ui/settings/accounts-section.vitest.ts` 里 `NF1bD2` 那一族：
- * 一条量**这张表**（人群 = `Object.values` 现算，不写死条数），
- * 一条量**真渲染出来的 DOM**（人群 = 本机那一支的叶子文本 + 全部 title）。
- * 两条都在，是因为「表里干净」与「用户看到的干净」是两件事：
- * 面板完全可以绕开这张表、就地写一句带「远端」的话，那时只有后一条会红。
- *
- * ⚠ **诚实边界**：判据管得住**这张表里的固定文案**；
- * 面板往里插的**动态值**（后端回的错误串、manifest 路径）不在人群里 ——
- * 它们不是本件写的字，本件也没有办法替后端保证措辞。
- *
- * ⚠ **尤其不许复用** `deriveUi` 那句「该远端尚未启用多账号」（本文件 `not-enabled` 那一支）：
- * 对一台本机来说那句话有两个字是假的。
- */
-// 每一格是取值器：用到时才取文（模块顶层不留取文口调用，见 accountsOldBackend 那一句）。
-export const LOCAL_ACCOUNTS_COPY = {
-  /** 这一节的题头 —— 先把「在讲哪台机器」说清楚。 */
-  get heading(): string {
-    return copyText("accounts.local.heading");
-  },
-  /** 计数那一行的后半（前半是现算的数字）。 */
-  get countSuffix(): string {
-    return copyText("accounts.local.countSuffix");
-  },
-  /** 清单路径那一格的前缀。 */
-  get manifestPrefix(): string {
-    return copyText("accounts.local.manifestPrefix");
-  },
-  /** 一个隔离账号都没有时的正题。 */
-  get emptyTitle(): string {
-    return copyText("accounts.local.emptyTitle");
-  },
-  /**
-   * 空态的下一步：账号库已建、还没有具名账号 ⇒ 指向同一页的新建表单（新建由后端执行）。
-   */
-  get emptyNext(): string {
-    return copyText("accounts.local.emptyNext");
-  },
-  /** 读不出来时的正题 —— **不许**渲染成「你没有账号」。 */
-  get loadFailed(): string {
-    return copyText("accounts.local.loadFailed");
-  },
-  /** 后端连原因都没给时的兜底（`loadFailed` 后面那一格不许空着）。 */
-  get unknownReason(): string {
-    return copyText("accounts.local.unknownReason");
-  },
-  /** 当前账号那一行的标记。 */
-  get currentMark(): string {
-    return copyText("accounts.local.currentMark");
-  },
-  /**
-   * 这一节的管辖范围。
-   *
-   * ⚠ 它只说**本件真做到的事**（把清单列出来），不替下一件许愿：
-   * 切号 / 加号 / 走后端都还没接上，写进来就是一句提前兑现的话。
-   */
-  get scopeHint(): string {
-    return copyText("accounts.local.scopeHint");
-  },
-} as const;
 

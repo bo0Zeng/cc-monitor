@@ -49,7 +49,7 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
      "Hidden · JobKillOnClose · Null"),
     // ── 〔判定只在后端〕问我们自己放下去的那一份后端一次（帧命令的 CLI 面）。
     ("ccm_probe.rs", "ask_once", "`<我们那份 ccm / 要放的那份暂存件> -- --<帧命令>`（不经 shell；入参 JSON 走 stdin）",
-     "同步命令里要后端判一件事（本机探针认旧入口 `deploy-retired`）· 本机后端放下去之前要它自己判放不放（`place-verdict`，那一刻还没有常驻后端可连）\
+     "本机后端放下去之前要它自己判放不放（`place-verdict`，那一刻还没有常驻后端可连）\
           ⇒ 只能直接跑那份字节问一次；参数是路径与常量命令名，入参只经 stdin 交（不进 argv），一个字节都不写
           ★ 三条策略为什么是这三格：`Hidden` 同 `probe_binary_uncached`（Windows 上问的是控制台子系统的 `ccm.exe`）；超时收整棵；stderr 是答话的一半（错信封 `{code, message}`）⇒ `Captured`。",
      "Hidden · JobKillOnClose · Captured"),
