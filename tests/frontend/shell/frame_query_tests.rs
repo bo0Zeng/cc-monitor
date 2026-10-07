@@ -350,6 +350,12 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "后端出成品 `{outcome, pubPath, via}`（`assets/pubkey.rs`）；前端 `src/frontend/ui/pubkey-push.ts::pushPublicKey` 问、`decodePush` 按恰好的键集合收\
          （金样 `pubkey-push.golden.json`），monitor 这一侧零发送点（那条 Tauri 命令与它的两条路删了）",
     ),
+    // 文件与数据：同一份足迹重排的成品（`src/backend/footprint/data.rs`）。
+    (
+        "data-report",
+        "后端出成品 `{home, changedFiles, needsInstall, tmux, chores}`；前端 `src/frontend/ui/settings/data-reads.ts::readDataReport` 问、\
+         `decodeDataReport` 按恰好的键集合收；monitor 这一侧零发送点，本机那一栏只答它自己那台那几行的事实（`footprint_client_facts`）",
+    ),
     // 足迹：成品由那台后端出（申报表 ＋ 判定进了后端）。
     (
         "footprint-report",

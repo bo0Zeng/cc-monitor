@@ -2728,11 +2728,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ),
         // monitor 自己那台的探针（`with_monitor_probe`）随足迹判定进后端删了；两处散文点旧名。
         ("src/backend/footprint/rows.rs", "with_monitor_probe", 1),
-        (
-            "src/frontend/ui/settings/config-surface-section.ts",
-            "config_surface_report",
-            1,
-        ),
         ("src/backend/footprint/rows.rs", "config_surface_report", 1),
         (
             "src/frontend/ui/ipc/commands.ts",
@@ -5071,8 +5066,7 @@ fn every_prose_tombstone_mark_is_registered() {
         // 基数 → 增量 +1 行：`apikey_remote`整删，「形状照它」那句挂墓碑。
         // `src/frontend/shell/src/footprint_remote.rs` 那一行随文件删了（足迹两趟问法进了后端 face）。
         ("src/backend/agents/claudecode/footprint.rs", 1), // 新行：cc-bus 那一条随 Claude 布局那一半搬来，带着它那块（`~/.cc-bus/` note 点写面旧命令名）
-        ("src/frontend/ui/settings/config-surface-section.ts", 2), // 新行：`answersFor` 回声校验删了那一句 ＋ 构造期那句点旧命令名
-        ("src/frontend/ui/settings/footprint-reads.ts", 1),        // 新行：头注点旧 Tauri 命令名
+        ("src/frontend/ui/settings/footprint-reads.ts", 1), // 新行：头注点旧 Tauri 命令名
         ("tests/e2e/local-backend-supervise.sh", 2), // e2e 起真后端那条删掉的判据名挂墓碑（gate · local-backend 套件）
         ("tests/scripts/gate.sh", 1), // 2 → 1：shellcheck 那一格「立项理由已不成立、原话照留」那段随人群搬进门禁一起删了（那段讲的是 CI 独有、人群住 ci.yml）· 3 → 2：e2e 那段逐套条数的沿革注释删了，local-backend 那块墓碑随之没了
         // 公钥推送进本机后端：新文件头注点旧命令名挂墓碑。

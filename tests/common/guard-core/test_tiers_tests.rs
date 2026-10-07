@@ -62,6 +62,7 @@ const UNIT: &[&str] = &[
     "tests/frontend/ui/acct-view.vitest.ts",
     "tests/frontend/ui/remote-launch.test.ts", // SCAN → UNIT：读 e2e 替身源码那一格随换号重启下沉删了，剩下的格都是纯函数
     // SCAN → UNIT：读 `main.rs` 源码的那一条（`--capture-pane` 够不够得到）随那条子命令删了，余下都是纯函数。
+    "tests/backend/footprint/data_tests.rs",
     "tests/backend/main_stream_flag_tests.rs",
     // 记录解释搬进后端：Claude 轮次判词（原 `observe/turn_detect_tests.rs`）· Codex 记录映射（原 monitor `codex_record_tests.rs`）·
     //   按路径读正文出成品那个核（新）。
@@ -221,11 +222,10 @@ const UNIT: &[&str] = &[
     "tests/frontend/ui/settings/account-new-form.vitest.ts",
     "tests/frontend/ui/settings/cc-bus-section.vitest.ts",
     "tests/frontend/ui/settings/claude-dir-check.vitest.ts", // Claude 数据目录存之前问本机后端在不在（假通道）
-    "tests/frontend/ui/settings/config-surface-section.vitest.ts",
     "tests/frontend/ui/settings/context-limits-section.vitest.ts", // `contextLimits` 的入口（假 IPC）
     "tests/frontend/ui/settings/diagnostics-section.vitest.ts",
     "tests/frontend/ui/settings/local-resume-row.vitest.ts",
-    "tests/frontend/ui/settings/drift-ledger-section.vitest.ts",
+    "tests/frontend/ui/settings/data-page.vitest.ts",
     "tests/frontend/ui/settings/host-os.vitest.ts",
     "tests/frontend/ui/kit/tooltip.vitest.ts",
     "tests/frontend/ui/settings/machine-aliases.vitest.ts",

@@ -155,10 +155,11 @@ const APP_PAGE_IPC_ON_REOPEN = [
  * 登记表 ③：「未识别的数据」那一发（原顶层「改动足迹」页的漂移记账）。
  * 顶层页删了，那一块住**每台机器子页的「足迹」栏**，只有本机那一栏读 ⇒ 并进登记表 ④。
  */
-const FOOTPRINT_IPC = ["drift_ledger_report"] as const;
+// 「未识别的数据」那一块退场（并进日志页的诊断信息）⇒ 这一张今天是空的。
+const FOOTPRINT_IPC = [] as const;
 
 /** 登记表 ④：点进某台机器的子页才该出现的那一发（步 14a 之后「足迹」住那儿）。 */
-// 足迹本机那一栏第一拍问 monitor 自己那几行的环境（`footprint_client_facts`；成品经通道问本机后端）。
+// 文件与数据本机那一栏第一拍问 monitor 自己那几行的环境（`footprint_client_facts`；成品经通道问本机后端 `data-report`）。
 const MACHINE_PAGE_IPC = ["footprint_client_facts", ...FOOTPRINT_IPC] as const;
 
 /** 「应用」下两个子页各自的那几发（原来合在「应用」一页里）。 */
@@ -223,8 +224,10 @@ describe(" 判据 #3：非落地页零 I/O（第一刀 · 步 2）", () => {
     mark = ipc.calls.length;
     visit("data");
     await tick();
-    // 文件与数据：数据位置那一发 ＋ 足迹 · 未识别的数据（「未识别的数据」经通道问那台后端，`chan_call`）。
-    expect(uniq(since(mark)).sort()).toEqual(uniq([...DATA_PAGE_IPC, ...MACHINE_PAGE_IPC, "chan_call"]).sort());
+    await tick();
+    // 文件与数据：数据位置那一发 ＋ 本机那几条事实
+    // ＋ 机器表（哪几台，`load_config`）。本机那几条事实这里也是 reject ⇒ 本机那一问不发出去（不拿远端视角冒充本机）。
+    expect(uniq(since(mark)).sort()).toEqual(uniq([...DATA_PAGE_IPC, ...MACHINE_PAGE_IPC, "load_config"]).sort());
     // 两页合起来 == 原来「应用」那一趟的几发（拆开不许丢、也不许多；诊断信息的原料两发是打开设置时本来就有的那两种）。
     expect(uniq([...LOGS_PAGE_IPC, ...DATA_PAGE_IPC]).filter((n) => n !== "chan_call" && n !== "load_config")).toEqual(uniq([...APP_PAGE_IPC]));
   });
@@ -258,8 +261,9 @@ describe(" 判据 #3：非落地页零 I/O（第一刀 · 步 2）", () => {
     mark = ipc.calls.length;
     visit("data");
     await tick();
-    // 「未识别的数据」记录那两面经通道问那台后端（`drift-report`，包装层那一条 `chan_call`）。
-    for (const name of [...MACHINE_PAGE_IPC, "chan_call"]) expect(since(mark), `文件与数据页没发 ${name}`).toContain(name);
+    await tick();
+    // 文件与数据本机那一栏第一拍问 monitor 那几条事实（之后才经通道问本机后端 `data-report`）。
+    for (const name of MACHINE_PAGE_IPC) expect(since(mark), `文件与数据页没发 ${name}`).toContain(name);
   });
 
   it("`open()` 之后仍然只碰落地页（这就是用户说的「打开设置」那一下）", async () => {

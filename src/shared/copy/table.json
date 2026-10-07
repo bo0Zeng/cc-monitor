@@ -5665,6 +5665,11 @@
       "zh": "没存上：{why} 已经重新读了一遍，看一眼再存。",
       "args": ["why"]
     },
+    "machineAliases.save.done": {
+      "kind": "body",
+      "zh": "已保存别名",
+      "args": []
+    },
     "machineAliases.tmuxNaming.attach": {
       "kind": "body",
       "zh": "接回一个已有的 tmux 会话：会话名在敲的时候跟上（如 cca 会话名）。",
@@ -6382,12 +6387,12 @@
     },
     "settingsPanel.dataDir.reset": {
       "kind": "action",
-      "zh": "重置",
+      "zh": "用回默认",
       "args": []
     },
     "settingsPanel.dataDir.browse": {
       "kind": "action",
-      "zh": "浏览…",
+      "zh": "更换…",
       "args": []
     },
     "settingsPanel.save.claudeDir": {
@@ -6397,17 +6402,7 @@
     },
     "settingsPanel.dataDir.pathHint": {
       "kind": "control",
-      "zh": "默认：~/.claude  或  $CLAUDE_CONFIG_DIR",
-      "args": []
-    },
-    "settingsPanel.dataDir.path": {
-      "kind": "control",
-      "zh": "目录路径",
-      "args": []
-    },
-    "settingsPanel.dataDir.title": {
-      "kind": "title",
-      "zh": "Claude 数据目录",
+      "zh": "~/.claude · 默认",
       "args": []
     },
     "settingsPanel.keybindings.allDefault": {
@@ -6510,16 +6505,6 @@
       "zh": "正在列这台机器上的账号与终端设置…",
       "args": []
     },
-    "settingsPanel.group.unknown": {
-      "kind": "title",
-      "zh": "未识别的数据",
-      "args": []
-    },
-    "settingsPanel.group.footprint": {
-      "kind": "title",
-      "zh": "足迹",
-      "args": []
-    },
     "settingsPanel.group.aliases": {
       "kind": "title",
       "zh": "别名",
@@ -6617,12 +6602,17 @@
     },
     "settingsPanel.claudeDir.missing": {
       "kind": "error",
-      "zh": "{path} 不在",
+      "zh": "{path} 不存在 · 未保存",
       "args": ["path"]
     },
     "settingsPanel.claudeDir.notDir": {
       "kind": "error",
-      "zh": "{path} 不是目录",
+      "zh": "{path} 不是目录 · 未保存",
+      "args": ["path"]
+    },
+    "settingsPanel.claudeDir.noRecords": {
+      "kind": "error",
+      "zh": "{path} 无会话记录 · 未保存",
       "args": ["path"]
     },
     "settingsPanel.claudeDir.uncheckable": {
@@ -6668,6 +6658,181 @@
     "settingsPanel.nav.data": {
       "kind": "title",
       "zh": "文件与数据",
+      "args": []
+    },
+    "dataPage.tab.chores": {
+      "kind": "control",
+      "zh": "要你动手",
+      "args": []
+    },
+    "dataPage.tab.placed": {
+      "kind": "control",
+      "zh": "cc-monitor 放了什么",
+      "args": []
+    },
+    "dataPage.tab.aria": {
+      "kind": "control",
+      "zh": "文件与数据分栏",
+      "args": []
+    },
+    "dataPage.page.sub": {
+      "kind": "body",
+      "zh": "要你动手 · cc-monitor 放的文件 · 改过你的文件",
+      "args": []
+    },
+    "dataPage.chores.open": {
+      "kind": "body",
+      "zh": "未完成 {n}",
+      "args": ["n"]
+    },
+    "dataPage.chores.countInstall": {
+      "kind": "body",
+      "zh": "要装 {n}",
+      "args": ["n"]
+    },
+    "dataPage.chores.countOptional": {
+      "kind": "body",
+      "zh": "可选 {n}",
+      "args": ["n"]
+    },
+    "dataPage.chores.recheck": {
+      "kind": "action",
+      "zh": "全部重查",
+      "args": []
+    },
+    "dataPage.chores.openMachine": {
+      "kind": "action",
+      "zh": "打开该机器",
+      "args": []
+    },
+    "dataPage.chores.reading": {
+      "kind": "body",
+      "zh": "读取中…",
+      "args": []
+    },
+    "dataPage.chores.offline": {
+      "kind": "body",
+      "zh": "{machine} 离线 · 未检查",
+      "args": ["machine"]
+    },
+    "dataPage.chores.none": {
+      "kind": "body",
+      "zh": "无",
+      "args": []
+    },
+    "dataPage.install.title": {
+      "kind": "body",
+      "zh": "缺 {name}",
+      "args": ["name"]
+    },
+    "dataPage.install.kind": {
+      "kind": "body",
+      "zh": "要装",
+      "args": []
+    },
+    "dataPage.install.kindOptional": {
+      "kind": "body",
+      "zh": "要装 · 可选",
+      "args": []
+    },
+    "dataPage.install.whyRequired": {
+      "kind": "body",
+      "zh": "缺了起不了会话",
+      "args": []
+    },
+    "dataPage.install.whyOptional": {
+      "kind": "body",
+      "zh": "缺了少一个功能",
+      "args": []
+    },
+    "dataPage.install.how": {
+      "kind": "action",
+      "zh": "安装方法",
+      "args": []
+    },
+    "dataPage.claudeDir.title": {
+      "kind": "title",
+      "zh": "Claude 目录",
+      "args": []
+    },
+    "dataPage.claudeDir.sub": {
+      "kind": "body",
+      "zh": "会话记录来源",
+      "args": []
+    },
+    "dataPage.changed.title": {
+      "kind": "title",
+      "zh": "改过你的文件",
+      "args": []
+    },
+    "dataPage.changed.sub": {
+      "kind": "body",
+      "zh": "均由你点击触发",
+      "args": []
+    },
+    "dataPage.changed.line": {
+      "kind": "body",
+      "zh": "{what} · 撤回：{where}",
+      "args": ["what", "where"]
+    },
+    "dataPage.changed.go": {
+      "kind": "action",
+      "zh": "前往",
+      "args": []
+    },
+    "dataPage.changed.none": {
+      "kind": "body",
+      "zh": "无",
+      "args": []
+    },
+    "dataPage.changed.pasted": {
+      "kind": "body",
+      "zh": "你自己贴的：见「要你动手 · 已做」",
+      "args": []
+    },
+    "dataPage.undo.ext": {
+      "kind": "body",
+      "zh": "扩展页卸载",
+      "args": []
+    },
+    "dataPage.undo.config": {
+      "kind": "body",
+      "zh": "别名与配置文件 → 接上终端",
+      "args": []
+    },
+    "dataPage.own.title": {
+      "kind": "title",
+      "zh": "cc-monitor 的文件",
+      "args": []
+    },
+    "dataPage.own.sub": {
+      "kind": "body",
+      "zh": "卸载 cc-monitor 不删这些",
+      "args": []
+    },
+    "dataPage.placed.offline": {
+      "kind": "body",
+      "zh": "{machine} 离线 · 未检查",
+      "args": ["machine"]
+    },
+    "dataPage.placed.retry": {
+      "kind": "action",
+      "zh": "重试",
+      "args": []
+    },
+    "dataPage.placed.unknown": {
+      "kind": "body",
+      "zh": "读不到",
+      "args": []
+    },
+    "dataReads.shape.bad": {
+      "kind": "error",
+      "zh": "那台答的「文件与数据」形状认不出",
+      "args": []
+    },
+    "dataReads.ask.failed": {
+      "kind": "error",
+      "zh": "问不到那台的「文件与数据」",
       "args": []
     },
     "settingsPanel.nav.logs": {
@@ -7141,96 +7306,6 @@
       "zh": "远端模式：monitor 通过 SSH 连到远端主机。远端会话与本机会话一起显示，远端 Tab 标题带 [机器名] 前缀。\n默认关闭。关闭或机器列表为空时一切走本地，不受影响。\n\n⚠ 启用 / 修改任意远端设置后，需重启 monitor 才生效。\n某台配置不完整（缺主机、用户或后端路径）时后端会跳过那一台。",
       "args": []
     },
-    "configSurface.copy.failedTitle": {
-      "kind": "error",
-      "zh": "复制诊断文本",
-      "args": []
-    },
-    "configSurface.copy.copyReport": {
-      "kind": "action",
-      "zh": "复制诊断文本",
-      "args": []
-    },
-    "configSurface.copy.done": {
-      "kind": "action",
-      "zh": "已复制",
-      "args": []
-    },
-    "configSurface.row.resolved": {
-      "kind": "body",
-      "zh": "解析为 {pathResolved}",
-      "args": ["pathResolved"]
-    },
-    "configSurface.row.reveal": {
-      "kind": "action",
-      "zh": "在文件夹中显示",
-      "args": []
-    },
-    "configSurface.row.openFiles": {
-      "kind": "action",
-      "zh": "在文件窗口里打开",
-      "args": []
-    },
-    "configSurface.row.noHostConfig": {
-      "kind": "error",
-      "zh": "找不到{machine}的连接设置。到「机器」里看看这台还在不在。",
-      "args": ["machine"]
-    },
-    "configSurface.report.noHook": {
-      "kind": "body",
-      "zh": "不含 cc-bus 钩子字样",
-      "args": []
-    },
-    "configSurface.report.hasHook": {
-      "kind": "body",
-      "zh": "含 cc-bus 钩子字样",
-      "args": []
-    },
-    "configSurface.render.hookUnreadable": {
-      "kind": "body",
-      "zh": "钩子字样：读不到",
-      "args": []
-    },
-    "configSurface.render.listSep": {
-      "kind": "body",
-      "zh": "、",
-      "args": []
-    },
-    "configSurface.render.owedHead": {
-      "kind": "title",
-      "zh": "哪 {n} 项",
-      "args": ["n"]
-    },
-    "configSurface.render.home": {
-      "kind": "body",
-      "zh": "主目录 {home} · ~/.claude 解析为 {claudeConfigDir}",
-      "args": ["home", "claudeConfigDir"]
-    },
-    "configSurface.backups.intro": {
-      "kind": "body",
-      "zh": "装终端集成时，原来的 profile 先备份到同目录的 .ccm-backup-<时间戳>。想撤回就用它。",
-      "args": []
-    },
-    "configSurface.backups.title": {
-      "kind": "title",
-      "zh": "PowerShell profile 备份",
-      "args": []
-    },
-    "configSurface.backups.failed": {
-      "kind": "error",
-      "zh": "读不到 PowerShell profile 备份在哪：{e}",
-      "args": ["e"]
-    },
-    "configSurface.refresh.failedTitle": {
-      "kind": "error",
-      "zh": "扫描足迹",
-      "args": []
-    },
-    "configSurface.refresh.failed": {
-      "kind": "error",
-      "zh": "扫描失败：{e}",
-      "args": ["e"]
-    },
     "configSurface.backend.tooOld": {
       "kind": "error",
       "zh": "这台的后端太旧，查不了足迹。本机重启 cc-monitor 就会换上新的后端，远端要重新部署后端。",
@@ -7240,176 +7315,6 @@
       "kind": "error",
       "zh": "后端返回的足迹读不懂，多半是后端版本不对，需要更新。",
       "args": []
-    },
-    "configSurface.refresh.scanningMachine": {
-      "kind": "body",
-      "zh": "正在扫这台机器上的足迹…",
-      "args": []
-    },
-    "configSurface.remote.unanswered": {
-      "kind": "body",
-      "zh": "这台机器（{machine}）的足迹查不了：那台的后端答不上来。",
-      "args": ["machine"]
-    },
-    "configSurface.scopes.intro": {
-      "kind": "body",
-      "zh": "钩子可以写在多个作用域里，优先级从低到高。钩子诊断读的是「用户级」那一份——所以如果你把钩子写在了别处，那边报的「未装」可能是错的。",
-      "args": []
-    },
-    "configSurface.scopes.title": {
-      "kind": "title",
-      "zh": "settings.json 的各作用域",
-      "args": []
-    },
-    "configSurface.build.copying": {
-      "kind": "body",
-      "zh": "复制中…",
-      "args": []
-    },
-    "configSurface.build.copyReport": {
-      "kind": "action",
-      "zh": "复制诊断文本",
-      "args": []
-    },
-    "configSurface.build.scanning": {
-      "kind": "body",
-      "zh": "扫描中…",
-      "args": []
-    },
-    "configSurface.build.rescan": {
-      "kind": "action",
-      "zh": "重新扫描",
-      "args": []
-    },
-    "configSurface.build.whyUndetermined": {
-      "kind": "body",
-      "zh": "这三类本机无从判断，报成「缺失」会是假警报。远端路径要 SSH（请到那台机器的页面里查）；项目里的 .mcp.json 得先知道是哪个项目；Windows 的 $PROFILE 由 PowerShell 决定。",
-      "args": []
-    },
-    "configSurface.build.undetermined": {
-      "kind": "body",
-      "zh": "查不了的写成「未确定」并说明原因，不画成红叉。",
-      "args": []
-    },
-    "configSurface.build.readOnly": {
-      "kind": "body",
-      "zh": "只读：这一页不会写任何东西，也不在后台轮询。每次打开或点「重新扫描」才读一次。",
-      "args": []
-    },
-    "configSurface.build.intro": {
-      "kind": "body",
-      "zh": "cc-monitor 会碰你哪些文件、对它做什么、现在什么状态、还能不能撤。",
-      "args": []
-    },
-    "configSurface.remote.unansweredWhy": {
-      "kind": "body",
-      "zh": "「答不出来」不等于「它没动过你的文件」。",
-      "args": []
-    },
-    "configSurface.report.unreadable": {
-      "kind": "body",
-      "zh": "读不到",
-      "args": []
-    },
-    "configSurface.report.scopesHead": {
-      "kind": "body",
-      "zh": "== settings.json 的各作用域（会影响钩子诊断结论）==",
-      "args": []
-    },
-    "configSurface.report.state": {
-      "kind": "body",
-      "zh": "    现状: {text}",
-      "args": ["text"]
-    },
-    "configSurface.report.effect": {
-      "kind": "body",
-      "zh": "    cc-monitor 做什么: {effectLabel}",
-      "args": ["effectLabel"]
-    },
-    "configSurface.report.resolved": {
-      "kind": "body",
-      "zh": "    解析为: {pathResolved}",
-      "args": ["pathResolved"]
-    },
-    "configSurface.report.where": {
-      "kind": "body",
-      "zh": "    位置: {hostLabel}",
-      "args": ["hostLabel"]
-    },
-    "configSurface.report.claudeDir": {
-      "kind": "body",
-      "zh": "~/.claude 解析为 {claudeConfigDir}",
-      "args": ["claudeConfigDir"]
-    },
-    "configSurface.report.head": {
-      "kind": "body",
-      "zh": "== cc-monitor 足迹 ==",
-      "args": []
-    },
-    "configSurface.summarizeOwedInstallers.owed": {
-      "kind": "body",
-      "zh": "⚠ {namesCount} 项不能在这里装，要你自己装",
-      "args": ["namesCount"]
-    },
-    "configSurface.undo.unknownKind": {
-      "kind": "body",
-      "zh": "撤销方式未知，请按上面的路径手动处理",
-      "args": []
-    },
-    "configSurface.undo.notOurs": {
-      "kind": "body",
-      "zh": "不适用：cc-monitor 不管理这一项",
-      "args": []
-    },
-    "configSurface.undo.userInstalls": {
-      "kind": "body",
-      "zh": "不适用：这一项需自行安装",
-      "args": []
-    },
-    "configSurface.undo.noInstaller": {
-      "kind": "body",
-      "zh": "不适用：这一项不能在这里装",
-      "args": []
-    },
-    "configSurface.undo.manual": {
-      "kind": "body",
-      "zh": "cc-monitor 撤不了；要清理请按上面的路径手动处理",
-      "args": []
-    },
-    "configSurface.undo.fenced": {
-      "kind": "body",
-      "zh": "可按片段或整文件撤销（在对应工具的部署入口里）",
-      "args": []
-    },
-    "configSurface.state.unknown": {
-      "kind": "body",
-      "zh": "未知状态（{kind}）",
-      "args": ["kind"]
-    },
-    "configSurface.state.undetermined": {
-      "kind": "body",
-      "zh": "未确定 —— {why}",
-      "args": ["why"]
-    },
-    "configSurface.state.absent": {
-      "kind": "body",
-      "zh": "不存在",
-      "args": []
-    },
-    "configSurface.gap.unknownIsNotAbsent": {
-      "kind": "body",
-      "zh": "查不动不等于不在：这台机器上判断不了，不说明它没装。",
-      "args": []
-    },
-    "configSurface.install.unknown": {
-      "kind": "body",
-      "zh": "{unknown} —— 这一项本机查不动（见上面的原因）",
-      "args": ["unknown"]
-    },
-    "configSurface.install.prompt": {
-      "kind": "body",
-      "zh": "{missing} —— cc-monitor 不装这一项，请你自己装上 {path}",
-      "args": ["missing", "path"]
     },
     "diagnostics.openDir.failed": {
       "kind": "error",
@@ -7584,151 +7489,6 @@
     "diagnostics.file.restart": {
       "kind": "body",
       "zh": "重启 cc-monitor 后生效",
-      "args": []
-    },
-    "driftLedger.copy.failed": {
-      "kind": "error",
-      "zh": "复制诊断文本失败",
-      "args": []
-    },
-    "driftLedger.copy.copyReport": {
-      "kind": "action",
-      "zh": "复制诊断文本",
-      "args": []
-    },
-    "driftLedger.copy.done": {
-      "kind": "action",
-      "zh": "已复制",
-      "args": []
-    },
-    "driftLedger.render.consequence": {
-      "kind": "body",
-      "zh": "后果：{consequence}",
-      "args": ["consequence"]
-    },
-    "driftLedger.face.head": {
-      "kind": "body",
-      "zh": "{faceTitle}（{n} 种{overflow}）",
-      "args": ["faceTitle", "n", "overflow"]
-    },
-    "driftLedger.face.overflowed": {
-      "kind": "body",
-      "zh": "，已触顶",
-      "args": []
-    },
-    "driftLedger.render.clean": {
-      "kind": "body",
-      "zh": "本次运行没有遇到无法识别的数据。这不代表历史上没有：计数重启后清零。",
-      "args": []
-    },
-    "driftLedger.refresh.failed": {
-      "kind": "error",
-      "zh": "读不到格式兼容记录：{e}（这不等于「没有」）",
-      "args": ["e"]
-    },
-    "driftLedger.refresh.wrongMachine": {
-      "kind": "error",
-      "zh": "答的不是这台机器（答的是 {machine}）",
-      "args": ["machine"]
-    },
-    "driftLedger.refresh.badShape": {
-      "kind": "error",
-      "zh": "后端返回的内容读不懂（faces 不是数组）",
-      "args": []
-    },
-    "driftLedger.build.copying": {
-      "kind": "action",
-      "zh": "复制中…",
-      "args": []
-    },
-    "driftLedger.build.copyReport": {
-      "kind": "action",
-      "zh": "复制诊断文本",
-      "args": []
-    },
-    "driftLedger.build.reading": {
-      "kind": "action",
-      "zh": "读取中…",
-      "args": []
-    },
-    "driftLedger.build.reread": {
-      "kind": "action",
-      "zh": "重新读取",
-      "args": []
-    },
-    "driftLedger.build.intro": {
-      "kind": "body",
-      "zh": "cc-monitor 这次运行里从这台机器读到、但没认出来的数据。多半是 Claude Code 出了新格式；没认出来的部分照常降级显示，这里把它们列出来。计数只算这次运行，重启 monitor 就清零。",
-      "args": []
-    },
-    "driftLedger.report.head": {
-      "kind": "body",
-      "zh": "格式兼容记录（{where} · 重启后清空）\n\n{parts}",
-      "args": ["where", "parts"]
-    },
-    "driftLedger.report.consequence": {
-      "kind": "body",
-      "zh": "  后果：{consequence}",
-      "args": ["consequence"]
-    },
-    "driftLedger.report.clean": {
-      "kind": "body",
-      "zh": "格式兼容记录（{where}）：本次运行没有遇到无法识别的数据。",
-      "args": ["where"]
-    },
-    "driftLedger.machine.local": {
-      "kind": "body",
-      "zh": "本机",
-      "args": []
-    },
-    "driftLedger.entry.firstSample": {
-      "kind": "body",
-      "zh": "\n      首见：{firstSample}",
-      "args": ["firstSample"]
-    },
-    "driftLedger.unit.times": {
-      "kind": "body",
-      "zh": "次",
-      "args": []
-    },
-    "driftLedger.unit.connections": {
-      "kind": "body",
-      "zh": "次连接",
-      "args": []
-    },
-    "driftLedger.unit.observations": {
-      "kind": "body",
-      "zh": "次观测（每次重扫一次，不是会话数）",
-      "args": []
-    },
-    "driftLedger.unit.records": {
-      "kind": "body",
-      "zh": "条记录",
-      "args": []
-    },
-    "driftLedger.face.unnamed": {
-      "kind": "title",
-      "zh": "未知类别（{face}）",
-      "args": ["face"]
-    },
-    "driftLedger.face.unknownCapability": {
-      "kind": "title",
-      "zh": "远端后端有本版本不认识的功能",
-      "args": []
-    },
-    "driftLedger.face.unknownSessionKind": {
-      "kind": "title",
-      "zh": "未知会话类型",
-      "args": []
-    },
-    "driftLedger.face.parseFailed": {
-      "kind": "title",
-      "zh": "已知类型解析失败",
-      "args": []
-    },
-    "driftLedger.face.unknownRecord": {
-      "kind": "title",
-      "zh": "未知记录类型",
       "args": []
     },
     "data.truncate.ellipsis": {

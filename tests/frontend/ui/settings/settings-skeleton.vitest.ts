@@ -171,7 +171,7 @@ describe("：骨架与它替代的那块内容**同一个高度**（第一刀 ·
   });
 
   it("骨架不是空的，也不冒充兜底态（「没有第三态」那一格）", () => {
-    const sk = makeSkeleton("footprint", "正在扫这台机器上的足迹…");
+    const sk = makeSkeleton("data-places", "正在读 cc-monitor 放的文件…");
     expect(sk.textContent, "空骨架与「加载失败」在屏幕上分不开").not.toBe("");
     expect(sk.getAttribute("aria-busy"), "读屏器那一侧也要知道它在忙").toBe("true");
   });

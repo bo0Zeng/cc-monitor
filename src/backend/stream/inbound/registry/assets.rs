@@ -1,4 +1,4 @@
-//! 命令表 · 资产：`assets-*` · `ext-*` · `skill-*` · `mcp-*` · `hooks-*` · `footprint-report` · `cc-bus-*`。
+//! 命令表 · 资产：`assets-*` · `ext-*` · `skill-*` · `mcp-*` · `hooks-*` · `footprint-report` · `data-report` · `cc-bus-*`。
 
 use crate::stream::inbound::doors::hub_here;
 use crate::stream::inbound::spec::{CommandSpec, Run};
@@ -16,6 +16,20 @@ pub(super) const SPECS: &[CommandSpec] = &[
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::footprint::answer(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 「文件与数据」那一份成品：同一份足迹按「改过你的文件 · 要装 · 有没有 tmux · 进角标几件」重排（`footprint/data.rs`）。
+    //   入参同 `footprint-report`（本机那一栏带 `client`）。只读，阻塞档。
+    CommandSpec {
+        name: "data-report",
+        doc_anchor: Some("#### `data-report`"),
+        codes: &["bad_args", "failed"],
+        fields: &["client"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::footprint::data_answer(&r.args)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),

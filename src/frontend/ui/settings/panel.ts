@@ -27,8 +27,6 @@ import { claudeDirIn, setClaudeDirOverride } from "../paths";
 import { loadConfig } from "../config";
 import { AccountsSection } from "./accounts-section";
 import { ExtSection } from "./ext-section"; // 顶层「扩展」：跨机器的 skill / MCP，一张表 ＋ 一个抽屉
-import { ConfigSurfaceSection } from "./config-surface-section"; // T02：配置面审计（只读、按需一次、不轮询）
-import { DriftLedgerSection } from "./drift-ledger-section"; // U-CC1：数据面漂移记账（只读、按需一次、不轮询）
 import { RelayOptinSection } from "./relay-optin-section"; // 「终端」栏：直接敲的 claude 也走中转（可选、生成让你贴）
 import { DiagnosticsSection } from "./diagnostics-section";
 import { makeSkeleton } from "./skeleton";
@@ -51,6 +49,7 @@ import {
   MACHINE_PAGE_PREFIX,
 } from "./remote-section";
 import { DataSection } from "./data-section";
+import { DataPage } from "./data-page";
 import { ContextLimitsSection } from "./context-limits-section"; // `contextLimits` 的入口
 import { RemoteSection } from "./remote-section";
 import type { MachineCardParts } from "./machine-card";
@@ -275,6 +274,8 @@ export class SettingsPanel {
   private banner!: HTMLElement;
   /** issue #3 (A): 「数据位置」展示区（改名）。打开面板时 refresh 一次拉最新 stat */
   private dataSection?: DataSection;
+  /** 「文件与数据」两栏那一页。 */
+  private dataPage?: DataPage;
   /** 改名后的「日志」块。步 2 要在「应用」页首次可见时叫醒它。 */
   private logsSection?: DiagnosticsSection;
   /** 顶层「扩展」页那一块（构造失败 ⇒ 留 `undefined`，同 `remoteSection` 那一格的约定）。 */
@@ -1010,15 +1011,29 @@ export class SettingsPanel {
       ),
     );
 
+    // 文件与数据：两栏（要你动手 · cc-monitor 放了什么）；本机那两块（Claude 目录 · cc-monitor 的文件）由这里建好交进去。
     const dataPage = document.createElement("div");
-    dataPage.appendChild(this.buildDataGroup());
+    const ownFiles = this.safeBlock(
+      copyText("settingsPanel.group.dataPlaces"),
+      () => {
+        const sec = new DataSection({ headless: true });
+        this.dataSection = sec;
+        return sec.element;
+      },
+      { untitled: true },
+    );
     dataPage.appendChild(
       this.safeBlock(
-        copyText("settingsPanel.group.dataPlaces"),
+        copyText("settingsPanel.nav.data"),
         () => {
-          const sec = new DataSection({ headless: true });
-          this.dataSection = sec;
-          return sec.element;
+          const page = new DataPage({
+            claudeDir: this.buildDataGroup(),
+            ownFiles,
+            goTo: (t) => this.goTo(t),
+            setBadge: (n) => this.router.setBadge(PAGE.data, n),
+          });
+          this.dataPage = page;
+          return page.element;
         },
         { untitled: true },
       ),
@@ -1206,36 +1221,8 @@ export class SettingsPanel {
       // 〔资产目录 · 插件〕三块搬走了：skill / MCP 是跨机器的一类对象，住顶层「扩展」页（一张表 ＋ 一个抽屉）；
       //   插件只读列表没有可做的事，先拿掉。
       // cc-bus 钩子那一块拿掉了：cc-bus 是扩展页里的一行，它的内置备注下面每台一行钩子状态与要加的内容。
-      // 🔴 步 14a（那张图的第五栏）：**「足迹」**。
-      //
-      // 它原来住顶层「改动足迹」页，名字叫「配置面审计」。两条都改：
-      // ① **住哪**：它答的是「装了 cc-monitor 之后，它在**我这台机器**上动过哪些文件」
-      //    —— 被设置的对象是**一台机器**，按 `panel.ts` 那条顶层判据（每个顶层 = 一类
-      //    「被设置的对象」）它归**机器子页**，不归顶层页。
-      // ② **叫什么**：「配置面审计」→「足迹」。⚠ **诚实标注：这不是 R5 命中**
-      //    （「配置面审计」本来就是名词短语，R5 抓不到它）。理由是另外两条：
-      //    「面」「审计」是**我们这侧**的词；且它要和顶层页
-      //    「改动足迹」同一个口径，而不是页叫足迹、块叫审计。
-      //
-      // 远端也有真栏：`appliesTo: "both"`：远端那一页上它**按那台机器去问**
-      //   （读口归 RM1a）；答复的 `origin` 与所问对不上 ⇒ 说这台还答不了，不拿本机的答案冒充
-      //   （`ConfigSurfaceSection.readFootprint` / `answersFor` 头注）。
-      {
-        appliesTo: "both",
-        tab: "data",
-        // 字段 `footprintSection` 删了：它唯一的读者（每台机器页各放一发）随上面那次合批一起没了。
-        ...this.loadableBlock(copyText("settingsPanel.group.footprint"), () => new ConfigSurfaceSection()),
-      },
-      // 〔协调方转「改动足迹并进机器页、漂移记账按机器分」〕原顶层「改动足迹」页剩下的那一块。
-      //   与足迹同栏：两块答的都是「这台机器上发生了什么」。账按机器分了：每台问自己那一本、
-      //   回声对上才画（形状与理由在 `drift-ledger-section.ts` 头注「按机器分」一节）。
-      {
-        appliesTo: "both",
-        tab: "data",
-        ...this.loadableBlock(copyText("settingsPanel.group.unknown"), () => new DriftLedgerSection()),
-      },
     ];
-    for (const b of this.perMachineBlocks) (b.tab === "data" ? dataPage : this.perMachineSlot).appendChild(b.el);
+    for (const b of this.perMachineBlocks) this.perMachineSlot.appendChild(b.el);
     // ★ 兜底落点：先挂在列表页上。
     //
     // 这不是"顺手"—— 它是 `safeBlock` 隔离的一部分。`RemoteSection` 是唯一活的同步
@@ -1282,10 +1269,18 @@ export class SettingsPanel {
       icon: NAV_ICON.machines,
       headActions: this.remoteSection?.headActions() ?? [],
     });
-    router.addRoute({ id: PAGE.data, title: copyText("settingsPanel.nav.data"), element: dataPage, icon: NAV_ICON.data, gapBefore: true });
+    router.addRoute({
+      id: PAGE.data,
+      title: copyText("settingsPanel.nav.data"),
+      sub: copyText("dataPage.page.sub"),
+      element: dataPage,
+      icon: NAV_ICON.data,
+      gapBefore: true,
+    });
+    // 第一次切进来才问（之后靠［全部重查］显式补一刀；切页不是轮询）。
     this.loadOnFirstVisit(PAGE.data, () => {
       this.dataSection?.loadNow();
-      for (const b of this.perMachineBlocks) if (b.tab === "data") b.load?.();
+      this.dataPage?.loadNow();
     });
 
     // ---- 扩展：改**跨机器的 skill / MCP**（一类被设置的对象，不挂在某台机器下面）----
@@ -1589,54 +1584,37 @@ export class SettingsPanel {
   }
 
   /** "Claude 数据目录" 子表单（F82b 起嵌在「集成」组里） */
+  /** 「文件与数据 → cc-monitor 放了什么」本机那一块「Claude 目录」：一行路径（留空 ＝ 默认）＋［更换…］［用回默认］；存前问在不在、像不像。 */
   private buildDataGroup(): HTMLElement {
     const group = document.createElement("div");
-    group.className = "settings-group";
-
-    // 子标题（跟同分组里的「PowerShell 集成」子标题对称）
-    const heading = document.createElement("div");
-    heading.className = "settings-group-title";
-    heading.textContent = copyText("settingsPanel.dataDir.title");
-    group.appendChild(heading);
-
-    // 行 1：标签 + 文本输入
-    const row1 = document.createElement("div");
-    row1.className = "settings-row settings-row-stack";
-    const label = document.createElement("span");
-    label.className = "settings-label";
-    label.textContent = copyText("settingsPanel.dataDir.path");
-    row1.appendChild(label);
+    group.className = "data-card data-claude-dir";
+    const row = document.createElement("div");
+    row.className = "data-item";
     this.claudeDirInput = document.createElement("input");
     this.claudeDirInput.type = "text";
-    this.claudeDirInput.className = "settings-input settings-input-wide";
+    this.claudeDirInput.className = "settings-input settings-input-mono data-claude-input";
     this.claudeDirInput.placeholder = copyText("settingsPanel.dataDir.pathHint");
+    this.claudeDirInput.spellcheck = false;
     // 全即时：失焦 / 回车（`change`）就落。逐键写盘没意义（路径没打完是个半截串）。
     this.claudeDirInput.addEventListener("change", () => {
       void this.persistClaudeDir().catch((e: unknown) =>
         this.reportSaveFailure(copyText("settingsPanel.save.claudeDir"), e),
       );
     });
-    row1.appendChild(this.claudeDirInput);
-    group.appendChild(row1);
-
-    // 行 2：操作按钮
-    const row2 = document.createElement("div");
-    row2.className = "settings-row settings-row-end";
-    const pickBtn = document.createElement("button");
-    pickBtn.type = "button";
-    pickBtn.className = "settings-btn";
-    pickBtn.textContent = copyText("settingsPanel.dataDir.browse");
-    pickBtn.addEventListener("click", () => void this.pickClaudeDir());
-    row2.appendChild(pickBtn);
+    row.appendChild(this.claudeDirInput);
     const resetBtn = document.createElement("button");
     resetBtn.type = "button";
     resetBtn.className = "settings-btn";
     resetBtn.textContent = copyText("settingsPanel.dataDir.reset");
     resetBtn.title = copyText("settingsPanel.dataDir.resetHint");
     resetBtn.addEventListener("click", () => this.resetClaudeDir());
-    row2.appendChild(resetBtn);
-    group.appendChild(row2);
-
+    const pickBtn = document.createElement("button");
+    pickBtn.type = "button";
+    pickBtn.className = "settings-btn";
+    pickBtn.textContent = copyText("settingsPanel.dataDir.browse");
+    pickBtn.addEventListener("click", () => void this.pickClaudeDir());
+    row.append(resetBtn, pickBtn);
+    group.appendChild(row);
     return group;
   }
 

@@ -1121,13 +1121,6 @@ body.settings-window-mode .settings-panel {
   background: var(--accent);
 }
 
-/* 数据目录设置：纵向铺开布局 */
-.settings-row-stack {
-  flex-direction: column;
-  align-items: stretch;
-  gap: 6px;
-}
-
 .settings-row-end {
   justify-content: flex-end;
   gap: 8px;
@@ -1609,83 +1602,6 @@ body.settings-window-mode .settings-panel {
   color: var(--text-2);
 }
 
-/* === T02 配置面审计视图 ===
-   审计指出：`config-surface-*` 与 `tone-*` 在 CSS 里一处定义都没有，于是
-   「不存在」和「未确定 —— …」在屏幕上大概没有区别——15 条测试守的 `tone-unknown`
-   ≠ `tone-bad` 只落在 class 名上。这一页的全部价值是**可信告知**，三档语气必须真看得出来：
-   - ok（绿）= 查到了
-   - bad（红）= 真的不存在
-   - unknown（黄）= 查不了，**不是**"坏"。混色就等于把假警报画成警报。
-   （同类的 `cc-bus-*` / `hooks-*` 也缺 CSS，那是 B03/B04 的既有欠账，另账登记，不在本轮扩面。） */
-.config-surface-tool {
-  margin: 12px 0 4px;
-  font-weight: 600;
-  color: var(--text);
-}
-
-.config-surface-source {
-  font-weight: 400;
-  color: var(--text-faint);
-  font-size: var(--font-size-small);
-}
-
-.config-surface-row,
-.config-surface-scope {
-  border-left: 3px solid var(--text-faint);
-  padding: 6px 10px;
-  margin: 4px 0 4px 8px;
-  background: var(--border-faint);
-}
-
-.config-surface-row.tone-ok,
-.config-surface-scope.tone-ok {
-  border-left-color: var(--success);
-}
-
-.config-surface-row.tone-bad,
-.config-surface-scope.tone-bad {
-  border-left-color: var(--error);
-}
-
-/* 未确定用 warn 而**不是** error：它不是坏消息，只是我们查不了 */
-.config-surface-row.tone-unknown,
-.config-surface-scope.tone-unknown {
-  border-left-color: var(--warn);
-}
-
-.config-surface-path,
-.config-surface-scope-head {
-  font-family: var(--font-mono);
-  font-size: var(--font-size-small);
-  color: var(--text);
-}
-
-.config-surface-note {
-  font-family: inherit;
-  color: var(--text-faint);
-}
-
-.config-surface-resolved,
-.config-surface-effect,
-.config-surface-undo,
-.config-surface-scope-detail {
-  font-size: var(--font-size-small);
-  color: var(--text-faint);
-}
-
-.config-surface-state {
-  font-size: var(--font-size-small);
-  color: var(--text-2);
-}
-
-.config-surface-row.tone-bad .config-surface-state {
-  color: var(--error);
-}
-
-.config-surface-row.tone-unknown .config-surface-state {
-  color: var(--warn);
-}
-
 /* === T03 待贴文本统一组件 ===
    三句话（贴到哪 / 怎么合并 / 怎样才生效）常驻屏幕而不是只在 toast 里闪一下；
    warning 用 warn 色——它说的是"你选的形态与盘上现状冲突"，是需要看见的提醒。 */
@@ -1717,21 +1633,8 @@ body.settings-window-mode .settings-panel {
   font-family: var(--font-mono);
 }
 
-/* T04：位置徽章（挂在路径行上，不占独立一行——审计核实 10 行里 9 行的"位置"
-   在「现状」那列已经说过了）。 */
-.config-surface-host {
-  display: inline-block;
-  margin-right: 6px;
-  padding: 0 5px;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-s);
-  font-family: var(--font-base);
-  font-size: var(--font-size-xs);
-  color: var(--text-faint);
-}
-
 /* === T07：分区块隔离的失败态 + B03/B04 补齐的 CSS ===
-   失败块用 error 色左条——它是真的坏了（区别于 config-surface 的 warn"未确定"）。 */
+   失败块用 error 色左条——它是真的坏了。 */
 .settings-block-failed {
   border-left: 3px solid var(--error);
   padding-left: 8px;
@@ -2997,5 +2900,111 @@ body.settings-window-mode .settings-panel {
 .diag-fallback-text {
   width: 100%;
   font-family: var(--font-mono);
+}
+
+/* 文件与数据：两栏 · 顶上一行总数 · 按机器分段 · 一件一行（点 · 名字 · 类 · 下一行位置小标签 ＋ 一句）· 机器 chip */
+.data-tabs {
+  margin-bottom: 12px;
+}
+.data-summary,
+.data-machine-head,
+.data-section-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0 8px;
+}
+.data-sp {
+  flex: 1;
+}
+.data-machine-name,
+.data-section-title {
+  font-weight: 600;
+}
+.data-card {
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-m);
+}
+.data-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+}
+.data-item + .data-item {
+  border-top: 1px solid var(--border-strong);
+}
+.data-item-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.data-item-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.data-item-path {
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+.data-item-sub {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--font-size-small);
+  color: var(--text-2);
+}
+.data-loc {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-small);
+  background: var(--bg-2);
+  border-radius: var(--radius-s);
+  padding: 1px 6px;
+}
+.data-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1px solid var(--text-2);
+  flex: none;
+}
+.data-dot[data-tone="warn"] {
+  background: var(--warn);
+  border-color: var(--warn);
+}
+.data-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.data-chip {
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-m);
+  color: var(--text);
+  padding: 2px 10px;
+  font: inherit;
+  cursor: pointer;
+}
+.data-chip[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.data-note {
+  padding: 4px 0 8px;
+}
+.data-claude-input {
+  flex: 1;
+  width: auto;
+}
+.data-offline {
+  margin-bottom: 8px;
+}
+.data-local-only {
+  margin-bottom: 4px;
 }
 }

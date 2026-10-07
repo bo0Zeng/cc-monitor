@@ -438,8 +438,6 @@ const SCHEDULING_SITES: &[(&str, &str, usize, &str)] = &[
     //   **一处都没多、一处都没少，只是换了文件**：3 = 1 ＋ 2。
     ("src/frontend/ui/entry-render-common.ts", "setTimeout", 2, "① ② 1.2s 后把「已复制」/「失败」还原成「复制」。一次性 UI 反馈。"),
     ("src/frontend/ui/settings/accounts-section.ts", "setTimeout", 1, "账号页收到后端推来的 `accounts-changed` / `quota-changed`：300ms 内的几帧合成一次重读（每来一帧重排一次，不自链、不取数）。一次性合批，不是 data-poll。"),
-    ("src/frontend/ui/settings/config-surface-section.ts", "setTimeout", 1, "1.5s 后把「已复制」还原。一次性。"),
-    ("src/frontend/ui/settings/drift-ledger-section.ts", "setTimeout", 1, "1.5s 后把「已复制」还原。一次性。"),
     ("src/frontend/ui/settings/panel.ts", "setTimeout", 1, "带目的地打开：1.5s 后撤掉那一节的高亮。一次性 UI 反馈。"),
     // `cc_integration.ts` 并进 `machine-aliases.ts`（终端集成成了 PowerShell 那一侧的别名块）⇒ 那一处跟着换文件：一处没多一处没少。
     // 那一处（「重新扫描」后 500ms 撤掉状态徽章的高亮描边）**删了**：别名块的现状今天随读回口的候选一起到，

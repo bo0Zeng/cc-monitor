@@ -28,6 +28,7 @@ const accountsRepair = vi.fn();
 const accountsAdd = vi.fn();
 const writeApikeyKey = vi.fn();
 
+vi.mock("../../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ emit: (...a: unknown[]) => emit(...a), listen: vi.fn() }));
 vi.mock("../../../../src/frontend/ui/account-reads", () => ({
   fetchAccounts: (...a: unknown[]) => fetchAccounts(...a),
@@ -67,6 +68,8 @@ import { OPEN_ACCOUNT_PANEL_EVENT, SETTINGS_GO_EVENT } from "../../../../src/fro
 import { __resetMachineContextForTests, setCurrentMachine } from "../../../../src/frontend/ui/settings/machine-context";
 import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
 import type { ConfirmSpec } from "../../../../src/frontend/ui/kit/dialog";
+import { copyText } from "../../../../src/frontend/ui/copy-table";
+import { toast } from "../../../../src/frontend/ui/kit/toast";
 
 function acct(p: Partial<Account>): Account {
   return { name: "z", email: "z@x", configDir: "/h/.cc-monitor/accounts/z", isDefault: false, mode: "isolated", exists: true, loggedIn: true, authKind: "subscription", authReady: true, ...p };
@@ -85,7 +88,7 @@ function state(p: Partial<AccountsState> = {}): AccountsState {
   };
 }
 const NOW = 1_800_000_000;
-function quota(): QuotaRead {
+function quota(refusedAt?: number): QuotaRead {
   const sub = (account: string, pct5: number, pct7: number, st = "ok") => ({
     agent: "claude-code",
     account,
@@ -95,8 +98,9 @@ function quota(): QuotaRead {
     stale: false,
     limiting: "5h",
     slots: [
-      { slot: "5h", pct: pct5, resetsAt: NOW + 3600 },
-      { slot: "7d", pct: pct7, resetsAt: NOW + 86400 },
+      // `full` 是那台后端的显示态（用满才有）；被拒没用满不带它。
+      { slot: "5h", pct: pct5, resetsAt: NOW + 3600, ...(pct5 >= 100 ? { full: true } : {}) },
+      { slot: "7d", pct: pct7, resetsAt: NOW + 86400, ...(pct7 >= 100 ? { full: true } : {}) },
     ],
     login: "ok",
   });
@@ -105,7 +109,7 @@ function quota(): QuotaRead {
     reason: null,
     path: null,
     now: NOW,
-    accounts: [sub("work", 100, 78, "refused"), sub("personal", 63, 41), { agent: "claude-code", account: "api", seenAt: NOW, kind: "api", state: "ok", stale: false, slots: [], login: "ok" }],
+    accounts: [sub("work", 100, 78, "refused"), sub("personal", refusedAt ?? 63, 41, refusedAt === undefined ? "ok" : "refused"), { agent: "claude-code", account: "api", seenAt: NOW, kind: "api", state: "ok", stale: false, slots: [], login: "ok" }],
     unseen: [],
     usableNow: [],
     earliestReturn: null,
@@ -171,6 +175,14 @@ describe("账号表", () => {
     expect(slots("personal")[1].textContent).toBe("7d 41%");
     expect(slots("api")[0].textContent).toBe("按量");
     expect(rowOf(el, "work").querySelector(".acct-row-kind")!.textContent).toBe("订阅 · work@example.com");
+  });
+
+  it("★ 被拒没用满 ⇒ 写「{pct}% · 被拒」（红），不画成 ✕；用满才 ✕", async () => {
+    readQuota.mockResolvedValue(quota(58));
+    const el = await mount();
+    const cell = rowOf(el, "personal").querySelectorAll<HTMLElement>(".acct-row-slot")[0];
+    expect(cell.textContent).toMatch(new RegExp(`^5h ${copyText("acct.val.refusedPct", { pct: 58 })} ↻\\d\\d:\\d\\d$`));
+    expect(cell.dataset.shade).toBe("refused");
   });
 
   it("非默认号那一行有［设为默认］，点了问那台 accounts-set-default 并说「新会话默认 X」", async () => {
@@ -440,6 +452,22 @@ describe("动作", () => {
     expect(openLoginWindow).toHaveBeenCalledWith("devbox", "b", "ccm -- --account b");
     expect(el.querySelector(".acct-new")).toBeNull();
     expect(rowOf(el, "b").querySelector(".acct-row-kind")!.textContent).toBe("订阅 · 等待终端登录…");
+  });
+
+  it("★ 建好那一句的下一行照后端回的提示（如「已开的终端要重读别名」），界面不另拼", async () => {
+    openLoginWindow.mockResolvedValue("opened");
+    accountsAdd.mockImplementation((_o: string, a: { dryRun?: boolean }) =>
+      Promise.resolve({ applied: true, steps: [], notes: a.dryRun ? [] : ["已开的终端要重读别名-xyz"], backup: null, account: null, loginCmd: "ccm -- --account b", aliasNames: ["betacc", "betacct"], keyMasked: null, keyProblem: null, aliases: [] }),
+    );
+    const el = await mount();
+    buttonNamed(el, "新建账号").click();
+    const name = el.querySelector<HTMLInputElement>(".acct-new input")!;
+    name.value = "b";
+    name.dispatchEvent(new Event("input"));
+    await settle();
+    buttonNamed(el, "创建并登录").click();
+    await settle();
+    expect(vi.mocked(toast).mock.calls.some((c) => String(c[1]).includes("已开的终端要重读别名-xyz")), "后端回的提示没上屏").toBe(true);
   });
 
   it("API key 号详情［更换…］：地址 ＋ key 交给写 key 那一条（带这个号的目录），写完只显示掩码、框清空", async () => {

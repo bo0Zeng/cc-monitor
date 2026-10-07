@@ -16,6 +16,7 @@
 //! 目录最多列 [`MAX_ENTRIES`] 个名字（超了 ⇒ 列不动，**不截断**：截断的清单会被当成完整的去数 glob）·
 //! 查钩子字样的文件最多 [`MAX_HOOK_FILE_BYTES`] 字节（内容一个字节都不回）。
 
+pub(crate) mod data;
 pub(crate) mod registry;
 pub(crate) mod rows;
 
@@ -51,6 +52,22 @@ pub(crate) fn answer_with(
     agent_home: &Path,
     args: &Value,
 ) -> FootprintAnswer {
+    Ok(json!(report_with(get, agent_home, args)?))
+}
+
+/// 「文件与数据」那一份成品（帧面 `data-report`）：同一份足迹按「改过你的文件 · 要装 · 有没有 tmux」重排（[`data`]）。
+pub(crate) fn data_answer(args: &Value) -> FootprintAnswer {
+    let get = |k: &str| std::env::var(k).ok();
+    let report = report_with(&get, &crate::observe::history_query::agent_home(), args)?;
+    Ok(json!(data::shape(&report)))
+}
+
+/// 整份足迹（两种问法共用这一份）。
+fn report_with(
+    get: &dyn Fn(&str) -> Option<String>,
+    agent_home: &Path,
+    args: &Value,
+) -> Result<ConfigSurfaceReport, (&'static str, String)> {
     let client = client_arg(args.get("client"))?;
     let home = crate::platform::paths::home_dir_from(&|k| get(k).map(Into::into))
         .ok_or(("failed", copy_text("beFootprint.env.noHome", &[])))?;
@@ -83,13 +100,12 @@ pub(crate) fn answer_with(
     let rows = build_rows(&own, c_env.as_ref());
     let hooks = |p: &Path| hooks_in(p);
     let settings_scopes = build_settings_scopes(agent_home, &hooks, &own_fs);
-    let report = ConfigSurfaceReport {
+    Ok(ConfigSurfaceReport {
         rows,
         settings_scopes,
         claude_config_dir: agent_home.display().to_string(),
         home: home.display().to_string(),
-    };
-    Ok(json!(report))
+    })
 }
 
 /// 这台的一条路径：`(是否目录, 大小)`；不在 / 读不动 ⇒ `None`。

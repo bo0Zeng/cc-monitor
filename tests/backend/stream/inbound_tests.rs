@@ -586,6 +586,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         // 中转那两条（`relay-ensure` / `relay-status`）随脱离 `--relay` 一族删了。
         // 足迹那一条：一批 stat / 读几份小文件。
         "footprint-report",
+        // 「文件与数据」那一份：同一份足迹重排。
+        "data-report",
         // 别名预览：读账号库 manifest ＋ 问会话快照。
         "ccm-print",
         // 资产目录两条：扫盘 ＋ 原子写目录文件。
@@ -769,6 +771,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "launch-local",
         "launch-render-cli",
         "footprint-report",
+        "data-report",
         // 本机那一份放不放：读一遍落点那个文件 ⇒ 阻塞档。
         "place-verdict",
         // 别名预览，阻塞档。

@@ -31,8 +31,8 @@ function acctWorld(verifyFail = false): () => World {
     const w = defaultWorld();
     const now = Math.floor(Date.now() / 1000);
     const slots = (p5: number, p7: number) => [
-      { slot: "5h", pct: p5, resetsAt: now + 5400 },
-      { slot: "7d", pct: p7, resetsAt: now + 4 * 86400 },
+      { slot: "5h", pct: p5, resetsAt: now + 5400, ...(p5 >= 100 ? { full: true } : {}) },
+      { slot: "7d", pct: p7, resetsAt: now + 4 * 86400, ...(p7 >= 100 ? { full: true } : {}) },
     ];
     w.ops["quota-read"] = () => ({
       state: "present",
@@ -41,7 +41,7 @@ function acctWorld(verifyFail = false): () => World {
       now,
       accounts: [
         { agent: "claude-code", account: "work", seenAt: now - 120, kind: "sub", state: "refused", stale: false, limiting: "5h", slots: slots(100, 78), login: "ok" },
-        { agent: "claude-code", account: "personal", seenAt: now - 120, kind: "sub", state: "ok", stale: false, limiting: "5h", slots: slots(63, 41), login: "ok" },
+        { agent: "claude-code", account: "personal", seenAt: now - 120, kind: "sub", state: "refused", stale: false, limiting: "5h", slots: slots(58, 41), login: "ok" },
         { agent: "claude-code", account: "api", seenAt: now - 120, kind: "api", state: "ok", stale: false, slots: [], login: "ok" },
       ],
       unseen: [],
@@ -160,7 +160,19 @@ export const SETTINGS_SCENES: Scene[] = [
   page("settings-general", "设置 · 通用", "通用：行为 · 恢复命令 · 高级", "general"),
   page("settings-appearance", "设置 · 外观", "外观：字 · 颜色 · 快捷键", "appearance"),
   page("settings-logs", "设置 · 日志", "日志：开关、级别、日志文件", "logs"),
-  page("settings-data", "设置 · 文件与数据", "文件与数据：Claude 目录 · cc-monitor 自己的东西", "data"),
+  page("settings-data", "设置 · 文件与数据 · 要你动手", "文件与数据第一栏：每台一段 · 要装 / 要装 · 可选 ·［安装方法］· 连不上的那台离线未检查", "data"),
+  settings("settings-data-placed", "设置 · 文件与数据 · 放了什么", "第二栏：机器 chip · Claude 目录 · 改过你的文件（撤回在哪 ［前往］）· cc-monitor 的文件", async () => {
+    await go("data");
+    await click(await byText(".settings-page:not([hidden]) button", "cc-monitor 放了什么"));
+    await sleep(700);
+  }),
+  settings("settings-data-placed-remote", "设置 · 文件与数据 · 放了什么 · devbox", "第二栏选 devbox：只列那台改过你的文件", async () => {
+    await go("data");
+    await click(await byText(".settings-page:not([hidden]) button", "cc-monitor 放了什么"));
+    await sleep(400);
+    await click(await byText(".settings-page:not([hidden]) .data-chip", "devbox"));
+    await sleep(700);
+  }),
   page("settings-machines", "设置 · 机器", "机器列表：本机 ＋ 三台远端，每台的连接 / 后端 / ccm / 账号四格", "machines"),
   page("settings-machine-local", "设置 · 本机", "本机那一页", "machine:（本机）"),
   page("settings-machine-remote", "设置 · 远端机器", "devbox 那一页（落在第一个子页）", "machine:devbox"),

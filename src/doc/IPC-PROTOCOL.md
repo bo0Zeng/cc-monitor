@@ -2429,6 +2429,27 @@ CLI 面随之多 `--rotation-read`（不读 stdin）与 `--rotation-set` · `--r
 **错误码**：`bad_args`（`client` 形状不对 / 相对路径）· `failed`（这台后端进程没有家目录）。
 ⚠ **CLI 面也有它**（`--footprint-report`），入参从 stdin 读。
 
+#### `data-report`：「文件与数据」那一份成品（2026-10-06，**只读**）
+
+设置窗「文件与数据」两栏读这一份：同一份足迹（`footprint-report` 那一套申报与判定）按这一页要的几样重排（`src/backend/footprint/data.rs`），
+判定只在那里（哪一行算改过你的文件、撤回去哪、缺了哪样起不了会话、怎么装的链接）。
+
+```text
+→ {"id":"d1","cmd":"data-report","args":{}}
+← {"kind":"reply","id":"d1","ok":true,"data":{"home":"/home/u","changedFiles":[{"path":"~/.bashrc","what":"ccm 命令入口","undo":{"page":"machine","tab":"config","anchor":"connect-terminal"}}],"needsInstall":[{"id":"tmux","name":"tmux","what":"tmux","required":false,"howUrl":"https://github.com/tmux/tmux/wiki/Installing"}],"tmux":false,"chores":0}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `client` | → | 同 `footprint-report`（本机那一栏才带） |
+| `changedFiles` | ← | cc-monitor 写进你的文件、今天在的那几处（不含 `~/.cc-monitor/` 里的）：`path`（`~` 起头）· `what` · `undo`（设置窗的 `{page, tab?, anchor?}`；没有撤回处 ⇒ `null`） |
+| `needsInstall` | ← | 你自己装、这台确实缺的（查不动的不报）：`id` · `name` · `what` · `required`（缺了起不了会话）· `howUrl`（没有 ⇒ `null`） |
+| `tmux` | ← | 这台有没有 tmux；查不动 ⇒ `null` |
+| `chores` | ← | 「要你动手」里进角标的件数（今天 ＝ `required` 的那几件）；设置窗左栏角标与主窗口状态栏读同一个数 |
+| `home` | ← | 这台的家目录（显示用） |
+
+**错误码**：同 `footprint-report`。⚠ **CLI 面也有它**（`--data-report`），入参从 stdin 读。
+
 #### `ccm-print`：一条别名实际会执行什么（2026-09-25，**只读**）
 
 设置里「别名」那一块的预览：一条别名的预置参数交过来，回 `ccm --print` 的那一行 ——

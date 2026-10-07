@@ -1,6 +1,6 @@
 /**
- * 设置里填的 Claude 数据目录：存之前问本机后端那个目录在不在。
- * 不在的照收的话，重启后会被悄悄忽略、退回默认目录，输入框却还显示着它。
+ * 设置里填的 Claude 目录：存之前问本机后端那个目录在不在、像不像（里面有没有 `projects/`）。
+ * 不在的照收的话，重启后会被悄悄忽略、退回默认目录，输入框却还显示着它；没有 `projects/` 的读不出一条会话。
  */
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
@@ -43,5 +43,15 @@ describe("Claude 数据目录：存之前问在不在", () => {
     invokeMock.mockReset();
     backend(() => ({ err: { Hop: { idx: 0, tag: "open", reach: "NotSent", why: "Unreachable" } }, body: [] }));
     expect(await claudeDirProblem("/h/y")).toMatch(/^没法确认 \/h\/y 在不在/);
+  });
+
+  it("★ 在、是目录、但里面没有 projects/ ⇒ 说无会话记录（不存）；有 projects/ ⇒ 能用", async () => {
+    const dirAt = (dirs: string[]) => (p: string) =>
+      dirs.includes(p) ? chanReply({ path: p, kind: "dir", size: 0, readonly: false, owner: null, link_target: null }) : refusedReply("unreadable", "读不到这个路径");
+    backend(dirAt(["/mnt/x"]));
+    expect(await claudeDirProblem("/mnt/x")).toBe(copyText("settingsPanel.claudeDir.noRecords", { path: "/mnt/x" }));
+    invokeMock.mockReset();
+    backend(dirAt(["/mnt/x/", "/mnt/x/projects"]));
+    expect(await claudeDirProblem("/mnt/x/")).toBeNull();
   });
 });

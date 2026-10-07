@@ -1,0 +1,102 @@
+//! 「文件与数据」那一份成品（帧面 `data-report`）：同一份足迹（[`super::rows`]）按设置窗那一页要的三样重排 —— 只读。
+//!
+//! - `changedFiles`：cc-monitor 写进**你的**文件的那几处（今天在、cc-monitor 装口放的、不在 `~/.cc-monitor/` 里），
+//!   每处说改了什么、撤回在哪一页（页 · 栏 · 锚点，界面照它跳）。
+//! - `needsInstall`：你自己装、cc-monitor 只查的那几样里，这台**确实缺**的（查不动的不算缺，不报）；`required` ＝ 缺了起不了会话。
+//! - `tmux`：这台有没有 tmux（查不动 ⇒ `null`）—— 恢复菜单默认「运行于」照它回落。
+//! - `chores`：「要你动手」里进角标的件数（`required` 的那几件），设置窗左栏角标与主窗口状态栏那一枚读这一个数。
+//!
+//! 另带 `home`（显示用：路径的 `~` 缩写按它）。
+//!
+//! 判定只在这里：哪一行算「改过你的文件」、撤回去哪、哪一样缺了起不了会话、怎么装的链接。
+
+use super::registry::EnvTier;
+use super::rows::{ConfigSurfaceReport, SurfaceRow, SurfaceState};
+use serde_json::{json, Value};
+
+/// cc-monitor 自己的家（相对家目录）：这下面的不是「你的文件」。
+const OWN_HOME: &str = "~/.cc-monitor";
+
+/// 撤回在哪：设置窗的页 · 栏 · 锚点（与设置窗「带目的地打开」同一种形状）。
+fn undo_of(tool_id: &str) -> Option<Value> {
+    match tool_id {
+        // 接上终端那几行：别名与配置文件那一栏里「接上终端」那一行（卸载在那里）。
+        "ccm" => Some(json!({"page": "machine", "tab": "config", "anchor": "connect-terminal"})),
+        // 扩展装进 `~/.claude/skills/` 的：扩展页卸载。
+        "cc-bus" | "skill-install" => Some(json!({"page": "ext"})),
+        _ => None,
+    }
+}
+
+/// 缺了起不了会话的那几样（其余缺了只少一个功能）。
+fn required(tool_id: &str) -> bool {
+    matches!(tool_id, "claude-cli")
+}
+
+/// 怎么装：那个工具自己的安装说明（外链）；没有通用的 ⇒ `None`。
+fn how_url(tool_id: &str) -> Option<&'static str> {
+    match tool_id {
+        "claude-cli" => Some("https://docs.anthropic.com/en/docs/claude-code/setup"),
+        "tmux" => Some("https://github.com/tmux/tmux/wiki/Installing"),
+        "login-shell" => Some("https://www.gnu.org/software/bash/"),
+        _ => None,
+    }
+}
+
+fn changed(r: &SurfaceRow) -> Option<Value> {
+    if r.tier != EnvTier::AppInstalls || !matches!(r.state, SurfaceState::Present { .. }) {
+        return None;
+    }
+    let p = r.path_declared;
+    if !p.starts_with("~/") || p == OWN_HOME || p.starts_with(&format!("{OWN_HOME}/")) {
+        return None;
+    }
+    Some(json!({
+        "path": p,
+        "what": r.tool_name,
+        "undo": undo_of(r.tool_id),
+    }))
+}
+
+fn missing(r: &SurfaceRow) -> Option<Value> {
+    if r.tier != EnvTier::UserInstallsWePrompt || r.state != SurfaceState::Absent {
+        return None;
+    }
+    Some(json!({
+        "id": r.tool_id,
+        "name": r.tool_name,
+        "what": r.path_declared,
+        "required": required(r.tool_id),
+        "howUrl": how_url(r.tool_id),
+    }))
+}
+
+/// 整份足迹 ⇒ 这一页的成品。
+pub(crate) fn shape(report: &ConfigSurfaceReport) -> Value {
+    let changed_files: Vec<Value> = report.rows.iter().filter_map(changed).collect();
+    let needs_install: Vec<Value> = report.rows.iter().filter_map(missing).collect();
+    let chores = needs_install
+        .iter()
+        .filter(|n| n["required"] == json!(true))
+        .count();
+    let tmux = report
+        .rows
+        .iter()
+        .find(|r| r.tool_id == "tmux" && r.tier == EnvTier::UserInstallsWePrompt)
+        .and_then(|r| match r.state {
+            SurfaceState::Present { .. } => Some(true),
+            SurfaceState::Absent => Some(false),
+            _ => None,
+        });
+    json!({
+        "home": report.home,
+        "changedFiles": changed_files,
+        "needsInstall": needs_install,
+        "tmux": tmux,
+        "chores": chores,
+    })
+}
+
+#[cfg(test)]
+#[path = "../../../tests/backend/footprint/data_tests.rs"]
+mod tests;
