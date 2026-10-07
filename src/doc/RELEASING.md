@@ -14,6 +14,7 @@
 - [ ] **README 的「平台」与功能列表**：本版新增了平台或用户看得见的大功能，抬头那行的「平台」与功能段要跟上。
 - [ ] 本地全绿：壳 workspace（`src/frontend/shell`）`cargo fmt --all --check` · `cargo clippy --workspace --all-targets` · `cargo test --workspace`；后端（`src/backend`）`cargo fmt --check` · `cargo test`——它不是 workspace 成员，是独立的一处；前端 `npm test`（node 纯函数 ＋ vitest）· `npm run coverage` · `npm run build`。fmt 不过 CI 会红。Linux 应用构建与那几个 e2e 是 CI 里各自独立的 job；CI 有哪些 job 以 `.github/workflows/ci.yml` 为准，引用前现数，别抄数。
 - [ ] **若本版动过滚动 / 渲染管线**（stream · tabs · 会话查看器 · 分支折叠 · render-*）：在 Windows 真机按 `tests/e2e/README.md` 的「人工场景」复核 WebView2（WebKitGTK 没有 `overflow-anchor`，两端补批语义不同）。
+- [ ] **若本版加删过依赖**（任一份 `Cargo.lock` 或 `package-lock.json` 变了）：`python3 tests/scripts/third-party-notices.py` 重新生成第三方许可声明并提交（门禁 `release-gate` ⑰ 不一致就红，发版那一趟 `--check` 也拦）。
 - [ ] **若本版改过后端源码**：`src/backend/lib.rs` 的 `BUILD_ID` 已随改动 bump。走 tag 发版时 `release.yml` 的 `build-backends` job 从源码重编内嵌字节，官方渠道恒一致；**本地手工打包分发**则必须先重编并换掉 `src/frontend/shell/embedded-backends/` 里的字节（`bash tests/scripts/re-embed.sh`），否则装出去的是旧后端，连上后无限重装。
       > 身份住在字节自己里（`lib.rs::CC_MONITOR_BUILD_STAMP`，一段 `#[used] static`），`src/frontend/shell/build.rs` 编译时直接扫，几份内嵌字节自报的那个共同 id 就是 monitor 的「我这一版」（`byte_table.rs::my_backend_id`）。两种情况直接让编译失败：内嵌字节里问不出身份戳、几份内嵌字节不是同一版。「字节自报 == 源码 `BUILD_ID`」那条核对住 `release.yml` 的内嵌校验与 `bash tests/scripts/re-embed.sh --check`，本地手工打包前跑一次后者。出路二选一：① `bash tests/scripts/re-embed.sh` 重编重铺；② `bash tests/scripts/re-embed.sh --clean` 删掉落点，自动部署诚实关闭（目录本就在 `.gitignore` 里）。干净 clone 与 CI 里没有那个目录 ⇒ 「我这一版」是 `None`：不判远端旧、不发起换装，健康信息里说版本不可比。
 - [ ] **需要人手跑的 e2e 套件**：权威清单是 `shared_crate_registry_tests.rs::every_test_script_is_either_run_by_ci_or_registered_as_manual` 的 `MANUAL` 表，这里不抄第二份。表里的 `test:f40` 例外：它会往真的 `~/.claude/` 写 fixture，发版前不跑。
@@ -59,7 +60,8 @@ git push origin vX.Y.Z                     # tag push 触发 release.yml
 | `cc-monitor_X.Y.Z_x64-setup.exe` | build-windows | `SHA256SUMS.txt` | NSIS 安装器 |
 | `cc-monitor_X.Y.Z_x64_en-US.msi` | build-windows | `SHA256SUMS.txt` | MSI（后缀是 `en-US`：`tauri.conf.json` 没配 WiX 语言 ⇒ 走默认） |
 | `cc-monitor.exe` | build-windows | `SHA256SUMS.txt` | 裸 exe（名字是 `src/frontend/shell/Cargo.toml` 里主 `[[bin]]` 的名字；包名仍是 `monitor`） |
-| `SHA256SUMS.txt` | build-windows | — | Windows 那三样的校验和 |
+| `THIRD-PARTY-NOTICES.txt` | build-windows | `SHA256SUMS.txt` | 第三方许可声明（依赖的版权与许可全文；安装包里也带一份） |
+| `SHA256SUMS.txt` | build-windows | — | Windows 那四样的校验和 |
 | `cc-monitor_X.Y.Z_amd64.deb` | build-linux | `SHA256SUMS-linux.txt` | Debian / Ubuntu 安装包 |
 | `cc-monitor` | build-linux | `SHA256SUMS-linux.txt` | Linux 裸二进制 |
 | `cc-monitor-backend-x86_64` | build-linux | `SHA256SUMS-linux.txt` | 远端后端，musl 静态（x86_64） |
