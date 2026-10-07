@@ -41,7 +41,7 @@
   },
   "renderReply": {
     "collisions": [],
-    "fileText": "# === cc-monitor aliases BEGIN v2 ===\n# 这份文件由 cc-monitor 照配置文件（~/.cc-monitor/profiles.toml）生成，别手改 —— 下一次会原样重写。\n# 这里只有与系统命令同名的那几条（比如 cc），每条一行：名字() { ccm @名字 \"$@\"; }，规则住配置文件；\n# 别的别名是 ~/.cc-monitor/bin 里指向 ccm 的链接。写法是 POSIX sh 函数，bash / zsh 都 source 得了；fish 不行。\n# （当前一条别名都没有）\n# === cc-monitor aliases END ===\n",
+    "fileText": "# === cc-monitor aliases BEGIN v2 ===\n# 照配置文件 ~/.cc-monitor/profiles.toml 生成，别手改，下一次会原样重写。\n# 这里只有与系统命令同名的别名，比如 cc；每条一行，只把调用交给 ccm @名字，规则住配置文件。\n# 别的别名是 ~/.cc-monitor/bin 里指向 ccm 的链接。写法是 POSIX sh 函数，bash / zsh 都 source 得了；fish 不行。\n# （当前一条别名都没有）\n# === cc-monitor aliases END ===\n",
     "lines": [],
     "problems": [
       {
@@ -73,7 +73,7 @@
       }
     ],
     "exists": true,
-    "fingerprint": "317-3ae149a92ad1754e",
+    "fingerprint": "278-a545e734836f06b4",
     "groups": [
       {
         "account": "z",

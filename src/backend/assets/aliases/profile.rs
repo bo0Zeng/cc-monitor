@@ -224,7 +224,10 @@ pub(crate) fn parse_book(text: &str) -> Book {
     let mut book = Book::default();
     let line_of = |k: &toml_edit::Key| k.span().map_or(0, |s| line_at(text, s.start));
     for (name, item) in doc.iter() {
-        let (key, _) = doc.as_table().get_key_value(name).expect("key listed just above");
+        let (key, _) = doc
+            .as_table()
+            .get_key_value(name)
+            .expect("key listed just above");
         let line = line_of(key);
         let mut problem = |profile: Option<&str>, line: usize, message: String| {
             book.problems.push(Problem {

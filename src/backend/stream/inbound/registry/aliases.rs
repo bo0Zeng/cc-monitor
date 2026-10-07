@@ -9,7 +9,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "aliases-render",
         summary: "清单 → 别名文件的样子（每条只有名字，规则住配置文件 `profiles.toml`）",
         codes: &["bad_args", "refused"],
-        fields: &[arg("aliases", "清单：每条 `{name, args, restTo}` ＝ 配置文件里一段自己写的那几项（`args` 是 ccm argv 的写法；「基于」不在这里，存的时候按名字从盘上那一段接上；`restTo` 只收 `agent`）"), out("collisions", "撞名提示（自带别名块 · **这台** `PATH` 上的同名程序 · PowerShell 内建别名；只出声、不拦）"), out("fileText", "整份别名文件"), out("lines", "写进别名文件的那几行：`名字() { ccm @名字 \"$@\"; }`（PowerShell `& ccm '@名字' $RemainingArgs`）；POSIX 上只有撞名的那几条进文件，其余是 `~/.cc-monitor/bin/<名>` → `ccm` 的链接"), out("problems", "不合格的那几条 `{name, message}`（逐项判；几项之间的组合存的时候连「基于」整份判。非空时 `aliases-install` 一个字节都不写）"), arg("shell", "`posix` / `powershell`（这台后端不在 Windows ⇒ `powershell` 拒）")],
+        fields: &[arg("aliases", "清单：每条 `{name, args, restTo}` ＝ 配置文件里一段自己写的那几项（`args` 是 ccm argv 的写法；「基于」不在这里，存的时候按名字从盘上那一段接上；`restTo` 只收 `agent`）"), out("collisions", "撞名提示（自带别名块 · **这台** `PATH` 上的同名程序 · PowerShell 内建别名；只出声、不拦）"), out("fileText", "整份别名文件"), out("lines", "写进别名文件的那几行：每条只有名字，只把调用交给 `ccm @名字`；POSIX 上只有撞名的那几条进文件，其余是 `~/.cc-monitor/bin/<名>` → `ccm` 的链接；PowerShell 每条一个函数"), out("problems", "不合格的那几条 `{name, message}`（逐项判；几项之间的组合存的时候连「基于」整份判。非空时 `aliases-install` 一个字节都不写）"), arg("shell", "`posix` / `powershell`（这台后端不在 Windows ⇒ `powershell` 拒）")],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::assets::aliases::answer_render(&r.args)

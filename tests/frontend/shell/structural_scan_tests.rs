@@ -4922,8 +4922,8 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/backend/control/deploy_plan_tests.rs", 1), // 旧入口两形真值表随判定从 monitor `ccm_legacy_tests.rs` 搬来，那块墓碑跟着搬
         ("tests/frontend/shell/lib_invariant_population_tests.rs", 2),
         ("src/frontend/ui/settings/machine-card.ts", 1), // 「后端路径」那一格删了，按用户名预填它的函数原地留一块
-        ("src/backend/control/ccm/plan.rs", 1), // `self_argv` 的入口②那一形删了，原地一块
-        ("tests/e2e/backend-cc-bus.sh", 1),    // [17] 前的入口②说明删了，原地一块
+        ("src/backend/control/ccm/plan.rs", 1),          // `self_argv` 的入口②那一形删了，原地一块
+        ("tests/e2e/backend-cc-bus.sh", 1),              // [17] 前的入口②说明删了，原地一块
         ("tests/e2e/backend-gate2-acceptance.sh", 1), // `meta_dollar` 那条登记豁免换成版本门，原地一块
         ("tests/backend/control/ccm_tests.rs", 1), // 那条路由判据并进 claude_flags_tests，原地一块
         // 人读表解析器删了，一处点它旧名的散文挂墓碑。
