@@ -1,38 +1,9 @@
-//! **POSIX 单引号 quote** —— Rust 侧唯一的一份实现；外加它的伴生件：自由文本值在 quote 之前的拒绝集；
-//! 以及标识符类（sid · 模型名 · 账号名）的放行判定（`INVARIANTS §47` 的 ① ② 两层都住这里）；
-//! 外加启动期令牌的形状（① 那一层）与命令片段类（启动器，§47 ③）那一张白名单。
+//! POSIX 单引号 quote —— Rust 侧唯一的一份实现；外加它的伴生件：自由文本值在 quote 之前的拒绝集、标识符类（sid · 模型名 · 账号名）的放行判定
+//! （`INVARIANTS §47` 的 ① ② 两层）、启动期令牌的形状（①）与命令片段类（启动器，§47 ③）那一张白名单。
 //!
-//! # 它为什么只剩一件事（P4b，§1.4b）
-//!
-//! U8c-1 建这个 crate 是为了给「起会话的渲染」找个家 —— 而当时 monitor 侧**一个边界都没有**
-//! （平铺五十多个 `.rs`），于是共享 crate 成了唯一的落点。架构审计 2026-08-03 点破：
-//! 那批东西（维度注册表 + `render_ccm_invocation` + 载荷编译）**就是决策内核**，
-//! 而后端对整个 crate 的用量只有一行 `posix_quote`。**它不是共享的，是没处放的。**
-//!
-//! P4a 给 monitor 划出了 `src/frontend/shell/src/`，P4b 把那批东西搬了进去。
-//! 留在这里的判据是**「backend 真的在用」**：
-//!
-//! | 项 | backend 用量 | 结论 |
-//! |---|---|---|
-//! | `posix_quote` | `control/tmux_hook.rs::sq` 一处 | **留** |
-//! | 配置目录那道判定 / `UNSET_CONFIG_DIR_PREFIX` / 载荷一族 / `cli` 决策内核 | **零** | 搬进 `backend/control/`（P4b）；载荷一族后来整层删了，配置目录判定收进 `acct-core` |
-//!
-//! ⚠ **「渲染一条 shell 命令串」永远属于开终端的那一侧**：§1.3 把最终 exec 钉在用户自己的
-//! 终端进程里，而 U8a-2b 把后端的执行面定成 **argv 直传、不过 shell**。
-//! 所以那批东西搬去 monitor 不是权宜，是归属地 —— **不会再搬回来**。
-//!
-//! # 为什么这一件仍然值得一个共享 crate
-//!
-//! 收口前全仓有**五份逐字节相同**的实现，靠巧合保持一致、从来没红过（账本 S5）。
-//! 两侧（monitor 5 处 + backend 1 处）都要它，而两个二进制不共享源码树 ⇒ 共享 crate 是唯一载体。
-//! 「只许一个实现」由 monitor 侧的 `quote_singleton_guard` 机检（它把本文件钉为 `SOLE_HOME`）。
-//!
-//! # 名字（P4c）
-//!
-//! **P4b 之前它叫 `launch-core`** —— 那时它持有决策内核，名字还说得过去。缩到只剩 quote 之后
-//! 那个名字就成了说谎，P4c 改成 `shell-quote-core`：与 TS `src/frontend/ui/shell-quote.ts`、
-//! `shared/ccm::sq` 同族，**一眼看出这三份是同一件事**（跨语言那两份由黄金串夹具对拍）。
-//! ⚠ 计划文档（`.claude/planned-build/`）里的 `launch-core` 是当时的实况，刻意没改。
+//! 两侧（monitor · backend）都要它，而两个二进制不共享源码树 ⇒ 共享 crate 是唯一载体。「只许一个实现」由 monitor 侧的 `quote_singleton_guard` 机检
+//! （它把本文件钉为 `SOLE_HOME`）。与 TS `src/frontend/ui/shell-quote.ts`、`shared/ccm::sq` 同族（跨语言那两份由黄金串夹具对拍）。
+//! 「渲染一条 shell 命令串」属于开终端的那一侧：最终 exec 在用户自己的终端进程里，后端的执行面是 argv 直传、不过 shell。
 
 /// 〔`INVARIANTS §47` ②〕**自由文本**值（cwd · 目录 · 远端子命令的 argv · 别名词 …）
 /// 在唯一的 quote 之前的**拒绝集**：只收 NUL / CR / LF。
@@ -69,14 +40,12 @@ pub fn posix_free_path_ok(p: &str) -> bool {
     p.starts_with('/') && !p.split('/').any(|seg| seg == "..") && free_text_ok(p)
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// 〔`INVARIANTS §47` ①〕**标识符类**的放行判定：闭集白名单 ＋ 不许 `-` 开头 ＋ 钉上界。
 //
-// 与上面 ② 自由文本那一层、下面唯一的 quote 同住（TL3 的先例：判定与 quote 同住）。
-// 每一条都是**全仓唯一的一份**（登记表 `tests/frontend/ui/judgment-single-home.vitest.ts`）：
-// 前端不判（线上校验交后端判），monitor 渲染 · 后端 ccm 都调这里。
+// ══════════════════════════════════════════════════════════════════
+// 〔`INVARIANTS §47` ①〕标识符类的放行判定：闭集白名单 ＋ 不许 `-` 开头 ＋ 钉上界。
+// 每一条都是全仓唯一的一份（登记表 `tests/frontend/ui/judgment-single-home.vitest.ts`）：前端不判（交后端判），monitor 渲染 · 后端 ccm 都调这里。
 // 首字符一律要 ASCII 字母数字：`-` 开头会被下游当选项解析（`--model -x` · `resume --x`），quote 挡不住。
-// ═══════════════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════
 
 /// session id 的上界（与分叉找文件那条路逐字同，见 [`session_id_ok`]）。
 pub const SESSION_ID_MAX: usize = 64;
@@ -129,13 +98,9 @@ pub fn account_name_ok(s: &str) -> bool {
         && cs.all(|c| c.is_ascii_alphanumeric() || ACCOUNT_NAME_EXTRA.contains(c))
 }
 
-/// **cc-bus agent id**（发消息的收件人 · 收掉的那个 · 派生时的账号名 · 读收件箱时的文件名）：非空 · 不以 `-` 开头 ·
-/// 只含 `[A-Za-z0-9_-]`。**没有上界**（今天就没有；照原样搬，不顺手加）。
-///
-/// 〔`INVARIANTS §47` ①〕从 monitor `backend/control/cc_bus.rs` 里的 `is_valid_bus_id` 搬来（规则逐字不变；那个名字今天是本函数的再导出），
-/// 住这里是因为两半都要它：monitor 读收件箱 · 后端 `bus-send` / `bus-kill` / `bus-spawn` 在把 id 交给 `cc-send` / `cc-kill` /
-/// `cc-spawn` **之前**先判（界面那一份删了）。关键的一条是拒前导 `-`：`--help` 在盘上真出现过
-/// （`~/.cc-bus/inbox/--help.jsonl`），拼进 `cc-send` 就被当成一个 flag。
+/// cc-bus agent id（发消息的收件人 · 收掉的那个 · 派生时的账号名 · 读收件箱时的文件名）：非空 · 不以 `-` 开头 · 只含 `[A-Za-z0-9_-]`。没有上界。
+/// monitor 读收件箱 · 后端 `bus-send` / `bus-kill` / `bus-spawn` 在把 id 交给 `cc-send` / `cc-kill` / `cc-spawn` 之前先判。
+/// 关键是拒前导 `-`：`--help` 在盘上真出现过（`~/.cc-bus/inbox/--help.jsonl`），拼进 `cc-send` 就被当成一个 flag。
 pub fn bus_id_ok(s: &str) -> bool {
     !s.is_empty()
         && !s.starts_with('-')
@@ -166,8 +131,7 @@ pub const MONITOR_ALIVE_NAME: &str = "Local\\cc-monitor-alive";
 // （`;` `|` `&` `$` `(` `)` `<` `>` `{` `}` `@` `#` `,` 反引号 · 引号 · 换行一个都不在），空格就是要拆的词界。
 // `~` 只许打头、紧跟 `/`：POSIX 展开成家目录，PowerShell 的文件系统路径也认它；别处的 `~` 两种 shell 语义不同，拒。
 //
-// 先前三处三条规则（本机 `history.rs` 白名单不许 `/` · 远端载荷 `payload.rs` 拒绝集 · 后端 ccm `free_text_gate` 只拒 NUL / CR / LF），
-// 今天三处都调这一个（本机远端同一条）。空串不在这里判：各调用处「空 ⇒ 默认启动器」是 D3 缺省，不是判定。
+// 本机远端起会话都调这一个。空串不在这里判：各调用处「空 ⇒ 默认启动器」是缺省，不是判定。
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// 启动器在 ASCII 字母数字之外还放行的字符（空格是词界）。

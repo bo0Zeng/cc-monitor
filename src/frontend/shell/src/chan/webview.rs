@@ -1,65 +1,33 @@
-//! 通道 · **webview 那一侧的宿主**：主界面（webview 里的 TS）经 Tauri IPC 说 `call` 的那一跳。
-//!
-//! # 为什么要有它（C4a）
-//!
-//! 通道那一拍（`§10`）给了**进程外**的前端（文件窗口）一条路：回环 TCP ＋ 钥匙 ＋ 路由器。
-//! 主界面**不在进程外** —— 它是 monitor 进程里的 webview，与后端之间隔着的是 Tauri IPC，
-//! 不是一条 TCP 连接。⇒ 它说 `call` 用不着绑口、钥匙、拆帧、编号配对（那些是**那条连接**的事）；
-//! 它要的只是 `§3.3` 那个签名在 Tauri IPC 这一跳上的样子：
+//! 通道 · webview 那一侧的宿主：主界面（webview 里的 TS）经 Tauri IPC 说 `call` 的那一跳。主界面不在进程外，它与后端之间隔的是 Tauri IPC，
+//! 用不着绑口、钥匙、拆帧、编号配对：
 //!
 //! ```text
 //! webview (src/comms/inward/chan.ts)  ──Tauri IPC──▶  chan_call（本文件）──▶ router::settle ──▶ 注入的 Backends
-//!   第 0 跳：webview ↔ monitor                                      第 1 跳：monitor ↔ 后端
+//! 第 0 跳：webview ↔ monitor                                      第 1 跳：monitor ↔ 后端
 //! ```
 //!
-//! 跳号与回环那条同一张读法表（`wire::HopId` 头注）：第 0 跳是「前端 ↔ monitor」这一跳，第 1 跳是
-//! 「monitor ↔ 后端」（经注入的句柄）。第 0 跳的期限在 TS 那一侧执行（过期就一个字节都不发）；
-//! 第 1 跳的上界由 [`super::router::settle`] 执行 —— **与回环那条同一份**，不写第二份。
+//! 跳号与回环那条同一张读法表（`wire::HopId` 头注）。第 0 跳的期限在 TS 那一侧执行（过期就一个字节都不发）；第 1 跳的上界由 [`super::router::settle`] 执行（与回环那条同一份）。
+//! 不是通信层成员（与 `host.rs` 同一条理由）：它碰 Tauri、按生产注入句柄（[`super::host::InboundBackends`]）、给「空白名」那一档当场拒；成员那一半是 TS 的 `src/comms/inward/chan.ts`。
 //!
-//! # 🔴 为什么这一份**不是**通信层成员（与 `host.rs` 同一条理由）
-//!
-//! 它碰 Tauri（`#[tauri::command]` · `tauri::ipc::Response`）、按生产注入句柄（[`super::host::InboundBackends`]）、
-//! 给「空白名」那一档当场拒 —— 那是**宿主**做的几件事（`C5` 的「绑口 / 注入在外」同形）。
-//! 成员那一半是 TS 的 `src/comms/inward/chan.ts`（webview 手里那一半，与 `client.rs` 对称）。
-//!
-//! # 载荷原样
-//!
-//! 请求体在 IPC 上是一个字节数组（JSON 的数字数组 —— 查询的请求体都小），**应答**走
-//! `tauri::ipc::Response`（原样字节，TS 拿 `ArrayBuffer`）—— 两个方向都不把载荷当 JSON 读，
-//! 读它的是宿主注入的那个句柄（后端说 JSON，`host.rs` 那一格）与 TS 那侧的调用方。
-//!
-//! # 错误三层
-//!
-//! 失败时回 `{ err, body }`：`err` 是 [`super::wire::err_to_wire`] 给的**线上形状**（回环那条同一份），
-//! `body` 是 `Refused` 那份不透明体。TS 那侧按它解回 `§3.3.1` 的三层。
+//! 载荷原样：请求体在 IPC 上是一个字节数组，应答走 `tauri::ipc::Response`（原样字节，TS 拿 `ArrayBuffer`）—— 两个方向都不把载荷当 JSON 读。
+//! 失败时回 `{ err, body }`：`err` 是 [`super::wire::err_to_wire`] 给的线上形状（回环那条同一份），`body` 是 `Refused` 那份不透明体；TS 那侧按它解回三层。
 //!
 //! # `subscribe` 那一半
 //!
 //! ```text
 //! webview (src/comms/inward/chan.ts)  ── chan_subscribe(origin, kind, from, want, id) ──▶ 本文件 ──▶ 注入的句柄（event_replay·rs）
-//!   events.ts 的流          ◀── Tauri 事件 `chan-items` {sub, items} ─────────── WebviewSink（emit_to 那个 webview）
-//!                            ── chan_want(id, more) / chan_stop(id) ────────────▶
+//! events.ts 的流          ◀── Tauri 事件 `chan-items` {sub, items} ─────────── WebviewSink（emit_to 那个 webview）
+//! ── chan_want(id, more) / chan_stop(id) ────────────▶
 //! ```
 //!
-//! - **传输选 Tauri 事件，不选 `tauri::ipc::Channel`**：前端那一条 queue 的顺序
-//!   （行 · `ended` 格 · 宣告 …）靠「同一个 webview 上按 emit 先后执行」；`Channel` 的大消息走「先存、再让 JS
-//!   `fetch` 回来」，会被之后 `eval` 出去的起停事件超车（Tauri 2.11.6 `ipc/channel.rs`）。
-//! - **编号由 webview 那一侧给**（每页从 1 起）：格可能先于 `chan_subscribe` 的应答到达，
-//!   编号先登记在 TS 那侧才不丢。同一个 `(webview, 编号)` 再订一次 ⇒ 旧的那条作废（页面重载）。
-//! - **体在这一跳是文本**：Tauri 事件是 JSON，二进制过不来；体原样按 UTF-8 装成字符串（不解析、不改写），
-//!   不是 UTF-8 ⇒ 那一格换成 `Closed{Ours(Broken)}`（句柄坏了，不猜）。
-//! - 句柄只有一种：会话内容（`kind` 前缀 `session-lines`，[`crate::event_replay::SESSION_LINES_KIND`]）。
-//!   认不出的 `kind` 由句柄原位回 `Closed{Peer(no-such-stream)}`，不装作订阅成功。
+//! - 传输选 Tauri 事件，不选 `tauri::ipc::Channel`：前端那一条 queue 的顺序（行 · `ended` 格 · 宣告 …）靠「同一个 webview 上按 emit 先后执行」；
+//!   `Channel` 的大消息走「先存、再让 JS `fetch` 回来」，会被之后 `eval` 出去的起停事件超车（Tauri 2.11.6 `ipc/channel.rs`）。
+//! - 编号由 webview 那一侧给（每页从 1 起）：格可能先于 `chan_subscribe` 的应答到达，编号先登记在 TS 那侧才不丢。同一个 `(webview, 编号)` 再订一次 ⇒ 旧的那条作废（页面重载）。
+//! - 体在这一跳是文本：Tauri 事件是 JSON，二进制过不来；体原样按 UTF-8 装成字符串（不解析、不改写），不是 UTF-8 ⇒ 那一格换成 `Closed{Ours(Broken)}`。
+//! - 句柄只有一种：会话内容（`kind` 前缀 `session-lines`，[`crate::event_replay::SESSION_LINES_KIND`]）。认不出的 `kind` 原位回 `Closed{Peer(no-such-stream)}`。
 //!
-//! # 买不到
-//!
-//! - 〔「撤单不许回退」〕**TS 那侧撤单传到这一跳了**：`Budget.cancel` 拨下 ⇒ TS 本地立即回
-//!   `Ours{Cancelled}`，同时带着那一问的编号发 [`chan_cancel`] ⇒ 在飞表里那一格的撤单手柄拨下 ⇒ 路由器丢掉那次调用
-//!   （`router::settle`）⇒ `inbound_client` 的 `AbandonGuard` 补发 `cancel`（同回环那条）⇒ 后端可取消档停下。
-//!   〔墓碑 —— 上一版这里写着「这一跳缺的只剩 TS → monitor 的撤单命令 ＋ 在飞编号表，本拍不开」：这一拍开了。〕
-//!   撤单那一条先于 `chan_call` 本身到（两条 IPC 不保序）⇒ 记下编号，那一问登记时当场撤、一个字节不发。
-//! - **webview 这一跳的 `subscribe` 没有续传**（`from` 给了就原位说用法错）与**回环那条上没有会话流**
-//!   （进程外前端今天不订会话内容；`host.rs::InboundBackends::subscribe` 对它照旧回「没有这条流」）。
+//! 撤单：`Budget.cancel` 拨下 ⇒ TS 本地立即回 `Ours{Cancelled}`，同时带着那一问的编号发 [`chan_cancel`] ⇒ 在飞表里那一格的撤单手柄拨下 ⇒ 路由器丢掉那次调用
+//! （`router::settle`）⇒ `inbound_client` 的 `AbandonGuard` 补发 `cancel` ⇒ 后端可取消档停下。
 
 use super::host::InboundBackends;
 use super::router::{self, Backends};

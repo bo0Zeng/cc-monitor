@@ -3,17 +3,11 @@
 use super::*;
 use tokio::io::AsyncBufReadExt;
 
+//
 // ═══════════ 拨号归后端：接远端后端的每一跳都只经拨号代理 ═══════════
 //
-// 〔墓碑 —— `K-P6b` 那一段原话的要点逐字：「买到的是：**`backend 那条长连接流` 的那一跳 SSH 握手，
-//  可以不发生在界面进程里**」「**界面进程仍然自己拨号 —— 7 处里搬走的是 1 处**」「回落有两条……
-//  ① 拿不到代理二进制 ② 配置里没填 `keyPath`」。〕
-//
-// C2 之后这三句都不成立了：拨号**全部**在后端的拨号代理里（`src/backend/dial/`）；界面这一侧拿链路的
-// 唯一入口是宿主 `dial_host`，读应答的是通信层成员 `ssh_link`。两条回落都删了：
-// ② 的根因（代理不会 ssh-agent）在代理那侧补上了；① 按 `D11`「后端是给定的，不要退路」—— 找不到本机后端
-// 二进制就**报**，不再进程内拨。**唯一还在界面进程里拨的是 SFTP**（`F7c` 独占的 `sftp.rs`，
-// 用的是 `inproc_dial.rs` 那一份搬来的旧实现），登记在 `dial_move_judge::DIAL_SITES`。
+// 拨号全部在后端的拨号代理里（`src/backend/dial/`）；界面这一侧拿链路的唯一入口是宿主 `dial_host`，读应答的是通信层成员 `ssh_link`。
+// 没有回落：找不到本机后端二进制就报（`D11`），不在进程内拨（`dial_move_judge::DIAL_SITES` 登记着拨号点）。
 
 /// 远端后端在 shell 里的写法：恒是那台的 `~/.cc-monitor/bin/ccm`（后端二进制本身），
 /// 可填的 `backendPath` 删了。常量一份住 `relay_route_core`（后端往远端拼命令也读它）。
@@ -45,28 +39,10 @@ pub struct RemoteExec {
 /// 上限只是防「远端吐无穷字节」吃爆内存，正常路径远够不到。
 const EXEC_CAPTURE_MAX_BYTES: usize = 4 * 1024 * 1024;
 
-/// backend **出方向单行**的字节上限。
-///
-/// # ★ 这个数**刻意不等于** backend 侧的 `inbound::MAX_LINE_BYTES`（1 MiB）
-///
-/// 那一条限的是**入方向命令信封**（`stream/inbound/` 逐字「命令信封比 `ResumeSpec` 还小，
-/// 1 MiB 已是极宽松的上限」）。本条限的是**出方向内容帧** —— 一帧 = 一条 Claude jsonl 行。
-/// **两者不是同一个量**，抄过来就是把不同的东西按数字凑到一起
-/// （`byte_cap_registry` 头注对账本 S3 那次订正逐字写过这句）。
-///
-/// 实测本机 `~/.claude/projects/**/*.jsonl` 全量 **525,132 行**：最长一行
-/// **3,117,370 字节（2.97 MiB）**，其中 **78 行超过 1 MiB**
-/// （> 1 MiB 且 ≤ 2 MiB 有 75 条，> 2 MiB 有 3 条）。
-/// ⇒ 抄 1 MiB 会在本机丢掉 78 条**真实**行，而超限语义是「丢弃 + 报告」——
-/// 用户会看到一条「丢了帧」的健康提示，而那不是拥塞，是我们自己把上限设小了。
-///
-/// 取 64 MiB = 实测最长行的 21 倍。留这么大余量的理由有两条：
-/// 帧内换行被后端转义成 `\n` 两字符（最坏接近翻倍），以及工具输出体量只会变大。
-///
-/// # 超限语义：**丢弃 + 带身份报告**，不许静默
-///
-/// 走 `REMOTE_HEALTH` + `kind: "line_too_long"`，与 `overflow_health_message` 那条
-/// 现成的路同一个出口（定框 E4：静默失败要给身份、且抬到调用方能判定的那一层）。
+/// backend 出方向单行的字节上限：一帧 = 一条 Claude jsonl 行。不等于 backend 入方向命令信封的 `inbound::MAX_LINE_BYTES`（1 MiB）—— 两者不是同一个量。
+/// 真实的 jsonl 里最长一行接近 3 MiB、上百行超过 1 MiB；抄 1 MiB 会丢真实的行，用户还会看到一条「丢了帧」的健康提示。
+/// 64 MiB 留足余量：帧内换行被后端转义成 `\n` 两字符（最坏接近翻倍），工具输出体量只会变大。
+/// 超限语义：丢弃 + 带身份报告（`REMOTE_HEALTH` + `kind: "line_too_long"`，与 `overflow_health_message` 同一个出口），不许静默。
 pub(crate) const BACKEND_FRAME_LINE_CAP: usize = 64 * 1024 * 1024;
 
 /// 一次有界读行的结果。
@@ -81,25 +57,10 @@ pub(crate) enum CappedLine {
     Eof,
 }
 
-/// 按 `\n` 读一行，**上限在读的时候生效**。
-///
-/// # ★ 为什么不是 `read_line` 加一句长度判断
-///
-/// 那是后端侧栽过的坑，逐字记在 `src/backend/stream/inbound/mod.rs` 头注里：
-/// 第一版用无界 `read_until`、读完再看长度，D 审计实测**喂 512 MiB 无换行的流 ⇒
-/// RSS 从 6 MiB 涨到 518 MiB**，而它照样回了一条 `line_too_long`「看起来对」。
-/// ⇒ 机制必须是 `fill_buf`/`consume`：超限之后**只找换行、不再往 buf 里塞字节**，
-/// 整行的内存占用与行长无关。本函数是那段机制在 monitor 侧的同构实现
-/// （**上限值不同、机制相同** —— 见 [`BACKEND_FRAME_LINE_CAP`] 头注）。
-///
-/// ⚠ **不是 cancellation-safe**：中途取消会丢掉 `overflowed`/计数状态，
-/// 而 `buf` 里的半行留着。调用方要么把它放进独立 task（主帧读那样），
-/// 要么取消之后就**不再复用这个 reader**（探测那两处那样）。
-///
-/// ★ `cap` **是参数而不是直接读常量**：生产调用点全传 [`BACKEND_FRAME_LINE_CAP`]，
-/// 而测试要能传一个小数。否则「超限之后内存不涨」这条性质就只能靠量 RSS 来证
-/// （backend 侧当年正是那么发现问题的），而**那种证法进不了单测**。
-/// 传小 cap 之后同一条性质可以直接判：见 `over_limit_stops_growing_the_buffer`。
+/// 按 `\n` 读一行，上限在读的时候生效：`fill_buf`/`consume`，超限之后只找换行、不再往 buf 里塞字节，整行的内存占用与行长无关
+/// （读完再判的话，喂一条几百 MiB 无换行的流内存就跟着涨）。上限值与后端入方向不同、机制相同。
+/// 不是 cancellation-safe：中途取消会丢掉 `overflowed` / 计数状态而 `buf` 里的半行留着 ⇒ 调用方要么放进独立 task，要么取消之后不再复用这个 reader。
+/// `cap` 是参数：测试传一个小数，「超限之后内存不涨」直接判（`over_limit_stops_growing_the_buffer`）。
 pub(crate) async fn read_capped_line<R>(
     rd: &mut R,
     buf: &mut Vec<u8>,
@@ -167,24 +128,14 @@ pub async fn connect_and_exec_capture(
     cmd: &str,
     abort_marker: Option<&str>,
 ) -> Result<RemoteExec, String> {
-    // 〔C2 → SR1a〕收全三样的活在本机常驻后端里（`use: capture`）；stdout/stderr 各自的上限照旧由这里给。
+    // 收全三样的活在本机常驻后端里（`use: capture`）；stdout / stderr 各自的上限由这里给。
     crate::dial_host::capture(cfg, cmd, abort_marker, EXEC_CAPTURE_MAX_BYTES).await
 }
 
 // 这里原有 POSIX 单引号转调壳（转 `shell_quote_core::posix_quote`）：最后一个生产调用方（monitor 侧 Gate 1 前检，
 //   THIN 第 3 件删）走了 ⇒ 一起删；要 quote 直调 `shell_quote_core::posix_quote`。
 
-/// 有界读行的**行为**对拍。
-///
-/// # 为什么必须有这一组
-///
-/// 判据那半（`byte_cap_registry` 的四条）钉的全是**形态**：常量进表了没、
-/// 处置臂说话了没。它们**判不出**「上限到底生不生效」——
-/// 而后端侧栽的那次正是这个缺口：上限写着 1 MiB、`line_too_long` 也回了，
-/// 可它是**读完再判**，实测 RSS 从 6 MiB 涨到 518 MiB。头注逐字记着
-/// 「常数抄了先例，**机制没抄**」。
-///
-/// ⇒ 本组直接喂 reader，用**小 cap**，把那条「超限之后内存不涨」判成断言。
+/// 有界读行的行为对拍：`byte_cap_registry` 那几条钉的是形态（常量进表了没、处置臂说话了没），判不出上限到底生不生效 ⇒ 本组用小 cap 直接喂 reader。
 #[cfg(test)]
 #[path = "../../../../../tests/frontend/shell/stream_source/capped_line_tests.rs"]
 mod capped_line_tests;

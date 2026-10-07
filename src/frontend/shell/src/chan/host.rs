@@ -1,58 +1,28 @@
-//! 通道 · **宿主那一侧**（monitor 进程里）：绑回环 · 造钥匙 · `accept` · 把连接交给路由器 · 注入后端句柄。
+//! 通道 · 宿主那一侧（monitor 进程里）：绑回环 · 造钥匙 · `accept` · 把连接交给路由器 · 注入后端句柄。
 //!
-//! # 🔴 为什么这一份**不是**通信层成员（刻意的）
+//! 不是通信层成员（刻意的）：绑口、造钥匙（凭据由后端交给通信层）、定帧长上限与认证等待时长（期限值是策略值）、把 `op` 翻成 `inbound_client` 的命令
+//! （路由器不许知道载荷长什么样）都归宿主，与 `relay/listen.rs` 那一份「语义上就该在外面」同形。
+//! 只绑回环（`Ipv4Addr::LOCALHOST`，端口由内核挑）⇒ 不新开任何对外端口；判据直接看 [`start_with`] 交回来的地址是不是回环。
 //!
-//! 它做的正是 `C4` / `C5` 不许通信层做的那几件事：
-//!
-//! | 它做的 | 为什么归宿主 |
-//! |---|---|
-//! | 绑 `127.0.0.1:0` |：「由**后端** `bind`/`listen`……把 `accept` 到的连接交给面 B」—— 面 A 这里照同一个先例 |
-//! | 造钥匙（OS 随机源） | `C4`：凭据由后端交给通信层 |
-//! | 定帧长上限、认证等待时长 | `C4`：配置与**期限值**都是策略值，归后端 |
-//! | 把 `op` 翻成 `inbound_client` 的一条命令、把载荷当 JSON 读 | 那是后端那一半的实现 —— 路由器不许知道载荷长什么样（`C1`） |
-//!
-//! ⇒ 圈进来的话 `C4`/`C5` 当场破；**不圈它就是它的归属**，与 `relay/listen.rs` 那一份
-//! 「语义上就该在外面」同形。
-//!
-//! # 🔴 「一个对外端口」仍然成立
-//!
-//! 本文件只绑**回环**（`Ipv4Addr::LOCALHOST`），端口由内核挑 ⇒ 不新开任何对外端口。
-//! 判据里有一条直接看 [`start_with`] 交回来的地址是不是回环。
-//!
-//! # 🔴 钥匙怎么交接
+//! # 钥匙怎么交接
 //!
 //! 1. monitor 起来时 [`start`] 造一把钥匙（两枚 v4 UUID 的 244 位 OS 随机数，写成 64 位十六进制）；
-//! 2. [`handoff`] 把「地址 ＋ 钥匙 ＋ 帧长上限」交给要起外部前端的那一方；
-//! 3. 那一方**照 `filewin/proc.rs` 的先例把它写进子进程的 stdin**（不走 argv —— `/proc/<pid>/cmdline`
-//!    世界可读；不走环境变量 —— `/proc/<pid>/environ` 同用户可读、且会被孙进程继承）；
+//! 2. [`handoff`] 把「地址 ＋ 钥匙 ＋ 帧长上限」交给要起外部前端的那一方（`filewin/entry.rs`）；
+//! 3. 那一方把它连同开窗种子写进子进程的 stdin（`proc::OpenRequest::handoff`；不走 argv —— `/proc/<pid>/cmdline` 世界可读；
+//!    不走环境变量 —— `/proc/<pid>/environ` 同用户可读、且会被孙进程继承）；
 //! 4. 外部前端从 stdin 读到它，用 [`super::dial::dial`] 连上并出示钥匙。
+//! 钥匙不进日志：[`Handoff`] 与 `Key` 的 `Debug` 都手写成不打印内容；本文件的日志只印端口。
 //!
-//! ✅**第 3 步接上了**：`filewin/entry.rs` 取 [`handoff`]，`filewin/proc.rs` 把它连同
-//! 开窗种子一起写进窗口进程的 stdin（`proc::OpenRequest::handoff`），窗口进程用 [`super::dial::dial`] 拨回来。
-//! ⚠ **钥匙不进日志**：[`Handoff`] 与 `Key` 的 `Debug` 都手写成不打印内容；本文件的日志只印端口。
+//! `call` 经注入的 [`InboundBackends`] 走既有的 `inbound_client`（本机与远端同一条路）。
 //!
-//! # 买到什么
+//! # 买不到的
 //!
-//! - monitor 进程里有一个**只听回环、只认一把钥匙**的通道口，外部前端经它说 `call`。
-//! - `call` 经注入的 [`InboundBackends`] 走**既有**的 `inbound_client`（本机与远端同一条路），
-//!   一行新业务都没写。
-//!
-//! # 买不到什么
-//!
-//! - ✅**生产上有了第一条流**：`transfer/<id>`（传输台那一趟的进度；
-//!   翻译住本文件末尾那一节，判据 `transfer_stream_tests` 走真回环 ＋ 真钥匙 ＋ 本句柄）。
-//!   🔴 **其余 `kind` 照旧一条流都没有**：`inbound_client` 只有「一问一答」，后端推上来的帧今天走
-//!   `stream_source` 的 Tauri 事件那条路 ⇒ [`InboundBackends::subscribe`] 对别的 `kind` 仍原位回
-//!   `Closed{Peer(…)}`（对端说「没有这条流」），**不装作订阅成功**。
-//! - **对端撤活是尽力的**：外部前端撤单 ⇒ 路由器丢掉本 future（`router::run_call`）⇒ 那次 `inbound_client`
-//!   调用随之被丢 ⇒ 它的 `AbandonGuard` 补发一条 `cancel{target}`（best-effort、不等应答；判据
-//!   `inbound_client_tests::abandoning_the_wait_fires_one_cancel_and_finishing_fires_none`）。后端可取消档
-//!   （`Run::Async`）真停下；阻塞档回 `not_cancellable`、照跑完。上一版写「补发 `cancel` 那一手是
-//!   `inbound_client` 的私有函数，今天够不着 ⇒ 后端可能照跑完」—— RM1f 之后丢 future 就会补发，不用够着它。
-//! - **不买同机其它用户的隔离之外的东西**：回环口上同一台机器的任何进程都能**连**，
-//!   挡它们的只有那把钥匙；钥匙在子进程 stdin 管子里走一次，之后只在两边内存里。
-//!   能读 monitor 进程内存的人（同用户 root / ptrace）本来就能直接驱动后端，不在本文件射程。
-//! - **不买连接数上界**：没出示钥匙的连接最多挂 `hello_within` 那么久；出示了钥匙的连接不设上限。
+//! - 订阅只有一条流：`transfer/<id>`（传输台那一趟的进度，翻译在本文件末尾，判据 `transfer_stream_tests`）；别的 `kind`
+//!   [`InboundBackends::subscribe`] 原位回 `Closed{Peer(…)}`，不装作订阅成功。
+//! - 对端撤活是尽力的：外部前端撤单 ⇒ 路由器丢掉本 future（`router::run_call`）⇒ 那次 `inbound_client` 调用随之被丢 ⇒ 它的 `AbandonGuard`
+//!   补发一条 `cancel{target}`（判据 `inbound_client_tests::abandoning_the_wait_fires_one_cancel_and_finishing_fires_none`）。可取消档真停下；阻塞档照跑完。
+//! - 回环口上同一台机器的任何进程都能连，挡它们的只有那把钥匙；能读 monitor 进程内存的人本来就能直接驱动后端。
+//! - 不设连接数上界：没出示钥匙的连接最多挂 `hello_within` 那么久；出示了钥匙的不设上限。
 
 use super::router::{self, Backends, Ended, Terms};
 use super::wire::{
@@ -147,7 +117,7 @@ pub async fn start() -> Result<(), String> {
         .map_err(|_| copy_text("rsChanHost.start.twice", &[]))
 }
 
-/// 交给要起外部前端的那一方。`None` = 通道没起来 —— **不许**因此退回别的路（`D11`）。
+/// 交给要起外部前端的那一方。`None` = 通道没起来 —— 不许因此退回别的路（`D11`）。
 pub fn handoff() -> Option<Handoff> {
     HANDOFF.get().cloned()
 }
@@ -296,13 +266,13 @@ fn link_item(l: inbound_client::Link) -> Item {
     }
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// 传输台那一口：开单 ＋ 进度流
-// ════════════════════════════════════════════════════════════════════════════
 //
-// 本文件在这里做的仍然只是**宿主**那几件事：按 `origin` 找那台机器的配置（读配置归宿主，`C4`）、
-// 把载荷当 JSON 读、把传输台的领域话（`sftp_pool::Snap`）翻成通道的格子。
-// 传输本身（借通道 · 写暂存区 · 续传 · 撤）一行都不在这里。
+// ══════════════════════════════════════════════════════════════════
+// 传输台那一口：开单 ＋ 进度流
+// ══════════════════════════════════════════════════════════════════
+//
+// 这里只做宿主那几件事：按 `origin` 找那台机器的配置、把载荷当 JSON 读、把传输台的领域话（`sftp_pool::Snap`）翻成通道的格子。
+// 传输本身（借通道 · 写暂存区 · 续传 · 撤）不在这里。
 
 /// 拒绝的信封：与后端命令的拒绝**同一个形状**（`{"code","message"}`，`backend_route::layer_call_error`
 /// 逐字），窗口那一侧用同一个翻译（`filewin::source::said`）说人话。
@@ -322,8 +292,7 @@ async fn transfer_open(origin: Origin, op: Op, payload: Body) -> Result<Body, Ca
     let Ok(args) = serde_json::from_slice::<serde_json::Value>(&payload.0) else {
         return Err(OursFault::Misuse.into());
     };
-    // 本机那一侧**先分**：本机没有 SFTP 传输这回事（用户逐字「本地不需要文件管理器」，
-    // 文件窗口只开在远端上）⇒ 说真实原因，不让下一行答一句「未找到远端配置: <local>」。
+    // 本机那一侧先分：本机没有 SFTP 传输这回事（文件窗口只开在远端上）⇒ 说真实原因，不让下一行答一句「未找到远端配置: <local>」。
     if origin.as_wire_str() == inbound_client::LOCAL_ORIGIN {
         return Err(refused(
             "local_has_no_transfer",

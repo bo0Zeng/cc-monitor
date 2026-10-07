@@ -8,19 +8,13 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::io::BufReader;
 
-/// 〔「先剥宿主耦合，再搬」〕`remote-health` 的出口：宿主（`lib.rs::remote_health_out`）拿窗口把手造它，
-/// 本模块只调它、不认识 GUI 宿主（`backend_client_guard_tests.rs::GUARDED`）。回 `Err(原话)` ＝ 没发出去，各发射点那句 warn 照旧。
+/// `remote-health` 的出口：宿主（`lib.rs::remote_health_out`）拿窗口把手造它，本模块只调它、不认识 GUI 宿主（`backend_client_guard_tests.rs::GUARDED`）。
+/// 回 `Err(原话)` ＝ 没发出去，各发射点那句 warn 照旧。
 pub(crate) type HealthOut =
     Arc<dyn Fn(crate::ui_contract::RemoteHealthPayload) -> Result<(), String> + Send + Sync>;
 
-/// U8a-2a：**握手完成 ⇒ 写半边解冻。**
-///
-/// 见证只能由一帧真的 Hello 换出来（`BackendHello::from_hello_frame`）⇒
-/// 「hello 之前不许写」在 monitor 侧是类型上的事实，不是一条纪律。
-/// 第二次 hello（不该有）时 `parked` 已被 `take` 走，静默跳过。
-///
-/// **抽成函数是为了让它可测**：D 审计变异 MU13 —— 把这段逻辑整个删掉（写半边永不解冻、
-/// 客户端永不登记）⇒ `cargo test` **全绿**。它埋在 `stream_loop` 中段时没有任何判据碰得到。
+/// 握手完成 ⇒ 写半边解冻。见证只能由一帧真的 Hello 换出来（`BackendHello::from_hello_frame`）⇒ 「hello 之前不许写」在 monitor 侧是类型上的事实。
+/// 第二次 hello（不该有）时 `parked` 已被 `take` 走，静默跳过。抽成函数是为了可测：埋在 `stream_loop` 中段时没有任何判据碰得到它。
 fn attach_inbound_client<W>(
     host_label: &str,
     parked: &mut Option<crate::inbound_client::ParkedWriter<W>>,
@@ -35,11 +29,8 @@ where
     Some(client)
 }
 
-/// U8a-2a：把一帧入方向应答路由回请求方。返回是否真的交到了某个等待者手上。
-///
-/// 没有客户端 = backend 在 hello 之前就回了应答（协议倒错），照实报、不静默。
-///
-/// **抽成函数同样是为了可测**（D 审计变异 MU12：把 `route_reply` 换成丢弃 ⇒ 全绿）。
+/// 把一帧入方向应答路由回请求方。返回是否真的交到了某个等待者手上。
+/// 没有客户端 = backend 在 hello 之前就回了应答（协议倒错），照实报、不静默。抽成函数同样是为了可测。
 fn route_inbound_frame(
     host_label: &str,
     client: Option<&std::sync::Arc<crate::inbound_client::InboundClient>>,
@@ -72,45 +63,28 @@ fn route_inbound_frame(
     }
 }
 
-/// U8a-2a：`stream_loop` 那条**接缝**的判据。
-///
-/// # 为什么单独立一个模块
-///
-/// D 审计做了三次变异，三次 `cargo test` **全绿**：
-/// - MU13：hello 臂里不 `into_client`/不 `register`（写半边永不解冻）
-/// - MU12：`reply` 臂里不 `route_reply`（应答收到就扔）
-/// - MU14：控制通道往返的探针直接返回 `"control=ok(0ms)"`，一个字节都不发
-///
-/// 也就是「把发送端接上」这件事本身删掉之后 CI 一片绿 —— `inbound_client` 的单测走的是
-/// 自造客户端，e2e 走的是真后端二进制，**两者之间的接缝没有任何判据**。
-/// 这个模块就是那条接缝。
+/// `stream_loop` 那条接缝的判据：`inbound_client` 的单测走自造客户端、e2e 走真后端二进制，两者之间的接缝
+/// （hello 臂解冻写半边并登记 · `reply` 臂路由应答 · 控制通道往返的探针真发字节）只有这里判。
 #[cfg(test)]
 #[path = "../../../../../tests/frontend/shell/stream_source/seam_tests.rs"]
 mod seam_tests;
 
-/// U8a-2a：**写半边只许经 `inbound_client::park` 出手。**
-///
-/// 这条护栏存在的理由是它守的东西刚变过：这个文件从「只读一条流」变成了「双工」。
-/// 一旦有人为了图省事在这里直接 `write_all` 一行，`ParkedWriter` 那层
-/// 「Hello 之前不许写」的类型保证就被绕过了 —— 而且是**静默**绕过（编译、测试全绿）。
+/// 写半边只许经 `inbound_client::park` 出手：在这里直接 `write_all` 一行会静默绕过 `ParkedWriter` 那层「Hello 之前不许写」的类型保证。
 #[cfg(test)]
 #[path = "../../../../../tests/frontend/shell/stream_source/write_half_guard.rs"]
 mod write_half_guard;
 
-/// SSH-remote 数据源主循环（S5）。
+/// SSH-remote 数据源主循环。
 ///
 /// 连接远端、exec backend、把 backend stdout 的 line-delimited JSON 帧逐行解析后分发：
-/// - `hello` → log（证明 backend runtime 起来了）+ 置 `connected`（标记本次连接已健康，
-///   供重连循环判定是否重置退避）。
-/// - `line` → 组 [`JsonlLine`] 交 [`LineIntake`]（本机那条流用的是同一个）：
-///   攒批后 `crate::batch_to_payloads(...)` → `replay.on_line_batch_awaited(&app, ...)`
-///   （前端按 seq 自动排序）。
-/// - 会话起停的成品（`session_added` · `session_status` · `session_state` · `sessions_replayed`）→ 原样交
-///   `session_book::feed`（后端裁、monitor 只转交；本机那条流同一个口）；连接断了 ⇒ `session_book::In::LinkLost`。
+/// - `hello` → log（证明 backend runtime 起来了）+ 置 `connected`（标记本次连接已健康，供重连循环判定是否重置退避）。
+/// - `line` → 组 [`JsonlLine`] 交 [`LineIntake`]（本机那条流用的是同一个）：攒批后 `crate::batch_to_payloads(...)` →
+///   `replay.on_line_batch_awaited(&app, ...)`（前端按 seq 自动排序）。
+/// - 会话起停的成品（`session_added` · `session_status` · `session_state` · `sessions_replayed`）→ 原样交 `session_book::feed`
+///   （后端裁、monitor 只转交；本机那条流同一个口）；连接断了 ⇒ `session_book::In::LinkLost`。
 /// - 未知 kind / garbage → `tracing::warn!` 跳过，绝不中断流。
 ///
-/// stdout EOF / 读错误 → 返回 `Err`，调用方（S8/S9）据此大声报"connection dropped"，
-/// 不静默冻结。
+/// stdout EOF / 读错误 → 返回 `Err`，调用方据此大声报「connection dropped」，不静默冻结。
 pub async fn run(
     cfg: RemoteConfig,
     replay: Arc<EventReplay>,
@@ -124,17 +98,11 @@ pub async fn run(
         cfg.port
     );
 
-    // 重连循环：每轮跑一次 stream_loop。失败/掉线后按指数退避（2→4→8→16→30s 封顶）重连；
-    // 本轮**连上过**（收到 backend hello，connected=true）则下次立即以 MIN 快速重连。
-    // INVARIANT §10：唯一的等待是 tokio::time::sleep（async、非阻塞），绝不 std::thread::sleep。
+    // 重连循环：每轮跑一次 stream_loop。失败 / 掉线后按指数退避（2→4→8→16→30s 封顶）重连；本轮站住了则下次以 MIN 快速重连。
+    // 唯一的等待是 tokio::time::sleep（async、非阻塞），绝不 std::thread::sleep（INVARIANT §10）。
     let mut backoff = RECONNECT_MIN;
-    // v2.22.1 hello 自愈账本:上一轮 hello 自证 backend==当前版本时记账,下一轮以此
-    // 越过「部署侧确认失败」的降级(内嵌清单缺失的 CI 安装包 v2.19-v2.22 全中招)。
-    // 若带 flag 的一轮连 hello 都没收到(真·旧后端把未知参数当一次性查询退出),
-    // 清账回退降级,防止 flagged 重连死循环。
-    // F66（#58③）：hello 自愈账本——存上一轮 backend **自报的能力 token 集**（原为
-    // build_id）。None = 尚未收到能力声明；Some(caps) = 下一轮据此发 flag 升级。
-    // 回退清账语义（`:is_some()` 那段）不变。
+    // hello 自愈账本：存上一轮 backend 自报的能力 token 集。None = 尚未收到能力声明；Some(caps) = 下一轮据此发 flag 升级。
+    // 带 flag 的一轮连 hello 都没收到（旧后端把未知参数当一次性查询退出）⇒ 清账回退降级，防止 flagged 重连死循环。
     let mut hello_confirmed: Option<Vec<String>> = None;
     // 这台是不是「永久不支持」（非 unix）：`stream_loop` 接不上常驻时写，本循环读完即清。
     let mut unsupported: Option<String> = None;
@@ -142,7 +110,7 @@ pub async fn run(
     loop {
         connected.store(false, Ordering::Release);
         crate::machine_state::connecting(&cfg.origin_label(), "deploy");
-        // F05：本轮连接的起点。退避重置的判据是「活过多久」，不是「握没握上手」。
+        // 本轮连接的起点。退避重置的判据是「活过多久」，不是「握没握上手」。
         let conn_started = std::time::Instant::now();
         let result = stream_loop(
             &cfg,
@@ -183,12 +151,9 @@ pub async fn run(
             Ok(()) => tracing::warn!("stream_source stream returned Ok unexpectedly; reconnecting"),
             Err(e) => tracing::warn!("stream_source remote source ended: {e}"),
         }
-        // 两段式（非冗余）：先按**当前** backoff 睡，再在仍没连上时翻倍。这样首次失败也只等
-        // MIN，退避序列是 2→4→8→16→30；若收成单个 if/else（睡前就翻倍），首次失败会直接等 4s。
-        // sleep 期间 `connected` 不会变（其唯一写者 stream_loop 已返回），故两次 load 读到同值。
-        // F05（报告 I-1）：**「连上过」不等于「站住了」**。判据从「收到过 hello」换成
-        // 「这条连接活过 MIN_HEALTHY_UPTIME」——hello-then-die 的后端此前每轮都算连上过，
-        // 退避永远重置回 2s、每分钟约 90 次 SSH 握手砸在那台已经撑不住的机器上。
+        // 两段式（非冗余）：先按当前 backoff 睡，再在仍没连上时翻倍 ⇒ 首次失败只等 MIN，退避序列是 2→4→8→16→30。
+        // sleep 期间 `connected` 不会变（其唯一写者 stream_loop 已返回）。「连上过」不等于「站住了」：判据是这条连接活过 MIN_HEALTHY_UPTIME ——
+        // hello-then-die 的后端若每轮都算连上过，退避永远重置回 2s，SSH 握手会一直砸在那台撑不住的机器上。
         if should_reset_backoff(connected.load(Ordering::Acquire), conn_started.elapsed()) {
             backoff = RECONNECT_MIN; // 本次真站住过 → 下次立即快速重连
         }
@@ -248,10 +213,8 @@ async fn stream_loop(
         t_connect_start,
     } = open_round(cfg, health, hello_confirmed, unsupported, unsupported_code).await?;
 
-    // U8a-2a：这条 channel 是**双工**的，此前只用了读半边。`split_and_park` 一步切开并
-    // 把写半边停住 —— `ParkedWriter` 身上没有任何写方法，要等收到 hello 才换得出能发命令的
-    // 客户端。切与停必须是同一步：中间留一个裸 `WriteHalf` 就等于留了一个「Hello 之前能写」
-    // 的窗口（D 审计实测过那个窗口，两条护栏都拦不住）。见 `inbound_client` 头注。
+    // 这条 channel 是双工的：`split_and_park` 一步切开并把写半边停住 —— `ParkedWriter` 身上没有任何写方法，收到 hello 才换得出能发命令的客户端。
+    // 切与停必须是同一步：中间留一个裸 `WriteHalf` 就是一个「Hello 之前能写」的窗口（见 `inbound_client` 头注）。
     // 接上那一刻本机常驻后端答的「那台比手上这一版旧」—— 版本提示那句话按它挑。
     let remote_older = stream.remote_is_older();
     let (stream, parked) = crate::inbound_client::split_and_park(stream);
@@ -281,9 +244,8 @@ async fn stream_loop(
         t_connect_start,
     };
 
-    // Batch8-F26：旁路快照基础设施（仅 tail-only 生效；每连接一套，函数任何
-    // 退出路径随 `intake` 被丢掉而关闭队列——已入队项仍会被分发器拉完，独立连接自灭）。
-    // 攒批 ＋ 静默窗 ＋ 旁路快照收成 [`LineIntake`]，本机那条流用的是同一个。
+    // 攒批 ＋ 静默窗 ＋ 旁路快照收成 [`LineIntake`]（本机那条流用的是同一个）；每连接一套，函数任何退出路径随 `intake` 被丢掉而关闭队列
+    // （已入队项仍会被分发器拉完）。
     let mut intake = LineIntake::open(host_label.clone(), tail_only, replay, health);
     // 这条流上跳过了几帧认不出的（读任务那边另有一本记非 UTF-8 行）。
     let mut tally = crate::frame_tally::FrameTally::new(format!("stream_source {host_label}"));
@@ -311,9 +273,7 @@ async fn stream_loop(
                 continue;
             }
             Err(e) => {
-                // EOF/读错：flush 残余（at-least-once 安全；重连会从 seq 0 重放，
-                // 但没有理由主动丢已收到的行）**并等它发完**再报错——run() 随后的
-                // 断连归档（announced 清算）必须晚于这些行到达前端（审计 R1）。
+                // EOF / 读错：flush 残余并等它发完再报错 —— run() 随后的断连归档必须晚于这些行到达前端。
                 intake.flush().await;
                 return Err(e);
             }
@@ -321,10 +281,8 @@ async fn stream_loop(
         let line = line.as_str();
 
         let frame = unread.take(line, &mut tally, &say_health);
-        // SessionRemoved 是唯一顺序敏感的攒批边界：它的行必须先落前端，否则
-        // 归档后迟到的行把 Tab 复活成僵尸 live（审计 R1/R2）。SessionAdded /
-        // Hello / Overflow / 坏帧**不再**作边界——多小会话的 snapshot 才能聚
-        // 成大批跨过阈值（行先于 Added 到达无妨：前端 ensureTab 见行即建）。
+        // SessionRemoved 是唯一顺序敏感的攒批边界：它的行必须先落前端，否则归档后迟到的行把 Tab 复活成僵尸 live。
+        // SessionAdded / Hello / Overflow / 坏帧不作边界（多个小会话的 snapshot 才能聚成大批；行先于 Added 到达无妨：前端 ensureTab 见行即建）。
         // `session_state`（可重连 / 已结束的成品）同理：它说的「离开了」必须排在这个会话的行之后。
         if matches!(
             frame,
@@ -333,14 +291,11 @@ async fn stream_loop(
             intake.flush().await;
         }
 
-        // U8a-2a：**握手完成 ⇒ 写半边解冻。** 放在 match 之前是因为 Hello 那条臂按值解构了帧。
+        // 握手完成 ⇒ 写半边解冻。放在 match 之前：Hello 那条臂按值解构了帧。
         if let Some(client) = attach_inbound_client(&host_label, &mut parked, frame.as_ref()) {
             inbound_guard.1 = Some(client.clone());
             inbound = Some(client);
-            // 「这台的长连接能问话了」—— 前端的账号刷新在这一刻强制拉一次。
-            // 原先这里发一个裸 Tauri 事件（`remote-backend-ready`）；今天由下面 Hello 臂里既有的
-            //   `replay.origin_seen(.., true)` 说（订了这台 `accounts-changed` 的订阅原位收 `Seen`，`event_replay` 头注那张表）——
-            //   同一个时刻、同一个事实，只留一个家。
+            // 「这台的长连接能问话了」由下面 Hello 臂里的 `replay.origin_seen(.., true)` 说（订了这台 `accounts-changed` 的订阅原位收 `Seen`，`event_replay` 头注那张表）。
             // 连上那一刻：让本机常驻后端沿池里那条 SSH 同步资产目录（后台跑，零判定）。
             let accepts = inbound
                 .as_ref()
@@ -368,9 +323,7 @@ async fn stream_loop(
                     v,
                     build_id,
                     host_arch,
-                    // `S4`：日志报的是**解析后**的 Claude home（优先 `homes`、回退 `claude_dir`），
-                    // 同时把原样的 `homes` 一起打出来 —— 排障时要能一眼看出
-                    // 「这台后端到底发没发新字段」，那正是 additive 迁移期最常问的问题。
+                    // 日志报的是解析后的 Claude home（优先 `homes`、回退 `claude_dir`），同时把原样的 `homes` 一起打出来：排障时一眼看出这台后端发没发新字段。
                     claude_home: claude_home_from_hello(&homes, &claude_dir).to_string(),
                     homes,
                     capabilities,
@@ -386,8 +339,7 @@ async fn stream_loop(
                 end,
                 rid,
             }) => {
-                // Batch5-F17：进攒批缓冲（达 cap/批龄立即整批出）；静默窗口/
-                // SessionRemoved 边界触发的 flush 在循环头。
+                // 进攒批缓冲（达 cap / 批龄立即整批出）；静默窗口 / SessionRemoved 边界触发的 flush 在循环头。
                 intake
                     .line(JsonlLine {
                         session_id,
@@ -437,7 +389,7 @@ async fn stream_loop(
                 status,
                 waiting_for,
             }) => {
-                // ★★〔08-14 实机排障补〕红绿灯这一跳也要看得见：「全绿」既可能是都在忙，也可能是 status 一条都没到。
+                // 红绿灯这一跳也要看得见：「全绿」既可能是都在忙，也可能是 status 一条都没到。
                 tracing::info!(
                     "session-status: [{host_label}] sid={sid} status={status:?} \
                      waiting_for={waiting_for:?} → 成品交出口"
@@ -458,8 +410,8 @@ async fn stream_loop(
                 });
             }
             Some(InboundFrame::SessionRemoved { sid }) => {
-                // 只剩内容流的边界：残批已在循环头冲掉；这里摘排队中的快照 ＋ 给在途的打取消标记
-                //   （Batch8 D-B1：归档后迟到的快照行会经「见行复活」造出僵尸 tab）、续点作废。它离开之后是什么由下一帧 `session_state` 说。
+                // 只剩内容流的边界：残批已在循环头冲掉；这里摘排队中的快照 ＋ 给在途的打取消标记（归档后迟到的快照行会经「见行复活」造出僵尸 tab）、续点作废。
+                // 它离开之后是什么由下一帧 `session_state` 说。
                 tracing::info!(
                     "session-removed: [{host_label}] sid={sid}（内容流收口；去向看 session_state）"
                 );
@@ -479,12 +431,11 @@ async fn stream_loop(
                 lost,
                 lost_truncated,
             }) => on_overflow(&host_label, health, dropped, &lost, lost_truncated),
-            // U8a-2a：入方向应答 —— 交给本连接的客户端按 `id` 路由回请求方。
+            // 入方向应答 —— 交给本连接的客户端按 `id` 路由回请求方。
             Some(f @ (InboundFrame::Reply { .. } | InboundFrame::Cancelled { .. })) => {
                 route_inbound_frame(&host_label, inbound.as_ref(), f);
             }
-            // 那台的账号清单变了 ⇒ 告诉前端（账号表与 chip 据此重取）。
-            // 经通道 `subscribe`：订了这台 `accounts-changed` 的订阅收一格 `Frame`（原先是一个裸 Tauri 事件）。
+            // 那台的账号清单变了 ⇒ 经通道 `subscribe`：订了这台 `accounts-changed` 的订阅收一格 `Frame`（账号表与 chip 据此重取）。
             Some(InboundFrame::AccountsChanged) => {
                 replay.accounts_changed(&crate::origin::Origin(host_label.clone()));
             }
@@ -560,24 +511,13 @@ async fn open_round(
 ) -> Result<Opened, String> {
     let host_label = cfg.origin_label();
 
-    // ★〔audit-0805 F05 下半，报告 §4.3〕**冷启动最贵的三段此前一个 `[perf]` 都没有**。
-    //
-    // 实测（08-06）：全仓 `[perf]` 前端 13 处、monitor Rust 14 处，而 `stream_source/` **0 处** ——
-    // 偏偏这里是「用户点开应用到看见远端会话」之间**唯一**的那条链。
-    // 后果不是「不知道快慢」，是**报告里那些 50-200ms 的数字是外部常识值、不是本仓证据**
-    //（那条诚实边界就挂在这上面）。没有埋点，「冷启动三连接合并省了多少」
-    // 这句话永远只能靠推。
-    //
-    // ⚠ 埋点本身**不改任何行为**，也不该改：它只是让下一次讨论有数可依。
+    // 冷启动最贵的三段（用户点开应用到看见远端会话之间唯一的那条链）埋 `[perf]`：不改任何行为，只让下一次讨论有数可依。
     let t_connect_start = std::time::Instant::now();
 
-    // issue #29（F08）：连接前确保远端后端已（自动）部署到固定落点（`~/.cc-monitor/bin/ccm`）。
-    // 嵌入二进制就位前（F08b 未做）`byte_table::choose` 回「这一版没带」→ ensure_backend_deployed
-    // 优雅 no-op。**best-effort**：部署失败仅 warn，不阻断——手动部署的后端仍可连。
-    // ★ F05 下半：**上一次这台机器的后端自报过就是期望 build ⇒ 跳过预检那两条连接**。
-    // 判据与记忆的语义见 `VERIFIED_BUILD` 头注（记的是 hello 自证，不是预检结论）。
-    // 跳过时 `confirmed_build` 直接给「我这一版」—— 若给 `None`，下面的 caps 阶梯会掉进
-    // ③ 空集全降级，那就**比不跳还糟**（省两条连接换来一轮降级 + 一轮升级重连）。
+    // 连接前确保远端后端已部署到固定落点（`~/.cc-monitor/bin/ccm`）；这一版没带字节 ⇒ `byte_table::choose` 回「这一版没带」→ 优雅 no-op。
+    // best-effort：部署失败不阻断（手动部署的后端仍可连）。
+    // 上一次这台机器的后端自报过就是期望 build ⇒ 跳过预检那两条连接（`VERIFIED_BUILD` 头注：记的是 hello 自证，不是预检结论）。
+    // 跳过时 `confirmed_build` 直接给「我这一版」—— 给 `None` 会让下面的 caps 阶梯掉进空集全降级（省两条连接换来一轮降级 + 一轮升级重连）。
     // 「我这一版」只有一个值：手上那份内嵌字节自报的 id；没带字节 ⇒ `None` ⇒ 不跳、不乐观。
     let mine = crate::byte_table::my_backend_id();
     let verified = verified_build_of(&host_label);
@@ -588,8 +528,7 @@ async fn open_round(
         match crate::sftp::ensure_backend_deployed(cfg).await {
             Ok(c) => Some(c),
             Err(e) => {
-                // **不阻断**（手动部署的后端照样能连），但那句话要到界面上 ——
-                //   从前这里只 `warn!`、拒绝那几形更是 `debug!` ＋ `Ok(None)`，用户看到的是「什么都没发生」。
+                // 不阻断（手动部署的后端照样能连），但那句话要到界面上。
                 let msg = e.say();
                 tracing::warn!(
                     "stream_source [{host_label}] 后端没部署上（继续尝试连接已有后端）: {msg}"
@@ -613,16 +552,12 @@ async fn open_round(
         confirmed_build.as_deref()
     );
 
-    // F66（#58③）流模式门控：**从后端声明的能力 token 决定发哪些 flag**，不再靠
-    // build_id 精确匹配。旧后端会把未知参数当一次性查询处理后退出（无 hello → 重连
-    // 死循环，§26），故只对**声明了对应能力**的后端发 flag（声明 = 自证会剥离该 flag）。
-    // 能力两条来源，hello 自愈账本优先：
-    //   ① `hello_confirmed`（上一轮 backend **自报**的能力）—— 最权威，收过真 hello 才有。
-    //   ② 否则部署侧确认了当前内嵌 build（`confirmed_build == 我这一版`）→ 用内嵌后端的
-    //      能力常量**预知**，省第一轮「降级→收 hello→重连升级」往返（乐观路径）。
-    //   ③ 都没有 → 空集 → 全降级（= 2.18.0 行为，连接正常、功能退化）。
-    // **hello 优先**于部署侧（②可能是陈旧内嵌的身份 ≠ 期望 → 空集 → 靠 hello 自愈救，
-    //  见 v2.22.1 无限重连教训；`hello_confirmed` 只在收到真声明时写入，优先采纳恒安全）。
+    // 流模式门控：从后端声明的能力 token 决定发哪些 flag。旧后端会把未知参数当一次性查询处理后退出（无 hello → 重连死循环，§26），
+    // 故只对声明了对应能力的后端发 flag。能力两条来源，hello 自愈账本优先：
+    // ① `hello_confirmed`（上一轮 backend 自报的能力）—— 最权威，收过真 hello 才有。
+    // ② 否则部署侧确认了当前内嵌 build（`confirmed_build == 我这一版`）→ 用内嵌后端的能力常量预知，省第一轮往返（乐观路径）。
+    // ③ 都没有 → 空集 → 全降级（连接正常、功能退化）。
+    // hello 优先于部署侧：②可能是陈旧内嵌的身份 ≠ 期望 → 空集 → 靠 hello 自愈救；`hello_confirmed` 只在收到真声明时写入，优先采纳恒安全。
     let caps: Vec<String> = hello_confirmed.clone().unwrap_or_else(|| {
         if mine.is_some() && confirmed_build.as_deref() == mine {
             embedded_backend_capabilities()
@@ -632,11 +567,8 @@ async fn open_round(
     });
     let (with_bg, tail_only) = decide_stream_flags(&caps, crate::load_show_bg_sessions());
     let t_exec = std::time::Instant::now();
-    // ★ F05 下半：起流失败就抹掉自证记忆 —— 否则一台后端被删/被换旧的机器会
-    // **每一轮都跳预检、每一轮都失败**，永远等不到重新部署。代价是多一次重连，
-    // 那正是 `VERIFIED_BUILD` 头注里如实写下的那个退化。
-    // 接那台的**常驻后端**（没有就起一个；与本机同形）。这是远端唯一的一形：
-    //   起不了常驻（非 unix / 太旧）就是一次失败、说清为什么，不回落到随 SSH 生死的流模式。
+    // 起流失败就抹掉自证记忆 —— 否则一台后端被删 / 被换旧的机器会每一轮都跳预检、每一轮都失败。代价是多一次重连（`VERIFIED_BUILD` 头注）。
+    // 接那台的常驻后端（没有就起一个；与本机同形）。起不了常驻（非 unix / 太旧）就是一次失败、说清为什么，不回落到随 SSH 生死的流模式。
     let flags = (with_bg, tail_only);
     crate::machine_state::connecting(&host_label, "attach");
     let stream: crate::remote_resident::Replayed = match crate::remote_resident::attach(cfg, flags)
@@ -674,12 +606,9 @@ async fn open_round(
     })
 }
 
-/// Batch5-F17：帧读取挪进独立 task、经 channel 交回——攒批需要"带静默窗口
-/// 的读"，而 tokio 的 read_line **不是 cancellation-safe**（timeout 取消会
-/// 丢 buffer 里的半帧）；mpsc::Receiver::recv 是 cancel-safe 的，超时打在
-/// recv 上帧零丢失。reader task 在 EOF/读错时投递 Err 后退出；本函数返回
-/// （重连）时 rx drop → task 的 send 失败 → task 自然退出，不泄漏。
-/// `Ok(None)`：这里有一行超长、整行丢了（说不出是哪个会话的哪一行）⇒ 主循环原位给订阅一格 `Gap`（`to_seq` 缺）。
+/// 帧读取在独立 task、经 channel 交回：攒批需要「带静默窗口的读」，而 tokio 的 read_line 不是 cancellation-safe（timeout 取消会丢 buffer 里的半帧）；
+/// mpsc::Receiver::recv 是 cancel-safe 的。reader task 在 EOF / 读错时投递 Err 后退出；本函数返回时 rx drop → task 的 send 失败 → 自然退出，不泄漏。
+/// `Ok(None)`：这里有一行超长、整行丢了 ⇒ 主循环原位给订阅一格 `Gap`（`to_seq` 缺）。
 fn spawn_frame_reader<R>(
     stream: R,
     reader_host: String,
@@ -690,10 +619,8 @@ where
     let (frame_tx, frame_rx) = tokio::sync::mpsc::channel::<Result<Option<String>, String>>(1024);
     tauri::async_runtime::spawn(async move {
         let mut reader = BufReader::new(stream);
-        // 按 `\n` 切（协议保证每帧一行、帧内换行已被后端转义成 `\n` 两字符，
-        // 见 src/backend/stream/wire.rs）。
-        // ★ F10b：从无界 `read_line` 换成 [`read_capped_line`] —— 无界读遇「一条永远不结束
-        // 的行」就是无界堆分配，而对端是**远端进程**（它坏掉或不是我们的后端都可能）。
+        // 按 `\n` 切（协议保证每帧一行、帧内换行已被后端转义，见 src/backend/stream/wire.rs）。用 [`read_capped_line`]：对端是远端进程，
+        // 「一条永远不结束的行」就是无界堆分配。
         let mut buf: Vec<u8> = Vec::new();
         // 这条流上有几行不是合法 UTF-8（按替换字符读的）—— 计数、按 2 的幂次说、流结束出总账。
         let mut tally = crate::frame_tally::FrameTally::new(format!("stream_source {reader_host}"));
@@ -709,9 +636,7 @@ where
                     break;
                 }
                 Ok(CappedLine::TooLong(bytes)) => {
-                    // 超限语义 = **丢弃 + 原位说出来**，绝不静默（定框 E4）。
-                    // 不走 Err 臂（那会被当成致命错误去重连，而坏的只是这一行），
-                    //   也不再走旁路健康提示：与行同一条路交 `Ok(None)`，主循环原位给订阅一格 `Gap`（本机两条载体同形）。
+                    // 超限 = 丢弃 + 原位说出来，绝不静默。不走 Err 臂（那会被当成致命错误去重连，而坏的只是这一行）：与行同一条路交 `Ok(None)`，主循环原位给订阅一格 `Gap`。
                     tracing::warn!(
                         "stream_source remote [{reader_host}] line too long: {bytes} bytes \
                          (cap {BACKEND_FRAME_LINE_CAP}); line dropped"
@@ -721,7 +646,7 @@ where
                     }
                 }
                 Ok(CappedLine::Line) => {
-                    // 非 UTF-8 不该让整条连接死掉（与全批 exec 输出读取同一取舍）—— 但**记账、说出来**（W5-VIS）。
+                    // 非 UTF-8 不该让整条连接死掉 —— 但记账、说出来。
                     if std::str::from_utf8(&buf).is_err() {
                         if let Some(n) = tally.note_bad_utf8(&buf) {
                             tracing::warn!("{n}");
@@ -804,10 +729,8 @@ fn on_hello(
     tracing::info!(
         "stream_source backend hello: v={v} build_id={build_id} host_arch={host_arch} claude_home={claude_home} homes={homes:?} caps={capabilities:?} cmds={commands:?}"
     );
-    // U-CC1：记下**我们不认识的**能力 token。多半是远端后端比 monitor 新
-    // （自动部署会把它拉回同一个 build，但手工装 / 关了自动部署的用户会长期不一致）。
-    // 只记账，行为一字不改：不认识的 token 本来就按保守缺省忽略。
-    // 记在这台名下。
+    // 记下我们不认识的能力 token（多半是远端后端比 monitor 新：手工装 / 关了自动部署的用户会长期不一致）。只记账，记在这台名下；
+    // 不认识的 token 本来就按保守缺省忽略。
     note_unknown_capabilities(
         &crate::origin::Origin(host_label.clone()),
         &capabilities,
