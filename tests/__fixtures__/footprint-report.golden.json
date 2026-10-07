@@ -35,40 +35,6 @@
       "uninstallable": true
     },
     {
-      "effect_label": "cc-monitor 旧版放的：认出是它放的就删，认不出的不动",
-      "host_label": "远端",
-      "installable": true,
-      "note": "旧版 cc-monitor 放的入口（现在入口在 ~/.cc-monitor/bin/ccm）。部署后端时、连上那台时各看一眼，认出是 cc-monitor 放的就删，认不出的不动",
-      "path_declared": "~/.local/bin/ccm",
-      "path_resolved": "/nonexistent-footprint-golden/.local/bin/ccm",
-      "source_label": "随 cc-monitor 一起安装的程序",
-      "state": {
-        "detail": "没有旧版遗留",
-        "kind": "expected_absent"
-      },
-      "tier": "AppInstalls",
-      "tool_id": "ccm",
-      "tool_name": "ccm 命令入口",
-      "uninstallable": true
-    },
-    {
-      "effect_label": "cc-monitor 旧版放的：认出是它放的就删，认不出的不动",
-      "host_label": "远端",
-      "installable": true,
-      "note": "旧版 cc-monitor 按「后端路径」配置放的那份后端。部署后端时、连上那台时各看一眼，认出是 cc-monitor 编的就删，认不出的不动",
-      "path_declared": "~/.cc-monitor/bin/cc-monitor-backend",
-      "path_resolved": "/nonexistent-footprint-golden/.cc-monitor/bin/cc-monitor-backend",
-      "source_label": "随 cc-monitor 一起安装的程序",
-      "state": {
-        "detail": "没有旧版遗留",
-        "kind": "expected_absent"
-      },
-      "tier": "AppInstalls",
-      "tool_id": "ccm",
-      "tool_name": "ccm 命令入口",
-      "uninstallable": true
-    },
-    {
       "effect_label": "整个文件由 cc-monitor 拥有，部署时整体覆盖",
       "host_label": "远端",
       "installable": true,

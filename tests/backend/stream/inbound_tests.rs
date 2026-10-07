@@ -441,7 +441,6 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "files-grep",       // 可撤：走那一趟在阻塞线程池上、看取消位，future 被丢即收手
         "deploy-plan",      // 真异步（拨号 / 等远端 capture · SFTP），在 await 点可取消
         "resident-verdict", // 纯判定，普通 spawn
-        "deploy-retired",   // 真异步（沿池里那条 SSH 开 SFTP），在 await 点可取消
         "remote-reach",
         "history-list",
         // 端口转发：起 = 真异步（拨号 / 等 ack），停 / 列 = 纯内存一把锁 ⇒ 都在普通 spawn 上。
@@ -680,8 +679,6 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "deploy-plan",
         // 远端常驻后端 hello 的新旧：纯判定，普通 spawn。
         "resident-verdict",
-        // 那台旧入口的去向：真异步（SFTP stat ＋ 读回）。
-        "deploy-retired",
         // 可达表登记（纯内存，普通 spawn）。
         "remote-reach",
         // 端口转发三条：起真异步（在 await 点可取消）· 停 / 列纯内存。

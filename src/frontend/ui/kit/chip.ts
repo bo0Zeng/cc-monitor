@@ -40,10 +40,6 @@ export function setChipOpen(c: HTMLElement, open: boolean): void {
 
 export type LinkState = "up" | "down" | "connecting" | "restored";
 
-/** 连接药丸的最短停留：重连中 · 连回来。 */
-export const PILL_CONNECTING_MIN_MS = 800;
-export const PILL_RESTORED_MS = 2000;
-
 /** 连接药丸这一刻该画什么（`null` ＝ 不画）。计时由调用方按上面两个数排。 */
 export function connectionPill(machine: string, state: LinkState, reconnect: () => void): HTMLElement | null {
   switch (state) {

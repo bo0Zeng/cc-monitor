@@ -43,7 +43,7 @@ vi.mock("../../../src/frontend/ui/keybindings/actions", () => ({
   findAction: (id: string) => (["tab.next", "tab.close-archived"].includes(id) ? { id } : undefined),
 }));
 
-import { getClaudeDirOverride, setClaudeDirOverride } from "../../../src/frontend/ui/paths";
+import { setClaudeDirOverride } from "../../../src/frontend/ui/paths";
 import { getKeybindings, setKeybindings } from "../../../src/frontend/ui/keybindings/store";
 import { loadConfig } from "../../../src/frontend/ui/config";
 
@@ -57,33 +57,13 @@ describe("config.json 顶层字段的读写契约（§5 2c：挑「错了会静�
   });
 
   // ── paths.ts ──────────────────────────────────────────────────────────
-  it("★ `claudeDir` 读不出来时**留痕**，不是悄悄回退", async () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    loadMock.mockRejectedValueOnce(new Error("config 坏了"));
-    expect(await getClaudeDirOverride()).toBeNull();
-    expect(
-      warn.mock.calls.flat().join(" "),
-      "读配置失败时静默回退默认目录 —— 用户看到的是「我的会话都不见了」，" +
-        "而没有任何东西说得出为什么（定框 E4：静默失败要给身份）。",
-    ).toContain("claudeDir");
-    warn.mockRestore();
-  });
-
-  it("空白值等于没设，不是空串", async () => {
-    store.cfg = { claudeDir: "   " };
-    expect(
-      await getClaudeDirOverride(),
-      "空白串被当成了有效目录 —— 下游会拿它去拼路径，读到一个不存在的地方",
-    ).toBeNull();
-  });
-
   it("★ 清除覆盖要**删字段**，不是写空串", async () => {
     store.cfg = { claudeDir: "/a", theme: { bg: "#000" } };
     await setClaudeDirOverride(null);
     expect(
       Object.prototype.hasOwnProperty.call(store.cfg, "claudeDir"),
-      "清除时写了空串而不是删字段 —— 之后 `getClaudeDirOverride` 仍返回 null 看着没事，" +
-        "但**后端**读 config 时拿到的是一个空字符串字段，与「没设」不是一回事。",
+      "清除时写了空串而不是删字段 —— " +
+        "**后端**读 config 时拿到的是一个空字符串字段，与「没设」不是一回事。",
     ).toBe(false);
     expect(store.cfg.theme, "删字段时把别的顶层字段一起弄丢了").toEqual({ bg: "#000" });
   });

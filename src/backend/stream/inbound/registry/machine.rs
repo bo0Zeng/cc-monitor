@@ -43,7 +43,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
             "unreachable",
             "undecidable",
         ],
-        fields: &[out("ack", "问 `uname` 那一趟拨号的 `DialAck` 原样（逐地址指纹 · 严格与否）：拨号在本机后端里，monitor 按它固化指纹（与自己开链路那几条同一个判定）"), out("action", "`skip`（已是这一版）· `deploy`（没装 / 0 字节 / 更旧 / 从前的三行入口）· `keep`（另一版、不比这一版旧 ⇒ 不动它）"), out("arch", "那台是表 A 的哪一格（`label` 说给人听：`Linux / x86_64`）"), out("expected", "那一格这一版带着的字节自报的身份（对照物）"), out("label", "那台是表 A 的哪一格（`label` 说给人听：`Linux / x86_64`）"), out("leftovers", "落点目录里没人要的上传残件（家目录相对，排序）；列不出那个目录 ⇒ `[]`（下次连上再问）"), out("legacy", "旧落点那一份：`absent`（不在）· `remove`（身份戳恰一个 ⇒ 删）· `keep`（别的 ⇒ 不动）· `unknown`（连问都没问成）"), out("legacy_why", "`unknown` 时的原话，否则 `null`"), out("os", "那台是表 A 的哪一格（`label` 说给人听：`Linux / x86_64`）"), out("theirs", "`keep` 时那台上那一份自报的身份，否则 `null`"), out("why", "人读原因（`skip` 时空串）")],
+        fields: &[out("ack", "问 `uname` 那一趟拨号的 `DialAck` 原样（逐地址指纹 · 严格与否）：拨号在本机后端里，monitor 按它固化指纹（与自己开链路那几条同一个判定）"), out("action", "`skip`（已是这一版）· `deploy`（没装 / 0 字节 / 更旧 / 从前的三行入口）· `keep`（另一版、不比这一版旧 ⇒ 不动它）"), out("arch", "那台是表 A 的哪一格（`label` 说给人听：`Linux / x86_64`）"), out("expected", "那一格这一版带着的字节自报的身份（对照物）"), out("label", "那台是表 A 的哪一格（`label` 说给人听：`Linux / x86_64`）"), out("leftovers", "落点目录里没人要的上传残件（家目录相对，排序）；列不出那个目录 ⇒ `[]`（下次连上再问）"), out("os", "那台是表 A 的哪一格（`label` 说给人听：`Linux / x86_64`）"), out("theirs", "`keep` 时那台上那一份自报的身份，否则 `null`"), out("why", "人读原因（`skip` 时空串）")],
         takes_input: true,
         run: Run::Async(|r| {
             Box::pin(async move {
@@ -54,30 +54,6 @@ pub(super) const SPECS: &[CommandSpec] = &[
                         .unwrap_or(serde_json::Value::Null),
                 );
                 crate::control::deploy_plan::answer(&r.args, &facing)
-                    .await
-                    .map(Some)
-                    .map_err(|(c, m)| (c.to_string(), m))
-            })
-        }),
-    },
-    // **那台旧入口的去向**：`{dial}` → `{verdict, expect, why}`（沿池里那条 SSH 开只读 SFTP，stat ＋ 读回，真异步）。
-    //   本体 `control/deploy_plan.rs::answer_retired`（与上传残件同一家：落点上该清的东西）。
-    // 另一形 `{text}`：本机 PATH 上另一个 `ccm` 的开头一截，只判不读盘（monitor 本机探针拿来说话）。
-    CommandSpec {
-        name: "deploy-retired",
-        summary: "那台旧入口 `~/.local/bin/ccm` 的去向",
-        codes: &["bad_args", "unreachable"],
-        fields: &[arg("dial", "怎么够到那台（与 `files` 链路同一份拨号请求）；沿池里那条 SSH 开只读 SFTP：stat ＋ 至多一次读回（上限 256 KiB，与 `files-peek` 同一个口径）"), out("expect", "只在 `remove` 时是字符串：读到的全文，删时原样交 `files-delete` 当期望值（盘上变了就不删）；其余 `null`"), arg("text", "与 `dial` 二选一：本机 PATH 上另一个 `ccm` 的开头一截（monitor 读的），按同一条规矩认它是不是我们早先放的；不读盘、不拨号（monitor 本机探针只拿来说话，不删）"), out("verdict", "`absent`（不在）· `remove`（第一行 `#!`、第二行认得出两形记号之一 ⇒ 是我们放的）· `keep`（别的一律不动）"), out("why", "只在 `keep` 时是字符串：为什么不动（不是我们放的 · 读不成文本）；其余 `null`")],
-        takes_input: true,
-        run: Run::Async(|r| {
-            Box::pin(async move {
-                let facing = crate::control::deploy_plan::DialFacing::new(
-                    r.args
-                        .get("dial")
-                        .cloned()
-                        .unwrap_or(serde_json::Value::Null),
-                );
-                crate::control::deploy_plan::answer_retired(&r.args, &facing)
                     .await
                     .map(Some)
                     .map_err(|(c, m)| (c.to_string(), m))

@@ -76,14 +76,6 @@ export function safeSet(key: string, value: string): void {
   }
 }
 
-export function safeRemove(key: string): void {
-  try {
-    localStorage.removeItem(key);
-  } catch (e) {
-    console.warn(`[local-storage] remove ${key} failed:`, e);
-  }
-}
-
 export function safeGetJson<T>(key: string): T | null {
   const raw = safeGet(key);
   if (raw === null) return null;

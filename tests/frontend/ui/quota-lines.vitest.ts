@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { quotaBlocks, type QuotaRead } from "../../../src/frontend/ui/quota-lines.ts";
+import { seenBlock, unseenBlock, type QuotaRead } from "../../../src/frontend/ui/quota-lines.ts";
 import { REPO_ROOT } from "../../test-support/repo-root.ts";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 
@@ -31,7 +31,13 @@ describe("额度行模型 ＝ 金样", () => {
 
   for (const c of golden.cases) {
     it(c.name, () => {
-      const got = quotaBlocks(c.reply, c.tzOffsetMin, c.machine).map((b) => ({ account: b.account, rows: b.rows }));
+      const r = c.reply;
+      // 每号一段：先出过数的、再没出过的，各按回包的次序（账号面板逐号取的就是这两个）；读不出 ⇒ 空。
+      const blocks =
+        r.state === "unreadable"
+          ? []
+          : [...r.accounts.map((a) => seenBlock(a, r.now, c.tzOffsetMin, c.machine)), ...r.unseen.map((u) => unseenBlock(u))];
+      const got = blocks.map((b) => ({ account: b.account, rows: b.rows }));
       expect(got).toEqual(c.blocks);
     });
   }

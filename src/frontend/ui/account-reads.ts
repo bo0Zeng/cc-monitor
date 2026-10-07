@@ -90,7 +90,6 @@ const ACCOUNTS_BUDGET_MS = 30_000;
 /** 信任预检那一问的期限：30 秒 —— 与它上一个住址（逐次拨号那条的 `LIST_TIMEOUT`）同值。 */
 const TRUST_BUDGET_MS = 30_000;
 
-
 /**
  * 账号库那一家（适配器 id，后端并 apikey 表时认它）：新会话默认起的那一家 —— 账号 chip · 设置页 · 「新会话默认」说的都是它。
  * **值从后端来**：生成物里的 `DEFAULT_AGENT`（注册表里声明默认的那一家）与那一行的 `adapterId`（后端 `src/backend/agents/<名>/` 注册表 `Adapter.launch` 那张表，从前是 monitor `adapter.rs`），与 monitor 侧 `history::launch_agent_id` 〔散文墓碑〕
@@ -111,11 +110,6 @@ export function accountsAgentProfile(): AgentProfileRow | null {
     return null;
   }
   return AGENT_PROFILE_TABLE.find((r) => r.adapterId === id) ?? null;
-}
-
-
-export async function fetchLocalApikeyRouting(configDirs: string[]): Promise<ApikeyRoutingView> {
-  return await fetchMachineApikeyRouting(LOCAL_ORIGIN, configDirs);
 }
 
 /** 那台机器的那两格事实（`apikey-routing`，本机由 `<local>` 那条长连接答）；`agent` 与账号清单同一个出处（后端不猜是哪一家）。 */

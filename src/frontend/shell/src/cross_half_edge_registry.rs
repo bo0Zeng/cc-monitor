@@ -97,13 +97,6 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     //   不再是「两半之间」的边（共享 crate 两侧都依赖，本表只登记半边对半边）。
     (
         "monitor→backend",
-        "tests/frontend/shell/ccm_legacy_tests.rs",
-        "src/backend/footprint/registry.rs",
-        "旧入口清理（`ccm_legacy`，monitor 放字节那一侧）认的那个落点，足迹里恰有一行、且是「远端 · 旧版放的认出才删」 \
-         —— 申报表进了后端，读它的源码才对得上（本侧抄一份就成了两侧同源的恒等）",
-    ),
-    (
-        "monitor→backend",
         "tests/frontend/shell/write_site_registry_tests.rs",
         "src/backend/footprint/registry.rs",
         "写点表里申报成「安装动作」的每一格，点名的工具 id 必须真在足迹申报表里（本表那一半）",

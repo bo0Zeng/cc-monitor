@@ -1,59 +1,33 @@
 /**
- * **界面直接说的 tmux 控制类帧命令** —— 结束会话（`kill`）· 往会话里发按键 / 就地恢复（`launch` 的 `send-into` mode）。
- * （抓一屏走终端管理那一条 `terminal-preview`，在 `terminal-reads.ts`。）
+ * **界面直接说的 tmux 控制类帧命令** —— 结束会话（`kill`）。（抓一屏走终端管理那一条 `terminal-preview`，在 `terminal-reads.ts`。）
  *
- * # 它顶掉了什么
+ * # 本文件做的只有三件（都是调用方那一侧的事）
  *
- * 此前界面经 monitor 的四条 Tauri 命令做这几件事：抓屏 / `kill_remote_tmux` / `tmux_send_keys` /
- * `backend_send_into`〔散文墓碑〕。monitor 在每一条上做的都只是：先拒空目标、转一条后端帧命令、核应答那一格、
- * 把拒绝码与「通道不在」说成人话、给就地恢复判「能不能回落」—— 那一份解释住 monitor 中层（`backend/control/`
- * 的 `tmux.rs` · `backend_kill.rs` · `backend_send_keys.rs` · `backend_launch.rs`）。后端的帧应答本来就是成品
- * ⇒ 按判准（业务解释只有一个家）迁：界面经 `chan.call` 直接问那台机器的后端，
- * 解释只剩本文件这一份，monitor 那四条命令与那一份解释一起删了。**本机与远端同一条路**（本机由 `<local>` 那条长连接答）。
- *
- * # 本文件做的只有四件（都是调用方那一侧的事）
- *
- * 1. **不判目标名**（`§34` Gate 1 并进后端 `control/gate_rules.rs` 的 tmux 名那一族，TS 零）：会话名原样交给后端；
- *    空目标由后端入口拒（`invalid_args`，`=:` 会被 tmux 读成「当前会话」那一格），本文件照各动作那句「后端不接受这个会话名」
+ * 1. **不判目标名**（`§34` Gate 1 在后端 `control/gate_rules.rs` 的 tmux 名那一族，TS 零）：会话名原样交给后端；
+ *    空目标由后端入口拒（`invalid_args`，`=:` 会被 tmux 读成「当前会话」那一格），本文件照那句「后端不接受这个会话名」
  *    带上后端原话说出来。**Gate 2 / 3（身份门 · 窗口门）只在后端 `control/gate.rs`**，本文件不写第二份。
- *    （先前这里有一道「空目标就地拒、一个字节都不发」—— 那是 Gate 1 在界面的一份，删了。）
  * 2. **按形状收**：成品恰好是那几格、类型对 ⇒ 收；多一格 / 缺一格 / 类型不对 ⇒ 当成「两边版本对不上」抛，不猜。
- *    破坏性的两件（结束 · 发按键）还要成品**明说做成了**（`killed` / `typed` 为真）—— 形状不对或没说做成
- *    ⇒ 当成「不知道做了没有」，**不当成功、也不换条路重做**。
+ *    结束是破坏性的，还要成品**明说做成了**（`killed` 为真）—— 形状不对或没说做成 ⇒ 当成「不知道做了没有」，**不当成功、也不换条路重做**。
  *    线上形状由跨语言金样 `tests/__fixtures__/tmux-control.golden.json` 钉着（后端产出 == 金样 · 本文件读同一份）。
  * 3. **失败怎么说**（`§3.3.2`「说法归调用方」）：拒绝码 → 一句话（逐码分开，认不出的码原样带出去，不猜）；
  *    通道的三层错误 → 一句话（本机与远端的下一步不同，话就不一样）。句子住文案表 `tmuxControl.*`。
- * 4. **就地恢复能不能回落**（F14）：只有**能证明这条命令一个字节都没到对端**才许回落到那条整串
- *    （`ipc/chan-caller.ts::provablyNotSent`，与 Rust `backend_route::route_call_error` 同一条规则，
- *    跨语言金样 `tests/__fixtures__/reach-collapse.golden.json` 钉着两份）。那条整串**没有 §34 的门**：
- *    把一次「被门拒绝」或「后端已键入但应答超时」回落过去，就是用一条无门的路重做一遍
- *    （后者会把载荷第二次键入一个已经在跑 claude 的 pane ⇒ 被当成 prompt 提交，**不可撤销**）。
  *
  * # 期限（`X6`：调用点显式给）
  *
- * 结束 / 发按键 / 就地恢复 10 秒 —— 与它们上一个住址（monitor 那几个发送端）同值。
+ * 结束 10 秒。
  */
 import { copyText } from "./copy-table";
-import {
-  ControlError,
-  machineName,
-  refusalsByTable,
-  saidOfControl,
-  settle,
-  unreadable,
-  type Refusals,
-} from "./control-said";
+import { ControlError, machineName, refusalsByTable, saidOfControl, settle, unreadable, type Refusals } from "./control-said";
 import { exactKeys, isObj } from "./ipc/decode";
 import { chan } from "../../comms/inward/chan";
-import { budgetWithin, jsonBody, provablyNotSent } from "./ipc/chan-caller";
+import { budgetWithin, jsonBody } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
-import { isIdentityRefusal } from "./resync";
 
 // 这一层与 `src/frontend/ui/cc-bus-control.ts` 说的是同一件事的那几样（`ControlError` · 通道三层的说法 · 成品形状核验 ·
 //   `settle`）搬进了 `src/frontend/ui/control-said.ts`；本文件的调用方照旧从这里取那两样。
 export { ControlError, saidOfControl };
 
-/** 结束 / 发按键 / 就地恢复的期限（见头注）。 */
+/** 结束的期限（见头注）。 */
 const CONTROL_BUDGET_MS = 10_000;
 
 // ─── 结束会话 ───
@@ -121,92 +95,4 @@ export async function killSession(origin: Origin, target: string, sid?: string):
   const budget = budgetWithin(CONTROL_BUDGET_MS);
   const v = await settle(origin, "kill", chan.call(origin, "kill", payload, budget), killRefusals(target));
   return decodeKilled(origin, target, v);
-}
-
-// ─── 发按键 · 就地恢复（都是 `launch` 那条帧命令） ───
-
-/** `launch` 那条（发按键 / 就地恢复）的拒绝码 ⇒ 一句话。`wrong_owner` 来自后端的身份门（§34 Gate 2；后端登记表与金样已补上它）。 */
-function keysRefusals(target: string): Refusals {
-  return refusalsByTable(
-    {
-      invalid_args: (detail) => copyText("tmuxControl.keys.badRequest", { target, detail }),
-      no_tmux: (detail) => copyText("tmuxControl.keys.noTmux", { target, detail }),
-      no_such_session: (detail) => copyText("tmuxControl.keys.noSuchSession", { target, detail }),
-      create_failed: (detail) => copyText("tmuxControl.keys.createFailed", { target, detail }),
-      typed_unconfirmed: (detail) => copyText("tmuxControl.keys.unconfirmed", { target, detail }),
-      wrong_owner: (detail) => copyText("tmuxControl.keys.wrongOwner", { target, detail }),
-      child_timed_out: (detail) => copyText("tmuxControl.keys.childTimedOut", { target, detail }),
-    },
-    {
-      other: (detail) => copyText("tmuxControl.keys.otherCode", { target, detail }),
-      none: () => copyText("tmuxControl.keys.noReason", { target }),
-    },
-  );
-}
-
-/**
- * `launch` 的成品 ⇒ 键进去了没有。恰好 `{session, created, typed}` 且 `typed === true` 才算送到；
- * `typed` 不为真 ⇒ 「后端没确认送到」（不当成功、不换条路重发）。
- * ⚠ `typed` 只有 `tmux send-keys` 的退出码那么强（pane 在 copy-mode 时照样退 0）—— 后端那一侧的判据钉着这句。
- */
-export function decodeTyped(origin: Origin, target: string, v: unknown): void {
-  if (
-    !isObj(v) ||
-    !exactKeys(v, ["session", "created", "typed"]) ||
-    typeof v.session !== "string" ||
-    typeof v.created !== "boolean" ||
-    typeof v.typed !== "boolean"
-  ) {
-    throw unreadable(origin, "launch", "is not exactly {session, created, typed}");
-  }
-  if (!v.typed) {
-    throw new ControlError(
-      copyText("tmuxControl.keys.notConfirmed", { machine: machineName(origin), target }),
-      "launch reply has typed=false but no refusal code",
-    );
-  }
-}
-
-/**
- * 往 `origin` 上已存在的 tmux 会话 `target` 里键入 `keys` ＋ 回车（mode `send-into`，如 `/compact`）。**只发按键、不杀不建。**
- * 给了 `sid` ⇒ 键入挂着它的那个窗格（不是活动窗格），身份也按那个窗格判。
- * 失败 ⇒ 抛 [`ControlError`]；**没有第二条路可回落**。
- */
-export async function sendKeys(origin: Origin, target: string, keys: string, sid?: string): Promise<void> {
-  const req = { mode: "send-into", name: target, payload: keys };
-  const payload = jsonBody(sid === undefined ? req : { ...req, ccm_sid: sid });
-  const budget = budgetWithin(CONTROL_BUDGET_MS);
-  const v = await settle(origin, "launch", chan.call(origin, "launch", payload, budget), keysRefusals(target));
-  decodeTyped(origin, target, v);
-}
-
-/** 就地恢复那一次键入的结局（F14，见头注第 4 条）。 */
-export type SendIntoOutcome =
-  | { verdict: "typed" }
-  /** **能证明一个字节都没到对端** ⇒ 调用方可以回落到那条整串（重做不会重复执行）。 */
-  | { verdict: "fallback"; reason: string }
-  /** 对端说了话，**或者**拿不准它执行没有 ⇒ **不许回落**，把这句话交给用户。
-   * `gate2` = 是关卡 2（身份门）拒的 ⇒ 提示可以带「对齐后重试」（别的拒绝不带：拿不准执行没有时重试会重复键入）。 */
-  | { verdict: "refused"; reason: string; gate2?: true };
-
-/**
- * 就地恢复：往已存在的空 tmux 会话 `name` 里键入载荷 `payload`（`launch{mode:"send-into"}`）。**不抛。**
- * 会话名或载荷为空 ⇒ `refused`（坏数据不是缺省，也不许拿去渲染整串）。
- */
-export async function sendInto(origin: Origin, name: string, payload: string): Promise<SendIntoOutcome> {
-  // 空名 / 空载荷不在这里判：交给那台后端（`launch` 进门拒 ⇒ refused，带它的原话）；
-  //   回落那一跳渲整串的是那台后端的调用行渲染器（`ccm_invocation.rs`，目标过后端 `gate_rules` 已有会话那一条）⇒ 坏数据两条路都被同一处拒。
-  try {
-    const body = jsonBody({ mode: "send-into", name, payload });
-    const budget = budgetWithin(CONTROL_BUDGET_MS);
-    const v = await settle(origin, "launch", chan.call(origin, "launch", body, budget), keysRefusals(name));
-    decodeTyped(origin, name, v);
-    return { verdict: "typed" };
-  } catch (e) {
-    const reason = saidOfControl(e);
-    if (e instanceof ControlError && e.error !== undefined && provablyNotSent(e.error)) {
-      return { verdict: "fallback", reason };
-    }
-    return isIdentityRefusal(e) ? { verdict: "refused", reason, gate2: true } : { verdict: "refused", reason };
-  }
 }

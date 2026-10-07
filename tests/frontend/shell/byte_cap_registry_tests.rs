@@ -428,14 +428,6 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "窗口存盘时一条请求行（`files-write-text` 整份 / `files-stage-chunk` 一块）序列化后的长度",
         "分块（不丢数据）",
     ),
-    // 用户文件读改写的写那一半（`files-put`）整份装一行请求 ⇒ 本侧先按真序列化出来的
-    //   那一行拒（多一个字节就不发），数就是后端入方向一行的上限（下面「对 R」钉相等）。
-    (
-        "src/frontend/shell/src/user_files.rs",
-        "REQUEST_LINE_CAP",
-        "`user_files` 发给后端的一条写面请求（`files-put` 新内容 ＋ 读到的那一份同装一行）序列化后的上限",
-        "拒收+回错",
-    ),
     (
         "src/frontend/shell/src/stream_source/snapshot.rs",
         "SNAPSHOT_MAX_BYTES",
@@ -686,13 +678,6 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "src/backend/control/deploy_plan.rs",
         "ENTRY_READ_MAX",
         "部署计划读回落点那一份（只在它不说自己是谁时，认从前那份几十字节的三行入口）",
-        "跳过+说清",
-    ),
-    // 旧入口 `~/.local/bin/ccm` 的去向（`deploy-retired`）：读回的全文要原样装进那一趟 `files-delete` 的 `expect`。
-    (
-        "src/backend/control/deploy_plan.rs",
-        "RETIRED_READ_MAX",
-        "读回远端旧入口 `~/.local/bin/ccm` 认它是不是我们放的（全文原样当 `files-delete` 的期望值）",
         "跳过+说清",
     ),
     // SFTP 住本机常驻后端：部署链路（`use:"files"`）一问一答的两个界。
@@ -1392,15 +1377,6 @@ fn the_cross_crate_twins_are_machine_checked_not_hand_copied() {
         f1, f2,
         "窗口存盘一行的上限与后端入方向一行上限漂开了（窗口 {f1} / 后端 {f2}）。\
              分块那一支按它切（`editor::plan_chunks`），每块那一行都得装进后端的一行。"
-    );
-
-    // 对 R：`user_files` 本侧那道拒用的就是后端入方向一行的上限 ⇒ 钉相等。
-    //   多给 ⇒ 本侧放行、后端整行丢弃；少给 ⇒ 写得回去的文件被本侧冤拒。
-    // 上一版比的是 `e2`（那时它是后端入方向一行）；F9c 把 `e2` 改指读天花板，这一对改比 `f2`。
-    let r1 = by("src/frontend/shell/src/user_files.rs", "REQUEST_LINE_CAP");
-    assert_eq!(
-        r1, f2,
-        "`user_files::REQUEST_LINE_CAP` 与后端入方向一行上限漂开了（monitor {r1} / 后端 {f2}）"
     );
 
     // 对 C：注释写的是「同**量级**」，而且**今天就不等** ⇒ 钉比值，不钉相等。

@@ -87,23 +87,6 @@ pub enum SurfaceState {
     Undetermined {
         why: String,
     },
-    /// **该不在、确实不在**：这一行的目标就是它不在（今天只有旧版遗留那一档），不在 ＝ 该有的样子、不是缺口。
-    /// 判定只一处 [`read_absence`]；界面照这一档画（`detail` 原样上屏），不看效果档、不看措辞。
-    ExpectedAbsent {
-        detail: String,
-    },
-}
-
-/// 「不在」怎么读 —— 按这一行的效果档（判定只在这里）。
-/// [`TouchEffect::RetiredLegacy`]（旧版放的那一份：认出是我们放的就删）的目标就是它不在 ⇒ `Absent` 读成
-/// [`SurfaceState::ExpectedAbsent`]；其余效果档、其余现状一律原样（旧版那一份**还在**仍如实说在）。
-pub fn read_absence(effect: TouchEffect, state: SurfaceState) -> SurfaceState {
-    match (effect, state) {
-        (TouchEffect::RetiredLegacy, SurfaceState::Absent) => SurfaceState::ExpectedAbsent {
-            detail: copy_text("rsConfigSurface.observe.retiredGone", &[]),
-        },
-        (_, s) => s,
-    }
 }
 
 /// 注入的文件系统探针。做成注入是为了让**解析 + 观测**两步都能纯测
@@ -474,8 +457,6 @@ pub fn observe(res: &PathResolution, fs: &FsProbe) -> SurfaceState {
                     &[("why", &why.to_string())],
                 ),
             },
-            // `observe` 自己不出这一档（它由 [`read_absence`] 在出行时读出来）；写成具名臂只为穷尽。
-            s @ SurfaceState::ExpectedAbsent { .. } => s,
         },
         PathResolution::NeedsUserConfig { what } => SurfaceState::Undetermined {
             why: copy_text(
@@ -555,8 +536,6 @@ pub fn effect_label(e: TouchEffect) -> String {
         TouchEffect::GenerateOnly => copy_text("rsConfigSurface.effect.generateOnly", &[]),
         // 措辞必须把「谁动的手」说清：不是 cc-monitor 直接写，但**是你在 cc-monitor 里点的**
         TouchEffect::IndirectWrite => copy_text("rsConfigSurface.effect.indirectWrite", &[]),
-        // 旧版放的那一份：我们不再写它，只在认出是我们放的时删掉。
-        TouchEffect::RetiredLegacy => copy_text("rsConfigSurface.effect.retiredLegacy", &[]),
     }
 }
 
@@ -626,7 +605,7 @@ fn row(
                 PathResolution::WindowsProfile => None,
                 PathResolution::NeedsUserConfig { .. } => None,
             };
-            (shown, read_absence(f.effect, observe(r, fs)))
+            (shown, observe(r, fs))
         }
         // **声明自相矛盾也要如实显示**，不能静默跳过一行——那会让表格看着很干净而实际漏了东西
         Err(e) => (
@@ -919,7 +898,7 @@ pub struct ConfigSurfaceReport {
     /// 解析基准，展示用（让用户知道 `~/.claude` 被解释成了哪里）。
     pub claude_config_dir: String,
     pub home: String,
-    // `origin` 那一格不上线了：界面经通道问哪台自己知道，回声校验那一格由读者挂上（`src/frontend/ui/settings/footprint-reads.ts`）。
+    // `origin` 那一格不上线了：界面经通道问哪台自己知道，回声校验那一格由读者挂上。
 }
 
 // Tauri 命令 `config_surface_report`〔散文墓碑〕与 monitor 自己那台的探针（`with_monitor_probe`〔散文墓碑〕）删了：

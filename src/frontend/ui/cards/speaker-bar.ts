@@ -80,9 +80,6 @@ export function buildCoordinatorBar(sp: Of<"coordinator">, at: string): HTMLElem
   return bar("coordinator", copyText("speaker.coordinator.title"), copyText("speaker.tag.message"), at, sp.body, false);
 }
 
-/** 系统注入的细条（只在「显示系统注入」开着时看得见）：一条一行、默认收起、淡一档；正文是后端给的 `speaker.body`，按纯文本放。 */
-export const INJECTED_CLASS = "card-injected";
-
 export function buildInjectedLine(body: string, at: string): HTMLDetailsElement {
   const d = document.createElement("details");
   d.className = "card card-injected";

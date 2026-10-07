@@ -6,26 +6,9 @@
  * 时一次性 resolve，运行时不再读 env / config。
  */
 
-import { loadConfig, patchConfig, removeAt, setAt } from "./config";
+import { patchConfig, removeAt, setAt } from "./config";
 
 const KEY = "claudeDir";
-
-/** 读取当前持久化的 claudeDir（设置面板里填的）。无字段 → null。 */
-export async function getClaudeDirOverride(): Promise<string | null> {
-  try {
-    return claudeDirIn((await loadConfig()) as Record<string, unknown>);
-  } catch (e) {
-    // ★〔audit-0805 §5 2c〕**降级要给身份**（定框 E4）。
-    //
-    // 这里原来是裸 `catch { return null }`：config 读不出来时，用户在设置面板里填的
-    // Claude 数据目录被**静默忽略**，monitor 转而去读默认目录 ——
-    // 现象是「我的会话都不见了」，而没有任何东西说得出为什么。
-    // ⚠ 同仓的 `keybindings/store.ts` 在同一形状上**是 warn 的**：
-    // 同一个仓、同一个降级、两种态度。
-    console.warn("读 claudeDir 覆盖失败，回退默认目录（会话可能看起来消失了）：", e);
-    return null;
-  }
-}
 
 /** 从一份已读回的配置里取 claudeDir 覆盖（设置窗「读一次配置派生三格」共用这一处）。无字段 → null。 */
 export function claudeDirIn(cfg: Record<string, unknown>): string | null {

@@ -61,9 +61,6 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
     ("local_backend.rs", "sweep_moved_aside", None,
      "删 `~/.cc-monitor/bin/.<ccm 名>.<pid>.old` —— Windows 上换版时正在跑的那份旧 `ccm` 只能改名挪开，下一次放置时收；\
           只认自己那套命名，删不掉就下次再说。"),
-    ("local_backend.rs", "sweep_legacy_extracts", None,
-     "删旧版本机释放的 `~/.cc-monitor/bin/cc-monitor-backend-<build_id>` —— 身份戳恰一个（是我们编的）才删，\
-          认不出的不动、删不掉（正在跑）不管。"),
     // ── **本机那一份文件窗口程序**。不是安装动作 —— 我们自己的部署物，放在我们自己的目录里。
     ("local_backend.rs", "place_local_program", None,
      "把这一份产物带着的、没有身份戳的本机程序放到 `~/.cc-monitor/bin/<file>`：文件窗口程序 \
@@ -417,11 +414,6 @@ const SITE_CLASS: &[(&str, &str, Lands)] = &[
         "sweep_moved_aside",
         Lands::OwnDeployment,
     ),
-    (
-        "local_backend.rs",
-        "sweep_legacy_extracts",
-        Lands::OwnDeployment,
-    ),
     // 本机那一份文件窗口程序：同上，我们自己目录里的部署物。
     (
         "local_backend.rs",
@@ -520,7 +512,7 @@ const MOVED_OUT: &[&str] = &[
     "cc_bus_deploy.rs",
     "history.rs",
     // `remote_history.rs` 整份删了（最后一个函数随子 agent 那条命令退役）⇒ 出名单。
-    "user_files.rs",
+    // `user_files.rs` 整份删了（最后一个用户「认出旧入口并删」随那条迁移链删了）⇒ 出名单。
 ];
 
 /// ② 的针：本机写原语（`WRITE_CALLS`）＋ 委托出去的写（通用原子写 / 旧的回读回滚写入器）＋ SFTP 上传原语。

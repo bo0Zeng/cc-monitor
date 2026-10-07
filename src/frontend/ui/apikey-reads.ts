@@ -91,21 +91,6 @@ export function decodeApikeyRouting(v: unknown): ApikeyRoutingView {
  */
 const APIKEY_BUDGET_MS = 10_000;
 
-
-/** 那台机器上那份凭据文件的状态。问不到 / 形状不对 ⇒ 抛一句人话（不退化成「没配」）。 */
-export async function readApikeyStatus(
-  origin: Origin,
-): Promise<ApikeyCredentialsStatus> {
-  try {
-    const body = jsonBody({});
-    const budget = budgetWithin(APIKEY_BUDGET_MS);
-    const reply = await chan.call(origin, "apikey-read", body, budget);
-    return decodeApikeyStatus(readJson(reply));
-  } catch (e) {
-    throw new Error(saidFrom(e, origin));
-  }
-}
-
 /** 这几个号在那台的表里有没有行 · 那台的中转在不在。`agent`：这一家的路由名（凭据文件的行只属于一家，后端不猜）。 */
 export async function fetchApikeyRouting(
   origin: Origin,

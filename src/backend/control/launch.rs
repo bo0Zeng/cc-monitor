@@ -742,7 +742,7 @@ pub(crate) fn launch_for_inbound(
 
 /// 帧面成品 `{session, created, typed}` 的构造器 —— 从 [`launch_for_inbound`] 里原样抽出来（逻辑不动），
 /// 只为让跨语言金样 `tests/__fixtures__/tmux-control.golden.json` 拿**同一个**构造器对拍：
-/// 界面（`src/frontend/ui/tmux-control.ts::sendKeys` / `sendInto`）从此直接收这份成品，monitor 那一跳只搬字节。
+/// 后端自己换号重启时键进已有 pane 走的就是这一形（`session_restart`），帧面那一路今天界面不发。
 /// ⚠ 它是本文件生产段里**第一个** `json!` 块 —— `inbound_structure_guards::launch_fields_match_its_parser_and_output`
 /// 从那一块抠 data 字段（抽出来之后照样是它）。
 pub(crate) fn reply(session: &str, created: bool, typed: bool) -> serde_json::Value {
