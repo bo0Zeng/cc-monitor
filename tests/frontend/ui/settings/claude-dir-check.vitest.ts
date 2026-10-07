@@ -9,6 +9,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 import { invoke } from "@tauri-apps/api/core";
 import { claudeDirProblem } from "../../../../src/frontend/ui/settings/claude-dir-check";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
+import { copyPattern } from "../../../test-support/copy-pattern";
 import { chanReply, type ChanCallArgs } from "../../../test-support/chan-fake";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
@@ -50,7 +51,7 @@ describe("Claude 目录：存之前问后端一次，按码说", () => {
 
   it("★ 问不到 ⇒ 说没法确认；码不认识 ⇒ 说认不出（不当能用）", async () => {
     backend(() => ({ err: { Hop: { idx: 0, tag: "open", reach: "NotSent", why: "Unreachable" } }, body: [] }));
-    expect(await claudeDirProblem("/h/y")).toMatch(/^没法确认 \/h\/y 在不在/);
+    expect(await claudeDirProblem("/h/y")).toMatch(copyPattern("settingsPanel.claudeDir.uncheckable", { path: "/h/y" }));
     invokeMock.mockReset();
     backend(() => chanReply({ state: "maybe" }));
     const said = await claudeDirProblem("/h/y");

@@ -39,6 +39,7 @@ import { decodeCell, decodeProbe, probeMachine, ProbeStalled, PROBE_PROGRESS_KIN
 import type { RemoteHostConfig } from "../../../src/frontend/ui/remote-config";
 import type { ConnectStage } from "../../../src/frontend/ui/generated/ConnectStage";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/backend-policy";
+import { copyText } from "../../../src/frontend/ui/copy-table";
 
 const host = (over: Partial<RemoteHostConfig>): RemoteHostConfig => ({
   label: "devbox",
@@ -60,7 +61,7 @@ const ok = {
   backendOk: true,
   backendHello: "版本 p5o · 能用 40 项、这台做不到 0 项 · 往返 3 毫秒",
   backendGaps: [],
-  message: "SSH 与后端均正常。",
+  message: copyText("beProbe.test.ok"),
 };
 const dialing = { kind: "dialing", endpoint: "10.0.0.2:22" };
 let seq = 0;

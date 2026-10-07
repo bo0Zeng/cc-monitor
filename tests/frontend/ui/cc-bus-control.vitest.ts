@@ -299,7 +299,7 @@ describe("〔C4e〕回值几态逐态一句", () => {
     expect(said[0]).toMatch(copyPattern("ccBus.broadcast.done", { sent: 3, skipped: 2 }));
     expect(said[1]).toMatch(copyPattern("ccBus.broadcast.doneFailed", { failed: 1, who: "x_cc（timed_out）" }));
     expect(said[2]).toMatch(copyPattern("ccBus.broadcast.doneUnknown"));
-    expect(said[3]).toMatch(/所以全发了。1 个失败/);
+    expect(said[3]).toMatch(copyPattern("ccBus.broadcast.doneUnknownFailed", { failed: 1, who: "x_cc（timed_out）" }));
   });
 });
 

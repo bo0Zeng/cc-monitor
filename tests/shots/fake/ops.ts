@@ -1,6 +1,7 @@
 /**
  * 帧命令的默认答法（按 op 名）。形状照后端的跨语言金样（`tests/__fixtures__/*.golden.json`）与界面那一侧的解码器。
  */
+import { copyText } from "../../../src/frontend/ui/copy-table";
 import type { JsonlRecord } from "../../../src/frontend/ui/generated/JsonlRecord";
 import type { OpHandler, SessionSpec, World } from "./types";
 
@@ -236,7 +237,7 @@ export function defaultOps(): Record<string, OpHandler> {
           }
           return !fenced && l !== "";
         }).map((l) => l.replace(/^[#>]+\s*/, "").replace(/\*\*|__|`/g, "")).filter((l) => l !== "");
-        t.reply = prose.length === 0 && code ? "仅代码" : prose.slice(0, 3).join("\n").slice(0, 120);
+        t.reply = prose.length === 0 && code ? copyText("rsTurns.reply.codeOnly") : prose.slice(0, 3).join("\n").slice(0, 120);
       };
       recs.forEach((r, i) => {
         if (r.type === "user" && r.userText.speaker.kind === "human" && r.userText.text !== "" && r.uuid) {
