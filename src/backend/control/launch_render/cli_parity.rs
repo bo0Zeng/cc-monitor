@@ -8,14 +8,7 @@ use serde::Deserialize;
 
 const FIXTURE: &str = include_str!("fixtures/cli-golden.json");
 
-/// 写成相等而不是地板，加/删用例被迫回来改这个数。
-/// 20 → 29：删「未装」「本地 transport」「send-into 无 CLI 形」三条拒（那三形今天都渲得出 / 产不出来了），
-/// 加「只有目录」「启动期令牌」「就地 resume」三条 ok 与「缺 cwd 能力」「坏 sid」两条拒（tmux 那条拒换成「容器要 tmux」），
-/// 再加 `path:` 七条（monitor 每条远端起会话路径真发出去的那一形）。
-/// 29 → 27：「启动期令牌」那条 ok 与「坏令牌」那条拒随起会话时注的令牌删了。
-/// 27 → 29：按会话的那一家起 —— Codex resume 一条 ok，Codex 选号一条拒。
-/// 29 → 27：「只有目录」那条 ok 与 `path:` 分叉继承目录那条随「按目录交号」那一形删了（分叉沿用的号今天是名字）。
-/// 27 → 26：`path:远端开新会话` 删了（界面不再拼那一发，起新会话收成后端 `session-new` 一个请求）。
+/// 写成相等而不是地板：加 / 删用例被迫回来改这个数。
 const EXPECT_CASES: usize = 26;
 
 #[derive(Debug, Deserialize)]
@@ -23,9 +16,7 @@ const EXPECT_CASES: usize = 26;
 struct Fixture {
     #[serde(rename = "_")]
     _comment: String,
-    /// 🔴 `K-R95`：**此前是「刻意声明却不读」**（原注逐字：「只为『让夹具能被解析』」）。
-    /// 它是「`--launcher` 吐不吐」那条分支的唯一输入，却没有任何东西钉着它 ——
-    /// 现在由 `the_fixture_default_launcher_is_the_one_the_backend_says` 接到后端那一份上。
+    /// 「`--launcher` 吐不吐」那条分支的唯一输入；由 `the_fixture_default_launcher_is_the_one_the_backend_says` 接到后端那一份上。
     #[serde(rename = "defaultLauncher")]
     default_launcher: String,
     cases: Vec<Case>,
@@ -37,7 +28,7 @@ struct Case {
     name: String,
     /// 那台 `ccm` 的能力：不上线（生产上问那台后端自己），对拍这一侧拿它喂 `render_ccm_launch_with`。
     caps: Vec<String>,
-    /// ★ **生产 wire 类型** —— 由 TS 的 `buildCliRenderRequest` 构造、落盘（不另镜像一份）。
+    /// 生产 wire 类型：由 TS 的 `buildCliRenderRequest` 构造、落盘（不另镜像一份）。
     req: super::wire::CliRenderRequest,
     ok: bool,
     out: String,

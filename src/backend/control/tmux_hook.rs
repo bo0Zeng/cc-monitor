@@ -1,53 +1,30 @@
-//! P4b（zero-poll-liveness）：**tmux hook → backend** 的通知通路。
+//! tmux hook → backend 的通知通路：「几个 tmux 会话里杀掉其中一个」没有内核事件源（pidfd 只看 server 进程、
+//! socket inotify 只看 server 生死），tmux 自己的 `session-closed` hook 就是那个信号。
 //!
-//! # 它解决什么
-//!
-//! 「多个 tmux 会话里杀掉其中一个」是**唯一**没有内核事件源的场景：pidfd 只看 server 进程
-//! （server 还活着）、socket inotify 只看 server 生死。它此前只能靠 8s 轮询兜住（P4 之前
-//! 实测 ~16s）。tmux 自己知道这件事 —— `session-closed` hook 就是那个信号。
-//!
-//! # 通路（**零文件系统写**）
+//! # 通路（零文件系统写）
 //!
 //! ```text
 //! tmux hook (全局段 [50, 100) 里每个后端一格, run-shell -b)
-//!    └─> <backend exe> --tmux-notify <backend_pid> <backend_starttime>
-//!           ├─ 读 /proc/<pid>/stat 校验 starttime 相符（挡 PID 复用误伤无关进程）
-//!           └─ kill(pid, SIGUSR1)
-//!    backend: SIGUSR1 流（main.rs，P4a 已就位）
-//!           └─> WatcherPoke::poke() ⇒ 往统一 channel 发一拍 ⇒ 立刻重探
+//! └─> <backend exe> --tmux-notify <backend_pid> <backend_starttime>
+//! ├─ 读 /proc/<pid>/stat 校验 starttime 相符（挡 PID 复用误伤无关进程）
+//! └─ kill(pid, SIGUSR1)
+//! backend: SIGUSR1 流（main.rs）
+//! └─> WatcherPoke::poke() ⇒ 往统一 channel 发一拍 ⇒ 立刻重探
 //! ```
 //!
-//! # 为什么不传会话名（这不是偷懒，是设计）
+//! # 不传会话名
 //!
-//! 原方案让 hook 把 `#{hook_session_name}` 写进一个事件日志文件。两个问题：
-//! ① **撞红线 I7「backend 只读」**——`readonly_guard` 当场拦下了那个建目录调用。
-//!    （**这里刻意不逐字写出那个函数名**：`readonly_guard` 连注释一起扫，
-//!    是 fail-closed 的设计；在后端源码的散文里引用它的禁用模式会让全局守卫红。
-//!    本轮实测栽过一次 —— 处置是改措辞，**不是**去把那道红线守卫改成剥注释。）
-//! ② 会话名要经 shell 引号 —— 名字里有 `"` 或 `$(...)` 就能破坏命令串甚至注入，
-//!    原方案只能「接受并登记」这个面。
-//!
-//! 现在**名字根本不传**：信号无载荷 ⇒ 注入面消失、日志不存在、backend 写归零。
-//! 代价是信号会合并（多个会话同时关可能只来一次）—— 靠**重探 + 与上一份快照差分**
-//! 天然免疫，差分一次能报出所有消失的会话，比逐条事件更稳。
-//!
-//! # `#{@ccm_sid}` 是个陷阱（P0 实测）
-//!
-//! hook 里用 `#{@ccm_sid}` 取值会拿到**空**（那是会话级 option，hook 执行上下文里未必绑到
-//! 目标会话）⇒ 下游把活会话当成灰的。P0 的结论是：**hook 只用 `#{hook_session_name}`**，
-//! 名字→sid 的映射由消费侧查表。本模块**连名字都不传**，所以这条陷阱在这里已不适用，
-//! 但注释留着 —— 将来若有人想「顺便把名字带上」，得先回头看这一条。
+//! 信号无载荷：会话名要经 shell 引号（名字里的 `"` / `$(...)` 能破坏命令串甚至注入），写事件日志又违反「backend 只读」。
+//! 代价是信号会合并（几个会话同时关可能只来一次）—— 重探 ＋ 与上一份快照差分，一次能报出所有消失的会话。
+//! （hook 里取 `#{@ccm_sid}` 会拿到空：那是窗格级 option，hook 上下文里未必绑到目标；哪天想顺便带名字，先看这一条。）
 
 use crate::platform::child::{Child, ChildFail, Deadline};
 use std::collections::BTreeMap;
 use std::path::Path;
 
-/// 〔tmux hook 槽位按实例区分、起时清死 pid 的槽〕hook 槽位**段**：`[HOOK_SLOT_BASE, HOOK_SLOT_BASE + HOOK_SLOT_COUNT)`。
-///
-/// 每个后端实例占其中**一格**（三个事件同一个下标）。调研实测全局 `[50]` 空着；仍用下标（而不是追加到一串未知 hook 后面）
-/// 是为了**可撤销**（`tmux set-hook -gu 'session-closed[<下标>]'`）。
-/// 〔墓碑 —— 从前是一个固定槽 `HOOK_SLOT = 50`：同一台 tmux server 上第二个流模式后端（两台机器的 monitor 都连着它）
-///  把第一个的槽盖掉，先起的那个从此收不到通知；后起的退了，槽里是死 pid，没人清（审计 `E-compat.md` §E5）。〕
+/// hook 槽位段：`[HOOK_SLOT_BASE, HOOK_SLOT_BASE + HOOK_SLOT_COUNT)`。每个后端实例占其中一格（三个事件同一个下标）：
+/// 同一台 tmux server 上可以有几个流模式后端（两台机器的 monitor 都连着它），各占各的格，起时清掉死 pid 的格。
+/// 用下标而不是追加到一串未知 hook 后面，是为了可撤销（`tmux set-hook -gu 'session-closed[<下标>]'`）。
 pub(crate) const HOOK_SLOT_BASE: u32 = 50;
 /// 段长。一格都挑不出来 ⇒ 这台 server 上同时活着这么多个后端 —— 大声说、不装（不去盖别人的）。
 pub(crate) const HOOK_SLOT_COUNT: u32 = 50;
@@ -59,9 +36,7 @@ pub(crate) const HOOK_EVENTS: [&str; 3] = ["session-created", "session-closed", 
 /// POSIX 单引号包裹。**只用于我们自己产生的路径/数字**（exe 路径、pid、starttime），
 /// 不用于任何来自 tmux 或用户的字符串 —— 那条路本设计里根本不存在（见模块头注）。
 fn sq(s: &str) -> String {
-    // U8c-2b-0（账本 S5）：实现收进 `shell-quote-core`（P4c 前叫 `launch-core`）——
-    // 此前全仓有**四份逐字节相同**的
-    // POSIX 单引号 quote。保留本地名字，调用点零改。
+    // 实现住 `shell-quote-core`；保留本地名字，调用点零改。
     shell_quote_core::posix_quote(s)
 }
 
@@ -116,11 +91,9 @@ pub(crate) enum Occupant {
     Backend(u32, u64),
 }
 
-/// 解 `tmux show-hooks -g <事件>` 的回话：`<事件>[<下标>] <命令>` 一行一条（下标之外的行 —— 空槽只打一个事件名 —— 跳过）。
-/// 载荷里认得出 `--tmux-notify <pid> <starttime>` ⇒ [`Occupant::Backend`]；否则 [`Occupant::Foreign`]。**纯函数**。
-///
-/// 实测（tmux 3.6）：`session-closed[50] run-shell -b "'/p a/exe' --tmux-notify 123 456"`（tmux 自己重新引了一遍，
-/// 所以只认旗标与后面两个数，不认引号）。
+/// 解 `tmux show-hooks -g <事件>` 的回话：`<事件>[<下标>] <命令>` 一行一条（空槽只打一个事件名，跳过）。
+/// 载荷里认得出 `--tmux-notify <pid> <starttime>` ⇒ [`Occupant::Backend`]；否则 [`Occupant::Foreign`]。纯函数。
+/// tmux 会把载荷重新引一遍（`"'/p a/exe' --tmux-notify 123 456"`），所以只认旗标与后面两个数，不认引号。
 pub(crate) fn parse_show_hooks(event: &str, out: &str) -> BTreeMap<u32, Occupant> {
     let mut got = BTreeMap::new();
     for line in out.lines() {
@@ -283,14 +256,10 @@ fn read_board(run: TmuxRun<'_>) -> Result<Board, RunErr> {
     Ok(board)
 }
 
-/// **在活着的 tmux server 上装/重装三个 hook。**
+/// 在活着的 tmux server 上装 / 重装三个 hook。
 ///
-/// 每次感知到 server 存在（含**复活**）都要调 —— hook 活在 server 内存里，
-/// server 一重启就全没了。P3 把「server 起来了」变成了事件 ⇒ 这里有现成的时机。
-///
-/// **失败只 warn 不致命**：装不上 hook = 这一类事件退回靠别的事件触发重探，
-/// 不是致命错。**但要说出来**，否则「hook 通路没生效」会变成静默降级。
-///
+/// 每次感知到 server 存在（含复活）都要调：hook 活在 server 内存里，server 一重启就全没了。
+/// 失败只 warn 不致命（这一类事件退回靠别的事件触发重探），但要说出来，不然「hook 通路没生效」是静默降级。
 /// 返回装成功的条数（供日志与测试用）。
 pub(crate) fn install_hooks(exe: &Path, pid: u32, starttime: u64) -> usize {
     install_hooks_with(&mut run_tmux, exe, pid, starttime, &backend_alive)
@@ -411,19 +380,15 @@ pub fn notify(args: &[String]) -> i32 {
         return 2;
     };
 
-    // ★ PID 复用防御：光看 /proc/<pid> 存在是不够的 —— backend 退出后那个 pid 可能已经
-    // 被**别的进程**占用，给它发 SIGUSR1 轻则无效、重则打断一个无关进程（很多程序把
-    // SIGUSR1 当自定义控制信号，默认处置更是直接终止）。必须比对 starttime。
+    // PID 复用防御：backend 退出后那个 pid 可能已被别的进程占用，给它发 SIGUSR1 轻则无效、重则终止一个无关进程
+    // （SIGUSR1 的默认处置就是终止）⇒ 必须比对 starttime。
     match crate::platform::proc::proc_starttime(pid) {
         Some(actual) if actual == want_start => {}
         _ => return 0, // 不是那个后端（或它已经不在）⇒ 静默不做事
     }
 
-    // U3：发信号那一步下沉到 `platform::signal`（§1.1-1：平台原语只许在 platform/）。
-    // 措辞刻意不写出那个 libc 函数名 —— 「本层还有没有平台原语」是靠 grep 查的，
-    // 注释里留一个会让下一个人白查一趟（同 §41.4 第 1 条纪律的形状）。
-    // **身份校验留在这里**——那是域判断（「这个 pid 是不是我那个后端」），不是平台能力。
-    // 发失败仍不是错误：竞态（校验之后、发信号之前后端退出了）。
+    // 发信号那一步在 `platform::signal`（平台原语只许在 platform/；措辞不写那个 libc 函数名，免得「本层还有没有平台原语」的 grep 白查一趟）。
+    // 身份校验留在这里 —— 那是域判断。发失败不是错误：校验之后、发信号之前后端可能已经退了。
     let _ = crate::platform::signal::send_sigusr1(pid);
     0
 }

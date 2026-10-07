@@ -1,78 +1,36 @@
-//! P4d：控制面的 **CLI 入口** —— 与 SSH 帧入口共用 [`crate::stream::inbound::REGISTRY`] 里同一个 `run`。
+//! 控制面的 CLI 入口：与 SSH 帧入口共用 [`crate::stream::inbound::REGISTRY`] 里同一个 `run`。给本机脚本与 skill 集成用。
 //!
-//! 〔用 08-12〕「要给后端留暴露接口……以后集成的 skill 就靠着后端来兼容和集成」
-//! 「**先把确切的命令组件做出来**，外面怎么变后面再说」。
+//! # 它不实现任何一条命令
 //!
-//! # 它**不实现任何一条命令**，这是全部要点
+//! 把 `--<name>` 还原成 `<name>`，去 `REGISTRY` 查那条 `CommandSpec`，跑它自己的 `run` —— 两个入口在类型上落到同一个闭包。
+//! 由此：`readonly_guard::spawn_registry` 的起进程点一处不增（本模块零 `Child::new`）；
+//! `launch.rs` 那条「argv 直传，不过 shell」原样继承 —— CLI 面收 stdin JSON，不把参数摊进 argv。
 //!
-//! 读面早就暴露了（14 条一次性子命令）；缺的只是控制面那半 —— `launch` / `kill`
-//! **只走 SSH 帧那一条**，bash 脚本调不到。本模块补的是**入口**，不是逻辑。
+//! # 安全边界：理由与帧入口不是同一条
 //!
-//! 所以它一条命令都不自己写：把 `--<name>` 还原成 `<name>`，去 `REGISTRY` 查那条
-//! `CommandSpec`，跑它自己的 `run`。**两个入口在类型上就落到同一个闭包**，
-//! 不是「我记得要调同一个函数」。定框 `C1` 排除的正是「给本地单写一套控制逻辑」。
+//! 本入口的调用方是本机任意进程。理由是：本机进程本来就能直接跑 `tmux kill-session` / `tmux new-session`
+//! （同一个 tmux server、同一个 `$TMUX_TMPDIR` 下的 socket，权限由文件系统把守）⇒ 本入口不新授任何权力。
+//! 这条理由只覆盖「起 / 杀 tmux 会话」这一族；将来若有一条命令能做本机进程原本做不到的事，必须单独立一条理由。
 //!
-//! ⇒ 由此白拿两条性质：
-//! · `readonly_guard::spawn_registry` 的起进程点**一处不增**
-//!   （本模块零 `Child::new`；起进程仍只发生在 `control/launch.rs`、`control/kill.rs`）；
-//! · `launch.rs` 头注那条「argv 直传，不过 shell」的性质原样继承 ——
-//!   CLI 面收 **stdin JSON** 而不是把参数摊进 argv，正是为了不引入一层 shell 解析把它丢掉。
+//! # 信封（与 `--resolve` 同形）
 //!
-//! # §安全边界：这条入口的理由与帧入口**不是同一条**
-//!
-//! `control/launch.rs` 那句「这里的校验是形状校验，不是安全边界」，它的依据是
-//! **帧入口的对端身份**。本入口的调用方是**本机任意进程**，那条依据在这里不成立，
-//! 照抄过来就是一句没人验过的话。本入口自己的理由是另一条，写在这里备核：
-//!
-//! > 本机进程已经能直接跑 `tmux kill-session` / `tmux new-session` —— 它们与 backend
-//! > 跑的是同一个 tmux server，用的是同一个 `$TMUX_TMPDIR` 下的 socket，权限由文件系统
-//! > 而不是由后端把守。⇒ 本入口**不新授任何权力**，它只是把「backend 已经会做的事」
-//! > 换一种调用法。真正的边界在 tmux socket 的文件权限上，一直如此。
-//!
-//! ⚠ 这条理由的**射程**：它只覆盖「起/杀 tmux 会话」这一族（今天 `REGISTRY` 上 CLI 面的全部）。
-//! 将来若有一条命令能做**本机进程原本做不到**的事（碰别的用户的东西、越过某道门），
-//! 上面那句话对它**不成立**，必须单独立一条理由 —— 别默认它跟着继承。
-//!
-//! # 信封（与 `--resolve` 逐条同形，不新发明）
-//!
-//! · **入**：stdin 一段 JSON = 那条命令的 `args`（空 stdin = `{}`，`ping` 那类无载荷的用得上）。
-//!   默认读到 EOF；子命令后面跟 [`STDIN_LINE_FLAG`] ⇒ **只读一行**（读到第一个换行就停，不等 EOF）——
-//!   给「stdin 关不掉」的调用方用（远端命令经 capture 那一跳交载荷，capture 不关远端 stdin）。
-//! · **出**：stdout 一行紧凑 JSON（命令没有返回值时是 `{}`），exit 0。
-//!   唯一的例外是 [`crate::TEXT_FLAG`]：只给 `quota-read`，同一份回包排成给人看的字（`control/quota_text.rs`）；别的命令带它 ⇒ `bad_args`。
-//! · **错**：exit 2 + stderr 一行 `{"code","message"}`。
-//! · **exec 模型**：1 exec = 1 请求 1 响应 1 退出，**无 request-id**（`resolve_query` 头注逐字）。
+//! · 入：stdin 一段 JSON = 那条命令的 `args`（空 stdin = `{}`）。默认读到 EOF；子命令后面跟 [`STDIN_LINE_FLAG`] ⇒ 只读一行
+//!   （给 stdin 关不掉的调用方：远端命令经 capture 那一跳交载荷，capture 不关远端 stdin）。
+//! · 出：stdout 一行紧凑 JSON（命令没有返回值时是 `{}`），exit 0。例外是 [`crate::TEXT_FLAG`]：只给 `quota-read`，
+//!   同一份回包排成给人看的字（`control/quota_text.rs`）；别的命令带它 ⇒ `bad_args`。
+//! · 错：exit 2 + stderr 一行 `{"code","message"}`。
+//! · exec 模型：1 exec = 1 请求 1 响应 1 退出，无 request-id。
 
 use crate::common::contract;
 use crate::stream::inbound::{CommandSpec, Run, REGISTRY};
 use crate::stream::wire::Request;
 use std::io::Read;
 
-/// stdin 上限。理由抄 `resolve_query::MAX_RESOLVE_STDIN`：兜 DoS，不是兜格式。
-///
-/// ⚠ **超限是拒收，不是截断。** 第一版写的是 `.take(MAX_CLI_STDIN)` —— 那是**静默截断**：
-/// 截半的 JSON 解析失败 ⇒ 回一句 `bad_request: args JSON parse failed`，
-/// 而真实原因是「太大了」。`byte_cap_registry` 当场逮住这一处（本轮第十七次），
-/// 它的 `ALLOWED_SEMANTICS` 里逐字**没有「静默截断」这一项**。
-/// ⇒ 多读一个字节，超了就说超了。
+/// stdin 上限（兜 DoS，不是兜格式；同 `resolve_query::MAX_RESOLVE_STDIN`）。超限是拒收，不是截断：
+/// 截半的 JSON 会报成「解析失败」，真实原因却是「太大了」⇒ 多读一个字节，超了就说超了。
 pub(crate) const MAX_CLI_STDIN: u64 = 1024 * 1024;
 
-/// 能力探测口。
-///
-/// # ⚠ 「范式抄 `ccm --ccm-probe`」抄的是**理念**，不是**线格式**〔E 阶段订正 08-12〕
-///
-/// 本件 `Y2` 的原话是「范式抄 `ccm --ccm-probe`，而 monitor 侧
-/// `ccm_probe::parse_probe_output` **已经会解析那个形状**」——**后半句是假的**，
-/// 而且是写下时就没验过的那种假（`P3b §0b` 的 B 类）。实测：
-/// `parse_probe_output` 认的是 **`key=value` 行**（首行必须逐字 `name=ccm`，
-/// 然后 `version=` / `capabilities=a,b,c`），而本口出的是 **JSON**。两者对不上。
-///
-/// 保留 JSON 而不是去迁就那个解析器，理由有账：`§0c` ① 是用户对 cc-bus 的不满逐字
-/// 「五个命令**全无 `--json`**，输出是定宽 `printf` + 中文表头」⇒ **JSON 进 JSON 出，
-/// 第一天就有**。而 `parse_probe_output` 是 **`ccm` 专用**的（实测：backend 侧零消费者，
-/// monitor 也不用 CLI 面 —— 它走帧），让后端去说 ccm 的方言只会多一种方言。
-///
-/// ⇒ 真正抄过来的是那条**理念**：集成方按**能力**兼容，不按版本号。
+/// 能力探测口。集成方按能力兼容，不按版本号；出 JSON（不是 `ccm --ccm-probe` 那种 `key=value` 行：那是 ccm 专用的方言）。
 pub(crate) const PROBE_FLAG: &str = "--backend-probe";
 
 /// 「只读一行 stdin」那个修饰词住 [`crate::STDIN_LINE_FLAG`]（argv 三分表那一家；理由见那里的头注）。
@@ -177,18 +135,8 @@ pub(crate) fn spec_for(flag: &str) -> Option<&'static CommandSpec> {
         .find(|s| cli_exposed(s) && flag_of(s.name) == flag)
 }
 
-/// 这条命令要不要读 stdin —— **从 `REGISTRY` 的 `fields` 派生**。
-///
-/// # 它修的是一条真缺陷：存活探测口会挂死
-///
-/// 第一版无条件读 stdin。实测（stdin 接一条不关的管道，也就是 skill 直接
-/// `cc-monitor-backend --ping` 时的形状）：**`--ping` 永远不返回**。
-/// 而这是所有失败里最坏的一种 —— 问「你活着吗」的那条命令，答案是挂住。
-///
-/// ⚠⚠ **第二版**：原来这里写的是 `!spec.fields.is_empty()` —— 那是个**代用品**，
-/// 在当时的命令集上恰好全对，而 `bus-list`（**无输入、有输出字段**）一来就错，
-/// **它挂住等一个永远不来的输入**（实测 `--ping` 120ms 回、`--bus-list` 被掐死才停）。
-/// ⇒ 改读 `spec.takes_input`（每条命令自己说）。理由全文在 `CommandSpec::takes_input` 头注。
+/// 这条命令要不要读 stdin：读 `spec.takes_input`（每条命令自己说，理由在 `CommandSpec::takes_input` 头注）。
+/// 无条件读会让 `--ping` 这类探活口在一条不关的 stdin 上永远挂住；拿「有没有字段」代用也不对（`bus-list` 无输入、有输出字段）。
 pub(crate) fn reads_stdin(spec: &CommandSpec) -> bool {
     spec.takes_input
 }
@@ -206,10 +154,7 @@ pub fn emit_err(code: &str, message: impl Into<String>) -> i32 {
     2
 }
 
-/// 能力探测：`{proto, buildId, commands}`。
-///
-/// ★ `commands` **必须派生**。手抄一份的后果不是编译错，是**探测口开始说谎** ——
-/// 而 skill 正是按它的话决定走不走新路的，⇒ 那种失效是静默的降级，不是报错。
+/// 能力探测：`{proto, buildId, commands}`。`commands` 必须派生：手抄一份，探测口就会说谎，而 skill 按它的话决定走不走新路。
 fn probe() -> i32 {
     let commands: Vec<String> = REGISTRY
         .iter()
@@ -270,7 +215,7 @@ pub async fn run(args: &[String]) -> i32 {
     };
     // 总期限与帧面同一处装：登记了上限的（都在阻塞档）按上限装，CLI 面没有发起方期限；别的命令不装（`None`）。
     let total = crate::stream::inbound::install_total(&req);
-    // ★ 这三行是本模块的全部：**派发落到 `REGISTRY` 自己的 `run`**。
+    // 这三行是本模块的全部：派发落到 `REGISTRY` 自己的 `run`。
     let outcome = match spec.run {
         Run::Blocking(f) => f(req),
         Run::BlockingData(f) => f(req).map_err(|f| (f.code, f.message)),
