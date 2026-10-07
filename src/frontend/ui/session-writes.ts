@@ -12,6 +12,7 @@
 import { chan } from "../../comms/inward/chan";
 import { budgetWithin, jsonBody, readJson } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
+import { exactKeys, isObj } from "./ipc/decode";
 
 /** 一格：知道（值 ＋ 从哪知道）或不知道（为什么）。码由那台定，句子由界面照码说。 */
 export type ForkSlot<T> =
@@ -31,12 +32,10 @@ export interface ForkLaunch {
 /** 删一份文件 ＋ 回程。 */
 const DELETE_BUDGET_MS = 30_000;
 
-function exactly(v: unknown, what: string, keys: string[]): Record<string, unknown> {
-  if (v === null || typeof v !== "object" || Array.isArray(v)) throw new Error(`${what} reply shape mismatch: not an object`);
-  const o = v as Record<string, unknown>;
-  const got = Object.keys(o).sort().join(",");
-  if (got !== [...keys].sort().join(",")) throw new Error(`${what} reply shape mismatch: keys ${got}`);
-  return o;
+function shaped(v: unknown, what: string, keys: string[]): Record<string, unknown> {
+  if (!isObj(v)) throw new Error(`${what} reply shape mismatch: not an object`);
+  if (!exactKeys(v, keys)) throw new Error(`${what} reply shape mismatch: keys ${Object.keys(v).join(",")}`);
+  return v;
 }
 
 const FROM = ["record", "process", "terminal_list"];
@@ -50,11 +49,11 @@ function slotOf<T>(v: unknown, what: string, value: (x: unknown) => x is T): For
   if (v === null || typeof v !== "object" || Array.isArray(v)) return bad();
   const o = v as Record<string, unknown>;
   if (o.kind === "known") {
-    const k = exactly(o, `launch.${what}`, ["kind", "value", "from"]);
+    const k = shaped(o, `launch.${what}`, ["kind", "value", "from"]);
     if (!value(k.value) || !FROM.includes(k.from as string)) return bad();
     return { kind: "known", value: k.value, from: k.from as "record" };
   }
-  const u = exactly(o, `launch.${what}`, ["kind", "why"]);
+  const u = shaped(o, `launch.${what}`, ["kind", "why"]);
   if (u.kind !== "unknown" || !WHY.includes(u.why as string)) return bad();
   return { kind: "unknown", why: u.why as "exited" };
 }
@@ -62,15 +61,13 @@ function slotOf<T>(v: unknown, what: string, value: (x: unknown) => x is T): For
 const isStr = (x: unknown): x is string => typeof x === "string";
 const isAccount = (x: unknown): x is string | null => x === null || typeof x === "string";
 const isTerminal = (x: unknown): x is ForkTerminal => {
-  if (x === null || typeof x !== "object" || Array.isArray(x)) return false;
-  const t = x as Record<string, unknown>;
-  const keys = Object.keys(t).sort().join(",");
-  return typeof t.host === "string" && (keys === "host" || (keys === "host,terminal" && typeof t.terminal === "string"));
+  if (!isObj(x)) return false;
+  return typeof x.host === "string" && (exactKeys(x, ["host"]) || (exactKeys(x, ["host", "terminal"]) && typeof x.terminal === "string"));
 };
 
 /** `launch` 那一格 → {@link ForkLaunch}（恰好三格）。起新会话框读分叉源会话那三格也用它。 */
 export function decodeForkLaunch(v: unknown): ForkLaunch {
-  const o = exactly(v, "session-fork launch", ["cwd", "account", "terminal"]);
+  const o = shaped(v, "session-fork launch", ["cwd", "account", "terminal"]);
   return {
     cwd: slotOf(o.cwd, "cwd", isStr),
     account: slotOf(o.account, "account", isAccount),
@@ -83,5 +80,5 @@ export async function deleteSession(origin: Origin, sid: string): Promise<void> 
   const budget = budgetWithin(DELETE_BUDGET_MS);
   const body = jsonBody({ sid });
   const reply = await chan.call(origin, "files-delete-session", body, budget);
-  exactly(readJson(reply), "files-delete-session", ["path"]);
+  shaped(readJson(reply), "files-delete-session", ["path"]);
 }

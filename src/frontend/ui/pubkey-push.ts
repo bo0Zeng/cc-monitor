@@ -9,6 +9,7 @@ import { chan } from "../../comms/inward/chan";
 import { budgetWithin, jsonBody, readJson, ReplyUnreadable, saidFrom } from "./ipc/chan-caller";
 import { LOCAL_ORIGIN } from "./backend-policy";
 import { hostKey, type RemoteHostConfig } from "./remote-config";
+import { exactKeys, isObj } from "./ipc/decode";
 
 /** 推送的结局。 */
 export interface PushResult {
@@ -30,10 +31,8 @@ function bad(): never {
 
 /** 应答体。严格收：恰好三格、值在闭集里。 */
 export function decodePush(v: unknown): PushResult {
-  if (v === null || typeof v !== "object" || Array.isArray(v)) bad();
-  const o = v as Record<string, unknown>;
-  const keys = Object.keys(o).sort();
-  if (keys.join(",") !== "outcome,pubPath,via") bad();
+  if (!isObj(v) || !exactKeys(v, ["outcome", "pubPath", "via"])) bad();
+  const o = v;
   if (o.outcome !== "added" && o.outcome !== "already") bad();
   if (o.via !== "backend" && o.via !== "exec") bad();
   if (typeof o.pubPath !== "string") bad();

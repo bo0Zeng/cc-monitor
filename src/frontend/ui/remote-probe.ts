@@ -15,6 +15,7 @@ import { budgetWithin, jsonBody, saidFrom, unreadableFrom } from "./ipc/chan-cal
 import { LOCAL_ORIGIN } from "./backend-policy";
 import type { ConnectStage } from "./generated/ConnectStage";
 import { hostKey, type RemoteHostConfig } from "./remote-config";
+import { exactKeys, isObj } from "./ipc/decode";
 
 /** 测试连接的结局。 */
 export interface ConnTestResult {
@@ -58,13 +59,6 @@ export class ProbeStalled extends Error {
   }
 }
 
-type Obj = Record<string, unknown>;
-const isObj = (v: unknown): v is Obj => v !== null && typeof v === "object" && !Array.isArray(v);
-const sameKeys = (o: Obj, want: readonly string[]): boolean => {
-  const got = Object.keys(o).sort();
-  const w = [...want].sort();
-  return got.length === w.length && got.every((k, i) => k === w[i]);
-};
 const nullableStr = (v: unknown): v is string | null => v === null || typeof v === "string";
 
 function bad(): never {
@@ -75,7 +69,7 @@ function bad(): never {
 export function decodeProbe(v: unknown): ConnTestResult {
   if (
     !isObj(v) ||
-    !sameKeys(v, ["sshOk", "fingerprint", "endpoint", "backendOk", "backendHello", "backendGaps", "message"]) ||
+    !exactKeys(v, ["sshOk", "fingerprint", "endpoint", "backendOk", "backendHello", "backendGaps", "message"]) ||
     typeof v.sshOk !== "boolean" ||
     !nullableStr(v.fingerprint) ||
     !nullableStr(v.endpoint) ||
@@ -83,7 +77,7 @@ export function decodeProbe(v: unknown): ConnTestResult {
     !nullableStr(v.backendHello) ||
     !Array.isArray(v.backendGaps) ||
     !v.backendGaps.every(
-      (g) => isObj(g) && sameKeys(g, ["code", "count"]) && typeof g.code === "string" && Number.isInteger(g.count),
+      (g) => isObj(g) && exactKeys(g, ["code", "count"]) && typeof g.code === "string" && Number.isInteger(g.count),
     ) ||
     typeof v.message !== "string"
   ) {

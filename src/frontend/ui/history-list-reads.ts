@@ -10,6 +10,7 @@ import { chan } from "../../comms/inward/chan";
 import { budgetWithin, jsonBody, readJson } from "./ipc/chan-caller";
 import { LOCAL_ORIGIN } from "./ipc/origin";
 import { HistoryShapeError } from "./history-reads";
+import { isObj } from "./ipc/decode";
 
 /** 这一行能做什么（后端按这一行判好，界面照画）。 */
 export interface HistoryCan {
@@ -102,8 +103,6 @@ export interface HistoryListAsk {
 /** 一台的清单 30 秒（远端那一跳要整份扫那台）。 */
 const LIST_BUDGET_MS = 30_000;
 
-const isObj = (v: unknown): v is Record<string, unknown> =>
-  v !== null && typeof v === "object" && !Array.isArray(v);
 const isStr = (v: unknown): v is string => typeof v === "string";
 const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 const isBool = (v: unknown): v is boolean => typeof v === "boolean";

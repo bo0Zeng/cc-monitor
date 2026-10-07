@@ -315,6 +315,16 @@ impl Book {
             .unwrap_or_default()
     }
 
+    /// 那台那个会话此刻是活的（它最近的成品是 `Live`）。
+    pub fn is_live(&self, origin: &crate::origin::Origin, sid: &str) -> bool {
+        matches!(
+            self.origins
+                .get(origin.as_wire_str())
+                .and_then(|b| b.sessions.get(sid)),
+            Some(Product::Live(_))
+        )
+    }
+
     /// 用户关掉一个已结束的 tab（`EventReplay::forget` 同一刻）⇒ 它的成品也忘掉（不再重放）。
     pub fn forget(&mut self, sid: &str) {
         for b in self.origins.values_mut() {

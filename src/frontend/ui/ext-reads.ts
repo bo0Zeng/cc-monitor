@@ -29,17 +29,14 @@ import type { ExtScope } from "./generated/ExtScope";
 import type { ExtSlot } from "./generated/ExtSlot";
 import type { ExtTarget } from "./generated/ExtTarget";
 import type { ExtUninstallCard } from "./generated/ExtUninstallCard";
+import { exactKeys, isObj } from "./ipc/decode";
 
 export type { ExtBring, ExtBuiltin, ExtCard, ExtCell, ExtDone, ExtKind, ExtList, ExtLoc, ExtMachine, ExtPlace, ExtRow, ExtScope, ExtSlot, ExtTarget, ExtUninstallCard };
 
 type Obj = Record<string, unknown>;
 const bad = (): Error => unreadableFrom(LOCAL_ORIGIN, "ext reply shape");
-const isObj = (v: unknown): v is Obj => v !== null && typeof v === "object" && !Array.isArray(v);
 function obj(v: unknown, keys: readonly string[]): Obj {
-  if (!isObj(v)) throw bad();
-  const got = Object.keys(v).sort();
-  const want = [...keys].sort();
-  if (got.length !== want.length || got.some((k, i) => k !== want[i])) throw bad();
+  if (!isObj(v) || !exactKeys(v, keys)) throw bad();
   return v;
 }
 const str = (v: unknown): string => {

@@ -10,6 +10,7 @@ import { chan, ChanError } from "../../comms/inward/chan";
 import { budgetWithin, isOldBackend, jsonBody, readJson } from "./ipc/chan-caller";
 import { LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import type { FrontResult } from "./front-result";
+import { isObj } from "./ipc/decode";
 
 /** 每一问的期限：那台读 `/proc` ＋ 问一次 tmux；本机读一次系统连接表与进程表。 */
 const ASK_BUDGET_MS = 15_000;
@@ -18,7 +19,6 @@ const ASK_BUDGET_MS = 15_000;
 export type RemoteFrontPlan = { chain: unknown[] } | { result: FrontResult };
 
 type Obj = Record<string, unknown>;
-const isObj = (v: unknown): v is Obj => v !== null && typeof v === "object" && !Array.isArray(v);
 
 /** 形状不认（两端版本对不上）。 */
 class BadShape extends Error {}

@@ -304,23 +304,37 @@ impl Sort {
 /// 🔴 **这是「屏幕上那一屏是什么序」的唯一住址。**「类型」那一列按 [`super::kind`] 判的种类，再扩展名（与那一列写的字同源）。
 pub fn sort_rows(v: &mut [Listed], sort: impl Into<Sort>) {
     let sort: Sort = sort.into();
-    v.sort_by(|a, b| {
-        let by_name = || a.name.to_lowercase().cmp(&b.name.to_lowercase());
+    // 排序键每行先算一次（小写名 · 扩展名），比较时不再分配。
+    v.sort_by_cached_key(|r| {
+        let lower = r.name.to_lowercase();
         let key = match sort.by {
-            SortBy::Name => by_name(),
-            SortBy::Mtime => a.mtime_secs.unwrap_or(0).cmp(&b.mtime_secs.unwrap_or(0)),
-            SortBy::Size => a.size.cmp(&b.size),
-            SortBy::Type => super::kind::kind_of(a)
-                .cmp(&super::kind::kind_of(b))
-                .then_with(|| super::kind::ext_of(&a.name).cmp(&super::kind::ext_of(&b.name))),
+            SortBy::Name => By::Name(lower.clone()),
+            SortBy::Mtime => By::Num(r.mtime_secs.unwrap_or(0)),
+            SortBy::Size => By::Num(r.size),
+            SortBy::Type => By::Type(super::kind::kind_of(r), super::kind::ext_of(&r.name)),
         };
         let key = if sort.descending() {
-            key.reverse()
+            Order::Desc(std::cmp::Reverse(key))
         } else {
-            key
+            Order::Asc(key)
         };
-        b.is_dir.cmp(&a.is_dir).then(key).then_with(by_name)
+        (std::cmp::Reverse(r.is_dir), key, lower)
     });
+}
+
+/// [`sort_rows`] 那一列的排序键（一次排序里每行同一形）。
+#[derive(PartialEq, Eq, PartialOrd, Ord)]
+enum By {
+    Name(String),
+    Num(u64),
+    Type(super::kind::Kind, Option<String>),
+}
+
+/// 那一列正着排还是反着排（一次排序里每行同一形）。
+#[derive(PartialEq, Eq, PartialOrd, Ord)]
+enum Order {
+    Asc(By),
+    Desc(std::cmp::Reverse<By>),
 }
 
 /// 一条远端绝对路径 → **可点的那几段**：`(这一段叫什么, 点它去哪儿)`，根排在最前。

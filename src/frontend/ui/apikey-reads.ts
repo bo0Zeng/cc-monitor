@@ -20,6 +20,7 @@
 import { chan } from "../../comms/inward/chan";
 import { budgetWithin, jsonBody, readJson, ReplyUnreadable, saidFrom } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
+import { exactKeys, isObj } from "./ipc/decode";
 
 /**
  * 那份凭据文件的状态（**只有掩码**，前端永远拿不到明文：`KS6`）。
@@ -45,16 +46,6 @@ export interface ApikeyRoutingView {
   running: boolean;
 }
 
-const isObj = (v: unknown): v is Record<string, unknown> =>
-  v !== null && typeof v === "object" && !Array.isArray(v);
-const sameKeys = (
-  o: Record<string, unknown>,
-  want: readonly string[],
-): boolean => {
-  const got = Object.keys(o).sort();
-  const w = [...want].sort();
-  return got.length === w.length && got.every((k, i) => k === w[i]);
-};
 const nullableStr = (v: unknown): v is string | null =>
   v === null || typeof v === "string";
 
@@ -62,7 +53,7 @@ const nullableStr = (v: unknown): v is string | null =>
 export function decodeApikeyStatus(v: unknown): ApikeyCredentialsStatus {
   if (
     !isObj(v) ||
-    !sameKeys(v, ["configured", "masked", "path", "notice", "problem"]) ||
+    !exactKeys(v, ["configured", "masked", "path", "notice", "problem"]) ||
     typeof v.configured !== "boolean" ||
     typeof v.masked !== "string" ||
     typeof v.path !== "string" ||
@@ -84,7 +75,7 @@ export function decodeApikeyStatus(v: unknown): ApikeyCredentialsStatus {
 export function decodeApikeyRouting(v: unknown): ApikeyRoutingView {
   if (
     !isObj(v) ||
-    !sameKeys(v, ["routed", "running"]) ||
+    !exactKeys(v, ["routed", "running"]) ||
     !Array.isArray(v.routed) ||
     !v.routed.every((d) => typeof d === "string") ||
     typeof v.running !== "boolean"
@@ -143,7 +134,7 @@ export interface ApikeyWritten {
 export function decodeApikeyWritten(v: unknown): ApikeyWritten {
   if (
     !isObj(v) ||
-    !sameKeys(v, ["account", "path", "masked", "baseUrl"]) ||
+    !exactKeys(v, ["account", "path", "masked", "baseUrl"]) ||
     typeof v.account !== "string" ||
     typeof v.path !== "string" ||
     typeof v.masked !== "string" ||

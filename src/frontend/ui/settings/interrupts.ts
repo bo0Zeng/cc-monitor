@@ -8,6 +8,7 @@ import { budgetWithin, jsonBody, readJson } from "../ipc/chan-caller";
 import { LOCAL_ORIGIN, isLocalOrigin } from "../ipc/origin";
 import { copyText } from "../copy-table";
 import type { DialogRow } from "../kit/dialog";
+import { exactKeys, isObj } from "../ipc/decode";
 
 /** 那两份事实并起来（问不到的那一格是 `null`，不当成 0）。 */
 export interface Interrupts {
@@ -29,10 +30,8 @@ const KEYS = ["forwards", "liveStreams", "relayedMaybe", "relayedSessions"];
 
 /** 严格收；收不下 ⇒ `null`（当成问不到）。 */
 export function decodeInterrupts(v: unknown): InterruptsReply | null {
-  if (typeof v !== "object" || v === null || Array.isArray(v)) return null;
-  const o = v as Record<string, unknown>;
-  const keys = Object.keys(o).sort();
-  if (keys.length !== KEYS.length || keys.some((k, i) => k !== KEYS[i])) return null;
+  if (!isObj(v) || !exactKeys(v, KEYS)) return null;
+  const o = v;
   if (!KEYS.every((k) => Number.isInteger(o[k]) && (o[k] as number) >= 0)) return null;
   return o as unknown as InterruptsReply;
 }

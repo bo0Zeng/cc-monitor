@@ -8,6 +8,7 @@ import { budgetWithin, jsonBody, readJson, saidOf } from "../ipc/chan-caller";
 import { commands } from "../ipc/commands";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
 import { copyText } from "../copy-table";
+import { exactKeys, isObj } from "../ipc/decode";
 
 /** 一次 stat 一批、读几份小文件：给 30 秒。 */
 const DATA_BUDGET_MS = 30_000;
@@ -44,12 +45,6 @@ export interface DataReport {
   chores: number;
 }
 
-const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
-const sameKeys = (o: Record<string, unknown>, keys: string[]): boolean => {
-  const got = Object.keys(o).sort();
-  const want = [...keys].sort();
-  return got.length === want.length && got.every((k, i) => k === want[i]);
-};
 const bad = (): never => {
   throw new Error(copyText("dataReads.shape.bad"));
 };
@@ -69,16 +64,16 @@ function decodeUndo(v: unknown): UndoAt | null {
 
 /** `data-report` 的应答 ⇒ 成品；多一格缺一格 · 类型不对 ⇒ 抛。 */
 export function decodeDataReport(v: unknown): DataReport {
-  if (!isObj(v) || !sameKeys(v, ["home", "changedFiles", "needsInstall", "tmux", "chores"])) return bad();
+  if (!isObj(v) || !exactKeys(v, ["home", "changedFiles", "needsInstall", "tmux", "chores"])) return bad();
   if (!Array.isArray(v.changedFiles) || !Array.isArray(v.needsInstall)) return bad();
   if (v.tmux !== null && typeof v.tmux !== "boolean") return bad();
   if (typeof v.chores !== "number" || !Number.isInteger(v.chores) || v.chores < 0) return bad();
   const changedFiles = v.changedFiles.map((c): ChangedFile => {
-    if (!isObj(c) || !sameKeys(c, ["path", "what", "undo"])) return bad();
+    if (!isObj(c) || !exactKeys(c, ["path", "what", "undo"])) return bad();
     return { path: str(c.path), what: str(c.what), undo: decodeUndo(c.undo) };
   });
   const needsInstall = v.needsInstall.map((n): NeedsInstall => {
-    if (!isObj(n) || !sameKeys(n, ["id", "name", "what", "required", "howUrl"])) return bad();
+    if (!isObj(n) || !exactKeys(n, ["id", "name", "what", "required", "howUrl"])) return bad();
     if (typeof n.required !== "boolean" || (n.howUrl !== null && typeof n.howUrl !== "string")) return bad();
     return { id: str(n.id), name: str(n.name), what: str(n.what), required: n.required, howUrl: n.howUrl as string | null };
   });

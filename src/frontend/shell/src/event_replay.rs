@@ -64,7 +64,7 @@
 use crate::chan::wire::{Body, By, Cursor, HopFault, HopId, Item};
 use crate::ui_contract::{BatchEdge, JsonlLinePayload, SessionStreamFrame};
 use parking_lot::Mutex;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 
 /// 订阅流的出口：把一串格交给某个 webview 上的某条订阅。
@@ -81,7 +81,7 @@ pub const SESSION_LINES_KIND: &str = "session-lines";
 /// 本文件认的第二种流：一台机器上中转抄出来的 SSE 事件（体是 [`crate::ui_contract::SessionTapPayload`]）。
 ///
 /// 与 `session-lines` 同一张订阅表、同一套 credit 与 `Gap`（一条帧路 ＋ `subscribe`），差别只有三处：
-/// ① **没有留存**：tap 不进 `history`，订阅当场就是实时的（没有就绪点、没有重放）；
+/// ① **没有留存**：tap 不进留存，订阅当场就是实时的（没有就绪点、没有重放）；
 /// ② 只有整台机器那一形（前端按 `stream` 自己对 tab）；
 /// ③ 实时那一份照「有 credit 当场交、没 credit 丢、位置照占、原位 `Gap`」（级 2）—— tap 本来就可丢（SSE 只保快）。
 pub const SESSION_TAP_KIND: &str = "session-tap";
@@ -123,13 +123,18 @@ pub struct EventReplay {
 }
 
 struct Inner {
-    history: VecDeque<JsonlLinePayload>,
+    /// 重放留存：每台每个会话一条（键 `(origin 线上串, sid)`），按 seq 修剪到尾巴（[`push_and_trim`]）。
+    /// 有序表：重放时按键序交，两次 F5 交出去的次序相同。
+    tails: BTreeMap<TailKey, Tail>,
+    /// 全部留存的正文字节（各条 [`Tail::bytes`] 之和）。
+    held_bytes: usize,
+    /// 总留存的上限（字节；生产 ＝ [`HELD_BYTES_CAP`]）。超了整条丢最久没进过行的会话，先丢不活的（[`evict_over_cap`]）。
+    held_cap: usize,
+    /// 进账节拍（每进一批 +1）：哪条最久没进过行。
+    tick: u64,
     /// Batch8-F26：frontend-ready 携带的"用户上次所在 tab"（F19 语义）。存下来
     /// 供远端快照拉取排队（当前 tab 的会话先拉）；None = 无记忆/未就绪。
     priority_sid: Option<String>,
-    /// 每个会话此刻在 `history` 里有几条 ＋ 它最低留存的 seq（修剪过之后才有；
-    /// 之后到达、seq 低于它的行不进缓冲 —— 见 [`push_and_trim`]）。
-    sessions: HashMap<String, Held>,
     /// 累计修剪掉的条数（读数口，[`EventReplay::stats`]）。
     trimmed_total: u64,
     /// 订阅（按 `(webview, 编号)` 认）。
@@ -195,15 +200,44 @@ impl Sub {
     }
 }
 
-/// 一个会话在缓冲里的账：几条 ＋ 修剪过的话最低留存的 seq。
-#[derive(Debug, Default, Clone, Copy)]
-struct Held {
-    count: usize,
-    /// 修剪之后留下的最低 seq；`None` = 从没修剪过。
+/// 留存的键：`(origin 线上串, sid)` —— 两台上同一个 sid 是两条留存。
+type TailKey = (String, String);
+
+/// 一条会话的留存：那几行（到达序）· 修剪过的话最低留存的 seq（之后到达、seq 低于它的行不进 —— 见 [`push_and_trim`]）·
+/// 正文字节 · 最后一次进行的节拍。
+#[derive(Default)]
+struct Tail {
+    lines: VecDeque<JsonlLinePayload>,
     floor: Option<u64>,
+    bytes: usize,
+    touched: u64,
 }
 
-/// →**每个会话在 history 里只留尾巴这么多条可显示记录。**
+/// 一行在留存里算多少字节：成品原文 ＋ 两格路径（结构体本身的开销不算，量纲见 [`HELD_BYTES_CAP`]）。
+fn held_size(p: &JsonlLinePayload) -> usize {
+    p.message.0.get().len() + p.path.len() + p.cwd.as_ref().map_or(0, String::len)
+}
+
+/// 一行记在哪条留存下。
+fn tail_key(p: &JsonlLinePayload) -> TailKey {
+    (
+        p.origin
+            .as_deref()
+            .unwrap_or(crate::origin::LOCAL)
+            .to_string(),
+        p.session_id.clone(),
+    )
+}
+
+/// →**总留存的上限：64 MiB 正文。**
+///
+/// 依据：2026-09-24 那次量的 39 份会话、每份留尾巴 [`REPLAY_TAIL_KEEP`] 条，可显示记录合计 26.3 MB（读数见那一格的头注）；
+/// 64 MiB 是它的两倍半，开着几十个会话照样整份留得下，F5 那一屏不用去取。再多的会话（每份最多 750 条 × 几 KB）
+/// 不再按会话数线性涨：超了先丢已经不活的会话的整条留存，再丢最久没进过行的 —— 丢掉的正文界面按行号取回（头注）。
+/// 量的是正文字节（[`held_size`]），不是堆上真大小（解析后的结构体另有开销，没量）。
+pub const HELD_BYTES_CAP: usize = 64 * 1024 * 1024;
+
+/// →**每个会话在留存里只留尾巴这么多条可显示记录。**
 ///
 /// # 依据（量出来的，不是拍的）
 ///
@@ -222,17 +256,19 @@ struct Held {
 pub const REPLAY_TAIL_KEEP: usize = 600;
 
 /// 修剪的摊还余量：一个会话超过 `KEEP + SLACK` 才修剪回 `KEEP`。
-/// 修剪一次是 O(history)（按 seq 找第 KEEP 大、再 retain）⇒ 每来一行都修会让 live 路付 O(history)；
-/// 攒 `KEEP/4` 条修一次，摊到每行是 O(history)/150。**代价**：单会话上界是 750 条不是 600。
+/// 修剪一次是 O(那条会话的留存)（按 seq 找第 KEEP 大、再 retain）；攒 `KEEP/4` 条修一次，摊到每行是常数。
+/// **代价**：单会话上界是 750 条不是 600。
 pub const TRIM_SLACK: usize = REPLAY_TAIL_KEEP / 4;
 
-/// 读数：`history` 总长 · 缓冲里的会话数 · 累计修剪条数。
+/// 读数：留存总条数 · 留存里的会话数 · 累计修剪条数 · 留存正文字节。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ReplayStats {
     pub history_len: usize,
     /// 缓冲里有几个会话（原 `tail_only_sessions`〔散文墓碑〕：只数接了骨架的那些；分档取消之后数全部）。
     pub sessions: usize,
     pub trimmed_total: u64,
+    /// 留存正文字节（上限 [`HELD_BYTES_CAP`]）。
+    pub held_bytes: usize,
 }
 
 /// 切块（v2.3.1 issue #1 启动加速 + P5.4 B 重构简化）：成批的那一段按 CHUNK_SIZE 行一块交，**末块先发**
@@ -354,7 +390,7 @@ fn plan_lifecycle(sub: &mut Sub, frames: &[Body]) -> Vec<Item> {
 }
 
 /// 一条订阅（整台 / 一个会话）的起停重放：骨架在行前（`before`）、终局在行后（`after`）—— 计划住 `session_book::Book::replay`，
-/// 这里只按订阅的那台 / 那一个会话挑、换成格。`history` = 留存里这条订阅要的那些行。
+/// 这里只按订阅的那台 / 那一个会话挑、换成格。`history` = 留存里这条订阅要的那些行（[`held_for`]）。
 fn lifecycle_replay(
     book: &parking_lot::RwLock<crate::session_book::Book>,
     origin: &str,
@@ -476,9 +512,11 @@ impl EventReplay {
     pub fn new() -> Self {
         Self {
             inner: Mutex::new(Inner {
-                history: VecDeque::new(),
+                tails: BTreeMap::new(),
+                held_bytes: 0,
+                held_cap: HELD_BYTES_CAP,
+                tick: 0,
                 priority_sid: None,
-                sessions: HashMap::new(),
                 trimmed_total: 0,
                 subs: Vec::new(),
                 generation: 0,
@@ -496,7 +534,7 @@ impl EventReplay {
         self.inner.lock().sink = Some(sink);
     }
 
-    /// 行进重放缓冲的**唯一**入口：先进 `history`，再**当场**交给每一条已过就绪点、订了它的订阅 ——
+    /// 行进重放缓冲的**唯一**入口：先进留存（[`hold`]），再**当场**交给每一条已过就绪点、订了它的订阅 ——
     /// 小批（< [`INCREMENTAL_BATCH_THRESHOLD`]）逐行交，大批切块、带 `batch` 边界。
     /// 大 batch 的块序列**在调用方任务内交完才返回**（Batch5-F17 审计 R1）——`stream_source` 的攒批 flush
     /// 用它，保证行先于随后的 SessionRemoved/断连归档交出去（issue #20 / FIX 2 的顺序契约），
@@ -518,7 +556,10 @@ impl EventReplay {
         let (sink, plans) = {
             let mut inner = self.inner.lock();
             if notice.change != "gone" {
-                drop_session(&mut inner, &notice.session_id);
+                drop_tail(
+                    &mut inner,
+                    &(notice.origin.clone(), notice.session_id.clone()),
+                );
             }
             let Some(sink) = inner.sink.clone() else {
                 return;
@@ -576,7 +617,7 @@ impl EventReplay {
         let bulk = payloads.len() >= INCREMENTAL_BATCH_THRESHOLD;
         let (sink, plans) = {
             let mut inner = self.inner.lock();
-            push_and_trim(&mut inner, &payloads);
+            hold(&mut inner, self.book, &payloads);
             let Some(sink) = inner.sink.clone() else {
                 return;
             };
@@ -636,7 +677,7 @@ impl EventReplay {
                 return;
             };
             let Inner {
-                history,
+                tails,
                 subs,
                 ready_labels,
                 ..
@@ -645,8 +686,7 @@ impl EventReplay {
             for sub in subs.iter_mut().filter(|s| !s.live) {
                 sub.live = true;
                 ready_labels.insert(sub.label.clone());
-                let mine: Vec<JsonlLinePayload> =
-                    history.iter().filter(|p| sub.wants(p)).cloned().collect();
+                let mine = held_for(tails, sub);
                 // 会话行那一族才有起停（tap / 账号那两种没有）。
                 let (before, after) = if sub.kind == SubKind::Lines {
                     lifecycle_replay(self.book, &sub.origin, sub.only.as_deref(), &mine)
@@ -837,12 +877,7 @@ impl EventReplay {
                 told_seen: seen,
             };
             let job = (immediate && kind == SubKind::Lines).then(|| {
-                let mine: Vec<JsonlLinePayload> = inner
-                    .history
-                    .iter()
-                    .filter(|p| sub.wants(p))
-                    .cloned()
-                    .collect();
+                let mine = held_for(&inner.tails, &sub);
                 let (before, after) =
                     lifecycle_replay(self.book, origin, sub.only.as_deref(), &mine);
                 ReplayJob {
@@ -947,7 +982,7 @@ impl EventReplay {
         }
     }
 
-    /// 中转抄出来的一个 SSE 事件（`session_tap::deliver` 经 `lib.rs` 装的出口调）：**不进 `history`**，
+    /// 中转抄出来的一个 SSE 事件（`session_tap::deliver` 经 `lib.rs` 装的出口调）：**不进留存**，
     /// 交给订了那台机器 `session-tap` 的每一条订阅 —— 有 credit 当场交；没有 ⇒ 丢、位置照占、下一次交之前原位 `Gap`
     /// （与会话行实时那一份同一个 [`plan_live`]）。**不等 credit、不攒**：tap 可丢，攒着只会让活卡更晚。
     pub fn on_tap(&self, payload: crate::ui_contract::SessionTapPayload) {
@@ -1042,103 +1077,64 @@ impl EventReplay {
     /// 那台机器的后端说「账号清单变了」（`accounts_changed` 帧）⇒ 订了那台 `accounts-changed` 的
     /// 每条订阅收一格 `Frame`（有 credit 当场交；没有 ⇒ 丢、位置照占、下一次交之前原位 `Gap` —— 与实时行同一套）。
     pub fn accounts_changed(&self, origin: &crate::origin::Origin) {
-        self.no_payload_changed(origin, SubKind::AccountsChanged, ACCOUNTS_CHANGED_BODY);
+        self.fan_out(
+            SubKind::AccountsChanged,
+            origin,
+            None,
+            Body(ACCOUNTS_CHANGED_BODY.to_vec()),
+        );
     }
 
     /// 那台机器的后端说「配置文件变了」（`profiles_changed` 帧）⇒ 订了那台 `profiles-changed` 的每条订阅收一格（同 `accounts-changed`）。
     pub fn profiles_changed(&self, origin: &crate::origin::Origin) {
-        self.no_payload_changed(origin, SubKind::ProfilesChanged, PROFILES_CHANGED_BODY);
-    }
-
-    /// 无载荷的「那台某样东西变了」：订了那台那一种流的每条订阅收一格 `body`（有 credit 当场交；没有 ⇒ 丢、位置照占、
-    /// 下一次交之前原位 `Gap` —— 与实时行同一套）。
-    fn no_payload_changed(&self, origin: &crate::origin::Origin, kind: SubKind, body: &[u8]) {
-        let origin = origin.as_wire_str();
-        let (sink, plans) = {
-            let mut inner = self.inner.lock();
-            let Some(sink) = inner.sink.clone() else {
-                return;
-            };
-            let plans: Vec<(String, u64, Vec<Item>)> = inner
-                .subs
-                .iter_mut()
-                .filter(|s| s.kind == kind && s.origin == origin)
-                .map(|s| {
-                    let items = plan_live(s, vec![Body(body.to_vec())]);
-                    (s.label.clone(), s.id, items)
-                })
-                .filter(|(_, _, items)| !items.is_empty())
-                .collect();
-            (sink, plans)
-        };
-        for (label, id, items) in plans {
-            sink.deliver(&label, id, items);
-        }
+        self.fan_out(
+            SubKind::ProfilesChanged,
+            origin,
+            None,
+            Body(PROFILES_CHANGED_BODY.to_vec()),
+        );
     }
 
     /// 那台机器的后端说「这个会话的任务清单变了」（`tasks_changed` 帧；本机那条流同一个口）⇒
     /// 订了那台 `session-tasks` 的每条订阅收一格 `{"sid": …}`（credit 与 `Gap` 与 `accounts-changed` 同一套）。界面收到就重问 `tasks-list`。
     pub fn tasks_changed(&self, origin: &crate::origin::Origin, sid: &str) {
-        let origin = origin.as_wire_str();
         let body = serde_json::json!({ "sid": sid }).to_string().into_bytes();
-        let (sink, plans) = {
-            let mut inner = self.inner.lock();
-            let Some(sink) = inner.sink.clone() else {
-                return;
-            };
-            let plans: Vec<(String, u64, Vec<Item>)> = inner
-                .subs
-                .iter_mut()
-                .filter(|s| s.kind == SubKind::Tasks && s.origin == origin)
-                .map(|s| {
-                    let items = plan_live(s, vec![Body(body.clone())]);
-                    (s.label.clone(), s.id, items)
-                })
-                .filter(|(_, _, items)| !items.is_empty())
-                .collect();
-            (sink, plans)
-        };
-        for (label, id, items) in plans {
-            sink.deliver(&label, id, items);
-        }
+        self.fan_out(SubKind::Tasks, origin, None, Body(body));
     }
 
     /// 那台机器的后端说「额度账变了」（`quota_changed`，`sid = None`）或「这个会话的轮换 / 账号格变了」（`rotation_changed`）⇒
     /// 订了那台 `quota-changed` 的每条订阅收一格（体 `{"quota":true}` / `{"sid": …}`；credit 与 `Gap` 与 `session-tasks` 同一套）。
     pub fn quota_changed(&self, origin: &crate::origin::Origin, sid: Option<&str>) {
-        let origin = origin.as_wire_str();
         let body = match sid {
             Some(sid) => serde_json::json!({ "sid": sid }),
             None => serde_json::json!({ "quota": true }),
         }
         .to_string()
         .into_bytes();
-        let (sink, plans) = {
-            let mut inner = self.inner.lock();
-            let Some(sink) = inner.sink.clone() else {
-                return;
-            };
-            let plans: Vec<(String, u64, Vec<Item>)> = inner
-                .subs
-                .iter_mut()
-                .filter(|s| s.kind == SubKind::Quota && s.origin == origin)
-                .map(|s| {
-                    let items = plan_live(s, vec![Body(body.clone())]);
-                    (s.label.clone(), s.id, items)
-                })
-                .filter(|(_, _, items)| !items.is_empty())
-                .collect();
-            (sink, plans)
-        };
-        for (label, id, items) in plans {
-            sink.deliver(&label, id, items);
-        }
+        self.fan_out(SubKind::Quota, origin, None, Body(body));
     }
 
-    /// 本机后端里那一趟测试连接推来一格（`probe_relay::deliver` 经 `lib.rs` 装的出口调）：**不进 `history`**，
+    /// 本机后端里那一趟测试连接推来一格（`probe_relay::deliver` 经 `lib.rs` 装的出口调）：**不进留存**，
     /// 交给订了 `<local>` 上 `probe-progress/<那张票>` 的订阅（credit 与 `Gap` 与 `accounts-changed` 同一套；界面给的窗口远大于一趟的格数）。
     pub fn on_probe(&self, ticket: &str, cell: String) {
-        let body = Body(cell.into_bytes());
+        self.fan_out(
+            SubKind::Probe,
+            &crate::origin::Origin::local(),
+            Some(ticket),
+            Body(cell.into_bytes()),
+        );
+    }
+
+    /// 没有留存的那几种流的扇出：订了 `origin` 上 `kind`（给了 `only` 就只要那一个）的每条订阅收一格 `body`
+    /// （有 credit 当场交；没有 ⇒ 丢、位置照占、下一次交之前原位 `Gap`）。锁里只排计划，交在锁外。
+    fn fan_out(
+        &self,
+        kind: SubKind,
+        origin: &crate::origin::Origin,
+        only: Option<&str>,
+        body: Body,
+    ) {
+        let origin = origin.as_wire_str();
         let (sink, plans) = {
             let mut inner = self.inner.lock();
             let Some(sink) = inner.sink.clone() else {
@@ -1148,9 +1144,9 @@ impl EventReplay {
                 .subs
                 .iter_mut()
                 .filter(|s| {
-                    s.kind == SubKind::Probe
-                        && s.origin == crate::origin::LOCAL
-                        && s.only.as_deref() == Some(ticket)
+                    s.kind == kind
+                        && s.origin == origin
+                        && only.is_none_or(|t| s.only.as_deref() == Some(t))
                 })
                 .map(|s| {
                     let items = plan_live(s, vec![body.clone()]);
@@ -1165,19 +1161,29 @@ impl EventReplay {
         }
     }
 
-    /// 把指定 session_id 的全部历史从 buffer 移除。
-    /// 用户主动关闭 archived Tab 时调用 —— 否则 F5 刷新 history 会重放出来"复活" Tab。
+    /// 把那个 sid 的留存整条丢（各台上同名的都丢：界面关 tab 只说 sid）。
+    /// 用户主动关闭 archived Tab 时调用 —— 否则 F5 刷新会重放出来"复活" Tab。
     pub fn forget(&self, session_id: &str) {
-        drop_session(&mut self.inner.lock(), session_id);
+        let mut inner = self.inner.lock();
+        let keys: Vec<TailKey> = inner
+            .tails
+            .keys()
+            .filter(|k| k.1 == session_id)
+            .cloned()
+            .collect();
+        for k in keys {
+            drop_tail(&mut inner, &k);
+        }
     }
 
     /// 读数口（日志与判据用）。
     pub fn stats(&self) -> ReplayStats {
         let inner = self.inner.lock();
         ReplayStats {
-            history_len: inner.history.len(),
-            sessions: inner.sessions.len(),
+            history_len: inner.tails.values().map(|t| t.lines.len()).sum(),
+            sessions: inner.tails.len(),
             trimmed_total: inner.trimmed_total,
+            held_bytes: inner.held_bytes,
         }
     }
 
@@ -1206,74 +1212,135 @@ impl Default for EventReplay {
     }
 }
 
-/// →进账：push 进 history、给**每个**会话计数，超过 `KEEP + SLACK` 就修回 `KEEP`。
-///
-/// 一个会话的留存整份丢（关掉已结束的 tab · 记录文件从头重读、旧的一代作废）。
-fn drop_session(inner: &mut Inner, session_id: &str) {
-    inner.sessions.remove(session_id);
-    let before = inner.history.len();
-    inner.history.retain(|p| p.session_id != session_id);
-    let removed = before - inner.history.len();
-    if removed > 0 {
-        tracing::info!("event_replay forget {session_id}: dropped {removed} entries");
+/// 留存里这条订阅要的那些行：订的那台上的各条（只要一个会话的只取那一条），按键序、每条内到达序。
+fn held_for(tails: &BTreeMap<TailKey, Tail>, sub: &Sub) -> Vec<JsonlLinePayload> {
+    if sub.kind != SubKind::Lines {
+        return Vec::new();
     }
+    tails
+        .iter()
+        .filter(|(k, _)| k.0 == sub.origin && sub.only.as_deref().is_none_or(|s| s == k.1))
+        .flat_map(|(_, t)| t.lines.iter().cloned())
+        .collect()
 }
 
-/// 修剪过的会话，之后到达、seq **低于**它最低留存那一条的行（尾部优先快照的头段回填）⇒ **不进缓冲**：
-/// 它们进来也会在下一次修剪时被第一批丢掉，而每进 150 条就要付一次 O(history) 的修剪。
-/// 这些行照样实时发给已就绪的前端（本函数只管缓冲）；F5 之后前端要，按行号取回。
+/// 一条会话的留存整条丢（关掉已结束的 tab · 记录文件从头重读、旧的一代作废 · 总量超了）。返回丢掉的行数。
+fn drop_tail(inner: &mut Inner, key: &TailKey) -> usize {
+    let Some(t) = inner.tails.remove(key) else {
+        return 0;
+    };
+    inner.held_bytes -= t.bytes;
+    if !t.lines.is_empty() {
+        tracing::info!(
+            "event_replay drop [{}] {}: {} entries / {} bytes",
+            key.0,
+            key.1,
+            t.lines.len(),
+            t.bytes
+        );
+    }
+    t.lines.len()
+}
+
+/// 进留存的唯一入口：修尾巴（[`push_and_trim`]）＋ 总量超了就丢（[`evict_over_cap`]）。
+fn hold(
+    inner: &mut Inner,
+    book: &parking_lot::RwLock<crate::session_book::Book>,
+    payloads: &[JsonlLinePayload],
+) {
+    push_and_trim(inner, payloads);
+    evict_over_cap(inner, book);
+}
+
+/// →进账：每行进它那条留存，一条超过 `KEEP + SLACK` 就修回 `KEEP`（只动那一条）。
+///
+/// 修剪过的会话，之后到达、seq **低于**它最低留存那一条的行（尾部优先快照的头段回填）⇒ **不进留存**：
+/// 它们进来也会在下一次修剪时被第一批丢掉。这些行照样实时发给已就绪的前端（本函数只管留存）；F5 之后前端要，按行号取回。
 fn push_and_trim(inner: &mut Inner, payloads: &[JsonlLinePayload]) {
-    let mut over: Vec<String> = Vec::new();
+    inner.tick += 1;
+    let tick = inner.tick;
+    let mut over: Vec<TailKey> = Vec::new();
     for p in payloads {
-        let held = inner.sessions.entry(p.session_id.clone()).or_default();
-        if held.floor.is_some_and(|f| p.seq < f) {
+        let key = tail_key(p);
+        let t = inner.tails.entry(key.clone()).or_default();
+        if t.floor.is_some_and(|f| p.seq < f) {
             continue;
         }
-        held.count += 1;
-        if held.count > REPLAY_TAIL_KEEP + TRIM_SLACK && !over.contains(&p.session_id) {
-            over.push(p.session_id.clone());
+        let size = held_size(p);
+        t.lines.push_back(p.clone());
+        t.bytes += size;
+        t.touched = tick;
+        if t.lines.len() > REPLAY_TAIL_KEEP + TRIM_SLACK && !over.contains(&key) {
+            over.push(key);
         }
-        inner.history.push_back(p.clone());
+        inner.held_bytes += size;
     }
-    for sid in over {
-        trim_to_tail(inner, &sid);
+    for key in over {
+        trim_to_tail(inner, &key);
     }
 }
 
-/// 把一个会话修回尾巴 `KEEP` 条 —— **按 seq 取最大的那些，不按到达序**：
+/// 把一条会话修回尾巴 `KEEP` 条 —— **按 seq 取最大的那些，不按到达序**：
 /// 远端快照走 `--read-session-tail`（尾部优先），到达序是「尾块在前、头块在后」，按到达序丢会把尾巴丢掉。
-/// 返回丢掉的条数。
-fn trim_to_tail(inner: &mut Inner, sid: &str) -> usize {
-    let mut seqs: Vec<u64> = inner
-        .history
-        .iter()
-        .filter(|p| p.session_id == sid)
-        .map(|p| p.seq)
-        .collect();
-    if seqs.len() <= REPLAY_TAIL_KEEP {
+/// 只过那一条（O(那个会话的留存)）。返回丢掉的条数。
+fn trim_to_tail(inner: &mut Inner, key: &TailKey) -> usize {
+    let Some(t) = inner.tails.get_mut(key) else {
+        return 0;
+    };
+    if t.lines.len() <= REPLAY_TAIL_KEEP {
         return 0;
     }
+    let mut seqs: Vec<u64> = t.lines.iter().map(|p| p.seq).collect();
     seqs.sort_unstable_by(|a, b| b.cmp(a));
     let floor = seqs[REPLAY_TAIL_KEEP - 1];
-    let before = inner.history.len();
-    inner
-        .history
-        .retain(|p| p.session_id != sid || p.seq >= floor);
-    let dropped = before - inner.history.len();
-    let kept = seqs.len() - dropped;
-    inner.sessions.insert(
-        sid.to_string(),
-        Held {
-            count: kept,
-            floor: Some(floor),
-        },
-    );
+    let before = t.lines.len();
+    let mut freed = 0;
+    t.lines.retain(|p| {
+        let keep = p.seq >= floor;
+        if !keep {
+            freed += held_size(p);
+        }
+        keep
+    });
+    t.bytes -= freed;
+    t.floor = Some(floor);
+    let dropped = before - t.lines.len();
+    let kept = t.lines.len();
+    inner.held_bytes -= freed;
     inner.trimmed_total += dropped as u64;
     tracing::info!(
-        "[replay] {sid} 修剪到尾巴 {kept} 条（丢 {dropped}，seq < {floor}）；history 总长 {}",
-        inner.history.len()
+        "[replay] [{}] {} 修剪到尾巴 {kept} 条（丢 {dropped}，seq < {floor}）；留存 {} 字节",
+        key.0,
+        key.1,
+        inner.held_bytes
     );
     dropped
+}
+
+/// 总留存超了上限 ⇒ 整条丢，直到回到上限之内：先丢成品缓存里已经不活的会话，再丢活的；同一档里先丢最久没进过行的。
+/// 刚进过行的那几条（这一拍的）留到最后，只剩它们时停（一拍之内最多越过上限这一批的量）。
+fn evict_over_cap(inner: &mut Inner, book: &parking_lot::RwLock<crate::session_book::Book>) {
+    if inner.held_bytes <= inner.held_cap {
+        return;
+    }
+    let book = book.read();
+    let mut order: Vec<(bool, u64, TailKey)> = inner
+        .tails
+        .iter()
+        .filter(|(_, t)| t.touched != inner.tick)
+        .map(|(k, t)| {
+            let live = book.is_live(&crate::origin::Origin(k.0.clone()), &k.1);
+            (live, t.touched, k.clone())
+        })
+        .collect();
+    drop(book);
+    order.sort();
+    for (_, _, key) in order {
+        if inner.held_bytes <= inner.held_cap {
+            break;
+        }
+        drop_tail(inner, &key);
+    }
 }
 
 /// Batch5-F19：分组切块——priority session（用户上次所在 tab）的块在前，其余

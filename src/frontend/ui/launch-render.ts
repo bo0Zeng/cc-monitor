@@ -9,7 +9,8 @@
  */
 import { chan } from "../../comms/inward/chan";
 import { budgetWithin, jsonBody } from "./ipc/chan-caller";
-import { ControlError, exactKeys, isObj, machineName, settle, unreadable, type Refusals } from "./control-said";
+import { ControlError, machineName, settle, unreadable, type Refusals } from "./control-said";
+import { exactKeys, isObj } from "./ipc/decode";
 import type { Origin } from "./ipc/origin";
 import { LOCAL_ORIGIN } from "./backend-policy";
 import { commands } from "./ipc/commands";

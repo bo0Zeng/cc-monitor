@@ -26,6 +26,7 @@ import { chan } from "../../../comms/inward/chan";
 import { budgetWithin, jsonBody, linesOf, readJson, ReplyUnreadable } from "../ipc/chan-caller";
 import { isLocalOrigin, LOCAL_ORIGIN } from "../ipc/origin";
 import { canOk, type HistoryCan } from "../history-list-reads";
+import { exactKeys, isObj } from "../ipc/decode";
 
 /**
  * 一条命中（后端 `--search` 行里 `hits` 的一格；形状由 [`parseHit`] 严格收）。
@@ -261,9 +262,8 @@ export function decodeMerged(v: unknown): Omit<SearchResult, "failedHosts" | "un
   const bad = (): never => {
     throw new ReplyUnreadable("history-search-merge reply shape");
   };
-  if (v === null || typeof v !== "object" || Array.isArray(v)) bad();
+  if (!isObj(v) || !exactKeys(v, ["sessionCount", "sessions", "totalHits", "truncated"])) bad();
   const o = v as Record<string, unknown>;
-  if (Object.keys(o).sort().join(",") !== "sessionCount,sessions,totalHits,truncated") bad();
   if (!isInt(o.totalHits) || !isInt(o.sessionCount) || typeof o.truncated !== "boolean" || !Array.isArray(o.sessions)) bad();
   const sessions = (o.sessions as unknown[]).map((row) => {
     const sh = sessionHitsOf(row);

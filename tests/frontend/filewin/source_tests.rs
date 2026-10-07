@@ -751,6 +751,29 @@ fn sorting_by_type_follows_the_type_column() {
     );
 }
 
+/// 反过来的那一列只反它自己：目录照旧在前，相持照旧按名称（不分大小写）从小到大。期望序手推。
+#[test]
+fn a_descending_column_keeps_dirs_first_and_ties_by_name_ascending() {
+    let at = |name: &str, is_dir: bool, mtime: u64| {
+        let mut r = named(name, is_dir, 0);
+        r.mtime_secs = Some(mtime);
+        r
+    };
+    let mut v = vec![
+        at("b-old", false, 1),
+        at("Tie", false, 5),
+        at("old-dir", true, 1),
+        at("new", false, 9),
+        at("tie2", false, 5),
+        at("New-dir", true, 9),
+    ];
+    sort_rows(&mut v, SortBy::Mtime);
+    assert_eq!(
+        order_of(&v),
+        ["New-dir", "old-dir", "new", "Tie", "tie2", "b-old"]
+    );
+}
+
 /// 表头那四列是**闭集**，缺省按名称；时间与大小第一下从大到小，再点一下反过来，换一列从那一列的第一下起。
 #[test]
 fn the_four_columns_and_how_a_click_turns_the_order() {

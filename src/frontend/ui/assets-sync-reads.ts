@@ -7,6 +7,7 @@
 import { chan } from "../../comms/inward/chan";
 import { budgetWithin, jsonBody, readJson, ReplyUnreadable, saidFrom } from "./ipc/chan-caller";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
+import { exactKeys, isObj } from "./ipc/decode";
 
 /** 一趟同步的结局（`error` = 那一趟哪里没办成，`null` = 全办成了）。 */
 export interface AssetsSyncRow {
@@ -29,24 +30,17 @@ export interface AssetsSynced {
   reach: AssetsReach[];
 }
 
-const isObj = (v: unknown): v is Record<string, unknown> =>
-  v !== null && typeof v === "object" && !Array.isArray(v);
-const sameKeys = (o: Record<string, unknown>, want: readonly string[]): boolean => {
-  const got = Object.keys(o).sort();
-  const w = [...want].sort();
-  return got.length === w.length && got.every((k, i) => k === w[i]);
-};
 const optStr = (v: unknown): v is string | null => v === null || typeof v === "string";
 const bad = (): Error => new ReplyUnreadable("assetsSyncReads reply shape");
 
 /** `assets-sync` 的成品。严格收。 */
 export function decodeAssetsSynced(v: unknown): AssetsSynced {
-  if (!isObj(v) || !sameKeys(v, ["self", "synced", "reach"]) || !optStr(v.self) || !Array.isArray(v.synced) || !Array.isArray(v.reach))
+  if (!isObj(v) || !exactKeys(v, ["self", "synced", "reach"]) || !optStr(v.self) || !Array.isArray(v.synced) || !Array.isArray(v.reach))
     throw bad();
   const synced = v.synced.map((r) => {
     if (
       !isObj(r) ||
-      !sameKeys(r, ["origin", "peer", "changed", "pushed", "error"]) ||
+      !exactKeys(r, ["origin", "peer", "changed", "pushed", "error"]) ||
       typeof r.origin !== "string" ||
       !optStr(r.peer) ||
       typeof r.changed !== "boolean" ||
@@ -57,7 +51,7 @@ export function decodeAssetsSynced(v: unknown): AssetsSynced {
     return { origin: r.origin, peer: r.peer, changed: r.changed, pushed: r.pushed, error: r.error };
   });
   const reach = v.reach.map((r) => {
-    if (!isObj(r) || !sameKeys(r, ["origin", "machine"]) || typeof r.origin !== "string" || !optStr(r.machine)) throw bad();
+    if (!isObj(r) || !exactKeys(r, ["origin", "machine"]) || typeof r.origin !== "string" || !optStr(r.machine)) throw bad();
     return { origin: r.origin, machine: r.machine };
   });
   return { self: v.self, synced, reach };

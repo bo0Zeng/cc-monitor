@@ -11,6 +11,7 @@
  * - 参数只递**命名**参数，与表里 `args` 相等；不在调用方拼接任何文字（决定 3）。
  */
 import TABLE from "../../shared/copy/table.json";
+import { exactKeys } from "./ipc/decode";
 
 export type CopyKey = keyof typeof TABLE.entries;
 export type CopyArgs = Record<string, string | number>;
@@ -35,9 +36,7 @@ const ENTRIES: Record<string, Entry> = TABLE.entries;
 export function copyText(key: CopyKey, args: CopyArgs = {}): string {
   const e = ENTRIES[key];
   if (!e) throw new Error(`copyText: no entry "${key}"`);
-  const given = Object.keys(args).sort().join(",");
-  const want = [...e.args].sort().join(",");
-  if (given !== want) throw new Error(`copyText("${key}"): wants args [${want}], got [${given}]`);
+  if (!exactKeys(args, e.args)) throw new Error(`copyText("${key}"): wants args [${e.args.join(",")}], got [${Object.keys(args).join(",")}]`);
   const parts: string[] = [];
   let at = 0;
   for (const m of e.zh.matchAll(/\{([A-Za-z][A-Za-z0-9]*)\}/g)) {

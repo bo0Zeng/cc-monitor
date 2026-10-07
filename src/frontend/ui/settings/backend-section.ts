@@ -61,6 +61,7 @@ import { toggleSwitch } from "../kit/switch";
 import { readRecordDrift } from "../record-reads";
 import { ccRow } from "./cc-row";
 import { decodeMachineState, type MachineState } from "./machine-state";
+import { exactKeys, isObj } from "../ipc/decode";
 
 /**
  * 「停」的结局说一句（三个词各一句，穷举 —— 多一个词 tsc 就红）。机器页那一行照它说，不只进 console。
@@ -203,10 +204,8 @@ const HEALTH_FACE_KEYS = ["detail", "state", "summary", "why"] as const;
  *   `backend_status` 是 monitor 自己的命令、与界面同一个构建，缺格只能是程序错 ⇒ 说出来（D7 / D11），不替后端编一档。
  */
 export function decodeHealthFace(raw: unknown): HealthFace | null {
-  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return null;
-  const v = raw as Record<string, unknown>;
-  const keys = Object.keys(v).sort();
-  if (keys.length !== HEALTH_FACE_KEYS.length || keys.some((k, i) => k !== HEALTH_FACE_KEYS[i])) return null;
+  if (!isObj(raw) || !exactKeys(raw, HEALTH_FACE_KEYS)) return null;
+  const v = raw;
   const text = (x: unknown): x is string => typeof x === "string" && x !== "";
   const textOrNull = (x: unknown): x is string | null => x === null || text(x);
   if (!text(v.state) || !text(v.summary) || !textOrNull(v.why) || !textOrNull(v.detail)) return null;
