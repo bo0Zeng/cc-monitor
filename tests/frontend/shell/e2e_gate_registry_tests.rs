@@ -247,12 +247,12 @@ fn no_e2e_suite_isolates_with_tmux_tmpdir() {
     );
 
     let dir = crate::guard_support::repo_root().join("tests").join("e2e");
-    let mut scanned = 0usize;
+    let mut seen: Vec<String> = Vec::new();
     let mut bad: Vec<String> = Vec::new();
     // ⚠ 走 `guard_core::scan_tree!` 而不是自己 `read_dir`（`scanning_guard_registry` 的规矩：
     //   裸遍历的判据会在自己的登记表/注释里找到自己 ⇒ 恒绿）。
     for (f, src) in guard_core::scan_tree!(&dir, &["sh"]) {
-        scanned += 1;
+        seen.push(crate::guard_support::rel_of(&f));
         let exec: Vec<&str> = src
             .lines()
             .filter(|l| !l.trim_start().starts_with('#'))
@@ -326,8 +326,14 @@ fn no_e2e_suite_isolates_with_tmux_tmpdir() {
             }
         }
     }
-    // 抽取器自检：扫到的文件数量级对不上 ⇒ 遍历坏了，上面那条就是零命中得来的。
-    assert!(scanned >= 15, "只扫到 {scanned} 个 e2e 脚本 —— 遍历坏了");
+    // 抽取器自检：git 跟踪着的每一份 e2e 脚本都扫到了（遍历坏了 ⇒ 上面那条就是零命中得来的）。
+    crate::guard_support::assert_scanned_every_tracked(
+        "e2e 的 tmux 隔离",
+        &seen,
+        &["tests/e2e"],
+        "sh",
+        &[],
+    );
     assert!(
         bad.is_empty(),
         "这些套件的 tmux 隔离不合 `C7i`：\n{}\n\
@@ -452,13 +458,18 @@ tmux select-pane -L -t x; tmux capture-pane -p -S -50\n";
     let dir = crate::guard_support::repo_root().join("tests").join("e2e");
     let files: Vec<(String, String)> = guard_core::scan_tree!(&dir, &["sh", "mjs", "mts", "ts"])
         .into_iter()
-        .map(|(p, s)| (p.to_string_lossy().replace('\\', "/"), s))
+        .map(|(p, s)| (crate::guard_support::rel_of(&p), s))
         .collect();
-    assert!(
-        files.iter().filter(|(p, _)| p.ends_with(".sh")).count() >= 30,
-        "只扫到 {} 份 `tests/e2e/**/*.sh` —— 扫描坏了（建判据当天 44 份）",
-        files.iter().filter(|(p, _)| p.ends_with(".sh")).count()
-    );
+    let seen: Vec<String> = files.iter().map(|(p, _)| p.clone()).collect();
+    for ext in ["sh", "mjs", "mts", "ts"] {
+        crate::guard_support::assert_scanned_every_tracked(
+            "e2e 私有名字",
+            &seen,
+            &["tests/e2e"],
+            ext,
+            &[],
+        );
+    }
     let hits = hardcoded_private_names(&files);
     assert!(
         hits.is_empty(),
@@ -915,10 +926,16 @@ fn the_backend_wrapper_fixture_refuses_to_run_outside_a_rig() {
 fn no_e2e_script_kills_by_pattern() {
     let root = crate::guard_support::repo_root().join("tests").join("e2e");
     let files: Vec<(std::path::PathBuf, String)> = guard_core::scan_tree!(&root, &["sh"]);
-    assert!(
-        files.len() >= 30,
-        "只扫到 {} 份 `tests/e2e/**/*.sh` —— 扫描坏了（建判据当天 40 份）",
-        files.len()
+    let seen: Vec<String> = files
+        .iter()
+        .map(|(p, _)| crate::guard_support::rel_of(p))
+        .collect();
+    crate::guard_support::assert_scanned_every_tracked(
+        "e2e 按名字收尸",
+        &seen,
+        &["tests/e2e"],
+        "sh",
+        &[],
     );
     let bad: Vec<String> = files
         .iter()
@@ -992,10 +1009,13 @@ fn no_e2e_script_inherits_a_dev_machine_path_it_may_write_to() {
     let root = crate::guard_support::repo_root();
     let dir = root.join("tests").join("e2e");
     let files = guard_core::files_under(&dir);
-    assert!(
-        files.len() > 30,
-        "tests/e2e/ 下只看到 {} 份 —— 扫描面塌了",
-        files.len()
+    let seen: Vec<String> = files.iter().map(|f| format!("tests/e2e/{f}")).collect();
+    crate::guard_support::assert_scanned_every_tracked(
+        "e2e 目录",
+        &seen,
+        &["tests/e2e"],
+        "sh",
+        &[],
     );
     let mut found: Vec<(String, String)> = Vec::new();
     for f in &files {

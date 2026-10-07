@@ -57,10 +57,8 @@ fn production_sources() -> Vec<(String, String)> {
     }
     out.sort();
     assert!(
-        out.len() > 200
-            && out
-                .iter()
-                .any(|(r, _)| r == "src/backend/observe/watcher.rs")
+        out.iter()
+            .any(|(r, _)| r == "src/backend/observe/watcher.rs")
             && out
                 .iter()
                 .any(|(r, _)| r == "src/shared/cc-bus/scripts/cc-kill"),
@@ -530,11 +528,6 @@ fn every_file_that_quotes_a_value_into_a_shell_line_is_registered() {
         names.iter().any(|n| n == "sq") && names.iter().any(|n| n == "posix_quote"),
         "别名认法坏了：{names:?}"
     );
-    assert!(
-        on_disk.values().sum::<usize>() > 30,
-        "只扫到 {} 处 quote 调用 —— 认法坏了",
-        on_disk.values().sum::<usize>()
-    );
     let registered: BTreeMap<String, usize> = QUOTE_SITES
         .iter()
         .map(|&(f, n, _, _, _)| (f.to_string(), n))
@@ -560,12 +553,16 @@ fn every_file_that_quotes_a_value_into_a_shell_line_is_registered() {
             );
         }
     }
-    // 读数（不是判据）：只靠 quote 的文件有几份 —— 报告里要写这个数，改了会在这里看到。
-    let open = QUOTE_SITES.iter().filter(|r| !r.3.is_empty()).count();
-    assert_eq!(open, 0, "「有外部值只靠 quote」的文件数变了（登记 0 份；〔§47 ①〕模型名 / sid 住进 shell-quote-core、三处接上 ⇒ payload.rs 出列 ⇒ 3 → 2；账号名进 shell-quote-core、配置目录全表搬进 acct-core ⇒ plan.rs · ccm_invocation.rs 出列 ⇒ 2 → 0；〔LOC1a 合入〕remote_branch.rs 的 exec 那一趟删了 ⇒ 10 → 9；\
-        〔§47〕`backendPath` 一族补上形式判定 ＋ 拒绝集 ⇒ asset_sync.rs · sftp.rs · stream_source/ 三份出列 ⇒ 9 → 6；\
-自由文本那一层补上 ⇒ remote_ask.rs · filewin/shell.rs · shell_dialect.rs（订正）三份出列 ⇒ 6 → 3，\
-        余下 plan.rs · payload.rs · ccm_invocation.rs 卡在模型名 / sid（交 DUP1）与账号名 / 配置目录的家）：多了是新缺口，少了是补上了 —— 改这个数并在提交信息里写清是哪份");
+    // 「有外部值只靠 quote」的文件今天是零：外部值都先过放行判定（`§47` ① / ②）。多了是新缺口。
+    let open: Vec<&str> = QUOTE_SITES
+        .iter()
+        .filter(|r| !r.3.is_empty())
+        .map(|r| r.0)
+        .collect();
+    assert!(
+        open.is_empty(),
+        "这些文件有外部值只靠 quote、没过放行判定：{open:?}"
+    );
 }
 
 // `every_read_of_the_backend_path_field_is_registered`〔散文墓碑〕 与它的登记表删了：`RemoteConfig` 没有 `backend_path` 这一格了

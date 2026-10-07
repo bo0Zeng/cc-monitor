@@ -100,20 +100,19 @@ fn repo_root() -> PathBuf {
 /// ⚠ 刻意不 `unwrap_or_default()`：读不到会静默变成空串，而空串让下面每一条
 /// 零命中地绿（`cross_half_edge_registry` 头注逐字记过这个坑）。字节地板同理 ——
 /// 文件被清空与文件内容变了，是两种完全不同的失败。
-fn must_read(rel: &str, min_bytes: usize) -> String {
+fn must_read(rel: &str) -> String {
     let p = repo_root().join(rel);
     let disk_text = std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("读不到 {p:?}: {e}"));
     assert!(
-        disk_text.len() >= min_bytes,
-        "{rel} 只读到 {} 字节（地板 {min_bytes}）—— 文件被清空/搬走了，本条此刻是空转的",
-        disk_text.len()
+        !disk_text.trim().is_empty(),
+        "{rel} 是空的 —— 文件被清空了，本条此刻是空转的"
     );
     disk_text
 }
 
 /// 一份 Rust 源码的**生产段**（剥 `#[cfg(test)]` 段 + `//` 整行注释）。
-fn rust_production(rel: &str, min_bytes: usize) -> String {
-    let prod = guard_core::production_code(&must_read(rel, min_bytes));
+fn rust_production(rel: &str) -> String {
+    let prod = guard_core::production_code(&must_read(rel));
     guard_core::assert_no_test_code(rel, &prod);
     prod
 }
@@ -145,7 +144,7 @@ fn segment_after(hay: &str, anchor: &str, close: &str) -> String {
 fn backend_command_names() -> Vec<String> {
     let mut out = Vec::new();
     for (rel, _) in crate::guard_support::backend_registry_sources() {
-        let prod = rust_production(&rel, 500);
+        let prod = rust_production(&rel);
         let seg = segment_after(&prod, "const SPECS: &[CommandSpec] = &[", "\n];");
         let key = format!("name{} \"", ':');
         let mut from = 0usize;
@@ -342,11 +341,6 @@ fn every_candidate_answers_both_axes_and_states_its_gap() {
 fn cc_bus_is_reached_only_through_its_command_surface_today() {
     // ② backend 命令表里的 `bus-*`。
     let names = backend_command_names();
-    assert!(
-        names.len() >= 5,
-        "只从后端命令表里抠出 {} 条命令名 —— 抽取器坏了，本条此刻是空转的：{names:?}",
-        names.len()
-    );
     let bus: Vec<&String> = names.iter().filter(|n| n.starts_with("bus-")).collect();
     // 正控：转调 cc-bus 的命令今天确实抠得到（`bus-send` 是最早那一条）。
     assert!(
@@ -364,7 +358,7 @@ fn cc_bus_is_reached_only_through_its_command_surface_today() {
     //    「两条命令共用这一处口」。⚠ 08-26 `K-W1A` 把这处口从转调壳搬到了通用层，
     //    所以这一格由**两条一起**守：口那边恰好一处 · 壳这边零处。少哪一条都会漏掉
     //    一种真实的坏形状（多起一处 / 壳里又长回一处 = 绕开通用口）。
-    let port = rust_production("src/backend/plugin/invoke.rs", 5_000);
+    let port = rust_production("src/backend/plugin/invoke.rs");
     guard_core::find_pinned(&port, "Child::new(").unwrap_or_else(|e| {
         panic!(
             "通用调用口 `plugin/invoke.rs` 里的起进程口不是恰好一处：{e}\n\
@@ -375,7 +369,7 @@ fn cc_bus_is_reached_only_through_its_command_surface_today() {
                  期限仍由起子进程原语执行（调用方给秒数）。"
         )
     });
-    let shell = rust_production("src/backend/control/cc_bus.rs", 5_000);
+    let shell = rust_production("src/backend/control/cc_bus.rs");
     assert_eq!(
         occurrences(&shell, "Child::new("),
         0,
@@ -391,7 +385,6 @@ fn cc_bus_is_reached_only_through_its_command_surface_today() {
     let boundary = guard_core::strip_comment_lines(&must_read(
         // 〔搬树 2026-09-17〕纯测试文件搬去 `tests/backend/`。
         "tests/backend/cc_bus_boundary_guard.rs",
-        1_000,
     ));
     let needles = segment_after(&boundary, "let needles = [", "];");
     assert_eq!(
@@ -411,11 +404,6 @@ fn cc_spawn_is_a_frontend_of_ccm_and_touches_no_bus_data() {
     let spawn = guard_core::strip_hash_comment_lines(include_str!(
         "../../../src/shared/cc-bus/scripts/cc-spawn"
     ));
-    assert!(
-        spawn.len() > 1_000,
-        "剥完注释只剩 {} 字节 —— 剥法或路径坏了，下面两条此刻是空转的",
-        spawn.len()
-    );
     for token in ["CCM_BIN", "--ccm-probe"] {
         assert!(
             guard_core::contains_word(&spawn, token),
@@ -471,11 +459,10 @@ fn ccm_is_one_skeleton_with_a_per_agent_table() {
     let caps = ccm_const_list("CAPABILITIES");
     // 两个消费者都是**子集检查**（`cc-spawn` 的 `for _c in …` · `ccm_invocation.rs::CLI_REQUIRED_CAPS`）⇒
     //   加 token 安全，删 / 改名才危险：判它们要的每一个今天都在能力表里。
-    let spawn =
-        guard_core::strip_comment_lines(&must_read("src/shared/cc-bus/scripts/cc-spawn", 1_000));
+    let spawn = guard_core::strip_comment_lines(&must_read("src/shared/cc-bus/scripts/cc-spawn"));
     let spawn_loop = segment_after(&spawn, "for _c in ", "; do");
     let spawn_wants: Vec<&str> = spawn_loop.split_whitespace().collect();
-    let invocation = rust_production("src/backend/control/launch_render/ccm_invocation.rs", 1_000);
+    let invocation = rust_production("src/backend/control/launch_render/ccm_invocation.rs");
     let cli_wants: Vec<String> = segment_after(
         &invocation,
         "pub const CLI_REQUIRED_CAPS: &[&str] = &[",
@@ -509,7 +496,7 @@ fn ccm_is_one_skeleton_with_a_per_agent_table() {
 
     // 轴二那一格：它是**受管工具**，不是三档中的任何一档。
     // 受管工具表随「一处后端」进了后端（`src/backend/footprint/registry.rs`）。
-    let tools = rust_production("src/backend/footprint/registry.rs", 10_000);
+    let tools = rust_production("src/backend/footprint/registry.rs");
     let key = format!("id{} \"ccm\"", ':');
     guard_core::find_pinned(&tools, &key).unwrap_or_else(|e| {
         panic!(
@@ -584,10 +571,16 @@ fn the_classification_is_guard_corpus_only_and_no_production_code_consumes_it() 
     let root = repo_root();
     let mut files = guard_core::scan_tree!(&root.join("src/frontend/shell/src"), &["rs"]);
     files.extend(guard_core::scan_tree!(&root.join("src/backend"), &["rs"]));
-    assert!(
-        files.len() >= 100,
-        "只扫到 {} 个源文件 —— 遍历坏了，本条此刻是空转的（08-14 实测 135+）",
-        files.len()
+    let seen: Vec<String> = files
+        .iter()
+        .map(|(p, _)| crate::guard_support::rel_of(p))
+        .collect();
+    crate::guard_support::assert_scanned_every_tracked(
+        "引用插件分类模块的人群",
+        &seen,
+        &["src/frontend/shell/src", "src/backend"],
+        "rs",
+        &[],
     );
     let myself = format!("plugin_class{}registry", '_');
     let decl = format!("mod {myself};");

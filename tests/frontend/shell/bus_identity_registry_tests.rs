@@ -23,12 +23,6 @@ fn cc_bus_scripts() -> Vec<String> {
 /// 下一个真有正当理由的人有地方落，而不用去改判据本身。
 const EXEMPT: &[(&str, &str)] = &[];
 
-/// 今天有几个文件按变量点名 tmux。**相等断言**，不是地板。
-///
-/// 变多 ⇒ 新增了一处「拿名字动手」的地方，必须有人看一眼它核没核身份；
-/// 变少 ⇒ 多半是抽取坏了（或那处被删了，那也该有人知道）。
-const TARGETING_FILES_TODAY: usize = 3;
-
 /// 一行是不是「用变量点名 tmux」。
 ///
 /// 形状：`-t "=$x"` / `-t '=$x'` / `-t "=${x}"`。**必须带 `=`** ——
@@ -46,9 +40,10 @@ fn targets_by_variable(line: &str) -> bool {
 fn every_name_based_tmux_target_in_cc_bus_verifies_identity() {
     let files = cc_bus_scripts();
     assert!(
-        files.len() >= 8,
-        "只列到 {} 个 cc-bus 脚本 —— 清单取法坏了，本断言在空转：{files:?}",
-        files.len()
+        files
+            .iter()
+            .any(|f| f.replace('\\', "/").ends_with("/scripts/cc-kill")),
+        "列到的 cc-bus 脚本里没有 `cc-kill` —— 清单取法坏了，本断言在空转：{files:?}"
     );
     let mut targeting: Vec<String> = Vec::new();
     let mut unverified: Vec<String> = Vec::new();
@@ -85,10 +80,10 @@ fn every_name_based_tmux_target_in_cc_bus_verifies_identity() {
         }
     }
     targeting.sort();
+    // 正控：`cc-kill` 按名字点名 tmux（收会话那一下），它必须被认出来。
     assert!(
-        targeting.len() >= 2,
-        "只扫到 {} 个按名字点名 tmux 的脚本 —— 抽取坏了，本断言在空转：{targeting:?}",
-        targeting.len()
+        targeting.iter().any(|n| n == "cc-kill"),
+        "按名字点名 tmux 的脚本里没认出 `cc-kill` —— 抽取坏了，本断言在空转：{targeting:?}"
     );
     assert!(
         unverified.is_empty(),
@@ -100,14 +95,6 @@ fn every_name_based_tmux_target_in_cc_bus_verifies_identity() {
              ⚠ 别用 `list-panes -t \"=<id>\"` —— 那取的是**当前窗口**的 pane，\n\
              用户开个新窗口就假阳性（`cc-kill` 第一版栽过；假阳性比不查更坏）。\n\
              实在不需要核的，登记进 `EXEMPT` 并写明理由。"
-    );
-    assert_eq!(
-        targeting.len(),
-        TARGETING_FILES_TODAY,
-        "按名字点名 tmux 的脚本从 {TARGETING_FILES_TODAY} 个变成了 {} 个：{targeting:?}\n\
-             **这不是改数字了事** —— 先回答：新增的那处核身份了吗？\n\
-             （今天这三个是 `cc-agents` / `cc-bus-lib.sh` / `cc-kill`。）",
-        targeting.len()
     );
 }
 

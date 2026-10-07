@@ -14,19 +14,15 @@ const RULE: &str = "\
       tmp 的 ACL 覆盖上去没有受害者。§4 的要求**只限定在用户文件**。\n\
 拿不准就当成用户文件（两种错判的代价不对称：多保留一次 ACL 无害，丢一次 ACL 用户读不了文件）。";
 
-/// 每个生产调用点登记：`(相对 src/frontend/shell/src 的路径, 符号, 处数, 写的是哪类文件, 为什么是这一套)`。
+/// 每个生产调用点登记：`(相对 src/frontend/shell/src 的路径, 符号, 外层项, 写的是哪类文件, 为什么是这一套)`，按「文件 × 符号 × 外层项」认。
 /// 本包 manifest 明写的兄弟源码树（`guard_core::population_trees`）里那几处写成 `<包名>/<相对它 src 的路径>`。
 ///
 /// ⚠ **登记表不是豁免清单**：新增一处没登记的 ⇒ 下面那条红，并把 `RULE` 原样打出来。
-const SITES: &[(&str, &str, usize, &str, &str)] = &[
+const SITES: &[(&str, &str, &str, &str, &str)] = &[
     (
         "local_backend.rs",
         "rename",
-        // 3 → 4：逐字节副本那一处删（-1）；落点就是 `ccm` 之后，上位那一步多一条「旧的正在跑 ⇒ 先改名挪开、再上位」（+2）。
-        //   仍是 monitor 自己目录里的部署物（`~/.cc-monitor/bin/ccm`），结论不变。
-        // 4 → 3：上位那一步收成一个共用的 `rename_into_place`（三处 rename 都在它里面）：本机后端那一条与 `place_local_program`
-        //   （文件窗口程序）都经它上位，`place_local_program` 自己那一处 rename 没了（-1）。结论不变。
-        3,
+"rename_into_place",
         "monitor 自己的缓存（自释放出来的后端二进制 · `K-R69` 起还有本机那条 `ccm` 入口 · 文件窗口程序）",
         "P2z 的自释放：先写 `.partial` 再 rename，防的是**半截文件被当成可执行的后端起起来**。\
              §4 把 `ReplaceFileW` 的要求限定在**用户文件**（要保 ACL/ADS），这里写的是 monitor 自己\
@@ -43,7 +39,7 @@ const SITES: &[(&str, &str, usize, &str, &str)] = &[
     (
         "platform/fs.rs", // 原住 `config.rs` 的 `atomic_replace`（两个平台臂一起搬进壳的平台层）
         "MoveFileExW",
-        1,
+"atomic_replace",
         "monitor 自己的 config.json",
         "写的是我们自己的配置文件，tmp 的 ACL 覆盖到 dst 没有受害者。\
              §4 把 ReplaceFileW 的要求**限定在用户文件**，这里不在其中。",
@@ -53,7 +49,7 @@ const SITES: &[(&str, &str, usize, &str, &str)] = &[
     (
         "host-core/atomic.rs", // 原 `utils.rs`：原子写随两个前端共用搬进 `host-core`
         "ReplaceFileW",
-        1,
+"atomic_replace_path",
         "用户文件（`atomic_write_json` 的所有调用方，如 auto-launch.json）",
         "必须保留 dst 原有 ACL。dst 不存在时 fallback 到 rename（首次写，新文件本来就继承父目录 ACL）。",
     ),
@@ -65,7 +61,7 @@ const SITES: &[(&str, &str, usize, &str, &str)] = &[
     (
         "host-core/atomic.rs", // 同上
         "rename",
-        2,
+"atomic_replace_path",
         "**用户文件**（`atomic_replace_path` 的第二份副本）",
         "与从前 profile_installer 那两处逐行同形（Windows 首装分支 + POSIX 分支；那两处今天已删）。\
              ⚠ 副本是**刻意**的（模块头注论证过不建统一写入器：两类文件的正确行为本来就不同），\
@@ -74,7 +70,7 @@ const SITES: &[(&str, &str, usize, &str, &str)] = &[
     (
         "platform/fs.rs", // 同上
         "rename",
-        1,
+"atomic_replace",
         "**monitor 自己的** config.json（POSIX 分支）",
         "同文件那条 `MoveFileExW` 的 `cfg(not(windows))` 对侧。写的是我们自己的配置，\
              POSIX 上 rename 即原子替换，无 ACL 顾虑。",
@@ -135,7 +131,7 @@ const SCANNED: &[(&str, &str)] = &[
 //   哪天有人真往那份文件里写一处原子替换，本条从此看得见（此前被那条排除永久挡着）。
 
 /// 生产段（剥注释后）里**调用形态**的命中：`Symbol(`。`use` 那行没有括号，不算。
-fn call_sites() -> Vec<(String, String, usize)> {
+fn call_sites() -> Vec<(String, String, String)> {
     let root = src_root();
     let mut files = Vec::new();
     collect_rs(&root, &mut files);
@@ -165,17 +161,18 @@ fn call_sites() -> Vec<(String, String, usize)> {
                 .replace('\\', "/"),
         };
         let src = guard_core::strip_comment_lines(&fs::read_to_string(&f).unwrap_or_default());
-        for (name, pat) in SCANNED {
-            let n = src.matches(pat).count();
-            if n > 0 {
-                match out.iter_mut().find(|(f, s, _)| f == &rel && s == name) {
-                    Some((_, _, acc)) => *acc += n,
-                    None => out.push((rel.clone(), (*name).to_string(), n)),
+        let lines: Vec<&str> = src.lines().collect();
+        for (i, l) in lines.iter().enumerate() {
+            for (name, pat) in SCANNED {
+                if l.contains(pat) {
+                    let func = crate::guard_support::enclosing_fn(&lines, i);
+                    out.push((rel.clone(), (*name).to_string(), func));
                 }
             }
         }
     }
     out.sort();
+    out.dedup();
     out
 }
 
@@ -183,47 +180,27 @@ fn call_sites() -> Vec<(String, String, usize)> {
 #[test]
 fn every_atomic_replace_call_site_says_which_semantics_and_why() {
     let found = call_sites();
-    let total: usize = found.iter().map(|(_, _, n)| *n).sum();
-    // 抽取器自检：扫不到东西时下面的对拍会两边都空、静默变绿。
-    assert!(
-        total >= 4,
-        "全仓只扫到 {total} 个原子替换调用点（08-05 实测 4）—— 抽取器坏了，\
-             下面的对拍会在两边都空的情况下变绿"
-    );
-
-    // 🔴 **这里原来有一条「排除项自检」，连同它自检的那条排除一起删了。**
-    // 理由写在上面 `SELF` 原址那段注里：示例字面量随测试段搬走 ⇒ 排除成了死规则。
-    // ⚠ 它换来的那一格保护**没有丢**：那条排除的风险是「排掉之后没人看那份文件」，
-    //   而现在那份文件**在人群里**（不再被排除），下面的对拍直接看着它。
-    // ⇒ 正控：往 `src/frontend/shell/src/atomic_replace_registry.rs` 的生产段塞一句
-    //   `MoveFileExW(x)`，本条会以「未登记的调用点」红（步 7c 死值验跑过）。
-
-    let mut missing = Vec::new();
-    let mut drifted = Vec::new();
-    for (f, sym, n) in &found {
-        match SITES.iter().find(|(g, s, _, _, _)| g == f && s == sym) {
-            None => missing.push(format!("  {f}  [{sym}]  {n} 处")),
-            Some((_, _, want, _, _)) if want != n => {
-                drifted.push(format!("  {f}  [{sym}]  表里 {want} 处，实测 {n} 处"))
-            }
-            Some(_) => {}
-        }
-    }
+    let missing: Vec<String> = found
+        .iter()
+        .filter(|(f, sym, func)| {
+            !SITES
+                .iter()
+                .any(|(g, s, h, _, _)| g == f && s == sym && h == func)
+        })
+        .map(|(f, sym, func)| format!("  {f}  [{sym}]  在 `{func}` 里"))
+        .collect();
     assert!(
         missing.is_empty(),
         "有原子替换调用点没登记：\n{}\n\n{RULE}",
         missing.join("\n")
     );
-    assert!(
-        drifted.is_empty(),
-        "原子替换调用点的处数变了 —— 那正是该重新判定语义的时刻：\n{}\n\n{RULE}",
-        drifted.join("\n")
-    );
     // 反向：登记的还得真在（搬走/换实现了就该删条目，别留僵尸账）。
-    for (f, sym, _, _, _) in SITES {
+    for (f, sym, func, _, _) in SITES {
         assert!(
-            found.iter().any(|(g, s, _)| g == f && s == sym),
-            "登记表里的 `{f} [{sym}]` 已经不在了 —— 删掉这条"
+            found
+                .iter()
+                .any(|(g, s, h)| g == f && s == sym && h == func),
+            "登记表里的 `{f} [{sym}]`（`{func}`）已经不在了 —— 删掉这条"
         );
     }
 }

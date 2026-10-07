@@ -29,11 +29,11 @@ fn tracked_files() -> Vec<String> {
         .filter(|rel| !rel.is_empty() && root.join(rel).is_file())
         .map(str::to_string)
         .collect();
-    // ★ 自检：清单太短 ⇒ 口径坏了，下面整族会零命中地绿。
+    // ★ 自检：口径坏了 ⇒ 下面整族会零命中地绿。正控：本文件自己在人群里。
     assert!(
-        v.len() > 300,
-        "`git ls-files` 只列出 {} 个文件 —— 口径坏了（本仓实测上千个）",
-        v.len()
+        v.iter()
+            .any(|r| r == "tests/frontend/shell/doc_claim_registry_tests.rs"),
+        "`git ls-files` 列出的清单里没有本文件 —— 口径坏了"
     );
     v
 }
@@ -132,29 +132,12 @@ fn an_untracked_scratch_file_never_enters_the_population() {
 #[test]
 fn the_doc_scan_actually_reads_the_durable_docs() {
     let files = doc_files();
-    // 〔2026-09-18 下调 11 → 10〕不是遍历坏了：`306c862e`（退役三份旧设计文档、
-    // 设计与源头归并到）删掉了 `doc/账号用量-usage抓取方案.md`。
-    // 现打 `src/doc/*.md` = 10，`git ls-files` 同为 10 ⇒ **没有文件丢，是地板没跟着改**。
-    // 〔2026-09-18 二次下调 10 → 9〕又删了一篇：
-    // `远端支持方案-agent查看器与代码全景图.md`（2026-07-20 的「设计草案，待用户定 / 未写码」，
-    // 已由那一族取代）。现打 `src/doc/*.md` = 9，`git ls-files` 同为 9。
-    // ⚠ 往下拧地板的合法理由**只有**「那些文件真的不在了」—— 这两次都是。
+    // 正控：本模块 `include_str!` 的那一份必在人群里，且读得出正文。
+    let inv = repo_root().join("src/doc/INVARIANTS.md");
     assert!(
-        files.len() >= 9,
-        "`doc/` 只扫到 {} 个 .md —— 遍历坏了（2026-09-18 现打 9 个）",
+        files.contains(&inv) && !INVARIANTS.trim().is_empty(),
+        "`doc/` 的人群里没有 `INVARIANTS.md` —— 遍历坏了（扫到 {} 份）",
         files.len()
-    );
-    let total: usize = files
-        .iter()
-        .map(|p| {
-            std::fs::read_to_string(p)
-                .map(|s| s.lines().count())
-                .unwrap_or(0)
-        })
-        .sum();
-    assert!(
-        total >= 2000,
-        "`doc/` 总共只剩 {total} 行 —— 路径或读法坏了（10-07 协议文档改成生成之后约 4000 行）"
     );
 }
 
@@ -267,10 +250,10 @@ fn every_code_symbol_named_in_the_docs_still_resolves() {
             }
         }
     }
-    // ★ 抽取器自检 1：收不到足够多的声明 ⇒ 遍历坏了，下面整条会零命中地绿。
+    // ★ 抽取器自检 1：本文件自己声明的 `repo_root` 必须被收到 ⇒ 否则遍历坏了，下面整条会零命中地绿。
     assert!(
-        decl.len() > 2000,
-        "全仓只抽到 {} 个声明符号 —— 遍历或剥法坏了（建判据当天实测 3073 个 / 133 个源文件）",
+        decl.contains_key("repo_root"),
+        "声明表里没有 `repo_root` —— 遍历或剥法坏了（抽到 {} 个）",
         decl.len()
     );
 
@@ -332,10 +315,11 @@ fn every_code_symbol_named_in_the_docs_still_resolves() {
             }
         }
     }
-    // ★ 抽取器自检 2：`doc/` 里本来就有几十处 —— 抽到个位数就是剥法坏了。
+    // ★ 抽取器自检 2：锚点 —— `INVARIANTS.md` 点名的那条起会话判据必须被收到，否则剥法坏了。
+    const REF_CANARY: &str = "every_value_is_judged_before_it_becomes_a_ccm_argument";
     assert!(
-        refs.len() >= 70,
-        "只抽到 {} 处 `file.rs::symbol` —— 剥法坏了（`doc/` 当日 73 处，扩面后另加各 README 11 处）",
+        refs.iter().any(|(.., sym)| sym == REF_CANARY),
+        "抽到 {} 处 `file.rs::symbol`，锚点 `{REF_CANARY}` 不在里面 —— 剥法坏了",
         refs.len()
     );
 
@@ -513,22 +497,12 @@ fn every_repo_path_named_in_the_docs_still_resolves() {
             }
         }
     }
-    // ★ 自检 2：数量地板 **+ 锚点**。
-    //
-    // ⚠ 只有数量地板是**不够**的，这一条是变异当场量出来的：把「带目录才算」那个条件反过来
-    // （于是收的是 `lib.rs` 这类**不带目录**的名字），`refs.len()` 照样过 90 ——
-    // **地板对「收的是不是同一类东西」完全是瞎的**，它只数个数。
-    // 补一个必须在场的锚点，人群换了就当场红。
-    assert!(
-        refs.len() >= 90,
-        "`doc/` 里只抽到 {} 处带目录的路径引用 —— 剥法坏了（建判据当天实测 119 处）",
-        refs.len()
-    );
+    // ★ 自检 2：锚点必须在场，人群换了就当场红。
     const CANARY: &str = "src/session-backend.ts";
     assert!(
         refs.iter().any(|(_, _, c)| c == CANARY),
         "抽到了 {} 条，但**锚点 `{CANARY}` 不在里面** —— 收的多半不是「带目录的仓内路径」这一类了。\n\
-             （数量地板只数个数，换一群东西照样能喂饱它。）",
+",
         refs.len()
     );
 
@@ -1168,9 +1142,8 @@ fn every_script_in_the_directory_is_listed_in_its_readme() {
     files.sort();
     // ★ 抽取器自检：目录空了或读法坏了 ⇒ 下面会零命中地绿。
     assert!(
-        files.len() >= 3,
-        "`scripts/` 只扫到 {} 个文件（README 之外）—— 遍历坏了（08-06 实测 3 个）",
-        files.len()
+        files.iter().any(|n| n == "gate.sh"),
+        "`scripts/` 的人群里没有 `gate.sh` —— 遍历坏了（扫到 {files:?}）"
     );
     let missing: Vec<&String> = files
         .iter()
@@ -1441,8 +1414,8 @@ fn every_invariants_section_cited_in_code_exists() {
         }
     }
     assert!(
-        total > 100,
-        "只扫到 {total} 处 `INVARIANTS §N` 引用 —— 根没对上，本条在空转"
+        total > 0,
+        "一处 `INVARIANTS §N` 引用都没扫到 —— 根没对上，本条在空转"
     );
     // 反向自检：一条合成的悬空引用必须被判出（针用 format! 拼，别让本文件自己进人群）。
     let ghost = format!("见 INVARIANTS {}999", '§');
