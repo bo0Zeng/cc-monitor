@@ -819,7 +819,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// p8m-refused-60s：无限额头无 retry-after 的 429 只挡 60 秒；rotation next 与真换号同一处判接不接得上；显示态每格带 full；accounts-add / 写别名结果带「重读别名」提示。
 ///
 /// p8n-mcp-sync：新写口 accounts-mcp-sync {on}；aliases-read 带 said 与 home；NameClash 带 wins（yours / list / unclear）。
-pub const BUILD_ID: &str = "p8n-mcp-sync";
+///
+/// p8o-session-new：新帧命令 session-new / session-new-facts / session-new-dir（起新会话一个请求、最近用过的目录 · 能起哪几家 · 目录在不在）；轮换 cap 的 n 收 0（那一时段不用这个号）。
+pub const BUILD_ID: &str = "p8o-session-new";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
