@@ -132,6 +132,7 @@ const LANDING_IPC = ["load_config", "backend_machines", "backend_status"] as con
  * 下面「点进本机页 ⇒ 恰好 `MACHINE_PAGE_IPC`」那一条因此也在替它作证：本机页上多挂一块别名，一发都没多。
  */
 const APP_PAGE_IPC = [
+  "diagnostics_report",
   "get_diagnostics_config",
   "get_log_file_info",
   "get_data_paths",
@@ -144,6 +145,7 @@ const APP_PAGE_IPC = [
  * （「建一次 DOM」、重开不重来）；那一块搬走之后两张表相等了，仍分开写，因为它们回答的是两个问题。
  */
 const APP_PAGE_IPC_ON_REOPEN = [
+  "diagnostics_report",
   "get_diagnostics_config",
   "get_log_file_info",
   "get_data_paths",
@@ -160,7 +162,8 @@ const FOOTPRINT_IPC = ["drift_ledger_report"] as const;
 const MACHINE_PAGE_IPC = ["footprint_client_facts", ...FOOTPRINT_IPC] as const;
 
 /** 「应用」下两个子页各自的那几发（原来合在「应用」一页里）。 */
-const LOGS_PAGE_IPC = ["get_diagnostics_config", "get_log_file_info"] as const;
+// 日志页：日志设置 · 文件 · 诊断信息那一份（「未识别数据」那一行与复制读同一份）。
+const LOGS_PAGE_IPC = ["diagnostics_report", "get_diagnostics_config", "get_log_file_info"] as const;
 const DATA_PAGE_IPC = ["get_data_paths"] as const;
 
 /** 点左侧导航的某一项。 */

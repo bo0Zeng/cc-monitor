@@ -32,13 +32,12 @@ import type { FrontResult } from "./front-result";
 import type { FrontOutcome } from "./generated/FrontOutcome";
 import { commands } from "./ipc/commands";
 import { probeSessionRecord, reasonOf, type RecordProbe } from "./session-reads";
-import { getBehavior } from "./behavior";
 // F78：远端会话「打开工作目录」→ 用该机配置开文件窗口进入远端 cwd（而非只提示打不开）。老 SFTP 面板删了。
 import { openFileWindow } from "./file-window";
 import {
   readRemoteConfig,
   findHostByOrigin,
-  resolveResumeCommand,
+  resumeCommandFor,
 } from "./remote-config";
 import { callStop, sayReply, type Reply, type StartItem } from "./tab-batch-run";
 import { startInTmuxThenAttach } from "./tmux-resume";
@@ -216,7 +215,6 @@ export class TabSessionActions {
     if (!tab || this.refuseUnseen(tab)) return;
     // 用哪个号那台判（点名的号 / 账号 0 / 跟随这条会话上次的号）；判完、开窗之前问记录还在不在（查那个号那棵树）。
     const account = askOf(accountName, useBase);
-    const behavior = await getBehavior();
     const preflight = (configDir: string | undefined): Promise<boolean> => this.recordStillThere(tab, configDir);
     if (isRemoteOrigin(tab.origin)) {
       const origin = tab.origin;
@@ -225,7 +223,7 @@ export class TabSessionActions {
         ACTIVE_AGENT,
         sid,
         tab.projectDir ?? "",
-        await resolveResumeCommand(origin, behavior.resumeCommandRemote),
+        await resumeCommandFor(origin),
         { account, preflight },
       );
       return;
@@ -236,7 +234,7 @@ export class TabSessionActions {
       sid,
       cwd: tab.projectDir ?? "",
       account,
-      launcher: behavior.resumeCommandLocal,
+      launcher: await resumeCommandFor(tab.origin),
       preflight,
     });
   }

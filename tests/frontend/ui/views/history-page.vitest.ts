@@ -66,9 +66,9 @@ vi.mock("../../../../src/frontend/ui/remote-launch-run", () => ({
   runNewSessionRemote: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("../../../../src/frontend/ui/behavior", () => ({
-  getBehavior: () => Promise.resolve({ resumeCommandLocal: "", resumeCommandRemote: "" }),
+  getBehavior: () => Promise.resolve({ resumeCommand: "" }),
 }));
-vi.mock("../../../../src/frontend/ui/remote-config", () => ({ resolveResumeCommand: () => Promise.resolve("") }));
+vi.mock("../../../../src/frontend/ui/remote-config", () => ({ resumeCommandFor: () => Promise.resolve("") }));
 
 import { invoke } from "@tauri-apps/api/core";
 import { HistoryView } from "../../../../src/frontend/ui/views/history";

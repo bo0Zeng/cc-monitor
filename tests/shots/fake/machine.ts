@@ -286,6 +286,7 @@ export function machineCommands(): Record<string, CommandHandler> {
       webviewUserDataDir: null,
     }),
     get_diagnostics_config: () => ({ log_enabled: true, log_level: "info", error_toast: true, max_files: 7 }),
+    set_diagnostics_config: () => "needs_restart",
     get_log_file_info: () => ({
       dir: `${HOME}/.cc-monitor/logs`,
       current_file: `${HOME}/.cc-monitor/logs/monitor.2026-10-01.log`,
@@ -299,6 +300,19 @@ export function machineCommands(): Record<string, CommandHandler> {
     cc_get_auto_launch: () => ({ auto_launch_enabled: false, monitor_exe_path: "/opt/cc-monitor/cc-monitor" }),
     ccm_user_path_status: () => ({ supported: false, dir: null, onUserPath: false, addCommand: null, removeCommand: null, error: null }),
     drift_ledger_report: (a) => ({ origin: String(a.origin ?? "<local>"), faces: [] }),
+    diagnostics_report: (a) => {
+      const keys = (a.configUnknown as string[] | undefined) ?? [];
+      return {
+        text: ["cc-monitor 诊断信息", "版本 4.1.1 · 构建 p8n-mcp-sync · linux", "各机器：", "  本机 · up · 版本 4.1.1 · 构建 p8n-mcp-sync", "  devbox · up · 版本 4.1.1 · 构建 p8n-mcp-sync", "未识别数据：", "  devbox · 会话记录 3 条", `  config.json · ${keys.length} 项`, `日志：${HOME}/.cc-monitor/logs/monitor.2026-10-01.log`].join("\n"),
+        unknown: [
+          { machine: "本机", records: 0 },
+          { machine: "devbox", records: 3 },
+          { machine: "gpu-01", records: 0 },
+          { machine: "win-laptop", records: 0 },
+        ],
+        configUnknown: keys.length,
+      };
+    },
     footprint_client_facts: () => ({}),
   };
 }

@@ -41,7 +41,10 @@ import { claudeDirProblem } from "./claude-dir-check";
 import { createUnknownKeysBar, rerenderUnknownKeys } from "./unknown-keys-notice"; // 🔴 P12：未知键要出声
 import { getCurrentMachine, setCurrentMachine } from "./machine-context";
 import { LOCAL_ORIGIN, isLocalOrigin } from "../ipc/origin";
-import { toast } from "../kit/toast"; // 行为设置落盘失败出声
+import { toast } from "../kit/toast";
+import { toggleSwitch } from "../kit/switch";
+
+type SwitchHandle = ReturnType<typeof toggleSwitch>;
 import { machineFace, type MachineFix, type MachineState } from "./machine-state";
 import {
   LOCAL_MACHINE_PAGE_ID,
@@ -60,7 +63,8 @@ import {
 } from "../behavior";
 import { diagnoseRemoteLauncher } from "../launcher-diagnostics";
 import { buildUnknownOsAliasBlock, localShell, rereadAliases } from "./machine-aliases"; // 机器页 ②「别名」（两个平台一份，含 PowerShell 的终端集成）
-import { buildConfigPage } from "./config-page"; // 机器页「别名与配置文件」那一栏
+import { buildConfigPage } from "./config-page";
+import { localResumeRow } from "./local-resume-row"; // 机器页「别名与配置文件」那一栏
 import { dispatcher } from "../keybindings/registry";
 import { KeybindingsEditor } from "../keybindings/editor";
 // F82a：独立设置窗口——保存后广播 `settings-applied`，主窗口 listen 后重读并应用主题/行为
@@ -284,21 +288,21 @@ export class SettingsPanel {
   /** 「终端」栏「直接敲的 claude 也走中转」那一块：回到机器页时展开过就重问。 */
   private relayOptin?: RelayOptinSection;
 
-  // v2.4 issue #2: 行为类 toggle
-  private autoFollowCheckbox!: HTMLInputElement;
-  private showBgCheckbox!: HTMLInputElement;
-  private notifyTurnEndCheckbox!: HTMLInputElement;
-  private notifyNeedsCheckbox!: HTMLInputElement;
-  // F34：自定义 resume 命令（本地 / 远端）
-  private resumeLocalInput!: HTMLInputElement;
-  private resumeRemoteInput!: HTMLInputElement;
-  /** P6c：两格各自的预设条（chip 行）与当前列表。 */
-  private resumeLocalPresetsBox!: HTMLElement;
-  private resumeRemotePresetsBox!: HTMLElement;
-  private resumeLocalPresets: string[] = [];
-  private resumeRemotePresets: string[] = [];
+  // 通用页「行为」那几个开关与「恢复」那一组（拨了马上存；存失败拇指退回 ＋ 行下一句）
+  private autoFollowSw!: SwitchHandle;
+  private bringFrontSw!: SwitchHandle;
+  private showBgSw!: SwitchHandle;
+  private notifyTurnEndSw!: SwitchHandle;
+  private notifyNeedsSw!: SwitchHandle;
+  private resumeInTmuxSw!: SwitchHandle;
+  /** 打开时读回的那一份行为（开关拨动按它改一格再存）。 */
+  private behaviorNow: BehaviorConfig | null = null;
+  /** 恢复命令那一格（各台的默认）与它的预设条 · 存失败时的那一句。 */
+  private resumeInput!: HTMLInputElement;
+  private resumePresetsBox!: HTMLElement;
+  private resumePresets: string[] = [];
+  private resumeError!: HTMLElement;
   private remoteLauncherWarning!: HTMLElement; // F08：越层启动器诊断提示（只诊断，不代改）
-  private bringFrontCheckbox!: HTMLInputElement;
   private onBehaviorChange?: (cfg: BehaviorConfig) => void;
   /** F82a：见 SettingsPanelOptions.windowMode。 */
   private readonly windowMode: boolean;
@@ -415,15 +419,10 @@ export class SettingsPanel {
     const controls: HTMLInputElement[] = [
       ...[...this.inputs.values()].filter((c): c is HTMLInputElement => c instanceof HTMLInputElement),
       this.claudeDirInput,
-      this.autoFollowCheckbox,
-      this.bringFrontCheckbox,
-      this.showBgCheckbox,
-      this.notifyTurnEndCheckbox,
-      this.notifyNeedsCheckbox,
-      this.resumeLocalInput,
-      this.resumeRemoteInput,
+      this.resumeInput,
     ];
     for (const c of controls) c.disabled = pending;
+    for (const sw of this.behaviorSwitches()) sw.input.setAttribute("aria-disabled", String(pending));
     if (!pending) this.updateBringFrontEnabled();
   }
 
@@ -436,20 +435,17 @@ export class SettingsPanel {
     this.claudeDirInput.value = this.claudeDirOriginal;
     // v2.4 issue #2: 每次打开拉最新 behavior，避免跟外部其他改动脱节
     const behavior = behaviorIn(cfg);
-    this.autoFollowCheckbox.checked = behavior.autoFollowUserActive;
-    this.bringFrontCheckbox.checked = behavior.bringMonitorToFrontOnUserActive;
-    this.showBgCheckbox.checked = behavior.showBgSessions;
+    this.behaviorNow = behavior;
+    this.autoFollowSw.set(behavior.autoFollowUserActive);
+    this.bringFrontSw.set(behavior.bringMonitorToFrontOnUserActive);
+    this.showBgSw.set(behavior.showBgSessions);
     // E62：记下打开设置时的值，只有**真的改了**才供货（每次 toggle 都标会把噪音变回来）。
     this.showBgOriginal = behavior.showBgSessions;
-    this.notifyTurnEndCheckbox.checked = behavior.notifyTurnEnd;
-    this.notifyNeedsCheckbox.checked = behavior.notifyNeeds;
-    this.resumeLocalInput.value = behavior.resumeCommandLocal;
-    this.resumeRemoteInput.value = behavior.resumeCommandRemote;
-    // ⚠ `?? []` 不是防 `behaviorIn`（它总会填缺省），是防**这一排 chip 掀翻整个面板**：
-    // 实测缺字段时 `renderResumePresets` 抛错 ⇒ `open()` 整个中断 ⇒ 面板停在错误的页。
-    // 一个装饰性的候选条不该有那种权力。
-    this.resumeLocalPresets = behavior.resumeCommandLocalPresets ?? [];
-    this.resumeRemotePresets = behavior.resumeCommandRemotePresets ?? [];
+    this.notifyTurnEndSw.set(behavior.notifyTurnEnd);
+    this.notifyNeedsSw.set(behavior.notifyNeeds);
+    this.resumeInTmuxSw.set(behavior.resumeInTmux);
+    this.resumeInput.value = behavior.resumeCommand;
+    this.resumePresets = behavior.resumeCommandPresets;
     this.renderResumePresets();
     this.updateRemoteLauncherWarning();
     this.syncInputs();
@@ -457,119 +453,106 @@ export class SettingsPanel {
 
   /** v2.4 issue #2: autoFollow 关 → bringFront 灰显（依赖前者，无意义） */
   private updateBringFrontEnabled(): void {
-    this.bringFrontCheckbox.disabled = !this.autoFollowCheckbox.checked;
+    const on = this.behaviorNow?.autoFollowUserActive ?? true;
+    this.bringFrontSw.input.setAttribute("aria-disabled", String(!on));
   }
 
-  /** F08：越层启动器诊断——只读提示，不碰 `resumeRemoteInput.value` 本身（设计
+  /** 行为那几个开关（读配置时整组禁用）。 */
+  private behaviorSwitches(): SwitchHandle[] {
+    return [this.autoFollowSw, this.bringFrontSw, this.showBgSw, this.notifyTurnEndSw, this.notifyNeedsSw, this.resumeInTmuxSw];
+  }
+
+  /** F08：越层启动器诊断——只读提示，不碰恢复命令那一格本身（设计
    *  原则#7：只诊断+引导迁移，不自动降级、不偷改配置）。 */
   private updateRemoteLauncherWarning(): void {
-    const msg = diagnoseRemoteLauncher(this.resumeRemoteInput.value);
+    const msg = diagnoseRemoteLauncher(this.resumeInput.value);
     this.remoteLauncherWarning.textContent = msg ?? "";
     this.remoteLauncherWarning.style.display = msg ? "block" : "none";
   }
 
   /**
-   * P6c：把两格的预设渲染成可点的 chip。
-   *
-   * ⚠ **远端那格点完必须走同一条越层诊断**（`updateRemoteLauncherWarning`）。
-   * 理由在远端输入框自己的 tooltip 里逐字写着：「别填 `cct` 这类自己建 tmux 的命令」——
-   * 手打错一次是一次，**存成预设是把错误固化成一键**。预设是个放大器，
-   * 不让它走诊断的话，本件是净减安全性。
+   * P6c：恢复命令的预设渲染成可点的 chip。点完走同一条越层诊断（`updateRemoteLauncherWarning`）：
+   * 这一格也是远端几台的默认，存成预设是把错误固化成一键。
    */
   private renderResumePresets(): void {
-    const fill = (
-      box: HTMLElement,
-      list: readonly string[],
-      input: HTMLInputElement,
-      remote: boolean,
-    ): void => {
-      box.replaceChildren();
-      for (const cmd of list) {
-        const wrap = document.createElement("span");
-        wrap.className = "settings-preset-wrap";
-        const chip = document.createElement("button");
-        chip.type = "button";
-        chip.className = "settings-btn settings-preset";
-        chip.textContent = cmd;
-        chip.title = cmd;
-        chip.addEventListener("click", () => {
-          input.value = cmd;
-          if (remote) this.updateRemoteLauncherWarning();
-          void this.onBehaviorToggle();
-        });
-        // ★ **只进不出是个缺陷**〔D 阶段补审〕：打错一个 `ccmm`，它会一直占着位子，
-        // 直到被后来的 12 条挤出去。成例抄 SFTP 书签栏那个 `×`（`sftp/panel.ts:595`）。
-        const del = document.createElement("button");
-        del.type = "button";
-        del.className = "settings-btn settings-preset-del";
-        del.textContent = copyText("settingsPanel.preset.remove");
-        // ⚠ **正在生效的那条不给移除**：这张表的含义是「用过的命令」，
-        // 而移除一条**此刻正在用**的命令是自相矛盾的 —— 保存时它必然又被记回来
-        // （`withResumePreset` 会把输入框里的值并进去），用户会看见「点了没反应」。
-        // 与其造那种假象，不如当场说清为什么点不了。
-        const active = input.value.trim() === cmd;
-        del.disabled = active;
-        del.title = active
-          ? copyText("settingsPanel.preset.inUse", { cmd })
-          : copyText("settingsPanel.preset.removeHint", { cmd });
-        del.addEventListener("click", () => void this.removeResumePreset(cmd, remote));
-        wrap.append(chip, del);
-        box.appendChild(wrap);
-      }
-    };
-    fill(this.resumeLocalPresetsBox, this.resumeLocalPresets, this.resumeLocalInput, false);
-    fill(this.resumeRemotePresetsBox, this.resumeRemotePresets, this.resumeRemoteInput, true);
+    const box = this.resumePresetsBox;
+    const input = this.resumeInput;
+    box.replaceChildren();
+    for (const cmd of this.resumePresets) {
+      const wrap = document.createElement("span");
+      wrap.className = "settings-preset-wrap";
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "settings-btn settings-preset";
+      chip.textContent = cmd;
+      chip.title = cmd;
+      chip.addEventListener("click", () => {
+        input.value = cmd;
+        this.updateRemoteLauncherWarning();
+        void this.saveResumeCommand();
+      });
+      const del = document.createElement("button");
+      del.type = "button";
+      del.className = "settings-btn settings-preset-del";
+      del.textContent = copyText("settingsPanel.preset.remove");
+      // 正在生效的那条不给移除：存时它必然又被记回来（`withResumePreset` 把输入框里的值并进去）。
+      const active = input.value.trim() === cmd;
+      del.disabled = active;
+      del.title = active ? copyText("settingsPanel.preset.inUse", { cmd }) : copyText("settingsPanel.preset.removeHint", { cmd });
+      del.addEventListener("click", () => void this.removeResumePreset(cmd));
+      wrap.append(chip, del);
+      box.appendChild(wrap);
+    }
   }
 
   /** P6c：把一条预设从列表里拿掉并落盘。生效中的那条到不了这里（按钮是 disabled 的）。 */
-  private async removeResumePreset(cmd: string, remote: boolean): Promise<void> {
-    if (remote) this.resumeRemotePresets = this.resumeRemotePresets.filter((x) => x !== cmd);
-    else this.resumeLocalPresets = this.resumeLocalPresets.filter((x) => x !== cmd);
-    await this.onBehaviorToggle();
+  private async removeResumePreset(cmd: string): Promise<void> {
+    const b = this.behaviorNow;
+    if (!b) return;
+    await this.saveBehavior({ ...b, resumeCommandPresets: b.resumeCommandPresets.filter((x) => x !== cmd) });
   }
 
-  /** v2.4 issue #2: 任一行为 toggle 改 → 立即 save + 通知 TabManager 同步 */
-  private async onBehaviorToggle(): Promise<void> {
-    this.updateBringFrontEnabled();
-    const next: BehaviorConfig = {
-      autoFollowUserActive: this.autoFollowCheckbox.checked,
-      bringMonitorToFrontOnUserActive: this.bringFrontCheckbox.checked,
-      showBgSessions: this.showBgCheckbox.checked,
-      resumeCommandLocal: this.resumeLocalInput.value.trim(),
-      resumeCommandRemote: this.resumeRemoteInput.value.trim(),
-      // P6c：**保存时记一次**，不猜。空值不进（空 = 用默认，不是一条命令）——
-      // 那条规则住在 `withResumePreset` 里，这里不重写一遍。
-      resumeCommandLocalPresets: withResumePreset(
-        this.resumeLocalPresets,
-        this.resumeLocalInput.value,
-      ),
-      resumeCommandRemotePresets: withResumePreset(
-        this.resumeRemotePresets,
-        this.resumeRemoteInput.value,
-      ),
-      notifyTurnEnd: this.notifyTurnEndCheckbox.checked,
-      notifyNeeds: this.notifyNeedsCheckbox.checked,
-    };
+  /** 恢复命令那一格失焦 / 回车 / 点预设：存，并记进用过的那几条（空 ＝ 用那台后端的默认，不记）。 */
+  private async saveResumeCommand(): Promise<void> {
+    const b = this.behaviorNow;
+    if (!b) return;
+    const cmd = this.resumeInput.value.trim();
+    await this.saveBehavior({ ...b, resumeCommand: cmd, resumeCommandPresets: withResumePreset(b.resumeCommandPresets, cmd) });
+  }
+
+  /** 拨一个开关：按读回的那份改这一格再存；没读回 / 存失败 ⇒ `false`（拇指退回）。 */
+  private async flipBehavior(patch: Partial<BehaviorConfig>, errorAt: HTMLElement): Promise<boolean> {
+    const b = this.behaviorNow;
+    if (!b) return false;
+    return this.saveBehavior({ ...b, ...patch }, errorAt);
+  }
+
+  /**
+   * 存一份行为（开关 · 恢复命令 · 删预设都走这里）。存成了才换内存里那份、重画预设、通知主窗口；
+   * 存失败 ⇒ 回 `false`、行下那一句说为什么，盘上与界面都还是原来那份。
+   */
+  private async saveBehavior(next: BehaviorConfig, errorAt: HTMLElement = this.resumeError): Promise<boolean> {
+    errorAt.hidden = true;
     try {
       await setBehavior(next);
-      // 存成功了才更新内存里那份并重画 —— 存失败还改了 UI，就是让面板说一件没发生的事。
-      this.resumeLocalPresets = next.resumeCommandLocalPresets;
-      this.resumeRemotePresets = next.resumeCommandRemotePresets;
-      this.renderResumePresets();
-      // E62：`showBgSessions` 是**重启生效**的（`behavior.ts` 的字段注释逐字写着：
-      // 后端启动时读一次 —— 本地扫描过滤 + 远端 backend `--with-bg`）。改了却不供货，
-      // 用户就只能靠记性知道「我刚才改的那个还没生效」。
-      if (next.showBgSessions !== this.showBgOriginal) {
-        markRestartNeeded(copyText("settingsPanel.behavior.hiddenTasks"));
-        this.showBgOriginal = next.showBgSessions;
-      }
-      this.onBehaviorChange?.(next); // 同窗（主窗口浮层）直接同步 TabManager
-      this.broadcastApplied(); // 窗口模式：广播让主窗口 applyBehavior
     } catch (e) {
       console.warn("save behavior failed:", e);
-      // 从前只记日志：勾选框已经翻了、盘上没变，界面一句不说（E §3.3）。
-      toast(copyText("settings.behavior.saveFailed"), String(e));
+      errorAt.textContent = copyText("settings.behavior.saveFailedLine", { why: String(e) });
+      errorAt.hidden = false;
+      return false;
     }
+    this.behaviorNow = next;
+    this.resumePresets = next.resumeCommandPresets;
+    this.renderResumePresets();
+    this.updateBringFrontEnabled();
+    // E62：`showBgSessions` 是重启生效的（后端启动时读一次）⇒ 真改了才供货「重启后生效」。
+    if (next.showBgSessions !== this.showBgOriginal) {
+      markRestartNeeded(copyText("settingsPanel.behavior.hiddenTasks"));
+      this.showBgOriginal = next.showBgSessions;
+    }
+    this.onBehaviorChange?.(next); // 同窗（主窗口浮层）直接同步 TabManager
+    this.broadcastApplied(); // 窗口模式：广播让主窗口 applyBehavior
+    return true;
   }
 
   /**
@@ -619,9 +602,12 @@ export class SettingsPanel {
 
   /** 主窗口翻过的那两格照它说的值摆上。 */
   private showBehaviorToggled(b: BehaviorToggled): void {
-    this.autoFollowCheckbox.checked = b.autoFollowUserActive;
-    this.bringFrontCheckbox.checked = b.bringMonitorToFrontOnUserActive;
-    if (!this.autoFollowCheckbox.disabled) this.updateBringFrontEnabled(); // 还在读配置（整组禁用）时不提前放开
+    if (this.behaviorNow) {
+      this.behaviorNow = { ...this.behaviorNow, autoFollowUserActive: b.autoFollowUserActive, bringMonitorToFrontOnUserActive: b.bringMonitorToFrontOnUserActive };
+    }
+    this.autoFollowSw.set(b.autoFollowUserActive);
+    this.bringFrontSw.set(b.bringMonitorToFrontOnUserActive);
+    if (this.autoFollowSw.input.getAttribute("aria-disabled") !== "true") this.updateBringFrontEnabled(); // 还在读配置（整组禁用）时不提前放开
   }
 
   /** 带目的地打开：直达那一页（那一栏），高亮那一节 1.5 秒。认不出的格忽略。 */
@@ -952,7 +938,8 @@ export class SettingsPanel {
     const cc: HTMLElement[] = [];
     if (origin && this.backendSection) {
       try {
-        cc.push(this.backendSection.cellsFor(origin, { rows: parts ? [parts.components] : [], trailing: parts?.uninstall }));
+        const rows = parts ? [parts.components] : local ? [localResumeRow()] : [];
+        cc.push(this.backendSection.cellsFor(origin, { rows, trailing: parts?.uninstall }));
       } catch (e) {
         // 那几格没建起来不许把这一页带走（那台退到后端清单的尾巴里）。
         console.warn("[settings] 这台上的 cc-monitor 那几格没建起来：", e);
@@ -1004,16 +991,18 @@ export class SettingsPanel {
 
     const generalPage = document.createElement("div");
     generalPage.appendChild(this.safeBlock(copyText("settingsPanel.group.behavior"), () => this.buildBehaviorGroup()));
-    generalPage.appendChild(
-      this.safeBlock(copyText("contextLimits.editor.title"), () => new ContextLimitsSection().element, { untitled: true }),
-    );
+    generalPage.appendChild(this.safeBlock(copyText("settingsPanel.group.resume"), () => this.buildResumeGroup()));
+    const limitsBlock = this.safeBlock(copyText("contextLimits.editor.title"), () => new ContextLimitsSection().element, { untitled: true });
+    // 主窗口［设上限］开 `{page: "general", anchor: "context-limits"}`：落到这一节（展开）并高亮。
+    limitsBlock.dataset.anchor = "context-limits";
+    generalPage.appendChild(limitsBlock);
 
     const logsPage = document.createElement("div");
     logsPage.appendChild(
       this.safeBlock(
         copyText("settingsPanel.group.logs"),
         () => {
-          const sec = new DiagnosticsSection({ headless: true });
+          const sec = new DiagnosticsSection();
           this.logsSection = sec;
           return sec.element;
         },
@@ -1316,7 +1305,14 @@ export class SettingsPanel {
     router.addRoute({ id: PAGE.ext, title: copyText("settingsPanel.nav.ext"), element: extPage, icon: NAV_ICON.ext });
     router.addRoute({ id: PAGE.appearance, title: copyText("settingsPanel.nav.appearance"), element: appearancePage, icon: NAV_ICON.appearance, gapBefore: true });
     router.addRoute({ id: PAGE.general, title: copyText("settingsPanel.nav.general"), element: generalPage, icon: NAV_ICON.general });
-    router.addRoute({ id: PAGE.logs, title: copyText("settingsPanel.nav.logs"), element: logsPage, parentId: PAGE.general });
+    router.addRoute({
+      id: PAGE.logs,
+      title: copyText("settingsPanel.nav.logs"),
+      element: logsPage,
+      parentId: PAGE.general,
+      sub: copyText("diagnostics.page.sub"),
+      headActions: this.logsSection ? [this.logsSection.headButton()] : [],
+    });
     this.loadOnFirstVisit(PAGE.logs, () => this.logsSection?.loadNow());
     router.onNavigate((id) => {
       if (id === PAGE.ext) this.extSection?.loadNow();
@@ -1460,155 +1456,93 @@ export class SettingsPanel {
     this.revealPerMachineFallback(copyText("settingsPanel.machines.unreadable"));
   }
 
-  /**
-   * v2.4 issue #2: 「行为」分组——自动切 tab + 可选拉前 monitor 窗口。
-   *
-   * 两个 toggle 都是热更新（不重启）。"拉前窗口" 在 "自动切 tab" 关闭时灰显
-   * （前者依赖后者，单独开没意义）。
-   */
+  /** 一个开关行 ＋ 它下面那一句（存失败时说为什么）。`indent` ＝ 挂在上一项下面（上一项关着时禁用）。 */
+  private behaviorSwitch(
+    into: HTMLElement,
+    label: string,
+    help: string | undefined,
+    patch: (on: boolean) => Partial<BehaviorConfig>,
+    indent = false,
+  ): SwitchHandle {
+    const row = document.createElement("div");
+    row.className = indent ? "settings-switch-row settings-switch-row-indent" : "settings-switch-row";
+    const err = document.createElement("div");
+    err.className = "settings-row-error";
+    err.hidden = true;
+    const sw = toggleSwitch({ label, help, on: false, onChange: (on) => this.flipBehavior(patch(on), err) });
+    row.append(sw.root, err);
+    into.appendChild(row);
+    return sw;
+  }
+
+  /** 通用页「行为」：五个开关，拨了马上生效、马上存（C4）。「同时提到前台」挂在上一项下，上一项关着时禁用。 */
   private buildBehaviorGroup(): HTMLElement {
-    // CollapsibleGroup 接管标题与描述（infoTooltip），这里只产出表单本体
     const group = document.createElement("div");
     group.className = "settings-group settings-headless";
-
-    // 1. 自动切 tab
-    const autoRow = document.createElement("label");
-    autoRow.className = "settings-row settings-row-checkbox";
-    this.autoFollowCheckbox = document.createElement("input");
-    this.autoFollowCheckbox.type = "checkbox";
-    this.autoFollowCheckbox.className = "settings-checkbox";
-    this.autoFollowCheckbox.addEventListener(
-      "change",
-      () => void this.onBehaviorToggle(),
+    this.autoFollowSw = this.behaviorSwitch(group, copyText("settingsPanel.behavior.autoFollow"), undefined, (on) => ({ autoFollowUserActive: on }));
+    this.bringFrontSw = this.behaviorSwitch(
+      group,
+      copyText("settingsPanel.behavior.autoFront"),
+      copyText("settingsPanel.behavior.autoFrontHelp"),
+      (on) => ({ bringMonitorToFrontOnUserActive: on }),
+      true,
     );
-    autoRow.appendChild(this.autoFollowCheckbox);
-    const autoLabel = document.createElement("span");
-    autoLabel.className = "settings-checkbox-label";
-    autoLabel.textContent = copyText("settingsPanel.behavior.autoFollow");
-    autoRow.appendChild(autoLabel);
-    group.appendChild(autoRow);
+    this.showBgSw = this.behaviorSwitch(group, copyText("settingsPanel.behavior.showHiddenTasks"), copyText("settingsPanel.behavior.showHiddenTasksHelp"), (on) => ({
+      showBgSessions: on,
+    }));
+    this.notifyTurnEndSw = this.behaviorSwitch(group, copyText("settingsPanel.behavior.turnNotify"), copyText("settingsPanel.behavior.notifyHelp"), (on) => ({
+      notifyTurnEnd: on,
+    }));
+    this.notifyNeedsSw = this.behaviorSwitch(group, copyText("settingsPanel.behavior.notifyNeeds"), copyText("settingsPanel.behavior.notifyHelp"), (on) => ({
+      notifyNeeds: on,
+    }));
+    return group;
+  }
 
-    // 2. 拉前 monitor 窗口
-    const frontRow = document.createElement("label");
-    frontRow.className = "settings-row settings-row-checkbox";
-    this.bringFrontCheckbox = document.createElement("input");
-    this.bringFrontCheckbox.type = "checkbox";
-    this.bringFrontCheckbox.className = "settings-checkbox";
-    this.bringFrontCheckbox.addEventListener(
-      "change",
-      () => void this.onBehaviorToggle(),
-    );
-    frontRow.appendChild(this.bringFrontCheckbox);
-    const frontLabel = document.createElement("span");
-    frontLabel.className = "settings-checkbox-label";
-    frontLabel.textContent = copyText("settingsPanel.behavior.autoFront");
-    frontRow.appendChild(frontLabel);
-    group.appendChild(frontRow);
-
-    // 3. Batch7-F24：显示 bg 后台任务会话
-    const bgRow = document.createElement("label");
-    bgRow.className = "settings-row settings-row-checkbox";
-    this.showBgCheckbox = document.createElement("input");
-    this.showBgCheckbox.type = "checkbox";
-    this.showBgCheckbox.className = "settings-checkbox";
-    this.showBgCheckbox.addEventListener(
-      "change",
-      () => void this.onBehaviorToggle(),
-    );
-    bgRow.appendChild(this.showBgCheckbox);
-    const bgLabel = document.createElement("span");
-    bgLabel.className = "settings-checkbox-label";
-    bgLabel.textContent =
-      copyText("settingsPanel.behavior.showHiddenTasks");
-    bgRow.appendChild(bgLabel);
-    group.appendChild(bgRow);
-
-    // 4. Batch14-F42：turn-end 系统通知
-    const notifyRow = document.createElement("label");
-    notifyRow.className = "settings-row settings-row-checkbox";
-    this.notifyTurnEndCheckbox = document.createElement("input");
-    this.notifyTurnEndCheckbox.type = "checkbox";
-    this.notifyTurnEndCheckbox.className = "settings-checkbox";
-    this.notifyTurnEndCheckbox.addEventListener(
-      "change",
-      () => void this.onBehaviorToggle(),
-    );
-    notifyRow.appendChild(this.notifyTurnEndCheckbox);
-    const notifyLabel = document.createElement("span");
-    notifyLabel.className = "settings-checkbox-label";
-    notifyLabel.textContent = copyText("settingsPanel.behavior.turnNotify");
-    notifyRow.appendChild(notifyLabel);
-    group.appendChild(notifyRow);
-
-    // 4b. 需要你 · 系统通知（默认开、只在主窗口不在前台时发；与上一格分开）
-    const needsRow = document.createElement("label");
-    needsRow.className = "settings-row settings-row-checkbox";
-    this.notifyNeedsCheckbox = document.createElement("input");
-    this.notifyNeedsCheckbox.type = "checkbox";
-    this.notifyNeedsCheckbox.className = "settings-checkbox";
-    this.notifyNeedsCheckbox.addEventListener("change", () => void this.onBehaviorToggle());
-    needsRow.appendChild(this.notifyNeedsCheckbox);
-    const needsLabel = document.createElement("span");
-    needsLabel.className = "settings-checkbox-label";
-    needsLabel.textContent = copyText("settingsPanel.behavior.notifyNeeds");
-    needsRow.appendChild(needsLabel);
-    group.appendChild(needsRow);
-
-    // 5. F34：自定义 resume 启动命令（历史浏览器 ↺ 用）。change 事件（失焦/回车）保存，
-    //    避免逐键写盘。本地命令后端有防注入校验（仅字母数字 -_. 空格）。
-    const mkResumeRow = (
-      labelText: string,
-      placeholder: string,
-      titleText: string,
-    ): [HTMLElement, HTMLInputElement] => {
-      const row = document.createElement("label");
-      row.className = "settings-row";
-      row.title = titleText;
-      const span = document.createElement("span");
-      span.className = "settings-label";
-      span.textContent = labelText;
-      row.appendChild(span);
-      const input = document.createElement("input");
-      input.type = "text";
-      input.className = "settings-input";
-      input.placeholder = placeholder;
-      input.addEventListener("change", () => void this.onBehaviorToggle());
-      row.appendChild(input);
-      return [row, input];
-    };
-    const [localRow, localInput] = mkResumeRow(
-      copyText("settingsPanel.behavior.localResume"),
-      copyText("settingsPanel.behavior.localResumeHint"),
-      copyText("settingsPanel.behavior.localResumeInfo"),
-    );
-    this.resumeLocalInput = localInput;
-    group.appendChild(localRow);
-    this.resumeLocalPresetsBox = document.createElement("div");
-    this.resumeLocalPresetsBox.className = "settings-presets resume-presets-local";
-    group.appendChild(this.resumeLocalPresetsBox);
-    const [remoteRow, remoteInput] = mkResumeRow(
-      copyText("settingsPanel.behavior.remoteResume"),
-      copyText("settingsPanel.behavior.remoteResumeHint"),
-      copyText("settingsPanel.behavior.remoteResumeInfo"),
-    );
-    this.resumeRemoteInput = remoteInput;
-    group.appendChild(remoteRow);
-    this.resumeRemotePresetsBox = document.createElement("div");
-    this.resumeRemotePresetsBox.className = "settings-presets resume-presets-remote";
-    group.appendChild(this.resumeRemotePresetsBox);
-    // F08：越层启动器诊断——只诊断+引导，不自动改这个输入框的值（设计原则#7）。
+  /**
+   * 通用页「恢复」：恢复命令（各台的默认；每台可在「这台上的 cc-monitor」里单独设一格盖过它）＋ 用过的几条 ·
+   * 恢复到 tmux 里（历史页［恢复 ▾］与标签页「恢复 ▸」默认的「运行于」）。
+   */
+  private buildResumeGroup(): HTMLElement {
+    const group = document.createElement("div");
+    group.className = "settings-group settings-headless";
+    const row = document.createElement("label");
+    row.className = "settings-row";
+    const text = document.createElement("span");
+    text.className = "settings-label";
+    text.textContent = copyText("settingsPanel.behavior.resume");
+    const help = document.createElement("span");
+    help.className = "settings-hint";
+    help.textContent = copyText("settingsPanel.behavior.resumeHelp");
+    const textCol = document.createElement("span");
+    textCol.className = "settings-label-col";
+    textCol.append(text, help);
+    row.appendChild(textCol);
+    this.resumeInput = document.createElement("input");
+    this.resumeInput.type = "text";
+    this.resumeInput.className = "settings-input settings-input-mono";
+    this.resumeInput.placeholder = copyText("settingsPanel.behavior.resumeHint");
+    this.resumeInput.spellcheck = false;
+    this.resumeInput.autocomplete = "off";
+    this.resumeInput.addEventListener("change", () => void this.saveResumeCommand());
+    this.resumeInput.addEventListener("input", () => this.updateRemoteLauncherWarning());
+    row.appendChild(this.resumeInput);
+    group.appendChild(row);
+    this.resumePresetsBox = document.createElement("div");
+    this.resumePresetsBox.className = "settings-presets resume-presets";
+    group.appendChild(this.resumePresetsBox);
+    // F08：越层启动器诊断——只诊断 ＋ 引导，不自动改这一格（设计原则 #7）。
     this.remoteLauncherWarning = document.createElement("div");
     this.remoteLauncherWarning.className = "settings-launcher-warning";
     this.remoteLauncherWarning.style.display = "none";
     group.appendChild(this.remoteLauncherWarning);
-    remoteInput.addEventListener("input", () =>
-      this.updateRemoteLauncherWarning(),
-    );
-    // 这里原来挂着两块别名（「按账号生成命令」·「生成自定义别名」）。
-    // 它们合成一类、搬去了机器页「本机 → 终端 → 别名」：
-    // 别名是**每台机器一份**的东西，按本面板那条顶层判据（它改的是谁的状态）归机器页，不归「应用」。
-    // 上面那条越层诊断的提示文案跟着指过去了。
-
+    this.resumeError = document.createElement("div");
+    this.resumeError.className = "settings-row-error";
+    this.resumeError.hidden = true;
+    group.appendChild(this.resumeError);
+    this.resumeInTmuxSw = this.behaviorSwitch(group, copyText("settingsPanel.behavior.resumeInTmux"), copyText("settingsPanel.behavior.resumeInTmuxHelp"), (on) => ({
+      resumeInTmux: on,
+    }));
     return group;
   }
 

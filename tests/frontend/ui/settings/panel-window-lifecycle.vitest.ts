@@ -319,15 +319,16 @@ describe("主窗口用快捷键翻了「自动跟随 / 自动切到前台」⇒ 
     }) as never);
     document.body.replaceChildren();
     await mount();
-    const box = (key: "settingsPanel.behavior.autoFollow" | "settingsPanel.behavior.autoFront"): HTMLInputElement =>
-      [...document.querySelectorAll<HTMLLabelElement>(".settings-row-checkbox")]
-        .find((l) => l.textContent === copyText(key))!
-        .querySelector("input")!;
-    const [auto, front] = [box("settingsPanel.behavior.autoFollow"), box("settingsPanel.behavior.autoFront")];
-    expect([auto.checked, front.checked], "前提：缺省是跟随开、拉前关").toEqual([true, false]);
+    const sw = (key: "settingsPanel.behavior.autoFollow" | "settingsPanel.behavior.autoFront"): HTMLButtonElement =>
+      [...document.querySelectorAll<HTMLLabelElement>(".settings-switch-row label")]
+        .find((l) => (l.querySelector("span")?.firstChild?.textContent ?? "") === copyText(key))!
+        .querySelector<HTMLButtonElement>("[role=switch]")!;
+    const on = (b: HTMLButtonElement): boolean => b.getAttribute("aria-checked") === "true";
+    const [auto, front] = [sw("settingsPanel.behavior.autoFollow"), sw("settingsPanel.behavior.autoFront")];
+    expect([on(auto), on(front)], "前提：缺省是跟随开、拉前关").toEqual([true, false]);
     const toggled = heard.get("behavior-toggled");
     expect(toggled, "设置窗没听主窗口翻开关那件事").toBeTruthy();
     toggled!({ payload: { autoFollowUserActive: false, bringMonitorToFrontOnUserActive: true } });
-    expect([auto.checked, front.checked, front.disabled]).toEqual([false, true, true]);
+    expect([on(auto), on(front), front.getAttribute("aria-disabled")]).toEqual([false, true, "true"]);
   });
 });

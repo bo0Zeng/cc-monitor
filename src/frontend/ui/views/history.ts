@@ -943,7 +943,7 @@ export class HistoryView {
   private pickOf(r: HistoryRow): ResumePick {
     const k = rowKey(r);
     let p = this.picks.get(k);
-    if (!p) this.picks.set(k, (p = defaultPick()));
+    if (!p) this.picks.set(k, (p = defaultPick(r.origin ?? LOCAL_ORIGIN)));
     return p;
   }
 

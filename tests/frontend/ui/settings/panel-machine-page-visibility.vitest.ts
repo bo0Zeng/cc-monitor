@@ -91,6 +91,7 @@ vi.mock("../../../../src/frontend/ui/settings/data-section", () => ({
 vi.mock("../../../../src/frontend/ui/settings/diagnostics-section", () => ({
   DiagnosticsSection: class {
     element = document.createElement("div");
+    headButton = () => document.createElement("button");
   },
 }));
 vi.mock("../../../../src/frontend/ui/settings/mcp-section", () => ({
@@ -138,10 +139,9 @@ vi.mock("../../../../src/frontend/ui/behavior", () => ({
     bringMonitorToFrontOnUserActive: false,
     showBgSessions: false,
     notifyTurnEnd: false,
-    resumeCommandLocal: "",
-    resumeCommandRemote: "",
-    resumeCommandLocalPresets: [],
-    resumeCommandRemotePresets: [],
+    resumeCommand: "",
+    resumeCommandPresets: [],
+    resumeInTmux: false,
   })),
   setBehavior: vi.fn().mockResolvedValue(undefined),
   withResumePreset: (list: readonly string[]) => [...list],

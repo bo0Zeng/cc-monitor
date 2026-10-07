@@ -178,8 +178,7 @@ vi.mock("../../../src/frontend/ui/turn-notify", () => ({
 }));
 vi.mock("../../../src/frontend/ui/behavior", () => ({
   getBehavior: vi.fn().mockResolvedValue({
-    resumeCommandLocal: "",
-    resumeCommandRemote: "cct",
+    resumeCommand: "cct",
   }),
 }));
 import { invoke } from "@tauri-apps/api/core";
@@ -1154,7 +1153,7 @@ describe("F41 resumeTab：远端一键拉起 / 本地不变", () => {
       agent: "claude",
       sessionId: "l1",
       cwd: "/home/u/p",
-      launcher: null,
+      launcher: "cct", // 通用页那一格是各台的默认（本机没单独设 ⇒ 也用它）
       // P3t-Y2b：读不到本机 tmux 名单（这里 `invoke` 的缺省 mock 回 undefined）⇒ **不铸名**。
       // `null` 在这里是「不知道」，不是「没有名字被占」—— 硬铸就是不避让（issue #76）。
       tmuxName: null,
@@ -1180,7 +1179,7 @@ describe("F41 resumeTab：远端一键拉起 / 本地不变", () => {
       agent: "claude",
       sessionId: "l1abcdef",
       cwd: "/home/u/p",
-      launcher: null,
+      launcher: "cct",
       // 让到 `-2` 而不是撞上 `p-cc` —— 撞上去就是「静默接进第一个会话，
       // 而用户以为开了新的」（issue #76 那一族，F13 记着同一个坑）。
       // `K-R96`：名字里**没有 sid**（`l1abcdef` 一个字都不出现）—— 它骑在 `@ccm_sid` 上。

@@ -30,19 +30,6 @@
   white-space: nowrap;
 }
 
-/* === 设置面板：一排按钮 · 一格读数 === */
-.settings-cc-profile-buttons {
-  display: flex;
-  gap: 8px;
-  margin-top: 8px;
-  flex-wrap: wrap;
-}
-
-.settings-cc-stat-value {
-  font-weight: 600;
-  color: var(--text);
-}
-
 /* ! 信息图标 + hover tooltip
    用 textContent 填充内容，CSS 控制显示/隐藏 + 多行（pre-line）。 */
 .settings-info-icon {
@@ -67,24 +54,6 @@
 .settings-info-icon:hover {
   color: var(--text);
   border-color: var(--text);
-}
-
-.settings-checkbox {
-  width: 14px;
-  height: 14px;
-  cursor: pointer;
-  margin-right: 8px;
-}
-
-.settings-checkbox-label {
-  cursor: pointer;
-  user-select: none;
-  font-size: var(--font-size-mono);
-  color: var(--text);
-}
-
-.settings-cc-autolaunch-path-value {
-  color: var(--text-2);
 }
 
 /* === Settings Panel === */
@@ -3012,5 +2981,75 @@ body.settings-window-mode .settings-panel {
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-3);
+}
+
+/* 通用页：一项一行（开关 / 输入格在右），行间细线；挂在上一项下的缩进一档；存失败那一句在行下 */
+.settings-switch-row {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+.settings-switch-row-indent {
+  padding-left: 24px;
+}
+.settings-row-error {
+  font-size: var(--font-size-small);
+  color: var(--error-text);
+  margin-top: 4px;
+}
+.settings-label-col {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+.settings-label-col > .settings-label {
+  flex: none;
+}
+.settings-label-col > .settings-hint {
+  margin-top: 2px;
+}
+.settings-input-mono {
+  font-family: var(--font-mono);
+  width: 240px;
+}
+
+/* 日志页：行内「重启后生效」· 文件那一块（一行一份：名字 ＋ 路径在左，大小 · 打开在右）· 复制失败时的文本框 */
+.diag-restart {
+  color: var(--warn);
+  font-size: var(--font-size-small);
+  margin-top: 2px;
+}
+.diag-files-title {
+  font-weight: 600;
+  margin: 20px 0 8px;
+}
+.diag-files {
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-m);
+}
+.diag-file {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+}
+.diag-file + .diag-file {
+  border-top: 1px solid var(--border-strong);
+}
+.diag-file-path {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-small);
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+.diag-file-size {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-small);
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+.diag-fallback-text {
+  width: 100%;
+  font-family: var(--font-mono);
 }
 }

@@ -12,7 +12,7 @@
 import { launchLocal } from "./launch-render";
 import { LOCAL_ORIGIN } from "./ipc/origin";
 import { accountUnavailableOf, refuseUnavailableAccount, type AccountAsk } from "./launch-account";
-import { getBehavior } from "./behavior";
+import { resumeCommandFor } from "./remote-config";
 import { configuredLauncherFor } from "./launch-requests";
 import { mintFreshTmuxName } from "./terminal-name-mint";
 import { toast } from "./kit/toast";
@@ -46,7 +46,7 @@ export async function resumeLocalSession(req: LocalResumeRequest): Promise<boole
 
 async function resumeLocalCore(req: LocalResumeRequest): Promise<"unsent" | "sent"> {
   try {
-    const launcher = req.launcher ?? configuredLauncherFor(req.agent, (await getBehavior()).resumeCommandLocal);
+    const launcher = req.launcher ?? configuredLauncherFor(req.agent, await resumeCommandFor(LOCAL_ORIGIN));
     // 名字问本机后端铸（`terminal-name-mint`）；问不到 ⇒ `null`（不拿空集去避让）。
     const minted = await mintFreshTmuxName(LOCAL_ORIGIN, req.cwd);
     const tmuxName = minted.ok ? minted.name : null;

@@ -61,12 +61,14 @@ export const CONFIG_KEY_OWNERS = {
   autoFollowUserActive: "src/frontend/ui/behavior.ts",
   bringMonitorToFrontOnUserActive: "src/frontend/ui/behavior.ts",
   showBgSessions: "src/frontend/ui/behavior.ts",
-  resumeCommandLocal: "src/frontend/ui/behavior.ts",
-  resumeCommandRemote: "src/frontend/ui/behavior.ts",
-  resumeCommandLocalPresets: "src/frontend/ui/behavior.ts",
-  resumeCommandRemotePresets: "src/frontend/ui/behavior.ts",
+  // 恢复命令：通用页一格默认 · 用过的几条 · 默认在不在 tmux 里（本机那一格覆盖见下）。
+  resumeCommand: "src/frontend/ui/behavior.ts",
+  resumeCommandPresets: "src/frontend/ui/behavior.ts",
+  resumeInTmux: "src/frontend/ui/behavior.ts",
   notifyTurnEnd: "src/frontend/ui/behavior.ts",
   notifyNeeds: "src/frontend/ui/behavior.ts",
+  // src/frontend/ui/local-machine-prefs.ts：本机那一格恢复命令覆盖（本机不在机器表里）
+  localResumeCommand: "src/frontend/ui/local-machine-prefs.ts",
   // `forceLaunchPayloadRenderer` 退役（`src/frontend/ui/behavior.ts` 那段注释写了为什么）⇒ 这一键删掉，盘上还写着它就当未知键点名。
   // src/frontend/shell/src/logging.rs —— **Rust 写的**顶层键（设置页「诊断」经 `set_diagnostics_config`）。
   // 从前漏登记：用户存过一次诊断设置，「认不出的键」提示条就把 `diagnostics` 点名（假警报）。

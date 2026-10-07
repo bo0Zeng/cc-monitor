@@ -18,10 +18,9 @@ const KEY_BRING_FRONT = "bringMonitorToFrontOnUserActive";
 
 const KEY_SHOW_BG = "showBgSessions";
 
-const KEY_RESUME_LOCAL = "resumeCommandLocal";
-const KEY_RESUME_REMOTE = "resumeCommandRemote";
-const KEY_RESUME_LOCAL_PRESETS = "resumeCommandLocalPresets";
-const KEY_RESUME_REMOTE_PRESETS = "resumeCommandRemotePresets";
+const KEY_RESUME = "resumeCommand";
+const KEY_RESUME_PRESETS = "resumeCommandPresets";
+const KEY_RESUME_IN_TMUX = "resumeInTmux";
 
 /**
  * P6c：预设条数上界。
@@ -89,21 +88,15 @@ export interface BehaviorConfig {
    */
   showBgSessions: boolean;
   /**
-   * F34：本地历史 resume 用的启动命令（如 `cc` / `cct`）。空 = 默认行为
-   * （自动检测 PowerShell 的 cc 函数，回退 claude）。后端做防注入校验。
+   * 恢复命令的默认值（通用页那一格，各台都用它；如 `ccm` / `cc`）。空 = 那台后端的默认
+   *（本机：检测 cc，回退 claude；远端：claude）。每台可在「这台上的 cc-monitor」里单独设一格盖过它
+   *（远端在机器表那台的 `resumeCommand`，本机在 `local-machine-prefs.ts`），解析只在 `remote-config.ts::resumeCommandFor`。
    */
-  resumeCommandLocal: string;
-  /** F34：远端 resume 复制命令用的启动命令（如 `cct`）。空 = 默认 `claude`。 */
-  resumeCommandRemote: string;
-  /**
-   * P6c（#69 b/c）：**用过的**本地 resume 命令，最近用的在最前。
-   *
-   * 它只影响「那个字符串怎么被填进去」——**生效值仍然只有 `resumeCommandLocal` 一个**，
-   * 拉起链那 6 处解析点一行没动。
-   */
-  resumeCommandLocalPresets: string[];
-  /** P6c：同上，远端那格。⚠ 点选时必须走 `diagnoseRemoteLauncher` 那条诊断（见 `settings/panel.ts`）。 */
-  resumeCommandRemotePresets: string[];
+  resumeCommand: string;
+  /** 用过的恢复命令，最近用的在最前（通用页那一格的下拉）；只影响怎么填，生效值仍是上面那一格。 */
+  resumeCommandPresets: string[];
+  /** 历史页［恢复 ▾］与标签页「恢复 ▸」默认「运行于」：`true` ＝ tmux 里（那台没 tmux 时仍落「不用 tmux」）。默认 false。 */
+  resumeInTmux: boolean;
   /**
    * Batch14-F42：Claude 完成一轮（stop_reason==end_turn）且窗口在后台时发系统通知。
    * 默认 true。热更：turn-notify.ts 每次判定读缓存，设置保存时刷新缓存。
@@ -117,10 +110,9 @@ const DEFAULTS: BehaviorConfig = {
   autoFollowUserActive: true,
   bringMonitorToFrontOnUserActive: false,
   showBgSessions: true,
-  resumeCommandLocal: "",
-  resumeCommandRemote: "",
-  resumeCommandLocalPresets: [],
-  resumeCommandRemotePresets: [],
+  resumeCommand: "",
+  resumeCommandPresets: [],
+  resumeInTmux: false,
   notifyTurnEnd: true,
   notifyNeeds: true,
 };
@@ -150,16 +142,9 @@ export function behaviorIn(cfg: Record<string, unknown>): BehaviorConfig {
       typeof cfg[KEY_SHOW_BG] === "boolean"
         ? (cfg[KEY_SHOW_BG] as boolean)
         : DEFAULTS.showBgSessions,
-    resumeCommandLocal:
-      typeof cfg[KEY_RESUME_LOCAL] === "string"
-        ? (cfg[KEY_RESUME_LOCAL] as string)
-        : DEFAULTS.resumeCommandLocal,
-    resumeCommandRemote:
-      typeof cfg[KEY_RESUME_REMOTE] === "string"
-        ? (cfg[KEY_RESUME_REMOTE] as string)
-        : DEFAULTS.resumeCommandRemote,
-    resumeCommandLocalPresets: readPresets(cfg[KEY_RESUME_LOCAL_PRESETS]),
-    resumeCommandRemotePresets: readPresets(cfg[KEY_RESUME_REMOTE_PRESETS]),
+    resumeCommand: typeof cfg[KEY_RESUME] === "string" ? (cfg[KEY_RESUME] as string) : DEFAULTS.resumeCommand,
+    resumeCommandPresets: readPresets(cfg[KEY_RESUME_PRESETS]),
+    resumeInTmux: typeof cfg[KEY_RESUME_IN_TMUX] === "boolean" ? (cfg[KEY_RESUME_IN_TMUX] as boolean) : DEFAULTS.resumeInTmux,
     notifyTurnEnd:
       typeof cfg[KEY_NOTIFY_TURN_END] === "boolean"
         ? (cfg[KEY_NOTIFY_TURN_END] as boolean)
@@ -171,17 +156,17 @@ export function behaviorIn(cfg: Record<string, unknown>): BehaviorConfig {
   };
 }
 
-/** 保存行为字段。只交这 10 个顶层键（按键补丁），不动 theme / diagnostics 等。 */
+/** 保存行为字段。只交这几个顶层键（按键补丁），不动 theme / diagnostics 等。 */
 export async function setBehavior(next: BehaviorConfig): Promise<void> {
   await patchConfig([
     setAt([KEY_AUTO_FOLLOW], next.autoFollowUserActive),
     setAt([KEY_BRING_FRONT], next.bringMonitorToFrontOnUserActive),
     setAt([KEY_SHOW_BG], next.showBgSessions),
-    setAt([KEY_RESUME_LOCAL], next.resumeCommandLocal),
-    setAt([KEY_RESUME_REMOTE], next.resumeCommandRemote),
-    setAt([KEY_RESUME_LOCAL_PRESETS], next.resumeCommandLocalPresets),
-    setAt([KEY_RESUME_REMOTE_PRESETS], next.resumeCommandRemotePresets),
+    setAt([KEY_RESUME], next.resumeCommand),
+    setAt([KEY_RESUME_PRESETS], next.resumeCommandPresets),
+    setAt([KEY_RESUME_IN_TMUX], next.resumeInTmux),
     setAt([KEY_NOTIFY_TURN_END], next.notifyTurnEnd),
     setAt([KEY_NOTIFY_NEEDS], next.notifyNeeds),
   ]);
 }
+

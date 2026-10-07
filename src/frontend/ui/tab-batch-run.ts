@@ -16,8 +16,7 @@ import type { Tab } from "./tab-model";
 import { machineModels } from "./account-prefs";
 import type { AccountAsk, AccountUnavailable } from "./launch-account";
 import type { LaunchedAccount } from "./generated/LaunchedAccount";
-import { getBehavior } from "./behavior";
-import { resolveResumeCommand } from "./remote-config";
+import { resumeCommandFor } from "./remote-config";
 import { ACTIVE_AGENT, defaultLauncherOf } from "./agent-profile";
 import { openTerminal } from "./terminal-open";
 import { configuredLauncherFor } from "./launch-requests";
@@ -190,10 +189,9 @@ export interface StartItem {
 
 /** 起会话带的那几样（用户设置的原值）：哪一家 · resume 命令 · 那台的模型偏好表。标签页里的会话都是流跟的那一家。批量起与换号重启共用。 */
 export async function startSettings(origin: Origin, agent: string = ACTIVE_AGENT): Promise<Record<string, unknown>> {
-  const behavior = await getBehavior();
   const defaultLauncher = defaultLauncherOf(agent);
   // 设置里配的 resume 命令只给默认那一家（别的那一家用它自己的默认启动器）。
-  const configured = isLocalOrigin(origin) ? behavior.resumeCommandLocal : await resolveResumeCommand(origin, behavior.resumeCommandRemote);
+  const configured = await resumeCommandFor(origin);
   const launcher = configuredLauncherFor(agent, configured).trim() || defaultLauncher;
   return { agent, launcher, defaultLauncher, models: await machineModels(origin) };
 }

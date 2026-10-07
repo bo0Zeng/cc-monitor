@@ -89,10 +89,10 @@ const CENSUS: readonly string[] = [
   "autoFollowUserActive", // ── src/frontend/ui/behavior.ts 那一族 ──
   "bringMonitorToFrontOnUserActive",
   "showBgSessions",
-  "resumeCommandLocal",
-  "resumeCommandRemote",
-  "resumeCommandLocalPresets",
-  "resumeCommandRemotePresets",
+  "resumeCommand",
+  "localResumeCommand",
+  "resumeCommandPresets",
+  "resumeInTmux",
   "notifyTurnEnd",
   "notifyNeeds",
   // `forceLaunchPayloadRenderer` 退役 ⇒ 这一行删，两份普查恒等地各少一键。
@@ -209,7 +209,8 @@ describe("P12 ③ 登记表自己得是真的（否则上面每一条都在拿�
     // 〔条 66〕10 → 9：`src/frontend/ui/backend-policy.ts` 不再是任何配置键的主人（`backendPolicy` 退役，
     //   「退出行为」那个值搬到后端所在那台机器上）。少的就是它这一个，别的主人一个没动。
     // 9 → 10：补上 `src/frontend/shell/src/logging.rs`（`diagnostics` 那一键的主人，Rust 写的）。多的就是它这一个。
-    expect(owners.size, `主人 ${owners.size} 个（现打 10）`).toBe(10);
+    // 10 → 11：补上 `src/frontend/ui/local-machine-prefs.ts`（本机那一格恢复命令覆盖 `localResumeCommand` 的主人）。
+    expect(owners.size, `主人 ${owners.size} 个（现打 11）`).toBe(11);
   });
 
   it("★ 每个登记的主人文件真的在盘上，而且那个键名逐字出现在它里面", () => {

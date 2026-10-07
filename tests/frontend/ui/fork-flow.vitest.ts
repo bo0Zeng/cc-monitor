@@ -10,9 +10,9 @@ import { resolve } from "node:path";
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn() }));
 vi.mock("../../../src/frontend/ui/behavior", () => ({
-  getBehavior: () => ({ resumeCommandLocal: "", resumeCommandRemote: "" }),
+  getBehavior: () => ({ resumeCommand: "" }),
 }));
-vi.mock("../../../src/frontend/ui/remote-config", () => ({ resolveResumeCommand: vi.fn().mockResolvedValue("") }));
+vi.mock("../../../src/frontend/ui/remote-config", () => ({ resumeCommandFor: vi.fn().mockResolvedValue("") }));
 vi.mock("../../../src/frontend/ui/account-prefs", () => ({ machineModels: vi.fn().mockResolvedValue({}) }));
 vi.mock("../../../src/frontend/ui/fork-ask", () => ({ askForkLaunch: vi.fn() }));
 vi.mock("../../../src/frontend/ui/terminal-open", () => ({ openTerminal: vi.fn() }));

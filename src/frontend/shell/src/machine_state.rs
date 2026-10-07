@@ -98,6 +98,8 @@ struct Entry {
     dial_why: Option<String>,
     /// 指纹不对那一次那台出示的指纹（拨号那一层带回）。
     seen_key: Option<String>,
+    /// 那台握手报的构建标识（只进日志与诊断信息）。
+    build: Option<String>,
 }
 
 static TABLE: Mutex<BTreeMap<String, Entry>> = Mutex::new(BTreeMap::new());
@@ -184,7 +186,17 @@ pub(crate) fn up(origin: &str, build: &str, relation: VersionRelation) {
         e.relation = Some(relation);
         e.dial_why = None;
         e.seen_key = None;
+        e.build = Some(build.to_string());
     });
+}
+
+/// 那台最近一次握手报的构建标识（诊断信息用）；没握过手 ⇒ `None`。
+pub(crate) fn build_of(origin: &str) -> Option<String> {
+    TABLE
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get(origin)
+        .and_then(|e| e.build.clone())
 }
 
 /// 拨号那一层没拨成（后端 ack 带回的原因码与那台出示的指纹；老后端没给码 ⇒ 不记）。

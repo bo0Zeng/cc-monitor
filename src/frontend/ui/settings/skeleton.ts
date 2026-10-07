@@ -34,8 +34,6 @@ export const SKELETON_PX = {
   footprint: 360,
   /** 数据位置（原「数据存储」）：4~5 张卡片。 */
   "data-places": 280,
-  /** 日志（原「诊断」）：只有那条 `word-break: break-all` 的路径会长高。 */
-  logs: 48,
   /** backend 开关：每台机一行，按「本机 + 2 台」估。 */
   backend: 168,
 } as const;

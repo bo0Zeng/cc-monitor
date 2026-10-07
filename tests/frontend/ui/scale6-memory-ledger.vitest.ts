@@ -67,7 +67,7 @@ vi.mock("../../../src/frontend/ui/turn-notify", () => ({
 vi.mock("../../../src/frontend/ui/behavior", () => ({
   getBehavior: vi
     .fn()
-    .mockResolvedValue({ resumeCommandLocal: "", resumeCommandRemote: "cct" }),
+    .mockResolvedValue({ resumeCommand: "cct" }),
 }));
 vi.mock("../../../src/frontend/ui/remote-launch-run", () => ({
   runRemoteResume: vi.fn().mockResolvedValue(undefined),

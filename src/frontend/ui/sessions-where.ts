@@ -10,6 +10,7 @@ import { budgetWithin, jsonBody } from "./ipc/chan-caller";
 import { exactKeys, isObj, machineName, settle, unreadable, type Refusals } from "./control-said";
 import type { Origin } from "./ipc/origin";
 import { copyText } from "./copy-table";
+import { noteMachineTmux } from "./resume-defaults";
 
 /**
  * 一个会话的样子：`running` 恰好一个在跑（`names[0]`）· `ambiguous` 在跑的不止一个（按名单顺序）·
@@ -56,7 +57,11 @@ export function decodeStandings(origin: Origin, sids: readonly string[], v: unkn
       return bad();
     }
     const terminals = (r.terminals as { terminal: string }[]).map((t) => t.terminal);
-    return { kind: r.standing as Standing["kind"], names: r.names as string[], terminals };
+    const kind = r.standing as Standing["kind"];
+    // 那台答的就是它有没有 tmux（没有 ⇒ `no_tmux`；有带着它的 tmux 会话 ⇒ 有）：恢复菜单默认的「运行于」照它回落。
+    if (kind === "no_tmux") noteMachineTmux(origin, false);
+    else if (kind !== "none") noteMachineTmux(origin, true);
+    return { kind, names: r.names as string[], terminals };
   });
 }
 

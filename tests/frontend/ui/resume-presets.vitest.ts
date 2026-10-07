@@ -56,24 +56,23 @@ describe("P6c 盘上读回来：脏值不许进", () => {
 
   it("★ P6c-Y2：不是数组 / 混着非字符串 / 有重复 / 超上界 —— 逐种都收拾干净", async () => {
     // 盘上可能是**任何东西**：用户手改、旧版本、半截写入。
-    store.cfg = { resumeCommandLocalPresets: "ccm" }; // 不是数组
-    expect((await getBehavior()).resumeCommandLocalPresets).toEqual([]);
+    store.cfg = { resumeCommandPresets: "ccm" }; // 不是数组
+    expect((await getBehavior()).resumeCommandPresets).toEqual([]);
 
     store.cfg = {
-      resumeCommandLocalPresets: ["ccm", 7, null, { a: 1 }, "  ", "cct", "ccm"],
+      resumeCommandPresets: ["ccm", 7, null, { a: 1 }, "  ", "cct", "ccm"],
     };
     // 非字符串丢掉、空白丢掉、重复丢掉，顺序保留。
-    expect((await getBehavior()).resumeCommandLocalPresets).toEqual(["ccm", "cct"]);
+    expect((await getBehavior()).resumeCommandPresets).toEqual(["ccm", "cct"]);
 
     store.cfg = {
-      resumeCommandRemotePresets: Array.from({ length: 100 }, (_, i) => `c${i}`),
+      resumeCommandPresets: Array.from({ length: 100 }, (_, i) => `c${i}`),
     };
-    expect((await getBehavior()).resumeCommandRemotePresets).toHaveLength(RESUME_PRESET_CAP);
+    expect((await getBehavior()).resumeCommandPresets).toHaveLength(RESUME_PRESET_CAP);
   });
 
   it("缺字段 ⇒ 空列表，不是 undefined（调用方直接遍历它）", async () => {
     const b = await getBehavior();
-    expect(b.resumeCommandLocalPresets).toEqual([]);
-    expect(b.resumeCommandRemotePresets).toEqual([]);
+    expect(b.resumeCommandPresets).toEqual([]);
   });
 });

@@ -6,20 +6,18 @@ import { toast } from "./kit/toast";
 import { copyText } from "./copy-table";
 import { LOCAL_ORIGIN } from "./ipc/origin";
 import { runNewSessionRemote } from "./remote-launch-run";
-import { resolveResumeCommand } from "./remote-config";
-import { getBehavior } from "./behavior";
+import { resumeCommandFor } from "./remote-config";
 import { FOLLOW } from "./launch-account";
 import { launchLocal } from "./launch-render";
 import { arrivedBody, expectArrival } from "./launch-arrival";
 
 /** `origin` 缺 = 本机。 */
 export async function newSessionIn(origin: string | undefined, dir: string, agent: string): Promise<void> {
-  const behavior = await getBehavior();
   try {
     if (origin) {
-      await runNewSessionRemote(origin, agent, dir, await resolveResumeCommand(origin, behavior.resumeCommandRemote), { account: FOLLOW });
+      await runNewSessionRemote(origin, agent, dir, await resumeCommandFor(origin), { account: FOLLOW });
     } else {
-      await launchLocal({ action: { kind: "new" }, agent, cwd: dir, launcher: behavior.resumeCommandLocal || null, account: FOLLOW, tmuxName: null }, dir);
+      await launchLocal({ action: { kind: "new" }, agent, cwd: dir, launcher: (await resumeCommandFor(LOCAL_ORIGIN)) || null, account: FOLLOW, tmuxName: null }, dir);
       expectArrival({ origin: LOCAL_ORIGIN, match: { cwd: dir }, tmuxName: null, arrived: { title: copyText("history.newSession.started", { dir }), body: arrivedBody(LOCAL_ORIGIN) } });
     }
   } catch (e) {

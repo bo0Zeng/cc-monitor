@@ -6555,54 +6555,64 @@
       "zh": "打开快捷键编辑器",
       "args": []
     },
-    "settingsPanel.behavior.remoteResumeInfo": {
-      "kind": "body",
-      "zh": "远端 resume 或起会话时实际敲的启动器。\n推荐填 ccm（部署过后端就有），tmux 与账号由 cc-monitor 经参数控制。\n⚠ 别填 cct 这类自己建 tmux 的命令：账号设置到不了它另起的那个 tmux，「用账号 X resume」会不生效。\n留空 = claude。",
-      "args": []
-    },
-    "settingsPanel.behavior.remoteResumeHint": {
-      "kind": "control",
-      "zh": "默认：claude",
-      "args": []
-    },
-    "settingsPanel.behavior.remoteResume": {
-      "kind": "control",
-      "zh": "远端 resume 命令",
-      "args": []
-    },
-    "settingsPanel.behavior.localResumeInfo": {
-      "kind": "body",
-      "zh": "历史浏览器 ↺ 在本机新终端里 resume 会话用的命令。\n留空 = 自动检测 PowerShell 的 cc 函数，没有则用 claude。",
-      "args": []
-    },
-    "settingsPanel.behavior.localResumeHint": {
-      "kind": "control",
-      "zh": "默认：检测 cc，回退 claude",
-      "args": []
-    },
-    "settingsPanel.behavior.localResume": {
-      "kind": "control",
-      "zh": "本地 resume 命令",
-      "args": []
-    },
     "settingsPanel.behavior.turnNotify": {
       "kind": "control",
-      "zh": "Claude 完成一轮时发系统通知，只在窗口在后台时发",
+      "zh": "一轮完成 · 系统通知",
+      "args": []
+    },
+    "settingsPanel.behavior.notifyHelp": {
+      "kind": "body",
+      "zh": "仅主窗口不在前台时",
+      "args": []
+    },
+    "settingsPanel.behavior.resume": {
+      "kind": "control",
+      "zh": "恢复命令",
+      "args": []
+    },
+    "settingsPanel.behavior.resumeHelp": {
+      "kind": "body",
+      "zh": "各机器可单独设：机器 ⋯ → 这台上的 cc-monitor",
+      "args": []
+    },
+    "settingsPanel.behavior.resumeHint": {
+      "kind": "control",
+      "zh": "留空 = claude",
+      "args": []
+    },
+    "settingsPanel.behavior.resumeInTmux": {
+      "kind": "control",
+      "zh": "恢复到 tmux 里",
+      "args": []
+    },
+    "settingsPanel.behavior.resumeInTmuxHelp": {
+      "kind": "body",
+      "zh": "历史页与标签页「恢复」默认运行于 tmux · 无 tmux 的机器直接恢复",
       "args": []
     },
     "settingsPanel.behavior.showHiddenTasks": {
       "kind": "control",
-      "zh": "显示后台任务会话；带 ⚙ 标识，改了要重启才生效",
+      "zh": "显示分身会话",
+      "args": []
+    },
+    "settingsPanel.behavior.showHiddenTasksHelp": {
+      "kind": "body",
+      "zh": "标签页带「分身」徽标 · 重启 cc-monitor 后生效",
       "args": []
     },
     "settingsPanel.behavior.autoFront": {
       "kind": "control",
-      "zh": "自动切 Tab 时同时把 monitor 窗口切到前台",
+      "zh": "同时提到前台",
+      "args": []
+    },
+    "settingsPanel.behavior.autoFrontHelp": {
+      "kind": "body",
+      "zh": "需上一项开启",
       "args": []
     },
     "settingsPanel.behavior.autoFollow": {
       "kind": "control",
-      "zh": "用户在终端里输入时自动切到对应 Tab",
+      "zh": "终端回车 → 切到该会话标签页",
       "args": []
     },
     "settingsPanel.machines.unreadable": {
@@ -6698,6 +6708,11 @@
     "settingsPanel.group.behavior": {
       "kind": "title",
       "zh": "行为",
+      "args": []
+    },
+    "settingsPanel.group.resume": {
+      "kind": "title",
+      "zh": "恢复",
       "args": []
     },
     "settingsPanel.claudeDir.pickTitle": {
@@ -7536,20 +7551,10 @@
       "zh": "打开日志文件失败",
       "args": []
     },
-    "diagnostics.save.failed": {
+    "diagnostics.save.failedLine": {
       "kind": "error",
-      "zh": "保存日志设置失败",
-      "args": []
-    },
-    "diagnostics.save.restartNeeded": {
-      "kind": "body",
-      "zh": "改「日志文件」这一项要重启 monitor 才生效。",
-      "args": []
-    },
-    "diagnostics.save.done": {
-      "kind": "body",
-      "zh": "设置已保存",
-      "args": []
+      "zh": "未保存：{e}",
+      "args": ["e"]
     },
     "diagnostics.save.fileSwitch": {
       "kind": "body",
@@ -7561,104 +7566,154 @@
       "zh": "读不到日志目录：{e}",
       "args": ["e"]
     },
-    "diagnostics.refresh.empty": {
-      "kind": "body",
-      "zh": "—",
-      "args": []
-    },
-    "diagnostics.refresh.noFileYet": {
-      "kind": "body",
-      "zh": "日志目录：{dir}。还没产生日志文件",
-      "args": ["dir"]
-    },
     "diagnostics.refresh.settingsUnreadable": {
       "kind": "error",
       "zh": "读不到当前的日志设置（{e}），下面三项先不能改。点「刷新信息」重试。",
       "args": ["e"]
     },
-    "diagnostics.build.reading": {
+    "diagnostics.toast.enable": {
+      "kind": "control",
+      "zh": "后台出错 · 弹提示",
+      "args": []
+    },
+    "diagnostics.files.title": {
+      "kind": "title",
+      "zh": "文件",
+      "args": []
+    },
+    "diagnostics.files.today": {
+      "kind": "control",
+      "zh": "今天的日志",
+      "args": []
+    },
+    "diagnostics.files.noFile": {
+      "kind": "body",
+      "zh": "无 · 日志目录 {dir}",
+      "args": ["dir"]
+    },
+    "diagnostics.files.open": {
       "kind": "action",
+      "zh": "打开",
+      "args": []
+    },
+    "diagnostics.files.openDir": {
+      "kind": "action",
+      "zh": "在文件夹中显示",
+      "args": []
+    },
+    "diagnostics.files.output": {
+      "kind": "control",
+      "zh": "本机 cc-monitor 输出",
+      "args": []
+    },
+    "diagnostics.files.outputNone": {
+      "kind": "body",
+      "zh": "无 · 随 cc-monitor 起停时并入上面的日志",
+      "args": []
+    },
+    "diagnostics.files.remote": {
+      "kind": "body",
+      "zh": "远端输出：该机器 ⋯ → 这台上的 cc-monitor → 最近输出",
+      "args": []
+    },
+    "diagnostics.page.sub": {
+      "kind": "body",
+      "zh": "诊断信息：版本 · 各机器状态 · 未识别数据 · 日志位置；不含会话内容与 key",
+      "args": []
+    },
+    "diagnostics.copy.button": {
+      "kind": "action",
+      "zh": "复制诊断信息",
+      "args": []
+    },
+    "diagnostics.copy.notYet": {
+      "kind": "body",
+      "zh": "读到了才能复制",
+      "args": []
+    },
+    "diagnostics.copy.done": {
+      "kind": "body",
+      "zh": "已复制诊断信息",
+      "args": []
+    },
+    "diagnostics.copy.fallback": {
+      "kind": "body",
+      "zh": "复制失败 · 已全选 · 按 Ctrl+C",
+      "args": []
+    },
+    "diagnostics.unknown.label": {
+      "kind": "control",
+      "zh": "未识别数据",
+      "args": []
+    },
+    "diagnostics.unknown.reading": {
+      "kind": "body",
       "zh": "读取中…",
       "args": []
     },
-    "diagnostics.build.refreshHint": {
+    "diagnostics.unknown.unread": {
+      "kind": "error",
+      "zh": "读不到：{e}",
+      "args": ["e"]
+    },
+    "diagnostics.unknown.none": {
       "kind": "body",
-      "zh": "重新读日志目录看当前文件大小",
+      "zh": "无",
       "args": []
     },
-    "diagnostics.build.refresh": {
-      "kind": "action",
-      "zh": "刷新信息",
-      "args": []
-    },
-    "diagnostics.build.opening": {
-      "kind": "action",
-      "zh": "打开中…",
-      "args": []
-    },
-    "diagnostics.build.openDir": {
-      "kind": "action",
-      "zh": "打开日志目录",
-      "args": []
-    },
-    "diagnostics.build.openFile": {
-      "kind": "action",
-      "zh": "打开日志文件",
-      "args": []
-    },
-    "diagnostics.build.empty": {
+    "diagnostics.unknown.machine": {
       "kind": "body",
-      "zh": "—",
-      "args": []
+      "zh": "{machine} 会话记录 {n} 条",
+      "args": ["machine", "n"]
     },
-    "diagnostics.file.size": {
-      "kind": "title",
-      "zh": "当前文件大小",
-      "args": []
-    },
-    "diagnostics.file.location": {
-      "kind": "title",
-      "zh": "文件位置",
-      "args": []
-    },
-    "diagnostics.toast.enableHint": {
+    "diagnostics.unknown.machineUnread": {
       "kind": "body",
-      "zh": "勾选后，后端报错时右下角弹一条红色提示。6 秒自动消失，点它直接打开日志文件。\n限频：60 秒内最多 20 条，免得错误多时屏幕被刷满。\n改这一项立即生效，不用重启。",
-      "args": []
+      "zh": "{machine} 读不到",
+      "args": ["machine"]
     },
-    "diagnostics.toast.enable": {
-      "kind": "control",
-      "zh": "错误提示",
-      "args": []
-    },
-    "diagnostics.level.hint": {
+    "diagnostics.unknown.config": {
       "kind": "body",
-      "zh": "info（默认）：每个关键步骤都记一行。\ndebug：加细节，大约 10 倍体积。查疑难问题时短期开启用。\nwarn / error：只记问题。\noff：完全不记。\n✓ 切换立即生效，无需重启。",
-      "args": []
+      "zh": "config.json {n} 项",
+      "args": ["n"]
+    },
+    "diagnostics.unknown.line": {
+      "kind": "body",
+      "zh": "{parts} · 已计入诊断信息",
+      "args": ["parts"]
     },
     "diagnostics.build.level": {
       "kind": "control",
-      "zh": "日志级别",
+      "zh": "记多细",
       "args": []
     },
-    "diagnostics.file.enableHint": {
-      "kind": "body",
-      "zh": "按天滚动写入 monitor.YYYY-MM-DD.log，保留最近 3 天。\n关闭后已存在的日志文件不会被删除，但不再写新内容。\n改这一项要重启 monitor 才生效。",
+    "diagnostics.level.error": {
+      "kind": "control",
+      "zh": "仅出错",
+      "args": []
+    },
+    "diagnostics.level.warn": {
+      "kind": "control",
+      "zh": "出错和警告",
+      "args": []
+    },
+    "diagnostics.level.info": {
+      "kind": "control",
+      "zh": "一般（默认）",
+      "args": []
+    },
+    "diagnostics.level.debug": {
+      "kind": "control",
+      "zh": "详细",
       "args": []
     },
     "diagnostics.file.enable": {
       "kind": "control",
-      "zh": "日志文件",
+      "zh": "日志写入文件",
       "args": []
     },
-    "diagnostics.build.title": {
-      "kind": "title",
-      "zh": "日志",
-      "args": []
-    },
-    "diagnostics.info.logs": {
+    "diagnostics.file.restart": {
       "kind": "body",
-      "zh": "后端日志写在：\n~/.cc-monitor/logs/monitor/monitor.YYYY-MM-DD.log。\n出错时同时在右下角弹一条提示，点它直接打开日志文件。",
+      "zh": "重启 cc-monitor 后生效",
       "args": []
     },
     "driftLedger.copy.failed": {
@@ -11324,6 +11379,76 @@
       "zh": "找不到 monitor 这台的家目录。HOME 与 USERPROFILE 都没有，本机那一栏的足迹查不了",
       "args": []
     },
+    "rsDiagReport.text.head": {
+      "kind": "body",
+      "zh": "cc-monitor 诊断信息",
+      "args": []
+    },
+    "rsDiagReport.text.version": {
+      "kind": "body",
+      "zh": "版本 {version} · 构建 {build} · {os}",
+      "args": ["version", "build", "os"]
+    },
+    "rsDiagReport.text.machines": {
+      "kind": "body",
+      "zh": "各机器：",
+      "args": []
+    },
+    "rsDiagReport.text.machine": {
+      "kind": "body",
+      "zh": "  {machine} · {state}{reason} · 版本 {version} · 构建 {build}",
+      "args": ["machine", "state", "reason", "version", "build"]
+    },
+    "rsDiagReport.text.reason": {
+      "kind": "body",
+      "zh": "（{reason}）",
+      "args": ["reason"]
+    },
+    "rsDiagReport.text.unknown": {
+      "kind": "body",
+      "zh": "未识别数据：",
+      "args": []
+    },
+    "rsDiagReport.text.records": {
+      "kind": "body",
+      "zh": "  {machine} · 会话记录 {n} 条",
+      "args": ["machine", "n"]
+    },
+    "rsDiagReport.text.unread": {
+      "kind": "body",
+      "zh": "  {machine} · 读不到",
+      "args": ["machine"]
+    },
+    "rsDiagReport.text.config": {
+      "kind": "body",
+      "zh": "  config.json · {n} 项：{keys}",
+      "args": ["n", "keys"]
+    },
+    "rsDiagReport.text.keySep": {
+      "kind": "body",
+      "zh": "、",
+      "args": []
+    },
+    "rsDiagReport.text.none": {
+      "kind": "body",
+      "zh": "—",
+      "args": []
+    },
+    "rsDiagReport.text.log": {
+      "kind": "body",
+      "zh": "日志：{path}",
+      "args": ["path"]
+    },
+    "rsDiagReport.text.noLog": {
+      "kind": "body",
+      "zh": "日志：未写入文件",
+      "args": []
+    },
+    "rsDiagReport.text.local": {
+      "kind": "body",
+      "zh": "本机",
+      "args": []
+    },
     "beFootprint.env.noHome": {
       "kind": "error",
       "zh": "这台后端进程没有家目录。HOME 与 USERPROFILE 都没有，这台的足迹查不了",
@@ -12854,26 +12979,6 @@
       "zh": "、",
       "args": []
     },
-    "diagnostics.backend.label": {
-      "kind": "control",
-      "zh": "本机后端的输出",
-      "args": []
-    },
-    "diagnostics.backend.open": {
-      "kind": "action",
-      "zh": "打开",
-      "args": []
-    },
-    "diagnostics.backend.none": {
-      "kind": "body",
-      "zh": "还没有。本机后端跟着 monitor 起停时，它的输出就在上面那份日志里",
-      "args": []
-    },
-    "diagnostics.backend.openFailed": {
-      "kind": "error",
-      "zh": "打开本机后端的输出失败",
-      "args": []
-    },
     "beContract.malformed.say": {
       "kind": "error",
       "zh": "请求格式不对：{detail}",
@@ -14263,10 +14368,10 @@
       "zh": "顺序没存上，重启后会回到上次存下的顺序",
       "args": []
     },
-    "settings.behavior.saveFailed": {
+    "settings.behavior.saveFailedLine": {
       "kind": "error",
-      "zh": "行为设置没存上",
-      "args": []
+      "zh": "未保存：{why}",
+      "args": ["why"]
     },
     "keybindings.persist.failed": {
       "kind": "error",
