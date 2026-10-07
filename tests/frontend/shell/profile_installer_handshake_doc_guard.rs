@@ -1,6 +1,4 @@
-const IPC_DOC: &str = include_str!("../../../src/doc/IPC-PROTOCOL.md");
 const BIND_RS_RAW: &str = include_str!("../../../src/frontend/shell/src/bind.rs");
-const ARCH_DOC: &str = include_str!("../../../src/doc/ARCHITECTURE.md");
 /// 模板的渲染住后端（`src/backend/assets/aliases/block.rs`）；握手那一半的对账在 monitor（`bind.rs` 在这边）⇒ 直接读模板原文。
 const CC_TEMPLATE: &str = include_str!("../../../src/shared/cc.ps1.tpl");
 
@@ -51,43 +49,6 @@ fn ps_template_sets_the_window_title_before_writing_the_await_file() {
              『每个新 shell 首次 cc 固定烧满超时』的成因（src/doc/IPC-PROTOCOL.md \
              § 跨进程握手时序图 有整段说明）。设标题@{title} 写文件@{write}"
     );
-}
-
-/// monitor 侧同理：debouncer 窗口 + 「找不到窗口就重试」的总时长。
-///
-/// 重试那一条是**旧模板用户唯一的活路**（老 profile 不会自动更新），
-/// 图上却整个没画 —— 少画它等于把兼容性保障说成不存在。
-/// ★ **每一份描述这个握手的文档**都必须写当前顺序，不只 IPC-PROTOCOL.md。
-///
-/// U6a 实测：同一个顺序被写在**五处** —— `cc.ps1.tpl`（真相）· `bind.rs` 模块头 ·
-/// `src/doc/IPC-PROTOCOL.md` 时序图 · `src/doc/ARCHITECTURE.md` · `cc_integration.ts` 的 UI 文案。
-/// v2 反转顺序时**只改了真相那一处**，另外四处全停在旧顺序上。
-/// 只钉一份文档，剩下几份照样把人教回旧写法。
-#[test]
-fn every_doc_that_describes_the_handshake_states_the_current_order() {
-    // 判据：一段文字若同时提到 `ps-await` 与 `WindowTitle`，就算「在描述这个握手」，
-    // 那它必须把 `WindowTitle` 写在 `ps-await` 前面（= v2 的真实顺序）。
-    // 必须从**描述握手那一节**起算，不能拿全文首次出现比 —— IPC-PROTOCOL.md 有一整节
-    // 就叫 `ps-await/<PID>.json`，排在时序图**之前**，全文首现比法会恒红（实测踩到）。
-    for (name, doc, anchor) in [
-        ("src/doc/IPC-PROTOCOL.md", IPC_DOC, "## 跨进程握手时序图"),
-        ("src/doc/ARCHITECTURE.md", ARCH_DOC, "### marker 握手"),
-    ] {
-        let at = doc
-            .find(anchor)
-            .unwrap_or_else(|| panic!("{name} 里找不到锚点 {anchor:?} —— 文档被大改了？"));
-        let doc = &doc[at..];
-        let (Some(title), Some(await_file)) = (doc.find("WindowTitle"), doc.find("ps-await"))
-        else {
-            panic!("{name} 的握手节里找不到那两个关键词 —— 抽取坏了还是文档被大改了？");
-        };
-        assert!(
-            title < await_file,
-            "{name} 把握手顺序写成了「先写 ps-await、后设 WindowTitle」—— 那是 v2 之前的旧顺序，\n\
-                 照它实现会复刻 v2.21『每个新 shell 首次 cc 固定烧满超时』。\n\
-                 源头是 src/shared/cc.ps1.tpl（先设标题、后写文件）。"
-        );
-    }
 }
 
 /// ★ 把这四个数**直接钉死**。

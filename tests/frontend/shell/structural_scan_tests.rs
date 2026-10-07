@@ -1597,16 +1597,6 @@ fn every_symbol_address_in_the_sources_still_resolves() {
                  `$PROFILE` 在哪只剩 `shell_dialect.rs` 一处答。\
                  改写那段引文等于篡改原文（同上面 `resolve_claude_dir` 那条）。",
         ),
-        (
-            "build_usage_probe_cmd",
-            "★**历史句**：`payload.rs` 与 `doc_claim_registry.rs` 里\
-                 那几句逐字讲的就是「用量探针那条外层 tmux 串**已经退役**」——\
-                 编排搬上后端帧面之后 monitor 一个 shell 字符都不渲染。\
-                 删掉这个地址反而丢掉「外层四个产出方里退役了哪一个」这条线索\
-                 （同上面 `resolve_claude_dir` 那条）。\
-                 ⚠ 它不是无人看管：`doc_claim_registry::the_outer_layer_producers_are_in_the_state_the_doc_claims` \
-                 把那一格翻面钉着（这个函数要是回来了，那条会红）。",
-        ),
     ];
 
     let corpus = addr_corpus();
@@ -2425,16 +2415,10 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         //      「代码里没有这个名字」这件事该由本表说出来，而不是靠一处夹具替它遮着。
         //    ⚠ 这正是本条头注那句话的又一个实例：一个名字「在代码里出现过」不等于它活着。
         ("src/frontend/shell/README.md", "daemonless_stream_loop", 1),
-        (
-            "tests/frontend/shell/doc_claim_registry_tests.rs",
-            "daemonless_stream_loop",
-            1,
-        ),
         // `("src/doc/ARCHITECTURE.md", "lookup_by_foreground_pid", 1)` 摘了：开发文档按 4.0.0 重写，「刻意不做的」那一节只讲理由、不再点那个旧名。
         // `("src/doc/CONTRIBUTING.md", "list_active_session_ids", 1)` 摘了：那段示例改写成读本机活会话表，不再点那个说明性的名字。
         // `("src/doc/INVARIANTS.md", "path_shell_safe", 1)` 摘了：那一句改成点 `acct-core::config_dir_posix_ok`，不再点外部脚本里的旧名。
         ("src/doc/INVARIANTS.md", "snapshot_announced_by_origin", 1),
-        ("src/doc/STATE-MATRIX.md", "read_session_jsonl", 1),
         (
             "src/backend/agents/claudecode/accounts.rs",
             "trust_of_claude_json",
@@ -2974,11 +2958,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             1,
         ),
         // U8c-3「前提触发器」改写成只管 `create-or-attach` 两棵树、改了名；两处散文点它的原名讲沿革。
-        (
-            "src/doc/INVARIANTS.md",
-            "the_two_reasons_u8c3_cannot_delete_the_ts_renderer_still_hold",
-            1,
-        ),
         // 读一整份会话本机远端合成一条（`history·rs::stream_read_session_jsonl`），远端那一支的函数删了；
         //   点它旧名讲来历的散文逐处挂墓碑。
         (
@@ -3640,11 +3619,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         //    而 08-14 立的那条前提触发器 `the_daemonless_remote_still_needs_the_ts_fallback_renderer`
         //    **是设计好要在这一天主动红的** ⇒ 散文里那几处点名它的句子留着才说得清
         //    「它红过、红完之后换了谁」。按第②条出路：贴墓碑 ＋ 在这里记一笔账。
-        (
-            "src/doc/INVARIANTS.md",
-            "the_daemonless_remote_still_needs_the_ts_fallback_renderer",
-            1,
-        ),
         // `launch_wire_f07_main_path_tests.rs` 里点
         //   `the_daemonless_remote_still_needs_the_ts_fallback_renderer` 的两处墓碑删了：它们住在
         //   「那份换人手续」与「U8c-3 前提触发器」两段头注里，那两条判据随 TS 兜底一族整条退役（被守的事整轴没了）。
@@ -3706,11 +3680,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         //    而今天四个里退役了一个）· `src/account-usage.ts` 那句讲的是
         //    「两条路此前靠同一个命令构造器同源，今天连命令串都不存在了」。
         //    按第②条出路：贴 `PROSE_NAME_TOMBSTONE` ＋ 在这里记一笔账。
-        (
-            "tests/frontend/shell/doc_claim_registry_tests.rs",
-            "the_four_outer_layer_producers_are_all_still_there",
-            1,
-        ),
         // `src/account-usage.ts` 整份删除（用量 ③ 轴退役）⇒ 这一行随它出表。
         // 🔴 `src/frontend/shell/src/account_usage.rs` 那两行墓碑账**删了** ——
         //    不是撕墓碑，是**被墓碑的那段散文随整条编排一起走了**：那份文件里
@@ -4190,8 +4159,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ("src/frontend/shell/src/lib.rs", "list_active_sessions", 1), // ⑬ 会话生命周期并进会话流后退役
         ("src/frontend/shell/src/lib.rs", "list_session_activity", 1), // ⑬ 会话生命周期并进会话流后退役
         ("src/doc/ARCHITECTURE.md", "list_active_sessions", 1), // ⑬ 会话生命周期并进会话流后退役
-        ("src/doc/STATE-MATRIX.md", "list_active_sessions", 1), // ⑬ 会话生命周期并进会话流后退役
-        ("src/doc/STATE-MATRIX.md", "list_session_activity", 1), // ⑬ 会话生命周期并进会话流后退役
         ("src/frontend/ui/main.ts", "list_active_sessions", 1), // ⑬ 会话生命周期并进会话流后退役
         ("src/frontend/ui/main.ts", "list_session_activity", 1), // ⑬ 会话生命周期并进会话流后退役
         (
@@ -4248,12 +4215,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "the_rendered_local_command_really_carries_the_container",
             1,
         ), // 起会话的计划与渲染搬进后端：墓碑随搬家换住址 / 点已删命令名的散文挂墓碑
-        (
-            "src/doc/INVARIANTS.md",
-            "every_one_of_the_six_cells_is_measured_not_narrated",
-            1,
-        ), // 起会话的计划与渲染搬进后端：墓碑随搬家换住址 / 点已删命令名的散文挂墓碑
-        ("src/doc/INVARIANTS.md", "render_local_ccm_with", 1), // 起会话的计划与渲染搬进后端：墓碑随搬家换住址 / 点已删命令名的散文挂墓碑
         (
             "tests/frontend/shell/local_backend_host_tests.rs",
             "the_launch_side_really_asks_the_backend_and_uses_its_answer",
@@ -4338,8 +4299,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ), // 记录解释进后端 / 会话正文四条退役，点旧名
         // 起会话只交一行 `ccm …`：载荷那一层（外层渲染 · 配置目录判定 · PowerShell 中转前缀）、读全量注入开关那条 Tauri 命令删了，
         //   远端 `ccm` 探针那个旧命令名最后一处活提名（执行器套件的替身串）随套件重写没了 ⇒ 点它们的那几行墓碑从此落在死名人群上。
-        ("src/doc/INVARIANTS.md", "config_dir_command_safe", 1),
-        ("src/doc/INVARIANTS.md", "render_tmux_outer", 3),
         ("src/frontend/shell/src/ccm_probe.rs", "probe_ccm_cli", 1),
         (
             "src/frontend/shell/src/lib.rs",
@@ -4660,7 +4619,6 @@ fn every_prose_tombstone_mark_is_registered() {
         // `jsonl-line` / `jsonl-batch` 退役：头注点旧载荷名一块 · 独立窗口入口头注点旧定向重放命令一块 ·
         //   状态消费者矩阵那一行一块。
         ("src/frontend/shell/src/ui_contract.rs", 2), // 1 → 2：⑬ 退役的会话清单/活动命令与 buffered_* 旧名挂墓碑
-        ("src/doc/STATE-MATRIX.md", 3), // 1 → 3：⑬ 退役的会话清单/活动命令与 buffered_* 旧名挂墓碑
         // `parse_remote_hosts` 旧单对象那一支与守它的测试删了，接替它的判据头注挂一块。
         ("tests/frontend/shell/lib_remote_config_tests.rs", 2), // +1：JA1 点址那一行
         // `inproc_dial.rs` 整份删了（界面进程零 SSH）⇒ 从界面侧搬来的旧函数名全仓只剩散文：
@@ -4770,7 +4728,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/frontend/shell/src/spawn_managed.rs", 5), // 6 → 5：`LifetimeGuard` 的 Drop 那一块随平台原语搬进 `platform/spawn.rs`（那边 +1） // 两边各自贴的墓碑相加，按盘上现数（跑出来核过） 4 → 6 // +2：一次性本机查询那一格删了，点旧名的散文挂墓碑
         ("src/frontend/shell/src/structural_scan.rs", 1),
         ("src/doc/ARCHITECTURE.md", 3), // 两边各自贴的墓碑相加，按盘上现数（跑出来核过） 2 → 3 // +1：本机一次性 exec / 任务行解释 / 分叉 exec 那几条路删了，点旧名的散文挂墓碑
-        ("src/doc/INVARIANTS.md", 28), // 27 → 28：§33b 三问 ② 的原文留档点的外层渲染函数随载荷那一层删了，就地挂墓碑 // 25 → 27：§33b「变严的代价」那句点的载荷那一层配置目录判定 · 只绑 Windows 的 §36 点的本机后端那份 PowerShell 渲染函数，两处随那一层删了挂墓碑 // 两边各自贴的墓碑相加，按盘上现数（跑出来核过） 19 → 25 // 两边各自贴的墓碑相加，按盘上现数（跑出来核过） // 基数 12 ＋ MIG-3a +2 ＋ 主线 +4 ⇒ 18 // +2：U8c-1「变严的代价」那一节补一句「收口了，收法是删」·「本地路径借 IR 做校验」那一节记 `validateLocalLaunch` 删了 // +1：§6 探活双重校验那一格搬去后端，点 monitor 旧函数名那句挂一块 // +2：§1 例外 3 那道远端删会话守卫 · 例外 1 本机那道路径守卫（`validate_delete_target`） // 12 → 16
+        ("src/doc/INVARIANTS.md", 17), // 28 → 17：§33b 压成现状（八处随沿革删）· `build_local_ps_command` 那处改成现状说法 · 另两处随 §33b 走 // 27 → 28：§33b 三问 ② 的原文留档点的外层渲染函数随载荷那一层删了，就地挂墓碑 // 25 → 27：§33b「变严的代价」那句点的载荷那一层配置目录判定 · 只绑 Windows 的 §36 点的本机后端那份 PowerShell 渲染函数，两处随那一层删了挂墓碑 // 两边各自贴的墓碑相加，按盘上现数（跑出来核过） 19 → 25 // 两边各自贴的墓碑相加，按盘上现数（跑出来核过） // 基数 12 ＋ MIG-3a +2 ＋ 主线 +4 ⇒ 18 // +2：U8c-1「变严的代价」那一节补一句「收口了，收法是删」·「本地路径借 IR 做校验」那一节记 `validateLocalLaunch` 删了 // +1：§6 探活双重校验那一格搬去后端，点 monitor 旧函数名那句挂一块 // +2：§1 例外 3 那道远端删会话守卫 · 例外 1 本机那道路径守卫（`validate_delete_target`） // 12 → 16
         // +3：§33b 产出方表 `session-backend.ts` 那格 · 三问表 ③ 那格 · 「删掉座的代价也换人了」那段 —— 点着随 TS 兜底一族删掉 / 改写的判据
         //   ⇒ 6（基）＋1（LOC1b）＋3（LR2）= 10
         // +1：别名那一块搬走时留的墓碑（`buildAccountAliasBlock`）。
@@ -4806,7 +4764,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/frontend/filewin/src/editor.rs", 3), // 1 → 3（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
         ("tests/frontend/shell/comm_boundary_registry_tests.rs", 1), // 3 → 1：登记表头注那个公开名字与「全绿待裁」那块墓碑随成员改由 crate 定义删了
         ("tests/common/guard-core/lib_tests.rs", 1),
-        ("tests/frontend/shell/doc_claim_registry_tests.rs", 3), // +1：U8c-2b-0 量法原先读的 `stream_source` 转调壳删了，点旧名的散文挂墓碑 // +1：本机一次性 exec / 任务行解释 / 分叉 exec 那几条路删了，点旧名的散文挂墓碑
+        ("tests/frontend/shell/doc_claim_registry_tests.rs", 1), // 3 → 1：状态列 / 常量值 / 环境变量副本那几族判据删了，挂在它们上面的两处跟着走 // +1：U8c-2b-0 量法原先读的 `stream_source` 转调壳删了，点旧名的散文挂墓碑 // +1：本机一次性 exec / 任务行解释 / 分叉 exec 那几条路删了，点旧名的散文挂墓碑
         ("tests/frontend/shell/filewin/entry_tests.rs", 2), // 〔09-28 裁 3〕1 → 2：旧名那一块随两条判据退役，新贴两块点它们
         ("tests/backend/assets/aliases/fence_tests.rs", 3), // 〔删 `fenced_block::apply` 那一族〕+2：序列那五条判据的墓碑（`apply` 两处） // 新：写规则那条的死值验说明点代装 rc 那一跳（已退役）的旧名
         // 🔴〔本机侧退役 2026-09-23〕`parent_dir` 只剩一个算法 ⇒ 那条判据改了名

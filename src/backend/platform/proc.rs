@@ -145,11 +145,9 @@ pub(crate) enum EnvRead {
 /// 它不该认识任何一个 agent 的环境变量叫什么 —— 那是 `agents/<名>/` 的事。
 /// 这一处是本件让 `platform/` 整层变干净、从而能进 `S1` 的 `CORE_FILES` 的**唯一**改动。
 ///
-/// ⚠⚠ **调用形状（`proc_env_var(pid, <键>)` 这一串字面）是两把尺子的量点**，别改：
+/// ⚠ **调用形状（`proc_env_var(pid, <键>)` 这一串字面）是量点**，别改：
 /// `observe/accounts_query_tests.rs::the_only_env_keys_this_module_reads_are_the_two_named_constants`
-/// 与**跨 crate** 的 `src/frontend/shell/src/doc_claim_registry_tests.rs::env_keys_actually_read`
-/// 都按这串字面数「backend 今天真读几个键」，后者再拿那个数去与盘上五份文档的计数词对拍。
-/// `K-R21` 只换返回类型、**一个字面都没动**，正是为了不惊动它们。
+/// 按这串字面数「backend 今天真读几个键」。
 ///
 /// 🔴 **`warn!` 在这里而不在调用方**：这是那次读的**唯一发生地**，
 /// 只有这里知道刚才走的是哪一支（`K-R21` PM 裁定 ㈢：「今天先加 `warn!` 而不拆状态，

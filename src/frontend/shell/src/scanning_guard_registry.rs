@@ -41,7 +41,7 @@
 //! |---|---|---|
 //! | **生产 / 夹具 IO** | 5 | 遍历的根本不是源码树（`.claude/projects` 的 jsonl · 标注池 · tempdir · `.ssh` · PowerShell profile）。**自匹配这个概念对它们不成立** |
 //! | **剥生产段（构造性摘除）** | 21 | 只扫 `production_code`/`production_source` 的产物；判据自己住在 `#[cfg(test)]` 里 ⇒ **按构造读不到自己** |
-//! | **显式摘除自身** | 2 | `SELF` 常量 / `replace(&own, "")`（`atomic_replace_registry` · `doc_copy_registry`） |
+//! | **显式摘除自身** | 2 | `SELF` 常量 / `replace(&own, "")`（`atomic_replace_registry`） |
 //! | **扫的树不含自己** | 2 | `frame_cadence_guard` 只扫 `.md`（自己是 `.rs`）· `shared_crate_registry` 扫 `crates/` 与 `Cargo.toml`（自己在 `src/frontend/shell/src`） |
 //!
 //! ⇒ **30 个存量里没有一个是「会自匹配却没防住」的**。它们不是 30 个待修的 bug，

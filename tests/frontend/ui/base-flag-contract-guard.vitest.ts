@@ -25,7 +25,7 @@
  * `export CLAUDE_CONFIG_DIR=<默认账号>`（用户自己写的，或早先的账号工具留下的），
  * 于是**用户以为在起账号 0，实际烧的是默认账号的额度**。UI 上完全看不出来。
  *
- * 做法照 `src/frontend/shell/src/tmux.rs::tmux_ls_fmt_double_write_point_stays_in_sync`：
+ * 做法照「两处同写的字面量各钉一侧、两侧互相对拍」那一形：
  * 读**另一侧的源文件** + 锚定那几行。`shared/ccm` 是红线（不改本体），
  * 本文件**只读**它。
  *
