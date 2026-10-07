@@ -155,6 +155,8 @@ export class TabBarView {
   private readonly downEl: HTMLDivElement;
   /** 列表：分组 ＋ 每个会话一行（滚动的是它）。 */
   readonly listEl: HTMLDivElement;
+  /** 起新会话之后的占位标签页那几行（`launch-slot.ts` 往里放）：恒在列表最末。 */
+  readonly slotTail: HTMLDivElement;
   /** 机器 → 它看不见是从何时起（`markOriginDown`）；连上了摘掉。 */
   private readonly downSince = new Map<string, number>();
 
@@ -222,6 +224,8 @@ export class TabBarView {
 
     this.listEl = document.createElement("div");
     this.listEl.className = "tab-list";
+    this.slotTail = document.createElement("div");
+    this.listEl.appendChild(this.slotTail);
     barEl.prepend(this.headEl, this.needsEl, this.downEl, this.listEl);
     // 悬停卡与行尾动作的悬停提示都委托在列表上：一行零个监听器（与点击 / 拖拽同一条规矩）。
     delegateTooltip(this.listEl, ".tab", (el) => {
@@ -471,6 +475,7 @@ export class TabBarView {
       }
       cursors.set(host, refs.root);
     }
+    if (this.listEl.lastChild !== this.slotTail) this.listEl.appendChild(this.slotTail);
     this.updateNeedsStrip();
     this.updateMachineDown();
     // 起步那一批（重放）画完之后，再新长出来的行才淡入。

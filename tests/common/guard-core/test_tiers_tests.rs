@@ -202,6 +202,7 @@ const UNIT: &[&str] = &[
     "tests/frontend/ui/keybindings/scope.vitest.ts",
     "tests/frontend/ui/launch-arrival.vitest.ts", // 起会话的真成功正信号（纯函数 ＋ 假定时器，不碰真窗口）
     "tests/frontend/ui/new-session.vitest.ts", // 起新会话框（DOM ＋ 替身通道，不起会话、不碰真窗口）
+    "tests/frontend/ui/launch-slot.vitest.ts", // 起会话之后的占位标签页（DOM ＋ 假的那几件，不起会话、不碰真窗口与 tmux）
     "tests/frontend/ui/agent-format-debt.vitest.ts", // 界面认着某一家记录格式的欠账表（扫生产源码的文本，只读）
     "tests/backend/control/session_new_tests.rs", // 起新会话一个请求（替身 Deps：tmux 名单 · 铸名 · 起 ccm · 写分支记录全是替身）
     "tests/backend/faces/session_new_face_tests.rs", // 起新会话框的这台事实（纯函数：最近目录怎么排 · 能起哪几家）

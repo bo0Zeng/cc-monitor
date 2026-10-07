@@ -78,7 +78,7 @@ import type { FrontendReadyPayload } from "./generated/FrontendReadyPayload";
 import { currentAccountForBadge } from "./accounts";
 import { fetchSessionAccounts, fetchAccounts } from "./account-reads";
 import { bindLaunchArrivals, noteLive } from "./launch-arrival";
-import { FOCUS_SESSION_EVENT, openNewSession, setNewSessionFocus } from "./new-session";
+import { FOCUS_SESSION_EVENT, openNewSession, setNewSessionPlaceholder } from "./new-session";
 import { copyText } from "./copy-table";
 import { appStore } from "./app-store";
 import { OverlayRouter } from "./overlay-router";
@@ -300,8 +300,13 @@ window.addEventListener("DOMContentLoaded", async () => {
   // ↗ 浮层的两颗：［接上终端］直达设置那一节 ·［更新］开那台机器页（更新那一颗只住机器卡上）。
   tabs.onConnectTerminal = () => void openSettingsWindow(undefined, dest.connectTerminalOf(LOCAL_ORIGIN));
   tabs.onUpdateMachine = (origin) => void openSettingsWindow(undefined, dest.machineOf(origin));
-  // 起新会话：那台报出新会话 ⇒ 切过去（在主窗口里起的直接切；在设置 / 查看窗里起的点了［切过去］再切，先把主窗口拉到前面）。
-  setNewSessionFocus((_origin, sid) => tabs.switchTo(sid));
+  // 起新会话：在主窗口里起的先长出占位标签页、报到了换成真的；在设置 / 查看窗里起的点了［切过去］再切，先把主窗口拉到前面。
+  setNewSessionPlaceholder((spec) => tabs.addLaunchSlot(spec));
+  // 占位标签页那一页显着：会话头与真标签页的选中样子让开。
+  tabs.onSlotShown = (on) => {
+    sessionHead.el.toggleAttribute("data-slot-over", on);
+    tabBar.toggleAttribute("data-slot-over", on);
+  };
   void listen<{ origin: string; sid: string }>(FOCUS_SESSION_EVENT, (e) => {
     const w = getCurrentWindow();
     void w.unminimize().then(() => w.setFocus()).catch(() => {});

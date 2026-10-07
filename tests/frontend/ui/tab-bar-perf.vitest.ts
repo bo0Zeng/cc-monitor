@@ -267,8 +267,8 @@ describe("P6：整刷不把 `barEl.children` 物化成数组", () => {
     // 栏顶一排 · 需要你 · 离线条 · 列表四块恒在；组与散 tab 都在列表里。
     expect([...r.bar.children].map((e) => e.className)).toEqual(["tab-bar-head", "tab-needs", "tab-machine-down", "tab-list"]);
     const kids = [...r.view.listEl.children];
-    const kind = (e: Element): string => (e.classList.contains("tab-group") ? "G" : "t");
-    expect(kids.map(kind).join("")).toBe("GGttt");
+    const kind = (e: Element): string => (e.classList.contains("tab-group") ? "G" : e === r.view.slotTail ? "S" : "t");
+    expect(kids.map(kind).join(""), "占位标签页那一格恒在最末").toBe("GGtttS");
   });
 });
 

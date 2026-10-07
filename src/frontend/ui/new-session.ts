@@ -5,8 +5,8 @@
  * 判定都在那台后端（`new-session-reads.ts` 那三问）：目录在不在 · 用哪个号（选不了 ⇒ 不起、带替代号）· 终端名 · 能起哪几家 ·
  * 分叉只在点［新建］那一步写分支记录。这里只排版：那台说哪一格不行，错误句就落在那一格下；整体不行落在框顶。
  *
- * 起了之后：框立刻关；那台报出这个会话 ⇒ 在主窗口里起的切过去，在别的窗口（设置 · 查看）起的说一句「已启动」＋［切过去］；
- * 没报到那一句由主窗口说（`launch-arrival.ts`）。
+ * 起了之后：框立刻关；在主窗口里起的 ⇒ 先长出占位标签页、报到了换成真的（`launch-slot.ts`）；
+ * 在别的窗口（设置 · 查看）起的 ⇒ 报到了说一句「已启动」＋［切过去］，没报到那一句由主窗口说（`launch-arrival.ts`）。
  */
 import { emit } from "@tauri-apps/api/event";
 import { formDialog } from "./kit/dialog";
@@ -30,7 +30,8 @@ import { resumeCommandFor } from "./remote-config";
 import { configuredLauncherFor } from "./launch-requests";
 import { chosenAccount, type AccountAsk } from "./launch-account";
 import { openWindow } from "./tab-batch-run";
-import { awaitArrival } from "./launch-arrival";
+import { awaitArrival, type ArrivalMatch } from "./launch-arrival";
+import type { SlotSpec } from "./launch-slot";
 import { accountsOf } from "./settings-dest";
 import { askDir, askFacts, askNew, type NewFacts, type NewRequest, type NewResult } from "./new-session-reads";
 import s from "./new-session.module.css";
@@ -51,10 +52,10 @@ export interface NewSessionSpec {
   fork?: { sid: string; uuid: string; title: string };
 }
 
-/** 主窗口：报到之后切到那个会话（`main.ts` 装一次；别的窗口没有它 ⇒ 说一句「已启动」）。 */
-let focusSession: ((origin: Origin, sid: string) => void) | null = null;
-export function setNewSessionFocus(fn: (origin: Origin, sid: string) => void): void {
-  focusSession = fn;
+/** 主窗口：起好了 ⇒ 长出占位标签页（`main.ts` 装一次；别的窗口没有它 ⇒ 等报到、说一句「已启动」）。 */
+let placeholder: ((spec: SlotSpec) => void) | null = null;
+export function setNewSessionPlaceholder(fn: ((spec: SlotSpec) => void) | null): void {
+  placeholder = fn;
 }
 
 /** 一台机器那一项：连没连上。 */
@@ -633,17 +634,13 @@ async function afterStart(origin: Origin, res: Extract<NewResult, { kind: "ok" }
       return;
     }
   }
-  const sid = await awaitArrival({
-    origin,
-    match: r.sid !== null ? { sid: r.sid } : { cwd: r.cwd },
-    tmuxName: r.session,
-    arrived: null,
-  });
-  if (sid === null) return;
-  if (focusSession) {
-    focusSession(origin, sid);
+  const match: ArrivalMatch = r.sid !== null ? { sid: r.sid } : { cwd: r.cwd };
+  if (placeholder) {
+    placeholder({ origin, cwd: r.cwd, tmuxName: r.session, agent: r.agent, match });
     return;
   }
+  const sid = await awaitArrival({ origin, match, tmuxName: r.session, arrived: null });
+  if (sid === null) return;
   const name = r.session ?? r.cwd.split("/").filter(Boolean).pop() ?? r.cwd;
   toast(copyText("launch.fromSettings.done", { name, machine: machineName(origin) }), "", {
     level: "info",

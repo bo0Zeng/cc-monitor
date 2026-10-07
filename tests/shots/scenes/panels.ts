@@ -66,6 +66,33 @@ function noDirWorld(): World {
   return w;
 }
 
+/** 点了［新建］、那台起好了（tmux 里）但会话一直没报到：那个 tmux 会话还在，画面末几行是启动器的报错。 */
+function unarrivedWorld(): World {
+  const w = defaultWorld();
+  const list = w.ops["terminals-list"];
+  w.ops["terminals-list"] = (o, r, ww) => {
+    const got = list(o, r, ww) as { terminals: Record<string, unknown>[] };
+    return { ...got, terminals: [...got.terminals, { ...got.terminals[0], terminal: "tmux-orders-cc-2", tmux_name: "orders-cc-2", title: "orders-cc-2", session: null, clients: [] }] };
+  };
+  w.ops["terminal-preview"] = () => ({
+    lines: ["$ ccm -- claude --modle opus", "claude: error: unknown option '--modle'", "(Did you mean --model?)", "$ "].map((text) => ({ text })),
+    screen: "00000000000000b2",
+    captured_at: Math.floor(Date.parse("2026-10-06T10:42:05") / 1000),
+  });
+  return w;
+}
+
+/** 起新会话：命令面板开框、点［新建］（`window` ⇒ 先点「新的终端窗口」）。 */
+async function startNewSession(place: "tmux" | "window" = "tmux"): Promise<void> {
+  await openCommandBar();
+  await type("[data-role=command-input]", "新建会话");
+  await key("Enter");
+  await waitFor('[role="dialog"] select[aria-label="账号"] option');
+  await sleep(300);
+  if (place === "window") await click('[role="dialog"] input[value="window"]');
+  await click(await byText('[role="dialog"] button', "新建"));
+}
+
 /** gpu-01 连不上，而它那个会话是固定着的 ⇒ 复活出来「说不清」。 */
 function unseenPinnedWorld(): World {
   const w = defaultWorld();
@@ -143,6 +170,21 @@ export const PANEL_SCENES: Scene[] = [
     await click(await byText('[role="dialog"] button', "新建"));
     await sleep(600);
   }, noDirWorld),
+  panel("panel-new-slot-starting", "起新会话 · 正在启动", "点［新建］、那台回「起好了」：框关掉，标签页栏末尾长出占位标签页「正在启动」（转圈 · 项目名），主区换成它那一页；报到了原位换成真的", async () => {
+    await startNewSession();
+    await waitFor("#tab-bar [data-slot]");
+    await sleep(600);
+  }),
+  panel("panel-new-slot-missed", "起新会话 · 20s 未报到", "那台起好了、20 秒没看到会话报到：占位标签页变红点「未报到」，那一页是报错卡 —— tmux 会话在不在 ＋ 画面末几行 ＋［终端画面］［在终端里打开］（远端才有）［结束 tmux 会话］·［关闭标签页］；之后报到了照样换成真的", async () => {
+    await startNewSession();
+    await waitFor("#tab-bar [data-slot][data-state=missed]", 30_000);
+    await sleep(600);
+  }, unarrivedWorld),
+  panel("panel-new-slot-window", "起新会话 · 开窗起的未报到", "运行于「新的终端窗口」、20 秒没报到：只有「已发启动命令 · 20s 未报到」＋［关闭标签页］（原话在那个窗口里，这边读不到）", async () => {
+    await startNewSession("window");
+    await waitFor("#tab-bar [data-slot][data-state=missed]", 30_000);
+    await sleep(600);
+  }),
   panel("panel-fork-new", "从这一轮分叉", "已结束的会话里，用户那句话上的分叉按钮：开起新会话框的分叉那一形 —— 顶上说分叉自哪一轮；源会话的号说不出 ⇒ 账号那一格是「跟随原会话上次的号」；不给终端名那一格", async () => {
     await mainReady(ALL_TABS);
     await openTab(2);

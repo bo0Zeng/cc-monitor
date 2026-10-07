@@ -55,7 +55,7 @@ const win = vi.hoisted(() => ({ openWindow: vi.fn(async () => null) }));
 vi.mock("../../../src/frontend/ui/tab-batch-run", () => win);
 vi.mock("@tauri-apps/api/event", () => ({ emit: vi.fn(async () => {}), listen: vi.fn(async () => () => {}) }));
 
-import { openNewSession, setNewSessionFocus } from "../../../src/frontend/ui/new-session";
+import { openNewSession, setNewSessionPlaceholder } from "../../../src/frontend/ui/new-session";
 
 const flush = async (): Promise<void> => {
   for (let i = 0; i < 20; i++) await new Promise((r) => setTimeout(r, 0));
@@ -120,9 +120,9 @@ describe("起新会话框：预填与几行出不出（都照那台说的）", (
 });
 
 describe("点［新建］：交那台的那一份", () => {
-  it("★ 一个请求：哪一家 · 目录 · 点名的号 · 放在哪；没改终端名就不带（那台铸）；起好了切到报到的那个会话", async () => {
-    const focus = vi.fn();
-    setNewSessionFocus(focus);
+  it("★ 一个请求：哪一家 · 目录 · 点名的号 · 放在哪；没改终端名就不带（那台铸）；主窗口里起好了 ⇒ 长出占位标签页（按展开过的目录认、带终端名与那一家），不再另等", async () => {
+    const slot = vi.fn();
+    setNewSessionPlaceholder(slot);
     const done = openNewSession({ origin: "devbox" });
     await flush();
     createBtn().click();
@@ -133,8 +133,9 @@ describe("点［新建］：交那台的那一份", () => {
     ]);
     expect(document.querySelector('[role="dialog"]'), "起了框就关").toBeNull();
     await flush();
-    expect(arrival.awaitArrival).toHaveBeenCalledWith(expect.objectContaining({ origin: "devbox", match: { cwd: "/home/u/srv/orders" }, tmuxName: "orders-cc" }));
-    expect(focus).toHaveBeenCalledWith("devbox", "new-sid");
+    expect(slot).toHaveBeenCalledWith({ origin: "devbox", cwd: "/home/u/srv/orders", tmuxName: "orders-cc", agent: "claude", match: { cwd: "/home/u/srv/orders" } });
+    expect(arrival.awaitArrival, "主窗口里起的不再等着说「已启动 / 没看到」").not.toHaveBeenCalled();
+    setNewSessionPlaceholder(null);
     expect(sent.some((s) => s.op === "terminal-name-mint" || s.op.startsWith("launch-render")), "界面不再自己拼那一串").toBe(false);
   });
 
@@ -148,6 +149,17 @@ describe("点［新建］：交那台的那一份", () => {
     expect(newRequests()[0].place).toBe("window");
     expect(win.openWindow).toHaveBeenCalledWith("devbox", "ccm -- new", "/home/u/x");
     expect(arrival.awaitArrival).toHaveBeenCalledWith(expect.objectContaining({ match: { cwd: "/home/u/x" }, tmuxName: null }));
+  });
+
+  it("★ 在别的窗口（设置 · 查看）里起的：没有占位标签页 ⇒ 等那台报到，报到了说「已启动」＋［切过去］", async () => {
+    setNewSessionPlaceholder(null);
+    void openNewSession({ origin: "devbox" });
+    await flush();
+    createBtn().click();
+    await flush();
+    await flush();
+    expect(arrival.awaitArrival).toHaveBeenCalledWith(expect.objectContaining({ origin: "devbox", match: { cwd: "/home/u/srv/orders" }, tmuxName: "orders-cc" }));
+    expect(document.body.textContent).toContain("已启动 orders-cc · devbox");
   });
 
   it("★ 那台说目录那一格不行 ⇒ 错误落在目录那一格下、框不关、什么都没起", async () => {

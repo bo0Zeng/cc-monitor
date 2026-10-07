@@ -12014,6 +12014,61 @@
       "zh": "已启动 {name} · {machine}",
       "args": ["name", "machine"]
     },
+    "launch.placeholder.title": {
+      "kind": "title",
+      "zh": "正在启动",
+      "args": []
+    },
+    "launch.slot.missedTitle": {
+      "kind": "title",
+      "zh": "未报到",
+      "args": []
+    },
+    "launch.slot.missedState": {
+      "kind": "body",
+      "zh": "未报到 · {secs}s",
+      "args": ["secs"]
+    },
+    "launch.slot.missedCard": {
+      "kind": "error",
+      "zh": "已发启动命令 · {secs}s 未报到",
+      "args": ["secs"]
+    },
+    "launch.slot.tmuxThere": {
+      "kind": "body",
+      "zh": "{machine} · tmux 会话 {name} 在 · 画面末几行：",
+      "args": ["machine", "name"]
+    },
+    "launch.slot.tmuxEmpty": {
+      "kind": "body",
+      "zh": "{machine} · tmux 会话 {name} 在 · 画面为空",
+      "args": ["machine", "name"]
+    },
+    "launch.slot.tmuxGone": {
+      "kind": "body",
+      "zh": "{machine} · tmux 会话 {name} 不在",
+      "args": ["machine", "name"]
+    },
+    "launch.slot.noScreen": {
+      "kind": "body",
+      "zh": "{machine} · tmux 会话 {name} · 画面读不到：{why}",
+      "args": ["machine", "name", "why"]
+    },
+    "launch.slot.screen": {
+      "kind": "action",
+      "zh": "终端画面",
+      "args": []
+    },
+    "launch.slot.close": {
+      "kind": "action",
+      "zh": "关闭标签页",
+      "args": []
+    },
+    "launch.slot.killCuts": {
+      "kind": "body",
+      "zh": "{machine} tmux 会话 {name} 里正在跑的程序",
+      "args": ["machine", "name"]
+    },
     "tabSessionActions.agent.unknown": {
       "kind": "error",
       "zh": "还不知道这个会话是哪一家 agent，先没动",

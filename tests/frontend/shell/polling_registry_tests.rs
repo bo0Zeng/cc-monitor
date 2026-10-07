@@ -428,6 +428,7 @@ const SCHEDULING_SITES: &[(&str, &str, usize, &str)] = &[
     ("src/frontend/ui/kit/block.ts", "setTimeout", 2, "① 加载超过 300ms 才画骨架 ② 超过 10s 才写正在做什么；换态时都 `clearTimeout`。一次性。"),
     ("src/frontend/ui/kit/interrupts.ts", "setTimeout", 1, "问后端「会打断什么」的 2s 上限：到点当有东西在跑；答到了 `clearTimeout`。一次性。"),
     ("src/frontend/ui/kit/menu.ts", "setTimeout", 3, "① ② 子菜单悬停 150ms 开 / 250ms 关（关菜单时统一清）③ 右键开的菜单下一拍挂「点外面」监听。一次性。"),
+    ("src/frontend/ui/launch-slot.ts", "setTimeout", 1, "起新会话之后的占位标签页：每个一个 20 s 的点，到点只把样子换成「未报到」、问一次那台那个 tmux 会话在不在与画面（不重试、不轮询）；报到了 / 关掉时 `clearTimeout`。一次性。"),
     ("src/frontend/ui/launch-arrival.ts", "setTimeout", 2, "① 起会话之后等那台报出它的**预算**（`ARRIVAL_BUDGET_MS`）：每件预期一个、到点只说一次「没看到会话起来」，见到了当场 `clearTimeout`。② `awaitArrival` 发起方自己的上界（预算 ＋ 15 s：主窗口不回话也不挂着），回话一到就 `clearTimeout`。都是一次性，不重试、不取数。"),
     ("src/frontend/ui/events.ts", "setTimeout", 3, "① `scheduleBatchEnd` 的 batch-end 哨兵（每次重排前 `clearTimeout`，且有 `BATCH_HOLD_MAX_MS` 5min 防呆上限）② `setTimeout(drain, 0)` —— **队列 drain 自链**，退出条件是 `queue.length === 0`，由 `scheduled` 标志防重入。不是节拍器：没有队列就不会再排。原 ③（`makeYieldToMain` 的兜底）搬进 `yield-to-main.ts`（3 = 2 ＋ 1）。④（2 → 3）一台机器的会话流看不见了之后等 `UNSEEN_SAY_MS`（20 s）：还没看见才说一句是哪台、能做什么；又看见了当场 `clearTimeout`。每台每次看不见至多一个，一次性，不重试、不取数。"),
     // `src/frontend/ui/session-accounts-poll.ts` 的 `setInterval` ×1 这一行出去了（10s 账号轮询改事件驱动，理由见 `REGISTERED` 头上那段）。

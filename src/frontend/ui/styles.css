@@ -189,6 +189,16 @@
   background: var(--state-active);
 }
 
+/* 正看着起新会话的占位标签页：真标签页的选中样子与会话头让开（`launch-slot.ts`）。 */
+#tab-bar[data-slot-over] .tab.active:not([data-slot]) {
+  border-left-color: transparent;
+  background: transparent;
+}
+
+#session-head[data-slot-over] {
+  display: none;
+}
+
 .tab.selected {
   background: color-mix(in srgb, var(--accent) 28%, transparent);
 }

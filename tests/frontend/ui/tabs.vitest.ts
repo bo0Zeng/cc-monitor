@@ -5508,3 +5508,32 @@ describe("tab 多选与批量菜单", () => {
     expect(drawnSelected(), "开批量菜单不动多选").toEqual(["a", "b"]);
   });
 });
+
+describe("起新会话的占位标签页接在标签页栏里", () => {
+  it("★ 恒在列表最末（后来的标签页 · 新建的组都排在它前面）；手动切到哪个标签页（连切回原来那个）⇒ 那一页收起；自动跟随不把人拽走", () => {
+    const tm = makeTM();
+    tm.createSkeletonTab("a", "/p/a", LOCAL_ORIGIN, null, null);
+    tm.createSkeletonTab("b", "/p/b", LOCAL_ORIGIN, null, null);
+    tm.switchTo("a");
+    const shown: boolean[] = [];
+    tm.onSlotShown = (on) => shown.push(on);
+    tm.addLaunchSlot({ origin: "devbox", cwd: "/home/u/srv/billing", tmuxName: "billing-2", agent: "claude", match: { cwd: "/home/u/srv/billing" } });
+    tm.createSkeletonTab("c", "/p/c", LOCAL_ORIGIN, null, null);
+    setGroups(tm, [{ id: "g1", name: "组一", tabs: ["b"] }]);
+    tm.repaintTabBar();
+    const list = home(tm).bar.listEl;
+    const last = list.lastElementChild as HTMLElement;
+    expect(last.querySelector("[data-slot]")?.textContent).toBe("devboxbilling正在启动");
+    expect(tm.debugSlots().showing).toBe(1);
+    expect(shown).toEqual([true]);
+
+    tm.switchTo("b", "auto");
+    expect(tm.debugSlots().showing, "自动跟随不切").toBe(1);
+    expect(tm.activeSessionId()).toBe("a");
+
+    tm.switchTo("a");
+    expect(tm.debugSlots().showing, "切回原来那个也收起").toBeNull();
+    expect(tm.debugSlots().ids, "那一行留着、还在等").toEqual([1]);
+    expect(shown).toEqual([true, false]);
+  });
+});
