@@ -1,7 +1,5 @@
-//! 〔D 组〕项目 `.mcp.json` 的增 / 改 / 删：帧面 `mcp-server-put` / `mcp-server-remove`。
-//!
-//! 从 monitor `mcp.rs` 原样搬来（D 组「monitor 算好、后端写」改成那台后端自己算、自己写）。
-//! 写面**只** `<项目目录>/.mcp.json`（SS-14 · `INVARIANTS §1` 例外 5）：`~/.claude.json` / `settings.json` 一个字节不碰。
+//! 项目 `.mcp.json` 的增 / 改 / 删：帧面 `mcp-server-put` / `mcp-server-remove`，那台后端自己算、自己写。
+//! 写面只 `<项目目录>/.mcp.json`（`INVARIANTS §1` 例外 5）：`~/.claude.json` / `settings.json` 一个字节不碰。
 //! 「原文怎么变成新原文」只有 [`plan_project_mcp`] 一处（推 / 拉那一趟也用它）。
 
 use super::door::{self, Door, Edited};

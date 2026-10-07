@@ -246,7 +246,7 @@ pub(crate) fn candidates(server: &Value) -> Vec<Candidate> {
 /// 候选 ＋ 这台机器的事实 ⇒ 标给人看的那几条。**纯**（事实是参数）。
 ///
 /// 裸名字在 `PATH` 上找得到 ⇒ **不标**（那是「对面有这个命令」）；其余候选一律标出（绝对路径即使对面也有，
-/// 也是「带本机绝对路径」—— 用户逐字要看的就是这一族；`there` 那一格告诉他对面有没有）。
+/// 也是「带本机绝对路径」，要让人看见；`there` 那一格告诉他对面有没有）。
 pub(crate) fn judge(cands: &[Candidate], facts: &dyn Facts) -> Vec<Suspect> {
     let mut out = Vec::new();
     for c in cands {

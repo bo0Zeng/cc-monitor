@@ -3,7 +3,7 @@
 //! 谁要它：`crate::stderr_log`（脱离常驻那条载体的后端把自己的 stderr 落进一份有上限、滚动的文件）。
 //! 换 fd 而不是换 `tracing` 的写者：本进程写 stderr 的不止 `tracing` —— `eprintln!`（`[relay]` 那几句）· panic 信息 ·
 //! 继承了 stderr 的子进程，fd 这一层一次全接住；而且写是**同步**落盘的，进程 `exit` 那一刻前面的话一个字都不丢
-//! （先前那一版是「管子 ＋ 读线程」，`exit(4)` 之前那句「监听口配置不成立」来不及被读线程搬走 —— 真二进制现打逮到，见 `NT2.md §5`）。
+//! （「管子 ＋ 读线程」那一形会让 `exit` 之前的最后一句来不及被搬走）。
 //!
 //! 非 unix 那一臂是 `Err`：脱离那条载体今天只在 Linux 上有（monitor 那侧 `spawn_detached` 的非 Linux 臂就回 `Err`），
 //! Windows 本机后端走被监护的 stdio 载体、stderr 进 monitor 日志 —— 这一格答不上来，照实说（`fallback_guard` 那条纪律）。

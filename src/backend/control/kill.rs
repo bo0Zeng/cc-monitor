@@ -1,21 +1,10 @@
-//! F04a：**杀一个 tmux 会话**（定框 C5：任何改状态的 tmux 命令一律归 `control/`）。
+//! 杀一个 tmux 会话（改状态的 tmux 命令一律归 `control/`）。argv 直传、不过 shell，三道门（Gate 1/2/3）由
+//! [`super::gate::admit_destructive`] 过；界面经通道直接说本命令（`src/frontend/ui/tmux-control.ts::killSession`）。
 //!
-//! # 它与 monitor 侧那条路的关系
+//! # 杀的是句柄不是名字
 //!
-//! monitor 的 `kill_remote_tmux`（已迁到界面 `src/frontend/ui/tmux-control.ts::killSession`，经通道直接说本命令）当年拼一条穿过 ssh + shell 的原子命令，
-//! 带 §34 的 **Gate 1/2/3**。本模块是它在后端侧的对应物：
-//! **argv 直传、不过 shell**，三道门由 [`super::gate::admit_destructive`] 复现。
-//!
-//! ⚠ **本模块落地不等于 monitor 那条路已经切过来了。** 定框 C6 逐字写着
-//! 「**先搬 Gate 2，再切 kill / send-keys —— 顺序不可反**」；F03 搬了 Gate 2，
-//! F04a（本件）搬 Gate 3 + 这条 kill，**切路由是 F04b**。
-//! 那件的验证面里有「真远端那一跳」，本机结构性验不了⇒ 单独一件。
-//!
-//! # ★ 为什么杀的是句柄不是名字
-//!
-//! `admit_destructive` 回的是 `#{session_id}`（tmux 的 `$N`，server 生命周期内唯一、不复用）。
-//! 之后 `kill-session -t '$3'`：名字在窗口期内被重新绑定到别的会话也**杀不到别人**。
-//! 这与 `super::gate` 头注那段 TOCTOU 分析是同一条纪律 —— **破坏性动作尤其不能对名字下手。**
+//! `admit_destructive` 回的是 `#{session_id}`（tmux 的 `$N`，server 生命周期内唯一、不复用），之后 `kill-session -t '$3'`：
+//! 名字在窗口期内被重新绑定到别的会话也杀不到别人（同 `super::gate` 头注的 TOCTOU 分析）。
 //!
 //! # 杀成之后顺手从 cc-bus 收掉登记在这个会话上的 id
 //!
@@ -56,9 +45,9 @@ pub(crate) fn parse_name(args: &serde_json::Value) -> Result<String, CmdErr> {
     Ok(name.to_string())
 }
 
-/// 〔DUP3 §5 ③ ⑦〕**已有会话名**的 Gate 1（结束 · 抓屏 · 送键共用）：规则只有一份
-/// `crate::control::gate_rules::existing_tmux_name_issue`（空 · 控制符 · 视觉欺骗字符），外加 `:`（tmux 目标语法的分隔符，真会话名里不会有）。
-/// `=` 不拒：`=a=b:` 精确命中名叫 `a=b` 的会话，attach 那一条早就放行它。
+/// 已有会话名的 Gate 1（结束 · 抓屏 · 送键共用）：规则只有一份 `crate::control::gate_rules::existing_tmux_name_issue`
+/// （空 · 控制符 · 视觉欺骗字符），外加 `:`（tmux 目标语法的分隔符，真会话名里不会有）。
+/// `=` 不拒：`=a=b:` 精确命中名叫 `a=b` 的会话。
 pub(crate) fn admit_existing_name(name: &str) -> Result<(), CmdErr> {
     use crate::control::gate_rules::TmuxNameIssue as I;
     match crate::control::gate_rules::existing_tmux_name_issue(name) {
@@ -107,9 +96,8 @@ fn run_expecting(
     requester: Option<&str>,
 ) -> Result<super::cc_bus::BusCleanup, CmdErr> {
     let target = super::launch::exact_target(name);
-    // ★ Gate 1（`=name:` 精确匹配，`exact_target` 内部）· Gate 2（身份）· Gate 3（windows==1）
-    //   ⇒ 通过后拿到句柄。**顺序不可反**：门在 kill 之前，由
-    //   `the_kill_path_admits_before_it_kills` 钉住。
+    // Gate 1（`=name:` 精确匹配，`exact_target` 内部）· Gate 2（身份）· Gate 3（windows==1）⇒ 通过后拿到句柄。
+    // 门在 kill 之前（`the_kill_path_admits_before_it_kills` 钉住）。
     let end = super::gate::admit_destructive(name, &target, sid, requester)?;
     // 结束整个会话，还是只结束挂着那个 sid 的几个窗格（会话里还跑着别的 claude）。都对放行时拿到的句柄下手。
     let (handle, only) = match end {

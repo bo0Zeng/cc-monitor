@@ -1,16 +1,11 @@
 #!/usr/bin/env bash
-# Rust 覆盖率：**判据盖了生产多少行**（TQ1 · 「度量能力」）。
-#
-# 是量具，不是门禁：它**不进** `gate.sh`、不进 CI，也不给任何数定地板。
-# 读数进（一次性），要复算就再跑一次。
+# Rust 覆盖率：判据盖了生产多少行。是量具，不是门禁：不进 `gate.sh`、不进 CI，不给任何数定地板。
 #
 # # 选型：rustc 自带的 `-C instrument-coverage` ＋ 系统的 `llvm-profdata` / `llvm-cov`
 #
 # 不用 `cargo-llvm-cov` / `grcov` / `tarpaulin`：三个都要 `cargo install`（联网、装全局），
 # `llvm-tools-preview` 也要联网。本机 `/usr/bin/llvm-profdata` / `llvm-cov` 是发行版的 llvm 包，已在盘上。
-# ⚠ **版本差**：rustc 自带的 LLVM 可能比系统那套新一个大版本（落地时 22 vs 21）。
-#   TQ1 现打过一次小样：21 的 merge 读得了 22 编出来的 `.profraw`、`report` 的数与源码对得上。
-#   哪天读不了，`merge` 那一步会报错退出 —— 本脚本对那一格 **fail-closed**，不出一张空表。
+# rustc 自带的 LLVM 可能比系统那套新一个大版本；读不了时 `merge` 那一步报错退出（fail-closed，不出空表）。
 #
 # # 它量什么
 #
@@ -43,9 +38,7 @@ which_side="${1:-both}"
 profdata_bin="${LLVM_PROFDATA:-llvm-profdata}"
 cov_bin="${LLVM_COV:-llvm-cov}"
 
-# 🔴 **断网**：发行版的 llvm 带 debuginfod，而 Ubuntu 默认给了 `DEBUGINFOD_URLS=https://debuginfod.ubuntu.com`
-#   ⇒ `llvm-cov report` 会去那个服务器取调试信息，在断网 / 沙箱里**挂着不动**（TQ1 落地那趟现打：
-#   开着一个 socket、`poll` 睡着、CPU 两秒，报告一个字节都没写）。本脚本不许联网 ⇒ 清掉它。
+# 断网：Ubuntu 默认给了 `DEBUGINFOD_URLS`，`llvm-cov report` 会去取调试信息，在断网 / 沙箱里挂着不动 ⇒ 清掉它。
 export DEBUGINFOD_URLS=
 
 for t in "$profdata_bin" "$cov_bin"; do
@@ -81,9 +74,8 @@ run_side() {
   fi
 
   # 被测的目标文件：测试二进制（同一组参数 --no-run，不会重编）＋ 本侧的可执行文件（测试会 spawn 它）。
-  # ⚠ 这一趟也要给 `LLVM_PROFILE_FILE`：插桩标志对 build script 与 proc-macro 也生效，它们一旦被执行
-  #   （真要重编的时候，rustc 会加载插桩过的 proc-macro），不给路径就往**当前目录**落 `default_*.profraw`
-  #   —— TQ1 落地那趟现打在 `src/frontend/shell/` 下落了 70 份。给它一个 `.build/` 下的去处，不进源码树。
+  # 这一趟也要给 `LLVM_PROFILE_FILE`：插桩对 build script 与 proc-macro 也生效，不给路径就往当前目录
+  #   （源码树里）落 `default_*.profraw`；给它一个 `.build/` 下的去处。
   local objs=()
   local exe
   while IFS= read -r exe; do

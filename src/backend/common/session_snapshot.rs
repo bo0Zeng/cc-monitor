@@ -1,47 +1,19 @@
-//! `K-R96`（09-12）：**「这台机器上现在有哪些 tmux 会话」的那一张快照 —— 全 crate 只有一份。**
+//! 「这台机器上现在有哪些 tmux 会话」的那一张快照 —— 全 crate 只有一份（watcher 要差分「这一轮谁没了」，Gate 要判活 ＋ 铸名避让）。
 //!
-//! # 它治的是什么
+//! 两条纪律都在 API 形状上：
+//! 1. 问它一次 = 它更新一次。[`SessionSnapshot::query`] 没有「只读缓存」这条路 —— 先探一次、再把探回来的那份存下来并返回，拿到的值恒是这一刻的。
+//!    watcher 用 [`SessionSnapshot::publish`] 把它焐热，但焐热的值不会被 `query` 交出去。退化成读缓存 = 拿陈值判活 = 把刚死的会话报成活的
+//!    （`bus-list` 会把敲门文字打进陌生占用者的屏幕）。
+//! 2. 铸名避让只能问它：[`TakenNames`] 的字段是模块私有的 ⇒ 本模块之外造不出一份「已占用的名字」（`DECISIONS.md#R52`）。
 //!
-//! 收拢之前，同一个问题在本 crate 里有**两条各自去问 tmux 的路**：
+//! 住 `common/`：control（Gate 判活与铸名）与 observe（watcher 发布）都要，而 `control/` 不许引用 `observe/`；
+//! 平台无关（起的是 `tmux` 这个跨平台程序）、无域知识（只认「会话名 + `@ccm_sid`」两个字段）。
 //!
-//! | 谁 | 怎么问 | 拿它干嘛 |
-//! |---|---|---|
-//! | `observe/watcher.rs` | `sh -c 'tmux ls -F <TMUX_LS_FMT>'`（带 `timeout`） | 差分出「这一轮谁没了」，并把 raw 原样推给 monitor |
-//! | `control/gate.rs` | `tmux -u list-sessions -F <三列>` | 判活（`bus-list` 的「这个成员还在吗」）＋ 铸名避让 |
+//! # 不承诺的
 //!
-//! 用户 09-12 逐字裁定（`DECISIONS.md#R52` 裁定一）：
-//! 「**Gate 能不能改成直接读那份快照. 可以 / 改为向快照发一次询问, 快照更新一次**」。
-//!
-//! ⇒ 本模块就是那份快照。两条纪律，**都在 API 形状上，不靠自觉**：
-//!
-//! 1. **问它一次 = 它更新一次。** [`SessionSnapshot::query`] 没有「只读缓存」这条路 ——
-//!    它先探一次、再把探回来的那份存下来并返回。**拿到的值恒是这一刻的**。
-//!    观测方（watcher）用 [`SessionSnapshot::publish`] 把它**焐热**，
-//!    但焐热出来的值**不会**被 `query` 交出去（`query` 一定重探）。
-//!    🔴 这条差别是本模块的立身之本：`R52` 允许 Gate 读快照的**前提**就是「读会触发更新」。
-//!    退化成「读缓存」= 拿陈值判活 = 把一个刚死的会话报成活的（`bus-list` 会因此
-//!    把敲门文字打进**陌生占用者**的屏幕 —— 08-13 实测过的那个后果）。
-//! 2. **铸名避让只能问它。** [`TakenNames`] 的字段是模块私有的 ⇒
-//!    **本模块之外造不出一份「已占用的名字」**。用户 `R52` 裁定二逐字：
-//!    「不就是先校验冲突然后取名吗? **搞个 hash 表**不就好了」——
-//!    那张表就是这里，而「另起一份名字集合」在类型层面就编译不过。
-//!
-//! # 为什么住 `common/` 而不是 `control/` 或 `observe/`
-//!
-//! `layering_guard` 钉死 `control/` 不许引用 `observe/`，而这份快照**两边都要**
-//! （control 的 Gate 判活与铸名要问它，observe 的 watcher 要往里发布）。
-//! ⇒ 按 `common/mod.rs` 那三条门槛：① ≥2 个上层用 ✅（control ＋ observe）·
-//! ② 平台无关 ✅（起的是 `tmux` 这个跨平台程序，不认识任何 OS 的文件布局）·
-//! ③ 无域知识 ✅（它只认识「会话名 + `@ccm_sid`」这两个字段，不认识 `WatchEvent` / `Plan`）。
-//!
-//! # 🔴 它**不**承诺什么
-//!
-//! - **它不是 `probe()` 的替代品。** `control/gate.rs::probe`（`display-message -p`）取的是
-//!   `#{session_id}` 这个**句柄**，作用是把「查完再动」之间的 TOCTOU 窗口关掉。
-//!   本模块交出来的是**名字**，名字会被重新绑定 ⇒ **不许拿它去下破坏性命令**。
-//! - **它不带 `#{session_id}`。** 两个消费者（`cc_bus::join_identity` 与 `ccm` 的铸名避让）
-//!   一个都不问那一列，而 watcher 那条路（`TMUX_LS_FMT`）里根本没有它 ——
-//!   带一列谁都不用、且有一半发布者填不出来的值，就是下一处静默的空串。
+//! - 它不是 `probe()` 的替代品：`control/gate.rs::probe` 取的是 `#{session_id}` 句柄（关 TOCTOU 窗口）；本模块交出来的是名字，
+//!   名字会被重新绑定 ⇒ 不许拿它去下破坏性命令。
+//! - 不带 `#{session_id}`：两个消费者（`cc_bus::join_identity` 与 `ccm` 的铸名避让）都不问那一列，watcher 那条路（`TMUX_LS_FMT`）里也没有它。
 
 use crate::platform::child::{Child, Deadline};
 use copy_core::copy_text;
@@ -96,10 +68,7 @@ pub(crate) fn rows_of(name: &str, sids: Vec<String>) -> Vec<SessionRow> {
         .collect()
 }
 
-/// **已被占用的会话名。** 字段刻意是模块私有的 —— 本模块之外造不出一份。
-///
-/// 这就是 `R52` 裁定二那张「hash 表」的类型形态：铸名避让（`ccm::plan::build`）
-/// 只收这个类型，于是「另起一份名字集合」不是靠注释劝阻，是**编译不过**。
+/// 已被占用的会话名。字段刻意是模块私有的：铸名避让（`ccm::plan::build`）只收这个类型，「另起一份名字集合」编译不过。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct TakenNames(Vec<String>, Vec<SessionRow>);
 
@@ -136,11 +105,7 @@ impl SessionSnapshot {
         }
     }
 
-    /// **向快照发一次询问 ⇒ 快照更新一次**（`R52` 裁定一逐字）。
-    ///
-    /// 🔴 **没有「只读」这条路。** 交出去的恒是**刚探回来**的那一份，不是上一次存的。
-    /// 把它改成「先看缓存、有就直接回」是本模块唯一那种会静默失效的改法 ——
-    /// `KR96D1` 的死值验第二刀钉的就是这一下。
+    /// 向快照发一次询问 ⇒ 快照更新一次。没有「只读」这条路：交出去的恒是刚探回来的那一份。改成「先看缓存、有就直接回」是本模块唯一会静默失效的改法。
     pub(crate) fn query(&self) -> Result<Vec<SessionRow>, CmdErr> {
         let fresh = (self.probe)()?;
         // 存一份供 `publish` 的同居者读（并让「刚探到的」与「焐着的」始终是同一份）。
@@ -200,18 +165,10 @@ const LIST_FMT: &str = "#{session_name}\t#{@ccm_sid}\t#{W:#{P:#{@ccm_sid} }}";
 /// `LIST_FMT` 的列数 —— [`tab_underflow`] 的 N。**改格式串必须同步这个数。**
 const LIST_FMT_FIELDS: usize = 3;
 
-/// 全 crate **唯一**一处「一次列全部 tmux 会话」的起进程点。
-///
-/// ⚠ **一次调用列全部**，不是每个成员探一次：用户那台的总线有 86 行，
-/// 逐个探就是 86 次起进程。
-///
-/// ⚠ **不看退出码**（同 `control/gate.rs::probe`）：没有任何会话时 `tmux ls` 是
-/// 非零 + 空输出，那不是错误，是「一个都没有」。
-///
-/// 🔴 **`K-R12`：`-u` 必须排在子命令之前。** 放到后面是 `rc=1 + unknown flag -u`，
-/// 而这里刻意不看退出码 ⇒ 那个响错会被压成「一个会话都没有」= 又一次静默失效。
-/// 由本模块测试段那条判据钉住次序（判据从 `control/gate.rs` 随这处调用点一起搬来）。
-/// `list-sessions` 那一发的期限：tmux 一发 5 s（同 watcher 探测 tmux 的期限；界面等它的命令预算都在 10 s 以上）。
+/// 全 crate 唯一一处「一次列全部 tmux 会话」的起进程点：一次调用列全部，不是每个成员探一次。
+/// 不看退出码（同 `control/gate.rs::probe`）：没有任何会话时 `tmux ls` 是非零 + 空输出，那是「一个都没有」。
+/// `-u` 必须排在子命令之前：放到后面是 `rc=1 + unknown flag -u`，会被压成「一个会话都没有」（本模块测试段那条判据钉住次序）。
+/// 期限：tmux 一发 5 s（同 watcher 探测 tmux 的期限；界面等它的命令预算都在 10 s 以上）。
 const LIST_SESSIONS_WITHIN: Deadline = Deadline::secs(5);
 
 fn probe_tmux() -> Result<Vec<SessionRow>, CmdErr> {
@@ -229,10 +186,7 @@ fn probe_tmux() -> Result<Vec<SessionRow>, CmdErr> {
     Ok(parse_rows(&String::from_utf8_lossy(&out.stdout)))
 }
 
-/// 把 `LIST_FMT` 的 stdout 切成行。
-///
-/// `K-R12 J1`：段数下溢 ⇒ 打印通道被改写 ⇒ **出声 + 整行不当好数据**。
-/// 空行不算下溢（它本来就该被 `name.is_empty()` 丢掉，不是病）。
+/// 把 `LIST_FMT` 的 stdout 切成行。段数下溢 ⇒ 打印通道被改写 ⇒ 出声 + 整行不当好数据。空行不算下溢（本来就该被 `name.is_empty()` 丢掉）。
 fn parse_rows(text: &str) -> Vec<SessionRow> {
     text.lines()
         .filter_map(|line| {

@@ -1,29 +1,19 @@
-//! Codex 适配层 —— backend 里**所有** Codex 专属知识的唯一住址（`S2`）。
+//! Codex 适配层 —— backend 里所有 Codex 专属知识的唯一住址。
 //!
-//! | 子模块 | 装什么 | 从哪搬来的 |
-//! |---|---|---|
-//! | [`parse`] | rollout 记录的信封与字段抽取、会话目录定位 | `observe/codex.rs`（整体） |
-//! | [`resume`] | resume 的**命令形状**与会话名前缀、默认命令名 | `control/resolve_query.rs` 的 `is_codex` 分支 |
+//! | 子模块 | 装什么 |
+//! |---|---|
+//! | [`parse`] | rollout 记录的信封与字段抽取、会话目录定位 |
+//! | [`resume`] | resume 的命令形状与会话名前缀、默认命令名 |
 //!
-//! # 接口面：**四类能力里的三类**，第四类今天是空的
-//!
-//! `D4` 把适配层的接口定为四类能力（会话发现与判活 · 会话内容读 · 用量 · 起会话/resume）。
-//! 本层今天真实覆盖 **② 的一半（抽取器有、读路未接）· ③ · ④**；
-//! **① 会话发现与判活**：**"这台机器上有没有这个 agent"那一格已经有了**
-//! （[`home`] + `agents::visible_homes`），**"有哪些会话、活没活"那一格仍然是空的**。
-//! 两格别混：前者只看 home 目录在不在，后者要扫会话树 + 判活（DG1，仍未接线）。
-//! ⇒ Codex 会话今天**不会**出现在流式 watcher 里，只在 `--usage` 和
-//! `--resolve` 两条一次性路上被看见。
-//!
-//! ⚠ 而且**发现出来的东西今天不上线**：`main.rs` 的 `homes: Vec::new()` 一行未动
-//! （`S5` 的口径是「**能填不真填**」——填 `homes` 是一次跨仓契约变更，留成一次纯发布决策）。
-//!
-//! ⚠ 不要从"这里有个模块"推断"Codex 支持完整"。
+//! 适配层的接口是四类能力（会话发现与判活 · 会话内容读 · 用量 · 起会话 / resume）。「这台机器上有没有这个 agent」已有（[`home`] + `agents::visible_homes`），
+//! 「有哪些会话、活没活」那一格是空的（要扫会话树 + 判活）⇒ Codex 会话不出现在流式 watcher 里。
+//! 发现出来的东西不上线：`main.rs` 的 `homes: Vec::new()` 那一行留着（填 `homes` 是一次跨仓契约变更，是一次纯发布决策）。
+//! 不要从「这里有个模块」推断「Codex 支持完整」。
 
-// 历史清单那一面（会话枚举 ＋ 首条真用户话）：本机的 Codex 合成项目 / 会话从 monitor 搬进后端。
+// 历史清单那一面（会话枚举 ＋ 首条真用户话）：本机的 Codex 合成项目 / 会话。
 pub(crate) mod history;
 pub(crate) mod parse;
-// 记录分类 ＋ 映射进渲染模型（从 monitor `codex_record.rs` 搬来）。
+// 记录分类 ＋ 映射进渲染模型。
 pub(crate) mod record;
 pub(crate) mod resume;
 // Codex `token_count` → token 增量的唯一映射（原共享 crate `codex-token-core`，唯一消费者 `parse.rs`）。
@@ -58,14 +48,7 @@ pub(crate) const RECORDS: crate::agents::RecordFace = crate::agents::RecordFace 
     children: None,
     project_dir: Some(history::project_dir),
 };
-// 〔删用量〕**原 `pub(crate) mod usage;` 删了。**
-// `agents/codex/usage.rs` 是用量**聚合轴**（②）的 Codex 半：它的唯一调用方是
-// 用量聚合那条一次性查询的入口（Claude 段之后硬接的那一句），而那份文件随 ② 轴整轴退役。
-// 同一刀还带走了它的类型依赖：桶累加器用的 `usage_core::Totals` 住在
-// `crates/usage-core` 的 Claude 半，那半也删了（crate 改名 `codex-token-core`）。
-// ⇒ 它**不是被顺手删的，是编译器指着删的**：文件留着连编都编不过。
-// ⚠ **token 字段映射本身没动**：`parse.rs::last_token_delta` → `token::codex_delta`
-//   仍在，`codex_delta` 那三条单测照旧绿（钩子 6）。
+// token 字段映射：`parse.rs::last_token_delta` → `token::codex_delta`。
 
 /// 本 agent 在 wire 上的 **`agent_kind` 值**。
 ///

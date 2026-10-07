@@ -1,5 +1,5 @@
-//! **端口转发（F58，`-L`）的账住本机常驻后端**：起 · 停 · 列三条帧命令，界面经
-//! `chan.call(<local>, "forward-*", …)` 直接问（monitor 那三条 Tauri 命令与它手里那张转发账退役）。
+//! 端口转发（`-L`）的账住本机常驻后端：起 · 停 · 列三条帧命令，界面经
+//! `chan.call(<local>, "forward-*", …)` 直接问。
 //!
 //! # 形状
 //!
@@ -63,7 +63,7 @@ fn port_of(args: &Value, key: &str) -> Result<u16, (&'static str, String)> {
 }
 
 /// 读规格并过围栏 —— **在任何查表 / 拨号之前**（`INVARIANTS §47`：外部值交给对端之前本侧先判）。
-/// 端口 0 · 远端 host 空白 ⇒ `bad_spec`（原 monitor `validate_spec` 那三句）；缺格 / 类型不对 ⇒ `invalid_args`。
+/// 端口 0 · 远端 host 空白 ⇒ `bad_spec`；缺格 / 类型不对 ⇒ `invalid_args`。
 pub(crate) fn parse_spec(args: &Value) -> Result<Spec, (&'static str, String)> {
     let origin = args
         .get("origin")

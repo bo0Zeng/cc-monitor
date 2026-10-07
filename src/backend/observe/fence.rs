@@ -1,30 +1,13 @@
-//! 〔审计 F 🔴-6〕**读路径的越界围栏 —— observe 里唯一的家**。
+//! 读路径的越界围栏 —— observe 里唯一的家：「路径必须在某个根之下」那道 `canonicalize` ＋ 前缀校验（挡 symlink 逃逸 / `../` 穿越）。
+//! 判定本体（解开根 · 解开目标 · 前缀比）只住这里的 [`Fence`]；`history_query::fence_under_projects` 只是「以 `projects/` 为根立一道 `Fence`」，
+//! `search_query` 也经它。安全判定只能有一份：两份的话，强化其中一份时另一份不会跟。
+//! 「根是哪一个」是调用方的事 —— 本文件不认识任何一家 agent 的目录布局。
 //!
-//! 「路径必须在某个根之下」那道 `canonicalize` ＋ 前缀校验（挡 symlink 逃逸 / `../` 穿越）。
-//! 它先前有**两个家**：具名围栏 `history_query::fence_under_projects`（头注逐字「别再造一份」）与
-//! `search_query::search` 里的内联一份（头注逐字「复刻 history_query」）—— 而这次护的是**安全判定**：
-//! 强化其中一份（比如将来要挡一种新的逃逸形态）时另一份不会跟。
-//! 今天：判定本体（解开根 · 解开目标 · 前缀比）只住这里的 [`Fence`]；`history_query::fence_under_projects` 只剩一行
-//! 「以 `projects/` 为根立一道 `Fence`」，`search_query` 的内联那份删了、改经 [`Fence`]。
-//! 「根是哪一个」（Claude 的 `projects/` · 各家合成历史面的记录根）是调用方的事 —— 本文件不认识任何一家 agent 的目录布局
-//! （通用层直呼适配层的地方逐条登记在 `agent_locality_guard`，本文件不往那张表上加一处）。
+//! 住 `observe/` 不进 `common/`：两个读者同属 observe，不够 `common` 的「≥2 个上层用」门槛。
+//! 它是读路径的越界防护，不是「不许改什么」的数据围栏；文件管理那一面（`files/`）不走这里。
 //!
-//! # 为什么住 `observe/`，不进 `common/`
-//!
-//! 「它落不进 `common/`：`common` 门槛①要求『≥2 个上层用（按层数）』，两处同属 observe ⇒ 不达标。
-//! ⇒ 正确处置是在 **observe 内部**给它一个家（`observe/fence.rs`，`§5.3 C5`）；**不是改 `common` 的门槛**（改了就变杂物间）」。
-//!
-//! # 它是什么、不是什么
-//!
-//! 它是**读路径的越界防护**（路径解析的正确性），不是「不许改什么」的数据围栏（末段）。
-//! 文件管理那一面（`files/`）没有数据围栏，也不走这里。
-//!
-//! # 报错原话
-//!
-//! 与收口前 `history_query.rs` 里那一份**逐字相同**（Claude 的 `projects/` 根：`projects root unavailable: …` ·
-//! `path unavailable: …` · `refusing to access outside projects dir: …`）—— 句里的「projects」取根目录自己的名字，
-//! 别的根（例如各家合成历史面给的记录根）说的是它自己的名字。
-//!
+//! 报错原话（Claude 的 `projects/` 根：`projects root unavailable: …` · `path unavailable: …` · `refusing to access outside projects dir: …`）
+//! 里的「projects」取根目录自己的名字，别的根说的是它自己的名字。
 //! 判据：`tests/backend/observe/fence_tests.rs`（observe 全树现扫：`canonicalize` 只在这里 · 两个读者都经它）。
 
 use std::path::{Path, PathBuf};

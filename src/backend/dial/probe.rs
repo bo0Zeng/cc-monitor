@@ -1,19 +1,14 @@
-//! 〔「后端持有全部 SSH」〕**测试连接**：界面把设置页表单里那台（可能还没保存的）配置交过来，
-//! 本机常驻后端组拨号请求（[`super::machine`]）、拨一次（短命探活，不进连接池）、回结局 —— monitor 那条 Tauri 命令
-//! `test_remote_connection` 与它手里那份探针退役（原住 `stream_source/`）。
-//!
-//! 三步，每步的结论都进回包（部分成功照样回，不当错误）：
+//! 测试连接：界面把设置页表单里那台（可能还没保存的）配置交过来，本机常驻后端组拨号请求（[`super::machine`]）、
+//! 拨一次（短命探活，不进连接池）、回结局。三步，每步的结论都进回包（部分成功照样回，不当错误）：
 //!
 //! 1. 拨号 ＋ 鉴权 ＋ exec 那台的后端（流模式显式词）：阶段行逐条推成 `stage` 格（与界面 `ConnectStage` 同形）；ack 不成 ⇒ `sshOk: false`；
 //! 2. 读那台后端的首行：是 `hello` ⇒ `backendOk: true` ＋ 人读摘要；超时 / 关了 / 不是 hello ⇒ 「SSH 通了、后端没响应」；
 //! 3. 那台声明认 `ping` ⇒ 同一条流上发一次、等应答（控制通道往返）；不认 ⇒ 「后端太旧」；不回 ⇒ 「后端连上了、不能起会话」。
 //!
-//! 〔「进度不许倒退」〕**边拨边推**：每走一段往本连接的应答通道推一帧 `probe {ticket, cell}`
-//! （`stage` 握手那几行 → `reached: ssh` → `reached: hello` → `reached: control`），结局是最后一格（`end`）；
-//! monitor 把它们交进界面订的 `probe-progress/<ticket>`。界面到点没等到结局时，最后收到的那一格就说得出停在哪一段。
-//! ⚠ **期限归发起方**（值归发起方）：本 crate 零定时器（`no_timer_guard` 按调用形态禁 `timeout(`），原先 monitor 那两段
-//!   等待（hello 8 s · ping 5 s）不在这里；界面那一问的预算按那个量级给（约 15 s，`src/frontend/ui/remote-probe.ts`），到点由宿主那侧 `cancel` 打断。
-//!   往返毫秒数照旧报：量一次经过时间不是定时器（取的是墙钟 `SystemTime` 的差，不让任何东西自己醒来）。
+//! 边拨边推：每走一段往本连接的应答通道推一帧 `probe {ticket, cell}`（`stage` 握手那几行 → `reached: ssh` → `reached: hello` →
+//! `reached: control`），结局是最后一格（`end`）；monitor 把它们交进界面订的 `probe-progress/<ticket>`，到点没等到结局时最后一格说得出停在哪一段。
+//! 期限归发起方：本 crate 零定时器；界面那一问的预算约 15 s（`src/frontend/ui/remote-probe.ts`），到点由宿主那侧 `cancel` 打断。
+//! 往返毫秒数照旧报：量一次墙钟差不是定时器。
 
 use copy_core::copy_text;
 use serde_json::{json, Value};
