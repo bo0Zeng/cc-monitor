@@ -68,7 +68,7 @@
 //! 〔这一段先前指名的是那条按「同进程第二趟不许静默成功」写的判据；
 //!  它已按新形态重写，旧那条性质为什么退役逐字留在它自己的头注里。〕
 
-use std::io::Read as _;
+use std::io::Read;
 use std::process::{Child, Command, Stdio};
 
 /// 这一族判据要的两件外部现物。**名字逐字**，缺件那句话直接引它。
@@ -119,142 +119,68 @@ pub fn require_toolbox(cell: &str) {
 // 一台 Xvfb
 // ════════════════════════════════════════════════════════════════════════
 
+/// 起一台私有 Xvfb 的那一份起法（截图工具 `tests/shots/filewin.mjs` 同用它）：脚本挑空号、按 X 的老规矩建锁占住
+/// （门禁的网络命名空间里外都认得），Xvfb 自己把号写在标准输出第一行（`-displayfd`）；脚本 `exec` 成 Xvfb 本身
+/// ⇒ 子进程的 pid 就是那台屏。收场用它的 `release`。
+pub const LAUNCHER: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../tests/scripts/xvfb-free.sh"
+);
+
 /// 一台跑着的 `Xvfb`。**离开作用域就杀掉**（不留孤儿 X 服务器）。
 pub struct Screen {
     child: Child,
     display: String,
+    /// 它报号的那一端（留着不关：关了它再写就是写一根断管）。
+    _displayfd: std::process::ChildStdout,
 }
 
 impl Screen {
-    /// 起一台 Xvfb，等到它**真的答得出屏幕尺寸**才回。
+    /// 起一台 Xvfb（[`LAUNCHER`]），等到它**真的答得出屏幕尺寸**才回。
     ///
-    /// 🔴 就绪判据不是「`spawn` 成功」也不是「睡 N 毫秒」——
-    /// 是拿 `xdotool` 去**真问一次**屏幕几何。`spawn` 成功只证明 fork 成了；
-    /// 那之后 X 服务器还要绑 socket，而「还没绑上」与「起不来」在下一步长得一样。
+    /// - 号不由台架挑：挑号与占号在那份脚本里一把文件锁下做完（理由见脚本头注），
+    ///   两格（或门禁沙箱里外、门禁与截图工具）同时起，也不会两台挤在同一个号上。
+    /// - 就绪判据不是「`spawn` 成功」也不是「睡 N 毫秒」—— 是拿 `xdotool` 去**真问一次**屏幕几何。
     pub fn start() -> Result<Self, String> {
         require_toolbox("Xvfb 台架自己");
-        let mut last = String::from("一个候选号都没试到");
-        // 🔴 **号段挑高位（避开真会话 `:0` 与别人的临时屏），而起点必须每格不同。**
-        //
-        // 〔2026-09-21 修〕上一版从固定的 `:90` 开始扫、靠 `/tmp/.X<n>-lock` 在不在来跳号
-        // —— **那是 TOCTOU**：`cargo test` 把这些格**并行**跑在同一个进程里，
-        // 两格同时看到 `:90` 没锁、同时 `spawn Xvfb :90`，一个赢、另一个的窗口
-        // 当场变成别人屏上的野窗口 ⇒ winit 抛 `BadWindow`
-        // （winit 的 `x11/util/geometry.rs` 抛的，逐字 `Failed to translate window coordinates`
-        //   ＋ `X11Error { error_kind: Window, error_code: 3 }`。
-        //   ⚠ **刻意不写行号** —— 那是**仓外**位置，行号随 winit 版本走；
-        //   而点仓外符号名会被 `structural_scan` 判红（22b·B 那一拍现打踩过一次）
-        //   ⇒ 照它给的出路：指文件 ＋ 逐字引那句话。）
-        // ⇒ 子进程被信号打死、退出码 `None`。
-        //
-        // ⚠ **这一形只在完整门禁里出现**：单独跑任一格都是绿的（一次只有一台 Xvfb）。
-        //   立本台架那一拍因为「叫停不许跑门禁」而没跑全量 ⇒ 撞车在那一拍看不见。
-        //   **教训：并行安全的东西，单独跑绿不算验过。**
-        //
-        // ⇒ 起点由一个进程级原子计数器发，**每次 `start()` 拿到不同的基点**。
-        //
-        // 🔴 **〔2026-09-21 再修 —— 上一版那句「不再是正确性依赖」是假的〕**
-        //
-        // 上一版逐字写着「锁文件那一跳留着当便宜的预筛……**不再是正确性依赖**」。
-        // **那句话错了，而且错得会让这两格永久红。** 现打出来的形状：
-        //   · `Drop` 只 `kill` 掉 Xvfb，**没有删 `/tmp/.X<n>-lock`** ——
-        //     SIGKILL 之下 X 服务器不会自己收尾 ⇒ **每跑一趟漏一个锁**。
-        //   · 而这一跳看到锁就 `continue` ⇒ 30 个号全是陈旧锁时，
-        //     30 次全 `continue`，`start()` 回的是初值「一个候选号都没试到」。
-        //   ⇒ **号池只减不增，跑够 30 趟就永久红。** 那不是抖动，是棘轮。
-        // 现打（2026-09-21）：`:90`–`:119` **30/30 全被锁**，而这些锁记的 PID **全死了**，
-        // 当时机器上真在跑的 `Xvfb` 是 **0 个**。四趟里红两趟，正是池子在那一刻见底。
-        // ⚠ 而那一版的注释还写着「`screen` 在这里析构 ⇒ 那台 Xvfb 被杀掉，**号也就还回去了**」——
-        //   **也是假的**：进程死了，锁还在，号并没有还回去。
-        //
-        // ⇒ 两头都修：**这一跳改成看「锁里那个 PID 还活着没有」**（见 [`classify_lock`]），
-        //   陈旧锁当场回收；**`Drop` 把自己那个锁删掉**（见 `impl Drop`）。
-        static NEXT_BASE: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
-        let base = NEXT_BASE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        for step in 0..30u32 {
-            let num = 90 + (base + step) % 30;
-            match slot(num) {
-                Slot::Live(pid) => {
-                    last = format!("`:{num}` 上有个活着的 X 服务器（pid {pid}）");
-                    continue;
-                }
-                Slot::Stale(pid) => {
-                    // 🔴 **陈旧锁当场回收** —— 不回收就等于把这个号永久报废。
-                    //    只在本台架自己的号段（90–119）里做，且只在 PID 已死时做。
-                    let _ = std::fs::remove_file(lock_path(num));
-                    let _ = std::fs::remove_file(format!("/tmp/.X11-unix/X{num}"));
-                    eprintln!("  〔台架〕回收陈旧锁 :{num}（记的 pid {pid} 已不在）");
-                }
-                Slot::Free => {}
+        let mut child = Command::new("bash")
+            .arg(LAUNCHER)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|e| format!("起 Xvfb 失败（{LAUNCHER}）：{e}"))?;
+        let mut fd = child.stdout.take().ok_or("Xvfb 的标准输出没接上")?;
+        let num = match read_display_number(&mut fd) {
+            Ok(n) => n,
+            Err(e) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(e);
             }
-            let display = format!(":{num}");
-            let child = Command::new("Xvfb")
-                .args([&display, "-screen", "0", "1600x1200x24", "-nolisten", "tcp"])
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .spawn();
-            let child = match child {
-                Ok(c) => c,
-                Err(e) => {
-                    last = format!("起 Xvfb {display} 失败：{e}");
-                    continue;
-                }
-            };
-            let mut screen = Screen { child, display };
-            // 最多等 5 秒（30 × 167ms）—— 就绪由「答得出几何」说了算。
-            let mut taken_by_someone_else = false;
-            for _ in 0..30 {
-                // 🔴🔴 **先看我们自己那台还活着没有** 〔2026-09-22 修，`P25`〕
-                //
-                // 上一版没有这一跳，而那正是残余那条 flake 的机制：
-                //   · 上面 `slot(num)` 与 Xvfb 真建锁之间有一段 TOCTOU；
-                //     `NEXT_BASE` 只错开**起点**，两格的扫描路径照样会在下一步汇到同一个号。
-                //   · 两格同时 spawn `Xvfb :N` ⇒ **X 服务器自己的锁是仲裁者**，
-                //     输的那台当场退出，stderr 逐字
-                //     `(EE) Cannot establish any listening sockets - Make sure an X server isn't already running`
-                //     ＋ `exit=1`（2026-09-22 现打，三个并发里两个是这一形）。
-                //   · 🔴 **而下面那一跳会「成功」** —— `xdotool` 去问 `:N` 的几何时，
-                //     答话的是**赢家那台服务器**。于是 `start()` 返回一个
-                //     「子进程已死、屏是别人的」`Screen`。
-                //   ⇒ 两格的窗口挤在同一台屏上：数窗口那条判据数出 2 个（期望 1 个），
-                //     或者赢家 `Drop` 时把屏杀掉 ⇒ winit 抛 `BadWindow`。
-                //     **那正是本模块上面那段注释描述的症状，只是病根还剩这一段。**
-                //
-                // ⚠ 顺带订正一条现打：`Xvfb :90 -displayfd <fd>` **不会**从 `:90` 起扫
-                //   （给了显式号就只试那一个，被占即退）。`-displayfd` 只在**不给号**时
-                //   才自己扫，而那会从 `:0` 起 —— 撞本台架「避开低位号」那条策略。
-                //   ⇒ 不走 `-displayfd`，改成把**服务器自己的锁**当仲裁者：
-                //     它活着 = 这个号是我们的；它退了 = 别人的，换下一个。
-                let exited = screen.child.try_wait().ok().flatten();
-                let geometry_ok = screen
-                    .xdotool(&["getdisplaygeometry"])
-                    .is_ok_and(|out| out.split_whitespace().count() == 2);
-                // ⚠ 两个观测量都取到了才裁决 —— 裁决本身住 [`judge_claim`]（纯，可判）。
-                match judge_claim(exited.is_some(), geometry_ok) {
-                    Claim::TakenByAnother => {
-                        last = format!(
-                            "`:{num}` 被别人占了 —— 我们那台 Xvfb 当场退出（{:?}）。\
-                             并行的另一格赢了这个号",
-                            exited
-                        );
-                        taken_by_someone_else = true;
-                        break;
-                    }
-                    Claim::Ours => return Ok(screen),
-                    Claim::NotReadyYet => {}
-                }
-                std::thread::sleep(std::time::Duration::from_millis(167));
+        };
+        let screen = Screen {
+            child,
+            display: format!(":{num}"),
+            _displayfd: fd,
+        };
+        // 最多等 5 秒（30 × 167ms）—— 就绪由「答得出几何」说了算。
+        for _ in 0..30 {
+            if screen
+                .xdotool(&["getdisplaygeometry"])
+                .is_ok_and(|out| out.split_whitespace().count() == 2)
+            {
+                return Ok(screen);
             }
-            if !taken_by_someone_else {
-                last = format!("Xvfb {} 起了但 5 秒内答不出屏幕几何", screen.display);
-            }
-            // `screen` 在这里析构 ⇒ 那台 Xvfb 被杀掉（已经死了就是 no-op），
-            // 而锁**只在它记着我们自己这个 pid 时**才删 ⇒ 不会误删赢家的锁。
+            std::thread::sleep(std::time::Duration::from_millis(167));
         }
-        Err(last)
+        Err(format!(
+            "Xvfb {} 起了但 5 秒内答不出屏幕几何",
+            screen.display
+        ))
     }
 
-    /// 这台屏的 `DISPLAY` 值（形如 `:90`）。
+    /// 这台屏的 `DISPLAY` 值（形如 `:3`）。
     pub fn display(&self) -> &str {
         &self.display
     }
@@ -265,88 +191,63 @@ impl Screen {
     }
 }
 
+/// 读 Xvfb 报的号：一行十进制、换行收尾。它没报就退了（起不来）⇒ 读到文件尾 ⇒ `Err`。
+pub fn read_display_number(fd: &mut impl Read) -> Result<u32, String> {
+    let mut line = Vec::new();
+    let mut byte = [0u8; 1];
+    loop {
+        match fd.read(&mut byte) {
+            Ok(0) => return Err("Xvfb 没报号就退了（起不来）".into()),
+            Ok(_) if byte[0] == b'\n' => break,
+            Ok(_) => line.push(byte[0]),
+            Err(e) => return Err(format!("读 Xvfb 报的号失败：{e}")),
+        }
+    }
+    let text = String::from_utf8_lossy(&line);
+    text.trim()
+        .parse::<u32>()
+        .map_err(|_| format!("Xvfb 报的号读不懂：{text:?}"))
+}
+
 impl Drop for Screen {
+    /// 先请它自己收场（SIGTERM）；2 秒不退再 SIGKILL。之后经那份脚本的 `release` 收掉占号的锁与套接字
+    /// （锁记的是它这个 pid 才删 —— 别人的不碰）。
     fn drop(&mut self) {
-        let pid = self.child.id();
-        let _ = self.child.kill();
-        let _ = self.child.wait();
-        // 🔴 **把自己那个锁删掉。** SIGKILL 之下 X 服务器不会自己收尾 ⇒
-        //    不删就是漏一个号，而号池只有 30 个（理由逐条住 `start()` 里那段）。
-        //
-        // ⚠ **只删记着我们自己这个 pid 的那一份** —— 不许见锁就删：
-        //    别人（另一条并行的格、或机器上真的 X 会话）的锁不归我们管。
-        if let Some(num) = self
-            .display
-            .strip_prefix(':')
-            .and_then(|n| n.parse::<u32>().ok())
-        {
-            if lock_records_pid(num, pid) {
-                let _ = std::fs::remove_file(lock_path(num));
-                let _ = std::fs::remove_file(format!("/tmp/.X11-unix/X{num}"));
+        let pid = self.child.id().to_string();
+        let _ = Command::new("kill")
+            .args(["-TERM", &pid])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+        let gone = (0..20).any(|_| {
+            let done = matches!(self.child.try_wait(), Ok(Some(_)));
+            if !done {
+                std::thread::sleep(std::time::Duration::from_millis(100));
             }
+            done
+        });
+        if !gone {
+            let _ = self.child.kill();
+            let _ = self.child.wait();
+        }
+        if let Some(num) = self.display.strip_prefix(':') {
+            let _ = Command::new("bash")
+                .args([LAUNCHER, "release", num, &pid])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status();
         }
     }
 }
 
-/// 一个候选显示号的占用状况。
-///
-/// 🔴 **三态，不是「锁在不在」两态** —— 「有人在用」与「有人留了个死锁」
-/// 必须分得开，否则一个死锁就把那个号永久报废（那正是 2026-09-21 逮到的病）。
-#[derive(Debug, PartialEq, Eq)]
-pub enum Slot {
-    /// 没有锁文件。
-    Free,
-    /// 锁在，记的进程**还活着** ⇒ 真有人在用，别碰。
-    Live(u32),
-    /// 锁在，记的进程**已经不在** ⇒ 可回收。
-    Stale(u32),
+/// 一台屏的本地套接字文件。
+pub fn socket_path(num: u32) -> String {
+    format!("/tmp/.X11-unix/X{num}")
 }
 
-/// `/tmp/.X<n>-lock` 的住址。抽成函数是为了让判据能指着它说话。
-fn lock_path(num: u32) -> String {
+/// 一台屏占号的那个锁（X 的老规矩：里头是占着它的那个 pid）。
+pub fn lock_path(num: u32) -> String {
     format!("/tmp/.X{num}-lock")
-}
-
-/// **纯函数**：由锁文件的内容与一个「这个 pid 活着吗」的判定，算出占用状况。
-///
-/// 🔴 抽成纯函数的理由是**可判**：判据能拿合成输入把两个方向都打一遍
-/// （活 pid ⇒ `Live`、死 pid ⇒ `Stale`），**不用去动 `/tmp`**（动它会砸掉并行跑的别的格）。
-///
-/// ⚠ **读不懂的内容一律判 `Live`（保守）** —— 宁可放弃一个号，
-/// 也不要把别人正在用的屏当成垃圾回收掉。
-pub fn classify_lock(contents: Option<&str>, alive: impl Fn(u32) -> bool) -> Slot {
-    let Some(body) = contents else {
-        return Slot::Free;
-    };
-    // X11 的约定：锁里是十进制 pid（左侧空格补到 10 位）＋ 换行。
-    match body.trim().parse::<u32>() {
-        Ok(pid) if pid > 0 => {
-            if alive(pid) {
-                Slot::Live(pid)
-            } else {
-                Slot::Stale(pid)
-            }
-        }
-        // 解不出 pid ⇒ 不知道是谁的 ⇒ 当成有人在用。
-        _ => Slot::Live(0),
-    }
-}
-
-/// 这个 pid 还活着吗。
-///
-/// ⚠ 走 `/proc` —— **Linux 专有**。本台架本来就只在有 `Xvfb`／`xdotool` 的
-/// Unix 上跑（整份文件 `#[cfg(not(windows))]`），而那两样在实践中就是 Linux。
-/// 哪天要上别的 Unix，这一处要重判。
-fn pid_alive(pid: u32) -> bool {
-    std::path::Path::new(&format!("/proc/{pid}")).exists()
-}
-
-/// 读盘那一层：把 `classify_lock` 接到真的 `/tmp` 上。
-fn slot(num: u32) -> Slot {
-    classify_lock(
-        std::fs::read_to_string(lock_path(num)).ok().as_deref(),
-        pid_alive,
-    )
 }
 
 /// 🔴 **这一族的独占闸** —— 任何要起真 Xvfb 的格，先拿它。
@@ -376,50 +277,6 @@ pub fn exclusive() -> std::sync::MutexGuard<'static, ()> {
             p.into_inner()
         }
     }
-}
-
-/// spawn 之后那一步的裁决：**这个号到底是不是我们的**。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Claim {
-    /// 是我们的 —— 我们那台还活着，而且屏答得出几何。
-    Ours,
-    /// 🔴 **别人的** —— 我们那台当场退出了（X 服务器自己的锁把它挡回来了）。
-    TakenByAnother,
-    /// 还没就绪 —— 我们那台活着，但屏还没答得出几何。再等等。
-    NotReadyYet,
-}
-
-/// **纯函数**：由两个观测量定夺（同 [`classify_lock`] 的理由 —— 判得到，
-/// 而且不用真起两台 Xvfb 去撞号）。
-///
-/// # 🔴 承重的是第一行的**顺序**
-///
-/// 「我们那台死了没有」要排在「几何答不答得出」**前面**，因为两者可以**同时成立**：
-/// 并行的另一格赢了这个号之后，`xdotool` 去问 `:N` 的几何，
-/// **答话的是赢家那台服务器** ⇒ `geometry_ok == true`，而我们那台已经 `exit 1`。
-///
-/// 顺序反了（或者干脆不看 `child_exited`，那正是 2026-09-22 之前的样子）的后果：
-/// `start()` 返回一个「子进程已死、屏是别人的」`Screen`
-/// ⇒ 两格的窗口挤在同一台屏上 ⇒ 数窗口那条判据数出 2 个（期望 1 个），
-/// 或者赢家 `Drop` 时把屏杀掉 ⇒ winit 抛 `BadWindow`。
-pub fn judge_claim(child_exited: bool, geometry_ok: bool) -> Claim {
-    if child_exited {
-        // 🔴 **即使 `geometry_ok` 也走这一支** —— 那台答话的不是我们的。
-        return Claim::TakenByAnother;
-    }
-    if geometry_ok {
-        Claim::Ours
-    } else {
-        Claim::NotReadyYet
-    }
-}
-
-/// 这个号的锁**记的是不是我们这个 pid**。
-fn lock_records_pid(num: u32, pid: u32) -> bool {
-    std::fs::read_to_string(lock_path(num))
-        .ok()
-        .and_then(|b| b.trim().parse::<u32>().ok())
-        == Some(pid)
 }
 
 /// 在 `display` 那台屏上跑一条 `xdotool`。
@@ -510,7 +367,7 @@ pub fn wm_delete_request(window: u32, wm_protocols: u32, wm_delete_window: u32) 
     b
 }
 
-/// 在 `display`（形如 `:90`）那台屏上，对窗口 `id`（`xdotool` 给的十进制）
+/// 在 `display`（形如 `:3`）那台屏上，对窗口 `id`（`xdotool` 给的十进制）
 /// 发一条 **`WM_DELETE_WINDOW`** —— 窗口管理器关窗时发的那一条。
 ///
 /// 回 `Ok(())` = 服务器**收下并处理完**了那条 `SendEvent`（后面跟一次 `GetInputFocus`
@@ -528,7 +385,7 @@ pub fn close_like_a_wm(display: &str, id: &str) -> Result<(), String> {
         .trim()
         .parse()
         .map_err(|e| format!("窗口 id {id:?} 不是十进制整数：{e}"))?;
-    let path = format!("/tmp/.X11-unix/X{num}");
+    let path = socket_path(num);
     let mut s = std::os::unix::net::UnixStream::connect(&path)
         .map_err(|e| format!("连不上 {path}：{e}"))?;
     s.set_read_timeout(Some(std::time::Duration::from_secs(5)))
@@ -768,6 +625,10 @@ pub fn child_display() -> String {
     );
     std::env::var("DISPLAY").expect("父进程没把 DISPLAY 传下来 —— 这一格判不了，不是过了")
 }
+
+#[cfg(test)]
+#[path = "xvfb_rig_tests.rs"]
+mod same_launcher_tests;
 
 /// 🔴那两个纯函数的字节布局 —— **逐字节相等**，不是「长度对」。
 ///

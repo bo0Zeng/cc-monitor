@@ -5,7 +5,9 @@
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { sleep } from "./cdp.mjs";
+
+/** 起私有 Xvfb 的那一份起法（仓根相对；文件窗口台架同用它）。 */
+const XVFB_LAUNCHER = "tests/scripts/xvfb-free.sh";
 
 /** 截图测试的全名（`cargo test` 的过滤串；改名要同拍改这里）。 */
 const TEST = "workspace::tests::screenshot_for_the_shots_tool";
@@ -60,14 +62,14 @@ export async function shootFilewin({ repo, sandbox, out, scenes, env, buildEnv, 
     return { results, problems };
   }
 
-  const display = freeDisplay();
+  // 起法只住 tests/scripts/xvfb-free.sh 那一份（文件窗口台架同用它）：它挑空号、占住，号写在 Xvfb 标准输出第一行；收场用它的 release。
+  const xvfb = spawn("bash", [path.join(repo, XVFB_LAUNCHER)], { env, stdio: ["ignore", "pipe", "ignore"] });
+  children.push(xvfb);
+  const display = await displayOf(xvfb);
   if (display === null) {
-    problems.push("文件窗口：找不到空闲的 X 显示号");
+    problems.push("文件窗口：Xvfb 没报号就退了（起不来）");
     return { results, problems };
   }
-  const xvfb = spawn("Xvfb", [`:${display}`, "-screen", "0", "1600x1000x24", "-nolisten", "tcp", "-noreset"], { env, stdio: "ignore" });
-  children.push(xvfb);
-  for (let i = 0; i < 100 && !existsSync(`/tmp/.X11-unix/X${display}`); i++) await sleep(100);
 
   for (const s of scenes) {
     const file = path.join(out, s.dir, `${s.id}.png`);
@@ -99,6 +101,8 @@ export async function shootFilewin({ repo, sandbox, out, scenes, env, buildEnv, 
   } catch {
     // 已经退了
   }
+  if (xvfb.exitCode === null && xvfb.signalCode === null) await new Promise((r) => xvfb.once("exit", r));
+  spawnSync("bash", [path.join(repo, XVFB_LAUNCHER), "release", String(display), String(xvfb.pid)], { stdio: "ignore" });
   return { results, problems };
 }
 
@@ -165,10 +169,24 @@ function layFixture(home) {
   }
 }
 
-/** 挑一个没人用的显示号（没有套接字、也没有锁文件）。 */
-function freeDisplay() {
-  for (let n = 150; n < 200; n++) {
-    if (!existsSync(`/tmp/.X11-unix/X${n}`) && !existsSync(`/tmp/.X${n}-lock`)) return n;
-  }
-  return null;
+/** Xvfb 报的号（标准输出第一行）；没报就退了、或 10 秒内没报 ⇒ `null`。 */
+function displayOf(child) {
+  return new Promise((resolve) => {
+    let buf = "";
+    const done = (v) => {
+      clearTimeout(timer);
+      child.stdout.removeAllListeners("data");
+      resolve(v);
+    };
+    const timer = setTimeout(() => done(null), 10_000);
+    child.stdout.on("data", (b) => {
+      buf += b.toString("utf8");
+      const nl = buf.indexOf("\n");
+      if (nl >= 0) {
+        const n = Number.parseInt(buf.slice(0, nl).trim(), 10);
+        done(Number.isInteger(n) ? n : null);
+      }
+    });
+    child.on("exit", () => done(null));
+  });
 }

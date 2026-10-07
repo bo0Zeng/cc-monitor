@@ -913,9 +913,9 @@ fn the_native_window_really_comes_up_on_a_real_graphics_session() {
 fn a_window_that_cannot_come_up_comes_back_as_a_reason_not_a_silent_ok() {
     use crate::rows::testing::xvfb;
     xvfb::require_toolbox("「窗口起不来要出声」那条阴性对照");
-    // 刻意给一个**没有任何 X 服务器**的号（台架自己只用 :90–:119）。
+    // 刻意给一个**没有任何 X 服务器**的号：台架起的屏号由服务器从 0 往上挑，到不了这么高。
     let run = xvfb::run_scenario(
-        ":121",
+        ":65000",
         "shell::tests::xvfb_worker_opens_with_no_x_server_at_all",
     );
     run.must_have_passed("「窗口起不来要出声」那条阴性对照");
