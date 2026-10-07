@@ -2421,7 +2421,8 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         //      「代码里没有这个名字」这件事该由本表说出来，而不是靠一处夹具替它遮着。
         //    ⚠ 这正是本条头注那句话的又一个实例：一个名字「在代码里出现过」不等于它活着。
         ("src/frontend/shell/README.md", "daemonless_stream_loop", 1),
-        // 本机读面登记那段改数史删了 —— 它的失败文案里那两个旧名一直替下面这几处散文遮着「还活着」。
+        // 登记表里几段改数史 / 已结账的核实表删了 —— 那些字符串一直替下面这几处散文遮着「还活着」。
+        ("src/doc/INVARIANTS.md", "build_local_ps_command", 1),
         ("src/backend/README.md", "proc_claude_config_dir", 1),
         (
             "src/backend/observe/accounts_query.rs",

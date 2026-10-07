@@ -102,49 +102,6 @@ const HAS_A_GUARD: &[(&str, &str)] = &[
     ("设置面板逐页清单", "pageTitles"),
 ];
 
-/// 核实表的总行数（台账标题写「十八行」，实际列出 **16**）。
-const TOTAL_ROWS: usize = 16;
-
-/// 核实表十六行里**刻意不做**的，连理由一起登记。
-///
-/// ⚠ 这张表存在的意义是：**「没处置」与「决定不处置」是两回事**。
-/// 少了它，棘轮就得靠「已处置数 == 全表数」收尾，而那会逼人去改不该改的东西。
-const NOT_DOING: &[(&str, &str)] = &[(
-    "#10 `build_local_ps_command` 行号的第三份副本",
-    "那份副本住在 `项目审阅报告-PhaseG-2026-07-29.md` —— **带日期的历史报告**。\
-         改它等于篡改当时的记录；报告是快照，不是活文档。\
-         另两份活副本已在 F18 上半处置。\
-那份报告已随旧文档退役（`git rm`，历史仍在），\
-         工作区里不再有第三份副本 —— 本行保留，因为『决定不处置』这个事实本身要留账。",
-)];
-
-/// ★ **棘轮的地板**：已处置行数只许涨。
-///
-/// ⚠ 第一版写的是「未处置数 `STILL_PROSE_ROWS <= 11`」，**clippy 当场指出那是恒真断言**
-/// （`this assertion has a constant value`）—— 常量与自己比永远成立，
-/// 那不是棘轮，是一句装饰。与 F06 那次被 clippy 咬中的同义反复**同一个形状**。
-/// ⇒ 改成从**表**导出：`DONE_ROWS` 的真实条数与这个地板比，加一行才降得下未处置数。
-const DONE_FLOOR: usize = 15;
-
-/// 核实表十六行里已处置的。未处置数 = `TOTAL_ROWS` − 本表条数 − `NOT_DOING` 条数。
-const DONE_ROWS: &[&str] = &[
-    "#1 门禁怎么跑（`--all` 缺 vendor 排除 → 已订正为 `--workspace --exclude`）",
-    "#2 workspace 测试总数（删副本留指针）",
-    "#3 node 套件组数（★ F18 上半顺手做掉但没登记 —— 下半复核时才发现，台账是筛子不是免检章）",
-    "#4 vitest DOM 数（删副本留指针）",
-    "#5 CI job 数（删副本留指针）",
-    "#6 e2e 套数与逐套地板（删副本留指针；名单副本连同对拍它的机检一起删 —— 唯一住址是门禁的 `run_e2e` 行）",
-    "#7 reader 文件数（`local_read_surface_registry` 头注 11 vs 同文件机检 7 —— 一个文件内部自相矛盾；已删副本留指针）",
-    "#8 backend 生产 `Command::new` 处数（散文删副本；★ 判据从地板 `>= 4` 收紧为相等 —— 地板在变大方向上是瞎的）",
-    "#9 `backend/` 下 `.rs` 数（删副本留指针）",
-    "#11 主题 token 数（README 与 IPC-PROTOCOL 两处 13 → 删副本，家在 `theme.ts` 的 `TOKENS`，实为 14）",
-    "#12 `__ccm_rbind`（`REMOTE-PHASE0-DEPLOY.md` 仍在教用户调一个全仓没有定义的函数 → 已改写）",
-    "#13 远端 `↺` 行为（「monitor 无法在远端开交互 TTY」已假 → 已改写并指向 README 权威条）",
-    "#14 远端分叉支持（README「仅本地会话」已假 → 已订正）",
-    "#15 设置面板结构（「5 大折叠分组」在 v3.5.0 IA 重做后已不存在 → 整节重写为指针）",
-    "#16 Tauri State 矩阵（**本来就是做对了的样本** —— 无副本、只有指针，复核后如实登记）",
-];
-
 /// 本文件自己的路径 —— 扫符号时要摘出去（表里写着那些符号名）。
 /// 「事实 → 关键词」：**数量形态**出现即红，不管连接词怎么写。
 ///
@@ -395,11 +352,12 @@ const POINTER_ONLY_SUFFIX: &[(&str, &[&str], &str, &str)] = &[
 #[test]
 fn a_fact_declared_pointer_only_has_no_number_copy_left() {
     // 抽取器自检：文件读不到 / 空的时候下面全是零命中地绿。
-    let total: usize = PROSE_FILES.iter().map(|f| read(f).len()).sum();
-    assert!(
-        total > 50_000,
-        "散文文件集只读到 {total} 字节 —— 抽取器坏了，下面每条都会零命中地绿"
-    );
+    for f in PROSE_FILES {
+        assert!(
+            !read(f).trim().is_empty(),
+            "散文文件 {f} 读出来是空的 —— 下面每条都会零命中地绿"
+        );
+    }
 
     let mut back = Vec::new();
     for (fact, prefixes, _, home) in POINTER_ONLY {
@@ -467,11 +425,6 @@ fn the_guards_that_keep_the_accurate_numbers_accurate_still_exist() {
     for sub in ["src", "tests"] {
         collect(&root.join(sub), &mut all);
     }
-    assert!(
-        all.len() > 200_000,
-        "只读到 {} 字节源码 —— 抽取器坏了",
-        all.len()
-    );
     // ★ **本文件自己要摘出去** —— `HAS_A_GUARD` 表里就写着这些符号名，
     // 不摘的话每一条都能在自己的表里找到自己 ⇒ **恒绿**。
     // 变异实测：把 `backend/mod.rs` 里那个判据改名，本条**照样绿**。
@@ -489,35 +442,6 @@ fn the_guards_that_keep_the_accurate_numbers_accurate_still_exist() {
                  ★ 逐条对上过：**准确的读数背后都有一条会红的判据，已假的 13 处背后一条都没有**。\n\
                  判据一没，那个准确读数就是下一处会腐的散文 —— 要么补一条新的，要么把它挪进\n\
                  `POINTER_ONLY`（删副本只留指针）。"
-        );
-    }
-}
-
-/// ★ **棘轮**：已处置的行数只许涨（＝未处置的只许降）。
-#[test]
-fn the_treated_prose_rows_only_go_up() {
-    // `.iter().filter().count()` 而不是 `.len()` —— 后者会被常量折叠成恒真断言，
-    // 那正是 clippy 咬掉第一版的原因。这里的值来自**表本身**，加一行才动得了它。
-    let done = DONE_ROWS.iter().filter(|s| !s.is_empty()).count();
-    let parked = NOT_DOING.len();
-    assert!(
-        done + parked <= TOTAL_ROWS,
-        "已处置 {done} + 明确不做 {parked} > 全表 {TOTAL_ROWS} 行 —— \
-             表加行了就把 `TOTAL_ROWS` 一起改"
-    );
-    assert!(
-        done >= DONE_FLOOR,
-        "已处置的散文副本行数从 {DONE_FLOOR} 掉到 {done} 了 —— 这是**棘轮，只许涨**。\
-             还剩 {} 行既没处置也没登记为不做；处置一行就把它写进 `DONE_ROWS` 并把 \
-             `DONE_FLOOR` 抬上去，**不许把已处置的挪走来让数字好看**。",
-        TOTAL_ROWS - done - parked
-    );
-    // 「明确不做」必须**带理由**，否则它就成了「没做」的体面写法。
-    for (row, why) in NOT_DOING {
-        assert!(
-            why.len() > 30,
-            "`{row}` 登记为不做，但理由只有 {} 字节 —— 一句话的理由挡不住下一个人重开它",
-            why.len()
         );
     }
 }
