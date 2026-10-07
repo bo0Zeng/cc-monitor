@@ -322,6 +322,8 @@ fn every_registered_command_declares_its_run_kind() {
                 // `relay-ensure` / `relay-status` 两条随脱离 `--relay` 一族删了。
                 // 足迹那一条：一批 stat / 读几份小文件，同步文件 I/O。
                 | "footprint-report"
+                // 「文件与数据」那一份：同一份足迹（同一批 stat）重排。
+                | "data-report"
                 // 别名预览：读账号库 manifest ＋ 问会话快照（同步 I/O），不起进程。
                 | "ccm-print"
                 // MCP 同步的判定：对可疑路径逐条 stat、在 PATH 上找名字（同步文件 I/O）。
@@ -530,6 +532,7 @@ fn every_registered_command_declares_its_run_kind() {
         "apikey-routing", //
         "relay-optin",    //
         "footprint-report",
+        "data-report",
         // 别名预览（阻塞档，理由在上面 `expected_blocking`）。
         "ccm-print",
         // 资产目录两条（阻塞档，理由在上面 `expected_blocking`）。

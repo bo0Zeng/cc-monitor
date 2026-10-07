@@ -223,16 +223,16 @@ describe(" 文案纪律 ＋ `§8` #5：界面上零 markdown / 零源码住址",
     const p = new SettingsPanel({ windowMode: true });
     await p.open();
     await tick();
-    // 两个顶层页 + 本机子页都走一遍（顶层「改动足迹」已删）—— 只看落地页等于只判了一部分。
-    for (const id of ["app", "app-appearance", "app-logs", "app-data", "machine:（本机）", "machines"]) {
+    // 各页 + 本机子页都走一遍 —— 只看落地页等于只判了一部分。
+    for (const id of ["general", "appearance", "logs", "data", "machine:（本机）", "machines"]) {
       const btn = document.querySelector<HTMLButtonElement>(
         `[id="settings-tab-${id}"]`,
       );
       btn?.click();
       await tick();
     }
-    // 漂移记账在本机子页的「足迹」栏里（per-machine 那一批）—— 走过本机子页它就在被扫的 DOM 里。
-    expect(document.querySelector(".drift-ledger-section"), "本机子页上没有「未识别的数据」那一块").not.toBeNull();
+    // 文件与数据那一页（两栏）—— 走过它就在被扫的 DOM 里。
+    expect(document.querySelector(".data-page"), "文件与数据那一页没上屏").not.toBeNull();
     const root = document.querySelector<HTMLElement>(".settings-panel")!;
     const copy = visibleCopy(root);
     // 量具自检：扫到的文字量要够大。零字节时下面那条「一条都不许命中」是空转。
@@ -245,38 +245,22 @@ describe(" 文案纪律 ＋ `§8` #5：界面上零 markdown / 零源码住址",
     ).toEqual([]);
   });
 
-  it("〔ST2〕足迹那张表**喂一份真 report** 再扫：四档各一行上屏，一条都不许命中", async () => {
-    const row = (tier: string, name: string, state: unknown) => ({
-      tool_id: name,
-      tool_name: name,
-      source_label: "来源",
-      path_declared: `~/${name}`,
-      path_resolved: `/h/${name}`,
-      host_label: "本机",
-      note: null,
-      effect_label: "它做什么",
-      state,
-      installable: tier === "AppInstalls",
-      uninstallable: false,
-      tier,
-    });
-    // 足迹经通道问本机后端（`footprint-report`，一问）；monitor 自己进程的那几条事实问 `footprint_client_facts`。
+  it("〔ST2〕文件与数据**喂一份真成品**再扫：要装两档 ＋ 改过你的文件都上屏，一条都不许命中", async () => {
+    // 文件与数据经通道问本机后端（`data-report`，一问）；monitor 自己进程的那几条事实问 `footprint_client_facts`。
     const report = {
-      rows: [
-        row("AppInstalls", "甲", { kind: "present", detail: "文件，1 字节" }),
-        row("AppShipsNoInstallerYet", "乙", { kind: "absent" }),
-        row("UserInstallsWePrompt", "丙", { kind: "undetermined", why: "查不动" }),
-        row("AppOnlyChecks", "丁", { kind: "absent" }),
-      ],
-      settings_scopes: [],
-      claude_config_dir: "/h/.claude",
       home: "/h",
+      changedFiles: [{ path: "~/.bashrc", what: "ccm 命令入口", undo: { page: "machine", tab: "config", anchor: "connect-terminal" } }],
+      needsInstall: [
+        { id: "claude-cli", name: "Claude Code", what: "claude", required: true, howUrl: "https://example.invalid/claude" },
+        { id: "tmux", name: "tmux", what: "tmux", required: false, howUrl: null },
+      ],
+      tmux: false,
+      chores: 1,
     };
     ipc.replies.set("footprint_client_facts", { home: "/h", path: null });
     ipc.replies.set("chan_call", (a: unknown) => {
-      const { op, payload } = a as { op: string; payload: number[] };
-      if (op !== "footprint-report") return Promise.reject(new Error(`[录音机] ${op} 没有真后端`));
-      void payload;
+      const { op } = a as { op: string };
+      if (op !== "data-report") return Promise.reject(new Error(`[录音机] ${op} 没有真后端`));
       return Promise.resolve(new TextEncoder().encode(JSON.stringify(report)).buffer);
     });
     try {
@@ -286,11 +270,11 @@ describe(" 文案纪律 ＋ `§8` #5：界面上零 markdown / 零源码住址",
       document.querySelector<HTMLButtonElement>('[id="settings-tab-data"]')?.click();
       await tick();
       await tick();
-      const rows = document.querySelectorAll(".config-surface-row");
-      expect(rows.length, "表一行都没上屏 ⇒ 下面的零命中是空转（原来就是这样空转的）").toBe(4);
-      const root = document.querySelector<HTMLElement>(".config-surface-section")!;
-      // 反空真：欠的那一档那句话**真的在**被扫的文字里（按文案键取，不钉原文）。
-      expect(visibleCopy(root)).toContain(copyText("configSurface.summarizeOwedInstallers.owed", { namesCount: 1 }));
+      const root = document.querySelector<HTMLElement>(".data-page")!;
+      expect(root.querySelectorAll("[data-chore]").length, "要装那几件一件都没上屏 ⇒ 下面的零命中是空转").toBe(2);
+      // 反空真：两档那两句话**真的在**被扫的文字里（按文案键取，不钉原文）。
+      expect(visibleCopy(root)).toContain(copyText("dataPage.install.whyRequired"));
+      expect(visibleCopy(root)).toContain(copyText("dataPage.install.whyOptional"));
       expect(violationsOf(visibleCopy(root)).map((v) => `${v.shape}: ${v.hit}`)).toEqual([]);
     } finally {
       ipc.replies.clear();

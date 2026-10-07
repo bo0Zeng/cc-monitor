@@ -213,7 +213,10 @@ describe("S2 设置面板分页结构", () => {
     expect(pageTitles("appearance")).toEqual(["字体", "颜色", "快捷键"]);
     // 「诊断」**让名**给 `§5.3` 那个改名（否则面板里会有两个「诊断」）——今天是页名。
     expect(pageTitles("logs")).toEqual([]);
-    expect(pageTitles("data")).toEqual(["Claude 数据目录", "足迹", "未识别的数据"]);
+    // 文件与数据：两栏（要你动手 · cc-monitor 放了什么）；「足迹」并进「放了什么」，「未识别的数据」并进日志页的诊断信息。
+    expect(pageTitles("data")).toEqual([]);
+    expect(document.querySelector('.settings-page[data-route-id="data"] .data-claude-dir'), "本机那一块 Claude 目录").toBeTruthy();
+    expect(document.querySelectorAll('.settings-page[data-route-id="data"] .data-pane').length, "文件与数据两栏").toBe(2);
     // 那两块真的在它们各自那一页上（只是不带块标题）。
     for (const [id, cls] of [
       ["logs", "#stub-diagnostics-section"],
@@ -559,19 +562,13 @@ describe("S9 本机 OS 门（〔AL1c〕别名那一块的平台）", () => {
     });
   }
 
-  it("门只管这一块 —— 足迹（文件与数据页）在 Linux 上照常在", async () => {
+  it("门只管这一块 —— 文件与数据页在 Linux 上照常在（两栏都在）", async () => {
     __setHostOsForTests("linux");
     document.body.replaceChildren();
     new SettingsPanel({ windowMode: true });
     await tick();
-    const titles = [
-      ...document
-        .querySelector<HTMLElement>(
-          '.settings-page[data-route-id="data"]',
-        )!
-        .querySelectorAll(".settings-group-title"),
-    ].map((e) => e.textContent);
-    expect(titles).toContain("足迹");
+    const panes = document.querySelector<HTMLElement>('.settings-page[data-route-id="data"]')!.querySelectorAll("[data-pane]");
+    expect([...panes].map((p) => (p as HTMLElement).dataset.pane)).toEqual(["chores", "placed"]);
   });
 });
 

@@ -212,6 +212,22 @@ export function machineOps(): Record<string, OpHandler> {
     "ssh-config-aliases": () => ({ aliases: ["devbox", "gpu-01", "win-laptop", "bastion"] }),
     "exit-policy-read": () => ({ state: "absent", killOnExit: false, reason: null, path: null, said: copyText("backendPolicy.exit.unattended") }),
     "footprint-report": () => footprint(),
+    // 文件与数据：devbox 缺 tmux（可选）；本机缺 Claude Code 之外都齐；改过 ~/.bashrc 与扩展装的 skill。
+    "data-report": (o) => ({
+      home: HOME,
+      changedFiles: [
+        { path: "~/.bashrc", what: "ccm 命令入口", undo: { page: "machine", tab: "config", anchor: "connect-terminal" } },
+        { path: "~/.claude/skills/cc-bus", what: "cc-bus", undo: { page: "ext" } },
+      ],
+      needsInstall:
+        o === "devbox"
+          ? [{ id: "tmux", name: "tmux", what: "tmux", required: false, howUrl: "https://github.com/tmux/tmux/wiki/Installing" }]
+          : o === "<local>"
+            ? [{ id: "claude-cli", name: "Claude Code", what: "claude", required: true, howUrl: "https://docs.anthropic.com/en/docs/claude-code/setup" }]
+            : [],
+      tmux: o !== "devbox",
+      chores: o === "<local>" ? 1 : 0,
+    }),
     "sessions-where": (_o, req, w) => ({
       results: (req.sids as string[]).map((sid) => {
         const s = w.sessions.find((x) => x.sid === sid);

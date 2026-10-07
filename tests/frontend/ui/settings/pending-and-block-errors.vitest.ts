@@ -40,7 +40,7 @@ vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
 }));
 vi.mock("../../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn() }));
 
-import { ConfigSurfaceSection } from "../../../../src/frontend/ui/settings/config-surface-section";
+import { commands } from "../../../../src/frontend/ui/ipc/commands";
 import { __resetMachineContextForTests } from "../../../../src/frontend/ui/settings/machine-context";
 import { withPending } from "../../../../src/frontend/ui/settings/pending";
 
@@ -54,15 +54,17 @@ describe("（步 4）：点击侧 pending —— 按住期间不许发第二趟"
     __resetMachineContextForTests();
   });
 
-  it("🔴 主锚：按住期间连点 4 下，往返次数**恒等于 1**", async () => {
-    const sec = new ConfigSurfaceSection();
-    document.body.appendChild(sec.element);
-    const rescan = [...sec.element.querySelectorAll("button")].find(
-      (b) => b.textContent === "重新扫描",
-    )!;
-    expect(rescan, "找不到「重新扫描」—— 下面的断言会量错地方").toBeTruthy();
-    expect(ipc.calls.length, "构造期就不该发（步 2）").toBe(0);
+  /** 一颗按钮：点一下 ⇒ 按住发一趟（`withPending`），那一趟挂着不回，直到放开。 */
+  function rig(): HTMLButtonElement {
+    const btn = document.createElement("button");
+    btn.textContent = "重新扫描";
+    btn.addEventListener("click", () => void withPending(btn, "扫描中…", async () => void (await commands.diagnostics_report({ configUnknown: [], drift: [] }))));
+    document.body.appendChild(btn);
+    return btn;
+  }
 
+  it("🔴 主锚：按住期间连点 4 下，往返次数**恒等于 1**", async () => {
+    const rescan = rig();
     rescan.click();
     await tick();
     expect(rescan.dataset.pending, "按下之后要有 pending 这个身份").toBe("1");
@@ -70,21 +72,14 @@ describe("（步 4）：点击侧 pending —— 按住期间不许发第二趟"
     for (let i = 0; i < 4; i++) rescan.click();
     await tick();
     expect(
-      ipc.calls.filter((c) => c === "footprint_client_facts").length,
+      ipc.calls.filter((c) => c === "diagnostics_report").length,
       "按住期间又发出去了第二趟 —— 那正是补审 A1 记的那个「双起」窗口",
     ).toBe(1);
   });
 
   it("🔴 反向锚：放开之后再点，往返次数必须变成 2（不许靠「永远按住」绿）", async () => {
-    const sec = new ConfigSurfaceSection();
-    document.body.appendChild(sec.element);
-    const rescan = [...sec.element.querySelectorAll("button")].find(
-      (b) => b.textContent === "重新扫描",
-    )!;
+    const rescan = rig();
     rescan.click();
-    await tick();
-    // 本机那一栏两拍（monitor 事实 → 本机后端），两拍各放开一次。
-    ipc.gate?.();
     await tick();
     ipc.gate?.();
     await tick();
@@ -94,7 +89,7 @@ describe("（步 4）：点击侧 pending —— 按住期间不许发第二趟"
     expect(rescan.textContent, "文字要还原，不能永远停在「扫描中…」").toBe("重新扫描");
     rescan.click();
     await tick();
-    expect(ipc.calls.filter((c) => c === "footprint_client_facts").length).toBe(2);
+    expect(ipc.calls.filter((c) => c === "diagnostics_report").length).toBe(2);
   });
 
   it("失败也要放开（`finally`）—— 失败就永远按住比没有 pending 更糟", async () => {

@@ -98,7 +98,6 @@ function entryCensus(): string[] {
  */
 const ENTRIES: readonly string[] = [
   "src/frontend/ui/cards/index.ts · 定位文件", // 会话工具卡上的文件链接（老面板 revealPath，F54）
-  "src/frontend/ui/settings/config-surface-section.ts · 定位文件", // 远端机器页「足迹」那几行「在文件窗口里打开」：开到那台、高亮那一行
   "src/frontend/ui/settings/ext-section.ts · 目录", // 扩展页抽屉：远端那台上一个 skill 的目录「在文件窗口里打开」
   "src/frontend/ui/settings/accounts-section.ts · 目录", // 账号页：远端那台一个号的账号目录「在文件窗口里打开」
   "src/frontend/ui/settings/machine-card.ts · home", // 机器页「文件」按钮

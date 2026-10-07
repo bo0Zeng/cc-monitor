@@ -179,10 +179,6 @@ const ALLOWED_PREFIXES: readonly { prefix: string; why: string }[] = [
     prefix: "status-",
     why: "`src/frontend/ui/tasks-panel.ts:177` 把任务态拼成类名（running/aborted/completed/in_progress/deleted）。态值直接来自会话记录，是**协议里的字符串**，前端不重新枚举。",
   },
-  {
-    prefix: "tone-",
-    why: "`src/frontend/ui/settings/config-surface-section.ts:333` 按配置面的判定色调拼（ok/bad/unknown）。",
-  },
 ];
 
 /**

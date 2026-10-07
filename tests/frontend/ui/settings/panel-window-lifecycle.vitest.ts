@@ -194,7 +194,7 @@ describe("ST1：设置窗关窗 ＝ 隐藏；〔ST2〕全即时：改了就落�
     const setDir = vi.mocked(paths.setClaudeDirOverride);
     setDir.mockClear();
     const p = await mount();
-    const dir = document.querySelector<HTMLInputElement>('.settings-page[data-route-id="data"] .settings-input-wide')!;
+    const dir = document.querySelector<HTMLInputElement>('.settings-page[data-route-id="data"] .data-claude-input')!;
     dir.value = "/elsewhere/.claude";
     dir.dispatchEvent(new Event("change"));
     for (let i = 0; i < 3; i++) await tick();
@@ -217,7 +217,7 @@ describe("ST1：设置窗关窗 ＝ 隐藏；〔ST2〕全即时：改了就落�
     setDir.mockClear();
     const p = await mount();
     dirCheck.problem = "/mnt/x 不在";
-    const dir = document.querySelector<HTMLInputElement>('.settings-page[data-route-id="data"] .settings-input-wide')!;
+    const dir = document.querySelector<HTMLInputElement>('.settings-page[data-route-id="data"] .data-claude-input')!;
     dir.value = "/mnt/x";
     dir.dispatchEvent(new Event("change"));
     for (let i = 0; i < 3; i++) await tick();
