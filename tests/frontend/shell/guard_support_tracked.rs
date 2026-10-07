@@ -29,3 +29,14 @@ pub(crate) fn tracked_under(dir: &str, ext: &str) -> Vec<String> {
     v.sort();
     v
 }
+
+/// 正控：入口 `lib.rs` 在 git 跟踪着的人群里；扩展名过滤真的在过滤。
+#[test]
+fn tracked_under_lists_the_tracked_entry_and_filters_by_extension() {
+    let rs = tracked_under("src/frontend/shell/src", "rs");
+    assert!(
+        rs.iter().any(|r| r == "src/frontend/shell/src/lib.rs"),
+        "git 跟踪着的人群里没有 `lib.rs`：{rs:?}"
+    );
+    assert!(rs.iter().all(|r| r.ends_with(".rs")), "扩展名过滤失效");
+}
