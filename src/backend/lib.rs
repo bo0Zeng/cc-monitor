@@ -829,7 +829,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// p8r-data-report：新帧命令 data-report（足迹重排成改过你的文件 · 要装 · 有没有 tmux · 角标件数）。
 ///
 /// p8s-handed-back：会话事实 history-facts 多一格 handedBack（交回了的子运行 id，按「谁说的」认、随续传令牌累加）；history-find 也收 agent 回报（种类 report）；续传令牌 needs 认 call。
-pub const BUILD_ID: &str = "p8s-handed-back";
+///
+/// p8t-agent-window：运行表多给九格（谁派的 · 开始 / 收场 / 最近动静三个时刻 · 在等哪个工具 · 收场原因码 · 报错原话 · 调了几次工具 · 后台派出）；开 agent 窗口的命令带 run。
+pub const BUILD_ID: &str = "p8t-agent-window";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
