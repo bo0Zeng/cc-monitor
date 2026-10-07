@@ -4006,12 +4006,12 @@
     },
     "front.body.hosted": {
       "kind": "body",
-      "zh": "默认终端交接给 Windows Terminal · 窗口不归 {program}",
-      "args": ["program"]
+      "zh": "Windows 交给「终端」应用托管 · 找不到窗口",
+      "args": []
     },
     "front.hint.hosted": {
       "kind": "body",
-      "zh": "从 Windows Terminal 直接打开可切换",
+      "zh": "在「终端」应用里新开标签页再连",
       "args": []
     },
     "front.body.unknown": {

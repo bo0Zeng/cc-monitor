@@ -573,6 +573,14 @@ export const FRONT_SCENES: Scene[] = [
   }, (w) => {
     w.commands.bring_terminal_to_front = () => ({ kind: "several", program: "WindowsTerminal.exe", count: 3 });
   }),
+  frontScene("panel-front-hosted", "↗ · 终端由 Windows 托管", "单独起的 PowerShell 被 Win11 交给「终端」应用（进程链断）：浮层照实说找不到窗口，灰字给改法", async () => {
+    await mainReady(ALL_TABS);
+    await clickHeadFront();
+    await waitFor("[data-role=front-result]");
+    await sleep(400);
+  }, (w) => {
+    w.commands.bring_terminal_to_front = () => ({ kind: "hosted-by-wt", program: "ssh.exe" });
+  }),
   frontScene("panel-front-unbound", "↗ · 本机终端没登记", "在接上终端之前开的 PowerShell：浮层给［接上终端］（直达设置那一节）", async () => {
     await mainReady(ALL_TABS);
     await clickHeadFront();

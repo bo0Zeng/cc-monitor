@@ -86,7 +86,7 @@ export function frontView(r: FrontResult, machine: string, inTmux: boolean): Fro
     case "window-gone":
       return v(copyText("front.title.gone"), "", "grey", inTmux ? [{ kind: "open-in-terminal" }] : []);
     case "hosted-by-wt":
-      return v(copyText("front.title.hosted"), copyText("front.body.hosted", { program: r.program }), "amber", [], copyText("front.hint.hosted"));
+      return v(copyText("front.title.hosted"), copyText("front.body.hosted"), "amber", [], copyText("front.hint.hosted"));
     case "query-failed":
       return v(copyText("front.title.unknown"), "", "red", [{ kind: "retry" }, { kind: "copy", detail: r.detail }]);
     case "bad-shape":
