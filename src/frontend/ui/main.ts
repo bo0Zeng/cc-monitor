@@ -50,6 +50,9 @@ import { recordFileWiring } from "./record-file-notice";
 import { toast, undoLatest } from "./kit/toast";
 import { KeysOverview } from "./views/keys-overview";
 import { StatusMessages } from "./status-messages";
+import { StatusChores } from "./status-chores";
+import { choresOf } from "./settings/data-reads";
+import { onMachineState } from "./machine-feed";
 import { restoreZoom, stepZoom } from "./zoom";
 import { mountTabBarFold, tabBarManuallyFolded, toggleTabBarFold } from "./tab-bar-fold";
 import { attachTooltip } from "./kit/tooltip";
@@ -167,6 +170,25 @@ window.addEventListener("DOMContentLoaded", async () => {
   status.innerHTML = "";
   // 最左「消息」：本次运行里最近 20 条提示（toast 收进来的那几条也在这里找得回）。
   status.appendChild(new StatusMessages().el);
+  // 「要你动手 N」（有才出）：各台「文件与数据」进角标的件数相加，与设置窗左栏同一个数。
+  const chores = new StatusChores({
+    machines: async () => {
+      const got: unknown = await commands.backend_machines();
+      return Array.isArray(got) ? got.filter((o): o is string => typeof o === "string") : [LOCAL_ORIGIN];
+    },
+    chores: choresOf,
+    open: () => void openSettingsWindow(null, { page: "data" }),
+  });
+  status.appendChild(chores.el);
+  void chores.refreshAll();
+  onMachineState((origin, m) => {
+    if (m?.state === "up") void chores.refresh(origin);
+  });
+  void getCurrentWindow()
+    .onFocusChanged(({ payload: focused }) => {
+      if (focused) void chores.refreshAll();
+    })
+    .catch((e: unknown) => console.warn("[status-chores] 挂焦点监听失败：", e));
   const statusSpacer = document.createElement("span");
   statusSpacer.className = "status-sp";
   status.appendChild(statusSpacer);

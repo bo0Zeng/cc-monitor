@@ -22444,6 +22444,11 @@
       "zh": "另 {n} 个已结束 · 跳过",
       "args": ["n"]
     },
+    "statusBar.todo.label": {
+      "kind": "action",
+      "zh": "要你动手 {n}",
+      "args": ["n"]
+    },
     "statusBar.messages.label": {
       "kind": "action",
       "zh": "消息",
