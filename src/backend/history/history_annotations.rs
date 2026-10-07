@@ -1,35 +1,23 @@
-//! **历史注解**（星标 / 改名 / 隐藏 / 上次用哪个号起）—— 读写者是本机常驻后端。
-//!
-//! # 裁决与出处
-//!
-//! 要求：「本机注解（`history-metadata.json`：星标 / 改名 / 隐藏）
-//! 的**读写者**换成本机常驻后端 —— **文件留在原处、同一路径，不迁移、一条不丢**」。
-//! C4c 的设计（`C4c.md §3.2`）：注解是 monitor 自有状态搬去后端自有状态（`readonly_guard` 第四层），不是用户文件；
-//! `D1`：join 只有一个家 —— 历史清单并注解这件事住本机后端（`history_list.rs`）。
+//! 历史注解（星标 / 改名 / 隐藏）—— 读写者是本机常驻后端。注解是后端自有状态（`readonly_guard` 第四层），不是用户文件；
+//! 历史清单并注解这件事住本机后端（`history_list.rs`）。「上次用哪个号起的」不在这里（会话所在那台的 `launch-accounts.json`）。
 //!
 //! # 文件在哪
 //!
-//! 住这台的家：`<家>/history-metadata.json`（家 = `creds_core::store::monitor_data_dir`，默认 `~/.cc-monitor`，
-//! 隔离跑时跟 `CCM_DATA_DIR` 走）。位置只跟着家走，没有另指它的变量。
-//! **推不出家 ⇒ 注解不可用**：读回「不知道」（三个数不说成 0）、写拒 —— 不猜一个路径去写。
+//! 住这台的家：`<家>/history-metadata.json`（家 = `creds_core::store::monitor_data_dir`，默认 `~/.cc-monitor`，隔离跑时跟 `CCM_DATA_DIR` 走）。
+//! 推不出家 ⇒ 注解不可用：读回「不知道」（三个数不说成 0）、写拒 —— 不猜一个路径去写。
 //!
-//! # 形状（与 monitor 从前那份**同形同注解**，逐格照搬）
+//! # 形状
 //!
-//! `{"version": u32, "entries": {sid: {"starred", "customTitle", "hidden", "updatedAt"}}}`；
-//! 两个键认蛇形别名（`custom_title` / `updated_at`），缺格取缺省。「上次用哪个号起的」不在这里（会话所在那台的 `launch-accounts.json`）。
+//! `{"version": u32, "entries": {sid: {"starred", "customTitle", "hidden", "updatedAt"}}}`；两个键认蛇形别名（`custom_title` / `updated_at`），缺格取缺省。
 //!
-//! # 写：**一条不丢**
+//! # 写：一条不丢
 //!
-//! - 先按上面那份结构**严格**读一遍：读不懂（坏 JSON / 类型不对 / 同一格驼峰与蛇形都在）⇒ **拒写，原文件一个字节不动**。
-//!   ⚠ monitor 从前那份写法是「读失败当空 ⇒ 只带这一条改动整份写回」—— 一份写坏的文件会让其余注解全部被覆盖掉。这里不照搬。
-//! - 再在**原文 JSON** 上只改那一条：其余条目、条目里认不出的键、顶层认不出的键原样留着；被改那一条按驼峰规范写回
+//! - 先严格读一遍：读不懂（坏 JSON / 类型不对 / 同一格驼峰与蛇形都在）⇒ 拒写，原文件一个字节不动（「读失败当空、只带这一条写回」会覆盖掉其余注解）。
+//! - 再在原文 JSON 上只改那一条：其余条目、条目里认不出的键、顶层认不出的键原样留着；被改那一条按驼峰规范写回
 //!   （它身上的蛇形别名摘掉 —— 不摘的话两个名字同时在，下一次严格读就读不懂了）。
-//! - 第四层写法：`O_EXCL` 建临时文件 → 写满 → `sync` → 原子挪过去；目录不在只建那一层；失败删自己的临时文件。
+//! - 第四层写法：`O_EXCL` 建临时文件 → 写满 → `sync` → 原子挪过去；目录不在只建那一层；失败删自己的临时文件。读—改—写在那个目录的跨进程锁里。
 //!
-//! # 买不到
-//!
-//! - 两个后端**进程**同时写（常驻那一个 ＋ 一次性 CLI `--history-annotate`）：进程内那把锁挡不住，后写的整份盖掉先写的那一次改动。
-//! - Windows 上「原子挪过去」是 `std::fs::rename`（覆盖既有文件）；monitor 从前用 `ReplaceFileW`。没在真 Windows 上跑过。
+//! 买不到：Windows 上「原子挪过去」是 `std::fs::rename`（覆盖既有文件），没在真 Windows 上跑过。
 
 use copy_core::copy_text;
 use std::collections::BTreeMap;
@@ -42,7 +30,7 @@ use serde_json::{json, Map, Value};
 /// 一条注解约 150 字节 ⇒ 64 MiB 装得下四十万条；真撞上说明那份文件不对劲，不拿截断的当完整的用。
 pub const MAX_BYTES: u64 = 64 * 1024 * 1024;
 
-/// 一条注解 —— 与 monitor 从前那份 `EntryMetadata` **同形同注解**（别名与缺省逐格照搬）。
+/// 一条注解（别名与缺省见各字段）。
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Entry {
     #[serde(default)]
@@ -55,7 +43,7 @@ pub struct Entry {
     pub updated_at: i64,
 }
 
-/// 整份文件 —— 与 monitor 从前那份 `HistoryMetadata` 同形。
+/// 整份文件。
 #[derive(Debug, Default, Deserialize)]
 struct Doc {
     #[serde(default)]
@@ -75,7 +63,7 @@ pub type Table = BTreeMap<String, Entry>;
 pub enum Loaded {
     /// 推不出家（没有家目录 / `CCM_DATA_DIR` 设成了相对路径）—— 注解这一维不可用。
     NoPath,
-    /// 读到了（文件不在 = 空表，同 monitor 从前那份）。
+    /// 读到了（文件不在 = 空表）。
     Read(Table),
     /// 读不懂 / 读不动 —— 带一句为什么。
     Unreadable(String),
@@ -112,7 +100,7 @@ fn read_raw(path: &Path) -> Result<Option<Vec<u8>>, String> {
         })
 }
 
-/// 严格读（与 monitor 从前那份 `serde_json::from_str::<HistoryMetadata>` 同一个口径）。
+/// 严格读。
 fn parse(bytes: &[u8], path: &Path) -> Result<Doc, String> {
     serde_json::from_slice::<Doc>(bytes).map_err(|e| {
         copy_text(
@@ -145,8 +133,7 @@ pub fn load() -> Loaded {
     }
 }
 
-/// 读—改—写的锁：先建那一层目录，再拿它的**跨进程**锁（`platform/lock.rs`）。
-/// 〔墓碑 —— 从前是一把进程内 `Mutex`：只挡同一进程，两个后端进程（常驻 ＋ 一次性 CLI）同时改注解，后写的整份盖掉先写的。〕
+/// 读—改—写的锁：先建那一层目录，再拿它的跨进程锁（`platform/lock.rs`）。
 fn lock_for_write(path: &Path) -> Result<crate::platform::lock::DirLock, (&'static str, String)> {
     let dir = path.parent().ok_or_else(|| {
         (
@@ -170,8 +157,7 @@ fn lock_for_write(path: &Path) -> Result<crate::platform::lock::DirLock, (&'stat
     crate::platform::lock::hold(dir).map_err(|e| ("io_failed", e))
 }
 
-/// 一次改动（线上 `patch`）—— 语义逐格照搬 monitor 从前那份 `MetadataPatch` ＋ `update_history_metadata`：
-/// 缺格 / `null` = 不改；标题给空白串 = 清空。
+/// 一次改动（线上 `patch`）：缺格 / `null` = 不改；标题给空白串 = 清空。
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Patch {
@@ -209,7 +195,7 @@ fn now_ms() -> i64 {
         .unwrap_or(0)
 }
 
-/// 读原文成「严格读过的结构 ＋ 原文 JSON」。文件不在 ⇒ monitor 从前那份缺省形状。
+/// 读原文成「严格读过的结构 ＋ 原文 JSON」。文件不在 ⇒ 缺省形状。
 fn read_for_write(path: &Path) -> Result<(Doc, Value), (&'static str, String)> {
     match read_raw(path).map_err(|e| ("annotations_unreadable", e))? {
         None => Ok((Doc::default(), json!({ "version": 0, "entries": {} }))),
@@ -263,8 +249,7 @@ fn put_entry(raw: &mut Value, sid: &str, entry: Option<&Entry>) {
     }
 }
 
-/// **唯一的写者**：`O_EXCL` 新建临时文件 → 写满 → `sync` → 原子挪过去；失败删临时文件（目录由 [`lock_for_write`] 建）。
-/// 序列化口径同 monitor 从前那份（`to_string_pretty`）。
+/// 唯一的写者：`O_EXCL` 新建临时文件 → 写满 → `sync` → 原子挪过去；失败删临时文件（目录由 [`lock_for_write`] 建）。序列化用 `to_string_pretty`。
 fn write_at(path: &Path, raw: &Value) -> Result<(), String> {
     use std::io::Write as _;
     let dir = path.parent().ok_or_else(|| {

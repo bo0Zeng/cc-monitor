@@ -25,7 +25,7 @@ pub(crate) fn exec<S: AsRef<str>>(words: &[S]) -> String {
     out
 }
 
-/// 「在此打开终端」要在那台跑的那一串（原住文件窗口，随「窗口只交意图」搬进本机后端，产出逐字节不变）：
+/// 「在此打开终端」要在那台跑的那一串（窗口只交意图）：
 /// `cd <已 quote 的目录> && exec ${SHELL:-bash} -l`；没有目录 ⇒ 只有登录 shell 那半段。目录合不合格、怎么 quote 由调用方先办
 /// （`dial/terminal.rs::command_for_cwd`）。
 pub(crate) fn cd_then_login_shell(quoted_dir: Option<&str>) -> String {
@@ -50,7 +50,7 @@ pub(crate) fn if_command(name: &str, then: &str, otherwise: &str) -> String {
 
 /// 把**一行**（已成词）并进家目录底下 `dir/file`：目录 `700`、文件 `600`；已有整行相等的一行 ⇒ 打 `already`、不写
 /// （`grep -qxF`）；否则文件非空且末字节不是换行先补一个、再追加 ⇒ 打 `added`（两个记号已成词）。整串是**一次** exec
-/// （aterm 契约：`printf '%s\n'` 不用 echo · `--` 纵深防御 · 只收单行由调用方先判）。原住 monitor `pubkey.rs`，逐字搬来。
+/// （aterm 契约：`printf '%s\n'` 不用 echo · `--` 纵深防御 · 只收单行由调用方先判）。
 pub(crate) fn add_line_once(
     dir: &str,
     file: &str,

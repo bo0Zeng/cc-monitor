@@ -81,25 +81,10 @@ pub(crate) struct CommandSpec {
     /// 与真正的解析器/输出构造器实测对拍（`launch_fields_match_its_parser_and_output`）。
     /// 用一个手写清单去证明另一个手写清单是没有意义的。
     pub(crate) fields: &'static [&'static str],
-    /// 这条命令**收不收入方向载荷**（CLI 面据此决定读不读 stdin）。
-    ///
-    /// # ★★ 为什么这是显式的，而不是从 `fields` 派生〔P4f 08-13 实测〕
-    ///
-    /// 原来 `cli_control::reads_stdin` 写成 `!fields.is_empty()`。那是个**代用品**：
-    /// `fields` 的定义是「`args` **和** `data` 的字段名」，而 `kill`/`launch`/`resolve`
-    /// 恰好都有输入、`ping` 恰好零字段 ⇒ 代用品当时全对。
-    ///
-    /// `bus-list` 是第一条**无输入、却有输出字段**的命令 ⇒ 代用品判它要读 stdin
-    /// ⇒ **它挂住等一个永远不来的输入**。实测：`--ping` 120ms 回，`--bus-list` 6 秒
-    /// 被掐死、一个字都没输出。而 CLI 面正是给第三方 skill 调的。
-    ///
-    /// ⚠ 这条病仓里**修过一次**（`--ping` 第一版无条件读 stdin，`cli_control` 的头注逐字：
-    /// 「问『你活着吗』的那条命令，答案是挂住 —— 所有失败里最坏的一种」）。
-    /// 它换了扇门回来，因为守它的判据是**恒真**的（`fields.is_empty()` ⟺ `!reads_stdin`
-    /// 两边是同一个表达式，两个分支都不可能红）。
-    ///
-    /// ⇒ 改成每条命令自己说。真不真由**行为**判据验（`tests/e2e/backend-cc-bus.sh`：
-    /// 声明无输入的命令，在 stdin 不关时必须秒回）。
+    /// 这条命令收不收入方向载荷（CLI 面据此决定读不读 stdin）。每条命令自己说，不从 `fields` 派生：
+    /// `fields` 是「`args` 和 `data` 的字段名」，`bus-list` 这种无输入、有输出字段的命令按派生会去等一个永远不来的 stdin、挂住
+    /// （CLI 面正是给第三方 skill 调的）；拿 `fields.is_empty()` 去守它是恒真的。
+    /// 真不真由行为判据验（`tests/e2e/backend-cc-bus.sh`：声明无输入的命令，在 stdin 不关时必须秒回）。
     pub(crate) takes_input: bool,
     pub(crate) run: Run,
 }

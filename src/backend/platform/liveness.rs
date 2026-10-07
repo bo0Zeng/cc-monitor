@@ -1,15 +1,5 @@
-//! U4a（2026-08-01）：**判活的纯判定表** —— 与「怎么读到那些事实」分开。
-//!
-//! # 为什么从 `proc.rs` 上提到这里
-//!
-//! U3 的 Phase D 审计留了一条 U4 伏笔：这张表是**跨平台共用的那一半** ——
-//! Windows 侧（U4b）读事实的方式完全不同（`OpenProcess` 而不是 `/proc`），
-//! 但「exists / captured / current 三者怎么组合出存活判定」这套规则**一模一样**。
-//!
-//! 留在按 `/proc` 命名的模块里，U4b 要么把它复制一份（两份判定表迟早漂），
-//! 要么从一个名字说它是 `/proc` 的模块里 import 一段与 `/proc` 无关的逻辑。两个都不对。
-//!
-//! 它是**纯函数**：不碰 `/proc`、不碰 Win32、不做 I/O。所以它在**任何平台**都能被直接喂参数测。
+//! 判活的纯判定表 —— 与「怎么读到那些事实」分开。Linux（`/proc`）与 Windows（`OpenProcess`）读事实的方式不同，
+//! 「exists / captured / current 三者怎么组合出存活判定」这套规则一样 ⇒ 只住这一份。纯函数：不碰 `/proc`、不碰 Win32、不做 I/O，任何平台都能直接喂参数测。
 
 /// Pure liveness decision (testable without a real `/proc`), given whether the
 /// PID currently **exists**, the procStart **captured** at add-time, and the

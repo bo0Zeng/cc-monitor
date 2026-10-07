@@ -11,12 +11,8 @@ pub(super) fn stamp_of(path: &std::path::Path) -> Option<(std::time::SystemTime,
     Some((m.modified().ok()?, m.len()))
 }
 
-/// `D1 阻-2`：那张表从哪儿重读。
-///
-/// ⚠ 〔条 59〕它先前还揣着一个 `upstream_default: Base` —— 进程级的**那一个**默认上游，
-/// 重载时拿去给「没写 `base_url` 的行」取值。默认上游改成**每 agent 一行**之后，
-/// 那张表（`super::Upstreams`）归 `Accounts` 自己持有，重载与首次装表**读同一份**；
-/// 本结构体只剩「从哪儿读、上次读到什么样」两样。
+/// 那张表从哪儿重读。默认上游那张表（`super::Upstreams`，每 agent 一行）归 `Accounts` 自己持有，重载与首次装表读同一份；
+/// 本结构体只有「从哪儿读、上次读到什么样」两样。
 pub(crate) struct Reload {
     path: std::path::PathBuf,
     /// 上次读到的 mtime。`None` = 那时读不到（文件不在 / stat 失败）。

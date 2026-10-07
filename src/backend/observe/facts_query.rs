@@ -1,12 +1,12 @@
 //! **会话事实**：分叉血缘 · 改动文件集 · 最新 usage（连同上下文上限）· 项目目录。
 //! 子 agent 的列表与状态不在这里：它们是运行表（`observe::runs`，经 `session_runs` 帧），判定只有那一处。
 //!
-//! # 它顶掉了什么
+//! # 为什么在后端算
 //!
-//! 这几样从前是活 tab 在 `onLine` 旁路上一条一条攒的（前端 `tab-session-facts.ts` 那四个抽取器，已删）：
+//! 这几样要按对话序、读全量算：活 tab 在 `onLine` 旁路上攒的话，
 //! **到达序不是对话序**（重放是尾块先到）、**不完整**（重放缓冲每个会话只留尾部 `REPLAY_TAIL_KEEP` 条 ⇒
 //! F5 之后长会话的分叉血缘看不见、agent / 改动文件只剩尾巴那一截）、每个 tab 各攒一份（那三个病）。
-//! 今天它们由本文件读一遍文件算出来，经帧命令 `history-facts`（宿主 `read_face.rs`）出**成品**，
+//! 所以由本文件读一遍文件算出来，经帧命令 `history-facts`（宿主 `read_face.rs`）出成品，
 //! 界面经通道直接问、按形状收（`src/frontend/ui/session-reads.ts`），**本机与远端同一条路**。
 //!
 //! # 续传令牌就是上一份成品（后端零状态）
@@ -14,7 +14,7 @@
 //! 事实要跟着会话长，而大会话（本机实测 120 MB）每批整份重扫是撞墙的。选的形状：调用方把**上一次的应答原样**
 //! 交回来（`prior`），本文件从 `prior.end` 接着扫、把新的一截累加在它上面 —— 判定与累加都只在这里，
 //! 前端不读、不改、不合并那一份成品；后端不留任何状态（对 `history-lines` 的同一条取舍）。
-//! 续点的两道校验（截断 · 不在行边界）在 `history_query::open_facts_at`。理由。
+//! 续点的两道校验（截断 · 不在行边界）在 `history_query::open_facts_at`。
 //!
 //! # 口径（逐格，三样各一个住址）
 //!
@@ -38,15 +38,12 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+//
 // ── Claude 的工具词表里会话事实要认的两张 ─────────────────────────────────────────
 //
-// ⚠ **它们是 Claude 的记录格式知识，却住在 `observe/`** —— 与 `user_inputs.rs` 的四条口径、
-// `history_query::analyze_session` 认的 `ai-title` / `sessionKind` 同一处境（`observe/mod.rs` 头注：本层今天仍是 Claude 专属的；
-// `agent_locality_guard` 诚实边界第 2 条：Claude 那半今天不在它的射程里）。
-// 搬进适配层 `agents/claudecode/` 就要从这里直呼它 ⇒ `agent_locality_guard::NEW_AGENT_GAP_BASELINE` 26 → 27，
-// 而那是只许降的棘轮 ⇒ 不抬。收进接口（`L2`/`S6`）时这两张随本文件一起走。
-//
-// 写类工具表**只有这一份**（前端那份随搬家删了）。
+// 它们是 Claude 的记录格式知识，却住在 `observe/`（与 `user_inputs.rs` 的四条口径同一处境：本层仍是 Claude 专属的）。
+// 搬进 `agents/claudecode/` 就要从这里直呼它 ⇒ `agent_locality_guard::NEW_AGENT_GAP_BASELINE` 要涨，那是只许降的棘轮 ⇒ 收进接口时随本文件一起走。
+// 写类工具表只有这一份。
 
 /// 写类工具 → 取路径的键。Edit / Write / MultiEdit 用 `file_path`；NotebookEdit 用 `notebook_path`。
 /// 与渲染那边的「写类」（卡型 `diff`，适配层 `agents/claudecode/cards.rs` 那张写类工具表，行级 diff）**不是同一个问题**：
@@ -119,10 +116,8 @@ fn what_of(name: &str, input: Option<&Value>) -> Option<String> {
     input.get(key).and_then(Value::as_str).and_then(one_line)
 }
 
-/// 改动文件集至多留多少条（超 ⇒ 丢最久没碰的）。
-///
-/// 为什么要上界：成品要原样回传当续传令牌，而一条请求行 ≤ `inbound::MAX_LINE_BYTES`（1 MiB）。
-/// 1000 条 × 路径长（本机 623 份会话实测最长 136 字节）≈ 140 KB；同一批会话实测最多 **39** 条（`STC.md §1.4`）。
+/// 改动文件集至多留多少条（超 ⇒ 丢最久没碰的）。成品要原样回传当续传令牌，而一条请求行 ≤ `inbound::MAX_LINE_BYTES`（1 MiB）：
+/// 1000 条 × 路径长（百来字节）≈ 140 KB；实际会话里多不过几十条。
 pub(crate) const TOUCHED_FILES_KEEP: usize = 1000;
 
 /// 一份会话的事实（**帧面成品的形状，键名一字不差**；跨语言金样 `tests/__fixtures__/session-reads.golden.json`）。

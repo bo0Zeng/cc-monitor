@@ -143,7 +143,7 @@ fn synth_row(kind: &str, s: &crate::agents::SynthSession, excerpt: String) -> Va
     })
 }
 
-/// 一行的分组键：哪一家 ＋ 真实目录（记录目录名会撞，`R5W-H09`）。
+/// 一行的分组键：哪一家 ＋ 真实目录（记录目录名会撞）。
 fn group_key(agent: &str, project_path: &str) -> String {
     format!("{agent}:{project_path}")
 }
@@ -305,7 +305,7 @@ fn finish_row(mut v: Value, ann: Option<&Table>) -> Value {
     v["starred"] = json!(meta.starred);
     v["customTitle"] = json!(meta.custom_title);
     v["hidden"] = json!(meta.hidden);
-    // 显示的标题：用户改过的 ＞ 标题 ＞ 第一句；都没有 ⇒ `untitled`（界面写「没有说过话的会话」，`R5W-H04`）。
+    // 显示的标题：用户改过的 ＞ 标题 ＞ 第一句；都没有 ⇒ `untitled`（界面写「没有说过话的会话」）。
     let untitled = meta.custom_title.is_none()
         && v["aiTitle"].as_str().is_none_or(str::is_empty)
         && v["firstUserExcerpt"].as_str().is_none_or(str::is_empty);
@@ -373,7 +373,7 @@ pub(crate) fn answer_from(
         .collect();
     let mut out: Vec<Value> = all.iter().filter(|v| kept(v)).cloned().collect();
     let total = out.len();
-    // 分叉的父会话被隐藏 / 被筛掉 ⇒ 照样带上、标 `context`（界面淡显，子会话照样挂在它名下，`R5W-H05`）。
+    // 分叉的父会话被隐藏 / 被筛掉 ⇒ 照样带上、标 `context`（界面淡显，子会话照样挂在它名下）。
     let present: BTreeSet<String> = out
         .iter()
         .filter_map(|v| v["sessionId"].as_str().map(str::to_string))
@@ -419,7 +419,7 @@ pub(crate) fn answer_from(
 }
 
 /// 按项目看时的分组：在列的那几行按 `group` 归，每组 {key · 那一家 · 名字 · 目录 · 读它的键 · 几个 · 有没有在跑的 · 最后动过 · 机器}；
-/// 读不了的那几个记录目录也是一组（`failed` 带原因，`R5W-H01`）。排序：有在跑的 → 有星标的 → 最近动过的。
+/// 读不了的那几个记录目录也是一组（`failed` 带原因）。排序：有在跑的 → 有星标的 → 最近动过的。
 fn groups_of(rows: &[Value], listing: &Value, origin: Option<&str>) -> Vec<Value> {
     let mut by: BTreeMap<String, Map<String, Value>> = BTreeMap::new();
     for v in rows.iter().filter(|v| v.get("context").is_none()) {
@@ -439,7 +439,7 @@ fn groups_of(rows: &[Value], listing: &Value, origin: Option<&str>) -> Vec<Value
             g
         });
         g["count"] = json!(g["count"].as_u64().unwrap_or(0) + 1);
-        // 有在跑的：确定有一个就够；有答不了的就不许说「都没在跑」（`K-R92`，同项目清单）。
+        // 有在跑的：确定有一个就够；有答不了的就不许说「都没在跑」（同项目清单）。
         match v["status"].as_str() {
             Some("live") => g["hasLive"] = json!(true),
             Some("unknown") if g["hasLive"] != true => g["hasLive"] = Value::Null,
@@ -455,7 +455,7 @@ fn groups_of(rows: &[Value], listing: &Value, origin: Option<&str>) -> Vec<Value
     }
     let mut out: Vec<Value> = by.into_values().map(Value::Object).collect();
     out.sort_by(|a, b| {
-        // 有在跑的 ＞ 说不清的 ＞ 都没在跑（`K-R92` 档位，同项目清单）。
+        // 有在跑的 ＞ 说不清的 ＞ 都没在跑（同项目清单）。
         let live = |g: &Value| match g["hasLive"].as_bool() {
             Some(true) => 2,
             None => 1,

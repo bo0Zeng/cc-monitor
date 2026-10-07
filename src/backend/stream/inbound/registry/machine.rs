@@ -224,9 +224,8 @@ pub(super) const SPECS: &[CommandSpec] = &[
             })
         }),
     },
-    // 端口转发（F58）的账住本机常驻后端（`dial/forwards.rs`；monitor 那三条 Tauri 命令退役）。
-    //   起 = 真异步（查可达表 · 池里那条 SSH 上开 `use: forward` 链路 · 等 ack），`cancel` 能在 await 点打断；
-    //   停 / 列 = 纯内存（一把锁），同 `remote-reach` 不进阻塞档。三条都只在流面上有意义（`cli_control::STREAM_ONLY`）。
+    // 端口转发的账住本机常驻后端（`dial/forwards.rs`）。起 = 真异步（查可达表 · 池里那条 SSH 上开 `use: forward` 链路 · 等 ack），
+    // `cancel` 能在 await 点打断；停 / 列 = 纯内存（一把锁），不进阻塞档。三条都只在流面上有意义（`cli_control::STREAM_ONLY`）。
     CommandSpec {
         name: "forward-start",
         doc_anchor: Some("#### `forward-start`"),
@@ -258,8 +257,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
             })
         }),
     },
-    // 〔「后端持有全部 SSH」〕测试连接（monitor 那条 Tauri 命令 `test_remote_connection` 退役）：
-    //   真异步（拨号 · 读 hello · 控制通道往返；本后端零定时器，期限归发起方），`cancel` 能在 await 点打断；短命探活、不进连接池。
+    // 测试连接：真异步（拨号 · 读 hello · 控制通道往返；本后端零定时器，期限归发起方），`cancel` 能在 await 点打断；短命探活、不进连接池。
     // 进度边拨边推（`probe` 帧，走本连接的应答通道）⇒ `Run::Builtin`：只在帧面，分派在 `dispatch` 那条硬臂。
     CommandSpec {
         name: "remote-probe",
@@ -359,8 +357,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // `~/.ssh/config` 的解读（`dial/ssh_config.rs`，从 monitor `stream_source/` 原样搬来）。
-    //   阻塞档：读一份文件 ／ 起 `ssh -G`（只读配置、不建连接）并等它退出。
+    // `~/.ssh/config` 的解读（`dial/ssh_config.rs`）。阻塞档：读一份文件 ／ 起 `ssh -G`（只读配置、不建连接）并等它退出。
     CommandSpec {
         name: "ssh-config-aliases",
         doc_anchor: Some("#### `ssh-config-aliases`"),

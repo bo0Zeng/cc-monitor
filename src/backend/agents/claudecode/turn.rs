@@ -1,31 +1,22 @@
-//! turn-end 判词（backend 侧 · phase② TurnEnd 帧的检测核）。
+//! turn-end 判词（backend 侧 · TurnEnd 帧的检测核）。
 //!
-//! **契约 = aterm `TurnDetector.kt:29` 逐字对拍**（golden-parity，同 `usage_query` 套路）：
-//! turn-end ⟺ `type=="assistant" && message.stop_reason=="end_turn" && !isApiError`，且这条记录属于主运行。
-//! 字段坑（master plan §0）：`isApiErrorMessage`→isApiError、`stop_reason` 嵌在 **message** 下。
-//! 「属于主运行」不在本判词里：子运行的记录归属由本家 `runs::run_of` 答、由通用 watcher 在发 `TurnEnd` 之前排除
-//! （子运行的轮次收尾 ≠ 主运行一轮结束），线上 `TurnEnd` 帧的人群与从前同一个。
+//! 契约 = aterm `TurnDetector.kt` 逐字对拍：turn-end ⟺ `type=="assistant" && message.stop_reason=="end_turn" && !isApiError`，且这条记录属于主运行。
+//! 字段坑：`isApiErrorMessage` → isApiError、`stop_reason` 嵌在 message 下。
+//! 「属于主运行」不在本判词里：子运行的记录归属由本家 `runs::run_of` 答、由通用 watcher 在发 `TurnEnd` 之前排除（子运行的轮次收尾 ≠ 主运行一轮结束）。
 //!
-//! **已接线**（backend-09）：`process_jsonl` 每见一条 turn-end 记录发 `Frame::TurnEnd{sid,uuid}`
-//! （raw-per-record、backend 不 dedup）；dedup 视界在 aterm 侧 rolling-latest + debounce(1200ms)
-//! `baselineByPath`（首见吞历史不通知、offset 续拉重放 uuid≤基线不通知；transport-agnostic、同 β）。
+//! `process_jsonl` 每见一条 turn-end 记录发 `Frame::TurnEnd{sid,uuid}`（逐记录、backend 不去重）；去重在 aterm 侧
+//! （rolling-latest + debounce(1200ms) `baselineByPath`：首见吞历史不通知、offset 续拉重放 uuid≤基线不通知）。
+//! backend 仍逐行转发每一条 Line（不因分类丢行）；turn-end 是在 raw 之外额外算的边沿信号，不替代、不过滤 Line。
 //!
-//! §2.1 不变量并存：backend 仍逐行 raw 转发**每一条** Line（不因分类丢行）；turn-end 是在 raw 之外
-//! **额外**从解析内容算的边沿信号，不替代、不过滤 Line。
-//!
-//! ★ **改 `is_turn_end` 的合取项前先看这里**：同一个判词在前端
-//! `src/frontend/ui/turn-notify.ts` 还有第二份（通知那条路）。两份天生做不到 E3 的「权威源恰好一个」
-//! ⇒ 退而求其次是**跨语言对拍**，住在 `tests/frontend/ui/turn-notify.vitest.ts`：它**从本函数的合取项派生**
-//! 人群，新加一条而不在那张登记表里说明 TS 侧怎么办 ⇒ 当场红。
-//! ⚠ 这不是多余的礼节：报告 §4.1 记着这两份**已经漂过一次**（backend 有 `!isApiError`、TS 没有），
-//! 而 08-07 实测「backend 加第五个合取项」时，改前的对拍表两侧共 17 条判据**一条都不会红**。
+//! 改 `is_turn_end` 的合取项前先看这里：同一个判词在前端 `src/frontend/ui/turn-notify.ts` 还有第二份（通知那条路）。两份做不到「权威源恰好一个」
+//! ⇒ 跨语言对拍住在 `tests/frontend/ui/turn-notify.vitest.ts`：它从本函数的合取项派生人群，新加一条而不在那张登记表里说明 TS 侧怎么办 ⇒ 当场红。
 
+//!
 //! # 每行先过子串闸，再读窄探针
 //!
-//! watcher 每交出一行就问一次这里（`RecordFace.turn_end`）。原先每行整份解析成 `serde_json::Value` 再取四格 ——
-//! 而绝大多数行根本不是一轮的结束。今天两步：① **子串闸**：原文里没有 `"end_turn"` 这个字面量 ⇒ 不可能是 turn-end，
-//! 零解析直接回（CLI 写 jsonl 不转义 ASCII，`stop_reason` 的值只可能以这个字面量出现）；② 过了闸的才解析进
-//! [`Probe`]（只收判词要的五格，其余一律 `IgnoredAny` 跳过、不建树）。判词与缺字段的安全默认逐字不变。
+//! watcher 每交出一行就问一次这里（`RecordFace.turn_end`），绝大多数行根本不是一轮的结束：
+//! ① 子串闸：原文里没有 `"end_turn"` 这个字面量 ⇒ 不可能是 turn-end，零解析直接回（CLI 写 jsonl 不转义 ASCII）；
+//! ② 过了闸的才解析进 [`Probe`]（只收判词要的五格，其余一律 `IgnoredAny` 跳过、不建树）。
 
 use serde::de::IgnoredAny;
 use serde::Deserialize;
@@ -39,7 +30,7 @@ pub struct Probe {
     uuid: Option<String>,
     #[serde(default)]
     message: Option<ProbeMessage>,
-    /// 非 bool ⇒ 当缺（安全默认：不排除），与原先 `as_bool().unwrap_or(false)` 同口径。
+    /// 非 bool ⇒ 当缺（安全默认：不排除）。
     #[serde(rename = "isApiErrorMessage", default)]
     is_api_error: Option<LooseBool>,
 }

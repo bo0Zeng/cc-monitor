@@ -1,55 +1,30 @@
-//! `K-P1`：**常驻监听口** —— 脱离宿主之后，backend 还能被找到、被问到、被接上。
+//! 常驻监听口 —— 脱离宿主之后，backend 还能被找到、被问到、被接上（`src/doc/INVARIANTS.md` § 48.1：监听口要钥匙）。
+//! stdio 载体上宿主一退读端就断、backend 随即 broken-pipe 退出；难的不是怎么脱离，是脱离之后还怎么跟它对话。
 //!
-//! 违反此约束见 `src/doc/INVARIANTS.md` § 48.1（监听口要钥匙；照「修改本文档」第 2 条补的反指）。
+//! # 走回环 TCP
 //!
-//! # 它存在的理由（不是「常驻」本身）
-//!
-//! 今天 monitor 与后端讲协议走的就是那对 stdio 管道；宿主一退读端就断，
-//! backend 在 **153 毫秒**内自己 broken-pipe 退出（`backend_policy.rs` 头注实测）。
-//! ⇒ **真脱离的代价是「再也说不上话」** —— 那正是本模块要补的那一格。
-//! 「难的**不是**怎么脱离（仓里三份现成的），
-//! 难的是**脱离之后还怎么跟它对话**」。
-//!
-//! # 走回环 TCP，理由是判据面已经付过一遍钱
-//!
-//! `K-H1` 的中转（`relay/server.rs`）已经把这条路上的东西买齐了：`LOOPBACK` 字面量常量
-//! + 非回环 bind 的零命中守卫 + 在途上界 + 出声的拒绝。本模块**抄它的形状**。
-//! 现打（分母 = `src/backend` ∪ `src/frontend/shell/src` 下 169 个 `.rs`）：
-//! `UnixListener` 0 处 · backend 侧 `NamedPipe` 0 处 ⇒ 走 Unix socket / 命名管道都要**从零立**一套。
-//!
-//! ⚠ **代价如实记，这是一条真裁决不是实现细节**：回环 TCP 上**同机任何本地进程都连得上**，
-//! Unix socket 有文件权限位而它没有。收窄只能靠一个 token：**起它的那一方只交钥匙文件的路径**（[`ENV_TOKEN_FILE`]），
-//! 常驻后端**绑上口之后**自己铸一把新的、原子写进那份 `0600` 的文件（`control/resident.rs::rotate_token`，后端自有状态文件，
-//! `readonly_guard` 第四层登记）。每次起都换 ⇒ 旧环境里漏出去的那把随之作废；连上来的客户端每次读文件。
+//! 形状照中转（`relay/`）：`LOOPBACK` 字面量常量 + 非回环 bind 的零命中守卫 + 在途上界 + 出声的拒绝。
+//! 代价：回环 TCP 上同机任何本地进程都连得上（Unix socket 有文件权限位而它没有）⇒ 收窄靠钥匙：起它的那一方只交钥匙文件的路径
+//! （[`ENV_TOKEN_FILE`]），常驻后端绑上口之后自己铸一把新的、原子写进那份 `0600` 的文件（`control/resident.rs::rotate_token`，
+//! 后端自有状态文件，`readonly_guard` 第四层登记）。每次起都换 ⇒ 漏出去的旧钥匙随之作废；客户端每次读文件。
 //! 起它的：本机 `src/frontend/shell/src/local_backend_host.rs`，远端 `--resident-ensure`（`control/resident.rs`）—— 同一种交法。
 //!
-//! # 两档连接，而 hello 写在分档**之前**
+//! # 两档连接，hello 写在分档之前
 //!
-//! - **流**：认证通过 ⇒ 这条连接接管出/入两个方向。多客户：钥匙对上就交流，不看「有没有别人挂着」（[`admit`]）；
-//!   每条连接各一份 watcher / inbound / writer（`main.rs::serve_listening`），桌面端与第二个前端可以同时挂着。
-//! - **不限次的「只读 hello 就走」**：连上就有 hello，读完即关。
+//! - 流：认证通过 ⇒ 这条连接接管出 / 入两个方向。钥匙对上就交流，不看「有没有别人挂着」（[`admit`]）；
+//!   每条连接各一份 watcher / inbound / writer（`main.rs::serve_listening`），几个前端可以同时挂着。
+//! - 不限次的「只读 hello 就走」：连上就有 hello，读完即关。
 //!
-//! ★ hello 必须写在分档之前，否则「这台机上有没有一个长驻后端」这一问
-//! 只能从「`connect()` 成没成」推 —— 而 TCP 的 backlog 会让**没人 accept 的口照样连得上**，
-//! 那又是一个「一直说是」的假信号（`P2d §0a` 那一形）。
-//! ⇒ 有了 hello 这一档，那一问的答案是**读一行**，协议一个字节都不用加。
+//! hello 写在分档之前：TCP 的 backlog 会让没人 accept 的口照样连得上，「有没有长驻后端」只能靠读一行 hello 答。
+//! 多客户是「每条连接各一份」，不是把一条观测通道扇出给 N 个（`single_stream_guard.rs` 钉着「源码里恰好一份、按连接实例化」）。
 //!
-//! 多客户的做法是「每条连接各一份」，**不是**把一条观测通道扇出给 N 个 ⇒ `Overflow.lost` 的丢帧账仍按那条连接自己的通道记；
-//! 「源码里恰好一份、按连接实例化」由 `single_stream_guard.rs` 钉着。
+//! # 边界
 //!
-//! # 诚实边界（三条，都不是措辞）
-//!
-//! 1. **hello 那一档不认证** —— 它泄露 `claude_dir`（用户自己的家目录路径）、`build_id`、
-//!    能力集给同机任何进程。这是有意的取舍：`ccm` 那一问必须问得到，而它拿不到 token。
-//!    **能改变世界的那一档（流）一律要 token。**
-//! 2. **`EADDRINUSE` 只说明「有人占着这个口」，不说明占着它的是我们的 backend** ——
-//!    所以宿主那一侧连上去**先读 hello 比对**，对不上就出声并拒绝，**不许静默复用**
-//!    （`P2t §1` 第 3 问问的正是这一格）。本模块这一侧的处置是：
-//!    bind 不上就带 [`EXIT_ADDR_IN_USE`] 退出，**绝不自己换端口**（换端口 = 每台机 N 个 backend，
-//!    中转口与全部 SSH 各 N 份，比今天更糟。从前这里还有「互相盖 tmux hook 槽位 `[50]`」—— 今天 hook 按实例一格，那一条不成立了）。
-//! 3. **本模块一个定时器都没有**：`accept` 阻塞在内核事件上，读一行阻塞在内核事件上。
-//!    没有 `Duration::from_*`、没有任何会「自己醒过来」的构件
-//!    （`no_timer_guard::backend_production_code_has_no_periodic_wakeups`）。
+//! 1. hello 那一档不认证：它给同机任何进程看 `claude_dir`、`build_id`、能力集（`ccm` 那一问必须问得到，而它拿不到 token）。
+//!    能改变世界的那一档（流）一律要 token。
+//! 2. `EADDRINUSE` 只说明有人占着这个口，不说明是我们的 backend：宿主连上去先读 hello 比对，对不上就出声并拒绝；
+//!    这一侧 bind 不上就带 [`EXIT_ADDR_IN_USE`] 退出，绝不自己换端口（换端口 = 每台机 N 个 backend，中转口与全部 SSH 各 N 份）。
+//! 3. 一个定时器都没有：`accept` 与读一行都阻塞在内核事件上（`no_timer_guard::backend_production_code_has_no_periodic_wakeups`）。
 
 use std::net::{IpAddr, Ipv4Addr};
 
@@ -57,13 +32,7 @@ use std::net::{IpAddr, Ipv4Addr};
 /// 中转的宿主（`relay/listen.rs`）绑口用的也是这一个。
 pub const LOOPBACK: IpAddr = IpAddr::V4(Ipv4Addr::LOCALHOST);
 
-/// 宿主告诉后端「听哪个口」的 env 名。
-///
-/// # 为什么端口不由后端自己算
-///
-/// 「按家目录 hash 出一个口」这条路要求**两边各算一份**，而两份就会漂
-/// （本仓已有同族先例：`shared/ccm` 与 monitor 各算一份 origin，实测分叉四处）。
-/// ⇒ **只留一份实现，住宿主那一侧**（`local_backend_host::listen_port_for`），backend 只收一个数。
+/// 宿主告诉后端「听哪个口」的 env 名。端口只算一份、住宿主那一侧（`local_backend_host::listen_port_for`）：两边各算一份就会漂。
 pub const ENV_PORT: &str = "CCM_LISTEN_PORT";
 
 /// 钥匙文件的**路径**（不是钥匙）：起常驻后端的那一方交（本机 monitor · 远端 `--resident-ensure`，同一种），子进程自己读 ——
@@ -84,14 +53,9 @@ pub const EXIT_BAD_LISTEN_CONFIG: i32 = 4;
 /// 认证通过之后回给客户端的那一行。
 pub const ATTACH_OK_LINE: &str = "{\"attach\":\"ok\"}\n";
 
-/// 一行 attach 请求的字节上限。
-///
-/// 请求形如 `{"attach":"<32 位十六进制>"}` —— 本机实测 **51 字节**。8 KiB 给了两个量级余量。
-/// ⚠ **少了它就是一个无界堆分配**：这条连接的对端是**同机任何进程**，
-/// 它完全可以一直发字节不发换行。backend 侧为同一形栽过一次实测
-/// （`stream/inbound/` 头注：喂 512 MiB 无换行的流 ⇒ RSS 从 6 MiB 涨到 518 MiB）。
-/// 超限语义：**拒收 + 回错**（关连接并出声，不静默截断成一行「看起来对」的 JSON）。
-/// **登记住址** `src/frontend/shell/src/byte_cap_registry.rs`（那张表默认拒绝：不登记就红）。
+/// 一行 attach 请求的字节上限。请求形如 `{"attach":"<32 位十六进制>"}`（约 51 字节），8 KiB 给了两个量级余量。
+/// 少了它就是一个无界堆分配：对端是同机任何进程，可以一直发字节不发换行。
+/// 超限：拒收 + 回错（关连接并出声，不静默截断成一行看起来对的 JSON）。登记住址 `src/frontend/shell/src/byte_cap_registry.rs`。
 pub const ATTACH_LINE_CAP: usize = 8 * 1024;
 
 /// 读一行 attach 请求的三种结局。
@@ -105,15 +69,8 @@ pub enum HandshakeLine {
     TooLong(usize),
 }
 
-/// 有上限地读一行。
-///
-/// 机制是 `fill_buf`/`consume`：**超限之后只找换行、不再往 buf 里塞字节**
-/// ⇒ 整行的内存占用与行长无关。这段机制在本仓已有两处同构实现
-/// （`stream/inbound/` 的读行循环 · `stream_source::read_capped_line`），
-/// 三处共用的是**那条教训**，不是代码 —— 它们分别跨着 sync/async 与两个 crate 的边。
-///
-/// ⚠ `cap` **是参数而不是直接读常量**：生产调用点传 [`ATTACH_LINE_CAP`]，
-/// 而判据要能传一个小数 —— 否则「超限之后内存不涨」只能靠量 RSS 来证，而那种证法进不了单测。
+/// 有上限地读一行：`fill_buf`/`consume`，超限之后只找换行、不再往 buf 里塞字节 ⇒ 内存占用与行长无关。
+/// `cap` 是参数：判据要能传一个小数，「超限之后内存不涨」才进得了单测。
 pub async fn read_capped_line<R>(rd: &mut R, cap: usize) -> std::io::Result<HandshakeLine>
 where
     R: tokio::io::AsyncBufRead + Unpin,
@@ -165,10 +122,7 @@ pub const REFUSE_BUSY: &str = "stream-busy";
 pub const REFUSE_AUTH: &str = "bad-token";
 pub const REFUSE_MALFORMED: &str = "malformed-attach";
 
-/// backend 这次跑成什么形态。**由环境决定，不由 argv 决定** ——
-/// argv 那张表（`lib.rs::SUBCOMMANDS`）一动就要 bump `BUILD_ID` 并改
-/// `IPC-PROTOCOL.md` 的对拍面，而本件没有新增任何**子命令**：
-/// 它换的是**同一个流模式的载体**，不是新增一条命令。
+/// backend 这次跑成什么形态。由环境决定，不由 argv 决定：换的是同一个流模式的载体，不是新增一条子命令。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Mode {
     /// 今天那条路：stdin/stdout 一对管道，宿主一退就死。
@@ -177,14 +131,10 @@ pub enum Mode {
     Listen { port: u16, token_file: String },
 }
 
-/// 从环境算出形态。**纯函数**（`get` 是入参），所以两条错误支都测得到 ——
-/// 拿真 `std::env::var` 写的话，「token 缺席」那一支在测试里根本进不去。
-///
-/// 四条规则，每条都有一个具体的坏结局在后面顶着：
-/// - 两个都没有 ⇒ [`Mode::Stdio`]（**今天的行为一个字节不变**）。
-/// - 有口没钥匙文件 ⇒ `Err`：那会起一个**同机任何进程都能对它发 `launch` 的口**。
-/// - 有钥匙文件没口 ⇒ `Err`：多半是接线漏了一半，静默退回 stdio 会让「我明明开了常驻」
-///   变成一个查不出来的谜（`P2d §0a` 那一形：**假信号不报错，它只是一直说是**）。
+/// 从环境算出形态。纯函数（`get` 是入参），两条错误支都测得到。
+/// - 两个都没有 ⇒ [`Mode::Stdio`]。
+/// - 有口没钥匙文件 ⇒ `Err`：那会起一个同机任何进程都能对它发 `launch` 的口。
+/// - 有钥匙文件没口 ⇒ `Err`：多半是接线漏了一半，静默退回 stdio 会让「我明明开了常驻」变成一个查不出来的谜。
 /// - 口解析不出来 / 是 0 ⇒ `Err`：0 会让内核随机挑一个口，而宿主正等在那个算好的口上。
 pub fn mode_from(get: &dyn Fn(&str) -> Option<String>) -> Result<Mode, String> {
     let raw_port = get(ENV_PORT).filter(|s| !s.trim().is_empty());
@@ -338,12 +288,8 @@ impl Clients {
     }
 }
 
-/// 往一条连接写一行并 flush。
-///
-/// ⚠ **本模块只有这一处 `write_all(`** —— 它是 `wire.rs` 那条
-/// 「出方向帧只许有一个写者」判据的人群里新加的一员（本件同轮把 `listen.rs` 补进了那张表）。
-/// 它写的**不是**出方向帧：握手行发生在 `writer_task` 起来之前 / 或者根本不给流，
-/// 与 `write_and_flush_hello` 同一个性质。
+/// 往一条连接写一行并 flush。本模块只有这一处 `write_all(`（在 `wire.rs`「出方向帧只许有一个写者」那条判据的人群里）；
+/// 它写的不是出方向帧：握手行发生在 `writer_task` 起来之前，或者根本不给流。
 pub async fn write_line<W>(w: &mut W, line: &str) -> std::io::Result<()>
 where
     W: tokio::io::AsyncWrite + Unpin,

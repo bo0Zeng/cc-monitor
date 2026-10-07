@@ -1,75 +1,30 @@
-//! U2（2026-08-01）：**pidfd 看守**这一族平台原语。
-//!
-//! # 这里为什么要切一刀
-//!
-//! 搬家前 `spawn_pid_watcher` 一个函数里同时装着两件事：
-//! ① `pidfd_open` + 身份复核 + `poll(2)` + 起线程（**平台**）；
-//! ② 醒了往哪个 channel 发哪一种 `WatchEvent`（**observe 的域知识**）。
-//!
-//! 把回边判成了 `session_alive`（「`spawn_pid_watcher:228` 调它」），
-//! **那条判断偏了一个函数** —— `session_alive` = `pid_alive` + `proc_starttime` +
-//! `is_same_live_process`，三者分别是平台原语、平台原语、纯函数，整条都在 platform 域内。
-//! 真正的回边是 `spawn_pid_watcher` 自己依赖 `PidWatchTarget` / `WatchEvent` 这两个
-//! observe 域类型。**一个平台原语不该知道「醒了要往哪个 channel 发什么帧」。**
-//!
-//! ⇒ 切开而不是参数化谓词：本模块只提供 [`watch_pid_until_exit`]，
+//! pidfd 看守这一族平台原语。本模块只提供 [`watch_pid_until_exit`]；「醒了往哪个 channel 发哪一种 `WatchEvent`」是 observe 的域知识，
 //! `watcher.rs` 留一层薄包装把 `on_dead` 实现成 `tx.send(target.death_event(pid))`。
 //!
-//! # 三条判死路径 + 一条**不**判死的路径
+//! # 三条判死路径 + 一条不判死的路径
 //!
-//! 判死（调 `on_dead`）：① `pidfd_open` 失败 ② 身份复核不符（PID 复用）③ `poll` 醒。
-//! **不判死**：`poll` 返回真错误（非 EINTR）—— 原实现逐字写着「真错误：**不**报死」，
-//! 这条语义在切分时必须原样保住，切错了就是「看守线程挂了却把会话判成活的/死的」。
-//! 这条**没有普通测试能覆盖**（要让 `poll(2)` 真出错），故由本文件末尾的源码扫描钉住。
+//! 1. `pidfd_open` 失败（`ESRCH` 等）⇒ 目标已不在 ⇒ 判死。
+//! 2. open 成功后再读一次 `proc_starttime` 与 add 时捕获的基线比对（`is_same_live_process`）：不符 = 在「读 pidfile」与「开 pidfd」之间
+//!    发生了 PID 复用，开到的是冒名者 ⇒ 判死。procStart 校验只在开 pidfd 时做一次，之后靠内核。
+//! 3. 起线程 `poll(pidfd, POLLIN, -1)`；醒了判死。
 //!
-//! # 三条判据的原文（搬自 `watcher.rs`，一字未改）
+//! `poll` 真出错（非 `EINTR`）时刻意不判死：宁可让会话留在 live、等 pidfile 删除或断连来收，也不因一次系统调用失败就误归档。
+//! 这条没有普通测试能覆盖（要让 `poll(2)` 真出错），由本文件末尾的源码扫描钉住。
 //!
-//! 三条判据，按顺序：
-//! 1. `pidfd_open` 失败（`ESRCH` 等）⇒ 目标已不在 ⇒ 立刻发 `PidDied`。
-//! 2. open 成功后**再读一次** `proc_starttime` 与 add 时捕获的基线比对
-//!    （复用既有纯函数 `is_same_live_process`）：不符 = 在"读 pidfile"与
-//!    "开 pidfd"之间发生了 PID 复用 ⇒ 我们开到的是冒名者 ⇒ 发 `PidDied`。
-//!    **这就是原先那套 procStart 启发式的全部去处**——从"每 2s 复查一遍"
-//!    降级为"开 pidfd 时校验一次"，之后靠内核，不再需要周期比对。
-//! 3. 起线程 `poll(pidfd, POLLIN, -1)`；醒了发 `PidDied`。
-//!
-//! **线程数的界**：每个被追踪的 (pidfile, pid) 最多一条，实际是个位数
-//! （一台机器上同时活着的 CC 交互会话数）。线程活到目标进程真正退出为止——
-//! 若 pidfile 先被删而进程仍在，那条线程会继续等，等到进程退出时发一条
-//! **陈旧唤醒**，被消费侧的 pid 比对挡掉（无副作用）。
-//!
-//! **`poll` 真出错（非 `EINTR`）时刻意不发 `PidDied`**：宁可让会话留在 live、
-//! 等 pidfile 删除或断连来收，也不因一次系统调用失败就误归档——与本文件
-//! `is_same_live_process` 头注那条「瞬时读失败绝不误归档」同一条纪律。
-//!
-//! > 这段说明 U2 之前**贴在 `enum PidWatchTarget` 头上**（隔着 enum + impl 才到它描述的
-//! > `spawn_pid_watcher`）—— 是 U2 之前就有的错位，U2 把它从「贴错 item」升级成了「跨文件悬空」。
-//! > Phase D 审计逮出，搬到它真正描述的代码旁边。
+//! 线程数的界：每个被追踪的 (pidfile, pid) 最多一条（一台机器上同时活着的交互会话数）。pidfile 先被删而进程仍在时，
+//! 那条线程等到进程退出发一条陈旧唤醒，被消费侧的 pid 比对挡掉。
 
+//!
 //! ---
 //!
-//! # U4a：按平台分文件
+//! # 按平台分文件
 //!
-//! `linux` 是原实现（逐字搬，`#![cfg(target_os = "linux")]`）；
-//! `fallback` 是**诚实的空壳**，不是假实现 —— 见它自己的头注。
-//!
-//! （这两个名字**刻意不用 intra-doc 链接**：两个 mod 各自带 cfg，在任一 target 上只有一个存在，
-//! 写成 `[\`fallback\`]` 会在 Linux 上产生一条悬空链接 —— Phase D 审计 重要-5 逮到的正是它。）
-//!
-//! 分文件而不是在函数里塞 `#[cfg]`：这一族的平台差异是**整套机制不同**
-//! （pidfd+poll vs OpenProcess+WaitForSingleObject），不是某一行不同。
-//! 塞在一个函数里会让两套实现的 `unsafe` 与所有权推理互相纠缠。
+//! `linux` 是 pidfd 实现，`win32` 是 Windows 实现（开带 `SYNCHRONIZE` 的进程句柄 ＋ 不带超时地等；Win32 读法住 `platform/win_proc.rs`），
+//! `fallback` 是没有承诺的平台（macOS 等）的诚实空壳（见它自己的头注）。不写 intra-doc 链接：几个 mod 各自带 cfg，任一 target 上只有一个存在。
+//! 分文件而不是在函数里塞 `#[cfg]`：这一族的平台差异是整套机制不同，不是某一行不同。
+//! `win32` 与 `linux` 逐形对拍（三条判死 ＋ 一条不判死 ＋ Windows 独有的「拒绝访问 ⇒ 不判死」），判据住
+//! `tests/backend/platform/pidwatch_windows_shape_tests.rs`；Windows 那一份只买到编得过 ＋ 源码对拍，真机零读数。
 
-//! ---
-//!
-//! # 第三份文件：`win32`（U4b 后半）
-//!
-//! Windows 那一格从 `fallback` 里拿出来了：`win32.rs` 是真实现（开带 `SYNCHRONIZE` 的进程句柄 ＋
-//! 不带超时地等），Win32 读法本身住 `platform/win_proc.rs`。它与 `linux` 逐形对拍（三条判死 ＋
-//! 一条不判死 ＋ Windows 独有的「拒绝访问 ⇒ 不判死」），对拍判据住
-//! `tests/backend/platform/pidwatch_windows_shape_tests.rs`。`fallback` 今天只剩**没有承诺的平台**
-//! （macOS 等），仍是那个诚实的空壳。
-//! 🚫 Windows 那一份**只买到编得过 ＋ 源码对拍**；真机零读数（本路不碰 Win11 虚拟机）。
 
 use copy_core::copy_text;
 
@@ -90,36 +45,14 @@ pub(crate) use linux::pidfd_open;
 #[cfg(windows)]
 pub(crate) use win32::watch_pid_until_exit;
 
+//
 // ══════════════════════════════════════════════════════════════════════════
-// `K-P3` `KP3D`（09-04）：**「这个平台上有没有自愈」这件事要说得出口。**
+// 「这个平台上有没有自愈」要说得出口：自愈靠内核送的死亡事件醒，没有那条腿的平台上自愈结构性不成立。
 //
-// `K-P3` `§0-4` 代价 1：`fallback.rs` 那句逐字（「pidfd 看守在本平台未实现 —— 进程退出
-// **不会**产生死亡事件」）说的是**一整条判活路径不在**。而自愈是靠**内核送的死亡事件**
-// 醒的（`§0-4` 的结论）⇒ **非 Linux 上自愈结构性不成立**。
-// 那不是漏洞，是这族原语已经写好的诚实降级；而「如实登记」的意思是**说出口** ——
-// 不是写在一条源码注释里（`src/frontend/shell/src/backend_policy.rs` 头注对 `K14` 那半
-// 用的正是同一句话：「如实登记的意思就是**说出口**」）。
-//
-// ⚠ **这里刻意不是一个三态。** 非 Linux 上这件事不是「不知道」，是**确证没有**。
-// 把「确证没有」压进「不知道」正是 `K-P4` 下一拍拆开的那条病（`lib.rs::TmuxPlatform`
-// 头注逐字：「一个值装了两件事」）—— 而在这一格，「不知道」会被下游读成「也许有」。
-//
-// 🔴 **形状是刻意的：两条 `#[cfg]` 臂 + 一个裸布尔字面量，不是一行 `cfg!()`。**
-//    非 Linux 那臂一旦被改成乐观值，`platform/fallback_guard.rs` 的
-//    `fallback_branches_must_not_fabricate_success` 当场红 —— 它的判红条件之一逐字就是
-//    「块体里出现裸 `true`」，而它的人群是「每一个非主分支的平台 cfg 属性紧跟着的那一个
-//    item 或块」。写成 `const X: bool = cfg!(target_os = "linux");` 看着更干净，
-//    但那一行**不带 `#[cfg]` 属性 ⇒ 整个掉出那道护栏的人群**，牙就没了。
-//
-// ⚠ **如实登记一条今天的读数**（那句「`fallback_guard` 不许返回乐观值」
-//    对 `pidwatch/fallback.rs` 本身**并不成立**）：`fallback_guard::platform_sources` 收
-//    `platform/` 递归全部 `.rs`，但它只在**每份文件自己的文本里**找平台 cfg 属性，
-//    而 `fallback.rs` 内部**一个 `#[cfg]` 都没有**（它整份文件是被 mod.rs 这一行
-//    `#[cfg(not(target_os = "linux"))] mod fallback;` 选进来的）⇒ 它对那道护栏贡献
-//    **0 个受检块**，文件体一行都没被判过。那道护栏自己的头注早就逐字承认了这一格：
-//    「**不构成阻塞**：惯用写法（`#[cfg(平台)] mod x;` + 独立文件）整文件绕过」。
-//    ⇒ 真正在钉 `fallback.rs` 的是本文件末尾那条 `fallback_shape_tests`（`include_str!`
-//    + 整行相等）。**本件把这一格钉在 `mod.rs`（人群够得着的地方），不是钉在 `fallback.rs`。**
+// 不是三态：在那些平台上这件事不是「不知道」，是确证没有（「不知道」会被下游读成「也许有」）。
+// 形状是刻意的：两条 `#[cfg]` 臂 + 一个裸布尔字面量，不是一行 `cfg!()` —— 非主臂一旦被改成乐观值，
+// `platform/fallback_guard.rs` 的 `fallback_branches_must_not_fabricate_success` 当场红；写成 `cfg!()` 那一行不带 `#[cfg]` 属性，整个掉出那道护栏的人群。
+// `fallback.rs` 本身对那道护栏贡献 0 个受检块（它整份文件是被 `#[cfg(...)] mod fallback;` 选进来的），钉它的是本文件末尾那条 `fallback_shape_tests`。
 // ══════════════════════════════════════════════════════════════════════════
 
 /// Linux：**有**那条腿 —— `pidfd_open` + `poll(pidfd, POLLIN, -1)`，
@@ -130,14 +63,9 @@ pub(crate) const fn death_events_available() -> bool {
     true
 }
 
-/// Windows：**有**那条腿 —— 进程句柄 ＋ 不带超时的等待（`win32.rs`）。
-///
-/// ⚠ 值**不在这里写字面量**，读的是 `win32.rs` 紧挨着那份实现的声明：
-/// `fallback_guard` 把「非主分支的块里出现裸 `true`」一律判成伪造成功 —— 这条纪律是对的，
-/// 一个 Windows 块里的 `true` 本来就该有东西背书。背书它的是
-/// `pidwatch_windows_shape_tests`：那份实现的判死路径与 `linux.rs` 逐形相等（三条判死、
-/// 两条不判死的臂里一次 `on_dead` 都没有），且本臂读的正是那个声明（同一文件里另有判据钉着）。
-/// ⚠ 那个「有」是**源码写对了**，不是真机验过（`win32.rs` 头注「买不到」）。
+/// Windows：有那条腿 —— 进程句柄 ＋ 不带超时的等待（`win32.rs`）。值不在这里写字面量（非主分支的块里出现裸 `true` 一律判伪造成功），
+/// 读的是 `win32.rs` 紧挨着实现的声明；背书它的是 `pidwatch_windows_shape_tests`（判死路径与 `linux.rs` 逐形相等）。
+/// 那个「有」是源码写对了，不是真机验过。
 #[cfg(windows)]
 #[allow(dead_code)] // 同上。
 pub(crate) const fn death_events_available() -> bool {
@@ -152,19 +80,12 @@ pub(crate) const fn death_events_available() -> bool {
     false
 }
 
-/// ★ **那句话本身** —— `KP3D` 买的是「说出口」这一半，所以它是一句话，不是一个 bool。
-///
-/// 只有那个布尔的话，下游完全可以读完它然后什么都不说 ——
-/// 而「静默当成有」正是这一条要挡的东西（`§0-4` 代价 1 逐字：
-/// 「非 Linux 上『有没有自愈』这件事要说出口，不许静默当成有」）。
+/// 那句话本身：要的是「说出口」，所以它是一句话，不是一个 bool —— 只有布尔的话，下游可以读完它什么都不说。
 #[allow(dead_code)] // 同上。
 pub(crate) static NO_DEATH_EVENTS_HERE: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("bePidwatch.noDeathEventsHere.say", &[]));
 
-/// 这台机此刻该不该说那句话。`None` = 有那条腿，没什么要声明的。
-///
-/// ⚠ **`None` 在这里是「不必声明」，不是「不知道」** —— 那两件事在本模块里
-/// 由 [`death_events_available`] 那个**二值**先分开了，本函数只负责挑话说。
+/// 这台机此刻该不该说那句话。`None` = 有那条腿、不必声明（不是「不知道」：那两件事由 [`death_events_available`] 那个二值先分开了）。
 #[allow(dead_code)] // 同上。
 pub(crate) fn self_healing_caveat() -> Option<&'static str> {
     if death_events_available() {
@@ -174,13 +95,8 @@ pub(crate) fn self_healing_caveat() -> Option<&'static str> {
     }
 }
 
-/// ★ 一条**只在「没有那条腿」的平台上编译时存在**的编译期断言〔从「非 Linux」收窄 —— Windows 有腿了〕。
-///
-/// 🔴 **它在本仓门禁上给不出任何读数** —— 本机是 Linux，这个 item 在这儿编译期就不存在。
-/// 它开口的时刻是任何一次非 Linux 编译（backend「必须在 Windows 上编得过」那条纪律见
-/// `plugin/discover.rs::is_executable` 头注）。形状照 `main.rs` 那条 `#[cfg(windows)] const _`
-/// （`K-P4` 立的）原样写：Linux 那侧只有源码文本判据（读的是「那一支写在那儿」），
-/// 而这一条读的是「**那一支真的被编进去了**」—— 两者证的不是同一件事。
+/// 一条只在「没有那条腿」的平台上编译时存在的编译期断言。本机门禁上给不出读数（这个 item 在 Linux 上编译期就不存在），
+/// 开口的时刻是任何一次既非 Linux 也非 Windows 的编译。Linux 那侧只有源码文本判据（证「那一支写在那儿」），这一条证「那一支真的被编进去了」。
 #[cfg(not(any(target_os = "linux", windows)))]
 const _: () = assert!(
     !death_events_available(),
@@ -189,48 +105,20 @@ const _: () = assert!(
      而下游会拿它当「这台机上崩了会有人管」。"
 );
 
-/// **非 Linux 那份空壳的两条承诺，只能靠源码级守卫钉。**
-/// 那份空壳今天只管「既不是 Linux 也不是 Windows」的平台；两条承诺不变。
+/// 非 Linux 那份空壳的两条承诺，只能靠源码级守卫钉：`fallback.rs` 在本机根本不编译，行为判据结构上不可能存在。
 ///
-/// `fallback.rs` 是 `#[cfg(not(any(target_os = "linux", windows)))]` ⇒ **本机（Linux）根本不编译**，
-/// 往里写一个不存在的标识符都不会报错（本区诚实边界 3y 记的就是这一族）。
-/// ⇒ 行为判据在这里结构上不可能存在；能钉的只有**把源码当数据读**。
-///
-/// # 钉哪两条，为什么是这两条
-///
-/// 实测（08-06，两次变异各跑一遍后端全套）：
-/// - 把 `on_dead()` **立刻调掉**（`fallback.rs` 头注自己列为「最坏」的那个选项：
-///   进程活得好好的、会话被判死）—— **backend 279 全绿**；
-/// - 把 `tracing::error!` **降级成 `warn!`**（E4：缺一整条判活路径不是可容忍的降级）
-///   —— **backend 279 全绿**。
-///
-/// 而「起个轮询线程」那条**已经有人管**（E6 的 `no_timer_guard`，实测当场红 2 条），
-/// 所以本模块**不重复钉它**（E3：一个事实一个权威源）。
-///
-/// # 形态：整行相等，不是子串
-///
-/// 用 `pin_line` 而不是 `contains` —— 事实的单位是「那一行长这样」。
-/// 子串匹配会让「在同一行后面追加一个调用」这种改动溜过去，
-/// 而本仓治 F24 的递减棘轮也正盯着裸 `contains`。
+/// 钉的两条：不立刻调 `on_dead()`（那是最坏的选项：进程活得好好的、会话被判死）· 缺判活路径要 `tracing::error!`、不许降成 `warn!`。
+/// 变异这两处后端全套都照样绿，所以必须钉；「起个轮询线程」那条已有 `no_timer_guard` 管，不重复钉。
+/// 用 `pin_line`（整行相等）而不是 `contains`：子串匹配会让「在同一行后面追加一个调用」溜过去。
 #[cfg(test)]
 #[path = "../../../../tests/backend/platform/pidwatch_fallback_shape_tests.rs"]
 mod fallback_shape_tests;
 
-/// **「这个平台上有没有自愈」这件事说得出口。**
-///
-/// # 三条各证一半，缺一条都不成立
-///
-/// - 本机（Linux）那一格：有腿 ⇒ 没有要声明的话 —— 这是**负例**，
-///   少了它，把 `self_healing_caveat` 写成 `Some(…)` 恒真也照样绿。
-/// - 非 Linux 那一支：本机**编不到它** ⇒ 只能把源码当数据读
-///   （形状照 `main_fourth_face_tests.rs::the_windows_arm_is_wired_into_the_source`，`K-P4` 立的）。
-/// - 那句话本身：必须真的说「没有」，而不是一句读不出结论的散文。
-///
-/// ⚠ **诚实边界，照 `K-P4` 那条原样写**：本机没有 Windows ⇒ 这几条证的是
-/// 「**那一支写在源码里**」，**证不了** Windows 上编出来的二进制真走了那一支。
-/// 后者的落点是同文件那条 `#[cfg(not(any(target_os = "linux", windows)))] const _`，
-/// 它**在本仓门禁上给不出任何读数**，开口的时刻是任何一次既非 Linux 也非 Windows 的编译
-/// 〔从「非 Linux」收窄 —— Windows 那一格今天是「有」，由 `winchk-backend` 编那一臂〕。
+/// 「这个平台上有没有自愈」这件事说得出口。三条各证一半：
+/// - 本机（Linux）有腿 ⇒ 没有要声明的话（负例：少了它，把 `self_healing_caveat` 写成 `Some(…)` 恒真也照样绿）；
+/// - 非 Linux 那一支本机编不到 ⇒ 把源码当数据读（形状照 `main_fourth_face_tests.rs::the_windows_arm_is_wired_into_the_source`）；
+/// - 那句话本身必须真的说「没有」。
+/// 这几条证的是「那一支写在源码里」，证不了别的平台上编出来的二进制真走了那一支（那是同文件那条编译期断言的事）。
 #[cfg(test)]
 #[path = "../../../../tests/backend/platform/pidwatch_death_event_leg_tests.rs"]
 mod death_event_leg_tests;

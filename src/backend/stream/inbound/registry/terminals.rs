@@ -232,8 +232,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // F04a：**第一条破坏性命令。** 三道门在 `control/gate::admit_destructive`，
-    // 对句柄下手不对名字。⚠ monitor 侧改走这条路是 **F04b**（定框 C6 的顺序）。
+    // 破坏性命令：三道门在 `control/gate::admit_destructive`，对句柄下手不对名字。
     CommandSpec {
         name: "kill",
         doc_anchor: Some("#### `kill`"),
@@ -469,8 +468,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     CommandSpec {
         name: "launch",
         doc_anchor: Some("#### `launch`"),
-        // 〔C4e 问 2〕+`wrong_owner`：`send-into` 过 `gate::admit`（§34 Gate 2），
-        // 它真会回这个码，登记表原先漏了。由 `gate_tests.rs::every_command_that_passes_the_gate_lists_the_gates_codes` 从 gate.rs 源码派生钉住。
+        // `send-into` 过 `gate::admit`（Gate 2），真会回 `wrong_owner`；由 `gate_tests.rs::every_command_that_passes_the_gate_lists_the_gates_codes` 从 gate.rs 源码派生钉住。
         codes: &[
             "invalid_args",
             "no_tmux",
@@ -480,11 +478,8 @@ pub(super) const SPECS: &[CommandSpec] = &[
             "typed_unconfirmed",
             "child_timed_out",
         ],
-        // 〔`K-P2` `D` 阶段第三拍 09-03〕8 → 11：`agent` / `width` / `height`。
-        // 那三个是「ccm 的 `--tmux` 真的改走这条路」逼出来的 —— 本地那条编排里
-        // `@ccm_agent` 与 `-x/-y` 一直都在，这一侧此前没有字段能表达它们
-        // ⇒ 不补就是**静默丢修饰**。⚠ `avoid_collision` **不加**：撞名避让住在要搬的那一块
-        // **之外**，而「撞了」这件事后端已经用 `created:false` 表达完了（`§15 裁五`）。
+        // `agent` / `width` / `height`：ccm 的 `--ccm-tmux` 走这条路时要带 `@ccm_agent` 与 `-x/-y`，不补就是静默丢修饰。
+        // 没有 `avoid_collision`：撞名避让在调用方那一侧，「撞了」后端用 `created:false` 表达。
         fields: &[
             "agent", "ccm_sid", "client", "created", "cwd", "height", "mode", "name", "payload",
             "session", "typed", "width",

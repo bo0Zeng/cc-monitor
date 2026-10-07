@@ -215,10 +215,9 @@ fn write_at(path: &Path, ledger: &Ledger) -> Result<(), String> {
     result
 }
 
-// 墓碑：这里从前是一把**进程内** `Mutex`（「同一进程里的读—改—写串起来」）。两个后端进程
-//   （两台 monitor 各自连着这台时的两条远端流 ＋ 一次性 CLI）同时记装记录 ⇒ 后写的整份盖掉先写的一条，
-//   **那一趟装的文件从此卸不掉、而且没人说**（审计 `E-compat.md` §E6）。今天读—改—写整段在那个目录的**跨进程**锁里
-//   （`platform/lock.rs`，[`record_at`] 开头拿）。
+//
+// 读—改—写整段在那个目录的跨进程锁里（`platform/lock.rs`，[`record_at`] 开头拿）：两个后端进程同时记装记录时，
+// 后写的整份会盖掉先写的一条 ⇒ 那一趟装的文件从此卸不掉。
 
 /// `add` 的入参：`files: {path: {digest, created}}`。
 fn files_arg(args: &Value) -> Result<BTreeMap<String, Recorded>, (&'static str, String)> {

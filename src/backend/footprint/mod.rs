@@ -1,19 +1,15 @@
-//! 「足迹」**由那台后端出整份成品**：帧面 `footprint-report` —— 只读。
-//!
-//! 用户 09-27「一处后端」压过「「哪一行属于哪个工具」仍只住 monitor 的 `tool_registry`」⇒ 申报表（[`registry`]）
-//! 与判定（[`rows`]：哪一行属于哪个工具、存在 / 缺失 / 查不动怎么分）都住后端，这台 stat 这台自己的盘。
-//! 〔墓碑 —— RM1a 那一版这里是 `footprint-probe`：只交路径事实，判定住 monitor `config_surface.rs`，monitor 问两趟。〕
+//! 「足迹」由那台后端出整份成品：帧面 `footprint-report` —— 只读。申报表（[`registry`]）与判定（[`rows`]：哪一行属于哪个工具、
+//! 存在 / 缺失 / 查不动怎么分）都住后端，这台 stat 这台自己的盘。
 //!
 //! # 两种问法（一问出整份报告）
 //!
-//! - **远端那一栏**（`{}`）：视角 [`rows::Vantage::Remote`]：住 monitor 那台的那一族（`HostScope::Client`）不进人群。
-//! - **本机那一栏**（`{client: {home, path?}}`）：视角 [`rows::Vantage::Monitor`]。本机后端与 monitor 同一台、同一用户 ⇒
-//!   `HostScope::Client` 那一族也由这里 stat；monitor 只交它**独有**的那几条事实（它自己进程的家目录 · `PATH`，
-//! 「足迹里 monitor 自己那几行」），那一族按它们解；agent 家用这台后端自己解析的那一个（Claude 目录只在后端解析）。
+//! - 远端那一栏（`{}`）：视角 [`rows::Vantage::Remote`]：住 monitor 那台的那一族（`HostScope::Client`）不进人群。
+//! - 本机那一栏（`{client: {home, path?}}`）：视角 [`rows::Vantage::Monitor`]。本机后端与 monitor 同一台、同一用户 ⇒ `HostScope::Client` 那一族也由这里 stat；
+//!   monitor 只交它独有的那几条事实（它自己进程的家目录 · `PATH`），那一族按它们解；agent 家用这台后端自己解析的那一个。
 //!
 //! # 上限
 //!
-//! 目录最多列 [`MAX_ENTRIES`] 个名字（超了 ⇒ 列不动，**不截断**：截断的清单会被当成完整的去数 glob）·
+//! 目录最多列 [`MAX_ENTRIES`] 个名字（超了 ⇒ 列不动，不截断：截断的清单会被当成完整的去数 glob）·
 //! 查钩子字样的文件最多 [`MAX_HOOK_FILE_BYTES`] 字节（内容一个字节都不回）。
 
 pub(crate) mod data;

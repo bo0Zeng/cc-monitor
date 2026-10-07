@@ -1,64 +1,41 @@
-//! A2：多账号（账号库：每个号一个配置目录，共享项链回同一个配置根）的**只读**消费侧（写侧是 `accounts/manage/`）。
+//! 多账号（账号库：每个号一个配置目录，共享项链回同一个配置根）的只读消费侧（写侧是 `accounts/manage/`）。
 //!
-//! - `--list-accounts`
-//!   → 第 1 行 `{"kind":"accounts-meta",…}`，其后每账号一行 JSON。
-//! - `--session-accounts`
-//!   → 每条运行中会话一行：它的 `CLAUDE_CONFIG_DIR` 属于哪个账号。
-//! - `--account-trust <configDir> <cwd>`
-//!   → 单行 `{"trusted":bool,"known":bool}`：目标账号是否已信任该目录
-//!   （换号 resume 前的预检——首次用某账号进某目录，CC 会弹信任确认，会卡住编排）。
-//! - `--account-trust-zero <cwd>`
-//!   → 同上，但问的是**账号 0**（见下）。它没有 configDir，`.claude.json` 在 `$HOME`。
+//! - `--list-accounts` → 第 1 行 `{"kind":"accounts-meta",…}`，其后每账号一行 JSON。
+//! - `--session-accounts` → 每条运行中会话一行：它的 `CLAUDE_CONFIG_DIR` 属于哪个账号。
+//! - `--account-trust <configDir> <cwd>` → 单行 `{"trusted":bool,"known":bool}`：目标账号是否已信任该目录
+//!   （换号 resume 前的预检 —— 首次用某账号进某目录，CC 会弹信任确认，会卡住编排）。
+//! - `--account-trust-zero <cwd>` → 同上，但问的是账号 0（它没有 configDir，`.claude.json` 在 `$HOME`）。
 //!
-//! # Z01：账号 0
-//! manifest 里 `configDir` **键缺席**的那一条 = 账号 0 =「不设 `CLAUDE_CONFIG_DIR`」
-//! 这个状态本身。本模块**结构性**地认它（看键在不在），**不认名字**——不在 Rust 里
-//! 硬编码 "0"。它的 config dir 是共享库（`sharedStore`）、`.claude.json` 在 `$HOME`。
-//! **空串不算缺席**：`is_safe_config_dir("")` 会挡掉它（空值 ≠ 未设）。
+//! # 账号 0
 //!
-//! # ⚠ 谓词的作用面**不对称**，这里如实写下〔audit-0805 08-06 抽样核实〕
+//! manifest 里 `configDir` 键缺席的那一条 = 账号 0 =「不设 `CLAUDE_CONFIG_DIR`」这个状态本身。结构性地认它（看键在不在），
+//! 不认名字（不硬编码 "0"）。它的 config dir 是共享库（`sharedStore`）、`.claude.json` 在 `$HOME`。
+//! 空串不算缺席：`is_safe_config_dir("")` 会挡掉它（空值 ≠ 未设）。
 //!
-//! `is_safe_config_dir` 今天有三处调用点，全部在**清单侧**（`--list-accounts` /
-//! `--account-trust` 那几条路：源是 accounts manifest）。而 `--session-accounts`
-//! 那条路的 `configDir` 来自 **`/proc/<pid>/environ`**（`proc_claude_config_dir`），
-//! **没有过谓词**就作为帧字段发给 monitor。
+//! # 谓词的作用面不对称
 //!
-//! ## 为什么**不**顺手给它套上谓词
-//!
-//! 逐条量过后果，套上去**更糟**：
-//! - **归属那一半已经是安全的** —— 进程侧的值只拿去与 `by_dir` 比对，
-//!   而 `by_dir` 只装清单侧、已过谓词的目录 ⇒ 不安全的值匹配不上，`account` 恒 `None`；
-//! - 而若把不安全值直接丢弃（置 `None`），那条会话就会变成 `bare: true` ——
-//!   **语义上等同于「账号 0」**，于是一个可疑会话反而被贴成默认账号。
-//!   那不是收紧，是把一种坏结果换成另一种更坏的。
-//! - 真要处理，得给帧加一个「configDir 不可信」的状态位 ——
-//!   那是**改上线契约**（D6：暴露给第三方 = 契约冻结成本），不属本区范围（只修缺陷，不加能力）。
-//!
-//! ⇒ 结论：**归属安全、展示未净化**。登记在，
-//! 解锁条件 = 帧契约允许新增状态位时，把「不可信的 configDir」表达成一个显式状态，
-//! 而不是让它退化成 `bare`。
+//! `is_safe_config_dir` 的调用点都在清单侧（源是 accounts manifest）；`--session-accounts` 那条路的 `configDir` 来自
+//! `/proc/<pid>/environ`，没过谓词就作为帧字段发出去。不给它套谓词：进程侧的值只拿去与 `by_dir`（只装过了谓词的目录）比对，
+//! 不安全的值匹配不上、`account` 恒 `None`；若把它丢弃（置 `None`），那条会话就变成 `bare: true` —— 等于把一个可疑会话贴成默认账号。
+//! ⇒ 归属安全、展示未净化；要表达「configDir 不可信」得给帧加一个状态位（改上线契约）。
 
 //!
-//! 输出协议同 `history_query`：每行一个 JSON 对象（**不是** wire::Frame）。
-//! 成功 exit 0；`--account-trust` 的硬错误 exit 2 + stderr 纯 `{code,message}` JSON
-//! （照 `resolve_query` 的结构化错误约定，客户端可整段 parse）。
+//! 输出协议同 `history_query`：每行一个 JSON 对象（不是 wire::Frame）。成功 exit 0；`--account-trust` 的硬错误 exit 2 +
+//! stderr 纯 `{code,message}` JSON（同 `resolve_query` 的结构化错误约定）。
 //!
-//! # 只读铁律（src/doc/INVARIANTS.md §1）
-//! 本模块只 `read` / `read_dir` / `metadata`，**零写入**，且**不 shell out**
-//! （backend 是非登录 shell、PATH 很瘦；直接读 manifest 文件即可，省掉 PATH 依赖
-//! 与"让只读组件去跑写工具"的争议面）。
+//! # 只读（src/doc/INVARIANTS.md §1）
 //!
-//! # 凭据边界（本模块最重要的约束）
-//! - `.credentials.json` **只 stat 存在性，绝不读内容**。
-//! - `.claude.json` 只取 `projects[<cwd>].hasTrustDialogAccepted` 一个布尔；
-//!   **绝不回传文件内容**——那里面有 `mcpServers` 的环境变量（可能含 API key）。
-//! - `/proc/<pid>/environ` 只抠**两个写死的键**（账号配置目录 · `ANTHROPIC_BASE_URL`，键名由适配层给），
-//!   **不回传整个环境快照**。`ANTHROPIC_BASE_URL` 的值带中转钥匙 ⇒ **只折成一个布尔**（`viaRelay`：是不是本机中转那一形地址），
-//!   值本身不出参、不进日志。键名不接受调用方传进来（否则这条查询就退化成「任意环境变量读」原语）；
-//!   判据数着本文件生产段里 `proc_env_var(` 的调用点，**多一处 ⇒ 红**。
-//! - `--account-trust` 的 `configDir` 必须逐字等于 manifest 里某个账号的 `configDir`，
-//!   否则拒绝——避免它退化成"任意文件读"原语。`--account-trust-zero` 不收路径参数
-//!   （路径是 `$HOME/.claude.json`，写死在代码里），所以它连这个面都没有。
+//! 只 `read` / `read_dir` / `metadata`，零写入，不 shell out（直接读 manifest 文件，不依赖 PATH）。
+//!
+//! # 凭据边界
+//!
+//! - `.credentials.json` 只 stat 存在性，绝不读内容。
+//! - `.claude.json` 只取 `projects[<cwd>].hasTrustDialogAccepted` 一个布尔；绝不回传文件内容（里面有 `mcpServers` 的环境变量，可能含 API key）。
+//! - `/proc/<pid>/environ` 只抠两个写死的键（账号配置目录 · `ANTHROPIC_BASE_URL`，键名由适配层给），不回传整个环境快照。
+//!   `ANTHROPIC_BASE_URL` 的值带中转钥匙 ⇒ 只折成一个布尔（`viaRelay`），值本身不出参、不进日志。键名不接受调用方传进来
+//!   （否则就退化成「任意环境变量读」原语）；判据数着本文件生产段里读环境的调用点，多一处 ⇒ 红。
+//! - `--account-trust` 的 `configDir` 必须逐字等于 manifest 里某个账号的 `configDir`，否则拒绝（不退化成任意文件读）；
+//!   `--account-trust-zero` 不收路径参数。
 
 use acct_core::{
     auth_kind_from_manifest, auth_kind_with_apikey_table, auth_ready, CREDENTIALS_NAME,
@@ -82,19 +59,15 @@ struct RawAccount {
     name: String,
     #[serde(default)]
     email: Option<String>,
-    /// **Z01：可以缺席。** 缺席 = 账号 0 =「不设 `CLAUDE_CONFIG_DIR`」这个状态本身，
-    /// 它的 config dir 就是共享库。**判据是结构性的（这个键在不在），不认名字**——
-    /// 不在这里硬编码 "0"，manifest 想叫它什么都行。
-    /// 空串**不算缺席**：`is_safe_config_dir("")` 会把它挡掉（空值 ≠ 未设）。
+    /// 可以缺席：缺席 = 账号 0 =「不设 `CLAUDE_CONFIG_DIR`」，它的 config dir 就是共享库。判据是结构性的（这个键在不在），不认名字。
+    /// 空串不算缺席（`is_safe_config_dir("")` 会挡掉）。
     #[serde(rename = "configDir", default)]
     config_dir: Option<String>,
     #[serde(rename = "isDefault", default)]
     is_default: bool,
     #[serde(default)]
     mode: Option<String>,
-    /// **K-A1：鉴权方式。可以缺席** —— 缺席 = 旧 manifest = 订阅号
-    /// （裁决与排除见件计划 `KA6d`；分类规则的唯一住址是
-    /// `acct_core::auth_kind_from_manifest`，**这里不许再写一份 match**）。
+    /// 鉴权方式。可以缺席 —— 缺席 = 订阅号。分类规则的唯一住址是 `acct_core::auth_kind_from_manifest`，这里不再写一份 match。
     #[serde(rename = "authKind", default)]
     auth_kind: Option<String>,
 }
@@ -105,20 +78,11 @@ struct Manifest {
     accounts: Vec<RawAccount>,
 }
 
-/// 路径是否可安全地交给下游（cc-monitor 会把 configDir 拼进 `export CLAUDE_CONFIG_DIR='…'`）。
-/// ⚠ `N-F1c`（09-05）之后**不再是整套同一**：`\` 从本函数的拒绝集里拿出来了（Windows 的路径
-/// 分隔符就是它），而上面那一侧照旧拒。这不是漂移，是**分层校验** ——
-/// 拼进 POSIX 命令之前要过 `acct-core` 的 `config_dir_posix_ok`，那个函数明确拒 `\`。
-/// 〔旧文逐字，留作来历：「同一套字符集——两端对齐」——「整套同一」今天不成立。〕
-/// ⚠⚠ 上面那个名字**在本文件里只许出现一次** —— `structural_scan::INVENTORY` 按**处数**钉着它
-/// （PM 09-05 改这段注释时多写了一次，当场红：「盘上 2 处，登记表写 1 处」）。
-/// 允许普通空格与常规非 ASCII（如中文；单引号内无害且常见），拒绝引号/命令替换/
-/// 重定向/通配/控制字符 + 视觉欺骗类 Unicode。
+/// 路径是否可安全地交给下游。规则是 `acct_core::config_dir_ok`（全仓唯一一份，认 Windows 形：`\` 是那边的路径分隔符）；
+/// 拼进 POSIX 命令之前另要过 `acct-core` 的 posix 那一条（它拒 `\`）—— 分层校验。
+/// 允许普通空格与常规非 ASCII（如中文），拒绝引号 / 命令替换 / 重定向 / 通配 / 控制字符 + 视觉欺骗类 Unicode。
 pub(crate) fn is_safe_config_dir(p: &str) -> bool {
-    // 规则整份搬进 `acct_core::config_dir_ok`（全仓唯一一份）：
-    // 后端 `control/ccm` 起会话也要这张全表，而 `control → observe` 是禁止方向 —— 住共享 crate 两边都够得着。
-    // 原先这里的拆法（`N-F1c`：「平台无关的安全性质（拒绝集）＋ 平台相关的形式」，以及为什么要认 Windows 形 ——
-    // monitor 的本机账号清单也来问这个二进制，Windows 的账号目录是 `C:\Users\…`）随规则一起搬过去了，理由原样写在那边。
+    // 规则住共享 crate（`acct_core::config_dir_ok`）：后端 `control/ccm` 起会话也要这张全表，而 `control → observe` 是禁止方向。
     acct_core::config_dir_ok(p)
 }
 
@@ -167,9 +131,8 @@ fn load_manifest(accts_dir: &Path) -> Result<Manifest, String> {
             &[("path", &(p.display()).to_string()), ("e", &e.to_string())],
         )
     })?;
-    // UTF-8 BOM 剥掉再解析：PowerShell 5.1 `-Encoding UTF8` 与记事本默认写 BOM，
-    //   `serde_json` 不吃它 ⇒ 不剥就是整份「不是合法 JSON」、账号页整块空（`control/ccm/plan.rs::AccountTable::load`
-    //   09-21 修过同一份文件的另一个读者；两个读者读出同一张表由 `tests::both_readers_of_the_manifest_see_the_same_accounts` 钉）。
+    // UTF-8 BOM 剥掉再解析：PowerShell 5.1 `-Encoding UTF8` 与记事本默认写 BOM，`serde_json` 不吃它 ⇒ 不剥就是账号页整块空。
+    // 同一份文件的另一个读者是 `control/ccm/plan.rs::AccountTable::load`，两个读者读出同一张表由 `tests::both_readers_of_the_manifest_see_the_same_accounts` 钉。
     let body = bytes.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(&bytes);
     let root: serde_json::Value = serde_json::from_slice(body).map_err(|e| {
         copy_text(
@@ -218,10 +181,7 @@ fn json_str(v: Option<&str>) -> serde_json::Value {
 
 // ---------------------------------------------------------------- /proc
 
-// U2：**这里原本有第二份 `proc_starttime`**（`/proc/<pid>/stat` 的 field 22）。
-// 与 `platform::proc::proc_starttime` 逐字同语义（都返回 boot 起的 jiffies，解析都是
-// `nth(22-3)`），只是这一份把解析内联了、那一份走 `parse_starttime_from_stat`。
-// 合并前**逐条核过单位**：单位不同的话它们就不是重复，合并就是引 bug。
+// `/proc/<pid>/stat` 的 starttime 只有一份：`platform::proc::proc_starttime`。
 use crate::common::fs::read_regular_capped;
 use crate::platform::proc::{proc_env_var, proc_starttime, EnvRead};
 
@@ -253,15 +213,9 @@ struct SessionRow {
     config_dir: Option<String>,
     account: Option<String>,
     alive: bool,
-    /// 🔴 `K-R21`：读 `CLAUDE_CONFIG_DIR` 的**那一次**，`/proc/<pid>/environ`
-    /// **这一刻取不到**（读失败 / 读回 0 字节）。
-    ///
-    /// 它与 `config_dir: None` 是**两件事**：`None` 说的是「读到了、这个键没设」，
-    /// 本格说的是「这一刻我读不出来」。⇒ 本格为真时**不归属账号、也不算裸起**。
-    ///
-    /// ⚠ **不进出参**：出参形状一个字节都没动（`configDir:null` + `account:null`
-    /// + `bare:false` 今天就表达得了「不知道」）。要把「为什么不知道」也发出去，
-    /// 那是给出参加状态位、是改上线契约。
+    /// 读 `CLAUDE_CONFIG_DIR` 的那一次，`/proc/<pid>/environ` 这一刻取不到（读失败 / 读回 0 字节）。
+    /// 与 `config_dir: None`（读到了、这个键没设）是两件事 ⇒ 本格为真时不归属账号、也不算裸起。
+    /// 不进出参：`configDir:null` + `account:null` + `bare:false` 已经表达「不知道」。
     cfg_env_unreadable: bool,
     /// 这条会话的 `ANTHROPIC_BASE_URL` 是不是**本机中转那一形**（回环 ＋ 钥匙段 ＋ 路由，
     /// `relay_route_core::split_keyed_base_url` 认得出）。`None` = 不知道（进程已死 / 环境这一刻取不到）。
@@ -283,9 +237,7 @@ fn list_accounts(accts_dir: &Path) -> Vec<String> {
     line.insert("kind".into(), "accounts-meta".into());
     line.extend(meta);
     if enabled {
-        // Z01 能力标记：本后端认识「configDir 缺席 = 账号 0」。
-        // **旧后端不会出这个键**（它把账号 0 当坏数据跳过了）⇒ 读这几行的人 default=false ⇒ 能**明说**
-        // 「后端太旧，列表里少了账号 0」，而不是让用户看着一个静默少一行的列表。
+        // 能力标记：本后端认识「configDir 缺席 = 账号 0」。读这几行的人 default=false ⇒ 老后端能被明说出来，而不是静默少一行账号 0。
         line.insert("accountZeroAware".into(), true.into());
     }
     let mut out = vec![serde_json::Value::Object(line).to_string()];
@@ -344,8 +296,7 @@ fn scan_accounts(
         Ok(m) => {
             let mut lines = Vec::new();
             for a in &m.accounts {
-                // Z01：configDir 缺席 = 账号 0。它的 config dir 就是共享库 ⇒ 登录态查那儿，
-                // 而 `configDir` 在帧里出 **null**（下游据此「不注入 CLAUDE_CONFIG_DIR」）。
+                // configDir 缺席 = 账号 0：它的 config dir 就是共享库 ⇒ 登录态查那儿，`configDir` 在帧里出 null（下游据此不注入 CLAUDE_CONFIG_DIR）。
                 let (cfg_out, probe_dir) = match a.config_dir.as_deref() {
                     None => (
                         serde_json::Value::Null,
@@ -370,9 +321,7 @@ fn scan_accounts(
                 let credentials_present = probe_dir
                     .as_ref()
                     .is_some_and(|d| d.join(CREDENTIALS_NAME).exists());
-                // K-A1：鉴权方式这一维。分类与就绪**各只有一处实现**，都住 `acct-core`
-                // ——本文件与 `local_accounts.rs` 都调它，所以「两个生产者各填一个不同的
-                // 默认值」在结构上不可表示（`KAY1` 那条 acceptor 的失效模式就是这个）。
+                // 鉴权方式这一维：分类与就绪各只有一处实现，都住 `acct-core`（本文件与 `local_accounts.rs` 都调它）。
                 // 第二个输入：这台机器的 apikey 表里有没有它（帧面那一臂才问；CLI 那一臂恒没有）。
                 let in_apikey_table = cfg_out.as_str().is_some_and(in_table);
                 let auth_kind = auth_kind_with_apikey_table(
@@ -390,13 +339,11 @@ fn scan_accounts(
                             Some(d) if a.config_dir.is_some() => d.is_dir(),
                             _ => a.config_dir.is_none(),
                         },
-                        // 逐字节旧语义：仅 stat `.credentials.json` 存在性，**不代表凭据有效**
-                        // （`KA6b` 今天之后仍然成立）。可用性**不再**直接读它，走 `authReady`。
+                        // 仅 stat `.credentials.json` 存在性，不代表凭据有效；可用性走 `authReady`。
                         "loggedIn": credentials_present,
-                        // K-A1：订阅 / api-key。旧 manifest 缺这个键 ⇒ 订阅（`KA6d`）。
+                        // 订阅 / api-key。manifest 缺这个键 ⇒ 订阅。
                         "authKind": auth_kind,
-                        // K-A1：「鉴权方式这一维不再阻塞它被选中」。**不等于真能连上**
-                        // （api-key 号还没有配端点的路 ⇒ `KA6a`，UI 必须把这个状态说出来）。
+                        // 鉴权方式这一维不阻塞它被选中；不等于真能连上（界面要把这个状态说出来）。
                         "authReady": auth_ready(auth_kind, credentials_present),
                 }));
             }
@@ -429,15 +376,12 @@ fn next_default(accts_dir: &Path) -> Option<String> {
     m.without(&current).1
 }
 
-/// 帧面 `accounts-list` 的**成品**（账号域读自己那台的 apikey 表，agent 随请求带）。
+/// 帧面 `accounts-list` 的成品（账号域读自己那台的 apikey 表，agent 随请求带）。
 ///
-/// `{meta, accounts, notice}`：清单同 CLI 那一臂同一个扫描（[`scan_accounts`]），并上**这台机器自己**那份 apikey 表
+/// `{meta, accounts, notice}`：清单同 CLI 那一臂同一个扫描（[`scan_accounts`]），并上这台机器自己那份 apikey 表
 /// （`rows`：表里有哪几条账号 id，调用方从 `accounts::upstream_select::file_face` 读来 —— 与中转里的上游选择同一个出处）；
 /// 「哪几个号在表里有行」只问 `acct_core::apikey_routed_subset`（`table_agent`：这台机器上那份文件属于哪一家）。
-///
-/// `notice`：「能用但有缺」—— manifest 启用了、却一个账号 0 都没有（写它的那一侧旧到不认账号 0）。
-/// 措辞不说「远端」：本机远端同一条路（此前那句写着「远端」，本机那条路因此刻意不出它）。
-/// 〔旧那一句「后端太旧、不认账号 0」删了：出成品的后端按构造认得账号 0；老后端回的是旧形状，界面当场认出。〕
+/// `notice`：「能用但有缺」—— manifest 启用了、却一个账号 0 都没有（写它的那一侧旧到不认账号 0）。措辞不说「远端」：本机远端同一条路。
 pub(crate) fn list_product(rows: &[String], agent: &str, table_agent: &str) -> serde_json::Value {
     list_product_with(
         &resolve_accts_dir(),
@@ -498,9 +442,8 @@ pub(crate) fn list_product_with(
     serde_json::json!({ "meta": meta, "accounts": accounts, "notice": notice })
 }
 
-/// pidfile 目录里每一份**读得出来**的 `(pid, 内容)` —— 上限、跳过要说清，逐字搬自 [`session_accounts`] 那一段循环头
-/// （抽出来是为了让「这台机器上哪几个会话活着」（[`live_session_ids`]）与账号归属读**同一批** pidfile，
-/// pidfile 目录问注册表里后端盯着的那一家，与判活同一处 `agents::pidfile_dir`）。
+/// pidfile 目录里每一份读得出来的 `(pid, 内容)`（上限、跳过要说清）。抽出来让「这台机器上哪几个会话活着」（[`live_session_ids`]）
+/// 与账号归属读同一批 pidfile；pidfile 目录问注册表里后端盯着的那一家（与判活同一处 `agents::pidfile_dir`）。
 fn pidfiles(agent_home: &Path) -> Vec<(u32, serde_json::Value)> {
     let mut out = Vec::new();
     let dir = crate::agents::pidfile_dir(agent_home);
@@ -528,17 +471,7 @@ fn pidfiles(agent_home: &Path) -> Vec<(u32, serde_json::Value)> {
         let bytes = match read_regular_capped(&path, MAX_SESSION_FILE_BYTES) {
             Ok(b) => b,
             Err(e) => {
-                // ★〔audit-0805 §5 1x〕**跳过要说清是谁**。
-                //
-                // 这里原来是 `Err(_) => continue` —— 一个超过 `MAX_SESSION_FILE_BYTES`
-                // 的 pidfile 会被**静默丢掉**，那个会话就永远不归属到任何账号，
-                // 而没有任何东西说得出是哪一个。
-                // ⚠ 而**同一个函数里** `MAX_SESSION_FILES` 超限是会 warn 的
-                // （上面几行）—— 同一个函数里两种上限、两种态度。
-                //
-                // 登记表把它记成「硬报错」，那是**假的**：真实处置是跳过。
-                // 定框 **E4**：静默失败一律给身份。⇒ 给它身份，并把登记改成实话
-                // （新语义「跳过+说清」，与被刻意排除的「静默截断」的分界就在这个 warn）。
+                // 跳过要说清是谁：一个超过 `MAX_SESSION_FILE_BYTES` 的 pidfile 被静默丢掉，那个会话就永远不归属到任何账号、也没人说得出是哪一个。
                 tracing::warn!(
                     "会话文件 {} 读不了，跳过（不归属该会话）：{e}",
                     path.display()
@@ -555,11 +488,9 @@ fn pidfiles(agent_home: &Path) -> Vec<(u32, serde_json::Value)> {
     out
 }
 
-/// **这台机器上此刻活着的会话**（sid 集合）—— 历史跨机 join 的本机判活源头。
-///
-/// 从前本机历史清单的「活没活」由 monitor 的 `SessionMap` 答（它由本后端 watcher 的起停帧喂）；join 进了本机后端之后
-/// 由这台后端自己答：pidfile 里的会话 id ＋ 进程还是不是**同一个**（`platform::proc::session_alive`：存在性 ＋ 有 `procStart`
-/// 时对拍启动时刻 —— 与 watcher 加会话那一道闸同一个平台原语，**不是**账号归属那道更严的「缺 `procStart` 就不认」）。
+/// 这台机器上此刻活着的会话（sid 集合）—— 历史跨机 join 的本机判活源头：pidfile 里的会话 id ＋ 进程还是不是同一个
+/// （`platform::proc::session_alive`：存在性 ＋ 有 `procStart` 时对拍启动时刻 —— 与 watcher 加会话那一道闸同一个平台原语，
+/// 不是账号归属那道更严的「缺 `procStart` 就不认」）。
 pub(crate) fn live_session_ids(agent_home: &Path) -> std::collections::BTreeSet<String> {
     pidfiles(agent_home)
         .into_iter()
@@ -621,8 +552,7 @@ pub(crate) fn session_accounts(agent_home: &Path, accts_dir: &Path) -> Vec<Strin
     let Some(env_keys) = crate::agents::account_library_face().map(|f| f.session_env) else {
         return Vec::new();
     };
-    // Z01：`None` 这个 key 是账号 0（configDir 缺席）。裸起会话过去归属不到任何账号
-    // （`account: null` + `bare: true`），现在它有名字了。
+    // `None` 这个 key 是账号 0（configDir 缺席）：裸起的会话归属到它。
     let by_dir: Vec<(Option<String>, String)> = load_manifest(accts_dir)
         .map(|m| {
             m.accounts
@@ -642,24 +572,12 @@ pub(crate) fn session_accounts(agent_home: &Path, accts_dir: &Path) -> Vec<Strin
     for (pid, v) in pidfiles(agent_home) {
         let sid = v.get("sessionId").and_then(|x| x.as_str());
         let cwd = v.get("cwd").and_then(|x| x.as_str());
-        // 判活必须过 procStart 身份对拍：PID 会被复用，陈旧 pidfile 的 PID 可能已被
-        // 别的进程占用。只按 /proc/<pid> 存在性判活会把已死会话误贴成"活着 + 别人的账号"
-        // （审计 R1，已在沙盒复现）。身份不符 → 当作该会话已死，不读 environ、不归属。
+        // 判活必须过 procStart 身份对拍：PID 会被复用，只按 /proc/<pid> 存在性判活会把已死会话误贴成「活着 + 别人的账号」。
+        // 身份不符 → 当作该会话已死，不读 environ、不归属。
         let alive = session_process_identity_ok(pid, &v);
-        // 🔴 `K-R21`（09-03）：**这一处从前在说一句斩钉截铁的假话。**
-        //
-        // 从前它是 `let cfg = if alive { proc_env_var(...) } else { None };` ——
-        // 而 `proc_env_var` 那个 `None` 装着四件事，其中「**环境这一刻取不到**」
-        // （读失败，或读回 0 字节：exec 窗口 / 僵尸进程）会一路走成
-        // `cfg_norm = None` ⇒ 在下面的 `by_dir` 里**正好撞上账号 0 那个 `None` 键**
-        // （`:568` 逐字 `None => Some((None, a.name))`）
-        // ⇒ 出参不是「不知道」，是 `account: "<账号0>"` + `bare: true`。
-        // ⇒ **一条真跑在账号 Z 下的会话，会被报成账号 0 的**，而且无声无息：
-        // `alive` 仍是 `true`（它读 `/proc/<pid>/stat`，与 `environ` 不是同一次读）。
-        //
-        // 现在：「取不到」单独一支，**不归属、不算裸起**（`configDir:null` + `account:null`
-        // + `bare:false` 今天就是一个可表达的状态 ⇒ 出参形状一个字节都没改）。
-        // ⚠ 另两支（键不在 / 值是空串）**仍然合并**，理由在 `EnvRead` 的类型头注。
+        // 环境这一刻取不到（读失败，或读回 0 字节：exec 窗口 / 僵尸进程）单独一支：不归属、不算裸起。
+        // 不然它会走成 `cfg_norm = None`、在下面的 `by_dir` 里正好撞上账号 0 那个 `None` 键 ⇒ 一条真跑在账号 Z 下的会话被报成账号 0 的。
+        // 另两支（键不在 / 值是空串）仍然合并，理由在 `EnvRead` 的类型头注。
         let (cfg, cfg_env_unreadable) = if alive {
             match proc_env_var(pid, env_keys.config_dir) {
                 EnvRead::Value(v) => (Some(v), false),
@@ -690,11 +608,8 @@ pub(crate) fn session_accounts(agent_home: &Path, accts_dir: &Path) -> Vec<Strin
             None
         };
         let cfg_norm = cfg.as_deref().map(|c| norm_dir(c).to_string());
-        // 归属：有 configDir 就逐字匹配；没有、**进程确实活着**、**且环境这一刻读得到**
-        // 才是账号 0。
-        // 进程已死时不归属（cfg 恒 None，归给账号 0 会把死会话贴成账号 0 的）。
-        // 🔴 `cfg_env_unreadable` 时也不归属（`K-R21`）：那一刻我们**不知道**它设没设，
-        // 而「不知道」与「确实没设」在这里的差别就是一句假话的差别。
+        // 归属：有 configDir 就逐字匹配；没有、进程确实活着、且环境这一刻读得到才是账号 0。
+        // 进程已死时不归属（cfg 恒 None）；环境取不到时也不归属：那一刻不知道它设没设。
         let account = if alive && !cfg_env_unreadable {
             by_dir
                 .iter()
@@ -722,16 +637,8 @@ pub(crate) fn session_accounts(agent_home: &Path, accts_dir: &Path) -> Vec<Strin
                 "cwd": json_str(r.cwd.as_deref()),
                 "configDir": json_str(r.config_dir.as_deref()),
                 "account": json_str(r.account.as_deref()),
-                // 🔴 **`bare` 的语义钉死在 `CLAUDE_CONFIG_DIR` 上，加第二个键没有把它拓宽。**
-                // 〔`KP5FD4`，`K-P5f` 第二拍现打的一格〕它的全部含义是「进程活着（身份已确认）
-                // 但没设 `CLAUDE_CONFIG_DIR`」，**Z01 起这不再是异常**：它就是账号 0
-                // （上面的 `account` 会给出名字）。字段保留是因为下游要用它区分
-                // 「账号 0」与「设了 configDir 的账号」——语义从「告警」变成「事实」。
-                // 🔴 **`K-R21`（09-03）给它补了第三个合取项，而语义没有拓宽、是收窄**：
-                // 「没设」这句话只有在**环境读得到**的时候才说得出口。环境这一刻取不到时
-                // （exec 窗口 / 僵尸进程）从前这里会斩钉截铁地报 `bare:true` ——
-                // 那不是「裸起」，那是「不知道」。⇒ 加 `!r.cfg_env_unreadable`。
-                // ⚠ 布尔仍然只答**账号**这一维，一格都没多装（那正是上一段在防的病）。
+                // `bare` = 进程活着（身份已确认）、环境读得到、且没设 `CLAUDE_CONFIG_DIR` —— 就是账号 0（上面的 `account` 会给出名字）。
+                // 下游用它区分「账号 0」与「设了 configDir 的账号」；它只答账号这一维。
                 "bare": r.alive && !r.cfg_env_unreadable && r.config_dir.is_none(),
                 "alive": r.alive,
                 // 走不走本机中转：`true` / `false` / `null`（不知道：进程已死或环境这一刻取不到）。
@@ -838,12 +745,8 @@ pub(crate) fn lines_for_frame(agent_home: &Path, which: FrameAccounts) -> Vec<St
     }
 }
 
-/// 帧面 `accounts-trust`：换号前的信任预检 —— 替掉仍在逐次拨号的
-/// `--account-trust` / `--account-trust-zero`（此前远端每问一次经本机后端开一条链路、在那台 exec 一次本二进制）。
-///
-/// `config_dir == None` ⇒ 账号 0（同 `--account-trust-zero`：路径写死在 `$HOME`，不收路径参数）；
-/// 否则同 `--account-trust`（必须 ∈ manifest，否则就成了任意文件读原语）。两形各调 CLI 那一臂**同一个函数**，
-/// 拒绝码原样上交。成品 `{trusted, known}`。
+/// 帧面 `accounts-trust`：换号前的信任预检。`config_dir == None` ⇒ 账号 0（同 `--account-trust-zero`：路径写死在 `$HOME`，不收路径参数）；
+/// 否则同 `--account-trust`（必须 ∈ manifest，否则就成了任意文件读原语）。两形各调 CLI 那一臂同一个函数，拒绝码原样上交。成品 `{trusted, known}`。
 pub(crate) fn trust_product(
     config_dir: Option<&str>,
     cwd: &str,

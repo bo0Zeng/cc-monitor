@@ -61,24 +61,14 @@ pub(super) const SPECS: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // ── 只读查询面上线 —— 层 1 ＋ ──────────
-    //
-    // 🔴 **这八条此前全是一次性子命令**：monitor 每问一次就新拨一条 SSH（握手 ＋ 鉴权 ＋ exec），
-    //   而这条长连接明明已经在那儿。账号那两条还被一个 10 秒的轮询按台数翻倍。
-    //   ⇒ 登记上来，monitor 改走已有的 `inbound_client`，那些逐次拨号与轮询一起删。
-    //
-    // 🔴 **处理器住顶层 `read_face`，与 `files/` 同一个理由**：入方向不许出现 `observe::`
-    //   （`inbound_never_reaches_into_the_observe_layer`），而查询本体住 `observe/`。
-    //   `read_face` 只做换壳 —— 每条都调 CLI 那一臂同一个函数，`out` 从 stdout 换成内存。
-    //
-    // ⚠ **名字刻意不与 CLI 那几条同名**（`history-read` 而不是 `read-session`）：CLI 面从本表自动派生
-    //   （`cli_control::cli_exposed`），同名就会把 `--read-session` 从 `history_query::run` 手里抢走、改印一行 JSON。
-    //   ⇒ 每条多出一个 CLI 面（`--history-read` …），已进 `lib.rs::SUBCOMMANDS`（不进就静默进流模式）。
-    //
-    // ⚠ 全在 `Run::Blocking`：它们都做文件 I/O（`history-search` 扫全库）。代价同 `files-*`：
-    //   `cancel` 命中时回 `not_cancellable`（不撒谎）。
-    // **历史页的平铺清单**（`history_list.rs`）：跨项目一次出成品 —— 每行的状态与「能做什么」· 按项目的分组 · 搜标题 / 第一句 / 项目名。
-    //   远端那一支问那台的 CLI 面 `--history-list`（`raw`：那台自己判活、读上次的号），本进程记着、`fresh` 再问；并注解、筛、排都在这台。
+    // ── 只读查询面 ──────────
+    // monitor 经已有的那条长连接问（不逐次拨号）。处理器住顶层 `read_face`：入方向不许出现 `observe::`
+    // （`inbound_never_reaches_into_the_observe_layer`），查询本体住 `observe/`；`read_face` 只做换壳，每条都调 CLI 那一臂同一个函数，`out` 从 stdout 换成内存。
+    // 名字刻意不与 CLI 那几条同名（`history-read` 而不是 `read-session`）：CLI 面从本表自动派生（`cli_control::cli_exposed`），同名就会抢走
+    // `history_query::run` 的 `--read-session`；每条多出的 CLI 面（`--history-read` …）已进 `lib.rs::SUBCOMMANDS`。
+    // 全在 `Run::Blocking`（文件 I/O，`history-search` 扫全库）；`cancel` 命中回 `not_cancellable`。
+    // 历史页的平铺清单（`history_list.rs`）：跨项目一次出成品 —— 每行的状态与「能做什么」· 按项目的分组 · 搜标题 / 第一句 / 项目名。
+    // 远端那一支问那台的 CLI 面 `--history-list`（`raw`：那台自己判活、读上次的号），本进程记着、`fresh` 再问；并注解、筛、排都在这台。
     CommandSpec {
         name: "history-list",
         doc_anchor: Some("#### `history-list`"),
@@ -229,12 +219,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // 骨架索引与大纲清单上帧面（此前它们在远端走逐次拨号 —— `STILL_DIALED` 那两行）。
-    // 同族同档（同步文件 I/O ⇒ 阻塞档）、同一个只读宿主（`read_face::answer`）。
-    // 会话内查找上帧面（此前走逐次拨号 —— `STILL_DIALED` 那一行）。同族同档。
-    // 会话事实（`read_face.rs` 那一臂 ＋ `observe/facts_query.rs`）。同族同档、同一个只读宿主。
-    //   `prior` 是调用方上一次拿到的应答原样（续传令牌）；应答四格即成品。
-    // 一轮的摘要（`read_face.rs` 那一臂 ＋ `observe/turns.rs`）。同族同档、同一个只读宿主；`from` 是某一轮的 `at`。
+    // 骨架索引 · 大纲清单 · 会话内查找：同族同档（同步文件 I/O ⇒ 阻塞档）、同一个只读宿主（`read_face::answer`）。
+    // 会话事实（`read_face.rs` 那一臂 ＋ `observe/facts_query.rs`）：`prior` 是调用方上一次拿到的应答原样（续传令牌）；应答四格即成品。
+    // 一轮的摘要（`read_face.rs` 那一臂 ＋ `observe/turns.rs`）：`from` 是某一轮的 `at`。
     CommandSpec {
         name: "history-turns",
         doc_anchor: Some("#### `history-turns`"),
@@ -367,13 +354,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // ── 功能侧只读查询 —— 远端会话的任务列表（`parity_ledger` `session.tasks`）──
-    //
-    // 🔴 此前只有 monitor 直读**本机** `tasks/<sid>/` 那一条路，远端 tab 永远拿不到任务。
-    //   本机后端与远端后端是同一个二进制 ⇒ 读法搬到这里，monitor 按 origin 问（本机也走这里）。
-    // ⚠ 宿主是 `feature_face`，**不是** `read_face`：monitor 侧有一条两向判据数的正是
-    //   「交给 `read_face::answer` 的 == `C1` 那八条」，本族不在其中（理由全文在 `feature_face` 头注）。
-    // ⚠ 阻塞档：读一个目录 ＋ 每个任务文件各一次。`cancel` 命中回 `not_cancellable`（不撒谎）。
+    // ── 会话的任务列表（`parity_ledger` `session.tasks`）──
+    // 本机远端同一个二进制，monitor 按 origin 问（本机也走这里）。宿主是 `feature_face`，不是 `read_face`（理由在 `feature_face` 头注）。
+    // 阻塞档：读一个目录 ＋ 每个任务文件各一次。`cancel` 命中回 `not_cancellable`。
     CommandSpec {
         name: "tasks-list",
         doc_anchor: Some("#### `tasks-list`"),
@@ -397,17 +380,12 @@ pub(super) const SPECS: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // U6b-3：第一条**真业务命令**。
-    // 一次性 `--resolve` 那条路**逐字不动** —— 契约与仓外 aterm 冻结在 2026-07-18，
-    // 两条路复用同一个纯函数。⚠ 它的命令级错误码今天仍叫 `bad_request`（与协议级同名），
-    // **刻意不改**：改它会破坏那份冻结的契约。如实登记。
+    // `resolve`：与一次性 `--resolve` 复用同一个纯函数，那条路与仓外 aterm 的契约冻结着。命令级错误码仍叫 `bad_request`（与协议级同名）：
+    // 改它会破坏那份冻结的契约。
     CommandSpec {
         name: "resolve",
         doc_anchor: Some("#### `resolve`"),
-        // 原来只列两个，而 `resolve_from_json` 还会回 `invalid_session_id` /
-        // `unsafe_launch_candidate`（B2 两道校验）⇒ 登记表比真回的少两个。补齐；
-        // 与跨仓承诺的码全集两向相等由 `resolve_query_tests.rs` 那一族钉着
-        //（`stdin_read_failed` 只有一次性那条会出，不在这里）。
+        // 与 `resolve_from_json` 真回的码全集两向相等（`resolve_query_tests.rs` 那一族钉着；`stdin_read_failed` 只有一次性那条会出，不在这里）。
         codes: &[
             "bad_request",
             "invalid_session_id",
