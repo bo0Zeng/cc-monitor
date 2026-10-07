@@ -607,7 +607,8 @@
     "beAcctVerify.drift.nowhere": {
       "kind": "body",
       "zh": "{item} 在共享库、家目录和各个账号里都没找到。可能只是还没用到，也可能 Claude Code 换了它的位置。",
-      "args": ["item"]
+      "args": ["item"],
+      "limited": ["Claude Code"]
     },
     "beAcctVerify.drift.secretLike": {
       "kind": "body",
@@ -722,12 +723,14 @@
     "bePlan.bus.noScripts": {
       "kind": "error",
       "zh": "ccm: 找不到 cc-bus，没有登记到总线。装在别处的话，用 CC_BUS_SCRIPTS 指过去。",
-      "args": []
+      "args": [],
+      "limited": ["ccm"]
     },
     "bePlan.bus.noSpawnRecord": {
       "kind": "error",
       "zh": "ccm: {path} 不能执行。会话照建、也会登记，但 cc-bus 的派生记录里不会有这一条。",
-      "args": ["path"]
+      "args": ["path"],
+      "limited": ["ccm"]
     },
     "beAssetCatalog.digest.walkFailed": {
       "kind": "body",
@@ -1177,27 +1180,32 @@
     "beCapturePane.run.noTmux": {
       "kind": "error",
       "zh": "启动不了 tmux：{e}。这台机器上可能没装 tmux，或它不在 PATH 里。",
-      "args": ["e"]
+      "args": ["e"],
+      "limited": ["tmux"]
     },
     "beCapturePane.classify.noServer": {
       "kind": "error",
       "zh": "这台机器上没有在跑的 tmux，抓不到画面。tmux 的原话：{tail}",
-      "args": ["tail"]
+      "args": ["tail"],
+      "limited": ["tmux"]
     },
     "beCapturePane.classify.noTarget": {
       "kind": "error",
       "zh": "这个 tmux 会话不存在，抓不到画面。tmux 的原话：{tail}",
-      "args": ["tail"]
+      "args": ["tail"],
+      "limited": ["tmux"]
     },
     "beCapturePane.classify.failed": {
       "kind": "error",
       "zh": "抓取画面失败，退出码 {status}。tmux 的原话：{tail}",
-      "args": ["status", "tail"]
+      "args": ["status", "tail"],
+      "limited": ["tmux"]
     },
     "beGate.probe.noTmux": {
       "kind": "error",
       "zh": "启动不了 tmux：{e}。这台机器上可能没装 tmux，或它不在 PATH 里。",
-      "args": ["e"]
+      "args": ["e"],
+      "limited": ["tmux"]
     },
     "beGate.admit.noSession": {
       "kind": "error",
@@ -1222,7 +1230,8 @@
     "beGate.admit.otherSession": {
       "kind": "error",
       "zh": "tmux 会话 {name} 此刻跑的已经不是这条会话，没有往里发送。",
-      "args": ["name"]
+      "args": ["name"],
+      "limited": ["tmux"]
     },
     "beGate.admitDestructive.otherClient": {
       "kind": "error",
@@ -1237,12 +1246,14 @@
     "beGate.admitDestructive.otherSession": {
       "kind": "error",
       "zh": "tmux 会话 {name} 此刻跑的已经不是这条会话，没有结束它。",
-      "args": ["name"]
+      "args": ["name"],
+      "limited": ["tmux"]
     },
     "beGate.admitDestructive.manyWindows": {
       "kind": "error",
       "zh": "会话 {name} 有 {n} 个窗口，没有结束它。里面可能开着别的东西，到那个 tmux 会话里自己处理。",
-      "args": ["name", "n"]
+      "args": ["name", "n"],
+      "limited": ["tmux"]
     },
     "beKill.name.colon": {
       "kind": "error",
@@ -1267,7 +1278,8 @@
     "beKill.run.noTmux": {
       "kind": "error",
       "zh": "启动不了 tmux：{e}。这台机器上可能没装 tmux，或它不在 PATH 里。",
-      "args": ["e"]
+      "args": ["e"],
+      "limited": ["tmux"]
     },
     "beSessionRestart.locate.notInTerminal": {
       "kind": "error",
@@ -1297,22 +1309,26 @@
     "beLaunch.said.silent": {
       "kind": "body",
       "zh": "tmux 没说原因",
-      "args": []
+      "args": [],
+      "limited": ["tmux"]
     },
     "beLaunch.run.noTmux": {
       "kind": "error",
       "zh": "启动不了 tmux：{e}。这台机器上可能没装 tmux，或它不在 PATH 里。",
-      "args": ["e"]
+      "args": ["e"],
+      "limited": ["tmux"]
     },
     "beLaunch.create.failed": {
       "kind": "error",
       "zh": "建不出会话 {name}，它也不存在。tmux 的原话：{said}",
-      "args": ["name", "said"]
+      "args": ["name", "said"],
+      "limited": ["tmux"]
     },
     "beLaunch.type.failed": {
       "kind": "error",
       "zh": "往会话 {target} 发送失败，内容可能没有进去。tmux 的原话：{said}",
-      "args": ["target", "said"]
+      "args": ["target", "said"],
+      "limited": ["tmux"]
     },
     "beStderrFd.point.dupFailed": {
       "kind": "error",
@@ -1507,7 +1523,8 @@
     "beLaunchRender.entry.noHome": {
       "kind": "error",
       "zh": "家目录未知，找不到 ~/.cc-monitor/bin/ccm，没有起会话。",
-      "args": []
+      "args": [],
+      "limited": ["ccm"]
     },
     "beSessionNew.agent.missing": {
       "kind": "error",
@@ -1527,17 +1544,20 @@
     "beSessionNew.place.noTmux": {
       "kind": "error",
       "zh": "这台没有 tmux，只能开终端窗口。",
-      "args": []
+      "args": [],
+      "limited": ["tmux"]
     },
     "beSessionNew.tmux.taken": {
       "kind": "error",
       "zh": "tmux 会话名 {name} 已占用，没有起。",
-      "args": ["name"]
+      "args": ["name"],
+      "limited": ["tmux"]
     },
     "beSessionNew.tmux.badName": {
       "kind": "error",
       "zh": "tmux 会话名 {name} 不能用（不许以 - 开头，不许带 . : = * ? 和控制字符）。",
-      "args": ["name"]
+      "args": ["name"],
+      "limited": ["tmux"]
     },
     "beResident.token.noRandom": {
       "kind": "error",
@@ -1597,7 +1617,8 @@
     "panePreview.head.title": {
       "kind": "title",
       "zh": "预览画面 · [{origin}] tmux: {target}",
-      "args": ["origin", "target"]
+      "args": ["origin", "target"],
+      "limited": ["tmux"]
     },
     "panePreview.head.refresh": {
       "kind": "action",
@@ -1645,17 +1666,20 @@
     "sessionState.reconnectable.tooltip": {
       "kind": "body",
       "zh": "Claude 已退出 · tmux 会话在",
-      "args": []
+      "args": [],
+      "limited": ["tmux"]
     },
     "sessionState.liveAttachable.tooltip": {
       "kind": "body",
       "zh": "在 tmux 会话里运行：程序退了也能接回去",
-      "args": []
+      "args": [],
+      "limited": ["tmux"]
     },
     "sessionState.liveResumable.tooltip": {
       "kind": "body",
       "zh": "不在 tmux 会话里：程序退了只能 resume",
-      "args": []
+      "args": [],
+      "limited": ["tmux"]
     },
     "sessionState.liveUnknownHost.tooltip": {
       "kind": "body",
@@ -1845,7 +1869,8 @@
     "control.unavailable.noTmux": {
       "kind": "body",
       "zh": "{machine}上没有 tmux",
-      "args": ["machine"]
+      "args": ["machine"],
+      "limited": ["tmux"]
     },
     "control.unavailable.noUnixMode": {
       "kind": "body",
@@ -1880,12 +1905,14 @@
     "terminalReads.preview.noTmux": {
       "kind": "error",
       "zh": "抓取不了 {target} 的画面：那台机器上起不来 tmux（{detail}）",
-      "args": ["target", "detail"]
+      "args": ["target", "detail"],
+      "limited": ["tmux"]
     },
     "terminalReads.preview.noServer": {
       "kind": "error",
       "zh": "抓取不了 {target} 的画面：那台机器上没有在运行的 tmux（{detail}）",
-      "args": ["target", "detail"]
+      "args": ["target", "detail"],
+      "limited": ["tmux"]
     },
     "terminalReads.preview.noSuchSession": {
       "kind": "error",
@@ -1900,7 +1927,8 @@
     "terminalReads.preview.failed": {
       "kind": "error",
       "zh": "抓取 {target} 的画面失败了，tmux 的原话：{detail}",
-      "args": ["target", "detail"]
+      "args": ["target", "detail"],
+      "limited": ["tmux"]
     },
     "terminalReads.preview.otherCode": {
       "kind": "error",
@@ -1940,7 +1968,8 @@
     "tmuxControl.kill.noTmux": {
       "kind": "error",
       "zh": "结束不了 {target}：那台机器上起不来 tmux（{detail}）",
-      "args": ["target", "detail"]
+      "args": ["target", "detail"],
+      "limited": ["tmux"]
     },
     "tmuxControl.kill.noSuchSession": {
       "kind": "error",
@@ -1950,7 +1979,8 @@
     "tmuxControl.kill.wrongOwner": {
       "kind": "error",
       "zh": "没有结束 {target}：认不出它是 cc-monitor 管理的会话。为了不误伤你自己的 tmux 会话，这次拒绝了（{detail}）",
-      "args": ["target", "detail"]
+      "args": ["target", "detail"],
+      "limited": ["tmux"]
     },
     "tmuxControl.kill.tooManyWindows": {
       "kind": "error",
@@ -1965,7 +1995,8 @@
     "tmuxControl.kill.failed": {
       "kind": "error",
       "zh": "结束 {target} 失败了，tmux 的原话：{detail}",
-      "args": ["target", "detail"]
+      "args": ["target", "detail"],
+      "limited": ["tmux"]
     },
     "tmuxControl.kill.otherCode": {
       "kind": "error",
@@ -2015,7 +2046,8 @@
     "tmuxControl.keys.noTmux": {
       "kind": "error",
       "zh": "发送不了按键给 {target}：那台机器上起不来 tmux（{detail}）",
-      "args": ["target", "detail"]
+      "args": ["target", "detail"],
+      "limited": ["tmux"]
     },
     "tmuxControl.keys.noSuchSession": {
       "kind": "error",
@@ -2035,7 +2067,8 @@
     "tmuxControl.keys.wrongOwner": {
       "kind": "error",
       "zh": "没有发送按键给 {target}：认不出它是 cc-monitor 管理的会话。为了不误伤你自己的 tmux 会话，这次拒绝了（{detail}）",
-      "args": ["target", "detail"]
+      "args": ["target", "detail"],
+      "limited": ["tmux"]
     },
     "tmuxControl.keys.otherCode": {
       "kind": "error",
@@ -2075,7 +2108,8 @@
     "ccBus.online.unknown": {
       "kind": "error",
       "zh": "问不到 {id} 在不在线：它不在 {machine} 的总线名单里，或者那边问不到 tmux。这是问不到，不是不在线。",
-      "args": ["id", "machine"]
+      "args": ["id", "machine"],
+      "limited": ["tmux"]
     },
     "ccBus.read.notInstalled": {
       "kind": "error",
@@ -3398,12 +3432,14 @@
     "remoteLaunchRun.attach.startedBody": {
       "kind": "body",
       "zh": "新终端窗口正在连接 [{machine}]，attach 到 tmux 会话「{name}」。",
-      "args": ["machine", "name"]
+      "args": ["machine", "name"],
+      "limited": ["tmux"]
     },
     "remoteLaunchRun.attach.started": {
       "kind": "body",
       "zh": "已拉起 tmux attach",
-      "args": []
+      "args": [],
+      "limited": ["tmux"]
     },
     "remoteLaunchRun.attach.buildFailed": {
       "kind": "error",
@@ -3433,7 +3469,8 @@
     "remoteLaunchRun.copyFallback.runRemote": {
       "kind": "body",
       "zh": "到远端 [{machine}] 的 ssh 终端粘贴执行：",
-      "args": ["machine"]
+      "args": ["machine"],
+      "limited": ["SSH"]
     },
     "remoteLaunchRun.copyFallback.runLocal": {
       "kind": "body",
@@ -3623,7 +3660,8 @@
     "tabBatch.menu.startTmux": {
       "kind": "action",
       "zh": "恢复 · 在 tmux 里（{n}）",
-      "args": ["n"]
+      "args": ["n"],
+      "limited": ["tmux"]
     },
     "tabBatch.menu.startWindow": {
       "kind": "action",
@@ -3678,7 +3716,8 @@
     "tabBatch.action.startTmux": {
       "kind": "body",
       "zh": "已在 tmux 里恢复",
-      "args": []
+      "args": [],
+      "limited": ["tmux"]
     },
     "tabBatch.action.startWindow": {
       "kind": "body",
@@ -3763,22 +3802,26 @@
     "tabBatch.why.noTmux": {
       "kind": "error",
       "zh": "{machine} 上没有 tmux",
-      "args": ["machine"]
+      "args": ["machine"],
+      "limited": ["tmux"]
     },
     "tabBatch.why.notInTmux": {
       "kind": "error",
       "zh": "在 {machine} 上找不到跑着它的 tmux 会话",
-      "args": ["machine"]
+      "args": ["machine"],
+      "limited": ["tmux"]
     },
     "tabBatch.why.ambiguous": {
       "kind": "error",
       "zh": "{machine} · tmux 会话 {names} · 无法确定 · 未动",
-      "args": ["machine", "names"]
+      "args": ["machine", "names"],
+      "limited": ["tmux"]
     },
     "tabBatch.why.running": {
       "kind": "body",
       "zh": "已经在 tmux 会话「{name}」里跑着",
-      "args": ["name"]
+      "args": ["name"],
+      "limited": ["tmux"]
     },
     "tabBatch.why.alreadyLive": {
       "kind": "error",
@@ -3793,7 +3836,8 @@
     "tabBatch.why.nameTaken": {
       "kind": "error",
       "zh": "{machine} 上 tmux 会话名「{name}」已经被占了，没有起",
-      "args": ["machine", "name"]
+      "args": ["machine", "name"],
+      "limited": ["tmux"]
     },
     "tabBatch.why.childTimedOut": {
       "kind": "error",
@@ -3823,7 +3867,8 @@
     "tabMenu.dupes.body": {
       "kind": "error",
       "zh": "这个会话同时活在 {n} 个 tmux 会话里，这次接的是「{name}」。其余几个要不要清理，请到终端里看。",
-      "args": ["n", "name"]
+      "args": ["n", "name"],
+      "limited": ["tmux"]
     },
     "tabMenu.dupes.title": {
       "kind": "error",
@@ -3938,22 +3983,26 @@
     "front.hint.several": {
       "kind": "body",
       "zh": "在目标窗口新开 PowerShell 标签页并重连后可识别",
-      "args": []
+      "args": [],
+      "limited": ["PowerShell"]
     },
     "front.body.unbound": {
       "kind": "body",
       "zh": "启动于接上终端之前的 PowerShell",
-      "args": []
+      "args": [],
+      "limited": ["PowerShell"]
     },
     "front.hint.unbound": {
       "kind": "body",
       "zh": "接上终端后新开的 PowerShell 可识别",
-      "args": []
+      "args": [],
+      "limited": ["PowerShell"]
     },
     "front.body.detached": {
       "kind": "body",
       "zh": "tmux 会话 · 无终端连接",
-      "args": []
+      "args": [],
+      "limited": ["tmux"]
     },
     "front.body.background": {
       "kind": "body",
@@ -4118,7 +4167,8 @@
     "tabSessionActions.dupes.body": {
       "kind": "error",
       "zh": "这个会话同时活在 {n} 个 tmux 会话里，这次接的是「{name}」。其余几个要不要清理，请到终端里看。",
-      "args": ["n", "name"]
+      "args": ["n", "name"],
+      "limited": ["tmux"]
     },
     "tabSessionActions.dupes.title": {
       "kind": "error",
@@ -4538,7 +4588,8 @@
     "launcherDiagnostics.diagnoseRemoteLauncher.bypassesCcm": {
       "kind": "body",
       "zh": "这条命令没经过 ccm，账号和模型偏好不会生效。要用这些，改填 ccm 或含 ccm 的自定义命令，或者在机器页「本机 → 终端 → 别名」里生成一条。",
-      "args": []
+      "args": [],
+      "limited": ["ccm"]
     },
     "pasteBlock.buildPasteBlock.noClipboard": {
       "kind": "error",
@@ -4633,7 +4684,8 @@
     "ccBusHooks.fetch.oldBackend": {
       "kind": "error",
       "zh": "这台机器上的后端版本旧，还做不了钩子诊断。重装后端之后就有。",
-      "args": []
+      "args": [],
+      "limited": ["hook"]
     },
     "sessionReads.inputs.oldBackend": {
       "kind": "error",
@@ -4888,7 +4940,8 @@
     "machineAliases.userPath.notWindows": {
       "kind": "body",
       "zh": "这一项只有 Windows 有。这台机器上让终端找到 ccm 的，是「本机 → 终端 → 别名」里那个别名块。",
-      "args": []
+      "args": [],
+      "limited": ["ccm"]
     },
     "machineAliases.userPath.empty": {
       "kind": "body",
@@ -4903,7 +4956,8 @@
     "machineAliases.userPath.title": {
       "kind": "title",
       "zh": "cmd / Git Bash 也可用 ccm",
-      "args": []
+      "args": [],
+      "limited": ["git", "ccm"]
     },
     "machineAliases.invalid.notYet": {
       "kind": "body",
@@ -4968,7 +5022,8 @@
     "machineAliases.load.ccmFailed": {
       "kind": "error",
       "zh": "查不了本机终端里的 ccm：{e}",
-      "args": ["e"]
+      "args": ["e"],
+      "limited": ["ccm"]
     },
     "machineAliases.readBack.failed": {
       "kind": "error",
@@ -5033,7 +5088,8 @@
     "machineAliases.buildAliasManager.noTmux": {
       "kind": "body",
       "zh": "这台机器上没有 tmux",
-      "args": []
+      "args": [],
+      "limited": ["tmux"]
     },
     "machineAliases.rc.openHint": {
       "kind": "body",
@@ -5053,7 +5109,8 @@
     "machineAliases.rc.uninstall": {
       "kind": "action",
       "zh": "卸载 ccm",
-      "args": []
+      "args": [],
+      "limited": ["ccm"]
     },
     "machineAliases.rc.useOther": {
       "kind": "action",
@@ -5068,7 +5125,8 @@
     "machineAliases.paste.mergeNote": {
       "kind": "body",
       "zh": "整段贴到文件末尾；这一段只让终端认得 ccm 并接上别名文件，清单以后怎么改都不用再贴。",
-      "args": []
+      "args": [],
+      "limited": ["ccm"]
     },
     "machineAliases.form.passthru": {
       "kind": "control",
@@ -5093,7 +5151,8 @@
     "machineAliases.form.tmuxSize": {
       "kind": "control",
       "zh": "--tmux-size，如 200x50",
-      "args": []
+      "args": [],
+      "limited": ["tmux"]
     },
     "machineAliases.form.launcher": {
       "kind": "control",
@@ -5123,22 +5182,26 @@
     "machineAliases.form.tmuxName": {
       "kind": "control",
       "zh": "tmux 会话名",
-      "args": []
+      "args": [],
+      "limited": ["tmux"]
     },
     "machineAliases.form.tmuxBase": {
       "kind": "control",
       "zh": "进 tmux，以某个名字为底",
-      "args": []
+      "args": [],
+      "limited": ["tmux"]
     },
     "machineAliases.form.tmuxNamed": {
       "kind": "control",
       "zh": "进 tmux，用指定的名字",
-      "args": []
+      "args": [],
+      "limited": ["tmux"]
     },
     "machineAliases.form.tmuxAuto": {
       "kind": "control",
       "zh": "进 tmux，自动取名",
-      "args": []
+      "args": [],
+      "limited": ["tmux"]
     },
     "machineAliases.form.tmuxNone": {
       "kind": "control",
@@ -5383,7 +5446,8 @@
     "machineAliases.access.onWindow": {
       "kind": "body",
       "zh": "接在 {path} · 新开的窗口认得 ccm 与下列别名",
-      "args": ["path"]
+      "args": ["path"],
+      "limited": ["ccm"]
     },
     "machineAliases.access.offWindow": {
       "kind": "body",
@@ -5428,12 +5492,14 @@
     "machineAliases.access.uninstallSub": {
       "kind": "body",
       "zh": "卸载后新开的终端不认 ccm 与别名 · 清单保留，可再接上",
-      "args": []
+      "args": [],
+      "limited": ["ccm"]
     },
     "machineAliases.access.uninstallSubWindow": {
       "kind": "body",
       "zh": "卸载后新开的窗口不认 ccm 与别名 · 清单保留，可再接上",
-      "args": []
+      "args": [],
+      "limited": ["ccm"]
     },
     "machineAliases.access.uninstallWhat": {
       "kind": "body",
@@ -5508,7 +5574,8 @@
     "machineAliases.detail.equalsLine": {
       "kind": "body",
       "zh": "ccm {args}",
-      "args": ["args"]
+      "args": ["args"],
+      "limited": ["ccm"]
     },
     "machineAliases.detail.runs": {
       "kind": "body",
@@ -5548,7 +5615,8 @@
     "machineAliases.form.nameHelpPs": {
       "kind": "body",
       "zh": "在 PowerShell 里敲的那个词。不分大小写。",
-      "args": []
+      "args": [],
+      "limited": ["PowerShell"]
     },
     "machineAliases.form.saveHint": {
       "kind": "body",
@@ -5578,7 +5646,8 @@
     "machineAliases.list.colTmux": {
       "kind": "title",
       "zh": "在 tmux 里起",
-      "args": []
+      "args": [],
+      "limited": ["tmux"]
     },
     "machineAliases.list.groupAccountsHintOne": {
       "kind": "body",
@@ -5658,12 +5727,14 @@
     "machineAliases.win.bindTitle": {
       "kind": "body",
       "zh": "从标签页切回 PowerShell 窗口",
-      "args": []
+      "args": [],
+      "limited": ["PowerShell"]
     },
     "machineAliases.win.bindHelp": {
       "kind": "body",
       "zh": "与别名一起接在 PowerShell 配置文件 · 当前 {n} 个窗口可切回",
-      "args": ["n"]
+      "args": ["n"],
+      "limited": ["PowerShell"]
     },
     "machineAliases.win.autoPath": {
       "kind": "body",
@@ -5673,12 +5744,14 @@
     "machineAliases.win.statusPathOn": {
       "kind": "body",
       "zh": "能切回 {n} 个窗口 · cmd 里也敲得到 ccm",
-      "args": ["n"]
+      "args": ["n"],
+      "limited": ["ccm"]
     },
     "machineAliases.win.statusPathOff": {
       "kind": "body",
       "zh": "能切回 {n} 个窗口 · cmd 里还敲不到 ccm",
-      "args": ["n"]
+      "args": ["n"],
+      "limited": ["ccm"]
     },
     "machineAliases.writes.line": {
       "kind": "body",
@@ -5703,7 +5776,8 @@
     "machineAliases.access.on": {
       "kind": "body",
       "zh": "接在 {path} · 新开的终端认得 ccm 与下列别名",
-      "args": ["path"]
+      "args": ["path"],
+      "limited": ["ccm"]
     },
     "machineAliases.access.outdated": {
       "kind": "body",
@@ -5808,7 +5882,8 @@
     "machineAliases.form.tmuxAttach": {
       "kind": "body",
       "zh": "接回一个 tmux 会话（敲的时候跟上会话名）",
-      "args": []
+      "args": [],
+      "limited": ["tmux"]
     },
     "machineAliases.list.title": {
       "kind": "title",
@@ -5858,12 +5933,14 @@
     "machineAliases.tmuxNaming.attach": {
       "kind": "body",
       "zh": "接回一个已有的 tmux 会话：会话名在敲的时候跟上（如 cca 会话名）。",
-      "args": []
+      "args": [],
+      "limited": ["tmux"]
     },
     "machineAliases.unknownOs.said": {
       "kind": "body",
       "zh": "认不出这台的系统，没法生成别名块。不知道该写 bash 的还是 PowerShell 的，不替你猜。",
-      "args": []
+      "args": [],
+      "limited": ["PowerShell"]
     },
     "machineAliases.manager.title": {
       "kind": "title",
@@ -5878,17 +5955,20 @@
     "machineAliases.powershell.blockAfterInstall": {
       "kind": "body",
       "zh": "装好了。开一个新的 PowerShell 窗口生效。",
-      "args": []
+      "args": [],
+      "limited": ["PowerShell"]
     },
     "machineAliases.policy.hostPowershell": {
       "kind": "body",
       "zh": "Windows PowerShell 5.1",
-      "args": []
+      "args": [],
+      "limited": ["PowerShell"]
     },
     "machineAliases.policy.hostPwsh": {
       "kind": "body",
       "zh": "PowerShell 7",
-      "args": []
+      "args": [],
+      "limited": ["PowerShell"]
     },
     "machineAliases.policy.blocks": {
       "kind": "body",
@@ -5918,12 +5998,14 @@
     "machineAliases.policy.confirm": {
       "kind": "body",
       "zh": "把 {ps} 的执行策略设成 RemoteSigned（只改你这个用户）？本机的脚本照常运行，从网上下载的脚本要有签名才运行。这是 PowerShell 的标准做法。",
-      "args": ["ps"]
+      "args": ["ps"],
+      "limited": ["PowerShell"]
     },
     "machineAliases.policy.setDone": {
       "kind": "body",
       "zh": "改好了：{ps} 的执行策略现在是 {policy}。开一个新的 PowerShell 窗口生效。",
-      "args": ["ps", "policy"]
+      "args": ["ps", "policy"],
+      "limited": ["PowerShell"]
     },
     "machineAliases.policy.setFailed": {
       "kind": "error",
@@ -5933,7 +6015,8 @@
     "machineAliases.policy.afterInstall": {
       "kind": "body",
       "zh": "装进去了。它能不能生效要看这台 PowerShell 的执行策略，见上面那一行。",
-      "args": []
+      "args": [],
+      "limited": ["PowerShell"]
     },
     "machineAliases.policy.title": {
       "kind": "title",
@@ -5958,7 +6041,8 @@
     "machineAliases.posix.blockInstallTitle": {
       "kind": "body",
       "zh": "把「让终端认得 ccm、接上别名文件」那一小段装进这份配置。只动 cc-monitor 那一小块，写前先备份、写后回读比对、不对就恢复。",
-      "args": []
+      "args": [],
+      "limited": ["ccm"]
     },
     "machineStatus.facet.failIcon": {
       "kind": "body",
@@ -6148,7 +6232,8 @@
     "machineCard.uninstall.confirm": {
       "kind": "body",
       "zh": "确认从 {host} 删除后端？\n会删：~/.cc-monitor/bin/ccm\n（若该机器仍勾选启用，下次连接会自动装回。）",
-      "args": ["host"]
+      "args": ["host"],
+      "limited": ["ccm"]
     },
     "machineCard.uninstall.needFields": {
       "kind": "error",
@@ -6228,7 +6313,8 @@
     "machineCard.stall.handshake": {
       "kind": "error",
       "zh": "连 SSH 这一步（最后一步：{step}）",
-      "args": ["step"]
+      "args": ["step"],
+      "limited": ["SSH"]
     },
     "machineCard.stall.hello": {
       "kind": "error",
@@ -6273,7 +6359,8 @@
     "machineCard.resetFingerprint.done": {
       "kind": "body",
       "zh": "已忘记主机指纹 · 下次连接时重新记录",
-      "args": []
+      "args": [],
+      "limited": ["SSH 主机指纹"]
     },
     "machineCard.resetFingerprint.confirm": {
       "kind": "body",
@@ -6288,7 +6375,8 @@
     "machineCard.resetFingerprint.title": {
       "kind": "title",
       "zh": "忘记主机指纹 · {host}",
-      "args": ["host"]
+      "args": ["host"],
+      "limited": ["SSH 主机指纹"]
     },
     "machineCard.resetFingerprint.action": {
       "kind": "action",
@@ -6308,7 +6396,8 @@
     "machineCard.aliases.uninstall": {
       "kind": "action",
       "zh": "卸载 ccm",
-      "args": []
+      "args": [],
+      "limited": ["ccm"]
     },
     "machineCard.deploy.uninstallHint": {
       "kind": "body",
@@ -6343,7 +6432,8 @@
     "machineCard.build.pushKeyHint": {
       "kind": "body",
       "zh": "把本地公钥追加到远端 ~/.ssh/authorized_keys（免密登录）；已填私钥则取同名 .pub，否则弹框选文件",
-      "args": []
+      "args": [],
+      "limited": ["SSH"]
     },
     "machineCard.build.pushKey": {
       "kind": "action",
@@ -6353,7 +6443,8 @@
     "machineCard.build.testHint": {
       "kind": "body",
       "zh": "测试 SSH 连接 / 主机指纹 / 后端是否在线",
-      "args": []
+      "args": [],
+      "limited": ["SSH", "SSH 主机指纹"]
     },
     "machineCard.build.test": {
       "kind": "action",
@@ -6383,7 +6474,8 @@
     "machineCard.field.resetFingerprintHint": {
       "kind": "body",
       "zh": "清除已固化的主机指纹，下次连接重新记下。只在你确知服务器合法换过 host key 时用。",
-      "args": []
+      "args": [],
+      "limited": ["SSH 主机指纹"]
     },
     "machineCard.field.resetFingerprint": {
       "kind": "action",
@@ -6393,7 +6485,8 @@
     "machineCard.field.fingerprint": {
       "kind": "control",
       "zh": "主机指纹",
-      "args": []
+      "args": [],
+      "limited": ["SSH 主机指纹"]
     },
     "machineCard.field.keyPath": {
       "kind": "control",
@@ -6493,7 +6586,8 @@
     "machineCard.stage.fingerprint": {
       "kind": "body",
       "zh": "{endpoint} 主机指纹 {fingerprint}",
-      "args": ["endpoint", "fingerprint"]
+      "args": ["endpoint", "fingerprint"],
+      "limited": ["SSH 主机指纹"]
     },
     "machineCard.stage.fingerprintIcon": {
       "kind": "body",
@@ -6633,12 +6727,14 @@
     "settingsPanel.behavior.resumeInTmux": {
       "kind": "control",
       "zh": "恢复到 tmux 里",
-      "args": []
+      "args": [],
+      "limited": ["tmux"]
     },
     "settingsPanel.behavior.resumeInTmuxHelp": {
       "kind": "body",
       "zh": "历史页与标签页「恢复」默认运行于 tmux · 无 tmux 的机器直接恢复",
-      "args": []
+      "args": [],
+      "limited": ["tmux"]
     },
     "settingsPanel.behavior.showHiddenTasks": {
       "kind": "control",
@@ -7399,12 +7495,14 @@
     "ccBusHooks.snippet.merge": {
       "kind": "body",
       "zh": "要合并进去，不是整份覆盖。那里可能还有别的工具的钩子，覆盖会把它们删掉。",
-      "args": []
+      "args": [],
+      "limited": ["hook"]
     },
     "ccBusHooks.state.indirect": {
       "kind": "body",
       "zh": "无法判断。钩子里出现了它，但不是被直接执行的：{command}",
-      "args": ["command"]
+      "args": ["command"],
+      "limited": ["hook"]
     },
     "ccBusHooks.state.brokenPath": {
       "kind": "body",
@@ -7439,7 +7537,8 @@
     "remote.save.fingerprintShape": {
       "kind": "body",
       "zh": "已保存。注意：某台主机指纹不是 SHA256: 开头的格式，请确认没粘错。",
-      "args": []
+      "args": [],
+      "limited": ["SSH 主机指纹"]
     },
     "remote.save.incomplete": {
       "kind": "body",
@@ -7454,12 +7553,14 @@
     "remote.build.empty": {
       "kind": "body",
       "zh": "尚未添加远端机器。用上方工具条「+ 添加机器」，或从 ssh config 导入。",
-      "args": []
+      "args": [],
+      "limited": ["SSH"]
     },
     "remote.build.title": {
       "kind": "title",
       "zh": "远端 (SSH)",
-      "args": []
+      "args": [],
+      "limited": ["SSH"]
     },
     "remote.cards.local": {
       "kind": "body",
@@ -7489,7 +7590,8 @@
     "remote.info.remote": {
       "kind": "body",
       "zh": "远端模式：monitor 通过 SSH 连到远端主机。远端会话与本机会话一起显示，远端 Tab 标题带 [机器名] 前缀。\n默认关闭。关闭或机器列表为空时一切走本地，不受影响。\n\n⚠ 启用 / 修改任意远端设置后，需重启 monitor 才生效。\n某台配置不完整（缺主机、用户或后端路径）时后端会跳过那一台。",
-      "args": []
+      "args": [],
+      "limited": ["SSH"]
     },
     "configSurface.backend.tooOld": {
       "kind": "error",
@@ -8252,7 +8354,8 @@
     "rsSftp.identity.oldEntry": {
       "kind": "body",
       "zh": "那里是旧版 cc-monitor 放的 ccm 入口，换成了新版",
-      "args": []
+      "args": [],
+      "limited": ["ccm"]
     },
     "rsSftp.legacyBackend.removed": {
       "kind": "body",
@@ -9692,7 +9795,8 @@
     "rsLocalBackend.place.besideUnstamped": {
       "kind": "error",
       "zh": "安装包旁边那份后端 {bin} 说不出自己是哪一版，没拿它放 ~/.cc-monitor/bin/ccm。重装 cc-monitor 再试",
-      "args": ["bin"]
+      "args": ["bin"],
+      "limited": ["ccm"]
     },
     "rsLocalBackend.place.besideReadFailed": {
       "kind": "error",
@@ -9822,7 +9926,8 @@
     "rsConfigSurface.scope.projectNotChecked": {
       "kind": "error",
       "zh": "本页不猜项目目录，所以没查。若钩子定义在项目级，上面那两行「没装」的结论可能是错的",
-      "args": []
+      "args": [],
+      "limited": ["hook"]
     },
     "rsConfigSurface.scope.projectPath": {
       "kind": "body",
@@ -9837,7 +9942,8 @@
     "rsConfigSurface.scope.userLocalNote": {
       "kind": "body",
       "zh": "优先级高于上一行；这里定义的钩子同样生效",
-      "args": []
+      "args": [],
+      "limited": ["hook"]
     },
     "rsConfigSurface.scope.userLocal": {
       "kind": "body",
@@ -9847,7 +9953,8 @@
     "rsConfigSurface.scope.userNote": {
       "kind": "body",
       "zh": "钩子诊断读的就是这一份；是否已装以「cc-bus 钩子」页为准",
-      "args": []
+      "args": [],
+      "limited": ["hook"]
     },
     "rsConfigSurface.scope.user": {
       "kind": "body",
@@ -9992,12 +10099,14 @@
     "rsConfigSurface.observe.profileNotWindows": {
       "kind": "error",
       "zh": "不适用：本机不是 Windows，没有 PowerShell $PROFILE 这个东西",
-      "args": []
+      "args": [],
+      "limited": ["PowerShell"]
     },
     "rsConfigSurface.observe.profileWindows": {
       "kind": "error",
       "zh": "路径由 PowerShell 决定；准确状态见「本机 → 终端 → 别名」（那里会读 $PROFILE 并查 cc-monitor 加的那一段）",
-      "args": []
+      "args": [],
+      "limited": ["PowerShell"]
     },
     "rsConfigSurface.observe.projectDir": {
       "kind": "error",
@@ -10007,7 +10116,8 @@
     "rsConfigSurface.observe.remote": {
       "kind": "error",
       "zh": "远端路径（{path}）——本页不连 SSH，请到那台机器的页面里查",
-      "args": ["path"]
+      "args": ["path"],
+      "limited": ["SSH"]
     },
     "rsConfigSurface.observe.needsConfig": {
       "kind": "error",
@@ -10017,7 +10127,8 @@
     "rsConfigSurface.observe.eitherUndetermined": {
       "kind": "error",
       "zh": "{why}；而且这套东西装在 Claude Code 跑的那台上，很可能是某个远端——本页不连 SSH。",
-      "args": ["why"]
+      "args": ["why"],
+      "limited": ["SSH", "Claude Code"]
     },
     "rsConfigSurface.observe.eitherPresent": {
       "kind": "body",
@@ -10027,7 +10138,8 @@
     "rsConfigSurface.observe.eitherAbsent": {
       "kind": "error",
       "zh": "本机没找到（{target}）。这套东西装在 Claude Code 跑的那台上，很可能是某个远端；本页不连 SSH，远端状态请到对应页面查。",
-      "args": ["target"]
+      "args": ["target"],
+      "limited": ["SSH", "Claude Code"]
     },
     "rsConfigSurface.observe.globCount": {
       "kind": "body",
@@ -10087,7 +10199,8 @@
     "rsConfigSurface.declared.profileMismatch": {
       "kind": "error",
       "zh": "安装位置是 PowerShell 配置文件，登记的路径却是 {declared}（应为 \"$PROFILE\"）",
-      "args": ["declared"]
+      "args": ["declared"],
+      "limited": ["PowerShell"]
     },
     "rsConfigSurface.declared.badChar": {
       "kind": "error",
@@ -10137,12 +10250,14 @@
     "rsDriftLedger.consequence.knownTypeParse": {
       "kind": "body",
       "zh": "Claude Code 可能改了某类记录的格式；这些记录只能按原文显示",
-      "args": []
+      "args": [],
+      "limited": ["Claude Code"]
     },
     "rsDriftLedger.consequence.unknownRecord": {
       "kind": "body",
       "zh": "这条记录不显示、不进搜索。多半是 Claude Code 加了新的记录类型",
-      "args": []
+      "args": [],
+      "limited": ["Claude Code"]
     },
     "rsAccountAliases.install.listSep": {
       "kind": "body",
@@ -10197,22 +10312,26 @@
     "rsAccountAliases.said.tmuxAuto": {
       "kind": "body",
       "zh": "tmux · 自动取名",
-      "args": []
+      "args": [],
+      "limited": ["tmux"]
     },
     "rsAccountAliases.said.tmuxNamed": {
       "kind": "body",
       "zh": "tmux 会话 {name}",
-      "args": ["name"]
+      "args": ["name"],
+      "limited": ["tmux"]
     },
     "rsAccountAliases.said.tmuxBase": {
       "kind": "body",
       "zh": "tmux · 以 {name} 为底",
-      "args": ["name"]
+      "args": ["name"],
+      "limited": ["tmux"]
     },
     "rsAccountAliases.said.attach": {
       "kind": "body",
       "zh": "接回已有 tmux 会话",
-      "args": []
+      "args": [],
+      "limited": ["tmux"]
     },
     "rsAccountAliases.said.attachHow": {
       "kind": "body",
@@ -10272,7 +10391,8 @@
     "rsAccountAliases.said.ccmOther": {
       "kind": "body",
       "zh": "ccm 另带 {args}",
-      "args": ["args"]
+      "args": ["args"],
+      "limited": ["ccm"]
     },
     "rsAccountAliases.said.sep": {
       "kind": "body",
@@ -10302,12 +10422,14 @@
     "rsAccountAliases.check.attachAlone": {
       "kind": "error",
       "zh": "接回 tmux 会话的那一条只能单放 --attach，会话名在敲的时候跟上",
-      "args": []
+      "args": [],
+      "limited": ["tmux"]
     },
     "rsAccountAliases.check.noTmux": {
       "kind": "error",
       "zh": "这台机器上没有 tmux —— {flags} 都用不了",
-      "args": ["flags"]
+      "args": ["flags"],
+      "limited": ["tmux"]
     },
     "rsAccountAliases.check.controlChar": {
       "kind": "error",
@@ -10327,32 +10449,38 @@
     "rsShellDialect.ps.trailingBackslash": {
       "kind": "error",
       "zh": "PowerShell 传给 ccm 时，含空格又以反斜杠结尾的值会被改坏。去掉结尾的反斜杠",
-      "args": []
+      "args": [],
+      "limited": ["PowerShell", "ccm"]
     },
     "rsShellDialect.ps.doubleQuote": {
       "kind": "error",
       "zh": "PowerShell 传给 ccm 时不转义双引号，值里不能有双引号",
-      "args": []
+      "args": [],
+      "limited": ["PowerShell", "ccm"]
     },
     "rsShellDialect.ps.emptyArg": {
       "kind": "error",
       "zh": "PowerShell 传给 ccm 时会把空参数整个丢掉",
-      "args": []
+      "args": [],
+      "limited": ["PowerShell", "ccm"]
     },
     "rsShellDialect.ps.nameTakenBuiltinAlias": {
       "kind": "body",
       "zh": "{name} 是 PowerShell 自带的别名（指 {target}）。别名比函数先被找到，用这个名字定义了也敲不到",
-      "args": ["name", "target"]
+      "args": ["name", "target"],
+      "limited": ["PowerShell"]
     },
     "rsShellDialect.ps.builtinAliasUnknown": {
       "kind": "body",
       "zh": "没问到 PowerShell 自带的别名（{e}），{name} 撞没撞它说不准",
-      "args": ["name", "e"]
+      "args": ["name", "e"],
+      "limited": ["PowerShell"]
     },
     "rsShellDialect.ps.nameTakenPath": {
       "kind": "body",
       "zh": "{name}：PATH 上已经有一个同名程序（{cand}）。装上之后在 PowerShell 里敲 {name}，打到的是这条别名，不再是那个程序",
-      "args": ["name", "cand"]
+      "args": ["name", "cand"],
+      "limited": ["PowerShell"]
     },
     "rsShellDialect.ps.nameTakenIntegration": {
       "kind": "body",
@@ -10367,7 +10495,8 @@
     "rsShellDialect.ps.noCcmCall": {
       "kind": "error",
       "zh": "函数里没有调用 ccm 的那一行",
-      "args": []
+      "args": [],
+      "limited": ["ccm"]
     },
     "rsShellDialect.ps.noClose": {
       "kind": "error",
@@ -10383,6 +10512,7 @@
       "kind": "body",
       "zh": "# 这份文件由 cc-monitor 设置里「别名」那一块整份重写，别手改 —— 下一次写入会原样覆盖。\n# 每一个函数是一条别名：名字 ＋ 一组 ccm 参数，调用时再给的参数接在后面。\n# 写法是 PowerShell 函数，5.1 与 7 都 dot-source 得了。\n",
       "args": [],
+      "limited": ["PowerShell", "ccm"],
       "waive": {
         "C-L1": "写进用户 PowerShell 配置的头注释；首句是一整句警告，CP1 裁保留"
       }
@@ -10421,6 +10551,7 @@
       "kind": "body",
       "zh": "# 这份文件由 cc-monitor 设置里「别名」那一块整份重写，别手改 —— 下一次写入会原样覆盖。\n# 每一行是一条别名：名字 ＋ 一组 ccm 参数，调用时再给的参数接在后面。\n# 写法是 POSIX sh 函数，bash / zsh 都 source 得了；fish 不行。\n",
       "args": [],
+      "limited": ["ccm"],
       "waive": {
         "C-L1": "写进用户 shell 文件的头注释；首句是一整句警告，CP1 裁保留"
       }
@@ -10453,17 +10584,20 @@
     "rsProfileInstaller.userPath.removeNoDir": {
       "kind": "error",
       "zh": "问不出本机 ccm 的安装目录，不会拿猜出来的目录去改用户 PATH",
-      "args": []
+      "args": [],
+      "limited": ["ccm"]
     },
     "rsProfileInstaller.userPath.addNoDir": {
       "kind": "error",
       "zh": "问不出本机 ccm 的安装目录，不会编一个目录往用户 PATH 上写",
-      "args": []
+      "args": [],
+      "limited": ["ccm"]
     },
     "rsProfileInstaller.userPath.noBinDir": {
       "kind": "error",
       "zh": "问不出本机 ccm 的安装目录，这是程序内部错误",
-      "args": []
+      "args": [],
+      "limited": ["ccm"]
     },
     "rsProfileInstaller.userPath.notWindows": {
       "kind": "error",
@@ -10473,12 +10607,14 @@
     "rsProfileInstaller.ps.exitCode": {
       "kind": "error",
       "zh": "PowerShell 出错退出，退出码 {status}：{detail}",
-      "args": ["status", "detail"]
+      "args": ["status", "detail"],
+      "limited": ["PowerShell"]
     },
     "rsProfileInstaller.ps.spawnFailed": {
       "kind": "error",
       "zh": "起不来 powershell.exe：{e}",
-      "args": ["e"]
+      "args": ["e"],
+      "limited": ["PowerShell"]
     },
     "rsProfileInstaller.fence.symlinkEscape": {
       "kind": "error",
@@ -10508,7 +10644,8 @@
     "rsProfileInstaller.hint.head": {
       "kind": "body",
       "zh": "{what} 里有 {count} 行提到 ccm，不在 cc-monitor 管理的那段里，cc-monitor 一个字节都不会碰它们。\n要不要删、删哪几行，由你自己定：\n\n{body}",
-      "args": ["what", "count", "body"]
+      "args": ["what", "count", "body"],
+      "limited": ["ccm"]
     },
     "rsProfileInstaller.hint.line": {
       "kind": "body",
@@ -10524,6 +10661,7 @@
       "kind": "body",
       "zh": "cc-monitor 装的 ccm（{at}）是这一版，cc-spawn 需要的 {needs} 都支持。\n{pathCaveat}",
       "args": ["at", "needs", "pathCaveat"],
+      "limited": ["ccm"],
       "waive": {
         "C-T1": "cc-spawn 是 cc-bus 自带的命令名，照原名指路；正则把 -spawn 当成了实现词"
       }
@@ -10532,6 +10670,7 @@
       "kind": "body",
       "zh": "cc-monitor 装的 ccm（{at}）版本对，但缺少：{list}，cc-spawn 会因此退出。请在设置页重装本机后端。\n{pathCaveat}",
       "args": ["at", "list", "pathCaveat"],
+      "limited": ["ccm"],
       "waive": {
         "C-T1": "cc-spawn 是 cc-bus 自带的命令名，照原名指路；正则把 -spawn 当成了实现词"
       }
@@ -10539,7 +10678,8 @@
     "rsCcBusDeploy.win.stale": {
       "kind": "body",
       "zh": "cc-monitor 装的 ccm（{at}）不是这一版：它的版本是 {build}，这一版需要 {wantBuild}。{lack}请在设置页重装本机后端，再装 cc-bus。\n{pathCaveat}",
-      "args": ["at", "build", "wantBuild", "lack", "pathCaveat"]
+      "args": ["at", "build", "wantBuild", "lack", "pathCaveat"],
+      "limited": ["ccm"]
     },
     "rsCcBusDeploy.win.lack": {
       "kind": "body",
@@ -10552,7 +10692,8 @@
     "rsCcBusDeploy.win.noOwnBytes": {
       "kind": "body",
       "zh": "cc-monitor 装的 ccm（{at}）{build} · 未带后端字节 · 版本不可比{lack}\n{pathCaveat}",
-      "args": ["at", "build", "lack", "pathCaveat"]
+      "args": ["at", "build", "lack", "pathCaveat"],
+      "limited": ["ccm"]
     },
     "rsCcBusDeploy.win.lackShort": {
       "kind": "body",
@@ -10568,6 +10709,7 @@
       "kind": "body",
       "zh": "问了 cc-monitor 装的 ccm（{at}），它没有回答版本信息，查不了它能不能用。cc-spawn 启动时需要 ccm 支持：{needs}。",
       "args": ["at", "needs"],
+      "limited": ["ccm"],
       "waive": {
         "C-T1": "cc-spawn 是 cc-bus 自带的命令名，照原名指路；正则把 -spawn 当成了实现词"
       }
@@ -10576,6 +10718,7 @@
       "kind": "body",
       "zh": "本机还没有 cc-monitor 装的 ccm（应在 ~/.cc-monitor/bin/），查不了装出去的 cc-spawn 能不能用。cc-spawn 启动时需要 ccm 支持：{needs}，缺一项就会退出。请先在设置页装好本机后端，再装 cc-bus。",
       "args": ["needs"],
+      "limited": ["ccm"],
       "waive": {
         "C-T1": "cc-spawn 是 cc-bus 自带的命令名，照原名指路；正则把 -spawn 当成了实现词"
       }
@@ -10584,6 +10727,7 @@
       "kind": "body",
       "zh": "这里查的是 cc-monitor 自己装的那一份 ccm。cc-spawn 实际调用的是 PATH 上的 ccm，在 Windows 上查不到那一个是哪一份。",
       "args": [],
+      "limited": ["ccm"],
       "waive": {
         "C-T1": "cc-spawn 是 cc-bus 自带的命令名，照原名指路；正则把 -spawn 当成了实现词"
       }
@@ -10596,12 +10740,14 @@
     "rsCcBusDeploy.ccm.tooOld": {
       "kind": "body",
       "zh": "本机 ccm 版本太旧，cc-bus 装上后用不了",
-      "args": []
+      "args": [],
+      "limited": ["ccm"]
     },
     "rsCcBusDeploy.ccm.notFound": {
       "kind": "body",
       "zh": "本机探不到 ccm，装出去的 cc-spawn 会报「找不到 ccm」。",
       "args": [],
+      "limited": ["ccm"],
       "waive": {
         "C-T1": "cc-spawn 是 cc-bus 自带的命令名，照原名指路；正则把 -spawn 当成了实现词"
       }
@@ -10899,7 +11045,8 @@
     "rsChanHost.transfer.noConfig": {
       "kind": "error",
       "zh": "没有叫「{machine}」的远端配置，传输要那台机器的 SSH 配置",
-      "args": ["machine"]
+      "args": ["machine"],
+      "limited": ["SSH"]
     },
     "rsChanHost.terminal.localNone": {
       "kind": "error",
@@ -10982,7 +11129,8 @@
     "rsDataPaths.backend.aliasesPs": {
       "kind": "body",
       "zh": "你建的别名（PowerShell 读这一份）",
-      "args": []
+      "args": [],
+      "limited": ["PowerShell"]
     },
     "rsDataPaths.backend.skillLedger": {
       "kind": "body",
@@ -11082,7 +11230,8 @@
     "rsLaunch.remote.noOpenSsh": {
       "kind": "error",
       "zh": "本机未检测到 OpenSSH 客户端（ssh.exe）——请安装 Windows 可选功能「OpenSSH 客户端」",
-      "args": []
+      "args": [],
+      "limited": ["SSH"]
     },
     "rsLaunch.terminalDial.local": {
       "kind": "error",
@@ -11097,7 +11246,8 @@
     "rsLaunch.posix.noTerminalWindow": {
       "kind": "body",
       "zh": "本机不是 Windows：cc-monitor 刻意不替你挑终端模拟器，会话在 tmux 里。命令已复制，请在你自己的 bash 里粘贴执行。",
-      "args": []
+      "args": [],
+      "limited": ["tmux"]
     },
     "beTerminal.refuse.empty": {
       "kind": "error",
@@ -11117,7 +11267,8 @@
     "beTerminal.refuse.doubleQuote": {
       "kind": "error",
       "zh": "拒绝启动：远端命令含双引号，PowerShell 5.1 传参会把它改坏。启动参数请改用单引号写法，或使用复制粘贴回退",
-      "args": []
+      "args": [],
+      "limited": ["PowerShell"]
     },
     "beTerminal.refuse.user": {
       "kind": "error",
@@ -11142,7 +11293,8 @@
     "rsLaunch.local.notOnWindows": {
       "kind": "error",
       "zh": "POSIX 本地启动不适用于 Windows，Windows 本机走 PowerShell",
-      "args": []
+      "args": [],
+      "limited": ["PowerShell"]
     },
     "rsLaunch.local.spawnFailed": {
       "kind": "error",
@@ -11187,7 +11339,8 @@
     "rsByteTable.key.notUtf8": {
       "kind": "error",
       "zh": "它的回答不是 UTF-8 编码，多半是 Windows 的 PowerShell 或 cmd 在说没有 uname 这个命令",
-      "args": []
+      "args": [],
+      "limited": ["PowerShell"]
     },
     "rsFootprintClient.env.noHome": {
       "kind": "error",
@@ -11287,22 +11440,26 @@
     "rsCcmProbe.hint.undetermined": {
       "kind": "body",
       "zh": "查不到 PATH 上的 ccm：cc-monitor 自带的那份没找到（{where}）",
-      "args": ["where"]
+      "args": ["where"],
+      "limited": ["ccm"]
     },
     "rsCcmProbe.hint.absent": {
       "kind": "body",
       "zh": "你 PATH 上没有 ccm。cc-monitor 这一份在 {where}（{ours}）。下面生成的那条命令会显式指向它，不需要你改 PATH。",
-      "args": ["where", "ours"]
+      "args": ["where", "ours"],
+      "limited": ["ccm"]
     },
     "rsCcmProbe.hint.notOurs": {
       "kind": "body",
       "zh": "终端里敲 ccm 走到的是 {at}，不是 cc-monitor 装的那份。\n· 它自报：{theirs}\n· cc-monitor 这一份：{ours}，在 {where}\ncc-monitor 不动它，要不要删、什么时候删由你决定。想让终端用 cc-monitor 这一份：把它挪开，或让上面那个目录排在 PATH 前面，或用下面生成的那条命令。",
-      "args": ["at", "theirs", "ours", "where"]
+      "args": ["at", "theirs", "ours", "where"],
+      "limited": ["ccm"]
     },
     "rsCcmProbe.hint.oldEntry": {
       "kind": "body",
       "zh": "终端里敲 ccm 走到的是 {at}，那是 cc-monitor 早先放的旧入口，现在不用了。\ncc-monitor 不替你删。要让终端用 cc-monitor 这一份（{where}）：删掉 {at}，或让 ~/.cc-monitor/bin 排在 PATH 更前面。",
-      "args": ["at", "where"]
+      "args": ["at", "where"],
+      "limited": ["ccm"]
     },
     "rsCcmProbe.cell.notLanded": {
       "kind": "body",
@@ -11317,17 +11474,20 @@
     "rsCcmProbe.cell.ours": {
       "kind": "body",
       "zh": "装下来了，终端里敲 ccm 用的就是它",
-      "args": []
+      "args": [],
+      "limited": ["ccm"]
     },
     "rsCcmProbe.cell.elsewhere": {
       "kind": "body",
       "zh": "装下来了，但终端里敲 ccm 走到的是 {at}",
-      "args": ["at"]
+      "args": ["at"],
+      "limited": ["ccm"]
     },
     "rsCcmProbe.cell.absent": {
       "kind": "body",
       "zh": "装下来了，但终端里敲 ccm 找不到它",
-      "args": []
+      "args": [],
+      "limited": ["ccm"]
     },
     "rsCcmProbe.hint.notInstalled": {
       "kind": "body",
@@ -11467,12 +11627,14 @@
     "beSshConfig.host.sshGExit": {
       "kind": "error",
       "zh": "ssh -G {alias} 退出非 0：{detail}",
-      "args": ["alias", "detail"]
+      "args": ["alias", "detail"],
+      "limited": ["SSH"]
     },
     "beSshConfig.host.sshGFailed": {
       "kind": "error",
       "zh": "运行 ssh -G 失败（OpenSSH 客户端装了吗？）：{e}",
-      "args": ["e"]
+      "args": ["e"],
+      "limited": ["SSH"]
     },
     "beSshConfig.host.dashAlias": {
       "kind": "error",
@@ -11582,12 +11744,14 @@
     "machineAliases.powershell.pasteActivation": {
       "kind": "body",
       "zh": "开一个新的 PowerShell 窗口。",
-      "args": []
+      "args": [],
+      "limited": ["PowerShell"]
     },
     "machineAliases.powershell.pasteTarget": {
       "kind": "body",
       "zh": "$PROFILE（PowerShell 启动时读的那份脚本）",
-      "args": []
+      "args": [],
+      "limited": ["PowerShell"]
     },
     "machineAliases.posix.pasteActivation": {
       "kind": "body",
@@ -11687,12 +11851,14 @@
     "rsCcmInvocation.refusal.dimensionNeedsCap": {
       "kind": "error",
       "zh": "这台机器上的 ccm 不认 {dim} 这一项设置（缺 {cap}）",
-      "args": ["dim", "cap"]
+      "args": ["dim", "cap"],
+      "limited": ["ccm"]
     },
     "rsCcmInvocation.refusal.cannotSpeak": {
       "kind": "error",
       "zh": "这一项设置（{id}）写不成 ccm 参数",
-      "args": ["id"]
+      "args": ["id"],
+      "limited": ["ccm"]
     },
     "rsCcmInvocation.refusal.agentNoAccounts": {
       "kind": "error",
@@ -11702,12 +11868,14 @@
     "rsCcmInvocation.refusal.attachNeedsTmux": {
       "kind": "error",
       "zh": "只能接入 tmux 里的会话",
-      "args": []
+      "args": [],
+      "limited": ["tmux"]
     },
     "rsCcmInvocation.refusal.missingCap": {
       "kind": "error",
       "zh": "这台机器上的 ccm 做不到这样起会话（缺 {c}）",
-      "args": ["c"]
+      "args": ["c"],
+      "limited": ["ccm"]
     },
     "history.delete.failed": {
       "kind": "error",
@@ -11782,7 +11950,8 @@
     "newSession.label.tmuxName": {
       "kind": "control",
       "zh": "tmux 会话名",
-      "args": []
+      "args": [],
+      "limited": ["tmux"]
     },
     "newSession.label.command": {
       "kind": "control",
@@ -11847,7 +12016,8 @@
     "newSession.place.tmux": {
       "kind": "control",
       "zh": "tmux 里",
-      "args": []
+      "args": [],
+      "limited": ["tmux"]
     },
     "newSession.place.tmuxNote": {
       "kind": "body",
@@ -11862,7 +12032,8 @@
     "newSession.place.windowNote": {
       "kind": "body",
       "zh": "本机开终端窗口 · ssh 到 {machine}",
-      "args": ["machine"]
+      "args": ["machine"],
+      "limited": ["SSH"]
     },
     "newSession.place.windowNoteLocal": {
       "kind": "body",
@@ -11872,12 +12043,14 @@
     "newSession.place.noTmux": {
       "kind": "body",
       "zh": "无 tmux · 仅终端窗口",
-      "args": []
+      "args": [],
+      "limited": ["tmux"]
     },
     "newSession.more.plain": {
       "kind": "control",
       "zh": "更多：tmux 会话名 · 启动命令",
-      "args": []
+      "args": [],
+      "limited": ["tmux"]
     },
     "newSession.more.fork": {
       "kind": "control",
@@ -11937,7 +12110,8 @@
     "launch.tmux.taken": {
       "kind": "error",
       "zh": "tmux 会话名已占用",
-      "args": []
+      "args": [],
+      "limited": ["tmux"]
     },
     "launch.account.notLoggedIn": {
       "kind": "error",
@@ -11982,22 +12156,26 @@
     "launch.slot.tmuxThere": {
       "kind": "body",
       "zh": "{machine} · tmux 会话 {name} 在 · 画面末几行：",
-      "args": ["machine", "name"]
+      "args": ["machine", "name"],
+      "limited": ["tmux"]
     },
     "launch.slot.tmuxEmpty": {
       "kind": "body",
       "zh": "{machine} · tmux 会话 {name} 在 · 画面为空",
-      "args": ["machine", "name"]
+      "args": ["machine", "name"],
+      "limited": ["tmux"]
     },
     "launch.slot.tmuxGone": {
       "kind": "body",
       "zh": "{machine} · tmux 会话 {name} 不在",
-      "args": ["machine", "name"]
+      "args": ["machine", "name"],
+      "limited": ["tmux"]
     },
     "launch.slot.noScreen": {
       "kind": "body",
       "zh": "{machine} · tmux 会话 {name} · 画面读不到：{why}",
-      "args": ["machine", "name", "why"]
+      "args": ["machine", "name", "why"],
+      "limited": ["tmux"]
     },
     "launch.slot.screen": {
       "kind": "action",
@@ -12012,7 +12190,8 @@
     "launch.slot.killCuts": {
       "kind": "body",
       "zh": "{machine} tmux 会话 {name} 里正在跑的程序",
-      "args": ["machine", "name"]
+      "args": ["machine", "name"],
+      "limited": ["tmux"]
     },
     "tabSessionActions.agent.unknown": {
       "kind": "error",
@@ -12047,17 +12226,20 @@
     "launchArrival.missed.words": {
       "kind": "error",
       "zh": "等了 {secs} 秒，{machine}上没有报出这个会话。tmux 会话「{name}」最后几行：\n{words}",
-      "args": ["secs", "machine", "name", "words"]
+      "args": ["secs", "machine", "name", "words"],
+      "limited": ["tmux"]
     },
     "launchArrival.missed.emptyScreen": {
       "kind": "error",
       "zh": "等了 {secs} 秒，{machine}上没有报出这个会话。tmux 会话「{name}」那一屏是空的。",
-      "args": ["secs", "machine", "name"]
+      "args": ["secs", "machine", "name"],
+      "limited": ["tmux"]
     },
     "launchArrival.missed.noScreen": {
       "kind": "error",
       "zh": "等了 {secs} 秒，{machine}上没有报出这个会话。tmux 会话「{name}」那一屏读不到：{why}",
-      "args": ["secs", "machine", "name", "why"]
+      "args": ["secs", "machine", "name", "why"],
+      "limited": ["tmux"]
     },
     "ccBus.spawn.arrived": {
       "kind": "body",
@@ -12242,12 +12424,14 @@
     "sshConfigReads.reply.badShape": {
       "kind": "error",
       "zh": "读不懂本机后端回的 ssh 配置，多半是后端版本不对",
-      "args": []
+      "args": [],
+      "limited": ["SSH"]
     },
     "sshConfigReads.backend.tooOld": {
       "kind": "error",
       "zh": "本机后端太旧，读不了 ssh 配置。重启 cc-monitor 换上新后端再试",
-      "args": []
+      "args": [],
+      "limited": ["SSH"]
     },
     "rsHistory.launch.noSessionName": {
       "kind": "error",
@@ -12472,7 +12656,8 @@
     "accounts.badge.inPlaceHint": {
       "kind": "body",
       "zh": "in-place 模式：cc-monitor 不支持对它按会话切号",
-      "args": []
+      "args": [],
+      "limited": ["in-place"]
     },
     "accounts.badge.inPlace": {
       "kind": "body",
@@ -12517,7 +12702,8 @@
     "rsToolRegistry.env.loginShellWhy": {
       "kind": "body",
       "zh": "查 ccm 时要一个登录 shell 把你的 rc 读进来",
-      "args": []
+      "args": [],
+      "limited": ["ccm"]
     },
     "rsToolRegistry.env.loginShellName": {
       "kind": "title",
@@ -12537,7 +12723,8 @@
     "rsToolRegistry.env.sshName": {
       "kind": "title",
       "zh": "ssh 客户端、密钥与主机配置",
-      "args": []
+      "args": [],
+      "limited": ["SSH"]
     },
     "rsToolRegistry.env.gitWhy": {
       "kind": "body",
@@ -12557,12 +12744,14 @@
     "rsToolRegistry.env.tmuxWhy": {
       "kind": "body",
       "zh": "在 tmux 里起会话要用它；缺了的话，起会话被拒时会提一句",
-      "args": []
+      "args": [],
+      "limited": ["tmux"]
     },
     "rsToolRegistry.env.tmuxName": {
       "kind": "title",
       "zh": "tmux",
-      "args": []
+      "args": [],
+      "limited": ["tmux"]
     },
     "rsToolRegistry.env.agentCliWhy": {
       "kind": "body",
@@ -12572,7 +12761,8 @@
     "rsToolRegistry.env.agentCliName": {
       "kind": "title",
       "zh": "Claude Code 的可执行文件",
-      "args": []
+      "args": [],
+      "limited": ["Claude Code"]
     },
     "rsToolRegistry.envTier.appOnlyChecks": {
       "kind": "body",
@@ -12617,37 +12807,44 @@
     "rsToolRegistry.tools.sessionRecordsWhose": {
       "kind": "body",
       "zh": "Claude Code 的数据目录",
-      "args": []
+      "args": [],
+      "limited": ["Claude Code"]
     },
     "rsToolRegistry.tools.sessionRecordsWho": {
       "kind": "body",
       "zh": "Claude Code 自己建、自己写",
-      "args": []
+      "args": [],
+      "limited": ["Claude Code"]
     },
     "rsToolRegistry.tools.sessionRecordsWhat": {
       "kind": "body",
       "zh": "Claude Code 自己建、自己写的会话记录。cc-monitor 只读",
-      "args": []
+      "args": [],
+      "limited": ["Claude Code"]
     },
     "rsToolRegistry.tools.sessionRecordsName": {
       "kind": "title",
       "zh": "Claude Code 的会话记录",
-      "args": []
+      "args": [],
+      "limited": ["Claude Code"]
     },
     "rsToolRegistry.tools.powershellNote": {
       "kind": "body",
       "zh": "Windows 客户端侧，具体路径由 PowerShell 决定",
-      "args": []
+      "args": [],
+      "limited": ["PowerShell"]
     },
     "rsToolRegistry.tools.powershellWhat": {
       "kind": "body",
       "zh": "现场生成的那段 PowerShell 代码块，合进你的 $PROFILE",
-      "args": []
+      "args": [],
+      "limited": ["PowerShell"]
     },
     "rsToolRegistry.tools.powershellName": {
       "kind": "title",
       "zh": "PowerShell 集成",
-      "args": []
+      "args": [],
+      "limited": ["PowerShell"]
     },
     "rsToolRegistry.tools.posixAliasesNote": {
       "kind": "body",
@@ -12667,7 +12864,8 @@
     "rsToolRegistry.tools.posixAliasesName": {
       "kind": "title",
       "zh": "POSIX rc 里的 ccm 别名块（cc / cct / alphacc …）",
-      "args": []
+      "args": [],
+      "limited": ["ccm"]
     },
     "rsToolRegistry.tools.skillInstallNote": {
       "kind": "body",
@@ -12712,7 +12910,8 @@
     "rsToolRegistry.tools.backendRemoteNote": {
       "kind": "body",
       "zh": "固定放在那台的 ~/.cc-monitor/bin/ccm",
-      "args": []
+      "args": [],
+      "limited": ["ccm"]
     },
     "rsToolRegistry.tools.backendRemoteWhat": {
       "kind": "body",
@@ -12747,7 +12946,8 @@
     "rsToolRegistry.tools.ccBusBinNote": {
       "kind": "body",
       "zh": "cc-bus 自己的安装脚本建的命令链接，不是 cc-monitor 建的。钩子诊断只查 cc-register 与 cc-bus-stop-hook 在不在；计数按 cc- 前缀数，别的工具建的同前缀链接也会算进去",
-      "args": []
+      "args": [],
+      "limited": ["hook"]
     },
     "rsToolRegistry.tools.ccBusHooksNote": {
       "kind": "body",
@@ -12757,12 +12957,14 @@
     "rsToolRegistry.tools.ccBusDirNote": {
       "kind": "body",
       "zh": "部署时整个目录写进来，覆盖前先改名备份。只能从本机装，cc-bus 本身跟着 Claude Code 走",
-      "args": []
+      "args": [],
+      "limited": ["Claude Code"]
     },
     "rsToolRegistry.tools.ccBusWhat": {
       "kind": "body",
       "zh": "cc-bus 的 skill 目录，整个装进 Claude Code 那台机器的 skills 下",
-      "args": []
+      "args": [],
+      "limited": ["Claude Code"]
     },
     "rsToolRegistry.tools.ccBusName": {
       "kind": "title",
@@ -12772,12 +12974,14 @@
     "rsToolRegistry.tools.ccmLocalNote": {
       "kind": "body",
       "zh": "本机那条 ccm，放在 cc-monitor 自己的目录里。不碰你 ~/.local/bin 下那份旧的，那一份要不要删由你定",
-      "args": []
+      "args": [],
+      "limited": ["ccm"]
     },
     "rsToolRegistry.tools.ccmLocalWhat": {
       "kind": "body",
       "zh": "本机上的 ccm 命令",
-      "args": []
+      "args": [],
+      "limited": ["ccm"]
     },
     "rsToolRegistry.tools.ccmRemoteProfileNote": {
       "kind": "body",
@@ -12787,12 +12991,14 @@
     "rsToolRegistry.tools.ccmRemoteWhat": {
       "kind": "body",
       "zh": "远端那台机器上的 ccm 命令",
-      "args": []
+      "args": [],
+      "limited": ["ccm"]
     },
     "rsToolRegistry.tools.ccmName": {
       "kind": "title",
       "zh": "ccm 命令入口",
-      "args": []
+      "args": [],
+      "limited": ["ccm"]
     },
     "rsLocalBackendHost.dataDir.absent": {
       "kind": "body",
@@ -13067,7 +13273,8 @@
     "rsToolRegistry.tools.ccmLegacyNote": {
       "kind": "body",
       "zh": "旧版 cc-monitor 放的入口（现在入口在 ~/.cc-monitor/bin/ccm）。部署后端时、连上那台时各看一眼，认出是 cc-monitor 放的就删，认不出的不动",
-      "args": []
+      "args": [],
+      "limited": ["ccm"]
     },
     "rsToolRegistry.tools.backendLegacyExtractNote": {
       "kind": "body",
@@ -13105,7 +13312,8 @@
     "beArgv.validate.badSize": {
       "kind": "error",
       "zh": "非法 --tmux-size: '{size}'（要 <宽>x<高>，如 220x50，且均为正整数）",
-      "args": ["size"]
+      "args": ["size"],
+      "limited": ["tmux"]
     },
     "beArgv.validate.noteNeedsRegister": {
       "kind": "error",
@@ -13120,17 +13328,20 @@
     "beArgv.validate.nameAndBase": {
       "kind": "error",
       "zh": "--ccm-tmux=<名> 与 --tmux-base=<基名> 互斥",
-      "args": []
+      "args": [],
+      "limited": ["tmux"]
     },
     "beArgv.validate.sizeNeedsTmux": {
       "kind": "error",
       "zh": "--tmux-size 需要配合 --ccm-tmux",
-      "args": []
+      "args": [],
+      "limited": ["tmux"]
     },
     "beArgv.validate.detachNeedsTmux": {
       "kind": "error",
       "zh": "--detach 只能和 --ccm-tmux 一起用",
-      "args": []
+      "args": [],
+      "limited": ["tmux"]
     },
     "beArgv.validate.accountAndBase": {
       "kind": "error",
@@ -13165,22 +13376,26 @@
     "beAliasForm.ccmOther.unbalanced": {
       "kind": "error",
       "zh": "其它 ccm 参数里有引号没配对。带空格的参数用一对单引号或双引号括起来",
-      "args": []
+      "args": [],
+      "limited": ["ccm"]
     },
     "beArgv.parse.unknownRight": {
       "kind": "error",
       "zh": "-- 右边只放 ccm 自己的选项，{w} 不是；交给 claude 的参数写在 -- 左边（ccm -- --ccm-help 看选项）",
-      "args": ["w"]
+      "args": ["w"],
+      "limited": ["ccm"]
     },
     "beArgv.parse.newNotFirst": {
       "kind": "error",
       "zh": "new 只能是 -- 右边第一个词（ccm [交给 claude 的…] -- new [ccm 的选项…]）",
-      "args": []
+      "args": [],
+      "limited": ["ccm"]
     },
     "beArgv.parse.backendWordAfterClaudeArgs": {
       "kind": "error",
       "zh": "{w} 是后端的子命令，只能紧跟打头的 --（ccm -- {w} …），前面不许有交给 claude 的参数",
-      "args": ["w"]
+      "args": ["w"],
+      "limited": ["ccm"]
     },
     "beAgents.pick.unknown": {
       "kind": "error",
@@ -13215,12 +13430,14 @@
     "bePlan.build.inTmuxNoName": {
       "kind": "error",
       "zh": "已经在 tmux 里又没给会话名时会就地起，--detach 和 --tmux-size 用不上。请用 --ccm-tmux=<名> 指定会话名。",
-      "args": []
+      "args": [],
+      "limited": ["tmux"]
     },
     "bePlan.build.attachSize": {
       "kind": "error",
       "zh": "attach 不支持 --tmux-size（接回的会话保持它自己的尺寸）",
-      "args": []
+      "args": [],
+      "limited": ["tmux"]
     },
     "bePlan.build.freeTextRefused": {
       "kind": "error",
@@ -13230,7 +13447,8 @@
     "bePlan.build.runningElsewhere": {
       "kind": "error",
       "zh": "这个会话正在别处运行（pid {pid}，不在 ccm 起的 tmux 会话里），没有另起一份：{sid}",
-      "args": ["sid", "pid"]
+      "args": ["sid", "pid"],
+      "limited": ["tmux", "ccm"]
     },
     "bePlan.build.manyWriters": {
       "kind": "error",
@@ -13255,47 +13473,56 @@
     "bePlan.validateTmuxName.deceptive": {
       "kind": "error",
       "zh": "非法 tmux 会话名（含看不见的字符）: '{name}'",
-      "args": ["name"]
+      "args": ["name"],
+      "limited": ["tmux"]
     },
     "bePlan.validateTmuxName.tooLong": {
       "kind": "error",
       "zh": "非法 tmux 会话名（超过 {max} 个字符）: '{name}'",
-      "args": ["name", "max"]
+      "args": ["name", "max"],
+      "limited": ["tmux"]
     },
     "bePlan.validateTmuxName.control": {
       "kind": "error",
       "zh": "非法 tmux 会话名（含控制字符）: '{name}'",
-      "args": ["name"]
+      "args": ["name"],
+      "limited": ["tmux"]
     },
     "bePlan.validateTmuxName.targetSyntax": {
       "kind": "error",
       "zh": "非法 tmux 会话名（不能含 * ? . : =）: '{name}'",
-      "args": ["name"]
+      "args": ["name"],
+      "limited": ["tmux"]
     },
     "bePlan.validateTmuxName.emptyOrDash": {
       "kind": "error",
       "zh": "非法 tmux 会话名（空或以 - 开头）: '{name}'",
-      "args": ["name"]
+      "args": ["name"],
+      "limited": ["tmux"]
     },
     "beCcm.nameTaken.say": {
       "kind": "error",
       "zh": "ccm: tmux 会话名 {name} 已被占用，没有接进去。换个名字再起。",
-      "args": ["name"]
+      "args": ["name"],
+      "limited": ["tmux", "ccm"]
     },
     "beCcm.selfCheckFailed.say": {
       "kind": "error",
       "zh": "ccm: 会话 {name} 里的命令起不来，原因见上一行。没有接进去，也没有登记；会话还在，可以进去看。",
-      "args": ["name"]
+      "args": ["name"],
+      "limited": ["ccm"]
     },
     "beCcm.noTerminal.say": {
       "kind": "error",
       "zh": "ccm: 没有终端可交互，这次没起 claude。要叫后端，在最前面加 --：ccm -- --stream（流）或 ccm -- <子命令>（一次性）。要起 claude，就在终端里敲。",
-      "args": []
+      "args": [],
+      "limited": ["ccm"]
     },
     "beCcm.usage.body": {
       "kind": "body",
       "zh": "用法：ccm [交给 claude 的参数…] -- [new] [ccm 自己的选项…]\n\nccm 是 claude 的壳。没有 -- 时整行原样交给 claude（--ccm-agent codex 时交给 codex）；没有 -- 又没有终端可交互（被别的程序经管道叫）时不起 claude；\n有 -- 时按最后一个 -- 切开：左边原样交给 claude，右边只放下面这些 ccm 自己的选项，认不得就报错。\n要给 claude 它自己的 -- 又没有 ccm 选项时，末尾补一个空的 --（如 ccm -p -- -x --）。\n\n选项\n  new                起新会话（缺省就是它；只许是 -- 右边第一个词。ccm new 没有 -- 时交给 claude）\n  --ccm-tmux[=<名>]  在一个 tmux 会话里跑；给名就用那个名\n  --tmux-base <基名> 以这个为底取名，撞了就换一个（与 --ccm-tmux=<名> 互斥）\n  --tmux-size <W>xH  新建 tmux 会话的宽高（要带 --ccm-tmux）\n  --detach           建完就返回，不接进去（要带 --ccm-tmux）\n  --bus-register     把新会话登记上 cc-bus（要带 --detach）\n  --bus-note <备注>  给上面那条登记带一行备注\n  --account <名>     用这个账号起（与 --base 互斥）\n  --account-dir <目录> 用这个账号配置目录起（说不出账号名时用；与 --account / --base 互斥）\n  --base             不用任何账号，按 agent 自己的默认配置起\n  --cwd <目录>       工作目录；不给就是当前目录，开头的 ~ 是家目录，相对路径按当前目录补全\n  --cwd-if <在哪> <进哪> 正好在「在哪」这个目录里敲时进「进哪」（可写多次，按顺序第一条对上的算；\n                     两边都可用 ~，链接解开再比；都没对上才看 --cwd）\n  --ccm-agent <名>   claude | codex\n  --launcher <命令>  换掉默认的启动命令（可带参数，如 'ccr code'；开头的 ~/ 是家目录）\n  --attach <会话名>  不起 agent，直接接回一个 tmux 会话\n  --ccm-sid <会话ID> 给会话标上会话ID，cc-monitor 靠它找到终端窗口\n  --ccm-print        不跑，印出等价的一行 shell 命令\n  --ccm-probe        印出这台机器上 ccm 的身份信息（六行）\n  --ccm-version      印版本号\n  --ccm-help         这一段\n\n左边交给 claude 的参数里，ccm 只看一个（照样交给 claude）\n  --resume <会话ID>  这条会话已经在某个 tmux 会话里跑时，接上它、不另起（-r 同）\n\n中转\n  这台机器上 cc-monitor 的中转在听时，ccm 起 agent 前把 ANTHROPIC_BASE_URL 指向它（你自己设了就不动）；\n  环境变量 CCM_RELAY_ALL_SESSIONS=0 时只有要经中转换 key 的账号才指过去\n",
       "args": [],
+      "limited": ["tmux", "ccm"],
       "waive": {
         "C-L3": "--help 正文是逐行的选项表，每行一处括号是那一行的补充",
         "C-T1": "--ccm-sid 是用户在终端里敲的真实旗标名"
@@ -13309,17 +13536,20 @@
     "beCcm.whyShell.busId": {
       "kind": "body",
       "zh": "在 tmux 里起 codex 要先用 sh 问一次会话名",
-      "args": []
+      "args": [],
+      "limited": ["tmux"]
     },
     "beCcm.whyShell.attach": {
       "kind": "body",
       "zh": "接回 tmux 会话走的是一条 shell 命令",
-      "args": []
+      "args": [],
+      "limited": ["tmux"]
     },
     "beCcm.whyShell.containerTail": {
       "kind": "body",
       "zh": "起完 tmux 会话之后的收尾是一段 shell 命令",
-      "args": []
+      "args": [],
+      "limited": ["tmux"]
     },
     "beCcm.execShell.needsSh": {
       "kind": "error",
@@ -13329,17 +13559,20 @@
     "beCcm.execOrSpawn.failed": {
       "kind": "error",
       "zh": "ccm: 起不来 —— {subject}：{e}",
-      "args": ["subject", "e"]
+      "args": ["subject", "e"],
+      "limited": ["ccm"]
     },
     "beCcm.execute.rejoin": {
       "kind": "body",
       "zh": "ccm: 会话 {sid} 已经在 tmux 会话「{name}」里跑，接上它（不另起一份）",
-      "args": ["sid", "name"]
+      "args": ["sid", "name"],
+      "limited": ["tmux", "ccm"]
     },
     "beCcm.execute.launchFailed": {
       "kind": "error",
       "zh": "ccm: 起不来 —— {kind}: {message}",
-      "args": ["kind", "message"]
+      "args": ["kind", "message"],
+      "limited": ["ccm"]
     },
     "bePlan.names.unreadable": {
       "kind": "body",
@@ -13415,22 +13648,26 @@
     "beSshAgent.connect.unsupported": {
       "kind": "error",
       "zh": "这个系统上不知道怎么连 SSH agent",
-      "args": []
+      "args": [],
+      "limited": ["SSH"]
     },
     "beSshAgent.connect.pipe": {
       "kind": "error",
       "zh": "连不上 {pipe}：{e}。SSH agent 在运行吗？",
-      "args": ["pipe", "e"]
+      "args": ["pipe", "e"],
+      "limited": ["SSH"]
     },
     "beSshAgent.connect.authSock": {
       "kind": "error",
       "zh": "连不上 SSH_AUTH_SOCK 指向的 SSH agent：{e}。它在运行吗？环境变量设了吗？",
-      "args": ["e"]
+      "args": ["e"],
+      "limited": ["SSH"]
     },
     "beSshAgent.connect.givenSocket": {
       "kind": "error",
       "zh": "连不上 SSH agent（{path}）：{e}。它在运行吗？",
-      "args": ["path", "e"]
+      "args": ["path", "e"],
+      "limited": ["SSH"]
     },
     "beFs.readRegularCapped.tooBig": {
       "kind": "error",
@@ -13450,7 +13687,8 @@
     "beSessionSnapshot.probeTmux.noTmux": {
       "kind": "error",
       "zh": "起不来 tmux：{e}。这台机器装了 tmux 吗？",
-      "args": ["e"]
+      "args": ["e"],
+      "limited": ["tmux"]
     },
     "beHistoryQuery.readLinesFrom.lineTooLong": {
       "kind": "error",
@@ -13655,17 +13893,20 @@
     "beProbe.test.sshFailed": {
       "kind": "error",
       "zh": "SSH 连接/鉴权失败：{e}",
-      "args": ["e"]
+      "args": ["e"],
+      "limited": ["SSH"]
     },
     "beProbe.test.probeFailed": {
       "kind": "error",
       "zh": "SSH 连上了，但后端探测失败：{e}",
-      "args": ["e"]
+      "args": ["e"],
+      "limited": ["SSH"]
     },
     "beProbe.test.noHello": {
       "kind": "error",
       "zh": "SSH 连上了，但后端没响应（可能没装或没启动）",
-      "args": []
+      "args": [],
+      "limited": ["SSH"]
     },
     "beProbe.test.controlDown": {
       "kind": "error",
@@ -13685,7 +13926,8 @@
     "beProbe.test.ok": {
       "kind": "error",
       "zh": "SSH 与后端均正常。",
-      "args": []
+      "args": [],
+      "limited": ["SSH"]
     },
     "beProbe.link.droppedBeforeAck": {
       "kind": "error",
@@ -14041,7 +14283,8 @@
     "relayOptin.section.intro": {
       "kind": "body",
       "zh": "经 cc-monitor 或 ccm 起的会话已经走中转。直接在终端里敲 claude 起的不走：cc-monitor 要等它写进会话记录才看得到，比终端慢。要它也走，就把下面这一段合并进这台的设置文件；cc-monitor 不替你改这份文件。",
-      "args": []
+      "args": [],
+      "limited": ["ccm"]
     },
     "relayOptin.read.loading": {
       "kind": "body",
@@ -14121,7 +14364,8 @@
     "relayOptin.cost.apiKey": {
       "kind": "body",
       "zh": "只对用订阅登录的号有用。用 API key 的号，key 只在用 ccm 起会话时才换得上；而这份文件会盖过 ccm 交给会话的地址，贴了之后这台用 API key 的号就换不上 key 了。要用这些号，先把这一行删掉。",
-      "args": []
+      "args": [],
+      "limited": ["ccm"]
     },
     "beUpstreamEndpoint.relay.thisMachine": {
       "kind": "body",
@@ -14351,7 +14595,8 @@
     "tmuxMint.refused.body": {
       "kind": "error",
       "zh": "没从 {machine} 问到新会话的名字。取名要先看那台已有哪些 tmux 会话，免得撞名接进别的会话，所以这次没有起。原因：{reason}",
-      "args": ["machine", "reason"]
+      "args": ["machine", "reason"],
+      "limited": ["tmux"]
     },
     "localResume.launch.failed": {
       "kind": "error",
@@ -14546,12 +14791,14 @@
     "rsDialHost.hostKey.pinned": {
       "kind": "body",
       "zh": "已记下 {origin} 的 SSH 主机指纹，之后只认它：{fingerprint}",
-      "args": ["origin", "fingerprint"]
+      "args": ["origin", "fingerprint"],
+      "limited": ["SSH", "SSH 主机指纹"]
     },
     "rsDialHost.hostKey.differs": {
       "kind": "body",
       "zh": "{origin} 的几个地址报的 SSH 主机指纹不一样，没有自动记下：{list}。请在设置里这台机器上选一个填进去",
-      "args": ["origin", "list"]
+      "args": ["origin", "list"],
+      "limited": ["SSH", "SSH 主机指纹"]
     },
     "rsDialHost.hostKey.listSep": {
       "kind": "body",
@@ -15711,32 +15958,38 @@
     "beConnect.agent.unreachable": {
       "kind": "error",
       "zh": "没配密钥文件，改用 ssh-agent 也失败了：{e}",
-      "args": ["e"]
+      "args": ["e"],
+      "limited": ["SSH"]
     },
     "beConnect.agent.listFailed": {
       "kind": "error",
       "zh": "读不出 ssh-agent 里的密钥：{e}",
-      "args": ["e"]
+      "args": ["e"],
+      "limited": ["SSH"]
     },
     "beConnect.agent.empty": {
       "kind": "error",
       "zh": "ssh-agent 里一把密钥都没有，也没配密钥文件。可以先用 ssh-add 加一把",
-      "args": []
+      "args": [],
+      "limited": ["SSH"]
     },
     "beConnect.agent.rejected": {
       "kind": "error",
       "zh": "ssh-agent 里的密钥被拒（用户 {user}）",
-      "args": ["user"]
+      "args": ["user"],
+      "limited": ["SSH"]
     },
     "beConnect.agent.signFailed": {
       "kind": "error",
       "zh": "ssh-agent 签名登录出错：{e}",
-      "args": ["e"]
+      "args": ["e"],
+      "limited": ["SSH"]
     },
     "beConnect.agent.allFailed": {
       "kind": "error",
       "zh": "ssh-agent 里的密钥都登录不上",
-      "args": []
+      "args": [],
+      "limited": ["SSH"]
     },
     "beConnect.jump.label": {
       "kind": "body",
@@ -15766,27 +16019,32 @@
     "beConnect.jump.targetFailed": {
       "kind": "error",
       "zh": "经跳板连上目标后，SSH 连接没建起来：{e}",
-      "args": ["e"]
+      "args": ["e"],
+      "limited": ["SSH"]
     },
     "beUses.session.noSlot": {
       "kind": "error",
       "zh": "开不了新的 SSH 会话：这条连接的名额用完了",
-      "args": []
+      "args": [],
+      "limited": ["SSH"]
     },
     "beUses.session.openFailed": {
       "kind": "error",
       "zh": "开不了新的 SSH 会话：{e}",
-      "args": ["e"]
+      "args": ["e"],
+      "limited": ["SSH"]
     },
     "beUses.session.refusedAll": {
       "kind": "error",
       "zh": "远端不让开新的 SSH 会话：{e}。可能是远端 sshd 的 MaxSessions 设成了 0",
-      "args": ["e"]
+      "args": ["e"],
+      "limited": ["SSH"]
     },
     "beUses.session.exhausted": {
       "kind": "error",
       "zh": "换了几条连接都开不了新的 SSH 会话",
-      "args": []
+      "args": [],
+      "limited": ["SSH"]
     },
     "beUses.exec.failed": {
       "kind": "error",
@@ -16074,17 +16332,20 @@
     "rsAccountAliases.dialect.notHere": {
       "kind": "error",
       "zh": "这台机器（{machine}）不是 Windows，不写 PowerShell 写法的别名：这里只写 POSIX（bash / zsh）的写法",
-      "args": ["machine"]
+      "args": ["machine"],
+      "limited": ["PowerShell"]
     },
     "rsShellDialect.ps.noPowerShellHere": {
       "kind": "error",
       "zh": "这台机器上没有 PowerShell，问不了它的内建别名",
-      "args": []
+      "args": [],
+      "limited": ["PowerShell"]
     },
     "rsPsPolicy.listing.unreadable": {
       "kind": "error",
       "zh": "读不懂 PowerShell 答的执行策略：{out}",
-      "args": ["out"]
+      "args": ["out"],
+      "limited": ["PowerShell"]
     },
     "aliasReads.reply.badShape": {
       "kind": "error",
@@ -16859,7 +17120,8 @@
     "extPage.hooks.title": {
       "kind": "title",
       "zh": "各台的钩子",
-      "args": []
+      "args": [],
+      "limited": ["hook"]
     },
     "extPage.hooks.offline": {
       "kind": "body",
@@ -16869,12 +17131,14 @@
     "extPage.hooks.loading": {
       "kind": "body",
       "zh": "正在看这台的钩子…",
-      "args": []
+      "args": [],
+      "limited": ["hook"]
     },
     "extPage.hooks.failed": {
       "kind": "error",
       "zh": "读不到这台的钩子：{said}",
-      "args": ["said"]
+      "args": ["said"],
+      "limited": ["hook"]
     },
     "extPage.hooks.sessionStart": {
       "kind": "body",
@@ -16884,7 +17148,8 @@
     "extPage.hooks.stop": {
       "kind": "body",
       "zh": "Stop → cc-bus-stop-hook",
-      "args": []
+      "args": [],
+      "limited": ["hook"]
     },
     "extPage.hooks.stateLine": {
       "kind": "body",
@@ -16894,7 +17159,8 @@
     "extPage.hooks.installFirst": {
       "kind": "body",
       "zh": "这台还没装 cc-bus。先在下面这台那一行点「装到…」装上，再来加钩子。",
-      "args": []
+      "args": [],
+      "limited": ["hook"]
     },
     "extPage.hooks.copy": {
       "kind": "action",
@@ -16914,7 +17180,8 @@
     "beExt.target.builtinUserOnly": {
       "kind": "body",
       "zh": "cc-bus 只装到全局：钩子要指向这台全局那一份。",
-      "args": []
+      "args": [],
+      "limited": ["hook"]
     },
     "beExt.from.builtin": {
       "kind": "body",
@@ -16924,7 +17191,8 @@
     "beExt.builtin.ccBus": {
       "kind": "body",
       "zh": "cc-bus 让几个 Claude Code 实例互发消息、接力协作。装上之后，要在那台的 ~/.claude/settings.json 里加两条钩子才能自动收信；cc-monitor 不替你改那份文件。下面每台一行：钩子装了没有，以及要加的内容。",
-      "args": []
+      "args": [],
+      "limited": ["Claude Code", "hook"]
     },
     "beExt.card.builtinBackup": {
       "kind": "body",
@@ -17114,7 +17382,8 @@
     "extPage.hooks.unsupported": {
       "kind": "body",
       "zh": "这台不支持自动收信：cc-bus 要 tmux。",
-      "args": []
+      "args": [],
+      "limited": ["tmux"]
     },
     "rsFilewinTheme.tokens.missing": {
       "kind": "error",
@@ -18019,7 +18288,8 @@
     "rsDataPaths.backend.knownHosts": {
       "kind": "body",
       "zh": "主机钥匙：拨号时认下的各台主机钥匙，开终端时 ssh 按它核对",
-      "args": []
+      "args": [],
+      "limited": ["SSH"]
     },
     "rsDataPaths.backend.launchAccounts": {
       "kind": "body",
@@ -18719,7 +18989,8 @@
     "acct.sw.hotHint": {
       "kind": "body",
       "zh": "热切换  只换计费账号 · 设置 / MCP / 钩子仍为 {name}",
-      "args": ["name"]
+      "args": ["name"],
+      "limited": ["hook"]
     },
     "acct.sw.restartHint": {
       "kind": "body",
@@ -18789,7 +19060,8 @@
     "acct.reason.notInTerminal": {
       "kind": "body",
       "zh": "不在 tmux 里",
-      "args": []
+      "args": [],
+      "limited": ["tmux"]
     },
     "acct.reason.stopFailed": {
       "kind": "body",
@@ -19859,7 +20131,8 @@
     "sessionHead.attach.none": {
       "kind": "error",
       "zh": "在终端里打开失败 · {machine} 无 tmux 会话",
-      "args": ["machine"]
+      "args": ["machine"],
+      "limited": ["tmux"]
     },
     "tabBar.needsKind.approve": {
       "kind": "body",
@@ -20104,12 +20377,14 @@
     "resumeMenu.run.tmux": {
       "kind": "action",
       "zh": "在 tmux 里",
-      "args": []
+      "args": [],
+      "limited": ["tmux"]
     },
     "resumeMenu.run.direct": {
       "kind": "action",
       "zh": "不用 tmux",
-      "args": []
+      "args": [],
+      "limited": ["tmux"]
     },
     "resumeMenu.account.base": {
       "kind": "action",
@@ -20134,7 +20409,8 @@
     "resumeMenu.hint.tmux": {
       "kind": "body",
       "zh": "tmux 里",
-      "args": []
+      "args": [],
+      "limited": ["tmux"]
     },
     "resumeMenu.pick.account": {
       "kind": "body",
@@ -20269,7 +20545,8 @@
     "terminal.tag.tmux": {
       "kind": "body",
       "zh": "tmux 会话 {name}",
-      "args": ["name"]
+      "args": ["name"],
+      "limited": ["tmux"]
     },
     "terminal.tag.windows": {
       "kind": "body",
@@ -20394,7 +20671,8 @@
     "terminal.empty.notOursHint": {
       "kind": "body",
       "zh": "ccm / 别名启动的可用",
-      "args": []
+      "args": [],
+      "limited": ["ccm"]
     },
     "terminal.empty.noSession": {
       "kind": "body",
@@ -20610,7 +20888,8 @@
     "addMachine.tab.ssh": {
       "kind": "control",
       "zh": "从 ~/.ssh/config 选",
-      "args": []
+      "args": [],
+      "limited": ["SSH"]
     },
     "addMachine.tab.manual": {
       "kind": "control",
@@ -20625,7 +20904,8 @@
     "addMachine.ssh.none": {
       "kind": "body",
       "zh": "无 ~/.ssh/config",
-      "args": []
+      "args": [],
+      "limited": ["SSH"]
     },
     "addMachine.ssh.inList": {
       "kind": "body",
@@ -20690,7 +20970,8 @@
     "addMachine.field.keyHelp": {
       "kind": "body",
       "zh": "留空 = ssh 默认",
-      "args": []
+      "args": [],
+      "limited": ["SSH"]
     },
     "addMachine.field.addresses": {
       "kind": "control",
@@ -20840,7 +21121,8 @@
     "machineCard.hostKey.compareTitle": {
       "kind": "title",
       "zh": "主机指纹变更 · {machine}",
-      "args": ["machine"]
+      "args": ["machine"],
+      "limited": ["SSH 主机指纹"]
     },
     "machineCard.hostKey.trust": {
       "kind": "action",
@@ -20905,12 +21187,14 @@
     "machineCard.test.fpChanged": {
       "kind": "body",
       "zh": "主机指纹与记录的不同：{fingerprint}",
-      "args": ["fingerprint"]
+      "args": ["fingerprint"],
+      "limited": ["SSH 主机指纹"]
     },
     "machineCard.test.fpUnpinned": {
       "kind": "body",
       "zh": "主机指纹未记录：{fingerprint}",
-      "args": ["fingerprint"]
+      "args": ["fingerprint"],
+      "limited": ["SSH 主机指纹"]
     },
     "machinePage.meta.version": {
       "kind": "body",
@@ -21180,7 +21464,8 @@
     "machineState.problem.hostKey": {
       "kind": "body",
       "zh": "主机指纹变更 · 未连接",
-      "args": []
+      "args": [],
+      "limited": ["SSH 主机指纹"]
     },
     "machineState.problem.needsUpdate": {
       "kind": "body",
@@ -21255,7 +21540,8 @@
     "addMachine.field.userHelp": {
       "kind": "body",
       "zh": "ssh 登录用户",
-      "args": []
+      "args": [],
+      "limited": ["SSH"]
     },
     "addMachine.field.portHelp": {
       "kind": "body",
@@ -21760,7 +22046,8 @@
     "acctPage.login.inTmux": {
       "kind": "action",
       "zh": "在 tmux 里登录",
-      "args": []
+      "args": [],
+      "limited": ["tmux"]
     },
     "acctPage.login.reopen": {
       "kind": "action",
@@ -22251,17 +22538,20 @@
     "sessionState.killIdle.title": {
       "kind": "title",
       "zh": "结束 tmux 会话 {name}",
-      "args": ["name"]
+      "args": ["name"],
+      "limited": ["tmux"]
     },
     "sessionState.killIdle.action": {
       "kind": "action",
       "zh": "结束 tmux 会话",
-      "args": []
+      "args": [],
+      "limited": ["tmux"]
     },
     "tabSessionActions.kill.cuts": {
       "kind": "body",
       "zh": "{machine} tmux 会话 {name} 里的 Claude · 当前轮次",
-      "args": ["machine", "name"]
+      "args": ["machine", "name"],
+      "limited": ["tmux"]
     },
     "tabSessionActions.kill.keeps": {
       "kind": "body",
@@ -22296,12 +22586,14 @@
     "tabMenu.attach.dupesWhy": {
       "kind": "body",
       "zh": "tmux 会话 ×{n} · 打开「{name}」",
-      "args": ["n", "name"]
+      "args": ["n", "name"],
+      "limited": ["tmux"]
     },
     "tabMenu.inPlace.label": {
       "kind": "action",
       "zh": "在 tmux 会话里恢复",
-      "args": []
+      "args": [],
+      "limited": ["tmux"]
     },
     "tabMenu.close.live": {
       "kind": "body",
@@ -22321,7 +22613,8 @@
     "tabMenu.kill.dupesWhy": {
       "kind": "body",
       "zh": "tmux 会话 ×{n} · 无法确定",
-      "args": ["n"]
+      "args": ["n"],
+      "limited": ["tmux"]
     },
     "tabMenu.unseen.why": {
       "kind": "body",
@@ -22331,7 +22624,8 @@
     "tabMenu.probe.failed": {
       "kind": "error",
       "zh": "tmux 会话未查到",
-      "args": []
+      "args": [],
+      "limited": ["tmux"]
     },
     "sessionState.kill.done": {
       "kind": "body",

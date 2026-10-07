@@ -29,9 +29,8 @@ export interface Term {
   source?: string;
   note?: string;
   ask?: string;
-  /** 限用词计数棘轮：计数正则（不是 `scan`）与文案表里命中它的条数（「计数只许变少」）。 */
+  /** 限用词的认法正则（不是 `scan`）：文案表里命中它的每一条都要在自己的 `limited` 里写明。 */
   tally?: { re: string; flags: string };
-  inTable?: number;
 }
 
 export function loadTerms(path = TERMS_PATH): Term[] {
@@ -71,14 +70,34 @@ export interface Entry {
   zh: string;
   args: string[];
   waive?: Record<string, string>;
+  /** 这一条用到了哪几个限用词（写的人对着 `terms.json` 的 context 看过语境）。 */
+  limited?: string[];
 }
 export type Table = Record<string, Entry>;
 
-/** 限用词在文案表里的命中条数（对 `speech()` 跑：占位符名不算文字）。 */
-export function tallyOf(t: Term, table: Table): number {
-  if (!t.tally) return 0;
-  const rx = new RegExp(t.tally.re, t.tally.flags.replace(/g/g, ""));
-  return Object.values(table).filter((e) => rx.test(speech(e.zh))).length;
+/** 一条文案命中了哪几个限用词（对 `speech()` 跑：占位符名不算文字）。 */
+export function limitedHits(terms: Term[], zh: string): string[] {
+  return terms
+    .filter((t) => t.tier === "限用" && t.tally)
+    .filter((t) => new RegExp(t.tally!.re, t.tally!.flags.replace(/g/g, "")).test(speech(zh)))
+    .map((t) => t.word)
+    .sort();
+}
+
+/** 限用词声明对不上的条目：扫出来的 ≠ 它自己 `limited` 里写的（两向），或写了一个不是限用词的名字。 */
+export function limitedMismatches(terms: Term[], table: Table): string[] {
+  const limited = new Set(terms.filter((t) => t.tier === "限用").map((t) => t.word));
+  const out: string[] = [];
+  for (const [key, e] of Object.entries(table)) {
+    const got = limitedHits(terms, e.zh);
+    const said = [...(e.limited ?? [])].sort();
+    for (const w of said) if (!limited.has(w)) out.push(`${key}：limited 里的「${w}」不是限用词`);
+    const miss = got.filter((w) => !said.includes(w));
+    const extra = said.filter((w) => limited.has(w) && !got.includes(w));
+    if (miss.length) out.push(`${key}：用了限用词 ${miss.join("、")}，limited 里没写`);
+    if (extra.length) out.push(`${key}：limited 写了 ${extra.join("、")}，这句话里其实没有`);
+  }
+  return out;
 }
 
 export function loadTable(path = TABLE_PATH): Table {

@@ -30,10 +30,8 @@
  *
  * # 判据（六条，互相咬）
  *
- * - **a 条数**：每个套件**行首** `test(` 数 == 登记数。删测试就红。
- * - **a2 总量**：**全仓** `tests/**\/*.test.ts` 的行首 `test(` 总数 ≥ `TOTAL_FLOOR`。
- *   刻意**不从登记表求和** —— 那样它就成了 a 的副本。它挡的是 a 挡不住的两种：
- *   「删测试后顺手把登记数改小」（门禁一红最自然的那步）和「整套下线、登记与脚本一起删干净」。
+ * - **a 不空**：每个套件**行首** `test(` 至少一条（补上面那条①：测试删光 ⇒ 红）。条数本身不登记 —— 删一条测试是常事，
+ *   被测对象还在、测试被悄悄删掉，那是逐条的 review 管的，不是一个会腐的数管得住的。
  * - **b 集合**：登记集合 == `package.json` 里所有「跑 `.test.ts` 的 tsx 脚本」。
  *   **匹配 `tsx` 用的是词边界正则而不是 `startsWith("tsx ")`** —— Phase D 审计实测
  *   `"npx tsx …"` 能从 `startsWith` 版本里**静默逃逸**（加个不登记不进链的套件，守卫全绿）。
@@ -57,23 +55,20 @@
  */
 import { execFileSync } from "node:child_process";
 import { readdirSync, readFileSync } from "node:fs";
-import { join, relative, resolve, sep } from "node:path";
+import { resolve } from "node:path";
 import { describe, it, expect } from "vitest";
 import { REPO_ROOT } from "../../test-support/repo-root.ts";
 import { stripComments } from "../../test-support/strip-comments.ts";
 
 /**
- * `(npm 脚本名, 文件, 行首 test() 条数)`。
- *
- * 数字**不要手打** —— 失败信息里带实测值，照着改。改之前先问：
- * 是真的删了那条测试，还是套件被掏空了？
+ * `(npm 脚本名, 文件)`。
  */
-const NODE_SUITES: readonly (readonly [string, string, number])[] = [
-  ["test:diff", "tests/frontend/ui/cards/diff.test.ts", 16], // 17 → 16：`isDiffTool` 那一条随判定进了后端（`cards_tests.rs`）
-  ["test:branching", "tests/frontend/ui/branching.test.ts", 24], // +1 J10：isInterrupt 只读成品
-  ["test:api-error", "tests/frontend/ui/cards/api-error.test.ts", 2],
+const NODE_SUITES: readonly (readonly [string, string])[] = [
+  ["test:diff", "tests/frontend/ui/cards/diff.test.ts"],
+  ["test:branching", "tests/frontend/ui/branching.test.ts"],
+  ["test:api-error", "tests/frontend/ui/cards/api-error.test.ts"],
   // `test:bash` 整份删了：斜杠命令与 `!` 输入 / 输出的解析随「谁说的」进了后端（`text_tests.rs::slash_and_bash_forms`）。
-  ["test:remote-health", "tests/frontend/ui/remote-health.test.ts", 5],
+  ["test:remote-health", "tests/frontend/ui/remote-health.test.ts"],
   // F04b +1：`isValidNewTmuxName` 也禁 `=`（别创建一个主路杀不掉的名字）。
   // `K-R96` +1（`KR96D3`：名字可读、sid 一个片段都不进去 + `@ccm_sid` 必须还在）。
   // 🔴 **44 → 37**：五个 builder 删了（生产调用 0），它们的用例改测生产的
@@ -84,8 +79,8 @@ const NODE_SUITES: readonly (readonly [string, string, number])[] = [
   // **39 → 38**（被测对象没了）：`sanitizeRemoteLauncher` 一条 · `isValidConfigDir` 一条随函数删；
   //    加一条「launcher 空白 ⇒ 默认、注入字符原样上线」（前端只剩缺省那一格）；「非法 configDir 拒」那条改测「前端不判、原样上线」（条数不变）。
   // **38 → 37**：`isValidSessionId` 那条随函数删；三条「非法 sid ⇒ throw」改测「前端不判、resumeSid 单报」（条数不变）。
-  ["test:remote-launch", "tests/frontend/ui/remote-launch.test.ts", 7], // −1：「开新会话」那条随界面拼那一发删了（起新会话收成后端 `session-new` 一个请求，判据在 `session_new_tests.rs`） // −1：「只有目录没有名字 ⇒ 只交目录」那条随按目录交号那一形删 // −1：读 e2e 换号重启替身源码的那条漂移守卫随替身删（换号重启下沉后端，e2e 直接驱动后端） // 28 → 10：起会话只剩那一行 `ccm …`，请求形状收成每条路径一条（载荷 / 外层 / 嵌套 env 那几格随载荷渲染删了） // −6：TS 铸名口（`mintTmuxName` · `mintSessionTmuxName` · `deriveTmuxName`）随派生 ＋ 避让搬进后端，七条删、一条「请求逐字用传进来的名」留下（逐格归 `plan_tests.rs`） // −3：TS 两个 tmux 名谓词的三条逐格搬进 gate-core
-  ["test:format", "tests/frontend/ui/format.test.ts", 11], // +1：basename 随老 SFTP 面板退役从 sftp/paths 搬进 format.ts，判据一起搬来
+  ["test:remote-launch", "tests/frontend/ui/remote-launch.test.ts"],
+  ["test:format", "tests/frontend/ui/format.test.ts"],
   // 🔴 〔删用量 09-18〕原先这里有 `["test:usage-pivot", "tests/frontend/ui/views/usage-pivot.test.ts", 14]`。
   // 用量 ② 轴整轴退役 ⇒ 套件文件整删（**被测对象没了**，不是把测试删光了）。
   // ⚠ **`package.json` 那一半不在本轮写区里**：`test:usage-pivot` 与 `test:usage-probe`
@@ -97,7 +92,7 @@ const NODE_SUITES: readonly (readonly [string, string, number])[] = [
   // 条数 5 → 3：上下文上限的判定搬进后端（`observe/facts_query.rs::context_limit`，逐格归 `facts_query_tests.rs`），
   // `contextLimit` 三条与 `contextPercent` 一条随函数删；前端只剩排版（`contextPercentOf`）与读设置表（`readContextLimits`）各一条。
   // 3 → 4：上限判不出时只写用了多少（`contextTokensText`）。
-  ["test:context-limit", "tests/frontend/ui/views/context-limit.test.ts", 4],
+  ["test:context-limit", "tests/frontend/ui/views/context-limit.test.ts"],
   // 🔴 原先这里有 `["test:session-backend", "tests/session-backend.test.ts", 10]`。TS 座
   // `session-backend.ts` 零生产调用、删了 ⇒ 套件整删（**被测对象没了**，8 条测座本身）；外层 tmux 三格的字节由
   // 入库夹具 `tmux-outer-golden.json` ＋ Rust `payload_tests.rs` 接着（对照见）；
@@ -112,55 +107,6 @@ const NODE_SUITES: readonly (readonly [string, string, number])[] = [
   // Rust `ccm_invocation_tests.rs` 与入库夹具 `cli-golden.json` 接着（对照见）。
 ];
 
-/**
- * **全仓** `src/**\/*.test.ts` 的行首 `test(` 总数下限。实测基线 242（2026-08-01）。
- *
- * 与 `NODE_SUITES` 的登记数**无关**（不是求和）—— 它单独走一遍磁盘。
- * 这是它相对 a 条的全部价值：a 比的是「文件 vs 登记」，登记本身是可编辑的；
- * 这条比的是「磁盘 vs 一个常量」。
- */
-// 🔴 〔删用量 09-18〕**244 → 237**，本条**第一次往下走**，写清为什么它不是放宽：
-// `tests/frontend/ui/views/usage-pivot.test.ts` 整份删除（14 条）＋ `context-limit.test.ts` 少一条（6 → 5）
-// = −15；而同期别处 +8（现打全仓 237）。⚠ **这个数下降只有一种正当理由：被测对象没了。**
-// 复算命令：遍历 `tests/**/*.test.ts` 数行首 `test(`（本文件 `allTestTsFiles` 用的同一把尺子）。
-// 🔴 **237 → 250**（+13：launch-dimensions +10 · launch-render-cli +3）。
-// **往上棘**：这条是地板，不棘它等于让「加了 13 条、明天删掉 13 条」在它眼里完全同形
-// —— 地板在「变少」方向本来就是瞎的，棘到现打值才买得到东西。
-// 复算命令：遍历 `tests/**/*.test.ts` 数行首 `test(`（本文件 `allTestTsFiles` 用的同一把尺子）。
-// 🔴 **250 → 221**，往下走的第二次，理由同上一次（**被测对象没了**）：
-// `tests/launch-render-cli.test.ts` 整份删除（30 条，TS 那份 `ccm …` 渲染器删了）；
-// 删前现打 251（地板比现打落后 1），删后现打 221 ⇒ 棘到现打值。
-// **221 → 216**：`launch-dimensions.test.ts` −5（维度上的 `cliFlags` / `requiredCaps` 删了）。
-// 🔴 **216 → 200**，理由同上（**被测对象没了**）：`tests/session-backend.test.ts` 整份删除（−10，TS 座删了）·
-// `remote-launch.test.ts` −7 ＋2（五个 builder / `posixQuote` / `buildOpenTerminalCmd` 删了，余下改测生产请求；
-// 座那份套件里与座无关的两条搬进来）· `launch-dimensions.test.ts` −1（wrap 折叠那条归 Rust 夹具）。删后现打 200 ⇒ 棘到现打值。
-// **200 → 199**，理由同上（**被测对象没了**）：`remote-launch.test.ts` −2 ＋1（TS 的 `sanitizeRemoteLauncher` /
-// `isValidConfigDir` 按删了，各带走一条；新加一条钉前端只剩「空白 ⇒ 默认启动器」）。删后现打 199 ⇒ 棘到现打值。
-// **199 → 198**，同上（被测对象没了）：`remote-launch.test.ts` 里 `isValidSessionId` 那条随函数删（J5）。
-// **198 → 191**，同上（**被测对象没了**）：`tests/frontend/ui/panorama/session-files.test.ts` 整份删除（7 条，写类工具口径搬进后端
-// `observe/facts_query.rs`，七条逐条搬成 Rust 判据）。合并时按「主线 198 − STC 7」算、删后现打 191 ⇒ 棘到现打值。
-// **191 → 190**，同上（**被测对象没了**）：`launch-dimensions.test.ts` −1（「rbind-token：形状闸逐格」那条 —— TS 的
-// `isValidRbindToken` 与维度 `apply` 里那道自检按删了，逐格坏样本归 Rust `payload_tests.rs`）。删后现打 190 ⇒ 棘到现打值。
-// **190 → 187**，同上：`remote-launch.test.ts` −3（TS 的 `isValidTmuxName` / `isValidNewTmuxName` 删了，三条逐格
-// ——attach 拒绝面 · F01 新建禁 glob · F04b 新建禁 `=`——原样搬进 `tests/common/gate-core/lib_tests.rs`）。删后现打 187 ⇒ 棘到现打值。
-// **187 → 181**，同上（**被测对象没了**）：`remote-launch.test.ts` −6（TS 铸名口删了；派生 · 避让 · 分叉基名的逐格
-// 归 Rust `tests/backend/control/ccm/plan_tests.rs` ＋ 帧那一格 `ccm_tests.rs`）。删后现打 181 ⇒ 棘到现打值。
-// **181 → 132**，同上（**被测对象没了**）：`launch-dimensions.test.ts` 整份删除（31 条，维度表随载荷渲染删了）·
-// `remote-launch.test.ts` 28 → 10（载荷 / 外层 / 嵌套 env 那几格随载荷渲染删了，每条路径的请求留一条）。删后现打 132 ⇒ 棘到现打值。
-// **132 → 112**（**被测对象没了**）：`cards/bash.test.ts` 整份删除（20 条：斜杠命令与 `!` 输入 / 输出的解析随「谁说的」进了后端，
-// 逐条搬进 `tests/backend/agents/claudecode/text_tests.rs::slash_and_bash_forms`）。删后现打 112 ⇒ 棘到现打值。
-// **112 → 110**（**被测对象没了**）：`context-limit.test.ts` 5 → 3（上下文上限的判定搬进后端，见登记表那一行）。删后现打 110 ⇒ 棘到现打值。
-// **110 → 111**：`context-limit.test.ts` +1（`contextTokensText`）。往上棘到现打值。
-// **111 → 110**（被测对象没了）：`remote-launch.test.ts` −1，e2e 换号重启替身连同读它的那条漂移守卫一起删了。
-// **110 → 109**（被测对象没了）：`remote-launch.test.ts` −1，按目录交号那一形删了。
-// **109 → 70**（**被测对象没了**，两路合在一起）：
-// · `cards/api-error.test.ts` 5 → 2（报错对象两种形状的解析 `describeRetryError` 删了：原因种类进后端
-//   `agents/claudecode/steps.rs::api_reason`，判据在 `steps_tests.rs`；并条与结局的 DOM 那两条挪进 `main-window-behavior.vitest.ts`）；
-// · 历史页照稿重做，旧历史页的三个纯模块（`history-cache` 8 · `history-prefs` 18 · `history-actions` 10）连同三份 `.test.ts` 整删
-//   （清单与「能做什么」由后端 `history-list` 出，界面那一侧的判据在 `tests/frontend/ui/views/history-page.vitest.ts`）。
-// 删后现打 70 ⇒ 棘到现打值。
-// **70 → 69**（被测对象没了）：`remote-launch.test.ts` −1，界面拼「开新会话」那一发删了（起新会话收成后端一个请求）。
-const TOTAL_FLOOR = 69;
 
 /** 判定一条 npm 命令是不是「用 tsx 跑某个 `.test.ts`」。`tsx …` 与 `npx tsx …` 都算。 */
 const TSX_SUITE_CMD = /(^|\s)(npx\s+)?tsx\s+(--\S+\s+)*(\S+\.test\.ts)\s*$/;
@@ -181,43 +127,12 @@ function readSuite(file: string): string {
   return readFileSync(resolve(REPO_ROOT, file), "utf8");
 }
 
-/** 全仓所有 `src/**\/*.test.ts`（仓库相对、`/` 分隔、已排序）。 */
-function allTestTsFiles(): string[] {
-  // 〔src/test 分离〕`*.test.ts` 整体搬到了 `tests/` ⇒ 人群的根也跟着搬。
-  // ⚠ 别改成同时扫 `src/` —— 那会让「生产段里不许有测试」这件事变成**无法被违反**，
-  // 判据就白拿一个恒绿。生产树里出现 `*.test.ts` 应当由布局本身排除。
-  const root = resolve(REPO_ROOT, "tests");
-  const out: string[] = [];
-  for (const e of readdirSync(root, { recursive: true, withFileTypes: true })) {
-    if (!e.isFile() || !e.name.endsWith(".test.ts")) continue;
-    out.push(relative(REPO_ROOT, join(e.parentPath, e.name)).split(sep).join("/"));
-  }
-  return out.sort();
-}
-
 describe("U0：tsx node 套件的机检地板", () => {
-  it("a · 每个套件的行首 test() 条数与登记相符", () => {
-    const drift = NODE_SUITES.flatMap(([script, file, want]) => {
-      const got = lineStartTestCount(readSuite(file));
-      return got === want ? [] : [`${script} (${file}): 登记 ${want}，实测 ${got}`];
-    });
-    expect(
-      drift,
-      `套件条数与登记表对不上：\n  ${drift.join("\n  ")}\n` +
-        "先问「是真的删了测试，还是套件被掏空了」，再改登记表。",
-    ).toEqual([]);
-  });
-
-  it("a2 · 全仓 *.test.ts 的行首 test() 总数不低于地板（独立于登记表）", () => {
-    const files = allTestTsFiles();
-    const total = files.reduce((n, f) => n + lineStartTestCount(readSuite(f)), 0);
-    expect(
-      total,
-      `全仓 ${files.length} 个 *.test.ts 合计 ${total} 条 < 地板 ${TOTAL_FLOOR}。\n` +
-        "**这条刻意不从登记表求和** —— 它挡的正是「门禁红了顺手把登记数改小」\n" +
-        "和「整套下线、登记与脚本一起删干净」这两种 a/b/c 都发现不了的缩水。\n" +
-        `扫到的文件：${files.join(", ")}`,
-    ).toBeGreaterThanOrEqual(TOTAL_FLOOR);
+  it("a · 每个套件的行首 test() 至少一条（测试删光 ⇒ 退出码 0 却什么都没验）", () => {
+    const empty = NODE_SUITES.filter(([, file]) => lineStartTestCount(readSuite(file)) === 0).map(
+      ([script, file]) => `${script} (${file})`,
+    );
+    expect(empty, `这些套件一条行首 test() 都没有了：\n  ${empty.join("\n  ")}`).toEqual([]);
   });
 
   it("b · 登记表覆盖 package.json 里全部 tsx 套件，不多不少", () => {

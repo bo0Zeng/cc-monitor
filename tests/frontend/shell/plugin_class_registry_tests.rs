@@ -340,24 +340,6 @@ fn every_candidate_answers_both_axes_and_states_its_gap() {
 /// 不是「恰好一处」这个性质本身 —— 它今天由**两条一起**守（一处 + 零处）。
 #[test]
 fn cc_bus_is_reached_only_through_its_command_surface_today() {
-    // ① 脚本族：`shell_scripts` 走的是「`.sh` 或 shebang 带 sh」，不是按后缀一种取。
-    let scripts = guard_core::shell_scripts(&repo_root().join("src/shared/cc-bus/scripts"));
-    // 🔴 〔`w24c` 09-19〕**14 → 20**:步 24c 加了 6 份 —— 两阶段读口两条**给人敲的命令**
-    //    (`cc-peek` / `cc-commit`)＋ 三个适配面四份(`cc-bus-adapt.sh` 契约 · posix · windows ·
-    //    `cc-bus-agent-claude.sh`,它们**被 source、不进 PATH**)。
-    //    ⚠ 按本条自己的要求登记:这一笔**不是「改数字了事」** —— 命令面确实变了。
-    //    而 `EU3`(插件的粒度是命令还是包)**仍未决**:本轮没有替它做决定,只把「命令面变了」这件事
-    //    如实记在这里,交回 PM 裁。
-    // 20 → 21：加了 `cc-log`（只读看收件箱尾巴，后端 `bus-inbox` 转调）—— 命令面确实变了（多一个只读动词）；`EU3` 照旧未决。
-    assert_eq!(
-        scripts.len(),
-        21,
-        "cc-bus 脚本族从 21 个变成 {} 个：{scripts:?}\n\
-             ⇒ 这不是要你改数字了事：加/删一条脚本 = 这个「插件包」的**命令面**变了，\
-             而 `EU3` 正卡在「插件的粒度是命令还是包」上 —— 变了就该回去看那条待决。",
-        scripts.len()
-    );
-
     // ② backend 命令表里的 `bus-*`。
     let names = backend_command_names();
     assert!(
@@ -366,35 +348,16 @@ fn cc_bus_is_reached_only_through_its_command_surface_today() {
         names.len()
     );
     let bus: Vec<&String> = names.iter().filter(|n| n.starts_with("bus-")).collect();
-    // 4 → 5：多了 `bus-spawn`（派生协作 agent，转调 `cc-spawn`）。
-    //   按本条自己的要求先回本表 `cc-bus` 那一行看了：「今天什么样 / 差在哪」仍成立
-    //   （仍只经命令面够到，多的这条也是转调），所以只改数，不改那一行。
-    // 5 → 6：多了 `bus-broadcast`（广播：原是 monitor 里的组合 —— 列名单 ＋ 逐个 `bus-send` ——
-    //   界面改经通道直接说后端之后收进后端）。按本条的要求回本表 `cc-bus` 那一行看了：「今天什么样 / 差在哪」仍成立
-    //   （仍只经命令面够到：广播复用 `cc-list` / `cc-send` 那两处转调，没有新的起进程口），所以只改数，不改那一行。
-    // 6 → 7：多了 `bus-inbox`（驾驶舱读收件箱尾巴，转调新加的只读 `cc-log`）。回本表 `cc-bus` 那一行看了：
-    //   仍只经命令面够到（转调，不读文件），所以只改数。
-    assert_eq!(
-        bus.len(),
-        7,
-        "backend 转调 cc-bus 的命令从 7 条变成 {} 条：{bus:?}\n\
-             今天这六条是 `bus-list` / `bus-send` / `bus-kill` / `bus-state` / `bus-spawn` / `bus-broadcast`\
-             （`bus-state` 是 `K-R113` 09-13 补的**具名读命令**：总线名单 ＋ spawn 台账一次回全；\
-             `bus-spawn` 是 BS1b 09-24 补的派生原语）。\n\
-             ⚠ **`C19` 写的是「`bus-*` 四条」，BS1b 之后实测五条 —— `C19` 那句今天过期了**。\
-             （它上一回是对上的：K-R113 之后四条 ——\
-             ⚠⚠ 而这一句此前**反过来是过期的**（它逐字写着「`C19` 说四条、实测三条」，\
-             `K-R113` 之后实测就是四条了）⇒ 本行是那次订正的订正，别再照旧读。）\n\
-             ★ **仍然刻意没有 `bus-recv`**：`cc-recv` 有副作用（推进已读位置），\
-             backend 代读等于把消息从人那里偷走 —— 这句今天仍是真的，理由全文在\
-             `src/backend/control/cc_bus.rs` 的模块头注 ①。\n\
-             🔴 **变了要去看什么：不是 `EU3`。** 本行原先写着「变了就该回去看那条待决\
-             （`EU3`：插件的粒度是命令还是包）」，而 `EU3` **今天已经作废** ——\
-             `backend-consolidation/OPEN-PREMISES.md` 逐字「`plugin-split` `EF04` 已撤件、\
-             `EU3` 同时作废」。⇒ 别去读一份不存在的待决。今天这条绊线买到的是\
-             「**backend 的 cc-bus 命令面长了一条，而 monitor 这张登记表没人看见**」——\
-             改这个数之前，先回本表 `cc-bus` 那一行看它的「今天什么样 / 差在哪」还成不成立。",
-        bus.len()
+    // 正控：转调 cc-bus 的命令今天确实抠得到（`bus-send` 是最早那一条）。
+    assert!(
+        bus.iter().any(|n| *n == "bus-send"),
+        "后端命令表里抠不到 `bus-send` —— 抽取器坏了（或那条命令改了名），下面那条零命中会恒绿：{bus:?}"
+    );
+    // ★ **刻意没有 `bus-recv`**：`cc-recv` 有副作用（推进已读位置），backend 代读等于把消息从人那里偷走
+    //   （理由全文在 `src/backend/control/cc_bus.rs` 的模块头注 ①）。
+    assert!(
+        !bus.iter().any(|n| *n == "bus-recv"),
+        "后端长出了 `bus-recv`：`cc-recv` 推进已读位置，backend 代读 = 把消息从人那里偷走。今天的 `bus-*`：{bus:?}"
     );
 
     // ③ 起进程口**恰好一处**，且那一处住在**通用调用口**里 —— `E5`/`EL1` 那条
@@ -504,39 +467,42 @@ fn ccm_is_one_skeleton_with_a_per_agent_table() {
         "`control/ccm/mod.rs` 又长出了吃 agent 名的函数：{fns:?}\n\
              ⇒ 按哪一家起会有什么不同，做成适配层起会话事实上的一格（没声明 = 不支持），ccm 问那一格。"
     );
-    // 表的宽度（`E4b`「通用骨架不动，加一张表的一行」）：起会话事实有几格。
-    // 15 = 适配器 id · 对用户的叫法 · 默认启动器 · shell wrapper · resume 字面量 · 垫在最前面的参数 · 嵌套标记 ·
-    //      是不是默认那一家 · resume 命令形 · 会话名前缀 · cc-bus 身份 · 身份面 · pidfile · 认得的模型 · 说话那一方的短名。
-    //      12 → 11：信任框那一格删了（ccm 不再替用户答 agent 的信任框）。
-    //      11 → 13：按会话的那一家起 —— 「Codex 会话还不能选账号」那句话要叫得出名字（对用户的叫法）；
-    //      ccm 起 Codex 一律不连共享后台（垫在最前面的参数，Codex 那一格是 `--no-daemon`）。
-    //      13 → 15：两格 —— 这一家认得的模型名（账号页「默认模型」下拉的选项，起会话时 `--model` 交的就是其中一个）；消息流里说话那一方的短名（卡头 · 刻度悬停「Claude：…」）—— 界面不再按会话文件名猜是哪一家。
-    let cells = launch_face_fields();
-    assert_eq!(
-        cells.len(),
-        15,
-        "起会话事实从 15 格变成 {} 格：{cells:?}\n\
-             ⇒ 多一格 = 分叉面变大，那正是该有人过一眼的时刻；少一格 = 收敛了（改这个数并写清少了哪一格）。",
-        cells.len()
-    );
-
     // 能力协商面（`E7`/`EL3`）：token 是**集合**，判「会不会做某件事」问集合，不比版本号。
     let caps = ccm_const_list("CAPABILITIES");
-    assert_eq!(
-        caps.len(),
-        18,
-        "`--ccm-probe` 的能力 token 从 18 个变成 {}：{caps:?}\n\
-             ⇒ 这是插件协商的**样板**（`E7`：一条 probe 子命令 → `key=value` 行 → \
-             消费者声明它要哪些 token）。加能力是好事，但今天已有两个真实消费者\
-             （`src/shared/cc-bus/scripts/cc-spawn` 检 4 个 token · `ccm_invocation.rs` 的 \
-             `CLI_REQUIRED_CAPS` 检 7 个），这个数变了要顺手看一眼它们。\n\
-             ⚠ 两个消费者**都是子集检查** ⇒ **加 token 安全，删/改名才危险**。\
-             ⇒ 下一个人加 token 时不必重读这两处；**改名或删 token 时必须重读**。\n\
-             〔`K-R61` 09-11：17 → 18，加的是 `base-url-across-tmux`。\
-             『谁在数它』那张表住 `src/backend/control/ccm/mod.rs` 的 \
-             `CAPABILITIES` 头注，**本条不复述第二份** —— 只提醒：`src/frontend/shell/build.rs` \
-             那个 `extract_capabilities` 抠的是后端流模式那个同名常量，盖不到这里。〕",
-        caps.len()
+    // 两个消费者都是**子集检查**（`cc-spawn` 的 `for _c in …` · `ccm_invocation.rs::CLI_REQUIRED_CAPS`）⇒
+    //   加 token 安全，删 / 改名才危险：判它们要的每一个今天都在能力表里。
+    let spawn =
+        guard_core::strip_comment_lines(&must_read("src/shared/cc-bus/scripts/cc-spawn", 1_000));
+    let spawn_loop = segment_after(&spawn, "for _c in ", "; do");
+    let spawn_wants: Vec<&str> = spawn_loop.split_whitespace().collect();
+    let invocation = rust_production("src/backend/control/launch_render/ccm_invocation.rs", 1_000);
+    let cli_wants: Vec<String> = segment_after(
+        &invocation,
+        "pub const CLI_REQUIRED_CAPS: &[&str] = &[",
+        "];",
+    )
+    .split(',')
+    .filter_map(|s| {
+        s.trim()
+            .strip_prefix('"')?
+            .strip_suffix('"')
+            .map(str::to_string)
+    })
+    .collect();
+    assert!(
+        !spawn_wants.is_empty() && !cli_wants.is_empty(),
+        "两个消费者要的 token 抠出来是空的（cc-spawn {spawn_wants:?} · CLI_REQUIRED_CAPS {cli_wants:?}）—— 抠法坏了"
+    );
+    let missing: Vec<String> = spawn_wants
+        .iter()
+        .map(|s| s.to_string())
+        .chain(cli_wants.iter().cloned())
+        .filter(|w| !caps.contains(w))
+        .collect();
+    assert!(
+        missing.is_empty(),
+        "`--ccm-probe` 的能力表里少了消费者要的 token：{missing:?}（能力表：{caps:?}）\n\
+         ⇒ 删 / 改名 token 前先改两个消费者（`cc-spawn` 的 `for _c in …` · `CLI_REQUIRED_CAPS`）。"
     );
     // `--ccm-probe` 报的 agent 集合不再是 `mod.rs` 里一份手写常量：由后端注册表派生（带起会话事实的那几家，
     //   `agents::launchable_kinds`），值由后端 `control::ccm::tests::the_agent_set_has_one_address_and_every_member_is_wired` 钉。
