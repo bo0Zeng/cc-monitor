@@ -55,12 +55,16 @@ fn an_oversized_file_says_so_with_both_numbers_and_never_asks_the_remote() {
     // ⇒ 现在判的是「多了 1 字节」这个**永不退化**的数，
     //   它直接答「我该把文件弄小多少」。
     assert!(
-        why.contains("多了 1 字节"),
+        copy_core::copy_matches_with("rsFilewinEditor.notEditable.tooBig", &[("over", "1")], &why),
         "那句话没说超出多少 —— 在边界附近两个 `human_size` 会一模一样：{why}"
     );
     // 精确字节数也要在（`human_size` 在边界上分不开两个值）。
     assert!(
-        why.contains(&format!("{} 字节", crate::editor::MAX_EDIT_BYTES + 1)),
+        copy_core::copy_matches_with(
+            "rsFilewinEditor.notEditable.tooBig",
+            &[("bytes", &(crate::editor::MAX_EDIT_BYTES + 1).to_string())],
+            &why
+        ),
         "那句话里没有这份文件的精确字节数：{why}"
     );
     // 而「拒编而非截断」这条契约要说出来（`editor::MAX_EDIT_BYTES` 头注逐字；第九刀时那句话住池子那份同名常量上）。
@@ -132,7 +136,10 @@ fn the_not_text_notice_covers_what_is_left_after_the_size_check() {
     //    写进来的话，用户会对着一个 1 KB 的二进制文件读到「超过编辑上限」。
     assert!(!n.contains("上限"), "把「太大」也塞进这句话了：{n}");
     // 竞态那一形要提 —— 否则用户会对着一个刚变大的文件反复点。
-    assert!(n.contains("刷新"), "没给出下一步：{n}");
+    assert!(
+        copy_core::copy_matches("rsFilewinEditor.notText.notice", &n),
+        "没给出下一步：{n}"
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -544,14 +551,15 @@ async fn the_worst_case_full_cap_file_saves_back_through_the_staging_area() {
         panic!("超上限落成了 stale")
     };
     assert_eq!(wired.cmds().len(), before, "超上限的那一份还是上了线");
-    for want in [
-        (MAX_EDIT_BYTES + 1).to_string(),
-        MAX_EDIT_BYTES.to_string(),
-        "多了 1 字节".to_string(),
-        "没有发出去".to_string(),
-    ] {
-        assert!(why.contains(&want), "那句话没说出「{want}」：{why}");
-    }
+    let want = copy_core::copy_text(
+        "rsFilewinEditor.overCap.notice",
+        &[
+            ("len", &(MAX_EDIT_BYTES + 1).to_string()),
+            ("limit", &MAX_EDIT_BYTES.to_string()),
+            ("over", "1"),
+        ],
+    );
+    assert!(why.contains(&want), "那句话不是「{want}」：{why}");
 }
 
 /// 🔴 **送到一半断了 ⇒ 不发提交，那句话说第几段、共几段、原话**；编辑框的字一个不丢。
@@ -578,7 +586,11 @@ async fn a_chunk_that_fails_stops_the_save_before_the_commit() {
     );
     assert!(committed.lock().unwrap().is_none());
     assert!(
-        why.contains(&format!("第 3 段（共 {total} 段）")) && why.contains("盘满了"),
+        copy_core::copy_matches_with(
+            "rsFilewinEditor.chunkFailed.notice",
+            &[("seq", "3"), ("total", &total.to_string())],
+            &why
+        ) && why.contains("盘满了"),
         "那句话没说清断在哪、为什么：{why}"
     );
     assert_eq!(p.text, text, "存失败清掉了编辑框");
@@ -646,7 +658,10 @@ fn a_read_without_a_digest_does_not_open_an_editor_that_could_never_save() {
     );
     let e =
         opened_from_reply(Ok(serde_json::json!({ "text": "hi\n" }))).expect_err("没摘要竟然打开了");
-    assert!(e.contains("旧"), "那句话没说是后端太旧：{e}");
+    assert!(
+        e.contains(copy_core::copy_static!("rsFilewinEditor.reply.noDigest")),
+        "那句话没说是后端太旧：{e}"
+    );
     assert!(opened_from_reply(Ok(serde_json::json!({ "text": "hi\n", "sha256": "abc" }))).is_err());
 }
 

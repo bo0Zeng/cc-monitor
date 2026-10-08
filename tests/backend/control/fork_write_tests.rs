@@ -301,7 +301,11 @@ fn the_fork_ids_are_whitelisted_at_the_frame_face() {
         ] {
             let (code, msg) = answer_wire_at(&root, &args, &no_launch).expect_err("该拒");
             assert_eq!(code, "bad_args", "{args} ⇒ {msg}");
-            assert!(msg.contains("非法"), "{args} ⇒ {msg}");
+            assert!(
+                copy_core::copy_matches("rsRemoteBranch.forkId.badChar", &msg)
+                    || copy_core::copy_matches("rsRemoteBranch.forkId.badLength", &msg),
+                "{args} ⇒ {msg}"
+            );
         }
     }
     assert_eq!(std::fs::read(&src).unwrap(), before, "拒了却动了源文件");

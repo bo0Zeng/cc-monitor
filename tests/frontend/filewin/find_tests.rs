@@ -779,15 +779,21 @@ async fn the_status_line_shows_the_numbers_the_backend_reports() {
         assert_eq!(o.index_age_secs, age, "解出来的年龄不是后端报的那个数");
         let frags = vec![
             age_line(&o),
-            format!("{unreadable} 个目录无权限"),
-            format!("其他盘 {mounts} 个目录未扫"),
+            copy_core::copy_text(
+                "rsFilewinFind.status.holes",
+                &[("n", &unreadable.to_string())],
+            ),
+            copy_core::copy_text(
+                "rsFilewinFind.status.skippedMounts",
+                &[("n", &mounts.to_string())],
+            ),
             scope_line(&o),
         ];
         for f in &frags {
             assert!(painted.contains(f), "状态行上没有 {f:?}：{painted:?}");
         }
         // 异源那一侧：本文件自己拼的措辞 ＋ 后端那个数。
-        let mine = format!("文件清单 · {said} 前");
+        let mine = copy_core::copy_text("rsFilewinFind.status.age", &[("age", &said)]);
         assert!(painted.contains(&mine), "帧上没有 {mine:?}：{painted:?}");
         lines.push((frags, painted));
     }

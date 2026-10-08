@@ -18,6 +18,8 @@
 set -o pipefail
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
+# ccm 说的那几句按文案键取（无参的整句），本文件不钉原文。
+zh_static() { python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["entries"][sys.argv[2]]["zh"])' "$REPO/src/shared/copy/table.json" "$1"; }
 CCSPAWN="$REPO/src/shared/cc-bus/scripts/cc-spawn"
 # shellcheck source=tests/e2e/tmux-shim.sh
 . "$REPO/tests/e2e/tmux-shim.sh" --names-only
@@ -287,7 +289,7 @@ CC_BUS_SCRIPTS=/nonexistent timeout 30 "$CCM" -- \
   --launcher "$BIN/FAKEAGENT" > "$WORK/out-nobus.txt" 2>&1 || true
 chk "找不到 cc-bus 时会话照样建出来" \
   "$(tmux has-session -t '=nobus' 2>/dev/null && echo YES || echo NO)" "YES"
-chk "且没有一声不吭" "$(grep -c '没有登记' "$WORK/out-nobus.txt")" "1"
+chk "且没有一声不吭" "$(grep -cF "$(zh_static bePlan.bus.noScripts)" "$WORK/out-nobus.txt")" "1"
 chk "没登记就真的没写进地址簿" \
   "$(cut -f1 "$CC_BUS_HOME/agents.tsv" | grep -cx 'nobus' || true)" "0"
 
@@ -387,7 +389,7 @@ chk "台账脚本不可执行 ⇒ 明说那一句（bePlan.bus.noSpawnRecord）"
 chmod -x "$TB/cc-register"
 chk "连定位用的 cc-register 也不可执行 ⇒ 明说「没有登记」" \
   "$(CC_BUS_SCRIPTS="$TB" "$CCM" -- --tmux-base=q --detach --bus-register \
-      --ccm-print --cwd /tmp 2>&1 >/dev/null | grep -c '没有登记')" "1"
+      --ccm-print --cwd /tmp 2>&1 >/dev/null | grep -cF "$(zh_static bePlan.bus.noScripts)")" "1"
 rm -rf "$TB"
 # 超长任务：**干净失败**（rc≠0、零会话、零台账），不是假成功。
 # ⚠ 上界是内核的 `MAX_ARG_STRLEN` = 128 KiB（131072）——实测 131000 仍 OK、131072 报 E2BIG。

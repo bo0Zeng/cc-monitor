@@ -236,7 +236,10 @@ fn a_symlinked_skills_dir_is_refused() {
     let outside = tmpdir("outside");
     std::os::unix::fs::symlink(&outside.0, t.0.join("skills")).unwrap();
     let (_, err) = install(&t.0).expect_err("软链出去必须拒收");
-    assert!(err.contains("拒绝"), "{err}");
+    assert!(
+        copy_core::copy_matches("beCcBusInstall.fence.escapes", &err),
+        "{err}"
+    );
     assert!(
         !outside.0.join("cc-bus").exists(),
         "已经往围栏外写了 —— 那正是这道围栏要挡的"

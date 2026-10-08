@@ -455,7 +455,10 @@ fn menu_labels_are_the_row_buttons_labels() {
         Delete.label(3),
         copy_core::copy_text("rsFilewinSelect.label.deleteMany", &[("n", "3")])
     );
-    assert_eq!(Chmod.label(3), "改权限 · 3 项");
+    assert_eq!(
+        Chmod.label(3),
+        copy_core::copy_text("rsFilewinSelect.label.chmodMany", &[("n", "3")])
+    );
     assert_eq!(Open.label(1), OPEN_LABEL.as_str());
 }
 
