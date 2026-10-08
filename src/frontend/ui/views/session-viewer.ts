@@ -64,18 +64,9 @@ import { copyText } from "../copy-table";
  * 两条路的卡由**同一个** `renderStreamRecord` 建，`data-uuid` 由**唯一一份**
  * `markCardUuid` 写。照抄一份到 `tabs.ts` 的代价是从此两处要一起改。
  *
- * 🔴 **它为什么还住在这个文件里，而不是一个中立的 `views/card-jump.ts`** ——
- * 这是一处**登记在案的将就，不是设计**：本仓有一条 Rust 侧判据
- * （`src/frontend/shell/src/polling_registry.rs::every_scheduling_call_site_is_classified`）
- * 按「文件 × API × 处数」精确对账**全部** `requestAnimationFrame` / `setTimeout` 调用点。
- * 把下面这 2 处 rAF + 1 处 setTimeout 搬进新文件，就必须同时改那张表 ——
- * 而 `src/frontend/shell/` 不在本轮写区。**实测过**：搬进 `views/card-jump.ts` 后全量门禁
- * cargo 那格当场红（逐字读数在件 `§5.6`）。
- * ⇒ 照 `brief` 第 2 / 17 条：不越界、不糊过去，**抬上来请裁**。
- *
- * ⚠ 代价是 `tabs.ts` 要 `import` 本文件（实时窗口 import 历史查看器，方向是别扭的）。
- * 它**不成环**（本文件不 import `tabs.ts`），打包面也没变（两者本来都在包里），
- * 但这是一句「今天这样是因为写区，不是因为对」——**别把它读成本仓的惯例**。
+ * ⚠ 它住在这个文件里是历史原因（当年调度点分类账是一张按「文件 × API × 处数」对账的中心表，搬家就要改那张表）；
+ * 今天分类住在调用点旁边（`// 调度：…`），搬进一个中立的 `views/card-jump.ts` 不再牵动登记。
+ * 代价仍在：`tabs.ts` 要 `import` 本文件（实时窗口 import 历史查看器，方向是别扭的）；它不成环（本文件不 import `tabs.ts`）。
  */
 export function revealCard(container: HTMLElement, uuid: string): HTMLElement | null {
   // CSS.escape 防 uuid 里有特殊字符破坏选择器
