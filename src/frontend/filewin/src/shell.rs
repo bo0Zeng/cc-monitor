@@ -522,8 +522,8 @@ pub struct FileWindow {
     ///
     /// # 为什么这一格非有不可
     ///
-    /// 那条命令在 **POSIX 上恒定开不了窗**（壳回「不开窗」那个结局，对这一跳回拒绝 `no_window` ＋
-    /// `platform/terminal.rs::POSIX_NO_TERMINAL_WINDOW` 那一句），在 Windows 上也可能失败
+    /// 那条命令在 **POSIX 上恒定开不了窗**（壳回「不开窗」那个结局 `TerminalOpen::NoWindow`，对这一跳回拒绝
+    /// `no_window` ＋ `rsLaunch.posix.noTerminalWindow` 那一句），在 Windows 上也可能失败
     /// （那台远端的配置没存全）。一次失败与一次成功在屏幕上长得一样
     /// ⇒ 用户点了按钮、什么都没发生、也没有一句话 —— 那正是本仓的头号病形。
     /// ⇒ 结果落在这一格，界面上画出来，判据读同一个值。
@@ -1018,7 +1018,7 @@ impl FileWindow {
     ///
     /// # ⚠ 它在 Linux 上**恒定「失败」，而那不是缺陷**
     ///
-    /// POSIX 上壳回「不开窗」那个结局（这一跳收到拒绝 `no_window` ＋ `POSIX_NO_TERMINAL_WINDOW` 那一句）
+    /// POSIX 上壳回「不开窗」那个结局（这一跳收到拒绝 `no_window` ＋ `rsLaunch.posix.noTerminalWindow` 那一句）
     /// —— 那是一条**既定设计**，不是没做完。
     /// ⇒ 本窗口把那句话摆在工具栏下面（[`Self::term_notice`]），**不假装成功**。
     ///

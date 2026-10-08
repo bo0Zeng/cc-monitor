@@ -241,14 +241,10 @@ fn no_prose_claims_the_session_container_is_always_tmux() {
 
 #[test]
 fn the_posix_message_states_a_decision_not_a_missing_feature() {
-    let m: &str = &POSIX_NO_TERMINAL_WINDOW;
+    let m = &*copy_core::copy_text("rsLaunch.posix.noTerminalWindow", &[]);
     assert!(
         !m.contains("v1") && !m.contains("v2"),
         "文案里带版本号会被读成「以后会支持」：{m}"
-    );
-    assert!(
-        m.contains(copy_core::copy_static!("rsLaunch.posix.noTerminalWindow")),
-        "没说清这是刻意的：{m}"
     );
     assert!(
         m.contains("tmux"),

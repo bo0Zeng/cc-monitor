@@ -781,7 +781,7 @@ describe("〔GAP1〕每台一行的「日志」：问的是那一台、摆的是
     const box = row.querySelector<HTMLElement>("[data-backend-log]")!;
     expect(box.dataset.backendLog).toBe("甲机");
     expect(box.querySelector(".settings-hint")?.textContent).toBe(
-      `/h/.cc-monitor/logs/backend/stderr.log（2.0 KB） ${copyText("backend.log.truncated")}`,
+      `${copyText("backend.log.head", { path: "/h/.cc-monitor/logs/backend/stderr.log", size: "2.0 KB" })} ${copyText("backend.log.truncated")}`,
     );
     expect(box.querySelector("pre")?.textContent).toBe("WARN 打标失败\n");
     btn.click();

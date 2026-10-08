@@ -435,14 +435,6 @@ pub fn launch_powershell_window(ps_command: &str, local_cwd: Option<&str>) -> Re
     Ok(())
 }
 
-/// 非 Windows 上「不开终端窗口」的那一句（文件窗口那一跳把它当拒绝原话画出来）。
-///
-/// 「这是既定设计、不是失败」由 [`TerminalOpen::NoWindow`] 这个**结局**说，谁都不按这句话里的字判 ⇒ 措辞随便改。
-/// 生产段那一跳（`chan/host.rs`）直接按键取文；这里只剩判据要的那一份。
-#[cfg(test)]
-pub static POSIX_NO_TERMINAL_WINDOW: std::sync::LazyLock<String> =
-    std::sync::LazyLock::new(|| copy_text("rsLaunch.posix.noTerminalWindow", &[]));
-
 /// Windows 本机 ssh.exe 可用性预检：缺 OpenSSH 客户端时 spawn 出的窗口只会报
 /// "not recognized"（spawn 本身成功→前端误报成功）——预检失败直接 Err 走剪贴板回退。
 #[cfg(windows)]
@@ -469,7 +461,7 @@ pub(crate) fn ssh_client_available() -> bool {
 }
 
 /// 开终端那一问要不要先说「本机缺 OpenSSH 客户端」：只有 Windows 这一问有意义（它的窗口里跑的是 `ssh.exe`）；别处恒 `false`
-/// （POSIX 上开窗只走 [`open_window`]，没有终端出口时回 [`POSIX_NO_TERMINAL_WINDOW`]）。
+/// （POSIX 上开窗只走 [`open_window`]，没有终端出口时回 [`TerminalOpen::NoWindow`]）。
 pub fn ssh_client_missing() -> bool {
     #[cfg(windows)]
     {
