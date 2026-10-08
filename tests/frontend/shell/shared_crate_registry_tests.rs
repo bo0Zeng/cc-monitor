@@ -1155,99 +1155,291 @@ fn a_skipped_windows_check_cannot_look_like_a_full_pass() {
     );
 }
 
-/// 一份 workflow（剔掉整行注释）切成步骤：每一步从 `      - ` 起，到下一步或缩进退回步骤那一层之外为止。
-fn workflow_steps(rel: &str) -> (String, Vec<String>) {
+/// workflow 里的一个顶层 job：键名、`steps:` 之前那几行（`timeout-minutes` · `env` 住那里）、切好的步骤。
+struct WorkflowJob {
+    id: String,
+    head: String,
+    steps: Vec<String>,
+}
+
+/// 一份 workflow（剔掉整行注释）按顶层 job 切开，每个 job 再切成步骤：
+/// job 键是 `jobs:` 底下「两个空格 + 名字 + 冒号」；每一步从 `      - ` 起，到下一步或缩进退回步骤那一层之外为止。
+fn workflow_jobs(rel: &str) -> (String, Vec<WorkflowJob>) {
     let raw = fs::read_to_string(crate::guard_support::repo_root().join(rel))
         .unwrap_or_else(|e| panic!("{rel} 读不到：{e}"));
     let live = guard_core::strip_hash_comment_lines(&raw);
-    let mut steps: Vec<String> = Vec::new();
+    let mut jobs: Vec<WorkflowJob> = Vec::new();
+    let mut in_jobs = false;
+    let mut in_steps = false;
     let mut cur: Option<Vec<&str>> = None;
+    let flush = |cur: &mut Option<Vec<&str>>, jobs: &mut Vec<WorkflowJob>| {
+        if let (Some(s), Some(j)) = (cur.take(), jobs.last_mut()) {
+            j.steps.push(s.join("\n"));
+        }
+    };
     for line in live.lines() {
         let line = line.trim_end();
         let indent = line.len() - line.trim_start().len();
-        if line.starts_with("      - ") {
-            if let Some(s) = cur.take() {
-                steps.push(s.join("\n"));
-            }
+        if line.is_empty() {
+            continue;
+        }
+        if indent == 0 {
+            flush(&mut cur, &mut jobs);
+            in_jobs = line == "jobs:";
+            continue;
+        }
+        if !in_jobs {
+            continue;
+        }
+        if indent == 2 && line.ends_with(':') {
+            flush(&mut cur, &mut jobs);
+            jobs.push(WorkflowJob {
+                id: line.trim().trim_end_matches(':').to_string(),
+                head: String::new(),
+                steps: Vec::new(),
+            });
+            in_steps = false;
+            continue;
+        }
+        let Some(job) = jobs.last_mut() else { continue };
+        if line == "    steps:" {
+            in_steps = true;
+            continue;
+        }
+        if !in_steps {
+            job.head.push_str(line);
+            job.head.push('\n');
+        } else if line.starts_with("      - ") {
+            flush(&mut cur, &mut jobs);
             cur = Some(vec![line]);
-        } else if !line.is_empty() && indent < 8 {
-            if let Some(s) = cur.take() {
-                steps.push(s.join("\n"));
-            }
+        } else if indent < 8 {
+            flush(&mut cur, &mut jobs);
         } else if let Some(s) = cur.as_mut() {
             s.push(line);
         }
     }
-    if let Some(s) = cur.take() {
-        steps.push(s.join("\n"));
-    }
-    (live, steps)
+    flush(&mut cur, &mut jobs);
+    (live, jobs)
 }
 
-/// CI 上装 apt 包卡住要几分钟就失败、自己重来（10-07 两回：runner 上 apt 挂住，整个 job 等满 35 分钟被取消）：
-/// 两份 workflow 里不直接写 `apt-get`，装包一律经 `tests/scripts/apt-install.sh`（重试的写法只这一处），
-/// 调它的每一步自带 `timeout-minutes`；那份脚本里每条 `apt-get` 都套着 `timeout`、带 `Acquire::Retries=3`、最多 3 趟。
+/// 一段 YAML 里 `<缩进><键>: <数>` 那一行的数（行尾注释不算）。
+fn yaml_minutes(block: &str, indent_key: &str) -> Option<u64> {
+    block.lines().find_map(|l| {
+        l.strip_prefix(indent_key)?
+            .split('#')
+            .next()?
+            .trim()
+            .parse()
+            .ok()
+    })
+}
+
+const APT_HELPER: &str = "tests/scripts/apt-install.sh";
+
+/// 一步里调 apt-install 时脚本名后面那串参数（算缓存键那一步去掉 `--cache-key`）；不调它就是 `None`。
+fn apt_helper_args(step: &str) -> Option<(bool, String)> {
+    let at = step.find(APT_HELPER)?;
+    let rest = step[at + APT_HELPER.len()..]
+        .lines()
+        .next()
+        .unwrap_or("")
+        .trim();
+    let mut toks = rest.split_whitespace().peekable();
+    let key_mode = toks.peek() == Some(&"--cache-key");
+    if key_mode {
+        toks.next();
+    }
+    let args: Vec<&str> = toks.take_while(|t| !t.starts_with('>')).collect();
+    Some((key_mode, args.join(" ")))
+}
+
+/// apt-install 那份脚本（剔整行注释）与它的总时限（秒，`budget=` 那一行）。
+fn apt_helper_code_and_budget() -> (String, u64) {
+    let script = fs::read_to_string(crate::guard_support::repo_root().join(APT_HELPER))
+        .unwrap_or_else(|e| panic!("{APT_HELPER} 读不到：{e}"));
+    let code = guard_core::strip_hash_comment_lines(&script);
+    let budget = code
+        .lines()
+        .find_map(|l| l.trim().strip_prefix("budget=")?.parse().ok())
+        .unwrap_or_else(|| panic!("{APT_HELPER} 里找不到 `budget=<秒>`（一次调用的总时限）"));
+    (code, budget)
+}
+
+/// CI 上装 apt 包：停住几十秒就换连接、很慢但在动的也给够时间装完、一次调用有总时限（10-07 两回 runner 上 apt 挂住，
+/// 整个 job 等满 35 分钟被取消；10-08 镜像约 125 KB/s，25.5 MB 的包被每趟 200 秒的闸杀了三回）：
+/// 两份 workflow 里不直接写 `apt-get`，装包一律经 `tests/scripts/apt-install.sh`（重试与超时的写法只这一处）；
+/// 调它装包的每一步自带 `timeout-minutes`，比脚本的总时限长、比所在 job 的时限短；
+/// 那份脚本里每条 `apt-get` 都套着 `timeout`、带 20 秒连接 / 读超时与 `Acquire::Retries=3`、最多 3 趟、
+/// install 那一趟的闸是总时限里还剩的时间（不是固定的一小段）。
 #[test]
 fn every_apt_install_in_ci_sits_in_a_step_with_its_own_timeout() {
-    const HELPER: &str = "tests/scripts/apt-install.sh";
+    let (code, budget) = apt_helper_code_and_budget();
     let mut total = 0;
     for rel in [".github/workflows/ci.yml", ".github/workflows/release.yml"] {
-        let (live, steps) = workflow_steps(rel);
-        let raw_apt: Vec<&String> = steps.iter().filter(|s| s.contains("apt-get")).collect();
+        let (live, jobs) = workflow_jobs(rel);
+        let all_steps: Vec<&String> = jobs.iter().flat_map(|j| j.steps.iter()).collect();
+        let raw_apt: Vec<&&String> = all_steps.iter().filter(|s| s.contains("apt-get")).collect();
         assert!(
             raw_apt.is_empty(),
-            "{rel} 里有步骤直接写 apt-get（该经 {HELPER}，重试与超时只写那一处）：\n{}",
+            "{rel} 里有步骤直接写 apt-get（该经 {APT_HELPER}，重试与超时只写那一处）：\n{}",
             raw_apt
                 .iter()
                 .map(|s| s.as_str())
                 .collect::<Vec<_>>()
                 .join("\n---\n")
         );
-        let calls: Vec<&String> = steps.iter().filter(|s| s.contains(HELPER)).collect();
+        let calls = all_steps.iter().filter(|s| s.contains(APT_HELPER)).count();
         assert!(
-            !calls.is_empty(),
-            "{rel} 里一步装 apt 包的都没切到（切步骤坏了？）"
+            calls > 0,
+            "{rel} 里一步调 {APT_HELPER} 的都没切到（切步骤坏了？）"
         );
         assert_eq!(
-            calls.len(),
-            live.matches(HELPER).count(),
-            "{rel}：调 {HELPER} 的次数与切出来的步骤数对不上（一步调两次，或切步骤漏了）"
+            calls,
+            live.matches(APT_HELPER).count(),
+            "{rel}：调 {APT_HELPER} 的次数与切出来的步骤数对不上（一步调两次，或切步骤漏了）"
         );
-        for s in &calls {
-            assert!(
-                s.lines().any(|l| l.starts_with("        timeout-minutes:")),
-                "{rel} 里这一步装 apt 包却没有自己的 timeout-minutes（卡住会等满整个 job）：\n{s}"
-            );
+        for job in &jobs {
+            let job_limit = yaml_minutes(&job.head, "    timeout-minutes:");
+            for s in &job.steps {
+                let Some((false, _)) = apt_helper_args(s) else {
+                    continue;
+                };
+                total += 1;
+                let mins = yaml_minutes(s, "        timeout-minutes:").unwrap_or_else(|| {
+                    panic!("{rel} · {} 里这一步装 apt 包却没有自己的 timeout-minutes（卡住会等满整个 job）：\n{s}", job.id)
+                });
+                assert!(
+                    mins * 60 > budget + 30,
+                    "{rel} · {}：装 apt 包那一步 timeout-minutes: {mins} 不比脚本总时限 {budget} 秒长\n\
+                     （步骤的闸先落下，脚本来不及自己收尾报「几趟都没装成」）",
+                    job.id
+                );
+                if let Some(limit) = job_limit {
+                    assert!(
+                        mins < limit,
+                        "{rel} · {}：装 apt 包那一步 timeout-minutes: {mins} 不比 job 的 {limit} 短",
+                        job.id
+                    );
+                }
+            }
         }
-        total += calls.len();
     }
     assert!(
-        total >= 5,
+        total >= 4,
         "两份 workflow 里装 apt 包的步骤只切到 {total} 步"
     );
 
-    let script = fs::read_to_string(crate::guard_support::repo_root().join(HELPER))
-        .unwrap_or_else(|e| panic!("{HELPER} 读不到：{e}"));
-    let code = guard_core::strip_hash_comment_lines(&script);
     let apt: Vec<&str> = code.lines().filter(|l| l.contains("apt-get")).collect();
     assert!(
         apt.len() >= 2,
-        "{HELPER} 里 update 与 install 至少两条 apt-get"
+        "{APT_HELPER} 里 update 与 install 至少两条 apt-get"
     );
     for l in &apt {
         let at = l.find("apt-get").expect("刚筛过");
         assert!(
             l[..at].contains("timeout "),
-            "{HELPER} 里这条 apt-get 没套 timeout：{l}"
+            "{APT_HELPER} 里这条 apt-get 没套 timeout：{l}"
         );
     }
+    let install: Vec<&&str> = apt
+        .iter()
+        .filter(|l| guard_core::contains_word(l, "install -y"))
+        .collect();
+    assert_eq!(
+        install.len(),
+        1,
+        "{APT_HELPER} 里应恰有一条 apt-get install：{install:?}"
+    );
+    assert!(
+        install[0].contains("timeout -k 10 \"$left\""),
+        "{APT_HELPER} 的 install 那一趟的闸该是总时限里还剩的秒数（`timeout -k 10 \"$left\"`），\n\
+         不是固定的一小段 —— 10-08 镜像约 125 KB/s，固定 200 秒的闸把 25.5 MB 的包连杀三趟：{}",
+        install[0]
+    );
     assert!(
         code.contains("Acquire::Retries=3"),
-        "{HELPER} 没给 apt 带 Acquire::Retries=3"
+        "{APT_HELPER} 没给 apt 带 Acquire::Retries=3"
     );
     assert!(
-        code.contains("Acquire::http::Timeout=") && code.contains("Acquire::https::Timeout="),
-        "{HELPER} 没给 apt 带短的连接超时（单个包停住会一直等，主线那趟 CI 一个 32 kB 的包停了 625 秒）"
+        guard_core::contains_word(&code, "Acquire::http::Timeout=20")
+            && guard_core::contains_word(&code, "Acquire::https::Timeout=20"),
+        "{APT_HELPER} 没给 apt 带 20 秒的连接 / 读超时（单个包停住会一直等，主线那趟 CI 一个 32 kB 的包停了 625 秒）"
     );
-    assert!(code.contains("tries=3"), "{HELPER} 的重试趟数不是 3");
+    assert!(code.contains("tries=3"), "{APT_HELPER} 的重试趟数不是 3");
+    assert!(
+        guard_core::contains_word(&code, "Dir::Cache::Archives="),
+        "{APT_HELPER} 没把 .deb 下载目录改到当前用户写得动的地方（缓存接不住 /var/cache/apt/archives）"
+    );
+}
+
+/// 每个调 apt-install 装包的 job，装之前都先用官方 `actions/cache` 把上回下好的 .deb 放回来（镜像慢时命中就不再下载）：
+/// 前面有一步 `apt-install.sh --cache-key <同一串包>` 算键（带 `id:`），再一步 `actions/cache@v4`，
+/// `path` / `key` / `restore-keys` 都取那一步的输出；算键那一步的包与装包那一步逐字一样（键跟着包清单走）。
+#[test]
+fn every_job_that_installs_apt_packages_restores_the_deb_cache_first() {
+    let mut jobs_seen = 0;
+    for rel in [".github/workflows/ci.yml", ".github/workflows/release.yml"] {
+        let (_, jobs) = workflow_jobs(rel);
+        for job in &jobs {
+            let Some(first_install) = job
+                .steps
+                .iter()
+                .position(|s| matches!(apt_helper_args(s), Some((false, _))))
+            else {
+                continue;
+            };
+            jobs_seen += 1;
+            let ctx = format!("{rel} · {}", job.id);
+            let before = &job.steps[..first_install];
+            let key_at = before
+                .iter()
+                .position(|s| matches!(apt_helper_args(s), Some((true, _))))
+                .unwrap_or_else(|| {
+                    panic!("{ctx}：装 apt 包之前没有算缓存键那一步（`{APT_HELPER} --cache-key …`）")
+                });
+            let key_step = &before[key_at];
+            let id = key_step
+                .lines()
+                .find_map(|l| {
+                    l.trim()
+                        .strip_prefix("- ")
+                        .unwrap_or(l.trim())
+                        .strip_prefix("id:")
+                })
+                .map(|v| v.trim().to_string())
+                .unwrap_or_else(|| {
+                    panic!("{ctx}：算缓存键那一步没有 `id:`（缓存那一步取不到它的输出）")
+                });
+            let cache = before[key_at + 1..]
+                .iter()
+                .find(|s| s.contains("uses: actions/cache@"))
+                .unwrap_or_else(|| {
+                    panic!("{ctx}：算完键到装包之间没有 `uses: actions/cache@…` 那一步")
+                });
+            assert!(
+                cache.contains("uses: actions/cache@v4"),
+                "{ctx}：缓存那一步该用官方 actions/cache@v4（存取一步到位、不引第三方）：\n{cache}"
+            );
+            for (field, out) in [("path", "dir"), ("key", "key"), ("restore-keys", "restore")] {
+                let want = format!("{field}: ${{{{ steps.{id}.outputs.{out} }}}}");
+                assert!(
+                    cache.lines().any(|l| l.trim() == want),
+                    "{ctx}：缓存那一步缺 `{want}`（目录与键只住脚本一处）：\n{cache}"
+                );
+            }
+            let (_, key_pkgs) = apt_helper_args(key_step).expect("刚筛过");
+            for s in &job.steps[first_install..] {
+                if let Some((false, pkgs)) = apt_helper_args(s) {
+                    assert_eq!(
+                        pkgs, key_pkgs,
+                        "{ctx}：装包那一步的包与算缓存键那一步的不一样（键不跟着清单走，缓存会装错样子）"
+                    );
+                }
+            }
+        }
+    }
+    assert!(
+        jobs_seen >= 4,
+        "两份 workflow 里装 apt 包的 job 只认出 {jobs_seen} 个"
+    );
 }

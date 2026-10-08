@@ -619,6 +619,9 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write   # 追加附件到已存在的 release
+    env:
+      # 同 ci.yml::linux-app-build 那四个（构建期必需，不是打包才要）；同一份清单 ⇒ 同一个缓存键，发版时多半直接命中。
+      APT_PKGS: libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
     steps:
       - uses: actions/checkout@v4
 
@@ -633,15 +636,21 @@ jobs:
         with:
           workspaces: src/frontend/shell
 
-      # 同 ci.yml::linux-app-build 那四个（构建期必需，不是打包才要）。
+      # 装 apt 包：先放回缓存的 .deb、再装；口径见 ci.yml 文件头 `timeout-minutes` 那段末尾。
+      - name: apt 包缓存 · 算键
+        id: apt-key
+        run: bash tests/scripts/apt-install.sh --cache-key $APT_PKGS >> "$GITHUB_OUTPUT"
+
+      - name: apt 包缓存
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.apt-key.outputs.dir }}
+          key: ${{ steps.apt-key.outputs.key }}
+          restore-keys: ${{ steps.apt-key.outputs.restore }}
+
       - name: Install Linux build deps
-        timeout-minutes: 14   # 装包卡住的闸（步骤级）；口径见 ci.yml 文件头 `timeout-minutes` 那段末尾
-        run: |
-          bash tests/scripts/apt-install.sh \
-            libwebkit2gtk-4.1-dev \
-            libgtk-3-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev
+        timeout-minutes: 21   # 装包的闸（步骤级）；本 job 没设 job 级时限（默认 6 小时）
+        run: bash tests/scripts/apt-install.sh $APT_PKGS
 
       - name: Download cross-compiled backends
         uses: actions/download-artifact@v4
