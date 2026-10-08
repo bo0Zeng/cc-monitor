@@ -42,7 +42,22 @@ fn the_outcome_line_says_the_numbers_as_reported() {
     let s = sized_from_reply("proj", &full()).unwrap();
     assert_eq!(
         size_line(&s),
-        "proj：2.0 KB（2048 字节），3 个文件、2 个目录，1 条链接没算进去，4 个目录在另一个盘上，没进去，5 个目录读不进去"
+        [
+            copy_core::copy_text(
+                "rsFilewinSize.outcome.line",
+                &[
+                    ("name", "proj"),
+                    ("human", "2.0 KB"),
+                    ("bytes", "2048"),
+                    ("files", "3"),
+                    ("dirs", "2")
+                ]
+            ),
+            copy_core::copy_text("rsFilewinSize.outcome.links", &[("n", "1")]),
+            copy_core::copy_text("rsFilewinSize.outcome.mounts", &[("n", "4")]),
+            copy_core::copy_text("rsFilewinSize.outcome.unreadable", &[("n", "5")]),
+        ]
+        .concat()
     );
     let quiet = Sized {
         links: 0,
@@ -135,14 +150,27 @@ async fn size_on_the_menu_walks_to_the_wire_for_each_picked_item() {
     );
     let said = outcome_text(&w.size_board.last().expect("没有结局"));
     assert!(
-        said.starts_with("data：2.0 KB（2048 字节），3 个文件、2 个目录，1 条链接没算进去"),
+        said.starts_with(&format!(
+            "{}{}",
+            copy_core::copy_text(
+                "rsFilewinSize.outcome.line",
+                &[
+                    ("name", "data"),
+                    ("human", "2.0 KB"),
+                    ("bytes", "2048"),
+                    ("files", "3"),
+                    ("dirs", "2")
+                ]
+            ),
+            copy_core::copy_text("rsFilewinSize.outcome.links", &[("n", "1")])
+        )),
         "{said}"
     );
     assert!(
         said.contains(&copy_core::copy_text(
             "rsFilewinSize.outcome.failed",
             &[("name", "refuse-me"), ("why", "")]
-        )) && said.contains(copy_core::copy_static!("rsFilewinProps.value.unknown")),
+        )) && said.contains("这个路径读不到：PermissionDenied"),
         "被拒那一项没带原话：{said}"
     );
 }

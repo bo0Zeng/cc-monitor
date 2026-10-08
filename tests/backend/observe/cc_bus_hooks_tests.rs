@@ -129,10 +129,10 @@ fn malformed_input_degrades_with_a_reason() {
         .contains(copy_core::copy_static!("rsHooksDiag.diagnose.noSettings")));
     assert!(diagnose(Some("{not json"), &always)
         .note
-        .contains("不是合法 JSON"));
+        .contains(copy_core::copy_static!("rsHooksDiag.diagnose.badJson")));
     assert!(diagnose(Some("[1,2]"), &always)
         .note
-        .contains("顶层不是对象"));
+        .contains(copy_core::copy_static!("rsHooksDiag.diagnose.notObject")));
     // 结构不对的各层：一律降级成未装，且不 panic
     for raw in [
         r#"{}"#,

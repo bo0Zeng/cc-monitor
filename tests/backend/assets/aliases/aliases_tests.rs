@@ -428,7 +428,8 @@ fn every_alias_flag_is_a_real_ccm_flag() {
         "后端 ccm 的 `--help` 不再取文案表里那一条 —— 下面读的就不是它的用法了"
     );
     let usage_src = copy_core::copy_text("beCcm.usage.body", &[]);
-    let from = guard_core::find_pinned(&usage_src, "选项\n").expect("用法里「选项」那一段锚不住");
+    let from = guard_core::find_pinned(&usage_src, "\n  new ")
+        .expect("用法里选项那一段（以 new 那一行起）锚不住");
     let usage = &usage_src[from..];
     for flag in profile::PROFILE_FLAGS {
         assert!(
@@ -781,7 +782,10 @@ fn the_fence_is_lexical_then_measures_this_machines_disk() {
         std::os::unix::fs::symlink(&outside.0, h.0.join("link")).expect("造一条跑出 home 的链接");
         let raw = format!("{}/link/.bashrc", hs(&h));
         let e = fence(&hs(&h), &raw).expect_err("该被符号链接那一步拒");
-        assert!(e.contains("符号链接"), "{e}");
+        assert!(
+            copy_core::copy_matches("rsProfileInstaller.fence.symlinkEscape", &e),
+            "{e}"
+        );
     }
 }
 

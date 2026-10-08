@@ -1095,7 +1095,13 @@ fn deleting_asks_once_with_names_and_cannot_be_undone() {
         out.drop_without_applying_deltas();
     }
     let has = |t: &str| painted.iter().any(|(s, _)| s == t);
-    assert!(has("删除 10 项"), "标题不对：{painted:?}");
+    assert!(
+        has(&copy_core::copy_text(
+            "rsFilewinWriteops.delete.titleMany",
+            &[("n", "10")]
+        )),
+        "标题不对：{painted:?}"
+    );
     assert!(
         has("f0")
             && has(copy_core::copy_static!("rsFilewinWriteops.delete.rowDir"))
@@ -1109,7 +1115,10 @@ fn deleting_asks_once_with_names_and_cannot_be_undone() {
             "rsFilewinWriteops.delete.more",
             &[("n", "2")]
         )) && has(copy_core::copy_static!("rsFilewinWriteops.delete.body"))
-            && has("删除 10 项")
+            && has(&copy_core::copy_text(
+                "rsFilewinWriteops.delete.titleMany",
+                &[("n", "10")]
+            ))
             && has(copy_core::copy_static!("rsFilewinWriteops.delete.cancel"))
     );
     assert!(board.settle(false));
@@ -1186,12 +1195,18 @@ fn the_inline_cell_selects_the_stem_and_a_same_name_rename_is_no_op() {
     assert_eq!(
         n.to_inline(),
         Ok(Some(InlineGo::Op(WriteOp::Mkdir {
-            path: "/srv/data/新建文件夹".into()
+            path: format!(
+                "/srv/data/{}",
+                copy_core::copy_static!("rsFilewinWriteops.inline.newDir")
+            )
         })))
     );
     assert_eq!(
         WritePrompt::for_new("/srv/data", true).to_inline(),
-        Ok(Some(InlineGo::Create("/srv/data/新建文件".into())))
+        Ok(Some(InlineGo::Create(format!(
+            "/srv/data/{}",
+            copy_core::copy_static!("rsFilewinWriteops.inline.newFile")
+        ))))
     );
 }
 

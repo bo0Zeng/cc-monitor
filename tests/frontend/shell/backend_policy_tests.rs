@@ -1310,9 +1310,21 @@ fn a_console_ctrl_kill_is_said_in_words_not_as_a_bare_code() {
     let crashed = Death::Crashed {
         how: Outcome::Exited(-1073741510),
     };
-    assert_eq!(last_brief(&crashed), format!("崩了，{said}"));
+    assert_eq!(
+        last_brief(&crashed),
+        format!(
+            "{}，{said}",
+            copy_core::copy_static!("rsBackendPolicy.death.crashed")
+        )
+    );
     let refused = Death::Refused { code: -1073741510 };
-    assert_eq!(last_brief(&refused), format!("被拒了，{said}"));
+    assert_eq!(
+        last_brief(&refused),
+        format!(
+            "{}，{said}",
+            copy_core::copy_static!("rsBackendPolicy.death.refused")
+        )
+    );
     for d in [&crashed, &refused] {
         let brief = last_brief(d);
         assert!(

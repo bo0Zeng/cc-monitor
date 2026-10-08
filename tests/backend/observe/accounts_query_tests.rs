@@ -73,19 +73,29 @@ fn list_accounts_degrades_gracefully() {
     // 缺文件
     let m = meta(&list_accounts(&root.join("nope")));
     assert_eq!(m["enabled"], false);
-    assert!(m["error"].as_str().unwrap().contains("读不了"));
+    assert!(copy_core::copy_matches(
+        "beAccountsQuery.loadManifest.unreadable",
+        m["error"].as_str().unwrap()
+    ));
     // 坏 JSON
     let a = root.join("bad");
     write_manifest(&a, "{not json");
     let m = meta(&list_accounts(&a));
     assert_eq!(m["enabled"], false);
-    assert!(m["error"].as_str().unwrap().contains("合法 JSON"));
+    assert!(copy_core::copy_matches(
+        "beAccountsQuery.loadManifest.badJson",
+        m["error"].as_str().unwrap()
+    ));
     // 版本不支持
     let a2 = root.join("v2");
     write_manifest(&a2, r#"{"version":2,"accounts":[]}"#);
     let m = meta(&list_accounts(&a2));
     assert_eq!(m["enabled"], false);
-    assert!(m["error"].as_str().unwrap().contains("版本 2"));
+    assert!(copy_core::copy_matches_with(
+        "beAccountsQuery.loadManifest.badVersion",
+        &[("v", "2")],
+        m["error"].as_str().unwrap()
+    ));
     // 缺 version
     let a3 = root.join("nover");
     write_manifest(&a3, r#"{"accounts":[]}"#);
@@ -1478,8 +1488,9 @@ fn the_list_product_says_when_account_zero_is_missing() {
     let v = list_product_at(&accts, &[], "claude-code", "claude-code");
     let n = v["notice"].as_str().expect("缺账号 0 却没出那一句");
     assert!(
-        n.contains("默认账号")
-            && !n.contains(copy_core::copy_static!("rsConfigSurface.host.remote")),
+        n.contains(copy_core::copy_static!(
+            "beAccountsQuery.listProductAt.noDefault"
+        )) && !n.contains(copy_core::copy_static!("rsConfigSurface.host.remote")),
         "{n}"
     );
     let off = list_product_at(&root.join("nope"), &[], "claude-code", "claude-code");

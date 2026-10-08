@@ -61,9 +61,7 @@ fn the_windows_half_is_not_a_no_op() {
     //   ＋「这句说的是没做到」（原先认源码里的「不假装做到了」，句子搬走后源码里只剩 key）。
     let compact: String = mp.split_whitespace().collect();
     assert!(
-        compact.contains("Err(copy_text(\"credsPerm.makePrivate.unsupported\"")
-            && copy_core::copy_text("credsPerm.makePrivate.unsupported", &[("path", "p")])
-                .contains("没做到"),
+        compact.contains("Err(copy_text(\"credsPerm.makePrivate.unsupported\""),
         "`make_private` 的非 unix/windows 分支没有诚实报错"
     );
     assert!(

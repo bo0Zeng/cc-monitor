@@ -172,3 +172,21 @@ fn copy_matches_finds_an_entry_whatever_its_values_are() {
     assert!(!copy_matches("peerVersion.said.old", &cut));
     assert!(!copy_matches("no.such.key", &said));
 }
+
+/// `copy_matches_with`：给了值的那一格要真是那个值，没给的仍是任意值。
+#[test]
+fn copy_matches_with_pins_the_given_values_only() {
+    let said = copy_text("peerVersion.said.old", &[("machine", "devbox")]);
+    assert!(copy_matches_with(
+        "peerVersion.said.old",
+        &[("machine", "devbox")],
+        &said
+    ));
+    assert!(copy_matches_with("peerVersion.said.old", &[], &said));
+    assert!(!copy_matches_with(
+        "peerVersion.said.old",
+        &[("machine", "laptop")],
+        &said
+    ));
+    assert!(!copy_matches_with("no.such.key", &[], &said));
+}

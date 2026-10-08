@@ -593,7 +593,11 @@ fn upload_verify_catches_same_length_corruption() {
         "{e}"
     );
     assert!(
-        e.contains(&format!("首个差异在第 {k} 字节")),
+        copy_core::copy_matches_with(
+            "rsSftp.verify.contentDiffers",
+            &[("at", &k.to_string())],
+            &e
+        ),
         "要指出位置：{e}"
     );
     // 「下次会重来」那半句挪到了 `upload_verified`（它当场删掉传坏的那一份），这里只说坏在哪。
@@ -607,7 +611,10 @@ fn upload_verify_catches_truncation_and_unreadable() {
         copy_core::copy_matches("rsSftp.verify.lengthDiffers", &e),
         "{e}"
     );
-    assert!(e.contains("期望 10 字节"), "{e}");
+    assert!(
+        copy_core::copy_matches_with("rsSftp.verify.lengthDiffers", &[("expectedLen", "10")], &e),
+        "{e}"
+    );
     // 读不回来 ≠ 写对了
     let e2 = verify_readback("/r/x", 10, None).unwrap_err();
     assert!(

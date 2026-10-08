@@ -45,7 +45,19 @@ fn 一段里有版本构建各台状态与原因码未识别数据日志位置()
             "diagnostics.unknown.machineUnread",
             &[("machine", "devbox ·")],
         ),
-        "config.json · 2 项：resumeCommandLocal、x",
+        &*copy_core::copy_text(
+            "rsDiagReport.text.config",
+            &[
+                ("n", "2"),
+                (
+                    "keys",
+                    &format!(
+                        "resumeCommandLocal{}x",
+                        copy_core::copy_static!("rsDiagReport.text.keySep")
+                    ),
+                ),
+            ],
+        ),
         "/h/.cc-monitor/logs/monitor.2026-10-06.log",
     ] {
         assert!(
@@ -89,7 +101,17 @@ fn 没写日志文件与没有认不出的键各有一句() {
         "{}",
         r.text
     );
-    assert!(r.text.contains("config.json · 0 项：—"), "{}", r.text);
+    assert!(
+        r.text.contains(&copy_core::copy_text(
+            "rsDiagReport.text.config",
+            &[
+                ("n", "0"),
+                ("keys", copy_core::copy_static!("rsDiagReport.text.none"))
+            ],
+        )),
+        "{}",
+        r.text
+    );
 }
 
 #[test]

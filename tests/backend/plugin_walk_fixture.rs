@@ -834,7 +834,11 @@ mod tests {
         });
         let missing = crate::plugin::discover::not_installed_message(&name, &mine, 0, hint);
         assert!(
-            missing.contains("PATH 上的 0 个目录"),
+            copy_core::copy_matches_with(
+                "beDiscover.notInstalledMessage.notFound",
+                &[("pathDirs", "0")],
+                &missing
+            ),
             "本夹具没走成「不兜 PATH」那一侧：{missing}"
         );
 
@@ -1145,7 +1149,11 @@ mod tests {
         }
         assert!(err.contains("刻意不兜"), "调用方那句尾巴丢了：{err}");
         assert!(
-            err.contains("PATH 上的 0 个目录"),
+            copy_core::copy_matches_with(
+                "beDiscover.notInstalledMessage.notFound",
+                &[("pathDirs", "0")],
+                &err
+            ),
             "PATH 那一半说错了：{err}"
         );
         assert!(
@@ -1216,7 +1224,11 @@ mod tests {
                     }
                     assert!(why.contains("刻意不兜"), "调用方那句尾巴丢了：{why}");
                     assert!(
-                        why.contains("PATH 上的 0 个目录"),
+                        copy_core::copy_matches_with(
+                            "beDiscover.notInstalledMessage.notFound",
+                            &[("pathDirs", "0")],
+                            &why
+                        ),
                         "PATH 那一半说错了：{why}"
                     );
                 }

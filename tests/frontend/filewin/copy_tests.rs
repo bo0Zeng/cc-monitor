@@ -720,9 +720,13 @@ async fn a_failure_in_a_batch_is_named_and_does_not_stop_the_rest() {
     let n = outcome_notice(&out);
     assert!(n.loud, "有失败却不是警告档");
     assert!(
-        n.text
-            .contains("复制完成：2 项，4 个文件、2 个目录、20 字节")
-            && n.text.contains("a 复制失败：后端原话"),
+        n.text.contains(&copy_core::copy_text(
+            "rsFilewinCopy.outcome.batchDone",
+            &[("n", "2"), ("files", "4"), ("dirs", "2"), ("bytes", "20")]
+        )) && n.text.contains(&copy_core::copy_text(
+            "rsFilewinCopy.outcome.batchFailed",
+            &[("name", "a"), ("why", "后端原话")]
+        )),
         "{}",
         n.text
     );

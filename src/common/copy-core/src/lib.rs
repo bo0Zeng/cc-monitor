@@ -189,6 +189,13 @@ macro_rules! copy_static {
 /// 给测试按文案键断言用：值事先算不出、只要那一句在 ⇒ `assert!(copy_matches("键", &text))`，
 /// 改表值不撞，改键 / 删键撞。表里没有这个键 ⇒ `false`。
 pub fn copy_matches(key: &str, text: &str) -> bool {
+    copy_matches_with(key, &[], text)
+}
+
+/// 同 [`copy_matches`]，但给出的那几个占位值要按位置出现在文字里（没给的占位处仍是任意值）。
+///
+/// 给「那一句在、而且那一格是这个数」的断言用（例：`PATH 上的 {pathDirs} 个目录` 里那个数是 0）。
+pub fn copy_matches_with(key: &str, known: &[(&str, &str)], text: &str) -> bool {
     let Some(zh) = entries()
         .get(key)
         .and_then(|e| e.get("zh"))
@@ -196,6 +203,7 @@ pub fn copy_matches(key: &str, text: &str) -> bool {
     else {
         return false;
     };
+    // 固定段与给了值的占位交替成一串，各自按顺序找；没给值的占位是两段之间的任意字。
     let mut frags: Vec<&str> = Vec::new();
     let mut rest = zh;
     while let Some(open) = rest.find('{') {
@@ -207,6 +215,10 @@ pub fn copy_matches(key: &str, text: &str) -> bool {
                     && close > 1 =>
             {
                 frags.push(&rest[..open]);
+                let name = &rest[open + 1..open + close];
+                if let Some((_, v)) = known.iter().find(|(k, _)| *k == name) {
+                    frags.push(v);
+                }
                 rest = &rest[open + close + 1..];
             }
             _ => break,

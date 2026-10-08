@@ -253,7 +253,12 @@ fn unlistable_dir_is_undetermined_not_empty() {
         list: &|_| None,
     };
     match observe(&PathResolution::Local("/h/d".into()), &f) {
-        SurfaceState::Undetermined { why } => assert!(why.contains("列不出")),
+        SurfaceState::Undetermined { why } => {
+            assert!(
+                copy_core::copy_matches("rsConfigSurface.observe.dirUnlistable", &why),
+                "{why}"
+            )
+        }
         other => panic!("实得 {other:?}"),
     }
 }
@@ -431,10 +436,13 @@ fn either_never_absent_with(probe: &FsProbe) {
         match observe(&f, &nothing) {
             SurfaceState::Undetermined { why } => {
                 assert!(
-                    why.contains("Claude Code 跑的那台"),
+                    copy_core::copy_matches("rsConfigSurface.observe.eitherAbsent", &why)
+                        || copy_core::copy_matches(
+                            "rsConfigSurface.observe.eitherUndetermined",
+                            &why
+                        ),
                     "理由要说清为什么：{why}"
                 );
-                assert!(why.contains("不连 SSH"), "要指路：{why}");
             }
             other => panic!("本机没找到不等于不存在，不许判 {other:?}"),
         }
@@ -455,7 +463,13 @@ fn either_host_reports_present_when_found_locally() {
                 copy_core::copy_matches("rsConfigSurface.observe.eitherPresent", &detail),
                 "实得 {detail}"
             );
-            assert!(detail.contains("7 字节"), "内层细节要保住：{detail}");
+            assert!(
+                detail.contains(&copy_core::copy_text(
+                    "rsConfigSurface.observe.fileSize",
+                    &[("bytes", "7")]
+                )),
+                "内层细节要保住：{detail}"
+            );
         }
         other => panic!("实得 {other:?}"),
     }
@@ -1320,9 +1334,15 @@ fn rows_carry_the_host_label() {
 #[test]
 fn generate_only_wording_says_we_do_not_write() {
     let l = effect_label(TouchEffect::GenerateOnly);
-    assert!(l.contains("不写"), "实得 {l:?}");
-    assert!(l.contains("待贴文本"));
-    assert!(effect_label(TouchEffect::ReadOnly).contains("不写"));
+    assert_eq!(
+        l,
+        copy_core::copy_text("rsConfigSurface.effect.generateOnly", &[]),
+        "实得 {l:?}"
+    );
+    assert_eq!(
+        effect_label(TouchEffect::ReadOnly),
+        copy_core::copy_text("rsConfigSurface.effect.readOnly", &[])
+    );
 }
 
 // ===== B04 登记项：settings 的多个作用域 =====
