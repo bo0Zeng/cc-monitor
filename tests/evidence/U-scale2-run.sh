@@ -6,9 +6,9 @@
 #   · WebKitGTK 2.52.6  ——  PyGObject + gi WebKit2-4.1，必须 xvfb + 关合成，
 #                            否则 web process 起不来。这是 Linux 侧 Tauri/wry 的同一引擎。
 #   · Chromium 153      ——  Playwright 的 headless shell，生产 WebView2 的同引擎家族。
-# 两个 runner 都直接复用 `/tmp/cv-reparent-probe/` 下 G 路留下的那两个脚本
-# （`run_webkitgtk.py` / `run_chromium.mjs`，取值约定 `window.__DONE` + `window.__RESULT`）。
-# ⚠ 它们住 /tmp，**是会被清掉的**。清掉之后见本文件末尾那段「从零重建」。
+# 两个 runner 不进仓（取值约定 `window.__DONE` + `window.__RESULT`），住 `SCALE2_RIG` 指的目录；
+# 缺省是 `/tmp/cv-reparent-probe`，而 `/tmp` 在有的机器上是内存盘、**会被清掉** ⇒ 最好放到盘上、用环境变量指过来。
+# 清掉之后见本文件末尾那段「从零重建」。
 #
 # 用法：bash tests/evidence/U-scale2-run.sh          # 从仓根跑
 set -euo pipefail
@@ -17,7 +17,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # 两处都可由环境变量改到盘上（`/tmp` 在有的机器上是内存盘，在那里搭 runner 撞过整机 OOM）：
 #   SCALE2_WORK=<探针产物与读数>  SCALE2_RIG=<两个 runner 所在目录>
 WORK="${SCALE2_WORK:-/tmp/scale2-height-truth}"
-RIG="${SCALE2_RIG:-/tmp/cv-reparent-probe}"          # G 路留下的两个 runner
+RIG="${SCALE2_RIG:-/tmp/cv-reparent-probe}"          # 两个 runner 所在目录
 export SCALE2_WORK="$WORK"
 
 cd "$ROOT"
@@ -83,10 +83,13 @@ npx tsx tests/evidence/U-scale2-report.ts
 
 cat <<'NOTE'
 
-── runner 被清掉了怎么从零重建（两条都免 sudo、不进仓）────────────────────
-  Chromium：  mkdir -p /tmp/cv-reparent-probe && cd /tmp/cv-reparent-probe \
-              && npm i playwright && npx playwright install chromium
-              （装到 ~/.cache/ms-playwright/，约 658MB；回收 rm -rf 该目录）
+── runner 被清掉了怎么从零重建（两条都免 sudo、不进仓；目录用 SCALE2_RIG 指过来）──────
+  Chromium：  浏览器用 Playwright 缓存里的 headless shell：
+              npx playwright install chromium-headless-shell（装到 ~/.cache/ms-playwright/）。
+              runner 零 npm 依赖（~40 行）：自己起 headless shell（--no-sandbox · --hide-scrollbars ·
+              --remote-debugging-port=0 · 视口 900×700 · dpr 1），用 Node 自带的 WebSocket 说 CDP，
+              开 probe.html、轮询 window.__DONE、把 window.__RESULT 写出去。缓存目录认
+              PLAYWRIGHT_BROWSERS_PATH（HOME 指到沙箱里跑时要设它），缺省 ~/.cache/ms-playwright。
   WebKitGTK： 本机已有 libwebkit2gtk-4.1 + gi typelib WebKit2-4.1 + pygobject，
-              零新增依赖；runner 就是 ~60 行 GTK3 + WebKit2。
+              零新增依赖；runner 就是 ~60 行 GTK3 + WebKit2（同样视口 900×700，同样等 __DONE 取 __RESULT）。
 NOTE

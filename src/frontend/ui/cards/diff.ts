@@ -329,7 +329,7 @@ interface RenderTally {
   delCount: number;
 }
 
-/** 把所有 diff 段渲染进 root（MultiEdit 多段加 "Edit N" 标签），统计行数/增删/截断。 */
+/** 把所有 diff 段渲染进 root（MultiEdit 多段各加一个段标题），统计行数/增删/截断。 */
 function renderSegmentsInto(root: HTMLElement, segments: OldNew[], opts?: DiffOpts): RenderTally {
   const multi = segments.length > 1;
   const tally: RenderTally = { totalRows: 0, truncated: false, addCount: 0, delCount: 0 };
@@ -337,7 +337,7 @@ function renderSegmentsInto(root: HTMLElement, segments: OldNew[], opts?: DiffOp
     if (multi) {
       const label = document.createElement("div");
       label.className = "block-diff-edit-label";
-      label.textContent = `Edit ${i + 1}`;
+      label.textContent = copyText("cards.diff.segment", { n: i + 1 });
       root.appendChild(label);
     }
     const res = diffLines(segments[i].old, segments[i].new, opts);

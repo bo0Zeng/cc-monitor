@@ -3038,6 +3038,12 @@
       "zh": "显示全部 · {kb} KB",
       "args": ["kb"]
     },
+    "cards.result.markdown": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "Markdown",
+      "args": []
+    },
     "cards.result.markdownHint": {
       "kind": "body",
       "role": "说明",
@@ -3095,8 +3101,11 @@
     "cards.user.title": {
       "kind": "title",
       "role": "标题",
-      "zh": "用户",
-      "args": []
+      "zh": "你",
+      "args": [],
+      "waive": {
+        "C-P1": "消息流里的发言人「你」"
+      }
     },
     "speaker.agent.title": {
       "kind": "title",
@@ -3317,28 +3326,34 @@
       "zh": "{n} 文件",
       "args": ["n"]
     },
+    "cards.diff.segment": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "Edit {n}",
+      "args": ["n"]
+    },
     "cards.toolGroup.summary": {
       "kind": "body",
       "role": "说明",
-      "zh": "🔧 工具调用 · {count} 个 · 自 {since}",
+      "zh": "过程 · 工具 ×{count} · 自 {since}",
       "args": ["count", "since"]
     },
     "cards.toolGroup.summaryFailed": {
       "kind": "body",
       "role": "说明",
-      "zh": "🔧 工具调用 · {count} 个 · {failed} 个失败 · 自 {since}",
+      "zh": "过程 · 工具 ×{count} · 失败 ×{failed} · 自 {since}",
       "args": ["count", "failed", "since"]
     },
     "cards.toolGroup.summaryAgents": {
       "kind": "body",
       "role": "说明",
-      "zh": "🔧 工具调用 · {count} 个 · {agents} 个子 agent · 自 {since}",
+      "zh": "过程 · 工具 ×{count} · agent ×{agents} · 自 {since}",
       "args": ["count", "agents", "since"]
     },
     "cards.toolGroup.summaryBoth": {
       "kind": "body",
       "role": "说明",
-      "zh": "🔧 工具调用 · {count} 个 · {failed} 个失败 · {agents} 个子 agent · 自 {since}",
+      "zh": "过程 · 工具 ×{count} · 失败 ×{failed} · agent ×{agents} · 自 {since}",
       "args": ["count", "failed", "agents", "since"]
     },
     "cards.command.note": {
@@ -3350,8 +3365,11 @@
     "cards.queuedUser.title": {
       "kind": "title",
       "role": "标题",
-      "zh": "用户 · 排队时发出",
-      "args": []
+      "zh": "你 · 排队时发出",
+      "args": [],
+      "waive": {
+        "C-P1": "消息流里的发言人「你」"
+      }
     },
     "apiError.retry.line": {
       "kind": "body",
@@ -3446,7 +3464,7 @@
     "bash.output.showAll": {
       "kind": "action",
       "role": "按钮",
-      "zh": "显示完整输出 ({n} 行)",
+      "zh": "全部 {n} 行",
       "args": ["n"]
     },
     "bash.output.empty": {
@@ -3545,7 +3563,7 @@
     "compact.summary.title": {
       "kind": "title",
       "role": "标题",
-      "zh": "📋 上下文摘要 · {n} 字 · {time}",
+      "zh": "上下文已压缩 · 摘要 {n} 字 · {time}",
       "args": ["n", "time"]
     },
     "chanCaller.said.internal": {

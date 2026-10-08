@@ -10,7 +10,7 @@
  * - 遇到骨架占位或 ESC 回退的折叠段 ⇒ 不知道里面有没有下一轮的开头 ⇒ 之后不再归轮，直到认出下一轮开头（宁可不折，不折错）。
  * - 过程行插在那一轮开头那张卡后面；它不是时间线条目（`RecordTimeline` 按后继锚插入，不受它影响），
  *   `BranchFolder` 认的是 `data-uuid`，过程行没有。
- * - 正在跑的那一轮：过程展开（工具组也展开、不再另起一层「工具调用 · N 个」）；收尾时视口正落在它的过程里 ⇒ 不当面收起，
+ * - 正在跑的那一轮：过程展开（工具组也展开、不再另起一层「过程 · 工具 ×N」）；收尾时视口正落在它的过程里 ⇒ 不当面收起，
  *   等滚出去（宿主转来的 scroll）或切走再收（I6）。
  *
  * # 展开状态
@@ -216,7 +216,7 @@ export class TurnFold {
     el.dataset.procOf = turn.uuid;
     const open = this.expanded(turn);
     el.classList.toggle("proc-hidden", !open);
-    // 过程里的工具组不再另起一层「工具调用 · N 个」：展开的过程里它整组摊开（收着那一行由 CSS 藏掉）。
+    // 过程里的工具组不再另起一层「过程 · 工具 ×N」：展开的过程里它整组摊开（收着那一行由 CSS 藏掉）。
     if (open && el instanceof HTMLDetailsElement && el.classList.contains("card-tool-group")) el.open = true;
   }
 
