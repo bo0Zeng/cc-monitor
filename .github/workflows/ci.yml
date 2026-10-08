@@ -322,7 +322,7 @@ jobs:
 
       - name: 门禁 · 后端 fmt / clippy / test
         env:
-          GATE_ONLY: fmt-backend clippy-backend backend
+          GATE_ONLY: fmt-backend clippy-backend backend deadcode-backend
         run: bash tests/scripts/gate.sh
 
   # L4（local-as-remote）：**Linux 宿主上 app 能不能构建**的持续信号（`release.yml` 的 Linux 打包 job 只在 tag 时跑）。
