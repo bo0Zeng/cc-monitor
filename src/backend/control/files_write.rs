@@ -1435,11 +1435,6 @@ fn copy_kind(p: &Path) -> std::io::Result<(Result<bool, &'static str>, u64)> {
     Ok((kind, dev))
 }
 
-/// [`plan_copy_within`] 取默认上限。
-pub fn plan_copy(root: &Path, from: impl AsRef<Path>) -> Result<CopyPlan, WriteRefusal> {
-    plan_copy_within(root, from.as_ref(), TREE_ENTRY_CAP)
-}
-
 /// [`copy_kind`] 那两档「复制不了的种类」说给人听的那几个字（文案表）。
 fn kind_words(what: &str) -> String {
     match what {
@@ -2564,12 +2559,6 @@ pub const MANAGE_COMMANDS: &[ManageCommand] = &[
         codes: &["bad_args", "io_failed", "refused"],
     },
 ];
-
-/// 本面声明的线上命令名。
-pub fn manage_command_names() -> Vec<&'static str> {
-    MANAGE_COMMANDS.iter().map(|c| c.name).collect()
-}
-
 /// 取一个**路径**参数（字符串 或 `{"b16": …}`，与 `files-read` 那一族同一口径）。
 fn path_of(
     args: &serde_json::Value,

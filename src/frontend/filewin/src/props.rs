@@ -17,7 +17,8 @@ pub const STAT_BUDGET: std::time::Duration = std::time::Duration::from_secs(10);
 pub struct Stat {
     pub path: String,
     pub size: u64,
-    pub mtime_secs: Option<u64>,
+    /// 修改时间的完整写法（那台后端按它的本地钟写好；照抄）。
+    pub mtime_full: Option<String>,
     /// unix 权限位（非 unix 远端缺席）。
     pub mode: Option<u32>,
     pub owner: Option<String>,
@@ -44,7 +45,10 @@ pub fn stat_from_reply(d: &serde_json::Value) -> Result<Stat, String> {
             .get("size")
             .and_then(serde_json::Value::as_u64)
             .unwrap_or(0),
-        mtime_secs: d.get("mtime_secs").and_then(serde_json::Value::as_u64),
+        mtime_full: d
+            .get("mtime_full")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_string),
         mode: super::writeops::mode_of(d),
         owner: d
             .get("owner")
@@ -120,9 +124,7 @@ impl Props {
                 }
                 out.push((
                     copy_text("rsFilewinProps.label.mtime", &[]),
-                    s.mtime_secs
-                        .map(|t| super::source::mtime_text(t).full)
-                        .unwrap_or_else(unknown),
+                    s.mtime_full.clone().unwrap_or_else(unknown),
                 ));
                 out.push((
                     copy_text("rsFilewinProps.label.mode", &[]),

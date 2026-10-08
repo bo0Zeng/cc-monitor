@@ -131,7 +131,8 @@ pub struct Preview {
 pub struct Head {
     pub name: String,
     pub size: u64,
-    pub mtime_secs: Option<u64>,
+    /// 修改时间的短写法（列表那一行上后端写好的那一格）。
+    pub mtime_text: Option<String>,
     pub edit: bool,
     pub download: bool,
 }
@@ -269,7 +270,7 @@ impl Preview {
             self.head = Some(Head {
                 name: r.name.clone(),
                 size: r.size,
-                mtime_secs: r.mtime_secs,
+                mtime_text: r.mtime_text.clone(),
                 edit: can.contains(&super::select::Action::Edit),
                 download: can.contains(&super::select::Action::Download),
             });
@@ -436,14 +437,8 @@ impl Preview {
                     });
                 });
                 let mut meta = super::rows::human_size(h.size);
-                if let Some(t) = h.mtime_secs {
-                    meta = copy_text(
-                        "rsFilewinPreview.ui.meta",
-                        &[
-                            ("size", &meta),
-                            ("time", &super::source::mtime_text(t).short),
-                        ],
-                    );
+                if let Some(t) = &h.mtime_text {
+                    meta = copy_text("rsFilewinPreview.ui.meta", &[("size", &meta), ("time", t)]);
                 }
                 ui.label(egui::RichText::new(meta).color(p.text2).small());
                 ui.add_space(6.0);

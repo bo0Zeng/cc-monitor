@@ -501,6 +501,7 @@ pub(crate) fn answer_plan_with(facts: &dyn Facts, root: Option<&Path>, args: &Va
 /// 卸时一个记着的文件在盘上的样子（线上名）。**闭集**：界面文案表按它逐键给字。
 // ⚠ 逐字写成字面量（不引用下面四个常量）：界面与 monitor 的判据按「这一行的引号」从源码现抠人群。
 //   四个常量与这一行对不上由 `uninstall_judges_every_recorded_file_as_it_is_on_disk_now` 的闭集两向那一条逮。
+#[cfg(test)]
 pub const UNINSTALL_STATES: &[&str] = &["gone", "intact", "modified", "unreadable"];
 /// 已经不在了（从记录里摘掉就行）。
 pub const UNINSTALL_GONE: &str = "gone";

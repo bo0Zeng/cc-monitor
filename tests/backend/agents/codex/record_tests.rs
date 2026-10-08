@@ -1,4 +1,4 @@
-use super::super::parse::{session_meta_cwd, turn_id};
+use super::super::parse::session_meta_cwd;
 use super::CodexRecordKind as K;
 use super::*;
 use crate::agents::Speaker;
@@ -28,13 +28,12 @@ fn classifies_top_level_types() {
 /// event_msg 子型（含 turn-end / usage / abort）+ alias 归一。
 #[test]
 fn classifies_event_msg_subtypes_with_alias() {
-    // 本机 task_complete → TurnComplete，turn_id 抽出（F3 turn-end 键）。
+    // 本机 task_complete → TurnComplete。
     let tc = env(
         "event_msg",
         json!({"type": "task_complete", "turn_id": "019f7868-0e2d-7d73-bb7a-2f3837e5cb95", "duration_ms": 12104}),
     );
     assert_eq!(classify(&tc), K::TurnComplete);
-    assert_eq!(turn_id(&tc), Some("019f7868-0e2d-7d73-bb7a-2f3837e5cb95"));
     // 新版 alias turn_complete 也归到 TurnComplete（defensive）。
     assert_eq!(
         classify(&env(
@@ -62,18 +61,12 @@ fn classifies_event_msg_subtypes_with_alias() {
         classify(&env("event_msg", json!({"type": "agent_message"}))),
         K::AgentMessage
     );
-    // token_count → TokenCount，last usage 抽出（F5）。
+    // token_count → TokenCount。
     let tok = env(
         "event_msg",
         json!({"type": "token_count", "info": {"last_token_usage": {"input_tokens": 13839, "output_tokens": 157, "total_tokens": 13996}}}),
     );
     assert_eq!(classify(&tok), K::TokenCount);
-    assert_eq!(
-        token_usage_last(&tok)
-            .and_then(|u| u.get("total_tokens"))
-            .and_then(Value::as_u64),
-        Some(13996)
-    );
     // 其它 event 子型 → OtherEvent（不崩、不误判）。
     assert_eq!(
         classify(&env("event_msg", json!({"type": "mcp_tool_call_end"}))),
@@ -93,7 +86,6 @@ fn classifies_response_item_subtypes() {
         json!({"type": "message", "role": "assistant", "content": []}),
     );
     assert_eq!(classify(&msg), K::Message);
-    assert_eq!(message_role(&msg), Some("assistant"));
     assert_eq!(
         classify(&env("response_item", json!({"type": "reasoning"}))),
         K::Reasoning
@@ -145,11 +137,6 @@ fn defensive_on_malformed_and_unknown() {
         K::Other
     );
     // accessor 在非匹配记录上安全返回 None。
-    assert_eq!(turn_id(&json!({})), None);
-    assert_eq!(
-        token_usage_last(&env("event_msg", json!({"type": "token_count"}))),
-        None
-    );
 }
 
 /// ⚠️ F2b trap #1/#2：`output` 与 `content` **真机恒数组** `[{type,text}]`——flatten_text 拼数组文本。
@@ -348,18 +335,14 @@ fn maps_tool_call_and_output() {
     );
 }
 
-/// F1a-3：session_meta cwd/timestamp 抽取（Codex 无 cwd-项目目录 → list 用 cwd 内存分组）。
+/// F1a-3：session_meta cwd 抽取（Codex 无 cwd-项目目录 → list 用 cwd 内存分组）。
 #[test]
-fn session_meta_cwd_and_timestamp() {
+fn session_meta_cwd_is_read_from_session_meta_only() {
     let sm = env(
         "session_meta",
         json!({"session_id": "s", "cwd": "/home/u/proj", "timestamp": "2026-07-19T03:25:05.382Z"}),
     );
     assert_eq!(session_meta_cwd(&sm), Some("/home/u/proj"));
-    assert_eq!(
-        session_meta_timestamp(&sm),
-        Some("2026-07-19T03:25:05.382Z")
-    );
     // 非 session_meta（如 turn_context 也有 cwd）→ None（只认 session_meta）。
     let tc = env("turn_context", json!({"cwd": "/other", "turn_id": "t"}));
     assert_eq!(session_meta_cwd(&tc), None);

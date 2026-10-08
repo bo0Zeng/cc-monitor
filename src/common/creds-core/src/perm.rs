@@ -44,6 +44,7 @@ impl Verdict {
     ///
     /// ⚠ 写成「`matches!(self, TooWide{..})`」是错的 —— 那会让
     /// `Undetermined` 静默通过，正是上面那条 fallback 病。
+    #[cfg(test)]
     pub fn needs_attention(&self) -> bool {
         !matches!(self, Verdict::OwnerOnly)
     }

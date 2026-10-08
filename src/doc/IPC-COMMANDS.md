@@ -871,7 +871,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 |---|---|---|
 | `cover_root` | ← | 要搜全这一趟，重走该走哪个根：手上那份盖得住 ⇒ 它的根；否则范围在家目录里 ⇒ 家目录；否则 ⇒ 范围本身（都说不出 ⇒ `null`） |
 | `desc` | → ← | `true` ⇒ 倒过来（默认 `false`） |
-| `hits` | ← | 这一屏的命中，每条一个对象：`path` |
+| `hits` | ← | 这一屏的命中，每条一个对象：`path` · `kind` · `location` · `size` · `mtime_secs` · `mtime_text`（修改时间的短写法，这台本地钟写好）· `marks` |
 | `index_age_secs` | ← | 答这一趟用的那份索引，是多久以前建的 |
 | `index_missing` | ← | 索引还没建过 ⇒ 几个计数全是 0，而那不是「没搜到」；客户端要自己发 `files-index-rebuild` |
 | `index_root` | ← | 手上那份索引的根（没建过 ⇒ `null`） |
@@ -922,12 +922,14 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `entries` | ← | 每项一个对象：`path`（原始字节形）· `kind` · `size` · `mtime_secs`（后两个拿不到就**不出这个键**，不填 0） |
+| `entries` | ← | 每项一个对象：`path`（原始字节形）· `kind` · `size` · `mtime_secs`（后两个拿不到就**不出这个键**，不填 0）· `mtime_text` · `mtime_full`（跟着 `mtime_secs` 出） |
 | `kind` | ← | **闭集四个词**：`dir` / `file` / `symlink` / `other` |
 | `limit` | → | 这一趟最多回几条 |
 | `link_dir` | ← | 只在 `kind` 是 `symlink` 时出：它指向的是不是目录（跟链接问一次） |
 | `link_to` | ← | 只在 `kind` 是 `symlink` 时出：它指向什么 —— `dir` · `file` · `missing`（断了：指向的东西不在 / 读不到） |
+| `mtime_full` | ← | 修改时间的完整写法 `YYYY-MM-DD HH:MM:SS`（这台本地钟写好，窗口照抄） |
 | `mtime_secs` | ← | Unix 纪元秒 |
+| `mtime_text` | ← | 修改时间列里那一格：今天 `HH:MM` · 今年 `MM-DD` · 往年 `YYYY-MM-DD`（这台本地钟写好，窗口照抄） |
 | `path` | → | 要列的那个目录 |
 | `size` | ← | 字节数 |
 | `total` | ← | 目录里一共读到几项（含没回送的；截断时界面写「前 n / total 项」） |
@@ -947,7 +949,9 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | `kind` | ← | `dir` · `file` · `symlink` · `other` |
 | `link_target` | ← | 路径**本身**是符号链接 ⇒ 它的目标原文（`readlink`，不解不跟；原始字节形：字符串或 `{"b16":…}`）；不是链接 ⇒ `null` |
 | `mode` | ← | unix 权限位的低 12 位（十进制数；`420` = `0o644`） |
+| `mtime_full` | ← | 修改时间的完整写法 `YYYY-MM-DD HH:MM:SS`（这台本地钟写好；跟着 `mtime_secs` 出） |
 | `mtime_secs` | ← | Unix 纪元秒（`mtime_secs` 拿不到就不出这个键） |
+| `mtime_text` | ← | 修改时间的短写法（今天 `HH:MM` · 今年 `MM-DD` · 往年带年；跟着 `mtime_secs` 出） |
 | `owner` | ← | 属主（跟链接）：用户名；查不到名字 ⇒ uid 的数字串；非 unix ⇒ `null` |
 | `path` | → ← | 入方向是要问的那个路径；出方向原样回送（原始字节形） |
 | `readonly` | ← | 这个路径此刻是不是只读 |

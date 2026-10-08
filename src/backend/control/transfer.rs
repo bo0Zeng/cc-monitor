@@ -56,17 +56,6 @@ pub const TRANSFER_DOWNLOAD: &str = "transfer-download";
 pub const TRANSFER_START: &str = "transfer-start";
 /// 撤。
 pub const TRANSFER_STOP: &str = "transfer-stop";
-
-/// 本模块的线上命令（`readonly_guard` 第三层 ④ 那条「门里够得到写面的命令」的一侧，与 `stream/inbound/` 源码异源）。
-pub fn transfer_command_names() -> Vec<&'static str> {
-    vec![
-        TRANSFER_UPLOAD,
-        TRANSFER_DOWNLOAD,
-        TRANSFER_START,
-        TRANSFER_STOP,
-    ]
-}
-
 /// SFTP 读写的一块（≤32 KiB：SFTP 草案建议；严格的服务端拒超大包）。
 const CHUNK: usize = 32 * 1024;
 

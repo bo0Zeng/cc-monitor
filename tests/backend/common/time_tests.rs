@@ -10,6 +10,7 @@
 //! | T7 | 记录 · 轮次 · 子运行那几处的钟面：本地钟秒数 ⇒ `HH:MM`；ISO / 毫秒按那一刻的偏移排；解不出 ⇒ 缺 | 真值 |
 //! | T8 | 历史页那几格（本地钟秒数）：分段（今天 · 昨天 · 本周周一起 · 按月 / 往年带年）· 行尾 · 内容头时间段 · 会话内查找的时刻 | 真值 |
 //! | T9 | 历史页回包出口那一遍：行添 `atText` · `sectionText` · `spanText`，按各自那一刻的偏移排；没有时刻的格不添 | 真值 |
+//! | T10 | 文件的修改时间（本地钟秒数）：列里那一格（今天 `HH:MM` · 今年 `MM-DD` · 往年带年）· 完整那一格 `YYYY-MM-DD HH:MM:SS` | 真值 |
 //! | T4 | 换算常量 `719_468` 在后端生产段只住本模块 | 文本，零命中 ＋ 正控 |
 
 use super::*;
@@ -261,4 +262,26 @@ fn t9_history_row_gets_its_three_texts() {
             && bare.get("spanText").is_none(),
         "缺 `at` / `startedAt` ⇒ 不添"
     );
+}
+
+#[test]
+fn t10_file_mtime_short_and_full() {
+    // 2023-11-14T22:13:20Z ＝ 1_700_000_000（`date -u -d @1700000000` 现打）。
+    let t = 1_700_000_000_i64;
+    let today = |y, m, d| days_from_civil(y, m, d);
+    assert_eq!(
+        mtime_texts(t, today(2026, 10, 5)),
+        ("2023-11-14".to_string(), "2023-11-14 22:13:20".to_string())
+    );
+    // 东八区：跨过午夜进了第二天；同一年 ⇒ 月日；就是今天 ⇒ 时分。
+    let east = t + 8 * 3_600;
+    assert_eq!(
+        mtime_texts(east, today(2023, 1, 1)),
+        ("11-15".to_string(), "2023-11-15 06:13:20".to_string())
+    );
+    assert_eq!(mtime_texts(east, today(2023, 11, 15)).0, "06:13");
+    // 西五区：纪元零点往回退进 1969 年。
+    assert_eq!(mtime_texts(-5 * 3_600, today(2026, 1, 1)).0, "1969-12-31");
+    // 闰日。
+    assert_eq!(mtime_texts(951_782_400, today(2000, 3, 1)).0, "02-29");
 }

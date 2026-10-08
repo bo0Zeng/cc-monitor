@@ -250,15 +250,6 @@ pub fn route(argv0: &str, args: &[String]) -> Entry {
     }
     Entry::Ccm(args.to_vec())
 }
-
-/// [`route`] 的 ccm 那一支（给只关心「是不是在当 ccm 用」的调用方）。
-pub fn intercept(argv0: &str, args: &[String]) -> Option<Vec<String>> {
-    match route(argv0, args) {
-        Entry::Ccm(v) => Some(v),
-        Entry::Backend(_) => None,
-    }
-}
-
 /// 「我是被怎么叫进 `ccm` 模式的」—— 容器路要在 pane 里**把自己再叫一次**，叫法就是这一段 ＋ 内层参数（`plan::build` 那条 `inner`）。
 /// 恒是 `[argv0]`；被叫成一段配置的名字时换成同一目录下的 `ccm`（内层参数已经是合并好的完整选项，再叫一次那个名字会把配置叠两遍）。
 pub(crate) fn self_invocation(argv: &[String]) -> Vec<String> {

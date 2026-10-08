@@ -302,14 +302,6 @@ fn with_resident<T>(f: impl FnOnce(Option<&Snapshot>) -> T) -> T {
         Err(_) => f(None),
     }
 }
-
-/// 把常驻那一份丢掉 —— 只给判据用（每条判据要从一个已知状态起跑）。
-pub fn forget_resident() {
-    if let Ok(mut g) = RESIDENT.write() {
-        *g = None;
-    }
-}
-
 // ══════════════════════ 查询 ══════════════════════
 
 /// 一次查询要什么。
