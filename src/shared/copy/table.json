@@ -19082,6 +19082,12 @@
       "zh": "做什么",
       "args": []
     },
+    "extPage.install.offline": {
+      "kind": "body",
+      "role": "状态",
+      "zh": "离线 · 上次同步：{state}",
+      "args": ["state"]
+    },
     "extPage.offline.bar": {
       "kind": "body",
       "role": "状态",
