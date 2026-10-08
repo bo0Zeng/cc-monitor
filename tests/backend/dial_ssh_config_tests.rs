@@ -97,7 +97,10 @@ fn alias_base_variants() {
 fn aggregate_same_machine_multi_address() {
     // devbox-lan / devbox-wan 同 key+user+基名 → 聚合成 1 台多地址;pi 基名不同 → 独立。
     let groups = aggregate_ssh_hosts(vec![
-        ("devbox-lan".into(), rh("192.0.2.2", Some("/k"), "user", None)),
+        (
+            "devbox-lan".into(),
+            rh("192.0.2.2", Some("/k"), "user", None),
+        ),
         (
             "devbox-wan".into(),
             rh("devbox.example.com", Some("/k"), "user", None),
@@ -222,7 +225,10 @@ fn the_three_products_match_the_cross_language_golden() {
     );
     let mut groups = aggregate_ssh_hosts(vec![
         ("devbox-lan".into(), resolved.clone()),
-        ("devbox-wan".into(), rh("devbox.example.com", None, "user", None)),
+        (
+            "devbox-wan".into(),
+            rh("devbox.example.com", None, "user", None),
+        ),
         ("pi".into(), rh("pi.local", None, "pi", None)),
     ]);
     // 列表里已有 devbox 的第二个地址那一台 ⇒ devbox 那一组「已在列表里」；pi 不在。

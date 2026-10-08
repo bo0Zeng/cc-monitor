@@ -620,7 +620,11 @@ fn the_verdict_never_flaps_between_two_accounts() {
             path.push(current.clone());
         }
     }
-    assert_eq!(path, ["work", "b", "work"], "work 一重置就回 work，之后不再动");
+    assert_eq!(
+        path,
+        ["work", "b", "work"],
+        "work 一重置就回 work，之后不再动"
+    );
 }
 
 /// ★ 一份典型配置：`order: [work, personal, team, b]` · `when: ≥90%` · `personal: {cap: [{at: "01:00-20:00", n: 99}]}` ·
@@ -673,7 +677,11 @@ fn a_daytime_cap_lets_personal_run_to_ninety_nine_until_eight_pm() {
         "00:59 还不在那一段里"
     );
     local(&mut w, 1, 0);
-    assert_eq!(w.judge("personal", None, &[]).0, Verdict::Stay, "01:00 起又是 99%");
+    assert_eq!(
+        w.judge("personal", None, &[]).0,
+        Verdict::Stay,
+        "01:00 起又是 99%"
+    );
 }
 
 /// ★ 跨午夜的一段（`22:00-06:00`）：含起不含止；落不进那一段 ⇒ 落回这个号 `*` 的，再落回 `when`。按窗口写的压过 `*`。

@@ -260,7 +260,12 @@ fn editing_one_profile_keeps_the_hand_written_comments_and_the_other_profiles_by
     )
     .unwrap();
     let out = f.to_string();
-    assert!(out.starts_with("# 我的 ccm 配置（手写的注释要留住）\n[cc]\ncwd-if = [[\"~\", \"~/projects/notes\"]]\n"), "{out}");
+    assert!(
+        out.starts_with(
+            "# 我的 ccm 配置（手写的注释要留住）\n[cc]\ncwd-if = [[\"~\", \"~/projects/notes\"]]\n"
+        ),
+        "{out}"
+    );
     assert!(
         out.contains("from = \"cc\"   # 在 cc 上加 tmux"),
         "没动的那一项连同行尾注释原样：{out}"
@@ -312,8 +317,5 @@ fn a_profile_reads_back_as_its_own_layer_in_command_line_words() {
     assert_eq!(p.from.as_deref(), Some("cct"));
     assert_eq!(p.ccm_words(), v(&["--account", "b"]));
     let cc = b.find("cc").unwrap();
-    assert_eq!(
-        cc.ccm_words(),
-        v(&["--cwd-if", "~", "~/projects/notes"])
-    );
+    assert_eq!(cc.ccm_words(), v(&["--cwd-if", "~", "~/projects/notes"]));
 }
