@@ -392,78 +392,28 @@ fn every_data_poll_names_its_event_source_and_owner() {
     assert_eq!(polls, 1, "data-poll 条数变了（今天 1：cc-busd）—— 多了请登记事件源与退役去处，少了请写清退役的是哪条");
 }
 
-/// **全部调度调用点的分类账**：`(相对仓根的路径, API, 处数, 这几处是什么)`。
+/// **调度调用点的分类住在调用点旁边**：每个 `setInterval` / `setTimeout` / `requestAnimationFrame` /
+/// `requestIdleCallback` 调用上方（或同一行）一行 `// 调度：<类> —— <理由>`，类取闭集 [`SCHEDULING_KINDS`]。
 ///
-/// # 为什么要有这张表，而不是继续只认周期形态
-///
-/// `is_periodic` 认的是「一行里像不像周期唤醒」（`setInterval` / 名字带 `poll` 的
-/// `setTimeout` / `sleep `）。它的漏网在本模块头注里**早就自陈过**，本轮实测了后果：
-/// `views/history.ts` 那条「索引构建中 → 1 秒后自动重试」的递归 `setTimeout` **零命中**，
-/// `tabs.ts` 的 rIC 物化队列、`session-viewer.ts` 的 rAF 补料链等**五处自链全部逃逸**。
-/// ⇒ 「登记齐了」这句话建立在一个看不见它们的扫描面上。
-///
-/// 修法不是把形态认得更聪明（自链在语法上确实与一次性延时难分），而是**换失守方向**：
-/// 从「认出来的才要登记」改成「**每一个调度调用点都必须被分类**」。
-/// 新增一处没登记的调度点 ⇒ 本条红。**逃逸变成失败即红。**
-///
-/// ⚠ **不含行号，只含处数** —— 行号会腐：`00-核实台账` 记的 `views/history.ts:752`
-/// 在 F14 第一刀改过那个文件之后已经是 `:761`。处数变了才是该重新分类的时刻。
+/// 为什么要逐个调用点分类，而不是只认周期形态：`is_periodic` 认的是「一行里像不像周期唤醒」，
+/// 自链（递归 `setTimeout` · rAF 补料链 · rIC 物化队列）在语法上与一次性延时难分 ⇒ 改成
+/// 「**每一个调度调用点都必须被分类**」，新写一处没标的当场红。真轮询（取数的周期唤醒）还要进 `REGISTERED`。
+const SCHEDULING_KINDS: &[&str] = &[
+    "一次性", // 一次性延时：UI 反馈 · 防抖 · 悬停延迟 · 期限
+    "自链",   // 有退出条件的自链（队列空 / 守卫不满足即停）
+    "合批",   // 帧末 / 短窗合批：排一次位，回调里不再排
+    "钟",     // ui-clock：只重画、不取数（文件要在 `REGISTERED` 里记成 `ui-clock`）
+];
+
+/// 标记的写法（行注释开头）。
+const SCHEDULING_MARK: &str = "// 调度：";
+
+/// **还没就地标记的**那几份（别的路正在改它们，合了再补标记、删行）：`(路径, API, 处数, 这几处是什么)`。
+/// 处数变了就是该重新分类的时刻；那份文件标上了 ⇒ 删那一行。
 const SCHEDULING_SITES: &[(&str, &str, usize, &str)] = &[
-    ("src/frontend/ui/branch-fold.ts", "requestAnimationFrame", 1, "★ F15：live 模式主线重算的**帧末合批**（`scheduleLiveRecompute`）。排一次位（`liveScheduled`）⇒ **不是自链**：回调里不再排下一次，只有新记录到达才会再排。原来这里是逐条同步跑 `computeMainBranch`（扫全部 records 的 Kahn 拓扑）⇒ N 条记录 O(N²)。"),
-    ("src/frontend/ui/branch-fold.ts", "setTimeout", 1, "★ F15：上面那条的**无 rAF 兜底**（`typeof requestAnimationFrame !== \"function\"` 时）。0ms，一次性。"),
-    ("src/frontend/ui/front-pop.ts", "setTimeout", 1, "↗ 切过去了：1 秒后把对勾换回 ↗。一次性 UI 反馈。"),
-    // P2s（补审 A4）：**有退出条件的自链**，不是 data-poll。
-    ("src/frontend/ui/settings/backend-section.ts", "setTimeout", 1,
-     "起/停一台机之后轮询状态到落定。**上限 30 次 × 100ms**、由用户动作触发、\
-          落定即停 ⇒ 有退出条件的自链，不进 `REGISTERED`。\
-          ⚠ 不轮询的后果很具体：两个命令都是「发出去就返回」（`backend_start` 只 spawn 了监护线程、\
-          `backend_stop` 只发 SIGKILL），命令一返回就画等于**每次操作后都显示操作前的状态**。"),
-    ("src/frontend/ui/e2e-probe.ts", "requestAnimationFrame", 2, "★ **rAF 自链**：`sample` 每帧重排自己（起点 1 处 + 链内 1 处）。退出条件是 `stopReplayJitterProbe` 显式 `cancelAnimationFrame`。只在 e2e 探针里启用，不在正常路径上。"),
-    // 通用组件（`kit/`）：都是一次性 UI 延时，不取数、不自链。
-    ("src/frontend/ui/find-strip.ts", "setTimeout", 1, "停 300ms 自己找（防抖）：每次输入清掉上一个再排；找过 / 收起时清掉。一次性。"),
-    ("src/frontend/ui/kit/toast.ts", "setTimeout", 1, "到点收起这一条（纯告知 4s · 带动作 8s；悬停 / 焦点时清掉、离开后按剩下的时间重排）。一次性。"),
-    ("src/frontend/ui/kit/tooltip.ts", "setTimeout", 2, "悬停 500ms 才出提示 · 卡式离开宿主与卡 120ms 才收；离开 / 移进卡即 `clearTimeout`。两处都一次性。"),
-    ("src/frontend/ui/kit/interrupts.ts", "setTimeout", 1, "问后端「会打断什么」的 2s 上限：到点当有东西在跑；答到了 `clearTimeout`。一次性。"),
-    ("src/frontend/ui/kit/menu.ts", "setTimeout", 3, "① ② 子菜单悬停 150ms 开 / 250ms 关（关菜单时统一清）③ 右键开的菜单下一拍挂「点外面」监听。一次性。"),
-    ("src/frontend/ui/launch-slot.ts", "setTimeout", 1, "起新会话之后的占位标签页：每个一个 20 s 的点，到点只把样子换成「未报到」、问一次那台那个 tmux 会话在不在与画面（不重试、不轮询）；报到了 / 关掉时 `clearTimeout`。一次性。"),
-    ("src/frontend/ui/launch-arrival.ts", "setTimeout", 2, "① 起会话之后等那台报出它的**预算**（`ARRIVAL_BUDGET_MS`）：每件预期一个、到点只说一次「没看到会话起来」，见到了当场 `clearTimeout`。② `awaitArrival` 发起方自己的上界（预算 ＋ 15 s：主窗口不回话也不挂着），回话一到就 `clearTimeout`。都是一次性，不重试、不取数。"),
-    ("src/frontend/ui/events.ts", "setTimeout", 3, "① `scheduleBatchEnd` 的 batch-end 哨兵（每次重排前 `clearTimeout`，且有 `BATCH_HOLD_MAX_MS` 5min 防呆上限）② `setTimeout(drain, 0)` —— **队列 drain 自链**，退出条件是 `queue.length === 0`，由 `scheduled` 标志防重入。不是节拍器：没有队列就不会再排。原 ③（`makeYieldToMain` 的兜底）搬进 `yield-to-main.ts`（3 = 2 ＋ 1）。④（2 → 3）一台机器的会话流看不见了之后等 `UNSEEN_SAY_MS`（20 s）：还没看见才说一句是哪台、能做什么；又看见了当场 `clearTimeout`。每台每次看不见至多一个，一次性，不重试、不取数。"),
-    // `src/frontend/ui/session-accounts-poll.ts` 的 `setInterval` ×1 这一行出去了（10s 账号轮询改事件驱动，理由见 `REGISTERED` 头上那段）。
-    // 〔三入口拆分〕原先 `main.ts` 一行 3 处；代码块「复制」那段全局代理
-    //   （② ③ 两处）搬进了主窗与 viewer 窗共用的 `entry-render-common.ts`（viewer 窗不再加载
-    //   `main.ts`，而它也要这段代理；设置窗没有代码块，不加载它）。
-    //   **一处都没多、一处都没少，只是换了文件**：3 = 1 ＋ 2。
-    ("src/frontend/ui/entry-render-common.ts", "setTimeout", 2, "① ② 1.2s 后把「已复制」/「失败」还原成「复制」。一次性 UI 反馈。"),
-    ("src/frontend/ui/settings/data-page.ts", "setTimeout", 1, "文件与数据从别处带进来滚到那台那一段：段头高亮 1.5 秒后摘掉（一次性 UI 反馈，不取数）。"),
-    ("src/frontend/ui/settings/accounts-section.ts", "setTimeout", 1, "账号页收到后端推来的 `accounts-changed` / `quota-changed`：300ms 内的几帧合成一次重读（每来一帧重排一次，不自链、不取数）。一次性合批，不是 data-poll。"),
-    ("src/frontend/ui/settings/panel.ts", "setTimeout", 1, "带目的地打开：1.5s 后撤掉那一节的高亮。一次性 UI 反馈。"),
-    // `cc_integration.ts` 并进 `machine-aliases.ts`（终端集成成了 PowerShell 那一侧的别名块）⇒ 那一处跟着换文件：一处没多一处没少。
-    // 那一处（「重新扫描」后 500ms 撤掉状态徽章的高亮描边）**删了**：别名块的现状今天随读回口的候选一起到，
-    //   「重新读一遍」重读的是整份候选，不再闪一下徽章 ⇒ `machine-aliases.ts` 这一行整行走（少一处，不是换文件）。
-    // 〔拆 `tabs.ts` 子步 9〕实时流视图搬进 `tab-stream-view.ts` ⇒ 原 `tabs.ts` 的 rAF ① · rIC ×1 · setTimeout ① 三处跟着走（下三行）：
-    //   rAF 4 = 3 ＋ 1 · rIC 1 = 0 ＋ 1（`tabs.ts` 那一行因此整行删掉）· setTimeout 3 = 2 ＋ 1。一处没多一处没少。
-    ("src/frontend/ui/tab-stream-view.ts", "requestAnimationFrame", 1, "① `fillAbove` 批末复检（间接自链，有队列型守卫）：补完一批下一帧再看一眼，仍在触发区 / 仍不可滚且账本有余就再补；切走了（`activeId` 守卫）或账尽即停。"),
-    ("src/frontend/ui/tab-stream-view.ts", "requestIdleCallback", 1, "★ **空闲物化队列的自链**：`run` 处理一个后台 tab 后再排自己。退出条件是队列空。"),
-    ("src/frontend/ui/tab-stream-view.ts", "setTimeout", 1, "① `setTimeout(run, 200)` —— 上面那条 rIC 队列在 `requestIdleCallback` 缺失时的兜底，同一条自链。"),
     ("src/frontend/ui/tabs.ts", "requestAnimationFrame", 2, "原 ① `fillAbove` 批末复检搬去了 `tab-stream-view.ts`（上面那条），编号沿用原号。② 切 Tab 后把面板整表 re-render 推到下一帧，入口处 `this.activeId !== sessionId` 早返。原 ③（`scheduleTabBarRefresh` 帧末合批）随 tab 栏视图搬去了 `tab-bar-view.ts`。④ ★ 步 3（2026-09-18）：`switchTo` 贴底的**第二帧**（对齐 `session-viewer.ts` 已有的同一修法）。⚠ 它**不是只读校正** —— `scrollToBottom()` 会把 `stickToBottom` 重新置真，所以第二帧与第一帧一样是强制贴底。可接受的理由只有一条：两帧之间只隔 ~16ms，人滚不出意图；切走了有 `activeId` 守卫挡着。**不是自链**（回调里不再排下一次）。"),
-    // 〔拆 `tabs.ts` 子步 11〕拖拽状态机搬进 `tab-bar-drag.ts` ⇒ 原 ⑪ 停留计时器跟着走（下一行）：`tabs.ts` setTimeout 2 = 1 ＋ 1。
-    ("src/frontend/ui/tab-bar-drag.ts", "setTimeout", 1, "⑪ ★ `updateDwell` 的**停留计时器**（`DWELL_MS` = 250ms）：拖动时压住某个 tab 满 250ms ⇒ 落点从 `before` 切成 `onto`（与它成组）。**一次性、非取数**：每次换目标 / 抖动超 4px 都先 `clearTimeout` 再重排，`teardownDrag` 收尾时无条件清（判据 `tests/frontend/ui/tabs.vitest.ts` 「步 17·D ⑤」那组用 `vi.getTimerCount()` 数在飞的定时器，死值验刀 21 钉着）。⚠ 它**非有不可**：指针停住之后 `mousemove` 就不再来了，靠事件驱动的话「停留」永远攒不满。"),
-    // 〔拆 `tabs.ts` 子步 12〕tab 栏视图搬进 `tab-bar-view.ts` ⇒ 原 rAF ③ 与 setTimeout ⑩（同一个 `scheduleTabBarRefresh` 的两支）跟着走（下两行）：
-    //   `tabs.ts` rAF 3 = 2 ＋ 1 · setTimeout 1 = 0 ＋ 1（`tabs.ts` 的 setTimeout 那一行因此整行删掉）。
-    ("src/frontend/ui/tab-bar-view.ts", "requestAnimationFrame", 1, "③ ★ F15：`scheduleRefresh`（原 `TabManager.scheduleTabBarRefresh`） —— live 路上后台 tab 的 unread 徽标**帧末合批**（原来每来一行整刷一次 bar）。排一次位，不是自链。⚠ 只合批这一处，用户动作触发的十几个调用点仍是同步的（合批对它们无收益，反而把「点完立刻看到」变成「下一帧」）。"),
-    ("src/frontend/ui/tab-bar-view.ts", "setTimeout", 2, "⑩ ★ F15：`scheduleRefresh`（原 `TabManager.scheduleTabBarRefresh`）的**无 rAF 兜底**，0ms、一次性。⑪ 「需要你」悬停 500ms 才开菜单：一次性，移开就清，不自链。"),
-    // 〔拆 `tabs.ts` 子步 5〕会话动作搬进 `tab-session-actions.ts` ⇒ 原 ② ③ ④ ⑧ ⑨ 五处跟着走（下一行）：8 = 3 ＋ 5。
-    // 5 → 3：`awaitExitFor` 的 ③ `stop(false)` 上限与 ④ 1s 轮询随它一起删了（换号重启直接 kill，不再等退出）。
-    // 2 → 4：↗ 的「进行中」两处（`frontOnce`：超过 300ms 才进 · 进了至少停 400ms），都是一次性。
-    ("src/frontend/ui/terminal-page.ts", "setTimeout", 2, "① 底部抽屉终端页：送字送键之后 0.5 · 1.5 · 3 秒各再抓一屏（一次动作三次、换会话 / 收起即清，不自链、开着不轮询）② 「已送达」2 秒后收。一次性。"),
     ("src/frontend/ui/tab-session-actions.ts", "setTimeout", 3, "⑧ `shellFront`：↗ 壳那一跳的期限（到点落成「无应答」，本机 / 远端两条共用这一处）。一次性，不是周期取数。编号沿用 `tabs.ts` 那一行拆开之前的原号。⑩ ⑪ `frontOnce`：↗ 在飞超过 300ms 才把按钮换成「进行中」· 进了之后至少停 400ms 再收（防闪），一次性。"),
-    ("src/frontend/ui/views/agent-window.ts", "setInterval", 1, "每分钟重画标题区（时长只写到分钟）。**ui-clock，不取数**，见 `REGISTERED` 那条。"),
     ("src/frontend/ui/views/grid-monitor.ts", "setInterval", 1, "1s 重绘 —— 按格差量（没变的一拍零 DOM 写），不再整表重建。**ui-clock，不取数**，见 `REGISTERED` 那条。"),
-    // 历史页照稿重做：旧页那一处 rAF（展开 / 收起后合并重画）随旧页删了。
-    ("src/frontend/ui/views/history.ts", "setTimeout", 3, "① 敲字之后停 150 ms 才问清单（`queryTimer`，再敲就重来）② 方向键走行时停 200 ms 才读右边（`previewTimer`，快速划过不读）③ 焦点离开列表那一下推到下一拍再看焦点去了哪（`focusout` 时 `activeElement` 还没换）。都是一次性，不取数、不是节拍器。"),
-    ("src/frontend/ui/views/session-viewer.ts", "requestAnimationFrame", 5, "① ② 两处 `maybeFillAbove` —— **向上补料的 rAF 链**，五道守卫在 `:418-426`（世代 / 已到顶 / 在途 等）③ 渲染批前先让状态文绘一帧 ④ ⑤ 双 rAF 后重发 `scrollIntoView`（等 content-visibility 材料化）。"),
-    ("src/frontend/ui/views/session-viewer.ts", "setTimeout", 1, "1.5s 后移除搜索命中的闪烁 class。一次性。原 ①（`setTimeout(r, 0)` 让出主线程、等晚到的 Channel 块）随那条命令改走通道删了：页在同一个 Promise 链里交完。"),
-    ("src/frontend/ui/yield-to-main.ts", "setTimeout", 1, "`makeYieldToMain` 探不到 `MessageChannel` 时的兜底 `setTimeout(run, 0)` —— 让出一跳，由调用方自链（重放 drain · 长回复分片渲染），退出条件在调用方：队列空 / 片渲完。不是节拍器。"),
 ];
 
 /// 数一个调度 API 在源码里的**调用**次数（散文里提到名字不算）。
@@ -499,44 +449,53 @@ fn count_calls(src: &str, api: &str) -> usize {
     n
 }
 
-/// 扫描面：**全部**调度调用点（不只是「看起来像周期」的那些）。
-fn scan_all_scheduling_sites() -> Vec<(String, String, usize)> {
+/// 一份 TS 源码里，每一处调度调用（剥注释后按行认）是哪一行 · 哪个 API · 标的是哪一类（没标 ⇒ `None`）。
+/// 标记认法：调用那一行自己带着，或它**紧上方那一串行注释**里有一行是 [`SCHEDULING_MARK`]。
+fn scheduling_marks(raw: &str) -> Vec<(usize, &'static str, Option<String>)> {
     const APIS: [&str; 4] = [
         "setInterval",
         "setTimeout",
         "requestAnimationFrame",
         "requestIdleCallback",
     ];
-    let root = repo_root();
-    let mut files: Vec<PathBuf> = Vec::new();
-    collect_ts(&root.join("src"), &mut files);
-    files.sort();
-    let mut out: Vec<(String, String, usize)> = Vec::new();
-    for f in files {
-        let rel = f
-            .strip_prefix(&root)
-            .unwrap_or(&f)
-            .to_string_lossy()
-            .replace('\\', "/");
-        let src = guard_core::strip_comment_lines(&fs::read_to_string(&f).unwrap_or_default());
+    let code: Vec<String> = guard_core::strip_comment_lines(raw)
+        .lines()
+        .map(str::to_string)
+        .collect();
+    let raw_lines: Vec<&str> = raw.lines().collect();
+    let kind_in = |l: &str| -> Option<String> {
+        let at = l.find(SCHEDULING_MARK)?;
+        let rest = &l[at + SCHEDULING_MARK.len()..];
+        Some(rest.split_whitespace().next().unwrap_or("").to_string())
+    };
+    let mut out = Vec::new();
+    for (i, line) in code.iter().enumerate() {
         for api in APIS {
-            let n = count_calls(&src, api);
-            if n > 0 {
-                out.push((rel.clone(), api.to_string(), n));
+            for _ in 0..count_calls(line, api) {
+                let mut mark = raw_lines.get(i).and_then(|l| kind_in(l));
+                // 往上走那一串注释行：剥注释（共享原语）之后空了、原文不空的就是注释行。
+                let mut j = i;
+                while mark.is_none() && j > 0 {
+                    j -= 1;
+                    let up = raw_lines.get(j).copied().unwrap_or("");
+                    if !(code[j].trim().is_empty() && !up.trim().is_empty()) {
+                        break;
+                    }
+                    mark = kind_in(up);
+                }
+                out.push((i + 1, api, mark));
             }
         }
     }
-    out.sort();
     out
 }
 
-/// ★ **本轮的正题**：每一个调度调用点都必须被分类过。
+/// ★ **每一个调度调用点都带着分类标记，类在闭集里**（还没标的那几份见 [`SCHEDULING_SITES`]，处数对得上）。
 ///
-/// 与 `every_periodic_wake_is_registered_with_an_owner` 的分工：
-/// 那一条钉「**认出来的**周期唤醒有没有主人」，本条钉「**有没有认漏**」。
-/// 两条都要 —— 只有前者时，一处新写的 rAF 自链可以一声不响地进仓。
+/// 与 `every_periodic_wake_is_registered_with_an_owner` 的分工：那一条钉「**认出来的**周期唤醒有没有主人」，
+/// 本条钉「**有没有认漏**」。
 #[test]
-fn every_scheduling_call_site_is_classified() {
+fn every_scheduling_call_site_carries_a_classification_mark() {
     // 匹配单位自检（两个方向都要钉）：
     // 放松的那一侧 —— 带空白的调用要数进来（本轮的洞就在这里）。
     assert_eq!(
@@ -564,41 +523,95 @@ fn every_scheduling_call_site_is_classified() {
         1,
         "`window.setInterval(` 是调用，必须数"
     );
-    let found = scan_all_scheduling_sites();
-    // 抽取器坏了扫不到东西 ⇒ 下面反向那一条（表里的条目必须真的还在）红。
-
-    let mut missing: Vec<String> = Vec::new();
-    let mut drifted: Vec<String> = Vec::new();
-    for (f, api, n) in &found {
-        match SCHEDULING_SITES
-            .iter()
-            .find(|(g, a, _, _)| g == f && a == api)
-        {
-            None => missing.push(format!("  {f}  [{api}]  {n} 处")),
-            Some((_, _, want, _)) if want != n => {
-                drifted.push(format!("  {f}  [{api}]  表里 {want} 处，实测 {n} 处"))
+    // 标记认法的正反控（合成源码）：没标 · 标了闭集外的类 · 标在上方注释串里 · 同一行。
+    let probe = "a();\nsetTimeout(f, 1);\n// 调度：随便 —— x\nsetTimeout(f, 1);\n// 说明\n// 调度：一次性 —— y\nrequestAnimationFrame(g);\nsetInterval(h, 9); // 调度：钟 —— z\n";
+    assert_eq!(
+        scheduling_marks(probe),
+        vec![
+            (2, "setTimeout", None),
+            (4, "setTimeout", Some("随便".to_string())),
+            (7, "requestAnimationFrame", Some("一次性".to_string())),
+            (8, "setInterval", Some("钟".to_string())),
+        ],
+        "标记认法认错了"
+    );
+    let root = repo_root();
+    let mut files: Vec<PathBuf> = Vec::new();
+    collect_ts(&root.join("src"), &mut files);
+    files.sort();
+    let pending: std::collections::BTreeSet<&str> =
+        SCHEDULING_SITES.iter().map(|(f, _, _, _)| *f).collect();
+    let (mut sites, mut bad, mut clocks) = (0usize, Vec::new(), std::collections::BTreeSet::new());
+    let mut pending_found: Vec<(String, String, usize)> = Vec::new();
+    for f in files {
+        let rel = f
+            .strip_prefix(&root)
+            .unwrap_or(&f)
+            .to_string_lossy()
+            .replace('\\', "/");
+        let raw = fs::read_to_string(&f).unwrap_or_default();
+        let marks = scheduling_marks(&raw);
+        if pending.contains(rel.as_str()) {
+            let mut by: std::collections::BTreeMap<&str, usize> = Default::default();
+            for (_, api, _) in &marks {
+                *by.entry(api).or_insert(0) += 1;
             }
-            Some(_) => {}
+            for (api, n) in by {
+                pending_found.push((rel.clone(), api.to_string(), n));
+            }
+            assert!(
+                marks.iter().any(|(_, _, m)| m.is_none()),
+                "`{rel}` 的调度点都标上了 —— 把它从 `SCHEDULING_SITES` 里删掉"
+            );
+            continue;
+        }
+        for (ln, api, mark) in marks {
+            sites += 1;
+            match mark.as_deref() {
+                Some(k) if SCHEDULING_KINDS.contains(&k) => {
+                    if k == "钟" {
+                        clocks.insert(rel.clone());
+                    }
+                }
+                Some(k) => bad.push(format!(
+                    "  {rel}:{ln}  [{api}]  标的「{k}」不在闭集 {SCHEDULING_KINDS:?} 里"
+                )),
+                None => bad.push(format!("  {rel}:{ln}  [{api}]  没有标记")),
+            }
         }
     }
+    // 抽取器坏了扫不到东西 ⇒ 下面那条会零命中地绿。
     assert!(
-        missing.is_empty(),
-        "有调度调用点没被分类过。**这张表不是豁免清单** —— 请写清这几处各是什么：\n{}\n\
-             （一次性 UI 反馈 / 有退出条件的自链 / 真 data-poll；是 data-poll 的还要进 `REGISTERED`）",
-        missing.join("\n")
+        sites > 0,
+        "`src/` 下一个调度调用点都没扫到 —— 遍历或认法坏了"
     );
     assert!(
-        drifted.is_empty(),
-        "调度调用点的处数变了 —— **那正是该重新分类的时刻**，别只改数字：\n{}",
-        drifted.join("\n")
+        bad.is_empty(),
+        "这几个调度调用点没分类（或类不在闭集里）。在调用上方加一行 `{SCHEDULING_MARK}<类> —— <理由>`：\n{}\n\
+         （一次性 UI 反馈 / 有退出条件的自链 / 合批 / 只重画的钟；取数的周期唤醒还要进 `REGISTERED`）",
+        bad.join("\n")
     );
-    // 反向：表里的条目必须**真的还在**（搬走/删掉了就该删条目，别留僵尸账）。
-    for (f, api, want, _) in SCHEDULING_SITES {
+    // 「钟」那几份都得在 `REGISTERED` 里记成 ui-clock（只重画、不取数，由那张表写清）。
+    for f in &clocks {
         assert!(
-            found.iter().any(|(g, a, _)| g == f && a == api),
-            "分类账里的 `{f} [{api}]`（{want} 处）已经一处都不剩了 —— 删掉这条"
+            REGISTERED
+                .iter()
+                .any(|(g, k, _)| g == f && *k == "ui-clock"),
+            "`{f}` 标了「钟」却不在 `REGISTERED` 里记成 ui-clock"
         );
     }
+    // 还没标的那几份：处数两向对得上（多了 / 少了 ⇒ 重新分类；表里那一格盘上没有了 ⇒ 删行）。
+    let mut want: Vec<(String, String, usize)> = SCHEDULING_SITES
+        .iter()
+        .map(|(f, a, n, _)| (f.to_string(), a.to_string(), *n))
+        .collect();
+    want.sort();
+    pending_found.sort();
+    assert_eq!(
+        pending_found, want,
+        "还没标记的那几份，调度点处数与 `SCHEDULING_SITES` 对不上 —— 那正是该重新分类的时刻；\
+         趁这一拍就地标上、把那一行删掉最好"
+    );
 }
 
 /// ★ **身份 poller 不许回来** —— `U-NP④`（2026-08-14）之后 `shared/ccm` 里

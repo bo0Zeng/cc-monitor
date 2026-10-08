@@ -78,7 +78,7 @@ const REVERSE: &[&str] = &["assert_eq!(", "已经不在了", "已经没有"];
 /// 下一条判据的文档注释）。拿整块判「表声明在谁体内」会把一张**模块级**的表
 /// 算成「它上面那条判据自带的」：`polling_registry.rs` 的 `SCHEDULING_SITES`
 /// 声明在 `every_data_poll_names_its_event_source_and_owner` **之后**、
-/// 真正用它的 `every_scheduling_call_site_is_classified` **之前**
+/// 真正用它的 `every_scheduling_call_site_carries_a_classification_mark` **之前**
 /// ⇒ 按块判会把它记到前者头上，而前者没有反向那半 ⇒ **一条假红**。
 ///
 /// # 它认什么、认不出什么（认不出的是**漏判**，不是假绿）
@@ -278,7 +278,7 @@ fn every_registry_guard_keeps_its_reverse_half() {
     // 抽取器自检⑥（`K-R37`，**点名**）：**射程本身**也要被钉住。
     //
     // 没有它，把实参改回一棵树是**静默**的：backend 那棵今天对人群的贡献是 0
-    // ⇒ 删掉它，上面那个地板（只看还剩的那几棵）与下面所有断言**全部照旧绿**，
+    // ⇒ 删掉它，上面那条对拍（只看还剩的那几棵）与下面所有断言**全部照旧绿**，
     // 而输出与今天一模一样。那正是本件立件的那一格，只是方向反过来。
     //
     // 🔴 **为什么钉的是一个真实住址，而不是把上面那份子树清单再抄一遍**：
