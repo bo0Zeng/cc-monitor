@@ -2311,7 +2311,7 @@ describe("：↗ 远端那一格按顺序问三方", () => {
     expect(pop()!.firstElementChild!.textContent).toBe(copyText("front.title.updated", { machine: "devbox" }));
     expect(popText()).toContain("已部署 X");
     expect(popButtons(), "换上了：只留关闭，不挂［重试］").toEqual([]);
-    expect(popText(), "重拨成了：不叫人去重连").not.toContain(copyText("front.body.redialFailed", { e: "\u0000" }).split("\u0000")[0]);
+    expect(popText(), "重拨成了：不叫人去重连").not.toContain(copyText("front.body.redialFailed"));
     expect(mockInvoke.mock.calls.filter((c) => c[0] === "backend_start").map((c) => c[1]), "换上了就重拨那台").toEqual([{ origin: "devbox" }]);
 
     // 换上了、重拨没成：才说要重连，给［重新连接］。
@@ -2325,7 +2325,7 @@ describe("：↗ 远端那一格按顺序问三方", () => {
     [...pop()!.querySelectorAll("button")].find((b) => b.textContent === copyText("front.act.update"))!.click();
     for (let i = 0; i < 6; i++) await new Promise((r) => setTimeout(r, 0));
     expect(pop()!.firstElementChild!.textContent).toBe(copyText("front.title.updated", { machine: "devbox" }));
-    expect(popText()).toContain(copyText("front.body.redialFailed", { e: String(new Error("拨不通")) }));
+    expect(popText()).toContain(copyText("front.body.redialFailed"));
     expect(popButtons()).toEqual([copyText("front.act.reconnect")]);
 
     // 部署失败：同一个浮层里红着说，带原文可复制；［重试］再更新一次。

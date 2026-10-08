@@ -2046,7 +2046,7 @@
     "liveCard.state.awaitingRecord": {
       "kind": "body",
       "role": "状态",
-      "zh": "完成 · 等写入记录",
+      "zh": "已生成 · 等写入记录",
       "args": []
     },
     "liveCard.block.thinking": {
@@ -4614,8 +4614,8 @@
     "front.body.redialFailed": {
       "kind": "body",
       "role": "片段",
-      "zh": "重新连接失败 · {e} · 点［重新连接］再试",
-      "args": ["e"]
+      "zh": "重新连接失败 · 点［重新连接］再试",
+      "args": []
     },
     "front.title.failed": {
       "kind": "title",
@@ -4947,7 +4947,7 @@
     "accountChip.menu.notEnabled": {
       "kind": "body",
       "role": "状态",
-      "zh": "未启用 · 该远端多账号",
+      "zh": "该远端未启用多账号",
       "args": []
     },
     "accountChip.menu.queryFailed": {
@@ -4977,17 +4977,14 @@
     "accountChip.label.disabled": {
       "kind": "body",
       "role": "状态",
-      "zh": "未启用 · 多账号",
+      "zh": "未启用多账号",
       "args": []
     },
     "accountChip.label.backendOld": {
       "kind": "body",
       "role": "状态",
       "zh": "后端要更新",
-      "args": [],
-      "waive": {
-        "C-W3": "chip 上只写「要更新」读着像账号要更新，主语「后端」必须留（定过）"
-      }
+      "args": []
     },
     "accountChip.label.queryFailed": {
       "kind": "body",
@@ -4998,7 +4995,7 @@
     "accountChip.label.noRemote": {
       "kind": "body",
       "role": "状态",
-      "zh": "未连接 · 远端",
+      "zh": "未连接远端",
       "args": []
     },
     "accountCommands.manage.keywords": {
@@ -7999,7 +7996,7 @@
     "settingsPanel.claudeDir.updated": {
       "kind": "body",
       "role": "说明",
-      "zh": "已更新 Claude 数据目录 · 重启 cc-monitor 后生效",
+      "zh": "已更新 Claude 数据目录 · 重启本机 cc-monitor 后生效",
       "args": []
     },
     "settingsPanel.claudeDir.missing": {
@@ -23802,8 +23799,11 @@
     "addMachine.ssh.split": {
       "kind": "action",
       "role": "按钮",
-      "zh": "拆成 ×{n}",
-      "args": ["n"]
+      "zh": "按地址拆成 ×{n}",
+      "args": ["n"],
+      "waive": {
+        "C-W15": "压了换事实：「按地址」是拆法本身（一行多个地址按地址拆成多台），去掉就分不清按什么拆"
+      }
     },
     "addMachine.ssh.unsplit": {
       "kind": "action",
@@ -24268,7 +24268,7 @@
     "machineState.down.password": {
       "kind": "body",
       "role": "说明",
-      "zh": "连接失败 · 不支持 · 仅密码登录 · cc-monitor 只用密钥",
+      "zh": "连接失败 · 不支持仅密码登录 · cc-monitor 只用密钥",
       "args": []
     },
     "machineState.down.keyUnreadable": {

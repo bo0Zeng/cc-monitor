@@ -12,6 +12,8 @@ export interface WRule {
   id: string;
   words?: string[];
   cells?: string[];
+  /** C-W3：可连同主语 / 宾语嵌进句里的闭集格（该远端未启用多账号 · 未连接远端）。 */
+  embeddable?: string[];
   limits?: Record<string, number>;
   /** C-W8：带码的原因形状（整格匹配，如「退出码 {status}」）。 */
   shapes?: string[];
@@ -77,6 +79,9 @@ export const W_CHECKS: Record<string, Check> = {
     const cells = ctx.byId.get("C-W3")?.cells ?? [];
     const head = speech(e.zh).trim().split(" · ")[0].trim();
     if (cells.includes(head)) return null;
+    // 只有 embeddable 里那几格可连同主语 / 宾语嵌在句里（该远端未启用多账号 · 未连接远端）；别的格（失败 · 完成 …）要打头。
+    const emb = ctx.byId.get("C-W3")?.embeddable ?? [];
+    if (emb.some((c) => cells.includes(c) && head.includes(c))) return null;
     // chip 形「名词 值」：值里有占位符（上下文 {pct}% · 未读 {n} · 无权限目录 ×{n} · 任务 {done}/{all}）。
     const first = e.zh.trim().split(" · ")[0];
     if (/^[^{}\s]+ [×+]?\{[A-Za-z][A-Za-z0-9]*\}(%|\/\{[A-Za-z][A-Za-z0-9]*\})?$/.test(first)) return null;
