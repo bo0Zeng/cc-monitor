@@ -32,9 +32,7 @@ import {
   extNoteSet,
   extUninstallApply,
   extUninstallPreview,
-  type ExtAsk,
-  type ExtBring,
-  type ExtCard,
+  type ExtManyCard,
   type ExtCell,
   type ExtList,
   type ExtLoc,
@@ -175,21 +173,23 @@ interface Slot {
   done?: string;
 }
 
-/** 抽屉里「装到 N 台」那一张卡：勾上的那几台各自那张确认卡（后端拼的）· 共用的落点 · 只填一次的值 · 各台结局。 */
+/** 抽屉里「装到 N 台」那一张卡：勾上的那几台 · 用户选的那一处 · 本机后端并好的那一张卡 · 只填一次的值 · 各台结局。 */
 interface Install {
   /** 勾上的那几台（键同 [`machineKey`]）。 */
   picked: Set<string>;
-  /** 共用的那一处；`null` ＝ 照后端建议的那一处。 */
-  to: ExtLoc | null;
-  /** 各台的卡：在路上 ⇒ `null`；没拼成 ⇒ 那一句。 */
-  cards: Map<string, { ask: ExtAsk; card: ExtCard | null; error?: string }>;
+  /** 用户选的那一处；`null` ＝ 照后端建议。 */
+  place: ExtLoc | null;
+  card: ExtManyCard | null;
+  loading: boolean;
+  /** 那一问没成那一句。 */
+  error: string | null;
   fill: Record<string, Record<string, string>>;
   busy: boolean;
   /** 各台这一趟的结局（成了那一句 · 没成那一句）。 */
   results: Map<string, { ok: boolean; text: string }>;
 }
 
-const freshInstall = (): Install => ({ picked: new Set(), to: null, cards: new Map(), fill: {}, busy: false, results: new Map() });
+const freshInstall = (): Install => ({ picked: new Set(), place: null, card: null, loading: false, error: null, fill: {}, busy: false, results: new Map() });
 
 /** 一台的钩子状态：在问 · 问到了 · 问不出来。 */
 type HookSlot = { kind: "loading" } | { kind: "report"; report: HooksReport } | { kind: "failed"; said: string };
@@ -516,7 +516,7 @@ export class ExtSection {
     pick.dataset.machine = key;
     pick.checked = this.install.picked.has(key);
     pick.disabled = bring === null || !m.reachable || this.install.busy;
-    pick.addEventListener("change", () => void this.togglePick(r, m, bring, pick.checked));
+    pick.addEventListener("change", () => void this.togglePick(r, m, pick.checked));
     top.appendChild(pick);
     top.appendChild(el("span", "ext-machine-name", machineName(m)));
     top.appendChild(el("span", DOT_CLASS[c.state], dotOf(c.state)));
@@ -626,169 +626,142 @@ export class ExtSection {
     return box;
   }
 
-  /** 勾上 / 去掉一台：勾上就照共用的那一处问那台一张卡（本机后端当枢纽），卡上的值与落点跟着卡走。 */
-  private async togglePick(r: ExtRow, m: ExtMachine, bring: ExtBring | null, on: boolean): Promise<void> {
+  /** 勾上 / 去掉一台：照勾上的几台重问那一张卡。 */
+  private async togglePick(r: ExtRow, m: ExtMachine, on: boolean): Promise<void> {
     const key = machineKey(m);
     const inst = this.install;
     inst.results.delete(key);
-    if (!on || bring === null) {
-      inst.picked.delete(key);
-      inst.cards.delete(key);
+    if (on) inst.picked.add(key);
+    else inst.picked.delete(key);
+    await this.refreshCard(r);
+  }
+
+  /** 问本机后端那一张卡（它向勾上的几台问完并好：落点交集 · 要填格并成一份 · 各台的卡）。 */
+  private async refreshCard(r: ExtRow): Promise<void> {
+    const inst = this.install;
+    const list = this.list;
+    if (!list) return;
+    const to = list.machines.filter((m) => inst.picked.has(machineKey(m))).map((m) => (m.here ? null : m.key));
+    if (to.length === 0) {
+      inst.card = null;
+      inst.error = null;
       this.renderDrawer();
       return;
     }
-    inst.picked.add(key);
-    await this.previewOne(r, m, bring);
-  }
-
-  /** 照共用的那一处问那台一张卡。 */
-  private async previewOne(r: ExtRow, m: ExtMachine, bring: ExtBring): Promise<void> {
-    const key = machineKey(m);
-    const inst = this.install;
-    const to = inst.to !== null && bring.targets.some((t) => t.ok && sameLoc(t.at, inst.to!)) ? inst.to : bring.scope.to;
-    const ask: ExtAsk = { kind: r.kind, name: r.name, from: bring.from, to: m.here ? null : m.key, scope: { from: bring.scope.from, to } };
-    inst.cards.set(key, { ask, card: null });
+    inst.loading = true;
     this.renderDrawer();
     try {
-      const card = await extHubPreview(ask);
-      if (this.install !== inst || !inst.picked.has(key)) return;
-      inst.cards.set(key, { ask, card });
+      const card = await extHubPreview(r.kind, r.name, to, inst.place);
+      if (this.install !== inst) return;
+      inst.card = card;
+      inst.error = null;
     } catch (e) {
-      if (this.install !== inst || !inst.picked.has(key)) return;
-      inst.cards.set(key, { ask, card: null, error: said(e, "install", m).text });
+      if (this.install !== inst) return;
+      inst.card = null;
+      inst.error = e instanceof Error ? e.message : String(e);
     }
+    inst.loading = false;
     this.renderDrawer();
-  }
-
-  /** 勾上的那几台（照表里的顺序）。 */
-  private pickedMachines(r: ExtRow, list: ExtList): { m: ExtMachine; c: ExtCell }[] {
-    return r.cells.flatMap((c, i) => (this.install.picked.has(machineKey(list.machines[i])) ? [{ m: list.machines[i], c }] : []));
   }
 
   /**
-   * 「装到 N 台」那一张卡：装到哪（每个项目都能用 / 只给一个项目…；后端给的各处，勾上的几台都能装的才可选）· 要填的值只填一次
-   * （哪几台已经有了照各台那张卡说）· 会写的文件逐台列 ·［装到 N 台］。做完每台一行结局，一台没成不挡别台。
+   * 「装到 N 台」那一张卡（本机后端并好的）：装到哪（勾上的几台都能装的那一处才可选）· 要填的值只填一次（哪几台已经有了照它说）
+   * · 会写的文件逐台 ·［装到 N 台］。做完每台一行结局，一台没成不挡别台。界面只排版。
    */
-  private installCard(r: ExtRow, list: ExtList): HTMLElement {
+  private installCard(r: ExtRow, _list: ExtList): HTMLElement {
     const inst = this.install;
     const box = el("div", "ext-card ext-install");
-    const picked = this.pickedMachines(r, list);
-    const first = picked[0]?.c.bring ?? r.cells.find((c) => c.bring !== null)?.bring ?? null;
-    if (first) {
+    const card = inst.card;
+    if (inst.picked.size === 0) box.appendChild(el("div", "settings-hint", copyText("extPage.install.noneChecked")));
+    if (inst.loading && !card) box.appendChild(el("div", "settings-hint", copyText("extPage.card.loading")));
+    if (inst.error) box.appendChild(el("div", "ext-error", inst.error));
+    if (card) {
       const where = el("fieldset", "ext-targets");
       where.appendChild(el("legend", "", copyText("extPage.card.where")));
-      const chosen = inst.to ?? first.scope.to;
-      for (const t of first.targets) {
-        const okAll = t.ok && picked.every(({ c }) => c.bring?.targets.some((x) => x.ok && sameLoc(x.at, t.at)) ?? false);
-        const row = el("label", okAll ? "ext-target" : "ext-target is-off");
+      for (const t of card.places) {
+        const row = el("label", t.ok ? "ext-target" : "ext-target is-off");
         const radio = el("input", "");
         radio.type = "radio";
         radio.name = `ext-install-${r.kind}-${r.name}`;
-        radio.checked = sameLoc(t.at, chosen);
-        radio.disabled = !okAll || inst.busy;
+        radio.checked = card.place !== null && sameLoc(t.at, card.place);
+        radio.disabled = !t.ok || inst.busy;
         radio.addEventListener("change", () => {
           if (!radio.checked) return;
-          inst.to = t.at;
-          for (const { m, c } of this.pickedMachines(r, list)) if (c.bring) void this.previewOne(r, m, c.bring);
+          inst.place = t.at;
+          void this.refreshCard(r);
         });
         row.append(radio, el("span", "", locText(t.at)));
         if (t.note) row.appendChild(el("span", "ext-target-note", t.note));
         where.appendChild(row);
       }
       box.appendChild(where);
-    }
-    const cards = picked.map(({ m }) => ({ m, got: inst.cards.get(machineKey(m)) }));
-    // 要填的值：勾上的几台各自那张卡要的那几格并起来，每格只填一次；哪几台已经有了照各台的卡说。
-    const slotKeys: { field: string; key: string; kept: string[] }[] = [];
-    for (const { m, got } of cards) {
-      for (const sl of got?.card?.slots ?? []) {
-        let k = slotKeys.find((x) => x.field === sl.field && x.key === sl.key);
-        if (!k) slotKeys.push((k = { field: sl.field, key: sl.key, kept: [] }));
-        if (sl.kept) k.kept.push(machineName(m));
+      for (const k of card.slots) {
+        const row = el("label", "ext-card-field", copyText("extPage.card.slot", { field: k.field, key: k.key }));
+        const input = el("input", "ext-card-secret");
+        input.type = "password";
+        input.autocomplete = "off";
+        input.value = inst.fill[k.field]?.[k.key] ?? "";
+        input.addEventListener("input", () => {
+          (inst.fill[k.field] ??= {})[k.key] = input.value;
+        });
+        row.appendChild(input);
+        box.appendChild(row);
+        const hint = k.kept.length > 0 ? copyText("extPage.install.kept", { machines: k.kept.join(copyText("extPage.list.sep")), key: k.key }) : copyText("extPage.install.shared");
+        box.appendChild(el("div", "settings-hint", hint));
       }
-    }
-    for (const k of slotKeys) {
-      const row = el("label", "ext-card-field", copyText("extPage.card.slot", { field: k.field, key: k.key }));
-      const input = el("input", "ext-card-secret");
-      input.type = "password";
-      input.autocomplete = "off";
-      input.value = inst.fill[k.field]?.[k.key] ?? "";
-      input.addEventListener("input", () => {
-        (inst.fill[k.field] ??= {})[k.key] = input.value;
-      });
-      row.appendChild(input);
-      box.appendChild(row);
-      const hint = k.kept.length > 0 ? copyText("extPage.install.kept", { machines: k.kept.join(copyText("extPage.list.sep")) }) : copyText("extPage.install.shared");
-      box.appendChild(el("div", "settings-hint", hint));
-    }
-    if (cards.length > 0) {
       box.appendChild(el("div", "ext-card-title", copyText("extPage.install.files")));
-      for (const { m, got } of cards) {
+      for (const m of card.machines) {
         const line = el("div", "ext-install-files");
-        line.dataset.machine = machineKey(m);
-        if (!got || (got.card === null && !got.error)) line.textContent = copyText("extPage.install.filesLoading", { machine: machineName(m) });
-        else if (got.error) line.textContent = got.error;
-        else if (got.card) {
-          const card = got.card;
-          line.textContent = card.unchanged
-            ? copyText("extPage.install.filesSame", { machine: machineName(m) })
-            : copyText("extPage.install.filesLine", { machine: machineName(m), path: card.path, files: card.writes.join(copyText("extPage.list.sep")) });
-          for (const x of card.suspects) box.appendChild(el("div", "ext-card-suspect", copyText("extPage.install.machineSaid", { machine: machineName(m), said: x })));
-          if (card.stop) box.appendChild(el("div", "ext-error", copyText("extPage.install.machineSaid", { machine: machineName(m), said: card.stop })));
-        }
+        line.dataset.machine = m.to ?? "";
+        if (m.error) line.textContent = copyText("extPage.error.install", { machine: m.name, said: m.error });
+        else if (m.card?.unchanged) line.textContent = copyText("extPage.install.filesSame", { machine: m.name });
+        else line.textContent = copyText("extPage.install.filesLine", { machine: m.name, files: m.files.join(copyText("extPage.list.sep")) });
         box.appendChild(line);
+        for (const x of m.card?.suspects ?? []) box.appendChild(el("div", "ext-card-suspect", copyText("extPage.install.machineSaid", { machine: m.name, said: x })));
+        if (m.card?.stop) box.appendChild(el("div", "ext-error", copyText("extPage.install.machineSaid", { machine: m.name, said: m.card.stop })));
       }
     }
-    for (const { m } of picked) {
-      const res = inst.results.get(machineKey(m));
-      if (!res) continue;
+    for (const [key, res] of inst.results) {
       const line = el("div", res.ok ? "settings-hint ext-done" : "ext-error", res.text);
-      line.dataset.result = machineKey(m);
+      line.dataset.result = key;
       box.appendChild(line);
     }
-    const ready = cards.filter(({ m, got }) => got?.card && !got.card.stop && !got.card.unchanged && !inst.results.get(machineKey(m))?.ok);
-    const ok = button(copyText("extPage.install.confirm", { n: ready.length }), () => void this.installAll(r, list), true);
+    const ready = card?.machines.filter((m) => m.card && !m.card.stop && !m.card.unchanged) ?? [];
+    const ok = button(copyText("extPage.install.confirm", { n: ready.length }), () => void this.installAll(r), true);
     ok.dataset.action = "install-many";
-    ok.disabled = inst.busy || ready.length === 0 || cards.some(({ got }) => !got || (got.card === null && !got.error));
-    if (picked.length === 0) ok.title = copyText("extPage.install.noneChecked");
+    ok.disabled = inst.busy || inst.loading || ready.length === 0 || card?.place === null;
     box.appendChild(el("div", "ext-card-buttons")).append(ok);
     return box;
   }
 
-  /** ［装到 N 台］：各台照它那张卡同时装（值是共用那一份里那张卡要的几格），各自结局；做完重读那张表（各台先同步一趟）。 */
-  private async installAll(r: ExtRow, list: ExtList): Promise<void> {
+  /** ［装到 N 台］：本机后端各台照它那张卡装、各自结局；做完重问那张卡（没成的那几台拿到新卡，再点就是重试它们）、重读那张表。 */
+  private async installAll(r: ExtRow): Promise<void> {
     const inst = this.install;
+    const card = inst.card;
+    if (!card) return;
     inst.busy = true;
     this.renderDrawer();
-    const jobs = this.pickedMachines(r, list).flatMap(({ m }) => {
-      const got = inst.cards.get(machineKey(m));
-      const card = got?.card;
-      if (!got || !card || card.stop || card.unchanged || inst.results.get(machineKey(m))?.ok) return [];
-      const fill: Record<string, Record<string, string>> = {};
-      for (const sl of card.slots) {
-        const v = inst.fill[sl.field]?.[sl.key];
-        if (v !== undefined && v !== "") (fill[sl.field] ??= {})[sl.key] = v;
+    try {
+      const got = await extHubApply(r.kind, r.name, card, inst.fill);
+      for (const m of got.machines) {
+        const key = m.to ?? "";
+        if (m.done) {
+          const text = copyText("extPage.install.doneOne", { machine: m.name, said: m.done.note ?? copyText("extPage.done.written", { n: String(m.done.changed.length) }) });
+          const here = m.to === null;
+          const warn = r.builtin !== null && here ? await commands.cc_bus_ccm_precheck() : null;
+          inst.results.set(key, { ok: true, text: warn ? `${text} ${copyText("extPage.done.warn", { said: warn })}` : text });
+          inst.picked.delete(key);
+        } else if (m.error) {
+          inst.results.set(key, { ok: false, text: copyText("extPage.error.install", { machine: m.name, said: m.error }) });
+        }
       }
-      return [
-        (async () => {
-          try {
-            const done = await extHubApply(got.ask, card, fill);
-            const warn = r.builtin !== null && m.here ? await commands.cc_bus_ccm_precheck() : null;
-            const text = copyText("extPage.install.doneOne", { machine: machineName(m), said: done.note ?? copyText("extPage.done.written", { n: String(done.changed.length) }) });
-            inst.results.set(machineKey(m), { ok: true, text: warn ? `${text} ${copyText("extPage.done.warn", { said: warn })}` : text });
-          } catch (e) {
-            inst.results.set(machineKey(m), { ok: false, text: said(e, "install", m).text });
-          }
-        })(),
-      ];
-    });
-    await Promise.all(jobs);
+    } catch (e) {
+      inst.error = e instanceof Error ? e.message : String(e);
+    }
     inst.busy = false;
-    // 没成的那几台重看一张卡（看过之后变了的 ⇒ 新卡；用户改了再点「装到 N 台」就是重试这几台）。
-    for (const { m, c } of this.pickedMachines(r, list)) if (inst.results.get(machineKey(m))?.ok === false && c.bring) void this.previewOne(r, m, c.bring);
-    this.renderDrawer();
     await this.reload(false, LOCAL_ORIGIN);
-    if (r.builtin?.hooks) for (const { m } of this.pickedMachines(r, list)) void this.readHooks(m);
+    await this.refreshCard(r);
+    if (r.builtin?.hooks && this.list) for (const m of this.list.machines) if (m.reachable) void this.readHooks(m);
   }
 
   /** 确认之后：做 → 成了就重读那张表（那台先同步一趟），点自己变；没成就在那一行说。 */

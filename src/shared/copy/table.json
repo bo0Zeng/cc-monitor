@@ -5610,6 +5610,11 @@
       "args": [],
       "limited": ["tmux"]
     },
+    "profilesPage.form.noTmux": {
+      "kind": "body",
+      "zh": "这台没有 tmux · 起会话会报错",
+      "args": []
+    },
     "profilesPage.form.tmuxNamed": {
       "kind": "control",
       "zh": "tmux · 名称固定",
@@ -16074,8 +16079,8 @@
     },
     "extPage.install.kept": {
       "kind": "body",
-      "zh": "勾选的机器共用此值 · {machines} 已有，留空沿用",
-      "args": ["machines"]
+      "zh": "勾选的机器共用此值 · {machines} 已有 {key}，留空沿用",
+      "args": ["machines", "key"]
     },
     "extPage.install.shared": {
       "kind": "body",
@@ -16099,8 +16104,8 @@
     },
     "extPage.install.filesLine": {
       "kind": "body",
-      "zh": "{machine}：{path} · {files}",
-      "args": ["machine", "path", "files"]
+      "zh": "{machine}：{files}",
+      "args": ["machine", "files"]
     },
     "extPage.install.machineSaid": {
       "kind": "body",
@@ -21942,6 +21947,71 @@
       "zh": "要你动手 {n}",
       "args": ["n"]
     },
+    "firstRun.head.title": {
+      "kind": "title",
+      "zh": "开始用",
+      "args": []
+    },
+    "firstRun.head.sub": {
+      "kind": "body",
+      "zh": "{n} 步 · 完成自动勾选",
+      "args": ["n"]
+    },
+    "firstRun.head.skip": {
+      "kind": "action",
+      "zh": "跳过",
+      "args": []
+    },
+    "firstRun.terminal.name": {
+      "kind": "title",
+      "zh": "接上终端",
+      "args": []
+    },
+    "firstRun.terminal.hint": {
+      "kind": "body",
+      "zh": "终端里 ccm 启动的会话出现在 cc-monitor",
+      "args": []
+    },
+    "firstRun.terminal.action": {
+      "kind": "action",
+      "zh": "接上",
+      "args": []
+    },
+    "firstRun.named.name": {
+      "kind": "title",
+      "zh": "给当前登录命名",
+      "args": []
+    },
+    "firstRun.named.hint": {
+      "kind": "body",
+      "zh": "可选 · 命名后可加更多账号、按账号启动",
+      "args": []
+    },
+    "firstRun.named.action": {
+      "kind": "action",
+      "zh": "命名",
+      "args": []
+    },
+    "firstRun.remote.name": {
+      "kind": "title",
+      "zh": "添加远端机器",
+      "args": []
+    },
+    "firstRun.remote.hint": {
+      "kind": "body",
+      "zh": "可选 · 任意 ssh 可达机器",
+      "args": []
+    },
+    "firstRun.remote.action": {
+      "kind": "action",
+      "zh": "添加机器",
+      "args": []
+    },
+    "statusBar.start.label": {
+      "kind": "action",
+      "zh": "开始用 · 剩 {n} 步",
+      "args": ["n"]
+    },
     "statusBar.messages.label": {
       "kind": "action",
       "zh": "消息",
@@ -22501,6 +22571,26 @@
     "beLastSeen.store.noHome": {
       "kind": "error",
       "zh": "这台的家目录解析不出来，记不下上次值",
+      "args": []
+    },
+    "beExt.many.noRow": {
+      "kind": "error",
+      "zh": "扩展页那张表里没有 {name}",
+      "args": ["name"]
+    },
+    "beExt.many.notThere": {
+      "kind": "body",
+      "zh": "{machine} 没有这一处",
+      "args": ["machine"]
+    },
+    "beExt.many.noBring": {
+      "kind": "error",
+      "zh": "{machine} 上没有可装的一处",
+      "args": ["machine"]
+    },
+    "beExt.many.noPlace": {
+      "kind": "error",
+      "zh": "勾上的几台没有都能装的一处",
       "args": []
     },
     "rsDataPaths.backend.chores": {

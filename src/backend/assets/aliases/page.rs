@@ -528,8 +528,13 @@ fn migrated_note(d: &dyn Door, home: &str) -> Option<Value> {
     serde_json::from_str(&p.text?).ok()
 }
 
-/// `profiles-read {}` → 整份：每段的成品 ＋ 文件级错误 ＋ 指纹 ＋ 修改时间 ＋ 迁移说明 ＋ 空态那两条的预览。
-pub(crate) fn answer_read(d: &dyn Door, _args: &Value) -> Answer {
+/// `profiles-read {}` → 整份：每段的成品 ＋ 文件级错误 ＋ 指纹 ＋ 修改时间 ＋ 迁移说明 ＋ 空态那两条的预览 ＋ 这台有没有 tmux。
+pub(crate) fn answer_read(d: &dyn Door, args: &Value) -> Answer {
+    read_with(d, args, crate::footprint::tmux_here())
+}
+
+/// [`answer_read`] 的本体：有没有 tmux 是参数（判据喂定值，不去探这台）。
+pub(crate) fn read_with(d: &dyn Door, _args: &Value, tmux: Option<bool>) -> Answer {
     let store = super::load(d).map_err(refused)?;
     let shell = here_shell();
     let path = profile::path_in(&store.home);
@@ -571,6 +576,7 @@ pub(crate) fn answer_read(d: &dyn Door, _args: &Value) -> Answer {
         "migrated": migrated_note(d, &store.home),
         "binDir": door::join_under(&store.home, links::bin_rel()),
         "accounts": super::account_table(&store.home),
+        "tmux": tmux,
     }))
 }
 

@@ -12,8 +12,9 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 import { invoke } from "@tauri-apps/api/core";
 import { decodeAssetsSynced, syncAssets } from "../../../src/frontend/ui/assets-sync-reads";
 import {
-  ExtRefused,
   decodeExtCard,
+  decodeExtManyCard,
+  decodeExtManyDone,
   decodeExtDone,
   decodeExtList,
   decodeExtUninstallCard,
@@ -25,7 +26,7 @@ import {
   extUninstallPreview,
 } from "../../../src/frontend/ui/ext-reads";
 import { REPO_ROOT } from "../../test-support/repo-root";
-import { chanArgsJson, chanReply, refusedReply, type ChanCallArgs } from "../../test-support/chan-fake";
+import { chanArgsJson, chanReply, type ChanCallArgs } from "../../test-support/chan-fake";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 const golden = (n: string) =>
@@ -104,14 +105,15 @@ describe("请求：问对那台、说对那条", () => {
       ["<local>", "assets-sync", {}],
     ]);
   });
-  it("表 · 装（看卡 · 写）都问本机；卸问被卸那台；卡上的记号与填的值原样交回", async () => {
+  it("表 · 装（一张卡 · 装到几台）都问本机；卸问被卸那台；各台卡上的记号、那一处与只填一次的值原样交回", async () => {
     invokeMock.mockResolvedValueOnce(chanReply(EXT.list));
     await extList(true);
-    const bring = { kind: "skill" as const, name: "demo", from: null, to: "laptop", scope: { from: { level: "user" as const }, to: { level: "user" as const } } };
-    invokeMock.mockResolvedValueOnce(chanReply(EXT.card));
-    const card = await extHubPreview(bring);
-    invokeMock.mockResolvedValueOnce(chanReply(EXT.done));
-    await extHubApply(bring, card, { env: { K: "v" } });
+    const many = { places: [{ at: { level: "user" }, ok: true, note: null }], place: { level: "user" }, slots: [], machines: [{ to: "laptop", name: "laptop", card: EXT.card, files: ["/g · SKILL.md"], error: null }] };
+    invokeMock.mockResolvedValueOnce(chanReply(many));
+    const card = await extHubPreview("skill", "demo", ["laptop"], null);
+    invokeMock.mockResolvedValueOnce(chanReply({ machines: [{ to: "laptop", name: "laptop", done: EXT.done, error: null }] }));
+    const done = await extHubApply("skill", "demo", card, { env: { K: "v" } });
+    expect(done.machines[0].done).toEqual(EXT.done);
     invokeMock.mockResolvedValueOnce(chanReply(EXT.uninstallCard));
     const u = await extUninstallPreview("laptop", "skill", "demo", { level: "user" });
     invokeMock.mockResolvedValueOnce(chanReply(EXT.uninstallDone));
@@ -119,11 +121,18 @@ describe("请求：问对那台、说对那条", () => {
     const calls = invokeMock.mock.calls.map((c) => c[1] as ChanCallArgs);
     expect(calls.map((a) => [a.origin, a.op, chanArgsJson(a)])).toEqual([
       ["<local>", "ext-list", { visit: true }],
-      ["<local>", "ext-hub-preview", bring],
-      ["<local>", "ext-hub-apply", { ...bring, tokens: card.tokens, fill: { env: { K: "v" } } }],
+      ["<local>", "ext-hub-preview", { kind: "skill", name: "demo", to: ["laptop"], place: null }],
+      ["<local>", "ext-hub-apply", { kind: "skill", name: "demo", to: ["laptop"], place: { level: "user" }, tokens: { laptop: card.machines[0].card!.tokens }, fill: { env: { K: "v" } } }],
       ["laptop", "ext-uninstall-preview", { kind: "skill", name: "demo", at: { level: "user" } }],
       ["laptop", "ext-uninstall-apply", { kind: "skill", name: "demo", at: { level: "user" }, token: u.token }],
     ]);
+  });
+  it("那一张卡严格收：多一格 / 缺一格 / 那台的错不是一句话 ⇒ 收不下", () => {
+    const ok = { places: [], place: null, slots: [{ field: "env", key: "K", kept: ["laptop"] }], machines: [{ to: null, name: "本机", card: null, files: [], error: "x" }] };
+    expect(decodeExtManyCard(ok).slots[0].kept).toEqual(["laptop"]);
+    expect(() => decodeExtManyCard({ ...ok, extra: 1 })).toThrow();
+    expect(() => decodeExtManyCard({ ...ok, machines: [{ ...ok.machines[0], error: { code: "x" } }] })).toThrow();
+    expect(() => decodeExtManyDone({ machines: [{ to: null, name: "本机", done: null }] })).toThrow();
   });
   it("备注：问本机后端，种类 · 名字 · 正文原样交；回现在生效的那一份", async () => {
     invokeMock.mockResolvedValueOnce(chanReply({ note: "先加钩子" }));
@@ -136,14 +145,5 @@ describe("请求：问对那台、说对那条", () => {
       ["<local>", "ext-note-set", { kind: "skill", name: "cc-bus", text: "" }],
     ]);
   });
-  it("后端答 stale ⇒ 带着码抛（卡上据它给「重看」）", async () => {
-    invokeMock.mockRejectedValueOnce(refusedReply("stale", "看过之后又变了"));
-    const err = await extHubApply(
-      { kind: "skill", name: "demo", from: null, to: "laptop", scope: { from: { level: "user" }, to: { level: "user" } } },
-      decodeExtCard(EXT.card),
-      {},
-    ).catch((e: unknown) => e);
-    expect(err).toBeInstanceOf(ExtRefused);
-    expect((err as ExtRefused).code).toBe("stale");
-  });
+
 });

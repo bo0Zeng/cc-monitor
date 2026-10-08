@@ -21,7 +21,7 @@ vi.mock("@tauri-apps/plugin-opener", () => ({
 import { invoke } from "@tauri-apps/api/core";
 import { ExtSection } from "../../../../src/frontend/ui/settings/ext-section";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
-import { chanArgsJson, chanReply, refusedReply, type ChanCallArgs } from "../../../test-support/chan-fake";
+import { chanArgsJson, chanReply, type ChanCallArgs } from "../../../test-support/chan-fake";
 import { REPO_ROOT } from "../../../test-support/repo-root";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
@@ -67,8 +67,25 @@ const diag = (snippet: string | null, supported = true) => ({
   source: "/h/.claude/settings.json",
 });
 
+type ManyArgs = { kind: string; name: string; to: (string | null)[]; place: unknown; fill?: unknown; tokens?: unknown };
+const nameOf = (to: string | null) => (to === null ? copyText("extPage.machine.here") : to);
+/** 本机后端并好的那一张卡（判据只排版：落点交集 · 并好的要填格都照它画）。 */
+const manyCard = (a: ManyArgs, over: Record<string, unknown> = {}) => ({
+  places: targets(),
+  place: a.place ?? user,
+  slots: [],
+  machines: a.to.map((t) => ({ to: t, name: nameOf(t), card, files: ["/g/.claude/skills/demo · SKILL.md"], error: null })),
+  ...over,
+});
+const manyDone = (a: ManyArgs) => chanReply({ machines: a.to.map((t) => ({ to: t, name: nameOf(t), done: { path: "/g", changed: ["SKILL.md"], note: null }, error: null })) });
+
 /** 按命令名答（`ext-list` 依次答给定的几份）。 */
-function backend(lists: unknown[], apply: () => unknown = () => chanReply({ path: "/g", changed: ["SKILL.md"], note: null }), hooks: (origin: string) => unknown = () => diag(null)) {
+function backend(
+  lists: unknown[],
+  apply: (a: ManyArgs) => unknown = manyDone,
+  hooks: (origin: string) => unknown = () => diag(null),
+  preview: (a: ManyArgs) => unknown = (a) => manyCard(a),
+) {
   invokeMock.mockImplementation(async (cmd: string, a: ChanCallArgs) => {
     if (cmd !== "chan_call") return undefined;
     switch (a.op) {
@@ -77,9 +94,9 @@ function backend(lists: unknown[], apply: () => unknown = () => chanReply({ path
       case "assets-sync":
         return chanReply(synced);
       case "ext-hub-preview":
-        return chanReply(card);
+        return chanReply(preview(chanArgsJson(a) as ManyArgs));
       case "ext-hub-apply":
-        return apply();
+        return apply(chanArgsJson(a) as ManyArgs);
       case "ext-note-set":
         return chanReply({ note: (chanArgsJson(a) as { text: string }).text || null });
       case "hooks-diag":
@@ -89,8 +106,8 @@ function backend(lists: unknown[], apply: () => unknown = () => chanReply({ path
   });
 }
 
-async function page(lists: unknown[], apply?: () => unknown): Promise<ExtSection> {
-  backend(lists, apply);
+async function page(lists: unknown[], apply?: (a: ManyArgs) => unknown, preview?: (a: ManyArgs) => unknown): Promise<ExtSection> {
+  backend(lists, apply, undefined, preview);
   const s = new ExtSection();
   document.body.replaceChildren(s.element);
   s.loadNow();
@@ -205,7 +222,7 @@ describe("扩展页：表 · 抽屉 · 确认卡", () => {
     expect(revealed).toEqual(["/h/.claude/skills/demo"]);
   });
 
-  it("勾上一台 ⇒ 照建议的那一处问它一张卡；装到哪由用户选（改选 ⇒ 勾上的几台按那一处重看）；［装到 N 台］⇒ 交回各台卡上的记号与选的那一处 ⇒ 各台同步一趟、重读，点变 ◎", async () => {
+  it("勾上几台 ⇒ 问本机后端一张卡（勾上的几台 ＋ 选的那一处）；装到哪照它给的各处画；改选 ⇒ 带上那一处重问；［装到 N 台］⇒ 交回那一处与各台的记号 ⇒ 各台同步一趟、重读，点变 ◎", async () => {
     const after = cell("project", [place(user, "missing"), place(proj, "same", true)], bring());
     const s = await page([listWith(demoMissing), listWith(demoMissing), listWith(after)]);
     open(s, "skill/demo");
@@ -213,29 +230,27 @@ describe("扩展页：表 · 抽屉 · 确认卡", () => {
     invokeMock.mockClear();
     pick(s, "laptop");
     await settle();
-    const ask0 = { kind: "skill", name: "demo", from: null, to: "laptop", scope: { from: user, to: user } };
-    expect(ops()).toEqual([["<local>", "ext-hub-preview", ask0]]);
+    expect(ops()).toEqual([["<local>", "ext-hub-preview", { kind: "skill", name: "demo", to: ["laptop"], place: null }]]);
     const radios = () => [...installBox(s).querySelectorAll<HTMLInputElement>(".ext-targets input[type=radio]")];
     expect(radios().map((r) => [r.checked, r.disabled])).toEqual([
       [true, false],
       [false, false],
     ]);
     expect([...installBox(s).querySelectorAll(".ext-install-files")].map((l) => l.textContent)).toEqual([
-      copyText("extPage.install.filesLine", { machine: "laptop", path: "/g/.claude/skills/demo", files: "SKILL.md" }),
+      copyText("extPage.install.filesLine", { machine: "laptop", files: "/g/.claude/skills/demo · SKILL.md" }),
     ]);
     invokeMock.mockClear();
     radios()[1].checked = true;
     radios()[1].dispatchEvent(new Event("change"));
     await settle();
-    const ask = { ...ask0, scope: { from: user, to: proj } };
-    expect(ops()).toEqual([["<local>", "ext-hub-preview", ask]]);
+    expect(ops()).toEqual([["<local>", "ext-hub-preview", { kind: "skill", name: "demo", to: ["laptop"], place: proj }]]);
     expect(radios().map((r) => r.checked)).toEqual([false, true]);
     expect(installBtn(s).textContent).toBe(copyText("extPage.install.confirm", { n: 1 }));
     invokeMock.mockClear();
     installBtn(s).click();
     await settle();
-    expect(ops()).toEqual([
-      ["<local>", "ext-hub-apply", { ...ask, tokens: { source: "s", target: "t" }, fill: {} }],
+    expect(ops().slice(0, 3)).toEqual([
+      ["<local>", "ext-hub-apply", { kind: "skill", name: "demo", to: ["laptop"], place: proj, tokens: { laptop: { source: "s", target: "t" } }, fill: {} }],
       ["<local>", "assets-sync", {}],
       ["<local>", "ext-list", { visit: false }],
     ]);
@@ -243,8 +258,12 @@ describe("扩展页：表 · 抽屉 · 确认卡", () => {
     expect(installBox(s).querySelector('[data-result="laptop"]')?.textContent).toBe(copyText("extPage.install.doneOne", { machine: "laptop", said: copyText("extPage.done.written", { n: "1" }) }));
   });
 
-  it("不能选的那一处（MCP 的全局）照列、置灰、旁注后端给的那一句；建议的那一处是能选的", async () => {
-    const s = await page([listWith(demoMissing)]);
+  it("不能选的那一处照后端给的列、置灰、旁注它那一句；那一处是后端定的", async () => {
+    const off = [
+      { at: user, ok: false, note: "全局的只读" },
+      { at: proj, ok: true, note: null },
+    ];
+    const s = await page([listWith(demoMissing)], undefined, (a) => manyCard(a, { places: off, place: proj }));
     open(s, "mcp/fs");
     pick(s, "");
     await settle();
@@ -257,39 +276,44 @@ describe("扩展页：表 · 抽屉 · 确认卡", () => {
     ]);
   });
 
-  it("看过之后变了（后端答 stale）⇒ 那台一行说一句、一个字节不写，那台自己重看一张卡（再点就是重试这台）", async () => {
-    const s = await page([listWith(demoMissing)], () => {
-      throw refusedReply("stale", "看过之后又变了，一个字节都没写。重看一次再装。");
-    });
+  it("各台结局逐台说：一台没成（如看过之后变了）不挡别台；做完重问那张卡（没成的那台拿到新卡，再点就是重试它）", async () => {
+    const m3 = [...machines, { key: "nano", here: false, reachable: true, name: "nano", projects: [] }];
+    const lst = { machines: m3, problems: [], rows: [row("skill", "demo", [here, demoMissing, demoMissing])] };
+    const s = await page([lst], (a) =>
+      chanReply({
+        machines: a.to.map((t) =>
+          t === "nano"
+            ? { to: t, name: "nano", done: null, error: "看过之后又变了，一个字节都没写。" }
+            : { to: t, name: t, done: { path: "/g", changed: ["SKILL.md"], note: null }, error: null },
+        ),
+      }),
+    );
     open(s, "skill/demo");
     pick(s, "laptop");
+    await settle();
+    pick(s, "nano");
     await settle();
     invokeMock.mockClear();
     installBtn(s).click();
     await settle();
-    expect(installBox(s).querySelector('[data-result="laptop"]')!.textContent).toContain("看过之后又变了");
-    expect(ops().filter(([, op]) => op === "ext-hub-preview").length, "没成的那台重看一张卡").toBe(1);
+    expect(installBox(s).querySelector('[data-result="laptop"]')?.classList.contains("ext-done")).toBe(true);
+    expect(installBox(s).querySelector('[data-result="nano"]')!.textContent).toBe(copyText("extPage.error.install", { machine: "nano", said: "看过之后又变了，一个字节都没写。" }));
+    const previews = ops().filter(([, op]) => op === "ext-hub-preview");
+    expect(previews.at(-1)?.[2], "装好的那台不再勾着；没成的那台重问一张卡").toEqual({ kind: "skill", name: "demo", to: ["nano"], place: null });
     expect(installBtn(s).disabled).toBe(false);
   });
 
-  it("后端答了一个错误 ⇒ 那台那一行就是「装到 <那台> 失败：」＋ 它那一句本身，码不上屏；「装到哪」留着可以换一处", async () => {
+  it("那台没拼成卡 ⇒ 会写的文件那一行就是「装到 <那台> 失败：」＋ 它那一句本身，码不上屏；别台照装", async () => {
     const said = copyText("beMcpEdit.path.notAbsolute", { dir: "w/x" });
-    backend([listWith(demoMissing)]);
-    const answer = invokeMock.getMockImplementation() as (cmd: string, a: ChanCallArgs) => Promise<unknown>;
-    invokeMock.mockImplementation(async (cmd: string, a: ChanCallArgs) => {
-      if (cmd === "chan_call" && a.op === "ext-hub-preview") throw refusedReply("bad_path", said);
-      return answer(cmd, a);
-    });
-    const s = new ExtSection();
-    document.body.replaceChildren(s.element);
-    s.loadNow();
-    await settle();
+    const s = await page([listWith(demoMissing)], undefined, (a) =>
+      manyCard(a, { machines: a.to.map((t) => ({ to: t, name: nameOf(t), card: null, files: [], error: said })) }),
+    );
     open(s, "skill/demo");
     pick(s, "laptop");
     await settle();
     expect(installBox(s).querySelector('.ext-install-files[data-machine="laptop"]')!.textContent).toBe(copyText("extPage.error.install", { machine: "laptop", said }));
     expect(installBox(s).querySelectorAll(".ext-targets input").length).toBe(2);
-    expect(installBtn(s).disabled).toBe(true);
+    expect(installBtn(s).disabled, "一台都装不了 ⇒ 不给点").toBe(true);
   });
 });
 
@@ -410,50 +434,32 @@ describe("界面层零判定：扩展页不比较指纹、不读配置文件", (
 describe("一次装到几台：要填的值只填一次", () => {
   beforeEach(() => invokeMock.mockReset());
 
-  it("★ 勾两台 ⇒ 一张卡、那一格只出一次（哪台已有照它那张卡说）；填一次 ⇒ 两台交上去的都是它；一台没成不挡另一台", async () => {
+  it("★ 后端并好的那一格只出一次、说哪台已有这个值；填一次 ⇒ 交上去的就是它（每台只拿它那张卡要的几格由后端分）", async () => {
     const m3 = [...machines, { key: "nano", here: false, reachable: true, name: "nano", projects: [] }];
     const mcpMissing = cell("missing", [place(user, "missing")], bring());
     const lst = { machines: m3, problems: [], rows: [row("mcp", "srv", [cell("same", [place(user, "same", true)]), mcpMissing, mcpMissing])] };
-    const applied: Array<{ to: unknown; fill: unknown }> = [];
-    invokeMock.mockImplementation(async (cmd: string, a: ChanCallArgs) => {
-      if (cmd !== "chan_call") return undefined;
-      const body = chanArgsJson(a) as { to?: string; fill?: unknown };
-      switch (a.op) {
-        case "ext-list":
-          return chanReply(lst);
-        case "assets-sync":
-          return chanReply(synced);
-        case "ext-hub-preview":
-          return chanReply({ ...card, kind: "mcp", name: "srv", slots: [{ field: "env", key: "API_KEY", kept: body.to === "nano" }] });
-        case "ext-hub-apply":
-          applied.push({ to: body.to, fill: body.fill });
-          if (body.to === "nano") throw refusedReply("unreachable", "nano 断开了");
-          return chanReply({ path: "/g", changed: ["x"], note: null });
-      }
-      throw new Error("unexpected " + a.op);
-    });
-    const s = new ExtSection();
-    document.body.replaceChildren(s.element);
-    s.loadNow();
-    await settle();
+    let applied: ManyArgs | null = null;
+    const s = await page(
+      [lst],
+      (a) => {
+        applied = a;
+        return manyDone(a);
+      },
+      (a) => manyCard(a, { slots: [{ field: "env", key: "API_KEY", kept: a.to.includes("nano") ? ["nano"] : [] }] }),
+    );
     open(s, "mcp/srv");
     pick(s, "laptop");
+    await settle();
     pick(s, "nano");
     await settle();
     const secrets = [...installBox(s).querySelectorAll<HTMLInputElement>(".ext-card-secret")];
     expect(secrets.length, "那一格只出一次").toBe(1);
-    expect(installBox(s).textContent).toContain(copyText("extPage.install.kept", { machines: "nano" }));
+    expect(installBox(s).textContent).toContain(copyText("extPage.install.kept", { machines: "nano", key: "API_KEY" }));
     secrets[0].value = "sk-123";
     secrets[0].dispatchEvent(new Event("input"));
     expect(installBtn(s).textContent).toBe(copyText("extPage.install.confirm", { n: 2 }));
     installBtn(s).click();
     await settle();
-    expect(applied.map((x) => [x.to, x.fill]).sort()).toEqual([
-      ["laptop", { env: { API_KEY: "sk-123" } }],
-      ["nano", { env: { API_KEY: "sk-123" } }],
-    ]);
-    expect(installBox(s).querySelector('[data-result="laptop"]')?.classList.contains("ext-done")).toBe(true);
-    expect(installBox(s).querySelector('[data-result="nano"]')?.textContent).toContain("nano 断开了");
-    expect(installBtn(s).textContent, "再点只重试没成的那台").toBe(copyText("extPage.install.confirm", { n: 1 }));
+    expect(applied).toMatchObject({ to: ["laptop", "nano"], fill: { env: { API_KEY: "sk-123" } } });
   });
 });

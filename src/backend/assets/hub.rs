@@ -34,8 +34,8 @@ use serde_json::{json, Value};
 use std::sync::Arc;
 
 use super::ext::{
-    builtin_refused, is_builtin, same_place, token_of, ExtCard, ExtDone, ExtKind, ExtLoc, ExtSlot,
-    ExtTokens,
+    builtin_refused, is_builtin, same_place, token_of, ExtBring, ExtCard, ExtDone, ExtKind,
+    ExtList, ExtLoc, ExtSlot, ExtTarget, ExtTokens,
 };
 use crate::stream::remote_ask::{Remote, Table};
 
@@ -549,6 +549,314 @@ pub(crate) async fn ext_apply(
         }
     };
     serde_json::to_value(done).map_err(|e| ("io_failed".to_string(), e.to_string()))
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 一次装到几台（`ext-hub-preview` / `ext-hub-apply` 收一组机器）：落点取交集 · 要填格并成一份 · 各台各自结局
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// 勾上的一台：那一格的「装到…」（表里那台那一格；没有 ⇒ 那台装不了，逐台说）。
+#[derive(Debug, Clone)]
+pub(crate) struct Pick {
+    pub to: Option<String>,
+    pub name: String,
+    pub bring: Option<ExtBring>,
+}
+
+/// 那一组的落点与各台。
+#[derive(Debug, Clone)]
+pub(crate) struct Plan {
+    /// 各台能装的各处并起来：每一处只有勾上的每台都能装才可选（不行的照列、说第一台为什么不行）。
+    pub places: Vec<ExtTarget>,
+    /// 共用的那一处：要的那一处对每台都行就用它；否则第一台建议的那一处（对每台都行时）；再否则第一处对每台都行的；都没有 ⇒ `None`。
+    pub place: Option<ExtLoc>,
+    pub picks: Vec<Pick>,
+}
+
+/// 那张表（`ext-list` 同一份）⇒ 那一组的落点与各台。**纯函数**，判定只在这里。
+pub(crate) fn plan_many(
+    list: &ExtList,
+    kind: ExtKind,
+    name: &str,
+    to: &[Option<String>],
+    want: Option<ExtLoc>,
+) -> Result<Plan, (String, String)> {
+    if to.is_empty() {
+        return Err(bad("`to` must list at least one machine"));
+    }
+    let row = list
+        .rows
+        .iter()
+        .find(|r| r.kind == kind && r.name == name)
+        .ok_or_else(|| {
+            (
+                "missing".to_string(),
+                copy_text("beExt.many.noRow", &[("name", name)]),
+            )
+        })?;
+    let picks: Vec<Pick> = to
+        .iter()
+        .map(|t| {
+            let col = list.machines.iter().position(|m| match t {
+                None => m.here,
+                Some(k) => m.key.as_deref() == Some(k.as_str()),
+            });
+            let name = col
+                .map(|i| {
+                    let m = &list.machines[i];
+                    if m.here {
+                        copy_text("beExt.machine.here", &[])
+                    } else {
+                        m.name.clone()
+                    }
+                })
+                .unwrap_or_else(|| t.clone().unwrap_or_default());
+            Pick {
+                to: t.clone(),
+                name,
+                bring: col
+                    .and_then(|i| row.cells.get(i))
+                    .and_then(|c| c.bring.clone()),
+            }
+        })
+        .collect();
+    let mut places: Vec<ExtTarget> = Vec::new();
+    for p in &picks {
+        for t in p.bring.iter().flat_map(|b| b.targets.iter()) {
+            if !places.iter().any(|x| x.at == t.at) {
+                places.push(ExtTarget {
+                    at: t.at.clone(),
+                    ok: true,
+                    note: None,
+                });
+            }
+        }
+    }
+    for x in &mut places {
+        for p in &picks {
+            let hit = p
+                .bring
+                .as_ref()
+                .and_then(|b| b.targets.iter().find(|t| t.at == x.at));
+            let why = match hit {
+                Some(t) if t.ok => None,
+                Some(t) => Some(t.note.clone().unwrap_or_default()),
+                None => Some(copy_text("beExt.many.notThere", &[("machine", &p.name)])),
+            };
+            if let Some(w) = why {
+                x.ok = false;
+                if x.note.is_none() {
+                    x.note = Some(w);
+                }
+            }
+        }
+    }
+    let ok_all = |at: &ExtLoc| places.iter().any(|x| x.ok && x.at == *at);
+    let place = want
+        .filter(|w| ok_all(w))
+        .or_else(|| {
+            picks
+                .iter()
+                .find_map(|p| p.bring.as_ref())
+                .map(|b| b.scope.to.clone())
+                .filter(|w| ok_all(w))
+        })
+        .or_else(|| places.iter().find(|x| x.ok).map(|x| x.at.clone()));
+    Ok(Plan {
+        places,
+        place,
+        picks,
+    })
+}
+
+/// 几张卡的要填格并成一份：每格一次，`kept` ＝ 哪几台那一格已经有值（不填就沿用）。**纯函数**。
+pub(crate) fn merge_slots(cards: &[(String, &ExtCard)]) -> Value {
+    let mut out: Vec<(String, String, Vec<String>)> = Vec::new();
+    for (name, c) in cards {
+        for s in &c.slots {
+            let i = match out
+                .iter()
+                .position(|(f, k, _)| *f == s.field && *k == s.key)
+            {
+                Some(i) => i,
+                None => {
+                    out.push((s.field.clone(), s.key.clone(), Vec::new()));
+                    out.len() - 1
+                }
+            };
+            if s.kept {
+                out[i].2.push(name.clone());
+            }
+        }
+    }
+    Value::Array(
+        out.into_iter()
+            .map(|(field, key, kept)| json!({"field": field, "key": key, "kept": kept}))
+            .collect(),
+    )
+}
+
+/// 会写的文件那一行（给人看）：MCP ＝ 那份配置文件 ＋ 那一个键；skill ＝ 那个目录 ＋ 目录里要写的几个。**纯函数**。
+pub(crate) fn files_of(c: &ExtCard) -> Vec<String> {
+    match c.kind {
+        ExtKind::Mcp => vec![format!("{} · mcpServers", c.path)],
+        ExtKind::Skill => vec![format!("{} · {}", c.path, c.writes.join(", "))],
+    }
+}
+
+/// 一台那一跳的参数（与单台那一对同形）。
+fn ask_for(kind: ExtKind, name: &str, p: &Pick, b: &ExtBring, place: &ExtLoc) -> Value {
+    json!({
+        "kind": kind,
+        "name": name,
+        "from": b.from,
+        "to": p.to,
+        "scope": {"from": b.scope.from, "to": place},
+    })
+}
+
+fn many_args(
+    args: &Value,
+) -> Result<(ExtKind, &str, Vec<Option<String>>, Option<ExtLoc>), (String, String)> {
+    let kind = ExtKind::from_arg(args).map_err(|e| (e.0.to_string(), e.1))?;
+    let name = str_arg(args, "name")?;
+    let to = args
+        .get("to")
+        .and_then(Value::as_array)
+        .ok_or_else(|| bad("`to` must be a list of machine keys (null = this backend)"))?
+        .iter()
+        .map(|v| match v {
+            Value::Null => Ok(None),
+            Value::String(s) if !s.is_empty() => Ok(Some(s.clone())),
+            _ => Err(bad("`to` entries must be a machine key or null")),
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let place = match args.get("place") {
+        None | Some(Value::Null) => None,
+        Some(v) => Some(
+            serde_json::from_value(v.clone())
+                .map_err(|e| bad(&format!("`place` has the wrong shape: {e}")))?,
+        ),
+    };
+    Ok((kind, name, to, place))
+}
+
+/// 目录那一份的读口（生产 = `asset_catalog::answer_current`，由命令表那扇门递进来）；函数指针 ⇒ 跨线程送得出去。
+pub(crate) type CurrentFn =
+    fn(bool) -> Result<(super::asset_catalog::Catalog, Vec<String>), (&'static str, String)>;
+
+/// 那张表现拼一次（`ext-list` 同一份目录 ＋ 可达表）；目录那一份由命令表那扇门递进来（同 `ext-list`）。
+fn current_list(table: &Table, current: CurrentFn) -> Result<ExtList, (String, String)> {
+    let (cat, _) = current(false).map_err(|(c, m)| (c.to_string(), m))?;
+    Ok(super::ext::table(&cat, &super::ext::reach_of(table)))
+}
+
+/// `ext-hub-preview {kind, name, to: [机器…], place?}` → `{places, place, slots, machines: [{to, name, card, files, error}]}`。只读。
+pub(crate) async fn ext_preview_many(
+    here: &Arc<dyn Here>,
+    args: &Value,
+    table: &Table,
+    remote: &dyn Remote,
+    current: CurrentFn,
+) -> Answer {
+    let (kind, name, to, want) = many_args(args)?;
+    let plan = plan_many(&current_list(table, current)?, kind, name, &to, want)?;
+    let mut machines = Vec::new();
+    let mut cards: Vec<(String, ExtCard)> = Vec::new();
+    for p in &plan.picks {
+        let got = match (&p.bring, &plan.place) {
+            (None, _) => Err((
+                "refused".to_string(),
+                copy_text("beExt.many.noBring", &[("machine", &p.name)]),
+            )),
+            (Some(_), None) => Err(("refused".to_string(), copy_text("beExt.many.noPlace", &[]))),
+            (Some(b), Some(place)) => {
+                ext_preview(here, &ask_for(kind, name, p, b, place), table, remote)
+                    .await
+                    .and_then(|v| {
+                        serde_json::from_value::<ExtCard>(v)
+                            .map_err(|e| ("io_failed".to_string(), e.to_string()))
+                    })
+            }
+        };
+        match got {
+            Ok(card) => {
+                machines.push(json!({"to": p.to, "name": p.name, "card": card, "files": files_of(&card), "error": null}));
+                cards.push((p.name.clone(), card));
+            }
+            Err((_, m)) => machines
+                .push(json!({"to": p.to, "name": p.name, "card": null, "files": [], "error": m})),
+        }
+    }
+    let refs: Vec<(String, &ExtCard)> = cards.iter().map(|(n, c)| (n.clone(), c)).collect();
+    Ok(json!({
+        "places": plan.places,
+        "place": plan.place,
+        "slots": merge_slots(&refs),
+        "machines": machines,
+    }))
+}
+
+/// `ext-hub-apply {kind, name, to: [机器…], place, tokens: {机器: 记号}, fill}` → `{machines: [{to, name, done, error}]}`。
+/// 各台照它那张卡装（值取共用那一份里那张卡要的几格；没填的不交 ⇒ 沿用那台已有的）；一台没成不挡别台。
+pub(crate) async fn ext_apply_many(
+    here: &Arc<dyn Here>,
+    args: &Value,
+    table: &Table,
+    remote: &dyn Remote,
+    current: CurrentFn,
+) -> Answer {
+    let (kind, name, to, want) = many_args(args)?;
+    let plan = plan_many(
+        &current_list(table, current)?,
+        kind,
+        name,
+        &to,
+        want.clone(),
+    )?;
+    let fill = args.get("fill").cloned().unwrap_or_else(|| json!({}));
+    let tokens = args.get("tokens").cloned().unwrap_or_else(|| json!({}));
+    let mut machines = Vec::new();
+    for p in &plan.picks {
+        let key = p.to.clone().unwrap_or_default();
+        let done = match (&p.bring, &plan.place) {
+            (Some(b), Some(place)) if want.as_ref() == Some(place) => {
+                let ask = ask_for(kind, name, p, b, place);
+                async {
+                    let card: ExtCard =
+                        serde_json::from_value(ext_preview(here, &ask, table, remote).await?)
+                            .map_err(|e| ("io_failed".to_string(), e.to_string()))?;
+                    let mut mine = serde_json::Map::new();
+                    for s in &card.slots {
+                        if let Some(v) = fill
+                            .get(&s.field)
+                            .and_then(|f| f.get(&s.key))
+                            .and_then(Value::as_str)
+                            .filter(|v| !v.is_empty())
+                        {
+                            mine.entry(s.field.clone()).or_insert_with(|| json!({}))[&s.key] =
+                                json!(v);
+                        }
+                    }
+                    let mut a = ask.clone();
+                    a["tokens"] = tokens.get(&key).cloned().unwrap_or(Value::Null);
+                    a["fill"] = Value::Object(mine);
+                    ext_apply(here, &a, table, remote).await
+                }
+                .await
+            }
+            (None, _) => Err((
+                "refused".to_string(),
+                copy_text("beExt.many.noBring", &[("machine", &p.name)]),
+            )),
+            _ => Err(changed_since()),
+        };
+        machines.push(match done {
+            Ok(d) => json!({"to": p.to, "name": p.name, "done": d, "error": null}),
+            Err((_, m)) => json!({"to": p.to, "name": p.name, "done": null, "error": m}),
+        });
+    }
+    Ok(json!({ "machines": machines }))
 }
 
 #[cfg(test)]

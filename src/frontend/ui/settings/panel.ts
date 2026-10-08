@@ -36,6 +36,7 @@ import { icon, type IconName } from "../kit/icon";
 import { createRestartBar, markRestartNeeded } from "./restart-notice";
 import { restartNowButton } from "./restart-now";
 import { ResumeSelect } from "./resume-select";
+import { FirstRun } from "./first-run";
 import { claudeDirProblem } from "./claude-dir-check";
 import { createUnknownKeysBar, rerenderUnknownKeys } from "./unknown-keys-notice"; // 🔴 P12：未知键要出声
 import { setCurrentMachine } from "./machine-context";
@@ -1045,6 +1046,10 @@ export class SettingsPanel {
         }),
       );
     }
+    // 「开始用」那一块（稿 03）：列表上方；三步由后端事实打勾，全做完 / 点过「跳过」不出现。机器页可见时才问。
+    const firstRun = new FirstRun({ go: (t) => this.goTo(t), addMachine: () => void this.remoteSection?.addMachine() });
+    machinesPage.appendChild(firstRun.element);
+    this.loadOnFirstVisit("machines", () => void firstRun.loadNow());
     // **T07 审计阻塞 1**：这里必须在 `safeBlock` 里——`RemoteSection` 正是唯一活的同步
     // throw 宿主（构造路径含 `remote-section.ts` 那个三句话必填的 `throw`）。审计真造它抛过：
     // 裸构造会让 `new SettingsPanel` 直接炸穿、**什么都没上屏**。

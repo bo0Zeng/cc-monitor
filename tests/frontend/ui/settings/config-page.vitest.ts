@@ -105,6 +105,12 @@ describe("别名与配置文件 · 账号与扩展", () => {
     const head = el.querySelector<HTMLElement>('[data-role="chores-pointer"]')!;
     expect(head.hidden).toBe(false);
     expect(head.textContent).toContain(copyText("cfgPage.pointer.chores", { machine: "devbox", n: 2, m: 1 }));
+    // 稿 12：那几枚分类数小标签，与「文件与数据」同一套（已做的不出）。
+    expect([...head.querySelectorAll<HTMLElement>(".cfg-pointer-tags [data-kind]")].map((t) => [t.dataset.kind, t.textContent])).toEqual([
+      ["must", copyText("dataPage.chores.countMust", { n: 1 })],
+      ["decide", copyText("dataPage.chores.countDecide", { n: 1 })],
+      ["optional", copyText("dataPage.chores.countOptional", { n: 1 })],
+    ]);
     byText(head, copyText("cfgPage.pointer.go"))!.click();
     const foot = el.querySelector<HTMLElement>('[data-role="changed-pointer"]')!;
     expect(foot.textContent).toContain(copyText("cfgPage.pointer.changed", { machine: "devbox", n: 2 }));

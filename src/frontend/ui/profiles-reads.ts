@@ -94,6 +94,8 @@ export interface ProfilesBook {
   migrated: Migrated | null;
   binDir: string;
   accounts: string[];
+  /** 这台有没有 tmux（那台后端判的；查不动 ⇒ `null`）。表单 tmux 那一格旁照它提示。 */
+  tmux: boolean | null;
 }
 export interface MergeRow {
   key: string;
@@ -238,7 +240,7 @@ function decodeRow(v: unknown): ProfileRow {
 
 /** `profiles-read` 的成品。严格收。 */
 export function decodeBook(v: unknown): ProfilesBook {
-  const keys = ["home", "path", "exists", "fingerprint", "modified", "fileProblem", "profiles", "seed", "migrated", "binDir", "accounts"];
+  const keys = ["home", "path", "exists", "fingerprint", "modified", "fileProblem", "profiles", "seed", "migrated", "binDir", "accounts", "tmux"];
   if (
     !isObj(v) ||
     !exactKeys(v, keys) ||
@@ -250,7 +252,8 @@ export function decodeBook(v: unknown): ProfilesBook {
     !Array.isArray(v.profiles) ||
     !Array.isArray(v.seed) ||
     typeof v.binDir !== "string" ||
-    !strs(v.accounts)
+    !strs(v.accounts) ||
+    (v.tmux !== null && typeof v.tmux !== "boolean")
   )
     throw bad();
   let migrated: Migrated | null = null;
@@ -271,6 +274,7 @@ export function decodeBook(v: unknown): ProfilesBook {
     migrated,
     binDir: v.binDir,
     accounts: v.accounts,
+    tmux: v.tmux as boolean | null,
   };
 }
 

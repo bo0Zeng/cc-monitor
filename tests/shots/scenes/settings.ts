@@ -230,7 +230,7 @@ export const SETTINGS_SCENES: Scene[] = [
       await sleep(300);
     }
     await sleep(500);
-  }),
+  }, troubleWorld),
   settings("settings-general-resume-open", "设置 · 通用 · 恢复命令下拉", "恢复命令点开：默认那一家的启动器（灰字默认）· 用过的 · 自定义…", async () => {
     await go("general");
     await sleep(500);

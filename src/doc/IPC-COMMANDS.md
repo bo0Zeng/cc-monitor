@@ -2164,48 +2164,40 @@ skill 装记录的写口。
 
 #### `ext-hub-preview`
 
-装到一台之前那张确认卡，本机后端当枢纽。
+装到几台之前那一张卡：本机后端当枢纽，向各台问完并好。
 
 收 `args` · 可撤 · 只在流上
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `config` | ← | MCP：装上之后那一条（待填的值是 `null`） |
-| `from` | → | 来源那台 |
 | `kind` | → | `skill` / `mcp` |
+| `machines` | ← | 勾上的每台一项 `{to, name, card, files, error}`：`card` 同单台那张确认卡（`{kind, name, path, writes, unchanged, suspects, stop, config, slots, tokens}`）；`files` = 会写的文件那一行（MCP：那份配置文件 ＋ 键；skill：目录 ＋ 要写的几个）；那台没拼成 ⇒ `card` 为 `null`、`error` = `{code, said}` |
 | `name` | → | 名字 |
-| `path` | ← | 被写那台上的落点 |
-| `scope` | → | `{from, to}`，各是 `{level:"user"}` 或 `{level:"project", dir}`（那台上的绝对路径）；`to` = 用户在确认卡上选的那一处 |
-| `slots` | ← | 每个空位 `{field, key, kept}` |
-| `stop` | ← | 装不了的原因（非文本文件 · 这台那一份盖不了）；有它就不该确认 |
-| `suspects` | ← | 要留意的几件（说人话） |
-| `to` | → | 被写那台：可达表的键，**`null` = 这台自己** |
-| `tokens` | ← | 两头看过的那一份的记号 `{source, target}` —— 应用时原样交回 |
-| `unchanged` | ← | 装上之后和现在一样 |
-| `writes` | ← | 要写的那几个（skill：目录里的相对路径；MCP：那份配置文件） |
+| `place` | → | 可缺：用户在卡上选的那一处 `{level:"user"}` / `{level:"project", dir}`；对勾上的每台都能装才照它 |
+| `place` | ← | 共用的那一处（没有每台都能装的 ⇒ `null`） |
+| `places` | ← | 各台能装的各处并起来 `{at, ok, note}`：勾上的每台都能装才 `ok`，否则 `note` 说第一台为什么不行 |
+| `slots` | ← | 几张卡的要填格并成一份 `{field, key, kept}`：每格一次，`kept` = 那一格已经有值的几台（名字） |
+| `to` | → | 勾上的几台：可达表的键的列表，**`null` = 这台自己**；来源与那台原来那一处照扩展页那张表 |
 
-码：`bad_args` · `bad_file` · `missing` · `refused` · `unreachable` · `io_failed`
+码：`bad_args` · `missing` · `catalog_unreadable` · `io_failed`
 
 #### `ext-hub-apply`
 
-装到一台，本机后端当枢纽。
+装到几台，本机后端当枢纽；各台各自结局。
 
 收 `args` · 可撤 · 只在流上
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `changed` | ← | 写了的那几个 |
-| `fill` | → | MCP：用户填的值（同 `mcp-sync-apply`）；来源机上的值从不经过这里 |
-| `from` | → | 同 `ext-hub-preview` |
+| `fill` | → | 用户在卡上填的值 `{field: {key: 值}}`（只填一次；每台只交它那张卡要的几格，空的不交 ⇒ 沿用那台已有的）；来源机上的值从不经过这里 |
 | `kind` | → | 同 `ext-hub-preview` |
+| `machines` | ← | 每台一项 `{to, name, done, error}`：`done` = `{path, changed, note}`；没成 ⇒ `error` = `{code, said}`（`stale` = 看过之后变了、那台一个字节不写），一台没成不挡别台 |
 | `name` | → | 同 `ext-hub-preview` |
-| `note` | ← | 做成了但要知道的一件（执行位没改成 · 没记下来） |
-| `path` | ← | 写到了哪 |
-| `scope` | → | 同 `ext-hub-preview` |
+| `place` | → | 卡上那一处（`ext-hub-preview` 回的 `place`）；那一组现算的那一处不是它 ⇒ 各台都 `stale` |
 | `to` | → | 同 `ext-hub-preview` |
-| `tokens` | → | 确认卡上那一份：枢纽两头都再看一次，任一头对不上 ⇒ `stale`、**一个字节不写** |
+| `tokens` | → | 每台那张卡上的记号 `{机器键（本机 = 空串）: {source, target}}`：枢纽两头都再看一次，任一头对不上 ⇒ 那台 `stale`、**一个字节不写** |
 
-码：`bad_args` · `bad_file` · `missing` · `needs_input` · `refused` · `stale` · `unreachable` · `io_failed`
+码：`bad_args` · `missing` · `catalog_unreadable` · `io_failed`
 
 #### `ext-list`
 

@@ -34,6 +34,19 @@ pub(super) const SPECS: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
+    // 首次运行「开始用 · 剩 N 步」那份数（`footprint/readiness.rs`）：三步各自由这台的事实打勾；机器表台数由问的那一方带上。只读，阻塞档。
+    CommandSpec {
+        name: "readiness",
+        summary: "首次运行「开始用」三步各自打没打勾",
+        codes: &["bad_args"],
+        fields: &[out("left", "还没打勾的几步（设置窗「开始用」与主窗口状态栏那一枚读这一个数）"), arg("remotes", "机器表里有几台远端（机器表住 monitor 那一侧，问的那一方带上）"), out("steps", "三步 `{id, done}`，`id` 闭集 `terminal`（让终端认得 ccm 和别名：某份启动文件里有别名块）· `named`（给现在登录的号起名字：启用了多账号）· `remote`（加一台远端：`remotes` > 0）")],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::footprint::readiness::answer(&LocalFiles, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
     // 离线那台的上次值（`footprint/last_seen.rs`）：本机后端替界面记下每台最近一次读成的账号清单 · 「文件与数据」那一份，
     //   连不上时界面照它画「上次的」，跨重启还在。写后端自己的 `~/.cc-monitor/last-seen.json`（锁里读—改—写、原子写）。阻塞档。
     CommandSpec {
@@ -277,24 +290,23 @@ pub(super) const SPECS: &[CommandSpec] = &[
     //   依赖本进程的可达表 ⇒ 只在流面上（`cli_control::STREAM_ONLY`）。
     CommandSpec {
         name: "ext-hub-preview",
-        summary: "装到一台之前那张确认卡，本机后端当枢纽",
+        summary: "装到几台之前那一张卡：本机后端当枢纽，向各台问完并好",
         codes: &[
             "bad_args",
-            "bad_file",
             "missing",
-            "refused",
-            "unreachable",
+            "catalog_unreadable",
             "io_failed",
         ],
-        fields: &[out("config", "MCP：装上之后那一条（待填的值是 `null`）"), arg("from", "来源那台"), arg("kind", "`skill` / `mcp`"), arg("name", "名字"), out("path", "被写那台上的落点"), arg("scope", "`{from, to}`，各是 `{level:\"user\"}` 或 `{level:\"project\", dir}`（那台上的绝对路径）；`to` = 用户在确认卡上选的那一处"), out("slots", "每个空位 `{field, key, kept}`"), out("stop", "装不了的原因（非文本文件 · 这台那一份盖不了）；有它就不该确认"), out("suspects", "要留意的几件（说人话）"), arg("to", "被写那台：可达表的键，**`null` = 这台自己**"), out("tokens", "两头看过的那一份的记号 `{source, target}` —— 应用时原样交回"), out("unchanged", "装上之后和现在一样"), out("writes", "要写的那几个（skill：目录里的相对路径；MCP：那份配置文件）")],
+        fields: &[arg("kind", "`skill` / `mcp`"), out("machines", "勾上的每台一项 `{to, name, card, files, error}`：`card` 同单台那张确认卡（`{kind, name, path, writes, unchanged, suspects, stop, config, slots, tokens}`）；`files` = 会写的文件那一行（MCP：那份配置文件 ＋ 键；skill：目录 ＋ 要写的几个）；那台没拼成 ⇒ `card` 为 `null`、`error` = 那台说的那一句"), arg("name", "名字"), arg("place", "可缺：用户在卡上选的那一处 `{level:\"user\"}` / `{level:\"project\", dir}`；对勾上的每台都能装才照它"), out("place", "共用的那一处（没有每台都能装的 ⇒ `null`）"), out("places", "各台能装的各处并起来 `{at, ok, note}`：勾上的每台都能装才 `ok`，否则 `note` 说第一台为什么不行"), out("slots", "几张卡的要填格并成一份 `{field, key, kept}`：每格一次，`kept` = 那一格已经有值的几台（名字）"), arg("to", "勾上的几台：可达表的键的列表，**`null` = 这台自己**；来源与那台原来那一处照扩展页那张表")],
         takes_input: true,
         run: Run::Async(|r| {
             Box::pin(async move {
-                crate::assets::hub::ext_preview(
+                crate::assets::hub::ext_preview_many(
                     &hub_here(),
                     &r.args,
                     &crate::stream::remote_ask::REACH,
                     &crate::stream::remote_ask::DialRemote,
+                    crate::assets::asset_catalog::answer_current,
                 )
                 .await
                 .map(Some)
@@ -303,26 +315,23 @@ pub(super) const SPECS: &[CommandSpec] = &[
     },
     CommandSpec {
         name: "ext-hub-apply",
-        summary: "装到一台，本机后端当枢纽",
+        summary: "装到几台，本机后端当枢纽；各台各自结局",
         codes: &[
             "bad_args",
-            "bad_file",
             "missing",
-            "needs_input",
-            "refused",
-            "stale",
-            "unreachable",
+            "catalog_unreadable",
             "io_failed",
         ],
-        fields: &[out("changed", "写了的那几个"), arg("fill", "MCP：用户填的值（同 `mcp-sync-apply`）；来源机上的值从不经过这里"), arg("from", "同 `ext-hub-preview`"), arg("kind", "同 `ext-hub-preview`"), arg("name", "同 `ext-hub-preview`"), out("note", "做成了但要知道的一件（执行位没改成 · 没记下来）"), out("path", "写到了哪"), arg("scope", "同 `ext-hub-preview`"), arg("to", "同 `ext-hub-preview`"), arg("tokens", "确认卡上那一份：枢纽两头都再看一次，任一头对不上 ⇒ `stale`、**一个字节不写**")],
+        fields: &[arg("fill", "用户在卡上填的值 `{field: {key: 值}}`（只填一次；每台只交它那张卡要的几格，空的不交 ⇒ 沿用那台已有的）；来源机上的值从不经过这里"), arg("kind", "同 `ext-hub-preview`"), out("machines", "每台一项 `{to, name, done, error}`：`done` = `{path, changed, note}`；没成 ⇒ `error` = 那台说的那一句（看过之后变了的，那台一个字节不写），一台没成不挡别台"), arg("name", "同 `ext-hub-preview`"), arg("place", "卡上那一处（`ext-hub-preview` 回的 `place`）；那一组现算的那一处不是它 ⇒ 各台都 `stale`"), arg("to", "同 `ext-hub-preview`"), arg("tokens", "每台那张卡上的记号 `{机器键（本机 = 空串）: {source, target}}`：枢纽两头都再看一次，任一头对不上 ⇒ 那台 `stale`、**一个字节不写**")],
         takes_input: true,
         run: Run::Async(|r| {
             Box::pin(async move {
-                crate::assets::hub::ext_apply(
+                crate::assets::hub::ext_apply_many(
                     &hub_here(),
                     &r.args,
                     &crate::stream::remote_ask::REACH,
                     &crate::stream::remote_ask::DialRemote,
+                    crate::assets::asset_catalog::answer_current,
                 )
                 .await
                 .map(Some)
