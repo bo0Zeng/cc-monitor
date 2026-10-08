@@ -2823,6 +2823,15 @@ body.settings-window-mode .settings-panel {
 .data-offline {
   margin-bottom: 8px;
 }
+/* 恢复命令那一格：下拉（kit）＋ 选了「自定义…」才出现的一格。 */
+.resume-select {
+  display: inline-flex;
+  gap: var(--space-4);
+  align-items: center;
+}
+.resume-select > button {
+  min-width: 180px;
+}
 .data-local-only,
 .data-remote-only {
   margin-bottom: 4px;
