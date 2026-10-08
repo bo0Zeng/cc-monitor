@@ -42,7 +42,39 @@
  * 4. 全仓 TS **字面量**命令名 ⊆ Rust 命令集，且唯一名数 == 112，且
  *    「Rust 有而 TS 静态看不见」的那 7 个动态名逐字钉死。
  */
-import { invoke } from "@tauri-apps/api/core";
+import { invoke as tauriInvoke } from "@tauri-apps/api/core";
+import type { Said } from "../generated/Said";
+
+/**
+ * 壳命令失败（Rust `detail::Said`：一句 ＋ 复制详情那几行）⇒ 一个 `Error`：`message` 与 `String(e)` 都是那一句，
+ * `detail` 是复制详情（`kit/detail.ts::detailOf` 取）。全仓壳命令的失败只这一形；别的形状原样抛（不猜）。
+ */
+export class SaidError extends Error {
+  readonly detail: string;
+  constructor(said: Said) {
+    super(said.said);
+    this.name = "SaidError";
+    this.detail = said.detail;
+  }
+  override toString(): string {
+    return this.message;
+  }
+}
+
+function isSaid(v: unknown): v is Said {
+  return v !== null && typeof v === "object" && typeof (v as Said).said === "string" && typeof (v as Said).detail === "string";
+}
+
+async function callShell<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  try {
+    return await tauriInvoke<T>(cmd, args);
+  } catch (e) {
+    throw isSaid(e) ? new SaidError(e) : e;
+  }
+}
+
+/** 本文件里每一条命令都经这一口：失败是 [`Said`] ⇒ 换成 [`SaidError`]。 */
+const invoke: <T>(cmd: string, args?: Record<string, unknown>) => Promise<T> = callShell;
 
 // `SkillView` 搬进 `src/frontend/ui/skill-inbox-reads.ts`（收件箱三问改走通道、后端出成品）。
 // `ApikeyCredentialsStatus` 与 `ApikeyRoutingView` 两个类型搬进 `src/frontend/ui/apikey-reads.ts`（那两问改走通道、后端出成品，

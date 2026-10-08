@@ -3576,13 +3576,18 @@ fn a_directory_that_cannot_be_opened_says_which_kind_and_offers_the_way_out() {
             said.as_str(),
             &copy_text("rsFilewinShell.open.up", &[]),
             &copy_text("rsFilewinShell.open.home", &[]),
-            &copy_text("rsFilewinShell.open.copyDetail", &[]),
         ] {
             assert!(
                 painted.iter().any(|t| t == want),
                 "{key}：这一帧上没有「{want}」。画出来的是：{painted:?}"
             );
         }
+        // 同一颗［复制详情］（图标 ＋ 字，`kit::copy_detail_button`）。
+        let copy = copy_text("detail.act.copy", &[]);
+        assert!(
+            painted.iter().any(|t| t.ends_with(&copy)),
+            "{key}：这一帧上没有［复制详情］。画出来的是：{painted:?}"
+        );
     }
     let mut w = remote_window_with_rows("/srv/data/gone", vec![]);
     *w.listing.open_fail.lock().unwrap() = Some((OpenFail::NotFound, "系统原话".into()));

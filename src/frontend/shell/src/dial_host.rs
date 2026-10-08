@@ -469,7 +469,7 @@ pub(crate) fn utc_day(t: std::time::SystemTime) -> String {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() / 86_400)
         .unwrap_or(0) as i64;
-    let (y, m, d) = host_core::civil_from_days(days);
+    let (y, m, d) = copy_core::civil_from_days(days);
     format!("{y:04}-{m:02}-{d:02}")
 }
 

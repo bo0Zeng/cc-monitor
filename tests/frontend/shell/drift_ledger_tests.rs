@@ -59,7 +59,8 @@ fn the_read_side_answers_the_asked_machine_and_echoes_it() {
         "问另一台却答出了探针那台的账"
     );
     let err = tauri::async_runtime::block_on(drift_ledger_report(Origin("  ".into())))
-        .expect_err("空白名被当成了某一台");
+        .expect_err("空白名被当成了某一台")
+        .said;
     assert!(
         err.contains("drift_ledger_report"),
         "拒收的话没点名是哪条命令：{err}"

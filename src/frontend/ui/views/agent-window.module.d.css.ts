@@ -4,6 +4,7 @@ declare const classes: {
   readonly awEnd: string;
   readonly awEndHead: string;
   readonly awEndSub: string;
+  readonly awEndText: string;
   readonly awFacts: string;
   readonly awFoot: string;
   readonly awHead: string;

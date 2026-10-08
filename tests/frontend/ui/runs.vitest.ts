@@ -36,7 +36,7 @@ import type { StreamEv } from "../../../src/frontend/ui/generated/StreamEv";
 import { TabManager } from "../../../src/frontend/ui/tabs";
 import { AgentsPanel } from "../../../src/frontend/ui/agents-panel";
 import { livePainter } from "../../../src/frontend/ui/live-card-view";
-import { panelGroups, RECENT_ENDED } from "../../../src/frontend/ui/runs";
+import { panelGroups, RECENT_ENDED, runStateMark } from "../../../src/frontend/ui/runs";
 import { installViewerRig, line, userLine } from "../../test-support/session-viewer-rig";
 
 const O = "<local>";
@@ -47,6 +47,27 @@ function taps(resp: number, evs: StreamEv[], run?: string): TapPayload[] {
 }
 
 const run = (id: string, state: RunState, label = id, tool?: string): RunInfo => ({ run: id, label, state, ...(tool ? { tool } : {}) });
+
+/** 状态那一格画的是什么：在跑 ＝ 呼吸的状态点（V10），其余四态 ＝ Phosphor 图标（经 kit/icon）；不许是字符。 */
+function markOf(host: Element | null): string | undefined {
+  if (!host) return undefined;
+  if ((host.textContent ?? "") !== "") return `text:${host.textContent}`;
+  const svg = host.querySelector<SVGElement>("svg[data-icon]");
+  if (svg) return `icon:${svg.dataset.icon}`;
+  const dot = host.querySelector<HTMLElement>("[data-state]");
+  return dot ? `dot:${dot.dataset.state}` : undefined;
+}
+const MARK: Record<RunState, string> = { running: "dot:running", done: "icon:check", failed: "icon:failed", stopped: "icon:stop", unknown: "icon:question" };
+
+describe("runStateMark：五态各画什么", () => {
+  it("在跑是状态点，其余是图标，都不带字", () => {
+    for (const s of Object.keys(MARK) as RunState[]) {
+      const host = document.createElement("span");
+      host.appendChild(runStateMark(s));
+      expect(markOf(host), s).toBe(MARK[s]);
+    }
+  });
+});
 
 describe("运行表 × 归一流", () => {
   it("两段子运行流各归各的运行；主 tab 的活卡只有主运行那段；子运行收场 ⇒ 它在攒的那几段撤掉、交出它", () => {
@@ -142,12 +163,12 @@ describe("真 TabManager ＋ 真 agent 面板", () => {
   const rowsIn = (panel: AgentsPanel) =>
     [...panel.pageElement.querySelectorAll<HTMLElement>(".agent-row")].map((r) => ({
       run: r.dataset.run,
-      icon: r.querySelector(".agent-icon")?.textContent,
+      icon: markOf(r.querySelector(".agent-icon")),
       state: r.querySelector(".agent-state")?.textContent,
       cls: [...r.classList].find((c) => c.startsWith("agent-") && c !== "agent-row" && c !== "agent-row-clickable"),
     }));
   const groupsIn = (panel: AgentsPanel) => [...panel.pageElement.querySelectorAll(".agent-group")].map((g) => g.textContent);
-  const st = (s: RunState) => ({ icon: copyText(`runs.icon.${s}`), state: copyText(`runs.state.${s}`), cls: `agent-${s}` });
+  const st = (s: RunState) => ({ icon: MARK[s], state: copyText(`runs.state.${s}`), cls: `agent-${s}` });
 
   // ① 前台跑完 ② 后台完成通知 ③ 后台失败 ④ 被叫停 ⑤ 被额度打断（无通知、子记录停写）⑥ 真在跑 —— 状态是后端判好给的。
   const SIX: RunInfo[] = [
@@ -223,6 +244,8 @@ describe("真 TabManager ＋ 真 agent 面板", () => {
     const notices = () =>
       [...streamRootEl.querySelectorAll<HTMLElement>(".card-notice:not([hidden]) .notice-row:not([hidden])")].map((r) => r.textContent ?? "");
     expect(notices().join("|")).toContain("扫目录");
+    // 句子里的状态写字（完成 / 失败），不拿字符当图标（C-W1）。
+    expect(notices()).toContain(copyText("speaker.notice.row", { what: "扫目录", state: copyText("runs.state.done"), time: notices()[0].split(" · ").at(-1) ?? "" }));
     const facts = { agent: "claude", end: 1, forkedFrom: null, touchedFiles: [], usage: null, projectDir: null, writers: [], pending: [], lastSay: null, needs: null, handedBack: ["w6"], retries: [] };
     (tm as unknown as { onSessionFacts(sid: string, f: unknown): void }).onSessionFacts(SID, facts);
     expect(notices().join("|")).not.toContain("扫目录");
@@ -239,7 +262,7 @@ describe("真 TabManager ＋ 真 agent 面板", () => {
     expect(rowsIn(panel)).toEqual([{ run: "w6", ...st("running") }]);
     tm.onSessionRuns({ session_id: SID, runs: [run("w6", "stopped", "扫目录", "t1")], ended: [] });
     expect(rowsIn(panel)).toEqual([{ run: "w6", ...st("stopped") }]);
-    expect(copyText("runs.icon.stopped")).not.toBe(copyText("runs.icon.done"));
+    expect(MARK.stopped).not.toBe(MARK.done);
   });
 
   it("被挤出运行表的已收场子运行（`ended`）：派出它的那张卡照样标终态；面板上不列它", () => {

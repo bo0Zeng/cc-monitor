@@ -136,12 +136,29 @@ impl Answer {
     fn done(sid: &str) -> Self {
         Self::new(sid, "done", None, String::new())
     }
-    fn to_json(&self) -> Value {
+    /// `cmd`：`sessions-stop` / `sessions-start`。失败那一项多两格：`said`（停的那一句与单条结束同一张表，`crate::stream::said`；
+    /// 起的那几句要那台的称呼，界面说）· `copyDetail`（复制详情：码 ＋ 那一项的原话）。
+    fn to_json(&self, cmd: &str) -> Value {
+        let failed = self.outcome == "failed";
+        let said = match (&self.why, failed && cmd == "sessions-stop") {
+            (Some(why), true) => crate::stream::said::reword(
+                "kill",
+                &json!({ "name": self.session.as_deref().unwrap_or_default() }),
+                why,
+            ),
+            _ => None,
+        };
+        let copy_detail = match (&self.why, failed) {
+            (Some(why), true) => crate::stream::detail::of(Some(cmd), why, Some(&self.detail)),
+            _ => String::new(),
+        };
         json!({
             "sid": self.sid,
             "outcome": self.outcome,
             "why": self.why,
             "detail": self.detail,
+            "said": said,
+            "copyDetail": copy_detail,
             "session": self.session,
             "bus": self.bus,
             "cmd": self.cmd,
@@ -252,7 +269,7 @@ pub(crate) fn stop(args: &Value, deps: &Deps) -> Result<Value, CmdErr> {
     let rows = (deps.list)().map_err(|m| ("unobservable", m))?;
     let results: Vec<Value> = sids
         .iter()
-        .map(|sid| stop_one(sid, rows.as_deref(), deps).to_json())
+        .map(|sid| stop_one(sid, rows.as_deref(), deps).to_json("sessions-stop"))
         .collect();
     Ok(json!({ "results": results }))
 }
@@ -447,7 +464,7 @@ pub(crate) fn start(args: &Value, deps: &Deps) -> Result<Value, CmdErr> {
     };
     let results: Vec<Value> = items
         .iter()
-        .map(|it| start_one(it, &batch, tmux, rows.as_ref(), here, deps).to_json())
+        .map(|it| start_one(it, &batch, tmux, rows.as_ref(), here, deps).to_json("sessions-start"))
         .collect();
     Ok(json!({ "results": results }))
 }

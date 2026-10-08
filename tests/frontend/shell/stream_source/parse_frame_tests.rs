@@ -158,11 +158,11 @@ fn parses_reply_and_cancelled_field_by_field() {
             ok: true,
             code: None,
             message: None,
+            detail: None,
             data: Some(serde_json::json!({ "pong": 1 })),
         }
     );
-    let err_line =
-        r#"{"kind":"reply","id":"a-2","ok":false,"code":"bad_request","message":"缺 sid"}"#;
+    let err_line = r#"{"kind":"reply","id":"a-2","ok":false,"code":"bad_request","message":"缺 sid","detail":"码：bad_request"}"#;
     assert_eq!(
         parse_frame(err_line).expect("reply must parse"),
         InboundFrame::Reply {
@@ -170,6 +170,7 @@ fn parses_reply_and_cancelled_field_by_field() {
             ok: false,
             code: Some("bad_request".into()),
             message: Some("缺 sid".into()),
+            detail: Some("码：bad_request".into()),
             data: None,
         }
     );

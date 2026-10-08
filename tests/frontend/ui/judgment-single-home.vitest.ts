@@ -482,7 +482,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   },
   J23: {
     what: "自 1970-01-01 起第几天 ⇒ 公历年月日",
-    homes: ["host-core::civil_from_days"],
+    homes: ["copy-core::civil_from_days"],
     // 删的是界面额度悬停卡排时刻那一份（`quota-lines.ts::civil` ＋ `fmtAt`）：时刻的字改由后端出口写好（回包里每个时刻旁边那一格 `…Text`），界面照抄。
     status: "zero",
     defs: ["civil", "fmtAt"],
@@ -573,6 +573,21 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     local_machine: "J22",
     reply_unreadable: "J22",
     TABLE_JSON: NONE,
+    // 天数 ⇒ 公历（后端 · monitor · 文件窗口写日期与「复制详情」的时刻都经它）；界面那一份 TS 删了（J23 zero）。
+    civil_from_days: "J23",
+    // 「复制详情」那几行的排法（`detail` 模块：项名闭集 · 一项一行 · 原话截断 · 时刻写法）：三端写详情只经这一份，
+    //   界面只把它接在屏上那句下面原样复制（`kit/detail.ts`），TS 侧没有孪生。
+    ALL: NONE,
+    RAW_CAP: NONE,
+    append: NONE,
+    item: NONE,
+    maybe: NONE,
+    new: NONE,
+    os_word: NONE,
+    render: NONE,
+    said: NONE,
+    stamp: NONE,
+    truncate_raw: NONE,
   },
   "creds-core": {
     // monitor 数据目录的规则搬进这里（远端常驻后端按同一份推默认路径）；TS 侧没有孪生。
@@ -668,8 +683,10 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     // 主窗 / 设置窗摆进工作区正中（宿主那一侧用；TS 侧没有孪生）。
     center_in_work_area: NONE,
     win32_long_path: NONE,
-    // 天数 ⇒ 公历（monitor 记主机钥匙那天的日期 · 文件窗口画修改时间）；界面那一份 TS 删了（J23 zero）。
-    civil_from_days: "J23",
+    // 本机时区偏移 · 这一份编给的系统与架构（文件窗口画修改时间 · monitor 写「复制详情」的时刻与「本机」那一行）；TS 侧零孪生。
+    local_offset_at: NONE,
+    OS: NONE,
+    ARCH: NONE,
   },
   "relay-route-core": {
     // 后端住在 `~/.cc-monitor` 里的那几样的相对路径（后端各写者引它、monitor 数据位置页按它列）；TS 侧没有孪生。

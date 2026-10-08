@@ -24,6 +24,7 @@ import { openPanePreview } from "./views/pane-preview";
 import { runRemoteAttach } from "./remote-launch-run";
 import { killSession } from "./tmux-control";
 import s from "./launch-slot.module.css";
+import { detailOf } from "./kit/detail";
 
 /** 多久没报到算「未报到」（到点只换样子，不放弃等）。 */
 export const SLOT_MISS_MS = 20_000;
@@ -308,7 +309,7 @@ export class LaunchSlots {
     try {
       await this.acts.kill(sl.spec.origin, name);
     } catch (e) {
-      toast(copyText("tabSessionActions.kill.failed", { title: name }), e instanceof Error ? e.message : String(e));
+      toast(copyText("tabSessionActions.kill.failed", { title: name }), e instanceof Error ? e.message : String(e), { detail: detailOf(e) });
       return;
     }
     toast(copyText("sessionState.kill.done", { title: name }), "", { level: "success" });

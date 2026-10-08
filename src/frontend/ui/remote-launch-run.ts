@@ -22,6 +22,7 @@ import { machineModels } from "./account-prefs";
 import { buildCliRenderRequest } from "./launch-cli-wire.ts";
 import { renderCli } from "./launch-render";
 import { toast } from "./kit/toast";
+import { detailOf } from "./kit/detail";
 import { copyText } from "./copy-table";
 import {
   arrivedBody,
@@ -62,7 +63,7 @@ async function renderOrRefuse(
         u,
         choose: (account) => again(account) as Promise<unknown>,
       });
-    else toast(failedTitle, String(err));
+    else toast(failedTitle, String(err), { detail: detailOf(err) });
     return null;
   }
   if (mods.preflight && !(await mods.preflight(r.account?.configDir)))
@@ -139,7 +140,7 @@ async function invokeLaunchOrCopyFallback(
     const where = isLocalOrigin(origin)
       ? copyText("remoteLaunchRun.copyFallback.runLocal")
       : copyText("remoteLaunchRun.copyFallback.runRemote", { machine: origin });
-    toast(headline, `${String(err)}\n${where}\n${cmd}`, { level: "info" });
+    toast(headline, `${String(err)}\n${where}\n${cmd}`, { detail: detailOf(err), level: "info" });
     return "unsent";
   }
 }
@@ -199,7 +200,7 @@ export async function runRemoteAttach(
   try {
     cmd = await renderLaunchCommand(origin, planAttach(agent, name));
   } catch (err) {
-    toast(copyText("remoteLaunchRun.attach.buildFailed"), String(err));
+    toast(copyText("remoteLaunchRun.attach.buildFailed"), String(err), { detail: detailOf(err) });
     return;
   }
   await invokeLaunchOrCopyFallback(

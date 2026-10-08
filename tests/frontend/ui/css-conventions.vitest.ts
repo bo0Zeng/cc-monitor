@@ -104,7 +104,6 @@ const UNUSED_TOKENS: Readonly<Record<string, string>> = {
   // 消费者要等到那些控件下一次被动到时才自然接上 ⇒ 预留是刻意的，不是腐。
   // 规范 V1–V12 新立的令牌里，通用组件还没接上的（组件件落地一个摘一个）。
   "--dur-float-out": NEW_TOKEN,
-  "--space-8": NEW_TOKEN,
 } as const;
 
 describe("S30 ⓪ 量具自检（这几条不过，下面三格全是空转）", () => {
@@ -269,6 +268,8 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
     "会话内查找的命中清单 `strip`（`s.fsStrip`）—— 它写了 display:flex，CSS 里另有 `.fsStrip[hidden]` 收住",
   "src/frontend/ui/kit/dialog.ts::err":
     "填值框的错误句 `err`（`s.error`）—— 开时收起",
+  "src/frontend/ui/kit/dialog.ts::failLine":
+    "表单框提交没成那一行 `failLine`（`s.dlgFail`，自己不写 display）—— 没出错 / 改了一格时收起",
   "src/frontend/ui/kit/dock.ts::this.el":
     "底部抽屉网格那一格 `this.el`（`s.dockSlot`，自己不写 display；竖排的 flex 在里层 `s.dock`）—— 收着时 hidden",
   "src/frontend/ui/kit/fold.ts::body":

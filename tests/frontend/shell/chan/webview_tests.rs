@@ -16,7 +16,7 @@ use super::super::wire::{
     Body, CallError, CancelToken, Cursor, HopFault, HopId, Item, Kind, Op, Origin, OursFault,
     PeerFault, Reach,
 };
-use super::{call_via, cancel_inflight, fail};
+use super::{call_via, cancel_inflight, fail, Fail};
 use futures::future::BoxFuture;
 use futures::stream::BoxStream;
 use std::sync::Mutex;
@@ -216,7 +216,7 @@ fn the_fail_shape_equals_the_golden_file_the_ts_side_decodes() {
     for (name, e) in cases {
         got.insert(
             name.to_string(),
-            serde_json::to_value(fail(e)).expect("可序列化"),
+            wire_of(fail(&Origin("devbox".into()), "op", e)),
         );
     }
     let got = serde_json::Value::Object(got);
@@ -371,13 +371,14 @@ fn the_fallback_rule_equals_the_golden_file_the_ts_side_judges() {
             Inbound::Remote {
                 code: "wrong_owner".into(),
                 message: "m".into(),
+                detail: String::new(),
                 data: None,
             },
         ),
     ];
     let mut rows = vec![serde_json::json!({
         "case": "no_channel",
-        "fail": serde_json::to_value(fail(layer_no_channel(1))).expect("可序列化"),
+        "fail": wire_of(fail(&Origin("devbox".into()), "op", layer_no_channel(1))),
         // `client_for` 回 None ⇒ `backend_route::no_channel` ⇒ `Routed::NoChannel`（一个字节都没发）。
         "provablyNotSent": true,
     })];
@@ -388,7 +389,7 @@ fn the_fallback_rule_equals_the_golden_file_the_ts_side_judges() {
         );
         rows.push(serde_json::json!({
             "case": name,
-            "fail": serde_json::to_value(fail(layer_call_error(&e, 1).error)).expect("可序列化"),
+            "fail": wire_of(fail(&Origin("devbox".into()), "op", layer_call_error(&e, 1).error)),
             "provablyNotSent": may_fall_back,
         }));
     }
@@ -475,4 +476,19 @@ async fn a_cancel_by_id_reaches_the_backend_handle_across_the_webview_hop() {
         fake.seen.lock().unwrap().is_empty(),
         "先到的撤单没拦住那一问"
     );
+}
+
+/// 交回 webview 的失败去掉「复制详情」那一格（带时刻，金样不收）；那一格每一层都必须非空（有详情才出按钮，通道这一跳的失败都该有）。
+fn wire_of(f: Fail) -> serde_json::Value {
+    let mut v = serde_json::to_value(f).expect("可序列化");
+    let detail = v
+        .as_object_mut()
+        .and_then(|o| o.remove("detail"))
+        .and_then(|d| d.as_str().map(str::to_string))
+        .expect("失败交回 webview 必须带 detail");
+    assert!(
+        !detail.trim().is_empty() || v["err"] == "Refused",
+        "detail 是空的：{v}"
+    );
+    v
 }

@@ -7,6 +7,7 @@
 //! （PATH 上那个 / cc-monitor 装下去的那份），探法住 `ccm_probe.rs`（本机后端的引导那一族）。
 
 use crate::copy_table::copy_text;
+use crate::detail::Said;
 
 /// ★★ 装出去的 `cc-spawn` **硬依赖新 `ccm`** —— 装之前先看一眼本机那份够不够新。
 ///
@@ -201,7 +202,7 @@ const CC_SPAWN_NEEDS: &[&str] = &["detach", "tmux-size", "tmux-base", "bus-regis
 /// 装 cc-bus 之前（界面点「装」的那一下）问一次：本机 `ccm` 够不够新。`None` = 够新（非 Windows：探过 PATH 上那个）。
 /// ⚠ **只警告、不拦**：装本身在本机后端做完，这句话接在成功文案后面显示。
 #[tauri::command]
-pub async fn cc_bus_ccm_precheck() -> Result<Option<String>, String> {
+pub async fn cc_bus_ccm_precheck() -> Result<Option<String>, Said> {
     let warning = tokio::task::spawn_blocking(local_ccm_too_old_warning)
         .await
         .map_err(|e| format!("spawn_blocking join error: {e}"))?;

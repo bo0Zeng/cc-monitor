@@ -40,6 +40,8 @@ import type { DataClass } from "../generated/DataClass";
 import type { DataPathInfo } from "../generated/DataPathInfo";
 import type { DataPathsResponse } from "../generated/DataPathsResponse";
 import { copyText } from "../copy-table";
+import { detailOf, sayWithDetail } from "../kit/detail";
+import { icon } from "../kit/icon";
 
 /**
  * 每一行那一格「删了会怎样」。
@@ -160,7 +162,7 @@ export class DataSection {
       this.mainBody.replaceChildren();
       const err = document.createElement("div");
       err.className = "settings-data-error";
-      err.textContent = copyText("data.load.failed", { e: String(e) });
+      sayWithDetail(err, copyText("data.load.failed", { e: String(e) }), detailOf(e));
       this.mainBody.appendChild(err);
     }
   }
@@ -215,8 +217,10 @@ export class DataSection {
     // ⇒ 换成真 DOM：`<strong>` 由 `document.createElement` 建，文字是纯文本。
     const note = document.createElement("div");
     note.className = "settings-data-note";
+    const info = icon("info", "compact");
+    info.classList.add("settings-data-note-icon");
     note.append(
-      copyText("data.note.icon"),
+      info,
       strong(copyText("data.note.uninstall")),
       copyText("data.note.byDefault"),
       strong(copyText("data.note.notCleared")),
@@ -411,7 +415,7 @@ async function openItem(path: string): Promise<void> {
     await openPath(path);
   } catch (e) {
     console.warn(`[data-section] openPath ${path} failed:`, e);
-    toast(copyText("data.open.failed"), String(e));
+    toast(copyText("data.open.failed"), String(e), { detail: detailOf(e) });
   }
 }
 

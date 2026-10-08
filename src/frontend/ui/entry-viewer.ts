@@ -27,6 +27,7 @@ import { SessionViewer } from "./views/session-viewer";
 import { button, setBusy, setDisabled } from "./kit/button";
 import { tag } from "./kit/badge";
 import { banner } from "./kit/banner";
+import { detailOf } from "./kit/detail";
 import { icon } from "./kit/icon";
 import { splitButton } from "./kit/split-button";
 import { defaultPick, resumeAccounts, resumeHint, resumeMenuItems, type ResumeAccounts, type ResumePick } from "./resume-menu";
@@ -39,7 +40,7 @@ import { revealInFolder } from "./reveal-in-folder";
 import { terminalFrontAvailable } from "./terminal-front";
 import { bringRemoteTerminalToFront, bringTerminalToFront } from "./tab-session-actions";
 import { frontView } from "./front-result";
-import { copyFrontDetail, flashFrontDone, showFrontResult } from "./front-pop";
+import { flashFrontDone, showFrontResult } from "./front-pop";
 import { machineName } from "./control-said";
 import { openSettingsWindow } from "./settings/open-settings";
 import { connectTerminalOf } from "./settings-dest";
@@ -138,7 +139,7 @@ async function bootstrapViewer(sid: string, origin: Origin): Promise<void> {
     const list = await fetchList(isLocalOrigin(origin) ? undefined : origin, { sid });
     row = list.rows.find((r) => r.sessionId === sid) ?? null;
   } catch (e) {
-    viewer.showBanner(banner("error", copyText("sessionViewer.load.failed", { why: String(e) }), []));
+    viewer.showBanner(banner("error", copyText("sessionViewer.load.failed", { why: String(e) }), [], detailOf(e)));
     return;
   }
   if (!row) {
@@ -204,8 +205,7 @@ async function viewerFront(b: HTMLElement, r: HistoryRow, origin: Origin): Promi
   }
   const acts = view.acts.filter((a) => a.kind !== "update" && a.kind !== "reconnect");
   showFrontResult(b, r.sessionId, { ...view, acts }, async (a) => {
-    if (a.kind === "copy") await copyFrontDetail(a.detail);
-    else if (a.kind === "retry") await viewerFront(b, r, origin);
+    if (a.kind === "retry") await viewerFront(b, r, origin);
     else if (a.kind === "connect") await openSettingsWindow(undefined, connectTerminalOf(LOCAL_ORIGIN));
     else if (a.kind === "open-in-terminal") await startInTmuxThenAttach({ origin, agent: r.agent, sid: r.sessionId, cwd: r.projectPath }, FOLLOW, { again: async () => {} });
   });
@@ -263,7 +263,7 @@ function resumeControl(r: HistoryRow, viewer: SessionViewer): HTMLElement {
     } catch (e) {
       const said = copyText("history.resume.failed", { machine: r.origin ?? copyText("history.filter.local"), why: String(e) });
       const retry = button({ label: copyText("history.group.retry"), size: "compact", onClick: () => void go(account) });
-      viewer.showBanner(banner("error", said, [retry]));
+      viewer.showBanner(banner("error", said, [retry], detailOf(e)));
     } finally {
       setBusy(sb.main, null);
     }

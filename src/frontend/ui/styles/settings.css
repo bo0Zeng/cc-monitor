@@ -878,11 +878,25 @@ body.settings-window-mode .settings-panel {
 }
 
 .settings-data-item[data-kind="dir"] .settings-data-item-label::before {
-  content: var(--mark-dir);
+  content: "";
+  display: inline-block;
+  width: var(--icon-size-compact);
+  height: var(--icon-size-compact);
+  vertical-align: middle;
+  background: currentColor;
+  mask: var(--icon-folder) center / contain no-repeat;
+  margin-right: 4px;
 }
 
 .settings-data-item[data-kind="file"] .settings-data-item-label::before {
-  content: var(--mark-file);
+  content: "";
+  display: inline-block;
+  width: var(--icon-size-compact);
+  height: var(--icon-size-compact);
+  vertical-align: middle;
+  background: currentColor;
+  mask: var(--icon-file) center / contain no-repeat;
+  margin-right: 4px;
 }
 
 .settings-data-item-desc {
@@ -971,6 +985,11 @@ body.settings-window-mode .settings-panel {
   border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent);
   border-radius: var(--radius-m);
   line-height: 1.5;
+}
+
+.settings-data-note-icon {
+  margin-right: 4px;
+  vertical-align: -2px;
 }
 
 .settings-data-note strong {
@@ -1142,12 +1161,16 @@ body.settings-window-mode .settings-panel {
   cursor: pointer; /* 点 legend 折叠/展开 */
 }
 
-/* 折叠指示符：▸ 折叠 / ▾ 展开 */
+/* 折叠指示符：右指折叠 · 展开转 90° 下指 */
 .remote-machine-toggle {
-  display: inline-block;
-  width: 12px;
-  font-size: var(--font-size-xs);
+  display: inline-flex;
   color: var(--text-2);
+  transform: rotate(90deg);
+  transition: transform var(--dur-expand);
+}
+
+.remote-machine.is-collapsed .remote-machine-toggle {
+  transform: none;
 }
 
 /* 机器名占满中段，把删除按钮推到右侧 */
@@ -1306,13 +1329,15 @@ body.settings-window-mode .settings-panel {
 
 .kb-editor-btn-record,
 .kb-editor-btn-reset {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
   background: transparent;
   border: 1px solid var(--border);
   color: var(--text-2);
   cursor: pointer;
-  padding: 4px 10px;
+  padding: 4px 6px;
   border-radius: var(--radius-s);
-  font-size: var(--font-size-small);
   margin-left: 4px;
 }
 
@@ -1488,21 +1513,13 @@ body.settings-window-mode .settings-panel {
   cursor: pointer;
   padding: 4px 0;
   user-select: none;
-  list-style: none;
 }
 
-.ccm-alias-gen > summary::-webkit-details-marker {
-  display: none;
-}
 
 .ccm-alias-gen > summary::before {
-  content: var(--mark-closed);
   color: var(--text-faint);
 }
 
-.ccm-alias-gen[open] > summary::before {
-  content: var(--mark-open);
-}
 
 /* === T03 待贴文本统一组件 ===
    三句话（贴到哪 / 怎么合并 / 怎样才生效）常驻屏幕而不是只在 toast 里闪一下；
@@ -1642,6 +1659,11 @@ body.settings-window-mode .settings-panel {
     width: 5em;
     text-align: center;
   }
+  .ext-dot {
+    display: inline-flex;
+    justify-content: center;
+    align-items: center;
+  }
   /* 表头：列头是机器名（过长中间省略，悬停全名）。 */
   .ext-head {
     cursor: default;
@@ -1777,9 +1799,10 @@ body.settings-window-mode .settings-panel {
   }
   /* 备注：内置的（自带的扩展）＋ 用户写的；表上那一行一个小记号。 */
   .ext-note-mark {
+    display: inline-flex;
     margin-left: 6px;
+    vertical-align: middle;
     color: var(--text-faint);
-    font-size: var(--font-size-small);
   }
   .ext-notes {
     margin: 6px 0;

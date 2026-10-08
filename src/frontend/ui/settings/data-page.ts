@@ -29,6 +29,7 @@ import { revealInFolder } from "../reveal-in-folder";
 import { openFileWindow } from "../file-window";
 import type { SettingsTarget } from "./open-settings";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { detailOf } from "../kit/detail";
 
 export type DataTab = "chores" | "placed";
 
@@ -362,7 +363,7 @@ export class DataPage {
     try {
       await navigator.clipboard.writeText(text);
     } catch (e) {
-      toast(copyText("dataPage.chore.copyFailed"), String(e), { level: "error" });
+      toast(copyText("dataPage.chore.copyFailed"), String(e), { detail: detailOf(e), level: "error" });
       return;
     }
     for (const id of ids) this.copied.add(this.key(origin, id));
@@ -388,7 +389,7 @@ export class DataPage {
       const host = findHostByOrigin((await readRemoteConfig()).hosts, origin);
       if (host) await openFileWindow(host, { revealFile: path });
     } catch (e) {
-      toast(copyText("dataPage.chore.openFailed"), String(e), { level: "error" });
+      toast(copyText("dataPage.chore.openFailed"), String(e), { detail: detailOf(e), level: "error" });
     }
   }
 
@@ -396,7 +397,7 @@ export class DataPage {
     try {
       await markChore(origin, { op: yes ? "decline" : "undecline", id: c.id });
     } catch (e) {
-      toast(copyText("dataPage.chore.markFailed"), e instanceof Error ? e.message : String(e), { level: "error" });
+      toast(copyText("dataPage.chore.markFailed"), e instanceof Error ? e.message : String(e), { detail: detailOf(e), level: "error" });
       return;
     }
     await this.refresh();

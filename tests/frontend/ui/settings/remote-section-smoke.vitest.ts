@@ -69,3 +69,18 @@ describe("VIS2 机器页收 host key 告知", () => {
     expect(text()).toContain("已记下");
   });
 });
+
+describe("机器卡折叠指示：代码画的箭头，不是字符", () => {
+  it("legend 上那枚是 caretRight 图标、不带字；点 legend 折起 ⇒ aria-expanded 翻成 false", () => {
+    const card = new MachineCard({ ...HOST_DEFAULTS, label: "devbox", host: "h", user: "u" }, { onChange: vi.fn(), onRemove: vi.fn() }, false, "devbox");
+    document.body.appendChild(card.element);
+    const legend = card.element.querySelector<HTMLElement>(".remote-machine-legend");
+    const t = card.element.querySelector<HTMLElement>(".remote-machine-toggle");
+    expect(t?.textContent).toBe("");
+    expect(t?.querySelector<SVGElement>("svg")?.dataset.icon).toBe("caretRight");
+    const before = legend?.getAttribute("aria-expanded");
+    legend?.click();
+    expect(legend?.getAttribute("aria-expanded")).not.toBe(before);
+    expect(t?.textContent).toBe("");
+  });
+});

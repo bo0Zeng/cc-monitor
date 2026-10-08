@@ -160,4 +160,12 @@
     margin-right: var(--space-3);
     color: var(--error);
   }
+
+  /* 提交没成（带复制详情）：按钮行上方一行红字，上面一道分隔线。 */
+  .dlgFail {
+    margin-top: var(--space-5);
+    padding-top: var(--space-4);
+    border-top: 1px solid var(--border-soft);
+    color: var(--error);
+  }
 }

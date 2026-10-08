@@ -23,7 +23,6 @@ import {
   startMany,
   decodeBatch,
 } from "../../../src/frontend/ui/tab-batch-run";
-import { killRefusals } from "../../../src/frontend/ui/tmux-control";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { getBehavior } from "../../../src/frontend/ui/behavior";
@@ -88,6 +87,8 @@ const res = (
   outcome,
   why,
   detail: "",
+  said: null,
+  copyDetail: "",
   session: null,
   bus: null,
   cmd: null,
@@ -122,6 +123,8 @@ describe("批量停：每台一次、逐个答", () => {
           res(sids[0], "failed", "too_many_windows", {
             session: "c-cc",
             detail: "2",
+            said: "S-c-cc",
+            copyDetail: "D-c-cc",
           }),
         ],
       };
@@ -149,7 +152,9 @@ describe("批量停：每台一次、逐个答", () => {
     expect(by.c).toEqual({
       sid: "c",
       outcome: "failed",
-      why: killRefusals("c-cc").byCode("too_many_windows", "2"),
+      // 停失败那一句由那台写好（与单条结束同一张表），原样上屏；那台写的复制详情跟着走。
+      why: "S-c-cc",
+      detail: "D-c-cc",
     });
     expect(by.d.outcome).toBe("failed");
     expect(by.d.why).not.toBe("");

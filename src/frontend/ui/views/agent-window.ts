@@ -23,11 +23,12 @@ import { fetchList, type HistoryRow } from "../history-list-reads";
 import { isLocalOrigin, type Origin } from "../ipc/origin";
 import { button } from "../kit/button";
 import { banner } from "../kit/banner";
+import { detailOf } from "../kit/detail";
 import { icon } from "../kit/icon";
 import { tag } from "../kit/badge";
 import { MessageStream } from "../stream";
 import { RunTimeline } from "../run-timeline";
-import { runLabel, runStateIcon, runStateText } from "../runs";
+import { runLabel, runStateMark, runStateText } from "../runs";
 import type { RunInfo } from "../generated/RunInfo";
 import { agentWindowTitle, chainOf, endOf, factsOf, kidsOf, whyOf } from "../agent-window-text";
 import { openAgentWindow } from "../agent-window-open";
@@ -172,7 +173,7 @@ export class AgentWindow {
       const list = await fetchList(isLocalOrigin(this.origin) ? undefined : this.origin, { sid: this.sid });
       this.row = list.rows.find((r) => r.sessionId === this.sid) ?? null;
     } catch (e) {
-      this.say(copyText("sessionViewer.load.failed", { why: String(e) }));
+      this.say(copyText("sessionViewer.load.failed", { why: String(e) }), detailOf(e));
       return;
     }
     const row = this.row;
@@ -214,8 +215,9 @@ export class AgentWindow {
     return r.untitled ? copyText("history.row.untitled") : r.label;
   }
 
-  private say(text: string): void {
-    this.bannerEl.replaceChildren(banner("warn", text, []));
+  /** 顶上那一条；`detail`（出错那一端写的复制详情）非空 ⇒ 带［复制详情］。 */
+  private say(text: string, detail = ""): void {
+    this.bannerEl.replaceChildren(banner("warn", text, [], detail));
   }
 
   /** 从上次读到的地方续读；读到了新东西而人不在底部 ⇒ 底下出「↓ 新内容」。 */
@@ -295,7 +297,8 @@ export class AgentWindow {
     title.appendChild(label);
     const facts = document.createElement("div");
     facts.className = s.awFacts;
-    const mark = tag(`${runStateIcon(r.state)} ${runStateText(r.state)}`);
+    const mark = tag(runStateText(r.state));
+    mark.prepend(runStateMark(r.state));
     mark.dataset.state = r.state;
     mark.classList.add(s.awMark);
     facts.appendChild(mark);
@@ -380,7 +383,10 @@ export class AgentWindow {
       this.end.dataset.state = r.state;
       const head = document.createElement("div");
       head.className = s.awEndHead;
-      head.textContent = e.head;
+      const headText = document.createElement("span");
+      headText.className = s.awEndText;
+      headText.append(runStateMark(r.state), e.head);
+      head.appendChild(headText);
       const sub = document.createElement("div");
       sub.className = s.awEndSub;
       sub.textContent = e.sub;
@@ -486,7 +492,7 @@ function stateIcon(r: RunInfo): HTMLElement {
   const i = document.createElement("span");
   i.className = s.awStateIcon;
   i.dataset.state = r.state;
-  i.textContent = runStateIcon(r.state);
+  i.appendChild(runStateMark(r.state));
   return i;
 }
 

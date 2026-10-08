@@ -15,5 +15,6 @@ declare const classes: {
   readonly dialogRows: string;
   readonly dialogText: string;
   readonly dialogTitle: string;
+  readonly dlgFail: string;
 };
 export default classes;

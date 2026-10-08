@@ -40,6 +40,7 @@ import { homeShort } from "../kit/path";
 import { hostOs } from "./host-os";
 import { copyText } from "../copy-table";
 import type { LocalCcmEntry } from "../generated/LocalCcmEntry";
+import { detailOf, sayWithDetail } from "../kit/detail";
 
 /** 界面上怎么叫那一代 PowerShell（两代的执行策略分开存）。 */
 const psName = (h: PsHost): string =>
@@ -363,7 +364,7 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
     try {
       code.textContent = await renderAliasBlock(opts.origin(), t.path);
     } catch (e) {
-      code.textContent = copyText("machineAliases.preview.failedLine", { e: errText(e) });
+      sayWithDetail(code, copyText("machineAliases.preview.failedLine", { e: errText(e) }), detailOf(e));
     }
   };
 
@@ -509,7 +510,7 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
       cands = got.rcCandidates;
       refreshBound();
     } catch (e) {
-      accessWarn.textContent = copyText("machineAliases.readBack.failed", { e: errText(e) });
+      sayWithDetail(accessWarn, copyText("machineAliases.readBack.failed", { e: errText(e) }), detailOf(e));
       row.setStatus("warn", copyText("machineAliases.status.readFailed"));
     }
     renderAccess();
@@ -523,7 +524,7 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
       pathCcm.textContent = st.message;
     } catch (e) {
       pathCcm.hidden = false;
-      pathCcm.textContent = copyText("machineAliases.load.ccmFailed", { e: String(e) });
+      sayWithDetail(pathCcm, copyText("machineAliases.load.ccmFailed", { e: String(e) }), detailOf(e));
     }
   };
 
@@ -545,7 +546,7 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
       if (got.otherRc) chosen = got.otherRc;
       refreshBound();
     } catch (e) {
-      otherErr.textContent = copyText("machineAliases.other.failed", { e: errText(e) });
+      sayWithDetail(otherErr, copyText("machineAliases.other.failed", { e: errText(e) }), detailOf(e));
     }
     renderAccess();
   };
@@ -576,7 +577,7 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
       await markChore(opts.origin(), spec);
       return true;
     } catch (e) {
-      toast(copyText("machineAliases.selfPaste.failed"), e instanceof Error ? e.message : String(e), { level: "error" });
+      toast(copyText("machineAliases.selfPaste.failed"), e instanceof Error ? e.message : String(e), { detail: detailOf(e), level: "error" });
       return false;
     }
   };
@@ -632,7 +633,7 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
     try {
       await openPath(path);
     } catch (e) {
-      toast(copyText("machineAliases.openRc.failed"), copyText("machineAliases.openRc.failedBody", { e: String(e), path }));
+      toast(copyText("machineAliases.openRc.failed"), copyText("machineAliases.openRc.failedBody", { e: String(e), path }), { detail: detailOf(e) });
     }
   };
 
@@ -709,7 +710,7 @@ function buildPsExtras(row: CfgRow): PsExtras {
         await commands.cc_set_auto_launch({ enabled });
         return true;
       } catch (e) {
-        toast(copyText("machineAliases.ps.saveFailed"), String(e));
+        toast(copyText("machineAliases.ps.saveFailed"), String(e), { detail: detailOf(e) });
         return false;
       }
     },
@@ -726,7 +727,7 @@ function buildPsExtras(row: CfgRow): PsExtras {
         if (on) await commands.ccm_user_path_add();
         else await commands.ccm_user_path_remove();
       } catch (e) {
-        toast(on ? copyText("machineAliases.userPath.addFailed") : copyText("machineAliases.userPath.removeFailed"), String(e));
+        toast(on ? copyText("machineAliases.userPath.addFailed") : copyText("machineAliases.userPath.removeFailed"), String(e), { detail: detailOf(e) });
       }
       // 成功失败都重扫：盘上现在是什么样，就显示什么样（不拿我们以为的结果去写界面）。
       await refreshPath();
@@ -778,7 +779,7 @@ function buildPsExtras(row: CfgRow): PsExtras {
     } catch (e) {
       onPath = null;
       lock(true);
-      pathHelp.textContent = copyText("machineAliases.userPath.readFailed", { error: String(e) });
+      sayWithDetail(pathHelp, copyText("machineAliases.userPath.readFailed", { error: String(e) }), detailOf(e));
     }
     paintStatus();
   };
@@ -793,7 +794,7 @@ function buildPsExtras(row: CfgRow): PsExtras {
       console.warn("cc_get_auto_launch failed:", e);
       // 读不到时别把「不知道」画成「关着」：开关不给拨、路径那格说读不到。
       auto.input.setAttribute("aria-disabled", "true");
-      autoPath.textContent = copyText("machineAliases.autoLaunch.unreadable", { e: String(e) });
+      sayWithDetail(autoPath, copyText("machineAliases.autoLaunch.unreadable", { e: String(e) }), detailOf(e));
     }
   };
 

@@ -25,8 +25,8 @@
     "accountOps.said.contract": {
       "kind": "error",
       "role": "报错",
-      "zh": "两端版本不配 · 要更新 · {detail}",
-      "args": ["detail"]
+      "zh": "两端版本不配 · 要更新",
+      "args": []
     },
     "accountOps.said.noReason": {
       "kind": "error",
@@ -1842,12 +1842,6 @@
         "C-L4": "显示在终端画面框里：括号把它和真画面区分开 —— 真画面里可能恰好就有「画面为空」这四个字。"
       }
     },
-    "panePreview.capture.failed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "读取画面失败",
-      "args": []
-    },
     "sessionState.ended.name": {
       "kind": "body",
       "role": "片段",
@@ -2143,40 +2137,40 @@
     "terminalReads.preview.noTmux": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取 {target} 画面失败 · tmux 无法启动 · {detail}",
-      "args": ["target", "detail"],
-      "limited": ["tmux"]
+      "zh": "读取画面失败 · 未装",
+      "args": []
     },
     "terminalReads.preview.noServer": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取 {target} 画面失败 · 无运行中的 tmux · {detail}",
-      "args": ["target", "detail"],
+      "zh": "读取画面失败 · 无运行中的 tmux",
+      "args": [],
       "limited": ["tmux"]
     },
     "terminalReads.preview.noSuchSession": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取 {target} 画面失败 · 会话不存在 · 可能刚结束 · {detail}",
-      "args": ["target", "detail"]
+      "zh": "读取画面失败 · 会话不存在",
+      "args": []
     },
     "terminalReads.preview.childTimedOut": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取 {target} 画面无应答 · {detail}",
-      "args": ["target", "detail"]
+      "zh": "读取画面无应答",
+      "args": []
     },
     "terminalReads.preview.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取画面失败 · {target} · {detail}",
-      "args": ["target", "detail"]
+      "zh": "读取画面失败 · tmux 报错",
+      "args": [],
+      "limited": ["tmux"]
     },
     "terminalReads.preview.otherCode": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取画面被拒 · {target} · {detail}",
-      "args": ["target", "detail"]
+      "zh": "读取画面被拒",
+      "args": []
     },
     "terminalReads.preview.noReason": {
       "kind": "error",
@@ -2187,77 +2181,76 @@
     "terminalReads.preview.badTarget": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取 {target} 画面失败 · 目标无效 · {detail}",
-      "args": ["target", "detail"]
+      "zh": "读取画面失败 · 目标无效",
+      "args": []
     },
     "terminalReads.preview.notKnown": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取 {target} 画面失败 · 不在终端名单 · {detail}",
-      "args": ["target", "detail"]
+      "zh": "读取画面失败 · 不在终端名单",
+      "args": []
     },
     "terminalReads.preview.ambiguous": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取 {target} 画面失败 · 多个终端匹配 · {detail}",
-      "args": ["target", "detail"]
+      "zh": "读取画面失败 · 多个终端匹配",
+      "args": []
     },
     "terminalReads.preview.unobservable": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取 {target} 画面失败 · 终端名单不可读 · {detail}",
-      "args": ["target", "detail"]
+      "zh": "读取画面失败 · 终端名单不可读",
+      "args": []
     },
     "tmuxControl.kill.badName": {
       "kind": "error",
       "role": "报错",
-      "zh": "结束 {target} 失败 · 会话名不被接受 · {detail}",
-      "args": ["target", "detail"]
+      "zh": "结束 {target} 失败 · 会话名无效",
+      "args": ["target"]
     },
     "tmuxControl.kill.noTmux": {
       "kind": "error",
       "role": "报错",
-      "zh": "结束 {target} 失败 · tmux 无法启动 · {detail}",
-      "args": ["target", "detail"],
-      "limited": ["tmux"]
+      "zh": "结束 {target} 失败 · 未装",
+      "args": ["target"]
     },
     "tmuxControl.kill.noSuchSession": {
       "kind": "error",
       "role": "报错",
-      "zh": "{target} 已不在 · {detail}",
-      "args": ["target", "detail"]
+      "zh": "{target} 已不在",
+      "args": ["target"]
     },
     "tmuxControl.kill.wrongOwner": {
       "kind": "error",
       "role": "报错",
-      "zh": "未结束 {target} · 认不出是 cc-monitor 管理的会话 · 不碰你自己的 tmux 会话 · {detail}",
-      "args": ["target", "detail"],
+      "zh": "未结束 {target} · 认不出是 cc-monitor 管理的会话 · 不碰你自己的 tmux 会话",
+      "args": ["target"],
       "limited": ["tmux"]
     },
     "tmuxControl.kill.tooManyWindows": {
       "kind": "error",
       "role": "报错",
-      "zh": "未结束 {target} · 内有别的窗口 · 不丢那些窗口 · {detail}",
-      "args": ["target", "detail"]
+      "zh": "未结束 {target} · 内有别的窗口 · 不丢那些窗口",
+      "args": ["target"]
     },
     "tmuxControl.kill.childTimedOut": {
       "kind": "error",
       "role": "报错",
-      "zh": "结束 {target} 无应答 · {detail}",
-      "args": ["target", "detail"]
+      "zh": "结束 {target} 无应答",
+      "args": ["target"]
     },
     "tmuxControl.kill.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "结束 {target} 失败 · tmux 报 {detail}",
-      "args": ["target", "detail"],
+      "zh": "结束 {target} 失败 · tmux 报错",
+      "args": ["target"],
       "limited": ["tmux"]
     },
     "tmuxControl.kill.otherCode": {
       "kind": "error",
       "role": "报错",
-      "zh": "结束 {target} 被拒 · {detail}",
-      "args": ["target", "detail"]
+      "zh": "结束 {target} 被拒",
+      "args": ["target"]
     },
     "tmuxControl.kill.noReason": {
       "kind": "error",
@@ -2280,14 +2273,14 @@
     "tmuxControl.kill.busFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "从 cc-bus 名册注销 {id} 失败 · {why} · 名册里仍有该行",
-      "args": ["id", "why"]
+      "zh": "从 cc-bus 注销 {id} 失败",
+      "args": ["id"]
     },
     "tmuxControl.kill.busUnread": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取 cc-bus 名册失败 · {why} · 此会话上登记的 id 未注销",
-      "args": ["why"]
+      "zh": "未注销此会话的 id · 读取 cc-bus 名册失败",
+      "args": []
     },
     "tmuxControl.kill.notConfirmed": {
       "kind": "error",
@@ -2298,20 +2291,20 @@
     "ccBus.online.notInstalled": {
       "kind": "error",
       "role": "报错",
-      "zh": "查询 {id} 在线状态失败 · 未装 · 找不到 cc-bus · {detail}",
-      "args": ["id", "detail"]
+      "zh": "查询在线状态失败 · 未装",
+      "args": []
     },
     "ccBus.online.timedOut": {
       "kind": "error",
       "role": "报错",
-      "zh": "查询 {id} 在线状态无应答 · 列名单超时 · {detail}",
-      "args": ["id", "detail"]
+      "zh": "查询在线状态无应答",
+      "args": []
     },
     "ccBus.online.otherCode": {
       "kind": "error",
       "role": "报错",
-      "zh": "查询 {id} 在线状态失败 · {detail}",
-      "args": ["id", "detail"]
+      "zh": "查询在线状态失败",
+      "args": []
     },
     "ccBus.online.noReason": {
       "kind": "error",
@@ -2329,26 +2322,26 @@
     "ccBus.read.notInstalled": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取失败 · 找不到 cc-bus 或 cc-bus 比后端旧 · {detail}",
-      "args": ["detail"]
+      "zh": "读取 cc-bus 失败 · 未装",
+      "args": []
     },
     "ccBus.read.timedOut": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取 cc-bus 无应答 · 超时 · {detail}",
-      "args": ["detail"]
+      "zh": "读取 cc-bus 无应答",
+      "args": []
     },
     "ccBus.read.badId": {
       "kind": "error",
       "role": "报错",
-      "zh": "未读取 · id 不合法 · {detail}",
-      "args": ["detail"]
+      "zh": "未读取 · id 不合法",
+      "args": []
     },
     "ccBus.read.otherCode": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取失败 · {detail}",
-      "args": ["detail"]
+      "zh": "读取 cc-bus 失败",
+      "args": []
     },
     "ccBus.read.noReason": {
       "kind": "error",
@@ -2365,20 +2358,20 @@
     "ccBus.send.badId": {
       "kind": "error",
       "role": "报错",
-      "zh": "发送失败 · {detail}",
-      "args": ["detail"]
+      "zh": "未发送 · id 不合法",
+      "args": []
     },
     "ccBus.kill.badId": {
       "kind": "error",
       "role": "报错",
-      "zh": "结束失败 · {detail}",
-      "args": ["detail"]
+      "zh": "未结束 · id 不合法",
+      "args": []
     },
     "ccBus.spawn.badId": {
       "kind": "error",
       "role": "报错",
-      "zh": "未派生 · 名字不合法 · {detail}",
-      "args": ["detail"]
+      "zh": "未新开 agent · 名字不合法",
+      "args": []
     },
     "beCcBus.parse.badRecipient": {
       "kind": "error",
@@ -2401,38 +2394,38 @@
     "ccBus.send.invalidArgs": {
       "kind": "error",
       "role": "报错",
-      "zh": "发给 {id} 失败 · 被拒 · cc-bus 不接受此收件人或参数 · {detail}",
-      "args": ["id", "detail"]
+      "zh": "未发给 {id} · cc-bus 不接受此收件人或参数",
+      "args": ["id"]
     },
     "ccBus.send.notInstalled": {
       "kind": "error",
       "role": "报错",
-      "zh": "发给 {id} 失败 · 未装 · 找不到 cc-bus · {detail}",
-      "args": ["id", "detail"]
+      "zh": "发给 {id} 失败 · 未装",
+      "args": ["id"]
     },
     "ccBus.send.rejected": {
       "kind": "error",
       "role": "报错",
-      "zh": "发给 {id} 失败 · 被拒 · cc-bus 路由规则拦下 · {detail}",
-      "args": ["id", "detail"]
+      "zh": "未发给 {id} · cc-bus 路由规则拦下",
+      "args": ["id"]
     },
     "ccBus.send.timedOut": {
       "kind": "error",
       "role": "报错",
-      "zh": "发给 {id} 结果未知 · 发送超时 · {detail}",
-      "args": ["id", "detail"]
+      "zh": "发给 {id} 结果未知",
+      "args": ["id"]
     },
     "ccBus.send.tooLong": {
       "kind": "error",
       "role": "报错",
-      "zh": "发给 {id} 失败 · 超出上限 · 正文过长 · {detail}",
-      "args": ["id", "detail"]
+      "zh": "发给 {id} 失败 · 超出上限",
+      "args": ["id"]
     },
     "ccBus.send.otherCode": {
       "kind": "error",
       "role": "报错",
-      "zh": "发给 {id} 失败 · {detail}",
-      "args": ["id", "detail"]
+      "zh": "发给 {id} 失败",
+      "args": ["id"]
     },
     "ccBus.send.noReason": {
       "kind": "error",
@@ -2467,26 +2460,26 @@
     "ccBus.kill.invalidArgs": {
       "kind": "error",
       "role": "报错",
-      "zh": "结束 {id} 失败 · 被拒 · cc-bus 不接受此名字 · {detail}",
-      "args": ["id", "detail"]
+      "zh": "未结束 {id} · cc-bus 不接受此名字",
+      "args": ["id"]
     },
     "ccBus.kill.notInstalled": {
       "kind": "error",
       "role": "报错",
-      "zh": "结束 {id} 失败 · 未装 · 找不到 cc-bus · {detail}",
-      "args": ["id", "detail"]
+      "zh": "结束 {id} 失败 · 未装",
+      "args": ["id"]
     },
     "ccBus.kill.timedOut": {
       "kind": "error",
       "role": "报错",
-      "zh": "结束 {id} 结果未知 · 执行超时 · 先刷新名单再决定是否重来 · {detail}",
-      "args": ["id", "detail"]
+      "zh": "结束 {id} 结果未知",
+      "args": ["id"]
     },
     "ccBus.kill.otherCode": {
       "kind": "error",
       "role": "报错",
-      "zh": "结束 {id} 失败 · {detail}",
-      "args": ["id", "detail"]
+      "zh": "结束 {id} 失败",
+      "args": ["id"]
     },
     "ccBus.kill.noReason": {
       "kind": "error",
@@ -2521,26 +2514,26 @@
     "ccBus.spawn.invalidArgs": {
       "kind": "error",
       "role": "报错",
-      "zh": "未派生 · cc-bus 不接受参数 · {detail}",
-      "args": ["detail"]
+      "zh": "未新开 agent · cc-bus 不接受参数",
+      "args": []
     },
     "ccBus.spawn.notInstalled": {
       "kind": "error",
       "role": "报错",
-      "zh": "未派生 · 找不到 cc-bus · {detail}",
-      "args": ["detail"]
+      "zh": "新开 agent 失败 · 未装",
+      "args": []
     },
     "ccBus.spawn.timedOut": {
       "kind": "error",
       "role": "报错",
-      "zh": "派生结果未知 · 超时 · 会话可能已启动 · 先看 cc-bus 名单 · 勿直接重试 · {detail}",
-      "args": ["detail"]
+      "zh": "新开 agent 结果未知 · 先看 cc-bus 名单再重试",
+      "args": []
     },
     "ccBus.spawn.otherCode": {
       "kind": "error",
       "role": "报错",
-      "zh": "派生失败 · {detail}",
-      "args": ["detail"]
+      "zh": "新开 agent 失败",
+      "args": []
     },
     "ccBus.spawn.noReason": {
       "kind": "error",
@@ -2575,26 +2568,26 @@
     "ccBus.broadcast.invalidArgs": {
       "kind": "error",
       "role": "报错",
-      "zh": "未广播 · 参数不被接受 · {detail}",
-      "args": ["detail"]
+      "zh": "未广播 · 参数不被接受",
+      "args": []
     },
     "ccBus.broadcast.notInstalled": {
       "kind": "error",
       "role": "报错",
-      "zh": "未广播 · 找不到 cc-bus · {detail}",
-      "args": ["detail"]
+      "zh": "未广播 · 找不到 cc-bus",
+      "args": []
     },
     "ccBus.broadcast.timedOut": {
       "kind": "error",
       "role": "报错",
-      "zh": "未广播 · 列名单超时 · {detail}",
-      "args": ["detail"]
+      "zh": "未广播 · 列名单超时",
+      "args": []
     },
     "ccBus.broadcast.otherCode": {
       "kind": "error",
       "role": "报错",
-      "zh": "广播失败 · {detail}",
-      "args": ["detail"]
+      "zh": "广播失败",
+      "args": []
     },
     "ccBus.broadcast.noReason": {
       "kind": "error",
@@ -3142,18 +3135,6 @@
       "zh": "后台任务 {what} {state} · {time}",
       "args": ["what", "state", "time"]
     },
-    "speaker.notice.done": {
-      "kind": "body",
-      "role": "toast",
-      "zh": "✓",
-      "args": []
-    },
-    "speaker.notice.failed": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "✗",
-      "args": []
-    },
     "speaker.notice.many": {
       "kind": "body",
       "role": "说明",
@@ -3463,18 +3444,6 @@
       "zh": "bash 输出",
       "args": []
     },
-    "bash.output.icon": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "▤",
-      "args": []
-    },
-    "bash.input.prompt": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "❯",
-      "args": []
-    },
     "interactive.ask.done": {
       "kind": "title",
       "role": "标题",
@@ -3537,12 +3506,6 @@
       "role": "片段",
       "zh": "{text}…",
       "args": ["text"]
-    },
-    "slash.card.icon": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "⌘",
-      "args": []
     },
     "compact.summary.title": {
       "kind": "title",
@@ -3908,12 +3871,6 @@
       "kind": "body",
       "role": "说明",
       "zh": "恢复默认",
-      "args": []
-    },
-    "keybindingEditor.buildActionRow.reset": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "↺",
       "args": []
     },
     "keybindingEditor.buildActionRow.edit": {
@@ -4459,14 +4416,14 @@
     "tabBatch.why.childTimedOut": {
       "kind": "error",
       "role": "报错",
-      "zh": "{machine} 新建会话无应答 · {detail}",
-      "args": ["machine", "detail"]
+      "zh": "{machine} 新建会话无应答",
+      "args": ["machine"]
     },
     "tabBatch.why.startFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "{machine} 启动失败 · {detail}",
-      "args": ["machine", "detail"]
+      "zh": "{machine} 启动失败",
+      "args": ["machine"]
     },
     "tabBatch.why.windowFailed": {
       "kind": "error",
@@ -4783,12 +4740,6 @@
       "zh": "在终端里打开",
       "args": []
     },
-    "front.act.copy": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "复制详情",
-      "args": []
-    },
     "front.act.update": {
       "kind": "action",
       "role": "按钮",
@@ -4951,18 +4902,6 @@
       "kind": "title",
       "role": "标题",
       "zh": "账号",
-      "args": []
-    },
-    "accountChip.refresh.icon": {
-      "kind": "body",
-      "role": "状态",
-      "zh": "👤",
-      "args": []
-    },
-    "accountChip.ctor.icon": {
-      "kind": "body",
-      "role": "状态",
-      "zh": "👤",
       "args": []
     },
     "accountChip.label.disabled": {
@@ -5301,12 +5240,6 @@
       "zh": "最近 {last}",
       "args": ["last"]
     },
-    "branchButton.attachBranchButton.icon": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "⑂",
-      "args": []
-    },
     "branchButton.title.offMain": {
       "kind": "body",
       "role": "说明",
@@ -5324,12 +5257,6 @@
       "role": "说明",
       "zh": "已被 Esc 回退 · 消息 ×{n}",
       "args": ["n"]
-    },
-    "branchFold.wrapRun.arrow": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "▶",
-      "args": []
     },
     "render.codeBlock.failed": {
       "kind": "action",
@@ -5358,7 +5285,7 @@
     "errorToast.showErrorToast.openLog": {
       "kind": "action",
       "role": "按钮",
-      "zh": "打开日志",
+      "zh": "看日志",
       "args": []
     },
     "fileWindow.openFileWindow.failed": {
@@ -7421,18 +7348,6 @@
       "zh": "忘记",
       "args": []
     },
-    "machineCard.build.expandedIcon": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "▾",
-      "args": []
-    },
-    "machineCard.collapsed.icon": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "▸",
-      "args": []
-    },
     "machineCard.aliases.uninstall": {
       "kind": "action",
       "role": "按钮",
@@ -7600,22 +7515,10 @@
       "zh": "删除",
       "args": []
     },
-    "machineCard.stage.otherIcon": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "·",
-      "args": []
-    },
     "machineCard.stage.ready": {
       "kind": "body",
       "role": "片段",
       "zh": "连接就绪",
-      "args": []
-    },
-    "machineCard.stage.readyIcon": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "●",
       "args": []
     },
     "machineCard.stage.authFailed": {
@@ -7624,22 +7527,10 @@
       "zh": "登录失败 · {detail}",
       "args": ["detail"]
     },
-    "machineCard.stage.failIcon": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "✗",
-      "args": []
-    },
     "machineCard.stage.authOk": {
       "kind": "body",
       "role": "片段",
       "zh": "已登录",
-      "args": []
-    },
-    "machineCard.stage.okIcon": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "✓",
       "args": []
     },
     "machineCard.stage.won": {
@@ -7661,23 +7552,11 @@
       "args": ["endpoint", "fingerprint"],
       "limited": ["SSH 主机指纹"]
     },
-    "machineCard.stage.fingerprintIcon": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "🔑",
-      "args": []
-    },
     "machineCard.stage.dial": {
       "kind": "body",
       "role": "片段",
       "zh": "连接 {endpoint}",
       "args": ["endpoint"]
-    },
-    "machineCard.stage.dialIcon": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "→",
-      "args": []
     },
     "accountNewForm.baseUrl.scheme": {
       "kind": "error",
@@ -7708,12 +7587,6 @@
       "role": "说明",
       "zh": "恢复「{label}」默认",
       "args": ["label"]
-    },
-    "settingsPanel.field.reset": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "↺",
-      "args": []
     },
     "settingsPanel.safeBlock.failed": {
       "kind": "error",
@@ -8907,8 +8780,8 @@
     "diagnostics.refresh.settingsUnreadable": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取日志设置失败 · {e} · 下面三项暂不可改 · 点「刷新信息」重试",
-      "args": ["e"]
+      "zh": "读取日志设置失败",
+      "args": []
     },
     "diagnostics.toast.enable": {
       "kind": "control",
@@ -9202,12 +9075,6 @@
       "kind": "body",
       "role": "说明",
       "zh": "卸载 cc-monitor",
-      "args": []
-    },
-    "data.note.icon": {
-      "kind": "body",
-      "role": "图标",
-      "zh": "🛈 ",
       "args": []
     },
     "data.card.webviewHint": {
@@ -16584,8 +16451,8 @@
     "ccBus.broadcast.badId": {
       "kind": "error",
       "role": "报错",
-      "zh": "未广播 · 发件人 id 不合法 · {detail}",
-      "args": ["detail"]
+      "zh": "未广播 · 发件人 id 不合法",
+      "args": []
     },
     "ccBus.broadcast.title": {
       "kind": "title",
@@ -18398,48 +18265,6 @@
       "zh": "文件窗口启动失败 · 程序出错 · {e}",
       "args": ["e"]
     },
-    "cssMarks.branch.mark": {
-      "kind": "body",
-      "role": "图标",
-      "zh": "↩",
-      "args": []
-    },
-    "cssMarks.ask.chosen": {
-      "kind": "body",
-      "role": "图标",
-      "zh": "✓ ",
-      "args": []
-    },
-    "cssMarks.fold.closed": {
-      "kind": "body",
-      "role": "图标",
-      "zh": "▸ ",
-      "args": []
-    },
-    "cssMarks.fold.open": {
-      "kind": "body",
-      "role": "图标",
-      "zh": "▾ ",
-      "args": []
-    },
-    "cssMarks.cell.background": {
-      "kind": "body",
-      "role": "图标",
-      "zh": "⚙ ",
-      "args": []
-    },
-    "cssMarks.data.dir": {
-      "kind": "body",
-      "role": "图标",
-      "zh": "📁 ",
-      "args": []
-    },
-    "cssMarks.data.file": {
-      "kind": "body",
-      "role": "图标",
-      "zh": "📄 ",
-      "args": []
-    },
     "beFilesWrite.rename.dirNoNoreplace": {
       "kind": "error",
       "role": "报错",
@@ -18530,12 +18355,6 @@
       "zh": "备份失败 · {e} · 未删除",
       "args": ["e"]
     },
-    "extPage.dot.missing": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "○",
-      "args": []
-    },
     "beExt.suspect.commandUnknown": {
       "kind": "body",
       "role": "说明",
@@ -18582,12 +18401,6 @@
       "kind": "action",
       "role": "按钮",
       "zh": "卸载",
-      "args": []
-    },
-    "extPage.dot.differs": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "◐",
       "args": []
     },
     "beExt.suspect.absAbsent": {
@@ -18716,12 +18529,6 @@
       "zh": "已装",
       "args": []
     },
-    "extPage.dot.project": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "◎",
-      "args": []
-    },
     "extPage.dot.title": {
       "kind": "body",
       "role": "片段",
@@ -18732,12 +18539,6 @@
       "kind": "error",
       "role": "报错",
       "zh": "来源或该机上的文件又有变动 · 未写入 · 重看再装",
-      "args": []
-    },
-    "extPage.dot.same": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "●",
       "args": []
     },
     "beExt.detail.binaryValue": {
@@ -19169,36 +18970,6 @@
       "zh": "状态不明",
       "args": []
     },
-    "runs.icon.running": {
-      "kind": "body",
-      "role": "进度",
-      "zh": "●",
-      "args": []
-    },
-    "runs.icon.done": {
-      "kind": "body",
-      "role": "toast",
-      "zh": "✓",
-      "args": []
-    },
-    "runs.icon.failed": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "✗",
-      "args": []
-    },
-    "runs.icon.stopped": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "■",
-      "args": []
-    },
-    "runs.icon.unknown": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "?",
-      "args": []
-    },
     "runs.label.unnamed": {
       "kind": "body",
       "role": "片段",
@@ -19245,12 +19016,6 @@
       "kind": "error",
       "role": "报错",
       "zh": "未知派出的 agent · 前台派出的跑完后才知道",
-      "args": []
-    },
-    "extPage.row.noteMark": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "✎",
       "args": []
     },
     "extPage.row.noteMarkTitle": {
@@ -19956,18 +19721,6 @@
       "kind": "action",
       "role": "按钮",
       "zh": "关闭",
-      "args": []
-    },
-    "rsFilewinBookmarks.star.off": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "☆",
-      "args": []
-    },
-    "rsFilewinBookmarks.star.on": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "★",
       "args": []
     },
     "rsFilewinEntry.other.localNone": {
@@ -21255,11 +21008,8 @@
     "rsFilewinChrome.side.noBookmarksHint": {
       "kind": "body",
       "role": "说明",
-      "zh": "地址栏 ☆ 收藏当前目录",
-      "args": [],
-      "waive": {
-        "C-W1": "☆ 指认地址栏上同形的那个按钮"
-      }
+      "zh": "地址栏 {star} 收藏当前目录",
+      "args": ["star"]
     },
     "rsFilewinChrome.side.homeFailed": {
       "kind": "error",
@@ -21325,12 +21075,6 @@
       "kind": "action",
       "role": "按钮",
       "zh": "回主目录",
-      "args": []
-    },
-    "rsFilewinShell.open.copyDetail": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "复制详情",
       "args": []
     },
     "rsFilewinShell.frame.searchByName": {
@@ -22733,12 +22477,6 @@
       "zh": "收起查找",
       "args": []
     },
-    "rsFilewinEditPage.crumb.sep": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "›",
-      "args": []
-    },
     "rsFilewinEditPage.crumb.more": {
       "kind": "body",
       "role": "片段",
@@ -23104,12 +22842,6 @@
       "kind": "body",
       "role": "片段",
       "zh": "无法显示",
-      "args": []
-    },
-    "sessionViewer.card.copyDetail": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "复制详情",
       "args": []
     },
     "sessionViewer.tools.said": {
@@ -23744,8 +23476,8 @@
     "terminalReads.input.refused": {
       "kind": "error",
       "role": "报错",
-      "zh": "发送被拒 · {target} · {detail}",
-      "args": ["target", "detail"]
+      "zh": "发送被拒",
+      "args": []
     },
     "terminalReads.input.noReason": {
       "kind": "error",
@@ -27230,6 +26962,120 @@
       "role": "按钮",
       "zh": "去看",
       "args": []
+    },
+    "detail.act.copy": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "复制详情",
+      "args": []
+    },
+    "detail.act.copied": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "已复制",
+      "args": []
+    },
+    "detail.act.failed": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "复制失败",
+      "args": []
+    },
+    "detail.fallback.hint": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "已选中 · 按 {copyKey} 复制",
+      "args": ["copyKey"]
+    },
+    "detail.aria.copied": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "已复制详情",
+      "args": []
+    },
+    "detail.label.at": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "时刻",
+      "args": []
+    },
+    "detail.label.machine": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "机器",
+      "args": []
+    },
+    "detail.label.local": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "本机",
+      "args": []
+    },
+    "detail.label.command": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "命令",
+      "args": []
+    },
+    "detail.label.path": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "路径",
+      "args": []
+    },
+    "detail.label.target": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "对象",
+      "args": []
+    },
+    "detail.label.hop": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "断在",
+      "args": []
+    },
+    "detail.label.code": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "码",
+      "args": []
+    },
+    "detail.label.raw": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "原话",
+      "args": []
+    },
+    "detail.value.notConnected": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "未连上",
+      "args": []
+    },
+    "detail.value.truncated": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "…（截断）",
+      "args": []
+    },
+    "detail.value.backend": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "后端 {build}",
+      "args": ["build"]
+    },
+    "messages.record.expand": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "详情",
+      "args": []
+    },
+    "messages.record.moreSegments": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "另 {n} 段",
+      "args": ["n"]
     }
   }
 }

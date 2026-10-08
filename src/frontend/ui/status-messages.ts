@@ -6,7 +6,8 @@ import { chip, setChipOpen } from "./kit/chip";
 import { icon, type IconName } from "./kit/icon";
 import { button } from "./kit/button";
 import { openPopover } from "./kit/popover";
-import { markRecordsSeen, onToastRecords, recentToasts, runRecordAction, unseenErrors, TOAST_RECORD_MAX, type ToastLevel, type ToastRecord } from "./kit/toast";
+import { markRecordsSeen, onToastRecords, recentToasts, recordDetail, runRecordAction, unseenErrors, TOAST_RECORD_MAX, type ToastLevel, type ToastRecord } from "./kit/toast";
+import { copyDetailButton } from "./kit/detail";
 import { copyText } from "./copy-table";
 import s from "./status-messages.module.css";
 
@@ -29,6 +30,8 @@ export class StatusMessages {
   private list: HTMLElement | null = null;
   /** 展开着的那几条（带逐条明细的才展得开）。 */
   private readonly expanded = new WeakSet<ToastRecord>();
+  /** 展开了［详情］的那几条（复制详情那几行）。 */
+  private readonly detailOpen = new WeakSet<ToastRecord>();
 
   private readonly trigger: HTMLElement;
 
@@ -138,7 +141,40 @@ export class StatusMessages {
         row.appendChild(n);
       }
       for (const a of r.actions.filter((x) => !x.toastOnly)) row.appendChild(button({ label: a.label, kind: "ghost", size: "compact", onClick: () => runRecordAction(r, a) }));
+      // 带复制详情的那条：［详情］展开 / 收起（只读可选中）＋ 同一颗［复制详情］（复制出全部段；本次运行内都在）。
+      const showDetail = r.copy.length > 0 && this.detailOpen.has(r);
+      if (r.copy.length > 0) {
+        const flipDetail = button({
+          label: copyText("messages.record.expand"),
+          kind: "ghost",
+          size: "compact",
+          onClick: () => {
+            if (this.detailOpen.has(r)) this.detailOpen.delete(r);
+            else this.detailOpen.add(r);
+            this.fill(list);
+          },
+        });
+        flipDetail.setAttribute("aria-expanded", String(showDetail));
+        row.appendChild(flipDetail);
+        const copy = copyDetailButton(() => recordDetail(r), r.copy[0][1]);
+        if (copy) row.appendChild(copy);
+      }
       list.appendChild(row);
+      if (showDetail) {
+        // 合流 ×N：只显示最近一段 ＋「另 n 段」，复制出全部 N 段。
+        const box = document.createElement("div");
+        box.className = s.smDetail;
+        box.dataset.role = "message-detail";
+        box.dataset.detailHost = "";
+        box.textContent = r.copy[r.copy.length - 1][1];
+        if (r.copy.length > 1) {
+          const rest = document.createElement("div");
+          rest.className = s.smTime;
+          rest.textContent = copyText("messages.record.moreSegments", { n: r.copy.length - 1 });
+          box.appendChild(rest);
+        }
+        list.appendChild(box);
+      }
       if (open) {
         const more = document.createElement("div");
         more.className = s.smMore;

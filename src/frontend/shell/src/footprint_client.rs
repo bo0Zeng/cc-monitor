@@ -4,13 +4,17 @@
 //! monitor 只交它自己进程的那几条（家目录 · `PATH`，「足迹里 monitor 自己那几行」；agent 家由本机后端自己解析），
 //! 界面原样带给本机后端 `footprint-report {client}`，一问出整份报告。
 
+use crate::detail::Said;
 use serde_json::{json, Value};
 use std::path::PathBuf;
 
 /// 界面要 monitor 这台自己进程的足迹事实：`{home, path}`（`path` 取不到 ⇒ `null`）。
 #[tauri::command]
-pub fn footprint_client_facts() -> Result<Value, String> {
-    facts(creds_core::store::home_dir(), std::env::var("PATH").ok())
+pub fn footprint_client_facts() -> Result<Value, Said> {
+    Ok(facts(
+        creds_core::store::home_dir(),
+        std::env::var("PATH").ok(),
+    )?)
 }
 
 /// [`footprint_client_facts`] 的本体（环境是参数，判据拿夹具喂）。

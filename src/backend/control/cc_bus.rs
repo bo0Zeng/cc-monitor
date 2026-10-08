@@ -910,11 +910,40 @@ pub(crate) struct BusCleanup {
 
 impl BusCleanup {
     pub(crate) fn to_json(&self) -> serde_json::Value {
+        let (said, detail) = self.said();
         serde_json::json!({
             "removed": self.removed,
             "failed": self.failed.iter().map(|(id, why)| serde_json::json!({ "id": id, "why": why })).collect::<Vec<_>>(),
             "unread": self.unread,
+            "said": said,
+            "detail": detail,
         })
+    }
+
+    /// 给人看的那几行（读不到名册 · 注销了谁 · 谁没注销成）＋ 复制详情（原话是下层那几句）；全空 ⇒ `(None, "")`。
+    pub(crate) fn said(&self) -> (Option<String>, String) {
+        let mut lines = Vec::new();
+        let mut raws = Vec::new();
+        if let Some(why) = &self.unread {
+            lines.push(copy_text("tmuxControl.kill.busUnread", &[]));
+            raws.push(why.clone());
+        }
+        if !self.removed.is_empty() {
+            let ids = self
+                .removed
+                .join(&copy_text("tmuxControl.kill.listSep", &[]));
+            lines.push(copy_text("tmuxControl.kill.busRemoved", &[("ids", &ids)]));
+        }
+        for (id, why) in &self.failed {
+            lines.push(copy_text("tmuxControl.kill.busFailed", &[("id", id)]));
+            raws.push(format!("{id}: {why}"));
+        }
+        let detail = if raws.is_empty() {
+            String::new()
+        } else {
+            crate::stream::detail::of(Some("kill"), "", Some(&raws.join("\n")))
+        };
+        ((!lines.is_empty()).then(|| lines.join("\n")), detail)
     }
 }
 

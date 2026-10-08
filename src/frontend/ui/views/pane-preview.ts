@@ -12,6 +12,7 @@ import { toast } from "../kit/toast";
 import { saidOfControl } from "../control-said";
 import { previewShot, type TerminalTarget } from "../terminal-reads";
 import { renderScreen, screenPre } from "../terminal-screen";
+import { detailOf } from "../kit/detail";
 
 let current: HTMLElement | null = null;
 
@@ -87,7 +88,8 @@ export async function openPanePreview(origin: string, target: string, which: Ter
       loaded = true;
     } catch (e) {
       if (current !== overlay) return;
-      toast(copyText("panePreview.capture.failed"), saidOfControl(e), { level: "info" });
+      // 那台写好的那一句不带对象（它不知道这里怎么称呼这个窗格）⇒ 句子作标题、对象放灰字。
+      toast(saidOfControl(e), target, { detail: detailOf(e), level: "info" });
       if (!loaded) closePanePreview(); // 首次失败无内容可留 → 关
     } finally {
       if (current === overlay) refreshBtn.disabled = false; // overlay 已关/换则别碰旧按钮

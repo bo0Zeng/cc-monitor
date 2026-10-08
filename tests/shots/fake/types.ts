@@ -54,6 +54,8 @@ export class Refuse {
     readonly message: string,
     /** 按码定形的那几个码带的 `data`（例：`account_unavailable`）。 */
     readonly data?: unknown,
+    /** 下层原话（进复制详情的「原话」那一项；`message` 是那台写好的那一句）。 */
+    readonly raw?: string,
   ) {}
 }
 

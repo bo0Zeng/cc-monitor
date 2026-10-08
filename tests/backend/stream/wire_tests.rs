@@ -404,6 +404,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 ok: false,
                 code: Some(s("bad_args")),
                 message: Some(s("m")),
+                detail: Some(s("码：bad_args")),
                 data: Some(serde_json::json!({"k": 1})),
             },
             Frame::Reply {
@@ -411,6 +412,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 ok: true,
                 code: None,
                 message: None,
+                detail: None,
                 data: None,
             },
         ],

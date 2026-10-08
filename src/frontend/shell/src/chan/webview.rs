@@ -37,16 +37,24 @@ use super::wire::{
 use serde::Serialize;
 use std::time::Duration;
 
-/// 失败时交回 webview 的那一格：线上形状 ＋ `Refused` 的不透明体。
+/// 失败时交回 webview 的那一格：线上形状 ＋ `Refused` 的不透明体 ＋ 「复制详情」那几行（[`crate::detail`]：
+/// 对端说「不行」⇒ 那台写的那份，远端时补「本机」一行；别的层 ⇒ 壳写）。
 #[derive(Debug, Serialize)]
 pub struct Fail {
     err: WireErr,
     body: Vec<u8>,
+    detail: String,
 }
 
-fn fail(e: CallError) -> Fail {
+fn fail(origin: &crate::origin::Origin, op: &str, e: CallError) -> Fail {
+    let detail = match &e {
+        CallError::Peer {
+            why: super::wire::PeerFault::Refused { body },
+        } => crate::detail::relayed(origin, &crate::detail::of_refusal_body(&body.0)),
+        other => crate::detail::of_channel(origin, op, other),
+    };
     let (err, body) = err_to_wire(e);
-    Fail { err, body }
+    Fail { err, body, detail }
 }
 
 /// 经给定句柄走一次 `call`（第 1 跳）。判据用它喂合成句柄；生产由 [`chan_call`] 喂 [`InboundBackends`]。
@@ -145,12 +153,12 @@ pub async fn chan_call(
     call_id: Option<String>,
 ) -> Result<tauri::ipc::Response, Fail> {
     if origin.route("chan_call").is_err() {
-        return Err(fail(OursFault::Misuse.into()));
+        return Err(fail(&origin, &op, OursFault::Misuse.into()));
     }
     match call_via(
         &InboundBackends,
-        origin,
-        op,
+        origin.clone(),
+        op.clone(),
         payload,
         Duration::from_millis(left_ms),
         call_id,
@@ -158,7 +166,7 @@ pub async fn chan_call(
     .await
     {
         Ok(body) => Ok(tauri::ipc::Response::new(body.0)),
-        Err(e) => Err(fail(e)),
+        Err(e) => Err(fail(&origin, &op, e)),
     }
 }
 

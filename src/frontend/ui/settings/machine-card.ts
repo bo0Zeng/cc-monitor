@@ -144,32 +144,24 @@ export function describeStop(stop: ProbeStop): string {
   }
 }
 
-export function describeStage(st: ConnectStage): {
-  icon: string;
-  text: string;
-} {
+export function describeStage(st: ConnectStage): { text: string } {
   switch (st.kind) {
     case "dialing":
-      return { icon: copyText("machineCard.stage.dialIcon"), text: copyText("machineCard.stage.dial", { endpoint: st.endpoint }) };
+      return { text: copyText("machineCard.stage.dial", { endpoint: st.endpoint }) };
     case "hostKey":
-      return { icon: copyText("machineCard.stage.fingerprintIcon"), text: copyText("machineCard.stage.fingerprint", { endpoint: st.endpoint, fingerprint: st.fingerprint }) };
+      return { text: copyText("machineCard.stage.fingerprint", { endpoint: st.endpoint, fingerprint: st.fingerprint }) };
     case "failed":
-      return { icon: copyText("machineCard.stage.failIcon"), text: copyText("machineCard.stage.failed", { endpoint: st.endpoint, reason: st.reason }) };
+      return { text: copyText("machineCard.stage.failed", { endpoint: st.endpoint, reason: st.reason }) };
     case "won":
-      return { icon: copyText("machineCard.stage.okIcon"), text: copyText("machineCard.stage.won", { endpoint: st.endpoint }) };
+      return { text: copyText("machineCard.stage.won", { endpoint: st.endpoint }) };
     case "auth":
-      return st.ok
-        ? { icon: copyText("machineCard.stage.okIcon"), text: copyText("machineCard.stage.authOk") }
-        : { icon: copyText("machineCard.stage.failIcon"), text: copyText("machineCard.stage.authFailed", { detail: st.detail ?? "" }) };
+      return st.ok ? { text: copyText("machineCard.stage.authOk") } : { text: copyText("machineCard.stage.authFailed", { detail: st.detail ?? "" }) };
     case "established":
-      return { icon: copyText("machineCard.stage.readyIcon"), text: copyText("machineCard.stage.ready") };
+      return { text: copyText("machineCard.stage.ready") };
     default: {
       // 穷尽性兜底：新增 ConnectStage 变体时编译期（never）报错。
       const _never: never = st;
-      return {
-        icon: copyText("machineCard.stage.otherIcon"),
-        text: String((_never as { kind?: string }).kind ?? ""),
-      };
+      return { text: String((_never as { kind?: string }).kind ?? "") };
     }
   }
 }
@@ -365,10 +357,10 @@ export class MachineCard {
     this.legend = legend;
     card.appendChild(legend);
 
-    // 折叠指示符（▸ 折叠 / ▾ 展开）。点 legend（非删除按钮）切换折叠。
+    // 折叠指示符（右指折叠 · 转 90° 下指展开，同 kit 折叠块）。点 legend（非删除按钮）切换折叠。
     this.toggleIndicator = document.createElement("span");
     this.toggleIndicator.className = "remote-machine-toggle";
-    this.toggleIndicator.textContent = copyText("machineCard.build.expandedIcon");
+    this.toggleIndicator.appendChild(icon("caretRight", "compact"));
     legend.appendChild(this.toggleIndicator);
 
     // 机器名（label || host）—— 独立 span（不靠脆弱的 firstChild 文本节点）。flex:1 把删除推到右侧。
@@ -674,7 +666,6 @@ export class MachineCard {
   private setCollapsed(next: boolean): void {
     this.collapsed = next;
     this.element.classList.toggle("is-collapsed", next);
-    this.toggleIndicator.textContent = next ? copyText("machineCard.collapsed.icon") : copyText("machineCard.build.expandedIcon");
     this.legend.setAttribute("aria-expanded", next ? "false" : "true");
   }
 

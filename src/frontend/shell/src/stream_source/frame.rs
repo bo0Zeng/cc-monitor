@@ -164,6 +164,8 @@ pub enum InboundFrame {
         ok: bool,
         code: Option<String>,
         message: Option<String>,
+        /// 「复制详情」那几行（后端写好；成功时缺）。
+        detail: Option<String>,
         data: Option<serde_json::Value>,
     },
     /// 某条在跑的入方向命令已被取消。
@@ -545,6 +547,7 @@ pub fn parse_frame(line: &str) -> Result<InboundFrame, Unread> {
                     .ok_or_else(|| bad(k, "`ok` is not a bool"))?,
                 code: opt("code"),
                 message: opt("message"),
+                detail: opt("detail"),
                 data: obj.get("data").cloned(),
             }
         }

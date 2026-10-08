@@ -27,6 +27,8 @@ export interface BatchOutcome {
   sid: string;
   outcome: "done" | "skipped" | "failed";
   why: string;
+  /** 失败那一个的复制详情（那台写好）；没有 ⇒ 缺。 */
+  detail?: string;
 }
 
 /** 后端答的一个（`sessions-*` 的 `results[i]`，形状见协议文档那一节）。`why` 是那台的原因码。 */
@@ -35,6 +37,10 @@ export interface Reply {
   outcome: "done" | "skipped" | "failed";
   why: string | null;
   detail: string;
+  /** 停失败那一项：那台写好的那一句（与单条结束同一张表）；别的 ⇒ `null`。 */
+  said: string | null;
+  /** 失败那一项的复制详情（那台写好）；别的 ⇒ 空串。 */
+  copyDetail: string;
   session: string | null;
   /** 停那一条：顺手从 cc-bus 名册注销的结局（形状同 `kill` 那一格）；别的 ⇒ `null`。 */
   bus: unknown;
@@ -45,7 +51,7 @@ export interface Reply {
   unavailable: AccountUnavailable | null;
 }
 
-const KEYS = ["sid", "outcome", "why", "detail", "session", "bus", "cmd", "account", "unavailable"] as const;
+const KEYS = ["sid", "outcome", "why", "detail", "said", "copyDetail", "session", "bus", "cmd", "account", "unavailable"] as const;
 
 /** 应答 ⇒ 逐个结局；形状不对（多一格缺一格 · 个数 / 次序对不上）⇒ 抛（两边版本对不上，不猜）。 */
 export function decodeBatch(origin: Origin, op: string, sids: readonly string[], v: unknown): Reply[] {
@@ -61,6 +67,8 @@ export function decodeBatch(origin: Origin, op: string, sids: readonly string[],
       (r.outcome !== "done" && r.outcome !== "skipped" && r.outcome !== "failed") ||
       !(r.why === null || typeof r.why === "string") ||
       typeof r.detail !== "string" ||
+      !(r.said === null || typeof r.said === "string") ||
+      typeof r.copyDetail !== "string" ||
       !(r.session === null || typeof r.session === "string") ||
       !(r.cmd === null || typeof r.cmd === "string") ||
       !(r.account === null || (isObj(r.account) && typeof r.account.name === "string" && typeof r.account.configDir === "string")) ||
@@ -110,11 +118,9 @@ export function sayReply(origin: Origin, op: "stop" | "start", r: Reply): string
     case "name_taken":
       return copyText("tabBatch.why.nameTaken", { machine, name: target });
     case "child_timed_out":
-      return op === "stop" ? killRefusals(target).byCode(r.why, r.detail) : copyText("tabBatch.why.childTimedOut", { machine, detail: r.detail });
+      return op === "stop" ? (r.said ?? killRefusals(target).noReason()) : copyText("tabBatch.why.childTimedOut", { machine });
     default:
-      return op === "stop"
-        ? killRefusals(target).byCode(r.why, r.detail)
-        : copyText("tabBatch.why.startFailed", { machine, detail: r.detail });
+      return op === "stop" ? (r.said ?? killRefusals(target).noReason()) : copyText("tabBatch.why.startFailed", { machine });
   }
 }
 
@@ -166,7 +172,7 @@ export async function stopMany(tabs: readonly Tab[]): Promise<BatchOutcome[]> {
       const no = offered(origin, "sessions-stop", sids);
       if (no) return no;
       try {
-        return (await callStop(origin, sids)).map((r) => ({ sid: r.sid, outcome: r.outcome, why: sayReply(origin, "stop", r) }));
+        return (await callStop(origin, sids)).map((r) => ({ sid: r.sid, outcome: r.outcome, why: sayReply(origin, "stop", r), ...(r.copyDetail !== "" ? { detail: r.copyDetail } : {}) }));
       } catch (e) {
         return machineFailed(sids, e);
       }
@@ -228,7 +234,7 @@ export async function startMany(tabs: readonly Tab[], mode: "tmux" | "window"): 
           continue;
         }
         for (const [i, r] of replies.entries()) {
-          let o: BatchOutcome = { sid: r.sid, outcome: r.outcome, why: sayReply(origin, "start", r) };
+          let o: BatchOutcome = { sid: r.sid, outcome: r.outcome, why: sayReply(origin, "start", r), ...(r.copyDetail !== "" ? { detail: r.copyDetail } : {}) };
           if (r.outcome === "done" && mode === "window" && r.cmd !== null) {
             const failed = await openWindow(origin, r.cmd, items[i].cwd);
             if (failed !== null) o = { sid: r.sid, outcome: "failed", why: failed };

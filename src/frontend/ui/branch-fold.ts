@@ -10,6 +10,7 @@
 
 import { computeMainBranch, exemptQueuedLeaves, setsEqual, type BranchRecord } from "./branching";
 import { copyText } from "./copy-table";
+import { icon } from "./kit/icon";
 
 const FOLD_WRAP_CLASS = "branch-fold-wrap";
 const FOLD_HEADER_CLASS = "branch-fold-header";
@@ -484,7 +485,7 @@ export class BranchFolder {
 
     const arrow = document.createElement("span");
     arrow.className = FOLD_ARROW_CLASS;
-    arrow.textContent = copyText("branchFold.wrapRun.arrow");
+    arrow.appendChild(icon("caretRight", "compact"));
     header.appendChild(arrow);
 
     const title = document.createElement("span");

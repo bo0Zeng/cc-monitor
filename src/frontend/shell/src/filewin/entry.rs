@@ -55,6 +55,7 @@
 //! 得连那颗按钮一起改，那是下一刀的事（而且那一刀正好是「旧面板退役」那一刀）。
 
 use crate::copy_table::copy_text;
+use crate::detail::Said;
 use crate::stream_source::RemoteConfig;
 
 use super::proc::{open_in_new_process, OpenRequest, Unopened};
@@ -173,7 +174,7 @@ pub async fn open_file_window(
     path: String,
     reveal_file: Option<String>,
     theme: std::collections::BTreeMap<String, String>,
-) -> Result<usize, String> {
+) -> Result<usize, Said> {
     use tauri::{Emitter, Manager};
     // 窗口的样子：主界面此刻 `:root` 上的那一套（含用户改过的）解成数。解不出来就不开（不替它补一套）。
     let theme = filewin_contract::Theme::from_tokens(&theme)?;
@@ -194,7 +195,7 @@ pub async fn open_file_window(
             tracing::warn!("文件窗口没了那一条没有发出去：{e}");
         }
     });
-    open_with(cfg, path, reveal_file, work_area, theme, late).await
+    Ok(open_with(cfg, path, reveal_file, work_area, theme, late).await?)
 }
 
 /// 文件窗口开出来之后又退了那一形在 `remote-health` 上的 `kind`（界面 `remote-health.ts` 按它选标题）。

@@ -1479,10 +1479,11 @@ pub(crate) fn absorb_local_frame(
             ok,
             code,
             message,
+            detail,
             data,
         } => match client {
             Some(c) => {
-                c.route_reply(&id, ok, code, message, data);
+                c.route_reply(&id, ok, code, message, detail, data);
             }
             None => tracing::warn!("本机后端在 hello 之前就回了应答（id={id}）—— 协议倒错，丢掉"),
         },

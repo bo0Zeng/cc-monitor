@@ -76,7 +76,9 @@ export type CallError =
 
 /** `call` 失败时抛的那一个。`error` 是分好层的结局；`message` 只给日志看。 */
 export class ChanError extends Error {
-  constructor(readonly error: CallError) {
+  // `detail`：「复制详情」那几行（monitor 交回来的：对端说「不行」⇒ 那台写的那份 ＋ 本机一行；别的层 ⇒ monitor 写）。
+  // 本页自己判的失败（期限早已过 · 本地撤单）没有 ⇒ 空串（界面就不出按钮）。
+  constructor(readonly error: CallError, readonly detail = "") {
     super(`通道：${describeCallError(error)}`);
     this.name = "ChanError";
   }
@@ -100,6 +102,13 @@ const HOP_FAULTS: readonly string[] = ["Unreachable", "Dropped", "Overrun"];
 const OURS_FAULTS: readonly string[] = ["Cancelled", "Misuse", "Broken"];
 
 const BROKEN: CallError = { layer: "ours", why: "Broken" };
+
+/** monitor 交回来的失败里那份复制详情（`{ …, detail }`）；没有 / 形状不对 ⇒ 空串。 */
+export function detailOfFail(raw: unknown): string {
+  if (raw === null || typeof raw !== "object") return "";
+  const d = (raw as { detail?: unknown }).detail;
+  return typeof d === "string" ? d : "";
+}
 
 /**
  * monitor 交回来的失败（`{ err, body }`，`err` 是 `wire::WireErr` 的线上形状）⇒ 三层。
@@ -343,7 +352,7 @@ export const chan = {
         (raw: unknown) => {
           const e = decodeFail(raw);
           if (e.layer === "hop") offers.delete(origin);
-          throw new ChanError(e);
+          throw new ChanError(e, detailOfFail(raw));
         },
       );
     if (!budget.cancel) return sent;

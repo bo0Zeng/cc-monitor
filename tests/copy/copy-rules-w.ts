@@ -1,5 +1,5 @@
 /**
- * CP2a · 文案新写法那套规矩（N 系）落成的机检：C-W1–C-W17 ＋ 收严的 C-L2 · C-P1 · C-Y4。
+ * CP2a · 文案新写法那套规矩（N 系）落成的机检：C-W1–C-W18 ＋ 收严的 C-L2 · C-P1 · C-Y4。
  *
  * 每条检法读的词表 / 闭集都住 `src/shared/copy/rules.json` 那一条的 `words` · `cells` · `limits` · `families` 格，
  * 检法里不另抄一份 —— 改规矩就是改那一格。
@@ -209,6 +209,13 @@ export const W_CHECKS: Record<string, Check> = {
     if (/了(?![解结])/.test(s)) h.push("了");
     if (/请(?!求)/.test(s)) h.push("请");
     return h.length ? `口语词「${h.join("」「")}」` : null;
+  },
+  // 条带 §5.2：原话 · 退出码 · 错误码不上句子，进「复制详情」。按占位符的语义判（名字在 rawArgs 闭集里的就是原话型），不按名单。
+  "C-W18": (e, ctx) => {
+    if (e.role === "命令行") return null;
+    const raw = new Set(words(ctx, "C-W18"));
+    const h = [...new Set([...e.zh.matchAll(/\{([A-Za-z][A-Za-z0-9]*)\}/g)].map((m) => m[1]))].filter((a) => raw.has(a));
+    return h.length ? `句子里接了原话 {${h.join("} {")}}` : null;
   },
 };
 

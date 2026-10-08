@@ -367,7 +367,7 @@ async fn terminal_open(origin: Origin, payload: Body, left: Duration) -> Result<
             "no_window",
             copy_text("rsLaunch.posix.noTerminalWindow", &[]),
         )),
-        Err(why) => Err(refused("terminal_failed", why)),
+        Err(why) => Err(refused("terminal_failed", why.said)),
     }
 }
 

@@ -38,6 +38,17 @@ impl Tone {
 
 /// 一条横贯的条（规范 `C15`）：左 3px 语气色 ＋ 图标 ＋ 一句话 ＋ 右端几个动作。回这一帧点了第几个动作。
 pub fn banner(ui: &mut Ui, tone: Tone, text: &str, actions: &[String]) -> Option<usize> {
+    banner_with_detail(ui, tone, text, actions, None)
+}
+
+/// 同 [`banner`]，动作最右边多一颗［复制详情］（`detail` = `(那一颗的 id, 复制出去的整段)`；条带 §5.3）。
+pub fn banner_with_detail(
+    ui: &mut Ui,
+    tone: Tone,
+    text: &str,
+    actions: &[String],
+    detail: Option<(egui::Id, &str)>,
+) -> Option<usize> {
     let p = palette(ui.ctx());
     let m = metrics(ui.ctx());
     let c = tone.color(ui);
@@ -51,6 +62,9 @@ pub fn banner(ui: &mut Ui, tone: Tone, text: &str, actions: &[String]) -> Option
                 ui.label(egui::RichText::new(tone.icon()).color(c));
                 // 动作贴右端先摆，那句话占剩下的宽、放不下截成「…」（悬停看全句）—— 窄窗里不把这一栏撑宽。
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if let Some((id, body)) = detail {
+                        copy_detail_button(ui, id, body);
+                    }
                     for (i, a) in actions.iter().enumerate().rev() {
                         if ui.button(a).clicked() {
                             hit = Some(i);
@@ -72,6 +86,37 @@ pub fn banner(ui: &mut Ui, tone: Tone, text: &str, actions: &[String]) -> Option
         c,
     );
     hit
+}
+
+/// 〔复制详情条带 §5.1〕「复制详情」停多久回默认。
+pub const COPIED_FOR: std::time::Duration = std::time::Duration::from_millis(1500);
+
+/// ［复制详情］：与主界面那一颗同字同反馈（点了 ⇒「已复制」1.5 s 回默认，连点重计）。`body` 是复制出去的整段（首行是屏上那句）。
+/// egui 写剪贴板不回成败（交给平台那一层），所以没有「复制失败 ⇒ 就地展开」那一形。
+pub fn copy_detail_button(ui: &mut Ui, id: egui::Id, body: &str) {
+    let now = ui.input(|i| i.time);
+    let until: Option<f64> = ui.data(|d| d.get_temp(id));
+    let copied = until.is_some_and(|t| now < t);
+    let label = if copied {
+        format!(
+            "{} {}",
+            egui_phosphor::regular::CHECK,
+            copy_text("detail.act.copied", &[])
+        )
+    } else {
+        format!(
+            "{} {}",
+            egui_phosphor::regular::COPY,
+            copy_text("detail.act.copy", &[])
+        )
+    };
+    if ui.button(label).clicked() {
+        ui.ctx().copy_text(body.to_string());
+        ui.data_mut(|d| d.insert_temp(id, now + COPIED_FOR.as_secs_f64()));
+    }
+    if copied {
+        ui.ctx().request_repaint_after(COPIED_FOR);
+    }
 }
 
 /// 状态行（`--bg-2` 底、28 高）：左右两段内容由调用方摆。

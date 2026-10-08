@@ -109,7 +109,7 @@ export function frontActLabel(a: FrontAct): string {
     case "open-in-terminal":
       return copyText("front.act.openInTerminal");
     case "copy":
-      return copyText("front.act.copy");
+      return copyText("detail.act.copy");
     case "update":
       return copyText("front.act.update");
     case "retry":

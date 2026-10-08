@@ -3152,15 +3152,15 @@ impl FileWindow {
         }
         // 前几段折成「…」：只留最后两级目录（窄档同一条规矩）。
         let tail = crumbs.len().saturating_sub(2);
-        let sep = copy_text("rsFilewinEditPage.crumb.sep", &[]);
+        let sep = egui_phosphor::regular::CARET_RIGHT;
         if tail > 1 {
-            ui.label(egui::RichText::new(&sep).color(p.faint));
+            ui.label(egui::RichText::new(sep).color(p.faint));
             ui.label(
                 egui::RichText::new(copy_text("rsFilewinEditPage.crumb.more", &[])).color(p.text2),
             );
         }
         for (label, full) in crumbs.iter().skip(tail.max(1)) {
-            ui.label(egui::RichText::new(&sep).color(p.faint));
+            ui.label(egui::RichText::new(sep).color(p.faint));
             if ui
                 .add(
                     egui::Button::new(egui::RichText::new(label).color(p.text2))
@@ -3172,7 +3172,7 @@ impl FileWindow {
                 go = Some(full.clone());
             }
         }
-        ui.label(egui::RichText::new(&sep).color(p.faint));
+        ui.label(egui::RichText::new(sep).color(p.faint));
         ui.label(egui::RichText::new(name).color(p.text));
         go
     }
@@ -4408,19 +4408,25 @@ impl FileWindow {
                     copy_text("rsFilewinShell.open.other", &[("name", &name)])
                 }
             };
-            match super::kit::banner(
+            // 〔复制详情条带 §5.3〕同一颗按钮（错误条最右）：复制出去的首行是屏上那句，下面是路径与原话。
+            let lines = copy_core::detail::Detail::new()
+                .item(copy_core::detail::Label::Path, &self.cwd)
+                .item(copy_core::detail::Label::Raw, &raw)
+                .render();
+            let body = format!("{key_text}\n{lines}");
+            let detail_id = ui.id().with("open-fail-detail");
+            match super::kit::banner_with_detail(
                 ui,
                 super::kit::Tone::Error,
                 &key_text,
                 &[
                     copy_text("rsFilewinShell.open.up", &[]),
                     copy_text("rsFilewinShell.open.home", &[]),
-                    copy_text("rsFilewinShell.open.copyDetail", &[]),
                 ],
+                Some((detail_id, &body)),
             ) {
                 Some(0) => self.navigate_up(),
                 Some(1) => self.want_home = true,
-                Some(2) => ui.ctx().copy_text(raw),
                 _ => {}
             }
         } else if let Some(e) = self.listing.error.lock().unwrap().clone() {

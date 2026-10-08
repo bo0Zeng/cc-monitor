@@ -18,7 +18,7 @@
  */
 import { chan } from "../../comms/inward/chan";
 import { budgetWithin, jsonBody } from "./ipc/chan-caller";
-import { settle, unreadable, type Refusals } from "./control-said";
+import { asSaid, settle, unreadable, type Refusals } from "./control-said";
 import { exactKeys, isObj } from "./ipc/decode";
 import type { Origin } from "./ipc/origin";
 import { copyText } from "./copy-table";
@@ -50,19 +50,9 @@ const CHANGE_BUDGET_MS = 60_000;
 /** 只读 / 只算的那两条。 */
 const READ_BUDGET_MS = 20_000;
 
+/** 被拒：那一句由那台后端写好（契约对不上那一档也是，`src/backend/stream/said.rs`）；没说 ⇒ 原因不明。 */
 function refusals(): Refusals {
-  return {
-    byCode(code, detail) {
-      switch (code) {
-        // 契约对不上是两端版本不配；其余各档那台后端已经说成人话了，原样上屏（码不上屏）。
-        case "bad_args":
-          return copyText("accountOps.said.contract", { detail });
-        default:
-          return detail.trim() !== "" ? detail : copyText("accountOps.said.noReason");
-      }
-    },
-    noReason: () => copyText("accountOps.said.noReason"),
-  };
+  return asSaid(() => copyText("accountOps.said.noReason"));
 }
 
 const CHANGE_KEYS = [

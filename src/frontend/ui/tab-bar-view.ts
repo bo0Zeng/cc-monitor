@@ -722,7 +722,7 @@ export class TabBarView {
     const titleEl = span("tab-title");
     const proj = span("tab-proj");
     const bg = span("tab-gear");
-    bg.appendChild(icon("settings", "compact"));
+    bg.appendChild(icon("background", "compact"));
     bg.title = copyText("tabBarView.tab.bgHint");
     bg.style.display = "none";
     const label = span("tab-label");

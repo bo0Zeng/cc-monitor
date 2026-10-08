@@ -495,6 +495,13 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "丢弃+带身份报告",
     ),
     (
+        "src/common/copy-core/src/detail.rs",
+        "RAW_CAP",
+        "「复制详情」里**原话那一项**的上界（子进程 stderr · 系统报错原文；三端写详情都经这一处）。\
+             超了按字符边界往回退到上界以内，末尾接「…（截断）」⇒ 贴出去的人看得出后面还有",
+        "截断+说清",
+    ),
+    (
         "src/frontend/shell/src/local_backend.rs",
         "STDERR_MAX_LINE_BYTES",
         "子进程 stderr **一条**的上界（对端一个 `\\n` 都不发时，`read_until` 会一直吃内存）。\

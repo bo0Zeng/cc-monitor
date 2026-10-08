@@ -77,6 +77,7 @@ import { BEHAVIOR_TOGGLED_EVENT, SETTINGS_APPLIED_EVENT, SETTINGS_GO_EVENT, type
 import { confirmDialog } from "../kit/dialog";
 import { copyText } from "../copy-table";
 import { parseSettingsTarget, type SettingsTarget } from "./open-settings";
+import { detailOf, sayWithDetail } from "../kit/detail";
 
 /**
  * 字段控件类型：
@@ -367,7 +368,7 @@ export class SettingsPanel {
       await this.openInner();
     } catch (e) {
       // 面板必须能打开——它是用户唯一的逃生口（里面有"打开 profile"之类的按钮）
-      this.banner.textContent = copyText("settingsPanel.open.partialFailed", { e: String(e) });
+      sayWithDetail(this.banner, copyText("settingsPanel.open.partialFailed", { e: String(e) }), detailOf(e));
       this.banner.classList.add("settings-banner-show");
       this.el.classList.add("open");
       this.isOpen = true;
@@ -510,7 +511,7 @@ export class SettingsPanel {
       await setBehavior(next);
     } catch (e) {
       console.warn("save behavior failed:", e);
-      errorAt.textContent = copyText("settings.behavior.saveFailedLine", { why: String(e) });
+      sayWithDetail(errorAt, copyText("settings.behavior.saveFailedLine", { why: String(e) }), detailOf(e));
       errorAt.hidden = false;
       return false;
     }
@@ -633,7 +634,7 @@ export class SettingsPanel {
       if (fix === "update") await this.remoteSection?.updateMachine(pageId);
       await this.backendSection?.reconnect(origin);
     } catch (e) {
-      toast(copyText("machineState.fix.failed"), e instanceof Error ? e.message : String(e));
+      toast(copyText("machineState.fix.failed"), e instanceof Error ? e.message : String(e), { detail: detailOf(e) });
     }
   }
 
@@ -734,7 +735,7 @@ export class SettingsPanel {
       })
       .catch((e: unknown) => {
         // 落不下就不关：窗口留着、说出原因，用户的改动还在输入框里。
-        this.banner.textContent = copyText("settingsPanel.close.saveFailed", { e: e instanceof Error ? e.message : String(e) });
+        sayWithDetail(this.banner, copyText("settingsPanel.close.saveFailed", { e: e instanceof Error ? e.message : String(e) }), detailOf(e));
         this.banner.classList.add("settings-banner-show");
       });
   }
@@ -766,7 +767,7 @@ export class SettingsPanel {
           // 藏不掉就别假装藏了：窗口还在屏幕上，面板得回到能用的样子并说出原因。
           this.hiddenByUs = false;
           void this.open().then(() => {
-            this.banner.textContent = copyText("settingsPanel.close.failed", { e: String(e) });
+            sayWithDetail(this.banner, copyText("settingsPanel.close.failed", { e: String(e) }), detailOf(e));
             this.banner.classList.add("settings-banner-show");
           });
         });
@@ -817,7 +818,7 @@ export class SettingsPanel {
 
   /** 落盘失败时说出来（全即时的每一格都走它，不许静默吞）。 */
   private reportSaveFailure(what: string, e: unknown): void {
-    this.banner.textContent = copyText("settingsPanel.save.failed", { what, e: e instanceof Error ? e.message : String(e) });
+    sayWithDetail(this.banner, copyText("settingsPanel.save.failed", { what, e: e instanceof Error ? e.message : String(e) }), detailOf(e));
     this.banner.classList.add("settings-banner-show");
   }
 
@@ -856,7 +857,7 @@ export class SettingsPanel {
     } catch (e) {
       console.warn("dialog open failed:", e);
       // 点了「选择…」却什么都没发生 ⇒ 说出来（落在同一块 banner 上）。
-      this.banner.textContent = copyText("settingsPanel.claudeDir.pickFailed", { e: String(e) });
+      sayWithDetail(this.banner, copyText("settingsPanel.claudeDir.pickFailed", { e: String(e) }), detailOf(e));
       this.banner.classList.add("settings-banner-show");
     }
   }
@@ -1669,7 +1670,7 @@ export class SettingsPanel {
       wrap.appendChild(heading);
       const msg = document.createElement("div");
       msg.className = "settings-block-failed-msg";
-      msg.textContent = copyText("settingsPanel.safeBlock.failed", { e: String(e) });
+      sayWithDetail(msg, copyText("settingsPanel.safeBlock.failed", { e: String(e) }), detailOf(e));
       wrap.appendChild(msg);
       // 可复制——用户报障时要的是原文，不是转述
       const out = document.createElement("textarea");
@@ -1709,8 +1710,9 @@ export class SettingsPanel {
     const resetBtn = document.createElement("button");
     resetBtn.type = "button";
     resetBtn.className = "settings-field-reset";
-    resetBtn.textContent = copyText("settingsPanel.field.reset");
+    resetBtn.appendChild(icon("reset", "compact"));
     resetBtn.title = copyText("settingsPanel.field.resetHint", { label: f.label });
+    resetBtn.setAttribute("aria-label", resetBtn.title);
     resetBtn.addEventListener("click", (e) => {
       // row 是 <label>，点击会冒泡到关联的 input；阻止默认 + 阻止冒泡
       e.preventDefault();

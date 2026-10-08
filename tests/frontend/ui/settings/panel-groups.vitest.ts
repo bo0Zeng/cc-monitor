@@ -643,3 +643,18 @@ describe("带目的地打开（页 · 机器 · 栏 · 锚点）", () => {
     expect(visiblePages(panelRoot)).toEqual(["logs"]);
   });
 });
+
+describe("外观页每项后面那颗「恢复默认」是纯图标按钮", () => {
+  it("代码画的 reset 图标、不带字；读屏名与悬停同一句（带那一项的名字）", () => {
+    document.body.replaceChildren();
+    new SettingsPanel({ windowMode: true });
+    const btns = [...document.querySelectorAll<HTMLButtonElement>(".settings-field-reset")];
+    expect(btns.length, "一颗都没找到 —— 下面是空真").toBeGreaterThan(0);
+    for (const b of btns) {
+      const label = b.closest(".settings-row")?.querySelector(".settings-label")?.textContent ?? "";
+      expect(b.textContent).toBe("");
+      expect(b.querySelector<SVGElement>("svg")?.dataset.icon).toBe("reset");
+      expect([b.getAttribute("aria-label"), b.title]).toEqual([copyText("settingsPanel.field.resetHint", { label }), copyText("settingsPanel.field.resetHint", { label })]);
+    }
+  });
+});

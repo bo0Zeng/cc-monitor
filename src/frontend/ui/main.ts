@@ -625,7 +625,7 @@ window.addEventListener("DOMContentLoaded", async () => {
         : { id: "tab-bar-fold", group: "window", icon: "sidebar", title: copyText("main.cmd.collapseTabBar"), keywords: copyText("main.cmd.tabBarKeywords"), hint: chordHint("app.toggle-tab-bar"), run: toggleTabBarFold },
       { id: "zoom-in", group: "window", icon: "zoomIn", title: copyText("main.cmd.zoomIn"), keywords: copyText("main.cmd.zoomKeywords"), hint: chordHint("app.zoom-in"), run: () => stepZoom(1) },
       { id: "zoom-out", group: "window", icon: "zoomOut", title: copyText("main.cmd.zoomOut"), keywords: copyText("main.cmd.zoomKeywords"), hint: chordHint("app.zoom-out"), run: () => stepZoom(-1) },
-      { id: "zoom-reset", group: "window", icon: "zoomReset", title: copyText("main.cmd.zoomReset"), keywords: copyText("main.cmd.zoomKeywords"), hint: chordHint("app.zoom-reset"), run: () => stepZoom(0) },
+      { id: "zoom-reset", group: "window", icon: "reset", title: copyText("main.cmd.zoomReset"), keywords: copyText("main.cmd.zoomKeywords"), hint: chordHint("app.zoom-reset"), run: () => stepZoom(0) },
     );
     // 账号：每个号一条「设 X 为默认账号」· 管理账号…（构造在 account-commands.ts，纯函数）· 新会话默认…（同状态栏无会话时那个下拉）。
     cmds.push(

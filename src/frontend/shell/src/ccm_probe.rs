@@ -4,6 +4,7 @@
 //! 本文件今天只剩**本机 PATH 上那个 `ccm`** 的探测（`local_ccm_entry_status` 那一族用）。
 
 use crate::copy_table::copy_text;
+use crate::detail::Said;
 use serde::Serialize;
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -758,10 +759,12 @@ pub(crate) fn ours_by_bytes(p: &std::path::Path) -> bool {
 /// 〔`INVARIANTS §10`〕**`async`**：它起 `ccm --ccm-probe`、冷缓存时再起登录 shell（Windows 是两个 PowerShell），单次上限十几秒 ——
 /// 同步命令跑在 IPC 派发线程上，那几秒整个界面没反应。本体进 `spawn_blocking`（形状照 `backend_control::backend_start`）。
 #[tauri::command]
-pub async fn local_ccm_entry_status(fresh: Option<bool>) -> Result<LocalCcmEntry, String> {
-    tauri::async_runtime::spawn_blocking(move || local_ccm_entry_now(fresh))
-        .await
-        .map_err(|e| e.to_string())
+pub async fn local_ccm_entry_status(fresh: Option<bool>) -> Result<LocalCcmEntry, Said> {
+    Ok(
+        tauri::async_runtime::spawn_blocking(move || local_ccm_entry_now(fresh))
+            .await
+            .map_err(|e| e.to_string())?,
+    )
 }
 
 /// [`local_ccm_entry_status`] 的本体（阻塞：读字节 · 起探针 · 等它）。

@@ -1661,11 +1661,11 @@ fn claims() -> Vec<Claim> {
             home: Some(sftp()),
             install: Some(ImplSite {
                 addr: "sftp.rs::deploy_remote_backend",
-                definition: "pub async fn deploy_remote_backend(cfg: RemoteConfig) -> Result<String, String> {",
+                definition: "pub async fn deploy_remote_backend(cfg: RemoteConfig) -> Result<String, Said> {",
             }),
             uninstall: Some(ImplSite {
                 addr: "sftp.rs::uninstall_remote_backend",
-                definition: "pub async fn uninstall_remote_backend(cfg: RemoteConfig) -> Result<String, String> {",
+                definition: "pub async fn uninstall_remote_backend(cfg: RemoteConfig) -> Result<String, Said> {",
             }),
         },
         Claim {

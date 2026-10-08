@@ -149,6 +149,7 @@ describe("抽表前后界面文字逐字不变（CP2a 样板区）", () => {
     closePanePreview();
     capture.mockRejectedValue(new Error("boom"));
     await openPanePreview("devbox", "%1", { sid: "sid-a" });
-    expect(toast.mock.calls[0]?.[0]).toBe(copyText("panePreview.capture.failed"));
+    // 那一句作标题（那台写的不带对象），窗格名放灰字。
+    expect(toast.mock.calls[0]?.slice(0, 2)).toEqual(["boom", "%1"]);
   });
 });

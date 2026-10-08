@@ -133,11 +133,13 @@ describe("会写回壳的三格：读回来之前不可交互", () => {
     expect(ready(sec.element)).toEqual([true, true, true]);
   });
 
-  it("读失败：原因落在这一页上，三个继续灰着", async () => {
-    getDiag.fail = new Error("后端没起来");
+  it("读失败：那一句落在这一页上（原话进［复制详情］，不上句子），三个继续灰着", async () => {
+    getDiag.fail = Object.assign(new Error("raw-1"), { detail: "d-raw-1" });
     const sec = await loaded();
     expect(ready(sec.element)).toEqual([false, false, false]);
-    expect(sec.element.textContent).toContain("后端没起来");
+    expect(sec.element.textContent).toContain(copyText("diagnostics.refresh.settingsUnreadable"));
+    expect(sec.element.textContent).not.toContain("raw-1");
+    expect(sec.element.querySelector('[data-part="copy-detail"]'), "没出［复制详情］").not.toBeNull();
   });
 });
 

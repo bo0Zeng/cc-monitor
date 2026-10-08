@@ -46,6 +46,7 @@ import { TurnFold } from "../turn-fold";
 import { button } from "../kit/button";
 import { icon } from "../kit/icon";
 import { banner } from "../kit/banner";
+import { copyDetailButton, detailOf } from "../kit/detail";
 import { skeletonRows } from "../kit/skeleton";
 import { emptyState } from "../kit/empty";
 import { openPopover, closePopover, popoverOpenOn } from "../kit/popover";
@@ -208,12 +209,10 @@ function brokenCard(p: JsonlLinePayload, err: unknown): HTMLElement {
   const t = document.createElement("span");
   t.textContent = copyText("sessionViewer.card.broken");
   const detail = `seq=${p.seq}\n${String(err)}\n${JSON.stringify(p.message, null, 2)}`;
-  const copy = button({
-    label: copyText("sessionViewer.card.copyDetail"),
-    size: "compact",
-    onClick: () => void navigator.clipboard?.writeText(detail).catch(() => {}),
-  });
-  card.append(icon("warning", "compact"), t, copy);
+  // 全产品那一颗［复制详情］（反馈 · 复制不了的回落都在那里）：首行是卡上那句，下面是 seq · 原因 · 那条原文（仍是用户自己的记录）。
+  const copy = copyDetailButton(t.textContent, detail);
+  card.dataset.detailHost = "";
+  card.append(icon("warning", "compact"), t, ...(copy ? [copy] : []));
   return card;
 }
 
@@ -520,7 +519,7 @@ export class SessionViewer {
       this.setLoading(false);
       // 读不出 ⇒ 头下面一条错误条 ＋［重试］（乙4-④ 各态）；状态行不报。
       const retry = button({ label: copyText("sessionViewer.load.retry"), size: "compact", onClick: () => void this.load(opts) });
-      this.showBanner(banner("error", copyText("sessionViewer.load.failed", { why: String(e) }), [retry]));
+      this.showBanner(banner("error", copyText("sessionViewer.load.failed", { why: String(e) }), [retry], detailOf(e)));
     }
   }
   /** 升序 payloads 里第一个 `seq >= x` 的下标 */

@@ -8,6 +8,8 @@ description = "前端宿主原语：两个前端（monitor 主界面 · 文件�
 # 「前端宿主原语」这一类只许 monitor 与文件窗口（`src/frontend/filewin`）链，后端不许
 #   （`tests/frontend/shell/contract_crate_guard_tests.rs` 钉）。它不是契约：是两个前端都要、只该有一份的宿主那几件。
 [dependencies]
+# 本机时区偏移（`MIT OR Apache-2.0`）：文件窗口那一份搬来，monitor 也用；已在锁文件里，零新包。
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 

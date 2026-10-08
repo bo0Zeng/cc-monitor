@@ -6,6 +6,7 @@
 //! 写入口 [`record`] 必须说是哪台（没有缺省：缺省记在本机名下，就是把远端的记录悄悄记成本机的）；
 //! 读口 [`drift_ledger_report`] 只答所问那一台。
 
+use crate::detail::Said;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Mutex;
 
@@ -61,9 +62,7 @@ fn snapshot_in_book(book: &Book, origin: &crate::origin::Origin) -> Vec<String> 
 /// 诊断面读口。只读、按需，不轮询。收 `origin`，只答那一台；空白名（「没说」）拒收，不许被当成某一台。
 /// **monitor 自己的命令，不经后端**。
 #[tauri::command]
-pub async fn drift_ledger_report(
-    origin: crate::origin::Origin,
-) -> Result<DriftLedgerReport, String> {
+pub async fn drift_ledger_report(origin: crate::origin::Origin) -> Result<DriftLedgerReport, Said> {
     match origin.route("drift_ledger_report")? {
         crate::origin::Route::Local | crate::origin::Route::Remote(_) => {}
     }

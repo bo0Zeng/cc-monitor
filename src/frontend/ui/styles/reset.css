@@ -9,6 +9,36 @@
     box-sizing: border-box;
   }
 
+  /* 折叠条（`<details>`）：关掉浏览器自带的三角（各平台画法不同、不跟主题色），全产品只在这一处画箭头 ——
+     kit 登记表里那颗 caretRight（`--icon-caret-right`，`css-marks.ts` 设），展开转 90°，与 kit 折叠块同一个样子。
+     说话人条 / 后台通知条的标题行本来就不带箭头（整行是标题），这里排除。 */
+  summary {
+    list-style: none;
+    cursor: pointer;
+  }
+
+  summary::-webkit-details-marker {
+    display: none;
+  }
+
+  summary:not(.speaker-head, .notice-head)::before {
+    content: "";
+    display: inline-block;
+    flex: none;
+    width: var(--icon-size-compact);
+    height: var(--icon-size-compact);
+    margin-right: 4px;
+    vertical-align: middle;
+    color: var(--text-2);
+    background: currentColor;
+    mask: var(--icon-caret-right) center / contain no-repeat;
+    transition: transform var(--dur-expand);
+  }
+
+  details[open] > summary::before {
+    transform: rotate(90deg);
+  }
+
   /* 键盘焦点环：每个能 Tab 到的东西都有，鼠标点不出（`:focus-visible`）。组件要换形状在自己那层盖。 */
   :focus-visible {
     outline: var(--focus-ring) solid var(--accent);

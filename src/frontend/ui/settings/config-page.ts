@@ -14,6 +14,7 @@ import { isLocalOrigin, type Origin } from "../ipc/origin";
 import { button } from "../kit/button";
 import { confirmDialog } from "../kit/dialog";
 import { toast } from "../kit/toast";
+import { detailOf } from "../kit/detail";
 import { saidOfControl } from "../control-said";
 import { accountsMcpPick, accountsMcpRead, accountsMcpRemove, accountsMcpSync, type AccountMcpView } from "../account-ops";
 import { extList, type ExtList } from "../ext-reads";
@@ -121,7 +122,7 @@ function buildMcpRow(origin: () => Origin, machine: () => string): { row: CfgRow
     try {
       paint(await op());
     } catch (e) {
-      toast(failed(), saidOfControl(e), { level: "error" });
+      toast(failed(), saidOfControl(e), { detail: detailOf(e), level: "error" });
     }
   };
 
