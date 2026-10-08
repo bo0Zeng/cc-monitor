@@ -9886,7 +9886,7 @@
     "rsSftp.identity.other": {
       "kind": "body",
       "role": "说明",
-      "zh": "那台上是 {s}，这一版是 {expected}",
+      "zh": "原为 {s}，换成 {expected}",
       "args": ["s", "expected"]
     },
     "rsSftp.identity.empty": {

@@ -660,14 +660,14 @@ export const FRONT_SCENES: Scene[] = [
     await clickUpdate();
     await byText("[data-role=front-result]", /已更新/);
     await sleep(400);
-  }, tooOld(() => "已安装后端（p13，x86_64）到 ~/.cc-monitor/bin/ccm（那台上是 p12，这一版是 p13）。")),
+  }, tooOld(() => "已安装后端（p13，x86_64）到 ~/.cc-monitor/bin/ccm（原为 p12，换成 p13）。")),
   frontScene("panel-front-updated-redial-failed", "↗ · ［更新］换上了、重拨没成", "部署回来了、重拨那台没成 ⇒ 已更新那句后面说重新连接失败，给［重新连接］", async () => {
     await frontTooOld();
     await clickUpdate();
     await byText("[data-role=front-result]", /重新连接失败/);
     await sleep(400);
   }, (w) => {
-    tooOld(() => "已安装后端（p13，x86_64）到 ~/.cc-monitor/bin/ccm（那台上是 p12，这一版是 p13）。")(w);
+    tooOld(() => "已安装后端（p13，x86_64）到 ~/.cc-monitor/bin/ccm（原为 p12，换成 p13）。")(w);
     w.commands.backend_start = () => Promise.reject("拨不通");
   }),
   frontScene("panel-front-update-failed", "↗ · ［更新］没成", "部署失败 ⇒ 浮层红着说更新失败、带原文，［重试］再更新一次 ·［复制详情］", async () => {
