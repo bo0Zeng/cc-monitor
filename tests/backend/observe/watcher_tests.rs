@@ -303,7 +303,7 @@ fn arm_pid_watcher_is_a_noop_without_sender() {
 /// 另一半也一起修：注释若被重排/改写，原实现会红在一个**与语义无关**的位置上
 /// （把注入挪到注释之后、真扫描之前，语义完全正确却会红）。
 /// 现在锚在 `WalkDir::new(&sessions)`（生产段唯一一处，扫描真正开始的地方）。
-/// 扫描抽成 `initial_session_scan` 之后，锚点换成 `watch_loop` 里它的调用点（见函数体）。
+/// 扫描抽成 `initial_session_scan` 之后，锚点换成 `watch_loop` 里它的调用点；10-07 起再经 `arm_then_scan`（见函数体）。
 #[test]
 fn events_channel_is_created_before_the_initial_scan() {
     let src = crate::guard_support::production_code(include_str!(
@@ -315,12 +315,13 @@ fn events_channel_is_created_before_the_initial_scan() {
     // 扫描那一块抽成了 `initial_session_scan`（为了「清单报完了」那一帧的位置可验），
     //   它的**定义**住在文件后段 ⇒ 锚点从扫描本体（`WalkDir::new(&sessions)`）换到 `watch_loop` 里的**调用点**
     //   —— 那才是执行顺序上「扫描真正开始」的地方。
-    let scan_at = src.find("initial_session_scan(&sessions").expect(
-        "找不到初始扫描的锚点（`initial_session_scan(&sessions` 调用点）——扫描改写了就把本条一起改",
+    // 10-07 起初扫经 `arm_then_scan`（先挂耳朵、再扫）⇒ `watch_loop` 里的调用点换成它。
+    let scan_at = src.find("arm_then_scan(&sessions").expect(
+        "找不到初始扫描的锚点（`arm_then_scan(&sessions` 调用点）——扫描改写了就把本条一起改",
     );
     // 锚点唯一性：两个都必须**恰好一处**，否则「谁在前」比的可能是别处那一份。
     assert_eq!(
-        src.matches("initial_session_scan(&sessions").count(),
+        src.matches("arm_then_scan(&sessions").count(),
         1,
         "初始扫描的锚点在生产段里不止一处 —— 本条会比到别的那一份上去"
     );
@@ -2951,6 +2952,80 @@ fn sessions_replayed_follows_every_initial_session_added_exactly_once() {
     let mut state = ReaderState::new(empty.join("projects"), false, false);
     initial_session_scan(&empty.join("sessions"), &mut state, &mut sink);
     assert_eq!(kinds(&mut rx), vec!["sessions_replayed"]);
+}
+
+/// 起步那一下「先挂耳朵、再初扫」（[`arm_then_scan`]）：挂耳朵那一刻之后、初扫之前落下的 pidfile 由初扫报出
+/// （原先先扫后挂，这一形两头都看不见 —— e2e `resume-frames` 间歇红的根因）。
+/// 扫的过程中排队的事件交给主循环时都不再出帧：已报过的再来一次「有动静」不重报；初扫之前就没了的那份，
+/// 它的「删掉了」不冒出一条从没 added 过的 `session_removed`。
+#[test]
+fn a_pidfile_landing_once_the_ears_are_up_is_announced_by_the_initial_scan() {
+    let _iso = crate::control::identity_tag::door::isolate(); // §48.3：打标只落假 tmux
+    let dir = std::env::temp_dir().join(format!("ccm-arm-then-scan-{}", std::process::id()));
+    let sessions = dir.join("sessions");
+    std::fs::create_dir_all(&sessions).unwrap();
+    let mut kid = crate::control::identity_tag::tests::spawn_settled_sleep(|c| {
+        c.env_remove("TMUX_PANE").env_remove("TMUX");
+    });
+    let pid = kid.id();
+    let ticks = proc_starttime(pid).expect("子进程的 starttime 读不到 —— 夹具坏了");
+    let live = sessions.join(format!("{pid}.json"));
+    let gone = sessions.join("1.json");
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(64);
+    let mut sink = FrameSink::new(tx);
+    let mut state = ReaderState::new(dir.join("projects"), false, false);
+    // 「挂耳朵」那一步里：一份活会话的 pidfile 落下；另一份落下又被删掉（初扫之前就没了，事件照样排着队）。
+    arm_then_scan(&sessions, &mut state, &mut sink, || {
+        std::fs::write(
+            &live,
+            format!(
+                r#"{{"pid":{pid},"sessionId":"arm-live","cwd":"/x","kind":"interactive","procStart":"{ticks}"}}"#
+            ),
+        )
+        .unwrap();
+        std::fs::write(
+            &gone,
+            r#"{"pid":1,"sessionId":"arm-gone","cwd":"/x","kind":"interactive"}"#,
+        )
+        .unwrap();
+        std::fs::remove_file(&gone).unwrap();
+    });
+    let mut frames = Vec::new();
+    while let Ok(f) = rx.try_recv() {
+        frames.push(f);
+    }
+    let added: Vec<String> = frames
+        .iter()
+        .filter_map(|f| match f {
+            Frame::SessionAdded { sid, .. } => Some(sid.clone()),
+            _ => None,
+        })
+        .collect();
+    let kinds: Vec<String> = frames
+        .iter()
+        .map(|f| f.loss_identity().kind.to_string())
+        .collect();
+    // 排队的那两件事件交给主循环（同 `watch_loop` 里 `is_session_json` 那一支：在 ⇒ 加，不在 ⇒ 删）。
+    let mut later = Vec::new();
+    for p in [&live, &gone] {
+        if p.exists() {
+            process_session_added(p, &mut state, &mut sink);
+        } else {
+            process_session_removed(p, &mut state, &mut sink);
+        }
+    }
+    while let Ok(f) = rx.try_recv() {
+        later.push(f.loss_identity().kind.to_string());
+    }
+    let _ = kid.kill();
+    let _ = kid.wait();
+    std::fs::remove_dir_all(&dir).ok();
+    assert_eq!(added, vec!["arm-live"], "挂耳朵之后落下的那份没被初扫报出");
+    assert_eq!(kinds, vec!["session_added", "sessions_replayed"]);
+    assert!(
+        later.is_empty(),
+        "排队的事件又出了帧（重报 / 冒出从没 added 过的 removed）：{later:?}"
+    );
 }
 
 /// `session_added.pid` 有一道闸：索要了（`--with-pid`）⇒ 帧上是那个进程的 pid；

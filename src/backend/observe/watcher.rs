@@ -957,45 +957,64 @@ fn watch_loop(
     // 否则后端启动时就活着的会话一个 pidfd 看守都拿不到。
     state.events_tx = Some(events_tx.clone());
 
-    // --- Phase 1: synchronous initial scan. ---
-    // Mirror the LOCAL watcher's `active_filter` (`session_map.is_session_active`):
+    // --- 先挂耳朵（Phase 2 的那几道），再做 Phase 1 的初扫 ---
+    // 🔴 顺序是承重的（10-07 修）：原先先扫 `sessions/`、再建 debouncer 挂耳朵 ⇒ 扫完到挂上之间落下的
+    //   pidfile 两头都看不见，那条会话一直不报（之后的记录文件也被「只认活会话」筛掉），死了也不报。
+    //   后端起来那一刻正在起的 claude 就落在这个窗里（e2e `resume-frames` 间歇红的根因）。
+    //   ⇒ 先挂：挂上之后落下的由事件接（扫的过程中来的事件在 channel 里排队，初扫完再消费；
+    //   `process_session_added` 幂等，`process_session_removed` 只摘在跟的 ⇒ 排队的那几件重复 / 落空都不出帧）；
+    //   挂上之前落下的由初扫接。`sessions_replayed` 仍排在初扫的全部 `session_added` 之后。
+    //
+    // Phase 1 mirrors the LOCAL watcher's `active_filter` (`session_map.is_session_active`):
     // only stream sessions whose PID is alive (sessions/<PID>.json + /proc/<pid>).
     // We scan sessions/ FIRST to build the active set; process_session_added marks
     // the sid active and rescans its jsonl so an already-running session snapshots
     // on startup. We deliberately do NOT walk projects/ unconditionally — pulling
     // every historical jsonl as a Tab is the bug this fixes; browsing history is
     // the Ctrl+H history browser's job (Phase 1 for remote).
-    initial_session_scan(&sessions, &mut state, &mut sink);
-
-    // --- Phase 2: live watch. ---
-    let mut debouncer = match new_debouncer(
-        Duration::from_millis(DEBOUNCE_MS),
-        DebouncerSink(events_tx.clone()),
-    ) {
-        Ok(d) => d,
-        Err(e) => {
-            tracing::error!("debouncer init failed: {e}");
-            return;
-        }
-    };
-    // 三道耳朵（`agent_home` 不在 ⇒ 先挂它的上一层）＋ tmux socket 目录 ＋ 账号目录：起步与 `resync` 都经 [`arm_ears`]。
-    let mut ears = HomeEars::new(&agent_home, &projects, &sessions);
     let sock_dir = tmux_socket_dir();
-    // `sock_dir_watched` = 目录**本身**挂上了没有（没挂上时 `arm_ears` 退一层监视它的父）。
-    let mut sock_dir_watched = false;
-    let mut accounts_ear = accounts_manifest.parent().map(AccountsEar::new);
-    let mut profiles_ear = crate::platform::paths::home_dir()
-        .and_then(|h| ProfilesEar::new(h.join(relay_route_core::PROFILES_REL)));
-    if let Some(ear) = profiles_ear.as_mut() {
-        ear.arm(&mut debouncer);
-    }
-    arm_ears(
-        &mut debouncer,
-        &mut ears,
-        &sock_dir,
-        &mut sock_dir_watched,
-        accounts_ear.as_mut(),
-    );
+    let armed = arm_then_scan(&sessions, &mut state, &mut sink, || {
+        let mut debouncer = match new_debouncer(
+            Duration::from_millis(DEBOUNCE_MS),
+            DebouncerSink(events_tx.clone()),
+        ) {
+            Ok(d) => d,
+            Err(e) => {
+                tracing::error!("debouncer init failed: {e}");
+                return None;
+            }
+        };
+        // 三道耳朵（`agent_home` 不在 ⇒ 先挂它的上一层）＋ tmux socket 目录 ＋ 账号目录：起步与 `resync` 都经 [`arm_ears`]。
+        let mut ears = HomeEars::new(&agent_home, &projects, &sessions);
+        // `sock_dir_watched` = 目录**本身**挂上了没有（没挂上时 `arm_ears` 退一层监视它的父）。
+        let mut sock_dir_watched = false;
+        let mut accounts_ear = accounts_manifest.parent().map(AccountsEar::new);
+        let mut profiles_ear = crate::platform::paths::home_dir()
+            .and_then(|h| ProfilesEar::new(h.join(relay_route_core::PROFILES_REL)));
+        if let Some(ear) = profiles_ear.as_mut() {
+            ear.arm(&mut debouncer);
+        }
+        arm_ears(
+            &mut debouncer,
+            &mut ears,
+            &sock_dir,
+            &mut sock_dir_watched,
+            accounts_ear.as_mut(),
+        );
+        Some((
+            debouncer,
+            ears,
+            sock_dir_watched,
+            accounts_ear,
+            profiles_ear,
+        ))
+    });
+    // --- Phase 2: live watch. ---
+    let Some((mut debouncer, mut ears, mut sock_dir_watched, mut accounts_ear, mut profiles_ear)) =
+        armed
+    else {
+        return;
+    };
     // B2 审计（`run_tmux_ls` 无超时 → 阻塞会冻结整个 reader）：`tmux ls` 一律跑在**一次性后台
     // 线程**里，主循环只收结果。gate 在「无在途探测」上 → 最多同时一个探测线程；即便远端 tmux
     // 卡死（D-state/socket 卡住/NFS home），也只泄漏这一个后台线程，reader 永不冻结。
@@ -2336,6 +2355,22 @@ fn retag_tracked(state: &ReaderState, only: Option<&str>) -> usize {
 fn initial_session_scan(sessions: &Path, state: &mut ReaderState, sink: &mut FrameSink) {
     reconcile_sessions(sessions, state, sink, None);
     sink.send(Frame::SessionsReplayed);
+}
+
+/// 起步那一下：先 `arm`（挂好事件耳朵），**再** [`initial_session_scan`]。回 `arm` 的结果（挂不上也照样扫完）。
+///
+/// 收成一个函数是为了让「挂耳朵在初扫之前」这件事能被直接验
+/// （`watcher_tests::a_pidfile_landing_once_the_ears_are_up_is_announced_by_the_initial_scan`）：
+/// 挂上之后落下的由事件接、挂上之前落下的由初扫接 ⇒ 两头之间没有谁都看不见的窗。顺序反过来就有（见 `watch_loop` 那段）。
+fn arm_then_scan<T>(
+    sessions: &Path,
+    state: &mut ReaderState,
+    sink: &mut FrameSink,
+    arm: impl FnOnce() -> T,
+) -> T {
+    let armed = arm();
+    initial_session_scan(sessions, state, sink);
+    armed
 }
 
 /// 一次对齐的差异（`resync` 的应答）。

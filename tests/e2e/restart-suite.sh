@@ -105,7 +105,13 @@ make_live() {  # <extra env>
   tmux new-session -d -s "$name" -c "$CWD_DIR" \
     "env CLAUDE_CONFIG_DIR='$OLD' $1 bash -c 'exec -a claude /bin/sh \"\$0\" \"\$1\"' '$FAKE' '$sid'"
   tmux set-option -t "=$name:" @ccm_sid "$sid"
-  for _ in $(seq 1 50); do grep -lqF "\"$sid\"" "$SHARED"/sessions/*.json 2>/dev/null && break; sleep 0.1; done
+  # 等到假 claude 两样都落了：pidfile（后端判活）**和**会话记录（压缩那一步按 sid 找记录、装耳朵）。
+  # 假 claude 先落 pidfile、后落记录；只等前者，机器忙时下一步的压缩正好落在两者之间 ⇒ 「找不到记录」（R2 间歇红的根因）。
+  for _ in $(seq 1 50); do
+    grep -lqF "\"$sid\"" "$SHARED"/sessions/*.json 2>/dev/null &&
+      compgen -G "$SHARED/projects/*/$sid.jsonl" >/dev/null && break
+    sleep 0.1
+  done
   printf '%s %s\n' "$sid" "$name"
 }
 # 这个 sid 此刻活着的进程数。

@@ -635,9 +635,9 @@ jobs:
 
       # 同 ci.yml::linux-app-build 那四个（构建期必需，不是打包才要）。
       - name: Install Linux build deps
+        timeout-minutes: 14   # 装包卡住的闸（步骤级）；口径见 ci.yml 文件头 `timeout-minutes` 那段末尾
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
+          bash tests/scripts/apt-install.sh \
             libwebkit2gtk-4.1-dev \
             libgtk-3-dev \
             libayatana-appindicator3-dev \
