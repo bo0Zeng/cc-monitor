@@ -78,7 +78,7 @@ export function sayNoTerminal(err: NoTerminalWindow): void {
         label: copyText("terminalOpen.noTerminal.copy"),
         run: () =>
           void navigator.clipboard.writeText(err.command).catch((e: unknown) => {
-            toast(copyText("terminalOpen.noTerminal.copyFailed"), `${String(e)}\n${err.command}`, { level: "error" });
+            toast(copyText("terminalOpen.noTerminal.copyFailed"), err.command, { level: "error", detail: String(e) });
           }),
       },
     ],

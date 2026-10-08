@@ -12730,7 +12730,7 @@
     "terminalOpen.noTerminal.copyFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "复制失败 · 手动复制以下命令",
+      "zh": "复制失败 · 原因不明",
       "args": []
     },
     "beTerminal.refuse.empty": {
