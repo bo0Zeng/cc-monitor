@@ -555,6 +555,33 @@ async function clickHeadFront(): Promise<void> {
   await click("[data-role=head-front]");
 }
 
+/** devbox 那一问回「那台旧」（`Unsupported`）；部署那一下答什么由 `deploy` 定。 */
+function tooOld(deploy: () => unknown): (w: World) => void {
+  return (w) => {
+    w.ops["session-terminals"] = () => {
+      throw { err: "Unsupported", body: [] };
+    };
+    w.commands.deploy_remote_backend = deploy;
+    // 换上了就重拨那条流（主窗口 `reconnect`）。
+    w.commands.backend_start = () => undefined;
+  };
+}
+
+async function frontTooOld(): Promise<void> {
+  await mainReady(ALL_TABS);
+  await openTab(3);
+  await sleep(400);
+  await clickHeadFront();
+  await waitFor("[data-role=front-result]");
+  await sleep(400);
+}
+
+/** 浮层［更新］→ 会打断什么的确认框里点「更新」（devbox 上有经它的会话）。 */
+async function clickUpdate(): Promise<void> {
+  await click(await byText("[data-role=front-result] button", "更新"));
+  await click(await byText("[role=dialog] button", /^更新$/));
+}
+
 /** 高 DPI：1.5x / 2x 下 1px 线、图标、字形照常（同一屏，像素比不同）。 */
 export const DPI_SCENES: Scene[] = [1.5, 2].map((scale) => ({
   ...panel(`main-dpi-${scale}x`, `主窗口 · ${scale}x`, `设备像素比 ${scale}：标签页栏、会话头、消息流、状态栏的 1px 线与图标都照常`, async () => {
@@ -619,6 +646,36 @@ export const FRONT_SCENES: Scene[] = [
       throw { err: { Hop: { idx: 0, tag: "open", reach: "NotSent", why: "Unreachable" } }, body: [] };
     };
   }),
+  frontScene("panel-front-update", "↗ · 那台后端旧", "devbox 那台后端不认这一问 ⇒「devbox 要更新」＋［更新］（就地做，不开设置）", async () => {
+    await frontTooOld();
+  }, tooOld(() => new Promise(() => {}))),
+  frontScene("panel-front-updating", "↗ · ［更新］在做", "点了［更新］、确认框里点「更新」⇒ 同一个浮层说正在更新 devbox", async () => {
+    await frontTooOld();
+    await clickUpdate();
+    await waitFor("[data-role=front-result]");
+    await sleep(400);
+  }, tooOld(() => new Promise(() => {}))),
+  frontScene("panel-front-updated", "↗ · ［更新］换上了", "部署回来了、重拨成了 ⇒ 浮层说 devbox 已更新、带后端那句结果，只留关闭", async () => {
+    await frontTooOld();
+    await clickUpdate();
+    await byText("[data-role=front-result]", /已更新/);
+    await sleep(400);
+  }, tooOld(() => "已安装后端（p13，x86_64）到 ~/.cc-monitor/bin/ccm（原 p12 · 换为 p13）。")),
+  frontScene("panel-front-updated-redial-failed", "↗ · ［更新］换上了、重拨没成", "部署回来了、重拨那台没成 ⇒ 已更新那句后面说重新连接失败，给［重新连接］", async () => {
+    await frontTooOld();
+    await clickUpdate();
+    await byText("[data-role=front-result]", /重新连接失败/);
+    await sleep(400);
+  }, (w) => {
+    tooOld(() => "已安装后端（p13，x86_64）到 ~/.cc-monitor/bin/ccm（原 p12 · 换为 p13）。")(w);
+    w.commands.backend_start = () => Promise.reject("拨不通");
+  }),
+  frontScene("panel-front-update-failed", "↗ · ［更新］没成", "部署失败 ⇒ 浮层红着说更新失败、带原文，［重试］再更新一次 ·［复制详情］", async () => {
+    await frontTooOld();
+    await clickUpdate();
+    await byText("[data-role=front-result]", /更新失败/);
+    await sleep(400);
+  }, tooOld(() => Promise.reject("上传 ~/.cc-monitor/bin/ccm 失败：磁盘已满"))),
   frontScene("panel-front-busy", "↗ · 在找终端", "壳那一跳超过 300ms 还没回 ⇒ ↗ 转圈、旁边「查找终端…」", async () => {
     await mainReady(ALL_TABS);
     await clickHeadFront();

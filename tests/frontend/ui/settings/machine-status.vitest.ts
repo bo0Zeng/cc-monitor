@@ -155,10 +155,10 @@ describe("describeFacet", () => {
     expect(ok.icon).toBe("✓");
     expect(ok.text).toBe(copyText("machineStatus.age.minutes", { n: "3" }));
     const fail = describeFacet(
-      { kind: "fail", detail: copyText("machineCard.test.unreachable"), at: T0 },
+      { kind: "fail", detail: copyText("machineCard.test.unreachable", { e: "ETIMEDOUT" }), at: T0 },
       T0 + 2 * 3_600_000,
     );
     expect(fail.icon).toBe("✗");
-    expect(fail.text).toBe(`${copyText("machineCard.test.unreachable")} · ${copyText("machineStatus.age.hours", { n: "2" })}`);
+    expect(fail.text).toBe(`${copyText("machineCard.test.unreachable", { e: "ETIMEDOUT" })} · ${copyText("machineStatus.age.hours", { n: "2" })}`);
   });
 });

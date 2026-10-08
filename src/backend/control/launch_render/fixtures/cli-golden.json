@@ -432,7 +432,7 @@
         "defaultLauncher": "claude"
       },
       "ok": false,
-      "out": "这台机器上的 ccm 做不到这样起会话（缺 cwd）"
+      "out": "此机 ccm 做不到这样启动会话 · 缺 cwd"
     },
     {
       "name": "建 tmux 会话而这台没有 tmux",
@@ -471,7 +471,7 @@
         "defaultLauncher": "claude"
       },
       "ok": false,
-      "out": "这台机器上的 ccm 做不到这样起会话（缺 tmux）"
+      "out": "此机 ccm 做不到这样启动会话 · 缺 tmux"
     },
     {
       "name": "已触发的 model 维度要的能力缺失",
@@ -511,7 +511,7 @@
         "defaultLauncher": "claude"
       },
       "ok": false,
-      "out": "这台机器上的 ccm 不认 model 这一项设置（缺 model）"
+      "out": "此机 ccm 不认设置项 model · 缺 model"
     },
     {
       "name": "已触发的 account 维度要的能力缺失",
@@ -548,7 +548,7 @@
         "defaultLauncher": "claude"
       },
       "ok": false,
-      "out": "这台机器上的 ccm 不认 account 这一项设置（缺 account）"
+      "out": "此机 ccm 不认设置项 account · 缺 account"
     },
     {
       "name": "坏 sid",
@@ -587,7 +587,7 @@
         "defaultLauncher": "claude"
       },
       "ok": false,
-      "out": "会话 ID \"-x\" 不合法（1 到 64 位，只许 A-Z a-z 0-9 与 -，不以 - 开头）"
+      "out": "会话 ID \"-x\" 不合法 · 1–64 位 · 只许 A-Z a-z 0-9 与 - · 不以 - 开头"
     },
     {
       "name": "Codex 会话 resume（直连）",

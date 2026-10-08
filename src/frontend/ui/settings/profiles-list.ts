@@ -678,8 +678,8 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
     const go = button(
       r.pick === "reparent"
         ? parent
-          ? copyText("profilesPage.remove.goReparent", { parent, name: r.name })
-          : copyText("profilesPage.remove.goReparentRoot", { name: r.name })
+          ? copyText("profilesPage.remove.goReparent", { parent })
+          : copyText("profilesPage.remove.goReparentRoot")
         : copyText("profilesPage.remove.goCascade", { n: String(r.kids.length + 1) }),
       "settings-btn settings-btn-primary",
       () => void commit([{ op: "remove", name: r.name, children: r.pick }]).then((said) => said === null && cancelRemove()),

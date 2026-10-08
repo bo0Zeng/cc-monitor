@@ -194,7 +194,7 @@ describe("buildProfilesList", () => {
     const r = el.querySelector<HTMLElement>('[data-role="remove"]')!;
     expect(r.textContent).toContain(copyText("profilesPage.remove.reparent", { parent: "cc" }));
     expect(r.textContent).toContain(copyText("profilesPage.remove.cascade"));
-    [...r.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("profilesPage.remove.goReparent", { parent: "cc", name: "cct" }))!.click();
+    [...r.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("profilesPage.remove.goReparent", { parent: "cc" }))!.click();
     await flush();
     expect(writes.at(-1)!.changes).toEqual([{ op: "remove", name: "cct", children: "reparent" }]);
   });

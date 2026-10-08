@@ -1924,13 +1924,14 @@ sid → 上次用哪个号起。
 
 #### `last-seen-write`
 
-记下一台这一次读成的那一份。
+记下一台这一次读成的那一份（或清掉那台）。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --last-seen-write`
 
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `atMs` | ← | 记下的时刻（毫秒） |
+| `forget` | → | `true` ⇒ 清掉这台的上次值（删机器时；不带 `kind` / `value`） |
 | `kind` | → | 闭集 `accounts` · `data` |
 | `origin` | → | 哪台（机器名） |
 | `value` | → | 那一份应答（对象，序列化后 ≤ 256 KiB）；最多记 64 台，超了先丢最久没更新的那台 |
@@ -3513,7 +3514,7 @@ cc-bus 钩子诊断。
 | `--hooks-diag` | ＝ 帧命令 `hooks-diag`：cc-bus 钩子诊断 |
 | `--kill` | ＝ 帧命令 `kill`：杀一个 tmux 会话 |
 | `--last-seen-read` | ＝ 帧命令 `last-seen-read`：读离线那台的上次值 |
-| `--last-seen-write` | ＝ 帧命令 `last-seen-write`：记下一台这一次读成的那一份 |
+| `--last-seen-write` | ＝ 帧命令 `last-seen-write`：记下一台这一次读成的那一份（或清掉那台） |
 | `--launch` | ＝ 帧命令 `launch`：建 tmux 会话并键入载荷，或键入一个已在的会话（远端执行面） |
 | `--launch-render-cli` | ＝ 帧命令 `launch-render-cli`：远端起会话那一行 `ccm …` |
 | `--list-accounts` | 账号清单：首行 `{kind:"accounts-meta", enabled, acctsDir, manifestPath, updatedAt, sharedStore, count, error, unsupported, nextDefault}`，其后每号一行 `{name, email, configDir, isDefault, mode, exists, loggedIn}`；没启用多账号 ⇒ `enabled:false`、退出 0 |

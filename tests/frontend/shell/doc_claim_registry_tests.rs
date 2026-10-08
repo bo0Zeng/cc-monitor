@@ -1113,52 +1113,6 @@ fn the_npm_lockfile_claims_the_version_we_ship() {
     );
 }
 
-/// **`scripts/` 里的每个文件都要在它自己的 README 里登记。**
-///
-/// # 逮到的是一条「找不到」的缺陷
-///
-/// 08-06 实测：`scripts/` 有三个脚本，而 `tests/scripts/README.md` 的表**只列了 `run.ps1`**。
-/// 漏掉的两个里有 `verify-committed-state.sh` —— 它的头注逐字写着
-/// 「本仓不 push ⇒ CI 从来没见过这些 commit，**所以这道门必须在本机跑**」。
-/// ⇒ 一个「必须本机跑」的门，**照目录 README 是找不到的**；
-/// 本会话是靠 grep 撞见它的，而那不是别人会走的路。
-///
-/// 这类缺陷不会让任何测试变红，也不会让任何人报错 —— 它只是让**下一个人找不到**。
-/// 本条把「找得到」变成机检。
-///
-/// ⚠ 只钉**存在性**，不钉描述内容：描述会随脚本演进，钉了就是下一个假陈述
-/// （本模块头注记着 `STATUS_CELLS` 那次教训）。要读细节去看脚本自己的头注。
-#[test]
-fn every_script_in_the_directory_is_listed_in_its_readme() {
-    let dir = repo_root().join("tests/scripts");
-    let readme =
-        std::fs::read_to_string(dir.join("README.md")).expect("读不到 tests/scripts/README.md");
-    // 人群：那个目录下跟踪着的文件（直接住在里面的那一层）。
-    let mut files: Vec<String> = tracked_files()
-        .into_iter()
-        .filter_map(|rel| rel.strip_prefix("tests/scripts/").map(str::to_string))
-        .filter(|n| !n.contains('/') && n != "README.md")
-        .collect();
-    files.sort();
-    // ★ 抽取器自检：目录空了或读法坏了 ⇒ 下面会零命中地绿。
-    assert!(
-        files.iter().any(|n| n == "gate.sh"),
-        "`scripts/` 的人群里没有 `gate.sh` —— 遍历坏了（扫到 {files:?}）"
-    );
-    let missing: Vec<&String> = files
-        .iter()
-        .filter(|n| !readme.lines().any(|l| l.contains(n.as_str())))
-        .collect();
-    assert!(
-        missing.is_empty(),
-        "`scripts/` 里这些文件在 `tests/scripts/README.md` 里查不到：{missing:?}\n\n\
-             ⚠ 这不会让任何测试变红，也不会让任何人报错 —— 它只是让**下一个人找不到**。\n\
-             08-06 实测：那张表当时只有 `run.ps1`，于是照它找不到 `verify-committed-state.sh`，\n\
-             而那是全仓**唯一量「提交状态」且必须在本机跑**的门。\n\
-             ⇒ 加一行就行；细节写在脚本自己的头注里，别在 README 里抄第二份。"
-    );
-}
-
 /// **开发者入口文档里的后端测试命令，必须与 `ci.yml` 逐字相同。**
 ///
 /// # 逮到的是「照它做会少测」

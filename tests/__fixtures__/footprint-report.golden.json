@@ -22,7 +22,7 @@
       "effect_label": "插入或更新一段带标记的内容；卸载时只删这一段",
       "host_label": "远端",
       "installable": true,
-      "note": "或你在「别名」那一块选的其它 profile",
+      "note": "或你在「别名」区选的其它 profile",
       "path_declared": "~/.bashrc",
       "path_resolved": "/nonexistent-footprint-golden/.bashrc",
       "source_label": "随 cc-monitor 一起安装的程序",
@@ -366,7 +366,7 @@
       "source_label": "不由 cc-monitor 提供 —— 这是通用工具，请你自己装",
       "state": {
         "kind": "undetermined",
-        "why": "查不动：读不到 PATH，或者它是空的，没法回答 tmux 在不在。这不是说它不存在"
+        "why": "读不到 PATH 或它为空 · 无法判断 tmux 是否存在 · 不代表不存在"
       },
       "tier": "UserInstallsWePrompt",
       "tool_id": "tmux",
@@ -383,7 +383,7 @@
       "source_label": "不由 cc-monitor 提供 —— 这是通用工具，请你自己装",
       "state": {
         "kind": "undetermined",
-        "why": "查不动：读不到 PATH，或者它是空的，没法回答 bash 在不在。这不是说它不存在"
+        "why": "读不到 PATH 或它为空 · 无法判断 bash 是否存在 · 不代表不存在"
       },
       "tier": "UserInstallsWePrompt",
       "tool_id": "login-shell",
@@ -417,7 +417,7 @@
       "source_label": "不由 cc-monitor 提供 —— 这是通用工具，请你自己装",
       "state": {
         "kind": "undetermined",
-        "why": "查不动：读不到 PATH，或者它是空的，没法回答 claude 在不在。这不是说它不存在"
+        "why": "读不到 PATH 或它为空 · 无法判断 claude 是否存在 · 不代表不存在"
       },
       "tier": "UserInstallsWePrompt",
       "tool_id": "claude-cli",

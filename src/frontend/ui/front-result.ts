@@ -34,6 +34,7 @@ export type FrontAct =
   | { kind: "open-in-terminal" }
   | { kind: "copy"; detail: string }
   | { kind: "update" }
+  | { kind: "retry-update" }
   | { kind: "retry" }
   | { kind: "reconnect" };
 
@@ -112,6 +113,7 @@ export function frontActLabel(a: FrontAct): string {
     case "update":
       return copyText("front.act.update");
     case "retry":
+    case "retry-update":
       return copyText("front.act.retry");
     case "reconnect":
       return copyText("front.act.reconnect");
