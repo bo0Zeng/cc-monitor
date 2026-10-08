@@ -291,10 +291,14 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
     "「tmux 会话名」那一行 `tmuxRow.root`（`s.nsRow`）—— 放在终端窗口时收起",
   "src/frontend/ui/settings/ext-section.ts::this.drawer":
     "`this.drawer` —— 构造时收起",
+  "src/frontend/ui/settings/resume-select.ts::this.custom":
+    "恢复命令下拉旁「自定义…」那一格 —— 类名 `settings-input settings-input-mono` 在构造器里挂，那两类不写 display",
   "src/frontend/ui/settings/machine-state.ts::el":
     "`el` 是调用方交进来的问题行（列表那一行与卡头各一个 `.machine-problem`，跨文件）；`settings.css` 里 `.machine-problem[hidden] { display: none }` 人工核过",
   "src/frontend/ui/settings/panel.ts::b.el":
     "`b.el` —— `b` 来自 `this.perMachineBlocks` 数组，元素由各 section 自己建，跨文件",
+  "src/frontend/ui/settings/panel.ts::this.claudeDirRestart":
+    "Claude 目录那一行下「重启 cc-monitor 后生效 ［现在重启］」—— 类名 `diag-restart` 在 `buildDataGroup` 里挂，那一类不写 display",
   "src/frontend/ui/settings/panel.ts::errorAt":
     "`errorAt` —— 参数，类名 `settings-row-error` 由调用方建的那一句挂",
   "src/frontend/ui/settings/panel.ts::this.perMachineFallbackHint":

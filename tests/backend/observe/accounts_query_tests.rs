@@ -73,19 +73,29 @@ fn list_accounts_degrades_gracefully() {
     // 缺文件
     let m = meta(&list_accounts(&root.join("nope")));
     assert_eq!(m["enabled"], false);
-    assert!(m["error"].as_str().unwrap().contains("读不了"));
+    assert!(copy_core::copy_matches(
+        "beAccountsQuery.loadManifest.unreadable",
+        m["error"].as_str().unwrap()
+    ));
     // 坏 JSON
     let a = root.join("bad");
     write_manifest(&a, "{not json");
     let m = meta(&list_accounts(&a));
     assert_eq!(m["enabled"], false);
-    assert!(m["error"].as_str().unwrap().contains("合法 JSON"));
+    assert!(copy_core::copy_matches(
+        "beAccountsQuery.loadManifest.badJson",
+        m["error"].as_str().unwrap()
+    ));
     // 版本不支持
     let a2 = root.join("v2");
     write_manifest(&a2, r#"{"version":2,"accounts":[]}"#);
     let m = meta(&list_accounts(&a2));
     assert_eq!(m["enabled"], false);
-    assert!(m["error"].as_str().unwrap().contains("版本 2"));
+    assert!(copy_core::copy_matches_with(
+        "beAccountsQuery.loadManifest.badVersion",
+        &[("v", "2")],
+        m["error"].as_str().unwrap()
+    ));
     // 缺 version
     let a3 = root.join("nover");
     write_manifest(&a3, r#"{"accounts":[]}"#);
@@ -1478,8 +1488,9 @@ fn the_list_product_says_when_account_zero_is_missing() {
     let v = list_product_at(&accts, &[], "claude-code", "claude-code");
     let n = v["notice"].as_str().expect("缺账号 0 却没出那一句");
     assert!(
-        n.contains("默认账号")
-            && !n.contains(copy_core::copy_static!("rsConfigSurface.host.remote")),
+        n.contains(copy_core::copy_static!(
+            "beAccountsQuery.listProductAt.noDefault"
+        )) && !n.contains(copy_core::copy_static!("rsConfigSurface.host.remote")),
         "{n}"
     );
     let off = list_product_at(&root.join("nope"), &[], "claude-code", "claude-code");
@@ -2027,4 +2038,21 @@ fn the_list_meta_says_who_becomes_default_once_the_default_is_removed() {
     );
     let _ = fs::remove_dir_all(&root);
     let _ = fs::remove_dir_all(&empty);
+}
+
+/// 「现在重启 cc-monitor」那一问（`appExit`）：这台后端选了随 cc-monitor 退出一起停 ⇒ 这台的会话 ＋ 账上全部转发都会断；
+/// 选了留着 ⇒ 什么都不断（全零，界面就不弹框）。
+#[test]
+fn app_exit_interrupts_follow_this_backends_own_exit_choice() {
+    let lines = vec![
+        r#"{"alive":true,"viaRelay":true}"#.to_string(),
+        r#"{"alive":true,"viaRelay":false}"#.to_string(),
+    ];
+    let zero =
+        serde_json::json!({"relayedSessions":0,"relayedMaybe":0,"liveStreams":0,"forwards":0});
+    assert_eq!(app_exit_product(false, &lines, 3), zero);
+    assert_eq!(
+        app_exit_product(true, &lines, 3),
+        serde_json::json!({"relayedSessions":1,"relayedMaybe":0,"liveStreams":2,"forwards":3})
+    );
 }

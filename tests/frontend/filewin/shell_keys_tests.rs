@@ -325,7 +325,7 @@ fn enter_opens_a_directory_edits_a_file_and_refuses_a_bunch() {
     d.pick(&mut w, "a.txt", NONE);
     d.key(&mut w, egui::Key::Enter, NONE);
     let e = w.listing.error.lock().unwrap().clone().unwrap_or_default();
-    assert!(e.contains("启动不了"), "回车没落到编辑那一支：{e:?}");
+    assert!(no_runtime(&e), "回车没落到编辑那一支：{e:?}");
     assert_eq!(w.cwd, "/srv/data");
     // 多选：出声，不动。
     d.pick(&mut w, "b.txt", CTRL);
@@ -678,6 +678,8 @@ fn open_menu(
 fn the_menu_lists_exactly_what_the_selection_allows() {
     let big = crate::editor::MAX_EDIT_BYTES as u64 + 1;
     let lossy = "\u{FFFD}x";
+    let chmod2 = copy_core::copy_text("rsFilewinSelect.label.chmodMany", &[("n", "2")]);
+    let delete2 = copy_core::copy_text("rsFilewinSelect.label.deleteMany", &[("n", "2")]);
     // (情形, 行, 先选, 右键点谁, 菜单上该有的字)
     let cases: Vec<(
         &str,
@@ -752,8 +754,8 @@ fn the_menu_lists_exactly_what_the_selection_allows() {
             "c.bin",
             vec![
                 copy_core::copy_static!("rsFilewinSize.label.size"),
-                "改权限 · 2 项",
-                "删除 2 项",
+                chmod2.as_str(),
+                delete2.as_str(),
             ],
         ),
         (
@@ -799,7 +801,7 @@ fn every_menu_item_lands_on_the_row_it_was_opened_for() {
     let on_file: Vec<(&str, Check)> = vec![
         (copy_core::copy_static!("rsFilewinEditor.label.edit"), |w| {
             let e = w.listing.error.lock().unwrap().clone().unwrap_or_default();
-            e.contains("启动不了").then_some(()).ok_or(e)
+            no_runtime(&e).then_some(()).ok_or(e)
         }),
         (
             copy_core::copy_static!("rsFilewinCopy.label.copy"),
@@ -834,7 +836,7 @@ fn every_menu_item_lands_on_the_row_it_was_opened_for() {
             |w| {
                 // 没有运行时 ⇒ 那一摞起不来，而它**出声**（不静默吞掉一次删除）。
                 let e = w.listing.error.lock().unwrap().clone().unwrap_or_default();
-                e.contains("启动不了").then_some(()).ok_or(e)
+                no_runtime(&e).then_some(()).ok_or(e)
             },
         ),
     ];
@@ -992,7 +994,7 @@ fn key_steps() -> Vec<KeyStep> {
         ("k.ctrl_a", &["key", "ctrl+a"], |k| k.picked.len() == 5),
         ("k.type_ze", &["type", "ze"], |k| p(k, &["zeta.bin"])),
         ("k.delete", &["key", "Delete"], |k| {
-            k.error.as_deref().is_some_and(|e| e.contains("启动不了"))
+            k.error.as_deref().is_some_and(|e| no_runtime(e))
         }),
         ("k.type_su", &["type", "su"], |k| p(k, &["sub"])),
         ("k.f2", &["key", "F2"], |k| {
@@ -1307,7 +1309,10 @@ fn chmod_is_refused_out_loud_where_the_machine_said_it_cannot() {
         assert_eq!(w.perform(Action::Chmod, None), allowed, "said={said}");
         if said {
             assert!(
-                w.key_notice().is_some_and(|n| n.contains("改不了权限")),
+                w.key_notice()
+                    .is_some_and(|n| n.contains(copy_core::copy_static!(
+                        "rsFilewinShell.menu.unavailableHere"
+                    ))),
                 "做不到却没说为什么：{:?}",
                 w.key_notice()
             );
@@ -1316,4 +1321,13 @@ fn chmod_is_refused_out_loud_where_the_machine_said_it_cannot() {
             assert!(w.write_prompt().is_some(), "没说做不到却没摆出框");
         }
     }
+}
+
+/// 「起不来，重开这个窗口」那一族（`rsFilewinShell.*.noRuntime`）里的某一句。
+fn no_runtime(e: &str) -> bool {
+    [
+        "save", "edit", "pull", "writes", "copy", "upload", "search", "size",
+    ]
+    .iter()
+    .any(|k| copy_core::copy_matches(&format!("rsFilewinShell.{k}.noRuntime"), e))
 }

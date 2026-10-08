@@ -529,6 +529,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     backend_old: "J22",
     // 测试按文案键断言用（占位处任意值）；TS 那一侧的同形在测试支架 `tests/test-support/copy-pattern.ts`，不是生产判定。
     copy_matches: NONE,
+    // 同上，只钉给了值的那几格（TS 那一侧是 `copyPattern(键, 已知值)`）。
+    copy_matches_with: NONE,
     copy_text: "J11",
     local_machine: "J22",
     reply_unreadable: "J22",
@@ -650,6 +652,9 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     PS_ALIASES_REL: NONE,
     SKILL_LEDGER_REL: NONE,
     CHORES_REL: NONE,
+    // 离线那台的上次值（后端写；数据位置页按它列）· 后端自己家里那一份清单（后端「文件与数据」逐样 stat 它）。
+    LAST_SEEN_REL: NONE,
+    OWN_HOME_ENTRIES: NONE,
     // 额度账 · 账号轮换（后端账号域写；数据位置页按它列）。
     QUOTA_LEDGER_REL: NONE,
     ROTATION_REL: NONE,

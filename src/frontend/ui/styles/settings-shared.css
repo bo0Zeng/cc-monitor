@@ -9,11 +9,6 @@
  */
 
 @layer components {
-.settings-preset-del {
-  padding-left: 6px;
-  padding-right: 6px;
-}
-
 
 /* S7：「有改动待重启」常驻条。空时 `hidden`，不占位。
    刻意做得**看得见但不刺眼** —— 它会一直在，直到用户真的重启；
@@ -24,6 +19,15 @@
   color: var(--text);
   font-size: var(--font-size-small);
   padding: 6px 14px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+/* 「现在重启」：重启条里与行内那一句同一颗按钮，紧跟在那句话后面。 */
+.settings-restart-now {
+  flex: none;
+  margin-left: var(--space-2);
 }
 
 .settings-restart-bar[hidden] {

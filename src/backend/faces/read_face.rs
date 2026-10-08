@@ -169,6 +169,14 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
             let machine = opt_str_arg(args, "machine")?;
             let lines =
                 accounts_query::lines_for_frame(home, accounts_query::FrameAccounts::BySession);
+            if args.get("appExit").and_then(Value::as_bool) == Some(true) {
+                let kill = crate::control::exit_policy::read_now().kill_on_exit();
+                return Ok(accounts_query::app_exit_product(
+                    kill,
+                    &lines,
+                    crate::dial::forwards::running_all(),
+                ));
+            }
             let forwards = machine.map_or(0, crate::dial::forwards::running_to_machine);
             Ok(accounts_query::machine_product(&lines, forwards))
         }

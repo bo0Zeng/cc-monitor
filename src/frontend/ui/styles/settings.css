@@ -9,27 +9,6 @@
  */
 
 @layer components {
-/* P6c：resume 命令预设条（一排可点的 chip）。 */
-.settings-presets {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin: 4px 0 8px;
-}
-
-/* P6c D 补审：chip + 移除口 */
-.settings-preset-wrap {
-  display: inline-flex;
-  align-items: stretch;
-}
-
-.settings-preset {
-  max-width: 260px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 /* ! 信息图标 + hover tooltip
    用 textContent 填充内容，CSS 控制显示/隐藏 + 多行（pre-line）。 */
 .settings-info-icon {
@@ -634,11 +613,6 @@ body.settings-window-mode .settings-panel {
   flex: none;
   align-items: center;
   gap: var(--space-3);
-}
-
-.machine-cc-input {
-  width: 220px;
-  font-family: var(--font-mono);
 }
 
 .machine-cc-foot {
@@ -2804,7 +2778,8 @@ body.settings-window-mode .settings-panel {
 .data-offline {
   margin-bottom: 8px;
 }
-.data-local-only {
+.data-local-only,
+.data-remote-only {
   margin-bottom: 4px;
 }
 

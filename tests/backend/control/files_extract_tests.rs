@@ -315,7 +315,11 @@ fn an_extract_that_fails_midway_undoes_everything_it_built() {
     plant(&base, "bad.zip", &z);
     let e = extract(&base, Path::new("bad.zip"), Path::new("bad")).expect_err("坏正文却解成了");
     assert_eq!(e.0, "io_failed", "{e:?}");
-    assert!(e.1.contains("都撤掉了"), "没说回滚：{}", e.1);
+    assert!(
+        e.1.contains(copy_core::copy_static!("beFilesExtract.undo.all")),
+        "没说回滚：{}",
+        e.1
+    );
     assert!(
         std::fs::symlink_metadata(base.join("bad")).is_err(),
         "🔴 半截解压留在了盘上"

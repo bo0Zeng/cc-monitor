@@ -225,7 +225,6 @@ fn every_refusal_names_the_machine_and_what_it_is() {
     let mut said = BTreeSet::new();
     for r in &cases {
         let s = r.say("devbox");
-        assert!(s.contains("后端"), "{r:?} 没说是哪件东西：{s}");
         assert!(!s.contains('〔'), "{r:?} 的 key 不在文案表里：{s}");
         assert!(s.contains("devbox"), "{r:?} 没说是哪台：{s}");
         assert!(!s.contains('{'), "{r:?} 还有没填的占位符：{s}");

@@ -268,81 +268,66 @@ describe("T07 分区块隔离（真行为）", () => {
   });
 });
 
-// ===== P6c：恢复命令预设（#69 b/c）—— 通用页一格（各台的默认）=====
-describe("P6c 恢复命令预设", () => {
+// ===== P6c：恢复命令（通用页一格，各台的默认）—— 下拉：默认那一家的启动器 · 用过的 · 自定义… =====
+describe("P6c 恢复命令下拉", () => {
   beforeEach(() => {
     behaviorStub.presets = [];
     document.body.textContent = "";
   });
-  // 面板自己把 DOM 挂到 document（windowMode）—— 与本文件其余判据同一种查法。
-  const chips = () => [...document.querySelectorAll<HTMLButtonElement>(".resume-presets .settings-preset")];
-  const resumeInput = () =>
-    [...document.querySelectorAll<HTMLInputElement>("input")].find((i) => i.placeholder === copyText("settingsPanel.behavior.resumeHint"))!;
+  const sel = () => document.querySelector<HTMLButtonElement>("[data-role=resume-select]")!;
+  const labels = (): string[] => {
+    sel().click();
+    const got = [...document.querySelectorAll<HTMLElement>('[role="menu"] [role^="menuitem"]')].map((i) => i.textContent ?? "");
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    sel().click();
+    return got;
+  };
+  const pick = (label: string): void => {
+    sel().click();
+    [...document.querySelectorAll<HTMLElement>('[role="menu"] [role^="menuitem"]')].find((i) => i.textContent === label)!.click();
+  };
 
-  it("★ P6c-Y1：点一条预设 ⇒ 输入框变成它，并**真的走保存路径**", async () => {
-    behaviorStub.presets = ["cct", "claude"];
+  it("★ P6c-Y1：候选 ＝ 默认（适配层画像的启动器）· 用过的几条 · 自定义…；选一条 ⇒ **真的走保存路径**并记进用过的", async () => {
+    behaviorStub.presets = ["cct", "ccm --tmux"];
     const p = new SettingsPanel({ windowMode: true });
     await p.open();
-    void p;
-    const list = chips();
-    expect(list.map((b) => b.textContent)).toEqual(["cct", "claude"]);
-    const input = resumeInput();
-    expect(input).toBeTruthy();
+    const got = labels();
+    expect(got[0], "默认那一项 ＝ 适配层画像里默认那一家的启动器 ＋ 灰字「默认」").toContain(copyText("resumeSelect.option.defaultBare"));
+    expect(got.slice(1)).toEqual(["cct", "ccm --tmux", copyText("resumeSelect.option.custom")]);
     vi.mocked(setBehavior).mockClear();
-    list[1].click();
+    pick("ccm --tmux");
     await new Promise((r) => setTimeout(r, 0));
-
-    expect(input.value).toBe("claude");
-    // 只填输入框不保存 ⇒ 用户以为选了、其实没存。**必须钉保存真的发生了。**
     expect(vi.mocked(setBehavior)).toHaveBeenCalled();
     const saved = vi.mocked(setBehavior).mock.calls.at(-1)![0];
-    expect(saved.resumeCommand).toBe("claude");
+    expect(saved.resumeCommand).toBe("ccm --tmux");
+    expect(saved.resumeCommandPresets[0]).toBe("ccm --tmux");
   });
 
-  it("★ P6c-Y3：点预设要走同一条越层诊断（这一格也是远端几台的默认；预设是放大器，不是绕过口）", async () => {
+  it("★ P6c-Y3：选的那条要走同一条越层诊断（这一格也是远端几台的默认；候选是放大器，不是绕过口）", async () => {
     behaviorStub.presets = ["cct"];
     const p = new SettingsPanel({ windowMode: true });
     await p.open();
     const warn = document.querySelector<HTMLElement>(".settings-launcher-warning")!;
-    expect(warn.style.display).toBe("none"); // 起手没有警告
-
-    chips()[0].click();
+    expect(warn.style.display).toBe("none");
+    pick("cct");
     await new Promise((r) => setTimeout(r, 0));
     expect(warn.style.display).toBe("block");
     expect(warn.textContent ?? "").not.toBe("");
   });
 
-  it("★ P6c-D：预设能移除，但**正在生效的那条不给移除**", async () => {
-    behaviorStub.presets = ["ccm", "claude"];
+  it("★ P6c-C：自定义… 展开一格，失焦存成那一条", async () => {
     const p = new SettingsPanel({ windowMode: true });
     await p.open();
-    void p;
-    const dels = () => [...document.querySelectorAll<HTMLButtonElement>(".resume-presets .settings-preset-del")];
-    expect(dels()).toHaveLength(2);
-    expect(dels().every((d) => d.textContent === "×")).toBe(true);
-
-    // 先选中 ccm 让它「正在生效」。
+    const custom = document.querySelector<HTMLInputElement>("[data-role=resume-custom]")!;
+    expect(custom.hidden).toBe(true);
+    pick(copyText("resumeSelect.option.custom"));
+    expect(custom.hidden).toBe(false);
     vi.mocked(setBehavior).mockClear();
-    chips()[0].click();
+    custom.value = "my-claude";
+    custom.dispatchEvent(new Event("change"));
     await new Promise((r) => setTimeout(r, 0));
-    const after = dels();
-    expect(after[0].disabled, "正在生效的那条不给移除").toBe(true);
-    expect(after[0].title).toMatch(copyPattern("settingsPanel.preset.inUse"));
-    expect(after[1].disabled, "别的那条照常可移除").toBe(false);
-
-    // 移除**不在生效**的那条 ⇒ 真的从落盘的列表里没了。
-    vi.mocked(setBehavior).mockClear();
-    after[1].click();
-    await new Promise((r) => setTimeout(r, 0));
-    const saved = vi.mocked(setBehavior).mock.calls.at(-1)![0];
-    expect(saved.resumeCommandPresets).not.toContain("claude");
-    expect(saved.resumeCommandPresets).toContain("ccm");
-  });
-
-  it("★ P6c-Y1b：没有预设时不留空盒子（一排看不见的元素只会挡布局）", async () => {
-    const p = new SettingsPanel({ windowMode: true });
-    await p.open();
-    expect(chips()).toHaveLength(0);
+    expect(vi.mocked(setBehavior).mock.calls.at(-1)![0].resumeCommand).toBe("my-claude");
+    expect(sel().dataset.value).toBe("my-claude");
   });
 });
 

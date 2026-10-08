@@ -102,6 +102,15 @@
       "waivable": false
     },
     {
+      "id": "C-K4",
+      "part": "③ kind 分工",
+      "rule": "每条文案带 role（界面角色：按钮 · 菜单项 · 标题 · 标签 · 占位 · 状态 · 说明 · 悬停 · toast · 报错 · 原因格 · 确认框 · 空态 · 进度 · 命令行 · 读屏 · 片段 · 图标），role 与 kind 的搭配取自一张搭配表（例：菜单项只配 action）；搭配表与表里出现的（role · kind）两向相等。按角色限长、状态闭集等规矩据此判。",
+      "good": [],
+      "bad": [],
+      "check": "机检",
+      "waivable": false
+    },
+    {
       "id": "C-K3",
       "part": "③ kind 分工",
       "rule": "各档该长的样子：title 名词短语 · control 许「启用 X」「显示 X」· action 就是动词（保存 / 删除 / 重试）· body 里问句合法（「要现在重试吗？」是真在问）· error 先说结果（C-R2）。",

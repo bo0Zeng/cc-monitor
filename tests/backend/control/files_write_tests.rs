@@ -122,17 +122,17 @@ fn the_session_file_predicate_answers_both_ways() {
 fn the_lexical_fence_refuses_the_four_shapes() {
     let root = PathBuf::from("/srv/target");
     for (rel, word) in [
-        ("../escape.txt", "不能有 ..："),
-        ("a/../../escape.txt", "不能有 ..："),
-        ("/etc/passwd", "绝对路径"),
-        ("./a.txt", "不能有 .："),
-        ("", "空的"),
-        ("   ", "空的"),
+        ("../escape.txt", "parentStep"),
+        ("a/../../escape.txt", "parentStep"),
+        ("/etc/passwd", "absolute"),
+        ("./a.txt", "dotStep"),
+        ("", "empty"),
+        ("   ", "empty"),
     ] {
         let err =
             lexical_in_root(&root, rel).expect_err(&format!("围栏① 放过了 {rel:?} —— 它该被拒"));
         assert!(
-            err.contains(word),
+            copy_core::copy_matches(&format!("beFilesWrite.path.{word}"), &err),
             "拒了，但说不清是哪一形（rel={rel:?}，错误={err}）"
         );
     }
@@ -340,7 +340,10 @@ fn a_missing_parent_directory_is_a_plain_refusal_not_a_silent_mkdir() {
     let root = temp_root("noparent");
     let err =
         resolve_parent_in_root(&root, &root.join("nope/a.md")).expect_err("父目录不在，却没拒");
-    assert!(err.contains("解析不了"), "拒的理由不对：{err}");
+    assert!(
+        copy_core::copy_matches("beFilesWrite.path.unresolved", &err),
+        "拒的理由不对：{err}"
+    );
     assert!(
         !root.join("nope").exists(),
         "父目录被顺手建出来了 —— 白名单层不许建目录"
@@ -2193,7 +2196,8 @@ fn w5vis_a_backup_that_cannot_keep_the_original_mode_is_removed_and_refused() {
     match e {
         WriteRefusal::Io(m) => {
             assert!(
-                m.contains("w5vis 注入的 chmod 失败") && m.contains("原文件没动"),
+                m.contains("w5vis 注入的 chmod 失败")
+                    && copy_core::copy_matches("beFilesWrite.backup.modeFailed", &m),
                 "{m}"
             )
         }
@@ -2408,7 +2412,7 @@ fn a_recursive_copy_that_fails_midway_undoes_what_it_built() {
     let e = copy_tree(&root, "t", "u").expect_err("读不了的源却复制成了");
     assert_eq!(e.code(), "io_failed", "{e:?}");
     assert!(
-        e.message().contains("都撤掉了"),
+        copy_core::copy_matches("beFilesWrite.copyTree.undoneAll", e.message()),
         "没说回滚：{}",
         e.message()
     );

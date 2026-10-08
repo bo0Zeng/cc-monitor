@@ -15,7 +15,14 @@ fn the_not_installed_message_names_every_place_it_looked() {
     let msg = not_installed_message("tool", &fixed, 9, "装了吗？（用 TOOL_DIR 指过来）");
     assert!(msg.contains("/opt/a/tool"), "{msg}");
     assert!(msg.contains("/home/u/bin/tool"), "{msg}");
-    assert!(msg.contains("9 个目录"), "PATH 那半没说：{msg}");
+    assert!(
+        copy_core::copy_matches_with(
+            "beDiscover.notInstalledMessage.notFound",
+            &[("pathDirs", "9")],
+            &msg
+        ),
+        "PATH 那半没说：{msg}"
+    );
     assert!(msg.contains("TOOL_DIR"), "调用方的尾巴丢了：{msg}");
 }
 
@@ -70,7 +77,11 @@ fn a_directory_with_the_same_name_is_not_executable() {
 fn opting_out_of_path_really_skips_it() {
     let err = find("no-such-tool-anywhere", &[], false, "").expect_err("不该找得到");
     assert!(
-        err.contains("PATH 上的 0 个目录"),
+        copy_core::copy_matches_with(
+            "beDiscover.notInstalledMessage.notFound",
+            &[("pathDirs", "0")],
+            &err
+        ),
         "说没走 PATH，但那句话里的目录数不是 0：{err}"
     );
 }

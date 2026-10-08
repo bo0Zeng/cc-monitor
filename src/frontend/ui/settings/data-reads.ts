@@ -8,6 +8,7 @@ import { budgetWithin, jsonBody, readJson, ReplyUnreadable, saidFrom } from "../
 import { commands } from "../ipc/commands";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
 import { exactKeys, isObj } from "../ipc/decode";
+import { recallSeen, rememberSeen } from "../last-seen";
 
 /** 一次 stat 一批、读几份小文件：给 30 秒。 */
 const DATA_BUDGET_MS = 30_000;
@@ -58,6 +59,18 @@ export interface Chore {
   action: ChoreAction;
 }
 
+/** cc-monitor 在那台自己家里放的一样（`id` 是闭集，界面按它取名字与说明）。 */
+export interface OwnItem {
+  id: string;
+  /** `~/.cc-monitor/…` 写法。 */
+  path: string;
+  dir: boolean;
+  class: "truth" | "cache";
+  exists: boolean;
+  /** 文件的字节数；目录 / 不在 ⇒ `null`。 */
+  size: number | null;
+}
+
 export interface DataReport {
   home: string;
   changedFiles: ChangedFile[];
@@ -66,6 +79,7 @@ export interface DataReport {
   tmux: boolean | null;
   /** 「要你动手」里进角标的件数（要做 ＋ 要装 ＋ 要你定，还没做完的）。 */
   chores: number;
+  own: OwnItem[];
 }
 
 const bad = (): never => {
@@ -135,8 +149,8 @@ export async function markChore(origin: Origin, args: { op: "decline" | "undecli
 
 /** `data-report` 的应答 ⇒ 成品；多一格缺一格 · 类型不对 ⇒ 抛。 */
 export function decodeDataReport(v: unknown): DataReport {
-  if (!isObj(v) || !exactKeys(v, ["home", "changedFiles", "todo", "tmux", "chores"])) return bad();
-  if (!Array.isArray(v.changedFiles) || !Array.isArray(v.todo)) return bad();
+  if (!isObj(v) || !exactKeys(v, ["home", "changedFiles", "todo", "tmux", "chores", "own"])) return bad();
+  if (!Array.isArray(v.changedFiles) || !Array.isArray(v.todo) || !Array.isArray(v.own)) return bad();
   if (v.tmux !== null && typeof v.tmux !== "boolean") return bad();
   if (typeof v.chores !== "number" || !Number.isInteger(v.chores) || v.chores < 0) return bad();
   const changedFiles = v.changedFiles.map((c): ChangedFile => {
@@ -144,7 +158,13 @@ export function decodeDataReport(v: unknown): DataReport {
     return { path: str(c.path), what: str(c.what), undo: decodeUndo(c.undo) };
   });
   const todo = v.todo.map(decodeChore);
-  return { home: str(v.home), changedFiles, todo, tmux: v.tmux as boolean | null, chores: v.chores as number };
+  const own = v.own.map((o): OwnItem => {
+    if (!isObj(o) || !exactKeys(o, ["id", "path", "dir", "class", "exists", "size"])) return bad();
+    if (typeof o.dir !== "boolean" || typeof o.exists !== "boolean") return bad();
+    if (o.size !== null && !(typeof o.size === "number" && Number.isInteger(o.size) && o.size >= 0)) return bad();
+    return { id: str(o.id), path: str(o.path), dir: o.dir, class: oneOf(o.class, ["truth", "cache"]), exists: o.exists, size: o.size as number | null };
+  });
+  return { home: str(v.home), changedFiles, todo, tmux: v.tmux as boolean | null, chores: v.chores as number, own };
 }
 
 /** 问那台（本机带 monitor 那几条事实）。问不到 / 形状不对 ⇒ 抛一句人话。 */
@@ -159,10 +179,26 @@ export async function readDataReport(origin: Origin): Promise<DataReport> {
   } catch (e) {
     throw new Error(saidFrom(e, origin));
   }
+  let report: DataReport;
+  let raw: unknown;
   try {
-    return decodeDataReport(readJson(reply));
+    raw = readJson(reply);
+    report = decodeDataReport(raw);
   } catch (e) {
     throw new Error(saidFrom(e, origin));
+  }
+  void rememberSeen(origin, "data", raw);
+  return report;
+}
+
+/** 那台上次读成的那一份（本机后端记着的，跨重启还在）；没有 / 形状对不上 ⇒ `null`。 */
+export async function recallDataReport(origin: Origin): Promise<{ report: DataReport; atMs: number } | null> {
+  const seen = await recallSeen(origin, "data");
+  if (seen === null) return null;
+  try {
+    return { report: decodeDataReport(seen.value), atMs: seen.atMs };
+  } catch {
+    return null;
   }
 }
 

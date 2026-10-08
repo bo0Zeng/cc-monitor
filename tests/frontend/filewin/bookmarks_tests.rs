@@ -167,7 +167,10 @@ fn the_disk_holds_exactly_what_was_written() {
     // 读不懂 ⇒ 报错，而且**不覆盖**（覆盖掉就是把别的机器那几格一起清了）。
     std::fs::write(&file, b"{ not json").unwrap();
     let e = mutate(&file, |b| b.insert("devbox".into(), vec!["/x".into()])).unwrap_err();
-    assert!(e.contains("读不懂"), "那句话要说清是读不懂：{e}");
+    assert!(
+        copy_core::copy_matches("rsFilewinBookmarks.read.unreadable", &e),
+        "那句话要说清是读不懂：{e}"
+    );
     assert_eq!(
         std::fs::read(&file).unwrap(),
         b"{ not json",

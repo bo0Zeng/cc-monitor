@@ -1199,6 +1199,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 | 字段 | 向 | 说明 |
 |---|---|---|
+| `appExit` | → | 可缺；`true` ⇒ 问的是「重启 / 退出 cc-monitor」：这台后端选了随它退出一起停才数会话与账上全部转发，否则全零 |
 | `forwards` | ← | 见 `machine` |
 | `liveStreams` | ← | 这台活着的会话数（停的那几秒 cc-monitor 里它们不更新） |
 | `machine` | → | 可缺 |
@@ -1886,10 +1887,40 @@ sid → 上次用哪个号起。
 | `changedFiles` | ← | cc-monitor 写进你的文件的那几处 `{path, what, undo}`（`undo` ＝ 撤回在哪：设置窗的页 · 栏 · 锚点） |
 | `chores` | ← | 「要你动手」里进角标的件数：要做 ＋ 要装 ＋ 要你定，还没做完的 |
 | `home` | ← | 这台家目录（显示时 `~` 缩写按它） |
+| `own` | ← | cc-monitor 在这台自己家里放的每一样 `{id, path, dir, class, exists, size}`：`id` 闭集同 `~/.cc-monitor/` 下的契约常量；`class` ＝ `truth`（删了会丢）· `cache`（能重建）；目录 `size` 为 `null` |
 | `tmux` | ← | 这台有没有 tmux（查不动 ⇒ `null`） |
 | `todo` | ← | 「要你动手」各件 `{id, kind, state, name, loc, said, why, steps, diff, copy, whole, wholeCovers, file, go, howUrl, mask, action}`：`kind` 闭集 `must` · `install` · `decide` · `installOptional` · `optional`；`state` 闭集 `todo` · `done` · `expired` · `blocked` · `declined`；`action` 闭集 `copyCommand` · `copySnippet` · `decide` · `locate` · `how` · `installFirst`；`diff` 每行 `{n, op, text}`（`op` ＝ `same` · `del` · `add`，加的那几行 `n` 为 `null`）；`mask` ＝ 显示时要遮住的那把钥匙 |
 
 码：`bad_args` · `failed`
+
+#### `last-seen-read`
+
+读离线那台的上次值。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --last-seen-read`
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `origin` | → | 哪台（机器名） |
+| `accounts` | ← | 上次读成的 `accounts-list` 应答 `{atMs, value}`；没记过 ⇒ `null` |
+| `data` | ← | 上次读成的 `data-report` 应答 `{atMs, value}`；没记过 ⇒ `null` |
+
+码：`bad_args` · `io_failed`
+
+#### `last-seen-write`
+
+记下一台这一次读成的那一份。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --last-seen-write`
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `atMs` | ← | 记下的时刻（毫秒） |
+| `kind` | → | 闭集 `accounts` · `data` |
+| `origin` | → | 哪台（机器名） |
+| `value` | → | 那一份应答（对象，序列化后 ≤ 256 KiB）；最多记 64 台，超了先丢最久没更新的那台 |
+
+码：`bad_args` · `io_failed` · `too_large`
 
 #### `chores-mark`
 
@@ -3473,6 +3504,8 @@ cc-bus 钩子诊断。
 | `--history-user-inputs` | ＝ 帧命令 `history-user-inputs`：「你说过的话」清单 |
 | `--hooks-diag` | ＝ 帧命令 `hooks-diag`：cc-bus 钩子诊断 |
 | `--kill` | ＝ 帧命令 `kill`：杀一个 tmux 会话 |
+| `--last-seen-read` | ＝ 帧命令 `last-seen-read`：读离线那台的上次值 |
+| `--last-seen-write` | ＝ 帧命令 `last-seen-write`：记下一台这一次读成的那一份 |
 | `--launch` | ＝ 帧命令 `launch`：建 tmux 会话并键入载荷，或键入一个已在的会话（远端执行面） |
 | `--launch-render-cli` | ＝ 帧命令 `launch-render-cli`：远端起会话那一行 `ccm …` |
 | `--list-accounts` | 账号清单：首行 `{kind:"accounts-meta", enabled, acctsDir, manifestPath, updatedAt, sharedStore, count, error, unsupported, nextDefault}`，其后每号一行 `{name, email, configDir, isDefault, mode, exists, loggedIn}`；没启用多账号 ⇒ `enabled:false`、退出 0 |

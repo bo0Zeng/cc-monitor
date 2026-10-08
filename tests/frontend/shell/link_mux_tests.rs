@@ -358,7 +358,11 @@ async fn an_error_end_and_an_over_window_flood_both_surface_as_read_errors() {
     let mut sink = Vec::new();
     let e = b.read_to_end(&mut sink).await.expect_err("超窗该判坏");
     // 照 CP1 台账改：流控细节（信用 / 窗口 / 协议对不上）不上屏，说成「版本不对，连接断了」。
-    assert!(e.to_string().contains("版本不对"), "超窗的说法不对：{e}");
+    assert!(
+        e.to_string()
+            .contains(copy_core::copy_static!("rsLinkMux.data.noCredit")),
+        "超窗的说法不对：{e}"
+    );
     assert!(
         sink.len() as u64 <= LINK_WINDOW_BYTES,
         "判坏之前交出去的字节超过了一窗：{}",

@@ -177,9 +177,10 @@ async fn a_taken_name_says_exists_under_the_cell_and_keeps_it() {
     let _ = frame_text(&ctx, &mut w, Vec::new());
     let painted = frame_text(&ctx, &mut w, Vec::new());
     assert!(
-        painted
-            .iter()
-            .any(|t| t.contains("exists.md") && t.contains("已存在")),
+        painted.iter().any(|t| t.contains(&copy_core::copy_text(
+            "rsFilewinWriteops.inline.exists",
+            &[("name", "exists.md")]
+        ))),
         "那句话没画在窗口上：{painted:?}"
     );
     assert!(

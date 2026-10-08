@@ -47,7 +47,6 @@
       { "text": "账号", "use": "输入" }
     ],
     "tests/frontend/filewin/editor_tests.rs": [
-      { "text": "刷新", "use": "词义" },
       { "text": "没有", "use": "输入" }
     ],
     "tests/frontend/filewin/progress_tests.rs": [
@@ -64,9 +63,6 @@
     ],
     "tests/frontend/shell/atomic_replace_registry_tests.rs": [
       { "text": "用户", "use": "非文案" }
-    ],
-    "tests/frontend/shell/byte_table_tests.rs": [
-      { "text": "后端", "use": "词义" }
     ],
     "tests/frontend/shell/capability_registry_tests.rs": [
       { "text": "最小化", "use": "非文案" },

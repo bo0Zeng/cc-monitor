@@ -400,7 +400,10 @@ fn the_general_layer_answers_a_non_claude_agent_silently_or_with_claudes_words()
     assert_eq!(code, "bad_request");
     assert_eq!(
         said,
-        format!("不认识这个 agent：{AGENT_KIND}（认得的：claude / codex）"),
+        copy_core::copy_text(
+            "beAgents.pick.unknown",
+            &[("agent", AGENT_KIND), ("known", "claude / codex")]
+        ),
         "没说出不认识的那个名字与认得的几家"
     );
 

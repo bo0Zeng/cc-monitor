@@ -114,7 +114,14 @@ fn one_line(n: usize) -> String {
 }
 
 fn is_file_text(t: &str) -> bool {
-    !t.starts_with("大文件模式") && !t.starts_with("这一行共")
+    ![
+        "notice.size",
+        "notice.longest",
+        "notice.both",
+        "paint.lineLen",
+    ]
+    .iter()
+    .any(|k| copy_core::copy_matches(&format!("rsFilewinBigfile.{k}"), t))
 }
 
 /// 本族量的是**编辑面自己**（排版 · 编辑 · 撤销）在大文本上的形状。
@@ -367,7 +374,10 @@ fn a_long_line_lays_out_only_the_stretch_in_view() {
                 assert!(k <= cols + 2, "排了 {k} 字，视口只有 {cols} 列");
             }
             // 行尾标：说的是整行的字数。
-            let tag = format!("这一行共 {nchars} 字");
+            let tag = copy_core::copy_text(
+                "rsFilewinBigfile.paint.lineLen",
+                &[("n", &nchars.to_string())],
+            );
             assert!(
                 seen.iter().any(|s| s.text == tag),
                 "没标「{tag}」（{n}，从第 {c0} 字起）"

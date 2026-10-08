@@ -170,7 +170,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "machine-interrupts",
         summary: "停 / 重启 / 更新 / 卸载这台的 cc-monitor 之前，会打断什么",
         codes: &["bad_args"],
-        fields: &[out("forwards", "见 `machine`"), out("liveStreams", "这台活着的会话数（停的那几秒 cc-monitor 里它们不更新）"), arg("machine", "可缺"), out("relayedMaybe", "活着、说不清走不走中转的几个（环境这一刻读不出 / agent 自己的设置可能压过它）"), out("relayedSessions", "这台的活会话里经本机中转走请求的几个（停了就断，直到再启动）")],
+        fields: &[arg("appExit", "可缺；`true` ⇒ 问的是「重启 / 退出 cc-monitor」：这台后端选了随它退出一起停才数会话与账上全部转发，否则全零"), out("forwards", "见 `machine`"), out("liveStreams", "这台活着的会话数（停的那几秒 cc-monitor 里它们不更新）"), arg("machine", "可缺"), out("relayedMaybe", "活着、说不清走不走中转的几个（环境这一刻读不出 / agent 自己的设置可能压过它）"), out("relayedSessions", "这台的活会话里经本机中转走请求的几个（停了就断，直到再启动）")],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::faces::read_face::answer(&r.cmd, &r.args)

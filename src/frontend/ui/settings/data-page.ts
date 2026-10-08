@@ -18,7 +18,9 @@ import { copyText } from "../copy-table";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
 import { findHostByOrigin, hostKey, readRemoteConfig } from "../remote-config";
 import { noteMachineTmux } from "../resume-defaults";
-import { markChore, readDataReport, type Chore, type ChoreState, type DataReport } from "./data-reads";
+import { markChore, readDataReport, recallDataReport, type Chore, type ChoreState, type DataReport } from "./data-reads";
+import { remoteOwnBlock } from "./remote-own";
+import { agoText } from "./ago";
 import { choreRow } from "./chore-row";
 import { fold } from "../kit/fold";
 import { toast } from "../kit/toast";
@@ -43,8 +45,8 @@ export interface DataPageHost {
   setBadge: (n: number) => void;
 }
 
-/** 一台这一趟的结果：读到 · 读不到（那一句）。 */
-type Reading = { ok: true; report: DataReport } | { ok: false; why: string };
+/** 一台这一趟的结果：读到 · 读不到（那一句 ＋ 本机后端记着的上次那一份，没有 ⇒ `null`）。 */
+type Reading = { ok: true; report: DataReport } | { ok: false; why: string; last: { report: DataReport; atMs: number } | null };
 
 interface Machine {
   origin: Origin;
@@ -64,6 +66,9 @@ export class DataPage {
   /** 只在本机 chip 上出现的两块（Claude 目录 · cc-monitor 的文件，各带段头）。 */
   private readonly localClaude: HTMLElement;
   private readonly localOwn: HTMLElement;
+  /** 远端那台的「cc-monitor 的文件」（照那台 `data-report` 的 `own` 排）。 */
+  private readonly remoteOwn: HTMLElement;
+  private readonly remoteOwnBody: HTMLElement;
   private machines: Machine[] = [{ origin: LOCAL_ORIGIN, name: copyText("remote.cards.local") }];
   private readings = new Map<Origin, Reading>();
   private picked: Origin = LOCAL_ORIGIN;
@@ -117,7 +122,11 @@ export class DataPage {
     this.localOwn = document.createElement("div");
     this.localOwn.className = "data-local-only";
     this.localOwn.append(ownHead, host.ownFiles);
-    this.placedPane.append(this.chips, this.offlineBar, this.localClaude, changedHead, this.changedBox, pasted, this.localOwn);
+    this.remoteOwn = document.createElement("div");
+    this.remoteOwn.className = "data-remote-only";
+    this.remoteOwnBody = document.createElement("div");
+    this.remoteOwn.append(section(copyText("dataPage.own.title"), copyText("dataPage.own.sub")), this.remoteOwnBody);
+    this.placedPane.append(this.chips, this.offlineBar, this.localClaude, changedHead, this.changedBox, pasted, this.localOwn, this.remoteOwn);
     root.appendChild(this.placedPane);
 
     this.paintTabs(0);
@@ -182,7 +191,7 @@ export class DataPage {
         try {
           r = { ok: true, report: await readDataReport(m.origin) };
         } catch (e) {
-          r = { ok: false, why: e instanceof Error ? e.message : String(e) };
+          r = { ok: false, why: e instanceof Error ? e.message : String(e), last: await recallDataReport(m.origin) };
         }
         if (gen !== this.generation) return;
         this.readings.set(m.origin, r);
@@ -411,14 +420,14 @@ export class DataPage {
     const local = isLocalOrigin(this.picked);
     this.localClaude.hidden = !local;
     this.localOwn.hidden = !local;
+    this.remoteOwn.hidden = true;
     const r = this.readings.get(this.picked);
     const name = this.machines.find((m) => m.origin === this.picked)?.name ?? this.picked;
     this.offlineBar.hidden = !(r && !r.ok);
     if (r && !r.ok) {
+      const said = r.last ? copyText("dataPage.placed.stale", { machine: name, ago: agoText(Date.now() - r.last.atMs) }) : copyText("dataPage.placed.offline", { machine: name });
       this.offlineBar.replaceChildren(
-        banner("warn", copyText("dataPage.placed.offline", { machine: name }), [
-          button({ label: copyText("dataPage.placed.retry"), size: "compact", onClick: () => void this.refresh() }),
-        ]),
+        banner("warn", said, [button({ label: copyText("dataPage.placed.retry"), size: "compact", onClick: () => void this.refresh() })]),
       );
     }
     this.changedBox.replaceChildren();
@@ -426,22 +435,29 @@ export class DataPage {
       this.changedBox.appendChild(note(copyText("dataPage.chores.reading")));
       return;
     }
-    if (!r.ok) {
+    // 连不上的那台：有上次的就照上次的画（警告条说多旧），没有就照实说读不到。
+    const report = r.ok ? r.report : r.last?.report;
+    if (!report) {
       this.changedBox.appendChild(note(copyText("dataPage.placed.unknown")));
       return;
     }
-    if (r.report.changedFiles.length === 0) {
+    if (!local) {
+      this.remoteOwn.hidden = false;
+      const origin = this.picked;
+      this.remoteOwnBody.replaceChildren(remoteOwnBlock(report.own, report.home, r.ok ? (abs) => void this.openFile(origin, abs) : null));
+    }
+    if (report.changedFiles.length === 0) {
       this.changedBox.appendChild(note(copyText("dataPage.changed.none")));
       return;
     }
-    for (const c of r.report.changedFiles) {
+    for (const c of report.changedFiles) {
       const row = document.createElement("div");
       row.className = "data-item";
       const body = document.createElement("div");
       body.className = "data-item-body";
       const path = document.createElement("div");
       path.className = "data-item-path";
-      path.textContent = homeShort(c.path.replace(/^~/, r.report.home), r.report.home);
+      path.textContent = homeShort(c.path.replace(/^~/, report.home), report.home);
       const what = document.createElement("div");
       what.className = "data-item-sub";
       what.textContent = c.undo ? copyText("dataPage.changed.line", { what: c.what, where: undoWhere(c.undo) }) : c.what;

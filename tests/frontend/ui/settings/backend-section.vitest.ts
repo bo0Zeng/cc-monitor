@@ -225,16 +225,12 @@ describe("P2s backend 开关区", () => {
     expect(visibleOf(section).includes("answer.said"), "`backend-section.ts` 不摆后端的 `said` —— 那它的文案是从哪来的？").toBe(true);
   });
 
-  it("★★ 反向锚点：这两个文件里今天必须真的有「无人监护」（KPY4③）", () => {
-    // ⚠ 这一条在 `K-P1` **之前**的代码上是**红**的：那时「无人监护」在人群里出现 0 次。
-    //   它就是本轮翻转的活体证据 —— 少了它，上面那几条在一份「文案全被删光」的树上照样绿。
-    const hits = readPopulation()
-      .map((f) => ({ name: f.name, n: visibleOf(f.src).split("无人监护").length - 1 }))
-      .filter((x) => x.n > 0);
-    expect(
-      hits.map((x) => x.name),
-      "人群里一处「无人监护」都没有 —— 常驻做了、而界面没说，那正是 `K14` 点名不许的那一半。",
-    ).toContain(TABLE_REL); // 家是表；backend-policy.ts 里那行单行 JSDoc 也提到它（注释，不是第二个家）
+  it("★★ 反向锚点：常驻那一句（`backendPolicy.exit.unattended`）在表里有字、且后端那一处真取它（KPY4③）", () => {
+    // ⚠ 这一条在 `K-P1` **之前**的代码上是**红**的：那时常驻却一句不说。
+    //   它就是本轮翻转的活体证据 —— 少了它，上面那几条在一份「文案全被删光」的树上照样绿。按键认，改那句话的措辞不撞。
+    expect(EXIT_UNATTENDED.trim().length, "常驻那一句在表里是空的 —— 常驻做了、而界面没说，那正是 `K14` 点名不许的那一半").toBeGreaterThan(0);
+    const policy = readFileSync(resolve(srcDirOf(__dirname), "../../../backend/control/exit_policy.rs"), "utf8");
+    expect(policy, "后端那一处不再取常驻那一句 —— 界面摆的 `said` 里就没有它了").toContain('copy_text("backendPolicy.exit.unattended"');
   });
 
   it("本机永远在第一行——它不是另一种机器，只是不走 ssh 的那一台", async () => {
@@ -785,7 +781,7 @@ describe("〔GAP1〕每台一行的「日志」：问的是那一台、摆的是
     const box = row.querySelector<HTMLElement>("[data-backend-log]")!;
     expect(box.dataset.backendLog).toBe("甲机");
     expect(box.querySelector(".settings-hint")?.textContent).toBe(
-      `/h/.cc-monitor/logs/backend/stderr.log（2.0 KB） ${copyText("backend.log.truncated")}`,
+      `${copyText("backend.log.head", { path: "/h/.cc-monitor/logs/backend/stderr.log", size: "2.0 KB" })} ${copyText("backend.log.truncated")}`,
     );
     expect(box.querySelector("pre")?.textContent).toBe("WARN 打标失败\n");
     btn.click();

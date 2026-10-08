@@ -12,6 +12,8 @@
  * 2. `parts()` —— 交出「连接 / 组件」两块，详情页据此分栏（S4b-3b-2）；外加「终端」栏那一块（别名）。
  * 3. `setPageMode()` —— 进入独占一页的形态（去折叠箭头与删除按钮）。
  */
+import { ResumeSelect } from "./resume-select";
+import { getBehavior } from "../behavior";
 import { listen } from "@tauri-apps/api/event";
 import { commands } from "../ipc/commands";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -249,7 +251,7 @@ export class MachineCard {
   private addressesInput!: HTMLTextAreaElement;
   private jumpInput!: HTMLInputElement;
   /** S4b-3（§5-1）：这台机器的 resume 启动命令（空 = 用全局默认）。 */
-  private resumeCmdInput!: HTMLInputElement;
+  private resumeCmdInput!: ResumeSelect;
   /** 恢复命令那一行的说明（`仅 {machine} · 留空 = 通用设置`，跟着名字换）。 */
   private resumeHelp!: HTMLElement;
   /** 指纹记下的那一天（盘上 `hostKeyPinnedAt`；空 ＝ 不知道）。 */
@@ -341,7 +343,7 @@ export class MachineCard {
       hostKeyPinnedAt: this.fingerprintInput.value.trim() ? this.pinnedAt : "",
       addresses: parseAddressLines(this.addressesInput.value),
       jump: this.jumpInput.value.trim(),
-      resumeCommand: this.resumeCmdInput.value.trim(),
+      resumeCommand: this.resumeCmdInput.value,
       connect: this.connect,
     };
   }
@@ -602,15 +604,13 @@ export class MachineCard {
     body = this.componentsPart;
 
     // 这台的恢复命令（空 = 用通用设置里那一条）：「这台上的 cc-monitor」里一行，框在行右。
-    this.resumeCmdInput = document.createElement("input");
-    this.resumeCmdInput.type = "text";
-    this.resumeCmdInput.className = "settings-input machine-cc-input";
-    this.resumeCmdInput.placeholder = copyText("machineCard.field.resumeCmdHint");
-    this.resumeCmdInput.spellcheck = false;
-    this.resumeCmdInput.autocomplete = "off";
-    this.resumeCmdInput.addEventListener("change", onChange);
+    this.resumeCmdInput = new ResumeSelect({ inherit: true, onChange });
+    void getBehavior().then(
+      (b) => this.resumeCmdInput.set(this.resumeCmdInput.value, b.resumeCommandPresets),
+      () => undefined,
+    );
     this.resumeHelp = document.createElement("span");
-    body.appendChild(ccRow(copyText("machineCard.field.resumeCmd"), this.resumeHelp, [this.resumeCmdInput]));
+    body.appendChild(ccRow(copyText("machineCard.field.resumeCmd"), this.resumeHelp, [this.resumeCmdInput.element]));
 
     // 从这台卸载（红字，摆在那一折底行右侧）；结果落在这一折里。
     this.backendUninstallButton = button({
@@ -726,7 +726,7 @@ export class MachineCard {
     this.pinnedAt = cfg.hostKeyPinnedAt ?? "";
     this.addressesInput.value = cfg.addresses.join("\n");
     this.jumpInput.value = cfg.jump ?? "";
-    this.resumeCmdInput.value = cfg.resumeCommand;
+    this.resumeCmdInput.set(cfg.resumeCommand);
     this.connect = cfg.connect;
     this.connectSwitch.set(cfg.connect);
     this.acceptInputs();

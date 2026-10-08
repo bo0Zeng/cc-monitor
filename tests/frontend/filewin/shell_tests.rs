@@ -485,7 +485,7 @@ fn an_impossible_new_name_keeps_the_box_up_and_says_why() {
     assert!(!w.confirm_copy(None), "没有运行时却说起得来");
     let e = w.prompt_error().unwrap();
     assert!(
-        e.contains("启动不了"),
+        no_runtime(&e),
         "合法名字被当成不合法挡了：{e} —— 那上面那几条买的就不是「名字」这一维"
     );
     // 取消把框收掉。
@@ -1293,7 +1293,7 @@ fn a_delete_click_goes_straight_to_the_batch_and_says_so_when_it_cannot_run() {
         .unwrap()
         .clone()
         .expect("一次删除被吞了，屏幕上一句话都没有");
-    assert!(e.contains("启动不了"), "报的不是「没有运行时」：{e}");
+    assert!(no_runtime(&e), "报的不是「没有运行时」：{e}");
 }
 
 /// 有损名 · 越界下标 —— **两档都不接**（第二道闸，防「按钮没了、调用还在」）。
@@ -1333,7 +1333,7 @@ fn an_impossible_input_keeps_the_write_box_up_and_says_why() {
     assert!(!w.confirm_write(None), "没有运行时却说起得来");
     let e = w.prompt_error().unwrap();
     assert!(
-        e.contains("启动不了"),
+        no_runtime(&e),
         "合法名字被当成不合法挡了：{e} —— 那上面那几条买的就不是「输入」这一维"
     );
     w.cancel_write();
@@ -1596,7 +1596,10 @@ async fn a_real_click_on_delete_walks_the_whole_chain_even_on_a_session_file() {
             .iter()
             .map(|o| o.label())
             .collect::<Vec<_>>(),
-        vec![format!("删除文件 {jsonl}")],
+        vec![copy_core::copy_text(
+            "rsFilewinWriteops.op.rm",
+            &[("path", &jsonl)]
+        )],
         "摆到人面前的不是那一件"
     );
     assert!(w.write_board.settle(true), "答复没送出去");
@@ -1809,7 +1812,10 @@ async fn an_oversized_row_never_asks_the_remote_and_still_says_why() {
         .unwrap()
         .clone()
         .expect("拒了却一个字都没说 —— 那与「点了没反应」同形");
-    assert!(e.contains("多了 1 字节"), "那句话没说超出多少：{e}");
+    assert!(
+        copy_core::copy_matches_with("rsFilewinEditor.notEditable.tooBig", &[("over", "1")], &e),
+        "那句话没说超出多少：{e}"
+    );
     assert!(e.contains("huge.log"), "没说是哪一行：{e}");
 }
 
@@ -2427,7 +2433,7 @@ async fn a_reveal_target_that_is_gone_says_so_and_drops_the_highlight() {
                 "没说是哪个文件：{why}"
             );
             assert!(
-                why.contains("删") || why.contains("改"),
+                copy_core::copy_matches("rsFilewinShell.reveal.gone", &why),
                 "没给出可能的原因：{why}"
             );
         }
@@ -3533,4 +3539,13 @@ fn the_bad_name_code_is_the_backends_one() {
         "后端那一侧的码不是 `{}`",
         crate::writeops::BAD_NAME
     );
+}
+
+/// 「起不来，重开这个窗口」那一族（`rsFilewinShell.*.noRuntime`）里的某一句。
+fn no_runtime(e: &str) -> bool {
+    [
+        "save", "edit", "pull", "writes", "copy", "upload", "search", "size",
+    ]
+    .iter()
+    .any(|k| copy_core::copy_matches(&format!("rsFilewinShell.{k}.noRuntime"), e))
 }

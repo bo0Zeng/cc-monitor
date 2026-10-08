@@ -18,6 +18,7 @@ import { accountAvatarEl } from "../../src/frontend/ui/account-color";
 import { banner } from "../../src/frontend/ui/kit/banner";
 import { emptyState, noMatch } from "../../src/frontend/ui/kit/empty";
 import { countBadge, tag, kbd } from "../../src/frontend/ui/kit/badge";
+import { copyText } from "../../src/frontend/ui/copy-table";
 import { skeletonRows } from "../../src/frontend/ui/kit/skeleton";
 import { progressBar, spinner } from "../../src/frontend/ui/kit/progress";
 import { meter } from "../../src/frontend/ui/kit/meter";
@@ -202,7 +203,7 @@ function overview(): void {
   document.body.append(
     section("错误条 · 警告条 · 空态", "C15 · C16", "g-cols4", [
       ["错误条", banner("error", "读取账号失败 · 内容无法解析", [button({ label: "复制详情", size: "compact" })])],
-      ["警告条", banner("warn", "重启 cc-monitor 后生效", [button({ label: "现在重启", size: "compact" })])],
+      ["警告条", banner("warn", "重启 cc-monitor 后生效", [button({ label: copyText("restartNow.bar.action"), size: "compact" })])],
       ["空态", stage(emptyState({ text: "无会话", hint: "终端里 ccm 启动后自动出现" }))],
       ["筛选无结果", stage(noMatch("ordrs", () => {}))],
     ]),

@@ -798,7 +798,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     const got = p.addedParts[1]!;
     const labels = (el: HTMLElement): string[] =>
       [...el.querySelectorAll<HTMLButtonElement>("button")]
-        .filter((b) => !b.closest("details") && b.getAttribute("role") !== "switch")
+        .filter((b) => !b.closest("details") && b.getAttribute("role") !== "switch" && b.getAttribute("aria-haspopup") !== "listbox")
         .map((b) => b.textContent ?? "");
     // 别名放「终端」栏：远端那一块与本机「终端 → 别名」同一个位置。
     // 「这台上的 cc-monitor」里归这台连接配置的：恢复命令那一行（没有按钮）＋ 底行右侧那颗「从 a 卸载…」。
@@ -1009,7 +1009,8 @@ describe("S1 RemoteSection：保存走局部合并", () => {
   it("每台的续跑命令重开后照样回填；改别台时不被抹成空", async () => {
     const p = fakePages();
     await mount([{ ...mkH("a", "1.1.1.1"), resumeCommand: "ccm resume --tmux", connect: true }, mkH("b", "2.2.2.2")], p.host);
-    expect(field(pageOf(p, "machine:a"), copyText("machineCard.field.resumeCmdHint")).value).toBe("ccm resume --tmux");
+    const sel = pageOf(p, "machine:a").querySelector<HTMLButtonElement>("[data-role=resume-select]")!;
+    expect(sel.dataset.value, "存着的那条不在候选里也列上、选中").toBe("ccm resume --tmux");
     await change(field(pageOf(p, "machine:b"), copyText("machineCard.field.userHint")), "root");
     expect((await diskHosts()).map((h) => [h.label, h.user, h.resumeCommand])).toEqual([
       ["a", "u", "ccm resume --tmux"],

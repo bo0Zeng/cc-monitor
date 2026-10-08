@@ -116,7 +116,10 @@ fn resolve_takes_the_default_when_agent_kind_is_left_out_and_refuses_a_misspelle
         assert_eq!(code, "bad_request");
         assert_eq!(
             said,
-            format!("不认识这个 agent：{ak}（认得的：claude / codex）")
+            copy_core::copy_text(
+                "beAgents.pick.unknown",
+                &[("agent", ak), ("known", "claude / codex")]
+            )
         );
     }
 }

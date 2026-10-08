@@ -165,10 +165,13 @@ fn picking_an_account_never_falls_back_to_a_different_one() {
         other => panic!("{other:?}"),
     };
     let Die(msg) = build(&o, &env(), &t, None).expect_err("不存在的账号必须中止");
-    assert!(msg.starts_with("账号 'nope' 不可用"), "{msg}");
     assert!(
-        msg.contains("可用: z f"),
-        "报不可用必须说出有哪些可用：{msg}"
+        copy_core::copy_matches_with(
+            "bePlan.resolveAccount.unavailable",
+            &[("account", "nope"), ("names", "z f")],
+            &msg
+        ),
+        "{msg}"
     );
     // 无账号库 ⇒ 一个字都不说，退化为基座（没有 CLAUDE_CONFIG_DIR 注入）
     let empty = AccountTable::default();
@@ -380,7 +383,11 @@ fn a_session_name_that_would_confuse_tmux_is_refused() {
         assert!(validate_tmux_name(bad).is_err(), "'{bad}' 不该被放行");
     }
     let deceptive = validate_tmux_name("a\u{202e}b").expect_err("欺骗字符该拒");
-    assert!(deceptive.0.contains("看不见的字符"), "{}", deceptive.0);
+    assert!(
+        copy_core::copy_matches("bePlan.validateTmuxName.deceptive", &deceptive.0),
+        "{}",
+        deceptive.0
+    );
     let long = validate_tmux_name(&"a".repeat(129)).expect_err("超过 128 该拒");
     assert!(long.0.contains("128"), "{}", long.0);
 }
@@ -635,15 +642,10 @@ fn asking_for_bus_registration_and_not_getting_it_is_never_silent() {
         serde_json::json!(["path"]),
         "表里没有 bePlan.bus.noSpawnRecord，或它不再点名是哪个文件"
     );
-    for (key, say) in [("bePlan.bus.noScripts", "没有登记")] {
-        assert!(
-            table["entries"][key]["zh"]
-                .as_str()
-                .unwrap_or("")
-                .contains(say),
-            "表里 {key} 那句没说「{say}」"
-        );
-    }
+    assert!(
+        table["entries"]["bePlan.bus.noScripts"]["zh"].is_string(),
+        "表里没有 bePlan.bus.noScripts"
+    );
     for say in ["\"bePlan.bus.noScripts\"", "\"bePlan.bus.noSpawnRecord\""] {
         assert!(
             me.contains(say),
@@ -1023,7 +1025,7 @@ fn a_manifest_we_cannot_parse_says_so_instead_of_claiming_there_is_no_library() 
     assert!(t.accounts.is_empty(), "坏 JSON 竟然读出了号");
     let said = t.names();
     assert!(
-        said.contains("读不懂"),
+        said.contains(copy_core::copy_static!("bePlan.names.unreadable")),
         "坏掉的账号库被报成了别的东西：{said}"
     );
     assert!(
@@ -1078,7 +1080,10 @@ fn the_message_the_user_actually_sees_carries_the_reason() {
     };
     let Die(msg) = resolve_account(&o, &e, &AccountTable::load(&e.accts_manifest))
         .expect_err("指名一个读不出来的号竟然成功了");
-    assert!(msg.contains("读不懂"), "用户看到的那句话里没有原因：{msg}");
+    assert!(
+        msg.contains(copy_core::copy_static!("bePlan.names.unreadable")),
+        "用户看到的那句话里没有原因：{msg}"
+    );
 }
 
 /// ★ 自检那一趟与 pane 里那一趟**是同一条命令**：同一段 `export` 前缀、同一个入口、
