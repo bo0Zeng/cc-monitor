@@ -92,8 +92,10 @@ function renderModuleDecl(cssRel: string, classes: Iterable<string>): string {
  * `bad` ＝ 提到 `.module.css` 的字符串里，**不是**「`import <标识符> from "./….module.css"`（无具名 / 命名空间绑定）」
  * 那一形的每一处：副作用导入、具名 / 命名空间导入、动态 `import()`、`export … from`、普通字符串都算。
  */
-function moduleImportsOf(codeRel: string, text: string): { ok: { id: string; css: string }[]; bad: string[] } {
-  const sf = ts.createSourceFile(codeRel, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+const parse = (codeRel: string, text: string): ts.SourceFile => ts.createSourceFile(codeRel, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+
+function moduleImportsOf(codeRel: string, text: string | ts.SourceFile): { ok: { id: string; css: string }[]; bad: string[] } {
+  const sf = typeof text === "string" ? parse(codeRel, text) : text;
   const ok: { id: string; css: string }[] = [];
   const bad: string[] = [];
   const visit = (n: ts.Node): void => {
@@ -116,8 +118,8 @@ function moduleImportsOf(codeRel: string, text: string): { ok: { id: string; css
  * 导入对象 `id` 在一份代码里被取过的类名；`loose` ＝ `id` 的其余出现（整个传走、变量下标、解构……）——
  * 那些写法 tsc 管不到类名，一律不许。⚠ 按名字认，不做作用域分析：同一份文件里另有局部变量也叫 `id` 会**假红**（吵闹）。
  */
-function usesOf(text: string, id: string): { keys: Set<string>; loose: number } {
-  const sf = ts.createSourceFile("x.ts", text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+function usesOf(text: string | ts.SourceFile, id: string): { keys: Set<string>; loose: number } {
+  const sf = typeof text === "string" ? parse("x.ts", text) : text;
   const keys = new Set<string>();
   let loose = 0;
   const visit = (n: ts.Node): void => {
@@ -191,14 +193,16 @@ describe("〔UC2〕M③ ④ 只经默认导入用；每个类都有人取（CSS 
     const led = ledger();
     const mods = moduleFiles(led);
     const bad: string[] = [];
-    const importers = new Map<string, { code: string; id: string }[]>();
+    const importers = new Map<string, { code: string; id: string; sf: ts.SourceFile }[]>();
     for (const rel of led.codeFiles) {
-      // 每份都过一遍 AST（不做子串预筛：`scanning-guard-registry` 的裸 `.includes` 棘轮不许再多一处）
-      const r = moduleImportsOf(rel, readFileSync(resolve(REPO_ROOT, rel), "utf8"));
+      // 每份都过一遍 AST（不做子串预筛：`scanning-guard-registry` 的裸 `.includes` 棘轮不许再多一处）；
+      // 树只建这一次 —— 下面数取用的那一步用同一棵（原先导入方各再建一遍）。
+      const sf = parse(rel, readFileSync(resolve(REPO_ROOT, rel), "utf8"));
+      const r = moduleImportsOf(rel, sf);
       bad.push(...r.bad);
       for (const imp of r.ok) {
         const list = importers.get(imp.css) ?? [];
-        list.push({ code: rel, id: imp.id });
+        list.push({ code: rel, id: imp.id, sf });
         importers.set(imp.css, list);
       }
     }
@@ -210,8 +214,8 @@ describe("〔UC2〕M③ ④ 只经默认导入用；每个类都有人取（CSS 
     for (const f of mods) {
       const defined = [...(led.moduleClasses.get(f)?.keys() ?? [])].sort();
       const used = new Set<string>();
-      for (const { code, id } of importers.get(f) ?? []) {
-        const u = usesOf(readFileSync(resolve(REPO_ROOT, code), "utf8"), id);
+      for (const { code, id, sf } of importers.get(f) ?? []) {
+        const u = usesOf(sf, id);
         if (u.loose !== 0) drift.push(`${code}：导入对象 \`${id}\` 有 ${u.loose} 处不是 \`${id}.x\` / \`${id}["x"]\` 形（整个传走或变量下标 ⇒ tsc 管不到类名）`);
         for (const k of u.keys) used.add(k);
       }

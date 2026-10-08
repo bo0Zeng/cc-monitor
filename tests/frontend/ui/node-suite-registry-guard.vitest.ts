@@ -53,7 +53,7 @@
  * - **不以 `test:` 开头的脚本名**（`unit:foo`）整个绕过 b。
  * - `d` 只看收尾**在不在**，不看它是否真的能被触达（比如被 `if (false)` 包住）。
  */
-import { execFileSync } from "node:child_process";
+import { execFile } from "node:child_process";
 import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, it, expect } from "vitest";
@@ -389,20 +389,26 @@ describe("`.mjs` 与 `.mts` 的最小闸门", () => {
     return out.sort();
   })();
 
-  it("每个 .mjs 都过 `node --check`（tsc 整类看不见它们）", () => {
+  it("每个 .mjs 都过 `node --check`（tsc 整类看不见它们）", async () => {
     // 抽取器自检：遍历塌了的话下面那条就是零命中地绿。
     expect(
       mjsFiles.length,
       "全仓一个 .mjs 都没扫到（08-08 实测 6 个）—— 遍历坏了，本条此刻无效",
     ).toBeGreaterThanOrEqual(4);
-    const broken: string[] = [];
-    for (const f of mjsFiles) {
-      try {
-        execFileSync(process.execPath, ["--check", f], { stdio: "pipe" });
-      } catch (e) {
-        broken.push(`${f.slice(REPO_ROOT.length + 1)}: ${String((e as { stderr?: Buffer }).stderr ?? e).slice(0, 200)}`);
-      }
-    }
+    // 每份一个 `node --check` 子进程，**同时**起、一起等：原先逐个同步起（十来份 × 一次 node 冷启动），
+    //   机器忙时排队等调度的时间逐份累加，整套并跑时把这一格挤过 5 s 默认期限。量具不变，仍是 `node --check` 本身。
+    const broken = (
+      await Promise.all(
+        mjsFiles.map(
+          (f) =>
+            new Promise<string | null>((done) => {
+              execFile(process.execPath, ["--check", f], (e, _out, stderr) =>
+                done(e ? `${f.slice(REPO_ROOT.length + 1)}: ${String(stderr || e).slice(0, 200)}` : null),
+              );
+            }),
+        ),
+      )
+    ).filter((b): b is string => b !== null);
     expect(
       broken,
       "这些 .mjs 连语法都不过：\n" +
