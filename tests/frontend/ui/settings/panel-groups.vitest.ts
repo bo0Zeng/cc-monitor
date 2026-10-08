@@ -1,5 +1,5 @@
 // S2（settings-ia）：设置面板**分页**结构测试。把各重子分区 stub 成占位 div、保留真
-// `CollapsibleGroup` 与真 `SettingsRouter`，钉住「哪些块在哪一页」。
+// `SettingsRouter`，钉住「哪些块在哪一页」。
 // 构造 SettingsPanel 不调 open()（配置读取在 open 里；本测只验 buildBody 的静态结构）。
 //
 // **本文件此前钉的是 F82b 的「连接/外观/账号/集成」四组**。S2 按判据
@@ -173,9 +173,7 @@ function pageTitles(routeId: string): string[] {
   );
   if (!page) throw new Error(`page not found: ${routeId}`);
   return [
-    ...page.querySelectorAll(
-      ".settings-group-title, .settings-collapsible-title",
-    ),
+    ...page.querySelectorAll(".settings-group-title"),
   ].map((e) => e.textContent ?? "");
 }
 

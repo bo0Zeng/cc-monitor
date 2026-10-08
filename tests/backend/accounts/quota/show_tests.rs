@@ -154,12 +154,14 @@ fn slots_are_rounded_and_named_by_their_semantic_position() {
         s.slots,
         vec![
             SlotShow {
+                resets_at_text: None,
                 slot: "5h".into(),
                 pct: Some(63),
                 resets_at: Some(LATER),
                 full: false,
             },
             SlotShow {
+                resets_at_text: None,
                 slot: "7d".into(),
                 pct: Some(41),
                 resets_at: Some(NOW + 5 * 86_400),

@@ -2,20 +2,15 @@
  * 额度与账号几处界面的**排版模型**（纯函数）：状态栏那颗按钮 · 它的悬停卡 · 记录与换号条的那一句 · 提示条那一句。
  *
  * 输入全是后端的成品（`rotation-session-read` 一个会话那一份 ＋ `quota-read` 那台一份）；这里只按词选字、拼格，不判
- * 「能不能换 / 该不该换 / 快满没有」。时刻写法只经 `quota-lines.ts` 的 [`fmtAt`] / [`fmtRel`]（与金样同一处）。
+ * 「能不能换 / 该不该换 / 快满没有」。时刻照后端写好的那一格（`…Text`），距今只经 `quota-lines.ts` 的 [`fmtRel`]（与金样同一处）。
  */
 import { copyText } from "./copy-table";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
-import { accountLabel, fmtAt, fmtRel, seenBlock, slotLabel, unseenBlock, type QuotaRead, type QuotaReadAccount } from "./quota-lines";
+import { accountLabel, fmtRel, seenBlock, slotLabel, unseenBlock, type QuotaRead, type QuotaReadAccount } from "./quota-lines";
 import type { QuotaShow } from "./generated/QuotaShow";
 import type { SessionRotationState } from "./generated/SessionRotationState";
 import type { SwitchRecord } from "./generated/SwitchRecord";
 import type { SessionRotationEntry } from "./app-store";
-
-/** 这台此刻的本地时区偏移（分钟，东正）。 */
-export function localTzMin(nowSecs: number): number {
-  return -new Date(nowSecs * 1000).getTimezoneOffset();
-}
 
 /** 采样那台在界面上叫什么。 */
 export function machineLabel(origin: Origin): string {
@@ -48,25 +43,23 @@ export function ledgerOf(quota: QuotaRead | null, agent: string, account: string
 /** 一个号的显示态 ⇒ 窗口 · 值 · 重置 · 色（按钮与「下一个」那一格同一套）。 */
 export function usageOf(
   q: QuotaShow,
-  readingReset: number | undefined,
-  now: number,
-  tz: number,
+  reading: QuotaReadAccount["reading"],
 ): { window: string | null; value: string; reset: string | null; tone: ChipTone } {
   if (q.kind === "api") {
     if (q.state !== "refused") return { window: null, value: copyText("acct.kind.api"), reset: null, tone: "neutral" };
-    const at = readingReset;
-    return { window: null, value: copyText("acct.val.refusedOnly"), reset: at === undefined ? null : copyText("acct.reset.at", { at: fmtAt(at, now, tz) }), tone: "refused" };
+    const at = reading?.resetsAtText;
+    return { window: null, value: copyText("acct.val.refusedOnly"), reset: at === undefined ? null : copyText("acct.reset.at", { at }), tone: "refused" };
   }
   const w = q.limiting ?? "5h";
   const slot = q.slots.find((s) => s.slot === w);
   const window = slotLabel(w);
-  const resetAt = slot?.resetsAt ?? readingReset;
+  const resetAt = slot?.resetsAt !== undefined ? slot.resetsAtText : reading?.resetsAtText;
   switch (q.state) {
     case "refused":
       return {
         window,
         value: slot?.full ? copyText("acct.val.full") : slot?.pct === undefined ? copyText("acct.val.refusedOnly") : copyText("acct.val.refusedPct", { pct: slot.pct }),
-        reset: resetAt === undefined ? null : copyText("acct.reset.at", { at: fmtAt(resetAt, now, tz) }),
+        reset: resetAt === undefined ? null : copyText("acct.reset.at", { at: resetAt }),
         tone: "refused",
       };
     case "overageInUse":
@@ -98,8 +91,7 @@ export function sessionChip(entry: SessionRotationEntry | undefined, fallback: s
     return { account: fallback, name, swapped: false, window: null, value: null, reset: null, tone: "neutral", stale: false };
   }
   const cur = read.account.current;
-  const now = entry.now;
-  const u = usageOf(read.quota, ledgerOf(quota, read.agent, cur)?.reading?.resetsAt, now, localTzMin(now));
+  const u = usageOf(read.quota, ledgerOf(quota, read.agent, cur)?.reading);
   return {
     account: cur,
     name: accountLabel(cur),
@@ -113,11 +105,11 @@ export function sessionChip(entry: SessionRotationEntry | undefined, fallback: s
 }
 
 /** 换过号的那一刻与原号（首行尾 `⇄ 14:20 ← work`）：最后一条落到此刻这个号上的记录；没有 ⇒ 起始号。 */
-export function swappedFrom(read: Extract<SessionRotationState, { state: "present" }>): { at: number; from: string } | null {
+export function swappedFrom(read: Extract<SessionRotationState, { state: "present" }>): { at: string; from: string } | null {
   const cur = read.account.current;
   if (cur === read.account.start) return null;
   const last = [...read.account.history].reverse().find((h) => h.to === cur && h.from !== h.to);
-  return { at: last?.at ?? read.account.since, from: last?.from ?? read.account.start };
+  return { at: (last ? last.atText : read.account.sinceText) ?? "", from: last?.from ?? read.account.start };
 }
 
 /**
@@ -138,17 +130,16 @@ export function sessionHoverRows(entry: SessionRotationEntry | undefined, fallba
     ];
   }
   const now = entry.now;
-  const tz = localTzMin(now);
   const cur = read.account.current;
   const seen = ledgerOf(quota, read.agent, cur);
   const block = seen
-    ? seenBlock(seen, now, tz, machineLabel(entry.origin))
+    ? seenBlock(seen, now, machineLabel(entry.origin))
     : unseenBlock({ agent: read.agent, account: cur, kind: read.quota.kind, login: read.quota.login });
   const rows = block.rows.map((r) => [...r]);
   const from = swappedFrom(read);
-  if (from) rows[0].push(copyText("acct.hover.from", { at: fmtAt(from.at, now, tz), name: accountLabel(from.from) }));
+  if (from) rows[0].push(copyText("acct.hover.from", { at: from.at, name: accountLabel(from.from) }));
   if (read.quota.kind === "sub") {
-    const next = nextRow(read, quota, now, tz);
+    const next = nextRow(read, quota);
     const at = rows.length > 1 && rows[rows.length - 1][0] === copyText("acct.row.seen") ? rows.length - 1 : rows.length;
     rows.splice(at, 0, next);
   }
@@ -156,18 +147,18 @@ export function sessionHoverRows(entry: SessionRotationEntry | undefined, fallba
 }
 
 /** `下一个  team  5h 4%` / `下一个  —  轮换内无未满`。 */
-function nextRow(read: Extract<SessionRotationState, { state: "present" }>, quota: QuotaRead | null, now: number, tz: number): string[] {
+function nextRow(read: Extract<SessionRotationState, { state: "present" }>, quota: QuotaRead | null): string[] {
   const label = copyText("acct.hover.next");
   if (read.next === undefined) return [label, copyText("acct.val.none"), copyText("acct.hover.nextNone")];
   const led = ledgerOf(quota, read.agent, read.next);
   if (!led) return [label, accountLabel(read.next), copyText("acct.val.none")];
-  const u = usageOf(led, led.reading?.resetsAt, now, tz);
+  const u = usageOf(led, led.reading);
   return [label, accountLabel(read.next), usageText(u)];
 }
 
 /** 记录那一条的原因（`work 5h ✕` · `手动 · 热切换` …）＋ 那一刻原号几点重置（`↻19:00`，记下就不变）。 */
-export function whyOf(h: SwitchRecord, now: number, tz: number): { why: string; reset: string | null } {
-  const reset = h.fromResetsAt === undefined ? null : copyText("acct.reset.at", { at: fmtAt(h.fromResetsAt, now, tz) });
+export function whyOf(h: SwitchRecord): { why: string; reset: string | null } {
+  const reset = h.fromResetsAtText === undefined ? null : copyText("acct.reset.at", { at: h.fromResetsAtText });
   const from = accountLabel(h.from);
   const w = h.why;
   // 光字符串的那几种先判完（`in` 不许碰到字符串）；两段末尾各一处 `never`：`SwitchWhy` 多了一种而这里没接 ⇒ 编不过。
@@ -247,11 +238,10 @@ export function reasonLabel(code: string, ctx: { agent: string; target: string }
 export function bannerOf(entry: SessionRotationEntry | undefined, nowSecs: number): { text: string; tone: "warn" | "neutral" } | null {
   const read = entry?.read;
   if (!read || read.state === "absent" || read.blocked === undefined) return null;
-  const tz = localTzMin(nowSecs);
   const e = read.blocked.earliest;
   if (e === undefined) return { text: copyText("acct.banner.allFullNoAt"), tone: "warn" };
   const name = accountLabel(e.account);
-  const at = fmtAt(e.at, nowSecs, tz);
+  const at = e.atText ?? "";
   const rel = fmtRel(e.at, nowSecs);
   if (rel === null) return { text: copyText("acct.banner.back", { name, at }), tone: "neutral" };
   const last = read.account.history[read.account.history.length - 1];
@@ -273,7 +263,7 @@ export function tabBlockedOf(entry: SessionRotationEntry | undefined): { text: s
   const e = read.blocked.earliest;
   const text = copyText("acct.tab.blocked", { w });
   if (e === undefined) return { text, hover: text };
-  return { text, hover: copyText("acct.tab.hover", { w, name: accountLabel(e.account), at: fmtAt(e.at, entry.now, localTzMin(entry.now)) }) };
+  return { text, hover: copyText("acct.tab.hover", { w, name: accountLabel(e.account), at: e.atText ?? "" }) };
 }
 
 /** 一个号用量的一格字（下拉项右侧 · 切换那颗按钮）：`5h 63%` · 用满 `5h ✕ ↻19:00` · 被拒 `5h 58% · 被拒 ↻19:00` · `按量`。 */

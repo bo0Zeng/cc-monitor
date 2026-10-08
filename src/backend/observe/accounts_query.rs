@@ -123,6 +123,12 @@ pub(crate) fn default_manifest_path() -> PathBuf {
 ///
 /// 账号数组**逐条**解析：单个坏账号（缺 name/configDir 等）被跳过而非拖垮整份
 /// manifest（避免手改 manifest 时一坏全灭；写侧 `accounts/manage/model.rs` 对这种条目也是原样留着、不去动它）。
+/// 这台启用了多账号没有（账号库清单读得出 ⇒ 是）：与账号清单那一份的 `meta.enabled` 同一个判法（[`scan_accounts`]）。
+/// 首次运行「给现在登录的号起个名字」那一步读它（`footprint/readiness.rs`）。
+pub(crate) fn accounts_enabled_here() -> bool {
+    load_manifest(&resolve_accts_dir()).is_ok()
+}
+
 fn load_manifest(accts_dir: &Path) -> Result<Manifest, String> {
     let p = manifest_path(accts_dir);
     let bytes = read_regular_capped(&p, MAX_MANIFEST_BYTES).map_err(|e| {
@@ -689,6 +695,8 @@ fn account_trust_zero(cwd: &str) -> Result<String, (String, String)> {
 }
 
 /// 账号库那一家（`AccountsFace.trust_in`）对某个配置根下某个 cwd 的信任状态。没有账号库那一家 ⇒ 照实拒。
+/// 查的键与预标同一组：cwd 本身 ＋ 适配层说的那几个（[`crate::agents::TrustCells::dir_keys`]，如所在仓的根）；
+/// 任一格信任过就算信任过，任一格记过就算记过（子目录里起、信任记在仓根上的，不误报「没信任」）。
 fn trust_in(root: &Path, cwd: &str) -> Result<String, (String, String)> {
     let face = crate::agents::account_library_face().ok_or_else(|| {
         (
@@ -696,7 +704,24 @@ fn trust_in(root: &Path, cwd: &str) -> Result<String, (String, String)> {
             "no agent here keeps an account library".to_string(),
         )
     })?;
-    (face.trust_in)(root, cwd)
+    let mut keys = vec![cwd.to_string()];
+    for k in face.trust.map(|c| (c.dir_keys)(cwd)).unwrap_or_default() {
+        if !keys.contains(&k) {
+            keys.push(k);
+        }
+    }
+    let (mut trusted, mut known) = (false, false);
+    for k in &keys {
+        let line = (face.trust_in)(root, k)?;
+        let v: serde_json::Value = serde_json::from_str(&line)
+            .map_err(|e| ("trust_line_invalid".to_string(), e.to_string()))?;
+        trusted |= v["trusted"] == serde_json::Value::Bool(true);
+        known |= v["known"] == serde_json::Value::Bool(true);
+    }
+    Ok(
+        serde_json::json!({"trusted": trusted, "known": known, "error": serde_json::Value::Null})
+            .to_string(),
+    )
 }
 
 /// 帧面那两条（`accounts-list` / `accounts-sessions`）的入口。

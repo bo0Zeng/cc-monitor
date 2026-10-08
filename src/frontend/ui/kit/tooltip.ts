@@ -27,7 +27,7 @@ function sweep(): void {
 }
 
 /** 仅供测试：此刻挂在 body 上的提示条数。 */
-export function liveTooltipCount(): number {
+export function __liveTooltipCountForTests(): number {
   return live.size;
 }
 

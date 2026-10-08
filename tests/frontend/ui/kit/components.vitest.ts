@@ -1,30 +1,26 @@
 /**
- * 通用组件各态（规范 C1–C23 · V10 · I5）：每件每一态画出来的形状（角色 · data-* · aria-* · 字），与该态的行为。
+ * 通用组件各态（规范 C1–C23 · V10）：每件每一态画出来的形状（角色 · data-* · aria-* · 字），与该态的行为。
  * 样子（颜色 · 尺寸）由 CSS Modules 按这些态上，截图那一页（`tests/shots` 的组件总览）看。
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { button, setBusy, setDisabled, toggleButton, buttonRow } from "../../../../src/frontend/ui/kit/button";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { button, setBusy, setDisabled, buttonRow } from "../../../../src/frontend/ui/kit/button";
 import { field } from "../../../../src/frontend/ui/kit/field";
 import { toggleSwitch, checkbox } from "../../../../src/frontend/ui/kit/switch";
 import { tabs, segmented } from "../../../../src/frontend/ui/kit/tabs";
-import { chip, connectionPill, setChipOpen } from "../../../../src/frontend/ui/kit/chip";
-import { card } from "../../../../src/frontend/ui/kit/card";
-import { listRow, setRowState, middleEllipsis } from "../../../../src/frontend/ui/kit/list-row";
+import { chip, setChipOpen } from "../../../../src/frontend/ui/kit/chip";
 import { fold } from "../../../../src/frontend/ui/kit/fold";
 import { banner } from "../../../../src/frontend/ui/kit/banner";
-import { emptyState, noMatch } from "../../../../src/frontend/ui/kit/empty";
+import { emptyState } from "../../../../src/frontend/ui/kit/empty";
 import { countBadge, tag, kbd } from "../../../../src/frontend/ui/kit/badge";
 import { skeletonRows } from "../../../../src/frontend/ui/kit/skeleton";
-import { progressBar, spinner } from "../../../../src/frontend/ui/kit/progress";
+import { spinner } from "../../../../src/frontend/ui/kit/progress";
 import { meter } from "../../../../src/frontend/ui/kit/meter";
 import { statusDot, setDot } from "../../../../src/frontend/ui/kit/status-dot";
-import { dataBlock, BLOCK_SKELETON_AFTER_MS, BLOCK_SAY_DOING_AFTER_MS } from "../../../../src/frontend/ui/kit/block";
 import { icon } from "../../../../src/frontend/ui/kit/icon";
-import { copyText } from "../../../../src/frontend/ui/copy-table";
 
 beforeEach(() => document.body.replaceChildren());
 
-describe("C1 按钮 · C21 切换按钮", () => {
+describe("C1 按钮", () => {
   it("层级落在 data-kind；图标按钮的字进读屏名、不上屏", () => {
     for (const kind of ["primary", "secondary", "danger", "danger-text", "ghost"] as const) {
       const b = button({ label: "结束", kind });
@@ -57,14 +53,6 @@ describe("C1 按钮 · C21 切换按钮", () => {
     expect(run).not.toHaveBeenCalled();
     setBusy(b, null);
     expect([b.dataset.busy, b.textContent]).toEqual([undefined, "保存"]);
-  });
-
-  it("切换按钮：aria-pressed 跟着翻，回调拿到翻后的值", () => {
-    const seen: boolean[] = [];
-    const t = toggleButton({ label: "显示隐藏文件", pressed: false, onToggle: (p) => seen.push(p) });
-    t.click();
-    t.click();
-    expect([seen, t.getAttribute("aria-pressed")]).toEqual([[true, false], "false"]);
   });
 
   it("按钮行：按给的先后摆（取消在左、确认在右）", () => {
@@ -167,7 +155,7 @@ describe("C5 分栏 · C23 分段按钮", () => {
   });
 });
 
-describe("C6 chip · 连接药丸", () => {
+describe("C6 chip", () => {
   it("可点的是按钮、只读的是 span；有事才上色；开着浮层 aria-expanded", () => {
     const c = chip({ text: "需要你 2", tone: "warn", onClick: () => {} });
     expect([c.tagName, c.dataset.intent]).toEqual(["BUTTON", "warn"]);
@@ -176,40 +164,9 @@ describe("C6 chip · 连接药丸", () => {
     expect(chip({ text: "5h 63%" }).tagName).toBe("SPAN");
   });
 
-  it("连着时不画；断了警示可点即重连；重连中转圈；连回来成功色", () => {
-    const re = vi.fn();
-    expect(connectionPill("devbox", "up", re)).toBeNull();
-    const down = connectionPill("devbox", "down", re)!;
-    expect([down.textContent, down.dataset.intent]).toEqual([copyText("kit.pill.offline", { machine: "devbox" }), "warn"]);
-    down.click();
-    expect(re).toHaveBeenCalledTimes(1);
-    expect(connectionPill("devbox", "connecting", re)!.querySelectorAll("span[aria-hidden]").length).toBe(1);
-    expect(connectionPill("devbox", "restored", re)!.dataset.intent).toBe("success");
-  });
 });
 
-describe("C7 卡片 · C8 列表行 · C9 折叠块", () => {
-  it("卡片：需要你 ⇒ data-needs-you（左条由 CSS 画），标题 ＋ 右侧动作", () => {
-    const c = card({ title: "计划待批", needsYou: true, actions: [button({ label: "详情", kind: "ghost" })], body: "3 步" });
-    expect([c.dataset.needsYou, c.textContent]).toEqual(["true", "计划待批详情3 步"]);
-  });
-
-  it("列表行：选中与当前分开；长名字中间省略、全名在悬停；Enter / 双击打开", () => {
-    const open = vi.fn();
-    const r = listRow({ name: `${"a".repeat(80)}.tar.gz`, meta: "12 MB", onOpen: open, actions: [button({ label: "复制", kind: "ghost" })] });
-    setRowState(r, { selected: true });
-    setRowState(r, { current: true });
-    expect([r.getAttribute("aria-selected"), r.getAttribute("aria-current")]).toEqual(["true", "true"]);
-    setRowState(r, { current: false });
-    expect(r.hasAttribute("aria-current")).toBe(false);
-    const name = r.querySelector<HTMLElement>("[title]")!;
-    expect(name.title.endsWith(".tar.gz") && name.textContent!.endsWith(".tar.gz") && name.textContent!.includes("…")).toBe(true);
-    r.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
-    r.dispatchEvent(new MouseEvent("dblclick"));
-    expect(open).toHaveBeenCalledTimes(2);
-    expect(middleEllipsis("short.txt", 60)).toBe("short.txt");
-  });
-
+describe("C9 折叠块", () => {
   it("折叠块：aria-expanded 与正文 hidden 同进退；→ 开 ← 收；回调只在真变了时调", () => {
     const seen: boolean[] = [];
     const f = fold({ title: "工具 ×3", summary: "21:14", open: false, body: document.createElement("div"), onToggle: (o) => seen.push(o) });
@@ -223,11 +180,8 @@ describe("C7 卡片 · C8 列表行 · C9 折叠块", () => {
   });
 });
 
-describe("C14 进度 · C22 计量条 · C17 徽标 · C18 键帽 · C19 骨架 · V10 状态点", () => {
-  it("进度条：比例夹在 0–1、读数原样、aria-valuenow 跟着变", () => {
-    const p = progressBar(0.32, "3.2 / 10 MB");
-    p.set(1.5, "10 / 10 MB");
-    expect([p.root.getAttribute("aria-valuenow"), p.root.textContent]).toEqual(["100", "10 / 10 MB"]);
+describe("C14 转圈 · C22 计量条 · C17 徽标 · C18 键帽 · C19 骨架 · V10 状态点", () => {
+  it("转圈：纯装饰，读屏器不念", () => {
     expect(spinner().getAttribute("aria-hidden")).toBe("true");
   });
 
@@ -272,67 +226,8 @@ describe("C15 错误条 · C16 空态", () => {
     expect(banner("warn", "重启 cc-monitor 后生效").getAttribute("role")).toBe("status");
   });
 
-  it("空态：图标 ＋ 一句 ＋ 怎么让它有 ＋ 至多一颗按钮；筛选空另一句 ＋［清除过滤］", () => {
+  it("空态：图标 ＋ 一句 ＋ 怎么让它有 ＋ 至多一颗按钮", () => {
     const e = emptyState({ text: "无会话", hint: "终端里 ccm 启动后自动出现" });
     expect(e.textContent).toBe("无会话终端里 ccm 启动后自动出现");
-    const clear = vi.fn();
-    const n = noMatch("ordrs", clear);
-    expect(n.textContent).toContain(copyText("kit.empty.noMatch", { query: "ordrs" }));
-    n.querySelector("button")!.click();
-    expect(clear).toHaveBeenCalled();
-  });
-});
-
-describe("I5 读数据的区块：七态", () => {
-  beforeEach(() => vi.useFakeTimers());
-  afterEach(() => vi.useRealTimers());
-
-  it("加载：300ms 内什么都不画 ⇒ 骨架 ⇒ 10s 后写正在做什么；数据到了原位替换", () => {
-    const b = dataBlock();
-    b.show({ kind: "loading", doing: "连接 devbox" });
-    expect([b.root.dataset.state, b.root.textContent]).toEqual(["loading", ""]);
-    vi.advanceTimersByTime(BLOCK_SKELETON_AFTER_MS);
-    expect(b.root.querySelectorAll('[aria-hidden="true"]').length).toBe(1);
-    vi.advanceTimersByTime(BLOCK_SAY_DOING_AFTER_MS);
-    expect(b.root.textContent).toContain("连接 devbox");
-    const content = document.createElement("div");
-    content.textContent = "行";
-    b.show({ kind: "ready", content });
-    vi.advanceTimersByTime(BLOCK_SAY_DOING_AFTER_MS * 2);
-    expect(b.root.textContent, "换了态，上一态的计时还在画").toBe("行");
-  });
-
-  it("出错 ≠ 空：出错是错误条 ＋［重试］；空是空态", () => {
-    const b = dataBlock();
-    const retry = vi.fn();
-    b.show({ kind: "error", text: "读取失败 · devbox 离线", retry });
-    expect(b.root.querySelector('[role="alert"]')?.textContent).toContain("读取失败");
-    b.root.querySelector("button")!.click();
-    expect(retry).toHaveBeenCalled();
-    b.show({ kind: "empty", empty: { text: "无会话" } });
-    expect([b.root.querySelector('[role="alert"]'), b.root.textContent]).toEqual([null, "无会话"]);
-  });
-
-  it("过期：旧数据照常在、顶上警告条；部分：没答的那台单独一行；很多：底下一行；禁用：说为什么", () => {
-    const b = dataBlock();
-    const rows = (): HTMLElement => Object.assign(document.createElement("div"), { textContent: "旧行" });
-    b.show({ kind: "stale", text: "devbox 离线 · 采样 3m 前", retry: () => {}, content: rows() });
-    expect([b.root.querySelector('[role="status"]')?.textContent?.includes("采样 3m 前"), b.root.textContent?.includes("旧行")]).toEqual([true, true]);
-    b.show({ kind: "partial", content: rows(), missing: ["gpu-01 无应答", "win-laptop 读取中"] });
-    expect(b.root.textContent).toBe("旧行gpu-01 无应答win-laptop 读取中");
-    b.show({ kind: "many", content: rows(), note: "前 500 · 搜索可找全部" });
-    expect(b.root.textContent).toBe("旧行前 500 · 搜索可找全部");
-    b.show({ kind: "disabled", why: "devbox 离线" });
-    expect([b.root.dataset.state, b.root.title]).toEqual(["disabled", "devbox 离线"]);
-  });
-
-  it("刷新：内容不动，右上角转圈；收掉就没了", () => {
-    const b = dataBlock();
-    b.show({ kind: "ready", content: Object.assign(document.createElement("div"), { textContent: "行" }) });
-    b.refreshing(true);
-    b.refreshing(true);
-    expect([b.root.textContent, b.root.querySelectorAll('span[aria-hidden="true"]').length]).toEqual(["行", 1]);
-    b.refreshing(false);
-    expect(b.root.querySelectorAll('span[aria-hidden="true"]').length).toBe(0);
   });
 });

@@ -28,7 +28,8 @@ fn 记下_撤回_读回() {
         current(Some(&f)),
         Marks {
             declined: vec!["relay".into()],
-            self_paste: Some("/h/.bashrc".into())
+            self_paste: Some("/h/.bashrc".into()),
+            start_skipped: false,
         }
     );
     mark_at(&f, &json!({"op": "undecline", "id": "relay"})).unwrap();
@@ -65,5 +66,20 @@ fn 不认的_op_或缺参数_拒() {
     ] {
         assert_eq!(mark_at(&f, &a).unwrap_err().0, "bad_args", "{a}");
     }
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// 「开始用」那一块点过「跳过」：记在同一份文件里，读回来带着；撤回就没了。
+#[test]
+fn skipping_the_start_block_is_remembered_and_can_be_undone() {
+    let d = std::env::temp_dir().join(format!("ccm-marks-skip-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&d);
+    std::fs::create_dir_all(&d).unwrap();
+    let path = d.join(".cc-monitor").join("chores.json");
+    let got = mark_at(&path, &serde_json::json!({"op": "skipStart"})).unwrap();
+    assert_eq!(got["startSkipped"], serde_json::json!(true));
+    assert!(current(Some(&path)).start_skipped);
+    mark_at(&path, &serde_json::json!({"op": "unskipStart"})).unwrap();
+    assert!(!current(Some(&path)).start_skipped);
     let _ = std::fs::remove_dir_all(&d);
 }

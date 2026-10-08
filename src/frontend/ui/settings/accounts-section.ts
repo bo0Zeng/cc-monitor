@@ -20,9 +20,8 @@ import { accountsAgentProfile, fetchAccounts, invalidateAccountsCache, launchAge
 import { setModelForAccount, getModelForAccount } from "../account-prefs";
 import { accountAvatarEl } from "../account-color";
 import { readQuota } from "../quota-reads";
-import { fmtAt, slotLabel, slotValue, type QuotaRead } from "../quota-lines";
+import { slotLabel, slotValue, type QuotaRead } from "../quota-lines";
 import type { QuotaShow } from "../generated/QuotaShow";
-import { localTzMin } from "../acct-view";
 import { readProfiles } from "../profiles-reads";
 import { writeApikeyKey } from "../apikey-reads";
 import { revealInFolder } from "../reveal-in-folder";
@@ -455,13 +454,12 @@ export class AccountsSection {
     list.setAttribute("role", "list");
     if (readonly) list.dataset.readonly = "true";
     const now = f.quota?.now ?? Math.floor(Date.now() / 1000);
-    const tz = localTzMin(now);
     const agent = safeAgent();
-    for (const a of f.state.accounts) list.appendChild(this.row(f, a, f.quota ? quotaOf(f.quota, agent, a.name) : null, readonly, now, tz));
+    for (const a of f.state.accounts) list.appendChild(this.row(f, a, f.quota ? quotaOf(f.quota, agent, a.name) : null, readonly, now));
     return list;
   }
 
-  private row(f: Facts, a: Account, q: QuotaShow | null, readonly: boolean, now: number, tz: number): HTMLElement {
+  private row(f: Facts, a: Account, q: QuotaShow | null, readonly: boolean, now: number): HTMLElement {
     const origin = f.origin;
     const key = this.key(a.name, origin);
     const wrap = document.createElement("div");
@@ -498,7 +496,7 @@ export class AccountsSection {
     u5.className = "acct-row-slot";
     const u7 = document.createElement("div");
     u7.className = "acct-row-slot";
-    fillUsage(u5, u7, q, now, tz);
+    fillUsage(u5, u7, q, now);
 
     const act = document.createElement("div");
     act.className = "acct-row-act";
@@ -882,7 +880,7 @@ function kindLine(a: Account, waiting: boolean): string {
 }
 
 /** `5h 63% ↻18:30` · `7d 41%`；用满 `5h ✕ ↻19:00`（红）· 被拒没用满 `5h 58% · 被拒`（红）；按量号 `按量`；没采样 `—`。 */
-function fillUsage(u5: HTMLElement, u7: HTMLElement, q: QuotaShow | null, now: number, tz: number): void {
+function fillUsage(u5: HTMLElement, u7: HTMLElement, q: QuotaShow | null, now: number): void {
   if (!q) return;
   if (q.kind === "api") {
     u5.textContent = copyText("acct.kind.api");
@@ -896,7 +894,7 @@ function fillUsage(u5: HTMLElement, u7: HTMLElement, q: QuotaShow | null, now: n
     const x = q.slots.find((v) => v.slot === slot);
     const here = (q.limiting ?? "5h") === slot;
     const parts = [slotLabel(slot), slotValue(q, slot)];
-    if (x?.resetsAt !== undefined && x.resetsAt > now && (slot === "5h" || (here && q.state === "refused"))) parts.push(copyText("acct.reset.at", { at: fmtAt(x.resetsAt, now, tz) }));
+    if (x?.resetsAt !== undefined && x.resetsAt > now && (slot === "5h" || (here && q.state === "refused"))) parts.push(copyText("acct.reset.at", { at: x.resetsAtText ?? "" }));
     cell.textContent = parts.join(" ");
     if (x?.full || (here && q.state === "refused")) cell.dataset.shade = "refused";
     else if (here && (q.state === "near" || q.state === "overageInUse")) cell.dataset.shade = "warn";

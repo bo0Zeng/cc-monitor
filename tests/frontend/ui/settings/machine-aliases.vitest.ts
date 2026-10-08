@@ -29,6 +29,7 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
     policy: over.policy ?? null,
     exists: over.exists ?? true,
     unreadable: null,
+    blockLines: 4,
     block: {
       present: blockAt.has(path),
       version: oldAt.has(path) ? "v2" : null,
@@ -222,6 +223,9 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
     const off = plat === "powershell" ? copyText("machineAliases.access.offWindow") : copyText("machineAliases.access.off");
     expect(access.textContent).toContain(off);
     expect(access.dataset.anchor, "主窗口 ↗［接上终端］落到这里").toBe("connect-terminal");
+    // 「会在 … 末尾加 N 行」「会动：… 末尾 N 行」的 N 是那台后端数的（候选上的 blockLines），界面不数。
+    expect(access.textContent).toContain(copyText("machineAliases.access.willAdd", { path: "~/rc-a", n: 4 }));
+    expect(el.textContent).toContain(copyText("machineAliases.writes.line", { path: "~/rc-a", n: 4 }));
     clickText(access, copyText("machineAliases.access.connectTo", { path: "~/rc-a" }));
     await flush();
     expect(seen.filter((c) => c.cmd === "aliases_block_install").map((c) => c.args)).toEqual([{ origin: "<local>", rcPath: "/h/rc-a" }]);

@@ -9,7 +9,7 @@
  */
 import { chan } from "../../comms/inward/chan";
 import { budgetWithin, jsonBody } from "./ipc/chan-caller";
-import { ControlError, machineName, settle, unreadable, type Refusals } from "./control-said";
+import { machineName, settle, unreadable, type Refusals } from "./control-said";
 import { exactKeys, isObj } from "./ipc/decode";
 import type { Origin } from "./ipc/origin";
 import { LOCAL_ORIGIN } from "./backend-policy";
@@ -31,11 +31,6 @@ function refusals(origin: Origin): Refusals {
   };
 }
 
-/** 这次失败是那台后端拒了（坏输入）—— 重来只会被同一道闸再拒一次。 */
-export function isRefusal(e: unknown): boolean {
-  return e instanceof ControlError && e.error?.layer === "peer" && e.error.why === "refused";
-}
-
 /** 应答里 `account` 那一格：`null` 或 `{name, configDir, model}`。 */
 function launchedOf(v: unknown): LaunchedAccount | null | undefined {
   if (v === null) return null;
@@ -48,7 +43,7 @@ function launchedOf(v: unknown): LaunchedAccount | null | undefined {
     : undefined;
 }
 
-/** 那一行 `ccm …` ＋ 那台判出来实际用的号。通道 / 形状上的失败与那台后端的拒都抛（[`ControlError`]；拒 ⇒ [`isRefusal`] 为真；
+/** 那一行 `ccm …` ＋ 那台判出来实际用的号。通道 / 形状上的失败与那台后端的拒都抛（[`ControlError`]；
  *  要的号选不了 ⇒ `launch-account.ts::accountUnavailableOf` 认得出）。 */
 export async function renderCli(origin: Origin, req: CliRenderRequest): Promise<CliRendered> {
   const body = jsonBody({ ...req });

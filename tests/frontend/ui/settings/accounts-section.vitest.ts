@@ -94,14 +94,15 @@ function quota(refusedAt?: number): QuotaRead {
     agent: "claude-code",
     account,
     seenAt: NOW - 60,
+    seenAtText: "11:59",
     kind: "sub",
     state: st,
     stale: false,
     limiting: "5h",
     slots: [
       // `full` 是那台后端的显示态（用满才有）；被拒没用满不带它。
-      { slot: "5h", pct: pct5, resetsAt: NOW + 3600, ...(pct5 >= 100 ? { full: true } : {}) },
-      { slot: "7d", pct: pct7, resetsAt: NOW + 86400, ...(pct7 >= 100 ? { full: true } : {}) },
+      { slot: "5h", pct: pct5, resetsAt: NOW + 3600, resetsAtText: "13:00", ...(pct5 >= 100 ? { full: true } : {}) },
+      { slot: "7d", pct: pct7, resetsAt: NOW + 86400, resetsAtText: "01-16 12:00", ...(pct7 >= 100 ? { full: true } : {}) },
     ],
     login: "ok",
   });
@@ -175,10 +176,10 @@ describe("账号表", () => {
     expect(nameLine("work")).toBe(`work${copyText("acctPage.row.default")}`);
     expect(nameLine("personal")).toBe("personal");
     const slots = (name: string) => [...rowOf(el, name).querySelectorAll<HTMLElement>(".acct-row-slot")];
-    expect(slots("work")[0].textContent).toMatch(/^5h ✕ ↻\d\d:\d\d$/);
+    expect(slots("work")[0].textContent).toBe("5h ✕ " + copyText("acct.reset.at", { at: "13:00" }));
     expect(slots("work")[0].dataset.shade).toBe("refused");
     expect(slots("work")[1].textContent).toBe("7d 78%");
-    expect(slots("personal")[0].textContent).toMatch(/^5h 63% ↻\d\d:\d\d$/);
+    expect(slots("personal")[0].textContent).toBe("5h 63% " + copyText("acct.reset.at", { at: "13:00" }));
     expect(slots("personal")[1].textContent).toBe("7d 41%");
     expect(slots("api")[0].textContent).toBe(copyText("acct.kind.api"));
     expect(rowOf(el, "work").querySelector(".acct-row-kind")!.textContent).toBe(copyText("acctPage.row.sub", { email: "work@example.com" }));

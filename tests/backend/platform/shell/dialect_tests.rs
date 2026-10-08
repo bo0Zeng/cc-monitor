@@ -137,7 +137,7 @@ fn powershell_reader_names_what_it_cannot_take() {
         Ok(("alphacc".to_string(), sv(&["--account", "z"]), RestTo::Agent))
     );
     assert!(
-        matches!(&got[0], Err(e) if e.starts_with("Set-Alias x ls（")),
+        matches!(&got[0], Err(e) if e.starts_with("Set-Alias x ls") && copy_core::copy_matches("rsShellDialect.ps.outsideFn", e)),
         "{got:?}"
     );
     assert!(

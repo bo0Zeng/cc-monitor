@@ -27,13 +27,11 @@
 import type { SessionContainer } from "./generated/SessionContainer";
 import { copyText } from "./copy-table";
 
-/**
- * 活性：进程在不在。
+/*
+ * 活性（下面 `liveness` 那一格）：进程在不在。
  * - `unseen`：**说不清** —— 由固定复活（那台机器还没把它的活会话清单报完）与那台机器看不见了（连接断了）产出。
  *   它说的是「机器看不见」，**不是**「会话死了」：`Unseen` 不许被显示成已结束。
  */
-export type Liveness = "live" | "dead" | "unseen";
-
 /**
  * 可恢复性：死了之后怎么回去（活着时 = 它现在死了会落到哪一格）。
  * - `attachable`：容器（tmux）还在 / 在 tmux 里跑，接回去就行 —— 「可重连」。

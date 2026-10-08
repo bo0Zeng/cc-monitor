@@ -188,12 +188,13 @@ export function profilesOps(): Record<string, OpHandler> {
         path: PATH,
         exists: !empty,
         fingerprint: empty ? null : "412-0123456789abcdef",
-        modified: empty ? null : st === "edited" ? Math.floor(Date.now() / 1000) : 1791380000,
+        editedAt: st === "edited" ? "14:20" : null,
         fileProblem: st === "syntax" ? { line: 12, message: copyText("beProfile.file.syntax", { e: "invalid table header" }) } : null,
         profiles: empty || st === "syntax" ? [] : all.map((p) => row(w, p, all)),
         seed: empty ? seed.map((p) => row(w, p, seed)) : [],
         migrated: st === "migrated" ? { count: 11, path: PATH, skipped: [copyText("beProfile.migrate.restToCcm", { name: "cca" })] } : null,
         binDir: `${HOME}/.cc-monitor/bin`,
+        tmux: true,
         accounts: ["a", "b", "d", "work"],
       };
     },
@@ -230,7 +231,7 @@ export function profilesOps(): Record<string, OpHandler> {
     },
     "profiles-write": (_o, _r, w) => {
       if (state(w) === "stale") throw new Refuse("stale", copyText("rsAccountAliases.install.changedElsewhere", { path: PATH }));
-      return { wrote: true, fingerprint: "412-0123456789abcdef", modified: 1791380000, reload: null };
+      return { wrote: true, fingerprint: "412-0123456789abcdef", reload: null };
     },
   };
 }

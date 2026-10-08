@@ -5,14 +5,10 @@
  * number）、formatBytes 有两份（data-section / diagnostics-section 精度不同）。
  * 集中收口避免后续漂移。
  *
- * 保留两套时间语义：
- * - **formatTimestampShort**：消息卡片显示时间戳，永远 `hh:mm`
- * - **formatTimestampSmart**：会话活动时间，当天 `hh:mm`，跨天 `yyyy-MM-dd hh:mm`
+ * 时间只留一套：**formatTimestampShort**（消息卡片显示时间戳，永远 `hh:mm`）。
  */
 
 /** 输入 ISO 字符串或 unix ms，返回 `hh:mm`（解析失败返原值字符串）。 */
-import { copyText } from "./copy-table";
-
 export function formatTimestampShort(input: string | number): string {
   try {
     const d = typeof input === "number" ? new Date(input) : new Date(input);
@@ -23,51 +19,12 @@ export function formatTimestampShort(input: string | number): string {
   }
 }
 
-/** 输入 unix ms，当天显示 `hh:mm`，跨天显示完整 `yyyy-MM-dd hh:mm`；0/NaN 返 "—"。 */
-export function formatTimestampSmart(ms: number): string {
-  if (!ms) return copyText("format.formatTimestampSmart.empty");
-  try {
-    const d = new Date(ms);
-    if (Number.isNaN(d.getTime())) return String(ms);
-    const today = new Date();
-    const sameDay =
-      d.getFullYear() === today.getFullYear() &&
-      d.getMonth() === today.getMonth() &&
-      d.getDate() === today.getDate();
-    if (sameDay) {
-      return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    }
-    return d.toLocaleString([], {
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  } catch {
-    return String(ms);
-  }
-}
-
 /** 字节数 → 人类可读：B / KB(1d) / MB(1d) / GB(2d) */
 export function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
   if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
   return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-}
-
-/**
- * 路径的最后一段（给人看的短名；兼容 `\` 分隔与尾随 `/`）。
- *
- * 从退役的老 SFTP 面板（`sftp/paths.ts`）搬来 —— 今天唯一的消费者是 viewer 窗的标题
- * （`entry-viewer.ts`：会话工作目录 → 窗口名）。它不切**远端**路径给后端用：那件事归 Rust 侧
- * `filewin::source::remote_basename`，只认 `/`。
- */
-export function basename(path: string): string {
-  const norm = path.replace(/\\/g, "/").replace(/\/+$/, "");
-  const i = norm.lastIndexOf("/");
-  return i >= 0 ? norm.slice(i + 1) : norm;
 }
 
 /**

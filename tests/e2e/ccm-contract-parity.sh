@@ -163,7 +163,7 @@ pair "codex（CC_BUS_ID 派生）"            -- --ccm-agent codex
 pair "claude（嵌套 env 清理）"             -- --ccm-agent claude
 pair "claude + --account b"               -- --ccm-agent claude --account b
 # Codex 没有账号这一维 ⇒ `--account` 真跑与 print 都明说不收（从前静默导出一个它不读的变量）。
-NOACCT="ccm: codex 还没有账号可选：不收 --account / --account-dir（--base 照收）"
+NOACCT="ccm: codex 不可选账号 · 不收 --account / --account-dir · --base 照收"
 ck "codex + --account b：真跑明说不收" "$NOACCT" \
    "$(base_env "$CCM" -- --ccm-agent codex --account b --cwd "$CWD" --launcher "$W/bin/envdump" 2>&1)"
 ck "codex + --account b：--ccm-print 同样不收" "$NOACCT" \

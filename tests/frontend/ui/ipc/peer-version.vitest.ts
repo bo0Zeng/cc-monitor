@@ -77,5 +77,4 @@ const EXPECTED_REMAINING: string[] = [
   "rsFilewinTransfer.reply.missingField",
   "rsLinkMux.data.noCredit",
   "rsSftp.plan.badProduct",
-  "rsSshLink.dial.tooOld",
 ];

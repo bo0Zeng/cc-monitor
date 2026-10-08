@@ -1,4 +1,4 @@
-/* 进度（C14）。 */
+/* 进度（C14）：转圈。 */
 @layer components {
   .progressSpinner {
     display: inline-block;
@@ -16,34 +16,6 @@
     to {
       transform: rotate(360deg);
     }
-  }
-
-  .progressRow {
-    display: flex;
-    align-items: center;
-    gap: var(--space-5);
-    width: 100%;
-    font-size: var(--font-size-small);
-    color: var(--text-2);
-  }
-
-  .progressTrack {
-    flex: 1;
-    height: 4px;
-    overflow: hidden;
-    border-radius: var(--radius-s);
-    background: var(--border-soft);
-  }
-
-  .progressFill {
-    height: 100%;
-    background: var(--accent);
-    transform-origin: left;
-  }
-
-  .progressReadout {
-    flex: none;
-    font-variant-numeric: tabular-nums;
   }
 
   @media (prefers-reduced-motion: reduce) {

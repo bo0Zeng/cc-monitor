@@ -107,21 +107,6 @@ export function setBusy(b: HTMLButtonElement, busyLabel: string | null): void {
   b.insertBefore(sp, b.firstChild);
 }
 
-/** 切换按钮（C21）：开着 = 叠层底 ＋ 图标强调色，`aria-pressed`；不与「选中」同形。 */
-export function toggleButton(spec: ButtonSpec & { pressed: boolean; onToggle: (pressed: boolean) => void }): HTMLButtonElement {
-  const b = button({
-    ...spec,
-    kind: spec.kind ?? "ghost",
-    onClick: () => {
-      const next = b.getAttribute("aria-pressed") !== "true";
-      b.setAttribute("aria-pressed", String(next));
-      spec.onToggle(next);
-    },
-  });
-  b.setAttribute("aria-pressed", String(spec.pressed));
-  return b;
-}
-
 /** 一行按钮：右对齐、取消在左、确认在右、宽度按字长。 */
 export function buttonRow(...buttons: HTMLElement[]): HTMLDivElement {
   const row = document.createElement("div");

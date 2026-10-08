@@ -33,19 +33,61 @@ function footprint(): unknown {
 }
 
 /** 扩展页那张表：金样的临时目录换成合成那台的家，两台机器换成本机与 devbox。 */
-function extList(): unknown {
+function extList(w: World): unknown {
   const g = JSON.parse(JSON.stringify(EXT_GOLDEN.list).split("<BASE>/a").join(HOME).split("<BASE>/b").join("/home/dev")) as {
     machines: { name: string; key: string | null }[];
   };
   g.machines[0].name = "workstation";
   g.machines[1].name = "devbox";
   g.machines[1].key = "devbox";
+  // 再两台：gpu-01 连不上（那一列是上次同步的样子）· win-laptop；外加一条 MCP「github」，本机装了、devbox 内容不同、另两台没装。
+  const rows = (g as unknown as { rows: { cells: unknown[] }[] }).rows;
+  const more = [
+    { here: false, key: "gpu-01", name: "gpu-01", projects: [], reachable: !w.unseenMachines.includes("gpu-01") },
+    { here: false, key: "win-laptop", name: "win-laptop", projects: [], reachable: !w.unseenMachines.includes("win-laptop") },
+  ];
+  g.machines.push(...(more as never[]));
+  const missingCell = (bring: unknown) => ({ bring, note: null, places: [{ at: { level: "user" }, dir: null, note: null, state: "missing", uninstall: false }], state: "missing" });
+  for (const r of rows) r.cells.push(missingCell(null), missingCell(null));
+  const bring = { from: null, fromName: "本机", scope: { from: { level: "user" }, to: { level: "user" } }, targets: [{ at: { level: "user" }, note: null, ok: true }] };
+  rows.push({
+    about: "读写 GitHub 上的仓库与 issue",
+    builtin: null,
+    cells: [
+      { bring: null, note: null, places: [{ at: { level: "user" }, dir: null, note: null, state: "same", uninstall: true }], state: "same" },
+      { bring, note: null, places: [{ at: { level: "user" }, dir: null, note: null, state: "differs", uninstall: true }], state: "differs" },
+      missingCell(bring),
+      missingCell(bring),
+    ],
+    detail: [],
+    kind: "mcp",
+    name: "github",
+    new: false,
+    note: null,
+  } as never);
   return g;
 }
 
 export function machineOps(): Record<string, OpHandler> {
   return {
-    "ext-list": () => extList(),
+    "ext-list": (_o, _r, w) => extList(w),
+    // 「装到 N 台」那一张卡（本机后端并好的）：MCP 那一条要一个 token，win-laptop 上已经有了。
+    "ext-hub-preview": (_o, req) => {
+      const to = req.to as (string | null)[];
+      const path = (t: string | null) => (t === "win-laptop" ? "C:\\Users\\user\\.claude.json" : `${t === null ? HOME : "/home/user"}/.claude.json`);
+      return {
+        places: [{ at: { level: "user" }, ok: true, note: null }],
+        place: { level: "user" },
+        slots: [{ field: "env", key: "GITHUB_TOKEN", kept: to.includes("win-laptop") ? ["win-laptop"] : [] }],
+        machines: to.map((t) => ({
+          to: t,
+          name: t ?? "workstation",
+          card: { kind: req.kind, name: req.name, path: path(t), writes: [path(t)], unchanged: false, suspects: [], stop: null, config: null, slots: [{ field: "env", key: "GITHUB_TOKEN", kept: t === "win-laptop" }], tokens: { source: "s1", target: "t1" } },
+          files: [`${path(t)} · mcpServers`],
+          error: null,
+        })),
+      };
+    },
     // 停 / 重启 / 更新 / 卸载之前「会打断什么」（形状同 `tests/__fixtures__/machine-interrupts.golden.json`）：
     //   devbox 上两个会话的请求经它、一个活着；本机账上通往 devbox 的转发一条；别的台什么都不断。
     "machine-interrupts": (origin, req) => ({
@@ -123,6 +165,7 @@ export function machineOps(): Record<string, OpHandler> {
           },
           unreadable: null,
           policy: null,
+          blockLines: 4,
         },
       ],
     }),
@@ -189,6 +232,16 @@ export function machineOps(): Record<string, OpHandler> {
     "footprint-report": () => footprint(),
     // 文件与数据：devbox 照稿 25 那六件（旧 ccm · 两条重名 · 失效行 · 实时显示 · 收信）；本机缺一个可选的开终端工具、实时显示已做；改过 ~/.bashrc 与扩展装的 skill。
     // 离线那台的上次值（本机后端记着的）：gpu-01 两天前读成的那一份「文件与数据」；记下一律答好。
+    // 「开始用」那份数：只有本机的那个世界（刚装好）三步都没做；有远端的世界第三步勾上、终端已接上。
+    "first-run": (_o, r) => {
+      const fresh = Number(r.remotes) === 0;
+      const steps = [
+        { id: "terminal", done: !fresh, required: true },
+        { id: "named", done: false, required: false },
+        { id: "remote", done: !fresh, required: false },
+      ];
+      return { steps, left: steps.filter((s) => s.required && !s.done).length, skipped: false };
+    },
     "last-seen-write": () => ({ atMs: Date.now() }),
     "last-seen-read": (_o, r) => ({
       accounts: null,
