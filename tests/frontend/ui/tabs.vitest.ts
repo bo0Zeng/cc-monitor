@@ -1624,8 +1624,9 @@ describe("已结束的 tab 右键「恢复 ▸」：与历史页「恢复 ▾」
   const labelOf = (b: Element): string => b.querySelector('[data-part="label"]')?.textContent ?? b.textContent ?? "";
   const menuLabels = (): string[] =>
     [...(document.body.querySelector("[role=menu]")?.querySelectorAll("[role^=menuitem]") ?? [])].map(labelOf);
+  // 同名时取最里层那一个（一级项「恢复 ▸」与 flyout 里的「恢复」可以同字）。
   const item = (label: string): HTMLButtonElement | undefined =>
-    [...(document.body.querySelector("[role=menu]")?.querySelectorAll<HTMLButtonElement>("[role^=menuitem]") ?? [])].find((b) => labelOf(b) === label);
+    [...(document.body.querySelector("[role=menu]")?.querySelectorAll<HTMLButtonElement>("[role^=menuitem]") ?? [])].filter((b) => labelOf(b) === label).pop();
   const flyout = (): HTMLElement => {
     const wrap = [...document.body.querySelectorAll("[role=none]")].find((w) => labelOf(w.children[0]) === copyText("tabMenu.item.resume"));
     expect(wrap, "找不到「恢复 ▸」那一项").toBeTruthy();
