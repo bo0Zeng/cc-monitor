@@ -40,6 +40,7 @@
 use super::copy::CopyJob;
 use super::shell::FileWindow;
 use super::source::Listed;
+use crate::Held;
 use copy_core::copy_text;
 
 /// 一个标签页：一个目录视图。
@@ -119,6 +120,8 @@ pub struct Workspace {
     force_close: bool,
     /// 取栏 / 标签时下标越界、退回最近那一个的次数（见 [`Self::pane_on`]）。
     slips: std::sync::atomic::AtomicU64,
+    /// 已经报过警告的调用处（`文件, 行`）。
+    slip_sites: std::sync::Mutex<std::collections::HashSet<(&'static str, u32)>>,
 }
 
 /// 缩放的上下限与一步多少（Ctrl + = / -）。
@@ -279,6 +282,7 @@ impl Workspace {
             close_after_save: false,
             force_close: false,
             slips: Default::default(),
+            slip_sites: Default::default(),
         };
         w.sync_focus();
         w
@@ -311,12 +315,14 @@ impl Workspace {
     /// 改动口都守着不变式（一或两栏 · 焦点在栏内 · 每栏非空且 `active < tabs.len()`，
     /// `workspace_tests::random_tab_and_split_sequences_keep_the_shape` 钉）；调用方拿着过时的栏号时
     /// 这里退回最后一栏 / 最后一个标签，记一笔 [`Self::slips`] ＋ 一行警告日志，不崩。
+    #[track_caller]
     pub fn pane_on(&self, side: usize) -> &FileWindow {
         let (k, i) = self.at(side);
         &self.sides[k].tabs[i].pane
     }
 
     /// 同上，可改。
+    #[track_caller]
     pub fn pane_on_mut(&mut self, side: usize) -> &mut FileWindow {
         let (k, i) = self.at(side);
         &mut self.sides[k].tabs[i].pane
@@ -325,6 +331,8 @@ impl Workspace {
     /// `(栏号, 标签号)`：给的栏号 / 那一栏的 `active` 越界就收进表里（见 [`Self::pane_on`]）。
     /// `sides` 永远非空、每栏 `tabs` 永远非空（只有 `new` / `add_side` 建栏、建时各带一个标签；
     /// `drop_tab` 不拿最后一个、`set_split` 只收第二栏）⇒ 两处 `len() - 1` 不下溢。
+    /// 警告日志每个调用处只报一次（一处过时的栏号会每帧都撞，不刷屏）；计数照记。
+    #[track_caller]
     fn at(&self, side: usize) -> (usize, usize) {
         let k = side.min(self.sides.len() - 1);
         let s = &self.sides[k];
@@ -332,15 +340,25 @@ impl Workspace {
         if k != side || i != s.active {
             self.slips
                 .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            tracing::warn!(
-                side,
-                sides = self.sides.len(),
-                active = s.active,
-                tabs = s.tabs.len(),
-                "filewin: stale side/tab index, fell back to the nearest one"
-            );
+            let here = std::panic::Location::caller();
+            if self.slip_sites.held().insert((here.file(), here.line())) {
+                tracing::warn!(
+                    at = %here,
+                    side,
+                    sides = self.sides.len(),
+                    active = s.active,
+                    tabs = s.tabs.len(),
+                    "filewin: stale side/tab index, fell back to the nearest one"
+                );
+            }
         }
         (k, i)
+    }
+
+    /// 报过警告的调用处有几处（判据看：同一处撞多少次只记一处）。
+    #[cfg(test)]
+    pub(crate) fn slip_sites(&self) -> usize {
+        self.slip_sites.held().len()
     }
 
     /// 取栏 / 标签时下标越界、退回最近那一个的次数（判据核它恒为 0；见 [`Self::pane_on`]）。

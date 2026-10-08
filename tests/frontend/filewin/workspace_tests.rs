@@ -2171,8 +2171,19 @@ fn a_stale_side_or_tab_index_falls_back_instead_of_panicking() {
         "越界的 active 该退回最后一个标签"
     );
     assert_eq!(ws.slips(), 2);
-    // 这一形下整帧也画得完。
-    Drive::new().frame(&mut ws, Vec::new());
+    // 这一形下整帧也画得完；同一处每帧都撞，警告只按调用处记、不随帧数长（不刷屏）。
+    let mut d = Drive::new();
+    d.frame(&mut ws, Vec::new());
+    let sites = ws.slip_sites();
+    for _ in 0..5 {
+        d.frame(&mut ws, Vec::new());
+    }
+    assert!(ws.slips() > 2, "越界的 active 每帧都该记一笔");
+    assert_eq!(
+        ws.slip_sites(),
+        sites,
+        "同一处多撞几帧，报过警告的调用处不该变多"
+    );
 }
 
 /// 🔴 锁中毒不崩：本包产品代码里取 `std::sync::Mutex` 一律经 `crate::Held::held`，不许 `lock().unwrap()` / `lock().expect(..)` 回潮
