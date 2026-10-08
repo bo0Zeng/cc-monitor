@@ -894,6 +894,12 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
       const naming = el("div", "cfg-hint", TMUX_NAMING[t.mode].text());
       naming.dataset.role = "tmux-naming";
       cell.append(row, naming);
+      // 这台没有 tmux（那台后端判的，与起新会话框同一个判法）⇒ 格不藏，旁边说一句。
+      if (book?.tmux === false) {
+        const none = el("div", "cfg-hint", copyText("profilesPage.form.noTmux"));
+        none.dataset.role = "no-tmux";
+        cell.appendChild(none);
+      }
       return cell;
     }
     if (s === "cwdIf" && f.cwdIf) {

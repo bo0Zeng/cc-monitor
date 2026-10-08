@@ -52,6 +52,8 @@ import { KeysOverview } from "./views/keys-overview";
 import { StatusMessages } from "./status-messages";
 import { StatusChores } from "./status-chores";
 import { choresOf } from "./settings/data-reads";
+import { readReadiness } from "./settings/readiness-reads";
+import { StatusStart } from "./status-start";
 import { restoreZoom, stepZoom } from "./zoom";
 import { mountTabBarFold, tabBarManuallyFolded, toggleTabBarFold } from "./tab-bar-fold";
 import { attachTooltip } from "./kit/tooltip";
@@ -180,9 +182,16 @@ window.addEventListener("DOMContentLoaded", async () => {
   });
   status.appendChild(chores.el);
   void chores.refreshAll();
+  // 「开始用 · 剩 N 步」（有才出，紧跟「要你动手」）：本机后端 `first-run` 的 `left`，与设置窗机器页「开始用」同一个数。
+  const start = new StatusStart({ read: readReadiness, open: () => void openSettingsWindow(undefined, dest.START) });
+  status.appendChild(start.el);
+  void start.refresh();
   void getCurrentWindow()
     .onFocusChanged(({ payload: focused }) => {
-      if (focused) void chores.refreshAll();
+      if (focused) {
+        void chores.refreshAll();
+        void start.refresh();
+      }
     })
     .catch((e: unknown) => console.warn("[status-chores] 挂焦点监听失败：", e));
   const statusSpacer = document.createElement("span");

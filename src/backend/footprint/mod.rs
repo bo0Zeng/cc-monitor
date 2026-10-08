@@ -16,6 +16,7 @@ pub(crate) mod agent_home_check;
 pub(crate) mod chores;
 pub(crate) mod data;
 pub(crate) mod last_seen;
+pub(crate) mod readiness;
 pub(crate) mod registry;
 pub(crate) mod rows;
 
@@ -60,15 +61,20 @@ pub(crate) fn data_answer(door: &dyn crate::assets::door::Door, args: &Value) ->
     let get = |k: &str| std::env::var(k).ok();
     let report = report_with(&get, &crate::observe::history_query::agent_home(), args)?;
     let todo = chores::chores(&chores::gather::facts(door, data::needs_install(&report)));
-    let tmux = match crate::control::terminals::rows_here() {
-        Ok(Some(_)) => Some(true),
-        Ok(None) => Some(false),
-        Err(_) => None,
-    };
+    let tmux = tmux_here();
     let own = crate::platform::paths::home_dir()
         .map(|h| data::own_rows(&h))
         .unwrap_or_default();
     Ok(data::shape(&report, todo, tmux, own))
+}
+
+/// 这台有没有 tmux（查不动 ⇒ `None`）：「文件与数据」那一份 · 别名页表单 · 起新会话框同一个判法（`control::terminals::rows_here`）。
+pub(crate) fn tmux_here() -> Option<bool> {
+    match crate::control::terminals::rows_here() {
+        Ok(Some(_)) => Some(true),
+        Ok(None) => Some(false),
+        Err(_) => None,
+    }
 }
 
 /// 整份足迹（两种问法共用这一份）。

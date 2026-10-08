@@ -61,6 +61,7 @@ describe("buildProfilesList", () => {
       migrated: null,
       binDir: "/h/.cc-monitor/bin",
       accounts: ["b", "z"],
+      tmux: true,
     };
     vi.resetModules();
     vi.doMock("@tauri-apps/plugin-opener", () => ({ openPath: vi.fn() }));
@@ -158,6 +159,19 @@ describe("buildProfilesList", () => {
     await flush();
     expect(writes).toEqual([{ changes: [{ op: "set", was: "cct", form: { ...form("cct", "cc"), account: { kind: "account", name: "z" } } }], fingerprint: "fp-1" }]);
     expect(el.querySelector('[data-role="profile-form"]')).toBeNull();
+  });
+
+  it("★ 这台没有 tmux（那台后端判的）⇒ tmux 那一格不藏，旁边说一句；有 tmux 的那台不说", async () => {
+    book.profiles = book.profiles.map((p) => (p.name === "cct" ? { ...p, form: { ...p.form, tmux: { mode: "auto", name: "" } } } : p));
+    for (const has of [true, false]) {
+      book.tmux = has;
+      const { el } = await mount();
+      [...el.querySelectorAll<HTMLElement>('.prof-trow[data-name="cct"] .cfg-link')][0].click();
+      await flush();
+      const f = el.querySelector<HTMLElement>('[data-role="profile-form"]')!;
+      expect(f.querySelector('[data-role="tmux"]'), "格不藏").not.toBeNull();
+      expect(f.querySelector('[data-role="no-tmux"]')?.textContent ?? null).toBe(has ? null : copyText("profilesPage.form.noTmux"));
+    }
   });
 
   it("存的时候被别处改过：一个字节没写、表单留着、顶上说一句 ＋ 重新读", async () => {

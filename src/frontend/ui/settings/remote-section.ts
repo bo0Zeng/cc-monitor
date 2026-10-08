@@ -831,6 +831,16 @@ export class RemoteSection {
   }
 
   /** 「添加机器」：框里点「添加」才建卡、写盘；没存上 ⇒ 卡收回去、框不关。 */
+  /** 机器表里有几台（上一次读回的那一份）。 */
+  machineCount(): number {
+    return this.original.hosts.length;
+  }
+
+  /** 页头［添加机器］与「开始用」第三步同一个口。 */
+  addMachine(): Promise<boolean> {
+    return this.openAdd();
+  }
+
   private openAdd(): Promise<boolean> {
     return openAddMachine({
       tryAdd: (cfgs) => tryRemoteConfig({ upsert: cfgs.map((value) => ({ key: null, value })) }),

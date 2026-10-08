@@ -20,6 +20,7 @@ import { extList, type ExtList } from "../ext-reads";
 import { CONFIG_SHOWN_EVENT, SETTINGS_GO_EVENT } from "./events";
 import { buildAliasManager, type AliasManagerSpec } from "./machine-aliases";
 import { cfgRow, type CfgRow } from "./cfg-row";
+import { countTags } from "./chore-tags";
 import { readDataReport } from "./data-reads";
 
 
@@ -234,7 +235,11 @@ function buildDataPointers(spec: ConfigPageSpec, onSelfPaste: (c: { state: strin
           dot.className = "data-dot";
           dot.dataset.tone = r.chores > 0 ? "bad" : "muted";
           const text = r.chores > 0 ? copyText("cfgPage.pointer.chores", { machine, n: r.chores, m: optional }) : copyText("cfgPage.pointer.optional", { machine, m: optional });
-          head.append(dot, line("cfg-pointer-text", text), button({ label: copyText("cfgPage.pointer.go"), size: "compact", onClick: () => go(head, `chores:${spec.origin()}`) }));
+          // 稿 12：那几枚分类数小标签（要做 · 要你定 · 要装 · 可选），与「文件与数据」同一套。
+          const tags = document.createElement("span");
+          tags.className = "data-summary cfg-pointer-tags";
+          tags.append(...countTags(r.todo, ["must", "decide", "install", "optional"]));
+          head.append(dot, line("cfg-pointer-text", text), tags, button({ label: copyText("cfgPage.pointer.go"), size: "compact", onClick: () => go(head, `chores:${spec.origin()}`) }));
         }
         foot.hidden = r.changedFiles.length === 0;
         foot.replaceChildren();

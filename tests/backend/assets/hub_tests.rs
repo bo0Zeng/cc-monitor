@@ -369,3 +369,116 @@ async fn a_project_dir_is_judged_by_the_machine_it_belongs_to() {
         .expect_err("正控：Windows 那一形的这台收下了 /home/user");
     assert_eq!(code, "bad_path");
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 一次装到几台：落点取交集 · 要填格并成一份 · 会写的文件逐台一行（判定都在枢纽）
+// ═══════════════════════════════════════════════════════════════════════════
+
+fn golden_list() -> ExtList {
+    let g: Value =
+        serde_json::from_str(include_str!("../../__fixtures__/ext-flow.golden.json")).unwrap();
+    serde_json::from_value(g["list"].clone()).unwrap()
+}
+
+#[test]
+fn many_places_are_the_intersection_and_the_place_is_ok_for_every_picked_machine() {
+    let list = golden_list();
+    // demo：本机那一格只能装到本机的项目（全局是来源同一处）；laptop 那一格全局与 laptop 的项目都行。
+    let p = plan_many(&list, ExtKind::Skill, "demo", &[Some("laptop".into())], None).unwrap();
+    assert_eq!(
+        p.places
+            .iter()
+            .map(|t| (t.at.clone(), t.ok))
+            .collect::<Vec<_>>()[0],
+        (ExtLoc::User, true)
+    );
+    assert_eq!(p.place, Some(ExtLoc::User), "建议的那一处：第一台的建议");
+    let both = plan_many(
+        &list,
+        ExtKind::Skill,
+        "demo",
+        &[None, Some("laptop".into())],
+        None,
+    )
+    .unwrap();
+    let user = both.places.iter().find(|t| t.at == ExtLoc::User).unwrap();
+    assert!(!user.ok, "本机那台装不了全局 ⇒ 交集里全局不可选");
+    assert!(user.note.is_some());
+    assert!(both.places.iter().all(|t| !t.ok), "两台没有共同能装的一处");
+    assert_eq!(both.place, None);
+    // 要的那一处对哪台都不行 ⇒ 不照它，退回建议。
+    let asked = plan_many(
+        &list,
+        ExtKind::Skill,
+        "demo",
+        &[Some("laptop".into())],
+        Some(ExtLoc::Project {
+            dir: "/nowhere".into(),
+        }),
+    )
+    .unwrap();
+    assert_eq!(asked.place, Some(ExtLoc::User));
+}
+
+#[test]
+fn a_machine_without_a_bring_or_not_in_the_table_is_said_per_machine() {
+    let list = golden_list();
+    let p = plan_many(&list, ExtKind::Skill, "demo", &[Some("ghost".into())], None).unwrap();
+    assert!(p.picks[0].bring.is_none());
+    assert_eq!(
+        plan_many(&list, ExtKind::Skill, "nope", &[None], None)
+            .unwrap_err()
+            .0,
+        "missing"
+    );
+    assert_eq!(
+        plan_many(&list, ExtKind::Skill, "demo", &[], None)
+            .unwrap_err()
+            .0,
+        "bad_args"
+    );
+}
+
+#[test]
+fn slots_merge_into_one_list_and_say_which_machines_already_have_each() {
+    let card = |kept: bool| ExtCard {
+        kind: ExtKind::Mcp,
+        name: "srv".into(),
+        path: "/h/.claude.json".into(),
+        writes: vec!["/h/.claude.json".into()],
+        unchanged: false,
+        suspects: vec![],
+        stop: None,
+        config: None,
+        slots: vec![ExtSlot {
+            field: "env".into(),
+            key: "API_KEY".into(),
+            kept,
+        }],
+        tokens: ExtTokens {
+            source: "s".into(),
+            target: None,
+        },
+    };
+    let (a, b) = (card(false), card(true));
+    assert_eq!(
+        merge_slots(&[("laptop".to_string(), &a), ("nano".to_string(), &b)]),
+        json!([{"field": "env", "key": "API_KEY", "kept": ["nano"]}])
+    );
+    assert_eq!(
+        files_of(&a),
+        vec!["/h/.claude.json · mcpServers".to_string()],
+        "MCP：路径 ＋ 键，不重复文件名"
+    );
+    let skill = ExtCard {
+        kind: ExtKind::Skill,
+        path: "/h/.claude/skills/demo".into(),
+        writes: vec!["SKILL.md".into(), "a.sh".into()],
+        slots: vec![],
+        ..card(false)
+    };
+    assert_eq!(
+        files_of(&skill),
+        vec!["/h/.claude/skills/demo · SKILL.md, a.sh".to_string()]
+    );
+}

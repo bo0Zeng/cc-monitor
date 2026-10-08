@@ -194,6 +194,7 @@ export function profilesOps(): Record<string, OpHandler> {
         seed: empty ? seed.map((p) => row(w, p, seed)) : [],
         migrated: st === "migrated" ? { count: 11, path: PATH, skipped: [copyText("beProfile.migrate.restToCcm", { name: "cca" })] } : null,
         binDir: `${HOME}/.cc-monitor/bin`,
+        tmux: true,
         accounts: ["b", "z", "q", "work"],
       };
     },

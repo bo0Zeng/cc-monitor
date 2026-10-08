@@ -61,7 +61,7 @@ cwd = \"/srv/p\"
 ";
 
 fn read(t: &Tmp) -> Value {
-    answer_read(&t.door(), &json!({})).expect("profiles-read")
+    read_with(&t.door(), &json!({}), Some(true)).expect("profiles-read")
 }
 
 fn prof<'a>(r: &'a Value, name: &str) -> &'a Value {
@@ -481,7 +481,7 @@ fn the_profiles_wire_matches_the_cross_language_golden() {
         g["manifest"].to_string().replace("<HOME>", &home),
     )
     .unwrap();
-    let read = answer_read(&t.door(), &json!({})).unwrap();
+    let read = read_with(&t.door(), &json!({}), Some(true)).unwrap();
     let resolve = answer_resolve(&t.door(), &json!({"name": "betacct", "at": "/tmp"})).unwrap();
     let impact = answer_impact(&t.door(), &g["impactArgs"]).unwrap();
     let bases = answer_bases(&t.door(), &json!({"name": "mycct"})).unwrap();
@@ -541,4 +541,16 @@ fn the_profiles_wire_matches_the_cross_language_golden() {
         })
         .collect();
     assert_eq!(serde_json::to_value(&codes).unwrap(), g["codes"]);
+}
+
+/// 别名表单 tmux 那一格旁的提示要的事实：这台有没有 tmux（与「文件与数据」· 起新会话框同一个判法），原样带着、不在这里猜。
+#[test]
+fn the_read_carries_whether_this_machine_has_tmux() {
+    let t = tmp("tmux-fact", None);
+    for v in [Some(true), Some(false), None] {
+        assert_eq!(
+            read_with(&t.door(), &json!({}), v).unwrap()["tmux"],
+            json!(v)
+        );
+    }
 }

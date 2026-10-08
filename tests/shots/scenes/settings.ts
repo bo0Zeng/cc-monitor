@@ -220,6 +220,17 @@ export const SETTINGS_SCENES: Scene[] = [
     },
     troubleWorld,
   ),
+  settings("settings-ext-install", "设置 · 扩展 · 一次装到两台", "github 那一行点开：安装位置每台一行（勾选 · 现状）· 勾 devbox 与 win-laptop ⇒ 一张卡：装到哪 · token 只填一次（win-laptop 已有）· 会写的文件逐台 ·［装到 2 台］", async () => {
+    await go("ext");
+    await sleep(600);
+    document.querySelector<HTMLElement>('.settings-page:not([hidden]) .ext-row[data-key="mcp/github"]')?.click();
+    await sleep(300);
+    for (const m of ["devbox", "win-laptop"]) {
+      document.querySelector<HTMLInputElement>(`.settings-page:not([hidden]) .ext-pick[data-machine="${m}"]`)?.click();
+      await sleep(300);
+    }
+    await sleep(500);
+  }, troubleWorld),
   settings("settings-general-resume-open", "设置 · 通用 · 恢复命令下拉", "恢复命令点开：默认那一家的启动器（灰字默认）· 用过的 · 自定义…", async () => {
     await go("general");
     await sleep(500);

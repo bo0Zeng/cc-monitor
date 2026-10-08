@@ -123,6 +123,12 @@ pub(crate) fn default_manifest_path() -> PathBuf {
 ///
 /// 账号数组**逐条**解析：单个坏账号（缺 name/configDir 等）被跳过而非拖垮整份
 /// manifest（避免手改 manifest 时一坏全灭；写侧 `accounts/manage/model.rs` 对这种条目也是原样留着、不去动它）。
+/// 这台启用了多账号没有（账号库清单读得出 ⇒ 是）：与账号清单那一份的 `meta.enabled` 同一个判法（[`scan_accounts`]）。
+/// 首次运行「给现在登录的号起个名字」那一步读它（`footprint/readiness.rs`）。
+pub(crate) fn accounts_enabled_here() -> bool {
+    load_manifest(&resolve_accts_dir()).is_ok()
+}
+
 fn load_manifest(accts_dir: &Path) -> Result<Manifest, String> {
     let p = manifest_path(accts_dir);
     let bytes = read_regular_capped(&p, MAX_MANIFEST_BYTES).map_err(|e| {

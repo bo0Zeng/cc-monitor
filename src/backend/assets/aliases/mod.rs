@@ -108,6 +108,8 @@ pub(crate) struct StartupFile {
     pub unreadable: Option<String>,
     /// 加载它的那一代 PowerShell 的执行策略（现问；块装在这里它会不会跑）。POSIX 与人另指的那一份 ⇒ `None`。
     pub policy: Option<crate::platform::shell::powershell::ExecPolicy>,
+    /// 把别名块装进这一份会写几行（与装进去的那一块同源：[`block::render_block`]，方言按这份的扩展名；渲染不出 ⇒ 0）。
+    pub block_lines: usize,
 }
 
 /// 生成文件的绝对路径。`home` 由调用方给 —— 测试拿临时目录当 home，**绝不碰真实家目录**。
@@ -811,6 +813,8 @@ pub(crate) fn rc_candidates_asking(
             policy: c
                 .host
                 .map(|h| asked.entry(h).or_insert_with(|| ask(h)).clone()),
+            block_lines: block::render_block(Shell::of_target(Path::new(&c.path)), home)
+                .map_or(0, |t| t.lines().count()),
             path: c.path,
         });
     }

@@ -261,7 +261,8 @@
         "usable": true
       }
     ],
-    "seed": []
+    "seed": [],
+    "tmux": true
   },
   "resolveReply": {
     "chain": [
