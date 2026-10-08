@@ -17,12 +17,6 @@
     "tests/backend/control/deploy_plan_tests.rs": [
       { "text": "本机", "use": "输入" }
     ],
-    "tests/backend/files/capability_guard.rs": [
-      { "text": "没有", "use": "非文案" }
-    ],
-    "tests/backend/files/size_tests.rs": [
-      { "text": "没有", "use": "输入" }
-    ],
     "tests/backend/platform/cfgless_guard.rs": [
       { "text": "路径", "use": "非文案" }
     ],
@@ -45,9 +39,6 @@
       { "text": "会话", "use": "输入" },
       { "text": "模型", "use": "输入" },
       { "text": "账号", "use": "输入" }
-    ],
-    "tests/frontend/filewin/editor_tests.rs": [
-      { "text": "没有", "use": "输入" }
     ],
     "tests/frontend/filewin/progress_tests.rs": [
       { "text": "已取消", "use": "回显" }

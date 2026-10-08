@@ -93,7 +93,7 @@ export const CLI_GOLDEN_CASES: readonly CliGoldenCase[] = [
     ok: true, out: "ccm resume s1 -- --ccm-agent codex --base --cwd /p" },
   { name: "Codex 会话选了具名账号", caps: ALL_CAPS,
     ctx: planResumeDirect("codex", "s1", "/p", undefined, { account: { kind: "named", name: "z" } }),
-    ok: false, out: "Codex 会话还不能选账号" },
+    ok: false, out: "Codex 会话不可选账号" },
   // ---- `path:` 那几条：monitor 每一条远端起会话路径真发出去的那一形（意图由生产 `plan*` 现造，与执行器同一个），
   //      Rust 侧逐条断言它们都只交一行 `ccm …`（`cli_parity` 的 `every_monitor_launch_path_hands_over_one_ccm_line`）。----
   { name: "path:远端直连 resume", caps: ALL_CAPS,
