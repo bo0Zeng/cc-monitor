@@ -50,7 +50,7 @@ const at = (el: HTMLElement): { left: number; top: number } => ({ left: parseFlo
 describe("浮层贴着触发物", () => {
   it("★ 会话头「⋯」贴着窗口右边：菜单右端对齐「⋯」右端、在它下方 4px（不往左整翻一个菜单宽）", () => {
     const more = anchorAt({ left: 990, top: 6, right: 1018, bottom: 34 });
-    openMenu({ el: more, align: "end" }, [{ label: "在新窗口打开" }]);
+    openMenu({ el: more, align: "end" }, [{ label: "项一" }]);
     // 「⋯」右端离窗边只有 6px ⇒ 菜单右端停在窗边内 8px（差 2px），不是差一个菜单宽。
     expect(at(menuEl())).toEqual({ left: 1024 - 8 - 240, top: 38 });
   });
@@ -64,7 +64,7 @@ describe("浮层贴着触发物", () => {
   it("右端对齐的菜单锚在左边的触发物上（往左放不下）⇒ 改左端对齐", () => {
     floatSize = { width: 200, height: 300 };
     const chip = anchorAt({ left: 10, top: 300, right: 90, bottom: 324 });
-    openMenu({ el: chip, align: "end" }, [{ label: "账号" }]);
+    openMenu({ el: chip, align: "end" }, [{ label: "项二" }]);
     expect(at(menuEl())).toEqual({ left: 10, top: 328 });
   });
 
@@ -78,16 +78,16 @@ describe("浮层贴着触发物", () => {
 
   it("★ 开着时触发物被重画掉（不在 DOM 里了、外接框全 0）、菜单项回来再排一次 ⇒ 位置不动，不飞到左上角", () => {
     const more = anchorAt({ left: 990, top: 6, right: 1018, bottom: 34 });
-    openMenu({ el: more, align: "end" }, [{ id: "kill", label: "结束会话…", pending: true }]);
+    openMenu({ el: more, align: "end" }, [{ id: "kill", label: "项三", pending: true }]);
     const first = at(menuEl());
     more.remove();
-    updateMenuItem("kill", { id: "kill", label: "结束会话…" });
+    updateMenuItem("kill", { id: "kill", label: "项三" });
     expect(at(menuEl())).toEqual(first);
   });
 
   it("★ 子菜单靠右下放不下 ⇒ 翻到左侧、底端对齐那一项（位置由同一处算，不靠 CSS 只翻左右）", () => {
     floatSize = { width: 240, height: 300 };
-    openMenu({ x: 700, y: 600 }, [{ label: "恢复", submenu: [{ label: "work" }, { label: "home" }] }]);
+    openMenu({ x: 700, y: 600 }, [{ label: "项四", submenu: [{ label: "work" }, { label: "home" }] }]);
     const wrap = menuEl().querySelector<HTMLElement>(':scope > [role="none"]')!;
     const fly = wrap.querySelector<HTMLElement>('[role="menu"][data-sub]')!;
     boxes.set(wrap, { left: 784, top: 700, right: 1016, bottom: 728 });
@@ -98,7 +98,7 @@ describe("浮层贴着触发物", () => {
 
   it("右键点（一点）：右下放不下 ⇒ 往左上翻（与原先一样）", () => {
     floatSize = { width: 200, height: 100 };
-    openMenu({ x: 1000, y: 700 }, [{ label: "关闭" }]);
+    openMenu({ x: 1000, y: 700 }, [{ label: "项五" }]);
     expect(at(menuEl())).toEqual({ left: 800, top: 600 });
   });
 });

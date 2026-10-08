@@ -428,8 +428,11 @@
   display: none;
 }
 
-/* 行尾动作：悬停 / 焦点时盖在行尾（同色底与渐隐），不预留位置。 */
+/* 行尾动作：悬停 / 焦点时盖在行尾（同色底与渐隐），不预留位置。
+   底色必须不透：行底是 `--bg-2` 上叠一层半透明的悬停 / 选中色，这里照样叠（渐变当一层盖在 `--bg-2` 上）；
+   只写半透明那一层 ⇒ 标题字从按钮底下透出来、与按钮叠在一起（10-08 用户在当前标签页上撞见）。 */
 .tab-acts {
+  --tab-acts-tint: transparent;
   position: absolute;
   top: 4px;
   right: 4px;
@@ -437,13 +440,27 @@
   height: 22px;
   visibility: hidden;
   border-radius: var(--radius-m);
-  background: var(--bg-2);
-  box-shadow: -10px 0 8px var(--bg-2);
+  background: linear-gradient(var(--tab-acts-tint), var(--tab-acts-tint)), var(--bg-2);
+}
+
+/* 左边那道渐隐：同样两层（行色 ＋ 底），标题尾巴淡进按钮底。 */
+.tab-acts::before {
+  position: absolute;
+  top: 0;
+  right: 100%;
+  bottom: 0;
+  width: 14px;
+  background: linear-gradient(to right, transparent, var(--tab-acts-tint)), linear-gradient(to right, transparent, var(--bg-2));
+  content: "";
+  pointer-events: none;
+}
+
+.tab:hover .tab-acts {
+  --tab-acts-tint: var(--state-hover);
 }
 
 .tab.active .tab-acts {
-  background: color-mix(in srgb, var(--state-active) 100%, var(--bg-2));
-  box-shadow: -10px 0 8px var(--bg-2);
+  --tab-acts-tint: var(--state-active);
 }
 
 .tab:hover .tab-acts,

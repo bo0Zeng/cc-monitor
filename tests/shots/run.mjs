@@ -158,7 +158,7 @@ async function shootWeb() {
     try {
       await page.goto(`${base}/${s.page}.html?scene=${encodeURIComponent(s.id)}${s.query ? `&${s.query}` : ""}`);
       await page.waitFor("window.__shots && window.__shots.state !== 'booting'", 30_000);
-      const h = await page.eval("({ state: window.__shots.state, error: window.__shots.error, unhandled: window.__shots.unhandled })");
+      const h = await page.eval("({ state: window.__shots.state, error: window.__shots.error, unhandled: window.__shots.unhandled, layout: window.__shots.layout ?? [] })");
       if (h.state === "failed") {
         ok = false;
         note = h.error;
@@ -167,13 +167,18 @@ async function shootWeb() {
       // 让最后一帧落定（过渡动画、字体）
       await sleep(350);
       writeFileSync(file, await page.png());
+      // 排版量出了问题：图照存（看得见哪里不对），这一张算没过。
+      if (h.layout.length > 0) {
+        ok = false;
+        note = `排版：${h.layout.join("；")}`;
+      }
     } catch (e) {
       ok = false;
       note = e instanceof Error ? e.message : String(e);
     }
     const errs = page.consoleLines.filter((l) => l.startsWith("[error]") || l.startsWith("[exception]"));
     if (errs.length > 0) problems.push(`${s.id}：页里报错 ${errs.slice(0, 3).join(" | ").slice(0, 400)}`);
-    if (!ok) problems.push(`${s.id}：没截成 —— ${note.split("\n")[0]}`);
+    if (!ok) problems.push(`${s.id}：${note.startsWith("排版：") ? note : `没截成 —— ${note.split("\n")[0]}`}`);
     writeFileSync(path.join(sandbox, `${s.id}.console.txt`), page.consoleLines.join("\n"));
     await page.close();
     results.push({ ...s, file: path.relative(out, file), ok });
