@@ -3213,16 +3213,16 @@ impl FileWindow {
             }
             // 前几段折成「…」：只留最后两级目录（窄档同一条规矩）。
             let tail = crumbs.len().saturating_sub(2);
-            let sep = copy_text("rsFilewinEditPage.crumb.sep", &[]);
+            let sep = egui_phosphor::regular::CARET_RIGHT;
             if tail > 1 {
-                ui.label(egui::RichText::new(&sep).color(p.faint));
+                ui.label(egui::RichText::new(sep).color(p.faint));
                 ui.label(
                     egui::RichText::new(copy_text("rsFilewinEditPage.crumb.more", &[]))
                         .color(p.text2),
                 );
             }
             for (label, full) in crumbs.iter().skip(tail.max(1)) {
-                ui.label(egui::RichText::new(&sep).color(p.faint));
+                ui.label(egui::RichText::new(sep).color(p.faint));
                 if ui
                     .add(
                         egui::Button::new(egui::RichText::new(label).color(p.text2))
@@ -3234,7 +3234,7 @@ impl FileWindow {
                     go = Some(full.clone());
                 }
             }
-            ui.label(egui::RichText::new(&sep).color(p.faint));
+            ui.label(egui::RichText::new(sep).color(p.faint));
             ui.label(egui::RichText::new(&name).color(p.text));
             let state = if self.edits.opening().is_some() {
                 Some(copy_text("rsFilewinEditPage.state.reading", &[]))

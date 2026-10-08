@@ -248,7 +248,7 @@
 
   .hvStar {
     flex: none;
-    color: var(--warn);
+    color: var(--accent);
   }
 
   .hvTitle {

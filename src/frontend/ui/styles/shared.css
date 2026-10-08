@@ -36,7 +36,7 @@
 }
 
 .status-account-icon {
-  font-size: 0.9em;
+  display: inline-flex;
   line-height: 1;
 }
 

@@ -65,3 +65,15 @@ describe("快捷键编辑器 · 单条恢复默认", () => {
     expect(changes).toBe(1);
   });
 });
+
+describe("快捷键编辑器 · 恢复默认那颗是纯图标按钮", () => {
+  it("代码画的 reset 图标、不带字；读屏名与悬停同一句", async () => {
+    const { copyText } = await import("../../../../src/frontend/ui/copy-table");
+    document.body.replaceChildren();
+    new KeybindingsEditor({ onChange: () => {} });
+    const b = resetBtnOf("tab.next");
+    expect(b.textContent).toBe("");
+    expect(b.querySelector<SVGElement>("svg")?.dataset.icon).toBe("reset");
+    expect([b.getAttribute("aria-label"), b.title]).toEqual([copyText("keybindingEditor.buildActionRow.resetHint"), copyText("keybindingEditor.buildActionRow.resetHint")]);
+  });
+});

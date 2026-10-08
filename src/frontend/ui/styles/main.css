@@ -150,7 +150,14 @@
 }
 
 .grid-monitor-cell.cell-bg .grid-monitor-cell-title::before {
-  content: var(--mark-bg-cell);
+  content: "";
+  display: inline-block;
+  width: var(--icon-size-compact);
+  height: var(--icon-size-compact);
+  vertical-align: middle;
+  background: currentColor;
+  mask: var(--icon-background) center / contain no-repeat;
+  margin-right: 4px;
   color: var(--text-faint);
 }
 

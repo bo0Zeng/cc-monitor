@@ -30,6 +30,7 @@
  */
 
 import { copyText } from "./copy-table";
+import { icon } from "./kit/icon";
 
 /** off-main 的卡片被 `BranchFolder` 包进这个容器里。判据的唯一锚点。 */
 export const FOLD_WRAP_SELECTOR = ".branch-fold-wrap";
@@ -66,13 +67,15 @@ export function attachBranchButton(
   const btn = document.createElement("button");
   btn.type = "button";
   btn.className = "viewer-branch-btn";
-  btn.textContent = copyText("branchButton.attachBranchButton.icon");
+  btn.appendChild(icon("fork", "compact"));
   btn.title = TITLE_ON_MAIN;
+  btn.setAttribute("aria-label", TITLE_ON_MAIN);
 
   // tooltip 在**指上去的那一刻**才定 —— 一条消息的主线归属会随后续对话变化
   // （ESC 回退会把原本 on-main 的一段甩成 off-main）。attach 时定死就会说谎。
   const syncTitle = (): void => {
     btn.title = isOffMainCard(btn) ? TITLE_OFF_MAIN : TITLE_ON_MAIN;
+    btn.setAttribute("aria-label", btn.title);
   };
   btn.addEventListener("mouseenter", syncTitle);
   btn.addEventListener("focus", syncTitle);

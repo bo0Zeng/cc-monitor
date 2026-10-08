@@ -1,7 +1,7 @@
 /**
  * 图标：全产品一套 Phosphor 线形（MIT，npm 包 `@phosphor-icons/core`；文件窗口用的 `egui-phosphor` 是同一套）。
  *
- * - 线形之外只有一个：标过星的那颗星用实心（`fill` 那一套的 `star-fill`；设计稿「文件与历史」乙4-③ 的样子），别的都是线形。
+ * - 只用线形一套（标过星的那颗也是线形 `star`，由所在控件涂 `--accent`；文件窗口同）。
  * - 只打包下面登记的这些（逐个 `?raw` 导入；判据钉「产物里的图标 == 这张表 == 代码里叫到的名字」）。
  * - `currentColor` 上色：默认 `--text-2`，悬停 / 当前由所在控件改 `color`。
  * - 纯装饰的图标读屏器不念（`aria-hidden`）；单独成钮的图标由按钮带读屏名（文案表 `aria` 档），图标自己不带字。
@@ -35,7 +35,7 @@ import xCircle from "@phosphor-icons/core/assets/regular/x-circle.svg?raw";
 import arrowLeft from "@phosphor-icons/core/assets/regular/arrow-left.svg?raw";
 import funnel from "@phosphor-icons/core/assets/regular/funnel.svg?raw";
 import desktop from "@phosphor-icons/core/assets/regular/desktop.svg?raw";
-import starFill from "@phosphor-icons/core/assets/fill/star-fill.svg?raw";
+import star from "@phosphor-icons/core/assets/regular/star.svg?raw";
 import chat from "@phosphor-icons/core/assets/regular/chat.svg?raw";
 import list from "@phosphor-icons/core/assets/regular/list.svg?raw";
 import plus from "@phosphor-icons/core/assets/regular/plus.svg?raw";
@@ -63,6 +63,13 @@ import userCircle from "@phosphor-icons/core/assets/regular/user-circle.svg?raw"
 import bell from "@phosphor-icons/core/assets/regular/bell.svg?raw";
 import arrowCounterClockwise from "@phosphor-icons/core/assets/regular/arrow-counter-clockwise.svg?raw";
 import gitFork from "@phosphor-icons/core/assets/regular/git-fork.svg?raw";
+import arrowBendDownLeft from "@phosphor-icons/core/assets/regular/arrow-bend-down-left.svg?raw";
+import stack from "@phosphor-icons/core/assets/regular/stack.svg?raw";
+import file from "@phosphor-icons/core/assets/regular/file.svg?raw";
+import circleHalf from "@phosphor-icons/core/assets/regular/circle-half.svg?raw";
+import circle from "@phosphor-icons/core/assets/regular/circle.svg?raw";
+import note from "@phosphor-icons/core/assets/regular/note.svg?raw";
+import stop from "@phosphor-icons/core/assets/regular/stop.svg?raw";
 import s from "./icon.module.css";
 
 const SVG = {
@@ -94,7 +101,7 @@ const SVG = {
   back: arrowLeft,
   filter: funnel,
   machine: desktop,
-  starFill: starFill,
+  star: star,
   chat: chat,
   list: list,
   plus: plus,
@@ -117,11 +124,18 @@ const SVG = {
   sidebar: sidebarSimple,
   zoomIn: magnifyingGlassPlus,
   zoomOut: magnifyingGlassMinus,
-  zoomReset: arrowCounterClockwise,
+  reset: arrowCounterClockwise,
   expand: arrowsOutLineVertical,
   account: userCircle,
   bell: bell,
   fork: gitFork,
+  branchOff: arrowBendDownLeft,
+  background: stack,
+  file: file,
+  half: circleHalf,
+  ring: circle,
+  note: note,
+  stop: stop,
 } as const;
 
 export type IconName = keyof typeof SVG;
@@ -150,4 +164,12 @@ export function icon(name: IconName, size: IconSize = "regular"): SVGSVGElement 
   path.setAttribute("d", pathOf(SVG[name]));
   svg.appendChild(path);
   return svg;
+}
+
+/**
+ * CSS 伪元素画图标用的那一形（`<details>` 摘要的箭头之类没有元素可挂）：`url("data:…")`，
+ * 由 `css-marks.ts` 设成根上的 `--icon-…`，CSS 写 `mask: var(--icon-…)` ＋ `background: currentColor`。
+ */
+export function iconMaskUrl(name: IconName): string {
+  return `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns="${NS}" viewBox="0 0 256 256"><path d="${pathOf(SVG[name])}"/></svg>`)}")`;
 }

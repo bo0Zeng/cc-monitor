@@ -41,6 +41,10 @@
     font-size: var(--font-size-small);
   }
 
+  .awMark {
+    gap: var(--space-2);
+  }
+
   .awMark[data-state="running"] {
     border-color: var(--success);
     color: var(--success);
@@ -130,6 +134,7 @@
   }
 
   .awStateIcon {
+    display: inline-flex;
     flex: none;
     margin-right: var(--space-2);
     color: var(--text-faint);
@@ -176,6 +181,12 @@
     flex: 1;
     border-top: 1px solid var(--border-soft);
     content: "";
+  }
+
+  .awEndText {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
   }
 
   .awEndSub {

@@ -142,7 +142,7 @@ function noticeRow(sp: Of<"taskNotification">, at: string, time: string): HTMLEl
   r.dataset.time = time;
   r.textContent = copyText("speaker.notice.row", {
     what: sp.summary ?? sp.taskId ?? "?",
-    state: failed ? copyText("speaker.notice.failed") : copyText("speaker.notice.done"),
+    state: failed ? copyText("runs.state.failed") : copyText("runs.state.done"),
     time,
   });
   return r;

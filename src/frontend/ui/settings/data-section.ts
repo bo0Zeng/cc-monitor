@@ -40,6 +40,7 @@ import type { DataClass } from "../generated/DataClass";
 import type { DataPathInfo } from "../generated/DataPathInfo";
 import type { DataPathsResponse } from "../generated/DataPathsResponse";
 import { copyText } from "../copy-table";
+import { icon } from "../kit/icon";
 
 /**
  * 每一行那一格「删了会怎样」。
@@ -215,8 +216,10 @@ export class DataSection {
     // ⇒ 换成真 DOM：`<strong>` 由 `document.createElement` 建，文字是纯文本。
     const note = document.createElement("div");
     note.className = "settings-data-note";
+    const info = icon("info", "compact");
+    info.classList.add("settings-data-note-icon");
     note.append(
-      copyText("data.note.icon"),
+      info,
       strong(copyText("data.note.uninstall")),
       copyText("data.note.byDefault"),
       strong(copyText("data.note.notCleared")),

@@ -63,6 +63,40 @@ pub fn ws_frame(
     painted
 }
 
+/// 一帧生产那个 `Workspace::frame`，交回内容**正好等于** `label` 的那几段字各自的颜色（按出现顺序；
+/// 取段格式里的颜色，控件覆盖了就取覆盖色）。图标字（Phosphor 码位）的「开 / 关」只差颜色时用它。
+pub fn ws_colors_of(
+    ctx: &egui::Context,
+    ws: &mut crate::workspace::Workspace,
+    label: &str,
+) -> Vec<egui::Color32> {
+    fn walk(s: &egui::Shape, label: &str, out: &mut Vec<egui::Color32>) {
+        match s {
+            egui::Shape::Text(t) if t.galley.text() == label => out.push(
+                t.override_text_color
+                    .or_else(|| t.galley.job.sections.first().map(|x| x.format.color))
+                    .unwrap_or(t.fallback_color),
+            ),
+            egui::Shape::Vec(v) => v.iter().for_each(|one| walk(one, label, out)),
+            _ => {}
+        }
+    }
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 800.0),
+        )),
+        ..Default::default()
+    };
+    let out = ctx.run_ui(input, |ui| ws.frame(ui));
+    let mut found = Vec::new();
+    for cs in &out.shapes {
+        walk(&cs.shape, label, &mut found);
+    }
+    out.drop_without_applying_deltas();
+    found
+}
+
 /// 找到 `label` 那一段字（恰好一处），点它一下（先画一帧找位置，再喂一次点击）。
 pub fn click(
     ctx: &egui::Context,

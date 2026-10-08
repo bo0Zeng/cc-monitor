@@ -44,6 +44,7 @@ import { SETTINGS_APPLIED_EVENT } from "../settings/events";
 import { confirmDialog } from "../kit/dialog";
 import { toast } from "../kit/toast";
 import { copyText } from "../copy-table";
+import { icon } from "../kit/icon";
 
 export class KeybindingsEditor implements OverlayHandle {
   private overlay: HTMLElement;
@@ -216,8 +217,9 @@ export class KeybindingsEditor implements OverlayHandle {
     const resetBtn = document.createElement("button");
     resetBtn.type = "button";
     resetBtn.className = "kb-editor-btn-reset";
-    resetBtn.textContent = copyText("keybindingEditor.buildActionRow.reset");
+    resetBtn.appendChild(icon("reset", "compact"));
     resetBtn.title = copyText("keybindingEditor.buildActionRow.resetHint");
+    resetBtn.setAttribute("aria-label", resetBtn.title);
     resetBtn.disabled = !action.available;
     resetBtn.addEventListener("click", () => void this.resetOne(action));
     opCell.appendChild(resetBtn);

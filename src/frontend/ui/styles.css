@@ -353,15 +353,9 @@
 }
 
 .agent-icon {
+  display: inline-flex;
   flex: none;
-  width: 1em;
-  text-align: center;
   color: var(--text-faint);
-}
-
-.agent-row.agent-running .agent-icon {
-  color: var(--live);
-  animation: act-waiting-pulse 1.2s ease-in-out infinite;
 }
 
 .agent-row.agent-failed .agent-icon {
@@ -792,7 +786,13 @@
 
 .branch-fold-wrap .viewer-branch-btn::after {
   /* 一个小角标，让「这条不是主线」在**不 hover** 时也看得出来 */
-  content: var(--mark-branch);
+  content: "";
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  vertical-align: middle;
+  background: currentColor;
+  mask: var(--icon-branch-off) center / contain no-repeat;
   position: absolute;
   right: -3px;
   bottom: -4px;
@@ -989,8 +989,8 @@
 }
 
 .card-slash .slash-icon {
+  display: inline-flex;
   color: var(--accent);
-  font-weight: 600;
 }
 
 .card-slash .slash-name {
@@ -1028,8 +1028,8 @@
 }
 
 .bash-prompt {
+  display: inline-flex;
   color: var(--text-2);
-  font-weight: 600;
 }
 
 .card-bash-input .bash-cmd {
@@ -1193,7 +1193,14 @@
 }
 
 .ask-option.is-chosen .ask-option-label::before {
-  content: var(--mark-chosen);
+  content: "";
+  display: inline-block;
+  width: var(--icon-size-compact);
+  height: var(--icon-size-compact);
+  vertical-align: middle;
+  background: currentColor;
+  mask: var(--icon-check) center / contain no-repeat;
+  margin-right: 4px;
   color: var(--success);
   font-weight: 700;
 }
@@ -1424,14 +1431,20 @@
 }
 
 .card-compact-summary::before {
-  content: var(--mark-closed);
+  content: "";
   display: inline-block;
-  width: 14px;
+  width: var(--icon-size-compact);
+  height: var(--icon-size-compact);
+  vertical-align: middle;
+  background: currentColor;
+  mask: var(--icon-caret-right) center / contain no-repeat;
+  margin-right: 4px;
+  transition: transform var(--dur-expand);
   color: var(--text-2);
 }
 
 .card-compact[open] > .card-compact-summary::before {
-  content: var(--mark-open);
+  transform: rotate(90deg);
 }
 
 .card-compact-summary:hover {
@@ -1481,13 +1494,19 @@
 }
 
 .injected-head::before {
-  content: var(--mark-closed);
+  content: "";
   display: inline-block;
-  width: 14px;
+  width: var(--icon-size-compact);
+  height: var(--icon-size-compact);
+  vertical-align: middle;
+  background: currentColor;
+  mask: var(--icon-caret-right) center / contain no-repeat;
+  margin-right: 4px;
+  transition: transform var(--dur-expand);
 }
 
 .card-injected[open] > .injected-head::before {
-  content: var(--mark-open);
+  transform: rotate(90deg);
 }
 
 .injected-body {
@@ -1517,13 +1536,19 @@
 }
 
 .paste-fold > summary::before {
-  content: var(--mark-closed);
+  content: "";
   display: inline-block;
-  width: 14px;
+  width: var(--icon-size-compact);
+  height: var(--icon-size-compact);
+  vertical-align: middle;
+  background: currentColor;
+  mask: var(--icon-caret-right) center / contain no-repeat;
+  margin-right: 4px;
+  transition: transform var(--dur-expand);
 }
 
 .paste-fold[open] > summary::before {
-  content: var(--mark-open);
+  transform: rotate(90deg);
 }
 
 .paste-body {
@@ -1669,14 +1694,20 @@
 }
 
 .card-tool-group-summary::before {
-  content: var(--mark-closed);
+  content: "";
   display: inline-block;
-  width: 14px;
+  width: var(--icon-size-compact);
+  height: var(--icon-size-compact);
+  vertical-align: middle;
+  background: currentColor;
+  mask: var(--icon-caret-right) center / contain no-repeat;
+  margin-right: 4px;
+  transition: transform var(--dur-expand);
   color: var(--text-2);
 }
 
 .card-tool-group[open] > .card-tool-group-summary::before {
-  content: var(--mark-open);
+  transform: rotate(90deg);
 }
 
 .card-tool-group-summary:hover {
@@ -1843,14 +1874,20 @@
 }
 
 .block-collapsible .block-summary::before {
-  content: var(--mark-closed);
+  content: "";
   display: inline-block;
-  width: 14px;
+  width: var(--icon-size-compact);
+  height: var(--icon-size-compact);
+  vertical-align: middle;
+  background: currentColor;
+  mask: var(--icon-caret-right) center / contain no-repeat;
+  margin-right: 4px;
+  transition: transform var(--dur-expand);
   color: var(--text-2);
 }
 
 .block-collapsible[open] > .block-summary::before {
-  content: var(--mark-open);
+  transform: rotate(90deg);
 }
 
 .block-collapsible .block-summary:hover {
@@ -2238,10 +2275,7 @@
 }
 
 .branch-fold-arrow {
-  display: inline-block;
-  width: 10px;
-  font-size: var(--font-size-xs);
-  text-align: center;
+  display: inline-flex;
   color: var(--text-faint);
   transition: transform 150ms ease;
   transform: rotate(0deg);

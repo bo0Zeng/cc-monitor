@@ -210,9 +210,9 @@ describe("F54 findHostByOrigin", () => {
 import { describeStage } from "../../../../src/frontend/ui/settings/machine-card";
 
 describe("F46 describeStage", () => {
-  it("各阶段 kind 有图标+文案", () => {
+  it("各阶段 kind 有文案", () => {
     expect(describeStage({ kind: "dialing", endpoint: "h:22" }).text).toContain(copyText("machineCard.stage.dial", { endpoint: "h:22" }));
-    expect(describeStage({ kind: "won", endpoint: "h:22" }).icon).toBe("✓");
+    expect(describeStage({ kind: "won", endpoint: "h:22" }), "只给一句话，图标不归它（C-W1）").toEqual({ text: copyText("machineCard.stage.won", { endpoint: "h:22" }) });
     expect(describeStage({ kind: "failed", endpoint: "h:22", reason: "x" }).text).toBe(copyText("machineCard.stage.failed", { endpoint: "h:22", reason: "x" }));
     expect(describeStage({ kind: "auth", ok: false, detail: copyText("acct.val.refusedOnly") }).text).toContain(copyText("acct.val.refusedOnly"));
     expect(describeStage({ kind: "auth", ok: true, detail: null }).text).toContain(copyText("machineCard.stage.authOk"));

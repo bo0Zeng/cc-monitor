@@ -93,6 +93,7 @@ describe("数据位置：给路径，不给删 / 清空", () => {
       "../format": ["formatBytes"],
       "./skeleton": ["holdSkeletonHeight", "makeSkeleton"],
       "../copy-table": ["copyText"], // 取文口：只读一张表，不是效应
+      "../kit/icon": ["icon"], // 画图标：不是效应
     });
     expect(face.storageWrites).toEqual([]);
   });
@@ -134,6 +135,10 @@ describe("数据位置：给路径，不给删 / 清空", () => {
     const buttons = [...sec.element.querySelectorAll("button")].map((b) => b.textContent ?? "");
     expect(buttons.length, "一颗按钮都没有 —— 下面的「没有删」是空真").toBeGreaterThan(0);
     expect(buttons.filter((t) => /删|清/.test(t))).toEqual([]);
+    // 卸载说明那张卡开头是代码画的 info 图标，不是字符（C-W1）。
+    const note = sec.element.querySelector<HTMLElement>(".settings-data-note");
+    expect(note?.firstElementChild?.getAttribute("data-icon")).toBe("info");
+    expect(note?.textContent?.startsWith(copyText("data.note.uninstall"))).toBe(true);
   });
 });
 

@@ -254,10 +254,11 @@ describe("account-ux U8 chip 头像休眠", () => {
     expect(fetchAccountsMock.mock.calls.length, "重画不该再取一次").toBe(fetches);
   });
 
-  it("只有 1 个可选账号 → 退回 👤（颜色此时区分不了任何东西）", async () => {
+  it("只有 1 个可选账号 → 退回账号图标（颜色此时区分不了任何东西）", async () => {
     const chip = await mountWith(state({ accounts: [acct({ name: "wei", isDefault: true })] }));
     expect(icon(chip).querySelector(".acct-avatar")).toBeNull();
-    expect(icon(chip).textContent).toBe("👤");
+    expect(icon(chip).textContent, "代码画的 Phosphor，不是字符").toBe("");
+    expect(icon(chip).querySelector<SVGElement>("svg")?.dataset.icon).toBe("account");
   });
 
   it("2 个账号但只有 1 个可选 → 仍休眠（数可选数，不是总数）", async () => {

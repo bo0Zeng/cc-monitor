@@ -127,7 +127,7 @@ export function sessionRow(
   const l1 = document.createElement("div");
   l1.className = s.hvL1;
   if (r.starred) {
-    const st = icon("starFill", "compact");
+    const st = icon("star", "compact");
     st.classList.add(s.hvStar);
     l1.appendChild(st);
   }
