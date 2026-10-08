@@ -35,7 +35,7 @@ members = [
 
 [package]
 name = "monitor"
-version = "4.1.2"
+version = "4.1.3"
 description = "cc-monitor — Claude Code 的开发工作台：只读渲染会话输出 + 本机/远端会话管理 + skill 接入面（Tauri 2 + TypeScript，Windows / Linux）"
 authors = ["cc-monitor contributors"]
 edition = "2021"

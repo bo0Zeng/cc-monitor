@@ -3330,7 +3330,7 @@ dependencies = [
 
 [[package]]
 name = "monitor"
-version = "4.1.2"
+version = "4.1.3"
 dependencies = [
  "acct-core",
  "cc-monitor-filewin",
