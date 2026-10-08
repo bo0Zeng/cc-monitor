@@ -34,7 +34,7 @@ function tab(sid: string, over: Partial<Tab> = {}): Tab {
   return {
     sessionId: sid,
     title: sid,
-    kind: null,
+    background: false,
     bgName: null,
     aiTitle: null,
     projectDir: `/w/${sid}`,
@@ -53,7 +53,7 @@ function tab(sid: string, over: Partial<Tab> = {}): Tab {
   } as unknown as Tab;
 }
 
-const waiting = { status: "waiting", waitingFor: "permission prompt" };
+const waiting = { doing: "needs_you" as const, waitingFor: "permission prompt" };
 const approve = (sinceMs: number | null = NOW - 120_000): Needs => ({ kind: "approve", tool: "Bash", call: "toolu_b", what: "rm -rf build/", sinceMs });
 
 beforeEach(() => {
@@ -65,15 +65,15 @@ describe("一个会话读成什么（session-face）", () => {
   it("★ 需要你：活着 ＋ 活动信号说在等才算；种类没到 ⇒「需要你」（不猜）；活动信号说不在等了 ⇒ 手上那份不认；死了 ⇒ 不算", () => {
     expect(needsOf(tab("a", { activity: waiting }))).toEqual({ kind: "unknown", tool: null, call: null, what: null, sinceMs: null });
     expect(needsOf(tab("a", { activity: waiting, needs: approve() }))?.kind).toBe("approve");
-    expect(needsOf(tab("a", { activity: { status: "busy", waitingFor: null }, needs: approve() })), "已经答完：不留一条需要你").toBeNull();
+    expect(needsOf(tab("a", { activity: { doing: "working", waitingFor: null }, needs: approve() })), "已经答完：不留一条需要你").toBeNull();
     expect(needsOf(tab("a", { state: RECONNECTABLE, activity: waiting, needs: approve() })), "Claude 已退出：陈旧的在等不算").toBeNull();
   });
 
   it("★ 状态点（V10）：颜色 ＝ 在干什么，形状 ＝ 进程在不在（状态不明不当已结束画）", () => {
     const got = [
-      tab("a", { activity: { status: "busy", waitingFor: null } }),
+      tab("a", { activity: { doing: "working", waitingFor: null } }),
       tab("b", { activity: waiting }),
-      tab("c", { activity: { status: "idle", waitingFor: null } }),
+      tab("c", { activity: { doing: "idle", waitingFor: null } }),
       tab("d", { state: RECONNECTABLE }),
       tab("e", { state: ENDED }),
       tab("f", { state: GONE }),
@@ -85,9 +85,9 @@ describe("一个会话读成什么（session-face）", () => {
 
   it("★ 状态句：等批准 · 等了多久 / 运行中 · 调用哪个工具 · 多久 / 空闲 · 完成多久前（没看 ⇒ 多说一个「未看」）/ 状态不明 · 哪台", () => {
     expect(stateLine(tab("a", { activity: waiting, needs: approve() }), NOW)).toEqual({ text: copyText("sessionFace.state.waiting", { kind: copyText("tabBar.needsKind.approve"), waited: "2m" }), needs: true });
-    const running = tab("b", { activity: { status: "busy", waitingFor: null }, pending: [{ id: "x", name: "Bash", what: "pytest", at: new Date(NOW - 65_000).toISOString(), state: "running", why: null }] });
+    const running = tab("b", { activity: { doing: "working", waitingFor: null }, pending: [{ id: "x", name: "Bash", what: "pytest", at: new Date(NOW - 65_000).toISOString(), state: "running", why: null }] });
     expect(stateLine(running, NOW).text).toBe(copyText("sessionFace.state.runningFor", { tool: "Bash", dur: "1m" }));
-    const idle = (unread: number) => tab("c", { unread, activity: { status: "idle", waitingFor: null }, lastSay: { text: "改好了", at: new Date(NOW - 240_000).toISOString() } });
+    const idle = (unread: number) => tab("c", { unread, activity: { doing: "idle", waitingFor: null }, lastSay: { text: "改好了", at: new Date(NOW - 240_000).toISOString() } });
     expect(stateLine(idle(0), NOW).text).toBe(copyText("sessionFace.state.idleSeen", { ago: "4m" }));
     expect(stateLine(idle(2), NOW).text).toBe(copyText("sessionFace.state.idleUnseen", { ago: "4m" }));
     expect(stateLine(tab("d", { state: UNSEEN, origin: "gpu-01" as never }), NOW).text).toBe(copyText("sessionFace.state.unseen", { machine: "gpu-01" }));
@@ -97,7 +97,7 @@ describe("一个会话读成什么（session-face）", () => {
   it("peek：在等你 ⇒ 等的那一句；在跑 ⇒ 正在做的那一步；空闲 ⇒ 最后一句；拿不到 ⇒ 不出", () => {
     expect(peekLine(tab("a", { activity: waiting, needs: approve() }))).toBe("rm -rf build/");
     expect(peekLine(tab("b", { pending: [{ id: "x", name: "Read", what: "src/a.ts", at: null, state: "running", why: null }] }))).toBe("src/a.ts");
-    expect(peekLine(tab("c", { activity: { status: "idle", waitingFor: null }, lastSay: { text: "结论", at: null } }))).toBe("结论");
+    expect(peekLine(tab("c", { activity: { doing: "idle", waitingFor: null }, lastSay: { text: "结论", at: null } }))).toBe("结论");
     expect(peekLine(tab("d", { state: ENDED, lastSay: { text: "结论", at: null } }))).toBeNull();
   });
 
@@ -166,7 +166,7 @@ describe("标签页栏：「需要你 N」与机器离线条", () => {
     strip.click();
     expect(r.host.switchTo).toHaveBeenCalledWith("b");
     // 答完了（活动信号说不在等）⇒ 那一条收起，未读数回来。
-    (r.store.tabs.get("b") as Tab).activity = { status: "busy", waitingFor: null };
+    (r.store.tabs.get("b") as Tab).activity = { doing: "working", waitingFor: null };
     r.view.refresh();
     expect(strip.style.display).toBe("none");
     expect(b.badge.textContent).toBe("3");
@@ -250,7 +250,7 @@ describe("「需要你」钉条 · 窗口标题 · 系统通知", () => {
     expect(nb.el.textContent).toContain(copyText("needs.bar.sub", { waited: "2m" }));
     nb.el.querySelector("button")!.click();
     expect(attach).toHaveBeenCalledWith("a");
-    cur.activity = { status: "busy", waitingFor: null };
+    cur.activity = { doing: "working", waitingFor: null };
     nb.render(NOW);
     expect([nb.el.style.display, nb.el.childElementCount]).toEqual(["none", 0]);
   });

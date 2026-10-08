@@ -107,13 +107,6 @@ const SENDERS: &[(&str, Verdict)] = &[
     //   `asset_sync.rs::ResidentBackend::call` 这一口；失败经共用分流器翻成人话。形状与理由同上几条。
     ("asset_sync.rs", Verdict::UsesRouter),
     // skill「装到这台」那一行（原住 `skill_install.rs`）摘了：装 / 卸的编排进了被写那台后端，界面经通道直问。
-    // ★ **第十一个发送端** —— 用户文件的读改写 ＋ 删历史会话
-    //   （`user_files.rs::BackendDoor`：`files-home` / `files-peek` / `files-put` / `files-rename` /
-    //   `files-chmod` / `files-delete-session`）。只有后端的文件管理部分写文件，本机也算
-    //   ⇒ **没有第二条路可回落**（直写正是被裁掉的那一形，`D11`）；长连接不在时明说「后端没连上」。
-    //   **照样走分流器**（`route_call_error` ＋ `no_channel`），理由与 `frame_query.rs` 那条逐字相同；
-    //   它要的 `stale` 那一档是从分流器递回来的 `(code, message)` 里认的，不自己 match 错误枚举。
-    ("user_files.rs", Verdict::UsesRouter),
     // ★ 传输台的中继（`sftp_pool.rs`）：窗口的开单 / 订阅经它转给**本机**常驻后端
     //   （`transfer-*` 四条，传输台住那里）。没有第二条路可回落（`D11`：不进程内开 SFTP），
     //   后端说的码原样带回窗口；**照样走分流器**，理由与 `link_mux.rs` 那一行逐字相同。
@@ -124,8 +117,6 @@ const SENDERS: &[(&str, Verdict)] = &[
     // 远端常驻后端 hello 的新旧改问本机常驻后端（`resident-verdict`，判定只在后端）：一问一答，照样走分流器，
     //   理由与 `sftp.rs` 问部署计划那条逐字相同（长连接不在时明说，没有第二条路可回落）。
     ("remote_resident.rs", Verdict::UsesRouter),
-    // 旧入口 `~/.local/bin/ccm` 的去向改问本机常驻后端（`deploy-retired`）：一问一答，照样走分流器。
-    ("ccm_legacy.rs", Verdict::UsesRouter),
 ];
 
 /// 分流器的**两个出口**：分层结果（`05` 形状）与从它收拢出来的旧三态。

@@ -397,11 +397,3 @@ export function removeMenuItem(id: string): void {
   o.items.delete(id);
 }
 
-export function appendMenuItem(item: MenuItem): void {
-  const o = current;
-  if (!o) return;
-  const el = makeItem(o, item);
-  if (item.id) o.items.set(item.id, el);
-  o.root.appendChild(el);
-  place(o);
-}

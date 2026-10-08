@@ -388,11 +388,11 @@ describe("登录与指路", () => {
     fetchAccounts.mockResolvedValue(state({ accounts: [acct({ name: "work", isDefault: true }), acct({ name: "b", loggedIn: false, authReady: false })] }));
     openLoginWindow.mockResolvedValue("noWindow");
     const el = await mount();
-    buttonNamed(rowOf(el, "b"), "更多操作 · b").click();
-    [...document.querySelectorAll<HTMLElement>("[role=menuitem]")].find((m) => m.textContent?.includes("重新登录…"))!.click();
+    buttonNamed(rowOf(el, "b"), copyText("acctPage.row.more", { name: "b" })).click();
+    [...document.querySelectorAll<HTMLElement>("[role=menuitem]")].find((m) => m.textContent?.includes(copyText("acctPage.menu.relogin")))!.click();
     await settle();
-    expect(rowOf(el, "b").textContent).toContain("本机无法开终端窗口");
-    expect([...rowOf(el, "b").querySelectorAll("button")].some((b) => b.textContent === "在 tmux 里登录")).toBe(false);
+    expect(rowOf(el, "b").textContent).toContain(copyText("acctPage.login.noWindow"));
+    expect([...rowOf(el, "b").querySelectorAll("button")].some((b) => b.textContent === copyText("acctPage.login.inTmux"))).toBe(false);
     noteMachineTmux("devbox", true);
   });
 

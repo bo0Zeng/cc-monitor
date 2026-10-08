@@ -9,7 +9,7 @@
 #   gen-idle-tmux(fake-claude 活 + @ccm_sid)        → SessionAdded(sid)      = live
 #   (kill fake-claude,tmux 会话留活)                → SessionRemoved(sid)    = 灰(claude 死、tmux 在)
 #   SessionState(sid, reconnectable)                  = 灰后端条件(后端会话账本裁,原看 tmux 快照帧)
-#   (跑**生产渲染链**〔生产 planResumeIntoExistingTmux → 生产 Rust render_launch_payload〕就地 resume,复用原名)
+#   (跑**生产渲染链**〔`resume-cmd-driver.ts into-existing` → 生产 Rust render_ccm_launch〕就地 resume,复用原名)
 #     → fake-claude 复活(新 pidfile,同 sessionId)   → SessionAdded(sid) 再现 = **复活清灰**(后端边沿)
 #   全程 tmux 只有一个 cc-<sid8>(复用,无 -N 孤儿,治 #76)
 # 红线:backend 零改动(只跑它)/ CLAUDE_CONFIG_DIR 隔离绝不碰真 ~/.claude / 不改 TMUX_LS_FMT。
@@ -144,7 +144,7 @@ if [ "$GRAY_ALIVE" = 1 ] && printf '%s' "$SS_GRAY" | grep -q '"state":"reconnect
 else bad "claude 死后会话没了($GRAY_ALIVE) 或没裁成可重连(不该):$SS_GRAY"; fi
 
 # ── 3. REVIVE:跑真源就地 resume 命令(复用原名)→ fake-claude 复活 → SessionAdded 再现 = 清灰 ──
-echo "-- 就地 resume(生产渲染链 planResumeIntoExistingTmux → render_ccm_launch,复用 $SESSION,账号目录 = 后端所看目录)--"
+echo "-- 就地 resume(生产渲染链 resume-cmd-driver into-existing → render_ccm_launch,复用 $SESSION,账号目录 = 后端所看目录)--"
 # configDir = backend 监视目录 → 复活的 fake-claude pidfile 落这里,backend 判活得到 = 后端复活。
 # 后端监视的那个目录登记成沙箱账号清单里的一个号，按名字点它。
 cat > "$CCM_SHIM_ACCOUNTS/accounts.json" <<JSON

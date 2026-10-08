@@ -152,7 +152,7 @@ impl Answer {
 }
 
 pub(crate) fn bad(why: &str) -> CmdErr {
-    ("invalid_args", crate::common::contract::malformed(why))
+    ("bad_args", crate::common::contract::malformed(why))
 }
 
 /// 一串 sid：非空、不超上界、不重复、每个过 sid 那一关。

@@ -9,8 +9,6 @@
 import { defaultLauncherOf } from "../../../src/frontend/ui/agent-profile.ts";
 import {
   planResumeDirect,
-  planResumeTmux,
-  planResumeIntoExistingTmux,
   planAttach,
 } from "../../../src/frontend/ui/launch-requests.ts";
 import { buildCliRenderRequest } from "../../../src/frontend/ui/launch-cli-wire.ts";
@@ -52,19 +50,6 @@ test("直连 resume：没有容器、cwd 原样、点名的号原样上线（那
     defaultLauncher: defaultLauncherOf("claude"),
   });
   eq(req(planResumeDirect("claude", "abc-123", "   ", "claude")).cwd, null, "cwd 空白 ⇒ 不带");
-});
-
-test("tmux 建会话 resume：容器 create、身份标记是完整 sid、名字用传进来的", () => {
-  const r = req(planResumeTmux("claude", "abc-123", "/p", "claude", "abc-123-cc", ACCT));
-  eq(r.container, { kind: "tmux", name: "abc-123-cc", send_into: false });
-  eq(r.ccmSid, "abc-123");
-});
-
-test("就地 resume：容器 send-into、不重打身份标记、没有 cwd", () => {
-  const r = req(planResumeIntoExistingTmux("claude", "abc-123", "cc-abc", "claude", ACCT));
-  eq(r.container, { kind: "tmux", name: "cc-abc", send_into: true });
-  eq(r.ccmSid, null);
-  eq(r.cwd, null);
 });
 
 test("接回：不起 agent ⇒ 不带账号修饰", () => {

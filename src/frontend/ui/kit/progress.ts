@@ -38,6 +38,3 @@ export function progressBar(ratio: number, readout: string): { root: HTMLDivElem
   return { root, set };
 }
 
-/** 转圈什么时候出现：等过 `showAfter` 才画，画了至少留 `minShown`（C14：300 / 400）。 */
-export const SPINNER_SHOW_AFTER_MS = 300;
-export const SPINNER_MIN_SHOWN_MS = 400;

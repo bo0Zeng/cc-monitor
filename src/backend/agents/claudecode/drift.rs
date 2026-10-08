@@ -33,6 +33,10 @@ pub enum DriftFace {
     UnknownRecordType,
     /// 已知 `type` 但字段解析失败（**这一类值得警惕**：多半是 CC 改了已知类型的形状）。
     KnownTypeParseFailed,
+    /// 进程状态文件里认不出的 `kind`（当后台会话，不成 tab）。
+    UnknownSessionKind,
+    /// 进程状态文件里认不出的 `status`（活动灯说不清）。
+    UnknownSessionStatus,
 }
 
 impl DriftFace {
@@ -44,6 +48,12 @@ impl DriftFace {
             }
             DriftFace::KnownTypeParseFailed => {
                 copy_text("rsDriftLedger.consequence.knownTypeParse", &[])
+            }
+            DriftFace::UnknownSessionKind => {
+                copy_text("rsDriftLedger.consequence.unknownSessionKind", &[])
+            }
+            DriftFace::UnknownSessionStatus => {
+                copy_text("rsDriftLedger.consequence.unknownSessionStatus", &[])
             }
         }
     }

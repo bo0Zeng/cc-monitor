@@ -117,7 +117,7 @@ export class FakeBackend {
         live: {
           session_id: s.sid,
           origin,
-          kind: s.kind,
+          background: s.background,
           attachable: true,
           cwd: s.cwd,
           project_dir: s.cwd,
@@ -129,7 +129,7 @@ export class FakeBackend {
         frames.push({ line: { session_id: s.sid, cwd: s.cwd, path: `${s.cwd}/${s.sid}.jsonl`, seq, origin, message } });
       });
       if (s.runs.length > 0) frames.push({ runs: { session_id: s.sid, runs: s.runs, ended: [] } });
-      frames.push({ activity: { session_id: s.sid, status: s.status, waiting_for: s.waitingFor } });
+      frames.push({ activity: { session_id: s.sid, activity: s.activity, waiting_for: s.waitingFor } });
       if (s.ended) frames.push({ ended: { session_id: s.sid } });
       else if (s.idle) frames.push({ idle: { session_id: s.sid } });
     }

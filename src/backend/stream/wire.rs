@@ -118,6 +118,7 @@ fn is_false(b: &bool) -> bool {
 
 /// `hello.homes` 的一项（类型住 agent 注册表那一侧，帧面只引用它）。
 pub use crate::agents::AgentHome;
+pub use crate::agents::SessionActivity;
 
 /// `hello.unavailable` 的一项 —— **这条命令我接得下，但在这台机器上做不到，以及为什么**
 ///〔`K-P4` 09-04，用户逐字「事前协商是要的」〕。
@@ -355,9 +356,13 @@ pub enum Frame {
         /// Claude（pidfile 权威）**省略**（skip_if_none）→ 消费侧缺=authoritative（向后兼容）。
         #[serde(skip_serializing_if = "Option::is_none")]
         liveness_confidence: Option<String>,
-        /// pidfile 里的会话种类（`interactive` · `bg` …）。
+        /// pidfile 里的会话种类原词（`interactive` · `bg` …）。monitor 不读它（读 `background`）；第二个前端在读，冻结。
         #[serde(skip_serializing_if = "Option::is_none")]
         session_kind: Option<String>,
+        /// 是不是后台会话（不是人坐在终端里对话的那种）。适配层判（`agents::pidfile_background`），客户端只读这一格。
+        /// 只在 `true` 时上线（缺 ＝ 交互会话；交互会话的帧字节与本字段加进来之前一字不差）。
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        background: bool,
         /// **E73（additive）：attach 进去对人有没有意义。**
         ///
         /// `session_kind` 今天把两件事压在一个轴上：①「该不该在 UI 出现」②「是不是一个人
@@ -395,8 +400,12 @@ pub enum Frame {
         #[serde(skip_serializing_if = "Option::is_none")]
         lines: Option<u64>,
         /// Batch9-F27（additive）：宣告时的初始 status/waitingFor——连接建立灯就对。
+        /// `status` 是 pidfile 原词：monitor 不读它（读 `activity`）；第二个前端在读，冻结。
         #[serde(skip_serializing_if = "Option::is_none")]
         status: Option<String>,
+        /// 宣告时此刻在干什么（适配层翻好的，[`SessionActivity`]）。说不清 ⇒ 不上线。
+        #[serde(skip_serializing_if = "Option::is_none")]
+        activity: Option<SessionActivity>,
         /// 宣告时在等什么（同 `session_status`）。
         #[serde(skip_serializing_if = "Option::is_none")]
         waiting_for: Option<String>,
@@ -421,9 +430,12 @@ pub enum Frame {
     SessionStatus {
         /// 会话 id。
         sid: String,
-        /// 红绿灯状态（pidfile 里的 `status`）。
+        /// 红绿灯状态（pidfile 里的 `status` 原词；monitor 读 `activity`，第二个前端读它，冻结）。
         #[serde(skip_serializing_if = "Option::is_none")]
         status: Option<String>,
+        /// 此刻在干什么（同 `session_added.activity`）。说不清 ⇒ 不上线。
+        #[serde(skip_serializing_if = "Option::is_none")]
+        activity: Option<SessionActivity>,
         /// 在等什么（pidfile 里的 `waitingFor`）。
         #[serde(skip_serializing_if = "Option::is_none")]
         waiting_for: Option<String>,

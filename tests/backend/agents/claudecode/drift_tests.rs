@@ -127,6 +127,8 @@ fn every_face_states_its_consequence() {
     let faces = [
         DriftFace::UnknownRecordType,
         DriftFace::KnownTypeParseFailed,
+        DriftFace::UnknownSessionKind,
+        DriftFace::UnknownSessionStatus,
     ];
     for f in faces {
         assert!(f.consequence().len() > 10, "{f:?} 的后果说明太短");

@@ -555,12 +555,13 @@ fn remote_host_never_resolves_to_a_local_path() {
     //   `backend` 推给远端那一格从 `$BACKEND_PATH` 换成固定落点 `~/.cc-monitor/bin/ccm`（条数不变）。
     // 7 → 6：旧工具推给远端那一格（`$ACCT_ISO_DEST`）随它删了（账号库改由那台后端自己建，`Either`）。
     // 6 → 5：代码全景组件推给远端那一格随代码全景一起删了。
+    // 5 → 3：旧版遗留那两行（`~/.local/bin/ccm` · `~/.cc-monitor/bin/cc-monitor-backend`）随「认出旧装法并清掉」那条链删了。
     assert_eq!(
-        checked, 5,
-        "Remote 条目数变了（真实应为 5）——改 TOOLS 就要来确认这个数。\
+        checked, 3,
+        "Remote 条目数变了（真实应为 3）——改 TOOLS 就要来确认这个数。\
              ★ P4c（08-12）5→4：`~/.cc-bus/` 转 Either（`P4a` 把读面做成本机可用）；\
 5→6：`ccm` 多一行旧版入口 `~/.local/bin/ccm`（认出是我们放的就删；合并时按两边增量相加）；\
-6→7：`ccm` 多一行旧落点 `~/.cc-monitor/bin/cc-monitor-backend`；7→6 旧工具那一格删；6→5 代码全景组件那一格删"
+6→7：`ccm` 多一行旧落点 `~/.cc-monitor/bin/cc-monitor-backend`；7→6 旧工具那一格删；6→5 代码全景组件那一格删；5→3 旧版遗留两行删"
     );
 }
 
@@ -590,9 +591,6 @@ fn every_host_declaration_is_pinned() {
         //    ⚠ 标 `Either` 会**说假话**：这一份是 monitor 自己在**它跑着的那台**上
         //    放下去的（`local_backend::install_local_ccm_entry`），远端那台上没有它。
         ("ccm", "~/.cc-monitor/bin/ccm*", Client),
-        ("ccm", "~/.cc-monitor/bin/cc-monitor-backend-*", Client),
-        // 旧默认 `backendPath` 落下的那份后端字节（`RetiredLegacy`，认出是我们编的就删）。
-        ("ccm", "~/.cc-monitor/bin/cc-monitor-backend", Remote),
         ("ccm", "~/.bashrc", Remote),
         // cc-bus 的 `installable` 翻成 true 之后，
         // 「装得了就必须申报装到哪」当场要它 —— 部署真正写的就是这个目录。
@@ -649,9 +647,6 @@ fn every_host_declaration_is_pinned() {
         // Claude Code 跑在哪台，这份记录就在哪台（`remote_history.rs` 真的从远端读它），
         // 标 `Client` 会让远端会话的用户在这一页上看到一句假话。
         ("claude-code", "~/.claude/projects/", Either),
-        // 迁移 ② ③：旧版放在远端 `~/.local/bin/ccm` 的那一份，认出是我们放的就删。
-        //   `Remote`：我们只往远端那一格推过它（本机那条入口从来在 `~/.cc-monitor/bin`）。
-        ("ccm", "~/.local/bin/ccm", Remote),
     ];
     let mut actual: Vec<(&str, &str, HostScope)> = TOOLS
         .iter()
@@ -1224,7 +1219,9 @@ fn every_row_carries_its_tier_and_the_owed_one_never_reads_as_not_ours() {
             r.tool_id
         );
         assert!(
-            !r.source_label.contains("不由 cc-monitor 提供"),
+            !r.source_label.contains(copy_core::copy_static!(
+                "rsConfigSurface.unmanaged.checkOnlySource"
+            )),
             "`{}` 的措辞把「欠的实现」说成了「不是我们提供的」—— \
                  那与 `K38` 矛盾（`KR65D2` 逐字：不会被读成「不该我们装」）",
             r.tool_id
@@ -1563,70 +1560,5 @@ fn a_local_footprint_path_uses_one_separator_throughout() {
     assert_eq!(
         describe_target_with(&unix, '/'),
         "/home/u/.cc-monitor/bin/ccm*"
-    );
-}
-
-// ===== 旧版遗留那一档：不在 ＝ 该有的样子 =====
-
-/// 要求：「旧版放的入口 … 效果档 `RetiredLegacy`（旧版放的入口：认出是我们放的就删）」＋
-/// 「这里不存在算不算正常是判断，按一处后端由后端给结论」。
-///
-/// 空盘（什么都不在）上从远端那台看：读成「该不在、确实不在」的行 == 申报表里效果档是 `RetiredLegacy` 的那几条（两向相等）；
-/// 正控：同一张空盘上别的效果档照旧是「不存在」。另钉 `read_absence` 只改「不在」那一形 —— 旧版那一份**还在**时如实说在。
-#[test]
-fn a_gone_retired_legacy_row_reads_as_expected_absent_not_missing() {
-    use std::collections::BTreeSet;
-    let h = home();
-    let fs = empty_probe();
-    let mut env = env_with(&h, &fs, Some("/usr/bin"));
-    env.vantage = Vantage::Remote;
-    let rows = build_rows(&env, None);
-    let got: BTreeSet<(&str, &str)> = rows
-        .iter()
-        .filter(|r| matches!(r.state, SurfaceState::ExpectedAbsent { .. }))
-        .map(|r| (r.tool_id, r.path_declared))
-        .collect();
-    let want: BTreeSet<(&str, &str)> = TOOLS
-        .iter()
-        .flat_map(|t| t.carrier_touches().map(move |(_, f)| (t, f)))
-        .filter(|(_, f)| f.effect == TouchEffect::RetiredLegacy && f.host != HostScope::Client)
-        .map(|(t, f)| (t.id, f.path))
-        .collect();
-    assert!(
-        !want.is_empty(),
-        "申报表里一条旧版遗留都没有 —— 人群坏了，别改断言"
-    );
-    assert_eq!(
-        got, want,
-        "「该不在、确实不在」那一档的行 ≠ 旧版遗留那几条申报 —— 判定漏了一条或多读了一条"
-    );
-    for r in rows
-        .iter()
-        .filter(|r| matches!(r.state, SurfaceState::ExpectedAbsent { .. }))
-    {
-        assert_eq!(
-            r.state,
-            SurfaceState::ExpectedAbsent {
-                detail: copy_text("rsConfigSurface.observe.retiredGone", &[])
-            },
-            "{} 那一行上屏的那句不是文案表里那一条",
-            r.path_declared
-        );
-    }
-    assert!(
-        rows.iter().any(|r| r.state == SurfaceState::Absent),
-        "正控：同一张空盘上别的效果档该照旧是「不存在」—— 一条都没有 ⇒ 判定把所有「不在」都读成了该不在"
-    );
-    let still_there = SurfaceState::Present {
-        detail: "文件，12 字节".to_string(),
-    };
-    assert_eq!(
-        read_absence(TouchEffect::RetiredLegacy, still_there.clone()),
-        still_there,
-        "旧版那一份还在 ⇒ 如实说在"
-    );
-    assert_eq!(
-        read_absence(TouchEffect::OwnedFile, SurfaceState::Absent),
-        SurfaceState::Absent
     );
 }

@@ -5,7 +5,7 @@
 // 两边异源：左边是界面那张表 `profiles-list.ts::TMUX_NAMING`（人写的说明 ＋ `stepsAside`）；
 // 右边是后端 `src/backend/control/ccm/plan.rs::build` 的**原文** —— 三条取名路各自那一行 `(基名, 退不退让)`
 // （`K-R96` 那三条：`--tmux-base` 退让 · `--tmux=<名>` 不退让 · 不给名从工作目录派生、退让）。
-// ⇒ 「哪几个选项会依次试 -2」两向相等；说明里「依次试」出现 ⇔ `stepsAside` 为真。
+// ⇒ 「哪几个选项会依次试 -2」两向相等；说明里点出 -2 ⇔ `stepsAside` 为真。
 // 后端哪天把某一条的态度改了（例如显式名也退让），本条红，去改说明 —— 不许两边各说各的。
 import { describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
@@ -58,10 +58,10 @@ describe("D1 · tmux 四选的说明与后端退让规则同一张表", () => {
     expect(beNo.length).toBeGreaterThan(0);
   });
 
-  it("说明里「依次试」出现 ⇔ stepsAside 为真（话与表不许各说各的）", async () => {
+  it("说明里点出退让的后缀（-2）⇔ stepsAside 为真（话与表不许各说各的）", async () => {
     const { TMUX_NAMING } = await import("../../../../src/frontend/ui/settings/profiles-list");
     for (const [mode, v] of Object.entries(TMUX_NAMING)) {
-      expect(v.text().includes("依次试"), `${mode}：${v.text()}`).toBe(v.stepsAside === true);
+      expect(v.text().includes("-2"), `${mode}：${v.text()}`).toBe(v.stepsAside === true);
     }
   });
 

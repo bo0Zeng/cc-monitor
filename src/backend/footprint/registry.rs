@@ -333,10 +333,6 @@ pub enum TouchEffect {
     /// 「我们只是调了别人的命令」不改变**用户的文件因为在我们这儿点了一下而变了**这件事。
     /// 这一页的全部价值是可信告知，在自己的主张上失信比不做这一页更坏。
     IndirectWrite,
-    /// **cc-monitor 旧版放在这儿的那一份，今天要清掉**：认出是它放的（记号见 `ccm_legacy`）就删，
-    /// 认不出的一个字节都不动。它不是「拥有」（[`Self::OwnedFile`] 那句「部署时整体覆盖」对它是假话）——
-    /// 我们不再往这儿写，只在看见旧的那一份时收回它。「三件都要在足迹里有入口」。
-    RetiredLegacy,
 }
 
 /// **同一个东西的一种载体** —— 「它这一份怎么产出来、落到哪、碰哪些文件」。
@@ -504,25 +500,6 @@ pub const TOOLS: &[ToolSpec] = &[
                         host: HostScope::Remote,
                         effect: TouchEffect::FencedBlock,
                     },
-                    // 迁移 ② ③：旧版入口落在这儿（09-11 前是 bash 启动器、之后是三行 shim）。
-                    TouchedFile {
-                        path: "~/.local/bin/ccm",
-                        note: Some(Text(|| {
-                            copy_text("rsToolRegistry.tools.ccmLegacyNote", &[])
-                        })),
-                        host: HostScope::Remote,
-                        effect: TouchEffect::RetiredLegacy,
-                    },
-                    // 旧默认 `backendPath` 落下的那份后端字节：部署时 ＋ 每次连上各扫一次，身份戳认得出才删
-                    //   （本机常驻后端出计划时判，`sftp.rs::apply_legacy` 照计划删）。
-                    TouchedFile {
-                        path: "~/.cc-monitor/bin/cc-monitor-backend",
-                        note: Some(Text(|| {
-                            copy_text("rsToolRegistry.tools.backendLegacyNote", &[])
-                        })),
-                        host: HostScope::Remote,
-                        effect: TouchEffect::RetiredLegacy,
-                    },
                 ],
             },
             // 🔴 本机那条落点是这一件建出来的。
@@ -538,29 +515,18 @@ pub const TOOLS: &[ToolSpec] = &[
                     repo_path: "src/frontend/shell/src/local_backend.rs::extract_embedded_to",
                 },
                 destination: ToolDestination::LocalHomeRelative(".cc-monitor/bin/ccm*"),
-                touches: &[
-                    TouchedFile {
-                        // ⚠ **末段是 glob 而不是 `ccm`**，而且这不是偷懒：本机那份是要**被起成进程**的，
-                        // 在把扩展名当身份的平台上它叫 `ccm.exe`（名字的唯一源头是
-                        // `local_backend::local_ccm_entry_name`，后缀由 `build.rs` 按 `TARGET` 算）。
-                        // 写死 `ccm` 会让这一行在 Windows 上**恒显示「缺失」** —— 那正是本页
-                        // 头注禁的「对能用的安装报假警报」。两边由
-                        // `the_declared_local_ccm_path_really_matches_the_name_we_install` 对拍。
-                        path: "~/.cc-monitor/bin/ccm*",
-                        note: Some(Text(|| copy_text("rsToolRegistry.tools.ccmLocalNote", &[]))),
-                        host: HostScope::Client,
-                        effect: TouchEffect::OwnedFile,
-                    },
-                    // 旧版释放的 `cc-monitor-backend-<build_id>` 们：放好 `ccm` 之后扫一次，身份戳认得出才删。
-                    TouchedFile {
-                        path: "~/.cc-monitor/bin/cc-monitor-backend-*",
-                        host: HostScope::Client,
-                        note: Some(Text(|| {
-                            copy_text("rsToolRegistry.tools.backendLegacyExtractNote", &[])
-                        })),
-                        effect: TouchEffect::RetiredLegacy,
-                    },
-                ],
+                touches: &[TouchedFile {
+                    // ⚠ **末段是 glob 而不是 `ccm`**，而且这不是偷懒：本机那份是要**被起成进程**的，
+                    // 在把扩展名当身份的平台上它叫 `ccm.exe`（名字的唯一源头是
+                    // `local_backend::local_ccm_entry_name`，后缀由 `build.rs` 按 `TARGET` 算）。
+                    // 写死 `ccm` 会让这一行在 Windows 上**恒显示「缺失」** —— 那正是本页
+                    // 头注禁的「对能用的安装报假警报」。两边由
+                    // `the_declared_local_ccm_path_really_matches_the_name_we_install` 对拍。
+                    path: "~/.cc-monitor/bin/ccm*",
+                    note: Some(Text(|| copy_text("rsToolRegistry.tools.ccmLocalNote", &[]))),
+                    host: HostScope::Client,
+                    effect: TouchEffect::OwnedFile,
+                }],
             },
         ],
     },

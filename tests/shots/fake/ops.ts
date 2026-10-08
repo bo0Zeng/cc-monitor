@@ -1,6 +1,7 @@
 /**
  * 帧命令的默认答法（按 op 名）。形状照后端的跨语言金样（`tests/__fixtures__/*.golden.json`）与界面那一侧的解码器。
  */
+import { copyText } from "../../../src/frontend/ui/copy-table";
 import type { JsonlRecord } from "../../../src/frontend/ui/generated/JsonlRecord";
 import type { OpHandler, SessionSpec, World } from "./types";
 
@@ -236,7 +237,7 @@ export function defaultOps(): Record<string, OpHandler> {
           }
           return !fenced && l !== "";
         }).map((l) => l.replace(/^[#>]+\s*/, "").replace(/\*\*|__|`/g, "")).filter((l) => l !== "");
-        t.reply = prose.length === 0 && code ? "仅代码" : prose.slice(0, 3).join("\n").slice(0, 120);
+        t.reply = prose.length === 0 && code ? copyText("rsTurns.reply.codeOnly") : prose.slice(0, 3).join("\n").slice(0, 120);
       };
       recs.forEach((r, i) => {
         if (r.type === "user" && r.userText.speaker.kind === "human" && r.userText.text !== "" && r.uuid) {
@@ -316,7 +317,7 @@ export function defaultOps(): Record<string, OpHandler> {
         }
       }
       let needs: { kind: string; tool: string | null; call: string | null; what: string | null; sinceMs: number | null } | null = null;
-      if (s?.status === "waiting") {
+      if (s?.activity === "needs_you") {
         const ask = pending.find((p) => p.name === "AskUserQuestion");
         const plan = pending.find((p) => p.name === "ExitPlanMode");
         const sinceMs = s.waitingSinceMs ?? null;
@@ -332,7 +333,7 @@ export function defaultOps(): Record<string, OpHandler> {
         if (sp?.kind === "agentMessage" && sp.handback === true && sp.from && !handedBack.includes(sp.from)) handedBack.push(sp.from);
       }
       // 每步状态（同后端 `facts_query::settle_pending`）：在等的那一步 ⇒ 在等你；会话活着 ⇒ 在跑；否则状态不明（没有进程）。
-      const live = s?.status === "busy" || s?.status === "waiting";
+      const live = s?.activity === "working" || s?.activity === "needs_you";
       const steps = pending.map((p) =>
         needs?.call === p.id ? { ...p, state: "awaiting", why: null } : live ? { ...p, state: "running", why: null } : { ...p, state: "unclear", why: "noWriter" },
       );

@@ -283,10 +283,8 @@ pub struct SessionLivePayload {
     pub session_id: String,
     /// 哪台机器（本机 `<local>`；远端是 `[label]` Tab 前缀）。
     pub origin: String,
-    /// Batch7-F24：pidfile 元信息透传（p1e backend 起有值；旧 backend → None）。
-    /// kind = "interactive"/"bg"（bg → ⚙ 标识；bg 平铺为普通 tab，不再挂宿主排成树）。wire 帧侧因 enum tag
-    /// 占用叫 `session_kind`，壳的事件 payload 无此约束，与本地 payload 统一叫 `kind`。
-    pub kind: Option<String>,
+    /// 后台会话（那台后端判好的，⚙ 标识；平铺为普通 tab）。
+    pub background: bool,
     /// **E73（additive）：attach 进去对人有没有意义。**
     ///
     /// `kind` 此前把两件事压在一个轴上：①「该不该在 UI 出现」②「是不是一个人坐在终端里
@@ -377,14 +375,13 @@ pub struct RemoteHealthPayload {
     pub message: String,
 }
 
-/// issue #23：会话红绿灯状态。`status` 直接透传 Claude Code 官方枚举
-/// （"busy" / "idle" / "shell" / "waiting"，None=旧版 CC 无此字段，前端按未知处理）；
-/// `waiting_for` 仅 status=="waiting" 时有（"permission prompt" / "dialog open" …）。
+/// 会话红绿灯：此刻在干什么（那台后端翻好的 [`crate::session_book::SessionActivity`]；`None` ＝ 说不清）；
+/// `waiting_for` 是在等人时那一家给的细分（原样）。
 #[derive(Debug, Serialize, Clone)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
 pub struct SessionActivityPayload {
     pub session_id: String,
-    pub status: Option<String>,
+    pub activity: Option<crate::session_book::SessionActivity>,
     pub waiting_for: Option<String>,
 }

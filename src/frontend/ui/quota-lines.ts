@@ -225,15 +225,6 @@ export function unseenBlock(u: QuotaReadUnseen): QuotaBlock {
   return { agent: u.agent, account: u.account, rows };
 }
 
-/** ★ 整份回包 ⇒ 每号一段（先出过数的、再没出过的，各按回包的次序）。读不出 ⇒ 空（调用方另说「读取失败」）。 */
-export function quotaBlocks(r: QuotaRead, tzOffsetMin: number, machine: string): QuotaBlock[] {
-  if (r.state === "unreadable") return [];
-  return [
-    ...r.accounts.map((a) => seenBlock(a, r.now, tzOffsetMin, machine)),
-    ...r.unseen.map((u) => unseenBlock(u)),
-  ];
-}
-
 /**
  * 一个号的 5h 那一格（恢复菜单里每个号后面那一格）：`5h 41%` · 卡着的照显示态换字（`5h ✕` …）。
  * 账上没有这个号、只在账号库里（没出过数）、按量号（没有分窗口）⇒ `null`（不出这一格）。

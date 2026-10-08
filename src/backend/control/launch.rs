@@ -24,10 +24,10 @@
 //! - **协议级**（`stream/inbound/` 独占）：`bad_request`（信封 JSON 坏了）· `line_too_long` ·
 //!   `unknown_command` · `duplicate_id` · `handler_panicked` · `not_cancellable`。
 //!   语义是「**客户端代码写错了**，别重试」。
-//! - **命令级**（本模块）：`invalid_args` · `no_tmux` · `no_such_session` · `create_failed` ·
+//! - **命令级**（本模块）：`bad_args` · `no_tmux` · `no_such_session` · `create_failed` ·
 //!   `typed_unconfirmed`。语义是「参数或环境的问题」，可能来自用户输入。
 //!
-//! 本模块的形状错误刻意叫 **`invalid_args` 而不是 `bad_request`** —— 后者是协议级那一层的，
+//! 本模块的形状错误刻意叫 **`bad_args` 而不是 `bad_request`** —— 后者是协议级那一层的，
 //! 一词两义会让客户端分不出「我发的 JSON 坏了」与「我发的参数不合适」。
 //! （`resolve` 那条今天仍回命令级 `bad_request`：它与仓外 aterm 的一次性契约冻结在
 //! 2026-07-18，两条路复用同一个纯函数，改它会破坏那份契约。**如实登记，不顺手改。**）
@@ -105,7 +105,7 @@ pub(crate) struct LaunchRequest {
     /// ⇒ 值域由下面 `check_size` 收窄成「非空、纯十进制、≤4 位」，**不靠类型靠校验**。
     ///
     /// ⚠ **两个必须同时给**：只给一半时 tmux 会用默认值补另一半，
-    /// 那是「写了个修饰、看起来生效了、其实只生效了一半」——直接 `invalid_args`。
+    /// 那是「写了个修饰、看起来生效了、其实只生效了一半」——直接 `bad_args`。
     pub(crate) width: Option<String>,
     pub(crate) height: Option<String>,
     /// 这次请求自报是哪个前端（`gate::requester_of`）。`send-into` 拿它过「哪个前端的会话」那一维；
@@ -146,18 +146,18 @@ pub(crate) fn exact_target(name: &str) -> String {
 /// 从入方向的 `args` 解析 + **形状校验**。见模块头注：这不是安全边界。
 pub(crate) fn parse_request(args: &serde_json::Value) -> Result<LaunchRequest, CmdErr> {
     let obj = args.as_object().ok_or((
-        "invalid_args",
+        "bad_args",
         crate::common::contract::malformed("args must be an object"),
     ))?;
 
     let get_str = |k: &str| -> Option<&str> { obj.get(k).and_then(|v| v.as_str()) };
 
     let mode_raw = get_str("mode").ok_or((
-        "invalid_args",
+        "bad_args",
         crate::common::contract::malformed("missing `mode` (create-or-attach / send-into)"),
     ))?;
     let mode = Mode::parse(mode_raw).ok_or((
-        "invalid_args",
+        "bad_args",
         crate::common::contract::malformed(&format!(
             "unknown mode `{mode_raw}`; expected create-or-attach / send-into"
         )),
@@ -165,7 +165,7 @@ pub(crate) fn parse_request(args: &serde_json::Value) -> Result<LaunchRequest, C
 
     let name = get_str("name")
         .ok_or((
-            "invalid_args",
+            "bad_args",
             crate::common::contract::malformed("missing `name`"),
         ))?
         .to_string();
@@ -175,7 +175,7 @@ pub(crate) fn parse_request(args: &serde_json::Value) -> Result<LaunchRequest, C
 
     let payload = get_str("payload")
         .ok_or((
-            "invalid_args",
+            "bad_args",
             crate::common::contract::malformed("missing `payload`"),
         ))?
         .to_string();
@@ -228,7 +228,7 @@ pub(crate) fn parse_request(args: &serde_json::Value) -> Result<LaunchRequest, C
             .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
         {
             return Err((
-                "invalid_args",
+                "bad_args",
                 crate::common::contract::malformed(&format!(
                     "`ccm_sid` must match [A-Za-z0-9_-]: {s:?}"
                 )),
@@ -242,7 +242,7 @@ pub(crate) fn parse_request(args: &serde_json::Value) -> Result<LaunchRequest, C
         None => None,
         Some(a) => Some(
             crate::agents::pick_kind(Some(a))
-                .map_err(|say| ("invalid_args", say))?
+                .map_err(|say| ("bad_args", say))?
                 .0
                 .to_string(),
         ),
@@ -259,7 +259,7 @@ pub(crate) fn parse_request(args: &serde_json::Value) -> Result<LaunchRequest, C
         (None, None) => {}
         _ => {
             return Err((
-                "invalid_args",
+                "bad_args",
                 crate::common::contract::malformed("`width` and `height` must be given together")
                     .to_string(),
             ))
@@ -289,7 +289,7 @@ pub(crate) fn parse_request(args: &serde_json::Value) -> Result<LaunchRequest, C
 fn check_size(what: &str, v: &str) -> Result<(), CmdErr> {
     if v.is_empty() || v.len() > 4 || !v.chars().all(|c| c.is_ascii_digit()) {
         return Err((
-            "invalid_args",
+            "bad_args",
             crate::common::contract::malformed(&format!(
                 "`{what}` must be 1-4 decimal digits: {v:?}"
             )),
@@ -301,7 +301,7 @@ fn check_size(what: &str, v: &str) -> Result<(), CmdErr> {
 fn check_field(what: &str, v: &str) -> Result<(), CmdErr> {
     if v.trim().is_empty() {
         return Err((
-            "invalid_args",
+            "bad_args",
             crate::common::contract::malformed(&format!("`{what}` is empty")),
         ));
     }
@@ -309,7 +309,7 @@ fn check_field(what: &str, v: &str) -> Result<(), CmdErr> {
     // 控制字符会让 send-keys 的语义变掉（`\n` = 多敲一次回车）。形状问题。
     if v.chars().any(char::is_control) {
         return Err((
-            "invalid_args",
+            "bad_args",
             crate::common::contract::malformed(&format!("`{what}` contains a control character")),
         ));
     }
@@ -319,7 +319,7 @@ fn check_field(what: &str, v: &str) -> Result<(), CmdErr> {
 fn check_len(what: &str, v: &str) -> Result<(), CmdErr> {
     if v.len() > MAX_FIELD_BYTES {
         return Err((
-            "invalid_args",
+            "bad_args",
             crate::common::contract::malformed(&format!(
                 "`{what}` is too long ({} > {MAX_FIELD_BYTES})",
                 v.len()
@@ -342,13 +342,13 @@ fn check_typed_payload(v: &str) -> Result<(), CmdErr> {
     // （下面那次 `check_field` 收到的是抹过的串，只用来判控制字符）。
     if v.trim().is_empty() {
         return Err((
-            "invalid_args",
+            "bad_args",
             crate::common::contract::malformed("`payload` is empty"),
         ));
     }
     if v.len() > MAX_FIELD_BYTES {
         return Err((
-            "invalid_args",
+            "bad_args",
             crate::common::contract::malformed(&format!(
                 "`payload` is too long ({} > {MAX_FIELD_BYTES})",
                 v.len()
@@ -360,7 +360,7 @@ fn check_typed_payload(v: &str) -> Result<(), CmdErr> {
         .find(|c| c.is_control() && *c != '\n' && *c != '\t')
     {
         return Err((
-            "invalid_args",
+            "bad_args",
             crate::common::contract::malformed(&format!(
                 "`payload` has a control character other than \\n / \\t (U+{:04X})",
                 bad as u32
@@ -557,7 +557,7 @@ fn run_with(
                         typed: false,
                     });
                 }
-                return Err(("invalid_args", said));
+                return Err(("bad_args", said));
             }
             let mut new_args: Vec<&str> = vec!["new-session", "-d", "-s", &req.name];
             if let Some(cwd) = &req.cwd {
@@ -742,7 +742,7 @@ pub(crate) fn launch_for_inbound(
 
 /// 帧面成品 `{session, created, typed}` 的构造器 —— 从 [`launch_for_inbound`] 里原样抽出来（逻辑不动），
 /// 只为让跨语言金样 `tests/__fixtures__/tmux-control.golden.json` 拿**同一个**构造器对拍：
-/// 界面（`src/frontend/ui/tmux-control.ts::sendKeys` / `sendInto`）从此直接收这份成品，monitor 那一跳只搬字节。
+/// 后端自己换号重启时键进已有 pane 走的就是这一形（`session_restart`），帧面那一路今天界面不发。
 /// ⚠ 它是本文件生产段里**第一个** `json!` 块 —— `inbound_structure_guards::launch_fields_match_its_parser_and_output`
 /// 从那一块抠 data 字段（抽出来之后照样是它）。
 pub(crate) fn reply(session: &str, created: bool, typed: bool) -> serde_json::Value {

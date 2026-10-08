@@ -266,7 +266,7 @@ export const commands = {
 
   /**
    * 「足迹」里 monitor 自己那台那几行（`HostScope::Client`）要的、只有 monitor 知道的事实（`footprint_client.rs`）：
-   * 它自己进程的 `{home, path}`。成品由本机后端出（`src/frontend/ui/settings/footprint-reads.ts` 经通道问 `footprint-report`，把这一份原样带过去），
+   * 它自己进程的 `{home, path}`。成品由那台后端的帧命令 `footprint-report` 出（这一份原样带过去），
    * 本侧不认识它的形状 ⇒ **桶②**。〔`config_surface_report`〔散文墓碑〕随判定进后端删了。〕
    */
   footprint_client_facts: () => invoke<Record<string, unknown>>("footprint_client_facts"),

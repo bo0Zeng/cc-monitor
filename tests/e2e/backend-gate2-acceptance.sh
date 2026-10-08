@@ -142,10 +142,10 @@ while IFS=$'\t' read -r id name sid expect; do
   case "$id" in ''|\#*) continue ;; esac
   n=$((n+1))
 
-  # `:` 是 tmux 目标语法的分隔符：`parse_request` 在门**之前**就 invalid_args（`kill::admit_existing_name`）。
+  # `:` 是 tmux 目标语法的分隔符：`parse_request` 在门**之前**就 bad_args（`kill::admit_existing_name`）。
   # `=` **不再**在这里：DUP3 §5 ⑦（`adf3fe38`）把送键的 Gate 1 并进已有会话名那一份，
   #   `=` 按设计放行（`=a=b:` 精确命中名叫 `a=b` 的会话）⇒ `=cc-a` 走到 Gate 2、按「不是本工具的会话」拒成
-  #   `wrong_owner`。这里原来照旧期望 `invalid_args` ⇒ 本格从那天起本机恒红，是判据过时、不是行为回归。
+  #   `wrong_owner`。这里原来照旧期望 `bad_args` ⇒ 本格从那天起本机恒红，是判据过时、不是行为回归。
   # ⚠ 这一档**不 skip、照样验** —— 「更早的一道门也把它挡住了」是要真的量出来的，
   #    写进 skip 消息里就成了一句没人验证的断言（本仓记过这类账）。
   EARLY_SHAPE=no
@@ -204,7 +204,7 @@ while IFS=$'\t' read -r id name sid expect; do
     # 拒绝这一档要同时满足两件事：应答说 false，**且 pane 真的没被污染**。
     # 只看应答会漏掉「回了错但载荷已经打出去了」那种最坏形态。
     WANT_CODE=wrong_owner
-    [ "$EARLY_SHAPE" = yes ] && WANT_CODE=invalid_args   # 形状层那道更早的门（实测，不是断言）
+    [ "$EARLY_SHAPE" = yes ] && WANT_CODE=bad_args   # 形状层那道更早的门（实测，不是断言）
     if printf '%s' "$R" | grep -qF '"ok":false' && printf '%s' "$R" | grep -qF "$WANT_CODE"; then
       if [ "$LANDED" = miss ]; then ok "$id（$name / sid=$sid）→ 拒绝（$WANT_CODE），pane 未被污染"
       else bad "$id：回了 $WANT_CODE，**但载荷已经打进去了** —— 门在动作之后，等于没有"; fi
@@ -290,7 +290,7 @@ else bad "kill 不存在目标：5s 内无应答"; fi
 send '{"id":"e2e-g3-bad","cmd":"kill","args":{"name":"a:b"}}'
 if wait_for '"id":"e2e-g3-bad"'; then
   R="$(reply_of e2e-g3-bad)"
-  if printf '%s' "$R" | grep -qF 'invalid_args'; then ok "名字含 \`:\` → invalid_args（形状门在三道门之前）"
+  if printf '%s' "$R" | grep -qF 'bad_args'; then ok "名字含 \`:\` → bad_args（形状门在三道门之前）"
   else bad "形状门没挡住 \`a:b\`：$R"; fi
 else bad "kill 形状门：5s 内无应答"; fi
 

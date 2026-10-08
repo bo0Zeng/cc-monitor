@@ -5,6 +5,7 @@
 import type { JsonlRecord } from "../../../src/frontend/ui/generated/JsonlRecord";
 import type { RunInfo } from "../../../src/frontend/ui/generated/RunInfo";
 import type { SessionContainer } from "../../../src/frontend/ui/generated/SessionContainer";
+import type { SessionActivity } from "../../../src/frontend/ui/generated/SessionActivity";
 
 export interface TaskSpec {
   id: string;
@@ -23,10 +24,10 @@ export interface SessionSpec {
   agent?: string;
   cwd: string;
   name: string | null;
-  /** `null` / `"interactive"` = 交互；`"bg"` = 后台。 */
-  kind: string | null;
-  /** Claude 的 status 原值：busy / idle / waiting / shell；`null` = 不说。 */
-  status: string | null;
+  /** 后台会话。 */
+  background: boolean;
+  /** 此刻在干什么（后端翻好的那一格）；`null` = 说不清。 */
+  activity: SessionActivity | null;
   waitingFor: string | null;
   /** 在等你时从何时起等（epoch ms；`history-facts` 的 `needs.sinceMs`）。缺 ⇒ 不知道。 */
   waitingSinceMs?: number;

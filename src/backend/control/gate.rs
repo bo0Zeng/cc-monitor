@@ -228,7 +228,7 @@ pub(crate) fn requester_of(args: &serde_json::Value) -> Result<Option<String>, C
             Ok(Some(c.clone()))
         }
         Some(other) => Err((
-            "invalid_args",
+            "bad_args",
             crate::common::contract::malformed(&format!(
                 "`client` must be 1-32 chars of [a-z0-9-]: {other}"
             )),
@@ -248,7 +248,7 @@ pub(crate) fn sid_of(args: &serde_json::Value) -> Result<Option<String>, CmdErr>
             Ok(Some(s.clone()))
         }
         Some(other) => Err((
-            "invalid_args",
+            "bad_args",
             crate::common::contract::malformed(&format!(
                 "`sid` must be 1-128 chars of [A-Za-z0-9_-]: {other}"
             )),

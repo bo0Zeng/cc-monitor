@@ -759,7 +759,7 @@ export class BackendSection {
     try {
       const records = await readRecordDrift(origin);
       const mine = await commands.drift_ledger_report({ origin });
-      const n = [...records, ...mine.faces].reduce((k, f) => k + f.entries.length, 0);
+      const n = records.reduce((k, f) => k + f.entries.length, 0) + mine.unknown_tokens.length;
       el.textContent = n > 0 ? copyText("backend.cc.driftSome", { n }) : copyText("backend.cc.driftNone");
     } catch {
       el.textContent = copyText("backend.cc.driftUnread");

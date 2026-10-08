@@ -13,19 +13,28 @@
  *
  * 输出：每行 `<key>\t<生产命令串>`，供 `tmux-target-acceptance.sh` 消费。
  */
-import {
-  planResumeTmux,
-  planResumeIntoExistingTmux,
-  planAttach,
-} from "../../src/frontend/ui/launch-requests.ts";
+import { planAttach } from "../../src/frontend/ui/launch-requests.ts";
+import type { LaunchContext } from "../../src/frontend/ui/launch-types.ts";
 import { renderCmdViaProduction } from "./launch-render-driver.ts";
 import { DEFAULT_AGENT } from "../../src/frontend/ui/agent-profile.ts";
 
+/** 在 tmux 会话 `cc-p1` 里 resume `p1`（后端换号重启 / 分叉起的就是这一形）。 */
+const resumeInTmux = (ccmSid: string | undefined): LaunchContext => ({
+  agent: DEFAULT_AGENT,
+  action: { kind: "resume", sid: "p1" },
+  container: { kind: "tmux", name: "cc-p1", mode: "create" },
+  cwd: null,
+  account: { kind: "follow" },
+  models: {},
+  launcherOverride: "CCMPROBE",
+  ccmSid,
+});
+
 const out: Record<string, string> = {
   // 新建自己的 tmux（兄弟名 cc-p1-2 已存在时，绝不能碰它）
-  resumeTmux: renderCmdViaProduction(planResumeTmux(DEFAULT_AGENT, "p1", "", "CCMPROBE", "cc-p1")),
+  resumeTmux: renderCmdViaProduction(resumeInTmux("p1")),
   // 往「已存在的 cc-p1」就地 send-keys —— cc-p1 不存在时必须失败，绝不能落进 cc-p1-2
-  resumeIntoExisting: renderCmdViaProduction(planResumeIntoExistingTmux(DEFAULT_AGENT, "p1", "cc-p1", "CCMPROBE")),
+  resumeIntoExisting: renderCmdViaProduction(resumeInTmux(undefined), true),
   attach: renderCmdViaProduction(planAttach(DEFAULT_AGENT, "cc-p1")),
   // 起新会话进 tmux（posixQuote 名路径，与上面的裸名路径是两条不同的引号分支）：起新会话那一个请求（`session-new`）在那台渲的就是这一形。
   launcher: renderCmdViaProduction({

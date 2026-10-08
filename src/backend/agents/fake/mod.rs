@@ -376,6 +376,8 @@ fn local_face(
         pidfile_dir,
         cmdline_may_be_agent,
         tasks_dir: Some(|h| h.join("todo")),
+        background_of: |v| v.get("bg").and_then(serde_json::Value::as_bool) == Some(true),
+        activity_of: |_| None,
     }
 }
 

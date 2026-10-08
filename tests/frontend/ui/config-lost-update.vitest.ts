@@ -70,7 +70,7 @@ const PIN = {
   origin: "<local>",
   account: "a1",
   lastActiveAt: 1,
-  kind: null,
+  background: false,
   name: null,
   title: "固定那条",
 };

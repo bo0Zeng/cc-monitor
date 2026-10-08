@@ -165,7 +165,7 @@ pub(crate) fn render(req: &super::DialRequest) -> Result<String, CmdErr> {
 fn command_arg(args: &Value) -> Result<&str, CmdErr> {
     args.get("command").and_then(Value::as_str).ok_or_else(|| {
         (
-            "invalid_args",
+            "bad_args",
             crate::common::contract::malformed("missing `command` (a string)"),
         )
     })
@@ -181,7 +181,7 @@ fn command_arg(args: &Value) -> Result<&str, CmdErr> {
 pub(crate) fn command_for_cwd(cwd: &Value) -> Result<String, CmdErr> {
     let Some(bytes) = crate::common::path_wire::from_json(cwd) else {
         return Err((
-            "invalid_args",
+            "bad_args",
             crate::common::contract::malformed("`cwd` must be a string or {\"b16\": \"<hex>\"}"),
         ));
     };
@@ -224,7 +224,7 @@ pub(crate) fn answer(args: &Value) -> Result<Value, CmdErr> {
 fn dial_args(args: &Value) -> Result<Value, CmdErr> {
     match (args.get("command"), args.get("cwd")) {
         (Some(_), Some(_)) => Err((
-            "invalid_args",
+            "bad_args",
             crate::common::contract::malformed(
                 "exactly one of `command` (a string) or `cwd` (a path)",
             ),

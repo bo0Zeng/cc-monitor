@@ -9,7 +9,7 @@ export type CliWireAction =
   | { kind: "resume"; sid: string }
   | { kind: "attach"; name: string };
 
-/** `send_into: true` = 往已有的空 tmux 会话里就地 resume（外层包一层，键入直路那一行）。 */
+/** `send_into`：那台后端的渲染口还收这一格（`true` = 往已有的空 tmux 会话里键入直路那一行）；界面恒发 `false`。 */
 export type CliWireContainer = { kind: "none" } | { kind: "tmux"; name: string; send_into: boolean };
 
 /** 用哪个号：跟随 · 账号 0 · 用户点名（生成的类型，那台后端判）。 */
@@ -59,7 +59,7 @@ export function buildCliRenderRequest(ctx: LaunchContext): CliRenderRequest {
           : { kind: "new" },
     container:
       ctx.container.kind === "tmux"
-        ? { kind: "tmux", name: ctx.container.name, send_into: ctx.container.mode === "send-into" }
+        ? { kind: "tmux", name: ctx.container.name, send_into: false }
         : { kind: "none" },
     cwd: ctx.cwd,
     account: ctx.account,

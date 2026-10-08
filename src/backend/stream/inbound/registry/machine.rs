@@ -43,7 +43,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
             "unreachable",
             "undecidable",
         ],
-        fields: &[out("ack", "问 `uname` 那一趟拨号的 `DialAck` 原样（逐地址指纹 · 严格与否）：拨号在本机后端里，monitor 按它固化指纹（与自己开链路那几条同一个判定）"), out("action", "`skip`（已是这一版）· `deploy`（没装 / 0 字节 / 更旧 / 从前的三行入口）· `keep`（另一版、不比这一版旧 ⇒ 不动它）"), out("arch", "那台是表 A 的哪一格（`label` 说给人听：`Linux / x86_64`）"), out("expected", "那一格这一版带着的字节自报的身份（对照物）"), out("label", "那台是表 A 的哪一格（`label` 说给人听：`Linux / x86_64`）"), out("leftovers", "落点目录里没人要的上传残件（家目录相对，排序）；列不出那个目录 ⇒ `[]`（下次连上再问）"), out("legacy", "旧落点那一份：`absent`（不在）· `remove`（身份戳恰一个 ⇒ 删）· `keep`（别的 ⇒ 不动）· `unknown`（连问都没问成）"), out("legacy_why", "`unknown` 时的原话，否则 `null`"), out("os", "那台是表 A 的哪一格（`label` 说给人听：`Linux / x86_64`）"), out("theirs", "`keep` 时那台上那一份自报的身份，否则 `null`"), out("why", "人读原因（`skip` 时空串）")],
+        fields: &[out("ack", "问 `uname` 那一趟拨号的 `DialAck` 原样（逐地址指纹 · 严格与否）：拨号在本机后端里，monitor 按它固化指纹（与自己开链路那几条同一个判定）"), out("action", "`skip`（已是这一版）· `deploy`（没装 / 0 字节 / 更旧 / 从前的三行入口）· `keep`（另一版、不比这一版旧 ⇒ 不动它）"), out("arch", "那台是表 A 的哪一格（`label` 说给人听：`Linux / x86_64`）"), out("expected", "那一格这一版带着的字节自报的身份（对照物）"), out("label", "那台是表 A 的哪一格（`label` 说给人听：`Linux / x86_64`）"), out("leftovers", "落点目录里没人要的上传残件（家目录相对，排序）；列不出那个目录 ⇒ `[]`（下次连上再问）"), out("os", "那台是表 A 的哪一格（`label` 说给人听：`Linux / x86_64`）"), out("theirs", "`keep` 时那台上那一份自报的身份，否则 `null`"), out("why", "人读原因（`skip` 时空串）")],
         takes_input: true,
         run: Run::Async(|r| {
             Box::pin(async move {
@@ -54,30 +54,6 @@ pub(super) const SPECS: &[CommandSpec] = &[
                         .unwrap_or(serde_json::Value::Null),
                 );
                 crate::control::deploy_plan::answer(&r.args, &facing)
-                    .await
-                    .map(Some)
-                    .map_err(|(c, m)| (c.to_string(), m))
-            })
-        }),
-    },
-    // **那台旧入口的去向**：`{dial}` → `{verdict, expect, why}`（沿池里那条 SSH 开只读 SFTP，stat ＋ 读回，真异步）。
-    //   本体 `control/deploy_plan.rs::answer_retired`（与上传残件同一家：落点上该清的东西）。
-    // 另一形 `{text}`：本机 PATH 上另一个 `ccm` 的开头一截，只判不读盘（monitor 本机探针拿来说话）。
-    CommandSpec {
-        name: "deploy-retired",
-        summary: "那台旧入口 `~/.local/bin/ccm` 的去向",
-        codes: &["bad_args", "unreachable"],
-        fields: &[arg("dial", "怎么够到那台（与 `files` 链路同一份拨号请求）；沿池里那条 SSH 开只读 SFTP：stat ＋ 至多一次读回（上限 256 KiB，与 `files-peek` 同一个口径）"), out("expect", "只在 `remove` 时是字符串：读到的全文，删时原样交 `files-delete` 当期望值（盘上变了就不删）；其余 `null`"), arg("text", "与 `dial` 二选一：本机 PATH 上另一个 `ccm` 的开头一截（monitor 读的），按同一条规矩认它是不是我们早先放的；不读盘、不拨号（monitor 本机探针只拿来说话，不删）"), out("verdict", "`absent`（不在）· `remove`（第一行 `#!`、第二行认得出两形记号之一 ⇒ 是我们放的）· `keep`（别的一律不动）"), out("why", "只在 `keep` 时是字符串：为什么不动（不是我们放的 · 读不成文本）；其余 `null`")],
-        takes_input: true,
-        run: Run::Async(|r| {
-            Box::pin(async move {
-                let facing = crate::control::deploy_plan::DialFacing::new(
-                    r.args
-                        .get("dial")
-                        .cloned()
-                        .unwrap_or(serde_json::Value::Null),
-                );
-                crate::control::deploy_plan::answer_retired(&r.args, &facing)
                     .await
                     .map(Some)
                     .map_err(|(c, m)| (c.to_string(), m))
@@ -119,7 +95,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     CommandSpec {
         name: "pubkey-push",
         summary: "把本机公钥推进那台的 `authorized_keys`",
-        codes: &["invalid_args", "bad_jump", "refused", "failed"],
+        codes: &["bad_args", "bad_jump", "refused", "failed"],
         fields: &[arg("jump", "同 `remote-probe`"), arg("machine", "同 `remote-probe`"), out("outcome", "`added`（新加的）· `already`（本就有整行相等的一行，没写）"), arg("pubKeyPath", "本机那份 `.pub` 的路径；缺席 / 空 ⇒ 私钥同名 `.pub`（两样都没有 ⇒ `refused`，界面让用户挑文件）"), out("pubPath", "实际推的是哪一份（给人看）"), arg("saved", "同 `remote-probe`"), out("via", "走了哪条：`backend`（那台后端的文件管理面）· `exec`（那一次 exec）")],
         takes_input: true,
         run: Run::Async(|r| {
@@ -211,7 +187,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "forward-start",
         summary: "起一条本地端口转发",
         codes: &[
-            "invalid_args",
+            "bad_args",
             "bad_spec",
             "unreachable",
             "bad_jump",
@@ -235,7 +211,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     CommandSpec {
         name: "remote-probe",
         summary: "测试连接",
-        codes: &["invalid_args", "bad_jump", "failed"],
+        codes: &["bad_args", "bad_jump", "failed"],
         fields: &[out("backendHello", "那台后端的一句（往返毫秒 · 版本 · 做不到几项）"), out("backendOk", "那台后端答没答（hello ＋ `ping` 往返）"), out("end", "结局，**最后一格**"), out("endpoint", "实际连上的地址"), out("fingerprint", "那台的主机指纹（`sshOk:false` 时不给）"), arg("jump", "跳板那一台的配置（可缺）"), arg("machine", "那台的配置（可能还没保存）：`host` · `port` · `user` · `keyPath` · `addresses` · `jump` …"), out("message", "结局那一句"), out("reached", "`ssh` 握手过了 · `hello` 那台后端回了 hello · `control` ping 往返了"), arg("saved", "已保存的那一份（可缺）"), out("sshOk", "SSH 握手 ＋ 鉴权过没过（结局 `end` 里）"), out("stage", "拨号阶段行，与界面 `ConnectStage` 同形"), both("ticket", "界面交来的票（1..=64 个 `[A-Za-z0-9-]`），进度帧 `probe` 原样回填")],
         takes_input: true,
         run: Run::Builtin,
@@ -243,7 +219,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     CommandSpec {
         name: "forward-stop",
         summary: "停一条转发",
-        codes: &["invalid_args", "not_found"],
+        codes: &["bad_args", "not_found"],
         fields: &[both("id", "转发号（`fwd-<n>`）")],
         takes_input: true,
         run: Run::Async(|r| {
@@ -320,7 +296,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     CommandSpec {
         name: "ssh-config-resolve",
         summary: "一个别名的有效连接参数",
-        codes: &["invalid_args", "bad_alias", "failed", "child_timed_out"],
+        codes: &["bad_args", "bad_alias", "failed", "child_timed_out"],
         fields: &[arg("alias", "必填"), out("host", "`ssh -G` 的 `hostname`（缺省回退别名）"), out("keyPath", "第一个**展开后存在**的 `identityfile`（只问在不在，不读内容）；都不存在 ⇒ `null`"), out("port", "`port`（缺省 22）"), out("proxyJump", "`proxyjump`（`none` ⇒ `null`）"), out("user", "`user`（缺省空串）")],
         takes_input: true,
         run: Run::Blocking(|r| {
@@ -332,8 +308,8 @@ pub(super) const SPECS: &[CommandSpec] = &[
     CommandSpec {
         name: "ssh-config-import",
         summary: "批量导入预览",
-        codes: &["invalid_args"],
-        fields: &[out("addresses", "其余地址，端口不同则 `host:port`"), out("alias", "成员的别名"), out("groups", "聚成组的机器，每组 `{label, host, port, user, keyPath, addresses, jump, members, inList}`"), both("host", "组首的 host"), out("inList", "组首或任一成员的地址 ＋ 组的用户 ＋ 端口与 `known` 里某台相同，去首尾空白比 ⇒ 已在列表里，界面照它灰、不自己比"), out("jump", "组内首个非空 proxyjump"), out("keyPath", "组首"), arg("known", "机器列表里已有的那几台，`[{host, user, port}]`；缺 / 形状不对 ⇒ `invalid_args`"), out("label", "单成员组 = 完整别名，多成员 = 基名"), out("members", "`alias` / `host` / `port` / `proxyJump`，界面「拆分」时据此还原"), both("port", "组首的端口"), out("proxyJump", "成员的跳板"), both("user", "组首的用户")],
+        codes: &["bad_args"],
+        fields: &[out("addresses", "其余地址，端口不同则 `host:port`"), out("alias", "成员的别名"), out("groups", "聚成组的机器，每组 `{label, host, port, user, keyPath, addresses, jump, members, inList}`"), both("host", "组首的 host"), out("inList", "组首或任一成员的地址 ＋ 组的用户 ＋ 端口与 `known` 里某台相同，去首尾空白比 ⇒ 已在列表里，界面照它灰、不自己比"), out("jump", "组内首个非空 proxyjump"), out("keyPath", "组首"), arg("known", "机器列表里已有的那几台，`[{host, user, port}]`；缺 / 形状不对 ⇒ `bad_args`"), out("label", "单成员组 = 完整别名，多成员 = 基名"), out("members", "`alias` / `host` / `port` / `proxyJump`，界面「拆分」时据此还原"), both("port", "组首的端口"), out("proxyJump", "成员的跳板"), both("user", "组首的用户")],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::dial::ssh_config::answer_import(&r.args)

@@ -1,11 +1,6 @@
 /**
- * 「从 `~/.ssh/config` 导入」那三问**走通道，本机常驻后端出成品**：
- *
- * | 问什么 | 帧命令 | 成品 |
- * |---|---|---|
- * | 可点的别名清单 | `ssh-config-aliases` | `{aliases}` |
- * | 一个别名的有效连接参数（`ssh -G`） | `ssh-config-resolve {alias}` | `{host, port, user, keyPath, proxyJump}` |
- * | 批量导入预览（同一台机器的多个地址聚成一组） | `ssh-config-import` | `{groups:[…]}` |
+ * 「从 `~/.ssh/config` 导入」那一问**走通道，本机常驻后端出成品**：批量导入预览（同一台机器的多个地址聚成一组），
+ * 帧命令 `ssh-config-import`，成品 `{groups:[…]}`。
  *
  * 解读与拨号同一个家（后端 `dial/ssh_config.rs`）；monitor 零 SSH。本机后端不在 ⇒ 通道那一层报（D11，不回落）。
  * 按形状严格收（多一格 / 缺一格 / 类型不对 ⇒ 抛「两端契约对不上」）；跨语言金样 `tests/__fixtures__/ssh-config.golden.json`。
@@ -58,28 +53,6 @@ function bad(): never {
   throw unreadableFrom(LOCAL_ORIGIN, "sshConfigReads reply shape");
 }
 
-/** `ssh-config-aliases` 的成品。严格收。 */
-export function decodeAliases(v: unknown): string[] {
-  if (!isObj(v) || !exactKeys(v, ["aliases"]) || !strs(v.aliases)) bad();
-  return v.aliases as string[];
-}
-
-/** `ssh-config-resolve` 的成品。严格收。 */
-export function decodeResolved(v: unknown): ResolvedHost {
-  if (
-    !isObj(v) ||
-    !exactKeys(v, ["host", "port", "user", "keyPath", "proxyJump"]) ||
-    typeof v.host !== "string" ||
-    !isPort(v.port) ||
-    typeof v.user !== "string" ||
-    !nullableStr(v.keyPath) ||
-    !nullableStr(v.proxyJump)
-  ) {
-    bad();
-  }
-  return { host: v.host, port: v.port, user: v.user, keyPath: v.keyPath, proxyJump: v.proxyJump };
-}
-
 function decodeMember(v: unknown): ImportMember {
   if (
     !isObj(v) ||
@@ -129,43 +102,12 @@ export function decodeImport(v: unknown): ImportGroup[] {
   return (v.groups as unknown[]).map(decodeGroup);
 }
 
-/**
- * 期限：列别名 / 解析一个 = 读一份文件或起一次 `ssh -G`（不建连接）；批量 = 逐个 `ssh -G`，别名数通常个位。
- * 10 秒 / 30 秒盖住回程与起进程，不含握手（`<local>` 长连接早就连着）。
- */
-const SSH_CONFIG_BUDGET_MS = 10_000;
+/** 期限：批量 = 逐个 `ssh -G`（不建连接），别名数通常个位；30 秒盖住回程与起进程，不含握手（`<local>` 长连接早就连着）。 */
 const SSH_IMPORT_BUDGET_MS = 30_000;
 
-
-/** 三问共用的那一句：通道三层 → 一句人话（本机后端不在 / 太旧 / 拒了）。 */
+/** 那一问的那一句：通道三层 → 一句人话（本机后端不在 / 太旧 / 拒了）。 */
 function said(e: unknown): Error {
   return new Error(saidFrom(e, LOCAL_ORIGIN));
-}
-
-/** `~/.ssh/config` 里可点的别名。问不到 ⇒ 抛一句人话（与「真没有别名」分开）。 */
-export async function listSshHostAliases(): Promise<string[]> {
-  let reply: Uint8Array;
-  try {
-    const body = jsonBody({});
-    const budget = budgetWithin(SSH_CONFIG_BUDGET_MS);
-    reply = await chan.call(LOCAL_ORIGIN, "ssh-config-aliases", body, budget);
-  } catch (e) {
-    throw said(e);
-  }
-  return decodeAliases(readJson(reply));
-}
-
-/** 一个别名的有效连接参数。 */
-export async function resolveSshHost(alias: string): Promise<ResolvedHost> {
-  let reply: Uint8Array;
-  try {
-    const body = jsonBody({ alias });
-    const budget = budgetWithin(SSH_CONFIG_BUDGET_MS);
-    reply = await chan.call(LOCAL_ORIGIN, "ssh-config-resolve", body, budget);
-  } catch (e) {
-    throw said(e);
-  }
-  return decodeResolved(readJson(reply));
 }
 
 /** 批量导入预览。`known` ＝ 机器列表里已有的那几台（后端据它标「已在列表里」）。 */
