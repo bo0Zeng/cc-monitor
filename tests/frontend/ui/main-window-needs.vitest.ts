@@ -548,3 +548,14 @@ describe("报错卡上去它的终端那两颗（与会话头同一道）", () =
     ]);
   });
 });
+
+// 窗口标题起步就是产品名：三份入口 HTML 的 <title> 与壳 / 需要你那一路设的基础标题同字（不写死别的产品名）。
+describe("入口 HTML 的 <title> == 窗口的基础标题", () => {
+  it("index · settings · viewer 三份都是 needs.windowTitle.base", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { resolve } = await import("node:path");
+    const { REPO_ROOT } = await import("../../test-support/repo-root.ts");
+    const got = ["index.html", "settings.html", "viewer.html"].map((f) => /<title>([^<]*)<\/title>/.exec(readFileSync(resolve(REPO_ROOT, f), "utf8"))?.[1]);
+    expect(got).toEqual(Array(3).fill(copyText("needs.windowTitle.base")));
+  });
+});

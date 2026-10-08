@@ -490,7 +490,11 @@ export class CcBusSection {
       for (const m of msgs.slice(-20)) {
         const line = document.createElement("div");
         line.className = "cc-bus-msg-line";
-        line.textContent = `[${m.ts || "?"}] ${m.from || "?"}${m.class ? `(${m.class})` : ""}: ${m.text}`;
+        const none = copyText("ccBus.inbox.missing");
+        const [ts, from] = [m.ts || none, m.from || none];
+        line.textContent = m.class
+          ? copyText("ccBus.inbox.lineClass", { ts, from, cls: m.class, text: m.text })
+          : copyText("ccBus.inbox.line", { ts, from, text: m.text });
         box.appendChild(line);
       }
     } catch (e) {

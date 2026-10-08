@@ -2870,17 +2870,35 @@
       "zh": "最新一轮用量 · 上限未知 · 不算百分比",
       "args": []
     },
+    "gridMonitor.renderBadges.ctxTokens": {
+      "kind": "body",
+      "role": "状态",
+      "zh": "上下文 {tokens}",
+      "args": ["tokens"]
+    },
     "gridMonitor.renderBadges.ctxHint": {
       "kind": "body",
       "role": "说明",
       "zh": "上下文占用 · 按最新一轮估算",
       "args": []
     },
+    "gridMonitor.renderBadges.ctxPct": {
+      "kind": "body",
+      "role": "状态",
+      "zh": "上下文 {pct}%",
+      "args": ["pct"]
+    },
     "gridMonitor.renderBadges.agents": {
       "kind": "body",
       "role": "说明",
       "zh": "agent {totalAgents} · {runningAgents} 在跑",
       "args": ["runningAgents", "totalAgents"]
+    },
+    "gridMonitor.renderBadges.agentsLabel": {
+      "kind": "body",
+      "role": "状态",
+      "zh": "agent 在跑 {runningAgents}",
+      "args": ["runningAgents"]
     },
     "gridMonitor.groups.local": {
       "kind": "title",
@@ -6665,7 +6683,7 @@
     "profilesPage.form.noTmux": {
       "kind": "body",
       "role": "说明",
-      "zh": "这台没有 tmux · 起会话会报错",
+      "zh": "该机无 tmux · 启动会话会失败",
       "args": [],
       "limited": ["tmux"]
     },
@@ -8502,6 +8520,24 @@
       "kind": "body",
       "role": "空态",
       "zh": "收件箱为空",
+      "args": []
+    },
+    "ccBus.inbox.line": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{ts} · {from} · {text}",
+      "args": ["ts", "from", "text"]
+    },
+    "ccBus.inbox.lineClass": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{ts} · {from} · {cls} · {text}",
+      "args": ["ts", "from", "cls", "text"]
+    },
+    "ccBus.inbox.missing": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "—",
       "args": []
     },
     "ccBus.loadInbox.reading": {
@@ -13279,6 +13315,12 @@
       "role": "片段",
       "zh": " · ",
       "args": []
+    },
+    "rsBackendPolicy.death.brief": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{kind} · {status}",
+      "args": ["kind", "status"]
     },
     "rsBackendPolicy.status.misread": {
       "kind": "body",
@@ -19025,13 +19067,13 @@
     "extPage.legend.same": {
       "kind": "body",
       "role": "说明",
-      "zh": "装了",
+      "zh": "已装",
       "args": []
     },
     "extPage.legend.differs": {
       "kind": "body",
       "role": "说明",
-      "zh": "装了 · 内容不同",
+      "zh": "已装 · 内容不同",
       "args": []
     },
     "extPage.legend.project": {
@@ -19043,25 +19085,25 @@
     "extPage.table.headName": {
       "kind": "title",
       "role": "标题",
-      "zh": "名字",
+      "zh": "名称",
       "args": []
     },
     "extPage.table.headKind": {
       "kind": "title",
       "role": "标题",
-      "zh": "种类",
+      "zh": "类型",
       "args": []
     },
     "extPage.table.headAbout": {
       "kind": "title",
       "role": "标题",
-      "zh": "做什么",
+      "zh": "用途",
       "args": []
     },
     "extPage.offline.bar": {
       "kind": "body",
       "role": "状态",
-      "zh": "{machine} 离线 · 该列是上次同步的样子",
+      "zh": "{machine} 离线 · 该列为上次同步的数据",
       "args": ["machine"]
     },
     "extPage.install.where": {
@@ -19073,13 +19115,13 @@
     "extPage.install.differsPick": {
       "kind": "body",
       "role": "说明",
-      "zh": "{state} · 勾上就换成这一版",
+      "zh": "{state} · 勾选后换成此版本",
       "args": ["state"]
     },
     "extPage.install.kept": {
       "kind": "body",
       "role": "说明",
-      "zh": "勾选的机器共用此值 · {machines} 已有 {key}，留空沿用",
+      "zh": "勾选的机器共用此值 · {machines} 已有 {key} · 留空则沿用",
       "args": ["machines", "key"]
     },
     "extPage.install.shared": {
@@ -19091,43 +19133,43 @@
     "extPage.install.files": {
       "kind": "title",
       "role": "标题",
-      "zh": "会写的文件",
+      "zh": "将写入的文件",
       "args": []
     },
     "extPage.install.filesSame": {
       "kind": "body",
       "role": "说明",
-      "zh": "{machine}：和现在一样 · 无须写",
+      "zh": "{machine} · 与现有相同 · 无须写入",
       "args": ["machine"]
     },
     "extPage.install.filesLine": {
       "kind": "body",
       "role": "说明",
-      "zh": "{machine}：{files}",
+      "zh": "{machine} · {files}",
       "args": ["machine", "files"]
     },
     "extPage.install.machineSaid": {
       "kind": "body",
       "role": "说明",
-      "zh": "{machine}：{said}",
+      "zh": "{machine} · {said}",
       "args": ["machine", "said"]
     },
     "extPage.install.confirm": {
       "kind": "action",
       "role": "按钮",
-      "zh": "装到 {n} 台",
+      "zh": "安装 · 机器 {n}",
       "args": ["n"]
     },
     "extPage.install.noneChecked": {
       "kind": "body",
       "role": "空态",
-      "zh": "先勾要装的机器",
+      "zh": "未勾选机器",
       "args": []
     },
     "extPage.install.doneOne": {
       "kind": "body",
       "role": "状态",
-      "zh": "{machine} · 装好了 · {said}",
+      "zh": "{machine} · 已装 · {said}",
       "args": ["machine", "said"]
     },
     "extPage.kind.mcp": {
@@ -26127,7 +26169,7 @@
     "firstRun.head.skipFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "跳过没记下",
+      "zh": "保存跳过失败",
       "args": []
     },
     "firstRun.terminal.name": {
@@ -26458,7 +26500,7 @@
     "rsDataPaths.backend.profilesWritten": {
       "kind": "body",
       "role": "说明",
-      "zh": "配置文件上次经 cc-monitor 写出时的指纹（据此说「手改过」）",
+      "zh": "配置文件上次由 cc-monitor 写出时的指纹 · 用于判断是否被手改过",
       "args": []
     },
     "beProfile.value.unknown": {
@@ -26872,25 +26914,25 @@
     "beExt.many.noRow": {
       "kind": "error",
       "role": "报错",
-      "zh": "扩展页那张表里没有 {name}",
+      "zh": "扩展页的表中无 {name}",
       "args": ["name"]
     },
     "beExt.many.notThere": {
       "kind": "body",
       "role": "说明",
-      "zh": "{machine} 没有这一处",
+      "zh": "{machine} 无此位置",
       "args": ["machine"]
     },
     "beExt.many.noBring": {
       "kind": "error",
       "role": "报错",
-      "zh": "{machine} 上没有可装的一处",
+      "zh": "{machine} 无可安装的位置",
       "args": ["machine"]
     },
     "beExt.many.noPlace": {
       "kind": "error",
       "role": "报错",
-      "zh": "勾上的几台没有都能装的一处",
+      "zh": "勾选的机器无共同的可安装位置",
       "args": []
     },
     "rsDataPaths.backend.chores": {

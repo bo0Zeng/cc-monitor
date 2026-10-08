@@ -171,7 +171,7 @@ function renderBadges(s: GridSessionSnapshot, badges: HTMLElement): void {
   if (s.runningAgents > 0) {
     const b = document.createElement("span");
     b.className = "grid-monitor-badge badge-agents";
-    b.textContent = `▶ ${s.runningAgents} agent`;
+    b.textContent = copyText("gridMonitor.renderBadges.agentsLabel", { runningAgents: s.runningAgents });
     b.title = copyText("gridMonitor.renderBadges.agents", { runningAgents: s.runningAgents, totalAgents: s.totalAgents });
     badges.appendChild(b);
   }
@@ -180,14 +180,14 @@ function renderBadges(s: GridSessionSnapshot, badges: HTMLElement): void {
     const b = document.createElement("span");
     b.className = "grid-monitor-badge badge-ctx";
     if (rounded >= 80) b.classList.add("is-high");
-    b.textContent = `ctx ${rounded}%`;
+    b.textContent = copyText("gridMonitor.renderBadges.ctxPct", { pct: rounded });
     b.title = copyText("gridMonitor.renderBadges.ctxHint");
     badges.appendChild(b);
   } else if (s.contextTokens != null) {
     // 上限判不出：只写用了多少（与状态栏同一个说法），不预警。
     const b = document.createElement("span");
     b.className = "grid-monitor-badge badge-ctx";
-    b.textContent = `ctx ${contextTokensText(s.contextTokens)}`;
+    b.textContent = copyText("gridMonitor.renderBadges.ctxTokens", { tokens: contextTokensText(s.contextTokens) });
     b.title = copyText("gridMonitor.renderBadges.ctxTokensHint");
     badges.appendChild(b);
   }

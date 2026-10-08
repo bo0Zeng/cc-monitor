@@ -395,7 +395,10 @@ pub fn death_detail(d: &Death) -> String {
 ///（`[死亡账] origin=… 判定=… 退出状态=… —— …`），禁它进界面。
 /// 细节（证据、该怎么办）留在日志那一行里，界面上要看就去「日志」。
 pub fn last_brief(d: &Death) -> String {
-    format!("{}，{}", death_kind(d), exit_status(d))
+    copy_text(
+        "rsBackendPolicy.death.brief",
+        &[("kind", &death_kind(d)), ("status", &exit_status(d))],
+    )
 }
 
 /// 账上那一行。
