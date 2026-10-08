@@ -2,6 +2,7 @@
 //!
 //! - **只读回包 JSON**：与界面一样是那一份回包的消费方，不碰账号域的内部类型、不判 —— 「被拒 · 用满 · 超额在兜 · 上一窗已过 ·
 //!   数旧 · 卡人的窗口」都是回包里后端给的词，这里照词选字（用满 `✕`，被拒而没用满「{pct}% · 被拒」）。
+//! - 时刻的字照回包里每个时刻旁边那一格 `…Text`（出口 `common::time::with_texts` 写好），这里与界面一样不换算。
 //! - 行模型与界面悬停卡（`src/frontend/ui/quota-lines.ts`）同一份写法，两边锁同一份金样
 //!   `tests/__fixtures__/quota-text.golden.json`（每号每行每格 ＋ 整段字逐字）。标签走文案表。
 //! - 缺省仍是 JSON 进 JSON 出（给 skill / AI）；`--text` 只是给人看的那一形。
@@ -10,24 +11,6 @@ use copy_core::copy_text;
 use serde_json::Value;
 
 const DAY: i64 = 86_400;
-
-/// 一个时刻按此刻与时区偏移（分钟，东正）写：当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年 `YYYY-MM-DD HH:MM`。
-pub(crate) fn fmt_at(t: i64, now: i64, tz_min: i64) -> String {
-    let local = t + tz_min * 60;
-    let day = local.div_euclid(DAY);
-    let today = (now + tz_min * 60).div_euclid(DAY);
-    let secs = local - day * DAY;
-    let hm = format!("{:02}:{:02}", secs / 3600, (secs % 3600) / 60);
-    if day == today {
-        return hm;
-    }
-    let (y, m, d) = crate::common::time::civil_from_days(day);
-    if y == crate::common::time::civil_from_days(today).0 {
-        format!("{m:02}-{d:02} {hm}")
-    } else {
-        format!("{y}-{m:02}-{d:02} {hm}")
-    }
-}
 
 /// 距今（只写未来）：`+12m` · `+1h50m` · `+2h` · `+3d`（满 24h 只写天）；已过 ⇒ `None`。分钟向上取整。
 pub(crate) fn fmt_rel(t: i64, now: i64) -> Option<String> {
@@ -89,18 +72,19 @@ fn head(v: &Value) -> Vec<String> {
     row
 }
 
-fn reset_cells(at: Option<i64>, now: i64, tz: i64) -> Vec<String> {
-    let Some(at) = at else {
+/// 重置那一格与距今那一格：时刻的字照回包里那一格 `resetsAtText`（后端出口写好的），这里不换算。
+fn reset_cells(of: &Value, now: i64) -> Vec<String> {
+    let Some(at) = of.get("resetsAt").and_then(Value::as_i64) else {
         return Vec::new();
     };
-    let when = fmt_at(at, now, tz);
+    let when = s(of, "resetsAtText");
     match fmt_rel(at, now) {
         Some(rel) => vec![copy_text("acct.reset.at", &[("at", &when)]), rel],
         None => vec![copy_text("acct.reset.past", &[("at", &when)])],
     }
 }
 
-fn slot_row(a: &Value, slot: &str, now: i64, tz: i64) -> Vec<String> {
+fn slot_row(a: &Value, slot: &str, now: i64) -> Vec<String> {
     let found = a
         .get("slots")
         .and_then(Value::as_array)
@@ -130,36 +114,29 @@ fn slot_row(a: &Value, slot: &str, now: i64, tz: i64) -> Vec<String> {
         }
     };
     let mut row = vec![slot_label(slot), value];
-    row.extend(reset_cells(
-        x.get("resetsAt").and_then(Value::as_i64),
-        now,
-        tz,
-    ));
+    row.extend(reset_cells(x, now));
     row
 }
 
-fn state_row(a: &Value, now: i64, tz: i64) -> Option<Vec<String>> {
+fn state_row(a: &Value, now: i64) -> Option<Vec<String>> {
     let value = match s(a, "state") {
         "refused" => copy_text("acct.val.refusedOnly", &[]),
         "resetSinceSeen" => copy_text("acct.val.none", &[]),
         _ => return None,
     };
-    let at = a
-        .get("reading")
-        .and_then(|r| r.get("resetsAt"))
-        .and_then(Value::as_i64);
     let mut row = vec![copy_text("acct.row.state", &[]), value];
-    row.extend(reset_cells(at, now, tz));
+    if let Some(r) = a.get("reading") {
+        row.extend(reset_cells(r, now));
+    }
     Some(row)
 }
 
 /// 采样那一行：几点 · 哪台；数旧 ⇒ 几点 · 旧。
-fn seen_row(at: i64, stale: bool, now: i64, tz: i64, machine: &str) -> Vec<String> {
-    let when = fmt_at(at, now, tz);
+fn seen_row(when: &str, stale: bool, machine: &str) -> Vec<String> {
     let value = if stale {
-        copy_text("acct.seen.staleShort", &[("at", &when)])
+        copy_text("acct.seen.staleShort", &[("at", when)])
     } else {
-        copy_text("acct.seen.at", &[("at", &when), ("machine", machine)])
+        copy_text("acct.seen.at", &[("at", when), ("machine", machine)])
     };
     vec![copy_text("acct.row.seen", &[]), value]
 }
@@ -174,7 +151,7 @@ fn no_limit_row() -> Vec<String> {
 }
 
 /// 出过数的号那一段。
-fn seen_block(a: &Value, now: i64, tz: i64, machine: &str) -> Vec<Vec<String>> {
+fn seen_block(a: &Value, now: i64, machine: &str) -> Vec<Vec<String>> {
     let mut rows = vec![head(a)];
     let limiting = s(a, "limiting");
     let windowed = !limiting.is_empty()
@@ -182,12 +159,12 @@ fn seen_block(a: &Value, now: i64, tz: i64, machine: &str) -> Vec<Vec<String>> {
             .and_then(Value::as_array)
             .is_some_and(|xs| xs.iter().any(|x| s(x, "slot") == limiting));
     if s(a, "kind") == "api" {
-        rows.push(state_row(a, now, tz).unwrap_or_else(no_limit_row));
+        rows.push(state_row(a, now).unwrap_or_else(no_limit_row));
     } else {
-        rows.push(slot_row(a, "5h", now, tz));
-        rows.push(slot_row(a, "7d", now, tz));
+        rows.push(slot_row(a, "5h", now));
+        rows.push(slot_row(a, "7d", now));
         if !windowed {
-            rows.extend(state_row(a, now, tz));
+            rows.extend(state_row(a, now));
         }
         rows.push(if s(a, "state") == "overageInUse" {
             vec![
@@ -203,8 +180,7 @@ fn seen_block(a: &Value, now: i64, tz: i64, machine: &str) -> Vec<Vec<String>> {
         });
     }
     let stale = a.get("stale").and_then(Value::as_bool).unwrap_or(false);
-    let seen_at = a.get("seenAt").and_then(Value::as_i64).unwrap_or_default();
-    rows.push(seen_row(seen_at, stale, now, tz, machine));
+    rows.push(seen_row(s(a, "seenAtText"), stale, machine));
     rows
 }
 
@@ -225,7 +201,7 @@ fn unseen_block(u: &Value) -> Vec<Vec<String>> {
 }
 
 /// ★ 整份回包 ⇒ 每号一段 `(号, 行)`（先出过数的、再没出过的，各按回包的次序）。读不出 ⇒ 空。
-pub(crate) fn blocks(reply: &Value, tz_min: i64, machine: &str) -> Vec<(String, Vec<Vec<String>>)> {
+pub(crate) fn blocks(reply: &Value, machine: &str) -> Vec<(String, Vec<Vec<String>>)> {
     if s(reply, "state") == "unreadable" {
         return Vec::new();
     }
@@ -239,12 +215,7 @@ pub(crate) fn blocks(reply: &Value, tz_min: i64, machine: &str) -> Vec<(String, 
     };
     let mut out: Vec<(String, Vec<Vec<String>>)> = list("accounts")
         .iter()
-        .map(|a| {
-            (
-                s(a, "account").to_string(),
-                seen_block(a, now, tz_min, machine),
-            )
-        })
+        .map(|a| (s(a, "account").to_string(), seen_block(a, now, machine)))
         .collect();
     out.extend(
         list("unseen")
@@ -304,11 +275,11 @@ fn block_text(rows: &[Vec<String>]) -> String {
 }
 
 /// ★ 整份回包 ⇒ 给人看的整段字（不带末尾换行）。
-pub(crate) fn text(reply: &Value, tz_min: i64, machine: &str) -> String {
+pub(crate) fn text(reply: &Value, machine: &str) -> String {
     if s(reply, "state") == "unreadable" {
         return copy_text("acct.text.readFail", &[]);
     }
-    let bs = blocks(reply, tz_min, machine);
+    let bs = blocks(reply, machine);
     if bs.is_empty() {
         return copy_text("acct.seen.none", &[]);
     }
@@ -318,11 +289,9 @@ pub(crate) fn text(reply: &Value, tz_min: i64, machine: &str) -> String {
         .join("\n\n")
 }
 
-/// CLI 那一臂：回包 ⇒ 按这台此刻的本地钟排、采样那台写「本机」。
+/// CLI 那一臂：回包（时刻的字已由出口按这台的本地钟写好）⇒ 采样那台写「本机」。
 pub(crate) fn render_here(reply: &Value) -> String {
-    let now = reply.get("now").and_then(Value::as_u64).unwrap_or_default();
-    let tz_min = crate::platform::local_tz::offset_secs(now).unwrap_or(0) / 60;
-    text(reply, tz_min, &copy_text("acct.machine.here", &[]))
+    text(reply, &copy_text("acct.machine.here", &[]))
 }
 
 #[cfg(test)]

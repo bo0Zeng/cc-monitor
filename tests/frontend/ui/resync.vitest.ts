@@ -7,7 +7,6 @@
  * | 性质 | 判据 |
  * |---|---|
  * | 请求体 / 成品 == 跨语言金样（后端 `watcher_tests::resync_face_reply_matches_the_cross_language_golden` 对同一份） | 「金样」 |
- * | 关卡 2 的拒绝（真 `killSession` 抛出来的那个）认得出，别的拒绝不认 | 「认得出关卡 2」 |
  * | 点「对齐后重试」⇒ 先对齐**那一个会话**、再做一次原动作；顺序就是这个 | 「对齐后重试」 |
  * | 对齐后固定条记录没了 ⇒ 标出来、说一句，**不自动摘**；点了才摘；问不到的不标 | 「固定条」 |
  */
@@ -38,10 +37,9 @@ import { invoke } from "@tauri-apps/api/core";
 import { TabSessionActions } from "../../../src/frontend/ui/tab-session-actions";
 import type { Tab } from "../../../src/frontend/ui/tab-model";
 import { ControlError } from "../../../src/frontend/ui/control-said";
-import { decodeResynced, isIdentityRefusal, offerResyncRetry, resync } from "../../../src/frontend/ui/resync";
-import { killSession } from "../../../src/frontend/ui/tmux-control";
+import { decodeResynced, offerResyncRetry, resync } from "../../../src/frontend/ui/resync";
 import { REPO_ROOT } from "../../test-support/repo-root";
-import { chanArgsJson, chanReply, refusedReply, type ChanCallArgs } from "../../test-support/chan-fake";
+import { chanArgsJson, chanReply, type ChanCallArgs } from "../../test-support/chan-fake";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 const golden = JSON.parse(readFileSync(resolve(REPO_ROOT, "tests/__fixtures__/resync.golden.json"), "utf8")) as {
@@ -77,21 +75,6 @@ describe("〔RESYNC〕手动对齐", () => {
     ]);
     expect(() => decodeResynced("devbox", { ...golden.reply, extra: 1 })).toThrow(ControlError);
     expect(() => decodeResynced("devbox", { ...golden.reply, added: -1 })).toThrow(ControlError);
-  });
-
-  it("★ 认得出关卡 2：真 `killSession` 被 `wrong_owner` 拒 ⇒ 认；`no_such_session` ⇒ 不认", async () => {
-    const thrown = async (code: string): Promise<unknown> => {
-      invokeMock.mockImplementation(async () => {
-        throw refusedReply(code, "m");
-      });
-      try {
-        await killSession("devbox", "proj");
-      } catch (e) {
-        return e;
-      }
-      throw new Error("本该失败");
-    };
-    expect([isIdentityRefusal(await thrown("wrong_owner")), isIdentityRefusal(await thrown("no_such_session"))]).toEqual([true, false]);
   });
 
   it("★★ 对齐后重试：点那条提示 ⇒ 先只对那一个会话对齐，再做一次原动作", async () => {

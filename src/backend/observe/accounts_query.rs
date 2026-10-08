@@ -695,6 +695,8 @@ fn account_trust_zero(cwd: &str) -> Result<String, (String, String)> {
 }
 
 /// 账号库那一家（`AccountsFace.trust_in`）对某个配置根下某个 cwd 的信任状态。没有账号库那一家 ⇒ 照实拒。
+/// 查的键与预标同一组：cwd 本身 ＋ 适配层说的那几个（[`crate::agents::TrustCells::dir_keys`]，如所在仓的根）；
+/// 任一格信任过就算信任过，任一格记过就算记过（子目录里起、信任记在仓根上的，不误报「没信任」）。
 fn trust_in(root: &Path, cwd: &str) -> Result<String, (String, String)> {
     let face = crate::agents::account_library_face().ok_or_else(|| {
         (
@@ -702,7 +704,24 @@ fn trust_in(root: &Path, cwd: &str) -> Result<String, (String, String)> {
             "no agent here keeps an account library".to_string(),
         )
     })?;
-    (face.trust_in)(root, cwd)
+    let mut keys = vec![cwd.to_string()];
+    for k in face.trust.map(|c| (c.dir_keys)(cwd)).unwrap_or_default() {
+        if !keys.contains(&k) {
+            keys.push(k);
+        }
+    }
+    let (mut trusted, mut known) = (false, false);
+    for k in &keys {
+        let line = (face.trust_in)(root, k)?;
+        let v: serde_json::Value = serde_json::from_str(&line)
+            .map_err(|e| ("trust_line_invalid".to_string(), e.to_string()))?;
+        trusted |= v["trusted"] == serde_json::Value::Bool(true);
+        known |= v["known"] == serde_json::Value::Bool(true);
+    }
+    Ok(
+        serde_json::json!({"trusted": trusted, "known": known, "error": serde_json::Value::Null})
+            .to_string(),
+    )
 }
 
 /// 帧面那两条（`accounts-list` / `accounts-sessions`）的入口。

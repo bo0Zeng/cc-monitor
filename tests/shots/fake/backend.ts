@@ -7,6 +7,29 @@ import { Refuse, type World } from "./types";
 
 type Emit = (event: string, payload: unknown) => unknown;
 
+/** 真后端出口给每个时刻添 `…Text` 的那两条（`common::time::with_texts`）。 */
+const TIMED_OPS = new Set(["quota-read", "rotation-session-read"]);
+const TIME_KEYS = ["at", "seenAt", "resetsAt", "fromResetsAt", "since"];
+
+/** 假后端替真后端出口写时刻的字（当天 `HH:MM` · 别的天 `MM-DD HH:MM` · 别的年带年；按截图机的本地钟）。 */
+function withTexts(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(withTexts);
+  if (v === null || typeof v !== "object") return v;
+  const out: Record<string, unknown> = {};
+  const now = new Date();
+  for (const [k, x] of Object.entries(v)) {
+    out[k] = withTexts(x);
+    if (TIME_KEYS.includes(k) && typeof x === "number") {
+      const d = new Date(x * 1000);
+      const p = (n: number) => String(n).padStart(2, "0");
+      const hm = `${p(d.getHours())}:${p(d.getMinutes())}`;
+      const md = `${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+      out[`${k}Text`] = d.toDateString() === now.toDateString() ? hm : d.getFullYear() === now.getFullYear() ? `${md} ${hm}` : `${d.getFullYear()}-${md} ${hm}`;
+    }
+  }
+  return out;
+}
+
 const enc = new TextEncoder();
 const dec = new TextDecoder();
 
@@ -68,7 +91,7 @@ export class FakeBackend {
     try {
       const v = handler(origin, req, this.world);
       return Promise.resolve(v).then(
-        (value) => Array.from(enc.encode(JSON.stringify(value))),
+        (value) => Array.from(enc.encode(JSON.stringify(TIMED_OPS.has(op) ? withTexts(value) : value))),
         (e: unknown) => Promise.reject(refusal(e)),
       );
     } catch (e) {

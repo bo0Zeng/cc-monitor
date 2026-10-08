@@ -54,7 +54,7 @@ describe("buildProfilesList", () => {
       path: "/h/.cc-monitor/profiles.toml",
       exists: true,
       fingerprint: "fp-1",
-      modified: 1,
+      editedAt: null,
       fileProblem: null,
       profiles: [row("cc", null, { kind: "function", functionWhy: "和 /usr/bin/cc 同名" }), row("alphacc", "cc"), row("cct", "cc"), row("betacct", "cct"), row("pcc", null)],
       seed: [],
@@ -98,7 +98,7 @@ describe("buildProfilesList", () => {
             staleOnce = false;
             return Promise.reject(new real.ProfilesStale("被别处改过"));
           }
-          return Promise.resolve({ wrote: true, fingerprint: "fp-2", modified: 2, reload: null });
+          return Promise.resolve({ wrote: true, fingerprint: "fp-2", reload: null });
         },
       };
     });
@@ -235,6 +235,15 @@ describe("buildProfilesList", () => {
     const again = await mount();
     expect(again.el.querySelector('[data-role="file-problem"]')!.textContent).toContain(copyText("profilesPage.file.at", { line: "3", e: "坏了" }));
     expect([...again.el.querySelectorAll("button")].map((x) => x.textContent)).not.toContain(copyText("profilesPage.list.add"));
+  });
+
+  it("「手改过」那一句只照后端那一格：给了时刻 ⇒ 说、时刻原样；null ⇒ 不说（界面不记、不比）", async () => {
+    const { el } = await mount();
+    expect(el.querySelector('[data-role="edited-elsewhere"]')).toBeNull();
+    document.body.replaceChildren();
+    book.editedAt = "10-06 14:20";
+    const again = await mount();
+    expect(again.el.querySelector('[data-role="edited-elsewhere"]')!.textContent).toContain(copyText("profilesPage.edited.line", { time: "10-06 14:20" }));
   });
 
   it("没有配置文件：给首建那两条的预览；点了才写（init seed）", async () => {

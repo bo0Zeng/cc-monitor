@@ -1030,7 +1030,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 |---|---|---|
 | `accounts` | ← | 每个号一条，按 `(agent, account)` 排：`agent` 路由第 1 段（哪一家）· `account` 路由第 2 段（哪个号 |
 | `earliestReturn` | ← | 被拒 / 超额在兜的号里最早回来的那个 `{account, at}`；没有、或都说不出时刻 ⇒ `null` |
-| `now` | ← | 这台此刻的 unix 秒（界面算「几分钟前看到的」「还有多久重置」都按这台的钟） |
+| `now` | ← | 这台此刻的 unix 秒（界面算「几分钟前看到的」「还有多久重置」都按这台的钟）；回包里每个时刻（`at` · `seenAt` · `resetsAt` · `fromResetsAt` · `since`）旁边有一格 `…Text`：出口按这台本地钟写好的字（当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年带年），界面照抄、不换算 |
 | `path` | ← | 那份文件的绝对路径（家推不出来时 `null`） |
 | `reason` | ← | 只在 `unreadable` 时有：为什么读不出来；其余 `null` |
 | `state` | ← | `"present"`（读得懂）· `"absent"`（还没看到过任何回包）· `"unreadable"`（文件读不出来 / 家推不出来） |
@@ -1094,7 +1094,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `now` | ← | 那份文件的三态（同 `rotation-read`）· 这台此刻的 unix 秒 |
+| `now` | ← | 那份文件的三态（同 `rotation-read`）· 这台此刻的 unix 秒；回包里每个时刻（`at` · `seenAt` · `resetsAt` · `fromResetsAt` · `since`）旁边有一格 `…Text`：出口按这台本地钟写好的字（当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年带年），界面照抄、不换算 |
 | `reason` | ← | 那份文件的三态（同 `rotation-read`）· 这台此刻的 unix 秒 |
 | `sessions` | ← | 每个 sid 一份 |
 | `sids` | → | 会话 id 的数组 |
@@ -2416,12 +2416,12 @@ cc-bus 钩子诊断。
 |---|---|---|
 | `accounts` | ← | 这台的账号表（具名号，按账号库的顺序；表单「账号」那一格的选项） |
 | `binDir` | ← | 链接住的目录（`~/.cc-monitor/bin`） |
+| `editedAt` | ← | 上次 cc-monitor 写过之后有人改过 ⇒ 那份的修改时刻（按这台本地钟写好：当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年带年）；没改过 · cc-monitor 没写过 ⇒ `null` |
 | `exists` | ← | 配置文件在不在 |
 | `fileProblem` | ← | TOML 本身写坏 ⇒ `{line, message}`（这时 `profiles` 为空、不能按条目改）；否则 `null` |
 | `fingerprint` | ← | 盘上那份的指纹（不在 ⇒ `null`），存的时候交回 `profiles-write` |
 | `home` | ← | 这台的家目录（界面拿它把路径写成 `~/…`） |
 | `migrated` | ← | 旧别名清单一次性转进来之后那张说明 `{count, path, skipped}`（「知道了」之后 `null`） |
-| `modified` | ← | 盘上那份的修改时间（Unix 秒；不在 ⇒ `null`） |
 | `path` | ← | 配置文件的路径 |
 | `profiles` | ← | 每段 `{name, from, own: [{key, slot, vals, line}], agent, usable, problem: {line, message} \| null, kind: link/function, functionWhy, functionLine, said, form, accountShape}`：`accountShape` 是「账号那一形」`{account, tmux}`（自己只写了号、可再加 tmux，按合并下来的算；其余 `null`）：`said` 是树里那一行（自己写的几项，「标签 值」）；`form` 是表单回填（没写的格 `null` ＝ 继承）；`problem` 的原话与终端里敲这个名字得到的同一句 |
 | `seed` | ← | 配置文件不在时首建那两条的预览（同 `profiles` 一条的形状；在 ⇒ `[]`） |
@@ -2483,7 +2483,6 @@ cc-bus 钩子诊断。
 |---|---|---|
 | `changes` | → | 依次做的改动：`{op: "set", was, form}`（新增 `was: null`；名字变了 ⇒ 改名，基于它的跟着改）· `{op: "remove", name, children}`（还被基于 ⇒ `children` 必给：`reparent` 改成基于它的父 · `cascade` 一起删）· `{op: "init", seed}`（配置文件不在时建：`seed` ⇒ 带首建那两条）· `{op: "ackMigrated"}`（迁移说明知道了）。改完多出坏处 ⇒ 整批不写、`refused` |
 | `fingerprint` | → ← | 入：必给（字符串或 `null`），读回时的指纹；盘上此刻不是那一份 ⇒ `stale`。出：写完那一份的指纹 |
-| `modified` | ← | 写完那一份的修改时间（Unix 秒） |
 | `reload` | ← | 终端函数那份文件真改了 ⇒ 给人的那一句「已开的终端要重读」；否则 `null` |
 | `wrote` | ← | 配置文件 / 终端函数文件 / 链接动没动 |
 

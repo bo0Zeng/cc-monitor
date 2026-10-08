@@ -1,5 +1,5 @@
 /**
- * API key 那两问（`apikey-read` · `apikey-routing`）改走通道、后端出成品之后的判据。
+ * API key 那一问（`apikey-routing`）改走通道、后端出成品之后的判据（`apikey-read` 界面不问，解码口删了）。
  *
  * 要求：「成品的两侧对拍：界面按形状严格收（多一格 / 缺一格 / 类型不对 ⇒ 抛「两端契约对不上」，不猜）；
  * 线上形状由一份跨语言金样钉住（后端测试产出 == 金样 · TS 解码器读同一份）」· B 组 `creds.apikey` · `apikey.routing`。
@@ -20,7 +20,6 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 import { invoke } from "@tauri-apps/api/core";
 import {
   decodeApikeyRouting,
-  decodeApikeyStatus,
   decodeApikeyWritten,
   fetchApikeyRouting,
   writeApikeyKey,
@@ -47,15 +46,6 @@ beforeEach(() => {
 });
 
 describe("金样：后端出的成品，TS 这一侧读得懂", () => {
-  it("apikey-read：五格照收（只有掩码）", () => {
-    expect(decodeApikeyStatus(golden["apikey-read"])).toEqual({
-      configured: false,
-      masked: "",
-      path: "<root>/apikey-credentials.json",
-      notice: null,
-      problem: null,
-    });
-  });
   it("apikey-routing：表里有行的那一个原样回 · 中转在听", () => {
     expect(decodeApikeyRouting(golden["apikey-routing"])).toEqual({
       routed: ["/h/.claude-alt/work"],
@@ -65,17 +55,7 @@ describe("金样：后端出的成品，TS 这一侧读得懂", () => {
 });
 
 describe("严格收：形状不对 ⇒ 抛「两端版本对不上」", () => {
-  const st = golden["apikey-read"] as Record<string, unknown>;
   const rt = golden["apikey-routing"] as Record<string, unknown>;
-  it.each([
-    ["多一格（装明文那一形）", { ...st, key: "sk-x" }],
-    ["缺一格", (({ path: _p, ...r }) => r)(st)],
-    ["类型不对", { ...st, configured: "yes" }],
-    ["老后端还回 rows", { ...st, rows: [] }],
-    ["不是对象", "x"],
-  ])("apikey-read · %s", (_n, v) => {
-    expect(() => decodeApikeyStatus(v)).toThrow(ReplyUnreadable);
-  });
   it.each([
     ["多一格", { ...rt, x: 1 }],
     ["缺 running", { routed: [] }],

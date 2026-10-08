@@ -104,14 +104,10 @@
     "tests/frontend/ui/front-result.vitest.ts": [
       { "text": "本机", "use": "输入" }
     ],
-    "tests/frontend/ui/ipc/commands.vitest.ts": [
-      { "text": "时间", "use": "回显" }
-    ],
     "tests/frontend/ui/kit/components.vitest.ts": [
       { "text": "关闭", "use": "输入" },
       { "text": "卸载", "use": "输入" },
       { "text": "保存", "use": "输入" },
-      { "text": "显示隐藏文件", "use": "输入" },
       { "text": "取消", "use": "输入" },
       { "text": "端口", "use": "输入" },
       { "text": "路径", "use": "输入" },
@@ -122,8 +118,6 @@
       { "text": "终端", "use": "输入" },
       { "text": "默认", "use": "输入" },
       { "text": "本会话", "use": "输入" },
-      { "text": "详情", "use": "输入" },
-      { "text": "复制", "use": "输入" },
       { "text": "远端", "use": "输入" },
       { "text": "运行中", "use": "输入" },
       { "text": "失败", "use": "输入" },

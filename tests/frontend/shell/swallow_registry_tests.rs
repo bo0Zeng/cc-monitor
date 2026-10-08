@@ -186,7 +186,6 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/comms/inward/chan/router.rs", "write_frame(&mut wr, &Head::Denied, &[]).await.ok();", Why::DeadLink, ""),
     ("src/comms/inward/chan/wire.rs", "rx.wait_for(|c| *c).await.ok();", Why::Signal, ""),
     ("src/frontend/shell/src/config.rs", "let _ = std::fs::remove_file(&tmp);", Why::CleanupAfterFailure, "原子写的临时件：换名失败之后删它；主错误已在回"),
-    ("src/frontend/filewin/src/scale.rs", "let _ = render_headless(&ctx, rows, screen, off);", Why::NotAnError, "量渲染耗时，只要时间不要画出来的东西"),
     // 窗口那几问的答复送回等答的那一趟（它已收场 ⇒ 没人要）· 暂存件收尾删不掉交孤儿扫（不盖下载 / 复制本身的结局）。
     ("src/frontend/filewin/src/extract.rs", "tx.send(fresh).ok();", Why::PeerGone, "解压撞名那一问的答复；等答的那一趟已收场就没人要"),
     ("src/frontend/filewin/src/cross_copy.rs", "tx.send(overwrite).ok();", Why::PeerGone, "复制到另一台「盖不盖」那一问的答复；等答的那一趟已收场就没人要"),

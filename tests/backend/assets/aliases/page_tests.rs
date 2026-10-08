@@ -79,7 +79,6 @@ fn read_gives_each_section_its_own_items_with_lines_and_the_shared_labels() {
     let r = read(&t);
     assert_eq!(r["exists"], true);
     assert!(r["fingerprint"].is_string());
-    assert!(r["modified"].is_u64(), "修改时间（秒）：{}", r["modified"]);
     let b = prof(&r, "betacct");
     assert_eq!(b["from"], "cct");
     assert_eq!(b["usable"], true);
@@ -346,6 +345,30 @@ fn a_stale_fingerprint_writes_nothing() {
     assert_eq!(t.text(), BOOK);
 }
 
+/// 「上次 cc-monitor 写过之后有人改过」只后端判：写的那一下记下写出去的样子，读的时候比对。
+#[test]
+fn edited_at_says_the_file_changed_after_cc_monitor_last_wrote_it() {
+    let t = tmp("edited", Some(BOOK));
+    let r = read(&t);
+    assert!(r["editedAt"].is_null(), "cc-monitor 没写过 ⇒ 不说：{r}");
+    assert!(r.get("modified").is_none(), "修改时间不再出线：{r}");
+    let w = write(&t, json!([{"op": "remove", "name": "pcc"}])).unwrap();
+    assert!(w.get("modified").is_none(), "{w}");
+    assert!(read(&t)["editedAt"].is_null(), "刚写过 ⇒ 不说");
+    std::fs::write(
+        t.0.join(relay_route_core::PROFILES_REL),
+        format!("{}# 手加的一行\n", t.text()),
+    )
+    .unwrap();
+    let at = read(&t)["editedAt"].clone();
+    assert!(
+        at.as_str().is_some_and(|s| s.contains(':')),
+        "手改过 ⇒ 给好显示的时刻：{at}"
+    );
+    write(&t, json!([{"op": "remove", "name": "alphacct"}])).unwrap();
+    assert!(read(&t)["editedAt"].is_null(), "再经这里存一次 ⇒ 不说");
+}
+
 #[test]
 fn a_write_may_fix_the_broken_section_but_may_not_break_another() {
     let broken = BOOK.replace("account = \"b\"", "tmux-sise = \"200x50\"");
@@ -456,12 +479,9 @@ fn profiles_golden() -> Value {
     serde_json::from_str(include_str!("../../../__fixtures__/profiles.golden.json")).unwrap()
 }
 
-/// 机器上会变的几格换成占位：家目录 · 修改时间 · 「等于」那一行（它跟这台的 tmux 会话、账号库、cc-bus 脚本走）。
+/// 机器上会变的几格换成占位：家目录 · 「等于」那一行（它跟这台的 tmux 会话、账号库、cc-bus 脚本走）。
 fn normalized(v: &Value, home: &str) -> Value {
     let mut v: Value = serde_json::from_str(&v.to_string().replace(home, "<HOME>")).unwrap();
-    if v.get("modified").is_some_and(Value::is_u64) {
-        v["modified"] = json!("<MTIME>");
-    }
     if v.get("line").is_some_and(Value::is_string) {
         v["line"] = json!("<LINE>");
     }

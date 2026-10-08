@@ -233,6 +233,10 @@ pub enum SwitchWhy {
 pub struct SwitchRecord {
     #[cfg_attr(test, ts(type = "number"))]
     pub at: u64,
+    /// `at` 写给人看的样子（回包出口 `common::time::with_texts` 添；内部与记账一律不填）。
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    #[cfg_attr(test, ts(optional))]
+    pub at_text: Option<String>,
     pub from: String,
     pub to: String,
     pub why: SwitchWhy,
@@ -240,6 +244,10 @@ pub struct SwitchRecord {
     #[serde(skip_serializing_if = "Option::is_none", default)]
     #[cfg_attr(test, ts(optional, type = "number"))]
     pub from_resets_at: Option<u64>,
+    /// `from_resets_at` 写给人看的样子（回包出口 `common::time::with_texts` 添；内部与记账一律不填）。
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    #[cfg_attr(test, ts(optional))]
+    pub from_resets_at_text: Option<String>,
 }
 
 /// 能不能不重启换号（会话一级的原因码；目标号接不上另在「切换」结果里说）。
@@ -268,6 +276,10 @@ pub struct AccountAt {
     pub account: String,
     #[cfg_attr(test, ts(type = "number"))]
     pub at: u64,
+    /// `at` 写给人看的样子（回包出口 `common::time::with_texts` 添；内部与记账一律不填）。
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    #[cfg_attr(test, ts(optional))]
+    pub at_text: Option<String>,
 }
 
 /// 这个会话发不出去了：轮换里没有能接的号；`earliest` ＝ 最早回来的那个（说不出 ⇒ 缺）。
@@ -293,6 +305,10 @@ pub struct AccountCell {
     pub current: String,
     #[cfg_attr(test, ts(type = "number"))]
     pub since: u64,
+    /// `since` 写给人看的样子（回包出口 `common::time::with_texts` 添；内部与记账一律不填）。
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    #[cfg_attr(test, ts(optional))]
+    pub since_text: Option<String>,
     /// 换号记录，先的在前。
     pub history: Vec<SwitchRecord>,
     pub in_place: InPlace,
@@ -541,6 +557,8 @@ impl Book {
             note(
                 s,
                 SwitchRecord {
+                    at_text: None,
+                    from_resets_at_text: None,
                     at: rec.at,
                     from: rec.from.clone(),
                     to: rec.from.clone(),
@@ -576,6 +594,8 @@ impl Book {
             changed |= note(
                 s,
                 SwitchRecord {
+                    at_text: None,
+                    from_resets_at_text: None,
                     at: rec.at,
                     from: rec.from.clone(),
                     to: rec.from.clone(),

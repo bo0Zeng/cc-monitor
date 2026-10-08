@@ -298,6 +298,11 @@ fn backend_entries(
             DataClass::Truth,
         ),
         file(
+            rr::PROFILES_WRITTEN_REL,
+            copy_text("rsDataPaths.backend.profilesWritten", &[]),
+            DataClass::Cache,
+        ),
+        file(
             rr::POSIX_ALIASES_REL,
             copy_text("rsDataPaths.backend.aliasesPosix", &[]),
             DataClass::Truth,

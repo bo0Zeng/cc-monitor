@@ -205,6 +205,11 @@ fn backend_rows_point_where_the_backend_itself_writes() {
             h.join(rr::PROFILES_MIGRATED_REL),
             "file",
         ),
+        row(
+            "profiles-written.json",
+            h.join(rr::PROFILES_WRITTEN_REL),
+            "file",
+        ),
         row("aliases.sh", h.join(rr::POSIX_ALIASES_REL), "file"),
         row("aliases.ps1", h.join(rr::PS_ALIASES_REL), "file"),
         row("skill-installs.json", h.join(rr::SKILL_LEDGER_REL), "file"),

@@ -10,13 +10,13 @@
  */
 import { appStore, type SessionRotationEntry } from "./app-store";
 import { refreshSessions } from "./acct-center";
-import { bannerOf, localTzMin, whyOf } from "./acct-view";
+import { bannerOf, whyOf } from "./acct-view";
 import { copyText } from "./copy-table";
 import type { Origin } from "./ipc/origin";
 import { banner } from "./kit/banner";
 import { button } from "./kit/button";
 import { icon } from "./kit/icon";
-import { accountLabel, fmtAt } from "./quota-lines";
+import { accountLabel } from "./quota-lines";
 import { switchHot } from "./quota-reads";
 import s from "./acct-session.module.css";
 
@@ -40,11 +40,10 @@ export function stripOf(sid: string, entry: SessionRotationEntry, index: number,
   if (entry.read.state !== "present") return null;
   const h = entry.read.account.history[index];
   if (!h || h.from === h.to) return null;
-  const tz = localTzMin(entry.now);
   const root = document.createElement("div");
   root.className = s.acctSessStrip;
   root.dataset.acctStrip = String(h.at);
-  const why = whyOf(h, entry.now, tz);
+  const why = whyOf(h);
   const quota = appStore.quota.get().get(entry.origin) ?? null;
   const toApi = quota?.accounts.find((a) => a.account === h.to)?.kind === "api";
   const to = toApi ? copyText("acct.strip.api", { to: accountLabel(h.to) }) : accountLabel(h.to);
@@ -53,7 +52,7 @@ export function stripOf(sid: string, entry: SessionRotationEntry, index: number,
   const swap = icon("swap", "compact");
   text.append(
     swap,
-    span(s.acctSessStripAt, fmtAt(h.at, entry.now, tz)),
+    span(s.acctSessStripAt, h.atText ?? ""),
     span(s.acctSessStripMove, copyText("acct.strip.move", { from: accountLabel(h.from), to })),
     span(s.acctSessStripSep, copyText("kit.text.sep")),
     span(s.acctSessStripWhy, why.why),

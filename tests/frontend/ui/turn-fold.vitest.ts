@@ -2,7 +2,7 @@
 // 默认开关（Ctrl+O）全部摊开 / 收回；骨架占位与 ESC 折叠段之后不再归轮（宁可不折）；续取从还没收尾的那一轮起、整轮替换。
 // 轮次刻度（§5.2.6）：一轮一格、超过 60 轮并格 · 当前那一轮 · 在等你的那一格琥珀 · 点了 / Alt+↑↓ 跳 · 悬停卡在左侧。
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { TurnFold, PROC_LINE_CLASS, PROC_HIDDEN_CLASS, setProcessExpandedDefault } from "../../../src/frontend/ui/turn-fold";
+import { TurnFold, PROC_LINE_CLASS, setProcessExpandedDefault } from "../../../src/frontend/ui/turn-fold";
 import { TurnRail, railGroups, RAIL_MAX_TICKS } from "../../../src/frontend/ui/turn-rail";
 import { placeCardLeft } from "../../../src/frontend/ui/kit/tooltip";
 import type { TurnSummary, TurnsResult } from "../../../src/frontend/ui/session-reads";
@@ -44,7 +44,7 @@ function rig(cards: HTMLElement[], reads: TurnsResult[]) {
   return { content, fold, read };
 }
 
-const hidden = (el: Element): boolean => el.classList.contains(PROC_HIDDEN_CLASS);
+const hidden = (el: Element): boolean => el.classList.contains("proc-hidden");
 const lines = (root: HTMLElement): HTMLElement[] => [...root.querySelectorAll<HTMLElement>(`.${PROC_LINE_CLASS}`)];
 
 describe("按轮折叠", () => {

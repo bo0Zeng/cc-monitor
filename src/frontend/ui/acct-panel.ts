@@ -13,7 +13,7 @@ import { displayNameOf, lookupAgentProfile } from "./agent-profile";
 import { appStore, type SessionRotationEntry } from "./app-store";
 import { refreshQuota, refreshSessions } from "./acct-center";
 import { acctAvatar } from "./acct-dom";
-import { ledgerOf, localTzMin, machineLabel, reasonLabel, swappedFrom, usageOf, usageText, whyOf } from "./acct-view";
+import { ledgerOf, machineLabel, reasonLabel, swappedFrom, usageOf, usageText, whyOf } from "./acct-view";
 import { copyText } from "./copy-table";
 import { askSessionInterrupts } from "./interrupt-reads";
 import { commands } from "./ipc/commands";
@@ -30,7 +30,7 @@ import { segmented } from "./kit/tabs";
 import { toast } from "./kit/toast";
 import { attachTooltip } from "./kit/tooltip";
 import { ARRIVAL_BUDGET_MS } from "./launch-arrival";
-import { accountLabel, fmtAt, fmtRel, slotLabel, slotValue, type QuotaRead } from "./quota-lines";
+import { accountLabel, fmtRel, slotLabel, slotValue, type QuotaRead, type QuotaReadAccount } from "./quota-lines";
 import { switchHot, switchRestart, writeSessionRotation } from "./quota-reads";
 import { runRemoteAttach } from "./remote-launch-run";
 import { standingOf } from "./sessions-where";
@@ -219,7 +219,7 @@ function render(o: Open, host: AcctPanelHost): void {
   const read = entry?.read;
   o.body.append(nowBlock(o, entry, quota, host));
   if (read?.state === "present" && entry) {
-    o.body.append(rotationBlock(o, entry, read, quota, host), switchBlock(o, entry, read, quota, host), historyBlock(entry, read));
+    o.body.append(rotationBlock(o, entry, read, quota, host), switchBlock(o, entry, read, quota, host), historyBlock(read));
   } else {
     o.body.append(switchBlock(o, entry, undefined, quota, host));
   }
@@ -229,7 +229,7 @@ function render(o: Open, host: AcctPanelHost): void {
 
 // ─────────────────────────────── 当前
 
-function slotMeter(q: QuotaShow, slot: string, now: number, tz: number): HTMLElement {
+function slotMeter(q: QuotaShow, slot: string, now: number): HTMLElement {
   const x = q.slots.find((v) => v.slot === slot);
   const here = q.limiting === slot;
   let state: MeterState = "normal";
@@ -240,7 +240,8 @@ function slotMeter(q: QuotaShow, slot: string, now: number, tz: number): HTMLEle
   const value = slotValue(q, slot);
   const at = x?.resetsAt;
   const rel = at === undefined ? null : fmtRel(at, now);
-  const reset = at === undefined ? undefined : rel === null ? copyText("acct.reset.past", { at: fmtAt(at, now, tz) }) : copyText("acct.reset.at", { at: fmtAt(at, now, tz) });
+  const said = x?.resetsAtText ?? "";
+  const reset = at === undefined ? undefined : rel === null ? copyText("acct.reset.past", { at: said }) : copyText("acct.reset.at", { at: said });
   const row = el("div", s.acctMeterRow);
   row.appendChild(meter({ label: slotLabel(slot), ratio: (x?.pct ?? 0) / 100, state, value, reset }));
   row.appendChild(el("span", s.acctMeterRel, rel ?? ""));
@@ -271,9 +272,8 @@ function nowBlock(o: Open, entry: SessionRotationEntry | undefined, quota: Quota
     return sec.root;
   }
   const now = entry.now;
-  const tz = localTzMin(now);
   const led = ledgerOf(quota, read.agent, read.account.current);
-  const seen = led ? fmtAt(led.seenAt, now, tz) : null;
+  const seen = led ? (led.seenAtText ?? "") : null;
   const right =
     seen === null
       ? undefined
@@ -288,16 +288,16 @@ function nowBlock(o: Open, entry: SessionRotationEntry | undefined, quota: Quota
   who.appendChild(el("span", s.acctWhoName, accountLabel(read.account.current)));
   who.append(...kindTags(read.quota));
   const from = swappedFrom(read);
-  if (from) who.appendChild(el("span", s.acctWhoFrom, copyText("acct.hover.from", { at: fmtAt(from.at, now, tz), name: accountLabel(from.from) })));
+  if (from) who.appendChild(el("span", s.acctWhoFrom, copyText("acct.hover.from", { at: from.at, name: accountLabel(from.from) })));
   sec.content.appendChild(who);
   if (read.quota.kind === "api") {
-    const u = usageOf(read.quota, led?.reading?.resetsAt, now, tz);
+    const u = usageOf(read.quota, led?.reading);
     const line = el("div", s.acctApiLine, read.quota.state === "refused" ? u.value : copyText("acct.val.noLimit"));
     if (read.quota.state === "refused") line.dataset.shade = "refused";
     if (u.reset) line.appendChild(el("span", s.acctMeterRel, u.reset));
     sec.content.appendChild(line);
   } else {
-    sec.content.append(slotMeter(read.quota, "5h", now, tz), slotMeter(read.quota, "7d", now, tz));
+    sec.content.append(slotMeter(read.quota, "5h", now), slotMeter(read.quota, "7d", now));
   }
   return sec.root;
 }
@@ -350,11 +350,11 @@ function quotaOf(quota: QuotaRead | null, agent: string, account: string): Quota
 }
 
 /** 一行右侧的用量：`5h ▮ 63% ↻18:30 · 7d ▮ 41%`（按量号 `无 5h / 7d`；被拒 `✕ ↻19:00`）。 */
-function rowUsage(q: QuotaShow | null, now: number, tz: number, readingReset: number | undefined): HTMLElement {
+function rowUsage(q: QuotaShow | null, now: number, reading: QuotaReadAccount["reading"]): HTMLElement {
   const box = el("span", s.acctRowUsage);
   if (!q) return box;
   if (q.kind === "api") {
-    const u = usageOf(q, readingReset, now, tz);
+    const u = usageOf(q, reading);
     box.appendChild(el("span", s.acctRowSlotVal, q.state === "refused" ? u.value : copyText("acct.val.noLimit")));
     if (u.reset) box.appendChild(el("span", s.acctRowSlotReset, u.reset));
     if (q.state === "refused") box.dataset.shade = "refused";
@@ -373,7 +373,7 @@ function rowUsage(q: QuotaShow | null, now: number, tz: number, readingReset: nu
     cell.appendChild(el("span", s.acctRowSlotVal, slotValue(q, slot)));
     if (here && x?.resetsAt !== undefined && slot === "5h") {
       const rel = fmtRel(x.resetsAt, now);
-      cell.appendChild(el("span", s.acctRowSlotReset, rel === null ? copyText("acct.reset.past", { at: fmtAt(x.resetsAt, now, tz) }) : copyText("acct.reset.at", { at: fmtAt(x.resetsAt, now, tz) })));
+      cell.appendChild(el("span", s.acctRowSlotReset, rel === null ? copyText("acct.reset.past", { at: x.resetsAtText ?? "" }) : copyText("acct.reset.at", { at: x.resetsAtText ?? "" })));
     }
     if (x?.full || (here && q.state === "refused")) cell.dataset.shade = "refused";
     else if (here && (q.state === "near" || q.state === "overageInUse")) cell.dataset.shade = "warn";
@@ -389,7 +389,6 @@ function rotationBlock(o: Open, entry: SessionRotationEntry, read: Present, quot
   const r: Rotation | null = follow ? (def?.rotation ?? null) : (read.custom ?? def?.rotation ?? null);
   const sec = section(copyText("acct.rot.title"));
   const now = entry.now;
-  const tz = localTzMin(now);
 
   const bar = el("div", s.acctRotBar);
   const seg = segmented<"follow" | "custom">({
@@ -419,9 +418,9 @@ function rotationBlock(o: Open, entry: SessionRotationEntry, read: Present, quot
     lead.appendChild(button({ label: copyText("acct.rot.settings"), kind: "ghost", size: "compact", onClick: () => host.openSettings(o.origin) }));
     sec.content.appendChild(lead);
   }
-  if (r) sec.content.appendChild(rotationList(o, host, read, r, quota, now, tz, !follow));
-  if (o.showDefault && !follow && def?.state === "present") sec.content.appendChild(defaultPreview(o, host, read, def.rotation, quota, now, tz));
-  const tl = timelineFold(o, read, r, quota, now, tz);
+  if (r) sec.content.appendChild(rotationList(o, host, read, r, quota, now, !follow));
+  if (o.showDefault && !follow && def?.state === "present") sec.content.appendChild(defaultPreview(o, host, read, def.rotation, quota, now));
+  const tl = timelineFold(o, read, r, quota, now);
   tl.dataset.acctAnchor = "timeline";
   sec.content.appendChild(tl);
   // 本会话跟随默认 ⇒ 这一块画的就是默认那份，「默认轮换」滚到这里。
@@ -430,14 +429,14 @@ function rotationBlock(o: Open, entry: SessionRotationEntry, read: Present, quot
 }
 
 /** 本会话用自己的轮换时摊开的「默认轮换」：顺序 · 触发 · 封顶，全只读。 */
-function defaultPreview(o: Open, host: AcctPanelHost, read: Present, r: Rotation, quota: QuotaRead | null, now: number, tz: number): HTMLElement {
+function defaultPreview(o: Open, host: AcctPanelHost, read: Present, r: Rotation, quota: QuotaRead | null, now: number): HTMLElement {
   const box = el("div", s.acctDefPreview);
   box.dataset.acctAnchor = "default-rotation";
   box.appendChild(el("div", s.acctBlockTitle, copyText("acct.prev.title")));
   box.appendChild(el("div", s.acctBlockNote, copyText("acct.prev.lead")));
   // 「实际照什么办」那一句只说本会话；这一块是默认那份自己写的。
   box.appendChild(triggerControls(o, host, r, true, r.atLimit, "default"));
-  const list = rotationList(o, host, read, r, quota, now, tz, false);
+  const list = rotationList(o, host, read, r, quota, now, false);
   for (const row of list.querySelectorAll<HTMLElement>("[data-acct-row]")) {
     const caps = capText(r, row.dataset.acctRow ?? "");
     // 封顶贴在名字那一串后面、用量之前。
@@ -540,7 +539,7 @@ function triggerControls(o: Open, host: AcctPanelHost, r: Rotation, readonly: bo
   return wrap;
 }
 
-function rotationList(o: Open, host: AcctPanelHost, read: Present, r: Rotation, quota: QuotaRead | null, now: number, tz: number, editable: boolean): HTMLElement {
+function rotationList(o: Open, host: AcctPanelHost, read: Present, r: Rotation, quota: QuotaRead | null, now: number, editable: boolean): HTMLElement {
   const rows = rowsOf(r, read.account.start, quota, read.agent);
   const list = el("div", s.acctList);
   list.setAttribute("role", "list");
@@ -578,7 +577,7 @@ function rotationList(o: Open, host: AcctPanelHost, read: Present, r: Rotation, 
       if (q.login === "needsKey") line.appendChild(tagEl(copyText("acct.tag.key"), "error"));
       if (q.state === "overageInUse") line.appendChild(tagEl(copyText("acct.val.over"), "warn"));
     }
-    line.appendChild(rowUsage(q, now, tz, ledgerOf(quota, read.agent, row.account)?.reading?.resetsAt));
+    line.appendChild(rowUsage(q, now, ledgerOf(quota, read.agent, row.account)?.reading));
     if (editable) {
       // 键盘：Alt+↑ / Alt+↓ 移位、空格勾（复选框自己管）。
       line.addEventListener("keydown", (ev) => {
@@ -663,13 +662,13 @@ async function save(o: Open, host: AcctPanelHost, w: "follow" | "custom" | { cus
 
 // ─────────────────────────────── 时间轴（折在轮换下）
 
-function timelineFold(o: Open, read: Present, r: Rotation | null, quota: QuotaRead | null, now: number, tz: number): HTMLElement {
+function timelineFold(o: Open, read: Present, r: Rotation | null, quota: QuotaRead | null, now: number): HTMLElement {
   const pool = r ? rowsOf(r, read.account.start, quota, read.agent).filter((x) => x.on) : [{ account: read.account.current, start: true, on: true }];
   const usable = (quota?.usableNow ?? []).filter((a) => pool.some((p) => p.account === a));
   const back = quota?.earliestReturn ?? null;
   const parts: string[] = [];
   if (usable.length > 0) parts.push(copyText("acct.tl.usable", { list: usable.map(accountLabel).join(", ") }));
-  if (back && pool.some((p) => p.account === back.account)) parts.push(copyText("acct.tl.nextBack", { name: accountLabel(back.account), at: fmtAt(back.at, now, tz) }));
+  if (back && pool.some((p) => p.account === back.account)) parts.push(copyText("acct.tl.nextBack", { name: accountLabel(back.account), at: back.atText ?? "" }));
   const summary = parts.length > 0 ? parts.join(copyText("kit.text.sep")) : copyText("acct.tl.allOk");
   const body = el("div", s.acctTimeline);
   const span = 24 * 3600;
@@ -692,7 +691,7 @@ function timelineFold(o: Open, read: Present, r: Rotation | null, quota: QuotaRe
         track.appendChild(seg);
       }
       track.appendChild(m);
-      marks.push(copyText("acct.tl.marks", { w: slotLabel(x.slot), at: fmtAt(x.resetsAt, now, tz) }));
+      marks.push(copyText("acct.tl.marks", { w: slotLabel(x.slot), at: x.resetsAtText ?? "" }));
     }
     line.append(track, el("span", s.acctTlLabel, marks.join(copyText("kit.text.sep"))));
     body.appendChild(line);
@@ -717,8 +716,6 @@ function switchBlock(o: Open, entry: SessionRotationEntry | undefined, read: Pre
   // 中转没见过这个会话 ⇒ 不知道它的路由名，取这台额度账里那一家（今天只有一家）。
   const agent = read?.agent ?? routeOf(host, o) ?? quota?.accounts[0]?.agent ?? quota?.unseen[0]?.agent ?? "";
   const cur = read?.account.current ?? null;
-  const now = entry?.now ?? Math.floor(Date.now() / 1000);
-  const tz = localTzMin(now);
   const inPlace = read ? read.account.inPlace : entry?.read.state === "absent" ? entry.read.inPlace : "noRelay";
   const candidates = [...(quota?.accounts ?? []), ...(quota?.unseen ?? [])].filter((x) => x.agent === agent && x.account !== "_").map((x) => x.account);
   // 缺省选后端给的下一个；没给（中转没见过）⇒ 此刻发得出去的头一个（`usableNow`，后端判的）。
@@ -730,7 +727,7 @@ function switchBlock(o: Open, entry: SessionRotationEntry | undefined, read: Pre
     pickBtn.append(acctAvatar(pick), el("span", s.acctPickName, accountLabel(pick)));
     const q = quotaOf(quota, agent, pick);
     if (q) {
-      const u = usageOf(q, ledgerOf(quota, agent, pick)?.reading?.resetsAt, now, tz);
+      const u = usageOf(q, ledgerOf(quota, agent, pick)?.reading);
       pickBtn.appendChild(el("span", s.acctPickUsage, usageText(u)));
     }
   } else {
@@ -740,7 +737,7 @@ function switchBlock(o: Open, entry: SessionRotationEntry | undefined, read: Pre
   pickBtn.addEventListener("click", () => {
     const items: MenuItem[] = candidates.map((a) => {
       const q = quotaOf(quota, agent, a);
-      const u = q ? usageOf(q, ledgerOf(quota, agent, a)?.reading?.resetsAt, now, tz) : null;
+      const u = q ? usageOf(q, ledgerOf(quota, agent, a)?.reading) : null;
       const usage = u ? (usageText(u)) : undefined;
       const blocked = a === cur || q?.login === "needsLogin" || q?.login === "needsKey";
       return {
@@ -882,26 +879,24 @@ async function restartSwitch(o: Open, host: AcctPanelHost, target: string): Prom
 
 const HISTORY_SHOWN = 5;
 
-function historyBlock(entry: SessionRotationEntry, read: Present): HTMLElement {
+function historyBlock(read: Present): HTMLElement {
   const sec = section(copyText("acct.hist.title"));
-  const now = entry.now;
-  const tz = localTzMin(now);
   const line = (at: string, parts: HTMLElement[]): HTMLElement => {
     const r = el("div", s.acctHistRow);
     r.append(el("span", s.acctHistAt, at), ...parts);
     return r;
   };
   const rows = [...read.account.history].reverse().map((h) => {
-    const w = whyOf(h, now, tz);
+    const w = whyOf(h);
     const move = el("span", s.acctHistMove);
     move.append(acctAvatar(h.from), document.createTextNode(accountLabel(h.from)));
     if (h.to !== h.from) move.append(el("span", s.acctHistArrow, copyText("acct.strip.arrow")), acctAvatar(h.to), document.createTextNode(accountLabel(h.to)));
     const why = el("span", s.acctHistWhy, w.why);
     if (w.reset) why.appendChild(el("span", s.acctHistReset, w.reset));
-    return line(fmtAt(h.at, now, tz), [move, why]);
+    return line(h.atText ?? "", [move, why]);
   });
   const startRow = el("span", s.acctHistMove, copyText("acct.hist.start", { name: accountLabel(read.account.start) }));
-  rows.push(line(read.account.history.length === 0 ? fmtAt(read.account.since, now, tz) : "", [startRow]));
+  rows.push(line(read.account.history.length === 0 ? (read.account.sinceText ?? "") : "", [startRow]));
   sec.content.append(...rows.slice(0, HISTORY_SHOWN));
   if (rows.length > HISTORY_SHOWN) {
     const more = el("div", s.acctHistMore);
