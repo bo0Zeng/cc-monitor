@@ -1324,13 +1324,9 @@
   padding: 0 12px;
   color: var(--text);
   font-size: var(--font-size-small);
-  list-style: none;
   cursor: pointer;
 }
 
-.speaker-head::-webkit-details-marker {
-  display: none;
-}
 
 .speaker-title {
   font-weight: var(--font-weight-strong);
@@ -1376,13 +1372,9 @@
 }
 
 .card-notice > .notice-head {
-  list-style: none;
   cursor: pointer;
 }
 
-.card-notice > .notice-head::-webkit-details-marker {
-  display: none;
-}
 
 .card-notice[data-single="true"] > .notice-head {
   cursor: default;
@@ -1418,7 +1410,6 @@
 
 .card-compact-summary {
   cursor: pointer;
-  list-style: none;
   padding: 8px 14px;
   font-family: var(--font-mono);
   font-size: var(--font-size-small);
@@ -1426,26 +1417,7 @@
   user-select: none;
 }
 
-.card-compact-summary::-webkit-details-marker {
-  display: none;
-}
 
-.card-compact-summary::before {
-  content: "";
-  display: inline-block;
-  width: var(--icon-size-compact);
-  height: var(--icon-size-compact);
-  vertical-align: middle;
-  background: currentColor;
-  mask: var(--icon-caret-right) center / contain no-repeat;
-  margin-right: 4px;
-  transition: transform var(--dur-expand);
-  color: var(--text-2);
-}
-
-.card-compact[open] > .card-compact-summary::before {
-  transform: rotate(90deg);
-}
 
 .card-compact-summary:hover {
   background: var(--overlay-hover);
@@ -1485,29 +1457,10 @@
 
 .injected-head {
   cursor: pointer;
-  list-style: none;
   user-select: none;
 }
 
-.injected-head::-webkit-details-marker {
-  display: none;
-}
 
-.injected-head::before {
-  content: "";
-  display: inline-block;
-  width: var(--icon-size-compact);
-  height: var(--icon-size-compact);
-  vertical-align: middle;
-  background: currentColor;
-  mask: var(--icon-caret-right) center / contain no-repeat;
-  margin-right: 4px;
-  transition: transform var(--dur-expand);
-}
-
-.card-injected[open] > .injected-head::before {
-  transform: rotate(90deg);
-}
 
 .injected-body {
   max-height: 240px;
@@ -1527,29 +1480,10 @@
   cursor: pointer;
   color: var(--text-2);
   font-size: var(--font-size-small);
-  list-style: none;
   user-select: none;
 }
 
-.paste-fold > summary::-webkit-details-marker {
-  display: none;
-}
 
-.paste-fold > summary::before {
-  content: "";
-  display: inline-block;
-  width: var(--icon-size-compact);
-  height: var(--icon-size-compact);
-  vertical-align: middle;
-  background: currentColor;
-  mask: var(--icon-caret-right) center / contain no-repeat;
-  margin-right: 4px;
-  transition: transform var(--dur-expand);
-}
-
-.paste-fold[open] > summary::before {
-  transform: rotate(90deg);
-}
 
 .paste-body {
   margin-top: 4px;
@@ -1681,7 +1615,6 @@
 
 .card-tool-group-summary {
   cursor: pointer;
-  list-style: none;
   padding: 8px 12px;
   font-family: var(--font-mono);
   font-size: var(--font-size-small);
@@ -1689,26 +1622,7 @@
   user-select: none;
 }
 
-.card-tool-group-summary::-webkit-details-marker {
-  display: none;
-}
 
-.card-tool-group-summary::before {
-  content: "";
-  display: inline-block;
-  width: var(--icon-size-compact);
-  height: var(--icon-size-compact);
-  vertical-align: middle;
-  background: currentColor;
-  mask: var(--icon-caret-right) center / contain no-repeat;
-  margin-right: 4px;
-  transition: transform var(--dur-expand);
-  color: var(--text-2);
-}
-
-.card-tool-group[open] > .card-tool-group-summary::before {
-  transform: rotate(90deg);
-}
 
 .card-tool-group-summary:hover {
   background: var(--overlay-hover);
@@ -1749,7 +1663,6 @@
 
 .block-collapsible .block-summary {
   cursor: pointer;
-  list-style: none;
   padding: 6px 12px;
   font-family: var(--font-mono);
   font-size: var(--font-size-small);
@@ -1869,26 +1782,7 @@
   color: var(--error-text);
 }
 
-.block-collapsible .block-summary::-webkit-details-marker {
-  display: none;
-}
 
-.block-collapsible .block-summary::before {
-  content: "";
-  display: inline-block;
-  width: var(--icon-size-compact);
-  height: var(--icon-size-compact);
-  vertical-align: middle;
-  background: currentColor;
-  mask: var(--icon-caret-right) center / contain no-repeat;
-  margin-right: 4px;
-  transition: transform var(--dur-expand);
-  color: var(--text-2);
-}
-
-.block-collapsible[open] > .block-summary::before {
-  transform: rotate(90deg);
-}
 
 .block-collapsible .block-summary:hover {
   background: var(--overlay-hover);

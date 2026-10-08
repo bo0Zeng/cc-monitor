@@ -1513,29 +1513,13 @@ body.settings-window-mode .settings-panel {
   cursor: pointer;
   padding: 4px 0;
   user-select: none;
-  list-style: none;
 }
 
-.ccm-alias-gen > summary::-webkit-details-marker {
-  display: none;
-}
 
 .ccm-alias-gen > summary::before {
-  content: "";
-  display: inline-block;
-  width: var(--icon-size-compact);
-  height: var(--icon-size-compact);
-  vertical-align: middle;
-  background: currentColor;
-  mask: var(--icon-caret-right) center / contain no-repeat;
-  margin-right: 4px;
-  transition: transform var(--dur-expand);
   color: var(--text-faint);
 }
 
-.ccm-alias-gen[open] > summary::before {
-  transform: rotate(90deg);
-}
 
 /* === T03 待贴文本统一组件 ===
    三句话（贴到哪 / 怎么合并 / 怎样才生效）常驻屏幕而不是只在 toast 里闪一下；
