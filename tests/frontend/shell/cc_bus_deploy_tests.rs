@@ -191,7 +191,14 @@ fn windows_precheck_is_wired_to_the_real_probe() {
         "Windows 上回了 `None` —— 那是把「查不了」读成「没问题」"
     );
     assert!(!w.contains("没做预检"), "生产路径还在说那句过期的话：{w}");
-    let tiers = ["ok", "missing", "stale", "noOwnBytes", "noVersion", "notInstalled"];
+    let tiers = [
+        "ok",
+        "missing",
+        "stale",
+        "noOwnBytes",
+        "noVersion",
+        "notInstalled",
+    ];
     assert!(
         tiers
             .iter()
