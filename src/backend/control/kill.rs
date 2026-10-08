@@ -73,14 +73,7 @@ pub(crate) fn admit_existing_name(name: &str) -> Result<(), CmdErr> {
 }
 
 /// 真做事：过三道门 → 对**句柄**下 `kill-session`。`requester` ＝ 请求自报的前端（`gate::identity`）。
-pub(crate) fn run(
-    name: &str,
-    requester: Option<&str>,
-) -> Result<super::cc_bus::BusCleanup, CmdErr> {
-    run_expecting(name, None, requester)
-}
-
-/// 同 [`run`]，但按 `sid` 认：要求此刻有窗格挂着它（批量停按 sid 认出这个名字，认完名字换了人 ⇒ 不杀）；
+/// 按 `sid` 认：要求此刻有窗格挂着它（批量停按 sid 认出这个名字，认完名字换了人 ⇒ 不杀）；
 /// 那个会话里还有别的 claude 窗格 ⇒ 只结束挂着它的窗格（`gate::admit_destructive` 说了算）。
 pub(crate) fn run_as(
     name: &str,

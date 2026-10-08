@@ -98,7 +98,6 @@
       "agentWindow.why.failed",
       "credsPerm.createPrivate.unsupported",
       "credsPerm.windowsProbe.unreadable",
-      "credsPerm.windowsSetOwnerOnlyDacl.failed",
       "deploy.refused.archUnknown",
       "deploy.refused.osUnknown",
       "diagnostics.copy.fallback",

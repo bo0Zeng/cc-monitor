@@ -9,7 +9,7 @@
 //! ccm-tmux = true
 //! ```
 //!
-//! - **同一套词**：键就是 ccm 选项 `--` 后面那个词（[`PROFILE_KEYS`]），值按「开关写 `true` · 一个值写字符串 ·
+//! - **同一套词**：键就是 ccm 选项 `--` 后面那个词（[`key_of`]），值按「开关写 `true` · 一个值写字符串 ·
 //!   几个值写字符串数组（`--cwd-if` 可写成数组的数组，一条一组）」变回命令行那几个词，交 ccm 自己的解析器（`argv::word_at`）读。
 //!   只在这里有、命令行上没有的只有两项：`from`（＝ 命令行上的 `@名`）与 `args`（＝ 命令行上 `--` 左边交给 agent 的那串）。
 //! - **先后**：继承链父 → 子，命令行当场给的最后盖；每一格怎么盖只住 `argv::parse_layered`。
@@ -44,10 +44,7 @@ pub(crate) const PROFILE_FLAGS: &[&str] = &[
 ];
 
 /// [`PROFILE_FLAGS`] 写进文件的那个键（去掉打头的 `--`）。
-pub(crate) static PROFILE_KEYS: std::sync::LazyLock<Vec<&'static str>> =
-    std::sync::LazyLock::new(|| PROFILE_FLAGS.iter().map(|f| key_of(f)).collect());
-
-fn key_of(f: &'static str) -> &'static str {
+pub(crate) fn key_of(f: &'static str) -> &'static str {
     f.trim_start_matches('-')
 }
 

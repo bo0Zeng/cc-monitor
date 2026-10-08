@@ -75,18 +75,20 @@ fn budget_tells_exhausted_apart_from_session_cap() {
     let mut b = SnippetBudget::new(2);
     assert_eq!(b.take(0), SnippetVerdict::Give);
     assert_eq!(b.take(1), SnippetVerdict::Give);
-    assert_eq!(b.spent(), 2);
+    // 全局预算用完 ⇒ 之后不论哪个会话都不给（整份结果被砍，会话行上 `hitsTruncated` 说出来）。
     assert_eq!(b.take(2), SnippetVerdict::BudgetExhausted);
-    assert!(b.starved(), "全局预算用完过 ⇒ 整份结果被砍，要告诉用户");
+    assert_eq!(b.take(0), SnippetVerdict::BudgetExhausted);
 
-    // 预算充足、但单会话满了 ⇒ **不是**「结果被砍」。
-    let mut c = SnippetBudget::new(1_000);
+    // 预算只剩一格、但单会话满了 ⇒ **不是**「结果被砍」，也不花预算：下一个会话照样拿得到那一格。
+    let mut c = SnippetBudget::new(1);
     assert_eq!(c.take(PER_SESSION_CAP), SnippetVerdict::SessionCapped);
-    assert!(
-        !c.starved(),
-        "单会话超 {PER_SESSION_CAP} 条只是「这个会话话多」，整份结果没被砍 —— \
+    assert_eq!(
+        c.take(0),
+        SnippetVerdict::Give,
+        "单会话超 {PER_SESSION_CAP} 条只是「这个会话话多」，没花掉全局预算 —— \
              这两件事合成一个 bool 正是本 crate 要拆开的那个病"
     );
+    assert_eq!(c.take(0), SnippetVerdict::BudgetExhausted);
 }
 
 /// 最近优先：原地降序，稳定到「同 key 保持原相对序」。

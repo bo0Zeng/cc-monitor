@@ -55,24 +55,17 @@ pub(crate) enum SnippetVerdict {
 pub(crate) struct SnippetBudget {
     limit: usize,
     spent: usize,
-    /// 是否**曾经**因为全局预算用完而拒绝过一条命中。
-    starved: bool,
 }
 
 impl SnippetBudget {
     pub(crate) fn new(limit: usize) -> Self {
-        Self {
-            limit,
-            spent: 0,
-            starved: false,
-        }
+        Self { limit, spent: 0 }
     }
 
     /// 判定一条命中。`shown_in_session` = 本会话**已经**给出的 snippet 条数。
     /// 返回 `Give` 时预算已记账，调用方必须真的构造 snippet。
     pub(crate) fn take(&mut self, shown_in_session: usize) -> SnippetVerdict {
         if self.spent >= self.limit {
-            self.starved = true;
             return SnippetVerdict::BudgetExhausted;
         }
         if shown_in_session >= PER_SESSION_CAP {
@@ -80,17 +73,6 @@ impl SnippetBudget {
         }
         self.spent += 1;
         SnippetVerdict::Give
-    }
-
-    /// 已花掉的 snippet 数。
-    pub(crate) fn spent(&self) -> usize {
-        self.spent
-    }
-
-    /// 🔴 **整份结果被全局预算砍过** —— 这才是该告诉用户的那件事。
-    /// 单会话超 30 条（`SessionCapped`）**不算**。
-    pub(crate) fn starved(&self) -> bool {
-        self.starved
     }
 }
 

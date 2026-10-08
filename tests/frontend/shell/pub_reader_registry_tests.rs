@@ -74,16 +74,6 @@ const EXEMPT: &[(&str, &str, &str)] = &[
         "copy_matches",
         "共享 crate 给各包测试按文案键断言的口子：读者是别的包的测试，收不进本 crate 的 `cfg(test)`",
     ),
-    (
-        "src/common/creds-core/src/perm.rs",
-        "make_private",
-        "`harden` 写半边给已在的文件收权限那一形（Windows DACL 与 `create_private` 共用一个 helper，perm_tests 量两平台）；今天的写者都在建文件时一步到位",
-    ),
-    (
-        "src/frontend/shell/src/spawn_managed.rs",
-        "spawn_managed_tokio",
-        "起进程唯一出口的 async 那一格：`spawn_managed_exit_sites` 钉着三个出口都在，下一处 tokio 起进程要走它",
-    ),
 ];
 
 const ITEM_KINDS: &[&str] = &["fn", "const", "static", "struct", "enum", "type", "trait"];

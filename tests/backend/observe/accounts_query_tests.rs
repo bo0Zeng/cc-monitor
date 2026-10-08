@@ -1464,7 +1464,7 @@ fn c4c_fixture(tag: &str, with_zero: bool) -> (PathBuf, PathBuf) {
 fn the_list_product_carries_exactly_what_the_cli_arm_prints() {
     let (root, accts) = c4c_fixture("c4c-same", true);
     let cli = list_accounts(&accts);
-    let product = list_product_at(&accts, &[], "claude-code", "claude-code");
+    let product = list_product_with(&accts, None, &[], &[], "claude-code", "claude-code");
     let keys: Vec<&String> = product.as_object().unwrap().keys().collect();
     assert_eq!(keys, ["accounts", "meta", "notice"], "成品顶层键集合变了");
     let mut cli_meta = meta(&cli);
@@ -1511,9 +1511,11 @@ fn the_list_product_merges_this_machines_apikey_table_per_agent() {
             .cloned()
             .unwrap()
     };
-    let merged = list_product_at(
+    let merged = list_product_with(
         &accts,
+        None,
         &["acct-b".to_string()],
+        &[],
         "claude-code",
         "claude-code",
     );
@@ -1543,7 +1545,14 @@ fn the_list_product_merges_this_machines_apikey_table_per_agent() {
             "表里的 id 对不上任何号",
         ),
     ] {
-        let b = row_b(&list_product_at(&accts, &rows, agent, "claude-code"));
+        let b = row_b(&list_product_with(
+            &accts,
+            None,
+            &rows,
+            &[],
+            agent,
+            "claude-code",
+        ));
         assert_eq!(b["authKind"], acct_core::AUTH_KIND_SUBSCRIPTION, "{why}");
         assert_eq!(b["authReady"], false, "{why}");
     }
@@ -1554,7 +1563,7 @@ fn the_list_product_merges_this_machines_apikey_table_per_agent() {
 #[test]
 fn the_list_product_says_when_account_zero_is_missing() {
     let (root, accts) = c4c_fixture("c4c-nozero", false);
-    let v = list_product_at(&accts, &[], "claude-code", "claude-code");
+    let v = list_product_with(&accts, None, &[], &[], "claude-code", "claude-code");
     let n = v["notice"].as_str().expect("缺账号 0 却没出那一句");
     assert!(
         n.contains(copy_core::copy_static!(
@@ -1562,7 +1571,14 @@ fn the_list_product_says_when_account_zero_is_missing() {
         )) && !n.contains(copy_core::copy_static!("rsConfigSurface.host.remote")),
         "{n}"
     );
-    let off = list_product_at(&root.join("nope"), &[], "claude-code", "claude-code");
+    let off = list_product_with(
+        &root.join("nope"),
+        None,
+        &[],
+        &[],
+        "claude-code",
+        "claude-code",
+    );
     assert_eq!(off["meta"]["enabled"], false);
     assert!(off["notice"].is_null(), "没启用谈不上缺账号 0");
     let _ = fs::remove_dir_all(&root);
@@ -2087,10 +2103,10 @@ fn the_machine_product_matches_the_cross_language_golden() {
 #[test]
 fn the_list_meta_says_who_becomes_default_once_the_default_is_removed() {
     let (root, accts) = c4c_fixture("next-default", false);
-    let product = list_product_at(&accts, &[], "claude-code", "claude-code");
+    let product = list_product_with(&accts, None, &[], &[], "claude-code", "claude-code");
     assert_eq!(product["meta"]["nextDefault"], serde_json::json!("b"));
     let empty = tmpdir("next-default-none");
-    let none = list_product_at(&empty, &[], "claude-code", "claude-code");
+    let none = list_product_with(&empty, None, &[], &[], "claude-code", "claude-code");
     assert!(
         none["meta"]["nextDefault"].is_null(),
         "没有清单却答出了接班的号"

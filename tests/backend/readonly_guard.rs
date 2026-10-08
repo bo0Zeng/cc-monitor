@@ -4725,7 +4725,7 @@ mod error_envelope_registry {
 /// 它扫的是**本 crate 源码文本**里那三个命名空间的调用。
 ///
 /// 🔴 **这不是假想形态**：`creds-core` 是本清单上的直接依赖，它自己的 `perm.rs` 里
-/// 就有两处写面（`make_private` 收窄权限 · `create_private` 建私有文件）。
+/// 就有写面（`create_private` 建私有文件）。
 /// 它们今天进不了本 crate 的依赖树，靠的是**那个 feature 没开** ——
 /// 而在本模块之前，盘上没有任何东西钉着「那个 feature 不许开」。
 ///
@@ -4878,8 +4878,7 @@ mod g6_dependency_signoff {
             DEPS,
             MEASURED_WRITES_ON_PURPOSE,
             "第三方 API key 的唯一住址（装它的类型 / 落盘格式 / 权限判断）。\
-             ★ **它自己有两处写面**：`perm.rs` 的 `make_private`（收窄既有文件的权限）与 \
-             `create_private`（建一个只给本人的新文件），都在那个 feature 后面。\
+             ★ **它自己有一处写面**：`perm.rs` 的 `create_private`（建一个只给本人的新文件），在那个 feature 后面。\
 本清单**开了**它：远端那台机器上的 key 只能由那台的后端写\
              （上游选择自己的状态文件，第四层登记的 `accounts/upstream_select/file_face.rs`），\
              「出生即只给本人」只有 `create_private` 这一份实现 ⇒ 就是要它写。\
@@ -5465,12 +5464,12 @@ mod g6_dependency_signoff {
     }
 
     /// 🔴 **`creds-core` 那条「就是要它写」的边界判据**：它的写半边
-    /// （`perm::create_private` · `perm::make_private`）在本 crate 生产段里的引用处，
+    /// （`perm::create_private`）在本 crate 生产段里的引用处，
     /// **恰好**是第四层的读三态与原子写那一处 `common/own_state.rs`（两向集合相等）。
     ///
     /// # 它顶替的是哪一格
     ///
-    /// 先前「backend 写不了那份凭据文件」是**编译器**兜的（feature 没开 ⇒ 那两个函数不存在）。
+    /// 先前「backend 写不了那份凭据文件」是**编译器**兜的（feature 没开 ⇒ 那个函数不存在）。
     /// 远端那台机器上的 key 只能由那台的后端写 ⇒ feature 开了，编译器那一格没了，由本条接住：
     /// 谁在别处顺手调一次 `create_private` 建个文件 ⇒ 当场红。
     ///
@@ -5481,15 +5480,12 @@ mod g6_dependency_signoff {
     ///
     /// # 买不到
     ///
-    /// 经宏 / 别名间接够到那两个函数的写法（`use creds_core::perm::create_private as c;` 之后只写 `c(`）——
+    /// 经宏 / 别名间接够到那个函数的写法（`use creds_core::perm::create_private as c;` 之后只写 `c(`）——
     /// `use` 那一行本身带着名字，所以「引入」这件事照样看得见；再往外一层的重导出看不见。
     #[test]
     fn the_credentials_write_half_is_reached_only_from_the_account_file_face() {
         let root = crate::guard_support::src_root();
-        let needles = [
-            format!("create_{}", "private"),
-            format!("make_{}", "private"),
-        ];
+        let needles = [format!("create_{}", "private")];
         let mut found: std::collections::BTreeSet<String> = Default::default();
         let mut scanned = 0usize;
         let mut files = super::tests::core_files();

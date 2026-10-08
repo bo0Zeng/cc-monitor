@@ -45,8 +45,6 @@
 //! 2. **`Lifetime::JobKillOnClose` 在非 Windows 上是空壳。** POSIX 没有 Job Object，
 //!    而 `std::process::Child` 也没有 `kill_on_drop` —— 那一格今天由各落点自己的
 //!    `wait()` / 显式 `kill()` 承担，**本模块不假装它在那边也买到了同一样东西**。
-//!    tokio 那一侧不同：[`spawn_managed_tokio`] 的 `JobKillOnClose` 会真的设
-//!    `kill_on_drop(true)`（那是 `cc_bus` / `stream_source` 今天就有的做法）。
 //! 3. **`Lifetime::Detached` 在 Windows 上不加任何 flag。** `process_group(0)` 是 POSIX 的东西；
 //!    Windows 那边「跟不跟着我死」由**有没有进 Job** 决定，而 `Detached` 就是「不进 Job」。
 //!    刻意不顺手加 `CREATE_NEW_PROCESS_GROUP` —— 那会改掉 `launch_powershell_window`
@@ -288,81 +286,7 @@ pub fn local_backend_supervised() -> std::sync::Arc<ManagedSpawn> {
 // 本机后端那条**一次性只读查询**的路（`local_backend_one_shot_query`〔散文墓碑〕，给
 // `local_query::run_query`〔散文墓碑〕用）删了：本机那几问改走 `<local>` 长连接，monitor 不再起一次性后端。
 
-// ══════════════════════════════════════════════════════════════════════════
-// 异步那一侧（`tokio::process`）
-// ══════════════════════════════════════════════════════════════════════════
-
-/// [`ManagedChild`] 的 tokio 对侧。`Deref`/`DerefMut` 到 [`tokio::process::Child`]。
-pub struct ManagedTokioChild {
-    /// 同 [`ManagedChild`]：**先关 Job，再丢句柄**（析构按声明序）。
-    _lifetime: LifetimeGuard,
-    child: tokio::process::Child,
-}
-
-impl std::ops::Deref for ManagedTokioChild {
-    type Target = tokio::process::Child;
-    fn deref(&self) -> &Self::Target {
-        &self.child
-    }
-}
-
-impl std::ops::DerefMut for ManagedTokioChild {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.child
-    }
-}
-
-/// 异步那一侧的唯一出口。
-///
-/// # 为什么这里非有第二个函数不可（而这**不是**「抄了第二份」）
-///
-/// sync 与 async 之间跨不过去：`tokio::process::Command` 不是 `std::process::Command`。
-/// ⇒ 真正会漂的两样东西**都只有一份**：creation flags 的合成（`platform/spawn.rs::creation_flags_for`）
-/// 与 Job 的建法（`platform/spawn.rs::assign_to_job`）。本函数只是把它们接到另一种 `Command` 上。
-///
-/// ⚠ **`JobKillOnClose` 在这一侧比同步那侧多买一样**：`kill_on_drop(true)`。
-/// 那是 tokio 的 `Child` 才有的东西（它默认**不**因句柄被 drop 而杀子进程），
-/// 而 `cc_bus` / `stream_source` 今天就靠它 —— 三条（Job · `kill_on_drop` · 显式 kill）
-/// 都留着：Job 没建成时另外两条至少还在。
-// 今天零生产调用方（唯一那一处 —— cc-bus 驾驶舱的本机 shell 读 —— 随读面改问后端删了）；
-//   它是唯一出口的 async 那一格（`spawn_managed_exit_sites` 钉着三个出口都在），下一处 tokio 起进程要走它。
-#[cfg_attr(not(test), allow(dead_code))]
-pub fn spawn_managed_tokio(
-    cmd: &mut tokio::process::Command,
-    console: ConsolePolicy,
-    lifetime: Lifetime,
-    stderr: StderrSink,
-) -> std::io::Result<ManagedTokioChild> {
-    let what = cmd.as_std().get_program().to_string_lossy().into_owned();
-    match stderr {
-        StderrSink::ToLog | StderrSink::Captured => {
-            cmd.stderr(std::process::Stdio::piped());
-        }
-        StderrSink::Null => {
-            cmd.stderr(std::process::Stdio::null());
-        }
-        StderrSink::Inherit => {}
-    }
-    // tokio 的 `creation_flags` / `process_group` 都是转给里面那个 std `Command` 的 ⇒ 平台那一半交同一个 `prepare`（只一份）。
-    crate::platform::spawn::prepare(cmd.as_std_mut(), console, lifetime);
-    if matches!(lifetime, Lifetime::JobKillOnClose) {
-        cmd.kill_on_drop(true);
-    }
-    let child = cmd.spawn()?;
-    let guard = crate::platform::spawn::attach_lifetime_tokio(&child, lifetime, &what);
-    // ⚠ tokio 那一侧今天没有 `ToLog` 的用户；真要接，得再写一条 **async** 的泵
-    //   （`drain_child_stderr_into_log` 吃的是 `std::process::ChildStderr`）。
-    //   在有人真要之前**不预造**，但也别让它静默变成「丢掉」：
-    debug_assert!(
-        !matches!(stderr, StderrSink::ToLog),
-        "tokio 那一侧还没有 `StderrSink::ToLog` 的实现 —— \
-         别让它静默地等于 `Captured`（管子接出来了，没人读 ⇒ 写满就把子进程堵死）"
-    );
-    Ok(ManagedTokioChild {
-        _lifetime: guard,
-        child,
-    })
-}
+// 出口只有同步那一侧（`std::process`）。要在 tokio 里起进程，照它（`prepare` ＋ `attach_lifetime`）在这里接一格，别在出口外面自己起。
 
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/spawn_managed_tests.rs"]

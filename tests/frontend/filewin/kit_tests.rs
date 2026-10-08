@@ -72,3 +72,54 @@ fn dialog_footer_buttons_keep_their_gap_whatever_the_body_does() {
         );
     }
 }
+
+/// ★ 指针停在**没选中的那个标签页**右端 × 那一格上，每一拍画出来的样子都一样（「鼠标移动时很快地闪」那一形）。
+///
+/// egui 的命中按**上一拍**的控件位置判：× 只在标签页悬停时才登记，而 × 一登记、它就盖在标签页上面 ⇒ 下一拍标签页
+/// 不再算悬停 ⇒ × 不登记 ⇒ 再下一拍标签页又悬停 ⇒ … 每拍翻一次。鼠标一动就出一拍，看上去就是快闪。
+/// 量法：同一个指针位置连跑几拍，比每拍里有没有画 × 那个字形、标签页报不报悬停。
+#[test]
+fn hovering_the_close_spot_of_an_inactive_tab_does_not_flip_every_frame() {
+    let ctx = egui::Context::default();
+    let input = |pos: Option<egui::Pos2>| egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(800.0, 200.0),
+        )),
+        events: pos
+            .map(|p| vec![egui::Event::PointerMoved(p)])
+            .unwrap_or_default(),
+        ..Default::default()
+    };
+    let mut tab_rect = egui::Rect::NOTHING;
+    let mut seen: Vec<(bool, usize)> = Vec::new();
+    let x_glyph = egui_phosphor::regular::X;
+    for frame in 0..8 {
+        let at = (frame > 0).then(|| egui::pos2(tab_rect.right() - 14.0, tab_rect.center().y));
+        let mut hovered = false;
+        let out = ctx.run_ui(input(at), |ui| {
+            ui.horizontal(|ui| {
+                let _ = tab(ui, "A", "first", true, None);
+                let (r, _) = tab(ui, "B", "second", false, None);
+                tab_rect = r.rect;
+                hovered = r.hovered() || r.contains_pointer();
+            });
+        });
+        let crosses = crate::copy::testing::text_in_frame(&out)
+            .into_iter()
+            .filter(|(t, _)| t == x_glyph)
+            .count();
+        out.drop_without_applying_deltas();
+        if frame >= 2 {
+            seen.push((hovered, crosses));
+        }
+    }
+    assert!(
+        seen.iter().all(|s| *s == seen[0]),
+        "指针不动，没选中那个标签页的 × 与悬停却逐拍翻（(悬停, 画出的 × 个数) 每拍一格）：{seen:?}"
+    );
+    assert_eq!(
+        seen[0].1, 2,
+        "指针在没选中那个标签页的 × 上，它的 × 应当画着（选中那个一直有一个）：{seen:?}"
+    );
+}

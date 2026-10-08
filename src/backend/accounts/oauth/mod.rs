@@ -13,7 +13,7 @@ use copy_core::copy_text;
 use creds_core::token::{merge_tokens, refresh_body, secret_in};
 use creds_core::SecretKey;
 use serde_json::{Map, Value};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 /// 令牌端点：往哪儿续 ＋ 那一发的期限（期限由调用方给）。
 pub(crate) struct TokenEndpoint {

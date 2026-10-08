@@ -609,7 +609,6 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     KEY_FIELD: NONE,
     LEGACY_ACCOUNT_ID: NONE,
     len: NONE,
-    make_private: NONE,
     masked: NONE,
     MASK_KEEP: NONE,
     merge_account_base_url: NONE,

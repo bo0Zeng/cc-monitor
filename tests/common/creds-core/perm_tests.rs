@@ -15,58 +15,37 @@ fn production() -> String {
 #[test]
 fn the_windows_half_is_not_a_no_op() {
     let prod = production();
-    let body = fn_body(&prod, "fn windows_set_owner_only_dacl")
-        .expect("切不出 `windows_set_owner_only_dacl` 的函数体 —— 本条按红处理，不是绿");
-
-    // 反空真自检：窗口不许跨进下一个 item。
+    // ① **派发点**：`create_private` 里 Windows 那一支必须真的去调带 DACL 建文件的那一半，恰好一次，
+    //    否则下一条（`the_windows_create_path_really_creates_with_a_dacl`）守的是一段死代码。
+    let cp = fn_body(&prod, "pub fn create_private")
+        .expect("切不出 `create_private` 的函数体 —— 本条按红处理，不是绿");
     assert!(
-        !body.contains("\nfn ") && !body.contains("\npub fn "),
+        !cp.contains("\nfn ") && !cp.contains("\npub fn "),
         "窗口跨进了下一个函数 —— 窗口无界，下面的断言不算数"
     );
-    assert!(body.len() > 300, "窗口只有 {} 字节 —— 切法坏了", body.len());
-
-    // ① 真的去改「谁能读这个文件」，**恰好一次**。
-    let n_set = body.matches("SetNamedSecurityInfoW(").count();
     assert_eq!(
-        n_set, 1,
-        "Windows 那半调 `SetNamedSecurityInfoW` 的次数是 {n_set}，应当恰好 1 —— \
-             0 次 = 它是个无操作（`KS5` 逐字禁止），多次 = 这条判据量错了对象"
-    );
-    // ② **断继承**，恰好一次。少了它就是「DACL 设上了但父目录的继承项还会回来」。
-    //
-    // ⚠ needle 带着那个 `| ` 是**改过一次的**：第一版数的是裸符号名，
-    //   而它在 `use` 里还出现一次 ⇒ 实测「2 次，应当 1 次」当场红。
-    //   红得对（次数钉死就是要这样），但它数的是**引入**不是**用上** ——
-    //   靶子该是那个按位或表达式，因为「设 DACL」与「断继承」是同一次调用的两个位。
-    let n_prot = body
-        .matches("| PROTECTED_DACL_SECURITY_INFORMATION")
-        .count();
-    assert_eq!(
-        n_prot, 1,
-        "断继承那一位出现 {n_prot} 次，应当恰好 1 —— \
-             只设 DACL 不断继承，是「看起来做了」的形状（`§0b` 第 3 条整条讲的就是这个）"
-    );
-
-    // ③ **派发点**：`make_private` 里必须真的调它，否则上面两条守的是一段死代码。
-    let mp = fn_body(&prod, "pub fn make_private")
-        .expect("切不出 `make_private` 的函数体 —— 本条按红处理");
-    assert_eq!(
-        mp.matches("windows_set_owner_only_dacl(").count(),
+        cp.matches("windows_create_owner_only(").count(),
         1,
-        "`make_private` 没有恰好一次派发到 Windows 那半 —— \
-             上面两条就成了守着一段没人调的代码"
+        "`create_private` 没有恰好一次派发到 Windows 那半 —— 那半就成了没人调的代码"
     );
-    // ④ 第三类平台**不许凭空返回成功**（backend `fallback_guard` 那条道理的同款）。
-    // 那句话进了文案表（`credsPerm.makePrivate.unsupported`）⇒ 判「那一支回的是 `Err(` 取这一句」
-    //   ＋「这句说的是没做到」（原先认源码里的「不假装做到了」，句子搬走后源码里只剩 key）。
-    let compact: String = mp.split_whitespace().collect();
+    // ② 第三类平台**不许凭空返回成功**（backend `fallback_guard` 那条道理的同款）。
+    let compact: String = cp.split_whitespace().collect();
     assert!(
-        compact.contains("Err(copy_text(\"credsPerm.makePrivate.unsupported\""),
-        "`make_private` 的非 unix/windows 分支没有诚实报错"
+        compact.contains("copy_text(\"credsPerm.createPrivate.unsupported\""),
+        "`create_private` 的非 unix/windows 分支没有诚实报错"
     );
     assert!(
-        !mp.contains("let _ = p; // "),
-        "`make_private` 里出现了 `make_executable` 那种「参数照收、什么都不做」的形状"
+        compact.contains("Err(std::io::Error::new("),
+        "`create_private` 的非 unix/windows 分支回的不是错"
+    );
+    // ③ **断继承**：DACL 那一句以 `D:P` 开头（`P` = protected，父目录的继承项不回来）。
+    //    少了它就是「DACL 设上了但继承项还会回来」—— 看起来做了的形状。
+    let sddl = fn_body(&prod, "fn owner_only_sddl").expect("切不出 `owner_only_sddl`");
+    assert_eq!(
+        sddl.matches("\"D:P(A;;FA;;;{user_sid})(A;;FA;;;SY)\"")
+            .count(),
+        1,
+        "只给本人那一句 SDDL 变了（要 `D:P` 断继承 ＋ 本人与 SYSTEM 全权，别的一个都没有）：{sddl}"
     );
 }
 
@@ -149,16 +128,7 @@ fn the_windows_create_path_really_creates_with_a_dacl() {
     assert_eq!(
         body.matches("owner_only_sddl(").count(),
         1,
-        "建文件那条路没有走 `owner_only_sddl` —— \
-             它和 `make_private` 就成了「同一个安全性质两个实现」"
-    );
-    // ⑤ 非空对照：`make_private` 那条路**也**走同一个 helper（证明这把尺子指的是共用，不是巧合）。
-    let harden = fn_body(&prod, "fn windows_set_owner_only_dacl")
-        .expect("切不出 `windows_set_owner_only_dacl`");
-    assert_eq!(
-        harden.matches("owner_only_sddl(").count(),
-        1,
-        "非空对照失败：收窄那条路没走同一个 helper ⇒ 上面第 ④ 条证不了「共用」"
+        "建文件那条路没有走 `owner_only_sddl` —— 「只给本人」那一句就有了两份"
     );
 }
 
@@ -272,9 +242,7 @@ fn probe_reads_the_real_mode_off_the_disk() {
 ///
 /// # 它量的是别的判据量不到的那一格
 ///
-/// 隔壁 `make_private_really_narrows_a_wide_file_to_owner_only` 量的是
-/// 「**把一份已经宽的收窄**」，`creds_store` 那条量的是「**rename 之后**目标的 mode」——
-/// 两条都在**出生到收窄**那个窗口之外。而 D1 审计探针实打，那个窗口里的读数是
+/// `creds_store` 那条量的是「**rename 之后**目标的 mode」—— 在**出生到收窄**那个窗口之外。而 D1 审计探针实打，那个窗口里的读数是
 /// `mode=0664，里面已经有明文 = true`。⇒ 本条把观测点挪到**创建调用返回的那一刻**。
 ///
 /// # 非空对照**刻意不依赖这台机器的 umask**
@@ -333,26 +301,5 @@ fn a_file_created_through_create_private_is_born_owner_only() {
         create_private(&born).is_err(),
         "对已存在的路径应当直接失败（O_EXCL / CREATE_NEW），而不是跟随并截断它"
     );
-    let _ = std::fs::remove_dir_all(&dir);
-}
-
-/// `KS5` 行为那一半（Unix）：`make_private` 真的把一份宽文件收成了 `0o600`。
-#[cfg(all(unix, feature = "harden"))]
-#[test]
-fn make_private_really_narrows_a_wide_file_to_owner_only() {
-    use std::os::unix::fs::PermissionsExt;
-    let dir = std::env::temp_dir().join(format!("kh2a-harden-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).expect("建临时目录");
-    let f = dir.join("harden-target");
-    std::fs::write(&f, b"{}").expect("写夹具");
-    std::fs::set_permissions(&f, std::fs::Permissions::from_mode(0o666)).expect("先放宽");
-
-    // 非空对照：动手之前它**确实是宽的**（否则下面那条断言可能恒真）。
-    assert_eq!(probe(&f), Protection::Unix { mode: 0o666 });
-    assert!(judge(&probe(&f)).needs_attention());
-
-    make_private(&f).expect("收紧应当成功");
-    assert_eq!(probe(&f), Protection::Unix { mode: 0o600 });
-    assert_eq!(judge(&probe(&f)), Verdict::OwnerOnly);
     let _ = std::fs::remove_dir_all(&dir);
 }

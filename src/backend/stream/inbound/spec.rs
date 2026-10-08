@@ -68,7 +68,10 @@ pub(crate) enum Dir {
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Field {
     pub(crate) name: &'static str,
+    // 这两格的读者只有协议文档生成器（`protocol_doc_gen.rs`，测试档），它写进 `src/doc/IPC-COMMANDS.md`。
+    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) dir: Dir,
+    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) doc: &'static str,
 }
 

@@ -888,3 +888,23 @@ fn a_save_without_a_new_digest_is_saved_with_a_note_and_keeps_the_old_baseline()
     p.mark_saved("new", Some(crate::find::testing::fake_sha256("new")));
     assert_eq!(p.save_note, None);
 }
+
+/// 分块那一步不 panic（发布档 panic = abort ⇒ 一 panic 整个窗口没了）：一块的额度放不下最长的那个字时
+/// 照 6 字节切（那一块超出一行的上限，后端拒、原话照常回到界面），拼回来逐字节仍等于原文；
+/// 照常的额度切出来的每一块都不超额。
+#[test]
+fn chunk_planning_never_panics_even_when_the_budget_cannot_fit_a_char() {
+    let text = "a\u{1}\"é字";
+    let tiny = plan_chunks(text, 3);
+    assert_eq!(tiny.concat(), text, "额度太小时切出来的块拼不回原文");
+    assert!(tiny.iter().all(|c| !c.is_empty()), "切出了空块：{tiny:?}");
+    let budget = chunk_budget();
+    assert!(
+        budget >= 6,
+        "常量算出来的一块额度 {budget} 放不下最长的那个字（6 字节）"
+    );
+    for c in plan_chunks(text, 6) {
+        let used: usize = c.chars().map(escaped_len).sum();
+        assert!(used <= 6, "{c:?} 转义后 {used} 字节，超过额度 6");
+    }
+}

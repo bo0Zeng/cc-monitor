@@ -121,6 +121,8 @@ pub struct Workspace {
     slips: std::sync::atomic::AtomicU64,
     /// 已经报过警告的调用处（`文件, 行`）。
     slip_sites: std::sync::Mutex<std::collections::HashSet<(&'static str, u32)>>,
+    /// 帧日志（开窗时照环境变量开；平时关着，什么都不做）。
+    pub frame_log: super::frame_log::FrameLog,
 }
 
 /// 缩放的上下限与一步多少（Ctrl + = / -）。
@@ -282,6 +284,7 @@ impl Workspace {
             force_close: false,
             slips: Default::default(),
             slip_sites: Default::default(),
+            frame_log: super::frame_log::FrameLog::off(),
         };
         w.sync_focus();
         w
@@ -1530,6 +1533,7 @@ impl eframe::App for Workspace {
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.frame(ui);
+        self.frame_log.record(ui.ctx());
     }
 
     /// 窗口底色就是主题的主底（不是 eframe 缺省那层半透明的灰黑）。

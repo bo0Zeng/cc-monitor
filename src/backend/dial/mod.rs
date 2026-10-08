@@ -263,7 +263,8 @@ pub(crate) mod why {
     pub const JUMP: &str = "jump";
     /// 别的（看人话）。
     pub const OTHER: &str = "other";
-    /// 全集（判据两向比）。
+    /// 全集（判据两向比；只给判据用）。
+    #[cfg(test)]
     pub const ALL: [&str; 9] = [
         RESOLVE,
         UNREACHABLE,

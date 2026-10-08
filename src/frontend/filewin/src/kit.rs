@@ -201,7 +201,9 @@ pub fn tab(
     let w = (12.0 + dot + g_icon.size().x + 6.0 + g.size().x + 6.0 + 16.0 + 8.0)
         .clamp(TAB_MIN, TAB_MAX);
     let (rect, resp) = ui.allocate_exact_size(egui::vec2(w, TAB_H), egui::Sense::click());
-    let hovered = resp.hovered();
+    // 「指针在这个标签页上」要连 `contains_pointer` 一起算：× 盖在标签页上面，指针移到 × 上时标签页本身不再 `hovered`。
+    //   只认 `hovered` ⇒ × 消失 ⇒ 下一拍标签页又悬停 ⇒ × 出来 ⇒ … 每拍翻一次（命中按上一拍的控件位置判），鼠标一动就快闪。
+    let hovered = resp.hovered() || resp.contains_pointer();
     if hovered && !active {
         ui.painter().rect_filled(rect, 0.0, p.hover);
     }

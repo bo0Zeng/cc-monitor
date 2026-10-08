@@ -104,7 +104,6 @@ pub(crate) fn facts(door: &dyn Door, needs_install: Vec<Value>) -> Facts {
 
     Facts {
         windows,
-        home: home.clone(),
         needs_install,
         stale_ccm: home_path
             .as_deref()

@@ -152,6 +152,9 @@ pub(crate) struct LaunchFace {
     /// 这一家对用户的叫法（「{名} 会话还不能选账号」这类话里用）。
     pub(crate) display_name: &'static str,
     /// 消息流里说话的那一方叫什么（卡头 · 刻度悬停「{名}：…」）—— 短名，不是产品全称。
+    /// 生成器那一格见 `models`。
+    // 后端里的读者只有生成器（`agents_tests.rs::render_agent_profile_table`，测试档）：它写进 `generated/agent-profile-table.ts`，界面读那一份。
+    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) speaker_name: &'static str,
     /// 默认启动器（无候选时的命令基底）。
     pub(crate) default_launcher: &'static str,
@@ -180,6 +183,8 @@ pub(crate) struct LaunchFace {
     /// 这一家的会话留 pidfile、入口注入的那份「此刻在跑」扫描认得出来 ⇒ resume 之前先问它是不是已经在别处跑着。
     pub(crate) has_pidfiles: bool,
     /// 这一家认得的模型名（账号页「默认模型」下拉的选项；不选 ＝ 跟着这一家自己的默认）。没考据过 ⇒ `None`。
+    // 后端里的读者只有生成器（`agents_tests.rs::render_agent_profile_table`，测试档）：它写进 `generated/agent-profile-table.ts`，界面读那一份。
+    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) models: Option<&'static [&'static str]>,
 }
 
@@ -1538,16 +1543,6 @@ pub(crate) struct QuotaReading {
     pub(crate) windows: Vec<QuotaWindow>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub(crate) overage: Option<QuotaOverage>,
-}
-
-impl QuotaReading {
-    /// 各窗口里最高的已用比例；一个都说不出 ⇒ `None`。
-    pub(crate) fn peak_used(&self) -> Option<f64> {
-        self.windows
-            .iter()
-            .filter_map(|w| w.used)
-            .fold(None, |m, u| Some(m.map_or(u, |m: f64| m.max(u))))
-    }
 }
 
 /// 一家的用户级设置文件里「上游地址」那一格：住哪 · 怎么读出来 · 要贴的那一段长什么样（格式知识与那一次只读都在这一家）。

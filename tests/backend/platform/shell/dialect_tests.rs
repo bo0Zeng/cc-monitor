@@ -193,18 +193,6 @@ fn names_are_portable_and_powershell_folds_case() {
     assert!(!Posix.same_name("Workcc", "workcc"));
 }
 
-/// 值能不能原样到达 ccm：POSIX 恒能；PowerShell 拒空串、拒 `"`、拒「含空白且以 `\` 结尾」。
-#[test]
-fn powershell_refuses_values_it_would_mangle() {
-    for w in ["", "a\"b", "C:\\a b\\"] {
-        assert!(PowerShell.arg_is_passable(w).is_err(), "{w:?}");
-        assert!(Posix.arg_is_passable(w).is_ok(), "{w:?}");
-    }
-    for w in ["C:\\a\\", "it's", "a b", "--x=a.b"] {
-        assert!(PowerShell.arg_is_passable(w).is_ok(), "{w:?}");
-    }
-}
-
 /// 「接上了我们那份」：POSIX 认 `$HOME/…` 没展开那一形；PowerShell 两种分隔符、大小写都认。
 #[test]
 fn a_startup_file_that_already_sources_us_is_recognized() {

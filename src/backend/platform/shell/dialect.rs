@@ -174,9 +174,6 @@ pub(crate) trait ShellDialect: Sync {
     /// `PATH` 那一格查的是**这台后端进程**的 `PATH` —— 规则住在那台机器的后端里，查的就是那台自己
     /// （从前住 monitor 时远端只能不查，那一格 `look_on_path`〔散文墓碑〕随之退役）。
     fn name_taken(&self, name: &str, own_block: &str) -> Option<String>;
-
-    /// 一个参数能不能**原样**到达 `ccm`（传参那一跳这个 shell 会不会改坏它）。
-    fn arg_is_passable(&self, word: &str) -> Result<(), String>;
 }
 
 /// UTF-8 BOM。**闭集只有这一处住址**。
@@ -534,11 +531,6 @@ impl ShellDialect for Posix {
             )
         })
     }
-
-    /// 单引号能表达一切（控制字符由通用规则拒）⇒ 恒过。
-    fn arg_is_passable(&self, _word: &str) -> Result<(), String> {
-        Ok(())
-    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -868,22 +860,6 @@ impl ShellDialect for PowerShell {
                 ],
             )
         })
-    }
-
-    /// PS 5.1 把参数交给原生程序（`ccm.exe`）时**不转义**：值里的 `"` 会被吞 / 劈开；
-    /// 含空白的值被它包一对 `"`，结尾的 `\` 会把那个 `"` 转义掉；空串整个被丢掉。
-    /// ⚠ 这三条是**文档读数**（PS 7.3 之前的 legacy 传参），没在真机上验（W1 买不到）。
-    fn arg_is_passable(&self, word: &str) -> Result<(), String> {
-        if word.is_empty() {
-            return Err(copy_text("rsShellDialect.ps.emptyArg", &[]));
-        }
-        if word.contains('"') {
-            return Err(copy_text("rsShellDialect.ps.doubleQuote", &[]));
-        }
-        if word.chars().any(char::is_whitespace) && word.ends_with('\\') {
-            return Err(copy_text("rsShellDialect.ps.trailingBackslash", &[]));
-        }
-        Ok(())
     }
 }
 

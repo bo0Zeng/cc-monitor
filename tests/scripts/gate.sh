@@ -810,23 +810,26 @@ run_gate comm-boundary '判过的条数 = 通信层那一族这一趟真跑过�
 run_gate test-tiers '判过的条数 = 测试层分级那一族这一趟真跑过的条数；声明的名字集合 == 真跑过的集合' \
          gate_family test-tiers tests/common/guard-core/test_tiers_tests.rs guard-core test_tiers::
 
-# ── `deadcode`：monitor 非 test 构建里的死代码，零容忍 ───────────────────────────────────
-# `cargo test` 看不见它（test 构建里测试就是调用方）⇒ 单开一趟 `cargo check -p monitor`：`dead_code` 诊断一条都不许有，有就逐条列。
-# 只在别的平台上才有调用方的项，用 `#[cfg(…)]` 和调用方放在同一个平台上。
-# 反空真：JSON 里必须有 `monitor_lib` 的 artifact。射程：`-p monitor` 编到的包的非 test 段；`src/backend` 与 `#[cfg(test)]` 盖不到。
+# ── `deadcode` / `deadcode-backend`：非 test 构建里的死代码，零容忍 ───────────────────────────────────
+# `cargo test` 看不见它（test 构建里测试就是调用方）⇒ 单开一趟 `cargo check`：`dead_code` 诊断一条都不许有，有就逐条列。
+# 只在别的平台上才有调用方的项，用 `#[cfg(…)]` 和调用方放在同一个平台上；只有测试读的，删掉或收进 `#[cfg(test)]`。
+# 反空真：JSON 里必须有那个包的 lib artifact。射程：monitor 那一格 = `-p monitor` 编到的包的非 test 段；
+#   后端那一格 = `src/backend` 一个包的 lib ＋ bin 非 test 段（它在后端那条道里，同一把 target 锁）。`#[cfg(test)]` 两格都盖不到。
+# `gate_deadcode <格名> <目录> <lib artifact 名> <cargo check 的参数…>`
 gate_deadcode() {
-  local out rc
-  out="$(cd src/frontend/shell && cargo check -p monitor --message-format=json 2>&1)"; rc=$?
+  local label="$1" dir="$2" lib="$3" out rc
+  shift 3
+  out="$(cd "$dir" && cargo check "$@" --message-format=json 2>&1)"; rc=$?
   printf '%s\n' "$out" | python3 -c '
 import json, sys
-rc = int(sys.argv[1])
+rc, label, lib = int(sys.argv[1]), sys.argv[2], sys.argv[3]
 seen_lib, dead, errs = False, [], []
 for line in sys.stdin:
     try:
         m = json.loads(line)
     except ValueError:
         continue
-    if m.get("reason") == "compiler-artifact" and m.get("target", {}).get("name") == "monitor_lib":
+    if m.get("reason") == "compiler-artifact" and m.get("target", {}).get("name") == lib:
         seen_lib = True
     if m.get("reason") != "compiler-message":
         continue
@@ -838,21 +841,21 @@ for line in sys.stdin:
         dead.append("%s:%s  %s" % (sp[0].get("file_name", "?"), sp[0].get("line_start", "?"), msg["message"]))
 if rc != 0:
     print("".join(errs)[-4000:])
-    print("deadcode: cargo check 退出码 %d —— 判不了" % rc)
+    print("%s: cargo check 退出码 %d —— 判不了" % (label, rc))
     sys.exit(rc)
 if not seen_lib:
-    print("deadcode: 输出里没有 monitor_lib 的 artifact —— 这一趟没走到 monitor，「零条死代码」不算数")
+    print("%s: 输出里没有 %s 的 artifact —— 这一趟没走到那个包，「零条死代码」不算数" % (label, lib))
     sys.exit(1)
 if dead:
     for d in sorted(set(dead)):
         print("  dead_code  " + d)
-    print("deadcode: 非 test 构建里有 %d 条死代码（上面逐条）—— 删掉，或用 #[cfg(…)] 收到它真有调用方的那个平台" % len(set(dead)))
+    print("%s: 非 test 构建里有 %d 条死代码（上面逐条）—— 删掉，或用 #[cfg(…)] 收到它真有调用方的那个平台" % (label, len(set(dead))))
     sys.exit(1)
-print("deadcode: 1 passed（monitor 非 test 构建零条 dead_code）")
-' "$rc"
+print("%s: 1 passed（%s 非 test 构建零条 dead_code）" % (label, lib))
+' "$rc" "$label" "$lib"
 }
 run_gate deadcode '不是数出来的数：`cargo check -p monitor`（非 test）的 `dead_code` 诊断零条才绿，有就逐条列出来' \
-         gate_deadcode
+         gate_deadcode deadcode src/frontend/shell monitor_lib -p monitor
 
 # ── `clippy` / `appbuild`：`ci.yml` 里 `rust` job 的 `cargo clippy --workspace --all-targets` 与 `linux-app-build` job 的 `cargo build` ──
 # clippy 不带 `-D warnings`（deny 档的 lint 与编译错照样红）；appbuild 真编真链 Linux 上的两个二进制（`cargo` 那格带 `--lib`、`deadcode` 只 check）。
@@ -953,6 +956,8 @@ fi
 
 run_gate backend '单包 src/backend，只有一行 test result ⇒ 最大值 = 合计' \
          gate_cargo_test_nonet src/backend
+run_gate deadcode-backend '不是数出来的数：`src/backend` 的 `cargo check`（非 test，lib ＋ bin）的 `dead_code` 诊断零条才绿，有就逐条列出来' \
+         gate_deadcode deadcode-backend src/backend cc_monitor_backend
 run_gate clippy-backend '不是数出来的数：`cargo clippy --all-targets` 只有绿/红两态，射程 = `src/backend` 那一个 crate 的全部 target，与 `ci.yml` 的 `backend` job 那一步同一条命令（不带 `-D warnings` ⇒ 只有 deny 档的 lint 与编译错红）' \
          bash -c 'cd src/backend && out=$(cargo clippy --all-targets 2>&1); rc=$?; if [ "$rc" -ne 0 ]; then printf "%s\n" "$out"; exit "$rc"; fi; printf "%s\n" "$out" | tail -2; echo "clippy-backend: 1 passed"'
 

@@ -218,7 +218,7 @@ pub struct Stat {
 }
 
 fn stat(v: &mut [f64]) -> Stat {
-    v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    v.sort_by(f64::total_cmp);
     let n = v.len();
     Stat {
         median: v[n / 2],

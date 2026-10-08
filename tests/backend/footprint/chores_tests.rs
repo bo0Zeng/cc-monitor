@@ -6,7 +6,6 @@ use serde_json::json;
 fn base() -> Facts {
     Facts {
         windows: false,
-        home: "/h".into(),
         needs_install: vec![],
         stale_ccm: None,
         self_paste: None,

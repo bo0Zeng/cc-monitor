@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 /// 这个路径今天是不是一个能跑的文件。判文件再判执行位，两个都要：只判执行位会被同名的目录劫持。
 ///
 /// 非 unix：Windows 那一臂是 [`windows_launchable_name`]（只认 `.exe`）；其余平台保守 `false`（确证的空实现：一个插件都找不到）——
-/// 不返回「什么都算可执行」：那会让 [`on_path`] 把 `PATH` 上第一个同名文件当成插件交出去（[`crate::platform::cfgless_guard`] 钉着这一族）。
+/// 不返回「什么都算可执行」：那会让 [`find`] 把 `PATH` 上第一个同名文件当成插件交出去（[`crate::platform::cfgless_guard`] 钉着这一族）。
 /// 找不到的那条路上有 [`not_installed_message`]，它会说出查过哪些地方。
 pub(crate) fn is_executable(p: &Path) -> bool {
     let Ok(md) = std::fs::metadata(p) else {
@@ -42,15 +42,6 @@ pub(crate) fn is_executable(p: &Path) -> bool {
 #[cfg_attr(not(windows), allow(dead_code))]
 pub(crate) fn windows_launchable_name(p: &Path) -> bool {
     p.extension().is_some_and(|e| e.eq_ignore_ascii_case("exe"))
-}
-
-/// 在 `PATH` 上找一个可执行文件（不看固定候选）。
-pub(crate) fn on_path(name: &str) -> Option<PathBuf> {
-    std::env::var_os("PATH").and_then(|p| {
-        std::env::split_paths(&p)
-            .map(|d| d.join(name))
-            .find(|c| is_executable(c))
-    })
 }
 
 /// 找不到时说**查过哪些地方** —— 纯函数。

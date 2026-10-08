@@ -11893,27 +11893,6 @@
       "zh": "# （当前一条别名都没有）\n",
       "args": []
     },
-    "rsShellDialect.ps.trailingBackslash": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "带空格的值不能以反斜杠结尾 · PowerShell 传参会改坏",
-      "args": [],
-      "limited": ["PowerShell"]
-    },
-    "rsShellDialect.ps.doubleQuote": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "值不能含双引号 · PowerShell 传给 ccm 时不转义",
-      "args": [],
-      "limited": ["PowerShell", "ccm"]
-    },
-    "rsShellDialect.ps.emptyArg": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "参数不能为空 · PowerShell 传参会丢",
-      "args": [],
-      "limited": ["PowerShell"]
-    },
     "rsShellDialect.ps.nameTakenBuiltinAlias": {
       "kind": "body",
       "role": "说明",
@@ -16213,24 +16192,6 @@
       "zh": "读取访问权限失败 · Windows 错误码 {rc}",
       "args": ["rc"]
     },
-    "credsPerm.windowsSetOwnerOnlyDacl.failed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "设为仅本人可读失败 · Windows 错误码 {rc}",
-      "args": ["rc"]
-    },
-    "credsPerm.windowsSetOwnerOnlyDacl.noList": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "设为仅本人可读失败",
-      "args": []
-    },
-    "credsPerm.windowsSetOwnerOnlyDacl.parse": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "设为仅本人可读失败 · {e}",
-      "args": ["e"]
-    },
     "credsPerm.currentUserSid.noToken": {
       "kind": "error",
       "role": "原因格",
@@ -16242,18 +16203,6 @@
       "role": "报错",
       "zh": "建仅本人可读的文件失败 · 不支持此系统 · {path}",
       "args": ["path"]
-    },
-    "credsPerm.makePrivate.unsupported": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "设 {path} 仅本人可读失败 · 不支持",
-      "args": ["path"]
-    },
-    "credsPerm.makePrivate.failed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "设凭据文件仅本人可读失败 · {e}",
-      "args": ["e"]
     },
     "credsPerm.probe.unsupported": {
       "kind": "error",
