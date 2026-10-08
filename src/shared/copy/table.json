@@ -11388,14 +11388,14 @@
     "rsInboundClient.error.timeout": {
       "kind": "error",
       "role": "报错",
-      "zh": "等回答超时 · {after} 毫秒",
-      "args": ["after"]
+      "zh": "等回答超时 · {dur}",
+      "args": ["dur"]
     },
     "rsInboundClient.error.timeoutPeerRunsOn": {
       "kind": "error",
       "role": "报错",
-      "zh": "等回答超时 · {after} 毫秒 · 远端后端撤不回 · 该操作可能仍在跑",
-      "args": ["after"]
+      "zh": "等回答超时 · {dur} · 远端后端撤不回 · 该操作可能仍在跑",
+      "args": ["dur"]
     },
     "rsInboundClient.error.cancelled": {
       "kind": "error",
@@ -12391,8 +12391,8 @@
     "rsDialHost.ask.timeout": {
       "kind": "error",
       "role": "原因格",
-      "zh": "本机后端 {secs} 秒未回答",
-      "args": ["secs"]
+      "zh": "本机后端 {dur} 未回答",
+      "args": ["dur"]
     },
     "rsDialHost.ask.sendBytesFailed": {
       "kind": "error",
@@ -12409,8 +12409,8 @@
     "rsDialHost.open.timeout": {
       "kind": "error",
       "role": "报错",
-      "zh": "连接超时 · {secs} 秒无回应 · 地址 {addr}",
-      "args": ["secs", "addr"]
+      "zh": "连接超时 · {dur} 无回应 · 地址 {addr}",
+      "args": ["addr", "dur"]
     },
     "rsDialHost.local.absent": {
       "kind": "error",
@@ -13167,6 +13167,66 @@
       "role": "空态",
       "zh": "没有退出状态",
       "args": []
+    },
+    "rsBackendPolicy.status.signal": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "信号 {sig}",
+      "args": ["sig"]
+    },
+    "durationFormat.unit.ms": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{n} 毫秒",
+      "args": ["n"],
+      "waive": {
+        "C-W6": "时长格式化（两个读口的 formatDuration · format_duration）自己的单位格：表里别处只放 {dur}，单位只住这里"
+      }
+    },
+    "durationFormat.unit.sec": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{n} 秒",
+      "args": ["n"],
+      "waive": {
+        "C-W6": "时长格式化（两个读口的 formatDuration · format_duration）自己的单位格：表里别处只放 {dur}，单位只住这里"
+      }
+    },
+    "durationFormat.unit.min": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{n} 分钟",
+      "args": ["n"],
+      "waive": {
+        "C-W6": "时长格式化（两个读口的 formatDuration · format_duration）自己的单位格：表里别处只放 {dur}，单位只住这里"
+      }
+    },
+    "durationFormat.unit.minSec": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{m} 分 {s} 秒",
+      "args": ["m", "s"],
+      "waive": {
+        "C-W6": "时长格式化（两个读口的 formatDuration · format_duration）自己的单位格：表里别处只放 {dur}，单位只住这里"
+      }
+    },
+    "durationFormat.unit.hour": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{n} 小时",
+      "args": ["n"],
+      "waive": {
+        "C-W6": "时长格式化（两个读口的 formatDuration · format_duration）自己的单位格：表里别处只放 {dur}，单位只住这里"
+      }
+    },
+    "durationFormat.unit.hourMin": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{h} 小时 {m} 分",
+      "args": ["h", "m"],
+      "waive": {
+        "C-W6": "时长格式化（两个读口的 formatDuration · format_duration）自己的单位格：表里别处只放 {dur}，单位只住这里"
+      }
     },
     "rsBackendPolicy.status.neverExisted": {
       "kind": "body",
@@ -14113,8 +14173,8 @@
     "rsFrameQuery.call.overdue": {
       "kind": "error",
       "role": "报错",
-      "zh": "{who}未在 {secs} 秒内答完 · 已停下",
-      "args": ["who", "secs"]
+      "zh": "{who}未在 {dur} 内答完 · 已停下",
+      "args": ["who", "dur"]
     },
     "accounts.setModel.invalid": {
       "kind": "error",
@@ -14657,8 +14717,8 @@
     "rsLocalBackendHost.stop.timedOut": {
       "kind": "error",
       "role": "报错",
-      "zh": "停止本机后端 {secs} 秒内未答完 · 后端可能仍在跑 · 可再停一次",
-      "args": ["secs"]
+      "zh": "停止本机后端 {dur} 内未答完 · 后端可能仍在跑 · 可再停一次",
+      "args": ["dur"]
     },
     "rsLocalBackendHost.stop.readFailed": {
       "kind": "error",
@@ -14873,14 +14933,14 @@
     "rsDialHost.deadline.expired": {
       "kind": "error",
       "role": "报错",
-      "zh": "{secs} 秒未完成 · 已放弃 · 连上远端用了 {shake} 秒 · 之后在远端跑了 {run} 秒",
-      "args": ["secs", "shake", "run"]
+      "zh": "{dur} 未完成 · 已放弃 · 连上远端用时 {shake} · 之后在远端运行 {run}",
+      "args": ["shake", "run", "dur"]
     },
     "rsDialHost.deadline.expiredInShake": {
       "kind": "error",
       "role": "报错",
-      "zh": "{secs} 秒未连上远端 · 已放弃",
-      "args": ["secs"]
+      "zh": "{dur} 未连上远端 · 已放弃",
+      "args": ["dur"]
     },
     "rsFilewinShell.mode.reading": {
       "kind": "body",
@@ -15307,8 +15367,8 @@
     "beChild.run.timedOut": {
       "kind": "error",
       "role": "报错",
-      "zh": "{program} 无应答（{secs}s）",
-      "args": ["program", "secs"]
+      "zh": "{program} {dur} 内无应答",
+      "args": ["program", "dur"]
     },
     "beChild.run.lost": {
       "kind": "error",

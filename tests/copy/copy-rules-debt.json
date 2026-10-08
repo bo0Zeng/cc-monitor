@@ -91,16 +91,7 @@
       "credsStore.template.noteAuthStyle"
     ],
     "C-W5": [],
-    "C-W6": [
-      "rsDialHost.ask.timeout",
-      "rsDialHost.deadline.expired",
-      "rsDialHost.deadline.expiredInShake",
-      "rsDialHost.open.timeout",
-      "rsFrameQuery.call.overdue",
-      "rsInboundClient.error.timeout",
-      "rsInboundClient.error.timeoutPeerRunsOn",
-      "rsLocalBackendHost.stop.timedOut"
-    ],
+    "C-W6": [],
     "C-W7": [],
     "C-W8": [
       "accountPick.refused.listUnknown",
@@ -166,7 +157,6 @@
       "accountOps.said.contract",
       "acct.reason.ioFailed",
       "backend.unregistered.why",
-      "beChild.run.timedOut",
       "beFilesCommit.upload.placeholderLeft",
       "bePlan.names.unreadable",
       "beProbe.hello.tooOld",
@@ -189,17 +179,14 @@
       "remoteHealth.head.versionMismatch",
       "restartNotice.render.pending",
       "rsBackendPolicy.health.detail",
-      "rsBackendRoute.layer.unsupported",
       "rsByteTable.key.notUtf8",
       "rsByteTable.key.unreadable",
-      "rsCcBusDeploy.ccm.tooOld",
       "rsCcBusDeploy.win.noOwnBytes",
       "rsDataPaths.backend.lastSeen",
       "rsFilewinChrome.link.reconnecting",
       "rsFilewinChrome.side.homeFailed",
       "rsFilewinEditPage.offline.line",
       "rsFilewinProgress.delete.failed",
-      "rsInboundClient.error.unsupported",
       "rsLinkMux.data.noCredit",
       "rsSshLink.dial.tooOld",
       "rsSshSource.health.degraded",
@@ -256,7 +243,6 @@
       "credsStore.template.noteAuthStyle",
       "profilesPage.migrated.ack",
       "remote.info.remote",
-      "rsDialHost.deadline.expired",
       "tabBatch.why.ended"
     ]
   }

@@ -3995,7 +3995,13 @@ fn the_stop_run_gives_up_at_its_deadline() {
     let got = run_resident_stop_within(&fake, std::time::Duration::from_millis(300));
     let took = t0.elapsed();
     let _ = std::fs::remove_dir_all(&dir);
-    let want = crate::copy_table::copy_text("rsLocalBackendHost.stop.timedOut", &[("secs", "0")]);
+    let want = crate::copy_table::copy_text(
+        "rsLocalBackendHost.stop.timedOut",
+        &[(
+            "dur",
+            &copy_core::format_elapsed(std::time::Duration::from_millis(300)),
+        )],
+    );
     assert_eq!(
         got.err(),
         Some(want.to_string()),

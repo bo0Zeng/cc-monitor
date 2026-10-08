@@ -133,7 +133,7 @@ impl Deadline {
             "rsFrameQuery.call.overdue",
             &[
                 ("who", &who.to_string()),
-                ("secs", &self.total.as_secs().to_string()),
+                ("dur", &copy_core::format_elapsed(self.total)),
             ],
         )
     }

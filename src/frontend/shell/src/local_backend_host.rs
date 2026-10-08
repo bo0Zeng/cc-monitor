@@ -1312,7 +1312,7 @@ fn run_resident_stop_within(
         Err(crate::ccm_probe::CaptureFail::TimedOut) => {
             return Err(copy_text(
                 "rsLocalBackendHost.stop.timedOut",
-                &[("secs", &deadline.as_secs().to_string())],
+                &[("dur", &copy_core::format_elapsed(deadline))],
             ))
         }
         Err(crate::ccm_probe::CaptureFail::Read(e)) => {

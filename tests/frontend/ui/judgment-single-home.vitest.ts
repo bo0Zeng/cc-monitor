@@ -65,7 +65,7 @@ import { stripComments } from "../../test-support/strip-comments.ts";
 type JudgmentId =
   | "J1" | "J2" | "J3" | "J4" | "J5" | "J6" | "J7"
   | "J9" | "J10" | "J11" | "J12" | "J13" | "J14" | "J15" | "J16"
-  | "J17" | "J18" | "J19" | "J20" | "J21" | "J22" | "J23";
+  | "J17" | "J18" | "J19" | "J20" | "J21" | "J22" | "J23" | "J24";
 
 /** TS 孪生的规则指纹：一段字面子串（在**剥过注释**的生产代码里数）。`file` 缺席 = 全体生产段合计。 */
 interface Needle {
@@ -491,6 +491,19 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
       { text: "getTimezoneOffset", count: 0 },
     ],
   },
+  J24: {
+    what: "时长 ⇒ 给人看的一格（表里只放 {dur}）",
+    homes: ["copy-core::format_duration", "copy-core::format_elapsed"],
+    // 认可的双读口（与 J11 同理）：两侧各一份同形实现，单位格取表里同几条键（`durationFormat.unit.*`），各对同一份金样。
+    status: "mirror",
+    defs: ["formatDuration"],
+    needles: [],
+    parity: {
+      via: "tests/__fixtures__/duration-format.golden.json",
+      tests: ["tests/common/copy-core/lib_tests.rs", "tests/copy/duration-format.vitest.ts"],
+    },
+    why: "文案规范 C-W6「时长与时刻由格式化函数出，表里只放占位符」—— 两个取文口各补一个",
+  },
 };
 
 /** `NONE` = 登记时逐个读过规则、在 TS 生产段按规则搜过，没有孪生。 */
@@ -533,6 +546,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     // 同上，只钉给了值的那几格（TS 那一侧是 `copyPattern(键, 已知值)`）。
     copy_matches_with: NONE,
     copy_text: "J11",
+    format_duration: "J24",
+    format_elapsed: "J24",
     local_machine: "J22",
     reply_unreadable: "J22",
     TABLE_JSON: NONE,

@@ -80,14 +80,14 @@ impl std::fmt::Display for CallError {
                 write!(f, "{}", copy_text("rsInboundClient.error.cancelled", &[]))
             }
             CallError::Timeout { after, withdraw } => {
-                let ms = after.as_millis().to_string();
+                let dur = copy_core::format_elapsed(*after);
                 let said = match withdraw {
                     Withdraw::Unsent | Withdraw::Asked => {
-                        copy_text("rsInboundClient.error.timeout", &[("after", &ms)])
+                        copy_text("rsInboundClient.error.timeout", &[("dur", &dur)])
                     }
                     // 对端不认撤单：本地照撤，结果里说出来。
                     Withdraw::NotOffered => {
-                        copy_text("rsInboundClient.error.timeoutPeerRunsOn", &[("after", &ms)])
+                        copy_text("rsInboundClient.error.timeoutPeerRunsOn", &[("dur", &dur)])
                     }
                 };
                 write!(f, "{said}")

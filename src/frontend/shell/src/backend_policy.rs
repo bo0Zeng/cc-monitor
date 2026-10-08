@@ -361,7 +361,10 @@ pub fn exit_status(d: &Death) -> String {
         Death::Refused { code } => exit_code_said(*code),
         Death::Crashed { how } => match how {
             Outcome::Exited(code) => exit_code_said(*code),
-            Outcome::Signalled(sig) => format!("signal {sig}"),
+            Outcome::Signalled(sig) => copy_text(
+                "rsBackendPolicy.status.signal",
+                &[("sig", &sig.to_string())],
+            ),
             Outcome::NeverSpawned => copy_text("rsBackendPolicy.status.none", &[]),
         },
         Death::Misread { .. } => copy_text("rsBackendPolicy.status.misread", &[]),

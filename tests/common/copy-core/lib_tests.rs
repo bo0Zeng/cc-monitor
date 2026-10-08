@@ -190,3 +190,23 @@ fn copy_matches_with_pins_the_given_values_only() {
     ));
     assert!(!copy_matches_with("no.such.key", &[], &said));
 }
+
+/// **时长格式化的对拍**：共用金样 `tests/__fixtures__/duration-format.golden.json` 逐条喂给 [`format_duration`]，
+/// 期望是金样里手写的；前端那一侧 `tests/copy/duration-format.vitest.ts` 读同一份。
+#[test]
+fn the_shared_duration_golden_agrees_with_this_reader() {
+    let raw = include_str!("../../__fixtures__/duration-format.golden.json");
+    let golden: serde_json::Value = serde_json::from_str(raw).expect("金样不是合法 JSON");
+    let cases = golden["cases"].as_array().expect("金样缺 cases");
+    assert!(cases.len() >= 10, "金样只有 {} 条（反空真）", cases.len());
+    let wrong: Vec<String> = cases
+        .iter()
+        .filter_map(|c| {
+            let ms = c["ms"].as_u64().expect("ms 不是非负整数");
+            let want = c["want"].as_str().expect("want 不是字符串");
+            let got = format_duration(ms);
+            (got != want).then(|| format!("{ms}: {got:?} ≠ {want:?}"))
+        })
+        .collect();
+    assert!(wrong.is_empty(), "时长格式化与金样不符：{wrong:?}");
+}

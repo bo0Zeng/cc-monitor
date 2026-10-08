@@ -23,6 +23,9 @@ use std::sync::OnceLock;
 /// 同一份表（前端 `copy-table.ts` 经 Vite 读它；这里编译期内嵌）。
 pub const TABLE_JSON: &str = include_str!("../../../shared/copy/table.json");
 
+mod duration;
+pub use duration::{format_duration, format_elapsed};
+
 fn entries() -> &'static serde_json::Map<String, serde_json::Value> {
     static TABLE: OnceLock<serde_json::Map<String, serde_json::Value>> = OnceLock::new();
     TABLE.get_or_init(|| {

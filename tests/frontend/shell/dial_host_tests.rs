@@ -450,20 +450,20 @@ fn w5vis_the_expiry_note_says_which_leg_ate_the_budget() {
         Some(std::time::Duration::from_millis(44_200)),
         std::time::Duration::from_millis(120_000),
     );
-    for must in ["120", "44.2", "75.8"] {
+    for must in ["2 分钟", "44.2 秒", "1 分 16 秒"] {
         assert!(n.contains(must), "按段归因那句话里缺 `{must}`：{n}");
     }
     let in_shake = expiry_note(total, None, total);
-    assert!(in_shake.contains("120"), "{in_shake}");
+    assert!(in_shake.contains("2 分钟"), "{in_shake}");
     assert!(
-        !in_shake.contains("44.2") && in_shake != n,
+        !in_shake.contains("44.2 秒") && in_shake != n,
         "还在握手就到点那一形与握完手之后到点那一形说成了同一句：{in_shake}"
     );
     // 两段加起来不超过等了多久（不许凭空多出一段）。
     let n0 = expiry_note(total, Some(total), total);
     assert!(
-        n0.contains("0.0"),
-        "握手吃光了整个预算时「之后远端跑了」应是 0.0：{n0}"
+        n0.ends_with("0 毫秒"),
+        "握手吃光了整个预算时「之后在远端运行」应是 0 毫秒：{n0}"
     );
 }
 
@@ -482,9 +482,9 @@ async fn w5vis_a_timed_out_link_names_the_leg_it_timed_out_in() {
         .expect("期限没生效")
         .expect_err("对面没写却读到了");
     let shaken = expiry_note(total, Some(std::time::Duration::ZERO), total);
-    let head = &shaken[..shaken.find("0.0").expect("握手那一段该是 0.0")];
+    let head = &shaken[..shaken.find("0 毫秒").expect("握手那一段该是 0 毫秒")];
     assert!(
-        e.to_string().starts_with(head) && e.to_string().contains("0.0"),
+        e.to_string().starts_with(head) && e.to_string().contains("0 毫秒"),
         "握完手之后到点，报的不是按段归因那一句：{e}"
     );
     let (_far2, near2) = tokio::io::duplex(64);
