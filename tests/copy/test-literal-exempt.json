@@ -58,9 +58,6 @@
     "tests/frontend/filewin/source_tests.rs": [
       { "text": "上一级", "use": "非文案" }
     ],
-    "tests/frontend/filewin/workspace_tests.rs": [
-      { "text": "没有权限", "use": "回显" }
-    ],
     "tests/frontend/shell/atomic_replace_registry_tests.rs": [
       { "text": "用户", "use": "非文案" }
     ],
