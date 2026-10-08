@@ -7,11 +7,11 @@
  * tab 栏「重新读取」（有打开 tab 的每台各一次整机，`resyncMachines`）。
  */
 import { copyText } from "./copy-table";
-import { ControlError, settle, unreadable, type Refusals } from "./control-said";
+import { settle, unreadable, type Refusals } from "./control-said";
 import { exactKeys, isObj } from "./ipc/decode";
 import { toast } from "./kit/toast";
 import { chan } from "../../comms/inward/chan";
-import { budgetWithin, jsonBody, refusalOf } from "./ipc/chan-caller";
+import { budgetWithin, jsonBody } from "./ipc/chan-caller";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
 
 /** 期限：后端要等每份 watcher 对完表、打完标（起几次 tmux）。 */
@@ -102,11 +102,6 @@ export function resyncMachinesSaid(rs: readonly MachineResynced[]): string {
         : copyText("resync.machines.failed", { machine, why: m.why });
     })
     .join("\n");
-}
-
-/** 这次失败是不是关卡 2（身份门）拒的：后端回 `wrong_owner`。 */
-export function isIdentityRefusal(e: unknown): boolean {
-  return e instanceof ControlError && e.error?.layer === "peer" && e.error.why === "refused" && refusalOf(e.error.body)?.code === "wrong_owner";
 }
 
 /**

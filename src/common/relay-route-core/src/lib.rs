@@ -88,6 +88,9 @@ pub const PROFILES_REL: &str = ".cc-monitor/profiles.toml";
 /// 〔同上〕旧别名清单一次性转进配置文件之后那张说明（转了几条 · 转不进去的几条；设置窗页首说一次，「知道了」后删）。
 pub const PROFILES_MIGRATED_REL: &str = ".cc-monitor/profiles-migrated.json";
 
+/// 〔同上〕配置文件上次经 cc-monitor 写出去的那一份的指纹（后端读配置文件时拿它比 ⇒「之后有人手改过」；删了只是不再说那一句）。
+pub const PROFILES_WRITTEN_REL: &str = ".cc-monitor/profiles-written.json";
+
 /// 〔同上〕「要你动手」里记下的选择：点过「不用了」的那几件 · 选了「我自己贴」的那份启动文件（后端 `footprint/chores/marks.rs` 写）。
 pub const CHORES_REL: &str = ".cc-monitor/chores.json";
 
@@ -310,6 +313,7 @@ pub const OWN_HOME_ENTRIES: &[(&str, &str, bool, bool)] = &[
     ("policy", BACKEND_POLICY_REL, false, true),
     ("profiles", PROFILES_REL, false, true),
     ("profilesMigrated", PROFILES_MIGRATED_REL, false, true),
+    ("profilesWritten", PROFILES_WRITTEN_REL, false, false),
     ("aliasesPosix", POSIX_ALIASES_REL, false, true),
     ("aliasesPs", PS_ALIASES_REL, false, true),
     ("skillLedger", SKILL_LEDGER_REL, false, true),

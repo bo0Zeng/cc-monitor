@@ -112,12 +112,6 @@
       "zh": "备份 {from} 里无 {account} 的行 · 无法放回",
       "args": ["account", "from"]
     },
-    "kit.block.retry": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "重试",
-      "args": []
-    },
     "kit.dialog.cancel": {
       "kind": "action",
       "role": "按钮",
@@ -147,18 +141,6 @@
       "role": "标题",
       "zh": "放弃填写",
       "args": []
-    },
-    "kit.empty.clearFilter": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "清除过滤",
-      "args": []
-    },
-    "kit.empty.noMatch": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "无匹配「{query}」",
-      "args": ["query"]
     },
     "kit.interrupts.agent": {
       "kind": "body",
@@ -220,30 +202,6 @@
       "zh": "当前轮次",
       "args": []
     },
-    "kit.pill.connecting": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "{machine} 重新连接中",
-      "args": ["machine"]
-    },
-    "kit.pill.offline": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "{machine} 离线",
-      "args": ["machine"]
-    },
-    "kit.pill.reconnectHint": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "重新连接",
-      "args": []
-    },
-    "kit.pill.restored": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "{machine} 已连接",
-      "args": ["machine"]
-    },
     "kit.toast.close": {
       "kind": "action",
       "role": "按钮",
@@ -272,12 +230,6 @@
       "kind": "body",
       "role": "片段",
       "zh": " · ",
-      "args": []
-    },
-    "kit.text.ellipsis": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "…",
       "args": []
     },
     "peerVersion.said.old": {
@@ -5362,12 +5314,6 @@
       "zh": "在文件夹中显示失败",
       "args": []
     },
-    "format.formatTimestampSmart.empty": {
-      "kind": "body",
-      "role": "空态",
-      "zh": "—",
-      "args": []
-    },
     "launcherDiagnostics.diagnoseRemoteLauncher.bypassesCcm": {
       "kind": "body",
       "role": "说明",
@@ -6187,8 +6133,8 @@
     "machineAliases.access.willAdd": {
       "kind": "body",
       "role": "说明",
-      "zh": "会在 {path} 末尾加 cc-monitor 那几行 · 写前备份",
-      "args": ["path"]
+      "zh": "会在 {path} 末尾加 {n} 行 · 写前备份",
+      "args": ["path", "n"]
     },
     "machineAliases.access.previewOn": {
       "kind": "body",
@@ -6337,8 +6283,8 @@
     "machineAliases.writes.line": {
       "kind": "body",
       "role": "说明",
-      "zh": "会动：{path} 末尾 cc-monitor 那几行 · 接上时写一次 · 清单变动不再改它",
-      "args": ["path"]
+      "zh": "会动：{path} 末尾 {n} 行 · 接上时写一次 · 清单变动不再改它",
+      "args": ["path", "n"]
     },
     "machineAliases.access.connect": {
       "kind": "action",
@@ -6713,6 +6659,13 @@
       "kind": "control",
       "role": "标签",
       "zh": "tmux 会话名",
+      "args": [],
+      "limited": ["tmux"]
+    },
+    "profilesPage.form.noTmux": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "这台没有 tmux · 起会话会报错",
       "args": [],
       "limited": ["tmux"]
     },
@@ -7210,84 +7163,6 @@
       "zh": "连接",
       "args": []
     },
-    "readiness.gap.local": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "本机",
-      "args": []
-    },
-    "readiness.gaps.blocking": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "必需 {parts}",
-      "args": ["parts"]
-    },
-    "readiness.gaps.optional": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "可选 {parts}",
-      "args": ["parts"]
-    },
-    "readiness.gaps.groupSep": {
-      "kind": "body",
-      "role": "片段",
-      "zh": " · ",
-      "args": []
-    },
-    "readiness.gaps.sep": {
-      "kind": "body",
-      "role": "片段",
-      "zh": " · ",
-      "args": []
-    },
-    "readiness.gaps.unknown": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "未测 {unknown}",
-      "args": ["unknown"]
-    },
-    "readiness.gaps.missing": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "缺 {missing}",
-      "args": ["missing"]
-    },
-    "readiness.meaning.accounts": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "不能按账号隔离起会话",
-      "args": []
-    },
-    "readiness.meaning.cc": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "终端里无 cc 命令 · 从终端起的会话 cc-monitor 认不出",
-      "args": []
-    },
-    "readiness.meaning.source": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "无数据源 · 此机器会话不进标签页",
-      "args": []
-    },
-    "readiness.meaning.connection": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "连接失败 · 此机器会话不可见",
-      "args": []
-    },
-    "readiness.gapHead.untested": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "未测",
-      "args": []
-    },
-    "readiness.gapHead.missing": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "缺",
-      "args": []
-    },
     "unknownKeysNotice.unknownKeysMessage.message": {
       "kind": "body",
       "role": "说明",
@@ -7352,12 +7227,6 @@
       "kind": "error",
       "role": "报错",
       "zh": "打开设置失败",
-      "args": []
-    },
-    "collapsibleGroup.ctor.arrow": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "▶",
       "args": []
     },
     "machineCard.test.pinned": {
@@ -16525,19 +16394,6 @@
       "zh": "取中转钥匙失败 · {e} · 中转未起（无钥匙则谁都能用）",
       "args": ["e"]
     },
-    "tmuxMint.refused.title": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "未新建会话",
-      "args": []
-    },
-    "tmuxMint.refused.body": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "读取 {machine} 已有 tmux 会话失败 · 为免撞名未新建 · {reason}",
-      "args": ["machine", "reason"],
-      "limited": ["tmux"]
-    },
     "localResume.launch.failed": {
       "kind": "error",
       "role": "报错",
@@ -18968,12 +18824,6 @@
       "zh": "该机后端找不到主目录 · 无法卸载",
       "args": []
     },
-    "extPage.card.unchanged": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "内容相同 · 无需写入",
-      "args": []
-    },
     "beExt.uninstall.changed": {
       "kind": "error",
       "role": "报错",
@@ -19082,12 +18932,6 @@
       "zh": "在文件夹中显示",
       "args": []
     },
-    "extPage.card.slotEmpty": {
-      "kind": "body",
-      "role": "空态",
-      "zh": "待填 · 不从来源带入",
-      "args": []
-    },
     "extPage.card.again": {
       "kind": "action",
       "role": "按钮",
@@ -19117,12 +18961,6 @@
       "role": "片段",
       "zh": "留意 {field} · {value}",
       "args": ["field", "value"]
-    },
-    "extPage.card.bringTitle": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "{from} → {to} · 写入以下文件",
-      "args": ["from", "to"]
     },
     "extPage.filter.skill": {
       "kind": "action",
@@ -19160,12 +18998,6 @@
       "zh": "非文本文件",
       "args": []
     },
-    "extPage.card.confirm": {
-      "kind": "action",
-      "role": "确认框",
-      "zh": "确认",
-      "args": []
-    },
     "beExt.uninstall.foreign": {
       "kind": "body",
       "role": "说明",
@@ -19189,6 +19021,114 @@
       "role": "状态",
       "zh": "未装",
       "args": []
+    },
+    "extPage.legend.same": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "装了",
+      "args": []
+    },
+    "extPage.legend.differs": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "装了 · 内容不同",
+      "args": []
+    },
+    "extPage.legend.project": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "仅项目内",
+      "args": []
+    },
+    "extPage.table.headName": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "名字",
+      "args": []
+    },
+    "extPage.table.headKind": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "种类",
+      "args": []
+    },
+    "extPage.table.headAbout": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "做什么",
+      "args": []
+    },
+    "extPage.offline.bar": {
+      "kind": "body",
+      "role": "状态",
+      "zh": "{machine} 离线 · 该列是上次同步的样子",
+      "args": ["machine"]
+    },
+    "extPage.install.where": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "安装位置",
+      "args": []
+    },
+    "extPage.install.differsPick": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{state} · 勾上就换成这一版",
+      "args": ["state"]
+    },
+    "extPage.install.kept": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "勾选的机器共用此值 · {machines} 已有 {key}，留空沿用",
+      "args": ["machines", "key"]
+    },
+    "extPage.install.shared": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "勾选的机器共用此值",
+      "args": []
+    },
+    "extPage.install.files": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "会写的文件",
+      "args": []
+    },
+    "extPage.install.filesSame": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{machine}：和现在一样 · 无须写",
+      "args": ["machine"]
+    },
+    "extPage.install.filesLine": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{machine}：{files}",
+      "args": ["machine", "files"]
+    },
+    "extPage.install.machineSaid": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{machine}：{said}",
+      "args": ["machine", "said"]
+    },
+    "extPage.install.confirm": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "装到 {n} 台",
+      "args": ["n"]
+    },
+    "extPage.install.noneChecked": {
+      "kind": "body",
+      "role": "空态",
+      "zh": "先勾要装的机器",
+      "args": []
+    },
+    "extPage.install.doneOne": {
+      "kind": "body",
+      "role": "状态",
+      "zh": "{machine} · 装好了 · {said}",
+      "args": ["machine", "said"]
     },
     "extPage.kind.mcp": {
       "kind": "body",
@@ -19296,12 +19236,6 @@
       "kind": "body",
       "role": "说明",
       "zh": "装进某个项目的 skill 落在这里。在那个项目的这个目录下，以 skill 的名字为名",
-      "args": []
-    },
-    "extPage.card.slotKept": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "留空沿用目标已有值",
       "args": []
     },
     "extPage.drawer.detailLine": {
@@ -19483,12 +19417,6 @@
       "role": "片段",
       "zh": "项目 {dir}",
       "args": ["dir"]
-    },
-    "extPage.button.bring": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "装到…",
-      "args": []
     },
     "extPage.card.where": {
       "kind": "control",
@@ -26178,6 +26106,92 @@
       "zh": "要你动手 {n}",
       "args": ["n"]
     },
+    "firstRun.head.title": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "开始用",
+      "args": []
+    },
+    "firstRun.head.sub": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{n} 步 · 完成自动勾选",
+      "args": ["n"]
+    },
+    "firstRun.head.skip": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "跳过",
+      "args": []
+    },
+    "firstRun.head.skipFailed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "跳过没记下",
+      "args": []
+    },
+    "firstRun.terminal.name": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "接上终端",
+      "args": []
+    },
+    "firstRun.terminal.hint": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "终端里 ccm 启动的会话出现在 cc-monitor",
+      "args": [],
+      "limited": ["ccm"]
+    },
+    "firstRun.terminal.action": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "接上",
+      "args": []
+    },
+    "firstRun.named.name": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "给当前登录命名",
+      "args": []
+    },
+    "firstRun.named.hint": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "可选 · 命名后可加更多账号、按账号启动",
+      "args": []
+    },
+    "firstRun.named.action": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "命名",
+      "args": []
+    },
+    "firstRun.remote.name": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "添加远端机器",
+      "args": []
+    },
+    "firstRun.remote.hint": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "可选 · 任意 ssh 可达机器",
+      "args": [],
+      "limited": ["SSH"]
+    },
+    "firstRun.remote.action": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "添加机器",
+      "args": []
+    },
+    "statusBar.start.label": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "开始用 · 剩 {n} 步",
+      "args": ["n"]
+    },
     "statusBar.messages.label": {
       "kind": "action",
       "role": "按钮",
@@ -26439,6 +26453,12 @@
       "kind": "body",
       "role": "说明",
       "zh": "旧别名清单转进配置文件时的说明（设置窗说一次后删）",
+      "args": []
+    },
+    "rsDataPaths.backend.profilesWritten": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "配置文件上次经 cc-monitor 写出时的指纹（据此说「手改过」）",
       "args": []
     },
     "beProfile.value.unknown": {
@@ -26847,6 +26867,30 @@
       "kind": "error",
       "role": "报错",
       "zh": "主目录解析失败 · 记不下上次值",
+      "args": []
+    },
+    "beExt.many.noRow": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "扩展页那张表里没有 {name}",
+      "args": ["name"]
+    },
+    "beExt.many.notThere": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{machine} 没有这一处",
+      "args": ["machine"]
+    },
+    "beExt.many.noBring": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "{machine} 上没有可装的一处",
+      "args": ["machine"]
+    },
+    "beExt.many.noPlace": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "勾上的几台没有都能装的一处",
       "args": []
     },
     "rsDataPaths.backend.chores": {

@@ -10,15 +10,13 @@ const render = vi.hoisted(() => ({
 vi.mock("../../../src/frontend/ui/launch-render", () => ({
   renderCli: render.renderCli,
   planLocalLaunch: render.planLocalLaunch,
-  isRefusal: (e: unknown) =>
-    (e as { refused?: boolean } | null)?.refused === true,
 }));
 const term = vi.hoisted(() => ({ openTerminal: vi.fn() }));
 vi.mock("../../../src/frontend/ui/terminal-open", async (orig) => ({
   ...(await orig<typeof import("../../../src/frontend/ui/terminal-open")>()),
   openTerminal: term.openTerminal,
 }));
-const mint = vi.hoisted(() => ({ mintFreshTmuxName: vi.fn(), refuseUnmintable: vi.fn() }));
+const mint = vi.hoisted(() => ({ mintFreshTmuxName: vi.fn() }));
 vi.mock("../../../src/frontend/ui/terminal-name-mint", () => mint);
 vi.mock("../../../src/frontend/ui/resync", () => ({
   offerResyncRetry: vi.fn(),

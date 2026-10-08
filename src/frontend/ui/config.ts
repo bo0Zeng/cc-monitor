@@ -157,16 +157,3 @@ export function patchConfig(edits: readonly ConfigEdit[]): Promise<void> {
   const copy = [...edits];
   return enqueue(() => commands.patch_config({ edits: copy }));
 }
-
-/**
- * 要先看旧值才算得出新值的写者用这个（`remote` 段按机器增删改）：在本 realm 的写队列里**现读** →
- * `build(cfg)` 出补丁 → 写。读失败 ⇒ 抛（**不**当空配置再写回 —— 那会把别的机器写没）。
- */
-export function patchConfigFrom(
-  build: (cfg: Config) => readonly ConfigEdit[],
-): Promise<void> {
-  return enqueue(async () => {
-    const edits = build(await loadConfig());
-    if (edits.length > 0) await commands.patch_config({ edits: [...edits] });
-  });
-}

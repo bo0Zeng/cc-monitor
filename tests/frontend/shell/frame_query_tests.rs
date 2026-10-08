@@ -341,6 +341,12 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "后端出成品 `{home, changedFiles, todo, tmux, chores, own}`；前端 `src/frontend/ui/settings/data-reads.ts::readDataReport` 问、\
          `decodeDataReport` 按恰好的键集合收；monitor 这一侧零发送点，本机那一栏只答它自己那台那几行的事实（`footprint_client_facts`）",
     ),
+    // 首次运行「开始用」那份数：本机后端判三步、剩几步；机器表台数由界面带上。
+    (
+        "first-run",
+        "本机后端读启动文件与账号库清单判三步（`src/backend/footprint/readiness.rs`）；前端 `src/frontend/ui/settings/readiness-reads.ts::readReadiness` 问\
+         （设置窗机器页「开始用」· 主窗口状态栏那一枚），monitor 这一侧零发送点",
+    ),
     // 离线那台的上次值：本机后端读写它自己的 `~/.cc-monitor/last-seen.json`。
     (
         "last-seen-read",

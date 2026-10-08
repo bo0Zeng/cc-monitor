@@ -4,8 +4,16 @@ import type { SwitchWhy } from "./SwitchWhy";
 /**
  * 一条换号记录。`from == to` 的是没换成的那几种（跳过 · 留在超额）。
  */
-export type SwitchRecord = { at: number, from: string, to: string, why: SwitchWhy, 
+export type SwitchRecord = { at: number, 
+/**
+ * `at` 写给人看的样子（回包出口 `common::time::with_texts` 添；内部与记账一律不填）。
+ */
+atText?: string, from: string, to: string, why: SwitchWhy, 
 /**
  * 那一刻原号几点重置（知道才有；记下就不随后来的数变）。
  */
-fromResetsAt?: number, };
+fromResetsAt?: number, 
+/**
+ * `from_resets_at` 写给人看的样子（回包出口 `common::time::with_texts` 添；内部与记账一律不填）。
+ */
+fromResetsAtText?: string, };

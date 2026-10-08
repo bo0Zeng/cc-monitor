@@ -1,4 +1,4 @@
-//! 「要你动手」里记下的两样选择：点过「不用了」的那几件 · 选了「我自己贴」的那份启动文件。
+//! 「要你动手」里记下的选择：点过「不用了」的那几件 · 选了「我自己贴」的那份启动文件 · 首次运行「开始用」那一块点过「跳过」。
 //! 住 `~/.cc-monitor/chores.json`（`relay_route_core::CHORES_REL`），后端自己的状态，不是用户数据；全仓唯一的写者是 [`answer_mark`]。
 //! 读三态（不在 ＝ 什么都没记 · 读不懂 ＝ 不覆盖、照没记算判，写的那一刻回错）。
 
@@ -20,6 +20,9 @@ pub(crate) struct Marks {
     /// 选了「我自己贴」的那份启动文件（绝对路径）；没选 ⇒ `None`。
     #[serde(default)]
     pub self_paste: Option<String>,
+    /// 首次运行「开始用」那一块点过「跳过」（`footprint/readiness.rs` 读它）。
+    #[serde(default)]
+    pub start_skipped: bool,
 }
 
 /// 这台机器上那份文件的路径；家目录解析不出来 ⇒ `None`。
@@ -85,14 +88,16 @@ pub(crate) fn mark_at(path: &Path, args: &Value) -> Result<Value, (&'static str,
         }
         "selfPaste" => m.self_paste = Some(str_arg("rc").ok_or_else(|| bad("`rc` missing"))?),
         "unselfPaste" => m.self_paste = None,
+        "skipStart" => m.start_skipped = true,
+        "unskipStart" => m.start_skipped = false,
         _ => {
             return Err(bad(
-                "`op` is not one of decline / undecline / selfPaste / unselfPaste",
+                "`op` is not one of decline / undecline / selfPaste / unselfPaste / skipStart / unskipStart",
             ))
         }
     }
     crate::common::own_state::write_json(path, &m).map_err(|e| ("io_failed", e))?;
-    Ok(json!({"declined": m.declined, "selfPaste": m.self_paste}))
+    Ok(json!({"declined": m.declined, "selfPaste": m.self_paste, "startSkipped": m.start_skipped}))
 }
 
 /// `chores-mark`：帧面入口（**写口**，只从 `stream/inbound/` 进）。

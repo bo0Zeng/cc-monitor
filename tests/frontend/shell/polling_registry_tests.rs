@@ -423,7 +423,6 @@ const SCHEDULING_SITES: &[(&str, &str, usize, &str)] = &[
     ("src/frontend/ui/find-strip.ts", "setTimeout", 1, "停 300ms 自己找（防抖）：每次输入清掉上一个再排；找过 / 收起时清掉。一次性。"),
     ("src/frontend/ui/kit/toast.ts", "setTimeout", 1, "到点收起这一条（纯告知 4s · 带动作 8s；悬停 / 焦点时清掉、离开后按剩下的时间重排）。一次性。"),
     ("src/frontend/ui/kit/tooltip.ts", "setTimeout", 2, "悬停 500ms 才出提示 · 卡式离开宿主与卡 120ms 才收；离开 / 移进卡即 `clearTimeout`。两处都一次性。"),
-    ("src/frontend/ui/kit/block.ts", "setTimeout", 2, "① 加载超过 300ms 才画骨架 ② 超过 10s 才写正在做什么；换态时都 `clearTimeout`。一次性。"),
     ("src/frontend/ui/kit/interrupts.ts", "setTimeout", 1, "问后端「会打断什么」的 2s 上限：到点当有东西在跑；答到了 `clearTimeout`。一次性。"),
     ("src/frontend/ui/kit/menu.ts", "setTimeout", 3, "① ② 子菜单悬停 150ms 开 / 250ms 关（关菜单时统一清）③ 右键开的菜单下一拍挂「点外面」监听。一次性。"),
     ("src/frontend/ui/launch-slot.ts", "setTimeout", 1, "起新会话之后的占位标签页：每个一个 20 s 的点，到点只把样子换成「未报到」、问一次那台那个 tmux 会话在不在与画面（不重试、不轮询）；报到了 / 关掉时 `clearTimeout`。一次性。"),

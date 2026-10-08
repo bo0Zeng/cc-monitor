@@ -5,6 +5,10 @@
  */
 export type SlotShow = { slot: string, pct?: number, resetsAt?: number, 
 /**
+ * `resets_at` 写给人看的样子（回包出口 `common::time::with_texts` 添；内部与记账一律不填）。
+ */
+resetsAtText?: string, 
+/**
  * 用满：这个窗口用到 100%、还没重置（画 `✕`；被拒而没用满画「{pct}% · 被拒」）。没用满 ⇒ 缺。
  */
 full?: boolean, };

@@ -1,6 +1,6 @@
 {
   "说明": [
-    "额度的行模型金样：quota-read 一份回包 ＋ 此刻（回包里的 now）＋ 时区偏移（分钟，东正）＋ 采样那台叫什么 ⇒ 每号一段（blocks：首行 名 · 类型 · 标签，其余每行一组格 键 · 值 · ↻ · 距今）＋ 终端 --text 的整段字（text）。",
+    "额度的行模型金样：quota-read 一份回包（每个时刻旁边那一格 …Text 是后端出口按那台的钟写好的；tzOffsetMin 是写它们时用的偏移，后端那一侧的判据核对这几格与它一致）＋ 此刻（回包里的 now）＋ 采样那台叫什么 ⇒ 每号一段（blocks：首行 名 · 类型 · 标签，其余每行一组格 键 · 值 · ↻ · 距今）＋ 终端 --text 的整段字（text）。",
     "两个消费方各一条判据逐字对拍：界面（src/frontend/ui/quota-lines.ts，悬停卡读它）对 blocks；终端 --text（src/backend/control/quota_text.rs）对 blocks 与 text。想改写法先改这里。",
     "回包只采结构，号名是编的。会话那两样（⇄ 换过号 · 下一个）不在 quota-read 里，不进本金样。",
     "text 的排法：每号一段、段间空一行；首行各格隔两个空格；其余行缩进两格，非末格按本段同列最宽补齐（汉字记 2 宽），格间两个空格。"
@@ -20,6 +20,7 @@
             "agent": "claude-code",
             "account": "personal",
             "seenAt": 1791189480,
+            "seenAtText": "16:38",
             "reading": {
               "refused": false
             },
@@ -30,12 +31,14 @@
               {
                 "slot": "5h",
                 "pct": 63,
-                "resetsAt": 1791196200
+                "resetsAt": 1791196200,
+                "resetsAtText": "18:30"
               },
               {
                 "slot": "7d",
                 "pct": 41,
-                "resetsAt": 1791507600
+                "resetsAt": 1791507600,
+                "resetsAtText": "10-09 09:00"
               }
             ],
             "login": "ok",
@@ -96,6 +99,7 @@
             "agent": "claude-code",
             "account": "personal",
             "seenAt": 1791189480,
+            "seenAtText": "16:38",
             "reading": {
               "refused": false
             },
@@ -106,12 +110,14 @@
               {
                 "slot": "5h",
                 "pct": 86,
-                "resetsAt": 1791196200
+                "resetsAt": 1791196200,
+                "resetsAtText": "18:30"
               },
               {
                 "slot": "7d",
                 "pct": 41,
-                "resetsAt": 1791507600
+                "resetsAt": 1791507600,
+                "resetsAtText": "10-09 09:00"
               }
             ],
             "login": "ok",
@@ -172,9 +178,11 @@
             "agent": "claude-code",
             "account": "work",
             "seenAt": 1791189480,
+            "seenAtText": "16:38",
             "reading": {
               "refused": true,
-              "resetsAt": 1791198000
+              "resetsAt": 1791198000,
+              "resetsAtText": "19:00"
             },
             "kind": "sub",
             "state": "refused",
@@ -184,12 +192,14 @@
                 "slot": "5h",
                 "pct": 100,
                 "resetsAt": 1791198000,
+                "resetsAtText": "19:00",
                 "full": true
               },
               {
                 "slot": "7d",
                 "pct": 78,
-                "resetsAt": 1791334800
+                "resetsAt": 1791334800,
+                "resetsAtText": "10-07 09:00"
               }
             ],
             "login": "ok",
@@ -201,7 +211,8 @@
         "usableNow": [],
         "earliestReturn": {
           "account": "work",
-          "at": 1791198000
+          "at": 1791198000,
+          "atText": "19:00"
         }
       },
       "blocks": [
@@ -251,9 +262,11 @@
             "agent": "claude-code",
             "account": "work",
             "seenAt": 1791189480,
+            "seenAtText": "16:38",
             "reading": {
               "refused": true,
-              "resetsAt": 1791189660
+              "resetsAt": 1791189660,
+              "resetsAtText": "16:41"
             },
             "kind": "sub",
             "state": "refused",
@@ -262,12 +275,14 @@
               {
                 "slot": "5h",
                 "pct": 58,
-                "resetsAt": 1791198000
+                "resetsAt": 1791198000,
+                "resetsAtText": "19:00"
               },
               {
                 "slot": "7d",
                 "pct": 78,
-                "resetsAt": 1791334800
+                "resetsAt": 1791334800,
+                "resetsAtText": "10-07 09:00"
               }
             ],
             "login": "ok",
@@ -279,7 +294,8 @@
         "usableNow": [],
         "earliestReturn": {
           "account": "work",
-          "at": 1791198000
+          "at": 1791198000,
+          "atText": "19:00"
         }
       },
       "blocks": [
@@ -329,9 +345,11 @@
             "agent": "claude-code",
             "account": "work",
             "seenAt": 1791189480,
+            "seenAtText": "16:38",
             "reading": {
               "refused": false,
-              "resetsAt": 1791198000
+              "resetsAt": 1791198000,
+              "resetsAtText": "19:00"
             },
             "kind": "sub",
             "state": "overageInUse",
@@ -340,12 +358,14 @@
               {
                 "slot": "5h",
                 "pct": 104,
-                "resetsAt": 1791198000
+                "resetsAt": 1791198000,
+                "resetsAtText": "19:00"
               },
               {
                 "slot": "7d",
                 "pct": 78,
-                "resetsAt": 1791334800
+                "resetsAt": 1791334800,
+                "resetsAtText": "10-07 09:00"
               }
             ],
             "login": "ok",
@@ -357,7 +377,8 @@
         "usableNow": [],
         "earliestReturn": {
           "account": "work",
-          "at": 1791198000
+          "at": 1791198000,
+          "atText": "19:00"
         }
       },
       "blocks": [
@@ -408,6 +429,7 @@
             "agent": "claude-code",
             "account": "team",
             "seenAt": 1791162120,
+            "seenAtText": "09:02",
             "reading": {
               "refused": false
             },
@@ -418,12 +440,14 @@
               {
                 "slot": "5h",
                 "pct": 97,
-                "resetsAt": 1791177000
+                "resetsAt": 1791177000,
+                "resetsAtText": "13:10"
               },
               {
                 "slot": "7d",
                 "pct": 12,
-                "resetsAt": 1791676800
+                "resetsAt": 1791676800,
+                "resetsAtText": "10-11 08:00"
               }
             ],
             "login": "ok",
@@ -483,9 +507,11 @@
             "agent": "claude-code",
             "account": "work",
             "seenAt": 1791189480,
+            "seenAtText": "16:38",
             "reading": {
               "refused": true,
-              "resetsAt": 1791192300
+              "resetsAt": 1791192300,
+              "resetsAtText": "17:25"
             },
             "kind": "sub",
             "state": "refused",
@@ -499,7 +525,8 @@
         "usableNow": [],
         "earliestReturn": {
           "account": "work",
-          "at": 1791192300
+          "at": 1791192300,
+          "atText": "17:25"
         }
       },
       "blocks": [
@@ -551,6 +578,7 @@
             "agent": "claude-code",
             "account": "old",
             "seenAt": 1791189480,
+            "seenAtText": "16:38",
             "reading": {
               "refused": false
             },
@@ -561,7 +589,8 @@
               {
                 "slot": "5h",
                 "pct": 30,
-                "resetsAt": 1791201600
+                "resetsAt": 1791201600,
+                "resetsAtText": "20:00"
               },
               {
                 "slot": "7d",
@@ -624,6 +653,7 @@
             "agent": "claude-code",
             "account": "_",
             "seenAt": 1791189060,
+            "seenAtText": "16:31",
             "reading": {
               "refused": false
             },
@@ -634,12 +664,14 @@
               {
                 "slot": "5h",
                 "pct": 31,
-                "resetsAt": 1791196800
+                "resetsAt": 1791196800,
+                "resetsAtText": "18:40"
               },
               {
                 "slot": "7d",
                 "pct": 9,
-                "resetsAt": 1791192300
+                "resetsAt": 1791192300,
+                "resetsAtText": "17:25"
               }
             ],
             "login": "ok",
@@ -701,6 +733,7 @@
             "agent": "claude-code",
             "account": "api",
             "seenAt": 1791189000,
+            "seenAtText": "16:30",
             "reading": {
               "refused": false
             },
@@ -714,9 +747,11 @@
             "agent": "claude-code",
             "account": "api2",
             "seenAt": 1791189000,
+            "seenAtText": "16:30",
             "reading": {
               "refused": true,
-              "resetsAt": 1791190320
+              "resetsAt": 1791190320,
+              "resetsAtText": "16:52"
             },
             "kind": "api",
             "state": "refused",
@@ -728,6 +763,7 @@
             "agent": "claude-code",
             "account": "api4",
             "seenAt": 1791189000,
+            "seenAtText": "16:30",
             "reading": {
               "refused": false
             },
@@ -744,7 +780,8 @@
         ],
         "earliestReturn": {
           "account": "api2",
-          "at": 1791190320
+          "at": 1791190320,
+          "atText": "16:52"
         }
       },
       "blocks": [
@@ -821,6 +858,7 @@
             "agent": "claude-code",
             "account": "personal",
             "seenAt": 1791189480,
+            "seenAtText": "16:38",
             "reading": {
               "refused": false
             },
@@ -831,12 +869,14 @@
               {
                 "slot": "5h",
                 "pct": 4,
-                "resetsAt": 1791195000
+                "resetsAt": 1791195000,
+                "resetsAtText": "18:10"
               },
               {
                 "slot": "7d",
                 "pct": 12,
-                "resetsAt": 1791594000
+                "resetsAt": 1791594000,
+                "resetsAtText": "10-10 09:00"
               }
             ],
             "login": "ok",
@@ -943,6 +983,7 @@
             "agent": "claude-code",
             "account": "team",
             "seenAt": 1798678920,
+            "seenAtText": "09:02",
             "reading": {
               "refused": false
             },
@@ -953,12 +994,14 @@
               {
                 "slot": "5h",
                 "pct": 97,
-                "resetsAt": 1798693800
+                "resetsAt": 1798693800,
+                "resetsAtText": "13:10"
               },
               {
                 "slot": "7d",
                 "pct": 12,
-                "resetsAt": 1798938000
+                "resetsAt": 1798938000,
+                "resetsAtText": "2027-01-03 09:00"
               }
             ],
             "login": "ok",
@@ -969,6 +1012,7 @@
             "agent": "claude-code",
             "account": "cold",
             "seenAt": 1767196200,
+            "seenAtText": "2025-12-31 23:50",
             "reading": {
               "refused": false
             },
@@ -979,12 +1023,14 @@
               {
                 "slot": "5h",
                 "pct": 2,
-                "resetsAt": 1767207600
+                "resetsAt": 1767207600,
+                "resetsAtText": "01-01 03:00"
               },
               {
                 "slot": "7d",
                 "pct": 5,
-                "resetsAt": 1767661200
+                "resetsAt": 1767661200,
+                "resetsAtText": "01-06 09:00"
               }
             ],
             "login": "ok",

@@ -63,6 +63,8 @@ export interface StartupFile {
   unreadable: string | null;
   /** 只有 `$PROFILE` 那几份有；POSIX 与人另指的那一份 ⇒ `null`。 */
   policy: ExecPolicy | null;
+  /** 把别名块装进这一份会写几行（那台后端按装进去的那一块数的）。 */
+  blockLines: number;
 }
 
 /** `powershell-policy-set` 的成品：设完现问的那一份 ＋ 设的那一下 PowerShell 的原话（没报 ⇒ `null`）。 */
@@ -142,8 +144,9 @@ function decodePolicy(v: unknown): ExecPolicy {
 function decodeStartupFile(v: unknown): StartupFile {
   if (
     !isObj(v) ||
-    !sameKeys(v, ["path", "sourced", "exists", "block", "unreadable", "policy"]) ||
+    !sameKeys(v, ["path", "sourced", "exists", "block", "unreadable", "policy", "blockLines"]) ||
     typeof v.path !== "string" ||
+    !(typeof v.blockLines === "number" && Number.isInteger(v.blockLines) && v.blockLines >= 0) ||
     typeof v.sourced !== "boolean" ||
     typeof v.exists !== "boolean" ||
     !optStr(v.unreadable)
@@ -156,6 +159,7 @@ function decodeStartupFile(v: unknown): StartupFile {
     block: decodeBlockState(v.block),
     unreadable: v.unreadable,
     policy: v.policy === null ? null : decodePolicy(v.policy),
+    blockLines: v.blockLines as number,
   };
 }
 

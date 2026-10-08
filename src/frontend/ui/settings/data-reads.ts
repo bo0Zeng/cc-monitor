@@ -136,7 +136,7 @@ function decodeChore(c: unknown): Chore {
 }
 
 /** 记下「要你动手」里的一个选择（那台后端写它自己的 `~/.cc-monitor/chores.json`）。失败抛一句人话。 */
-export async function markChore(origin: Origin, args: { op: "decline" | "undecline"; id: string } | { op: "selfPaste"; rc: string } | { op: "unselfPaste" }): Promise<void> {
+export async function markChore(origin: Origin, args: { op: "decline" | "undecline"; id: string } | { op: "selfPaste"; rc: string } | { op: "unselfPaste" } | { op: "skipStart" | "unskipStart" }): Promise<void> {
   const target = isLocalOrigin(origin) ? LOCAL_ORIGIN : origin;
   try {
     const body = jsonBody(args);

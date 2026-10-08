@@ -82,7 +82,7 @@ export class DataSection {
   private loaded = false;
 
   /**
-   * `headless: true` 时不渲染外层 settings-group 容器（用于 CollapsibleGroup 内嵌）。
+   * `headless: true` 时不渲染外层 settings-group 容器（嵌进别的分组时用）。
    * 跟 DiagnosticsSection 一致的契约。
    */
   constructor(opts: { headless?: boolean } = {}) {
@@ -114,8 +114,6 @@ export class DataSection {
     // 原来这里是 `void this.load()`，而这一块住「应用」页、落地页是「机器」
     // ⇒ 每次打开设置都白发一趟 `get_data_paths`，还正好在那 3 秒重排窗口里。
     // 现在由宿主（`panel.ts`）在**该页首次可见**时调 `loadNow()`。
-    // ⚠ 折叠**不省**这一发：折叠是纯 CSS（`collapsible-group.ts` 的 `0fr ↔ 1fr`），
-    //   孩子照常构造 —— 所以门只能开在这里，不能指望折叠。
   }
 
   get element(): HTMLElement {

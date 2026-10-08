@@ -13,7 +13,7 @@ vi.mock("../../../src/frontend/ui/last-seen", () => ({ rememberSeen: vi.fn(async
 import { invoke } from "@tauri-apps/api/core";
 import { loadConfig } from "../../../src/frontend/ui/config";
 import { fakeCfg } from "./config-patch-fake";
-import { deriveUi, effectiveDefault, currentWorkingAccount, currentAccountForBadge, accountColorsActive, selectableAccounts, detectAccountMismatch, isSelectable, accountConfigDir, badgeText, sessionBadge, shouldShowAccountBadge, accountStatusBadge, apikeyEndpointStateFor, type AccountsState, type Account, type SessionAccount } from "../../../src/frontend/ui/accounts";
+import { deriveUi, effectiveDefault, currentWorkingAccount, currentAccountForBadge, accountColorsActive, selectableAccounts, detectAccountMismatch, isSelectable, badgeText, sessionBadge, shouldShowAccountBadge, accountStatusBadge, apikeyEndpointStateFor, type AccountsState, type Account, type SessionAccount } from "../../../src/frontend/ui/accounts";
 import { fetchAccounts, fetchSessionAccounts, parseSessionAccountLines, invalidateAccountsCache, __resetAccountsCacheForTest, fetchMachineApikeyRouting } from "../../../src/frontend/ui/account-reads";
 import { getModelForAccount, setModelForAccount, moveMachinePrefs } from "../../../src/frontend/ui/account-prefs";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
@@ -550,26 +550,6 @@ describe("sessionBadge 源②（lastAccount 兜底，A4）", () => {
   });
 });
 
-describe("accountConfigDir（A4：账号名→configDir，仅可选账号）", () => {
-  it("可选账号 → 返回其 configDir", () => {
-    const s = state({ accounts: [acct({ name: "z", configDir: "/h/z" })] });
-    expect(accountConfigDir(s, "z")).toBe("/h/z");
-  });
-  it("找不到该名 → null", () => {
-    const s = state({ accounts: [acct({ name: "z" })] });
-    expect(accountConfigDir(s, "nope")).toBeNull();
-  });
-  it("不可选账号（in-place / 未登录 / 目录不在）→ null（绝不注入）", () => {
-    expect(accountConfigDir(state({ accounts: [acct({ name: "z", mode: "in-place" })] }), "z")).toBeNull();
-    expect(accountConfigDir(state({ accounts: [acct({ name: "z", loggedIn: false, authReady: false })] }), "z")).toBeNull();
-    expect(accountConfigDir(state({ accounts: [acct({ name: "z", exists: false })] }), "z")).toBeNull();
-  });
-  it("可选但 configDir 空 → null", () => {
-    const s = state({ accounts: [acct({ name: "z", configDir: "" })] });
-    expect(accountConfigDir(s, "z")).toBeNull();
-  });
-});
-
 // F05：resolveAccount 纯函数——withAccount 内部决策逻辑的可独立测试版本。
 
 describe("shouldShowAccountBadge（A4/§7 徽章门控）", () => {
@@ -593,8 +573,7 @@ describe("Z01 账号 0（configDir 缺席）", () => {
 
   it("暂不可选：从 UI 起它需要 unset 注入，launch-plan 今天只会 export", () => {
     expect(isSelectable(zero())).toBe(false);
-    const st = state({ accounts: [zero()] });
-    expect(accountConfigDir(st, "0")).toBeNull();
+    expect(selectableAccounts(state({ accounts: [zero()] }))).toEqual([]);
   });
 
   it("deriveUi 把降级说明透传出去（绝不静默）", () => {
@@ -611,7 +590,7 @@ describe("Z01 账号 0（configDir 缺席）", () => {
 
   it("账号 0 在列不影响既有账号的解析", () => {
     const st = state({ accounts: [acct({ name: "z" }), zero()] });
-    expect(accountConfigDir(st, "z")).toBe("/h/.claude-alt/z");
+    expect(selectableAccounts(st).map((a) => a.name)).toEqual(["z"]);
   });
 });
 
@@ -622,7 +601,7 @@ describe("Z01 账号 0（configDir 缺席）", () => {
 //
 // ★ **为什么这一族必须落在 TS 这一侧**：那条级联整个住在这里 ——
 // `isSelectable` 为假 ⇒ `selectableAccounts` 不收它 ⇒ 不能设为当前号 ·
-// `accountConfigDir` 返 null 从而**绝不注入** · 进不了 resume/restart 菜单 ·
+// 进不了 resume/restart 菜单 ·
 // `accountColorsActive` 因为「可选账号 ≥ 2」不成立而连账号色一起休眠。
 // **Rust 全绿而这一条没改，用户看到的还是「这个号不能用」。**
 describe("K-A1 鉴权方式：api-key 号不再因为缺凭据文件而不可用", () => {
@@ -652,20 +631,14 @@ describe("K-A1 鉴权方式：api-key 号不再因为缺凭据文件而不可用
 
   it("★ KAY3：订阅号缺凭据 —— isSelectable 仍为**假**（这道保护不许被一起放宽）", () => {
     expect(isSelectable(subNoCred())).toBe(false);
-    // 连带：它进不了可选列表、拿不到 configDir（⇒ 绝不注入）。
+    // 连带：它进不了可选列表。
     const st = state({ accounts: [subNoCred()] });
     expect(selectableAccounts(st)).toEqual([]);
-    expect(accountConfigDir(st, "sub")).toBeNull();
   });
 
   it("★ KAY2 级联①：selectableAccounts 收它", () => {
     const st = state({ accounts: [apiKey(), subNoCred()] });
     expect(selectableAccounts(st).map((a) => a.name)).toEqual(["api"]);
-  });
-
-  it("★ KAY2 级联②：accountConfigDir 给出目录（可选 ⇒ 会注入）", () => {
-    const st = state({ accounts: [apiKey()] });
-    expect(accountConfigDir(st, "api")).toBe("/h/.claude-alt/api");
   });
 
   it("★ KAY2 级联③：能当当前号 / 上徽章（跟随选中它由那台后端判，见后端判号那一族）", () => {

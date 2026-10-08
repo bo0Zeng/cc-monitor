@@ -1030,7 +1030,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 |---|---|---|
 | `accounts` | ← | 每个号一条，按 `(agent, account)` 排：`agent` 路由第 1 段（哪一家）· `account` 路由第 2 段（哪个号 |
 | `earliestReturn` | ← | 被拒 / 超额在兜的号里最早回来的那个 `{account, at}`；没有、或都说不出时刻 ⇒ `null` |
-| `now` | ← | 这台此刻的 unix 秒（界面算「几分钟前看到的」「还有多久重置」都按这台的钟） |
+| `now` | ← | 这台此刻的 unix 秒（界面算「几分钟前看到的」「还有多久重置」都按这台的钟）；回包里每个时刻（`at` · `seenAt` · `resetsAt` · `fromResetsAt` · `since`）旁边有一格 `…Text`：出口按这台本地钟写好的字（当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年带年），界面照抄、不换算 |
 | `path` | ← | 那份文件的绝对路径（家推不出来时 `null`） |
 | `reason` | ← | 只在 `unreadable` 时有：为什么读不出来；其余 `null` |
 | `state` | ← | `"present"`（读得懂）· `"absent"`（还没看到过任何回包）· `"unreadable"`（文件读不出来 / 家推不出来） |
@@ -1094,7 +1094,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `now` | ← | 那份文件的三态（同 `rotation-read`）· 这台此刻的 unix 秒 |
+| `now` | ← | 那份文件的三态（同 `rotation-read`）· 这台此刻的 unix 秒；回包里每个时刻（`at` · `seenAt` · `resetsAt` · `fromResetsAt` · `since`）旁边有一格 `…Text`：出口按这台本地钟写好的字（当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年带年），界面照抄、不换算 |
 | `reason` | ← | 那份文件的三态（同 `rotation-read`）· 这台此刻的 unix 秒 |
 | `sessions` | ← | 每个 sid 一份 |
 | `sids` | → | 会话 id 的数组 |
@@ -1893,6 +1893,21 @@ sid → 上次用哪个号起。
 
 码：`bad_args` · `failed`
 
+#### `first-run`
+
+首次运行「开始用」三步各自打没打勾。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --first-run`
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `left` | ← | 必做而还没打勾的几步（主窗口状态栏那一枚只数它） |
+| `remotes` | → | 机器表里有几台远端（机器表住 monitor 那一侧，问的那一方带上） |
+| `skipped` | ← | 「开始用」那一块点过「跳过」（`chores-mark` 的 `skipStart` 写） |
+| `steps` | ← | 三步 `{id, done, required}`（`required` = 必做；今天只有 `terminal`），`id` 闭集 `terminal`（让终端认得 ccm 和别名：某份启动文件里有别名块）· `named`（给现在登录的号起名字：启用了多账号）· `remote`（加一台远端：`remotes` > 0） |
+
+码：`bad_args`
+
 #### `last-seen-read`
 
 读离线那台的上次值。
@@ -1931,10 +1946,11 @@ sid → 上次用哪个号起。
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `id` | → | `decline` / `undecline` 那一件的 `id`（同 `data-report` 的 `todo[].id`） |
-| `op` | → | `decline`（不用了）· `undecline`（还是要做）· `selfPaste`（我自己贴）· `unselfPaste`（改回让 cc-monitor 接上） |
+| `op` | → | `decline`（不用了）· `undecline`（还是要做）· `selfPaste`（我自己贴）· `unselfPaste`（改回让 cc-monitor 接上）· `skipStart` / `unskipStart`（首次运行「开始用」那一块跳过 / 撤回） |
 | `rc` | → | `selfPaste` 那一份启动文件（绝对路径） |
 | `declined` | ← | 改完记着的「不用了」那几件 |
 | `selfPaste` | ← | 改完记着的「我自己贴」那份启动文件；没选 ⇒ `null` |
+| `startSkipped` | ← | 改完记着的「开始用」跳过没有 |
 
 码：`bad_args` · `io_failed` · `marks_unreadable`
 
@@ -2164,48 +2180,40 @@ skill 装记录的写口。
 
 #### `ext-hub-preview`
 
-装到一台之前那张确认卡，本机后端当枢纽。
+装到几台之前那一张卡：本机后端当枢纽，向各台问完并好。
 
 收 `args` · 可撤 · 只在流上
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `config` | ← | MCP：装上之后那一条（待填的值是 `null`） |
-| `from` | → | 来源那台 |
 | `kind` | → | `skill` / `mcp` |
+| `machines` | ← | 勾上的每台一项 `{to, name, card, files, error}`：`card` 同单台那张确认卡（`{kind, name, path, writes, unchanged, suspects, stop, config, slots, tokens}`）；`files` = 会写的文件那一行（MCP：那份配置文件 ＋ 键；skill：目录 ＋ 要写的几个）；那台没拼成 ⇒ `card` 为 `null`、`error` = 那台说的那一句 |
 | `name` | → | 名字 |
-| `path` | ← | 被写那台上的落点 |
-| `scope` | → | `{from, to}`，各是 `{level:"user"}` 或 `{level:"project", dir}`（那台上的绝对路径）；`to` = 用户在确认卡上选的那一处 |
-| `slots` | ← | 每个空位 `{field, key, kept}` |
-| `stop` | ← | 装不了的原因（非文本文件 · 这台那一份盖不了）；有它就不该确认 |
-| `suspects` | ← | 要留意的几件（说人话） |
-| `to` | → | 被写那台：可达表的键，**`null` = 这台自己** |
-| `tokens` | ← | 两头看过的那一份的记号 `{source, target}` —— 应用时原样交回 |
-| `unchanged` | ← | 装上之后和现在一样 |
-| `writes` | ← | 要写的那几个（skill：目录里的相对路径；MCP：那份配置文件） |
+| `place` | → | 可缺：用户在卡上选的那一处 `{level:"user"}` / `{level:"project", dir}`；对勾上的每台都能装才照它 |
+| `place` | ← | 共用的那一处（没有每台都能装的 ⇒ `null`） |
+| `places` | ← | 各台能装的各处并起来 `{at, ok, note}`：勾上的每台都能装才 `ok`，否则 `note` 说第一台为什么不行 |
+| `slots` | ← | 几张卡的要填格并成一份 `{field, key, kept}`：每格一次，`kept` = 那一格已经有值的几台（名字） |
+| `to` | → | 勾上的几台：可达表的键的列表，**`null` = 这台自己**；来源与那台原来那一处照扩展页那张表 |
 
-码：`bad_args` · `bad_file` · `missing` · `refused` · `unreachable` · `io_failed`
+码：`bad_args` · `missing` · `catalog_unreadable` · `io_failed`
 
 #### `ext-hub-apply`
 
-装到一台，本机后端当枢纽。
+装到几台，本机后端当枢纽；各台各自结局。
 
 收 `args` · 可撤 · 只在流上
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `changed` | ← | 写了的那几个 |
-| `fill` | → | MCP：用户填的值（同 `mcp-sync-apply`）；来源机上的值从不经过这里 |
-| `from` | → | 同 `ext-hub-preview` |
+| `fill` | → | 用户在卡上填的值 `{field: {key: 值}}`（只填一次；每台只交它那张卡要的几格，空的不交 ⇒ 沿用那台已有的）；来源机上的值从不经过这里 |
 | `kind` | → | 同 `ext-hub-preview` |
+| `machines` | ← | 每台一项 `{to, name, done, error}`：`done` = `{path, changed, note}`；没成 ⇒ `error` = 那台说的那一句（看过之后变了的，那台一个字节不写），一台没成不挡别台 |
 | `name` | → | 同 `ext-hub-preview` |
-| `note` | ← | 做成了但要知道的一件（执行位没改成 · 没记下来） |
-| `path` | ← | 写到了哪 |
-| `scope` | → | 同 `ext-hub-preview` |
+| `place` | → | 卡上那一处（`ext-hub-preview` 回的 `place`）；那一组现算的那一处不是它 ⇒ 各台都 `stale` |
 | `to` | → | 同 `ext-hub-preview` |
-| `tokens` | → | 确认卡上那一份：枢纽两头都再看一次，任一头对不上 ⇒ `stale`、**一个字节不写** |
+| `tokens` | → | 每台那张卡上的记号 `{机器键（本机 = 空串）: {source, target}}`：枢纽两头都再看一次，任一头对不上 ⇒ 那台 `stale`、**一个字节不写** |
 
-码：`bad_args` · `bad_file` · `missing` · `needs_input` · `refused` · `stale` · `unreachable` · `io_failed`
+码：`bad_args` · `missing` · `catalog_unreadable` · `io_failed`
 
 #### `ext-list`
 
@@ -2392,7 +2400,7 @@ cc-bus 钩子诊断。
 |---|---|---|
 | `home` | ← | 这台的家目录 |
 | `otherRc` | ← | `rcPath` 过了围栏之后的绝对路径 |
-| `rcCandidates` | ← | 启动文件候选（方言答列哪几份）：每份 `{path, sourced, exists, block, unreadable, policy}`，`block` = 别名块现状 `{present, version, outdated, conflictingFunctions, manualCleanupHint}`（`conflictingFunctions` = 块外自己定义的、与配置文件里某一段同名的函数 `{name, line, wins}`；`wins` = 新开的终端里敲这个名字起的是哪一个：`yours`（你写的）· `list`（清单那条）· `unclear`（说不清）） |
+| `rcCandidates` | ← | 启动文件候选（方言答列哪几份）：每份 `{path, sourced, exists, block, unreadable, policy, blockLines}`（`blockLines` = 把别名块装进这一份会写几行），`block` = 别名块现状 `{present, version, outdated, conflictingFunctions, manualCleanupHint}`（`conflictingFunctions` = 块外自己定义的、与配置文件里某一段同名的函数 `{name, line, wins}`；`wins` = 新开的终端里敲这个名字起的是哪一个：`yours`（你写的）· `list`（清单那条）· `unclear`（说不清）） |
 | `rcPath` | → | 人另指的那一份（`null` = 不指）：过围栏（只许落在 home 之内 · 符号链接不许跑出去）后并进候选 |
 | `shell` | → | `posix` / `powershell`（这台后端不在 Windows ⇒ `powershell` 拒） |
 
@@ -2408,12 +2416,12 @@ cc-bus 钩子诊断。
 |---|---|---|
 | `accounts` | ← | 这台的账号表（具名号，按账号库的顺序；表单「账号」那一格的选项） |
 | `binDir` | ← | 链接住的目录（`~/.cc-monitor/bin`） |
+| `editedAt` | ← | 上次 cc-monitor 写过之后有人改过 ⇒ 那份的修改时刻（按这台本地钟写好：当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年带年）；没改过 · cc-monitor 没写过 ⇒ `null` |
 | `exists` | ← | 配置文件在不在 |
 | `fileProblem` | ← | TOML 本身写坏 ⇒ `{line, message}`（这时 `profiles` 为空、不能按条目改）；否则 `null` |
 | `fingerprint` | ← | 盘上那份的指纹（不在 ⇒ `null`），存的时候交回 `profiles-write` |
 | `home` | ← | 这台的家目录（界面拿它把路径写成 `~/…`） |
 | `migrated` | ← | 旧别名清单一次性转进来之后那张说明 `{count, path, skipped}`（「知道了」之后 `null`） |
-| `modified` | ← | 盘上那份的修改时间（Unix 秒；不在 ⇒ `null`） |
 | `path` | ← | 配置文件的路径 |
 | `profiles` | ← | 每段 `{name, from, own: [{key, slot, vals, line}], agent, usable, problem: {line, message} \| null, kind: link/function, functionWhy, functionLine, said, form, accountShape}`：`accountShape` 是「账号那一形」`{account, tmux}`（自己只写了号、可再加 tmux，按合并下来的算；其余 `null`）：`said` 是树里那一行（自己写的几项，「标签 值」）；`form` 是表单回填（没写的格 `null` ＝ 继承）；`problem` 的原话与终端里敲这个名字得到的同一句 |
 | `seed` | ← | 配置文件不在时首建那两条的预览（同 `profiles` 一条的形状；在 ⇒ `[]`） |
@@ -2475,7 +2483,6 @@ cc-bus 钩子诊断。
 |---|---|---|
 | `changes` | → | 依次做的改动：`{op: "set", was, form}`（新增 `was: null`；名字变了 ⇒ 改名，基于它的跟着改）· `{op: "remove", name, children}`（还被基于 ⇒ `children` 必给：`reparent` 改成基于它的父 · `cascade` 一起删）· `{op: "init", seed}`（配置文件不在时建：`seed` ⇒ 带首建那两条）· `{op: "ackMigrated"}`（迁移说明知道了）。改完多出坏处 ⇒ 整批不写、`refused` |
 | `fingerprint` | → ← | 入：必给（字符串或 `null`），读回时的指纹；盘上此刻不是那一份 ⇒ `stale`。出：写完那一份的指纹 |
-| `modified` | ← | 写完那一份的修改时间（Unix 秒） |
 | `reload` | ← | 终端函数那份文件真改了 ⇒ 给人的那一句「已开的终端要重读」；否则 `null` |
 | `wrote` | ← | 配置文件 / 终端函数文件 / 链接动没动 |
 
@@ -3484,6 +3491,7 @@ cc-bus 钩子诊断。
 | `--files-stat` | ＝ 帧命令 `files-stat`：一个路径的元数据 |
 | `--files-write-text` | ＝ 帧命令 `files-write-text`：覆盖写一份已经在的普通文件 |
 | `--find-in-session` `[--include-tools] [--limit <n>] --query <q> <jsonl>` | 在一份会话里找一段文字：头 `{kind:"session_find",v:1}` · 每条命中 `{uuid, kind, before, matched, after}` · 尾 `{kind:"session_find_end",count,total}`；`limit` 缺省 500、封顶 2000 |
+| `--first-run` | ＝ 帧命令 `first-run`：首次运行「开始用」三步各自打没打勾 |
 | `--footprint-report` | ＝ 帧命令 `footprint-report`：「足迹」由这台后端出整份成品 |
 | `--fork-session` `<args>` | 从某条消息处分叉出一个新会话文件，出参 `ForkResult`（见下） |
 | `--history-annotate` | ＝ 帧命令 `history-annotate`：改一条历史注解 |

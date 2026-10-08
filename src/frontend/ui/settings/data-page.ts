@@ -11,7 +11,7 @@
  */
 import { tabs } from "../kit/tabs";
 import { button } from "../kit/button";
-import { tag, countBadge } from "../kit/badge";
+import { countBadge } from "../kit/badge";
 import { banner } from "../kit/banner";
 import { homeShort } from "../kit/path";
 import { copyText } from "../copy-table";
@@ -22,6 +22,7 @@ import { markChore, readDataReport, recallDataReport, type Chore, type ChoreStat
 import { remoteOwnBlock } from "./remote-own";
 import { agoText } from "./ago";
 import { choreRow } from "./chore-row";
+import { countTags } from "./chore-tags";
 import { fold } from "../kit/fold";
 import { toast } from "../kit/toast";
 import { revealInFolder } from "../reveal-in-folder";
@@ -491,33 +492,6 @@ function weight(r: Reading | undefined): number {
   if (!r.ok) return 1;
   const open = r.report.todo.filter((c) => c.state !== "done" && c.state !== "declined").length;
   return r.report.chores * 100 + open * 2;
-}
-
-/** 各类的数：要做（含过期）· 要你定 · 要装 · 可选（含要装 · 可选）· 已做；0 的不出。 */
-function countTags(list: readonly Chore[]): HTMLElement[] {
-  const open = list.filter((c) => c.state !== "done" && c.state !== "declined");
-  const n = {
-    must: open.filter((c) => c.kind === "must" || c.state === "expired").length,
-    decide: open.filter((c) => c.kind === "decide").length,
-    install: open.filter((c) => c.kind === "install").length,
-    optional: open.filter((c) => (c.kind === "optional" || c.kind === "installOptional") && c.state !== "expired").length,
-    done: list.filter((c) => c.state === "done").length,
-  };
-  const said: Record<keyof typeof n, (n: number) => string> = {
-    must: (x) => copyText("dataPage.chores.countMust", { n: x }),
-    decide: (x) => copyText("dataPage.chores.countDecide", { n: x }),
-    install: (x) => copyText("dataPage.chores.countInstall", { n: x }),
-    optional: (x) => copyText("dataPage.chores.countOptional", { n: x }),
-    done: (x) => copyText("dataPage.chores.countDone", { n: x }),
-  };
-  const out: HTMLElement[] = [];
-  for (const k of ["must", "decide", "install", "optional", "done"] as const) {
-    if (n[k] === 0) continue;
-    const t = tag(said[k](n[k]));
-    t.dataset.kind = k;
-    out.push(t);
-  }
-  return out;
 }
 
 function section(title: string, sub: string): HTMLElement {

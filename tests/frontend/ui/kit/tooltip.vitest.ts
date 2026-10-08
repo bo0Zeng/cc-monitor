@@ -13,7 +13,7 @@
  */
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import { makeInfoIcon } from "../../../../src/frontend/ui/settings/info-icon";
-import { attachTooltip, CARD_CLOSE_MS, delegateTooltip, hideTooltips, liveTooltipCount, placeCardRight, placeTip, TOOLTIP_DELAY_MS } from "../../../../src/frontend/ui/kit/tooltip";
+import { attachTooltip, CARD_CLOSE_MS, delegateTooltip, hideTooltips, __liveTooltipCountForTests, placeCardRight, placeTip, TOOLTIP_DELAY_MS } from "../../../../src/frontend/ui/kit/tooltip";
 import { closeMenu, openMenu } from "../../../../src/frontend/ui/kit/menu";
 
 const tipsInBody = () => document.querySelectorAll('[role="tooltip"]').length;
@@ -38,7 +38,7 @@ describe("E60：tooltip 不泄漏", () => {
       host.remove(); // rebuildCards 就是这么干的
     }
     expect(tipsInBody()).toBe(0);
-    expect(liveTooltipCount()).toBe(0);
+    expect(__liveTooltipCountForTests()).toBe(0);
   });
 
   it("悬停时 tooltip 才出现，离开即从 DOM 摘掉（不是只 display:none）", () => {

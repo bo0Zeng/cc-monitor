@@ -289,7 +289,7 @@ export function isSelectable(a: Account): boolean {
   //   · 兜底渲染路径：`ENV_RESET_DIMENSION` 推 `unset-config-dir` op
   //
   // 真正缺的是**选择链路**，不是注入形态：
-  //   1. `accountConfigDir()` 对它返回 null ⇒ 选号那一步说不出「用户显式选了账号 0」
+  //   1. 它不可选 ⇒ 选号那一步说不出「用户显式选了账号 0」
   //      （只能说 `unavailable`，那是「你要的号不能用」，语义不同）
   //   2. `AccountModifierOption` 没有账号 0 这个选项
   //   3. `tabs.ts:2283` 那个 `opt.kind === "base" ? … : …` 三元**不会编译报错**地把新变体
@@ -346,15 +346,6 @@ export function detectAccountMismatch(
   return liveAccount !== null && current !== null && liveAccount !== current;
 }
 
-/**
- * A4：账号名 → 该账号的 CLAUDE_CONFIG_DIR（用来带账号 resume/起会话）。
- * 仅当账号存在且**可选**（isolated + 鉴权前提就绪 + 目录在）才给；否则 null（不可选的绝不注入）。
- */
-export function accountConfigDir(state: AccountsState, name: string): string | null {
-  const acc = state.accounts.find((a) => a.name === name);
-  if (!acc || !isSelectable(acc)) return null;
-  return acc.configDir || null;
-}
 
 /** 账号徽章文本（tab 行用）：账号名首字符（ASCII 取前 2，其它取 1 个 code point）。 */
 export function badgeText(name: string): string {

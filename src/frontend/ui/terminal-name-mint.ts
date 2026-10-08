@@ -14,14 +14,11 @@
  *
  * 问不到（链路断 · 那台后端比这一问老 · 回的形状不认）⇒ [`MintOutcome`] `ok:false` 带原因，**不许**自己拼一个名字顶上 ——
  * 不避让的名字就是 issue #76 的形状：同一个 cwd 派生出同一个名字，撞上已有会话，**静默接进第一个会话，而用户以为开了新的**。
- * 「不铸名」之后怎么办归调用方：本机把 `null` 交给后端（它有一条如实的「不进容器」旧路）；
- * 远端**没有**不进 tmux 的起法 ⇒ [`refuseUnmintable`]：不起，说清是哪台、为什么。
+ * 「不铸名」之后怎么办归调用方：今天只有本机那一处问（把 `null` 交给后端，它有一条如实的「不进容器」旧路）。
  */
 import type { Origin } from "./ipc/origin";
 import { chan } from "../../comms/inward/chan";
 import { budgetWithin, jsonBody, peerVersionSaid, readJson, saidFrom } from "./ipc/chan-caller";
-import { toast } from "./kit/toast";
-import { copyText } from "./copy-table";
 
 export type MintOutcome = { ok: true; name: string } | { ok: false; why: string };
 
@@ -58,13 +55,4 @@ async function askMint(origin: Origin, args: { cwd: string }): Promise<MintOutco
 /** 起新会话 / 全新 resume：那台按 cwd 派生 `<项目名>-cc`、按它的会话快照避让。 */
 export function mintFreshTmuxName(origin: Origin, cwd: string): Promise<MintOutcome> {
   return askMint(origin, { cwd });
-}
-
-/** 远端铸不出名字 ⇒ 不起，说清是哪台、为什么（D4）。 */
-export function refuseUnmintable(origin: Origin, why: string): void {
-  toast(
-    copyText("tmuxMint.refused.title"),
-    copyText("tmuxMint.refused.body", { machine: origin, reason: why }),
-    { level: "error" },
-  );
 }
