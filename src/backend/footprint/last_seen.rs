@@ -73,10 +73,10 @@ pub(crate) fn read_at(path: &Path, args: &Value) -> Answer {
 
 /// `{origin, kind, value}` ⇒ 记下（时刻由这里盖）；`{origin, forget: true}` ⇒ 清掉那台（删机器时）。回 `{atMs}`。
 pub(crate) fn write_at(path: &Path, args: &Value, now_ms: u64) -> Answer {
-    let origin = origin_arg(args)?.to_string();
     if args.get("forget").is_some() {
-        return forget_at(path, args, &origin, now_ms);
+        return forget_at(path, args, now_ms);
     }
+    let origin = origin_arg(args)?.to_string();
     let kind = args
         .get("kind")
         .and_then(Value::as_str)
@@ -161,7 +161,8 @@ fn record(all: &mut Map<String, Value>, origin: String, kind: &str, value: &Valu
 }
 
 /// 清掉一台的上次值（两样都清）。只认 `{origin, forget: true}`：带着 `kind` / `value` 不收。那台没记过 ⇒ 照样回成、盘上不动。
-fn forget_at(path: &Path, args: &Value, origin: &str, now_ms: u64) -> Answer {
+fn forget_at(path: &Path, args: &Value, now_ms: u64) -> Answer {
+    let origin = origin_arg(args)?;
     if args.get("forget") != Some(&Value::Bool(true))
         || args.get("kind").is_some()
         || args.get("value").is_some()
