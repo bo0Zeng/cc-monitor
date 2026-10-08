@@ -517,7 +517,7 @@ export class RemoteSection {
     card?.setConnect(on);
   }
 
-  /** 页头下那一句：`4 台` ／ `4 台 · 1 台离线` ／ `4 台 · 1 台离线 · 1 台要更新`。 */
+  /** 页头下那一句：`机器 4` ／ `机器 4 · 离线 1` ／ `机器 4 · 离线 1 · 要更新 1`。 */
   private paintCount(): void {
     const n = this.cards.length + 1;
     const live = (id: string): boolean => this.findMachineRow(id) !== null && !this.isDisabledPage(id);

@@ -28,13 +28,15 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { REPO_ROOT } from "../test-support/repo-root.ts";
-import { censusList, loadTable, loadTerms, r1Hits, speech, type Entry, type Term } from "./copy-support.ts";
+import { censusList, loadTable, loadTerms, r1Hits, speech, type Entry, type Table, type Term } from "./copy-support.ts";
+import { TIGHTENED, W_CHECKS, type WRule } from "./copy-rules-w.ts";
 
 const RULES_PATH = resolve(REPO_ROOT, "src", "shared", "copy", "rules.json");
 const TABLE_TESTS = resolve(REPO_ROOT, "tests", "copy", "copy-table.vitest.ts");
+const DEBT_PATH = resolve(REPO_ROOT, "tests", "copy", "copy-rules-debt.json");
 const CENSUS = resolve(REPO_ROOT, "tests", "evidence", "K-T68-A1-outward-copy-census.py");
 
-interface Rule {
+interface Rule extends WRule {
   id: string;
   part: string;
   rule: string;
@@ -52,9 +54,22 @@ interface Rule {
   imperativeKinds?: string[];
   /** C-Y3：control 档的正例 —— 以动词开头、按 control 档查必须放过。 */
   controlGood?: string[];
+  /** 探针用哪个 role 跑正反例（按角色判的那几条）。 */
+  probeRole?: string;
+  /** 这几档不许豁免（C-W17：窄档的口语词没有例外）。 */
+  unwaivableKinds?: string[];
 }
 
-function loadRules(): Rule[] {
+/**
+ * 欠账名单：命中多的规矩不大批进豁免，而是把「今天还违反着的键」一次列全 ——
+ * 名单 == 现打（两向）：改好一条就得删一行（否则死账红），新长出一条越界当场红。
+ */
+export type Debt = Record<string, string[]>;
+export function loadDebt(): Debt {
+  return (JSON.parse(readFileSync(DEBT_PATH, "utf8")) as { debt?: Debt }).debt ?? {};
+}
+
+export function loadRules(): Rule[] {
   return (JSON.parse(readFileSync(RULES_PATH, "utf8")) as { rules?: Rule[] }).rules ?? [];
 }
 
@@ -66,12 +81,18 @@ interface Ctx {
   labelKinds: string[];
   /** 祈使动词那一条只查这几档 —— 从 `rules.json` 的 `C-Y3.imperativeKinds` 读，检法不写死。 */
   imperativeKinds: string[];
+  /** 规矩号 → 那一条（W 系检法从这里读词表 / 闭集）。 */
+  byId: Map<string, WRule>;
+  /** 全表（C-W13 指路核对拿「」里的字对表里的名字）。 */
+  table: Table;
 }
 
 /** 从规范里取 C-Y3 的三张表 —— 本文件三处共用这一个入口，不各抄一份。 */
-function y3Ctx(rules: Rule[], terms: Term[]): Ctx {
+export function y3Ctx(rules: Rule[], terms: Term[], table: Table = loadTable()): Ctx {
   const y3 = rules.find((r) => r.id === "C-Y3");
   return {
+    byId: new Map(rules.map((r) => [r.id, r])),
+    table,
     terms,
     colloquial: y3?.colloquial ?? [],
     imperative: y3?.imperative ?? [],
@@ -139,24 +160,37 @@ export const CHECKS: Record<string, Check> = {
     return n > 1 ? `括号补充 ${n} 处 > 1` : null;
   },
   "C-L4": (e) => (/^\s*(?:（[^（）]*）|\([^()]*\))\s*$/.test(e.zh) ? "整条被括号包住" : null),
+  // 收严的三条（C-L2 · C-P1 · C-Y4）替掉上面的旧实现；W 系（新写法 N 系）跟在后面。
+  ...TIGHTENED,
+  ...W_CHECKS,
 };
 
 /** 文案表逐条过全部机检规矩，带豁免：违反未豁免 · 豁免不可豁免的 · 死豁免 · 豁免了不存在的规矩，都是问题。 */
-export function tableViolations(table: Record<string, Entry>, rules: Rule[], ctx: Ctx): string[] {
+export function tableViolations(table: Record<string, Entry>, rules: Rule[], ctx: Ctx, debt: Debt = {}): string[] {
   const out: string[] = [];
   const byId = new Map(rules.map((r) => [r.id, r]));
+  const owed = new Map(Object.entries(debt).map(([id, keys]) => [id, new Set(keys)]));
+  for (const [id, keys] of Object.entries(debt)) {
+    if (!CHECKS[id]) out.push(`欠账名单里的 ${id} 不是一条有检法的规矩`);
+    if (keys.join("\n") !== [...new Set(keys)].sort().join("\n")) out.push(`欠账名单 ${id} 没排序或有重复`);
+    for (const k of keys) if (!(k in table)) out.push(`欠账名单 ${id} 的 ${k} 不在表里 —— 删掉这一行`);
+  }
   for (const [key, e] of Object.entries(table)) {
     const waive = e.waive ?? {};
     for (const id of Object.keys(waive)) {
       const r = byId.get(id);
       if (!r || r.check !== "机检") out.push(`${key}：豁免了 ${id}，它不是一条机检规矩`);
       else if (!r.waivable) out.push(`${key}：${id} 不可豁免`);
+      else if (r.unwaivableKinds?.includes(e.kind)) out.push(`${key}：${id} 在 ${e.kind} 档不可豁免`);
       if (!waive[id]?.trim()) out.push(`${key}：豁免 ${id} 没写理由`);
+      if (owed.get(id)?.has(key)) out.push(`${key}：${id} 既在欠账名单又登记了豁免 —— 二选一`);
     }
     for (const [id, check] of Object.entries(CHECKS)) {
       const v = check(e, ctx);
-      if (v && !(id in waive)) out.push(`${key}：违反 ${id}（${v}）`);
+      const inDebt = owed.get(id)?.has(key) ?? false;
+      if (v && !(id in waive) && !inDebt) out.push(`${key}：违反 ${id}（${v}）`);
       if (!v && id in waive) out.push(`${key}：${id} 的豁免是死的 —— 它没违反这一条，删掉豁免`);
+      if (!v && inDebt) out.push(`${key}：${id} 已经不违反了 —— 从欠账名单里删掉这一行`);
     }
   }
   return out;
@@ -220,7 +254,7 @@ describe("CP2a · 文案规范", () => {
   it("★ 文案表逐条过全部机检规矩（豁免登记的除外，且没有死豁免）", () => {
     const table = loadTable();
     expect(Object.keys(table).length, "文案表是空的 —— 这一条会零命中地绿").toBeGreaterThan(0);
-    expect(tableViolations(table, rules, ctx)).toEqual([]);
+    expect(tableViolations(table, rules, ctx, loadDebt())).toEqual([]);
   });
 
   it("规范里的正反例与实现一致：bad 被逮住、good 被放过", () => {
@@ -229,12 +263,19 @@ describe("CP2a · 文案规范", () => {
       const check = CHECKS[r.id];
       if (!check) continue;
       const kind = r.probeKind ?? "body";
+      const role = r.probeRole;
       for (const zh of r.bad)
-        if (!check({ kind, zh, args: [] }, ctx)) p.push(`${r.id} 放过了自己的反例「${zh}」`);
+        if (!check({ kind, role, zh, args: [] }, ctx)) p.push(`${r.id} 放过了自己的反例「${zh}」`);
       for (const zh of r.good)
-        if (check({ kind, zh, args: [] }, ctx)) p.push(`${r.id} 逮住了自己的正例「${zh}」`);
+        if (check({ kind, role, zh, args: [] }, ctx)) p.push(`${r.id} 逮住了自己的正例「${zh}」`);
     }
     expect(p).toEqual([]);
+  });
+
+  it("★ 新写法那几条（C-W*）每条都带正控：至少一条反例、一条正例", () => {
+    const w = rules.filter((r) => r.id.startsWith("C-W"));
+    expect(w.length, "rules.json 里一条 C-W 都没有").toBe(Object.keys(W_CHECKS).length);
+    expect(w.filter((r) => r.bad.length === 0 || r.good.length === 0).map((r) => r.id)).toEqual([]);
   });
 });
 
@@ -294,6 +335,18 @@ describe("CP2a · 文案规范判据自己会不会死（正控）", () => {
     expect(run({ kind: "body", zh: "好了", args: [], waive: { "C-T1": "理由" } })).toMatch(/死的/);
     expect(run({ kind: "body", zh: "**好**", args: [], waive: { "C-Y2": "理由" } })).toMatch(/不可豁免/);
     expect(run({ kind: "body", zh: "好了", args: [], waive: { "C-R3": "理由" } })).toMatch(/不是一条机检规矩/);
+  });
+
+  it("欠账名单：在名单里的违反放过 · 名单里已不违反的红 · 名单里的键不在表里红 · 没排序红 · 名单与豁免二选一", () => {
+    const bad = { kind: "body", zh: "这台已坏", args: [] };
+    const run = (t: Record<string, Entry>, d: Debt): string => tableViolations(t, rules, ctx, d).join("\n");
+    expect(run({ "a.b.c": bad }, {})).toMatch(/违反 C-W17/);
+    expect(run({ "a.b.c": bad }, { "C-W17": ["a.b.c"] })).toBe("");
+    expect(run({ "a.b.c": { kind: "body", zh: "已坏", args: [] } }, { "C-W17": ["a.b.c"] })).toMatch(/从欠账名单里删掉/);
+    expect(run({ "a.b.c": bad }, { "C-W17": ["a.b.c", "x.y.z"] })).toMatch(/x\.y\.z 不在表里/);
+    expect(run({ "a.b.c": bad, "a.b.d": bad }, { "C-W17": ["a.b.d", "a.b.c"] })).toMatch(/没排序/);
+    expect(run({ "a.b.c": { ...bad, waive: { "C-W17": "理由" } } }, { "C-W17": ["a.b.c"] })).toMatch(/二选一/);
+    expect(run({ "a.b.c": { kind: "title", zh: "这台", args: [], waive: { "C-W17": "理由" } } }, {})).toMatch(/title 档不可豁免/);
   });
 
   it("占位符名不算文字：{origin} 不会被术语表的 origin 禁词扫红", () => {
