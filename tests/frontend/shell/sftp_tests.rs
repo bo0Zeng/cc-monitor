@@ -796,7 +796,7 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
     let leftover = std::fs::read(&backend_path).expect("读数脚本 ② 留下的那份不在 —— 台架变了");
     let d_pre = decide().await;
     assert!(
-        matches!(&d_pre, Err(e) if e.contains("不说自己是哪一版")),
+        matches!(&d_pre, Err(e) if e.said.contains("不说自己是哪一版")),
         "无戳的旧文件 ⇒ 该显式失败：{d_pre:?}"
     );
     assert_eq!(
@@ -837,7 +837,7 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
     std::fs::write(&backend_path, b"#!/bin/sh\necho not ours\n").unwrap();
     let d3 = decide().await;
     assert!(
-        matches!(&d3, Err(e) if e.contains("不说自己是哪一版")),
+        matches!(&d3, Err(e) if e.said.contains("不说自己是哪一版")),
         "无戳的文件 ⇒ 该显式失败：{d3:?}"
     );
     // ② 落点上是旧版放的三行入口 ⇒ 同样不说自己是谁 ⇒ 显式失败、不覆盖（不留旧兼容）。
@@ -848,7 +848,7 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
     .unwrap();
     let d4 = decide().await;
     assert!(
-        matches!(&d4, Err(e) if e.contains("不说自己是哪一版")),
+        matches!(&d4, Err(e) if e.said.contains("不说自己是哪一版")),
         "旧入口 ⇒ 该显式失败：{d4:?}"
     );
     upload_verified(&fs, LANDING_REL, &bytes, 0o700)

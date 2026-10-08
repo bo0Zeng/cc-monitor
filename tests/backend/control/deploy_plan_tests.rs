@@ -178,9 +178,13 @@ async fn a_machine_this_build_does_not_carry_is_refused_before_the_landing_is_as
         deploy_contract::key_of("Linux", "aarch64").unwrap(),
         "p9a-mine".to_string(),
     )];
-    let (code, msg) = plan(&f, &aarch, "box", NOW).await.unwrap_err();
-    assert_eq!(code, "refused");
-    assert!(msg.contains("box"), "拒绝那句要点名那台：{msg}");
+    let e = plan(&f, &aarch, "box", NOW).await.unwrap_err();
+    assert_eq!(e.code, "refused");
+    assert!(
+        e.message.contains("box"),
+        "拒绝那句要点名那台：{}",
+        e.message
+    );
     assert_eq!(f.asked.lock().unwrap().len(), 1, "拒绝点在问落点之前");
 }
 
@@ -191,19 +195,55 @@ async fn a_windows_remote_is_refused_as_not_promised() {
         deploy_contract::UNAME_CMD.into(),
         said(0, "MINGW64_NT-10.0-19045 x86_64\n"),
     );
-    let (code, _) = plan(&f, &carried("p9a-mine"), "box", NOW)
+    let e = plan(&f, &carried("p9a-mine"), "box", NOW)
         .await
         .unwrap_err();
-    assert_eq!(code, "refused");
+    assert_eq!(e.code, "refused");
+}
+
+/// 那台答 `uname` 答了一句报错（Windows 默认 shell 没有它）⇒ `refused`；句子只说原因词，那句原话随失败交出去（进复制详情）。
+#[tokio::test]
+async fn what_the_machine_said_to_uname_goes_to_the_detail_not_the_sentence() {
+    let mut f = Fake::linux(Some("p9a-mine"));
+    f.exec.insert(
+        deploy_contract::UNAME_CMD.into(),
+        Ok(crate::dial::Captured {
+            stdout: String::new(),
+            stderr: "uname : The term 'uname' is not recognized\n".into(),
+            exit_status: Some(1),
+        }),
+    );
+    let e = plan(&f, &carried("p9a-mine"), "box", NOW)
+        .await
+        .unwrap_err();
+    assert_eq!(e.code, "refused");
+    assert!(!e.message.contains("not recognized"), "{}", e.message);
+    assert!(e.message.contains("box"), "{}", e.message);
+    assert_eq!(
+        e.raw.as_deref(),
+        Some("uname : The term 'uname' is not recognized")
+    );
+    // 帧面那一格：原话进详情。
+    let frame = e.into_reply("7".into(), "deploy-plan", &Value::Null);
+    let wire = serde_json::to_value(&frame).unwrap();
+    let detail = wire["detail"].as_str().unwrap_or_default();
+    assert!(detail.contains("is not recognized"), "{detail}");
+    assert!(
+        !wire["message"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("is not recognized"),
+        "{wire}"
+    );
 }
 
 #[tokio::test]
 async fn a_link_that_cannot_ask_uname_is_unreachable_not_a_refusal() {
     let f = Fake::default();
-    let (code, _) = plan(&f, &carried("p9a-mine"), "box", NOW)
+    let e = plan(&f, &carried("p9a-mine"), "box", NOW)
         .await
         .unwrap_err();
-    assert_eq!(code, "unreachable");
+    assert_eq!(e.code, "unreachable");
 }
 
 #[tokio::test]
@@ -211,10 +251,10 @@ async fn an_unstamped_landing_is_undecidable_whatever_it_holds() {
     // 落点上不说自己是谁的文件：一律显式失败、不动 —— 不认「从前那份三行入口」（不留旧兼容）。
     let mut f = Fake::linux(Some("x"));
     f.exec.insert(landing_scan(), said(1, ""));
-    let (code, _) = plan(&f, &carried("p9a-mine"), "box", NOW)
+    let e = plan(&f, &carried("p9a-mine"), "box", NOW)
         .await
         .unwrap_err();
-    assert_eq!(code, "undecidable");
+    assert_eq!(e.code, "undecidable");
 
     // 计划这一路只 stat 与扫戳：对面那一口（`Facing`）连「读回落点那一份」都没有，落点上是什么字节都认不成「我们从前那份」。
 }
@@ -303,7 +343,7 @@ fn carried_rows_outside_table_a_or_without_an_id_are_bad_args() {
         serde_json::json!({"carried": [{"os": "Plan9", "arch": "x86_64", "id": "p9a-x"}]}),
         serde_json::json!({"carried": [{"os": "Linux", "arch": "x86_64"}]}),
     ] {
-        assert_eq!(carried_of(&bad).unwrap_err().0, "bad_args", "{bad}");
+        assert_eq!(carried_of(&bad).unwrap_err().code, "bad_args", "{bad}");
     }
 }
 
@@ -673,7 +713,7 @@ fn landed(id: &str) -> Result<Option<Vec<u8>>, String> {
 fn place_verdict_places_only_upward_and_refuses_what_it_cannot_judge() {
     let me = || deploy_contract::key_of("Linux", "x86_64");
     let v = |disk| place_verdict(me(), disk, "p5v-mine", "本机", "/h/.cc-monitor/bin/ccm");
-    let place = |r: Result<Placed, (&'static str, String)>| matches!(r, Ok(Placed::Place(_)));
+    let place = |r: Result<Placed, Fail>| matches!(r, Ok(Placed::Place(_)));
     assert!(place(v(Ok(None))), "没装 ⇒ 放");
     assert!(place(v(Ok(Some(Vec::new())))), "0 字节 ⇒ 放");
     assert!(place(v(landed("p5v-mine"))), "同一版、字节不同 ⇒ 放");
@@ -692,14 +732,14 @@ fn place_verdict_places_only_upward_and_refuses_what_it_cannot_judge() {
         ("身份不唯一", Ok(Some(two))),
         ("读不了", Err("Permission denied".to_string())),
     ] {
-        let (code, _) = v(disk).expect_err(what);
-        assert_eq!(code, "undecidable", "{what}");
+        let e = v(disk).expect_err(what);
+        assert_eq!(e.code, "undecidable", "{what}");
     }
     let local_arm = deploy_contract::key_of("Linux", "aarch64");
-    let (code, said) = place_verdict(local_arm, Ok(None), "p5v-mine", "本机", "/d").unwrap_err();
-    assert_eq!(code, "refused");
+    let e = place_verdict(local_arm, Ok(None), "p5v-mine", "本机", "/d").unwrap_err();
+    assert_eq!(e.code, "refused");
     assert_eq!(
-        said,
+        e.message,
         Refusal::NotPromisedHere {
             os: "Linux".into(),
             arch: "arm64".into(),
@@ -708,7 +748,7 @@ fn place_verdict_places_only_upward_and_refuses_what_it_cannot_judge() {
         .say("本机"),
         "本机 (Linux, aarch64) 说的不是本机那一句不承诺"
     );
-    let (code, _) = place_verdict(
+    let e = place_verdict(
         deploy_contract::key_of("Darwin", "arm64"),
         Ok(None),
         "p5v-mine",
@@ -716,7 +756,7 @@ fn place_verdict_places_only_upward_and_refuses_what_it_cannot_judge() {
         "/d",
     )
     .unwrap_err();
-    assert_eq!(code, "refused", "表 A 没有产线的机器");
+    assert_eq!(e.code, "refused", "表 A 没有产线的机器");
 }
 
 /// 帧面：入参缺 / 相对路径 ⇒ `bad_args`；读真盘（不在 ⇒ 放；是自己这一版的戳 ⇒ 放）；答话恰两格。
@@ -732,7 +772,7 @@ fn the_place_frame_reads_the_one_file_and_answers_two_keys() {
         serde_json::json!({ "dest": "rel/ccm", "machine": "本机" }),
         serde_json::json!({ "dest": dest.to_string_lossy() }),
     ] {
-        assert_eq!(answer_place(&bad).unwrap_err().0, "bad_args", "{bad}");
+        assert_eq!(answer_place(&bad).unwrap_err().code, "bad_args", "{bad}");
     }
     if Key::this_machine()
         .and_then(|k| judge(Route::Local, Ok(k)))
@@ -747,7 +787,11 @@ fn the_place_frame_reads_the_one_file_and_answers_two_keys() {
         std::fs::write(&dest, stamp("p999z-future")).unwrap();
         assert_eq!(answer_place(&args).unwrap()["action"], "keep", "盘上更新");
     } else {
-        assert_eq!(answer_place(&args).unwrap_err().0, "refused", "这台不承诺");
+        assert_eq!(
+            answer_place(&args).unwrap_err().code,
+            "refused",
+            "这台不承诺"
+        );
     }
     let _ = std::fs::remove_dir_all(&d);
 }

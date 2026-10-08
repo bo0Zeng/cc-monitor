@@ -45,7 +45,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         ],
         fields: &[out("ack", "问 `uname` 那一趟拨号的 `DialAck` 原样（逐地址指纹 · 严格与否）：拨号在本机后端里，monitor 按它固化指纹（与自己开链路那几条同一个判定）"), out("action", "`skip`（已是这一版）· `deploy`（没装 / 0 字节 / 更旧）· `keep`（另一版、不比这一版旧 ⇒ 不动它）"), out("arch", "那台是表 A 的哪一格（`label` 说给人听：`Linux / x86_64`）"), out("expected", "那一格这一版带着的字节自报的身份（对照物）"), out("label", "那台是表 A 的哪一格（`label` 说给人听：`Linux / x86_64`）"), out("leftovers", "落点目录里没人要的上传残件（家目录相对，排序）；列不出那个目录 ⇒ `[]`（下次连上再问）"), out("os", "那台是表 A 的哪一格（`label` 说给人听：`Linux / x86_64`）"), out("theirs", "`keep` 时那台上那一份自报的身份，否则 `null`"), out("why", "人读原因（`skip` 时空串）")],
         takes_input: true,
-        run: Run::Async(|r| {
+        run: Run::AsyncData(|r| {
             Box::pin(async move {
                 let facing = crate::control::deploy_plan::DialFacing::new(
                     r.args
@@ -56,7 +56,6 @@ pub(super) const SPECS: &[CommandSpec] = &[
                 crate::control::deploy_plan::answer(&r.args, &facing)
                     .await
                     .map(Some)
-                    .map_err(|(c, m)| (c.to_string(), m))
             })
         }),
     },
@@ -84,11 +83,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         codes: &["bad_args", "refused", "undecidable"],
         fields: &[out("action", "`place`（放 / 换上去）· `keep`（盘上那一份不比这一份旧 ⇒ 不动、用它）"), arg("dest", "落点的绝对路径（不在 ⇒ 没装 ⇒ 放；读不了 ⇒ `undecidable`，不当成没装）"), arg("machine", "对人说话时这台叫什么（monitor 交「本机」）"), out("why", "人读原因（`keep` 时点名两边各是哪一版）")],
         takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::control::deploy_plan::answer_place(&r.args)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
+        run: Run::BlockingData(|r| crate::control::deploy_plan::answer_place(&r.args).map(Some)),
     },
     // **公钥一键推送**（本机常驻后端答）：`{machine, saved?, jump?, pubKeyPath?}` → `{outcome, pubPath, via}`。
     //   那台在可达表里 ⇒ 问它 `authorized-keys-add`；不在 ⇒ 沿池里那条 SSH 一次 exec（只写这一件）。本体 `assets/pubkey.rs`。

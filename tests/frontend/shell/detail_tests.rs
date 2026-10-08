@@ -77,3 +77,53 @@ fn a_shell_command_failure_is_one_shape_with_a_nonempty_detail() {
     let v = serde_json::to_value(&s).unwrap();
     assert_eq!(v.as_object().unwrap().len(), 2, "{v}");
 }
+
+/// 问后端一条命令没成：那台写了详情 ⇒ 原样带上（远端补「本机」）；没写（老后端 / 没走到那台）⇒ 壳写时刻 · 本机 · 命令。
+#[test]
+fn a_backend_call_failure_keeps_the_detail_the_backend_wrote() {
+    use crate::inbound_client::CallError;
+    let wrote = format!(
+        "{}：refused\n{}：uname: not found",
+        label("detail.label.code"),
+        label("detail.label.raw")
+    );
+    let refused = CallError::Remote {
+        code: "refused".into(),
+        message: "box 系统未知".into(),
+        detail: wrote.clone(),
+        data: None,
+    };
+    let s = Said::of_call(
+        "box 系统未知".into(),
+        "deploy-plan",
+        &Origin::local(),
+        &refused,
+    );
+    assert_eq!(s.said, "box 系统未知");
+    assert_eq!(s.detail, wrote, "本机那台写的那份原样");
+    let far = Said::of_call(
+        "x".into(),
+        "deploy-plan",
+        &Origin("devbox".into()),
+        &refused,
+    );
+    assert!(far.detail.starts_with(&wrote), "{}", far.detail);
+    assert!(
+        far.detail
+            .contains(&format!("\n{}：cc-monitor ", label("detail.label.local"))),
+        "{}",
+        far.detail
+    );
+    let s = Said::of_call(
+        "y".into(),
+        "deploy-plan",
+        &Origin::local(),
+        &CallError::Disconnected,
+    );
+    assert!(
+        s.detail
+            .contains(&format!("{}：deploy-plan", label("detail.label.command"))),
+        "{}",
+        s.detail
+    );
+}

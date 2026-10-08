@@ -27,6 +27,7 @@ import type { JsonlLinePayload } from "./events";
 import { detectAccountMismatch, type SessionAccount } from "./accounts";
 import type { BehaviorConfig } from "./behavior";
 import { toast, undoToast } from "./kit/toast";
+import { detailOf } from "./kit/detail";
 import { copyText } from "./copy-table";
 import { fullTitle, needsOf, needsWord } from "./session-face";
 import { SeqSet, TailWindow } from "./live-window";
@@ -1683,8 +1684,8 @@ export class TabManager {
     try {
       done = await updateBackendOf(origin, machine, () => show(view(copyText("front.title.updating", { machine }), "", "grey", [])));
     } catch (e) {
-      const detail = e instanceof Error ? e.message : String(e);
-      show(view(copyText("front.title.updateFailed", { machine }), detail, "red", [{ kind: "retry-update" }, { kind: "copy", detail }]));
+      const said = e instanceof Error ? e.message : String(e);
+      show(view(copyText("front.title.updateFailed", { machine }), said, "red", [{ kind: "retry-update" }, { kind: "copy", detail: detailOf(e) }]));
       return;
     }
     if (done === null) return;

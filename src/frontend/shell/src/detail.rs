@@ -127,6 +127,43 @@ impl Said {
     }
 }
 
+impl Said {
+    /// 壳问后端一条命令没成（`inbound_client` 那一口）：那台写了详情 ⇒ 原样带上（远端补「本机」一行）；
+    /// 没写（老后端 / 没走到那台：断了 · 超时 · 不认这条）⇒ 壳写时刻 · 本机 · 命令 · 码。
+    pub(crate) fn of_call(
+        said: String,
+        command: &str,
+        origin: &crate::origin::Origin,
+        e: &crate::inbound_client::CallError,
+    ) -> Said {
+        use crate::inbound_client::CallError;
+        let detail = match e {
+            CallError::Remote { detail, .. } if !detail.trim().is_empty() => {
+                relayed(origin, detail)
+            }
+            other => {
+                let code = match other {
+                    CallError::Remote { code, .. } | CallError::Unavailable { code, .. } => {
+                        code.as_str()
+                    }
+                    CallError::Unsupported { .. } => "unsupported",
+                    CallError::TooManyPending => "too_many_pending",
+                    CallError::Disconnected => "disconnected",
+                    CallError::Cancelled => "cancelled",
+                    CallError::Timeout { .. } => "timeout",
+                };
+                Detail::new()
+                    .item(Label::At, now())
+                    .item(Label::Local, local_line())
+                    .item(Label::Command, command)
+                    .item(Label::Code, code)
+                    .render()
+            }
+        };
+        Said { said, detail }
+    }
+}
+
 /// 壳命令里那句话（`?` 与 `.into()` 经这里）：详情带时刻与本机。
 impl From<String> for Said {
     fn from(said: String) -> Said {

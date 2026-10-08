@@ -796,6 +796,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     key_from_uname: NONE,
     key_of: NONE,
     label: NONE,
+    raw: NONE, // 拒绝里那台答的原话（进复制详情；TS 不判拒绝）
     say: NONE,
     stamp_scan_cmd: NONE,
     this_machine: NONE,

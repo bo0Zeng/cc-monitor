@@ -666,12 +666,17 @@ export const FRONT_SCENES: Scene[] = [
     tooOld(() => "已安装后端（p13，x86_64）到 ~/.cc-monitor/bin/ccm（原 p12 · 换为 p13）。")(w);
     w.commands.backend_start = () => Promise.reject("拨不通");
   }),
-  frontScene("panel-front-update-failed", "↗ · ［更新］没成", "部署失败 ⇒ 浮层红着说更新失败、带原文，［重试］再更新一次 ·［复制详情］", async () => {
+  frontScene("panel-front-update-failed", "↗ · ［更新］没成", "那台答不出系统（默认 shell 没有 uname）⇒ 浮层红着说更新失败、那一句只说原因词，［重试］再更新一次 ·［复制详情］（那台的原话在详情里）", async () => {
     await frontTooOld();
     await clickUpdate();
     await byText("[data-role=front-result]", /更新失败/);
     await sleep(400);
-  }, tooOld(() => Promise.reject("上传 ~/.cc-monitor/bin/ccm 失败：磁盘已满"))),
+  }, tooOld(() =>
+    Promise.reject({
+      said: "devbox 系统未知 · 未安装 · 应答报错",
+      detail: "时刻：2026-10-08 14:02:11 +08:00\n机器：Linux x86_64 · 后端 p13-shots\n命令：deploy-plan\n码：refused\n原话：uname : The term 'uname' is not recognized",
+    }),
+  )),
   frontScene("panel-front-busy", "↗ · 在找终端", "壳那一跳超过 300ms 还没回 ⇒ ↗ 转圈、旁边「查找终端…」", async () => {
     await mainReady(ALL_TABS);
     await clickHeadFront();

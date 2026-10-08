@@ -44,7 +44,7 @@ mod cli_only;
 mod doors;
 mod drain;
 mod sniff;
-mod spec;
+pub(crate) mod spec;
 
 pub(crate) use caps::install as install_total;
 pub use cli_only::CLI_ONLY_DOCS;

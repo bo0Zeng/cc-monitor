@@ -31,7 +31,32 @@ impl From<(String, String)> for Fail {
     }
 }
 
+impl From<(&'static str, String)> for Fail {
+    fn from((code, message): (&'static str, String)) -> Self {
+        Fail::new(code, message)
+    }
+}
+
 impl Fail {
+    /// 码 ＋ 那一句（没有原话、没有 `data`）。
+    pub(crate) fn new(code: &str, message: String) -> Fail {
+        Fail {
+            code: code.to_string(),
+            message,
+            data: None,
+            raw: None,
+        }
+    }
+
+    /// 带上下层原话（进复制详情；空 / 缺 ⇒ 不带）。
+    pub(crate) fn with_raw(mut self, raw: Option<&str>) -> Fail {
+        self.raw = raw
+            .map(str::trim)
+            .filter(|r| !r.is_empty())
+            .map(str::to_string);
+        self
+    }
+
     /// 这次失败的应答帧（`cmd` 是命令名，进详情的「命令」那一项）。
     /// 这条命令有「码 → 句」表（[`crate::stream::said::reword`]）⇒ 句子换成表里那一句，处理器原来那句进原话。
     pub(crate) fn into_reply(

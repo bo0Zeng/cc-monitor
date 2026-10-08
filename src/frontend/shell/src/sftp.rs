@@ -225,7 +225,7 @@ const PLAN_BUDGET: std::time::Duration = std::time::Duration::from_secs(120);
 pub(crate) const PLAN_CMD: &str = "deploy-plan";
 
 /// 问本机常驻后端要一份计划。入参只有事实：怎么够到那台（拨号请求）· 这一版带着哪几格字节、各自自报的身份。
-async fn ask_plan(cfg: &RemoteConfig) -> Result<Plan, String> {
+async fn ask_plan(cfg: &RemoteConfig) -> Result<Plan, Said> {
     ask_plan_for(cfg, &crate::byte_table::carried_backends()).await
 }
 
@@ -233,29 +233,34 @@ async fn ask_plan(cfg: &RemoteConfig) -> Result<Plan, String> {
 async fn ask_plan_for(
     cfg: &RemoteConfig,
     carried: &[(deploy_contract::Key, &str)],
-) -> Result<Plan, String> {
+) -> Result<Plan, Said> {
     use crate::backend_route::{route_call_error, Routed};
     let carried: Vec<serde_json::Value> = carried
         .iter()
         .map(|(k, id)| serde_json::json!({ "os": k.os.label(), "arch": k.arch.label(), "id": id }))
         .collect();
-    let dial = crate::dial_host::transfer_dial(cfg)?;
+    let command = |said: String| Said::new(said, PLAN_CMD, None);
+    let dial = crate::dial_host::transfer_dial(cfg).map_err(command)?;
     let args = serde_json::json!({
         "dial": dial,
         "carried": carried,
         "machine": cfg.origin_label(),
     });
-    let client = crate::dial_host::local_backend_accepting(PLAN_CMD).await?;
-    let data =
-        client
-            .call(PLAN_CMD, args, PLAN_BUDGET)
-            .await
-            .map_err(
-                |e| match route_call_error(&e, |_code, message| message.to_string()) {
-                    Routed::NoChannel(s) | Routed::Refused(s) => s,
-                },
-            )?;
-    let plan = decode_plan(&data.ok_or_else(|| copy_text("rsSftp.plan.internal", &[]))?)?;
+    let client = crate::dial_host::local_backend_accepting(PLAN_CMD)
+        .await
+        .map_err(command)?;
+    // 计划由本机常驻后端出 ⇒ 它写的那份详情（那台答 `uname` 的原话也在里面）原样带上。
+    let data = client
+        .call(PLAN_CMD, args, PLAN_BUDGET)
+        .await
+        .map_err(|e| {
+            let said = match route_call_error(&e, |_code, message| message.to_string()) {
+                Routed::NoChannel(s) | Routed::Refused(s) => s,
+            };
+            Said::of_call(said, PLAN_CMD, &crate::origin::Origin::local(), &e)
+        })?;
+    let plan = decode_plan(&data.ok_or_else(|| command(copy_text("rsSftp.plan.internal", &[])))?)
+        .map_err(command)?;
     crate::machine_state::note_os(&cfg.origin_label(), plan.key.os.label());
     // 第一次连一台没钉过指纹的机器就在这一跳 ⇒ 照 monitor 自己开链路那几条同一个判定固化。
     crate::dial_host::settle_host_key(cfg, &dial, &plan.ack);
@@ -334,7 +339,7 @@ async fn sweep_leftovers(leftovers: &[String], fs: &RemoteFs, origin: &str) {
 pub async fn ensure_backend_deployed(cfg: &RemoteConfig) -> Result<String, DeployError> {
     let plan = match ask_plan(cfg).await {
         Ok(p) => p,
-        Err(why) => return Err(DeployError::Refused(why)),
+        Err(why) => return Err(DeployError::Refused(why.said)),
     };
     let bin = planned_binary(&plan)?;
     // 🔴 `K-R70`：**把这几 MB 字节推到别人机器上之前，先让它自己说一遍它是谁。**

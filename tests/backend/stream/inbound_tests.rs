@@ -440,7 +440,6 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "ext-hub-apply",
         "pubkey-push",      // 等远端（问那台后端 / 一次 exec），真异步
         "files-grep",       // 可撤：走那一趟在阻塞线程池上、看取消位，future 被丢即收手
-        "deploy-plan",      // 真异步（拨号 / 等远端 capture · SFTP），在 await 点可取消
         "resident-verdict", // 纯判定，普通 spawn
         "remote-reach",
         "history-list",
@@ -458,6 +457,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
     }
     // 换号重启：可撤档、失败可带 `data` 的那一档（起 tmux 那几步自己挪到阻塞线程池）。
     assert!(matches!(d("session-restart"), Disposition::SpawnData(..)));
+    // 部署计划：真异步（拨号 / 等远端 capture · SFTP），在 await 点可取消；失败带那台答 `uname` 的原话（进复制详情）。
+    assert!(matches!(d("deploy-plan"), Disposition::SpawnData(..)));
     assert!(matches!(d("cancel"), Disposition::Done));
     assert!(matches!(d("nope"), Disposition::Reply(..)));
     // 链路四条是硬臂、**就地**做完（不进任何 spawn 档）：`link-data` 要保序，

@@ -12755,25 +12755,19 @@
     "rsByteTable.key.unreadable": {
       "kind": "error",
       "role": "原因格",
-      "zh": "应答无法解析 · 「{reply}」",
-      "args": ["reply"]
+      "zh": "应答无法解析",
+      "args": []
     },
     "rsByteTable.key.said": {
       "kind": "error",
       "role": "原因格",
-      "zh": "应答「{said}」",
-      "args": ["said"]
+      "zh": "应答报错",
+      "args": []
     },
     "rsByteTable.key.noAnswer": {
       "kind": "error",
       "role": "原因格",
       "zh": "无应答",
-      "args": []
-    },
-    "rsByteTable.key.notUtf8": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "应答无法解析",
       "args": []
     },
     "rsFootprintClient.env.noHome": {

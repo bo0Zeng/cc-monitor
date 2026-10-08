@@ -305,7 +305,6 @@
       "rsBackendPolicy.call.failed",
       "rsBackendPolicy.death.brief",
       "rsBackendPolicy.status.exit",
-      "rsByteTable.key.unreadable",
       "rsChanHost.start.bindFailed",
       "rsChanWire.frame.badHead",
       "rsConfig.write.unreadable",

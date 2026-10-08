@@ -2346,14 +2346,19 @@ describe("：↗ 远端那一格按顺序问三方", () => {
     expect(popText()).toContain(copyText("front.body.redialFailed"));
     expect(popButtons()).toEqual([copyText("front.act.reconnect")]);
 
-    // 部署失败：同一个浮层里红着说，带原文可复制；［重试］再更新一次。
+    // 部署失败：同一个浮层里红着说；壳带回的复制详情挂在［复制详情］上（复制的是那份详情，不是那一句）；［重试］再更新一次。
     vi.mocked(updateBackendOf).mockReset();
-    vi.mocked(updateBackendOf).mockRejectedValue(new Error("上传失败"));
+    vi.mocked(updateBackendOf).mockRejectedValue(Object.assign(new Error("上传失败"), { detail: "码：refused" }));
     await clickUpdate();
     expect(pop()!.firstElementChild!.textContent).toBe(copyText("front.title.updateFailed", { machine: "devbox" }));
     expect(pop()!.dataset.shade).toBe("red");
     expect(popText()).toContain("上传失败");
     expect(popButtons()).toEqual([copyText("front.act.retry"), copyText("detail.act.copy")]);
+    const copied = vi.fn(() => Promise.resolve());
+    Object.defineProperty(navigator, "clipboard", { value: { writeText: copied }, configurable: true });
+    [...pop()!.querySelectorAll("button")].find((b) => b.textContent === copyText("detail.act.copy"))!.click();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(copied.mock.calls.map((c) => (c as unknown[])[0])).toEqual([`${copyText("front.title.updateFailed", { machine: "devbox" })}\n码：refused`]);
     [...pop()!.querySelectorAll("button")].find((b) => b.textContent === copyText("front.act.retry"))!.click();
     for (let i = 0; i < 4; i++) await new Promise((r) => setTimeout(r, 0));
     expect(vi.mocked(updateBackendOf), "失败态的［重试］是再更新一次").toHaveBeenCalledTimes(2);
