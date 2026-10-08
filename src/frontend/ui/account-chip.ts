@@ -114,7 +114,7 @@ export class AccountChip {
     btn.appendChild(this.prefixEl);
     const iconSpan = document.createElement("span");
     iconSpan.className = "status-account-icon";
-    iconSpan.textContent = copyText("accountChip.ctor.icon");
+    iconSpan.appendChild(icon("account", "compact"));
     iconSpan.setAttribute("aria-hidden", "true");
     btn.appendChild(iconSpan);
     this.iconEl = iconSpan;
@@ -279,15 +279,10 @@ export class AccountChip {
     }
     this.labelSpan.textContent = text;
     this.element.setAttribute("aria-label", copyText("acct.chip.ariaDefault", { name: text }));
-    // account-ux U4：ready 时把 👤 换成当前账号的彩色头像（与 tab 徽章同色系 → 肉眼可对应）。
-    // U8 休眠：只有 1 个可选账号时颜色区分不了任何东西 → 退回 👤，等加了第二个号再点亮。
+    // account-ux U4：ready 时把账号图标换成当前账号的彩色头像（与 tab 徽章同色系 → 肉眼可对应）。
+    // U8 休眠：只有 1 个可选账号时颜色区分不了任何东西 → 退回账号图标，等加了第二个号再点亮。
     const cur = currentWorkingAccount(st);
-    this.iconEl.textContent = "";
-    if (cur && accountColorsActive(st)) {
-      this.iconEl.appendChild(accountAvatarEl(cur.name));
-    } else {
-      this.iconEl.textContent = copyText("accountChip.refresh.icon");
-    }
+    this.iconEl.replaceChildren(cur && accountColorsActive(st) ? accountAvatarEl(cur.name) : icon("account", "compact"));
     this.element.style.display = "";
   }
 

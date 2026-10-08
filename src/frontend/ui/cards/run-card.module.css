@@ -35,8 +35,8 @@
   }
 
   .runIcon {
+    display: inline-flex;
     flex: none;
-    width: 1em;
     color: var(--text-faint);
   }
 

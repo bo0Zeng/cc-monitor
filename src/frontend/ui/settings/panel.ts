@@ -1700,8 +1700,9 @@ export class SettingsPanel {
     const resetBtn = document.createElement("button");
     resetBtn.type = "button";
     resetBtn.className = "settings-field-reset";
-    resetBtn.textContent = copyText("settingsPanel.field.reset");
+    resetBtn.appendChild(icon("reset", "compact"));
     resetBtn.title = copyText("settingsPanel.field.resetHint", { label: f.label });
+    resetBtn.setAttribute("aria-label", resetBtn.title);
     resetBtn.addEventListener("click", (e) => {
       // row 是 <label>，点击会冒泡到关联的 input；阻止默认 + 阻止冒泡
       e.preventDefault();

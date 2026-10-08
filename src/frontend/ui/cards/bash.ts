@@ -4,6 +4,7 @@
  */
 
 import { copyText } from "../copy-table";
+import { icon } from "../kit/icon";
 
 export interface BashInput {
   command: string;
@@ -18,7 +19,7 @@ export interface BashOutput {
 const OUTPUT_COLLAPSE_LINES = 30;
 const OUTPUT_HEAD_LINES = 20;
 
-/** 终端风格命令卡：❯ npm install && npm run build */
+/** 终端风格命令卡：提示符箭头 ＋ npm install && npm run build */
 export function buildBashInputCard(
   input: BashInput,
   /** 记录的钟面（后端写好的 `timeText`）。 */
@@ -29,7 +30,7 @@ export function buildBashInputCard(
 
   const prompt = document.createElement("span");
   prompt.className = "bash-prompt";
-  prompt.textContent = copyText("bash.input.prompt");
+  prompt.appendChild(icon("caretRight", "compact"));
   card.appendChild(prompt);
 
   const cmd = document.createElement("code");
@@ -56,16 +57,16 @@ export function buildBashOutputCard(
 
   const header = document.createElement("div");
   header.className = "bash-output-header";
-  const icon = document.createElement("span");
-  icon.className = "bash-prompt";
-  icon.textContent = copyText("bash.output.icon");
+  const mark = document.createElement("span");
+  mark.className = "bash-prompt";
+  mark.appendChild(icon("terminal", "compact"));
   const label = document.createElement("span");
   label.className = "bash-output-label";
   label.textContent = copyText("bash.output.title");
   const ts = document.createElement("span");
   ts.className = "bash-ts";
   ts.textContent = time;
-  header.append(icon, label, ts);
+  header.append(mark, label, ts);
   card.appendChild(header);
 
   const stdout = output.stdout.trim();

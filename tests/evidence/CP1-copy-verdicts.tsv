@@ -52,7 +52,7 @@ src/frontend/shell/src/backend_policy.rs:400	[死亡账] origin={origin} 判定=
 src/frontend/filewin/src/fonts.rs:257	向式横模滚长	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案
 src/frontend/filewin/src/fonts.rs:258	头选项	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案〔文案第四段 D 类：探针 −`⚠ 事 任 何 准 叫 和 哪 备 好 带 引 忙 掉 正 种 给 许 趟 都 面 ； ？`〕
 src/frontend/filewin/src/fonts.rs:293	变收	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔F9c 与 FW34 合并〕F9c 删掉的 9 个字里仍被 preview / workspace 用着的两个）
-src/frontend/filewin/src/fonts.rs:277	×★☆书加找移签	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（书签栏那几个字）
+src/frontend/filewin/src/fonts.rs:277	×书加找移签	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（书签栏那几个字）
 src/frontend/filewin/src/fonts.rs:326	处	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（搬家那一跳两句的字；那两句随书签旧键退役删了，只剩别处还用的 `处`）
 src/frontend/filewin/src/fonts.rs:291	显示预	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（预览那几个字）
 src/frontend/filewin/src/scale.rs:134	行 {:>7} | 首屏 {:>7.2} ms | 帧时中位 {:>6.3} ms | p99 {:>6.3} ms | 物化 {:>3} 行 | RSS {:>7} KiB	保留	[不对外] 性能秤 F1 的 Display（cargo test 判据输出），不上界面
@@ -149,7 +149,7 @@ src/frontend/filewin/src/fonts.rs:352	停击情详车达	保留	[不对外] 字�
 src/frontend/filewin/src/fonts.rs:354	恢	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（删除那一问「不可恢复」）
 src/frontend/filewin/src/fonts.rs:356	止计	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（「进度」表「开始后不可停止」「计算大小」）
 src/frontend/filewin/src/fonts.rs:358	离线采	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（断线条「离线 · 采样」「离线 · 只读」）
-src/frontend/filewin/src/fonts.rs:361	›弃放留	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（编辑页头条面包屑 ·「放弃改动并重开」「改动保留」）
+src/frontend/filewin/src/fonts.rs:361	弃放留	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（编辑页「放弃改动并重开」「改动保留」）
 src/frontend/filewin/src/fonts.rs:364	三人填照致	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（就地操作那一批：改权限「三位数」「其他人」「需填」· 同名那张表「照传」·「当前权限不一致」）
 src/frontend/filewin/src/fonts.rs:366	例待等	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（改权限「例 644」·「进度」表断线「等待重连」）
 src/frontend/filewin/src/fonts.rs:368	松	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（拖进来那一层「松开上传」）

@@ -8,49 +8,9 @@
     "C-T1": [],
     "C-L2": [],
     "C-P1": [],
-    "C-W1": [
-      "accountChip.ctor.icon",
-      "accountChip.refresh.icon",
-      "bash.input.prompt",
-      "bash.output.icon",
-      "branchButton.attachBranchButton.icon",
-      "branchFold.wrapRun.arrow",
-      "cssMarks.ask.chosen",
-      "cssMarks.branch.mark",
-      "cssMarks.cell.background",
-      "cssMarks.data.dir",
-      "cssMarks.data.file",
-      "cssMarks.fold.closed",
-      "cssMarks.fold.open",
-      "data.note.icon",
-      "extPage.dot.differs",
-      "extPage.dot.missing",
-      "extPage.dot.project",
-      "extPage.dot.same",
-      "extPage.row.noteMark",
-      "keybindingEditor.buildActionRow.reset",
-      "machineCard.build.expandedIcon",
-      "machineCard.collapsed.icon",
-      "machineCard.stage.failIcon",
-      "machineCard.stage.fingerprintIcon",
-      "machineCard.stage.okIcon",
-      "machineCard.stage.readyIcon",
-      "rsFilewinBookmarks.star.off",
-      "rsFilewinBookmarks.star.on",
-      "rsFilewinEditPage.crumb.sep",
-      "runs.icon.done",
-      "runs.icon.failed",
-      "runs.icon.running",
-      "runs.icon.stopped",
-      "settingsPanel.field.reset",
-      "slash.card.icon",
-      "speaker.notice.done",
-      "speaker.notice.failed"
-    ],
+    "C-W1": [],
     "C-W3": [
-      "accountChip.ctor.icon",
-      "accountChip.label.queryFailed",
-      "accountChip.refresh.icon"
+      "accountChip.label.queryFailed"
     ],
     "C-W4": [],
     "C-W5": [],
@@ -70,9 +30,7 @@
       "terminalReads.preview.unobservable",
       "tmuxControl.kill.badName"
     ],
-    "C-Y4": [
-      "runs.icon.unknown"
-    ],
+    "C-Y4": [],
     "C-W10": [
       "backend.ctor.intro",
       "backend.stopSaid.graceful",
@@ -80,9 +38,7 @@
       "backend.stopSaid.notRunning"
     ],
     "C-W11": [],
-    "C-W12": [
-      "slash.card.icon"
-    ],
+    "C-W12": [],
     "C-W13": [],
     "C-W14": [
       "accountOps.said.contract",

@@ -177,12 +177,6 @@ pub static ADD_LABEL: std::sync::LazyLock<String> =
 /// 当前目录已经在书签里时。
 pub static DROP_LABEL: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("rsFilewinBookmarks.label.drop", &[]));
-/// 每条书签后面那颗「删掉」。
-/// 地址栏右端那颗星：不在书签里 ☆ · 在 ★（悬停说 [`ADD_LABEL`] / [`DROP_LABEL`]）。
-pub static STAR_OFF: std::sync::LazyLock<String> =
-    std::sync::LazyLock::new(|| copy_text("rsFilewinBookmarks.star.off", &[]));
-pub static STAR_ON: std::sync::LazyLock<String> =
-    std::sync::LazyLock::new(|| copy_text("rsFilewinBookmarks.star.on", &[]));
 
 impl Shelf {
     /// 开窗时建：读一次那台机器的书签。

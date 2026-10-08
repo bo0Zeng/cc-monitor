@@ -9,7 +9,7 @@
 import type { ChildRunTag } from "../generated/ChildRunTag";
 import type { RunInfo } from "../generated/RunInfo";
 import type { RunState } from "../generated/RunState";
-import { runLastText, runStateIcon, runStateText } from "../runs";
+import { runLastText, runStateMark, runStateText } from "../runs";
 import { copyText } from "../copy-table";
 import { fmtDur } from "../quota-lines";
 import { icon } from "../kit/icon";
@@ -87,7 +87,7 @@ export function markRunCard(card: HTMLElement, run: string, state: RunState, inf
   st.run = run;
   card.dataset.runState = state;
   st.icon.dataset.state = state;
-  st.icon.textContent = runStateIcon(state);
+  st.icon.replaceChildren(runStateMark(state));
   const took =
     info && state !== "running" && state !== "unknown" && info.started_ms !== undefined && info.ended_ms !== undefined
       ? copyText("agentWindow.facts.took", { dur: fmtDur((info.ended_ms - info.started_ms) / 1000) })

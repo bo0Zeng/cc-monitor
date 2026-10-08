@@ -17,7 +17,7 @@ import type { IconName } from "./kit/icon";
 import { emptyState } from "./kit/empty";
 import { tag } from "./kit/badge";
 import type { RunInfo } from "./generated/RunInfo";
-import { panelGroups, runLabel, runLastText, runStateIcon, runStateText, type LiveBlockView } from "./runs";
+import { panelGroups, runLabel, runLastText, runStateMark, runStateText, type LiveBlockView } from "./runs";
 
 /** 宿主给面板的口：开某个子运行的窗口 · 它的窗口开着没有 · 它此刻在生成的那一块。 */
 export interface AgentsPanelHost {
@@ -233,7 +233,7 @@ export class AgentsPanel {
       spans.push(s);
       return s;
     };
-    span("agent-icon", runStateIcon(r.state));
+    span("agent-icon", "").appendChild(runStateMark(r.state));
     if (r.kind) span("agent-type", r.kind);
     const label = runLabel(r);
     span("agent-label", label);

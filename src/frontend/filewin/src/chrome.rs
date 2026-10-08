@@ -239,20 +239,13 @@ impl FileWindow {
                     ),
                     egui::StrokeKind::Inside,
                 );
-                // 右端那颗星：当前目录在不在书签里（☆ 加 · ★ 去，同浏览器）；有损目录 / 没接书签不画。
+                // 右端那颗星（Phosphor 线形 STAR，规范 V9 只用线形一套）：当前目录在不在书签里只差颜色 ——
+                // 不在 ⇒ `text2`（点了加）· 在 ⇒ `accent`（点了去，同浏览器）；有损目录 / 没接书签不画。
                 let star = match (&self.shelf, lossy) {
                     (Some(shelf), false) => Some(if shelf.contains(&self.cwd) {
-                        (
-                            super::bookmarks::STAR_ON.as_str(),
-                            super::bookmarks::DROP_LABEL.as_str(),
-                            p.accent,
-                        )
+                        (ph::STAR, super::bookmarks::DROP_LABEL.as_str(), p.accent)
                     } else {
-                        (
-                            super::bookmarks::STAR_OFF.as_str(),
-                            super::bookmarks::ADD_LABEL.as_str(),
-                            p.text2,
-                        )
+                        (ph::STAR, super::bookmarks::ADD_LABEL.as_str(), p.text2)
                     }),
                     _ => None,
                 };
@@ -1166,7 +1159,7 @@ impl Workspace {
                     let list = shelf.list();
                     if list.is_empty() {
                         ui.label(egui::RichText::new(copy_text("rsFilewinChrome.side.noBookmarks", &[])).color(p.text2).small());
-                        ui.label(egui::RichText::new(copy_text("rsFilewinChrome.side.noBookmarksHint", &[])).color(p.faint).small());
+                        ui.label(egui::RichText::new(copy_text("rsFilewinChrome.side.noBookmarksHint", &[("star", ph::STAR)])).color(p.faint).small());
                     }
                     let mut drop: Option<String> = None;
                     for d in list {

@@ -16,6 +16,7 @@
  * - 做完之后重读那张表（远端那台先让本机后端对它同步一趟），点自己变；不轮询。
  */
 import { copyText } from "../copy-table";
+import { icon, type IconName } from "../kit/icon";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
 import { commands } from "../ipc/commands";
 import { syncAssets } from "../assets-sync-reads";
@@ -60,18 +61,13 @@ const TONE_CLASS: Record<"ok" | "bad" | "unknown", string> = {
   unknown: "ext-hook-state is-unknown",
 };
 
-/** 一格的点（态 ⇒ 字形；字形住文案表）。 */
-export function dotOf(state: ExtCell["state"]): string {
-  switch (state) {
-    case "same":
-      return copyText("extPage.dot.same");
-    case "differs":
-      return copyText("extPage.dot.differs");
-    case "missing":
-      return copyText("extPage.dot.missing");
-    case "project":
-      return copyText("extPage.dot.project");
-  }
+const DOT_ICON: Record<ExtCell["state"], IconName> = { same: "success", differs: "half", missing: "ring", project: "folder" };
+
+/** 一格的点：态 ⇒ Phosphor 图标（代码画，颜色随 `DOT_CLASS`）；悬停 / 图例那一句由调用方给。 */
+export function dotOf(state: ExtCell["state"]): HTMLSpanElement {
+  const d = el("span", DOT_CLASS[state]);
+  d.appendChild(icon(DOT_ICON[state], "compact"));
+  return d;
 }
 
 /** 一格 / 一处给人看的那句话（悬停 · 抽屉里那一行）。 */
@@ -318,8 +314,11 @@ export class ExtSection {
       const name = el("span", "ext-name", r.name);
       if (r.new) name.appendChild(el("span", "ext-new", copyText("extPage.row.new")));
       if (r.builtin !== null || r.note !== null) {
-        const mark = el("span", "ext-note-mark", copyText("extPage.row.noteMark"));
+        const mark = el("span", "ext-note-mark");
+        mark.appendChild(icon("note", "compact"));
         mark.title = copyText("extPage.row.noteMarkTitle");
+        mark.setAttribute("role", "img");
+        mark.setAttribute("aria-label", mark.title);
         name.appendChild(mark);
       }
       line.appendChild(name);
@@ -328,7 +327,7 @@ export class ExtSection {
       const dots = el("span", "ext-dots");
       r.cells.forEach((c, i) => {
         const m = list.machines[i];
-        const d = el("span", DOT_CLASS[c.state], dotOf(c.state));
+        const d = dotOf(c.state);
         if (!m.reachable) d.classList.add("is-offline");
         d.title = copyText("extPage.dot.title", { machine: machineName(m), state: stateText(c.state, c.places) });
         dots.appendChild(d);
@@ -340,7 +339,7 @@ export class ExtSection {
     const legend = el("div", "ext-legend");
     for (const st of ["same", "differs", "missing", "project"] as const) {
       const item = el("span", "ext-legend-item");
-      item.append(el("span", DOT_CLASS[st], dotOf(st)), el("span", "", legendText(st)));
+      item.append(dotOf(st), el("span", "", legendText(st)));
       legend.appendChild(item);
     }
     this.table.appendChild(legend);
@@ -521,7 +520,7 @@ export class ExtSection {
     pick.addEventListener("change", () => void this.togglePick(r, m, pick.checked));
     top.appendChild(pick);
     top.appendChild(el("span", "ext-machine-name", machineName(m)));
-    top.appendChild(el("span", DOT_CLASS[c.state], dotOf(c.state)));
+    top.appendChild(dotOf(c.state));
     const said = c.state === "differs" && bring && m.reachable ? copyText("extPage.install.differsPick", { state: stateText(c.state, c.places) }) : stateText(c.state, c.places);
     top.appendChild(el("span", "ext-machine-state", m.reachable ? said : copyText("extPage.install.offline", { state: said })));
     // 只有全局那一处 ⇒ 不另起一行，「卸载…」直接跟在这一台后面；装在几个项目里的才逐处列。

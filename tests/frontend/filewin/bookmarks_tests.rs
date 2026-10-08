@@ -316,20 +316,26 @@ async fn the_bar_is_really_clickable_and_the_disk_follows() {
     let mut ws = Workspace::new(w);
     let ctx = egui::Context::default();
 
-    // ① 地址栏那颗 ☆ ⇒ 盘上那一格恰好是当前目录；星换成 ★。
-    let _ = click_label(&ctx, &mut ws, STAR_OFF.as_str());
+    // ① 地址栏那颗星（Phosphor 线形，灰）⇒ 盘上那一格恰好是当前目录；星换成强调色（同一个字形，只换色）。
+    let star = egui_phosphor::regular::STAR;
+    let p = crate::theme::palette(&ctx);
+    assert_eq!(
+        crate::chrome::testing::ws_colors_of(&ctx, &mut ws, star),
+        vec![p.text2],
+        "没加书签时那颗星该是灰的"
+    );
+    let _ = click_label(&ctx, &mut ws, star);
     assert_eq!(
         read_book(&file).unwrap(),
         book(&[("fw34-bm-ui", &[a.as_str()])])
     );
-    let painted = frame(&ctx, &mut ws, Vec::new());
-    assert_eq!(
-        rects_of(&painted, STAR_ON.as_str()).len(),
-        1,
-        "加完之后地址栏那颗星该是「{STAR_ON}」",
-        STAR_ON = STAR_ON.as_str()
+    // 加完之后左栏多一条书签（它前面也是一颗灰星），地址栏那颗换成强调色。
+    let after = crate::chrome::testing::ws_colors_of(&ctx, &mut ws, star);
+    assert_eq!(after.len(), 2, "地址栏一颗 ＋ 左栏那条书签一颗：{after:?}");
+    assert!(
+        after.contains(&p.accent),
+        "加完之后地址栏那颗星该涂强调色：{after:?}"
     );
-    assert_eq!(rects_of(&painted, STAR_OFF.as_str()).len(), 0);
 
     // ② 换到 b，点左栏那条书签（写的是目录的尾段）⇒ 真的跳回 a。
     ws.pane_on_mut(0).navigate_to(b.clone());
@@ -405,13 +411,13 @@ async fn no_data_dir_is_said_on_the_bar() {
         painted.iter().any(|(t, _)| t == NO_DATA_DIR.as_str()),
         "那句话没画出来：{painted:?}"
     );
-    let _ = click_label(&ctx, &mut ws, STAR_OFF.as_str());
+    let _ = click_label(&ctx, &mut ws, egui_phosphor::regular::STAR);
     assert!(ws.pane_on(0).shelf.as_ref().unwrap().list().is_empty());
     // 阴性对照：没接书签（判据直接建的窗口）⇒ 加 / 去那颗与出声那句都不画。
     let mut bare = Workspace::new(window_on(&wired, "/srv"));
     let painted = frame(&ctx, &mut bare, Vec::new());
     assert!(
-        rects_of(&painted, STAR_OFF.as_str()).is_empty()
+        rects_of(&painted, egui_phosphor::regular::STAR).is_empty()
             && !painted.iter().any(|(t, _)| t == NO_DATA_DIR.as_str())
     );
 }

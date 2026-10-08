@@ -1,5 +1,5 @@
 /**
- * 要求：设置「扩展」页 —— 一张表（搜索 · 种类筛选 · 一行一个条目 · 每台一个点 ● ◐ ○ ◎，悬停是机器名 · 新见到的行上一个「新」·
+ * 要求：设置「扩展」页 —— 一张表（搜索 · 种类筛选 · 一行一个条目 · 每台一个点（已装 · 内容不同 · 未装 · 仅项目四个图标），悬停是机器名 · 新见到的行上一个「新」·
  * 有备注的行带一个记号）＋ 一个抽屉（顶部备注；每台一行展开成它的各处，各自的态与「卸载」；机器那一行一个「装到…」）
  * ＋ 一张确认卡（「装到哪」由用户选：后端给的各处，不能选的显示但置灰、旁注为什么；一个确认按钮；后端答 stale 就在卡上说一句、给「重看」）；
  * cc-bus 那一行：内置备注下面每台一行钩子状态与要加的内容，都由那台后端给（界面不读那份配置文件）。
@@ -115,8 +115,10 @@ async function page(lists: unknown[], apply?: (a: ManyArgs) => unknown, preview?
   return s;
 }
 
+/** 一个点画的是哪个图标（代码画的 Phosphor；有字就原样带出来，好让「拿字符当图标」当场红）。 */
+const glyph = (d: Element) => d.textContent || `icon:${d.querySelector<SVGElement>("svg")?.dataset.icon ?? ""}`;
 const dots = (s: ExtSection, name: string) =>
-  [...s.element.querySelectorAll(`.ext-row[data-key$="/${name}"] .ext-dot`)].map((d) => [d.textContent, (d as HTMLElement).title]);
+  [...s.element.querySelectorAll(`.ext-row[data-key$="/${name}"] .ext-dot`)].map((d) => [glyph(d), (d as HTMLElement).title]);
 const open = (s: ExtSection, key: string) => (s.element.querySelector(`.ext-row[data-key="${key}"]`) as HTMLButtonElement).click();
 const machineLines = (s: ExtSection) => [...s.element.querySelectorAll(".ext-drawer .ext-machine")];
 /** 抽屉里勾那一台（键 ＝ 机器名；本机是空串）。 */
@@ -138,8 +140,8 @@ describe("扩展页：表 · 抽屉 · 确认卡", () => {
     const noted = row("skill", "noted", [here, demoMissing], { note: "我写的" });
     const s = await page([listWith(demoMissing, [noted])]);
     expect(dots(s, "demo")).toEqual([
-      ["●", copyText("extPage.dot.title", { machine: copyText("extPage.machine.here"), state: copyText("extPage.state.same") })],
-      ["○", copyText("extPage.dot.title", { machine: "laptop", state: copyText("extPage.state.missing") })],
+      ["icon:success", copyText("extPage.dot.title", { machine: copyText("extPage.machine.here"), state: copyText("extPage.state.same") })],
+      ["icon:ring", copyText("extPage.dot.title", { machine: "laptop", state: copyText("extPage.state.missing") })],
     ]);
     const rows = () => [...s.element.querySelectorAll(".ext-row[data-key]")].map((r) => r.getAttribute("data-key"));
     expect(rows()).toEqual(["skill/demo", "mcp/fs", "skill/noted"]);
@@ -147,6 +149,8 @@ describe("扩展页：表 · 抽屉 · 确认卡", () => {
     expect(s.element.querySelector('.ext-row[data-key="mcp/fs"] .ext-new')).toBeNull();
     const marked = [...s.element.querySelectorAll(".ext-row[data-key]")].filter((r) => r.querySelector(".ext-note-mark")).map((r) => r.getAttribute("data-key"));
     expect(marked).toEqual(["skill/noted"]);
+    const mark = s.element.querySelector<HTMLElement>(".ext-note-mark")!;
+    expect([glyph(mark), mark.getAttribute("aria-label")]).toEqual(["icon:note", copyText("extPage.row.noteMarkTitle")]);
     const search = s.element.querySelector(".ext-search") as HTMLInputElement;
     search.value = "npx";
     search.dispatchEvent(new Event("input"));
@@ -199,14 +203,12 @@ describe("扩展页：表 · 抽屉 · 确认卡", () => {
     ]);
     expect(s.element.querySelector(".ext-offline")?.textContent).toBe(copyText("extPage.offline.bar", { machine: "laptop" }));
     expect([...s.element.querySelectorAll('.ext-row[data-key="skill/demo"] .ext-dot')].map((d) => d.classList.contains("is-offline"))).toEqual([false, true]);
-    expect([...s.element.querySelectorAll(".ext-legend-item")].map((i) => i.textContent)).toEqual(
-      [
-        `${copyText("extPage.dot.same")}${copyText("extPage.legend.same")}`,
-        `${copyText("extPage.dot.differs")}${copyText("extPage.legend.differs")}`,
-        `${copyText("extPage.dot.missing")}${copyText("extPage.state.missing")}`,
-        `${copyText("extPage.dot.project")}${copyText("extPage.legend.project")}`,
-      ],
-    );
+    expect([...s.element.querySelectorAll(".ext-legend-item")].map((i) => [glyph(i.querySelector(".ext-dot")!), i.textContent])).toEqual([
+      ["icon:success", copyText("extPage.legend.same")],
+      ["icon:half", copyText("extPage.legend.differs")],
+      ["icon:ring", copyText("extPage.state.missing")],
+      ["icon:folder", copyText("extPage.legend.project")],
+    ]);
     open(s, "skill/demo");
     expect((machineLines(s)[1].querySelector(".ext-pick") as HTMLInputElement).disabled, "连不上的那台勾不了").toBe(true);
   });
@@ -243,7 +245,7 @@ describe("扩展页：表 · 抽屉 · 确认卡", () => {
     expect(revealed).toEqual(["/h/.claude/skills/demo"]);
   });
 
-  it("勾上几台 ⇒ 问本机后端一张卡（勾上的几台 ＋ 选的那一处）；装到哪照它给的各处画；改选 ⇒ 带上那一处重问；［装到 N 台］⇒ 交回那一处与各台的记号 ⇒ 各台同步一趟、重读，点变 ◎", async () => {
+  it("勾上几台 ⇒ 问本机后端一张卡（勾上的几台 ＋ 选的那一处）；装到哪照它给的各处画；改选 ⇒ 带上那一处重问；［装到 N 台］⇒ 交回那一处与各台的记号 ⇒ 各台同步一趟、重读，点变「仅项目」", async () => {
     const after = cell("project", [place(user, "missing"), place(proj, "same", true)], bring());
     const s = await page([listWith(demoMissing), listWith(demoMissing), listWith(after)]);
     open(s, "skill/demo");
@@ -275,7 +277,7 @@ describe("扩展页：表 · 抽屉 · 确认卡", () => {
       ["<local>", "assets-sync", {}],
       ["<local>", "ext-list", { visit: false }],
     ]);
-    expect(dots(s, "demo").map(([d]) => d)).toEqual(["●", "◎"]);
+    expect(dots(s, "demo").map(([d]) => d)).toEqual(["icon:success", "icon:folder"]);
     expect(installBox(s).querySelector('[data-result="laptop"]')?.textContent).toBe(copyText("extPage.install.doneOne", { machine: "laptop", said: copyText("extPage.done.written", { n: "1" }) }));
   });
 

@@ -5,7 +5,7 @@
  */
 import { copyText } from "./copy-table";
 import { fmtDur } from "./quota-lines";
-import { runLabel, runStateIcon, runStateText } from "./runs";
+import { runLabel, runStateText } from "./runs";
 import type { RunInfo } from "./generated/RunInfo";
 
 /** 系统标题：`{标签} · {状态} · {会话}`，远端再加 `· {机器}`（标题里不放符号）。 */
@@ -72,10 +72,10 @@ export function whyOf(r: RunInfo, now: number): WhyView | null {
   }
 }
 
-/** 尾巴上的结束线（在跑 ⇒ `null`）：`{图标} {状态}` ＋ 一句。 */
+/** 尾巴上的结束线（在跑 ⇒ `null`）：状态字（图标由界面在前面画）＋ 一句。 */
 export function endOf(r: RunInfo, now: number): { head: string; sub: string } | null {
   if (r.state === "running") return null;
-  const head = `${runStateIcon(r.state)} ${runStateText(r.state)}`;
+  const head = runStateText(r.state);
   const dur = since(r.active_ms, now) ?? fmtDur(0);
   const sub =
     r.state === "done"

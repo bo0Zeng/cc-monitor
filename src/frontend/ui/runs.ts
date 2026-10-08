@@ -7,6 +7,8 @@
  * - 「最近」优先用它此刻在生成的那一块（流里的归一事件），没有就用记录给的最近一件事。
  */
 import { copyText } from "./copy-table";
+import { icon, type IconName } from "./kit/icon";
+import { statusDot } from "./kit/status-dot";
 import type { RunInfo } from "./generated/RunInfo";
 import type { RunState } from "./generated/RunState";
 import type { BlockKind } from "./generated/BlockKind";
@@ -88,19 +90,20 @@ export function runStateText(state: RunState): string {
   }
 }
 
-export function runStateIcon(state: RunState): string {
-  switch (state) {
-    case "running":
-      return copyText("runs.icon.running");
-    case "done":
-      return copyText("runs.icon.done");
-    case "failed":
-      return copyText("runs.icon.failed");
-    case "stopped":
-      return copyText("runs.icon.stopped");
-    case "unknown":
-      return copyText("runs.icon.unknown");
+const RUN_ICON: Record<Exclude<RunState, "running">, IconName> = { done: "check", failed: "failed", stopped: "stop", unknown: "question" };
+
+/**
+ * 状态字旁边那一枚：在跑 ＝ 呼吸的状态点（V10），其余四态 ＝ Phosphor 图标。
+ * 旁边总跟着状态字，所以这一枚读屏器不念。
+ */
+export function runStateMark(state: RunState): Element {
+  if (state === "running") {
+    const d = statusDot("running", runStateText("running"), "compact");
+    d.setAttribute("aria-hidden", "true");
+    d.removeAttribute("title");
+    return d;
   }
+  return icon(RUN_ICON[state], "compact");
 }
 
 export function runLabel(r: RunInfo): string {

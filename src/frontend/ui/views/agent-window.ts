@@ -28,7 +28,7 @@ import { icon } from "../kit/icon";
 import { tag } from "../kit/badge";
 import { MessageStream } from "../stream";
 import { RunTimeline } from "../run-timeline";
-import { runLabel, runStateIcon, runStateText } from "../runs";
+import { runLabel, runStateMark, runStateText } from "../runs";
 import type { RunInfo } from "../generated/RunInfo";
 import { agentWindowTitle, chainOf, endOf, factsOf, kidsOf, whyOf } from "../agent-window-text";
 import { openAgentWindow } from "../agent-window-open";
@@ -297,7 +297,8 @@ export class AgentWindow {
     title.appendChild(label);
     const facts = document.createElement("div");
     facts.className = s.awFacts;
-    const mark = tag(`${runStateIcon(r.state)} ${runStateText(r.state)}`);
+    const mark = tag(runStateText(r.state));
+    mark.prepend(runStateMark(r.state));
     mark.dataset.state = r.state;
     mark.classList.add(s.awMark);
     facts.appendChild(mark);
@@ -382,7 +383,10 @@ export class AgentWindow {
       this.end.dataset.state = r.state;
       const head = document.createElement("div");
       head.className = s.awEndHead;
-      head.textContent = e.head;
+      const headText = document.createElement("span");
+      headText.className = s.awEndText;
+      headText.append(runStateMark(r.state), e.head);
+      head.appendChild(headText);
       const sub = document.createElement("div");
       sub.className = s.awEndSub;
       sub.textContent = e.sub;
@@ -488,7 +492,7 @@ function stateIcon(r: RunInfo): HTMLElement {
   const i = document.createElement("span");
   i.className = s.awStateIcon;
   i.dataset.state = r.state;
-  i.textContent = runStateIcon(r.state);
+  i.appendChild(runStateMark(r.state));
   return i;
 }
 

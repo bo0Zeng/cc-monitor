@@ -353,15 +353,9 @@
 }
 
 .agent-icon {
+  display: inline-flex;
   flex: none;
-  width: 1em;
-  text-align: center;
   color: var(--text-faint);
-}
-
-.agent-row.agent-running .agent-icon {
-  color: var(--live);
-  animation: act-waiting-pulse 1.2s ease-in-out infinite;
 }
 
 .agent-row.agent-failed .agent-icon {
@@ -792,7 +786,13 @@
 
 .branch-fold-wrap .viewer-branch-btn::after {
   /* 一个小角标，让「这条不是主线」在**不 hover** 时也看得出来 */
-  content: var(--mark-branch);
+  content: "";
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  vertical-align: middle;
+  background: currentColor;
+  mask: var(--icon-branch-off) center / contain no-repeat;
   position: absolute;
   right: -3px;
   bottom: -4px;
@@ -989,8 +989,8 @@
 }
 
 .card-slash .slash-icon {
+  display: inline-flex;
   color: var(--accent);
-  font-weight: 600;
 }
 
 .card-slash .slash-name {
@@ -1028,8 +1028,8 @@
 }
 
 .bash-prompt {
+  display: inline-flex;
   color: var(--text-2);
-  font-weight: 600;
 }
 
 .card-bash-input .bash-cmd {
@@ -1193,7 +1193,14 @@
 }
 
 .ask-option.is-chosen .ask-option-label::before {
-  content: var(--mark-chosen);
+  content: "";
+  display: inline-block;
+  width: var(--icon-size-compact);
+  height: var(--icon-size-compact);
+  vertical-align: middle;
+  background: currentColor;
+  mask: var(--icon-check) center / contain no-repeat;
+  margin-right: 4px;
   color: var(--success);
   font-weight: 700;
 }
@@ -1317,13 +1324,9 @@
   padding: 0 12px;
   color: var(--text);
   font-size: var(--font-size-small);
-  list-style: none;
   cursor: pointer;
 }
 
-.speaker-head::-webkit-details-marker {
-  display: none;
-}
 
 .speaker-title {
   font-weight: var(--font-weight-strong);
@@ -1369,13 +1372,9 @@
 }
 
 .card-notice > .notice-head {
-  list-style: none;
   cursor: pointer;
 }
 
-.card-notice > .notice-head::-webkit-details-marker {
-  display: none;
-}
 
 .card-notice[data-single="true"] > .notice-head {
   cursor: default;
@@ -1411,7 +1410,6 @@
 
 .card-compact-summary {
   cursor: pointer;
-  list-style: none;
   padding: 8px 14px;
   font-family: var(--font-mono);
   font-size: var(--font-size-small);
@@ -1419,20 +1417,7 @@
   user-select: none;
 }
 
-.card-compact-summary::-webkit-details-marker {
-  display: none;
-}
 
-.card-compact-summary::before {
-  content: var(--mark-closed);
-  display: inline-block;
-  width: 14px;
-  color: var(--text-2);
-}
-
-.card-compact[open] > .card-compact-summary::before {
-  content: var(--mark-open);
-}
 
 .card-compact-summary:hover {
   background: var(--overlay-hover);
@@ -1472,23 +1457,10 @@
 
 .injected-head {
   cursor: pointer;
-  list-style: none;
   user-select: none;
 }
 
-.injected-head::-webkit-details-marker {
-  display: none;
-}
 
-.injected-head::before {
-  content: var(--mark-closed);
-  display: inline-block;
-  width: 14px;
-}
-
-.card-injected[open] > .injected-head::before {
-  content: var(--mark-open);
-}
 
 .injected-body {
   max-height: 240px;
@@ -1508,23 +1480,10 @@
   cursor: pointer;
   color: var(--text-2);
   font-size: var(--font-size-small);
-  list-style: none;
   user-select: none;
 }
 
-.paste-fold > summary::-webkit-details-marker {
-  display: none;
-}
 
-.paste-fold > summary::before {
-  content: var(--mark-closed);
-  display: inline-block;
-  width: 14px;
-}
-
-.paste-fold[open] > summary::before {
-  content: var(--mark-open);
-}
 
 .paste-body {
   margin-top: 4px;
@@ -1656,7 +1615,6 @@
 
 .card-tool-group-summary {
   cursor: pointer;
-  list-style: none;
   padding: 8px 12px;
   font-family: var(--font-mono);
   font-size: var(--font-size-small);
@@ -1664,20 +1622,7 @@
   user-select: none;
 }
 
-.card-tool-group-summary::-webkit-details-marker {
-  display: none;
-}
 
-.card-tool-group-summary::before {
-  content: var(--mark-closed);
-  display: inline-block;
-  width: 14px;
-  color: var(--text-2);
-}
-
-.card-tool-group[open] > .card-tool-group-summary::before {
-  content: var(--mark-open);
-}
 
 .card-tool-group-summary:hover {
   background: var(--overlay-hover);
@@ -1718,7 +1663,6 @@
 
 .block-collapsible .block-summary {
   cursor: pointer;
-  list-style: none;
   padding: 6px 12px;
   font-family: var(--font-mono);
   font-size: var(--font-size-small);
@@ -1838,20 +1782,7 @@
   color: var(--error-text);
 }
 
-.block-collapsible .block-summary::-webkit-details-marker {
-  display: none;
-}
 
-.block-collapsible .block-summary::before {
-  content: var(--mark-closed);
-  display: inline-block;
-  width: 14px;
-  color: var(--text-2);
-}
-
-.block-collapsible[open] > .block-summary::before {
-  content: var(--mark-open);
-}
 
 .block-collapsible .block-summary:hover {
   background: var(--overlay-hover);
@@ -2238,10 +2169,7 @@
 }
 
 .branch-fold-arrow {
-  display: inline-block;
-  width: 10px;
-  font-size: var(--font-size-xs);
-  text-align: center;
+  display: inline-flex;
   color: var(--text-faint);
   transition: transform 150ms ease;
   transform: rotate(0deg);

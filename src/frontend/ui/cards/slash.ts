@@ -3,7 +3,7 @@
  * （记录成品的 `userText.speaker`），这里只画。
  */
 
-import { copyText } from "../copy-table";
+import { icon } from "../kit/icon";
 
 export interface SlashCommand {
   name: string;
@@ -19,10 +19,10 @@ export function buildSlashCommandCard(
   const card = document.createElement("div");
   card.className = "card card-slash";
 
-  const icon = document.createElement("span");
-  icon.className = "slash-icon";
-  icon.textContent = copyText("slash.card.icon");
-  card.appendChild(icon);
+  const mark = document.createElement("span");
+  mark.className = "slash-icon";
+  mark.appendChild(icon("command", "compact"));
+  card.appendChild(mark);
 
   const name = document.createElement("span");
   name.className = "slash-name";
