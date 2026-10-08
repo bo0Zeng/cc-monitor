@@ -608,29 +608,19 @@ describe("S1 RemoteSection：保存走局部合并", () => {
 
   // 读 `~/.ssh/config` 失败与「真没有别名」原先同形（空下拉 ＋「未找到」）。
 
-  it("★ 渲染机器列表：后端调用**不随机器数增长**（状态灯绝不引入轮询）", async () => {
+  it("★ 渲染机器列表：一个后端请求都不发（1 台 3 台一样；状态灯绝不引入轮询）", async () => {
     // 红线。「打开设置时顺便把 N 台机器都探一遍」听起来不像轮询，
     // 但它是同一件事的另一种说法：一次 UI 动作扇出 N 次 ssh 往返，用户没要求过。
-    //
-    // 判据**不是**「零调用」—— 实测渲染时确实有一次 `ssh-config-aliases`（问本机后端）
-    //（读本机 `~/.ssh/config` 填「导入」下拉），那既不是状态探测、也不走 ssh、
-    // 更不随机器数增长。红线禁的是**逐机器探测**，所以判据就写成那样：
-    // **同一份调用清单，1 台和 3 台必须逐字相同。**
     ipcCalls.length = 0;
     await mount([mkH("a", "1.1.1.1")]);
-    const withOne = [...ipcCalls];
-
-    ipcCalls.length = 0;
-    await mount([mkH("a", "1.1.1.1"), mkH("b", "2.2.2.2"), mkH("c", "3.3.3.3")]);
-    const withThree = [...ipcCalls];
-
-    expect(withThree).toEqual(withOne);
-    // 反向自检：不是因为一次都没记到才「相同」。
-    expect(withOne.length).toBeGreaterThan(0);
-    // 且清单里不许出现任何逐机器探测类命令。
-    for (const name of withThree) {
-      expect(name).not.toMatch(/test_remote_connection|probe_|deploy_|remote_ccm/);
-    }
+    expect([...ipcCalls]).toEqual([]);
+    const sec = await mount([mkH("a", "1.1.1.1"), mkH("b", "2.2.2.2"), mkH("c", "3.3.3.3")]);
+    expect([...ipcCalls]).toEqual([]);
+    // 正控：记账的替身真的记得到（点一次「测试连接」就有一问）——不是因为一次都没记到才「空」。
+    [...sec.element.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent?.includes(copyText("machineCard.build.test")))!.click();
+    for (let i = 0; i < 10; i++) await new Promise((r) => setTimeout(r, 0));
+    expect(ipcCalls).toContain("remote-probe");
+    ipcReplies.clear();
   });
 
 
