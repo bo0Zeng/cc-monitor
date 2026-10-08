@@ -80,7 +80,8 @@
       { "text": "读坏了", "use": "用例名" }
     ],
     "tests/frontend/shell/machine_state_tests.rs": [
-      { "text": "要更新", "use": "用例名" }
+      { "text": "要更新", "use": "用例名" },
+      { "text": "无应答", "use": "用例名" }
     ],
     "tests/frontend/shell/remote_write_registry_tests.rs": [
       { "text": "路径", "use": "非文案" },
@@ -193,7 +194,8 @@
       { "text": "本机", "use": "输入" }
     ],
     "tests/frontend/ui/settings/machine-state.vitest.ts": [
-      { "text": "要更新", "use": "用例名" }
+      { "text": "要更新", "use": "用例名" },
+      { "text": "无应答", "use": "用例名" }
     ],
     "tests/frontend/ui/settings/panel-block-isolation.vitest.ts": [
       { "text": "本机", "use": "输入" }
@@ -257,9 +259,6 @@
     "tests/frontend/ui/views/history-page.vitest.ts": [
       { "text": "不指定账号 · ~/.claude", "use": "回显" }
     ],
-    "tests/frontend/ui/views/live-user-inputs.vitest.ts": [
-      { "text": "连不上", "use": "回显" }
-    ],
     "tests/frontend/ui/views/session-viewer-user-inputs.vitest.ts": [
       { "text": "重试", "use": "输入" },
       { "text": "恢复", "use": "输入" }
@@ -276,7 +275,6 @@
       { "text": "本机", "use": "输入" }
     ],
     "tests/test-support/session-viewer-rig.ts": [
-      { "text": "连不上", "use": "回显" },
       { "text": "加载失败", "use": "词义" }
     ]
   }

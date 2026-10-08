@@ -127,7 +127,7 @@ async fn an_unregistered_origin_is_said_and_never_dialed() {
     assert_eq!(e.code.as_deref(), Some("unreachable"));
     assert_eq!(e.message, unreachable_message("nowhere"));
     assert!(
-        e.message.contains("[nowhere]"),
+        e.message.contains("nowhere"),
         "那句话要点名是哪台：{}",
         e.message
     );
