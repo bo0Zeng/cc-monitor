@@ -40,7 +40,6 @@ const PENDING: &[&str] = &[
 const TABLE_DECLS: &[&str] = &[
     "const REGISTERED:",
     "const SITES:",
-    "const SCHEDULING_SITES:",
     // `K-R33` 09-06：`K-R31` 那条判据的形态表（`local_backend.rs`）。
     // 全树现打：三棵树的 `.rs` 里 `const FORMS:` **恰好一处**，就是它 ⇒ 这一条不引入误采。
     "const FORMS:",
@@ -76,10 +75,8 @@ const REVERSE: &[&str] = &["assert_eq!(", "已经不在了", "已经没有"];
 /// [`guard_core::test_attr_chunks`] 切出来的块是「这条 `#[test]` 到下一条 `#[test]`」，
 /// 它**还带着这条判据之后、下一条判据之前的模块级代码**（辅助函数 · 常量 ·
 /// 下一条判据的文档注释）。拿整块判「表声明在谁体内」会把一张**模块级**的表
-/// 算成「它上面那条判据自带的」：`polling_registry.rs` 的 `SCHEDULING_SITES`
-/// 声明在 `every_data_poll_names_its_event_source_and_owner` **之后**、
-/// 真正用它的 `every_scheduling_call_site_carries_a_classification_mark` **之前**
-/// ⇒ 按块判会把它记到前者头上，而前者没有反向那半 ⇒ **一条假红**。
+/// 算成「它上面那条判据自带的」：一张声明在甲判据**之后**、真正用它的乙判据**之前**的表，
+/// 按块判会记到甲头上，而甲没有反向那半 ⇒ **一条假红**。
 ///
 /// # 它认什么、认不出什么（认不出的是**漏判**，不是假绿）
 ///

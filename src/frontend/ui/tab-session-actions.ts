@@ -410,6 +410,7 @@ export async function frontOnce<T>(sid: string, run: () => Promise<T>, pending: 
   if (frontInFlight.has(sid)) return undefined;
   frontInFlight.add(sid);
   let shownAt: number | null = null;
+  // 调度：一次性 —— ↗ 在飞超过 300ms 才把按钮换成「进行中」，答到了就清
   const show = window.setTimeout(() => {
     shownAt = Date.now();
     pending(true);
@@ -420,6 +421,7 @@ export async function frontOnce<T>(sid: string, run: () => Promise<T>, pending: 
     window.clearTimeout(show);
     if (shownAt !== null) {
       const left = FRONT_PENDING_MIN_MS - (Date.now() - shownAt);
+      // 调度：一次性 —— 「进行中」至少停 400ms 再收，防闪
       if (left > 0) await new Promise<void>((r) => window.setTimeout(r, left));
       pending(false);
     }
@@ -437,6 +439,7 @@ async function shellFront(ask: () => Promise<FrontOutcome>): Promise<FrontResult
     return await Promise.race([
       ask(),
       new Promise<FrontResult>((r) => {
+        // 调度：一次性 —— ↗ 壳那一跳的期限，到点落成「无应答」（本机 / 远端共用）
         timer = window.setTimeout(() => r({ kind: "timeout" }), FRONT_SHELL_MS);
       }),
     ]);

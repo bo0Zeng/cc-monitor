@@ -47,9 +47,9 @@
 //! 1. `REGISTERED` + `is_periodic` —— 查 TS 生产段（注释剥掉）里的 `setInterval`、
 //!    **`poll` 命名的递归 `setTimeout`**、以及 `shared/ccm` 里的 `sleep`，
 //!    要求每一处**说清它是哪一类、谁退役它**。钉的是「认出来的有没有主人」。
-//! 2. `SCHEDULING_SITES` —— 查**全部** `setInterval` / `setTimeout` /
-//!    `requestAnimationFrame` / `requestIdleCallback` 调用点，要求每一处**被分类过**。
-//!    钉的是「**有没有认漏**」。
+//! 2. 调用点旁的分类标记 —— 查**全部** `setInterval` / `setTimeout` /
+//!    `requestAnimationFrame` / `requestIdleCallback` 调用点，要求每一处上方（或同一行）
+//!    带一行 `// 调度：<类> —— <理由>`、类在闭集里。钉的是「**有没有认漏**」。
 //!
 //! ⚠ 第 2 层是补的，补之前第 1 层有一个**实测过的洞**：
 //! 「没按 `poll` 命名的递归 `setTimeout`」在语法上与一次性延时无法区分 ⇒
