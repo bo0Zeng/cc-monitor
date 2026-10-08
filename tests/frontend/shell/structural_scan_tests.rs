@@ -4842,8 +4842,8 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/frontend/shell/launch_tests.rs", 2),
         ("tests/frontend/shell/quote_singleton_guard_tests.rs", 2),
         ("tests/frontend/shell/lib_invariant_population_tests.rs", 1),
-        ("src/backend/control/ccm/plan.rs", 1),          // `self_argv` 的入口②那一形删了，原地一块
-        ("tests/e2e/backend-cc-bus.sh", 1),              // [17] 前的入口②说明删了，原地一块
+        ("src/backend/control/ccm/plan.rs", 1), // `self_argv` 的入口②那一形删了，原地一块
+        ("tests/e2e/backend-cc-bus.sh", 1),     // [17] 前的入口②说明删了，原地一块
         ("tests/e2e/backend-gate2-acceptance.sh", 1), // `meta_dollar` 那条登记豁免换成版本门，原地一块
         ("tests/backend/control/ccm_tests.rs", 1), // 那条路由判据并进 claude_flags_tests，原地一块
         // 人读表解析器删了，一处点它旧名的散文挂墓碑。
