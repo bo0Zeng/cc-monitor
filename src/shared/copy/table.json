@@ -11623,7 +11623,7 @@
     "rsConfigSurface.onPath.noSessionPath": {
       "kind": "error",
       "role": "报错",
-      "zh": "问不出起会话那个 shell 的 PATH · 无法判断 {named} 是否装了 · 不代表没装",
+      "zh": "起会话的 shell 的 PATH 问不出 · 无法判断 {named} 是否已装 · 不代表没装",
       "args": ["named"]
     },
     "rsConfigSurface.unmanaged.checkOnlyEffect": {
