@@ -1,29 +1,12 @@
 /**
- * Batch13-F38（issue #35 Phase 0）:虚拟化高度模型。
+ * 虚拟化高度模型：建卡时给顶层卡片估 `contain-intrinsic-size` 初值，配合 `content-visibility: auto` 让视口外的卡不排版不绘制。
  *
- * 建卡时给顶层卡片估算 `contain-intrinsic-size` 初值,配合 CSS 的
- * `content-visibility: auto` 让视口外卡片 skip layout/paint。
+ * 估值只是初值：`auto <h>px` 渲染过一次后浏览器记住真高，估值只影响没渲染过的卡对滚动条的贡献 ⇒ 求够准、绝不抛错，不求像素真值。
  *
- * 关键语义:估值**只是初值**——`auto <h>px` 的 auto 关键字意味着元素渲染过一次后
- * 浏览器记住真实尺寸,估值只影响"从未渲染过的卡片"贡献的滚动条精度,不影响正确性。
- * 所以这里追求"够准 + 绝不抛错",不追求像素级真值。
- *
- * 文本估高用 pretext(@chenglou/pretext,**精确钉版 0.0.9**——上游 0.0.x 属
- * pre-stable,API 与折行语义可能不打招呼地变;本模块的常数是对着该版本的 layout
- * 行为标定的,解钉升级须重跑估值精度对照再动):prepare() 一次分词+canvas
- * 测宽,layout() 纯算术出高度,不触 DOM 不 reflow。pretext 不可用(canvas 缺失、
- * 字体未就绪等)时降级为字符宽度算术估计——两条路都不许抛。
- *
- * 宽度/字体常数镜像 styles.css tokens(--stream-max-width/--font-*):780px 定宽
- * 列是本模块成立的前提(宽度不变 → 高度长期有效),若列宽 token 改动需同步这里。
- *
- * ⚠ 上面那句「解钉升级须重跑估值精度对照」在 0.0.8 → 0.0.9 这一跳**没有被执行**,
- * 但对照表本身 2026-09-18 已经有了:「秤 2」落成
- * `tests/frontend/ui/scale2-height-truth.vitest.ts`(真高来自 Chromium 153 + WebKitGTK 2.52.6
- * 两个真引擎的金标准,估值门禁跑的时候现算)。⇒ 本模块常数的准确度**不再是「未测」**,
- * 逐 class 的 p90 相对误差写在 `tests/evidence/U-scale2-height-truth.md`。
- * ⇒ 改这里任何一个常数,都要跑一次 `npx vitest run tests/frontend/ui/scale2-height-truth.vitest.ts`;
- *   0.0.8→0.0.9 那一跳的对照仍然缺(没有 0.0.8 的读数),那一格今天仍然判不了。
+ * 文本估高用 pretext（精确钉版 0.0.9：0.0.x 的折行语义可能不打招呼地变，常数是对着这一版标定的）：
+ * prepare() 一次分词 ＋ canvas 测宽，layout() 纯算术出高度，不触 DOM。pretext 不可用（没有 canvas、字体未就绪）时退回字符宽度算术。
+ * 宽度 / 字体常数镜像 styles.css 的 token（`--stream-max-width` / `--font-*`）。
+ * 改这里任何一个常数都要跑 `npx vitest run tests/frontend/ui/scale2-height-truth.vitest.ts`（两个真引擎的金标准，逐 class 读数在 `tests/evidence/U-scale2-height-truth.md`）。
  */
 import type { JsonlRecord } from "./generated/JsonlRecord";
 import { drawsCard } from "./speaker";
@@ -37,15 +20,11 @@ const LH_PROSE = 15 * 1.65; // --font-size-prose × --line-height-prose
 const LH_BASE = 14 * 1.55;
 const LH_MONO = 13 * 1.55;
 
-// 〔「`COL_W = 780` 改成从容器实测」〕列宽不再写死：模块求值时在 `#message-stream`
-// 里临时摆一个生产形状的 `.stream > .stream-content`（`.stream` 是名为 `stream` 的尺寸容器，见 styles.css），
-// 量出真列宽 = min(`--stream-max-width`, 流宽 − 两侧内边距) 立刻撤掉。
-// 量不到（jsdom 没有布局 / 该窗口没有消息流）才退回 780 —— 那个数与 tokens.css 的 `--stream-max-width`
-// 由 `tests/frontend/ui/css-ledger.vitest.ts` 格 ⑥ 对拍。
-// 这是**起始值**：骨架账本建起来时用它；之后列宽变了由宿主现量、交账本 `relayout`
-//   （`tab-stream-view.ts::relayoutOnColumnChange`），账本从此带着自己的列宽。
-//   ⚠ 本文件的 `USER_BODY_W` 与建卡那一侧的估高（`estimateHeight`）仍只用这个起始值 —— 那一侧估的是「刚建、还没渲染」
-//   那一瞬的占位，渲染过一次就由 `contain-intrinsic-size: auto` 用真值，列宽漂了影响的只是那一瞬。
+// 列宽：模块求值时在 `#message-stream` 里临时摆一个生产形状的 `.stream > .stream-content`（`.stream` 是名为 `stream` 的尺寸容器），
+// 量出 min(`--stream-max-width`, 流宽 − 两侧内边距) 立刻撤掉；量不到（jsdom / 没有消息流的窗口）才退回 780
+// （与 tokens.css 的 `--stream-max-width` 由 `css-ledger.vitest.ts` 格 ⑥ 对拍）。
+// 这是起始值：之后列宽变了由宿主现量、交账本 `relayout`（`tab-stream-view.ts::relayoutOnColumnChange`）。
+// `USER_BODY_W` 与建卡时的估高只用起始值 —— 那只是渲染前一瞬的占位，渲染过一次就用真高。
 const COL_W: number = ((fallback: number): number => {
   const host = typeof document === "undefined" ? null : document.getElementById("message-stream");
   if (!host) return fallback;
@@ -72,12 +51,7 @@ const CARD_HEADER_H = 22; // .card-header 一行 + 间距
 const BLOCK_GAP = 10; // 块间 margin 均摊
 const P_GAP = 12; // 段落/列表项之间的 margin 均摊(浏览器默认 p margin 1em 折叠后 ~15px,取偏保守)
 
-// 下面三条细条卡常数补的是「建得出卡、估不出高」的三个 class ——
-// 它们此前全部走 `return null` ⇒ 由 styles.css:1599 的 `contain-intrinsic-size: auto 120px`
-// 接管。⚠ 这三条是**候选成因**不是已证实的根因: 那条「虚高 ⇒ 提前停止补批
-// ⇒ 只渲染半屏」的链条是**手算**的(按 CSS token 推真高、按视口 800px 推轮次)。
-// 秤 2(2026-09-18)把「估得准不准」量出来了:`card-bash-output` 的 p90 相对误差 8.6%,
-// 这一支是准的;但「半屏修没修掉」归秤 3,不是这里能判的。
+// 下面几条细条卡常数：没有它们这几个 class 会落到 CSS 的 `contain-intrinsic-size: auto 120px`（虚高几倍）。
 const BASH_OUTPUT_HEADER_H = 19; // .bash-output-header 单行 flex:12px × 1.55 ≈ 18.6
 const BASH_OUTPUT_BODY_MARGIN = 6; // .bash-output-body margin: 6px 0 0
 /** `buildOutputPre` 超 30 行只展示头 20 行(cards/bash.ts OUTPUT_HEAD_LINES) */
@@ -86,7 +60,7 @@ const BASH_STDERR_LABEL_H = 23; // .bash-stderr-label margin-top 6 + 11px × 1.5
 const BASH_EMPTY_H = 23; // .bash-output-empty margin-top 4 + 12px × 1.55
 const SHOW_FULL_BTN_H = 43; // .block-body-show-full margin 6+10 + padding 4×2 + border 2 + 11px × 1.55
 
-/** 超长文本只测前缀、按长度比例外推——防 pretext prepare 开销失控(HN 实测大批量偏慢) */
+/** 超长文本只测前缀、按长度比例外推 —— 防 pretext prepare 开销失控（大批量偏慢） */
 const MEASURE_PREFIX_CHARS = 2400;
 
 // pretext 懒加载:失败(无 canvas 的测试环境等)记住并永久走算术降级
@@ -161,9 +135,8 @@ function textHeight(
   return h;
 }
 
-// R1(D 审计):textContent 会把 <br> 和 <p>/<li> 边界全部吞掉——40 行日志被当一条
-// 长串估,8 倍低估。块感知提取:块级边界与 <br> 插 \n;跳过 .code-block(单独按
-// 行数估)与 .katex-mathml(KaTeX 的 aria 重复文本,计入会双算)。
+// textContent 会吞掉 <br> 与 <p>/<li> 边界（40 行日志被当一长串估，8 倍低估）⇒ 块感知提取：块级边界与 <br> 插 \n；
+// 跳过 .code-block（单独按行数估）与 .katex-mathml（KaTeX 的 aria 重复文本，计入会双算）。
 const BLOCK_TAGS = new Set([
   "P",
   "LI",
@@ -179,17 +152,8 @@ const BLOCK_TAGS = new Set([
 ]);
 
 /**
- * R1 的回摆(秤 2 现打):R1 保留了**所有** \n,而其中绝大多数根本不是断行——
- * `marked` 产出的 HTML 里标签之间/段落内部全是**源码排版换行**(表格尤甚:一行 4 个
- * `<td>` 各占一行源码)。浏览器对 `white-space: normal` 的内容把它们折叠成一个空格,
- * 而 `textHeight` 用 `pre-wrap` 喂 pretext ⇒ 每一个都被当成一次硬断行。
- * 实测 28 张 `card-assistant`:提取文本 2726 个 \n,有 DOM 依据的(块边界)只有 961 个,
- * `<br>` 0 个 ⇒ **1765 个凭空多出来的行** ⇒ 正文卡系统性 ~2× 虚高
- * (`tests/evidence/U-scale2-height-truth.md` §2)。
- *
- * ⇒ 口径定死:**只有块边界与 `<br>` 算硬断行,其余位置的空白一律按 `white-space: normal`
- * 折叠成一个空格**;真正 `pre`/`pre-wrap` 的容器(见 `preservesWhitespace`)才原样保留。
- * 两头都不对:吞掉断行 = 8 倍低估(R1 修的那个),全留 = 2 倍虚高(这次修的这个)。
+ * 只有块边界与 `<br>` 算硬断行，其余空白按 `white-space: normal` 折成一个空格；真正 `pre` / `pre-wrap` 的容器（`preservesWhitespace`）才原样保留。
+ * `marked` 产出的 HTML 里标签之间满是源码排版换行（表格尤甚），全当断行会让正文卡约 2 倍虚高；全吞掉又是 8 倍低估。
  */
 function preservesWhitespace(e: Element): boolean {
   // styles.css `.block-collapsible .block-body { white-space: pre-wrap }`,
@@ -253,8 +217,7 @@ export function codeBlockHeight(codeText: string): number {
 function blockHeight(el: Element): number {
   // 折叠 <details>(thinking / tool_use / 大输出)只剩 summary
   if (el.tagName === "DETAILS" && !(el as HTMLDetailsElement).open) return SUMMARY_H;
-  // 文本块(.block-text 等):R2(D 审计)——.code-block 嵌在其内部而非 card-body
-  // 直接子元素,必须下钻:代码块逐个按行数估,其余文本走 prose 估
+  // 文本块（.block-text 等）：.code-block 嵌在它里面而不是 card-body 的直接子元素 ⇒ 下钻：代码块逐个按行数估，其余走 prose 估
   const { text, blockCount } = extractProseText(el);
   let h = textHeight(text, FONT_PROSE, 15, LH_PROSE, COL_W) + BLOCK_GAP;
   h += Math.max(0, blockCount - 1) * P_GAP;
@@ -317,27 +280,17 @@ export function estimateStreamNodeHeight(el: HTMLElement): number | null {
 
   if (el.classList.contains("card-user")) {
     const body = el.querySelector(".card-body");
-    // renderPlainText 把 \n 换成 <br>——必须走提取器还原硬断行(R1)。
-    // 不加 padding/border:contain-intrinsic-size 是 content-box,盒模型自会另加(S1)
+    // renderPlainText 把 \n 换成 <br> ⇒ 走提取器还原硬断行。
+    // 不加 padding / border：contain-intrinsic-size 是 content-box，盒模型另加。
     const text = body ? extractProseText(body).text : "";
     return textHeight(text, `14px ${FONT_BASE}`, 14, LH_BASE, USER_BODY_W);
   }
 
-  // 高频细条卡:120px 兜底偏大 3 倍,常数更准(渲染后 auto 记忆接管)。
-  //
-  // ⚠ 这三条是 **content-box** 值(`contain-intrinsic-size` 吃的就是 content-box,
-  //   秤 2 的 B 段在两个真引擎里实测过:声明 N ⇒ 实际占 N + padding + border)。
-  //   2026-09-18 之前写的是 24 / 32 / 34,全是**按 border-box 手算**的
-  //   ⇒ 每条各多一份 padding,p90 相对误差 40.8% / 72.1% / 82.9%。现值逐条:
-  //     card-api-retry  17 ← 11px(--font-size-xs)   × 1.55 = 17.05(实测 content-box 真高 17.05)
-  //     card-bash-input 19 ← 12px(--font-size-small) × 1.55 = 18.59
-  //     card-slash      19 ← 同一套紧凑系 token,真高同 18.59
-  //   padding 不在这里加:api-retry 3×2 / bash-input 6×2 / slash 6×2 由盒模型另算(S1)。
-  // 🔴 2026-09-18（`99 条 75` /）之前,`applyIntrinsicSize` 里那个
-  //   `Math.max(24, …)` 地板会把 17/19 一律顶成 **24** ⇒ 写进 style 的仍是 24,
-  //   三条卡的落地误差停在 40.8% / 29.1% / 29.1%,**不是**常数本身对应的 0.3% / 2.2% / 2.2%。
-  //   地板已去掉(见 `appliedIntrinsicPx`),这三条常数从此**原样出货**。
-  //   读数与登记见 `tests/evidence/U-scale2-height-truth.md` §2/§4 与 `S23-floor-removal.md`。
+  // 高频细条卡：120px 兜底偏大 3 倍，用常数（渲染后 auto 记住真高）。
+  // 这几条是 content-box 值（`contain-intrinsic-size` 吃 content-box，padding 由盒模型另加）：
+  //   card-api-retry  17 ← 11px（--font-size-xs）× 1.55
+  //   card-bash-input 19 ← 12px（--font-size-small）× 1.55
+  //   card-slash      19 ← 同一套紧凑系 token
   // 报错卡（§5.2.5）：抬头 · 下一步 · 「原文」三行。
   if (el.classList.contains("card-api-error")) return 60;
   // 事件条（「谁说的」稿 A）：抬头一行 28；展开着（交回 · 另一会话）加正文的一段粗估。中断标记 · 后台通知一行细线。
@@ -367,38 +320,16 @@ export function estimateStreamNodeHeight(el: HTMLElement): number | null {
 }
 
 /**
- * 估值 → **真正写进 `contain-intrinsic-size` 的那个数**。全仓只有这一处。
+ * 估值 → 真正写进 `contain-intrinsic-size` 的那个数（全仓只有这一处；秤按它算误差，所以导出）。
  *
- * 导出不是为了给别人算高,是为了让**秤**有一个住址可问:
- * 秤 2 的门禁与 `U-scale2-probe-entry.ts` 都必须按"浏览器实际用了哪个数"算误差,
- * 而此前那个数被**各自抄了一份**(两处 `const APPLIED_FLOOR = 24`)
- * ⇒ 改这里不会让它们变,秤会在量一个不再出货的配置(`99 条 75` 落地清单第 3 处)。
- *
- * 🔴 **2026-09-18:这里原本有个 `Math.max(24, …)` 地板,已去掉**
- * (`99 条 75` /,读数 `tests/evidence/S22-floor-readings.md`)。
- * 三条理由,不要再把它加回来:
- *  ① **全局地板构造上不可能对** —— 正确值逐 class 不同(content-box 真高 min:
- *    retry 17.05 · slash/bash-input 18.59 · user 21.69 · …… · api-error 49.38);
- *    24 让 13/83 张卡虚高,300 张细条卡的风暴里总高虚高 **+20.5%/+23.8%**、
- *    滚动条抖 1683/1946px —— 就它自称要防的那件事而言,24 比真值**更坏**。
- *  ② **按 class 分档 ＝ 把常数抄第二遍**:class 判定整套住在 `estimateStreamNodeHeight`,
- *    这里只拿得到 `HTMLElement`。
- *  ③ **它该出声,不该静默夹取**:`Math.max` 会把「估值荒谬地小」抹平,估算器真坏了没人发现。
- *    保险职责已搬到判据层 —— `scale2-height-truth.vitest.ts` 的 **F1**
- *    「每个 class 的估值最小值 ≥ 该 class 登记的常数」,那一格会红,`Math.max` 不会。
- *
- * 注释原先自陈的两个防御对象都是空集(两个真引擎实测):0 只有 `card-user` 空正文一条路,
- * 而 `renderMessage` 根本不给空正文建卡;负值写不出来(各支全是非负项相加),
- * 就算写出来浏览器也**丢弃整条声明**落回 CSS 的 `auto 120px` —— 是虚高,不是塌陷。
+ * 不加全局地板（如 `Math.max(24, …)`）：正确值逐 class 不同，一个地板让细条卡成片虚高；
+ * 估值荒谬地小该由判据出声（`scale2-height-truth.vitest.ts` 的 F1：每个 class 的估值最小值 ≥ 登记的常数），不该静默夹掉。
  */
 export function appliedIntrinsicPx(h: number): number {
   return Math.round(h);
 }
 
-/**
- * 建卡处统一入口:算出估值写 `contain-intrinsic-size: auto <h>px`。
- * F39(viewer 窗口化)复用同一模块供高——不要另写第二套(账本 §3)。
- */
+/** 建卡处统一入口：算出估值写 `contain-intrinsic-size: auto <h>px`。查看器的窗口化也用这一份，不另写第二套。 */
 export function applyIntrinsicSize(el: HTMLElement): void {
   const h = estimateStreamNodeHeight(el);
   if (h !== null) {
@@ -449,11 +380,9 @@ export interface SkeletonFacts {
 export type SkeletonKind = "none" | "tool" | "card";
 
 /**
- * 卡片外框（padding + border + 卡间 margin）的常数。
- * 有秤了：`tests/evidence/RENDER2-skel-golden.json`（真 Chromium 里读每张卡在流里占的位置
- * − 头 − 体，`RENDER2-skel-run.ts` 复算），门禁在 `tests/frontend/ui/scale2-height-truth.vitest.ts`「骨架外框」那一组：
- * 每一格 == 向上取整的中位数（「粗估宁可偏高」—— 取整只往上，不再拍）。
- * 原先拍的值与秤的差：user 36 → 50（少算了 14）· 工具组 46 → 49 · 系统细条 32 → 28 · assistant 20 → 19。
+ * 卡片外框（padding ＋ border ＋ 卡间 margin）的常数。
+ * 金标准 `tests/evidence/RENDER2-skel-golden.json`（真 Chromium 里每张卡占的位置 − 头 − 体），
+ * 门禁在 `scale2-height-truth.vitest.ts`「骨架外框」那一组：每一格 == 中位数向上取整（粗估宁可偏高）。
  */
 const SKEL_USER_CHROME = 50;
 const SKEL_CARD_CHROME = 19;
@@ -504,7 +433,7 @@ export function skeletonKind(f: SkeletonFacts): SkeletonKind {
  * **第一级粗估**：由宽度无关料 × 当前列宽算一条记录在骨架里占多高（px，border-box 口径）。
  *
  * `prevKind` = 上一条**建卡**记录的类别（`none` 不算）—— 连续的 `tool` 只有第一条出高，其余并进同一个组。
- * `colW` 默认 `COL_W`（写死的 780 **留给 U1** 改成容器实测；本函数已经吃参数，U1 只需传进来）。
+ * `colW` 默认 `COL_W`（模块求值时量出来的起始列宽）。
  *
  * 买到：骨架落地那一瞬间就有总高（滚动条大致对、跳转可用）。
  * **买不到**：精度。它不知道 slash/compact 细条、ESC 折叠、`stripInternalNoise` 剥空这些渲染期决定；

@@ -79,32 +79,14 @@ function childRunsOf(rec: JsonlRecord): ChildRuns {
   return rec.type === "assistant" ? rec.childRuns ?? NO_RUNS : NO_RUNS;
 }
 
-// === Rust 端 JsonlRecord 的 TS 镜像 ===
-//
-// **C04c 起不再是「镜像」了：`JsonlRecord` / `ApiMessage` / `Usage` 三个都由 `ts-rs`
-// 从 `src/frontend/shell/src/messages.rs` 生成**——那个 enum **就是**线定义
-// （wire == `serde_json::to_string(JsonlRecord)`），所以它才是唯一的源。
-//
-// 手抄版被删掉时暴露的三处漂移（都是**手写版更宽或更窄**，无声地）：
-// ① variant 数 **8 vs 12**：手抄版缺 `permission-mode` / `last-prompt` /
-//    `file-history-snapshot` / `Unknown`；
-// ② 手抄版给 `queue-operation` 声称了一个 Rust 根本没有的 `timestamp?: string`
-//    ——线上永远没有它，读到的恒为 `undefined`；
-// ③ 手抄的 `Usage` 把 `cache_creation_input_tokens` / `cache_read_input_tokens` 标成
-//    optional，而 Rust 侧只有 `#[serde(default)]`、**没有** `skip_serializing_if`
-//    ⇒ 线上恒有。
-//
-// **`ContentBlock` 刻意留手写**（就在下面）：Rust 的 `ApiMessage.content` 是
-// `serde_json::Value`，压根没引用 Rust 那个 `ContentBlock` ⇒ 它在线上**不可达**。
-// TS 这个是对 `content: unknown` 的**解释模型**，属于前端侧的意图类型，
-// 同账本第 4 行「IR 是前端的意图模型，别把它拖过边界」。生成它就是为假想消费者建抽象。
+// `JsonlRecord` / `ApiMessage` / `Usage` 由 ts-rs 从 `src/frontend/shell/src/messages.rs` 生成（那个 enum 就是线定义）。
+// `ContentBlock` 刻意手写：线上 `ApiMessage.content` 是 `serde_json::Value`，这是前端对 `content: unknown` 的解释模型。
 import type { ApiMessage } from "../generated/ApiMessage";
 import type { JsonlRecord } from "../generated/JsonlRecord";
 import type { Usage } from "../generated/Usage";
 import { copyText } from "../copy-table";
 
-// 本文件内部也用这些名字，所以 import + re-export 都要有：
-// **只写 `export type { … } from` 不会把名字带进本地作用域**（C02 栽过两次，C04c 又栽一次）。
+// 本文件内部也用这些名字，所以 import + re-export 都要有：只写 `export type { … } from` 不会把名字带进本地作用域。
 export type { ApiMessage, JsonlRecord, Usage };
 
 export type ContentBlock =
@@ -141,11 +123,7 @@ export interface RenderContext {
    * `null` ＝ 还不知道是哪一家（标签页的会话事实没到）⇒ 卡头那一格先空着，到了由宿主补上（`cards/speaker.ts`）。
    */
   speaker?: string | null;
-  /**
-   * Batch9-F29：会话来源（本机 = `LOCAL_ORIGIN`；其余 = 远端机器 label）。
-   * 上一版是「`null`/缺省 = 本地」—— 两种「没说」都被当成本机；
-   * 现在**必填**：每个造渲染上下文的地方都得说出是哪台机器。
-   */
+  /** 会话来源（本机 = `LOCAL_ORIGIN`；其余 = 远端机器名）。必填：每个造渲染上下文的地方都得说出是哪台机器。 */
   origin: Origin;
   /**
    * tool_use_id → 那一次 tool_use 的工具名与卡型。tool_use 出现在 assistant 消息，tool_result
@@ -169,28 +147,18 @@ export interface RenderContext {
   /** 运行 id ⇒ 运行表里的标签（agent 来话的事件条起名用；宿主不给 ⇒ 用来话自带的名字）。 */
   runLabelOf?: (run: string) => string | undefined;
   /**
-   * v2.3.1 (issue #1)：切块场景下 tool_result 可能在 tool_use 之前到达
-   * （head 块含 result，older 块才有 tool_use）。此时 injectOrBuildToolResult
-   * 走 fallback 路径产生独立卡，并把 block 引用存到这个 map。
-   *
-   * 全部 chunks 完成后 TabManager 调 reconcileToolResults 重试匹配：
-   * tool_use 现在已经有 host → 注入 + 删 fallback 卡。
-   *
-   * key = tool_use_id；value = {block, fallback element}。
-   *
-   * P4：改成**必填** —— SessionViewer / Subagent 之前漏传导致 fallback 路径
-   * 永久独立卡（fallback 后无人调 reconcile，那条结果再也不会被注入）。
-   * 不需要 reconcile 的 caller 也传一个空 Map 即可。
+   * 切块读时 tool_result 可能先于它的 tool_use 到（head 块含 result，older 块才有 use）：
+   * 那时 `injectOrBuildToolResult` 先画独立卡，把 block 记在这里（key = tool_use_id）；
+   * 全部块读完后 `reconcilePendingToolResults` 再配一次，配上了就注入、删独立卡。
+   * 必填：漏传 ⇒ 那条结果永远是独立卡；不需要配的调用方传空 Map。
    */
   pendingToolResults: Map<
     string,
     { block: Extract<ContentBlock, { type: "tool_result" }>; element: HTMLElement }
   >;
   /**
-   * P5.5 B 重构：lazy hljs 模式（启动 batch 期间用，避免 N 个代码块同步阻塞主线程）。
-   * caller（TabManager）在 inBatch 时设 true；SessionViewer / Subagent 默认 false。
-   * 传到 renderMarkdown opts.lazy 决定代码块是否走占位 + IntersectionObserver。
-   * 默认 false（不传或 undefined 都视作 eager）。
+   * 代码块高亮推迟到露出来（占位 ＋ IntersectionObserver）：批量建卡时用，免得 N 个代码块同步卡住主线程。
+   * TabManager 在批里设 true；不传 ＝ 当场高亮。
    */
   lazy?: boolean;
 }
@@ -272,8 +240,7 @@ export function renderMessage(rec: JsonlRecord, ctx: RenderContext): RenderResul
       };
     }
     case "assistant": {
-      // issue #21：API 最终失败的合成消息 → 红色报错卡（此前被当普通回复渲染，
-      // 用户误以为 LLM 还在跑）。在 meaningful 过滤前判，避免被 synthetic 过滤吞掉。
+      // API 最终失败的合成消息 → 红色报错卡（当普通回复画会让人以为还在跑）。在 meaningful 过滤前判，免得被 synthetic 过滤吞掉。
       if (rec.isApiErrorMessage) {
         return {
           kind: "card",
@@ -324,8 +291,7 @@ export function renderMessage(rec: JsonlRecord, ctx: RenderContext): RenderResul
       };
     }
     case "system":
-      // issue #21：API 调用失败将重试的中间态 → 细条提示（此前 system 一律 skip
-      // → 完全不可见，重试风暴时用户只看到"卡住"）。其余 system 仍 skip。
+      // API 调用失败、将重试的中间态 → 细条提示（不画的话重试风暴时只看到「卡住」）。其余 system 不画。
       if (rec.subtype === "api_error") {
         return {
           kind: "card",
@@ -343,13 +309,8 @@ export function renderMessage(rec: JsonlRecord, ctx: RenderContext): RenderResul
     case "ai-title":
     case "custom-title":
       return { kind: "skip" };
-    // ★★ P0c：`remove` 那一支是**用户打断时说的那句话在 jsonl 里唯一的存在**。
-    //
-    // 它没有 `user` 记录、没有 `uuid`、没有 `parentUuid` —— 只有这条 `queue-operation`。
-    // 不在这里建卡，用户说的话就整条消失（本会话实测丢了 16 条，全是打断时说的）。
-    //
-    // ⚠ 走到这里的**只有** `remove` 且后端判为人说的那一格（`routeMetaAndBranch` 把
-    // `enqueue`/`dequeue` 与别的来源都判 `"consumed"` 了）。
+    // `remove` 那一支是用户打断时说的那句话在 jsonl 里唯一的存在（没有 `user` 记录、没有 uuid）：不在这里建卡，那句话就整条消失。
+    // 走到这里的只有 `remove` 且后端判为人说的那一格（`enqueue` / `dequeue` 与别的来源 `routeMetaAndBranch` 都判 `"consumed"`）。
     case "queue-operation": {
       const text = rec.userText?.speaker.kind === "human" ? rec.userText.text : "";
       if (!text) return { kind: "skip" };
@@ -360,12 +321,7 @@ export function renderMessage(rec: JsonlRecord, ctx: RenderContext): RenderResul
   }
 }
 
-/** P0c：排队消息的用户卡。
- *
- *  与普通用户卡**刻意长得不一样**：多一个「排队」标记。
- *  理由不是装饰 —— 这条消息在会话链上**没有位置**（无 uuid/parentUuid），
- *  它与前后消息的先后只由 `seq` 保证。让读的人知道「这条是插进来的」，
- *  比让它伪装成一条普通用户消息诚实。 */
+/** 排队消息的用户卡：多一个「排队」标记 —— 这条消息在会话链上没有位置（无 uuid），先后只由 `seq` 保证，得让人看出它是插进来的。 */
 function buildQueuedUserCard(text: string, time: string): HTMLElement {
   const card = document.createElement("div");
   card.className = "card card-user card-user-queued";
@@ -439,7 +395,7 @@ function updateToolGroupSummary(group: ToolGroup): void {
           : copyText("cards.toolGroup.summary", { count, since });
 }
 
-/** 粘贴块超过这么多行就折成一行（「谁说的」稿 A · 10-02 定 12）。 */
+/** 粘贴块超过这么多行就折成一行。 */
 export const PASTE_FOLD_LINES = 12;
 
 /**
@@ -544,8 +500,7 @@ function renderBlock(
         () => {
           const body = document.createElement("div");
           body.className = "block-body block-body-md";
-          // 展开那一刻才建（用户点开 = 它就在眼前）⇒ 一律急路。原来沿用建卡时的 `ctx.lazy`：
-          // 批期建的卡早被 `enhanceCard` 标过 `enhanced`，之后才长出来的这块 body 里的占位（代码块 / 公式）永远没人补。
+          // 展开那一刻才建（点开 ＝ 就在眼前）⇒ 一律当场高亮：批里建的卡早被 `enhanceCard` 标过，这时才长出来的占位没人再补。
           body.innerHTML = renderMarkdown(block.thinking);
           return body;
         },
@@ -662,8 +617,8 @@ function buildToolUseCard(
     }
     // args/diff 始终在 result 之前（injectOrBuildToolResult 把 result append 到 wrap 末尾）
     wrap.insertBefore(bodyEl, wrap.firstChild);
-    // F54:远端会话 + 有 file_path 的工具(Read/Write/Edit/…)→ body 顶部插「在 SFTP 打开」可点
-    // 链接(会话→文件跳转)。放 body(展开时)而非 summary——summary 会被 tool_result 注入重写。
+    // 远端会话 ＋ 带 file_path 的工具（Read / Write / Edit …）⇒ body 顶上一条「在文件窗口里定位」的链接。
+    // 放 body 不放 summary：summary 会被 tool_result 注入重写。
     const fp = fileInputPath(block.input);
     if (isRemoteOrigin(ctx.origin) && fp) {
       wrap.insertBefore(buildRemoteFileLink(ctx.origin, fp), wrap.firstChild);
@@ -693,9 +648,8 @@ function commandSummary(command: string): string {
 }
 
 /**
- * F54:从 tool_use 输入里取可 SFTP 定位的文件路径。Read/Write/Edit/MultiEdit 用 `file_path`,
- * NotebookEdit 用 `notebook_path`。**只认绝对 POSIX 路径**——相对路径 `parentPath` 会解析到错
- * 目录(定位落空),不给链接。否则 null。导出便于单测。
+ * tool_use 输入里能在文件窗口定位的路径：Read / Write / Edit / MultiEdit 的 `file_path`、NotebookEdit 的 `notebook_path`。
+ * 只认绝对 POSIX 路径（相对路径会解析到错的目录）；否则 null。
  */
 export function fileInputPath(input: unknown): string | null {
   if (input && typeof input === "object") {
@@ -706,7 +660,7 @@ export function fileInputPath(input: unknown): string | null {
   return null;
 }
 
-/** F54:远端文件路径可点元素——点击 → 反查主机 cfg → 在文件窗口里定位该文件(原先是老 SFTP 面板)。 */
+/** 远端文件路径的可点元素：点了在文件窗口里定位那份文件。 */
 function buildRemoteFileLink(origin: string, filePath: string): HTMLElement {
   const el = document.createElement("button");
   el.type = "button";
@@ -727,34 +681,12 @@ async function openRemoteFileInSftp(origin: string, filePath: string): Promise<v
 }
 
 /**
- * 秤 6（表第 6 行，验 `§2.8` 与 `§5.5`）的**计数器**。
+ * 工具结果文本经手量的计数器（`buildResultBody` 闭包捕获了多少文本）。
  *
- * 「`buildResultBody` 闭包持有的文本总量 —— §2.8 的 7 MB 是按均值
- * 推的，不是实测。**怎么知道**：heap snapshot 按 retainer 找；或在 `cards/index.ts:570`
- * 累加 `text.length`」。这里就是那个「累加 `text.length`」。
- *
- * # 它是什么口径（写清楚，否则下一个人会把它读成别的东西）
- *
- * - **单位是 UTF-16 码元**（`String.prototype.length`），不是 UTF-8 字节。
- *   V8 里非 Latin-1 字符串每码元 2 字节 ⇒ 乘 2 才是堆上那一份的量级（§2.8 的
- *   「7 MB ⇒ UTF-16 下 ~14 MB」就是这么换的）。
- * - **它是累计流量，不是瞬时驻留**：同一条 result 被重渲一次（`replaceChildren`
- *   那一支）就再记一次，而旧闭包此刻已经可回收。⇒ 它是**驻留量的上界**。
- * - **它不是进程 RSS**，也不含 DOM 节点、marked/katex 中间产物、`pendingToolResults`
- *   里那份 `block`。它只答一句话：「我们自己的闭包里经手了多少文本」。
- *
- * # 为什么 `produced` 与 `captured` 要分开记
- *
- * `produced` 记在 `renderResultContent` 的出口（文本被造出来的那一刻），
- * `captured` 记在 `buildResultBody` 的入口（文本被闭包捕获的那一刻）。
- * 两者在主路上一一对应，但**有两处会岔开**，而那两处正是「留没留存」的判据：
- * - `wrap` 找不到那一支 ⇒ 造了文本但没人捕获（`produced` 涨、`captured` 不涨）；
- * - fallback 那一支的 `makeCollapsible` 工厂**没跑也捕获**（闭包参数里就有 `text`）
- *   ⇒ `captured` 此刻不涨，但文本**已经被留住了**。
- * ⇒ 只看 `captured` 会低估留存，只看 `produced` 会高估。两个都记，判词才站得住。
- *
- * 纯计数，零 DOM 副作用（硬约束）。生产里也一直在加，成本是
- * 每条 tool_result 两次整数加法。
+ * - 单位是 UTF-16 码元（`String.length`）；是累计流量、不是瞬时驻留（重渲一次再记一次）⇒ 驻留量的上界；不含 DOM 与中间产物。
+ * - `produced` 记在 `renderResultContent` 出口，`captured` 记在 `buildResultBody` 入口：`wrap` 找不到时只造不捕获，
+ *   fallback 的 `makeCollapsible` 没跑也已捕获 ⇒ 只看一个会高估或低估留存，两个都记。
+ * - 纯计数、零 DOM 副作用；每条 tool_result 两次整数加法。
  */
 export interface ResultTextLedger {
   /** `renderResultContent` 出口计数 */
@@ -821,7 +753,7 @@ function injectOrBuildToolResult(
   const host = ctx.toolUseElements.get(block.tool_use_id);
   // 派出子运行的那次调用：交回的结果 / 报错收进派出卡（可展开）。
   if (host && settleRunCard(host, text, block.is_error === true)) return null;
-  // 提问 / 计划答了之后（B7）：后端读出了答了什么 ⇒ 卡上写结果，不印 Claude Code 的英文原句。
+  // 提问 / 计划答了之后：后端读出了答了什么 ⇒ 卡上写结果，不印 Claude Code 的英文原句。
   const answered = facts.results[block.tool_use_id];
   if (host && answered && (host.classList.contains("block-ask") || host.classList.contains("block-plan"))) {
     settleInteractive(host, answered);
@@ -904,12 +836,8 @@ function injectOrBuildToolResult(
  * 不匹配的（真 fallback：tool_use 永远不会来）留着，UI 仍然能看到独立卡。
  */
 /**
- * F40b-D 审计:fallback 孤儿单元是**组内实体**(tool_result-only 渲染恒走 tool-group,
- * 单元被并进组 body)——timeline entry 的元素是组 root,不是单元本身。单元出 DOM 后
- * 若组壳已空(该 fallback 是组内唯一单元),连根摘壳并返回 root:root 才是需要
- * timeline.removeByElement 出账的对象,否则留下空组壳(「1 个工具调用」空 details)
- * 且账上挂着一个已离场元素。非空组壳照旧(summary 计数滞后属既有化妆性问题,留档)。
- * 导出仅为单测。
+ * fallback 单元在工具组里（timeline 记的是组 root，不是单元）：单元摘掉后组空了 ⇒ 连组壳一起摘、交回 root，
+ * 由调用方从 timeline 出账（不然留一个空的「1 个工具调用」且账上挂着离场元素）。组里还有别的 ⇒ `null`。
  */
 export function removeEmptyToolGroupShell(host: HTMLElement | null): HTMLElement | null {
   if (!host) return null;
@@ -922,7 +850,7 @@ export function removeEmptyToolGroupShell(host: HTMLElement | null): HTMLElement
 export function reconcilePendingToolResults(ctx: RenderContext): HTMLElement[] {
   if (!ctx.pendingToolResults || ctx.pendingToolResults.size === 0) return [];
   const toDelete: string[] = [];
-  // 返回值语义(F40b):**需要从 timeline 出账的元素**——即被连根摘除的空组壳 root。
+  // 交回需要从 timeline 出账的元素（被连根摘掉的空组壳 root）。
   // fallback 单元本身从不是 timeline entry(见 removeEmptyToolGroupShell 注释)。
   const removed: HTMLElement[] = [];
   for (const [toolUseId, { block, element }] of ctx.pendingToolResults) {
@@ -1261,7 +1189,7 @@ function stripLineNumberPrefix(text: string): string {
     .join("\n");
 }
 
-// `defaultModeForTool`〔散文墓碑〕删：哪些工具的结果默认按 Markdown 画由那台后端判（卡型 `md`，随记录成品带来）。
+// 哪些工具的结果默认按 Markdown 画由那台后端判（卡型 `md`，随记录成品带来）；这里只记人手动切过的那一种。
 
 function loadRenderModePreference(toolName: string): "text" | "md" | null {
   const v = safeGet(LS_KEYS.toolRender(toolName));
@@ -1338,7 +1266,7 @@ function renderResultContent(content: unknown): string {
   return prettyJson(content);
 }
 
-/** 第一行非空预览，截到 max 字符（不再整条 `split`，见 `format.ts::firstLineOf`） */
+/** 第一行非空预览，截到 max 字符（不整条 `split`，见 `format.ts::firstLineOf`） */
 function firstLinePreview(text: string, max: number): string {
   const { line, more } = firstLineOf(text, max);
   if (!more) return line;
@@ -1362,8 +1290,7 @@ function cardHeader(
   role: string,
   /** 记录的钟面（后端写好的 `timeText`）。 */
   time: string,
-  // C04c：`| null` —— `ApiMessage.model` 是 `Option<String>` 且无 skip_serializing_if
-  // ⇒ 线上是显式 null。下面的真值判断本来就吃得下 null，只是类型此前没说实话。
+  // `| null`：`ApiMessage.model` 是 `Option<String>` 且没有 skip_serializing_if ⇒ 线上是显式 null。
   model?: string | null,
 ): HTMLElement {
   const h = document.createElement("div");
@@ -1416,8 +1343,7 @@ function summarizeInput(input: unknown): string {
   if (input === null || input === undefined) return "";
   if (typeof input === "string") return truncate(input, 60);
   try {
-    // 只序列化到够 61 个字为止（`format.ts::jsonPrefix`），
-    // 结果逐字等于原来的 `truncate(JSON.stringify(input), 60)`；Write 一类 617 KB 的输入不再整份序列化。
+    // 只序列化到够 61 个字为止（`format.ts::jsonPrefix`），结果与 `truncate(JSON.stringify(input), 60)` 逐字相同；大输入不整份序列化。
     return truncate(jsonPrefix(input, 60) as string, 60);
   } catch {
     return "";

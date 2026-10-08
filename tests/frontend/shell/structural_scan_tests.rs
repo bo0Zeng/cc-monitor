@@ -4820,7 +4820,6 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/frontend/shell/write_site_registry_spawn_sites.rs", 2),
         // `accounts.ts` 里 `auth_ready` 订阅分支的第二份（带「旧后端」回落的 `authReady()` 包装）删了，
         //   点它的散文各挂一块：`Account.authReady` 字段头注那一处 · KAY4 判据头注第 4 条那一处。
-        ("src/frontend/ui/accounts.ts", 1), // 2 → 1：API key 徽章那段头注改成现状（本机远端同一条路），那一块随之去掉 // 3 → 2：空态那句的墓碑随「只能在终端里做」那条理由退役 // 2 → 3：点 `deploy_remote_acct_iso` 旧名那几处挂墓碑 // // 1 → 2
         ("tests/frontend/ui/account-availability-guard.vitest.ts", 1),
         // 同一判据 J2 / J3：TS 的 `isValidConfigDir`（渲染侧 configDir 拒绝集的手抄）与 `sanitizeRemoteLauncher`
         //   （同一字符集、却静默换成默认 launcher）删了，点它们的散文各挂一块。
@@ -4889,7 +4888,6 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/backend/agents/claudecode/schema.rs", 1), // 新行：记录解释进后端 / 会话正文四条退役，点旧名的散文挂墓碑
         ("src/backend/agents/codex/parse.rs", 1), // 新行：记录解释进后端 / 会话正文四条退役，点旧名的散文挂墓碑
         ("src/comms/inward/origin.rs", 1), // 新行：记录解释进后端 / 会话正文四条退役，点旧名的散文挂墓碑
-        ("src/frontend/ui/cards/index.ts", 1), // 2 → 1：卡头按文件名猜家那一段（点 `codex_sid_from_rollout` · `kind_of_record_name` 的墓碑）随「会话是哪一家由后端说」删了 // 1 → 2：结果默认怎么画的那个谓词（`defaultModeForTool`）删了，卡型随记录成品带来 // 新行：记录解释进后端 / 会话正文四条退役，点旧名的散文挂墓碑
         // `src/frontend/ui/record-reads.ts` 那一行摘了：头注里点旧命令名的那一句改成说它做什么（按目录读子 agent 那一条整轴退役），不再提那个名字。
         // `tests/backend/agents/claudecode/parse_tests.rs` 出表：那份文件随记录解释进后端删了（或墓碑随被守的东西整轴退役）
         (
