@@ -27,6 +27,25 @@ describe("toast（C13）", () => {
     vi.useRealTimers();
   });
 
+  it("失败 toast（failToast）：带详情 ⇒ 标题是出错那端写好的那一句、灰字只放一格事实、出［复制详情］；不带 ⇒ 标题留界面那句、无灰字、无按钮、原文进控制台", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const said = Object.assign(new Error("X 未启动 · 夹具原因"), { detail: "码：exit status: 1" });
+    kit.failToast("打开 X 没成（夹具）", said, { fact: "devbox" });
+    kit.failToast("存 Y 没成（夹具）", new TypeError("x is undefined"));
+    const a = toasts().find((t) => t.textContent?.includes("X 未启动"))!;
+    const b = toasts().find((t) => t !== a)!;
+    expect(a, "带详情的那条：标题是出错那端写好的那一句").toBeDefined();
+    expect(a.textContent).not.toContain("打开 X 没成");
+    expect(detailOf(a)).toBe("devbox");
+    expect(buttonsOf(a).map((x) => x.textContent)).toContain(copyText("detail.act.copy"));
+    expect(b.textContent).toContain("存 Y 没成（夹具）");
+    expect(b.textContent, "JS 自己抛的原文不上屏").not.toContain("x is undefined");
+    expect(detailOf(b)).toBe("");
+    expect(buttonsOf(b).map((x) => x.textContent)).not.toContain(copyText("detail.act.copy"));
+    expect(warn.mock.calls.flat().some((x) => x instanceof TypeError), "原文进控制台").toBe(true);
+    warn.mockRestore();
+  });
+
   it("纯告知 4s 自己走；带动作 8s；出错不自己走", () => {
     kit.toast("已复制", "", { level: "info" });
     kit.toast(copyText("machineList.remove.done", { machine: "devbox" }), "", { level: "success", action: { label: copyText("kit.toast.undo"), run: () => {} } });

@@ -547,12 +547,12 @@ fn the_window_process_lists_first_and_the_parent_carries_its_words() {
     );
     // ③
     match run("silent", "", 0) {
-        Err(Unopened::Process(e)) => assert!(!e.is_empty()),
+        Err(Unopened::Process(e)) => assert!(!e.said.is_empty()),
         other => panic!("一句不说就退，却回了：{other:?}"),
     }
     // ④
     match run("garbled", "{\"ok\":1}", 0) {
-        Err(Unopened::Process(e)) => assert!(!e.is_empty()),
+        Err(Unopened::Process(e)) => assert!(!e.said.is_empty()),
         other => panic!("说了一句不是约定形状的话，却回了：{other:?}"),
     }
     std::fs::remove_dir_all(&dir).ok();
@@ -591,7 +591,7 @@ fn a_window_that_dies_after_being_judged_open_is_still_reported() {
         .unwrap();
         std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
         std::env::set_var(BIN_ENV, &p);
-        let (tx, rx) = std::sync::mpsc::channel::<String>();
+        let (tx, rx) = std::sync::mpsc::channel::<ProcFail>();
         let r = open_in_new_process(&req, Box::new(move |said| tx.send(said).unwrap()));
         std::env::remove_var(BIN_ENV);
         (r, rx.recv_timeout(std::time::Duration::from_secs(10)))
@@ -599,12 +599,18 @@ fn a_window_that_dies_after_being_judged_open_is_still_reported() {
     let (r, said) = run(7);
     assert_eq!(r.map(|(_, n)| n), Ok(3), "活过预算的那一形该先回成功");
     let said = said.expect("判成功之后退出码 7 退了，却一句都没交");
-    let why = copy_text("rsFilewinProc.late.exited", &[("st", "exit status: 7")]);
-    assert_eq!(said, exit_said(&why, &[]));
+    let why = copy_text("rsFilewinProc.late.exited", &[]);
+    assert_eq!(said, exit_said(&why, Some("exit status: 7".into()), &[]));
     assert_eq!(
-        said,
+        said.said,
         copy_text("rsFilewinProc.open.noStderr", &[("why", &why)])
     );
+    assert_eq!(
+        said.code.as_deref(),
+        Some("exit status: 7"),
+        "退出状态进复制详情"
+    );
+    assert!(!said.said.contains('7'), "退出状态不上句子：{}", said.said);
     let (r, said) = run(0);
     assert!(r.is_ok());
     assert!(said.is_err(), "体面退出（用户关窗）也报了：{said:?}");
@@ -712,7 +718,7 @@ fn a_window_process_that_dies_at_once_comes_back_as_a_reason() {
     let Unopened::Process(e) = e else {
         panic!("起不来那一形被说成了窗口进程的话：{e:?}")
     };
-    assert!(!e.is_empty(), "报了错但原因是空的 —— 上层连话都没有");
+    assert!(!e.said.is_empty(), "报了错但原因是空的 —— 上层连话都没有");
     std::env::remove_var(BIN_ENV);
     std::fs::remove_dir_all(&dir).ok();
 }
@@ -895,22 +901,28 @@ fn the_window_process_own_reason_reaches_the_sentence() {
             other => panic!("{tag}：带着 stderr 退了，却回了：{other:?}"),
         }
     };
-    let why = copy_text("rsFilewinProc.open.exited", &[("st", "exit status: 1")]);
+    // 句子只说哪件事没成 ＋ 原因词；退出状态进「码」、stderr 末几行进「原话」（复制详情）。
+    let why = copy_text("rsFilewinProc.open.exited", &[]);
+    let gl = run("gl", "'Error: egui_glow requires opengl 2.0+.'");
     assert_eq!(
-        run("gl", "'Error: egui_glow requires opengl 2.0+.'"),
+        gl.said,
         copy_text("rsFilewinProc.cause.noOpenGl", &[("why", &why)])
     );
     assert_eq!(
-        run("other", "'line a' 'line b'"),
-        copy_text(
-            "rsFilewinProc.open.stderrTail",
-            &[("why", &why), ("tail", "line a\nline b")]
-        )
+        gl.raw.as_deref(),
+        Some("Error: egui_glow requires opengl 2.0+.")
     );
+    let other = run("other", "'line a' 'line b'");
+    assert_eq!(other.said, why);
+    assert_eq!(other.code.as_deref(), Some("exit status: 1"));
+    assert_eq!(other.raw.as_deref(), Some("line a\nline b"));
+    assert!(!other.said.contains("line a"), "{}", other.said);
+    let quiet = exit_said(&why, None, &[]);
     assert_eq!(
-        exit_said(&why, &[]),
+        quiet.said,
         copy_text("rsFilewinProc.open.noStderr", &[("why", &why)])
     );
+    assert_eq!(quiet.raw, None);
     std::fs::remove_dir_all(&dir).ok();
 }
 
@@ -936,7 +948,7 @@ fn reopening_after_a_crash_starts_a_clean_new_process() {
         .unwrap();
         std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
         std::env::set_var(BIN_ENV, &p);
-        let (tx, rx) = std::sync::mpsc::channel::<String>();
+        let (tx, rx) = std::sync::mpsc::channel::<ProcFail>();
         let r = open_in_new_process(&req, Box::new(move |said| tx.send(said).unwrap()));
         std::env::remove_var(BIN_ENV);
         (r, rx.recv_timeout(std::time::Duration::from_secs(10)))
@@ -949,8 +961,11 @@ fn reopening_after_a_crash_starts_a_clean_new_process() {
     let (pid1, _) = first.expect("第一趟该先判成功");
     let said = said.expect("判成功之后崩了，却一句都没交");
     assert!(
-        said.contains("index out of bounds"),
-        "崩溃那几行没带进那一句：{said}"
+        said.raw
+            .as_deref()
+            .unwrap_or_default()
+            .contains("index out of bounds"),
+        "崩溃那几行没带进复制详情：{said:?}"
     );
     let (second, said2) = run("clean", "", 0);
     let (pid2, n) = second.expect("崩过一次之后再开没开成");

@@ -742,6 +742,7 @@ pub(crate) fn unread_health(
         origin: origin.to_string(),
         kind: kind.to_string(),
         message,
+        detail: String::new(),
     }
 }
 

@@ -719,6 +719,7 @@ pub fn run() {
                         origin: n.origin,
                         kind: n.kind.to_string(),
                         message: n.message,
+                        detail: String::new(),
                     };
                     if let Err(e) = handle.emit(ui_contract::events::REMOTE_HEALTH, payload) {
                         tracing::warn!("emit remote-health(host key) failed: {e}");

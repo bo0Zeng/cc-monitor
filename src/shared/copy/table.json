@@ -9389,12 +9389,6 @@
       "zh": "文件窗口连接主程序失败 · {e}",
       "args": ["e"]
     },
-    "rsFilewinProc.open.stderrTail": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{why} · 错误输出末几行\n{tail}",
-      "args": ["why", "tail"]
-    },
     "rsFilewinProc.open.noStderr": {
       "kind": "error",
       "role": "原因格",
@@ -9407,12 +9401,6 @@
       "zh": "此电脑的显卡或驱动不支持 OpenGL 2.0 · {why}",
       "args": ["why"]
     },
-    "rsFilewinProc.open.failedWhy": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "打开文件窗口失败 · {e}",
-      "args": ["e"]
-    },
     "rsFilewinProc.open.failed": {
       "kind": "error",
       "role": "原因格",
@@ -9421,15 +9409,15 @@
     },
     "rsFilewinProc.open.exited": {
       "kind": "error",
-      "role": "报错",
-      "zh": "文件窗口打开失败 · 进程退出 {st}",
-      "args": ["st"]
+      "role": "原因格",
+      "zh": "程序出错",
+      "args": []
     },
     "rsFilewinProc.late.exited": {
       "kind": "error",
       "role": "报错",
-      "zh": "文件窗口打开后又退出 · {st}",
-      "args": ["st"]
+      "zh": "文件窗口打开后又退出",
+      "args": []
     },
     "rsFilewinProc.seed.sendFailed": {
       "kind": "error",
@@ -27010,6 +26998,12 @@
       "role": "说明",
       "zh": "另 {n} 段",
       "args": ["n"]
+    },
+    "rsFilewinEntry.open.crashed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "文件窗口未启动 · 程序出错",
+      "args": []
     }
   }
 }

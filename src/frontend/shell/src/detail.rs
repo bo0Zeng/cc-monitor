@@ -115,12 +115,23 @@ pub struct Said {
 impl Said {
     /// 一句话 ＋ 命令名 ＋ 下层原话（可缺）。
     pub fn new(said: impl Into<String>, command: &str, raw: Option<&str>) -> Said {
+        Said::coded(said, command, None, raw)
+    }
+
+    /// 同 [`Said::new`]，多一项码（退出状态 · 系统错误码；可缺）。
+    pub fn coded(
+        said: impl Into<String>,
+        command: &str,
+        code: Option<&str>,
+        raw: Option<&str>,
+    ) -> Said {
         Said {
             said: said.into(),
             detail: Detail::new()
                 .item(Label::At, now())
                 .item(Label::Local, local_line())
                 .item(Label::Command, command)
+                .maybe(Label::Code, code)
                 .maybe(Label::Raw, raw)
                 .render(),
         }

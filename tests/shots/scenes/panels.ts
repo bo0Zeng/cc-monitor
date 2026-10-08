@@ -532,6 +532,28 @@ export const PANEL_SCENES: Scene[] = [
     };
     return w;
   }),
+  panel(
+    "panel-filewin-open-failed",
+    "打开文件 · 窗口没起来",
+    "文件窗口进程一启动就退了：toast 标题是壳写好的那一句（只说原因词），灰字是那台，［复制详情］里是退出状态与它的错误输出",
+    async () => {
+      await mainReady(ALL_TABS);
+      await click(".sftp-trigger");
+      const item = await byText("[role^=menuitem]", "devbox", 2000).catch(() => null);
+      if (item) await click(item);
+      await byText("[role=alert]", /文件窗口未启动/);
+      await sleep(300);
+    },
+    () => {
+      const w = defaultWorld();
+      w.commands.open_file_window = () =>
+        Promise.reject({
+          said: "文件窗口未启动 · 程序出错",
+          detail: "时刻：2026-10-08 15:20:44 +08:00\n本机：cc-monitor 4.1.5 (p13-shots) · Linux x86_64\n命令：open_file_window\n码：exit status: 1\n原话：thread 'main' panicked at src/main.rs:12:5:\nwinit: no display",
+        });
+      return w;
+    },
+  ),
   panel("panel-first-run", "首次打开", "第一次开：命令面板入口高亮、tab 栏默认宽度", async () => {
     await mainReady(ALL_TABS);
   }),

@@ -18,13 +18,12 @@
  * # 失败要出声
  *
  * Rust 侧**先真的列一趟目录再开窗**，列不出来、通道没起来、窗口进程当场就退，都会 reject
- * ⇒ 这里 `await` 到的错是真错，原文放进 toast。成功不另外出声：窗口自己出现就是回应。
+ * ⇒ 这里 `await` 到的错是真错，那一句与复制详情放进 toast。成功不另外出声：窗口自己出现就是回应。
  */
 import { commands } from "./ipc/commands";
-import { toast } from "./kit/toast";
+import { failToast } from "./kit/toast";
 import type { RemoteHostConfig } from "./remote-config";
 import { copyText } from "./copy-table";
-import { detailOf } from "./kit/detail";
 
 /**
  * 文件窗口要的那几格设计令牌：开窗那一刻 `:root` 上的计算值（含用户在设置里改过的）原样交给 Rust 侧，
@@ -102,7 +101,7 @@ export async function openFileWindow(cfg: RemoteHostConfig, at?: FileWindowTarge
     await commands.open_file_window({ cfg, path, revealFile, theme: fileWindowTheme() });
     return true;
   } catch (e) {
-    toast(copyText("fileWindow.openFileWindow.failed"), String(e), { detail: detailOf(e) });
+    failToast(copyText("fileWindow.openFileWindow.failed"), e, { fact: cfg.label.trim() || cfg.host });
     return false;
   }
 }
