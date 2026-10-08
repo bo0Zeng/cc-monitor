@@ -6,7 +6,7 @@ pub const CLI_ONLY_DOCS: &[(&str, &str, &str)] = &[
     ("account-trust", "<configDir> <cwd>", "换号恢复前的信任预检：单行 `{trusted, known, error}`；`configDir` 必须逐字是账号清单里的一个，否则退出 2、`unknown_config_dir`；不回那份配置的内容"),
     ("account-trust-zero", "<cwd>", "账号 0（没启用多账号时那个原生身份）的信任预检，形状同 `--account-trust`；`cwd` 只当查表键，不收路径参数"),
     ("backend-probe", "", "能力探测：回 `{proto, buildId, commands}`，`commands` 是这台真能派发的 CLI 控制面子命令；不读 stdin"),
-    ("find-in-session", "[--include-tools] [--limit <n>] --query <q> <jsonl>", "在一份会话里找一段文字：头 `{kind:\"session_find\",v:1}` · 每条命中 `{uuid, kind, before, matched, after}` · 尾 `{kind:\"session_find_end\",count,total}`；`limit` 缺省 500、封顶 2000"),
+    ("find-in-session", "[--include-tools] [--limit <n>] --query <q> <jsonl>", "在一份会话里找一段文字：头 `{kind:\"session_find\",v:1}` · 每条命中 `{uuid, kind, before, matched, after, turn, tsMs, tsText}`（`tsText` ＝ 那条的时刻按这台本地钟写好） · 尾 `{kind:\"session_find_end\",count,total}`；`limit` 缺省 500、封顶 2000"),
     ("fork-session", "<args>", "从某条消息处分叉出一个新会话文件，出参 `ForkResult`（见下）"),
     ("list-accounts", "", "账号清单：首行 `{kind:\"accounts-meta\", enabled, acctsDir, manifestPath, updatedAt, sharedStore, count, error, unsupported, nextDefault}`，其后每号一行 `{name, email, configDir, isDefault, mode, exists, loggedIn}`；没启用多账号 ⇒ `enabled:false`、退出 0"),
     ("list-projects", "", "项目清单：每行 `{dirName, projectPath, sessionCount, lastActivityMs}`；工作目录在 `~/.cc-monitor/autostart/` 下的会话不出"),

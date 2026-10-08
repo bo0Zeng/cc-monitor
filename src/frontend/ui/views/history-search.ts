@@ -55,6 +55,9 @@ export interface SessionHits {
   /** ai-title / 首条 user 摘要 / sid 前 8 位 之一 */
   title: string;
   updatedAt: number;
+  /** 行尾那一格 · 内容头那一段（本机后端合并时按它的本地钟写好；各台单独回来的那一份还没有）。 */
+  atText?: string;
+  spanText?: string;
   /** 本会话命中总数（可能 > 返回的 hits 长度） */
   hitCount: number;
   hits: Hit[];
@@ -226,6 +229,8 @@ function sessionHitsOf(v: unknown): SessionHits | null {
     !isStr(o.jsonlPath) ||
     !isStr(o.title) ||
     !isInt(o.updatedAt) ||
+    !(o.atText === undefined || isStr(o.atText)) ||
+    !(o.spanText === undefined || isStr(o.spanText)) ||
     !isInt(o.hitCount) ||
     o.hitCount < 0 ||
     hits === null ||
@@ -245,6 +250,8 @@ function sessionHitsOf(v: unknown): SessionHits | null {
     jsonlPath: o.jsonlPath,
     title: o.title,
     updatedAt: o.updatedAt,
+    ...(isStr(o.atText) ? { atText: o.atText } : {}),
+    ...(isStr(o.spanText) ? { spanText: o.spanText } : {}),
     hitCount: o.hitCount,
     hits: hits as Hit[],
     hitsTruncated: o.hitsTruncated ?? false,
@@ -268,7 +275,7 @@ export function decodeMerged(v: unknown): Omit<SearchResult, "failedHosts" | "un
   const sessions = (o.sessions as unknown[]).map((row) => {
     const sh = sessionHitsOf(row);
     const origin = (row as Record<string, unknown> | null)?.origin;
-    if (sh === null || !(origin === undefined || isStr(origin))) return bad();
+    if (sh === null || sh.atText === undefined || sh.spanText === undefined || !(origin === undefined || isStr(origin))) return bad();
     return origin === undefined ? sh : { ...sh, origin };
   });
   if (sessions.length !== o.sessionCount) bad();

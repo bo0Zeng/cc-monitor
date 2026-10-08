@@ -469,3 +469,25 @@ fn a_hit_carries_this_machines_status_and_can() {
         "命中行形状变了：TS 解码器读的是同一份金样，两边一起改（CCM_BLESS=1 重写）"
     );
 }
+
+/// 合好的每一行带 `atText`（行尾那一格）与 `spanText`（打开它时内容头那一段）：按 `updatedAt`、这台本地钟写好（界面照抄）。
+#[test]
+fn merged_sessions_carry_row_and_span_texts() {
+    use serde_json::json;
+    let day = crate::common::time::days_from_civil(2026, 10, 7) * 86_400;
+    let (u, now) = (
+        (day + 9 * 3_600 + 5 * 60) * 1_000,
+        (day + 15 * 3_600) * 1_000,
+    );
+    let merged = merge_at(
+        &json!({ "sessions": [ { "sessionId": "s1", "updatedAt": u, "hitCount": 1, "hitsTruncated": false, "hits": [] } ] }),
+        now,
+        &|t| t,
+    )
+    .unwrap();
+    let s = &merged["sessions"][0];
+    assert_eq!(
+        (s["atText"].as_str(), s["spanText"].as_str()),
+        (Some("09:05"), Some("09:05–09:05"))
+    );
+}

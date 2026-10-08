@@ -165,7 +165,7 @@ fn ask(args: Value) -> Ask {
 }
 
 fn answer(args: Value) -> Value {
-    answer_from(&listing(), None, Ok(&ann()), &ask(args), 1_000)
+    answer_from(&listing(), None, Ok(&ann()), &ask(args), 1_000, &|t| t)
 }
 
 fn sids(v: &Value) -> Vec<String> {
@@ -266,7 +266,7 @@ fn rows_carry_annotations_label_and_what_can_be_done() {
     // 改过的标题压过原标题（正控：注解里 S1 没改名、label 是原标题；这里给它一条改名）。
     let mut t = ann();
     t.get_mut(S1).unwrap().custom_title = Some("改过的".into());
-    let w = answer_from(&listing(), None, Ok(&t), &ask(json!({})), 1_000);
+    let w = answer_from(&listing(), None, Ok(&t), &ask(json!({})), 1_000, &|t| t);
     assert_eq!(find(&w, S1)["label"], "改过的");
     assert_eq!(find(&w, S1)["customTitle"], "改过的");
 }
@@ -305,6 +305,7 @@ fn filters_and_context_parents() {
         Ok(&ann()),
         &ask(json!({"within_days": 1})),
         1_000 + 2 * 86_400_000,
+        &|t| t,
     );
     assert_eq!(far["total"], 0);
 }
@@ -465,6 +466,16 @@ async fn a_remote_is_asked_raw_once_and_cached_until_fresh() {
         .unwrap()
         .iter()
         .all(|r| r["origin"] == "list-dev"));
+    assert!(
+        v["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|r| ["atText", "sectionText", "spanText"]
+                .iter()
+                .all(|k| r[*k].as_str().is_some_and(|t| !t.is_empty()))),
+        "帧面那一臂每行都带行尾 · 分段 · 时间段三格（这台本地钟写好）：{v}"
+    );
     assert!(v["groups"]
         .as_array()
         .unwrap()
@@ -499,7 +510,14 @@ async fn a_remote_is_asked_raw_once_and_cached_until_fresh() {
 /// ★ 判据 9：跨语言金样（远端一台的成品，带 context 父会话与读不了的那一组）。`CCM_BLESS=1` 重写。
 #[test]
 fn the_product_matches_the_cross_language_golden() {
-    let got = answer_from(&listing(), Some("dev"), Ok(&ann()), &ask(json!({})), 1_000);
+    let got = answer_from(
+        &listing(),
+        Some("dev"),
+        Ok(&ann()),
+        &ask(json!({})),
+        1_000,
+        &|t| t,
+    );
     let path = fixtures().join("history-list.golden.json");
     if std::env::var_os("CCM_BLESS").is_some() {
         std::fs::write(
@@ -528,6 +546,7 @@ fn unreadable_annotations_say_so_and_the_rows_still_come() {
             annotations(&loaded),
             &ask(json!({})),
             1_000,
+            &|t| t,
         );
         assert!(
             v["notice"].as_str().is_some_and(|s| !s.is_empty()),

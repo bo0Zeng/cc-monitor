@@ -38,7 +38,6 @@ import { revealInFolder } from "../reveal-in-folder";
 import { resumeHistoryRow } from "../history-resume";
 import { openNewSession } from "../new-session";
 import { groupHead, hitsBlock, labelOf, machineTag, rowBadges, rowKey, sectionHead, sessionRow, strip, type RowHooks } from "./history-rows";
-import { sectionKey, sectionLabel, spanText } from "./history-time";
 import s from "./history.module.css";
 
 type ViewMode = "time" | "project";
@@ -591,7 +590,6 @@ export class HistoryView {
   private renderNow(): void {
     this.dirty = false;
     this.renderChrome();
-    const now = Date.now();
     const lists = this.lists();
     const rows = mergeByAt(lists.map((l) => l.rows));
     this.rowsByKey = new Map(rows.map((r) => [rowKey(r), r]));
@@ -600,7 +598,7 @@ export class HistoryView {
     this.order = [];
     const hooks = this.hooks();
     if (this.content) {
-      this.renderContent(body, hooks, now);
+      this.renderContent(body, hooks);
     } else if (rows.length === 0 && anyLoading) {
       this.listHead.replaceChildren(copyText("history.list.reading", { machines: this.wanted().map((m) => m || copyText("history.filter.local")).join(` ${copyText("cssMarks.sep.dot")} `) }));
       body.push(skeletonRows(6));
@@ -613,9 +611,9 @@ export class HistoryView {
           : emptyState({ text: copyText("history.list.empty"), hint: copyText("history.list.emptyHint") }),
       );
     } else if (this.prefs.view === "time") {
-      this.renderByTime(body, rows, hooks, now, lists);
+      this.renderByTime(body, rows, hooks, lists);
     } else {
-      this.renderByProject(body, rows, hooks, now, lists);
+      this.renderByProject(body, rows, hooks, lists);
     }
     if (lists.some((l) => l.truncated) && !this.content) {
       const more = document.createElement("div");
@@ -644,17 +642,17 @@ export class HistoryView {
     return kids;
   }
 
-  private pushRow(body: HTMLElement[], r: HistoryRow, hooks: RowHooks, kids: Map<string, HistoryRow[]>, compact: boolean, now: number, child: boolean): void {
+  private pushRow(body: HTMLElement[], r: HistoryRow, hooks: RowHooks, kids: Map<string, HistoryRow[]>, compact: boolean, child: boolean): void {
     const k = rowKey(r);
     const mine = kids.get(k) ?? [];
     const open = this.openForks.has(k);
     const orphan = !child && r.forkedFromSessionId !== undefined && !this.rowsByKey.has(rowKey({ origin: r.origin, sessionId: r.forkedFromSessionId }));
-    body.push(sessionRow(r, hooks, { compact, forks: mine.length, forksOpen: open, child, orphan, now }));
+    body.push(sessionRow(r, hooks, { compact, forks: mine.length, forksOpen: open, child, orphan }));
     this.order.push(k);
-    if (open) for (const c of mine) this.pushRow(body, c, hooks, kids, compact, now, true);
+    if (open) for (const c of mine) this.pushRow(body, c, hooks, kids, compact, true);
   }
 
-  private renderByTime(body: HTMLElement[], rows: HistoryRow[], hooks: RowHooks, now: number, lists: HistoryList[]): void {
+  private renderByTime(body: HTMLElement[], rows: HistoryRow[], hooks: RowHooks, lists: HistoryList[]): void {
     const total = lists.reduce((n, l) => n + l.total, 0);
     this.listHead.replaceChildren(copyText("history.list.count", { n: total }));
     const kids = this.forksOf(rows);
@@ -662,16 +660,16 @@ export class HistoryView {
     for (const r of rows) {
       // 挂在父会话下的分叉不在顶层出。
       if (r.forkedFromSessionId && this.rowsByKey.has(rowKey({ origin: r.origin, sessionId: r.forkedFromSessionId }))) continue;
-      const k = sectionKey(r.at, now);
-      if (k !== sec) {
-        sec = k;
-        body.push(sectionHead(sectionLabel(k, now)));
+      // 分段头是那台写好的字（今天 · 昨天 · 本周 · 按月）：换了字就起新的一段。
+      if (r.sectionText !== sec) {
+        sec = r.sectionText;
+        body.push(sectionHead(sec));
       }
-      this.pushRow(body, r, hooks, kids, false, now, false);
+      this.pushRow(body, r, hooks, kids, false, false);
     }
   }
 
-  private renderByProject(body: HTMLElement[], rows: HistoryRow[], hooks: RowHooks, now: number, lists: HistoryList[]): void {
+  private renderByProject(body: HTMLElement[], rows: HistoryRow[], hooks: RowHooks, lists: HistoryList[]): void {
     const groups = mergeGroups(lists.map((l) => l.groups));
     const sessions = groups.reduce((n, g) => n + g.count, 0);
     const head = document.createElement("span");
@@ -714,13 +712,13 @@ export class HistoryView {
       if (!open) continue;
       for (const r of byGroup.get(gk) ?? []) {
         if (r.forkedFromSessionId && this.rowsByKey.has(rowKey({ origin: r.origin, sessionId: r.forkedFromSessionId }))) continue;
-        this.pushRow(body, r, hooks, kids, true, now, false);
+        this.pushRow(body, r, hooks, kids, true, false);
       }
     }
   }
 
   /** 内容搜索的结果：每个会话一块（会话行 ＋ 前几处命中）。 */
-  private renderContent(body: HTMLElement[], hooks: RowHooks, now: number): void {
+  private renderContent(body: HTMLElement[], hooks: RowHooks): void {
     const c = this.content;
     if (!c) return;
     if (c.state === "searching") {
@@ -764,7 +762,7 @@ export class HistoryView {
     }
     for (const sh of r.sessions) {
       const row = this.rowsByKey.get(rowKey(sh)) ?? rowFromHits(sh);
-      const el = sessionRow(row, hooks, { compact: false, forks: 0, forksOpen: false, child: false, orphan: false, now });
+      const el = sessionRow(row, hooks, { compact: false, forks: 0, forksOpen: false, child: false, orphan: false });
       this.order.push(rowKey(row));
       body.push(hitsBlock(el, sh, (uuid) => this.show(row, uuid ?? undefined)));
     }
@@ -909,7 +907,7 @@ export class HistoryView {
     project.textContent = r.projectName || copyText("history.row.noDir");
     const machine = machineTag(r.origin) ?? Object.assign(document.createElement("span"), { textContent: copyText("history.filter.local") });
     const span = document.createElement("span");
-    span.textContent = spanText(r.startedAt, r.updatedAt, Date.now());
+    span.textContent = r.spanText;
     const toList = button({ label: copyText("history.content.toList"), kind: "ghost", icon: "back", size: "compact", onClick: () => this.toList() });
     toList.classList.add(s.hvToList);
     return {
@@ -1164,6 +1162,9 @@ function rowFromHits(sh: SessionHits): HistoryRow {
     startedAt: sh.updatedAt,
     updatedAt: sh.updatedAt,
     at: sh.updatedAt,
+    atText: sh.atText ?? "",
+    sectionText: "",
+    spanText: sh.spanText ?? "",
     jsonlPath: sh.jsonlPath,
     messageCountApprox: 0,
     isBg: sh.isBg,

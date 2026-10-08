@@ -50,6 +50,8 @@ export interface FindHit {
   turn: number;
   /** 那条记录的时刻（毫秒；读不出 ＝ 0）。 */
   tsMs: number;
+  /** 它写给人看的样子（那台后端按它的本地钟写好；读不出 ⇒ 空串）。 */
+  tsText: string;
 }
 
 /** 查找的回包。`available == false` 时 `hits` 为空、`reason` 是给人看的原因（**不是错误**）。 */
@@ -233,7 +235,7 @@ class ShapeError extends ReplyUnreadable {
 export function decodeFind(v: unknown): { total: number; hits: FindHit[] } {
   if (!isObj(v) || !isNum(v.total) || !Array.isArray(v.hits)) throw new ShapeError("history-find", copyText("sessionReads.missing.find"));
   const hits = v.hits.map((h): FindHit => {
-    if (!isObj(h) || ![h.uuid, h.kind, h.before, h.matched, h.after].every(isStr) || !isNum(h.turn) || !isNum(h.tsMs)) {
+    if (!isObj(h) || ![h.uuid, h.kind, h.before, h.matched, h.after, h.tsText].every(isStr) || !isNum(h.turn) || !isNum(h.tsMs)) {
       throw new ShapeError("history-find", copyText("sessionReads.missing.findHit"));
     }
     return {
@@ -244,6 +246,7 @@ export function decodeFind(v: unknown): { total: number; hits: FindHit[] } {
       after: h.after as string,
       turn: h.turn,
       tsMs: h.tsMs,
+      tsText: h.tsText as string,
     };
   });
   return { total: v.total, hits };

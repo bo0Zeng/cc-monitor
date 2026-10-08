@@ -492,14 +492,26 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     ],
   },
   J24: {
-    what: "一个时刻写成给人看的钟面（记录卡 · 轮次起止 · 子运行开始 · 分叉那一轮 · 终端快照）",
+    what: "一个时刻写成给人看的字（记录卡 · 轮次起止 · 子运行开始 · 分叉那一轮 · 终端快照 · 历史页分段 / 行尾 / 时间段 · 会话内查找的时刻）",
     // 后端按那台本地钟写好（记录的 `timeText` · 轮次的 `startText`/`endText` · 子运行的 `started_text` · 分叉的 `startText` ·
-    //   终端快照的 `captured_at_text`），界面照抄。删的是 `format.ts::formatTimestampShort`（`toLocaleTimeString`）与终端页 / 起会话框各自那一个钟面换算（`getSeconds` 那一处随之归零）。
-    // 留着的一处是 `status-messages.ts` 的提示时刻：提示是界面自己出的事，不来自哪台后端，没有「那台的本地钟」可照抄。
-    homes: ["src/backend/common/time.rs::hm", "src/backend/common/time.rs::hms"],
+    //   终端快照的 `captured_at_text` · 历史清单行的 `atText`/`sectionText`/`spanText` · 搜索合并行的 `atText`/`spanText` · 查找命中的 `tsText`），界面照抄。
+    //   删的是 `format.ts::formatTimestampShort` · `views/history-time.ts` 整份 · 终端页 / 起会话框各自那一个钟面换算。
+    // 留着的一处是 `status-messages.ts` 的提示时刻（`toLocaleTimeString`，不在指纹里）：提示是界面自己出的事，不来自哪台后端，没有「那台的本地钟」可照抄。
+    homes: [
+      "src/backend/common/time.rs::hm",
+      "src/backend/common/time.rs::hms",
+      "src/backend/common/time.rs::row_time",
+      "src/backend/common/time.rs::section_text",
+      "src/backend/common/time.rs::span_text",
+      "src/backend/common/time.rs::hit_time",
+    ],
     status: "zero",
-    defs: ["formatTimestampShort"],
-    needles: [{ text: "getSeconds", count: 0 }],
+    defs: ["formatTimestampShort", "rowTime", "sectionKey", "sectionLabel", "spanText", "hitTime"],
+    needles: [
+      { text: "getHours", count: 0 },
+      { text: "getMinutes", count: 0 },
+      { text: "getSeconds", count: 0 },
+    ],
   },
 };
 

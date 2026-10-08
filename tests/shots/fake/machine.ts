@@ -2,7 +2,7 @@
  * 机器与设置那一族的合成答法：后端状态、ccm 入口、ssh 配置、tmux、足迹、数据位置、日志 …
  * 后端说的那几句话一律取文案表（与真后端出的成品同一份字），形状照各跨语言金样。
  */
-import { hms } from "./clock";
+import { hitTime, hms } from "./clock";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import FOOTPRINT_GOLDEN from "../../__fixtures__/footprint-report.golden.json";
 import EXT_GOLDEN from "../../__fixtures__/ext-flow.golden.json";
@@ -305,10 +305,10 @@ export function machineOps(): Record<string, OpHandler> {
       return {
         total: 4,
         hits: [
-          { uuid: "00000000-0000-4000-8000-000000000001", kind: "user", before: "帮我加上", matched: q, after: "（指数退避）和整体超时，顺便补测试。", turn: 1, tsMs: at(14) },
-          { uuid: "00000000-0000-4000-8000-000000000006", kind: "assistant", before: "统一做**", matched: q, after: " ＋ 退避 ＋ 整体超时**；", turn: 1, tsMs: at(12) },
-          { uuid: "00000000-0000-4000-8000-000000000007", kind: "assistant", before: "为 InventoryClient._call 写单元测试：成功、", matched: q, after: "后成功、重试耗尽三种。", turn: 1, tsMs: at(11) },
-          { uuid: "00000000-0000-4000-8000-0000000000ff", kind: "assistant", before: "上次讨论过要不要做", matched: q, after: "，当时的结论是先不做", turn: 1, tsMs: at(60 * 26) },
+          { uuid: "00000000-0000-4000-8000-000000000001", kind: "user", before: "帮我加上", matched: q, after: "（指数退避）和整体超时，顺便补测试。", turn: 1, tsMs: at(14), tsText: hitTime(at(14), copyText("history.section.yesterday")) },
+          { uuid: "00000000-0000-4000-8000-000000000006", kind: "assistant", before: "统一做**", matched: q, after: " ＋ 退避 ＋ 整体超时**；", turn: 1, tsMs: at(12), tsText: hitTime(at(12), copyText("history.section.yesterday")) },
+          { uuid: "00000000-0000-4000-8000-000000000007", kind: "assistant", before: "为 InventoryClient._call 写单元测试：成功、", matched: q, after: "后成功、重试耗尽三种。", turn: 1, tsMs: at(11), tsText: hitTime(at(11), copyText("history.section.yesterday")) },
+          { uuid: "00000000-0000-4000-8000-0000000000ff", kind: "assistant", before: "上次讨论过要不要做", matched: q, after: "，当时的结论是先不做", turn: 1, tsMs: at(60 * 26), tsText: hitTime(at(60 * 26), copyText("history.section.yesterday")) },
         ],
       };
     },

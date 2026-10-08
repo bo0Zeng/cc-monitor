@@ -60,6 +60,7 @@
         "kind": "user",
         "matched": "zqx",
         "tsMs": 0,
+        "tsText": "",
         "turn": 1,
         "uuid": "in-1"
       },
@@ -69,6 +70,7 @@
         "kind": "assistant",
         "matched": "zqx",
         "tsMs": 0,
+        "tsText": "",
         "turn": 1,
         "uuid": "out-1"
       }

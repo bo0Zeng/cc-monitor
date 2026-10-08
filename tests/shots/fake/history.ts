@@ -1,6 +1,7 @@
 /**
  * 历史页的合成数据：几台机器上的项目与会话、全文搜索的命中。形状照 `history-list.golden.json` 与界面的解码器。
  */
+import { rowTime, sectionText, spanText } from "./clock";
 import type { OpHandler } from "./types";
 
 // 历史页按看的人这台的日历分段（今天 · 昨天 · 本周 …）⇒ 合成时间跟着截图那一刻走。
@@ -99,6 +100,9 @@ export function historyOps(): Record<string, OpHandler> {
               startedAt: ago(s.agoMin + 40),
               updatedAt: ago(s.agoMin),
               at: ago(s.agoMin),
+              atText: rowTime(ago(s.agoMin)),
+              sectionText: sectionText(ago(s.agoMin)),
+              spanText: spanText(ago(s.agoMin + 40), ago(s.agoMin)),
               jsonlPath: historyPath(p, s.sid),
               messageCountApprox: s.messages,
               isBg: s.bg === true,
@@ -171,7 +175,9 @@ export function historyOps(): Record<string, OpHandler> {
       ),
     }),
     "history-search-merge": (_o, req) => {
-      const rows = [...(req.sessions as { updatedAt: number; hitCount: number }[])].sort((a, b) => b.updatedAt - a.updatedAt);
+      const rows = [...(req.sessions as { updatedAt: number; hitCount: number }[])]
+        .sort((a, b) => b.updatedAt - a.updatedAt)
+        .map((r) => ({ ...r, atText: rowTime(r.updatedAt), spanText: spanText(r.updatedAt, r.updatedAt) }));
       return { totalHits: rows.reduce((n, r) => n + r.hitCount, 0), sessionCount: rows.length, truncated: false, sessions: rows };
     },
   };

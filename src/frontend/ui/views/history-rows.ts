@@ -10,7 +10,6 @@ import { banner } from "../kit/banner";
 import { copyText } from "../copy-table";
 import type { HistoryGroup, HistoryRow } from "../history-list-reads";
 import type { Hit, SessionHits } from "./history-search";
-import { rowTime } from "./history-time";
 import { plainSnippet } from "../find-strip";
 import s from "./history.module.css";
 
@@ -109,7 +108,7 @@ function actions(r: HistoryRow, h: RowHooks): HTMLElement {
 export function sessionRow(
   r: HistoryRow,
   h: RowHooks,
-  o: { compact: boolean; forks: number; forksOpen: boolean; child: boolean; orphan: boolean; now: number },
+  o: { compact: boolean; forks: number; forksOpen: boolean; child: boolean; orphan: boolean },
 ): HTMLElement {
   const el = document.createElement("div");
   el.className = s.hvRow;
@@ -142,7 +141,7 @@ export function sessionRow(
   if (o.compact) l1.append(...badges);
   const tm = document.createElement("span");
   tm.className = s.hvTime;
-  tm.textContent = rowTime(r.at, o.now);
+  tm.textContent = r.atText;
   l1.append(tm, actions(r, h));
   el.appendChild(l1);
   if (!o.compact) {

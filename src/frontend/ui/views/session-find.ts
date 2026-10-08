@@ -13,7 +13,6 @@ import type { FindHit, FindResult } from "../session-reads";
 import { dispatcher, type OverlayHandle } from "../keybindings/registry";
 import { button } from "../kit/button";
 import { tabs } from "../kit/tabs";
-import { hitTime } from "./history-time";
 import { copyText } from "../copy-table";
 import s from "./session-find.module.css";
 
@@ -31,7 +30,7 @@ export interface SessionFindHost {
 }
 
 /** 命中行头一行：谁 · 第几轮 · 时刻（第一句之前的不写轮）。 */
-export function hitMeta(h: FindHit, now: number): string {
+export function hitMeta(h: FindHit): string {
   // 种类由那台给（`history-find` 的 `kind`）：你 · agent 回报（子 agent 交回 / 发来的话 · 另一个会话发来的话）· 工具 · 那一家。
   const who =
     h.kind === "user"
@@ -41,7 +40,7 @@ export function hitMeta(h: FindHit, now: number): string {
         : h.kind === "tool"
           ? copyText("sessionFind.who.tool")
           : copyText("sessionFind.who.assistant");
-  const time = h.tsMs > 0 ? hitTime(h.tsMs, now) : "";
+  const time = h.tsText;
   if (h.turn > 0 && time) return copyText("sessionFind.hit.meta", { who, n: h.turn, time });
   if (h.turn > 0) return copyText("sessionFind.hit.metaNoTime", { who, n: h.turn });
   return time ? copyText("sessionFind.hit.metaNoTurn", { who, time }) : who;
@@ -73,7 +72,7 @@ export class SessionFindPanel {
     });
     this.find = new FindStrip(
       { search: (q, tools, skip) => host.search(q, tools, skip), jumpTo: (uuid) => host.jumpTo(uuid), unjumpableHint: host.unjumpableHint },
-      { autoMs: 300, panel: true, meta: (h) => hitMeta(h, Date.now()) },
+      { autoMs: 300, panel: true, meta: (h) => hitMeta(h) },
     );
 
     this.box = document.createElement("div");

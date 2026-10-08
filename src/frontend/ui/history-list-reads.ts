@@ -46,6 +46,10 @@ export interface HistoryRow {
   updatedAt: number;
   /** 这一次排序用的那个时刻（毫秒）。 */
   at: number;
+  /** 行尾那一格 · 分段头 · 内容头那一段：那台后端按它的本地钟写好的字（界面照抄、不换算）。 */
+  atText: string;
+  sectionText: string;
+  spanText: string;
   jsonlPath: string;
   messageCountApprox: number;
   isBg: boolean;
@@ -125,7 +129,7 @@ function keysOk(o: Record<string, unknown>, must: readonly string[], may: readon
 
 const ROW_KEYS = [
   "agent", "agentTag", "sessionId", "projectDir", "projectPath", "projectName", "group", "aiTitle", "firstUserExcerpt",
-  "title", "label", "untitled", "startedAt", "updatedAt", "at", "jsonlPath", "messageCountApprox", "isBg",
+  "title", "label", "untitled", "startedAt", "updatedAt", "at", "atText", "sectionText", "spanText", "jsonlPath", "messageCountApprox", "isBg",
   "starred", "customTitle", "hidden", "status", "can",
 ] as const;
 const ROW_MAY = ["forkedFromSessionId", "forkedFromMessageUuid", "lastAccount", "context", "origin"] as const;
@@ -164,6 +168,9 @@ function rowOk(r: unknown): r is HistoryRow {
     isNum(r.startedAt) &&
     isNum(r.updatedAt) &&
     isNum(r.at) &&
+    isStr(r.atText) &&
+    isStr(r.sectionText) &&
+    isStr(r.spanText) &&
     isStr(r.jsonlPath) &&
     isNum(r.messageCountApprox) &&
     isBool(r.isBg) &&

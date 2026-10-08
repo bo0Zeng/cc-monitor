@@ -8,6 +8,8 @@
 //! | T5 | 给人看的时刻：当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年带年 · 时区偏移跨日 | 真值 |
 //! | T6 | 回包出口那一遍：认得的时刻格（闭集）各添一格 `<键>Text`，按层级走到底；别的数 · 已有的字不动 | 真值 |
 //! | T7 | 记录 · 轮次 · 子运行那几处的钟面：本地钟秒数 ⇒ `HH:MM`；ISO / 毫秒按那一刻的偏移排；解不出 ⇒ 缺 | 真值 |
+//! | T8 | 历史页那几格（本地钟秒数）：分段（今天 · 昨天 · 本周周一起 · 按月 / 往年带年）· 行尾 · 内容头时间段 · 会话内查找的时刻 | 真值 |
+//! | T9 | 历史页回包出口那一遍：行添 `atText` · `sectionText` · `spanText`，按各自那一刻的偏移排；没有时刻的格不添 | 真值 |
 //! | T4 | 换算常量 `719_468` 在后端生产段只住本模块 | 文本，零命中 ＋ 正控 |
 
 use super::*;
@@ -155,4 +157,108 @@ fn t7_clock_face_of_a_record_time() {
     assert_eq!(secs_hms_here(t), hms(local_secs(t)));
     assert_eq!(iso_hm_here(""), None);
     assert_eq!(iso_hm_here("not a time at all"), None);
+}
+
+/// 本地钟上的 年-月-日 时:分 ⇒ 本地钟秒数（判据里当作「已经按偏移排过」的那一格）。
+fn lt(y: i64, m: u32, d: u32, h: i64, mi: i64) -> i64 {
+    days_from_civil(y, m, d) * 86_400 + h * 3_600 + mi * 60
+}
+
+#[test]
+fn t8_history_sections_row_times_spans_and_hits() {
+    use copy_core::copy_text;
+    // 2026-10-07 是周三。
+    let now = lt(2026, 10, 7, 15, 30);
+    let sec = |t| section_text(t, now);
+    assert_eq!(
+        sec(lt(2026, 10, 7, 0, 1)),
+        copy_text("history.section.today", &[])
+    );
+    assert_eq!(
+        sec(lt(2026, 10, 6, 23, 59)),
+        copy_text("history.section.yesterday", &[])
+    );
+    assert_eq!(
+        sec(lt(2026, 10, 5, 8, 0)),
+        copy_text("history.section.week", &[])
+    );
+    assert_eq!(
+        sec(lt(2026, 10, 4, 22, 0)),
+        copy_text("history.section.month", &[("month", "10")])
+    );
+    assert_eq!(
+        sec(lt(2026, 9, 30, 12, 0)),
+        copy_text("history.section.month", &[("month", "9")])
+    );
+    assert_eq!(
+        sec(lt(2025, 12, 31, 12, 0)),
+        copy_text(
+            "history.section.yearMonth",
+            &[("year", "2025"), ("month", "12")]
+        )
+    );
+    // 周一那天：昨天是周日 ⇒ 本周那一段是空的（昨天之前直接按月）。
+    let mon = lt(2026, 10, 5, 9, 0);
+    assert_eq!(
+        section_text(lt(2026, 10, 4, 9, 0), mon),
+        copy_text("history.section.yesterday", &[])
+    );
+    assert_eq!(
+        section_text(lt(2026, 10, 3, 9, 0), mon),
+        copy_text("history.section.month", &[("month", "10")])
+    );
+
+    assert_eq!(row_time(lt(2026, 10, 7, 14, 2), now), "14:02");
+    assert_eq!(row_time(lt(2026, 10, 6, 22, 10), now), "10-06 22:10");
+    assert_eq!(row_time(lt(2026, 9, 30, 3, 0), now), "09-30");
+    assert_eq!(row_time(lt(2025, 9, 30, 3, 0), now), "2025-09-30");
+
+    assert_eq!(
+        span_text(lt(2026, 10, 7, 2, 1), lt(2026, 10, 7, 14, 2), now),
+        "02:01–14:02"
+    );
+    assert_eq!(
+        span_text(lt(2026, 9, 30, 2, 1), lt(2026, 9, 30, 14, 2), now),
+        "09-30 02:01–14:02"
+    );
+    assert_eq!(
+        span_text(lt(2026, 9, 30, 3, 0), lt(2026, 10, 1, 4, 57), now),
+        "09-30 03:00 – 10-01 04:57"
+    );
+
+    let y = copy_text("history.section.yesterday", &[]);
+    assert_eq!(hit_time(lt(2026, 10, 7, 1, 52), now), "01:52");
+    assert_eq!(hit_time(lt(2026, 10, 6, 18, 20), now), format!("{y} 18:20"));
+    assert_eq!(hit_time(lt(2026, 9, 30, 18, 20), now), "09-30 18:20");
+    assert_eq!(hit_time(lt(2025, 9, 30, 18, 20), now), "2025-09-30 18:20");
+}
+
+#[test]
+fn t9_history_row_gets_its_three_texts() {
+    // 东八区（固定偏移）：UTC 2026-10-07 05:00 ⇒ 本地 13:00 · 此刻 UTC 07:30 ⇒ 本地 15:30。
+    let east = |t: i64| t + 8 * 3_600;
+    let utc = |y, m, d, h, mi| lt(y, m, d, h, mi) * 1_000;
+    let mut row = serde_json::json!({
+        "at": utc(2026, 10, 7, 5, 0),
+        "startedAt": utc(2026, 10, 6, 18, 1),
+        "updatedAt": utc(2026, 10, 7, 5, 0),
+    });
+    history_texts(&mut row, utc(2026, 10, 7, 7, 30), &east);
+    assert_eq!(row["atText"], "13:00");
+    assert_eq!(
+        row["sectionText"],
+        copy_core::copy_text("history.section.today", &[])
+    );
+    assert_eq!(
+        row["spanText"], "02:01–13:00",
+        "两头各按自己那一刻排：UTC 前一天 18:01 落在本地今天"
+    );
+    let mut bare = serde_json::json!({"updatedAt": utc(2026, 10, 7, 5, 0)});
+    history_texts(&mut bare, utc(2026, 10, 7, 7, 30), &east);
+    assert!(
+        bare.get("atText").is_none()
+            && bare.get("sectionText").is_none()
+            && bare.get("spanText").is_none(),
+        "缺 `at` / `startedAt` ⇒ 不添"
+    );
 }
