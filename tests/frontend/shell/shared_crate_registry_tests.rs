@@ -1245,5 +1245,9 @@ fn every_apt_install_in_ci_sits_in_a_step_with_its_own_timeout() {
         code.contains("Acquire::Retries=3"),
         "{HELPER} 没给 apt 带 Acquire::Retries=3"
     );
+    assert!(
+        code.contains("Acquire::http::Timeout=") && code.contains("Acquire::https::Timeout="),
+        "{HELPER} 没给 apt 带短的连接超时（单个包停住会一直等，主线那趟 CI 一个 32 kB 的包停了 625 秒）"
+    );
     assert!(code.contains("tries=3"), "{HELPER} 的重试趟数不是 3");
 }

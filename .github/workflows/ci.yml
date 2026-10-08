@@ -51,7 +51,8 @@ jobs:
   #
   # 上面这些数都是 **job 级**的。10-07 两回 runner 上 apt 挂住，`rust-linux` 与 `linux-app-build`
   # 都是整个 job 等满上限才被取消 —— 挂在装依赖上，后面的步骤一步没跑，等的那半个小时什么都没换来。
-  # ⇒ 装 apt 包一律经 `tests/scripts/apt-install.sh`（每趟 update / install 套 `timeout`、apt 下载自带重试、
+  # 实测（主线 2e9f26d1f）不是整个卡死，是从镜像下单个小包时停住（32 kB 的包前停了 625 秒）。
+  # ⇒ 装 apt 包一律经 `tests/scripts/apt-install.sh`（apt 带 20 秒的连接 / 读超时与重试、每趟 update / install 套 `timeout`、
   #   一趟没成歇一下再来、最多 3 趟；重试的写法只住那一处），调它的那一步再带 `timeout-minutes: 14`
   #   （比那份脚本 3 趟的最坏情形略长）。`release.yml` 的 `build-linux` 同一写法。
   #   判据：`shared_crate_registry_tests.rs::every_apt_install_in_ci_sits_in_a_step_with_its_own_timeout`
