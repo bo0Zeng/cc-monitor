@@ -1221,8 +1221,9 @@ pub(crate) struct AccountsFace {
 pub(crate) struct TrustCells {
     pub(crate) table: &'static str,
     pub(crate) flag: Option<&'static str>,
-    /// 一个工作目录在表里用哪个键（这一家进程认的那一形，如解开符号链接 · 换分隔符）。
-    pub(crate) dir_key: fn(&str) -> String,
+    /// 一个工作目录要标表里哪几个键（这一家进程查 / 存信任认的那几形，如解开符号链接 · 换分隔符 · 所在仓的根）；
+    /// 通用层只把这几个键都标上，不判那一家先查哪一个。
+    pub(crate) dir_keys: fn(&str) -> Vec<String>,
 }
 
 /// 账号归属从会话进程环境里读的那两个键，收成一处：账号（配置根）· 上游地址。
