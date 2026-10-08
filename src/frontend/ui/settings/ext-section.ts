@@ -41,7 +41,6 @@ import {
   type ExtMachine,
   type ExtPlace,
   type ExtRow,
-  type ExtTarget,
   type ExtUninstallCard,
 } from "../ext-reads";
 
@@ -102,6 +101,20 @@ function sameLoc(a: ExtLoc, b: ExtLoc): boolean {
   return a.level === "user" ? b.level === "user" : b.level === "project" && a.dir === b.dir;
 }
 
+/** 表下图例那一行的字（不带「在哪个项目」）。 */
+function legendText(state: ExtCell["state"]): string {
+  switch (state) {
+    case "same":
+      return copyText("extPage.legend.same");
+    case "differs":
+      return copyText("extPage.legend.differs");
+    case "missing":
+      return copyText("extPage.state.missing");
+    case "project":
+      return copyText("extPage.legend.project");
+  }
+}
+
 function kindText(r: ExtRow): string {
   return r.kind === "skill" ? copyText("extPage.kind.skill") : copyText("extPage.kind.mcp");
 }
@@ -154,23 +167,29 @@ function said(e: unknown, verb: ExtVerb, m: ExtMachine): { text: string; stale: 
   return { text, stale: e instanceof ExtRefused && e.code === "stale" };
 }
 
-/** 「装到…」那张卡要记住的：交给枢纽的那几格 · 能选的各处 · 来源叫什么 · 卡上填的值（跟着卡走，抽屉重画不清）。 */
-interface BringCard {
-  kind: "bring";
-  ask: ExtAsk;
-  targets: ExtTarget[];
-  fromName: string;
-  card: ExtCard | null;
-  fill: Record<string, Record<string, string>>;
-}
-
 /** 抽屉里一台机器那一行的临时状态：打开的确认卡 · 在路上 · 那一句出错的话（整句，带动作与机器）· 做完那一句。 */
 interface Slot {
-  card?: BringCard | { kind: "remove"; at: ExtLoc; card: ExtUninstallCard | null };
+  card?: { kind: "remove"; at: ExtLoc; card: ExtUninstallCard | null };
   busy?: boolean;
   error?: { text: string; stale: boolean; again?: () => void };
   done?: string;
 }
+
+/** 抽屉里「装到 N 台」那一张卡：勾上的那几台各自那张确认卡（后端拼的）· 共用的落点 · 只填一次的值 · 各台结局。 */
+interface Install {
+  /** 勾上的那几台（键同 [`machineKey`]）。 */
+  picked: Set<string>;
+  /** 共用的那一处；`null` ＝ 照后端建议的那一处。 */
+  to: ExtLoc | null;
+  /** 各台的卡：在路上 ⇒ `null`；没拼成 ⇒ 那一句。 */
+  cards: Map<string, { ask: ExtAsk; card: ExtCard | null; error?: string }>;
+  fill: Record<string, Record<string, string>>;
+  busy: boolean;
+  /** 各台这一趟的结局（成了那一句 · 没成那一句）。 */
+  results: Map<string, { ok: boolean; text: string }>;
+}
+
+const freshInstall = (): Install => ({ picked: new Set(), to: null, cards: new Map(), fill: {}, busy: false, results: new Map() });
 
 /** 一台的钩子状态：在问 · 问到了 · 问不出来。 */
 type HookSlot = { kind: "loading" } | { kind: "report"; report: HooksReport } | { kind: "failed"; said: string };
@@ -185,6 +204,7 @@ export class ExtSection {
   private kind: KindFilter = "all";
   private openKey: string | null = null;
   private slots = new Map<string, Slot>();
+  private install: Install = freshInstall();
   private hooks = new Map<string, HookSlot>();
   /** 备注正在改（那一段草稿；`null` = 没在改）· 写备注那一问没成时那一句。 */
   private noteDraft: string | null = null;
@@ -278,6 +298,18 @@ export class ExtSection {
       this.table.appendChild(el("div", "settings-hint", said));
       return;
     }
+    // 表头：名字 · 种类 · 做什么 · 每台一列（列头是机器名）；连不上的那台整列半透明 ＋ 表上方一条。
+    const head = el("div", "ext-row ext-head");
+    head.append(el("span", "", copyText("extPage.table.headName")), el("span", "", copyText("extPage.table.headKind")), el("span", "", copyText("extPage.table.headAbout")));
+    const cols = el("span", "ext-dots");
+    for (const m of list.machines) {
+      const c = el("span", m.reachable ? "ext-col" : "ext-col is-offline", machineName(m));
+      c.title = machineName(m);
+      cols.appendChild(c);
+    }
+    head.appendChild(cols);
+    for (const m of list.machines) if (!m.reachable) this.table.appendChild(el("div", "ext-offline", copyText("extPage.offline.bar", { machine: machineName(m) })));
+    this.table.appendChild(head);
     for (const r of rows) {
       const line = el("button", "ext-row");
       line.type = "button";
@@ -296,6 +328,7 @@ export class ExtSection {
       r.cells.forEach((c, i) => {
         const m = list.machines[i];
         const d = el("span", DOT_CLASS[c.state], dotOf(c.state));
+        if (!m.reachable) d.classList.add("is-offline");
         d.title = copyText("extPage.dot.title", { machine: machineName(m), state: stateText(c.state, c.places) });
         dots.appendChild(d);
       });
@@ -303,12 +336,20 @@ export class ExtSection {
       line.addEventListener("click", () => this.openRow(r));
       this.table.appendChild(line);
     }
+    const legend = el("div", "ext-legend");
+    for (const st of ["same", "differs", "missing", "project"] as const) {
+      const item = el("span", "ext-legend-item");
+      item.append(el("span", DOT_CLASS[st], dotOf(st)), el("span", "", legendText(st)));
+      legend.appendChild(item);
+    }
+    this.table.appendChild(legend);
   }
 
   /** 点开一行：抽屉换成它；要加钩子的那一个顺手问各台一次钩子状态。 */
   private openRow(r: ExtRow): void {
     this.openKey = `${r.kind}/${r.name}`;
     this.slots.clear();
+    this.install = freshInstall();
     this.hooks.clear();
     this.noteDraft = null;
     this.noteError = null;
@@ -359,7 +400,9 @@ export class ExtSection {
       for (const d of r.detail) more.appendChild(el("div", "ext-detail-line", copyText("extPage.drawer.detailLine", { label: d.label, value: d.value })));
       this.drawer.appendChild(more);
     }
+    this.drawer.appendChild(el("div", "ext-drawer-section", copyText("extPage.install.where")));
     r.cells.forEach((c, i) => this.drawer.appendChild(this.machineRow(r, c, list.machines[i])));
+    if (r.cells.some((c) => c.bring !== null)) this.drawer.appendChild(this.installCard(r, list));
   }
 
   /** 抽屉顶部的备注：内置的（自带的扩展）照画；用户的可以写 / 改 / 清（清 = 存一段空的）。 */
@@ -465,21 +508,33 @@ export class ExtSection {
     const key = machineKey(m);
     const slot = this.slots.get(key) ?? {};
     const line = el("div", "ext-machine");
-    const top = el("div", "ext-machine-top");
-    top.appendChild(el("span", DOT_CLASS[c.state], dotOf(c.state)));
-    top.appendChild(el("span", "ext-machine-name", machineName(m)));
-    top.appendChild(el("span", "ext-machine-state", stateText(c.state, c.places)));
+    const top = el("label", "ext-machine-top");
     const bring = c.bring;
-    if (bring) {
-      const b = button(copyText("extPage.button.bring"), () => void this.openBring(r, m, bring));
+    // 装得了的那台才给勾（勾上 ＝ 装到 / 换成这一版）；装了而且一样的勾不了，卸在它那几处。
+    const pick = el("input", "ext-pick");
+    pick.type = "checkbox";
+    pick.dataset.machine = key;
+    pick.checked = this.install.picked.has(key);
+    pick.disabled = bring === null || !m.reachable || this.install.busy;
+    pick.addEventListener("change", () => void this.togglePick(r, m, bring, pick.checked));
+    top.appendChild(pick);
+    top.appendChild(el("span", "ext-machine-name", machineName(m)));
+    top.appendChild(el("span", DOT_CLASS[c.state], dotOf(c.state)));
+    top.appendChild(el("span", "ext-machine-state", c.state === "differs" && bring ? copyText("extPage.install.differsPick", { state: stateText(c.state, c.places) }) : stateText(c.state, c.places)));
+    // 只有全局那一处 ⇒ 不另起一行，「卸载…」直接跟在这一台后面；装在几个项目里的才逐处列。
+    const only = c.places.length === 1 && c.places[0].at.level === "user" ? c.places[0] : null;
+    if (only?.uninstall) {
+      const b = button(copyText("extPage.button.uninstall"), () => void this.openRemove(r, m, only.at));
       b.disabled = slot.busy === true || slot.card !== undefined;
       top.appendChild(b);
     }
     line.appendChild(top);
     if (!bring && c.note) line.appendChild(el("div", "settings-hint", c.note));
-    const places = el("div", "ext-places");
-    for (const p of c.places) places.appendChild(this.placeRow(r, m, p, slot));
-    line.appendChild(places);
+    if (!only || only.note !== null || (r.kind === "skill" && only.dir !== null)) {
+      const places = el("div", "ext-places");
+      for (const p of c.places) places.appendChild(this.placeRow(r, m, p, slot, only !== null));
+      line.appendChild(places);
+    }
     if (slot.done) line.appendChild(el("div", "settings-hint ext-done", slot.done));
     if (slot.error) {
       const err = el("div", "ext-error", slot.error.text);
@@ -492,11 +547,11 @@ export class ExtSection {
   }
 
   /** 那台上的一处：在哪 · 态 · 「卸载」（有才给）· skill 有目录的 ⇒ 本机「在文件夹中显示」、远端「在文件窗口里打开」。 */
-  private placeRow(r: ExtRow, m: ExtMachine, p: ExtPlace, slot: Slot): HTMLElement {
+  private placeRow(r: ExtRow, m: ExtMachine, p: ExtPlace, slot: Slot, uninstallAbove = false): HTMLElement {
     const row = el("div", "ext-place");
     row.appendChild(el("span", "ext-place-at", locText(p.at)));
     row.appendChild(el("span", "ext-machine-state", stateText(p.state, [])));
-    if (p.uninstall) {
+    if (p.uninstall && !uninstallAbove) {
       const b = button(copyText("extPage.button.uninstall"), () => void this.openRemove(r, m, p.at));
       b.disabled = slot.busy === true || slot.card !== undefined;
       row.appendChild(b);
@@ -539,23 +594,6 @@ export class ExtSection {
     }
   }
 
-  /** 点了「装到…」：先按后端建议的那一处问一张卡（本机后端当枢纽）。 */
-  private async openBring(r: ExtRow, m: ExtMachine, bring: ExtBring): Promise<void> {
-    const ask: ExtAsk = { kind: r.kind, name: r.name, from: bring.from, to: m.here ? null : m.key, scope: bring.scope };
-    await this.previewBring(machineKey(m), m, { kind: "bring", ask, targets: bring.targets, fromName: bring.fromName, card: null, fill: {} });
-  }
-
-  private async previewBring(key: string, m: ExtMachine, b: BringCard): Promise<void> {
-    this.setSlot(key, { busy: true, card: { ...b, card: null } });
-    try {
-      const card = await extHubPreview(b.ask);
-      this.setSlot(key, { card: { ...b, card } });
-    } catch (e) {
-      // 卡没拼成也留着「装到哪」：换一处再看。
-      this.setSlot(key, { card: { ...b, card: null }, error: { ...said(e, "install", m), again: () => void this.previewBring(key, m, b) } });
-    }
-  }
-
   private cardOf(r: ExtRow, m: ExtMachine, key: string, slot: Slot): HTMLElement {
     const box = el("div", "ext-card");
     const c = slot.card;
@@ -585,80 +623,172 @@ export class ExtSection {
       box.appendChild(el("div", "ext-card-buttons")).append(ok, cancel);
       return box;
     }
-    box.appendChild(el("div", "ext-card-title", copyText("extPage.card.bringTitle", { from: c.fromName, to: machineName(m) })));
-    box.appendChild(this.targetsOf(key, m, c, slot));
-    const card = c.card;
-    if (card === null) {
-      if (!slot.error) box.appendChild(el("div", "settings-hint", copyText("extPage.card.loading")));
-      box.appendChild(el("div", "ext-card-buttons")).append(cancel);
-      return box;
-    }
-    box.appendChild(el("div", "ext-card-path", card.path));
-    const files = el("ul", "ext-card-files");
-    for (const f of card.writes) files.appendChild(el("li", "", f));
-    box.appendChild(files);
-    if (card.unchanged) box.appendChild(el("div", "settings-hint", copyText("extPage.card.unchanged")));
-    if (card.config !== null) box.appendChild(el("pre", "ext-card-config", card.config));
-    // 填的值住在卡上（`c.fill`），重画时回填；交上去的只取这张卡真有的那几格。
-    const fill: Record<string, Record<string, string>> = {};
-    for (const s of card.slots) {
-      const v = c.fill[s.field]?.[s.key];
-      if (v !== undefined) (fill[s.field] ??= {})[s.key] = v;
-    }
-    for (const s of card.slots) {
-      const row = el("label", "ext-card-field", copyText("extPage.card.slot", { field: s.field, key: s.key }));
-      const input = el("input", "ext-card-secret");
-      input.type = "password";
-      input.autocomplete = "off";
-      input.placeholder = s.kept ? copyText("extPage.card.slotKept") : copyText("extPage.card.slotEmpty");
-      input.value = c.fill[s.field]?.[s.key] ?? "";
-      input.addEventListener("input", () => {
-        (c.fill[s.field] ??= {})[s.key] = input.value;
-        (fill[s.field] ??= {})[s.key] = input.value;
-      });
-      row.appendChild(input);
-      box.appendChild(row);
-    }
-    for (const s of card.suspects) box.appendChild(el("div", "ext-card-suspect", s));
-    if (card.stop) box.appendChild(el("div", "ext-error", card.stop));
-    const ok = button(
-      copyText("extPage.card.confirm"),
-      () =>
-        void this.run(r, key, m, "install", async () => {
-          const done = await extHubApply(c.ask, card, fill);
-          const said = done.note ?? copyText("extPage.done.written", { n: String(done.changed.length) });
-          // 自带的那一个装到本机：装出来的命令在这台跑不跑得起来（本机 ccm 够不够新）是 monitor 那一侧的事实，另问一次。
-          const warn = r.builtin !== null && m.here ? await commands.cc_bus_ccm_precheck() : null;
-          return warn ? `${said} ${copyText("extPage.done.warn", { said: warn })}` : said;
-        }),
-      true,
-    );
-    ok.disabled = slot.busy === true || card.stop !== null || card.unchanged;
-    box.appendChild(el("div", "ext-card-buttons")).append(ok, cancel);
     return box;
   }
 
-  /** 卡上「装到哪」：后端给的各处，不能选的照列、置灰、旁注为什么；换一处就按那一处重看一张卡。 */
-  private targetsOf(key: string, m: ExtMachine, c: BringCard, slot: Slot): HTMLElement {
-    const box = el("fieldset", "ext-targets");
-    box.appendChild(el("legend", "", copyText("extPage.card.where")));
-    const group = `ext-target-${key || "here"}`;
-    for (const t of c.targets) {
-      const row = el("label", t.ok ? "ext-target" : "ext-target is-off");
-      const radio = el("input", "");
-      radio.type = "radio";
-      radio.name = group;
-      radio.checked = sameLoc(t.at, c.ask.scope.to);
-      radio.disabled = !t.ok || slot.busy === true;
-      radio.addEventListener("change", () => {
-        if (radio.checked) void this.previewBring(key, m, { ...c, ask: { ...c.ask, scope: { from: c.ask.scope.from, to: t.at } } });
-      });
-      row.appendChild(radio);
-      row.appendChild(el("span", "", locText(t.at)));
-      if (t.note) row.appendChild(el("span", "ext-target-note", t.note));
-      box.appendChild(row);
+  /** 勾上 / 去掉一台：勾上就照共用的那一处问那台一张卡（本机后端当枢纽），卡上的值与落点跟着卡走。 */
+  private async togglePick(r: ExtRow, m: ExtMachine, bring: ExtBring | null, on: boolean): Promise<void> {
+    const key = machineKey(m);
+    const inst = this.install;
+    inst.results.delete(key);
+    if (!on || bring === null) {
+      inst.picked.delete(key);
+      inst.cards.delete(key);
+      this.renderDrawer();
+      return;
     }
+    inst.picked.add(key);
+    await this.previewOne(r, m, bring);
+  }
+
+  /** 照共用的那一处问那台一张卡。 */
+  private async previewOne(r: ExtRow, m: ExtMachine, bring: ExtBring): Promise<void> {
+    const key = machineKey(m);
+    const inst = this.install;
+    const to = inst.to !== null && bring.targets.some((t) => t.ok && sameLoc(t.at, inst.to!)) ? inst.to : bring.scope.to;
+    const ask: ExtAsk = { kind: r.kind, name: r.name, from: bring.from, to: m.here ? null : m.key, scope: { from: bring.scope.from, to } };
+    inst.cards.set(key, { ask, card: null });
+    this.renderDrawer();
+    try {
+      const card = await extHubPreview(ask);
+      if (this.install !== inst || !inst.picked.has(key)) return;
+      inst.cards.set(key, { ask, card });
+    } catch (e) {
+      if (this.install !== inst || !inst.picked.has(key)) return;
+      inst.cards.set(key, { ask, card: null, error: said(e, "install", m).text });
+    }
+    this.renderDrawer();
+  }
+
+  /** 勾上的那几台（照表里的顺序）。 */
+  private pickedMachines(r: ExtRow, list: ExtList): { m: ExtMachine; c: ExtCell }[] {
+    return r.cells.flatMap((c, i) => (this.install.picked.has(machineKey(list.machines[i])) ? [{ m: list.machines[i], c }] : []));
+  }
+
+  /**
+   * 「装到 N 台」那一张卡：装到哪（每个项目都能用 / 只给一个项目…；后端给的各处，勾上的几台都能装的才可选）· 要填的值只填一次
+   * （哪几台已经有了照各台那张卡说）· 会写的文件逐台列 ·［装到 N 台］。做完每台一行结局，一台没成不挡别台。
+   */
+  private installCard(r: ExtRow, list: ExtList): HTMLElement {
+    const inst = this.install;
+    const box = el("div", "ext-card ext-install");
+    const picked = this.pickedMachines(r, list);
+    const first = picked[0]?.c.bring ?? r.cells.find((c) => c.bring !== null)?.bring ?? null;
+    if (first) {
+      const where = el("fieldset", "ext-targets");
+      where.appendChild(el("legend", "", copyText("extPage.card.where")));
+      const chosen = inst.to ?? first.scope.to;
+      for (const t of first.targets) {
+        const okAll = t.ok && picked.every(({ c }) => c.bring?.targets.some((x) => x.ok && sameLoc(x.at, t.at)) ?? false);
+        const row = el("label", okAll ? "ext-target" : "ext-target is-off");
+        const radio = el("input", "");
+        radio.type = "radio";
+        radio.name = `ext-install-${r.kind}-${r.name}`;
+        radio.checked = sameLoc(t.at, chosen);
+        radio.disabled = !okAll || inst.busy;
+        radio.addEventListener("change", () => {
+          if (!radio.checked) return;
+          inst.to = t.at;
+          for (const { m, c } of this.pickedMachines(r, list)) if (c.bring) void this.previewOne(r, m, c.bring);
+        });
+        row.append(radio, el("span", "", locText(t.at)));
+        if (t.note) row.appendChild(el("span", "ext-target-note", t.note));
+        where.appendChild(row);
+      }
+      box.appendChild(where);
+    }
+    const cards = picked.map(({ m }) => ({ m, got: inst.cards.get(machineKey(m)) }));
+    // 要填的值：勾上的几台各自那张卡要的那几格并起来，每格只填一次；哪几台已经有了照各台的卡说。
+    const slotKeys: { field: string; key: string; kept: string[] }[] = [];
+    for (const { m, got } of cards) {
+      for (const sl of got?.card?.slots ?? []) {
+        let k = slotKeys.find((x) => x.field === sl.field && x.key === sl.key);
+        if (!k) slotKeys.push((k = { field: sl.field, key: sl.key, kept: [] }));
+        if (sl.kept) k.kept.push(machineName(m));
+      }
+    }
+    for (const k of slotKeys) {
+      const row = el("label", "ext-card-field", copyText("extPage.card.slot", { field: k.field, key: k.key }));
+      const input = el("input", "ext-card-secret");
+      input.type = "password";
+      input.autocomplete = "off";
+      input.value = inst.fill[k.field]?.[k.key] ?? "";
+      input.addEventListener("input", () => {
+        (inst.fill[k.field] ??= {})[k.key] = input.value;
+      });
+      row.appendChild(input);
+      box.appendChild(row);
+      const hint = k.kept.length > 0 ? copyText("extPage.install.kept", { machines: k.kept.join(copyText("extPage.list.sep")) }) : copyText("extPage.install.shared");
+      box.appendChild(el("div", "settings-hint", hint));
+    }
+    if (cards.length > 0) {
+      box.appendChild(el("div", "ext-card-title", copyText("extPage.install.files")));
+      for (const { m, got } of cards) {
+        const line = el("div", "ext-install-files");
+        line.dataset.machine = machineKey(m);
+        if (!got || (got.card === null && !got.error)) line.textContent = copyText("extPage.install.filesLoading", { machine: machineName(m) });
+        else if (got.error) line.textContent = got.error;
+        else if (got.card) {
+          const card = got.card;
+          line.textContent = card.unchanged
+            ? copyText("extPage.install.filesSame", { machine: machineName(m) })
+            : copyText("extPage.install.filesLine", { machine: machineName(m), path: card.path, files: card.writes.join(copyText("extPage.list.sep")) });
+          for (const x of card.suspects) box.appendChild(el("div", "ext-card-suspect", copyText("extPage.install.machineSaid", { machine: machineName(m), said: x })));
+          if (card.stop) box.appendChild(el("div", "ext-error", copyText("extPage.install.machineSaid", { machine: machineName(m), said: card.stop })));
+        }
+        box.appendChild(line);
+      }
+    }
+    for (const { m } of picked) {
+      const res = inst.results.get(machineKey(m));
+      if (!res) continue;
+      const line = el("div", res.ok ? "settings-hint ext-done" : "ext-error", res.text);
+      line.dataset.result = machineKey(m);
+      box.appendChild(line);
+    }
+    const ready = cards.filter(({ m, got }) => got?.card && !got.card.stop && !got.card.unchanged && !inst.results.get(machineKey(m))?.ok);
+    const ok = button(copyText("extPage.install.confirm", { n: ready.length }), () => void this.installAll(r, list), true);
+    ok.dataset.action = "install-many";
+    ok.disabled = inst.busy || ready.length === 0 || cards.some(({ got }) => !got || (got.card === null && !got.error));
+    if (picked.length === 0) ok.title = copyText("extPage.install.noneChecked");
+    box.appendChild(el("div", "ext-card-buttons")).append(ok);
     return box;
+  }
+
+  /** ［装到 N 台］：各台照它那张卡同时装（值是共用那一份里那张卡要的几格），各自结局；做完重读那张表（各台先同步一趟）。 */
+  private async installAll(r: ExtRow, list: ExtList): Promise<void> {
+    const inst = this.install;
+    inst.busy = true;
+    this.renderDrawer();
+    const jobs = this.pickedMachines(r, list).flatMap(({ m }) => {
+      const got = inst.cards.get(machineKey(m));
+      const card = got?.card;
+      if (!got || !card || card.stop || card.unchanged || inst.results.get(machineKey(m))?.ok) return [];
+      const fill: Record<string, Record<string, string>> = {};
+      for (const sl of card.slots) {
+        const v = inst.fill[sl.field]?.[sl.key];
+        if (v !== undefined && v !== "") (fill[sl.field] ??= {})[sl.key] = v;
+      }
+      return [
+        (async () => {
+          try {
+            const done = await extHubApply(got.ask, card, fill);
+            const warn = r.builtin !== null && m.here ? await commands.cc_bus_ccm_precheck() : null;
+            const text = copyText("extPage.install.doneOne", { machine: machineName(m), said: done.note ?? copyText("extPage.done.written", { n: String(done.changed.length) }) });
+            inst.results.set(machineKey(m), { ok: true, text: warn ? `${text} ${copyText("extPage.done.warn", { said: warn })}` : text });
+          } catch (e) {
+            inst.results.set(machineKey(m), { ok: false, text: said(e, "install", m).text });
+          }
+        })(),
+      ];
+    });
+    await Promise.all(jobs);
+    inst.busy = false;
+    // 没成的那几台重看一张卡（看过之后变了的 ⇒ 新卡；用户改了再点「装到 N 台」就是重试这几台）。
+    for (const { m, c } of this.pickedMachines(r, list)) if (inst.results.get(machineKey(m))?.ok === false && c.bring) void this.previewOne(r, m, c.bring);
+    this.renderDrawer();
+    await this.reload(false, LOCAL_ORIGIN);
+    if (r.builtin?.hooks) for (const { m } of this.pickedMachines(r, list)) void this.readHooks(m);
   }
 
   /** 确认之后：做 → 成了就重读那张表（那台先同步一趟），点自己变；没成就在那一行说。 */
@@ -672,7 +802,7 @@ export class ExtSection {
       if (r.builtin?.hooks) void this.readHooks(m);
     } catch (e) {
       const card = keep.card;
-      const again = card?.kind === "bring" ? () => void this.previewBring(key, m, card) : card?.kind === "remove" ? () => void this.openRemove(r, m, card.at) : undefined;
+      const again = card?.kind === "remove" ? () => void this.openRemove(r, m, card.at) : undefined;
       this.setSlot(key, { ...keep, busy: false, error: { ...said(e, verb, m), again } });
     }
   }

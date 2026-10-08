@@ -1620,10 +1620,9 @@ body.settings-window-mode .settings-panel {
 }
 
   /* 设置「扩展」页：一张表 ＋ 一个抽屉（右侧）＋ 抽屉里每台一行的确认卡。 */
+  /* 抽屉浮在表右侧（C11），表不让位：列头是机器名，让位就挤掉了。 */
   .ext-page {
-    display: flex;
-    gap: 12px;
-    align-items: flex-start;
+    position: relative;
   }
   .ext-main {
     flex: 1;
@@ -1703,9 +1702,61 @@ body.settings-window-mode .settings-panel {
     display: flex;
     gap: 4px;
   }
-  .ext-dot {
-    width: 1.2em;
+  .ext-dot,
+  .ext-col {
+    width: 5em;
     text-align: center;
+  }
+  /* 表头：列头是机器名（过长中间省略，悬停全名）。 */
+  .ext-head {
+    cursor: default;
+    color: var(--text-faint);
+    font-size: var(--font-size-small);
+  }
+  .ext-head:hover {
+    background: none;
+  }
+  .ext-col {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  /* 连不上的那台：列头照常，整列半透明。 */
+  .ext-col.is-offline,
+  .ext-dot.is-offline {
+    opacity: 0.45;
+  }
+  .ext-offline {
+    margin: 4px 0;
+    padding: 6px 10px;
+    border-left: 3px solid var(--warn);
+    background: var(--bg-2);
+    font-size: var(--font-size-small);
+  }
+  .ext-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 8px;
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+  }
+  .ext-legend-item {
+    display: inline-flex;
+    gap: 4px;
+    align-items: center;
+  }
+  .ext-legend-item .ext-dot {
+    width: auto;
+  }
+  .ext-drawer-section {
+    margin-top: 10px;
+    font-weight: 600;
+  }
+  .ext-install-files {
+    font-family: var(--font-mono);
+    font-size: var(--font-size-mono);
+    color: var(--text-2);
   }
   .ext-dot.is-same {
     color: var(--success);
@@ -1720,12 +1771,17 @@ body.settings-window-mode .settings-panel {
     color: var(--accent);
   }
   .ext-drawer {
-    flex: 0 0 min(26em, 48%);
-    max-height: 75vh;
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: min(28em, 70%);
+    max-height: 80vh;
     overflow-y: auto;
     padding: 10px;
     background: var(--bg-2);
     border-left: 1px solid var(--border-strong);
+    box-shadow: var(--shadow-modal);
+    z-index: var(--z-float);
   }
   .ext-drawer-head {
     display: flex;
@@ -1863,20 +1919,9 @@ body.settings-window-mode .settings-panel {
   .ext-card-said {
     margin: 4px 0;
   }
-  .ext-card-path {
-    font-family: var(--font-mono);
-    font-size: var(--font-size-mono);
-    color: var(--text-faint);
-  }
   .ext-card-files {
     margin: 4px 0;
     padding-left: 1.4em;
-    font-family: var(--font-mono);
-    font-size: var(--font-size-mono);
-  }
-  .ext-card-config {
-    max-height: 12em;
-    overflow: auto;
     font-family: var(--font-mono);
     font-size: var(--font-size-mono);
   }

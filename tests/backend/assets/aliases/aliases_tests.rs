@@ -986,3 +986,21 @@ fn each_profile_candidate_carries_the_policy_of_the_powershell_that_loads_it() {
     let posix = rc_candidates_asking(&door(&h), &hs(&h), P, None, &[], &ask).unwrap();
     assert!(!posix.is_empty() && posix.iter().all(|c| c.policy.is_none()));
 }
+
+/// 「会动 ~/.bashrc 末尾 N 行」的 N：每份候选带上「装进这份会写几行」（与装进去的那一块逐字同源），界面不数。
+#[test]
+fn each_startup_candidate_says_how_many_lines_the_block_would_add() {
+    let h = tmp_home("block-lines");
+    std::fs::write(h.0.join(".bashrc"), "export A=1\n").unwrap();
+    let cands = rc_candidates_in(&h.0, Shell::Posix, None);
+    let rc = cands
+        .iter()
+        .find(|c| c.path.ends_with(".bashrc"))
+        .expect("有 .bashrc 这一份");
+    let want = block::render_block(Shell::Posix, &hs(&h))
+        .unwrap()
+        .lines()
+        .count();
+    assert!(want > 0);
+    assert_eq!(rc.block_lines, want);
+}

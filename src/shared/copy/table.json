@@ -5166,8 +5166,8 @@
     },
     "machineAliases.access.willAdd": {
       "kind": "body",
-      "zh": "会在 {path} 末尾加 cc-monitor 那几行 · 写前备份",
-      "args": ["path"]
+      "zh": "会在 {path} 末尾加 {n} 行 · 写前备份",
+      "args": ["path", "n"]
     },
     "machineAliases.access.previewOn": {
       "kind": "body",
@@ -5292,8 +5292,8 @@
     },
     "machineAliases.writes.line": {
       "kind": "body",
-      "zh": "会动：{path} 末尾 cc-monitor 那几行 · 接上时写一次 · 清单变动不再改它",
-      "args": ["path"]
+      "zh": "会动：{path} 末尾 {n} 行 · 接上时写一次 · 清单变动不再改它",
+      "args": ["path", "n"]
     },
     "machineAliases.access.connect": {
       "kind": "action",
@@ -15862,11 +15862,6 @@
       "zh": "这台后端找不到家目录，没法卸。",
       "args": []
     },
-    "extPage.card.unchanged": {
-      "kind": "body",
-      "zh": "装上之后和现在一样，没有要写的。",
-      "args": []
-    },
     "beExt.uninstall.changed": {
       "kind": "error",
       "zh": "看过之后它又变了，一个字节都没动。重看一次再卸。",
@@ -15957,11 +15952,6 @@
       "zh": "在文件夹中显示",
       "args": []
     },
-    "extPage.card.slotEmpty": {
-      "kind": "body",
-      "zh": "待填：来源机上的值不会抄过来",
-      "args": []
-    },
     "extPage.card.again": {
       "kind": "action",
       "zh": "重看",
@@ -15986,11 +15976,6 @@
       "kind": "body",
       "zh": "留意 {field}：{value}",
       "args": ["field", "value"]
-    },
-    "extPage.card.bringTitle": {
-      "kind": "body",
-      "zh": "从{from}装到{to}：写入这几个文件",
-      "args": ["from", "to"]
     },
     "extPage.filter.skill": {
       "kind": "action",
@@ -16022,11 +16007,6 @@
       "zh": "非文本文件",
       "args": []
     },
-    "extPage.card.confirm": {
-      "kind": "action",
-      "zh": "确认",
-      "args": []
-    },
     "beExt.uninstall.foreign": {
       "kind": "body",
       "zh": "这不是 cc-monitor 装的：先挪进 {backup}，再从这里删掉。",
@@ -16046,6 +16026,101 @@
       "kind": "body",
       "zh": "没有",
       "args": []
+    },
+    "extPage.legend.same": {
+      "kind": "body",
+      "zh": "装了",
+      "args": []
+    },
+    "extPage.legend.differs": {
+      "kind": "body",
+      "zh": "装了 · 内容不同",
+      "args": []
+    },
+    "extPage.legend.project": {
+      "kind": "body",
+      "zh": "仅项目内",
+      "args": []
+    },
+    "extPage.table.headName": {
+      "kind": "title",
+      "zh": "名字",
+      "args": []
+    },
+    "extPage.table.headKind": {
+      "kind": "title",
+      "zh": "种类",
+      "args": []
+    },
+    "extPage.table.headAbout": {
+      "kind": "title",
+      "zh": "做什么",
+      "args": []
+    },
+    "extPage.offline.bar": {
+      "kind": "body",
+      "zh": "{machine} 离线 · 该列是上次同步的样子",
+      "args": ["machine"]
+    },
+    "extPage.install.where": {
+      "kind": "title",
+      "zh": "安装位置",
+      "args": []
+    },
+    "extPage.install.differsPick": {
+      "kind": "body",
+      "zh": "{state} · 勾上就换成这一版",
+      "args": ["state"]
+    },
+    "extPage.install.kept": {
+      "kind": "body",
+      "zh": "勾选的机器共用此值 · {machines} 已有，留空沿用",
+      "args": ["machines"]
+    },
+    "extPage.install.shared": {
+      "kind": "body",
+      "zh": "勾选的机器共用此值",
+      "args": []
+    },
+    "extPage.install.files": {
+      "kind": "title",
+      "zh": "会写的文件",
+      "args": []
+    },
+    "extPage.install.filesLoading": {
+      "kind": "body",
+      "zh": "{machine}：正在看要写哪几个…",
+      "args": ["machine"]
+    },
+    "extPage.install.filesSame": {
+      "kind": "body",
+      "zh": "{machine}：和现在一样 · 无须写",
+      "args": ["machine"]
+    },
+    "extPage.install.filesLine": {
+      "kind": "body",
+      "zh": "{machine}：{path} · {files}",
+      "args": ["machine", "path", "files"]
+    },
+    "extPage.install.machineSaid": {
+      "kind": "body",
+      "zh": "{machine}：{said}",
+      "args": ["machine", "said"]
+    },
+    "extPage.install.confirm": {
+      "kind": "action",
+      "zh": "装到 {n} 台",
+      "args": ["n"]
+    },
+    "extPage.install.noneChecked": {
+      "kind": "body",
+      "zh": "先勾要装的机器",
+      "args": []
+    },
+    "extPage.install.doneOne": {
+      "kind": "body",
+      "zh": "{machine} · 装好了 · {said}",
+      "args": ["machine", "said"]
     },
     "extPage.kind.mcp": {
       "kind": "body",
@@ -16135,11 +16210,6 @@
     "rsToolRegistry.tools.projectSkillsNote": {
       "kind": "body",
       "zh": "装进某个项目的 skill 落在这里。在那个项目的这个目录下，以 skill 的名字为名",
-      "args": []
-    },
-    "extPage.card.slotKept": {
-      "kind": "body",
-      "zh": "不填就沿用目标机已有的值",
       "args": []
     },
     "extPage.drawer.detailLine": {
@@ -16291,11 +16361,6 @@
       "kind": "body",
       "zh": "项目 {dir}",
       "args": ["dir"]
-    },
-    "extPage.button.bring": {
-      "kind": "action",
-      "zh": "装到…",
-      "args": []
     },
     "extPage.card.where": {
       "kind": "control",

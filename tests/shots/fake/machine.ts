@@ -40,12 +40,50 @@ function extList(): unknown {
   g.machines[0].name = "workstation";
   g.machines[1].name = "devbox";
   g.machines[1].key = "devbox";
+  // 再两台：gpu-01 连不上（那一列是上次同步的样子）· win-laptop；外加一条 MCP「github」，本机装了、devbox 内容不同、另两台没装。
+  const rows = (g as unknown as { rows: { cells: unknown[] }[] }).rows;
+  const more = [
+    { here: false, key: "gpu-01", name: "gpu-01", projects: [], reachable: false },
+    { here: false, key: "win-laptop", name: "win-laptop", projects: [], reachable: true },
+  ];
+  g.machines.push(...(more as never[]));
+  const missingCell = (bring: unknown) => ({ bring, note: null, places: [{ at: { level: "user" }, dir: null, note: null, state: "missing", uninstall: false }], state: "missing" });
+  for (const r of rows) r.cells.push(missingCell(null), missingCell(null));
+  const bring = { from: null, fromName: "本机", scope: { from: { level: "user" }, to: { level: "user" } }, targets: [{ at: { level: "user" }, note: null, ok: true }] };
+  rows.push({
+    about: "读写 GitHub 上的仓库与 issue",
+    builtin: null,
+    cells: [
+      { bring: null, note: null, places: [{ at: { level: "user" }, dir: null, note: null, state: "same", uninstall: true }], state: "same" },
+      { bring, note: null, places: [{ at: { level: "user" }, dir: null, note: null, state: "differs", uninstall: true }], state: "differs" },
+      missingCell(bring),
+      missingCell(bring),
+    ],
+    detail: [],
+    kind: "mcp",
+    name: "github",
+    new: false,
+    note: null,
+  } as never);
   return g;
 }
 
 export function machineOps(): Record<string, OpHandler> {
   return {
     "ext-list": () => extList(),
+    // 「装到 N 台」那一张卡：每台一张（MCP 那一条要一个 token，win-laptop 上已经有了）。
+    "ext-hub-preview": (_o, req) => ({
+      kind: req.kind,
+      name: req.name,
+      path: req.to === "win-laptop" ? "C:\\Users\\user\\.claude.json" : `${HOME}/.claude.json`,
+      writes: [".claude.json · mcpServers"],
+      unchanged: false,
+      suspects: [],
+      stop: null,
+      config: null,
+      slots: [{ field: "env", key: "GITHUB_TOKEN", kept: req.to === "win-laptop" }],
+      tokens: { source: "s1", target: "t1" },
+    }),
     // 停 / 重启 / 更新 / 卸载之前「会打断什么」（形状同 `tests/__fixtures__/machine-interrupts.golden.json`）：
     //   devbox 上两个会话的请求经它、一个活着；本机账上通往 devbox 的转发一条；别的台什么都不断。
     "machine-interrupts": (origin, req) => ({
@@ -123,6 +161,7 @@ export function machineOps(): Record<string, OpHandler> {
           },
           unreadable: null,
           policy: null,
+          blockLines: 4,
         },
       ],
     }),
