@@ -561,6 +561,22 @@ def mask_comments(src: str, lang: str) -> str:
     return "".join(out)
 
 
+# 同一进程里一份文件只遮一次：`scan` · `cfg_test_module_files` · CP1 的 `all_copy_refs` / `doubt_band` 都要遮好的全文，
+# 原先各遮各的（一趟 CP1 把整仓遮两遍多，遮注释是逐字符的 Python 循环，整仓扫的大头）。
+# 键是文件住址 ＋ 语言 ＋ 修改时间与大小（同一进程里文件被改写 ⇒ 键变 ⇒ 重算）；只在内存里，不跨进程、不落盘。
+_MASKED: dict = {}
+
+
+def masked_source(path: Path, lang: str) -> str:
+    """`path` 的全文遮掉注释（同 `mask_comments`），一个进程里每份文件只算一次。读不出来照旧抛（调用方各自接）。"""
+    st = path.stat()
+    key = (str(path), lang, st.st_mtime_ns, st.st_size)
+    got = _MASKED.get(key)
+    if got is None:
+        got = _MASKED[key] = mask_comments(path.read_text(encoding="utf-8"), lang)
+    return got
+
+
 CFG_TEST_RE = re.compile(r"#\[cfg\((?:test|all\([^)]*test[^)]*\))\)\]")
 
 
@@ -680,7 +696,7 @@ def cfg_test_module_files(root: Path) -> set:
             continue
         if "cfg(" not in raw:
             continue
-        masked = mask_comments(raw, "rs")
+        masked = masked_source(p, "rs")
         for m in CFG_TEST_MOD_RE.finditer(masked):
             attrs, name = m.group(1), m.group(2)
             pm = re.search(r'#\[path\s*=\s*"([^"]+)"\]', attrs)
@@ -874,6 +890,8 @@ def arg_index_at(src: str, open_paren: int, pos: int) -> int:
 def build_tag_map(masked: str):
     """→ {表达式文本: [(offset, tag), ...]}（按 offset 升序）。"""
     tags = defaultdict(list)
+    if "createElement" not in masked:   # 下面那条正则以 `\s*` 打头、每个位置都要试一遍；没有锚词的文件（大多数）直接空表
+        return tags
     pat = re.compile(
         r"(?:const|let|var)?\s*([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\s*="
         r"\s*document\.createElement\s*\(\s*[\"'`]([a-zA-Z0-9]+)[\"'`]"
@@ -1039,12 +1057,11 @@ def scan(root: Path):
     table = load_copy_table()
 
     for path, rel in files:
+        lang = "rs" if path.suffix == ".rs" else "ts"
         try:
-            raw = path.read_text(encoding="utf-8")
+            masked = masked_source(path, lang)
         except (UnicodeDecodeError, OSError):
             continue
-        lang = "rs" if path.suffix == ".rs" else "ts"
-        masked = mask_comments(raw, lang)
         if lang == "rs":
             masked = strip_cfg_test(masked)
         scanned_lines += masked.count("\n") + 1

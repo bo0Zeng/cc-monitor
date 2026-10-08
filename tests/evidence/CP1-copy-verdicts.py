@@ -171,7 +171,7 @@ def all_copy_refs(census) -> Counter:
     n = Counter()
     for path, rel in census.production_files(census.SRC_ROOT):
         lang = "rs" if rel.endswith(".rs") else "ts"
-        m = census.mask_comments(path.read_text(encoding="utf-8"), lang)
+        m = census.masked_source(path, lang)
         if lang == "rs":
             m = census.strip_cfg_test(m)
         n.update(r.group(1) for r in census.COPY_REF.finditer(m))
@@ -208,9 +208,8 @@ def doubt_band(census, src_root: Path | None = None):
     def masked_of(rel):
         if rel not in cache:
             p = (census.REPO / rel) if (census.REPO / rel).exists() else (root / rel)
-            raw = p.read_text(encoding="utf-8")
             lang = "rs" if rel.endswith(".rs") else "ts"
-            m = census.mask_comments(raw, lang)
+            m = census.masked_source(p, lang)
             if lang == "rs":
                 m = census.strip_cfg_test(m)
             # 行首偏移表
@@ -295,7 +294,8 @@ def compare(band, rows):
     return missing, extra, drift
 
 
-def run_check(band, ledger_path: Path, as_json: bool, probe: tuple[bool, list[str]] | None = None) -> int:
+def run_check(band, ledger_path: Path, as_json: bool, probe: tuple[bool, list[str]] | None = None, census=None) -> int:
+    """`census`：调用方已经扫过真树的那份普查（`CP-copy-judges.py` 三条判据共用一趟）；不给就现载一份。"""
     probe_ok, probe_got = probe if probe is not None else probe_control()
     rows, problems = read_ledger(ledger_path)
     unresolved = [e for e in band if e["text"] == "__UNRESOLVED__"]
@@ -306,7 +306,7 @@ def run_check(band, ledger_path: Path, as_json: bool, probe: tuple[bool, list[st
     for r in rows:
         v = r["verdict"]
         vc[next(p for p in VERDICT_PREFIXES if v.startswith(p)) if v.startswith(VERDICT_PREFIXES) else "?"] += 1
-    aria = aria_kind_check(LAST_MAIN, all_copy_refs(load_census()), census_table())
+    aria = aria_kind_check(LAST_MAIN, all_copy_refs(census or load_census()), census_table())
     if not aria["ok"]:
         problems += [f"只进 aria-label 的键 kind 不是 aria：{k}" for k in aria["untagged"]]
         problems += [f"kind 是 aria、却不是只进 aria-label：{k}" for k in aria["stray"]]

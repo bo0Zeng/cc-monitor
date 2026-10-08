@@ -43,9 +43,24 @@ interface Hit {
   text: string;
 }
 
+/**
+ * 下面两条全仓判据（原生对话框 · 没 await 的调用）读的是同一批生产 TS：每份只建一次语法树，两条共用。
+ * 原先各建各的 —— 全仓逐份建 AST 是这个文件里最贵的活，做两遍（小补丁十二）。键带全文：同名不同文（合成样本）不会撞。
+ */
+const parsed = new Map<string, ts.SourceFile>();
+function sourceFile(file: string, text: string): ts.SourceFile {
+  const key = `${file}\0${text}`;
+  let sf = parsed.get(key);
+  if (sf === undefined) {
+    sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+    parsed.set(key, sf);
+  }
+  return sf;
+}
+
 /** 一份源码里引用原生 `confirm` / `prompt` 的地方（AST：注释天然不算）。 */
 function nativeDialogRefs(file: string, text: string): Hit[] {
-  const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const sf = sourceFile(file, text);
   const out: Hit[] = [];
   const hit = (n: ts.Node): void => {
     const { line } = sf.getLineAndCharacterOfPosition(n.getStart(sf));
@@ -120,7 +135,7 @@ const ASKS = new Set(["confirmDialog", "askText", "confirmInterrupts"]);
 
 /** 一份源码里调用对话框的地方：`[全部调用, 其中没被 await 的]`。 */
 function askCalls(file: string, text: string): { all: Hit[]; unawaited: Hit[] } {
-  const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const sf = sourceFile(file, text);
   const all: Hit[] = [];
   const unawaited: Hit[] = [];
   const visit = (n: ts.Node): void => {
