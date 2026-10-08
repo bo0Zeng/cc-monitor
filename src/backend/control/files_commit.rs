@@ -224,14 +224,8 @@ pub fn commit_upload_in(
     if let Err(e) = land_staged(home, key, root, rel, &dest, cross_device) {
         // 撤掉自己那个 0 字节的占位（它是这一次刚建的，不是用户既有数据）；撤不掉要说出来，不然用户目录里留一份 0 字节文件、重试撞「目标已经在了」。
         let undo = std::fs::remove_file(&dest);
-        return Err(WriteRefusal::Io(copy_text(
-            "beFilesCommit.upload.moveFailedNote",
-            &[
-                ("path", &dest.display().to_string()),
-                ("e", &e.to_string()),
-                ("note", &placeholder_note(&dest, &undo)),
-            ],
-        )));
+        let said = e.to_string();
+        return Err(WriteRefusal::Io(move_failed_text(&dest, &said, &undo)));
     }
     Ok((dest, bytes))
 }
@@ -294,13 +288,18 @@ fn land_staged(
     Ok(())
 }
 
-/// 提交失败之后撤占位那一步的结局 ⇒ 接在报错后面的那半句。撤掉了 ⇒ 空（没什么要用户做的）。
-pub(crate) fn placeholder_note(dest: &Path, undo: &std::io::Result<()>) -> String {
+/// 提交失败那一句（整句由这里写好，不在别处拼碎片）：撤占位撤掉了 ⇒ 只说写入失败；
+/// 撤不掉 ⇒ 换一条整句键，多说一行「删除失败 · 留下的 0 字节空文件」，不然用户目录里留一份 0 字节文件、重试撞「目标已经在了」。
+pub(crate) fn move_failed_text(dest: &Path, e: &str, undo: &std::io::Result<()>) -> String {
+    let path = dest.display().to_string();
     match undo {
-        Ok(()) => String::new(),
-        Err(e) => copy_text(
+        Ok(()) => copy_text(
+            "beFilesCommit.upload.moveFailedNote",
+            &[("path", &path), ("e", e)],
+        ),
+        Err(left) => copy_text(
             "beFilesCommit.upload.placeholderLeft",
-            &[("path", &dest.display().to_string()), ("e", &e.to_string())],
+            &[("path", &path), ("e", e), ("left", &left.to_string())],
         ),
     }
 }

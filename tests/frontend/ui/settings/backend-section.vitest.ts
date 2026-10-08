@@ -557,7 +557,7 @@ describe("〔ST2 · 第二刀 步 6〕后端开关表格式四栏：长文案进
     expect(more.tagName).toBe("DETAILS");
     expect(more.querySelector("summary")?.textContent).toBe(copyText("backend.health.detail"));
     expect(more.querySelector(".settings-hint")?.textContent).toBe(face.detail);
-    for (const n of ["异常退出 4", "被拒 1", "未启动 0", "读取失败 2"]) expect(face.detail).toContain(n);
+    for (const n of ["异常退出 4", "被拒 1", "未启动 0", "未读到 2"]) expect(face.detail).toContain(n);
     expect(col.querySelector('[data-health-extra="why"]'), "有记录还挂着「无记录」的 ⓘ").toBeNull();
     // 那五种里后端曾经带进来的三种：markdown · 日志行格式 · 设计论证。
     expect(col.textContent).not.toMatch(/\*\*|\[死亡账\]|origin=|下一步：|放大器/);
