@@ -860,7 +860,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// p9f-copy-backend：后端 be* 那一面文案按新写法压缩（只改表值）；远端后端随新版本重新部署后才说新话。
 ///
 /// p9g-first-run：后端新帧命令 first-run（开始用三步、必做与跳过都由后端判）· ext-hub-preview / apply 收一组机器（落点交集、要填格合并在枢纽）· profiles-read 多 tmux 一格。
-pub const BUILD_ID: &str = "p9g-first-run";
+///
+/// p9h-update-in-place：↗ 浮层［更新］就地部署（部署 / 卸载收进共用模块）· last-seen-write 收 forget（删机器时清那台的上次值）· 改调用点那段文案（原因值留句里）· 随产物发出去的文件去掉私人标识。
+pub const BUILD_ID: &str = "p9h-update-in-place";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 

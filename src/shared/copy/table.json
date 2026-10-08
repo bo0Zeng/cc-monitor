@@ -25,19 +25,19 @@
     "accountOps.said.contract": {
       "kind": "error",
       "role": "报错",
-      "zh": "那台机器的后端版本对不上，需要更新：{detail}",
+      "zh": "两端版本不配 · 要更新 · {detail}",
       "args": ["detail"]
     },
     "accountOps.said.noReason": {
       "kind": "error",
       "role": "报错",
-      "zh": "那台机器的后端报了错，没说原因",
+      "zh": "后端报错 · 原因不明",
       "args": []
     },
     "beAcctExec.key.noDoor": {
       "kind": "error",
       "role": "报错",
-      "zh": "这一步要动 key 表 {path}，可这一趟没拿到它的写口，没有动。",
+      "zh": "key 表 {path} 未改动 · 本次未拿到它的写入口",
       "args": ["path"]
     },
     "beAcctExec.rollback.rekey": {
@@ -55,7 +55,7 @@
     "beAcctPlan.remove.keyOutside": {
       "kind": "body",
       "role": "说明",
-      "zh": "key 表 {path} 不在家目录底下，没法先备份，{name} 那一行没有清掉。",
+      "zh": "key 表 {path} 不在主目录下 · 无法先备份 · {name} 的行未清除",
       "args": ["name", "path"]
     },
     "beAcctPlan.step.dropKey": {
@@ -109,7 +109,7 @@
     "beUpstreamFileFace.restore.notSaved": {
       "kind": "error",
       "role": "报错",
-      "zh": "备份 {from} 里没有 {account} 那一行，没法放回去。",
+      "zh": "备份 {from} 里无 {account} 的行 · 无法放回",
       "args": ["account", "from"]
     },
     "kit.dialog.cancel": {
@@ -265,7 +265,7 @@
     "beAcctExec.apply.stopped": {
       "kind": "error",
       "role": "报错",
-      "zh": "第 {step}/{of} 步没做成：{what}。原因：{e}。前面做了的都记在备份 {backup} 里，可以按它回滚。",
+      "zh": "步骤 {step}/{of} 失败 · {what} · {e}\n已做的步骤都记在备份 {backup} · 可按它回滚",
       "args": ["step", "of", "what", "e", "backup"]
     },
     "beAcctExec.copy.kind": {
@@ -313,7 +313,7 @@
     "beAcctExec.remove.outside": {
       "kind": "error",
       "role": "报错",
-      "zh": "只删账号库 {accts} 里的东西，{path} 不在里面。",
+      "zh": "只删账号库 {accts} 里的东西 · {path} 不在其中",
       "args": ["accts", "path"]
     },
     "beAcctExec.rollback.delete": {
@@ -415,13 +415,13 @@
     "beAcctPlan.dir.exists": {
       "kind": "error",
       "role": "报错",
-      "zh": "{path} 已经在了。换个名字，或者先把它挪走。",
+      "zh": "{path} 已存在 · 换个名字或先挪走它",
       "args": ["path"]
     },
     "beAcctPlan.init.already": {
       "kind": "error",
       "role": "报错",
-      "zh": "账号库已经建过了（{path}）。",
+      "zh": "账号库已建过 · {path}",
       "args": ["path"]
     },
     "beAcctPlan.init.linkedIdentity": {
@@ -481,7 +481,7 @@
     "beAcctPlan.need.noManifest": {
       "kind": "error",
       "role": "报错",
-      "zh": "这台机器还没建账号库（{path} 不在）。先启用多账号。",
+      "zh": "此机未建账号库 · {path} 不存在 · 先启用多账号",
       "args": ["path"]
     },
     "beAcctPlan.remove.backupKeeps": {
@@ -505,7 +505,7 @@
     "beAcctPlan.remove.outside": {
       "kind": "error",
       "role": "报错",
-      "zh": "{path} 不在账号库 {accts} 里，不能这样删。",
+      "zh": "{path} 不在账号库 {accts} 内 · 不能这样删",
       "args": ["path", "accts"]
     },
     "beAcctPlan.remove.zero": {
@@ -523,13 +523,13 @@
     "beAcctPlan.repair.skipMissing": {
       "kind": "body",
       "role": "说明",
-      "zh": "跳过 {name}：它的目录 {path} 不在。",
+      "zh": "跳过 {name} · 目录 {path} 不存在",
       "args": ["name", "path"]
     },
     "beAcctPlan.repair.skipOutside": {
       "kind": "body",
       "role": "说明",
-      "zh": "跳过 {name}：它的目录 {path} 不在账号库里。",
+      "zh": "跳过 {name} · 目录 {path} 不在账号库内",
       "args": ["name", "path"]
     },
     "beAcctPlan.step.chmod": {
@@ -589,19 +589,19 @@
     "beAcctScan.manifest.unreadable": {
       "kind": "error",
       "role": "报错",
-      "zh": "读不了账号清单 {path}：{e}",
+      "zh": "读取账号清单失败 · {path} · {e}",
       "args": ["path", "e"]
     },
     "beAcctScan.roots.nested": {
       "kind": "error",
       "role": "报错",
-      "zh": "共享库 {shared} 和账号库 {accts} 不能一个套在另一个里面。",
+      "zh": "共享库 {shared} 与账号库 {accts} 不能互相嵌套",
       "args": ["shared", "accts"]
     },
     "beAcctScan.roots.outsideHome": {
       "kind": "error",
       "role": "报错",
-      "zh": "{path} 不在家目录 {home} 底下，这里不改它。",
+      "zh": "{path} 不在主目录 {home} 下 · 不改它",
       "args": ["path", "home"]
     },
     "beAcctVerify.acct.credMode": {
@@ -685,7 +685,7 @@
     "beAcctVerify.acct.linkWrong": {
       "kind": "error",
       "role": "报错",
-      "zh": "共享链接 {item} 指向 {target}，应当指向 {want}。点「修复」改回来。",
+      "zh": "共享链接 {item} 指向 {target} · 应指向 {want} · 点「修复」改回",
       "args": ["item", "target", "want"]
     },
     "beAcctVerify.acct.missing": {
@@ -703,7 +703,7 @@
     "beAcctVerify.acct.noShared": {
       "kind": "error",
       "role": "报错",
-      "zh": "共享库 {shared} 里一样可共享的都没有，这样根本没有共享。",
+      "zh": "共享库 {shared} 里无可共享项 · 实际未共享",
       "args": ["shared"]
     },
     "beAcctVerify.acct.notLoggedIn": {
@@ -715,7 +715,7 @@
     "beAcctVerify.acct.outside": {
       "kind": "error",
       "role": "报错",
-      "zh": "账号目录 {path} 不在账号库 {accts} 里，也不是共享库。",
+      "zh": "账号目录 {path} 不在账号库 {accts} 内 · 也不是共享库",
       "args": ["path", "accts"]
     },
     "beAcctVerify.acct.sourceBroken": {
@@ -752,7 +752,7 @@
     "beAcctVerify.global.homeConfig": {
       "kind": "body",
       "role": "说明",
-      "zh": "{path} 又出现了，说明有人没指定账号直接起过 claude。",
+      "zh": "{path} 又出现 · 有人未指定账号直接启动过 claude",
       "args": ["path"]
     },
     "beAcctVerify.global.inPlace": {
@@ -770,13 +770,13 @@
     "beAcctVerify.global.noManifest": {
       "kind": "error",
       "role": "报错",
-      "zh": "还没建账号库（{path} 不在）。",
+      "zh": "未建账号库 · {path} 不存在",
       "args": ["path"]
     },
     "beAcctVerify.global.residue": {
       "kind": "error",
       "role": "报错",
-      "zh": "共享库 {shared} 里有 {item}，它不属于任何账号，而且里面有登录身份。核对后手动挪走它。",
+      "zh": "共享库 {shared} 里有 {item}\n不属于任何账号且含登录身份 · 核对后手动挪走",
       "args": ["shared", "item"]
     },
     "beAcctVerify.global.residueInPlace": {
@@ -830,7 +830,7 @@
     "beAcctWire.cred.outsideHome": {
       "kind": "error",
       "role": "报错",
-      "zh": "凭据文件 {path} 要在家目录 {home} 底下，写绝对路径或者用 ~/ 开头。",
+      "zh": "凭据文件 {path} 须在主目录 {home} 下 · 写绝对路径或以 ~/ 开头",
       "args": ["path", "home"]
     },
     "beAcctWire.platform.unsupported": {
@@ -842,31 +842,31 @@
     "beAcctWire.rollback.badId": {
       "kind": "error",
       "role": "报错",
-      "zh": "备份名 {id} 不对。只能是备份目录名里 .backup- 后面那一段。",
+      "zh": "备份名 {id} 无效 · 只能是备份目录名里 .backup- 后面的一段",
       "args": ["id"]
     },
     "beAcctWire.rollback.badLine": {
       "kind": "body",
       "role": "说明",
-      "zh": "备份的撤销清单里有一行认不出来，跳过了：{line}",
+      "zh": "撤销清单里有一行无法解析 · 已跳过 · {line}",
       "args": ["line"]
     },
     "beAcctWire.rollback.none": {
       "kind": "error",
       "role": "报错",
-      "zh": "账号库 {accts} 里没有可以回滚的备份（回滚过的不算）。",
+      "zh": "账号库 {accts} 里无可回滚的备份 · 回滚过的不算",
       "args": ["accts"]
     },
     "beAcctWire.rollback.noUndo": {
       "kind": "error",
       "role": "报错",
-      "zh": "备份 {path} 不完整，缺撤销清单。",
+      "zh": "备份 {path} 不完整 · 缺撤销清单",
       "args": ["path"]
     },
     "beAcctWire.rollback.partial": {
       "kind": "error",
       "role": "报错",
-      "zh": "回滚做了 {done} 步，有几步没做成：{failed}。备份还在 {path}，处理掉原因后可以再回滚一次。",
+      "zh": "回滚完成 {done} 步 · 部分步骤失败 · {failed}\n备份仍在 {path} · 排除原因后可再回滚",
       "args": ["done", "failed", "path"]
     },
     "bePlan.bus.noScripts": {
@@ -910,7 +910,7 @@
     "beAssetCatalog.read.newer": {
       "kind": "error",
       "role": "报错",
-      "zh": "{path} 是更新版本的后端写的，没有覆盖它。这个后端认格式 {mine}，它是 {theirs}。",
+      "zh": "{path} 由更新版本的后端写入 · 未覆盖 · 此后端认格式 {mine} · 它是 {theirs}",
       "args": ["path", "mine", "theirs"]
     },
     "beAssetCatalog.write.noParent": {
@@ -1018,7 +1018,7 @@
     "beSkillInstall.uninstall.badState": {
       "kind": "error",
       "role": "报错",
-      "zh": "「{p}」现在是{state}，删不了。这次一个都没删。",
+      "zh": "「{p}」当前{state} · 删不了 · 一项都未删",
       "args": ["p", "state"]
     },
     "beSkillInstall.uninstall.needsConsent": {
@@ -1030,13 +1030,13 @@
     "beSkillLedger.read.otherVersion": {
       "kind": "error",
       "role": "报错",
-      "zh": "{path} 是另一个版本的后端写的，没有动它。这个后端认格式 {mine}，它是 {theirs}。",
+      "zh": "{path} 由另一版本的后端写入 · 未改动 · 此后端认格式 {mine} · 它是 {theirs}",
       "args": ["path", "mine", "theirs"]
     },
     "beSkillLedger.read.unknown": {
       "kind": "error",
       "role": "报错",
-      "zh": "{path} 读不出来，格式不对：{e}",
+      "zh": "{path} 格式不对 · 无法解析 · {e}",
       "args": ["path", "e"]
     },
     "beSkillLedger.write.noParent": {
@@ -1078,7 +1078,7 @@
     "beUpstreamFileFace.keySet.noAccount": {
       "kind": "error",
       "role": "报错",
-      "zh": "认不出账号目录 {dir} 属于哪个账号，没有写。",
+      "zh": "认不出账号目录 {dir} 属于哪个账号 · 未写入",
       "args": ["dir"]
     },
     "beUpstreamFileFace.keySet.badId": {
@@ -1096,13 +1096,13 @@
     "beUpstreamFileFace.keySet.notReadBack": {
       "kind": "error",
       "role": "报错",
-      "zh": "写完再读，{path} 里找不到账号 {account} 的 API key。",
+      "zh": "写后回读 · {path} 里无账号 {account} 的 API key",
       "args": ["path", "account"]
     },
     "beUpstreamFileFace.perm.tooWide": {
       "kind": "error",
       "role": "原因格",
-      "zh": "{how}。怎么修：{fix}",
+      "zh": "{how} · 修法 {fix}",
       "args": ["how", "fix"]
     },
     "beUpstreamFileFace.write.noParent": {
@@ -1168,37 +1168,37 @@
     "beClaudePaths.delete.notFound": {
       "kind": "error",
       "role": "原因格",
-      "zh": "删不了会话 {id}：{e}",
+      "zh": "删除会话 {id} 失败 · {e}",
       "args": ["id", "e"]
     },
     "beClaudePaths.delete.rootUnresolved": {
       "kind": "error",
       "role": "报错",
-      "zh": "删不了会话 {id}：会话记录目录 {path} 解析不了：{e}",
+      "zh": "删除会话 {id} 失败 · 无法解析会话记录目录 {path} · {e}",
       "args": ["id", "path", "e"]
     },
     "beClaudePaths.delete.fileUnresolved": {
       "kind": "error",
       "role": "报错",
-      "zh": "删不了会话 {id}：{path} 解析不了：{e}",
+      "zh": "删除会话 {id} 失败 · 无法解析 {path} · {e}",
       "args": ["id", "path", "e"]
     },
     "beClaudePaths.delete.outsideRoot": {
       "kind": "error",
       "role": "报错",
-      "zh": "删不了会话 {id}：{path} 指到了会话记录目录 {root} 之外。",
+      "zh": "删除会话 {id} 失败 · {path} 指到会话记录目录 {root} 之外",
       "args": ["id", "path", "root"]
     },
     "beClaudePaths.delete.wrongShape": {
       "kind": "error",
       "role": "报错",
-      "zh": "删不了会话 {id}：只删项目目录下的 {want}，找到的是 {path}。",
+      "zh": "删除会话 {id} 失败 · 只删项目目录下的 {want} · 找到的是 {path}",
       "args": ["id", "want", "path"]
     },
     "beClaudePaths.delete.notRecord": {
       "kind": "error",
       "role": "报错",
-      "zh": "删不了会话 {id}：{path} 不像一份会话记录。",
+      "zh": "删除会话 {id} 失败 · {path} 不像会话记录",
       "args": ["id", "path"]
     },
     "beCcBus.find.notInstalled": {
@@ -1222,13 +1222,13 @@
     "beCcBus.read.tooOld": {
       "kind": "error",
       "role": "报错",
-      "zh": "这台机器上的 cc-bus 比后端旧，认不出 {cmd}。重新部署 cc-bus 之后再试。",
+      "zh": "此机 cc-bus 比后端旧 · 不认 {cmd} · 重新部署 cc-bus 后再试",
       "args": ["cmd"]
     },
     "beCcBus.read.truncated": {
       "kind": "error",
       "role": "报错",
-      "zh": "{cmd} 的输出只读到半份，没有用它。",
+      "zh": "{cmd} 的输出只读到一半 · 未采用",
       "args": ["cmd"]
     },
     "beCcBus.send.refused": {
@@ -1276,7 +1276,7 @@
     "beCcBus.inbox.tooOld": {
       "kind": "error",
       "role": "报错",
-      "zh": "{reason}。这台机器上的 cc-bus 比后端旧，重新部署 cc-bus 之后再试。",
+      "zh": "{reason} · 此机 cc-bus 比后端旧 · 重新部署 cc-bus 后再试",
       "args": ["reason"]
     },
     "beCcBus.kill.refused": {
@@ -1300,7 +1300,7 @@
     "beCcBus.deliver.tooLong": {
       "kind": "error",
       "role": "报错",
-      "zh": "{reason}这条消息有 {n} 字节。",
+      "zh": "{reason} · 消息 {n} 字节",
       "args": ["reason", "n"]
     },
     "beCcBus.spawn.refused": {
@@ -1337,21 +1337,21 @@
     "beCapturePane.classify.noServer": {
       "kind": "error",
       "role": "报错",
-      "zh": "这台机器上没有在跑的 tmux，抓不到画面。tmux 的原话：{tail}",
+      "zh": "读取画面失败 · 此机无运行中的 tmux · tmux 报 {tail}",
       "args": ["tail"],
       "limited": ["tmux"]
     },
     "beCapturePane.classify.noTarget": {
       "kind": "error",
       "role": "报错",
-      "zh": "这个 tmux 会话不存在，抓不到画面。tmux 的原话：{tail}",
+      "zh": "读取画面失败 · tmux 会话不存在 · tmux 报 {tail}",
       "args": ["tail"],
       "limited": ["tmux"]
     },
     "beCapturePane.classify.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "抓取画面失败，退出码 {status}。tmux 的原话：{tail}",
+      "zh": "读取画面失败 · 退出码 {status} · tmux 报 {tail}",
       "args": ["status", "tail"],
       "limited": ["tmux"]
     },
@@ -1553,7 +1553,7 @@
     "credsStore.error.notJson": {
       "kind": "error",
       "role": "报错",
-      "zh": "凭据文件不是合法的 JSON，没有动它：{e}。这份文件是手编的，多半是少了逗号或引号，改好再试。",
+      "zh": "凭据文件不是合法 JSON · 未改动 · {e} · 手编文件 · 查逗号与引号后再试",
       "args": ["e"]
     },
     "credsStore.error.notObject": {
@@ -1589,7 +1589,7 @@
     "rsRemoteResident.stop.unknownAnswer": {
       "kind": "error",
       "role": "报错",
-      "zh": "停后端的结局认不出来：{line}",
+      "zh": "停止后端的结果无法识别 · {line}",
       "args": ["line"]
     },
     "rsRemoteResident.ensure.tooOld": {
@@ -1601,73 +1601,73 @@
     "rsRemoteResident.ensure.unsupported": {
       "kind": "error",
       "role": "报错",
-      "zh": "接不上：远端只支持 Unix 机器，那台不是。那台说：{why}",
+      "zh": "接入失败 · 远端只支持 Unix 机器 · 该机不是 · 它报 {why}",
       "args": ["why"]
     },
     "rsRemoteResident.ensure.answerUnreadable": {
       "kind": "error",
       "role": "报错",
-      "zh": "那台机器起常驻后端的回答读不懂：{e}",
+      "zh": "远端启动常驻后端的回答无法解析 · {e}",
       "args": ["e"]
     },
     "rsRemoteResident.ensure.noReason": {
       "kind": "error",
       "role": "报错",
-      "zh": "那台机器起常驻后端失败了，没说原因",
+      "zh": "远端启动常驻后端失败 · 原因不明",
       "args": []
     },
     "rsRemoteResident.ensure.answerIncomplete": {
       "kind": "error",
       "role": "报错",
-      "zh": "那台机器起常驻后端的回答里缺端口或钥匙。",
+      "zh": "远端启动常驻后端的回答缺端口或钥匙",
       "args": []
     },
     "rsRemoteResident.hello.notOurs": {
       "kind": "error",
       "role": "报错",
-      "zh": "那台机器上常驻后端的端口被别的程序占着。",
+      "zh": "远端常驻后端的端口被别的程序占用",
       "args": []
     },
     "rsRemoteResident.verdict.unreadable": {
       "kind": "error",
       "role": "报错",
-      "zh": "本机后端回的内容读不懂，定不了要不要换掉那台的后端：{e}",
+      "zh": "本机后端回的内容无法解析 · 无法决定是否替换远端后端 · {e}",
       "args": ["e"]
     },
     "rsRemoteResident.handshake.helloCut": {
       "kind": "error",
       "role": "报错",
-      "zh": "那台机器的后端刚连上就断了，或回的内容太长。",
+      "zh": "远端后端刚连上就断开 · 或回的内容过长",
       "args": []
     },
     "rsRemoteResident.handshake.replyCut": {
       "kind": "error",
       "role": "报错",
-      "zh": "那台机器的后端没回完接入请求就断了，或回的内容太长。",
+      "zh": "远端后端未回完接入请求就断开 · 或回的内容过长",
       "args": []
     },
     "rsRemoteResident.handshake.readFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "读那台机器常驻后端的回话失败：{e}",
+      "zh": "读取远端常驻后端的回话失败 · {e}",
       "args": ["e"]
     },
     "rsRemoteResident.tunnel.unreachable": {
       "kind": "error",
       "role": "报错",
-      "zh": "那台机器的常驻后端端口（127.0.0.1:{port}）一直连不上：{e}",
+      "zh": "远端常驻后端端口 127.0.0.1:{port} 一直连接失败 · {e}",
       "args": ["port", "e"]
     },
     "rsRemoteResident.tunnel.forwardingProhibited": {
       "kind": "error",
       "role": "报错",
-      "zh": "接不上：那台 sshd 不许端口转发（AllowTcpForwarding no），cc-monitor 连不到它的后端。把那台 sshd_config 里的 AllowTcpForwarding 改成 yes 或 local、重启 sshd，再在机器页点「起」。",
+      "zh": "接入失败 · 远端 sshd 禁止端口转发（AllowTcpForwarding no）\n把远端 sshd_config 里的 AllowTcpForwarding 改成 yes 或 local · 重启 sshd · 再在机器页点「起」",
       "args": []
     },
     "rsRemoteResident.handshake.attachNotSent": {
       "kind": "error",
       "role": "报错",
-      "zh": "接入请求没送到那台机器的常驻后端：{e}",
+      "zh": "接入请求未送到远端常驻后端 · {e}",
       "args": ["e"]
     },
     "rsRemoteResident.handshake.notAttachReply": {
@@ -1679,7 +1679,7 @@
     "rsRemoteResident.handshake.refused": {
       "kind": "error",
       "role": "报错",
-      "zh": "那台机器的常驻后端拒绝了这条连接：{why}",
+      "zh": "远端常驻后端拒绝此连接 · {why}",
       "args": ["why"]
     },
     "rsBackendControl.remote.stopFailed": {
@@ -1697,7 +1697,7 @@
     "beResident.spawn.noSelf": {
       "kind": "error",
       "role": "原因格",
-      "zh": "找不到后端自己的程序文件：{e}",
+      "zh": "找不到后端自身的程序文件 · {e}",
       "args": ["e"]
     },
     "beLaunchRender.entry.noHome": {
@@ -1755,19 +1755,19 @@
     "beResident.spawn.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "常驻后端起不来（{exe}）：{e}",
+      "zh": "常驻后端启动失败 · {exe} · {e}",
       "args": ["exe", "e"]
     },
     "beResident.stop.cannotVerify": {
       "kind": "error",
       "role": "报错",
-      "zh": "认不出进程 {pid} 是谁，没有停它：这台机器上读不到它跑的程序。",
+      "zh": "未停止进程 {pid} · 认不出它 · 此机读不到它运行的程序",
       "args": ["pid"]
     },
     "beResident.stop.notOurs": {
       "kind": "error",
       "role": "报错",
-      "zh": "进程 {pid} 不是记下的那个后端，没有停它。它跑的是 {exe}，进程号可能被别的程序用了。",
+      "zh": "未停止进程 {pid} · 不是记下的后端\n它运行的是 {exe} · 进程号可能已被别的程序复用",
       "args": ["pid", "exe"]
     },
     "beResident.stop.badGrace": {
@@ -1779,19 +1779,19 @@
     "beResident.stop.stuck": {
       "kind": "error",
       "role": "报错",
-      "zh": "常驻后端（进程 {pid}）强杀之后还在，没有停掉。",
+      "zh": "常驻后端进程 {pid} 强制结束后仍在 · 未停掉",
       "args": ["pid"]
     },
     "beStop.handle.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "拿不到进程 {pid} 的句柄，没有停它：{e}",
+      "zh": "未停止进程 {pid} · 拿不到句柄 · {e}",
       "args": ["pid", "e"]
     },
     "beStop.signal.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "信号 {sig} 没发出去：{e}",
+      "zh": "发送信号 {sig} 失败 · {e}",
       "args": ["sig", "e"]
     },
     "beStop.wait.failed": {
@@ -1966,7 +1966,7 @@
     "sessionState.recordGone.body": {
       "kind": "error",
       "role": "报错",
-      "zh": "{who} 的 {root} 里找不到会话 {sid} 的记录，resume 接不上它，所以没有打开终端。",
+      "zh": "{who} 的 {root} 里无会话 {sid} 的记录 · 无法恢复 · 未打开终端",
       "args": ["who", "root", "sid"]
     },
     "sessionState.pin.pinHint": {
@@ -2014,13 +2014,13 @@
     "deploy.refused.osUnknown": {
       "kind": "error",
       "role": "报错",
-      "zh": "问不出 {machine} 是什么系统，不知道该给它哪一份后端。查了什么：问过它，{why}。",
+      "zh": "安装失败 · {machine} 系统未知 · {why}",
       "args": ["machine", "why"]
     },
     "deploy.refused.archUnknown": {
       "kind": "error",
       "role": "报错",
-      "zh": "问不出 {machine} 是什么处理器架构，不知道该给它哪一份后端。查了什么：问过它，{why}。",
+      "zh": "安装失败 · {machine} 处理器架构未知 · {why}",
       "args": ["machine", "why"]
     },
     "deploy.refused.notPromisedHere": {
@@ -2092,7 +2092,7 @@
     "control.channel.unsure": {
       "kind": "error",
       "role": "报错",
-      "zh": "不知道 {machine} 那边做完了没有：连接断了，或者等回复超时。刷新会话列表后再决定要不要重试。",
+      "zh": "{machine} 操作结果未知 · 连接断开或回复超时\n先刷新会话列表再决定是否重试",
       "args": ["machine"]
     },
     "control.channel.cancelled": {
@@ -2104,7 +2104,7 @@
     "control.channel.cancelledRunsOn": {
       "kind": "error",
       "role": "报错",
-      "zh": "这次操作已撤回；那台机器停不了它，它可能还在跑。",
+      "zh": "操作已撤回 · 该机器停不下它 · 可能仍在跑",
       "args": []
     },
     "control.unavailable.noTmux": {
@@ -2147,27 +2147,27 @@
     "terminalReads.preview.noTmux": {
       "kind": "error",
       "role": "报错",
-      "zh": "抓取不了 {target} 的画面：那台机器上起不来 tmux（{detail}）",
+      "zh": "读取 {target} 画面失败 · tmux 无法启动 · {detail}",
       "args": ["target", "detail"],
       "limited": ["tmux"]
     },
     "terminalReads.preview.noServer": {
       "kind": "error",
       "role": "报错",
-      "zh": "抓取不了 {target} 的画面：那台机器上没有在运行的 tmux（{detail}）",
+      "zh": "读取 {target} 画面失败 · 无运行中的 tmux · {detail}",
       "args": ["target", "detail"],
       "limited": ["tmux"]
     },
     "terminalReads.preview.noSuchSession": {
       "kind": "error",
       "role": "报错",
-      "zh": "抓取不了 {target} 的画面：这个会话不存在，可能刚结束（{detail}）",
+      "zh": "读取 {target} 画面失败 · 会话不存在 · 可能刚结束 · {detail}",
       "args": ["target", "detail"]
     },
     "terminalReads.preview.childTimedOut": {
       "kind": "error",
       "role": "报错",
-      "zh": "抓屏 {target}：{detail}",
+      "zh": "读取 {target} 画面无应答 · {detail}",
       "args": ["target", "detail"]
     },
     "terminalReads.preview.failed": {
@@ -2191,69 +2191,69 @@
     "terminalReads.preview.badTarget": {
       "kind": "error",
       "role": "报错",
-      "zh": "抓取 {target} 画面：目标无效（{detail}）",
+      "zh": "读取 {target} 画面失败 · 目标无效 · {detail}",
       "args": ["target", "detail"]
     },
     "terminalReads.preview.notKnown": {
       "kind": "error",
       "role": "报错",
-      "zh": "抓取 {target} 画面：终端不在名单（{detail}）",
+      "zh": "读取 {target} 画面失败 · 不在终端名单 · {detail}",
       "args": ["target", "detail"]
     },
     "terminalReads.preview.ambiguous": {
       "kind": "error",
       "role": "报错",
-      "zh": "抓取 {target} 画面：多个终端匹配（{detail}）",
+      "zh": "读取 {target} 画面失败 · 多个终端匹配 · {detail}",
       "args": ["target", "detail"]
     },
     "terminalReads.preview.unobservable": {
       "kind": "error",
       "role": "报错",
-      "zh": "抓取 {target} 画面：终端名单不可读（{detail}）",
+      "zh": "读取 {target} 画面失败 · 终端名单不可读 · {detail}",
       "args": ["target", "detail"]
     },
     "tmuxControl.kill.badName": {
       "kind": "error",
       "role": "报错",
-      "zh": "结束不了 {target}：后端不接受这个会话名（{detail}）",
+      "zh": "结束 {target} 失败 · 会话名不被接受 · {detail}",
       "args": ["target", "detail"]
     },
     "tmuxControl.kill.noTmux": {
       "kind": "error",
       "role": "报错",
-      "zh": "结束不了 {target}：那台机器上起不来 tmux（{detail}）",
+      "zh": "结束 {target} 失败 · tmux 无法启动 · {detail}",
       "args": ["target", "detail"],
       "limited": ["tmux"]
     },
     "tmuxControl.kill.noSuchSession": {
       "kind": "error",
       "role": "报错",
-      "zh": "{target} 已经不在了，可能已经结束（{detail}）",
+      "zh": "{target} 已不在 · {detail}",
       "args": ["target", "detail"]
     },
     "tmuxControl.kill.wrongOwner": {
       "kind": "error",
       "role": "报错",
-      "zh": "没有结束 {target}：认不出它是 cc-monitor 管理的会话。为了不误伤你自己的 tmux 会话，这次拒绝了（{detail}）",
+      "zh": "未结束 {target} · 认不出是 cc-monitor 管理的会话 · 不碰你自己的 tmux 会话 · {detail}",
       "args": ["target", "detail"],
       "limited": ["tmux"]
     },
     "tmuxControl.kill.tooManyWindows": {
       "kind": "error",
       "role": "报错",
-      "zh": "没有结束 {target}：它里面多开了别的窗口。为了不丢掉那些窗口，这次拒绝了（{detail}）",
+      "zh": "未结束 {target} · 内有别的窗口 · 不丢那些窗口 · {detail}",
       "args": ["target", "detail"]
     },
     "tmuxControl.kill.childTimedOut": {
       "kind": "error",
       "role": "报错",
-      "zh": "结束 {target}：{detail}",
+      "zh": "结束 {target} 无应答 · {detail}",
       "args": ["target", "detail"]
     },
     "tmuxControl.kill.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "结束 {target} 失败了，tmux 的原话：{detail}",
+      "zh": "结束 {target} 失败 · tmux 报 {detail}",
       "args": ["target", "detail"],
       "limited": ["tmux"]
     },
@@ -2302,50 +2302,50 @@
     "ccBus.online.notInstalled": {
       "kind": "error",
       "role": "报错",
-      "zh": "问不到 {id} 在不在线：那台机器上找不到 cc-bus（{detail}）",
+      "zh": "查询 {id} 在线状态失败 · 找不到 cc-bus · {detail}",
       "args": ["id", "detail"]
     },
     "ccBus.online.timedOut": {
       "kind": "error",
       "role": "报错",
-      "zh": "问不到 {id} 在不在线：列名单超时了（{detail}）",
+      "zh": "查询 {id} 在线状态无应答 · 列名单超时 · {detail}",
       "args": ["id", "detail"]
     },
     "ccBus.online.otherCode": {
       "kind": "error",
       "role": "报错",
-      "zh": "问不到 {id} 在不在线：{detail}",
+      "zh": "查询 {id} 在线状态失败 · {detail}",
       "args": ["id", "detail"]
     },
     "ccBus.online.noReason": {
       "kind": "error",
       "role": "报错",
-      "zh": "问不到 {id} 在不在线，后端没有给出原因。",
+      "zh": "查询 {id} 在线状态失败 · 原因不明",
       "args": ["id"]
     },
     "ccBus.online.unknown": {
       "kind": "error",
       "role": "报错",
-      "zh": "问不到 {id} 在不在线：它不在 {machine} 的总线名单里，或者那边问不到 tmux。这是问不到，不是不在线。",
+      "zh": "{id} 在线状态未知 · 不在 {machine} 的总线名单 · 或该机查不到 tmux",
       "args": ["id", "machine"],
       "limited": ["tmux"]
     },
     "ccBus.read.notInstalled": {
       "kind": "error",
       "role": "报错",
-      "zh": "读不到：那台机器上找不到 cc-bus，或它比后端旧（{detail}）",
+      "zh": "读取失败 · 找不到 cc-bus 或 cc-bus 比后端旧 · {detail}",
       "args": ["detail"]
     },
     "ccBus.read.timedOut": {
       "kind": "error",
       "role": "报错",
-      "zh": "读不到：读 cc-bus 超时了（{detail}）",
+      "zh": "读取 cc-bus 无应答 · 超时 · {detail}",
       "args": ["detail"]
     },
     "ccBus.read.badId": {
       "kind": "error",
       "role": "报错",
-      "zh": "没去读：这个 id 不合法（{detail}）",
+      "zh": "未读取 · id 不合法 · {detail}",
       "args": ["detail"]
     },
     "ccBus.read.otherCode": {
@@ -2369,19 +2369,19 @@
     "ccBus.send.badId": {
       "kind": "error",
       "role": "报错",
-      "zh": "消息没有发出去：{detail}",
+      "zh": "发送失败 · {detail}",
       "args": ["detail"]
     },
     "ccBus.kill.badId": {
       "kind": "error",
       "role": "报错",
-      "zh": "没有收掉：{detail}",
+      "zh": "收掉失败 · {detail}",
       "args": ["detail"]
     },
     "ccBus.spawn.badId": {
       "kind": "error",
       "role": "报错",
-      "zh": "没有派生：这个名字不合法（{detail}）",
+      "zh": "未派生 · 名字不合法 · {detail}",
       "args": ["detail"]
     },
     "beCcBus.parse.badRecipient": {
@@ -2405,31 +2405,31 @@
     "ccBus.send.invalidArgs": {
       "kind": "error",
       "role": "报错",
-      "zh": "{id} 的消息没有发出去：cc-bus 不接受这个收件人或这组参数（{detail}）",
+      "zh": "发给 {id} 失败 · cc-bus 不接受此收件人或参数 · {detail}",
       "args": ["id", "detail"]
     },
     "ccBus.send.notInstalled": {
       "kind": "error",
       "role": "报错",
-      "zh": "{id} 的消息没有发出去：那台机器上找不到 cc-bus（{detail}）",
+      "zh": "发给 {id} 失败 · 找不到 cc-bus · {detail}",
       "args": ["id", "detail"]
     },
     "ccBus.send.rejected": {
       "kind": "error",
       "role": "报错",
-      "zh": "{id} 的消息没有发出去：被 cc-bus 的路由规则拦下了（{detail}）",
+      "zh": "发给 {id} 失败 · 被 cc-bus 路由规则拦下 · {detail}",
       "args": ["id", "detail"]
     },
     "ccBus.send.timedOut": {
       "kind": "error",
       "role": "报错",
-      "zh": "不确定 {id} 的消息发出去没有：发送超时了（{detail}）",
+      "zh": "发给 {id} 结果未知 · 发送超时 · {detail}",
       "args": ["id", "detail"]
     },
     "ccBus.send.tooLong": {
       "kind": "error",
       "role": "报错",
-      "zh": "{id} 的消息没有发出去：正文太长，一次装不下（{detail}）",
+      "zh": "发给 {id} 失败 · 正文过长 · {detail}",
       "args": ["id", "detail"]
     },
     "ccBus.send.otherCode": {
@@ -2471,19 +2471,19 @@
     "ccBus.kill.invalidArgs": {
       "kind": "error",
       "role": "报错",
-      "zh": "没有收掉 {id}：cc-bus 不接受这个名字（{detail}）",
+      "zh": "收掉 {id} 失败 · cc-bus 不接受此名字 · {detail}",
       "args": ["id", "detail"]
     },
     "ccBus.kill.notInstalled": {
       "kind": "error",
       "role": "报错",
-      "zh": "没有收掉 {id}：那台机器上找不到 cc-bus（{detail}）",
+      "zh": "收掉 {id} 失败 · 找不到 cc-bus · {detail}",
       "args": ["id", "detail"]
     },
     "ccBus.kill.timedOut": {
       "kind": "error",
       "role": "报错",
-      "zh": "不知道 {id} 收掉了没有：执行超时了。先刷新名单再决定要不要重来（{detail}）",
+      "zh": "收掉 {id} 结果未知 · 执行超时 · 先刷新名单再决定是否重来 · {detail}",
       "args": ["id", "detail"]
     },
     "ccBus.kill.otherCode": {
@@ -2501,7 +2501,7 @@
     "ccBus.kill.unsure": {
       "kind": "error",
       "role": "报错",
-      "zh": "{machine} 的后端回的内容读不懂，不知道 {id} 收掉了没有。先刷新名单再决定，不要直接重来。",
+      "zh": "收掉 {id} 结果未知 · {machine} 回复无法解析\n先刷新名单再决定 · 勿直接重来",
       "args": ["machine", "id"]
     },
     "ccBus.kill.killed": {
@@ -2531,19 +2531,19 @@
     "ccBus.spawn.invalidArgs": {
       "kind": "error",
       "role": "报错",
-      "zh": "没有派生：cc-bus 不接受这组参数（{detail}）",
+      "zh": "未派生 · cc-bus 不接受参数 · {detail}",
       "args": ["detail"]
     },
     "ccBus.spawn.notInstalled": {
       "kind": "error",
       "role": "报错",
-      "zh": "没有派生：那台机器上找不到 cc-bus（{detail}）",
+      "zh": "未派生 · 找不到 cc-bus · {detail}",
       "args": ["detail"]
     },
     "ccBus.spawn.timedOut": {
       "kind": "error",
       "role": "报错",
-      "zh": "派生超时了，会话可能已经起来了。先看一眼 cc-bus 名单，不要直接重试（{detail}）",
+      "zh": "派生结果未知 · 超时 · 会话可能已启动 · 先看 cc-bus 名单 · 勿直接重试 · {detail}",
       "args": ["detail"]
     },
     "ccBus.spawn.otherCode": {
@@ -2573,7 +2573,7 @@
     "ccBus.spawn.noName": {
       "kind": "body",
       "role": "说明",
-      "zh": "已派生，但没认出新会话的名字。会话应该已经在运行，请不要重试，到 cc-bus 名单里找它。\n{said}",
+      "zh": "已派生 · 新会话名字未识别\n会话应已在运行 · 勿重试 · 到 cc-bus 名单里找\n{said}",
       "args": ["said"]
     },
     "ccBus.broadcast.empty": {
@@ -2585,19 +2585,19 @@
     "ccBus.broadcast.invalidArgs": {
       "kind": "error",
       "role": "报错",
-      "zh": "没有广播：后端不接受这组参数（{detail}）",
+      "zh": "未广播 · 参数不被接受 · {detail}",
       "args": ["detail"]
     },
     "ccBus.broadcast.notInstalled": {
       "kind": "error",
       "role": "报错",
-      "zh": "没有广播：那台机器上找不到 cc-bus（{detail}）",
+      "zh": "未广播 · 找不到 cc-bus · {detail}",
       "args": ["detail"]
     },
     "ccBus.broadcast.timedOut": {
       "kind": "error",
       "role": "报错",
-      "zh": "没有广播：列名单超时了（{detail}）",
+      "zh": "未广播 · 列名单超时 · {detail}",
       "args": ["detail"]
     },
     "ccBus.broadcast.otherCode": {
@@ -2783,7 +2783,7 @@
     "gridMonitor.renderPeek.statusWaiting": {
       "kind": "body",
       "role": "片段",
-      "zh": "{activityStatus}（等待：{waitingFor}）",
+      "zh": "{activityStatus} · 等 {waitingFor}",
       "args": ["activityStatus", "waitingFor"]
     },
     "gridMonitor.renderPeek.unknown": {
@@ -3542,19 +3542,19 @@
     "chanCaller.said.unreachable": {
       "kind": "error",
       "role": "报错",
-      "zh": "现在够不着那台机器的后端，连接不在或断了",
+      "zh": "后端不可达 · 连接不在或已断开",
       "args": []
     },
     "chanCaller.said.timeout": {
       "kind": "error",
       "role": "报错",
-      "zh": "等那台机器的后端答复超时了",
+      "zh": "后端答复超时",
       "args": []
     },
     "chanCaller.said.error": {
       "kind": "error",
       "role": "报错",
-      "zh": "那台机器的后端报了错，没说原因",
+      "zh": "后端报错 · 原因不明",
       "args": []
     },
     "chanCaller.linesOf.badShape": {
@@ -3812,7 +3812,7 @@
     "keybindingEditor.applyChord.confirmOverride": {
       "kind": "body",
       "role": "确认框",
-      "zh": "{pretty} 当前是「{ownerLabel}」。要覆盖吗？\n\n「{ownerLabel}」会被解绑（变成「未绑定」）。",
+      "zh": "{pretty} 已绑定「{ownerLabel}」\n改动 · 「{ownerLabel}」改为未绑定",
       "args": ["pretty", "ownerLabel"]
     },
     "keybindingEditor.applyChord.confirmRebindClose": {
@@ -4180,13 +4180,13 @@
     "main.topbar.historyHint": {
       "kind": "body",
       "role": "说明",
-      "zh": "历史会话浏览器 (H)",
+      "zh": "历史会话浏览器",
       "args": []
     },
     "main.topbar.settingsHint": {
       "kind": "body",
       "role": "说明",
-      "zh": "设置 (,)",
+      "zh": "设置",
       "args": []
     },
     "main.tabBar.resizeHint": {
@@ -4420,7 +4420,7 @@
     "tabBatch.why.recordGone": {
       "kind": "error",
       "role": "报错",
-      "zh": "{machine} 的 {root} 里找不到它的记录，Resume 接不上",
+      "zh": "{machine} 的 {root} 里无它的记录 · 无法恢复",
       "args": ["machine", "root"]
     },
     "tabBatch.why.nameTaken": {
@@ -4805,7 +4805,7 @@
     "tabSessionActions.openCwd.title": {
       "kind": "error",
       "role": "报错",
-      "zh": "远端目录没法在本机打开",
+      "zh": "远端目录无法在本机打开",
       "args": []
     },
     "tabSessionActions.openCwd.noConfig": {
@@ -4909,7 +4909,7 @@
     "accountChip.menu.notEnabled": {
       "kind": "body",
       "role": "状态",
-      "zh": "该远端尚未启用多账号",
+      "zh": "该远端未启用多账号",
       "args": []
     },
     "accountChip.menu.queryFailed": {
@@ -5005,7 +5005,7 @@
     "agentProfile.lookup.unknown": {
       "kind": "error",
       "role": "报错",
-      "zh": "查不到 agent「{agent}」的资料（已知的有：{roster}）。",
+      "zh": "无 agent {agent} 的资料 · 已知 {roster}",
       "args": ["agent", "roster"]
     },
     "agentProfile.lookup.none": {
@@ -5348,7 +5348,7 @@
     "pasteBlock.buildPasteBlock.noClipboard": {
       "kind": "error",
       "role": "报错",
-      "zh": "剪贴板用不了，请手动选中复制。",
+      "zh": "剪贴板不可用 · 手动选中复制",
       "args": []
     },
     "pasteBlock.buildPasteBlock.copyFailed": {
@@ -5360,7 +5360,7 @@
     "pasteBlock.buildPasteBlock.copiedBody": {
       "kind": "body",
       "role": "toast",
-      "zh": "贴到 {target}。{mergeNote} 生效条件：{activation}",
+      "zh": "贴到 {target} · {mergeNote} · 生效条件 {activation}",
       "args": ["target", "mergeNote", "activation"]
     },
     "pasteBlock.buildPasteBlock.copied": {
@@ -6926,14 +6926,14 @@
     "profilesPage.remove.goReparent": {
       "kind": "action",
       "role": "按钮",
-      "zh": "改成基于 {parent} 并删 {name}",
-      "args": ["parent", "name"]
+      "zh": "改成基于 {parent} 并删除",
+      "args": ["parent"]
     },
     "profilesPage.remove.goReparentRoot": {
       "kind": "action",
       "role": "按钮",
-      "zh": "改成不基于谁并删 {name}",
-      "args": ["name"]
+      "zh": "改成不基于谁并删除",
+      "args": []
     },
     "profilesPage.remove.reparentHint": {
       "kind": "body",
@@ -7099,19 +7099,19 @@
     "machineAliases.powershell.blockInstallTitle": {
       "kind": "body",
       "role": "悬停",
-      "zh": "把登记终端窗口、接上别名文件的那一小段装进这份 $PROFILE。只动 cc-monitor 那一小块，写前先备份、写后回读比对、不对就恢复。",
+      "zh": "把登记终端窗口、接上别名文件的段落装进此 $PROFILE\n只动 cc-monitor 自己的段落 · 写前备份 · 写后回读比对 · 不对即恢复",
       "args": []
     },
     "machineAliases.posix.blockAfterInstall": {
       "kind": "body",
       "role": "说明",
-      "zh": "装好了。开一个新终端，或在当前终端 source 那份配置。",
+      "zh": "已装好 · 开新终端或在当前终端 source 该配置后生效",
       "args": []
     },
     "machineAliases.posix.blockInstallTitle": {
       "kind": "body",
       "role": "悬停",
-      "zh": "把「让终端认得 ccm、接上别名文件」那一小段装进这份配置。只动 cc-monitor 那一小块，写前先备份、写后回读比对、不对就恢复。",
+      "zh": "把「让终端认得 ccm、接上别名文件」的段落装进此配置\n只动 cc-monitor 自己的段落 · 写前备份 · 写后回读比对 · 不对即恢复",
       "args": [],
       "limited": ["ccm"]
     },
@@ -7208,8 +7208,8 @@
     "machineCard.uninstall.confirm": {
       "kind": "body",
       "role": "确认框",
-      "zh": "确认从 {host} 删除后端？\n会删：~/.cc-monitor/bin/ccm\n（若该机器仍勾选启用，下次连接会自动装回。）",
-      "args": ["host"],
+      "zh": "删除 · ~/.cc-monitor/bin/ccm\n之后 · 该机器仍勾选启用则下次连接自动装回",
+      "args": [],
       "limited": ["ccm"]
     },
     "machineCard.uninstall.needFields": {
@@ -7275,7 +7275,7 @@
     "machineCard.test.stalled": {
       "kind": "error",
       "role": "报错",
-      "zh": "测试没等到结果（{said}），停在：{where}",
+      "zh": "测试无结果 · 停在 {where} · {said}",
       "args": ["said", "where"]
     },
     "machineCard.stall.start": {
@@ -7449,7 +7449,7 @@
     "machineCard.field.addressesHint": {
       "kind": "control",
       "role": "占位",
-      "zh": "10.0.0.2\npi.example.com:2222\n[fe80::1]:22\n首选地址填在上方主机",
+      "zh": "192.0.2.2\npi.example.com:2222\n[fe80::1]:22\n首选地址填在上方主机",
       "args": []
     },
     "machineCard.field.addresses": {
@@ -7662,7 +7662,7 @@
     "settingsPanel.dataDir.resetHint": {
       "kind": "body",
       "role": "说明",
-      "zh": "清空 → 回退到 $CLAUDE_CONFIG_DIR 或 ~/.claude",
+      "zh": "清空即回退到 $CLAUDE_CONFIG_DIR 或 ~/.claude",
       "args": []
     },
     "settingsPanel.dataDir.reset": {
@@ -8663,7 +8663,7 @@
     "ccBusHooks.state.explicit": {
       "kind": "body",
       "role": "状态",
-      "zh": "已装（显式路径：{path}）",
+      "zh": "已装 · 显式路径 {path}",
       "args": ["path"]
     },
     "ccBusHooks.state.onPath": {
@@ -8780,7 +8780,7 @@
     "diagnostics.refresh.settingsUnreadable": {
       "kind": "error",
       "role": "报错",
-      "zh": "读不到当前的日志设置（{e}），下面三项先不能改。点「刷新信息」重试。",
+      "zh": "读取日志设置失败 · {e} · 下面三项暂不可改 · 点「刷新信息」重试",
       "args": ["e"]
     },
     "diagnostics.toast.enable": {
@@ -9119,7 +9119,7 @@
     "data.class.unknown": {
       "kind": "body",
       "role": "片段",
-      "zh": "类别未知（{kind}）",
+      "zh": "类别未知 · {kind}",
       "args": ["kind"]
     },
     "data.class.disposable": {
@@ -9365,7 +9365,7 @@
     "rsPubkey.parsePushOutcome.noMarker": {
       "kind": "error",
       "role": "报错",
-      "zh": "推送没有返回预期的标记，可能失败了（权限或路径）。远端输出：{output}",
+      "zh": "推送未返回预期标记 · 可能失败 · 权限或路径问题 · 远端输出 {output}",
       "args": ["output"]
     },
     "rsPubkey.sanitizePublicKey.badBody": {
@@ -9383,7 +9383,7 @@
     "rsPubkey.sanitizePublicKey.unknownType": {
       "kind": "error",
       "role": "报错",
-      "zh": "认不出的公钥类型 {ktype}（是不是误选了私钥？）",
+      "zh": "无法识别的公钥类型 {ktype} · 查是否误选了私钥",
       "args": ["ktype"]
     },
     "rsPubkey.sanitizePublicKey.controlChars": {
@@ -9407,7 +9407,7 @@
     "rsFilewinProc.dialBack.failed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "文件窗口连不上主程序：{e}",
+      "zh": "文件窗口连接主程序失败 · {e}",
       "args": ["e"]
     },
     "rsFilewinProc.open.stderrTail": {
@@ -9425,7 +9425,7 @@
     "rsFilewinProc.cause.noOpenGl": {
       "kind": "error",
       "role": "报错",
-      "zh": "这台电脑的显卡（驱动）不支持 OpenGL 2.0（{why}）。",
+      "zh": "此电脑的显卡或驱动不支持 OpenGL 2.0 · {why}",
       "args": ["why"]
     },
     "rsFilewinProc.open.failedWhy": {
@@ -9443,19 +9443,19 @@
     "rsFilewinProc.open.exited": {
       "kind": "error",
       "role": "报错",
-      "zh": "文件窗口没能打开（进程退出：{st}）",
+      "zh": "文件窗口打开失败 · 进程退出 {st}",
       "args": ["st"]
     },
     "rsFilewinProc.late.exited": {
       "kind": "error",
       "role": "报错",
-      "zh": "文件窗口开出来之后又退出了：{st}",
+      "zh": "文件窗口打开后又退出 · {st}",
       "args": ["st"]
     },
     "rsFilewinProc.seed.sendFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "启动参数送不进文件窗口进程：{e}\n多半是它一起来就退出了，而不是窗口画不出来；原因在它自己的错误输出里。",
+      "zh": "启动参数送不进文件窗口进程 · {e}\n通常是它一启动就退出 · 不是窗口画不出 · 原因见它自己的错误输出",
       "args": ["e"]
     },
     "rsFilewinProc.spawn.noStdin": {
@@ -9467,13 +9467,13 @@
     "rsFilewinProc.spawn.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "文件窗口进程起不来（{bin}）：{e}",
+      "zh": "文件窗口进程启动失败 · {bin} · {e}",
       "args": ["bin", "e"]
     },
     "rsFilewinProc.bin.notFound": {
       "kind": "error",
       "role": "报错",
-      "zh": "找不到文件窗口程序（{binStem}）。看过这几处：{looked}\n这一份 cc-monitor 自己也没带它。要用别处的一份，设环境变量 {binEnv}。",
+      "zh": "找不到文件窗口程序 {binStem} · 查过 {looked}\n此 cc-monitor 未自带它 · 要用别处的一份 · 设环境变量 {binEnv}",
       "args": ["binStem", "looked", "binEnv"]
     },
     "rsFilewinProc.bin.noHome": {
@@ -9503,7 +9503,7 @@
     "rsFilewinProc.seed.empty": {
       "kind": "error",
       "role": "报错",
-      "zh": "没有收到启动参数。这个程序由 cc-monitor 打开，不直接运行。{binEnv} 指的就是它",
+      "zh": "未收到启动参数 · 此程序由 cc-monitor 打开 · 不直接运行 · {binEnv} 指的就是它",
       "args": ["binEnv"]
     },
     "rsFilewinProc.seed.encodeFailed": {
@@ -9515,7 +9515,7 @@
     "rsSftp.plan.badProduct": {
       "kind": "error",
       "role": "报错",
-      "zh": "部署计划读不懂，没有装后端，多半是本机后端版本不对：{v}",
+      "zh": "部署计划无法解析 · 未安装后端 · 本机后端版本可能不对 · {v}",
       "args": ["v"]
     },
     "rsSftp.plan.internal": {
@@ -9527,31 +9527,31 @@
     "rsSftp.plan.notThisSlot": {
       "kind": "error",
       "role": "报错",
-      "zh": "部署计划要装 {machine} 那一份（{expected}），这一版 cc-monitor 带的字节对不上，没有装上去。",
+      "zh": "部署计划要装 {machine} 的一份 {expected} · 此 cc-monitor 带的字节对不上 · 未安装",
       "args": ["machine", "expected"]
     },
     "rsSftp.uninstall.absent": {
       "kind": "body",
       "role": "说明",
-      "zh": "{path} 不在，可能已经卸载过了。",
+      "zh": "{path} 不存在 · 可能已卸载",
       "args": ["path"]
     },
     "rsSftp.uninstall.done": {
       "kind": "body",
       "role": "toast",
-      "zh": "已删除 {path}。若这台机器仍勾选「启用」，下次连接时会自动装回；彻底移除请取消启用或删除这台机器。",
+      "zh": "已删除 {path}\n此机器仍勾选「启用」则下次连接自动装回 · 彻底移除要取消启用或删除此机器",
       "args": ["path"]
     },
     "rsSftp.deploy.done": {
       "kind": "body",
       "role": "toast",
-      "zh": "已安装后端（{buildId}，{machine}）到 {path}（{reason}）。",
+      "zh": "已安装后端 {buildId} · {machine} · 到 {path} · {reason}",
       "args": ["buildId", "machine", "path", "reason"]
     },
     "rsSftp.deploy.upToDate": {
       "kind": "body",
       "role": "说明",
-      "zh": "远端已是最新后端（{buildId}，{machine}）：{path}，无需重装。",
+      "zh": "远端已是最新后端 {buildId} · {machine} · {path} · 无需重装",
       "args": ["buildId", "machine", "path"]
     },
     "rsSftp.deploy.noBuildId": {
@@ -9575,7 +9575,7 @@
     "rsSftp.identity.undecidable": {
       "kind": "error",
       "role": "报错",
-      "zh": "判不了 {machine} 的 {path} 是哪一版后端，没有动它：{why}",
+      "zh": "无法判定 {machine} 的 {path} 是哪一版后端 · 未改动 · {why}",
       "args": ["machine", "path", "why"]
     },
     "rsSftp.identity.listSep": {
@@ -9587,7 +9587,7 @@
     "rsSftp.identity.multiple": {
       "kind": "error",
       "role": "报错",
-      "zh": "{machine} 的 {path} 自报了不止一个版本（{ids}），{handsOff}",
+      "zh": "{machine} 的 {path} 自报多个版本 {ids} · {handsOff}",
       "args": ["machine", "path", "ids", "handsOff"]
     },
     "rsSftp.identity.unstamped": {
@@ -9641,13 +9641,13 @@
     "rsSftp.upload.badKept": {
       "kind": "error",
       "role": "报错",
-      "zh": "{bad}传坏的这一份没删掉：{e}",
+      "zh": "{bad} · 传坏的文件未删掉 · {e}",
       "args": ["bad", "e"]
     },
     "rsSftp.upload.badRemoved": {
       "kind": "error",
       "role": "报错",
-      "zh": "{bad}已删掉传坏的这一份，下次连上会重新装。",
+      "zh": "{bad} · 已删掉传坏的文件 · 下次连上重新安装",
       "args": ["bad"]
     },
     "rsSftp.verify.lengthDiffers": {
@@ -9659,7 +9659,7 @@
     "rsSftp.verify.contentDiffers": {
       "kind": "error",
       "role": "报错",
-      "zh": "上传后校验失败：{path} 长度相同（{expectedLen} 字节）但内容不同。首个差异在第 {at} 字节。",
+      "zh": "上传后校验失败 · {path} · 长度相同 {expectedLen} 字节 · 内容不同 · 首个差异在字节 {at}",
       "args": ["path", "expectedLen", "at"]
     },
     "rsSftp.verify.unreadable": {
@@ -9947,7 +9947,7 @@
     "rsFilewinShell.noLine.message": {
       "kind": "error",
       "role": "原因格",
-      "zh": "这个窗口没连上后端，请重开窗口",
+      "zh": "窗口未连上后端 · 重开窗口",
       "args": []
     },
     "rsFilewinSource.said.badReply": {
@@ -9971,7 +9971,7 @@
     "rsFilewinSource.said.hopFault": {
       "kind": "error",
       "role": "报错",
-      "zh": "没做成：{what}，{did}（{leg}）",
+      "zh": "未完成 · {what} · {did} · {leg}",
       "args": ["leg", "what", "did"]
     },
     "rsFilewinSource.said.legHost": {
@@ -10031,7 +10031,7 @@
     "rsFilewinSource.watch.localBreak": {
       "kind": "error",
       "role": "原因格",
-      "zh": "传输在本机这边断了：{why}",
+      "zh": "传输在本机侧断开 · {why}",
       "args": ["why"]
     },
     "rsFilewinSource.watch.hostGone": {
@@ -10091,7 +10091,7 @@
     "rsFilewinSource.home.notUtf8": {
       "kind": "error",
       "role": "报错",
-      "zh": "那台机器的 home 目录名不是合法 UTF-8，打不开",
+      "zh": "该机器的主目录名不是合法 UTF-8 · 无法打开",
       "args": []
     },
     "rsFilewinSource.home.noPath": {
@@ -10103,13 +10103,13 @@
     "rsFilewinSource.home.relative": {
       "kind": "error",
       "role": "报错",
-      "zh": "远端的 home 目录是一条相对路径 {path}，起点必须是绝对路径",
+      "zh": "远端主目录是相对路径 {path} · 起点须为绝对路径",
       "args": ["path"]
     },
     "rsFilewinSource.home.empty": {
       "kind": "error",
       "role": "报错",
-      "zh": "远端的 home 目录是空路径，没有起点可以打开窗口",
+      "zh": "远端主目录是空路径 · 无起点可打开窗口",
       "args": []
     },
     "rsFilewinSource.local.readDirFailed": {
@@ -10169,7 +10169,7 @@
     "rsFilewinWriteops.toOps.sameName": {
       "kind": "error",
       "role": "报错",
-      "zh": "「{name}」就是它现在的名字 —— 改名没有要改的东西",
+      "zh": "「{name}」就是当前名字 · 无需改名",
       "args": ["name"]
     },
     "rsFilewinWriteops.toOp.notOne": {
@@ -10277,7 +10277,7 @@
     "rsFilewinFind.refusal.cannotOpen": {
       "kind": "error",
       "role": "报错",
-      "zh": "这个目录后端打不开（权限，或者它不在那台机器上）",
+      "zh": "后端打不开此目录 · 无权限或目录不在该机器上",
       "args": []
     },
     "rsFilewinFind.refusal.badPath": {
@@ -10433,7 +10433,7 @@
     "rsFilewinBookmarks.read.unreadable": {
       "kind": "error",
       "role": "报错",
-      "zh": "书签文件读不懂（{file}）：{e}",
+      "zh": "书签文件 {file} 无法解析 · {e}",
       "args": ["file", "e"]
     },
     "rsFilewinBookmarks.read.failed": {
@@ -10595,7 +10595,7 @@
     "beFilesWrite.copyTree.srcIsRoot": {
       "kind": "error",
       "role": "报错",
-      "zh": "源就是目标根自己（{path}），复制目录要一个根底下的源",
+      "zh": "源即目标根 {path} · 复制目录要根下的源",
       "args": ["path"]
     },
     "beFilesWrite.copyTree.unreadable": {
@@ -10667,7 +10667,7 @@
     "beFilesWrite.copyTree.outsideRoot": {
       "kind": "error",
       "role": "报错",
-      "zh": "目标 {dst} 不在目标根 {root} 底下",
+      "zh": "目标 {dst} 不在目标根 {root} 下",
       "args": ["dst", "root"]
     },
     "beFilesWrite.copyTree.undoneAll": {
@@ -10739,7 +10739,7 @@
     "rsFilewinSize.outcome.line": {
       "kind": "body",
       "role": "说明",
-      "zh": "{name}：{human}（{bytes} 字节），{files} 个文件、{dirs} 个目录",
+      "zh": "{name} · {human} · {bytes} 字节 · 文件 {files} · 目录 {dirs}",
       "args": ["name", "human", "bytes", "files", "dirs"]
     },
     "rsFilewinSize.outcome.links": {
@@ -10841,7 +10841,7 @@
     "beFilesCommit.exdev.noName": {
       "kind": "error",
       "role": "原因格",
-      "zh": "目标 {rel} 没有文件名",
+      "zh": "目标 {rel} 无文件名",
       "args": ["rel"]
     },
     "beFilesCommit.exdev.copyFailed": {
@@ -10919,7 +10919,7 @@
     "rsFilewinCopy.args.notSameDir": {
       "kind": "error",
       "role": "报错",
-      "zh": "复制只在同一个目录里做：{from} 与 {to} 不在同一个目录",
+      "zh": "复制只在同一目录内做 · {from} 与 {to} 不在同一目录",
       "args": ["from", "to"]
     },
     "rsFilewinCopy.outcome.done": {
@@ -11075,7 +11075,7 @@
     "rsFilewinEditor.notEditable.tooBig": {
       "kind": "error",
       "role": "报错",
-      "zh": "文件 {size}（{bytes} 字节）超过编辑上限 {limit}，多了 {over} 字节。超限就拒编，不截断：截断过的文本存回去会写坏文件。",
+      "zh": "文件 {size} · {bytes} 字节 · 超过编辑上限 {limit} · 多 {over} 字节\n超限拒绝编辑 · 不截断 · 截断的文本存回会写坏文件",
       "args": ["size", "bytes", "limit", "over"]
     },
     "rsFilewinEditor.notEditable.badName": {
@@ -11105,7 +11105,7 @@
     "rsFilewinEditor.stale.notice": {
       "kind": "error",
       "role": "报错",
-      "zh": "盘上那份在你打开后被改过了，这次没有存（{why}）",
+      "zh": "盘上文件在你打开后被改过 · 本次未保存 · {why}",
       "args": ["why"]
     },
     "rsFilewinEditor.stale.overwrite": {
@@ -11123,7 +11123,7 @@
     "rsFilewinEditor.reply.noDigest": {
       "kind": "error",
       "role": "报错",
-      "zh": "那台机器上的后端太旧，存不回去，所以没有打开。需要更新后端。",
+      "zh": "该机后端过旧 · 无法存回 · 未打开 · 要更新后端",
       "args": []
     },
     "rsFilewinEditor.saved.noDigest": {
@@ -11135,7 +11135,7 @@
     "rsFilewinEditor.overwrite.notText": {
       "kind": "error",
       "role": "报错",
-      "zh": "盘上那份现在不是能编辑的文本（{why}），覆盖不了。编辑框里的字还在。",
+      "zh": "盘上文件当前不是可编辑的文本 · {why}\n无法覆盖 · 编辑框里的字仍在",
       "args": ["why"]
     },
     "rsFilewinEditor.overwrite.readFailed": {
@@ -11195,7 +11195,7 @@
     "rsFilewinBigfile.notice.both": {
       "kind": "body",
       "role": "说明",
-      "zh": "大文件模式：全文 {size}，最长一行 {longestLine} 字节。只排屏幕上的几行，长行不换行，可横向滚动。",
+      "zh": "大文件模式 · 全文 {size} · 最长行 {longestLine} 字节 · 只排可见行 · 长行横向滚动",
       "args": ["size", "longestLine"]
     },
     "rsFilewinDownload.label.download": {
@@ -11243,7 +11243,7 @@
     "rsLocalBackend.extraction.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "cc-monitor 自带的本机后端{marker}：往 {dir} 里写的时候失败了（{err}）。\n可以：① 看那个目录是不是只读、或者被杀毒软件挡着，给它写权限；② 让 monitor 跑在一个家目录写得进去的账号下；③ 装一次安装包（Releases 页），装出来的后端与 monitor 同目录，不用写这里。",
+      "zh": "cc-monitor 自带的本机后端{marker} · 写入 {dir} 失败 · {err}\n修法 · 给该目录写权限（查是否只读或被杀毒软件拦截）\n或让 monitor 跑在主目录可写的账号下\n或装一次安装包 · 见 Releases 页 · 装出的后端与 monitor 同目录 · 不写此处",
       "args": ["marker", "dir", "err"]
     },
     "rsLocalBackend.extraction.refusedMarker": {
@@ -11261,7 +11261,7 @@
     "rsLocalBackend.place.unasked": {
       "kind": "error",
       "role": "报错",
-      "zh": "本机后端没有放上去：要放的这一份答不出该不该放（{why}）。盘上原来那一份没动。",
+      "zh": "本机后端未放上 · {why}\n要放的那份答不出是否该放 · 盘上原有的未动",
       "args": ["why"]
     },
     "rsLocalBackend.place.askSpawn": {
@@ -11291,14 +11291,14 @@
     "rsLocalBackend.place.besideUnstamped": {
       "kind": "error",
       "role": "报错",
-      "zh": "安装包旁边那份后端 {bin} 说不出自己是哪一版，没拿它放 ~/.cc-monitor/bin/ccm。重装 cc-monitor 再试",
+      "zh": "安装包旁的后端 {bin} 说不出自己的版本 · 未用它放 ~/.cc-monitor/bin/ccm · 重装 cc-monitor 再试",
       "args": ["bin"],
       "limited": ["ccm"]
     },
     "rsLocalBackend.place.besideReadFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "读不了安装包旁边那份后端 {bin}：{e}",
+      "zh": "读取安装包旁的后端 {bin} 失败 · {e}",
       "args": ["bin", "e"]
     },
     "rsLocalBackend.extract.writeFailed": {
@@ -11322,7 +11322,7 @@
     "rsLocalBackend.etxtbsy.gaveUp": {
       "kind": "error",
       "role": "报错",
-      "zh": "起 {bin} 时连着 {tries} 次遇到「文件正被占用」。这个状态会自己过去，再开一次多半就好。最后一次的原话：{last}",
+      "zh": "启动 {bin} 时遇到「文件正被占用」×{tries}\n该状态会自行消失 · 再开一次通常就好 · 最后一次原话 {last}",
       "args": ["bin", "tries", "last"]
     },
     "rsLocalBackend.decide.crashLoop": {
@@ -11346,13 +11346,13 @@
     "rsBackendControl.lock.poisoned": {
       "kind": "error",
       "role": "原因格",
-      "zh": "内部状态坏了（锁中毒）：{e}",
+      "zh": "程序出错 · 锁中毒 · {e}",
       "args": ["e"]
     },
     "rsBackendControl.start.notFound": {
       "kind": "error",
       "role": "报错",
-      "zh": "{reason}；找过 {looked}",
+      "zh": "{reason} · 找过 {looked}",
       "args": ["reason", "looked"]
     },
     "rsBackendControl.origin.empty": {
@@ -11376,13 +11376,13 @@
     "rsInboundClient.error.timeout": {
       "kind": "error",
       "role": "报错",
-      "zh": "等回答超时（{after} 毫秒）",
+      "zh": "等回答超时 · {after} 毫秒",
       "args": ["after"]
     },
     "rsInboundClient.error.timeoutPeerRunsOn": {
       "kind": "error",
       "role": "报错",
-      "zh": "等回答超时（{after} 毫秒）；那台的后端撤不回，那件事可能还在跑",
+      "zh": "等回答超时 · {after} 毫秒 · 远端后端撤不回 · 该操作可能仍在跑",
       "args": ["after"]
     },
     "rsInboundClient.error.cancelled": {
@@ -11400,7 +11400,7 @@
     "rsInboundClient.error.tooMany": {
       "kind": "error",
       "role": "报错",
-      "zh": "同时在等的命令已达上限 {max}，远端可能没在回应",
+      "zh": "同时等待的命令已达上限 {max} · 远端可能未回应",
       "args": ["max"]
     },
     "rsInboundClient.error.unavailable": {
@@ -11424,7 +11424,7 @@
     "rsBackendRoute.route.unsure": {
       "kind": "error",
       "role": "报错",
-      "zh": "{s}。无法确认远端有没有执行，请刷新会话列表后再决定。",
+      "zh": "{s} · 无法确认远端是否执行 · 刷新会话列表后再决定",
       "args": ["s"]
     },
     "rsBackendRoute.layer.tooMany": {
@@ -11511,7 +11511,7 @@
     "rsConfigSurface.onPath.noPath": {
       "kind": "error",
       "role": "报错",
-      "zh": "查不动：读不到 PATH，或者它是空的，没法回答 {named} 在不在。这不是说它不存在",
+      "zh": "读不到 PATH 或它为空 · 无法判断 {named} 是否存在 · 不代表不存在",
       "args": ["named"]
     },
     "rsConfigSurface.unmanaged.checkOnlyEffect": {
@@ -11842,7 +11842,7 @@
     "rsAccountAliases.install.changedElsewhere": {
       "kind": "error",
       "role": "报错",
-      "zh": "{path} 在这一页读到它之后被别处改过，这次没写。",
+      "zh": "{path} 在本页读取后被别处改过 · 本次未写入",
       "args": ["path"]
     },
     "rsAccountAliases.install.reload": {
@@ -11899,7 +11899,7 @@
     "rsShellDialect.ps.nameTakenBuiltinAlias": {
       "kind": "body",
       "role": "说明",
-      "zh": "{name} 是 PowerShell 自带的别名（指 {target}）。别名比函数先被找到，用这个名字定义了也敲不到",
+      "zh": "{name} 是 PowerShell 自带别名 · 指 {target} · 别名优先于函数 · 用此名定义也敲不到",
       "args": ["name", "target"],
       "limited": ["PowerShell"]
     },
@@ -12058,7 +12058,7 @@
     "rsProfileInstaller.ps.exitCode": {
       "kind": "error",
       "role": "报错",
-      "zh": "PowerShell 出错退出，退出码 {status}：{detail}",
+      "zh": "PowerShell 出错退出 · 退出码 {status} · {detail}",
       "args": ["status", "detail"],
       "limited": ["PowerShell"]
     },
@@ -12078,7 +12078,7 @@
     "rsProfileInstaller.fence.outsideHome": {
       "kind": "error",
       "role": "报错",
-      "zh": "拒绝写这个配置文件：只能落在 home 之内（实得 {raw}，home 是 {home}）",
+      "zh": "拒绝写此配置文件 · 只能在主目录内 · 实得 {raw} · 主目录是 {home}",
       "args": ["raw", "home"]
     },
     "rsProfileInstaller.fence.dotdot": {
@@ -12096,7 +12096,7 @@
     "rsProfileInstaller.hint.whereToEdit": {
       "kind": "body",
       "role": "说明",
-      "zh": "\n动手的地方：用你自己的编辑器打开 {what}，删掉你决定不要的那几行，再开一个新终端。\n",
+      "zh": "\n修法 · 用你的编辑器打开 {what} · 删掉不要的行 · 再开新终端\n",
       "args": ["what"]
     },
     "rsProfileInstaller.hint.head": {
@@ -12131,7 +12131,7 @@
     "rsCcBusDeploy.win.missing": {
       "kind": "body",
       "role": "说明",
-      "zh": "cc-monitor 装的 ccm（{at}）版本对，但缺少：{list}，cc-spawn 会因此退出。请在设置页重装本机后端。\n{pathCaveat}",
+      "zh": "cc-monitor 装的 ccm（{at}）版本对 · 缺少 {list} · cc-spawn 会因此退出\n在设置页重装本机后端\n{pathCaveat}",
       "args": ["at", "list", "pathCaveat"],
       "limited": ["ccm"],
       "waive": {
@@ -12141,7 +12141,7 @@
     "rsCcBusDeploy.win.stale": {
       "kind": "body",
       "role": "说明",
-      "zh": "cc-monitor 装的 ccm（{at}）不是这一版：它的版本是 {build}，这一版需要 {wantBuild}。{lack}请在设置页重装本机后端，再装 cc-bus。\n{pathCaveat}",
+      "zh": "cc-monitor 装的 ccm（{at}）不是此版 · 它是 {build} · 此版需要 {wantBuild}\n{lack}在设置页重装本机后端 · 再装 cc-bus\n{pathCaveat}",
       "args": ["at", "build", "wantBuild", "lack", "pathCaveat"],
       "limited": ["ccm"]
     },
@@ -12176,7 +12176,7 @@
     "rsCcBusDeploy.win.noVersion": {
       "kind": "body",
       "role": "说明",
-      "zh": "问了 cc-monitor 装的 ccm（{at}），它没有回答版本信息，查不了它能不能用。cc-spawn 启动时需要 ccm 支持：{needs}。",
+      "zh": "cc-monitor 装的 ccm（{at}）未回答版本信息 · 无法判断能否使用\ncc-spawn 启动时需要 ccm 支持 {needs}",
       "args": ["at", "needs"],
       "limited": ["ccm"],
       "waive": {
@@ -12186,7 +12186,7 @@
     "rsCcBusDeploy.win.notInstalled": {
       "kind": "body",
       "role": "说明",
-      "zh": "本机还没有 cc-monitor 装的 ccm（应在 ~/.cc-monitor/bin/），查不了装出去的 cc-spawn 能不能用。cc-spawn 启动时需要 ccm 支持：{needs}，缺一项就会退出。请先在设置页装好本机后端，再装 cc-bus。",
+      "zh": "本机未装 cc-monitor 的 ccm（应在 ~/.cc-monitor/bin/） · 无法判断装出的 cc-spawn 能否使用\ncc-spawn 启动时需要 ccm 支持 {needs} · 缺一项即退出\n先在设置页装好本机后端 · 再装 cc-bus",
       "args": ["needs"],
       "limited": ["ccm"],
       "waive": {
@@ -12253,7 +12253,7 @@
     "rsPlatformFs.lock.failed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "锁 {dir} 失败：{e}",
+      "zh": "加锁 {dir} 失败 · {e}",
       "args": ["dir", "e"]
     },
     "rsPlatformFs.mkdir.failed": {
@@ -12343,7 +12343,7 @@
     "rsSshLink.dial.readFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "和本机后端的连接断了：{e}",
+      "zh": "与本机后端的连接断开 · {e}",
       "args": ["e"]
     },
     "rsSshLink.dial.tooLong": {
@@ -12379,13 +12379,13 @@
     "rsDialHost.ask.writeFenced": {
       "kind": "error",
       "role": "报错",
-      "zh": "{message}（远端只许往 ~/.cc-monitor/bin/ 与 ~/.cc-monitor/staging/ 写）",
+      "zh": "{message} · 远端只许写 ~/.cc-monitor/bin/ 与 ~/.cc-monitor/staging/",
       "args": ["message"]
     },
     "rsDialHost.ask.timeout": {
       "kind": "error",
       "role": "原因格",
-      "zh": "本机后端 {secs} 秒没回答",
+      "zh": "本机后端 {secs} 秒未回答",
       "args": ["secs"]
     },
     "rsDialHost.ask.sendRequestFailed": {
@@ -12397,19 +12397,19 @@
     "rsDialHost.ask.sendBytesFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "往本机后端送字节失败：{e}",
+      "zh": "向本机后端送字节失败 · {e}",
       "args": ["e"]
     },
     "rsDialHost.open.noHome": {
       "kind": "error",
       "role": "报错",
-      "zh": "本机后端没答出远端的起始目录：{v}",
+      "zh": "本机后端未答出远端起始目录 · {v}",
       "args": ["v"]
     },
     "rsDialHost.open.timeout": {
       "kind": "error",
       "role": "报错",
-      "zh": "连接超时（{secs} 秒没有回应；地址 {addr}）",
+      "zh": "连接超时 · {secs} 秒无回应 · 地址 {addr}",
       "args": ["secs", "addr"]
     },
     "rsDialHost.local.absent": {
@@ -12457,13 +12457,13 @@
     "rsLinkMux.open.refused": {
       "kind": "error",
       "role": "报错",
-      "zh": "本机后端没接下这条连接：{said}",
+      "zh": "本机后端未接下此连接 · {said}",
       "args": ["said"]
     },
     "rsLinkMux.data.noCredit": {
       "kind": "error",
       "role": "报错",
-      "zh": "本机后端版本不对，这条远端连接断了；重开 monitor 后再试",
+      "zh": "本机后端版本不对 · 此远端连接已断开 · 重开 monitor 后再试",
       "args": []
     },
     "rsLinkMux.said.refused": {
@@ -12487,43 +12487,43 @@
     "rsSftpPool.watch.taken": {
       "kind": "error",
       "role": "报错",
-      "zh": "这一趟传输已经有人在看了（{id}）",
+      "zh": "此传输已有人在看 · {id}",
       "args": ["id"]
     },
     "rsSftpPool.watch.unknown": {
       "kind": "error",
       "role": "原因格",
-      "zh": "没有这一趟传输（{id}）",
+      "zh": "无此传输 · {id}",
       "args": ["id"]
     },
     "rsSftpPool.call.noTicket": {
       "kind": "error",
       "role": "原因格",
-      "zh": "本机后端没回传输编号：{v}",
+      "zh": "本机后端未回传输编号 · {v}",
       "args": ["v"]
     },
     "rsSftpPool.call.notTransfer": {
       "kind": "error",
       "role": "报错",
-      "zh": "请求格式不对：{other} 不是传输命令",
+      "zh": "请求格式不对 · {other} 不是传输命令",
       "args": ["other"]
     },
     "rsSftpPool.call.missingField": {
       "kind": "error",
       "role": "报错",
-      "zh": "请求格式不对：少了 {k}，或者它不是一个字符串（{op}）",
+      "zh": "请求格式不对 · 缺 {k} 或它不是字符串 · {op}",
       "args": ["op", "k"]
     },
     "rsChanWire.frame.tooLong": {
       "kind": "error",
       "role": "报错",
-      "zh": "一段 {n} 字节，太长了，发不出去",
+      "zh": "一段 {n} 字节 · 过长 · 发不出",
       "args": ["n"]
     },
     "rsChanWire.frame.badHead": {
       "kind": "error",
       "role": "原因格",
-      "zh": "收到的数据头解不出来：{e}",
+      "zh": "收到的数据头无法解析 · {e}",
       "args": ["e"]
     },
     "rsChanWire.segment.tooLong": {
@@ -12571,19 +12571,19 @@
     "rsChanHost.start.bindFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "本机连接服务绑不上 127.0.0.1：{e}",
+      "zh": "本机连接服务绑定 127.0.0.1 失败 · {e}",
       "args": ["e"]
     },
     "rsOrigin.route.blank": {
       "kind": "error",
       "role": "报错",
-      "zh": "请求格式不对：机器名是空的，本机也要写成 \"{local}\"（{command}）",
+      "zh": "请求格式不对 · 机器名为空 · 本机也要写成 \"{local}\" · {command}",
       "args": ["command", "local"]
     },
     "rsOrigin.expecting.name": {
       "kind": "error",
       "role": "报错",
-      "zh": "一台机器的名字；本机要写成 \"{local}\"",
+      "zh": "机器名 · 本机写成 \"{local}\"",
       "args": ["local"]
     },
     "rsDataPaths.webview.dataDir": {
@@ -12725,7 +12725,7 @@
     "rsConfig.write.unreadable": {
       "kind": "error",
       "role": "报错",
-      "zh": "{path} 读不懂（{e}），这次的设置没有存。写回去会把这份文件里别的设置一起盖掉，先把它改成合法的 JSON",
+      "zh": "{path} 无法解析 · {e} · 本次设置未保存\n写回会把该文件里别的设置一起覆盖 · 先改成合法 JSON",
       "args": ["path", "e"]
     },
     "rsConfig.write.elementExists": {
@@ -12749,7 +12749,7 @@
     "rsLogging.diagnostics.badConfig": {
       "kind": "error",
       "role": "报错",
-      "zh": "{path} 读不懂（{e}），诊断设置没有存。写回去会把这份文件里别的设置一起盖掉，先把它改成合法的 JSON",
+      "zh": "{path} 无法解析 · {e} · 诊断设置未保存\n写回会把该文件里别的设置一起覆盖 · 先改成合法 JSON",
       "args": ["path", "e"]
     },
     "rsLaunch.remote.taskFailed": {
@@ -12860,7 +12860,7 @@
     "rsLaunch.refuse.tooLong": {
       "kind": "error",
       "role": "报错",
-      "zh": "拒绝启动：{what}过长（{len} > {max}）",
+      "zh": "拒绝启动 · {what}过长 · {len} > {max}",
       "args": ["what", "len", "max"]
     },
     "rsLaunch.refuse.empty": {
@@ -13010,21 +13010,21 @@
     "rsCcmProbe.hint.undetermined": {
       "kind": "body",
       "role": "说明",
-      "zh": "查不到 PATH 上的 ccm：cc-monitor 自带的那份没找到（{where}）",
+      "zh": "查不到 PATH 上的 ccm · cc-monitor 自带的那份没找到 · {where}",
       "args": ["where"],
       "limited": ["ccm"]
     },
     "rsCcmProbe.hint.absent": {
       "kind": "body",
       "role": "说明",
-      "zh": "你 PATH 上没有 ccm。cc-monitor 这一份在 {where}（{ours}）。下面生成的那条命令会显式指向它，不需要你改 PATH。",
+      "zh": "PATH 上无 ccm · cc-monitor 的一份在 {where} · {ours}\n下面生成的命令会显式指向它 · 无需改 PATH",
       "args": ["where", "ours"],
       "limited": ["ccm"]
     },
     "rsCcmProbe.hint.notOurs": {
       "kind": "body",
       "role": "说明",
-      "zh": "终端里敲 ccm 走到的是 {at}，不是 cc-monitor 装的那份。\n· 它自报：{theirs}\n· cc-monitor 这一份：{ours}，在 {where}\ncc-monitor 不动它，要不要删、什么时候删由你决定。想让终端用 cc-monitor 这一份：把它挪开，或让上面那个目录排在 PATH 前面，或用下面生成的那条命令。",
+      "zh": "终端里敲 ccm 走到的是 {at} · 不是 cc-monitor 装的那份\n它自报 · {theirs}\ncc-monitor 的一份 · {ours} · 在 {where}\ncc-monitor 不动它 · 删不删、何时删由你定\n想让终端用 cc-monitor 的一份 · 把它挪开 · 或让上面的目录排在 PATH 前面 · 或用下面生成的命令",
       "args": ["at", "theirs", "ours", "where"],
       "limited": ["ccm"]
     },
@@ -13242,7 +13242,7 @@
     "rsSshSource.health.degraded": {
       "kind": "body",
       "role": "说明",
-      "zh": "远端后端是旧版本（{build}，当前 {expected}），有些功能用不了。后台会话看不见，历史加载容易卡住。请在设置里重装这台机器的后端。",
+      "zh": "远端后端是旧版本 · {build} · 当前 {expected} · 部分功能不可用\n后台会话看不见 · 历史加载易卡\n在设置里重装此机后端",
       "args": ["build", "expected"]
     },
     "rsSshSource.health.degradedNoOwnBytes": {
@@ -13266,7 +13266,7 @@
     "rsSshSource.version.remoteOlder": {
       "kind": "body",
       "role": "说明",
-      "zh": "远端 [{label}] 的后端是旧版 {reported}，下次连上时自动换成这一版（{mine}）。",
+      "zh": "远端 [{label}] 的后端是旧版 {reported} · 下次连上自动换成此版 {mine}",
       "args": ["label", "reported", "mine"]
     },
     "rsSshSource.version.remoteNotOlder": {
@@ -13326,7 +13326,7 @@
     "rsSshSource.snapshot.failed": {
       "kind": "body",
       "role": "说明",
-      "zh": "会话 {sid} 的历史快照没拉下来（{err}）。这个标签页暂时只有实时消息，完整内容可到历史浏览器查看。",
+      "zh": "会话 {sid} 的历史快照未拉下 · {err}\n此标签页暂只有实时消息 · 完整内容到历史浏览器查看",
       "args": ["sid", "err"]
     },
     "rsRemoteBranch.what.messageId": {
@@ -13386,13 +13386,13 @@
     "rsCcmInvocation.refusal.idSid": {
       "kind": "error",
       "role": "命令行",
-      "zh": "会话 ID {value} 不合法（1 到 64 位，只许 A-Z a-z 0-9 与 -，不以 - 开头）",
+      "zh": "会话 ID {value} 不合法 · 1–64 位 · 只许 A-Z a-z 0-9 与 - · 不以 - 开头",
       "args": ["value"]
     },
     "rsCcmInvocation.refusal.idCcmSid": {
       "kind": "error",
       "role": "命令行",
-      "zh": "会话 ID {value} 不合法（1 到 64 位，只许 A-Z a-z 0-9 与 -，不以 - 开头）",
+      "zh": "会话 ID {value} 不合法 · 1–64 位 · 只许 A-Z a-z 0-9 与 - · 不以 - 开头",
       "args": ["value"]
     },
     "rsCcmInvocation.refusal.idModel": {
@@ -13435,14 +13435,14 @@
     "rsCcmInvocation.refusal.dimensionNeedsCap": {
       "kind": "error",
       "role": "命令行",
-      "zh": "这台机器上的 ccm 不认 {dim} 这一项设置（缺 {cap}）",
+      "zh": "此机 ccm 不认设置项 {dim} · 缺 {cap}",
       "args": ["dim", "cap"],
       "limited": ["ccm"]
     },
     "rsCcmInvocation.refusal.cannotSpeak": {
       "kind": "error",
       "role": "命令行",
-      "zh": "这一项设置（{id}）写不成 ccm 参数",
+      "zh": "设置项 {id} 无法写成 ccm 参数",
       "args": ["id"],
       "limited": ["ccm"]
     },
@@ -13462,7 +13462,7 @@
     "rsCcmInvocation.refusal.missingCap": {
       "kind": "error",
       "role": "命令行",
-      "zh": "这台机器上的 ccm 做不到这样起会话（缺 {c}）",
+      "zh": "此机 ccm 做不到这样启动会话 · 缺 {c}",
       "args": ["c"],
       "limited": ["ccm"]
     },
@@ -14047,7 +14047,7 @@
     "startupActive.gone.body": {
       "kind": "body",
       "role": "说明",
-      "zh": "每台机器都报完了在跑的会话，里面没有 {sid}。这次留在当前的标签页",
+      "zh": "各机器在跑的会话里无 {sid} · 停在当前标签页",
       "args": ["sid"]
     },
     "rsHistory.launch.noSessionName": {
@@ -14065,13 +14065,13 @@
     "rsHistory.session.truncated": {
       "kind": "body",
       "role": "说明",
-      "zh": "这个会话超过 {max} 字节上限，后面的内容没有显示。只读到了前 {read} 字节（{lines} 行），完整的会话记录仍在那台机器上。",
+      "zh": "会话超过 {max} 字节上限 · 后面内容未显示\n只读了前 {read} 字节 · {lines} 行 · 完整会话记录仍在该机器上",
       "args": ["max", "read", "lines"]
     },
     "rsFrameQuery.readPage.stuck": {
       "kind": "error",
       "role": "报错",
-      "zh": "{who}读会话时在偏移 {offset} 处不再前进，已停下",
+      "zh": "{who}读会话时在偏移 {offset} 处不再前进 · 已停下",
       "args": ["who", "offset"]
     },
     "rsFrameQuery.reply.inconsistent": {
@@ -14095,19 +14095,19 @@
     "rsFrameQuery.call.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "{who}查询失败：{message}",
+      "zh": "{who}查询失败 · {message}",
       "args": ["who", "message"]
     },
     "rsFrameQuery.call.failedNoReason": {
       "kind": "error",
       "role": "原因格",
-      "zh": "{who}查询失败，没说原因",
+      "zh": "{who}查询失败 · 原因不明",
       "args": ["who"]
     },
     "rsFrameQuery.call.overdue": {
       "kind": "error",
       "role": "报错",
-      "zh": "{who}没在 {secs} 秒内答完，已停下",
+      "zh": "{who}未在 {secs} 秒内答完 · 已停下",
       "args": ["who", "secs"]
     },
     "accounts.setModel.invalid": {
@@ -14185,7 +14185,7 @@
     "accounts.badge.apikeyRelayDownHint": {
       "kind": "body",
       "role": "说明",
-      "zh": "这台机器上的中转没在运行，起会话会被当场拒掉。先启动这台机器上的后端。",
+      "zh": "此机中转未运行 · 新建会话会被当场拒绝 · 先启动此机后端",
       "args": []
     },
     "accounts.badge.apikeyRelayDown": {
@@ -14197,7 +14197,7 @@
     "accounts.badge.apikeyRelayedHint": {
       "kind": "body",
       "role": "说明",
-      "zh": "已配置：会话经这台机器上的中转发送请求。按凭据文件里这一行换上 key；key 本身对不对，要到 claude 那边才知道。",
+      "zh": "已配置 · 会话请求经此机中转发送\n按凭据文件里该行换上 key · key 对不对要到 claude 那边才知道",
       "args": []
     },
     "accounts.badge.apikeyRelayed": {
@@ -14222,8 +14222,8 @@
     "accounts.deriveUi.notEnabled": {
       "kind": "error",
       "role": "报错",
-      "zh": "该远端尚未启用多账号",
-      "args": []
+      "zh": "{machine} 未启用多账号",
+      "args": ["machine"]
     },
     "accounts.deriveUi.unavailable": {
       "kind": "error",
@@ -14595,7 +14595,7 @@
     "rsToolRegistry.tools.ccmRemoteProfileNote": {
       "kind": "body",
       "role": "说明",
-      "zh": "或你在「别名」那一块选的其它 profile",
+      "zh": "或你在「别名」区选的其它 profile",
       "args": []
     },
     "rsToolRegistry.tools.ccmRemoteWhat": {
@@ -14645,13 +14645,13 @@
     "rsLocalBackendHost.stop.spawnFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "起不来停后端用的 {bin}：{e}",
+      "zh": "启动停后端用的 {bin} 失败 · {e}",
       "args": ["bin", "e"]
     },
     "rsLocalBackendHost.stop.timedOut": {
       "kind": "error",
       "role": "报错",
-      "zh": "停本机后端的那一趟 {secs} 秒内没答完，后端可能还在跑。可以再停一次。",
+      "zh": "停止本机后端 {secs} 秒内未答完 · 后端可能仍在跑 · 可再停一次",
       "args": ["secs"]
     },
     "rsLocalBackendHost.stop.readFailed": {
@@ -14663,13 +14663,13 @@
     "rsLocalBackendHost.stop.noRecord": {
       "kind": "error",
       "role": "报错",
-      "zh": "本机常驻后端（进程 {pid}）还在跑，但找不到它的进程记录。没有停它。",
+      "zh": "本机常驻后端进程 {pid} 仍在跑 · 找不到它的进程记录 · 未停止",
       "args": ["pid"]
     },
     "rsLocalBackendHost.lock.poisoned": {
       "kind": "error",
       "role": "原因格",
-      "zh": "内部状态坏了：{e}",
+      "zh": "程序出错 · {e}",
       "args": ["e"]
     },
     "rsLocalBackendHost.local.machine": {
@@ -14711,19 +14711,19 @@
     "rsLocalBackendHost.start.unreachableKilled": {
       "kind": "error",
       "role": "报错",
-      "zh": "后端起来了却连不上它（{e}），已把它停掉",
+      "zh": "后端已启动却连不上 · {e} · 已把它停掉",
       "args": ["e"]
     },
     "rsLocalBackendHost.start.refused": {
       "kind": "error",
       "role": "报错",
-      "zh": "端口 {port} 上已经有程序，但接不上它：{why}。不会再起第二个，也不会换端口。要重来，先把那个进程停掉",
+      "zh": "端口 {port} 上已有程序但接不上 · {why}\n不起第二个 · 不换端口 · 要重来先停掉占端口的进程",
       "args": ["port", "why"]
     },
     "rsLocalBackendHost.start.refusedNotice": {
       "kind": "error",
       "role": "报错",
-      "zh": "本机后端没有启动：端口 {port} 上已有的后端接不上（{why}）。结束那个进程再重开 cc-monitor 就行，它的进程号记在 {pidPath}。",
+      "zh": "本机后端未启动 · 端口 {port} 上已有的后端接不上 · {why}\n结束该进程再重开 cc-monitor 即可 · 进程号记在 {pidPath}",
       "args": ["port", "why", "pidPath"]
     },
     "rsLocalBackendHost.stream.lost": {
@@ -14735,13 +14735,13 @@
     "rsLocalBackendHost.stream.asyncFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "内部错误：连接接不进来（{e}）",
+      "zh": "程序出错 · 连接接不进来 · {e}",
       "args": ["e"]
     },
     "rsLocalBackendHost.stream.nonblockingFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "内部错误：连接设置失败（{e}）",
+      "zh": "程序出错 · 连接设置失败 · {e}",
       "args": ["e"]
     },
     "rsLocalBackendHost.stream.notHello": {
@@ -14759,19 +14759,19 @@
     "rsLocalBackendHost.spawn.unsupported": {
       "kind": "error",
       "role": "报错",
-      "zh": "这个平台上后端不能脱离 cc-monitor 常驻（{bin}）",
+      "zh": "此平台上后端不能脱离 cc-monitor 常驻 · {bin}",
       "args": ["bin"]
     },
     "rsLocalBackendHost.spawn.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "起本机后端失败（{bin}）：{e}",
+      "zh": "启动本机后端失败 · {bin} · {e}",
       "args": ["bin", "e"]
     },
     "rsLocalBackendHost.attach.unreadable": {
       "kind": "error",
       "role": "原因格",
-      "zh": "后端的回答看不懂：{line}",
+      "zh": "后端的回答无法解析 · {line}",
       "args": ["line"]
     },
     "rsLocalBackendHost.attach.refused": {
@@ -14783,7 +14783,7 @@
     "rsLocalBackendHost.attach.notJson": {
       "kind": "error",
       "role": "报错",
-      "zh": "后端的回答不是 JSON（{e}）：{line}",
+      "zh": "后端的回答不是 JSON · {e} · {line}",
       "args": ["e", "line"]
     },
     "rsLocalBackendHost.attach.sendFailed": {
@@ -14843,7 +14843,7 @@
     "rsLocalBackendHost.hello.notBackendLine": {
       "kind": "error",
       "role": "报错",
-      "zh": "端口上的程序答的第一行不是后端的回答（{bytes} 字节）",
+      "zh": "端口上的程序答的第一行不是后端的回答 · {bytes} 字节",
       "args": ["bytes"]
     },
     "rsLocalBackendHost.token.empty": {
@@ -14867,13 +14867,13 @@
     "rsDialHost.deadline.expired": {
       "kind": "error",
       "role": "报错",
-      "zh": "这一趟 {secs} 秒没做完，已放弃。连上那台机器用了 {shake} 秒，之后在那边跑了 {run} 秒。",
+      "zh": "{secs} 秒未完成 · 已放弃 · 连上远端用了 {shake} 秒 · 之后在远端跑了 {run} 秒",
       "args": ["secs", "shake", "run"]
     },
     "rsDialHost.deadline.expiredInShake": {
       "kind": "error",
       "role": "报错",
-      "zh": "这一趟 {secs} 秒还没连上那台机器，放弃了",
+      "zh": "{secs} 秒未连上远端 · 已放弃",
       "args": ["secs"]
     },
     "rsFilewinShell.mode.reading": {
@@ -14909,7 +14909,7 @@
     "beContract.malformed.say": {
       "kind": "error",
       "role": "原因格",
-      "zh": "请求格式不对：{detail}",
+      "zh": "请求格式不对 · {detail}",
       "args": ["detail"]
     },
     "beArgv.validate.badCcmSid": {
@@ -15108,7 +15108,7 @@
     "bePlan.resolveAccount.unavailable": {
       "kind": "error",
       "role": "命令行",
-      "zh": "账号 '{account}' 不可用（不在 {manifestPath}，或其目录不存在）。可用: {names}",
+      "zh": "账号 '{account}' 不可用 · 不在 {manifestPath} 或其目录不存在 · 可用 {names}",
       "args": ["account", "manifestPath", "names"]
     },
     "bePlan.validateTmuxName.deceptive": {
@@ -15228,7 +15228,7 @@
     "beCcm.execute.launchFailed": {
       "kind": "error",
       "role": "命令行",
-      "zh": "ccm: 起不来 —— {kind}: {message}",
+      "zh": "ccm: 启动失败 · {kind} · {message}",
       "args": ["kind", "message"],
       "limited": ["ccm"]
     },
@@ -15283,13 +15283,13 @@
     "beProbe.message.missingAbility": {
       "kind": "error",
       "role": "报错",
-      "zh": "{plugin} 这一版不支持「{token}」（版本 {version}），换一份新的就行。",
+      "zh": "{plugin} 版本 {version} 不支持「{token}」 · 换新版即可",
       "args": ["plugin", "token", "version"]
     },
     "beProbe.message.wrongProgram": {
       "kind": "error",
       "role": "报错",
-      "zh": "找错了程序：找到的 {want} 报的是 {saw}，多半是 PATH 上有个同名的无关命令。",
+      "zh": "找错程序 · 找到的 {want} 报的是 {saw} · PATH 上可能有同名的无关命令",
       "args": ["want", "saw"]
     },
     "beChild.run.timedOut": {
@@ -15326,21 +15326,21 @@
     "beSshAgent.connect.pipe": {
       "kind": "error",
       "role": "报错",
-      "zh": "连不上 {pipe}：{e}。SSH agent 在运行吗？",
+      "zh": "连接 {pipe} 失败 · {e} · 查 SSH agent 是否在运行",
       "args": ["pipe", "e"],
       "limited": ["SSH"]
     },
     "beSshAgent.connect.authSock": {
       "kind": "error",
       "role": "报错",
-      "zh": "连不上 SSH_AUTH_SOCK 指向的 SSH agent：{e}。它在运行吗？环境变量设了吗？",
+      "zh": "连接 SSH_AUTH_SOCK 指向的 SSH agent 失败 · {e} · 查它是否在运行、环境变量是否已设",
       "args": ["e"],
       "limited": ["SSH"]
     },
     "beSshAgent.connect.givenSocket": {
       "kind": "error",
       "role": "报错",
-      "zh": "连不上 SSH agent（{path}）：{e}。它在运行吗？",
+      "zh": "连接 SSH agent {path} 失败 · {e} · 查它是否在运行",
       "args": ["path", "e"],
       "limited": ["SSH"]
     },
@@ -15372,7 +15372,7 @@
     "beHistoryQuery.readLinesFrom.lineTooLong": {
       "kind": "error",
       "role": "报错",
-      "zh": "会话记录第 {at} 行超过 {lineCap} 字节，读不了",
+      "zh": "会话记录行 {at} 超过 {lineCap} 字节 · 无法读取",
       "args": ["at", "lineCap"]
     },
     "beHistoryQuery.readPage.lineTooLong": {
@@ -15420,7 +15420,7 @@
     "beHistoryAnnotations.needPath.unknown": {
       "kind": "error",
       "role": "报错",
-      "zh": "找不到数据目录，星标和改名没有写。{env} 设了却不是绝对路径，或者没有家目录。",
+      "zh": "找不到数据目录 · 星标和改名未写入\n{env} 设了却不是绝对路径 · 或无主目录",
       "args": ["env"]
     },
     "bePlatformLock.hold.openFailed": {
@@ -15432,13 +15432,13 @@
     "bePlatformLock.hold.lockFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "锁 {dir} 失败：{e}",
+      "zh": "加锁 {dir} 失败 · {e}",
       "args": ["dir", "e"]
     },
     "bePlatformLock.hold.waitFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "锁 {dir} 失败（等待回 {status}）",
+      "zh": "加锁 {dir} 失败 · 等待返回 {status}",
       "args": ["dir", "status"]
     },
     "beHistoryAnnotations.writeAt.mkdirFailed": {
@@ -15462,19 +15462,19 @@
     "beHistoryAnnotations.parse.unparsable": {
       "kind": "error",
       "role": "报错",
-      "zh": "星标和改名的记录文件 {path} 读不懂，没有覆盖它：{e}",
+      "zh": "星标和改名的记录文件 {path} 无法解析 · 未覆盖 · {e}",
       "args": ["path", "e"]
     },
     "beHistoryJoin.blocking.unfinished": {
       "kind": "error",
       "role": "原因格",
-      "zh": "本机查询没跑完：{e}",
+      "zh": "本机查询未完成 · {e}",
       "args": ["e"]
     },
     "beHistoryList.remote.unreadable": {
       "kind": "error",
       "role": "报错",
-      "zh": "没能列出会话记录：{machine} 回的内容读不出来。",
+      "zh": "列出会话记录失败 · {machine} · 内容无法解析",
       "args": ["machine"]
     },
     "beHistoryJoin.annotations.unparsable": {
@@ -15516,7 +15516,7 @@
     "beRemoteAsk.run.resultUnreadable": {
       "kind": "error",
       "role": "原因格",
-      "zh": "那台交回的结果读不懂：{e}",
+      "zh": "对端交回的结果无法解析 · {e}",
       "args": ["e"]
     },
     "beRemoteAsk.run.droppedBeforeResult": {
@@ -15546,13 +15546,13 @@
     "beRemoteAsk.cappedLine.tooLong": {
       "kind": "error",
       "role": "报错",
-      "zh": "那台回的一行超过 {cap} 字节，没有收",
+      "zh": "对端回的一行超过 {cap} 字节 · 未收",
       "args": ["cap"]
     },
     "beRemoteAsk.cappedLine.readFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "连接读不下去了：{e}",
+      "zh": "连接读取中断 · {e}",
       "args": ["e"]
     },
     "beMachine.jump.loop": {
@@ -15577,27 +15577,27 @@
     "beProbe.test.probeFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "SSH 连上了，但后端探测失败：{e}",
+      "zh": "SSH 已连上 · 后端探测失败 · {e}",
       "args": ["e"],
       "limited": ["SSH"]
     },
     "beProbe.test.noHello": {
       "kind": "error",
       "role": "报错",
-      "zh": "SSH 连上了，但后端没响应（可能没装或没启动）",
+      "zh": "SSH 已连上 · 后端无响应 · 可能未安装或未启动",
       "args": [],
       "limited": ["SSH"]
     },
     "beProbe.test.controlDown": {
       "kind": "error",
       "role": "原因格",
-      "zh": "后端连上了，但不能在远端起会话",
+      "zh": "后端已连上 · 无法在远端新建会话",
       "args": []
     },
     "beProbe.test.noControl": {
       "kind": "error",
       "role": "报错",
-      "zh": "后端版本过旧，不能在远端起会话。请在设置里重装这台机器的后端",
+      "zh": "后端版本过旧 · 无法在远端新建会话 · 设置里重装此机后端",
       "args": []
     },
     "beProbe.client.gone": {
@@ -15664,7 +15664,7 @@
     "beForwards.stop.notFound": {
       "kind": "error",
       "role": "原因格",
-      "zh": "未找到转发：{id}",
+      "zh": "未找到转发 · {id}",
       "args": ["id"]
     },
     "beRemoteAsk.unreachableMessage.say": {
@@ -15682,25 +15682,25 @@
     "beAssetSync.syncOne.unparsable": {
       "kind": "error",
       "role": "原因格",
-      "zh": "那台机器回的目录读不懂：{e}",
+      "zh": "对端回的目录无法解析 · {e}",
       "args": ["e"]
     },
     "beAssetSync.foldBlocking.failed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "本机目录（{c}）：{m}",
+      "zh": "本机目录 {c} · {m}",
       "args": ["c", "m"]
     },
     "beAssetSync.foldBlocking.unfinished": {
       "kind": "error",
       "role": "原因格",
-      "zh": "本机目录那一趟没跑完：{e}",
+      "zh": "本机目录未处理完 · {e}",
       "args": ["e"]
     },
     "beAssetSync.pushPlan.tooLarge": {
       "kind": "error",
       "role": "报错",
-      "zh": "机器 {id} 的目录太大（{len} 字节，一趟最多 {max}），这一台没推过去",
+      "zh": "机器 {id} 的目录过大 · {len} 字节 · 单次上限 {max} · 未推送",
       "args": ["id", "len", "max"]
     },
     "beMcpSync.answerWith.targetSide": {
@@ -15730,7 +15730,7 @@
     "beMcpSync.plan.overwriteUnchecked": {
       "kind": "error",
       "role": "报错",
-      "zh": "「{n}」说了要盖，却没勾它，两张单子对不上。这一趟一条都没写。",
+      "zh": "「{n}」标了覆盖却未勾选 · 两张单子对不上 · 一条都未写",
       "args": ["n"]
     },
     "beMcpSync.serversOf.serversNotObject": {
@@ -15754,7 +15754,7 @@
     "beReadFace.tooLarge.say": {
       "kind": "error",
       "role": "报错",
-      "zh": "结果太大（至少 {size} 字节，上限 {cap}），没有返回",
+      "zh": "结果过大 · 至少 {size} 字节 · 上限 {cap} · 未返回",
       "args": ["size", "cap"]
     },
     "beInbound.spawnHandler.crashed": {
@@ -15766,13 +15766,13 @@
     "beInbound.dispatch.unknown": {
       "kind": "error",
       "role": "报错",
-      "zh": "这台后端版本太旧，不支持这个操作（{other}）",
+      "zh": "后端版本过旧 · 不支持此操作 · {other}",
       "args": ["other"]
     },
     "beInbound.dispatch.unhandled": {
       "kind": "error",
       "role": "报错",
-      "zh": "后端内部出错，这条命令没处理（{other}）",
+      "zh": "程序出错 · 命令未处理 · {other}",
       "args": ["other"]
     },
     "beInbound.dispatch.cannotCancel": {
@@ -15784,19 +15784,19 @@
     "beInbound.handleLine.internal": {
       "kind": "error",
       "role": "报错",
-      "zh": "后端内部出错，这条命令没做完：{e}",
+      "zh": "程序出错 · 命令未做完 · {e}",
       "args": ["e"]
     },
     "beInbound.drain.shuttingDown": {
       "kind": "error",
       "role": "报错",
-      "zh": "后端正在退出，这条命令没有执行；重新连上之后再试",
+      "zh": "后端正在退出 · 命令未执行 · 重新连上后再试",
       "args": []
     },
     "beAccountsQuery.trustProductAt.unparsable": {
       "kind": "error",
       "role": "原因格",
-      "zh": "读不懂信任状态：{e}",
+      "zh": "信任状态无法解析 · {e}",
       "args": ["e"]
     },
     "beAccountsQuery.accountTrustZero.noHome": {
@@ -15826,25 +15826,25 @@
     "beAccountsQuery.loadManifest.badVersion": {
       "kind": "error",
       "role": "报错",
-      "zh": "账号清单的格式版本 {v} 这台后端不认（只认 1）",
+      "zh": "账号清单格式版本 {v} 此后端不认 · 只认 1",
       "args": ["v"]
     },
     "beAccountsQuery.loadManifest.badJson": {
       "kind": "error",
       "role": "报错",
-      "zh": "账号清单不是合法 JSON：{e}",
+      "zh": "账号清单不是合法 JSON · {e}",
       "args": ["e"]
     },
     "beAccountsQuery.loadManifest.unreadable": {
       "kind": "error",
       "role": "报错",
-      "zh": "账号清单读不了（{path}）：{e}",
+      "zh": "读取账号清单失败 · {path} · {e}",
       "args": ["path", "e"]
     },
     "beTasksQuery.sessionTaskLines.unreadable": {
       "kind": "error",
       "role": "报错",
-      "zh": "读不了任务目录 {dir}：{e}",
+      "zh": "读取任务目录失败 · {dir} · {e}",
       "args": ["dir", "e"]
     },
     "beAccountsQuery.listProductAt.noDefault": {
@@ -15862,7 +15862,7 @@
     "beRelayListen.prepare.bindFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "占不到本机端口 {port}：{e}",
+      "zh": "占用本机端口 {port} 失败 · {e}",
       "args": ["port", "e"]
     },
     "beRelayListen.prepare.badUpstream": {
@@ -15916,7 +15916,7 @@
     "beUpstreamCreds.path.noDataDir": {
       "kind": "error",
       "role": "报错",
-      "zh": "找不到数据目录，API key 那份文件没读也没写。{env} 设了却不是绝对路径，或者没有家目录。",
+      "zh": "找不到数据目录 · API key 文件未读也未写\n{env} 设了却不是绝对路径 · 或无主目录",
       "args": ["env"]
     },
     "beUpstreamTable.noteAuthStyleNoAuth.say": {
@@ -15970,13 +15970,13 @@
     "beUpstreamEndpoint.args.missingString": {
       "kind": "error",
       "role": "原因格",
-      "zh": "缺 {k}（要一个字符串）",
+      "zh": "缺 {k} · 要字符串",
       "args": ["k"]
     },
     "beUpstreamEndpoint.args.missingStrings": {
       "kind": "error",
       "role": "原因格",
-      "zh": "缺 {k}（要一个字符串数组）",
+      "zh": "缺 {k} · 要字符串数组",
       "args": ["k"]
     },
     "beUpstreamEndpoint.optin.noHome": {
@@ -16120,7 +16120,7 @@
     "beServer.sentence.say": {
       "kind": "error",
       "role": "报错",
-      "zh": "上游 {host}:{port} {result}。卡在{hop}这一步。",
+      "zh": "上游 {host}:{port} {result} · 卡在{hop}",
       "args": ["host", "port", "result", "hop"]
     },
     "credsPerm.windowsProbe.toText": {
@@ -16132,13 +16132,13 @@
     "credsPerm.windowsProbe.unreadable": {
       "kind": "error",
       "role": "报错",
-      "zh": "读不到它的访问权限（Windows 错误码 {rc}）",
+      "zh": "读取访问权限失败 · Windows 错误码 {rc}",
       "args": ["rc"]
     },
     "credsPerm.windowsSetOwnerOnlyDacl.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "设不了只给本人读的访问权限（Windows 错误码 {rc}）",
+      "zh": "设为仅本人可读失败 · Windows 错误码 {rc}",
       "args": ["rc"]
     },
     "credsPerm.windowsSetOwnerOnlyDacl.noList": {
@@ -16180,7 +16180,7 @@
     "credsPerm.createPrivate.unsupported": {
       "kind": "error",
       "role": "报错",
-      "zh": "这个系统上不知道怎么建只给本人读的文件（{path}），没做到。",
+      "zh": "建仅本人可读的文件失败 · 不支持此系统 · {path}",
       "args": ["path"]
     },
     "credsPerm.makePrivate.unsupported": {
@@ -16240,7 +16240,7 @@
     "credsPerm.judge.tooWideUnix": {
       "kind": "body",
       "role": "说明",
-      "zh": "同机器上的别人也读得到它（权限 {mode}，本人之外还开着 {extra}）",
+      "zh": "同机他人可读 · 权限 {mode} · 本人之外开着 {extra}",
       "args": ["mode", "extra"]
     },
     "beAssetSync.report.errorSep": {
@@ -16288,7 +16288,7 @@
     "accountPick.refused.pinGoneToCurrent": {
       "kind": "error",
       "role": "报错",
-      "zh": "这个会话上次用的账号「{name}」现在选不了。不换号，就没法续这场会话，所以这次没有起。点这条提示改用当前账号「{current}」起。",
+      "zh": "上次的账号 {name} 不可用 · 不换号无法续 · 未恢复\n点此提示改用默认账号 {current} 启动",
       "args": ["name", "current"]
     },
     "accountPick.refused.pinGoneToBase": {
@@ -16300,7 +16300,7 @@
     "accountPick.refused.explicitGoneToCurrent": {
       "kind": "error",
       "role": "报错",
-      "zh": "账号「{name}」现在选不了，这次没有起。点这条提示改用当前账号「{current}」起。",
+      "zh": "{name} 不可用 · 未启动\n点此提示改用默认账号 {current} 启动",
       "args": ["name", "current"]
     },
     "accountPick.refused.explicitGoneToBase": {
@@ -16312,7 +16312,7 @@
     "accountPick.refused.listUnknown": {
       "kind": "error",
       "role": "报错",
-      "zh": "读不到{machine}的账号清单，说不清账号「{name}」还能不能用，这次没有起。点这条提示改用「不指定账号」起。",
+      "zh": "读取 {machine} 的账号清单失败 · 账号 {name} 是否可用不明 · 未启动\n点此提示改用「不指定账号」启动",
       "args": ["machine", "name"]
     },
     "events.stream.closedTitle": {
@@ -16462,7 +16462,7 @@
     "ccBus.broadcast.badId": {
       "kind": "error",
       "role": "报错",
-      "zh": "没有广播：发件人的 id 不合法（{detail}）",
+      "zh": "未广播 · 发件人 id 不合法 · {detail}",
       "args": ["detail"]
     },
     "ccBus.broadcast.title": {
@@ -16602,7 +16602,7 @@
     "beFilesExtract.archive.broken": {
       "kind": "error",
       "role": "报错",
-      "zh": "读包 {path} 出错（包坏了，或用了不认的压缩 / 加密方式）：{e}",
+      "zh": "读取包 {path} 失败 · 包损坏或用了不认的压缩 / 加密方式 · {e}",
       "args": ["path", "e"]
     },
     "beFilesExtract.archive.unknownKind": {
@@ -16644,7 +16644,7 @@
     "beFilesExtract.args.path": {
       "kind": "error",
       "role": "报错",
-      "zh": "少了「{key}」，或它的形状不对（只认字符串或 b16 字节形）",
+      "zh": "缺「{key}」或形状不对 · 只认字符串或 b16 字节形",
       "args": ["key"]
     },
     "beFilesExtract.into.noFresh": {
@@ -16710,7 +16710,7 @@
     "beFilesExtract.args.unknownCmd": {
       "kind": "error",
       "role": "报错",
-      "zh": "请求格式不对：「{cmd}」不是解压命令",
+      "zh": "请求格式不对 · 「{cmd}」不是解压命令",
       "args": ["cmd"]
     },
     "beFilesExtract.undo.at": {
@@ -16734,7 +16734,7 @@
     "beUploadChunks.args.bad": {
       "kind": "error",
       "role": "报错",
-      "zh": "分块上传的参数不对（键「{key}」，块数 {chunks}）",
+      "zh": "分块上传参数不对 · 键「{key}」 · 块数 {chunks}",
       "args": ["key", "chunks"]
     },
     "beUploadChunks.io.failed": {
@@ -16746,7 +16746,7 @@
     "beUploadChunks.chunk.missing": {
       "kind": "error",
       "role": "报错",
-      "zh": "第 {seq} 块不在或不是普通文件（共 {chunks} 块），一个字节没落进目标",
+      "zh": "块 {seq} 不存在或不是普通文件 · 共 {chunks} 块 · 目标未写入",
       "args": ["seq", "chunks"]
     },
     "beUploadChunks.total.mismatch": {
@@ -16818,7 +16818,7 @@
     "rsFilewinCrossCopy.target.unreachable": {
       "kind": "error",
       "role": "报错",
-      "zh": "问不到 {machine} 那台的后端：{why}",
+      "zh": "查询 {machine} 的后端失败 · {why}",
       "args": ["machine", "why"]
     },
     "rsFilewinCrossCopy.prompt.noMachine": {
@@ -16866,7 +16866,7 @@
     "beFilesExtract.entry.linkTooLong": {
       "kind": "error",
       "role": "报错",
-      "zh": "包里的链接「{name}」目标太长（超过 {cap} 字节），整个包没解",
+      "zh": "包里的链接「{name}」目标过长 · 超过 {cap} 字节 · 整个包未解",
       "args": ["name", "cap"]
     },
     "rsFilewinLossyPull.local.badDest": {
@@ -16896,25 +16896,25 @@
     "beFilesWrite.path.parentStep": {
       "kind": "error",
       "role": "原因格",
-      "zh": "路径里不能有 ..：{path}",
+      "zh": "路径里不能有 .. · {path}",
       "args": ["path"]
     },
     "beFilesWrite.path.dotStep": {
       "kind": "error",
       "role": "原因格",
-      "zh": "路径里不能有 .：{path}",
+      "zh": "路径里不能有 . · {path}",
       "args": ["path"]
     },
     "beFilesWrite.path.absolute": {
       "kind": "error",
       "role": "报错",
-      "zh": "这里只收相对路径，给的是绝对路径：{path}",
+      "zh": "只收相对路径 · 给的是绝对路径 {path}",
       "args": ["path"]
     },
     "beFilesWrite.path.outsideRoot": {
       "kind": "error",
       "role": "报错",
-      "zh": "{path} 不在 {root} 底下，不动它",
+      "zh": "{path} 不在 {root} 下 · 未改动",
       "args": ["path", "root"]
     },
     "beFilesWrite.path.unresolved": {
@@ -16926,19 +16926,19 @@
     "beFilesWrite.path.noParent": {
       "kind": "error",
       "role": "原因格",
-      "zh": "目标没有上一级目录：{path}",
+      "zh": "目标无上一级目录 · {path}",
       "args": ["path"]
     },
     "beFilesWrite.path.noName": {
       "kind": "error",
       "role": "原因格",
-      "zh": "目标没有文件名：{path}",
+      "zh": "目标无文件名 · {path}",
       "args": ["path"]
     },
     "beFilesWrite.path.escaped": {
       "kind": "error",
       "role": "报错",
-      "zh": "{path} 解开链接后落到了 {root} 外面，不动它",
+      "zh": "{path} 解开链接后落在 {root} 之外 · 未改动",
       "args": ["path", "root"]
     },
     "beFilesWrite.create.failed": {
@@ -17022,7 +17022,7 @@
     "beFilesWrite.chmod.badMode": {
       "kind": "error",
       "role": "报错",
-      "zh": "权限位只收低 12 位，给的是 {mode}",
+      "zh": "权限位只收低 12 位 · 给的是 {mode}",
       "args": ["mode"]
     },
     "beFilesWrite.chmod.failed": {
@@ -17148,7 +17148,7 @@
     "beFilesWrite.put.verifyMismatch": {
       "kind": "body",
       "role": "说明",
-      "zh": "回读 {got} 字节，与写进去的 {want} 字节不一致",
+      "zh": "回读 {got} 字节 · 与写入的 {want} 字节不一致",
       "args": ["got", "want"]
     },
     "beFilesWrite.put.verifyUnreadable": {
@@ -17238,7 +17238,7 @@
     "beFilesWrite.backup.notRemoved": {
       "kind": "body",
       "role": "说明",
-      "zh": "这份备份也没删掉（{e}）。它可能比原文件更容易被别人读到，请手动删掉",
+      "zh": "备份也未删掉 · {e} · 可能比原文件更易被他人读到 · 手动删除",
       "args": ["e"]
     },
     "beFilesWrite.backup.modeFailed": {
@@ -17256,7 +17256,7 @@
     "beFilesWrite.session.nameMismatch": {
       "kind": "error",
       "role": "报错",
-      "zh": "找到的那一份（{path}）名字不是 {want}，没删",
+      "zh": "找到的 {path} 名字不是 {want} · 未删除",
       "args": ["path", "want"]
     },
     "beFilesWrite.session.notRecord": {
@@ -17286,7 +17286,7 @@
     "beTransfer.land.noParent": {
       "kind": "error",
       "role": "报错",
-      "zh": "本机目标路径没有上一级目录：{path}",
+      "zh": "本机目标路径无上一级目录 · {path}",
       "args": ["path"]
     },
     "beTransfer.land.dropPartFailed": {
@@ -17352,7 +17352,7 @@
     "beTransfer.upload.notDeployed": {
       "kind": "error",
       "role": "报错",
-      "zh": "那台机器上还没部署后端，传不了文件",
+      "zh": "该机未部署后端 · 无法传文件",
       "args": []
     },
     "beTransfer.upload.seekStagedFailed": {
@@ -17448,13 +17448,13 @@
     "beTransfer.start.unknown": {
       "kind": "error",
       "role": "原因格",
-      "zh": "没有这一趟传输（{tid}）",
+      "zh": "无此传输 · {tid}",
       "args": ["tid"]
     },
     "beTransfer.start.already": {
       "kind": "error",
       "role": "报错",
-      "zh": "这一趟传输已经开始了（{tid}）",
+      "zh": "传输已开始 · {tid}",
       "args": ["tid"]
     },
     "beFilesCommit.upload.corruptRemoved": {
@@ -17472,7 +17472,7 @@
     "beFilesCommit.upload.stagedMissing": {
       "kind": "error",
       "role": "报错",
-      "zh": "找不到上传的临时文件 {path}：{e}。可能是传输没跑完",
+      "zh": "找不到上传的临时文件 {path} · {e} · 可能传输未完成",
       "args": ["path", "e"]
     },
     "beFilesCommit.upload.stagedNotRegular": {
@@ -17484,7 +17484,7 @@
     "beFilesCommit.upload.stagedUnreadable": {
       "kind": "error",
       "role": "报错",
-      "zh": "上传的临时文件 {path} 读不出来：{e}",
+      "zh": "读取上传的临时文件失败 · {path} · {e}",
       "args": ["path", "e"]
     },
     "beFilesCommit.upload.corrupt": {
@@ -17502,7 +17502,7 @@
     "beFilesCommit.upload.exists": {
       "kind": "error",
       "role": "报错",
-      "zh": "{path} 已经存在或占不了位：{e}。不覆盖，先删掉它或换个名字",
+      "zh": "{path} 已存在或无法占位 · {e} · 不覆盖 · 先删掉它或换个名字",
       "args": ["path", "e"]
     },
     "beFilesCommit.upload.moveFailedNote": {
@@ -17514,7 +17514,7 @@
     "beFilesCommit.upload.placeholderLeft": {
       "kind": "body",
       "role": "说明",
-      "zh": "；目标位置留下了一个 0 字节的空文件 {path}，没能删掉：{e}。它不是你的数据，删掉后再试",
+      "zh": " · 目标位置留下 0 字节空文件 {path} · 删除失败 · {e} · 非你的数据 · 删后再试",
       "args": ["path", "e"]
     },
     "beFilesCommit.staging.mkdirFailed": {
@@ -17544,7 +17544,7 @@
     "beFilesCommit.chunk.missing": {
       "kind": "error",
       "role": "报错",
-      "zh": "缺第 {seq} 块（共 {chunks} 块，{path}）：{e}。没有保存",
+      "zh": "缺块 {seq} · 共 {chunks} 块 · {path} · {e} · 未保存",
       "args": ["seq", "chunks", "path", "e"]
     },
     "beFilesCommit.chunk.notRegular": {
@@ -17604,7 +17604,7 @@
     "beFilesRead.rebuild.busy": {
       "kind": "error",
       "role": "报错",
-      "zh": "上一次重新扫描还没完，这次没扫（已跳过 {n} 次）",
+      "zh": "上次重新扫描未完成 · 本次未扫 · 已跳过 ×{n}",
       "args": ["n"]
     },
     "beFilesRead.rebuild.noHome": {
@@ -17640,7 +17640,7 @@
     "beFilesRead.text.tooLarge": {
       "kind": "error",
       "role": "报错",
-      "zh": "文件有 {size} 字节，超过上限 {max}，多了 {over} 字节，没有打开",
+      "zh": "文件 {size} 字节 · 超过上限 {max} · 多 {over} 字节 · 未打开",
       "args": ["size", "max", "over"]
     },
     "beFilesRead.text.openFailed": {
@@ -17670,7 +17670,7 @@
     "beFilesRead.text.notUtf8": {
       "kind": "error",
       "role": "报错",
-      "zh": "不是 UTF-8 文本（第 {at} 字节起解不开），没有打开",
+      "zh": "不是 UTF-8 文本 · 从字节 {at} 起无法解码 · 未打开",
       "args": ["at"]
     },
     "beFilesRead.home.missing": {
@@ -17718,7 +17718,7 @@
     "beSftp.fence.outsideHome": {
       "kind": "error",
       "role": "报错",
-      "zh": "{path} 不在远端家目录（{home}）底下，不写",
+      "zh": "{path} 不在远端主目录 {home} 下 · 不写",
       "args": ["path", "home"]
     },
     "beSftp.fence.irregular": {
@@ -17748,7 +17748,7 @@
     "beSftp.fence.escaped": {
       "kind": "error",
       "role": "报错",
-      "zh": "~/{parent} 解开链接后落到了可写目录外面（{real} 不在 {root} 里），不写",
+      "zh": "~/{parent} 解开链接后落在可写目录外 · {real} 不在 {root} 内 · 不写",
       "args": ["parent", "real", "root"]
     },
     "beSftp.put.createFailed": {
@@ -17820,7 +17820,7 @@
     "beSftp.request.readFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "和本机之间的连接读不动：{e}",
+      "zh": "与本机的连接读取失败 · {e}",
       "args": ["e"]
     },
     "beSftp.read.tooBig": {
@@ -17832,7 +17832,7 @@
     "beSftp.put.receiveFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "接收上传的内容失败：{e}",
+      "zh": "接收上传内容失败 · {e}",
       "args": ["e"]
     },
     "beSftp.put.short": {
@@ -17844,7 +17844,7 @@
     "beConnect.race.taskFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "连接中断：{e}",
+      "zh": "连接中断 · {e}",
       "args": ["e"]
     },
     "beConnect.race.noAddress": {
@@ -18011,7 +18011,7 @@
     "beUses.forward.bindFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "绑定本地端口 127.0.0.1:{port} 失败：{e}",
+      "zh": "绑定本地端口 127.0.0.1:{port} 失败 · {e}",
       "args": ["port", "e"]
     },
     "beHistory.dir.denied": {
@@ -18023,7 +18023,7 @@
     "beHistory.records.none": {
       "kind": "error",
       "role": "报错",
-      "zh": "这台还没有会话记录：{path} 还不在",
+      "zh": "此机无会话记录 · {path} 不存在",
       "args": ["path"]
     },
     "beHistory.dir.unreadable": {
@@ -18035,7 +18035,7 @@
     "beUses.tunnel.unreachable": {
       "kind": "error",
       "role": "报错",
-      "zh": "远端 127.0.0.1:{port} 连不上：{e}",
+      "zh": "连接远端 127.0.0.1:{port} 失败 · {e}",
       "args": ["port", "e"]
     },
     "beLink.install.tooMany": {
@@ -18212,13 +18212,13 @@
     "beAssets.door.editGaveUp": {
       "kind": "error",
       "role": "报错",
-      "zh": "{last}\n连着 {attempts} 趟都是读完之后盘上那份又变了，先停下。过一会儿再点一次。",
+      "zh": "{last}\n读完后盘上文件又变 ×{attempts} · 已停下 · 稍后再点一次",
       "args": ["last", "attempts"]
     },
     "beAssets.door.outsideHome": {
       "kind": "error",
       "role": "报错",
-      "zh": "{abs} 不在 home（{home}）底下 —— 只改 home 里的文件",
+      "zh": "{abs} 不在主目录 {home} 下 · 只改主目录里的文件",
       "args": ["abs", "home"]
     },
     "beAssets.door.homeUnknown": {
@@ -18278,7 +18278,7 @@
     "beSkillFlow.uninstall.dropFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "删掉的没从装记录里摘掉（{e}）—— 下次看它们会显示「已经不在」。",
+      "zh": "已删的项未从安装记录摘掉 · {e} · 下次会显示「已经不在」",
       "args": ["e"]
     },
     "beSkillFlow.uninstall.noneDeleted": {
@@ -18352,13 +18352,13 @@
     "beRemoteAsk.json.unreadable": {
       "kind": "error",
       "role": "报错",
-      "zh": "{machine} 回的内容读不懂（{e}）。那台的后端多半太旧，重装它就好。",
+      "zh": "{machine} 回的内容无法解析 · {e} · 该机后端可能过旧 · 重装即可",
       "args": ["machine", "e"]
     },
     "beCcBusInstall.fence.noParent": {
       "kind": "error",
       "role": "报错",
-      "zh": "{skills} 没有上一层目录，装不了",
+      "zh": "{skills} 无上一层目录 · 无法安装",
       "args": ["skills"]
     },
     "beCcBusInstall.fence.resolveFailed": {
@@ -18382,13 +18382,13 @@
     "beCcBusInstall.backup.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "备份 {dest} → {bak} 没成：{e}（原目录没动）",
+      "zh": "备份 {dest} → {bak} 失败 · {e} · 原目录未动",
       "args": ["dest", "bak", "e"]
     },
     "beCcBusInstall.embed.notUtf8": {
       "kind": "error",
       "role": "报错",
-      "zh": "cc-monitor 带着的 {rel} 不是 UTF-8，装不了（只能装文本文件）",
+      "zh": "cc-monitor 自带的 {rel} 不是 UTF-8 · 无法安装 · 只能装文本文件",
       "args": ["rel"]
     },
     "beCcBusInstall.record.failed": {
@@ -18424,7 +18424,7 @@
     "rsFilewinProc.child.noRuntime": {
       "kind": "error",
       "role": "报错",
-      "zh": "文件窗口起不来（程序内部出错）：{e}",
+      "zh": "文件窗口启动失败 · 程序出错 · {e}",
       "args": ["e"]
     },
     "cssMarks.branch.mark": {
@@ -18520,7 +18520,7 @@
     "beExt.suspect.absForeign": {
       "kind": "body",
       "role": "说明",
-      "zh": "{field} 里有绝对路径 {value}，{machine} 的系统不认这种写法。",
+      "zh": "{field} 里有绝对路径 {value} · {machine} 的系统不认此写法",
       "args": ["field", "value", "machine"]
     },
     "beExt.card.binary": {
@@ -18538,19 +18538,19 @@
     "beExt.suspect.absUnknown": {
       "kind": "body",
       "role": "说明",
-      "zh": "{field} 里有绝对路径 {value}，查不到 {machine} 上有没有。",
+      "zh": "{field} 里有绝对路径 {value} · 查不到 {machine} 上是否存在",
       "args": ["field", "value", "machine"]
     },
     "beExt.uninstall.dropFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "卸掉了，但没从装记录里摘掉（{e}）。",
+      "zh": "已卸载 · 未从安装记录摘掉 · {e}",
       "args": ["e"]
     },
     "beExt.apply.recordFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "装好了，但没记下来（{e}）。以后卸它时会按「不是 cc-monitor 装的」处理：先备份再删。",
+      "zh": "已装好 · 未记录 · {e}\n以后卸载时按「不是 cc-monitor 装的」处理 · 先备份再删",
       "args": ["e"]
     },
     "beExt.uninstall.backupFailed": {
@@ -18622,7 +18622,7 @@
     "beExt.suspect.absAbsent": {
       "kind": "body",
       "role": "说明",
-      "zh": "{field} 里有绝对路径 {value}，{machine} 上没有这个路径。",
+      "zh": "{field} 里有绝对路径 {value} · {machine} 上无此路径",
       "args": ["field", "value", "machine"]
     },
     "beExt.uninstall.mcpModified": {
@@ -18778,7 +18778,7 @@
     "beExt.note.offline": {
       "kind": "body",
       "role": "说明",
-      "zh": "这台现在没连上。连上之后再来。",
+      "zh": "离线 · 连上后再来",
       "args": []
     },
     "beExt.uninstall.owned": {
@@ -18826,7 +18826,7 @@
     "beExt.suspect.other": {
       "kind": "body",
       "role": "片段",
-      "zh": "留意 {field}：{value}",
+      "zh": "留意 {field} · {value}",
       "args": ["field", "value"]
     },
     "extPage.filter.skill": {
@@ -19102,7 +19102,7 @@
     "beExt.suspect.absPresent": {
       "kind": "body",
       "role": "说明",
-      "zh": "{field} 里有绝对路径 {value}，{machine} 上也有这个路径。",
+      "zh": "{field} 里有绝对路径 {value} · {machine} 上也有此路径",
       "args": ["field", "value", "machine"]
     },
     "rsToolRegistry.tools.projectSkillsNote": {
@@ -19126,7 +19126,7 @@
     "beExt.apply.needsValue": {
       "kind": "error",
       "role": "报错",
-      "zh": "{field} 里的 {key} 还没有值。这台原来没有它，来源机上的值也不会抄过来；在确认卡上填上再装。",
+      "zh": "{field} 的 {key} 未填值 · 此机原无 · 不抄来源机的值 · 确认卡上填好再装",
       "args": ["field", "key"]
     },
     "extPage.kind.skill": {
@@ -19337,7 +19337,7 @@
     "extPage.hooks.offline": {
       "kind": "body",
       "role": "说明",
-      "zh": "这台现在没连上，连上之后再来看。",
+      "zh": "离线 · 连上后再看",
       "args": []
     },
     "extPage.hooks.loading": {
@@ -19451,7 +19451,7 @@
     "beAcctJsonKey.render.failed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "新内容排不出来：{e}",
+      "zh": "新内容生成失败 · {e}",
       "args": ["e"]
     },
     "beAcctJsonKey.verify.failed": {
@@ -19475,13 +19475,13 @@
     "beAcctMcpShare.store.unreadable": {
       "kind": "error",
       "role": "报错",
-      "zh": "读不了各账号共用的 MCP 那份文件 {path}：{e}",
+      "zh": "读取各账号共用的 MCP 文件失败 · {path} · {e}",
       "args": ["path", "e"]
     },
     "beAcctMcpShare.store.cannotUse": {
       "kind": "error",
       "role": "报错",
-      "zh": "各账号共用的 MCP 那份文件 {path} 用不了（{e}）。这一次不同步；把它挪走之后会按各账号现在的样子重建。",
+      "zh": "各账号共用的 MCP 文件 {path} 不可用 · {e} · 本次不同步\n挪走它后按各账号当前状态重建",
       "args": ["path", "e"]
     },
     "beAcctMcpShare.sync.paused": {
@@ -19535,7 +19535,7 @@
     "beAcctMcpShare.note.unreadable": {
       "kind": "body",
       "role": "说明",
-      "zh": "{account} 号的配置 {path} 读不出来（{e}），这一次不同步它。",
+      "zh": "{account} 的配置 {path} 无法读取 · {e} · 本次不同步它",
       "args": ["account", "path", "e"]
     },
     "beAcctMcpShare.note.backupFailed": {
@@ -19962,7 +19962,7 @@
     "rsFilewinPreview.image.undecodable": {
       "kind": "error",
       "role": "原因格",
-      "zh": "这张图解不开：{e}",
+      "zh": "图片无法解码 · {e}",
       "args": ["e"]
     },
     "rsFilewinProps.box.title": {
@@ -20634,7 +20634,7 @@
     "beOauthStore.lock.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "拿不了续期锁 {path}：{e}",
+      "zh": "加锁失败 · 续期锁 {path} · {e}",
       "args": ["path", "e"]
     },
     "beOauthStore.write.failed": {
@@ -20670,7 +20670,7 @@
     "beOauth.unusable.rejected": {
       "kind": "error",
       "role": "报错",
-      "zh": "账号 {account} 的登录续不上了（{status}），要重新登录",
+      "zh": "账号 {account} 登录续期失败 · {status} · 要重新登录",
       "args": ["account", "status"]
     },
     "beOauth.unusable.failed": {

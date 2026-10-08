@@ -98,10 +98,10 @@ src/backend/stderr_log.rs:163	[stderr] 没被交日志路径 ⇒ stderr 原样	�
 src/backend/stderr_log.rs:165	[stderr] 本进程的输出落在 {}（每份上限 {} 字节，留一份旧的）	保留	[不对外] 后端流模式起来时的一行 tracing 日志：诊断落在哪份文件
 src/backend/stderr_log.rs:169	[stderr] 被交了日志路径但接不上：{why}	保留	[不对外] 后端流模式起来时的一行 tracing 日志：接不上的原因
 src/frontend/filewin/src/fonts.rs:305	启格求码误象	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（全量抽表那一拍 ＋9 −3 之后的现文）
-src/frontend/filewin/src/fonts.rs:324	·—…→、。「」一上下不与东丢两个中串为主了交亮代以件份会传位作你侧保做先全关内再写几出列刚删别到制刷前动勾化原去参发取口只可台合同名后含命器回围在坏型复外多	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（全量抽表之后的现文）〔MG1 合并 FN1 × CP2b：探针再 −9 `住 历 史 场 弄 挡 浏 管 跑`〕〔窗口换骨架：探针 −⬆📁📄🔗（图标换成图标字）〕〔文案第四段 D 类：探针 −`⚠ 事 任 何 准 叫 和 哪 备 好 带 引 忙 掉 正 种 给 许 趟 都 面 ； ？`〕
-src/frontend/filewin/src/fonts.rs:309	大太失字存它完容对小少尔就屏已布帧并序建开当录往径必态成或截打扫把拒拖拼按换据排接搜撤操改数整文断新旧时是更最有本机权条来样根框次此段比没法消点版物状现	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（全量抽表之后的现文）〔MG1 合并 FN1 × CP2b：探针再 −9 `住 历 史 场 弄 挡 浏 管 跑`〕〔文案第四段 D 类：探针 −`⚠ 事 任 何 准 叫 和 哪 备 好 带 引 忙 掉 正 种 给 许 趟 都 面 ； ？`〕
-src/frontend/filewin/src/fonts.rs:326	用的盖目相看着确称程空窗端符第答类索约级组终经结绝编者能节范行表被西要覆览认话请读负败起超路跳载辑输过还这进远连那部里重销错闭问限除非须首高（），：	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（全量抽表之后的现文）〔MG1 合并 FN1 × CP2b：探针再 −9 `住 历 史 场 弄 挡 浏 管 跑`〕〔文案第四段 D 类：探针 −`⚠ 事 任 何 准 叫 和 哪 备 好 带 引 忙 掉 正 种 给 许 趟 都 面 ； ？`〕
-src/frontend/filewin/src/fonts.rs:337	值择置边间需	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（全量抽表之后的现文）〔文案第四段 D 类：探针 −`⚠ 事 任 何 准 叫 和 哪 备 好 带 引 忙 掉 正 种 给 许 趟 都 面 ； ？`〕
+src/frontend/filewin/src/fonts.rs:328	·…→、。「」一上下不与丢两个中串为主了交亮代以件份会传位作你侧保做先全关内再写几出列刚删别到制刷前动勾化原去参发取口只可台合同名后含命器回围在坏型复外多	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（全量抽表之后的现文）〔MG1 合并 FN1 × CP2b：探针再 −9 `住 历 史 场 弄 挡 浏 管 跑`〕〔窗口换骨架：探针 −⬆📁📄🔗（图标换成图标字）〕〔文案第四段 D 类：探针 −`⚠ 事 任 何 准 叫 和 哪 备 好 带 引 忙 掉 正 种 给 许 趟 都 面 ； ？`〕
+src/frontend/filewin/src/fonts.rs:329	大失字存它完容对小少尔就屏已布帧并序建开当录往径态成或截打扫把拒拖拼按换据排接搜撤操改数整文断新旧时是更最有本机权条来样根框次此段比没法消点版物状现	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（全量抽表之后的现文）〔MG1 合并 FN1 × CP2b：探针再 −9 `住 历 史 场 弄 挡 浏 管 跑`〕〔文案第四段 D 类：探针 −`⚠ 事 任 何 准 叫 和 哪 备 好 带 引 忙 掉 正 种 给 许 趟 都 面 ； ？`〕
+src/frontend/filewin/src/fonts.rs:330	用的盖目相看着确称程空窗端符第答类索约级组终经结绝编者能节范行表被要覆览认话请读负败起超路跳载辑输过这进远连那部里重销错闭问限除非须首高（），：	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（全量抽表之后的现文）〔MG1 合并 FN1 × CP2b：探针再 −9 `住 历 史 场 弄 挡 浏 管 跑`〕〔文案第四段 D 类：探针 −`⚠ 事 任 何 准 叫 和 哪 备 好 带 引 忙 掉 正 种 给 许 趟 都 面 ； ？`〕
+src/frontend/filewin/src/fonts.rs:339	值择置间需	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（全量抽表之后的现文）〔文案第四段 D 类：探针 −`⚠ 事 任 何 准 叫 和 哪 备 好 带 引 忙 掉 正 种 给 许 趟 都 面 ； ？`〕
 src/backend/lib.rs:1372	Windows 上没有 tmux（也不打算装）。「会话活在前端之外」在 Windows 上用哪种机制，\n              Windows 后台机制未定 ⇒ **暂时不做**；\n              将来选定机制的那一拍一并给出等价物。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面
 src/backend/lib.rs:1381	「接回一个还活着的会话」今天的实现是 `tmux attach`。Windows 上那条路不存在 \n              ⇒ 等 Windows 后台机制选定（未定）时一并给出等价物，**暂时不做**。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面
 src/backend/lib.rs:1389	「把会话留在后台」今天是 `tmux detach`。同 `attach`，等 Windows 后台机制选定，**暂时不做**。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面
@@ -141,7 +141,7 @@ src/frontend/shell/src/backend_policy.rs:393	说过话之后异常终止	保留	
 src/frontend/shell/src/backend_policy.rs:394	monitor 这一侧读出错：{detail}	保留	[不对外] death_detail：账行破折号后那截只摆证据，只随 ledger_line 落 monitor 日志（界面接 health_face 成品）；原 death_copy 的处方与论证已删
 src/frontend/filewin/src/fonts.rs:335	解压	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（解压到这里那几句的字）
 src/frontend/filewin/src/fonts.rs:339	之半执批果校缺验所	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（filewin 那几句去行话之后新进的字）
-src/frontend/filewin/src/fonts.rs:342	从修图地址始子展属左张性指片藏试退配隐他其包夹缩	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案〔窗口换骨架那一批新字〕〔文案第四段 D 类：探针 −`⚠ 事 任 何 准 叫 和 哪 备 好 带 引 忙 掉 正 种 给 许 趟 都 面 ； ？`〕
+src/frontend/filewin/src/fonts.rs:346	从修图地址始子展属左性指片藏试退配隐他其包夹缩	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案〔窗口换骨架那一批新字〕〔文案第四段 D 类：探针 −`⚠ 事 任 何 准 叫 和 哪 备 好 带 引 忙 掉 正 种 给 许 趟 都 面 ； ？`〕
 src/frontend/filewin/src/fonts.rs:343	得词	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（文件名搜索那几句新进的字）
 src/frontend/filewin/src/fonts.rs:349	仅匹单度无未清	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（搜索结果状态行与表那几句新进的字）
 src/frontend/filewin/src/fonts.rs:352	停击情详车达	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（窗口照稿换样子那一批新进的字）
@@ -154,6 +154,7 @@ src/frontend/filewin/src/fonts.rs:366	例待等	保留	[不对外] 字体子集�
 src/frontend/filewin/src/fonts.rs:368	松	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（拖进来那一层「松开上传」）
 src/frontend/filewin/src/fonts.rs:371	应方析知	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（文案第三段 C 类：一族一句换新写法进来的字）
 src/frontend/filewin/src/fonts.rs:374	于入及均定持支绪识该身适途	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（文案第四段 D 类：壳 / 文件窗口那一面压缩新进的字）
+src/frontend/filewin/src/fonts.rs:377	见询	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（文案第五段：壳 / 文件窗口改调用点那段压缩新进的字）
 src/backend/control/files_commit.rs:112	把暂存区里一份传完的上传件挪进用户指定的目标（先过路径解析；先核整份摘要 `expect: {sha256}`，\n             不等 ⇒ 删掉坏暂存件、`stale`；不覆盖时 `O_EXCL` 占位再改名上位）	保留	[不对外] 命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
 src/backend/control/files_commit.rs:121	把存盘的一块写进暂存区 `<key>.<seq>.chunk`（`O_EXCL` 新建：同一块写第二次就拒；暂存区不在就建）	保留	[不对外] 命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
 src/backend/control/files_commit.rs:128	按块号读回 `0..chunks` 块、拼起来、总长必须等于 `bytes`，再覆盖写目标（原子换，与 \n               `files-write-text` 同一个原语：跟链接、只收已在的普通文件）；`expect: {sha256}` 必给，\n               盘上那份对不上 ⇒ `stale`、一个字节不写；不论成败都删掉这些块	保留	[不对外] 命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面

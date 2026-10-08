@@ -78,16 +78,16 @@ export const CLI_GOLDEN_CASES: readonly CliGoldenCase[] = [
     ok: true, out: "ccm -- new --ccm-agent claude --base --cwd '/home/用户/带 空格'" },
   // ---- refusal 类（表达不了就拒，不渲一条丢了修饰的命令） ----
   { name: "缺无条件能力 cwd", caps: ALL_CAPS.filter((c) => c !== "cwd"), ctx: base(),
-    ok: false, out: "这台机器上的 ccm 做不到这样起会话（缺 cwd）" },
+    ok: false, out: "此机 ccm 做不到这样启动会话 · 缺 cwd" },
   { name: "建 tmux 会话而这台没有 tmux", caps: ALL_CAPS.filter((c) => c !== "tmux"), ctx: base({
       container: { kind: "tmux", name: "cc-x", mode: "create" },
-    }), ok: false, out: "这台机器上的 ccm 做不到这样起会话（缺 tmux）" },
+    }), ok: false, out: "此机 ccm 做不到这样启动会话 · 缺 tmux" },
   { name: "已触发的 model 维度要的能力缺失", caps: ALL_CAPS.filter((c) => c !== "model"), ctx: base({ account: { kind: "named", name: "z" }, models: { z: "opus" } }),
-    ok: false, out: "这台机器上的 ccm 不认 model 这一项设置（缺 model）" },
+    ok: false, out: "此机 ccm 不认设置项 model · 缺 model" },
   { name: "已触发的 account 维度要的能力缺失", caps: ALL_CAPS.filter((c) => c !== "account"), ctx: base(),
-    ok: false, out: "这台机器上的 ccm 不认 account 这一项设置（缺 account）" },
+    ok: false, out: "此机 ccm 不认设置项 account · 缺 account" },
   { name: "坏 sid", caps: ALL_CAPS, ctx: base({ action: { kind: "resume", sid: "-x" } }),
-    ok: false, out: "会话 ID \"-x\" 不合法（1 到 64 位，只许 A-Z a-z 0-9 与 -，不以 - 开头）" },
+    ok: false, out: "会话 ID \"-x\" 不合法 · 1–64 位 · 只许 A-Z a-z 0-9 与 - · 不以 - 开头" },
   // ---- 按会话的那一家起：Codex 的 resume 是子命令形；没有账号这一维 ⇒ 选号明说不行（认不出的那一家界面那一侧就拒了，后端那一侧的拒在 Rust 单测）。----
   { name: "Codex 会话 resume（直连）", caps: ALL_CAPS, ctx: planResumeDirect("codex", "s1", "/p", undefined, {}),
     ok: true, out: "ccm resume s1 -- --ccm-agent codex --base --cwd /p" },
