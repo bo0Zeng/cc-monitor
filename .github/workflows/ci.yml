@@ -53,10 +53,16 @@ jobs:
   # 都是整个 job 等满上限才被取消 —— 挂在装依赖上，后面的步骤一步没跑，等的那半个小时什么都没换来。
   # 实测（主线 2e9f26d1f）不是整个卡死，是从镜像下单个小包时停住（32 kB 的包前停了 625 秒）。
   # ⇒ 装 apt 包一律经 `tests/scripts/apt-install.sh`（apt 带 20 秒的连接 / 读超时与重试、每趟 update / install 套 `timeout`、
-  #   一趟没成歇一下再来、最多 3 趟；重试的写法只住那一处），调它的那一步再带 `timeout-minutes: 14`
-  #   （比那份脚本 3 趟的最坏情形略长）。`release.yml` 的 `build-linux` 同一写法。
+  #   一趟没成歇一下再来、最多 3 趟；重试的写法只住那一处）。
+  # 10-08 又一回（主线 83f27b4bc）：不是停住，是镜像**很慢但在动**（约 125 KB/s），25.5 MB 的 webkit 包被每趟 200 秒的闸连杀三趟。
+  # ⇒ 那份脚本改成一次调用一个总时限（20 分钟，照最慢实测装得完一个 job 最多约 123 MB；算法写在它的头注），
+  #   装包那一步 `timeout-minutes: 21`，所在 job 的时限 = 原来的数 ＋ 20；
+  #   并且下好的 .deb 用官方 `actions/cache@v4` 缓存：每个装包的 job 先一步 `apt-install.sh --cache-key $APT_PKGS` 算键、
+  #   再一步 `actions/cache@v4` 放回 / 存下下载目录，命中时不再下载。包清单一个 job 一份（job 级 `env: APT_PKGS`），
+  #   算键与装包读同一份，键跟着清单走。`release.yml` 的 `build-linux` 同一写法。
   #   判据：`shared_crate_registry_tests.rs::every_apt_install_in_ci_sits_in_a_step_with_its_own_timeout`
-  #   （两份 workflow 里零处直写 `apt-get`、调脚本的每一步都有自己的 `timeout-minutes`）。
+  #   （两份 workflow 里零处直写 `apt-get`、装包的每一步有自己的 `timeout-minutes`，比脚本总时限长、比 job 短）
+  #   · `every_job_that_installs_apt_packages_restores_the_deb_cache_first`（装包的 job 前面都有算键与缓存那两步）。
   rust:
     name: Rust lint + test
     runs-on: windows-latest
@@ -140,7 +146,12 @@ jobs:
   rust-linux:
     name: Rust test (Linux, gate cells)
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 55      # 35 ＋ 装 apt 包最坏 20 分钟；口径见 `rust` 那一格的头注末尾
+    env:
+      # 构建依赖（webkit2gtk 的 pkg-config 等）＋ 起真窗口要的 Xvfb · xdotool · CJK 字体，一份清单、一个缓存
+      APT_PKGS: >-
+        libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
+        xvfb xdotool fonts-noto-cjk libxkbcommon-x11-0
     steps:
       - uses: actions/checkout@v4
         with:
@@ -152,19 +163,20 @@ jobs:
         with:
           workspaces: src/frontend/shell
 
-      - name: Install Linux build deps
-        timeout-minutes: 14   # 装包卡住的闸（步骤级）；口径见文件头 `timeout-minutes` 那段末尾
-        run: |
-          bash tests/scripts/apt-install.sh \
-            libwebkit2gtk-4.1-dev \
-            libgtk-3-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev
+      - name: apt 包缓存 · 算键
+        id: apt-key
+        run: bash tests/scripts/apt-install.sh --cache-key $APT_PKGS >> "$GITHUB_OUTPUT"
 
-      - name: Install test-time deps (Xvfb · xdotool · CJK font)
-        timeout-minutes: 14   # 同上
-        run: |
-          bash tests/scripts/apt-install.sh xvfb xdotool fonts-noto-cjk libxkbcommon-x11-0
+      - name: apt 包缓存
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.apt-key.outputs.dir }}
+          key: ${{ steps.apt-key.outputs.key }}
+          restore-keys: ${{ steps.apt-key.outputs.restore }}
+
+      - name: Install Linux build + test-time deps
+        timeout-minutes: 21   # 装包的闸（步骤级）；口径见文件头 `timeout-minutes` 那段末尾
+        run: bash tests/scripts/apt-install.sh $APT_PKGS
 
       - name: 门禁 · monitor 那棵树的测试
         env:
@@ -330,7 +342,9 @@ jobs:
   linux-app-build:
     name: Linux app build (no bundle)
     runs-on: ubuntu-latest
-    timeout-minutes: 15      # 实测 1–2m（09-10 三趟）；口径见 `rust` 那一格的头注
+    timeout-minutes: 35      # 实测 1–2m（09-10 三趟）⇒ 15，＋ 装 apt 包最坏 20 分钟；口径见 `rust` 那一格的头注
+    env:
+      APT_PKGS: libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
     steps:
       - uses: actions/checkout@v4
 
@@ -345,14 +359,20 @@ jobs:
         with:
           workspaces: src/frontend/shell
 
+      - name: apt 包缓存 · 算键
+        id: apt-key
+        run: bash tests/scripts/apt-install.sh --cache-key $APT_PKGS >> "$GITHUB_OUTPUT"
+
+      - name: apt 包缓存
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.apt-key.outputs.dir }}
+          key: ${{ steps.apt-key.outputs.key }}
+          restore-keys: ${{ steps.apt-key.outputs.restore }}
+
       - name: Install Linux build deps
-        timeout-minutes: 14   # 装包卡住的闸（步骤级）；口径见文件头 `timeout-minutes` 那段末尾
-        run: |
-          bash tests/scripts/apt-install.sh \
-            libwebkit2gtk-4.1-dev \
-            libgtk-3-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev
+        timeout-minutes: 21   # 装包的闸（步骤级）；口径见文件头 `timeout-minutes` 那段末尾
+        run: bash tests/scripts/apt-install.sh $APT_PKGS
 
       - run: npm ci
 
@@ -382,7 +402,11 @@ jobs:
   e2e:
     name: E2E real-machine (tmux + backend, gate)
     runs-on: ubuntu-latest
-    timeout-minutes: 30      # 旧 e2e-tmux-rust 实测 6m（09-10 三趟），这里多了几套；口径见 `rust` 那一格的头注
+    timeout-minutes: 50      # 旧 e2e-tmux-rust 实测 6m（09-10 三趟），这里多了几套 ⇒ 30，＋ 装 apt 包最坏 20 分钟；口径见 `rust` 那一格的头注
+    env:
+      APT_PKGS: >-
+        tmux jq libwebkit2gtk-4.1-dev libsoup-3.0-dev build-essential
+        curl wget file libxdo-dev libssl-dev librsvg2-dev libayatana-appindicator3-dev
     steps:
       - uses: actions/checkout@v4
 
@@ -398,13 +422,20 @@ jobs:
           cache: npm
       - run: npm ci
 
+      - name: apt 包缓存 · 算键
+        id: apt-key
+        run: bash tests/scripts/apt-install.sh --cache-key $APT_PKGS >> "$GITHUB_OUTPUT"
+
+      - name: apt 包缓存
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.apt-key.outputs.dir }}
+          key: ${{ steps.apt-key.outputs.key }}
+          restore-keys: ${{ steps.apt-key.outputs.restore }}
+
       - name: install tmux + jq + build deps
-        timeout-minutes: 14   # 同 rust-linux 那一步
-        run: |
-          bash tests/scripts/apt-install.sh tmux jq \
-            libwebkit2gtk-4.1-dev libsoup-3.0-dev build-essential \
-            curl wget file libxdo-dev libssl-dev librsvg2-dev \
-            libayatana-appindicator3-dev
+        timeout-minutes: 21   # 同 rust-linux 那一步
+        run: bash tests/scripts/apt-install.sh $APT_PKGS
 
       - name: 门禁 · 全部真机 e2e ＋ 会话环境不漏进门禁
         env:
