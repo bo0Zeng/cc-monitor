@@ -338,13 +338,15 @@ fn hits(v: &Value, q: &str) -> bool {
         .any(|k| v[*k].as_str().is_some_and(|s| s.to_lowercase().contains(q)))
 }
 
-/// 一台的清单（`raw` 那一形，远端的已补 `origin`）＋ 注解 ＋ 入参 ⇒ 成品。`now_ms` 由调用方给（时间筛的「现在」）。
+/// 一台的清单（`raw` 那一形，远端的已补 `origin`）＋ 注解 ＋ 入参 ⇒ 成品。`now_ms` 由调用方给（时间筛的「现在」）；
+/// `local` 把 unix 秒按那一刻的偏移排成本地钟秒数（生产里是这台的 [`crate::common::time::local_secs`]）：每行的行尾 · 分段 · 时间段三格按它写好。
 pub(crate) fn answer_from(
     listing: &Value,
     origin: Option<&str>,
     ann: Result<&Table, String>,
     ask: &Ask,
     now_ms: i64,
+    local: &dyn Fn(i64) -> i64,
 ) -> Value {
     let t = ann.as_ref().ok().copied();
     let all: Vec<Value> = listing["rows"]
@@ -395,6 +397,7 @@ pub(crate) fn answer_from(
     }
     for v in &mut out {
         v["at"] = json!(key(v));
+        crate::common::time::history_texts(v, now_ms, local);
     }
     out.sort_by(|a, b| {
         key(b)
@@ -571,6 +574,7 @@ pub async fn answer_with(
             annotations(&loaded),
             &ask,
             now_ms(),
+            &crate::common::time::local_secs,
         ))
     })
     .await

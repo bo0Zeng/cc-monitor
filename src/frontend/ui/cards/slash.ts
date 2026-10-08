@@ -13,8 +13,8 @@ export interface SlashCommand {
 /** 紧凑渲染：⌘ /compact arg1 arg2 */
 export function buildSlashCommandCard(
   cmd: SlashCommand,
-  timestamp: string,
-  formatTime: (iso: string) => string,
+  /** 记录的钟面（后端写好的 `timeText`）。 */
+  time: string,
 ): HTMLElement {
   const card = document.createElement("div");
   card.className = "card card-slash";
@@ -38,7 +38,7 @@ export function buildSlashCommandCard(
 
   const ts = document.createElement("span");
   ts.className = "slash-ts";
-  ts.textContent = formatTime(timestamp);
+  ts.textContent = time;
   card.appendChild(ts);
 
   return card;

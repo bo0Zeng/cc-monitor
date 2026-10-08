@@ -1,6 +1,7 @@
 /**
  * agent 窗口：点 agent 面板的一行开那个子运行自己的窗口（查看窗那个入口带 `run=`）。
  */
+import { hm } from "../fake/clock";
 import type { Scene } from "./index";
 import { defaultWorld, sidOf } from "../fake/world";
 import { Convo } from "../fake/records";
@@ -50,7 +51,7 @@ export function agentWorld(): World {
     { run: "agent-a4", label: "对一遍文案表与术语表", kind: "Explore", tool: "toolu_a4", state: "failed", last: { t: "tool", name: "Grep" }, started_ms: now - 34 * MIN, active_ms: now - 33 * MIN, ended_ms: now - 32 * MIN, why: "reported", calls: 2, error: 'API Error: 529 {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}' },
     { run: "agent-a5", label: "复现「很多 agent 在跑」", kind: "general-purpose", tool: "toolu_a5", state: "unknown", why: "quiet", last: { t: "say" }, started_ms: now - 28 * MIN, active_ms: now - 12 * MIN, calls: 5, background: true },
   ];
-  s.runs = runs;
+  s.runs = runs.map((r) => (r.started_ms === undefined ? r : { ...r, started_text: hm(r.started_ms) }));
   s.runRecords = { ...s.runRecords, "agent-a2": a2.records, "agent-a3": a3.records, "agent-a4": a4.records, "agent-a5": a5.records };
   if (s.runRecords["agent-a1"]?.[0]) (s.runRecords["agent-a1"][0] as { userText?: unknown }).userText = { speaker: { kind: "agentTask" }, text: "为 InventoryClient._call 写单元测试：成功、重试后成功、重试耗尽三种。" };
   return w;

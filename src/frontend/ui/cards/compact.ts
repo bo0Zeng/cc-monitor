@@ -7,15 +7,15 @@ import { copyText } from "../copy-table";
 
 export function buildCompactSummaryCard(
   text: string,
-  timestamp: string,
-  formatTime: (iso: string) => string,
+  /** 记录的钟面（后端写好的 `timeText`）。 */
+  time: string,
 ): HTMLElement {
   const d = document.createElement("details");
   d.className = "card card-compact";
 
   const s = document.createElement("summary");
   s.className = "card-compact-summary";
-  s.textContent = copyText("compact.summary.title", { n: text.length.toLocaleString(), time: formatTime(timestamp) });
+  s.textContent = copyText("compact.summary.title", { n: text.length.toLocaleString(), time: time });
   d.appendChild(s);
 
   let rendered = false;

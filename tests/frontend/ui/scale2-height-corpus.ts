@@ -40,6 +40,7 @@
  * - 折叠态：`<details>` 一律保持默认（关），与 `estimateStreamNodeHeight` 的
  *   `SUMMARY_H` 那一支对齐。
  */
+import { withTimeText } from "../../test-support/time-text";
 import { withUserText } from "../../test-support/user-text";
 import {
   renderMessage,
@@ -315,7 +316,7 @@ export function buildCorpus(fixtureJsonl: string): CorpusItem[] {
     if (!line.trim()) continue;
     let rec: JsonlRecord;
     try {
-      rec = withUserText(JSON.parse(line) as JsonlRecord); // monitor 那一格成品
+      rec = withTimeText(withUserText(JSON.parse(line) as JsonlRecord)); // 后端那两格成品
     } catch {
       continue;
     }
@@ -335,7 +336,7 @@ export function buildCorpus(fixtureJsonl: string): CorpusItem[] {
       continue;
     }
     // tool-group：单条一张外壳（口径见头注）
-    const group = buildToolGroup(res.timestamp);
+    const group = buildToolGroup(res.time);
     addToToolGroup(group, res.units);
     items.push({
       id: `real#${realIdx}`,
@@ -349,7 +350,7 @@ export function buildCorpus(fixtureJsonl: string): CorpusItem[] {
 
   for (let i = 0; i < SYNTHETIC.length; i++) {
     const { rec, note } = SYNTHETIC[i];
-    const res = renderMessage(rec, freshCtx());
+    const res = renderMessage(withTimeText(rec), freshCtx());
     if (res.kind !== "card") {
       throw new Error(
         `构造体 #${i}（${note}）没产出卡片，而是 ${res.kind} —— 构造体写错了或分发器改了`,

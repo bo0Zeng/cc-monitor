@@ -73,7 +73,7 @@ const Q: FullTextQuery = { query: "kw", includeTools: false, scope: null, afterM
 
 /** 本机后端合一份那一问的替身（按交进来的原样回，好让下面几条只看扇出那一半）。 */
 function passMerge(args: ChanCallArgs): ArrayBuffer {
-  const rows = (chanArgsJson(args) as { sessions: SessionHits[] }).sessions;
+  const rows = (chanArgsJson(args) as { sessions: SessionHits[] }).sessions.map((s) => ({ ...s, atText: "12:00", spanText: "12:00–12:00" }));
   return chanReply({ totalHits: rows.reduce((a, s) => a + s.hitCount, 0), sessionCount: rows.length, truncated: false, sessions: rows });
 }
 
@@ -86,7 +86,7 @@ beforeEach(() => invokeMock.mockReset());
 
 /** 替身：本机后端合好的一份 —— 刻意**逆着**交进来的顺序回，好认出「界面用的就是它排的，不是自己排的」。 */
 function mergeReply(sent: unknown): ArrayBuffer {
-  const rows = ((sent as { sessions: SessionHits[] }).sessions ?? []).slice().reverse();
+  const rows = ((sent as { sessions: SessionHits[] }).sessions ?? []).slice().reverse().map((s) => ({ ...s, atText: "12:00", spanText: "12:00–12:00" }));
   return chanReply({
     totalHits: 99,
     sessionCount: rows.length,
@@ -120,10 +120,12 @@ describe("合并问本机后端", () => {
   });
 
   it("本机后端回的形状不认 ⇒ 抛（不自己补、不自己排）；正控：认得的那一形照收", () => {
-    const ok = { totalHits: 1, sessionCount: 1, truncated: false, sessions: [mk("a", 1, 1, "pi")] };
+    const ok = { totalHits: 1, sessionCount: 1, truncated: false, sessions: [{ ...mk("a", 1, 1, "pi"), atText: "12:00", spanText: "12:00–12:00" }] };
     expect(decodeMerged(ok).sessions[0].origin).toBe("pi");
+    expect(decodeMerged(ok).sessions[0].atText, "行尾那一格照收合并时写好的字").toBe("12:00");
     for (const bad of [
       { ...ok, extra: 1 },
+      { ...ok, sessions: [mk("a", 1, 1, "pi")] },
       { ...ok, sessionCount: 2 },
       { ...ok, sessions: [{ sessionId: "a" }] },
       { ...ok, sessions: [{ ...mk("a", 1, 1), origin: 3 }] },

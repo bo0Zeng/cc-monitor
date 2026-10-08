@@ -331,3 +331,38 @@ fn f63_real_data_ledger() {
     );
     assert_eq!(leaked, 0, "Unknown 泄漏到 parse_line 出口 = 后处理有洞");
 }
+
+/// 成品里每条带时刻的记录旁边有一格 `timeText`：这台本地钟的 `HH:MM`（界面照抄、不换算）。没时刻 / 解不出 ⇒ 不上线。
+#[test]
+fn every_timed_record_carries_its_clock_face() {
+    let ts = "2026-10-07T20:30:15.123Z";
+    let want = crate::common::time::iso_hm_here(ts).expect("解得出");
+    let lines = [
+        format!(
+            r#"{{"type":"user","uuid":"u1","timestamp":"{ts}","message":{{"role":"user","content":"hi"}}}}"#
+        ),
+        format!(
+            r#"{{"type":"assistant","uuid":"a1","timestamp":"{ts}","message":{{"role":"assistant","content":[]}}}}"#
+        ),
+        format!(r#"{{"type":"system","subtype":"x","timestamp":"{ts}"}}"#),
+        format!(r#"{{"type":"attachment","uuid":"t1","timestamp":"{ts}"}}"#),
+        format!(
+            r#"{{"type":"queue-operation","operation":"remove","content":"x","timestamp":"{ts}"}}"#
+        ),
+        format!(r#"{{"type":"p15-neutral-unknown","uuid":"k1","timestamp":"{ts}"}}"#),
+    ];
+    for l in &lines {
+        let m = parsed_line(l).unwrap().unwrap().message;
+        assert_eq!(m["timeText"], want.as_str(), "{l}");
+    }
+    let bare = parsed_line(r#"{"type":"queue-operation","operation":"enqueue"}"#)
+        .unwrap()
+        .unwrap()
+        .message;
+    assert!(bare.get("timeText").is_none(), "没时刻 ⇒ 不上线");
+    let bad = parsed_line(r#"{"type":"attachment","uuid":"t2","timestamp":"soon"}"#)
+        .unwrap()
+        .unwrap()
+        .message;
+    assert!(bad.get("timeText").is_none(), "解不出 ⇒ 不上线");
+}

@@ -970,7 +970,8 @@ impl FindPager {
     }
 }
 
-/// 一条命中的成品：片段三段 ＋ 第几轮（你说的第几句之后；第一句之前 ＝ 0）＋ 那条记录的时刻（毫秒，读不出 ＝ 0）。
+/// 一条命中的成品：片段三段 ＋ 第几轮（你说的第几句之后；第一句之前 ＝ 0）＋ 那条记录的时刻（毫秒，读不出 ＝ 0）
+/// ＋ 它按这台本地钟写好的样子 `tsText`（[`crate::common::time::hit_text_here`]；界面照抄）。
 fn find_hit(uuid: &str, kind: &str, hit: &str, q: &str, turn: u64, ts_ms: i64) -> Value {
     let (before, matched, after) = search_rules::make_snippet(hit, q);
     serde_json::json!({
@@ -981,13 +982,14 @@ fn find_hit(uuid: &str, kind: &str, hit: &str, q: &str, turn: u64, ts_ms: i64) -
         "after": after,
         "turn": turn,
         "tsMs": ts_ms,
+        "tsText": crate::common::time::hit_text_here(ts_ms),
     })
 }
 
 /// **会话内查找**的内核：读 `r`（一份会话，从头）逐行找 `query`，
 /// 出三段（形状登记 `IPC-PROTOCOL.md §10.5`）：
 /// 1. 头 `{"kind":"session_find","v":1}`；
-/// 2. 每条命中一行 `{"uuid","kind","before","matched","after","turn","tsMs"}`，**按文件序**（= 对话序），最多 `limit` 条；
+/// 2. 每条命中一行 `{"uuid","kind","before","matched","after","turn","tsMs","tsText"}`，**按文件序**（= 对话序），最多 `limit` 条；
 /// 3. 尾 `{"kind":"session_find_end","count":N,"total":T}` —— `T` = 全量命中数（≥ N）。**没有尾行 ⇒ 截断**。
 ///
 /// 与 `--search` 的差别只在「扫哪些文件、给多少条」：口径（[`record_text`] / [`record_hit`] ＋ `search_rules`
@@ -1090,6 +1092,19 @@ pub(crate) fn scan_session_find<R: std::io::BufRead>(
 ///
 /// 码：`bad_args`（不是 `{sessions: [...]}` / 某一行缺那三格或类型不对）。纯计算：不读盘、不起进程。
 pub(crate) fn answer_merge(args: &Value) -> Result<Value, (&'static str, String)> {
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as i64);
+    merge_at(args, now_ms, &crate::common::time::local_secs)
+}
+
+/// [`answer_merge`] 的可喂钟那一半：每行再添行尾 `atText` 与内容头 `spanText`（都按 `updatedAt`；`local` 同
+/// [`crate::common::time::history_texts`]）。
+pub(crate) fn merge_at(
+    args: &Value,
+    now_ms: i64,
+    local: &dyn Fn(i64) -> i64,
+) -> Result<Value, (&'static str, String)> {
     let bad = |d: &str| ("bad_args", crate::common::contract::malformed(d));
     let rows = args
         .get("sessions")
@@ -1113,7 +1128,13 @@ pub(crate) fn answer_merge(args: &Value) -> Result<Value, (&'static str, String)
             .ok_or_else(|| bad("a session without a boolean `hitsTruncated`"))?;
         total_hits = total_hits.saturating_add(hits);
         truncated |= cut;
-        sessions.push((updated, row.clone()));
+        let mut t =
+            serde_json::json!({ "at": updated, "startedAt": updated, "updatedAt": updated });
+        crate::common::time::history_texts(&mut t, now_ms, local);
+        let mut row = row.clone();
+        row["atText"] = t["atText"].take();
+        row["spanText"] = t["spanText"].take();
+        sessions.push((updated, row));
     }
     search_rules::sort_by_recency(&mut sessions, |(updated, _)| *updated);
     Ok(serde_json::json!({

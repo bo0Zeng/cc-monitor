@@ -50,6 +50,8 @@ export interface FindHit {
   turn: number;
   /** 那条记录的时刻（毫秒；读不出 ＝ 0）。 */
   tsMs: number;
+  /** 它写给人看的样子（那台后端按它的本地钟写好；读不出 ⇒ 空串）。 */
+  tsText: string;
 }
 
 /** 查找的回包。`available == false` 时 `hits` 为空、`reason` 是给人看的原因（**不是错误**）。 */
@@ -233,7 +235,7 @@ class ShapeError extends ReplyUnreadable {
 export function decodeFind(v: unknown): { total: number; hits: FindHit[] } {
   if (!isObj(v) || !isNum(v.total) || !Array.isArray(v.hits)) throw new ShapeError("history-find", copyText("sessionReads.missing.find"));
   const hits = v.hits.map((h): FindHit => {
-    if (!isObj(h) || ![h.uuid, h.kind, h.before, h.matched, h.after].every(isStr) || !isNum(h.turn) || !isNum(h.tsMs)) {
+    if (!isObj(h) || ![h.uuid, h.kind, h.before, h.matched, h.after, h.tsText].every(isStr) || !isNum(h.turn) || !isNum(h.tsMs)) {
       throw new ShapeError("history-find", copyText("sessionReads.missing.findHit"));
     }
     return {
@@ -244,6 +246,7 @@ export function decodeFind(v: unknown): { total: number; hits: FindHit[] } {
       after: h.after as string,
       turn: h.turn,
       tsMs: h.tsMs,
+      tsText: h.tsText as string,
     };
   });
   return { total: v.total, hits };
@@ -270,6 +273,9 @@ export interface TurnSummary {
   uuid: string;
   start: string;
   end: string;
+  /** 起止各自的钟面（后端按那台本地钟写好的 `HH:MM`；解不出 ⇒ 空串）。 */
+  startText: string;
+  endText: string;
   /** 你那句的第一行（≤ 50 字）。 */
   said: string;
   tools: number;
@@ -283,7 +289,7 @@ export interface TurnSummary {
   done: boolean;
 }
 
-const TURN_KEYS = ["at", "conclusion", "done", "end", "fails", "reply", "said", "start", "thinking", "tools", "uuid"] as const;
+const TURN_KEYS = ["at", "conclusion", "done", "end", "endText", "fails", "reply", "said", "start", "startText", "thinking", "tools", "uuid"] as const;
 
 /** `history-turns` 的成品 ⇒ `(from, end, turns)`。键集合恰好、类型逐格对；不对 ⇒ 抛。 */
 export function decodeTurns(v: unknown): { from: number; end: number; turns: TurnSummary[] } {
@@ -296,7 +302,7 @@ export function decodeTurns(v: unknown): { from: number; end: number; turns: Tur
       !isObj(t) ||
       !exactKeys(t, TURN_KEYS) ||
       ![t.at, t.tools, t.thinking, t.fails].every(isNum) ||
-      ![t.uuid, t.start, t.end, t.said, t.reply].every(isStr) ||
+      ![t.uuid, t.start, t.end, t.startText, t.endText, t.said, t.reply].every(isStr) ||
       typeof t.done !== "boolean" ||
       !Array.isArray(t.conclusion) ||
       !t.conclusion.every(isStr)
@@ -308,6 +314,8 @@ export function decodeTurns(v: unknown): { from: number; end: number; turns: Tur
       uuid: t.uuid as string,
       start: t.start as string,
       end: t.end as string,
+      startText: t.startText as string,
+      endText: t.endText as string,
       said: t.said as string,
       tools: t.tools as number,
       thinking: t.thinking as number,

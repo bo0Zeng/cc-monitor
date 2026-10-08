@@ -5,7 +5,6 @@
  * 正文小一号、次一级颜色，超过四行收起、可展开。
  */
 import { copyText } from "../copy-table";
-import { formatTimestampShort } from "../format";
 import { button } from "../kit/button";
 import s from "./brief.module.css";
 
@@ -14,10 +13,10 @@ export const BRIEF_LINES = 4;
 
 /**
  * @param text  那段话
- * @param at    派出的时刻（记录的时刻）
+ * @param time  派出的时刻（记录的钟面，后端写好的 `timeText`）
  * @param from  派出它的那个 agent 的标签；主会话派的 ⇒ `null`
  */
-export function buildBriefCard(text: string, at: string, from: string | null): HTMLElement {
+export function buildBriefCard(text: string, time: string, from: string | null): HTMLElement {
   const card = document.createElement("div");
   card.className = s.brief;
   card.dataset.role = "brief";
@@ -29,7 +28,7 @@ export function buildBriefCard(text: string, at: string, from: string | null): H
   who.textContent = from === null ? copyText("agentWindow.brief.fromMain") : copyText("agentWindow.brief.fromAgent", { parent: from });
   const when = document.createElement("span");
   when.className = s.briefWhen;
-  when.textContent = formatTimestampShort(at);
+  when.textContent = time;
   head.append(who, when);
   const body = document.createElement("div");
   body.className = s.briefBody;

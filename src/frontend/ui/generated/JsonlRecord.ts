@@ -8,7 +8,11 @@ import type { ToolCard } from "./ToolCard";
 import type { ToolStep } from "./ToolStep";
 import type { UserText } from "./UserText";
 
-export type JsonlRecord = { "type": "user", uuid: string, timestamp: string, message: ApiMessage, cwd: string | null, sessionId: string | null, parentUuid: string | null, forkedFrom: ForkedFrom | null, 
+export type JsonlRecord = { "type": "user", uuid: string, timestamp: string, 
+/**
+ * `timestamp` 在这台本地钟上的钟面 `HH:MM`（解析完由 [`JsonlRecord::with_time_text`] 填；界面照抄、不换算）。没时刻 / 解不出 ⇒ 缺。
+ */
+timeText?: string, message: ApiMessage, cwd: string | null, sessionId: string | null, parentUuid: string | null, forkedFrom: ForkedFrom | null, 
 /**
  * 这条是谁说的、要显示的正文 —— 判定只在 `agents/claudecode/text.rs::user_text`（Codex 在 `agents/codex/record.rs`），
  * 界面渲染 / 分叉折叠只读这个成品（不自己再判）。原文里没有这一格：解析完由 [`JsonlRecord::with_user_text`] 填。
@@ -18,7 +22,11 @@ userText: UserText,
  * 〔判定只在后端〕这条里每个 `tool_result` 的结果一句：`tool_use_id` → [`StepResult`]（读了几行 · `+N −M` · 被拒 · 提问 / 计划答了什么）。
  * 原文里没有这一格：解析完由 [`JsonlRecord::with_steps`] 填；界面只按它拼字，不认 `toolUseResult` 的形状。
  */
-toolResults?: { [key in string]: StepResult }, } | { "type": "assistant", uuid: string, timestamp: string, message: ApiMessage, sessionId: string | null, requestId: string | null, parentUuid: string | null, forkedFrom: ForkedFrom | null, isApiErrorMessage: boolean, error: unknown, apiErrorStatus: number | null, 
+toolResults?: { [key in string]: StepResult }, } | { "type": "assistant", uuid: string, timestamp: string, 
+/**
+ * `timestamp` 在这台本地钟上的钟面 `HH:MM`（解析完由 [`JsonlRecord::with_time_text`] 填；界面照抄、不换算）。没时刻 / 解不出 ⇒ 缺。
+ */
+timeText?: string, message: ApiMessage, sessionId: string | null, requestId: string | null, parentUuid: string | null, forkedFrom: ForkedFrom | null, isApiErrorMessage: boolean, error: unknown, apiErrorStatus: number | null, 
 /**
  * 〔判定只在后端〕这条消息里每个 `tool_use` 的卡型：`tool_use.id` → [`ToolCard`]（普通工具卡不列）。
  * 原文里没有这一格：解析完由 [`JsonlRecord::with_tool_cards`] 按本家工具词表（`cards::tool_card`）填；界面只按它画、不认工具名。
@@ -37,11 +45,19 @@ toolSteps?: { [key in string]: ToolStep },
 /**
  * 〔判定只在后端〕`isApiErrorMessage` 的那条：原因种类（[`ApiReason`]）。别的记录缺。
  */
-apiReason?: ApiReason, } | { "type": "ai-title", aiTitle: string, sessionId: string, } | { "type": "custom-title", customTitle: string, sessionId: string, } | { "type": "system", subtype: string | null, durationMs: number | null, messageCount: number | null, timestamp: string, sessionId: string | null, uuid: string | null, parentUuid: string | null, level: string | null, retryAttempt: number | null, maxRetries: number | null, error: unknown, 
+apiReason?: ApiReason, } | { "type": "ai-title", aiTitle: string, sessionId: string, } | { "type": "custom-title", customTitle: string, sessionId: string, } | { "type": "system", subtype: string | null, durationMs: number | null, messageCount: number | null, timestamp: string, 
+/**
+ * `timestamp` 在这台本地钟上的钟面 `HH:MM`（解析完由 [`JsonlRecord::with_time_text`] 填；界面照抄、不换算）。没时刻 / 解不出 ⇒ 缺。
+ */
+timeText?: string, sessionId: string | null, uuid: string | null, parentUuid: string | null, level: string | null, retryAttempt: number | null, maxRetries: number | null, error: unknown, 
 /**
  * 〔判定只在后端〕`subtype == "api_error"`（要重试的那一次）的原因种类。别的记录缺。
  */
-apiReason?: ApiReason, } | { "type": "attachment", uuid: string, timestamp: string, parentUuid: string | null, } | { "type": "queue-operation", operation: string | null, content: string | null, 
+apiReason?: ApiReason, } | { "type": "attachment", uuid: string, timestamp: string, 
+/**
+ * `timestamp` 在这台本地钟上的钟面 `HH:MM`（解析完由 [`JsonlRecord::with_time_text`] 填；界面照抄、不换算）。没时刻 / 解不出 ⇒ 缺。
+ */
+timeText?: string, parentUuid: string | null, } | { "type": "queue-operation", operation: string | null, content: string | null, 
 /**
  * P0c：**`remove` 那一支要建卡，卡上要有时间**。
  *
@@ -52,10 +68,18 @@ apiReason?: ApiReason, } | { "type": "attachment", uuid: string, timestamp: stri
  */
 timestamp: string | null, 
 /**
+ * `timestamp` 在这台本地钟上的钟面 `HH:MM`（解析完由 [`JsonlRecord::with_time_text`] 填；界面照抄、不换算）。没时刻 / 解不出 ⇒ 缺。
+ */
+timeText?: string, 
+/**
  * `content` 是谁说的（排队消息没有记录级字段，只认具名框与固定句）；没有 `content` ⇒ 缺。
  * 只有人说的那一支建卡（`remove`：插进正在跑的那一轮、没有 user 记录的那句话）。
  */
 userText?: UserText, } | { "type": "permission-mode", } | { "type": "last-prompt", } | { "type": "file-history-snapshot", } | { "type": "cc-monitor-unrecognized", uuid: string | null, parentUuid: string | null, timestamp: string | null, 
+/**
+ * `timestamp` 在这台本地钟上的钟面 `HH:MM`（解析完由 [`JsonlRecord::with_time_text`] 填；界面照抄、不换算）。没时刻 / 解不出 ⇒ 缺。
+ */
+timeText?: string, 
 /**
  * 原文里的 `type`（若有）——诊断 / 记账按它分类
  */

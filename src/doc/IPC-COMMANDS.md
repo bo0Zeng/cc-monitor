@@ -335,6 +335,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | `last` | RunDid? |  |
 | `waiting` | string? | 在等哪个工具的结果（它最近一条记录是一次还没拿到结果的工具调用、且还在跑） |
 | `started_ms` | number? | 开始：派出它的那条记录（没见到 ⇒ 它自己最早的一条） |
+| `started_text` | string? | `started_ms` 在这台本地钟上的钟面 `HH:MM`（跟着 `started_ms` 一起写；界面照抄、不换算） |
 | `active_ms` | number? | 最近动静：它自己最近一条记录 |
 | `ended_ms` | number? | 收场：说它收场的那一条（还没收场 / 状态不明 ⇒ 不上线） |
 | `why` | RunWhy? | 为什么是这个结局（在跑 ⇒ 不上线） |
@@ -1553,7 +1554,7 @@ sid → 上次用哪个号起。
 | `origin` | → | 可缺席：那台的名字（可达表的键） |
 | `query` | → | 可缺席：只留显示标题（`label`）· 第一句 · 项目名里含这几个字的（不分大小写，子串；不比路径、不搜内容 —— 内容走 `history-search`） |
 | `raw` | → | 可缺席：`true` ⇒ 只回**这台自己**的清单 `{rows, failed}`（不并注解、不筛不排、不认别的入参）—— 远端那一支问的就是它 |
-| `rows` | ← | 每会话一行，按 `at` 倒序：`agent` · `agentTag`（行上那一家的小牌，对用户的叫法 |
+| `rows` | ← | 每会话一行，按 `at` 倒序：`agent` · `agentTag`（行上那一家的小牌，对用户的叫法）· `atText`（行尾那一格）· `sectionText`（分段头）· `spanText`（内容头那一段）—— 这三格按这台本地钟写好，界面照抄 |
 | `sort` | → | 可缺席：`activity`（默认，按最后活动）· `created`（按开始） |
 | `total` | ← | 筛完留下几个（截之前，不含 `context`） |
 | `truncated` | ← | `rows` 被 `limit` 截过 |
@@ -1590,7 +1591,7 @@ sid → 上次用哪个号起。
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `sessionCount` | ← | 会话数 |
-| `sessions` | → ← | 各台的会话行（远端的带 `origin`）；回的是合好的、按 `updatedAt` 倒序 |
+| `sessions` | → ← | 各台的会话行（远端的带 `origin`）；回的是合好的、按 `updatedAt` 倒序，每行添 `atText`（行尾那一格）· `spanText`（内容头那一段）：按 `updatedAt`、这台本地钟写好 |
 | `totalHits` | ← | `hitCount` 之和 |
 | `truncated` | ← | 任一行 `hitsTruncated` |
 
@@ -1695,7 +1696,7 @@ sid → 上次用哪个号起。
 | `end` | ← | 最后一个完整行的末字节（残尾不计） |
 | `from` | → | 可选，缺 ⇒ 0：从这个字节起扫 |
 | `path` | → | jsonl 路径（围栏同 `history-read`） |
-| `turns` | ← | 这一段里的每一轮，文件序 |
+| `turns` | ← | 这一段里的每一轮，文件序；起止（`start` · `end`）旁边各有一格 `startText` · `endText`：这台本地钟的 `HH:MM`（界面照抄、不换算；解不出 ⇒ 空串） |
 
 码：`bad_args` · `failed` · `too_large`
 
@@ -1732,7 +1733,7 @@ sid → 上次用哪个号起。
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `hits` | ← | 命中，每条 `{uuid, kind, before, matched, after}`（与 `--find-in-session` 的中段逐行相同） |
+| `hits` | ← | 命中，每条 `{uuid, kind, before, matched, after, turn, tsMs, tsText}`（与 `--find-in-session` 的中段逐行相同）；`tsText` ＝ 那条的时刻按这台本地钟写好（今天 `HH:MM` · 昨天 · 更早带日期；读不出 ⇒ 空串） |
 | `include_tools` | → | 可选，缺省 `false`：工具结果也搜 |
 | `limit` | → | 可选，缺省 500、封顶 2000（与 CLI 的 `--limit` 同一对常量） |
 | `path` | → | jsonl 路径（围栏同 `history-read`） |
@@ -2794,6 +2795,7 @@ cc-bus 钩子诊断。
 |---|---|---|
 | `capped` | ← | 要的比上限多、截到了上限 |
 | `captured_at` | ← | 抓屏时刻（秒） |
+| `captured_at_text` | ← | 抓屏时刻在这台本地钟上的 `HH:MM:SS`（界面照抄、不换算） |
 | `color` | → | 要不要颜色；缺省 `true` |
 | `cols` | ← | 列数 |
 | `cursor` | ← | 光标 `{x, y, visible}` |
@@ -2982,7 +2984,7 @@ cc-bus 钩子诊断。
 | `lastMs` | ← | `recent` 一项：那个目录最近一次会话的修改时刻（毫秒） |
 | `launch` | ← | `fork` 里：起分叉会话要的三格（同 `session-fork` 的 `launch`） |
 | `recent` | ← | 这台最近用过的工作目录（各家记录里的，新的在前、同一个目录一次、最多 8 个；`lastMs` 是那个目录最近一次会话的修改时刻） |
-| `start` | ← | `fork` 里：那一轮你那句的时刻 |
+| `startText` | ← | `fork` 里：那一轮你那句在这台本地钟上的钟面 `HH:MM`（界面照抄；说不出 ⇒ `null`） |
 | `tmux` | ← | 这台有没有 tmux（`false` ⇒ 只能开终端窗口） |
 | `turn` | ← | `fork` 里：`at` 那一条在第几轮 |
 
@@ -3491,7 +3493,7 @@ cc-bus 钩子诊断。
 | `--files-stage-chunk` | ＝ 帧命令 `files-stage-chunk`：存盘的一块进暂存区 |
 | `--files-stat` | ＝ 帧命令 `files-stat`：一个路径的元数据 |
 | `--files-write-text` | ＝ 帧命令 `files-write-text`：覆盖写一份已经在的普通文件 |
-| `--find-in-session` `[--include-tools] [--limit <n>] --query <q> <jsonl>` | 在一份会话里找一段文字：头 `{kind:"session_find",v:1}` · 每条命中 `{uuid, kind, before, matched, after}` · 尾 `{kind:"session_find_end",count,total}`；`limit` 缺省 500、封顶 2000 |
+| `--find-in-session` `[--include-tools] [--limit <n>] --query <q> <jsonl>` | 在一份会话里找一段文字：头 `{kind:"session_find",v:1}` · 每条命中 `{uuid, kind, before, matched, after, turn, tsMs, tsText}`（`tsText` ＝ 那条的时刻按这台本地钟写好） · 尾 `{kind:"session_find_end",count,total}`；`limit` 缺省 500、封顶 2000 |
 | `--first-run` | ＝ 帧命令 `first-run`：首次运行「开始用」三步各自打没打勾 |
 | `--footprint-report` | ＝ 帧命令 `footprint-report`：「足迹」由这台后端出整份成品 |
 | `--fork-session` `<args>` | 从某条消息处分叉出一个新会话文件，出参 `ForkResult`（见下） |

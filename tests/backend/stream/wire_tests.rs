@@ -496,6 +496,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                     last: Some(RunDid::Tool { name: s("Bash") }),
                     waiting: Some(s("Bash")),
                     started_ms: Some(1_000),
+                    started_text: Some(s("00:00")),
                     active_ms: Some(2_000),
                     ended_ms: Some(3_000),
                     why: Some(RunWhy::Reported),

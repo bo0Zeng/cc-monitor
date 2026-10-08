@@ -213,11 +213,10 @@ function retryStorm(retriesPerBlock: number, blocks: number): Record[] {
 describe("秤 3 · 三个细条卡型不再落 CSS 的 120px 兜底", () => {
   it("card-api-retry / card-bash-input / card-bash-output 都估得出高", () => {
     const retry = buildApiRetryCard({ timeLabel: "12:34", retryAttempt: 1, maxRetries: 5 });
-    const bashIn = buildBashInputCard({ command: "npm run build" }, "2026-09-18T12:34:56Z", () => "12:34");
+    const bashIn = buildBashInputCard({ command: "npm run build" }, "12:34");
     const bashOut = buildBashOutputCard(
       { stdout: "line\n".repeat(5).trim(), stderr: "" },
-      "2026-09-18T12:34:56Z",
-      () => "12:34",
+      "12:34",
     );
     for (const el of [retry, bashIn, bashOut]) {
       expect(estimateStreamNodeHeight(el), el.className).not.toBeNull();
@@ -226,7 +225,7 @@ describe("秤 3 · 三个细条卡型不再落 CSS 的 120px 兜底", () => {
 
   it("两条细条常数与 CSS token 手算的真高（content-box）相差在 ±20% 内", () => {
     const retry = buildApiRetryCard({ timeLabel: "12:34", retryAttempt: 1, maxRetries: 5 });
-    const bashIn = buildBashInputCard({ command: "npm run build" }, "2026-09-18T12:34:56Z", () => "12:34");
+    const bashIn = buildBashInputCard({ command: "npm run build" }, "12:34");
     // 🔴 2026-09-18（秤 2 的 B 段，两个真引擎实测）：`contain-intrinsic-size` 是
     //    **content-box** —— 声明 N ⇒ 视口外实际占 N + padding + border。
     //    ⇒ 估值常数要对的是**扣掉 padding 之后**的那个真高，不是上面 `TRUE_H_PX` 的 border-box 值。

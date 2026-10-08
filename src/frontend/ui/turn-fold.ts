@@ -23,7 +23,6 @@
 import { readTurns, type TurnSummary, type TurnsResult } from "./session-reads";
 import type { Origin } from "./ipc/origin";
 import { copyText } from "./copy-table";
-import { formatTimestampShort } from "./format";
 import { durBetween, fmtStepDur } from "./cards/step-line";
 import { icon } from "./kit/icon";
 import { SKELETON_GAP_CLASS } from "./skeleton-view";
@@ -284,8 +283,8 @@ export function paintLine(line: HTMLElement, turn: TurnSummary, open: boolean): 
   // 起止 · 用时：靠右（稿 01 / 10）。
   const span = document.createElement("span");
   span.className = "proc-span";
-  const from = formatTimestampShort(turn.start);
-  const to = formatTimestampShort(turn.end);
+  const from = turn.startText;
+  const to = turn.endText;
   span.textContent = from === to ? from : `${from}–${to}`;
   const dur = durBetween(turn.start, turn.end);
   if (dur !== null && dur >= 1000) span.append(copyText("kit.text.sep"), fmtStepDur(dur));

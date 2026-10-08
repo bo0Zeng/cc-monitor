@@ -25,7 +25,7 @@ describe("运行表严格收", () => {
     for (const r of rows) expect(decodeRunsPayload(r)).toEqual(r);
     const full = rows[0].runs as Record<string, unknown>[];
     expect(Object.keys(full[0]).sort()).toEqual(
-      ["active_ms", "background", "calls", "error", "ended_ms", "kind", "label", "last", "parent", "run", "started_ms", "state", "tool", "waiting", "why"].sort(),
+      ["active_ms", "background", "calls", "error", "ended_ms", "kind", "label", "last", "parent", "run", "started_ms", "started_text", "state", "tool", "waiting", "why"].sort(),
     );
   });
 
@@ -36,6 +36,7 @@ describe("运行表严格收", () => {
       (p) => delete (p.runs as Record<string, unknown>[])[0].state,
       (p) => delete (p.runs as Record<string, unknown>[])[0].run,
       (p) => ((p.runs as Record<string, unknown>[])[0].started_ms = "1000"),
+      (p) => ((p.runs as Record<string, unknown>[])[0].started_text = 1000),
       (p) => ((p.runs as Record<string, unknown>[])[0].active_ms = -1),
       (p) => ((p.runs as Record<string, unknown>[])[0].why = "maybe"),
       (p) => ((p.runs as Record<string, unknown>[])[0].state = "paused"),

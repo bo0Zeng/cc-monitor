@@ -79,9 +79,8 @@ import { SessionFindPanel, type SessionFindHost } from "../../../../src/frontend
 import { dispatcher } from "../../../../src/frontend/ui/keybindings/registry";
 import type { FindResult } from "../../../../src/frontend/ui/session-reads";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
-import { copyPattern } from "../../../test-support/copy-pattern";
 
-const hit = (uuid: string, matched = "needle", before = "a ", after = " b", turn = 0, tsMs = 0) => ({
+const hit = (uuid: string, matched = "needle", before = "a ", after = " b", turn = 0, tsMs = 0, tsText = "") => ({
   uuid,
   kind: "assistant",
   before,
@@ -89,6 +88,7 @@ const hit = (uuid: string, matched = "needle", before = "a ", after = " b", turn
   after,
   turn,
   tsMs,
+  tsText,
 });
 const found = (hits: ReturnType<typeof hit>[], total = hits.length): FindResult => ({
   available: true,
@@ -219,8 +219,9 @@ describe("会话内查找 · 搜索", () => {
   });
 
   it("🔴 带着「含工具内容」那个勾；命中按后端给的顺序列、头一行「谁 · 第几轮 · 时刻」、<mark> 里是原文", async () => {
+    // 时刻那一格照抄那台写好的 `tsText`（与 `tsMs` 故意对不上：界面若还在自己换算就红）。
     const at = new Date(2026, 9, 6, 1, 52).getTime();
-    const s = vi.fn(async () => found([{ ...hit("u9", "NeedLe", "前 ", " 后", 3, at), kind: "user" }, hit("u2"), { ...hit("u4"), kind: "report", turn: 2 }]));
+    const s = vi.fn(async () => found([{ ...hit("u9", "NeedLe", "前 ", " 后", 3, at, "09-30 18:20"), kind: "user" }, hit("u2"), { ...hit("u4"), kind: "report", turn: 2 }]));
     const { p } = panelWith({ search: s } as Partial<SessionFindHost>);
     p.open("search");
     (p.el.querySelector("input[type=checkbox]") as HTMLInputElement).click();
@@ -229,7 +230,7 @@ describe("会话内查找 · 搜索", () => {
     expect(s.mock.calls.at(-1)).toEqual(["needle", true, 0]);
     const rows = hitRows(p.el);
     expect(rows.map((r) => r.dataset.hitUuid)).toEqual(["u9", "u2", "u4"]);
-    expect(rows[0].firstElementChild!.textContent).toMatch(copyPattern("sessionFind.hit.meta", { who: copyText("sessionFind.who.user"), n: 3 }, { whole: true }));
+    expect(rows[0].firstElementChild!.textContent).toBe(copyText("sessionFind.hit.meta", { who: copyText("sessionFind.who.user"), n: 3, time: "09-30 18:20" }));
     expect(rows[1].firstElementChild!.textContent, "第一句之前的不写轮").toBe("Claude");
     expect(rows[2].firstElementChild!.textContent, "子 agent 交回的正文命中单列一种").toBe(copyText("sessionFind.hit.metaNoTime", { who: copyText("sessionFind.who.report"), n: "2" }));
     expect(rows[0].querySelector("mark")!.textContent).toBe("NeedLe");

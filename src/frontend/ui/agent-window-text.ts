@@ -4,7 +4,6 @@
  * 时长一律写到分钟（`fmtDur`：`45s` · `6m` · `1h50m`），窗口每分钟重画一次就够（`views/agent-window.ts`）。
  */
 import { copyText } from "./copy-table";
-import { formatTimestampShort } from "./format";
 import { fmtDur } from "./quota-lines";
 import { runLabel, runStateIcon, runStateText } from "./runs";
 import type { RunInfo } from "./generated/RunInfo";
@@ -21,7 +20,7 @@ const since = (at: number | undefined, now: number): string | null => (at === un
 /** 标题区那一行小字：几点开始 · 已跑 / 用时 · 最近动静 · 调用工具几次 · 派出几个 · 后台派出。 */
 export function factsOf(r: RunInfo, kids: number, now: number): string[] {
   const out: string[] = [];
-  if (r.started_ms !== undefined) out.push(copyText("agentWindow.facts.started", { time: formatTimestampShort(r.started_ms) }));
+  if (r.started_text !== undefined) out.push(copyText("agentWindow.facts.started", { time: r.started_text }));
   if (r.state === "running" && r.started_ms !== undefined) out.push(copyText("agentWindow.facts.running", { dur: fmtDur((now - r.started_ms) / 1000) }));
   if (r.state !== "running" && r.state !== "unknown" && r.started_ms !== undefined && r.ended_ms !== undefined) {
     out.push(copyText("agentWindow.facts.took", { dur: fmtDur((r.ended_ms - r.started_ms) / 1000) }));

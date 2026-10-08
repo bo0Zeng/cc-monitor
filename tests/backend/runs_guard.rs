@@ -1394,6 +1394,12 @@ fn extra_cells_scenario(shape: &Shape) {
         "[{}] 派出那条比它自己最早那条早 ⇒ 开始取派出那条",
         shape.name
     );
+    assert_eq!(
+        info_of(&book, "g6").started_text,
+        at(135).map(|ms| crate::common::time::ms_hm_here(ms as i64)),
+        "[{}] 开始那一刻的钟面跟着开始取早的那个（这台本地钟，界面照抄）",
+        shape.name
+    );
     let Some(Frame::SessionRuns { runs, .. }) = track.retire(SID) else {
         panic!("[{}] 会话退休时 g1 还在跑，却没出最后那一帧", shape.name);
     };

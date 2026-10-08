@@ -161,7 +161,7 @@ pub(crate) fn facts(args: &Value) -> Answer {
                 "agent": crate::agents::record_kind_of(&source).unwrap_or_default(),
                 "launch": super::fork_face::launch_of(&home, &source, sid).to_json(),
                 "turn": turn.as_ref().map(|t| t.0),
-                "start": turn.map(|t| t.1).filter(|s| !s.is_empty()),
+                "startText": turn.and_then(|t| crate::common::time::iso_hm_here(&t.1)),
             })
         }
     };

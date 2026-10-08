@@ -2,6 +2,7 @@
  * 合成会话记录：按 Claude Code 记录的结构造（user / assistant / tool_use / tool_result / thinking …），
  * 正文全是编的占位，不取任何真会话。
  */
+import { hm } from "./clock";
 import type { JsonlRecord } from "../../../src/frontend/ui/generated/JsonlRecord";
 import type { ToolCard } from "../../../src/frontend/ui/generated/ToolCard";
 import type { ChildRunTag } from "../../../src/frontend/ui/generated/ChildRunTag";
@@ -79,6 +80,12 @@ export class Convo {
     return new Date(this.t).toISOString();
   }
 
+  /** 下一条的时刻 ＋ 它的钟面（真后端解析时填 `timeText`）。 */
+  private at(stepSec = 20): { timestamp: string; timeText: string } {
+    const timestamp = this.stamp(stepSec);
+    return { timestamp, timeText: hm(this.t) };
+  }
+
   title(text: string): this {
     this.records.push({ type: "ai-title", aiTitle: text, sessionId: this.sid });
     return this;
@@ -89,7 +96,7 @@ export class Convo {
     this.records.push({
       type: "user",
       uuid,
-      timestamp: this.stamp(45),
+      ...this.at(45),
       message: { role: "user", content: text, model: null, usage: null },
       cwd: this.cwd,
       sessionId: this.sid,
@@ -111,7 +118,7 @@ export class Convo {
     this.records.push({
       type: "assistant",
       uuid,
-      timestamp: this.stamp(),
+      ...this.at(),
       message: {
         role: "assistant",
         content: blocks,
@@ -142,7 +149,7 @@ export class Convo {
     this.records.push({
       type: "user",
       uuid,
-      timestamp: this.stamp(20),
+      ...this.at(20),
       message: { role: "user", content: "<frame/>", model: null, usage: null },
       cwd: this.cwd,
       sessionId: this.sid,
@@ -186,7 +193,7 @@ export class Convo {
     this.records.push({
       type: "user",
       uuid,
-      timestamp: this.stamp(8),
+      ...this.at(8),
       message: {
         role: "user",
         content: [{ type: "tool_result", tool_use_id: id, content, is_error: isError }],
@@ -209,7 +216,7 @@ export class Convo {
     this.records.push({
       type: "assistant",
       uuid,
-      timestamp: this.stamp(),
+      ...this.at(),
       message: { role: "assistant", content: [{ type: "text", text }], model: "<synthetic>", usage: null },
       sessionId: this.sid,
       requestId: null,
@@ -231,7 +238,7 @@ export class Convo {
       subtype: "api_error",
       durationMs: null,
       messageCount: null,
-      timestamp: this.stamp(5),
+      ...this.at(5),
       sessionId: this.sid,
       uuid,
       parentUuid: this.prev,
@@ -253,7 +260,7 @@ export class Convo {
       subtype: "turn_duration",
       durationMs: ms,
       messageCount: this.records.length,
-      timestamp: this.stamp(1),
+      ...this.at(1),
       sessionId: this.sid,
       uuid,
       parentUuid: this.prev,
@@ -268,7 +275,7 @@ export class Convo {
 
   /** 用户打断时说的那句话（jsonl 里唯一的存在是一条 queue-operation remove）。 */
   queued(text: string): this {
-    this.records.push({ type: "queue-operation", operation: "remove", content: text, timestamp: this.stamp(3) });
+    this.records.push({ type: "queue-operation", operation: "remove", content: text, ...this.at(3) });
     return this;
   }
 }

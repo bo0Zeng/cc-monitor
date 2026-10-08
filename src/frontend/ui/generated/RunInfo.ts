@@ -24,6 +24,10 @@ waiting?: string,
  */
 started_ms?: number, 
 /**
+ * `started_ms` 在这台本地钟上的钟面 `HH:MM`（跟着 `started_ms` 一起写；界面照抄、不换算）。
+ */
+started_text?: string, 
+/**
  * 最近动静：它自己最近一条记录。
  */
 active_ms?: number, 

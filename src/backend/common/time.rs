@@ -108,6 +108,159 @@ pub(crate) fn with_texts_here(v: &mut serde_json::Value, now: u64) {
     with_texts(v, i64::try_from(now).unwrap_or(i64::MAX), tz_min);
 }
 
+/// 一个时刻（unix 秒）在这台本地钟上的秒数：偏移按**那一刻**算（夏令时跟着那一刻）；问不到时区 ⇒ 按 UTC。
+pub(crate) fn local_secs(t: i64) -> i64 {
+    let off = u64::try_from(t)
+        .ok()
+        .and_then(crate::platform::local_tz::offset_secs)
+        .unwrap_or(0);
+    t + off
+}
+
+/// 本地钟秒数 ⇒ 钟面 `HH:MM`（不写日子）。
+pub(crate) fn hm(local: i64) -> String {
+    let secs = local.rem_euclid(DAY);
+    format!("{:02}:{:02}", secs / 3600, (secs % 3600) / 60)
+}
+
+/// 本地钟秒数 ⇒ 钟面 `HH:MM:SS`（终端快照那一格）。
+pub(crate) fn hms(local: i64) -> String {
+    let secs = local.rem_euclid(DAY);
+    format!(
+        "{:02}:{:02}:{:02}",
+        secs / 3600,
+        (secs % 3600) / 60,
+        secs % 60
+    )
+}
+
+/// 秒时刻 ⇒ 这台本地钟的 `HH:MM:SS`。
+pub(crate) fn secs_hms_here(t: i64) -> String {
+    hms(local_secs(t))
+}
+
+/// 记录里写着的 ISO 时刻 ⇒ 这台本地钟的 `HH:MM`（记录卡 · 轮次起止 · 分叉那一轮）。解不出 ⇒ `None`。
+pub(crate) fn iso_hm_here(iso: &str) -> Option<String> {
+    parse_iso8601_ms(iso).map(ms_hm_here)
+}
+
+/// 毫秒时刻 ⇒ 这台本地钟的 `HH:MM`（子运行开始 · 终端快照那几处）。
+pub(crate) fn ms_hm_here(ms: i64) -> String {
+    hm(local_secs(ms.div_euclid(1_000)))
+}
+
+// ───────── 历史页那几格（入参都是本地钟秒数：调用方先按各自那一刻的偏移排过）─────────
+
+/// 本地钟秒数那一天的 `MM-DD`。
+fn md(local: i64) -> String {
+    let (_, m, d) = civil_from_days(local.div_euclid(DAY));
+    format!("{m:02}-{d:02}")
+}
+
+/// 分段头：今天 · 昨天 · 本周（周一起，周日算上一周的末尾）· 再往前按月（今年 `9 月`、往年 `2025 年 9 月`）。
+pub(crate) fn section_text(at: i64, now: i64) -> String {
+    let (day, today) = (at.div_euclid(DAY), now.div_euclid(DAY));
+    if day >= today {
+        return copy_core::copy_text("history.section.today", &[]);
+    }
+    if day == today - 1 {
+        return copy_core::copy_text("history.section.yesterday", &[]);
+    }
+    // 1970-01-01 是周四 ⇒ 以周一为 0 时它是 3。
+    let dow = (today + 3).rem_euclid(7);
+    if day >= today - dow {
+        return copy_core::copy_text("history.section.week", &[]);
+    }
+    let (y, m, _) = civil_from_days(day);
+    let month = m.to_string();
+    if y == civil_from_days(today).0 {
+        copy_core::copy_text("history.section.month", &[("month", &month)])
+    } else {
+        copy_core::copy_text(
+            "history.section.yearMonth",
+            &[("year", &y.to_string()), ("month", &month)],
+        )
+    }
+}
+
+/// 行尾那一格：今天 `14:02` · 昨天 `10-01 22:10` · 更早 `09-30`（不是今年的 `2025-09-30`）。
+pub(crate) fn row_time(at: i64, now: i64) -> String {
+    let (day, today) = (at.div_euclid(DAY), now.div_euclid(DAY));
+    if day >= today {
+        return hm(at);
+    }
+    if day == today - 1 {
+        return format!("{} {}", md(at), hm(at));
+    }
+    let y = civil_from_days(day).0;
+    if y == civil_from_days(today).0 {
+        md(at)
+    } else {
+        format!("{y}-{}", md(at))
+    }
+}
+
+/// 内容头那一段：`09-30 03:00 – 10-01 04:57`；同一天 `02:01–14:02`（今天）或 `09-30 02:01–14:02`。
+pub(crate) fn span_text(from: i64, to: i64, now: i64) -> String {
+    let (a, b) = (from.div_euclid(DAY), to.div_euclid(DAY));
+    if a == b {
+        return if b == now.div_euclid(DAY) {
+            format!("{}–{}", hm(from), hm(to))
+        } else {
+            format!("{} {}–{}", md(from), hm(from), hm(to))
+        };
+    }
+    format!("{} {} – {} {}", md(from), hm(from), md(to), hm(to))
+}
+
+/// 会话内查找那一行的时刻：今天 `01:52` · 昨天 `昨天 18:20` · 更早 `09-30 18:20`（不是今年的 `2025-09-30 18:20`）。
+pub(crate) fn hit_time(at: i64, now: i64) -> String {
+    let (day, today) = (at.div_euclid(DAY), now.div_euclid(DAY));
+    if day >= today {
+        return hm(at);
+    }
+    if day == today - 1 {
+        return format!(
+            "{} {}",
+            copy_core::copy_text("history.section.yesterday", &[]),
+            hm(at)
+        );
+    }
+    let y = civil_from_days(day).0;
+    if y == civil_from_days(today).0 {
+        format!("{} {}", md(at), hm(at))
+    } else {
+        format!("{y}-{} {}", md(at), hm(at))
+    }
+}
+
+/// 会话内查找命中的时刻按这台此刻的本地钟写（[`hit_time`]）；读不出（`0`）⇒ 空串。
+pub(crate) fn hit_text_here(ts_ms: i64) -> String {
+    if ts_ms <= 0 {
+        return String::new();
+    }
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs() as i64);
+    hit_time(local_secs(ts_ms.div_euclid(1_000)), local_secs(now))
+}
+
+/// **历史页回包出口那一遍**（一行）：`at` ⇒ 行尾 `atText` ＋ 分段 `sectionText`；`startedAt` → `updatedAt` ⇒ 内容头 `spanText`。
+/// 时刻是毫秒；`local` 把 unix 秒按那一刻的偏移排成本地钟秒数（生产里是 [`local_secs`]）。缺哪一格就不添哪一格。
+pub(crate) fn history_texts(row: &mut serde_json::Value, now_ms: i64, local: &dyn Fn(i64) -> i64) {
+    let l = |ms: i64| local(ms.div_euclid(1_000));
+    let now = l(now_ms);
+    let ms = |k: &str| row.get(k).and_then(serde_json::Value::as_i64);
+    let (at, from, to) = (ms("at"), ms("startedAt"), ms("updatedAt"));
+    if let Some(at) = at {
+        row["atText"] = row_time(l(at), now).into();
+        row["sectionText"] = section_text(l(at), now).into();
+    }
+    if let (Some(from), Some(to)) = (from, to) {
+        row["spanText"] = span_text(l(from), l(to), now).into();
+    }
+}
+
 #[cfg(test)]
 #[path = "../../../tests/backend/common/time_tests.rs"]
 mod tests;

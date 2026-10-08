@@ -345,7 +345,7 @@ describe("㊱③ 查看器的 Ctrl+F：工具行查找框 ＋ 问后端 `history
     viewerRig.find = {
       available: true,
       total: 1,
-      hits: [{ uuid: "a1", kind: "assistant", before: "回复里有 ", matched: "needle", after: "", turn: 1, tsMs: 0 }],
+      hits: [{ uuid: "a1", kind: "assistant", before: "回复里有 ", matched: "needle", after: "", turn: 1, tsMs: 0, tsText: "" }],
     };
     const strip = v.element.querySelector<HTMLElement>('[data-role="find-strip"]')!;
     expect(strip, "查看器里没有命中清单那一条").toBeTruthy();
@@ -378,8 +378,8 @@ describe("㊱③ 查看器的 Ctrl+F：工具行查找框 ＋ 问后端 `history
       available: true,
       total: 2,
       hits: [
-        { uuid: "a1", kind: "assistant", before: "统一做**", matched: "重试", after: " ＋ `退避` ＋ __整体超时__**；", turn: 0, tsMs: 0 },
-        { uuid: "a1", kind: "assistant", before: "## > ", matched: "**重试**", after: "", turn: 0, tsMs: 0 },
+        { uuid: "a1", kind: "assistant", before: "统一做**", matched: "重试", after: " ＋ `退避` ＋ __整体超时__**；", turn: 0, tsMs: 0, tsText: "" },
+        { uuid: "a1", kind: "assistant", before: "## > ", matched: "**重试**", after: "", turn: 0, tsMs: 0, tsText: "" },
       ],
     };
     v.openFind();

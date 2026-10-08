@@ -475,7 +475,7 @@ pub(crate) fn parsed_line(raw: &str) -> Result<Option<crate::agents::ParsedLine>
         return Ok(None);
     }
     let v: Value = serde_json::from_str(trimmed).map_err(|e| e.to_string())?;
-    let rec = to_jsonl_record(&v, trimmed);
+    let rec = to_jsonl_record(&v, trimmed).with_time_text();
     Ok(Some(crate::agents::ParsedLine {
         displayable: rec.is_displayable(),
         cwd: rec.cwd().map(str::to_string),
@@ -582,6 +582,7 @@ fn assistant_rec(uuid: String, ts: Option<String>, role: &str, content: Value) -
     JsonlRecord::Assistant {
         uuid,
         timestamp: ts.unwrap_or_default(),
+        time_text: None,
         message: api_msg(role, content),
         session_id: None,
         is_sidechain: false,
@@ -604,6 +605,7 @@ fn user_rec(uuid: String, ts: Option<String>, content: Value, said: UserText) ->
     JsonlRecord::User {
         uuid,
         timestamp: ts.unwrap_or_default(),
+        time_text: None,
         message: api_msg("user", content),
         cwd: None,
         session_id: None,
@@ -632,6 +634,7 @@ fn unrecognized(v: &Value, ts: Option<String>, raw: &str) -> JsonlRecord {
             .map(String::from),
         parent_uuid: None,
         timestamp: ts,
+        time_text: None,
         original_type: Some(original),
         raw: raw.to_string(),
         reason: "codex-event".to_string(),

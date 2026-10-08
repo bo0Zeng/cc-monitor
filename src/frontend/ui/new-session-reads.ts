@@ -23,7 +23,7 @@ export interface NewFacts {
   recent: { cwd: string; lastMs: number }[];
   tmux: boolean;
   agents: string[];
-  fork: { agent: string; launch: ForkLaunch; turn: number | null; start: string | null } | null;
+  fork: { agent: string; launch: ForkLaunch; turn: number | null; startText: string | null } | null;
 }
 
 const strOrNull = (v: unknown): v is string | null => v === null || typeof v === "string";
@@ -45,10 +45,10 @@ export function decodeFacts(v: unknown): NewFacts {
   let fork: NewFacts["fork"] = null;
   if (o.fork !== null) {
     const f = o.fork;
-    if (!isObj(f) || !exactKeys(f, ["agent", "launch", "turn", "start"]) || typeof f.agent !== "string") bad(op);
+    if (!isObj(f) || !exactKeys(f, ["agent", "launch", "turn", "startText"]) || typeof f.agent !== "string") bad(op);
     const ff = f as Record<string, unknown>;
-    if (!(ff.turn === null || typeof ff.turn === "number") || !strOrNull(ff.start)) bad(op);
-    fork = { agent: ff.agent as string, launch: decodeForkLaunch(ff.launch), turn: ff.turn as number | null, start: ff.start as string | null };
+    if (!(ff.turn === null || typeof ff.turn === "number") || !strOrNull(ff.startText)) bad(op);
+    fork = { agent: ff.agent as string, launch: decodeForkLaunch(ff.launch), turn: ff.turn as number | null, startText: ff.startText as string | null };
   }
   return { recent, tmux: o.tmux as boolean, agents: o.agents as string[], fork };
 }

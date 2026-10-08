@@ -18,6 +18,8 @@ const turn = (uuid: string, at: number, over: Partial<TurnSummary> = {}): TurnSu
   uuid,
   start: "2026-10-06T02:01:00Z",
   end: "2026-10-06T02:04:02Z",
+  startText: "02:01",
+  endText: "02:04",
   said: "改一下",
   tools: 2,
   thinking: 1,

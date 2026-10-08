@@ -128,6 +128,45 @@ impl JsonlRecord {
         self
     }
 
+    /// 带时刻的记录填上钟面（[`crate::common::time::iso_hm_here`]，这台本地钟）；别的类型原样。
+    pub(crate) fn with_time_text(mut self) -> Self {
+        let face = |t: &str| crate::common::time::iso_hm_here(t);
+        match &mut self {
+            Self::User {
+                timestamp,
+                time_text,
+                ..
+            }
+            | Self::Assistant {
+                timestamp,
+                time_text,
+                ..
+            }
+            | Self::System {
+                timestamp,
+                time_text,
+                ..
+            }
+            | Self::Attachment {
+                timestamp,
+                time_text,
+                ..
+            } => *time_text = face(timestamp),
+            Self::QueueOperation {
+                timestamp,
+                time_text,
+                ..
+            }
+            | Self::Unrecognized {
+                timestamp,
+                time_text,
+                ..
+            } => *time_text = timestamp.as_deref().and_then(face),
+            _ => {}
+        }
+        self
+    }
+
     /// user 记录与排队消息填上「谁说的」（[`UserText`]，判定只在 `text.rs`）；别的类型原样。
     pub(crate) fn with_user_text(mut self) -> Self {
         match &mut self {
@@ -186,6 +225,15 @@ pub enum JsonlRecord {
     User {
         uuid: String,
         timestamp: String,
+        /// `timestamp` 在这台本地钟上的钟面 `HH:MM`（解析完由 [`JsonlRecord::with_time_text`] 填；界面照抄、不换算）。没时刻 / 解不出 ⇒ 缺。
+        #[serde(
+            rename = "timeText",
+            skip_deserializing,
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        #[cfg_attr(test, ts(optional))]
+        time_text: Option<String>,
         message: ApiMessage,
         #[serde(default)]
         cwd: Option<String>,
@@ -233,6 +281,15 @@ pub enum JsonlRecord {
     Assistant {
         uuid: String,
         timestamp: String,
+        /// `timestamp` 在这台本地钟上的钟面 `HH:MM`（解析完由 [`JsonlRecord::with_time_text`] 填；界面照抄、不换算）。没时刻 / 解不出 ⇒ 缺。
+        #[serde(
+            rename = "timeText",
+            skip_deserializing,
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        #[cfg_attr(test, ts(optional))]
+        time_text: Option<String>,
         message: ApiMessage,
         #[serde(rename = "sessionId", default)]
         session_id: Option<String>,
@@ -345,6 +402,15 @@ pub enum JsonlRecord {
         #[serde(rename = "messageCount", default)]
         message_count: Option<u32>,
         timestamp: String,
+        /// `timestamp` 在这台本地钟上的钟面 `HH:MM`（解析完由 [`JsonlRecord::with_time_text`] 填；界面照抄、不换算）。没时刻 / 解不出 ⇒ 缺。
+        #[serde(
+            rename = "timeText",
+            skip_deserializing,
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        #[cfg_attr(test, ts(optional))]
+        time_text: Option<String>,
         #[serde(rename = "sessionId", default)]
         session_id: Option<String>,
         // issue #8: system 记录大多有 uuid+parentUuid 并参与 jsonl 链 ——
@@ -387,6 +453,15 @@ pub enum JsonlRecord {
     Attachment {
         uuid: String,
         timestamp: String,
+        /// `timestamp` 在这台本地钟上的钟面 `HH:MM`（解析完由 [`JsonlRecord::with_time_text`] 填；界面照抄、不换算）。没时刻 / 解不出 ⇒ 缺。
+        #[serde(
+            rename = "timeText",
+            skip_deserializing,
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        #[cfg_attr(test, ts(optional))]
+        time_text: Option<String>,
         #[serde(rename = "parentUuid", default)]
         parent_uuid: Option<String>,
     },
@@ -407,6 +482,15 @@ pub enum JsonlRecord {
         /// 时间戳是它**仅有的**可用于排序与展示的元数据，原文里一直有，只是我们没收。
         #[serde(default)]
         timestamp: Option<String>,
+        /// `timestamp` 在这台本地钟上的钟面 `HH:MM`（解析完由 [`JsonlRecord::with_time_text`] 填；界面照抄、不换算）。没时刻 / 解不出 ⇒ 缺。
+        #[serde(
+            rename = "timeText",
+            skip_deserializing,
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        #[cfg_attr(test, ts(optional))]
+        time_text: Option<String>,
         /// `content` 是谁说的（排队消息没有记录级字段，只认具名框与固定句）；没有 `content` ⇒ 缺。
         /// 只有人说的那一支建卡（`remove`：插进正在跑的那一轮、没有 user 记录的那句话）。
         #[serde(
@@ -463,6 +547,15 @@ pub enum JsonlRecord {
         parent_uuid: Option<String>,
         #[serde(default)]
         timestamp: Option<String>,
+        /// `timestamp` 在这台本地钟上的钟面 `HH:MM`（解析完由 [`JsonlRecord::with_time_text`] 填；界面照抄、不换算）。没时刻 / 解不出 ⇒ 缺。
+        #[serde(
+            rename = "timeText",
+            skip_deserializing,
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        #[cfg_attr(test, ts(optional))]
+        time_text: Option<String>,
         /// 原文里的 `type`（若有）——诊断 / 记账按它分类
         #[serde(rename = "originalType", default)]
         original_type: Option<String>,

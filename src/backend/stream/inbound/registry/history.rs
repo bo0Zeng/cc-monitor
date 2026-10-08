@@ -75,7 +75,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "history-list",
         summary: "历史页的平铺会话清单",
         codes: &["bad_args", "failed", "unreachable"],
-        fields: &[arg("fresh", "可缺席：`true` ⇒ 远端那一台不用记着的、再问一次（开页 · 「刷新」）"), out("groups", "按项目看时的分组（只数 `rows` 里不是 `context` 的）：`key` · `agent` · `projectName` · `projectPath` · `projectDir` · `count` · `hasLive`（`null` = 有判不了活的、又没有确定在跑的）· `starred`（组里有星标的）· `lastActivity` · `order`（几台的组并成一列时的序，大的在前：档位 × 10¹⁴ ＋ 有星标 × 10¹³ ＋ 最后动过的毫秒；界面只按它并）· `failed`（读不了的那个记录目录 ⇒ 一组、`count` 0、带那一句；别的 ⇒ `null`）· `origin`"), arg("hidden", "可缺席：`true` ⇒ 隐藏的也出（默认不出）"), arg("limit", "可缺席：最多回几行（默认 2000，1–20000）；多出的不回、`truncated`"), out("notice", "注解没并上的那句话；`null` = 并上了"), arg("origin", "可缺席：那台的名字（可达表的键）"), arg("query", "可缺席：只留显示标题（`label`）· 第一句 · 项目名里含这几个字的（不分大小写，子串；不比路径、不搜内容 —— 内容走 `history-search`）"), arg("raw", "可缺席：`true` ⇒ 只回**这台自己**的清单 `{rows, failed}`（不并注解、不筛不排、不认别的入参）—— 远端那一支问的就是它"), out("rows", "每会话一行，按 `at` 倒序：`agent` · `agentTag`（行上那一家的小牌，对用户的叫法"), arg("sort", "可缺席：`activity`（默认，按最后活动）· `created`（按开始）"), out("total", "筛完留下几个（截之前，不含 `context`）"), out("truncated", "`rows` 被 `limit` 截过"), arg("within_days", "可缺席：只留那个键（同 `sort`）落在最近 N 天里的（1–3650）")],
+        fields: &[arg("fresh", "可缺席：`true` ⇒ 远端那一台不用记着的、再问一次（开页 · 「刷新」）"), out("groups", "按项目看时的分组（只数 `rows` 里不是 `context` 的）：`key` · `agent` · `projectName` · `projectPath` · `projectDir` · `count` · `hasLive`（`null` = 有判不了活的、又没有确定在跑的）· `starred`（组里有星标的）· `lastActivity` · `order`（几台的组并成一列时的序，大的在前：档位 × 10¹⁴ ＋ 有星标 × 10¹³ ＋ 最后动过的毫秒；界面只按它并）· `failed`（读不了的那个记录目录 ⇒ 一组、`count` 0、带那一句；别的 ⇒ `null`）· `origin`"), arg("hidden", "可缺席：`true` ⇒ 隐藏的也出（默认不出）"), arg("limit", "可缺席：最多回几行（默认 2000，1–20000）；多出的不回、`truncated`"), out("notice", "注解没并上的那句话；`null` = 并上了"), arg("origin", "可缺席：那台的名字（可达表的键）"), arg("query", "可缺席：只留显示标题（`label`）· 第一句 · 项目名里含这几个字的（不分大小写，子串；不比路径、不搜内容 —— 内容走 `history-search`）"), arg("raw", "可缺席：`true` ⇒ 只回**这台自己**的清单 `{rows, failed}`（不并注解、不筛不排、不认别的入参）—— 远端那一支问的就是它"), out("rows", "每会话一行，按 `at` 倒序：`agent` · `agentTag`（行上那一家的小牌，对用户的叫法）· `atText`（行尾那一格）· `sectionText`（分段头）· `spanText`（内容头那一段）—— 这三格按这台本地钟写好，界面照抄"), arg("sort", "可缺席：`activity`（默认，按最后活动）· `created`（按开始）"), out("total", "筛完留下几个（截之前，不含 `context`）"), out("truncated", "`rows` 被 `limit` 截过"), arg("within_days", "可缺席：只留那个键（同 `sort`）落在最近 N 天里的（1–3650）")],
         takes_input: true,
         run: Run::Async(|r| {
             Box::pin(async move {
@@ -104,7 +104,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "history-search-merge",
         summary: "把各台的搜索结果合成一份",
         codes: &["bad_args"],
-        fields: &[out("sessionCount", "会话数"), both("sessions", "各台的会话行（远端的带 `origin`）；回的是合好的、按 `updatedAt` 倒序"), out("totalHits", "`hitCount` 之和"), out("truncated", "任一行 `hitsTruncated`")],
+        fields: &[out("sessionCount", "会话数"), both("sessions", "各台的会话行（远端的带 `origin`）；回的是合好的、按 `updatedAt` 倒序，每行添 `atText`（行尾那一格）· `spanText`（内容头那一段）：按 `updatedAt`、这台本地钟写好"), out("totalHits", "`hitCount` 之和"), out("truncated", "任一行 `hitsTruncated`")],
         takes_input: true,
         run: Run::Async(|r| {
             Box::pin(async move {
@@ -203,7 +203,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "history-turns",
         summary: "一轮的摘要",
         codes: &["bad_args", "failed", "too_large"],
-        fields: &[out("end", "最后一个完整行的末字节（残尾不计）"), arg("from", "可选，缺 ⇒ 0：从这个字节起扫"), arg("path", "jsonl 路径（围栏同 `history-read`）"), out("turns", "这一段里的每一轮，文件序")],
+        fields: &[out("end", "最后一个完整行的末字节（残尾不计）"), arg("from", "可选，缺 ⇒ 0：从这个字节起扫"), arg("path", "jsonl 路径（围栏同 `history-read`）"), out("turns", "这一段里的每一轮，文件序；起止（`start` · `end`）旁边各有一格 `startText` · `endText`：这台本地钟的 `HH:MM`（界面照抄、不换算；解不出 ⇒ 空串）")],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::faces::read_face::answer(&r.cmd, &r.args)
@@ -227,7 +227,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "history-find",
         summary: "会话内查找",
         codes: &["bad_args", "failed", "too_large"],
-        fields: &[out("hits", "命中，每条 `{uuid, kind, before, matched, after}`（与 `--find-in-session` 的中段逐行相同）"), arg("include_tools", "可选，缺省 `false`：工具结果也搜"), arg("limit", "可选，缺省 500、封顶 2000（与 CLI 的 `--limit` 同一对常量）"), arg("path", "jsonl 路径（围栏同 `history-read`）"), arg("query", "查询串（原样；以 `--` 起头也照样是查询，不是选项）"), out("total", "全量命中数（≥ 条数；大于 ⇒ 被上限砍过）")], // 应答出成品：`lines` ⇒ `total` / `hits`
+        fields: &[out("hits", "命中，每条 `{uuid, kind, before, matched, after, turn, tsMs, tsText}`（与 `--find-in-session` 的中段逐行相同）；`tsText` ＝ 那条的时刻按这台本地钟写好（今天 `HH:MM` · 昨天 · 更早带日期；读不出 ⇒ 空串）"), arg("include_tools", "可选，缺省 `false`：工具结果也搜"), arg("limit", "可选，缺省 500、封顶 2000（与 CLI 的 `--limit` 同一对常量）"), arg("path", "jsonl 路径（围栏同 `history-read`）"), arg("query", "查询串（原样；以 `--` 起头也照样是查询，不是选项）"), out("total", "全量命中数（≥ 条数；大于 ⇒ 被上限砍过）")], // 应答出成品：`lines` ⇒ `total` / `hits`
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::faces::read_face::answer(&r.cmd, &r.args)

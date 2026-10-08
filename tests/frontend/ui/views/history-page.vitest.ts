@@ -101,6 +101,10 @@ function row(over: Record<string, unknown>): Record<string, unknown> {
     startedAt: at,
     updatedAt: at,
     at,
+    // 那台写好的三格（界面照抄）：一天之内的算「今天」，更早的放进一个月份段。
+    atText: "12:00",
+    sectionText: at > NOW - 86_400_000 ? copyText("history.section.today") : copyText("history.section.month", { month: 9 }),
+    spanText: "09:10–12:00",
     jsonlPath: `/h/.claude/projects/-w-p/${sid}.jsonl`,
     messageCountApprox: 3,
     isBg: false,
@@ -175,7 +179,8 @@ beforeEach(() => {
     }
     if (c.op === "history-search-merge") {
       const ss = args.sessions as { hitCount: number }[];
-      return chanReply({ totalHits: ss.reduce((n, s) => n + s.hitCount, 0), sessionCount: ss.length, truncated: false, sessions: ss });
+      // 合并那一臂替真后端添上行尾 · 时间段两格。
+      return chanReply({ totalHits: ss.reduce((n, s) => n + s.hitCount, 0), sessionCount: ss.length, truncated: false, sessions: ss.map((s) => ({ ...s, atText: "12:00", spanText: "12:00–12:00" })) });
     }
     if (c.op === "history-annotate") return chanReply({ entry: { starred: false, customTitle: null, hidden: true, updatedAt: 1 } });
     if (c.op === "files-delete-session") return chanReply({ path: "/x" });
@@ -193,7 +198,10 @@ describe("开页 · 每台一问 · 按时间", () => {
     expect(calls("history-list").map((a) => a.origin ?? "")).toEqual(["", "dev"]);
     expect(rows().map((r) => r.dataset.key?.split("\u0000")[1])).toEqual(["a", "b", "c"]);
     expect(byText('[role="option"]', "标题 b")?.textContent).toContain("dev");
-    expect(document.body.textContent).toContain(copyText("history.section.today"));
+    // 分段头照抄那台写好的字：同一个字的挨着的行一段，换了字起新的一段。
+    const body = document.body.textContent ?? "";
+    expect(body.indexOf(copyText("history.section.today")), "今天那一段在前").toBeGreaterThanOrEqual(0);
+    expect(body.indexOf(copyText("history.section.month", { month: 9 })), "更早那一行起了月份段").toBeGreaterThan(body.indexOf(copyText("history.section.today")));
     v.close();
   });
 
@@ -454,6 +462,7 @@ describe("内容头 · 恢复 ▾（乙4-④⑤）", () => {
     expect(head().textContent).toContain("p");
     expect(head().textContent).toContain(copyText("history.filter.local"));
     expect(head().textContent).toContain("/w/p");
+    expect(head().textContent, "时间段照抄那台写好的 spanText").toContain("09:10–12:00");
     inHead(copyText("history.resume.more"))!.click();
     await flush();
     expect(vi.mocked(resumeAccounts).mock.calls[0].slice(0, 2)).toEqual(["<local>", "claude"]);

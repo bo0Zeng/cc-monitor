@@ -1,6 +1,7 @@
 /**
  * 主窗口：tab 栏 · 消息流 · 状态栏在各种会话状态下的样子，以及消息流里的各种卡。
  */
+import { hm } from "../fake/clock";
 import type { Scene } from "./index";
 import type { World } from "../fake/types";
 import { Convo } from "../fake/records";
@@ -285,7 +286,7 @@ export const MAIN_SCENES: Scene[] = [
     const w = defaultWorld();
     // 第一个会话此刻在跑一步 Bash（两分钟前开始、还没结果）。
     const at = new Date(Date.now() - 125_000).toISOString();
-    w.sessions[0].records.push({ type: "assistant", timestamp: at, message: { role: "assistant", content: [{ type: "tool_use", id: "toolu_run", name: "Bash", input: { command: "pytest -q tests/test_inventory_client.py" } }] } } as never);
+    w.sessions[0].records.push({ type: "assistant", timestamp: at, timeText: hm(Date.now() - 125_000), message: { role: "assistant", content: [{ type: "tool_use", id: "toolu_run", name: "Bash", input: { command: "pytest -q tests/test_inventory_client.py" } }] } } as never);
     return w;
   }),
   main("main-step-awaiting", "主窗口 · 过程里那一步在等你批准", "在等批准的会话：过程里那一步琥珀点 ·「等你批准」· 右侧已等多久（后端 needs.call 指的那一步）", async () => {

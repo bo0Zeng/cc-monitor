@@ -120,9 +120,11 @@
       "visible": true
     },
     "captured_at": 1700000000,
+    "captured_at_text": "07:13:20",
     "reply": {
       "capped": false,
       "captured_at": 1700000000,
+      "captured_at_text": "07:13:20",
       "cols": 80,
       "cursor": {
         "visible": true,

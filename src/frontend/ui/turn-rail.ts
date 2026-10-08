@@ -8,7 +8,6 @@
  */
 import type { TurnSummary } from "./session-reads";
 import { copyText } from "./copy-table";
-import { formatTimestampShort } from "./format";
 import { delegateTooltip } from "./kit/tooltip";
 
 /** 超过这么多轮，相邻的并成一格。 */
@@ -136,8 +135,8 @@ export class TurnRail {
     head.className = "turn-tip-head";
     head.textContent =
       from === to
-        ? copyText("stream.rail.tip", { n: from + 1, time: formatTimestampShort(t.start), tools: t.tools })
-        : copyText("stream.rail.tipRange", { from: from + 1, to: to + 1, time: formatTimestampShort(t.start) });
+        ? copyText("stream.rail.tip", { n: from + 1, time: t.startText, tools: t.tools })
+        : copyText("stream.rail.tipRange", { from: from + 1, to: to + 1, time: t.startText });
     card.appendChild(head);
     if (t.said) card.appendChild(line("turn-tip-said", copyText("stream.rail.you", { text: t.said })));
     if (from === to && t.reply) {

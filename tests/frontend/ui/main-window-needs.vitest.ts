@@ -365,7 +365,7 @@ describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键�
       list: vi.fn(async () => rows),
       shot: vi.fn(async () => {
         shots++;
-        return { text: `屏 ${shots}`, screen: `fp${shots}`, at: 1_700_000_000 };
+        return { text: `屏 ${shots}`, screen: `fp${shots}`, atText: "22:13:20" };
       }),
       send: vi.fn(async (_o, _t, what, seen) => {
         sent.push({ what, seen });

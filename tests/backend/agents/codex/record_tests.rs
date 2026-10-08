@@ -458,3 +458,16 @@ fn excerpt_uses_the_same_speaker() {
         Some("<y>".to_string())
     );
 }
+
+/// Codex 那一家的成品同样带 `timeText`（信封上的时刻，这台本地钟的 `HH:MM`）。
+#[test]
+fn codex_records_carry_the_clock_face_too() {
+    let ts = "2026-10-07T20:30:15.123Z";
+    let want = crate::common::time::iso_hm_here(ts).unwrap();
+    let msg = json!({"timestamp": ts, "type": "response_item", "payload": {"type": "message", "role": "assistant", "id": "m1", "content": [{"type": "output_text", "text": "ok"}]}});
+    let ev = json!({"timestamp": ts, "type": "event_msg", "payload": {"type": "token_count"}});
+    for v in [msg, ev] {
+        let got = parsed_line(&v.to_string()).unwrap().unwrap().message;
+        assert_eq!(got["timeText"], want.as_str(), "{v}");
+    }
+}

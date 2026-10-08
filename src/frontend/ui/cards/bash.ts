@@ -21,8 +21,8 @@ const OUTPUT_HEAD_LINES = 20;
 /** 终端风格命令卡：❯ npm install && npm run build */
 export function buildBashInputCard(
   input: BashInput,
-  timestamp: string,
-  formatTime: (iso: string) => string,
+  /** 记录的钟面（后端写好的 `timeText`）。 */
+  time: string,
 ): HTMLElement {
   const card = document.createElement("div");
   card.className = "card card-bash-input";
@@ -39,7 +39,7 @@ export function buildBashInputCard(
 
   const ts = document.createElement("span");
   ts.className = "bash-ts";
-  ts.textContent = formatTime(timestamp);
+  ts.textContent = time;
   card.appendChild(ts);
 
   return card;
@@ -48,8 +48,8 @@ export function buildBashInputCard(
 /** stdout/stderr 输出卡：stderr 红色调标注，超长折叠（沿 block-body-show-full 按钮惯例）。 */
 export function buildBashOutputCard(
   output: BashOutput,
-  timestamp: string,
-  formatTime: (iso: string) => string,
+  /** 记录的钟面（后端写好的 `timeText`）。 */
+  time: string,
 ): HTMLElement {
   const card = document.createElement("div");
   card.className = "card card-bash-output";
@@ -64,7 +64,7 @@ export function buildBashOutputCard(
   label.textContent = copyText("bash.output.title");
   const ts = document.createElement("span");
   ts.className = "bash-ts";
-  ts.textContent = formatTime(timestamp);
+  ts.textContent = time;
   header.append(icon, label, ts);
   card.appendChild(header);
 

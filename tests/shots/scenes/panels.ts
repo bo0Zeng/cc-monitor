@@ -1,6 +1,7 @@
 /**
  * 主窗口上的面板与浮层：子 agent / 任务 / 账号 / 命令面板 / 会话内查找 / 大纲 / 监控板 / 历史 / 右键菜单 / 提示。
  */
+import { hms } from "../fake/clock";
 import type { Scene } from "./index";
 import { Refuse, type World } from "../fake/types";
 import { defaultWorld } from "../fake/world";
@@ -78,6 +79,7 @@ function unarrivedWorld(): World {
     lines: ["$ ccm -- claude --modle opus", "claude: error: unknown option '--modle'", "(Did you mean --model?)", "$ "].map((text) => ({ text })),
     screen: "00000000000000b2",
     captured_at: Math.floor(Date.parse("2026-10-06T10:42:05") / 1000),
+    captured_at_text: hms(Date.parse("2026-10-06T10:42:05")),
   });
   return w;
 }

@@ -319,7 +319,13 @@ fn the_products_match_the_golden() {
         cursor_y: geo["y"].as_u64().unwrap() as u32,
         cursor_visible: geo["visible"].as_bool().unwrap(),
     };
-    let got = preview_reply(&view, true, false, p["captured_at"].as_u64().unwrap());
+    let got = preview_reply(
+        &view,
+        true,
+        false,
+        p["captured_at"].as_u64().unwrap(),
+        p["captured_at_text"].as_str().unwrap(),
+    );
     assert_eq!(
         got,
         p["reply"],

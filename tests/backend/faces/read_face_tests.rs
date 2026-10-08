@@ -1268,3 +1268,37 @@ fn the_search_answer_says_what_it_could_not_search_and_titles_mode_finds_title_o
     );
     std::fs::remove_dir_all(&home).ok();
 }
+
+/// `history-find` 每条命中旁边一格 `tsText`：那条记录的时刻按这台本地钟写好（今天 `HH:MM` · 昨天 · 更早带日期），界面照抄；读不出时刻 ⇒ 空串。
+#[test]
+fn find_hits_carry_their_time_text() {
+    let home = scratch("p15-find-ts");
+    let dir = home.join("projects").join("-p");
+    std::fs::create_dir_all(&dir).unwrap();
+    let p = dir.join("s.jsonl");
+    let ts = "2026-10-07T20:30:15.123Z";
+    let rows = [
+        format!(
+            r#"{{"type":"user","uuid":"hit-1","timestamp":"{ts}","message":{{"content":"zqxneedle one"}}}}"#
+        ),
+        r#"{"type":"user","uuid":"hit-2","message":{"content":"two zqxneedle"}}"#.to_string(),
+    ];
+    let body: String = rows.iter().map(|r| format!("{r}\n")).collect();
+    std::fs::write(&p, &body).unwrap();
+    let v = answer_at(
+        &home,
+        "history-find",
+        &serde_json::json!({"path": p.to_string_lossy(), "query": "zqxneedle"}),
+    )
+    .unwrap();
+    let ms = crate::common::time::parse_iso8601_ms(ts).unwrap();
+    assert_eq!(
+        v["hits"][0]["tsText"],
+        crate::common::time::hit_text_here(ms).as_str()
+    );
+    assert!(v["hits"][0]["tsText"]
+        .as_str()
+        .is_some_and(|t| t.contains(':')));
+    assert_eq!(v["hits"][1]["tsText"], "", "读不出时刻 ⇒ 空串");
+    let _ = std::fs::remove_dir_all(&home);
+}
