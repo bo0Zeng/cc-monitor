@@ -25,9 +25,9 @@
     },
     {
       "key": "rsShellDialect.posix.nameTakenPath",
-      "zh": "{name}：PATH 上已经有一个同名程序（{cand}）。装上之后在终端敲 {name}，打到的是这条别名，不再是那个程序",
+      "zh": "{name} 与 PATH 上的 {cand} 同名 · 装上后在终端敲 {name} 用此别名",
       "args": { "name": "cc", "cand": "/usr/bin/cc" },
-      "want": "cc：PATH 上已经有一个同名程序（/usr/bin/cc）。装上之后在终端敲 cc，打到的是这条别名，不再是那个程序"
+      "want": "cc 与 PATH 上的 /usr/bin/cc 同名 · 装上后在终端敲 cc 用此别名"
     },
     {
       "key": "beExt.suspect.absAbsent",
@@ -73,9 +73,9 @@
     {
       "_": "接缝上两个以上空格是排版，照留。",
       "key": "rsProfileInstaller.hint.line",
-      "zh": "  第 {lineNo} 行  {text}\n",
+      "zh": "  行 {lineNo}  {text}\n",
       "args": { "lineNo": "三", "text": "甲" },
-      "want": "  第三行  甲\n"
+      "want": "  行三  甲\n"
     }
   ]
 }

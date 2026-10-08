@@ -666,7 +666,7 @@
         "defaultLauncher": "codex"
       },
       "ok": false,
-      "out": "Codex 会话还不能选账号"
+      "out": "Codex 会话不可选账号"
     },
     {
       "name": "path:远端直连 resume",

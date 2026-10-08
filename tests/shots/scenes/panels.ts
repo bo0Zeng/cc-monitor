@@ -434,7 +434,7 @@ export const PANEL_SCENES: Scene[] = [
   panel("panel-account-unavailable", "Resume · 上次用的号选不了", "右键已结束的「账单导出」→ Resume → 直连：那台说上次用的号 personal 选不了，不起、给「改用 work」的选择", async () => {
     await mainReady(ALL_TABS);
     await rightClick(document.querySelectorAll<HTMLElement>("#tab-bar .tab")[3]);
-    await click(await byText("[role^=menuitem]", "Resume 这个会话"));
+    await click(await byText("[role^=menuitem]", "恢复"));
     await click(await byText("[role^=menuitem]", "直连 · 不建 tmux 会话"));
     await waitFor("#kit-toast-stack > [data-level=error]");
     await sleep(600);
