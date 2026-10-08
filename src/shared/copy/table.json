@@ -1637,7 +1637,7 @@
     "rsRemoteResident.stop.unknownAnswer": {
       "kind": "error",
       "role": "报错",
-      "zh": "停后端的结局认不出来：{line}",
+      "zh": "停止后端的结果无法识别 · {line}",
       "args": ["line"]
     },
     "rsRemoteResident.ensure.tooOld": {
@@ -1649,73 +1649,73 @@
     "rsRemoteResident.ensure.unsupported": {
       "kind": "error",
       "role": "报错",
-      "zh": "接不上：远端只支持 Unix 机器，那台不是。那台说：{why}",
+      "zh": "接入失败 · 远端只支持 Unix 机器 · 该机不是 · 它报 {why}",
       "args": ["why"]
     },
     "rsRemoteResident.ensure.answerUnreadable": {
       "kind": "error",
       "role": "报错",
-      "zh": "那台机器起常驻后端的回答读不懂：{e}",
+      "zh": "远端启动常驻后端的回答无法解析 · {e}",
       "args": ["e"]
     },
     "rsRemoteResident.ensure.noReason": {
       "kind": "error",
       "role": "报错",
-      "zh": "那台机器起常驻后端失败了，没说原因",
+      "zh": "远端启动常驻后端失败 · 原因不明",
       "args": []
     },
     "rsRemoteResident.ensure.answerIncomplete": {
       "kind": "error",
       "role": "报错",
-      "zh": "那台机器起常驻后端的回答里缺端口或钥匙。",
+      "zh": "远端启动常驻后端的回答缺端口或钥匙",
       "args": []
     },
     "rsRemoteResident.hello.notOurs": {
       "kind": "error",
       "role": "报错",
-      "zh": "那台机器上常驻后端的端口被别的程序占着。",
+      "zh": "远端常驻后端的端口被别的程序占用",
       "args": []
     },
     "rsRemoteResident.verdict.unreadable": {
       "kind": "error",
       "role": "报错",
-      "zh": "本机后端回的内容读不懂，定不了要不要换掉那台的后端：{e}",
+      "zh": "本机后端回的内容无法解析 · 无法决定是否替换远端后端 · {e}",
       "args": ["e"]
     },
     "rsRemoteResident.handshake.helloCut": {
       "kind": "error",
       "role": "报错",
-      "zh": "那台机器的后端刚连上就断了，或回的内容太长。",
+      "zh": "远端后端刚连上就断开 · 或回的内容过长",
       "args": []
     },
     "rsRemoteResident.handshake.replyCut": {
       "kind": "error",
       "role": "报错",
-      "zh": "那台机器的后端没回完接入请求就断了，或回的内容太长。",
+      "zh": "远端后端未回完接入请求就断开 · 或回的内容过长",
       "args": []
     },
     "rsRemoteResident.handshake.readFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "读那台机器常驻后端的回话失败：{e}",
+      "zh": "读取远端常驻后端的回话失败 · {e}",
       "args": ["e"]
     },
     "rsRemoteResident.tunnel.unreachable": {
       "kind": "error",
       "role": "报错",
-      "zh": "那台机器的常驻后端端口（127.0.0.1:{port}）一直连不上：{e}",
+      "zh": "远端常驻后端端口 127.0.0.1:{port} 一直连接失败 · {e}",
       "args": ["port", "e"]
     },
     "rsRemoteResident.tunnel.forwardingProhibited": {
       "kind": "error",
       "role": "报错",
-      "zh": "接不上：那台 sshd 不许端口转发（AllowTcpForwarding no），cc-monitor 连不到它的后端。把那台 sshd_config 里的 AllowTcpForwarding 改成 yes 或 local、重启 sshd，再在机器页点「起」。",
+      "zh": "接入失败 · 远端 sshd 禁止端口转发（AllowTcpForwarding no）\n把远端 sshd_config 里的 AllowTcpForwarding 改成 yes 或 local · 重启 sshd · 再在机器页点「起」",
       "args": []
     },
     "rsRemoteResident.handshake.attachNotSent": {
       "kind": "error",
       "role": "报错",
-      "zh": "接入请求没送到那台机器的常驻后端：{e}",
+      "zh": "接入请求未送到远端常驻后端 · {e}",
       "args": ["e"]
     },
     "rsRemoteResident.handshake.notAttachReply": {
@@ -1727,7 +1727,7 @@
     "rsRemoteResident.handshake.refused": {
       "kind": "error",
       "role": "报错",
-      "zh": "那台机器的常驻后端拒绝了这条连接：{why}",
+      "zh": "远端常驻后端拒绝此连接 · {why}",
       "args": ["why"]
     },
     "rsBackendControl.remote.stopFailed": {
@@ -3860,7 +3860,7 @@
     "keybindingEditor.applyChord.confirmOverride": {
       "kind": "body",
       "role": "确认框",
-      "zh": "{pretty} 已绑定「{ownerLabel}」\n改动  「{ownerLabel}」改为未绑定",
+      "zh": "{pretty} 已绑定「{ownerLabel}」\n改动 · 「{ownerLabel}」改为未绑定",
       "args": ["pretty", "ownerLabel"]
     },
     "keybindingEditor.applyChord.confirmRebindClose": {
@@ -7393,7 +7393,7 @@
     "machineCard.uninstall.confirm": {
       "kind": "body",
       "role": "确认框",
-      "zh": "删除  ~/.cc-monitor/bin/ccm\n之后  该机器仍勾选启用则下次连接自动装回",
+      "zh": "删除 · ~/.cc-monitor/bin/ccm\n之后 · 该机器仍勾选启用则下次连接自动装回",
       "args": [],
       "limited": ["ccm"]
     },
@@ -7472,8 +7472,8 @@
     "machineCard.test.unreachable": {
       "kind": "body",
       "role": "片段",
-      "zh": "连接失败",
-      "args": []
+      "zh": "连接失败 · {e}",
+      "args": ["e"]
     },
     "machineCard.test.stalled": {
       "kind": "error",
@@ -9616,7 +9616,7 @@
     "rsPubkey.parsePushOutcome.noMarker": {
       "kind": "error",
       "role": "报错",
-      "zh": "推送没有返回预期的标记，可能失败了（权限或路径）。远端输出：{output}",
+      "zh": "推送未返回预期标记 · 可能失败 · 权限或路径问题 · 远端输出 {output}",
       "args": ["output"]
     },
     "rsPubkey.sanitizePublicKey.badBody": {
@@ -9634,7 +9634,7 @@
     "rsPubkey.sanitizePublicKey.unknownType": {
       "kind": "error",
       "role": "报错",
-      "zh": "认不出的公钥类型 {ktype}（是不是误选了私钥？）",
+      "zh": "无法识别的公钥类型 {ktype} · 查是否误选了私钥",
       "args": ["ktype"]
     },
     "rsPubkey.sanitizePublicKey.controlChars": {
@@ -9658,7 +9658,7 @@
     "rsFilewinProc.dialBack.failed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "文件窗口连不上主程序：{e}",
+      "zh": "文件窗口连接主程序失败 · {e}",
       "args": ["e"]
     },
     "rsFilewinProc.open.stderrTail": {
@@ -9676,7 +9676,7 @@
     "rsFilewinProc.cause.noOpenGl": {
       "kind": "error",
       "role": "报错",
-      "zh": "这台电脑的显卡（驱动）不支持 OpenGL 2.0（{why}）。",
+      "zh": "此电脑的显卡或驱动不支持 OpenGL 2.0 · {why}",
       "args": ["why"]
     },
     "rsFilewinProc.open.failedWhy": {
@@ -9694,19 +9694,19 @@
     "rsFilewinProc.open.exited": {
       "kind": "error",
       "role": "报错",
-      "zh": "文件窗口没能打开（进程退出：{st}）",
+      "zh": "文件窗口打开失败 · 进程退出 {st}",
       "args": ["st"]
     },
     "rsFilewinProc.late.exited": {
       "kind": "error",
       "role": "报错",
-      "zh": "文件窗口开出来之后又退出了：{st}",
+      "zh": "文件窗口打开后又退出 · {st}",
       "args": ["st"]
     },
     "rsFilewinProc.seed.sendFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "启动参数送不进文件窗口进程：{e}\n多半是它一起来就退出了，而不是窗口画不出来；原因在它自己的错误输出里。",
+      "zh": "启动参数送不进文件窗口进程 · {e}\n通常是它一启动就退出 · 不是窗口画不出 · 原因见它自己的错误输出",
       "args": ["e"]
     },
     "rsFilewinProc.spawn.noStdin": {
@@ -9718,13 +9718,13 @@
     "rsFilewinProc.spawn.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "文件窗口进程起不来（{bin}）：{e}",
+      "zh": "文件窗口进程启动失败 · {bin} · {e}",
       "args": ["bin", "e"]
     },
     "rsFilewinProc.bin.notFound": {
       "kind": "error",
       "role": "报错",
-      "zh": "找不到文件窗口程序（{binStem}）。看过这几处：{looked}\n这一份 cc-monitor 自己也没带它。要用别处的一份，设环境变量 {binEnv}。",
+      "zh": "找不到文件窗口程序 {binStem} · 查过 {looked}\n此 cc-monitor 未自带它 · 要用别处的一份 · 设环境变量 {binEnv}",
       "args": ["binStem", "looked", "binEnv"]
     },
     "rsFilewinProc.bin.noHome": {
@@ -9754,7 +9754,7 @@
     "rsFilewinProc.seed.empty": {
       "kind": "error",
       "role": "报错",
-      "zh": "没有收到启动参数。这个程序由 cc-monitor 打开，不直接运行。{binEnv} 指的就是它",
+      "zh": "未收到启动参数 · 此程序由 cc-monitor 打开 · 不直接运行 · {binEnv} 指的就是它",
       "args": ["binEnv"]
     },
     "rsFilewinProc.seed.encodeFailed": {
@@ -9766,7 +9766,7 @@
     "rsSftp.plan.badProduct": {
       "kind": "error",
       "role": "报错",
-      "zh": "部署计划读不懂，没有装后端，多半是本机后端版本不对：{v}",
+      "zh": "部署计划无法解析 · 未安装后端 · 本机后端版本可能不对 · {v}",
       "args": ["v"]
     },
     "rsSftp.plan.internal": {
@@ -9778,31 +9778,31 @@
     "rsSftp.plan.notThisSlot": {
       "kind": "error",
       "role": "报错",
-      "zh": "部署计划要装 {machine} 那一份（{expected}），这一版 cc-monitor 带的字节对不上，没有装上去。",
+      "zh": "部署计划要装 {machine} 的一份 {expected} · 此 cc-monitor 带的字节对不上 · 未安装",
       "args": ["machine", "expected"]
     },
     "rsSftp.uninstall.absent": {
       "kind": "body",
       "role": "说明",
-      "zh": "{path} 不在，可能已经卸载过了。",
+      "zh": "{path} 不存在 · 可能已卸载",
       "args": ["path"]
     },
     "rsSftp.uninstall.done": {
       "kind": "body",
       "role": "toast",
-      "zh": "已删除 {path}。若这台机器仍勾选「启用」，下次连接时会自动装回；彻底移除请取消启用或删除这台机器。",
+      "zh": "已删除 {path}\n此机器仍勾选「启用」则下次连接自动装回 · 彻底移除要取消启用或删除此机器",
       "args": ["path"]
     },
     "rsSftp.deploy.done": {
       "kind": "body",
       "role": "toast",
-      "zh": "已安装后端（{buildId}，{machine}）到 {path}（{reason}）。重连远端即可用。",
+      "zh": "已安装后端 {buildId} · {machine} · 到 {path} · {reason} · 重连远端即可用",
       "args": ["buildId", "machine", "path", "reason"]
     },
     "rsSftp.deploy.upToDate": {
       "kind": "body",
       "role": "说明",
-      "zh": "远端已是最新后端（{buildId}，{machine}）：{path}，无需重装。",
+      "zh": "远端已是最新后端 {buildId} · {machine} · {path} · 无需重装",
       "args": ["buildId", "machine", "path"]
     },
     "rsSftp.deploy.noBuildId": {
@@ -9826,7 +9826,7 @@
     "rsSftp.identity.undecidable": {
       "kind": "error",
       "role": "报错",
-      "zh": "判不了 {machine} 的 {path} 是哪一版后端，没有动它：{why}",
+      "zh": "无法判定 {machine} 的 {path} 是哪一版后端 · 未改动 · {why}",
       "args": ["machine", "path", "why"]
     },
     "rsSftp.identity.listSep": {
@@ -9838,7 +9838,7 @@
     "rsSftp.identity.multiple": {
       "kind": "error",
       "role": "报错",
-      "zh": "{machine} 的 {path} 自报了不止一个版本（{ids}），{handsOff}",
+      "zh": "{machine} 的 {path} 自报多个版本 {ids} · {handsOff}",
       "args": ["machine", "path", "ids", "handsOff"]
     },
     "rsSftp.identity.oldEntry": {
@@ -9899,13 +9899,13 @@
     "rsSftp.upload.badKept": {
       "kind": "error",
       "role": "报错",
-      "zh": "{bad}传坏的这一份没删掉：{e}",
+      "zh": "{bad} · 传坏的文件未删掉 · {e}",
       "args": ["bad", "e"]
     },
     "rsSftp.upload.badRemoved": {
       "kind": "error",
       "role": "报错",
-      "zh": "{bad}已删掉传坏的这一份，下次连上会重新装。",
+      "zh": "{bad} · 已删掉传坏的文件 · 下次连上重新安装",
       "args": ["bad"]
     },
     "rsSftp.verify.lengthDiffers": {
@@ -9917,7 +9917,7 @@
     "rsSftp.verify.contentDiffers": {
       "kind": "error",
       "role": "报错",
-      "zh": "上传后校验失败：{path} 长度相同（{expectedLen} 字节）但内容不同。首个差异在第 {at} 字节。",
+      "zh": "上传后校验失败 · {path} · 长度相同 {expectedLen} 字节 · 内容不同 · 首个差异在字节 {at}",
       "args": ["path", "expectedLen", "at"]
     },
     "rsSftp.verify.unreadable": {
@@ -10205,7 +10205,7 @@
     "rsFilewinShell.noLine.message": {
       "kind": "error",
       "role": "原因格",
-      "zh": "这个窗口没连上后端，请重开窗口",
+      "zh": "窗口未连上后端 · 重开窗口",
       "args": []
     },
     "rsFilewinSource.said.badReply": {
@@ -10229,7 +10229,7 @@
     "rsFilewinSource.said.hopFault": {
       "kind": "error",
       "role": "报错",
-      "zh": "没做成：{what}，{did}（{leg}）",
+      "zh": "未完成 · {what} · {did} · {leg}",
       "args": ["leg", "what", "did"]
     },
     "rsFilewinSource.said.legHost": {
@@ -10289,7 +10289,7 @@
     "rsFilewinSource.watch.localBreak": {
       "kind": "error",
       "role": "原因格",
-      "zh": "传输在本机这边断了：{why}",
+      "zh": "传输在本机侧断开 · {why}",
       "args": ["why"]
     },
     "rsFilewinSource.watch.hostGone": {
@@ -10349,7 +10349,7 @@
     "rsFilewinSource.home.notUtf8": {
       "kind": "error",
       "role": "报错",
-      "zh": "那台机器的 home 目录名不是合法 UTF-8，打不开",
+      "zh": "该机器的主目录名不是合法 UTF-8 · 无法打开",
       "args": []
     },
     "rsFilewinSource.home.noPath": {
@@ -10361,13 +10361,13 @@
     "rsFilewinSource.home.relative": {
       "kind": "error",
       "role": "报错",
-      "zh": "远端的 home 目录是一条相对路径 {path}，起点必须是绝对路径",
+      "zh": "远端主目录是相对路径 {path} · 起点须为绝对路径",
       "args": ["path"]
     },
     "rsFilewinSource.home.empty": {
       "kind": "error",
       "role": "报错",
-      "zh": "远端的 home 目录是空路径，没有起点可以打开窗口",
+      "zh": "远端主目录是空路径 · 无起点可打开窗口",
       "args": []
     },
     "rsFilewinSource.local.readDirFailed": {
@@ -10427,7 +10427,7 @@
     "rsFilewinWriteops.toOps.sameName": {
       "kind": "error",
       "role": "报错",
-      "zh": "「{name}」就是它现在的名字 —— 改名没有要改的东西",
+      "zh": "「{name}」就是当前名字 · 无需改名",
       "args": ["name"]
     },
     "rsFilewinWriteops.toOp.notOne": {
@@ -10535,7 +10535,7 @@
     "rsFilewinFind.refusal.cannotOpen": {
       "kind": "error",
       "role": "报错",
-      "zh": "这个目录后端打不开（权限，或者它不在那台机器上）",
+      "zh": "后端打不开此目录 · 无权限或目录不在该机器上",
       "args": []
     },
     "rsFilewinFind.refusal.badPath": {
@@ -10691,7 +10691,7 @@
     "rsFilewinBookmarks.read.unreadable": {
       "kind": "error",
       "role": "报错",
-      "zh": "书签文件读不懂（{file}）：{e}",
+      "zh": "书签文件 {file} 无法解析 · {e}",
       "args": ["file", "e"]
     },
     "rsFilewinBookmarks.read.failed": {
@@ -10997,7 +10997,7 @@
     "rsFilewinSize.outcome.line": {
       "kind": "body",
       "role": "说明",
-      "zh": "{name}：{human}（{bytes} 字节），{files} 个文件、{dirs} 个目录",
+      "zh": "{name} · {human} · {bytes} 字节 · 文件 {files} · 目录 {dirs}",
       "args": ["name", "human", "bytes", "files", "dirs"]
     },
     "rsFilewinSize.outcome.links": {
@@ -11177,7 +11177,7 @@
     "rsFilewinCopy.args.notSameDir": {
       "kind": "error",
       "role": "报错",
-      "zh": "复制只在同一个目录里做：{from} 与 {to} 不在同一个目录",
+      "zh": "复制只在同一目录内做 · {from} 与 {to} 不在同一目录",
       "args": ["from", "to"]
     },
     "rsFilewinCopy.outcome.done": {
@@ -11333,7 +11333,7 @@
     "rsFilewinEditor.notEditable.tooBig": {
       "kind": "error",
       "role": "报错",
-      "zh": "文件 {size}（{bytes} 字节）超过编辑上限 {limit}，多了 {over} 字节。超限就拒编，不截断：截断过的文本存回去会写坏文件。",
+      "zh": "文件 {size} · {bytes} 字节 · 超过编辑上限 {limit} · 多 {over} 字节\n超限拒绝编辑 · 不截断 · 截断的文本存回会写坏文件",
       "args": ["size", "bytes", "limit", "over"]
     },
     "rsFilewinEditor.notEditable.badName": {
@@ -11363,7 +11363,7 @@
     "rsFilewinEditor.stale.notice": {
       "kind": "error",
       "role": "报错",
-      "zh": "盘上那份在你打开后被改过了，这次没有存（{why}）",
+      "zh": "盘上文件在你打开后被改过 · 本次未保存 · {why}",
       "args": ["why"]
     },
     "rsFilewinEditor.stale.overwrite": {
@@ -11381,7 +11381,7 @@
     "rsFilewinEditor.reply.noDigest": {
       "kind": "error",
       "role": "报错",
-      "zh": "那台机器上的后端太旧，存不回去，所以没有打开。需要更新后端。",
+      "zh": "该机后端过旧 · 无法存回 · 未打开 · 要更新后端",
       "args": []
     },
     "rsFilewinEditor.saved.noDigest": {
@@ -11393,7 +11393,7 @@
     "rsFilewinEditor.overwrite.notText": {
       "kind": "error",
       "role": "报错",
-      "zh": "盘上那份现在不是能编辑的文本（{why}），覆盖不了。编辑框里的字还在。",
+      "zh": "盘上文件当前不是可编辑的文本 · {why}\n无法覆盖 · 编辑框里的字仍在",
       "args": ["why"]
     },
     "rsFilewinEditor.overwrite.readFailed": {
@@ -11453,7 +11453,7 @@
     "rsFilewinBigfile.notice.both": {
       "kind": "body",
       "role": "说明",
-      "zh": "大文件模式：全文 {size}，最长一行 {longestLine} 字节。只排屏幕上的几行，长行不换行，可横向滚动。",
+      "zh": "大文件模式 · 全文 {size} · 最长行 {longestLine} 字节 · 只排可见行 · 长行横向滚动",
       "args": ["size", "longestLine"]
     },
     "rsFilewinDownload.label.download": {
@@ -11501,7 +11501,7 @@
     "rsLocalBackend.extraction.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "cc-monitor 自带的本机后端{marker}：往 {dir} 里写的时候失败了（{err}）。\n可以：① 看那个目录是不是只读、或者被杀毒软件挡着，给它写权限；② 让 monitor 跑在一个家目录写得进去的账号下；③ 装一次安装包（Releases 页），装出来的后端与 monitor 同目录，不用写这里。",
+      "zh": "cc-monitor 自带的本机后端{marker} · 写入 {dir} 失败 · {err}\n修法 · 给该目录写权限（查是否只读或被杀毒软件拦截）\n或让 monitor 跑在主目录可写的账号下\n或装一次安装包 · 见 Releases 页 · 装出的后端与 monitor 同目录 · 不写此处",
       "args": ["marker", "dir", "err"]
     },
     "rsLocalBackend.extraction.refusedMarker": {
@@ -11519,7 +11519,7 @@
     "rsLocalBackend.place.unasked": {
       "kind": "error",
       "role": "报错",
-      "zh": "本机后端没有放上去：要放的这一份答不出该不该放（{why}）。盘上原来那一份没动。",
+      "zh": "本机后端未放上 · {why}\n要放的那份答不出是否该放 · 盘上原有的未动",
       "args": ["why"]
     },
     "rsLocalBackend.place.askSpawn": {
@@ -11549,14 +11549,14 @@
     "rsLocalBackend.place.besideUnstamped": {
       "kind": "error",
       "role": "报错",
-      "zh": "安装包旁边那份后端 {bin} 说不出自己是哪一版，没拿它放 ~/.cc-monitor/bin/ccm。重装 cc-monitor 再试",
+      "zh": "安装包旁的后端 {bin} 说不出自己的版本 · 未用它放 ~/.cc-monitor/bin/ccm · 重装 cc-monitor 再试",
       "args": ["bin"],
       "limited": ["ccm"]
     },
     "rsLocalBackend.place.besideReadFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "读不了安装包旁边那份后端 {bin}：{e}",
+      "zh": "读取安装包旁的后端 {bin} 失败 · {e}",
       "args": ["bin", "e"]
     },
     "rsLocalBackend.extract.writeFailed": {
@@ -11580,7 +11580,7 @@
     "rsLocalBackend.etxtbsy.gaveUp": {
       "kind": "error",
       "role": "报错",
-      "zh": "起 {bin} 时连着 {tries} 次遇到「文件正被占用」。这个状态会自己过去，再开一次多半就好。最后一次的原话：{last}",
+      "zh": "启动 {bin} 时遇到「文件正被占用」×{tries}\n该状态会自行消失 · 再开一次通常就好 · 最后一次原话 {last}",
       "args": ["bin", "tries", "last"]
     },
     "rsLocalBackend.decide.crashLoop": {
@@ -11604,13 +11604,13 @@
     "rsBackendControl.lock.poisoned": {
       "kind": "error",
       "role": "原因格",
-      "zh": "内部状态坏了（锁中毒）：{e}",
+      "zh": "程序出错 · 锁中毒 · {e}",
       "args": ["e"]
     },
     "rsBackendControl.start.notFound": {
       "kind": "error",
       "role": "报错",
-      "zh": "{reason}；找过 {looked}",
+      "zh": "{reason} · 找过 {looked}",
       "args": ["reason", "looked"]
     },
     "rsBackendControl.origin.empty": {
@@ -11634,13 +11634,13 @@
     "rsInboundClient.error.timeout": {
       "kind": "error",
       "role": "报错",
-      "zh": "等回答超时（{after} 毫秒）",
+      "zh": "等回答超时 · {after} 毫秒",
       "args": ["after"]
     },
     "rsInboundClient.error.timeoutPeerRunsOn": {
       "kind": "error",
       "role": "报错",
-      "zh": "等回答超时（{after} 毫秒）；那台的后端撤不回，那件事可能还在跑",
+      "zh": "等回答超时 · {after} 毫秒 · 远端后端撤不回 · 该操作可能仍在跑",
       "args": ["after"]
     },
     "rsInboundClient.error.cancelled": {
@@ -11658,7 +11658,7 @@
     "rsInboundClient.error.tooMany": {
       "kind": "error",
       "role": "报错",
-      "zh": "同时在等的命令已达上限 {max}，远端可能没在回应",
+      "zh": "同时等待的命令已达上限 {max} · 远端可能未回应",
       "args": ["max"]
     },
     "rsInboundClient.error.unavailable": {
@@ -11682,7 +11682,7 @@
     "rsBackendRoute.route.unsure": {
       "kind": "error",
       "role": "报错",
-      "zh": "{s}。无法确认远端有没有执行，请刷新会话列表后再决定。",
+      "zh": "{s} · 无法确认远端是否执行 · 刷新会话列表后再决定",
       "args": ["s"]
     },
     "rsBackendRoute.layer.tooMany": {
@@ -11769,7 +11769,7 @@
     "rsConfigSurface.onPath.noPath": {
       "kind": "error",
       "role": "报错",
-      "zh": "查不动：读不到 PATH，或者它是空的，没法回答 {named} 在不在。这不是说它不存在",
+      "zh": "读不到 PATH 或它为空 · 无法判断 {named} 是否存在 · 不代表不存在",
       "args": ["named"]
     },
     "rsConfigSurface.unmanaged.checkOnlyEffect": {
@@ -12100,7 +12100,7 @@
     "rsAccountAliases.install.changedElsewhere": {
       "kind": "error",
       "role": "报错",
-      "zh": "{path} 在这一页读到它之后被别处改过，这次没写。",
+      "zh": "{path} 在本页读取后被别处改过 · 本次未写入",
       "args": ["path"]
     },
     "rsAccountAliases.install.reload": {
@@ -12157,7 +12157,7 @@
     "rsShellDialect.ps.nameTakenBuiltinAlias": {
       "kind": "body",
       "role": "说明",
-      "zh": "{name} 是 PowerShell 自带的别名（指 {target}）。别名比函数先被找到，用这个名字定义了也敲不到",
+      "zh": "{name} 是 PowerShell 自带别名 · 指 {target} · 别名优先于函数 · 用此名定义也敲不到",
       "args": ["name", "target"],
       "limited": ["PowerShell"]
     },
@@ -12316,7 +12316,7 @@
     "rsProfileInstaller.ps.exitCode": {
       "kind": "error",
       "role": "报错",
-      "zh": "PowerShell 出错退出，退出码 {status}：{detail}",
+      "zh": "PowerShell 出错退出 · 退出码 {status} · {detail}",
       "args": ["status", "detail"],
       "limited": ["PowerShell"]
     },
@@ -12336,7 +12336,7 @@
     "rsProfileInstaller.fence.outsideHome": {
       "kind": "error",
       "role": "报错",
-      "zh": "拒绝写这个配置文件：只能落在 home 之内（实得 {raw}，home 是 {home}）",
+      "zh": "拒绝写此配置文件 · 只能在主目录内 · 实得 {raw} · 主目录是 {home}",
       "args": ["raw", "home"]
     },
     "rsProfileInstaller.fence.dotdot": {
@@ -12354,7 +12354,7 @@
     "rsProfileInstaller.hint.whereToEdit": {
       "kind": "body",
       "role": "说明",
-      "zh": "\n动手的地方：用你自己的编辑器打开 {what}，删掉你决定不要的那几行，再开一个新终端。\n",
+      "zh": "\n修法 · 用你的编辑器打开 {what} · 删掉不要的行 · 再开新终端\n",
       "args": ["what"]
     },
     "rsProfileInstaller.hint.head": {
@@ -12389,7 +12389,7 @@
     "rsCcBusDeploy.win.missing": {
       "kind": "body",
       "role": "说明",
-      "zh": "cc-monitor 装的 ccm（{at}）版本对，但缺少：{list}，cc-spawn 会因此退出。请在设置页重装本机后端。\n{pathCaveat}",
+      "zh": "cc-monitor 装的 ccm（{at}）版本对 · 缺少 {list} · cc-spawn 会因此退出\n在设置页重装本机后端\n{pathCaveat}",
       "args": ["at", "list", "pathCaveat"],
       "limited": ["ccm"],
       "waive": {
@@ -12399,7 +12399,7 @@
     "rsCcBusDeploy.win.stale": {
       "kind": "body",
       "role": "说明",
-      "zh": "cc-monitor 装的 ccm（{at}）不是这一版：它的版本是 {build}，这一版需要 {wantBuild}。{lack}请在设置页重装本机后端，再装 cc-bus。\n{pathCaveat}",
+      "zh": "cc-monitor 装的 ccm（{at}）不是此版 · 它是 {build} · 此版需要 {wantBuild}\n{lack}在设置页重装本机后端 · 再装 cc-bus\n{pathCaveat}",
       "args": ["at", "build", "wantBuild", "lack", "pathCaveat"],
       "limited": ["ccm"]
     },
@@ -12434,7 +12434,7 @@
     "rsCcBusDeploy.win.noVersion": {
       "kind": "body",
       "role": "说明",
-      "zh": "问了 cc-monitor 装的 ccm（{at}），它没有回答版本信息，查不了它能不能用。cc-spawn 启动时需要 ccm 支持：{needs}。",
+      "zh": "cc-monitor 装的 ccm（{at}）未回答版本信息 · 无法判断能否使用\ncc-spawn 启动时需要 ccm 支持 {needs}",
       "args": ["at", "needs"],
       "limited": ["ccm"],
       "waive": {
@@ -12444,7 +12444,7 @@
     "rsCcBusDeploy.win.notInstalled": {
       "kind": "body",
       "role": "说明",
-      "zh": "本机还没有 cc-monitor 装的 ccm（应在 ~/.cc-monitor/bin/），查不了装出去的 cc-spawn 能不能用。cc-spawn 启动时需要 ccm 支持：{needs}，缺一项就会退出。请先在设置页装好本机后端，再装 cc-bus。",
+      "zh": "本机未装 cc-monitor 的 ccm（应在 ~/.cc-monitor/bin/） · 无法判断装出的 cc-spawn 能否使用\ncc-spawn 启动时需要 ccm 支持 {needs} · 缺一项即退出\n先在设置页装好本机后端 · 再装 cc-bus",
       "args": ["needs"],
       "limited": ["ccm"],
       "waive": {
@@ -12511,7 +12511,7 @@
     "rsPlatformFs.lock.failed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "锁 {dir} 失败：{e}",
+      "zh": "加锁 {dir} 失败 · {e}",
       "args": ["dir", "e"]
     },
     "rsPlatformFs.mkdir.failed": {
@@ -12601,7 +12601,7 @@
     "rsSshLink.dial.readFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "和本机后端的连接断了：{e}",
+      "zh": "与本机后端的连接断开 · {e}",
       "args": ["e"]
     },
     "rsSshLink.dial.tooLong": {
@@ -12637,13 +12637,13 @@
     "rsDialHost.ask.writeFenced": {
       "kind": "error",
       "role": "报错",
-      "zh": "{message}（远端只许往 ~/.cc-monitor/bin/ 与 ~/.cc-monitor/staging/ 写）",
+      "zh": "{message} · 远端只许写 ~/.cc-monitor/bin/ 与 ~/.cc-monitor/staging/",
       "args": ["message"]
     },
     "rsDialHost.ask.timeout": {
       "kind": "error",
       "role": "原因格",
-      "zh": "本机后端 {secs} 秒没回答",
+      "zh": "本机后端 {secs} 秒未回答",
       "args": ["secs"]
     },
     "rsDialHost.ask.sendRequestFailed": {
@@ -12655,19 +12655,19 @@
     "rsDialHost.ask.sendBytesFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "往本机后端送字节失败：{e}",
+      "zh": "向本机后端送字节失败 · {e}",
       "args": ["e"]
     },
     "rsDialHost.open.noHome": {
       "kind": "error",
       "role": "报错",
-      "zh": "本机后端没答出远端的起始目录：{v}",
+      "zh": "本机后端未答出远端起始目录 · {v}",
       "args": ["v"]
     },
     "rsDialHost.open.timeout": {
       "kind": "error",
       "role": "报错",
-      "zh": "连接超时（{secs} 秒没有回应；地址 {addr}）",
+      "zh": "连接超时 · {secs} 秒无回应 · 地址 {addr}",
       "args": ["secs", "addr"]
     },
     "rsDialHost.local.absent": {
@@ -12715,13 +12715,13 @@
     "rsLinkMux.open.refused": {
       "kind": "error",
       "role": "报错",
-      "zh": "本机后端没接下这条连接：{said}",
+      "zh": "本机后端未接下此连接 · {said}",
       "args": ["said"]
     },
     "rsLinkMux.data.noCredit": {
       "kind": "error",
       "role": "报错",
-      "zh": "本机后端版本不对，这条远端连接断了；重开 monitor 后再试",
+      "zh": "本机后端版本不对 · 此远端连接已断开 · 重开 monitor 后再试",
       "args": []
     },
     "rsLinkMux.said.refused": {
@@ -12745,43 +12745,43 @@
     "rsSftpPool.watch.taken": {
       "kind": "error",
       "role": "报错",
-      "zh": "这一趟传输已经有人在看了（{id}）",
+      "zh": "此传输已有人在看 · {id}",
       "args": ["id"]
     },
     "rsSftpPool.watch.unknown": {
       "kind": "error",
       "role": "原因格",
-      "zh": "没有这一趟传输（{id}）",
+      "zh": "无此传输 · {id}",
       "args": ["id"]
     },
     "rsSftpPool.call.noTicket": {
       "kind": "error",
       "role": "原因格",
-      "zh": "本机后端没回传输编号：{v}",
+      "zh": "本机后端未回传输编号 · {v}",
       "args": ["v"]
     },
     "rsSftpPool.call.notTransfer": {
       "kind": "error",
       "role": "报错",
-      "zh": "请求格式不对：{other} 不是传输命令",
+      "zh": "请求格式不对 · {other} 不是传输命令",
       "args": ["other"]
     },
     "rsSftpPool.call.missingField": {
       "kind": "error",
       "role": "报错",
-      "zh": "请求格式不对：少了 {k}，或者它不是一个字符串（{op}）",
+      "zh": "请求格式不对 · 缺 {k} 或它不是字符串 · {op}",
       "args": ["op", "k"]
     },
     "rsChanWire.frame.tooLong": {
       "kind": "error",
       "role": "报错",
-      "zh": "一段 {n} 字节，太长了，发不出去",
+      "zh": "一段 {n} 字节 · 过长 · 发不出",
       "args": ["n"]
     },
     "rsChanWire.frame.badHead": {
       "kind": "error",
       "role": "原因格",
-      "zh": "收到的数据头解不出来：{e}",
+      "zh": "收到的数据头无法解析 · {e}",
       "args": ["e"]
     },
     "rsChanWire.segment.tooLong": {
@@ -12829,19 +12829,19 @@
     "rsChanHost.start.bindFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "本机连接服务绑不上 127.0.0.1：{e}",
+      "zh": "本机连接服务绑定 127.0.0.1 失败 · {e}",
       "args": ["e"]
     },
     "rsOrigin.route.blank": {
       "kind": "error",
       "role": "报错",
-      "zh": "请求格式不对：机器名是空的，本机也要写成 \"{local}\"（{command}）",
+      "zh": "请求格式不对 · 机器名为空 · 本机也要写成 \"{local}\" · {command}",
       "args": ["command", "local"]
     },
     "rsOrigin.expecting.name": {
       "kind": "error",
       "role": "报错",
-      "zh": "一台机器的名字；本机要写成 \"{local}\"",
+      "zh": "机器名 · 本机写成 \"{local}\"",
       "args": ["local"]
     },
     "rsDataPaths.webview.dataDir": {
@@ -12983,7 +12983,7 @@
     "rsConfig.write.unreadable": {
       "kind": "error",
       "role": "报错",
-      "zh": "{path} 读不懂（{e}），这次的设置没有存。写回去会把这份文件里别的设置一起盖掉，先把它改成合法的 JSON",
+      "zh": "{path} 无法解析 · {e} · 本次设置未保存\n写回会把该文件里别的设置一起覆盖 · 先改成合法 JSON",
       "args": ["path", "e"]
     },
     "rsConfig.write.elementExists": {
@@ -13007,7 +13007,7 @@
     "rsLogging.diagnostics.badConfig": {
       "kind": "error",
       "role": "报错",
-      "zh": "{path} 读不懂（{e}），诊断设置没有存。写回去会把这份文件里别的设置一起盖掉，先把它改成合法的 JSON",
+      "zh": "{path} 无法解析 · {e} · 诊断设置未保存\n写回会把该文件里别的设置一起覆盖 · 先改成合法 JSON",
       "args": ["path", "e"]
     },
     "rsLaunch.remote.taskFailed": {
@@ -13118,7 +13118,7 @@
     "rsLaunch.refuse.tooLong": {
       "kind": "error",
       "role": "报错",
-      "zh": "拒绝启动：{what}过长（{len} > {max}）",
+      "zh": "拒绝启动 · {what}过长 · {len} > {max}",
       "args": ["what", "len", "max"]
     },
     "rsLaunch.refuse.empty": {
@@ -13268,21 +13268,21 @@
     "rsCcmProbe.hint.undetermined": {
       "kind": "body",
       "role": "说明",
-      "zh": "查不到 PATH 上的 ccm：cc-monitor 自带的那份没找到（{where}）",
+      "zh": "查不到 PATH 上的 ccm · cc-monitor 自带的那份没找到 · {where}",
       "args": ["where"],
       "limited": ["ccm"]
     },
     "rsCcmProbe.hint.absent": {
       "kind": "body",
       "role": "说明",
-      "zh": "你 PATH 上没有 ccm。cc-monitor 这一份在 {where}（{ours}）。下面生成的那条命令会显式指向它，不需要你改 PATH。",
+      "zh": "PATH 上无 ccm · cc-monitor 的一份在 {where} · {ours}\n下面生成的命令会显式指向它 · 无需改 PATH",
       "args": ["where", "ours"],
       "limited": ["ccm"]
     },
     "rsCcmProbe.hint.notOurs": {
       "kind": "body",
       "role": "说明",
-      "zh": "终端里敲 ccm 走到的是 {at}，不是 cc-monitor 装的那份。\n· 它自报：{theirs}\n· cc-monitor 这一份：{ours}，在 {where}\ncc-monitor 不动它，要不要删、什么时候删由你决定。想让终端用 cc-monitor 这一份：把它挪开，或让上面那个目录排在 PATH 前面，或用下面生成的那条命令。",
+      "zh": "终端里敲 ccm 走到的是 {at} · 不是 cc-monitor 装的那份\n它自报 · {theirs}\ncc-monitor 的一份 · {ours} · 在 {where}\ncc-monitor 不动它 · 删不删、何时删由你定\n想让终端用 cc-monitor 的一份 · 把它挪开 · 或让上面的目录排在 PATH 前面 · 或用下面生成的命令",
       "args": ["at", "theirs", "ours", "where"],
       "limited": ["ccm"]
     },
@@ -13500,7 +13500,7 @@
     "rsSshSource.health.degraded": {
       "kind": "body",
       "role": "说明",
-      "zh": "远端后端是旧版本（{build}，当前 {expected}），有些功能用不了。后台会话看不见，历史加载容易卡住。请在设置里重装这台机器的后端。",
+      "zh": "远端后端是旧版本 · {build} · 当前 {expected} · 部分功能不可用\n后台会话看不见 · 历史加载易卡\n在设置里重装此机后端",
       "args": ["build", "expected"]
     },
     "rsSshSource.health.degradedNoOwnBytes": {
@@ -13524,7 +13524,7 @@
     "rsSshSource.version.remoteOlder": {
       "kind": "body",
       "role": "说明",
-      "zh": "远端 [{label}] 的后端是旧版 {reported}，下次连上时自动换成这一版（{mine}）。",
+      "zh": "远端 [{label}] 的后端是旧版 {reported} · 下次连上自动换成此版 {mine}",
       "args": ["label", "reported", "mine"]
     },
     "rsSshSource.version.remoteNotOlder": {
@@ -13584,7 +13584,7 @@
     "rsSshSource.snapshot.failed": {
       "kind": "body",
       "role": "说明",
-      "zh": "会话 {sid} 的历史快照没拉下来（{err}）。这个标签页暂时只有实时消息，完整内容可到历史浏览器查看。",
+      "zh": "会话 {sid} 的历史快照未拉下 · {err}\n此标签页暂只有实时消息 · 完整内容到历史浏览器查看",
       "args": ["sid", "err"]
     },
     "rsRemoteBranch.what.messageId": {
@@ -13644,13 +13644,13 @@
     "rsCcmInvocation.refusal.idSid": {
       "kind": "error",
       "role": "命令行",
-      "zh": "会话 ID {value} 不合法（1 到 64 位，只许 A-Z a-z 0-9 与 -，不以 - 开头）",
+      "zh": "会话 ID {value} 不合法 · 1–64 位 · 只许 A-Z a-z 0-9 与 - · 不以 - 开头",
       "args": ["value"]
     },
     "rsCcmInvocation.refusal.idCcmSid": {
       "kind": "error",
       "role": "命令行",
-      "zh": "会话 ID {value} 不合法（1 到 64 位，只许 A-Z a-z 0-9 与 -，不以 - 开头）",
+      "zh": "会话 ID {value} 不合法 · 1–64 位 · 只许 A-Z a-z 0-9 与 - · 不以 - 开头",
       "args": ["value"]
     },
     "rsCcmInvocation.refusal.idModel": {
@@ -13693,14 +13693,14 @@
     "rsCcmInvocation.refusal.dimensionNeedsCap": {
       "kind": "error",
       "role": "命令行",
-      "zh": "这台机器上的 ccm 不认 {dim} 这一项设置（缺 {cap}）",
+      "zh": "此机 ccm 不认设置项 {dim} · 缺 {cap}",
       "args": ["dim", "cap"],
       "limited": ["ccm"]
     },
     "rsCcmInvocation.refusal.cannotSpeak": {
       "kind": "error",
       "role": "命令行",
-      "zh": "这一项设置（{id}）写不成 ccm 参数",
+      "zh": "设置项 {id} 无法写成 ccm 参数",
       "args": ["id"],
       "limited": ["ccm"]
     },
@@ -13720,7 +13720,7 @@
     "rsCcmInvocation.refusal.missingCap": {
       "kind": "error",
       "role": "命令行",
-      "zh": "这台机器上的 ccm 做不到这样起会话（缺 {c}）",
+      "zh": "此机 ccm 做不到这样启动会话 · 缺 {c}",
       "args": ["c"],
       "limited": ["ccm"]
     },
@@ -14323,13 +14323,13 @@
     "rsHistory.session.truncated": {
       "kind": "body",
       "role": "说明",
-      "zh": "这个会话超过 {max} 字节上限，后面的内容没有显示。只读到了前 {read} 字节（{lines} 行），完整的会话记录仍在那台机器上。",
+      "zh": "会话超过 {max} 字节上限 · 后面内容未显示\n只读了前 {read} 字节 · {lines} 行 · 完整会话记录仍在该机器上",
       "args": ["max", "read", "lines"]
     },
     "rsFrameQuery.readPage.stuck": {
       "kind": "error",
       "role": "报错",
-      "zh": "{who}读会话时在偏移 {offset} 处不再前进，已停下",
+      "zh": "{who}读会话时在偏移 {offset} 处不再前进 · 已停下",
       "args": ["who", "offset"]
     },
     "rsFrameQuery.reply.inconsistent": {
@@ -14353,19 +14353,19 @@
     "rsFrameQuery.call.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "{who}查询失败：{message}",
+      "zh": "{who}查询失败 · {message}",
       "args": ["who", "message"]
     },
     "rsFrameQuery.call.failedNoReason": {
       "kind": "error",
       "role": "原因格",
-      "zh": "{who}查询失败，没说原因",
+      "zh": "{who}查询失败 · 原因不明",
       "args": ["who"]
     },
     "rsFrameQuery.call.overdue": {
       "kind": "error",
       "role": "报错",
-      "zh": "{who}没在 {secs} 秒内答完，已停下",
+      "zh": "{who}未在 {secs} 秒内答完 · 已停下",
       "args": ["who", "secs"]
     },
     "accounts.setModel.invalid": {
@@ -14853,7 +14853,7 @@
     "rsToolRegistry.tools.ccmRemoteProfileNote": {
       "kind": "body",
       "role": "说明",
-      "zh": "或你在「别名」那一块选的其它 profile",
+      "zh": "或你在「别名」区选的其它 profile",
       "args": []
     },
     "rsToolRegistry.tools.ccmRemoteWhat": {
@@ -14903,13 +14903,13 @@
     "rsLocalBackendHost.stop.spawnFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "起不来停后端用的 {bin}：{e}",
+      "zh": "启动停后端用的 {bin} 失败 · {e}",
       "args": ["bin", "e"]
     },
     "rsLocalBackendHost.stop.timedOut": {
       "kind": "error",
       "role": "报错",
-      "zh": "停本机后端的那一趟 {secs} 秒内没答完，后端可能还在跑。可以再停一次。",
+      "zh": "停止本机后端 {secs} 秒内未答完 · 后端可能仍在跑 · 可再停一次",
       "args": ["secs"]
     },
     "rsLocalBackendHost.stop.readFailed": {
@@ -14921,13 +14921,13 @@
     "rsLocalBackendHost.stop.noRecord": {
       "kind": "error",
       "role": "报错",
-      "zh": "本机常驻后端（进程 {pid}）还在跑，但找不到它的进程记录。没有停它。",
+      "zh": "本机常驻后端进程 {pid} 仍在跑 · 找不到它的进程记录 · 未停止",
       "args": ["pid"]
     },
     "rsLocalBackendHost.lock.poisoned": {
       "kind": "error",
       "role": "原因格",
-      "zh": "内部状态坏了：{e}",
+      "zh": "程序出错 · {e}",
       "args": ["e"]
     },
     "rsLocalBackendHost.local.machine": {
@@ -14969,19 +14969,19 @@
     "rsLocalBackendHost.start.unreachableKilled": {
       "kind": "error",
       "role": "报错",
-      "zh": "后端起来了却连不上它（{e}），已把它停掉",
+      "zh": "后端已启动却连不上 · {e} · 已把它停掉",
       "args": ["e"]
     },
     "rsLocalBackendHost.start.refused": {
       "kind": "error",
       "role": "报错",
-      "zh": "端口 {port} 上已经有程序，但接不上它：{why}。不会再起第二个，也不会换端口。要重来，先把那个进程停掉",
+      "zh": "端口 {port} 上已有程序但接不上 · {why}\n不起第二个 · 不换端口 · 要重来先停掉占端口的进程",
       "args": ["port", "why"]
     },
     "rsLocalBackendHost.start.refusedNotice": {
       "kind": "error",
       "role": "报错",
-      "zh": "本机后端没有启动：端口 {port} 上已有的后端接不上（{why}）。结束那个进程再重开 cc-monitor 就行，它的进程号记在 {pidPath}。",
+      "zh": "本机后端未启动 · 端口 {port} 上已有的后端接不上 · {why}\n结束该进程再重开 cc-monitor 即可 · 进程号记在 {pidPath}",
       "args": ["port", "why", "pidPath"]
     },
     "rsLocalBackendHost.stream.lost": {
@@ -14993,13 +14993,13 @@
     "rsLocalBackendHost.stream.asyncFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "内部错误：连接接不进来（{e}）",
+      "zh": "程序出错 · 连接接不进来 · {e}",
       "args": ["e"]
     },
     "rsLocalBackendHost.stream.nonblockingFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "内部错误：连接设置失败（{e}）",
+      "zh": "程序出错 · 连接设置失败 · {e}",
       "args": ["e"]
     },
     "rsLocalBackendHost.stream.notHello": {
@@ -15017,19 +15017,19 @@
     "rsLocalBackendHost.spawn.unsupported": {
       "kind": "error",
       "role": "报错",
-      "zh": "这个平台上后端不能脱离 cc-monitor 常驻（{bin}）",
+      "zh": "此平台上后端不能脱离 cc-monitor 常驻 · {bin}",
       "args": ["bin"]
     },
     "rsLocalBackendHost.spawn.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "起本机后端失败（{bin}）：{e}",
+      "zh": "启动本机后端失败 · {bin} · {e}",
       "args": ["bin", "e"]
     },
     "rsLocalBackendHost.attach.unreadable": {
       "kind": "error",
       "role": "原因格",
-      "zh": "后端的回答看不懂：{line}",
+      "zh": "后端的回答无法解析 · {line}",
       "args": ["line"]
     },
     "rsLocalBackendHost.attach.refused": {
@@ -15041,7 +15041,7 @@
     "rsLocalBackendHost.attach.notJson": {
       "kind": "error",
       "role": "报错",
-      "zh": "后端的回答不是 JSON（{e}）：{line}",
+      "zh": "后端的回答不是 JSON · {e} · {line}",
       "args": ["e", "line"]
     },
     "rsLocalBackendHost.attach.sendFailed": {
@@ -15101,7 +15101,7 @@
     "rsLocalBackendHost.hello.notBackendLine": {
       "kind": "error",
       "role": "报错",
-      "zh": "端口上的程序答的第一行不是后端的回答（{bytes} 字节）",
+      "zh": "端口上的程序答的第一行不是后端的回答 · {bytes} 字节",
       "args": ["bytes"]
     },
     "rsLocalBackendHost.token.empty": {
@@ -15125,13 +15125,13 @@
     "rsDialHost.deadline.expired": {
       "kind": "error",
       "role": "报错",
-      "zh": "这一趟 {secs} 秒没做完，已放弃。连上那台机器用了 {shake} 秒，之后在那边跑了 {run} 秒。",
+      "zh": "{secs} 秒未完成 · 已放弃 · 连上远端用了 {shake} 秒 · 之后在远端跑了 {run} 秒",
       "args": ["secs", "shake", "run"]
     },
     "rsDialHost.deadline.expiredInShake": {
       "kind": "error",
       "role": "报错",
-      "zh": "这一趟 {secs} 秒还没连上那台机器，放弃了",
+      "zh": "{secs} 秒未连上远端 · 已放弃",
       "args": ["secs"]
     },
     "rsFilewinShell.mode.reading": {
@@ -17095,7 +17095,7 @@
     "rsFilewinCrossCopy.target.unreachable": {
       "kind": "error",
       "role": "报错",
-      "zh": "问不到 {machine} 那台的后端：{why}",
+      "zh": "查询 {machine} 的后端失败 · {why}",
       "args": ["machine", "why"]
     },
     "rsFilewinCrossCopy.prompt.noMachine": {
@@ -18701,7 +18701,7 @@
     "rsFilewinProc.child.noRuntime": {
       "kind": "error",
       "role": "报错",
-      "zh": "文件窗口起不来（程序内部出错）：{e}",
+      "zh": "文件窗口启动失败 · 程序出错 · {e}",
       "args": ["e"]
     },
     "cssMarks.branch.mark": {
@@ -20161,7 +20161,7 @@
     "rsFilewinPreview.image.undecodable": {
       "kind": "error",
       "role": "原因格",
-      "zh": "这张图解不开：{e}",
+      "zh": "图片无法解码 · {e}",
       "args": ["e"]
     },
     "rsFilewinProps.box.title": {

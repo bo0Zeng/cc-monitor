@@ -900,7 +900,7 @@ export class MachineCard {
           : copyText("machineCard.test.failed", { e: String(e) });
       segs.stop();
       this.renderTestResult(null, said, segs.el);
-      this.recordFacet("connection", { kind: "fail", detail: copyText("machineCard.test.unreachable") });
+      this.recordFacet("connection", { kind: "fail", detail: copyText("machineCard.test.unreachable", { e: String(e) }) });
     } finally {
       this.testButton.disabled = false;
       setButtonLabel(this.testButton, copyText("machineCard.build.test"));

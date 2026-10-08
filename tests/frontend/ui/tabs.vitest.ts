@@ -1372,7 +1372,7 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
       if (cmd === "chan_call" && a?.op === "resync") {
         asked.push([a.origin ?? "", JSON.parse(new TextDecoder().decode(Uint8Array.from(a.payload ?? [])))]);
         await gate;
-        if (a.origin === "box") throw new Error(copyText("machineCard.test.unreachable"));
+        if (a.origin === "box") throw new Error(copyText("machineCard.test.unreachable", { e: "ETIMEDOUT" }));
         const u = new TextEncoder().encode(
           JSON.stringify({ added: 0, removed: 0, retagged: 0, caught_up: a.origin === "laptop" ? 2 : 0, watchers: 1, unavailable: [], uncancellable: [] }),
         );
