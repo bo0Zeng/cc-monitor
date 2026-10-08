@@ -3,7 +3,10 @@
  *
  * - 找终端：问那台 `terminals-list`，按会话 ID 认出那一行；没有那一行 ⇒ 已结束的写「已结束 · 无终端」；活着、不在 tmux 里的（容器事实 none）
  *   写「不在 tmux 里」（↗ 真能用时给「切到终端」）；在 tmux 里却认不出的写「非 cc-monitor 启动」。
- * - 画面：带颜色（`terminal-screen.ts` 照后端给的颜色段画）。开到这一页 / 切到这个标签页时抓一次；送字送键之后 0.5 · 1.5 · 3 秒各再抓一次；其余时候点「重新看」。开着不轮询。
+ * - 画面：带颜色（`terminal-screen.ts` 照后端给的颜色段画）。开到这一页 / 切到这个标签页时抓一次，同时订那台的实时画面（`terminal-follow.ts`）：
+ *   订上了 ⇒ 头上「● 实时」、画面跟着变、送完不再重抓；那台只能快照 ⇒ 多一枚「仅快照」，照旧送完 0.5 · 1.5 · 3 秒各再抓一次、其余时候点「重新看」；
+ *   实时断了 ⇒ 画面留着变淡、头上退回「画面几点 ＋ 重新看」、头下一条原因 ＋［重新接上］（不自己重连）。收起 / 换页 / 切标签页即退订。开着不轮询。
+ * - 往上翻了不拽回：底部出「回到最新」。
  * - 能不能送、输入会不会和别的终端窗口混在一起：只读名单里后端给的 `can.input` · `clients` · `input`，界面不判。
  * - 送字带上看到的那一屏的指纹：画面已经变了 ⇒ 后端不送，这里重抓给人看。不知道送没送到 ⇒ 照实说、不重发。
  * - 输入框：回车送字并补回车 · Shift+回车换行 · Ctrl+回车只送字；组字时回车归输入法；Esc 只把焦点还给消息流（不清字、不收抽屉）。
@@ -17,6 +20,7 @@ import { canResume, hasTerminal } from "./tab-session-state";
 import { terminalFrontAvailable } from "./terminal-front";
 import { dotLabel, dotOf, fullTitle, machineOf } from "./session-face";
 import { renderScreen, screenPre } from "./terminal-screen";
+import { startFollow, type Follow, type FollowEvents, type FollowStop } from "./terminal-follow";
 import { listTerminals, previewShot, sendToTerminal, type TerminalRow, type TerminalSend, type TerminalSent, type TerminalShot } from "./terminal-reads";
 import type { Origin } from "./ipc/origin";
 import { button, setBusy, setButtonLabel, setDisabled } from "./kit/button";
@@ -26,18 +30,24 @@ import { statusDot, setDot } from "./kit/status-dot";
 import { spinner } from "./kit/progress";
 import s from "./terminal-page.module.css";
 
-/** 终端页要的三条读写（缺省走通道；测试换成假的）。 */
+/** 终端页要的几条读写（缺省走通道；测试换成假的）。 */
 export interface TerminalReads {
   list(origin: Origin, label: string): Promise<TerminalRow[]>;
   shot(origin: Origin, terminal: string, label: string): Promise<TerminalShot>;
   send(origin: Origin, terminal: string, what: TerminalSend, seen: string | null, label: string): Promise<TerminalSent>;
+  /** 订实时画面。 */
+  follow(origin: Origin, terminal: string, events: FollowEvents): Follow;
 }
 
 export const CHANNEL_READS: TerminalReads = {
   list: listTerminals,
   shot: (origin, terminal, label) => previewShot(origin, { terminal }, label),
   send: sendToTerminal,
+  follow: (origin, terminal, events) => startFollow(origin, terminal, events),
 };
+
+/** 实时那一格：没订 · 正在接 · 实时中 · 停了（带原因）· 那台只能快照（带原因）。 */
+type Live = { at: "off" } | { at: "joining" } | { at: "on" } | { at: "stopped"; why: Extract<FollowStop, { kind: "stopped" }>["why"] } | { at: "snapOnly"; why: Extract<FollowStop, { kind: "snapshotOnly" }>["why"] };
 
 export interface TerminalPageHost {
   active(): Tab | null;
@@ -86,6 +96,32 @@ function whyWord(code: string): string {
   }
 }
 
+/** 实时停了的原因 ⇒ 一个词。 */
+function liveWhy(why: Extract<Live, { at: "stopped" }>["why"], machine: string): string {
+  switch (why) {
+    case "gone":
+      return copyText("terminal.why.gone");
+    case "tooBig":
+      return copyText("terminal.liveWhy.tooBig");
+    case "offline":
+      return copyText("terminal.liveWhy.offline", { machine });
+    case "lost":
+      return copyText("terminal.liveWhy.lost");
+  }
+}
+
+/** 只能快照的原因 ⇒ 悬停那一句。 */
+function snapWhy(why: Extract<Live, { at: "snapOnly" }>["why"], machine: string): string {
+  switch (why) {
+    case "old":
+      return copyText("terminal.head.snapshotOnlyOld", { machine });
+    case "tmux":
+      return copyText("terminal.head.snapshotOnlyTmux", { machine });
+    case "noTmux":
+      return copyText("terminal.head.snapshotOnlyNoTmux", { machine });
+  }
+}
+
 /** 送字那一步的结局一句：送到了（一会儿就走）· 没送成（可带重试）。 */
 type Note = { text: string; tone: "ok" | "error"; retry?: TerminalSend };
 
@@ -118,6 +154,9 @@ export class TerminalPage {
   /** 每一次名单 / 抓屏的代次：慢的那次回来不许盖掉后发的那次、不许落到切走之后的会话上。 */
   private seq = 0;
   private timers: ReturnType<typeof setTimeout>[] = [];
+  /** 实时画面那一格与它的订阅。 */
+  private live: Live = { at: "off" };
+  private follow: Follow | null = null;
   private noteTimer: ReturnType<typeof setTimeout> | null = null;
 
   private readonly head: HTMLElement;
@@ -128,6 +167,16 @@ export class TerminalPage {
   /** 连着几个终端窗口 / 后台。 */
   private readonly tag2: HTMLElement;
   private readonly at: HTMLElement;
+  /** 「画面几点 ＋ 重新看」那一组（实时中整组收起）。 */
+  private readonly snapGroup: HTMLElement;
+  /** 「● 实时」/「接入实时」。 */
+  private readonly liveTag: HTMLElement;
+  /** 「仅快照」（悬停说为什么）。 */
+  private readonly snapTag: HTMLElement;
+  /** 画面那一格外面的那一层（「回到最新」浮在它右下）。 */
+  private readonly screenWrap: HTMLElement;
+  /** 「回到最新」外面那一格（定位 · 收起都在它身上：kit 按钮自带 display，`hidden` 切不动它）。 */
+  private readonly followBox: HTMLElement;
   private readonly frontBtn: HTMLButtonElement;
   private readonly bar: HTMLElement;
   private readonly screen: HTMLElement;
@@ -161,10 +210,18 @@ export class TerminalPage {
     this.at = el("span");
     this.at.className = s.termAt;
     const again = button({ label: copyText("terminal.head.recapture"), kind: "ghost", size: "compact", onClick: () => void this.recapture() });
+    this.liveTag = el("span");
+    this.liveTag.className = s.termLive;
+    this.liveTag.title = copyText("terminal.head.liveHint");
+    this.snapTag = el("span", copyText("terminal.head.snapshotOnly"));
+    this.snapTag.className = s.termTag;
     const sp = el("span");
     sp.className = s.termSp;
     this.frontBtn = button({ label: copyText("terminal.head.front"), kind: "ghost", size: "compact", icon: "front", onClick: () => this.sid !== null && this.host.front(this.sid) });
-    this.head.append(this.dot, this.title, this.where, this.tag, this.tag2, this.at, again, sp, this.frontBtn);
+    this.snapGroup = el("span");
+    this.snapGroup.className = s.termSnap;
+    this.snapGroup.append(this.at, again);
+    this.head.append(this.dot, this.title, this.where, this.tag, this.tag2, this.liveTag, this.snapGroup, this.snapTag, sp, this.frontBtn);
     this.bar = el("div");
     this.bar.className = s.termBar;
     // 画面：外面一格管版位与滚动（本页的类），里面那块 `pre` 只挂画面的类（`terminal-screen.ts`）。
@@ -173,6 +230,14 @@ export class TerminalPage {
     this.screen.tabIndex = 0;
     this.pre = screenPre();
     this.screen.appendChild(this.pre);
+    this.screen.addEventListener("scroll", () => this.syncFollowBtn());
+    this.followBox = el("div");
+    this.followBox.className = s.termFollow;
+    this.followBox.hidden = true;
+    this.followBox.appendChild(button({ label: copyText("terminal.screen.follow"), size: "compact", icon: "arrowDown", onClick: () => this.toLatest() }));
+    this.screenWrap = el("div");
+    this.screenWrap.className = s.termScreenWrap;
+    this.screenWrap.append(this.screen, this.followBox);
 
     this.inputArea = el("div");
     this.inputArea.className = s.termInput;
@@ -213,12 +278,15 @@ export class TerminalPage {
     this.paint();
   }
 
-  /** 抽屉开到 / 离开这一页（宿主调）。开到的那一刻抓一次。 */
+  /** 抽屉开到 / 离开这一页（宿主调）。开到的那一刻抓一次、订实时；离开即退订。 */
   setVisible(on: boolean): void {
     if (on === this.visible) return;
     this.visible = on;
     if (on) void this.refresh();
-    else this.stopTimers();
+    else {
+      this.stopTimers();
+      this.stopLive();
+    }
   }
 
   /** 当前标签页换了 / 它的状态变了：换了会话 ⇒ 字按会话存取、开着就重新找终端抓一屏；同一个会话 ⇒ 只重画页头。 */
@@ -231,6 +299,7 @@ export class TerminalPage {
     }
     if (this.sid !== null) this.drafts.set(this.sid, this.box.value);
     this.stopTimers();
+    this.stopLive();
     this.seq++;
     this.sid = sid;
     this.origin = tab?.origin;
@@ -265,6 +334,7 @@ export class TerminalPage {
       if (mine !== this.seq) return;
       const hits = rows.filter((r) => r.sid === this.sid);
       if (hits.length === 0) {
+        this.stopLive();
         this.row = null;
         this.phase = "none";
         this.paint();
@@ -277,6 +347,7 @@ export class TerminalPage {
         this.paint();
         return;
       }
+      if (this.row?.terminal !== hits[0].terminal) this.stopLive();
       this.row = hits[0];
       this.phase = "ready";
     } catch (e) {
@@ -287,6 +358,46 @@ export class TerminalPage {
       return;
     }
     await this.capture(mine);
+    if (mine === this.seq && this.visible && this.live.at === "off") this.startLive();
+  }
+
+  /** 订这个终端的实时画面（已经订着 ⇒ 先退）。 */
+  private startLive(): void {
+    this.stopLive();
+    const row = this.row;
+    if (row === null || this.origin === undefined || !this.visible) return;
+    this.live = { at: "joining" };
+    let f: Follow | null = null;
+    f = this.reads.follow(this.origin, row.terminal, {
+      screen: (shot) => {
+        if (this.follow !== f && f !== null) return;
+        this.live = { at: "on" };
+        this.shotError = null;
+        this.applyShot(shot);
+      },
+      stop: (why) => {
+        if (this.follow !== f && f !== null) return;
+        this.follow = null;
+        this.live = why.kind === "snapshotOnly" ? { at: "snapOnly", why: why.why } : { at: "stopped", why: why.why };
+        this.paint();
+      },
+    });
+    // 订阅这一问是同步交回句柄的；交回之前就停了（那一格已落 `stopped` / `snapOnly`）⇒ 不记这个句柄。
+    const now = this.live as Live;
+    if (now.at === "joining" || now.at === "on") this.follow = f;
+    this.paint();
+  }
+
+  /** 退订（没订着 ⇒ 什么都不做）。 */
+  private stopLive(): void {
+    this.follow?.stop();
+    this.follow = null;
+    this.live = { at: "off" };
+  }
+
+  /** 实时中 ⇒ 送完不用再抓（画面自己会变）。 */
+  private get isLive(): boolean {
+    return this.live.at === "on" || this.live.at === "joining";
   }
 
   /** 只重抓一屏（「重新看」· 送完之后那几拍）。还没认出终端 ⇒ 整个重来。 */
@@ -302,16 +413,36 @@ export class TerminalPage {
     try {
       const shot = await this.reads.shot(this.origin, row.terminal, fullTitle(tab));
       if (mine !== this.seq) return;
-      const stick = this.shot === null || this.screen.scrollTop + this.screen.clientHeight >= this.screen.scrollHeight - 4;
-      this.shot = shot;
+      if (this.live.at === "on") return; // 实时那一帧比这一张新
       this.shotError = null;
-      this.paint();
-      if (stick) this.screen.scrollTop = this.screen.scrollHeight;
+      this.applyShot(shot);
     } catch (e) {
       if (mine !== this.seq) return;
       this.shotError = saidOfControl(e);
       this.paint();
     }
+  }
+
+  /** 换上一屏：原来贴着底就接着贴底；往上翻着就不动（底部出「回到最新」）。 */
+  private applyShot(shot: TerminalShot): void {
+    const stick = this.shot === null || this.atBottom();
+    this.shot = shot;
+    this.paint();
+    if (stick) this.screen.scrollTop = this.screen.scrollHeight;
+    this.syncFollowBtn();
+  }
+
+  private atBottom(): boolean {
+    return this.screen.scrollTop + this.screen.clientHeight >= this.screen.scrollHeight - 4;
+  }
+
+  private syncFollowBtn(): void {
+    this.followBox.hidden = this.shot === null || this.atBottom();
+  }
+
+  private toLatest(): void {
+    this.screen.scrollTop = this.screen.scrollHeight;
+    this.syncFollowBtn();
   }
 
   private stopTimers(): void {
@@ -362,7 +493,7 @@ export class TerminalPage {
     }
     if (sent?.result === "delivered") {
       this.showNote({ text: copyText("terminal.input.delivered"), tone: "ok" });
-      this.schedule();
+      if (!this.isLive) this.schedule();
       return true;
     }
     if (sent?.result === "unsure") {
@@ -462,6 +593,13 @@ export class TerminalPage {
     this.tag.style.display = row.tmuxName !== "" ? "" : "none";
     this.tag2.textContent = row.clients > 0 ? copyText("terminal.tag.windows", { n: row.clients }) : copyText("terminal.tag.background");
     this.at.textContent = this.shot ? copyText("terminal.head.snapAt", { time: this.shot.atText }) : "";
+    const live = this.isLive;
+    this.snapGroup.hidden = live;
+    this.liveTag.hidden = !live;
+    this.liveTag.dataset.state = this.live.at;
+    this.liveTag.textContent = this.live.at === "on" ? copyText("terminal.head.live") : copyText("terminal.head.joining");
+    this.snapTag.hidden = this.live.at !== "snapOnly";
+    if (this.live.at === "snapOnly") this.snapTag.title = snapWhy(this.live.why, machineName(this.origin ?? ""));
     this.frontBtn.style.display = terminalFrontAvailable() && hasTerminal(tab.state) ? "" : "none";
 
     const bars: HTMLElement[] = [];
@@ -470,17 +608,21 @@ export class TerminalPage {
       line.className = s.termBarLine;
       bars.push(line);
     }
+    if (this.live.at === "stopped") {
+      bars.push(banner("warn", copyText("terminal.bar.liveStopped", { why: liveWhy(this.live.why, machineName(this.origin ?? "")) }), [button({ label: copyText("terminal.bar.liveRetry"), size: "compact", onClick: () => this.startLive() })]));
+    }
     if (this.shotError !== null) bars.push(banner("warn", this.shotError, [button({ label: copyText("terminal.state.refresh"), size: "compact", onClick: () => void this.refresh() })]));
     this.bar.replaceChildren(...bars);
     if (this.painted !== this.shot) {
       renderScreen(this.pre, this.shot?.lines ?? []);
       this.painted = this.shot;
     }
-    this.screen.dataset.stale = String(this.shotError !== null);
+    this.screen.dataset.stale = String(this.shotError !== null || this.live.at === "stopped");
 
     this.to.textContent = copyText("terminal.input.to", { title: fullTitle(tab), machine: machineOf(tab) });
     this.owner.textContent = row.clients > 0 && row.input === "shared" ? copyText("terminal.input.shared", { n: row.clients }) : row.clients === 0 ? copyText("terminal.input.nobody") : "";
-    const no = row.inputNo === null ? null : whyWord(row.inputNo);
+    const offline = this.live.at === "stopped" && this.live.why === "offline";
+    const no = row.inputNo !== null ? whyWord(row.inputNo) : offline ? copyText("terminal.liveWhy.offline", { machine: machineName(this.origin ?? "") }) : null;
     this.box.disabled = no !== null || this.sending;
     this.box.placeholder = no !== null ? copyText("terminal.input.readOnly", { why: no }) : copyText("terminal.input.placeholder");
     setDisabled(this.sendBtn, no);
@@ -494,6 +636,6 @@ export class TerminalPage {
       const retry = this.note.retry;
       if (retry) this.noteEl.appendChild(button({ label: copyText("terminal.input.retry"), kind: "ghost", size: "compact", onClick: () => void this.send(retry) }));
     }
-    if (this.body.firstChild !== this.head) this.body.replaceChildren(this.head, this.bar, this.screen, this.inputArea);
+    if (this.body.firstChild !== this.head) this.body.replaceChildren(this.head, this.bar, this.screenWrap, this.inputArea);
   }
 }

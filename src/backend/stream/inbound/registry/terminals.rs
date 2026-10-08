@@ -135,7 +135,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     //   一帧在途、客户端回执之后才推下一帧；停了推 `terminal_follow_end`。都是 `Run::Builtin`：要碰本连接的票表与应答通道 ⇒ **只在帧面**。
     CommandSpec {
         name: "terminal-follow",
-        summary: "订阅一个终端的画面（有变化推一整屏，一帧在途等回执）",
+        summary: "订阅一个终端的画面（有变化推一整屏，一帧在途等回执；订着时那台 tmux 里多一个只读客户端，用户自己配的 client-attached / client-detached 钩子会被它触发）",
         codes: &[
             "bad_target",
             "bad_args",

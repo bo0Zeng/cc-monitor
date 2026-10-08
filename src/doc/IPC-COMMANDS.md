@@ -2866,7 +2866,7 @@ cc-bus 钩子诊断。
 
 #### `terminal-follow`
 
-订阅一个终端的画面（有变化推一整屏，一帧在途等回执）。
+订阅一个终端的画面（有变化推一整屏，一帧在途等回执；订着时那台 tmux 里多一个只读客户端，用户自己配的 client-attached / client-detached 钩子会被它触发）。
 
 收 `args` · 连接内就地做完 · 只在流上 · 没有 tmux 的机器上做不到（hello `unavailable` 会列它）
 
