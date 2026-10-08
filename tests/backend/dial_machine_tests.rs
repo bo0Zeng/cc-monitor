@@ -31,13 +31,13 @@ fn address_lines_read_the_four_shapes_and_refuse_garbage() {
 #[test]
 fn the_request_carries_the_form_and_only_inherits_a_same_host_fingerprint() {
     let form = m(
-        json!({"host": "10.0.0.2", "label": "devbox", "port": 2222, "user": "u", "keyPath": "", "hostKeyFingerprint": "",
-                        "addresses": ["devbox.lan", "10.0.0.2:2222", "bad:x"], "jump": ""}),
+        json!({"host": "192.0.2.2", "label": "devbox", "port": 2222, "user": "u", "keyPath": "", "hostKeyFingerprint": "",
+                        "addresses": ["devbox.lan", "192.0.2.2:2222", "bad:x"], "jump": ""}),
     );
     let saved_same =
-        m(json!({"host": "10.0.0.2", "user": "u", "hostKeyFingerprint": "SHA256:old"}));
+        m(json!({"host": "192.0.2.2", "user": "u", "hostKeyFingerprint": "SHA256:old"}));
     let saved_moved =
-        m(json!({"host": "10.0.0.9", "user": "u", "hostKeyFingerprint": "SHA256:old"}));
+        m(json!({"host": "192.0.2.9", "user": "u", "hostKeyFingerprint": "SHA256:old"}));
     let r = request(
         &form,
         Some(&saved_same),
@@ -54,7 +54,7 @@ fn the_request_carries_the_form_and_only_inherits_a_same_host_fingerprint() {
     assert_eq!(r["key_path"], Value::Null, "空串 ⇒ 走 agent");
     assert_eq!(
         r["endpoints"],
-        json!([{"host": "10.0.0.2", "port": 2222}, {"host": "devbox.lan", "port": 2222}]),
+        json!([{"host": "192.0.2.2", "port": 2222}, {"host": "devbox.lan", "port": 2222}]),
         "host 排首、去重、坏行丢"
     );
     assert_eq!(
@@ -72,7 +72,7 @@ fn the_request_carries_the_form_and_only_inherits_a_same_host_fingerprint() {
 
 #[test]
 fn a_jump_must_be_handed_over_and_must_not_point_at_itself() {
-    let via = m(json!({"host": "10.0.0.2", "label": "devbox", "user": "u", "jump": "bastion"}));
+    let via = m(json!({"host": "192.0.2.2", "label": "devbox", "user": "u", "jump": "bastion"}));
     let bastion =
         m(json!({"host": "b.example", "label": "bastion", "user": "j", "jump": "elsewhere"}));
     let r = request(&via, None, Some(&bastion), None, "forward", json!({})).unwrap();
@@ -92,7 +92,7 @@ fn a_jump_must_be_handed_over_and_must_not_point_at_itself() {
             .0,
         "bad_jump"
     );
-    let selfish = m(json!({"host": "10.0.0.2", "label": "devbox", "user": "u", "jump": "devbox"}));
+    let selfish = m(json!({"host": "192.0.2.2", "label": "devbox", "user": "u", "jump": "devbox"}));
     assert_eq!(
         request(&selfish, None, Some(&selfish), None, "forward", json!({}))
             .unwrap_err()
@@ -106,7 +106,7 @@ fn a_jump_must_be_handed_over_and_must_not_point_at_itself() {
 fn a_wire_dial_is_composed_here_and_the_preferred_winner_goes_first() {
     // 线上交来的是一台原样的配置（monitor 不再解析地址 / 组请求）：组法只在这里。
     let wire = json!({
-        "machine": {"host": "10.0.0.2", "user": "u", "addresses": ["devbox.lan", "[fe80::1]:2200"]},
+        "machine": {"host": "192.0.2.2", "user": "u", "addresses": ["devbox.lan", "[fe80::1]:2200"]},
         "prefer": {"host": "fe80::1", "port": 2200},
         "use": "capture",
         "command": "x",
@@ -122,7 +122,7 @@ fn a_wire_dial_is_composed_here_and_the_preferred_winner_goes_first() {
         order,
         vec![
             ("fe80::1".into(), 2200),
-            ("10.0.0.2".into(), 22),
+            ("192.0.2.2".into(), 22),
             ("devbox.lan".into(), 22)
         ],
         "上次赢的那条排首，其余保序"
@@ -141,10 +141,10 @@ fn a_wire_dial_is_composed_here_and_the_preferred_winner_goes_first() {
         .into_iter()
         .map(|e| e.host)
         .collect();
-    assert_eq!(order, vec!["10.0.0.2", "devbox.lan", "fe80::1"]);
+    assert_eq!(order, vec!["192.0.2.2", "devbox.lan", "fe80::1"]);
     // 没有 `machine` ⇒ 拒（线上不再收组好的那一形）。
     assert_eq!(
-        resolve(&json!({"host": "10.0.0.2", "user": "u", "port": 22}))
+        resolve(&json!({"host": "192.0.2.2", "user": "u", "port": 22}))
             .map(|_| ())
             .map_err(|(c, _)| c),
         Err("bad_args")
@@ -155,7 +155,7 @@ fn a_wire_dial_is_composed_here_and_the_preferred_winner_goes_first() {
 fn the_ack_says_how_strict_the_composed_request_was() {
     // 界面判「要不要自动固化」看 ack 的 `strict` / `jump_strict`，不再自己重推指纹继承（规则只在本文件）。
     let strict_of = |wire: Value| crate::dial::uses::strictness(&resolve(&wire).unwrap());
-    let form = json!({"host": "10.0.0.2", "label": "devbox", "user": "u", "jump": "bastion"});
+    let form = json!({"host": "192.0.2.2", "label": "devbox", "user": "u", "jump": "bastion"});
     let bastion = |fp: &str| json!({"host": "b.lan", "label": "bastion", "user": "u", "hostKeyFingerprint": fp});
     assert_eq!(
         strict_of(json!({"machine": form, "jump": bastion("")})),
@@ -164,7 +164,7 @@ fn the_ack_says_how_strict_the_composed_request_was() {
     );
     assert_eq!(
         strict_of(
-            json!({"machine": form, "saved": {"host": "10.0.0.2", "user": "u", "hostKeyFingerprint": "SHA256:s"},
+            json!({"machine": form, "saved": {"host": "192.0.2.2", "user": "u", "hostKeyFingerprint": "SHA256:s"},
             "jump": bastion("SHA256:j")})
         ),
         (true, true),
@@ -172,7 +172,7 @@ fn the_ack_says_how_strict_the_composed_request_was() {
     );
     assert_eq!(
         strict_of(
-            json!({"machine": form, "saved": {"host": "10.9.9.9", "user": "u", "hostKeyFingerprint": "SHA256:s"},
+            json!({"machine": form, "saved": {"host": "198.51.100.9", "user": "u", "hostKeyFingerprint": "SHA256:s"},
             "jump": bastion("  ")})
         ),
         (false, false),

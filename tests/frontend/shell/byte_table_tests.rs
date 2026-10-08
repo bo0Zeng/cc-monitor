@@ -280,7 +280,12 @@ fn every_refusal_names_the_machine_and_what_it_is() {
         };
         let own = crate::copy_table::copy_text(
             &format!("deploy.refused.{form}"),
-            &[("machine", "devbox"), ("os", os), ("arch", arch), ("why", why)],
+            &[
+                ("machine", "devbox"),
+                ("os", os),
+                ("arch", arch),
+                ("why", why),
+            ],
         );
         assert_eq!(s, own, "{r:?} 说的不是自己那一句");
         said.insert(s);

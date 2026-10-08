@@ -454,9 +454,9 @@ describe("S2 设置面板分页结构", () => {
     new SettingsPanel({ windowMode: true });
     await tick();
     // 点导航里的 devbox 进那一页
-    const ayaNav = [...document.querySelectorAll<HTMLButtonElement>(".settings-nav-item")]
+    const devboxNav = [...document.querySelectorAll<HTMLButtonElement>(".settings-nav-item")]
       .find((b) => b.textContent === "devbox")!;
-    ayaNav.click();
+    devboxNav.click();
 
     const strip = document.querySelector<HTMLElement>(
       '.settings-page[data-route-id="machine:devbox"] .settings-shell-h',

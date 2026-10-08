@@ -193,7 +193,10 @@ fn two_writers_lose_nothing() {
         std::thread::spawn(move || {
             for i in 0..N {
                 mutate(&file, |b| {
-                    toggle_in(b.entry("devbox".into()).or_default(), &format!("/{tag}/{i}"))
+                    toggle_in(
+                        b.entry("devbox".into()).or_default(),
+                        &format!("/{tag}/{i}"),
+                    )
                 })
                 .unwrap();
             }
@@ -202,7 +205,10 @@ fn two_writers_lose_nothing() {
     let (a, b) = (spawn("a"), spawn("b"));
     a.join().unwrap();
     b.join().unwrap();
-    let got: BTreeSet<String> = read_book(&file).unwrap()["devbox"].iter().cloned().collect();
+    let got: BTreeSet<String> = read_book(&file).unwrap()["devbox"]
+        .iter()
+        .cloned()
+        .collect();
     let want: BTreeSet<String> = (0..N)
         .flat_map(|i| [format!("/a/{i}"), format!("/b/{i}")])
         .collect();
@@ -228,7 +234,10 @@ fn a_writer_waits_while_another_holds_the_lock() {
     let (tx, rx) = std::sync::mpsc::channel();
     let f2 = file.clone();
     let t = std::thread::spawn(move || {
-        mutate(&f2, |b| toggle_in(b.entry("devbox".into()).or_default(), "/x")).unwrap();
+        mutate(&f2, |b| {
+            toggle_in(b.entry("devbox".into()).or_default(), "/x")
+        })
+        .unwrap();
         tx.send(()).unwrap();
     });
     assert!(

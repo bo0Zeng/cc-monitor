@@ -44,15 +44,15 @@ function mk(over: Partial<RemoteHostConfig> = {}): RemoteHostConfig {
   };
 }
 
-const A = mk({ label: "alpha", host: "10.0.0.1", user: "ua", jump: "gw" });
-const B = mk({ label: "beta", host: "10.0.0.2", user: "ub", jump: "gw2" });
-const C = mk({ label: "", host: "10.0.0.3", user: "uc" }); // label 空 ⇒ key = host
+const A = mk({ label: "alpha", host: "192.0.2.1", user: "ua", jump: "gw" });
+const B = mk({ label: "beta", host: "192.0.2.2", user: "ub", jump: "gw2" });
+const C = mk({ label: "", host: "192.0.2.3", user: "uc" }); // label 空 ⇒ key = host
 
 
 describe("hostKey", () => {
   it("label 非空取 label，否则取 host（与 findHostByOrigin 同口径）", () => {
     expect(hostKey(A)).toBe("alpha");
-    expect(hostKey(C)).toBe("10.0.0.3");
+    expect(hostKey(C)).toBe("192.0.2.3");
     // 纯空白 label 不算数（否则 key 会是一串空格，和后端 origin 对不上）
     expect(hostKey(mk({ label: "   ", host: "x" }))).toBe("x");
   });
@@ -73,7 +73,7 @@ describe("〔FIX2 续 · ㊶〕增 / 删一台 ⇒ insertin / removein，不整�
 
   it("★ 增一台 ⇒ 恰好一条 insertin 追加到末尾（字段全带）；别的机器连刚固化的指纹一格不动", async () => {
     disk([A, pinnedB, C]);
-    const d = mk({ label: "delta", host: "10.0.0.4" });
+    const d = mk({ label: "delta", host: "192.0.2.4" });
     await patchRemoteConfig({ upsert: [{ key: null, value: d }] });
     expect(lastEdits().map((e) => e.op)).toEqual(["insertin"]);
     expect(lastHosts()).toEqual([A, pinnedB, C, d]);
@@ -88,7 +88,7 @@ describe("〔FIX2 续 · ㊶〕增 / 删一台 ⇒ insertin / removein，不整�
 
   it("删掉 A、同时新增一台也叫 A ⇒ 先删后插，是替换", async () => {
     disk([A, pinnedB]);
-    const newA = mk({ label: "alpha", host: "192.168.1.1", user: "brand-new" });
+    const newA = mk({ label: "alpha", host: "203.0.113.1", user: "brand-new" });
     await patchRemoteConfig({ remove: ["alpha"], upsert: [{ key: null, value: newA }] });
     expect(lastEdits().map((e) => e.op)).toEqual(["removein", "insertin"]);
     expect(lastHosts()).toEqual([pinnedB, newA]);
@@ -223,7 +223,7 @@ describe("〔FIX · ㊶〕设置页改一台 ⇒ 按格 setin，不整台盖", (
     expect(hosts.slice(1)).toEqual([B, C]);
     // 空 label 的那台改 host：先把 label 写成表单值（origin 与整台写那一形相同），host 排最后。
     const c = { ...C, label: C.host };
-    await patchRemoteConfig({ upsert: [{ key: C.host, was: c, value: { ...c, host: "10.0.0.9" } }] });
+    await patchRemoteConfig({ upsert: [{ key: C.host, was: c, value: { ...c, host: "192.0.2.9" } }] });
     const e2 = vi.mocked(fakeCfg.patches).mock.calls.at(-1)![0] as { field?: string }[];
     expect(e2.map((e) => e.field)).toEqual(["label", "host"]);
     // 盘上那台已被改名 / 删掉 ⇒ 整批拒（不再「找不到就当新增」）。

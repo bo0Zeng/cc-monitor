@@ -18,14 +18,14 @@ session-0（普通 SSH 非交互会话）**起不来 WebView2**（无桌面 / �
 
 - `tauri-driver.exe` = `%USERPROFILE%\.cargo\bin\tauri-driver.exe`（`cargo install tauri-driver`）
 - `msedgedriver.exe` —— 版本匹配 VM 的 WebView2 Runtime；放 `%USERPROFILE%\.cargo\bin\` 或填 `MSEDGEDRIVER` env
-- app exe：`C:/Users/vm260726/cc-monitor/src/frontend/shell/target/debug/monitor.exe`（KVM_cc build 出，可用 `APP_EXE` 覆盖）
+- app exe：`C:/Users/user/cc-monitor/src/frontend/shell/target/debug/monitor.exe`（KVM_cc build 出，可用 `APP_EXE` 覆盖）
 - wdio devDeps：repo 根 `npm install` 后 `node_modules` 会被 Node 从 `tests/e2e/tier2/` 向上解析到；
   或复用 VM 上已缓存 node_modules 的目录（把本目录内容拷进去即可）。
 
 ## 跑法（从 devbox 驱动，三步）
 
 ```bash
-# 1. 把本目录同步到 VM（示例落 C:\Users\vm260726\e2e-tier2；或拷进已装 node_modules 的目录复用缓存）
+# 1. 把本目录同步到 VM（示例落 C:\Users\user\e2e-tier2；或拷进已装 node_modules 的目录复用缓存）
 scp -r tests/e2e/tier2/* win11:e2e-tier2/
 
 # 2. 装 wdio 依赖（若该目录还没 node_modules）

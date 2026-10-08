@@ -531,19 +531,19 @@ fn a_stint_is_soft_and_a_cap_is_hard() {
     ));
 }
 
-/// ★ 用户例子二「其他三个都过 90% 才用 b，一重置就切回去」：`order: [z, q, team, b]` · `when: ≥90%` · `preempt: true`。
+/// ★ 用户例子二「其他三个都过 90% 才用 b，一重置就切回去」：`order: [work, personal, team, b]` · `when: ≥90%` · `preempt: true`。
 /// 「备胎」不是一格：排在最后 ＋ 切回，就是它。
 #[test]
 fn the_last_in_order_with_preempt_is_the_spare_and_hands_back_on_reset() {
-    let mut w = World::new(&["z", "q", "team", "b"]);
+    let mut w = World::new(&["work", "personal", "team", "b"]);
     w.when = RotationWhen::Threshold { n: 90 };
     w.preempt = true;
-    w.seen.insert("z".into(), at(0.91, NOW + 3000));
-    w.seen.insert("q".into(), at(0.93, NOW + 1000));
+    w.seen.insert("work".into(), at(0.91, NOW + 3000));
+    w.seen.insert("personal".into(), at(0.93, NOW + 1000));
     w.seen.insert("team".into(), at(0.90, NOW + 2000));
     w.seen.insert("b".into(), at(0.20, NOW + 9000));
     assert_eq!(
-        w.judge("z", None, &[]).0,
+        w.judge("work", None, &[]).0,
         Verdict::Switch {
             to: "b".into(),
             why: SwitchWhy::Threshold { n: 90 },
@@ -554,7 +554,7 @@ fn the_last_in_order_with_preempt_is_the_spare_and_hands_back_on_reset() {
     w.enter("b");
     assert_eq!(
         w.above,
-        ["z", "q", "team"],
+        ["work", "personal", "team"],
         "换进 b 那一刻挡在前面的三个"
     );
     assert_eq!(
@@ -562,19 +562,19 @@ fn the_last_in_order_with_preempt_is_the_spare_and_hands_back_on_reset() {
         Verdict::Stay,
         "前面的都过上限 ⇒ 留在 b"
     );
-    // q 的 5h 先重置（重置时刻过了、之后没再看到 ⇒ 已重置未计时）⇒ 下一发切回 q。
+    // personal 的 5h 先重置（重置时刻过了、之后没再看到 ⇒ 已重置未计时）⇒ 下一发切回 personal。
     w.now = NOW + 1000;
     assert_eq!(
         w.judge("b", None, &[]).0,
         Verdict::Switch {
-            to: "q".into(),
+            to: "personal".into(),
             why: SwitchWhy::Preempt,
             from_resets_at: None,
             skipped: vec![]
         }
     );
-    // 在 q 上：前面的 z 还过着上限 ⇒ 不换。
-    assert_eq!(w.judge("q", None, &[]).0, Verdict::Stay);
+    // 在 personal 上：前面的 work 还过着上限 ⇒ 不换。
+    assert_eq!(w.judge("personal", None, &[]).0, Verdict::Stay);
     // `preempt` 关着 ⇒ b 能用就一直用 b。
     w.preempt = false;
     assert_eq!(w.judge("b", None, &[]).0, Verdict::Stay);
@@ -584,7 +584,7 @@ fn the_last_in_order_with_preempt_is_the_spare_and_hands_back_on_reset() {
 /// 只有重置（或时段换了上限）才改结论。
 #[test]
 fn the_verdict_never_flaps_between_two_accounts() {
-    let mut w = World::new(&["z", "q", "b"]);
+    let mut w = World::new(&["work", "personal", "b"]);
     w.when = RotationWhen::Threshold { n: 90 };
     w.preempt = true;
     w.stint.insert("b".into(), [("5h".to_string(), 5u8)].into());
@@ -595,10 +595,10 @@ fn the_verdict_never_flaps_between_two_accounts() {
             resets_at: Some(NOW + 9000),
         },
     );
-    w.seen.insert("z".into(), at(0.95, NOW + 3000));
-    w.seen.insert("q".into(), at(0.95, NOW + 5000));
+    w.seen.insert("work".into(), at(0.95, NOW + 3000));
+    w.seen.insert("personal".into(), at(0.95, NOW + 5000));
     w.seen.insert("b".into(), at(0.40, NOW + 9000));
-    let mut current = "z".to_string();
+    let mut current = "work".to_string();
     let mut path = vec![current.clone()];
     for _ in 0..10 {
         if let Verdict::Switch { to, .. } = w.judge(&current, None, &[]).0 {
@@ -609,7 +609,7 @@ fn the_verdict_never_flaps_between_two_accounts() {
     }
     assert_eq!(
         path,
-        ["z", "b"],
+        ["work", "b"],
         "到 b 之后：预算用完但没有别的能用 ⇒ 一直留在 b"
     );
     w.now = NOW + 3000;
@@ -620,60 +620,68 @@ fn the_verdict_never_flaps_between_two_accounts() {
             path.push(current.clone());
         }
     }
-    assert_eq!(path, ["z", "b", "z"], "z 一重置就回 z，之后不再动");
+    assert_eq!(
+        path,
+        ["work", "b", "work"],
+        "work 一重置就回 work，之后不再动"
+    );
 }
 
-/// ★ 用户此刻那份（10-05）：`order: [z, q, team, b]` · `when: ≥90%` · `q: {cap: [{at: "01:00-20:00", n: 99}]}` ·
-/// `preempt: true` · `atLimit: continue`。q 在 1 点到 20 点能用到 99%：19:59 q 在 95% 照用；20:01 上限回到 90% ⇒ 下一发换走。
+/// ★ 一份典型配置：`order: [work, personal, team, b]` · `when: ≥90%` · `personal: {cap: [{at: "01:00-20:00", n: 99}]}` ·
+/// `preempt: true` · `atLimit: continue`。personal 在 1 点到 20 点能用到 99%：19:59 personal 在 95% 照用；20:01 上限回到 90% ⇒ 下一发换走。
 #[test]
-fn the_users_config_lets_q_run_to_ninety_nine_until_eight_pm() {
-    let mut w = World::new(&["z", "q", "team", "b"]);
+fn a_daytime_cap_lets_personal_run_to_ninety_nine_until_eight_pm() {
+    let mut w = World::new(&["work", "personal", "team", "b"]);
     w.when = RotationWhen::Threshold { n: 90 };
     w.preempt = true;
     w.at_limit = AtLimit::Continue;
-    w.cap = caps(&[("q", "*", slots("01:00-20:00", 99))]);
+    w.cap = caps(&[("personal", "*", slots("01:00-20:00", 99))]);
     let far = NOW + 3 * 86_400;
-    w.seen.insert("z".into(), at(0.96, far));
-    w.seen.insert("q".into(), at(0.95, far));
+    w.seen.insert("work".into(), at(0.96, far));
+    w.seen.insert("personal".into(), at(0.95, far));
     w.seen.insert("team".into(), at(0.97, far));
     w.seen.insert("b".into(), at(0.10, far));
     local(&mut w, 19, 59);
     assert_eq!(
-        w.judge("q", None, &[]).0,
+        w.judge("personal", None, &[]).0,
         Verdict::Stay,
-        "19:59：q 的上限是 99%"
+        "19:59：personal 的上限是 99%"
     );
     assert_eq!(
-        to_of(&w.judge("z", None, &[]).0),
-        Some("q"),
-        "19:59：z 过上限 ⇒ 首个能用的是 q（不是 b）"
+        to_of(&w.judge("work", None, &[]).0),
+        Some("personal"),
+        "19:59：work 过上限 ⇒ 首个能用的是 personal（不是 b）"
     );
-    w.above = vec!["z".into(), "q".into(), "team".into()];
+    w.above = vec!["work".into(), "personal".into(), "team".into()];
     assert_eq!(
         to_of(&w.judge("b", None, &[]).0),
-        Some("q"),
-        "19:59：在 b 上、q 能用（换进 b 时它挡在前面）⇒ 切回 q"
+        Some("personal"),
+        "19:59：在 b 上、personal 能用（换进 b 时它挡在前面）⇒ 切回 personal"
     );
     local(&mut w, 20, 1);
     assert_eq!(
-        w.judge("q", None, &[]).0,
+        w.judge("personal", None, &[]).0,
         Verdict::Switch {
             to: "b".into(),
             why: SwitchWhy::Threshold { n: 90 },
             from_resets_at: Some(far),
             skipped: vec![]
         },
-        "20:01：q 的上限回到 90% ⇒ 换到 b"
+        "20:01：personal 的上限回到 90% ⇒ 换到 b"
     );
     assert_eq!(w.judge("b", None, &[]).0, Verdict::Stay);
     local(&mut w, 0, 59);
     assert_eq!(
-        to_of(&w.judge("q", None, &[]).0),
+        to_of(&w.judge("personal", None, &[]).0),
         Some("b"),
         "00:59 还不在那一段里"
     );
     local(&mut w, 1, 0);
-    assert_eq!(w.judge("q", None, &[]).0, Verdict::Stay, "01:00 起又是 99%");
+    assert_eq!(
+        w.judge("personal", None, &[]).0,
+        Verdict::Stay,
+        "01:00 起又是 99%"
+    );
 }
 
 /// ★ 跨午夜的一段（`22:00-06:00`）：含起不含止；落不进那一段 ⇒ 落回这个号 `*` 的，再落回 `when`。按窗口写的压过 `*`。
@@ -777,34 +785,34 @@ fn a_per_model_week_is_its_own_window_key() {
     assert_eq!(to_of(&w.judge("a", None, &[]).0), Some("b"));
 }
 
-/// ★ q 20:00 换走、01:00 回来：不靠重置，靠时段换了上限 —— 换进 b 那一刻 q 挡在前面（过了 90%），
-/// 01:00 起它的上限回到 99% ⇒ 又能用了 ⇒ 下一发切回 q（前面的 z 还过着上限）。
+/// ★ personal 20:00 换走、01:00 回来：不靠重置，靠时段换了上限 —— 换进 b 那一刻 personal 挡在前面（过了 90%），
+/// 01:00 起它的上限回到 99% ⇒ 又能用了 ⇒ 下一发切回 personal（前面的 work 还过着上限）。
 #[test]
-fn q_comes_back_at_one_am_through_its_slot_not_a_reset() {
-    let mut w = World::new(&["z", "q", "team", "b"]);
+fn personal_comes_back_at_one_am_through_its_slot_not_a_reset() {
+    let mut w = World::new(&["work", "personal", "team", "b"]);
     w.when = RotationWhen::Threshold { n: 90 };
     w.preempt = true;
-    w.cap = caps(&[("q", "*", slots("01:00-20:00", 99))]);
+    w.cap = caps(&[("personal", "*", slots("01:00-20:00", 99))]);
     let far = NOW + 3 * 86_400;
-    w.seen.insert("z".into(), at(0.96, far));
-    w.seen.insert("q".into(), at(0.95, far));
+    w.seen.insert("work".into(), at(0.96, far));
+    w.seen.insert("personal".into(), at(0.95, far));
     w.seen.insert("team".into(), at(0.97, far));
     w.seen.insert("b".into(), at(0.10, far));
     local(&mut w, 20, 1);
-    assert_eq!(to_of(&w.judge("q", None, &[]).0), Some("b"));
+    assert_eq!(to_of(&w.judge("personal", None, &[]).0), Some("b"));
     w.enter("b");
-    assert_eq!(w.above, ["z", "q", "team"]);
+    assert_eq!(w.above, ["work", "personal", "team"]);
     local(&mut w, 23, 0);
     assert_eq!(
         w.judge("b", None, &[]).0,
         Verdict::Stay,
-        "23:00 q 还过着 90%"
+        "23:00 personal 还过着 90%"
     );
     w.now += 2 * 3600; // 01:00（同一个窗口，没有重置）
     assert_eq!(
         w.judge("b", None, &[]).0,
         Verdict::Switch {
-            to: "q".into(),
+            to: "personal".into(),
             why: SwitchWhy::Preempt,
             from_resets_at: None,
             skipped: vec![]
@@ -834,7 +842,7 @@ fn a_manual_switch_is_not_undone_by_preempt() {
     );
 }
 
-/// ★ 上限 0 ＝ 这一时段不用这个号：用户那份 `q: {"*": [17:00-02:00 → 0, 02:00-17:00 → 99]}`。
+/// ★ 上限 0 ＝ 这一时段不用这个号：一份配置 `q: {"*": [17:00-02:00 → 0, 02:00-17:00 → 99]}`。
 /// 17 点到次日 2 点 q 不能用 —— 刚重置的 0%、从没见过都不选；「下一个」与真换号同一处判（`next_of` 也跳过它）；
 /// 跨午夜那一段 01:59 仍不用、02:00 起又能用；q 被挡时换走的会话在 02:00 经 `preempt` 切回（与「时段换了上限」同一条）。
 #[test]

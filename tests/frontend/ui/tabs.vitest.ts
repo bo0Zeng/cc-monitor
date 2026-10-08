@@ -2102,7 +2102,7 @@ describe("account-ux U5 tab 徽章「信息才显」", () => {
 describe("：↗ 远端那一格按顺序问三方", () => {
   const mockInvoke = invoke as unknown as ReturnType<typeof vi.fn>;
   const TERMINALS = [
-    { ssh: { clientAddr: "10.0.0.5", clientPort: 62414, serverAddr: "10.0.0.9", serverPort: 22 }, activity: 9 },
+    { ssh: { clientAddr: "192.0.2.5", clientPort: 62414, serverAddr: "192.0.2.9", serverPort: 22 }, activity: 9 },
   ];
   const CHAIN = [{ pid: 700, name: "ssh.exe", start: 4000 }];
   /** 那台 / 本机各回什么；壳那一跳回什么结局。 */

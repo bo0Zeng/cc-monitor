@@ -48,7 +48,7 @@ const KEY: &str = "ssh-ed25519 AAAAC3Nza me@x";
 
 fn args() -> Value {
     json!({
-        "machine": { "host": "10.0.0.2", "label": "dev", "user": "u", "keyPath": "/k/id_ed25519" },
+        "machine": { "host": "192.0.2.2", "label": "dev", "user": "u", "keyPath": "/k/id_ed25519" },
         "saved": null,
         "jump": null,
     })

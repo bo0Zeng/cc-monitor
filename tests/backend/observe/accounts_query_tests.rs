@@ -38,7 +38,7 @@ fn list_accounts_happy_path() {
         &format!(
             r#"{{"version":1,"updatedAt":"2026-07-23T00:00:00Z","sharedStore":"/s",
                     "acctsDir":"{a}","accounts":[
-                    {{"name":"z","email":"z@x.edu","configDir":"{z}","isDefault":true,"mode":"isolated"}},
+                    {{"name":"z","email":"z@example.test","configDir":"{z}","isDefault":true,"mode":"isolated"}},
                     {{"name":"b","email":"","configDir":"{a}/b","isDefault":false,"mode":"isolated"}}]}}"#,
             a = accts.display(),
             z = z.display()
@@ -329,12 +329,12 @@ fn account_trust_paths() {
         z.join(".claude.json"),
         r#"{"projects":{"/w":{"hasTrustDialogAccepted":true},"/x":{}},
                 "mcpServers":{"gh":{"env":{"GITHUB_TOKEN":"ghp_SUPERSECRET"}}},
-                "oauthAccount":{"emailAddress":"z@x.edu"}}"#,
+                "oauthAccount":{"emailAddress":"z@example.test"}}"#,
     )
     .unwrap();
     let out = account_trust(&accts, &z.to_string_lossy(), "/w").unwrap();
     assert!(!out.contains("ghp_SUPERSECRET"), "绝不能回传文件内容");
-    assert!(!out.contains("z@x.edu"));
+    assert!(!out.contains("z@example.test"));
     let v: serde_json::Value = serde_json::from_str(&out).unwrap();
     assert_eq!(v["trusted"], true);
     assert_eq!(v["known"], true);

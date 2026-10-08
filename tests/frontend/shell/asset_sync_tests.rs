@@ -23,7 +23,7 @@ impl LocalBackend for Recorder {
 
 fn cfg() -> crate::stream_source::RemoteConfig {
     serde_json::from_value(json!({
-        "host": "10.0.0.2",
+        "host": "192.0.2.2",
         "label": "dev",
         "port": 2222,
         "user": "u",
@@ -31,7 +31,7 @@ fn cfg() -> crate::stream_source::RemoteConfig {
     }))
     .or_else(|_| {
         serde_json::from_value(json!({
-            "host": "10.0.0.2",
+            "host": "192.0.2.2",
             "label": "dev",
             "port": 2222,
             "user": "u",
@@ -64,7 +64,7 @@ async fn the_handshake_hands_over_how_to_reach_that_machine() {
     // 那台后端的路径不交（落点是固定常量）。
     assert_eq!(sent[0].get("backend"), None);
     assert_eq!(sent[0]["dial"]["use"], json!("capture"));
-    assert_eq!(sent[0]["dial"]["machine"]["host"], json!("10.0.0.2"));
+    assert_eq!(sent[0]["dial"]["machine"]["host"], json!("192.0.2.2"));
     assert_eq!(
         sent[0]["dial"]["machine"]["keyPath"],
         json!("/home/me/.ssh/id_ed25519"),

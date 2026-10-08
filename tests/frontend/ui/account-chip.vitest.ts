@@ -64,7 +64,7 @@ function host(p: Partial<RemoteHostConfig>): RemoteHostConfig {
 function acct(p: Partial<Account>): Account {
   return {
     name: "z",
-    email: "z@x.edu",
+    email: "z@example.test",
     configDir: "/h/.claude-alt/z",
     isDefault: false,
     mode: "isolated",

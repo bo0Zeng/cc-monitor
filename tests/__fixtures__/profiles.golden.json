@@ -43,7 +43,7 @@
     "editedAt": null,
     "exists": true,
     "fileProblem": null,
-    "fingerprint": "265-4aa8e333d281dd83",
+    "fingerprint": "253-b24855836c65cba3",
     "home": "<HOME>",
     "migrated": null,
     "path": "<HOME>/.cc-monitor/profiles.toml",
@@ -347,7 +347,7 @@
     ]
   },
   "writeReply": {
-    "fingerprint": "267-301db343883b70b6",
+    "fingerprint": "255-e36e1d1a256debd6",
     "reload": "已开的终端要运行「. <HOME>/.cc-monitor/aliases.sh」或新开一个",
     "wrote": true
   },

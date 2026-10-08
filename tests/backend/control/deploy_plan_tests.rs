@@ -34,7 +34,7 @@ fn said(exit: u32, stdout: &str) -> Result<crate::dial::Captured, String> {
 fn fake_ack(nth: usize) -> Value {
     serde_json::json!({
         "ok": true,
-        "fingerprints": { "10.0.0.2:22": format!("SHA256:trip{nth}") },
+        "fingerprints": { "192.0.2.2:22": format!("SHA256:trip{nth}") },
         "jump_fingerprints": {},
         "strict": false,
         "jump_strict": false,

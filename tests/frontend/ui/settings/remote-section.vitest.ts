@@ -168,8 +168,8 @@ describe("F43 shouldShowResetFingerprint", () => {
 
 describe("F45 parseAddressLines", () => {
   it("按行 trim + 去空行", () => {
-    expect(parseAddressLines("10.0.0.2\n  pi:2222 \n\n[::1]:22\n   ")).toEqual([
-      "10.0.0.2",
+    expect(parseAddressLines("192.0.2.2\n  pi:2222 \n\n[::1]:22\n   ")).toEqual([
+      "192.0.2.2",
       "pi:2222",
       "[::1]:22",
     ]);
@@ -193,9 +193,9 @@ describe("F54 findHostByOrigin", () => {
     resumeCommand: "",
     connect: true,
       });
-  const hosts = [mkHost("devbox", "10.0.0.2"), mkHost("", "pi.local")];
+  const hosts = [mkHost("devbox", "192.0.2.2"), mkHost("", "pi.local")];
   it("命中 label", () => {
-    expect(findHostByOrigin(hosts, "devbox")?.host).toBe("10.0.0.2");
+    expect(findHostByOrigin(hosts, "devbox")?.host).toBe("192.0.2.2");
   });
   it("label 空 → 回退 host 匹配", () => {
     expect(findHostByOrigin(hosts, "pi.local")?.host).toBe("pi.local");
@@ -224,7 +224,7 @@ describe("F46 describeStage", () => {
 describe("F56 jump write→read 往返（D-B1 回归）", () => {
   const host = (jump: string): RemoteHostConfig => ({
     label: "devbox",
-    host: "10.0.0.2",
+    host: "192.0.2.2",
     port: 22,
     user: "u",
     keyPath: "",
@@ -270,7 +270,7 @@ describe("S4b-3 resumeCommand write→read 往返（D-B1 同源回归：新字�
   // 这条往返把另一半也钉住。
   const host = (resumeCommand: string): RemoteHostConfig => ({
     label: "devbox",
-    host: "10.0.0.2",
+    host: "192.0.2.2",
     port: 22,
     user: "u",
     keyPath: "",
@@ -335,11 +335,11 @@ describe("F83 sftpEligibleHosts", () => {
   });
   it("缺 host 或缺 user → 排除", () => {
     const hosts = [
-      mk({ host: "10.0.0.2", user: "u" }), // 全填 → 留
-      mk({ host: "10.0.0.3", user: "" }), // 缺 user → 排
+      mk({ host: "192.0.2.2", user: "u" }), // 全填 → 留
+      mk({ host: "192.0.2.3", user: "" }), // 缺 user → 排
       mk({ host: "", user: "u" }), // 缺 host → 排
     ];
-    expect(sftpEligibleHosts(cfg(hosts)).map((h) => h.host)).toEqual(["10.0.0.2"]);
+    expect(sftpEligibleHosts(cfg(hosts)).map((h) => h.host)).toEqual(["192.0.2.2"]);
   });
   it("纯空白 host/user → 排除（trim）", () => {
     const hosts = [mk({ host: "  ", user: "u" }), mk({ host: "h", user: "  " })];
@@ -522,9 +522,9 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     const sec = await mount([mkH("a", "1.1.1.1"), mkH("b", "2.2.2.2")], p.host);
     // 分页模式下编辑表单在**卡片自己那一页**上，不在列表里（`card.element` 被交给
     // `addMachinePage`）—— 所以 label 输入框要从注册进去的那个 element 上取。
-    const ayaPage = p.added.find((a) => a.id === "machine:a")!;
-    expect(ayaPage, "devbox 那一页要注册进来了，否则下面全是空转").toBeTruthy();
-    const first = ayaPage.element.querySelectorAll<HTMLInputElement>('input[type="text"]')[0]!;
+    const devboxPage = p.added.find((a) => a.id === "machine:a")!;
+    expect(devboxPage, "devbox 那一页要注册进来了，否则下面全是空转").toBeTruthy();
+    const first = devboxPage.element.querySelectorAll<HTMLInputElement>('input[type="text"]')[0]!;
     first.value = "a-renamed";
     first.dispatchEvent(new Event("change"));
     await new Promise((r) => setTimeout(r, 0));

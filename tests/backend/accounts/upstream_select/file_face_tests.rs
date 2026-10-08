@@ -665,7 +665,7 @@ fn us1_what_the_write_side_wrote_is_exactly_the_row_the_launch_answer_uses() {
 fn hx2_the_account_id_is_derived_here_from_the_config_dir() {
     let home = temp_dir("hx2-derive");
     let f = file_in(&home);
-    let dir = "/home/u/.claude-alt/zb-work";
+    let dir = "/home/u/.claude-alt/team-work";
     let want = acct_core::apikey_account_id_of_dir(dir).expect("规则推得出");
     let got = answer_set_at(&f, &json!({"configDir": dir, "key": PLAIN})).expect("写应当成功");
     assert_eq!(got["account"], want.as_str());

@@ -11,7 +11,7 @@ use super::*;
 fn parse_host_aliases_never_leaks_sensitive_values() {
     let cfg = "\
 Host box
-    HostName 10.0.0.7
+    HostName 192.0.2.7
     User alice
     IdentityFile ~/.ssh/id_ed25519_secret
     ProxyCommand ssh -W %h:%p jump.example.com
@@ -20,7 +20,7 @@ Host box
     let aliases = parse_host_aliases(cfg);
     assert_eq!(aliases, vec!["box"], "只该抽出别名本身");
     for leak in [
-        "10.0.0.7",
+        "192.0.2.7",
         "alice",
         "id_ed25519_secret",
         "jump.example.com",
@@ -88,7 +88,7 @@ fn rh(host: &str, key: Option<&str>, user: &str, pj: Option<&str>) -> ResolvedHo
 #[test]
 fn alias_base_variants() {
     assert_eq!(alias_base("devbox-lan"), "devbox");
-    assert_eq!(alias_base("aya_wan"), "devbox");
+    assert_eq!(alias_base("devbox_wan"), "devbox");
     assert_eq!(alias_base("devbox.internal"), "devbox");
     assert_eq!(alias_base("pi"), "pi");
 }
@@ -97,7 +97,10 @@ fn alias_base_variants() {
 fn aggregate_same_machine_multi_address() {
     // devbox-lan / devbox-wan 同 key+user+基名 → 聚合成 1 台多地址;pi 基名不同 → 独立。
     let groups = aggregate_ssh_hosts(vec![
-        ("devbox-lan".into(), rh("10.0.0.2", Some("/k"), "user", None)),
+        (
+            "devbox-lan".into(),
+            rh("192.0.2.2", Some("/k"), "user", None),
+        ),
         (
             "devbox-wan".into(),
             rh("devbox.example.com", Some("/k"), "user", None),
@@ -106,7 +109,7 @@ fn aggregate_same_machine_multi_address() {
     ]);
     assert_eq!(groups.len(), 2);
     assert_eq!(groups[0].label, "devbox");
-    assert_eq!(groups[0].host, "10.0.0.2");
+    assert_eq!(groups[0].host, "192.0.2.2");
     assert_eq!(groups[0].addresses, vec!["devbox.example.com".to_string()]);
     let aliases: Vec<&str> = groups[0].members.iter().map(|m| m.alias.as_str()).collect();
     assert_eq!(aliases, vec!["devbox-lan", "devbox-wan"]);
@@ -158,9 +161,9 @@ fn aggregate_proxyjump_and_dedup() {
     let groups = aggregate_ssh_hosts(vec![
         (
             "devbox-lan".into(),
-            rh("10.0.0.2", Some("/k"), "u", Some("bastion")),
+            rh("192.0.2.2", Some("/k"), "u", Some("bastion")),
         ),
-        ("devbox-wan".into(), rh("10.0.0.2", Some("/k"), "u", None)),
+        ("devbox-wan".into(), rh("192.0.2.2", Some("/k"), "u", None)),
     ]);
     assert_eq!(groups.len(), 1);
     assert_eq!(groups[0].jump.as_deref(), Some("bastion"));
@@ -217,12 +220,15 @@ fn the_three_products_match_the_cross_language_golden() {
     let golden: serde_json::Value =
         serde_json::from_str(include_str!("../__fixtures__/ssh-config.golden.json")).unwrap();
     let resolved = parse_ssh_g_output(
-        "hostname 10.0.0.2\nport 2222\nuser user\nproxyjump bastion\nidentityfile /nonexistent/mig1-key\n",
+        "hostname 192.0.2.2\nport 2222\nuser user\nproxyjump bastion\nidentityfile /nonexistent/mig1-key\n",
         "devbox-lan",
     );
     let mut groups = aggregate_ssh_hosts(vec![
         ("devbox-lan".into(), resolved.clone()),
-        ("devbox-wan".into(), rh("devbox.example.com", None, "user", None)),
+        (
+            "devbox-wan".into(),
+            rh("devbox.example.com", None, "user", None),
+        ),
         ("pi".into(), rh("pi.local", None, "pi", None)),
     ]);
     // 列表里已有 devbox 的第二个地址那一台 ⇒ devbox 那一组「已在列表里」；pi 不在。

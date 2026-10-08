@@ -5,7 +5,7 @@ use super::*;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 
 fn args() -> Value {
-    json!({"ticket": "t-1", "machine": {"host": "10.0.0.2", "label": "devbox", "user": "u"}})
+    json!({"ticket": "t-1", "machine": {"host": "192.0.2.2", "label": "devbox", "user": "u"}})
 }
 
 /// 跑一趟探针，收下它推的每一格（票都得是交来的那张）；回 `(结局, 结局之前那几格)`。
@@ -40,7 +40,7 @@ where
 async fn a_refused_handshake_reports_ssh_down_with_its_stages_and_no_fingerprint() {
     let (r, cells) = cells_of(&args(), |req, _up, mut down| async move {
         assert!(req.probe && req.stages, "测试连接是短命探活、要阶段行");
-        let _ = down.write_all(b"{\"stage\":{\"kind\":\"dialing\",\"endpoint\":\"10.0.0.2:22\"}}\n").await;
+        let _ = down.write_all(b"{\"stage\":{\"kind\":\"dialing\",\"endpoint\":\"192.0.2.2:22\"}}\n").await;
         let _ = down
             .write_all(b"{\"v\":2,\"ok\":false,\"error\":\"host key mismatch\",\"fingerprint\":\"SHA256:x\",\"uses\":[]}\n")
             .await;
@@ -55,7 +55,7 @@ async fn a_refused_handshake_reports_ssh_down_with_its_stages_and_no_fingerprint
     assert!(r["message"].as_str().unwrap().contains("host key mismatch"));
     assert_eq!(
         cells,
-        vec![json!({"stage": {"kind": "dialing", "endpoint": "10.0.0.2:22"}})],
+        vec![json!({"stage": {"kind": "dialing", "endpoint": "192.0.2.2:22"}})],
         "握手那几行逐条推成 `stage` 格；没过握手 ⇒ 没有 `reached`"
     );
     assert!(r.get("stages").is_none(), "阶段行不再塞进结局");
@@ -65,7 +65,7 @@ async fn a_refused_handshake_reports_ssh_down_with_its_stages_and_no_fingerprint
 async fn ssh_up_but_no_hello_is_its_own_verdict() {
     let (r, cells) = cells_of(&args(), |_req, _up, mut down| async move {
         let _ = down
-            .write_all(b"{\"v\":2,\"ok\":true,\"fingerprint\":\"SHA256:k\",\"endpoint\":\"10.0.0.2:22\",\"uses\":[\"stream\"]}\nnot json\n")
+            .write_all(b"{\"v\":2,\"ok\":true,\"fingerprint\":\"SHA256:k\",\"endpoint\":\"192.0.2.2:22\",\"uses\":[\"stream\"]}\nnot json\n")
             .await;
     })
     .await;

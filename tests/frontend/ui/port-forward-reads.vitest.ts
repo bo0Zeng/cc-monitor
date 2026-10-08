@@ -72,7 +72,7 @@ describe("请求", () => {
       body = chanArgsJson(args);
       return Promise.resolve(chanReply({ id: "fwd-2" }));
     });
-    const machine = { label: "dev", host: "10.9.9.9", port: 22, user: "u", keyPath: "", hostKeyFingerprint: "", addresses: [], jump: "", resumeCommand: "", connect: true };
+    const machine = { label: "dev", host: "198.51.100.9", port: 22, user: "u", keyPath: "", hostKeyFingerprint: "", addresses: [], jump: "", resumeCommand: "", connect: true };
     await startForward({ origin: "dev", localPort: 1, remoteHost: "h", remotePort: 2 }, { machine, jump: null });
     expect(body).toEqual({ origin: "dev", localPort: 1, remoteHost: "h", remotePort: 2, machine, jump: null });
   });

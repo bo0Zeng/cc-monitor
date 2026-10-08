@@ -1,5 +1,5 @@
 {
   "_doc": "帧命令 pubkey-push 的线上形状（公钥推送进本机后端）。后端 assets/pubkey_tests::the_push_reply_has_exactly_the_golden_keys 核键集 == 真产出；界面 src/frontend/ui/pubkey-push.ts::decodePush 读同一份。值是结构占位。",
-  "request": { "machine": { "host": "10.0.0.2", "label": "dev", "user": "u", "keyPath": "/k/id_ed25519" }, "saved": null, "jump": null, "pubKeyPath": null },
+  "request": { "machine": { "host": "192.0.2.2", "label": "dev", "user": "u", "keyPath": "/k/id_ed25519" }, "saved": null, "jump": null, "pubKeyPath": null },
   "product": { "outcome": "added", "pubPath": "/k/id_ed25519.pub", "via": "exec" }
 }

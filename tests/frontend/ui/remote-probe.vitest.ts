@@ -43,7 +43,7 @@ import { copyText } from "../../../src/frontend/ui/copy-table";
 
 const host = (over: Partial<RemoteHostConfig>): RemoteHostConfig => ({
   label: "devbox",
-  host: "10.0.0.2",
+  host: "192.0.2.2",
   port: 22,
   user: "u",
   keyPath: "",
@@ -57,13 +57,13 @@ const host = (over: Partial<RemoteHostConfig>): RemoteHostConfig => ({
 const ok = {
   sshOk: true,
   fingerprint: "SHA256:k",
-  endpoint: "10.0.0.2:22",
+  endpoint: "192.0.2.2:22",
   backendOk: true,
   backendHello: "版本 p5o · 能用 40 项、这台做不到 0 项 · 往返 3 毫秒",
   backendGaps: [],
   message: copyText("beProbe.test.ok"),
 };
-const dialing = { kind: "dialing", endpoint: "10.0.0.2:22" };
+const dialing = { kind: "dialing", endpoint: "192.0.2.2:22" };
 let seq = 0;
 const cell = (c: unknown): unknown => ({ t: "frame", seq: seq++, body: JSON.stringify(c) });
 const push = (...cells: unknown[]): void => fake.subs[0]!.sink(cells.map(cell));
@@ -89,7 +89,7 @@ describe("请求与进度", () => {
       push({ reached: "ssh" }, { reached: "hello" }, { reached: "control" }, { end: ok });
       return Promise.resolve(new TextEncoder().encode("null"));
     };
-    const form = host({ host: "10.0.0.3", jump: "bastion" });
+    const form = host({ host: "192.0.2.3", jump: "bastion" });
     const saved = [host({ label: "other" }), host({ label: "bastion", host: "b.example" }), host({ hostKeyFingerprint: "SHA256:old" })];
     const r = await probeMachine(form, saved, (st) => drawn.push(st));
     expect(fake.order).toEqual(["subscribe", "call"]);

@@ -19,7 +19,7 @@
  * **不在这里处理**：
  * - DOM 折叠 UI → branch-fold.ts
  *
- * **链完整性**（详 [[project-branching-algorithm]] 笔记）：
+ * **链完整性**：
  * - attachment + system 记录不渲染卡片，但夹在 user/assistant 链中间
  * - 必须 track 它们的 uuid+parentUuid，否则 parent 链断成碎片 → 大量误折叠
  * - extractBranchRecord 显式接受这五种类型（F63 起含 `cc-monitor-unrecognized`

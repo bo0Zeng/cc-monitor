@@ -138,7 +138,7 @@ async fn an_unregistered_origin_is_said_and_never_dialed() {
 #[tokio::test]
 async fn a_registered_origin_is_asked_with_exactly_its_dial_and_a_quoted_command() {
     let table = Table::default();
-    answer_reach_with(&reach_args("dev", "10.0.0.2"), &table).unwrap();
+    answer_reach_with(&reach_args("dev", "192.0.2.2"), &table).unwrap();
     let far = Recorder::default();
     let args = json!({"dir": "-home-u-it's"});
     let _ = ask_json("dev", "history-list", &args, &table, &far)
@@ -146,7 +146,7 @@ async fn a_registered_origin_is_asked_with_exactly_its_dial_and_a_quoted_command
         .expect_err("替身答的不是 JSON");
     let calls = far.calls.lock().unwrap().clone();
     assert_eq!(calls.len(), 1);
-    assert_eq!(calls[0].0, reach_args("dev", "10.0.0.2")["dial"]);
+    assert_eq!(calls[0].0, reach_args("dev", "192.0.2.2")["dial"]);
     // 期望值手写成字面量（不拿 `command_line` 去比它自己 —— 那样两侧同源，拿掉引号也恒绿）。
     // 那台后端恒在固定落点：`"$HOME"` 在那台上展开（fish 的双引号里同样展开），其后是安全字节。
     assert_eq!(

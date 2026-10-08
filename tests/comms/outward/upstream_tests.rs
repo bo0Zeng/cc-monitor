@@ -123,7 +123,7 @@ fn the_loopback_predicate_says_yes_only_to_the_local_machine() {
     for no in [
         "http://1.2.3.4/v1",
         "https://api.example.com",
-        "http://10.0.0.1:8000",
+        "http://192.0.2.1:8000",
         // ⚠ 一个**名字**里含 localhost 不算 —— 它解到哪儿本条判不了。
         "http://localhost.evil.example",
     ] {

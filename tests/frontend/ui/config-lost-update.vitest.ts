@@ -93,7 +93,7 @@ const KEYS = { "open-settings": "Ctrl+,", "kill-session": null };
 /** 设置窗写机器表那一路插的一台（与盘上读回的形状逐格相同）。 */
 const LU_HOST = {
   label: "lu",
-  host: "10.9.9.9",
+  host: "198.51.100.9",
   port: 22,
   user: "u",
   keyPath: "",

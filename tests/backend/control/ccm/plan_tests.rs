@@ -1387,7 +1387,7 @@ fn an_inherited_relay_address_of_ours_never_goes_into_the_pane() {
             "http://127.0.0.1:8788/{}/t/claude-code/_",
             key.to_uppercase()
         ),
-        format!("http://10.0.0.1:8788/{key}/t/claude-code/_"),
+        format!("http://192.0.2.1:8788/{key}/t/claude-code/_"),
     ] {
         assert!(
             container_of(&v)

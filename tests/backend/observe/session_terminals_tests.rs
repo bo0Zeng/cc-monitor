@@ -109,7 +109,7 @@ fn inside_tmux_the_answer_is_the_clients_attached_right_now() {
         "没有终端连着却报出了终端"
     );
 
-    let mut a = attach_client(&sock, "10.0.0.5 62414 10.0.0.9 22", None);
+    let mut a = attach_client(&sock, "192.0.2.5 62414 192.0.2.9 22", None);
     assert!(wait_until(10, || clients(&sock) == 1), "客户端 A 没连上");
     // tmux 的动静是秒级的：隔开一秒多，B 才是「更近」的那个。
     std::thread::sleep(Duration::from_millis(1300));
@@ -135,9 +135,9 @@ fn inside_tmux_the_answer_is_the_clients_attached_right_now() {
                 server_port: 2222,
             }),
             Some(SshConnection {
-                client_addr: "10.0.0.5".into(),
+                client_addr: "192.0.2.5".into(),
                 client_port: 62414,
-                server_addr: "10.0.0.9".into(),
+                server_addr: "192.0.2.9".into(),
                 server_port: 22,
             }),
         ],
@@ -174,7 +174,7 @@ fn outside_tmux_the_process_own_environment_is_the_answer() {
         ])
         .env_remove("TMUX")
         .env_remove("TMUX_PANE")
-        .env("SSH_CONNECTION", "192.168.1.20 51111 192.168.1.2 22")
+        .env("SSH_CONNECTION", "203.0.113.20 51111 203.0.113.2 22")
         .env("LC_CCM_WINDOW", "4242-133000000000000000")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -196,9 +196,9 @@ fn outside_tmux_the_process_own_environment_is_the_answer() {
         shown_by(pid).unwrap(),
         Shown::By(vec![Terminal {
             ssh: Some(SshConnection {
-                client_addr: "192.168.1.20".into(),
+                client_addr: "203.0.113.20".into(),
                 client_port: 51111,
-                server_addr: "192.168.1.2".into(),
+                server_addr: "203.0.113.2".into(),
                 server_port: 22,
             }),
             activity: None,
@@ -240,10 +240,10 @@ fn ssh_connection_is_four_fields_or_nothing() {
     );
     for bad in [
         "",
-        "10.0.0.1 1 10.0.0.2",
-        "host 1 10.0.0.2 22",
-        "10.0.0.1 70000 10.0.0.2 22",
-        "10.0.0.1 1 10.0.0.2 22 x",
+        "192.0.2.1 1 192.0.2.2",
+        "host 1 192.0.2.2 22",
+        "192.0.2.1 70000 192.0.2.2 22",
+        "192.0.2.1 1 192.0.2.2 22 x",
     ] {
         assert_eq!(parse_ssh_connection(bad), None, "{bad:?} 不该认");
     }

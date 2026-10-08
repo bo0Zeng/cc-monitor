@@ -384,7 +384,14 @@ fn golden_list() -> ExtList {
 fn many_places_are_the_intersection_and_the_place_is_ok_for_every_picked_machine() {
     let list = golden_list();
     // demo：本机那一格只能装到本机的项目（全局是来源同一处）；laptop 那一格全局与 laptop 的项目都行。
-    let p = plan_many(&list, ExtKind::Skill, "demo", &[Some("laptop".into())], None).unwrap();
+    let p = plan_many(
+        &list,
+        ExtKind::Skill,
+        "demo",
+        &[Some("laptop".into())],
+        None,
+    )
+    .unwrap();
     assert_eq!(
         p.places
             .iter()

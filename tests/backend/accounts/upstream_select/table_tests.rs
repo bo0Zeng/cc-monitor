@@ -245,7 +245,7 @@ fn a_plaintext_upstream_is_only_allowed_on_loopback() {
         entries(
             r#"{"accounts":{
                     "off-loopback":{"api_key":"K1","base_url":"http://1.2.3.4/v1"},
-                    "private-lan":{"api_key":"K2","base_url":"http://10.0.0.1:8000/v1"},
+                    "private-lan":{"api_key":"K2","base_url":"http://192.0.2.1:8000/v1"},
                     "on-loopback":{"api_key":"K3","base_url":"http://127.0.0.1:11434/v1"},
                     "tls-anywhere":{"api_key":"K4","base_url":"https://1.2.3.4/v1"}
                 }}"#,

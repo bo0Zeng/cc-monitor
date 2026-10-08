@@ -15,7 +15,7 @@ fn cfg(label: &str) -> RemoteConfig {
         user: "u".into(),
         key_path: Some("/home/u/.ssh/id_ed25519".into()),
         host_key_fingerprint: Some("SHA256:abc".into()),
-        addresses: vec!["10.0.0.9".into(), "[::1]:22".into()],
+        addresses: vec!["192.0.2.9".into(), "[::1]:22".into()],
         jump: None,
     }
 }
@@ -55,7 +55,7 @@ fn the_request_hands_over_the_machine_as_is() {
     // 这台原样：camelCase 的那一格，地址行不解析、原样过去（组法在后端）。
     assert_eq!(
         req["machine"]["addresses"],
-        serde_json::json!(["10.0.0.9", "[::1]:22"])
+        serde_json::json!(["192.0.2.9", "[::1]:22"])
     );
     assert_eq!(req["machine"]["keyPath"], "/home/u/.ssh/id_ed25519");
     assert!(
@@ -78,17 +78,17 @@ fn the_last_winner_goes_over_as_prefer_while_the_config_is_unchanged() {
     crate::stream_source::record_last_good(
         &c,
         &crate::stream_source::Endpoint {
-            host: "10.0.0.9".into(),
+            host: "192.0.2.9".into(),
             port: 2222,
         },
     );
     let req = request(&c, "stream", serde_json::json!({})).unwrap();
     assert_eq!(
         req["prefer"],
-        serde_json::json!({"host": "10.0.0.9", "port": 2222})
+        serde_json::json!({"host": "192.0.2.9", "port": 2222})
     );
     let mut moved = c.clone();
-    moved.addresses = vec!["10.0.0.7".into()];
+    moved.addresses = vec!["192.0.2.7".into()];
     let req = request(&moved, "stream", serde_json::json!({})).unwrap();
     assert_eq!(
         req["prefer"],

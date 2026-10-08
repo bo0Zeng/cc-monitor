@@ -539,7 +539,7 @@ fn the_plan_ack_is_pinned_by_the_same_judgement_as_every_other_dial() {
         serde_json::from_str(include_str!("../../__fixtures__/deploy-plan.golden.json")).unwrap();
     let p = decode_plan(&golden["product"]).expect("金样解不开");
     assert_eq!(
-        p.ack.fingerprints.get("10.0.0.2:22").map(String::as_str),
+        p.ack.fingerprints.get("192.0.2.2:22").map(String::as_str),
         Some("SHA256:placeholder"),
         "解码器没把 ack 的逐地址指纹收进来：{:?}",
         p.ack
