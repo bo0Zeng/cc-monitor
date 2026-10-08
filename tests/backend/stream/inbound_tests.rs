@@ -591,6 +591,9 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "agent-home-check",
         // 「要你动手」记下的选择：读—改—写后端自己那份小文件。
         "chores-mark",
+        // 离线那台的上次值：读 / 读—改—写后端自己那份小文件。
+        "last-seen-read",
+        "last-seen-write",
         // 别名预览：读账号库 manifest ＋ 问会话快照。
         "ccm-print",
         // 资产目录两条：扫盘 ＋ 原子写目录文件。
@@ -775,6 +778,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "data-report",
         "agent-home-check",
         "chores-mark",
+        "last-seen-read",
+        "last-seen-write",
         // 本机那一份放不放：读一遍落点那个文件 ⇒ 阻塞档。
         "place-verdict",
         // 别名预览，阻塞档。

@@ -39,10 +39,10 @@ export function decodeInterrupts(v: unknown): InterruptsReply | null {
 /** 那一问的期限：那台扫一遍活会话 ＋ 回程。 */
 const INTERRUPTS_BUDGET_MS = 10_000;
 
-/** 问一家（那台 / 本机）；问不到 ⇒ `null`。 */
-async function askOne(origin: string, machine: string | null): Promise<InterruptsReply | null> {
+/** 问一家（那台 / 本机）；问不到 ⇒ `null`。`appExit` ⇒ 问的是「重启 / 退出 cc-monitor」（那台后端按它自己的退出行为答）。 */
+async function askOne(origin: string, machine: string | null, appExit = false): Promise<InterruptsReply | null> {
   try {
-    const body = jsonBody(machine === null ? {} : { machine });
+    const body = jsonBody(appExit ? { appExit: true } : machine === null ? {} : { machine });
     const budget = budgetWithin(INTERRUPTS_BUDGET_MS);
     const reply = await chan.call(origin, "machine-interrupts", body, budget);
     return decodeInterrupts(readJson(reply));
@@ -61,6 +61,22 @@ export async function askInterrupts(origin: string): Promise<Interrupts> {
     relayedMaybe: there?.relayedMaybe ?? 0,
     liveStreams: there?.liveStreams ?? 0,
     forwards: local ? 0 : (here?.forwards ?? null),
+  };
+}
+
+/**
+ * 「现在重启 cc-monitor」之前：问本机与各台（`appExit`，各台照它自己的退出行为答会不会跟着停），加起来。
+ * 本机问不到 ⇒ 会话那一格 `null`（说数不出）；远端问不到 ⇒ 那台本来就没连着，不算。
+ */
+export async function askAppExitInterrupts(remotes: readonly string[]): Promise<Interrupts> {
+  const [here, ...there] = await Promise.all([askOne(LOCAL_ORIGIN, null, true), ...remotes.map((o) => askOne(o, null, true))]);
+  const got = [here, ...there].filter((x): x is InterruptsReply => x !== null);
+  const sum = (k: keyof InterruptsReply): number => got.reduce((n, x) => n + x[k], 0);
+  return {
+    relayedSessions: here === null ? null : sum("relayedSessions"),
+    relayedMaybe: sum("relayedMaybe"),
+    liveStreams: sum("liveStreams"),
+    forwards: here === null ? null : sum("forwards"),
   };
 }
 

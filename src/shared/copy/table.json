@@ -6107,12 +6107,37 @@
     },
     "restartNotice.render.pending": {
       "kind": "body",
-      "zh": "有改动需重启 monitor 才生效：{list}",
-      "args": ["list"]
+      "zh": "{n} 项 · 重启 cc-monitor 后生效：{list}",
+      "args": ["n", "list"]
     },
     "restartNotice.render.listSep": {
       "kind": "body",
       "zh": " · ",
+      "args": []
+    },
+    "restartNow.bar.action": {
+      "kind": "action",
+      "zh": "现在重启",
+      "args": []
+    },
+    "restartNow.dialog.title": {
+      "kind": "title",
+      "zh": "重启 cc-monitor",
+      "args": []
+    },
+    "restartNow.dialog.everywhere": {
+      "kind": "body",
+      "zh": "各机器",
+      "args": []
+    },
+    "restartNow.run.toast": {
+      "kind": "body",
+      "zh": "重启 cc-monitor 中 · 会话照跑",
+      "args": []
+    },
+    "restartNow.run.failed": {
+      "kind": "error",
+      "zh": "重启失败",
       "args": []
     },
     "openSettings.openSettingsWindow.failed": {
@@ -6323,11 +6348,6 @@
     "machineCard.deploy.uninstallHint": {
       "kind": "body",
       "zh": "删除远端后端（机器仍启用的话，下次连接会自动装回）",
-      "args": []
-    },
-    "machineCard.field.resumeCmdHint": {
-      "kind": "control",
-      "zh": "留空 = 通用设置",
       "args": []
     },
     "machineCard.field.nameTaken": {
@@ -6640,9 +6660,24 @@
       "zh": "各机器可单独设：机器 ⋯ → 这台上的 cc-monitor",
       "args": []
     },
-    "settingsPanel.behavior.resumeHint": {
+    "resumeSelect.option.inherit": {
       "kind": "control",
-      "zh": "留空 = claude",
+      "zh": "通用设置",
+      "args": []
+    },
+    "resumeSelect.option.defaultBare": {
+      "kind": "control",
+      "zh": "默认",
+      "args": []
+    },
+    "resumeSelect.option.custom": {
+      "kind": "control",
+      "zh": "自定义…",
+      "args": []
+    },
+    "resumeSelect.custom.hint": {
+      "kind": "control",
+      "zh": "命令",
       "args": []
     },
     "settingsPanel.behavior.resumeInTmux": {
@@ -6837,21 +6872,6 @@
       "zh": "显示后台任务会话",
       "args": []
     },
-    "settingsPanel.preset.removeHint": {
-      "kind": "body",
-      "zh": "从预设里移除 {cmd}",
-      "args": ["cmd"]
-    },
-    "settingsPanel.preset.inUse": {
-      "kind": "body",
-      "zh": "{cmd} 正在生效 —— 换成别的命令之后才能把它从预设里移除。",
-      "args": ["cmd"]
-    },
-    "settingsPanel.preset.remove": {
-      "kind": "action",
-      "zh": "×",
-      "args": []
-    },
     "settingsPanel.open.partialFailed": {
       "kind": "error",
       "zh": "部分设置项加载失败：{e}",
@@ -6992,10 +7012,25 @@
       "zh": "卸载 cc-monitor 不删这些",
       "args": []
     },
+    "dataPage.own.unknownItem": {
+      "kind": "body",
+      "zh": "未识别 · {id}",
+      "args": ["id"]
+    },
+    "dataPage.own.openRemote": {
+      "kind": "action",
+      "zh": "在文件窗口里打开",
+      "args": []
+    },
     "dataPage.placed.offline": {
       "kind": "body",
       "zh": "{machine} 离线 · 未检查",
       "args": ["machine"]
+    },
+    "dataPage.placed.stale": {
+      "kind": "body",
+      "zh": "{machine} 离线 · 采样 {ago} 前",
+      "args": ["machine", "ago"]
     },
     "dataPage.placed.retry": {
       "kind": "action",
@@ -22388,9 +22423,29 @@
       "zh": "这台的家目录解析不出来，记不下这个选择",
       "args": []
     },
+    "beLastSeen.value.tooLarge": {
+      "kind": "error",
+      "zh": "上次值 {size} 字节 · 上限 {max}",
+      "args": ["size", "max"]
+    },
+    "beLastSeen.store.mkdirFailed": {
+      "kind": "error",
+      "zh": "建不了 {dir}：{e}",
+      "args": ["dir", "e"]
+    },
+    "beLastSeen.store.noHome": {
+      "kind": "error",
+      "zh": "这台的家目录解析不出来，记不下上次值",
+      "args": []
+    },
     "rsDataPaths.backend.chores": {
       "kind": "body",
       "zh": "要你动手里记下的选择 · 不用了的几件 · 自己贴的启动文件",
+      "args": []
+    },
+    "rsDataPaths.backend.lastSeen": {
+      "kind": "body",
+      "zh": "离线机器的上次值 · 账号与文件清单，再连上就更新",
       "args": []
     },
     "dataPage.kind.must": {

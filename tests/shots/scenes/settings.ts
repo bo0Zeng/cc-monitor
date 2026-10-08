@@ -207,6 +207,25 @@ export const SETTINGS_SCENES: Scene[] = [
     await click(await byText(".settings-page:not([hidden]) .data-chip", "devbox"));
     await sleep(700);
   }),
+  settings(
+    "settings-data-placed-offline",
+    "设置 · 文件与数据 · 放了什么 · 连不上的那台",
+    "gpu-01 连不上：照本机后端记着的上次那一份画（改过你的文件 · cc-monitor 的文件）＋ 警告条说多旧 ［重试］",
+    async () => {
+      await go("data");
+      await click(await byText(".settings-page:not([hidden]) button", "cc-monitor 放了什么"));
+      await sleep(400);
+      await click(await byText(".settings-page:not([hidden]) .data-chip", "gpu-01"));
+      await sleep(700);
+    },
+    troubleWorld,
+  ),
+  settings("settings-general-resume-open", "设置 · 通用 · 恢复命令下拉", "恢复命令点开：默认那一家的启动器（灰字默认）· 用过的 · 自定义…", async () => {
+    await go("general");
+    await sleep(500);
+    document.querySelector<HTMLButtonElement>('.settings-page:not([hidden]) [data-role="resume-select"]')?.click();
+    await sleep(400);
+  }),
   page("settings-machines", "设置 · 机器", "机器列表：本机 ＋ 三台远端，每台的连接 / 后端 / ccm / 账号四格", "machines"),
   page("settings-machine-local", "设置 · 本机", "本机那一页", "machine:（本机）"),
   page("settings-machine-remote", "设置 · 远端机器", "devbox 那一页（落在第一个子页）", "machine:devbox"),

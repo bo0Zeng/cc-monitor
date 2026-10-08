@@ -253,6 +253,9 @@ export const commands = {
   diagnostics_report: (args: { configUnknown: string[]; drift: { origin: string; report: unknown }[] }) =>
     invoke<DiagnosticsReport>("diagnostics_report", args),
 
+  /** 设置窗「现在重启」：重起 cc-monitor 自己（会打断什么由调用方先问后端）。 */
+  restart_app: () => invoke<void>("restart_app"),
+
   /** 部署内嵌的后端到远端。Rust 返回 `Result<String, String>`（人话结果）⇒ 原始类型。 */
   /** 部署远端后端（连同 `ccm` 入口，一次）。 */
   deploy_remote_backend: (args: { cfg: unknown }) => invoke<string>("deploy_remote_backend", args),

@@ -920,6 +920,13 @@ mod tests {
              线上入口只有命令表资产那一族的 `chores-mark`（＋ 派生的 CLI 面）",
         ),
         (
+            "footprint/last_seen.rs",
+            "**离线那台的上次值** `~/.cc-monitor/last-seen.json`：本机后端替界面记下每台最近一次读成的账号清单 · 「文件与数据」那一份。\
+             文件名 / 格式 / 落点都是本仓定的、只有后端读它 ⇒ 后端**自己的**状态（能重建的缓存），不是用户数据。在跨进程锁里读盘 → 改 → \
+             经 `own_state` 原子写；只建 `~/.cc-monitor` 那一层；读不懂的那份当没记过、整份重来（它只是缓存）。\
+             线上入口只有命令表资产那一族的 `last-seen-write`（＋ 派生的 CLI 面）",
+        ),
+        (
             "assets/skill_ledger.rs",
             "**skill 装记录** `~/.cc-monitor/skill-installs.json`：从别的机器装到这台的 skill，装时写进了哪几个文件 \
              （各自的摘要 ＋ 装之前在不在）。只删装时写进去的文件 —— 卸只删这里记着的。文件名 / 格式 / 落点都是本仓定的、\
@@ -1140,6 +1147,12 @@ mod tests {
         (
             "footprint/chores/marks.rs",
             "marks::answer_mark",
+            "stream/inbound/registry/assets.rs",
+        ),
+        // 离线那台的上次值：一条写口 `answer_write`（`write_at` 是它的本体，判据直接喂临时目录）；读口 `answer_read` 只读。
+        (
+            "footprint/last_seen.rs",
+            "last_seen::answer_write",
             "stream/inbound/registry/assets.rs",
         ),
         // 起会话用的号：留便条只从 ccm 最终那一跳进，认便条记账只从观测侧进。

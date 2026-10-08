@@ -730,6 +730,20 @@ pub(crate) fn machine_product(lines: &[String], forwards: u32) -> serde_json::Va
     })
 }
 
+/// 「现在重启 cc-monitor」之前那一问（`machine-interrupts` 带 `appExit`）：这台后端随 cc-monitor 退出一起停（`kill` ＝ 它自己那份退出行为）
+/// ⇒ 这台的活会话照 [`machine_product`] 数、账上全部转发（`all_forwards`）都断；留着 ⇒ 什么都不断。**纯函数**。
+pub(crate) fn app_exit_product(
+    kill: bool,
+    lines: &[String],
+    all_forwards: u32,
+) -> serde_json::Value {
+    if kill {
+        machine_product(lines, all_forwards)
+    } else {
+        machine_product(&[], 0)
+    }
+}
+
 /// 走同一个解析（只跟着家走）。
 pub(crate) fn lines_for_frame(agent_home: &Path, which: FrameAccounts) -> Vec<String> {
     let accts_dir = resolve_accts_dir();
