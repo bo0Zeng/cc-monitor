@@ -13,7 +13,7 @@ import { copyText } from "../../../src/frontend/ui/copy-table";
 describe("钩子状态：四态不误说", () => {
   it("显式路径且在 ⇒ 已装（不能说成有问题）；路径不在 ⇒ 绝不说已装；包装写法 ⇒ 中性", () => {
     const at = describeState({ kind: "installed-at-path", command: "x", path: "$HOME/.claude/skills/cc-bus/scripts/cc-register" });
-    expect([at.tone, at.text.includes(copyText("machineCard.status.installed"))]).toEqual(["ok", true]);
+    expect([at.tone, at.text === copyText("ccBusHooks.state.explicit", { path: "$HOME/.claude/skills/cc-bus/scripts/cc-register" })]).toEqual(["ok", true]);
     const gone = describeState({ kind: "path-missing", command: "x", path: "/gone/cc-register" });
     expect(gone.tone).toBe("bad");
     expect(gone.text).not.toMatch(/^已装/);

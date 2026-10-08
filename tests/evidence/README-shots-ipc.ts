@@ -9,7 +9,6 @@
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { copyText } from "../../src/frontend/ui/copy-table";
 import { LS_KEYS } from "../../src/frontend/ui/local-storage";
-import { LOCAL_MACHINE_KEY, MACHINE_FACETS, recordFacet } from "../../src/frontend/ui/settings/machine-status";
 import { chanArgsJson, chanReply, linesReply, UNSUPPORTED, type ChanCallArgs } from "../test-support/chan-fake";
 import FOOTPRINT_GOLDEN from "../__fixtures__/footprint-report.golden.json";
 import {
@@ -35,7 +34,7 @@ const w = window as unknown as {
 w.__SHOTS_UNANSWERED = [];
 const NOW = Date.parse(NOW_ISO);
 
-// ─── 界面偏好（用户自己会留下的那几格）＋ 机器健康账本（测过、都通过） ───
+// ─── 界面偏好（用户自己会留下的那几格） ───
 try {
   localStorage.setItem(LS_KEYS.lastActiveSid, ACTIVE_SID);
   localStorage.setItem(LS_KEYS.tabBarWidth, "300");
@@ -43,8 +42,6 @@ try {
 } catch {
   /* 存不进也照拍，只是 tab 栏窄一点 */
 }
-for (const machine of [LOCAL_MACHINE_KEY, REMOTE.label])
-  for (const facet of MACHINE_FACETS) recordFacet(machine, facet, { kind: "ok", at: NOW - 5 * 60_000 });
 
 // ─── 会话流：每台机器一条 `session-lines` 订阅，交一批「活会话 ＋ 记录行 ＋ 红绿灯 ＋ 清单报完」 ───
 const recordPath = (s: ShotSession): string => `${s.cwd}/.claude/${s.sid}.jsonl`;

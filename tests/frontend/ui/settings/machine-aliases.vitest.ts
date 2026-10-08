@@ -304,11 +304,9 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
 
   it("远端卡是同一个组件：每一发都带那台的 origin，只本机的那几格不挂", async () => {
     const m = await import("../../../../src/frontend/ui/settings/machine-aliases");
-    const done: string[] = [];
     const mgr = m.buildAliasManager({
       platform: "posix",
       origin: () => "devbox",
-      onBlockDone: (verb, err) => done.push(`${verb}:${err ?? "ok"}`),
     });
     const el = mgr.element;
     built.set(el, mgr);
@@ -329,7 +327,6 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
     expect(new Set(sent.map((c) => c.cmd))).toEqual(new Set(["aliases_read", "profiles_read", "aliases_block_render", "aliases_block_install", "aliases_block_remove", "chan:chores-mark"]));
     expect(sent.filter((c) => (c.args as { origin?: string }).origin !== "devbox"), "有一发没带那台的 origin").toEqual([]);
     expect(seen.filter((c) => !sent.includes(c)), "远端卡问了只有本机才答得了的事").toEqual([]);
-    expect(done).toEqual(["install:ok", "remove:ok"]);
     expect(el.querySelector(".ccm-user-path-block")).toBeNull();
     expect([...el.querySelectorAll("button")].map((b) => b.textContent)).not.toContain(copyText("machineAliases.rc.open"));
   });

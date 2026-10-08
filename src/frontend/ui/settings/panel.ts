@@ -1040,7 +1040,6 @@ export class SettingsPanel {
       backend = new BackendSection({
         headless: true,
         hosted: true,
-        onLinkSeen: (origin) => this.remoteSection?.noteLedgerChanged(origin),
         onChannel: (origin, connected) => this.paintNavDot(origin, connected),
         onMachine: (origin, machine) => this.paintMachine(origin, machine),
       });

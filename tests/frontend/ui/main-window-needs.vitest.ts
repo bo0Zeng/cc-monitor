@@ -468,7 +468,7 @@ describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键�
     expect(r.page.el.textContent).toContain(copyText("terminal.input.unsure", { machine: copyText("sessionFace.machine.local") }));
     expect([r.sent.length, b.value]).toEqual([2, "1"]);
     r.setReply(async () => {
-      throw new Error(copyText("machineCard.test.unreachable"));
+      throw new Error(copyText("beServer.words.cantConnect"));
     });
     key(b, "Enter");
     await flush();

@@ -19,7 +19,6 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { homeDir, join } from "@tauri-apps/api/path";
 import { openFileWindow } from "../file-window";
 import { buildConfigPage } from "./config-page"; // 别名与配置文件：远端卡与本机同一个组件（`origin` = 这台）
-import { recordFacet, type MachineFacet } from "./machine-status";
 import { hostKey, readRemoteConfig, resolveRemoteConfigByOrigin, type RemoteHostConfig } from "../remote-config";
 import { parseAddressLines } from "../remote-config";
 import type { MachineFault } from "../generated/MachineFault";
@@ -637,17 +636,6 @@ export class MachineCard {
         // 远端恒 POSIX：只承诺远端 Linux。
         platform: "posix",
         origin,
-        // 机器列表那一格（`ccm`）照旧记装 / 卸的结论。原先装完还清一次界面的 ccm 探针缓存：渲染进了那台后端、
-        //   能力问它自己，界面不再缓存那一份（探针与缓存一起删了）。
-        onBlockDone: (verb, error) => {
-          if (verb === "install") {
-            this.recordFacet("ccm", error
-              ? { kind: "fail", detail: copyText("machineCard.status.installFailed") }
-              : { kind: "ok", detail: copyText("machineCard.status.installed") });
-          } else if (!error) {
-            this.recordFacet("ccm", { kind: "fail", detail: copyText("machineCard.status.uninstalled") });
-          }
-        },
       }),
     );
 
@@ -876,14 +864,6 @@ export class MachineCard {
       const res = await probeMachine(cfg, (await readRemoteConfig()).hosts, (st) => segs.stage(st));
       segs.end(res);
       this.renderTestResult(res, null, segs.el);
-      // S3：记进账本。**只在 SSH 通了的时候才记 backend** —— SSH 都没通，backend 那格是「不知道」。
-      this.recordFacet("connection", { kind: res.sshOk ? "ok" : "fail" });
-      if (res.sshOk) {
-        this.recordFacet("backend", {
-          kind: res.backendOk ? "ok" : "fail",
-          detail: res.backendOk ? copyText("machineCard.test.alive") : copyText("machineCard.test.silent"),
-        });
-      }
     } catch (e) {
       console.warn("remote-probe failed:", e);
       // 到点没等到结局 ⇒ 说出停在哪一段（最后收到的那一格）。
@@ -893,7 +873,6 @@ export class MachineCard {
           : copyText("machineCard.test.failed", { e: String(e) });
       segs.stop();
       this.renderTestResult(null, said, segs.el);
-      this.recordFacet("connection", { kind: "fail", detail: copyText("machineCard.test.unreachable") });
     } finally {
       this.testButton.disabled = false;
       setButtonLabel(this.testButton, copyText("machineCard.build.test"));
@@ -1016,12 +995,6 @@ export class MachineCard {
     btn: HTMLButtonElement,
     busyLabel: string,
     fn: () => Promise<string>,
-    /**
-     * S3：这次动作的结论记到列表行的哪个格子上。**在这里统一接线**而不是各处 handler
-     * 里散着写——散着写的失效模式是「新加一个动作忘了记」，那台机器的那一格就永远
-     * 停在旧结论上，而 UI 上看不出来。
-     */
-    ledger?: { facet: MachineFacet; ok: string; fail: string },
     /** 结果写到哪一栏：「连接」栏的动作写 `testResult`，「组件」栏的写 `actionResult`（「终端」栏的别名那一块自带结果区）。 */
     where: ResultArea = "conn",
   ): Promise<boolean> {
@@ -1034,26 +1007,14 @@ export class MachineCard {
     try {
       const msg = await fn();
       out.textContent = `✓ ${msg}`;
-      if (ledger) this.recordFacet(ledger.facet, { kind: "ok", detail: ledger.ok });
       return true;
     } catch (e) {
       out.textContent = `✗ ${String(e)}`;
-      if (ledger)
-        this.recordFacet(ledger.facet, { kind: "fail", detail: ledger.fail });
       return false;
     } finally {
       btn.disabled = false;
       btn.textContent = prev;
     }
-  }
-
-  /** S3：记一格状态并立刻重绘状态条（同一个 key 口径：盘上那条的 origin）。 */
-  private recordFacet(
-    facet: MachineFacet,
-    state: { kind: "ok" | "fail"; detail?: string },
-  ): void {
-    recordFacet(this.persistedKey ?? hostKey(this.collect()), facet, state);
-    this.renderStatusStrip();
   }
 
   /** F08c：点「卸载后端」——删远端后端二进制（二次确认；旁挂的版本标记退役了，不再删它）。 */
@@ -1075,17 +1036,7 @@ export class MachineCard {
     ) {
       return;
     }
-    const done = await this.runRemoteAction(
-      this.backendUninstallButton,
-      copyText("machineCard.uninstall.running"),
-      () => uninstallBackend(cfg),
-      // 卸载**成功**意味着这台机器现在没有 backend —— 结论是 `fail`（缺组件），不是 `ok`。
-      // 这里刻意不用 ledger 参数：它把「动作成功」映射成 `ok`，而本例正好相反。
-      undefined,
-      "comp",
-    );
-    // 没卸掉 ⇒ 那一格不动（失败的原因已在结果区）。
-    if (done) this.recordFacet("backend", { kind: "fail", detail: copyText("machineCard.status.uninstalled") });
+    await this.runRemoteAction(this.backendUninstallButton, copyText("machineCard.uninstall.running"), () => uninstallBackend(cfg), "comp");
   }
 
   /**

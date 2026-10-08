@@ -110,13 +110,6 @@ import {
 } from "../../../../src/frontend/ui/remote-config";
 import type { RemoteHostConfig, RemoteConfig } from "../../../../src/frontend/ui/remote-config";
 import * as remoteConfigModule from "../../../../src/frontend/ui/remote-config";
-// `N-F2`：`forgetMachine` 是本文件末尾那条「先证会红」用的 —— 只抹本机那一栏，
-// 而不是 `localStorage.clear()`，这样「回到旧行为」这句话是按机器说的，不是按整本账说的。
-import {
-  recordFacet,
-  readStatus,
-  LOCAL_MACHINE_KEY,
-} from "../../../../src/frontend/ui/settings/machine-status";
 import { __setHostOsForTests } from "../../../../src/frontend/ui/settings/host-os";
 // `KR59D3`：那条**有名字**的告知 —— 名字的家只有一个（`readiness.ts`），
 // 判据与 DOM 上那个 `data-code` 断的是同一个串，不在这里另抄一份字面量。
@@ -645,32 +638,11 @@ describe("S1 RemoteSection：保存走局部合并", () => {
   // 「★ S9：本机的 ccm 条目跟着 monitor 的 OS 走」那一条删了：它钉的是 monitor 跑在哪个 OS 传进 `computeGaps` 的接线，
   //   那个入参随 Windows 豁免一起删了（`readiness.ts::notApplicable` 头注第 3 条），没有被测对象。
 
-  // ───────────────────────────────────────────────────────────────────────────
-  // `N-F2` `NF2D3` **最后那一跳**：`summary === null` ⇒ 这一块**整块不出现**
-  //（`remote-section.ts` 里 `renderGaps` 的 `if (!summary)` 那一支）。
-  //
-  // # 它此前是死代码，而这里是唯一断得到它的地方
-  //
-  // 本机的 `accounts` 在 `N-F2` 之前**全仓没有任何 `recordFacet` 生产者**
-  //（唯一的写点 `accounts-section.note()` 第一行是 `if (!this.origin) return`，
-  // 而本机这条路上 `origin` 恒空）⇒ 那两格恒 `unknown` ⇒ `summarizeGaps` 恒非 null
-  // ⇒ 这一支**在结构上走不到**。`accounts-section.vitest.ts` 里 `N-F2` 那一族
-  // 只断到 `summarizeGaps === null` 为止 —— **DOM 这一跳它够不着**。
-  //
-  // ⚠ 上面那条 `★ E56「还差什么」：全新用户…` 只断过它的**反面**
-  //（`expect(box.style.display).not.toBe("none")`）⇒ `display:none` 那一支
-  // 在本件之前是**零覆盖**。这两条就是去覆盖它。
-  //
-  // ⚠ 这一块的 `display` 出厂值就是 `"none"`（构造时设的）⇒ 只断「等于 none」
-  // 会被「`renderGaps` 压根没跑」喂饱。所以第一条**先断它真的出现过**、
-  // 且逐项等于本机那两格，那一屏就是分母本身。
-  // ───────────────────────────────────────────────────────────────────────────
-
   // 🔴 〔条 80 「不要管旧配置」〕**`KR59D3` 的产品面那条也退役了。**
   //    它断的是「喂一份带旧 `daemonless: true` 的 config ⇒ 清单上真有一条带名字的告知」，
   //    而那条告知这一拍整块删了 ⇒ 没有被测对象。⚠ 用例数 −1，逐条点名在本轮报告里。
 
-  it("★ 渲染机器列表不发任何后端请求（只读账本）", async () => {
+  it("★ 渲染机器列表不按台数发后端请求", async () => {
     // §1-2：状态灯绝不引入轮询。这块是「新用户第一眼看到的东西」，
     // 更不能因为它就把 N 台机器探一遍。
     localStorage.clear();
@@ -715,65 +687,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     expect(got.some((h) => h.label === copyText("remote.cards.local"))).toBe(false);
   });
 
-  /**
-   * 🔴 `K-R59`：本机 `backend` 那一格的**写点**真的在写。
-   *
-   * 撤掉豁免之后它是一格适用的格子，而全仓对 `LOCAL_MACHINE_KEY` 的 `recordFacet` 写点
-   * 此前只有 `accounts-section.note()`（只写 `accounts`）⇒ 没有本条的话
-   * 它会**恒 `unknown`**，「还差什么」那张清单对任何人都清不空。
-   */
-  it("🔴 K-R59：本机后端起没起来，`noteLocalBackend` 真写进账本（两个方向都断）", async () => {
-    for (const [reply, want] of [
-      [{ channel: true, pid: 42 }, "ok"],
-      [{ channel: false }, "fail"],
-    ] as const) {
-      localStorage.clear();
-      ipcReplies.set("backend_status", reply);
-      await mount([], fakePages().host);
-      expect(
-        readStatus(LOCAL_MACHINE_KEY).backend?.kind,
-        `本机后端 channel=${String(reply.channel)} 时账本没写对`,
-      ).toBe(want);
-    }
-    // 🔴 第三个方向：**查不到就不写**。「答不出来」不是「没有」——
-    //    替用户下一个他没做过的结论，正是本模块头注最贵的那条区分。
-    localStorage.clear();
-    ipcReplies.delete("backend_status");
-    await mount([], fakePages().host);
-    expect(readStatus(LOCAL_MACHINE_KEY).backend).toBeUndefined();
-  });
 
-  /**
-   * 「本机 ccm 那一格两件都报」· 「补本机·ccm 那一格的写点」：
-   * `noteLocalCcm` 照 monitor 那一侧的判定记账 —— 两件都成 ⇒ ok；有一件不成 ⇒ fail 且那句话照记；说不清 ⇒ 不写；Windows 本机不问。
-   */
-  it("FIX3 ㉔：本机 ccm 那一格由 `noteLocalCcm` 写，照 ok / 不写；〔WF1〕Windows 上同样问", async () => {
-    __setHostOsForTests("linux");
-    for (const [ok, want] of [
-      [true, "ok"],
-      [false, "fail"],
-    ] as const) {
-      localStorage.clear();
-      ipcReplies.set("local_ccm_entry_status", { ok, summary: `S-${String(ok)}` });
-      await mount([], fakePages().host);
-      const cell = readStatus(LOCAL_MACHINE_KEY).ccm;
-      expect(cell?.kind, `ok=${String(ok)} 时账本没写对`).toBe(want);
-      expect(cell?.detail).toBe(`S-${String(ok)}`);
-    }
-    localStorage.clear();
-    ipcReplies.set("local_ccm_entry_status", { ok: null, summary: "" });
-    await mount([], fakePages().host);
-    expect(readStatus(LOCAL_MACHINE_KEY).ccm, "说不清却写了账本").toBeUndefined();
-    localStorage.clear();
-    ipcCalls.length = 0;
-    __setHostOsForTests("windows");
-    ipcReplies.set("local_ccm_entry_status", { ok: true, summary: "x" });
-    await mount([], fakePages().host);
-    // Windows 本机同样问、同样记（新开的 PowerShell 里敲 `ccm` 走到哪）。
-    expect(ipcCalls).toContain("local_ccm_entry_status");
-    expect(readStatus(LOCAL_MACHINE_KEY).ccm?.kind).toBe("ok");
-    ipcReplies.delete("local_ccm_entry_status");
-  });
 
 
   // ---- S4b：每台机器一页 ----
@@ -917,37 +831,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     expect(sec.element.querySelector(".remote-machine-remove")).not.toBeNull();
   });
 
-  it("删掉一台机器会连它的状态记录一起清（下一台同名的不该继承 ✓）", async () => {
-    localStorage.clear();
-    recordFacet("a", "connection", { kind: "ok", at: Date.now() });
-    const sec = await mount([mkH("a", "1.1.1.1")]);
-    await removeAt(sec, 0);
-    await new Promise((r) => setTimeout(r, 0));
-    expect(readStatus("a")).toEqual({});
-  });
 
-  it("★ SSH 不通时**不**给后端那格下结论", async () => {
-    // SSH 都没通，backend 是「不知道」。记成 fail 等于替用户断言「远端没装后端」，
-    // 而事实可能只是网络不通 —— 那条结论会一直挂在列表行上误导人。
-    localStorage.clear();
-    ipcReplies.set("remote-probe", {
-      sshOk: false,
-      backendOk: false,
-      fingerprint: null,
-      endpoint: null,
-      backendHello: null,
-    });
-    const sec = await mount([mkH("a", "1.1.1.1")]);
-    const btns = [...sec.element.querySelectorAll<HTMLButtonElement>("button")];
-    const testBtn = btns.find((b) => b.textContent?.includes(copyText("machineCard.build.test")))!;
-    testBtn.click();
-    for (let i = 0; i < 10; i++) await new Promise((r) => setTimeout(r, 0));
-    expect(ipcCalls).toContain("remote-probe");
-    const st = readStatus("a");
-    expect(st.connection?.kind).toBe("fail");
-    expect(st.backend).toBeUndefined();
-    ipcReplies.clear();
-  });
 
   /**
    * 机器 ⋯「新建会话…」开的是全产品那一个起新会话框（`new-session.ts`），机器锁定在这一台；
@@ -996,24 +880,6 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     ipcReplies.clear();
   });
 
-  it("SSH 通了才给后端下结论（反向对照：别是恒不记）", async () => {
-    localStorage.clear();
-    ipcReplies.set("remote-probe", {
-      sshOk: true,
-      backendOk: true,
-      fingerprint: null,
-      endpoint: null,
-      backendHello: null,
-    });
-    const sec = await mount([mkH("a", "1.1.1.1")]);
-    const btns = [...sec.element.querySelectorAll<HTMLButtonElement>("button")];
-    btns.find((b) => b.textContent?.includes(copyText("machineCard.build.test")))!.click();
-    for (let i = 0; i < 10; i++) await new Promise((r) => setTimeout(r, 0)); // 先读一次已保存的机器、再问本机后端
-    const st = readStatus("a");
-    expect(st.connection?.kind).toBe("ok");
-    expect(st.backend?.kind).toBe("ok");
-    ipcReplies.clear();
-  });
 
   // ── 机器表的几条写盘缺陷：回填漏一格、重名、空白卡、端口越界、卸载失败照记成功 ──
   const tick = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
@@ -1242,20 +1108,6 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     });
   });
 
-  it("卸载后端失败：列表那一格不记成「已卸载」", async () => {
-    localStorage.clear();
-    ipcReplies.set("uninstall_remote_backend", new Error("ssh: connect refused"));
-    const p = fakePages();
-    await mount([mkH("a", "1.1.1.1")], p.host);
-    const pageA = pageOf(p, "machine:a");
-    void pageA;
-    (p.addedParts[1]!.uninstall as HTMLButtonElement).click();
-    await tick();
-    [...document.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("machineCard.uninstall.action"))!.click();
-    for (let i = 0; i < 4; i++) await tick();
-    expect(readStatus("a").backend?.detail).not.toBe(copyText("machineCard.status.uninstalled"));
-    ipcReplies.clear();
-  });
 });
 
 

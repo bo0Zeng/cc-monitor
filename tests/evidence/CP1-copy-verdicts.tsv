@@ -71,7 +71,7 @@ src/comms/inward/chan.ts:75	第 {…} 跳卡在 {…}：{…}（发出去了没�
 src/comms/inward/chan.ts:77	对端不认这个操作	保留	[不对外] 同上（`peer/unsupported` 那一档的日志句）
 src/comms/inward/chan.ts:77	对端答「不行」	保留	[不对外] 同上（`peer/refused` 那一档的日志句）
 src/comms/inward/chan.ts:79	本侧：{…}	保留	[不对外] 同上（`ours` 那一档的日志句）
-src/frontend/ui/settings/machine-status.ts:33	（本机）	保留	[不对外] LOCAL_MACHINE_KEY 是本机那一行的存储键（头注：刻意取一个用户填不出的名字防撞车），显示时 describeGap 等处换成「本机」
+src/frontend/ui/settings/remote-section.ts:163	（本机）	保留	[不对外] LOCAL_MACHINE_KEY 是本机那一页的路由键（头注：刻意取一个用户填不出的名字防撞车），显示时换成「本机」
 src/comms/inward/chan/router.rs:146	回 Welcome 写不出去：{e}	保留	[不对外] 只进日志（host.rs 的 tracing::warn），连接结束原因
 src/comms/inward/chan/router.rs:171	读出错：{e}	保留	[不对外] 只进日志（host.rs 的 tracing::warn），连接结束原因
 src/comms/inward/chan/router.rs:182	编号 {id} 还在飞，又来了一次	保留	[不对外] 只进日志（host.rs 的 tracing::warn），客户端违约

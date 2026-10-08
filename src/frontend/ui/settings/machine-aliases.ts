@@ -39,7 +39,6 @@ import { cfgRow, type CfgDot, type CfgRow } from "./cfg-row";
 import { homeShort } from "../kit/path";
 import { hostOs } from "./host-os";
 import { copyText } from "../copy-table";
-import { recordFacet, LOCAL_MACHINE_KEY } from "./machine-status";
 import type { LocalCcmEntry } from "../generated/LocalCcmEntry";
 
 /** 界面上怎么叫那一代 PowerShell（两代的执行策略分开存）。 */
@@ -112,8 +111,6 @@ export interface AliasManagerSpec {
   platform: Shell;
   /** 那台机器（取值函数：远端卡改名后跟着它走）。每一发都带它。 */
   origin: () => Origin;
-  /** 接上 / 卸载之后（远端卡拿它记机器列表那一格；`error` 为空 = 成了）。 */
-  onBlockDone?: (verb: "install" | "remove", error: string | null) => void;
   /** 改执行策略之前问一句的注入缝（缺省走应用内对话框）。 */
   confirm?: ConfirmFn;
 }
@@ -444,7 +441,7 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
     wrap.dataset.origin = opts.origin();
     if (local) {
       try {
-        const st = await noteLocalCcm();
+        const st = await askLocalCcm();
         pathCcm.hidden = !st.message;
         pathCcm.textContent = st.message;
       } catch (e) {
@@ -487,7 +484,6 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
           ? copyText("machineAliases.runRc.installFailed", { e: why })
           : copyText("machineAliases.runRc.removeFailed", { e: why });
     }
-    opts.onBlockDone?.(verb, failed);
     await readBack();
     const pol = cands.find((c) => c.path === path)?.policy ?? null;
     accessNote.textContent =
@@ -766,15 +762,10 @@ function buildPsExtras(row: CfgRow): PsExtras {
 }
 
 /**
- * **本机 `ccm` 那一格的唯一写点**（K-R117 S2 本机半钉在本文件）。问一次本机那一格（判定与那句话在 monitor
- * `ccm_probe::local_ccm_cell`），`ok` 说得清就记账（两件都成 ⇒ ok；有一件不成 ⇒ fail 并照记那句话；说不清 ⇒ 不写）。
- * 调用方：别名管理器读回 · 设置页机器列表（打开时一次）· 本机那一行「重新对齐」（`fresh`：先作废 PATH 探针那份 5 分钟缓存，手动兜底）。
+ * 问一次本机 `ccm` 那一格（K-R117 S2 本机半钉在本文件；判定与那句话在 monitor `ccm_probe::local_ccm_cell`）。
+ * 调用方：别名管理器读回 · 本机那一行「重新对齐」（`fresh`：先作废 PATH 探针那份 5 分钟缓存，手动兜底）。
  * Windows 本机同样问（新开的 PowerShell 里敲 `ccm` 走到哪）。
  */
-export async function noteLocalCcm(fresh = false): Promise<LocalCcmEntry> {
-  const st = await commands.local_ccm_entry_status(fresh);
-  if (typeof st?.ok === "boolean") {
-    recordFacet(LOCAL_MACHINE_KEY, "ccm", { kind: st.ok ? "ok" : "fail", detail: st.summary });
-  }
-  return st;
+export function askLocalCcm(fresh = false): Promise<LocalCcmEntry> {
+  return commands.local_ccm_entry_status(fresh);
 }

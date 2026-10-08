@@ -28,7 +28,6 @@ import { openPortForwardPanel } from "../views/port-forward";
 import { listForwards, stopForward } from "../port-forward-reads";
 import { askInterrupts } from "./interrupts";
 // F12：配置数据层已抽到 src/frontend/ui/remote-config.ts（治分层倒挂）——UI 从数据模块 import，不再自持 CRUD。
-import { recordFacet, LOCAL_MACHINE_KEY, forgetMachine, renameMachine } from "./machine-status";
 import {
   readRemoteConfig,
   tryRemoteConfig,
@@ -56,10 +55,8 @@ import { machineFace, paintProblem, type MachineFace, type MachineFix, type Mach
 import { isLocalOrigin } from "../ipc/origin";
 import type { AccountsState } from "../accounts";
 import { moveMachinePrefs } from "../account-prefs";
-// K-P1/P2s：本机后端那条把手的 origin。**与 `LOCAL_MACHINE_KEY` 不是同一个串** ——
-// 前者是后端注册表里的键（`inbound_client::LOCAL_ORIGIN`），后者是这本 UI 账本的键。
+// K-P1/P2s：本机后端那条把手的 origin（后端注册表里的键 `inbound_client::LOCAL_ORIGIN`）。**与本机那一页的路由键不是同一个串**。
 import { LOCAL_ORIGIN } from "../backend-policy";
-import { noteLocalCcm } from "./machine-aliases"; // 本机 ccm 那一格的唯一写点
 // 旧调用点从本模块 import 这两个（测试也是）——搬家后原样再导出，不制造无谓的改动面。
 export { shouldShowResetFingerprint };
 import { makeInfoIcon } from "./info-icon";
@@ -159,7 +156,12 @@ export interface RemoteSectionOptions {
 
 /** S4b：机器详情页的路由 id 前缀。 */
 export const MACHINE_PAGE_PREFIX = "machine:";
-/** S4b-2：本机那一页的路由 id。与 `LOCAL_MACHINE_KEY` 同源，两处不各写一份。 */
+/**
+ * 本机那一页的路由键。本机没有 origin 那一格的写法（它不走 ssh），用一个**不可能与真实 origin 撞车**的名字：
+ * origin 来自 `label || host`，用户填不出带中文括号的 host，label 也不会长这样。
+ */
+const LOCAL_MACHINE_KEY = "（本机）";
+/** S4b-2：本机那一页的路由 id。 */
 export const LOCAL_MACHINE_PAGE_ID = `${MACHINE_PAGE_PREFIX}${LOCAL_MACHINE_KEY}`;
 
 /**
@@ -315,10 +317,8 @@ export class RemoteSection {
    * 由 `remote-section.vitest.ts` 里那条「加了本机行之后写出去的机器数不变」钉住。
    */
   private buildLocalRow(): HTMLElement {
-    const row = this.buildRow(LOCAL_MACHINE_PAGE_ID, copyText("remote.localRow.title"), localMeta("list", this.factsOfOrigin(LOCAL_ORIGIN)), LOCAL_MACHINE_KEY, LOCAL_ORIGIN);
+    const row = this.buildRow(LOCAL_MACHINE_PAGE_ID, copyText("remote.localRow.title"), localMeta("list", this.factsOfOrigin(LOCAL_ORIGIN)), LOCAL_ORIGIN);
     row.classList.add("remote-machine-local");
-    void this.noteLocalBackend();
-    void this.noteLocalCcm();
     return row;
   }
 
@@ -326,11 +326,10 @@ export class RemoteSection {
    * 列表里的一行（本机远端同形）：点 · 名字（不健康时旁边一个词）· 地址与系统 · 右侧账号数 · ⋯；
    * 掉线时下面一行问题行 ＋ 修法。点整行进那台的页。
    */
-  private buildRow(pageId: string, name: string, meta: string, ledgerKey: string, origin: string): HTMLElement {
+  private buildRow(pageId: string, name: string, meta: string, origin: string): HTMLElement {
     const row = document.createElement("div");
     row.className = "remote-machine-row";
     row.dataset.pageId = pageId;
-    row.dataset.ledgerKey = ledgerKey;
     row.dataset.origin = origin;
     row.addEventListener("click", (ev) => {
       if ((ev.target as HTMLElement).closest("button") && !(ev.target as HTMLElement).closest(".remote-machine-open")) return;
@@ -601,54 +600,6 @@ export class RemoteSection {
     return machineMeta("head", who, this.factsOfOrigin(this.originOfPage(pageId) ?? ""));
   }
 
-  /**
-   * `K-R59`：**本机 `backend` 那一格的写点。**
-   *
-   * # 为什么非有不可
-   *
-   * 撤掉 `readiness.notApplicable` 里那条豁免之后，本机的 `backend` 变成一格**适用**的格子。
-   * 而全仓对 `LOCAL_MACHINE_KEY` 的 `recordFacet` 写点此前只有一个
-   *（`accounts-section.ts::note`，只写 `accounts`）⇒ 少了这一行，
-   * 本机后端会**恒 `unknown`**，「还差什么」那张清单对任何人都清不空 ——
-   * 那正是 `facet-producer-guard.vitest.ts` 与 `N-F2` 各治过一遍的同一个洞
-   *（⚠ 两者都**看不见**这一格：前者按 facet 扫源码，后者管的是另外两格）。
-   *
-   * # 它不是轮询
-   *
-   * 一次性、只问**本机**那一把手（不走 ssh、不扇出 N 台），只在打开设置面板重建列表时发一次
-   * —— 与 `machine-status.ts` 头注那条红线（「打开设置页时顺便把 N 台机器都探一遍」）
-   * 不是同一件事；`backend-section` 在同一个面板上早就在问同一个命令了。
-   * 查不到 ⇒ **不写账本**（「答不出来」不是「没有」，那是本模块最贵的一条区分）。
-   */
-  private async noteLocalBackend(): Promise<void> {
-    try {
-      const st = await commands.backend_status({ origin: LOCAL_ORIGIN });
-      const on = st.channel === true;
-      recordFacet(LOCAL_MACHINE_KEY, "backend", {
-        kind: on ? "ok" : "fail",
-        detail: on ? copyText("remote.local.connected") : copyText("remote.local.notStarted"),
-      });
-    } catch {
-      // 见头注：查不到就不写。**不许在这里补一个 `fail`** —— 那是替用户下一个没做过的结论。
-      return;
-    }
-  }
-
-  /**
-   * **本机 `ccm` 那一格的写点**：两件都报 ——「我们那份装下来了」＋「登录 shell 里敲
-   * `ccm` 走到的是不是它」。判定与那句话都在 monitor 的 Rust 一侧（`ccm_probe::local_ccm_cell`），这里只照记；
-   * 说不清（`ok === null`）⇒ 不写。与 `noteLocalBackend` 同一种时机（打开设置面板重建列表时一次，只问本机）。
-   * Windows 本机同样问（新开的 PowerShell 里敲 `ccm` 走到哪）。
-   */
-  private async noteLocalCcm(): Promise<void> {
-    try {
-      await noteLocalCcm(); // 写点只有 `machine-aliases.ts::noteLocalCcm` 一处（K-R117 S2 本机半）
-    } catch {
-      return;
-    }
-  }
-
-
   /** 用 config 里的机器列表重建卡片。 */
   private rebuildCards(hosts: RemoteHostConfig[]): void {
     // S4b：重建前先把上一批机器页收掉，否则改完配置会留下一串指向已不存在机器的导航项。
@@ -708,7 +659,7 @@ export class RemoteSection {
       this.pages.addMachinePage(id, card.displayName(), card.element, card.parts());
       this.machinePageIds.push(id);
       const row = this.machinesContainer.insertBefore(
-        this.buildRow(id, card.displayName(), "", card.persistedKey ?? hostKey(card.collect()), card.persistedKey ?? hostKey(card.collect())),
+        this.buildRow(id, card.displayName(), "", card.persistedKey ?? hostKey(card.collect())),
         this.rowsTail,
       );
       const meta = row.querySelector<HTMLElement>(".remote-machine-meta");
@@ -816,19 +767,12 @@ export class RemoteSection {
     if (nameBtn) nameBtn.textContent = card.displayName();
     const meta = row.querySelector<HTMLElement>(".remote-machine-meta");
     if (meta) meta.textContent = this.listMetaOfPage(pageId);
-    row.dataset.ledgerKey = card.persistedKey ?? hostKey(card.collect());
     const origin = card.persistedKey ?? hostKey(card.collect());
     if (row.dataset.origin !== origin) {
       row.dataset.origin = origin;
       delete row.dataset.summaryAsked;
     }
     this.pages.renameMachinePage?.(pageId, card.displayName());
-  }
-
-  /** 那台的账本被别处写了（后端那几格画出「已连上」时记的两格）⇒ 那一行与「诊断」重画。 */
-  noteLedgerChanged(origin: string): void {
-    const card = this.cards.find((c) => (c.persistedKey ?? hostKey(c.collect())) === origin);
-    if (card) this.refreshMachineRow(card);
   }
 
   /** 「添加机器」：框里点「添加」才建卡、写盘；没存上 ⇒ 卡收回去、框不关。 */
@@ -880,7 +824,7 @@ export class RemoteSection {
 
   /**
    * 从列表删除（撤得回 ⇒ 不问）：那一行、那一页当场拿掉，出「已删除 X ［撤销］」8 秒；
-   * 撤销 ⇒ 原样放回（连接设置一格不丢）；没撤 ⇒ 到点才写盘、清那台的状态账本与上次值（本机后端记的）、停掉经它的端口转发。
+   * 撤销 ⇒ 原样放回（连接设置一格不丢）；没撤 ⇒ 到点才写盘、清那台的上次值（本机后端记的）、停掉经它的端口转发。
    * 那台正有端口转发 ⇒ 那一句带上「停止转发 n」（数由壳答，`machine_interrupts`）。
    */
   private async removeCard(card: MachineCard): Promise<void> {
@@ -907,10 +851,7 @@ export class RemoteSection {
       },
       () => {
         if (undone) return;
-        if (card.persistedKey) {
-          forgetMachine(card.persistedKey);
-          void forgetSeen(card.persistedKey);
-        }
+        if (card.persistedKey) void forgetSeen(card.persistedKey);
         this.pageIdOf.delete(card);
         void this.save();
         if (origin && forwards > 0) void stopForwardsOf(origin);
@@ -1053,11 +994,7 @@ export class RemoteSection {
       const renames: [string, string][] = [];
       for (const c of saving) {
         const next = hostKey(c.collect());
-        // S3：状态账本跟着改名走，否则改个名字那几格就凭空清零。
-        if (c.persistedKey && c.persistedKey !== next) {
-          renameMachine(c.persistedKey, next);
-          renames.push([c.persistedKey, next]);
-        }
+        if (c.persistedKey && c.persistedKey !== next) renames.push([c.persistedKey, next]);
         c.persistedKey = next;
         c.renderStatusStrip();
       }

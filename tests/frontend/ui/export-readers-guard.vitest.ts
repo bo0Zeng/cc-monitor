@@ -29,10 +29,6 @@ const EXEMPT: Readonly<Record<string, string>> = {
   "src/frontend/ui/height-estimate.ts::__resetUnknownCardWarnings": "测试复位口（认不出的卡只警告一次，测试之间要清）；名字早于 `…ForTests` 约定",
   "src/frontend/ui/height-estimate.ts::SKEL_OUTER": "秤 2 骨架外框的对拍口：产品用的是四个 `SKEL_*` 常量，这里把它们收成一处给真浏览器量的金样比",
   "src/frontend/ui/account-reads.ts::checkTrust": "界面里唯一一处问 `accounts-trust` 的口（帧命令两向登记要它）；那条帧命令留不留归「记录帧契约 / 手机端对账」那一刀",
-  "src/frontend/ui/settings/machine-status.ts::readStatus": "机器状态账本的读口：设置窗九续把「开始用」搬进后端后，账本在产品里只写不读，整份待删（交小补丁六）",
-  "src/frontend/ui/settings/machine-status.ts::describeFacet": "同上，机器状态账本那一格的说法",
-  "src/frontend/ui/settings/machine-status.ts::FACET_LABELS": "同上，账本整份待删",
-  "src/frontend/ui/settings/machine-status.ts::MACHINE_FACETS": "同上，账本整份待删（截图假数据与 facet 守卫还在用它铺账本）",
 };
 
 interface Found {

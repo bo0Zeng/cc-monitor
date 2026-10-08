@@ -10,7 +10,6 @@
 import { agoText } from "./ago";
 import { emit } from "@tauri-apps/api/event";
 import { getCurrentMachine, subscribeMachine } from "./machine-context";
-import { recordFacet, LOCAL_MACHINE_KEY } from "./machine-status";
 import { SETTINGS_APPLIED_EVENT, OPEN_ACCOUNT_PANEL_EVENT, SETTINGS_GO_EVENT } from "./events";
 import { renderNewAccountForm, checkBaseUrl, type NewAccountForm, type NewAccountRequest } from "./account-new-form";
 import { openLoginWindow, loginInTmux } from "./account-login";
@@ -228,11 +227,6 @@ export class AccountsSection {
     return { origin, state, quota, verify, commands, unknown: false };
   }
 
-  /** 给状态账本记那台的 `accounts` 那一格（远端按名字，本机按 `LOCAL_MACHINE_KEY`）。 */
-  private note(facet: "accounts", origin: Origin, state: { kind: "ok" | "fail" | "na"; detail?: string }): void {
-    recordFacet(isLocalOrigin(origin) ? LOCAL_MACHINE_KEY : origin, facet, state);
-  }
-
   // ───────────────────────────── 画 ─────────────────────────────
 
   private paint(f: Facts): void {
@@ -249,7 +243,6 @@ export class AccountsSection {
     // 这一次没问到：有上次的 ⇒ 画上次的（只读）＋ 警告条；没有 ⇒ 照实说。
     if (!s.available) {
       setDisabled(this.newBtn, copyText("acctPage.offline.hover"));
-      this.note("accounts", f.origin, { kind: "fail", detail: s.oldBackend ? copyText("accounts.status.backendOld") : copyText("accounts.status.pullFailed") });
       const last = s.last ?? null;
       const retry = button({ label: copyText("acctPage.offline.retry"), size: "compact", onClick: () => void this.reload(true) });
       const text = last
@@ -267,7 +260,6 @@ export class AccountsSection {
     // 这台做不了多账号（后端答的）⇒ 一张卡，不摆启用表单。
     if (s.meta?.unsupported) {
       setDisabled(this.newBtn, s.meta.unsupported);
-      this.note("accounts", f.origin, { kind: "na", detail: s.meta.unsupported });
       out.push(this.emptyCard(copyText("acctPage.unsupported.title"), copyText("acctPage.unsupported.hint")));
       this.body.replaceChildren(...out);
       return;
@@ -275,12 +267,10 @@ export class AccountsSection {
     const ui = deriveUi(s);
     if (ui.kind !== "ready") {
       setDisabled(this.newBtn, copyText("acctPage.notEnabled.newHint"));
-      this.note("accounts", f.origin, s.meta?.enabled ? { kind: "ok", detail: copyText("accounts.status.read") } : { kind: "fail", detail: copyText("accounts.status.multiOff") });
       out.push(this.enableCard(f.origin));
       this.body.replaceChildren(...out);
       return;
     }
-    this.note("accounts", f.origin, { kind: "ok", detail: copyText("accounts.status.count", { n: ui.accounts.length }) });
     const def = effectiveDefault(s);
     this.subEl.textContent = def ? copyText("acctPage.head.default", { name: def.name }) : "";
     const v = this.verifyBar(f);
