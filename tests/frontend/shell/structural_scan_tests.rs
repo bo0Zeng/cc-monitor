@@ -4863,7 +4863,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/frontend/ui/views/history-search.vitest.ts", 1), // 合并那三条搬进后端，原处一块
         ("tests/frontend/shell/launch_tests.rs", 2),
         ("tests/frontend/shell/quote_singleton_guard_tests.rs", 2),
-        ("tests/frontend/shell/lib_invariant_population_tests.rs", 2),
+        ("tests/frontend/shell/lib_invariant_population_tests.rs", 1),
         ("src/frontend/ui/settings/machine-card.ts", 1), // 「后端路径」那一格删了，按用户名预填它的函数原地留一块
         ("src/backend/control/ccm/plan.rs", 1),          // `self_argv` 的入口②那一形删了，原地一块
         ("tests/e2e/backend-cc-bus.sh", 1),              // [17] 前的入口②说明删了，原地一块
