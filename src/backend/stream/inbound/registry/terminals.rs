@@ -1,6 +1,7 @@
 //! 命令表 · 终端与会话：`terminal-*` · `terminals-list` · `session-terminals` · `launch*` · `kill` · `sessions-*`。
 
 use crate::stream::inbound::spec::{arg, both, out, CommandSpec, Fail, Run};
+use crate::stream::inbound::LocalFiles;
 
 /// 起会话那几条的失败（码 ＋ 那一句 ＋ 按码定形的 `data`）⇒ 应答那一格。
 fn failed((code, message, data): crate::control::launch_render::Failed) -> Fail {
@@ -21,7 +22,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         fields: &[arg("account", "缺席（不表态：继承；接回那一形）· 同 `launch-render-cli`（`follow` 什么都没选上 ⇒ 也是不表态）"), arg("action", "`{\"kind\":\"new\"}` · `{\"kind\":\"resume\",\"sid\":…}` · `{\"kind\":\"attach\"}`（接回 `tmuxName` 那个会话，不起 agent）"), out("cmd", "那一行 `ccm …`"), out("configDir", "应答 `account` 里：那个号的配置目录"), arg("cwd", "只用来核「新起」那一格的目录在不在"), arg("defaultLauncher", "这一家 agent 的默认启动器（等于它就不吐 `--launcher`）"), both("kind", "`action` 的种类：`new` · `resume` · `attach`；`account` 的种类：`follow` · `base` · `named`"), arg("launcher", "自定义启动命令（空 = 没设）"), out("model", "应答 `account` 里：用的模型"), out("name", "`account` 为 `named` 时的号名；应答 `account` 里是实际用的号"), arg("tmuxName", "建进 tmux 时的会话名（界面铸名口铸的，这里不铸）；缺 ⇒ 直路")],
         takes_input: true,
         run: Run::BlockingData(|r| {
-            crate::faces::launch_face::answer_local(&r.args)
+            crate::faces::launch_face::answer_local(&r.args, &LocalFiles)
                 .map(Some)
                 .map_err(failed)
         }),
@@ -34,7 +35,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         takes_input: true,
         // 阻塞档：判号要读这台的账号清单与那份记录（同步文件 I/O）。
         run: Run::BlockingData(|r| {
-            crate::faces::launch_face::answer_cli(&r.args)
+            crate::faces::launch_face::answer_cli(&r.args, &LocalFiles)
                 .map(Some)
                 .map_err(failed)
         }),
@@ -195,7 +196,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         fields: &[both("account", "那一项用哪个号：缺 ＝ 跟随 · `{kind:\"base\"}` · `{kind:\"named\", name}`；应答里是实际用的号"), arg("client", "自报的前端，同 `kill`"), both("cmd", "开终端那一形要跑的那一行"), out("configDir", "`account` 里：那个号的配置目录"), arg("cwd", "那一项的工作目录"), arg("defaultLauncher", "整批一份：那一家的默认启动器"), arg("fork_of", "可缺：源会话 sid（只许与 `fresh_terminal: true` 一起）"), out("detail", "那一个的原话"), arg("fresh_terminal", "可缺：分叉出来的那一条 ⇒ 必铸新终端名"), arg("items", "要起的会话，每项 `{sid, cwd, account?, fresh_terminal?, fork_of?}`"), both("kind", "`account` 的种类"), arg("launcher", "整批一份：用户设置的 resume 命令原值"), arg("local", "这台是不是界面所在那台（开终端那一形按它选本机 / 远端那一行）"), arg("mode", "`tmux`（在 tmux 里后台起）· `window`（只渲那一行交回，窗口由界面开）"), out("model", "`account` 里：用的模型"), both("name", "`account` 为 `named` 时的号名"), out("outcome", "`done` · `skipped` · `failed`"), out("results", "逐个结果，与入参同序"), out("session", "落在哪个 tmux 会话上"), both("sid", "会话 id"), out("unavailable", "选不了号的那一项：`{requested, pinned, listKnown, alternative}`"), out("why", "`skipped` / `failed` 的码")],
         takes_input: true,
         run: Run::Blocking(|r| {
-            crate::faces::session_batch_face::start(&r.args)
+            crate::faces::session_batch_face::start(&r.args, &LocalFiles)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
@@ -223,7 +224,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         fields: &[arg("account", "可缺 ＝ 跟随（分叉跟源会话上次的号；新起的 ⇒ 这台的默认号）· `{kind:\"base\"}` · `{kind:\"named\", name}`"), arg("agent", "哪一家（线上的 kind）"), both("cmd", "`open` 时界面要在终端里跑的那一行"), arg("command", "启动命令；空 / 缺 ⇒ 那一家的默认启动器"), out("configDir", "应答 `account` 里：那个号的配置目录"), arg("cwd", "工作目录（开头的 `~` 按这台的家目录读）"), out("field", "失败时不行的那一格（`agent` · `command` · `cwd` · `account` · `place` · `tmuxName`；整体的 ⇒ `null`）"), arg("forkFrom", "可缺"), both("kind", "`account` 的种类：`follow` · `base` · `named`"), arg("local", "发请求的界面就在这台上（开窗那一形本机与远端渲法不同）"), out("model", "应答 `account` 里：用的模型"), arg("models", "可缺"), both("name", "`account` 为 `named` 时的号名；应答 `account` 里是实际用的号"), out("outcome", "`started`（tmux 里起好了，`session` 是会话名）· `open`（界面开一个终端跑 `cmd`）"), arg("place", "`tmux`（在这台 tmux 里后台起，关终端不断）· `window`（开一个新终端窗口直接跑）"), out("session", "`started` 时的 tmux 会话名"), out("sid", "分叉出来的新会话 sid；新起的 ⇒ `null`（报到之前说不出）"), arg("tmuxName", "可缺 ⇒ 这台铸"), out("unavailable", "`account_unavailable` 时那一形，带替代号"), arg("uuid", "`forkFrom` 里：从哪条消息处分叉")],
         takes_input: true,
         run: Run::BlockingData(|r| {
-            crate::faces::session_new_face::answer(&r.args)
+            crate::faces::session_new_face::answer(&r.args, &LocalFiles)
                 .map(Some)
                 .map_err(failed)
         }),
@@ -286,7 +287,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         takes_input: true,
         run: Run::AsyncData(|r| {
             Box::pin(async move {
-                crate::faces::session_restart_face::answer(r.args, r.until)
+                crate::faces::session_restart_face::answer(r.args, r.until, &LocalFiles)
                     .await
                     .map(Some)
                     .map_err(|(code, message, data)| Fail {

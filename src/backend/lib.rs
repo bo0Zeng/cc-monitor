@@ -852,7 +852,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// p9b-background-activity：session_added / session_status 多 background / activity（适配层翻）；invalid_args 收进 bad_args；删帧命令 deploy-retired 与旧装法清理链。
 ///
 /// p9c-last-seen：新命令 last-seen-read / -write（last-seen.json）；data-report 多 own（cc-monitor 的文件逐样 stat）；machine-interrupts 收 appExit。
-pub const BUILD_ID: &str = "p9c-last-seen";
+///
+/// p9d-trust-sync：信任在 cc-monitor 管的各号之间同步（并 MCP 同步监听器），起会话 / 重启前预标目标目录；线上形状不变。
+pub const BUILD_ID: &str = "p9d-trust-sync";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 

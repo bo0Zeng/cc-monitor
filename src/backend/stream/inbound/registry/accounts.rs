@@ -100,7 +100,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         takes_input: true,
         run: Run::Async(|r| {
             Box::pin(async move {
-                crate::faces::rotation_switch_face::answer_switch(r.args, r.until)
+                crate::faces::rotation_switch_face::answer_switch(r.args, r.until, &LocalFiles)
                     .await
                     .map(Some)
                     .map_err(|(c, m)| (c.to_string(), m))
