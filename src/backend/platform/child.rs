@@ -458,6 +458,10 @@ impl Streaming {
     }
 }
 
+// Windows 的 `Group` 里是两个内核句柄（Job · 直接子进程，后者归同一结构里的 `child`），裸指针让它不是 Send；
+// 内核句柄不认线程，整个 `Streaming` 一起挪到读它的线程上用、在那边 Drop 是安全的（终端订阅就这么用）。
+unsafe impl Send for Streaming {}
+
 impl Drop for Streaming {
     fn drop(&mut self) {
         // 收尸之前它的 pid 一直占着 ⇒ 杀组不会落到别的组上（它自己先退了也一样：僵尸照样占着）。
