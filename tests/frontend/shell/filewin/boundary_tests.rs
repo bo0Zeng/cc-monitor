@@ -436,10 +436,10 @@ fn edges_by_process() -> (
     let window_files = guard_core::scan_tree_excluding(&window_crate_dir(), &["rs"], &[]);
     // 🔴 两侧人群都现数（恒等，不是地板）：塌成空集时下面那两条相等**照样成立**。
     // 壳里 `filewin/` 现打 4 份（mod · entry · proc · win_main）；窗口包现打 29 份（搬家前那 31 份里 27 份整份搬来 ＋ 新 `proc.rs`（窗口进程那一半）＋ `guard_support.rs`）。
-    // 29 → 30：窗口包的平台层 `platform.rs`。30 → 34：样子 `theme.rs` · 窗口的框 `chrome.rs` · 文件种类 `kind.rs` · 属性框 `props.rs`。34 → 35：窗口的通用件 `kit.rs`。35 → 36：「进度」表 `progress.rs`。
+    // 29 → 30：窗口包的平台层 `platform.rs`。30 → 34：样子 `theme.rs` · 窗口的框 `chrome.rs` · 文件种类 `kind.rs` · 属性框 `props.rs`。34 → 35：窗口的通用件 `kit.rs`。35 → 36：「进度」表 `progress.rs`。36 → 37：帧日志 `frame_log.rs`（窗口那一侧）。
     assert_eq!(
         (inside.len(), window_files.len()),
-        (4, 36),
+        (4, 37),
         "两侧扫到的 `.rs` 份数变了 —— 遍历器坏了，或者两侧有人加 / 删了文件（先回答那份住哪一侧，再改这个数）"
     );
     let root = repo_root();
