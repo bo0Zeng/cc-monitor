@@ -1694,7 +1694,7 @@ export class TabManager {
       show(view(title, done, "grey", []));
     } catch (e) {
       console.warn(`[front] ${origin} 换上之后重拨没成：`, e);
-      show(view(title, `${done} ${copyText("front.body.redialFailed")}`, "amber", [{ kind: "reconnect" }]));
+      show(view(title, `${done} ${copyText("front.body.redialFailed", { e: String(e) })}`, "amber", [{ kind: "reconnect" }]));
     }
   }
 

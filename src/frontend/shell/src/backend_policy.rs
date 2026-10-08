@@ -344,13 +344,16 @@ pub const STATUS_CONTROL_C_EXIT: u32 = 0xC000013A;
 pub static CONSOLE_CTRL_EXIT_SAID: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("rsBackendPolicy.death.consoleCtrl", &[]));
 
-/// 一个退出码的说法：认得的码说人话，其余照旧是裸码。**判定只住这里**（`Refused` 与 `Crashed` 两臂共用）。
+/// 一个退出码的说法：认得的码说人话，其余是「退出码 N」。**判定只住这里**（`Refused` 与 `Crashed` 两臂共用）。
 fn exit_code_said(code: i32) -> String {
     // `as u32` 是按位重解释，不是数值换算：-1073741510_i32 的位型就是 0xC000013A。
     if code as u32 == STATUS_CONTROL_C_EXIT {
         CONSOLE_CTRL_EXIT_SAID.to_string()
     } else {
-        format!("exit {code}")
+        copy_text(
+            "rsBackendPolicy.status.exit",
+            &[("status", &code.to_string())],
+        )
     }
 }
 
