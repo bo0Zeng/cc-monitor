@@ -159,18 +159,21 @@ fn w2_the_swap_keeps_mode_follows_the_link_and_leaves_no_side_file() {
 #[test]
 fn w3_a_placeholder_that_could_not_be_removed_is_named_in_the_refusal() {
     let dest = Path::new("/x/y/a.bin");
-    assert_eq!(
-        crate::control::files_commit::placeholder_note(dest, &Ok(())),
-        "",
-        "撤掉了还多说"
-    );
-    let err = std::io::Error::from(std::io::ErrorKind::PermissionDenied);
-    let note = crate::control::files_commit::placeholder_note(dest, &Err(err));
+    // 撤掉了 ⇒ 只说写入失败那一句（没什么要用户做的）。
+    let plain = crate::control::files_commit::move_failed_text(dest, "e1", &Ok(()));
     assert!(
-        note.contains("/x/y/a.bin")
-            && copy_core::copy_matches("beFilesCommit.upload.placeholderLeft", &note)
-            && copy_core::copy_matches("beFilesCommit.upload.placeholderLeft", &note),
-        "{note}"
+        copy_core::copy_matches("beFilesCommit.upload.moveFailedNote", &plain),
+        "{plain}"
+    );
+    assert!(!plain.contains("0 字节"), "撤掉了还多说：{plain}");
+    // 撤不掉 ⇒ 整句换成另一条键：写入失败那一行 ＋ 删除失败那一行（同一个路径）＋ 提示。
+    let err = std::io::Error::from(std::io::ErrorKind::PermissionDenied);
+    let left = crate::control::files_commit::move_failed_text(dest, "e1", &Err(err));
+    assert!(
+        left.contains("/x/y/a.bin")
+            && copy_core::copy_matches("beFilesCommit.upload.placeholderLeft", &left)
+            && left.lines().count() == plain.lines().count() + 2,
+        "{left}"
     );
     // 接线：提交那一支拿「撤占位」的真结局去问它（不是 `let _ =` 吞掉）。
     let prod = crate::guard_support::production_code(include_str!(
@@ -181,9 +184,9 @@ fn w3_a_placeholder_that_could_not_be_removed_is_named_in_the_refusal() {
         .expect("撤占位那一句");
     let tail = &prod[undo..];
     assert!(
-        tail.find("placeholder_note(&dest, &undo)")
+        tail.find("move_failed_text(&dest, &said, &undo)")
             .is_some_and(|i| i < 400),
-        "撤占位的结局没交给 placeholder_note"
+        "撤占位的结局没交给 move_failed_text"
     );
     assert!(
         !prod.contains("let _ = std::fs::remove_file(&dest)"),

@@ -1,29 +1,11 @@
 /**
- * issue #8：ESC 回退分支的折叠 UI。
+ * ESC 回退分支的折叠 UI：消息流容器（卡片已按 jsonl 顺序摆好）＋ 主线 uuid 集合 ⇒ 把连续的 off-main 卡包进 `.branch-fold-wrap`。
  *
- * 输入：一个 message stream 容器（已按 jsonl 顺序追加好卡片）+ 主线 uuid 集合
- * 输出：把连续的 off-main 卡片包到 `.branch-fold-wrap` 折叠容器
- *
- * **重建策略**（unwrap-then-rewrap 全量重建）：
- *  1. 解开所有现存 `.branch-fold-wrap`，把里面的卡 move 回容器顶层
- *  2. 顺序扫容器子元素：
- *     - 带 data-uuid 且在 mainBranch → on-main，断 run
- *     - 带 data-uuid 但不在 mainBranch → 加入当前 off-main run
- *     - 无 data-uuid 元素：断 run
- *  3. 每个 run 包到一个 wrap 里
- *
- * **为什么全量重建而不是增量**：分支变化非局部 —— 一条新 user record 可能让一
- * 大段原本 on-main 的卡转 off-main（指向更早 parent，把它们甩到旧分支）。增量
- * diff 复杂度高 bug 多，全量重建是 O(N) DOM 操作，N=几百到几千都在一帧预算内。
- *
- * **折叠状态保留**：fold-wrap 在 unwrap 前把 expanded 写到 `foldExpanded` Map
- * （key = run 的首条 uuid，稳定）；wrap 时按 key 查表恢复。
- *
- * **仪表**（设计「每帧账本」）：本文件末尾那一段把 `computeMain()` 的
- * 每次调用（N / ms / 来源 / 帧号）、`rebuild()` 的搬动节点数、以及 §2.7 档 1
- * 「脏标记快路」的**影子命中判定**累加进 `window.__ccmPerf.branchLedger`。
- * **仪表不参与折叠决策** —— 判定结果只写账本，一个字节都不回流到 mainBranch。
- * 它量不到什么、帧号是怎么近似的，见末尾 `=== 秤 4 仪表 ===` 那段的诚实注释。
+ * - 段：带 data-uuid 且不在主线的卡连成一段；在主线上的卡与没有 data-uuid 的元素断段。
+ *   分支变化不是局部的（一条新 user 记录可能让一大段卡转 off-main），重折按段差量做，见 `rebuild`。
+ * - 折叠状态保留：wrap 的展开态记在 `foldExpanded`（key = 段首条 uuid）。
+ * - 每帧账本（文件末尾）：`computeMain()` 每次的 N / ms / 来源 / 帧号、`rebuild()` 搬了几个节点、快路命中，
+ *   挂 `window.__ccmPerf.branchLedger`；只写账本，不回流到折叠决策。
  */
 
 import { computeMainBranch, exemptQueuedLeaves, setsEqual, type BranchRecord } from "./branching";
@@ -46,14 +28,11 @@ export class BranchFolder {
   private container: HTMLElement;
   /** records 集合（caller push 进来，按 jsonl 顺序）。computeMainBranch 用 */
   private records: BranchRecord[] = [];
-  /** issue #36：本会话 queue-operation enqueue 的 content 集合（trim 后）——
-   *  被消费的队列消息（永久裸 user 叶）豁免折叠用。 */
+  /** 本会话 queue-operation enqueue 的 content 集合（trim 后）：被消费的队列消息（永久裸 user 叶）豁免折叠用。 */
   private queuedContents = new Set<string>();
   /**
-   * issue #25：已见 uuid 集，recordAdded 拒重。投递层是 at-least-once（违反此约束见
-   * src/doc/INVARIANTS.md § 25；截断重读已改成换代、tab 整份重来，这一道留作纵深防御），重复记录会毒化 computeMainBranch 的 Kahn 拓扑 →
-   * 大段误折叠。computeMainBranch 入口也有去重（双层防御）；这里挡住还能避免
-   * records 数组被重投无界增长。
+   * 已见 uuid 集，recordAdded 拒重：投递层是 at-least-once（src/doc/INVARIANTS.md § 25），重复记录会毒化 Kahn 拓扑、大段误折叠。
+   * computeMainBranch 入口也去重；这里挡住还免得 records 被重投无界增长。
    */
   private seenUuids = new Set<string>();
   /** 上次重建用的 mainBranch；判等避免无 diff 时空重排 */
@@ -63,16 +42,10 @@ export class BranchFolder {
   /** 每个 wrap 包它时有几条（标题上那个数）—— 差量重折判「这个 wrap 还原样可用吗」用 */
   private wrapSize = new WeakMap<Element, number>();
   /**
-   * v2.2 (issue #12 性能优化)：batch 模式。
-   *
-   * - **batch = true**（重放期）：recordAdded 只 push 不算，不 rebuild。直到
-   *   调用方调 flushPending() 才一次性 computeMainBranch + rebuild。
-   *   适合启动时 event_replay 批量灌 2000+ 条 jsonl 的场景，省 O(N²)。
-   * - **batch = false**（live 模式，默认）：recordAdded 立刻算 + 可能 rebuild。
-   *   适合真实时新消息到达，每条 1 帧内反映 fold 状态。
-   *
-   * caller（TabManager）通过 setBatchMode(true) → 灌 records → flushPending() →
-   * setBatchMode(false) 控制切换。
+   * batch 模式：
+   * - true（重放期）：recordAdded 只 push 不算，到 flushPending() 才一次性算主线 ＋ rebuild（批量灌几千条时省 O(N²)）；
+   * - false（live，默认）：每条 1 帧内反映折叠状态（帧末合批）。
+   * TabManager：setBatchMode(true) → 灌 records → flushPending() → setBatchMode(false)。
    */
   private batchMode = false;
   /**
@@ -107,7 +80,7 @@ export class BranchFolder {
    * live 模式下：立即算主线，如变化 rebuild。
    */
   recordAdded(rec: BranchRecord): void {
-    if (this.seenUuids.has(rec.uuid)) return; // issue #25：重投拒收（见字段注释）
+    if (this.seenUuids.has(rec.uuid)) return; // 重投拒收（见字段注释）
     // 秤 4 仪表：**必须在 push 之前**——它读的是「这条进来之前」的态（parent 在不在、
     // parent 原本有没有 child）。放到 push 之后就会看见自己，判定恒变。
     this.noteFastPathShadow(rec);
@@ -159,20 +132,9 @@ export class BranchFolder {
   }
 
   /**
-   * live 模式的**帧末合批**。
-   *
-   * 原来这里是逐条同步 `computeMain()` + 可能 `rebuild()`。两者都 **O(N)**
-   * （`computeMainBranch` 是扫全部 records 的 Kahn 拓扑），⇒ N 条记录 **O(N²)**。
-   * 而本类头注写着 live 的契约是「每条 **1 帧内**反映 fold 状态」——
-   * **帧内算一次就满足这个契约**，逐条算是它的一种（最贵的）实现。
-   *
-   * ⚠ 仓里已确诊过同族后果：`events.ts:150-152` 逐字「每条 record 都走 per-record O(N)
-   * `computeMainBranch` ⇒ 启动后明显第二次卡顿（用户报告「先快一会儿然后变慢」）」。
-   *
-   * 排程范式照抄同仓 `tabs.ts` 的 `scheduleIdleMaterialize`：**排一次位**（`liveScheduled`）
-   * + 无 rAF 时 `setTimeout` 兜底。`pendingLive` 与它分开是因为调用方可能中途自己
-   * 同步刷了（`flushPending` / `rebuildNow` / `setRecordsAndRebuild`）——
-   * 那时待办要清掉，否则帧末还会**再白算一遍 O(N)**，合批只省一半。
+   * live 模式的帧末合批：`computeMain()` 与 `rebuild()` 都是 O(N)，逐条算 ⇒ O(N²)；契约是「每条 1 帧内反映折叠状态」，帧内算一次就够。
+   * 排一次位（`liveScheduled`），没有 rAF 时 `setTimeout` 兜底。`pendingLive` 单独记：调用方中途同步刷过
+   * （`flushPending` / `rebuildNow` / `setRecordsAndRebuild`）就清掉，免得帧末再白算一遍。
    */
   private liveScheduled = false;
   private pendingLive = false;
@@ -238,8 +200,8 @@ export class BranchFolder {
    * 然后调一次 rebuildAll。比逐条 recordAdded 省一堆中间 rebuild。
    */
   setRecordsAndRebuild(records: ReadonlyArray<BranchRecord>): void {
-    this.pendingLive = false; // 同上（F15）
-    // issue #25：与 recordAdded 同等拒重（去重后存，保首见）
+    this.pendingLive = false; // 同上
+    // 与 recordAdded 同等拒重（去重后存，保首见）
     this.seenUuids = new Set();
     this.records = [];
     this.ledgerParentSeen = new Set(); // 秤 4 仪表：随 records 整批重建
@@ -256,36 +218,21 @@ export class BranchFolder {
     this.rebuild();
   }
 
-  /** issue #36：登记一条进过输入队列的消息内容（enqueue 记录到达时调）。 */
+  /** 登记一条进过输入队列的消息内容（enqueue 记录到达时调）。 */
   addQueuedContent(content: string): void {
     const t = content.trim();
     if (!t || this.queuedContents.has(t)) return;
     this.queuedContents.add(t);
     this.queuedDirty = true; // 豁免变了 ⇒ 下一次不走档 1 快路
-    // 已渲染状态下追加豁免可能改变折叠结果（queue-operation 行可能晚于 user 行到达）
-    //
-    // 档 3「`addQueuedContent` 接上合批」：这里原先**同步**跑一次
-    // 全量 `computeMain()`（`computeMainBranch` 是扫全部 records 的 Kahn 拓扑 ⇒ O(N)，
-    // 变了还要再走一次 O(N) 的 DOM `rebuild()`），而它由 `tabs.ts` 的 `onQueueOperation`
-    // **每条 enqueue 记录喂一次** ⇒ 与 F15 修掉之前的 `recordAdded` 是**同一个形状**：
-    // M 条 enqueue × O(N) = O(M·N)，而且与同一帧里 `recordAdded` 排的那次**各算各的**。
-    //
-    // ⇒ 排进**同一个**帧末合批（`scheduleLiveRecompute`）：一帧内来多少条
-    // （enqueue ＋ 新记录混着）都只算一次。**live 契约不变** —— 本类头注写的是
-    // 「每条 **1 帧内**反映 fold 状态」，帧内算一次就满足它，逐条同步算只是它最贵的一种实现。
-    //
-    // ⚠ 行为上唯一的差别：豁免生效从「本次调用返回时」推到「本帧末」。需要立刻看到
-    // 最终态的调用方走 `rebuildNow()` / `flushPending()`（两者都会清 `pendingLive`，
-    // 不会再白算一遍），要问还欠不欠走 `hasPendingLiveRecompute()`。
+    // 已渲染状态下追加豁免可能改变折叠结果（queue-operation 行可能晚于 user 行到达）。
+    // 每条 enqueue 都喂一次 ⇒ 排进同一个帧末合批（`scheduleLiveRecompute`），一帧内来多少条都只算一次；
+    // 豁免在本帧末生效。要立刻看到最终态走 `rebuildNow()` / `flushPending()`，问还欠不欠走 `hasPendingLiveRecompute()`。
     if (!this.batchMode) this.scheduleLiveRecompute();
   }
 
   /**
-   * issue #36：主线计算统一入口——computeMainBranch + 队列消息豁免。
-   *
-   * 秤 4 仪表夹在这里（`via` 只是账本的一列，计算本身不看它）。夹的是
-   * **`computeMainBranch` + `exemptQueuedLeaves` 两段合起来**的 wall time ——
-   * §2.7 量的是前者，这里多包了后者（O(N) 同阶，`queuedContents` 为空时直接返回）。
+   * 主线计算统一入口：computeMainBranch ＋ 队列消息豁免。
+   * 每帧账本夹在这里（`via` 只是账本的一列，计算本身不看），夹的是两段合起来的墙钟。
    */
   private computeMain(via: BranchComputeVia): Set<string> {
     const led = branchLedger();
@@ -331,7 +278,7 @@ export class BranchFolder {
   }
 
   /**
-   * v2.2: 切换 batch 模式。切到 batch 后到 flushPending 之间的 recordAdded
+   * 切换 batch 模式。切到 batch 后到 flushPending 之间的 recordAdded
    * 都不会触发计算 / rebuild。切回 live 不会自动 flush，需 caller 显式调 flushPending。
    */
   setBatchMode(enabled: boolean): void {
@@ -339,11 +286,11 @@ export class BranchFolder {
   }
 
   /**
-   * v2.2: 在 batch 模式累计完后调一次，计算最新主线并 rebuild。
+   * 在 batch 模式累计完后调一次，计算最新主线并 rebuild。
    * 也可在 live 模式手动调（等价于 setRecordsAndRebuild 但保持现有 records）。
    */
   flushPending(): void {
-    this.pendingLive = false; // 已同步刷过 ⇒ 帧末那次别再白算一遍 O(N)（F15）
+    this.pendingLive = false; // 已同步刷过 ⇒ 帧末那次别再白算一遍 O(N)
     const next = this.computeMain("flush");
     if (setsEqual(next, this.lastMainBranch)) return;
     this.lastMainBranch = next;
@@ -351,19 +298,18 @@ export class BranchFolder {
   }
 
   /**
-   * Batch13-F40a:物化/上翻补批后的无条件重折。flushPending 的 setsEqual 短路
-   * 在「unwrapAll 摊平后 mainBranch 未变」时会跳过 rebuild → 折叠段永久摊平;
-   * 增量渲染路径(插卡前必须 unwrapAll)插完一律走这里。
+   * 物化 / 上翻补批后的无条件重折：`flushPending` 在主线没变时会跳过 rebuild，而插卡前摊平过的折叠段就一直摊着。
+   * 增量渲染（插卡前必须 unwrapAll）插完一律走这里。
    */
   rebuildNow(): void {
-    this.pendingLive = false; // 已同步刷过 ⇒ 帧末那次别再白算一遍 O(N)（F15）
+    this.pendingLive = false; // 已同步刷过 ⇒ 帧末那次别再白算一遍 O(N)
     this.lastMainBranch = this.computeMain("rebuild-now");
     this.rebuild();
   }
 
   /** Tab 销毁时调，断 GC 引用 */
   dispose(): void {
-    // F15：已排程的帧末重算不能在 dispose 之后还去动 DOM（容器可能已被摘掉）。
+    // 已排程的帧末重算不能在 dispose 之后还去动 DOM（容器可能已被摘掉）。
     // 只置标志、不取消回调 —— rAF 的 handle 类型在两种环境下不一致，
     // 而一个「醒来发现自己该闭嘴」的回调比一个可能取消错对象的 handle 安全。
     this.disposed = true;
@@ -382,16 +328,14 @@ export class BranchFolder {
   // === 内部 DOM 操作 ===
 
   /**
-   * 按主线集合重折 fold 结构 —— **按段差量**，不再「全量 unwrap ＋ 重包」。
+   * 按主线集合重折 fold 结构 —— 按段差量，不全量解开重包。
    *
-   * 1. 现打**逻辑序列**：顶层子节点依次读；遇到 wrap 就读它 inner 里的卡（不搬）。
-   * 2. 目标段：逻辑序列里连续的 off-main 卡（带 `data-uuid` 且不在主线；无 `data-uuid` 的元素断段 —— 同原规则）。
+   * 1. 逻辑序列：顶层子节点依次读；遇到 wrap 就读它 inner 里的卡（不搬）。
+   * 2. 目标段：逻辑序列里连续的 off-main 卡（带 `data-uuid` 且不在主线；无 `data-uuid` 的元素断段）。
    * 3. 现存 wrap 若**恰好**等于某个目标段（inner 的卡 == 段成员、同序）⇒ 原地不动（展开态、DOM 都不碰）；
    *    其余 wrap 解开（卡搬回 wrap 所在位置）；没有现成 wrap 的目标段新包一个。
    *
-   * 原来每次重折都把全部 wrap 解开、再把全部 off-main 段重包：秤 4 E 段读数「每条一帧 69 条 / 3 个分叉 ⇒ 累计搬 684 个节点、
-   * 末次 24 个」—— 主线只是在尾巴上长了一条，折叠归属一张卡都没变，也要把 12 张折叠卡搬出去再搬回来。
-   * 现在 DOM 写只落在归属真变了的段上；扫描仍是 O(顶层子节点 ＋ 折叠卡数) 次读（不写）。
+   * DOM 写只落在归属真变了的段上（主线在尾巴上长一条时折叠卡一张都不搬）；扫描是 O(顶层子节点 ＋ 折叠卡数) 次读。
    * 等价：差量结果与「平铺容器上从零折一遍」逐字相同（`tests/frontend/ui/branch-fold-batching.vitest.ts`「C1」随机操作序列）。
    */
   private rebuild(): void {
@@ -474,9 +418,8 @@ export class BranchFolder {
 
   /** 把所有现存 fold-wrap 解开 */
   /**
-   * Batch13-F39:viewer 增量渲染需要在"往折叠后的 DOM 里二分插入"前先摊平——
-   * timeline 的邻居引用可能已被搬进 fold wrap(非 container 直接子节点),
-   * insertBefore 会 NotFoundError。公开薄壳,插完由 setRecordsAndRebuild 重折。
+   * 往折叠后的 DOM 里二分插入前先摊平：timeline 的邻居可能已被搬进 fold wrap（不是 container 的直接子节点），insertBefore 会 NotFoundError。
+   * 插完由 setRecordsAndRebuild 重折。
    */
   unwrapAll(): void {
     const undone = this.unwrapAllFolds();
@@ -520,7 +463,7 @@ export class BranchFolder {
 
   /**
    * 把 [start, end] 这一段连续元素包到 fold-wrap 里。
-   * 返回值只给秤 4 仪表用：搬进 wrap 的节点数。
+   * 返回值只给每帧账本用：搬进 wrap 的节点数。
    */
   private wrapRun(start: HTMLElement, end: HTMLElement, uuids: string[]): number {
     const foldKey = uuids[0]; // 用第一条 uuid 当稳定 key
@@ -530,8 +473,7 @@ export class BranchFolder {
     wrap.className = FOLD_WRAP_CLASS;
     wrap.setAttribute("data-fold-key", foldKey);
     this.wrapSize.set(wrap, uuids.length);
-    // Batch13-F38:折叠态真值≈34px(header 一行);兜底 120px 偏大 3 倍。
-    // 展开后由 content-visibility 的 auto 记忆接管,估值不再参与
+    // 折叠态真高 ≈ 34px（header 一行）；兜底 120px 偏大 3 倍。展开后由 content-visibility 的 auto 记住真高。
     wrap.style.setProperty("contain-intrinsic-size", "auto 34px");
     if (expanded) wrap.classList.add("expanded");
 
@@ -593,50 +535,23 @@ export class BranchFolder {
 }
 
 // ===========================================================================
-// === 秤 4 仪表：每帧账本（设计表第 4 行）=============================
+// === 每帧账本：主线算了几次 · 每次的 N 与 ms · rebuild 搬了几个节点 · 快路命中率 ===
 // ===========================================================================
 //
-// **量什么**（逐字照 §6 表）：`computeMainBranch` 一帧调几次、每次的 N 与 ms；
-// `rebuild()` 搬了几个节点。外加 §2.7 档 1「脏标记快路」那句
-// **「97% 的记录可走 O(1)」的实测命中率** —— 那个 97% 在设计里是**声称**，
-// 是从 `branching.ts` 头注「~3% parent 成 fork」一句算出来的，没有读数。
+// 装在 `computeMain()`（时间）· `rebuild()`（搬动数）· `recordAdded()`（快路判定），挂 `window.__ccmPerf.branchLedger`。
+// 没有 `window.__ccmPerf`（非浏览器 / 没跑 main.ts）整套不启，只维护两个 O(1) 的簿记（中途打开时读数才对）。
 //
-// **装在哪**：`BranchFolder.computeMain()`（时间）· `rebuild()`（搬动数）·
-// `recordAdded()`（影子快路判定）。账本挂 `window.__ccmPerf.branchLedger`。
-// `window.__ccmPerf` 不存在时（非浏览器 / 没跑 main.ts）整套仪表**静默不启**，
-// 只有 `ledgerParentSeen` / `ledgerShadowAdd` 两个 O(1) 的簿记照常维护
-// —— 否则账本中途被打开时读出来的是错的。
-//
-// **它量不到什么（诚实段，照抄不得删）**：
-//
-//  1. **帧号是近似的。** `frames` 是**本模块自己观察到的 rAF tick 数**，不是浏览器
-//     真实帧边界。两个后果：① 同一真实帧里若有两个 `BranchFolder` 各自排了一次
-//     rAF，账本会记成两帧；② 同步路径（`flushPending` / `rebuildNow` /
-//     `setRecordsAndRebuild` / `addQueuedContent`）发生在哪一真实帧，这里判不了，
-//     它们的样本一律盖上「当前帧号」。⇒ **「一帧调几次」这一列只在 live 合批那条路上可信。**
-//  2. **ms 是 node/jsdom 的读数还是 WebView2 的，账本自己不知道。** §2.7 的
-//     3.45 ms 是 node 上打的；这套仪表在生产代码里，真机跑一次就能拿到 WebView2 的
-//     同一列数，但**本轮没有真机读数**。
-//  3. 档 1 已装：影子判定全命中的那一帧由 `fastMain` 真跳掉（`computesSkipped`），verify 档照旧全量算来比对。
-//  4. **`verify` 档只在「整段全命中」那些次上比对。** 有未命中的那些次，档 1 本来
-//     就要落回全量算，正确性不由快路负责，所以不比。
-//  5. **搬动节点数只数 move 的次数，不数浏览器为此付的布局/重绘代价。**
-//     `insertBefore` / `appendChild` 每次算一个节点；一次 move 在真机上多贵，这里量不到。
-//  6. **`computeMs` 夹的是 `computeMainBranch` + `exemptQueuedLeaves` 两段。**
-//     §2.7 只说前者。`queuedContents` 为空时后者是一句 `return`，两者等价；不空时本账本偏大。
+// 量不到的：
+//  1. 帧号是本模块看到的 rAF tick 数，不是真实帧边界；同步路径的样本一律盖「当前帧号」⇒「一帧几次」只在 live 合批那条路上可信。
+//  2. ms 是 node 的还是 WebView2 的，账本自己不知道。
+//  3. 快路全命中的那一帧由 `fastMain` 真跳掉（`computesSkipped`），verify 档照旧全量算来比对，且只在整段全命中的那些次比。
+//  4. 搬动数只数 move 次数，不数浏览器的布局 / 重绘代价。
+//  5. `computeMs` 夹的是 `computeMainBranch` ＋ `exemptQueuedLeaves`（后者在 `queuedContents` 空时是一句 `return`）。
 
 /** 账本里三组样本的条数上限。**超出只丢样本、不丢计数**（计数是独立累加的）。 */
 const LEDGER_SAMPLE_CAP = 5000;
 
-/**
- * 一次 `computeMain()` 是被谁叫起来的。只是账本的一列，计算本身不看。
- *
- * 🔴 **`"queued-content"` 这一档 2026-09-19 随档 3 一起删掉**：
- * `addQueuedContent` 改成排帧末合批之后，它产生的那次真算就是普通的 `"live-frame"`，
- * **再没有任何一处产得出这个值** ⇒ 留着就是一条挂空号的登记（本仓判据一族专治这个形状）。
- * ⚠ 历史读数 `tests/evidence/S4-frame-ledger.md` 里那份 `via` 枚举照旧写着它
- * （那是当时的实况，读数不回改）—— 以本处为准。
- */
+/** 一次 `computeMain()` 是被谁叫起来的。只是账本的一列，计算本身不看。 */
 export type BranchComputeVia = "live-frame" | "flush" | "set-records" | "rebuild-now";
 
 /** 影子快路的未命中原因，四问的顺序即优先级（见 `noteFastPathShadow` 头注）。 */
@@ -707,7 +622,7 @@ export interface BranchFrameLedger {
   fastPathSamples: BranchFastPathSample[];
   fastPathSamplesDropped: number;
 
-  /** 这次真算之前那一段记录**全部命中** ⇒ 档 1 能整个跳掉这次 O(N)（档 1 落地后只在 verify 档下还会真算到这一格） */
+  /** 这次真算之前那一段记录全部命中 ⇒ 快路能整个跳掉这次 O(N)（只在 verify 档下还会真算到这一格） */
   computesSkippable: number;
   /** 档 1 快路**真跳掉**的次数（不在 `computes` 里） */
   computesSkipped: number;
@@ -724,7 +639,7 @@ export interface BranchFrameLedger {
   fastPathWrong: number;
 }
 
-/** `window.__ccmPerf` 的局部视图。**不动 `main.ts` 那份 `declare global`** —— 那不在本轮写区。 */
+/** `window.__ccmPerf` 的局部视图（`main.ts` 那份 `declare global` 不在这里扩）。 */
 interface PerfBagWithBranchLedger {
   branchLedger?: BranchFrameLedger;
   branchLedgerVerify?: boolean;

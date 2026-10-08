@@ -1,39 +1,11 @@
 /**
- * RecordTimeline（P5.2b）—— B 重构的核心数据结构。
+ * RecordTimeline：单个 Tab / SessionViewer 持有的按 seq 排序的渲染条目。
  *
- * ## 是什么
+ * 每来一条记录 `insert(entry)` 二分找位置、insertBefore 相邻元素 ⇒ 后端先发哪条都不影响画面，永远按 seq 排好
+ * （重放历史与实时增量走同一条路，不再分相位协调）。seq 只在同一会话内比（后端每份文件一个单调计数器）。
  *
- * 单个 Tab / SessionViewer 持有的"按 seq 排序的渲染条目数组"。每次后端
- * emit 一条新 payload，调用 `insert(entry)` 用 binary search 找位置 →
- * DOM insertBefore 相邻 element。**消除了之前 inPrependMode / pendingPrependFragment
- * / source: batch | live / chunk_index 全部状态机**——后端 emit 顺序不影响
- * 视觉，timeline 永远按 seq 排好。
- *
- * ## 为什么这么干
- *
- * 之前一根 jsonl-batch / jsonl-line IPC 通道塞两种语义（replay 历史 vs live 增量），
- * 前端用 6 个 flag 互相协调（inPrependMode / pendingPrependFragment / source /
- * batchMode / replaying / endTimer）。每对相位差都是潜在 bug——5 个已知漏洞 +
- * tool-group 跨 source 错位 + 第二批 batch chunk 0 不重置 等。
- *
- * 改成 timeline + seq：插入位置由 seq 决定，状态机降到 1（inBatch 仅控 lazy hljs）。
- *
- * ## 单 tab 视角不变
- *
- * 跨 session 不需要全局 seq——每个 tab 独立 timeline，seq 只在 same-session 内
- * 比较。watcher 给每文件维护 next_seq 计数器，process_file 顺序读保证单调。
- *
- * ## DOM 模型
- *
- * timeline 持有 MessageStream 实例（不是裸 contentEl），insert 走 stream.insertNode
- * —— 同步触发 stickToBottom 的 snap 贴底逻辑，避免依赖 ResizeObserver 异步窗口。
- * 启动 chunked replay 期间 timeline.insert 高频调用，**必须同步贴底**，否则滚动条
- * 跟不上内容增长，视觉上停在中间 / 顶部（已知 bug，B 重构后回归一次）。
- *
- * ## tool-group 合并
- *
- * 本模块只暴露 insert + neighbor 查询；tool-group 后处理合并算法在
- * `render-stream-record.ts` 里（P5.3）实现，因为它跟 renderMessage 输出耦合。
+ * insert 走 `stream.insertNode`：同步触发贴底，不靠 ResizeObserver 的异步回调 —— 重放期高频插入时滚动条才跟得上。
+ * 工具组的邻居合并在 `render-stream-record.ts`（与 renderMessage 的产物耦合），这里只给 insert 与邻居查询。
  */
 
 import type { ToolGroup } from "./cards";
@@ -66,20 +38,14 @@ export class RecordTimeline {
   constructor(private stream: MessageStream) {}
 
   /**
-   * 按 seq 插入新 entry 并立即挂 DOM。返回插入位置 index（caller 后处理合并要看
-   * 左右邻居）。
-   *
-   * Batch13-F40a:deferMode（启动重放延后挂载）已退役——尾部优先门控让重放期的
-   * 旧记录根本不进 timeline（收纳在 TailWindow 账本，不建卡），"视口上方逐帧插入
-   * 导致 ±0.5px 抖动"的病根整个消失（INVARIANTS §21.3）。本类回归纯粹的
-   * 「seq 有序 + 邻居查询」结构，无挂载状态机。
+   * 按 seq 插入新 entry 并立即挂 DOM。返回插入位置 index（调用方合并时要看左右邻居）。
+   * 重放期的旧记录不进 timeline（尾部优先收纳在 TailWindow 账本，不建卡；INVARIANTS §21.3）⇒ 这里没有挂载状态机。
    */
   insert(entry: TimelineEntry): number {
     const idx = this.binarySearchInsertIdx(entry.seq);
     this.entries.splice(idx, 0, entry);
-    // 锚点 = 第一个**还在这条流里**的后继。已离场的（元素被摘出 DOM
-    // 却没出账）当场出账并出声 —— 原来拿它当锚，`insertNode` 只能降级成末尾追加，DOM 就此错序（rebuild 不重排卡，
-    // 不会自愈）。今天所有摘卡的路都同步出账（reconcile · 骨架占位），走到这里说明又多了一条没出账的路。
+    // 锚点 = 第一个还在这条流里的后继。已离场的（元素摘出了 DOM 却没出账）当场出账并出声：拿它当锚只能末尾追加，DOM 就此错序（rebuild 不重排卡）。
+    // 所有摘卡的路都同步出账（reconcile · 骨架占位），走到这里说明多了一条没出账的路。
     const content = this.stream.contentElement;
     const j = idx + 1;
     while (j < this.entries.length && !content.contains(this.entries[j].element)) {
@@ -115,7 +81,7 @@ export class RecordTimeline {
     return this.entries.length;
   }
 
-  /** F40b:最高已渲染 seq(空 timeline = -Infinity)。R-1 中部插入判定用。 */
+  /** 最高已渲染 seq（空 timeline = -Infinity）。中部插入判定用。 */
   get maxSeq(): number {
     return this.entries.length > 0
       ? this.entries[this.entries.length - 1].seq
@@ -123,10 +89,8 @@ export class RecordTimeline {
   }
 
   /**
-   * F40b S-6:按 element 删 entry。reconcilePendingToolResults 把孤儿 fallback 卡
-   * 从 DOM remove 后必须同步删账——否则该 entry 之后可能被二分插入选作 anchor
-   * (`insert` 现在会把这种离场条目当场出账并出声,不再降级尾部追加;同步删账仍是正路)。
-   * 线性扫描(单次 reconcile 移除数 ≤ pending 数,可忽略)。
+   * 按 element 删 entry：reconcilePendingToolResults 把孤儿 fallback 卡从 DOM 摘掉后同步删账，免得它之后被选作锚点。
+   * 线性扫描（单次 reconcile 移除数 ≤ pending 数）。
    */
   removeByElement(el: HTMLElement): void {
     const idx = this.entries.findIndex((e) => e.element === el);
@@ -141,7 +105,7 @@ export class RecordTimeline {
   /**
    * 二分查找：返回 entry 应该插入的位置 idx，使 entries[idx-1].seq < seq <= entries[idx].seq。
    *
-   * 平均 O(log N)；N=3000 实测 ~12 次比较，毫秒以下。
+   * O(log N)。
    * 出错时（同 seq 已存在）也返回正确插入位置 —— caller 用 `has(seq)` 自行判重。
    */
   private binarySearchInsertIdx(seq: number): number {

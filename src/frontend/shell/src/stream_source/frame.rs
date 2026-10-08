@@ -193,6 +193,11 @@ pub enum InboundFrame {
     /// 测试连接那一趟的一格进度 / 结局（后端 `wire::Frame::Probe`）。只有**本机后端**那条流上会有
     /// （测试连接在本机常驻后端里跑），交 `probe_relay::deliver`。`cell` 原样（一个 JSON 对象的文本，monitor 不解释）。
     Probe { ticket: String, cell: String },
+    /// 终端实时预览的一整屏（后端 `wire::Frame::TerminalScreen`）。本机远端两条流上都会有（订了哪台就是哪台推的），
+    /// 交 `terminal_screen_relay::deliver`。`cell` ＝ `{"seq": n, "view": {…}}` 的文本（`view` 必须是对象；内容由界面严格收）。
+    TerminalScreen { ticket: String, cell: String },
+    /// 一条终端订阅停了（后端 `wire::Frame::TerminalFollowEnd`）。`cell` ＝ `{"end": "gone" | "lost" | "too_big"}`；认不出的原因 ⇒ 坏帧（不猜）。
+    TerminalFollowEnd { ticket: String, cell: String },
     /// 一轮对话收尾（`turn_end`）。认识但不消费：轮次边界由 `line` 帧自己推（它是发给仓外消费方的）。
     TurnEnd,
     /// 那台的额度账变了（`quota_changed`）⇒ 交订了 `quota-changed` 的订阅一格；界面要额度就发 `quota-read` 读整份。
@@ -583,6 +588,27 @@ pub fn parse_frame(line: &str) -> Result<InboundFrame, Unread> {
                 .filter(|c| c.is_object())
                 .ok_or_else(|| bad(k, "`cell` is not an object"))?
                 .to_string(),
+        },
+        // 终端实时预览：票 ＋ 序号 ＋ 那一屏（必须是对象，原样转交）。
+        "terminal_screen" => InboundFrame::TerminalScreen {
+            ticket: req_str(obj, k, "ticket")?,
+            cell: serde_json::json!({
+                "seq": req_u64(obj, k, "seq")?,
+                "view": Some(req(obj, k, "view")?)
+                    .filter(|v| v.is_object())
+                    .ok_or_else(|| bad(k, "`view` is not an object"))?,
+            })
+            .to_string(),
+        },
+        // 终端订阅停了：原因只认后端那三种（不猜一个结局）。
+        "terminal_follow_end" => InboundFrame::TerminalFollowEnd {
+            ticket: req_str(obj, k, "ticket")?,
+            cell: serde_json::json!({
+                "end": Some(req_str(obj, k, "why")?)
+                    .filter(|w| ["gone", "lost", "too_big"].contains(&w.as_str()))
+                    .ok_or_else(|| bad(k, "`why` is not a known reason"))?,
+            })
+            .to_string(),
         },
         // 一件归一事件。`ev` 与 `end` 恰有一个：先认 `ev`（必须是对象，原样转交），没有就必须是认得的 `end`。`run` 缺 ＝ 主运行。
         "tap" => {

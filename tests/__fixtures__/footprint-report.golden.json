@@ -105,7 +105,7 @@
       "effect_label": "cc-monitor 不直接写它；但你在 cc-monitor 里的操作会让它被写（由被调用的命令追加内容）",
       "host_label": "本机或远端",
       "installable": true,
-      "note": "运行期状态：收件箱、名册、队列、日志\n本机与远端都读；发消息、派活、广播、收掉这些写操作只动远端那份",
+      "note": "运行期状态：收件箱、名册、队列、日志\n本机与远端都读；发消息、派活、广播、结束 agent 这些写操作只动远端那份",
       "path_declared": "~/.cc-bus/",
       "path_resolved": "/nonexistent-footprint-golden/.cc-bus",
       "source_label": "随 cc-monitor 一起安装",

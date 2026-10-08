@@ -288,6 +288,14 @@ describe("CP2a · 文案规范", () => {
     }
     expect(run("原因格", "回的内容读不懂 · 无法解析")).not.toBeNull();
   });
+
+  it("C-W8：状态句打头的「失败」是状态格（运行结局），不是「<动作>失败 · <原因>」；别的角色、或「失败」不打头，照逮", () => {
+    const run = (role: string, zh: string) => CHECKS["C-W8"]({ kind: "body", role, zh, args: [] }, ctx);
+    expect(run("状态", "失败 · 报错已交回")).toBeNull();
+    expect(run("说明", "失败 · 报错已交回"), "不是状态句：缺主语照逮").not.toBeNull();
+    expect(run("状态", "重启失败 · 报错已交回"), "「<动作>失败」照判原因格").not.toBeNull();
+    expect(run("状态", "失败 · 磁盘满 · 写入失败 · 盘写满"), "后面的「失败 · X」照判").not.toBeNull();
+  });
 });
 
 describe("复选框 / 开关标签允许动词开头 —— 规矩与检法同拍", () => {

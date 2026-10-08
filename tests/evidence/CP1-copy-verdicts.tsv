@@ -112,6 +112,7 @@ src/backend/lib.rs:1423	**硬链在 tmux 上，不是自己做不到**：`argv.r
 src/backend/lib.rs:1435	`--ccm-sid` 写的是 tmux 会话上的意图标（`@ccm_sid_expect`，kill / 送键的身份门据它确认事实）。\n              Windows 上没有 tmux ⇒ 没有可写的地方；直路上它不起作用，拉前终端也不靠它（点 ↗ 时现查连着的终端）。\n              等 Windows 后台机制选定（未定）时一并回答，**暂时不做**。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文：只给判据读，不上界面
 src/backend/lib.rs:1475	把中转地址跨 tmux 会话传下去。载体没了这一条就没了；\n              将来 Windows 后台机制选定时要自己回答「地址怎么传给它起的会话」，**暂时不做**。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面
 src/backend/lib.rs:1522	终端管理 L1 的抓一屏：这一版宿主只有 tmux（起 `tmux capture-pane`，声明了 `no_tmux`）。\n              形状与宿主无关，Windows 后台机制选定（未定）时换实现、不换形状，**暂时不做**。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面
+src/backend/lib.rs:1686	终端实时预览：这一版宿主只有 tmux（起 tmux 控制模式客户端收输出事件，声明了 `no_tmux`）。\n              与 `terminal-preview` 同一个理由（Windows 后台机制未定），同拍还，**暂时不做**。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面
 src/backend/lib.rs:1530	终端管理 L1 的送字送键：这一版宿主只有 tmux（`send-keys`，声明了 `no_tmux`）。\n              同 `terminal-preview`：Windows 后台机制选定（未定）时换实现、不换形状，**暂时不做**。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面
 src/backend/lib.rs:1538	与帧面 `terminal-preview` 那一行是同一条实现（CLI 面派生）⇒ 同一个理由（Windows 后台机制未定），同拍还，**暂时不做**。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面
 src/backend/lib.rs:1545	与帧面 `terminal-input` 那一行是同一条实现（CLI 面派生）⇒ 同一个理由（Windows 后台机制未定），同拍还，**暂时不做**。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面

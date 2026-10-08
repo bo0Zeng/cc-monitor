@@ -99,6 +99,7 @@ const WAITING_ROWS: &[(&str, &str)] = &[
     ("cli-subcommands", "--launch"),
     ("wire-commands", "terminal-preview"),
     ("wire-commands", "terminal-input"),
+    ("wire-commands", "terminal-follow"),
     ("cli-subcommands", "--terminal-preview"),
     ("cli-subcommands", "--terminal-input"),
 ];
@@ -116,7 +117,7 @@ const MECHANISM_WORDS: &[&str] = &["后台服务", "ConPTY", "控制台窗口本
 ///
 /// # 判（两向相等）
 ///
-/// - 理由串里写「Windows 后台机制」的行集合 == [`WAITING_ROWS`]（点名的 14 行）—— 同时是正控：扫描器读得到理由串、认得出子串。
+/// - 理由串里写「Windows 后台机制」的行集合 == [`WAITING_ROWS`]（点名的那几行）—— 同时是正控：扫描器读得到理由串、认得出子串。
 /// - 理由串里点名任一机制（[`MECHANISM_WORDS`]）的行 == ∅。
 ///
 /// 买不到：换一个没登记的说法预设机制（新词）看不见；机制定了之后这张表要跟着改（选了哪种，哪一格就能写它）。
@@ -130,7 +131,7 @@ fn no_gap_rationale_picks_the_windows_mechanism() {
     let want: BTreeSet<(&str, &str)> = WAITING_ROWS.iter().copied().collect();
     assert_eq!(
         cites, want,
-        "写「Windows 后台机制」的理由串那几行 ≠ 点名的那 16 行（`ccm-launcher × Windows` 8 ＋ 命令面 8）"
+        "写「Windows 后台机制」的理由串那几行 ≠ 点名的那 17 行（`ccm-launcher × Windows` 8 ＋ 命令面 9）"
     );
     let picks: Vec<String> = TARGET_GAPS
         .iter()
@@ -1010,10 +1011,19 @@ const NO_HANDLER_PATH: &[(&str, &str)] = &[
     ("transfer-stop", "同上"),
     ("transfer-upload", "同上"),
     (
+        "terminal-follow-ack",
+        "`Run::Builtin`：终端实时预览的回执住 `inbound::dispatch` 的硬臂，就地记账（往那张票的订阅线程递一句），不起 tmux",
+    ),
+    ("terminal-unfollow", "同上（退订：摘票、递「停」），不起 tmux"),
+    (
         "remote-probe",
         "`inbound::dispatch` 的硬臂（进度格要拿本连接的应答通道）；本体 `dial::probe` 只拨 SSH、读 hello、发一次 ping，不起 tmux",
     ),
 ];
+
+/// `run:` 里没有 `crate::…` 路径、本体却住在一个模块里的硬臂命令（`Run::Builtin`，`inbound::dispatch` 带着本连接的状态调它）：
+/// 逐条登记本体住哪份文件 —— 引用图照这份文件算它够不够得着 tmux（不登记就看不见，`no_tmux` 声明没人对得上）。
+const BUILTIN_HANDLER_FILE: &[(&str, &str)] = &[("terminal-follow", "control/terminal_follow.rs")];
 
 /// 🔴 帧面：够得着 tmux 的命令 == 声明 `no_tmux` 的 ∪ 登记的「tmux 可选」。
 #[test]
@@ -1032,7 +1042,30 @@ fn every_frame_command_that_can_reach_tmux_declares_no_tmux() {
         spawners.len() >= 5,
         "真起 tmux 的文件只找到 {spawners:?} —— 取法坏了"
     );
-    let handlers = handler_files(&tree);
+    let mut handlers = handler_files(&tree);
+    // 硬臂命令的本体：登记的那几条换成它住的那份文件（登记的必须真是硬臂、`run:` 里真没有路径、那份文件真在树里）。
+    for (name, file) in BUILTIN_HANDLER_FILE {
+        let spec = crate::stream::inbound::REGISTRY
+            .iter()
+            .find(|s| s.name == *name)
+            .unwrap_or_else(|| {
+                panic!("`BUILTIN_HANDLER_FILE` 登记的 `{name}` 不在命令表里 —— 删那一行")
+            });
+        assert!(
+            matches!(spec.run, crate::stream::inbound::Run::Builtin),
+            "`BUILTIN_HANDLER_FILE` 登记的 `{name}` 不是硬臂 —— 它的 `run:` 自己点得出本体，删那一行"
+        );
+        assert!(
+            tree.contains_key(*file),
+            "`BUILTIN_HANDLER_FILE` 登记的 `{file}` 不在后端树里"
+        );
+        let h = handlers.get_mut(*name).expect("命令表里有它，抽块里却没有");
+        assert!(
+            h.is_empty(),
+            "`{name}` 的 `run:` 里已经点得出本体 {h:?} —— 删 `BUILTIN_HANDLER_FILE` 那一行"
+        );
+        h.insert(file.to_string());
+    }
     let names: BTreeSet<&str> = crate::stream::inbound::REGISTRY
         .iter()
         .map(|s| s.name)

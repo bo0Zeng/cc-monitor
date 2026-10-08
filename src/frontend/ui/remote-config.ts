@@ -1,6 +1,4 @@
-// F12：远端配置**数据层**（从 settings/remote-section.ts 抽出，治分层倒挂——数据层原住在 1801 行
-// UI 模块里、被 tabs/account-chip/cards/main/port-forward 等非 UI 模块依赖）。本模块**纯数据**：
-// config.json `remote` 段的类型 + 读写 CRUD + 反查/筛选纯函数，无 DOM、无 UI 依赖。行为与抽出前逐字节等价。
+// 远端配置数据层（纯数据，无 DOM）：config.json `remote` 段的类型 ＋ 读写 ＋ 反查 / 筛选纯函数。
 import { loadConfig, patchConfig, type ConfigEdit } from "./config";
 import { commands } from "./ipc/commands";
 import type { MachineFault } from "./generated/MachineFault";
@@ -24,48 +22,31 @@ export interface RemoteHostConfig {
   /** 指纹记下的那一天（`YYYY-MM-DD`；没记过 / 不知道 ⇒ 空）。只给人看，拨号不读它。 */
   hostKeyPinnedAt?: string;
   /**
-   * Batch14-F45：备用地址（happy-eyeballs 竞发）。每项 `host` / `host:port` /
+   * 备用地址（happy-eyeballs 竞发）。每项 `host` / `host:port` /
    * `[IPv6]:port` / 裸 IPv6。首选地址仍是 `host` 字段。空数组 = 仅用 host。
    */
   addresses: string[];
   /**
-   * Batch14-F56：跳板 ProxyJump——填另一台已配置主机的 `label`（空=直连）。经该跳板机隧道连本机
+   * 跳板 ProxyJump：填另一台已配置主机的 `label`（空 = 直连），经那台隧道连这台
    * （数据源侧 russh direct-tcpip；拉起侧 ssh `-J`）。fail-closed：跳板缺失/连不上即报错不直连。
    */
   jump: string;
   /**
-   * S4b-3：**这台机器**的 resume 启动命令。空 = 用全局默认
-   *（`behavior.resumeCommand`，通用页那一格）。
-   *
-   * 为什么必须 per-machine：「装 ccm 助手」是**每台机器一个按钮**，而 resume 命令
-   * 此前是**全局单值** ⇒ A 机装了 ccm、B 机没装时，今天的数据模型根本表达不出来。
-   * 结果是一个结构性陷阱：装完 ccm 却忘了改 resume 命令（那两处此前还隔着两个顶层组）。
-   *
-   * 保留全局值当**回退**而不是做数据迁移：迁移会静默改写用户已有的设置，
-   * 而回退让「没填过 = 沿用今天的行为」，零意外。
+   * 这台机器的 resume 启动命令；空 = 用全局默认（`behavior.resumeCommand`，通用页那一格）。
+   * 按机器存：A 机装了 ccm、B 机没装时各要各的；全局值留作回退（没填过 = 沿用全局）。
    */
   resumeCommand: string;
   /** 连接这台：关 ⇒ 不连（盘上 `"connect": false`），开 ⇒ 去连；改了当场生效（`remote_reconcile`）。 */
   connect: boolean;
 }
 
-/** F45：多行文本 ↔ 地址数组（trim + 去空行）。UI 用 textarea，config/IPC 用数组。 */
+/** 多行文本 ↔ 地址数组（trim ＋ 去空行）。界面用 textarea，config / IPC 用数组。 */
 export function parseAddressLines(text: string): string[] {
   return text
     .split("\n")
     .map((l) => l.trim())
     .filter((l) => l.length > 0);
 }
-
-// 🔴 〔条 80 「不要管旧配置」〕**那块墓碑整个删了。**
-//    这里原先住着 `LEGACY_NO_BACKEND_KEY = "daemonless"` —— 用户盘上那个已退役开关的键名，
-//    连同 `legacyNoBackendHosts()`、`RemoteConfig.legacyNoBackend` 字段与
-//    `settings/readiness.ts` 上那条指名告知。它**不驱动任何行为**，唯一作用是在
-//    「还差什么」清单上多说一句；不管旧配置 ⇒ 它没有存在的理由了。
-//    ⚠ 同拍收掉了**只为它存在的 8 条判据**（全是负向断言，词一删就永远满足 ⇒ 8 条恒绿）：
-//      `launch_wire_f07_main_path_tests.rs` 三条 `!contains` ·
-//      `doc_claim_registry_tests.rs` 三格 `carriers` ·
-//      `tests/frontend/ui/settings/remote-section.vitest.ts` 两条 `not.toContain`。
 
 /** config.json `remote` 段：机器列表（每台自己的「连接这台」）。 */
 export interface RemoteConfig {
@@ -78,17 +59,13 @@ export interface RemoteConfig {
   unrecognized?: string;
 }
 
-/**
- * 〔「不为旧配置留兼容」〕`remote` 段认不出时，机器列表顶上那一句。
- * 从前旧的单对象写法（`remote: { enabled, host, … }`）会被悄悄当成 1 台；那一支删了。
- */
+/** `remote` 段认不出时，机器列表顶上那一句（不猜那是哪台）。 */
 export const REMOTE_CONFIG_UNRECOGNIZED =
   copyText("remoteConfig.remoteConfigUnrecognized.unrecognized");
 
 /**
- * F83（#39）:可打开文件窗口的远端主机——`host` 与 `user` 都非空（`file-window.ts::openFileWindow` 的前置，
- * 见 remote-section「文件」按钮同款校验）。顶栏 SFTP 入口据此决定 0 台提示 / 1 台直开 / 多台选单。
- * 纯函数（不看 `enabled`：即使远端数据源没启用，也能纯浏览某台的文件）。
+ * 能打开文件窗口的远端主机：`host` 与 `user` 都非空（`file-window.ts::openFileWindow` 的前置）。顶栏文件入口据此决定 0 台提示 / 1 台直开 / 多台选单。
+ * 不看 `enabled`：远端数据源没启用也能浏览某台的文件。
  */
 export function sftpEligibleHosts(cfg: RemoteConfig): RemoteHostConfig[] {
   return cfg.hosts.filter((h) => h.host.trim() !== "" && h.user.trim() !== "");
@@ -108,7 +85,7 @@ export const HOST_DEFAULTS: RemoteHostConfig = {
   connect: true,
 };
 
-/** F45：容忍 config 里 addresses 为数组 / 换行文本 / 缺失。 */
+/** 容忍 config 里 addresses 为数组 / 换行文本 / 缺失。 */
 function coerceAddresses(v: unknown): string[] {
   if (Array.isArray(v)) {
     return v
@@ -144,8 +121,7 @@ function coerceHost(obj: Record<string, unknown>): RemoteHostConfig {
 
 /**
  * 读 config.json 的 `remote` 段 → RemoteConfig。有 `hosts` 数组 → 逐台读；`remote` 段在而没有
- * `hosts` 数组 ⇒ **认不出**（`hosts` 空 ＋ `unrecognized` 那一句）；没有 `remote` 段 → 空列表。永不抛。
- * 从前「无 `hosts` 但有 `host`（旧单对象）→ 归一成 1 台」那一支删了。
+ * `hosts` 数组 ⇒ 认不出（`hosts` 空 ＋ `unrecognized` 那一句）；没有 `remote` 段 → 空列表。永不抛。
  */
 export async function readRemoteConfig(): Promise<RemoteConfig> {
   try {
@@ -173,10 +149,8 @@ function remoteConfigOf(cfg: Record<string, unknown>): RemoteConfig {
 }
 
 /**
- * F54:在主机列表里按 origin 反查(纯函数,便于单测)。origin = 主机 `label` 非空则 label
- * 否则 host,等价于后端 `origin_label()` / launcher 的 `label||host`(**纯空白 label 除外**:
- * 这里 `.trim()` 更稳健,后端不 trim——纯空白 label 属退化配置,退化时反查落空→调用方优雅 toast)。
- * 找不到 → null。
+ * 在主机列表里按 origin 反查（纯函数）。origin = `label` 非空则 label 否则 host，与后端 `origin_label()` 同口径
+ * （纯空白 label 除外：这里 trim、后端不 trim，那时反查落空，调用方出声）。找不到 → null。
  */
 export function findHostByOrigin(
   hosts: RemoteHostConfig[],
@@ -185,9 +159,7 @@ export function findHostByOrigin(
   return hosts.find((h) => hostKey(h) === origin) ?? null;
 }
 
-/**
- * F54:按 origin(会话来源标识)反查完整 RemoteHostConfig。找不到(主机被删/改名)→ null。
- */
+/** 按 origin（会话来源）反查完整 RemoteHostConfig。找不到（主机被删 / 改名）→ null。 */
 export async function resolveRemoteConfigByOrigin(
   origin: string,
 ): Promise<RemoteHostConfig | null> {
@@ -195,20 +167,8 @@ export async function resolveRemoteConfigByOrigin(
 }
 
 /**
- * S1：落盘时要序列化的字段清单 —— **单一事实来源**。
- *
- * ★ 为什么值得单独立一个清单 + 编译期检查：这里原本是逐字段手抄的对象字面量，
- * 而**手抄清单已经咬过两次**，两次都是「`RemoteHostConfig` 加了字段、这里没跟上
- * ⇒ 每次保存都静默丢掉它」：
- * - `jump`（F56 D-B1）：「设置卡填的跳板被静默丢弃」——用户填了，存不下来。
- * - `daemonless`（F59，**已于 `K-R59` 整格退役**）：补的时候注释里写着
- *   「同 D-B1 教训：枚举字段必逐个写全」。今天这个键**不在清单里**是有意的 ——
- *   一次保存就把用户盘上那份旧值写没。〔条 80〕那句「写没之前先指名告知一次」
- *   随那块墓碑一起删了：不管旧配置。
- *
- * 两次都是**事后**补的。下面那个 `MissingField` 检查把它变成**编译期**问题：
- * 加字段而漏改这里，`tsc` 直接红，且错误信息里点名缺的是哪个字段。
- * （比写测试强：测试要有人想起来写；类型检查每次编译都跑。）
+ * 落盘时要序列化的字段清单（单一来源）。`RemoteHostConfig` 加了字段而这里没跟上 ⇒ 每次保存都静默丢掉它；
+ * 下面的 `MissingField` 检查让 `tsc` 当场红，并点名缺的是哪个字段。
  */
 const REMOTE_HOST_FIELDS = [
   "label",
@@ -240,7 +200,7 @@ function serializeHost(h: RemoteHostConfig): Record<string, unknown> {
   return out;
 }
 
-/** S1：一台机器在盘上的定位键 = 它的 origin（与 [`findHostByOrigin`] 同口径）。 */
+/** 一台机器在盘上的定位键 = 它的 origin（与 [`findHostByOrigin`] 同口径）。 */
 /** 某台机器该用哪条恢复命令（纯函数）：那台自己那一格优先，空 ⇒ 通用页那一格默认。 */
 export function pickResumeCommand(
   host: RemoteHostConfig | null,
@@ -263,13 +223,11 @@ export function hostKey(h: RemoteHostConfig): string {
   return h.label.trim() || h.host;
 }
 
-/**
- * S1：一次**局部**修改。没被提到的机器根本不碰（补丁里没有它）。
- */
+/** 一次局部修改：没被提到的机器不碰（补丁里没有它）。 */
 export interface RemoteHostsPatch {
   /**
    * 要写入的机器。`key` = 这条记录**在盘上当前的 origin**；`null` = 新增（追加到末尾）。
-   * key 在盘上找不到（被别处删了/改了）⇒ 整批拒、说出来（不再「找不到就当新增」）。
+   * key 在盘上找不到（被别处删了 / 改了）⇒ 整批拒、说出来（不当新增）。
    */
   upsert?: { key: string | null; value: RemoteHostConfig; was?: RemoteHostConfig }[];
   /** 要删除的机器，按 origin。 */
@@ -277,7 +235,7 @@ export interface RemoteHostsPatch {
 }
 
 /**
- * S1：UI 侧写远端配置的唯一入口。补丁全按键认元素（[`remoteHostsEdits`]），不读、不整段写 ——
+ * 界面写远端配置的唯一入口。补丁全按键认元素（[`remoteHostsEdits`]），不读、不整段写 ——
  * 认元素在 Rust 写口锁内现读现判（`config.rs::patch_config_at`）。
  */
 export async function patchRemoteConfig(

@@ -1,8 +1,5 @@
 /**
- * localStorage 统一接入层（P2.1）。
- *
- * 之前各 panel / view 自写 `try { localStorage.getItem ... } catch + console.warn`，
- * 加 key 散落（命名风格不一：profile_preset 用 _，其他用 . 或 -）。本模块：
+ * localStorage 统一接入层：
  *
  * 1. **集中 LS_KEYS** —— 所有 key 字面量收口到一份对象。新加 key 必须先在这里
  *    注册，否则模块内 grep 不到无法定位。
@@ -12,9 +9,6 @@
  * 4. **enumeratePrefix** —— data-section 列出所有 `cc-monitor.*` key 时用。
  *
  * INVARIANT § 14：所有 key 必须 `cc-monitor.` 前缀。
- *
- * 注：`profile_preset` / `profile_path` 仍保留下划线命名 —— 改 key 会丢用户已存
- * 的偏好（cc 集成下次打开会回到 PS 5.1 默认）。未来若做版本迁移再统一。
  */
 
 const LS_PREFIX = "cc-monitor." as const;
@@ -23,24 +17,19 @@ const LS_PREFIX = "cc-monitor." as const;
 export const LS_KEYS = {
   /** 主窗口底部抽屉：开着哪一页、多高（`{"page":"tasks"|"agents"|"terminal"|null,"height":240}`）。纯界面偏好，丢了回到收着、缺省高。 */
   bottomDrawer: "cc-monitor.bottom-drawer",
-  // 🔴 `tabArchiveCollapsed` 删掉 —— 归档抽屉整个不存在了。
-  //    用户逐字「没有归档这个东西，不要归档，就是灰 tab」。盘上遗留的那个键无人再读
-  //    （条 80：不为盘上已有状态留兼容 ⇒ 不写清理，让它自然作废）。
-  /** issue #12：fork 树展开状态（按 sessionId 入集合）。 */
+  /** fork 树展开状态（按 sessionId 入集合）。 */
   historyExpandedForks: "cc-monitor.history.expanded-forks",
-  /** v2.3.0：tool result 渲染模式偏好（per tool name）。 */
+  /** tool result 渲染模式偏好（按工具名）。 */
   toolRender: (toolName: string) => `cc-monitor.tool-render.${toolName}`,
-  // v1.7 那两个键（cc 集成的 PowerShell profile 选择 + 自定义路径）删掉 —— 「终端集成」页随 AL1c / AL1d 退役之后
-  //    零读写（`AL1d.md §5` 第 6 条）。盘上遗留的值无人再读（条 80：不为盘上已有状态留兼容 ⇒ 不写清理，让它自然作废）。
-  /** Batch5-F19：上次所在 tab 的 sid——启动 active 选择 + replay 优先级。 */
+  /** 上次所在 tab 的 sid —— 启动时选它、重放先发它。 */
   lastActiveSid: "cc-monitor.last-active-sid",
   /** 历史页的界面偏好（看法 · 筛选：机器 · 时间 · 排序 · 显示已隐藏 · 搜内容时）。纯界面偏好，丢了回到默认。 */
   historyPrefs: "cc-monitor.history.prefs",
-  /** F84b-fix(batch18)：命令栏可发现 chip 是否已被用户见过——首运行给一次性微高亮，之后不再。 */
+  /** 命令栏 chip 是否已被用户见过 —— 首次运行给一次性微高亮，之后不再。 */
   cmdkHintSeen: "cc-monitor.cmdk-hint.seen",
   /** 「有改动需重启」的原因集。存在设置窗网页的**会话存储**里（这一次启动的状态，重启即清），不在 localStorage。 */
   restartReasons: "cc-monitor.settings.restart-reasons",
-  /** Batch11-F33：竖直 tab 栏拖出来的宽度（px）。从 `main.ts` 的直写收进来，读写者只有 `tab-bar-width.ts`。 */
+  /** 竖直 tab 栏拖出来的宽度（px）。读写者只有 `tab-bar-width.ts`。 */
   tabBarWidth: "cc-monitor.tab-bar-w",
   /** 「过程默认展开」（会话头「⋯」· Ctrl+O）。每扇窗一份；`"1"` 展开，其余收起。 */
   processExpanded: "cc-monitor.stream.process-expanded",

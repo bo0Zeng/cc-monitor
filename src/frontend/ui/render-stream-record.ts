@@ -1,33 +1,10 @@
 /**
- * renderStreamRecord（P5.2c + P5.3）—— B 重构后三 caller 共享的渲染管线。
+ * 一条记录的渲染管线（renderMessage → markCardUuid → 喂分支折叠 → 工具组合并 → 挂进 DOM），
+ * 实时标签页 · 会话查看器 · 子运行卡三处共用，差异经 sink 注入（append / insertBefore · 用不用 BranchFolder · 触不触发 userActive）。
  *
- * ## 三个 caller
- *
- * 之前 TabManager.onLine / SessionViewer.load / cards/subagent.renderSubagentBody
- * 各自维护一份"renderMessage → markCardUuid → feedBranchFolder → tool-group
- * 合并 → DOM 挂载"逻辑。漂移风险高（SessionViewer 漏 pendingToolResults 是已知
- * 事故 —— P4 修过）。本模块把这条管线收口，三个 caller 通过 sink 接口注入差异：
- * append vs insertBefore、用不用 BranchFolder.recordAdded、要不要触发 userActive 等。
- *
- * ## tool-group 合并算法（P5.3）
- *
- * 之前合并靠"到达顺序连续"维护 tab.pendingToolGroup 状态字段——一旦 batch / live
- * 跨边界 ToolGroup root 在 fragment 里没贴进 DOM 时被后到的 live 消息错误追加
- * 到 fragment 里 → 后续 flush 整体被 prepend 到顶部。
- *
- * 改成基于 timeline 的"邻居判定"：
- * 1. renderMessage 返回 `tool-group` 时 timeline.peekPrev(seq) 看左邻居
- * 2. 若 prev.kind === "tool-group"（且有 toolGroup 实例）→ addToToolGroup 追加 units
- *    到 prev.toolGroup.body，不创建新 entry
- * 3. 否则 buildToolGroup + addToToolGroup + markCardUuid + timeline.insert
- *
- * 关键属性：合并方向永远按 timeline 已排序状态判断 —— 跟到达顺序解耦。
- * 早 seq 的 tool-only 后到（乱序）也会先按 seq 找到正确位置再判邻居。
- *
- * ## state 收口
- *
- * 之前需要 inPrependMode / pendingPrependFragment / source / pendingToolGroup
- * 四个状态字段；本模块只读 timeline，写 timeline。pendingToolGroup 字段被消除。
+ * 工具组合并按 timeline 的邻居判：renderMessage 交回 `tool-group` 时 `timeline.peekPrev(seq)` 看左邻居，
+ * 是工具组 ⇒ 单元并进它的 body，不建新 entry；否则建组、记 uuid、插进 timeline。
+ * 合并方向只看 timeline 已排好的序、与到达顺序无关（早 seq 的后到也先按 seq 找到位置再判邻居）。
  */
 
 import { renderMessage, buildToolGroup, addToToolGroup, type JsonlRecord, type RenderContext } from "./cards";
@@ -68,32 +45,25 @@ export interface StreamSink {
    */
   onRealUserInput?: (sessionId: string) => void;
   /**
-   * lazy 渲染出来的卡交给哪个滚动容器的 IntersectionObserver 补高亮 / 公式（`render.ts::observeForEnhance`）。
-   * 原来是布尔 `observeForLazyEnhance` ＋ 一个没有 root 的全局 IO；
-   * 现在交的是 root 本身（实时 tab = 它的 `.stream`，查看器 = 它自己的滚动容器）。
-   * `null` / 缺省 = 不 observe（急路渲染的卡没有占位要补）。
+   * lazy 渲染出来的卡交给哪个滚动容器的 IntersectionObserver 补高亮 / 公式（`render.ts::observeForEnhance`）：
+   * 实时 tab = 它的 `.stream`，查看器 = 它自己的滚动容器。`null` / 缺省 = 不 observe（当场高亮的卡没有占位要补）。
    */
   enhanceRoot?: HTMLElement | null;
   /**
-   * F62：一张普通卡（user/assistant/system）建好并 markCardUuid 之后调，传入卡 root
-   * 与其 message。仅 SessionViewer（本地历史查看器）实现——给卡挂「从这一轮建分支」按钮。
-   * live Tab / Subagent 不实现 = 不挂按钮，行为零变化。tool-group 卡不触发（不在会话轮次上分支）。
+   * 一张普通卡（user / assistant / system）建好、记过 uuid 之后调。只有会话查看器实现：给卡挂「从这一轮建分支」。
+   * 工具组卡不触发（不在会话轮次上分支）。
    */
   onCardRendered?: (element: HTMLElement, message: JsonlRecord) => void;
 }
 
 /**
- * Batch13-F40(账本 §3 最终形态):collect/render 两段式。
- * - routeMetaAndBranch:元数据路由 + branch 喂送——**收纳(不建卡)与渲染两条路径
- *   共用的单一来源**,消灭 F39 时代 viewer 手工复刻收集路由的 parity 风险。
- * - renderContentRecord:纯渲染段(建卡/tool-group 合并/DOM 挂载)。
- * - renderStreamRecord:两段组合壳,既有 caller 语义零变化。
+ * 两段式：
+ * - routeMetaAndBranch：元数据路由 ＋ 喂分支折叠 —— 收纳（不建卡）与渲染两条路共用这一份；
+ * - renderContentRecord：纯渲染（建卡 · 工具组合并 · 挂进 DOM）；
+ * - renderStreamRecord：两段串起来。
  */
 
-/**
- * F40c:meta 路由所需的最小 sink 面——viewer 收集段无 timeline 也能复用
- * (StreamSink 结构兼容,render 路径原样传入)。
- */
+/** meta 路由要的最小 sink 面：查看器的收集段没有 timeline 也能用（StreamSink 结构兼容）。 */
 export type MetaSink = Pick<
   StreamSink,
   "onTitleUpdate" | "onQueueOperation" | "onBranchRecord"
@@ -105,11 +75,7 @@ export type MetaSink = Pick<
  * - "content":其余记录(含 render 后会 skip 的 attachment/空 user——它们仍占链节点,
  *   branch record 已在本函数喂送,issue #8 链完整性)。
  */
-/** P0c：content → 用户**打字**的时刻（`enqueue` 那一刻）。
- *
- *  ⚠ **有界**：只留最近 200 条。这是个进程内缓存，不是账本 ——
- *  没有上界的 map 在长会话里就是一个慢性泄漏，而它的价值只在「几十秒内配上」。
- *  超出就丢，丢了退回用 `remove` 的时刻（见调用点）。 */
+/** content → 用户打字的时刻（`enqueue` 那一刻）。有界：只留最近 200 条（价值只在几十秒内配上）；丢了退回用 `remove` 的时刻。 */
 const QUEUED_AT = new Map<string, { at: string; time?: string }>();
 const QUEUED_AT_CAP = 200;
 
@@ -145,33 +111,15 @@ export function routeMetaAndBranch(
     return "consumed";
   }
 
-  // 1.5 queue-operation 路由。**两件事，别混着读**：
-  //
-  // ① issue #36（旧）：`enqueue` 的 content 喂折叠豁免集合 —— 防止排队消息被当成
-  //    「ESC 弃稿」误折叠。它**不建卡**。
-  // ② P0c（新）：`remove` 的 content **要建卡** —— 因为它是那句话在 jsonl 里**唯一的存在**。
-  //
-  // ★★ 为什么只有 `remove` 建卡（08-12 实测，本会话 279 条 queue-operation）：
-  //   · `dequeue`（101 条）= 排队消息**独立成一轮** ⇒ 随后就有 `user` 记录 ⇒
-  //     这里再建一张就是**同一句话显示两遍**；
-  //   · `remove`（38 条）= 被**插进正在跑的那一轮** ⇒ CC **不写 `user` 记录** ⇒
-  //     不在这里建卡，用户说的话就**整条消失**。本会话实测丢了 16 条用户真实输入，
-  //     **全是打断时说的**（含「往后排」「spawn 不该复用活会话」这类最关键的指令）。
-  //   · 判定**不需要跨记录对账**：逐条核过 16/16，`remove` 零产出 `user` 记录，无例外。
-  //     （第一遍量出「5 条有」是假匹配 —— 同文被 `dequeue` 那次产出的记录命中。）
+  // 1.5 queue-operation 路由，两件事：
+  // ① `enqueue` 的 content 喂折叠豁免集合（排队消息不被当成「ESC 弃稿」折掉），不建卡；
+  // ② `remove` 的 content 要建卡：被插进正在跑的那一轮时 CC 不写 `user` 记录，这是那句话唯一的存在。
+  //    `dequeue` 不建：它独立成一轮，随后就有 `user` 记录，再建就显示两遍。
   if (message.type === "queue-operation") {
     if (message.operation === "enqueue" && message.content) {
       sink.onQueueOperation?.(message.content);
-      // ★★ **顺手记下打字时刻**〔D 阶段补审 08-12〕。
-      //
-      // 下面 `remove` 那一支建卡时，手上只有 `remove` 的时间戳 ——
-      // 而那是「被插进正在跑的那一轮」的时刻，**不是用户打字的时刻**。
-      // 实测本会话 16 条：中位数差 **25.4s**，最大 **125.4s**。
-      // 卡上标一个晚两分钟的时间，等于告诉读的人「他是那时候说的」——**那是假的**。
-      //
-      // 而打字时刻就在 `enqueue` 这条记录上，我们本来就读到了，只是没用。
-      // ⇒ 按 content 记一份，`remove` 时取回来。**不做配对/去重**：
-      // 同一句话重发时后写覆盖先写，取到的是最近一次打字时刻 —— 那正是想要的。
+      // 记下打字时刻：`remove` 的时间戳是被插进那一轮的时刻（可能晚一两分钟），打字时刻在 `enqueue` 这条上。
+      // 按 content 记，`remove` 时取回；同一句话重发时后写覆盖先写，取到最近一次打字时刻。
       rememberQueuedAt(message.content, message.timestamp, message.timeText);
       return "consumed";
     }
@@ -213,45 +161,19 @@ export function renderStreamRecord(
 }
 
 // ───────────────────────────────────────────────────────────────────────────
-// 秤 1（表第 1 行）：**单条渲染成本直方图**的采集端。
+// 单条渲染成本的采集端（`renderContentRecord` 的墙钟，按记录字节分桶，拆四段，进环形缓冲 cap 5000）。
 //
-// 设计逐字要的是：「`renderContentRecord` wall time，**按记录字节分桶**，拆 4 个子段」
-// ＋「入口出口夹 `performance.now()`，push 进环形缓冲（cap 5000）」。
-// 它要验的声称是 §2.1 §2.4 §2.5 §2.6 §2.8 共同的那一句 ——
-// **「长尾桶被 O(len) 操作主导」**。
+// | 子段 | 覆盖 |
+// |---|---|
+// | `render`   | `renderMessage()`（O(len) 的活都在这里） |
+// | `merge`    | 工具组邻居判定 ＋ `addToToolGroup` ＋ `buildToolGroup` |
+// | `estimate` | `markCardUuid` ＋ `onCardRendered` ＋ `applyIntrinsicSize` |
+// | `mount`    | `timeline.insert` ＋ `observeForEnhance` |
 //
-// # 四个子段怎么切的（改这里等于改秤）
-//
-// | 子段 | 覆盖 | 为什么单独成段 |
-// |---|---|---|
-// | `render`   | `renderMessage()` | §2.1/§2.4/§2.5/§2.6/§2.8 点名的 O(len) 全在它里面 |
-// | `merge`    | tool-group 邻居判定 + `addToToolGroup` + `buildToolGroup` | P5.3 合并算法，与卡长度无关的那一半 |
-// | `estimate` | `markCardUuid` + `onCardRendered` + `applyIntrinsicSize` | 估高（秤 2 的被测面），走的是 DOM 遍历不是正文 |
-// | `mount`    | `timeline.insert` + `observeForEnhance` | 二分插入 + DOM 挂载 |
-//
-// `total` 是**入口出口真夹**出来的，所以 `total − Σ四段 ≥ 0`，差额 = 分派开销
-// ＋ `onRealUserInput` 这类 caller 回调。**不把差额摊进任何一段** —— 摊进去
-// 就等于把"秤没量到的部分"伪装成量到了。判据那边专门有一格盯这个差额。
-//
-// # 🔴 默认关。为什么不能常开
-//
-// 分桶要"记录字节"，而 payload 上**没有**这个字段（`JsonlLinePayload` 只有
-// 反序列化后的 `message`）⇒ 只能 `JSON.stringify(message)` 现算，而那**正好就是
-// §2.4 点名的那种 O(len) 操作**。常开 = 为了量成本而付一份同量级的成本。
-// ⇒ 探针默认 `null`，热路径上塌成一次布尔判断；开了之后，字节数在
-// **总时刻取完之后**才算，不污染任何一段读数（但确实会抬高整体 wall time —— 见判据的射程段）。
-//
-// # 成本轴是**卡型**，不是字节 ⇒ 样本上多两格
-//
-// 秤 1 自己的读数推翻了「字节即成本」（「装秤之后改过的三条判断」第 1 条：
-// 字节不是成本轴，卡型才是），而样本上一直**没有卡型** —— 只有四条分支，分支比卡型粗一层
-// （`card` 分支里混着一种便宜的卡 `card-compact`：23 KB 的记录只物化 27 个字）。
-// - `card`：这条记录落进了哪种卡（第一个 `card-*` 类名，与 `height-estimate.ts::warnUnknownCard`、
-//   秤 2 的 `cardClassOf` 同一口径；tool-group 两支取外壳；skip 记 `"skip"`）。
-// - `domChars`：这条记录**物化进 DOM** 的字符数（卡 / 新外壳取 `textContent` 长度，并入的取新 units 之和）。
-//   它是「为什么卡型才是成本轴」的机制那一半：折叠的卡型把正文留在 DOM 外（`§2.8` 那个惰性 body），
-//   物化量不随记录字节变 —— 判据拿它做**不看墙钟**的相等断言（`tests/frontend/ui/scale1-render-cost.vitest.ts` 的 S2）。
-// 两格与 `bytes` 同一纪律：**总时刻取完之后**才算，探针关着时零成本。
+// `total` 是入口出口真夹的，`total − Σ四段` 是分派开销与调用方回调，不摊进任何一段。
+// 默认关：分桶要的字节数只能 `JSON.stringify(message)` 现算（本身就是 O(len)）；探针 `null` 时热路径只多一次布尔判断。
+// 开了之后字节数、卡型（`card`：第一个 `card-*` 类名，与 `height-estimate.ts::warnUnknownCard` 同口径）、
+// 物化进 DOM 的字符数（`domChars`）都在总时刻取完之后才算，不污染分段读数。
 // ───────────────────────────────────────────────────────────────────────────
 
 /** 秤 1 的一条样本。时间单位 ms（`performance.now()` 的差）。 */
@@ -361,8 +283,7 @@ export function renderContentRecord(
   const message = payload.message;
 
   // 3. 渲染
-  // Batch13-F40 仪表:真实建卡计数(与收纳计数对照;emitPerfSummary 落盘取证。
-  // jsdom 单测无 main.ts,须防 undefined)
+  // 建卡计数（与收纳计数对照，emitPerfSummary 落盘；jsdom 单测没有 main.ts，防 undefined）
   if (window.__ccmPerf) window.__ccmPerf.recordsRendered = (window.__ccmPerf.recordsRendered ?? 0) + 1;
   const result = renderMessage(message, ctx);
   const tRender = probe ? performance.now() : 0;
@@ -414,8 +335,8 @@ export function renderContentRecord(
       }
       // 普通卡：直接 markCardUuid + timeline.insert
       markCardUuid(result.element, message);
-      sink.onCardRendered?.(result.element, message); // F62：viewer 挂分支按钮
-      applyIntrinsicSize(result.element); // Batch13-F38：c-v 估高初值
+      sink.onCardRendered?.(result.element, message); // 查看器挂分支按钮
+      applyIntrinsicSize(result.element); // content-visibility 的估高初值
       const tEstimate = probe ? performance.now() : 0;
       sink.timeline.insert({
         seq: payload.seq,
@@ -426,12 +347,7 @@ export function renderContentRecord(
       if (sink.enhanceRoot) observeForEnhance(result.element, sink.enhanceRoot);
       const tMount = probe ? performance.now() : 0;
 
-      // 真用户输入触发回调（让 TabManager 自动切 Tab）。
-      //
-      // ★ P0c（E 阶段补）：**排队消息也算真用户输入** —— 它就是用户在这个会话里说的话，
-      // 只是被插进了正在跑的那一轮。此前只认 `type === "user"`，于是打断时说的话
-      // 不会把 tab 切过来 —— 而那恰恰是**最需要切过去**的时刻（用户刚插了话，
-      // 多半正等着看回应）。
+      // 真用户输入触发回调（让 TabManager 自动切 Tab）。排队消息也算：用户刚插了话，多半正等着看回应。
       // `userActive` 自带三道闸（设置开关 / 5s 手动保护 / batch 期守卫），不会乱切。
       if ((message.type === "user" || message.type === "queue-operation") && saidByHuman(message.userText?.speaker.kind ?? "")) {
         sink.onRealUserInput?.(payload.session_id);
@@ -454,7 +370,7 @@ export function renderContentRecord(
     }
 
     case "tool-group": {
-      // P5.3 后处理合并：看左邻居是不是 tool-group → 是则追加 units
+      // 看左邻居是不是工具组 → 是则并进去
       const prev = sink.timeline.peekPrev(payload.seq);
       if (prev && prev.kind === "tool-group" && prev.toolGroup) {
         addToToolGroup(prev.toolGroup, result.units);
@@ -488,7 +404,7 @@ export function renderContentRecord(
       const tMerge = probe ? performance.now() : 0;
       // tool-group root 也写 data-uuid（首条贡献 uuid）让 BranchFolder 把它当卡识别
       markCardUuid(group.root, message);
-      applyIntrinsicSize(group.root); // Batch13-F38：折叠组 = summary 常数
+      applyIntrinsicSize(group.root); // 折叠组 = summary 常数
       const tEstimate = probe ? performance.now() : 0;
       sink.timeline.insert({
         seq: payload.seq,
@@ -520,7 +436,7 @@ export function renderContentRecord(
 /**
  * **落点标记**：一条记录若没有自己的卡（工具单元并进左邻居的工具组 ·
  * tool_result 被注入进它那个 tool_use 的单元里），就在它真正落下的那一块上记 `data-member-uuid`，
- * 会话内查找 / 大纲命中它时 `revealCard` 找得到（原来找不到 `[data-uuid]` ⇒ 标「跳不过去」）。
+ * 会话内查找 / 大纲命中它时 `revealCard` 找得到。
  * - 工具组的单元（新建组与并入左邻居两支都记；新建组的外壳另有 `data-uuid`）；
  * - user 记录里的 tool_result 块：注入到了哪个 tool_use 单元的结果区块，就记在那个区块上。
  * 不用 `data-uuid`：那是 `BranchFolder` 认卡、切折叠段的键。放在管线这一层、不放进 `renderMessage`：
@@ -544,14 +460,8 @@ function markMemberUuids(message: JsonlRecord, ctx: RenderContext, result: Retur
 }
 
 /**
- * issue #8: 给 user/assistant 卡的 root element 写 data-uuid (+ data-parent-uuid)。
- * BranchFolder 用 data-uuid 扫定位 + 主线判定。
- *
- * issue #21: system 卡（api_error 重试细条——目前唯一会渲染成卡的 system）也要
- * mark：它有 uuid+parentUuid 参与 jsonl 链，BranchFolder 把无 data-uuid 的顶层
- * 元素当"断开 run"——不 mark 会把夹着它的 ESC 折叠段劈成两段、细条裸露在折叠外。
- *
- * 跟原 tabs.ts::markCardUuid 等价 —— P5.2c 抽到本文件，三 caller 共用。
+ * 给卡的 root 写 data-uuid（＋ data-parent-uuid）：BranchFolder 靠它定位与判主线。
+ * system 卡（api_error 重试细条）也要写：它在 jsonl 链上，不写会把夹着它的 ESC 折叠段劈成两段。
  */
 function markCardUuid(el: HTMLElement, rec: JsonlRecord): void {
   if (rec.type !== "user" && rec.type !== "assistant" && rec.type !== "system") {

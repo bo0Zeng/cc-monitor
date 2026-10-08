@@ -211,7 +211,7 @@ const TMUX_PRINT_SITES: &[(&str, &str, Carry, usize, &str)] = &[
     ("src/backend/control/gate.rs", "list-panes", Carry::Flag, 1, "argv；按 sid 找窗格：读这个会话各窗格的句柄 · 根进程 pid · `@ccm_sid`（ASCII，照表仍带旗）"),
     ("src/backend/control/terminals.rs", "list-panes", Carry::Flag, 1, "argv；终端名单逐窗格读会话名 · 工作目录 · 窗格标题（可以非 ASCII）⇒ 旗"),
     ("src/backend/control/terminals.rs", "list-clients", Carry::Flag, 1, "argv；读会话 ID 与两个时刻（ASCII，照表仍带旗）"),
-    ("src/backend/control/terminals.rs", "display-message", Carry::Flag, 1, "argv；预览问尺寸与光标（数字，照表仍带旗）"),
+    ("src/backend/control/terminals.rs", "display-message", Carry::Flag, 2, "argv；预览问尺寸与光标 · 实时预览订上之前问 tmux 版本（数字与 ASCII，照表仍带旗）"),
 ];
 
 /// `INVARIANTS §49` 人群判据：盘上每一处「tmux 打印子命令 ＋ 读打印通道的旗」== 登记表（两向，含处数与带法）。

@@ -868,7 +868,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// p9j-local-clock：记录 / 轮次 / 历史 / 查找 / 文件窗口的时刻由后端按那台本地钟写好（…Text 格）· 足迹判 claude 装没装按起会话那个 shell 的 PATH · .bashrc 被守着的 source 不报失效 · profiles-write 一批依次判 · Rust 零读者 pub 项清理。
 ///
 /// p9k-flicker：后端无用代码清零（dead_code 门禁格）· 删两个备用函数；文件窗口标签 × 不再逐帧翻 · 后台不 panic；界面定位收成一处、窗口写口补权限。
-pub const BUILD_ID: &str = "p9k-flicker";
+///
+/// p9l-term-follow：终端实时画面订阅（terminal-follow / -ack / -unfollow 三条帧命令 · terminal_screen / terminal_follow_end 两种帧 · tmux 控制模式只读客户端当变化信号 · 一帧在途、512 KiB 上限）· 远端版本不符分要更新 / 较新 / 不可比三类由壳判；文件窗口 shell.rs 拆函数。
+pub const BUILD_ID: &str = "p9l-term-follow";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
@@ -1680,6 +1682,14 @@ pub const TARGET_GAPS: &[TargetGap] = &[
     },
     TargetGap {
         family: "wire-commands",
+        capability: "terminal-follow",
+        target: Target::Windows,
+        kind: GapKind::Owed,
+        rationale: "终端实时预览：这一版宿主只有 tmux（起 tmux 控制模式客户端收输出事件，声明了 `no_tmux`）。\
+              与 `terminal-preview` 同一个理由（Windows 后台机制未定），同拍还，**暂时不做**。",
+    },
+    TargetGap {
+        family: "wire-commands",
         capability: "terminal-input",
         target: Target::Windows,
         kind: GapKind::Owed,
@@ -2063,6 +2073,10 @@ pub const EMITS: &[&str] = &[
     "tap",
     // 一个会话的运行表（watcher 读子运行记录、表变了真发，登记 = 承诺真发）。⚠ hello 字节变了 ⇒ 合并那一拍 bump `BUILD_ID`。
     "session_runs",
+    // 终端实时预览的一屏与收尾（`control/terminal_follow.rs` 的订阅线程真发，登记 = 承诺真发）。
+    // 只在客户端 `terminal-follow` 之后才出现；旧客户端不认 ⇒ 忽略（additive）。⚠ hello 字节变了 ⇒ 合并那一拍 bump `BUILD_ID`。
+    "terminal_screen",
+    "terminal_follow_end",
 ];
 
 /// `--stream`：「我是流模式后端」的**显式词**。二进制叫 `ccm` 时零参数是「起会话」，

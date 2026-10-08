@@ -1860,15 +1860,7 @@ impl FileWindow {
         let pal = super::theme::palette(ui.ctx());
         let machine = super::cross_copy::origin_of(&p.machine);
         // 选择器跟着下拉那台走：换了机器（或刚打开）⇒ 去那台上次的落点 / 主目录。
-        let mut pick = self.cross_pick.shown();
-        if !machine.is_empty() && pick.machine != machine {
-            if let (Some(h), Some(line)) = (self.rt.clone(), self.line.clone()) {
-                let start = super::cross_copy::last_dir(&machine).unwrap_or_default();
-                self.cross_pick
-                    .go(&h, &line, &machine, &start, Some(ui.ctx().clone()));
-                pick = self.cross_pick.shown();
-            }
-        }
+        let pick = self.cross_pick_follow(ui, &machine);
         let here = self.source.origin().0;
         let machines: Vec<String> = self
             .machines
@@ -1915,141 +1907,9 @@ impl FileWindow {
                     .inner_margin(egui::Margin::symmetric(10, 6))
                     .show(ui, |ui| {
                         ui.set_width(ui.available_width());
-                        // 面包屑：那台 › 一段一段（点哪一段回到那一级）；右端「新建文件夹」。
-                        ui.horizontal(|ui| {
-                            if ui
-                                .add(
-                                    egui::Button::new(
-                                        egui::RichText::new(super::cross_copy::shown_machine(
-                                            &pick.machine,
-                                        ))
-                                        .size(12.0)
-                                        .color(pal.text2),
-                                    )
-                                    .frame(false),
-                                )
-                                .clicked()
-                            {
-                                go_to = Some("/".to_string());
-                            }
-                            // 只摆最后三级，前面折成一颗「…」（点了到折起来的最深那一级）：那台的主目录可能很深。
-                            let crumbs: Vec<(String, String)> =
-                                super::source::breadcrumbs(&pick.path)
-                                    .into_iter()
-                                    .skip(1)
-                                    .collect();
-                            let keep = crumbs.len().saturating_sub(3);
-                            if keep > 0 {
-                                ui.label(
-                                    egui::RichText::new(egui_phosphor::regular::CARET_RIGHT)
-                                        .size(10.0)
-                                        .color(pal.faint),
-                                );
-                                if ui
-                                    .add(
-                                        egui::Button::new(
-                                            egui::RichText::new(copy_text(
-                                                "rsFilewinEditPage.crumb.more",
-                                                &[],
-                                            ))
-                                            .size(12.0)
-                                            .color(pal.text2),
-                                        )
-                                        .frame(false),
-                                    )
-                                    .clicked()
-                                {
-                                    go_to = Some(crumbs[keep - 1].1.clone());
-                                }
-                            }
-                            for (seg, at) in crumbs.into_iter().skip(keep) {
-                                ui.label(
-                                    egui::RichText::new(egui_phosphor::regular::CARET_RIGHT)
-                                        .size(10.0)
-                                        .color(pal.faint),
-                                );
-                                if ui
-                                    .add(
-                                        egui::Button::new(
-                                            egui::RichText::new(&seg).size(12.0).color(pal.text),
-                                        )
-                                        .frame(false),
-                                    )
-                                    .clicked()
-                                {
-                                    go_to = Some(at);
-                                }
-                            }
-                            ui.with_layout(
-                                egui::Layout::right_to_left(egui::Align::Center),
-                                |ui| {
-                                    let r = ui.add_enabled(
-                                        !pick.path.is_empty(),
-                                        egui::Button::new(
-                                            egui::RichText::new(format!(
-                                                "{} {}",
-                                                egui_phosphor::regular::PLUS,
-                                                copy_text("rsFilewinWriteops.inline.newDir", &[])
-                                            ))
-                                            .size(12.0),
-                                        )
-                                        .frame(false),
-                                    );
-                                    mkdir = r.clicked();
-                                },
-                            );
-                        });
+                        cross_crumbs(ui, &pal, &pick, &mut go_to, &mut mkdir);
                         ui.separator();
-                        let row_h = super::theme::metrics(ui.ctx()).row_h;
-                        egui::ScrollArea::vertical()
-                            .max_height(row_h * 5.0)
-                            .auto_shrink([false, true])
-                            .show(ui, |ui| match &pick.dirs {
-                                None => super::kit::skeleton_rows(ui, 3),
-                                Some(Err(e)) => {
-                                    ui.label(egui::RichText::new(e).color(pal.error_text));
-                                }
-                                Some(Ok(dirs)) if dirs.is_empty() => {
-                                    ui.label(
-                                        egui::RichText::new(copy_text(
-                                            "rsFilewinCrossCopy.prompt.noDirs",
-                                            &[],
-                                        ))
-                                        .color(pal.text2),
-                                    );
-                                }
-                                Some(Ok(dirs)) => {
-                                    for d in dirs {
-                                        let on = pick.picked.as_deref() == Some(d.as_str());
-                                        let (rect, r) = ui.allocate_exact_size(
-                                            egui::vec2(ui.available_width(), row_h),
-                                            egui::Sense::click(),
-                                        );
-                                        if on {
-                                            ui.painter().rect_filled(rect, 4.0, pal.picked);
-                                        } else if r.hovered() {
-                                            ui.painter().rect_filled(rect, 4.0, pal.hover);
-                                        }
-                                        ui.painter().text(
-                                            rect.left_center() + egui::vec2(8.0, 0.0),
-                                            egui::Align2::LEFT_CENTER,
-                                            format!(
-                                                "{}  {}",
-                                                egui_phosphor::regular::FOLDER_SIMPLE,
-                                                d
-                                            ),
-                                            egui::TextStyle::Body.resolve(ui.style()),
-                                            pal.text,
-                                        );
-                                        if r.double_clicked() {
-                                            go_to =
-                                                Some(super::writeops::join_remote(&pick.path, d));
-                                        } else if r.clicked() {
-                                            picked = Some(d.clone());
-                                        }
-                                    }
-                                }
-                            });
+                        cross_dirs(ui, &pal, &pick, &mut go_to, &mut picked);
                     });
                 ui.add_space(6.0);
                 if !pick.path.is_empty() {
@@ -2083,6 +1943,33 @@ impl FileWindow {
             1,
             0,
         );
+        self.cross_after(
+            ui,
+            p,
+            &pick,
+            hit,
+            CrossClicks {
+                picked,
+                go_to,
+                mkdir,
+            },
+        );
+    }
+
+    /// 那一问画完之后：选中 / 进去 / 新建文件夹 · 取消 · 确认。
+    fn cross_after(
+        &mut self,
+        ui: &egui::Ui,
+        p: super::cross_copy::CrossPrompt,
+        pick: &super::cross_copy::Pick,
+        hit: Option<usize>,
+        clicks: CrossClicks,
+    ) {
+        let CrossClicks {
+            picked,
+            go_to,
+            mkdir,
+        } = clicks;
         if let Some(n) = picked {
             self.cross_pick.pick(&n);
         }
@@ -2106,6 +1993,20 @@ impl FileWindow {
             }
             None => {}
         }
+    }
+
+    /// 「放到」那块选择器跟着下拉那台走：换了机器（或刚打开）⇒ 去那台上次的落点 / 主目录。交回此刻摆的那一份。
+    fn cross_pick_follow(&mut self, ui: &egui::Ui, machine: &str) -> super::cross_copy::Pick {
+        let mut pick = self.cross_pick.shown();
+        if !machine.is_empty() && pick.machine != *machine {
+            if let (Some(h), Some(line)) = (self.rt.clone(), self.line.clone()) {
+                let start = super::cross_copy::last_dir(machine).unwrap_or_default();
+                self.cross_pick
+                    .go(&h, &line, machine, &start, Some(ui.ctx().clone()));
+                pick = self.cross_pick.shown();
+            }
+        }
+        pick
     }
 
     /// 复制跑完一趟就重列当前目录（新文件要出现在列表里）。同 [`Self::settle_finished_drops`]。
@@ -3170,10 +3071,30 @@ impl FileWindow {
     /// 查找条浮在编辑面右上；底条那一行住窗口的状态栏（[`Self::editor_status`]）。
     /// 键：Ctrl+S 保存（在存着时不起第二趟）· Ctrl+F 查找条 · Esc 只收查找条，**从不关编辑页**。
     fn edit_page(&mut self, ui: &mut egui::Ui) {
-        let p = super::theme::palette(ui.ctx());
         let ctx = ui.ctx().clone();
-        let mut save = ui.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::S));
         let big = self.editing.as_ref().is_some_and(|e| e.big.is_big());
+        let mut acts = EditActs {
+            save: self.edit_keys(ui, big),
+            ..EditActs::default()
+        };
+        let f = self.edit_facts(big);
+        self.edit_head(ui, &f, &mut acts);
+        if acts.find_toggle {
+            self.find_open = !self.find_open;
+            if self.find_open {
+                ui.memory_mut(|m| m.request_focus(egui::Id::new(FIND_ID)));
+            }
+        }
+        self.edit_banners(ui, &f, &mut acts);
+        let body = self.edit_surface(ui, &mut acts);
+        self.edit_find_bar(&ctx, body, big);
+        self.edit_discard_ask(&ctx, &f.name, &mut acts);
+        self.apply_edit_acts(&ctx, &acts);
+    }
+
+    /// 编辑页的键：Ctrl+S（交回「要存」）· Ctrl+F 开查找条 · Esc 只收查找条。
+    fn edit_keys(&mut self, ui: &mut egui::Ui, big: bool) -> bool {
+        let save = ui.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::S));
         if !big && ui.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::F)) {
             self.find_open = true;
             ui.memory_mut(|m| m.request_focus(egui::Id::new(FIND_ID)));
@@ -3184,6 +3105,11 @@ impl FileWindow {
         {
             self.find_open = false;
         }
+        save
+    }
+
+    /// 这一帧编辑页画的是哪一份、什么状态。
+    fn edit_facts(&self, big: bool) -> EditFacts {
         let pane = self.editing.clone();
         let path = pane
             .as_ref()
@@ -3195,152 +3121,190 @@ impl FileWindow {
         let idle = !self.edits.save_pending();
         let dirty = pane.as_ref().is_some_and(super::editor::Pane::dirty);
         let over = pane.as_ref().is_some_and(super::editor::Pane::over_cap);
-        let (mut overwrite, mut reopen, mut retry_open, mut pull) = (false, false, false, false);
-        let mut find_toggle = false;
+        EditFacts {
+            pane,
+            path,
+            name,
+            idle,
+            dirty,
+            over,
+            big,
+        }
+    }
+
+    /// 头条：面包屑 · 状态字 · ⋯ · 保存 · 查找。
+    fn edit_head(&mut self, ui: &mut egui::Ui, f: &EditFacts, acts: &mut EditActs) {
         // ── 头条（36，`--bg-2`）──
         super::kit::strip(ui, |ui| {
-            let machine = self.source.label();
-            let crumbs = super::source::breadcrumbs(&super::source::parent_dir(&path));
-            let mut go = None;
-            if ui
-                .add(
-                    egui::Button::new(egui::RichText::new(&machine).color(p.text2))
-                        .frame_when_inactive(false),
-                )
-                .clicked()
-            {
-                go = Some(self.cwd.clone());
-            }
-            // 前几段折成「…」：只留最后两级目录（窄档同一条规矩）。
-            let tail = crumbs.len().saturating_sub(2);
-            let sep = egui_phosphor::regular::CARET_RIGHT;
-            if tail > 1 {
-                ui.label(egui::RichText::new(sep).color(p.faint));
-                ui.label(
-                    egui::RichText::new(copy_text("rsFilewinEditPage.crumb.more", &[]))
-                        .color(p.text2),
-                );
-            }
-            for (label, full) in crumbs.iter().skip(tail.max(1)) {
-                ui.label(egui::RichText::new(sep).color(p.faint));
-                if ui
-                    .add(
-                        egui::Button::new(egui::RichText::new(label).color(p.text2))
-                            .frame_when_inactive(false),
-                    )
-                    .on_hover_text(full)
-                    .clicked()
-                {
-                    go = Some(full.clone());
-                }
-            }
-            ui.label(egui::RichText::new(sep).color(p.faint));
-            ui.label(egui::RichText::new(&name).color(p.text));
-            let state = if self.edits.opening().is_some() {
-                Some(copy_text("rsFilewinEditPage.state.reading", &[]))
-            } else if self.edits.saving().is_some() {
-                Some(copy_text("rsFilewinEditPage.state.saving", &[]))
-            } else if dirty {
-                Some(copy_text("rsFilewinEditPage.state.unsaved", &[]))
-            } else {
-                pane.as_ref().and_then(|e| e.saved_at).map(|t| {
-                    copy_text(
-                        "rsFilewinEditPage.state.saved",
-                        &[("time", &super::source::mtime_text(t).short)],
-                    )
-                })
-            };
-            if let Some(s) = state {
-                ui.add_space(8.0);
-                if dirty {
-                    // 未保存那颗 6px 实心点（与标签上那颗同一个样子）。
-                    let (r, _) = ui.allocate_exact_size(egui::vec2(8.0, 8.0), egui::Sense::hover());
-                    ui.painter().circle_filled(r.center(), 3.0, p.text2);
-                }
-                ui.label(egui::RichText::new(s).small().color(p.text2));
-            }
+            let mut go = self.edit_crumbs(ui, f);
+            self.edit_state(ui, f);
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                super::kit::menu(
-                    ui,
-                    egui::RichText::new(egui_phosphor::regular::DOTS_THREE).size(16.0),
-                    |ui| {
-                        if ui
-                            .button(copy_text("rsFilewinEditPage.more.reload", &[]))
-                            .clicked()
-                        {
-                            reopen = true;
-                            ui.close();
-                        }
-                        if ui
-                            .button(copy_text("rsFilewinEditPage.more.download", &[]))
-                            .clicked()
-                        {
-                            pull = true;
-                            ui.close();
-                        }
-                        if ui
-                            .button(copy_text("rsFilewinEditPage.more.reveal", &[]))
-                            .clicked()
-                        {
-                            go = Some(super::source::parent_dir(&path));
-                            self.want_reveal = Some(name.clone());
-                            ui.close();
-                        }
-                    },
-                );
-                let label = if self.edits.saving().is_some() {
-                    copy_text("rsFilewinEditPage.state.saving", &[])
-                } else {
-                    copy_text("rsFilewinShell.editor.save", &[])
-                };
-                let can = pane.is_some() && dirty && idle && !over;
-                let why = if over {
-                    copy_text(
-                        "rsFilewinEditPage.foot.overCap",
-                        &[("n", &pane.as_ref().map_or(0, |e| -e.headroom()).to_string())],
-                    )
-                } else {
-                    String::new()
-                };
-                let b = egui::Button::new(egui::RichText::new(&label).color(if can {
-                    p.text
-                } else {
-                    p.text2
-                }))
-                .fill(if can { p.accent_strong } else { p.hover });
-                let r = ui.add_enabled(can, b);
-                if !why.is_empty() {
-                    r.clone().on_disabled_hover_text(&why);
-                }
-                if r.clicked() {
-                    save = true;
-                }
-                if !big
-                    && super::kit::ghost(
-                        ui,
-                        egui_phosphor::regular::MAGNIFYING_GLASS,
-                        "",
-                        pane.is_some(),
-                        "",
-                    )
-                    .on_hover_text(copy_text("rsFilewinEditPage.find.hint", &[]))
-                    .clicked()
-                {
-                    find_toggle = true;
-                }
+                self.edit_head_acts(ui, f, acts, &mut go);
             });
             if let Some(d) = go {
                 self.want_dir = Some(d);
             }
         });
-        if find_toggle {
-            self.find_open = !self.find_open;
-            if self.find_open {
-                ui.memory_mut(|m| m.request_focus(egui::Id::new(FIND_ID)));
+    }
+
+    /// 头条左边：那台 › 面包屑（只留最后两级）› 文件名；点哪一段回到那一级（交回要去的目录）。
+    fn edit_crumbs(&self, ui: &mut egui::Ui, f: &EditFacts) -> Option<String> {
+        let p = super::theme::palette(ui.ctx());
+        let (path, name) = (&f.path, &f.name);
+        let machine = self.source.label();
+        let crumbs = super::source::breadcrumbs(&super::source::parent_dir(&path));
+        let mut go = None;
+        if ui
+            .add(
+                egui::Button::new(egui::RichText::new(&machine).color(p.text2))
+                    .frame_when_inactive(false),
+            )
+            .clicked()
+        {
+            go = Some(self.cwd.clone());
+        }
+        // 前几段折成「…」：只留最后两级目录（窄档同一条规矩）。
+        let tail = crumbs.len().saturating_sub(2);
+        let sep = egui_phosphor::regular::CARET_RIGHT;
+        if tail > 1 {
+            ui.label(egui::RichText::new(sep).color(p.faint));
+            ui.label(
+                egui::RichText::new(copy_text("rsFilewinEditPage.crumb.more", &[])).color(p.text2),
+            );
+        }
+        for (label, full) in crumbs.iter().skip(tail.max(1)) {
+            ui.label(egui::RichText::new(sep).color(p.faint));
+            if ui
+                .add(
+                    egui::Button::new(egui::RichText::new(label).color(p.text2))
+                        .frame_when_inactive(false),
+                )
+                .on_hover_text(full)
+                .clicked()
+            {
+                go = Some(full.clone());
             }
         }
+        ui.label(egui::RichText::new(sep).color(p.faint));
+        ui.label(egui::RichText::new(name).color(p.text));
+        go
+    }
+
+    /// 状态字：在读 · 在存 · 未保存（带那颗点）· 几点存的。
+    fn edit_state(&self, ui: &mut egui::Ui, f: &EditFacts) {
+        let p = super::theme::palette(ui.ctx());
+        let (pane, dirty) = (&f.pane, f.dirty);
+        let state = if self.edits.opening().is_some() {
+            Some(copy_text("rsFilewinEditPage.state.reading", &[]))
+        } else if self.edits.saving().is_some() {
+            Some(copy_text("rsFilewinEditPage.state.saving", &[]))
+        } else if dirty {
+            Some(copy_text("rsFilewinEditPage.state.unsaved", &[]))
+        } else {
+            pane.as_ref().and_then(|e| e.saved_at).map(|t| {
+                copy_text(
+                    "rsFilewinEditPage.state.saved",
+                    &[("time", &super::source::mtime_text(t).short)],
+                )
+            })
+        };
+        if let Some(s) = state {
+            ui.add_space(8.0);
+            if dirty {
+                // 未保存那颗 6px 实心点（与标签上那颗同一个样子）。
+                let (r, _) = ui.allocate_exact_size(egui::vec2(8.0, 8.0), egui::Sense::hover());
+                ui.painter().circle_filled(r.center(), 3.0, p.text2);
+            }
+            ui.label(egui::RichText::new(s).small().color(p.text2));
+        }
+    }
+
+    /// 头条右边（从右往左）：⋯ 菜单 · 保存 · 查找。
+    fn edit_head_acts(
+        &mut self,
+        ui: &mut egui::Ui,
+        f: &EditFacts,
+        acts: &mut EditActs,
+        go: &mut Option<String>,
+    ) {
+        let p = super::theme::palette(ui.ctx());
+        let (pane, path, name) = (&f.pane, &f.path, &f.name);
+        let (idle, dirty, over, big) = (f.idle, f.dirty, f.over, f.big);
+        super::kit::menu(
+            ui,
+            egui::RichText::new(egui_phosphor::regular::DOTS_THREE).size(16.0),
+            |ui| {
+                if ui
+                    .button(copy_text("rsFilewinEditPage.more.reload", &[]))
+                    .clicked()
+                {
+                    acts.reopen = true;
+                    ui.close();
+                }
+                if ui
+                    .button(copy_text("rsFilewinEditPage.more.download", &[]))
+                    .clicked()
+                {
+                    acts.pull = true;
+                    ui.close();
+                }
+                if ui
+                    .button(copy_text("rsFilewinEditPage.more.reveal", &[]))
+                    .clicked()
+                {
+                    *go = Some(super::source::parent_dir(path));
+                    self.want_reveal = Some(name.clone());
+                    ui.close();
+                }
+            },
+        );
+        let label = if self.edits.saving().is_some() {
+            copy_text("rsFilewinEditPage.state.saving", &[])
+        } else {
+            copy_text("rsFilewinShell.editor.save", &[])
+        };
+        let can = pane.is_some() && dirty && idle && !over;
+        let why = if over {
+            copy_text(
+                "rsFilewinEditPage.foot.overCap",
+                &[("n", &pane.as_ref().map_or(0, |e| -e.headroom()).to_string())],
+            )
+        } else {
+            String::new()
+        };
+        let b = egui::Button::new(egui::RichText::new(&label).color(if can {
+            p.text
+        } else {
+            p.text2
+        }))
+        .fill(if can { p.accent_strong } else { p.hover });
+        let r = ui.add_enabled(can, b);
+        if !why.is_empty() {
+            r.clone().on_disabled_hover_text(&why);
+        }
+        if r.clicked() {
+            acts.save = true;
+        }
+        if !big
+            && super::kit::ghost(
+                ui,
+                egui_phosphor::regular::MAGNIFYING_GLASS,
+                "",
+                pane.is_some(),
+                "",
+            )
+            .on_hover_text(copy_text("rsFilewinEditPage.find.hint", &[]))
+            .clicked()
+        {
+            acts.find_toggle = true;
+        }
+    }
+
+    /// 编辑面顶上那几条：盘上被改过 · 保存失败 · 存成了没拿到摘要 · 断线。
+    fn edit_banners(&mut self, ui: &mut egui::Ui, f: &EditFacts, acts: &mut EditActs) {
+        let (pane, idle, dirty) = (&f.pane, f.idle, f.dirty);
         // ── 条：盘上被改过 · 保存失败 · 断线（字一个不动）──
-        if let Some(e) = &pane {
+        if let Some(e) = pane {
             if e.stale {
                 match super::kit::banner(
                     ui,
@@ -3351,8 +3315,8 @@ impl FileWindow {
                         super::editor::REOPEN_LABEL.clone(),
                     ],
                 ) {
-                    Some(0) if idle => overwrite = true,
-                    Some(1) if idle => reopen = true,
+                    Some(0) if idle => acts.overwrite = true,
+                    Some(1) if idle => acts.reopen = true,
                     _ => {}
                 }
             } else if let Some(Err(why)) = &e.last_save {
@@ -3365,7 +3329,7 @@ impl FileWindow {
                 .is_some()
                     && idle
                 {
-                    save = true;
+                    acts.save = true;
                 }
             } else if let Some(note) = e.save_note.as_ref().filter(|_| !dirty) {
                 // 存成了、没拿到新摘要：那一句挂着，给一颗「重新读取」（重读拿到摘要，之后照常存）。
@@ -3378,7 +3342,7 @@ impl FileWindow {
                 .is_some()
                     && idle
                 {
-                    reopen = true;
+                    acts.reopen = true;
                 }
             }
             if self.link.offline() {
@@ -3393,6 +3357,11 @@ impl FileWindow {
                 );
             }
         }
+    }
+
+    /// 编辑面（或打不开时那一句、在读时的骨架）；交回编辑面那一块（查找条贴着它的右上）。
+    fn edit_surface(&mut self, ui: &mut egui::Ui, acts: &mut EditActs) -> egui::Rect {
+        let p = super::theme::palette(ui.ctx());
         // ── 编辑面 ──
         let body = ui.available_rect_before_wrap();
         if let Some(why) = self.edit_refused.clone() {
@@ -3405,8 +3374,8 @@ impl FileWindow {
                     copy_text("rsFilewinEditPage.action.retry", &[]),
                 ],
             ) {
-                Some(0) => pull = true,
-                Some(1) => retry_open = true,
+                Some(0) => acts.pull = true,
+                Some(1) => acts.retry_open = true,
                 _ => {}
             }
         } else if self.edits.opening().is_some() && self.editing.is_none() {
@@ -3418,6 +3387,11 @@ impl FileWindow {
                 super::bigfile::show(ui, self.editing.as_mut(), h);
             });
         }
+        body
+    }
+
+    /// 查找条（浮在编辑面右上）与它那几个动作。
+    fn edit_find_bar(&mut self, ctx: &egui::Context, body: egui::Rect, big: bool) {
         // ── 查找条（浮在编辑面右上，`--card`）──
         let mut find_act = None;
         if self.find_open && !big {
@@ -3469,6 +3443,11 @@ impl FileWindow {
                 FindAct::Close => self.find_open = false,
             }
         }
+    }
+
+    /// 关这一页那一问（改了没存）：取消 · 不保存 · 保存。
+    fn edit_discard_ask(&mut self, ctx: &egui::Context, name: &str, acts: &mut EditActs) {
+        let p = super::theme::palette(ctx);
         // ── 关这一页那一问（改了没存；规范 `C10`）：取消 · 不保存 · 保存（焦点在「保存」）──
         if self.asking_discard {
             let hit = super::kit::dialog(
@@ -3507,24 +3486,28 @@ impl FileWindow {
                 Some(2) => {
                     self.asking_discard = false;
                     self.close_after_save = true;
-                    save = true;
+                    acts.save = true;
                 }
                 _ => {}
             }
         }
-        if save {
+    }
+
+    /// 这一帧点了什么就做什么（一帧至多一件，存优先）。
+    fn apply_edit_acts(&mut self, ctx: &egui::Context, acts: &EditActs) {
+        if acts.save {
             self.save_edit(Some(ctx.clone()));
-        } else if overwrite {
+        } else if acts.overwrite {
             self.overwrite_edit(Some(ctx.clone()));
-        } else if reopen {
+        } else if acts.reopen {
             self.reopen_edit(Some(ctx.clone()));
-        } else if retry_open {
+        } else if acts.retry_open {
             if let Some(r) = self.edit_row.clone() {
                 let at = self.row_path(&r);
                 self.edit_refused = None;
                 self.begin_edit_at(r, at, None, Some(ctx.clone()));
             }
-        } else if pull {
+        } else if acts.pull {
             if let Some(r) = self.edit_row.clone() {
                 self.begin_pull_row(r);
             }
@@ -4335,26 +4318,8 @@ impl FileWindow {
     /// 那一句委派今天住 [`super::workspace::Workspace`]（它才是 `eframe::App`）：
     /// 每个标签页的正文就是这里，外面只多了标签栏 · 双栏 · 预览那一层。
     pub fn frame_body(&mut self, ui: &mut egui::Ui) {
-        // 🔴 **第一帧**才复核得了字体 —— 之前碰 `fonts_mut` 会 panic，
-        //    而本仓 release 是 `panic = "abort"`（理由逐条住 `fonts.rs §四`）。
-        if self.font.settle(ui.ctx()) {
-            *FONT_VERDICT.lock().unwrap() = Some(self.font.clone());
-        }
-        // 字体出问题就**一直**摆在这儿，不自动消失：
-        // 它是一个「到你改掉为止都成立的状态」，不是一次性事件
-        // （同 `INVARIANTS §12` 对「设置没生效」那条的判法）。
-        if let Some(note) = self.font.notice() {
-            super::kit::banner(ui, super::kit::Tone::Warn, &note, &[]);
-        }
-        // 编辑页（或单独建的视图正在编辑一份）：正文是编辑面，不是列表。
-        if self.edit_tab || self.editing.is_some() || self.edits.opening().is_some() {
-            self.settle_opened_edits();
-            self.settle_saved_edits();
-            {
-                let ctx = ui.ctx().clone();
-                self.settle_pick_with(Some(ctx));
-            }
-            self.edit_page(ui);
+        self.font_frame(ui);
+        if self.edit_frame(ui) {
             return;
         }
         // 工具条（后退 · 前进 · 上一级 · 地址栏 · 搜索格）与命令栏不在这里画：
@@ -4367,6 +4332,55 @@ impl FileWindow {
             let ctx = ui.ctx().clone();
             self.apply_keys(&ctx);
         }
+        self.drop_zone_ui(ui);
+        self.notices_ui(ui);
+        self.search_status_frame(ui);
+        self.boards_frame(ui);
+        self.settle_frame(ui);
+        // 🔴搜索框里有字 ⇒ 画命中，否则画当前目录。**二选一，不并排** ——
+        //    并排会让「你现在看的是哪一摞」变成一个要靠标题猜的问题。
+        if self.showing_hits() {
+            self.hits_frame(ui);
+        } else if self.showing_grep() {
+            self.grep_frame(ui);
+        } else {
+            self.listing_frame(ui, prev_first, prev_last);
+        }
+        self.row_glue(ui);
+    }
+
+    /// 字体：第一帧复核；出了问题那一条一直摆着。
+    fn font_frame(&mut self, ui: &mut egui::Ui) {
+        // 🔴 **第一帧**才复核得了字体 —— 之前碰 `fonts_mut` 会 panic，
+        //    而本仓 release 是 `panic = "abort"`（理由逐条住 `fonts.rs §四`）。
+        if self.font.settle(ui.ctx()) {
+            *FONT_VERDICT.lock().unwrap() = Some(self.font.clone());
+        }
+        // 字体出问题就**一直**摆在这儿，不自动消失：
+        // 它是一个「到你改掉为止都成立的状态」，不是一次性事件
+        // （同 `INVARIANTS §12` 对「设置没生效」那条的判法）。
+        if let Some(note) = self.font.notice() {
+            super::kit::banner(ui, super::kit::Tone::Warn, &note, &[]);
+        }
+    }
+
+    /// 编辑页那一形：正文是编辑面 ⇒ 画它、交 `true`（这一帧别的都不画）。
+    fn edit_frame(&mut self, ui: &mut egui::Ui) -> bool {
+        // 编辑页（或单独建的视图正在编辑一份）：正文是编辑面，不是列表。
+        if self.edit_tab || self.editing.is_some() || self.edits.opening().is_some() {
+            self.settle_opened_edits();
+            self.settle_saved_edits();
+            {
+                let ctx = ui.ctx().clone();
+                self.settle_pick_with(Some(ctx));
+            }
+            self.edit_page(ui);
+            return true;
+        }
+        false
+    }
+
+    fn drop_zone_ui(&mut self, ui: &mut egui::Ui) {
         // 从桌面拖着文件经过 ⇒ 列表区一层虚线框「松开上传 → 目录（n 个文件）」（稿 20）；松手那一下由 `take_drops` 接。
         let hovering = ui.input(|i| i.raw.hovered_files.len());
         if hovering > 0 && self.focused && !self.modal_up() {
@@ -4380,6 +4394,10 @@ impl FileWindow {
                 ),
             );
         }
+    }
+
+    /// 列表上面那几条：开终端说的话 · 目录打不开 · 截断。
+    fn notices_ui(&mut self, ui: &mut egui::Ui) {
         // 一次性的那几句（键位做不成的原因 · 跳到隐藏文件 · …）不画在这里：由窗口那一级收成右下角的回执（`Workspace::frame`）。
         // 开终端那一下说的话 —— 摆着不走（到你换台机器 / 换个系统为止都成立的状态）⇒ 一条警告条。
         if let Some(said) = self.term_notice() {
@@ -4444,6 +4462,10 @@ impl FileWindow {
                     .memory_mut(|m| m.request_focus(egui::Id::new(SEARCH_BOX_ID)));
             }
         }
+    }
+
+    /// 搜索那两条状态行（按名字 · 按内容）；目录换了而范围是「当前目录以下」⇒ 先按新目录再搜。
+    fn search_status_frame(&mut self, ui: &mut egui::Ui) {
         // 范围是「当前目录以下」、框里有字、而目录换了 ⇒ 范围变了，按新目录再搜一趟。
         if !self.search_whole
             && !self.query.trim().is_empty()
@@ -4486,6 +4508,10 @@ impl FileWindow {
                 self.fire_grep(Some(ctx));
             }
         }
+    }
+
+    /// 画在列表之前的那几问（属性 · 每一趟开头那一问 · 写类确认）。
+    fn boards_frame(&mut self, ui: &mut egui::Ui) {
         // 「属性」那一问。
         self.props_ui(ui);
         // 后台那几趟（上传 · 下载 · 复制 · 解压 · 算大小 · 删除）的进度、停与结局不在这里画：
@@ -4501,6 +4527,10 @@ impl FileWindow {
         //    同样模态、同样画在列表之前。
         self.write_board.ui(ui);
         self.write_ui(ui);
+    }
+
+    /// 画列表之前先消化到货（选文件框 · 编辑 · 拖入 · 各趟结局 · 就地那一格），再把这一帧的计数清零。
+    fn settle_frame(&mut self, ui: &mut egui::Ui) {
         // 系统选文件框 / 存盘框选完了 ⇒ 上传走拖入那一条（先一次问完同名，再并行传）· 下载起那一趟。
         {
             let ctx = ui.ctx().clone();
@@ -4510,8 +4540,7 @@ impl FileWindow {
         //    反了的话这一帧画的是上一帧的状态（读完了却还显示「正在读」）。
         self.settle_opened_edits();
         self.settle_saved_edits();
-        let ctx = ui.ctx().clone();
-        self.take_drops(&ctx);
+        self.take_drops(&ui.ctx().clone());
         self.settle_finished_drops();
         self.settle_finished_copies();
         self.settle_finished_extracts();
@@ -4521,235 +4550,233 @@ impl FileWindow {
         self.tally = RenderTally::default();
         self.hits_tally = HitTally::default();
         self.grep_tally = GrepTally::default();
-        // 🔴搜索框里有字 ⇒ 画命中，否则画当前目录。**二选一，不并排** ——
-        //    并排会让「你现在看的是哪一摞」变成一个要靠标题猜的问题。
-        if self.showing_hits() {
-            let hits = self.hit_rows();
-            if hits.is_empty() && self.search.has_outcome() && !self.search.index_missing() {
-                // 没结果：中央一句 ＋（范围是当前目录以下时）「搜整台机器」。
-                let q = self.query.clone();
-                let whole = self.search_whole;
-                let mut go_whole = false;
-                ui.vertical_centered(|ui| {
-                    ui.add_space(ui.available_height() * 0.3);
-                    ui.label(find::no_match_line(&q));
-                    if !whole
-                        && ui
-                            .button(copy_text("rsFilewinFind.action.searchMachine", &[]))
-                            .clicked()
-                    {
-                        go_whole = true;
-                    }
-                });
-                if go_whole {
-                    self.search_whole = true;
-                    let ctx = ui.ctx().clone();
-                    self.fire_search(Some(ctx), false);
-                }
-            } else if self.search.has_outcome() {
-                let tail = if self.search.page_failed() {
-                    super::rows::HitTail::Failed
-                } else if self.search.more_to_come() {
-                    super::rows::HitTail::More
-                } else {
-                    super::rows::HitTail::End
-                };
-                // 🔴收数口是 [`HitTally`]，**不是** `self.tally` —— 它交出的下标只指命中这一摞，
-                //    而下面那几条胶水索引的是 `listing.rows`（另一摞东西）。
-                show_hit_rows(
-                    ui,
-                    &hits,
-                    self.hit_sort,
-                    self.hit_pick,
-                    tail,
-                    &mut self.hits_tally,
-                );
-                let ctx = ui.ctx().clone();
-                if let Some(col) = self.hits_tally.sort_click.take() {
-                    self.click_hit_header(col, Some(ctx.clone()));
-                }
-                if let Some(i) = self.hits_tally.picked.take() {
-                    self.hit_pick = Some(i);
-                }
-                if std::mem::take(&mut self.hits_tally.retry_more) {
-                    self.search.retry_more();
-                    self.fire_more(Some(ctx.clone()));
-                }
-                // 滚到底（最后一行露出来了）⇒ 往下再要一屏（后端说还有才发；失败过就等「重试」）。
-                if !hits.is_empty() && self.hits_tally.last_row >= hits.len() {
-                    self.fire_more(Some(ctx));
-                }
-            }
-        } else if self.showing_grep() {
-            // 按内容搜的命中：每行点得开（跳到那份文件），收数口是 [`GrepTally`]（它的下标只指这一摞）。
-            let rows: Vec<grep::GrepRow> = self
-                .grep
-                .shown()
-                .outcome
-                .map(|o| grep::grep_rows(&o))
-                .unwrap_or_default();
-            grep::show_grep_rows(ui, &rows, &mut self.grep_tally);
-        } else {
-            // 🔴reveal 的两半在这里落地：**算**出偏移（只算一次）＋ 高亮那个名字。
-            //    ⚠ 偏移是算的不是找的 —— 那条纪律（`show_rows` 才是主语）。
-            // ⚠ **先问 reveal（它自己拿锁），再拿锁画** —— 顺序反了就要克隆整摞行。
-            let pitch = super::rows::row_pitch(ui);
-            let jump = match self.take_reveal_offset(pitch) {
-                Some(Ok(y)) => Some(y),
-                Some(Err(why)) => {
-                    *self.listing.error.lock().unwrap() = Some(why);
-                    None
-                }
-                None => None,
-            };
-            // 键盘挪了光标 ⇒ 不在视野里才滚（reveal 那一下优先：它也是「只滚一次」）。
-            let key_jump = self
-                .key_scroll
-                .take()
-                .and_then(|i| select::scroll_for(i, prev_first, prev_last, pitch));
-            let jump = jump.or(key_jump);
-            let want = self.reveal.as_ref().map(|r| r.name.clone());
-            // 表头：点一列排序（再点反向），拖分隔线改列宽。
-            if let Some(by) = super::rows::show_header(ui, &mut self.cols, self.sort) {
-                self.click_header(by);
-            }
-            let rows = self.listing.rows.lock().unwrap();
-            let loading = self.listing.is_loading();
-            let failed = self.listing.error.lock().unwrap().is_some();
-            // 就地新建那一格（列表里冒出来的那一行）：空目录里也照样画列表。
-            let new_here = self
-                .write_prompt
-                .as_ref()
-                .is_some_and(|p| matches!(p.kind, PromptKind::Mkdir | PromptKind::NewFile));
-            if rows.is_empty() && loading && !new_here {
-                // 加载：300 ms 内什么都不画，之后骨架行。
-                let since = *self
-                    .loading_since
-                    .get_or_insert_with(|| ui.input(|i| i.time));
-                if ui.input(|i| i.time) - since > 0.3 {
-                    super::kit::skeleton_rows(ui, 5);
-                } else {
-                    ui.ctx()
-                        .request_repaint_after(std::time::Duration::from_millis(100));
-                }
-            } else if rows.is_empty()
-                && !failed
-                && !new_here
-                && self.listing.hidden.lock().unwrap().is_empty()
+    }
+
+    /// 文件名命中那一摞。
+    fn hits_frame(&mut self, ui: &mut egui::Ui) {
+        let hits = self.hit_rows();
+        if hits.is_empty() && self.search.has_outcome() && !self.search.index_missing() {
+            self.no_hits_ui(ui);
+        } else if self.search.has_outcome() {
+            self.hit_rows_frame(ui, &hits);
+        }
+    }
+
+    fn no_hits_ui(&mut self, ui: &mut egui::Ui) {
+        // 没结果：中央一句 ＋（范围是当前目录以下时）「搜整台机器」。
+        let q = self.query.clone();
+        let whole = self.search_whole;
+        let mut go_whole = false;
+        ui.vertical_centered(|ui| {
+            ui.add_space(ui.available_height() * 0.3);
+            ui.label(find::no_match_line(&q));
+            if !whole
+                && ui
+                    .button(copy_text("rsFilewinFind.action.searchMachine", &[]))
+                    .clicked()
             {
-                drop(rows);
-                self.loading_since = None;
-                match super::kit::empty_state(
-                    ui,
-                    egui_phosphor::regular::FOLDER_SIMPLE,
-                    &copy_text("rsFilewinShell.frame.empty", &[]),
-                    &[
-                        format!(
-                            "{} {}",
-                            egui_phosphor::regular::UPLOAD_SIMPLE,
-                            copy_text("rsFilewinShell.frame.emptyUpload", &[])
-                        ),
-                        format!(
-                            "{} {}",
-                            egui_phosphor::regular::PLUS,
-                            copy_text("rsFilewinChrome.command.new", &[])
-                        ),
-                    ],
-                ) {
-                    Some(0) => {
-                        let ctx = ui.ctx().clone();
-                        self.run_command(super::chrome::Cmd::Upload, Some(ctx));
-                    }
-                    Some(1) => {
-                        self.begin_mkdir();
-                    }
-                    _ => {}
-                }
+                go_whole = true;
+            }
+        });
+        if go_whole {
+            self.search_whole = true;
+            let ctx = ui.ctx().clone();
+            self.fire_search(Some(ctx), false);
+        }
+    }
+
+    fn hit_rows_frame(&mut self, ui: &mut egui::Ui, hits: &[super::rows::HitRow]) {
+        let tail = if self.search.page_failed() {
+            super::rows::HitTail::Failed
+        } else if self.search.more_to_come() {
+            super::rows::HitTail::More
+        } else {
+            super::rows::HitTail::End
+        };
+        // 🔴收数口是 [`HitTally`]，**不是** `self.tally` —— 它交出的下标只指命中这一摞，
+        //    而下面那几条胶水索引的是 `listing.rows`（另一摞东西）。
+        show_hit_rows(
+            ui,
+            &hits,
+            self.hit_sort,
+            self.hit_pick,
+            tail,
+            &mut self.hits_tally,
+        );
+        let ctx = ui.ctx().clone();
+        if let Some(col) = self.hits_tally.sort_click.take() {
+            self.click_hit_header(col, Some(ctx.clone()));
+        }
+        if let Some(i) = self.hits_tally.picked.take() {
+            self.hit_pick = Some(i);
+        }
+        if std::mem::take(&mut self.hits_tally.retry_more) {
+            self.search.retry_more();
+            self.fire_more(Some(ctx.clone()));
+        }
+        // 滚到底（最后一行露出来了）⇒ 往下再要一屏（后端说还有才发；失败过就等「重试」）。
+        if !hits.is_empty() && self.hits_tally.last_row >= hits.len() {
+            self.fire_more(Some(ctx));
+        }
+    }
+
+    fn grep_frame(&mut self, ui: &mut egui::Ui) {
+        // 按内容搜的命中：每行点得开（跳到那份文件），收数口是 [`GrepTally`]（它的下标只指这一摞）。
+        let rows: Vec<grep::GrepRow> = self
+            .grep
+            .shown()
+            .outcome
+            .map(|o| grep::grep_rows(&o))
+            .unwrap_or_default();
+        grep::show_grep_rows(ui, &rows, &mut self.grep_tally);
+    }
+
+    /// 当前目录那一摞：表头 · 加载中 / 空目录 / 列表（含就地那一格）。
+    fn listing_frame(&mut self, ui: &mut egui::Ui, prev_first: usize, prev_last: usize) {
+        let jump = self.listing_jump(ui, prev_first, prev_last);
+        let want = self.reveal.as_ref().map(|r| r.name.clone());
+        // 表头：点一列排序（再点反向），拖分隔线改列宽。
+        if let Some(by) = super::rows::show_header(ui, &mut self.cols, self.sort) {
+            self.click_header(by);
+        }
+        let rows = self.listing.rows.lock().unwrap();
+        let loading = self.listing.is_loading();
+        let failed = self.listing.error.lock().unwrap().is_some();
+        // 就地新建那一格（列表里冒出来的那一行）：空目录里也照样画列表。
+        let new_here = self
+            .write_prompt
+            .as_ref()
+            .is_some_and(|p| matches!(p.kind, PromptKind::Mkdir | PromptKind::NewFile));
+        if rows.is_empty() && loading && !new_here {
+            // 加载：300 ms 内什么都不画，之后骨架行。
+            let since = *self
+                .loading_since
+                .get_or_insert_with(|| ui.input(|i| i.time));
+            if ui.input(|i| i.time) - since > 0.3 {
+                super::kit::skeleton_rows(ui, 5);
             } else {
-                self.loading_since = None;
-                let unreadable = self.listing.unreadable.load(Ordering::SeqCst);
-                let tail = (unreadable > 0).then(|| {
-                    copy_text(
-                        "rsFilewinShell.frame.unreadable",
-                        &[("n", &unreadable.to_string())],
-                    )
-                });
-                // 就地那一格：新建 ⇒ 文件夹那一段之后插一行（名字缺省、选中）；改名 ⇒ 那一行的名字格换成输入框。
-                let mut text = String::new();
-                let mut shown: Option<Vec<super::source::Listed>> = None;
-                let mut at: Option<usize> = None;
-                if let Some(p) = self.write_prompt.as_ref().filter(|p| p.is_inline()) {
-                    text = p.text.clone();
-                    match &p.kind {
-                        PromptKind::Rename { from, .. } => {
-                            at = rows.iter().position(|r| &r.path == from);
-                        }
-                        kind => {
-                            let i = rows.iter().rposition(|r| r.is_dir).map_or(0, |i| i + 1);
-                            let mut v = rows.clone();
-                            v.insert(
-                                i,
-                                super::source::Listed::plain(super::source::Row {
-                                    name: text.clone(),
-                                    path: super::writeops::join_remote(&p.dir, &text),
-                                    is_dir: matches!(kind, PromptKind::Mkdir),
-                                    size: 0,
-                                    lossy_name: false,
-                                }),
-                            );
-                            shown = Some(v);
-                            at = Some(i);
-                        }
-                    }
+                ui.ctx()
+                    .request_repaint_after(std::time::Duration::from_millis(100));
+            }
+        } else if rows.is_empty()
+            && !failed
+            && !new_here
+            && self.listing.hidden.lock().unwrap().is_empty()
+        {
+            drop(rows);
+            self.empty_dir_ui(ui);
+        } else {
+            self.loading_since = None;
+            let unreadable = self.listing.unreadable.load(Ordering::SeqCst);
+            let tail = (unreadable > 0).then(|| {
+                copy_text(
+                    "rsFilewinShell.frame.unreadable",
+                    &[("n", &unreadable.to_string())],
+                )
+            });
+            // 就地那一格：新建 ⇒ 文件夹那一段之后插一行（名字缺省、选中）；改名 ⇒ 那一行的名字格换成输入框。
+            let (mut text, shown, at) =
+                inline_rows(&rows, self.write_prompt.as_ref().filter(|p| p.is_inline()));
+            let err = self.prompt_error();
+            let mut cell = at.map(|row| super::rows::InlineCell {
+                row,
+                text: &mut text,
+                error: err.as_deref(),
+                select: self.inline_select.take(),
+                busy: self.inline_busy,
+                outcome: None,
+            });
+            super::rows::show_file_rows_with_tail(
+                ui,
+                shown.as_deref().unwrap_or(&rows),
+                &mut self.tally,
+                jump,
+                want.as_deref(),
+                Some(&self.selection),
+                &self.cols,
+                tail.as_deref(),
+                cell.as_mut(),
+            );
+            let outcome = cell.and_then(|c| c.outcome);
+            drop(rows);
+            // 插进来的那一行不是目录里的一项 ⇒ 点到的下标挪回目录那一摞（点在那一行上 ＝ 没点）。
+            if let (Some(_), Some(i)) = (&shown, at) {
+                tally_skip_inserted(&mut self.tally, i);
+            }
+            if let Some(p) = self.write_prompt.as_mut().filter(|p| p.is_inline()) {
+                p.text = text;
+            }
+            match outcome {
+                Some(true) => {
+                    let ctx = ui.ctx().clone();
+                    self.commit_inline(Some(ctx));
                 }
-                let err = self.prompt_error();
-                let mut cell = at.map(|row| super::rows::InlineCell {
-                    row,
-                    text: &mut text,
-                    error: err.as_deref(),
-                    select: self.inline_select.take(),
-                    busy: self.inline_busy,
-                    outcome: None,
-                });
-                super::rows::show_file_rows_with_tail(
-                    ui,
-                    shown.as_deref().unwrap_or(&rows),
-                    &mut self.tally,
-                    jump,
-                    want.as_deref(),
-                    Some(&self.selection),
-                    &self.cols,
-                    tail.as_deref(),
-                    cell.as_mut(),
-                );
-                let outcome = cell.and_then(|c| c.outcome);
-                drop(rows);
-                // 插进来的那一行不是目录里的一项 ⇒ 点到的下标挪回目录那一摞（点在那一行上 ＝ 没点）。
-                if let (Some(_), Some(i)) = (&shown, at) {
-                    let back = |x: usize| match x.cmp(&i) {
-                        std::cmp::Ordering::Less => Some(x),
-                        std::cmp::Ordering::Equal => None,
-                        std::cmp::Ordering::Greater => Some(x - 1),
-                    };
-                    let t = &mut self.tally;
-                    t.clicked = t.clicked.and_then(back);
-                    t.menu_clicked = t.menu_clicked.and_then(back);
-                    t.drag_started = t.drag_started.and_then(back);
-                    t.picked_click = t.picked_click.and_then(|(x, m)| back(x).map(|x| (x, m)));
-                }
-                if let Some(p) = self.write_prompt.as_mut().filter(|p| p.is_inline()) {
-                    p.text = text;
-                }
-                match outcome {
-                    Some(true) => {
-                        let ctx = ui.ctx().clone();
-                        self.commit_inline(Some(ctx));
-                    }
-                    Some(false) => self.cancel_write(),
-                    None => {}
-                }
+                Some(false) => self.cancel_write(),
+                None => {}
             }
         }
+    }
+
+    /// 这一帧要滚到哪：reveal 那一下优先，否则键盘挪出视野的光标。
+    fn listing_jump(
+        &mut self,
+        ui: &mut egui::Ui,
+        prev_first: usize,
+        prev_last: usize,
+    ) -> Option<f32> {
+        // 🔴reveal 的两半在这里落地：**算**出偏移（只算一次）＋ 高亮那个名字。
+        //    ⚠ 偏移是算的不是找的 —— 那条纪律（`show_rows` 才是主语）。
+        // ⚠ **先问 reveal（它自己拿锁），再拿锁画** —— 顺序反了就要克隆整摞行。
+        let pitch = super::rows::row_pitch(ui);
+        let jump = match self.take_reveal_offset(pitch) {
+            Some(Ok(y)) => Some(y),
+            Some(Err(why)) => {
+                *self.listing.error.lock().unwrap() = Some(why);
+                None
+            }
+            None => None,
+        };
+        // 键盘挪了光标 ⇒ 不在视野里才滚（reveal 那一下优先：它也是「只滚一次」）。
+        let key_jump = self
+            .key_scroll
+            .take()
+            .and_then(|i| select::scroll_for(i, prev_first, prev_last, pitch));
+        jump.or(key_jump)
+    }
+
+    /// 空目录：一句 ＋「上传」「新建」。
+    fn empty_dir_ui(&mut self, ui: &mut egui::Ui) {
+        self.loading_since = None;
+        match super::kit::empty_state(
+            ui,
+            egui_phosphor::regular::FOLDER_SIMPLE,
+            &copy_text("rsFilewinShell.frame.empty", &[]),
+            &[
+                format!(
+                    "{} {}",
+                    egui_phosphor::regular::UPLOAD_SIMPLE,
+                    copy_text("rsFilewinShell.frame.emptyUpload", &[])
+                ),
+                format!(
+                    "{} {}",
+                    egui_phosphor::regular::PLUS,
+                    copy_text("rsFilewinChrome.command.new", &[])
+                ),
+            ],
+        ) {
+            Some(0) => {
+                let ctx = ui.ctx().clone();
+                self.run_command(super::chrome::Cmd::Upload, Some(ctx));
+            }
+            Some(1) => {
+                self.begin_mkdir();
+            }
+            _ => {}
+        }
+    }
+
+    /// 画完之后那几条胶水：点了命中就跳 · 单击 / 右键 / 拖起一行 · 菜单。
+    fn row_glue(&mut self, ui: &mut egui::Ui) {
         // ⚠ 这三条只对**目录列表**那一摞有意义（下标索引的是 `listing.rows`）。
         //   命中那一摞交不出下标 —— 第四刀靠的是「那个函数不画可点控件」这条纪律，
         //   第五刀换成了**类型**（上面那一段）。
@@ -4766,7 +4793,10 @@ impl FileWindow {
         self.apply_pick_click();
         // 第八条胶水：拖起一行。
         self.apply_drag_start();
-        let at = ctx.input(|i| i.pointer.interact_pos()).unwrap_or_default();
+        let at = ui
+            .ctx()
+            .input(|i| i.pointer.interact_pos())
+            .unwrap_or_default();
         self.apply_menu_click(at);
         self.menu_ui(ui);
     }
@@ -5242,4 +5272,217 @@ pub fn join_path(dir: &super::source::RemotePath, name: &[u8]) -> super::source:
     }
     b.extend_from_slice(name);
     super::source::RemotePath::from_bytes(&b)
+}
+
+/// 就地那一格要画成什么：输入框里的字 · 插了新行之后的那一摞（新建才有）· 那一格在第几行。
+/// 新建 ⇒ 文件夹那一段之后插一行；改名 ⇒ 就是那一行。
+fn inline_rows(
+    rows: &[super::source::Listed],
+    prompt: Option<&WritePrompt>,
+) -> (String, Option<Vec<super::source::Listed>>, Option<usize>) {
+    let mut text = String::new();
+    let mut shown: Option<Vec<super::source::Listed>> = None;
+    let mut at: Option<usize> = None;
+    if let Some(p) = prompt {
+        text = p.text.clone();
+        match &p.kind {
+            PromptKind::Rename { from, .. } => {
+                at = rows.iter().position(|r| &r.path == from);
+            }
+            kind => {
+                let i = rows.iter().rposition(|r| r.is_dir).map_or(0, |i| i + 1);
+                let mut v = rows.to_vec();
+                v.insert(
+                    i,
+                    super::source::Listed::plain(super::source::Row {
+                        name: text.clone(),
+                        path: super::writeops::join_remote(&p.dir, &text),
+                        is_dir: matches!(kind, PromptKind::Mkdir),
+                        size: 0,
+                        lossy_name: false,
+                    }),
+                );
+                shown = Some(v);
+                at = Some(i);
+            }
+        }
+    }
+    (text, shown, at)
+}
+
+/// 列表里插了一行（就地新建）：点到的下标挪回目录那一摞（点在插进来的那一行上 ＝ 没点）。
+fn tally_skip_inserted(t: &mut RenderTally, i: usize) {
+    let back = |x: usize| match x.cmp(&i) {
+        std::cmp::Ordering::Less => Some(x),
+        std::cmp::Ordering::Equal => None,
+        std::cmp::Ordering::Greater => Some(x - 1),
+    };
+    t.clicked = t.clicked.and_then(back);
+    t.menu_clicked = t.menu_clicked.and_then(back);
+    t.drag_started = t.drag_started.and_then(back);
+    t.picked_click = t.picked_click.and_then(|(x, m)| back(x).map(|x| (x, m)));
+}
+
+/// 编辑页这一帧的事实（画头条与那几条要用）。
+struct EditFacts {
+    pane: Option<super::editor::Pane>,
+    path: String,
+    name: String,
+    idle: bool,
+    dirty: bool,
+    over: bool,
+    big: bool,
+}
+
+/// 编辑页这一帧点下的动作（画完统一做）。
+#[derive(Default)]
+struct EditActs {
+    save: bool,
+    overwrite: bool,
+    reopen: bool,
+    retry_open: bool,
+    pull: bool,
+    find_toggle: bool,
+}
+
+/// 「放到」那块的面包屑行：那台 › 最后三级（前面折成「…」）；右端「新建文件夹」。
+fn cross_crumbs(
+    ui: &mut egui::Ui,
+    pal: &super::theme::Palette,
+    pick: &super::cross_copy::Pick,
+    go_to: &mut Option<String>,
+    mkdir: &mut bool,
+) {
+    // 面包屑：那台 › 一段一段（点哪一段回到那一级）；右端「新建文件夹」。
+    ui.horizontal(|ui| {
+        if ui
+            .add(
+                egui::Button::new(
+                    egui::RichText::new(super::cross_copy::shown_machine(&pick.machine))
+                        .size(12.0)
+                        .color(pal.text2),
+                )
+                .frame(false),
+            )
+            .clicked()
+        {
+            *go_to = Some("/".to_string());
+        }
+        // 只摆最后三级，前面折成一颗「…」（点了到折起来的最深那一级）：那台的主目录可能很深。
+        let crumbs: Vec<(String, String)> = super::source::breadcrumbs(&pick.path)
+            .into_iter()
+            .skip(1)
+            .collect();
+        let keep = crumbs.len().saturating_sub(3);
+        if keep > 0 {
+            ui.label(
+                egui::RichText::new(egui_phosphor::regular::CARET_RIGHT)
+                    .size(10.0)
+                    .color(pal.faint),
+            );
+            if ui
+                .add(
+                    egui::Button::new(
+                        egui::RichText::new(copy_text("rsFilewinEditPage.crumb.more", &[]))
+                            .size(12.0)
+                            .color(pal.text2),
+                    )
+                    .frame(false),
+                )
+                .clicked()
+            {
+                *go_to = Some(crumbs[keep - 1].1.clone());
+            }
+        }
+        for (seg, at) in crumbs.into_iter().skip(keep) {
+            ui.label(
+                egui::RichText::new(egui_phosphor::regular::CARET_RIGHT)
+                    .size(10.0)
+                    .color(pal.faint),
+            );
+            if ui
+                .add(
+                    egui::Button::new(egui::RichText::new(&seg).size(12.0).color(pal.text))
+                        .frame(false),
+                )
+                .clicked()
+            {
+                *go_to = Some(at);
+            }
+        }
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            let r = ui.add_enabled(
+                !pick.path.is_empty(),
+                egui::Button::new(
+                    egui::RichText::new(format!(
+                        "{} {}",
+                        egui_phosphor::regular::PLUS,
+                        copy_text("rsFilewinWriteops.inline.newDir", &[])
+                    ))
+                    .size(12.0),
+                )
+                .frame(false),
+            );
+            *mkdir = r.clicked();
+        });
+    });
+}
+
+/// 那台的文件夹清单（至多五行高）：单击选中、双击进去。
+fn cross_dirs(
+    ui: &mut egui::Ui,
+    pal: &super::theme::Palette,
+    pick: &super::cross_copy::Pick,
+    go_to: &mut Option<String>,
+    picked: &mut Option<String>,
+) {
+    let row_h = super::theme::metrics(ui.ctx()).row_h;
+    egui::ScrollArea::vertical()
+        .max_height(row_h * 5.0)
+        .auto_shrink([false, true])
+        .show(ui, |ui| match &pick.dirs {
+            None => super::kit::skeleton_rows(ui, 3),
+            Some(Err(e)) => {
+                ui.label(egui::RichText::new(e).color(pal.error_text));
+            }
+            Some(Ok(dirs)) if dirs.is_empty() => {
+                ui.label(
+                    egui::RichText::new(copy_text("rsFilewinCrossCopy.prompt.noDirs", &[]))
+                        .color(pal.text2),
+                );
+            }
+            Some(Ok(dirs)) => {
+                for d in dirs {
+                    let on = pick.picked.as_deref() == Some(d.as_str());
+                    let (rect, r) = ui.allocate_exact_size(
+                        egui::vec2(ui.available_width(), row_h),
+                        egui::Sense::click(),
+                    );
+                    if on {
+                        ui.painter().rect_filled(rect, 4.0, pal.picked);
+                    } else if r.hovered() {
+                        ui.painter().rect_filled(rect, 4.0, pal.hover);
+                    }
+                    ui.painter().text(
+                        rect.left_center() + egui::vec2(8.0, 0.0),
+                        egui::Align2::LEFT_CENTER,
+                        format!("{}  {}", egui_phosphor::regular::FOLDER_SIMPLE, d),
+                        egui::TextStyle::Body.resolve(ui.style()),
+                        pal.text,
+                    );
+                    if r.double_clicked() {
+                        *go_to = Some(super::writeops::join_remote(&pick.path, d));
+                    } else if r.clicked() {
+                        *picked = Some(d.clone());
+                    }
+                }
+            }
+        });
+}
+
+/// 「复制到另一台」那一问里这一帧点下的：选中哪个文件夹 · 进到哪 · 新建文件夹。
+struct CrossClicks {
+    picked: Option<String>,
+    go_to: Option<String>,
+    mkdir: bool,
 }

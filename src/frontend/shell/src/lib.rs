@@ -125,10 +125,11 @@ mod remote_write_registry; // devbench F10c：远端写面登记（接三张表�
                            //   与 `session_facts` 容器账〔散文墓碑〕：两本账的裁决与记账都搬进了那台后端（`observe/session_ledger.rs`）。
 mod probe_relay; // 本机后端的 `probe` 帧（测试连接的进度格）原样转给界面订的 `probe-progress/<票>`
 mod session_book;
-mod session_tap; // 本机后端的 `tap` 帧（中转抄出来的 SSE 事件）原样转给前端 `session-tap`
-                 // 起子进程的**唯一出口**（三个策略都没有 Default）。
-                 // 住宿主知识层是硬的：平台原语进不了 `backend/`（那侧的禁针 + 递减棘轮），
-                 // `backend/` 的两个落点收注入参数（`ManagedSpawn`）。
+mod session_tap;
+mod terminal_screen_relay; // 本机 / 远端后端的终端实时预览帧原样转给界面订的 `terminal-screen/<票>` // 本机后端的 `tap` 帧（中转抄出来的 SSE 事件）原样转给前端 `session-tap`
+                           // 起子进程的**唯一出口**（三个策略都没有 Default）。
+                           // 住宿主知识层是硬的：平台原语进不了 `backend/`（那侧的禁针 + 递减棘轮），
+                           // `backend/` 的两个落点收注入参数（`ManagedSpawn`）。
 mod spawn_managed;
 // devbench F02：skill 接入面（一份声明 + 通用宿主）。
 // ⚠ **今天零生产消费者**（UI 归 F03）—— 照 `tool_registry` 的先例如实登记并写处置条件：
@@ -700,6 +701,12 @@ pub fn run() {
                 let replay = replay.clone();
                 crate::probe_relay::install_sink(move |ticket, cell| {
                     replay.on_probe(&ticket, cell)
+                });
+            }
+            {
+                let replay = replay.clone();
+                crate::terminal_screen_relay::install_sink(move |origin, ticket, cell| {
+                    replay.on_terminal_screen(origin, ticket, cell)
                 });
             }
             // host key 自动固化 / 各地址不一 ⇒ 经既有的 `remote-health` 告知（机器页据此刷新）。

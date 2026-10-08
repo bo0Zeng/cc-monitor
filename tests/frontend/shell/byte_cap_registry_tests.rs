@@ -455,6 +455,13 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "常驻进程记着的会话记录摘要条数（按长度 · 修改时刻认没变，没变不再整份扫）",
         "索引截断（不丢数据）",
     ),
+    // 终端实时预览一帧画面（`terminal_follow.rs`）：那一屏序列化之后超了 ⇒ 不推，改推收尾帧 `too_big`，界面照实说「画面过大」、退回快照。
+    (
+        "src/backend/control/terminal_follow.rs",
+        "SCREEN_FRAME_CAP",
+        "终端实时预览一帧里那一屏（`terminal_screen.view` 序列化之后的字节）—— 200 × 60 满屏着色约 150 KiB",
+        "拒收+回错",
+    ),
     (
         "src/backend/stream/listen.rs",
         "ATTACH_LINE_CAP",

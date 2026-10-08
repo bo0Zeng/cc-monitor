@@ -1,20 +1,12 @@
 // config.json 读写桥：读直通 Rust `load_config`；写只有 `patch_config` 一个口（schema-agnostic，
 // 后端按 serde_json::Value 透传，所有字段语义收敛在前端各模块）。
 //
-// 🔴 **写只交「改哪几条路径」，不交整份。** 从前 9 个模块各自「读整份 → 改自己的键 →
-// `saveConfig(整份)`」，主窗（tab 栏）与设置窗是两个 realm，两次读-改-写一交错，后写的整份就把先写的键 〔散文墓碑〕
-// 盖掉（E §E1：拖放同拍发分组 ＋ 顺序，分组那次没落盘）。现在 [`patchConfig`] 只交 [`ConfigEdit`]，
+// 写只交「改哪几条路径」（[`ConfigEdit`]），不交整份：主窗与设置窗是两个 realm，读-改-写整份一交错就把别人的键盖掉。
 // Rust `config.rs::patch_config_at` 在一把进程级锁里现读盘、逐条应用 ⇒ 谁写的键谁的值留在盘上
-// （「各自只写自己那个键」）。判据：`tests/frontend/ui/config-lost-update.vitest.ts` · `tests/frontend/shell/config_tests.rs`。
+// （判据：`tests/frontend/ui/config-lost-update.vitest.ts` · `tests/frontend/shell/config_tests.rs`）。
 //
-// 🔴 **「未知键静默忽略」在这里止住。**
-//
-// 本仓的头号病形逐字是「『关掉了』与『过了』在终端上一模一样」。config.json 上它长这样：
-// 用户手写一个键 → 各模块只按自己认得的键名取值 → 认不出的**一个字都不说**
-// ⇒ 用户看到的是「我明明写了，它没生效」，而 app 这一侧**连它存在都不知道**。
-//
-// 治法不是在每个读者那里各加一句（那是 N 个住址、必漂），是钉在**唯一的读盘口**上：
-// 每一次 `loadConfig()` 都拿盘上的顶层键去对 [`KNOWN_CONFIG_KEYS`]，对不上的记下来，
+// 未知键不静默：用户手写的键各模块认不出就一个字都不说，用户只看到「我明明写了，它没生效」。
+// 钉在唯一的读盘口上：每一次 `loadConfig()` 都拿盘上的顶层键去对 [`KNOWN_CONFIG_KEYS`]，对不上的记下来，
 // 由 `settings/unknown-keys-notice.ts` 画成一条**常驻**提示条（`INVARIANTS §12`：
 // 状态性警告不许只活在 hover / 日志里）。
 import { commands } from "./ipc/commands";
@@ -45,9 +37,6 @@ export const CONFIG_KEY_OWNERS = {
   keybindings: "src/frontend/ui/keybindings/store.ts",
   // src/frontend/ui/accounts.ts
   accounts: "src/frontend/ui/accounts.ts",
-  // 〔条 66〕原来这里有 `backendPolicy`（src/frontend/ui/backend-policy.ts）—— 「退出行为」那个值
-  //   搬到了后端所在那台机器上（「monitor 的 config 里不许再留一份」）⇒ 这一键退役。
-  //   盘上还留着它的旧 config.json 会被下面那条「不认识的键」提示条点名 —— 那是对的：它确实没人读了。
   // src/frontend/ui/remote-config.ts（Rust 侧 `lib.rs::load_remote_configs` 也读它，只读）
   remote: "src/frontend/ui/remote-config.ts",
   // src/frontend/ui/tab-bar-state.ts
@@ -55,7 +44,7 @@ export const CONFIG_KEY_OWNERS = {
   // src/frontend/ui/tab-collections.ts
   tabCollections: "src/frontend/ui/tab-collections.ts",
   // src/frontend/ui/main.ts 读（经 `views/context-limit.ts::readContextLimits`）、随会话事实交给各台后端；设置页「外观 → 高级」写
-  //   （`settings/context-limits-section.ts`），不再只能手改 config.json。
+  //   （`settings/context-limits-section.ts`）。
   contextLimits: "src/frontend/ui/main.ts",
   // ── src/frontend/ui/behavior.ts 那一族 ─────────────────────────────────────────────
   autoFollowUserActive: "src/frontend/ui/behavior.ts",
@@ -69,9 +58,8 @@ export const CONFIG_KEY_OWNERS = {
   notifyNeeds: "src/frontend/ui/behavior.ts",
   // src/frontend/ui/local-machine-prefs.ts：本机那一格恢复命令覆盖（本机不在机器表里）
   localResumeCommand: "src/frontend/ui/local-machine-prefs.ts",
-  // `forceLaunchPayloadRenderer` 退役（`src/frontend/ui/behavior.ts` 那段注释写了为什么）⇒ 这一键删掉，盘上还写着它就当未知键点名。
   // src/frontend/shell/src/logging.rs —— **Rust 写的**顶层键（设置页「诊断」经 `set_diagnostics_config`）。
-  // 从前漏登记：用户存过一次诊断设置，「认不出的键」提示条就把 `diagnostics` 点名（假警报）。
+  // 漏登记的话，用户存过一次诊断设置，「认不出的键」提示条就会把 `diagnostics` 点名（假警报）。
   diagnostics: "src/frontend/shell/src/logging.rs",
 } as const satisfies Readonly<Record<string, string>>;
 
@@ -119,8 +107,7 @@ export async function loadConfig(): Promise<Config> {
   const cfg = await commands.load_config();
   lastUnknownKeys = unknownKeysIn(cfg);
   if (lastUnknownKeys.length > 0) {
-    // ⚠ 这一行**不是**「出声」那一半 —— 日志里的话用户看不见，而看不见的告知与
-    //   没告知在终端上一模一样（P12 要治的就是这个）。真正出声的是设置里那条常驻条。
+    // 这一行不是「出声」那一半（日志里的话用户看不见）；出声的是设置里那条常驻条。
     console.warn("[config] 认不出的顶层键：", [...lastUnknownKeys].join(" "));
   }
   return cfg;

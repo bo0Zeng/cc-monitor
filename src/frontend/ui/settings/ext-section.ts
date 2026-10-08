@@ -261,7 +261,7 @@ export class ExtSection {
       const list = await extList(visit);
       if (my !== this.seq) return;
       this.list = list;
-      const problems = list.problems.length > 0 ? copyText("extPage.status.problems", { list: list.problems.join(copyText("extPage.list.sep")) }) : "";
+      const problems = list.problems.length > 0 ? copyText("extPage.status.problems", { n: String(list.problems.length), list: list.problems.join(copyText("extPage.list.sep")) }) : "";
       this.status.textContent = [problems, synced].filter((x) => x !== "").join(" ");
       this.renderTable();
       this.renderDrawer();

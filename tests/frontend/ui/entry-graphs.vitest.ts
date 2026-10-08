@@ -634,6 +634,20 @@ function globalRulesAfterFirstModule(text: string, hashed: readonly string[]): s
  * 🔴 保守的那一向：`s.<类>` 出现在上面两形**之外**（传给函数、塞进对象、拼进别的串……）⇒ 认不出挂到哪 ⇒ **按「叠」算**
  *   （要求次序 —— 红得出来，不会静默放过）。同名接收者在不同函数里指不同元素 ⇒ 同样只会多判「叠」。
  */
+/**
+ * 语法树按 `文件 → { 文本, 树 }` 记一次。〔W5-UI〕那一格对**每份 module** 调一次 [`moduleStacking`]、每次都过全仓生产 TS ——
+ * 原先每次都重建全部语法树（48 份 module × 320 份 TS ≈ 一万五千次建树：空机 13 s，带覆盖率插桩 134 s，门禁里撞 180 s 期限）。
+ * 树只由文本决定 ⇒ 文本没变就用同一棵（正控的合成源同名不同文，按文本比对重建）。
+ */
+const SF_MEMO = new Map<string, { text: string; sf: ts.SourceFile }>();
+function parsedOnce(file: string, text: string): ts.SourceFile {
+  const had = SF_MEMO.get(file);
+  if (had && had.text === text) return had.sf;
+  const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  SF_MEMO.set(file, { text, sf });
+  return sf;
+}
+
 function moduleStacking(
   sources: ReadonlyArray<{ file: string; text: string }>,
   modulePath: string,
@@ -641,7 +655,7 @@ function moduleStacking(
 ): { stacked: boolean; why: string[] } {
   const why: string[] = [];
   for (const { file, text } of sources) {
-    const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+    const sf = parsedOnce(file, text);
     const names = new Set<string>();
     for (const st of sf.statements) {
       if (
@@ -831,7 +845,7 @@ describe("〔UC2〕CSS Modules 在构建产物里（件 10）", () => {
     expect(probe(`help(s.a);`), "认不出挂到哪 ⇒ 按叠算（保守）").toBe(true);
     expect(probe(`a.className = s.a; b.className = "status-cmdk";`), "不同元素不算叠").toBe(false);
     expect(probe(`a.className = s.a; a.classList.remove(s.a); a.className = "not-a-global-xyz";`), "非全局类 / remove 不算叠").toBe(false);
-  }, TIMEOUT_MS); // 全仓生产 TS 逐份建 AST：整套并跑时 5 s 默认期限不够（现打 7.7 s）
+  }, TIMEOUT_MS); // 全仓生产 TS 逐份建一次语法树（`parsedOnce`）
 
   it("次序：每个窗口产物 CSS 里，第一条**叠在全局基类上的** module 规则之后不再有全局样式的规则（module 的 delta 叠在全局基类之上）", () => {
     let judged = 0;

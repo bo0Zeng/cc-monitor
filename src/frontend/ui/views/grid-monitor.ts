@@ -1,18 +1,10 @@
 /**
- * F91（#27）：多 agent 并排**监控**——跨机器只读 mission-control 状态板。
- * 全屏 overlay（照 HistoryView 的 body-level fixed overlay 范式）。
+ * 多 agent 并排监控：跨机器只读状态板，全屏 overlay（与 HistoryView 同一种 body 级 fixed overlay）。
  *
- * **只读 view，零后端、零写、零落盘**（守 INVARIANTS §1 只读铁律 + 北极星「不做驾驶舱」）：
- * 一屏 grid，一 cell/会话（本地 + 所有远端），按机器(origin)分组；每 cell 显红绿灯 / 标题 / cwd /
- * 运行中 subagent 数 / context% / unread / ⚙bg。**F91b：点 cell = 选中高亮 + 底部 peek 内容详情**
- * （板不关，连续 triage）；导航（switchTo+close）移到 peek 里「跳转到该会话」按钮。别的不做（读侧安全）。
- * 数据全来自 `TabManager.snapshotSessions()`（纯派生 DTO）+ 选中时 `peekSession()`；overlay 开着时 1Hz 轮询重渲染
- * （偶尔开、快照纯内存、成本可忽略；push 订阅 = 后续精化）。
- *
- * 1Hz 那一拍**按行（按格子）差量更新**，不再 `replaceChildren()` 整块重建：
- * 格子按 sid 留住、组按机器留住，每一拍只写真变了的那几处（没变的一拍零 DOM 写）。
- *
- * 分组 / 排序 / 汇总是纯函数，抽出可测。
+ * 只读：零后端、零写、零落盘（INVARIANTS §1）。一会话一格（本机 ＋ 所有远端），按机器分组；每格红绿灯 / 标题 / cwd /
+ * 运行中子 agent 数 / context% / 未读 / ⚙bg。点一格 = 选中高亮 ＋ 底部 peek 详情（板不关，连续看）；跳转在 peek 里的按钮上。
+ * 数据来自 `TabManager.snapshotSessions()`（纯派生）＋ 选中时 `peekSession()`；开着时 1Hz 重渲染，按格子差量更新
+ * （格子按 sid 留住、组按机器留住，没变的一拍零 DOM 写）。分组 / 排序 / 汇总是纯函数。
  */
 import { dispatcher } from "../keybindings/registry";
 import { isLocalOrigin, isRemoteOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
@@ -30,8 +22,7 @@ import { contextTokensText } from "./context-limit";
 export interface GridSource {
   snapshotSessions(): GridSessionSnapshot[];
   switchTo(sessionId: string): void;
-  /** F91b：选中 cell 的内容 peek 补充数据。**可选**——旧桩 {snapshotSessions,switchTo} 不破；
-   *  缺省时 peek 降级只显 snapshot 字段。 */
+  /** 选中一格时 peek 的补充数据。可选：缺省时 peek 只显 snapshot 字段。 */
   peekSession?(sessionId: string): SessionPeek | null;
 }
 
@@ -99,19 +90,17 @@ export function summarizeSessions(sessions: GridSessionSnapshot[]): GridSummary 
   let runningAgents = 0;
   for (const s of sessions) {
     origins.add(s.origin);
-    if (isLive(s.state)) liveSessions += 1; // 按活性：可重连的不算活（原先借着 status: live 被算进来）
+    if (isLive(s.state)) liveSessions += 1; // 按活性：可重连的不算活
     runningAgents += s.runningAgents;
   }
   return { machines: origins.size, liveSessions, runningAgents };
 }
 
-/** F91b：peek 内容签名——相等 = 无需重建 DOM（保选区/滚动）。纯函数。selected=null → 空串（收起态）。
- *  F91b-fix(batch18 审计修) 两处：
- *  ① **排除 contextPct/unread**：这俩是高频 glance 字段（尤其 unread 每来一条消息就涨），纳入会让
- *     活跃会话每秒重建 peek、清掉用户正在选取/复制的文件路径——memo 恰在最该保选区时失效。代价：peek 里
- *     显示的 ctx%/未读会略滞后（下次因别的字段变而重建、或重选时刷新），对 triage 快照可接受。
- *  ② **只签可见 slice(8)+计数**：渲染只画 agents.slice(0,8)/recentFiles.slice(-8)，原签名却 stringify 全量
- *     数组——改 500 文件的会话每秒序列化 500 条却只画 8 条，签名比它保护的 DOM 还重。改成只签可见集+长度。 */
+/**
+ * peek 内容签名：相等 = 不重建 DOM（保住选区 / 滚动）。纯函数；selected = null → 空串（收起态）。
+ * - 不含 contextPct / unread：高频字段（每来一条消息就涨），纳入会让活跃会话每秒重建 peek、清掉正在复制的路径；
+ * - 只签可见的那 8 条 ＋ 计数：渲染只画 slice(8)，签全量会比它保护的 DOM 还重。
+ */
 function peekSignature(selected: GridSessionSnapshot | null, peek: SessionPeek | null): string {
   if (!selected) return "";
   return JSON.stringify([
@@ -136,7 +125,7 @@ interface CellRefs {
   cell: HTMLButtonElement;
   dot: HTMLSpanElement;
   name: HTMLSpanElement;
-  /** cwd 那一行；没有 cwd 时不在 DOM 里（与原来「有才建」同形）。 */
+  /** cwd 那一行；没有 cwd 时不在 DOM 里。 */
   cwd: HTMLDivElement | null;
   /** 徽标行；一个徽标都没有时不在 DOM 里（同上）。 */
   badges: HTMLDivElement | null;
@@ -218,9 +207,9 @@ export class GridMonitorView {
   private peekEl!: HTMLElement;
   private isOpen = false;
   private timer: ReturnType<typeof setInterval> | null = null;
-  /** F91b：当前选中的会话（高亮 + peek）；null = 无选中（peek 收起）。 */
+  /** 当前选中的会话（高亮 ＋ peek）；null = 无选中（peek 收起）。 */
   private selectedId: string | null = null;
-  /** F91b：上次 peek 渲染的内容签名——1Hz 重渲染下签名不变则跳过重建（保住选区/滚动）。 */
+  /** 上次 peek 渲染的内容签名 —— 签名不变则跳过重建（保住选区 / 滚动）。 */
   private peekSig: string | null = null;
   /** sid → 格子。格子跨拍留住，每拍只改变了的那几处。 */
   private readonly cells = new Map<string, CellRefs>();
@@ -264,7 +253,7 @@ export class GridMonitorView {
     this.bodyEl.className = "grid-monitor-body";
     view.appendChild(this.bodyEl);
 
-    // F91b：底部 peek 面板（选中一格时出内容详情；无选中时 .is-empty → 收起）。
+    // 底部 peek 面板（选中一格时出详情；无选中时 .is-empty → 收起）。
     this.peekEl = document.createElement("div");
     this.peekEl.className = "grid-monitor-peek is-empty";
     view.appendChild(this.peekEl);
@@ -317,15 +306,13 @@ export class GridMonitorView {
           : copyText("gridMonitor.render.summary", { machines: summary.machines, liveSessions: summary.liveSessions, runningAgents: summary.runningAgents });
     }
 
-    // F91b：选中的会话若已消失（归档移除/远端断线）→ 自动清选中、收 peek。
+    // 选中的会话若已消失（归档移除 / 远端断线）→ 清选中、收 peek。
     const selected = this.selectedId
       ? (sessions.find((s) => s.sessionId === this.selectedId) ?? null)
       : null;
     if (this.selectedId && !selected) this.selectedId = null;
 
-    // F91b-fix(batch18 审计修)：焦点在某个 cell 上时，本拍之后要让它还在同一会话的 cell 上。
-    // 格子不再每拍销毁，焦点天然留着；但被 `insertBefore` 挪了位置的那一格会丢焦点
-    // （浏览器的 focus fixup），所以「丢了就按 sid 找回来」这一段保留，只在真丢了时做。
+    // 焦点在某一格上时，本拍之后要让它还在同一会话那一格上：被 `insertBefore` 挪了位置的那一格会丢焦点（浏览器的 focus fixup），丢了就按 sid 找回来。
     const active = document.activeElement;
     const focusedSid =
       active instanceof HTMLElement && this.bodyEl.contains(active) ? active.dataset.sid : undefined;
@@ -380,9 +367,7 @@ export class GridMonitorView {
       }
     }
 
-    // F91b-fix：恢复键盘焦点到本拍之前聚焦的同一会话 cell（若还在、且真丢了）。
-    // round2：preventScroll——维护性重聚焦不得把 cell 滚回视口（否则用户滚动浏览别的会话时每秒被弹回）；
-    // 用户主动 Tab 时浏览器自身仍会滚进视口，不受影响。
+    // 恢复键盘焦点到本拍之前那一格（还在、且真丢了时）。preventScroll：维护性重聚焦不把格子滚回视口（否则滚动浏览时每秒被弹回）。
     if (focusedSid) {
       const refs = this.cells.get(focusedSid);
       if (refs && document.activeElement !== refs.cell) refs.cell.focus({ preventScroll: true });
@@ -410,15 +395,16 @@ export class GridMonitorView {
     return g;
   }
 
-  /** F91b：点 cell = 选中/取消选中（**不再** switchTo+close），高亮 + 出 peek；连续 triage。 */
+  /** 点一格 = 选中 / 取消选中，高亮 ＋ 出 peek（板不关）。 */
   private select(sessionId: string): void {
     this.selectedId = this.selectedId === sessionId ? null : sessionId;
     this.render();
   }
 
-  /** F91b：底部 peek 面板——选中会话的内容详情 + 「跳转到该会话」显式导航。null → 收起。
-   *  **只在内容真变化时重建**（memo by 签名）：1Hz 重渲染下若选中会话内容未变则原样保留 DOM，
-   *  否则每秒 replaceChildren 会清掉用户在 peek 里的文本选区/滚动位置（正是要读/复制文件路径时）。 */
+  /**
+   * 底部 peek 面板：选中会话的详情 ＋「跳转到该会话」。null → 收起。
+   * 只在签名变了时重建：每秒 replaceChildren 会清掉 peek 里的选区 / 滚动位置。
+   */
   private renderPeek(selected: GridSessionSnapshot | null): void {
     const peek = selected ? (this.source.peekSession?.(selected.sessionId) ?? null) : null;
     const sig = peekSignature(selected, peek);
@@ -466,8 +452,7 @@ export class GridMonitorView {
     this.peekEl.appendChild(head);
 
     // 事实行：cwd 全路径 / 活动态 / model。
-    // F91b-fix(round2)：**不再显 ctx%/未读**——它俩就在选中 cell 的徽标上实时显示（2cm 外），peek 里重复
-    // 只会因签名故意排除这俩而滞后、与同屏 cell 徽标自相矛盾。peek 专注 cell 徽标没有的：全 cwd/model/agent/文件。
+    // 不显 ctx% / 未读：选中那一格的徽标上就有，peek 里那份会因签名排除它俩而滞后、与徽标对不上。
     const facts = document.createElement("div");
     facts.className = "grid-monitor-peek-facts";
     const addFact = (label: string, value: string): void => {
@@ -491,7 +476,7 @@ export class GridMonitorView {
         : selected.waitingFor
           ? copyText("gridMonitor.renderPeek.statusWaiting", { activityStatus: doing, waitingFor: selected.waitingFor })
           : doing;
-    // 活着 ⇒ 活动状态；死了 ⇒ 状态名（已结束 / 可重连）。原先是「已归档 · <活动>」，死会话的活动是陈旧的。
+    // 活着 ⇒ 活动状态；死了 ⇒ 状态名（已结束 / 可重连）—— 死会话的活动是陈旧的。
     addFact(copyText("gridMonitor.fact.status"), stateView(selected.state).name ?? act);
     if (peek?.model) addFact(copyText("gridMonitor.fact.model"), peek.model);
     this.peekEl.appendChild(facts);
@@ -555,7 +540,7 @@ export class GridMonitorView {
       const cell = document.createElement("button");
       cell.type = "button";
       cell.className = "grid-monitor-cell";
-      cell.dataset.sid = sessionId; // F91b-fix：焦点跨拍恢复用（render 按此比对）
+      cell.dataset.sid = sessionId; // 焦点跨拍恢复用（render 按此比对）
 
       // 头行：红绿灯点 + 标题
       const head = document.createElement("div");
@@ -567,7 +552,7 @@ export class GridMonitorView {
       head.append(dot, name);
       cell.appendChild(head);
 
-      // F91b：点击 = 选中/取消选中（高亮 + peek，板保持开，连续 triage）；导航移到 peek 的「跳转」按钮。
+      // 点击 = 选中 / 取消选中（高亮 ＋ peek，板不关）；跳转在 peek 的按钮上。
       cell.addEventListener("click", () => this.select(sessionId));
       refs = { cell, dot, name, cwd: null, badges: null, badgesDrawn: "\u0000none" };
       this.cells.set(sessionId, refs);
@@ -582,9 +567,9 @@ export class GridMonitorView {
     const view = stateView(s.state); // 类与灯只从两轴派生（与 tab 栏同一份）
     cell.classList.toggle("ended", view.ended);
     cell.classList.toggle("cell-bg", s.background);
-    cell.classList.toggle("is-selected", s.sessionId === this.selectedId); // F91b 选中高亮
+    cell.classList.toggle("is-selected", s.sessionId === this.selectedId); // 选中高亮
 
-    // 红绿灯点。audit-fixes F03.2：可重连 · 说不清的暗色灯覆写红绿黄（.live-dot.reconnectable / .unseen，同 tab-bar 语义）。
+    // 红绿灯点：可重连 · 说不清的暗色灯盖过红绿黄（.live-dot.reconnectable / .unseen，与 tab 栏同义）。
     const light = activityFace(s.activity).light;
     const dotClass = `live-dot${light ? ` ${light}` : ""}${view.reconnectable ? " reconnectable" : ""}${view.unseen ? " unseen" : ""}`;
     if (refs.dot.className !== dotClass) refs.dot.className = dotClass;
@@ -607,7 +592,7 @@ export class GridMonitorView {
     }
 
     // 徽标行：整行作为一个单位比 —— 输入变了才重画，而且先在一个不挂 DOM 的新行里画好，
-    // 再一次换上去（一次 `replaceWith` / `appendChild`）。一个徽标都没有 ⇒ 这一行不在 DOM 里（与原来同形）。
+    // 再一次换上去（一次 `replaceWith` / `appendChild`）。一个徽标都没有 ⇒ 这一行不在 DOM 里。
     const drawn = badgesInputs(s);
     if (drawn === refs.badgesDrawn) return;
     refs.badgesDrawn = drawn;
