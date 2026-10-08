@@ -14,6 +14,7 @@
 //! 一条进度：两腿各占一半（`(下了 ＋ 传了) / (2 × 总共)`）；「取消」同时撤两腿。
 //! ⚠ 「在两个窗口之间拖」没做：两个窗口是两个进程，egui 里没有跨进程拖放 —— 入口是右键「复制到另一台…」，机器名照设置里那个名字填。
 
+use crate::Held;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -131,36 +132,36 @@ struct Desk {
 
 impl CrossBoard {
     pub fn attach(&self, ctx: Option<egui::Context>) {
-        *self.ctx.lock().unwrap() = ctx.clone();
+        *self.ctx.held() = ctx.clone();
         self.pull.attach(ctx.clone());
         self.push.attach(ctx);
     }
 
     fn poke(&self) {
-        if let Some(c) = self.ctx.lock().unwrap().as_ref() {
+        if let Some(c) = self.ctx.held().as_ref() {
             c.request_repaint();
         }
     }
 
     pub fn running(&self) -> Option<String> {
-        self.inner.lock().unwrap().running.clone()
+        self.inner.held().running.clone()
     }
 
     /// 摆出「盖不盖」那一问；收端落地 ＝ 人答了（`true` ＝ 盖）。
     pub fn ask(&self, said: String) -> tokio::sync::oneshot::Receiver<bool> {
         let (tx, rx) = tokio::sync::oneshot::channel();
-        self.inner.lock().unwrap().asking = Some((said, tx));
+        self.inner.held().asking = Some((said, tx));
         self.poke();
         rx
     }
 
     pub fn is_asking(&self) -> bool {
-        self.inner.lock().unwrap().asking.is_some()
+        self.inner.held().asking.is_some()
     }
 
     /// 人答了那一问。没在问 ⇒ `false`。
     pub fn settle(&self, overwrite: bool) -> bool {
-        let Some((_, tx)) = self.inner.lock().unwrap().asking.take() else {
+        let Some((_, tx)) = self.inner.held().asking.take() else {
             return false;
         };
         tx.send(overwrite).ok();
@@ -184,7 +185,7 @@ impl CrossBoard {
     }
 
     fn begin(&self, name: &str) {
-        self.inner.lock().unwrap().running = Some(name.to_string());
+        self.inner.held().running = Some(name.to_string());
         self.pull.cancels().reset();
         self.push.cancels().reset();
         self.pull.begin(name);
@@ -194,7 +195,7 @@ impl CrossBoard {
 
     pub fn finish(&self, o: Outcome) {
         {
-            let mut d = self.inner.lock().unwrap();
+            let mut d = self.inner.held();
             d.running = None;
             d.asking = None;
             d.last = Some(o);
@@ -208,18 +209,12 @@ impl CrossBoard {
     }
 
     pub fn last(&self) -> Option<Outcome> {
-        self.inner.lock().unwrap().last.clone()
+        self.inner.held().last.clone()
     }
 
     /// 画盖不盖那一问（kit 的对话框：那一句 ＋［不复制］（焦点）［覆盖］（危险））。在复制那一行（进度 ＋ 停）与结局是「进度」表里的一行（`super::progress`）。
     pub fn ui(&self, ui: &mut egui::Ui) {
-        let asking = self
-            .inner
-            .lock()
-            .unwrap()
-            .asking
-            .as_ref()
-            .map(|(s, _)| s.clone());
+        let asking = self.inner.held().asking.as_ref().map(|(s, _)| s.clone());
         let Some(said) = asking else {
             return;
         };
@@ -287,30 +282,23 @@ static LAST_DIR: std::sync::LazyLock<Mutex<std::collections::HashMap<String, Str
 
 /// 记下这一台上选到的落点。
 pub fn remember_dir(machine: &str, dir: &str) {
-    LAST_DIR
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .insert(machine.to_string(), dir.to_string());
+    LAST_DIR.held().insert(machine.to_string(), dir.to_string());
 }
 
 /// 这一台上次选到的落点（没有 ⇒ `None`，那就去问它的主目录）。
 pub fn last_dir(machine: &str) -> Option<String> {
-    LAST_DIR
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .get(machine)
-        .cloned()
+    LAST_DIR.held().get(machine).cloned()
 }
 
 impl DirPick {
     /// 此刻摆的那一份（判据与界面看同一个值）。
     pub fn shown(&self) -> Pick {
-        self.inner.lock().unwrap_or_else(|e| e.into_inner()).clone()
+        self.inner.held().clone()
     }
 
     /// 单击选中一个子文件夹（再点一次 ＝ 不选）。
     pub fn pick(&self, name: &str) {
-        let mut g = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let mut g = self.inner.held();
         g.picked = if g.picked.as_deref() == Some(name) {
             None
         } else {
@@ -328,7 +316,7 @@ impl DirPick {
         ctx: Option<egui::Context>,
     ) {
         let gen = {
-            let mut g = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+            let mut g = self.inner.held();
             g.gen += 1;
             g.machine = machine.to_string();
             g.path = path.to_string();
@@ -417,7 +405,7 @@ impl DirPick {
             });
             me.land(now.gen, Some(now.path.clone()), got, &ctx);
             if made.is_ok() {
-                me.inner.lock().unwrap_or_else(|e| e.into_inner()).picked = Some(name);
+                me.inner.held().picked = Some(name);
             }
         });
     }
@@ -430,7 +418,7 @@ impl DirPick {
         ctx: &Option<egui::Context>,
     ) {
         {
-            let mut g = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+            let mut g = self.inner.held();
             if g.gen != gen {
                 return;
             }

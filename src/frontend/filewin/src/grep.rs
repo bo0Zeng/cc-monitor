@@ -15,6 +15,7 @@
 //!
 //! 只发命令、读应答、画字；没有写动词、没有定时器（撤单是用户按的，不是一个节拍）。
 
+use crate::Held;
 use copy_core::copy_text;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -309,12 +310,12 @@ pub struct GrepBoard {
 impl GrepBoard {
     pub fn attach(&self, ctx: Option<egui::Context>) {
         if ctx.is_some() {
-            *self.ctx.lock().unwrap() = ctx;
+            *self.ctx.held() = ctx;
         }
     }
 
     fn poke(&self) {
-        if let Some(c) = self.ctx.lock().unwrap().as_ref() {
+        if let Some(c) = self.ctx.held().as_ref() {
             c.request_repaint();
         }
     }
@@ -322,12 +323,12 @@ impl GrepBoard {
     /// 开一趟：上一趟还在飞就先撤掉它；回这一趟的号与撤单手柄。
     pub fn start(&self, needle: &str) -> (u64, comms_inward::chan::wire::CancelToken) {
         let token = comms_inward::chan::wire::CancelToken::new();
-        if let Some(old) = self.cancel.lock().unwrap().replace(token.clone()) {
+        if let Some(old) = self.cancel.held().replace(token.clone()) {
             old.cancel();
         }
         let mine = self.epoch.fetch_add(1, Ordering::SeqCst) + 1;
         self.inflight.fetch_add(1, Ordering::SeqCst);
-        let mut s = self.inner.lock().unwrap();
+        let mut s = self.inner.held();
         s.needle = needle.to_string();
         s.outcome = None;
         s.notice = None;
@@ -336,7 +337,7 @@ impl GrepBoard {
 
     /// 「停」：拨这一趟的撤单手柄（在飞那一问当场回收，撤单转给那台后端）。没有在飞的 ⇒ 什么都不做。
     pub fn stop(&self) -> bool {
-        match self.cancel.lock().unwrap().take() {
+        match self.cancel.held().take() {
             Some(t) => {
                 t.cancel();
                 true
@@ -354,12 +355,12 @@ impl GrepBoard {
     }
 
     pub fn shown(&self) -> GrepShown {
-        self.inner.lock().unwrap().clone()
+        self.inner.held().clone()
     }
 
     /// 摆一句话（不经网络的那几档失败）。
     pub fn say(&self, notice: &str) {
-        self.inner.lock().unwrap().notice = Some(notice.to_string());
+        self.inner.held().notice = Some(notice.to_string());
         self.rounds.fetch_add(1, Ordering::SeqCst);
         self.poke();
     }
@@ -371,13 +372,13 @@ impl GrepBoard {
             return false;
         }
         {
-            let mut s = self.inner.lock().unwrap();
+            let mut s = self.inner.held();
             match r {
                 Ok(o) => s.outcome = Some(o),
                 Err(e) => s.notice = Some(e),
             }
         }
-        *self.cancel.lock().unwrap() = None;
+        *self.cancel.held() = None;
         self.rounds.fetch_add(1, Ordering::SeqCst);
         self.poke();
         true

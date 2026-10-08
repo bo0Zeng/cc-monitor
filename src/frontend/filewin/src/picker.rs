@@ -13,6 +13,7 @@
 //! - 真图形会话上真弹出来、真点（本机无图形会话）；真 Windows（虚拟机那一路）。
 //! - 选择框起不来（没有图形会话 / 门户不在）与「人点了取消」在 `rfd` 那一层分不开 —— 两者都回「没选」，窗口上照实说「没有选到」。
 
+use crate::Held;
 use std::future::Future;
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -112,18 +113,18 @@ pub struct PickBoard {
 
 impl PickBoard {
     pub fn attach(&self, ctx: Option<egui::Context>) {
-        *self.ctx.lock().unwrap() = ctx;
+        *self.ctx.held() = ctx;
     }
 
     pub fn deliver(&self, purpose: Purpose, picked: Option<Vec<PathBuf>>) {
-        *self.slot.lock().unwrap() = Some((purpose, picked));
-        if let Some(c) = self.ctx.lock().unwrap().as_ref() {
+        *self.slot.held() = Some((purpose, picked));
+        if let Some(c) = self.ctx.held().as_ref() {
             c.request_repaint();
         }
     }
 
     pub fn take(&self) -> Option<(Purpose, Option<Vec<PathBuf>>)> {
-        self.slot.lock().unwrap().take()
+        self.slot.held().take()
     }
 }
 

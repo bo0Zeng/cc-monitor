@@ -2,6 +2,7 @@
 //!
 //! 只读、单选；问不到就把原话摆在框里（不猜）。框是窗口状态，换目录 / 关掉就没。
 
+use crate::Held;
 use copy_core::copy_text;
 use std::sync::{Arc, Mutex};
 
@@ -91,7 +92,7 @@ pub struct Props {
 impl Props {
     /// 框里一行一行列什么（标签, 值）。判据与界面看同一个值。
     pub fn lines(&self) -> Vec<(String, String)> {
-        let st = self.state.lock().unwrap().clone();
+        let st = self.state.held().clone();
         let mut out = vec![(
             copy_text("rsFilewinProps.label.kind", &[]),
             super::kind::type_text(&self.row),
@@ -143,7 +144,7 @@ impl Props {
 impl FileWindow {
     /// 摆出第 `i` 行的「属性」框并去问那台后端。没运行时 / 没通道 ⇒ 框里说清，不发。
     pub fn begin_props(&mut self, i: usize, ctx: Option<egui::Context>) -> bool {
-        let Some(row) = self.listing.rows.lock().unwrap().get(i).cloned() else {
+        let Some(row) = self.listing.rows.held().get(i).cloned() else {
             return false;
         };
         let path = self.row_path(&row).wire();
@@ -153,7 +154,7 @@ impl FileWindow {
             state: state.clone(),
         });
         let (Some(h), Some(line)) = (self.rt.clone(), self.line.clone()) else {
-            *state.lock().unwrap() = State::Failed(NO_LINE.to_string());
+            *state.held() = State::Failed(NO_LINE.to_string());
             return true;
         };
         let origin = self.source.origin();
@@ -167,7 +168,7 @@ impl FileWindow {
             )
             .await
             .and_then(|d| stat_from_reply(&d));
-            *state.lock().unwrap() = match got {
+            *state.held() = match got {
                 Ok(s) => State::Ready(s),
                 Err(e) => State::Failed(e),
             };

@@ -28,6 +28,7 @@
 //!   （小文件一次读，不是每帧；不上定时器、不 watch）。
 //! - 真 Windows 上 `LockFileEx` 那一支没跑过（本机只量了 Linux 的 `flock`）。
 
+use crate::Held;
 use copy_core::copy_text;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -199,12 +200,12 @@ impl Shelf {
 
     /// 这台机器上的书签（最近一次读 / 写之后的样子）。
     pub fn list(&self) -> Vec<String> {
-        self.0.lock().unwrap().list.clone()
+        self.0.held().list.clone()
     }
 
     /// 要画在书签栏上的那句话（`None` ＝ 没话说）。
     pub fn notice(&self) -> Option<String> {
-        let s = self.0.lock().unwrap();
+        let s = self.0.held();
         if s.file.is_none() {
             return Some(NO_DATA_DIR.to_string());
         }
@@ -214,17 +215,12 @@ impl Shelf {
     /// `dir` 在不在书签里（按归一之后的形比）。
     pub fn contains(&self, dir: &str) -> bool {
         let d = normalize_dir(dir);
-        self.0
-            .lock()
-            .unwrap()
-            .list
-            .iter()
-            .any(|x| normalize_dir(x) == d)
+        self.0.held().list.iter().any(|x| normalize_dir(x) == d)
     }
 
     /// 从盘上现读一次（换目录时调；别的窗口刚加的书签从这里进来）。
     pub fn refresh(&self) {
-        let mut s = self.0.lock().unwrap();
+        let mut s = self.0.held();
         let Some(file) = s.file.clone() else {
             return;
         };
@@ -242,7 +238,7 @@ impl Shelf {
 
     /// 一次写：走 [`mutate`]（上锁、现读、改、原子换），把这台机器那一格换成盘上最新的样子。
     fn write(&self, f: impl FnOnce(&mut Vec<String>) -> bool) -> bool {
-        let mut s = self.0.lock().unwrap();
+        let mut s = self.0.held();
         let Some(file) = s.file.clone() else {
             return false;
         };

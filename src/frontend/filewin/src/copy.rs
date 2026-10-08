@@ -38,6 +38,7 @@
 //! - **目录复制**（后端 `recursive: true`）与**一摞复制到另一栏**（[`run_copy_batch`]）做了；
 //!   「复制为」那个框仍只改名字、仍单选（它要一个名字），名字里不许带 `/`。
 
+use crate::Held;
 use copy_core::copy_text;
 use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -569,7 +570,7 @@ impl CopyBoard {
     pub fn ask_many(&self, jobs: Vec<CopyJob>) -> tokio::sync::oneshot::Receiver<bool> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         {
-            let mut b = self.inner.lock().unwrap();
+            let mut b = self.inner.held();
             b.asking = jobs;
             b.answer = Some(tx);
         }
@@ -578,36 +579,36 @@ impl CopyBoard {
     }
 
     pub fn is_asking(&self) -> bool {
-        !self.inner.lock().unwrap().asking.is_empty()
+        !self.inner.held().asking.is_empty()
     }
 
     /// 把窗口交给它，好让它在有事发生时敲一下。
     pub fn attach(&self, ctx: Option<egui::Context>) {
-        *self.ctx.lock().unwrap() = ctx;
+        *self.ctx.held() = ctx;
     }
 
     /// 敲一下窗口：「有新东西了，画下一帧」。没有窗口就什么都不做。
     pub fn poke(&self) {
-        if let Some(c) = self.ctx.lock().unwrap().as_ref() {
+        if let Some(c) = self.ctx.held().as_ref() {
             c.request_repaint();
         }
     }
 
     /// 这一趟真起了（问完了、要发了）。
     pub fn begin(&self, name: &str) {
-        self.inner.lock().unwrap().running = Some(name.to_string());
+        self.inner.held().running = Some(name.to_string());
         // ⚠ 锁放掉之后才敲 —— `request_repaint` 会走进 egui 自己的锁。
         self.poke();
     }
 
     /// 在跑的那一件（`None` = 没在跑）。
     pub fn running(&self) -> Option<String> {
-        self.inner.lock().unwrap().running.clone()
+        self.inner.held().running.clone()
     }
 
     pub fn finish(&self, outcome: CopyOutcome) {
         {
-            let mut b = self.inner.lock().unwrap();
+            let mut b = self.inner.held();
             b.running = None;
             b.asking.clear();
             b.last = Some(outcome);
@@ -621,14 +622,14 @@ impl CopyBoard {
     }
 
     pub fn last(&self) -> Option<CopyOutcome> {
-        self.inner.lock().unwrap().last.clone()
+        self.inner.held().last.clone()
     }
 
     /// 人点了「覆盖」/「别覆盖」—— 把答复送出去，问题收掉。
     ///
     /// 回值 = 真的送出去了（重复点第二下不会送第二次；`oneshot` 也只收一次）。
     pub fn settle(&self, overwrite: bool) -> bool {
-        let mut b = self.inner.lock().unwrap();
+        let mut b = self.inner.held();
         let Some(tx) = b.answer.take() else {
             return false;
         };
@@ -639,7 +640,7 @@ impl CopyBoard {
 
     /// 画覆盖确认框（模态）。「正在复制」与结局是「进度」表里的一行（`super::progress`，结局那一句从 [`outcome_notice`] 出来）。
     pub fn ui(&self, ui: &mut egui::Ui) {
-        let asking = self.inner.lock().unwrap().asking.clone();
+        let asking = self.inner.held().asking.clone();
         if asking.is_empty() {
             return;
         }

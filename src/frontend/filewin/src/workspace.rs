@@ -117,6 +117,8 @@ pub struct Workspace {
     close_after_save: bool,
     /// 那一问答了「仍然关闭」/ 那一问摆着时又点了一次 ×：下一次关窗请求放行。
     force_close: bool,
+    /// 取栏 / 标签时下标越界、退回最近那一个的次数（见 [`Self::pane_on`]）。
+    slips: std::sync::atomic::AtomicU64,
 }
 
 /// 缩放的上下限与一步多少（Ctrl + = / -）。
@@ -276,6 +278,7 @@ impl Workspace {
             closing_ask: false,
             close_after_save: false,
             force_close: false,
+            slips: Default::default(),
         };
         w.sync_focus();
         w
@@ -302,15 +305,47 @@ impl Workspace {
     }
 
     /// 第 `side` 栏正显示的那个目录视图。
+    ///
+    /// 🔴 **取不到不崩**：文件窗口是单独一个进程，界面帧里一 panic 整扇窗就没了（4.1.3：焦点在右栏时点「两栏」
+    /// 收掉右栏，同一帧往后还拿着帧初记下的栏号 1 去取 ⇒ `sides[1]` 越界、进程 0xc0000409 退出）。
+    /// 改动口都守着不变式（一或两栏 · 焦点在栏内 · 每栏非空且 `active < tabs.len()`，
+    /// `workspace_tests::random_tab_and_split_sequences_keep_the_shape` 钉）；调用方拿着过时的栏号时
+    /// 这里退回最后一栏 / 最后一个标签，记一笔 [`Self::slips`] ＋ 一行警告日志，不崩。
     pub fn pane_on(&self, side: usize) -> &FileWindow {
-        let s = &self.sides[side];
-        &s.tabs[s.active].pane
+        let (k, i) = self.at(side);
+        &self.sides[k].tabs[i].pane
     }
 
     /// 同上，可改。
     pub fn pane_on_mut(&mut self, side: usize) -> &mut FileWindow {
-        let s = &mut self.sides[side];
-        &mut s.tabs[s.active].pane
+        let (k, i) = self.at(side);
+        &mut self.sides[k].tabs[i].pane
+    }
+
+    /// `(栏号, 标签号)`：给的栏号 / 那一栏的 `active` 越界就收进表里（见 [`Self::pane_on`]）。
+    /// `sides` 永远非空、每栏 `tabs` 永远非空（只有 `new` / `add_side` 建栏、建时各带一个标签；
+    /// `drop_tab` 不拿最后一个、`set_split` 只收第二栏）⇒ 两处 `len() - 1` 不下溢。
+    fn at(&self, side: usize) -> (usize, usize) {
+        let k = side.min(self.sides.len() - 1);
+        let s = &self.sides[k];
+        let i = s.active.min(s.tabs.len() - 1);
+        if k != side || i != s.active {
+            self.slips
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            tracing::warn!(
+                side,
+                sides = self.sides.len(),
+                active = s.active,
+                tabs = s.tabs.len(),
+                "filewin: stale side/tab index, fell back to the nearest one"
+            );
+        }
+        (k, i)
+    }
+
+    /// 取栏 / 标签时下标越界、退回最近那一个的次数（判据核它恒为 0；见 [`Self::pane_on`]）。
+    pub fn slips(&self) -> u64 {
+        self.slips.load(std::sync::atomic::Ordering::Relaxed)
     }
 
     /// 第 `side` 栏第 `i` 个标签页（判据用：后台标签也看得到）。
@@ -1027,8 +1062,8 @@ impl Workspace {
         let mut preview_act = None;
         if self.preview.is_some() {
             let ctx = ui.ctx().clone();
-            let side = &self.sides[self.focus];
-            let pane = &side.tabs[side.active].pane;
+            let (k, i) = self.at(self.focus);
+            let pane = &self.sides[k].tabs[i].pane;
             if let Some(p) = self.preview.as_mut() {
                 p.follow(pane, Some(ctx.clone()));
                 // 窗口窄了预览跟着让（不把两栏挤没）。
@@ -1155,8 +1190,8 @@ impl Workspace {
             (screen.height() - 48.0).clamp(160.0, 560.0),
         );
         let mut act = None;
-        let side = &self.sides[f];
-        let pane = &side.tabs[side.active].pane;
+        let (k, i) = self.at(f);
+        let pane = &self.sides[k].tabs[i].pane;
         let Some(p) = self.peek.as_mut() else {
             return;
         };
@@ -1385,8 +1420,8 @@ impl Workspace {
         if new_tab {
             self.open_tab(k);
         }
-        let s = &mut self.sides[k];
-        let t = &mut s.tabs[s.active];
+        let (k, i) = self.at(k);
+        let t = &mut self.sides[k].tabs[i];
         ui.push_id(("filewin-tab", t.id), |ui| t.pane.frame_body(ui));
     }
 }
