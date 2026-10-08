@@ -204,6 +204,20 @@ describe("扩展页：表 · 抽屉 · 确认卡", () => {
     expect((machineLines(s)[1].querySelector(".ext-pick") as HTMLInputElement).disabled, "连不上的那台勾不了").toBe(true);
   });
 
+  it("★ 抽屉里连不上的那台：这一行变淡、勾不了、卸不了，现状后面点明是上次同步的样子；连得上的照常", async () => {
+    const list = listWith(cell("same", [place(user, "same", true)], bring()));
+    list.machines = [machines[0], { ...machines[1], reachable: false }];
+    const s = await page([list]);
+    open(s, "skill/demo");
+    const [on, off] = machineLines(s);
+    expect([on.classList.contains("is-offline"), off.classList.contains("is-offline")]).toEqual([false, true]);
+    expect(off.querySelector(".ext-machine-state")?.textContent).toBe(copyText("extPage.install.offline", { state: copyText("extPage.state.same") }));
+    expect(on.querySelector(".ext-machine-state")?.textContent).not.toContain(copyText("extPage.install.offline", { state: "" }).trim());
+    expect((off.querySelector(".ext-pick") as HTMLInputElement).disabled).toBe(true);
+    expect([...off.querySelectorAll("button")].map((b) => [b.textContent, b.disabled]), "离线那台的「卸载」不可用").toEqual([[copyText("extPage.button.uninstall"), true]]);
+    expect([...on.querySelectorAll("button")].map((b) => b.disabled), "连得上的那台照常").toEqual([false]);
+  });
+
   it("skill 某一处有目录 ⇒ 本机那一处多一颗「在文件夹中显示」（系统文件管理器选中那个目录）、远端那一处多一颗「在文件窗口里打开」", async () => {
     const there = cell("same", [place(user, "same", true, null, "/g/.claude/skills/demo")]);
     const list = listWith(there);

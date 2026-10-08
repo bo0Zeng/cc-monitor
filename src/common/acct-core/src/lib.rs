@@ -247,7 +247,7 @@ pub fn is_deceptive_char(c: char) -> bool {
 
 /// 两种 shell 共用的元字符黑名单（POSIX `'…'` 与 PowerShell `'…'` 里能提前闭合引号或另起命令的那几个）。
 ///
-/// **`\` 不在里面**：Windows 的账号目录长成 `C:\Users\z\.cc-monitor\accounts\z`，把 `\` 一律禁掉等于禁掉整个平台；
+/// **`\` 不在里面**：Windows 的账号目录长成 `C:\Users\u\.cc-monitor\accounts\work`，把 `\` 一律禁掉等于禁掉整个平台；
 /// POSIX 形那一条（[`config_dir_posix_ok`]）自己额外拒它。
 pub const CONFIG_DIR_SHELL_META: &str = "'\"`$;|&<>*?()!";
 
