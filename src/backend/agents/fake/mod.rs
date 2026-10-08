@@ -404,7 +404,7 @@ fn accounts_face(account_env: &'static str) -> crate::agents::AccountsFace {
 pub(crate) const TRUST_CELLS: crate::agents::TrustCells = crate::agents::TrustCells {
     table: "trusted",
     flag: None,
-    dir_key: |cwd| cwd.to_string(),
+    dir_keys: |cwd| vec![cwd.to_string()],
 };
 
 /// [`trust_of_config`] 说成账号库面那一形（`{trusted, known, error}` 一行；读不了 ⇒ `(码, 原话)`）。

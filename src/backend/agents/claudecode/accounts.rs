@@ -80,10 +80,30 @@ pub(crate) const FACE: AccountsFace = AccountsFace {
 pub(crate) const TRUST_CELLS: TrustCells = TrustCells {
     table: "projects",
     flag: Some("hasTrustDialogAccepted"),
-    dir_key: trust_dir_key,
+    dir_keys: trust_dir_keys,
 };
 
-/// Claude 记项目用的那个键：进程的工作目录（POSIX 上是解开符号链接之后的那一形；Windows 上分隔符换成 `/`）。
+/// Claude 查 / 存信任用的项目键：工作目录所在 git 仓的根（往上最近一个含 `.git` 的祖先，含自己；`.git` 是目录或文件
+/// —— worktree —— 都算）；不在仓里 ⇒ 工作目录本身。预标两格都标（工作目录本身 ＋ 仓的根），不判它先查哪一格。
+/// 每一格都是 [`trust_dir_key`] 那一形。
+pub(crate) fn trust_dir_keys(cwd: &str) -> Vec<String> {
+    let here = trust_dir_key(cwd);
+    let mut keys = vec![here.clone()];
+    let start = if cfg!(windows) { cwd.to_string() } else { here };
+    if let Some(root) = std::path::Path::new(&start)
+        .ancestors()
+        .find(|p| p.join(".git").exists())
+        .and_then(|p| p.to_str())
+    {
+        let root = trust_dir_key(root);
+        if !keys.contains(&root) {
+            keys.push(root);
+        }
+    }
+    keys
+}
+
+/// 一个目录在 `.claude.json` 里的那一形：POSIX 上是解开符号链接之后的那一形；Windows 上分隔符换成 `/`。
 /// 目录此刻解不开（不在）⇒ 原样。
 pub(crate) fn trust_dir_key(cwd: &str) -> String {
     if cfg!(windows) {

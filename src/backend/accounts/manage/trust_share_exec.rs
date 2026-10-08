@@ -3,7 +3,7 @@
 //! - 同步一趟：读家目录下账号 0 那一份（**只读**，一个字节不写）与清单里每个号的那一份 → 信任过的并集 →
 //!   每个号缺的那几格标上（[`super::trust_share::mark`]：只换那几格）→ 经文件管理面 `files-put` 写，`expect` = 读到的那一份（CAS）。
 //!   被抢先改了 ⇒ 这个号这一趟不写；抢先的那一下自己会再触发一次同步。同步自己写回去触发的那一趟算出来没有要写的 ⇒ 停。
-//! - 预标：cc-monitor 自己起 / 重启会话之前，把工作目录标进要用的那个号（只许清单里的号目录），随后由同步传到全部号。
+//! - 预标：cc-monitor 自己起 / 重启会话之前，把工作目录要标的那几个键（适配层说，[`TrustCells::dir_keys`]）标进要用的那个号（只许清单里的号目录），随后由同步传到全部号。
 //! - 整趟持账号库那把锁（与 MCP 同步 · 改账号库那几条命令同一把）。写不成只出声，不挡起会话。
 
 use super::layout;
@@ -173,7 +173,7 @@ pub(crate) fn pretrust_with(
     let Some((_, dir)) = listed(list, config_dir) else {
         return Ok(Marked::NotListed);
     };
-    let dirs = BTreeSet::from([(cells.dir_key)(cwd)]);
+    let dirs: BTreeSet<String> = (cells.dir_keys)(cwd).into_iter().collect();
     let path = join(dir, file);
     for _ in 0..2 {
         let raw = read_text(&path, MAX_CONFIG_BYTES)?;
