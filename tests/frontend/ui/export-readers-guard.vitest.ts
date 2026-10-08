@@ -52,6 +52,29 @@ function zeroReaderExports(program: ts.Program, root: string, isProd: (rel: stri
     }
     return x;
   };
+  const modules = program
+    .getSourceFiles()
+    .filter((sf) => isProd(rel(sf.fileName)))
+    .map((sf) => ({ sf, mod: checker.getSymbolAtLocation(sf) }));
+  // 只解**可能**指向人群里某个导出的标识符：它的字面是某个导出的导出名 / 本地名，或者它是默认导入的那个名字。
+  //   别的文件要读一个导出，必经一处写着它导出名的地方（具名导入 · 再导出 · `ns.名` · 解构 `{ 名 }`），默认导出经导入子句的名字；
+  //   本文件里用到走它的本地名。⇒ 字面不在这张表里的标识符解出来不会落到人群里，不用问编译器。
+  //   原先全仓二十六万多个标识符逐个解（每解一个都牵动类型检查），空机 7 s、带覆盖率插桩近 20 s，压着负载撞 120 s 期限。
+  //   🔴 表若漏了一种读法，后果只会是「多报零读者」（吵闹的红），不会把真零读者放过去。
+  const names = new Set<string>();
+  for (const { mod } of modules) {
+    for (const e of mod ? checker.getExportsOfModule(mod) : []) {
+      names.add(e.name);
+      const o = orig(e);
+      names.add(o.name);
+      for (const d of o.declarations ?? []) {
+        const id = (d as ts.NamedDeclaration).name;
+        if (id && ts.isIdentifier(id)) names.add(id.text);
+      }
+    }
+  }
+  const maybeExport = (id: ts.Identifier): boolean =>
+    names.has(id.text) || ts.isImportClause(id.parent) || ts.isImportEqualsDeclaration(id.parent);
   const prodReads = new Map<ts.Symbol, number>();
   const testReads = new Map<ts.Symbol, number>();
   for (const sf of program.getSourceFiles()) {
@@ -65,21 +88,19 @@ function zeroReaderExports(program: ts.Program, root: string, isProd: (rel: stri
       if (!(o.declarations ?? []).some((d) => (d as ts.NamedDeclaration).name === at)) m.set(o, (m.get(o) ?? 0) + 1);
     };
     const visit = (n: ts.Node): void => {
-      if (ts.isIdentifier(n)) read(checker.getSymbolAtLocation(n), n);
+      if (ts.isIdentifier(n) && maybeExport(n)) read(checker.getSymbolAtLocation(n), n);
       // `const { x } = await import("./m")`：按名字从模块对象上取 —— 标识符解到的是本地绑定，读的那一格要从被解构的类型上取。
       if (ts.isBindingElement(n) && ts.isObjectBindingPattern(n.parent)) {
         const key = n.propertyName ?? n.name;
-        if (ts.isIdentifier(key)) read(checker.getTypeAtLocation(n.parent).getProperty(key.text), key);
+        if (ts.isIdentifier(key) && names.has(key.text)) read(checker.getTypeAtLocation(n.parent).getProperty(key.text), key);
       }
       ts.forEachChild(n, visit);
     };
     visit(sf);
   }
   const out: Found[] = [];
-  for (const sf of program.getSourceFiles()) {
+  for (const { sf, mod } of modules) {
     const r = rel(sf.fileName);
-    if (!isProd(r)) continue;
-    const mod = checker.getSymbolAtLocation(sf);
     if (!mod) continue;
     for (const e of checker.getExportsOfModule(mod)) {
       const o = orig(e);
@@ -101,11 +122,13 @@ describe("零读者导出：产品代码里每个导出都有产品读者", () =
     const files: Record<string, string> = {
       "/v/src/a.ts":
         "export const used = 1;\nexport const lazy = 5;\nexport const testOnly = 2;\nexport const dead = 3;\nexport const selfUsed = 4;\nexport const twice = selfUsed + 1;\nexport function __resetAForTests(): void {}\n",
-      "/v/src/b.ts": 'import { used, twice } from "./a";\nexport const b = used + twice;\nconsole.log(b);\nexport async function c(): Promise<number> {\n  const { lazy } = await import("./a");\n  return lazy + c.length;\n}\n',
-      "/v/tests/a.test.ts": 'import { testOnly, __resetAForTests } from "../src/a";\nconsole.log(testOnly, __resetAForTests);\n',
+      "/v/src/b.ts": 'import { used, twice } from "./a";\nexport const b = used + twice;\nvoid b;\nexport async function c(): Promise<number> {\n  const { lazy } = await import("./a");\n  return lazy + c.length;\n}\n',
+      "/v/tests/a.test.ts": 'import { testOnly, __resetAForTests } from "../src/a";\nvoid [testOnly, __resetAForTests];\n',
     };
-    const options: ts.CompilerOptions = { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.ESNext, moduleResolution: ts.ModuleResolutionKind.Bundler, lib: ["lib.es2020.d.ts", "lib.dom.d.ts"], types: [] };
-    // 虚拟的那三份从内存读，标准库照常从 TypeScript 自带的那几份读（动态导入要 `Promise`）。
+    const options: ts.CompilerOptions = { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.ESNext, moduleResolution: ts.ModuleResolutionKind.Bundler, lib: ["lib.es5.d.ts"], types: [] };
+    // 虚拟的那三份从内存读，标准库从 TypeScript 自带的读，只取 `lib.es5`（动态导入要 `Promise`，它在这一份里）。
+    // ⚠ 不带 `lib.dom`：那一份两万多行，建程序时光它就占大半（带覆盖率插桩 0.8 s，门禁并跑时把这一格挤过 5 s 期限）；
+    //   小程序里用 `void x` 当读者，不靠 `console`。
     const base = ts.createCompilerHost(options);
     const host: ts.CompilerHost = {
       ...base,
