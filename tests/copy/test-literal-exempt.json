@@ -58,9 +58,6 @@
     "tests/frontend/filewin/source_tests.rs": [
       { "text": "上一级", "use": "非文案" }
     ],
-    "tests/frontend/filewin/workspace_tests.rs": [
-      { "text": "没有权限", "use": "回显" }
-    ],
     "tests/frontend/shell/atomic_replace_registry_tests.rs": [
       { "text": "用户", "use": "非文案" }
     ],
@@ -141,7 +138,8 @@
       { "text": "失败", "use": "输入" },
       { "text": "复制详情", "use": "输入" },
       { "text": "重启 cc-monitor 后生效", "use": "输入" },
-      { "text": "无会话", "use": "输入" }
+      { "text": "无会话", "use": "输入" },
+      { "text": "读取失败", "use": "回显" }
     ],
     "tests/frontend/ui/kit/dialog.vitest.ts": [
       { "text": "保留", "use": "输入" },

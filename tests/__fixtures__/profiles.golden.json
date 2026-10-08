@@ -198,7 +198,7 @@
         "own": [],
         "problem": {
           "line": 15,
-          "message": "alphacct 写错了，此刻不能用 —— 行 15 · 未知选项 tmux-sise"
+          "message": "alphacct 写错 · 当前不可用 · 行 15 · 未知选项 tmux-sise"
         },
         "said": "",
         "usable": false
