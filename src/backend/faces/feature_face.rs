@@ -34,8 +34,8 @@ fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answer {
         "session-interrupts" => {
             crate::observe::interrupts_query::answer_at(home, args).map_err(|(c, m)| {
                 (
-                    if c == "invalid_args" {
-                        "invalid_args"
+                    if c == "bad_args" {
+                        "bad_args"
                     } else {
                         "failed"
                     },

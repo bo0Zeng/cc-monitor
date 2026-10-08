@@ -18,7 +18,7 @@
 /// F04b 建这条判据时**只读了 TS 那一份**（`isValidNewTmuxName`）—— 于是 F12 的
 /// `/full-audit` 逮到 `shared/ccm` 那条创建路径**也允许 `=`**：`--tmux=*` 的取值是
 /// `${1#*=}`（剥到第一个 `=`）⇒ `ccm --tmux=proj=x` 建得出 `proj=x`，通道 B 还给它写真
-/// `@ccm_sid` ⇒ Gate 2 通过、正常出现在列表里，而「结束会话」永远 `invalid_args`
+/// `@ccm_sid` ⇒ Gate 2 通过、正常出现在列表里，而「结束会话」永远 `bad_args`
 /// ⇒ **那个会话在 UI 上杀不掉**。（改之前实测：`ccm new --tmux=proj=x --print` 产的就是
 /// `new-session -d -s 'proj=x'`。）
 ///

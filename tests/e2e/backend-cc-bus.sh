@@ -119,7 +119,7 @@ POLICY=on
 printf '{"to":"alpha_cc","text":"x"}' | d --bus-send >/dev/null; rc5=$?
 POLICY=off
 chk "退出码非 0" "$([ "$rc5" -ne 0 ] && echo yes || echo no)" "yes"
-chk "★ 码是 rejected（不是 invalid_args）" "$(jq -r .code < "$SANDBOX/err.txt" 2>/dev/null)" "rejected"
+chk "★ 码是 rejected（不是 bad_args）" "$(jq -r .code < "$SANDBOX/err.txt" 2>/dev/null)" "rejected"
 rm -f "$BUS/policy.tsv"
 
 echo "[6] ★ 没装 cc-bus：说得出查过哪儿"
@@ -363,10 +363,10 @@ for _i in 1 2 3 4 5 6 7 8 9 10; do [ -s "$_SW/agent-args.txt" ] && break; sleep 
 chk "  初始任务作为参数送到了启动器" "$(tr -d '\n' < "$_SW/agent-args.txt" 2>/dev/null)" "跑一遍门禁"
 chk "  登记进了总线名册" "$(cut -f1 "$BUS/agents.tsv" 2>/dev/null | grep -cx proj_cc || true)" "1"
 _ds '{"tool":"claude","dir":"/tmp"}' >/dev/null
-chk "★ 账号不表态 ⇒ invalid_args（不替用户选默认号）" "$(jq -r .code < "$SANDBOX/serr.txt" 2>/dev/null)" "invalid_args"
+chk "★ 账号不表态 ⇒ bad_args（不替用户选默认号）" "$(jq -r .code < "$SANDBOX/serr.txt" 2>/dev/null)" "bad_args"
 _ds "{\"tool\":\"not-an-agent\",\"dir\":\"$_SW/proj\",\"base\":true}" >/dev/null
-chk "★ 不认的 tool ⇒ 由 cc-spawn 自己拒成 invalid_args（后端不写第二份白名单）" \
-  "$(jq -r .code < "$SANDBOX/serr.txt" 2>/dev/null)" "invalid_args"
+chk "★ 不认的 tool ⇒ 由 cc-spawn 自己拒成 bad_args（后端不写第二份白名单）" \
+  "$(jq -r .code < "$SANDBOX/serr.txt" 2>/dev/null)" "bad_args"
 chk "  …而且没起出第二个会话" "$(tmux has-session -t '=proj_cc-2' 2>/dev/null && echo 起了 || echo 没起)" "没起"
 fi
 echo "[17] ★ ccm 在 pane 里重起自己：名叫 ccm 与名叫 cc-monitor-backend 同形（CC1；分流不看 argv0）"
@@ -483,7 +483,7 @@ chk "★ 会话没了的那一个没被投（不再造幽灵收件箱）" "$(gre
 chk "★ 不发给自己（from）" "$(grep -c '来自后端的广播' "$BUS/inbox/bcme_cc.jsonl" 2>/dev/null || true)" "0"
 printf '{"text":"   "}' | env CLAUDE_CONFIG_DIR="$CLA" CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$SCRIPTS" \
   "$TIMEOUT" 30 "$D" -- --bus-broadcast >/dev/null 2>"$SANDBOX/berr.txt"
-chk "★ 空正文 ⇒ invalid_args（空广播不是缺省）" "$(jq -r .code < "$SANDBOX/berr.txt" 2>/dev/null)" "invalid_args"
+chk "★ 空正文 ⇒ bad_args（空广播不是缺省）" "$(jq -r .code < "$SANDBOX/berr.txt" 2>/dev/null)" "bad_args"
 tmux kill-session -t '=bcast_cc' 2>/dev/null || true
 tmux kill-session -t '=bcme_cc' 2>/dev/null || true
 

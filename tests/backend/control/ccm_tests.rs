@@ -1024,7 +1024,7 @@ fn the_probe_frame_answers_the_same_card_as_the_cli_flag() {
 }
 
 /// 要求：「tmux 名派生 ＋ 撞名避让只留后端，前端要名字就问后端」。
-/// 帧命令 `terminal-name-mint` 两形各一格 == 手写期望；避让问的是**交进来那张快照**（被占 ⇒ 往后排）；没装 tmux ⇒ 基名；入参不恰一格 ⇒ `invalid_args`。
+/// 帧命令 `terminal-name-mint` 两形各一格 == 手写期望；避让问的是**交进来那张快照**（被占 ⇒ 往后排）；没装 tmux ⇒ 基名；入参不恰一格 ⇒ `bad_args`。
 #[test]
 fn the_mint_frame_derives_here_and_steps_aside_on_this_machines_snapshot() {
     use crate::common::session_snapshot::{SessionRow, SessionSnapshot};
@@ -1065,7 +1065,7 @@ fn the_mint_frame_derives_here_and_steps_aside_on_this_machines_snapshot() {
         json!({"cwd": "/a", "forkOf": "b"}),
         json!({"cwd": 3}),
     ] {
-        assert_eq!(mint(bad).unwrap_err().0, "invalid_args");
+        assert_eq!(mint(bad).unwrap_err().0, "bad_args");
     }
 }
 

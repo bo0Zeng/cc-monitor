@@ -82,7 +82,7 @@ pub struct DataPathsResponse {
     pub backend_entries: Vec<DataPathInfo>,
     /// WebView2 用户数据目录推断路径（cache / localStorage / IndexedDB / cookies）
     pub webview_user_data_dir: Option<DataPathInfo>,
-    // `$PROFILE` 在哪只由后端方言答，界面经通道直接问本机后端（`src/frontend/ui/settings/profile-backups.ts`），本命令不带它。
+    // `$PROFILE` 在哪只由后端方言答，本命令不带它。
 }
 
 /// 日志目录那一行的名字。设置面板认它：那一行不自带 [打开]，改成指向「日志」那一块

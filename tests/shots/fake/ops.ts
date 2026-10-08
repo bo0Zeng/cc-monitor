@@ -317,7 +317,7 @@ export function defaultOps(): Record<string, OpHandler> {
         }
       }
       let needs: { kind: string; tool: string | null; call: string | null; what: string | null; sinceMs: number | null } | null = null;
-      if (s?.status === "waiting") {
+      if (s?.activity === "needs_you") {
         const ask = pending.find((p) => p.name === "AskUserQuestion");
         const plan = pending.find((p) => p.name === "ExitPlanMode");
         const sinceMs = s.waitingSinceMs ?? null;
@@ -333,7 +333,7 @@ export function defaultOps(): Record<string, OpHandler> {
         if (sp?.kind === "agentMessage" && sp.handback === true && sp.from && !handedBack.includes(sp.from)) handedBack.push(sp.from);
       }
       // 每步状态（同后端 `facts_query::settle_pending`）：在等的那一步 ⇒ 在等你；会话活着 ⇒ 在跑；否则状态不明（没有进程）。
-      const live = s?.status === "busy" || s?.status === "waiting";
+      const live = s?.activity === "working" || s?.activity === "needs_you";
       const steps = pending.map((p) =>
         needs?.call === p.id ? { ...p, state: "awaiting", why: null } : live ? { ...p, state: "running", why: null } : { ...p, state: "unclear", why: "noWriter" },
       );

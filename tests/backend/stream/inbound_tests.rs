@@ -441,7 +441,6 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "files-grep",       // 可撤：走那一趟在阻塞线程池上、看取消位，future 被丢即收手
         "deploy-plan",      // 真异步（拨号 / 等远端 capture · SFTP），在 await 点可取消
         "resident-verdict", // 纯判定，普通 spawn
-        "deploy-retired",   // 真异步（沿池里那条 SSH 开 SFTP），在 await 点可取消
         "remote-reach",
         "history-list",
         // 端口转发：起 = 真异步（拨号 / 等 ack），停 / 列 = 纯内存一把锁 ⇒ 都在普通 spawn 上。
@@ -461,12 +460,12 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
     assert!(matches!(d("cancel"), Disposition::Done));
     assert!(matches!(d("nope"), Disposition::Reply(..)));
     // 链路四条是硬臂、**就地**做完（不进任何 spawn 档）：`link-data` 要保序，
-    // 另三条只碰本连接的链路表。空 `args` ⇒ 当场回一条 `invalid_args` 应答（不起任务）。
+    // 另三条只碰本连接的链路表。空 `args` ⇒ 当场回一条 `bad_args` 应答（不起任务）。
     for c in ["link-open", "link-data", "link-credit", "link-close"] {
         assert!(
             matches!(
                 d(c),
-                Disposition::Reply(Frame::Reply { code: Some(ref code), .. }) if code == "invalid_args"
+                Disposition::Reply(Frame::Reply { code: Some(ref code), .. }) if code == "bad_args"
             ),
             "`{c}` 没有就地回应答 —— 它该是硬臂，不该进 spawn 档"
         );
@@ -680,8 +679,6 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "deploy-plan",
         // 远端常驻后端 hello 的新旧：纯判定，普通 spawn。
         "resident-verdict",
-        // 那台旧入口的去向：真异步（SFTP stat ＋ 读回）。
-        "deploy-retired",
         // 可达表登记（纯内存，普通 spawn）。
         "remote-reach",
         // 端口转发三条：起真异步（在 await 点可取消）· 停 / 列纯内存。

@@ -246,7 +246,7 @@ fn home_falls_back_to_userprofile_and_is_required() {
 }
 
 /// ★ 线上成品两侧对拍：一台什么都没装的机器（家目录不在、`PATH` 取不到）上远端那一栏的整份应答 == 跨语言金样
-/// `tests/__fixtures__/footprint-report.golden.json`（界面 `src/frontend/ui/settings/footprint-reads.ts::decodeFootprint` 读同一份）。
+/// `tests/__fixtures__/footprint-report.golden.json`。
 #[cfg(not(windows))]
 #[test]
 fn the_report_wire_matches_the_cross_language_golden() {

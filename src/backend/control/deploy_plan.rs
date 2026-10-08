@@ -9,16 +9,10 @@
 //!    **换成什么**；拒绝点在写第一个字节之前；
 //! 2. 落点那一份是谁：stat（没有 / 0 字节就不必再问）→ 扫它字节里的身份戳（一次 exec，不跑它）；
 //!    不肯说自己是谁时读回来看是不是从前那份三行入口 —— **身份判定**；
-//! 3. **该不该换**（[`landing_verdict`]：只升不降）；旧落点那份字节要不要删（[`legacy_verdict`]）；
+//! 3. **该不该换**（[`landing_verdict`]：只升不降）；
 //! 4. 落点那个目录里上一趟没收拾掉的临时件 / 备份件（[`stale_leftovers`]）—— 每次连上都问一次，交 monitor 删。
 //!
-//! # 帧命令 `deploy-retired`（同一家：落点上该清的东西）
-//!
-//! 旧版放在远端 `~/.local/bin/ccm` 的那一份：认出是我们放的才删、删带读到的那一份当期望值（[`retired_verdict`]）；
-//! monitor 照答经那台后端 `files-delete` 删。不并进 `deploy-plan` 的答：计划是连上那台常驻后端**之前**问的（预检），
-//! 那时 `files-delete` 无门可走（那一格在 SFTP 两个写根之外）；删它的两个时刻（部署按钮 · 那台长连接握手完成）那台后端都在。
-//!
-//! 回计划，一个字节都不写：放字节（mkdir · 原子上传 · 读回比对）与删旧落点 · 删残件是 monitor 经 `files` 链路做。
+//! 回计划，一个字节都不写：放字节（mkdir · 原子上传 · 读回比对）与删残件是 monitor 经 `files` 链路做。
 //!
 //! # 帧命令 `resident-verdict`（同一家）
 //!
@@ -44,14 +38,8 @@ use std::future::Future;
 use std::pin::Pin;
 
 use copy_core::copy_text;
-use deploy_contract::{
-    Arch, DeployAction, Key, LegacyVerdict, Marks, Os, Refusal, RemoteIdentity, Route, LINES,
-};
+use deploy_contract::{Arch, DeployAction, Key, Marks, Os, Refusal, RemoteIdentity, Route, LINES};
 use serde_json::{json, Value};
-
-/// 旧入口 `~/.local/bin/ccm` 最多读多少：读到的全文要原样装进 monitor 那一趟 `files-delete` 的 `expect`
-/// （后端一行上限 1 MiB）⇒ 取与 `files-peek` 同一个口径的数（那一面的常量不跨模块取：文件管理后端只经它的门够）。
-const RETIRED_READ_MAX: u64 = 256 * 1024;
 
 /// 认从前那份三行入口时最多读多少（它几十字节；比这大就不是那一形 ⇒ 不读，按「不说自己是谁」显式失败）。
 const ENTRY_READ_MAX: u64 = 64 * 1024;
@@ -229,7 +217,7 @@ pub fn identity_decision(
 }
 
 /// 这份文本是不是我们从前放的那一形 `ccm` 入口（三行 shim / bash 启动器两形之一）。**纯函数**。
-/// 用户：旧落点那一份（[`retired_verdict`]，远端读回的 · monitor 本机探针交来的 PATH 上另一个 `ccm` 的开头）· 今天的落点上从前那份三行入口（[`landing_verdict`]）。
+/// 用户：今天的落点上从前那份三行入口（[`landing_verdict`]）。
 /// 两形的记号是文件格式（`deploy_contract::SHIM_MARK` · `LAUNCHER_MARK`）。
 pub fn is_ours(text: &str) -> bool {
     let mut lines = text.lines();
@@ -263,16 +251,6 @@ pub fn landing_verdict(
     identity_decision(id, expected, machine, path)
 }
 
-/// 旧落点那一份的身份 → 怎么办。**纯函数**。
-pub fn legacy_verdict(id: Result<RemoteIdentity, String>) -> LegacyVerdict {
-    match id {
-        Ok(RemoteIdentity::Missing) => LegacyVerdict::Absent,
-        Ok(RemoteIdentity::Stamp(_)) => LegacyVerdict::Remove,
-        Ok(_) => LegacyVerdict::Keep,
-        Err(e) => LegacyVerdict::Unknown(e),
-    }
-}
-
 /// 残件多久没动过才算没人要：远大于 monitor 等一次 `put` 的上限（`dial_host::FILES_PUT_DEADLINE`，600 秒）
 /// ⇒ 另一个部署者正在写的那一份（修改时间随写不断刷新）不会被当成残件；也容得下两台机器之间一些钟差。
 pub const LEFTOVER_STALE_SECS: u64 = 3600;
@@ -299,7 +277,6 @@ pub struct Plan {
     /// 这一版带着的那一格自报的身份（对照物）。
     pub expected: String,
     pub action: DeployAction,
-    pub legacy: LegacyVerdict,
     /// 落点目录里没人要的临时件 / 备份件（家目录相对）；monitor 照删。列不出那个目录 ⇒ 空（下次再问）。
     pub leftovers: Vec<String>,
     /// 问 `uname` 那一趟的 ack（本机后端里拨的号 —— 第一次连一台没钉过指纹的机器就在这一跳）：
@@ -401,14 +378,6 @@ pub async fn plan(
         &format!("~/{landing}"),
     )
     .map_err(|e| ("undecidable", e))?;
-    let legacy = legacy_verdict(
-        identity_at(
-            facing,
-            deploy_contract::LEGACY_BACKEND_REL,
-            deploy_contract::LEGACY_BACKEND_WORD,
-        )
-        .await,
-    );
     let bin = landing.rsplit_once('/').map_or(".", |(d, _)| d);
     let leftovers = facing
         .list(bin)
@@ -419,7 +388,6 @@ pub async fn plan(
         key,
         expected,
         action,
-        legacy,
         leftovers,
         ack,
     })
@@ -432,12 +400,6 @@ pub fn plan_json(p: &Plan) -> Value {
         DeployAction::Deploy(why) => ("deploy", why.clone(), None),
         DeployAction::Keep { theirs, why } => ("keep", why.clone(), Some(theirs.clone())),
     };
-    let (legacy, legacy_why) = match &p.legacy {
-        LegacyVerdict::Absent => ("absent", None),
-        LegacyVerdict::Remove => ("remove", None),
-        LegacyVerdict::Keep => ("keep", None),
-        LegacyVerdict::Unknown(e) => ("unknown", Some(e.clone())),
-    };
     json!({
         "os": p.key.os.label(),
         "arch": p.key.arch.label(),
@@ -446,8 +408,6 @@ pub fn plan_json(p: &Plan) -> Value {
         "action": action,
         "why": why,
         "theirs": theirs,
-        "legacy": legacy,
-        "legacy_why": legacy_why,
         "leftovers": p.leftovers,
         "ack": p.ack,
     })
@@ -558,87 +518,6 @@ pub async fn answer(args: &Value, facing: &dyn Facing) -> Result<Value, (&'stati
     plan(facing, &carried, machine, now)
         .await
         .map(|p| plan_json(&p))
-}
-
-// ═══ 旧入口 `~/.local/bin/ccm` 的去向（帧命令 `deploy-retired`）══════════════════════════════
-//
-// 与上传残件（[`stale_leftovers`]）同一家：落点上该清的东西，判在这里；monitor 只把这里的答交给那台后端的 `files-delete`（带 `expect`）。
-
-/// 旧入口那一份的去向。
-#[derive(Debug, PartialEq, Eq)]
-pub enum Retired {
-    /// 那儿没有东西。
-    Absent,
-    /// 认出是我们放的 ⇒ 删；`expect` = 读到的全文（`files-delete` 的期望值：盘上还是它才删）。
-    Remove { expect: String },
-    /// 不动；`why` 说为什么（不是我们放的 · 读不成文本）。
-    Keep { why: String },
-}
-
-/// **纯函数**：stat 的结论 ＋ 读回来的字节（读不出 / 比 [`RETIRED_READ_MAX`] 大 ⇒ `None`）→ 去向。
-/// 只认 [`is_ours`] 那两形；别的一律不动（用户自己的脚本 · 空文件 · 不是 UTF-8 · 读不回来）。
-pub fn retired_verdict(at: TargetBinary, bytes: Option<Vec<u8>>) -> Retired {
-    use TargetBinary;
-    let not_ours = || Retired::Keep {
-        why: copy_text("beDeployRetired.kept.notOurs", &[]),
-    };
-    match at {
-        TargetBinary::Missing => Retired::Absent,
-        TargetBinary::Empty => not_ours(),
-        TargetBinary::Present | TargetBinary::Unknown => match bytes.map(String::from_utf8) {
-            Some(Ok(text)) if is_ours(&text) => Retired::Remove { expect: text },
-            Some(Ok(_)) => not_ours(),
-            _ => Retired::Keep {
-                why: copy_text("beDeployRetired.kept.unreadable", &[]),
-            },
-        },
-    }
-}
-
-/// 帧面入口：`{dial}` → `{verdict: "absent" | "remove" | "keep", expect, why}`。缺 `dial` ⇒ `bad_args`；SFTP 开不成 ⇒ `unreachable`。
-/// 另一形 `{text}`：本机 PATH 上另一个 `ccm` 的开头一截（monitor 读的），同一个 [`retired_verdict`] 认它是不是我们早先放的
-/// （monitor 只拿来说话，不删）。两形恰给一个，都给 / 都不给 ⇒ `bad_args`（不许退成问本机落点）。
-pub async fn answer_retired(
-    args: &Value,
-    facing: &dyn Facing,
-) -> Result<Value, (&'static str, String)> {
-    let dial = args.get("dial").is_some_and(Value::is_object);
-    let text = args.get("text").and_then(Value::as_str);
-    if dial == text.is_some() {
-        return Err((
-            "bad_args",
-            crate::common::contract::malformed("exactly one of `dial` (object) / `text` (string)"),
-        ));
-    }
-    if let Some(t) = text {
-        return Ok(retired_json(retired_verdict(
-            TargetBinary::Present,
-            Some(t.as_bytes().to_vec()),
-        )));
-    }
-    let rel = deploy_contract::LEGACY_ENTRY_REL;
-    let (size, exists) = facing.stat(rel).await.map_err(|e| ("unreachable", e))?;
-    let at = interpret_target_probe(size, exists);
-    let bytes = match at {
-        TargetBinary::Present | TargetBinary::Unknown => {
-            let got = facing.read(rel, RETIRED_READ_MAX).await;
-            if got.is_none() {
-                tracing::warn!("deploy-retired：~/{rel} 读不回来或比上限大 —— 认不出、不删");
-            }
-            got
-        }
-        _ => None,
-    };
-    Ok(retired_json(retired_verdict(at, bytes)))
-}
-
-/// 去向 → 线上那三格（两形同一个答话形状）。
-fn retired_json(r: Retired) -> Value {
-    match r {
-        Retired::Absent => json!({ "verdict": "absent", "expect": null, "why": null }),
-        Retired::Remove { expect } => json!({ "verdict": "remove", "expect": expect, "why": null }),
-        Retired::Keep { why } => json!({ "verdict": "keep", "expect": null, "why": why }),
-    }
 }
 
 // ═══ 远端常驻后端 hello 的新旧（帧命令 `resident-verdict`）═══════════════════════════

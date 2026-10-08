@@ -308,7 +308,7 @@ pub(crate) fn answer_aliases() -> serde_json::Value {
 /// `ssh-config-resolve {alias}` 的成品。
 pub(crate) fn answer_resolve(args: &serde_json::Value) -> Result<serde_json::Value, CmdErr> {
     let alias = args.get("alias").and_then(|v| v.as_str()).ok_or((
-        "invalid_args",
+        "bad_args",
         crate::common::contract::malformed("missing `alias`"),
     ))?;
     resolve(alias).map(|r| to_value(&r))
@@ -324,7 +324,7 @@ pub(crate) fn answer_import(args: &serde_json::Value) -> Result<serde_json::Valu
         .cloned()
         .and_then(|v| serde_json::from_value(v).ok())
         .ok_or((
-            "invalid_args",
+            "bad_args",
             crate::common::contract::malformed("missing `known` (an array of {host, user, port})"),
         ))?;
     let mut groups = import();

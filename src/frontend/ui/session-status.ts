@@ -1,30 +1,30 @@
 /**
- * F91（#27）：会话活动状态的**共享纯逻辑** —— 红绿灯类名 + 跨会话监控快照 DTO。
- * 零运行期 import（只有一条会被擦除的 `import type`），node 可测。
- *
- * **单一事实源**：红绿灯语义（`idle`/`shell`=红、`waiting`=黄、`busy`/未知=绿）此前内联在
- * `tabs.ts` 的 `updateTabButton`（tab-bar 灯）。F91 的 mission-control grid 也要同一套语义，
- * 故抽到这里让 tab-bar 与 grid **共用**、不各写一份（呼应 SS-9「同一套判定别写两遍」的精神）。
- * 抽取对 tab-bar 是**逐字节等价**重构：输出的类名与原三分支完全一致。
+ * 会话活动态 ⇒ 点 / 灯（标签栏 · 状态点 · 总览共用这一张表）＋ 跨会话监控快照 DTO。
+ * 活动态是后端翻好的（`SessionActivity`）；这里只排版，不认任何一家的状态词。
+ * 零运行期 import（只有会被擦除的 `import type`），node 可测。
  */
 
 import type { Origin } from "./generated/Origin";
 import type { SessionState } from "./tab-session-state";
 import type { RunState } from "./generated/RunState";
+import type { SessionActivity } from "./generated/SessionActivity";
 
-/** tab/cell 上叠的活动灯类名。空串 = 不叠类（维持默认绿点：busy 或未知 activity）。 */
+/** tab/cell 上叠的活动灯类名。空串 = 不叠类（默认绿点）。 */
 export type ActivityLightClass = "" | "act-idle" | "act-waiting";
 
-/**
- * 由 Claude Code 的 `status` 字段映射到活动灯类名。
- * - `idle` / `shell`（都在等输入）→ `act-idle`（红）
- * - `waiting`（等对话框决策）→ `act-waiting`（黄）
- * - `busy`（运行中）/ `null`（旧版 CC 或远端 v1 无该字段）→ `""`（默认绿点）
- */
-export function activityLightClass(status: string | null): ActivityLightClass {
-  if (status === "idle" || status === "shell") return "act-idle";
-  if (status === "waiting") return "act-waiting";
-  return "";
+/** 活着的会话那颗点的颜色（`kit/status-dot` 的 `DotState` 里活着的那三态）。 */
+export type ActivityDot = "running" | "needs-you" | "idle";
+
+/** 活动态 ⇒ 点 · 灯。说不清（`null`）⇒ 默认：在运行的点、不叠灯。 */
+const ACTIVITY_FACE: Record<SessionActivity, { dot: ActivityDot; light: ActivityLightClass }> = {
+  working: { dot: "running", light: "" },
+  needs_you: { dot: "needs-you", light: "act-waiting" },
+  idle: { dot: "idle", light: "act-idle" },
+};
+
+/** 活动态 ⇒ 点 · 灯（标签栏 · 状态点 · 总览只从这里取）。 */
+export function activityFace(a: SessionActivity | null): { dot: ActivityDot; light: ActivityLightClass } {
+  return a === null ? { dot: "running", light: "" } : ACTIVITY_FACE[a];
 }
 
 /**
@@ -45,9 +45,9 @@ export interface GridSessionSnapshot {
    * 原先是 `status: "live" | "archived"` ＋ `tmuxIdle: boolean`（可重连的会话在前者里是 live）。
    */
   state: SessionState;
-  /** Claude 的 status 字段原值（busy/idle/shell/waiting）；null = 未知。 */
-  activityStatus: string | null;
-  /** waiting 时的子类（permission prompt / dialog open …）；否则 null。 */
+  /** 此刻在干什么（后端翻好的）；null = 说不清。 */
+  activity: SessionActivity | null;
+  /** 在等人时那一家给的细分（原样）；否则 null。 */
   waitingFor: string | null;
   /** 本会话仍在跑的 subagent 数。 */
   runningAgents: number;
@@ -59,8 +59,8 @@ export interface GridSessionSnapshot {
   contextTokens: number | null;
   /** 未读消息数（非活跃 tab 累积）。 */
   unread: number;
-  /** 会话类型（"bg" → ⚙）；null / "interactive" = 交互。 */
-  kind: string | null;
+  /** 后台会话（⚙）。 */
+  background: boolean;
   /** A3：该会话所属账号名（live 探测）；null = 本地会话 / 未知（不猜）。 */
   account: string | null;
 }

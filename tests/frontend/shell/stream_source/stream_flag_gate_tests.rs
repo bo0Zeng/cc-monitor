@@ -225,15 +225,12 @@ fn the_upgrade_check_is_not_hidden_behind_the_tail_only_guard() {
 /// ★ 接缝：hello 里不认识的能力 token 记在**那台远端**名下；认识的一个都不记。
 #[test]
 fn unknown_capabilities_are_booked_under_that_remote() {
-    use crate::drift_ledger::{snapshot, DriftFace};
     let devbox = crate::origin::Origin("st3-hello-probe".into());
-    super::note_unknown_capabilities(&devbox, &caps(&["bg", "st3-cap-probe"]), "b1");
+    super::note_unknown_capabilities(&devbox, &caps(&["bg", "st3-cap-probe"]));
     let keys = |o: &crate::origin::Origin| -> Vec<String> {
-        snapshot(o)
-            .into_iter()
-            .filter(|f| f.face == DriftFace::UnknownBackendToken)
-            .flat_map(|f| f.entries.into_iter().map(|e| e.key))
-            .collect()
+        tauri::async_runtime::block_on(crate::drift_ledger::drift_ledger_report(o.clone()))
+            .expect("读口")
+            .unknown_tokens
     };
     assert_eq!(
         keys(&devbox),

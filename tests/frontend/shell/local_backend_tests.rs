@@ -1100,16 +1100,11 @@ fn the_local_landing_is_placed_exactly_as_the_bytes_in_hand_say() {
 //   随逐字节副本删了：本机没有「副本」可比，落点本身就是后端。下面那条改成直接问「解析出来的那份就是 `ccm`」。
 
 /// 要求：「不要的三样：③ 与后端重复的第二份字节」· `W5-ALIAS.md §2.5.2` E-c「旧文件清」。
-/// 真跑一趟 `resolve_or_extract`（旁边必没有 ⇒ 走内嵌那份）：`Found` 的就是 `dir/ccm`、字节就是喂进去的那份、目录里没有第二份后端字节；
-/// 旧版释放的 `cc-monitor-backend-<id>` 认得出（有戳）就删、认不出（无戳）不动。
+/// 真跑一趟 `resolve_or_extract`（旁边必没有 ⇒ 走内嵌那份）：`Found` 的就是 `dir/ccm`、字节就是喂进去的那份、目录里没有第二份后端字节。
 #[test]
 fn the_resolution_path_hands_the_ccm_entry_the_backend_it_just_resolved() {
     let base = tmpdir_e2("resolve");
     let bytes = stamped("p5a-wire", 5);
-    let old_ours = base.join(format!("{LEGACY_EXTRACT_PREFIX}p4y-old"));
-    let not_ours = base.join(format!("{LEGACY_EXTRACT_PREFIX}mine-own"));
-    std::fs::write(&old_ours, stamped("p4y-old", 6)).unwrap();
-    std::fs::write(&not_ours, b"not a backend").unwrap();
     let mark = |_: &Path| Ok(());
     let r = resolve_or_extract(
         "no-such-target-triple",
@@ -1132,13 +1127,9 @@ fn the_resolution_path_hands_the_ccm_entry_the_backend_it_just_resolved() {
         bytes,
         "落点上不是喂进去的那份字节"
     );
-    assert!(!old_ours.exists(), "旧版释放件（认得出是我们编的）没清");
-    assert!(not_ours.exists(), "认不出的文件被删了");
     assert!(
-        !base
-            .join(format!("{LEGACY_EXTRACT_PREFIX}p5a-wire"))
-            .exists(),
-        "又按旧名（带 build_id）放了第二份后端字节"
+        !base.join("cc-monitor-backend-p5a-wire").exists(),
+        "又按带 build_id 的名字放了第二份后端字节"
     );
     let _ = std::fs::remove_dir_all(&base);
 }

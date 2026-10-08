@@ -417,17 +417,14 @@ fn bus_ids_are_judged_here_before_they_reach_cc_bus() {
             parse_spawn(&json!({ "tool": "claude", "dir": "/p", "account": id })).expect_err(id);
         assert_eq!(e.0, "bad_id", "{id:?}：派生账号名的拒码不对（{e:?}）");
     }
-    // 空 / 纯空白是「缺」（`invalid_args`），不是「形状不对」—— 两件事的话不一样。
+    // 空 / 纯空白是「缺」（`bad_args`），不是「形状不对」—— 两件事的话不一样。
     assert_eq!(
         parse_send(&json!({ "to": "  ", "text": "x" }))
             .unwrap_err()
             .0,
-        "invalid_args"
+        "bad_args"
     );
-    assert_eq!(
-        parse_kill(&json!({ "id": "" })).unwrap_err().0,
-        "invalid_args"
-    );
+    assert_eq!(parse_kill(&json!({ "id": "" })).unwrap_err().0, "bad_args");
     // 形状之外的缺格照旧判（「能不能构成一次有意义的调用」）。
     for bad in [
         json!({}),
@@ -461,7 +458,7 @@ fn bus_spawn_refuses_to_pick_an_account_for_the_user() {
         json!("不是对象"),
     ] {
         let e = parse_spawn(&bad).expect_err(&format!("形状不对却放行了：{bad}"));
-        assert_eq!(e.0, "invalid_args", "{bad} 的码不对：{e:?}");
+        assert_eq!(e.0, "bad_args", "{bad} 的码不对：{e:?}");
     }
     // 哪一家问注册表：没说 / 空 ⇒ 默认那一家（交给 cc-spawn 的是解析好的 kind）；注册表里没有 ⇒ 拒，说出认得的几家。
     for unsaid in [
@@ -475,7 +472,7 @@ fn bus_spawn_refuses_to_pick_an_account_for_the_user() {
     }
     let (code, said) = parse_spawn(&json!({"tool":"not-an-agent","dir":"/p","base":true}))
         .expect_err("注册表里没有的 tool 被放行了");
-    assert_eq!(code, "invalid_args");
+    assert_eq!(code, "bad_args");
     assert_eq!(
         said,
         copy_core::copy_text(
@@ -522,14 +519,11 @@ fn bus_spawn_reads_the_id_from_what_cc_spawn_said_and_never_guesses() {
     }
 }
 
-/// 退出码分档：2 ⇒ invalid_args · 124 ⇒ timed_out **且说清「可能已经起来了、别直接重试」** · 其它 ⇒ failed。
+/// 退出码分档：2 ⇒ bad_args · 124 ⇒ timed_out **且说清「可能已经起来了、别直接重试」** · 其它 ⇒ failed。
 #[test]
 fn bus_spawn_timeout_warns_that_the_agent_may_already_be_running() {
     assert!(classify_spawn(Some(0), "", 10).is_ok());
-    assert_eq!(
-        classify_spawn(Some(2), "x", 10).unwrap_err().0,
-        "invalid_args"
-    );
+    assert_eq!(classify_spawn(Some(2), "x", 10).unwrap_err().0, "bad_args");
     let (c, m) = classify_spawn(Some(TIMED_OUT_CODE), "x", 10).unwrap_err();
     assert_eq!(c, "timed_out");
     assert!(
@@ -583,7 +577,7 @@ fn unknown_liveness_does_not_silently_become_nobody() {
     assert_eq!(plan.skipped_offline, 0);
 }
 
-/// ★ 广播的入参：正文空 ⇒ `invalid_args`（空广播不是缺省）；`from` 可选、空白当没给。
+/// ★ 广播的入参：正文空 ⇒ `bad_args`（空广播不是缺省）；`from` 可选、空白当没给。
 #[test]
 fn a_broadcast_without_text_is_refused_before_anyone_is_asked() {
     use serde_json::json;
@@ -594,7 +588,7 @@ fn a_broadcast_without_text_is_refused_before_anyone_is_asked() {
         json!("hi"),
     ] {
         let e = parse_broadcast(&bad).expect_err("没正文的广播不许放行");
-        assert_eq!(e.0, "invalid_args", "{bad}");
+        assert_eq!(e.0, "bad_args", "{bad}");
     }
     assert_eq!(
         parse_broadcast(&json!({"text": "hi", "from": " "})).expect("有正文就放行"),

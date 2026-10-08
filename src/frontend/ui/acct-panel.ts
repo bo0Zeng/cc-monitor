@@ -98,11 +98,6 @@ function routeOf(host: AcctPanelHost, o: Open): string | null {
   return got.known ? got.facts.adapterId : null;
 }
 
-/** 此刻开着的是不是这个会话的面板。 */
-export function panelOpenFor(sid: string): boolean {
-  return open?.sid === sid;
-}
-
 /** 开 / 关这个会话的面板（再点同一个入口 ＝ 关）。 */
 export function toggleAccountPanel(sid: string, origin: Origin, host: AcctPanelHost): void {
   if (open?.sid === sid) {

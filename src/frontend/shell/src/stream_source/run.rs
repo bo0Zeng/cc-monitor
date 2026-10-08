@@ -301,8 +301,6 @@ async fn stream_loop(
                 .as_ref()
                 .is_some_and(|c| c.accepts(crate::asset_sync::REMOTE_NEEDS));
             crate::asset_sync::on_remote_ready(cfg, accepts);
-            // 升级那一格：连上那一刻后台看一眼旧版 `~/.local/bin/ccm`，认出是我们放的就删（`ccm_legacy`）。
-            crate::ccm_legacy::on_remote_ready(cfg);
         }
 
         match frame {
@@ -354,14 +352,14 @@ async fn stream_loop(
             }
             Some(InboundFrame::SessionAdded {
                 sid,
-                session_kind,
+                background,
                 attachable,
                 cwd,
                 project_dir,
                 name,
                 path,
                 lines,
-                status,
+                activity,
                 waiting_for,
                 container,
                 // pid 只给本机那条流用（本机 ↗ 绑窗口）；远端这一支不读。
@@ -371,12 +369,12 @@ async fn stream_loop(
                 &intake,
                 sid,
                 LiveMeta {
-                    kind: session_kind,
+                    background,
                     attachable,
                     cwd,
                     project_dir,
                     name,
-                    status,
+                    activity,
                     waiting_for,
                     container,
                     pid: None,
@@ -386,18 +384,18 @@ async fn stream_loop(
             ),
             Some(InboundFrame::SessionStatus {
                 sid,
-                status,
+                activity,
                 waiting_for,
             }) => {
                 // 红绿灯这一跳也要看得见：「全绿」既可能是都在忙，也可能是 status 一条都没到。
                 tracing::info!(
-                    "session-status: [{host_label}] sid={sid} status={status:?} \
+                    "session-status: [{host_label}] sid={sid} activity={activity:?} \
                      waiting_for={waiting_for:?} → 成品交出口"
                 );
                 crate::session_book::feed(BookIn::Status {
                     origin: host_label.clone(),
                     sid,
-                    status,
+                    activity,
                     waiting_for,
                 });
             }
@@ -735,11 +733,7 @@ fn on_hello(
     );
     // 记下我们不认识的能力 token（多半是远端后端比 monitor 新：手工装 / 关了自动部署的用户会长期不一致）。只记账，记在这台名下；
     // 不认识的 token 本来就按保守缺省忽略。
-    note_unknown_capabilities(
-        &crate::origin::Origin(host_label.clone()),
-        &capabilities,
-        &build_id,
-    );
+    note_unknown_capabilities(&crate::origin::Origin(host_label.clone()), &capabilities);
     // 标记本次连接已健康(收到 backend hello)，供 run() 重连循环判定是否重置退避。
     connected.store(true, Ordering::Release);
     // 订了这台会话流的那些订阅原位收一格 `Seen`（`Item::Seen`）。

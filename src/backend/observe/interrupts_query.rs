@@ -86,7 +86,7 @@ pub(crate) fn answer_at(home: &Path, args: &Value) -> Result<Value, (String, Str
         .filter(|s| !s.is_empty())
         .ok_or_else(|| {
             (
-                "invalid_args".to_string(),
+                "bad_args".to_string(),
                 crate::common::contract::malformed("missing `sid` (a non-empty string)"),
             )
         })?;

@@ -64,7 +64,7 @@ function longWorld(): World {
     );
     c.say(`第 ${i} 步完成：删掉 ${12 + (i % 30)} 行重复样式，引用改到共享组件。`, 30_000 + i * 900);
   }
-  w.sessions = [session(9, LOCAL, "/home/user/work/monorepo", c, { status: "busy", sid })];
+  w.sessions = [session(9, LOCAL, "/home/user/work/monorepo", c, { activity: "working", sid })];
   return w;
 }
 
@@ -84,7 +84,7 @@ function injectWorld(): World {
   c.user("<command-name>/skills</command-name>\nBase directory for this skill: /home/user/.claude/skills/run-tests\n跑全量测试并汇总失败。", { meta: true });
   c.tool("Bash", { command: "pytest -q", description: "全量测试" }, "213 passed in 9.12s", { card: "command" });
   c.say("全量 213 个通过。", 32_000, "end_turn");
-  w.sessions = [session(9, LOCAL, cwd, c, { status: "idle", sid })];
+  w.sessions = [session(9, LOCAL, cwd, c, { activity: "idle", sid })];
   return w;
 }
 
@@ -112,7 +112,7 @@ function pasteWorld(): World {
   const log = Array.from({ length: 20 }, (_, i) => `2026-10-01 08:5${i % 10}:0${i % 6} WARN inventory call timed out after 30s (attempt ${i + 1})`).join("\n");
   c.user(`这是今早的日志：<pasted_content id="p1">\n${log}\n</pasted_content id="p1">\n配置是：<pasted_content id="p2">retries=0\ntimeout_s=30\nbackoff_ms=0</pasted_content id="p2">\n帮我看看为什么一直超时。`);
   c.say("日志里每次都是整 30 秒超时、而且没有重试——配置里 `retries=0`。先把重试与整体超时加上。", 30_000, "end_turn");
-  w.sessions = [session(9, LOCAL, "/home/user/work/orders", c, { status: "idle", sid })];
+  w.sessions = [session(9, LOCAL, "/home/user/work/orders", c, { activity: "idle", sid })];
   return w;
 }
 
@@ -120,7 +120,7 @@ function pasteWorld(): World {
 function answerWorld(): World {
   const w = defaultWorld();
   const s = w.sessions[5];
-  w.sessions[5] = { ...s, status: "waiting", waitingFor: "dialog open", waitingSinceMs: Date.now() - 300_000, idle: false, records: answerConvo(s.sid, s.cwd).records };
+  w.sessions[5] = { ...s, activity: "needs_you", waitingFor: "dialog open", waitingSinceMs: Date.now() - 300_000, idle: false, records: answerConvo(s.sid, s.cwd).records };
   return w;
 }
 

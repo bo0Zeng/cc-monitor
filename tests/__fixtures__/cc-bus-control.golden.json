@@ -27,19 +27,19 @@
   "bus-send": {
     "request": { "to": "alpha_cc", "text": "hi", "from": "cc-monitor" },
     "reply": { "to": "alpha_cc", "sent": true, "registered": true, "live": true, "from": "cc-monitor" },
-    "codes": ["invalid_args", "bad_id", "not_installed", "rejected", "timed_out", "too_long", "failed"]
+    "codes": ["bad_args", "bad_id", "not_installed", "rejected", "timed_out", "too_long", "failed"]
   },
   "bus-kill": {
     "request": { "id": "alpha_cc" },
     "reply": { "id": "alpha_cc", "killed": true, "stale_only": false },
-    "codes": ["invalid_args", "bad_id", "not_installed", "timed_out", "failed"]
+    "codes": ["bad_args", "bad_id", "not_installed", "timed_out", "failed"]
   },
   "bus-spawn": {
     "request": { "tool": "claude", "dir": "/w/proj", "task": "t", "base": true },
     "requestAccount": { "tool": "claude", "dir": "/w/proj", "task": "t", "account": "z" },
     "said": "已 spawn: proj_cc   (目录: /w/proj)",
     "reply": { "spawned": true, "id": "proj_cc", "said": "已 spawn: proj_cc   (目录: /w/proj)" },
-    "codes": ["invalid_args", "bad_id", "not_installed", "timed_out", "failed"]
+    "codes": ["bad_args", "bad_id", "not_installed", "timed_out", "failed"]
   },
   "bus-broadcast": {
     "request": { "text": "hi", "from": "cc-monitor" },
@@ -50,6 +50,6 @@
       "liveness_unknown": false,
       "failed": [{ "id": "x_cc", "error": "timed_out", "detail": "d" }]
     },
-    "codes": ["invalid_args", "not_installed", "timed_out", "failed", "bad_id"]
+    "codes": ["bad_args", "not_installed", "timed_out", "failed", "bad_id"]
   }
 }

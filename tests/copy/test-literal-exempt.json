@@ -68,9 +68,6 @@
       { "text": "最小化", "use": "非文案" },
       { "text": "全屏", "use": "非文案" }
     ],
-    "tests/frontend/shell/ccm_legacy_tests.rs": [
-      { "text": "不是 cc-monitor 放的", "use": "回显" }
-    ],
     "tests/frontend/shell/command_home_registry_tests.rs": [
       { "text": "日志", "use": "非文案" }
     ],
@@ -94,9 +91,6 @@
     ],
     "tests/frontend/shell/sftp_family_registry_tests.rs": [
       { "text": "命令", "use": "非文案" }
-    ],
-    "tests/frontend/shell/user_files_tests.rs": [
-      { "text": "本机", "use": "输入" }
     ],
     "tests/frontend/ui/accounts.vitest.ts": [
       { "text": "后端", "use": "词义" },

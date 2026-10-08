@@ -55,7 +55,7 @@ function pin(over: Partial<PinnedTab> = {}): PinnedTab {
     origin: LOCAL_ORIGIN,
     account: "work",
     lastActiveAt: 1700000000000,
-    kind: "interactive",
+    background: false,
     name: null,
     title: "proj",
     ...over,
@@ -165,7 +165,7 @@ describe("③ 量具自检：`sanitizePinned` 真的在清（不过这格，下�
     ).toEqual(["先"]);
     expect(
       sanitizePinned([
-        { sid: "a", cwd: 3, origin: "<local>", account: [], kind: null, lastActiveAt: "昨天" },
+        { sid: "a", cwd: 3, origin: "<local>", account: [], background: "yes", lastActiveAt: "昨天" },
       ])[0],
       "字段类型不对的没收敛成 null ⇒ 复活时会把 `3` 当 cwd 传给 `createSkeletonTab`",
     ).toEqual({
@@ -175,7 +175,7 @@ describe("③ 量具自检：`sanitizePinned` 真的在清（不过这格，下�
       origin: "<local>",
       account: null,
       lastActiveAt: null,
-      kind: null,
+      background: false,
       name: null,
       title: "a",
     });

@@ -1042,35 +1042,6 @@ fn sweep_moved_aside(dir: &Path, name: &str) {
     }
 }
 
-/// 旧版本机释放的 `cc-monitor-backend-<build_id>` 们：身份戳恰一个（是我们编的）才删；删不掉（正在跑）不管。
-/// 回删掉了几份（给日志）。
-pub fn sweep_legacy_extracts(dir: &Path) -> usize {
-    let Ok(rd) = std::fs::read_dir(dir) else {
-        return 0;
-    };
-    let mut n = 0;
-    for ent in rd.flatten() {
-        let name = ent.file_name();
-        let Some(name) = name.to_str() else { continue };
-        if !name.starts_with(LEGACY_EXTRACT_PREFIX) {
-            continue;
-        }
-        let ours = std::fs::read(ent.path()).is_ok_and(|b| {
-            matches!(
-                deploy_contract::identity_of_bytes(&b, crate::sftp::STAMP_MARKS),
-                deploy_contract::RemoteIdentity::Stamp(_)
-            )
-        });
-        if ours && std::fs::remove_file(ent.path()).is_ok() {
-            n += 1;
-        }
-    }
-    n
-}
-
-/// 旧版本机释放名的前缀（`cc-monitor-backend-<build_id>[.exe]`）。
-pub const LEGACY_EXTRACT_PREFIX: &str = "cc-monitor-backend-";
-
 /// 〔判定只在后端〕问手上这份字节「放不放」的那一口 —— **宿主注入**（起进程的三条策略是宿主知识，；
 /// 本层平台无关）。入参 = 暂存件的路径 · 帧命令 `place-verdict` 的入参；回 = 它的答，或没问成的那一形。生产 = `ccm_probe::ask_place_verdict`。
 pub type PlaceAsk<'a> =
@@ -1301,7 +1272,7 @@ pub fn local_ccm_entry_name() -> String {
 }
 
 // 远端三行入口的生成器 `ccm_entry_shim`〔散文墓碑〕删了：远端落点 `~/.cc-monitor/bin/ccm` 上放的就是
-//   后端字节（`sftp.rs::LANDING_REL`）。已部署机器上的旧入口由本机常驻后端认（`deploy_plan::retired_verdict` 调 `deploy_plan::is_ours`，从前在 `ccm_legacy`）。
+//   后端字节（`sftp.rs::LANDING_REL`）。落点上从前那份三行入口由本机常驻后端认（`deploy_plan::landing_verdict` 调 `deploy_plan::is_ours`）。
 
 // `install_local_ccm_entry`〔散文墓碑〕（把后端逐字节拷一份叫 `ccm`，「第二份拷贝」）删了：
 //   落点 `~/.cc-monitor/bin/ccm` 放的就是后端本身（[`extract_embedded_to`]）。
@@ -1916,13 +1887,6 @@ pub fn resolve_or_extract(
             }
         }
     };
-    // 放好之后清旧版释放的 `cc-monitor-backend-<id>` 们（身份戳认得出才删；失败不拖垮后端）。
-    if matches!(resolved, Resolved::Found(_)) {
-        let n = sweep_legacy_extracts(extract_dir);
-        if n > 0 {
-            tracing::info!("本机旧版后端释放件清掉 {n} 份（今天后端就是 ~/.cc-monitor/bin/ccm）");
-        }
-    }
     resolved
 }
 

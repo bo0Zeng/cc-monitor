@@ -18,14 +18,7 @@ vi.mock("../../../src/frontend/ui/terminal-open", async (orig) => ({
   ...(await orig<typeof import("../../../src/frontend/ui/terminal-open")>()),
   openTerminal: term.openTerminal,
 }));
-const tmux = vi.hoisted(() => ({ sendInto: vi.fn() }));
-vi.mock("../../../src/frontend/ui/tmux-control", () => ({
-  sendInto: tmux.sendInto,
-}));
-const mint = vi.hoisted(() => ({
-  mintFreshTmuxName: vi.fn(),
-  refuseUnmintable: vi.fn(),
-}));
+const mint = vi.hoisted(() => ({ mintFreshTmuxName: vi.fn(), refuseUnmintable: vi.fn() }));
 vi.mock("../../../src/frontend/ui/terminal-name-mint", () => mint);
 vi.mock("../../../src/frontend/ui/resync", () => ({
   offerResyncRetry: vi.fn(),
@@ -80,7 +73,6 @@ beforeEach(() => {
     account: null,
   });
   term.openTerminal.mockResolvedValue(undefined);
-  tmux.sendInto.mockResolvedValue({ verdict: "typed" });
   mint.mintFreshTmuxName.mockResolvedValue({ ok: true, name: "w-cc" });
   stubClipboard(vi.fn().mockResolvedValue(undefined));
 });

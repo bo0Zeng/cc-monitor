@@ -9,13 +9,12 @@
  *
  * | 性质 | 判据 |
  * |---|---|
- * | TS 解码器读得懂后端真出的成品 —— 同一份跨语言金样，后端那侧 `kill_tests` / `launch_tests` 对拍它（异源：Rust 构造器造、TS 解） | 「金样」 |
+ * | TS 解码器读得懂后端真出的成品 —— 同一份跨语言金样，后端那侧 `kill_tests` 对拍它（异源：Rust 构造器造、TS 解） | 「金样」 |
  * | 形状不对 ⇒ 抛（多一格 / 缺一格 / 类型不对），不猜 | 「形状不对」 |
- * | 界面不判目标名：空目标原样交给后端；后端 `invalid_args` ⇒ 各动作那句「后端不接受这个会话名」带后端原话 | 「空目标」 |
+ * | 界面不判目标名：空目标原样交给后端；后端 `bad_args` ⇒ 各动作那句「后端不接受这个会话名」带后端原话 | 「空目标」 |
  * | 本机与远端同一条路（`<local>` 照样经通道问），通道不在时两句话不同、远端那句点得出是哪台 | 「本机」「通道不在」 |
  * | 拒绝码逐码一句、两两不同、带上会话名与后端原话；认不出的码不上屏（只说原话，码在诊断里）、不被猜成已知档（码集合取自金样，不是手抄） | 「拒绝码」 |
- * | 结束会话 / 发按键：请求体 == 金样；`enter` 落在两个 mode 名上；`killed` / `typed` 不为真不当成功；门拒绝 ≠ 通道不在 | 「结束会话 · 发按键」两组 |
- * | 就地 resume（F14）：只有能证明没发出去才回落 —— TS `provablyNotSent` == Rust `route_call_error`（跨语言金样 `reach-collapse.golden.json`，Rust 侧 `chan/webview_tests.rs` 产） | 「就地 resume」 |
+ * | 结束会话：请求体 == 金样；`killed` 不为真不当成功；门拒绝 ≠ 通道不在 | 「结束会话」两组 |
  *
  * 买不到：真 Tauri IPC 与真后端（后端那一侧在 Rust 里；monitor 那一跳由 `webview_tests` 量）；真 tmux 会话上的一屏。
  */
@@ -30,15 +29,10 @@ import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import {
   ControlError,
   decodeKilled,
-  decodeTyped,
   killSession,
-  sendInto,
-  sendKeys,
 } from "../../../src/frontend/ui/tmux-control";
-import { decodeFail } from "../../../src/comms/inward/chan";
-import { provablyNotSent } from "../../../src/frontend/ui/ipc/chan-caller";
 import { REPO_ROOT } from "../../test-support/repo-root";
-import { chanArgsJson, chanReply, refusedReply, UNSUPPORTED, NO_CHANNEL, type ChanCallArgs } from "../../test-support/chan-fake";
+import { chanArgsJson, chanReply, refusedReply, NO_CHANNEL, type ChanCallArgs } from "../../test-support/chan-fake";
 import { copyText, type CopyKey } from "../../../src/frontend/ui/copy-table";
 import { copyPattern } from "../../test-support/copy-pattern";
 
@@ -54,7 +48,6 @@ const golden = JSON.parse(readFileSync(resolve(REPO_ROOT, "tests/__fixtures__/tm
   GoldenOp
 >;
 const KILL = golden.kill;
-const LAUNCH = golden.launch;
 
 // ⚠ 花括号不能省：`mockReset()` 返回 mock 本身，箭头函数直接返回它 ⇒ vitest 把它当成清理钩子在用例结束时再调一次。
 beforeEach(() => {
@@ -104,62 +97,38 @@ async function detailOf(act: () => Promise<unknown>): Promise<string> {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  结束会话（`kill`）· 发按键（`launch{send-into}`）· 就地 resume（`launch{send-into}` ＋ F14）
+//  结束会话（`kill`）
 // ════════════════════════════════════════════════════════════════════════════
 
-/** 三个动作各自「跑一趟、拿那一句」。 */
+/** 动作「跑一趟、拿那一句」。 */
 const ACTIONS: [string, (origin: string, target: string) => Promise<unknown>, CopyKey][] = [
   [copyText("tabSessionActions.kill.action"), (o, t) => killSession(o, t), "tmuxControl.kill.badName"],
-  ["发按键", (o, t) => sendKeys(o, t, "/exit"), "tmuxControl.keys.badRequest"],
 ];
 
-describe("〔C4e〕结束会话 · 发按键：按形状收", () => {
+describe("〔C4e〕结束会话：按形状收", () => {
   it("★★ 金样：解码器读得懂后端真出的成品；请求体就是金样那一份", async () => {
     expect(() => decodeKilled("devbox", "demo-cc", KILL.reply)).not.toThrow();
-    expect(() => decodeTyped("devbox", "demo-cc", LAUNCH.reply)).not.toThrow();
     answer({ ok: KILL.reply });
     await killSession("devbox", String(KILL.request.name));
-    answer({ ok: LAUNCH.reply });
-    await sendKeys("devbox", String(LAUNCH.request.name), String(LAUNCH.request.payload));
-    expect(sentCalls()).toEqual([
-      ["devbox", "kill", KILL.request],
-      ["devbox", "launch", LAUNCH.request],
-    ]);
+    expect(sentCalls()).toEqual([["devbox", "kill", KILL.request]]);
   });
 
-  it("★★ 发按键只有 `send-into` 一形（键入 ＋ 回车；裸键 mode 已删）", async () => {
-    answer({ ok: LAUNCH.reply });
-    await sendKeys("devbox", "demo-cc", "/compact");
-    const bodies = sentCalls().map(([, , b]) => b as Record<string, unknown>);
-    expect(bodies.map((b) => [b.mode, b.payload])).toEqual([["send-into", "/compact"]]);
-    for (const b of bodies) expect(Object.keys(b).sort(), "请求里多了一格（旧后端会静默忽略它）").toEqual(["mode", "name", "payload"]);
-  });
-
-  it("★★ 没明说做成了 ⇒ 不当成功：`killed` / `typed` 为假、多一格 / 缺一格 / 类型不对都抛", () => {
+  it("★★ 没明说做成了 ⇒ 不当成功：`killed` 为假、多一格 / 缺一格 / 类型不对都抛", () => {
     expect(() => decodeKilled("devbox", "demo-cc", { ...KILL.reply, killed: false })).toThrow(copyPattern("tmuxControl.kill.notConfirmed", { target: "demo-cc" }));
-    expect(() => decodeTyped("devbox", "demo-cc", { ...LAUNCH.reply, typed: false })).toThrow(copyPattern("tmuxControl.keys.notConfirmed", { target: "demo-cc" }));
     for (const bad of [{ ...KILL.reply, extra: 1 }, { killed: true }, { session: "demo-cc", killed: "yes" }, null]) {
       expect(() => decodeKilled("devbox", "demo-cc", bad), JSON.stringify(bad)).toThrow(copyPattern("peerVersion.said.unreadable"));
-    }
-    for (const bad of [{ ...LAUNCH.reply, extra: 1 }, { session: "demo-cc", typed: true }, { ...LAUNCH.reply, created: 1 }]) {
-      expect(() => decodeTyped("devbox", "demo-cc", bad), JSON.stringify(bad)).toThrow(copyPattern("peerVersion.said.unreadable"));
     }
   });
 });
 
-describe("按 sid 找窗格：结束 · 发按键带上会话 ID", () => {
-  it("★ 给了 sid ⇒ 请求里带上（结束是 `sid`，发按键是 `launch` 的 `ccm_sid`），后端按它落在挂着它的那个窗格；不给 ⇒ 请求形状不变", async () => {
+describe("按 sid 找窗格：结束带上会话 ID", () => {
+  it("★ 给了 sid ⇒ 请求里带上 `sid`，后端按它落在挂着它的那个窗格；不给 ⇒ 请求形状不变", async () => {
     answer({ ok: KILL.reply });
     await killSession("devbox", "demo-cc", "sid-a");
     await killSession("devbox", "demo-cc");
-    answer({ ok: LAUNCH.reply });
-    await sendKeys("devbox", "demo-cc", "/compact", "sid-a");
-    await sendKeys("devbox", "demo-cc", "/compact");
     expect(sentCalls()).toEqual([
       ["devbox", "kill", { name: "demo-cc", sid: "sid-a" }],
       ["devbox", "kill", { name: "demo-cc" }],
-      ["devbox", "launch", { mode: "send-into", name: "demo-cc", payload: "/compact", ccm_sid: "sid-a" }],
-      ["devbox", "launch", { mode: "send-into", name: "demo-cc", payload: "/compact" }],
     ]);
   });
 });
@@ -184,21 +153,18 @@ describe("FIX4 · 杀会话顺手注销的结局", () => {
   });
 });
 
-describe("〔C4e〕结束会话 · 发按键：发出去之前与失败怎么说", () => {
-  it("★ 〔DUP3〕空目标不在界面判：原样交给后端，后端拒了照原话说（两个动作各一遍）", async () => {
-    answer({ fail: refusedReply("invalid_args", "`name` 为空") });
+describe("〔C4e〕结束会话：发出去之前与失败怎么说", () => {
+  it("★ 〔DUP3〕空目标不在界面判：原样交给后端，后端拒了照原话说", async () => {
+    answer({ fail: refusedReply("bad_args", "`name` 为空") });
     for (const [label, act, badKey] of ACTIONS) {
       const said = await saidOf(() => act("devbox", ""));
       expect(said, label).toMatch(copyPattern(badKey));
       expect(said, label).toContain("`name` 为空");
     }
-    expect(sentCalls().map(([, op, body]) => [op, (body as { name?: unknown }).name]), "界面自己把空目标拦下了").toEqual([
-      ["kill", ""],
-      ["launch", ""],
-    ]);
+    expect(sentCalls().map(([, op, body]) => [op, (body as { name?: unknown }).name]), "界面自己把空目标拦下了").toEqual([["kill", ""]]);
   });
 
-  it("★★ 通道不在：本机与远端两句话不同、远端点得出是哪台（两个动作各一遍）；本机照样经通道问", async () => {
+  it("★★ 通道不在：本机与远端两句话不同、远端点得出是哪台；本机照样经通道问", async () => {
     answer({ fail: NO_CHANNEL });
     for (const [label, act] of ACTIONS) {
       const local = await saidOf(() => act(LOCAL_ORIGIN, "demo-cc"));
@@ -208,13 +174,12 @@ describe("〔C4e〕结束会话 · 发按键：发出去之前与失败怎么说
       expect(remote, label).toContain("kr-remote-label");
       for (const x of [local, remote]) expect(x, label).not.toMatch(copyPattern("rsLaunch.remote.noConfig"));
     }
-    expect(sentCalls().filter(([o]) => o === LOCAL_ORIGIN).length, "本机没经通道问").toBe(2);
+    expect(sentCalls().filter(([o]) => o === LOCAL_ORIGIN).length, "本机没经通道问").toBe(1);
   });
 
   it("★★ 拒绝码（取自金样）逐码一句、两两不同、带会话名与后端原话；身份门那一句 ≠ 通道不在那一句", async () => {
     for (const [op, codes, act] of [
       ["kill", KILL.codes, (t: string) => killSession("devbox", t)],
-      ["launch", LAUNCH.codes, (t: string) => sendKeys("devbox", t, "/exit")],
     ] as const) {
       const said: string[] = [];
       for (const code of codes) {
@@ -242,50 +207,6 @@ describe("〔C4e〕结束会话 · 发按键：发出去之前与失败怎么说
     }
   });
 });
-
-describe("〔C4e〕就地 resume（F14：只有能证明没发出去才许回落）", () => {
-  it("★★ 金样：Rust `route_call_error` 那一收拢 == TS `provablyNotSent`（逐行，同一份文件）", () => {
-    const rc = JSON.parse(readFileSync(resolve(REPO_ROOT, "tests/__fixtures__/reach-collapse.golden.json"), "utf8")) as {
-      rows: { case: string; fail: unknown; provablyNotSent: boolean }[];
-    };
-    expect(rc.rows.length, "金样一行都没有 —— 下面是空转").toBeGreaterThan(0);
-    expect(new Set(rc.rows.map((r) => r.provablyNotSent)), "金样只有一种结论 —— 分不出两档就等于没测").toEqual(new Set([true, false]));
-    for (const r of rc.rows) expect(provablyNotSent(decodeFail(r.fail)), r.case).toBe(r.provablyNotSent);
-    // 本侧多出来的一档（Rust 那一侧不产）：期限在发之前就过了 ⇒ 一个字节都没发 ⇒ 能证明。
-    expect(provablyNotSent({ layer: "hop", at: { idx: 0, tag: "write" }, reach: "NotSent", why: "Overrun" })).toBe(true);
-  });
-
-  it("★★ 三态：键入了 ⇒ typed · 能证明没发出去 ⇒ fallback · 对端说了话 / 拿不准 ⇒ refused（一律不抛）", async () => {
-    answer({ ok: LAUNCH.reply });
-    expect(await sendInto("devbox", "demo-cc", "PAYLOAD")).toEqual({ verdict: "typed" });
-    expect(sentCalls().at(-1)).toEqual(["devbox", "launch", { mode: "send-into", name: "demo-cc", payload: "PAYLOAD" }]);
-    answer({ fail: NO_CHANNEL });
-    expect((await sendInto("devbox", "demo-cc", "PAYLOAD")).verdict).toBe("fallback");
-    answer({ fail: UNSUPPORTED });
-    expect((await sendInto("devbox", "demo-cc", "PAYLOAD")).verdict, "对端事前就说不认 ⇒ 一个字节没发").toBe("fallback");
-    for (const fail of [
-      refusedReply("wrong_owner", "m"),
-      { err: { Hop: { idx: 1, tag: "wait", reach: "Unknown", why: "Overrun" } }, body: [] },
-      { err: { Hop: { idx: 1, tag: "read", reach: "Unknown", why: "Dropped" } }, body: [] },
-      "ipc closed",
-    ]) {
-      answer({ fail });
-      expect((await sendInto("devbox", "demo-cc", "PAYLOAD")).verdict, JSON.stringify(fail)).toBe("refused");
-    }
-    // 后端答了、但没明说键进去了 ⇒ 拿不准 ⇒ 不回落。
-    answer({ ok: { ...LAUNCH.reply, typed: false } });
-    expect((await sendInto("devbox", "demo-cc", "PAYLOAD")).verdict).toBe("refused");
-  });
-
-  it("★ 〔FIX〕会话名或载荷为空 ⇒ 原样交给后端，后端拒 ⇒ refused（界面零判定）", async () => {
-    answer({ fail: refusedReply("invalid_args", "name is empty") });
-    expect((await sendInto("devbox", "  ", "PAYLOAD")).verdict).toBe("refused");
-    expect(sentCalls().at(-1)).toEqual(["devbox", "launch", { mode: "send-into", name: "  ", payload: "PAYLOAD" }]);
-    expect((await sendInto("devbox", "demo-cc", "")).verdict).toBe("refused");
-    expect(sentCalls().at(-1)).toEqual(["devbox", "launch", { mode: "send-into", name: "demo-cc", payload: "" }]);
-  });
-});
-
 
 describe("那台握手时说过做不到的，菜单置灰并说为什么", () => {
   it("kill 在「没有 tmux」的那台上不可点、字后面带原因；那台没说的项与没问过的机器照常", async () => {

@@ -1,19 +1,14 @@
-// F91（#27）：会话活动状态共享纯逻辑 activityLightClass 断言。
-// **单一事实源守护**：这些断言钉住 tab-bar（tabs.ts:updateTabButton）与 grid 共用的红绿灯语义。
+// 活动态 ⇒ 点 / 灯：标签栏 · 状态点 · 总览共用的那一张表（`activityFace`）。
 import { describe, it, expect } from "vitest";
-import { activityLightClass } from "../../../src/frontend/ui/session-status";
+import { activityFace } from "../../../src/frontend/ui/session-status";
 
-describe("F91 activityLightClass", () => {
-  it("idle / shell → act-idle（红：等输入）", () => {
-    expect(activityLightClass("idle")).toBe("act-idle");
-    expect(activityLightClass("shell")).toBe("act-idle");
+describe("activityFace", () => {
+  it("后端翻好的三态各对一颗点、一盏灯", () => {
+    expect(activityFace("working")).toEqual({ dot: "running", light: "" });
+    expect(activityFace("needs_you")).toEqual({ dot: "needs-you", light: "act-waiting" });
+    expect(activityFace("idle")).toEqual({ dot: "idle", light: "act-idle" });
   });
-  it("waiting → act-waiting（黄：等决策）", () => {
-    expect(activityLightClass("waiting")).toBe("act-waiting");
-  });
-  it("busy / null / 未知 → 空串（默认绿点）", () => {
-    expect(activityLightClass("busy")).toBe("");
-    expect(activityLightClass(null)).toBe("");
-    expect(activityLightClass("something-new")).toBe("");
+  it("说不清 ⇒ 默认：在运行的点、不叠灯", () => {
+    expect(activityFace(null)).toEqual({ dot: "running", light: "" });
   });
 });

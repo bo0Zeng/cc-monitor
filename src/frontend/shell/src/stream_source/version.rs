@@ -44,19 +44,10 @@ pub(super) fn forget_verified_build(origin: &str) {
 const KNOWN_CAPABILITY_TOKENS: &[&str] = deploy_contract::STREAM_CAPABILITIES;
 
 /// hello 里不认识的能力 token 记一笔，记在 `origin`（那台远端）名下。只记账（不认识的 token 本来就按保守缺省忽略）。
-pub(super) fn note_unknown_capabilities(
-    origin: &crate::origin::Origin,
-    capabilities: &[String],
-    build_id: &str,
-) {
+pub(super) fn note_unknown_capabilities(origin: &crate::origin::Origin, capabilities: &[String]) {
     for t in capabilities {
         if !KNOWN_CAPABILITY_TOKENS.contains(&t.as_str()) {
-            crate::drift_ledger::record(
-                origin,
-                crate::drift_ledger::DriftFace::UnknownBackendToken,
-                &format!("capabilities:{t}"),
-                Some(&format!("build_id={build_id}")),
-            );
+            crate::drift_ledger::record(origin, &format!("capabilities:{t}"));
         }
     }
 }

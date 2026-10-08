@@ -13,7 +13,7 @@
 //!
 //! # 错误码
 //!
-//! 命令级（本模块 / `gate`）：`invalid_args` · `no_tmux` · `no_such_session` ·
+//! 命令级（本模块 / `gate`）：`bad_args` · `no_tmux` · `no_such_session` ·
 //! `wrong_owner`（Gate 2 不通过）· `too_many_windows`（Gate 3 不通过）· `kill_failed`。
 
 use crate::platform::child::{Child, Deadline};
@@ -38,7 +38,7 @@ pub(crate) fn parse_name(args: &serde_json::Value) -> Result<String, CmdErr> {
         .and_then(|o| o.get("name"))
         .and_then(|v| v.as_str())
         .ok_or((
-            "invalid_args",
+            "bad_args",
             crate::common::contract::malformed("missing `name`"),
         ))?;
     admit_existing_name(name)?;
@@ -52,21 +52,21 @@ pub(crate) fn admit_existing_name(name: &str) -> Result<(), CmdErr> {
     use crate::control::gate_rules::TmuxNameIssue as I;
     match crate::control::gate_rules::existing_tmux_name_issue(name) {
         None if name.contains(':') => Err((
-            "invalid_args",
+            "bad_args",
             copy_text("beKill.name.colon", &[("name", &format!("{name:?}"))]),
         )),
         None => Ok(()),
-        Some(I::Empty) => Err(("invalid_args", copy_text("beKill.name.empty", &[]))),
-        Some(I::Control(_)) => Err(("invalid_args", copy_text("beKill.name.control", &[]))),
+        Some(I::Empty) => Err(("bad_args", copy_text("beKill.name.empty", &[]))),
+        Some(I::Control(_)) => Err(("bad_args", copy_text("beKill.name.control", &[]))),
         Some(I::Deceptive(c)) => Err((
-            "invalid_args",
+            "bad_args",
             copy_text(
                 "beKill.name.deceptive",
                 &[("cp", &format!("U+{:04X}", c as u32))],
             ),
         )),
         Some(other) => Err((
-            "invalid_args",
+            "bad_args",
             crate::common::contract::malformed(&format!("unexpected name issue: {other:?}")),
         )),
     }

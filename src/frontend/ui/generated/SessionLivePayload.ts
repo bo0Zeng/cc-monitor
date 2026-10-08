@@ -10,11 +10,9 @@ export type SessionLivePayload = { session_id: string,
  */
 origin: string, 
 /**
- * Batch7-F24：pidfile 元信息透传（p1e backend 起有值；旧 backend → None）。
- * kind = "interactive"/"bg"（bg → ⚙ 标识；bg 平铺为普通 tab，不再挂宿主排成树）。wire 帧侧因 enum tag
- * 占用叫 `session_kind`，壳的事件 payload 无此约束，与本地 payload 统一叫 `kind`。
+ * 后台会话（那台后端判好的，⚙ 标识；平铺为普通 tab）。
  */
-kind: string | null, 
+background: boolean, 
 /**
  * **E73（additive）：attach 进去对人有没有意义。**
  *
