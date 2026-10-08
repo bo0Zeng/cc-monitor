@@ -36,7 +36,7 @@ describe("额度行模型 ＝ 金样", () => {
       const blocks =
         r.state === "unreadable"
           ? []
-          : [...r.accounts.map((a) => seenBlock(a, r.now, c.tzOffsetMin, c.machine)), ...r.unseen.map((u) => unseenBlock(u))];
+          : [...r.accounts.map((a) => seenBlock(a, r.now, c.machine)), ...r.unseen.map((u) => unseenBlock(u))];
       const got = blocks.map((b) => ({ account: b.account, rows: b.rows }));
       expect(got).toEqual(c.blocks);
     });

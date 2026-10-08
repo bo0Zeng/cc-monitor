@@ -473,6 +473,8 @@ impl Hop {
                 skipped,
             } => {
                 let rec = SwitchRecord {
+                    at_text: None,
+                    from_resets_at_text: None,
                     at: a.now,
                     from: current.to_string(),
                     to,
@@ -488,6 +490,8 @@ impl Hop {
                 skipped,
             } => {
                 let rec = SwitchRecord {
+                    at_text: None,
+                    from_resets_at_text: None,
                     at: a.now,
                     from: current.to_string(),
                     to: current.to_string(),
@@ -499,6 +503,8 @@ impl Hop {
             }
             Verdict::Hold { n, back, skipped } => {
                 let rec = SwitchRecord {
+                    at_text: None,
+                    from_resets_at_text: None,
                     at: a.now,
                     from: current.to_string(),
                     to: current.to_string(),
@@ -539,6 +545,8 @@ impl Hop {
             Ok(go) => go,
             Err(reason) => {
                 let rec = SwitchRecord {
+                    at_text: None,
+                    from_resets_at_text: None,
                     at: a.now,
                     from: s.current.clone(),
                     to: s.start.clone(),
@@ -701,6 +709,7 @@ impl Hop {
         let blocked = if let Some(back) = held {
             Some(Blocked {
                 earliest: Some(AccountAt {
+                    at_text: None,
                     account: back.account,
                     at: back.at,
                 }),
@@ -712,6 +721,7 @@ impl Hop {
                     .filter_map(|x| decide::back_at(x, &f).map(|at| (at, x)))
                     .min()
                     .map(|(at, x)| AccountAt {
+                        at_text: None,
                         account: x.clone(),
                         at,
                     }),
@@ -755,6 +765,7 @@ impl Hop {
             follow: s.follow,
             custom: s.custom.clone(),
             account: AccountCell {
+                since_text: None,
                 start: s.start.clone(),
                 current: s.current.clone(),
                 since: s.since,

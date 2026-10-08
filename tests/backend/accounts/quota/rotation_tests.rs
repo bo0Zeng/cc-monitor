@@ -173,6 +173,8 @@ fn a_newly_enabled_api_account_moves_to_the_end() {
 
 fn rec(at: u64, from: &str, to: &str, why: SwitchWhy) -> SwitchRecord {
     SwitchRecord {
+        at_text: None,
+        from_resets_at_text: None,
         at,
         from: from.into(),
         to: to.into(),

@@ -74,6 +74,40 @@ pub(crate) fn fmt_at(t: i64, now: i64, tz_min: i64) -> String {
     }
 }
 
+/// 回包里认得的时刻格（unix 秒）：出口那一遍（[`with_texts`]）在它旁边添 `<键>Text`。闭集 —— 新的时刻格要显示就加在这里。
+pub(crate) const TIME_KEYS: &[&str] = &["at", "seenAt", "resetsAt", "fromResetsAt", "since"];
+
+/// **回包出口那一遍**：走遍整份回包，每个对象里认得的时刻格（[`TIME_KEYS`]，值是整数）旁边添一格 `<键>Text`
+/// ＝ [`fmt_at`] 按 `now` 与 `tz_min` 写好的字。界面只照这一格排，不换算。
+pub(crate) fn with_texts(v: &mut serde_json::Value, now: i64, tz_min: i64) {
+    match v {
+        serde_json::Value::Object(m) => {
+            let adds: Vec<(String, String)> = TIME_KEYS
+                .iter()
+                .filter_map(|k| {
+                    m.get(*k)
+                        .and_then(serde_json::Value::as_i64)
+                        .map(|t| (format!("{k}Text"), fmt_at(t, now, tz_min)))
+                })
+                .collect();
+            for x in m.values_mut() {
+                with_texts(x, now, tz_min);
+            }
+            for (k, t) in adds {
+                m.insert(k, serde_json::Value::String(t));
+            }
+        }
+        serde_json::Value::Array(a) => a.iter_mut().for_each(|x| with_texts(x, now, tz_min)),
+        _ => {}
+    }
+}
+
+/// [`with_texts`] 按这台此刻的本地钟（帧面答 `quota-read` · `rotation-session-read` 那一下）。
+pub(crate) fn with_texts_here(v: &mut serde_json::Value, now: u64) {
+    let tz_min = crate::platform::local_tz::offset_secs(now).unwrap_or(0) / 60;
+    with_texts(v, i64::try_from(now).unwrap_or(i64::MAX), tz_min);
+}
+
 #[cfg(test)]
 #[path = "../../../tests/backend/common/time_tests.rs"]
 mod tests;

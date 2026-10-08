@@ -3,4 +3,8 @@
 /**
  * 一个号 ＋ 一个时刻。
  */
-export type AccountAt = { account: string, at: number, };
+export type AccountAt = { account: string, at: number, 
+/**
+ * `at` 写给人看的样子（回包出口 `common::time::with_texts` 添；内部与记账一律不填）。
+ */
+atText?: string, };

@@ -154,8 +154,12 @@ const LIBRARY_AGENT: &str = crate::accounts::upstream_select::CREDENTIALS_FILE_A
 
 /// `quota-read`：这台的额度账，每条带上显示态（「快满」按这台默认轮换的 N）；另给账号库里从没出过数的号、
 /// 此刻发得出去的号、最早回来的那个。
+/// 出口那一下给每个时刻添好显示的字（`common::time::with_texts`，按这台的本地钟）。
 pub(crate) fn answer_quota_read() -> Value {
-    quota_read_with(&Ctx::here(), crate::accounts::quota::now_unix())
+    let now = crate::accounts::quota::now_unix();
+    let mut v = quota_read_with(&Ctx::here(), now);
+    crate::common::time::with_texts_here(&mut v, now);
+    v
 }
 
 pub(crate) fn quota_read_with(ctx: &Ctx, now: u64) -> Value {
@@ -277,8 +281,12 @@ fn sids_of(args: &Value, key: &str) -> Result<Vec<String>, (&'static str, String
 }
 
 /// `rotation-session-read`：一批会话各自的那一份（`{sids}`）；这台没见过的照实标 `absent`，不整批失败。
+/// 出口那一下给每个时刻添好显示的字（同 [`answer_quota_read`]）。
 pub(crate) fn answer_session_read(args: &Value) -> Answer {
-    answer_session_read_with(&Ctx::here(), args, crate::accounts::quota::now_unix())
+    let now = crate::accounts::quota::now_unix();
+    let mut v = answer_session_read_with(&Ctx::here(), args, now)?;
+    crate::common::time::with_texts_here(&mut v, now);
+    Ok(v)
 }
 
 pub(crate) fn answer_session_read_with(ctx: &Ctx, args: &Value, now: u64) -> Answer {
@@ -451,6 +459,8 @@ pub(crate) fn record(
         .entry(&agent, from)
         .and_then(|o| o.reading.resets_at);
     let rec = SwitchRecord {
+        at_text: None,
+        from_resets_at_text: None,
         at: now,
         from: from.to_string(),
         to: to.to_string(),

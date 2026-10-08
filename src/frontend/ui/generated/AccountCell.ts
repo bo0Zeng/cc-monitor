@@ -16,6 +16,10 @@ start: string,
  */
 current: string, since: number, 
 /**
+ * `since` 写给人看的样子（回包出口 `common::time::with_texts` 添；内部与记账一律不填）。
+ */
+sinceText?: string, 
+/**
  * 换号记录，先的在前。
  */
 history: Array<SwitchRecord>, inPlace: InPlace, 

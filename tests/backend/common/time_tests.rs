@@ -6,6 +6,7 @@
 //! | T2 | 两个方向互逆（−800 年到 +800 年逐天） | 全量 |
 //! | T3 | ISO8601：秒 · 毫秒 · 1/2 位小数补零 · 太短 / 不是数字 ⇒ `None` | 真值 |
 //! | T5 | 给人看的时刻：当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年带年 · 时区偏移跨日 | 真值 |
+//! | T6 | 回包出口那一遍：认得的时刻格（闭集）各添一格 `<键>Text`，按层级走到底；别的数 · 已有的字不动 | 真值 |
 //! | T4 | 换算常量 `719_468` 在后端生产段只住本模块 | 文本，零命中 ＋ 正控 |
 
 use super::*;
@@ -98,4 +99,39 @@ fn t5_display_forms_follow_the_day_and_the_year() {
     assert_eq!(fmt_at(now - 300 * 86_400, now, 0), "2025-12-11 12:00");
     // 东八区：UTC 20:00 是本地次日 04:00。
     assert_eq!(fmt_at(now + 8 * 3_600, now, 480), "10-08 04:00");
+}
+
+#[test]
+fn t6_reply_gets_a_text_next_to_every_time_cell() {
+    let now = days_from_civil(2026, 10, 7) * 86_400 + 12 * 3_600;
+    let mut v = serde_json::json!({
+        "now": now,
+        "earliestReturn": {"account": "b", "at": now + 600},
+        "accounts": [{
+            "seenAt": now - 60,
+            "reading": {"resetsAt": now + 86_400, "used": 0.4},
+            "slots": [{"slot": "5h", "pct": 40, "resetsAt": now + 3_600}, {"slot": "7d", "pct": 3}],
+        }],
+        "sessions": {"s": {"account": {"since": now - 120, "history": [{"at": now - 60, "fromResetsAt": now + 60}]}}},
+        "count": 3,
+    });
+    with_texts(&mut v, now, 0);
+    assert_eq!(v["earliestReturn"]["atText"], "12:10");
+    let a = &v["accounts"][0];
+    assert_eq!(a["seenAtText"], "11:59");
+    assert_eq!(a["reading"]["resetsAtText"], "10-08 12:00");
+    assert_eq!(a["slots"][0]["resetsAtText"], "13:00");
+    assert!(
+        a["slots"][1].get("resetsAtText").is_none(),
+        "没有时刻 ⇒ 不添"
+    );
+    let acc = &v["sessions"]["s"]["account"];
+    assert_eq!(acc["sinceText"], "11:58");
+    assert_eq!(acc["history"][0]["atText"], "11:59");
+    assert_eq!(acc["history"][0]["fromResetsAtText"], "12:01");
+    assert!(
+        v.get("nowText").is_none() && v.get("countText").is_none(),
+        "闭集之外的数不动"
+    );
+    assert!(a["reading"].get("usedText").is_none());
 }

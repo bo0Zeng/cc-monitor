@@ -483,12 +483,13 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   J23: {
     what: "自 1970-01-01 起第几天 ⇒ 公历年月日",
     homes: ["host-core::civil_from_days"],
-    status: "open",
-    // 界面额度悬停卡排时刻那一份（与后端 `control/quota_text.rs` 锁同一份金样 `quota-text.golden.json`）。
-    defs: ["civil"],
-    needles: [{ text: "719_468", count: 1, file: "src/frontend/ui/quota-lines.ts" }],
-    owner: "界面那一路：额度悬停卡的时刻改由后端排好交成品（或界面改走 `Date`）时删掉 `quota-lines.ts::civil`",
-    why: "两个前端的 Rust 那一份收进了 host-core；界面这一份是 TS，链不了 Rust crate，今天由金样对拍兜着",
+    // 删的是界面额度悬停卡排时刻那一份（`quota-lines.ts::civil` ＋ `fmtAt`）：时刻的字改由后端出口写好（回包里每个时刻旁边那一格 `…Text`），界面照抄。
+    status: "zero",
+    defs: ["civil", "fmtAt"],
+    needles: [
+      { text: "719_468", count: 0 },
+      { text: "getTimezoneOffset", count: 0 },
+    ],
   },
 };
 
@@ -631,7 +632,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     // 主窗 / 设置窗摆进工作区正中（宿主那一侧用；TS 侧没有孪生）。
     center_in_work_area: NONE,
     win32_long_path: NONE,
-    // 天数 ⇒ 公历（monitor 记主机钥匙那天的日期 · 文件窗口画修改时间）；界面额度悬停卡还有一份 TS（J23）。
+    // 天数 ⇒ 公历（monitor 记主机钥匙那天的日期 · 文件窗口画修改时间）；界面那一份 TS 删了（J23 zero）。
     civil_from_days: "J23",
   },
   "relay-route-core": {

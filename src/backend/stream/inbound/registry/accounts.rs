@@ -18,7 +18,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "quota-read",
         summary: "这台的额度账",
         codes: &[],
-        fields: &[out("accounts", "每个号一条，按 `(agent, account)` 排：`agent` 路由第 1 段（哪一家）· `account` 路由第 2 段（哪个号"), out("earliestReturn", "被拒 / 超额在兜的号里最早回来的那个 `{account, at}`；没有、或都说不出时刻 ⇒ `null`"), out("now", "这台此刻的 unix 秒（界面算「几分钟前看到的」「还有多久重置」都按这台的钟）"), out("path", "那份文件的绝对路径（家推不出来时 `null`）"), out("reason", "只在 `unreadable` 时有：为什么读不出来；其余 `null`"), out("state", "`\"present\"`（读得懂）· `\"absent\"`（还没看到过任何回包）· `\"unreadable\"`（文件读不出来 / 家推不出来）"), out("unseen", "账号库里有、额度账上从没出过数的号：`{agent, account, kind, login, subId?}`（几格同下）"), out("usableNow", "此刻发得出去的号（路由第 2 段）：登录拿得到、不是被拒 / 超额在兜（快满 · 数旧 · 没采样 · 上一窗已过都算）")],
+        fields: &[out("accounts", "每个号一条，按 `(agent, account)` 排：`agent` 路由第 1 段（哪一家）· `account` 路由第 2 段（哪个号"), out("earliestReturn", "被拒 / 超额在兜的号里最早回来的那个 `{account, at}`；没有、或都说不出时刻 ⇒ `null`"), out("now", "这台此刻的 unix 秒（界面算「几分钟前看到的」「还有多久重置」都按这台的钟）；回包里每个时刻（`at` · `seenAt` · `resetsAt` · `fromResetsAt` · `since`）旁边有一格 `…Text`：出口按这台本地钟写好的字（当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年带年），界面照抄、不换算"), out("path", "那份文件的绝对路径（家推不出来时 `null`）"), out("reason", "只在 `unreadable` 时有：为什么读不出来；其余 `null`"), out("state", "`\"present\"`（读得懂）· `\"absent\"`（还没看到过任何回包）· `\"unreadable\"`（文件读不出来 / 家推不出来）"), out("unseen", "账号库里有、额度账上从没出过数的号：`{agent, account, kind, login, subId?}`（几格同下）"), out("usableNow", "此刻发得出去的号（路由第 2 段）：登录拿得到、不是被拒 / 超额在兜（快满 · 数旧 · 没采样 · 上一窗已过都算）")],
         takes_input: false,
         run: Run::Blocking(|_r| Ok(Some(crate::faces::rotation_face::answer_quota_read()))),
     },
@@ -72,7 +72,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "rotation-session-read",
         summary: "一批会话的轮换与「账号」格",
         codes: &["bad_args", "failed"],
-        fields: &[out("now", "那份文件的三态（同 `rotation-read`）· 这台此刻的 unix 秒"), out("reason", "那份文件的三态（同 `rotation-read`）· 这台此刻的 unix 秒"), out("sessions", "每个 sid 一份"), arg("sids", "会话 id 的数组"), out("state", "那份文件的三态（同 `rotation-read`）· 这台此刻的 unix 秒")],
+        fields: &[out("now", "那份文件的三态（同 `rotation-read`）· 这台此刻的 unix 秒；回包里每个时刻（`at` · `seenAt` · `resetsAt` · `fromResetsAt` · `since`）旁边有一格 `…Text`：出口按这台本地钟写好的字（当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年带年），界面照抄、不换算"), out("reason", "那份文件的三态（同 `rotation-read`）· 这台此刻的 unix 秒"), out("sessions", "每个 sid 一份"), arg("sids", "会话 id 的数组"), out("state", "那份文件的三态（同 `rotation-read`）· 这台此刻的 unix 秒")],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::faces::rotation_face::answer_session_read(&r.args)
