@@ -39,20 +39,27 @@ pub(crate) fn dir(args: &Value) -> Answer {
     })
 }
 
-/// 默认启动器在这台 `PATH` 上找得到（Windows 上带 `.exe` / `.cmd` 也算）。
+/// 默认启动器在起会话那个 shell 的 `PATH` 上找得到（Windows 上带 `.exe` / `.cmd` 也算）——与足迹里「装没装」同一个查法。
 fn launcher_found(name: &str) -> bool {
-    let Some(path) = std::env::var_os("PATH") else {
-        return false;
-    };
+    launcher_found_in(
+        name,
+        crate::platform::shell::session_shell_path().as_deref(),
+    )
+}
+
+/// [`launcher_found`] 的本体（那份 `PATH` 是参数）。问不出那个 shell 的 `PATH` ⇒ 不藏（判不了不当成没装）。
+pub(crate) fn launcher_found_in(name: &str, session_path: Option<&str>) -> bool {
     let exts: &[&str] = if cfg!(windows) {
         &[".exe", ".cmd"]
     } else {
         &[""]
     };
-    std::env::split_paths(&path).any(|d| {
-        exts.iter()
-            .any(|e| crate::plugin::discover::is_executable(&d.join(format!("{name}{e}"))))
-    })
+    let runnable = |p: &str| {
+        exts.iter().any(|e| {
+            crate::plugin::discover::is_executable(std::path::Path::new(&format!("{p}{e}")))
+        })
+    };
+    crate::footprint::rows::resolves_on_path(name, session_path, &runnable).unwrap_or(true)
 }
 
 /// 这台能起的几家（注册表里由我们起的、且默认启动器在这台找得到的；注册表序）。

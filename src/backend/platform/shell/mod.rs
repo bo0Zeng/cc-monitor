@@ -37,21 +37,31 @@ pub(crate) fn posix_shell(script: &str) -> Option<Child> {
 /// 起会话那个 shell 的 `PATH` 夹在这一对标记中间（rc 文件往标准输出打的杂话不算进去）。
 pub(crate) const SESSION_PATH_MARK: &str = "@@ccm-session-path@@";
 
-/// 问 `PATH` 那一趟的期限（交互 rc 卡住 ⇒ 到点算问不出来）。
-const SESSION_PATH_WITHIN: crate::platform::child::Deadline =
+/// 问 `PATH` 那一趟的期限（交互 rc 卡住 ⇒ 到点连同整个进程组一起杀掉，算问不出来）。
+pub(crate) const SESSION_PATH_WITHIN: crate::platform::child::Deadline =
     crate::platform::child::Deadline::secs(10);
 
-/// **起会话那个 shell** 的 `PATH`：会话在 tmux 窗格里的用户登录 shell 里起（交互、登录），agent 命令按那里的 `PATH` 找；
-/// 后端进程自己的 `PATH` 不是那一份（经 ssh 非登录 shell 起时常常没有用户级 `bin`）。
-/// 问法：用 `$SHELL` 起一次 `-l -i -c` 打出 `PATH`。没有 `$SHELL` / 起不来 / 超时 / 没打出来 ⇒ `None`（问不出来，调用方不许当成「没有」）。
+/// **起会话那个 shell** 的 `PATH`：会话在 tmux 窗格里的用户登录 shell 里起（交互、登录；远端开窗那一形是 `bash -lic`），
+/// agent 命令按那里的 `PATH` 找；后端进程自己的 `PATH` 不是那一份（经 ssh 非登录 shell 起时常常没有用户级 `bin`）。
+/// 「装没装」（足迹）与「这台能起哪几家」（起新会话框）都只经这一处问。
+///
+/// 问法：用 `$SHELL` 起一次 `-l -i -c` 打出 `PATH`，**按后端生命周期只问一次**（缓存的是 `PATH`，不是答案：
+/// 之后装进同一个目录的程序照样查得到）。交互 rc 里的东西会被触发 ⇒ 防法：stdin 接空、`TERM=dumb`、自成一个进程组、
+/// 期限到了整组杀（后端经 ssh / 由界面起，本身没有控制终端 ⇒ 自动接 tmux 那一类接不上就退，卡住的到期限收手）；
+/// 只问一次 ⇒ rc 里起 ssh-agent 那一类至多多起一个。
+/// 没有 `$SHELL` / 起不来 / 超时 / 没打出来 ⇒ `None`（问不出来，调用方不许当成「没有」）。
 /// 非 unix：会话在本机终端里起，环境与本进程同源 ⇒ 本进程的 `PATH`。
 pub(crate) fn session_shell_path() -> Option<String> {
     #[cfg(unix)]
     {
-        let shell = std::env::var("SHELL")
-            .ok()
-            .filter(|s| !s.trim().is_empty())?;
-        ask_session_path(login_shell_asking_path(&shell))
+        static ONE: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+        ONE.get_or_init(|| {
+            let shell = std::env::var("SHELL")
+                .ok()
+                .filter(|s| !s.trim().is_empty())?;
+            ask_session_path(login_shell_asking_path(&shell), SESSION_PATH_WITHIN)
+        })
+        .clone()
     }
     #[cfg(not(unix))]
     {
@@ -59,22 +69,27 @@ pub(crate) fn session_shell_path() -> Option<String> {
     }
 }
 
-/// `<shell> -l -i -c <打出 PATH>`（不起）。
+/// `<shell> -l -i -c <打出 PATH>`，`TERM=dumb`（不起）。
 pub(crate) fn login_shell_asking_path(shell: &str) -> Child {
-    Child::new(shell).args([
-        "-l",
-        "-i",
-        "-c",
-        &format!(
-            "printf '%s%s%s' {m} \"$PATH\" {m}",
-            m = shell_quote_core::posix_quote(SESSION_PATH_MARK)
-        ),
-    ])
+    Child::new(shell)
+        .args([
+            "-l",
+            "-i",
+            "-c",
+            &format!(
+                "printf '%s%s%s' {m} \"$PATH\" {m}",
+                m = shell_quote_core::posix_quote(SESSION_PATH_MARK)
+            ),
+        ])
+        .env("TERM", "dumb")
 }
 
-/// 起它、从输出里认那一段。
-pub(crate) fn ask_session_path(cmd: Child) -> Option<String> {
-    match cmd.run(SESSION_PATH_WITHIN) {
+/// 起它（stdin 接空 · 自成一组 · 到期限整组杀，都是 [`Child::run`] 的）、从输出里认那一段。
+pub(crate) fn ask_session_path(
+    cmd: Child,
+    within: crate::platform::child::Deadline,
+) -> Option<String> {
+    match cmd.run(within) {
         Ok(out) => parse_marked_path(&String::from_utf8_lossy(&out.stdout)),
         Err(e) => {
             tracing::warn!("问起会话那个 shell 的 PATH 没问成：{e}");

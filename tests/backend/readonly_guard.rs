@@ -3220,7 +3220,7 @@ mod spawn_registry {
             "<非字面量>",
             "问**起会话那个 shell** 的 `PATH`（`session_shell_path`）：用户的 `$SHELL` 起一次 `-l -i -c`，固定脚本只 `printf` 出 `PATH`，\
              不吃任何输入、有期限。被起的是用户自己的登录 shell，它读不读 / 写不写什么由用户的 rc 文件定；后端进程自身不写用户数据。\
-             只从足迹报告（`footprint-report` · `data-report`）判 agent 命令行装没装时进来。",
+             按后端生命周期只问一次（缓存）；只从足迹报告（`footprint-report` · `data-report`）判 agent 命令行装没装、起新会话框（`session-new-facts`）判这台能起哪几家时进来。",
             "缩性质",
             "有别的办法拿到用户登录环境的 `PATH` 而不起他的 shell 的那天摘掉。⚠ 脚本只许是打出 `PATH` 那一句。",
         ),
