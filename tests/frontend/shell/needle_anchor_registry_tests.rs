@@ -360,7 +360,10 @@ fn bare_matchers_on_disk_corpora_equal_the_debt_list() {
         }
     }
     // ★ 抽取器自检：取测试段那步坏了 ⇒ 一个 `.contains("` 都见不到，下面的相等是空转的。
-    assert!(all_contains > 0, "整棵树的测试段里一个 `.contains(\"` 都没有 —— 取测试段那步坏了");
+    assert!(
+        all_contains > 0,
+        "整棵树的测试段里一个 `.contains(\"` 都没有 —— 取测试段那步坏了"
+    );
     now.sort();
     let mut want: Vec<String> = DEBT
         .lines()
