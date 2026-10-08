@@ -913,3 +913,52 @@ fn the_window_process_own_reason_reaches_the_sentence() {
     );
     std::fs::remove_dir_all(&dir).ok();
 }
+
+/// 崩溃之后再开是**干净的新进程**：第一趟替身判成功之后 panic 式退出（stderr 留一句越界，退出码非零）⇒ 收尸那一句带着它那几行；
+/// 第二趟照常开 ⇒ 另一个 pid、照回成功，而且它体面退出时一句都不交（上一趟的错误输出不串过来，也没有哪份登记残留挡着它）。
+#[cfg(unix)]
+#[test]
+fn reopening_after_a_crash_starts_a_clean_new_process() {
+    use std::os::unix::fs::PermissionsExt;
+    let _g = ENV.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = std::env::temp_dir().join(format!("filewin-reopen-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("造不出临时目录");
+    let req = synthetic_request();
+    let listed = encode_ready(&Ready::Listed(2)).trim().to_string();
+    let run = |tag: &str, tail: &str, code: u32| {
+        let p = dir.join(format!("reopen-{tag}.sh"));
+        std::fs::write(
+            &p,
+            format!(
+                "#!/bin/sh\ncat >/dev/null\nprintf '%s\\n' '{listed}'\nsleep 0.6\n{tail}exit {code}\n"
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::env::set_var(BIN_ENV, &p);
+        let (tx, rx) = std::sync::mpsc::channel::<String>();
+        let r = open_in_new_process(&req, Box::new(move |said| tx.send(said).unwrap()));
+        std::env::remove_var(BIN_ENV);
+        (r, rx.recv_timeout(std::time::Duration::from_secs(10)))
+    };
+    let (first, said) = run(
+        "crash",
+        "printf '%s\\n' 'index out of bounds: the len is 1 but the index is 1' >&2\n",
+        101,
+    );
+    let (pid1, _) = first.expect("第一趟该先判成功");
+    let said = said.expect("判成功之后崩了，却一句都没交");
+    assert!(
+        said.contains("index out of bounds"),
+        "崩溃那几行没带进那一句：{said}"
+    );
+    let (second, said2) = run("clean", "", 0);
+    let (pid2, n) = second.expect("崩过一次之后再开没开成");
+    assert_ne!(pid1, pid2, "再开没起新进程");
+    assert_eq!(n, 2);
+    assert!(
+        said2.is_err(),
+        "新进程体面退出却交了一句（上一趟的串过来了？）：{said2:?}"
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}

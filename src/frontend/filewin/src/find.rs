@@ -30,7 +30,6 @@
 //! - 不看这个窗口时索引不会变新（要一个与用户动作无关的节拍，刻意不做）。
 //! - 命中的顺序是后端排的（按相关度，翻页同一个序）；这一侧按到货的顺序画，不重排。
 
-use crate::Held;
 use copy_core::copy_text;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -804,13 +803,13 @@ impl SearchBoard {
     /// 让 `None` 覆盖掉真窗口 ⇒ 答案回来时敲不动窗口，结果要等用户再动一下鼠标才出现。
     pub fn attach(&self, ctx: Option<egui::Context>) {
         if ctx.is_some() {
-            *self.ctx.held() = ctx;
+            *self.ctx.lock().unwrap() = ctx;
         }
     }
 
     /// 敲一下窗口：「有新东西了，画下一帧」。
     pub fn poke(&self) {
-        if let Some(c) = self.ctx.held().as_ref() {
+        if let Some(c) = self.ctx.lock().unwrap().as_ref() {
             c.request_repaint();
         }
     }
@@ -832,7 +831,7 @@ impl SearchBoard {
     pub fn invalidate(&self, asked: &Asked) {
         self.epoch.fetch_add(1, Ordering::SeqCst);
         self.page_failed.store(false, Ordering::SeqCst);
-        let mut s = self.inner.held();
+        let mut s = self.inner.lock().unwrap();
         s.asked = asked.clone();
         s.outcome = None;
         s.notice = None;
@@ -859,7 +858,7 @@ impl SearchBoard {
 
     pub fn shown(&self) -> Shown {
         self.full_clones.fetch_add(1, Ordering::Relaxed);
-        self.inner.held().clone()
+        self.inner.lock().unwrap().clone()
     }
 
     /// [`Self::shown`] 被调过几次（每次一份整克隆）。
@@ -869,13 +868,14 @@ impl SearchBoard {
 
     /// 眼下这一问的范围（只克隆这一格）。
     pub fn asked_under(&self) -> Option<super::source::RemotePath> {
-        self.inner.held().asked.under.clone()
+        self.inner.lock().unwrap().asked.under.clone()
     }
 
     /// 第 `i` 条命中（只克隆这一条）。
     pub fn hit(&self, i: usize) -> Option<Hit> {
         self.inner
-            .held()
+            .lock()
+            .unwrap()
             .outcome
             .as_ref()
             .and_then(|o| o.hits.get(i).cloned())
@@ -884,7 +884,8 @@ impl SearchBoard {
     /// 命中那一摞画成的表行。
     pub fn hit_rows(&self) -> Vec<super::rows::HitRow> {
         self.inner
-            .held()
+            .lock()
+            .unwrap()
             .outcome
             .as_ref()
             .map(|o| o.hits.iter().map(Hit::table_row).collect())
@@ -894,7 +895,7 @@ impl SearchBoard {
     /// 翻页失败那一行点了「重试」：放开闩，下一趟翻页照常发。
     pub fn retry_more(&self) {
         self.page_failed.store(false, Ordering::SeqCst);
-        self.inner.held().notice = None;
+        self.inner.lock().unwrap().notice = None;
     }
 
     /// 往下翻失败过（这一问不再自动往下翻）。
@@ -904,7 +905,7 @@ impl SearchBoard {
 
     /// 摆一句话上去（不经网络的那几档失败走这条）。
     pub fn say(&self, notice: &str) {
-        self.inner.held().notice = Some(notice.to_string());
+        self.inner.lock().unwrap().notice = Some(notice.to_string());
         self.rounds.fetch_add(1, Ordering::SeqCst);
         self.poke();
     }
@@ -918,11 +919,11 @@ impl SearchBoard {
 
     /// 冷启动首建正在走 ⇒ 后端声明的那个秒数；否则 `None`。
     pub fn first_build(&self) -> Option<u64> {
-        *self.first_build.held()
+        *self.first_build.lock().unwrap()
     }
 
     fn mark_first_build(&self, secs: Option<u64>) {
-        *self.first_build.held() = secs;
+        *self.first_build.lock().unwrap() = secs;
         self.poke();
     }
 
@@ -932,7 +933,7 @@ impl SearchBoard {
 
     /// 要不要再告诉后端「用户在看这个目录」：换了才要（并记下这一次）。
     fn note_browsing(&self, dir: &super::source::RemotePath) -> bool {
-        let mut g = self.browsed.held();
+        let mut g = self.browsed.lock().unwrap();
         if g.as_ref() == Some(dir) {
             return false;
         }
@@ -943,7 +944,7 @@ impl SearchBoard {
     /// 该不该往下再要一屏：手上这一问有答案、后端说后面还有、没有一趟翻页在飞。
     /// 抢到 ⇒ 回 `(号, 这一问, 从哪起)`，并把「在飞」那一位按住。
     pub fn claim_more(&self) -> Option<(u64, Asked, usize)> {
-        let s = self.inner.held();
+        let s = self.inner.lock().unwrap();
         let o = s.outcome.as_ref()?;
         if !o.truncated || self.page_failed.load(Ordering::SeqCst) {
             return None;
@@ -968,7 +969,7 @@ pub fn store_if_current(b: &SearchBoard, mine: u64, asked: &Asked, round: Round)
         return false;
     }
     {
-        let mut s = b.inner.held();
+        let mut s = b.inner.lock().unwrap();
         s.asked = asked.clone();
         if let Some(root) = round.outcome.as_ref().and_then(|o| o.index_root.as_ref()) {
             s.indexed_root = Some(String::from_utf8_lossy(root).to_string());
@@ -990,7 +991,7 @@ pub fn append_if_current(b: &SearchBoard, mine: u64, page: Result<FindOutcome, S
     if b.epoch.load(Ordering::SeqCst) != mine {
         return false;
     }
-    let mut s = b.inner.held();
+    let mut s = b.inner.lock().unwrap();
     let landed = match page {
         Ok(p) => match s.outcome.as_mut() {
             Some(o) if o.hits.len() == p.offset => {
@@ -1242,7 +1243,7 @@ impl SearchBoard {
     /// 首建那一趟：左段换成首建那一句 ＋ 转圈。出了错（这一问没答案）：换成出错条 ＋「重试」。
     pub fn status_ui(&self, ui: &mut egui::Ui, machine: &str, whole: bool) -> Option<SearchAction> {
         let (outcome_head, status, notice) = {
-            let g = self.inner.held();
+            let g = self.inner.lock().unwrap();
             (
                 g.outcome.as_ref().map(FindOutcome::clone_head),
                 g.status.clone(),
@@ -1336,7 +1337,8 @@ impl SearchBoard {
     /// 这一问已有的答案里「后面还有」（表尾画「已到底」还是不画）。
     pub fn more_to_come(&self) -> bool {
         self.inner
-            .held()
+            .lock()
+            .unwrap()
             .outcome
             .as_ref()
             .is_some_and(|o| o.truncated)
@@ -1344,18 +1346,24 @@ impl SearchBoard {
 
     /// 这一问落地了答案（没落地 ⇒ 表上什么都不画，状态行转圈）。
     pub fn has_outcome(&self) -> bool {
-        self.inner.held().outcome.is_some()
+        self.inner.lock().unwrap().outcome.is_some()
     }
 
     /// 这一问的命中数（落地了才有）。
     pub fn total(&self) -> Option<usize> {
-        self.inner.held().outcome.as_ref().map(|o| o.total_hits)
+        self.inner
+            .lock()
+            .unwrap()
+            .outcome
+            .as_ref()
+            .map(|o| o.total_hits)
     }
 
     /// 首建那一趟正在走、还没有答案（表上画首建那一形，不画「无匹配」）。
     pub fn index_missing(&self) -> bool {
         self.inner
-            .held()
+            .lock()
+            .unwrap()
             .outcome
             .as_ref()
             .is_some_and(|o| o.index_missing)
