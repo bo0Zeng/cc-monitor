@@ -222,7 +222,7 @@ export interface SpawnRequest {
  * 账号名的字符集原来也在这里判（`isValidBusId`〔散文墓碑〕）；今天归后端（`bad_id`，同一个 `bus_id_ok`）。
  */
 export function checkSpawnShape(req: SpawnRequest): void {
-  if (req.dir.trim() === "") throw new ControlError(copyText("ccBus.spawn.noDir"), "empty working directory");
+  if (req.dir.trim() === "") throw new ControlError(copyText("ccBus.spawn.needDir"), "empty working directory");
 }
 
 function spawnRefusals(): Refusals {

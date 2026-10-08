@@ -112,9 +112,16 @@ export const W_CHECKS: Record<string, Check> = {
   // N6b：「失败 · X」的 X 取自原因词闭集或占位符。
   "C-W8": (e, ctx) => {
     const reasons = words(ctx, "C-W8");
+    const ok = (x: string): boolean => reasons.includes(x) || /^(\{[A-Za-z][A-Za-z0-9]*\}\s*)+$/.test(x);
     for (const m of e.zh.matchAll(/失败 · ([^\n]*?)(?= · |\n|$)/g)) {
       const x = m[1].trim();
-      if (reasons.includes(x) || /^(\{[A-Za-z][A-Za-z0-9]*\}\s*)+$/.test(x)) continue;
+      if (ok(x)) continue;
+      // 写入 / 读取 / 删除失败 · <对象> · <原因>：整条以它开头时第一格是对象，原因在下一格。
+      if (m.index === 2 && /^(写入|读取|删除)失败 · /.test(e.zh)) {
+        const next = e.zh.slice(m.index + m[0].length).match(/^ · ([^\n]*?)(?= · |\n|$)/);
+        if (next && ok(next[1].trim())) continue;
+        return next ? `「失败 · ${x} · ${next[1].trim()}」的原因格不是原因词` : `「失败 · ${x}」后面缺原因格`;
+      }
       return `「失败 · ${x}」不是原因词`;
     }
     return null;
