@@ -51,8 +51,6 @@
       "accountChip.ctor.icon",
       "accountChip.label.queryFailed",
       "accountChip.refresh.icon",
-      "ccBusHooks.state.brokenPath",
-      "extPage.status.problems",
       "rsFilewinChrome.status.count",
       "rsFilewinChrome.status.zoomReset",
       "rsFilewinEditPage.state.reading",
@@ -68,7 +66,6 @@
     "C-W6": [],
     "C-W7": [],
     "C-W8": [
-      "agentWindow.why.failed",
       "credsPerm.windowsProbe.unreadable",
       "diagnostics.copy.fallback",
       "front.body.redialFailed",
@@ -102,24 +99,19 @@
       "slash.card.icon"
     ],
     "C-W13": [
-      "diagnostics.refresh.settingsUnreadable",
-      "settingsPanel.behavior.showHiddenTasksHelp"
+      "diagnostics.refresh.settingsUnreadable"
     ],
     "C-W14": [
       "accountOps.said.contract",
-      "acct.reason.ioFailed",
       "beFilesCommit.upload.placeholderLeft",
       "bePlan.names.unreadable",
       "beProbe.hello.tooOld",
       "beProbe.test.noControl",
       "ccBus.kill.timedOut",
-      "ccBus.kill.unsure",
       "ccBus.online.timedOut",
       "ccBus.read.timedOut",
       "ccBus.send.timedOut",
       "ccBus.spawn.timedOut",
-      "profilesPage.file.broken",
-      "remoteHealth.head.versionMismatch",
       "rsBackendPolicy.health.detail",
       "rsByteTable.key.notUtf8",
       "rsByteTable.key.unreadable",
@@ -144,23 +136,7 @@
       "tmuxControl.kill.noTmux"
     ],
     "C-W15": [
-      "agentsPanel.render.summary",
-      "ccBusHooks.state.brokenPath",
-      "dataPage.chore.copyWholeN",
-      "diff.buildDiffBody.showAll",
-      "machineAliases.policy.allow",
-      "machineAliases.selfPaste.undo",
-      "profilesPage.remove.goReparentRoot",
-      "rsFilewinCrossCopy.label.cross",
-      "rsFilewinSelect.label.chmodMany",
-      "rsFilewinTransfer.ui.overwriteChecked",
-      "rsFilewinWorkspace.closeAsk.saveAll",
-      "rsRemoteResident.tunnel.forwardingProhibited",
-      "sessionState.killIdle.action",
-      "sessionViewer.tools.said",
-      "statusBar.start.label",
-      "statusBar.tasks.chip",
-      "statusBar.todo.label"
+      "rsRemoteResident.tunnel.forwardingProhibited"
     ],
     "C-W17": [
       "backend.ctor.intro",

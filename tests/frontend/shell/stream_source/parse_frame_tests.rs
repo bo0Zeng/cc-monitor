@@ -952,3 +952,44 @@ fn tasks_changed_is_recognised_and_reaches_the_frontend_stream() {
         "远端流循环那一臂 ＋ 本机消费者那一臂，各一处交 `replay.tasks_changed`"
     );
 }
+
+/// 版本那条健康信息的类别由壳判好（界面按类别挑标题，不自己猜）：那台旧 / 协议不兼容 ⇒ 要更新；
+/// 那台新 ⇒ 版本较新；没带后端字节 ⇒ 版本不可比；同 ⇒ 不说。
+#[test]
+fn the_version_health_kind_is_decided_here_not_in_the_ui() {
+    use crate::machine_state::VersionRelation as R;
+    assert_eq!(version_health_kind(R::Same), None);
+    assert_eq!(version_health_kind(R::Older), Some(VERSION_KIND_OLDER));
+    assert_eq!(version_health_kind(R::Newer), Some(VERSION_KIND_NEWER));
+    assert_eq!(
+        version_health_kind(R::Incomparable),
+        Some(VERSION_KIND_INCOMPARABLE)
+    );
+    let kinds = [
+        VERSION_KIND_OLDER,
+        VERSION_KIND_NEWER,
+        VERSION_KIND_INCOMPARABLE,
+    ];
+    assert_eq!(
+        kinds
+            .iter()
+            .collect::<std::collections::BTreeSet<_>>()
+            .len(),
+        3,
+        "三类得是三个不同的字"
+    );
+    // 协议不兼容随「那台旧」走「要更新」那一类。
+    assert_eq!(
+        version_health_kind(version_relation(999, "p9z-mine", false, MINE)),
+        Some(VERSION_KIND_OLDER)
+    );
+    assert_eq!(
+        version_health_kind(version_relation(
+            EXPECTED_PROTO_V,
+            "p1a-history",
+            true,
+            None
+        )),
+        Some(VERSION_KIND_INCOMPARABLE)
+    );
+}

@@ -155,6 +155,24 @@ pub(super) fn version_relation(
     }
 }
 
+/// 版本那条健康信息（`RemoteHealthPayload::kind`）的三类：界面按它挑标题（`remote-health.ts::headlineFor`），不自己判。
+pub(super) const VERSION_KIND_OLDER: &str = "version-older";
+pub(super) const VERSION_KIND_NEWER: &str = "version-newer";
+pub(super) const VERSION_KIND_INCOMPARABLE: &str = "version-incomparable";
+
+/// 版本关系 → 健康信息的类别（同 ⇒ 不说）。协议不兼容在 [`version_relation`] 里已归「那台旧」。
+pub(super) fn version_health_kind(
+    rel: crate::machine_state::VersionRelation,
+) -> Option<&'static str> {
+    use crate::machine_state::VersionRelation as R;
+    match rel {
+        R::Same => None,
+        R::Older => Some(VERSION_KIND_OLDER),
+        R::Newer => Some(VERSION_KIND_NEWER),
+        R::Incomparable => Some(VERSION_KIND_INCOMPARABLE),
+    }
+}
+
 /// 把协商结论变成给用户看的提示文案（`None` = 兼容、无需提示）。`label` 是出问题的远端机器。
 /// `remote_older` = 接上那一刻本机常驻后端答的「那台比手上这一版旧」（`remote_resident::Replayed::remote_is_older`）。
 pub(super) fn version_warning(
