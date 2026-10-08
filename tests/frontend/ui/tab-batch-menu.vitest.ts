@@ -111,7 +111,7 @@ describe("批量菜单", () => {
     expect(toastHead()).toBe(copyText("sessionState.batch.someFailed", { done: 1, failed: 1 }));
     expect(toastBody().split("\n")).toEqual([
       copyText("tabBatch.result.failedLine", { title: "T-c", why: "门拦下了" }),
-      copyText("tabBatch.result.skippedLine", { title: "T-b", why: copyText("tabBatch.why.ended") }),
+      copyText("tabBatch.result.skippedLine", { title: "T-b", why: copyText("tabBatch.why.ended", { ended: copyText("sessionState.ended.name") }) }),
     ]);
     const opts = vi.mocked(showActionFailureToast).mock.calls.at(-1)?.[2] as { action?: { label: string; run: () => void } };
     expect(opts.action?.label, "有逐条原因 ⇒ 带［查看］").toBe(copyText("tabBatch.result.view"));

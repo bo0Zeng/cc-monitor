@@ -22,14 +22,13 @@ import type { SessionActivity } from "./generated/SessionActivity";
 import type { SessionState } from "./tab-session-state";
 import type { Needs, PendingCall, RetryOutcome, UsageFact } from "./session-reads";
 
-// 原先这里是 `TabStatus = "live" | "archived"`（与下面的 `tmuxIdle` 一起挤着两个轴）。
-//   会话状态改住 `tab-session-state.ts` 的 `SessionState`（活性 × 可恢复性），字段是 `Tab.state`。
+// 会话状态住 `tab-session-state.ts` 的 `SessionState`（活性 × 可恢复性），字段是 `Tab.state`。
 
 export interface Tab {
   sessionId: string;
   /** 后台会话（后端判好的 `background`）⇒ ⚙ 标题。 */
   background: boolean;
-  /** Batch7-F24：bg 任务名（pidfile name 字段）；bg 标题优先用它。 */
+  /** bg 任务名（pidfile 的 name 字段）；bg 标题优先用它。 */
   bgName: string | null;
   /**
    * Tab 标题。优先级：[项目] aiTitle > 项目名 > session_id 前 8 位。
@@ -50,47 +49,36 @@ export interface Tab {
   /** Claude 给出的语义标题（JSONL 里 `ai-title` 记录的 aiTitle 字段），出现一次就锁定 */
   aiTitle: string | null;
   /**
-   * issue #63①：本会话是从哪个会话 fork 来的（首条带 `forkedFrom` 的 user / assistant 记录的 `forkedFrom.sessionId`，
-   * 出现一次就锁定，同 aiTitle；判定住后端 `history_query::fork_origin`，与历史树同一份）。null = 非 fork。用于给 tab 标题加 `↳` 血缘徽标 + tooltip——否则 fork
-   * 出来的会话与原会话是**同名独立 tab**、肉眼分不清（活 tab 层原本只按 sessionId keyed、完全不看
-   * `forkedFrom`，它此前只在历史树用）。
+   * 本会话是从哪个会话 fork 来的（判定住后端 `history_query::fork_origin`，与历史树同一份；出现一次就锁定）。null = 非 fork。
+   * 给 tab 标题加 `↳` 血缘徽标 ＋ 悬停 —— 不然 fork 出来的会话与原会话是同名的两个 tab、分不清。
    */
   forkedFromSessionId: string | null;
   /** 此刻持着这条会话的活进程 pid（后端会话事实的 `writers`，到了才有）。不止一个 ⇒ 几个进程在同时写这条会话。 */
   writers: number[];
   /**
-   * issue #15：数据来源主机标签。本机 = `LOCAL_ORIGIN`（标题无前缀）；远端（如 "raspberrypi.local"）
-   * = 远端 SSH 主机名，标题加 `[origin]` 前缀以区分本地/远端。首条 line 帧的 origin
-   * 决定，之后不变（同一 sid 只来自一个来源）。
-   * 本机不再是 `null`：判本机 / 远端一律经 `ipc/origin.ts`。
+   * 数据来源：本机 = `LOCAL_ORIGIN`（标题无前缀）；远端 = 那台的名字（标题加 `[origin]` 前缀）。
+   * 首条行的 origin 决定，之后不变。判本机 / 远端一律经 `ipc/origin.ts`。
    */
   origin: Origin;
   /**
    * **活性 × 可恢复性**两个轴（形状、转移与谓词都住 `tab-session-state.ts`）。
-   * 只经那一份的 `nextState` 改、经它的谓词读 —— 别处不再各判一遍。
+   * 只经那一份的 `nextState` 改、经它的谓词读 —— 别处不各判一遍。
    */
   state: SessionState;
   /**
    * **固定** —— 「关了 app 再打开它还在」。
    *
-   * 🔴 **必须是正交的一维，不能做成会话状态的第三态**（`§B.3` 逐字）：
-   * `archived + pinned` 才是用户的主用例（固定住一个**已经跑完**的会话），
-   * 做成第三态就表达不了它。三个维度各管一件事：
-   * `state`（进程活没活、死了怎么回去，用户改不了）· `pinned`（你要不要它一直在，只由用户改）·
-   * 集合归属（你怎么分类）。
-   *
-   * ⚠ **它只影响「重启后还在不在」，不影响位置**（`§B.3b` 用户 2026-09-16 收窄）：
-   *   没有「固定区」，固定的 tab **留在原位**，只多一个 📌 角标；位置由 `§C` 的顺序落盘管。
-   * ⚠ live tab 也可以打 pin（「这个会话我还在跑，但**它跑完之后别丢**」是真实意图），
-   *   但**效果只在它变灰之后才显现** —— live 的重启后由后端 `event_replay` 自动宣告回来。
+   * 与会话状态正交的一维（不是第三态）：主用例就是固定住一个已经跑完的会话。三个维度各管一件事：
+   * `state`（进程活没活、死了怎么回去，用户改不了）· `pinned`（要不要它一直在，只由用户改）· 集合归属（怎么分类）。
+   * 只影响「重启后还在不在」，不影响位置（固定的 tab 留在原位，多一个 📌 角标）。
+   * 活着的 tab 也能固定（「跑完之后别丢」），效果在它变灰之后才显现 —— 活着的重启后由后端自动宣告回来。
    */
   pinned: boolean;
   /**
    * **这个 tab 在哪个组**（组 id；`null` = 散 tab）。
    *
-   * 用户原话「分组不应该单独存会话记录. x就是没了, 不存在还要移出分组」⇒ 组员关系是 **tab 自己的属性**：
-   * 组表（`tab-collections.ts`）只存 `{id, name}`，「组里有谁」= `group` 等于那个 id 的 tab，现算。
-   * 🔴 内存里组员关系**唯一的住址**；落盘是 `tabBar.groupOf.<sid>`（`tab-bar-state.ts`）。
+   * 组员关系是 tab 自己的属性（tab × 掉就没了，不用再「移出分组」）：组表（`tab-collections.ts`）只存 `{id, name}`，
+   * 「组里有谁」= `group` 等于那个 id 的 tab，现算。内存里组员关系只住这里；落盘是 `tabBar.groupOf.<sid>`（`tab-bar-state.ts`）。
    * 只经 `tab-bar-prefs.ts` 的那几个分组动作改（它们同时写盘）；tab 被 × 掉，这一格随 tab 一起没。
    * 单值 ⇒ 「一个 tab 只属一个集合」结构上成立。与 `state` / `pinned` 正交（不变量 3）。
    */
@@ -99,14 +87,12 @@ export interface Tab {
    * 红绿灯（与 `state` 正交）：此刻在干什么（后端翻好的）＋ 在等什么。null = 说不清 → 默认绿点。
    */
   activity: { doing: SessionActivity; waitingFor: string | null } | null;
-  // 原先这里是 `tmuxIdle: boolean`（「claude 已退但 tmux 会话还在」，与 `status` 正交、却让 `status` 留在 live）。
-  //   它说的是可恢复性那一轴 ⇒ 并进 `state`：`RECONNECTABLE`（死 ＋ 容器还在）。
-  /** F70：本会话写类工具（Edit/Write/MultiEdit/NotebookEdit）碰过的文件路径（原样、去重、近因序）。
+  // 「claude 已退但 tmux 会话还在」是 `state` 的 `RECONNECTABLE`（死 ＋ 容器还在）。
+  /** 本会话写类工具（Edit / Write / MultiEdit / NotebookEdit）碰过的文件路径（原样、去重、近因序）。
    * 后端出成品（`history-facts` 的 `touchedFiles`），供监控板 peek 列最近改过的文件。纯内存、不落盘（守 §28）。 */
   touchedFiles: Set<string>;
-  /** F88b：本会话**最新一条带 usage 的 assistant 记录**的 prompt token（input+cache 合计）与
-   *  model——供 HUD 算 context 占用%。后端按**文件序**取最后一条（成品的 `usage`），不再看到达序。
-   *  null=尚无带 usage 的 assistant 记录（或事实还没到）。 */
+  /** 本会话最新一条带 usage 的 assistant 记录的 prompt token（input ＋ cache 合计）与 model，供 HUD 算 context 占用%。
+   *  后端按文件序取最后一条（成品的 `usage`）。null = 还没有（或事实还没到）。 */
   latestPromptTokens: number | null;
   latestModel: string | null;
   /** 这份会话的上下文上限（后端定的，见 `session-reads.ts::UsageFact`）；判不出 ⇒ `null`（只写用了多少）。与上两格同一份成品。 */
@@ -123,7 +109,7 @@ export interface Tab {
   retries: ReadonlyMap<string, RetryOutcome>;
   /**
    * 这份会话的事实从哪来：问后端要（`views/facts-source.ts`）。
-   * 上面四样（分叉血缘 · agent 列表 · 改动文件集 · 最新 usage）只经它落下来 —— `onLine` 上不再有旁路记账员。
+   * 上面四样（分叉血缘 · agent 列表 · 改动文件集 · 最新 usage）只经它落下来 —— `onLine` 上没有旁路记账。
    */
   facts: FactsSource;
   /** 按轮折叠（后端 `history-turns` 的成品 ⇒ 完成的轮过程折成一行，`turn-fold.ts`）。 */
@@ -135,12 +121,7 @@ export interface Tab {
   /** 父 JSONL 路径（subagent 加载需要） */
   parentPath: string;
   unread: number;
-  /**
-   * P5.2 B 重构：按 seq 排序的 timeline。renderStreamRecord 调
-   * `timeline.insert / peekPrev` 决定 DOM 挂载位置 + tool-group 合并。
-   * **取代**：原 pendingToolGroup（tool-group 合并改后处理，看 timeline 左邻居）
-   * 和 pendingPrependFragment（无 source/inPrependMode 概念，永远按 seq 插入）。
-   */
+  /** 按 seq 排序的 timeline：renderStreamRecord 调 `insert / peekPrev` 决定挂载位置与工具组合并。 */
   timeline: RecordTimeline;
   /**
    * tool_use_id → 那次 tool_use 的工具名与卡型（`cards/index.ts::ToolUseSeen`）。tool_use 在 assistant 消息出现时记下，
@@ -148,23 +129,18 @@ export interface Tab {
    */
   toolUseNames: Map<string, ToolUseSeen>;
   /**
-   * tool_use_id → tool_use 折叠条 DOM。tool_result 直接注入对应 tool_use
-   * 内部，不再产生独立折叠条。详见 cards/index.ts 的 injectOrBuildToolResult。
+   * tool_use_id → tool_use 折叠条 DOM。tool_result 直接注入对应 tool_use 内部（cards/index.ts 的 injectOrBuildToolResult）。
    */
   toolUseElements: Map<string, HTMLElement>;
   /** 派出子运行的那几张卡：父侧工具调用 id → 卡（运行表到了按它给那张卡标上是哪个子运行、什么状态）。 */
   runCards: Map<string, HTMLElement>;
   /**
-   * issue #8: ESC 回退分支折叠管理器。
+   * ESC 回退分支折叠管理器。
    * 跟踪本 Tab 内所有有 uuid 的卡片，监听 parentUuid 分叉，把"被回退"的连续段
    * 包到可折叠容器里。工具组（tool-group）不参与折叠（无单一 uuid）。
    */
   branchFolder: BranchFolder;
-  /**
-   * v2.3.1 (issue #1)：tool_result 可能在 tool_use 之前到达（jsonl 行序错位 /
-   * 不同 session 文件混杂）。先走 fallback 渲染独立卡，batch 结束后
-   * reconcilePendingToolResults 重新匹配 + 注入。
-   */
+  /** tool_result 可能先于它的 tool_use 到：先画独立卡，批结束后 reconcilePendingToolResults 重新配、注入。 */
   pendingToolResults: Map<
     string,
     {
@@ -173,20 +149,14 @@ export interface Tab {
     }
   >;
   /**
-   * 按 seq 去重集合。一个 Tab == 一个 jsonl path == 一个 seq 空间（那台机器后端的 per-process SeqCounter；
-   * CF1 起本机会话也走本机后端，从前「本地 watcher 的 per-path seqs」那一份没了）。重连后新后端会从
-   * seq 0 重发整个会话 → 命中即丢，避免 Tab 内容翻倍（本机后端重连也一样，从前「本地 seq 全程唯一 → 永不命中」不再成立）。
-   *
-   * **这是入口唯一一道去重**：seq ＝ 当前文件里的行号；文件从头重读时后端先出声、
-   * 行号从 0 重数，这个 tab 整份重来（`TabStreamView.restartContent`，新的一代配一个新的集合）⇒ 不再有
-   * 「换新 seq 重投同一条记录」（INVARIANTS § 25）。拓扑那一层的 uuid 幂等（computeMainBranch 入口去重 ＋
-   * BranchFolder.seenUuids，#25）照留。closeTab 时 clear。
+   * 按 seq 去重集合。一个 Tab == 一个 jsonl == 一个 seq 空间（seq ＝ 当前文件里的行号）：重连后后端从 0 重发 → 命中即丢，Tab 内容不翻倍。
+   * 这是入口唯一一道去重：文件从头重读时后端先出声、行号从 0 重数，这个 tab 整份重来（`TabStreamView.restartContent`，新的一代配新的集合；INVARIANTS § 25）。
+   * 拓扑那一层的 uuid 幂等（computeMainBranch 入口去重 ＋ BranchFolder.seenUuids）照留。closeTab 时 clear。
    */
   seenSeqs: SeqSet;
   /**
-   * Batch13-F40a:尾部优先窗口账本(单洞后缀不变量,详 live-window.ts)。
-   * 启动重放的旧记录不建卡、收纳于此(meta/branch 数据已喂);floor=null(virgin)
-   * 的后台 tab 在 onBatchEnd 空闲物化尾段 / switchTo 命中时同步物化。
+   * 尾部优先窗口账本（单洞后缀不变量，见 live-window.ts）：启动重放的旧记录不建卡、收在这里（meta / branch 已喂）；
+   * floor = null（virgin）的后台 tab 在 onBatchEnd 后空闲物化尾段，switchTo 命中时同步物化。
    */
   window: TailWindow;
   /**
@@ -198,17 +168,15 @@ export interface Tab {
   /** 索引拉取：`idle` 没拉过 · `pending` 在途 · `again` 瞬时失败过一次、下一次触发点再问一次 · `done` 定了（不再拉）。 */
   skeletonFetch: "idle" | "pending" | "again" | "done";
   /**
-   * F40b R-1:批期「窗口内中部插入」缓冲——大增量批(>600 行切块,末块先发)落在
-   * 已渲染 tab 上时,老块 seq≥floor 但 <timeline.maxSeq,逐条挂 DOM 会跨帧上方
-   * 插入(§21 病根)。缓冲到 onBatchEnd 一次 batchInsert 挂载。
+   * 批期「窗口内中部插入」缓冲：大增量批（切块、末块先发）落在已渲染的 tab 上时，老块 seq ≥ floor 但 < timeline.maxSeq，
+   * 逐条挂会跨帧往上方插（§21）⇒ 缓冲到 onBatchEnd 一次挂载。
    */
   midBatchBuffer: JsonlLinePayload[];
-  /** F40b:上翻补批 scroll listener 引线(closeTab 摘) */
+  /** 上翻补批的 scroll listener（closeTab 摘） */
   fillHandler: (() => void) | null;
   /**
-   * 大纲的数据源 —— **问后端要**（`--list-user-inputs`），不在前端攒。
+   * 大纲的数据源 —— 问后端要（`--list-user-inputs`），不在前端攒（到达序 ≠ 对话序）。
    * 本 tab 只持有「上次要到哪个字节」与已列出的 uuid，不存正文；摘要在面板的行上。
-   * 原先这里是 `userInputs` 旁路账本（`onLine` 一条一条攒，到达序 ≠ 对话序），已删。
    */
   outline: OutlineSource;
   /** 清单界面（与历史查看器**同一个类**）。开关 + 面板都挂在 `inputsEl` 里。 */
@@ -235,21 +203,17 @@ export function projectNameFromCwd(dir: string): string | null {
 }
 
 /**
- * 标题格式（决策见 project_monitor_decisions.md）：
+ * 标题格式：
  *   aiTitle 有 + 项目目录有 → `[项目] aiTitle`
  *   aiTitle 有 + 项目目录无 → `aiTitle`
  *   aiTitle 无 + 项目目录有 → `项目`
  *   都没有 → `<sid 前 8 位>`
  * 项目 = 项目目录（`Tab.projectDir`，后端给的那一格）的最后一段。
  *
- * issue #15：远端 Tab 在以上结果前再加 `[那台远端] ` 前缀，
- * 让用户一眼区分本地 / 远端 Tab（如 `[raspberrypi.local] [proj] aiTitle`）。本机行为与历史完全一致，
- * 不加任何前缀。
+ * 远端 Tab 再加 `[那台远端] ` 前缀（如 `[raspberrypi.local] [proj] aiTitle`）；本机不加。
  * 第四个参数是**前缀里写的那台远端名**（本机 ⇒ `null`，没有前缀），不是 origin：
  * 「是不是本机」由调用方经 `ipc/origin.ts` 判完再传进来 —— 本文件只有类型，零运行期依赖（`tabs-split-graph` 钉着）。
- *
- * Subagent 不再独立 Tab（嵌入到父 session 的 Task 折叠卡），所以没有 `↳` 前缀分支。
- */
+  */
 export function computeTitleFor(
   sessionId: string,
   projectDir: string | null,
@@ -259,10 +223,10 @@ export function computeTitleFor(
   bgName: string | null = null,
   forkedFromSessionId: string | null = null,
 ): string {
-  // issue #63①:fork 会话在最终标题前加 `↳ ` 血缘徽标——与原会话(同名)区分开。
+  // fork 会话在最终标题前加 `↳ ` 血缘徽标 —— 与同名的原会话区分开。
   const mark = (s: string): string => (forkedFromSessionId ? `↳ ${s}` : s);
   const project = projectDir ? projectNameFromCwd(projectDir) : null;
-  // Batch7-F24：bg 任务 → ⚙ + 任务名（原先还有缩进 / ⌞ 的 `.tab-bg` 样式，随树一起删了）
+  // bg 任务 → ⚙ ＋ 任务名
   if (background) {
     const base = `⚙ ${bgName ?? aiTitle ?? project ?? sessionId.slice(0, 8)}`;
     return mark(remoteLabel !== null ? `[${remoteLabel}] ${base}` : base);

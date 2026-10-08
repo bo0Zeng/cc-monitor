@@ -2,24 +2,14 @@
  * **界面直接说的 cc-bus 那几条帧命令** —— 查某个 agent 在不在线（`bus-list`）·
  * 发消息（`bus-send`）· 收掉（`bus-kill`）· 派生（`bus-spawn`）· 广播（`bus-broadcast`）。
  *
- * # 它顶掉了什么
- *
- * 此前设置页的 cc-bus 驾驶舱经 monitor 的五条 Tauri 命令做这几件事：`check_cc_bus_agent_online` / `cc_bus_send` /
- * `cc_bus_kill` / `cc_bus_spawn` / `cc_bus_broadcast`〔散文墓碑〕。monitor 在每一条上做的都只是：先核 id / 参数形状、
- * 转一条后端帧命令、把回值与失败说成人话 —— 广播则是 monitor 里的一个**组合**（列名单 ＋ 逐个发）。
- * ⇒ 按（业务解释只有一个家）迁：广播这个组合先收进后端（新帧命令 `bus-broadcast`），
- * 五件都由界面经 `chan.call` 直接问那台机器的后端，解释只剩本文件这一份，monitor 那五条命令与那一份解释一起删了。
- * **本机与远端同一条路**（本机由 `<local>` 那条长连接答）。
- *
- * 读面两条（名单 ＋ spawn 台账 · 收件箱）**不在这里**：它们今天是 monitor 里的 shell 读，不是帧命令（`bus-state` 那条
- * 具名读命令在，但名单那几格它答不全 —— 见后端 `control/cc_bus.rs::state_for_inbound` 头注），留给后面一批。
+ * 五件都由界面经 `chan.call` 直接问那台机器的后端（广播的「列名单 ＋ 逐个发」在后端），本机与远端同一条路（本机由 `<local>` 那条长连接答）。
+ * 驾驶舱的读面（`bus-state` · `bus-inbox`）在文件末尾。
  *
  * # 本文件做的只有三件（都是调用方那一侧的事）
  *
  * 1. **先核入参**：正文非空 · 派生的形状（[`checkSpawnShape`]：目录非空）。过不了就一个字节都不发。
- * agent id / 派生账号名的**形状**不在这里判了：规则只有一份（`shell_quote_core::bus_id_ok`），
- *    后端在把它交给 `cc-send` / `cc-kill` / `cc-spawn` 之前先判、判不过回 `bad_id`（`INVARIANTS §47` 那一格改写成「后端交给 `cc-send` 之前」）；
- *    这里把那个码说成人话。
+ *    agent id / 派生账号名的形状不在这里判：规则只有一份（`shell_quote_core::bus_id_ok`），后端交给 `cc-send` / `cc-kill` / `cc-spawn` 之前先判、
+ *    判不过回 `bad_id`（`INVARIANTS §47`），这里把那个码说成人话。
  * 2. **按形状收**：成品恰好是那几格、类型对 ⇒ 收；否则当成「两边版本对不上」抛，不猜
  *    （破坏性的收掉 / 派生：形状不认识 ⇒ **不知道动没动**，那句话明说别直接重来）。
  *    线上形状由跨语言金样钉着（后端产出 == 金样 · 本文件读同一份）。
@@ -32,9 +22,9 @@
  * [`agentOnline`] 只回 `true` / `false` 两个确定的答案；问不到（没通道 · 后端太旧 · 那一趟失败 · 它不在名单里 ·
  * `live` 是 `null`）一律**抛**。调用方把抛出来的那一句渲染成「查不到」，这条路上没有地方能造出一盏灭灯。
  *
- * # 期限（`X6`：调用点显式给）
+ * # 期限（调用点显式给）
  *
- * 查在线 15 秒 · 发消息 / 收掉 / 广播 30 秒 · 派生 90 秒 —— 与它们上一个住址（monitor 那几个发送端）同值。
+ * 查在线 15 秒 · 发消息 / 收掉 / 广播 30 秒 · 派生 90 秒。
  */
 import { copyText } from "./copy-table";
 import { arrivedBody, expectArrival } from "./launch-arrival";
@@ -45,16 +35,15 @@ import { chan } from "../../comms/inward/chan";
 import { budgetWithin, jsonBody } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
 
-/** cc-monitor 自己在总线上的身份 —— 发消息 / 广播时用它，收信人才不会看到 `unknown`（回复仍无归宿， `U17`）。 */
+/** cc-monitor 自己在总线上的身份 —— 发消息 / 广播时用它，收信人才不会看到 `unknown`（回复仍无归宿）。 */
 export const MONITOR_BUS_ID = "cc-monitor";
 
 const ONLINE_BUDGET_MS = 15_000;
 const WRITE_BUDGET_MS = 30_000;
 const SPAWN_BUDGET_MS = 90_000;
 
-// 这里原来有 `isValidBusId`〔散文墓碑〕与 `refuseBadId`〔散文墓碑〕—— 与 monitor 读收件箱那一份同一条规则的 TS 副本，
-// 发 / 收 / 查在线之前先核。今天规则只有一份、住共享 crate（`shell_quote_core::bus_id_ok`），后端入口先判（`bad_id`），
-// 下面三张拒绝表各一句。查在线（`bus-list`）不把 id 交给任何人（只在名单里找）⇒ 不判：找不到就是「查不到」。
+// id 的规则只有一份（`shell_quote_core::bus_id_ok`），后端入口先判（`bad_id`），下面三张拒绝表各一句。
+// 查在线（`bus-list`）不把 id 交给任何人（只在名单里找）⇒ 不判：找不到就是「查不到」。
 
 // ─── 查在线（`bus-list`）───
 
@@ -185,8 +174,7 @@ export interface SpawnRequest {
 
 /**
  * 派生交给后端之前这一侧自己判的形状：`dir` 非空。
- * ⚠ **刻意不判 `tool`**：空 ⇒ 默认那一家、认不认都归那台后端（注册表那一处），这一侧不维护第二份名单。过不了 ⇒ 抛那一句。
- * 账号名的字符集原来也在这里判（`isValidBusId`〔散文墓碑〕）；今天归后端（`bad_id`，同一个 `bus_id_ok`）。
+ * 不判 `tool`：空 ⇒ 默认那一家，认不认都归那台后端（注册表那一处）。账号名的字符集归后端（`bad_id`）。过不了 ⇒ 抛那一句。
  */
 export function checkSpawnShape(req: SpawnRequest): void {
   if (req.dir.trim() === "") throw new ControlError(copyText("ccBus.spawn.needDir"), "empty working directory");
@@ -286,8 +274,7 @@ export async function broadcast(origin: Origin, text: string): Promise<string> {
 }
 
 // ─── 驾驶舱读面（`bus-state` · `bus-inbox`）───
-// 后端转调 cc-bus 新加的机器可读读命令（`cc-list --tsv` · `cc-agents --tsv` · `cc-log`），出成品；这里按形状严格收
-// （金样 `tests/__fixtures__/cc-bus-read.golden.json`），monitor 那一整套 shell 读删了。
+// 后端转调 cc-bus 的机器可读读命令（`cc-list --tsv` · `cc-agents --tsv` · `cc-log`）出成品；这里按形状严格收（金样 `tests/__fixtures__/cc-bus-read.golden.json`）。
 
 const READ_BUDGET_MS = 30_000;
 

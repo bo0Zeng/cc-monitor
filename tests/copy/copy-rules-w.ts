@@ -12,11 +12,14 @@ export interface WRule {
   id: string;
   words?: string[];
   cells?: string[];
+  /** C-W3：可连同主语 / 宾语嵌进句里的闭集格（该远端未启用多账号 · 未连接远端）。 */
+  embeddable?: string[];
   limits?: Record<string, number>;
   /** C-W8：带码的原因形状（整格匹配，如「退出码 {status}」）。 */
   shapes?: string[];
   /** roleTemplates：该角色的条目匹配它也算（如原因格「<对象> 无法解析」）。 */
-  families?: { trigger: string; template: string; roleTemplates?: Record<string, string> }[];
+  /** lead：族句前可接一格事实（结果未知 · 无应答 · 后生效）—— 那一格不再触发别的族。 */
+  families?: { trigger: string; template: string; roleTemplates?: Record<string, string>; lead?: boolean }[];
   symbols?: string;
 }
 
@@ -75,8 +78,12 @@ export const W_CHECKS: Record<string, Check> = {
   "C-W3": (e, ctx) => {
     if (e.role !== "状态") return null;
     const cells = ctx.byId.get("C-W3")?.cells ?? [];
-    const head = speech(e.zh).trim().split(" · ")[0].trim();
+    // 正在进行的那一格可带省略号（读取中…）。
+    const head = speech(e.zh).trim().split(" · ")[0].trim().replace(/…$/, "");
     if (cells.includes(head)) return null;
+    // 只有 embeddable 里那几格可连同主语 / 宾语嵌在句里（该远端未启用多账号 · 未连接远端）；别的格（失败 · 完成 …）要打头。
+    const emb = ctx.byId.get("C-W3")?.embeddable ?? [];
+    if (emb.some((c) => cells.includes(c) && head.includes(c))) return null;
     // chip 形「名词 值」：值里有占位符（上下文 {pct}% · 未读 {n} · 无权限目录 ×{n} · 任务 {done}/{all}）。
     const first = e.zh.trim().split(" · ")[0];
     if (/^[^{}\s]+ [×+]?\{[A-Za-z][A-Za-z0-9]*\}(%|\/\{[A-Za-z][A-Za-z0-9]*\})?$/.test(first)) return null;
@@ -109,8 +116,9 @@ export const W_CHECKS: Record<string, Check> = {
     const s = speech(e.zh);
     const h = words(ctx, "C-W7").find((w) => s.includes(w));
     if (h) return `报错里有「${h}」`;
-    const n = (s.match(/失败/g) ?? []).length;
-    return n > 1 ? `「失败」${n} 次（两层主语）` : null;
+    // 一行一件事：「失败」每行至多一次（同一行里两次 ＝ 两层主语）；分行写的是两件先后的事。
+    const n = Math.max(...s.split("\n").map((l) => (l.match(/失败/g) ?? []).length));
+    return n > 1 ? `一行里「失败」${n} 次（两层主语）` : null;
   },
   // N6b：「失败 · X」的 X 取自原因词闭集或占位符。
   "C-W8": (e, ctx) => {
@@ -118,10 +126,13 @@ export const W_CHECKS: Record<string, Check> = {
     const shapes = (ctx.byId.get("C-W8")?.shapes ?? []).map((s) => new RegExp(s));
     const ok = (x: string): boolean => reasons.includes(x) || shapes.some((r) => r.test(x)) || /^(\{[A-Za-z][A-Za-z0-9]*\}\s*)+$/.test(x);
     for (const m of e.zh.matchAll(/失败 · ([^\n]*?)(?= · |\n|$)/g)) {
+      // 状态句打头的「失败」是状态格（运行结局，C-W3 闭集里那一格），后面接的是事实，不是原因格。
+      if (m.index === 0 && e.role === "状态") continue;
       const x = m[1].trim();
       if (ok(x)) continue;
-      // 写入 / 读取 / 删除失败 · <对象> · <原因>：整条以它开头时第一格是对象，原因在下一格。
-      if (m.index === 2 && /^(写入|读取|删除)失败 · /.test(e.zh)) {
+      // 写入 / 读取 / 删除失败 · <对象> · <原因>：一行以它开头时第一格是对象，原因在下一格。
+      const lineStart = e.zh.lastIndexOf("\n", m.index) + 1;
+      if (m.index === lineStart + 2 && /^(写入|读取|删除)失败 · /.test(e.zh.slice(lineStart))) {
         const next = e.zh.slice(m.index + m[0].length).match(/^ · ([^\n]*?)(?= · |\n|$)/);
         if (next && ok(next[1].trim())) continue;
         return next ? `「失败 · ${x} · ${next[1].trim()}」的原因格不是原因词` : `「失败 · ${x}」后面缺原因格`;
@@ -161,10 +172,19 @@ export const W_CHECKS: Record<string, Check> = {
   },
   // N12：族触发词命中的，必须长成该族的样子。
   "C-W14": (e, ctx) => {
-    for (const f of ctx.byId.get("C-W14")?.families ?? []) {
-      if (!new RegExp(f.trigger).test(e.zh) || new RegExp(f.template).test(e.zh)) continue;
+    const fams = ctx.byId.get("C-W14")?.families ?? [];
+    // 主族（lead）句式成立时，它前面接的那一格事实（到头一个「 · 」）不再拿去触发别的族。
+    let rest = e.zh;
+    const cut = e.zh.indexOf(" · ");
+    if (cut >= 0 && !e.zh.slice(0, cut).includes("\n")) {
+      const tail = e.zh.slice(cut + 3);
+      if (fams.some((f) => f.lead && new RegExp(f.trigger).test(tail) && new RegExp(f.template).test(tail))) rest = tail;
+    }
+    for (const f of fams) {
+      const zh = f.lead ? e.zh : rest;
+      if (!new RegExp(f.trigger).test(zh) || new RegExp(f.template).test(zh)) continue;
       const byRole = e.role ? f.roleTemplates?.[e.role] : undefined;
-      if (byRole !== undefined && new RegExp(byRole).test(e.zh)) continue;
+      if (byRole !== undefined && new RegExp(byRole).test(zh)) continue;
       return `命中族「${f.trigger}」却不是族里的句式`;
     }
     return null;

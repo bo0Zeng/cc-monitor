@@ -1,17 +1,10 @@
 /**
- * **前端侧 agent 画像 —— 值来自后端。**
+ * 前端侧 agent 画像 —— 值来自后端，这里不写死任何一格。
  *
- * # `K-R93`（09-12）：这里从此不写死任何一格
- *
- * 立件时本文件是一份**手写常量**（`AGENT_PROFILE`），而 monitor 那份适配表另有一份（claude ＋ codex）
- * —— 同一件事两份实现，`K-R54` 表**第 11 行**。今天值的唯一住址是后端适配层 `src/backend/agents/<名>/resume.rs`。
- * 🔴 而且前端这一份**只认 claude** ⇒ 接上后端的同一刻，codex 那一格也补上了
- * （**那不是回归，是把一格漏的补上**）。
- *
- * 取值链，一句话：
+ * 取值链：
  *
  * ```text
- * src/backend/agents/<名>/resume.rs（注册表 `Adapter.launch`）   ← 唯一的值源（从前是 monitor `adapter.rs`）
+ * src/backend/agents/<名>/resume.rs（注册表 `Adapter.launch`）   ← 唯一的值源
  *   └─（cargo test --lib export_bindings ＝ npm run gen:types）→
  *      src/frontend/ui/generated/agent-profile-table.ts         ← 生成物，不许手改
  *        └─（本文件）→ lookupAgentProfile / listAgents / speakerNameOf / displayNameOf
@@ -22,21 +15,11 @@
  * 没有 Rust 的那一侧（CI 的 frontend job）由 `agent-profile-parity.vitest.ts`
  * 把「生成物 == 金表」再对一遍（「后端那一份 == 金表」由后端 `agents_tests.rs` 钉）。
  *
- * # 三条不许犯的
- *
- * 1. **问不到就说问不到**（`KR93D3`，`K-R92` 那一形的预防）—— [`lookupAgentProfile`]
- *    对表里没有的 agent 回 `{ known: false, message }`，**不许悄悄回落到 claude 那一份**：
- *    那就是「一个值装了两件事」。
- * 2. **`null` ≠ 空** —— 生成物里的 `null` 是「这一格今天没人考据过」，`[]` 才是「考据过、确实是空的」。
- * 会是 `null` 的那五格（工具 / 判活进程词表）随判定进了后端，今天这张表里没有可空的列表格了。
- * 3. **不许在本文件里再写一份工具名 / 进程名 / 启动器名** —— `agent-profile-parity.vitest.ts`
- *    有一条判据扫本文件的生产段，把后端那张表里的**任何一个值**写死进来就红
- *    （`KR93D1` 第三刀）。**一个会话是哪一家也是后端的事实**：会话事实的 `agent`（标签页）· 历史清单那一行的 `agent`（历史页），
- *    不设「当前那一家」—— 没有一份单家画像可取。
- *
- * ★ **第二刀仍然没做**（原头注那句话原样留着）：本件**不拆记录模型、不动 `renderMessage`
- * 的 `switch(rec.type)` 分发** —— 件文件 `§0b` 逐字挡住了，那是等第二个 wire 样本看清
- * 真·共性之后的事（SS-1）。
+ * 三条：
+ * 1. 问不到就说问不到 —— [`lookupAgentProfile`] 对表里没有的 agent 回 `{ known: false, message }`，不悄悄回落到 claude 那一份；
+ * 2. `null` ≠ 空：`null` 是「这一格没人考据过」，`[]` 才是「考据过、确实是空的」；
+ * 3. 本文件不写工具名 / 进程名 / 启动器名 —— `agent-profile-parity.vitest.ts` 扫生产段，后端那张表里的任何一个值写进来就红。
+ *    一个会话是哪一家也是后端的事实（会话事实的 `agent` · 历史清单那一行的 `agent`），不设「当前那一家」。
  */
 import {
   AGENT_PROFILE_TABLE,
@@ -79,11 +62,8 @@ export function lookupAgentProfile(
 }
 
 /**
- * 考据齐全的画像 —— 每一格都有值（按会话的那一家取）。
- *
- * 〔判定只在后端〕从前这里还有五格判定用的词表（agent 工具 · 交互工具 · 写类工具 · markdown 工具 ·
- * 判活进程名），界面按它们判卡型、认 tmux 会话。那几张表进了后端适配层：卡型随记录成品带出（`toolCards`），
- * tmux 那一格由后端认窗格时判（`agent`）⇒ 本画像只剩起会话那几格事实。
+ * 考据齐全的画像 —— 每一格都有值（按会话的那一家取）。只有起会话那几格事实：卡型随记录成品带出（`toolCards`），
+ * 认 tmux 会话由后端认窗格时判。
  */
 export type FullAgentProfile = {
   /**
@@ -101,9 +81,7 @@ export type FullAgentProfile = {
   /**
    * resume 的**调用形态**（flag ／ 子命令）。
    *
-   * ⚠ 类型刻意**从生成物借**而不是在这里写一遍那两个字面量：本文件里出现后端那张表的
-   * 任何一个值都会被 `agent-profile-parity.vitest.ts` 判红（`KR93D1` 第三刀），
-   * 而「借类型」与「抄一份值」是两件事。
+   * 类型从生成物借、不在这里写那两个字面量：本文件出现后端那张表的任何一个值都会被 `agent-profile-parity.vitest.ts` 判红。
    */
   resumeKind: AgentProfileRow["resumeKind"];
   /** resume 那个字面量（claude 是 `--resume`）。⚠ 它**不带形态**，形态看 `resumeKind`。 */

@@ -415,7 +415,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
     let running: Running = Arc::new(Mutex::new(HashMap::new()));
     let links = crate::dial::link::Table::new(tx.clone());
     let xfers = crate::control::transfer::Desk::new(tx.clone());
-    let d = |cmd: &str| dispatch(req("x", cmd), &tx, &running, &links, &xfers);
+    let follows = crate::control::terminal_follow::Desk::new(tx.clone());
+    let d = |cmd: &str| dispatch(req("x", cmd), &tx, &running, &links, &xfers, &follows);
 
     // `launch` 起进程、同步阻塞 ⇒ 必须是 SpawnBlocking（不占 tokio worker + 不可取消）。
     assert!(
@@ -860,6 +861,10 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "transfer-download",
         "transfer-start",
         "transfer-stop",
+        // 终端实时预览：订上那一下是异步档、起 tmux 那几下自己挪进阻塞线程池；回执 · 退订就地记账 ⇒ 不阻塞。
+        "terminal-follow",
+        "terminal-follow-ack",
+        "terminal-unfollow",
     ];
     let names = command_names();
     let missing: Vec<&&str> = names.iter().filter(|c| !covered.contains(c)).collect();
@@ -893,6 +898,7 @@ fn every_registered_command_is_reachable_through_the_real_dispatch() {
     let running: Running = Arc::new(Mutex::new(HashMap::new()));
     let links = crate::dial::link::Table::new(tx.clone());
     let xfers = crate::control::transfer::Desk::new(tx.clone());
+    let follows = crate::control::terminal_follow::Desk::new(tx.clone());
     assert!(
         REGISTRY.len() >= 4,
         "注册表只有 {} 条 —— 本条在空转",
@@ -903,7 +909,7 @@ fn every_registered_command_is_reachable_through_the_real_dispatch() {
         .map(|spec| spec.name)
         .filter(|name| {
             matches!(
-                dispatch(req("x", name), &tx, &running, &links, &xfers),
+                dispatch(req("x", name), &tx, &running, &links, &xfers, &follows),
                 Disposition::Reply(Frame::Reply { code: Some(ref c), .. })
                     if c == "unknown_command"
             )
@@ -920,7 +926,7 @@ fn every_registered_command_is_reachable_through_the_real_dispatch() {
     // ★ 反向自检：这把尺子真的会说「够不到」—— 不然上面那一批是空真。
     assert!(
         matches!(
-            dispatch(req("x", "no-such-command-kr104"), &tx, &running, &links, &xfers),
+            dispatch(req("x", "no-such-command-kr104"), &tx, &running, &links, &xfers, &follows),
             Disposition::Reply(Frame::Reply { code: Some(ref c), .. }) if c == "unknown_command"
         ),
         "喂一个根本不存在的命令进去，本条居然认为它够得到 —— 那上面那一批证不了任何事"
@@ -935,12 +941,13 @@ fn the_uncancellable_list_is_exactly_what_dispatch_runs_blocking() {
     let running: Running = Arc::new(Mutex::new(HashMap::new()));
     let links = crate::dial::link::Table::new(tx.clone());
     let xfers = crate::control::transfer::Desk::new(tx.clone());
+    let follows = crate::control::terminal_follow::Desk::new(tx.clone());
     let blocking: Vec<String> = REGISTRY
         .iter()
         .map(|spec| spec.name)
         .filter(|name| {
             matches!(
-                dispatch(req("x", name), &tx, &running, &links, &xfers),
+                dispatch(req("x", name), &tx, &running, &links, &xfers, &follows),
                 Disposition::SpawnBlocking(..)
             )
         })
@@ -984,12 +991,14 @@ async fn cancelling_a_blocking_command_says_not_cancellable_instead_of_lying() {
     // 对它发 cancel。
     let links = crate::dial::link::Table::new(tx.clone());
     let xfers = crate::control::transfer::Desk::new(tx.clone());
+    let follows = crate::control::terminal_follow::Desk::new(tx.clone());
     handle_line(
         br#"{"id":"c1","cmd":"cancel","args":{"target":"blk"}}"#,
         &tx,
         &running,
         &links,
         &xfers,
+        &follows,
     )
     .await;
 

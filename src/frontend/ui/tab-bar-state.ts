@@ -1,34 +1,10 @@
 /**
- * `config.json` 的 `tabBar` 段 —— **tab 栏里那些「用户手写的真相」**。
+ * `config.json` 的 `tabBar` 段 —— tab 栏里那些用户手写的真相（拖出来的顺序、固定、分组都重算不出来，要活过重启）。
  *
- * # 它为什么存在（**这是设计漏洞，不是未做的功能**）
- *
- * `tab-collections.ts` 立集合落盘时写的理由是：
- * 「**用户手写的真相，不是能重算的缓存**」。
- *
- * 而**拖动排序完全符合那条判据** —— 它是纯手工输入，重算不出来。
- * 在这之前 `orderedIds` 的 8 个写入点**零持久化** ⇒ 同一个栏里两种寿命：
- * **你手动建的分组活过重启，你手动拖的顺序活不过。**
- * ⇒ 同一条理由必须给它同样的待遇，否则那条理由就是**选择性适用**的。
- *
- * # 为什么新开一个段，不合进 `tabCollections`（`§4` 逐字）
- *
- * `tabCollections` 已经有落盘、清洗、上界和一份判据齐全的 vitest。
- * 动它等于给一个已经稳的东西加迁移风险，**换不到任何东西**。新的东西住新地方。
- *
- * # 射程
- *
- * 本文件装 `§4` 那张表里的**两个键**：`order`（`§C`，2026-09-19 上午）与
- * `pinned`（`§B`，固定 tab，2026-09-19 下午）。按 `§4` 它们住**同一个段**，
- * 不另开文件 —— 「一个事实一个住址」在这里的形是「一段配置一个模块」。
- * ⚠ 因此本文件的读写**刻意只动自己那个键**，不整段覆盖：
- *   否则两条路会互相把对方的键写没。
- *   🔴 这条不靠自觉：`writeSegKey` 是**两个键唯一的写口**（下面那个函数），
- *   而 `tests/frontend/ui/tab-bar-state.vitest.ts` 对 `order`/`pinned` **各有一格**专盯它。
- *
- * 第三个键 `groupOf`：**每个 tab 自己的组 id**（`tabBar.groupOf.<sid> = <组 id>`）。
- *「组员关系是 tab 自己的属性（tab 上带组 id，随 tab 的持久记录一起存）」⇒ 与固定 / 顺序同段；
- * 它的写**按 tab 一条路径**（[`groupOfEdit`] 是这条路径唯一的造法），不整张重写 —— 于是盘上没有「一个组的成员名单」这种东西。
+ * 三个键：`order`（顺序）· `pinned`（固定的 tab）· `groupOf`（每个 tab 自己的组 id，`tabBar.groupOf.<sid> = <组 id>`）。
+ * 每个键只动自己：`writeSegKey` 是 order / pinned 唯一的写口（`tab-bar-state.vitest.ts` 各有一格盯着），
+ * groupOf 按 tab 一条路径写（[`groupOfEdit`] 是唯一的造法）—— 盘上没有「一个组的成员名单」。
+ * 不并进 `tabCollections`：那一段已经稳了，动它只添迁移风险。
  */
 import { loadConfig, patchConfig, removeAt, setAt, type ConfigEdit } from "./config";
 import type { Origin } from "./ipc/origin";
@@ -36,12 +12,9 @@ import type { Origin } from "./ipc/origin";
 const KEY = "tabBar";
 
 /**
- * 🔴 **段里两个键唯一的写口** —— 只交 `tabBar.<field>` 这一条路径（按键补丁；从前是
- * 「读出整段、只覆盖 `field`、写回去」，同一拍 order 与 pinned 各读各写仍会互盖，分组那一键更是整份被盖）。
- *
- * 为什么抽成一个函数而不是两处各写一遍：`§B` 与 `§C` 是**同一条不变量的两侧**
- * （「不写没别人的键」），两处各抄一份的话，将来只改一侧就是一次静默的互相清空。
- * ⚠ 这里**刻意不做 try/catch**：写失败要让调用方知道（调用方的形状是
+ * 段里两个键唯一的写口 —— 只交 `tabBar.<field>` 这一条路径（按键补丁；读出整段再写回去，两个键会互盖）。
+ * 一个函数而不是两处各写：「不写没别人的键」是同一条不变量的两侧。
+ * 不做 try/catch：写失败要让调用方知道（调用方的形状是
  *   「先改内存再落盘，落盘失败只记日志」——日志由调用方打，不是这里吞掉）。
  */
 async function writeSegKey(field: "order" | "pinned", value: unknown): Promise<void> {
@@ -62,12 +35,8 @@ async function readSegKey(field: "order" | "pinned" | "groupOf"): Promise<unknow
 /**
  * 顺序的上界。
  *
- * 🔴 **它不是「最多能有几个 tab」** —— 是「落盘的顺序表最长记到哪」。
- * 取 `COLLECTION_CAP` 的量级（32）的 8 倍：`§4` 那张表逐字「上界 = 现有 tab 数」，
- * 而「现有 tab 数」在**读的时候**才知道，写的时候没有 ⇒ 这里给一个**结构性上界**，
- * 真正按「现有 tab」过滤发生在 `sanitizeOrder(raw, alive)` 的 `alive` 那一参上。
- * ⚠ 两道一起才够：只有 `alive` 过滤 ⇒ 一份被撑爆的配置照样能写进盘；
- *   只有这个上界 ⇒ 已删会话的 sid 会一直挂着。
+ * 不是「最多能有几个 tab」，是落盘的顺序表最长记到哪（`COLLECTION_CAP` 的 8 倍）：「现有 tab 数」写的时候不知道 ⇒ 给一个结构性上界，
+ * 按现有 tab 过滤发生在应用那一刻。两道一起才够：只靠过滤，撑爆的配置照样写进盘；只靠上界，已删会话的 sid 一直挂着。
  */
 export const ORDER_CAP = 256;
 
@@ -99,18 +68,10 @@ export function sanitizeOrder(raw: unknown, alive: ReadonlySet<string> | null): 
 /**
  * 读顺序。
  *
- * ⚠ 读失败**不阻断启动**（照 `loadCollections` 的 try/catch 形状，`§4` 逐字）——
- *   一份坏掉的配置不该让 tab 栏起不来，最坏也就是顺序退回默认。
+ * 读失败不阻断启动：坏掉的配置最坏也就是顺序退回默认。
  *
- * 🔴 **`alive` 收 `null`（2026-09-21 修步 17·C 那个 no-op 时加的）** —— 理由不是图省事：
- *   **「按存活过滤」这件事不能在读的这一刻做。** 读发生在启动那一拍，而 tab 是随后由
- *   `session_added` / 首行**陆续**建出来的（`main.ts` 那个启动窗口期给到 30s）。
- *   ⇒ 在那一刻，「已经被删掉的会话」与「还没到的会话」**长得一模一样**，
- *   拿当时的存活集去过滤 = 把整张顺序当成死 sid 摘掉（那正是原来那个 bug 的机制）。
- *   ⇒ 过滤挪到**应用**那一刻做（`TabManager.applySavedOrder` 按 `orderedIds` 里
- *   此刻真的在的 sid 筛），读这一侧只负责如实把盘上那份意图交出来。
- *   传 `Set` 那一路仍然守着（`sanitizeOrder` 的 `alive` 两档各有判据），
- *   但**生产今天只走 `null` 这一档** —— 如实记在这里，别当它还有别的消费者。
+ * `alive` 传 `null`（生产只走这一档）：读在启动那一拍，tab 随后陆续建出来 —— 那一刻「已删的会话」与「还没到的会话」长得一样，
+ *   拿当时的存活集过滤会把整张顺序摘掉。过滤在应用那一刻做（`TabManager.applySavedOrder` 按此刻在的 sid 筛）。
  */
 export async function getTabOrder(alive: ReadonlySet<string> | null): Promise<string[]> {
   try {
@@ -134,37 +95,27 @@ export async function setTabOrder(order: readonly string[]): Promise<void> {
 // ===== `§B` 固定（pinned）=====
 
 /**
- * 一条固定记录。**字段表逐条照 **，一个不多一个不少 ——
- * 那张表不是清单，是由「重启后要把一个**没有活进程**的 tab 恢复出来」反推出来的。
- *
- * 🔴 **落盘的是条目，不是内容**（`§3.5.7` 逐字）：内容由 resume 拿
- * （已裁定「已结束的会话点进去**不能**看内容，只能 resume」）
- * ⇒ 不需要回答「存全量还是存尾部」那类容量问题。
+ * 一条固定记录：字段是「重启后把一个没有活进程的 tab 恢复出来」要的那几样，一个不多。
+ * 落盘的是条目不是内容（已结束的会话点进去只能 resume，内容由 resume 拿）。
  */
 export interface PinnedTab {
   /** resume 的主键。 */
   sid: string;
-  /** = `Tab.parentPath`。空串 = 这条从没收到过带路径的行（`§B.6` 第一格：降级，不是丢）。 */
+  /** = `Tab.parentPath`。空串 = 这条从没收到过带路径的行（降级，不是丢）。 */
   jsonlPath: string;
   /** = `Tab.projectDir`（后端给的项目目录；复活时先用它，那台再宣告 / 会话事实到了就对齐）。 */
   cwd: string | null;
   /**
-   * 哪台机器（决定复活后走哪条读命令 / resume 往哪台机去）。本机 = `LOCAL_ORIGIN`。
-   * 上一版这里是 `null` = 本机；盘上的旧 `null` **不兼容**，
-   * 由 [`sanitizePinned`] 按坏行丢（与 Rust `Origin` 反序列化那道闸同形）。
+   * 哪台机器（决定复活后走哪条读命令 / resume 往哪台机去）。本机 = `LOCAL_ORIGIN`；`null` 由 [`sanitizePinned`] 按坏行丢。
    */
   origin: Origin;
   /**
-   * 🔴 **非有不可**（`§3.5.7`）：缺了 resume 会静默落到默认号，
-   * 撞 `accounts.ts` 那条「绝不下沉到当前号」的纪律。
-   * ⚠ `null` 在这里是**诚实的「没记到」**，不是「默认号」—— 两者不是一回事。
+   * 非有不可：缺了 resume 会静默落到默认号。`null` = 没记到，不是「默认号」。
    */
   account: string | null;
   /**
-   * 列表排序与「说不清」那一态要用（`§B.5` 逐字）。
-   * ⚠ `null` = **说不清**（判不了就说判不了）。今天只有 live tab 落盘时
-   *   才有一个诚实的读数（「此刻它还活着」）；已经灰了的 tab 什么时候最后活动过，
-   *   前端**没有这个数**（`Tab` 上零时间戳字段，现打），所以原样沿用盘上那份、否则 `null`。
+   * 列表排序与「说不清」那一态要用。`null` = 说不清：只有活着的 tab 落盘时有读数（「此刻还活着」），
+   *   已经灰了的 tab 什么时候最后活动过前端不知道 ⇒ 沿用盘上那份，否则 `null`。
    */
   lastActiveAt: number | null;
   /** 后台会话（复活骨架时喂给 `createSkeletonTab`）。 */
@@ -236,14 +187,8 @@ export function sanitizePinned(raw: unknown): PinnedTab[] {
 }
 
 /**
- * 这条固定记录是不是**降级**的（`§B.6` 第一格 / `§4` 那张表的「标记降级」）。
- *
- * 🔴 **`§4` 还要求「文件不存在的自动摘除」，那一条今天做不到，如实记在这里**：
- * 前端一侧**没有任何文件存在性探针** —— `src/frontend/ui/ipc/commands.ts` 里零个 `exists`
- * 类命令，`package.json` 也没有 `@tauri-apps/plugin-fs`（两处现打）。
- * 唯一能碰到那个文件的是 `stream_read_session_jsonl`，而已裁定
- * **复活不读内容** ⇒ 拿它当存在性探针就是绕过那条裁定。
- * ⇒ 要做这一条得先加一个后端命令，**那不在本刀的写区**。判不了就写判不了。
+ * 这条固定记录是不是降级的。
+ * 文件已不在的不自动摘：前端没有文件存在性探针，复活又不读内容 ⇒ 判不了。
  */
 export function isDegradedPin(p: PinnedTab): boolean {
   return p.jsonlPath === "";

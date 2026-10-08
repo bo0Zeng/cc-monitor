@@ -15,13 +15,14 @@ import type { TabBarPrefs } from "../../../src/frontend/ui/tab-bar-prefs";
 import type { Tab } from "../../../src/frontend/ui/tab-model";
 import type { Needs } from "../../../src/frontend/ui/session-reads";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
-import { ENDED, GONE, LIVE, LIVE_ATTACHABLE, RECONNECTABLE, UNSEEN } from "../../../src/frontend/ui/tab-session-state";
+import { ENDED, GONE, LIVE, LIVE_ATTACHABLE, LIVE_RESUMABLE, RECONNECTABLE, UNSEEN } from "../../../src/frontend/ui/tab-session-state";
 import { abbrOf, dotOf, needsOf, needsOrder, nextNeeds, peekLine, stateLine, titleParts } from "../../../src/frontend/ui/session-face";
 import { NeedsBar, NeedsWatch, NOTIFY_WAIT_MS, answerWhere, needsHeadline } from "../../../src/frontend/ui/needs-bar";
 import { SessionHead, terminalActsOf } from "../../../src/frontend/ui/session-head";
 import { buildApiErrorCard } from "../../../src/frontend/ui/cards/api-error";
 import { TerminalPage, type TerminalReads } from "../../../src/frontend/ui/terminal-page";
-import type { TerminalSend, TerminalSent } from "../../../src/frontend/ui/terminal-reads";
+import type { TerminalSend, TerminalSent, TerminalShot } from "../../../src/frontend/ui/terminal-reads";
+import type { FollowEvents } from "../../../src/frontend/ui/terminal-follow";
 import { fmtDur } from "../../../src/frontend/ui/quota-lines";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 
@@ -357,15 +358,24 @@ describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键�
   const flush = async (): Promise<void> => {
     for (let i = 0; i < 6; i++) await Promise.resolve();
   };
-  function rig(rows: Row[], cur: { t: Tab | null }) {
+  /** 实时那一格怎么答：缺省「那台只能快照」（下面 L1 那几条照旧量快照的样子）；`live` ⇒ 判据手里拿着推帧 / 停的口。 */
+  type FollowRig = { terminal: string; events: FollowEvents; stopped: boolean };
+  function rig(rows: Row[], cur: { t: Tab | null }, mode: "snapOnly" | "live" = "snapOnly") {
     let shots = 0;
     const sent: { what: TerminalSend; seen: string | null }[] = [];
     let reply: () => Promise<TerminalSent> = async () => ({ result: "delivered" });
+    const follows: FollowRig[] = [];
     const reads: TerminalReads = {
+      follow: vi.fn((_o, terminal, events) => {
+        const f: FollowRig = { terminal, events, stopped: false };
+        follows.push(f);
+        if (mode === "snapOnly") events.stop({ kind: "snapshotOnly", why: "tmux" });
+        return { stop: () => void (f.stopped = true) };
+      }),
       list: vi.fn(async () => rows),
       shot: vi.fn(async () => {
         shots++;
-        return { text: `屏 ${shots}`, screen: `fp${shots}`, atText: "22:13:20" };
+        return { lines: [{ text: `屏 ${shots}`, spans: [] }], text: `屏 ${shots}`, screen: `fp${shots}`, atText: "22:13:20" };
       }),
       send: vi.fn(async (_o, _t, what, seen) => {
         sent.push({ what, seen });
@@ -376,7 +386,7 @@ describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键�
     const page = new TerminalPage(host, reads);
     document.body.appendChild(page.el);
     page.sessionChanged();
-    return { page, reads, host, sent, shotCount: () => shots, setReply: (r: () => Promise<TerminalSent>) => (reply = r) };
+    return { page, reads, host, sent, follows, shotCount: () => shots, setReply: (r: () => Promise<TerminalSent>) => (reply = r) };
   }
   const box = (p: TerminalPage): HTMLTextAreaElement => p.el.querySelector("textarea")!;
   const key = (el: HTMLElement, k: string, o: KeyboardEventInit = {}): void => void el.dispatchEvent(new KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true, ...o }));
@@ -414,6 +424,33 @@ describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键�
     c.page.setVisible(true);
     await flush();
     expect(c.page.el.textContent).toContain(copyText("terminal.empty.ended", { state: copyText("sessionState.ended.name") }));
+  });
+
+  it("★ 活着、不在 tmux 里（容器 none）⇒ 照实说「不在 tmux 里」，不说「非 cc-monitor 启动」；↗ 真能用时给［切到终端］", async () => {
+    vi.mocked(terminalFrontAvailable).mockReturnValue(true);
+    try {
+      const d = rig([], { t: tab("d", { state: LIVE_RESUMABLE }) });
+      d.page.setVisible(true);
+      await flush();
+      expect(d.page.el.textContent).toContain(copyText("terminal.empty.notInTmux"));
+      expect(d.page.el.textContent).toContain(copyText("terminal.empty.notInTmuxHint"));
+      expect(d.page.el.textContent).not.toContain(copyText("terminal.empty.notOurs"));
+      const front = [...d.page.el.querySelectorAll("button")].find((x) => x.textContent?.includes(copyText("terminal.head.front")));
+      expect(front, "Windows 上不在 tmux 里的会话还能切到它的终端窗口").toBeDefined();
+      front!.click();
+      expect(d.host.front).toHaveBeenCalledWith("d");
+      vi.mocked(terminalFrontAvailable).mockReturnValue(false);
+      const e = rig([], { t: tab("e", { state: LIVE_RESUMABLE }) });
+      e.page.setVisible(true);
+      await flush();
+      expect([...e.page.el.querySelectorAll("button")].some((x) => x.textContent?.includes(copyText("terminal.head.front")))).toBe(false);
+      const f = rig([], { t: tab("f", { state: LIVE_ATTACHABLE }) });
+      f.page.setVisible(true);
+      await flush();
+      expect(f.page.el.textContent, "在 tmux 里、名单却认不出的才是「非 cc-monitor 启动」").toContain(copyText("terminal.empty.notOurs"));
+    } finally {
+      vi.mocked(terminalFrontAvailable).mockReturnValue(false);
+    }
   });
 
   it("★ 回车送字并补回车、带上看到的那一屏的指纹；送到了清框、写「已送达」，0.5 · 1.5 · 3 秒各再抓一次；Ctrl+回车只送字；Shift+回车与组字不送", async () => {
@@ -509,6 +546,94 @@ describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键�
     await flush();
     r.page.sessionChanged(); // 同一个会话：只重画
     expect(r.page.el.textContent).not.toContain(copyText("terminal.input.shared", { n: 3 }));
+  });
+
+  const liveShot = (text: string, at = "22:14:00"): TerminalShot => ({ lines: [{ text, spans: [{ from: 0, to: 2, fg: "green" }] }], text, screen: `fp-${text}`, atText: at });
+  const visibleText = (el: HTMLElement): string =>
+    [...el.querySelectorAll<HTMLElement>("*")].filter((e) => e.children.length === 0 && !e.closest("[hidden]")).map((e) => e.textContent ?? "").join("|");
+
+  it("★★ 实时：开到这一页 ⇒ 订那一行的终端；第一帧到 ⇒ 头上「实时」、不再写「画面几点」与「重新看」，画面带颜色换成那一帧", async () => {
+    const r = rig([row("a")], { t: tab("a") }, "live");
+    r.page.setVisible(true);
+    await flush();
+    expect(r.follows.map((f) => f.terminal)).toEqual(["tmux-a"]);
+    expect(visibleText(r.page.el)).toContain(copyText("terminal.head.joining"));
+    r.follows[0].events.screen(liveShot("ok live"));
+    const shown = visibleText(r.page.el);
+    expect(shown).toContain(copyText("terminal.head.live"));
+    expect(shown).not.toContain(copyText("terminal.head.recapture"));
+    expect(shown).not.toContain(copyText("terminal.head.snapAt", { time: "22:14:00" }));
+    expect(r.page.el.querySelector("pre")?.textContent).toBe("ok live");
+    expect(r.page.el.querySelector("pre span")?.getAttribute("data-fg")).toBe("green");
+  });
+
+  it("★★ 实时中送字 ⇒ 写「已送达」、不再排 0.5 · 1.5 · 3 秒重抓；收起抽屉 · 切标签页 ⇒ 退订", async () => {
+    vi.useFakeTimers();
+    try {
+      const cur = { t: tab("a") as Tab | null };
+      const r = rig([row("a"), row("b")], cur, "live");
+      r.page.setVisible(true);
+      await flush();
+      r.follows[0].events.screen(liveShot("ok live"));
+      const before = r.shotCount();
+      box(r.page).value = "1";
+      key(box(r.page), "Enter");
+      await flush();
+      expect(r.page.el.textContent).toContain(copyText("terminal.input.delivered"));
+      vi.advanceTimersByTime(5000);
+      await flush();
+      expect(r.shotCount(), "实时中还在送完重抓").toBe(before);
+      r.page.setVisible(false);
+      expect(r.follows[0].stopped, "收起抽屉没退订").toBe(true);
+      r.page.setVisible(true);
+      await flush();
+      expect(r.follows).toHaveLength(2);
+      cur.t = tab("b");
+      r.page.sessionChanged();
+      expect(r.follows[1].stopped, "切标签页没退订").toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("★★ 实时断了（那台断开）⇒ 头下条「实时已停 · 那台断开」＋［重新接上］、画面变淡、输入灰；点了再订；不自己重连", async () => {
+    const r = rig([row("a")], { t: tab("a", { origin: "devbox" }) }, "live");
+    r.page.setVisible(true);
+    await flush();
+    r.follows[0].events.screen(liveShot("ok live", "22:15:07"));
+    r.follows[0].events.stop({ kind: "stopped", why: "offline" });
+    const said = copyText("terminal.bar.liveStopped", { why: copyText("terminal.liveWhy.offline", { machine: "devbox" }) });
+    expect(r.page.el.textContent).toContain(said);
+    expect(visibleText(r.page.el)).toContain(copyText("terminal.head.snapAt", { time: "22:15:07" }));
+    expect(r.page.el.querySelector("[data-stale]")?.getAttribute("data-stale")).toBe("true");
+    expect(box(r.page).disabled).toBe(true);
+    expect(r.follows).toHaveLength(1);
+    [...r.page.el.querySelectorAll("button")].find((b) => b.textContent?.includes(copyText("terminal.bar.liveRetry")))!.click();
+    expect(r.follows).toHaveLength(2);
+  });
+
+  it("★ 那台只能快照 ⇒「仅快照」，悬停说为什么；照旧有「画面几点 ＋ 重新看」、送完照旧重抓", async () => {
+    vi.useFakeTimers();
+    try {
+      const r = rig([row("a")], { t: tab("a", { origin: "devbox" }) });
+      r.page.setVisible(true);
+      await flush();
+      const shown = visibleText(r.page.el);
+      expect(shown).toContain(copyText("terminal.head.snapshotOnly"));
+      expect(shown).toContain(copyText("terminal.head.recapture"));
+      expect(shown).not.toContain(copyText("terminal.head.live"));
+      const tag = [...r.page.el.querySelectorAll<HTMLElement>("span")].find((e) => e.textContent === copyText("terminal.head.snapshotOnly"))!;
+      expect(tag.title).toBe(copyText("terminal.head.snapshotOnlyTmux", { machine: "devbox" }));
+      const before = r.shotCount();
+      box(r.page).value = "1";
+      key(box(r.page), "Enter");
+      await flush();
+      vi.advanceTimersByTime(3000);
+      await flush();
+      expect(r.shotCount()).toBe(before + 3);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("输入框里 Esc 只把焦点还给消息流；「切到终端」只在 ↗ 真能用时出", async () => {

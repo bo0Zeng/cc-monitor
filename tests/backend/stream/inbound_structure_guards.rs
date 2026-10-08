@@ -430,10 +430,14 @@ fn every_registered_command_declares_its_run_kind() {
                 | "transfer-stop"
                 // 测试连接：进度格走本连接的应答通道（不丢、与应答同序）⇒ 要拿到应答通道，只能是硬臂。
                 | "remote-probe"
+                // 终端实时预览三条：要碰本连接的订阅票表与应答通道（画面帧走应答通道，`control/terminal_follow.rs`）。
+                | "terminal-follow"
+                | "terminal-follow-ack"
+                | "terminal-unfollow"
         );
         assert_eq!(
             is_builtin, expected_builtin,
-            "`{}` 的 Builtin 档位不对 —— 只有 `cancel`、链路四条、传输四条与测试连接该是硬臂",
+            "`{}` 的 Builtin 档位不对 —— 只有 `cancel`、链路四条、传输四条、测试连接与终端实时预览三条该是硬臂",
             spec.name
         );
     }
@@ -641,6 +645,10 @@ fn every_registered_command_declares_its_run_kind() {
         "transfer-download",
         "transfer-start",
         "transfer-stop",
+        // 终端实时预览三条：内建（硬臂；订上那一下在异步档里挪进阻塞线程池）。
+        "terminal-follow",
+        "terminal-follow-ack",
+        "terminal-unfollow",
     ];
     let missing: Vec<&str> = super::REGISTRY
         .iter()

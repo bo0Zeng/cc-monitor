@@ -1,4 +1,4 @@
-//! 命令表 · 终端与会话：`terminal-*` · `terminals-list` · `session-terminals` · `launch*` · `kill` · `sessions-*`。
+//! 命令表 · 终端与会话：`terminal-*`（含实时预览三条）· `terminals-list` · `session-terminals` · `launch*` · `kill` · `sessions-*`。
 
 use crate::stream::inbound::spec::{arg, both, out, CommandSpec, Fail, Run};
 use crate::stream::inbound::LocalFiles;
@@ -131,6 +131,43 @@ pub(super) const SPECS: &[CommandSpec] = &[
         fields: &[arg("client", "自报的前端（过「哪个前端的会话」那一维）"), arg("enter", "`text` 之后补一个回车；缺省 `true`"), arg("key", "送键：`esc` · `ctrl-c` · `ctrl-d` · `up` · `down` · `left` · `right` · `tab` · `shift-tab` · `enter` · `backspace` · `page-up` · `page-down`"), out("result", "`delivered` · `unsure`（不知道送没送到，别重发）· `refused`"), out("screen", "`screen-changed` 时带的新指纹"), arg("seen_screen", "送之前看到的那一屏的指纹；画面已经变了 ⇒ 不送、回 `refused` ＋ `screen-changed`"), arg("sid", "目标：会话 id（与 `terminal` 恰给一个）"), arg("take", "要不要先接管输入（tmux 上无所谓，各端都能打字）"), arg("terminal", "目标：名单里的不透明句柄（前端不拼、不解析）"), arg("text", "送字：字面字，原样送、不解释成键名；多行按粘贴送（与 `key` 恰给一个）"), out("why", "`refused` 的原因：`not-known` · `ambiguous` · `ended` · `not-yours` · `not-managed` · `screen-changed`")],
         takes_input: true,
         run: Run::Blocking(|r| crate::control::terminals::input_for_inbound(&r.args).map(Some)),
+    },
+    // 终端实时预览三条（`control/terminal_follow.rs`）：订阅名单里一个终端的画面，有变化就推一整屏（`terminal_screen` 帧），
+    //   一帧在途、客户端回执之后才推下一帧；停了推 `terminal_follow_end`。都是 `Run::Builtin`：要碰本连接的票表与应答通道 ⇒ **只在帧面**。
+    CommandSpec {
+        name: "terminal-follow",
+        summary: "订阅一个终端的画面（有变化推一整屏，一帧在途等回执；订着时那台 tmux 里多一个只读客户端，用户自己配的 client-attached / client-detached 钩子会被它触发）",
+        codes: &[
+            "bad_target",
+            "bad_args",
+            "not_known",
+            "ambiguous",
+            "no_tmux",
+            "tmux_too_old",
+            "too_many_follows",
+            "unobservable",
+            "child_timed_out",
+        ],
+        fields: &[arg("sid", "目标：会话 id（与 `terminal` 恰给一个）"), arg("terminal", "目标：名单里的句柄（与 `sid` 恰给一个）"), arg("ticket", "订阅票（客户端铸的不透明串，至多 128 字节）；之后的 `terminal_screen` / `terminal_follow_end` 帧带它")],
+        takes_input: true,
+        // 本体 `control/terminal_follow.rs::Desk::follow`（`dispatch` 的硬臂带着本连接的票表调它；起 tmux ⇒ 登记在 `target_parity_guard::BUILTIN_HANDLER_FILE`）。
+        run: Run::Builtin,
+    },
+    CommandSpec {
+        name: "terminal-follow-ack",
+        summary: "订阅的第 `seq` 帧画完了（画面有变化就推下一帧）",
+        codes: &["bad_args", "not_known"],
+        fields: &[arg("seq", "画完的那一帧的序号"), arg("ticket", "订阅票")],
+        takes_input: true,
+        run: Run::Builtin,
+    },
+    CommandSpec {
+        name: "terminal-unfollow",
+        summary: "退订一个终端的画面（幂等，不发收尾帧）",
+        codes: &["bad_args"],
+        fields: &[arg("ticket", "订阅票；退不在册的也回 `ok`")],
+        takes_input: true,
+        run: Run::Builtin,
     },
     // **起会话要一个终端名 —— 问这台**：`{cwd}`（`<项目名>-cc`）或 `{forkOf}`（`<…>-fork-cc`）⇒ `{name}`（按这台那张会话快照避让）。
     //   本体 `control/ccm/mod.rs::answer_terminal_name_mint`（这一版宿主只有 tmux）；阻塞档（快照问一次就起一次 `tmux`）。

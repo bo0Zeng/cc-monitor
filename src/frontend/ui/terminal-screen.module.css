@@ -1,0 +1,173 @@
+/* 终端画面（`terminal-screen.ts`）：等宽、保留空白、不折行；底与字是终端画面那一族色。抽屉终端页与起会话那一处的浮层共用。 */
+@layer components {
+  .screen {
+    margin: 0;
+    background: var(--term-bg);
+    color: var(--term-fg);
+    font-family: var(--font-mono);
+    font-size: var(--font-size-mono);
+    line-height: var(--line-height-mono);
+    white-space: pre;
+  }
+
+  /* 画面里的颜色段：16 色名走 data 属性，真彩走内联颜色 */
+  .screen [data-fg="black"] {
+    color: var(--term-black);
+  }
+
+  .screen [data-bg="black"] {
+    background: var(--term-black);
+  }
+
+  .screen [data-fg="red"] {
+    color: var(--term-red);
+  }
+
+  .screen [data-bg="red"] {
+    background: var(--term-red);
+  }
+
+  .screen [data-fg="green"] {
+    color: var(--term-green);
+  }
+
+  .screen [data-bg="green"] {
+    background: var(--term-green);
+  }
+
+  .screen [data-fg="yellow"] {
+    color: var(--term-yellow);
+  }
+
+  .screen [data-bg="yellow"] {
+    background: var(--term-yellow);
+  }
+
+  .screen [data-fg="blue"] {
+    color: var(--term-blue);
+  }
+
+  .screen [data-bg="blue"] {
+    background: var(--term-blue);
+  }
+
+  .screen [data-fg="magenta"] {
+    color: var(--term-magenta);
+  }
+
+  .screen [data-bg="magenta"] {
+    background: var(--term-magenta);
+  }
+
+  .screen [data-fg="cyan"] {
+    color: var(--term-cyan);
+  }
+
+  .screen [data-bg="cyan"] {
+    background: var(--term-cyan);
+  }
+
+  .screen [data-fg="white"] {
+    color: var(--term-white);
+  }
+
+  .screen [data-bg="white"] {
+    background: var(--term-white);
+  }
+
+  .screen [data-fg="bright-black"] {
+    color: var(--term-bright-black);
+  }
+
+  .screen [data-bg="bright-black"] {
+    background: var(--term-bright-black);
+  }
+
+  .screen [data-fg="bright-red"] {
+    color: var(--term-bright-red);
+  }
+
+  .screen [data-bg="bright-red"] {
+    background: var(--term-bright-red);
+  }
+
+  .screen [data-fg="bright-green"] {
+    color: var(--term-bright-green);
+  }
+
+  .screen [data-bg="bright-green"] {
+    background: var(--term-bright-green);
+  }
+
+  .screen [data-fg="bright-yellow"] {
+    color: var(--term-bright-yellow);
+  }
+
+  .screen [data-bg="bright-yellow"] {
+    background: var(--term-bright-yellow);
+  }
+
+  .screen [data-fg="bright-blue"] {
+    color: var(--term-bright-blue);
+  }
+
+  .screen [data-bg="bright-blue"] {
+    background: var(--term-bright-blue);
+  }
+
+  .screen [data-fg="bright-magenta"] {
+    color: var(--term-bright-magenta);
+  }
+
+  .screen [data-bg="bright-magenta"] {
+    background: var(--term-bright-magenta);
+  }
+
+  .screen [data-fg="bright-cyan"] {
+    color: var(--term-bright-cyan);
+  }
+
+  .screen [data-bg="bright-cyan"] {
+    background: var(--term-bright-cyan);
+  }
+
+  .screen [data-fg="bright-white"] {
+    color: var(--term-bright-white);
+  }
+
+  .screen [data-bg="bright-white"] {
+    background: var(--term-bright-white);
+  }
+
+  .screen [data-fg="default-fg"] {
+    color: var(--term-fg);
+  }
+
+  .screen [data-fg="default-bg"] {
+    color: var(--term-bg);
+  }
+
+  .screen [data-bg="default-fg"] {
+    background: var(--term-fg);
+  }
+
+  .screen [data-bg="default-bg"] {
+    background: var(--term-bg);
+  }
+
+  .screen [data-bold] {
+    font-weight: var(--font-weight-strong);
+  }
+
+  .screen [data-dim] {
+    opacity: 0.6;
+  }
+
+  .screen [data-italic] {
+    font-style: italic;
+  }
+
+  .screen [data-underline] {
+    text-decoration: underline;
+  }
+}

@@ -179,26 +179,27 @@ export function machineOps(): Record<string, OpHandler> {
       synced: w.machines.slice(1).map((origin) => ({ origin, peer: null, changed: false, pushed: 0, error: null })),
       reach: w.machines.slice(1).map((origin) => ({ origin, machine: null })),
     }),
+    // 画面带颜色段（列按字符计，同后端）：边框与说明暗、工具名粗、路径蓝、「Building…」那一行橙（真彩，同 Claude Code 自己的色）、「accept edits」品红。
     "terminal-preview": () => ({
-      lines: [
-        "╭──────────────────────────────────────────────╮",
-        "│ ✻ Welcome to Claude Code!                    │",
-        "╰──────────────────────────────────────────────╯",
-        "",
-        "> 订单服务调用库存接口时偶尔超时，帮我加上重试…",
-        "",
-        "● 我先看一下现在的调用点和配置。",
-        "",
-        "● Bash(pytest -q)",
-        "  ⎿  213 passed in 9.41s",
-        "",
-        "✻ Thinking… (esc to interrupt)",
-        "",
-        "─────────────────────────────────────────────────",
-        "> ",
-        "─────────────────────────────────────────────────",
-        "  ⏵⏵ accept edits on (shift+tab to cycle)",
-      ].map((text) => ({ text })),
+      lines: (
+        [
+          ["● Bash(pytest -q)", [{ from: 0, to: 1, fg: "green" }, { from: 2, to: 6, bold: true }]],
+          ["  ⎿  213 passed in 9.41s", [{ from: 2, to: 24, fg: "bright-black" }]],
+          ["", []],
+          ["● Bash(npm run build)", [{ from: 0, to: 1, fg: "green" }, { from: 2, to: 6, bold: true }]],
+          ["  ⎿  Running…", [{ from: 2, to: 13, fg: "bright-black" }]],
+          ["     vite v6.2.0 building for production...", [{ from: 5, to: 43, fg: "bright-black" }]],
+          ["     transforming (812) src/orders/client.ts", [{ from: 5, to: 24, fg: "bright-black" }, { from: 24, to: 44, fg: "blue" }]],
+          ["     ✓ 812 modules transformed.", [{ from: 5, to: 6, fg: "green" }]],
+          ["", []],
+          ["✶ Building… (14s · ↑ 1.2k tokens · esc to interrupt)", [{ from: 0, to: 11, fg: "#d97757" }, { from: 12, to: 52, fg: "bright-black" }]],
+          ["", []],
+          ["╭──────────────────────────────────────────────╮", [{ from: 0, to: 48, fg: "bright-black" }]],
+          ["│ >                                            │", [{ from: 0, to: 1, fg: "bright-black" }, { from: 47, to: 48, fg: "bright-black" }]],
+          ["╰──────────────────────────────────────────────╯", [{ from: 0, to: 48, fg: "bright-black" }]],
+          ["  ⏵⏵ accept edits on (shift+tab to cycle)", [{ from: 2, to: 20, fg: "magenta" }, { from: 21, to: 41, fg: "bright-black" }]],
+        ] as [string, object[]][]
+      ).map(([text, spans]) => ({ text, spans })),
       screen: "00000000000000a1",
       captured_at: Math.floor(Date.parse("2026-10-06T10:42:05") / 1000),
       captured_at_text: hms(Date.parse("2026-10-06T10:42:05")),
@@ -207,7 +208,7 @@ export function machineOps(): Record<string, OpHandler> {
     "terminals-list": (o, _r, w) => ({
       complete: true,
       terminals: w.sessions
-        .filter((x) => !x.ended && x.origin === o)
+        .filter((x) => !x.ended && x.origin === o && x.container.form === "hosted")
         .map((x, i) => {
           const name = `cc-${x.cwd.split(/[/\\]/).pop()}`;
           return {
@@ -229,6 +230,10 @@ export function machineOps(): Record<string, OpHandler> {
         }),
     }),
     "terminal-input": () => ({ result: "delivered" }),
+    // 终端实时画面：订上 · 回执 · 退订都答好（画面那一格由假后端的订阅推，`backend.ts`）。
+    "terminal-follow": () => ({}),
+    "terminal-follow-ack": () => ({}),
+    "terminal-unfollow": () => ({}),
     "ssh-config-aliases": () => ({ aliases: ["devbox", "gpu-01", "win-laptop", "bastion"] }),
     "exit-policy-read": () => ({ state: "absent", killOnExit: false, reason: null, path: null, said: copyText("backendPolicy.exit.unattended") }),
     "footprint-report": () => footprint(),

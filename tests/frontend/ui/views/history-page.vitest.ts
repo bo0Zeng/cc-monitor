@@ -79,6 +79,7 @@ import { resumeAccounts } from "../../../../src/frontend/ui/resume-menu";
 import { chanArgsJson, chanReply, refusedReply, type ChanCallArgs } from "../../../test-support/chan-fake";
 import { answerAskDialog, answerAskText, noAskDialog } from "../../../test-support/ask-dialog-driver.ts";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
+import { closeMenu } from "../../../../src/frontend/ui/kit/menu";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 const NOW = Date.now();
@@ -617,5 +618,254 @@ describe("窄档 / 中档 · 列表宽度可拖（乙4-① ⑧）", () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+});
+
+describe("键盘：列表里每个键做什么", () => {
+  beforeEach(() => localStorage.clear());
+  const key = (k: string, mod: KeyboardEventInit = {}, at: Element = document.activeElement!): void => {
+    at.dispatchEvent(new KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true, ...mod }));
+  };
+  const focusedSid = (): string | undefined => document.activeElement?.getAttribute("data-key")?.split("\u0000")[1];
+
+  it("↑ 在第一行 ⇒ 回搜索框；PageDown / PageUp 一页一页走（夹在两头）；End / Home 到两头", async () => {
+    world.local = ["a", "b", "c"].map((sid, i) => row({ sessionId: sid, at: NOW - (i + 1) * 1000 }));
+    const v = await opened();
+    document.querySelector<HTMLInputElement>(".history-search")!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+    expect(focusedSid()).toBe("a");
+    key("PageDown");
+    expect(focusedSid(), "jsdom 没高度 ⇒ 一页 = 1 行").toBe("b");
+    key("End");
+    expect(focusedSid()).toBe("c");
+    key("PageDown");
+    expect(focusedSid(), "夹在最后一行").toBe("c");
+    key("PageUp");
+    expect(focusedSid()).toBe("b");
+    key("Home");
+    expect(focusedSid()).toBe("a");
+    key("ArrowUp");
+    expect(document.activeElement?.classList.contains("history-search")).toBe(true);
+    v.close();
+  });
+
+  it("回车 ⇒ 右边看它、焦点进内容；Shift+回车 ⇒ 新窗口；F2 ⇒ 改标题；Delete ⇒ 删；ContextMenu / Shift+F10 ⇒ 菜单；没选中时这几个键不接", async () => {
+    world.local = [row({ sessionId: "a" })];
+    const v = await opened();
+    const list = document.querySelector<HTMLElement>('[role="listbox"]')!;
+    list.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    await flush();
+    expect(viewerStub.last, "没选中就打开了").toBeNull();
+    document.querySelector<HTMLInputElement>(".history-search")!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+    key("Enter");
+    await flush();
+    expect(viewerStub.last).toMatchObject({ displayTitle: "标题 a" });
+    expect(document.querySelector<HTMLElement>("[class*=hvSplit]")!.dataset.pane).toBe("content");
+    invokeMock.mock.calls.length = 0;
+    key("Enter", { shiftKey: true }, rows()[0]);
+    await flush();
+    expect(invokeMock.mock.calls.filter((c) => c[0] === "open_session_in_new_window").map((c) => c[1])).toEqual([{ sessionId: "a", origin: "<local>", title: "标题 a" }]);
+    key("F2", {}, rows()[0]);
+    await answerAskText(null);
+    await flush();
+    key("Delete", {}, rows()[0]);
+    await answerAskDialog(false);
+    await flush();
+    expect(calls("files-delete-session")).toEqual([]);
+    const menus = (): number => document.querySelectorAll('[role="menu"]').length;
+    key("F10", {}, rows()[0]);
+    expect(menus(), "只按 F10 不开菜单").toBe(0);
+    key("ContextMenu", {}, rows()[0]);
+    expect(menus()).toBe(1);
+    closeMenu();
+    key("F10", { shiftKey: true }, rows()[0]);
+    expect(menus()).toBe(1);
+    closeMenu();
+    v.close();
+  });
+});
+
+describe("列表顶上的提示条 · 空着时说什么", () => {
+  beforeEach(() => localStorage.clear());
+
+  it("本机读不出 ⇒ 红条［重试］只再问本机；那台说清单不全 ⇒ 黄条［重试］；清单截断 ⇒ 列表尾一句", async () => {
+    world.fail.add("");
+    world.dev = [row({ sessionId: "b" })];
+    const base = invokeMock.getMockImplementation() as (cmd: string, a: unknown) => Promise<unknown>;
+    invokeMock.mockImplementation(async (cmd: string, a: unknown) => {
+      const r = await base(cmd, a);
+      if (cmd === "chan_call" && (a as ChanCallArgs).op === "history-list" && (chanArgsJson(a as ChanCallArgs) as { origin?: string }).origin === "dev") {
+        const v = JSON.parse(new TextDecoder().decode(new Uint8Array(r as ArrayBuffer))) as Record<string, unknown>;
+        return chanReply({ ...v, notice: "partial", truncated: true });
+      }
+      return r;
+    });
+    const v = await opened();
+    expect(document.body.textContent).toContain(copyText("history.list.localFailed"));
+    expect(document.body.textContent).toContain(copyText("history.list.notice"));
+    expect(document.body.textContent).toContain(copyText("history.list.truncated"));
+    invokeMock.mock.calls.length = 0;
+    world.fail.clear();
+    byText("[class*=strip], div", copyText("history.list.localFailed"));
+    const retries = [...document.querySelectorAll<HTMLButtonElement>("button")].filter((b) => b.textContent === copyText("history.list.retry"));
+    expect(retries).toHaveLength(2);
+    retries[0].click();
+    await flush();
+    expect(calls("history-list").map((a) => [a.origin ?? "", a.fresh])).toEqual([["", true]]);
+    retries[1].click();
+    await flush();
+    expect(calls("history-list").map((a) => [a.origin ?? "", a.fresh]).at(-1)).toEqual(["dev", true]);
+    v.close();
+  });
+
+  it("一行都没有：带着字 / 筛选 ⇒「没有匹配」＋［清除筛选］（清掉字与筛选、重问）；什么都没筛 ⇒ 说还没有会话", async () => {
+    const v = await opened();
+    expect(document.body.textContent).toContain(copyText("history.list.empty"));
+    expect(document.body.textContent).not.toContain(copyText("history.list.noMatch"));
+    const input = document.querySelector<HTMLInputElement>(".history-search")!;
+    input.value = "x";
+    input.dispatchEvent(new Event("input"));
+    await flush(200);
+    expect(document.body.textContent).toContain(copyText("history.list.noMatch"));
+    invokeMock.mock.calls.length = 0;
+    byText("button", copyText("history.list.clearFilter"))!.click();
+    await flush(200);
+    expect(input.value).toBe("");
+    expect(calls("history-list").at(-1)!.query, "清掉之后最后那一问还带着字").toBeUndefined();
+    v.close();
+  });
+});
+
+describe("内容搜索的其余几态", () => {
+  beforeEach(() => localStorage.clear());
+  const enter = (q: string): void => {
+    const input = document.querySelector<HTMLInputElement>(".history-search")!;
+    input.value = q;
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+  };
+
+  it("搜着时列表头转圈 ＋［停止］，点了回到清单、晚到的结果不画", async () => {
+    world.local = [row({ sessionId: "a" })];
+    const held: (() => void)[] = [];
+    const base = invokeMock.getMockImplementation() as (cmd: string, a: unknown) => Promise<unknown>;
+    invokeMock.mockImplementation(async (cmd: string, a: unknown) => {
+      if (cmd === "chan_call" && (a as ChanCallArgs).op === "history-search") await new Promise<void>((r) => held.push(r));
+      return base(cmd, a);
+    });
+    const v = await opened();
+    enter("词");
+    await flush();
+    expect(document.body.textContent).toContain(copyText("history.search.searching"));
+    byText("button", copyText("history.search.stop"))!.click();
+    expect(titles()).toEqual(["标题 a"]);
+    for (const r of held) r();
+    await flush();
+    await flush();
+    expect(held.length).toBe(2);
+    expect(document.querySelector("mark"), "停了之后结果又画上来").toBeNull();
+    expect(titles()).toEqual(["标题 a"]);
+    v.close();
+  });
+
+  it("没搜到 ⇒ 说没有、没含工具输出时给［含工具输出与思考］（点了带上它再搜）；那台没答 / 跳过的那一家 / 读不了的份数各一条", async () => {
+    world.local = [row({ sessionId: "a" })];
+    const base = invokeMock.getMockImplementation() as (cmd: string, a: unknown) => Promise<unknown>;
+    invokeMock.mockImplementation(async (cmd: string, a: unknown) => {
+      if (cmd === "chan_call" && (a as ChanCallArgs).op === "history-search") {
+        if ((a as ChanCallArgs).origin === "dev") return Promise.reject(refusedReply("unreachable", "dev 问不到"));
+        return chanReply({ lines: [], unreadable: 2, skipped: ["codex"] });
+      }
+      return base(cmd, a);
+    });
+    const v = await opened();
+    enter("无");
+    await flush();
+    const body = document.body.textContent ?? "";
+    expect(body).toContain(copyText("history.search.noMatch", { q: "无" }));
+    expect(body).toContain(copyText("history.search.machineDown", { machine: "dev" }));
+    expect(body).toContain(copyText("history.search.skipped", { agent: "codex" }));
+    expect(body).toContain(copyText("history.search.unreadable", { n: 2 }));
+    invokeMock.mock.calls.length = 0;
+    const tools = [...document.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("history.filter.tools"))!;
+    tools.click();
+    await flush();
+    expect(calls("history-search").map((a) => a.includeTools ?? a.include_tools)).toContain(true);
+    expect([...document.querySelectorAll<HTMLButtonElement>("button")].some((b) => b.textContent === copyText("history.filter.tools")), "已含工具输出还给那颗").toBe(false);
+    v.close();
+  });
+});
+
+describe("筛选浮层的其余几格 · 按项目收起与新建", () => {
+  beforeEach(() => localStorage.clear());
+
+  it("那台答不上 ⇒ 机器那一格标「离线」；勾回一台 ⇒ 只再问它；搜内容时改「谁说的」/ 含工具输出 ⇒ 当场重搜", async () => {
+    world.local = [row({ sessionId: "a" })];
+    world.fail.add("dev");
+    const v = await opened();
+    byText("button", copyText("history.page.filter"))!.click();
+    await flush();
+    const box = (label: string) => byText("label", label)!.querySelector("input")!;
+    expect(byText("label", "dev")!.textContent).toContain(copyText("history.filter.offline"));
+    box("dev").click();
+    await flush();
+    invokeMock.mock.calls.length = 0;
+    box("dev").click();
+    await flush();
+    expect(calls("history-list").map((a) => a.origin ?? "")).toEqual(["dev"]);
+    invokeMock.mock.calls.length = 0;
+    box(copyText("history.filter.scopeYou")).click();
+    await flush();
+    expect(calls("history-search"), "没在搜内容就去搜了").toEqual([]);
+    const input = document.querySelector<HTMLInputElement>(".history-search")!;
+    input.value = "词";
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    await flush();
+    const fb = byText("button", copyText("history.page.filter"))!;
+    if (fb.getAttribute("aria-expanded") !== "true") fb.click();
+    await flush();
+    invokeMock.mock.calls.length = 0;
+    box(copyText("history.filter.scopeAgent")).click();
+    await flush();
+    expect(calls("history-search").map((a) => a.scope)).toContain("assistant");
+    invokeMock.mock.calls.length = 0;
+    box(copyText("history.filter.tools")).click();
+    await flush();
+    expect(calls("history-search").length).toBeGreaterThan(0);
+    expect(byText("button", copyText("history.page.filter"))!.textContent).toContain("2");
+    v.close();
+  });
+
+  it("按项目：点开的组再点收起；组头的［新建］在那个目录起新会话", async () => {
+    world.local = [row({ sessionId: "a" })];
+    const groups = [{ key: "claude:/w/p", agent: "claude", projectName: "p", projectPath: "/w/p", projectDir: "-w-p", count: 1, hasLive: false, starred: false, lastActivity: NOW, order: 1, failed: null }];
+    const base = invokeMock.getMockImplementation() as (cmd: string, a: unknown) => Promise<unknown>;
+    invokeMock.mockImplementation(async (cmd: string, a: unknown) => {
+      const r = await base(cmd, a);
+      if (cmd === "chan_call" && (a as ChanCallArgs).op === "history-list" && !(chanArgsJson(a as ChanCallArgs) as { origin?: string }).origin) {
+        const v = JSON.parse(new TextDecoder().decode(new Uint8Array(r as ArrayBuffer))) as Record<string, unknown>;
+        return chanReply({ ...v, groups });
+      }
+      return r;
+    });
+    const v = await opened();
+    byText('[role="tab"]', copyText("history.page.byProject"))!.click();
+    await flush();
+    const head = (): HTMLElement => document.querySelector<HTMLElement>('[role="treeitem"]')!;
+    head().click();
+    await flush();
+    expect(titles()).toEqual(["标题 a"]);
+    head().click();
+    await flush();
+    expect(titles()).toEqual([]);
+    byText("button", copyText("history.list.collapseAll"))!.click();
+    await flush();
+    expect(titles()).toEqual([]);
+    invokeMock.mock.calls.length = 0;
+    const newBtn = [...head().querySelectorAll<HTMLButtonElement>("button")].find((b) => (b.getAttribute("aria-label") ?? b.textContent ?? "").length > 0 && b !== head())!;
+    newBtn.click();
+    await flush();
+    expect(document.querySelector('[role="dialog"]'), "没开起新会话框").not.toBeNull();
+    document.querySelector('[role="dialog"]')?.remove();
+    byText('[role="tab"]', copyText("history.page.byTime"))!.click();
+    v.close();
   });
 });

@@ -7,7 +7,7 @@
  *
  * RecordTimeline 是唯一调用方：`insertNode` 按 seq 把卡插到正确位置。
  *
- * 用 ResizeObserver 观察 .stream-content **与 .stream 自己**两根轴（步 3）：
+ * 用 ResizeObserver 观察 .stream-content 与 .stream 自己两根轴：
  *   - 内容那根答「内容长高了吗」→ 贴底；
  *   - 容器那根答「视口变大了吗」→ 报给宿主去补批（`onViewportResize`）。
  *
@@ -25,8 +25,7 @@
  *     `scrollTop = scrollHeight` 会在 HiDPI 分数像素下因舍入误差逐帧 ±0.5px 抖。
  *   - 内容插到「视口上方」时不手动补偿 scrollTop，交给浏览器原生 `overflow-anchor`
  *     维持视觉稳定（两者叠加会 double-shift）。
- *   - 重放期「视口上方」的旧内容根本不建 DOM（Batch13-F40a 尾部优先收纳,
- *     TailWindow 账本）——"逐帧上方插入"从源头消失（INVARIANTS § 21.3）。
+ *   - 重放期视口上方的旧内容不建 DOM（尾部优先收纳，TailWindow 账本）——「逐帧上方插入」从源头没有（INVARIANTS § 21.3）。
  */
 export class MessageStream {
   private scrollEl: HTMLElement;
@@ -35,7 +34,7 @@ export class MessageStream {
   private trailerEl: HTMLElement | null = null;
   /** 是否粘底（用户向上滚动后变 false） */
   private stickToBottom = true;
-  /** F40a S-7:物化大批插卡期间暂停逐卡守卫 snap(见 batchInsert) */
+  /** 物化大批插卡期间暂停逐卡守卫 snap（见 batchInsert） */
   private snapSuspended = false;
   private resizeObserver: ResizeObserver;
   private scrollHandler: () => void;
@@ -59,13 +58,8 @@ export class MessageStream {
 
     this.resizeObserver = new ResizeObserver((entries) => {
       if (this.stickToBottom) this.snap();
-      // ★ 步 3：**视口自己变大也要有人管。**
-      //
-      // 原来只观察 `contentEl` —— 那根轴只答「内容长高了吗」。
-      // 把窗口拉高、收起侧栏、拖宽 tab 栏时变的是 **`scrollEl` 自己**，内容一个字没动
-      // ⇒ 旧的 RO 一次都不响 ⇒ 多出来的那一块空白**没有任何东西会去补**
-      //（`fillAbove` 挂在 scroll 事件上，而不可滚的元素根本不产生 scroll 事件）。
-      // ⇒ 这里把 `scrollEl` 也观察上，宿主拿到通知后自己决定补不补（见 tabs.ts）。
+      // 视口自己变大也要有人管：拉高窗口、收起侧栏时变的是 `scrollEl` 自己，内容没动，
+      // 而 `fillAbove` 挂在 scroll 事件上（不可滚的元素不产生 scroll）⇒ 观察 `scrollEl`，宿主自己决定补不补。
       if (this.onViewportResize && entries.some((e) => e.target === this.scrollEl)) {
         this.onViewportResize();
       }
@@ -103,11 +97,8 @@ export class MessageStream {
    * 详见类头注释「贴底稳定性」与 INVARIANTS § 21。
    */
   insertNode(node: HTMLElement, anchor: HTMLElement | null): void {
-    // F40a D 审计 R-2:anchor 可能已被折进 .branch-fold-wrap(增量渲染的洞场景 /F40b 补批)。
-    // 原来爬到 contentEl 直接子层、插在**整段之前** —— 新卡若该落在
-    // 段中间就错序,而 rebuild 只解开 / 重包、不重排卡,错序不会自愈。现在**就插在 anchor 前**(它在哪层就在哪层):
-    // 顺序逐卡正确;若它其实是主线卡,它进来时 `recordAdded` 排的那次帧末重算会让主线集合变、触发 rebuild 把它摘出段。
-    // anchor 不在本流里(RecordTimeline 已把离场的出账,理论上走不到)⇒ 末尾追加并出声。
+    // anchor 可能已被折进 .branch-fold-wrap ⇒ 就插在 anchor 前（它在哪层就在哪层）：插在整段之前会错序，而 rebuild 不重排卡。
+    // 新卡若其实在主线上，`recordAdded` 排的帧末重算会触发 rebuild 把它摘出段。anchor 不在本流里（理论上走不到）⇒ 末尾追加并出声。
     if (anchor && this.contentEl.contains(anchor) && anchor.parentElement) {
       anchor.parentElement.insertBefore(node, anchor);
     } else {
@@ -119,10 +110,7 @@ export class MessageStream {
     }
   }
 
-  /**
-   * F40a S-7:物化/补批大批插卡——期间暂停逐卡守卫 snap(每次 snap 读 scrollHeight
-   * 都是一次强制 reflow,150 卡 = 150 次),批末按粘底状态一次贴底。
-   */
+  /** 物化 / 补批大批插卡：期间暂停逐卡守卫 snap（每次读 scrollHeight 都是一次强制 reflow），批末按粘底状态一次贴底。 */
   batchInsert(fn: () => void): void {
     this.snapSuspended = true;
     try {
@@ -148,8 +136,7 @@ export class MessageStream {
     const el = this.scrollEl;
     // 只在确实落后底部 >1px 时才贴底。内容持续在视口上方插入时，原生 overflow-anchor
     // 已把 scrollTop 维持在底部，这里就不再每帧 scrollTop=scrollHeight 重钉 —— 那会在
-    // HiDPI 分数像素布局下因整数 scrollHeight 与分数布局的舍入误差每帧不同，造成整块
-    // 内容 ±0.5px 高频重绘（"整行一起上下抖"的根因，已实测定位）。
+    // HiDPI 分数像素布局下因整数 scrollHeight 与分数布局的舍入误差每帧不同，整块内容 ±0.5px 抖。
     if (el.scrollHeight - el.clientHeight - el.scrollTop > 1) {
       el.scrollTop = el.scrollHeight;
     }
@@ -168,10 +155,7 @@ export class MessageStream {
     return this.trailerEl;
   }
 
-  /**
-   * issue #8：BranchFolder 需要扫卡片所在的真实容器（.stream-content），不是
-   * 外层 scroll container；否则 querySelector :scope > .branch-fold-wrap 找不到。
-   */
+  /** BranchFolder 要扫卡片所在的真实容器（.stream-content），不是外层滚动容器（否则 `:scope > .branch-fold-wrap` 找不到）。 */
   get contentElement(): HTMLElement {
     return this.contentEl;
   }

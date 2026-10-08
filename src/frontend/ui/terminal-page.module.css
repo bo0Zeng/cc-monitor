@@ -76,18 +76,58 @@
     font-size: var(--font-size-small);
   }
 
+  .termScreenWrap {
+    position: relative;
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  .termFollow {
+    position: absolute;
+    right: var(--space-6);
+    bottom: var(--space-4);
+    border-radius: var(--radius-m);
+    box-shadow: var(--shadow-float);
+  }
+
+  .termLive {
+    flex: none;
+    color: var(--text-2);
+    font-size: var(--font-size-xs);
+  }
+
+  .termSnap {
+    flex: none;
+  }
+
+  .termSnap > * + * {
+    margin-left: var(--space-3);
+  }
+
+  .termLive::before {
+    display: inline-block;
+    margin-right: var(--space-2);
+    vertical-align: 1px;
+    width: 6px;
+    height: 6px;
+    border: 1px solid var(--text-faint);
+    border-radius: 50%;
+    content: "";
+  }
+
+  .termLive[data-state="on"]::before {
+    border-color: var(--live);
+    background: var(--live);
+  }
+
   .termScreen {
     flex: 1;
     min-height: 0;
-    margin: 0;
     padding: var(--space-3) var(--space-5);
     overflow: auto;
-    background: var(--bg-2);
-    color: var(--text);
-    font-family: var(--font-mono);
-    font-size: var(--font-size-mono);
-    line-height: 1.4;
-    white-space: pre;
+    background: var(--term-bg);
   }
 
   .termScreen[data-stale="true"] {

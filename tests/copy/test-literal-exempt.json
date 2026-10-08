@@ -127,11 +127,13 @@
       { "text": "失败", "use": "输入" },
       { "text": "复制详情", "use": "输入" },
       { "text": "重启 cc-monitor 后生效", "use": "输入" },
-      { "text": "无会话", "use": "输入" }
+      { "text": "无会话", "use": "输入" },
+      { "text": "结束", "use": "输入" }
     ],
     "tests/frontend/ui/kit/dialog.vitest.ts": [
       { "text": "保留", "use": "输入" },
-      { "text": "新建", "use": "输入" }
+      { "text": "新建", "use": "输入" },
+      { "text": "结束", "use": "输入" }
     ],
     "tests/frontend/ui/kit/menu.vitest.ts": [
       { "text": "在新窗口打开", "use": "输入" },
@@ -160,6 +162,12 @@
     "tests/frontend/ui/kit/tooltip.vitest.ts": [
       { "text": "下一个", "use": "输入" },
       { "text": "刷新", "use": "输入" }
+    ],
+    "tests/frontend/ui/main-window-fixes.vitest.ts": [
+      { "text": "结束", "use": "输入" }
+    ],
+    "tests/frontend/ui/new-session.vitest.ts": [
+      { "text": "原话", "use": "输入" }
     ],
     "tests/frontend/ui/settings/backend-section.vitest.ts": [
       { "text": "本机", "use": "输入" }

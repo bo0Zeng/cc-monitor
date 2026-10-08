@@ -7,7 +7,7 @@
  * toast（复用 error-toast.ts 的 toast 栈，不另造 UI）。
  *
  * 设计要点：
- * - **单一通道**：所有远端健康提示走这一个事件 + 这一个 listener。#33 版本协商复用，
+ * - **单一通道**：所有远端健康提示走这一个事件 + 这一个 listener。#33 版本协商复用（kind 分要更新 · 较新 · 不可比三类），
  *   只换 `kind`/`message`，不另开事件（SS-F 最终形态）。
  * - **节流**：每个 (origin,kind) 至少隔 THROTTLE_MS 才再弹一次。纯函数
  *   `shouldShowHealthToast` 便于单测（remote-health.test.ts）。
@@ -26,13 +26,17 @@ import type { RemoteHealthPayload } from "./generated/RemoteHealthPayload";
 import { copyText } from "./copy-table";
 import { detailOf } from "./kit/detail";
 
-/** kind → toast 标题（未知 kind 回退到通用「远端提示」）。 */
-function headlineFor(kind: string): string {
+/** kind → toast 标题（未知 kind 回退到通用「远端提示」）。版本那三类由壳判好（`stream_source/version.rs::version_health_kind`）。 */
+export function headlineFor(kind: string): string {
   switch (kind) {
     case "overflow":
       return copyText("remoteHealth.head.congested");
-    case "version":
-      return copyText("remoteHealth.head.versionMismatch");
+    case "version-older":
+      return copyText("remoteHealth.head.backendOld");
+    case "version-newer":
+      return copyText("remoteHealth.head.backendNewer");
+    case "version-incomparable":
+      return copyText("remoteHealth.head.versionIncomparable");
     case "degraded":
       return copyText("remoteHealth.head.degraded");
     case "snapshot":

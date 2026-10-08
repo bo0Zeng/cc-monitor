@@ -18,7 +18,7 @@ const WHERE: Record<string, string> = {
   "src/frontend/ui/terminal-page.ts::previewShot": "终端页：错误条就在页头下面，页头写着会话 · 目录 · 机器",
   "src/frontend/ui/terminal-page.ts::sendToTerminal": "终端页：送字那一行写着「送往 {会话} · {机器}」",
   "src/frontend/ui/launch-slot.ts::previewText": "起会话之后的占位页：launch.slot.noScreen 带 {machine} · {name}",
-  "src/frontend/ui/views/pane-preview.ts::previewText": "窗格预览：那一句作 toast 标题，窗格名放灰字",
+  "src/frontend/ui/views/pane-preview.ts::previewShot": "窗格预览：那一句作 toast 标题，窗格名放灰字",
   "src/frontend/ui/settings/cc-bus-section.ts::readState": "设置 → cc-bus：说的是这台的名册（区块头选着这台），没有单个对象",
   "src/frontend/ui/settings/cc-bus-section.ts::agentOnline": "设置 → cc-bus：结果写在那个 agent 那一行里（行首是它的 id）",
   "src/frontend/ui/settings/cc-bus-section.ts::readInbox": "设置 → cc-bus：结果写在那个 agent 那一行展开的收件箱里",

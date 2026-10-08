@@ -198,6 +198,127 @@ function fieldSaid(code: string, said: string, machine: string): string {
 
 const ACCOUNT_FOLLOW = "\u0000follow";
 
+type Row = ReturnType<typeof row>;
+
+/** 一个单行文本格（不拼写检查，读屏名 = 那一行的标签）。 */
+function textInput(aria: string): HTMLInputElement {
+  const i = el("input");
+  i.className = s.nsInput;
+  i.type = "text";
+  i.spellcheck = false;
+  i.setAttribute("aria-label", aria);
+  return i;
+}
+
+/** 分叉那一形框顶那一块：自哪个会话 ＋ 一句说明；`fromLine` 等那台报出轮次后改写。 */
+function forkBox(title: string): { box: HTMLElement; fromLine: HTMLElement } {
+  const box = el("div");
+  box.className = s.nsFork;
+  box.appendChild(icon("fork"));
+  const text = el("div");
+  text.className = s.nsForkText;
+  const fromLine = el("div", copyText("newSession.fork.fromBare", { title }));
+  fromLine.className = s.nsForkFrom;
+  const forkNote = el("div", copyText("newSession.fork.note"));
+  forkNote.className = s.nsForkNote;
+  text.append(fromLine, forkNote);
+  box.appendChild(text);
+  return { box, fromLine };
+}
+
+/** 工作目录那一行：目录格 ＋「最近的」（那台最近用过的目录，点一项填进目录格）。 */
+function cwdField(cwd: string): { cwdInput: HTMLInputElement; recentBtn: HTMLButtonElement; cwdRow: Row } {
+  const cwdInput = el("input");
+  cwdInput.className = s.nsInput;
+  cwdInput.type = "text";
+  cwdInput.spellcheck = false;
+  cwdInput.value = cwd;
+  cwdInput.setAttribute("aria-label", copyText("newSession.label.cwd"));
+  const recentBtn = el("button");
+  recentBtn.type = "button";
+  recentBtn.className = s.nsRecent;
+  recentBtn.setAttribute("aria-label", copyText("newSession.recent.label"));
+  recentBtn.append(el("span", copyText("newSession.recent.label")), icon("caretDown", "compact"));
+  const cwdWrap = el("div");
+  cwdWrap.className = s.nsBox;
+  cwdWrap.append(cwdInput, recentBtn);
+  return { cwdInput, recentBtn, cwdRow: row(copyText("newSession.label.cwd"), cwdWrap, false) };
+}
+
+interface PlaceRadio {
+  label: HTMLLabelElement;
+  input: HTMLInputElement;
+  note: HTMLElement;
+}
+
+/** 「运行于」那一张：单选 ＋ 名字 ＋ 灰字。 */
+function placeRadio(places: HTMLElement, value: "tmux" | "window"): PlaceRadio {
+  const label = el("label");
+  label.className = s.nsPlace;
+  const input = el("input");
+  input.type = "radio";
+  input.name = "ns-place";
+  input.value = value;
+  const t = el("div");
+  t.className = s.nsPlaceText;
+  const note = el("div");
+  note.className = s.nsPlaceNote;
+  t.append(el("div", value === "tmux" ? copyText("newSession.place.tmux") : copyText("newSession.place.window")), note);
+  label.append(input, t);
+  places.appendChild(label);
+  return { label, input, note };
+}
+
+/** 「更多」那一折：tmux 会话名（分叉不出）· 启动命令。 */
+function moreFields(forking: boolean): { tmuxInput: HTMLInputElement; tmuxRow: Row; cmdInput: HTMLInputElement; cmdRow: Row; moreRow: HTMLElement } {
+  const tmuxInput = textInput(copyText("newSession.label.tmuxName"));
+  const tmuxRow = row(copyText("newSession.label.tmuxName"), tmuxInput);
+  const cmdInput = textInput(copyText("newSession.label.command"));
+  const cmdRow = row(copyText("newSession.label.command"), cmdInput);
+  const more = el("div");
+  more.className = s.nsMore;
+  if (!forking) more.appendChild(tmuxRow.root);
+  more.appendChild(cmdRow.root);
+  const moreRow = el("div");
+  moreRow.className = s.nsMoreRow;
+  moreRow.appendChild(
+    fold({ title: forking ? copyText("newSession.more.fork") : copyText("newSession.more.plain"), open: false, body: more, bare: true }),
+  );
+  return { tmuxInput, tmuxRow, cmdInput, cmdRow, moreRow };
+}
+
+/** 终端窗口那一张的灰字：本机 · 远端有 tmux · 远端没 tmux。 */
+function windowNote(origin: Origin, hasTmux: boolean): string {
+  if (isLocalOrigin(origin)) return copyText("newSession.place.windowNoteLocal");
+  return hasTmux ? copyText("newSession.place.windowNote", { machine: machineName(origin) }) : copyText("newSession.place.noTmux");
+}
+
+/** 账号那一格预选哪一项：分叉且那台说得出源会话的号 ⇒ 那个号；分叉说不出 ⇒ 跟随；不分叉 ⇒ 排第一的。 */
+function accountPick(forking: boolean, forkAccount: { kind: string; value?: string | null } | undefined, first: string): string {
+  if (forking && forkAccount?.kind === "known" && forkAccount.value != null) return forkAccount.value;
+  return forking ? ACCOUNT_FOLLOW : first;
+}
+
+/** 那台说哪一格不行 ⇒ 那一格；说不出 ⇒ `null`（落到框顶）。 */
+function fieldRow(field: string | null, rows: Record<"cwd" | "tmuxName" | "command" | "agent" | "place" | "account", Row>): Row | null {
+  switch (field) {
+    case "cwd":
+    case "tmuxName":
+    case "command":
+    case "agent":
+    case "place":
+    case "account":
+      return rows[field];
+    default:
+      return null;
+  }
+}
+
+const dialogTitle = (spec: NewSessionSpec, origin: Origin): string => {
+  if (spec.fork) return copyText("newSession.title.fork");
+  return spec.lockMachine ? copyText("newSession.title.onMachine", { machine: machineName(origin) }) : copyText("newSession.title.plain");
+};
+
 /** 打开起新会话框。取消 ⇒ 什么都不起不写。 */
 export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   const fork = spec.fork ?? null;
@@ -218,17 +339,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   form.appendChild(top);
 
   if (fork) {
-    const box = el("div");
-    box.className = s.nsFork;
-    box.appendChild(icon("fork"));
-    const text = el("div");
-    text.className = s.nsForkText;
-    const fromLine = el("div", copyText("newSession.fork.fromBare", { title: fork.title }));
-    fromLine.className = s.nsForkFrom;
-    const forkNote = el("div", copyText("newSession.fork.note"));
-    forkNote.className = s.nsForkNote;
-    text.append(fromLine, forkNote);
-    box.appendChild(text);
+    const { box, fromLine } = forkBox(fork.title);
     form.appendChild(box);
     forkLine = fromLine;
   }
@@ -249,22 +360,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   form.appendChild(machineRow.root);
 
   // 工作目录 ＋「最近的」
-  const cwdInput = el("input");
-  cwdInput.className = s.nsInput;
-  cwdInput.type = "text";
-  cwdInput.spellcheck = false;
-  cwdInput.value = spec.cwd ?? "";
-  cwdInput.setAttribute("aria-label", copyText("newSession.label.cwd"));
-  // 「最近的」：那台最近用过的目录，点一项填进目录格。
-  const recentBtn = el("button");
-  recentBtn.type = "button";
-  recentBtn.className = s.nsRecent;
-  recentBtn.setAttribute("aria-label", copyText("newSession.recent.label"));
-  recentBtn.append(el("span", copyText("newSession.recent.label")), icon("caretDown", "compact"));
-  const cwdWrap = el("div");
-  cwdWrap.className = s.nsBox;
-  cwdWrap.append(cwdInput, recentBtn);
-  const cwdRow = row(copyText("newSession.label.cwd"), cwdWrap, false);
+  const { cwdInput, recentBtn, cwdRow } = cwdField(spec.cwd ?? "");
   form.appendChild(cwdRow.root);
 
   // agent（那台能起的多于一家才出）
@@ -300,54 +396,23 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   places.className = s.nsPlaces;
   const placeRow = row(copyText("newSession.label.place"), places, false);
   form.appendChild(placeRow.root);
-  const radio = (value: "tmux" | "window"): { label: HTMLLabelElement; input: HTMLInputElement; note: HTMLElement } => {
-    const label = el("label");
-    label.className = s.nsPlace;
-    const input = el("input");
-    input.type = "radio";
-    input.name = "ns-place";
-    input.value = value;
-    const t = el("div");
-    t.className = s.nsPlaceText;
-    const note = el("div");
-    note.className = s.nsPlaceNote;
-    t.append(el("div", value === "tmux" ? copyText("newSession.place.tmux") : copyText("newSession.place.window")), note);
-    label.append(input, t);
-    places.appendChild(label);
-    return { label, input, note };
-  };
-  const tmuxRadio = radio("tmux");
-  const windowRadio = radio("window");
+  const tmuxRadio = placeRadio(places, "tmux");
+  const windowRadio = placeRadio(places, "window");
   tmuxRadio.note.textContent = copyText("newSession.place.tmuxNote");
 
-  // 更多：tmux 会话名（分叉不出）· 启动命令
-  const tmuxInput = el("input");
-  tmuxInput.className = s.nsInput;
-  tmuxInput.type = "text";
-  tmuxInput.spellcheck = false;
-  tmuxInput.setAttribute("aria-label", copyText("newSession.label.tmuxName"));
-  const tmuxRow = row(copyText("newSession.label.tmuxName"), tmuxInput);
-  const cmdInput = el("input");
-  cmdInput.className = s.nsInput;
-  cmdInput.type = "text";
-  cmdInput.spellcheck = false;
-  cmdInput.setAttribute("aria-label", copyText("newSession.label.command"));
-  const cmdRow = row(copyText("newSession.label.command"), cmdInput);
-  const more = el("div");
-  more.className = s.nsMore;
-  if (!fork) more.appendChild(tmuxRow.root);
-  more.appendChild(cmdRow.root);
-  const moreRow = el("div");
-  moreRow.className = s.nsMoreRow;
-  moreRow.appendChild(
-    fold({ title: fork ? copyText("newSession.more.fork") : copyText("newSession.more.plain"), open: false, body: more, bare: true }),
-  );
+  // 更多
+  const { tmuxInput, tmuxRow, cmdInput, cmdRow, moreRow } = moreFields(fork !== null);
   form.appendChild(moreRow);
 
   const place = (): "tmux" | "window" => (tmuxRadio.input.checked && !tmuxRadio.label.hidden ? "tmux" : "window");
   const up = (): boolean => machines.find((m) => m.origin === origin)?.up ?? false;
   const chosenAccountOpt = (): AccountOpt | null =>
     accounts?.find((a) => a.name === accountSel.value()) ?? null;
+  const loginBtn = (): HTMLButtonElement => {
+    const login = button({ label: copyText("newSession.account.login"), kind: "ghost", size: "compact" });
+    login.addEventListener("click", () => void openLogin(origin));
+    return login;
+  };
 
   const paintTop = (): void => {
     top.replaceChildren();
@@ -363,13 +428,16 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
       top.appendChild(banner("error", pendingTop.text, pendingTop.acts));
     }
   };
+  /** 整体不行的那一句落在框顶。 */
+  const sayTop = (text: string, acts: HTMLElement[] = []): void => {
+    pendingTop = { text, acts };
+    paintTop();
+  };
 
   const paintAccountNote = (): void => {
     const a = chosenAccountOpt();
     if (a && !a.ready) {
-      const login = button({ label: copyText("newSession.account.login"), kind: "ghost", size: "compact" });
-      login.addEventListener("click", () => void openLogin(origin));
-      accountRow.setNote(copyText("launch.account.notLoggedIn", { name: a.name }), "error", [login]);
+      accountRow.setNote(copyText("launch.account.notLoggedIn", { name: a.name }), "error", [loginBtn()]);
     } else {
       accountRow.setNote("");
     }
@@ -378,11 +446,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   const paintPlace = (): void => {
     const hasTmux = facts?.tmux ?? true;
     tmuxRadio.label.hidden = !hasTmux;
-    windowRadio.note.textContent = isLocalOrigin(origin)
-      ? copyText("newSession.place.windowNoteLocal")
-      : hasTmux
-        ? copyText("newSession.place.windowNote", { machine: machineName(origin) })
-        : copyText("newSession.place.noTmux");
+    windowRadio.note.textContent = windowNote(origin, hasTmux);
     if (!hasTmux) windowRadio.input.checked = true;
     else if (!tmuxRadio.input.checked && !windowRadio.input.checked) tmuxRadio.input.checked = true;
     tmuxRow.root.hidden = place() !== "tmux";
@@ -407,9 +471,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     const forkAccount = facts?.fork?.launch.account;
     if (fork && forkAccount?.kind !== "known") opts.push({ value: ACCOUNT_FOLLOW, label: copyText("newSession.account.follow") });
     opts.push(...accounts.map(accountOption));
-    const pick =
-      fork && forkAccount?.kind === "known" && forkAccount.value !== null ? forkAccount.value : fork ? ACCOUNT_FOLLOW : accounts[0].name;
-    accountSel.setOptions(opts, pick);
+    accountSel.setOptions(opts, accountPick(fork !== null, forkAccount, accounts[0].name));
     paintAccountNote();
   };
 
@@ -428,6 +490,27 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     }
   };
 
+  /** 分叉照源会话预填：那一家 · 轮次 · 目录 · 终端（那台说得出的才填）。 */
+  const applyForkFacts = (title: string, ff: NonNullable<NewFacts["fork"]>): void => {
+    agent = ff.agent || agent;
+    if (forkLine && ff.turn !== null) {
+      forkLine.textContent = copyText("newSession.fork.from", { title, n: ff.turn, time: ff.startText ?? "" });
+    }
+    if (cwdInput.value === "" && ff.launch.cwd.kind === "known") cwdInput.value = ff.launch.cwd.value;
+    const t = ff.launch.terminal;
+    if (t.kind === "known") (t.value.host === "none" ? windowRadio : tmuxRadio).input.checked = true;
+  };
+
+  /** 那台答了能起什么：分叉照源会话预填；否则默认那一家起不了 ⇒ 换成那台能起的第一家。目录空着 ⇒ 最近用过的第一个。 */
+  const applyFacts = (f: NewFacts): void => {
+    if (fork && f.fork) {
+      applyForkFacts(fork.title, f.fork);
+    } else if (!f.agents.includes(agent) && f.agents.length > 0 && !f.agents.includes(DEFAULT_AGENT)) {
+      agent = f.agents[0];
+    }
+    if (cwdInput.value === "" && f.recent.length > 0) cwdInput.value = f.recent[0].cwd;
+  };
+
   const loadMachine = async (): Promise<void> => {
     facts = null;
     factsFailed = null;
@@ -443,18 +526,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
       handle.refresh();
       return;
     }
-    if (fork && facts.fork) {
-      agent = facts.fork.agent || agent;
-      if (forkLine && facts.fork.turn !== null) {
-        forkLine.textContent = copyText("newSession.fork.from", { title: fork.title, n: facts.fork.turn, time: facts.fork.startText ?? "" });
-      }
-      if (cwdInput.value === "" && facts.fork.launch.cwd.kind === "known") cwdInput.value = facts.fork.launch.cwd.value;
-      const t = facts.fork.launch.terminal;
-      if (t.kind === "known") (t.value.host === "none" ? windowRadio : tmuxRadio).input.checked = true;
-    } else if (!facts.agents.includes(agent) && facts.agents.length > 0 && !facts.agents.includes(DEFAULT_AGENT)) {
-      agent = facts.agents[0];
-    }
-    if (cwdInput.value === "" && facts.recent.length > 0) cwdInput.value = facts.recent[0].cwd;
+    applyFacts(facts);
     cmdInput.value = await configuredCommand(origin, agent);
     paintAgent();
     paintPlace();
@@ -463,10 +535,8 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     handle.refresh();
   };
 
-  const submit = async (): Promise<string | null | false> => {
-    pendingTop = null;
-    paintTop();
-    for (const r of [cwdRow, accountRow, tmuxRow, cmdRow, agentRow, placeRow]) r.setNote("");
+  /** 点［新建］交的那一份：目录 · 放在哪 · 点名的号（跟随 ⇒ 不带）· 改过的终端名与命令 · 分叉的两个 id。 */
+  const buildRequest = async (): Promise<NewRequest> => {
     const accountValue = accountRow.root.hidden ? null : accountSel.value();
     const account: AccountAsk | undefined =
       accountValue === null || accountValue === ACCOUNT_FOLLOW ? undefined : chosenAccount(accountValue);
@@ -481,7 +551,14 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     if (!fork && place() === "tmux" && tmuxInput.value.trim() !== "") req.tmuxName = tmuxInput.value.trim();
     if (cmdInput.value.trim() !== "") req.command = cmdInput.value.trim();
     if (fork) req.forkFrom = { sid: fork.sid, uuid: fork.uuid };
-    const res = await askNew(origin, req);
+    return req;
+  };
+
+  const submit = async (): Promise<string | null | false> => {
+    pendingTop = null;
+    paintTop();
+    for (const r of [cwdRow, accountRow, tmuxRow, cmdRow, agentRow, placeRow]) r.setNote("");
+    const res = await askNew(origin, await buildRequest());
     if (res.kind === "ok") {
       void afterStart(origin, res);
       return null;
@@ -490,66 +567,53 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     return false;
   };
 
+  /** 号选不了：那一格下说为什么 ＋［改用 {替代}］（有替代才给）＋［登录…］。 */
+  const showAccountUnavailable = (u: NonNullable<Extract<NewResult, { kind: "refused" }>["unavailable"]>): void => {
+    const acts: HTMLElement[] = [];
+    if (u.alternative) {
+      const alt = u.alternative;
+      const use = button({ label: copyText("newSession.account.useAlt", { alt }), size: "compact" });
+      use.addEventListener("click", () => {
+        accountSel.setValue(alt);
+        paintAccountNote();
+        handle.submit();
+      });
+      acts.push(use);
+    }
+    acts.push(loginBtn());
+    accountRow.setNote(
+      u.pinned ? copyText("newSession.account.pinned") : copyText("launch.account.unavailable", { name: u.requested }),
+      "error",
+      acts,
+    );
+  };
+
   const showFailure = (res: Exclude<NewResult, { kind: "ok" }>): void => {
     const machine = machineName(origin);
     if (res.kind === "timeout") {
       const again = button({ label: copyText("newSession.retry.action"), size: "compact" });
       again.addEventListener("click", () => handle.submit());
-      pendingTop = { text: copyText("launch.timeout.noAnswer", { machine }), acts: [again] };
-      paintTop();
+      sayTop(copyText("launch.timeout.noAnswer", { machine }), [again]);
       return;
     }
     if (res.kind === "unreachable") {
-      pendingTop = { text: res.said, acts: [] };
-      paintTop();
+      sayTop(res.said);
       return;
     }
     if (res.field === "account" && res.unavailable) {
-      const u = res.unavailable;
-      const acts: HTMLElement[] = [];
-      if (u.alternative) {
-        const alt = u.alternative;
-        const use = button({ label: copyText("newSession.account.useAlt", { alt }), size: "compact" });
-        use.addEventListener("click", () => {
-          accountSel.setValue(alt);
-          paintAccountNote();
-          handle.submit();
-        });
-        acts.push(use);
-      }
-      const login = button({ label: copyText("newSession.account.login"), kind: "ghost", size: "compact" });
-      login.addEventListener("click", () => void openLogin(origin));
-      acts.push(login);
-      accountRow.setNote(
-        u.pinned ? copyText("newSession.account.pinned") : copyText("launch.account.unavailable", { name: u.requested }),
-        "error",
-        acts,
-      );
+      showAccountUnavailable(res.unavailable);
       return;
     }
-    const slot =
-      res.field === "cwd" ? cwdRow
-        : res.field === "tmuxName" ? tmuxRow
-          : res.field === "command" ? cmdRow
-            : res.field === "agent" ? agentRow
-              : res.field === "place" ? placeRow
-                : res.field === "account" ? accountRow
-                  : null;
+    const slot = fieldRow(res.field, { cwd: cwdRow, tmuxName: tmuxRow, command: cmdRow, agent: agentRow, place: placeRow, account: accountRow });
     if (slot && !slot.root.hidden) {
       slot.setNote(fieldSaid(res.code, res.said, machine), "error");
       return;
     }
-    pendingTop = { text: res.said, acts: [] };
-    paintTop();
+    sayTop(res.said);
   };
 
-  const title = fork
-    ? copyText("newSession.title.fork")
-    : spec.lockMachine
-      ? copyText("newSession.title.onMachine", { machine: machineName(origin) })
-      : copyText("newSession.title.plain");
   const handle = formDialog({
-    title,
+    title: dialogTitle(spec, origin),
     action: copyText("newSession.action.create"),
     body: form,
     narrow: true,

@@ -140,6 +140,9 @@ where
         // 本连接的传输票表：同上，随本读循环一起死 ⇒ monitor 走了，它开的传输一律撤
         // （`control::transfer::Desk` 的 `Drop`）。
         let xfers = crate::control::transfer::Desk::new(replies.clone());
+        // 本连接的终端订阅票表：同上，随本读循环一起死 ⇒ monitor 走了，它订的终端画面一律退订
+        // （`control::terminal_follow::Desk` 的 `Drop`）。
+        let follows = crate::control::terminal_follow::Desk::new(replies.clone());
         let mut rd = BufReader::new(stdin);
         let mut buf: Vec<u8> = Vec::new();
         // 本行是否已经超限。超限之后**只丢字节、不再往 buf 里塞**（O(1) 内存）。
@@ -192,7 +195,7 @@ where
                 .await;
                 overflowed = false;
             } else {
-                handle_line(&buf, &replies, &running, &links, &xfers).await;
+                handle_line(&buf, &replies, &running, &links, &xfers, &follows).await;
             }
             buf.clear();
         }
@@ -206,6 +209,7 @@ async fn handle_line(
     running: &Running,
     links: &crate::dial::link::Table,
     xfers: &crate::control::transfer::Desk,
+    follows: &crate::control::terminal_follow::Desk,
 ) {
     if raw.is_empty() {
         return; // 空行（含 CRLF 的裸 \r 之后）静默跳过
@@ -220,7 +224,7 @@ async fn handle_line(
     };
     // 发起方期限从收到这一行起算：减余量换成截止时刻，这条命令里装总期限的各处都收紧到它。
     req.until = caps::until_of(req.within_ms);
-    match dispatch(req, replies, running, links, xfers) {
+    match dispatch(req, replies, running, links, xfers, follows) {
         Disposition::Done => {}
         Disposition::Reply(f) => send(replies, f).await,
         Disposition::Spawn(req, run) => {
@@ -315,6 +319,7 @@ fn dispatch(
     running: &Running,
     links: &crate::dial::link::Table,
     xfers: &crate::control::transfer::Desk,
+    follows: &crate::control::terminal_follow::Desk,
 ) -> Disposition {
     match req.cmd.as_str() {
         // 链路四条：要碰**本连接的链路表**与应答通道 ⇒ 与 `cancel` 同一档（硬臂、就地做完）。
@@ -349,6 +354,26 @@ fn dispatch(
             Disposition::Reply(crate::control::transfer::Desk::answer_wire(
                 xfers, &req.cmd, &req.id, &req.args,
             ))
+        }
+        // 终端实时预览三条：要碰**本连接的订阅票表**与应答通道（画面帧走应答通道）⇒ 同一档硬臂。
+        //   订上那一下要起几个 tmux（名单 · 版本 · 控制模式客户端）⇒ 异步档里挪进阻塞线程池、带一份票表过去；
+        //   回执与退订是就地做完的记账。
+        crate::control::terminal_follow::FOLLOW => {
+            let desk = follows.clone();
+            Disposition::Spawn(
+                req,
+                Box::new(move |r: Request| -> BoxFut {
+                    Box::pin(async move {
+                        desk.follow_off_worker(r.args)
+                            .await
+                            .map(|()| None)
+                            .map_err(|(c, m)| (c.to_string(), m))
+                    })
+                }),
+            )
+        }
+        crate::control::terminal_follow::FOLLOW_ACK | crate::control::terminal_follow::UNFOLLOW => {
+            Disposition::Reply(follows.answer_wire(&req.cmd, &req.id, &req.args))
         }
         "cancel" => {
             let target = req

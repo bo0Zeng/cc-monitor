@@ -26,7 +26,6 @@ import { runRemoteAttach } from "./remote-launch-run";
 import { agentHasAccounts, displayNameOf } from "./agent-profile";
 // 本机 = `LOCAL_ORIGIN`（`"<local>"`）；「是不是本机」只经 `ipc/origin.ts` 判。
 import { isLocalOrigin, isRemoteOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
-import { openPanePreview } from "./views/pane-preview";
 import { standingOf } from "./sessions-where";
 import {
   menuGeneration,
@@ -43,7 +42,7 @@ import { terminalFrontAvailable } from "./terminal-front";
 import { fullTitle } from "./session-face";
 
 /** 菜单项 id ⇒ 它要那台后端做的那条命令（那台握手时说过做不到 ⇒ 置灰并说为什么）。 */
-const ITEM_OPS: Readonly<Record<string, string>> = { kill: "kill", preview: "terminal-preview", "resume-into": "launch" };
+const ITEM_OPS: Readonly<Record<string, string>> = { kill: "kill", "resume-into": "launch" };
 
 /** 按 `origin` 那台的能力事实给一项置灰：做不到 ⇒ 不可点、第二行写为什么。 */
 export function gateByOffer(origin: Origin, item: MenuItem): MenuItem {
@@ -123,7 +122,6 @@ export class TabMenu {
       items.push({ icon: "front", label: copyText("tabMenu.open.front"), detail: keyOf("terminal.bring-front"), onClick: () => this.host.front(sid) });
     }
     if (t) items.push({ icon: "terminal", label: copyText("tabMenu.open.drawer"), detail: keyOf("panel.toggle-terminal"), onClick: () => this.host.viewTerminal(sid) });
-    if (remote !== null && !unseen) items.push({ id: "preview", icon: "search", label: copyText("tabMenu.preview.label"), pending: true });
 
     // ② 固定 · 分组
     items.push({ label: "", divider: true });
@@ -242,10 +240,10 @@ export class TabMenu {
     const s = await standingOf(origin, sid);
     if (gen !== menuGeneration()) return;
     const drop = (...ids: string[]): void => ids.forEach((id) => removeMenuItem(id));
-    if (s === undefined) return this.unresolved(["attach", "preview", "kill"]);
-    if (s.kind === "none" || s.kind === "no_tmux") return drop("attach", "preview", "kill");
+    if (s === undefined) return this.unresolved(["attach", "kill"]);
+    if (s.kind === "none" || s.kind === "no_tmux") return drop("attach", "kill");
     const name = s.names[0];
-    if (s.kind === "idle" && !this.host.isAttachable(sid)) return drop("attach", "preview", "kill");
+    if (s.kind === "idle" && !this.host.isAttachable(sid)) return drop("attach", "kill");
     const ambiguous = s.kind === "ambiguous";
     const agent = this.host.tab(sid)?.agent ?? null;
     updateMenuItem("attach", {
@@ -256,8 +254,6 @@ export class TabMenu {
       why: agent === null ? copyText("tabSessionActions.agent.unknown") : ambiguous ? copyText("tabMenu.attach.dupesWhy", { n: s.names.length, name }) : undefined,
       ...(agent === null ? { enabled: false } : { onClick: () => void runRemoteAttach(origin, agent, name) }),
     });
-    if (s.kind === "idle") removeMenuItem("preview"); // Claude 已退出：没有画面可看
-    else updateMenuItem("preview", gateByOffer(origin, { id: "preview", icon: "search", label: copyText("tabMenu.preview.label"), onClick: () => void openPanePreview(origin, name, { terminal: s.terminals[0] }) }));
     // 命中多个 ⇒ 不给结束（破坏性，选错了不可逆）。
     updateMenuItem("kill", gateByOffer(origin, ambiguous
       ? { id: "kill", icon: "failed", label: copyText("tabMenu.kill.label"), danger: true, enabled: false, why: copyText("tabMenu.kill.dupesWhy", { n: s.names.length }) }
@@ -287,17 +283,15 @@ export class TabMenu {
   }
 
   /** 问不到那台（通道不在 / 超时）：那几格停在灰着、第二行写原因（不悄悄摘掉）。 */
-  private unresolved(ids: Array<"attach" | "preview" | "kill" | "resume-into">): void {
+  private unresolved(ids: Array<"attach" | "kill" | "resume-into">): void {
     const why = copyText("tabMenu.probe.failed");
     for (const id of ids) {
       const item: MenuItem =
         id === "attach"
           ? { id, icon: "terminal", label: copyText("tabMenu.attach.label") }
-          : id === "preview"
-            ? { id, icon: "search", label: copyText("tabMenu.preview.label") }
-            : id === "kill"
-              ? { id, icon: "failed", label: copyText("tabMenu.kill.label"), danger: true }
-              : { id, icon: "history", label: copyText("tabMenu.inPlace.label") };
+          : id === "kill"
+            ? { id, icon: "failed", label: copyText("tabMenu.kill.label"), danger: true }
+            : { id, icon: "history", label: copyText("tabMenu.inPlace.label") };
       updateMenuItem(id, { ...item, enabled: false, why });
     }
   }

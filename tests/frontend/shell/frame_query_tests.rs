@@ -251,6 +251,20 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "往那个终端送一段字 / 一颗键：后端 `control/terminals.rs::input_for_inbound` 过身份门、比画面指纹、回 `delivered` · `unsure` · `refused ＋ why`；\
          前端 `src/frontend/ui/terminal-reads.ts::sendToTerminal` 问、底部抽屉终端页 `terminal-page.ts` 按回话说一句",
     ),
+    // 终端实时预览三条：订阅 · 回执 · 退订（画面帧走那条流连接的应答通道，壳转进 `terminal-screen/<票>`）。
+    (
+        "terminal-follow",
+        "订那个终端的实时画面：后端 `control/terminal_follow.rs` 起 tmux 控制模式客户端、有变化推一整屏（一帧在途）；\
+         前端 `src/frontend/ui/terminal-follow.ts` 先订流再发它，收一屏交终端页画",
+    ),
+    (
+        "terminal-follow-ack",
+        "第几帧画完了（两次至少隔 100 ms）：后端收到才推下一帧；前端 `terminal-follow.ts` 发",
+    ),
+    (
+        "terminal-unfollow",
+        "退订（幂等）：后端摘票、收那个客户端；前端 `terminal-follow.ts` 在离开终端页 / 切标签页时发",
+    ),
     // 各台搜索结果合成一份：合并排序进本机后端（`search_rules::sort_by_recency`），界面逐台扇出。
     (
         "history-search-merge",

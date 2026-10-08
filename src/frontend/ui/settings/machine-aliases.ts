@@ -125,20 +125,25 @@ export interface AliasManager {
   setSelfPaste(c: { state: string } | null): void;
 }
 
-export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
-  const shell = opts.platform;
-  // 只本机挂的几格（平台格 · 本机 ccm 入口 · 用系统编辑器打开）问的是 monitor 这台，远端不挂。
-  const local = isLocalOrigin(opts.origin());
-  const group = el("div", "cfg");
-  const row = cfgRow(copyText("machineAliases.manager.title"), true);
-  const wrap = row.element;
-  wrap.classList.add("machine-aliases");
-  wrap.dataset.shell = shell;
-  wrap.dataset.origin = opts.origin();
-  group.appendChild(wrap);
-  const body = row.body;
+/** 「终端接入」那一格的几个元素（构造时一次建好，之后只改内容与 `hidden`）。 */
+interface AccessDom {
+  access: HTMLElement;
+  pathCcm: HTMLPreElement;
+  accessRows: HTMLElement;
+  panel: HTMLDivElement;
+  accessWarn: HTMLElement;
+  cleanupHint: HTMLPreElement;
+  rcPolicy: HTMLDivElement;
+  allowBtn: HTMLButtonElement;
+  accessNote: HTMLElement;
+  chooser: HTMLDivElement;
+  rcSel: HTMLSelectElement;
+  otherIn: HTMLInputElement;
+  otherErr: HTMLElement;
+}
 
-  // ═══ 接上终端（在最上，先显示现状）═══
+/** 建「终端接入」那一格的骨架；三颗按钮的动作由调用方给。 */
+function buildAccessDom(local: boolean, on: { allow(): void; other(): void; openRc(): void }): AccessDom {
   // 挂钩用 `data-role`：外观就是一列。主窗口 ↗［接上终端］带 `connect-terminal` 锚点跳到这里。
   const access = el("div", "cfg-access");
   access.dataset.role = "access";
@@ -167,7 +172,7 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
   allowBtn.className = "settings-btn";
   allowBtn.textContent = copyText("machineAliases.policy.allow");
   allowBtn.hidden = true;
-  allowBtn.addEventListener("click", () => void onAllow());
+  allowBtn.addEventListener("click", () => on.allow());
   const accessNote = el("div", "cfg-hint");
   accessNote.dataset.role = "access-note";
   // 「换一份文件」：候选（单选）＋ 其它文件，选定之后「接到这份」。
@@ -181,14 +186,97 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
   const otherErr = el("div", "cfg-hint");
   const chooserBtns = el("div", "cfg-acts");
   chooserBtns.append(
-    button(copyText("machineAliases.rc.useOther"), "", () => void onOther()),
+    button(copyText("machineAliases.rc.useOther"), "", () => on.other()),
     ...(local
-      ? [Object.assign(button(copyText("machineAliases.rc.open"), "", () => void onOpenRc()), { title: copyText("machineAliases.rc.openHint") })]
+      ? [Object.assign(button(copyText("machineAliases.rc.open"), "", () => on.openRc()), { title: copyText("machineAliases.rc.openHint") })]
       : []),
   );
   chooser.append(rcSel, otherIn, chooserBtns, otherErr);
   access.append(pathCcm, accessRows, panel, accessWarn, cleanupHint, rcPolicy, allowBtn, accessNote);
-  body.appendChild(access);
+  return { access, pathCcm, accessRows, panel, accessWarn, cleanupHint, rcPolicy, allowBtn, accessNote, chooser, rcSel, otherIn, otherErr };
+}
+
+/** 接入那一格里的一行：一个点 ＋ 一句 ＋ 行尾的按钮。 */
+function accessLine(dot: CfgDot, text: string, ...tail: HTMLElement[]): HTMLElement {
+  const r = el("div", dot === "ok" ? "cfg-line" : "cfg-line cfg-line-warn");
+  r.dataset.role = "access-line";
+  const d = el("span", "cfg-dot");
+  d.dataset.dot = dot;
+  r.append(d, el("span", "cfg-line-text", text), ...tail);
+  return r;
+}
+
+const linkBtn = (label: string, onClick: () => void, danger = false): HTMLButtonElement =>
+  button(label, danger ? "cfg-link cfg-link-danger" : "cfg-link", onClick);
+
+const errText = (e: unknown): string => String(e instanceof Error ? e.message : e);
+
+/** 执行策略那一行的话：不会挡（或没有这一项）⇒ 空串。 */
+function policyText(p: ExecPolicy | null): string {
+  if (p === null || p.loads === true) return "";
+  const ps = psName(p.host);
+  if (p.error !== null) return copyText("machineAliases.policy.unknown", { ps, e: p.error });
+  if (p.loads === null) return copyText("machineAliases.policy.unclear", { ps, policy: p.effective ?? "" });
+  if (p.groupPolicy) return copyText("machineAliases.policy.groupPolicy", { ps, policy: p.effective ?? "" });
+  return copyText("machineAliases.policy.blocks", { ps, policy: p.effective ?? "" });
+}
+
+/** 已接上那一行的话（加载它的那一代 PowerShell 不跑它 ⇒ 说没生效）。 */
+function onLineText(c: StartupFile, p: string, shell: Shell): string {
+  if (c.policy?.loads === false) return copyText("machineAliases.access.notLoaded", { path: p, ps: psName(c.policy.host) });
+  return shell === "powershell" ? copyText("machineAliases.access.onWindow", { path: p }) : copyText("machineAliases.access.on", { path: p });
+}
+
+/** 接上 / 卸载之后那一句：失败说原话；接上了再看执行策略挡不挡。 */
+function afterRcText(verb: "install" | "remove", failed: string | null, pol: ExecPolicy | null, shell: Shell): string {
+  if (failed !== null) return failed;
+  if (verb !== "install") return "";
+  if (pol !== null && pol.loads !== true) return copyText("machineAliases.policy.afterInstall");
+  return shell === "powershell" ? copyText("machineAliases.powershell.blockAfterInstall") : copyText("machineAliases.posix.blockAfterInstall");
+}
+
+/** 请那台设执行策略之后那一句（现状以它重问的为准）。 */
+function allowResultText(ps: string, r: { policy: ExecPolicy; setError: string | null }): string {
+  const now = r.policy.effective ?? "";
+  if (r.policy.loads === true) return copyText("machineAliases.policy.setDone", { ps, policy: now });
+  if (r.policy.groupPolicy) return copyText("machineAliases.policy.groupPolicy", { ps, policy: now });
+  return copyText("machineAliases.policy.setFailed", { ps, e: r.setError ?? r.policy.error ?? now });
+}
+
+/** 下拉里一份候选的字：路径 ＋（已接上 / 已被加载；不存在）。 */
+function rcOptionLabel(c: StartupFile): string {
+  const tags: string[] = [];
+  if (c.block.present) tags.push(copyText("machineAliases.rc.tagBlock"));
+  else if (c.sourced) tags.push(copyText("machineAliases.rc.tagSourced"));
+  if (!c.exists) tags.push(copyText("machineAliases.rc.tagNew"));
+  return tags.length ? `${c.path}（${tags.join("；")}）` : c.path;
+}
+
+/** 接入那一格底下的提醒：读不了的候选 · 同一份块接在了不止一处。 */
+function accessWarnText(cands: StartupFile[], on: StartupFile[]): string {
+  const warn: string[] = [];
+  for (const c of cands) if (c.unreadable) warn.push(copyText("machineAliases.rcStatus.unreadable", { path: c.path, why: c.unreadable }));
+  if (on.length > 1) warn.push(copyText("machineAliases.rcStatus.duplicates", { others: on.map((c) => c.path).join("\n") }));
+  return warn.join("\n");
+}
+
+export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
+  const shell = opts.platform;
+  // 只本机挂的几格（平台格 · 本机 ccm 入口 · 用系统编辑器打开）问的是 monitor 这台，远端不挂。
+  const local = isLocalOrigin(opts.origin());
+  const group = el("div", "cfg");
+  const row = cfgRow(copyText("machineAliases.manager.title"), true);
+  const wrap = row.element;
+  wrap.classList.add("machine-aliases");
+  wrap.dataset.shell = shell;
+  wrap.dataset.origin = opts.origin();
+  group.appendChild(wrap);
+  const body = row.body;
+
+  // ═══ 接上终端（在最上，先显示现状）═══
+  const dom = buildAccessDom(local, { allow: () => void onAllow(), other: () => void onOther(), openRc: () => void onOpenRc() });
+  const { pathCcm, accessRows, panel, accessWarn, cleanupHint, rcPolicy, allowBtn, accessNote, chooser, rcSel, otherIn, otherErr } = dom;
+  body.appendChild(dom.access);
 
   // ═══ 清单（配置文件按「基于」排成树）═══
   const profiles = buildProfilesList({
@@ -230,18 +318,30 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
   let panelOpen: "preview" | "uninstall" | "choose" | null = null;
   /** 「要你动手」里「让终端认得 ccm 和别名」那一件（这台选了自己贴才有；那台后端答的）。 */
   let selfPaste: { state: string } | null = null;
+  let allowHost: PsHost | null = null;
 
   /** 接上装进哪一份。 */
   const target = (): StartupFile | undefined =>
     cands.find((c) => c.path === chosen) ?? cands.find((c) => c.block.present) ?? cands[0];
 
-  const linkBtn = (label: string, onClick: () => void, danger = false): HTMLButtonElement =>
-    button(label, danger ? "cfg-link cfg-link-danger" : "cfg-link", onClick);
-
   /** 接上那一行下面那一块（再点同一个就收起）。 */
   const togglePanel = (which: NonNullable<typeof panelOpen>): void => {
     panelOpen = panelOpen === which ? null : which;
     void paintPanel();
+  };
+
+  /** 「卸载」那一块的头与按钮（要拿掉的那几行跟在 `code` 里）。 */
+  const uninstallPanel = (t: StartupFile, code: HTMLElement): HTMLElement[] => {
+    const go = button(copyText("machineAliases.rc.uninstall"), "", () => void runRc("remove", t.path));
+    go.title = copyText("machineAliases.rc.uninstallHint");
+    const acts = el("div", "cfg-acts");
+    acts.append(go, button(copyText("machineAliases.form.cancel"), "", () => togglePanel("uninstall")));
+    return [
+      el("div", "cfg-sub", shell === "powershell" ? copyText("machineAliases.access.uninstallSubWindow") : copyText("machineAliases.access.uninstallSub")),
+      el("div", "cfg-panel-title", copyText("machineAliases.access.uninstallWhat", { path: short(t.path) })),
+      code,
+      acts,
+    ];
   };
 
   const paintPanel = async (): Promise<void> => {
@@ -259,56 +359,30 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
     if (panelOpen === "preview") {
       panel.append(el("div", "cfg-panel-title", t.block.present ? copyText("machineAliases.access.previewOn", { path: short(t.path) }) : copyText("machineAliases.access.previewOff", { path: short(t.path) })), code);
     } else {
-      const go = button(copyText("machineAliases.rc.uninstall"), "", () => void runRc("remove", t.path));
-      go.title = copyText("machineAliases.rc.uninstallHint");
-      const acts = el("div", "cfg-acts");
-      acts.append(go, button(copyText("machineAliases.form.cancel"), "", () => togglePanel("uninstall")));
-      panel.append(
-        el("div", "cfg-sub", shell === "powershell" ? copyText("machineAliases.access.uninstallSubWindow") : copyText("machineAliases.access.uninstallSub")),
-        el("div", "cfg-panel-title", copyText("machineAliases.access.uninstallWhat", { path: short(t.path) })),
-        code,
-        acts,
-      );
+      panel.append(...uninstallPanel(t, code));
     }
     try {
       code.textContent = await renderAliasBlock(opts.origin(), t.path);
     } catch (e) {
-      sayWithDetail(code, copyText("machineAliases.preview.failedLine", { e: String(e instanceof Error ? e.message : e) }), detailOf(e));
+      sayWithDetail(code, copyText("machineAliases.preview.failedLine", { e: errText(e) }), detailOf(e));
     }
   };
 
-  /** 接上那一格照读回口的候选画：已接上 ⇒ 一行现状 ＋ 看加了什么 · 卸载 ccm；没接上 ⇒ 醒目的「接上 …」＋ 看一眼 · 换一份文件 · 自己贴。不发 IPC。 */
-  const renderAccess = (): void => {
-    accessRows.textContent = "";
-    const on = cands.filter((c) => c.block.present);
-    const t = target();
-    const lineOf = (dot: CfgDot, text: string, ...tail: HTMLElement[]): HTMLElement => {
-      const r = el("div", dot === "ok" ? "cfg-line" : "cfg-line cfg-line-warn");
-      r.dataset.role = "access-line";
-      const d = el("span", "cfg-dot");
-      d.dataset.dot = dot;
-      r.append(d, el("span", "cfg-line-text", text), ...tail);
-      return r;
-    };
+  /** 已接上的每一份一行：旧版 ⇒「换成新版」；否则现状 ＋ 看加了什么 · 卸载。 */
+  const renderOnRows = (on: StartupFile[]): void => {
     for (const c of on) {
       const p = short(c.path);
       if (c.block.outdated) {
         accessRows.appendChild(
-          lineOf("warn", copyText("machineAliases.access.outdated", { path: p }), button(copyText("machineAliases.access.reconnect"), "settings-btn-primary ccm-access-connect", () => void runRc("install", c.path))),
+          accessLine("warn", copyText("machineAliases.access.outdated", { path: p }), button(copyText("machineAliases.access.reconnect"), "settings-btn-primary ccm-access-connect", () => void runRc("install", c.path))),
         );
         accessRows.appendChild(el("div", "cfg-hint", copyText("machineAliases.access.outdatedHint")));
         continue;
       }
-      const text =
-        c.policy?.loads === false
-          ? copyText("machineAliases.access.notLoaded", { path: p, ps: psName(c.policy.host) })
-          : shell === "powershell"
-            ? copyText("machineAliases.access.onWindow", { path: p })
-            : copyText("machineAliases.access.on", { path: p });
       accessRows.appendChild(
-        lineOf(
+        accessLine(
           c.policy?.loads === false ? "warn" : "ok",
-          text,
+          onLineText(c, p, shell),
           linkBtn(copyText("machineAliases.access.whatAdded"), () => {
             chosen = c.path;
             togglePanel("preview");
@@ -320,34 +394,43 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
         ),
       );
     }
+  };
+
+  /** 选中那份没接上：醒目的「接上 …」＋ 会加几行 · 看一眼 · 换一份文件 · 自己贴。 */
+  const renderOffRow = (on: StartupFile[], t: StartupFile | undefined): void => {
+    const connect = t
+      ? button(copyText("machineAliases.access.connectTo", { path: short(t.path) }), "settings-btn-primary ccm-access-connect", () => void runRc("install", t.path))
+      : null;
+    if (connect) connect.title = shell === "powershell" ? copyText("machineAliases.powershell.blockInstallTitle") : copyText("machineAliases.posix.blockInstallTitle");
+    accessRows.appendChild(
+      accessLine("off", on.length ? copyText("machineAliases.access.otherFile", { path: short(t!.path) }) : shell === "powershell" ? copyText("machineAliases.access.offWindow") : copyText("machineAliases.access.off"), ...(connect ? [connect] : [])),
+    );
+    if (!t) return;
+    const hint = el("div", "cfg-hint cfg-access-hint");
+    hint.append(
+      el("span", "", copyText("machineAliases.access.willAdd", { path: short(t.path), n: t.blockLines })),
+      linkBtn(copyText("machineAliases.access.peek"), () => togglePanel("preview")),
+      linkBtn(copyText("machineAliases.access.choose"), () => togglePanel("choose")),
+      linkBtn(copyText("machineAliases.access.selfPaste"), () => void onSelfPaste()),
+    );
+    accessRows.appendChild(hint);
+  };
+
+  /** 接上那一格照读回口的候选画：已接上 ⇒ 一行现状 ＋ 看加了什么 · 卸载 ccm；没接上 ⇒ 醒目的「接上 …」＋ 看一眼 · 换一份文件 · 自己贴。不发 IPC。 */
+  const renderAccess = (): void => {
+    accessRows.textContent = "";
+    const on = cands.filter((c) => c.block.present);
+    const t = target();
+    renderOnRows(on);
     if (!on.length && t && selfPaste && selfPaste.state !== "done") {
       const tp = t.path;
       accessRows.appendChild(
-        lineOf("warn", copyText("machineAliases.selfPaste.waiting"), button(copyText("machineAliases.selfPaste.go"), "", goChores), linkBtn(copyText("machineAliases.selfPaste.undo"), () => void onUnSelfPaste(tp))),
+        accessLine("warn", copyText("machineAliases.selfPaste.waiting"), button(copyText("machineAliases.selfPaste.go"), "", goChores), linkBtn(copyText("machineAliases.selfPaste.undo"), () => void onUnSelfPaste(tp))),
       );
     } else if (!on.length || (t && !t.block.present)) {
-      const connect = t
-        ? button(copyText("machineAliases.access.connectTo", { path: short(t.path) }), "settings-btn-primary ccm-access-connect", () => void runRc("install", t.path))
-        : null;
-      if (connect) connect.title = shell === "powershell" ? copyText("machineAliases.powershell.blockInstallTitle") : copyText("machineAliases.posix.blockInstallTitle");
-      accessRows.appendChild(
-        lineOf("off", on.length ? copyText("machineAliases.access.otherFile", { path: short(t!.path) }) : shell === "powershell" ? copyText("machineAliases.access.offWindow") : copyText("machineAliases.access.off"), ...(connect ? [connect] : [])),
-      );
-      if (t) {
-        const hint = el("div", "cfg-hint cfg-access-hint");
-        hint.append(
-          el("span", "", copyText("machineAliases.access.willAdd", { path: short(t.path), n: t.blockLines })),
-          linkBtn(copyText("machineAliases.access.peek"), () => togglePanel("preview")),
-          linkBtn(copyText("machineAliases.access.choose"), () => togglePanel("choose")),
-          linkBtn(copyText("machineAliases.access.selfPaste"), () => void onSelfPaste()),
-        );
-        accessRows.appendChild(hint);
-      }
+      renderOffRow(on, t);
     }
-    const warn: string[] = [];
-    for (const c of cands) if (c.unreadable) warn.push(copyText("machineAliases.rcStatus.unreadable", { path: c.path, why: c.unreadable }));
-    if (on.length > 1) warn.push(copyText("machineAliases.rcStatus.duplicates", { others: on.map((c) => c.path).join("\n") }));
-    accessWarn.textContent = warn.join("\n");
+    accessWarn.textContent = accessWarnText(cands, on);
     // 「你配置里这几行是旧的」：后端逐行指名，产品自己一个字节都不删。
     const hint = cands.map((c) => c.block.manualCleanupHint).filter(Boolean).join("\n");
     cleanupHint.hidden = !hint;
@@ -397,11 +480,7 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
   const fillRcOptions = (): void => {
     rcSel.textContent = "";
     for (const c of cands) {
-      const tags: string[] = [];
-      if (c.block.present) tags.push(copyText("machineAliases.rc.tagBlock"));
-      else if (c.sourced) tags.push(copyText("machineAliases.rc.tagSourced"));
-      if (!c.exists) tags.push(copyText("machineAliases.rc.tagNew"));
-      const o = el("option", "", tags.length ? `${c.path}（${tags.join("；")}）` : c.path);
+      const o = el("option", "", rcOptionLabel(c));
       o.value = c.path;
       rcSel.appendChild(o);
     }
@@ -431,25 +510,27 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
       cands = got.rcCandidates;
       refreshBound();
     } catch (e) {
-      sayWithDetail(accessWarn, copyText("machineAliases.readBack.failed", { e: String(e instanceof Error ? e.message : e) }), detailOf(e));
+      sayWithDetail(accessWarn, copyText("machineAliases.readBack.failed", { e: errText(e) }), detailOf(e));
       row.setStatus("warn", copyText("machineAliases.status.readFailed"));
     }
     renderAccess();
   };
 
-  const load = async (): Promise<void> => {
-    // 本机 ccm 那一格：我们那一份装下来了没有 ＋ 终端里敲 `ccm` 走到的是不是它（Windows 上问新开的 PowerShell）。
-    wrap.dataset.origin = opts.origin();
-    if (local) {
-      try {
-        const st = await askLocalCcm();
-        pathCcm.hidden = !st.message;
-        pathCcm.textContent = st.message;
-      } catch (e) {
-        pathCcm.hidden = false;
-        sayWithDetail(pathCcm, copyText("machineAliases.load.ccmFailed", { e: String(e) }), detailOf(e));
-      }
+  /** 本机 ccm 那一格：我们那一份装下来了没有 ＋ 终端里敲 `ccm` 走到的是不是它（Windows 上问新开的 PowerShell）。 */
+  const paintLocalCcm = async (): Promise<void> => {
+    try {
+      const st = await askLocalCcm();
+      pathCcm.hidden = !st.message;
+      pathCcm.textContent = st.message;
+    } catch (e) {
+      pathCcm.hidden = false;
+      sayWithDetail(pathCcm, copyText("machineAliases.load.ccmFailed", { e: String(e) }), detailOf(e));
     }
+  };
+
+  const load = async (): Promise<void> => {
+    wrap.dataset.origin = opts.origin();
+    if (local) await paintLocalCcm();
     await Promise.all([readBack(), profiles.load()]);
   };
 
@@ -465,7 +546,7 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
       if (got.otherRc) chosen = got.otherRc;
       refreshBound();
     } catch (e) {
-      sayWithDetail(otherErr, copyText("machineAliases.other.failed", { e: String(e instanceof Error ? e.message : e) }), detailOf(e));
+      sayWithDetail(otherErr, copyText("machineAliases.other.failed", { e: errText(e) }), detailOf(e));
     }
     renderAccess();
   };
@@ -479,73 +560,49 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
       if (verb === "install") await installAliasBlock(opts.origin(), path);
       else await removeAliasBlock(opts.origin(), path);
     } catch (e) {
-      const why = String(e instanceof Error ? e.message : e);
-      failed =
-        verb === "install"
-          ? copyText("machineAliases.runRc.installFailed", { e: why })
-          : copyText("machineAliases.runRc.removeFailed", { e: why });
+      const why = errText(e);
+      failed = verb === "install" ? copyText("machineAliases.runRc.installFailed", { e: why }) : copyText("machineAliases.runRc.removeFailed", { e: why });
     }
     await readBack();
-    const pol = cands.find((c) => c.path === path)?.policy ?? null;
-    accessNote.textContent =
-      failed ??
-      (verb !== "install"
-        ? ""
-        : pol === null || pol.loads === true
-          ? shell === "powershell"
-            ? copyText("machineAliases.powershell.blockAfterInstall")
-            : copyText("machineAliases.posix.blockAfterInstall")
-          : copyText("machineAliases.policy.afterInstall"));
+    accessNote.textContent = afterRcText(verb, failed, cands.find((c) => c.path === path)?.policy ?? null, shell);
   };
 
-  /** 「自己贴」：问后端要接上那几行（与「接上」那一跳同一份渲染），给人自己贴。 */
   /** 「我自己贴」：交那台记下，去「要你动手」里那一件（要贴的几行、贴在哪、存盘后自己认出都在那里）。 */
   const goChores = (): void => {
     wrap.dispatchEvent(new CustomEvent(SETTINGS_GO_EVENT, { bubbles: true, detail: { page: "data", anchor: `chores:${opts.origin()}` } }));
   };
+  /** 记一条「这台自己贴」/ 撤掉它；记不下 ⇒ 出声、返回 false。 */
+  const mark = async (spec: Parameters<typeof markChore>[1]): Promise<boolean> => {
+    try {
+      await markChore(opts.origin(), spec);
+      return true;
+    } catch (e) {
+      toast(copyText("machineAliases.selfPaste.failed"), e instanceof Error ? e.message : String(e), { detail: detailOf(e), level: "error" });
+      return false;
+    }
+  };
   const onSelfPaste = async (): Promise<void> => {
     const t = target();
     if (!t) return;
-    try {
-      await markChore(opts.origin(), { op: "selfPaste", rc: t.path });
-    } catch (e) {
-      toast(copyText("machineAliases.selfPaste.failed"), e instanceof Error ? e.message : String(e), { detail: detailOf(e), level: "error" });
-      return;
-    }
+    if (!(await mark({ op: "selfPaste", rc: t.path }))) return;
     selfPaste = { state: "todo" };
     renderAccess();
     goChores();
   };
   /** 改回让 cc-monitor 接上：撤掉那条记录，再照常接上。 */
   const onUnSelfPaste = async (path: string): Promise<void> => {
-    try {
-      await markChore(opts.origin(), { op: "unselfPaste" });
-    } catch (e) {
-      toast(copyText("machineAliases.selfPaste.failed"), e instanceof Error ? e.message : String(e), { detail: detailOf(e), level: "error" });
-      return;
-    }
+    if (!(await mark({ op: "unselfPaste" }))) return;
     selfPaste = null;
     await runRc("install", path);
   };
 
   /** 执行策略那一行：只在它会挡住块（或说不清）时出声；不会挡 ⇒ 不占地方。 */
   const showPolicy = (p: ExecPolicy | null): void => {
-    const ps = p ? psName(p.host) : "";
-    rcPolicy.textContent =
-      p === null || p.loads === true
-        ? ""
-        : p.error !== null
-          ? copyText("machineAliases.policy.unknown", { ps, e: p.error })
-          : p.loads === null
-            ? copyText("machineAliases.policy.unclear", { ps, policy: p.effective ?? "" })
-            : p.groupPolicy
-              ? copyText("machineAliases.policy.groupPolicy", { ps, policy: p.effective ?? "" })
-              : copyText("machineAliases.policy.blocks", { ps, policy: p.effective ?? "" });
+    rcPolicy.textContent = policyText(p);
     rcPolicy.hidden = rcPolicy.textContent === "";
     allowBtn.hidden = !(p?.loads === false && !p.groupPolicy);
     allowHost = p?.host ?? null;
   };
-  let allowHost: PsHost | null = null;
 
   /** 标准做法那颗按钮：先确认（不代改），再请那台后端设、再重读（现状以它现问的为准）。 */
   const onAllow = async (): Promise<void> => {
@@ -561,14 +618,7 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
     allowBtn.disabled = true;
     let said: string;
     try {
-      const r = await allowLocalScripts(opts.origin(), host);
-      const now = r.policy.effective ?? "";
-      said =
-        r.policy.loads === true
-          ? copyText("machineAliases.policy.setDone", { ps, policy: now })
-          : r.policy.groupPolicy
-            ? copyText("machineAliases.policy.groupPolicy", { ps, policy: now })
-            : copyText("machineAliases.policy.setFailed", { ps, e: r.setError ?? r.policy.error ?? now });
+      said = allowResultText(ps, await allowLocalScripts(opts.origin(), host));
     } catch (e) {
       said = copyText("machineAliases.policy.setFailed", { ps, e: String(e) });
     }

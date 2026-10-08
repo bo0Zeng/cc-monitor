@@ -127,6 +127,13 @@ const installBtn = (s: ExtSection) => installBox(s).querySelector<HTMLButtonElem
 describe("扩展页：表 · 抽屉 · 确认卡", () => {
   beforeEach(() => invokeMock.mockReset());
 
+  it("后端报了读不出的几处：状态行说件数 ＋ 名单（计数事实，不另加状态头）", async () => {
+    const s = await page([{ ...listWith(demoMissing), problems: ["~/.claude.json", "plugins"] }]);
+    const sep = copyText("extPage.list.sep");
+    expect(s.element.querySelector(".ext-status")!.textContent).toContain(copyText("extPage.status.problems", { n: "2", list: ["~/.claude.json", "plugins"].join(sep) }));
+    expect(copyText("extPage.status.problems", { n: "2", list: "x" })).toMatch(/^2 /);
+  });
+
   it("表：一行一个条目，每台一个点（悬停是机器名 ＋ 态），新见到的行上一个「新」、有备注的带一个记号；搜索与种类筛选只看后端给的字", async () => {
     const noted = row("skill", "noted", [here, demoMissing], { note: "我写的" });
     const s = await page([listWith(demoMissing, [noted])]);

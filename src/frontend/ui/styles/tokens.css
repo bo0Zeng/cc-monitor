@@ -11,7 +11,7 @@
  *
  *     --{族}-{角色}[-{变体}]
  *     族：颜色族省略（bg / text / accent …）· border- · overlay- · state- · field- · font- · font-size- ·
- *         line-height- · icon- · acct- · diff- · z- · space- · radius- · shadow- · control- · row- · dot- · dur-
+ *         line-height- · icon- · acct- · diff- · term- · z- · space- · radius- · shadow- · control- · row- · dot- · dur-
  *     变体：strong / medium / soft / faint 或数字档
  *
  * 新增不许用这些名字：`--fg*` · `--danger` · `--ok` · `--mono` · `--font` · `--text-3/-dim/-muted` · `--hover` ·
@@ -93,6 +93,26 @@
   --diff-add-gutter: color-mix(in srgb, var(--success) 42%, transparent);
   --diff-del-bg: color-mix(in srgb, var(--error) 20%, transparent);
   --diff-del-gutter: color-mix(in srgb, var(--error) 42%, transparent);
+
+  /* === 终端画面（内容色，不是界面色）：后端给的 16 色名照这一族画；底与默认字另两格 === */
+  --term-bg: #181715;
+  --term-fg: #dedad2;
+  --term-black: #3a3833;
+  --term-red: #e07a72;
+  --term-green: #7fbf7a;
+  --term-yellow: #d9b25f;
+  --term-blue: #7aa2e3;
+  --term-magenta: #c792d8;
+  --term-cyan: #78b8c8;
+  --term-white: #dedad2;
+  --term-bright-black: #8a857c;
+  --term-bright-red: #f0968e;
+  --term-bright-green: #9ad495;
+  --term-bright-yellow: #ecc97a;
+  --term-bright-blue: #9bbcf0;
+  --term-bright-magenta: #dbaee8;
+  --term-bright-cyan: #98d0dc;
+  --term-bright-white: #f4f2ec;
 
   /* === 字（V4：六档字号 · 400 / 600 两档字重） === */
   --font-base: Inter, "Segoe UI", system-ui, sans-serif;

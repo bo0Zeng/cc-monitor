@@ -1,6 +1,5 @@
 /**
- * 〔拆 `tabs.ts` ② · 「一个 store，一个 router」〕**路由**：
- * 切到哪个 tab、谁有权切。
+ * 路由：切到哪个 tab、谁有权切。
  *
  * - 手动（点 tab / Ctrl+Tab / Ctrl+1..9）：`cycleTarget` / `indexTarget` 算目标；切完 `noteSwitched`
  *   记 5s 手动保护、通知宿主（`onManualSwitch`）。
@@ -10,8 +9,7 @@
  *
  * 读 `TabStore`（tab 集合 · 顺序 · 当前 tab · 是否在重放批里），不写 tab 集合；零 DOM、零 IPC ——
  * 「切过去之后界面怎么变」是 `TabManager.switchTo` 的编排，「把 monitor 拉到前台」是会话动作那一份的 IPC。
- * 字段逐字从 `tabs.ts` 搬来；三个方法是原先 `cycleActive` / `jumpToIndex` / `userActive` 的判定那一半，
- * 条件与次序逐字不变，只是把「然后去切」换成「返回该切谁 / 放不放行」。
+ * 这里只回「该切谁 / 放不放行」，不去切。
  */
 import { LS_KEYS, safeSet } from "./local-storage";
 import { isResumeOnly } from "./tab-session-state";
@@ -22,33 +20,19 @@ import type { TabStore } from "./tab-store";
 export type AutoFollowDecision = "ignore" | "front-only" | "switch";
 
 export class TabRouter {
-  /**
-   * v2.4 issue #2：用户在终端真敲键 → 自动切到对应 Tab 的开关。
-   * 默认 true，从 config.json (autoFollowUserActive) 加载。
-   */
+  /** 用户在终端真敲了一行 → 自动切到对应 Tab 的开关。默认 true，从 config.json（autoFollowUserActive）加载。 */
   private autoFollowUserActive: boolean = true;
-  /**
-   * v2.4 issue #2：自动切 tab 时是否同时把 monitor 窗口拉前台。默认 false。
-   */
+  /** 自动切 tab 时是否同时把 monitor 窗口拉前台。默认 false。 */
   bringMonitorToFront: boolean = false;
-  /**
-   * v2.4 issue #2：用户**手动**点 Tab Bar / Ctrl+Tab 后 5s 内拒绝任何 user-active
-   * 自动切。表示"我现在主动在看另一个 tab，请别抢回去"。
-   *
-   * 跟 v1 早期 user-lock 的区别：v1 阻塞 OS focus 检测（已废），v2.4 阻塞
-   * watcher 反推的 type=user 信号；信号语义不同，5s 经验值复用合理。
-   *
-   * 0 = 没有 override 中。每次 manual switchTo 时更新为 now+5000。
-   */
+  /** 用户手动切过 tab 后 5s 内不自动跟随（「我正主动看另一个 tab，别抢回去」）。0 = 不在保护期；每次手动切更新为 now ＋ 5000。 */
   private manualOverrideUntil: number = 0;
-  /** Manual override 窗口长度（ms）。issue #2 钦定 5s。 */
+  /** 手动保护期长度（ms）。 */
   private static readonly MANUAL_OVERRIDE_MS = 5000;
 
-  /** Batch5-F19：switchTo 是否写回 last-active（viewer/tear-off 窗口置 false）。 */
+  /** switchTo 是否写回 last-active（查看器 / 拆出的窗口置 false）。 */
   persistLastActive = true;
 
-  /** Batch5-F19（G 验收）：用户手动切 tab 时回调——main.ts 用它清 pendingStartupActive，
-   *  防迟到的远端宣告补切抢走用户已选的焦点。 */
+  /** 用户手动切 tab 时回调：main.ts 用它清 pendingStartupActive，免得迟到的远端宣告补切抢走用户已选的焦点。 */
   onManualSwitch: (() => void) | null = null;
 
   /** `order` = 条上看到的顺序（数字键 / `]` `[` 按它走）；缺省 = 底序 `orderedIds`。 */
@@ -57,10 +41,7 @@ export class TabRouter {
     private readonly order: () => readonly string[] = () => store.orderedIds,
   ) {}
 
-  /**
-   * v2.4 issue #2：把 behavior config 应用到路由。
-   * 启动时由 main.ts 调一次拉初值；设置面板 toggle 改了也调一次同步。
-   */
+  /** 把 behavior 配置应用到路由：启动时 main.ts 调一次，设置里改了再调一次。 */
   applyBehavior(cfg: BehaviorConfig): void {
     this.autoFollowUserActive = cfg.autoFollowUserActive;
     this.bringMonitorToFront = cfg.bringMonitorToFrontOnUserActive;
@@ -81,7 +62,7 @@ export class TabRouter {
   }
 
   /**
-   * 第 N 个 Tab 是谁（1-indexed，issue #5 快捷键 Ctrl+1..9 用）。
+   * 第 N 个 Tab 是谁（1 起数，快捷键 Ctrl+1..9 用）。
    * N 大于现有 Tab 数 / N 对应 Tab 已经 active ⇒ `null`。
    */
   indexTarget(oneBasedIdx: number): string | null {
@@ -93,13 +74,10 @@ export class TabRouter {
   }
 
   /**
-   * v2.4 issue #2：watcher 反推识别到"用户在终端真敲了一行回车"（type=user
-   * 且不是 tool_result 回灌 / CLI noise，由 tabs.onLine 的 result.kind 判定）时，放不放行自动跟随。
+   * 认出「用户在终端真敲了一行回车」（type=user 且不是 tool_result 回灌 / CLI 噪声，由 tabs.onLine 的 result.kind 判）时，放不放行自动跟随。
    *
-   * **跳过条件**（任一命中 ⇒ `ignore`）：
-   * 0. 在重放批里（v2.6 修回归：B 重构后 render-stream-record 删了 source="live" 过滤参数，
-   *    chunked replay batch 期间的历史 user 消息会触发本方法 → 反复自动切 tab；
-   *    在这里加 inBatch 守卫等价 v2.5 的 source==="live" 检查）
+   * 跳过条件（任一命中 ⇒ `ignore`）：
+   * 0. 在重放批里（批里的历史 user 消息不该触发自动切）
    * 1. autoFollowUserActive=false（设置面板关了）
    * 2. manualOverrideUntil > now（用户 5s 内手动点过 tab，明确意图保护）
    * 3. sid 不存在 / 已结束（防御）
@@ -120,9 +98,8 @@ export class TabRouter {
 
   /**
    * 切完之后（`activeId` 已经换了）：
-   * - Batch5-F19：记住所在 tab——下次启动 active 选择 + replay 优先该 session。
-   *   viewer/tear-off 窗口共享同 origin 的 localStorage（INVARIANT § 14），它们的
-   *   TabManager 置 persistLastActive=false，防独立窗口看会话 X 污染主窗口记忆。
+   * - 记住所在 tab（下次启动选它、重放先发它）。查看器 / 拆出的窗口与主窗口共享 localStorage（INVARIANT § 14），
+   *   它们置 persistLastActive=false，免得污染主窗口的记忆。
    * - `"manual"`：设置 manualOverrideUntil = now+5s（期间拒绝自动跟随）并通知宿主；
    *   `"auto"` 不更新 override（不然自动切又设 override，自己就被锁了）。
    */

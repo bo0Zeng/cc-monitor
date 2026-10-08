@@ -5,7 +5,7 @@
  * 先在名单里按名字认出那一行，再按句柄抓。
  *
  * 收法：名单与预览都是只加不改的成品（手机端也吃）⇒ 这边要用的那几格缺 / 类型不对才抛「两端契约对不上」，多出来的格照收。
- * 预览只要纯文本（`color: false`），每行 `text` 用换行接起来，与那一屏逐行相同。
+ * 预览要带颜色的成品（`color: true`）：每行 `text` ＋ 颜色段交给画面（`terminal-screen.ts`）；纯文字那一份是每行 `text` 用换行接起来，与那一屏逐行相同。
  *
  * 期限：抓一屏 20 秒，送字送键 20 秒，名单 15 秒（远端没连着还要握手）。
  */
@@ -15,6 +15,7 @@ import { isObj } from "./ipc/decode";
 import { chan } from "../../comms/inward/chan";
 import { budgetWithin, jsonBody } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
+import { decodeScreenLines, screenText, type ScreenLine } from "./terminal-screen";
 
 /** 抓一屏的期限。 */
 const PREVIEW_BUDGET_MS = 20_000;
@@ -39,8 +40,9 @@ export interface TerminalRow {
   inputNo: string | null;
 }
 
-/** 抓到的一屏：文本 · 指纹（送字时带回去）· 几点抓的（秒）。 */
+/** 抓到的一屏：每一行（带颜色段）· 纯文字 · 指纹（送字时带回去）· 几点抓的（秒）。 */
 export interface TerminalShot {
+  lines: ScreenLine[];
   text: string;
   screen: string;
   /** 几点抓的：那台本地钟上的 `HH:MM:SS`（后端写好，界面照抄）。 */
@@ -55,21 +57,12 @@ function previewRefusals(target: string): Refusals {
   return asSaid(() => copyText("terminalReads.preview.noReason", { target }));
 }
 
-/** `terminal-preview`（`color: false`）的成品 ⇒ 那一屏的文本。`lines` 缺 / 某行没有字符串 `text` ⇒ 抛。空屏是合法的成功。 */
-export function decodePreview(origin: Origin, v: unknown): string {
-  const lines = isObj(v) ? v.lines : undefined;
-  if (!Array.isArray(lines) || !lines.every((l) => isObj(l) && typeof l.text === "string")) {
-    throw unreadable(origin, "terminal-preview", "has no `lines: [{text}]`");
-  }
-  return (lines as { text: string }[]).map((l) => l.text).join("\n");
-}
-
-/** `terminal-preview` 的成品 ⇒ 那一屏 ＋ 指纹 ＋ 几点抓的。`screen` / `captured_at_text` 缺 ⇒ 抛。 */
+/** `terminal-preview` 的成品 ⇒ 那一屏（带颜色段）＋ 指纹 ＋ 几点抓的。`screen` / `captured_at_text` 缺 ⇒ 抛。 */
 export function decodeShot(origin: Origin, v: unknown): TerminalShot {
-  const text = decodePreview(origin, v);
+  const lines = decodeScreenLines(origin, v);
   const o = v as Record<string, unknown>;
   if (typeof o.screen !== "string" || typeof o.captured_at_text !== "string") throw unreadable(origin, "terminal-preview", "has no `screen` / `captured_at_text`");
-  return { text, screen: o.screen, atText: o.captured_at_text };
+  return { lines, text: screenText(lines), screen: o.screen, atText: o.captured_at_text };
 }
 
 /** 抓一次那个终端此刻的一屏（只读快照，不过身份门）。失败 ⇒ 抛 `ControlError`（那一句已经说好）。 */
@@ -79,7 +72,7 @@ export async function previewText(origin: Origin, target: TerminalTarget, label:
 
 /** 同上，连指纹与抓的时刻一起（终端页要拿指纹送字）。 */
 export async function previewShot(origin: Origin, target: TerminalTarget, label: string): Promise<TerminalShot> {
-  const body = jsonBody({ ...target, color: false });
+  const body = jsonBody({ ...target, color: true });
   const budget = budgetWithin(PREVIEW_BUDGET_MS);
   const v = await settle(origin, "terminal-preview", chan.call(origin, "terminal-preview", body, budget), previewRefusals(label));
   return decodeShot(origin, v);

@@ -1274,6 +1274,47 @@ async fn the_probe_progress_stream_carries_the_cell_to_the_one_ticket_only() {
     assert_eq!(got, vec![(1, serde_json::json!({"reached": "ssh"}))]);
 }
 
+/// 终端实时预览 `terminal-screen/<票>` 流：那台推来一格 ⇒ 只有订了**那台的那张票**的收、体原样（monitor 不解释）；
+/// 别的票 · 别台同票都不收；空票订不上（`no-such-stream`）。本机远端同一个口。期望手写。
+#[tokio::test]
+async fn the_terminal_screen_stream_carries_the_cell_to_that_origins_ticket_only() {
+    let (r, rec) = hub();
+    let local = crate::origin::Origin::local();
+    let box_a = crate::origin::Origin("box-a".into());
+    r.subscribe("w", 1, &box_a, "terminal-screen/t-1", None, 4);
+    r.subscribe("w", 2, &box_a, "terminal-screen/t-2", None, 4);
+    r.subscribe("w", 3, &local, "terminal-screen/t-1", None, 4);
+    rec.clear();
+    r.subscribe("w", 4, &box_a, "terminal-screen/", None, 4);
+    let refused =
+        rec.0.lock().unwrap().iter().any(|(_, id, items)| {
+            *id == 4 && items.iter().any(|i| matches!(i, WItem::Closed { .. }))
+        });
+    assert!(refused, "空票那一形该当场说没有这条流");
+    rec.clear();
+    r.on_terminal_screen(&box_a, "t-1", r#"{"seq":1,"view":{}}"#.to_string());
+    r.on_terminal_screen(&local, "t-1", r#"{"end":"gone"}"#.to_string());
+    let got: Vec<(u64, serde_json::Value)> = rec
+        .0
+        .lock()
+        .unwrap()
+        .iter()
+        .flat_map(|(_, id, items)| {
+            items.iter().filter_map(move |i| match i {
+                WItem::Frame { body, .. } => Some((*id, serde_json::from_slice(&body.0).unwrap())),
+                _ => None,
+            })
+        })
+        .collect();
+    assert_eq!(
+        got,
+        vec![
+            (1, serde_json::json!({"seq": 1, "view": {}})),
+            (3, serde_json::json!({"end": "gone"}))
+        ]
+    );
+}
+
 /// 配置文件那一种流（`profiles-changed`）：「配置文件变了」只进订了那台这一种流的订阅，账号那一种不收；体是约定那一串。
 #[tokio::test]
 async fn the_profiles_changed_stream_gets_only_profile_notices_of_its_own_origin() {

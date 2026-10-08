@@ -725,6 +725,42 @@ pub enum Frame {
         /// 被挤出表的已收场子运行。
         ended: Vec<RunEnded>,
     },
+
+    /// **一个终端此刻的一整屏**（终端实时预览，`control/terminal_follow.rs`；`terminal-follow` 之后才出现）。
+    ///
+    /// `view` 与 `terminal-preview` 的回话**同一份成品**（`lines` 带颜色段 · `screen` 指纹 · 尺寸 · 光标 · 抓的时刻）。
+    /// 每帧整屏、不是增量；一帧在途：客户端 `terminal-follow-ack {ticket, seq}` 之后才推下一帧，画面没变不推。
+    /// 一帧的 `view` 序列化后至多 `terminal_follow::SCREEN_FRAME_CAP` 字节，超了不推、改推 [`Frame::TerminalFollowEnd`]（`too_big`）。
+    /// 🔴 **不丢**：走应答那条独立通道（中间那几屏本来就被合并掉，丢了在途那一帧订阅就停住）。旧客户端不认 ⇒ 忽略（additive）。
+    TerminalScreen {
+        /// 订阅票（`terminal-follow` 时客户端给的，本后端只当不透明的串回填）。
+        ticket: String,
+        /// 这条订阅里第几帧（从 1 连续）。
+        seq: u64,
+        /// 那一屏（同 `terminal-preview` 的回话）。
+        view: serde_json::Value,
+    },
+
+    /// **一条终端订阅停了**（不会再有画面）；后端已经忘掉这张票。客户端自己退订的不发这一帧。
+    /// 🔴 **不丢**：走应答通道。旧客户端不认 ⇒ 忽略（additive）。
+    TerminalFollowEnd {
+        /// 订阅票。
+        ticket: String,
+        /// 为什么停了。
+        why: FollowEnd,
+    },
+}
+
+/// 一条终端订阅为什么停了（[`Frame::TerminalFollowEnd`] 的 `why`）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FollowEnd {
+    /// 那个终端没了（窗格 / tmux 会话关了）。
+    Gone,
+    /// 看着它的那条路断了（tmux 控制模式客户端退了、抓屏失败），终端也许还在。
+    Lost,
+    /// 那一屏大过一帧的上限。
+    TooBig,
 }
 
 /// 被挤出运行表的一个已收场子运行（[`Frame::SessionRuns`] 的 `ended` 一项）：是哪个 · 派出它的那次工具调用 · 终态。
@@ -976,6 +1012,9 @@ impl Frame {
             Frame::Tap { .. } => true,
             // 整份快照：下一次表一变就整份重发；丢了那个会话的子运行行停在旧的那一份，直到下一次变（带身份，客户端知道）。
             Frame::SessionRuns { .. } => false,
+            // 终端实时预览：丢了在途那一帧，客户端等不到它就不回执，订阅停住；也走应答通道。
+            Frame::TerminalScreen { .. } => false,
+            Frame::TerminalFollowEnd { .. } => false,
         }
     }
 
@@ -1012,6 +1051,10 @@ impl Frame {
             Frame::Probe { ticket, .. } => ("probe", Some(ticket.clone())),
             Frame::Tap { stream, .. } => ("tap", Some(stream.clone())),
             Frame::SessionRuns { sid, .. } => ("session_runs", Some(sid.clone())),
+            Frame::TerminalScreen { ticket, .. } => ("terminal_screen", Some(ticket.clone())),
+            Frame::TerminalFollowEnd { ticket, .. } => {
+                ("terminal_follow_end", Some(ticket.clone()))
+            }
         };
         LostFrame { kind, subject }
     }

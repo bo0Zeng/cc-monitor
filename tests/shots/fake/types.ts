@@ -82,6 +82,8 @@ export interface World {
   sessions: SessionSpec[];
   /** 帧命令的答法，按 op 名；场景可以整条覆盖。 */
   ops: Record<string, OpHandler>;
+  /** 终端实时画面那一路怎么演（不给 ⇒ `live`：订上、推一屏）：推一屏之后画面中断 · 推一屏之后那台断开。只能快照的那一种由场景把 `terminal-follow` 换成拒。 */
+  terminalLive?: "live" | "lost" | "offline";
   /** 场景故意不答的那几条（演「后端比界面老」）：答不上照样按「不认」拒，只是不报。 */
   quiet?: string[];
   /** Tauri 命令的答法（`load_config` 之类），按命令名；场景可以整条覆盖。 */

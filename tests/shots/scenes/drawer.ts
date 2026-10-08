@@ -28,6 +28,32 @@ function exitedErrorWorld(): World {
   return w;
 }
 
+/** 第一个会话（本机）活着、但不在 tmux 里（直接敲 cc 起的）。 */
+function outsideWorld(): World {
+  const w = defaultWorld();
+  w.sessions[0].container = { form: "none" };
+  return w;
+}
+
+/** 终端实时画面那一路停了：推一屏之后那台断开。 */
+function liveOfflineWorld(): World {
+  const w = defaultWorld();
+  w.terminalLive = "offline";
+  return w;
+}
+
+/** 那台只能快照：订实时被拒（tmux 低于 3.2）。 */
+function snapOnlyWorld(): World {
+  const w = defaultWorld();
+  w.ops["terminal-follow"] = () => {
+    throw new Refuse("tmux_too_old", "tmux 3.1c 不支持实时画面 · 需要 3.2 以上");
+  };
+  return w;
+}
+
+/** 抽屉开在终端页、拉高到 460（看得全那一屏的颜色）。 */
+const TALL_DRAWER = { "cc-monitor.tab-bar-w": "260", "cc-monitor.cmdk-hint.seen": "1", "cc-monitor.bottom-drawer": JSON.stringify({ page: "terminal", height: 460 }) };
+
 function emptyWorld(): World {
   const w = defaultWorld();
   w.sessions = [];
@@ -127,6 +153,46 @@ export const DRAWER_SCENES: Scene[] = [
     await waitFor("#bottom-drawer pre");
     await openTab(2);
     await sleep(900);
+  }),
+  scene("drawer-terminal-outside", "底部抽屉 · 终端 · 不在 tmux 里", "活着、不在 tmux 里的会话（直接敲 cc 起的）：照实写「不在 tmux 里」，不说「非 cc-monitor 启动」（这台不是 Windows ⇒ 没有［切到终端］）", async () => {
+    await mainReady(ALL_TABS);
+    await click("#session-head button[aria-label='看它的终端']");
+    await waitFor("#bottom-drawer [class*=empty]");
+    await sleep(800);
+  }, outsideWorld),
+  {
+    ...scene("drawer-terminal-live-tall", "底部抽屉 · 终端 · 实时（拉高）", "抽屉拉高到 460：头上「● 实时」（没有「画面几点 ＋ 重新看」）；画面带颜色 —— Bash 输出、路径蓝、「Building…」那一行橙、「accept edits」品红", async () => {
+      await mainReady(ALL_TABS);
+      await waitFor("#bottom-drawer pre span");
+      await sleep(900);
+    }),
+    height: 1000,
+    storage: TALL_DRAWER,
+  },
+  scene("drawer-terminal-live-stopped", "底部抽屉 · 终端 · 实时断了", "远端会话的实时画面推了一屏之后那台断开：画面留着变淡、头上退回「画面几点 ＋ 重新看」、头下一条「实时已停 · devbox 断开」＋［重新接上］、输入灰（不自己重连）", async () => {
+    await mainReady(ALL_TABS);
+    await openTab(3);
+    await click("#session-head button[aria-label='看它的终端']");
+    await waitFor("#bottom-drawer pre span");
+    await sleep(1200);
+  }, liveOfflineWorld),
+  scene("drawer-terminal-snaponly", "底部抽屉 · 终端 · 只能快照", "那台的 tmux 低于 3.2：照 L1 的样子（画面几点 ＋ 重新看），多一枚「仅快照」，悬停说为什么", async () => {
+    await mainReady(ALL_TABS);
+    await click("#session-head button[aria-label='看它的终端']");
+    await waitFor("#bottom-drawer pre span");
+    await sleep(900);
+  }, snapOnlyWorld),
+  scene("drawer-terminal-scrolled", "底部抽屉 · 终端 · 往上翻不拽人", "实时画面里往上翻：停在看的位置，右下「回到最新」", async () => {
+    await mainReady(ALL_TABS);
+    await click("#session-head button[aria-label='看它的终端']");
+    await waitFor("#bottom-drawer pre span");
+    await sleep(900);
+    const box = document.querySelector<HTMLElement>("#bottom-drawer pre")?.parentElement;
+    if (box) {
+      box.scrollTop = 0;
+      box.dispatchEvent(new Event("scroll"));
+    }
+    await sleep(300);
   }),
   scene("error-card-terminal", "报错卡 · 去它的终端", "远端会话 Claude 已退出、tmux 还在：报错卡上出［在终端里打开］（与会话头同一道；这台不是 Windows ⇒ 没有［切到终端］）", async () => {
     await mainReady(ALL_TABS);

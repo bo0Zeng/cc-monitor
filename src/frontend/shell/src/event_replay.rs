@@ -108,6 +108,11 @@ pub const QUOTA_CHANGED_KIND: &str = "quota-changed";
 /// 流名刻意不叫命令名（命令是那台后端的 `remote-probe`，monitor 生产段不许有它的字面量 —— 发送点只在界面）。
 pub const PROBE_PROGRESS_KIND: &str = "probe-progress";
 
+/// 又一种流：那台机器上一条终端订阅的画面（`terminal-screen/<票>`，格体是 `{"seq", "view"}` 或 `{"end"}`，没有留存）。
+/// 本机远端都有（订了哪台就是哪台推）。TS 那一侧的同一个串住 `src/frontend/ui/terminal-follow.ts::TERMINAL_SCREEN_KIND`。
+/// 流名不叫命令名（命令是那台后端的 `terminal-follow`，monitor 生产段不许有它的字面量 —— 发送点只在界面）。
+pub const TERMINAL_SCREEN_KIND: &str = "terminal-screen";
+
 /// `accounts-changed` 流里那一格 `Frame` 的体（不透明于通道；前端只认「来了一格」，体给日志看）。
 const ACCOUNTS_CHANGED_BODY: &[u8] = br#"{"accounts_changed":true}"#;
 
@@ -189,6 +194,8 @@ enum SubKind {
     Quota,
     /// `probe-progress/<票>`：一趟测试连接的进度格（`only` = 那张票），没有留存。
     Probe,
+    /// `terminal-screen/<票>`：一条终端订阅的画面与收尾（`only` = 那张票），没有留存。
+    Screen,
 }
 
 impl Sub {
@@ -470,6 +477,8 @@ enum Stream {
     Quota,
     /// `probe-progress/<票>`。
     Probe(String),
+    /// `terminal-screen/<票>`。
+    Screen(String),
 }
 
 /// `kind` ⇒ 哪一种流（`session-tap` ⇒ [`Stream::Tap`]；`accounts-changed` ⇒ [`Stream::AccountsChanged`]）。认不出 ⇒ `Err`。
@@ -498,6 +507,13 @@ fn parse_kind(kind: &str) -> Result<Stream, ()> {
         .filter(|t| !t.is_empty())
     {
         return Ok(Stream::Probe(ticket.to_string()));
+    }
+    if let Some(ticket) = kind
+        .strip_prefix(TERMINAL_SCREEN_KIND)
+        .and_then(|r| r.strip_prefix('/'))
+        .filter(|t| !t.is_empty())
+    {
+        return Ok(Stream::Screen(ticket.to_string()));
     }
     match kind
         .strip_prefix(SESSION_LINES_KIND)
@@ -840,6 +856,7 @@ impl EventReplay {
             Ok(Stream::Tasks) => (None, SubKind::Tasks),
             Ok(Stream::Quota) => (None, SubKind::Quota),
             Ok(Stream::Probe(ticket)) => (Some(ticket), SubKind::Probe),
+            Ok(Stream::Screen(ticket)) => (Some(ticket), SubKind::Screen),
             Err(()) => {
                 let item = refused("no-such-stream", format!("没有叫 `{kind}` 的流"));
                 sink.deliver(label, id, vec![item]);
@@ -1120,6 +1137,17 @@ impl EventReplay {
         self.fan_out(
             SubKind::Probe,
             &crate::origin::Origin::local(),
+            Some(ticket),
+            Body(cell.into_bytes()),
+        );
+    }
+
+    /// 那台后端推来终端订阅的一格（`terminal_screen_relay::deliver` 经 `lib.rs` 装的出口调）：**不进留存**，
+    /// 交给订了那台 `terminal-screen/<那张票>` 的订阅（credit 与 `Gap` 与 `probe-progress` 同一套；后端一帧在途等回执，格数本来就少）。
+    pub fn on_terminal_screen(&self, origin: &crate::origin::Origin, ticket: &str, cell: String) {
+        self.fan_out(
+            SubKind::Screen,
+            origin,
             Some(ticket),
             Body(cell.into_bytes()),
         );
