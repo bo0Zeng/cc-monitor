@@ -40,7 +40,6 @@
 use super::copy::CopyJob;
 use super::shell::FileWindow;
 use super::source::Listed;
-use crate::Held;
 use copy_core::copy_text;
 
 /// 一个标签页：一个目录视图。
@@ -341,7 +340,12 @@ impl Workspace {
             self.slips
                 .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             let here = std::panic::Location::caller();
-            if self.slip_sites.held().insert((here.file(), here.line())) {
+            if self
+                .slip_sites
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .insert((here.file(), here.line()))
+            {
                 tracing::warn!(
                     at = %here,
                     side,
@@ -358,7 +362,10 @@ impl Workspace {
     /// 报过警告的调用处有几处（判据看：同一处撞多少次只记一处）。
     #[cfg(test)]
     pub(crate) fn slip_sites(&self) -> usize {
-        self.slip_sites.held().len()
+        self.slip_sites
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .len()
     }
 
     /// 取栏 / 标签时下标越界、退回最近那一个的次数（判据核它恒为 0；见 [`Self::pane_on`]）。

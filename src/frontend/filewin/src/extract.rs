@@ -7,7 +7,6 @@
 //! ② 后端答 `exists`（那个目录已在）⇒ **问人**：「另起一个名字解」（再发一趟带 `fresh: true`，后端取第一个不在的 `名 (n)`）/「不解了」；
 //! ③ 结局一句话，跑完重列目录。后端阻塞档一趟做完才回话 ⇒ 不可取消、没有进度，只画「正在那台机器上解压 …」。
 
-use crate::Held;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -150,39 +149,39 @@ struct Desk {
 
 impl ExtractBoard {
     pub fn attach(&self, ctx: Option<egui::Context>) {
-        *self.ctx.held() = ctx;
+        *self.ctx.lock().unwrap() = ctx;
     }
 
     fn poke(&self) {
-        if let Some(c) = self.ctx.held().as_ref() {
+        if let Some(c) = self.ctx.lock().unwrap().as_ref() {
             c.request_repaint();
         }
     }
 
     pub fn begin(&self, name: &str) {
-        self.inner.held().running = Some(name.to_string());
+        self.inner.lock().unwrap().running = Some(name.to_string());
         self.poke();
     }
 
     pub fn running(&self) -> Option<String> {
-        self.inner.held().running.clone()
+        self.inner.lock().unwrap().running.clone()
     }
 
     /// 摆出撞名那一问；回的收端落地 ＝ 人答了（`true` ＝ 另起一个名字）。
     pub fn ask(&self, said: String) -> tokio::sync::oneshot::Receiver<bool> {
         let (tx, rx) = tokio::sync::oneshot::channel();
-        self.inner.held().asking = Some((said, tx));
+        self.inner.lock().unwrap().asking = Some((said, tx));
         self.poke();
         rx
     }
 
     pub fn is_asking(&self) -> bool {
-        self.inner.held().asking.is_some()
+        self.inner.lock().unwrap().asking.is_some()
     }
 
     /// 人答了那一问（判据与界面同一个口）。没在问 ⇒ `false`。
     pub fn settle(&self, fresh: bool) -> bool {
-        let Some((_, tx)) = self.inner.held().asking.take() else {
+        let Some((_, tx)) = self.inner.lock().unwrap().asking.take() else {
             return false;
         };
         tx.send(fresh).ok();
@@ -192,7 +191,7 @@ impl ExtractBoard {
 
     pub fn finish(&self, name: &str, o: Outcome) {
         {
-            let mut d = self.inner.held();
+            let mut d = self.inner.lock().unwrap();
             d.running = None;
             d.asking = None;
             d.last = Some((name.to_string(), o));
@@ -206,12 +205,18 @@ impl ExtractBoard {
     }
 
     pub fn last(&self) -> Option<(String, Outcome)> {
-        self.inner.held().last.clone()
+        self.inner.lock().unwrap().last.clone()
     }
 
     /// 画撞名那一问（模态）。「正在解」与结局是「进度」表里的一行（`super::progress`，那一句从 [`outcome_text`] 出来）。
     pub fn ui(&self, ui: &mut egui::Ui) {
-        let asking = self.inner.held().asking.as_ref().map(|(s, _)| s.clone());
+        let asking = self
+            .inner
+            .lock()
+            .unwrap()
+            .asking
+            .as_ref()
+            .map(|(s, _)| s.clone());
         if let Some(said) = asking {
             let (mut fresh, mut skip) = (false, false);
             let (_, esc) = super::shell::modal(ui.ctx(), "filewin-extract-taken", |ui| {

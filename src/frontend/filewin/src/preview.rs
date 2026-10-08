@@ -28,7 +28,6 @@
 //! - 二进制、PDF、视频预览（说为什么不预览）。
 //! - 真远端上一趟的时延读数（判据挂的是合成后端）。
 
-use crate::Held;
 use copy_core::copy_text;
 use std::sync::{Arc, Mutex};
 
@@ -186,7 +185,7 @@ impl Preview {
     /// 🔴 **每帧调一次**：先收到货，再看「要的是谁」变没变，最后决定发不发。
     pub fn follow(&mut self, pane: &FileWindow, ctx: Option<egui::Context>) {
         // ① 收货：是要的那一份才摆出来，不是就丢掉（光标已经挪走了）。
-        let arrived = self.slot.held().take();
+        let arrived = self.slot.lock().unwrap().take();
         if let Some((path, r)) = arrived {
             self.inflight = false;
             if self.want.as_deref() == Some(path.as_str()) {
@@ -378,7 +377,7 @@ impl Preview {
                 }
                 Want::Image => read_image(&line, &origin, &wire).await.map(Got::Image),
             };
-            *slot.held() = Some((path, r));
+            *slot.lock().unwrap() = Some((path, r));
             if let Some(c) = ctx {
                 c.request_repaint();
             }

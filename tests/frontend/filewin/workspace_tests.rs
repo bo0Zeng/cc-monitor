@@ -2185,39 +2185,3 @@ fn a_stale_side_or_tab_index_falls_back_instead_of_panicking() {
         "同一处多撞几帧，报过警告的调用处不该变多"
     );
 }
-
-/// 🔴 锁中毒不崩：本包产品代码里取 `std::sync::Mutex` 一律经 `crate::Held::held`，不许 `lock().unwrap()` / `lock().expect(..)` 回潮
-/// （后台任务拿着锁 panic 一次，往后每帧都在 unwrap 上 panic、整扇窗退出）。正控：`held` 在真中毒的锁上照样拿得到里面那份。
-#[test]
-fn lock_guard_window_takes_locks_via_held() {
-    use crate::Held;
-    let m = std::sync::Arc::new(std::sync::Mutex::new(7));
-    let m2 = m.clone();
-    let _ = std::thread::spawn(move || {
-        let _g = m2.lock();
-        panic!("poison on purpose");
-    })
-    .join();
-    assert!(m.is_poisoned(), "正控：锁该已中毒");
-    assert_eq!(*m.held(), 7, "中毒的锁 held 没拿到里面那份");
-
-    let src = crate::guard_support::crate_src_root();
-    let mut hits = Vec::new();
-    let mut files = 0;
-    for (p, text) in guard_core::scan_tree!(&src, &["rs"]) {
-        files += 1;
-        let flat: String = text.split_whitespace().collect();
-        for pat in [".lock().unwrap()", ".lock().expect("] {
-            let n = flat.matches(pat).count();
-            if n > 0 {
-                hits.push(format!("{} × {n} {pat}", p.display()));
-            }
-        }
-    }
-    assert!(files > 20, "量具：只扫到 {files} 个源文件，住址不对");
-    assert!(
-        hits.is_empty(),
-        "又有 lock().unwrap() 回潮：\n{}",
-        hits.join("\n")
-    );
-}

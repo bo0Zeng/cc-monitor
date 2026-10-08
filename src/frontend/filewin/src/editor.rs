@@ -118,7 +118,6 @@
 //! （`§9 §四.2` 第 3 条），一行特别长时也买不到东西（第 10 条），留着只会让人以为它还是候选。
 //! 行结构改由 [`super::bigfile::Lines`] 增量维护，判据对着 `str::split('\n')` 钉。
 
-use crate::Held;
 use copy_core::copy_text;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -680,11 +679,11 @@ pub struct EditBoard {
 
 impl EditBoard {
     pub fn attach(&self, ctx: Option<egui::Context>) {
-        *self.ctx.held() = ctx;
+        *self.ctx.lock().unwrap() = ctx;
     }
 
     pub fn poke(&self) {
-        if let Some(c) = self.ctx.held().as_ref() {
+        if let Some(c) = self.ctx.lock().unwrap().as_ref() {
             c.request_repaint();
         }
     }
