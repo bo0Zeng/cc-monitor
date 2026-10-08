@@ -43,7 +43,7 @@ pub fn land_link(root: &Path, rel: &Path, target: &Path) -> Result<PathBuf, Writ
     let at = resolve_in_root(root, rel).map_err(WriteRefusal::Refused)?;
     std::os::unix::fs::symlink(target, &at).map_err(|e| {
         WriteRefusal::Io(copy_text(
-            "beFilesLink.land.failed",
+            "beFilesWrite.write.failed",
             &[("path", &at.display().to_string()), ("e", &e.to_string())],
         ))
     })?;
@@ -431,7 +431,7 @@ fn land_file(root: &Path, rel: &Path, body: &mut dyn Read, mode: Option<u32>) ->
     let at = resolve_in_root(root, rel).map_err(|m| ("refused", m))?;
     let fail = |e: std::io::Error| {
         io_failed(copy_text(
-            "beFilesExtract.land.failed",
+            "beFilesWrite.write.failed",
             &[("path", &at.display().to_string()), ("e", &e.to_string())],
         ))
     };
@@ -464,7 +464,7 @@ fn land_dir(root: &Path, rel: &Path) -> Result<(), Fail> {
     let at = resolve_in_root(root, rel).map_err(|m| ("refused", m))?;
     std::fs::create_dir(&at).map_err(|e| {
         io_failed(copy_text(
-            "beFilesExtract.land.failed",
+            "beFilesWrite.write.failed",
             &[("path", &at.display().to_string()), ("e", &e.to_string())],
         ))
     })
@@ -603,7 +603,7 @@ pub fn extract_with(root: &Path, rel: &Path, into: &Path, cap: usize) -> Result<
             )
         } else {
             io_failed(copy_text(
-                "beFilesExtract.land.failed",
+                "beFilesWrite.write.failed",
                 &[("path", &dest.display().to_string()), ("e", &e.to_string())],
             ))
         });

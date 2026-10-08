@@ -62,11 +62,6 @@
     "tests/frontend/shell/diagnostics_report_tests.rs": [
       { "text": "本机", "use": "输入" }
     ],
-    "tests/frontend/shell/local_backend_host_tests.rs": [
-      { "text": "崩了", "use": "用例名" },
-      { "text": "被拒了", "use": "用例名" },
-      { "text": "读坏了", "use": "用例名" }
-    ],
     "tests/frontend/shell/machine_state_tests.rs": [
       { "text": "要更新", "use": "用例名" },
       { "text": "无应答", "use": "用例名" }
@@ -156,9 +151,6 @@
     "tests/frontend/ui/kit/tooltip.vitest.ts": [
       { "text": "下一个", "use": "输入" },
       { "text": "刷新", "use": "输入" }
-    ],
-    "tests/frontend/ui/resync.vitest.ts": [
-      { "text": "被拒了", "use": "回显" }
     ],
     "tests/frontend/ui/settings/backend-section.vitest.ts": [
       { "text": "本机", "use": "输入" }

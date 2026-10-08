@@ -210,7 +210,7 @@ pub fn commit_upload_in(
     if overwrite {
         land_staged(home, key, root, rel, &dest, cross_device).map_err(|e| {
             WriteRefusal::Io(copy_text(
-                "beFilesCommit.upload.moveFailed",
+                "beFilesWrite.write.failed",
                 &[("path", &dest.display().to_string()), ("e", &e.to_string())],
             ))
         })?;
@@ -324,7 +324,7 @@ fn ensure_staging(home: &Path) -> Result<PathBuf, WriteRefusal> {
         // 这一趟建出来的那一层建的那一下就是 0700、已在的不动（`own_dir`：后端建自家目录的那一个函数）。
         crate::common::own_dir::ensure_private_dir(&next).map_err(|e| {
             WriteRefusal::Io(copy_text(
-                "beFilesCommit.staging.mkdirFailed",
+                "beFilesWrite.write.failed",
                 &[("path", &next.display().to_string()), ("e", &e.to_string())],
             ))
         })?;

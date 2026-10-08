@@ -541,7 +541,7 @@ fn restore_one(d: &dyn Door, r: &Roots, bk: &str, aside: &str, p: &str) -> Resul
 fn delete_one(d: &dyn Door, r: &Roots, p: &str) -> Result<(), String> {
     if !is_under(p, &r.accts) {
         return Err(copy_text(
-            "beAcctExec.rollback.deleteOutside",
+            "beAcctExec.remove.outside",
             &[("path", p), ("accts", &r.accts)],
         ));
     }

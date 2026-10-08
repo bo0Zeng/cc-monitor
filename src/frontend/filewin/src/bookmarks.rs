@@ -130,12 +130,12 @@ fn lock_store(file: &Path) -> Result<std::fs::File, String> {
     let lock = lock_path(file);
     if let Some(dir) = lock.parent() {
         std::fs::create_dir_all(dir)
-            .map_err(|e| copy_text("rsFilewinBookmarks.store.failed", &[("e", &e.to_string())]))?;
+            .map_err(|e| copy_text("rsFilewinBookmarks.mutate.failed", &[("e", &e.to_string())]))?;
     }
     let f = std::fs::File::create(&lock)
-        .map_err(|e| copy_text("rsFilewinBookmarks.store.failed", &[("e", &e.to_string())]))?;
+        .map_err(|e| copy_text("rsFilewinBookmarks.mutate.failed", &[("e", &e.to_string())]))?;
     f.lock()
-        .map_err(|e| copy_text("rsFilewinBookmarks.store.failed", &[("e", &e.to_string())]))?;
+        .map_err(|e| copy_text("rsFilewinBookmarks.mutate.failed", &[("e", &e.to_string())]))?;
     Ok(f)
 }
 

@@ -13,7 +13,10 @@ export interface WRule {
   words?: string[];
   cells?: string[];
   limits?: Record<string, number>;
-  families?: { trigger: string; template: string }[];
+  /** C-W8：带码的原因形状（整格匹配，如「退出码 {status}」）。 */
+  shapes?: string[];
+  /** roleTemplates：该角色的条目匹配它也算（如原因格「<对象> 无法解析」）。 */
+  families?: { trigger: string; template: string; roleTemplates?: Record<string, string> }[];
   symbols?: string;
 }
 
@@ -112,7 +115,8 @@ export const W_CHECKS: Record<string, Check> = {
   // N6b：「失败 · X」的 X 取自原因词闭集或占位符。
   "C-W8": (e, ctx) => {
     const reasons = words(ctx, "C-W8");
-    const ok = (x: string): boolean => reasons.includes(x) || /^(\{[A-Za-z][A-Za-z0-9]*\}\s*)+$/.test(x);
+    const shapes = (ctx.byId.get("C-W8")?.shapes ?? []).map((s) => new RegExp(s));
+    const ok = (x: string): boolean => reasons.includes(x) || shapes.some((r) => r.test(x)) || /^(\{[A-Za-z][A-Za-z0-9]*\}\s*)+$/.test(x);
     for (const m of e.zh.matchAll(/失败 · ([^\n]*?)(?= · |\n|$)/g)) {
       const x = m[1].trim();
       if (ok(x)) continue;
@@ -158,7 +162,10 @@ export const W_CHECKS: Record<string, Check> = {
   // N12：族触发词命中的，必须长成该族的样子。
   "C-W14": (e, ctx) => {
     for (const f of ctx.byId.get("C-W14")?.families ?? []) {
-      if (new RegExp(f.trigger).test(e.zh) && !new RegExp(f.template).test(e.zh)) return `命中族「${f.trigger}」却不是族里的句式`;
+      if (!new RegExp(f.trigger).test(e.zh) || new RegExp(f.template).test(e.zh)) continue;
+      const byRole = e.role ? f.roleTemplates?.[e.role] : undefined;
+      if (byRole !== undefined && new RegExp(byRole).test(e.zh)) continue;
+      return `命中族「${f.trigger}」却不是族里的句式`;
     }
     return null;
   },

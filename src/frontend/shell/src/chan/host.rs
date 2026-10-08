@@ -114,7 +114,7 @@ pub async fn start() -> Result<(), String> {
     tracing::info!("通道：在 {} 上听（只认回环、只认一把钥匙）", handoff.addr);
     HANDOFF
         .set(handoff)
-        .map_err(|_| copy_text("rsChanHost.start.twice", &[]))
+        .map_err(|_| copy_text("rsChanWire.ours.broken", &[]))
 }
 
 /// 交给要起外部前端的那一方。`None` = 通道没起来 —— 不许因此退回别的路（`D11`）。

@@ -660,7 +660,7 @@ pub fn home_from_reply(d: &serde_json::Value) -> Result<String, String> {
         .get("path")
         .ok_or_else(|| copy_text("rsFilewinSource.home.noPath", &[]))?;
     let bytes = super::find::decode_path(raw)
-        .ok_or_else(|| copy_text("rsFilewinSource.path.badShape", &[]))?;
+        .ok_or_else(|| copy_text("rsFilewinSource.said.badReply", &[]))?;
     let s = String::from_utf8(bytes).map_err(|_| copy_text("rsFilewinSource.home.notUtf8", &[]))?;
     start_dir_from_home(&s)
 }
@@ -743,7 +743,7 @@ pub fn row_from_ls_entry(v: &serde_json::Value) -> Result<Listed, String> {
         .get("path")
         .ok_or_else(|| copy_text("rsFilewinSource.ls.noPath", &[]))?;
     let bytes = super::find::decode_path(raw)
-        .ok_or_else(|| copy_text("rsFilewinSource.path.badShape", &[]))?;
+        .ok_or_else(|| copy_text("rsFilewinSource.said.badReply", &[]))?;
     // 🔴 有损与否看**字节**，不看转出来的那个串里有没有 U+FFFD。
     //    后者是一个猜：真叫 `\u{FFFD}` 的文件会被误判成有损。
     // 只看**名字那一段**（最后一个 `/` 之后；远端路径恒用 `/`）：目录有损而名字干净的那一行
@@ -1039,7 +1039,10 @@ pub async fn ask_coded_cancellable(
         ))
     })?;
     if v.is_null() {
-        return Err(Failed::local(copy_text("rsFilewinSource.ask.empty", &[])));
+        return Err(Failed::local(copy_text(
+            "rsFilewinSource.said.badReply",
+            &[],
+        )));
     }
     Ok(v)
 }

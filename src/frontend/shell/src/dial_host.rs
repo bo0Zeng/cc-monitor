@@ -769,7 +769,7 @@ impl RemoteFs {
             let mut line = req.to_string();
             line.push('\n');
             link.write_all(line.as_bytes()).await.map_err(|e| {
-                copy_text("rsDialHost.ask.sendRequestFailed", &[("e", &e.to_string())])
+                copy_text("rsDialHost.ask.sendBytesFailed", &[("e", &e.to_string())])
             })?;
             if let Some(b) = bytes {
                 link.write_all(b).await.map_err(|e| {
@@ -777,7 +777,7 @@ impl RemoteFs {
                 })?;
             }
             link.flush().await.map_err(|e| {
-                copy_text("rsDialHost.ask.sendRequestFailed", &[("e", &e.to_string())])
+                copy_text("rsDialHost.ask.sendBytesFailed", &[("e", &e.to_string())])
             })?;
             ssh_link::reply_line(&mut link.r, files_reply_cap())
                 .await

@@ -53,7 +53,7 @@ pub struct OpenRequest {
 /// 序列化失败（今天各格都是 serde 表达得了的，这一支只是不许 `unwrap`）。
 pub fn encode_request(r: &OpenRequest) -> Result<String, String> {
     serde_json::to_string(r)
-        .map_err(|e| copy_text("rsFilewinProc.seed.encodeFailed", &[("e", &e.to_string())]))
+        .map_err(|e| copy_text("rsFilewinProc.child.noRuntime", &[("e", &e.to_string())]))
 }
 
 /// 字节 → 种子。**纯函数**。
@@ -72,7 +72,7 @@ pub fn decode_request(raw: &str) -> Result<OpenRequest, String> {
         ));
     }
     serde_json::from_str(raw)
-        .map_err(|e| copy_text("rsFilewinProc.seed.unreadable", &[("e", &e.to_string())]))
+        .map_err(|e| copy_text("rsFilewinProc.child.noRuntime", &[("e", &e.to_string())]))
 }
 
 /// 窗口进程在 stdout 上说的那一行：第一屏列到几行，或列不出来的原话。线上形 `{"listed":N}` / `{"failed":"…"}`，一行一个 JSON。
@@ -105,7 +105,7 @@ pub fn encode_ready(r: &Ready) -> String {
 /// 不是约定的那两种形状。
 pub fn decode_ready(line: &str) -> Result<Ready, String> {
     serde_json::from_str(line.trim())
-        .map_err(|e| copy_text("rsFilewinProc.ready.unreadable", &[("e", &e.to_string())]))
+        .map_err(|e| copy_text("rsFilewinProc.child.noRuntime", &[("e", &e.to_string())]))
 }
 
 /// 「在此打开终端」：窗口在它那条通道上 `call`（寻址 ＝ 那台机器的 `origin`）、

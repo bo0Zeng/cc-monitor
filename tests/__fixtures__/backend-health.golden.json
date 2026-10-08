@@ -30,7 +30,7 @@
         "neverStarted": 0,
         "misread": 2
       },
-      "lastBrief": "被拒了，exit 2",
+      "lastBrief": "被拒，exit 2",
       "face": {
         "state": "clean",
         "summary": "本次无异常退出",
@@ -46,10 +46,10 @@
         "neverStarted": 0,
         "misread": 2
       },
-      "lastBrief": "崩了，exit -1073741819",
+      "lastBrief": "崩溃，exit -1073741819",
       "face": {
         "state": "crashed",
-        "summary": "异常退出 ×4 · 崩了，exit -1073741819",
+        "summary": "异常退出 ×4 · 崩溃，exit -1073741819",
         "why": null,
         "detail": "本次运行：异常退出 4 · 被拒 1 · 未启动 0 · 读取失败 2 · 完整记录见日志"
       }

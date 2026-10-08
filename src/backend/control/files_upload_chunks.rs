@@ -30,7 +30,7 @@ fn assemble(home: &Path, key: &str, chunks: u64, bytes: u64) -> Result<(), Write
     let part = resolve_in_root(&dir, format!("{key}.part")).map_err(WriteRefusal::Refused)?;
     let io = |what: &Path, e: std::io::Error| {
         WriteRefusal::Io(copy_text(
-            "beUploadChunks.io.failed",
+            "beFilesWrite.write.failed",
             &[("path", &what.display().to_string()), ("e", &e.to_string())],
         ))
     };

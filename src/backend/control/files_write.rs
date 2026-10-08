@@ -480,7 +480,7 @@ pub fn make_dir(root: &Path, rel: impl AsRef<Path>) -> Result<PathBuf, WriteRefu
     let target = resolve_in_root(root, rel).map_err(WriteRefusal::Refused)?;
     std::fs::create_dir(&target).map_err(|e| {
         let said = copy_text(
-            "beFilesWrite.copyTree.mkdirFailed",
+            "beFilesWrite.write.failed",
             &[
                 ("path", &target.display().to_string()),
                 ("e", &e.to_string()),
@@ -591,7 +591,7 @@ pub fn delete_entry(root: &Path, rel: impl AsRef<Path>) -> Result<PathBuf, Write
         .map(|m| m.is_dir())
         .map_err(|e| {
             WriteRefusal::Io(copy_text(
-                "beFilesWrite.copyTree.unreadable",
+                "beFilesWrite.read.failed",
                 &[
                     ("path", &target.display().to_string()),
                     ("e", &e.to_string()),
@@ -641,7 +641,7 @@ pub fn delete_file_expecting(
         }
         Err(e) => {
             return Err(WriteRefusal::Io(copy_text(
-                "beFilesWrite.copyTree.unreadable",
+                "beFilesWrite.read.failed",
                 &[
                     ("path", &target.display().to_string()),
                     ("e", &e.to_string()),
@@ -707,7 +707,7 @@ pub fn delete_empty_dir(root: &Path, rel: impl AsRef<Path>) -> Result<PathBuf, W
         }
         Err(e) => {
             return Err(WriteRefusal::Io(copy_text(
-                "beFilesWrite.copyTree.unreadable",
+                "beFilesWrite.read.failed",
                 &[
                     ("path", &target.display().to_string()),
                     ("e", &e.to_string()),
@@ -730,7 +730,7 @@ pub fn delete_empty_dir(root: &Path, rel: impl AsRef<Path>) -> Result<PathBuf, W
             )))
         }
         Err(e) => Err(WriteRefusal::Io(copy_text(
-            "beFilesWrite.rmdir.failed",
+            "beFilesWrite.delete.failed",
             &[
                 ("path", &target.display().to_string()),
                 ("e", &e.to_string()),
@@ -814,7 +814,7 @@ pub fn overwrite_text(
     let real = resolve_existing_in_root(root, rel).map_err(WriteRefusal::Refused)?;
     let md = std::fs::metadata(&real).map_err(|e| {
         WriteRefusal::Io(copy_text(
-            "beFilesWrite.copyTree.unreadable",
+            "beFilesWrite.read.failed",
             &[("path", &real.display().to_string()), ("e", &e.to_string())],
         ))
     })?;
@@ -952,7 +952,7 @@ pub fn overwrite_text_expecting(
         }
         Err(e) => {
             return Err(WriteRefusal::Io(copy_text(
-                "beFilesWrite.copyTree.unreadable",
+                "beFilesWrite.read.failed",
                 &[("path", &at.display().to_string()), ("e", &e.to_string())],
             )))
         }
@@ -961,7 +961,7 @@ pub fn overwrite_text_expecting(
     let real = resolve_existing_in_root(root, rel).map_err(WriteRefusal::Refused)?;
     let md = std::fs::metadata(&real).map_err(|e| {
         WriteRefusal::Io(copy_text(
-            "beFilesWrite.copyTree.unreadable",
+            "beFilesWrite.read.failed",
             &[("path", &real.display().to_string()), ("e", &e.to_string())],
         ))
     })?;
@@ -1054,7 +1054,7 @@ pub fn plan_tree_within(root: &Path, rel: &Path, cap: usize) -> Result<Vec<Plann
     let top = resolve_in_root(root, rel).map_err(WriteRefusal::Refused)?;
     let (top_is_dir, top_dev) = kind_and_device(&top).map_err(|e| {
         WriteRefusal::Io(copy_text(
-            "beFilesWrite.copyTree.unreadable",
+            "beFilesWrite.read.failed",
             &[("path", &top.display().to_string()), ("e", &e.to_string())],
         ))
     })?;
@@ -1081,7 +1081,7 @@ pub fn plan_tree_within(root: &Path, rel: &Path, cap: usize) -> Result<Vec<Plann
         for item in listing {
             let item = item.map_err(|e| {
                 WriteRefusal::Io(copy_text(
-                    "beFilesWrite.copyTree.listBroke",
+                    "beFilesWrite.copyTree.unlistable",
                     &[
                         ("path", &dir_at.display().to_string()),
                         ("e", &e.to_string()),
@@ -1098,7 +1098,7 @@ pub fn plan_tree_within(root: &Path, rel: &Path, cap: usize) -> Result<Vec<Plann
             })?;
             let (is_dir, dev) = kind_and_device(&at).map_err(|e| {
                 WriteRefusal::Io(copy_text(
-                    "beFilesWrite.copyTree.unreadable",
+                    "beFilesWrite.read.failed",
                     &[("path", &at.display().to_string()), ("e", &e.to_string())],
                 ))
             })?;
@@ -1138,13 +1138,13 @@ pub fn remove_planned(root: &Path, p: &Planned) -> Result<PathBuf, WriteRefusal>
         .map(|m| m.is_dir())
         .map_err(|e| {
             WriteRefusal::Io(copy_text(
-                "beFilesWrite.copyTree.unreadable",
+                "beFilesWrite.read.failed",
                 &[("path", &at.display().to_string()), ("e", &e.to_string())],
             ))
         })?;
     if is_dir != p.is_dir {
         return Err(WriteRefusal::Io(copy_text(
-            "beFilesWrite.deleteTree.kindChanged",
+            "beFilesWrite.delete.changed",
             &[("path", &at.display().to_string())],
         )));
     }
@@ -1269,7 +1269,7 @@ fn copy_entry_racing(
     }
     let src_md = std::fs::metadata(&src).map_err(|e| {
         WriteRefusal::Io(copy_text(
-            "beFilesWrite.copyTree.unreadable",
+            "beFilesWrite.read.failed",
             &[("path", &src.display().to_string()), ("e", &e.to_string())],
         ))
     })?;
@@ -1314,7 +1314,7 @@ fn land_copy(
     let side = resolve_in_root(root, &side_rel).map_err(WriteRefusal::Refused)?;
     let mut reader = opener().read(true).open(src).map_err(|e| {
         WriteRefusal::Io(copy_text(
-            "beFilesWrite.copy.openSrcFailed",
+            "beFilesWrite.read.failed",
             &[("path", &src.display().to_string()), ("e", &e.to_string())],
         ))
     })?;
@@ -1338,7 +1338,7 @@ fn land_copy(
         Err(e) => {
             drop(writer);
             return Err(drop_side(WriteRefusal::Io(copy_text(
-                "beFilesWrite.copy.broke",
+                "beFilesWrite.write.failed",
                 &[("path", &side.display().to_string()), ("e", &e.to_string())],
             ))));
         }
@@ -1357,7 +1357,7 @@ fn land_copy(
         between();
         if let Err(e) = std::fs::rename(&side, &dst) {
             return Err(drop_side(WriteRefusal::Io(copy_text(
-                "beFilesWrite.swap.failed",
+                "beFilesWrite.write.failed",
                 &[("path", &dst.display().to_string()), ("e", &e.to_string())],
             ))));
         }
@@ -1474,7 +1474,7 @@ pub fn plan_copy_within(root: &Path, from: &Path, cap: usize) -> Result<CopyPlan
     }
     let (top_kind, top_dev) = copy_kind(&real).map_err(|e| {
         WriteRefusal::Io(copy_text(
-            "beFilesWrite.copyTree.unreadable",
+            "beFilesWrite.read.failed",
             &[("path", &shown(&real)), ("e", &e.to_string())],
         ))
     })?;
@@ -1506,7 +1506,7 @@ pub fn plan_copy_within(root: &Path, from: &Path, cap: usize) -> Result<CopyPlan
         for item in listing {
             let item = item.map_err(|e| {
                 WriteRefusal::Io(copy_text(
-                    "beFilesWrite.copyTree.listBroke",
+                    "beFilesWrite.copyTree.unlistable",
                     &[("path", &shown(&dir_at)), ("e", &e.to_string())],
                 ))
             })?;
@@ -1520,7 +1520,7 @@ pub fn plan_copy_within(root: &Path, from: &Path, cap: usize) -> Result<CopyPlan
             })?;
             let (kind, dev) = copy_kind(&at).map_err(|e| {
                 WriteRefusal::Io(copy_text(
-                    "beFilesWrite.copyTree.unreadable",
+                    "beFilesWrite.read.failed",
                     &[("path", &shown(&at)), ("e", &e.to_string())],
                 ))
             })?;
@@ -1529,7 +1529,7 @@ pub fn plan_copy_within(root: &Path, from: &Path, cap: usize) -> Result<CopyPlan
                 Err("link") if super::files_extract::LINKS_SUPPORTED => {
                     Some(std::fs::read_link(&at).map_err(|e| {
                         WriteRefusal::Io(copy_text(
-                            "beFilesWrite.copyTree.unreadable",
+                            "beFilesWrite.read.failed",
                             &[("path", &shown(&at)), ("e", &e.to_string())],
                         ))
                     })?)
@@ -1582,7 +1582,7 @@ pub fn copy_planned(plan: &CopyPlan, p: &CopyPlanned, dst_rel: &Path) -> Result<
     let dst = resolve_in_root(&plan.root, dst_rel).map_err(WriteRefusal::Refused)?;
     let unreadable = |e: std::io::Error| {
         WriteRefusal::Io(copy_text(
-            "beFilesWrite.copyTree.unreadable",
+            "beFilesWrite.read.failed",
             &[("path", &shown(&src)), ("e", &e.to_string())],
         ))
     };
@@ -1608,7 +1608,7 @@ pub fn copy_planned(plan: &CopyPlan, p: &CopyPlanned, dst_rel: &Path) -> Result<
     if p.is_dir {
         std::fs::create_dir(&dst).map_err(|e| {
             WriteRefusal::Io(copy_text(
-                "beFilesWrite.copyTree.mkdirFailed",
+                "beFilesWrite.write.failed",
                 &[("path", &shown(&dst)), ("e", &e.to_string())],
             ))
         })?;
@@ -1626,7 +1626,7 @@ fn copy_dir_mode(plan: &CopyPlan, p: &CopyPlanned, dst_rel: &Path) -> Result<(),
     let perms = std::fs::metadata(&src)
         .map_err(|e| {
             WriteRefusal::Io(copy_text(
-                "beFilesWrite.copyTree.unreadable",
+                "beFilesWrite.read.failed",
                 &[("path", &shown(&src)), ("e", &e.to_string())],
             ))
         })?
@@ -1829,7 +1829,7 @@ pub fn peek_text(root: &Path, rel: impl AsRef<Path>) -> Result<Peeked, (&'static
             return Err((
                 "io_failed",
                 copy_text(
-                    "beFilesWrite.copyTree.unreadable",
+                    "beFilesWrite.read.failed",
                     &[("path", &at.display().to_string()), ("e", &e.to_string())],
                 ),
             ))
@@ -1841,7 +1841,7 @@ pub fn peek_text(root: &Path, rel: impl AsRef<Path>) -> Result<Peeked, (&'static
         (
             "io_failed",
             copy_text(
-                "beFilesWrite.copyTree.unreadable",
+                "beFilesWrite.read.failed",
                 &[("path", &real.display().to_string()), ("e", &e.to_string())],
             ),
         )
@@ -1973,7 +1973,7 @@ fn put_text_racing(
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => false,
         Err(e) => {
             return Err(WriteRefusal::Io(copy_text(
-                "beFilesWrite.copyTree.unreadable",
+                "beFilesWrite.read.failed",
                 &[("path", &at.display().to_string()), ("e", &e.to_string())],
             )))
         }
@@ -1982,7 +1982,7 @@ fn put_text_racing(
         let real = resolve_existing_in_root(root, rel).map_err(WriteRefusal::Refused)?;
         let md = std::fs::metadata(&real).map_err(|e| {
             WriteRefusal::Io(copy_text(
-                "beFilesWrite.copyTree.unreadable",
+                "beFilesWrite.read.failed",
                 &[("path", &real.display().to_string()), ("e", &e.to_string())],
             ))
         })?;
@@ -2119,7 +2119,7 @@ fn make_parents(root: &Path, rel: &Path) -> Result<(), WriteRefusal> {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 std::fs::create_dir(&at).map_err(|e| {
                     WriteRefusal::Io(copy_text(
-                        "beFilesWrite.copyTree.mkdirFailed",
+                        "beFilesWrite.write.failed",
                         &[("path", &at.display().to_string()), ("e", &e.to_string())],
                     ))
                 })?;
@@ -2134,7 +2134,7 @@ fn make_parents(root: &Path, rel: &Path) -> Result<(), WriteRefusal> {
             }
             Err(e) => {
                 return Err(WriteRefusal::Io(copy_text(
-                    "beFilesWrite.copyTree.unreadable",
+                    "beFilesWrite.read.failed",
                     &[("path", &at.display().to_string()), ("e", &e.to_string())],
                 )))
             }
@@ -2202,7 +2202,7 @@ fn swap_in(
         .open(&side)
         .map_err(|e| {
             WriteRefusal::Io(copy_text(
-                "beFilesWrite.swap.sideCreateFailed",
+                "beFilesWrite.write.failed",
                 &[("path", &side.display().to_string()), ("e", &e.to_string())],
             ))
         })?;
@@ -2212,7 +2212,7 @@ fn swap_in(
         drop(f);
         std::fs::remove_file(&side).ok();
         return Err(WriteRefusal::Io(copy_text(
-            "beFilesWrite.swap.sideModeFailed",
+            "beFilesWrite.write.failed",
             &[("path", &side.display().to_string()), ("e", &e.to_string())],
         )));
     }
@@ -2220,7 +2220,7 @@ fn swap_in(
         drop(f);
         std::fs::remove_file(&side).ok();
         return Err(WriteRefusal::Io(copy_text(
-            "beFilesWrite.swap.sideWriteFailed",
+            "beFilesWrite.write.failed",
             &[("path", &side.display().to_string()), ("e", &e.to_string())],
         )));
     }
@@ -2237,7 +2237,7 @@ fn swap_in(
                     ))
                 }
                 Ok((_, _, Err(e))) => WriteRefusal::Io(copy_text(
-                    "beFilesWrite.swap.failed",
+                    "beFilesWrite.write.failed",
                     &[("path", &dst.display().to_string()), ("e", &e.to_string())],
                 )),
             };
@@ -2248,7 +2248,7 @@ fn swap_in(
     if let Err(e) = std::fs::rename(&side, &dst) {
         std::fs::remove_file(&side).ok();
         return Err(WriteRefusal::Io(copy_text(
-            "beFilesWrite.swap.failed",
+            "beFilesWrite.write.failed",
             &[("path", &dst.display().to_string()), ("e", &e.to_string())],
         )));
     }
@@ -2292,7 +2292,7 @@ fn land_backup(
         drop(f);
         std::fs::remove_file(&bak).ok();
         return Err(WriteRefusal::Io(copy_text(
-            "beFilesWrite.backup.writeFailed",
+            "beFilesWrite.backup.createFailed",
             &[("path", &bak.display().to_string()), ("e", &e.to_string())],
         )));
     }
