@@ -347,6 +347,10 @@ const WINDOW_SIDE: &[(&str, Kind)] = &[
     ("copy_core::copy_text", Kind::Copy),
     // 天数 ⇒ 公历：与取文口同住 copy-core（「复制详情」的时刻要它，后端也链，宿主原语那一家后端不许链）。纯函数。
     ("copy_core::civil_from_days", Kind::Copy),
+    // 「复制详情」那几行的排法（项名闭集 · 一项一行 · 原话截断）：与取文口同住 copy-core，三端写详情只经这一份。纯函数。
+    ("copy_core::detail::Detail::new", Kind::Copy),
+    ("copy_core::detail::Label::Path", Kind::Copy),
+    ("copy_core::detail::Label::Raw", Kind::Copy),
     // ── 窗口几何（开窗第一拍夹进种子带来的工作区）──
     // `WorkArea` · `fit_into_work_area` 两行摘了：类型与判定搬进 `host_core`（Tauri 那几扇窗与文件窗口共用那一份）。
 ];
