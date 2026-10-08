@@ -166,18 +166,15 @@ fn the_spawn_verbs_and_platform_primitives_live_only_here() {
 /// 会让主判据**零命中地绿**，而「唯一出口」这件事悄悄一个人都不数了。
 #[test]
 fn the_exit_itself_still_contains_every_verb_it_forbids_elsewhere() {
-    // 出口 = 本模块 ＋ 它的平台那一半（`platform/spawn.rs`）；两份合起来必须四个词全在。
+    // 出口 = 本模块 ＋ 它的平台那一半（`platform/spawn.rs`）；两份合起来必须三个词全在。
     let src = me()
         + &guard_core::production_code(include_str!(
             "../../../src/frontend/shell/src/platform/spawn.rs"
         ));
-    // ⚠ 三条平台原语各自在 `#[cfg]` 里 —— 剥生产段不剥 `cfg`，所以两边都看得到。
-    for v in [
-        ".spawn()",
-        ".creation_flags(",
-        ".process_group(",
-        ".kill_on_drop(",
-    ] {
+    // ⚠ 两条平台原语各自在 `#[cfg]` 里 —— 剥生产段不剥 `cfg`，所以两边都看得到。
+    // `.kill_on_drop(` 不在这里：出口只剩同步那一侧（tokio 的 `Child` 才有它），出口里也一处没有；
+    //   它留在主判据的 `VERBS` 里，别处写了照样红。
+    for v in [".spawn()", ".creation_flags(", ".process_group("] {
         assert!(
             src.contains(v),
             "本模块自己的生产段里找不到 `{v}` —— 要么它搬走了（那主判据该换住址），\

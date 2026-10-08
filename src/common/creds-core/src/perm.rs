@@ -1,11 +1,11 @@
 //! 把凭据文件收窄到只给本人，以及读之前查一次它是不是被放宽了。
 //!
 //! 两个平台同一个签名，Windows 那半不是「无操作」：「谁能读这个文件」在 Windows 上有对应物（DACL），写成无操作等于两个平台的保证不一样而代码里看不出来
-//! （[`tests::the_windows_half_is_not_a_no_op`] 钉住）。建文件时显式设 DACL（`SetNamedSecurityInfoW`）并置 `PROTECTED_DACL_SECURITY_INFORMATION`（= 断继承）：
+//! （[`tests::the_windows_half_is_not_a_no_op`] 钉住）。建文件时带着 DACL 建（`CreateFileW` ＋ `SECURITY_ATTRIBUTES`，SDDL 里 `D:P` = 断继承）：
 //! `%LOCALAPPDATA%` 的默认 ACL 只靠继承，目录被搬过、从宽松的父目录继承、或者用户改过，ACL 就变了而没人知道。
 //! 设 DACL 与「能手编」不冲突：ACL 限的是谁能读写，不是用什么程序读写。
 //!
-//! - [`make_private`] / [`create_private`] 只在 `harden` feature 打开时存在（后端也开了它：远端那台的 key 只能由那台的后端写；
+//! - [`create_private`] 只在 `harden` feature 打开时存在（后端也开了它：远端那台的 key 只能由那台的后端写；
 //!   「后端里只有账号域那一份碰得到写半边」由 `readonly_guard::g6_dependency_signoff` 那条判据兜）。
 //! - [`probe`] / [`judge`] 两侧都在。
 //!
@@ -131,46 +131,12 @@ pub fn probe(path: &std::path::Path) -> Protection {
 
 // ─────────────────────── 写那一半（只有 `harden` 才有） ───────────────────────
 
-/// 把这份文件收窄到**只给本人**。
-///
-/// - Unix：`0o600`。
-/// - Windows：显式设 DACL（只留**当前用户** + `SYSTEM`）并**断掉继承**。
-/// - 其余平台：**报错**，不假装做到了。
-///
-/// # 签名两边一致
-///
-/// 与 `platform/fs.rs::make_executable` 同形：收一个路径，返回 `Result<(), String>`，
-/// 调用方只知道「写完要让它只给本人」，不知道**这个平台上那句话怎么落**。
-#[cfg(feature = "harden")]
-pub fn make_private(p: &std::path::Path) -> Result<(), String> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(p, std::fs::Permissions::from_mode(0o600))
-            .map_err(|e| copy_text("credsPerm.makePrivate.failed", &[("e", &e.to_string())]))?;
-        return Ok(());
-    }
-    #[cfg(windows)]
-    {
-        return windows_set_owner_only_dacl(p);
-    }
-    #[cfg(not(any(unix, windows)))]
-    {
-        // ⚠ 这里**必须**是错，不许是 `Ok(())`。理由整段见后端的 `platform/fallback_guard.rs`：
-        // 一个答不上来的问题不该有一个看起来无害的答案。
-        Err(copy_text(
-            "credsPerm.makePrivate.unsupported",
-            &[("path", &(p.display()).to_string())],
-        ))
-    }
-}
-
-/// 建一个只给本人的新文件，并把写句柄交出来。与 [`make_private`]（把已经在盘上的文件收窄，管终态）是两件事：「先按 umask 建出来、写进明文、再收窄」
+/// 建一个只给本人的新文件，并把写句柄交出来。不做「先按 umask 建出来、写进明文、再收窄」：
 /// 那条路上，文件出生到收窄之间有一个宽窗口（常见 umask `0022` 下是 `0644`，全机可读），里面已经有明文 ⇒ 本函数管出生那一刻。
 ///
 /// - Unix：`OpenOptions::create_new(true).mode(0o600)` —— `mode` 在创建时生效。用 `create_new`（`O_EXCL`）：目标若已存在（崩溃残骸、或别人预置的符号链接），
 ///   `create` 会跟随并截断它，那时权限是它的不是我们的；`O_EXCL` 让这种情况直接失败，调用方先删再建。
-/// - Windows：`CreateFileW` + `SECURITY_ATTRIBUTES`，DACL 与 [`make_private`] 用同一句 SDDL（`owner_only_sddl`）。`CREATE_NEW` 是 `O_EXCL` 的对应物。
+/// - Windows：`CreateFileW` + `SECURITY_ATTRIBUTES`，DACL 是 `owner_only_sddl` 那一句（`D:P` 断继承）。`CREATE_NEW` 是 `O_EXCL` 的对应物。
 /// - 其余平台：报错，不假装做到了。
 #[cfg(feature = "harden")]
 pub fn create_private(p: &std::path::Path) -> std::io::Result<std::fs::File> {
@@ -307,75 +273,6 @@ fn current_user_sid() -> Result<String, String> {
         let _ = LocalFree(HLOCAL(s.0 as *mut core::ffi::c_void));
         Ok(out)
     }
-}
-
-#[cfg(all(windows, feature = "harden"))]
-fn windows_set_owner_only_dacl(p: &std::path::Path) -> Result<(), String> {
-    use std::os::windows::ffi::OsStrExt;
-    use windows::core::PCWSTR;
-    use windows::Win32::Foundation::{LocalFree, BOOL, HLOCAL, PSID};
-    use windows::Win32::Security::Authorization::{
-        ConvertStringSecurityDescriptorToSecurityDescriptorW, SetNamedSecurityInfoW,
-        SDDL_REVISION_1, SE_FILE_OBJECT,
-    };
-    use windows::Win32::Security::{
-        GetSecurityDescriptorDacl, ACL, DACL_SECURITY_INFORMATION,
-        PROTECTED_DACL_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR,
-    };
-
-    let sid = current_user_sid()?;
-    let sddl: Vec<u16> = owner_only_sddl(&sid)
-        .encode_utf16()
-        .chain(std::iter::once(0))
-        .collect();
-    let mut path_w: Vec<u16> = p
-        .as_os_str()
-        .encode_wide()
-        .chain(std::iter::once(0))
-        .collect();
-
-    unsafe {
-        let mut psd = PSECURITY_DESCRIPTOR::default();
-        ConvertStringSecurityDescriptorToSecurityDescriptorW(
-            PCWSTR(sddl.as_ptr()),
-            SDDL_REVISION_1,
-            &mut psd,
-            None,
-        )
-        .map_err(|e| {
-            copy_text(
-                "credsPerm.windowsSetOwnerOnlyDacl.parse",
-                &[("e", &(e.message()).to_string())],
-            )
-        })?;
-        let mut present = BOOL(0);
-        let mut dacl: *mut ACL = std::ptr::null_mut();
-        let mut defaulted = BOOL(0);
-        let got = GetSecurityDescriptorDacl(psd, &mut present, &mut dacl, &mut defaulted);
-        if got.is_err() || !present.as_bool() || dacl.is_null() {
-            let _ = LocalFree(HLOCAL(psd.0));
-            return Err(copy_text("credsPerm.windowsSetOwnerOnlyDacl.noList", &[]));
-        }
-        // `DACL_SECURITY_INFORMATION` = 换 DACL；`PROTECTED_DACL_SECURITY_INFORMATION` = **断继承**。
-        // 少了后一个，DACL 设上了但父目录的继承项还会回来 —— 那是「看起来做了」的形状。
-        let rc = SetNamedSecurityInfoW(
-            PCWSTR(path_w.as_mut_ptr()),
-            SE_FILE_OBJECT,
-            DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
-            PSID::default(),
-            PSID::default(),
-            Some(dacl as *const ACL),
-            None,
-        );
-        let _ = LocalFree(HLOCAL(psd.0));
-        if rc.is_err() {
-            return Err(copy_text(
-                "credsPerm.windowsSetOwnerOnlyDacl.failed",
-                &[("rc", &(rc.0).to_string())],
-            ));
-        }
-    }
-    Ok(())
 }
 
 #[cfg(all(windows, feature = "harden"))]

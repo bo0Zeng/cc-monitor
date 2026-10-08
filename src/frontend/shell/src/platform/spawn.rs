@@ -1,8 +1,8 @@
 //! 起子进程这一族的平台读法〔阶段 H：；原住 `spawn_managed.rs`，逐字搬〕：三条策略里
 //! 「要不要窗口」「随不随我死」在这个平台上**怎么说** —— Windows：creation flags ＋ Job Object；POSIX：`process_group(0)`。
 //!
-//! 三个策略枚举与唯一出口（`spawn_managed` · `spawn_managed_cmd` · `spawn_managed_tokio`）留在 `spawn_managed.rs`；
-//! 两个平台说法一样的那几格（stderr 往哪去 · tokio 那侧 `JobKillOnClose` 多设 `kill_on_drop`）也留在那边。
+//! 三个策略枚举与唯一出口（`spawn_managed` · `spawn_managed_cmd`）留在 `spawn_managed.rs`；
+//! 两个平台说法一样的那一格（stderr 往哪去）也留在那边。
 
 use crate::spawn_managed::{ConsolePolicy, Lifetime};
 
@@ -112,7 +112,7 @@ fn assign_to_job(raw: std::os::windows::io::RawHandle, what: &str) -> LifetimeGu
 /// 起之前：把「要不要窗口 · 随不随我死」落到这个平台的 `std::process::Command` 上。
 ///
 /// ⚠ **合成必须在一处做**（见 [`creation_flags_for`]）：全壳唯一设 creation flags 的地方 ——
-/// tokio 那一侧也交这里（`spawn_managed_tokio` 传 `as_std_mut()`：tokio 的 `creation_flags` / `process_group` 本来就是转给里面那个 std `Command` 的）。
+///
 pub fn prepare(cmd: &mut std::process::Command, console: ConsolePolicy, lifetime: Lifetime) {
     #[cfg(windows)]
     {
@@ -156,34 +156,5 @@ pub fn attach_lifetime(
 ) -> LifetimeGuard {
     // POSIX 上「随我死」这一格没有 Job Object 这种东西 —— 见模块头注的诚实边界 2。
     // `Detached` 那一半已经在 [`prepare`] 里用 `process_group(0)` 落过了。
-    LifetimeGuard
-}
-
-#[cfg(windows)]
-#[cfg_attr(not(test), allow(dead_code))]
-pub fn attach_lifetime_tokio(
-    child: &tokio::process::Child,
-    lifetime: Lifetime,
-    what: &str,
-) -> LifetimeGuard {
-    match lifetime {
-        Lifetime::JobKillOnClose => match child.raw_handle() {
-            Some(raw) => assign_to_job(raw, what),
-            None => {
-                tracing::error!("起 {what}：拿不到子进程句柄，收尾这一格**在这台机器上没人守**。");
-                LifetimeGuard(None)
-            }
-        },
-        Lifetime::Detached => LifetimeGuard(None),
-    }
-}
-
-#[cfg(not(windows))]
-#[cfg_attr(not(test), allow(dead_code))]
-pub fn attach_lifetime_tokio(
-    _child: &tokio::process::Child,
-    _lifetime: Lifetime,
-    _what: &str,
-) -> LifetimeGuard {
     LifetimeGuard
 }

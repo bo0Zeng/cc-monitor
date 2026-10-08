@@ -389,20 +389,16 @@ fn every_local_spawn_is_declared() {
         //
         // ⚠ **出口自己那份源码只按第一个锚点数**：在 `spawn_managed.rs` 里面，
         //   这几个名字是它的**实现与签名**，不是「又一个起进程的地方」——
-        //   连签名行都会命中（`pub fn spawn_managed_tokio(`），那会给这张表添三行
+        //   连签名行都会命中（`pub fn spawn_managed_cmd(`），那会给这张表添几行
         //   只描述出口内部结构的噪声。出口自己在表里**恰好占一行**，那一行已经写清了
         //   「它就是那个出口本身」。
         let is_the_exit = stem == "spawn_managed.rs";
         for (i, l) in lines.iter().enumerate() {
             let hit = l.contains(concat!("Command::", "new("))
                 || (!is_the_exit
-                    && [
-                        "spawn_managed(",
-                        "spawn_managed_cmd(",
-                        "spawn_managed_tokio(",
-                    ]
-                    .iter()
-                    .any(|n| l.contains(n)));
+                    && ["spawn_managed(", "spawn_managed_cmd("]
+                        .iter()
+                        .any(|n| l.contains(n)));
             if hit {
                 found.push((stem.clone(), enclosing_fn(&lines, i)));
             }

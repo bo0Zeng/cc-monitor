@@ -329,18 +329,15 @@ fn the_definition_table_and_the_call_site_table_name_the_same_exits() {
 // 且不留临时文件（`file_face_tests::the_written_file_is_owner_only_and_no_temp_file_is_left`）。
 // monitor 这一侧只剩一条要钉的：**写半边一处都不调**（`gp1_the_monitor_never_reaches_the_credentials_write_half`）。
 
-/// **monitor 生产段一处都不够写半边**（`creds_core::perm::create_private` / `make_private`）。
+/// **monitor 生产段一处都不够写半边**（`creds_core::perm::create_private`）。
 ///
 /// monitor 仍开着 `harden`（Windows 上读 DACL 要它），编译器因此兜不住「monitor 写不了这份文件」—— 由本条兜：
-/// 人群 = `src/frontend/shell/src` 下全部 `.rs` 的生产段（剥测试段与注释），针两根，**零命中**。
+/// 人群 = `src/frontend/shell/src` 下全部 `.rs` 的生产段（剥测试段与注释），针一根，**零命中**。
 /// 正控：同一把针在后端自有状态文件原子写那一处（`src/backend/common/own_state.rs`，这份文件的写口经它落盘）上数得到 —— 针没瞎。
 /// 要求住址：「每台机器上这份文件的程序写者恰好一个 ＝ 那台的后端」（`GP1.md §3`）。
 #[test]
 fn gp1_the_monitor_never_reaches_the_credentials_write_half() {
-    let needles = [
-        format!("create_{}(", "private"),
-        format!("make_{}(", "private"),
-    ];
+    let needles = [format!("create_{}(", "private")];
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     let files = guard_core::scan_tree_excluding(&root, &["rs"], &[]);
     assert!(

@@ -296,7 +296,7 @@ mod tests {
     /// # 那句话怎么变的
     ///
     /// 原话：「本 crate 不许打开 `creds-core` 的 `harden` feature」—— 那时「backend 写不了这份文件」
-    /// 是**编译器**兜的（`make_private` / `create_private` 都挂在 `harden` 上，不开就不存在）。
+    /// 是**编译器**兜的（写半边挂在 `harden` 上，不开就不存在）。
     /// 远端那台机器上的 key 只能由那台的后端写（上游选择自己的状态文件）
     /// ⇒ feature 开了。编译器那一格没了，**两条判据接住**：
     ///

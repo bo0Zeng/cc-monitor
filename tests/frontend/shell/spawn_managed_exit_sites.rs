@@ -427,7 +427,7 @@ fn the_bare_command_sites_are_exactly_the_ones_this_ledger_explains() {
              ⇒ 往 `SITES` 加一行：**第三列**写它把那个 `Command` 交给出口的哪个入口\
              （名单从 `spawn_managed.rs` 的签名派生），**第四列**写为什么这一处非自己造不可。\n\
              🔴 若答不出第三列 —— 那就不是「没登记」，是**真的绕开了出口**，\
-             该做的是把它改成走 `spawn_managed_cmd` / `spawn_managed_tokio`，\
+             该做的是把它改成走 `spawn_managed_cmd`，\
              或者（`backend/` 那一半）收一个 `ManagedSpawn` 注入参数。",
         unexplained.join("\n")
     );
@@ -521,7 +521,7 @@ fn every_bare_command_site_names_the_exit_entry_it_hands_off_to() {
 #[test]
 fn the_exit_entry_point_list_is_derived_and_does_not_say_yes_to_every_pub_fn() {
     let entries = exit_entry_points();
-    for must in ["spawn_managed", "spawn_managed_cmd", "spawn_managed_tokio"] {
+    for must in ["spawn_managed", "spawn_managed_cmd"] {
         assert!(
             entries.iter().any(|e| e == must),
             "派生出来的入口名单里没有 `{must}` —— 要么它搬家/改名了（那 `SITES` 第三列该跟着改），\

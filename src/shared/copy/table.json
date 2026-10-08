@@ -16213,24 +16213,6 @@
       "zh": "读取访问权限失败 · Windows 错误码 {rc}",
       "args": ["rc"]
     },
-    "credsPerm.windowsSetOwnerOnlyDacl.failed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "设为仅本人可读失败 · Windows 错误码 {rc}",
-      "args": ["rc"]
-    },
-    "credsPerm.windowsSetOwnerOnlyDacl.noList": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "设为仅本人可读失败",
-      "args": []
-    },
-    "credsPerm.windowsSetOwnerOnlyDacl.parse": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "设为仅本人可读失败 · {e}",
-      "args": ["e"]
-    },
     "credsPerm.currentUserSid.noToken": {
       "kind": "error",
       "role": "原因格",
@@ -16242,18 +16224,6 @@
       "role": "报错",
       "zh": "建仅本人可读的文件失败 · 不支持此系统 · {path}",
       "args": ["path"]
-    },
-    "credsPerm.makePrivate.unsupported": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "设 {path} 仅本人可读失败 · 不支持",
-      "args": ["path"]
-    },
-    "credsPerm.makePrivate.failed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "设凭据文件仅本人可读失败 · {e}",
-      "args": ["e"]
     },
     "credsPerm.probe.unsupported": {
       "kind": "error",
