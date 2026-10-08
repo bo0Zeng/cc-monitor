@@ -288,7 +288,7 @@ fn current_user_sid() -> Result<String, String> {
         let _ = CloseHandle(token);
         got.map_err(|e| {
             copy_text(
-                "credsPerm.currentUserSid.noUser",
+                "credsPerm.currentUserSid.noToken",
                 &[("e", &(e.message()).to_string())],
             )
         })?;
@@ -296,16 +296,13 @@ fn current_user_sid() -> Result<String, String> {
         let mut s = PWSTR::null();
         ConvertSidToStringSidW(tu.User.Sid, &mut s).map_err(|e| {
             copy_text(
-                "credsPerm.currentUserSid.toText",
+                "credsPerm.currentUserSid.noToken",
                 &[("e", &(e.message()).to_string())],
             )
         })?;
-        let out = s.to_string().map_err(|e| {
-            copy_text(
-                "credsPerm.currentUserSid.notUtf16",
-                &[("e", &e.to_string())],
-            )
-        })?;
+        let out = s
+            .to_string()
+            .map_err(|e| copy_text("credsPerm.currentUserSid.noToken", &[("e", &e.to_string())]))?;
         let _ = LocalFree(HLOCAL(s.0 as *mut core::ffi::c_void));
         Ok(out)
     }

@@ -235,7 +235,7 @@
     "peerVersion.said.old": {
       "kind": "error",
       "role": "报错",
-      "zh": "{machine} 的后端版本旧，需要更新",
+      "zh": "{machine} 要更新",
       "args": ["machine"]
     },
     "peerVersion.said.unreadable": {
@@ -1559,13 +1559,13 @@
     "credsStore.error.notObject": {
       "kind": "error",
       "role": "报错",
-      "zh": "凭据文件 {path} 的顶层要是一个对象 {shape}，没有动它。",
+      "zh": "凭据文件 {path} 的顶层须是对象 {shape} · 未改动",
       "args": ["path", "shape"]
     },
     "credsStore.template.note": {
       "kind": "body",
       "role": "说明",
-      "zh": "把第三方 API key 填进 {keyField}。这份文件可以直接用编辑器改，改完下次读就生效；也可以整份换成另一份 JSON。别的键程序不会动。",
+      "zh": "第三方 API key 填进 {keyField}；可直接用编辑器改 · 下次读取即生效 · 也可整份换成另一份 JSON · 其余键程序不动",
       "args": ["keyField"]
     },
     "credsStore.template.noteAccounts": {
@@ -2038,7 +2038,7 @@
     "deploy.refused.notPromisedLocal": {
       "kind": "error",
       "role": "报错",
-      "zh": "本机后端没有起：{machine} 是 {os} / {arch}，cc-monitor 不支持这种机器。",
+      "zh": "本机后端未运行 · {machine} 是 {os} / {arch} · cc-monitor 不支持",
       "args": ["machine", "os", "arch"]
     },
     "deploy.refused.notCarried": {
@@ -2308,7 +2308,7 @@
     "ccBus.online.notInstalled": {
       "kind": "error",
       "role": "报错",
-      "zh": "查询 {id} 在线状态失败 · 找不到 cc-bus · {detail}",
+      "zh": "查询 {id} 在线状态失败 · 未装 · 找不到 cc-bus · {detail}",
       "args": ["id", "detail"]
     },
     "ccBus.online.timedOut": {
@@ -2334,10 +2334,7 @@
       "role": "报错",
       "zh": "{id} 在线状态未知 · 不在 {machine} 的总线名单 · 或该机查不到 tmux",
       "args": ["id", "machine"],
-      "limited": ["tmux"],
-      "waive": {
-        "C-W14": "列出查不到的两种可能，tmux 那半是查不到，不是没装 / 启动失败"
-      }
+      "limited": ["tmux"]
     },
     "ccBus.read.notInstalled": {
       "kind": "error",
@@ -2420,7 +2417,7 @@
     "ccBus.send.notInstalled": {
       "kind": "error",
       "role": "报错",
-      "zh": "发给 {id} 失败 · 找不到 cc-bus · {detail}",
+      "zh": "发给 {id} 失败 · 未装 · 找不到 cc-bus · {detail}",
       "args": ["id", "detail"]
     },
     "ccBus.send.rejected": {
@@ -2486,7 +2483,7 @@
     "ccBus.kill.notInstalled": {
       "kind": "error",
       "role": "报错",
-      "zh": "收掉 {id} 失败 · 找不到 cc-bus · {detail}",
+      "zh": "收掉 {id} 失败 · 未装 · 找不到 cc-bus · {detail}",
       "args": ["id", "detail"]
     },
     "ccBus.kill.timedOut": {
@@ -2619,19 +2616,13 @@
       "kind": "body",
       "role": "toast",
       "zh": "已广播 · 在线 {sent} · 跳过离线 {skipped}",
-      "args": ["sent", "skipped"],
-      "waive": {
-        "C-W14": "计数格的名字（跳过的离线机器数），不是离线状态句"
-      }
+      "args": ["sent", "skipped"]
     },
     "ccBus.broadcast.doneFailed": {
       "kind": "body",
       "role": "toast",
       "zh": "已广播 · 在线 {sent} · 跳过离线 {skipped} · 失败 {failed} · {who}",
-      "args": ["sent", "skipped", "failed", "who"],
-      "waive": {
-        "C-W14": "计数格的名字（跳过的离线机器数），不是离线状态句"
-      }
+      "args": ["sent", "skipped", "failed", "who"]
     },
     "ccBus.broadcast.doneUnknown": {
       "kind": "body",
@@ -2906,7 +2897,7 @@
     "gridMonitor.renderBadges.agentsLabel": {
       "kind": "body",
       "role": "状态",
-      "zh": "agent 在跑 {runningAgents}",
+      "zh": "在跑 · agent {runningAgents}",
       "args": ["runningAgents"]
     },
     "gridMonitor.groups.local": {
@@ -3566,7 +3557,7 @@
     "chanCaller.said.withdrawnRunsOn": {
       "kind": "body",
       "role": "说明",
-      "zh": "这次查询已撤回；那台机器停不了它，它可能还在跑",
+      "zh": "查询已撤回 · 该机无法停止它 · 可能仍在跑",
       "args": []
     },
     "chanCaller.said.unreachable": {
@@ -3699,7 +3690,10 @@
       "kind": "action",
       "role": "按钮",
       "zh": "搜索命令或会话",
-      "args": []
+      "args": [],
+      "waive": {
+        "C-W15": "键位表 / 命令面板里的动作名"
+      }
     },
     "keybindingActions.app.history": {
       "kind": "action",
@@ -3723,7 +3717,10 @@
       "kind": "action",
       "role": "按钮",
       "zh": "过程默认展开 / 折起",
-      "args": []
+      "args": [],
+      "waive": {
+        "C-W15": "键位表 / 命令面板里的动作名"
+      }
     },
     "keybindingActions.session.prevTurn": {
       "kind": "action",
@@ -3957,7 +3954,10 @@
       "kind": "action",
       "role": "按钮",
       "zh": "关闭已结束的标签页",
-      "args": []
+      "args": [],
+      "waive": {
+        "C-W15": "键位表 / 命令面板里的动作名"
+      }
     },
     "remoteLaunchRun.copyFallback.failedManual": {
       "kind": "error",
@@ -4030,7 +4030,7 @@
     "remoteLaunchRun.copyFallback.noWindowManual": {
       "kind": "body",
       "role": "说明",
-      "zh": "本机不开终端窗口，请手动复制以下命令",
+      "zh": "本机不开终端窗口 · 手动复制以下命令",
       "args": []
     },
     "remoteLaunchRun.copyFallback.noWindowCopied": {
@@ -4645,7 +4645,7 @@
     "front.title.badShape": {
       "kind": "title",
       "role": "标题",
-      "zh": "未切换 · 内容无法解析",
+      "zh": "切换失败 · 内容无法解析",
       "args": []
     },
     "front.body.several": {
@@ -4832,7 +4832,7 @@
     "tabSessionActions.openCwd.body": {
       "kind": "error",
       "role": "报错",
-      "zh": "这个会话在远端机器 [{machine}]，工作目录 {cwd} 不在本机；{why}。",
+      "zh": "会话在远端 [{machine}] · 工作目录 {cwd} 不在本机 · {why}",
       "args": ["machine", "cwd", "why"]
     },
     "tabSessionActions.openCwd.title": {
@@ -4978,7 +4978,7 @@
     "accountChip.label.backendOld": {
       "kind": "body",
       "role": "状态",
-      "zh": "后端要更新",
+      "zh": "要更新",
       "args": []
     },
     "accountChip.label.queryFailed": {
@@ -5015,7 +5015,10 @@
       "kind": "action",
       "role": "按钮",
       "zh": "设 {name} 为默认账号{current}",
-      "args": ["name", "current"]
+      "args": ["name", "current"],
+      "waive": {
+        "C-W15": "带账号名（用户起的名字）"
+      }
     },
     "accountCommands.setDefault.isCurrent": {
       "kind": "body",
@@ -5489,7 +5492,7 @@
     "sessionReads.missing.facts": {
       "kind": "error",
       "role": "报错",
-      "zh": "缺了几格、多了几格，或有一格类型不对",
+      "zh": "缺格、多格或某格类型不对",
       "args": []
     },
     "sessionReads.missing.indexRow": {
@@ -5609,7 +5612,7 @@
     "tabStreamView.sentinel.failed": {
       "kind": "body",
       "role": "说明",
-      "zh": "更早消息读取失败 · {reason}",
+      "zh": "读取失败 · 更早消息 · {reason}",
       "args": ["reason"]
     },
     "tabStreamView.sentinel.loading": {
@@ -6690,7 +6693,7 @@
     "profilesPage.form.stale": {
       "kind": "error",
       "role": "报错",
-      "zh": "保存失败 · 配置文件已在别处改过 · 填写内容保留",
+      "zh": "保存失败 · 已在别处改过 · 填写内容保留",
       "args": []
     },
     "profilesPage.form.titleEdit": {
@@ -6710,20 +6713,14 @@
       "role": "标签",
       "zh": "tmux · 以名为底取名",
       "args": [],
-      "limited": ["tmux"],
-      "waive": {
-        "C-W14": "字段标签点名 tmux 会话名，不是 tmux 缺失 / 启动失败那一族"
-      }
+      "limited": ["tmux"]
     },
     "profilesPage.form.tmuxName": {
       "kind": "control",
       "role": "标签",
       "zh": "tmux 会话名",
       "args": [],
-      "limited": ["tmux"],
-      "waive": {
-        "C-W14": "字段标签点名 tmux 会话名，不是 tmux 缺失 / 启动失败那一族"
-      }
+      "limited": ["tmux"]
     },
     "profilesPage.form.noTmux": {
       "kind": "body",
@@ -6737,10 +6734,7 @@
       "role": "标签",
       "zh": "tmux · 名称固定",
       "args": [],
-      "limited": ["tmux"],
-      "waive": {
-        "C-W14": "字段标签点名 tmux 会话名，不是 tmux 缺失 / 启动失败那一族"
-      }
+      "limited": ["tmux"]
     },
     "profilesPage.form.unnamed": {
       "kind": "body",
@@ -7196,7 +7190,7 @@
     "restartNow.bar.action": {
       "kind": "action",
       "role": "按钮",
-      "zh": "现在重启",
+      "zh": "立即重启",
       "args": []
     },
     "restartNow.dialog.title": {
@@ -7704,7 +7698,7 @@
     "settingsPanel.safeBlock.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "此区块读取失败 · {e}",
+      "zh": "读取失败 · 此区块 · {e}",
       "args": ["e"]
     },
     "settingsPanel.dataDir.resetHint": {
@@ -7811,10 +7805,7 @@
       "role": "标签",
       "zh": "恢复到 tmux 里",
       "args": [],
-      "limited": ["tmux"],
-      "waive": {
-        "C-W14": "开关说恢复到 tmux 里，不是 tmux 缺失 / 启动失败那一族"
-      }
+      "limited": ["tmux"]
     },
     "settingsPanel.behavior.resumeInTmuxHelp": {
       "kind": "body",
@@ -8045,7 +8036,7 @@
     "settingsPanel.open.partialFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "部分设置读取失败 · {e}",
+      "zh": "读取失败 · 部分设置 · {e}",
       "args": ["e"]
     },
     "settingsPanel.nav.data": {
@@ -8793,7 +8784,7 @@
     "remote.build.empty": {
       "kind": "body",
       "role": "空态",
-      "zh": "无远端机器 · 用上方「+ 添加机器」或从 ssh config 导入",
+      "zh": "无远端机器 · 用上方「添加机器」或从 ssh config 导入",
       "args": [],
       "limited": ["SSH"]
     },
@@ -8898,7 +8889,10 @@
       "kind": "action",
       "role": "按钮",
       "zh": "在文件夹中显示",
-      "args": []
+      "args": [],
+      "waive": {
+        "C-W15": "系统惯用的固定动作名（在文件夹中显示）"
+      }
     },
     "diagnostics.files.output": {
       "kind": "control",
@@ -8915,7 +8909,7 @@
     "diagnostics.files.remote": {
       "kind": "body",
       "role": "说明",
-      "zh": "远端输出 · 机器 ⋯ → 这台上的 cc-monitor → 最近输出",
+      "zh": "远端输出 · 机器 ⋯ → 该机的 cc-monitor → 最近输出",
       "args": [],
       "waive": {
         "C-W1": "⋯ 指认机器行上同形的那个菜单按钮"
@@ -9099,7 +9093,10 @@
       "kind": "action",
       "role": "按钮",
       "zh": "在文件夹中显示",
-      "args": []
+      "args": [],
+      "waive": {
+        "C-W15": "系统惯用的固定动作名（在文件夹中显示）"
+      }
     },
     "data.item.inLogsPage": {
       "kind": "body",
@@ -9122,13 +9119,16 @@
     "data.note.classes": {
       "kind": "body",
       "role": "说明",
-      "zh": "标着「可随手删」的下次用到时会重建；标着「删了会丢」的是你设过的东西。",
-      "args": []
+      "zh": "标「可随手删」的下次用到时重建；标「删除即丢失」的是你设过的东西",
+      "args": [],
+      "waive": {
+        "C-W13": "「」里是本页条目上的分类标签（data.class.*）"
+      }
     },
     "data.note.howToClear": {
       "kind": "body",
       "role": "说明",
-      "zh": "这些数据。想彻底清除（星标、颜色配置、界面缓存等）请手动删除上面的目录。",
+      "zh": "这些数据；要彻底清除（星标、颜色配置、界面缓存等）就手动删除上面的目录；",
       "args": []
     },
     "data.note.notCleared": {
@@ -9158,7 +9158,7 @@
     "data.card.webviewHint": {
       "kind": "title",
       "role": "标题",
-      "zh": "由系统的网页引擎管理，含缓存、本地存储、IndexedDB 和 cookies",
+      "zh": "系统网页引擎管理 · 缓存与本地存储",
       "args": []
     },
     "data.card.webview": {
@@ -9218,7 +9218,7 @@
     "backend.status.unknown": {
       "kind": "body",
       "role": "状态",
-      "zh": "状态未知",
+      "zh": "状态不明",
       "args": []
     },
     "backend.status.notConnected": {
@@ -13183,7 +13183,7 @@
     "backendPolicy.exit.selfDies": {
       "kind": "body",
       "role": "说明",
-      "zh": "关 = 不主动停止 · 断开后自行退出",
+      "zh": "关 = 不主动停止 · 掉线后自行退出",
       "args": []
     },
     "backendPolicy.exit.unreadable": {
@@ -13751,7 +13751,7 @@
     "newSession.place.noTmux": {
       "kind": "body",
       "role": "说明",
-      "zh": "无 tmux · 仅终端窗口",
+      "zh": "仅终端窗口 · 无 tmux",
       "args": [],
       "limited": ["tmux"]
     },
@@ -14026,7 +14026,7 @@
     "contextLimits.editor.badLine": {
       "kind": "error",
       "role": "报错",
-      "zh": "行 {n} 写法不对 · 未保存\n每行「模型名片段 = 正整数」 · 改好离开此格即存",
+      "zh": "行 {n} 写法不对 · 未保存\n每行格式 模型名片段 = 正整数 · 改好离开此格即存",
       "args": ["n"]
     },
     "contextLimits.editor.loadFailed": {
@@ -16238,31 +16238,13 @@
     "credsPerm.windowsSetOwnerOnlyDacl.noList": {
       "kind": "error",
       "role": "原因格",
-      "zh": "设不了只给本人读的访问权限",
+      "zh": "设为仅本人可读失败",
       "args": []
     },
     "credsPerm.windowsSetOwnerOnlyDacl.parse": {
       "kind": "error",
       "role": "报错",
-      "zh": "设不了只给本人读的访问权限：{e}",
-      "args": ["e"]
-    },
-    "credsPerm.currentUserSid.notUtf16": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "当前用户的身份不是合法文字：{e}",
-      "args": ["e"]
-    },
-    "credsPerm.currentUserSid.toText": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "当前用户的身份转不成文字：{e}",
-      "args": ["e"]
-    },
-    "credsPerm.currentUserSid.noUser": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "取不到当前用户的身份：{e}",
+      "zh": "设为仅本人可读失败 · {e}",
       "args": ["e"]
     },
     "credsPerm.currentUserSid.noToken": {
@@ -16280,13 +16262,13 @@
     "credsPerm.makePrivate.unsupported": {
       "kind": "error",
       "role": "报错",
-      "zh": "这个系统上不知道怎么把 {path} 收成只给本人读，没做到。",
+      "zh": "设 {path} 仅本人可读失败 · 不支持",
       "args": ["path"]
     },
     "credsPerm.makePrivate.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "把凭据文件收成只给本人读失败：{e}",
+      "zh": "设凭据文件仅本人可读失败 · {e}",
       "args": ["e"]
     },
     "credsPerm.probe.unsupported": {
@@ -16389,7 +16371,10 @@
       "kind": "error",
       "role": "报错",
       "zh": "上次的账号 {name} 不可用 · 不换号无法续 · 未恢复\n点此提示改用「不指定账号」启动",
-      "args": ["name"]
+      "args": ["name"],
+      "waive": {
+        "C-W13": "「」里是账号选单里那一项（不指定账号）的名字"
+      }
     },
     "accountPick.refused.explicitGoneToCurrent": {
       "kind": "error",
@@ -16401,13 +16386,19 @@
       "kind": "error",
       "role": "报错",
       "zh": "{name} 不可用 · 未启动\n点此提示改用「不指定账号」启动",
-      "args": ["name"]
+      "args": ["name"],
+      "waive": {
+        "C-W13": "「」里是账号选单里那一项（不指定账号）的名字"
+      }
     },
     "accountPick.refused.listUnknown": {
       "kind": "error",
       "role": "报错",
       "zh": "读取 {machine} 的账号清单失败 · 账号 {name} 是否可用不明 · 未启动\n点此提示改用「不指定账号」启动",
-      "args": ["machine", "name"]
+      "args": ["machine", "name"],
+      "waive": {
+        "C-W13": "「」里是账号选单里那一项（不指定账号）的名字"
+      }
     },
     "events.stream.closedTitle": {
       "kind": "error",
@@ -19047,10 +19038,7 @@
       "kind": "body",
       "role": "说明",
       "zh": "{state} · 勾选后换成此版本",
-      "args": ["state"],
-      "waive": {
-        "C-W14": "说勾选后换成此行这一份，不是版本新旧的结论"
-      }
+      "args": ["state"]
     },
     "extPage.install.kept": {
       "kind": "body",
@@ -20255,7 +20243,7 @@
     "history.row.bgHint": {
       "kind": "body",
       "role": "说明",
-      "zh": "分身会话 · 继续请恢复主会话",
+      "zh": "分身会话 · 继续须恢复主会话",
       "args": []
     },
     "history.row.more": {
@@ -21075,7 +21063,7 @@
     "acct.text.readFail": {
       "kind": "error",
       "role": "报错",
-      "zh": "用量记录读取失败",
+      "zh": "读取失败 · 用量记录 · 原因不明",
       "args": []
     },
     "acct.text.onlyQuota": {
@@ -21213,7 +21201,7 @@
     "acct.now.readFail": {
       "kind": "error",
       "role": "报错",
-      "zh": "用量记录读取失败",
+      "zh": "读取失败 · 用量记录 · 原因不明",
       "args": []
     },
     "acct.now.retry": {
@@ -21830,13 +21818,13 @@
     "acct.sw.failRestart": {
       "kind": "error",
       "role": "报错",
-      "zh": "重启切换失败 · 原会话保留 · {reason}",
+      "zh": "重启切换失败 · {reason} · 原会话保留",
       "args": ["reason"]
     },
     "acct.sw.failRestartEnded": {
       "kind": "error",
       "role": "报错",
-      "zh": "重启切换失败 · 原会话{ended} · {reason}",
+      "zh": "重启切换失败 · {reason} · 原会话{ended}",
       "args": ["ended", "reason"]
     },
     "acct.sw.resume": {
@@ -21999,7 +21987,10 @@
       "kind": "action",
       "role": "按钮",
       "zh": "切到 {name} · 按量",
-      "args": ["name"]
+      "args": ["name"],
+      "waive": {
+        "C-W15": "带账号名（用户起的名字）"
+      }
     },
     "acct.tab.blocked": {
       "kind": "body",
@@ -22035,7 +22026,10 @@
       "kind": "action",
       "role": "按钮",
       "zh": "新会话默认账号…",
-      "args": []
+      "args": [],
+      "waive": {
+        "C-W15": "命令面板项（标题与搜索词同一条）"
+      }
     },
     "acct.tl.title": {
       "kind": "title",
@@ -23166,7 +23160,7 @@
     "usageHud.panel.unavailable": {
       "kind": "error",
       "role": "报错",
-      "zh": "会话信息读取失败",
+      "zh": "读取失败 · 会话信息 · 原因不明",
       "args": []
     },
     "usageHud.panel.retry": {
@@ -23271,7 +23265,7 @@
     "findStrip.status.busy": {
       "kind": "body",
       "role": "状态",
-      "zh": "查找中…",
+      "zh": "查找中",
       "args": []
     },
     "findStrip.status.unavailable": {
@@ -23940,7 +23934,7 @@
     "machineList.menu.cc": {
       "kind": "action",
       "role": "菜单项",
-      "zh": "这台上的 cc-monitor…",
+      "zh": "该机的 cc-monitor…",
       "args": []
     },
     "machineList.menu.remove": {
@@ -24141,7 +24135,7 @@
     "addMachine.err.save": {
       "kind": "error",
       "role": "报错",
-      "zh": "保存失败 · 配置已被别处修改 · 已刷新",
+      "zh": "保存失败 · 已在别处改过 · 已刷新",
       "args": []
     },
     "addMachine.action.ssh": {
@@ -24364,10 +24358,7 @@
       "kind": "body",
       "role": "片段",
       "zh": "版本 {ver}",
-      "args": ["ver"],
-      "waive": {
-        "C-W14": "版本号读数，不是版本旧 / 不可比的结论"
-      }
+      "args": ["ver"]
     },
     "machineList.summary.single": {
       "kind": "body",
@@ -24469,16 +24460,16 @@
       "kind": "body",
       "role": "片段",
       "zh": "版本 {ver} · {state}",
-      "args": ["ver", "state"],
-      "waive": {
-        "C-W14": "版本号读数，不是版本旧 / 不可比的结论"
-      }
+      "args": ["ver", "state"]
     },
     "machineState.down.resolve": {
       "kind": "body",
       "role": "说明",
       "zh": "连接失败 · 地址无法解析",
-      "args": []
+      "args": [],
+      "waive": {
+        "C-W14": "原因词「地址无法解析」（域名解析不了），不是内容读不懂那一族"
+      }
     },
     "machineState.down.unreachable": {
       "kind": "body",
@@ -24513,7 +24504,7 @@
     "machineState.down.jump": {
       "kind": "body",
       "role": "片段",
-      "zh": "连接失败 · 跳板离线",
+      "zh": "连接失败 · 跳板机不通",
       "args": []
     },
     "machineState.down.local": {
@@ -24881,7 +24872,7 @@
     "acctNew.import.toggle": {
       "kind": "action",
       "role": "按钮",
-      "zh": "导入已有登录 · 免登录",
+      "zh": "导入已有登录",
       "args": []
     },
     "acctNew.import.label": {
@@ -24894,7 +24885,10 @@
       "kind": "control",
       "role": "标签",
       "zh": "~/.claude/.credentials.json",
-      "args": []
+      "args": [],
+      "waive": {
+        "C-W15": "路径示例本身，截短就不是那个路径"
+      }
     },
     "acctNew.form.cancel": {
       "kind": "action",
@@ -25396,10 +25390,7 @@
       "role": "按钮",
       "zh": "tmux 里登录",
       "args": [],
-      "limited": ["tmux"],
-      "waive": {
-        "C-W14": "按钮说登录在 tmux 里跑，不是 tmux 缺失 / 启动失败那一族"
-      }
+      "limited": ["tmux"]
     },
     "acctPage.login.reopen": {
       "kind": "action",
@@ -25592,7 +25583,10 @@
       "kind": "action",
       "role": "按钮",
       "zh": "收起 / 展开标签页栏",
-      "args": []
+      "args": [],
+      "waive": {
+        "C-W15": "键位表 / 命令面板里的动作名"
+      }
     },
     "keybindingActions.app.ccBus": {
       "kind": "action",
@@ -26186,7 +26180,7 @@
     "firstRun.terminal.hint": {
       "kind": "body",
       "role": "说明",
-      "zh": "终端里 ccm 启动的会话出现在 cc-monitor",
+      "zh": "终端里 ccm 启动的会话会显示在 cc-monitor",
       "args": [],
       "limited": ["ccm"]
     },
