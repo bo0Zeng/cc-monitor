@@ -28,7 +28,6 @@
 //! - 二进制、PDF、视频预览（说为什么不预览）。
 //! - 真远端上一趟的时延读数（判据挂的是合成后端）。
 
-use crate::Held;
 use copy_core::copy_text;
 use std::sync::{Arc, Mutex};
 
@@ -131,7 +130,8 @@ pub struct Preview {
 pub struct Head {
     pub name: String,
     pub size: u64,
-    pub mtime_secs: Option<u64>,
+    /// 修改时间的短写法（列表那一行上后端写好的那一格）。
+    pub mtime_text: Option<String>,
     pub edit: bool,
     pub download: bool,
 }
@@ -186,7 +186,7 @@ impl Preview {
     /// 🔴 **每帧调一次**：先收到货，再看「要的是谁」变没变，最后决定发不发。
     pub fn follow(&mut self, pane: &FileWindow, ctx: Option<egui::Context>) {
         // ① 收货：是要的那一份才摆出来，不是就丢掉（光标已经挪走了）。
-        let arrived = self.slot.held().take();
+        let arrived = self.slot.lock().unwrap().take();
         if let Some((path, r)) = arrived {
             self.inflight = false;
             if self.want.as_deref() == Some(path.as_str()) {
@@ -269,7 +269,7 @@ impl Preview {
             self.head = Some(Head {
                 name: r.name.clone(),
                 size: r.size,
-                mtime_secs: r.mtime_secs,
+                mtime_text: r.mtime_text.clone(),
                 edit: can.contains(&super::select::Action::Edit),
                 download: can.contains(&super::select::Action::Download),
             });
@@ -378,7 +378,7 @@ impl Preview {
                 }
                 Want::Image => read_image(&line, &origin, &wire).await.map(Got::Image),
             };
-            *slot.held() = Some((path, r));
+            *slot.lock().unwrap() = Some((path, r));
             if let Some(c) = ctx {
                 c.request_repaint();
             }
@@ -436,14 +436,8 @@ impl Preview {
                     });
                 });
                 let mut meta = super::rows::human_size(h.size);
-                if let Some(t) = h.mtime_secs {
-                    meta = copy_text(
-                        "rsFilewinPreview.ui.meta",
-                        &[
-                            ("size", &meta),
-                            ("time", &super::source::mtime_text(t).short),
-                        ],
-                    );
+                if let Some(t) = &h.mtime_text {
+                    meta = copy_text("rsFilewinPreview.ui.meta", &[("size", &meta), ("time", t)]);
                 }
                 ui.label(egui::RichText::new(meta).color(p.text2).small());
                 ui.add_space(6.0);

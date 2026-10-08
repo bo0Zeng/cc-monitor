@@ -126,6 +126,12 @@ pub struct Listed {
     /// 两者刻意不混：SFTP 那条退路交不出它（`SftpEntry` 里没有这一格），
     /// 而「后端送了一个 0」是 1970 年，那是一个真时间。
     pub mtime_secs: Option<u64>,
+    /// 修改时间画出来的样子：列里那一格（短）与悬停 / 属性里的完整那一格 —— 那台后端按它的本地钟写好（`files-ls` 的
+    /// `mtime_text` · `mtime_full`），窗口照抄、不换算。没送 ⇒ `None`（同 `mtime_secs`：不画编出来的字）。
+    #[serde(default)]
+    pub mtime_text: Option<String>,
+    #[serde(default)]
+    pub mtime_full: Option<String>,
     /// **有损名的原始字节**（名字那一段，不是整条路径）；名字是合法 UTF-8 ⇒ `None`。
     ///
     /// 窗口的路径是字符串，非 UTF-8 的名字经有损解码之后**寻址不到**（U+FFFD 不是那个字节）。
@@ -151,6 +157,8 @@ impl Listed {
             link: false,
             link_dir: false,
             mtime_secs: None,
+            mtime_text: None,
+            mtime_full: None,
             raw_name: None,
             link_broken: false,
         }
@@ -533,9 +541,11 @@ pub fn local_offset_at(secs: i64) -> i64 {
         .map_or(0, |t| i64::from(t.offset().fix().local_minus_utc()))
 }
 
-/// 按**本机**的本地时间画（换算只在画的那一刻做，后端送的是原值、排序用的也是原值）。
+/// 按**本机**的本地时间画 —— 只给**这台自己的事**用：窗口自己记下的时刻（保存于 · 断线于 · 一件传输收尾于）
+/// 与这台盘上的文件（上传撞名那张表「这台」那一格）。
 ///
-/// ⚠ 这是远端那台机器上的文件时间按你面前这台的时区读 —— 与远端自己的时区无关。
+/// ⚠ 那台后端送来的文件时间**不走这里**：列表 · 搜索结果 · 属性 · 预览 · 撞名表「那台」那一格都照抄后端写好的
+/// `mtime_text` / `mtime_full`。
 pub fn mtime_text(secs: u64) -> MtimeText {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -723,6 +733,8 @@ pub const CMD_LS: &str = "files-ls";
 /// | `link_dir`（只在链接上、可能缺） | `link_dir` | 链接且它为真 ⇒ 指向目录；缺 ⇒ 否 |
 /// | `size`（可能缺） | `size` | 缺就是 0（同本机那条：读不到 stat 不整趟失败） |
 /// | `mtime_secs`（可能缺） | `mtime_secs` | 原样带上来；缺就是 `None`（＝**没送**，不是 1970） |
+/// | `mtime_text`（可能缺） | `mtime_text` | 后端按那台本地钟写好的短写法，原样；缺 ⇒ `None` |
+/// | `mtime_full`（可能缺） | `mtime_full` | 后端按那台本地钟写好的完整写法，原样；缺 ⇒ `None` |
 /// | `entries` | 那一屏有几行 | 由 [`rows_from_ls_data`] 摊开 |
 /// | `truncated` | 界面上那句「只拿到了前 N 条」 | 同上 |
 /// | `unreadable` | 界面上那句「有 n 项读不出来」 | 同上；缺 ⇒ 0 |
@@ -776,6 +788,14 @@ pub fn row_from_ls_entry(v: &serde_json::Value) -> Result<Listed, String> {
         // 🔴 原样带上来。缺了就是 `None`（＝**后端没送**）—— 不许兜底成 0，
         //    那是 1970-01-01，一个看起来很像真读数的假时间。
         mtime_secs: v.get("mtime_secs").and_then(serde_json::Value::as_u64),
+        mtime_text: v
+            .get("mtime_text")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_string),
+        mtime_full: v
+            .get("mtime_full")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_string),
         raw_name,
         link_broken: link
             && v.get("link_to").and_then(serde_json::Value::as_str) == Some("missing"),

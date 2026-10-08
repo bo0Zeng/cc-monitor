@@ -660,12 +660,6 @@ pub const EXTRACT_COMMANDS: &[ManageCommand] = &[
         codes: &["bad_args", "bad_path", "io_failed", "refused"],
     },
 ];
-
-/// 本面声明的线上命令名。
-pub fn extract_command_names() -> Vec<&'static str> {
-    EXTRACT_COMMANDS.iter().map(|c| c.name).collect()
-}
-
 fn path_arg(args: &serde_json::Value, key: &str) -> Result<PathBuf, Fail> {
     let bytes = args
         .get(key)

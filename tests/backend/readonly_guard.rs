@@ -2058,14 +2058,31 @@ mod tests {
         );
         reaching.extend(arm_names);
         // 两侧异源照旧：一侧源码文本，一侧是第三层模块**各自**的常量表的并。
-        let want: std::collections::BTreeSet<String> =
-            crate::control::files_write::manage_command_names()
-                .into_iter()
-                .chain(crate::control::files_commit::commit_command_names())
-                .chain(crate::control::files_extract::extract_command_names())
-                .chain(crate::control::transfer::transfer_command_names())
-                .map(str::to_string)
-                .collect();
+        let want: std::collections::BTreeSet<String> = crate::control::files_write::MANAGE_COMMANDS
+            .iter()
+            .map(|c| c.name)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .chain(
+                crate::control::files_commit::COMMIT_COMMANDS
+                    .iter()
+                    .map(|c| c.name)
+                    .collect::<Vec<_>>(),
+            )
+            .chain(
+                crate::control::files_extract::EXTRACT_COMMANDS
+                    .iter()
+                    .map(|c| c.name)
+                    .collect::<Vec<_>>(),
+            )
+            .chain(vec![
+                crate::control::transfer::TRANSFER_UPLOAD,
+                crate::control::transfer::TRANSFER_DOWNLOAD,
+                crate::control::transfer::TRANSFER_START,
+                crate::control::transfer::TRANSFER_STOP,
+            ])
+            .map(str::to_string)
+            .collect();
         assert!(
             !want.is_empty(),
             "写面登记表是空的 —— 下面那条相等在空集上成立"
@@ -3215,6 +3232,15 @@ mod spawn_registry {
             "有别的办法不起进程就读到 PowerShell 7 的执行策略的那天摘掉只读那一种；\
              ⚠ 写的那一种只许是上一条那一句固定脚本，不许收界面给的策略值。",
         ),
+        (
+            "platform/shell/mod.rs",
+            "<非字面量>",
+            "问**起会话那个 shell** 的 `PATH`（`session_shell_path`）：用户的 `$SHELL` 起一次 `-l -i -c`，固定脚本只 `printf` 出 `PATH`，\
+             不吃任何输入、有期限。被起的是用户自己的登录 shell，它读不读 / 写不写什么由用户的 rc 文件定；后端进程自身不写用户数据。\
+             按后端生命周期只问一次（缓存）；只从足迹报告（`footprint-report` · `data-report`）判 agent 命令行装没装、起新会话框（`session-new-facts`）判这台能起哪几家时进来。",
+            "缩性质",
+            "有别的办法拿到用户登录环境的 `PATH` 而不起他的 shell 的那天摘掉。⚠ 脚本只许是打出 `PATH` 那一句。",
+        ),
         // `relay/machine.rs` 那一行（远端起一个脱离的 `--relay`）摘了：中转只住常驻后端进程里，那一处起法随之删。
         (
             "control/session_batch.rs",
@@ -4117,20 +4143,7 @@ mod g6_staged_zero {
             "自己就是那条判据",
             "本 crate",
         ),
-        (
-            "agents/codex/parse.rs",
-            "codex_turn_end_uuid",
-            "backend 生产段里**跨文件消费者 0 个**（今天只有它自己那份文件在提它）",
-            "—",
-            "本 crate",
-        ),
-        (
-            "agents/codex/parse.rs",
-            "is_codex_turn_end",
-            "backend 生产段里**跨文件消费者 0 个**（同上；它在自己文件内被兄弟函数调一次）",
-            "—",
-            "本 crate",
-        ),
+        // `agents/codex/parse.rs` 的 turn-end 那两行**摘了**：函数连同判据删了（零读者判据那一拍）。
         // `plugin/probe.rs::negotiate` 那一行**摘了**：接线那天到了 ——
         //   `control/panorama.rs`（代码全景小程序的能力协商）是它第一个跨文件生产消费者，
         //   下面那条判据当场红，正是这张表承诺的「接线那天该红」。条数 7 → 6。
@@ -4207,11 +4220,11 @@ mod g6_staged_zero {
     /// ★ 正题一：表里每条的住址今天真的在，且那个名字真的还在那份文件里（**幽灵检查**）。
     #[test]
     fn the_staged_zero_registry_has_no_ghost_entries() {
-        // 7 → 6：`negotiate` 接上了生产（见表里那段摘除说明）。
+        // 7 → 6：`negotiate` 接上了生产；6 → 4：codex turn-end 那两个连同判据删了（见表里那段摘除说明）。
         assert_eq!(
             STAGED_ZERO.len(),
-            6,
-            "这一族的登记表从 6 条变成 {} 条了 —— 加成员是好事，\
+            4,
+            "这一族的登记表从 4 条变成 {} 条了 —— 加成员是好事，\
              但每加一条都要说清「被钉的那个零逐字是什么」与「接线那天为什么该红」",
             STAGED_ZERO.len()
         );
@@ -4277,9 +4290,10 @@ mod g6_staged_zero {
             }
         }
         assert_eq!(
-            checked, 3,
+            checked, 1,
             "只核了 {checked} 条「今天没有判据」的欠账（登记时是 3 条，\
-             波 5 ㈢ 09-23 加了 `is_inside_tree` 之后是 4 条，`negotiate` 接上生产摘掉之后回到 3 条）—— \
+             波 5 ㈢ 09-23 加了 `is_inside_tree` 之后是 4 条，`negotiate` 接上生产摘掉之后回到 3 条，\
+             codex turn-end 那两个连同判据删了之后剩 `is_inside_tree` 1 条）—— \
              筛选条件与登记表脱节了，本条在空转"
         );
         assert!(

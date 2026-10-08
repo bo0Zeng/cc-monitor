@@ -108,11 +108,6 @@ fn name_terms(n: &Node, out: &mut Vec<Text>) {
 }
 
 impl Matcher {
-    /// 匹配一切（空白的搜索词）。
-    pub fn is_all(&self) -> bool {
-        matches!(self.root, Node::All)
-    }
-
     /// 这一条（全路径原始字节 ＋ 类型字节）中不中。
     pub fn matches(&self, path: &[u8], kind: u8) -> bool {
         let c = Cand {

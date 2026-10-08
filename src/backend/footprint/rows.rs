@@ -651,6 +651,8 @@ pub struct SurfaceEnv<'a> {
     /// 这条纪律不是新写的：[`resolves_on_path`] 的头注记着它在生产平台上
     /// 曾经「既没取到、又给了一个确定的否定答案」。
     pub path_env: Option<&'a str>,
+    /// 起会话那个 shell 的 `PATH`（[`EnvProbe::InSessionShell`] 那一族按它判）。`None` = 问不出来 ⇒ 「查不动」。
+    pub session_path: Option<&'a str>,
     /// 从哪台机器上看（见 [`Vantage`]）。探针与上面几样必须是**同一台**的。
     pub vantage: Vantage,
 }
@@ -734,20 +736,22 @@ fn observe_unmanaged(
     match probe {
         // `PATH` 上的裸命令。**复用 [`resolves_on_path`]，不新写一个 `which`** ——
         // 它已经把「切分必须走 `split_paths`」与「取不到 PATH 就不猜」两条填好了。
-        EnvProbe::OnPath => {
+        EnvProbe::OnPath | EnvProbe::InSessionShell => {
             let exists = |p: &str| (env.fs.meta)(Path::new(p)).is_some();
-            match resolves_on_path(named, env.path_env, &exists) {
+            let (path, blind) = match probe {
+                EnvProbe::InSessionShell => (
+                    env.session_path,
+                    copy_text("rsConfigSurface.onPath.noSessionPath", &[("named", named)]),
+                ),
+                _ => (
+                    env.path_env,
+                    copy_text("rsConfigSurface.onPath.noPath", &[("named", named)]),
+                ),
+            };
+            match resolves_on_path(named, path, &exists) {
                 // 🔴 **查不动**：`PATH` 读不到。绝不说成「不存在」——
                 // 那会对一台装得好好的机器报假警报（本模块头注那条硬纪律）。
-                None => (
-                    None,
-                    SurfaceState::Undetermined {
-                        why: copy_text(
-                            "rsConfigSurface.onPath.noPath",
-                            &[("named", &named.to_string())],
-                        ),
-                    },
-                ),
+                None => (None, SurfaceState::Undetermined { why: blind }),
                 // **查了、确认没有** —— 这一格才是「缺」，前端据此劝人去装。
                 Some(false) => (None, SurfaceState::Absent),
                 Some(true) => (

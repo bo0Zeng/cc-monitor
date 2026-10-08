@@ -507,6 +507,14 @@ const QUOTE_SITES: &[QuoteRow] = &[
         "",
         "我们那份别名文件的路径",
     ),
+    // 问起会话那个 shell 的 `PATH`：quote 进去的只有一个常量标记（`SESSION_PATH_MARK`），不收任何外来值。
+    (
+        "src/backend/platform/shell/mod.rs",
+        &["login_shell_asking_path"],
+        &[],
+        "",
+        "夹住 `PATH` 的那个常量标记",
+    ),
     // cc-bus 钩子要加的内容：两条钩子指向这台 skills 根下那两个脚本；skills 根不在家目录底下时那条路径整份 quote（是这台后端自己的路径）。
     (
         "src/backend/observe/cc_bus_hooks.rs",

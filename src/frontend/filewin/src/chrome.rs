@@ -4,7 +4,6 @@
 //! 这里只画、只收手势；做事落回 `FileWindow` / `Workspace` 已有的那几个口（换目录 · 新建 · 上传 · 开终端 · 开另一台）。
 //! 历史 · 列宽 · 左栏收起 · 隐藏文件开关都是窗口状态，关窗即没。
 
-use crate::Held;
 use copy_core::copy_text;
 use egui_phosphor::regular as ph;
 use std::sync::{Arc, Mutex};
@@ -409,7 +408,7 @@ impl FileWindow {
 
     /// 「选中的」那一件此刻能不能做：能 ⇒ `None`；不能 ⇒ 悬停说的那一句（没选中 · 这几项做不了 · 这台做不到）。
     pub fn command_blocked(&self, a: super::select::Action) -> Option<String> {
-        let rows = self.listing.rows.held();
+        let rows = self.listing.rows.lock().unwrap();
         let idx = self.selection().picked_indices(&rows);
         if idx.is_empty() {
             return Some(copy_text("rsFilewinChrome.command.pickFirst", &[]));
@@ -665,8 +664,8 @@ impl FileWindow {
         let mut s = match self.search.total().filter(|_| self.showing_hits()) {
             Some(n) => copy_text("rsFilewinChrome.status.hits", &[("n", &n.to_string())]),
             None => {
-                let n = self.listing.rows.held().len();
-                let hidden = self.listing.hidden.held().len();
+                let n = self.listing.rows.lock().unwrap().len();
+                let hidden = self.listing.hidden.lock().unwrap().len();
                 if hidden > 0 {
                     copy_text(
                         "rsFilewinChrome.status.countHidden",
@@ -1210,7 +1209,7 @@ impl Workspace {
                 // ── 这台机器（小标题就写机器名）──
                 ui.add_space(8.0);
                 section(ui, self.pane_on(f).source.label());
-                let home = self.home.0.held().clone();
+                let home = self.home.0.lock().unwrap().clone();
                 let (mark, tip) = match &home {
                     HomeState::Known(h) => (SideMark::None, h.clone()),
                     HomeState::Failed(why) => {
@@ -1285,10 +1284,10 @@ impl Workspace {
         let pane = self.pane_on(0);
         let slot = self.home.0.clone();
         let (Some(h), Some(line)) = (pane.rt.clone(), pane.line.clone()) else {
-            *slot.held() = HomeState::Failed(super::shell::NO_LINE.to_string());
+            *slot.lock().unwrap() = HomeState::Failed(super::shell::NO_LINE.to_string());
             return;
         };
-        *slot.held() = HomeState::Asking;
+        *slot.lock().unwrap() = HomeState::Asking;
         let origin = pane.source.origin();
         h.spawn(async move {
             let got = super::source::ask(
@@ -1300,7 +1299,7 @@ impl Workspace {
             )
             .await
             .and_then(|d| super::source::home_from_reply(&d));
-            *slot.held() = match got {
+            *slot.lock().unwrap() = match got {
                 Ok(home) => HomeState::Known(home),
                 Err(e) => HomeState::Failed(e),
             };
@@ -1312,7 +1311,7 @@ impl Workspace {
 
     /// 家目录问到了吗（判据用：`Some(Ok(路径))` · `Some(Err(原话))` · `None` ＝ 还没问到）。
     pub fn home_known(&self) -> Option<Result<String, String>> {
-        match self.home.0.held().clone() {
+        match self.home.0.lock().unwrap().clone() {
             HomeState::Known(h) => Some(Ok(h)),
             HomeState::Failed(e) => Some(Err(e)),
             _ => None,
@@ -1332,7 +1331,7 @@ impl Workspace {
             return false;
         };
         let slot = self.other.clone();
-        *slot.held() = None;
+        *slot.lock().unwrap() = None;
         let origin = super::source::Origin(machine.to_string());
         let what = machine.to_string();
         self.set_notice(copy_text(
@@ -1349,7 +1348,7 @@ impl Workspace {
             )
             .await
             .map(|_| ());
-            *slot.held() = Some(got);
+            *slot.lock().unwrap() = Some(got);
             if let Some(c) = ctx {
                 c.request_repaint();
             }
@@ -1359,7 +1358,7 @@ impl Workspace {
 
     /// 「其他机器」那一问落地了 ⇒ 成了不出声（新窗口自己出现就是回应），没成把原话摆在命令栏上。
     pub fn settle_other(&mut self) {
-        let got = self.other.held().take();
+        let got = self.other.lock().unwrap().take();
         match got {
             Some(Ok(())) => self.set_notice_none(),
             Some(Err(e)) => self.set_notice(e),

@@ -149,6 +149,30 @@ pub(crate) fn ms_hm_here(ms: i64) -> String {
     hm(local_secs(ms.div_euclid(1_000)))
 }
 
+/// 文件的修改时间（本地钟秒数；`today` ＝ 本地今天是第几天）⇒ `(列里那一格, 完整那一格)`：
+/// 今天 `15:01` · 今年 `10-02` · 往年 `2025-12-31`；完整 `2026-10-02 15:01:23`。
+pub(crate) fn mtime_texts(local: i64, today: i64) -> (String, String) {
+    let day = local.div_euclid(DAY);
+    let (y, m, d) = civil_from_days(day);
+    let short = if day == today {
+        hm(local)
+    } else if y == civil_from_days(today).0 {
+        format!("{m:02}-{d:02}")
+    } else {
+        format!("{y:04}-{m:02}-{d:02}")
+    };
+    (short, format!("{y:04}-{m:02}-{d:02} {}", hms(local)))
+}
+
+/// [`mtime_texts`] 按这台此刻的本地钟（`files-ls` · `files-stat` 回包那一下）。
+pub(crate) fn mtime_texts_here(secs: u64) -> (String, String) {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs() as i64);
+    let today = local_secs(now).div_euclid(DAY);
+    mtime_texts(local_secs(i64::try_from(secs).unwrap_or(i64::MAX)), today)
+}
+
 // ───────── 历史页那几格（入参都是本地钟秒数：调用方先按各自那一刻的偏移排过）─────────
 
 /// 本地钟秒数那一天的 `MM-DD`。

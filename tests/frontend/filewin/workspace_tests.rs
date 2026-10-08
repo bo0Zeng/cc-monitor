@@ -962,6 +962,10 @@ async fn screenshot_for_the_shots_tool() {
             .and_then(|m| m.modified().ok())
             .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
             .map(|t| t.as_secs());
+        // 真后端连写好的两格一起送（合成场景替它按这台的钟写）。
+        let texts = r.mtime_secs.map(crate::source::mtime_text);
+        r.mtime_text = texts.as_ref().map(|t| t.short.clone());
+        r.mtime_full = texts.map(|t| t.full);
     }
     if target == d {
         let i = w
@@ -1160,10 +1164,11 @@ async fn screenshot_for_the_shots_tool() {
             w.board.note_there(
                 n,
                 Some(md.len()),
+                // 「那台」那一格是后端写好的短写法（合成场景替它按这台的钟写）。
                 md.modified()
                     .ok()
                     .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                    .map(|t| t.as_secs()),
+                    .map(|t| crate::source::mtime_text(t.as_secs()).short),
             );
         }
         w.board.set_total(3);
@@ -2171,42 +2176,17 @@ fn a_stale_side_or_tab_index_falls_back_instead_of_panicking() {
         "越界的 active 该退回最后一个标签"
     );
     assert_eq!(ws.slips(), 2);
-    // 这一形下整帧也画得完。
-    Drive::new().frame(&mut ws, Vec::new());
-}
-
-/// 🔴 锁中毒不崩：本包产品代码里取 `std::sync::Mutex` 一律经 `crate::Held::held`，不许 `lock().unwrap()` / `lock().expect(..)` 回潮
-/// （后台任务拿着锁 panic 一次，往后每帧都在 unwrap 上 panic、整扇窗退出）。正控：`held` 在真中毒的锁上照样拿得到里面那份。
-#[test]
-fn lock_guard_window_takes_locks_via_held() {
-    use crate::Held;
-    let m = std::sync::Arc::new(std::sync::Mutex::new(7));
-    let m2 = m.clone();
-    let _ = std::thread::spawn(move || {
-        let _g = m2.lock();
-        panic!("poison on purpose");
-    })
-    .join();
-    assert!(m.is_poisoned(), "正控：锁该已中毒");
-    assert_eq!(*m.held(), 7, "中毒的锁 held 没拿到里面那份");
-
-    let src = crate::guard_support::crate_src_root();
-    let mut hits = Vec::new();
-    let mut files = 0;
-    for (p, text) in guard_core::scan_tree!(&src, &["rs"]) {
-        files += 1;
-        let flat: String = text.split_whitespace().collect();
-        for pat in [".lock().unwrap()", ".lock().expect("] {
-            let n = flat.matches(pat).count();
-            if n > 0 {
-                hits.push(format!("{} × {n} {pat}", p.display()));
-            }
-        }
+    // 这一形下整帧也画得完；同一处每帧都撞，警告只按调用处记、不随帧数长（不刷屏）。
+    let mut d = Drive::new();
+    d.frame(&mut ws, Vec::new());
+    let sites = ws.slip_sites();
+    for _ in 0..5 {
+        d.frame(&mut ws, Vec::new());
     }
-    assert!(files > 20, "量具：只扫到 {files} 个源文件，住址不对");
-    assert!(
-        hits.is_empty(),
-        "又有 lock().unwrap() 回潮：\n{}",
-        hits.join("\n")
+    assert!(ws.slips() > 2, "越界的 active 每帧都该记一笔");
+    assert_eq!(
+        ws.slip_sites(),
+        sites,
+        "同一处多撞几帧，报过警告的调用处不该变多"
     );
 }

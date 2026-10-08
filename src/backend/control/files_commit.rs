@@ -104,12 +104,6 @@ pub const COMMIT_COMMANDS: &[ManageCommand] = &[
         codes: &["bad_args", "bad_path", "io_failed", "refused", "stale"],
     },
 ];
-
-/// 本面命令名（给 `readonly_guard` 第三层那条「门里够得到的命令」对拍用）。
-pub fn commit_command_names() -> Vec<&'static str> {
-    COMMIT_COMMANDS.iter().map(|c| c.name).collect()
-}
-
 /// `key` 合不合法：恰好 [`KEY_LEN`] 位、只有 `0-9a-f`。
 pub fn is_key(key: &str) -> bool {
     key.len() == KEY_LEN

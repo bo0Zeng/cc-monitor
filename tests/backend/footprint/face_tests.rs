@@ -7,7 +7,7 @@
 //!
 //! # 买不到的
 //!
-//! - 🔴 真远端：环境是那台**后端进程**的，不是用户交互 shell 的。
+//! - 🔴 真远端：环境是那台**后端进程**的（agent 命令行那一行按起会话那个 shell 的 `PATH` 判，判据里那一份是夹具，真问登录 shell 那一跳在 `platform/shell_tests.rs`）。
 //! - 真 monitor 那一趟（`footprint_client_facts`）：monitor 侧 `tests/frontend/shell/footprint_client_tests.rs`。
 
 use super::*;
@@ -23,6 +23,11 @@ fn temp_dir(tag: &str) -> PathBuf {
 
 fn env_of(pairs: Vec<(&'static str, String)>) -> impl Fn(&str) -> Option<String> {
     move |k| pairs.iter().find(|(n, _)| *n == k).map(|(_, v)| v.clone())
+}
+
+/// 起会话那个 shell 的 `PATH` 问不出来（判据默认：不碰这台的登录环境）。
+fn no_session() -> Option<String> {
+    None
 }
 
 fn rows_of(reply: &Value) -> Vec<Value> {
@@ -58,6 +63,7 @@ fn monitor_vantage_population(home: &Path, with_client: bool) -> Vec<(String, St
         agent_home: &agent,
         fs: &empty,
         path_env: None,
+        session_path: None,
         vantage: Vantage::Monitor,
     };
     let client = host_label(HostScope::Client);
@@ -85,6 +91,7 @@ fn the_remote_column_really_probes_this_machine_and_drops_the_monitor_rows() {
     .unwrap();
     let got = answer_with(
         &env_of(vec![("HOME", h.display().to_string())]),
+        &no_session,
         &agent,
         &json!({}),
     )
@@ -102,6 +109,7 @@ fn the_remote_column_really_probes_this_machine_and_drops_the_monitor_rows() {
     std::fs::remove_file(h.join(".cc-monitor/bin/ccm")).unwrap();
     let gone = answer_with(
         &env_of(vec![("HOME", h.display().to_string())]),
+        &no_session,
         &agent,
         &json!({}),
     )
@@ -146,6 +154,7 @@ fn the_local_column_resolves_the_monitor_rows_under_the_monitor_facts() {
     let client = json!({ "home": m.display().to_string(), "path": "/m/bin" });
     let got = answer_with(
         &env_of(vec![("HOME", h.display().to_string())]),
+        &no_session,
         &agent,
         &json!({ "client": client }),
     )
@@ -220,7 +229,7 @@ fn bad_arguments_are_refused() {
         json!({ "client": { "path": "/m/bin" } }),
     ];
     for args in cases {
-        let err = answer_with(&get, &d, &args).expect_err("坏入参还成功了");
+        let err = answer_with(&get, &no_session, &d, &args).expect_err("坏入参还成功了");
         assert_eq!(err.0, "bad_args", "{args} 应当是 bad_args，实得 {err:?}");
     }
     let _ = std::fs::remove_dir_all(&d);
@@ -231,6 +240,7 @@ fn home_falls_back_to_userprofile_and_is_required() {
     let d = temp_dir("home");
     let got = answer_with(
         &env_of(vec![("USERPROFILE", d.display().to_string())]),
+        &no_session,
         &d.join(".claude"),
         &json!({}),
     )
@@ -240,7 +250,7 @@ fn home_falls_back_to_userprofile_and_is_required() {
         d.display().to_string(),
         "HOME 缺 ⇒ 退 USERPROFILE"
     );
-    let (code, _) = answer_with(&env_of(vec![]), &d, &json!({})).unwrap_err();
+    let (code, _) = answer_with(&env_of(vec![]), &no_session, &d, &json!({})).unwrap_err();
     assert_eq!(code, "failed", "没有家目录就解不了 `~/…`，不猜");
     let _ = std::fs::remove_dir_all(&d);
 }
@@ -253,6 +263,7 @@ fn the_report_wire_matches_the_cross_language_golden() {
     let home = "/nonexistent-footprint-golden";
     let got = answer_with(
         &env_of(vec![("HOME", home.to_string())]),
+        &no_session,
         &Path::new(home).join(".claude"),
         &json!({}),
     )
@@ -267,4 +278,53 @@ fn the_report_wire_matches_the_cross_language_golden() {
         got, want,
         "后端产出与金样不等 —— 真改了成品就重打金样（界面解码器读同一份）"
     );
+}
+
+/// 那一行（按工具）的状态的 `kind`。
+fn kind_of_tool(rows: &[Value], tool: &str) -> String {
+    rows.iter()
+        .find(|r| r["tool_id"] == tool)
+        .unwrap_or_else(|| panic!("找不到 {tool} 那一行"))["state"]["kind"]
+        .as_str()
+        .unwrap()
+        .to_string()
+}
+
+/// ★ agent 命令行装没装，按**起会话那个 shell** 的 `PATH` 判，不按后端进程自己的：
+/// 后端经 ssh 非登录 shell 起时 `PATH` 里常常没有用户级 `bin`，而会话是在用户的登录 shell 里起的。
+/// 后端进程的 `PATH` 里没有、起会话的 shell 里有 ⇒ 在；那个 shell 问不出来 ⇒ 判不了（不说缺）；那里也确实没有 ⇒ 缺。
+#[test]
+fn the_agent_cli_is_judged_in_the_session_shell_not_the_backend_process() {
+    let h = temp_dir("session-shell");
+    let user_bin = h.join("user-bin");
+    let sys_bin = h.join("sys-bin");
+    std::fs::create_dir_all(&user_bin).unwrap();
+    std::fs::create_dir_all(&sys_bin).unwrap();
+    std::fs::write(user_bin.join("claude"), "x").unwrap();
+    let agent = h.join(".claude");
+    let get = env_of(vec![
+        ("HOME", h.display().to_string()),
+        ("PATH", sys_bin.display().to_string()),
+    ]);
+    let ask = |session: &dyn Fn() -> Option<String>| {
+        rows_of(&answer_with(&get, session, &agent, &json!({})).unwrap())
+    };
+    let login = format!("{}:{}", user_bin.display(), sys_bin.display());
+    assert_eq!(
+        kind_of_tool(&ask(&|| Some(login.clone())), "claude-cli"),
+        "present",
+        "起会话的 shell 里找得到，却按后端进程的 PATH 判成了别的"
+    );
+    assert_eq!(
+        kind_of_tool(&ask(&no_session), "claude-cli"),
+        "undetermined",
+        "起会话的 shell 问不出来，却下了结论"
+    );
+    let bare = sys_bin.display().to_string();
+    assert_eq!(
+        kind_of_tool(&ask(&|| Some(bare.clone())), "claude-cli"),
+        "absent",
+        "起会话的 shell 里也确实没有 ⇒ 该说缺"
+    );
+    let _ = std::fs::remove_dir_all(&h);
 }

@@ -2,7 +2,6 @@
 //!
 //! 只读、单选；问不到就把原话摆在框里（不猜）。框是窗口状态，换目录 / 关掉就没。
 
-use crate::Held;
 use copy_core::copy_text;
 use std::sync::{Arc, Mutex};
 
@@ -17,7 +16,8 @@ pub const STAT_BUDGET: std::time::Duration = std::time::Duration::from_secs(10);
 pub struct Stat {
     pub path: String,
     pub size: u64,
-    pub mtime_secs: Option<u64>,
+    /// 修改时间的完整写法（那台后端按它的本地钟写好；照抄）。
+    pub mtime_full: Option<String>,
     /// unix 权限位（非 unix 远端缺席）。
     pub mode: Option<u32>,
     pub owner: Option<String>,
@@ -44,7 +44,10 @@ pub fn stat_from_reply(d: &serde_json::Value) -> Result<Stat, String> {
             .get("size")
             .and_then(serde_json::Value::as_u64)
             .unwrap_or(0),
-        mtime_secs: d.get("mtime_secs").and_then(serde_json::Value::as_u64),
+        mtime_full: d
+            .get("mtime_full")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_string),
         mode: super::writeops::mode_of(d),
         owner: d
             .get("owner")
@@ -92,7 +95,7 @@ pub struct Props {
 impl Props {
     /// 框里一行一行列什么（标签, 值）。判据与界面看同一个值。
     pub fn lines(&self) -> Vec<(String, String)> {
-        let st = self.state.held().clone();
+        let st = self.state.lock().unwrap().clone();
         let mut out = vec![(
             copy_text("rsFilewinProps.label.kind", &[]),
             super::kind::type_text(&self.row),
@@ -120,9 +123,7 @@ impl Props {
                 }
                 out.push((
                     copy_text("rsFilewinProps.label.mtime", &[]),
-                    s.mtime_secs
-                        .map(|t| super::source::mtime_text(t).full)
-                        .unwrap_or_else(unknown),
+                    s.mtime_full.clone().unwrap_or_else(unknown),
                 ));
                 out.push((
                     copy_text("rsFilewinProps.label.mode", &[]),
@@ -144,7 +145,7 @@ impl Props {
 impl FileWindow {
     /// 摆出第 `i` 行的「属性」框并去问那台后端。没运行时 / 没通道 ⇒ 框里说清，不发。
     pub fn begin_props(&mut self, i: usize, ctx: Option<egui::Context>) -> bool {
-        let Some(row) = self.listing.rows.held().get(i).cloned() else {
+        let Some(row) = self.listing.rows.lock().unwrap().get(i).cloned() else {
             return false;
         };
         let path = self.row_path(&row).wire();
@@ -154,7 +155,7 @@ impl FileWindow {
             state: state.clone(),
         });
         let (Some(h), Some(line)) = (self.rt.clone(), self.line.clone()) else {
-            *state.held() = State::Failed(NO_LINE.to_string());
+            *state.lock().unwrap() = State::Failed(NO_LINE.to_string());
             return true;
         };
         let origin = self.source.origin();
@@ -168,7 +169,7 @@ impl FileWindow {
             )
             .await
             .and_then(|d| stat_from_reply(&d));
-            *state.held() = match got {
+            *state.lock().unwrap() = match got {
                 Ok(s) => State::Ready(s),
                 Err(e) => State::Failed(e),
             };
