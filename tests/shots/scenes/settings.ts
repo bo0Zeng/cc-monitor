@@ -406,12 +406,7 @@ export const SETTINGS_SCENES: Scene[] = [
     top(pf(".prof-notes"));
     await sleep(300);
   }, defaultWorld, 900),
-  settings("profiles-06-edited", "设置 · 别名 · 06 配置文件被手改过", "配置文件的修改时间比这页上次存的晚：清单头一行小字 ＋ 看配置文件", async () => {
-    try {
-      localStorage.setItem("cc-monitor.profiles.lastWrite", JSON.stringify({ devbox: 1 }));
-    } catch {
-      // 截图沙箱里存不了就不出那一句。
-    }
+  settings("profiles-06-edited", "设置 · 别名 · 06 配置文件被手改过", "后端说上次 cc-monitor 写过之后有人改过：清单头一行小字 ＋ 看配置文件", async () => {
     await profilesPage();
     top(pf(".prof-notes"));
     await sleep(300);

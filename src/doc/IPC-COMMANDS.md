@@ -2408,12 +2408,12 @@ cc-bus 钩子诊断。
 |---|---|---|
 | `accounts` | ← | 这台的账号表（具名号，按账号库的顺序；表单「账号」那一格的选项） |
 | `binDir` | ← | 链接住的目录（`~/.cc-monitor/bin`） |
+| `editedAt` | ← | 上次 cc-monitor 写过之后有人改过 ⇒ 那份的修改时刻（按这台本地钟写好：当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年带年）；没改过 · cc-monitor 没写过 ⇒ `null` |
 | `exists` | ← | 配置文件在不在 |
 | `fileProblem` | ← | TOML 本身写坏 ⇒ `{line, message}`（这时 `profiles` 为空、不能按条目改）；否则 `null` |
 | `fingerprint` | ← | 盘上那份的指纹（不在 ⇒ `null`），存的时候交回 `profiles-write` |
 | `home` | ← | 这台的家目录（界面拿它把路径写成 `~/…`） |
 | `migrated` | ← | 旧别名清单一次性转进来之后那张说明 `{count, path, skipped}`（「知道了」之后 `null`） |
-| `modified` | ← | 盘上那份的修改时间（Unix 秒；不在 ⇒ `null`） |
 | `path` | ← | 配置文件的路径 |
 | `profiles` | ← | 每段 `{name, from, own: [{key, slot, vals, line}], agent, usable, problem: {line, message} \| null, kind: link/function, functionWhy, functionLine, said, form, accountShape}`：`accountShape` 是「账号那一形」`{account, tmux}`（自己只写了号、可再加 tmux，按合并下来的算；其余 `null`）：`said` 是树里那一行（自己写的几项，「标签 值」）；`form` 是表单回填（没写的格 `null` ＝ 继承）；`problem` 的原话与终端里敲这个名字得到的同一句 |
 | `seed` | ← | 配置文件不在时首建那两条的预览（同 `profiles` 一条的形状；在 ⇒ `[]`） |
@@ -2475,7 +2475,6 @@ cc-bus 钩子诊断。
 |---|---|---|
 | `changes` | → | 依次做的改动：`{op: "set", was, form}`（新增 `was: null`；名字变了 ⇒ 改名，基于它的跟着改）· `{op: "remove", name, children}`（还被基于 ⇒ `children` 必给：`reparent` 改成基于它的父 · `cascade` 一起删）· `{op: "init", seed}`（配置文件不在时建：`seed` ⇒ 带首建那两条）· `{op: "ackMigrated"}`（迁移说明知道了）。改完多出坏处 ⇒ 整批不写、`refused` |
 | `fingerprint` | → ← | 入：必给（字符串或 `null`），读回时的指纹；盘上此刻不是那一份 ⇒ `stale`。出：写完那一份的指纹 |
-| `modified` | ← | 写完那一份的修改时间（Unix 秒） |
 | `reload` | ← | 终端函数那份文件真改了 ⇒ 给人的那一句「已开的终端要重读」；否则 `null` |
 | `wrote` | ← | 配置文件 / 终端函数文件 / 链接动没动 |
 

@@ -87,7 +87,8 @@ export interface ProfilesBook {
   path: string;
   exists: boolean;
   fingerprint: string | null;
-  modified: number | null;
+  /** 上次 cc-monitor 写过之后有人改过 ⇒ 那份的修改时刻（后端写好）；否则 `null`。 */
+  editedAt: string | null;
   fileProblem: Problem | null;
   profiles: ProfileRow[];
   seed: ProfileRow[];
@@ -130,7 +131,6 @@ export type ProfileOp =
 export interface WriteDone {
   wrote: boolean;
   fingerprint: string | null;
-  modified: number | null;
   reload: string | null;
 }
 
@@ -238,7 +238,7 @@ function decodeRow(v: unknown): ProfileRow {
 
 /** `profiles-read` 的成品。严格收。 */
 export function decodeBook(v: unknown): ProfilesBook {
-  const keys = ["home", "path", "exists", "fingerprint", "modified", "fileProblem", "profiles", "seed", "migrated", "binDir", "accounts"];
+  const keys = ["home", "path", "exists", "fingerprint", "editedAt", "fileProblem", "profiles", "seed", "migrated", "binDir", "accounts"];
   if (
     !isObj(v) ||
     !exactKeys(v, keys) ||
@@ -246,7 +246,7 @@ export function decodeBook(v: unknown): ProfilesBook {
     typeof v.path !== "string" ||
     typeof v.exists !== "boolean" ||
     !optStr(v.fingerprint) ||
-    !optNum(v.modified) ||
+    !optStr(v.editedAt) ||
     !Array.isArray(v.profiles) ||
     !Array.isArray(v.seed) ||
     typeof v.binDir !== "string" ||
@@ -264,7 +264,7 @@ export function decodeBook(v: unknown): ProfilesBook {
     path: v.path,
     exists: v.exists,
     fingerprint: v.fingerprint,
-    modified: v.modified,
+    editedAt: v.editedAt,
     fileProblem: decodeProblem(v.fileProblem),
     profiles: v.profiles.map(decodeRow),
     seed: v.seed.map(decodeRow),
@@ -322,9 +322,9 @@ export function decodeBases(v: unknown): Base[] {
 
 /** `profiles-write` 的成品。严格收。 */
 export function decodeWriteDone(v: unknown): WriteDone {
-  if (!isObj(v) || !exactKeys(v, ["wrote", "fingerprint", "modified", "reload"]) || typeof v.wrote !== "boolean" || !optStr(v.fingerprint) || !optNum(v.modified) || !optStr(v.reload))
+  if (!isObj(v) || !exactKeys(v, ["wrote", "fingerprint", "reload"]) || typeof v.wrote !== "boolean" || !optStr(v.fingerprint) || !optStr(v.reload))
     throw bad();
-  return { wrote: v.wrote, fingerprint: v.fingerprint, modified: v.modified, reload: v.reload };
+  return { wrote: v.wrote, fingerprint: v.fingerprint, reload: v.reload };
 }
 
 /** 五问的期限：读一份小文件、合并几层、写一份（秒级）。给 30 秒。 */

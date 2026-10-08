@@ -11,24 +11,6 @@ use serde_json::Value;
 
 const DAY: i64 = 86_400;
 
-/// 一个时刻按此刻与时区偏移（分钟，东正）写：当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年 `YYYY-MM-DD HH:MM`。
-pub(crate) fn fmt_at(t: i64, now: i64, tz_min: i64) -> String {
-    let local = t + tz_min * 60;
-    let day = local.div_euclid(DAY);
-    let today = (now + tz_min * 60).div_euclid(DAY);
-    let secs = local - day * DAY;
-    let hm = format!("{:02}:{:02}", secs / 3600, (secs % 3600) / 60);
-    if day == today {
-        return hm;
-    }
-    let (y, m, d) = crate::common::time::civil_from_days(day);
-    if y == crate::common::time::civil_from_days(today).0 {
-        format!("{m:02}-{d:02} {hm}")
-    } else {
-        format!("{y}-{m:02}-{d:02} {hm}")
-    }
-}
-
 /// 距今（只写未来）：`+12m` · `+1h50m` · `+2h` · `+3d`（满 24h 只写天）；已过 ⇒ `None`。分钟向上取整。
 pub(crate) fn fmt_rel(t: i64, now: i64) -> Option<String> {
     let d = t - now;
@@ -93,7 +75,7 @@ fn reset_cells(at: Option<i64>, now: i64, tz: i64) -> Vec<String> {
     let Some(at) = at else {
         return Vec::new();
     };
-    let when = fmt_at(at, now, tz);
+    let when = crate::common::time::fmt_at(at, now, tz);
     match fmt_rel(at, now) {
         Some(rel) => vec![copy_text("acct.reset.at", &[("at", &when)]), rel],
         None => vec![copy_text("acct.reset.past", &[("at", &when)])],
@@ -155,7 +137,7 @@ fn state_row(a: &Value, now: i64, tz: i64) -> Option<Vec<String>> {
 
 /// 采样那一行：几点 · 哪台；数旧 ⇒ 几点 · 旧。
 fn seen_row(at: i64, stale: bool, now: i64, tz: i64, machine: &str) -> Vec<String> {
-    let when = fmt_at(at, now, tz);
+    let when = crate::common::time::fmt_at(at, now, tz);
     let value = if stale {
         copy_text("acct.seen.staleShort", &[("at", &when)])
     } else {

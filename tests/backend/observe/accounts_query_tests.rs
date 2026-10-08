@@ -352,6 +352,50 @@ fn account_trust_paths() {
     let _ = fs::remove_dir_all(&root);
 }
 
+/// 信任记在仓的根上、在子目录里查 ⇒ 已信任（读那一侧也认适配层给的那几个键，任一格为真就算）；仓外的目录照旧只认自己。
+#[test]
+fn account_trust_in_a_subdirectory_counts_the_repo_root() {
+    let root = tmpdir("trustroot");
+    let accts = root.join("accts");
+    let z = accts.join("z");
+    fs::create_dir_all(&z).unwrap();
+    let repo = root.join("repo");
+    fs::create_dir_all(repo.join(".git")).unwrap();
+    fs::create_dir_all(repo.join("sub/deeper")).unwrap();
+    let outside = root.join("outside");
+    fs::create_dir_all(&outside).unwrap();
+    write_manifest(
+        &accts,
+        &format!(
+            r#"{{"version":1,"accounts":[{{"name":"z","configDir":"{}"}}]}}"#,
+            z.display()
+        ),
+    );
+    let repo_key = fs::canonicalize(&repo).unwrap();
+    fs::write(
+        z.join(".claude.json"),
+        serde_json::json!({"projects": {repo_key.to_str().unwrap(): {"hasTrustDialogAccepted": true}}})
+            .to_string(),
+    )
+    .unwrap();
+    let ask = |cwd: &Path| -> serde_json::Value {
+        serde_json::from_str(
+            &account_trust(&accts, &z.to_string_lossy(), cwd.to_str().unwrap()).unwrap(),
+        )
+        .unwrap()
+    };
+    assert_eq!(
+        ask(&repo.join("sub/deeper"))["trusted"],
+        true,
+        "仓根有、子目录没有 ⇒ 已信任"
+    );
+    assert_eq!(ask(&repo)["trusted"], true);
+    let v = ask(&outside);
+    assert_eq!(v["trusted"], false, "仓外的目录没记 ⇒ 没信任");
+    assert_eq!(v["known"], false);
+    let _ = fs::remove_dir_all(&root);
+}
+
 // ---- 6. --session-accounts（procStart 身份对拍是核心）----
 #[test]
 fn session_accounts_marks_dead_and_bare() {

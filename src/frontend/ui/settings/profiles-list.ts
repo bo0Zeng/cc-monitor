@@ -14,7 +14,6 @@ import { openPath } from "@tauri-apps/plugin-opener";
 import { copyText } from "../copy-table";
 import { homeShort } from "../kit/path";
 import { select as kitSelect } from "../kit/select";
-import { LS_KEYS, safeGetJson, safeSetJson } from "../local-storage";
 import { toast, undoToast } from "../kit/toast";
 import { confirmDialog, type ConfirmFn } from "../kit/dialog";
 import type { Origin } from "../generated/Origin";
@@ -83,16 +82,6 @@ const link = (label: string, onClick: () => void, danger = false): HTMLButtonEle
 
 /** 窄窗（合并表落到那一行下面）的分界。 */
 const WIDE = "(min-width: 900px)";
-
-/** 上次在这一页存完时各台配置文件的修改时间（比它晚 ⇒ 不是在这里改的）。 */
-function lastWrite(origin: Origin): number | null {
-  const v = safeGetJson<Record<string, number>>(LS_KEYS.profilesLastWrite)?.[origin];
-  return typeof v === "number" ? v : null;
-}
-function rememberWrite(origin: Origin, at: number | null): void {
-  if (at === null) return;
-  safeSetJson(LS_KEYS.profilesLastWrite, { ...(safeGetJson<Record<string, number>>(LS_KEYS.profilesLastWrite) ?? {}), [origin]: at });
-}
 
 /** 树里一行：那一段 ＋ 前面的缩进与竖线。 */
 interface TreeLine {
@@ -243,7 +232,10 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
   const pendingRemove = new Set<string>();
   let removing: { name: string; kids: string[]; pick: "reparent" | "cascade"; impact: Affected[] | null; open: boolean } | null = null;
   let impact: { names: string[]; rows: Affected[]; open: boolean } | null = null;
-  let editedElsewhere = false;
+  /** 「上次 cc-monitor 写过之后有人改过」那一格（后端判、后端写好时刻）。开着表单时来的那一份不换清单，只换这一格。 */
+  let editedAt: string | null = null;
+  /** 开着表单 / 删的选择时盘上变了：关掉之后重读。 */
+  let behind = false;
   let clashes: readonly ProfileClash[] = [];
   let sub: Sub | null = null;
   let seq = 0;
@@ -262,8 +254,8 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
       status.textContent = copyText("profilesPage.read.failed", { e: e instanceof Error ? e.message : String(e) });
       return render();
     }
-    const lw = lastWrite(opts.origin());
-    if (book.modified !== null && lw !== null && book.modified > lw) editedElsewhere = true;
+    editedAt = book.editedAt;
+    behind = false;
     opts.onHead(
       book.exists
         ? copyText("profilesPage.head.line", { n: String(book.profiles.length), path: short(book.path) })
@@ -284,10 +276,15 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
       const { changed, frames } = accountsChangedItems(fresh);
       if (frames > 0) sub?.want(frames);
       if (!changed) return;
-      // 开着表单 / 删的选择时不换清单（不拽人），只亮那一句「不是在这里改的」。
+      // 开着表单 / 删的选择时不换清单（不拽人）：只问一次后端那一格、亮那一句；关掉之后重读。
       if (form || removing) {
-        editedElsewhere = true;
-        renderNotes();
+        behind = true;
+        void readProfiles(opts.origin())
+          .then((b) => {
+            editedAt = b.editedAt;
+            renderNotes();
+          })
+          .catch(() => undefined);
       } else void reread();
     });
   };
@@ -519,12 +516,10 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
       notes.appendChild(n);
     }
     if (clashes.length) notes.appendChild(clashCard());
-    if (editedElsewhere && book.modified !== null) {
+    if (editedAt !== null) {
       const n = el("div", "cfg-note");
       n.dataset.role = "edited-elsewhere";
-      const t = new Date(book.modified * 1000);
-      const hm = `${String(t.getHours()).padStart(2, "0")}:${String(t.getMinutes()).padStart(2, "0")}`;
-      n.appendChild(el("span", "", (form || removing ? copyText("profilesPage.edited.lineOpen", { time: hm }) : copyText("profilesPage.edited.line", { time: hm }))));
+      n.appendChild(el("span", "", form || removing ? copyText("profilesPage.edited.lineOpen", { time: editedAt }) : copyText("profilesPage.edited.line", { time: editedAt })));
       if (opts.local) n.appendChild(link(copyText("profilesPage.edited.look"), () => void onOpenFile()));
       notes.appendChild(n);
     }
@@ -699,7 +694,8 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
 
   const cancelRemove = (): void => {
     removing = null;
-    render();
+    if (behind && !form) void reread();
+    else render();
   };
 
   // ── 写 ──
@@ -709,8 +705,6 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
   const commit = async (changes: ProfileOp[], throwStale = false): Promise<string | null> => {
     try {
       const done = await writeProfiles(opts.origin(), changes, book?.fingerprint ?? null);
-      rememberWrite(opts.origin(), done.modified);
-      editedElsewhere = false;
       if (done.reload) toast(copyText("profilesPage.save.done"), done.reload, { level: "info" });
     } catch (e) {
       if (e instanceof ProfilesStale && throwStale) throw e;
@@ -764,7 +758,8 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
     }
     form = null;
     impact = null;
-    render();
+    if (behind && !removing) void reread();
+    else render();
     return true;
   };
 

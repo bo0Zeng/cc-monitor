@@ -522,13 +522,30 @@ fn modified_of(d: &dyn Door, path: &str) -> Option<u64> {
         .and_then(|v| v.get("mtime_secs").and_then(Value::as_u64))
 }
 
+/// 上次 cc-monitor 写过之后有人改过 ⇒ 那份的修改时刻（按这台此刻的本地钟写好，界面照排）；没改过 ⇒ `None`。
+fn edited_at(d: &dyn Door, store: &super::Store, path: &str) -> Option<String> {
+    if !super::edited_since_written(d, store) {
+        return None;
+    }
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |x| x.as_secs());
+    let at = modified_of(d, path).unwrap_or(now);
+    let tz_min = crate::platform::local_tz::offset_secs(at).unwrap_or(0) / 60;
+    Some(crate::common::time::fmt_at(
+        i64::try_from(at).unwrap_or(i64::MAX),
+        i64::try_from(now).unwrap_or(i64::MAX),
+        tz_min,
+    ))
+}
+
 /// 一次性迁移的说明（在 ⇒ 页首说一次）。
 fn migrated_note(d: &dyn Door, home: &str) -> Option<Value> {
     let p = door::peek(d, home, relay_route_core::PROFILES_MIGRATED_REL).ok()?;
     serde_json::from_str(&p.text?).ok()
 }
 
-/// `profiles-read {}` → 整份：每段的成品 ＋ 文件级错误 ＋ 指纹 ＋ 修改时间 ＋ 迁移说明 ＋ 空态那两条的预览。
+/// `profiles-read {}` → 整份：每段的成品 ＋ 文件级错误 ＋ 指纹 ＋ 手改过没有 ＋ 迁移说明 ＋ 空态那两条的预览。
 pub(crate) fn answer_read(d: &dyn Door, _args: &Value) -> Answer {
     let store = super::load(d).map_err(refused)?;
     let shell = here_shell();
@@ -564,7 +581,7 @@ pub(crate) fn answer_read(d: &dyn Door, _args: &Value) -> Answer {
         "path": path,
         "exists": store.text.is_some(),
         "fingerprint": super::fingerprint_of(store.text.as_deref()),
-        "modified": store.text.as_ref().and_then(|_| modified_of(d, &path)),
+        "editedAt": edited_at(d, &store, &path),
         "fileProblem": file_problem,
         "profiles": profiles,
         "seed": seed,
@@ -992,7 +1009,7 @@ pub(crate) fn answer_bases(d: &dyn Door, args: &Value) -> Answer {
     Ok(json!({ "bases": bases }))
 }
 
-/// `profiles-write {changes, fingerprint}` → `{wrote, fingerprint, modified, reload}`。盘上被别处改过 ⇒ `stale`；
+/// `profiles-write {changes, fingerprint}` → `{wrote, fingerprint, reload}`。盘上被别处改过 ⇒ `stale`；
 /// 改完多出坏处（原来就坏的不算）⇒ `refused`，一个字节不写。
 pub(crate) fn answer_write(d: &dyn Door, args: &Value) -> Answer {
     let ops = ops_arg(args)?;
@@ -1019,7 +1036,7 @@ pub(crate) fn answer_write(d: &dyn Door, args: &Value) -> Answer {
     let touches_file = ops.iter().any(|o| !matches!(o, Op::AckMigrated {}));
     if !touches_file {
         return Ok(
-            json!({"wrote": false, "fingerprint": super::fingerprint_of(store.text.as_deref()), "modified": modified_of(d, &path), "reload": null}),
+            json!({"wrote": false, "fingerprint": super::fingerprint_of(store.text.as_deref()), "reload": null}),
         );
     }
     if super::fingerprint_of(store.text.as_deref()).as_deref() != fp {
@@ -1072,7 +1089,6 @@ pub(crate) fn answer_write(d: &dyn Door, args: &Value) -> Answer {
     Ok(json!({
         "wrote": wrote || out.links_changed || !out.rewrote.is_empty(),
         "fingerprint": super::fingerprint_of(Some(&text)),
-        "modified": modified_of(d, &path),
         "reload": out.rewrote.contains(&shell_file).then(|| super::reload_hint(&shell_file)),
     }))
 }

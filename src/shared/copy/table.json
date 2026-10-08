@@ -26447,6 +26447,12 @@
       "zh": "旧别名清单转进配置文件时的说明（设置窗说一次后删）",
       "args": []
     },
+    "rsDataPaths.backend.profilesWritten": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "配置文件上次经 cc-monitor 写出时的指纹（据此说「手改过」）",
+      "args": []
+    },
     "beProfile.value.unknown": {
       "kind": "error",
       "role": "原因格",

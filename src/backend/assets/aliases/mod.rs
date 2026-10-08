@@ -554,10 +554,40 @@ fn write_profiles(
         Ok((now != Some(text)).then(|| text.to_string()))
     });
     match done {
-        Ok(w) => Ok(w),
+        Ok(w) => {
+            remember_written(d, home, text);
+            Ok(w)
+        }
         Err(e) if moved => Err(WriteErr::Stale(e)),
         Err(e) => Err(WriteErr::Refused(e)),
     }
+}
+
+/// 记下这一份是 cc-monitor 写出去的（[`relay_route_core::PROFILES_WRITTEN_REL`]：只存指纹）。记不下只进日志 —— 代价只是之后少说一句「手改过」。
+fn remember_written(d: &dyn Door, home: &str, text: &str) {
+    let note = json!({ "fingerprint": fingerprint_of(Some(text)) }).to_string();
+    if let Err(e) = write_ours(d, home, relay_route_core::PROFILES_WRITTEN_REL, &mut |_| {
+        Ok(Some(note.clone()))
+    }) {
+        tracing::warn!("{e}");
+    }
+}
+
+/// 配置文件上次经 cc-monitor 写出去之后**有人改过**：盘上那份的指纹与记下的不一样。没记过（cc-monitor 没写过）· 文件不在 ⇒ `false`。
+pub(crate) fn edited_since_written(d: &dyn Door, store: &Store) -> bool {
+    let Some(text) = store.text.as_deref() else {
+        return false;
+    };
+    let recorded = door::peek(d, &store.home, relay_route_core::PROFILES_WRITTEN_REL)
+        .ok()
+        .and_then(|p| p.text)
+        .and_then(|t| serde_json::from_str::<Value>(&t).ok())
+        .and_then(|v| {
+            v.get("fingerprint")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        });
+    recorded.is_some_and(|r| Some(r) != fingerprint_of(Some(text)))
 }
 
 /// 照配置文件生成的那几样动了什么：别名文件（要重读的那一种）动没动 · 链接动没动 · 没做成的几句。

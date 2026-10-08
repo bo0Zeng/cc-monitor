@@ -5,6 +5,7 @@
 //! | T1 | 定点：1970-01-01 = 0 · 1969-12-31 = −1 · 2000-02-29 · 0000-03-01 · −0001-12-31 | 真值 |
 //! | T2 | 两个方向互逆（−800 年到 +800 年逐天） | 全量 |
 //! | T3 | ISO8601：秒 · 毫秒 · 1/2 位小数补零 · 太短 / 不是数字 ⇒ `None` | 真值 |
+//! | T5 | 给人看的时刻：当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年带年 · 时区偏移跨日 | 真值 |
 //! | T4 | 换算常量 `719_468` 在后端生产段只住本模块 | 文本，零命中 ＋ 正控 |
 
 use super::*;
@@ -87,4 +88,14 @@ fn t4_the_constant_lives_only_here() {
         crate::guard_support::production_code(sample).contains(needle),
         "针认不出样本"
     );
+}
+
+#[test]
+fn t5_display_forms_follow_the_day_and_the_year() {
+    let now = days_from_civil(2026, 10, 7) * 86_400 + 12 * 3_600;
+    assert_eq!(fmt_at(now + 2 * 3_600 + 5 * 60, now, 0), "14:05");
+    assert_eq!(fmt_at(now + 86_400, now, 0), "10-08 12:00");
+    assert_eq!(fmt_at(now - 300 * 86_400, now, 0), "2025-12-11 12:00");
+    // 东八区：UTC 20:00 是本地次日 04:00。
+    assert_eq!(fmt_at(now + 8 * 3_600, now, 480), "10-08 04:00");
 }
