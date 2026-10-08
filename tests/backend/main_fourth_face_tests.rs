@@ -81,10 +81,17 @@ fn the_answer_is_a_function_of_the_machine_not_of_the_build() {
     //    （`control/oneshot_session.rs` 整删、`inbound::REGISTRY` 11 → 10）。
     //    🔴 **4 → 3 → 4**：终端管理 L1 两条（`terminal-preview` / `terminal-input`）进表；`capture-pane` 随抓屏改走
     //    `terminal-preview` 删了。
+    //    🔴 **4 → 5**：终端实时预览 `terminal-follow` 进表（起 tmux 控制模式客户端，声明了 `no_tmux`）。
     //    ⚠ 顺序按 `REGISTRY` 的排列，不是字典序。
     assert_eq!(
         names,
-        vec!["terminal-preview", "terminal-input", "kill", "launch"],
+        vec![
+            "terminal-preview",
+            "terminal-input",
+            "terminal-follow",
+            "kill",
+            "launch"
+        ],
         "没有 tmux 的那台机器上，做不到的恰好是 `REGISTRY` 里登记了 `{NO_TMUX}` 的那几条。\n\
              ⚠ 本条红**未必是错**：你要是新加了一条会回 `{NO_TMUX}` 的命令，它已经自动进表了\n\
              （这张表是从 `codes` 派生的，不是手写的）—— 那就把这里的期望值补上。\n\
@@ -216,11 +223,13 @@ fn the_windows_answer_is_confirmed_absent_not_unknown() {
     .collect();
     // 🔴 `K-R104`：同上一条，2 → **4**（`capture-pane` / `oneshot-session` 自动进表）。
     // 🔴 **4 → 3**：`oneshot-session` 随用量 ③ 轴退役；`capture-pane` 删了、终端管理 L1 两条进表。
+    // 🔴 **4 → 5**：终端实时预览 `terminal-follow` 进表。
     assert_eq!(
         names,
         vec![
             "terminal-preview".to_string(),
             "terminal-input".to_string(),
+            "terminal-follow".to_string(),
             "kill".to_string(),
             "launch".to_string()
         ],

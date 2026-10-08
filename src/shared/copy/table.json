@@ -17357,6 +17357,26 @@
       "zh": "同一文件正在上传到该机 · 传完再来",
       "args": []
     },
+    "beTermFollow.register.tooMany": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "终端实时预览已达上限 {max}",
+      "args": [
+        "max"
+      ]
+    },
+    "beTermFollow.tmux.tooOld": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "tmux {version} 不支持实时画面 · 需要 {need} 以上",
+      "args": [
+        "version",
+        "need"
+      ],
+      "limited": [
+        "tmux"
+      ]
+    },
     "beTransfer.local.notRegular": {
       "kind": "error",
       "role": "原因格",

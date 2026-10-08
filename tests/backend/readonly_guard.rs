@@ -3090,6 +3090,15 @@ mod spawn_registry {
             "终端管理换成托管终端（宿主不再是 tmux）的那天，这一条随实现一起换掉。",
         ),
         (
+            "control/terminal_follow.rs",
+            "tmux",
+            "终端实时预览：起一个 tmux **控制模式**客户端（`-C attach-session -f read-only,ignore-size`）挂在那个终端所在的会话上，\
+             只读它报的输出事件当「画面变了」的信号（画面本身照旧经 `control/terminals.rs` 抓）；只读客户端不能往窗格里打字、\
+             不改窗格尺寸，不写任何文件。订阅一停（退订 · 连接走 · 终端没了）就杀组收尸（`Child::stream` 放手即收）。",
+            "缩性质",
+            "终端管理换成托管终端（宿主不再是 tmux）的那天，这一条随实现一起换掉（托管进程自己推画面）。",
+        ),
+        (
             "common/session_snapshot.rs",
             "tmux",
             "`K-R96`（09-12）：**全 crate 唯一一处「一次列全部 tmux 会话」的探测点**\

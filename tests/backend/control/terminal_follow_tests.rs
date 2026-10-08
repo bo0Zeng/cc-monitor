@@ -1,0 +1,439 @@
+//! 终端实时预览（`control/terminal_follow.rs`）的判据：真 tmux（隔离 socket，显式 `-S`），不碰任何默认 socket。
+//!
+//! | 性质 | 判据 |
+//! |---|---|
+//! | 订上 ⇒ 当场推第一帧（与抓一屏同一份成品 ＋ 票 ＋ 序号） | `first_frame_comes_at_once_with_the_preview_product` |
+//! | 一帧在途：没回执之前画面再变也不推；回执之后推最新那一屏（中间的合并掉） | `one_frame_in_flight_until_acked` |
+//! | 画面没变（指纹相同）不推 | 同上 |
+//! | 订阅那个只读、不改尺寸的客户端不算「连着几个终端窗口」（名单 `clients` 与 ↗ 的 `list-clients` 两处） | `the_follower_is_not_counted_as_a_terminal_window` |
+//! | 退订 ⇒ 那个客户端没了、不再推；连接走了（票表丢了）⇒ 同样全收 | `unfollow_and_drop_reap_the_client` |
+//! | 窗格没了 ⇒ 推一帧结束（`gone`） | `a_closed_pane_ends_the_follow` |
+//! | 形状：票重复 / 不认的票 / 超过上限 / 目标不在名单 ⇒ 各自的码 | `shape_and_limits` |
+//! | tmux 版本：3.2 起才有只读不改尺寸的客户端 | `tmux_version_gate` |
+use super::*;
+use serde_json::json;
+use std::process::Command;
+use std::time::{Duration, Instant};
+
+struct Iso {
+    sock: std::path::PathBuf,
+}
+
+impl Iso {
+    fn new(tag: &str) -> Iso {
+        let dir = std::env::temp_dir().join(format!("ccm-follow-{}-{tag}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        Iso {
+            sock: dir.join("s"),
+        }
+    }
+    fn socket(&self) -> Option<String> {
+        self.sock.to_str().map(str::to_string)
+    }
+    fn tmux(&self, args: &[&str]) -> std::process::Output {
+        Command::new("tmux")
+            .arg("-S")
+            .arg(&self.sock)
+            .args(args)
+            .output()
+            .expect("tmux 不可执行 —— 本测试要求环境有 tmux")
+    }
+    /// 起一个会话：前台一个 `cat`（回显打进去的字）。
+    fn session(&self, name: &str) {
+        let o = self.tmux(&[
+            "-f",
+            "/dev/null",
+            "new-session",
+            "-d",
+            "-x",
+            "80",
+            "-y",
+            "10",
+            "-s",
+            name,
+            "cat",
+        ]);
+        assert!(
+            o.status.success(),
+            "建会话失败：{}",
+            String::from_utf8_lossy(&o.stderr)
+        );
+    }
+    fn handle_of(&self, name: &str) -> String {
+        let on = crate::control::terminals::On {
+            socket: self.sock.to_str(),
+        };
+        let l = crate::control::terminals::list_on(on, &json!({})).expect("名单");
+        l["terminals"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|t| t["tmux_name"] == name)
+            .unwrap_or_else(|| panic!("名单里没有 {name}：{l}"))["terminal"]
+            .as_str()
+            .unwrap()
+            .to_string()
+    }
+    fn type_in(&self, name: &str, text: &str) {
+        self.tmux(&["send-keys", "-t", &format!("={name}:"), "-l", text]);
+    }
+    /// 此刻连在这台 tmux 上的客户端里有几个是控制模式的。
+    fn control_clients(&self) -> usize {
+        let o = self.tmux(&["list-clients", "-F", "#{client_control_mode}"]);
+        String::from_utf8_lossy(&o.stdout)
+            .lines()
+            .filter(|l| l.trim() == "1")
+            .count()
+    }
+}
+
+impl Drop for Iso {
+    fn drop(&mut self) {
+        let o = self.tmux(&["display-message", "-p", "#{pid}"]);
+        let pid = String::from_utf8_lossy(&o.stdout).trim().to_string();
+        if pid.chars().all(|c| c.is_ascii_digit()) && !pid.is_empty() {
+            let _ = Command::new("kill").arg(&pid).status();
+        }
+        let _ = std::fs::remove_dir_all(self.sock.parent().unwrap());
+    }
+}
+
+/// 有界等待（夹具侧）：下一帧（至多 `within`）。
+fn next_frame(rx: &mut tokio::sync::mpsc::Receiver<Frame>, within: Duration) -> Option<Frame> {
+    let until = Instant::now() + within;
+    loop {
+        match rx.try_recv() {
+            Ok(f) => return Some(f),
+            Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => return None,
+            Err(tokio::sync::mpsc::error::TryRecvError::Empty) => {
+                if Instant::now() >= until {
+                    return None;
+                }
+                std::thread::sleep(Duration::from_millis(15));
+            }
+        }
+    }
+}
+
+/// 有界等待：条件成立（至多 3 秒）。
+fn eventually(mut f: impl FnMut() -> bool) -> bool {
+    let until = Instant::now() + Duration::from_secs(3);
+    while Instant::now() < until {
+        if f() {
+            return true;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    f()
+}
+
+fn screen_of(f: &Frame) -> (String, u64, Value) {
+    match f {
+        Frame::TerminalScreen { ticket, seq, view } => (ticket.clone(), *seq, view.clone()),
+        other => panic!("等的是一帧画面，来的是 {other:?}"),
+    }
+}
+
+fn reply_ok(f: &Frame) -> bool {
+    matches!(f, Frame::Reply { ok: true, .. })
+}
+
+fn reply_code(f: &Frame) -> Option<String> {
+    match f {
+        Frame::Reply {
+            ok: false, code, ..
+        } => code.clone(),
+        _ => None,
+    }
+}
+
+fn desk(iso: &Iso) -> (Desk, tokio::sync::mpsc::Receiver<Frame>) {
+    let (tx, rx) = tokio::sync::mpsc::channel(64);
+    (Desk::on_socket(tx, iso.socket()), rx)
+}
+
+#[test]
+fn tmux_version_gate() {
+    for (v, ok) in [
+        ("3.6", true),
+        ("3.2", true),
+        ("3.2a", true),
+        ("next-3.4", true),
+        ("4.0", true),
+        ("3.1c", false),
+        ("2.9", false),
+        ("", false),
+        ("master", false),
+    ] {
+        assert_eq!(tmux_version_ok(v), ok, "{v:?}");
+    }
+}
+
+#[test]
+fn first_frame_comes_at_once_with_the_preview_product() {
+    let iso = Iso::new("first");
+    iso.session("f-cc");
+    iso.type_in("f-cc", "zq-first");
+    let h = iso.handle_of("f-cc");
+    let (d, mut rx) = desk(&iso);
+    assert!(reply_ok(&d.answer_wire(
+        FOLLOW,
+        "r1",
+        &json!({ "terminal": h, "ticket": "t1" })
+    )));
+    let f = next_frame(&mut rx, Duration::from_secs(5)).expect("订上之后没推第一帧");
+    let (ticket, seq, view) = screen_of(&f);
+    assert_eq!((ticket.as_str(), seq), ("t1", 1));
+    for k in [
+        "screen",
+        "cols",
+        "rows",
+        "cursor",
+        "lines",
+        "captured_at",
+        "captured_at_text",
+    ] {
+        assert!(
+            view.get(k).is_some(),
+            "画面那一份少了 `{k}`（要与 terminal-preview 同一份成品）：{view}"
+        );
+    }
+    assert!(view["lines"].to_string().contains("zq-first"));
+    assert!(
+        view["lines"][0].get("spans").is_some(),
+        "实时画面要带颜色段"
+    );
+    // 线上形状：kind ＋ 票 ＋ 序号 ＋ 画面。
+    let wire: Value = serde_json::from_str(&crate::stream::wire::to_line(&f).unwrap()).unwrap();
+    assert_eq!(wire["kind"], "terminal_screen");
+    assert_eq!(wire["ticket"], "t1");
+    assert_eq!(wire["seq"], 1);
+}
+
+#[test]
+fn one_frame_in_flight_until_acked() {
+    let iso = Iso::new("ack");
+    iso.session("a-cc");
+    let h = iso.handle_of("a-cc");
+    let (d, mut rx) = desk(&iso);
+    assert!(reply_ok(&d.answer_wire(
+        FOLLOW,
+        "r1",
+        &json!({ "terminal": h, "ticket": "t1" })
+    )));
+    let (_, s1, _) = screen_of(&next_frame(&mut rx, Duration::from_secs(5)).expect("第一帧"));
+    // 没回执：画面变了也不推。
+    iso.type_in("a-cc", "zq-one");
+    iso.type_in("a-cc", "zq-two");
+    assert!(
+        next_frame(&mut rx, Duration::from_millis(600)).is_none(),
+        "没回执就推了下一帧"
+    );
+    // 回执 ⇒ 推最新那一屏（两次变化合成一帧）。
+    assert!(reply_ok(&d.answer_wire(
+        FOLLOW_ACK,
+        "r2",
+        &json!({ "ticket": "t1", "seq": s1 })
+    )));
+    let (_, s2, v2) =
+        screen_of(&next_frame(&mut rx, Duration::from_secs(5)).expect("回执之后没推"));
+    assert_eq!(s2, s1 + 1);
+    assert!(
+        v2["lines"].to_string().contains("zq-two"),
+        "推的不是最新那一屏：{v2}"
+    );
+    // 回执之后画面没再变 ⇒ 不推。
+    assert!(reply_ok(&d.answer_wire(
+        FOLLOW_ACK,
+        "r3",
+        &json!({ "ticket": "t1", "seq": s2 })
+    )));
+    assert!(
+        next_frame(&mut rx, Duration::from_millis(600)).is_none(),
+        "画面没变也推了"
+    );
+    // 再变 ⇒ 推。
+    iso.type_in("a-cc", "zq-three");
+    let (_, s3, v3) =
+        screen_of(&next_frame(&mut rx, Duration::from_secs(5)).expect("回执之后画面再变没推"));
+    assert_eq!(s3, s2 + 1);
+    assert!(v3["lines"].to_string().contains("zq-three"));
+}
+
+#[test]
+fn the_follower_is_not_counted_as_a_terminal_window() {
+    let iso = Iso::new("count");
+    iso.session("c-cc");
+    let h = iso.handle_of("c-cc");
+    let (d, mut rx) = desk(&iso);
+    assert!(reply_ok(&d.answer_wire(
+        FOLLOW,
+        "r1",
+        &json!({ "terminal": h, "ticket": "t1" })
+    )));
+    next_frame(&mut rx, Duration::from_secs(5)).expect("第一帧");
+    assert!(
+        eventually(|| iso.control_clients() == 1),
+        "订阅那个控制模式客户端没连上（正控）"
+    );
+    let on = crate::control::terminals::On {
+        socket: iso.sock.to_str(),
+    };
+    let l = crate::control::terminals::list_on(on, &json!({})).unwrap();
+    let row = l["terminals"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| t["terminal"] == h.as_str())
+        .unwrap()
+        .clone();
+    assert_eq!(
+        row["clients"],
+        json!([]),
+        "订阅那个客户端被算成了终端窗口：{row}"
+    );
+    // ↗ 问「谁连着它」那一条也不认它（它没有终端窗口可切）。
+    let who = crate::observe::session_terminals::list_clients(iso.sock.to_str().unwrap(), "=c-cc:")
+        .expect("list-clients");
+    assert_eq!(who, vec![], "↗ 那一条把订阅客户端当成了终端窗口");
+}
+
+#[test]
+fn unfollow_and_drop_reap_the_client() {
+    let iso = Iso::new("reap");
+    iso.session("r-cc");
+    let h = iso.handle_of("r-cc");
+    let (d, mut rx) = desk(&iso);
+    assert!(reply_ok(&d.answer_wire(
+        FOLLOW,
+        "r1",
+        &json!({ "terminal": h, "ticket": "t1" })
+    )));
+    next_frame(&mut rx, Duration::from_secs(5)).expect("第一帧");
+    assert!(eventually(|| iso.control_clients() == 1));
+    assert!(reply_ok(&d.answer_wire(
+        UNFOLLOW,
+        "r2",
+        &json!({ "ticket": "t1" })
+    )));
+    assert!(
+        eventually(|| iso.control_clients() == 0),
+        "退订之后那个客户端还连着"
+    );
+    iso.type_in("r-cc", "zq-after");
+    assert!(
+        next_frame(&mut rx, Duration::from_millis(500)).is_none(),
+        "退订之后还在推"
+    );
+    assert!(
+        reply_ok(&d.answer_wire(UNFOLLOW, "r3", &json!({ "ticket": "t1" }))),
+        "退订是幂等的"
+    );
+    // 连接走了（票表随连接丢）⇒ 全收。
+    assert!(reply_ok(&d.answer_wire(
+        FOLLOW,
+        "r4",
+        &json!({ "terminal": h, "ticket": "t2" })
+    )));
+    assert!(reply_ok(&d.answer_wire(
+        FOLLOW,
+        "r5",
+        &json!({ "terminal": h, "ticket": "t3" })
+    )));
+    assert!(eventually(|| iso.control_clients() == 2));
+    drop(d);
+    assert!(
+        eventually(|| iso.control_clients() == 0),
+        "票表丢了，客户端没收"
+    );
+}
+
+#[test]
+fn a_closed_pane_ends_the_follow() {
+    let iso = Iso::new("gone");
+    iso.session("g-cc");
+    iso.session("keep-cc"); // server 别跟着走
+    let h = iso.handle_of("g-cc");
+    let (d, mut rx) = desk(&iso);
+    assert!(reply_ok(&d.answer_wire(
+        FOLLOW,
+        "r1",
+        &json!({ "terminal": h, "ticket": "t1" })
+    )));
+    let (_, s1, _) = screen_of(&next_frame(&mut rx, Duration::from_secs(5)).expect("第一帧"));
+    assert!(reply_ok(&d.answer_wire(
+        FOLLOW_ACK,
+        "r2",
+        &json!({ "ticket": "t1", "seq": s1 })
+    )));
+    iso.tmux(&["kill-session", "-t", "=g-cc"]);
+    let f = next_frame(&mut rx, Duration::from_secs(5)).expect("窗格没了却没说");
+    match f {
+        Frame::TerminalFollowEnd { ticket, why } => {
+            assert_eq!(ticket, "t1");
+            assert_eq!(why, FollowEnd::Gone);
+        }
+        other => panic!("等的是结束帧，来的是 {other:?}"),
+    }
+    assert!(
+        reply_code(&d.answer_wire(FOLLOW_ACK, "r3", &json!({ "ticket": "t1", "seq": s1 })))
+            .is_some(),
+        "结束了的票还认"
+    );
+}
+
+#[test]
+fn shape_and_limits() {
+    let iso = Iso::new("shape");
+    iso.session("s-cc");
+    let h = iso.handle_of("s-cc");
+    let (d, mut rx) = desk(&iso);
+    assert_eq!(
+        reply_code(&d.answer_wire(FOLLOW, "r0", &json!({ "terminal": h }))).as_deref(),
+        Some("bad_args"),
+        "没给票"
+    );
+    assert_eq!(
+        reply_code(&d.answer_wire(FOLLOW, "r0", &json!({ "ticket": "x" }))).as_deref(),
+        Some("bad_target"),
+        "没给目标"
+    );
+    assert_eq!(
+        reply_code(&d.answer_wire(
+            FOLLOW,
+            "r0",
+            &json!({ "terminal": "tmux-999", "ticket": "x" })
+        ))
+        .as_deref(),
+        Some("not_known")
+    );
+    assert_eq!(
+        reply_code(&d.answer_wire(FOLLOW_ACK, "r0", &json!({ "ticket": "nope", "seq": 1 })))
+            .as_deref(),
+        Some("not_known")
+    );
+    assert!(reply_ok(&d.answer_wire(
+        FOLLOW,
+        "r1",
+        &json!({ "terminal": h, "ticket": "t1" })
+    )));
+    assert_eq!(
+        reply_code(&d.answer_wire(FOLLOW, "r2", &json!({ "terminal": h, "ticket": "t1" })))
+            .as_deref(),
+        Some("bad_args"),
+        "票重复"
+    );
+    for i in 2..=MAX_FOLLOWS_PER_CONNECTION {
+        assert!(reply_ok(&d.answer_wire(
+            FOLLOW,
+            "r",
+            &json!({ "terminal": h, "ticket": format!("t{i}") })
+        )));
+    }
+    assert_eq!(
+        reply_code(&d.answer_wire(FOLLOW, "r9", &json!({ "terminal": h, "ticket": "over" })))
+            .as_deref(),
+        Some("too_many_follows")
+    );
+    while next_frame(&mut rx, Duration::from_millis(50)).is_some() {}
+}

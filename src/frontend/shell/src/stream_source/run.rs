@@ -486,6 +486,15 @@ async fn stream_loop(
             Some(InboundFrame::RotationChanged { sid }) => {
                 replay.quota_changed(&crate::origin::Origin(host_label.clone()), Some(&sid));
             }
+            // 终端实时预览：这台推来的一屏 / 收尾 ⇒ 交订了这台 `terminal-screen/<票>` 的那条订阅（从不阻塞）。
+            Some(
+                InboundFrame::TerminalScreen { ticket, cell }
+                | InboundFrame::TerminalFollowEnd { ticket, cell },
+            ) => crate::terminal_screen_relay::deliver(
+                &crate::origin::Origin(host_label.clone()),
+                &ticket,
+                cell,
+            ),
             // 认识但不消费（理由在变体上）。
             Some(InboundFrame::TurnEnd) => {}
             // 不认识的种类 / 形状不对：`take` 已记账、每种说过一次；跳过，绝不中断流。

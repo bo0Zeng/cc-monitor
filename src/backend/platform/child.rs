@@ -1,7 +1,8 @@
 //! 后端起子进程的**唯一原语**：生产段的 `Command::new` 只住这里。
 //!
-//! 三种用法：[`Child::run`]（起它、等它，**期限必填**）· [`Child::detach`]（脱离起、不等）·
-//! [`Child::exec_replace`]（ccm 最终那一跳：POSIX 就地 exec，Windows 起它、等它、透传退出码）。
+//! 四种用法：[`Child::run`]（起它、等它，**期限必填**）· [`Child::detach`]（脱离起、不等）·
+//! [`Child::exec_replace`]（ccm 最终那一跳：POSIX 就地 exec，Windows 起它、等它、透传退出码）·
+//! [`Child::stream`]（长寿、读它的输出流，拿着的那一方放手 ⇒ 杀整组、收尸：终端实时预览的 tmux 控制模式客户端）。
 //!
 //! # 环境
 //!
@@ -439,6 +440,49 @@ impl Child {
     /// `started(pid)`：将要跑这个程序的那个进程的 pid —— POSIX 是自己（exec 之前调），Windows 是起好的子进程（等它之前调）。
     pub(crate) fn exec_replace(self, started: &dyn Fn(u32)) -> Result<i32, ChildFail> {
         os::exec_replace(self.command(), started)
+    }
+}
+
+/// [`Child::stream`] 起的那个长寿子进程：stdout 交给读的那一方，stdin 一直开着（有的程序见 stdin 关了就退）。
+/// **放手即收**：`Drop` ⇒ 杀整组（Windows：终止 Job）、收尸。没有期限 —— 它活多久由拿着它的那一方定，不是节拍。
+pub(crate) struct Streaming {
+    child: std::process::Child,
+    group: os::Group,
+    _stdin: Option<std::process::ChildStdin>,
+}
+
+impl Streaming {
+    /// 它的输出流（只给一次）。读到头 ＝ 它退了。
+    pub(crate) fn take_stdout(&mut self) -> Option<std::process::ChildStdout> {
+        self.child.stdout.take()
+    }
+}
+
+impl Drop for Streaming {
+    fn drop(&mut self) {
+        // 收尸之前它的 pid 一直占着 ⇒ 杀组不会落到别的组上（它自己先退了也一样：僵尸照样占着）。
+        self.group.kill();
+        let _ = self.child.wait();
+    }
+}
+
+impl Child {
+    /// 起一个长寿子进程、读它的输出流（stderr 丢掉、stdin 开着不写）；自成进程组（Windows：一个 Job）。
+    /// 回来的 [`Streaming`] 一放手就杀组收尸。
+    pub(crate) fn stream(self) -> Result<Streaming, ChildFail> {
+        let mut cmd = self.command();
+        cmd.stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null());
+        os::own_group(&mut cmd);
+        let mut child = cmd.spawn().map_err(ChildFail::of_spawn)?;
+        let group = os::Group::adopt(&child);
+        let stdin = child.stdin.take();
+        Ok(Streaming {
+            child,
+            group,
+            _stdin: stdin,
+        })
     }
 }
 

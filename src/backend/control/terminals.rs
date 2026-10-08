@@ -45,7 +45,9 @@ const PANES_FMT: &str = "#{session_id}\t#{pane_id}\t#{pane_active}\t#{window_act
 const PANES_FIELDS: usize = 13;
 
 /// 连着各会话的 tmux 客户端：会话 ID · 接上的时刻 · 最后活动。
-const CLIENTS_FMT: &str = "#{session_id}\t#{client_created}\t#{client_activity}";
+/// 控制模式客户端（终端实时预览那个只读、不改尺寸的订阅者，`terminal_follow.rs`）整行留空 ⇒ 解析时丢掉：它不是终端窗口。
+const CLIENTS_FMT: &str =
+    "#{?client_control_mode,,#{session_id}\t#{client_created}\t#{client_activity}}";
 
 /// 终端前台若是这些 shell ⇒ 程序已退出、只剩 shell。
 const SHELLS: &[&str] = &[
@@ -769,6 +771,59 @@ pub(crate) fn preview_on(on: On<'_>, args: &Value) -> Result<Value, CmdErr> {
         at,
         &crate::common::time::secs_hms_here(i64::try_from(at).unwrap_or(i64::MAX)),
     ))
+}
+
+/// 终端实时预览要的那一格（`terminal_follow.rs`）：名单里对上的终端 ⇒ 对它下手的 tmux 句柄 ＋ 它所在的 tmux 会话（`$N`）
+/// ＋ 只看哪个窗格的输出（挂着 sid 的窗格；没有 ⇒ 整个会话）。没装 tmux ⇒ `no_tmux`；对不上同 [`preview_on`]。
+pub(crate) struct FollowTarget {
+    pub(crate) target: String,
+    pub(crate) session: String,
+    pub(crate) pane: Option<String>,
+}
+
+pub(crate) fn follow_target_on(on: On<'_>, args: &Value) -> Result<FollowTarget, CmdErr> {
+    let target = target_of(args)?;
+    let Some((rows, _, _)) = rows_found_on(on)? else {
+        return Err((
+            "no_tmux",
+            crate::common::contract::malformed("tmux is not installed on this machine"),
+        ));
+    };
+    match find(&rows, &target) {
+        Found::One(r) => Ok(FollowTarget {
+            target: r.target().to_string(),
+            session: r.id.clone(),
+            pane: r.pane.clone(),
+        }),
+        Found::NotKnown => Err(not_known("not-known")),
+        Found::Ambiguous => Err((
+            "ambiguous",
+            crate::common::contract::malformed(
+                "more than one terminal carries this sid; point at one by `terminal`",
+            ),
+        )),
+    }
+}
+
+/// 这一刻那一屏（带颜色、不往回要）：与 `terminal-preview` 同一份成品（实时预览每一帧就是它）。
+pub(crate) fn screen_view_on(on: On<'_>, target: &str) -> Result<Value, CmdErr> {
+    let view = view_on(on, target, true, 0)?;
+    let at = now_secs();
+    Ok(preview_reply(
+        &view,
+        true,
+        false,
+        at,
+        &crate::common::time::secs_hms_here(i64::try_from(at).unwrap_or(i64::MAX)),
+    ))
+}
+
+/// 这台 tmux 的版本串（`#{version}`，如 `3.6` · `3.2a` · `next-3.4`）。
+pub(crate) fn tmux_version_on(on: On<'_>) -> Result<String, CmdErr> {
+    let out = on
+        .read(&[UTF8_CLIENT_FLAG, "display-message", "-p", "#{version}"])
+        .map_err(super::capture_pane::tmux_unavailable)?;
+    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 
 /// 这一刻那一屏的指纹（送之前比 `seen_screen` 用；同 [`preview_reply`] 的算法）。

@@ -166,6 +166,15 @@ const FRAMES: &[(&str, &str)] = &[
         "probe",
         r#"{"kind":"probe","ticket":"no-such-ticket","cell":{"reached":"ssh"}}"#,
     ),
+    // 终端实时预览的一屏 / 收尾 —— 不是会话内容，就地交中继（`terminal_screen_relay`），不进内容通道。
+    (
+        "terminal_screen",
+        r#"{"kind":"terminal_screen","ticket":"no-such-ticket","seq":1,"view":{}}"#,
+    ),
+    (
+        "terminal_follow_end",
+        r#"{"kind":"terminal_follow_end","ticket":"no-such-ticket","why":"gone"}"#,
+    ),
     // 中转抄出来的 SSE 事件 —— 不是会话内容（jsonl 才是），就地转给前端，不进内容通道。
     (
         "tap",
