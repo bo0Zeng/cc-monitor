@@ -86,14 +86,21 @@ pub(crate) fn home_relative(raw: &str) -> Option<&str> {
 
 /// 启动文件里 cc-monitor 围栏之外、确证失效的行：`source X` / `. X` 而 X 不在（`~` · `$HOME` · `${HOME}` 按这台家目录展开；
 /// 带别的变量 / 相对路径的说不清，不报）。
+/// 被「文件在才读」守着的不报：`[ -f X ]` / `[[ -r X ]]` / `test -f X`（`-f` `-r` `-e` `-s`）守着同一个 X ——
+/// 同一行 `守 && source X`，或在 `if 守; then … fi` 里（一行写完的、`then` 另起一行的都认）。
 pub(crate) fn dead_source_lines(
     text: &str,
     home: Option<&std::path::Path>,
 ) -> Vec<(usize, String)> {
+    let key = |t: &str| {
+        expand_home_target(t, home).map_or_else(|| t.to_string(), |p| p.display().to_string())
+    };
     let mut out = Vec::new();
     let mut inside = false;
+    // 开着的 `if` 各守着哪个文件（不是「文件在才读」的那种 `if` ⇒ `None`）。
+    let mut guards: Vec<Option<String>> = Vec::new();
     for (i, line) in text.lines().enumerate() {
-        let l = line.trim_start();
+        let l = line.trim();
         if l.starts_with("# === cc-monitor") {
             inside = l.contains("BEGIN");
             continue;
@@ -101,27 +108,117 @@ pub(crate) fn dead_source_lines(
         if inside || l.starts_with('#') {
             continue;
         }
-        let rest = l.strip_prefix("source ").or_else(|| l.strip_prefix(". "));
-        let Some(target) = rest.and_then(|r| r.split_whitespace().next()) else {
+        if l == "fi" || l.starts_with("fi;") || l.starts_with("fi ") {
+            guards.pop();
+            continue;
+        }
+        if l == "else" || l.starts_with("else ") {
+            if let Some(top) = guards.last_mut() {
+                *top = None;
+            }
+            continue;
+        }
+        if let Some(rest) = l.strip_prefix("elif ") {
+            let g = split_then(rest).0;
+            if let Some(top) = guards.last_mut() {
+                *top = guard_target(g).map(key);
+            }
+            continue;
+        }
+        let mut local: Option<String> = None;
+        let mut body = l;
+        if let Some(rest) = l.strip_prefix("if ") {
+            let (cond, after) = split_then(rest);
+            let g = guard_target(cond).map(key);
+            match after.map(str::trim) {
+                Some(a) if a.ends_with("fi") && a[..a.len() - 2].trim_end().ends_with(';') => {
+                    local = g;
+                    body = a;
+                }
+                Some(a) => {
+                    guards.push(g);
+                    body = a;
+                }
+                None => {
+                    guards.push(g);
+                    continue;
+                }
+            }
+        } else if let Some((head, tail)) = l.split_once("&&") {
+            if let Some(g) = guard_target(head) {
+                local = Some(key(g));
+                body = tail;
+            }
+        }
+        let Some(target) = source_target(body) else {
             continue;
         };
-        let target = target.trim_matches(|c| c == '"' || c == '\'');
-        let expanded: Option<std::path::PathBuf> = if let Some(r) = target
-            .strip_prefix("~/")
-            .or_else(|| target.strip_prefix("$HOME/"))
-            .or_else(|| target.strip_prefix("${HOME}/"))
-        {
-            home.map(|h| h.join(r))
-        } else if target.starts_with('/') && !target.contains('$') {
-            Some(std::path::PathBuf::from(target))
-        } else {
-            None
-        };
-        if let Some(p) = expanded {
+        let k = key(target);
+        if local.as_deref() == Some(k.as_str()) || guards.iter().flatten().any(|g| *g == k) {
+            continue;
+        }
+        if let Some(p) = expand_home_target(target, home).or_else(|| {
+            (target.starts_with('/') && !target.contains('$'))
+                .then(|| std::path::PathBuf::from(target))
+        }) {
             if !p.exists() {
                 out.push((i + 1, line.to_string()));
             }
         }
     }
     out
+}
+
+/// `~/x` · `$HOME/x` · `${HOME}/x` ⇒ 这台家目录底下那一条；别的形 / 没有家目录 ⇒ `None`。
+fn expand_home_target(t: &str, home: Option<&std::path::Path>) -> Option<std::path::PathBuf> {
+    let r = t
+        .strip_prefix("~/")
+        .or_else(|| t.strip_prefix("$HOME/"))
+        .or_else(|| t.strip_prefix("${HOME}/"))?;
+    home.map(|h| h.join(r))
+}
+
+/// `source X …` / `. X …` 的 X（去掉引号与收尾的 `;`）。
+fn source_target(seg: &str) -> Option<&str> {
+    let s = seg.trim_start();
+    let rest = s.strip_prefix("source ").or_else(|| s.strip_prefix(". "))?;
+    rest.split_whitespace().next().map(|t| {
+        t.trim_end_matches(';')
+            .trim_matches(|c| c == '"' || c == '\'')
+    })
+}
+
+/// `if` 后面那一段 ⇒ `(条件, then 之后那一段)`；这一行没有 `then` ⇒ 第二格 `None`。
+fn split_then(rest: &str) -> (&str, Option<&str>) {
+    match rest
+        .split_once("; then")
+        .or_else(|| rest.split_once(";then"))
+    {
+        Some((c, a)) => (c, Some(a)),
+        None => (rest, None),
+    }
+}
+
+/// 「文件在才读」那种条件守着的文件：`[ -f X ]` · `[[ -r X ]]` · `test -e X`（`-f` `-r` `-e` `-s`）；别的条件 ⇒ `None`。
+fn guard_target(cond: &str) -> Option<&str> {
+    let c = cond.trim().trim_end_matches(';').trim_end();
+    let (inner, close) = if let Some(r) = c.strip_prefix("[[ ") {
+        (r, Some("]]"))
+    } else if let Some(r) = c.strip_prefix("[ ") {
+        (r, Some("]"))
+    } else if let Some(r) = c.strip_prefix("test ") {
+        (r, None)
+    } else {
+        return None;
+    };
+    let mut w = inner.split_whitespace();
+    if !matches!(w.next()?, "-f" | "-r" | "-e" | "-s") {
+        return None;
+    }
+    let t = w.next()?.trim_matches(|c| c == '"' || c == '\'');
+    let closed = match close {
+        Some(cl) => w.next() == Some(cl),
+        None => true,
+    };
+    (closed && w.next().is_none()).then_some(t)
 }

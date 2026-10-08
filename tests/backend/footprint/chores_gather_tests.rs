@@ -44,3 +44,35 @@ fn 失效行_只报_source_的文件不在的_围栏里与注释与说不清的�
     assert_eq!(nums, vec![2, 3, 9]);
     let _ = std::fs::remove_dir_all(&h);
 }
+
+/// 被「文件在才读」守着的 source（`[ -f X ]` · `[ -r X ]` · `test -f X`；同一行 `&&`、或包在 `if … then … fi` 里）——
+/// 文件不在是正常的，不是失效；守的是别的文件、或裸 source 一个不在的文件 ⇒ 照报。
+#[test]
+fn 失效行_文件在才读的不报_守着别的文件的与裸的照报() {
+    let h = tmp("guarded");
+    let text = [
+        "if [ -f ~/.extra_aliases ]; then",                   // 1
+        "    . ~/.extra_aliases",                             // 2 守着
+        "fi",                                                 // 3
+        "[ -f ~/gone-a ] && . ~/gone-a",                      // 4 守着
+        "[ -r \"$HOME/gone-b\" ] && source \"$HOME/gone-b\"", // 5 守着
+        "test -f ~/gone-c && . ~/gone-c",                     // 6 守着
+        "if test -r ~/gone-d; then source ~/gone-d; fi",      // 7 守着
+        "if [ -f ~/gone-e ]",                                 // 8
+        "then",                                               // 9
+        "  echo x",                                           // 10
+        "  . $HOME/gone-e",                                   // 11 守着（同一个文件的另一种写法）
+        "fi",                                                 // 12
+        ". ~/gone-bare",                                      // 13 裸的 ⇒ 报
+        "if [ -f ~/other ]; then",                            // 14
+        "  . ~/gone-f",                                       // 15 守的是别的文件 ⇒ 报
+        "fi",                                                 // 16
+        "[ -f ~/other ] && . ~/gone-g",                       // 17 同上 ⇒ 报
+        ". ~/gone-h",                                         // 18 if 已经关了 ⇒ 报
+    ]
+    .join("\n");
+    let got = crate::platform::shell::posix::dead_source_lines(&text, Some(&h));
+    let nums: Vec<usize> = got.iter().map(|(n, _)| *n).collect();
+    assert_eq!(nums, vec![13, 15, 17, 18]);
+    let _ = std::fs::remove_dir_all(&h);
+}

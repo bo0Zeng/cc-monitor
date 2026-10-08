@@ -37,7 +37,12 @@ pub(crate) type FootprintAnswer = Result<Value, (&'static str, String)>;
 /// 帧面入口。
 pub(crate) fn answer(args: &Value) -> FootprintAnswer {
     let get = |k: &str| std::env::var(k).ok();
-    answer_with(&get, &crate::observe::history_query::agent_home(), args)
+    answer_with(
+        &get,
+        &crate::platform::shell::session_shell_path,
+        &crate::observe::history_query::agent_home(),
+        args,
+    )
 }
 
 /// monitor 交来的它自己那台独有的事实。
@@ -46,20 +51,26 @@ struct Client {
     path: Option<String>,
 }
 
-/// [`answer`] 的本体：环境取值器与 agent 家目录都是参数（判据拿夹具喂，不去改进程环境）。
+/// [`answer`] 的本体：环境取值器、起会话那个 shell 的 `PATH` 与 agent 家目录都是参数（判据拿夹具喂，不去改进程环境、不起登录 shell）。
 pub(crate) fn answer_with(
     get: &dyn Fn(&str) -> Option<String>,
+    session_path: &dyn Fn() -> Option<String>,
     agent_home: &Path,
     args: &Value,
 ) -> FootprintAnswer {
-    Ok(json!(report_with(get, agent_home, args)?))
+    Ok(json!(report_with(get, session_path, agent_home, args)?))
 }
 
 /// 「文件与数据」那一份成品（帧面 `data-report`）：同一份足迹按「改过你的文件 · 要你动手 · 有没有 tmux」重排（[`data`] · [`chores`]）。
 /// `door` 是这台的文件管理面（别名块的候选经它读）。
 pub(crate) fn data_answer(door: &dyn crate::assets::door::Door, args: &Value) -> FootprintAnswer {
     let get = |k: &str| std::env::var(k).ok();
-    let report = report_with(&get, &crate::observe::history_query::agent_home(), args)?;
+    let report = report_with(
+        &get,
+        &crate::platform::shell::session_shell_path,
+        &crate::observe::history_query::agent_home(),
+        args,
+    )?;
     let todo = chores::chores(&chores::gather::facts(door, data::needs_install(&report)));
     let tmux = tmux_here();
     let own = crate::platform::paths::home_dir()
@@ -80,6 +91,7 @@ pub(crate) fn tmux_here() -> Option<bool> {
 /// 整份足迹（两种问法共用这一份）。
 fn report_with(
     get: &dyn Fn(&str) -> Option<String>,
+    session_path: &dyn Fn() -> Option<String>,
     agent_home: &Path,
     args: &Value,
 ) -> Result<ConfigSurfaceReport, (&'static str, String)> {
@@ -87,6 +99,7 @@ fn report_with(
     let home = crate::platform::paths::home_dir_from(&|k| get(k).map(Into::into))
         .ok_or(("failed", copy_text("beFootprint.env.noHome", &[])))?;
     let path_env = get("PATH");
+    let session_path = session_path();
     let own_meta = |p: &Path| meta_of(p);
     let own_list = |p: &Path| list_of(p);
     let own_fs = FsProbe {
@@ -98,6 +111,7 @@ fn report_with(
         agent_home,
         fs: &own_fs,
         path_env: path_env.as_deref(),
+        session_path: session_path.as_deref(),
         vantage: if client.is_some() {
             Vantage::Monitor
         } else {
@@ -110,6 +124,7 @@ fn report_with(
         agent_home,
         fs: &own_fs,
         path_env: c.path.as_deref(),
+        session_path: session_path.as_deref(),
         vantage: Vantage::Monitor,
     });
     let rows = build_rows(&own, c_env.as_ref());

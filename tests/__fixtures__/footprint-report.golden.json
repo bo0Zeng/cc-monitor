@@ -417,7 +417,7 @@
       "source_label": "不由 cc-monitor 提供 · 通用工具 · 需自行安装",
       "state": {
         "kind": "undetermined",
-        "why": "读不到 PATH 或它为空 · 无法判断 claude 是否存在 · 不代表不存在"
+        "why": "起会话的 shell 的 PATH 问不出 · 无法判断 claude 是否已装 · 不代表没装"
       },
       "tier": "UserInstallsWePrompt",
       "tool_id": "claude-cli",

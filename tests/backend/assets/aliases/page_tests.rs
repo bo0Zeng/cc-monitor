@@ -574,3 +574,31 @@ fn the_read_carries_whether_this_machine_has_tmux() {
         );
     }
 }
+
+/// ★ 一批改动按顺序在同一份正在改的配置上判：后一条看得见前一条（新增 `cc` ＋ 新增基于它的 `cct` ＋ 把现有一段改成基于 `cct`，一次写成）；
+/// `profiles-impact` 同一批照样算得出来。
+#[test]
+fn a_batch_sees_its_own_earlier_changes() {
+    let t = tmp(
+        "batch",
+        Some("[pcc]\nbase = true\n\n[side]\naccount = \"work\"\n"),
+    );
+    let batch = json!([
+        {"op": "set", "was": null, "form": {"name": "cc"}},
+        {"op": "set", "was": null, "form": {"name": "cct", "from": "cc", "tmux": {"mode": "auto"}}},
+        {"op": "set", "was": "side", "form": {"name": "side", "from": "cct", "account": {"kind": "account", "name": "work"}}},
+    ]);
+    answer_impact(&t.door(), &json!({"changes": batch.clone()}))
+        .expect("profiles-impact 拒了引用本批新增段的那一批");
+    write(&t, batch).expect("profiles-write 拒了引用本批新增段的那一批");
+    let book = profile::parse_book(&t.text());
+    let from = |n: &str| {
+        book.find(n)
+            .unwrap_or_else(|| panic!("{n} 没写进去"))
+            .from
+            .clone()
+    };
+    assert_eq!(from("cc"), None);
+    assert_eq!(from("cct").as_deref(), Some("cc"));
+    assert_eq!(from("side").as_deref(), Some("cct"));
+}
