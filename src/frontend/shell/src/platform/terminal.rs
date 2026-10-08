@@ -435,16 +435,11 @@ pub fn launch_powershell_window(ps_command: &str, local_cwd: Option<&str>) -> Re
     Ok(())
 }
 
-/// 非 Windows 上「不开终端窗口」的**唯一**说法。前后端共用同一句话的口径
-/// （前端据 `hostOs` 决定标题，正文原样带上这句）。
+/// 非 Windows 上「不开终端窗口」的那一句（文件窗口那一跳把它当拒绝原话画出来）。
 ///
-/// ⚠ **「刻意不替你挑终端模拟器」这半句是跨语言标记，不许换措辞**：
-/// 前端 `POSIX_NO_WINDOW_MARKER` 按它判「这是既定设计」，换了用户会退回去看到「拉起失败」
-/// （`the_posix_marker_is_the_one_the_frontend_matches_on` 当场判红 —— 08-12 实测撞过）。
-/// 要求「attach 暂时就用纯 linux bash」⇒ 只把「你自己的终端」**说实成**
-/// 「你自己的 bash」，标记那半句原样保留。**不挑终端模拟器**与**shell 用 bash**
-/// 是两件事，不冲突。
-#[cfg(any(not(windows), test))]
+/// 「这是既定设计、不是失败」由 [`TerminalOpen::NoWindow`] 这个**结局**说，谁都不按这句话里的字判 ⇒ 措辞随便改。
+/// 生产段那一跳（`chan/host.rs`）直接按键取文；这里只剩判据要的那一份。
+#[cfg(test)]
 pub static POSIX_NO_TERMINAL_WINDOW: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("rsLaunch.posix.noTerminalWindow", &[]));
 
@@ -486,13 +481,23 @@ pub fn ssh_client_missing() -> bool {
     }
 }
 
+/// 开窗那一下**成了**的两种结局（真失败走 `Err`，一句人话）。调用方按它判「这是既定设计」，不按哪句话里的字判。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum TerminalOpen {
+    /// 开了一个终端窗口。
+    Opened,
+    /// 这台按既定设计不开窗：POSIX 上没有规范化终端出口（不替你挑终端模拟器）。
+    NoWindow,
+}
+
 /// 开一个终端窗口跑 `command`（「这台电脑能不能开终端窗口、用哪个」只在这一处答）：Windows 开 PowerShell 窗口；
-/// POSIX 有规范化终端出口（[`pick_terminal_exit`]）就交它开窗，没有 ⇒ [`POSIX_NO_TERMINAL_WINDOW`]
+/// POSIX 有规范化终端出口（[`pick_terminal_exit`]）就交它开窗，没有 ⇒ [`TerminalOpen::NoWindow`]
 /// （不回落到无窗口直起：要人交互的那一行跑在看不见的地方等于没跑）。
-pub fn open_window(command: &str) -> Result<(), String> {
+pub fn open_window(command: &str) -> Result<TerminalOpen, String> {
     #[cfg(windows)]
     {
-        launch_powershell_window(command, None)
+        launch_powershell_window(command, None).map(|()| TerminalOpen::Opened)
     }
     #[cfg(not(windows))]
     {
@@ -502,10 +507,10 @@ pub fn open_window(command: &str) -> Result<(), String> {
 
 /// [`open_window`] 的 POSIX 本体，终端出口是入参（判据传 `None` / 假终端，不在开发者桌面上开真窗口）。
 #[cfg(not(windows))]
-pub(crate) fn open_window_via(command: &str, term: Option<&str>) -> Result<(), String> {
+pub(crate) fn open_window_via(command: &str, term: Option<&str>) -> Result<TerminalOpen, String> {
     match term {
-        Some(t) => launch_local_posix_via(command, None, Some(t)),
-        None => Err(POSIX_NO_TERMINAL_WINDOW.to_string()),
+        Some(t) => launch_local_posix_via(command, None, Some(t)).map(|()| TerminalOpen::Opened),
+        None => Ok(TerminalOpen::NoWindow),
     }
 }
 
