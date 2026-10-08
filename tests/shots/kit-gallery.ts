@@ -1,29 +1,25 @@
 /**
  * 通用组件总览（`kit.html?scene=…`）：用产品真组件、合成数据，照规范组件页的排法把各态并排画出来。
  *
- * - `kit-overview`：页内组件（按钮 · 输入 · 开关 · 分栏 · chip · 卡片 · 列表行 · 折叠 · 徽标 · 状态点 · 进度 · 计量 · 错误条 · 空态 · 区块七态）。
+ * - `kit-overview`：页内组件（按钮 · 输入 · 开关 · 分栏 · chip · 折叠 · 徽标 · 状态点 · 转圈 · 计量 · 错误条 · 空态）—— 只画产品真在用的组件。
  * - `kit-dialog`：「会打断什么」那一问 ＋ 危险确认 ＋ 填值框报错（各开一次，截最后那个）。
  * - `kit-float`：弹出菜单（子菜单展开 · 危险项 · 不可选）· 悬停提示 · toast 四种 ＋ 撤销 · 抽屉。
  */
-import { button, setBusy, setDisabled, toggleButton, buttonRow } from "../../src/frontend/ui/kit/button";
+import { button, setBusy, setDisabled, buttonRow } from "../../src/frontend/ui/kit/button";
 import { field } from "../../src/frontend/ui/kit/field";
 import { toggleSwitch, checkbox } from "../../src/frontend/ui/kit/switch";
 import { tabs, segmented } from "../../src/frontend/ui/kit/tabs";
-import { chip, connectionPill, setChipOpen } from "../../src/frontend/ui/kit/chip";
-import { card } from "../../src/frontend/ui/kit/card";
-import { listRow, setRowState } from "../../src/frontend/ui/kit/list-row";
+import { chip, setChipOpen } from "../../src/frontend/ui/kit/chip";
 import { fold } from "../../src/frontend/ui/kit/fold";
 import { select } from "../../src/frontend/ui/kit/select";
 import { accountAvatarEl } from "../../src/frontend/ui/account-color";
 import { banner } from "../../src/frontend/ui/kit/banner";
-import { emptyState, noMatch } from "../../src/frontend/ui/kit/empty";
+import { emptyState } from "../../src/frontend/ui/kit/empty";
 import { countBadge, tag, kbd } from "../../src/frontend/ui/kit/badge";
 import { copyText } from "../../src/frontend/ui/copy-table";
-import { skeletonRows } from "../../src/frontend/ui/kit/skeleton";
-import { progressBar, spinner } from "../../src/frontend/ui/kit/progress";
+import { spinner } from "../../src/frontend/ui/kit/progress";
 import { meter } from "../../src/frontend/ui/kit/meter";
 import { statusDot, type DotState } from "../../src/frontend/ui/kit/status-dot";
-import { dataBlock, type BlockState } from "../../src/frontend/ui/kit/block";
 import { icon } from "../../src/frontend/ui/kit/icon";
 import { confirmDialog, askText } from "../../src/frontend/ui/kit/dialog";
 import { confirmInterrupts } from "../../src/frontend/ui/kit/interrupts";
@@ -80,7 +76,7 @@ function overview(): void {
   const focus = button({ label: "重试" });
   focus.dataset.focusDemo = "1";
   document.body.append(
-    section("按钮", "C1 · C21", "g-cols6", [
+    section("按钮", "C1", "g-cols6", [
       ["主", button({ label: "保存", kind: "primary" })],
       ["次", button({ label: "取消" })],
       ["危险（只在确认框）", button({ label: "结束", kind: "danger" })],
@@ -91,7 +87,6 @@ function overview(): void {
       ["禁用（悬停说为什么）", dis],
       ["进行中", busy],
       ["键盘焦点", focus],
-      ["切换按钮 开 / 关", row(toggleButton({ label: "隐藏文件", icon: "folder", pressed: true, onToggle: () => {} }), toggleButton({ label: "双栏", icon: "grid", pressed: false, onToggle: () => {} }))],
       ["按钮行", buttonRow(button({ label: "取消" }), button({ label: "结束会话", kind: "danger" }))],
     ]),
   );
@@ -146,25 +141,17 @@ function overview(): void {
   const openChip = chip({ text: "任务 3/12", icon: "check", onClick: () => {} });
   setChipOpen(openChip, true);
   document.body.append(
-    section("chip · 连接药丸 · 徽标 · 键帽", "C6 · C17 · C18", "g-cols3", [
+    section("chip · 徽标 · 键帽", "C6 · C17 · C18", "g-cols3", [
       ["状态栏", h("div", "g-bar")],
-      ["连接药丸：离线 · 重连中 · 已连接（连着时不画）", row(connectionPill("devbox", "down", () => {}), connectionPill("gpu-01", "connecting", () => {}), connectionPill("devbox", "restored", () => {}))],
       ["徽标 · 标记 · 键帽", row(countBadge(3), countBadge(2, "warn"), countBadge(120), tag("远端"), tag("只读"), kbd("Ctrl+K"))],
     ]),
   );
   const bar = document.querySelector<HTMLElement>(".g-bar")!;
   bar.append(chip({ text: "需要你 2", tone: "warn", onClick: () => {} }), openChip, chip({ text: "恢复失败 ×3", tone: "error", onClick: () => {} }), chip({ text: "work 5h 63%" }));
 
-  const rowSel = listRow({ name: "orders-service", icon: "folder", meta: "12:04" });
-  setRowState(rowSel, { selected: true });
-  const rowCur = listRow({ name: "build-pipeline", icon: "folder", meta: "11:58", actions: [button({ label: "复制", kind: "icon", icon: "check", size: "compact", hint: "复制路径" })] });
-  setRowState(rowCur, { current: true });
-  const rowLong = listRow({ name: `very-long-name-of-a-report-${"x".repeat(60)}-final.tar.gz`, icon: "check", meta: "3.2 MB" });
   const foldBody = h("div", "g-fake", "Bash · ls -la · 0.4s");
   document.body.append(
-    section("卡片 · 列表行 · 折叠块", "C7 · C8 · C9", "g-cols3", [
-      ["卡片 · 需要你", stage(card({ title: "计划待批", needsYou: true, lead: statusDot("needs-you", "需要你"), actions: [button({ label: "详情", kind: "ghost", size: "compact" })], body: "3 步 · 改 2 个文件" }), card({ title: "子 agent", body: "Explore · 完成 · 2m" }))],
-      ["列表行：常态 · 选中 · 当前（行尾动作悬停才出）· 中间省略", stage(listRow({ name: "notes.md", icon: "check", meta: "4 KB" }), rowSel, rowCur, rowLong)],
+    section("折叠块", "C9", "g-cols3", [
       ["折叠块 收 / 开", stage(fold({ title: "过程", summary: "工具 ×3 · 21:14", open: false, body: h("div", "g-fake", "…") }), fold({ title: "思考", summary: "214 字", open: true, body: foldBody }))],
     ]),
   );
@@ -181,12 +168,11 @@ function overview(): void {
   ];
   const dotList = h("div");
   for (const [st, label] of dots) dotList.appendChild(row(statusDot(st, label), h("span", "g-fake", label)));
-  const prog = progressBar(0.32, "3.2 / 10 MB");
   document.body.append(
-    section("状态点 · 图标 · 进度 · 计量条", "V10 · V9 · C14 · C22", "g-cols4", [
+    section("状态点 · 图标 · 转圈 · 计量条", "V10 · V9 · C14 · C22", "g-cols4", [
       ["状态点八态", dotList],
       ["图标（常规 16 · 紧凑 14 · 空态 32）", row(icon("settings"), icon("history"), icon("grid"), icon("folder"), icon("command", "compact"), icon("search", "compact"), icon("empty", "empty"))],
-      ["进度条 · 转圈", stage(prog.root, row(spinner(), h("span", "g-fake", "连接 devbox…")))],
+      ["转圈", stage(row(spinner(), h("span", "g-fake", "连接 devbox…")))],
       [
         "计量条：常态 · 到阈值 · 被拒 · 数旧 · 无采样",
         stage(
@@ -205,30 +191,9 @@ function overview(): void {
       ["错误条", banner("error", "读取账号失败 · 内容无法解析", [button({ label: "复制详情", size: "compact" })])],
       ["警告条", banner("warn", "重启 cc-monitor 后生效", [button({ label: copyText("restartNow.bar.action"), size: "compact" })])],
       ["空态", stage(emptyState({ text: "无会话", hint: "终端里 ccm 启动后自动出现" }))],
-      ["筛选无结果", stage(noMatch("ordrs", () => {}))],
     ]),
   );
 
-  const states: [string, BlockState | "loading-skel"][] = [
-    ["加载（>300ms 骨架）", "loading-skel"],
-    ["空", { kind: "empty", empty: { text: "无任务" } }],
-    ["出错", { kind: "error", text: "读取失败 · devbox 离线", retry: () => {} }],
-    ["过期", { kind: "stale", text: "devbox 离线 · 采样 3m 前", retry: () => {}, content: fakeRows(2) }],
-    ["部分", { kind: "partial", content: fakeRows(2), missing: ["gpu-01 无应答", "win-laptop 读取中"] }],
-    ["很多", { kind: "many", content: fakeRows(2), note: "前 500 · 搜索可找全部" }],
-    ["禁用", { kind: "disabled", why: "devbox 离线", content: fakeRows(2) }],
-    ["刷新中（内容不动）", { kind: "ready", content: fakeRows(3) }],
-  ];
-  const cells: [string, HTMLElement][] = states.map(([cap, st]) => {
-    const b = dataBlock();
-    if (st === "loading-skel") {
-      b.root.dataset.state = "loading";
-      b.root.firstElementChild!.appendChild(skeletonRows(3));
-    } else b.show(st);
-    if (cap.startsWith("刷新")) b.refreshing(true);
-    return [cap, stage(b.root)];
-  });
-  document.body.append(section("读数据的区块：七态", "I5", "g-cols4", cells));
   focus.focus();
 }
 

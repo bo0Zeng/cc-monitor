@@ -112,12 +112,6 @@
       "zh": "备份 {from} 里没有 {account} 那一行，没法放回去。",
       "args": ["account", "from"]
     },
-    "kit.block.retry": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "重试",
-      "args": []
-    },
     "kit.dialog.cancel": {
       "kind": "action",
       "role": "按钮",
@@ -147,18 +141,6 @@
       "role": "标题",
       "zh": "放弃填写",
       "args": []
-    },
-    "kit.empty.clearFilter": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "清除过滤",
-      "args": []
-    },
-    "kit.empty.noMatch": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "无匹配「{query}」",
-      "args": ["query"]
     },
     "kit.interrupts.agent": {
       "kind": "body",
@@ -220,30 +202,6 @@
       "zh": "当前轮次",
       "args": []
     },
-    "kit.pill.connecting": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "{machine} 重新连接中",
-      "args": ["machine"]
-    },
-    "kit.pill.offline": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "{machine} 离线",
-      "args": ["machine"]
-    },
-    "kit.pill.reconnectHint": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "重新连接",
-      "args": []
-    },
-    "kit.pill.restored": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "{machine} 已连接",
-      "args": ["machine"]
-    },
     "kit.toast.close": {
       "kind": "action",
       "role": "按钮",
@@ -272,12 +230,6 @@
       "kind": "body",
       "role": "片段",
       "zh": " · ",
-      "args": []
-    },
-    "kit.text.ellipsis": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "…",
       "args": []
     },
     "peerVersion.said.old": {
@@ -5362,12 +5314,6 @@
       "zh": "在文件夹中显示失败",
       "args": []
     },
-    "format.formatTimestampSmart.empty": {
-      "kind": "body",
-      "role": "空态",
-      "zh": "—",
-      "args": []
-    },
     "launcherDiagnostics.diagnoseRemoteLauncher.bypassesCcm": {
       "kind": "body",
       "role": "说明",
@@ -7355,12 +7301,6 @@
       "kind": "error",
       "role": "报错",
       "zh": "打开设置失败",
-      "args": []
-    },
-    "collapsibleGroup.ctor.arrow": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "▶",
       "args": []
     },
     "machineCard.test.pinned": {
@@ -16529,19 +16469,6 @@
       "role": "报错",
       "zh": "拿不到中转钥匙（{e}），中转没有起：没有钥匙的话谁都能用它",
       "args": ["e"]
-    },
-    "tmuxMint.refused.title": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "没有起会话",
-      "args": []
-    },
-    "tmuxMint.refused.body": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "没从 {machine} 问到新会话的名字。取名要先看那台已有哪些 tmux 会话，免得撞名接进别的会话，所以这次没有起。原因：{reason}",
-      "args": ["machine", "reason"],
-      "limited": ["tmux"]
     },
     "localResume.launch.failed": {
       "kind": "error",

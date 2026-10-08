@@ -1,5 +1,5 @@
 /**
- * format.ts 纯函数断言脚本：formatBytes / formatTimestampSmart / formatTimestampShort / basename。
+ * format.ts 纯函数断言脚本：formatBytes / formatTimestampShort。
  *
  * 跑法：`node tests/frontend/ui/format.test.ts` 或 `npm run test:format`。
  * 同 remote-health.test.ts：零 node 依赖、失败 throw 非零退出作 pre-push 门禁；tsc --noEmit 类型检查。
@@ -9,9 +9,7 @@
  */
 
 import {
-  basename,
   formatBytes,
-  formatTimestampSmart,
   formatTimestampShort,
 } from "../../../src/frontend/ui/format.ts";
 
@@ -36,14 +34,6 @@ function ok(cond: boolean, msg?: string): void {
 
 console.log("format.test.ts");
 
-// === basename（随老 SFTP 面板退役从 sftp/paths.ts 搬来，原判据四格原样搬）===
-test("basename: 取最后一段（兼容反斜杠 / 尾斜杠）", () => {
-  eq(basename("/home/pi/a.txt"), "a.txt");
-  eq(basename("C:\\Users\\me\\b.rs"), "b.rs");
-  eq(basename("/home/pi/"), "pi");
-  eq(basename("solo"), "solo");
-});
-
 // === formatBytes（全确定性边界）===
 test("formatBytes: B 段（< 1024）", () => {
   eq(formatBytes(0), "0 B");
@@ -65,22 +55,6 @@ test("formatBytes: GB 段（2 位小数）", () => {
 });
 test("formatBytes: 负数走 B 段（当前行为，无防护）", () => {
   eq(formatBytes(-5), "-5 B");
-});
-
-// === formatTimestampSmart（相对偏移构造，避开时区/locale 硬编码）===
-test("formatTimestampSmart: 0 / NaN → —（!ms 守卫）", () => {
-  eq(formatTimestampSmart(0), "—");
-  eq(formatTimestampSmart(Number.NaN), "—");
-});
-test("formatTimestampSmart: 当天只显示时间（含 hh:mm，不含日期）", () => {
-  const s = formatTimestampSmart(Date.now());
-  ok(/\d{1,2}:\d{2}/.test(s), `当天结果应含时间，got ${JSON.stringify(s)}`);
-});
-test("formatTimestampSmart: 跨天比当天更长（多了日期段），且仍含时间", () => {
-  const sameDay = formatTimestampSmart(Date.now());
-  const crossDay = formatTimestampSmart(Date.now() - 40 * 86_400_000); // 40 天前
-  ok(/\d{1,2}:\d{2}/.test(crossDay), "跨天结果应仍含时间");
-  ok(crossDay.length > sameDay.length, `跨天应含日期段更长：crossDay=${JSON.stringify(crossDay)} sameDay=${JSON.stringify(sameDay)}`);
 });
 
 // === formatTimestampShort（解析失败回退原值）===

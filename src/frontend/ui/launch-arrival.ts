@@ -34,9 +34,6 @@ const MAIN_WINDOW = "main";
 /** 发起方自己的上界：主窗口没回话（不存在的形态）也不许一直挂着 —— 比预算多留 15 秒给抓屏与回话。 */
 const AWAIT_CAP_MS = ARRIVAL_BUDGET_MS + 15_000;
 
-/** 执行器交回的「等到了没有」：`unsent` = 命令没真发出去（复制回退 / 拉不起窗口，那一路自己说过了）。 */
-export type LaunchWait = "arrived" | "missed" | "unsent";
-
 /** 认它用的那一格。 */
 export type ArrivalMatch = { sid: string } | { cwd: string };
 

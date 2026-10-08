@@ -48,7 +48,7 @@ describe("toast 排版 ＋「消息」记录", () => {
     const undo = vi.fn();
     const commit = vi.fn();
     kit.undoToast(copyText("tabBar.close.done", { title: "周报草稿" }), undo, commit);
-    kit.toast(copyText("tabSessionActions.kill.failed", { title: "排序模型蒸馏" }), copyText("kit.pill.offline", { machine: "gpu-01" }), { level: "error", action: { label: "重试", run: vi.fn() } });
+    kit.toast(copyText("tabSessionActions.kill.failed", { title: "排序模型蒸馏" }), "gpu-01 连不上", { level: "error", action: { label: "重试", run: vi.fn() } });
     const [retry, closed] = kit.recentToasts();
     expect(closed.actions.map((a) => a.label)).toEqual([copyText("kit.toast.undo")]);
     expect(closed.at).toBeGreaterThan(0);
@@ -100,7 +100,7 @@ describe("toast 排版 ＋「消息」记录", () => {
     const sm = new StatusMessages();
     document.body.appendChild(sm.el);
     kit.toast("已结束 1 · 失败 1", "", { level: "error", more: ["失败 · billing · 门拦下了", copyText("tabBatch.result.skippedLine", { title: "notes", why: "已经结束了" })] });
-    kit.toast("已结束 1 · 失败 1", "", { level: "error", more: [copyText("kit.pill.offline", { machine: copyText("stream.step.failedFor", { dur: "web ·" }) })] });
+    kit.toast("已结束 1 · 失败 1", "", { level: "error", more: [copyText("stream.step.failedFor", { dur: "web ·" })] });
     expect(toasts().length, "带明细的各自一条，不合流").toBe(2);
     expect(toasts()[1].textContent, "明细不画在 toast 上").not.toContain("门拦下了");
     const first = kit.recentToasts()[1];
@@ -118,7 +118,7 @@ describe("toast 排版 ＋「消息」记录", () => {
     const { StatusMessages, showMessage } = await import("../../../../src/frontend/ui/status-messages");
     const sm = new StatusMessages();
     document.body.appendChild(sm.el);
-    kit.toast("已结束 1 · 失败 1", "", { level: "error", more: [copyText("kit.pill.offline", { machine: copyText("stream.step.failedFor", { dur: "web ·" }) })], action: [{ label: "查看", run: () => {}, toastOnly: true }, { label: "重试", run: () => {} }] });
+    kit.toast("已结束 1 · 失败 1", "", { level: "error", more: [copyText("stream.step.failedFor", { dur: "web ·" })], action: [{ label: "查看", run: () => {}, toastOnly: true }, { label: "重试", run: () => {} }] });
     expect([...toasts()[0].querySelectorAll("button")].map((b) => b.textContent), "提示条上两颗都在").toEqual(expect.arrayContaining(["查看", "重试"]));
     showMessage(kit.recentToasts()[0]);
     const list = document.querySelector<HTMLElement>("[data-role=messages-list]")!;

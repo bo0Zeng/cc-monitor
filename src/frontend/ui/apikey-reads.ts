@@ -1,10 +1,11 @@
 /**
- * API key 那两问**走通道，后端出成品**：
+ * API key 那一问**走通道，后端出成品**：
  *
  * | 问什么 | 帧命令 | 成品 |
  * |---|---|---|
- * | 这台机器上那份凭据文件的状态（`creds.apikey` 读） | `apikey-read` | `{configured, masked, path, notice, problem}` |
  * | 这几个号在这台的表里有没有行 · 这台的中转在不在（`apikey.routing`） | `apikey-routing` | `{routed, running}` |
+ *
+ * 凭据文件的状态那一问（`apikey-read`）界面不问（账号页只要上面那两格），解码口随之删了；那条帧命令的形状由后端金样钉着。
  *
  * 界面经 `chan.call` 直接问那台机器的后端（本机那台由 `<local>` 那条长连接答）、按形状严格收 —— 多一格 / 缺一格 / 类型不对 ⇒
  * 抛「两端契约对不上」，不替后端补值。先前两条 Tauri 命令（`read_apikey_credentials_status` · `apikey_routing_for`）在 monitor 里
@@ -23,19 +24,6 @@ import type { Origin } from "./ipc/origin";
 import { exactKeys, isObj } from "./ipc/decode";
 
 /**
- * 那份凭据文件的状态（**只有掩码**，前端永远拿不到明文：`KS6`）。
- * `configured` / `masked` 说的是顶层那一把（`KH2C3`）；`notice` = 权限过宽 / 查不出来时的一句话；
- * `problem` = 读不动 / 解析不了时的一句话（🔴 解析不了不退化成「没配」）。
- */
-export interface ApikeyCredentialsStatus {
-  configured: boolean;
-  masked: string;
-  path: string;
-  notice: string | null;
-  problem: string | null;
-}
-
-/**
  * 账号页那两格事实。**射程别读宽**：`routed` 说的是「这台的表里有这一行」（不是「那把 key 能用」）；
  * `running` 说的是「这台机器上我们的中转在听」。
  */
@@ -48,28 +36,6 @@ export interface ApikeyRoutingView {
 
 const nullableStr = (v: unknown): v is string | null =>
   v === null || typeof v === "string";
-
-/** `apikey-read` 的成品 ⇒ 状态。严格收。 */
-export function decodeApikeyStatus(v: unknown): ApikeyCredentialsStatus {
-  if (
-    !isObj(v) ||
-    !exactKeys(v, ["configured", "masked", "path", "notice", "problem"]) ||
-    typeof v.configured !== "boolean" ||
-    typeof v.masked !== "string" ||
-    typeof v.path !== "string" ||
-    !nullableStr(v.notice) ||
-    !nullableStr(v.problem)
-  ) {
-    throw new ReplyUnreadable("apikeyReads reply shape");
-  }
-  return {
-    configured: v.configured,
-    masked: v.masked,
-    path: v.path,
-    notice: v.notice,
-    problem: v.problem,
-  };
-}
 
 /** `apikey-routing` 的成品 ⇒ 两格事实。严格收。 */
 export function decodeApikeyRouting(v: unknown): ApikeyRoutingView {

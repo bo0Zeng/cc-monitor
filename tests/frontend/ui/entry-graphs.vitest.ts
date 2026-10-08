@@ -739,16 +739,13 @@ const MODULE_STACKING: Record<string, { stacked: boolean; why: string }> = {
   "src/frontend/ui/kit/icon.module.css": { stacked: false, why: "图标件：svg 只挂自己的哈希类" },
   "src/frontend/ui/kit/badge.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
   "src/frontend/ui/kit/banner.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
-  "src/frontend/ui/kit/block.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
   "src/frontend/ui/kit/button.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
-  "src/frontend/ui/kit/card.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
   "src/frontend/ui/kit/chip.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
   "src/frontend/ui/kit/dialog.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
   "src/frontend/ui/kit/drawer.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
   "src/frontend/ui/kit/empty.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
   "src/frontend/ui/kit/field.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
   "src/frontend/ui/kit/fold.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
-  "src/frontend/ui/kit/list-row.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
   "src/frontend/ui/kit/menu.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
   "src/frontend/ui/kit/select.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
   "src/frontend/ui/kit/meter.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
@@ -772,17 +769,14 @@ const MODULE_STACKING: Record<string, { stacked: boolean; why: string }> = {
 const KIT_AWAITING_FACES: ReadonlySet<string> = new Set(
   // banner · drawer · fold · meter · tabs 已由主窗口的「账号」面板用上；badge · status-dot 由标签页栏（状态点 · 机器徽标 · 「需要你」计数）用上；
   // progress 由消息流过程里那一步的「在跑」转圈用上（主窗口第 2 批）；empty · skeleton · switch 由历史页（空态 · 骨架 · 筛选里的勾与单选）用上；chip 由状态栏（任务 · agent · 上下文）用上；
-  // field 由设置窗「添加机器」框用上。
-  ["block", "card", "list-row"].map(
-    (k) => `src/frontend/ui/kit/${k}.module.css`,
-  ),
+  // field 由设置窗「添加机器」框用上；block · card · list-row 一直没有面，删了。
+  [],
 );
 
 /** 已有面用上、但其中一形还没有面的 kit 件：那一形的类今天产物 JS 里没有（两向：用上了就从这里摘）。 */
 const KIT_PARTIAL: Readonly<Record<string, readonly string[]>> = {
   // （分段按钮 C23 账号面板用上了，分栏 C5 那一形由历史页「按时间 | 按项目」用上了 ⇒ tabs 那一条摘了。）
-  // 转圈（`spinner`）消息流与历史页都用上了；进度条（C17）那一形还没有面。
-  "src/frontend/ui/kit/progress.module.css": ["progressFill", "progressReadout", "progressRow", "progressTrack"],
+  // （进度条那一形产品里一直没人用，连同它的类删了 ⇒ progress 那一条摘了。）
 };
 
 describe("〔UC2〕CSS Modules 在构建产物里（件 10）", () => {

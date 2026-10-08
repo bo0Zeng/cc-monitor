@@ -72,8 +72,3 @@ export function onQuotaChanged(origin: Origin, change: { quota: boolean; sids: r
   // 默认轮换改了（设置里）那台会给跟随它的会话各推一格 ⇒ 有会话变了就顺带重读默认那一份（一次读盘）。
   if (change.all || sids.length > 0) void refreshDefault(origin);
 }
-
-/** 只给判据用。 */
-export function __resetAcctCenterForTests(): void {
-  known.clear();
-}

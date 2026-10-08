@@ -1,22 +1,12 @@
 /**
- * 🔴 **D ＋ E**（第一刀 · 步 4）：
- * **异步失败落在那一块上**（D）· **点击侧给 pending**（E）。
+ * 🔴 **D**（第一刀 · 步 4）：**异步失败落在那一块上**。
+ * （E「点击侧给 pending」那一半的 `withPending` 产品里没人用，连同它的判据删了。）
  *
  * # D 要防的
  *
  * `§1.3 D` 逐字：今天 `void` 掉的 reject → `main.ts` 那条全局兜底 → 状态栏上一行 `REJ:`。
  * 状态栏离出事的那一块十万八千里 —— 用户看到「机器列表是空的」，而原因印在屏幕另一头。
  *
- * # E 要防的
- *
- * `§1.3 E`：`await` ＋ disable ＋ 回执。防的是 `backend-section.ts` 补审 `A1` 那个
- * 真发生过的窗口：**连点两下 = 两次往返**，第二次的结果盖掉第一次，而屏幕上看不出来。
- *
- * # 反空真
- *
- * E 那一条不用「按钮变灰了没有」当主锚（那只是个属性，谁都能设）——
- * 主锚是**往返次数的相等断言**：按住期间再点 N 下，IPC 计数**恒等于 1**。
- * 并配一格**反向锚**：放开之后再点，计数必须变成 2（否则「永远按住」也能让上一条绿）。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
@@ -40,69 +30,9 @@ vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
 }));
 vi.mock("../../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn() }));
 
-import { commands } from "../../../../src/frontend/ui/ipc/commands";
 import { __resetMachineContextForTests } from "../../../../src/frontend/ui/settings/machine-context";
-import { withPending } from "../../../../src/frontend/ui/settings/pending";
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
-
-describe("（步 4）：点击侧 pending —— 按住期间不许发第二趟", () => {
-  beforeEach(() => {
-    ipc.calls = [];
-    ipc.gate = null;
-    document.body.replaceChildren();
-    __resetMachineContextForTests();
-  });
-
-  /** 一颗按钮：点一下 ⇒ 按住发一趟（`withPending`），那一趟挂着不回，直到放开。 */
-  function rig(): HTMLButtonElement {
-    const btn = document.createElement("button");
-    btn.textContent = "重新扫描";
-    btn.addEventListener("click", () => void withPending(btn, "扫描中…", async () => void (await commands.diagnostics_report({ configUnknown: [], drift: [] }))));
-    document.body.appendChild(btn);
-    return btn;
-  }
-
-  it("🔴 主锚：按住期间连点 4 下，往返次数**恒等于 1**", async () => {
-    const rescan = rig();
-    rescan.click();
-    await tick();
-    expect(rescan.dataset.pending, "按下之后要有 pending 这个身份").toBe("1");
-    expect(rescan.disabled).toBe(true);
-    for (let i = 0; i < 4; i++) rescan.click();
-    await tick();
-    expect(
-      ipc.calls.filter((c) => c === "diagnostics_report").length,
-      "按住期间又发出去了第二趟 —— 那正是补审 A1 记的那个「双起」窗口",
-    ).toBe(1);
-  });
-
-  it("🔴 反向锚：放开之后再点，往返次数必须变成 2（不许靠「永远按住」绿）", async () => {
-    const rescan = rig();
-    rescan.click();
-    await tick();
-    ipc.gate?.();
-    await tick();
-    await tick();
-    expect(rescan.disabled, "回来了就得放开 —— 一直按住的话用户连重试都做不到").toBe(false);
-    expect(rescan.dataset.pending).toBeUndefined();
-    expect(rescan.textContent, "文字要还原，不能永远停在「扫描中…」").toBe("重新扫描");
-    rescan.click();
-    await tick();
-    expect(ipc.calls.filter((c) => c === "diagnostics_report").length).toBe(2);
-  });
-
-  it("失败也要放开（`finally`）—— 失败就永远按住比没有 pending 更糟", async () => {
-    const btn = document.createElement("button");
-    btn.textContent = "干活";
-    await expect(
-      withPending(btn, "忙…", () => Promise.reject(new Error("boom"))),
-    ).rejects.toThrow("boom");
-    expect(btn.disabled).toBe(false);
-    expect(btn.textContent).toBe("干活");
-    expect(btn.dataset.pending).toBeUndefined();
-  });
-});
 
 describe("（步 4）：异步失败落在那一块上，不再只打到状态栏", () => {
   beforeEach(() => {

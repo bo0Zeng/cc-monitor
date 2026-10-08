@@ -144,7 +144,7 @@ export interface MachineRowExtras {
 }
 
 export interface RemoteSectionOptions {
-  /** 被 CollapsibleGroup 包起来时传 headless: true，不渲染自己的小标题。 */
+  /** 被别的分组包起来时传 headless: true，不渲染自己的小标题。 */
   headless?: boolean;
   /** 见 `MachineRowExtras`。不传就是老形态（行上只有名字 ＋ 状态条）。 */
   rowExtras?: MachineRowExtras;

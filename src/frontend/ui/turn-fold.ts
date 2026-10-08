@@ -31,7 +31,6 @@ import { LS_KEYS, safeGet, safeSet } from "./local-storage";
 
 export const PROC_LINE_CLASS = "proc-line";
 /** 折起来的过程卡（`display:none`）。 */
-export const PROC_HIDDEN_CLASS = "proc-hidden";
 const FOLD_WRAP_CLASS = "branch-fold-wrap";
 /** 会被折进过程的卡型（白名单：认不出的卡一律常显）。 */
 const FOLDABLE = ["card-assistant", "card-tool-group", "card-api-retry", "card-injected"] as const;

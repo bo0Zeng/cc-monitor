@@ -151,6 +151,3 @@ export function icon(name: IconName, size: IconSize = "regular"): SVGSVGElement 
   svg.appendChild(path);
   return svg;
 }
-
-/** 登记了哪些（判据读）。 */
-export const ICON_NAMES = Object.keys(SVG) as IconName[];
