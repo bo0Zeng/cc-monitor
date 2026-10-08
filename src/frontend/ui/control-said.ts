@@ -3,7 +3,7 @@
  * 成品形状怎么核、机器怎么称呼。
  *
  * 调用方：`src/frontend/ui/tmux-control.ts`（抓屏 · 结束会话 · 发按键 · 就地 resume）· `src/frontend/ui/cc-bus-control.ts`
- * （cc-bus 查在线 · 发消息 · 收掉 · 派生 · 广播）· `src/frontend/ui/account-ops.ts`（账号库那几条命令）。它们各自的「拒绝码 → 一句话」按动作分表、住各自那一份；
+ * （cc-bus 查在线 · 发消息 · 收掉 · 派生 · 广播）· `src/frontend/ui/account-ops.ts`（账号库那几条命令）。被拒那一句由那台后端写好（[`asSaid`]）；
  * **这里只放两边说的是同一件事的那几句**（这台机器够不够得着、答没答、答的读不读得懂）—— 写两份就会各自漂。
  *
  * ⚠ 本文件**不说 `chan.call`**：`frame_query_tests` 按 `chan.call(` 的字面量操作名数前端经通道说哪几条、
@@ -126,19 +126,12 @@ export function unavailableReason(code: string, machine: string): string {
 }
 
 /**
- * 拒绝码 ⇒ 一句话，按表：表里认得的码说那一句（各行自己调 `copyText`，键与参数照旧字面写）；认不出的码有原话 ⇒ `rest.other`，
- * 原话是空白 ⇒ `rest.none`。新增一个拒绝码只加一行表。
+ * 那台后端已经把「被拒」说成了一句（结束会话 · 读画面 / 送字 · cc-bus · 账号库那几条，`src/backend/stream/said.rs`）⇒ 原样上屏；
+ * 拒绝体里没有那一句（老后端 · 体读不出）⇒ `none`。界面不再按码另写句子。
  */
-export function refusalsByTable(
-  table: Readonly<Record<string, (detail: string) => string>>,
-  rest: { other: (detail: string) => string; none: () => string },
-): Refusals {
+export function asSaid(none: () => string): Refusals {
   return {
-    byCode(code, detail) {
-      const say = Object.prototype.hasOwnProperty.call(table, code) ? table[code] : undefined;
-      if (say !== undefined) return say(detail);
-      return detail.trim() !== "" ? rest.other(detail) : rest.none();
-    },
-    noReason: rest.none,
+    byCode: (_code, said) => (said.trim() !== "" ? said : none()),
+    noReason: none,
   };
 }

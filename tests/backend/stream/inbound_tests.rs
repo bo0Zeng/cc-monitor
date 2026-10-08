@@ -1191,3 +1191,36 @@ async fn a_failed_reply_carries_a_detail_with_the_facts_below_the_sentence() {
         "{b}"
     );
 }
+
+/// 有「码 → 句」表的命令被拒：句子换成表里那一句，处理器原来那句（带下层原话）进复制详情的原话那一项。
+#[test]
+fn the_handlers_own_sentence_moves_into_the_detail_raw_line() {
+    let f = Fail::from((
+        "kill_failed".to_string(),
+        "tmux: can't find window: demo-cc:2".to_string(),
+    ));
+    let crate::stream::wire::Frame::Reply {
+        message, detail, ..
+    } = f.into_reply(
+        "i".into(),
+        "kill",
+        &serde_json::json!({ "name": "demo-cc" }),
+    )
+    else {
+        panic!("不是应答帧");
+    };
+    let message = message.unwrap();
+    let detail = detail.unwrap();
+    assert_eq!(
+        message,
+        copy_core::copy_text("tmuxControl.kill.failed", &[("target", "demo-cc")])
+    );
+    assert!(!message.contains("can't find window"), "{message}");
+    assert!(
+        detail.contains(&format!(
+            "{}：tmux: can't find window: demo-cc:2",
+            copy_core::copy_text("detail.label.raw", &[])
+        )),
+        "{detail}"
+    );
+}

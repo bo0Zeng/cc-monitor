@@ -1261,7 +1261,7 @@ describe("跟随 / 用账号 0：界面不读 pin，交的就是那一格", () =
 describe("单个「在 tmux 里 Resume」交那台（与批量同一条，只差 sid 的个数）", () => {
   let tm: TabManager;
   const reply = (outcome: string, why: string | null, session: string | null, detail = "") => ({
-    sid: "r1", outcome, why, detail, session, bus: null, cmd: null, account: null, unavailable: null,
+    sid: "r1", outcome, why, detail, said: null, copyDetail: "", session, bus: null, cmd: null, account: null, unavailable: null,
   });
   beforeEach(() => {
     vi.clearAllMocks();

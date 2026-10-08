@@ -44,7 +44,7 @@ import { startInTmuxThenAttach } from "./tmux-resume";
 // 标签页里的会话都是流跟的那一家（记录树那一家）。
 import type { Tab } from "./tab-model";
 import { copyText } from "./copy-table";
-import { decodeKilled, saidOfControl } from "./tmux-control";
+import { decodeKilled, type KillNote, saidOfControl } from "./tmux-control";
 import { offerResyncRetry, resyncMachines, resyncMachinesSaid } from "./resync";
 import { detailOf } from "./kit/detail";
 
@@ -348,17 +348,17 @@ export class TabSessionActions {
         const said = sayReply(origin, "stop", r);
         // 关卡 2 拒的 ⇒ 提示带「对齐后重试」（只对这个会话重验 ＋ 重打，再过一次关卡）。
         if (r.why === "wrong_owner") offerResyncRetry(origin, sid, copyText("tabSessionActions.kill.failed", { title }), said, kill);
-        else toast(copyText("tabSessionActions.kill.failed", { title }), said);
+        else toast(copyText("tabSessionActions.kill.failed", { title }), said, { detail: r.copyDetail });
         return;
       }
       // 顺手从 cc-bus 名册注销的结局说一句（没有要说的就不说；说法同单个 `kill` 那一份）。
-      let bus: string | null = null;
+      let bus: KillNote = { said: null, detail: "" };
       try {
         bus = decodeKilled(origin, r.session ?? name, { session: r.session ?? name, killed: true, bus: r.bus });
       } catch {
-        bus = null;
+        bus = { said: null, detail: "" };
       }
-      toast(copyText("sessionState.kill.done", { title }), bus ?? "", { level: "success" });
+      toast(copyText("sessionState.kill.done", { title }), bus.said ?? "", { level: "success", detail: bus.detail });
     };
     void (async () => {
       if (!(await confirmFn({ ...spec, danger: true }))) return;

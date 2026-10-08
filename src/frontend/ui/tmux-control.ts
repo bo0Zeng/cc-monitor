@@ -17,7 +17,7 @@
  * 结束 10 秒。
  */
 import { copyText } from "./copy-table";
-import { ControlError, machineName, refusalsByTable, saidOfControl, settle, unreadable, type Refusals } from "./control-said";
+import { asSaid, ControlError, machineName, saidOfControl, settle, unreadable, type Refusals } from "./control-said";
 import { exactKeys, isObj } from "./ipc/decode";
 import { chan } from "../../comms/inward/chan";
 import { budgetWithin, jsonBody } from "./ipc/chan-caller";
@@ -27,6 +27,12 @@ import type { Origin } from "./ipc/origin";
 //   `settle`）搬进了 `src/frontend/ui/control-said.ts`；本文件的调用方照旧从这里取那两样。
 export { ControlError, saidOfControl };
 
+/** 结束成了之后顺手注销 cc-bus 那几行（后端写好的句子 ＋ 复制详情；没什么可说 ⇒ `said` 是 `null`）。 */
+export interface KillNote {
+  said: string | null;
+  detail: string;
+}
+
 /** 结束的期限（见头注）。 */
 const CONTROL_BUDGET_MS = 10_000;
 
@@ -34,21 +40,7 @@ const CONTROL_BUDGET_MS = 10_000;
 
 /** 结束会话的拒绝码 ⇒ 一句话。身份门 / 窗口门两档说清拦下的原因（它们的下一步与「会话不在」完全不同）。 */
 export function killRefusals(target: string): Refusals {
-  return refusalsByTable(
-    {
-      bad_args: (detail) => copyText("tmuxControl.kill.badName", { target, detail }),
-      no_tmux: (detail) => copyText("tmuxControl.kill.noTmux", { target, detail }),
-      no_such_session: (detail) => copyText("tmuxControl.kill.noSuchSession", { target, detail }),
-      wrong_owner: (detail) => copyText("tmuxControl.kill.wrongOwner", { target, detail }),
-      too_many_windows: (detail) => copyText("tmuxControl.kill.tooManyWindows", { target, detail }),
-      kill_failed: (detail) => copyText("tmuxControl.kill.failed", { target, detail }),
-      child_timed_out: (detail) => copyText("tmuxControl.kill.childTimedOut", { target, detail }),
-    },
-    {
-      other: (detail) => copyText("tmuxControl.kill.otherCode", { target, detail }),
-      none: () => copyText("tmuxControl.kill.noReason", { target }),
-    },
-  );
+  return asSaid(() => copyText("tmuxControl.kill.noReason", { target }));
 }
 
 /**
@@ -56,33 +48,23 @@ export function killRefusals(target: string): Refusals {
  * 恰好 `{session, killed, bus}` 且 `killed === true` 才算结束了；形状对但 `killed` 不为真 ⇒ 「后端没确认结束」
  * （**不当成功**：破坏性动作在未知状态上不许往下走）。`bus` 那一格形状不对 ⇒ 整份读不懂。
  */
-export function decodeKilled(origin: Origin, target: string, v: unknown): string | null {
+export function decodeKilled(origin: Origin, target: string, v: unknown): KillNote {
   if (!isObj(v) || !exactKeys(v, ["session", "killed", "bus"]) || typeof v.session !== "string" || typeof v.killed !== "boolean") {
     throw unreadable(origin, "kill", "is not exactly {session, killed, bus}");
   }
   const bus = v.bus;
   if (
     !isObj(bus) ||
-    !exactKeys(bus, ["removed", "failed", "unread"]) ||
-    !Array.isArray(bus.removed) ||
-    !bus.removed.every((x) => typeof x === "string") ||
-    !Array.isArray(bus.failed) ||
-    !bus.failed.every((f) => isObj(f) && exactKeys(f, ["id", "why"]) && typeof f.id === "string" && typeof f.why === "string") ||
-    !(bus.unread === null || typeof bus.unread === "string")
+    !exactKeys(bus, ["removed", "failed", "unread", "said", "detail"]) ||
+    !(bus.said === null || typeof bus.said === "string") ||
+    typeof bus.detail !== "string"
   ) {
-    throw unreadable(origin, "kill", "bus is not exactly {removed: string[], failed: {id, why}[], unread: string|null}");
+    throw unreadable(origin, "kill", "bus is not exactly {removed, failed, unread, said: string|null, detail: string}");
   }
   if (!v.killed) {
-    throw new ControlError(
-      copyText("tmuxControl.kill.notConfirmed", { machine: machineName(origin), target }),
-      "kill reply has killed=false but no refusal code",
-    );
+    throw new ControlError(copyText("tmuxControl.kill.notConfirmed", { machine: machineName(origin), target }), "");
   }
-  const said: string[] = [];
-  if (bus.unread !== null) said.push(copyText("tmuxControl.kill.busUnread", { why: bus.unread }));
-  if (bus.removed.length > 0) said.push(copyText("tmuxControl.kill.busRemoved", { ids: (bus.removed as string[]).join(copyText("tmuxControl.kill.listSep")) }));
-  for (const f of bus.failed as { id: string; why: string }[]) said.push(copyText("tmuxControl.kill.busFailed", { id: f.id, why: f.why }));
-  return said.length === 0 ? null : said.join("\n");
+  return { said: bus.said as string | null, detail: bus.detail as string };
 }
 
 /**
@@ -90,7 +72,7 @@ export function decodeKilled(origin: Origin, target: string, v: unknown): string
  * 后端对**句柄**下手（不是名字）。给了 `sid` ⇒ 结束挂着它的那个窗格（同会话里还有别的 claude 时不关整个会话）。
  * 失败 ⇒ 抛 [`ControlError`]；**没有第二条路可回落**。
  */
-export async function killSession(origin: Origin, target: string, sid?: string): Promise<string | null> {
+export async function killSession(origin: Origin, target: string, sid?: string): Promise<KillNote> {
   const payload = jsonBody(sid === undefined ? { name: target } : { name: target, sid });
   const budget = budgetWithin(CONTROL_BUDGET_MS);
   const v = await settle(origin, "kill", chan.call(origin, "kill", payload, budget), killRefusals(target));

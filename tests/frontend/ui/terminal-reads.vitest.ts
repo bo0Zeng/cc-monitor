@@ -162,24 +162,17 @@ describe("抓一屏：失败怎么说", () => {
     expect(await saidBy("devbox")).toBe(copyText("control.channel.cancelled"));
   });
 
-  it("★★ 拒绝码（取自金样）逐码一句、带名字与后端原话；认不出的码不上屏（码在诊断里）", async () => {
-    const said: string[] = [];
+  it("★★ 拒绝码（取自金样）：那台写好的那一句原样上屏、复制详情带码（逐码一句由后端判：`said_tests.rs`）；那台没写 ⇒ 无原因那一句带名字", async () => {
+    expect(PREVIEW.codes.length, "金样里一个码都没有 —— 下面全是空转").toBeGreaterThan(0);
     for (const code of PREVIEW.codes) {
-      answer({ "terminal-preview": { fail: refusedReply(code, "RAW-WORDS") } });
-      said.push(await saidBy("devbox"));
+      answer({ "terminal-preview": { fail: refusedReply(code, `S-${code}`) } });
+      const e = await failureOf(() => previewText("devbox", { sid: "sid-a" }, "demo-cc"));
+      expect(e.message).toBe(`S-${code}`);
+      expect(e.detail, "复制详情里没有码").toContain(code);
     }
-    expect(said.length, "金样里一个码都没有 —— 下面全是空转").toBeGreaterThan(0);
-    // `bad_target` 与 `bad_args` 说的是同一件事（请求那一格不对），共用一句。
-    expect(new Set(said).size).toBe(said.length - 1);
-    for (const s of said) {
-      expect(s).toContain("demo-cc");
-      expect(s, "后端的原话被吃掉了").toContain("RAW-WORDS");
-    }
-    answer({ "terminal-preview": { fail: refusedReply("zzz_new_code", "RAW-WORDS") } });
-    const unknown = await failureOf(() => previewText("devbox", { sid: "sid-a" }, "demo-cc"));
-    expect(unknown.message).toContain("RAW-WORDS");
-    expect(unknown.message, "错误码上了屏").not.toContain("zzz_new_code");
-    expect(unknown.detail, "诊断里没有码").toContain("zzz_new_code");
-    expect(said).not.toContain(unknown.message);
+    answer({ "terminal-preview": { fail: refusedReply("zzz_new_code", " ") } });
+    const none = await failureOf(() => previewText("devbox", { sid: "sid-a" }, "demo-cc"));
+    expect(none.message).toBe(copyText("terminalReads.preview.noReason", { target: "demo-cc" }));
   });
+
 });

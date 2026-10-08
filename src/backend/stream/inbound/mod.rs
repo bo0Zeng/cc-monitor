@@ -525,6 +525,7 @@ async fn spawn_handler<F, Fut>(
 {
     let id = req.id.clone();
     let cmd = req.cmd.clone();
+    let args = req.args.clone();
 
     // ── ★ 拒重复 `id` ─────────────────────────────────────────────────────
     //
@@ -576,7 +577,7 @@ async fn spawn_handler<F, Fut>(
                 detail: None,
                 data,
             },
-            Err(f) => f.into_reply(id_for_task.clone(), &cmd),
+            Err(f) => f.into_reply(id_for_task.clone(), &cmd, &args),
         };
         // 先摘登记再回应答：反过来的话，客户端收到应答后立刻发 cancel，
         // 可能命中一个已经跑完但还没摘掉的句柄，白 abort 一个空壳。

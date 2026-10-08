@@ -208,7 +208,7 @@ function detailOf(op: string, e: Refuse): string {
     `${l("detail.label.machine")}：Linux x86_64 · ${copyText("detail.value.backend", { build: "p9k-shots" })}`,
     `${l("detail.label.command")}：${op}`,
     `${l("detail.label.code")}：${e.code}`,
-    `${l("detail.label.raw")}：${e.message}`,
+    ...(e.raw !== undefined ? [`${l("detail.label.raw")}：${e.raw}`] : []),
   ].join("\n");
 }
 

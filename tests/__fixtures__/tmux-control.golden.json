@@ -7,7 +7,7 @@
   ],
   "kill": {
     "request": { "name": "demo-cc" },
-    "reply": { "session": "demo-cc", "killed": true, "bus": { "removed": [], "failed": [], "unread": null } },
+    "reply": { "session": "demo-cc", "killed": true, "bus": { "removed": [], "failed": [], "unread": null, "said": null, "detail": "" } },
     "codes": ["bad_args", "no_tmux", "no_such_session", "wrong_owner", "too_many_windows", "kill_failed", "child_timed_out"]
   },
   "launch": {

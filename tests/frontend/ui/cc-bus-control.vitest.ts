@@ -189,15 +189,13 @@ describe("〔C4e〕金样：请求体 == 金样、解码器读得懂后端真出
 });
 
 describe("〔DUP2 · J12〕id：界面不判，后端判（规则只有一份）", () => {
-  it("★★ 金样 `ids` 里坏的 id 也原样交给后端（查在线 · 发消息 · 收掉）；后端回 `bad_id` ⇒ 各一句、带后端原话", async () => {
+  it("★★ 金样 `ids` 里坏的 id 也原样交给后端（查在线 · 发消息 · 收掉）；后端回 `bad_id` ⇒ 照它写好的那一句说", async () => {
     expect(IDS.ok.length * IDS.bad.length, "金样的 ids 空了 —— 下面是空转").toBeGreaterThan(0);
     const bad = IDS.bad.find((id) => id === "--help")!;
     answer({ fail: refusedReply("bad_id", "BACKEND-SAYS") });
     const send = await saidOf(() => sendMessage("devbox", bad, "hi"));
     const kill = await saidOf(() => killAgent("devbox", bad));
-    expect(send).toMatch(copyPattern("ccBus.send.badId"));
-    expect(kill).toMatch(copyPattern("ccBus.kill.badId"));
-    for (const s of [send, kill]) expect(s, "后端的原话被吃掉了").toContain("BACKEND-SAYS");
+    for (const s of [send, kill]) expect(s, "那台写好的那一句没原样上屏").toBe("BACKEND-SAYS");
     expect(sentCalls().map((c) => c[1]), "界面自己把坏 id 拦下了 —— 规则只许后端那一份").toEqual(["bus-send", "bus-kill"]);
     const [sent, killed] = sentCalls().map((c) => c[2] as Record<string, unknown>);
     expect([sent.to, killed.id], "交给后端的不是原样那个 id").toEqual([bad, bad]);
@@ -221,11 +219,10 @@ describe("〔C4e〕发出去之前：调用方不能靠对端校验", () => {
     expect(() => checkSpawnShape({ tool: "some-future-agent", dir: "/w", task: "" })).not.toThrow();
     await spawnAgent("devbox", { tool: "some-future-agent", dir: "/w", task: "", account: "z" });
     expect(sentCalls().length).toBe(1);
-    // 坏账号名原样交给后端（界面不判），后端回 `bad_id` ⇒ 「没有派生：<后端那一句>」。
+    // 坏账号名原样交给后端（界面不判），后端回 `bad_id` ⇒ 照它写好的那一句说。
     answer({ fail: refusedReply("bad_id", "BACKEND-SAYS") });
     const said = await saidOf(() => spawnAgent("devbox", { tool: "claude", dir: "/w", task: "", account: "--help" }));
-    expect(said).toMatch(copyPattern("ccBus.spawn.badId"));
-    expect(said).toContain("BACKEND-SAYS");
+    expect(said).toBe("BACKEND-SAYS");
   });
 });
 
@@ -236,7 +233,7 @@ describe("〔C4e〕查在线：问不到 ≠ 不在线", () => {
       ["不在名单里", { ok: LIST.reply }, "nobody_cc", "ccBus.online.unknown"],
       ["live 是 null", { ok: withNull }, "n_cc", "ccBus.online.unknown"],
       ["通道不在", { fail: NO_CHANNEL }, "alpha_cc", "control.channel.remoteDown"],
-      ["被拒", { fail: refusedReply("timed_out", "RAW") }, "alpha_cc", "ccBus.online.timedOut"],
+      ["被拒", { fail: refusedReply("timed_out", copyText("ccBus.online.timedOut")) }, "alpha_cc", "ccBus.online.timedOut"],
     ];
     for (const [what, reply, id, key] of cases) {
       answer(reply);
@@ -304,7 +301,7 @@ describe("〔C4e〕回值几态逐态一句", () => {
 });
 
 describe("〔C4e〕失败怎么说", () => {
-  it("★★ 拒绝码（取自金样）逐码一句、两两不同、带后端原话；认不出的码不上屏（只说原话，码在诊断里）", async () => {
+  it("★★ 拒绝码（取自金样）：那台写好的那一句原样上屏、复制详情带码（逐码一句由后端判：`said_tests.rs`）；拒绝体读不出 ⇒ 仍说出一句", async () => {
     const drives: [string, GoldenOp, () => Promise<unknown>][] = [
       ["bus-list", LIST, () => agentOnline("devbox", "alpha_cc")],
       ["bus-send", SEND, () => sendMessage("devbox", "alpha_cc", "hi")],
@@ -313,26 +310,18 @@ describe("〔C4e〕失败怎么说", () => {
       ["bus-broadcast", BCAST, () => broadcast("devbox", "hi")],
     ];
     for (const [op, g, act] of drives) {
-      const said: string[] = [];
+      expect(g.codes.length, `${op}：金样里一个码都没有`).toBeGreaterThan(0);
       for (const code of g.codes) {
-        answer({ fail: refusedReply(code, "RAW-WORDS") });
-        said.push(await saidOf(act));
+        answer({ fail: refusedReply(code, `S-${code}`) });
+        expect(await saidOf(act), op).toBe(`S-${code}`);
+        answer({ fail: refusedReply(code, `S-${code}`) });
+        expect(await detailOf(act), `${op}：复制详情里没有码`).toContain(code);
       }
-      expect(said.length, `${op}：金样里一个码都没有`).toBeGreaterThan(0);
-      expect(new Set(said).size, `${op}：有两档被压成了同一句：${JSON.stringify(said)}`).toBe(said.length);
-      for (const s of said) expect(s, `${op}：后端的原话被吃掉了`).toContain("RAW-WORDS");
-      answer({ fail: refusedReply("zzz_new_code", "RAW-WORDS") });
-      const unknown = await saidOf(act);
-      expect(unknown, op).toContain("RAW-WORDS");
-      expect(unknown, `${op}：错误码上了屏`).not.toContain("zzz_new_code");
-      // 码不上屏 ⇒ 认不出的码落在通用那一句；与它同句的只许是通用失败码 `failed`，不许是哪个专门档（没被猜成已知档）。
-      expect(g.codes.filter((_, i) => said[i] === unknown), op).toEqual(g.codes.filter((c) => c === "failed"));
-      answer({ fail: refusedReply("zzz_new_code", "RAW-WORDS") });
-      expect(await detailOf(act), `${op}：诊断里没有码`).toContain("zzz_new_code");
       answer({ fail: { err: "Refused", body: [0xff] } });
       expect(await saidOf(act), `${op}：拒绝体读不出来时没说出一句`).not.toBe("");
     }
   });
+
 
   it("★ 本机照样经通道问；通道不在时本机与远端两句话不同，远端那句点得出是哪台", async () => {
     answer({ ok: KILL.reply });

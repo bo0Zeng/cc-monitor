@@ -4,6 +4,7 @@
 import type { Scene } from "./index";
 import { Refuse, type World } from "../fake/types";
 import { defaultWorld } from "../fake/world";
+import { copyText } from "../../../src/frontend/ui/copy-table";
 import { emit } from "@tauri-apps/api/event";
 import { Convo } from "../fake/records";
 import { click, mainReady, openTab, waitFor, sleep } from "./helpers";
@@ -90,17 +91,20 @@ export const DRAWER_SCENES: Scene[] = [
   scene(
     "drawer-terminal-failed",
     "底部抽屉 · 终端 · 画面读不出",
-    "那台说「无运行中的 tmux」：终端页顶一条错误条 ＝ 一句 ＋［刷新］＋［复制详情］（详情是那台后端写好、monitor 转交的那几行）",
+    "那台说「无运行中的 tmux」：终端页顶一条错误条 ＝ 那台写好的一句（原话不上句子）＋［刷新］＋［复制详情］（详情是那台后端写好、monitor 转交的那几行）",
     async () => {
       await mainReady(ALL_TABS);
       await click("#session-head button[aria-label='看它的终端']");
       await waitFor('#bottom-drawer [data-part="copy-detail"]');
+      // 剪贴板写不进（截图里没有剪贴板）⇒ 点［复制详情］就地展开那一段：看得见复制出去的是什么。
+      Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: () => Promise.reject(new Error("denied")) } });
+      document.querySelector<HTMLButtonElement>('#bottom-drawer [data-part="copy-detail"] button')?.click();
       await sleep(500);
     },
     () => {
       const w = defaultWorld();
       w.ops["terminal-preview"] = () => {
-        throw new Refuse("no_server", "no server running on /tmp/tmux-1000/default");
+        throw new Refuse("no_server", copyText("terminalReads.preview.noServer"), undefined, "no server running on /tmp/tmux-1000/default");
       };
       return w;
     },

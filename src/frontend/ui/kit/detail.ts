@@ -136,6 +136,8 @@ export function copyDetailButton(said: string | (() => string), detail: string, 
     fallback = box;
     area.focus();
     area.select();
+    // 全选会把框滚到底：滚回顶，首行看得全。
+    area.scrollTop = 0;
   };
 
   const copy = async (): Promise<void> => {

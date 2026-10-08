@@ -71,13 +71,13 @@ describe("复制详情按钮", () => {
   });
 
   it("合流 ×N：每段「那句 ＋ 详情」，段间空一行，首行带 ×N", () => {
-    expect(detailBody([["读取 cc-bus 无应答", "码：a"]])).toBe("读取 cc-bus 无应答\n码：a");
+    expect(detailBody([["s-merge", "码：a"]])).toBe("s-merge\n码：a");
     expect(
       detailBody([
-        ["读取 cc-bus 无应答", "码：a"],
-        ["读取 cc-bus 无应答", "码：b"],
+        ["s-merge", "码：a"],
+        ["s-merge", "码：b"],
       ]),
-    ).toBe(`读取 cc-bus 无应答 ${copyText("kit.toast.count", { n: 2 })}\n\n码：a\n\n码：b`);
+    ).toBe(`s-merge ${copyText("kit.toast.count", { n: 2 })}\n\n码：a\n\n码：b`);
   });
 
   it("取详情：带字符串 detail 的错才有，别的一律空", () => {

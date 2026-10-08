@@ -336,7 +336,7 @@ async function detailDialog(): Promise<void> {
     title: "添加机器",
     action: "添加",
     body,
-    submit: async () => ({ said: "添加 devbox 失败 · 写入失败", detail: DETAIL }),
+    submit: async () => ({ said: "添加 devbox 失败 · 磁盘满", detail: DETAIL }),
   });
   await new Promise((r) => setTimeout(r, 30));
   handle.submit();
