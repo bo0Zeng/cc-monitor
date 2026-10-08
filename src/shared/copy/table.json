@@ -21187,12 +21187,6 @@
       "zh": "回主目录",
       "args": []
     },
-    "rsFilewinShell.open.copyDetail": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "复制详情",
-      "args": []
-    },
     "rsFilewinShell.frame.searchByName": {
       "kind": "action",
       "role": "按钮",
