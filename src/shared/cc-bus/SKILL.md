@@ -5,8 +5,7 @@ description: 让 tmux 里几个各自独立运行的 Claude Code 实例互发消
 
 # cc-bus:多 Claude Code 实例消息总线(带智能路由)
 
-让 devbox 上 tmux 里几个**各自独立**的 CC 实例互发消息、接力、广播。CC 无原生"给运行中实例发消息"能力,本 skill 自搭一条带路由的总线。设计原理/排障见部署文档:
-`~/文档/config-notes/handheld/agent/多Claude实例互通_cc-bus(tmux投递+Stop钩子).md`。用户级安装惯例见 [[devbox-coding-clis-and-glm]]。
+让同一台机器上 tmux 里几个**各自独立**的 CC 实例互发消息、接力、广播。CC 无原生"给运行中实例发消息"能力,本 skill 自搭一条带路由的总线。
 
 ## 一句话模型
 **投递靠敲门,送达靠钩子,去重靠 offset,路由靠管线,承载靠 broker+兜底,拓扑靠策略。**

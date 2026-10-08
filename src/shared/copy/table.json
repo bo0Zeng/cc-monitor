@@ -7669,7 +7669,7 @@
     "machineCard.field.addressesHint": {
       "kind": "control",
       "role": "占位",
-      "zh": "10.0.0.2\npi.example.com:2222\n[fe80::1]:22\n首选地址填在上方的主机里",
+      "zh": "192.0.2.2\npi.example.com:2222\n[fe80::1]:22\n首选地址填在上方的主机里",
       "args": []
     },
     "machineCard.field.addresses": {
