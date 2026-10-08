@@ -962,6 +962,10 @@ async fn screenshot_for_the_shots_tool() {
             .and_then(|m| m.modified().ok())
             .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
             .map(|t| t.as_secs());
+        // 真后端连写好的两格一起送（合成场景替它按这台的钟写）。
+        let texts = r.mtime_secs.map(crate::source::mtime_text);
+        r.mtime_text = texts.as_ref().map(|t| t.short.clone());
+        r.mtime_full = texts.map(|t| t.full);
     }
     if target == d {
         let i = w
@@ -1160,10 +1164,11 @@ async fn screenshot_for_the_shots_tool() {
             w.board.note_there(
                 n,
                 Some(md.len()),
+                // 「那台」那一格是后端写好的短写法（合成场景替它按这台的钟写）。
                 md.modified()
                     .ok()
                     .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                    .map(|t| t.as_secs()),
+                    .map(|t| crate::source::mtime_text(t.as_secs()).short),
             );
         }
         w.board.set_total(3);

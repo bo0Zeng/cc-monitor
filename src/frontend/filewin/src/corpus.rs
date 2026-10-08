@@ -189,6 +189,8 @@ pub fn synth_rows(n: usize, seed: u64) -> Vec<super::source::Listed> {
                 link: h % 17 == 0,
                 link_dir: false,
                 mtime_secs: Some(1_000_000_000 + h % 900_000_000),
+                mtime_text: Some("10-02".to_string()),
+                mtime_full: Some("2026-10-02 15:01:23".to_string()),
                 raw_name: None,
                 link_broken: false,
                 row: Row {

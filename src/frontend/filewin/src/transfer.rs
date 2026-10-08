@@ -673,7 +673,7 @@ struct Board {
     /// 开过单的暂存件键（[`DropBoard::note_staged`]）。
     staged: Vec<String>,
     /// 同名那张表里「那台」那一格：名字 → (大小, 修改时间)，探「在不在」那一趟顺手记下（[`DropBoard::note_there`]）。
-    there: std::collections::HashMap<String, (Option<u64>, Option<u64>)>,
+    there: std::collections::HashMap<String, (Option<u64>, Option<String>)>,
     /// 这一摞一共几件（「不重名的 n 个照传」那一句要它）。
     total: usize,
 }
@@ -702,7 +702,7 @@ impl DropBoard {
     }
 
     /// 探「在不在」那一趟在那台看到的大小与修改时间（同名那张表「那台」那一格）。
-    pub fn note_there(&self, name: &str, size: Option<u64>, mtime: Option<u64>) {
+    pub fn note_there(&self, name: &str, size: Option<u64>, mtime: Option<String>) {
         self.inner
             .lock()
             .unwrap()
@@ -902,9 +902,9 @@ impl DropBoard {
         if asking.is_empty() {
             return;
         }
-        let side = |size: Option<u64>, mtime: Option<u64>| {
+        // 修改时间那一段：「这台」是这台盘上的文件（这台的钟排）；「那台」照抄那台后端写好的 `mtime_text`。
+        let side = |size: Option<u64>, when: Option<String>| {
             let size = size.map(super::rows::human_size);
-            let when = mtime.map(|t| super::source::mtime_text(t).short);
             [size, when]
                 .into_iter()
                 .flatten()
@@ -921,9 +921,9 @@ impl DropBoard {
                         .as_ref()
                         .and_then(|m| m.modified().ok())
                         .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                        .map(|d| d.as_secs()),
+                        .map(|d| super::source::mtime_text(d.as_secs()).short),
                 );
-                let (sz, mt) = there.get(&p.name).copied().unwrap_or((None, None));
+                let (sz, mt) = there.get(&p.name).cloned().unwrap_or((None, None));
                 super::kit::ClashRow {
                     name: p.name.clone(),
                     here,

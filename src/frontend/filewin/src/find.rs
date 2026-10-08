@@ -138,7 +138,8 @@ pub struct Hit {
     /// 所在目录相对搜索起点那一段（后端算的；直接在起点里 ⇒ 空）。
     pub location: Vec<u8>,
     pub size: Option<u64>,
-    pub mtime_secs: Option<u64>,
+    /// 修改时间的短写法（那台后端按它的本地钟写好；照抄）。
+    pub mtime_text: Option<String>,
     /// 名字里被搜索词对上的字节区间（后端判的；加底色用）。
     pub marks: Vec<(usize, usize)>,
 }
@@ -172,7 +173,7 @@ impl Hit {
             },
             name,
             location: String::from_utf8_lossy(&self.location).to_string(),
-            mtime_secs: self.mtime_secs,
+            mtime_text: self.mtime_text.clone(),
             size: self.size,
             dir: self.dir,
             link: self.link,
@@ -346,7 +347,10 @@ pub fn decode_find(d: &Value) -> Result<FindOutcome, String> {
             link: kind == "symlink",
             location,
             size: one.get("size").and_then(Value::as_u64),
-            mtime_secs: one.get("mtime_secs").and_then(Value::as_u64),
+            mtime_text: one
+                .get("mtime_text")
+                .and_then(Value::as_str)
+                .map(str::to_string),
             marks,
         });
     }

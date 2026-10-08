@@ -30,7 +30,7 @@ use copy_core::copy_text;
 use egui::{ScrollArea, Ui};
 
 use super::kind;
-use super::source::{mtime_text, Listed, Sort, SortBy};
+use super::source::{Listed, Sort, SortBy};
 use super::theme::metrics;
 use super::theme::palette;
 
@@ -106,7 +106,8 @@ pub struct HitRow {
     pub name: String,
     pub marks: Vec<(usize, usize)>,
     pub location: String,
-    pub mtime_secs: Option<u64>,
+    /// 修改时间那一格：后端写好的短写法（照抄）。
+    pub mtime_text: Option<String>,
     pub size: Option<u64>,
     pub dir: bool,
     pub link: bool,
@@ -370,9 +371,7 @@ fn paint_hit(ui: &Ui, rect: egui::Rect, h: &HitRow) {
     );
     cell(
         mtime_c,
-        h.mtime_secs
-            .map(|t| mtime_text(t).short)
-            .unwrap_or_default(),
+        h.mtime_text.clone().unwrap_or_default(),
         None,
         false,
     );
@@ -837,7 +836,10 @@ fn paint_one_row(
     let g = one_line(ui, r.name.clone(), room, main);
     let gw = g.size().x;
     // 截成「…」的那几格：悬停在上面看全文；有列收起了 ⇒ 悬停名字连那几列一起看。
-    let when = r.mtime_secs.map(mtime_text);
+    let when = r.mtime_text.clone().map(|short| super::source::MtimeText {
+        full: r.mtime_full.clone().unwrap_or_else(|| short.clone()),
+        short,
+    });
     let size_text = if r.is_dir {
         String::new()
     } else {

@@ -916,6 +916,14 @@ fn the_field_by_field_table_between_backend_and_window_is_a_judge() {
         ("link_to", "link_broken（`missing` ⇒ 断了；缺 ＝ 否）"),
         ("total", "Cut::total（缺 ＝ 0）"),
         ("mtime_secs", "mtime_secs（缺 ＝ None）"),
+        (
+            "mtime_text",
+            "mtime_text（后端写好的短写法，原样；缺 ＝ None）",
+        ),
+        (
+            "mtime_full",
+            "mtime_full（后端写好的完整写法，原样；缺 ＝ None）",
+        ),
         ("path", "path · name · lossy_name"),
         ("size", "size（缺 ＝ 0）"),
         ("truncated", "界面上那句「只拿到了前 N 条」"),
@@ -951,6 +959,18 @@ fn the_field_by_field_table_between_backend_and_window_is_a_judge() {
         one(serde_json::json!({ "path": "/a/t", "kind": "file", "mtime_secs": 1_700_000_000u64 }));
     assert_eq!(t.mtime_secs, Some(1_700_000_000));
     assert_eq!(file.mtime_secs, None);
+    // mtime_text · mtime_full：后端按那台本地钟写好的两格，原样（窗口不换算）；缺了是 None。
+    let tx = one(
+        serde_json::json!({ "path": "/a/x", "kind": "file", "mtime_secs": 1u64, "mtime_text": "10-02", "mtime_full": "2026-10-02 15:01:23" }),
+    );
+    assert_eq!(
+        (tx.mtime_text.as_deref(), tx.mtime_full.as_deref()),
+        (Some("10-02"), Some("2026-10-02 15:01:23"))
+    );
+    assert_eq!(
+        (file.mtime_text.as_deref(), file.mtime_full.as_deref()),
+        (None, None)
+    );
     // size：缺 ⇒ 0。
     let s = one(serde_json::json!({ "path": "/a/s", "kind": "file", "size": 42 }));
     assert_eq!((s.size, file.size), (42, 0));
@@ -1152,4 +1172,38 @@ fn each_layer_of_a_channel_failure_says_something_different() {
             .map(|why| said("x", &why.into()))
             .collect();
     assert_eq!(ours.len(), 3, "本侧三种错说成了同一句");
+}
+
+/// 🔴 **那台送来的文件时间窗口不换算**：生产代码里叫本机钟的 [`mtime_text`] 的地方 == 下面这张登记表（逐文件计数，两向）。
+/// 登记的四处都是**这台自己的事**：断线于（`chrome.rs`）· 一件传输收尾于（`progress.rs`）· 保存于（`shell.rs`）·
+/// 上传撞名表「这台」那一格（`transfer.rs`，这台盘上的文件）。列表 · 搜索结果 · 属性 · 预览 · 撞名表「那台」那一格照抄后端写好的字，
+/// 谁把它们改回 `mtime_text(…)`，这里多出一处就红。
+#[test]
+fn only_this_machines_own_moments_go_through_the_local_clock() {
+    const REGISTERED: &[(&str, usize)] = &[
+        ("chrome.rs", 1),
+        ("progress.rs", 1),
+        ("shell.rs", 1),
+        ("transfer.rs", 1),
+    ];
+    let mut got: Vec<(String, usize)> =
+        guard_core::scan_tree_excluding(&crate::guard_support::crate_src_root(), &["rs"], &[])
+            .into_iter()
+            .filter_map(|(path, raw)| {
+                let prod = guard_core::production_code(&raw);
+                // 定义那一份（`source.rs`）里的 `fn mtime_text(` 不算调用处。
+                let n =
+                    prod.matches("mtime_text(").count() - prod.matches("fn mtime_text(").count();
+                (n > 0).then(|| (path.file_name().unwrap().to_string_lossy().to_string(), n))
+            })
+            .collect();
+    got.sort();
+    let want: Vec<(String, usize)> = REGISTERED
+        .iter()
+        .map(|(f, n)| ((*f).to_string(), *n))
+        .collect();
+    assert_eq!(
+        got, want,
+        "按本机钟画时间的地方与登记表对不上（那台送来的时间要照抄后端写好的字）"
+    );
 }

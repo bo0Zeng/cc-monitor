@@ -1421,7 +1421,9 @@ impl FileWindow {
                             seen.note_there(
                                 &p.name,
                                 v.get("size").and_then(serde_json::Value::as_u64),
-                                v.get("mtime_secs").and_then(serde_json::Value::as_u64),
+                                v.get("mtime_text")
+                                    .and_then(serde_json::Value::as_str)
+                                    .map(str::to_string),
                             );
                         }
                         got.is_some()

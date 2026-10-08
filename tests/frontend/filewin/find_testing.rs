@@ -604,6 +604,8 @@ impl FakeBackend {
                             "location": to_json(&location(p)),
                             "size": md.as_ref().filter(|m| !m.is_dir()).map(|m| m.len()),
                             "mtime_secs": md.as_ref().and_then(|m| m.modified().ok()).and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|t| t.as_secs()),
+                            // 真后端按那台本地钟写好的短写法（合成后端写一个固定的字，窗口只照抄）。
+                            "mtime_text": md.as_ref().map(|_| "10-02"),
                             "marks": marks,
                         })
                     })
