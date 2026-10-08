@@ -27051,6 +27051,18 @@
       "role": "片段",
       "zh": "后端 {build}",
       "args": ["build"]
+    },
+    "messages.record.expand": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "详情",
+      "args": []
+    },
+    "messages.record.moreSegments": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "另 {n} 段",
+      "args": ["n"]
     }
   }
 }
