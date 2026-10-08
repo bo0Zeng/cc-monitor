@@ -816,7 +816,7 @@ const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
         "足迹：与 `data-report` 同住 `footprint/mod.rs`（引用图按文件取），它自己不问 tmux（tmux 那一行只 stat PATH）",
     ),
     (
-        "readiness",
+        "first-run",
         "首次运行那份数：与 `data-report` 同住 `footprint/`（引用图按文件取，经 `footprint/mod.rs`），它自己不问 tmux（三步看启动文件 · 账号库 · 台数）",
     ),
     (

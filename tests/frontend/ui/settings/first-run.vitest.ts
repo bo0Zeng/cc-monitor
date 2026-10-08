@@ -1,5 +1,5 @@
 /**
- * 首次运行「开始用」：那份数（`readiness`）严格收、问的时候带上机器表台数；设置窗那一块照它画（哪步做了 · 跳过过没有都是后端给的）；
+ * 首次运行「开始用」：那份数（`first-run`）严格收、问的时候带上机器表台数；设置窗那一块照它画（哪步做了 · 跳过过没有都是后端给的）；
  * 状态栏那一枚只数必做的步，跳过过就不出。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -49,7 +49,7 @@ describe("那份数", () => {
   it("★ 问的时候带上机器表台数；严格收（多一格 / 少一格 / 步名不在闭集 ⇒ 收不下）", async () => {
     answer.value = reply([false, false, true]);
     expect((await readReadiness())?.left).toBe(1);
-    expect(calls).toEqual([{ origin: "<local>", op: "readiness", args: { remotes: 1 } }]);
+    expect(calls).toEqual([{ origin: "<local>", op: "first-run", args: { remotes: 1 } }]);
     expect(decodeReadiness({ ...reply([true, true, true]), extra: 1 })).toBeNull();
     const { skipped: _s, ...noSkip } = reply([true, true, true]);
     expect(decodeReadiness(noSkip)).toBeNull();
@@ -92,7 +92,7 @@ describe("设置窗「开始用」那一块", () => {
     await settle();
     expect(calls.map((c) => [c.origin, c.op, c.args])).toEqual([
       ["<local>", "chores-mark", { op: "skipStart" }],
-      ["<local>", "readiness", { remotes: 1 }],
+      ["<local>", "first-run", { remotes: 1 }],
     ]);
     expect(fr.element.hidden).toBe(true);
   });

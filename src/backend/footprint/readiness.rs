@@ -1,4 +1,4 @@
-//! 首次运行「开始用 · 剩 N 步」那份数（帧面 `readiness`）：三步各自由这台的事实打勾，判定只在这里。
+//! 首次运行「开始用 · 剩 N 步」那份数（帧面 `first-run`）：三步各自由这台的事实打勾，判定只在这里。
 //!
 //! - `terminal`（让终端认得 ccm 和别名）：这台某一份启动文件里有别名块（与「别名与配置文件」那一行同一份候选）。
 //! - `named`（给现在登录的号起个名字，可选）：这台启用了多账号（账号库清单读得出，与账号页 `meta.enabled` 同一个判法）。
@@ -57,7 +57,7 @@ fn terminal_here(door: &dyn Door) -> bool {
         .unwrap_or(false)
 }
 
-/// `readiness {remotes}`：帧面入口（只读）。
+/// `first-run {remotes}`：帧面入口（只读）。
 pub(crate) fn answer(door: &dyn Door, args: &Value) -> Answer {
     let remotes = remotes_arg(args)?;
     let skipped =

@@ -1893,11 +1893,11 @@ sid → 上次用哪个号起。
 
 码：`bad_args` · `failed`
 
-#### `readiness`
+#### `first-run`
 
 首次运行「开始用」三步各自打没打勾。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --readiness`
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --first-run`
 
 | 字段 | 向 | 说明 |
 |---|---|---|
@@ -3492,6 +3492,7 @@ cc-bus 钩子诊断。
 | `--files-stat` | ＝ 帧命令 `files-stat`：一个路径的元数据 |
 | `--files-write-text` | ＝ 帧命令 `files-write-text`：覆盖写一份已经在的普通文件 |
 | `--find-in-session` `[--include-tools] [--limit <n>] --query <q> <jsonl>` | 在一份会话里找一段文字：头 `{kind:"session_find",v:1}` · 每条命中 `{uuid, kind, before, matched, after}` · 尾 `{kind:"session_find_end",count,total}`；`limit` 缺省 500、封顶 2000 |
+| `--first-run` | ＝ 帧命令 `first-run`：首次运行「开始用」三步各自打没打勾 |
 | `--footprint-report` | ＝ 帧命令 `footprint-report`：「足迹」由这台后端出整份成品 |
 | `--fork-session` `<args>` | 从某条消息处分叉出一个新会话文件，出参 `ForkResult`（见下） |
 | `--history-annotate` | ＝ 帧命令 `history-annotate`：改一条历史注解 |
@@ -3542,7 +3543,6 @@ cc-bus 钩子诊断。
 | `--read-session` `<jsonl>` | 原样透传整份会话字节 |
 | `--read-session-from-offset` `[--index] [--until <end>] <jsonl> <offset>` | 从字节 `offset` 续读：原样透传 `[offset, EOF)`（`--until` ⇒ `[offset, end)`）；`--index` ⇒ 出骨架索引：头 `{kind:"session_index",v:1,from}` · 每个可计行一条 `IndexRow`（见下）· 尾 `{kind:"session_index_end",count,end}`。续点用 `line` 帧的 `byte_offset`，别用 `seq` |
 | `--read-session-tail` `<jsonl> <N>` | 尾部优先：首行 `{kind:"snapshot_meta",total,tail_from}`，随后原样输出最新 N 行 `[tail_from,total)`，再输出 `[0,tail_from)` |
-| `--readiness` | ＝ 帧命令 `readiness`：首次运行「开始用」三步各自打没打勾 |
 | `--remote-reach` | ＝ 帧命令 `remote-reach`：本机后端的可达表登记 |
 | `--resident-ensure` `[--replace]` | 确保这台的常驻后端在听：已在 ⇒ `{port, token, pid:null}`；没在 ⇒ 起一个脱离的自己、回 `{port, token:null, pid}`（钥匙由它绑上口后写进钥匙文件）；`--replace` 先停掉口上那一位再起 |
 | `--resident-stop` `[--grace <秒>]` | 停这台的常驻后端：核身份 → SIGTERM → 宽限（缺省 35 秒）→ SIGKILL；回 `{stopped: graceful\|killed\|not_running, pid}` |

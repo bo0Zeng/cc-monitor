@@ -1,5 +1,5 @@
 /**
- * 首次运行「开始用 · 剩 N 步」那份数（本机后端 `readiness`）：三步各自打没打勾、剩几步都是后端判的；
+ * 首次运行「开始用 · 剩 N 步」那份数（本机后端 `first-run`）：三步各自打没打勾、剩几步都是后端判的；
  * 第三步「加一台远端机器」要的机器表台数住 monitor 那一侧 ⇒ 问的时候带上（`remotes`），后端判。
  * 哪步必做 · 剩几步（只数必做的）· 点过「跳过」没有，也都是后端给的。设置窗「开始用」那一块与主窗口状态栏那一枚读这一份。
  * 问不到 ⇒ `null`（不当 0，也不当没做完）。
@@ -44,7 +44,7 @@ export async function readReadiness(known?: number): Promise<Readiness | null> {
     const remotes = known ?? (await readRemoteConfig()).hosts.length;
     const body = jsonBody({ remotes });
     const budget = budgetWithin(BUDGET_MS);
-    return decodeReadiness(readJson(await chan.call(LOCAL_ORIGIN, "readiness", body, budget)));
+    return decodeReadiness(readJson(await chan.call(LOCAL_ORIGIN, "first-run", body, budget)));
   } catch (e) {
     console.warn("[readiness] 问不到「开始用」那份数：", e);
     return null;

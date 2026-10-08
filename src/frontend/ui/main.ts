@@ -182,7 +182,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   });
   status.appendChild(chores.el);
   void chores.refreshAll();
-  // 「开始用 · 剩 N 步」（有才出，紧跟「要你动手」）：本机后端 `readiness` 的 `left`，与设置窗机器页「开始用」同一个数。
+  // 「开始用 · 剩 N 步」（有才出，紧跟「要你动手」）：本机后端 `first-run` 的 `left`，与设置窗机器页「开始用」同一个数。
   const start = new StatusStart({ read: readReadiness, open: () => void openSettingsWindow(undefined, dest.START) });
   status.appendChild(start.el);
   void start.refresh();

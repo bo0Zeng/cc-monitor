@@ -36,7 +36,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     },
     // 首次运行「开始用 · 剩 N 步」那份数（`footprint/readiness.rs`）：三步各自由这台的事实打勾；机器表台数由问的那一方带上。只读，阻塞档。
     CommandSpec {
-        name: "readiness",
+        name: "first-run",
         summary: "首次运行「开始用」三步各自打没打勾",
         codes: &["bad_args"],
         fields: &[out("left", "必做而还没打勾的几步（主窗口状态栏那一枚只数它）"), arg("remotes", "机器表里有几台远端（机器表住 monitor 那一侧，问的那一方带上）"), out("skipped", "「开始用」那一块点过「跳过」（`chores-mark` 的 `skipStart` 写）"), out("steps", "三步 `{id, done, required}`（`required` = 必做；今天只有 `terminal`），`id` 闭集 `terminal`（让终端认得 ccm 和别名：某份启动文件里有别名块）· `named`（给现在登录的号起名字：启用了多账号）· `remote`（加一台远端：`remotes` > 0）")],

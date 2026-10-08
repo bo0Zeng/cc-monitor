@@ -343,7 +343,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     ),
     // 首次运行「开始用」那份数：本机后端判三步、剩几步；机器表台数由界面带上。
     (
-        "readiness",
+        "first-run",
         "本机后端读启动文件与账号库清单判三步（`src/backend/footprint/readiness.rs`）；前端 `src/frontend/ui/settings/readiness-reads.ts::readReadiness` 问\
          （设置窗机器页「开始用」· 主窗口状态栏那一枚），monitor 这一侧零发送点",
     ),
