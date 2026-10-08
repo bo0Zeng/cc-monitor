@@ -205,7 +205,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
             })
         }),
     },
-    // 〔「后端持有全部 SSH」〕测试连接（monitor 那条 Tauri 命令 `test_remote_connection` 退役）：
+    // 〔「后端持有全部 SSH」〕测试连接：
     //   真异步（拨号 · 读 hello · 控制通道往返；本后端零定时器，期限归发起方），`cancel` 能在 await 点打断；短命探活、不进连接池。
     // 进度边拨边推（`probe` 帧，走本连接的应答通道）⇒ `Run::Builtin`：只在帧面，分派在 `dispatch` 那条硬臂。
     CommandSpec {

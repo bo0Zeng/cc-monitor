@@ -844,7 +844,7 @@ export class MachineCard {
     void openFileWindow(cfg);
   }
 
-  /** 点「测试连接」：组本卡片 → 本机后端 `remote-probe`（原 Tauri 命令 `test_remote_connection`）→ 渲染结果。 */
+  /** 点「测试连接」：组本卡片 → 本机后端 `remote-probe`→ 渲染结果。 */
   private async onTestConnection(): Promise<void> {
     const cfg = this.collect();
     if (!cfg.host || !cfg.user) {

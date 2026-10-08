@@ -20,7 +20,7 @@
  * - 每次输入 change 立即保存（无"未保存"中间态）→ refresh() 可安全从 config 重建卡片。
  *
  * Tier 1（issue #15）：从 ~/.ssh/config 导入别名（`ssh -G`）→ 作为**新机器**加入列表；
- * 每台各有「测试连接」（`test_remote_connection`）展示 SSH/指纹/backend，指纹可一键固化。
+ * 每台各有「测试连接」（问本机后端 `remote-probe`）展示 SSH/指纹/backend，指纹可一键固化。
  */
 
 import { commands } from "../ipc/commands";
