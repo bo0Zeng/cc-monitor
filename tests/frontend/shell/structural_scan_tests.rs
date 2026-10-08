@@ -4514,7 +4514,6 @@ fn every_prose_tombstone_mark_is_registered() {
         //   换成只出补丁的 `remoteEdit`：讲来历的散文逐处一块（配置写口的头注 · 诊断写口 · 远端保存那段 · 各判据头注），
         //   以及 KS7 那一格为什么改盯 `patch_config`。
         ("src/frontend/shell/src/logging.rs", 1),
-        ("src/frontend/ui/config.ts", 1),
         ("tests/frontend/ui/config-lost-update.vitest.ts", 1),
         ("tests/frontend/ui/remote-config.vitest.ts", 1),
         ("tests/frontend/ui/settings/remote-section.vitest.ts", 1),
@@ -4773,7 +4772,6 @@ fn every_prose_tombstone_mark_is_registered() {
         // `src/frontend/shell/src/command_args.rs` 那一行删了：整份随它最后两个调用方（送键 · 就地 resume 的发送端）删掉。
         ("src/frontend/shell/src/ccm_probe.rs", 3), // 1 → 4
         // cc-bus 驾驶舱写面五条改由界面经通道直接说：新家的头注点 monitor 那五条旧命令名。
-        ("src/frontend/ui/cc-bus-control.ts", 4), // +3：TS 副本 `isValidBusId` / `refuseBadId` 删了（原处一行两块）· `checkSpawnShape` 头注点它一块
         // `backend/mod.rs` 那一行摘了：随 `backend` 目录删了。
         ("tests/frontend/shell/backend_route_senders_tests.rs", 5), // 9 → 8：全景发送端那一行的墓碑随代码全景整条摘掉删了 // 8 → 9：足迹发送端那一行删了、留墓碑 // 7 → 8：全景发送端那一行删了、留墓碑 // 两边各自贴的墓碑相加，按盘上现数（跑出来核过） 6 → 7 // +1：`apikey_remote`整删，发送端表摘掉那一行处一块挂墓碑 // +1：发送端表摘掉 `mcp_sync.rs` 那一行处一块 // // +1：SENDERS 头三行（三个发送端）摘掉的那一块
         // `launch-cli-wire.ts` · `remote-launch-run.ts` 两行摘了：两份重写成只问那一行 `ccm …`，讲旧 TS 判定来历的墓碑随起会话只交一行 `ccm …`（载荷那一层与它的判据整层删了）走了。

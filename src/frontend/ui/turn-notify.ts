@@ -1,9 +1,5 @@
 /**
- * Batch14-F42：Claude 完成一轮系统通知。
- *
- * 判定：实时到达（非批量重放）的 assistant 行带 `stop_reason=="end_turn"`
- * （权威判据同 aterm/HANDOFF；messages.rs F42 起透传该字段）→ 窗口在后台时
- * 发系统通知把用户叫回来。
+ * Claude 完成一轮的系统通知：实时到达（非批量重放）的 assistant 行带 `stop_reason=="end_turn"` → 窗口在后台时发系统通知把用户叫回来。
  *
  * 误报防线（顺序即短路序，前五道全同步、零热路径成本）：
  * 1. inBatch 跳过——启动重放 / SSH 重连 chunked 重放 / 历史灌入全走批量路径；
@@ -22,29 +18,16 @@ import { copyText } from "./copy-table";
 /**
  * onLine payload 的最小形状（`tabs.ts` 的 `LinePayload` 超集兼容）。
  *
- * **C04c**：这里的 `| null` 是线上的实情——`timestamp` 在 `cc-monitor-unrecognized`
- * variant 上是 `Option<String>` 且无 `skip_serializing_if` ⇒ 序列化成**显式 null**。
- * 生成的 `JsonlRecord` 一接进来 `tsc` 就报在 `tabs.ts:818` 的调用上。
- *
- * **为什么不直接用生成的 `JsonlLinePayload`**：本接口是**刻意的最小契约**
- * ——这个模块只关心「够不够判一轮结束」这四个字段，依赖注入全量替换才可测。
- * 收窄成最小形状是有意的解耦，不是手抄镜像。子运行的记录不走主会话的行（它们进运行表），
+ * `| null`：`timestamp` 在 `cc-monitor-unrecognized` 上是 `Option<String>`、没有 `skip_serializing_if` ⇒ 线上是显式 null。
+ * 不直接用生成的 `JsonlLinePayload`：这里只要「够不够判一轮结束」那几个字段（最小契约，依赖注入全量替换才可测）。
+ * 子运行的记录不走主会话的行（它们进运行表），
  * 这里见到的全是主运行的记录。
  */
 export interface TurnNotifyPayload {
   message?: {
     type?: string;
     timestamp?: string | null;
-    /**
-     * ★ API 错误消息〔audit-0805 F12 / 报告 §4.1〕。
-     *
-     * **F12 之前这个字段在最小契约里根本不存在** —— 而生成物 `generated/JsonlRecord.ts` 的
-     * assistant 变体里一直有它（`isApiErrorMessage: boolean`）。数据在线上、没人看。
-     * 当时后端侧 `observe/turn_detect.rs` 的判词里有它、TS 这份少一条 ⇒ 两个口径。
-     *
-     * ⚠ 声明它**不等于**判它：本文件的 `observe()` 里那行 `if` 才是判据的标的，
-     * 跨语言对拍因此只看实现区（08-07：原版拿整份文件做主语，被这条声明喂饱）。
-     */
+    /** API 错误消息（`isApiErrorMessage`）：带 end_turn 也不算一轮结束；与后端 `observe/turn_detect.rs` 同一条（跨语言对拍只看 `observe()` 实现区）。 */
     isApiErrorMessage?: boolean;
     message?: { stop_reason?: string | null };
   };
@@ -93,9 +76,7 @@ export class TurnEndNotifier {
     if (this.disabled || inBatch) return;
     const rec = payload?.message;
     if (!rec || rec.type !== "assistant") return;
-    // F12 补上的：API 错误带 end_turn 时**不是**一轮真的结束。backend 侧 `turn_detect.rs`
-    // 一直有这条、TS 这份**曾经少了** ⇒ 那就是报告 §4.1「turn-end 判定两份」那一行。
-    // 现在两份的合取项由 `turn-notify.vitest.ts` 的跨语言对拍逐条钉住（人群从后端派生）。
+    // API 错误带 end_turn 时不是一轮真的结束。与后端 `turn_detect.rs` 的合取项由 `turn-notify.vitest.ts` 跨语言逐条对拍。
     if (rec.isApiErrorMessage) return;
     if (rec.message?.stop_reason !== "end_turn") return;
     const now = this.deps.now();
