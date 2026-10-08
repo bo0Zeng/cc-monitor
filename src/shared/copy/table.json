@@ -4608,6 +4608,24 @@
       "zh": "{machine} 要更新",
       "args": ["machine"]
     },
+    "front.title.updating": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "正在更新 {machine}",
+      "args": ["machine"]
+    },
+    "front.title.updated": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "{machine} 已更新",
+      "args": ["machine"]
+    },
+    "front.title.updateFailed": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "{machine} 更新失败",
+      "args": ["machine"]
+    },
     "front.title.failed": {
       "kind": "title",
       "role": "标题",
@@ -24625,6 +24643,12 @@
       "role": "说明",
       "zh": "启动 cc-monitor",
       "args": []
+    },
+    "backendDeploy.update.noMachine": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "设置里没有 {machine}",
+      "args": ["machine"]
     },
     "interrupts.row.untilStart": {
       "kind": "body",

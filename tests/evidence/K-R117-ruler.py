@@ -392,8 +392,10 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
 #
 # 每行：组 -> (钉住的落点名单, 这个数是哪天量的 · 用什么量的, 该变的时候谁来改)
 FRONTEND_PIN: "OrderedDict[str, tuple]" = OrderedDict([
-    ("S1", (("src/frontend/ui/settings/machine-card.ts",),
-            "量于 09-15 · `K-R128` 实现方现打（本文件 `§S5d`，被测树 = `--root`）",
+    ("S1", (("src/frontend/ui/backend-deploy.ts",),
+            "量于 09-15 · `K-R128` 实现方现打（本文件 `§S5d`，被测树 = `--root`）。"
+            "份数不变、换了住处：远端后端装 / 卸那两处调用从 `src/frontend/ui/settings/machine-card.ts` 抽进共用模块 "
+            "`src/frontend/ui/backend-deploy.ts`，机器卡（问题行［更新］·「卸载后端」）与主窗口 ↗ 浮层［更新］都调它（↗ 浮层就地部署、不开设置）",
             "S1 收完远端半那一拍改这一行。**目标不在这一栏** —— 住 "
             "`FRONTEND_GOAL_PER_ITEM['S1']`（`K-R131` 09-15：这一栏从前逐字写着"
             "「目标：空」，与 `FRONTEND_GOAL_PER_GROUP = 1` 同份输出里打架）")),
@@ -496,9 +498,10 @@ FRONTEND_GOAL_OVERALL: "OrderedDict[str, tuple]" = OrderedDict([
 # 逐组目标 —— **收工判据按这张表判**，不再是「恒等于 1」。
 # 每行：组 -> (收工之后该组落点名单**逐字**应当是什么, 为什么)
 FRONTEND_GOAL_PER_ITEM: "OrderedDict[str, tuple]" = OrderedDict([
-    ("S1", (("src/frontend/ui/settings/machine-card.ts",),
-            "**已达标，S1 的前端这一半不用做**。四条远端装口今天就住在组件栏里，"
-            "而那正是 ① 该在的地方。⚠ 从前那句「目标：空」讲不通：R63 要的是「收成一处」"
+    ("S1", (("src/frontend/ui/backend-deploy.ts",),
+            "**已达标，S1 的前端这一半不用做**。装 / 卸那两条调用只住共用模块 `backend-deploy.ts`"
+            "（非入口，见 `FRONTEND_NON_ENTRY`）；用户去的地方是机器卡（① 那一处）与主窗口 ↗ 浮层的［更新］，两处都调它。"
+            "从前四条远端装口住在组件栏里，那正是 ① 该在的地方。⚠ 从前那句「目标：空」讲不通：R63 要的是「收成一处」"
             "不是「取消入口」，降到空等于用户再也没有地方部署远端后端，与 `K27`"
             "（部署是产品的一部分，由客户端做）直接冲突。")),
     ("S2", (("src/frontend/ui/settings/machine-card.ts",),
@@ -527,6 +530,9 @@ FRONTEND_GOAL_PER_ITEM: "OrderedDict[str, tuple]" = OrderedDict([
 FRONTEND_NON_ENTRY: "OrderedDict[str, str]" = OrderedDict([
     # 〔墓碑 MIG-2〕`src/ccm-probe.ts`（`probe_ccm_cli` 的按 origin 5 分钟缓存，渲染链的非入口落点）随命令删了：
     #   远端装没装 ccm 由那台后端渲染时自己现查，前端不再转述探测结果。
+    ("src/frontend/ui/backend-deploy.ts",
+     "远端后端装 / 卸的共用模块：机器卡（问题行［更新］·「卸载后端」）与主窗口 ↗ 浮层［更新］（`稿 §5.14`「不开设置、就地做」）都调它。"
+     "它没有界面，用户去的地方是那两处 ⇒ 不是「用户要去装东西的那一处」；全前端调这两条命令只这一份（`R9` 钉 S1 的落点就是它）。"),
     ("src/frontend/ui/views/inbox-view.ts",
      "它是收件箱**编辑 overlay** 的保存按钮，调 `write_skill_file`。而 `write_skill_file` "
      "**装不了 skill**：`skill_host::resolve_editable` 第一刀就是 "

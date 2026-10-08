@@ -106,6 +106,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/cards/speaker-bar.ts", // applyHandedBack：会话事实说哪几个子运行交回了 ⇒ 它们的收场通知收起（同一个子运行只报一次）
     "src/frontend/ui/front-pop.ts", // ↗ 的回执：「查找终端…」· 对勾 · 结局浮层
     "src/frontend/ui/front-result.ts", // ↗ 结局族 ⇒ 浮层的标题 · 正文 · 按钮
+    "src/frontend/ui/backend-deploy.ts", // ↗ 浮层［更新］就地把这一版换到那台（与机器卡同一处部署）
     "src/frontend/ui/ipc/origin.ts", // 本机 / 远端只经这一处判（线上缺省 = 本机的那一下表示法转换也在这里）
     "src/frontend/ui/live-card.ts", // 中转抄出的流式活卡：tap 格进状态机、同对账键的记录落盘即撤卡；子运行那几行
     "src/frontend/ui/live-window.ts", // ensureTab：新 tab 的尾部窗口

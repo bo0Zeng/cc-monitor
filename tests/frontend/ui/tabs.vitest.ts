@@ -176,12 +176,15 @@ vi.mock("../../../src/frontend/ui/tab-batch-run", async (orig) => {
 vi.mock("../../../src/frontend/ui/turn-notify", () => ({
   turnEndNotifier: { observe: vi.fn() },
 }));
+// ↗ 浮层［更新］就地部署：部署那一处住共用模块（`backend-deploy.ts`，它自己的判据住 `backend-deploy.vitest.ts`），这里换成 spy，判的是浮层接上它、就地说过程与结局。
+vi.mock("../../../src/frontend/ui/backend-deploy", () => ({ updateBackendOf: vi.fn() }));
 vi.mock("../../../src/frontend/ui/behavior", () => ({
   getBehavior: vi.fn().mockResolvedValue({
     resumeCommand: "cct",
   }),
 }));
 import { invoke } from "@tauri-apps/api/core";
+import { updateBackendOf } from "../../../src/frontend/ui/backend-deploy";
 import {
   chanArgsJson,
   chanReply,
@@ -2267,6 +2270,50 @@ describe("：↗ 远端那一格按顺序问三方", () => {
       expect(popText(), title).toContain(body);
       expect(popButtons(), title).toEqual(buttons);
     }
+  });
+
+  it("★ ［更新］就地做：不开设置，经共用部署模块换上这一版；过程与结局在同一个浮层里说", async () => {
+    const tm = makeTM();
+    tm.createSkeletonTab("r5", "/p", "devbox", false, null);
+    let finish: (v: string | null) => void = () => {};
+    vi.mocked(updateBackendOf).mockImplementation((_o, _m, onStart) => {
+      onStart?.();
+      return new Promise((r) => (finish = r));
+    });
+    const clickUpdate = async (): Promise<void> => {
+      mockInvoke.mockReset();
+      mockInvoke.mockImplementation((cmd: string, args: unknown) => (isChanCall(cmd, args, "session-terminals") ? Promise.reject(UNSUPPORTED) : Promise.resolve([])));
+      await clickFront(tm, "r5");
+      const btn = [...pop()!.querySelectorAll("button")].find((b) => b.textContent === copyText("front.act.update"));
+      expect(btn, "量具自检：浮层上有［更新］").toBeDefined();
+      btn!.click();
+      for (let i = 0; i < 4; i++) await new Promise((r) => setTimeout(r, 0));
+    };
+    await clickUpdate();
+    expect(vi.mocked(updateBackendOf).mock.calls.map((c) => [c[0], c[1]])).toEqual([["devbox", "devbox"]]);
+    expect("onUpdateMachine" in tm, "［更新］还留着交给主窗口开设置窗的钩子").toBe(false);
+    expect(pop()!.firstElementChild!.textContent, "在飞：浮层说正在更新").toBe(copyText("front.title.updating", { machine: "devbox" }));
+    expect(popButtons()).toEqual([]);
+    finish("已部署 X");
+    for (let i = 0; i < 4; i++) await new Promise((r) => setTimeout(r, 0));
+    expect(pop()!.firstElementChild!.textContent).toBe(copyText("front.title.updated", { machine: "devbox" }));
+    expect(popText()).toContain("已部署 X");
+    expect(popButtons(), "换上了：给［重试］再切一次").toEqual([copyText("front.act.retry")]);
+
+    // 部署失败：同一个浮层里红着说，带原文可复制。
+    vi.mocked(updateBackendOf).mockReset();
+    vi.mocked(updateBackendOf).mockRejectedValue(new Error("上传失败"));
+    await clickUpdate();
+    expect(pop()!.firstElementChild!.textContent).toBe(copyText("front.title.updateFailed", { machine: "devbox" }));
+    expect(pop()!.dataset.shade).toBe("red");
+    expect(popText()).toContain("上传失败");
+    expect(popButtons()).toEqual([copyText("front.act.copy")]);
+
+    // 会打断什么的确认框里点了取消：浮层收起，什么都不做。
+    vi.mocked(updateBackendOf).mockReset();
+    vi.mocked(updateBackendOf).mockResolvedValue(null);
+    await clickUpdate();
+    expect(pop(), "取消了：浮层不再出").toBeNull();
   });
 });
 
