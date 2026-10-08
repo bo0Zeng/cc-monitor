@@ -111,8 +111,29 @@ pub(crate) fn write_at(path: &Path, args: &Value, now_ms: u64) -> Answer {
             ),
         )
     })?;
+    locked_edit(dir, path, |all| {
+        record(all, origin, kind, value, now_ms);
+        true
+    })?;
+    Ok(json!({ "atMs": now_ms }))
+}
+
+/// 锁里读—改—写那一份（本文件唯一拿跨进程锁的地方）；`edit` 回 `false` ⇒ 没改、不写。
+fn locked_edit(
+    dir: &Path,
+    path: &Path,
+    edit: impl FnOnce(&mut Map<String, Value>) -> bool,
+) -> Result<(), (&'static str, String)> {
     let _g = crate::platform::lock::hold(dir).map_err(|e| ("io_failed", e))?;
     let mut all = load(path);
+    if edit(&mut all) {
+        crate::common::own_state::write_json(path, &all).map_err(|e| ("io_failed", e))?;
+    }
+    Ok(())
+}
+
+/// 记下一份；台数超了先丢最久没更新的那台。
+fn record(all: &mut Map<String, Value>, origin: String, kind: &str, value: &Value, now_ms: u64) {
     let entry = all
         .entry(origin)
         .or_insert_with(|| Value::Object(Map::new()));
@@ -137,8 +158,6 @@ pub(crate) fn write_at(path: &Path, args: &Value, now_ms: u64) -> Answer {
         };
         all.remove(&oldest);
     }
-    crate::common::own_state::write_json(path, &all).map_err(|e| ("io_failed", e))?;
-    Ok(json!({ "atMs": now_ms }))
 }
 
 /// 清掉一台的上次值（两样都清）。只认 `{origin, forget: true}`：带着 `kind` / `value` 不收。那台没记过 ⇒ 照样回成、盘上不动。
@@ -154,11 +173,7 @@ fn forget_at(path: &Path, args: &Value, origin: &str, now_ms: u64) -> Answer {
     let Some(dir) = path.parent().filter(|d| d.is_dir()) else {
         return Ok(json!({ "atMs": now_ms }));
     };
-    let _g = crate::platform::lock::hold(dir).map_err(|e| ("io_failed", e))?;
-    let mut all = load(path);
-    if all.remove(origin).is_some() {
-        crate::common::own_state::write_json(path, &all).map_err(|e| ("io_failed", e))?;
-    }
+    locked_edit(dir, path, |all| all.remove(origin).is_some())?;
     Ok(json!({ "atMs": now_ms }))
 }
 
