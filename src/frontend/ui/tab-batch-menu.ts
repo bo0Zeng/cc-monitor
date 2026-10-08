@@ -114,12 +114,12 @@ export function openBatchMenu(
       })();
     },
   });
-  const [stoppable, notStoppable] = split(tabs, (t) => hasTerminal(t.state), unseenOr(copyText("tabBatch.why.ended")));
+  const [stoppable, notStoppable] = split(tabs, (t) => hasTerminal(t.state), unseenOr(copyText("tabBatch.why.ended", { ended: copyText("sessionState.ended.name") })));
   const [startable, notStartable] = split(tabs, (t) => canResume(t.state), unseenOr(copyText("tabBatch.why.live")));
   const items: MenuItem[] = [
     { label: copyText("tabBatch.menu.head", { n: tabs.length }), heading: true },
     item(copyText("tabBatch.menu.stop", { n: stoppable.length }), stoppable.length, async () => {
-      const ended = notStoppable.filter((o) => o.why === copyText("tabBatch.why.ended")).length;
+      const ended = notStoppable.filter((o) => o.why === copyText("tabBatch.why.ended", { ended: copyText("sessionState.ended.name") })).length;
       const confirm = {
         title: copyText("tabBatch.stop.title", { n: stoppable.length }),
         action: copyText("tabBatch.stop.action", { n: stoppable.length }),

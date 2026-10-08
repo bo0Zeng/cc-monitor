@@ -395,7 +395,7 @@ fn every_abnormal_exit_leaves_one_line_carrying_its_exit_status() {
                 reader: ReaderEnd::CleanEof,
                 start_failure: None,
             },
-            "exit 2",
+            "退出码 2",
         ),
         (
             "异常终止",
@@ -541,7 +541,7 @@ fn the_production_sink_takes_a_line_without_complaining() {
         rec.sink_error
     );
     assert!(
-        rec.line.contains("exit 3"),
+        rec.line.contains("退出码 3"),
         "生产落点收到的那一行没带退出状态：{}",
         rec.line
     );
@@ -1252,7 +1252,7 @@ fn the_crash_reading_quotes_the_brief_not_the_ledger_line() {
     assert_eq!(h.last_brief.as_deref(), Some(last_brief(&d).as_str()));
     let said = health_face(&h).summary;
     assert!(
-        said.contains("exit -1073741819"),
+        said.contains("退出码 -1073741819"),
         "读数里没有退出状态：{said}"
     );
     assert_eq!(
@@ -1379,12 +1379,18 @@ fn only_that_one_code_gets_words_the_neighbours_stay_bare() {
         };
         assert_eq!(
             exit_status(&d),
-            format!("exit {code}"),
+            copy_text(
+                "rsBackendPolicy.status.exit",
+                &[("status", &code.to_string())]
+            ),
             "码 {code} 被说成了别的"
         );
         assert_eq!(
             exit_status(&Death::Refused { code }),
-            format!("exit {code}"),
+            copy_text(
+                "rsBackendPolicy.status.exit",
+                &[("status", &code.to_string())]
+            ),
             "被拒那一臂的码 {code} 被说成了别的"
         );
     }

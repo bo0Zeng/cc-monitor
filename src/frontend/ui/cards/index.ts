@@ -1203,7 +1203,7 @@ function buildMarkdownBody(text: string): HTMLElement {
     expand.type = "button";
     expand.className = "block-body-show-full";
     const sizeKb = (cleaned.length / 1024).toFixed(0);
-    expand.textContent = copyText("cards.markdown.renderAll", { kb: sizeKb });
+    expand.textContent = copyText("cards.text.showAll", { kb: sizeKb });
     expand.addEventListener(
       "click",
       () => {
