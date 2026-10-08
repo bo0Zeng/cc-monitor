@@ -43,7 +43,8 @@ export interface TerminalRow {
 export interface TerminalShot {
   text: string;
   screen: string;
-  at: number;
+  /** 几点抓的：那台本地钟上的 `HH:MM:SS`（后端写好，界面照抄）。 */
+  atText: string;
 }
 
 /** 怎么指一个终端：名单里的句柄，或挂在它上面的会话 ID。 */
@@ -80,12 +81,12 @@ export function decodePreview(origin: Origin, v: unknown): string {
   return (lines as { text: string }[]).map((l) => l.text).join("\n");
 }
 
-/** `terminal-preview` 的成品 ⇒ 那一屏 ＋ 指纹 ＋ 几点抓的。`screen` / `captured_at` 缺 ⇒ 抛。 */
+/** `terminal-preview` 的成品 ⇒ 那一屏 ＋ 指纹 ＋ 几点抓的。`screen` / `captured_at_text` 缺 ⇒ 抛。 */
 export function decodeShot(origin: Origin, v: unknown): TerminalShot {
   const text = decodePreview(origin, v);
   const o = v as Record<string, unknown>;
-  if (typeof o.screen !== "string" || typeof o.captured_at !== "number") throw unreadable(origin, "terminal-preview", "has no `screen` / `captured_at`");
-  return { text, screen: o.screen, at: o.captured_at };
+  if (typeof o.screen !== "string" || typeof o.captured_at_text !== "string") throw unreadable(origin, "terminal-preview", "has no `screen` / `captured_at_text`");
+  return { text, screen: o.screen, atText: o.captured_at_text };
 }
 
 /** 抓一次那个终端此刻的一屏（只读快照，不过身份门）。失败 ⇒ 抛 `ControlError`（那一句已经说好）。 */

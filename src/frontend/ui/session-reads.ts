@@ -270,6 +270,9 @@ export interface TurnSummary {
   uuid: string;
   start: string;
   end: string;
+  /** 起止各自的钟面（后端按那台本地钟写好的 `HH:MM`；解不出 ⇒ 空串）。 */
+  startText: string;
+  endText: string;
   /** 你那句的第一行（≤ 50 字）。 */
   said: string;
   tools: number;
@@ -283,7 +286,7 @@ export interface TurnSummary {
   done: boolean;
 }
 
-const TURN_KEYS = ["at", "conclusion", "done", "end", "fails", "reply", "said", "start", "thinking", "tools", "uuid"] as const;
+const TURN_KEYS = ["at", "conclusion", "done", "end", "endText", "fails", "reply", "said", "start", "startText", "thinking", "tools", "uuid"] as const;
 
 /** `history-turns` 的成品 ⇒ `(from, end, turns)`。键集合恰好、类型逐格对；不对 ⇒ 抛。 */
 export function decodeTurns(v: unknown): { from: number; end: number; turns: TurnSummary[] } {
@@ -296,7 +299,7 @@ export function decodeTurns(v: unknown): { from: number; end: number; turns: Tur
       !isObj(t) ||
       !exactKeys(t, TURN_KEYS) ||
       ![t.at, t.tools, t.thinking, t.fails].every(isNum) ||
-      ![t.uuid, t.start, t.end, t.said, t.reply].every(isStr) ||
+      ![t.uuid, t.start, t.end, t.startText, t.endText, t.said, t.reply].every(isStr) ||
       typeof t.done !== "boolean" ||
       !Array.isArray(t.conclusion) ||
       !t.conclusion.every(isStr)
@@ -308,6 +311,8 @@ export function decodeTurns(v: unknown): { from: number; end: number; turns: Tur
       uuid: t.uuid as string,
       start: t.start as string,
       end: t.end as string,
+      startText: t.startText as string,
+      endText: t.endText as string,
       said: t.said as string,
       tools: t.tools as number,
       thinking: t.thinking as number,

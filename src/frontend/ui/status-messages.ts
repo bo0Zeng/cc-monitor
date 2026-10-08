@@ -7,7 +7,6 @@ import { icon, type IconName } from "./kit/icon";
 import { button } from "./kit/button";
 import { openPopover } from "./kit/popover";
 import { markRecordsSeen, onToastRecords, recentToasts, runRecordAction, unseenErrors, TOAST_RECORD_MAX, type ToastLevel, type ToastRecord } from "./kit/toast";
-import { formatTimestampShort } from "./format";
 import { copyText } from "./copy-table";
 import s from "./status-messages.module.css";
 
@@ -105,7 +104,7 @@ export class StatusMessages {
       row.dataset.level = r.level;
       const time = document.createElement("span");
       time.className = s.smTime;
-      time.textContent = formatTimestampShort(r.at);
+      time.textContent = toastClock(r.at);
       const text = document.createElement("span");
       text.className = s.smText;
       text.textContent = r.detail ? copyText("statusBar.messages.line", { title: r.title, detail: r.detail.split("\n")[0] }) : r.title;
@@ -153,4 +152,9 @@ export class StatusMessages {
       }
     }
   }
+}
+
+/** 这条提示是几点出的：看的人这台的钟面 —— 提示是界面自己出的事，不来自哪台后端，没有「那台的本地钟」可照抄。 */
+function toastClock(ms: number): string {
+  return new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }

@@ -27,6 +27,11 @@ pub(crate) struct TurnRow {
     /// 起：你那句的时刻；止：这一轮最后一条主线记录的时刻（还没有回应 ⇒ 同起）。
     pub(crate) start: String,
     pub(crate) end: String,
+    /// 起止各自在这台本地钟上的钟面 `HH:MM`（收这一轮时由 [`crate::common::time::iso_hm_here`] 写；解不出 ⇒ 空串）。界面照抄、不换算。
+    #[serde(rename = "startText")]
+    pub(crate) start_text: String,
+    #[serde(rename = "endText")]
+    pub(crate) end_text: String,
     /// 你那句的第一行（≤ [`SAID_MAX`] 字）。
     pub(crate) said: String,
     /// 工具调用几次 · 思考几段 · 失败几次（结果标了出错、且不是人拒的）。
@@ -51,6 +56,9 @@ impl Open {
     /// 回复头：头三行**正文**——代码块整块不算（围栏连同里面的行），空行不算；只有代码 ⇒ 「仅代码」，不露代码原文。
     /// 行内的排版记号（粗体 / 斜体的 `**` `__`、行内代码的反引号、标题的 `#`、引用的 `>`）去掉，只留字（悬停卡是纯文本）。
     fn close(mut self) -> TurnRow {
+        let face = |t: &str| crate::common::time::iso_hm_here(t).unwrap_or_default();
+        self.row.start_text = face(&self.row.start);
+        self.row.end_text = face(&self.row.end);
         let mut fenced = false;
         let mut code = false;
         let mut head: Vec<String> = Vec::new();

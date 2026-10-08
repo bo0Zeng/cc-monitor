@@ -10,14 +10,13 @@
 import type { Speaker } from "../generated/Speaker";
 import { copyText } from "../copy-table";
 import { renderMarkdown } from "../render";
-import { formatTimestampShort } from "../format";
 
 type Of<K extends Speaker["kind"]> = Extract<Speaker, { kind: K }>;
 
 /** 点「打开窗口 ›」时发的事件名（宿主接住：把那个 agent 摆到眼前）。 */
 export const REVEAL_RUN_EVENT = "ccm:reveal-run";
 
-function bar(kind: string, title: string, tag: string, at: string, body: string | undefined, open: boolean, link?: { text: string; run: string }): HTMLElement {
+function bar(kind: string, title: string, tag: string, time: string, body: string | undefined, open: boolean, link?: { text: string; run: string }): HTMLElement {
   const d = document.createElement("details");
   d.className = "card card-speaker";
   d.dataset.kind = kind;
@@ -32,7 +31,7 @@ function bar(kind: string, title: string, tag: string, at: string, body: string 
   g.textContent = tag;
   const ts = document.createElement("span");
   ts.className = "speaker-ts";
-  ts.textContent = formatTimestampShort(at);
+  ts.textContent = time;
   s.append(t, g, ts);
   if (link) {
     const a = document.createElement("button");
@@ -57,13 +56,13 @@ function bar(kind: string, title: string, tag: string, at: string, body: string 
 }
 
 /** agent 交回 / 途中来话。`label` ＝ 运行表给的标签（查不到 ⇒ 来话自带的名字 ⇒「agent」）。 */
-export function buildAgentBar(sp: Of<"agentMessage">, at: string, label: string | undefined): HTMLElement {
+export function buildAgentBar(sp: Of<"agentMessage">, time: string, label: string | undefined): HTMLElement {
   const name = label || sp.name || copyText("speaker.agent.unnamed");
   return bar(
     "agent",
     copyText("speaker.agent.title", { label: name }),
     sp.handback ? copyText("speaker.tag.handback") : copyText("speaker.tag.message"),
-    at,
+    time,
     sp.body,
     sp.handback,
     sp.from ? { text: copyText("speaker.link.openRun"), run: sp.from } : undefined,
@@ -71,21 +70,21 @@ export function buildAgentBar(sp: Of<"agentMessage">, at: string, label: string 
 }
 
 /** 另一个会话发来的话（左条琥珀）。 */
-export function buildPeerBar(sp: Of<"peerSession">, at: string): HTMLElement {
-  return bar("peer", copyText("speaker.peer.title", { from: sp.from ?? "?" }), copyText("speaker.tag.message"), at, sp.body, true);
+export function buildPeerBar(sp: Of<"peerSession">, time: string): HTMLElement {
+  return bar("peer", copyText("speaker.peer.title", { from: sp.from ?? "?" }), copyText("speaker.tag.message"), time, sp.body, true);
 }
 
 /** （agent 那一侧）主会话后来发给它的话：默认收起。 */
-export function buildCoordinatorBar(sp: Of<"coordinator">, at: string): HTMLElement {
-  return bar("coordinator", copyText("speaker.coordinator.title"), copyText("speaker.tag.message"), at, sp.body, false);
+export function buildCoordinatorBar(sp: Of<"coordinator">, time: string): HTMLElement {
+  return bar("coordinator", copyText("speaker.coordinator.title"), copyText("speaker.tag.message"), time, sp.body, false);
 }
 
-export function buildInjectedLine(body: string, at: string): HTMLDetailsElement {
+export function buildInjectedLine(body: string, time: string): HTMLDetailsElement {
   const d = document.createElement("details");
   d.className = "card card-injected";
   const s = document.createElement("summary");
   s.className = "injected-head";
-  s.textContent = copyText("speaker.system.title", { time: formatTimestampShort(at) });
+  s.textContent = copyText("speaker.system.title", { time });
   const b = document.createElement("pre");
   b.className = "injected-body";
   b.textContent = body;
@@ -94,16 +93,16 @@ export function buildInjectedLine(body: string, at: string): HTMLDetailsElement 
 }
 
 /** 中断标记：一行细线。 */
-export function buildInterruptLine(at: string): HTMLElement {
+export function buildInterruptLine(time: string): HTMLElement {
   const el = document.createElement("div");
   el.className = "card card-event-line";
   el.dataset.kind = "interrupt";
-  el.textContent = copyText("speaker.interrupt.line", { time: formatTimestampShort(at) });
+  el.textContent = copyText("speaker.interrupt.line", { time });
   return el;
 }
 
-/** 后台任务通知：一条（相邻的由管线并进前一条）。 */
-export function buildNoticeLine(sp: Of<"taskNotification">, at: string): HTMLElement {
+/** 后台任务通知：一条（相邻的由管线并进前一条）。`at` ＝ 记录的时刻（只用来排先后），`time` ＝ 它的钟面（后端写好的 `timeText`）。 */
+export function buildNoticeLine(sp: Of<"taskNotification">, at: string, time: string): HTMLElement {
   const d = document.createElement("details");
   d.className = "card card-notice";
   d.dataset.from = at;
@@ -114,7 +113,7 @@ export function buildNoticeLine(sp: Of<"taskNotification">, at: string): HTMLEle
   const list = document.createElement("div");
   list.className = "notice-list";
   d.appendChild(list);
-  list.appendChild(noticeRow(sp, at));
+  list.appendChild(noticeRow(sp, at, time));
   paintNotice(d);
   return d;
 }
@@ -133,17 +132,18 @@ export function mergeNotice(into: HTMLDetailsElement, from: HTMLDetailsElement):
   paintNotice(into);
 }
 
-function noticeRow(sp: Of<"taskNotification">, at: string): HTMLElement {
+function noticeRow(sp: Of<"taskNotification">, at: string, time: string): HTMLElement {
   const r = document.createElement("div");
   r.className = "notice-row";
   const failed = sp.status === "failed" || sp.status === "killed";
   r.dataset.failed = String(failed);
   if (sp.taskId) r.dataset.task = sp.taskId;
   r.dataset.at = at;
+  r.dataset.time = time;
   r.textContent = copyText("speaker.notice.row", {
     what: sp.summary ?? sp.taskId ?? "?",
     state: failed ? copyText("speaker.notice.failed") : copyText("speaker.notice.done"),
-    time: formatTimestampShort(at),
+    time,
   });
   return r;
 }
@@ -180,10 +180,10 @@ function paintNotice(d: HTMLDetailsElement): void {
     return;
   }
   delete d.dataset.single;
-  // 时段取露着的那几行的两头。
-  const ats = rows.map((r) => r.dataset.at ?? "").sort();
-  const from = formatTimestampShort(ats[0] ?? d.dataset.from ?? "");
-  const to = formatTimestampShort(ats[ats.length - 1] ?? d.dataset.to ?? "");
+  // 时段取露着的那几行的两头（按时刻排先后，写的是各自的钟面）。
+  const byAt = [...rows].sort((a, b) => ((a.dataset.at ?? "") < (b.dataset.at ?? "") ? -1 : (a.dataset.at ?? "") > (b.dataset.at ?? "") ? 1 : 0));
+  const from = byAt[0].dataset.time ?? "";
+  const to = byAt[byAt.length - 1].dataset.time ?? "";
   head.textContent = copyText("speaker.notice.many", {
     n: rows.length,
     span: from === to ? from : `${from}–${to}`,

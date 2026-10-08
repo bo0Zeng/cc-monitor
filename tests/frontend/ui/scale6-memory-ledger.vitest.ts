@@ -123,7 +123,7 @@ function renderInto(rec: JsonlRecord, ctx: RenderContext): HTMLElement | null {
     document.body.appendChild(res.element);
     return res.element;
   }
-  const group = buildToolGroup(res.timestamp);
+  const group = buildToolGroup(res.time);
   addToToolGroup(group, res.units);
   document.body.appendChild(group.root);
   return group.root;

@@ -207,6 +207,10 @@ impl Sess {
             (Some(a), Some(b)) => Some(a.min(b)),
             (a, b) => a.or(b),
         };
+        r.info.started_text = r
+            .info
+            .started_ms
+            .map(|ms| crate::common::time::ms_hm_here(ms as i64));
         if r.closed
             .as_ref()
             .is_some_and(|c| c.resumed_by(rid.as_deref(), seen))
@@ -292,6 +296,10 @@ impl Sess {
             (Some(a), Some(b)) => Some(a.min(b)),
             (a, b) => a.or(b),
         };
+        r.info.started_text = r
+            .info
+            .started_ms
+            .map(|ms| crate::common::time::ms_hm_here(ms as i64));
     }
 
     /// 说到子运行的一条（`at` ＝ 那条记录的时刻：来自子记录 ⇒ 那份记录的写入时刻；`when` ＝ 记录自己写着的时刻；

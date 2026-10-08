@@ -203,7 +203,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "history-turns",
         summary: "一轮的摘要",
         codes: &["bad_args", "failed", "too_large"],
-        fields: &[out("end", "最后一个完整行的末字节（残尾不计）"), arg("from", "可选，缺 ⇒ 0：从这个字节起扫"), arg("path", "jsonl 路径（围栏同 `history-read`）"), out("turns", "这一段里的每一轮，文件序")],
+        fields: &[out("end", "最后一个完整行的末字节（残尾不计）"), arg("from", "可选，缺 ⇒ 0：从这个字节起扫"), arg("path", "jsonl 路径（围栏同 `history-read`）"), out("turns", "这一段里的每一轮，文件序；起止（`start` · `end`）旁边各有一格 `startText` · `endText`：这台本地钟的 `HH:MM`（界面照抄、不换算；解不出 ⇒ 空串）")],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::faces::read_face::answer(&r.cmd, &r.args)

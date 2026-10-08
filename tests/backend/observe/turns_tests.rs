@@ -13,6 +13,8 @@ fn scan(body: &str, from: u64) -> Vec<TurnRow> {
             reply: t.reply.clone(),
             start: t.start.clone(),
             end: t.end.clone(),
+            start_text: t.start_text.clone(),
+            end_text: t.end_text.clone(),
             uuid: t.uuid.clone(),
             ..*t
         });
@@ -93,4 +95,29 @@ fn turn_at_counts_your_sentences_up_to_that_record() {
     assert_eq!(at("u2"), Some((2, "t2".to_string())));
     assert_eq!(at("a2"), Some((2, "t2".to_string())));
     assert_eq!(at("nope"), None);
+}
+
+/// 起止时刻旁边各有一格钟面（这台本地钟 `HH:MM`，界面照抄）：起 ＝ 你那句、止 ＝ 这一轮最后一条主线记录；解不出 ⇒ 空串。
+#[test]
+fn start_and_end_carry_their_clock_faces() {
+    let (a, b) = ("2026-10-07T08:01:00.000Z", "2026-10-07T09:42:30.000Z");
+    let lines = [
+        format!(r#"{{"type":"user","uuid":"a","timestamp":"{a}","message":{{"content":"q"}}}}"#),
+        format!(
+            r#"{{"type":"assistant","uuid":"b","timestamp":"{b}","message":{{"content":[{{"type":"text","text":"x"}}]}}}}"#
+        ),
+        r#"{"type":"user","uuid":"c","timestamp":"later","message":{"content":"q2"}}"#.to_string(),
+    ];
+    let body: String = lines.iter().map(|l| format!("{l}\n")).collect();
+    let all = scan(&body, 0);
+    let face = |t: &str| crate::common::time::iso_hm_here(t).unwrap();
+    assert_eq!(
+        (all[0].start_text.as_str(), all[0].end_text.as_str()),
+        (face(a).as_str(), face(b).as_str())
+    );
+    assert_eq!(
+        (all[1].start_text.as_str(), all[1].end_text.as_str()),
+        ("", ""),
+        "解不出 ⇒ 空串"
+    );
 }

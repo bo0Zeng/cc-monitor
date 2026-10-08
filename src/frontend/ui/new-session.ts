@@ -184,14 +184,6 @@ function row(label: string, control: HTMLElement, boxed = true): { root: HTMLEle
   return { root, cell, note, setNote };
 }
 
-/** 「第 9 轮 02:05」那一段的时刻（本地钟面，时:分）。 */
-function clock(iso: string | null): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-}
-
 /** 那台说不行的码 ⇒ 落在那一格下的那一句（句子在文案表，那台的原话兜底）。 */
 function fieldSaid(code: string, said: string, machine: string): string {
   switch (code) {
@@ -454,7 +446,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     if (fork && facts.fork) {
       agent = facts.fork.agent || agent;
       if (forkLine && facts.fork.turn !== null) {
-        forkLine.textContent = copyText("newSession.fork.from", { title: fork.title, n: facts.fork.turn, time: clock(facts.fork.start) });
+        forkLine.textContent = copyText("newSession.fork.from", { title: fork.title, n: facts.fork.turn, time: facts.fork.startText ?? "" });
       }
       if (cwdInput.value === "" && facts.fork.launch.cwd.kind === "known") cwdInput.value = facts.fork.launch.cwd.value;
       const t = facts.fork.launch.terminal;

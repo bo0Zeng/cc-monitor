@@ -1,17 +1,14 @@
 /**
- * format.ts 纯函数断言脚本：formatBytes / formatTimestampShort。
+ * format.ts 纯函数断言脚本：formatBytes。
  *
  * 跑法：`node tests/frontend/ui/format.test.ts` 或 `npm run test:format`。
  * 同 remote-health.test.ts：零 node 依赖、失败 throw 非零退出作 pre-push 门禁；tsc --noEmit 类型检查。
  *
  * 为什么值得锁：format.ts 是 formatTime/formatBytes 各两份漂移后的收口点（见文件顶部注释）——
- * 有漂移史更该钉契约。formatBytes 全确定性、零依赖；时间分支用相对偏移构造、断言不依赖时区/locale。
+ * 有漂移史更该钉契约。formatBytes 全确定性、零依赖。
  */
 
-import {
-  formatBytes,
-  formatTimestampShort,
-} from "../../../src/frontend/ui/format.ts";
+import { formatBytes } from "../../../src/frontend/ui/format.ts";
 
 let failed = 0;
 function test(name: string, fn: () => void): void {
@@ -27,9 +24,6 @@ function eq(actual: unknown, expected: unknown, msg?: string): void {
   if (actual !== expected) {
     throw new Error(`${msg ?? "eq"}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
   }
-}
-function ok(cond: boolean, msg?: string): void {
-  if (!cond) throw new Error(msg ?? "expected truthy");
 }
 
 console.log("format.test.ts");
@@ -55,14 +49,6 @@ test("formatBytes: GB 段（2 位小数）", () => {
 });
 test("formatBytes: 负数走 B 段（当前行为，无防护）", () => {
   eq(formatBytes(-5), "-5 B");
-});
-
-// === formatTimestampShort（解析失败回退原值）===
-test("formatTimestampShort: 合法 ms → hh:mm", () => {
-  ok(/\d{1,2}:\d{2}/.test(formatTimestampShort(Date.now())));
-});
-test("formatTimestampShort: 不可解析字符串 → 原样返回", () => {
-  eq(formatTimestampShort("not-a-date"), "not-a-date");
 });
 
 if (failed > 0) {

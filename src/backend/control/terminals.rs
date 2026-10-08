@@ -672,7 +672,14 @@ fn parse_line(raw: &str, style: &mut Style) -> (String, Vec<Value>) {
 }
 
 /// `terminal-preview` 的成品构造器（纯）：抓回来的原文 ＋ 尺寸光标 ⇒ 回话。
-pub(crate) fn preview_reply(view: &View, color: bool, capped: bool, captured_at: u64) -> Value {
+/// `captured_text` ＝ `captured_at` 在这台本地钟上的 `HH:MM:SS`（调用方按这台写好；界面照抄、不换算）。
+pub(crate) fn preview_reply(
+    view: &View,
+    color: bool,
+    capped: bool,
+    captured_at: u64,
+    captured_text: &str,
+) -> Value {
     let mut style = Style::default();
     let mut plain = Vec::new();
     let lines: Vec<Value> = split_lines(&view.text)
@@ -697,6 +704,7 @@ pub(crate) fn preview_reply(view: &View, color: bool, capped: bool, captured_at:
         "scrollback_lines": back,
         "capped": capped,
         "captured_at": captured_at,
+        "captured_at_text": captured_text,
     })
 }
 
@@ -753,11 +761,13 @@ pub(crate) fn preview_on(on: On<'_>, args: &Value) -> Result<Value, CmdErr> {
         }
     };
     let view = view_on(on, row.target(), color, back)?;
+    let at = now_secs();
     Ok(preview_reply(
         &view,
         color,
         asked > u64::from(MAX_SCROLLBACK),
-        now_secs(),
+        at,
+        &crate::common::time::secs_hms_here(i64::try_from(at).unwrap_or(i64::MAX)),
     ))
 }
 

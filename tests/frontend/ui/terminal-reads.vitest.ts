@@ -98,7 +98,7 @@ describe("抓一屏：金样与形状", () => {
 
   it("★ 抓一屏连指纹与时刻；送字送键的三种回话（取自金样）都读得出、认不出的 ⇒ 抛", () => {
     const shot = decodeShot("devbox", PREVIEW.reply);
-    expect([shot.screen, shot.at]).toEqual([PREVIEW.reply.screen, PREVIEW.reply.captured_at]);
+    expect([shot.screen, shot.atText]).toEqual([PREVIEW.reply.screen, PREVIEW.reply.captured_at_text]);
     const INPUT = golden["terminal-input"] as unknown as { replies: unknown[] };
     expect(INPUT.replies.map((r) => decodeSent("devbox", r))).toEqual([
       { result: "delivered" },

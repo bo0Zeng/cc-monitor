@@ -87,12 +87,6 @@ function whyWord(code: string): string {
 /** 送字那一步的结局一句：送到了（一会儿就走）· 没送成（可带重试）。 */
 type Note = { text: string; tone: "ok" | "error"; retry?: TerminalSend };
 
-function clock(sec: number): string {
-  const d = new Date(sec * 1000);
-  const p = (n: number): string => String(n).padStart(2, "0");
-  return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
-}
-
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, text?: string): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
   if (text !== undefined) e.textContent = text;
@@ -451,7 +445,7 @@ export class TerminalPage {
     this.tag.textContent = row.tmuxName !== "" ? copyText("terminal.tag.tmux", { name: row.tmuxName }) : "";
     this.tag.style.display = row.tmuxName !== "" ? "" : "none";
     this.tag2.textContent = row.clients > 0 ? copyText("terminal.tag.windows", { n: row.clients }) : copyText("terminal.tag.background");
-    this.at.textContent = this.shot ? copyText("terminal.head.snapAt", { time: clock(this.shot.at) }) : "";
+    this.at.textContent = this.shot ? copyText("terminal.head.snapAt", { time: this.shot.atText }) : "";
     this.frontBtn.style.display = terminalFrontAvailable() && hasTerminal(tab.state) ? "" : "none";
 
     const bars: HTMLElement[] = [];

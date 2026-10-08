@@ -1,6 +1,7 @@
 /**
  * 帧命令的默认答法（按 op 名）。形状照后端的跨语言金样（`tests/__fixtures__/*.golden.json`）与界面那一侧的解码器。
  */
+import { hm } from "./clock";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import type { JsonlRecord } from "../../../src/frontend/ui/generated/JsonlRecord";
 import type { OpHandler, SessionSpec, World } from "./types";
@@ -141,7 +142,7 @@ export function defaultOps(): Record<string, OpHandler> {
                 terminal: src.ended ? { kind: "unknown", why: "exited" } : { kind: "known", value: { host: "tmux", terminal: "tmux:orders-cc" }, from: "terminal_list" },
               },
               turn: 9,
-              start: new Date(Date.now() - 3_600_000).toISOString(),
+              startText: hm(Date.now() - 3_600_000),
             }
           : null,
       };
@@ -218,7 +219,7 @@ export function defaultOps(): Record<string, OpHandler> {
     "history-turns": (_o, req, w) => {
       const recs = sessionByPath(w, req.path)?.records ?? [];
       const { at, end } = layout(recs);
-      type T = { at: number; uuid: string; start: string; end: string; said: string; tools: number; thinking: number; fails: number; conclusion: string[]; reply: string; done: boolean };
+      type T = { at: number; uuid: string; start: string; end: string; startText: string; endText: string; said: string; tools: number; thinking: number; fails: number; conclusion: string[]; reply: string; done: boolean };
       const turns: T[] = [];
       let cur: T | null = null;
       let afterTool: string[] = [];
@@ -245,13 +246,14 @@ export function defaultOps(): Record<string, OpHandler> {
             cur.done = true;
             close(cur);
           }
-          cur = { at: at[i].o, uuid: r.uuid, start: r.timestamp, end: r.timestamp, said: r.userText.text.split("\n")[0].slice(0, 50), tools: 0, thinking: 0, fails: 0, conclusion: [], reply: "", done: false };
+          cur = { at: at[i].o, uuid: r.uuid, start: r.timestamp, end: r.timestamp, startText: hm(Date.parse(r.timestamp)), endText: hm(Date.parse(r.timestamp)), said: r.userText.text.split("\n")[0].slice(0, 50), tools: 0, thinking: 0, fails: 0, conclusion: [], reply: "", done: false };
           turns.push(cur);
           afterTool = [];
           return;
         }
         if (!cur || (r.type !== "user" && r.type !== "assistant")) return;
         cur.end = r.timestamp;
+        cur.endText = hm(Date.parse(r.timestamp));
         const content = Array.isArray(r.message.content) ? (r.message.content as { type: string; text?: string; is_error?: boolean }[]) : [];
         if (r.type === "assistant") {
           for (const b of content) {

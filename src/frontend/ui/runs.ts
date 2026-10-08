@@ -124,7 +124,7 @@ export function runLastText(r: RunInfo, live: LiveBlockView | null): string | nu
 const STATES: readonly RunState[] = ["running", "done", "failed", "stopped", "unknown"];
 const WHYS: readonly RunWhy[] = ["reported", "own", "quiet", "orphaned"];
 const RUN_REQUIRED = ["run", "state"] as const;
-const RUN_TEXT = ["label", "kind", "tool", "parent", "waiting", "error"] as const;
+const RUN_TEXT = ["label", "kind", "tool", "parent", "waiting", "error", "started_text"] as const;
 const RUN_TIMES = ["started_ms", "active_ms", "ended_ms"] as const;
 
 const isStr = (v: unknown): v is string => typeof v === "string";

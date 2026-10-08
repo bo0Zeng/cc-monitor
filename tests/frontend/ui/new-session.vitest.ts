@@ -57,7 +57,6 @@ vi.mock("@tauri-apps/api/event", () => ({ emit: vi.fn(async () => {}), listen: v
 
 import { openNewSession, setNewSessionPlaceholder } from "../../../src/frontend/ui/new-session";
 import { copyText } from "../../../src/frontend/ui/copy-table";
-import { copyPattern } from "../../test-support/copy-pattern";
 
 const flush = async (): Promise<void> => {
   for (let i = 0; i < 20; i++) await new Promise((r) => setTimeout(r, 0));
@@ -232,13 +231,13 @@ describe("分叉那一形", () => {
         agent: "claude",
         launch: { cwd: { kind: "known", value: "/home/u/work/orders", from: "record" }, account: { kind: "unknown", why: "exited" }, terminal: { kind: "unknown", why: "exited" } },
         turn: 9,
-        start: "2026-10-06T02:05:00Z",
+        startText: "02:05",
       },
     });
     void openNewSession({ origin: "devbox", fork: { sid: "src-1", uuid: "msg-9", title: "给订单服务加重试" } });
     await flush();
     expect(sent.find((s) => s.op === "session-new-facts")!.body).toEqual({ forkOf: "src-1", at: "msg-9" });
-    expect(dialog().textContent).toMatch(copyPattern("newSession.fork.from", { title: "给订单服务加重试", n: 9 }));
+    expect(dialog().textContent, "那一轮的钟面照抄后端写好的字").toContain(copyText("newSession.fork.from", { title: "给订单服务加重试", n: 9, time: "02:05" }));
     expect(dialog().querySelector(`input[aria-label="${copyText("newSession.label.tmuxName")}"]`), "分叉不给终端名那一格").toBeNull();
     expect(input(copyText("newSession.label.cwd")).value).toBe("/home/u/work/orders");
     expect(sel(copyText("newSession.label.machine")).disabled).toBe(true);

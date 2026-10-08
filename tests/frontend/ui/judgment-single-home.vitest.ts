@@ -65,7 +65,7 @@ import { stripComments } from "../../test-support/strip-comments.ts";
 type JudgmentId =
   | "J1" | "J2" | "J3" | "J4" | "J5" | "J6" | "J7"
   | "J9" | "J10" | "J11" | "J12" | "J13" | "J14" | "J15" | "J16"
-  | "J17" | "J18" | "J19" | "J20" | "J21" | "J22" | "J23";
+  | "J17" | "J18" | "J19" | "J20" | "J21" | "J22" | "J23" | "J24";
 
 /** TS 孪生的规则指纹：一段字面子串（在**剥过注释**的生产代码里数）。`file` 缺席 = 全体生产段合计。 */
 interface Needle {
@@ -490,6 +490,16 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
       { text: "719_468", count: 0 },
       { text: "getTimezoneOffset", count: 0 },
     ],
+  },
+  J24: {
+    what: "一个时刻写成给人看的钟面（记录卡 · 轮次起止 · 子运行开始 · 分叉那一轮 · 终端快照）",
+    // 后端按那台本地钟写好（记录的 `timeText` · 轮次的 `startText`/`endText` · 子运行的 `started_text` · 分叉的 `startText` ·
+    //   终端快照的 `captured_at_text`），界面照抄。删的是 `format.ts::formatTimestampShort`（`toLocaleTimeString`）与终端页 / 起会话框各自那一个钟面换算（`getSeconds` 那一处随之归零）。
+    // 留着的一处是 `status-messages.ts` 的提示时刻：提示是界面自己出的事，不来自哪台后端，没有「那台的本地钟」可照抄。
+    homes: ["src/backend/common/time.rs::hm", "src/backend/common/time.rs::hms"],
+    status: "zero",
+    defs: ["formatTimestampShort"],
+    needles: [{ text: "getSeconds", count: 0 }],
   },
 };
 

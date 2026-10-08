@@ -335,6 +335,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | `last` | RunDid? |  |
 | `waiting` | string? | 在等哪个工具的结果（它最近一条记录是一次还没拿到结果的工具调用、且还在跑） |
 | `started_ms` | number? | 开始：派出它的那条记录（没见到 ⇒ 它自己最早的一条） |
+| `started_text` | string? | `started_ms` 在这台本地钟上的钟面 `HH:MM`（跟着 `started_ms` 一起写；界面照抄、不换算） |
 | `active_ms` | number? | 最近动静：它自己最近一条记录 |
 | `ended_ms` | number? | 收场：说它收场的那一条（还没收场 / 状态不明 ⇒ 不上线） |
 | `why` | RunWhy? | 为什么是这个结局（在跑 ⇒ 不上线） |
@@ -1695,7 +1696,7 @@ sid → 上次用哪个号起。
 | `end` | ← | 最后一个完整行的末字节（残尾不计） |
 | `from` | → | 可选，缺 ⇒ 0：从这个字节起扫 |
 | `path` | → | jsonl 路径（围栏同 `history-read`） |
-| `turns` | ← | 这一段里的每一轮，文件序 |
+| `turns` | ← | 这一段里的每一轮，文件序；起止（`start` · `end`）旁边各有一格 `startText` · `endText`：这台本地钟的 `HH:MM`（界面照抄、不换算；解不出 ⇒ 空串） |
 
 码：`bad_args` · `failed` · `too_large`
 
@@ -2794,6 +2795,7 @@ cc-bus 钩子诊断。
 |---|---|---|
 | `capped` | ← | 要的比上限多、截到了上限 |
 | `captured_at` | ← | 抓屏时刻（秒） |
+| `captured_at_text` | ← | 抓屏时刻在这台本地钟上的 `HH:MM:SS`（界面照抄、不换算） |
 | `color` | → | 要不要颜色；缺省 `true` |
 | `cols` | ← | 列数 |
 | `cursor` | ← | 光标 `{x, y, visible}` |
@@ -2982,7 +2984,7 @@ cc-bus 钩子诊断。
 | `lastMs` | ← | `recent` 一项：那个目录最近一次会话的修改时刻（毫秒） |
 | `launch` | ← | `fork` 里：起分叉会话要的三格（同 `session-fork` 的 `launch`） |
 | `recent` | ← | 这台最近用过的工作目录（各家记录里的，新的在前、同一个目录一次、最多 8 个；`lastMs` 是那个目录最近一次会话的修改时刻） |
-| `start` | ← | `fork` 里：那一轮你那句的时刻 |
+| `startText` | ← | `fork` 里：那一轮你那句在这台本地钟上的钟面 `HH:MM`（界面照抄；说不出 ⇒ `null`） |
 | `tmux` | ← | 这台有没有 tmux（`false` ⇒ 只能开终端窗口） |
 | `turn` | ← | `fork` 里：`at` 那一条在第几轮 |
 

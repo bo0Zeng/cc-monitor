@@ -22,8 +22,7 @@
 import { describe, it, expect } from "vitest";
 import { buildBashOutputCard } from "../../../../src/frontend/ui/cards/bash";
 
-const ts = "2026-08-06T00:00:00.000Z";
-const fmt = () => "00:00";
+const time = "00:00";
 const linesOf = (n: number) =>
   Array.from({ length: n }, (_, i) => `line-${i + 1}`).join("\n");
 
@@ -33,7 +32,7 @@ const EXPAND = ".block-body-show-full";
 
 describe("bash 输出卡：超长折叠（夹逼锚点，不复制阈值）", () => {
   it("★ 明显短的输出（5 行）不许被折叠 —— 折叠阈值被调得过小时这条红", () => {
-    const card = buildBashOutputCard({ stdout: linesOf(5), stderr: "" }, ts, fmt);
+    const card = buildBashOutputCard({ stdout: linesOf(5), stderr: "" }, time);
     expect(card.querySelector(WRAP), "5 行就折叠 = 阈值被调小了").toBeNull();
     expect(card.querySelector(EXPAND)).toBeNull();
     // 全文要在，一行都不许少。
@@ -42,13 +41,13 @@ describe("bash 输出卡：超长折叠（夹逼锚点，不复制阈值）", ()
   });
 
   it("★ 明显长的输出（200 行）必须折叠，且给出展开入口", () => {
-    const card = buildBashOutputCard({ stdout: linesOf(200), stderr: "" }, ts, fmt);
+    const card = buildBashOutputCard({ stdout: linesOf(200), stderr: "" }, time);
     expect(card.querySelector(WRAP), "200 行都不折叠 = 折叠这一支断了").not.toBeNull();
     expect(card.querySelector(EXPAND), "折叠了却没有展开入口 = 内容被吃掉").not.toBeNull();
   });
 
   it("★ 折叠后展示的头部要够长（≥10 行）—— 头部行数被调得过小时这条红", () => {
-    const card = buildBashOutputCard({ stdout: linesOf(200), stderr: "" }, ts, fmt);
+    const card = buildBashOutputCard({ stdout: linesOf(200), stderr: "" }, time);
     const pre = card.querySelector(`${WRAP} pre`);
     expect(pre, "折叠壳里没有 pre").not.toBeNull();
     const shown = (pre?.textContent ?? "").split("\n").filter((l) => l.length > 0);
@@ -61,8 +60,8 @@ describe("bash 输出卡：超长折叠（夹逼锚点，不复制阈值）", ()
   });
 
   it("★ 反向自检：夹具真的走到了两条分支（否则上面三条可能都在同一支上空转）", () => {
-    const short = buildBashOutputCard({ stdout: linesOf(5), stderr: "" }, ts, fmt);
-    const long = buildBashOutputCard({ stdout: linesOf(200), stderr: "" }, ts, fmt);
+    const short = buildBashOutputCard({ stdout: linesOf(5), stderr: "" }, time);
+    const long = buildBashOutputCard({ stdout: linesOf(200), stderr: "" }, time);
     // 一个有壳、一个没有 —— 两条分支各被走到一次。
     expect(short.querySelector(WRAP)).toBeNull();
     expect(long.querySelector(WRAP)).not.toBeNull();

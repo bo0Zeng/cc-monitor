@@ -108,6 +108,47 @@ pub(crate) fn with_texts_here(v: &mut serde_json::Value, now: u64) {
     with_texts(v, i64::try_from(now).unwrap_or(i64::MAX), tz_min);
 }
 
+/// 一个时刻（unix 秒）在这台本地钟上的秒数：偏移按**那一刻**算（夏令时跟着那一刻）；问不到时区 ⇒ 按 UTC。
+pub(crate) fn local_secs(t: i64) -> i64 {
+    let off = u64::try_from(t)
+        .ok()
+        .and_then(crate::platform::local_tz::offset_secs)
+        .unwrap_or(0);
+    t + off
+}
+
+/// 本地钟秒数 ⇒ 钟面 `HH:MM`（不写日子）。
+pub(crate) fn hm(local: i64) -> String {
+    let secs = local.rem_euclid(DAY);
+    format!("{:02}:{:02}", secs / 3600, (secs % 3600) / 60)
+}
+
+/// 本地钟秒数 ⇒ 钟面 `HH:MM:SS`（终端快照那一格）。
+pub(crate) fn hms(local: i64) -> String {
+    let secs = local.rem_euclid(DAY);
+    format!(
+        "{:02}:{:02}:{:02}",
+        secs / 3600,
+        (secs % 3600) / 60,
+        secs % 60
+    )
+}
+
+/// 秒时刻 ⇒ 这台本地钟的 `HH:MM:SS`。
+pub(crate) fn secs_hms_here(t: i64) -> String {
+    hms(local_secs(t))
+}
+
+/// 记录里写着的 ISO 时刻 ⇒ 这台本地钟的 `HH:MM`（记录卡 · 轮次起止 · 分叉那一轮）。解不出 ⇒ `None`。
+pub(crate) fn iso_hm_here(iso: &str) -> Option<String> {
+    parse_iso8601_ms(iso).map(ms_hm_here)
+}
+
+/// 毫秒时刻 ⇒ 这台本地钟的 `HH:MM`（子运行开始 · 终端快照那几处）。
+pub(crate) fn ms_hm_here(ms: i64) -> String {
+    hm(local_secs(ms.div_euclid(1_000)))
+}
+
 #[cfg(test)]
 #[path = "../../../tests/backend/common/time_tests.rs"]
 mod tests;

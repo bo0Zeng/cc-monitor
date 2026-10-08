@@ -7,6 +7,7 @@
 //! | T3 | ISO8601：秒 · 毫秒 · 1/2 位小数补零 · 太短 / 不是数字 ⇒ `None` | 真值 |
 //! | T5 | 给人看的时刻：当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年带年 · 时区偏移跨日 | 真值 |
 //! | T6 | 回包出口那一遍：认得的时刻格（闭集）各添一格 `<键>Text`，按层级走到底；别的数 · 已有的字不动 | 真值 |
+//! | T7 | 记录 · 轮次 · 子运行那几处的钟面：本地钟秒数 ⇒ `HH:MM`；ISO / 毫秒按那一刻的偏移排；解不出 ⇒ 缺 | 真值 |
 //! | T4 | 换算常量 `719_468` 在后端生产段只住本模块 | 文本，零命中 ＋ 正控 |
 
 use super::*;
@@ -134,4 +135,24 @@ fn t6_reply_gets_a_text_next_to_every_time_cell() {
         "闭集之外的数不动"
     );
     assert!(a["reading"].get("usedText").is_none());
+}
+
+#[test]
+fn t7_clock_face_of_a_record_time() {
+    let base = days_from_civil(2026, 10, 7) * 86_400;
+    assert_eq!(hm(base + 9 * 3_600 + 5 * 60 + 59), "09:05");
+    assert_eq!(hm(base - 60), "23:59", "前一天的最后一分钟");
+    // 偏移按那一刻算：东八区 UTC 20:30 ⇒ 次日 04:30（只写钟面，不写日子）。
+    assert_eq!(hm(base + 20 * 3_600 + 30 * 60 + 8 * 3_600), "04:30");
+    let iso = "2026-10-07T20:30:15.123Z";
+    let t = base + 20 * 3_600 + 30 * 60 + 15;
+    assert_eq!(
+        iso_hm_here(iso).as_deref(),
+        Some(hm(local_secs(t)).as_str())
+    );
+    assert_eq!(ms_hm_here(t * 1_000 + 123), hm(local_secs(t)));
+    assert_eq!(hms(base + 7 * 3_600 + 13 * 60 + 20), "07:13:20");
+    assert_eq!(secs_hms_here(t), hms(local_secs(t)));
+    assert_eq!(iso_hm_here(""), None);
+    assert_eq!(iso_hm_here("not a time at all"), None);
 }

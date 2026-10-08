@@ -35,7 +35,7 @@ import { awaitedFor, buildStepLine, buildThinkingLine, durBetween, paintWaiting,
 import type { PendingCall, RetryOutcome } from "../session-reads";
 import { buildApiErrorCard, buildApiRetryCard } from "./api-error";
 import { LS_KEYS, safeGet, safeSet } from "../local-storage";
-import { firstLineOf, formatTimestampShort, jsonPrefix } from "../format";
+import { firstLineOf, jsonPrefix } from "../format";
 import { openFileWindow } from "../file-window";
 import { resolveRemoteConfigByOrigin } from "../remote-config";
 import { toast } from "../kit/toast";
@@ -208,7 +208,7 @@ export type RenderResult =
    * 保持可见）。TabManager 会把连续的 tool-group 合并到同一个外层折叠卡。
    * `units` 是每个块单独的折叠条元素。
    */
-  | { kind: "tool-group"; timestamp: string; units: HTMLElement[] };
+  | { kind: "tool-group"; time: string; units: HTMLElement[] };
 
 export function renderMessage(rec: JsonlRecord, ctx: RenderContext): RenderResult {
   switch (rec.type) {
@@ -217,36 +217,37 @@ export function renderMessage(rec: JsonlRecord, ctx: RenderContext): RenderResul
       // 仍在 timeline 里占链节点（同 attachment），只是不建卡。
       const said = rec.userText;
       const speaker = said.speaker;
+      const time = rec.timeText ?? "";
       if (!drawsCard(speaker.kind)) return { kind: "skip" };
       switch (speaker.kind) {
         case "slashCommand":
-          return { kind: "card", element: buildSlashCommandCard(speaker, rec.timestamp, formatTimestampShort) };
+          return { kind: "card", element: buildSlashCommandCard(speaker, time) };
         case "bashInput":
-          return { kind: "card", element: buildBashInputCard(speaker, rec.timestamp, formatTimestampShort) };
+          return { kind: "card", element: buildBashInputCard(speaker, time) };
         case "bashOutput":
-          return { kind: "card", element: buildBashOutputCard(speaker, rec.timestamp, formatTimestampShort) };
+          return { kind: "card", element: buildBashOutputCard(speaker, time) };
         case "compactSummary":
           if (!said.text) return { kind: "skip" };
           return {
             kind: "card",
-            element: buildCompactSummaryCard(said.text, rec.timestamp, formatTimestampShort),
+            element: buildCompactSummaryCard(said.text, time),
           };
         case "toolResult":
           break;
         case "agentMessage":
-          return { kind: "card", element: buildAgentBar(speaker, rec.timestamp, speaker.from ? ctx.runLabelOf?.(speaker.from) : undefined) };
+          return { kind: "card", element: buildAgentBar(speaker, time, speaker.from ? ctx.runLabelOf?.(speaker.from) : undefined) };
         case "peerSession":
-          return { kind: "card", element: buildPeerBar(speaker, rec.timestamp) };
+          return { kind: "card", element: buildPeerBar(speaker, time) };
         case "coordinator":
-          return { kind: "card", element: buildCoordinatorBar(speaker, rec.timestamp) };
+          return { kind: "card", element: buildCoordinatorBar(speaker, time) };
         case "taskNotification":
-          return { kind: "card", element: buildNoticeLine(speaker, rec.timestamp) };
+          return { kind: "card", element: buildNoticeLine(speaker, rec.timestamp, time) };
         case "interrupt":
-          return { kind: "card", element: buildInterruptLine(rec.timestamp) };
+          return { kind: "card", element: buildInterruptLine(time) };
         case "agentTask":
           // 派给子 agent 的活：不是用户说的，画成带抬头的框（谁派的 · 几点派的）。
           if (!said.text) return { kind: "skip" };
-          return { kind: "card", element: buildBriefCard(said.text, rec.timestamp, ctx.briefFrom ?? null) };
+          return { kind: "card", element: buildBriefCard(said.text, time, ctx.briefFrom ?? null) };
         default:
           // 人说的话：用户气泡；没有正文（只有图片之类）不建卡。
           if (!said.text) return { kind: "skip" };
@@ -266,7 +267,7 @@ export function renderMessage(rec: JsonlRecord, ctx: RenderContext): RenderResul
       if (units.length === 0) return { kind: "skip" };
       return {
         kind: "tool-group",
-        timestamp: rec.timestamp,
+        time: rec.timeText ?? "",
         units,
       };
     }
@@ -277,7 +278,7 @@ export function renderMessage(rec: JsonlRecord, ctx: RenderContext): RenderResul
         return {
           kind: "card",
           element: buildApiErrorCard({
-            timeLabel: formatTimestampShort(rec.timestamp),
+            timeLabel: rec.timeText ?? "",
             reason: rec.apiReason,
             text: extractText(rec.message.content).trim(),
             status: rec.apiErrorStatus,
@@ -318,7 +319,7 @@ export function renderMessage(rec: JsonlRecord, ctx: RenderContext): RenderResul
       if (units.length === 0) return { kind: "skip" };
       return {
         kind: "tool-group",
-        timestamp: rec.timestamp,
+        time: rec.timeText ?? "",
         units,
       };
     }
@@ -329,7 +330,7 @@ export function renderMessage(rec: JsonlRecord, ctx: RenderContext): RenderResul
         return {
           kind: "card",
           element: buildApiRetryCard({
-            timeLabel: formatTimestampShort(rec.timestamp),
+            timeLabel: rec.timeText ?? "",
             reason: rec.apiReason,
             retryAttempt: rec.retryAttempt,
             maxRetries: rec.maxRetries,
@@ -352,7 +353,7 @@ export function renderMessage(rec: JsonlRecord, ctx: RenderContext): RenderResul
     case "queue-operation": {
       const text = rec.userText?.speaker.kind === "human" ? rec.userText.text : "";
       if (!text) return { kind: "skip" };
-      return { kind: "card", element: buildQueuedUserCard(text, rec.timestamp) };
+      return { kind: "card", element: buildQueuedUserCard(text, rec.timeText ?? "") };
     }
     default:
       return { kind: "skip" };
@@ -365,10 +366,10 @@ export function renderMessage(rec: JsonlRecord, ctx: RenderContext): RenderResul
  *  理由不是装饰 —— 这条消息在会话链上**没有位置**（无 uuid/parentUuid），
  *  它与前后消息的先后只由 `seq` 保证。让读的人知道「这条是插进来的」，
  *  比让它伪装成一条普通用户消息诚实。 */
-function buildQueuedUserCard(text: string, timestamp: string | null): HTMLElement {
+function buildQueuedUserCard(text: string, time: string): HTMLElement {
   const card = document.createElement("div");
   card.className = "card card-user card-user-queued";
-  card.appendChild(cardHeader(copyText("cards.queuedUser.title"), timestamp ?? ""));
+  card.appendChild(cardHeader(copyText("cards.queuedUser.title"), time));
 
   const body = document.createElement("div");
   body.className = "card-body";
@@ -383,7 +384,8 @@ export interface ToolGroup {
   body: HTMLElement;
   summary: HTMLElement;
   count: number;
-  startedAt: string;
+  /** 第一条的钟面（后端写好的 `timeText`）。 */
+  since: string;
 }
 
 /** 外层折叠卡 → 它的工具组（结果后到、注入进组里某一条时，要回头改那一组收着时那一行）。 */
@@ -396,7 +398,7 @@ function refreshGroupAround(el: HTMLElement | null): void {
   if (group) updateToolGroupSummary(group);
 }
 
-export function buildToolGroup(startedAt: string): ToolGroup {
+export function buildToolGroup(since: string): ToolGroup {
   const root = document.createElement("details");
   root.className = "card card-tool-group";
 
@@ -408,7 +410,7 @@ export function buildToolGroup(startedAt: string): ToolGroup {
   body.className = "card-tool-group-body";
   root.appendChild(body);
 
-  const group: ToolGroup = { root, body, summary, count: 0, startedAt };
+  const group: ToolGroup = { root, body, summary, count: 0, since };
   groupOfRoot.set(root, group);
   updateToolGroupSummary(group);
   return group;
@@ -423,7 +425,7 @@ export function addToToolGroup(group: ToolGroup, units: HTMLElement[]): void {
 /** 收着时那一行：个数 · 起始时刻；里面有失败的、有子 agent 就说出来（收着也看得见）。 */
 function updateToolGroupSummary(group: ToolGroup): void {
   const count = group.count;
-  const since = formatTimestampShort(group.startedAt);
+  const since = group.since;
   const failed = group.body.querySelectorAll(":scope > .block-has-error, :scope > .block-tool-result.block-error").length;
   let agents = 0;
   for (const el of group.body.children) if (isRunCard(el)) agents++;
@@ -489,7 +491,7 @@ function buildUserCard(
 ): HTMLElement {
   const card = document.createElement("div");
   card.className = "card card-user";
-  card.appendChild(cardHeader(copyText("cards.user.title"), rec.timestamp));
+  card.appendChild(cardHeader(copyText("cards.user.title"), rec.timeText ?? ""));
 
   const body = document.createElement("div");
   body.className = "card-body";
@@ -506,7 +508,7 @@ function buildAssistantCard(
   const card = document.createElement("div");
   card.className = "card card-assistant";
   // 卡头那一家的名字：会话是哪一家由后端说（标签页 · 历史行的 `agent`），名字取画像里的短名；不按文件名猜。
-  card.appendChild(cardHeader(ctx.speaker ?? "", rec.timestamp, rec.message.model));
+  card.appendChild(cardHeader(ctx.speaker ?? "", rec.timeText ?? "", rec.message.model));
 
   const body = document.createElement("div");
   body.className = "card-body";
@@ -1358,7 +1360,8 @@ function isSyntheticReply(text: string): boolean {
 
 function cardHeader(
   role: string,
-  timestamp: string,
+  /** 记录的钟面（后端写好的 `timeText`）。 */
+  time: string,
   // C04c：`| null` —— `ApiMessage.model` 是 `Option<String>` 且无 skip_serializing_if
   // ⇒ 线上是显式 null。下面的真值判断本来就吃得下 null，只是类型此前没说实话。
   model?: string | null,
@@ -1371,7 +1374,7 @@ function cardHeader(
   h.appendChild(r);
   const t = document.createElement("span");
   t.className = "ts";
-  t.textContent = formatTimestampShort(timestamp);
+  t.textContent = time;
   h.appendChild(t);
   if (model) {
     const m = document.createElement("span");

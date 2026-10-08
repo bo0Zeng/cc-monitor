@@ -306,6 +306,7 @@ fn unrecognized_wire_type_and_camel_case_contract() {
         uuid: Some("u1".into()),
         parent_uuid: Some("u0".into()),
         timestamp: Some("t1".into()),
+        time_text: None,
         original_type: Some("mode".into()),
         raw: "{\"type\":\"mode\"}".into(),
         reason: "unknown-type".into(),

@@ -144,7 +144,7 @@ beforeEach(() => {
 const task = (id: string): TaskEntry => ({ id, subject: `任务 ${id}`, status: "pending", blocks: [], blockedBy: [] });
 const run = (id: string): RunInfo => ({ run: id, state: "running", label: `子 ${id}`, kind: null, tool: null, last: null }) as unknown as RunInfo;
 
-const NO_TERMINALS: TerminalReads = { list: async () => [], shot: async () => ({ text: "", screen: "", at: 0 }), send: async () => ({ result: "delivered" }) };
+const NO_TERMINALS: TerminalReads = { list: async () => [], shot: async () => ({ text: "", screen: "", atText: "" }), send: async () => ({ result: "delivered" }) };
 
 function mountPanels(): { tasks: TasksPanel; agents: AgentsPanel; drawer: MainDrawer } {
   const tasks = new TasksPanel();
@@ -486,7 +486,7 @@ describe("工具组收着时说出里面有失败的、有子 agent", () => {
       c,
     );
     if (r.kind !== "tool-group") throw new Error(`期望工具组，得到 ${r.kind}`);
-    const g = buildToolGroup(r.timestamp);
+    const g = buildToolGroup(r.time);
     addToToolGroup(g, r.units);
     const quiet = g.summary.textContent ?? "";
     expect(quiet).not.toMatch(/失败/);
