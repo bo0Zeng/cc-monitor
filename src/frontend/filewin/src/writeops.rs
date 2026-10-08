@@ -121,6 +121,7 @@
 //!   `remote_write_registry_tests` 那条「窗口用了池子哪几条命令」的相等断言。
 //!   ⇒ 窗口上那颗按钮（住 `rows.rs` / `shell.rs`，不在本路写区）等 F2 接后端时一起落。
 
+use crate::Held;
 use copy_core::copy_text;
 use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -982,7 +983,7 @@ struct ModeProbeInner {
 impl ModeProbe {
     /// 新摆了一个框：代数 +1、清掉上一个框的答案，交回这一趟的代数。
     pub fn start(&self) -> u64 {
-        let mut g = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let mut g = self.inner.held();
         g.gen += 1;
         g.got = None;
         g.gen
@@ -991,7 +992,7 @@ impl ModeProbe {
     /// 答案到了。代数对不上（框已经换了）⇒ 丢掉。
     pub fn land(&self, gen: u64, modes: Vec<Option<u32>>) {
         let ctx = {
-            let mut g = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+            let mut g = self.inner.held();
             if g.gen != gen {
                 return;
             }
@@ -1005,17 +1006,12 @@ impl ModeProbe {
 
     /// 把窗口交给它（答案到了要敲一下，不然等用户动鼠标才画出来）。
     pub fn attach(&self, ctx: egui::Context) {
-        self.inner.lock().unwrap_or_else(|e| e.into_inner()).ctx = Some(ctx);
+        self.inner.held().ctx = Some(ctx);
     }
 
     /// 这一个框的现值（还没答回来 ⇒ `None`）。
     pub fn readout(&self) -> Option<ModeReadout> {
-        self.inner
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .got
-            .as_deref()
-            .map(mode_readout)
+        self.inner.held().got.as_deref().map(mode_readout)
     }
 }
 
@@ -1152,7 +1148,7 @@ impl WriteBoard {
     pub fn ask(&self, ops: Vec<WriteOp>) -> tokio::sync::oneshot::Receiver<Vec<WriteOp>> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         {
-            let mut b = self.inner.lock().unwrap();
+            let mut b = self.inner.held();
             // 缺省勾上：用户点的就是那一行那颗按钮。
             // ⚠ 缺省不勾的话，确认那颗按钮点下去什么都不会发生 ——
             //   而「什么都没发生」与「做完了」在屏幕上分不开。
@@ -1165,22 +1161,22 @@ impl WriteBoard {
     }
 
     pub fn is_asking(&self) -> bool {
-        !self.inner.lock().unwrap().asking.is_empty()
+        !self.inner.held().asking.is_empty()
     }
 
     /// 正摆着的那几件（判据用）。
     pub fn asking(&self) -> Vec<WriteOp> {
-        self.inner.lock().unwrap().asking.clone()
+        self.inner.held().asking.clone()
     }
 
     /// 把窗口交给它，好让它在有事发生时敲一下。
     pub fn attach(&self, ctx: Option<egui::Context>) {
-        *self.ctx.lock().unwrap() = ctx;
+        *self.ctx.held() = ctx;
     }
 
     /// 敲一下窗口：「有新东西了，画下一帧」。没有窗口就什么都不做。
     pub fn poke(&self) {
-        if let Some(c) = self.ctx.lock().unwrap().as_ref() {
+        if let Some(c) = self.ctx.held().as_ref() {
             c.request_repaint();
         }
     }
@@ -1198,7 +1194,7 @@ impl WriteBoard {
         quiet: bool,
     ) {
         {
-            let mut b = self.inner.lock().unwrap();
+            let mut b = self.inner.held();
             b.asking.clear();
             b.ticks.clear();
             b.receipt = if quiet && outcome.failed.is_empty() {
@@ -1217,14 +1213,13 @@ impl WriteBoard {
 
     /// 上一趟的回执（交一次就没了）。
     pub fn take_receipt(&self) -> Option<(String, Vec<WriteOp>)> {
-        self.inner.lock().unwrap().receipt.take()
+        self.inner.held().receipt.take()
     }
 
     /// 删除那一问里这一项右端那一格（「文件夹」或大小）与图标。摆问题之前交来。
     pub fn describe(&self, path: &str, icon: &'static str, meta: String) {
         self.inner
-            .lock()
-            .unwrap()
+            .held()
             .shown
             .insert(path.to_string(), (icon, meta));
     }
@@ -1234,14 +1229,14 @@ impl WriteBoard {
     }
 
     pub fn last(&self) -> Option<WriteOutcome> {
-        self.inner.lock().unwrap().last.clone()
+        self.inner.held().last.clone()
     }
 
     /// 人点了「做勾上的」/「都别做」—— 把答复送出去，问题收掉。
     ///
     /// 回值 = 真的送出去了（重复点第二下不会送第二次；`oneshot` 也只收一次）。
     pub fn settle(&self, go: bool) -> bool {
-        let mut b = self.inner.lock().unwrap();
+        let mut b = self.inner.held();
         let Some(tx) = b.answer.take() else {
             return false;
         };
@@ -1264,14 +1259,14 @@ impl WriteBoard {
     /// 画删除那一问（kit 的对话框，模态）。上一趟的结局不在这里画：做完的回执 ／ 没做成的那一句由窗口收成右下角回执
     /// （[`Self::take_receipt`]）—— 失败照旧必须出声（「什么都没发生」与「做完了」在屏幕上分不开），只是不再是列表上方的红字。
     pub fn ui(&self, ui: &mut egui::Ui) {
-        let asking = self.inner.lock().unwrap().asking.clone();
+        let asking = self.inner.held().asking.clone();
         // 删除单独一问（规范 `C10`，稿 09）：标题「删除 main.rs」/「删除 3 项」· 一块清单（图标 ＋ 名字 ｜ 右端「文件夹」/ 大小；
         //   多于 8 项只列 8 个 ＋「另外 n 项」）·「不可恢复」· 按钮「取消」（焦点）「删除 / 删除 n 项」（危险）。删除撤不回 ⇒ 只问这一次。
         // 别的写操作不再问（改权限 · 改名 · 新建：直接做 ＋ 回执，撤得回来就不问）。
         if asking.is_empty() {
             return;
         }
-        let shown = self.inner.lock().unwrap().shown.clone();
+        let shown = self.inner.held().shown.clone();
         let n = asking.len();
         let path_of = |o: &WriteOp| match o {
             WriteOp::Delete { path, .. }

@@ -54,6 +54,7 @@
 //! 4. **真的「拖」出去没做** —— 这一刀是一颗按钮。窗口之间互拖、拖到别的应用里，
 //!    那要平台的拖放协议，与本刀不是一件事。
 
+use crate::Held;
 use copy_core::copy_text;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -183,7 +184,7 @@ pub struct DownloadBoard {
 impl DownloadBoard {
     /// 把窗口交给它，好让它在进度动的时候敲一下。
     pub fn attach(&self, ctx: Option<egui::Context>) {
-        *self.ctx.lock().unwrap() = ctx;
+        *self.ctx.held() = ctx;
     }
 
     /// 取消登记那一格（同上传/复制两条路，唯一造键落点在它里面）。
@@ -193,7 +194,7 @@ impl DownloadBoard {
 
     /// 敲一下窗口：「有新东西了，画下一帧」。没有窗口就什么都不做。
     pub fn poke(&self) {
-        if let Some(c) = self.ctx.lock().unwrap().as_ref() {
+        if let Some(c) = self.ctx.held().as_ref() {
             c.request_repaint();
         }
     }

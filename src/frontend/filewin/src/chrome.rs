@@ -4,6 +4,7 @@
 //! 这里只画、只收手势；做事落回 `FileWindow` / `Workspace` 已有的那几个口（换目录 · 新建 · 上传 · 开终端 · 开另一台）。
 //! 历史 · 列宽 · 左栏收起 · 隐藏文件开关都是窗口状态，关窗即没。
 
+use crate::Held;
 use copy_core::copy_text;
 use egui_phosphor::regular as ph;
 use std::sync::{Arc, Mutex};
@@ -408,7 +409,7 @@ impl FileWindow {
 
     /// 「选中的」那一件此刻能不能做：能 ⇒ `None`；不能 ⇒ 悬停说的那一句（没选中 · 这几项做不了 · 这台做不到）。
     pub fn command_blocked(&self, a: super::select::Action) -> Option<String> {
-        let rows = self.listing.rows.lock().unwrap();
+        let rows = self.listing.rows.held();
         let idx = self.selection().picked_indices(&rows);
         if idx.is_empty() {
             return Some(copy_text("rsFilewinChrome.command.pickFirst", &[]));
@@ -664,8 +665,8 @@ impl FileWindow {
         let mut s = match self.search.total().filter(|_| self.showing_hits()) {
             Some(n) => copy_text("rsFilewinChrome.status.hits", &[("n", &n.to_string())]),
             None => {
-                let n = self.listing.rows.lock().unwrap().len();
-                let hidden = self.listing.hidden.lock().unwrap().len();
+                let n = self.listing.rows.held().len();
+                let hidden = self.listing.hidden.held().len();
                 if hidden > 0 {
                     copy_text(
                         "rsFilewinChrome.status.countHidden",
@@ -1007,6 +1008,9 @@ impl Workspace {
             Some(c) => self.pane_on_mut(f).run_command(c, Some(ctx.clone())),
             None => {}
         }
+        // 🔴 上面那一件可能刚收掉右栏（焦点在右栏时点「两栏」）⇒ 帧初记下的栏号已经过时，往下一律重取。
+        // 4.1.3 的崩溃就是这一处：状态栏拿着旧的 1 去取 `sides[1]`（`workspace_tests::unsplitting_from_the_focused_right_side_does_not_crash`）。
+        let f = self.focus();
         let zoom = ctx.zoom_factor();
         let mut reset_zoom = false;
         let k = metrics(&ctx).space;
@@ -1206,7 +1210,7 @@ impl Workspace {
                 // ── 这台机器（小标题就写机器名）──
                 ui.add_space(8.0);
                 section(ui, self.pane_on(f).source.label());
-                let home = self.home.0.lock().unwrap().clone();
+                let home = self.home.0.held().clone();
                 let (mark, tip) = match &home {
                     HomeState::Known(h) => (SideMark::None, h.clone()),
                     HomeState::Failed(why) => {
@@ -1281,10 +1285,10 @@ impl Workspace {
         let pane = self.pane_on(0);
         let slot = self.home.0.clone();
         let (Some(h), Some(line)) = (pane.rt.clone(), pane.line.clone()) else {
-            *slot.lock().unwrap() = HomeState::Failed(super::shell::NO_LINE.to_string());
+            *slot.held() = HomeState::Failed(super::shell::NO_LINE.to_string());
             return;
         };
-        *slot.lock().unwrap() = HomeState::Asking;
+        *slot.held() = HomeState::Asking;
         let origin = pane.source.origin();
         h.spawn(async move {
             let got = super::source::ask(
@@ -1296,7 +1300,7 @@ impl Workspace {
             )
             .await
             .and_then(|d| super::source::home_from_reply(&d));
-            *slot.lock().unwrap() = match got {
+            *slot.held() = match got {
                 Ok(home) => HomeState::Known(home),
                 Err(e) => HomeState::Failed(e),
             };
@@ -1308,7 +1312,7 @@ impl Workspace {
 
     /// 家目录问到了吗（判据用：`Some(Ok(路径))` · `Some(Err(原话))` · `None` ＝ 还没问到）。
     pub fn home_known(&self) -> Option<Result<String, String>> {
-        match self.home.0.lock().unwrap().clone() {
+        match self.home.0.held().clone() {
             HomeState::Known(h) => Some(Ok(h)),
             HomeState::Failed(e) => Some(Err(e)),
             _ => None,
@@ -1328,7 +1332,7 @@ impl Workspace {
             return false;
         };
         let slot = self.other.clone();
-        *slot.lock().unwrap() = None;
+        *slot.held() = None;
         let origin = super::source::Origin(machine.to_string());
         let what = machine.to_string();
         self.set_notice(copy_text(
@@ -1345,7 +1349,7 @@ impl Workspace {
             )
             .await
             .map(|_| ());
-            *slot.lock().unwrap() = Some(got);
+            *slot.held() = Some(got);
             if let Some(c) = ctx {
                 c.request_repaint();
             }
@@ -1355,7 +1359,7 @@ impl Workspace {
 
     /// 「其他机器」那一问落地了 ⇒ 成了不出声（新窗口自己出现就是回应），没成把原话摆在命令栏上。
     pub fn settle_other(&mut self) {
-        let got = self.other.lock().unwrap().take();
+        let got = self.other.held().take();
         match got {
             Some(Ok(())) => self.set_notice_none(),
             Some(Err(e)) => self.set_notice(e),

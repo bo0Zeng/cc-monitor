@@ -2003,3 +2003,210 @@ fn space_toggles_the_peek_overlay_unless_the_preview_is_open() {
     let _ = frames_at(&mut ws, screen, 1);
     assert!(ws.peek.is_none(), "预览栏开着（宽档）空格却开了浮层");
 }
+
+/// 🔴 复现 4.1.3 的崩溃：两栏、焦点在右栏，点命令栏「两栏」收掉右栏 ⇒ 同一帧往后画状态栏时
+/// 还拿着帧初记下的「焦点 ＝ 1」去取右栏 ⇒ `sides[1]` 越界、整个窗口进程退出（0xc0000409）。
+#[test]
+fn unsplitting_from_the_focused_right_side_does_not_crash() {
+    let mut ws = two_sides(pane("/l", &["a"]), pane("/r", &["b"]));
+    let mut d = Drive::new();
+    assert_eq!(ws.focus(), 1, "前提：焦点在右栏");
+    let at = d.find(&mut ws, SPLIT_LABEL.as_str());
+    assert_eq!(at.len(), 1, "命令栏上的「两栏」该恰好一颗");
+    d.click(&mut ws, at[0].center(), egui::PointerButton::Primary);
+    assert_eq!((ws.sides(), ws.focus()), (1, 0), "点了没收掉右栏");
+    // 收完再画几帧也稳；兜底没被用上（真修在调用方，不是靠兜底吞掉）。
+    d.frame(&mut ws, Vec::new());
+    d.frame(&mut ws, Vec::new());
+    assert_eq!(ws.slips(), 0, "有一帧拿着过时的栏号取了目录视图");
+}
+
+/// 工作区的不变式：一或两栏；焦点落在某一栏；每栏至少一个标签、`active` 在表里；
+/// 恰好一个标签拿着焦点、就是焦点那一栏当前那个。
+fn assert_shape(ws: &Workspace, step: usize, op: &str) {
+    let n = ws.sides.len();
+    assert!((1..=2).contains(&n), "第 {step} 步（{op}）后栏数 {n}");
+    assert!(
+        ws.focus < n,
+        "第 {step} 步（{op}）后焦点 {} 不在 {n} 栏里",
+        ws.focus
+    );
+    for (k, s) in ws.sides.iter().enumerate() {
+        assert!(!s.tabs.is_empty(), "第 {step} 步（{op}）后第 {k} 栏空了");
+        assert!(
+            s.active < s.tabs.len(),
+            "第 {step} 步（{op}）后第 {k} 栏 active {} ≥ 标签数 {}",
+            s.active,
+            s.tabs.len()
+        );
+    }
+    let focused: Vec<(usize, usize)> = ws
+        .sides
+        .iter()
+        .enumerate()
+        .flat_map(|(k, s)| {
+            s.tabs
+                .iter()
+                .enumerate()
+                .filter(|(_, t)| t.pane.focused)
+                .map(move |(i, _)| (k, i))
+        })
+        .collect();
+    assert_eq!(
+        focused,
+        vec![(ws.focus, ws.sides[ws.focus].active)],
+        "第 {step} 步（{op}）后拿焦点的标签不对"
+    );
+    assert_eq!(
+        ws.slips(),
+        0,
+        "第 {step} 步（{op}）里有人拿着过时的栏号 / 标签号取目录视图（退回兜底了，但那是缺陷）"
+    );
+}
+
+/// 🔴 随机操作序列：开 · 关 · 切 · 换栏 · 开收两栏（走接口，也走真点命令栏那颗）· 快捷键 · 标签自己要关，
+/// 几千步，每步之后核 [`assert_shape`]，并且每一步都真跑一帧生产的 `Workspace::frame`（崩在帧里也算红）。
+/// 种子固定（失败可重放）；几颗种子各跑一趟。
+#[test]
+fn random_tab_and_split_sequences_keep_the_shape() {
+    const OPS: [&str; 11] = [
+        "开标签",
+        "关标签",
+        "切标签",
+        "换栏",
+        "开收两栏",
+        "点「两栏」",
+        "Ctrl+T",
+        "Ctrl+W",
+        "Ctrl+Tab",
+        "F6",
+        "标签要关自己",
+    ];
+    for seed in [0x9E37_79B9_7F4A_7C15u64, 7, 2024, 31337] {
+        let mut x = seed;
+        let mut rnd = move |m: usize| {
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            (x % m as u64) as usize
+        };
+        let mut ws = Workspace::new(pane("/srv", &["a", "b"]));
+        let mut d = Drive::new();
+        let mut split_at: Option<egui::Pos2> = None;
+        for step in 0..600 {
+            let op = rnd(OPS.len());
+            let side = rnd(2);
+            let i = rnd(4);
+            let mut events = Vec::new();
+            match op {
+                0 => {
+                    ws.open_tab(side);
+                }
+                1 => {
+                    ws.close_tab(side, i);
+                }
+                2 => {
+                    ws.select_tab(side, i);
+                }
+                3 => ws.focus_side(side),
+                4 => {
+                    let two = ws.sides() == 2;
+                    ws.set_split(!two);
+                }
+                5 => {
+                    let at = match split_at {
+                        Some(p) => p,
+                        None => {
+                            let r = d.find(&mut ws, SPLIT_LABEL.as_str());
+                            assert_eq!(r.len(), 1, "命令栏上的「两栏」该恰好一颗");
+                            split_at = Some(r[0].center());
+                            r[0].center()
+                        }
+                    };
+                    d.click(&mut ws, at, egui::PointerButton::Primary);
+                }
+                6 => events.push(ctrl(egui::Key::T)),
+                7 => events.push(ctrl(egui::Key::W)),
+                8 => events.push(egui::Event::Key {
+                    key: egui::Key::Tab,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: if rnd(2) == 0 {
+                        egui::Modifiers::COMMAND
+                    } else {
+                        egui::Modifiers::COMMAND | egui::Modifiers::SHIFT
+                    },
+                }),
+                9 => events.push(egui::Event::Key {
+                    key: egui::Key::F6,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: egui::Modifiers::NONE,
+                }),
+                _ => {
+                    let k = side.min(ws.sides.len() - 1);
+                    let t = i.min(ws.sides[k].tabs.len() - 1);
+                    ws.sides[k].tabs[t].pane.want_close = true;
+                }
+            }
+            assert_shape(&ws, step, OPS[op]);
+            d.frame(&mut ws, events);
+            assert_shape(&ws, step, OPS[op]);
+        }
+    }
+}
+
+/// 兜底那一层：拿着过时的栏号 / 被弄坏的 `active` 取目录视图 ⇒ 退回最近那一个、记一笔，不 panic。
+#[test]
+fn a_stale_side_or_tab_index_falls_back_instead_of_panicking() {
+    let mut ws = Workspace::new(pane("/srv", &["a"]));
+    assert_eq!(ws.pane_on(1).cwd, "/srv", "过时的栏号该退回最后一栏");
+    assert_eq!(ws.slips(), 1);
+    ws.sides[0].active = 3;
+    assert_eq!(
+        ws.pane_on_mut(0).cwd,
+        "/srv",
+        "越界的 active 该退回最后一个标签"
+    );
+    assert_eq!(ws.slips(), 2);
+    // 这一形下整帧也画得完。
+    Drive::new().frame(&mut ws, Vec::new());
+}
+
+/// 🔴 锁中毒不崩：本包产品代码里取 `std::sync::Mutex` 一律经 `crate::Held::held`，不许 `lock().unwrap()` / `lock().expect(..)` 回潮
+/// （后台任务拿着锁 panic 一次，往后每帧都在 unwrap 上 panic、整扇窗退出）。正控：`held` 在真中毒的锁上照样拿得到里面那份。
+#[test]
+fn lock_guard_window_takes_locks_via_held() {
+    use crate::Held;
+    let m = std::sync::Arc::new(std::sync::Mutex::new(7));
+    let m2 = m.clone();
+    let _ = std::thread::spawn(move || {
+        let _g = m2.lock();
+        panic!("poison on purpose");
+    })
+    .join();
+    assert!(m.is_poisoned(), "正控：锁该已中毒");
+    assert_eq!(*m.held(), 7, "中毒的锁 held 没拿到里面那份");
+
+    let src = crate::guard_support::crate_src_root();
+    let mut hits = Vec::new();
+    let mut files = 0;
+    for (p, text) in guard_core::scan_tree!(&src, &["rs"]) {
+        files += 1;
+        let flat: String = text.split_whitespace().collect();
+        for pat in [".lock().unwrap()", ".lock().expect("] {
+            let n = flat.matches(pat).count();
+            if n > 0 {
+                hits.push(format!("{} × {n} {pat}", p.display()));
+            }
+        }
+    }
+    assert!(files > 20, "量具：只扫到 {files} 个源文件，住址不对");
+    assert!(
+        hits.is_empty(),
+        "又有 lock().unwrap() 回潮：\n{}",
+        hits.join("\n")
+    );
+}

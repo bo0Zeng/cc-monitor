@@ -28,6 +28,7 @@
 //! - 二进制、PDF、视频预览（说为什么不预览）。
 //! - 真远端上一趟的时延读数（判据挂的是合成后端）。
 
+use crate::Held;
 use copy_core::copy_text;
 use std::sync::{Arc, Mutex};
 
@@ -114,7 +115,7 @@ pub struct Preview {
     /// 上色那一套缓存：每一份文本到货时按行切好的上色结果（行号 → 那一行的排版）。
     painted: Vec<egui::text::LayoutJob>,
     /// 折行之后每一行的顶（键 ＝ 哪一份文本 ＋ 窗格多宽）：宽度变了 / 换了文本才重量。
-    wrapped: std::cell::RefCell<Option<((String, usize, i32), Vec<f32>)>>,
+    wrapped: std::cell::RefCell<Option<((String, u64, i32), Vec<f32>)>>,
     view: View,
     /// 有一趟在飞吗（UI 线程记的）。
     inflight: bool,
@@ -185,7 +186,7 @@ impl Preview {
     /// 🔴 **每帧调一次**：先收到货，再看「要的是谁」变没变，最后决定发不发。
     pub fn follow(&mut self, pane: &FileWindow, ctx: Option<egui::Context>) {
         // ① 收货：是要的那一份才摆出来，不是就丢掉（光标已经挪走了）。
-        let arrived = self.slot.lock().unwrap().take();
+        let arrived = self.slot.held().take();
         if let Some((path, r)) = arrived {
             self.inflight = false;
             if self.want.as_deref() == Some(path.as_str()) {
@@ -377,7 +378,7 @@ impl Preview {
                 }
                 Want::Image => read_image(&line, &origin, &wire).await.map(Got::Image),
             };
-            *slot.lock().unwrap() = Some((path, r));
+            *slot.held() = Some((path, r));
             if let Some(c) = ctx {
                 c.request_repaint();
             }
@@ -534,7 +535,15 @@ impl Preview {
     /// 每帧按视口二分出第一行，只排看得见的那几行。
     fn text_ui(&self, ui: &mut egui::Ui, vp: egui::Rect, path: &str, text: &str, starts: &[usize]) {
         let width = ui.available_width().max(40.0).floor();
-        let key = (path.to_string(), text.len(), width as i32);
+        // 认的是这一份文本本身（不只是字节数）：同一个文件换了内容、恰好一样长时，旧的 `tops` 行数对不上
+        // （`preview_tests::same_size_new_text_with_more_lines_does_not_reuse_the_old_wrap`）。正文封顶 64 KiB，每帧算一遍摘要不贵。
+        let digest = {
+            use std::hash::{Hash, Hasher};
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            text.hash(&mut h);
+            h.finish()
+        };
+        let key = (path.to_string(), digest, width as i32);
         let mut cache = self.wrapped.borrow_mut();
         if cache.as_ref().map(|(k, _)| k) != Some(&key) {
             let mut tops = Vec::with_capacity(starts.len() + 1);
@@ -557,12 +566,12 @@ impl Preview {
         let origin = ui.max_rect().min;
         let color = ui.visuals().text_color();
         let mut i = tops.partition_point(|&t| t <= vp.min.y).saturating_sub(1);
-        while i < starts.len() && tops[i] < vp.max.y {
+        // `tops` 与 `starts` 同一份文本量出来、一样长（上面那把钥匙担保）；仍按 `get` 取，对不上就停画，不崩。
+        while let Some(&top) = tops.get(i).filter(|&&t| i < starts.len() && t < vp.max.y) {
             let g = ui
                 .painter()
                 .layout_job(self.line_job(ui, text, starts, i, width));
-            ui.painter()
-                .galley(origin + egui::vec2(0.0, tops[i]), g, color);
+            ui.painter().galley(origin + egui::vec2(0.0, top), g, color);
             i += 1;
         }
     }

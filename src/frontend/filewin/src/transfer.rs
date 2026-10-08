@@ -105,6 +105,7 @@
 //!   传输台那一侧「停订即撤」。从前复制那一腿的池子取消（`forward_cancel`〔散文墓碑〕）
 //!   随复制走后端（F7a `files-copy`，不可取消）一起删了 ⇒ 窗口进程里一个 `sftp_pool` 符号都不剩。
 
+use crate::Held;
 use copy_core::copy_text;
 use std::future::Future;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -346,24 +347,20 @@ impl CancelDesk {
     /// 这一趟今天是停订即撤，键仍要唯一 —— 它是本层在飞表的键）。
     pub fn mint(&self, name: &str) -> String {
         let id = format!("filewin-{}", uuid::Uuid::new_v4());
-        self.in_flight
-            .lock()
-            .unwrap()
-            .push((name.to_string(), id.clone()));
+        self.in_flight.held().push((name.to_string(), id.clone()));
         self.minted.fetch_add(1, Ordering::SeqCst);
         id
     }
 
     /// 这一趟收场了，从在飞表里摘掉。
     pub fn done(&self, id: &str) {
-        self.in_flight.lock().unwrap().retain(|(_, i)| i != id);
+        self.in_flight.held().retain(|(_, i)| i != id);
     }
 
     /// 还在飞的那几个键（按登记顺序）。
     pub fn in_flight_ids(&self) -> Vec<String> {
         self.in_flight
-            .lock()
-            .unwrap()
+            .held()
             .iter()
             .map(|(_, i)| i.clone())
             .collect()
@@ -372,8 +369,7 @@ impl CancelDesk {
     /// 还在飞的那几趟叫什么（画在按钮旁边）。
     pub fn in_flight_names(&self) -> Vec<String> {
         self.in_flight
-            .lock()
-            .unwrap()
+            .held()
             .iter()
             .map(|(n, _)| n.clone())
             .collect()
@@ -390,7 +386,7 @@ impl CancelDesk {
 
     /// 这一摞此刻的撤单令牌（经通道起的每一趟拿它去盯）。
     pub fn stop_token(&self) -> comms_inward::chan::wire::CancelToken {
-        self.stop.lock().unwrap().clone()
+        self.stop.held().clone()
     }
 
     /// 🔴 **按下取消**：立旗 ＋ 把在飞的那几个键**真的送进池子**。
@@ -408,8 +404,8 @@ impl CancelDesk {
     /// 一件都起不来，而界面上看起来是「拖进去没反应」。
     pub fn reset(&self) {
         self.requested.store(false, Ordering::SeqCst);
-        self.in_flight.lock().unwrap().clear();
-        *self.stop.lock().unwrap() = Default::default();
+        self.in_flight.held().clear();
+        *self.stop.held() = Default::default();
     }
 }
 
@@ -683,7 +679,7 @@ impl DropBoard {
     pub fn ask(&self, items: Vec<Pending>) -> tokio::sync::oneshot::Receiver<Vec<Pending>> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         {
-            let mut b = self.inner.lock().unwrap();
+            let mut b = self.inner.held();
             b.ticks = vec![true; items.len()]; // 缺省勾上：用户拖过来就是想传
             b.asking = items;
             b.answer = Some(tx);
@@ -693,19 +689,18 @@ impl DropBoard {
     }
 
     pub fn is_asking(&self) -> bool {
-        !self.inner.lock().unwrap().asking.is_empty()
+        !self.inner.held().asking.is_empty()
     }
 
     /// 这一摞一共几件（摆问题之前交来）。
     pub fn set_total(&self, n: usize) {
-        self.inner.lock().unwrap().total = n;
+        self.inner.held().total = n;
     }
 
     /// 探「在不在」那一趟在那台看到的大小与修改时间（同名那张表「那台」那一格）。
     pub fn note_there(&self, name: &str, size: Option<u64>, mtime: Option<u64>) {
         self.inner
-            .lock()
-            .unwrap()
+            .held()
             .there
             .insert(name.to_string(), (size, mtime));
     }
@@ -723,19 +718,19 @@ impl DropBoard {
 
     /// 把窗口交给它，好让它在进度动的时候敲一下。
     pub fn attach(&self, ctx: Option<egui::Context>) {
-        *self.ctx.lock().unwrap() = ctx;
+        *self.ctx.held() = ctx;
     }
 
     /// 敲一下窗口：「有新东西了，画下一帧」。没有窗口就什么都不做。
     pub fn poke(&self) {
-        if let Some(c) = self.ctx.lock().unwrap().as_ref() {
+        if let Some(c) = self.ctx.held().as_ref() {
             c.request_repaint();
         }
     }
 
     pub fn progress(&self, name: &str, got: u64, total: u64) {
         {
-            let mut b = self.inner.lock().unwrap();
+            let mut b = self.inner.held();
             match b.progress.iter_mut().find(|(n, ..)| n == name) {
                 Some(slot) => {
                     slot.1 = got;
@@ -750,7 +745,7 @@ impl DropBoard {
     }
 
     pub fn finish(&self, mut outcome: DropOutcome) {
-        let mut b = self.inner.lock().unwrap();
+        let mut b = self.inner.held();
         b.progress.clear();
         outcome.redone.append(&mut b.redone);
         b.last = Some(outcome);
@@ -768,18 +763,18 @@ impl DropBoard {
     pub fn fresh_like(&self) -> DropBoard {
         let next = DropBoard::default();
         {
-            let b = self.inner.lock().unwrap();
-            let mut n = next.inner.lock().unwrap();
+            let b = self.inner.held();
+            let mut n = next.inner.held();
             n.backend_home = b.backend_home.clone();
             n.via_backend = b.via_backend.clone();
         }
-        *next.ctx.lock().unwrap() = self.ctx.lock().unwrap().clone();
+        *next.ctx.held() = self.ctx.held().clone();
         next
     }
 
     /// 这一摞合起来走了多少 `(已传, 共)`（起过的那几件；还没起的不在里面）。
     pub fn totals(&self) -> (u64, u64) {
-        let b = self.inner.lock().unwrap();
+        let b = self.inner.held();
         b.progress
             .iter()
             .fold((0, 0), |(g, t), (_, a, c)| (g + a, t + c))
@@ -787,7 +782,7 @@ impl DropBoard {
 
     /// 这一摞已经传完了几件（读数到顶的那几件）。
     pub fn done_count(&self) -> usize {
-        let b = self.inner.lock().unwrap();
+        let b = self.inner.held();
         b.progress
             .iter()
             .filter(|(_, a, c)| *c > 0 && a >= c)
@@ -796,20 +791,19 @@ impl DropBoard {
 
     /// 这一窗的上传是不是已经改走后端链路（`Some(为什么)`）。
     pub fn via_backend(&self) -> Option<String> {
-        self.inner.lock().unwrap().via_backend.clone()
+        self.inner.held().via_backend.clone()
     }
 
     /// 改走后端链路（记下原因，界面上画一行；只记第一次的原因）。
     pub fn switch_to_backend(&self, why: String) {
-        self.inner.lock().unwrap().via_backend.get_or_insert(why);
+        self.inner.held().via_backend.get_or_insert(why);
         self.poke();
     }
 
     /// 这一件在传的进度（`(已传, 总共)`；不在传 ⇒ `None`）。
     pub fn seen(&self, name: &str) -> Option<(u64, u64)> {
         self.inner
-            .lock()
-            .unwrap()
+            .held()
             .progress
             .iter()
             .find(|(n, ..)| n == name)
@@ -818,17 +812,17 @@ impl DropBoard {
 
     /// 记一份开过单的暂存件键（SFTP 那条路）。
     pub fn note_staged(&self, key: &str) {
-        self.inner.lock().unwrap().staged.push(key.to_string());
+        self.inner.held().staged.push(key.to_string());
     }
 
     /// 开过单的暂存件键（跨机复制半路失败时逐个删掉）；取走即清。
     pub fn take_staged(&self) -> Vec<String> {
-        std::mem::take(&mut self.inner.lock().unwrap().staged)
+        std::mem::take(&mut self.inner.held().staged)
     }
 
     /// 换一台目标机器之前：记着的 home / 改走后端链路那一句 / 暂存件键 / 进度都清掉（它们说的是上一台）。
     pub fn reset_target(&self) {
-        let mut b = self.inner.lock().unwrap();
+        let mut b = self.inner.held();
         b.backend_home = None;
         b.via_backend = None;
         b.staged.clear();
@@ -841,7 +835,7 @@ impl DropBoard {
         line: &super::source::Line,
         origin: &super::source::Origin,
     ) -> Option<String> {
-        if let Some(h) = self.inner.lock().unwrap().backend_home.clone() {
+        if let Some(h) = self.inner.held().backend_home.clone() {
             return Some(h);
         }
         let d = super::source::ask(
@@ -854,24 +848,24 @@ impl DropBoard {
         .await
         .ok()?;
         let h = super::source::home_from_reply(&d).ok()?;
-        self.inner.lock().unwrap().backend_home = Some(h.clone());
+        self.inner.held().backend_home = Some(h.clone());
         Some(h)
     }
 
     /// 记一件「提交时对不上整份摘要、已从头重传」（这一趟收场时并进结局，画出来）。
     pub fn note_redone(&self, name: &str) {
-        self.inner.lock().unwrap().redone.push(name.to_string());
+        self.inner.held().redone.push(name.to_string());
     }
 
     pub fn last(&self) -> Option<DropOutcome> {
-        self.inner.lock().unwrap().last.clone()
+        self.inner.held().last.clone()
     }
 
     /// 人点了「确认」/「全部不覆盖」—— 把答复送出去，问题收掉。
     ///
     /// 回值 = 真的送出去了（重复点第二下不会送第二次；`oneshot` 也只收一次）。
     pub fn settle(&self, overwrite: bool) -> bool {
-        let mut b = self.inner.lock().unwrap();
+        let mut b = self.inner.held();
         let Some(tx) = b.answer.take() else {
             return false;
         };
@@ -896,7 +890,7 @@ impl DropBoard {
     /// 进度、停与结局不在这里画：这一趟是窗口底部「进度」表里的一行（`super::progress`）。
     pub fn ui(&self, ui: &mut egui::Ui, machine: &str) {
         let (asking, mut ticks, there, total) = {
-            let b = self.inner.lock().unwrap();
+            let b = self.inner.held();
             (b.asking.clone(), b.ticks.clone(), b.there.clone(), b.total)
         };
         if asking.is_empty() {
@@ -977,7 +971,7 @@ impl DropBoard {
             0,
         );
         if changed {
-            self.inner.lock().unwrap().ticks = ticks;
+            self.inner.held().ticks = ticks;
         }
         match hit {
             Some(0) => {

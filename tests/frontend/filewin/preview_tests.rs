@@ -355,3 +355,28 @@ fn a_long_line_wraps_to_the_pane_instead_of_being_cut() {
         "空行塌掉了：{painted:?}"
     );
 }
+
+/// 🔴 同一个文件换了内容、字节数恰好不变（行数却变多了）⇒ 折行那份缓存不能当成还能用：
+/// 从前缓存只认「路径 · 字节数 · 宽度」，旧的 `tops` 比新的行数短 ⇒ 画到第几行时 `tops[i]` 越界、整扇窗退出。
+#[test]
+fn same_size_new_text_with_more_lines_does_not_reuse_the_old_wrap() {
+    let mut p = Preview::default();
+    let before = "aaaaaaaaa\nbbbbbbbbb\n";
+    let after = "a\nb\nc\nd\ne\nf\ng\nh\ni\nj\n";
+    assert_eq!(before.len(), after.len(), "前提：两份一样长");
+    let ctx = egui::Context::default();
+    for text in [before, after] {
+        p.view = View::Text {
+            path: "/srv/a.txt".into(),
+            starts: line_starts(text),
+            text: text.into(),
+            lang: None,
+        };
+        let _ = paint_narrow(&ctx, &p);
+    }
+    let painted = paint_narrow(&ctx, &p);
+    assert!(
+        painted.iter().any(|(t, _)| t == "j"),
+        "新内容的最后一行没画出来：{painted:?}"
+    );
+}
