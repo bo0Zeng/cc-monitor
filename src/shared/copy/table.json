@@ -2497,7 +2497,7 @@
     "ccBus.kill.unsure": {
       "kind": "error",
       "role": "报错",
-      "zh": "收掉 {id} 结果未知 · {machine} 回复无法解析\n先刷新名单再决定 · 勿直接重来",
+      "zh": "{machine} 回复无法解析 · 收掉 {id} 结果未知\n先刷新名单再决定 · 勿直接重来",
       "args": ["machine", "id"]
     },
     "ccBus.kill.killed": {
@@ -3527,7 +3527,10 @@
       "kind": "action",
       "role": "按钮",
       "zh": "显示全部改动 +{addCount} −{delCount}",
-      "args": ["addCount", "delCount"]
+      "args": ["addCount", "delCount"],
+      "waive": {
+        "C-W15": "压了换事实：「全部改动」与增删两个计数都是事实，去掉「改动」就不知道显示的是什么"
+      }
     },
     "diff.capLine.ellipsis": {
       "kind": "body",
@@ -5117,8 +5120,8 @@
     },
     "agentWindow.why.failed": {
       "kind": "body",
-      "role": "片段",
-      "zh": "失败 · 交回报错",
+      "role": "状态",
+      "zh": "失败 · 报错已交回",
       "args": []
     },
     "agentWindow.why.stopped": {
@@ -5251,7 +5254,10 @@
       "kind": "action",
       "role": "按钮",
       "zh": "agent {n} · {running} 在跑",
-      "args": ["n", "running"]
+      "args": ["n", "running"],
+      "waive": {
+        "C-W15": "压了换事实：按钮上是读数（agent 总数 · 在跑数），压掉哪格都少一件事实"
+      }
     },
     "agentsPanel.group.running": {
       "kind": "title",
@@ -5476,10 +5482,22 @@
       "zh": "远端降级模式",
       "args": []
     },
-    "remoteHealth.head.versionMismatch": {
+    "remoteHealth.head.backendOld": {
       "kind": "body",
       "role": "片段",
-      "zh": "远端版本不符",
+      "zh": "远端后端要更新",
+      "args": []
+    },
+    "remoteHealth.head.backendNewer": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "远端后端版本较新",
+      "args": []
+    },
+    "remoteHealth.head.versionIncomparable": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "远端后端版本不可比",
       "args": []
     },
     "remoteHealth.head.congested": {
@@ -6511,7 +6529,7 @@
     "profilesPage.file.broken": {
       "kind": "title",
       "role": "标题",
-      "zh": "配置文件无法解析 · 整份不可用",
+      "zh": "配置文件内容无法解析 · 整份不可用",
       "args": []
     },
     "profilesPage.form.addCase": {
@@ -6980,7 +6998,10 @@
       "kind": "action",
       "role": "按钮",
       "zh": "改成不基于谁并删除",
-      "args": []
+      "args": [],
+      "waive": {
+        "C-W15": "压了换事实：「改成不基于谁」与「删除」是两步，压掉哪步都换了动作"
+      }
     },
     "profilesPage.remove.reparentHint": {
       "kind": "body",
@@ -7104,7 +7125,10 @@
       "kind": "action",
       "role": "按钮",
       "zh": "允许运行本机脚本",
-      "args": []
+      "args": [],
+      "waive": {
+        "C-W15": "压了换事实：「本机」「运行」「脚本」缺一样就分不清允许的是哪件事"
+      }
     },
     "machineAliases.policy.confirm": {
       "kind": "body",
@@ -7834,7 +7858,7 @@
     "settingsPanel.behavior.showHiddenTasksHelp": {
       "kind": "body",
       "role": "说明",
-      "zh": "标签页带「分身」徽标 · 重启 cc-monitor 后生效",
+      "zh": "分身会话的标签页带齿轮图标 · 重启 cc-monitor 后生效",
       "args": []
     },
     "settingsPanel.behavior.autoFront": {
@@ -8736,9 +8760,8 @@
     "ccBusHooks.state.brokenPath": {
       "kind": "body",
       "role": "状态",
-      "zh": "钩子已加但路径不存在 · {path}",
-      "args": ["path"],
-      "limited": ["hook"]
+      "zh": "已失效 · 不存在 {path}",
+      "args": ["path"]
     },
     "ccBusHooks.state.explicit": {
       "kind": "body",
@@ -10529,7 +10552,10 @@
       "kind": "action",
       "role": "按钮",
       "zh": "覆盖勾选的 {n} 项",
-      "args": ["n"]
+      "args": ["n"],
+      "waive": {
+        "C-W15": "压了换事实：「勾选的」「{n} 项」限定了覆盖哪些，去掉就成了全覆盖"
+      }
     },
     "rsFilewinTransfer.ui.askOnce": {
       "kind": "body",
@@ -11075,7 +11101,10 @@
       "kind": "action",
       "role": "按钮",
       "zh": "改权限 · {n} 项",
-      "args": ["n"]
+      "args": ["n"],
+      "waive": {
+        "C-W15": "压了换事实：按钮上带件数（{n} 项），去掉就不知道改几项"
+      }
     },
     "rsFilewinSelect.label.open": {
       "kind": "action",
@@ -16779,7 +16808,10 @@
       "kind": "action",
       "role": "按钮",
       "zh": "复制到其他机器…",
-      "args": []
+      "args": [],
+      "waive": {
+        "C-W15": "压了换事实：「到其他机器」是目的地，压成「复制…」就成了本机复制"
+      }
     },
     "rsFilewinCrossCopy.outcome.done": {
       "kind": "body",
@@ -18733,9 +18765,9 @@
     },
     "extPage.status.problems": {
       "kind": "body",
-      "role": "状态",
-      "zh": "部分不可读 · {list}",
-      "args": ["list"]
+      "role": "说明",
+      "zh": "{n} 项不可读 · {list}",
+      "args": ["list", "n"]
     },
     "extPage.done.removed": {
       "kind": "body",
@@ -21532,7 +21564,7 @@
     "acct.reason.ioFailed": {
       "kind": "body",
       "role": "片段",
-      "zh": "写入失败",
+      "zh": "切换记录未写入",
       "args": []
     },
     "acct.reason.accountUnavailable": {
@@ -22617,7 +22649,10 @@
       "kind": "action",
       "role": "按钮",
       "zh": "全部保存后关闭",
-      "args": []
+      "args": [],
+      "waive": {
+        "C-W15": "压了换事实：「全部」是多份文件一起存，压成「保存并关闭」读着像只存当前这份"
+      }
     },
     "rsFilewinWorkspace.closeAsk.force": {
       "kind": "action",
@@ -23020,7 +23055,10 @@
       "kind": "action",
       "role": "按钮",
       "zh": "用户消息 · {n}",
-      "args": ["n"]
+      "args": ["n"],
+      "waive": {
+        "C-W15": "压了换事实：按钮上是读数（用户消息条数），去掉名词就不知道数的是什么"
+      }
     },
     "sessionViewer.tools.saidNone": {
       "kind": "action",
@@ -23248,7 +23286,10 @@
       "kind": "action",
       "role": "按钮",
       "zh": "任务 {done}/{total}",
-      "args": ["done", "total"]
+      "args": ["done", "total"],
+      "waive": {
+        "C-W15": "压了换事实：按钮上是读数（任务完成数 / 总数），两个数都要"
+      }
     },
     "statusBar.tasks.hint": {
       "kind": "body",
@@ -25815,7 +25856,10 @@
       "role": "按钮",
       "zh": "结束 tmux 会话",
       "args": [],
-      "limited": ["tmux"]
+      "limited": ["tmux"],
+      "waive": {
+        "C-W15": "压了换事实：结束的是 tmux 会话，压成「结束会话」读着像结束 Claude 会话"
+      }
     },
     "tabSessionActions.kill.cuts": {
       "kind": "body",
@@ -25952,7 +25996,10 @@
       "kind": "action",
       "role": "按钮",
       "zh": "要你动手 {n}",
-      "args": ["n"]
+      "args": ["n"],
+      "waive": {
+        "C-W15": "压了换事实：按钮上是读数（要你动手的件数），压掉「要你动手」就不知道数的是什么"
+      }
     },
     "firstRun.head.title": {
       "kind": "title",
@@ -26038,7 +26085,10 @@
       "kind": "action",
       "role": "按钮",
       "zh": "开始用 · 剩 {n} 步",
-      "args": ["n"]
+      "args": ["n"],
+      "waive": {
+        "C-W15": "压了换事实：「剩 {n} 步」是读数，去掉就不知道还差几步"
+      }
     },
     "statusBar.messages.label": {
       "kind": "action",
@@ -26919,7 +26969,10 @@
       "kind": "action",
       "role": "按钮",
       "zh": "复制改好的整份文件 · 含 {n} 项",
-      "args": ["n"]
+      "args": ["n"],
+      "waive": {
+        "C-W15": "压了换事实：「改好的」「整份」「含 {n} 项」各是一件事实（复制的是改后的整份，不是选中那几项）"
+      }
     },
     "dataPage.chore.openFile": {
       "kind": "action",
@@ -26979,7 +27032,10 @@
       "kind": "action",
       "role": "按钮",
       "zh": "改由 cc-monitor 接上",
-      "args": []
+      "args": [],
+      "waive": {
+        "C-W15": "压了换事实：「改由 cc-monitor」说的是谁来接，压成「接上」就成了另一个动作"
+      }
     },
     "machineAliases.selfPaste.failed": {
       "kind": "error",

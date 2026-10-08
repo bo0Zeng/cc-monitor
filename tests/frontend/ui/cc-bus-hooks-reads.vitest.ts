@@ -17,6 +17,9 @@ describe("钩子状态：四态不误说", () => {
     const gone = describeState({ kind: "path-missing", command: "x", path: "/gone/cc-register" });
     expect(gone.tone).toBe("bad");
     expect(gone.text).not.toMatch(/^已装/);
+    expect(gone.text, "配了、指向的东西不在 ⇒ 已失效，带那条路径").toBe(copyText("ccBusHooks.state.brokenPath", { path: "/gone/cc-register" }));
+    expect(gone.text.startsWith("已失效")).toBe(true);
+    expect(gone.text).toContain("/gone/cc-register");
     const wrapped = describeState({ kind: "unknown", command: 'sh -c "cc-register"' });
     expect(wrapped.tone).toBe("unknown");
     expect(wrapped.text).not.toContain(copyText("ccBusHooks.state.missing"));
