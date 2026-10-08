@@ -858,7 +858,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// p9e-arm-then-scan：会话监听改成先挂耳朵再初扫（扫的过程中落下的 pidfile 不再漏报）；session_terminals · oauth 续期锁 · 换号重启 R2 · entry-graphs 四条负载偶发修根因；CI 装 apt 走带超时的重试脚本。
 ///
 /// p9f-copy-backend：后端 be* 那一面文案按新写法压缩（只改表值）；远端后端随新版本重新部署后才说新话。
-pub const BUILD_ID: &str = "p9f-copy-backend";
+///
+/// p9g-first-run：后端新帧命令 first-run（开始用三步、必做与跳过都由后端判）· ext-hub-preview / apply 收一组机器（落点交集、要填格合并在枢纽）· profiles-read 多 tmux 一格。
+pub const BUILD_ID: &str = "p9g-first-run";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
