@@ -1834,12 +1834,6 @@
         "C-L4": "显示在终端画面框里：括号把它和真画面区分开 —— 真画面里可能恰好就有「画面为空」这四个字。"
       }
     },
-    "panePreview.capture.failed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "读取画面失败",
-      "args": []
-    },
     "sessionState.ended.name": {
       "kind": "body",
       "role": "片段",
@@ -2160,7 +2154,7 @@
     "terminalReads.preview.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "未读取画面 · tmux 报错",
+      "zh": "读取画面失败 · tmux 报错",
       "args": [],
       "limited": ["tmux"]
     },

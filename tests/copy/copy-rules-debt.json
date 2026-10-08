@@ -124,8 +124,7 @@
       "terminalReads.preview.notKnown",
       "terminalReads.preview.unobservable",
       "tmuxControl.kill.badName",
-      "tmuxControl.kill.busUnread",
-      "tmuxControl.kill.failed"
+      "tmuxControl.kill.busUnread"
     ],
     "C-Y4": [
       "runs.icon.unknown"
