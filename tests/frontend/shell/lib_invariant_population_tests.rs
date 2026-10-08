@@ -13,7 +13,7 @@
 //! ⚠ 它们**不替**各调用点自己的判据判「带没带对」：`§49` 那几条按调用点钉旗的位置、`§47` 那几族钉放行判定的正反两格，
 //! 都还在原处。这里只管**人群不许漏**。
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// 仓里要扫的生产源码：`src/` 下（摘掉 `vendor/`）的 Rust · TS · shell（`.sh` 与无后缀带 shebang 的脚本）。
 /// 返回 `(仓内相对路径, 剥掉注释与测试段之后的正文)`。
@@ -292,11 +292,33 @@ fn quote_aliases(srcs: &[(String, String)]) -> (Vec<String>, Vec<String>) {
     (names, bodies)
 }
 
-/// 盘上现扫：Rust 生产段里每份文件「调 quote（含纯转发别名）」的处数 —— 去掉声明（`fn 名(`）与别名本体里那一句转发。
-fn quote_sites() -> (BTreeMap<String, usize>, Vec<String>) {
+/// 一处调用落在哪个函数里：它之前最近的那个 `fn <名>`（嵌套的具名函数写在调用之前、又已收尾的那一形会认错 —— 本仓生产段没有）。
+fn enclosing_fn(body: &str, at: usize) -> String {
+    let head = &body[..at];
+    let mut best: Option<usize> = None;
+    for (i, _) in head.match_indices("fn ") {
+        let word_start = i == 0
+            || !head[..i]
+                .chars()
+                .next_back()
+                .is_some_and(|c| c.is_alphanumeric() || c == '_');
+        if word_start {
+            best = Some(i);
+        }
+    }
+    best.map_or_else(String::new, |i| {
+        head[i + 3..]
+            .chars()
+            .take_while(|c| c.is_alphanumeric() || *c == '_')
+            .collect()
+    })
+}
+
+/// 盘上现扫：Rust 生产段里每份文件「调 quote（含纯转发别名）」的那几个**外层函数** —— 去掉声明（`fn 名(`）与别名本体里那一句转发。
+fn quote_sites() -> (BTreeMap<String, BTreeSet<String>>, Vec<String>) {
     let srcs = production_sources();
     let (names, alias_files) = quote_aliases(&srcs);
-    let mut out: BTreeMap<String, usize> = BTreeMap::new();
+    let mut out: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     for (rel, body) in &srcs {
         if !rel.ends_with(".rs")
             || rel
@@ -306,7 +328,6 @@ fn quote_sites() -> (BTreeMap<String, usize>, Vec<String>) {
         {
             continue;
         }
-        let mut n = 0usize;
         for name in &names {
             for at in word_hits(body, name) {
                 let after = &body[at + name.len()..];
@@ -316,19 +337,19 @@ fn quote_sites() -> (BTreeMap<String, usize>, Vec<String>) {
                 if body[..at].ends_with("fn ") {
                     continue; // 声明
                 }
-                n += 1;
+                let owner = enclosing_fn(body, at);
+                // 别名本体里那一句转发不算调用点（它就是 quote 本身）。
+                if alias_files.contains(rel) && names.contains(&owner) {
+                    continue;
+                }
+                out.entry(rel.clone()).or_default().insert(owner);
             }
-        }
-        // 别名本体里那一句转发不算调用点（它就是 quote 本身）。
-        n -= alias_files.iter().filter(|f| *f == rel).count();
-        if n > 0 {
-            out.insert(rel.clone(), n);
         }
     }
     (out, names)
 }
 
-/// `§47` 的人群登记：`(文件, 处数, 本侧放行判定, 只靠 quote 的外部值, 本侧自己的值)`。
+/// `§47` 的人群登记：`(文件, 调 quote 的外层函数, 本侧放行判定, 只靠 quote 的外部值, 本侧自己的值)`。
 ///
 /// - 第三列点名的放行判定 `(文件, 函数名)` 逐个在盘上核得到（改名 / 搬家红）。
 /// - 第四列非空 = 🔴 **有外部值只靠 quote**：`§47` ②形要的「拒绝集 ＋ 形式判定」这一层没有 —— 如实登记、**待裁**，不写成豁免。
@@ -341,7 +362,7 @@ fn quote_sites() -> (BTreeMap<String, usize>, Vec<String>) {
 /// TS 那一侧（`posixQuote`）不在人群里 —— LR2 在删那几份 TS 命令构造器，「TS 零 shell 串」是那条机械判据的活。
 type QuoteRow = (
     &'static str,
-    usize,
+    &'static [&'static str],
     &'static [(&'static str, &'static str)],
     &'static str,
     &'static str,
@@ -351,7 +372,7 @@ const QUOTE_SITES: &[QuoteRow] = &[
     //   账号名先过 `account_name_ok`（且必须是清单里已有的号），ccm 那条路径是这台自己的家目录拼出来的，两者都经唯一的 quote。
     (
         "src/backend/accounts/manage/wire.rs",
-        2,
+        &["login_line"],
         &[(
             "src/common/shell-quote-core/src/lib.rs",
             "account_name_ok",
@@ -362,32 +383,18 @@ const QUOTE_SITES: &[QuoteRow] = &[
     // 公钥推送进了本机后端：一行公钥拼进那一次 exec 之前先过 `sanitize_public_key`（恰一行 · 无控制字符 · 类型前缀 ＋ base64 主体），原住 monitor `pubkey.rs`。
     (
         "src/backend/assets/pubkey.rs",
-        1,
+        &["authorized_keys_cmd"],
         &[("src/backend/assets/pubkey.rs", "sanitize_public_key")],
         "",
         "",
     ),
     // 〔§47〕那台后端的路径在可达表唯一的写口 `remote_ask::register` 先过放行判定（后端那一份同族判定），第四列清空。
-    // 3 → 1：推那一趟不再把载荷 quote 进命令行（改走 capture 的 stdin 一行，`--stdin-line`），
-    //   后端路径那一格改由 `remote_ask::command_line` 拼（那一份文件的处数不变，它本来就逐格 quote argv）⇒ 本文件只剩拉那一趟的路径。
-    // 1 → 0：拉那一趟也改由 `remote_ask::command_line` 拼（落点是固定常量，`backendPath` 那一格删了）⇒ 本行出列。
     // 〔§47〕cwd（绝对 · 无 `..` 段）· 启动器 · 透传参数 · 登记备注 · 继承来的三个变量 → 过 `free_text_gate` /
     //   `inherited_gate`（拒绝集只收 NUL / CR / LF，住 `shell_quote_core::free_text_ok`）。剩下的见第四列。
-    // 29 → 28：`--model` 交给 claude 了，`export ANTHROPIC_MODEL=<quote>` 那一处删；模型名 / resume 的 sid 不再由 ccm 判。
-    // 28 → 30：resume 接上已在跑的那一个（`Plan::Rejoin`）渲两处 —— attach 目标 `=<名>:` 与 `ccm-session=<名>` 那一行。
-    //   名字是 tmux 自己在快照里报的（不是外部输入），只经这一处 quote（同 `Plan::Attach` 那一形）。
-    // 30 → 31：信任框轮询认的那句话从串里的字面量换成适配层起会话事实上的一格，拼进去时 quote 一次
-    //   （值是适配层的常量，不是外部输入；产出的字节与从前写死的 `'…'` 逐字相同）。
-    // 31 → 35：直路自己定中转地址与身份那几格（起会话只交一行 `ccm …`，env 归 `ccm` 在最终 exec 那一处定）——
-    //   中转地址那一词的两段常量与「拿不到钥匙时整串」三处 · 身份 token 那一句 `export`。
-    //   token 在 `argv.rs::validate` 进门判（段闸 `segment_is_safe`）；中转地址是本侧上游选择出的。
-    // 35 → 34：信任框那段轮询删了（收尾不再替用户按键）⇒ 它认的那句话那一处 quote 跟着没了。
-    // 34 → 32：容器路不再把外层的中转地址渲回读钥匙文件那一形（那三处 quote 随那个函数删了），只原样转用户自己的端点（一处）。
-    // 32 → 31：接进一个会话的那一行（在 tmux 里 switch-client、不在 attach）三处共用一个函数，`--attach` 那一形自己那一处 quote 并进去了。
-    // 31 → 29：身份 token 那两句 `export`（容器路转发 · 直路）随身份那一格整条删了。
+    // resume 接上已在跑的那一个（`Plan::Rejoin`）：名字是 tmux 自己在快照里报的（不是外部输入），只经这一处 quote（同 `Plan::Attach` 那一形）。
     (
         "src/backend/control/ccm/plan.rs",
-        29,
+        &["build_among", "join_session", "qarg", "relay_word", "render", "render_container", "render_container_tail", "render_direct"],
         &[
             ("src/backend/control/ccm/plan.rs", "validate_tmux_name"),
             ("src/backend/control/ccm/plan.rs", "free_text_gate"),
@@ -413,7 +420,7 @@ const QUOTE_SITES: &[QuoteRow] = &[
     ),
     (
         "src/backend/control/tmux_hook.rs",
-        2,
+        &["hook_set_args"],
         &[],
         "",
         "本进程自己的可执行文件路径 · 本侧拼的 hook 命令",
@@ -421,18 +428,17 @@ const QUOTE_SITES: &[QuoteRow] = &[
     // 〔§47〕路径那一格在 `register` 进门判；落点常量之后只跟本侧旗标。
     (
         "src/backend/stream/remote_ask.rs",
-        1,
+        &["command_line"],
         &[],
         "",
         "落点常量后只跟本侧旗标（`--<帧命令>` · `--stdin-line` · 资产目录两旗）",
     ),
     // 〔09-28 裁 2〕`acct_iso_deploy.rs` 那一行删了：它唯一一处拼 shell（跑安装脚本）随「落进用户目录进那台后端」退役。
     // 〔§47〕cwd（`shell_quote_core::posix_free_path_ok`）· 透传参数（`free_text_ok`）进门判；剩下的见第四列。
-    // 1 → 3：就地 resume 回落那一形外层包一层 tmux —— 目标 `=名:`（名字过 `gate_rules::existing_tmux_name_issue`）·
-    //   键进 pane 的那一行直路 `ccm …`（本侧渲好的整串）。
+    // 就地 resume 回落那一形外层包一层 tmux —— 目标 `=名:`（名字过 `gate_rules::existing_tmux_name_issue`）· 键进 pane 的那一行直路 `ccm …`（本侧渲好的整串）。
     (
         "src/backend/control/launch_render/ccm_invocation.rs",
-        3,
+        &["argv", "render_parts"],
         &[
             (
                 "src/common/shell-quote-core/src/lib.rs",
@@ -461,17 +467,15 @@ const QUOTE_SITES: &[QuoteRow] = &[
         "",
         "本侧渲染好的那一行直路 `ccm …`（就地 resume 回落那一形键进 pane 的整串）",
     ),
-    // local_backend.rs 1 → 0：远端三行入口的生成器 `ccm_entry_shim`〔散文墓碑〕删了 ⇒ 出列。
     // `launch_render/payload.rs` 那一行（12）随文件删了：起会话只交一行 `ccm …`，载荷那一层整层删了。
     // monitor `tmux.rs` 那一行（Gate 1 前检 ＋ `exact_target` 的 quote，只剩跨轨锚点在用）随整份文件删了：门只在后端。
     // `src/frontend/filewin/src/shell.rs` 那一行出表：文件窗口只交意图（当前目录），`cd` 那一串随拼法搬进本机后端
-    //   `dial/terminal.rs::command_for_cwd`（下面那一行 1 → 3，两道放行判定跟着过去）。
+    //   `dial/terminal.rs::command_for_cwd`（两道放行判定跟着过去）。
     // `src/frontend/shell/src/launch.rs` 那一行出表：远端那条 ssh 外壳（包一层 `bash -lic`）随渲染进了本机后端。
-    // 1 → 3：文件窗口「在此打开终端」的当前目录（自由文本路径）在这里拼进 `cd`：拼之前过 `posix_free_path_ok`
-    //   （POSIX 绝对 · 无 `..` 段 · 不含 NUL / CR / LF）；非 UTF-8 的走字节形 `posix_quote_bytes`，过 `posix_free_path_bytes_ok`。
+    // 文件窗口「在此打开终端」的当前目录（自由文本路径）在这里拼进 `cd`：拼之前过 `posix_free_path_ok`（POSIX 绝对 · 无 `..` 段 · 不含 NUL / CR / LF）；非 UTF-8 的走字节形 `posix_quote_bytes`，过 `posix_free_path_bytes_ok`。
     (
         "src/backend/dial/terminal.rs",
-        3,
+        &["command_for_cwd", "render"],
         &[
             (
                 "src/common/shell-quote-core/src/lib.rs",
@@ -485,12 +489,11 @@ const QUOTE_SITES: &[QuoteRow] = &[
         "",
         "开终端那一行里要在远端跑的整条命令（拼它的那几处各自判过；这里只包一层 `bash -lic`，本侧再判控制符 · 双引号 · 长度）",
     ),
-    // 2 → 1：身份扫描那条命令的落点是固定常量的 shell 写法（不再 quote 一条外来路径）⇒ 只剩身份戳正则。
-    // 那条命令随部署判定搬进共享的 `deploy-core`（本机常驻后端出计划时拼、在那台上跑）：`sftp.rs` 出列、这一行换住址，处数不变。
-    // `deploy-core` 拆开：扫戳命令是戳格式（契约），随契约那一半住 `deploy-contract`，处数不变。
+    // 那条命令随部署判定搬进共享的 `deploy-core`（本机常驻后端出计划时拼、在那台上跑）：`sftp.rs` 出列、这一行换住址。
+    // `deploy-core` 拆开：扫戳命令是戳格式（契约），随契约那一半住 `deploy-contract`。
     (
         "src/common/deploy-contract/src/lib.rs",
-        1,
+        &["stamp_scan_cmd"],
         &[],
         "",
         "身份戳正则（构建期常量拼的）",
@@ -499,7 +502,7 @@ const QUOTE_SITES: &[QuoteRow] = &[
     //   （两种 shell 都认得的命令名 `[A-Za-z_][A-Za-z0-9_]*`），过不了的那一段不进别名文件。
     (
         "src/backend/platform/shell/dialect.rs",
-        1,
+        &["word"],
         &[("src/backend/assets/aliases/profile.rs", "name_ok")],
         "",
         "我们那份别名文件的路径",
@@ -507,7 +510,7 @@ const QUOTE_SITES: &[QuoteRow] = &[
     // cc-bus 钩子要加的内容：两条钩子指向这台 skills 根下那两个脚本；skills 根不在家目录底下时那条路径整份 quote（是这台后端自己的路径）。
     (
         "src/backend/observe/cc_bus_hooks.rs",
-        1,
+        &["snippet"],
         &[],
         "",
         "这台后端自己的 skills 根下那两个脚本的路径",
@@ -515,7 +518,7 @@ const QUOTE_SITES: &[QuoteRow] = &[
     // 「要你动手」旧 ccm 那一件：复制给人自己跑的 `rm <路径>`，路径是这台 PATH 上找到的那个文件（这台自己的路径，不进任何会跑的串）。
     (
         "src/backend/footprint/chores/mod.rs",
-        1,
+        &["chores"],
         &[],
         "",
         "这台 PATH 上先找到的那个 ccm 的路径（只复制给人，不拿去跑）",
@@ -524,7 +527,7 @@ const QUOTE_SITES: &[QuoteRow] = &[
     //   流 / 探针 / 常驻起停四条命令不再 quote 任何外来值 ⇒ 两行出列。
 ];
 
-/// `INVARIANTS §47` 人群判据：盘上每一份调 quote 的 Rust 生产文件 == 登记表（两向，含处数）；
+/// `INVARIANTS §47` 人群判据：盘上每一份调 quote 的 Rust 生产文件 × 外层函数 == 登记表（两向）；
 /// 登记里点名的放行判定逐个在那份文件里声明着。
 #[test]
 fn every_file_that_quotes_a_value_into_a_shell_line_is_registered() {
@@ -534,14 +537,14 @@ fn every_file_that_quotes_a_value_into_a_shell_line_is_registered() {
         names.iter().any(|n| n == "sq") && names.iter().any(|n| n == "posix_quote"),
         "别名认法坏了：{names:?}"
     );
-    let registered: BTreeMap<String, usize> = QUOTE_SITES
+    let registered: BTreeMap<String, BTreeSet<String>> = QUOTE_SITES
         .iter()
-        .map(|&(f, n, _, _, _)| (f.to_string(), n))
+        .map(|&(f, fns, _, _, _)| (f.to_string(), fns.iter().map(|x| x.to_string()).collect()))
         .collect();
     assert_eq!(registered.len(), QUOTE_SITES.len(), "登记表里有重复文件");
     assert_eq!(
         on_disk, registered,
-        "`INVARIANTS §47` 的人群（把值 quote 进 shell 串的生产文件）与登记表对不上（两向，含处数）。\n\
+        "`INVARIANTS §47` 的人群（把值 quote 进 shell 串的生产文件 × 外层函数）与登记表对不上（两向）。\n\
          多出来的 = 新长的拼接点：说清拼进去的是什么、外部值靠哪个放行判定（`§47` ① / ②）；登记了而盘上没有 = 删了 / 改了，跟着改表。"
     );
     let root = crate::guard_support::repo_root();
