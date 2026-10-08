@@ -123,8 +123,7 @@
       { "text": "失败", "use": "输入" },
       { "text": "复制详情", "use": "输入" },
       { "text": "重启 cc-monitor 后生效", "use": "输入" },
-      { "text": "无会话", "use": "输入" },
-      { "text": "读取失败", "use": "回显" }
+      { "text": "无会话", "use": "输入" }
     ],
     "tests/frontend/ui/kit/dialog.vitest.ts": [
       { "text": "保留", "use": "输入" },
