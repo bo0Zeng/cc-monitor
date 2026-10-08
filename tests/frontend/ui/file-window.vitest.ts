@@ -72,10 +72,12 @@ describe("F7b 开口：三种落点 → open_file_window 的实参", () => {
     expect(theme["--accent"]).toBe("#123456");
   });
 
-  it("开不起来 ⇒ 带着 Rust 侧原文出声，回 false", async () => {
-    invokeMock.mockRejectedValue("窗口没起来：没有图形会话");
+  it("开不起来 ⇒ 带着壳那一句出声、壳写的复制详情进［复制详情］，回 false", async () => {
+    // 壳命令失败那一形（`detail::Said`）。
+    const detail = `${copyText("detail.label.command")}：open_file_window`;
+    invokeMock.mockRejectedValue({ said: "窗口没起来：没有图形会话", detail });
     expect(await openFileWindow(CFG, { dir: "/srv" })).toBe(false);
-    expect(toastMock.mock.calls).toEqual([[copyText("fileWindow.openFileWindow.failed"), "窗口没起来：没有图形会话"]]);
+    expect(toastMock.mock.calls).toEqual([[copyText("fileWindow.openFileWindow.failed"), "窗口没起来：没有图形会话", { detail }]]);
   });
 });
 

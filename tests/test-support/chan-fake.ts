@@ -5,6 +5,7 @@
  * monitor 回原样字节（`ArrayBuffer`）或 `{ err, body }`（`wire::err_to_wire` 的线上形状）。
  * 各判据 mock 的是 `@tauri-apps/api/core` 的 `invoke` —— 本文件只帮它们造「那一跳会回什么」。
  */
+import { copyText } from "../../src/frontend/ui/copy-table";
 
 /** `chan_call` 的实参（判据按 `op` 分派）。 */
 export interface ChanCallArgs {
@@ -97,9 +98,11 @@ export function sessionReadCalls(calls: ReadonlyArray<readonly unknown[]>, which
 export const UNSUPPORTED = { err: "Unsupported", body: [] as number[] };
 
 /** 通道那一跳「对端说不行」（`Peer{Refused}`，体是后端的 `{code, message}`）。 */
-export function refusedReply(code: string, message: string, data?: unknown): { err: string; body: number[] } {
+export function refusedReply(code: string, message: string, data?: unknown): { err: string; body: number[]; detail: string } {
   const body = data === undefined ? { code, message } : { code, message, data };
-  return { err: "Refused", body: Array.from(new TextEncoder().encode(JSON.stringify(body))) };
+  // monitor 交回来的那份复制详情（那台后端写好、经 monitor 转交）：替身只写「码」那一项。
+  const detail = `${copyText("detail.label.code")}：${code}`;
+  return { err: "Refused", body: Array.from(new TextEncoder().encode(JSON.stringify(body))), detail };
 }
 
 /**

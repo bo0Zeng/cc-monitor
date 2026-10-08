@@ -280,6 +280,8 @@ pub struct MonitorErrorPayload {
     pub target: String,
     pub message: String,
     pub timestamp: i64,
+    /// 「复制详情」那几行（时刻 · 本机 · 对象 = 来源模块 · 原话 = 那条日志）。
+    pub detail: String,
 }
 
 struct ErrorEmitterLayer {
@@ -338,9 +340,11 @@ where
         let mut v = MessageVisitor::default();
         event.record(&mut v);
 
+        let target = event.metadata().target().to_string();
         let payload = MonitorErrorPayload {
             level: "error",
-            target: event.metadata().target().to_string(),
+            detail: crate::detail::of_log_event(&target, &v.message),
+            target,
             message: v.message,
             timestamp: SystemTime::now()
                 .duration_since(UNIX_EPOCH)

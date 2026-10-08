@@ -122,7 +122,8 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | `id` | string | 回显请求的 `id` |
 | `ok` | bool | 成功与否 |
 | `code` | string? | 失败时的码（协议级或命令级） |
-| `message` | string? | 失败时的原话 |
+| `message` | string? | 失败时给人看的那一句（不含下层原话与码：那些进 `detail`） |
+| `detail` | string? | 失败时「复制详情」那几行（句子下面的「项名：值」：时刻 · 机器 · 命令 · 码 · 原话），后端写好、界面原样复制 |
 | `data` | JSON? | 命令的返回值（如 `resolve` 的 CommandPlan） |
 
 ### `cancelled`
@@ -2923,7 +2924,7 @@ cc-bus 钩子诊断。
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `bus` | ← | 顺手从 cc-bus 注销的结果 `{removed, failed, unread}` |
+| `bus` | ← | 顺手从 cc-bus 注销的结果 `{removed, failed, unread, said, detail}`：`said` 是那几行句子（没有 ⇒ `null`），`detail` 是复制详情（没有 ⇒ 空串） |
 | `client` | → | 自报的前端（过「哪个前端的会话」那一维） |
 | `killed` | ← | 杀成了 |
 | `name` | → | 要杀的 tmux 会话名 |
@@ -2943,7 +2944,9 @@ cc-bus 钩子诊断。
 | `bus` | ← | 同 `kill` |
 | `client` | → | 自报的前端，同 `kill` |
 | `cmd` | → ← | 只有开终端那一形有 |
+| `copyDetail` | ← | 失败那一个的复制详情（码 ＋ 原话；别的 ⇒ 空串） |
 | `detail` | ← | 那一个的原话 |
+| `said` | ← | 停失败那一个的那一句（与 `kill` 被拒同一张表）；别的 ⇒ `null` |
 | `outcome` | ← | `done` · `skipped` · `failed` |
 | `results` | ← | 逐个结果，与入参同序 |
 | `session` | ← | 落在哪个 tmux 会话上 |
@@ -2988,7 +2991,9 @@ cc-bus 钩子诊断。
 | `cwd` | → | 那一项的工作目录 |
 | `defaultLauncher` | → | 整批一份：那一家的默认启动器 |
 | `fork_of` | → | 可缺：源会话 sid（只许与 `fresh_terminal: true` 一起） |
+| `copyDetail` | ← | 失败那一个的复制详情（码 ＋ 原话；别的 ⇒ 空串） |
 | `detail` | ← | 那一个的原话 |
+| `said` | ← | 停失败那一个的那一句（与 `kill` 被拒同一张表）；别的 ⇒ `null` |
 | `fresh_terminal` | → | 可缺：分叉出来的那一条 ⇒ 必铸新终端名 |
 | `items` | → | 要起的会话，每项 `{sid, cwd, account?, fresh_terminal?, fork_of?}` |
 | `kind` | → ← | `account` 的种类 |

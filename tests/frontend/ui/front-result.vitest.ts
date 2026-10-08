@@ -44,7 +44,7 @@ describe("↗ 结局族", () => {
     });
     expect(shape({ kind: "no-window", program: "ssh.exe" })).toEqual({ title: copyText("front.title.noTerminal"), body: copyText("front.body.background"), hint: null, tone: "grey", acts: [] });
     expect(shape({ kind: "unclear" }), "句柄 / 进程号复用：不上细节，并进「窗口无法确定」").toEqual({ title: copyText("front.title.unsure"), body: "", hint: null, tone: "grey", acts: [] });
-    expect(shape({ kind: "unknown", detail: "x" })).toEqual({ title: copyText("front.title.failed"), body: copyText("front.body.unknown"), hint: null, tone: "red", acts: [copyText("front.act.copy")] });
+    expect(shape({ kind: "unknown", detail: "x" })).toEqual({ title: copyText("front.title.failed"), body: copyText("front.body.unknown"), hint: null, tone: "red", acts: [copyText("detail.act.copy")] });
   });
 
   it("［复制详情］复制的是那一族带来的细节原文", () => {

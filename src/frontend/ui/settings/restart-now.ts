@@ -9,6 +9,7 @@ import { toast } from "../kit/toast";
 import { button } from "../kit/button";
 import { hostKey, readRemoteConfig } from "../remote-config";
 import { askAppExitInterrupts, interruptRows, type Interrupts } from "./interrupts";
+import { detailOf } from "../kit/detail";
 
 export interface RestartDeps {
   ask?: (remotes: readonly string[]) => Promise<Interrupts>;
@@ -42,7 +43,7 @@ export async function restartNow(deps: RestartDeps = {}): Promise<boolean> {
   try {
     await (deps.restart ?? commands.restart_app)();
   } catch (e) {
-    toast(copyText("restartNow.run.failed"), String(e), { level: "error" });
+    toast(copyText("restartNow.run.failed"), String(e), { detail: detailOf(e), level: "error" });
   }
   return true;
 }

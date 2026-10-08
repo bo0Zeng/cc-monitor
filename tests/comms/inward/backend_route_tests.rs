@@ -34,26 +34,31 @@ fn only_the_errors_that_prove_nothing_was_sent_allow_a_fallback() {
         CallError::Remote {
             code: "wrong_owner".into(),
             message: "sid=".into(),
+            detail: String::new(),
             data: None,
         },
         CallError::Remote {
             code: "too_many_windows".into(),
             message: "windows=3".into(),
+            detail: String::new(),
             data: None,
         },
         CallError::Remote {
             code: "kill_failed".into(),
             message: "boom".into(),
+            detail: String::new(),
             data: None,
         },
         CallError::Remote {
             code: "no_such_session".into(),
             message: "".into(),
+            detail: String::new(),
             data: None,
         },
         CallError::Remote {
             code: "bad_args".into(),
             message: "未知 mode `attach-only`".into(),
+            detail: String::new(),
             data: None,
         },
     ];
@@ -135,6 +140,7 @@ fn the_collapse_to_three_states_is_byte_identical_to_the_table_before_layering()
             CallError::Remote {
                 code: "wrong_owner".into(),
                 message: "sid=x".into(),
+                detail: String::new(),
                 data: None,
             },
             Routed::Refused("wrong_owner/sid=x".into()),
@@ -216,6 +222,7 @@ fn the_layering_table_is_pinned_cell_by_cell() {
             CallError::Remote {
                 code: "wrong_owner".into(),
                 message: "x\u{0}y".into(),
+                detail: String::new(),
                 data: None,
             },
             w::CallError::Peer {
@@ -265,6 +272,7 @@ fn a_refusal_with_data_carries_it_in_the_body() {
     let e = CallError::Remote {
         code: "account_unavailable".into(),
         message: "m".into(),
+        detail: String::new(),
         data: Some(r#"{"requested":"z","pinned":true,"listKnown":true,"alternative":null}"#.into()),
     };
     let w::CallError::Peer {

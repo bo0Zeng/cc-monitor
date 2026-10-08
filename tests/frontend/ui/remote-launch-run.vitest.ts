@@ -205,6 +205,7 @@ describe("失败怎么说", () => {
     expect(toastMock).toHaveBeenCalledWith(
       expect.any(String),
       expect.stringContaining("会话 ID 不合法"),
+      { detail: "" },
     );
   });
 

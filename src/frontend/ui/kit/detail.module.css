@@ -1,0 +1,60 @@
+/* 复制详情（条带 §5.1）。 */
+@layer components {
+  .detailCopy {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+  }
+
+  .detailCopy > button {
+    justify-content: center;
+    color: var(--text-2);
+  }
+
+  .detailCopy > button:hover {
+    color: var(--text);
+  }
+
+  .detailCopy > button[data-state="copied"] {
+    color: var(--success);
+  }
+
+  .detailCopy > button[data-state="failed"] {
+    color: var(--error);
+  }
+
+  .detailLive {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .detailFallback {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    width: 100%;
+    margin-top: var(--space-3);
+  }
+
+  .detailHint {
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+  }
+
+  .detailText {
+    width: 100%;
+    max-height: 160px;
+    padding: var(--space-3);
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-m);
+    background: var(--bg-2);
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: var(--font-size-small);
+    resize: none;
+  }
+}

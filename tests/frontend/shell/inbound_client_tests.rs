@@ -529,7 +529,7 @@ async fn the_envelope_carries_the_wait_this_call_was_given() {
         "这一发等 7000 ms，信封里带的是 {within}"
     );
     let id = req["id"].as_str().expect("有 id").to_string();
-    assert!(client.route_reply(&id, true, None, None, None));
+    assert!(client.route_reply(&id, true, None, None, None, None));
     caller.await.expect("caller task").expect("call 成功");
 }
 
@@ -549,6 +549,7 @@ async fn a_call_writes_one_line_and_resolves_on_the_matching_reply() {
         client.route_reply(
             &id,
             true,
+            None,
             None,
             None,
             Some(serde_json::json!({ "pong": 1 }))
@@ -578,12 +579,14 @@ async fn an_error_reply_surfaces_code_and_message() {
         Some("bad_request".into()),
         Some("缺 sid".into()),
         None,
+        None,
     );
     assert_eq!(
         caller.await.expect("task").unwrap_err(),
         CallError::Remote {
             code: "bad_request".into(),
             message: "缺 sid".into(),
+            detail: String::new(),
             data: None,
         }
     );
@@ -645,7 +648,7 @@ async fn two_asks_under_one_deadline_share_it_and_the_second_gets_only_the_rest(
         .expect("id")
         .to_string();
     tokio::time::sleep(Duration::from_millis(1000)).await;
-    assert!(client.route_reply(&id, true, None, None, None));
+    assert!(client.route_reply(&id, true, None, None, None, None));
     assert!(first.await.expect("task").is_ok(), "截止之前答了却没拿到");
 
     // 第二问：同一个截止时刻，对端不答。
@@ -755,7 +758,7 @@ async fn abandoning_the_wait_fires_one_cancel_and_finishing_fires_none() {
         .as_str()
         .expect("id")
         .to_string();
-    assert!(client.route_reply(&id, true, None, None, None));
+    assert!(client.route_reply(&id, true, None, None, None, None));
     assert!(caller.await.expect("task").is_ok());
     let mut extra = String::new();
     let read = tokio::time::timeout(Duration::from_millis(150), peer.read_line(&mut extra)).await;
@@ -901,7 +904,7 @@ async fn a_peer_that_cannot_withdraw_is_said_out_loud() {
             serde_json::from_str(next_line(&mut peer).await.trim_end()).expect("JSON");
         let cid = cancel["id"].as_str().expect("id").to_string();
         let ok = code.is_none();
-        assert!(client.route_reply(&cid, ok, code.map(str::to_string), None, None));
+        assert!(client.route_reply(&cid, ok, code.map(str::to_string), None, None, None));
         let told = warns.peer_cannot_withdraw();
         assert_eq!(told.len(), usize::from(loud), "{code:?} ⇒ {told:?}");
         if loud {
@@ -927,7 +930,7 @@ async fn a_late_reply_after_timeout_still_finds_its_registration() {
         CallError::Timeout { .. }
     ));
     assert!(
-        client.route_reply(&id, true, None, None, None),
+        client.route_reply(&id, true, None, None, None, None),
         "超时后登记被摘早了 —— 晚到的应答会落进 unknown-id 的 warn"
     );
 }
@@ -1156,7 +1159,7 @@ async fn a_resync_reply_refreshes_the_offer_with_the_facts_of_this_moment() {
         .expect("id")
         .to_string();
     let data = serde_json::json!({"added":0,"removed":0,"retagged":0,"watchers":1,"unavailable":[],"uncancellable":["resync"]});
-    assert!(client.route_reply(&id, true, None, None, Some(data)));
+    assert!(client.route_reply(&id, true, None, None, None, Some(data)));
     caller.await.expect("task").expect("resync 答了");
 
     let after = client.offer();

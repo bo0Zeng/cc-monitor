@@ -45,6 +45,7 @@ enum Outcome {
         ok: bool,
         code: Option<String>,
         message: Option<String>,
+        detail: Option<String>,
         data: Option<Value>,
     },
     Cancelled,
@@ -364,11 +365,13 @@ impl InboundClient {
             Ok(Ok(Outcome::Reply {
                 code,
                 message,
+                detail,
                 data,
                 ..
             })) => Err(CallError::Remote {
                 code: code.unwrap_or_else(|| "unspecified".to_string()),
                 message: message.unwrap_or_default(),
+                detail: detail.unwrap_or_default(),
                 data: data.map(|d| d.to_string()),
             }),
             Ok(Ok(Outcome::Cancelled)) => Err(CallError::Cancelled),
@@ -389,6 +392,7 @@ impl InboundClient {
         ok: bool,
         code: Option<String>,
         message: Option<String>,
+        detail: Option<String>,
         data: Option<Value>,
     ) -> bool {
         self.deliver(
@@ -397,6 +401,7 @@ impl InboundClient {
                 ok,
                 code,
                 message,
+                detail,
                 data,
             },
         )

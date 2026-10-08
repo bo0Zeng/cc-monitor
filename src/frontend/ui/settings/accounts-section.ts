@@ -42,6 +42,7 @@ import { homeShort } from "../kit/path";
 import { copyText } from "../copy-table";
 import { machineName, saidOfControl } from "../control-said";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
+import { detailOf } from "../kit/detail";
 
 /** 一趟读回来的那一台（都是那台后端的成品；读不到的那一格是 `null`）。 */
 interface Facts {
@@ -377,7 +378,7 @@ export class AccountsSection {
       this.repaired.add(origin);
       toast(copyText("acctPage.verify.repaired", { machine }), "");
     } catch (e) {
-      toast(copyText("acctPage.verify.failed", { machine }), saidOfControl(e), { level: "error" });
+      toast(copyText("acctPage.verify.failed", { machine }), saidOfControl(e), { detail: detailOf(e), level: "error" });
     }
     await this.reload(true, true);
   }
@@ -391,7 +392,7 @@ export class AccountsSection {
       await accountsRollback(origin, plan.backup ? { backup: plan.backup } : {});
       this.repaired.delete(origin);
     } catch (e) {
-      toast(copyText("acctPage.verify.failed", { machine }), saidOfControl(e), { level: "error" });
+      toast(copyText("acctPage.verify.failed", { machine }), saidOfControl(e), { detail: detailOf(e), level: "error" });
     }
     await this.reload(true, true);
   }
@@ -702,7 +703,7 @@ export class AccountsSection {
       toast(copyText("acctPage.default.done", { name: a.name }), "");
       void emit(SETTINGS_APPLIED_EVENT);
     } catch (e) {
-      toast(copyText("acctPage.default.failed", { name: a.name }), saidOfControl(e), { level: "error" });
+      toast(copyText("acctPage.default.failed", { name: a.name }), saidOfControl(e), { detail: detailOf(e), level: "error" });
     }
     await this.reload(true, true);
   }
@@ -734,7 +735,7 @@ export class AccountsSection {
       toast(copyText("acctPage.remove.done", { name: a.name, machine }), "");
       if (a.isDefault) void emit(SETTINGS_APPLIED_EVENT);
     } catch (e) {
-      toast(copyText("acctPage.remove.failed", { name: a.name }), saidOfControl(e), { level: "error" });
+      toast(copyText("acctPage.remove.failed", { name: a.name }), saidOfControl(e), { detail: detailOf(e), level: "error" });
     }
     await this.reload(true, true);
   }
@@ -749,7 +750,7 @@ export class AccountsSection {
         this.noWindow.add(key);
       }
     } catch (e) {
-      toast(copyText("acctPage.login.failed", { name: a.name }), saidOfControl(e), { level: "error" });
+      toast(copyText("acctPage.login.failed", { name: a.name }), saidOfControl(e), { detail: detailOf(e), level: "error" });
     }
     if (this.facts) this.paint(this.facts);
   }
@@ -762,7 +763,7 @@ export class AccountsSection {
       this.noWindow.delete(key);
       this.waiting.add(key);
     } catch (e) {
-      toast(copyText("acctPage.login.failed", { name: a.name }), saidOfControl(e), { level: "error" });
+      toast(copyText("acctPage.login.failed", { name: a.name }), saidOfControl(e), { detail: detailOf(e), level: "error" });
     }
     if (this.facts) this.paint(this.facts);
   }
@@ -776,7 +777,7 @@ export class AccountsSection {
       const host = findHostByOrigin((await readRemoteConfig()).hosts, origin);
       if (host) await openFileWindow(host, { dir });
     } catch (e) {
-      toast(copyText("acctPage.reveal.failed"), saidOfControl(e), { level: "error" });
+      toast(copyText("acctPage.reveal.failed"), saidOfControl(e), { detail: detailOf(e), level: "error" });
     }
   }
 
@@ -812,7 +813,7 @@ export class AccountsSection {
     try {
       change = await accountsAdd(origin, req);
     } catch (e) {
-      toast(copyText("acctPage.new.failed", { name: req.name }), saidOfControl(e), { level: "error" });
+      toast(copyText("acctPage.new.failed", { name: req.name }), saidOfControl(e), { detail: detailOf(e), level: "error" });
       return;
     }
     this.closeForm();

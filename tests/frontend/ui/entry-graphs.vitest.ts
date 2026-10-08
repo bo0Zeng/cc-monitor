@@ -781,6 +781,7 @@ const MODULE_STACKING: Record<string, { stacked: boolean; why: string }> = {
   "src/frontend/ui/kit/switch.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
   "src/frontend/ui/kit/tabs.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
   "src/frontend/ui/kit/toast.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
+  "src/frontend/ui/kit/detail.module.css": { stacked: false, why: "通用组件（复制详情那一颗）：只挂自己的哈希类（里面那颗是 kit 按钮的哈希类）" },
   "src/frontend/ui/kit/tooltip.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
 };
 

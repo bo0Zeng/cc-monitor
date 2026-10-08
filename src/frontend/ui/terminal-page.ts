@@ -25,6 +25,7 @@ import { listTerminals, previewShot, sendToTerminal, type TerminalRow, type Term
 import type { Origin } from "./ipc/origin";
 import { button, setBusy, setButtonLabel, setDisabled } from "./kit/button";
 import { banner } from "./kit/banner";
+import { detailOf } from "./kit/detail";
 import { emptyState } from "./kit/empty";
 import { statusDot, setDot } from "./kit/status-dot";
 import { spinner } from "./kit/progress";
@@ -144,8 +145,11 @@ export class TerminalPage {
   /** 名单那一步的结局：还在问 · 认出来了 · 名单里没有 · 问不到（那一句）。 */
   private phase: "loading" | "ready" | "none" | "error" = "loading";
   private error = "";
+  /** 那条错误条的复制详情（出错那一端写好）；没有 ⇒ 空。 */
+  private errorDetail = "";
   /** 抓屏那一步出的错（画面留着、降不透明度）。 */
   private shotError: string | null = null;
+  private shotDetail = "";
   /** 送字那一步的结局一句（`null` ＝ 没有）。 */
   private note: Note | null = null;
   private sending = false;
@@ -344,6 +348,7 @@ export class TerminalPage {
         this.row = null;
         this.phase = "error";
         this.error = whyWord("ambiguous");
+        this.errorDetail = "";
         this.paint();
         return;
       }
@@ -354,6 +359,7 @@ export class TerminalPage {
       if (mine !== this.seq) return;
       this.phase = "error";
       this.error = saidOfControl(e);
+      this.errorDetail = detailOf(e);
       this.paint();
       return;
     }
@@ -419,6 +425,7 @@ export class TerminalPage {
     } catch (e) {
       if (mine !== this.seq) return;
       this.shotError = saidOfControl(e);
+      this.shotDetail = detailOf(e);
       this.paint();
     }
   }
@@ -581,7 +588,9 @@ export class TerminalPage {
       return;
     }
     if (this.phase === "error") {
-      this.body.replaceChildren(banner("error", this.error, [button({ label: copyText("terminal.state.refresh"), size: "compact", onClick: () => void this.refresh() })]));
+      this.body.replaceChildren(
+        banner("error", this.error, [button({ label: copyText("terminal.state.refresh"), size: "compact", onClick: () => void this.refresh() })], this.errorDetail),
+      );
       return;
     }
     const row = this.row as TerminalRow;
@@ -611,7 +620,8 @@ export class TerminalPage {
     if (this.live.at === "stopped") {
       bars.push(banner("warn", copyText("terminal.bar.liveStopped", { why: liveWhy(this.live.why, machineName(this.origin ?? "")) }), [button({ label: copyText("terminal.bar.liveRetry"), size: "compact", onClick: () => this.startLive() })]));
     }
-    if (this.shotError !== null) bars.push(banner("warn", this.shotError, [button({ label: copyText("terminal.state.refresh"), size: "compact", onClick: () => void this.refresh() })]));
+    if (this.shotError !== null)
+      bars.push(banner("warn", this.shotError, [button({ label: copyText("terminal.state.refresh"), size: "compact", onClick: () => void this.refresh() })], this.shotDetail));
     this.bar.replaceChildren(...bars);
     if (this.painted !== this.shot) {
       renderScreen(this.pre, this.shot?.lines ?? []);

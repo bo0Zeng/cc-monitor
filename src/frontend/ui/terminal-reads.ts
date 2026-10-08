@@ -10,7 +10,7 @@
  * 期限：抓一屏 20 秒，送字送键 20 秒，名单 15 秒（远端没连着还要握手）。
  */
 import { copyText } from "./copy-table";
-import { refusalsByTable, settle, unreadable, type Refusals } from "./control-said";
+import { asSaid, settle, unreadable, type Refusals } from "./control-said";
 import { isObj } from "./ipc/decode";
 import { chan } from "../../comms/inward/chan";
 import { budgetWithin, jsonBody } from "./ipc/chan-caller";
@@ -52,26 +52,9 @@ export interface TerminalShot {
 /** 怎么指一个终端：名单里的句柄，或挂在它上面的会话 ID。 */
 export type TerminalTarget = { terminal: string } | { sid: string };
 
-/** 抓屏的拒绝码 ⇒ 一句话（`target` 是给人看的那个名字）。认不出的码原样带出去。 */
+/** 抓屏被拒：那一句由那台后端写好（`src/backend/stream/said.rs`）；拒绝体读不出 ⇒ 无原因那一句（`target` 是给人看的那个名字）。 */
 function previewRefusals(target: string): Refusals {
-  return refusalsByTable(
-    {
-      no_tmux: (detail) => copyText("terminalReads.preview.noTmux", { target, detail }),
-      no_server: (detail) => copyText("terminalReads.preview.noServer", { target, detail }),
-      no_such_session: (detail) => copyText("terminalReads.preview.noSuchSession", { target, detail }),
-      capture_failed: (detail) => copyText("terminalReads.preview.failed", { target, detail }),
-      bad_target: (detail) => copyText("terminalReads.preview.badTarget", { target, detail }),
-      bad_args: (detail) => copyText("terminalReads.preview.badTarget", { target, detail }),
-      not_known: (detail) => copyText("terminalReads.preview.notKnown", { target, detail }),
-      ambiguous: (detail) => copyText("terminalReads.preview.ambiguous", { target, detail }),
-      unobservable: (detail) => copyText("terminalReads.preview.unobservable", { target, detail }),
-      child_timed_out: (detail) => copyText("terminalReads.preview.childTimedOut", { target, detail }),
-    },
-    {
-      other: (detail) => copyText("terminalReads.preview.otherCode", { target, detail }),
-      none: () => copyText("terminalReads.preview.noReason", { target }),
-    },
-  );
+  return asSaid(() => copyText("terminalReads.preview.noReason", { target }));
 }
 
 /** `terminal-preview` 的成品 ⇒ 那一屏（带颜色段）＋ 指纹 ＋ 几点抓的。`screen` / `captured_at_text` 缺 ⇒ 抛。 */
@@ -134,7 +117,7 @@ export async function listTerminals(origin: Origin, label: string): Promise<Term
 /** 按 tmux 会话名抓一屏：先在名单里认出那一行（第一个同名的），再按句柄抓。名单里没有 ⇒ 抛那句「不在名单」。 */
 export async function previewByTmuxName(origin: Origin, tmuxName: string): Promise<string> {
   const row = (await listTerminals(origin, tmuxName)).find((r) => r.tmuxName === tmuxName);
-  if (row === undefined) throw new Error(copyText("terminalReads.preview.notKnown", { target: tmuxName, detail: "terminals-list" }));
+  if (row === undefined) throw new Error(copyText("terminalReads.preview.notKnown"));
   return previewText(origin, { terminal: row.terminal }, tmuxName);
 }
 
@@ -147,12 +130,9 @@ export type TerminalSent = { result: "delivered" } | { result: "unsure" } | { re
 /** 送字 / 送键的期限（与抓一屏同）。 */
 const INPUT_BUDGET_MS = 20_000;
 
-/** 送字 / 送键被拒的码（形状不对那几条）⇒ 一句话。 */
+/** 送字 / 送键被拒：那一句由那台后端写好；拒绝体读不出 ⇒ 无原因那一句。 */
 function inputRefusals(target: string): Refusals {
-  return {
-    byCode: (_code, detail) => copyText("terminalReads.input.refused", { target, detail }),
-    noReason: () => copyText("terminalReads.input.noReason", { target }),
-  };
+  return asSaid(() => copyText("terminalReads.input.noReason", { target }));
 }
 
 /** `terminal-input` 的成品 ⇒ 结局。`result` 认不出 ⇒ 抛。 */

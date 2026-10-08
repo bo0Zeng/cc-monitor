@@ -39,6 +39,7 @@ import { resumeHistoryRow } from "../history-resume";
 import { openNewSession } from "../new-session";
 import { groupHead, hitsBlock, labelOf, machineTag, rowBadges, rowKey, sectionHead, sessionRow, strip, type RowHooks } from "./history-rows";
 import s from "./history.module.css";
+import { detailOf } from "../kit/detail";
 
 type ViewMode = "time" | "project";
 type Scope = "all" | "user" | "assistant" | "report";
@@ -985,7 +986,7 @@ export class HistoryView {
       const said = copyText("history.resume.failed", { machine: r.origin ?? copyText("history.filter.local"), why: String(e) });
       if (this.shown === rowKey(r) && this.viewer) {
         const retry = button({ label: copyText("history.group.retry"), size: "compact", onClick: () => void this.resumeWith(r, how) });
-        this.viewer.showBanner(banner("error", said, [retry]));
+        this.viewer.showBanner(banner("error", said, [retry], detailOf(e)));
       } else {
         toast(said, "");
       }
@@ -997,7 +998,7 @@ export class HistoryView {
   private openWindow(r: HistoryRow): void {
     void commands
       .open_session_in_new_window({ sessionId: r.sessionId, origin: r.origin ?? LOCAL_ORIGIN, title: labelOf(r) })
-      .catch((e: unknown) => toast(copyText("tabSessionActions.openInWindow.failed"), String(e)));
+      .catch((e: unknown) => toast(copyText("tabSessionActions.openInWindow.failed"), String(e), { detail: detailOf(e) }));
   }
 
   private menu(r: HistoryRow, at: HTMLElement | { x: number; y: number }): void {
@@ -1030,7 +1031,7 @@ export class HistoryView {
       await annotate(r.sessionId, { starred: !r.starred });
       this.refresh(false, keyOf(r.origin));
     } catch (e) {
-      toast(copyText("history.star.failed", { why: String(e) }), "");
+      toast(copyText("history.star.failed", { why: String(e) }), "", { detail: detailOf(e) });
     }
   }
 
@@ -1042,7 +1043,7 @@ export class HistoryView {
       if (to)
         undoToast(copyText("history.hide.done", { label: labelOf(r) }), () => void annotate(r.sessionId, { hidden: false }).then(() => this.refresh(false, keyOf(r.origin))), () => {});
     } catch (e) {
-      toast(copyText("history.hide.failed", { why: String(e) }), "");
+      toast(copyText("history.hide.failed", { why: String(e) }), "", { detail: detailOf(e) });
     }
   }
 
@@ -1060,7 +1061,7 @@ export class HistoryView {
       this.refresh(false, keyOf(r.origin));
       undoToast(copyText("history.rename.done"), () => void annotate(r.sessionId, { customTitle: before ?? "" }).then(() => this.refresh(false, keyOf(r.origin))), () => {});
     } catch (e) {
-      toast(copyText("history.rename.failed", { why: String(e) }), "");
+      toast(copyText("history.rename.failed", { why: String(e) }), "", { detail: detailOf(e) });
     }
   }
 
@@ -1080,7 +1081,7 @@ export class HistoryView {
     try {
       await deleteSession(r.origin ?? LOCAL_ORIGIN, r.sessionId);
     } catch (e) {
-      toast(copyText("history.delete.failed", { label, why: String(e) }), "");
+      toast(copyText("history.delete.failed", { label, why: String(e) }), "", { detail: detailOf(e) });
       return;
     }
     void forgetAnnotation(r.sessionId);

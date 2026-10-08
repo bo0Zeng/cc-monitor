@@ -3,7 +3,7 @@
  * 成品形状怎么核、机器怎么称呼。
  *
  * 调用方：`src/frontend/ui/tmux-control.ts`（抓屏 · 结束会话 · 发按键 · 就地 resume）· `src/frontend/ui/cc-bus-control.ts`
- * （cc-bus 查在线 · 发消息 · 收掉 · 派生 · 广播）· `src/frontend/ui/account-ops.ts`（账号库那几条命令）。它们各自的「拒绝码 → 一句话」按动作分表、住各自那一份；
+ * （cc-bus 查在线 · 发消息 · 收掉 · 派生 · 广播）· `src/frontend/ui/account-ops.ts`（账号库那几条命令）。被拒那一句由那台后端写好（[`asSaid`]）；
  * **这里只放两边说的是同一件事的那几句**（这台机器够不够得着、答没答、答的读不读得懂）—— 写两份就会各自漂。
  *
  * ⚠ 本文件**不说 `chan.call`**：`frame_query_tests` 按 `chan.call(` 的字面量操作名数前端经通道说哪几条、
@@ -18,9 +18,9 @@ import { isLocalOrigin, type Origin } from "./ipc/origin";
 export { machineName };
 
 /**
- * 一次控制动作没做成。`message` 就是给人看的那一句（已经说成人话）；`detail` 只进日志；
- * `error` 是通道那一跳分好层的结局（失败出在通道上时才有）—— 就地 resume 据它判能不能回落。
- * 调用方拿 [`saidOfControl`] 取那一句，不自己拼。
+ * 一次控制动作没做成。`message` 就是给人看的那一句（已经说成人话）；`detail` 是「复制详情」那几行（出错那一端写好，
+ * 界面原样放进［复制详情］，`kit/detail.ts::detailOf` 取）；`error` 是通道那一跳分好层的结局（失败出在通道上时才有）——
+ * 就地 resume 据它判能不能回落。调用方拿 [`saidOfControl`] 取那一句，不自己拼。
  */
 export class ControlError extends Error {
   readonly detail: string;
@@ -38,9 +38,10 @@ export function saidOfControl(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
-/** 应答形状不对 ⇒ 抛（哪一格不对只进 `detail`；那句话按码取，不猜版本）。 */
+/** 应答形状不对 ⇒ 抛（哪一格不对只进日志；那句话按码取，不猜版本）。 */
 export function unreadable(origin: Origin, op: string, what: string): ControlError {
-  return new ControlError(peerVersionSaid("reply_unreadable", origin), `${op} reply ${what}`);
+  console.warn(`${op} reply ${what} (from ${origin})`);
+  return new ControlError(peerVersionSaid("reply_unreadable", origin), "");
 }
 
 /**
@@ -85,9 +86,9 @@ export async function settle(origin: Origin, op: string, sent: Promise<Uint8Arra
     const err = e.error;
     if (err.layer === "peer" && err.why === "refused") {
       const r = refusalOf(err.body);
-      throw new ControlError(r ? refusals.byCode(r.code, r.message) : refusals.noReason(), `${op} refused: ${r ? r.code : "unreadable refusal body"}`, err);
+      throw new ControlError(r ? refusals.byCode(r.code, r.message) : refusals.noReason(), e.detail, err);
     }
-    throw new ControlError(saidOfTransport(origin, err), `${op}：${e.message}`, err);
+    throw new ControlError(saidOfTransport(origin, err), e.detail, err);
   }
   try {
     return readJson(body);
@@ -125,19 +126,12 @@ export function unavailableReason(code: string, machine: string): string {
 }
 
 /**
- * 拒绝码 ⇒ 一句话，按表：表里认得的码说那一句（各行自己调 `copyText`，键与参数照旧字面写）；认不出的码有原话 ⇒ `rest.other`，
- * 原话是空白 ⇒ `rest.none`。新增一个拒绝码只加一行表。
+ * 那台后端已经把「被拒」说成了一句（结束会话 · 读画面 / 送字 · cc-bus · 账号库那几条，`src/backend/stream/said.rs`）⇒ 原样上屏；
+ * 拒绝体里没有那一句（老后端 · 体读不出）⇒ `none`。界面不再按码另写句子。
  */
-export function refusalsByTable(
-  table: Readonly<Record<string, (detail: string) => string>>,
-  rest: { other: (detail: string) => string; none: () => string },
-): Refusals {
+export function asSaid(none: () => string): Refusals {
   return {
-    byCode(code, detail) {
-      const say = Object.prototype.hasOwnProperty.call(table, code) ? table[code] : undefined;
-      if (say !== undefined) return say(detail);
-      return detail.trim() !== "" ? rest.other(detail) : rest.none();
-    },
-    noReason: rest.none,
+    byCode: (_code, said) => (said.trim() !== "" ? said : none()),
+    noReason: none,
   };
 }

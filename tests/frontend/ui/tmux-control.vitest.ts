@@ -135,31 +135,28 @@ describe("按 sid 找窗格：结束带上会话 ID", () => {
 
 describe("FIX4 · 杀会话顺手注销的结局", () => {
   /** 「杀会话顺手注销的结局只进日志：界面不说『顺手注销了谁 / 没注销成』；要说得给 kill 的成品加一格（界面、金样、文案同拍）」。 */
-  it("★ bus 那一格 ⇒ 一句话：注销了谁 · 谁没注销成 · 名册读不到；全空不说；那一格缺 / 形状不对 ⇒ 读不懂", () => {
+  it("★ bus 那一格 ⇒ 那台写好的那几行 ＋ 复制详情原样带出；全空不说；那一格缺 / 形状不对 ⇒ 读不懂", () => {
     const bus = (b: unknown) => ({ ...KILL.reply, bus: b });
-    expect(decodeKilled("devbox", "demo-cc", KILL.reply)).toBeNull();
-    expect(decodeKilled("devbox", "demo-cc", bus({ removed: ["p_cc", "q_cc"], failed: [], unread: null }))).toBe(
-      copyText("tmuxControl.kill.busRemoved", { ids: ["p_cc", "q_cc"].join(copyText("tmuxControl.kill.listSep")) }),
-    );
-    expect(decodeKilled("devbox", "demo-cc", bus({ removed: [], failed: [{ id: "r_cc", why: "它不在" }], unread: null }))).toBe(
-      copyText("tmuxControl.kill.busFailed", { id: "r_cc", why: "它不在" }),
-    );
-    expect(decodeKilled("devbox", "demo-cc", bus({ removed: [], failed: [], unread: "cc-list 退出 1" }))).toBe(
-      copyText("tmuxControl.kill.busUnread", { why: "cc-list 退出 1" }),
-    );
-    for (const bad of [{ session: "demo-cc", killed: true }, bus({ removed: [], failed: [] }), bus({ removed: [1], failed: [], unread: null })]) {
+    expect(decodeKilled("devbox", "demo-cc", KILL.reply)).toEqual({ said: null, detail: "" });
+    const b = { removed: [], failed: [{ id: "r_cc", why: "w-1" }], unread: null, said: "S-1", detail: "D-1" };
+    expect(decodeKilled("devbox", "demo-cc", bus(b))).toEqual({ said: "S-1", detail: "D-1" });
+    for (const bad of [
+      { session: "demo-cc", killed: true },
+      bus({ removed: [], failed: [], unread: null }),
+      bus({ ...b, said: 1 }),
+      bus({ ...b, detail: null }),
+    ]) {
       expect(() => decodeKilled("devbox", "demo-cc", bad), JSON.stringify(bad)).toThrow(copyPattern("peerVersion.said.unreadable"));
     }
   });
+
 });
 
 describe("〔C4e〕结束会话：发出去之前与失败怎么说", () => {
-  it("★ 〔DUP3〕空目标不在界面判：原样交给后端，后端拒了照原话说", async () => {
-    answer({ fail: refusedReply("bad_args", "`name` 为空") });
-    for (const [label, act, badKey] of ACTIONS) {
-      const said = await saidOf(() => act("devbox", ""));
-      expect(said, label).toMatch(copyPattern(badKey));
-      expect(said, label).toContain("`name` 为空");
+  it("★ 〔DUP3〕空目标不在界面判：原样交给后端，后端拒了照它写的那一句说", async () => {
+    answer({ fail: refusedReply("bad_args", "S-empty") });
+    for (const [label, act] of ACTIONS) {
+      expect(await saidOf(() => act("devbox", "")), label).toBe("S-empty");
     }
     expect(sentCalls().map(([, op, body]) => [op, (body as { name?: unknown }).name]), "界面自己把空目标拦下了").toEqual([["kill", ""]]);
   });
@@ -177,28 +174,19 @@ describe("〔C4e〕结束会话：发出去之前与失败怎么说", () => {
     expect(sentCalls().filter(([o]) => o === LOCAL_ORIGIN).length, "本机没经通道问").toBe(1);
   });
 
-  it("★★ 拒绝码（取自金样）逐码一句、两两不同、带会话名与后端原话；身份门那一句 ≠ 通道不在那一句", async () => {
+  it("★★ 拒绝码（取自金样）：那台写好的那一句原样上屏、复制详情原样带出（逐码一句由后端判：`said_tests.rs`）；身份门那一句 ≠ 通道不在那一句", async () => {
     for (const [op, codes, act] of [
       ["kill", KILL.codes, (t: string) => killSession("devbox", t)],
     ] as const) {
-      const said: string[] = [];
+      expect(codes.length, `${op}：金样里一个码都没有`).toBeGreaterThan(0);
       for (const code of codes) {
-        answer({ fail: refusedReply(code, "RAW-WORDS") });
-        said.push(await saidOf(() => act("demo-cc")));
+        answer({ fail: refusedReply(code, `S-${code}`) });
+        expect(await saidOf(() => act("demo-cc")), op).toBe(`S-${code}`);
+        answer({ fail: refusedReply(code, `S-${code}`) });
+        expect(await detailOf(() => act("demo-cc")), `${op}：复制详情没带出来`).toContain(code);
       }
-      expect(said.length, `${op}：金样里一个码都没有`).toBeGreaterThan(0);
-      expect(new Set(said).size, `${op}：有两档被压成了同一句：${JSON.stringify(said)}`).toBe(said.length);
-      for (const x of said) {
-        expect(x, op).toContain("demo-cc");
-        expect(x, `${op}：后端的原话被吃掉了`).toContain("RAW-WORDS");
-      }
-      answer({ fail: refusedReply("zzz_new_code", "RAW-WORDS") });
-      const unknown = await saidOf(() => act("demo-cc"));
-      expect(unknown, op).toContain("RAW-WORDS");
-      expect(unknown, `${op}：错误码上了屏`).not.toContain("zzz_new_code");
-      expect(said, op).not.toContain(unknown);
-      answer({ fail: refusedReply("zzz_new_code", "RAW-WORDS") });
-      expect(await detailOf(() => act("demo-cc")), `${op}：诊断里没有码`).toContain("zzz_new_code");
+      answer({ fail: refusedReply("zzz_new_code", "") });
+      expect(await saidOf(() => act("demo-cc")), `${op}：那台没写那一句`).toBe(copyText("tmuxControl.kill.noReason", { target: "demo-cc" }));
       // 三态不许压成两态：门拒绝（身份门）与通道不在是两句话。
       answer({ fail: refusedReply("wrong_owner", "RAW-WORDS") });
       const gate = await saidOf(() => act("demo-cc"));

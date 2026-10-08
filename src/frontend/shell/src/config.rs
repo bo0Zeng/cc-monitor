@@ -41,20 +41,21 @@
 //! 逐条理由住 [`resolve_monitor_data_dir`]。
 
 use crate::copy_table::copy_text;
+use crate::detail::Said;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 #[tauri::command]
-pub fn load_config() -> Result<Value, String> {
+pub fn load_config() -> Result<Value, Said> {
     let path = resolve_config_path().ok_or_else(|| "no home dir".to_string())?;
     if !path.exists() {
         return Ok(default_config());
     }
     let raw =
         std::fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
-    serde_json::from_str(&raw).map_err(|e| format!("parse {}: {e}", path.display()))
+    Ok(serde_json::from_str(&raw).map_err(|e| format!("parse {}: {e}", path.display()))?)
 }
 
 /// 一条配置补丁。`path[0]` 是顶层键，其后是逐层子键。
@@ -201,11 +202,11 @@ static WRITE_LOCK: Mutex<()> = Mutex::new(());
 
 /// 前端写配置的唯一口：交一串 [`ConfigEdit`]，这里合并进盘上那份。
 #[tauri::command]
-pub fn patch_config(edits: Vec<ConfigEdit>) -> Result<(), String> {
+pub fn patch_config(edits: Vec<ConfigEdit>) -> Result<(), Said> {
     let path = resolve_config_path().ok_or_else(|| "no home dir".to_string())?;
-    patch_config_at(&path, &edits)
+    Ok(patch_config_at(&path, &edits)
         .map(|_| ())
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?)
 }
 
 /// 🔴 **`config.json` 唯一的写函数。** 锁内现读 → 逐条应用 → 带 pid 的临时件 → 原子替换。回逐条结局；一条都没改动 ⇒ 不写。
@@ -370,13 +371,13 @@ impl MachineFault {
 /// **试算口**：这串补丁若现在落盘，机器表那一道过不过（盘上一个字节不动）。界面边打边问它，与写口同一份规则。
 /// 读盘那一下不落在 IPC 派发线程上（`spawn_blocking`）。
 #[tauri::command]
-pub async fn machine_table_try(edits: Vec<ConfigEdit>) -> Result<Option<MachineFault>, String> {
-    tauri::async_runtime::spawn_blocking(move || {
+pub async fn machine_table_try(edits: Vec<ConfigEdit>) -> Result<Option<MachineFault>, Said> {
+    Ok(tauri::async_runtime::spawn_blocking(move || {
         let path = resolve_config_path().ok_or_else(|| "no home dir".to_string())?;
         machine_table_try_at(&path, &edits)
     })
     .await
-    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())??)
 }
 
 /// [`machine_table_try`] 的本体（判据喂临时路径）。认不出元素 / 补丁不成形 ⇒ 当作「这一道没话说」，留给写口去拒。
@@ -595,15 +596,15 @@ fn default_config() -> Value {
 /// F87b③ 起：**已配置且启用**的远端 origin（canonical `origin_label()`）。今天它是通用的「列远端配置标签」（历史清单 · 搜索 ·
 /// cc-bus 两块 · MCP 推 / 拉面板都用它）：读的是 monitor 自己的配置 —— 从 `mcp.rs` 挪来（MCP 读写进了那台后端，`mcp.rs` 删了）。
 #[tauri::command]
-pub async fn list_remote_mcp_origins() -> Result<Vec<String>, String> {
-    tokio::task::spawn_blocking(|| {
+pub async fn list_remote_mcp_origins() -> Result<Vec<String>, Said> {
+    Ok(tokio::task::spawn_blocking(|| {
         crate::load_remote_configs()
             .iter()
             .map(|c| c.origin_label())
             .collect()
     })
     .await
-    .map_err(|e| format!("spawn_blocking: {e}"))
+    .map_err(|e| format!("spawn_blocking: {e}"))?)
 }
 
 // ═══════════════════════════════════════════════════════════════════════

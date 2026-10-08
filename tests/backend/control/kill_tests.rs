@@ -153,9 +153,31 @@ fn the_kill_reply_carries_what_the_bus_cleanup_did() {
         failed: vec![("r_cc".into(), "它不在".into())],
         unread: None,
     };
+    let mut got = reply("demo-cc", &c);
+    // 那几行句子与复制详情由后端写好（下一条判它们）；这里只钉原样那三样。
+    let bus = got["bus"].as_object_mut().unwrap();
+    let said = bus.remove("said").unwrap();
+    let detail = bus.remove("detail").unwrap();
     assert_eq!(
-        reply("demo-cc", &c),
+        got,
         serde_json::json!({"session": "demo-cc", "killed": true,
             "bus": {"removed": ["p_cc"], "failed": [{"id": "r_cc", "why": "它不在"}], "unread": null}})
     );
+    // 句子：注销了谁 · 谁没注销成（原话不上句子）；原话进复制详情。
+    let said = said.as_str().unwrap();
+    assert!(
+        copy_core::copy_matches_with("tmuxControl.kill.busRemoved", &[("ids", "p_cc")], said),
+        "{said}"
+    );
+    assert!(
+        copy_core::copy_matches_with("tmuxControl.kill.busFailed", &[("id", "r_cc")], said),
+        "{said}"
+    );
+    assert!(!said.contains("它不在"), "原话上了句子：{said}");
+    let detail = detail.as_str().unwrap();
+    assert!(detail.contains("r_cc: 它不在"), "{detail}");
+    // 没什么可说的 ⇒ 句子是 null、详情是空串（界面不出按钮）。
+    let quiet = reply("demo-cc", &crate::control::cc_bus::BusCleanup::default());
+    assert_eq!(quiet["bus"]["said"], serde_json::Value::Null);
+    assert_eq!(quiet["bus"]["detail"], "");
 }

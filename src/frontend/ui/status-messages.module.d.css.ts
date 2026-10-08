@@ -2,6 +2,7 @@
 declare const classes: {
   readonly smBox: string;
   readonly smChip: string;
+  readonly smDetail: string;
   readonly smDot: string;
   readonly smEmpty: string;
   readonly smHead: string;

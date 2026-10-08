@@ -368,6 +368,16 @@ describe("CP2a · 文案规范判据自己会不会死（正控）", () => {
     expect(run({ "a.b.c": { kind: "title", zh: "这台", args: [], waive: { "C-W17": "理由" } } }, {})).toMatch(/title 档不可豁免/);
   });
 
+  it("C-W18 句子里不许有原话 / 码：按占位符的语义判（原话型占位红，原因词 · 对象型不红；命令行豁免）", () => {
+    const run = (e: Entry): string | null => CHECKS["C-W18"](e, ctx);
+    expect(run({ kind: "error", zh: "结束 {target} 失败 · tmux 报 {e}", args: ["target", "e"] })).toMatch(/\{e\}/);
+    expect(run({ kind: "error", zh: "应答无法解析 · 「{reply}」", args: ["reply"] })).toMatch(/\{reply\}/);
+    expect(run({ kind: "error", zh: "进程退出 {st}", args: ["st"] })).toMatch(/\{st\}/);
+    expect(run({ kind: "body", zh: "后端报 {message}", args: ["message"] })).toMatch(/\{message\}/);
+    expect(run({ kind: "error", zh: "结束 {target} 失败 · {why}", args: ["target", "why"] })).toBeNull();
+    expect(run({ kind: "error", zh: "{e}", args: ["e"], role: "命令行" })).toBeNull();
+  });
+
   it("占位符名不算文字：{origin} 不会被术语表的 origin 禁词扫红", () => {
     expect(CHECKS["C-T1"]({ kind: "title", zh: "[{origin}] 预览", args: ["origin"] }, ctx)).toBeNull();
     expect(CHECKS["C-T1"]({ kind: "title", zh: "origin 预览", args: [] }, ctx)).not.toBeNull();

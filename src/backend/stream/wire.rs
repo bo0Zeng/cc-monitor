@@ -526,9 +526,12 @@ pub enum Frame {
         /// 失败时的码（协议级或命令级）。
         #[serde(skip_serializing_if = "Option::is_none")]
         code: Option<String>,
-        /// 失败时的原话。
+        /// 失败时给人看的那一句（不含下层原话与码：那些进 `detail`）。
         #[serde(skip_serializing_if = "Option::is_none")]
         message: Option<String>,
+        /// 失败时「复制详情」那几行（句子下面的「项名：值」：时刻 · 机器 · 命令 · 码 · 原话），后端写好、界面原样复制。成功时省略。
+        #[serde(skip_serializing_if = "Option::is_none")]
+        detail: Option<String>,
         /// U6b-3：命令的返回值（如 `resolve` 的 CommandPlan）。无返回值的命令省略。
         #[serde(skip_serializing_if = "Option::is_none")]
         data: Option<serde_json::Value>,
@@ -918,17 +921,19 @@ impl Frame {
             ok: true,
             code: None,
             message: None,
+            detail: None,
             data: None,
         }
     }
 
-    /// 失败应答：码 ＋ 一句话。
+    /// 协议级失败应答（还没落到哪条命令上）：码 ＋ 一句话 ＋ 详情。
     pub(crate) fn err(id: &str, code: &str, message: &str) -> Frame {
         Frame::Reply {
             id: id.to_string(),
             ok: false,
             code: Some(code.to_string()),
             message: Some(message.to_string()),
+            detail: Some(crate::stream::detail::of(None, code, None)),
             data: None,
         }
     }

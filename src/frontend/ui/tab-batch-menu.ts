@@ -83,7 +83,12 @@ export function sayBatch(action: string | ((done: number, failed: number) => str
   // toast 只说一句汇总；逐条原因进「消息」那一条，［查看］点了展开它。
   const made: { rec?: ToastRecord } = {};
   const view = lines.length > 0 ? { label: copyText("tabBatch.result.view"), run: () => made.rec && showMessage(made.rec), toastOnly: true } : undefined;
-  toast(head, "", { level: n("failed") > 0 ? "error" : "success", more: lines, action: view });
+  // 复制详情：失败那几个各一段（那一句 ＋ 那台写的详情），段间空一行；成功的不进（条带 §5.6）。
+  const detail = outcomes
+    .filter((o) => o.outcome === "failed" && o.detail)
+    .map((o) => `${o.why}\n${o.detail}`)
+    .join("\n\n");
+  toast(head, "", { level: n("failed") > 0 ? "error" : "success", more: lines, action: view, detail });
   made.rec = recentToasts()[0];
 }
 

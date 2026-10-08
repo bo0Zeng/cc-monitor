@@ -861,7 +861,7 @@ fn chrono_like_today_at(h: i64, m: i64) -> u64 {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_secs() as i64);
-    let off = crate::source::local_offset_at(now);
+    let off = host_core::local_offset_at(now);
     let day = (now + off).div_euclid(86_400) * 86_400;
     (day + h * 3600 + m * 60 - off) as u64
 }

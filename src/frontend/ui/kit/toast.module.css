@@ -97,4 +97,18 @@
     gap: var(--space-2);
     align-items: center;
   }
+
+  /* 带复制详情的出错：动作排在句子下面那一行（修法在前、复制详情在后），× 留右上。 */
+  .toastRow {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    align-items: center;
+    margin-top: var(--space-3);
+    margin-left: calc(-1 * var(--space-3));
+  }
+
+  .toast[data-layout="two"] > .toastActions {
+    align-self: flex-start;
+  }
 }

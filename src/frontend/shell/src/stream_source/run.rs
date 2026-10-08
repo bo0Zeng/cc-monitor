@@ -56,8 +56,9 @@ fn route_inbound_frame(
             ok,
             code,
             message,
+            detail,
             data,
-        } => c.route_reply(&id, ok, code, message, data),
+        } => c.route_reply(&id, ok, code, message, detail, data),
         InboundFrame::Cancelled { id } => c.route_cancelled(&id),
         _ => false,
     }

@@ -23,6 +23,7 @@ import { fetchList, type HistoryRow } from "../history-list-reads";
 import { isLocalOrigin, type Origin } from "../ipc/origin";
 import { button } from "../kit/button";
 import { banner } from "../kit/banner";
+import { detailOf } from "../kit/detail";
 import { icon } from "../kit/icon";
 import { tag } from "../kit/badge";
 import { MessageStream } from "../stream";
@@ -172,7 +173,7 @@ export class AgentWindow {
       const list = await fetchList(isLocalOrigin(this.origin) ? undefined : this.origin, { sid: this.sid });
       this.row = list.rows.find((r) => r.sessionId === this.sid) ?? null;
     } catch (e) {
-      this.say(copyText("sessionViewer.load.failed", { why: String(e) }));
+      this.say(copyText("sessionViewer.load.failed", { why: String(e) }), detailOf(e));
       return;
     }
     const row = this.row;
@@ -214,8 +215,9 @@ export class AgentWindow {
     return r.untitled ? copyText("history.row.untitled") : r.label;
   }
 
-  private say(text: string): void {
-    this.bannerEl.replaceChildren(banner("warn", text, []));
+  /** 顶上那一条；`detail`（出错那一端写的复制详情）非空 ⇒ 带［复制详情］。 */
+  private say(text: string, detail = ""): void {
+    this.bannerEl.replaceChildren(banner("warn", text, [], detail));
   }
 
   /** 从上次读到的地方续读；读到了新东西而人不在底部 ⇒ 底下出「↓ 新内容」。 */

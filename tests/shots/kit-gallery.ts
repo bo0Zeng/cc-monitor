@@ -4,6 +4,8 @@
  * - `kit-overview`：页内组件（按钮 · 输入 · 开关 · 分栏 · chip · 折叠 · 徽标 · 状态点 · 转圈 · 计量 · 错误条 · 空态）—— 只画产品真在用的组件。
  * - `kit-dialog`：「会打断什么」那一问 ＋ 危险确认 ＋ 填值框报错（各开一次，截最后那个）。
  * - `kit-float`：弹出菜单（子菜单展开 · 危险项 · 不可选）· 悬停提示 · toast 四种 ＋ 撤销 · 抽屉。
+ * - `kit-detail`：［复制详情］各态（默认 · 已复制 · 复制失败就地展开 · 窄 · 没有详情）＋ 错误条 · 行内 · 表单对话框里的那一颗。
+ * - `kit-detail-toast`：带详情的出错 toast（动作第二行）· 合流 ×N · 后端 ERROR 那条 · 没有详情的 toast 版式不变。
  */
 import { button, setBusy, setDisabled, buttonRow } from "../../src/frontend/ui/kit/button";
 import { field } from "../../src/frontend/ui/kit/field";
@@ -27,6 +29,9 @@ import { openMenu } from "../../src/frontend/ui/kit/menu";
 import { attachTooltip } from "../../src/frontend/ui/kit/tooltip";
 import { toast, undoToast } from "../../src/frontend/ui/kit/toast";
 import { openDrawer } from "../../src/frontend/ui/kit/drawer";
+import { copyDetailButton, sayWithDetail } from "../../src/frontend/ui/kit/detail";
+import { formDialog } from "../../src/frontend/ui/kit/dialog";
+import { StatusMessages } from "../../src/frontend/ui/status-messages";
 
 import type { ShotsHandle } from "./fake/types";
 
@@ -259,6 +264,124 @@ async function floats(): Promise<void> {
   await new Promise((r) => setTimeout(r, 300));
 }
 
+
+/** 合成的一份复制详情（出错那一端写的那几行）。 */
+const DETAIL = [
+  "时刻：2026-10-08 14:32:07 +08:00",
+  "机器：Linux x86_64 · 后端 p9k-flicker",
+  "本机：cc-monitor 4.1.5 (p9k-flicker) · Linux x86_64",
+  "命令：kill",
+  "码：kill_failed",
+  "原话：can't find window: orders-3:2",
+].join("\n");
+
+/** 「读取 cc-bus 无应答」那一条的复制详情（与它对得上：命令 bus-state · 码 child_timed_out）。 */
+const BUS_DETAIL = (at: string): string =>
+  [
+    `时刻：2026-10-08 ${at} +08:00`,
+    "机器：Linux x86_64 · 后端 p9k-flicker",
+    "本机：cc-monitor 4.1.5 (p9k-flicker) · Linux x86_64",
+    "命令：bus-state",
+    "码：child_timed_out",
+    "原话：cc-list did not exit within 8s; process group killed",
+  ].join("\n");
+
+/** 剪贴板换成写得进 / 写不进的那一份（各态要真点出来）。 */
+function clipboard(ok: boolean): void {
+  Object.defineProperty(navigator, "clipboard", {
+    configurable: true,
+    value: { writeText: () => (ok ? Promise.resolve() : Promise.reject(new Error("denied"))) },
+  });
+}
+
+async function details(): Promise<void> {
+  document.body.append(h("h1", "g-h1", "复制详情 · 各态"), h("p", "g-sub", "kit/detail.ts · 产品真组件 · 合成详情"));
+  const idle = copyDetailButton("结束 orders-3 失败 · tmux 报错", DETAIL)!;
+  const copied = copyDetailButton("结束 orders-3 失败 · tmux 报错", DETAIL)!;
+  const failHost = h("div");
+  failHost.style.width = "360px";
+  const failed = copyDetailButton("结束 orders-3 失败 · tmux 报错", DETAIL)!;
+  failHost.appendChild(failed);
+  const narrow = copyDetailButton("结束 orders-3 失败 · tmux 报错", DETAIL, { iconOnly: true })!;
+  const none = h("div", undefined, "端口限 1–65535（本地校验，没有详情 ⇒ 不出按钮）");
+  none.style.color = "var(--error)";
+  document.body.append(
+    section("按钮", "条带 §5.1", "g-cols4", [
+      ["默认", idle],
+      ["已复制 · 1.5 s 回默认", copied],
+      ["复制不了 · 就地展开全选", failHost],
+      ["窄 · 只剩图标", row(narrow, copyDetailButton("x", "") ?? none)],
+    ]),
+  );
+  const bannerHost = h("div");
+  bannerHost.style.width = "100%";
+  bannerHost.append(
+    banner("error", "读取 orders-3 画面失败 · 无运行中的 tmux", [button({ label: "刷新", size: "compact" })], DETAIL),
+  );
+  const narrowBanner = h("div");
+  narrowBanner.style.width = "340px";
+  narrowBanner.append(banner("error", "读取 orders-3 画面失败 · 无运行中的 tmux", [button({ label: "刷新", size: "compact" })], DETAIL));
+  const inline = h("div");
+  inline.style.color = "var(--error)";
+  sayWithDetail(inline, "读取 cc-bus 失败 · 后端报错", DETAIL);
+  document.body.append(
+    section("各面", "条带 §5.3", "g-cols2", [
+      ["区块顶错误条 · 修法 · 复制详情", bannerHost],
+      ["错误条 · 窄（按钮折到下一行）", narrowBanner],
+      ["行内 · 红字句子后面直接跟", inline],
+      ["没有详情的错误条 · 版式不变", banner("warn", "devbox 离线", [button({ label: "重连", size: "compact" })])],
+    ]),
+  );
+  clipboard(true);
+  copied.querySelector("button")!.click();
+  await new Promise((r) => setTimeout(r, 20));
+  clipboard(false);
+  failed.querySelector("button")!.click();
+  await new Promise((r) => setTimeout(r, 50));
+}
+
+async function detailDialog(): Promise<void> {
+  document.body.append(h("h1", "g-h1", "复制详情 · 表单对话框里提交没成"), stage(fakeRows(8)));
+  const body = h("div");
+  body.append(field({ label: "名称", value: "devbox" }).root, field({ label: "地址", value: "devbox.lan" }).root);
+  const handle = formDialog({
+    title: "添加机器",
+    action: "添加",
+    body,
+    submit: async () => ({ said: "添加 devbox 失败 · 磁盘满", detail: DETAIL }),
+  });
+  await new Promise((r) => setTimeout(r, 30));
+  handle.submit();
+  await new Promise((r) => setTimeout(r, 50));
+}
+
+async function detailToasts(): Promise<void> {
+  document.body.append(h("h1", "g-h1", "复制详情 · toast"), stage(fakeRows(12)));
+  clipboard(true);
+  toast("结束 orders 失败 · tmux 报错", "devbox", { detail: DETAIL, action: { label: "重试", run: () => {} } });
+  toast("读取 cc-bus 无应答", "devbox", { detail: BUS_DETAIL("14:50:01") });
+  toast("读取 cc-bus 无应答", "devbox", { detail: BUS_DETAIL("14:50:31") });
+  undoToast("已删除 devbox", () => {}, () => {});
+  await new Promise((r) => setTimeout(r, 300));
+}
+
+async function detailMessages(): Promise<void> {
+  document.body.append(h("h1", "g-h1", "复制详情 · 「消息」里那几条"), stage(fakeRows(6)));
+  clipboard(true);
+  toast("读取 cc-bus 无应答", "devbox", { detail: BUS_DETAIL("14:50:01") });
+  toast("读取 cc-bus 无应答", "devbox", { detail: BUS_DETAIL("14:50:31") });
+  toast("已删除 devbox", "", { level: "success" });
+  const m = new StatusMessages();
+  m.el.style.position = "fixed";
+  m.el.style.left = "40px";
+  m.el.style.top = "240px";
+  document.body.appendChild(m.el);
+  m.el.querySelector<HTMLElement>('[data-role="status-messages"]')?.click();
+  await new Promise((r) => setTimeout(r, 50));
+  [...document.querySelectorAll("button")].find((b) => b.textContent === "详情")?.click();
+  await new Promise((r) => setTimeout(r, 100));
+}
+
 const scene = new URLSearchParams(location.search).get("scene") ?? "kit-overview";
 const run: Record<string, () => void | Promise<void>> = {
   "kit-overview": overview,
@@ -266,6 +389,10 @@ const run: Record<string, () => void | Promise<void>> = {
   "kit-dialog-text": dialogText,
   "kit-dialog-danger": dialogDanger,
   "kit-float": floats,
+  "kit-detail": details,
+  "kit-detail-dialog": detailDialog,
+  "kit-detail-toast": detailToasts,
+  "kit-detail-messages": detailMessages,
 };
 window.__shots = { state: "booting", error: null, unhandled: [], layout: [] } satisfies ShotsHandle;
 Promise.resolve(run[scene]?.())

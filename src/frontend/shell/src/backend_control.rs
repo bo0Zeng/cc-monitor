@@ -4,6 +4,7 @@
 //! （那两样住 `stream_source` 与 `local_backend_host`）。远端怎么起，由 `lib.rs` 在启动时注册一个重起闭包，本层只按 origin 找把手。
 
 use crate::copy_table::copy_text;
+use crate::detail::Said;
 use std::collections::HashMap;
 use std::sync::Mutex;
 
@@ -112,7 +113,7 @@ fn check_origin(origin: &str) -> Result<(), String> {
 /// 开关面该列哪几台机 —— 由后端的注册表说了算，前端只负责画：前端自己拼清单会在 trim · 重复 label 的后缀化（`"pi" → "pi (#2)"`）·
 /// 远端总开关 · 启动之后新增的机器上与注册表分叉。本机（`<local>`）永远在第一行 —— 它只是不走 ssh 的那一台。
 #[tauri::command]
-pub fn backend_machines() -> Result<Vec<String>, String> {
+pub fn backend_machines() -> Result<Vec<String>, Said> {
     let mut out = vec![LOCAL_ORIGIN.to_string()];
     let g = remotes()
         .lock()
@@ -127,10 +128,12 @@ pub fn backend_machines() -> Result<Vec<String>, String> {
 /// `pid` / `attempts` 只有本机有（远端的进程在别人机器上）—— 天然不对称，所以它们是 `null`。
 /// `async`（`INVARIANTS §10`）：本机那一支要拿句柄表的锁，进 `spawn_blocking` —— 读锁这一下不许落在 IPC 派发线程上。
 #[tauri::command]
-pub async fn backend_status(origin: String) -> Result<serde_json::Value, String> {
-    tauri::async_runtime::spawn_blocking(move || backend_status_now(origin))
-        .await
-        .map_err(|e| e.to_string())?
+pub async fn backend_status(origin: String) -> Result<serde_json::Value, Said> {
+    Ok(
+        tauri::async_runtime::spawn_blocking(move || backend_status_now(origin))
+            .await
+            .map_err(|e| e.to_string())??,
+    )
 }
 
 /// [`backend_status`] 的本体。
@@ -190,11 +193,11 @@ pub(crate) fn machine_product(origin: &str, channel: bool) -> crate::machine_sta
 /// `async`（`INVARIANTS §10`）：本机那一支（`start_local_backend`）一路会起进程、连本机后端口、读 hello、`sleep` 等它绑上口 ⇒ 进 `spawn_blocking`；
 /// 远端那一支只是换一个流任务的把手，不等任何东西，就地做。判据 `sync_command_registry_tests`。
 #[tauri::command]
-pub async fn backend_start(origin: String) -> Result<String, String> {
+pub async fn backend_start(origin: String) -> Result<String, Said> {
     check_origin(&origin)?;
     if is_local(&origin) {
         // 失败要回 `Err`：「没内嵌后端」「释放失败」是真失败，要弹出来。
-        return tauri::async_runtime::spawn_blocking(|| {
+        return Ok(tauri::async_runtime::spawn_blocking(|| {
             use crate::local_backend_host::StartOutcome;
             match crate::local_backend_host::start_local_backend() {
                 StartOutcome::Started(p) => Ok(format!("已起：{}", p.display())),
@@ -211,7 +214,7 @@ pub async fn backend_start(origin: String) -> Result<String, String> {
             }
         })
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string())??);
     }
     let mut g = remotes()
         .lock()
@@ -240,12 +243,13 @@ pub async fn backend_start(origin: String) -> Result<String, String> {
 /// 这里只发一次、拿回结局 `{stopped: graceful | killed | not_running, pid}`，机器页按它说一句。
 /// 远端先 `abort()` 那条流再发（不能请它自己经那条流停自己）。本机那一支会等到结局 ⇒ 等的那一段进阻塞线程池。
 #[tauri::command]
-pub async fn backend_stop(origin: String) -> Result<crate::remote_resident::StopAnswer, String> {
+pub async fn backend_stop(origin: String) -> Result<crate::remote_resident::StopAnswer, Said> {
     check_origin(&origin)?;
     if is_local(&origin) {
         return tauri::async_runtime::spawn_blocking(crate::local_backend_host::stop_local_backend)
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| e.to_string())?
+            .map_err(Said::from);
     }
     {
         let mut g = remotes()
@@ -261,7 +265,7 @@ pub async fn backend_stop(origin: String) -> Result<crate::remote_resident::Stop
             h.abort();
         }
     }
-    stop_remote_resident(&origin).await
+    Ok(stop_remote_resident(&origin).await?)
 }
 
 /// 停那台的常驻后端（`--resident-stop`，经链路在那台跑）。只由 [`backend_stop`] 在分过本机之后调。

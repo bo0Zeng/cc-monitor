@@ -1153,3 +1153,83 @@ async fn cancelling_an_unknown_id_is_idempotent_not_an_error() {
         "{out:?}"
     );
 }
+
+/// 复制详情：失败应答多一格 `detail`（句子下面那几行「项名：值」），句子那一格不变。
+/// 协议级失败（命令认不出）带时刻 · 机器 · 码；处理器回的失败另带命令名。
+#[tokio::test]
+async fn a_failed_reply_carries_a_detail_with_the_facts_below_the_sentence() {
+    let out =
+        one_line("{\"id\":\"a\",\"cmd\":\"rm-rf\"}\n{\"id\":\"b\",\"cmd\":\"kill\",\"args\":{}}\n")
+            .await;
+    let reply = |id: &str| -> serde_json::Value {
+        let l = out
+            .iter()
+            .find(|l| l.contains(&format!("\"id\":\"{id}\"")))
+            .unwrap_or_else(|| panic!("{id} 没回：{out:?}"));
+        serde_json::from_str(l).unwrap()
+    };
+    for (id, code) in [("a", "unknown_command"), ("b", "bad_args")] {
+        let r = reply(id);
+        let detail = r["detail"]
+            .as_str()
+            .unwrap_or_else(|| panic!("{id} 无 detail：{r}"));
+        let label = |k: &str| copy_core::copy_text(k, &[]);
+        assert!(
+            detail.starts_with(&format!("{}：", label("detail.label.at"))),
+            "{detail}"
+        );
+        assert!(
+            detail.contains(&format!("\n{}：{code}", label("detail.label.code"))),
+            "{detail}"
+        );
+        assert!(
+            detail.contains(&format!("\n{}：", label("detail.label.machine"))),
+            "{detail}"
+        );
+        assert!(
+            !r["message"].as_str().unwrap().contains(code),
+            "码进了句子：{r}"
+        );
+    }
+    let b = reply("b");
+    assert!(
+        b["detail"].as_str().unwrap().contains(&format!(
+            "{}：kill",
+            copy_core::copy_text("detail.label.command", &[])
+        )),
+        "{b}"
+    );
+}
+
+/// 有「码 → 句」表的命令被拒：句子换成表里那一句，处理器原来那句（带下层原话）进复制详情的原话那一项。
+#[test]
+fn the_handlers_own_sentence_moves_into_the_detail_raw_line() {
+    let f = Fail::from((
+        "kill_failed".to_string(),
+        "tmux: can't find window: demo-cc:2".to_string(),
+    ));
+    let crate::stream::wire::Frame::Reply {
+        message, detail, ..
+    } = f.into_reply(
+        "i".into(),
+        "kill",
+        &serde_json::json!({ "name": "demo-cc" }),
+    )
+    else {
+        panic!("不是应答帧");
+    };
+    let message = message.unwrap();
+    let detail = detail.unwrap();
+    assert_eq!(
+        message,
+        copy_core::copy_text("tmuxControl.kill.failed", &[("target", "demo-cc")])
+    );
+    assert!(!message.contains("can't find window"), "{message}");
+    assert!(
+        detail.contains(&format!(
+            "{}：tmux: can't find window: demo-cc:2",
+            copy_core::copy_text("detail.label.raw", &[])
+        )),
+        "{detail}"
+    );
+}

@@ -11,6 +11,7 @@ import { copyText } from "../copy-table";
 import { fold, setFoldSummary } from "../kit/fold";
 import { readContextLimits, type ContextLimitOverrides } from "../views/context-limit";
 import { SETTINGS_APPLIED_EVENT } from "./events";
+import { detailOf, sayWithDetail } from "../kit/detail";
 
 /** 纯函数：覆盖表 ⇒ 文本框里的几行。 */
 export function limitsToText(t: ContextLimitOverrides): string {
@@ -85,7 +86,7 @@ export class ContextLimitsSection {
       this.box.value = limitsToText(t);
       this.paintCount(t);
     } catch (e) {
-      this.status.textContent = copyText("contextLimits.editor.loadFailed", { e: String(e) });
+      sayWithDetail(this.status, copyText("contextLimits.editor.loadFailed", { e: String(e) }), detailOf(e));
     }
   }
 
@@ -102,7 +103,7 @@ export class ContextLimitsSection {
       this.paintCount(parsed.ok);
       emit(SETTINGS_APPLIED_EVENT).catch((e: unknown) => console.warn("[context-limits] 通知不到主窗口：", e));
     } catch (e) {
-      this.status.textContent = copyText("contextLimits.editor.saveFailed", { e: String(e) });
+      sayWithDetail(this.status, copyText("contextLimits.editor.saveFailed", { e: String(e) }), detailOf(e));
     }
   }
 }
