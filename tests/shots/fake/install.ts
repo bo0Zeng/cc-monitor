@@ -8,6 +8,7 @@ import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { emit } from "@tauri-apps/api/event";
 import { FakeBackend } from "./backend";
 import { DEFAULT_STORAGE, sceneById } from "../scenes";
+import { layoutProblems } from "../scenes/layout-check";
 import type { ShotsHandle } from "./types";
 import { __setHostOsForTests } from "../../../src/frontend/ui/settings/host-os";
 
@@ -38,6 +39,7 @@ const handle: ShotsHandle = {
   state: "booting",
   error: null,
   unhandled: backend.unhandled,
+  layout: [],
 };
 window.__shots = handle;
 
@@ -45,6 +47,9 @@ window.addEventListener("DOMContentLoaded", () => {
   void (async () => {
     try {
       await scene.act({ backend });
+      // 让过渡动画落定再量（浮层出现 160ms 上移 4px）。
+      await new Promise((r) => setTimeout(r, 250));
+      handle.layout = layoutProblems();
       handle.state = "done";
     } catch (e) {
       handle.error = e instanceof Error ? `${e.message}\n${e.stack ?? ""}` : String(e);

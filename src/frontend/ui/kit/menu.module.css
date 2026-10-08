@@ -25,16 +25,12 @@
     }
   }
 
+  /* 子菜单：位置由 `place.ts` 算好写成相对那一项的偏移（右边放不下翻左、底下放不下往上收）。 */
   .menu[data-sub="true"] {
     position: absolute;
     top: calc(-1 * var(--space-2));
     left: 100%;
     visibility: hidden;
-  }
-
-  .menu[data-sub="true"][data-flip="true"] {
-    right: 100%;
-    left: auto;
   }
 
   .menuWrap {

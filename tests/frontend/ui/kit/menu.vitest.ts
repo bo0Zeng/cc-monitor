@@ -7,11 +7,11 @@ import {
   menuGeneration,
   menuOpen,
   openMenu,
-  placeAt,
   removeMenuItem,
   updateMenuItem,
 } from "../../../../src/frontend/ui/kit/menu";
 import { dispatcher } from "../../../../src/frontend/ui/keybindings/registry";
+import { placeFloat } from "../../../../src/frontend/ui/kit/place";
 
 const menus = (): HTMLElement[] => [...document.querySelectorAll<HTMLElement>('body > [role="menu"]')];
 const items = (): HTMLButtonElement[] => [...(menus()[0]?.querySelectorAll<HTMLButtonElement>(':scope > [role^="menuitem"]') ?? [])];
@@ -31,9 +31,10 @@ afterEach(() => {
 
 describe("C12 弹出菜单", () => {
   it("躲窗口边：靠右靠下放不下 ⇒ 往左往上翻；比窗口还大 ⇒ 贴边内缩 8px", () => {
-    expect(placeAt(10, 10, 100, 50, 800, 600)).toEqual({ left: 10, top: 10 });
-    expect(placeAt(780, 590, 100, 50, 800, 600)).toEqual({ left: 680, top: 540 });
-    expect(placeAt(5, 5, 900, 700, 800, 600)).toEqual({ left: 8, top: 8 });
+    const view = { width: 800, height: 600 };
+    expect(placeFloat({ x: 10, y: 10 }, { width: 100, height: 50 }, view)).toEqual({ left: 10, top: 10 });
+    expect(placeFloat({ x: 780, y: 590 }, { width: 100, height: 50 }, view)).toEqual({ left: 680, top: 540 });
+    expect(placeFloat({ x: 5, y: 5 }, { width: 900, height: 700 }, view)).toEqual({ left: 8, top: 8 });
   });
 
   it("选了一项：做它、菜单关；危险项 data-variant；不可选的 disabled ＋ 说为什么、点了不做", () => {

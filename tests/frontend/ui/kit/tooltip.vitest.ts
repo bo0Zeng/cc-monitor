@@ -13,8 +13,13 @@
  */
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import { makeInfoIcon } from "../../../../src/frontend/ui/settings/info-icon";
-import { attachTooltip, CARD_CLOSE_MS, delegateTooltip, hideTooltips, __liveTooltipCountForTests, placeCardRight, placeTip, TOOLTIP_DELAY_MS } from "../../../../src/frontend/ui/kit/tooltip";
+import { attachTooltip, CARD_CLOSE_MS, delegateTooltip, hideTooltips, __liveTooltipCountForTests, TOOLTIP_DELAY_MS } from "../../../../src/frontend/ui/kit/tooltip";
 import { closeMenu, openMenu } from "../../../../src/frontend/ui/kit/menu";
+import { placeFloat } from "../../../../src/frontend/ui/kit/place";
+
+/** 悬停提示的两种摆法（`tooltip.ts` 的 PLACEMENT 表）：上方居中 · 卡式右侧顶对齐，间距 6。 */
+const placeTip = (host: DOMRect, tip: { width: number; height: number }, view: { width: number; height: number }) => placeFloat({ rect: host, side: "above", align: "center", gap: 6 }, tip, view);
+const placeCardRight = (host: DOMRect, tip: { width: number; height: number }, view: { width: number; height: number }) => placeFloat({ rect: host, side: "right", align: "start", gap: 6 }, tip, view);
 
 const tipsInBody = () => document.querySelectorAll('[role="tooltip"]').length;
 const hover = (el: HTMLElement) => el.dispatchEvent(new Event("mouseenter"));
@@ -156,11 +161,11 @@ describe("C20：出现时机与摆法", () => {
     expect(right.left).toBe(300 - 8 - 100);
   });
 
-  it("卡式锚在宿主右侧、顶对齐；右边放不下翻到左侧；上下夹进视口", () => {
+  it("卡式锚在宿主右侧、顶对齐；右边放不下翻到左侧；下面放不下 ⇒ 改底端对齐宿主", () => {
     const host = { left: 0, top: 100, width: 260, height: 30, right: 260, bottom: 130 } as DOMRect;
     expect(placeCardRight(host, { width: 300, height: 200 }, { width: 1280, height: 800 })).toEqual({ left: 266, top: 100 });
     expect(placeCardRight({ ...host, left: 1000, right: 1260 } as DOMRect, { width: 300, height: 200 }, { width: 1280, height: 800 }).left).toBe(1000 - 6 - 300);
-    expect(placeCardRight({ ...host, top: 700, bottom: 730 } as DOMRect, { width: 300, height: 200 }, { width: 1280, height: 800 }).top).toBe(800 - 8 - 200);
+    expect(placeCardRight({ ...host, top: 700, bottom: 730 } as DOMRect, { width: 300, height: 200 }, { width: 1280, height: 800 }).top).toBe(730 - 200);
   });
 
   it("★ 卡式（hold）：离开宿主不立刻关 —— 指针移进卡里留着；离开宿主与卡 120ms 才关", () => {

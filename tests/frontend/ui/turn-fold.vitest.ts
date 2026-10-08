@@ -4,7 +4,10 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { TurnFold, PROC_LINE_CLASS, setProcessExpandedDefault } from "../../../src/frontend/ui/turn-fold";
 import { TurnRail, railGroups, RAIL_MAX_TICKS } from "../../../src/frontend/ui/turn-rail";
-import { placeCardLeft } from "../../../src/frontend/ui/kit/tooltip";
+import { placeFloat } from "../../../src/frontend/ui/kit/place";
+
+/** 轮次刻度的悬停卡：左侧、竖直居中、间距 6（`tooltip.ts` 的 PLACEMENT 表）。 */
+const placeCardLeft = (host: DOMRect, tip: { width: number; height: number }, view: { width: number; height: number }) => placeFloat({ rect: host, side: "left", align: "center", gap: 6 }, tip, view);
 import type { TurnSummary, TurnsResult } from "../../../src/frontend/ui/session-reads";
 import { renderContentRecord, type StreamSink } from "../../../src/frontend/ui/render-stream-record";
 import { RecordTimeline } from "../../../src/frontend/ui/record-timeline";

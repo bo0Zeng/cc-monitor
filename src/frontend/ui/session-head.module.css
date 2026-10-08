@@ -1,4 +1,5 @@
-/* 会话头：40 高 · `--bg` 底 · 下边一道细线；窄时先藏目录、再藏状态一句，标题至少留 160px。 */
+/* 会话头：40 高 · `--bg` 底 · 下边一道细线；窄时先藏目录、再藏状态一句，标题至少留 160px。
+   左边每段文字都单行、放不下省略、能缩到 0；右边两组按钮不缩 —— 文字再长也压不到按钮（10-08）。 */
 @layer components {
   .shHead {
     container-type: inline-size;
@@ -24,19 +25,30 @@
   .shWhere,
   .shDir,
   .shState {
+    min-width: 0;
+    overflow: hidden;
     color: var(--text-2);
     font-size: var(--font-size-small);
+    text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  /* 机器名与状态一句不缩（缩一点点省略号就吃掉字）：标题先让；机器名再长也只占 12 个字宽，
+     更窄时（状态一句已藏）它才跟着缩，不把右边的按钮挤出去。 */
+  .shWhere,
+  .shState {
+    flex-shrink: 0;
+  }
+
+  .shWhere {
+    max-width: 12em;
   }
 
   .shDir {
     /* 窄了先缩目录（标题留着）。 */
     flex: 0 4 auto;
-    min-width: 0;
-    overflow: hidden;
     font-family: var(--font-mono);
     font-size: var(--font-size-xs);
-    text-overflow: ellipsis;
   }
 
   .shDir::before,
@@ -95,6 +107,12 @@
   @container (width < 480px) {
     .shState {
       display: none;
+    }
+  }
+
+  @container (width < 400px) {
+    .shWhere {
+      flex-shrink: 1;
     }
   }
 }

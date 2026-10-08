@@ -90,6 +90,8 @@ export interface ShotsHandle {
   state: "booting" | "done" | "failed";
   error: string | null;
   unhandled: string[];
+  /** 截之前量 DOM 外接框发现的排版问题（`scenes/layout-check.ts`）。 */
+  layout: string[];
 }
 
 export interface SceneCtx {

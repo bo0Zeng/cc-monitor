@@ -1,7 +1,7 @@
 /**
  * 弹出菜单（C12）：全产品一个实现 —— 右键菜单、按钮下拉、选主机、选账号都走它。定位、关法、键盘、压进 Esc 栈都在这里。
  *
- * - 锚在一点（右键）或一个触发物（按钮）上；躲窗口边：放不下就翻到另一侧，翻过去还放不下贴边内缩 8px。
+ * - 锚在一点（右键）或一个触发物（按钮）上；摆在哪由 `place.ts` 那一处算（躲窗口边：放不下就翻到另一侧，贴边内缩 8px）。
  * - 关法：Esc（弹层栈，一次只关最上一层）· 点外面 · 再点触发物 · 选了一项。同一时刻只开一个。
  * - 键盘：↑↓ 走（跳过不可选）、Enter / 空格选、→ 开子菜单、← 收、Home / End 到两头；先判输入法组字。
  * - 项：28 高、图标 16、右侧键位；危险项红字放最后一组；不可选的灰着、悬停说为什么；有子菜单的悬停 150ms 展开、离开 250ms 收起。
@@ -12,6 +12,7 @@ import { icon, type IconName } from "./icon";
 import s from "./menu.module.css";
 import { hideTooltips } from "./tooltip";
 import { spinner } from "./progress";
+import { EDGE, placeBeside, placeFloat, putAt, type Box } from "./place";
 
 export interface MenuItem {
   id?: string;
@@ -61,9 +62,10 @@ interface Open {
   layer: OverlayHandle;
   timers: ReturnType<typeof setTimeout>[];
   onClose?: () => void;
+  /** 上次量到的触发物外接框（开着时触发物被重画掉 ⇒ 重排用它）。 */
+  anchorBox: Box | null;
 }
 
-const EDGE = 8;
 const OPEN_SUB_MS = 150;
 const CLOSE_SUB_MS = 250;
 
@@ -87,32 +89,13 @@ export function menuAnchoredOn(el: HTMLElement): boolean {
   return current !== null && "el" in current.anchor && current.anchor.el === el;
 }
 
-/** 纯函数：在 (x, y) 处放一块 w×h，躲开视口边。 */
-export function placeAt(x: number, y: number, w: number, h: number, vw: number, vh: number): { left: number; top: number } {
-  const fits = (at: number, size: number, room: number): boolean => at + size <= room - EDGE;
-  let left = fits(x, w, vw) ? x : x - w;
-  let top = fits(y, h, vh) ? y : y - h;
-  left = Math.max(EDGE, Math.min(left, vw - EDGE - w));
-  top = Math.max(EDGE, Math.min(top, vh - EDGE - h));
-  return { left, top };
-}
-
 function place(o: Open): void {
-  const { width, height } = o.root.getBoundingClientRect();
-  let x: number;
-  let y: number;
   if ("el" in o.anchor) {
-    const r = o.anchor.el.getBoundingClientRect();
-    x = o.anchor.align === "end" ? r.right - width : r.left;
-    y = r.bottom + 4;
-    if (y + height > window.innerHeight - EDGE) y = r.top - 4 - height;
-  } else {
-    x = o.anchor.x;
-    y = o.anchor.y;
+    o.anchorBox = placeBeside(o.root, o.anchor.el, { side: "below", align: o.anchor.align ?? "start", gap: 4 }, o.anchorBox);
+    return;
   }
-  const at = placeAt(x, y, width, height, window.innerWidth, window.innerHeight);
-  o.root.style.left = `${at.left}px`;
-  o.root.style.top = `${at.top}px`;
+  const { width, height } = o.root.getBoundingClientRect();
+  putAt(o.root, placeFloat(o.anchor, { width, height }, { width: window.innerWidth, height: window.innerHeight }));
 }
 
 function focusables(panel: HTMLElement): HTMLButtonElement[] {
@@ -205,10 +188,7 @@ function makeItem(o: Open, it: MenuItem): HTMLElement {
     };
     const openSub = (focusFirst: boolean): void => {
       clear();
-      const r = wrap.getBoundingClientRect();
-      const w = fly.getBoundingClientRect().width || 160;
-      if (r.right + w > window.innerWidth - EDGE) fly.dataset.flip = "true";
-      else delete fly.dataset.flip;
+      placeSub(wrap, fly);
       wrap.dataset.subOpen = "true";
       btn.setAttribute("aria-expanded", "true");
       if (focusFirst) focusables(fly)[0]?.focus();
@@ -271,6 +251,18 @@ function makeItem(o: Open, it: MenuItem): HTMLElement {
     });
   }
   return btn;
+}
+
+/**
+ * 子菜单摆在那一项右侧、顶对齐（往上让出面板内边距）；右边放不下翻左侧、底下放不下往上收 —— 同一处算出视口坐标，
+ * 再写成相对那一项（`position: absolute` 的包）的偏移。没展开时量不到宽 ⇒ 按 160 算。
+ */
+function placeSub(wrap: HTMLElement, fly: HTMLElement): void {
+  const r = wrap.getBoundingClientRect();
+  const size = fly.getBoundingClientRect();
+  const pad = parseFloat(getComputedStyle(fly).paddingTop) || 0;
+  const at = placeFloat({ rect: { left: r.left, right: r.right, top: r.top - pad, bottom: r.bottom }, side: "right", align: "start", gap: 0 }, { width: size.width || 160, height: size.height }, { width: window.innerWidth, height: window.innerHeight });
+  putAt(fly, { left: at.left - r.left, top: at.top - r.top });
 }
 
 /** 单选组里勾挪到这一项（同一层、同组名的其余几项去勾）。 */
@@ -339,7 +331,7 @@ export function openMenu(anchor: MenuAnchor, items: MenuItem[], opts: { onClose?
       return true;
     },
   };
-  const o: Open = { root, anchor, items: new Map(), layer, timers: [], onClose: opts.onClose };
+  const o: Open = { root, anchor, items: new Map(), layer, timers: [], onClose: opts.onClose, anchorBox: null };
   current = o;
   for (const it of items) {
     const el = makeItem(o, it);

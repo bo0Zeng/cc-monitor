@@ -267,7 +267,7 @@ const run: Record<string, () => void | Promise<void>> = {
   "kit-dialog-danger": dialogDanger,
   "kit-float": floats,
 };
-window.__shots = { state: "booting", error: null, unhandled: [] } satisfies ShotsHandle;
+window.__shots = { state: "booting", error: null, unhandled: [], layout: [] } satisfies ShotsHandle;
 Promise.resolve(run[scene]?.())
   .then(() => (window.__shots!.state = "done"))
   .catch((e: unknown) => {

@@ -6,7 +6,7 @@ import type { Scene } from "./index";
 import type { World } from "../fake/types";
 import { Convo } from "../fake/records";
 import { answerConvo, defaultWorld, LOCAL, session } from "../fake/world";
-import { mainReady, openTab, rightClick, scrollStream, sleep, waitFor } from "./helpers";
+import { click, hover, mainReady, openTab, rightClick, scrollStream, sleep, waitFor } from "./helpers";
 
 const W = 1280;
 const H = 800;
@@ -198,6 +198,30 @@ function oddCardsWorld(): World {
   return w;
 }
 
+/** 两个超长标题：中英混排带空格的一个、无空格长串一个（停在哪个由场景定）。 */
+const LONG_MIXED = "把订单服务的重试与超时配置统一改成从环境变量读取 refactor retry and timeout config loading across all services";
+const LONG_NOSPACE = "refactor_inventory_client_retry_timeout_config_loader_and_backoff_strategy_for_all_regions_v2";
+
+function longTitleWorld(): World {
+  const w = defaultWorld();
+  w.sessions[0].records.push({ type: "ai-title", aiTitle: LONG_MIXED, sessionId: w.sessions[0].sid } as never);
+  w.sessions[1].records.push({ type: "ai-title", aiTitle: LONG_NOSPACE, sessionId: w.sessions[1].sid } as never);
+  w.sessions[2].records.push({ type: "ai-title", aiTitle: LONG_MIXED, sessionId: w.sessions[2].sid } as never);
+  return w;
+}
+
+/** 超长标题那几张：装成 Windows 上的（会话头多一颗 ↗）；`tab` ＝ 停在第几个标签页。 */
+function longTitle(id: string, title: string, desc: string, width: number, height: number, tab = 0, after?: () => Promise<void>): Scene {
+  return {
+    ...main(id, title, desc, async () => {
+      await mainReady(ALL_TABS);
+      if (tab > 0) await openTab(tab);
+      await after?.();
+    }, longTitleWorld, [width, height]),
+    hostOs: "windows",
+  };
+}
+
 export const MAIN_SCENES: Scene[] = [
   main("main-default", "主窗口 · 默认", "本机 3 个、远端 4 个会话；停在第一个会话（在跑、2 个子 agent、4 条任务）的底部", async () => {
     await mainReady(ALL_TABS);
@@ -374,6 +398,26 @@ export const MAIN_SCENES: Scene[] = [
     await mainReady(ALL_TABS);
     await sleep(600);
   }, oldBackendWorld),
+  main("main-head-menu-after-tab", "主窗口 · 点标签页之后开会话头「⋯」", "先点第二个标签页、再点会话头右上角「⋯」：菜单贴在「⋯」下方、右端对齐（排版量具核对）", async () => {
+    await mainReady(ALL_TABS);
+    await openTab(1);
+    await click(await waitFor<HTMLElement>("#session-head button:has([data-icon='more'])"));
+    await sleep(400);
+  }),
+  longTitle("main-long-title", "主窗口 · 超长标题", "中英混排的超长标题在会话头与标签页里：单行省略，右侧按钮（↗ 等）宽度不变、不被压（排版量具核对）", W, H),
+  longTitle("main-long-title-narrow", "窄窗口 · 超长标题", "窗口 900×640、无空格的超长标题：会话头先藏目录与状态一句，标题省略，按钮不被压", 900, 640, 1),
+  longTitle("main-long-title-tight", "更窄 · 超长标题 · 已结束", "窗口 760×560、已结束的会话（多一颗［恢复 ▾］）：标题省略、机器名与状态一句也能缩，按钮一颗不少、不被压", 760, 560, 2, async () => {
+    document.querySelector<HTMLElement>("#tab-bar .tab.active")!.blur();
+  }),
+  longTitle("main-long-title-tab-acts", "主窗口 · 超长标题的标签页亮出行尾按钮", "当前标签页（超长标题）获得焦点：行尾按钮（目录 · ↗ · ⋯）盖在标题尾巴上，底色不透、标题字不透出来", W, H, 0, async () => {
+    document.querySelector<HTMLElement>("#tab-bar .tab.active")!.focus();
+    await sleep(300);
+  }),
+  longTitle("main-long-title-hover", "主窗口 · 超长标题悬停", "悬停会话头那个被省略的标题：提示给全称", W, H, 0, async () => {
+    const t = document.querySelector<HTMLElement>("#session-head > span:nth-child(2)")!;
+    await hover(t);
+    await sleep(700);
+  }),
   main("main-narrow", "主窗口 · 窄窗口", "窗口 900×640：tab 栏与状态栏挤一挤的样子", async () => {
     await mainReady(ALL_TABS);
   }, defaultWorld, [900, 640]),

@@ -1,6 +1,7 @@
 /**
  * 设置窗：各页、机器的各子页、各种状态。
  */
+import { copyText } from "../../../src/frontend/ui/copy-table";
 import type { Scene } from "./index";
 import type { World } from "../fake/types";
 import { defaultWorld } from "../fake/world";
@@ -146,7 +147,7 @@ export const SETTINGS_SCENES: Scene[] = [
   }),
   settings("settings-stop-interrupts", "设置 · 停止前问会打断什么", "devbox「这台上的 cc-monitor」点［停止…］：中断几项 · 保留会话照跑", async () => {
     await go("machine:devbox");
-    await click(await byText(".settings-page:not([hidden]) button", "这台上的 cc-monitor"));
+    await click(await byText(".settings-page:not([hidden]) button", copyText("machinePage.cc.title")));
     await sleep(500);
     await click(await byText(".settings-page:not([hidden]) button", "停止…"));
     await sleep(800);
@@ -247,12 +248,12 @@ export const SETTINGS_SCENES: Scene[] = [
   }),
   settings("settings-machine-cc", "设置 · 远端 · 这台上的 cc-monitor", "devbox 卡头里展开「这台上的 cc-monitor」", async () => {
     await go("machine:devbox");
-    await click(await byText(".settings-page:not([hidden]) button", "这台上的 cc-monitor"));
+    await click(await byText(".settings-page:not([hidden]) button", copyText("machinePage.cc.title")));
     await sleep(800);
   }),
   settings("settings-machine-local-cc", "设置 · 本机 · 这台上的 cc-monitor", "本机卡头里展开「这台上的 cc-monitor」：状态 · 随退出停止 · 恢复命令（仅本机 · 留空 = 通用设置）", async () => {
     await go("machine:（本机）");
-    await click(await byText(".settings-page:not([hidden]) button", "这台上的 cc-monitor"));
+    await click(await byText(".settings-page:not([hidden]) button", copyText("machinePage.cc.title")));
     await sleep(800);
   }),
   settings("settings-logs-restart", "设置 · 日志 · 改了要重启", "日志页拨「日志写入文件」：行内「重启 cc-monitor 后生效」＋ 顶上那条", async () => {
