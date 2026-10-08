@@ -104,7 +104,6 @@ const UNUSED_TOKENS: Readonly<Record<string, string>> = {
   // 消费者要等到那些控件下一次被动到时才自然接上 ⇒ 预留是刻意的，不是腐。
   // 规范 V1–V12 新立的令牌里，通用组件还没接上的（组件件落地一个摘一个）。
   "--dur-float-out": NEW_TOKEN,
-  "--space-8": NEW_TOKEN,
 } as const;
 
 describe("S30 ⓪ 量具自检（这几条不过，下面三格全是空转）", () => {
