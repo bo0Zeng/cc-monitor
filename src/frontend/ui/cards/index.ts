@@ -987,7 +987,7 @@ function buildResultBody(
   const btnMd = document.createElement("button");
   btnMd.type = "button";
   btnMd.className = "block-result-mode";
-  btnMd.textContent = "Markdown";
+  btnMd.textContent = copyText("cards.result.markdown");
   btnMd.title = copyText("cards.result.markdownHint");
 
   toolbar.append(btnText, btnMd);

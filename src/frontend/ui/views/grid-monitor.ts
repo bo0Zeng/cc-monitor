@@ -287,6 +287,7 @@ export class GridMonitorView {
     dispatcher.pushOverlay(this);
     this.render();
     // overlay 开着时 1Hz 轮询快照重渲染（快照纯内存、N 会话小 DOM，成本可忽略）。
+    // 调度：钟 —— 浮层开着时每秒按格重画（只读内存快照、不取数），关浮层即清
     this.timer = setInterval(() => this.render(), 1000);
   }
 

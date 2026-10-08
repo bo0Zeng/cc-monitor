@@ -408,14 +408,6 @@ const SCHEDULING_KINDS: &[&str] = &[
 /// 标记的写法（行注释开头）。
 const SCHEDULING_MARK: &str = "// 调度：";
 
-/// **还没就地标记的**那几份（别的路正在改它们，合了再补标记、删行）：`(路径, API, 处数, 这几处是什么)`。
-/// 处数变了就是该重新分类的时刻；那份文件标上了 ⇒ 删那一行。
-const SCHEDULING_SITES: &[(&str, &str, usize, &str)] = &[
-    ("src/frontend/ui/tabs.ts", "requestAnimationFrame", 2, "原 ① `fillAbove` 批末复检搬去了 `tab-stream-view.ts`（上面那条），编号沿用原号。② 切 Tab 后把面板整表 re-render 推到下一帧，入口处 `this.activeId !== sessionId` 早返。原 ③（`scheduleTabBarRefresh` 帧末合批）随 tab 栏视图搬去了 `tab-bar-view.ts`。④ ★ 步 3（2026-09-18）：`switchTo` 贴底的**第二帧**（对齐 `session-viewer.ts` 已有的同一修法）。⚠ 它**不是只读校正** —— `scrollToBottom()` 会把 `stickToBottom` 重新置真，所以第二帧与第一帧一样是强制贴底。可接受的理由只有一条：两帧之间只隔 ~16ms，人滚不出意图；切走了有 `activeId` 守卫挡着。**不是自链**（回调里不再排下一次）。"),
-    ("src/frontend/ui/tab-session-actions.ts", "setTimeout", 3, "⑧ `shellFront`：↗ 壳那一跳的期限（到点落成「无应答」，本机 / 远端两条共用这一处）。一次性，不是周期取数。编号沿用 `tabs.ts` 那一行拆开之前的原号。⑩ ⑪ `frontOnce`：↗ 在飞超过 300ms 才把按钮换成「进行中」· 进了之后至少停 400ms 再收（防闪），一次性。"),
-    ("src/frontend/ui/views/grid-monitor.ts", "setInterval", 1, "1s 重绘 —— 按格差量（没变的一拍零 DOM 写），不再整表重建。**ui-clock，不取数**，见 `REGISTERED` 那条。"),
-];
-
 /// 数一个调度 API 在源码里的**调用**次数（散文里提到名字不算）。
 ///
 /// # 原来是 `matches("{api}(")`，而它旁边的注释写着「允许 `api  (`」
@@ -490,7 +482,7 @@ fn scheduling_marks(raw: &str) -> Vec<(usize, &'static str, Option<String>)> {
     out
 }
 
-/// ★ **每一个调度调用点都带着分类标记，类在闭集里**（还没标的那几份见 [`SCHEDULING_SITES`]，处数对得上）。
+/// ★ **每一个调度调用点都带着分类标记，类在闭集里**。
 ///
 /// 与 `every_periodic_wake_is_registered_with_an_owner` 的分工：那一条钉「**认出来的**周期唤醒有没有主人」，
 /// 本条钉「**有没有认漏**」。
@@ -539,10 +531,7 @@ fn every_scheduling_call_site_carries_a_classification_mark() {
     let mut files: Vec<PathBuf> = Vec::new();
     collect_ts(&root.join("src"), &mut files);
     files.sort();
-    let pending: std::collections::BTreeSet<&str> =
-        SCHEDULING_SITES.iter().map(|(f, _, _, _)| *f).collect();
     let (mut sites, mut bad, mut clocks) = (0usize, Vec::new(), std::collections::BTreeSet::new());
-    let mut pending_found: Vec<(String, String, usize)> = Vec::new();
     for f in files {
         let rel = f
             .strip_prefix(&root)
@@ -551,20 +540,6 @@ fn every_scheduling_call_site_carries_a_classification_mark() {
             .replace('\\', "/");
         let raw = fs::read_to_string(&f).unwrap_or_default();
         let marks = scheduling_marks(&raw);
-        if pending.contains(rel.as_str()) {
-            let mut by: std::collections::BTreeMap<&str, usize> = Default::default();
-            for (_, api, _) in &marks {
-                *by.entry(api).or_insert(0) += 1;
-            }
-            for (api, n) in by {
-                pending_found.push((rel.clone(), api.to_string(), n));
-            }
-            assert!(
-                marks.iter().any(|(_, _, m)| m.is_none()),
-                "`{rel}` 的调度点都标上了 —— 把它从 `SCHEDULING_SITES` 里删掉"
-            );
-            continue;
-        }
         for (ln, api, mark) in marks {
             sites += 1;
             match mark.as_deref() {
@@ -600,18 +575,6 @@ fn every_scheduling_call_site_carries_a_classification_mark() {
             "`{f}` 标了「钟」却不在 `REGISTERED` 里记成 ui-clock"
         );
     }
-    // 还没标的那几份：处数两向对得上（多了 / 少了 ⇒ 重新分类；表里那一格盘上没有了 ⇒ 删行）。
-    let mut want: Vec<(String, String, usize)> = SCHEDULING_SITES
-        .iter()
-        .map(|(f, a, n, _)| (f.to_string(), a.to_string(), *n))
-        .collect();
-    want.sort();
-    pending_found.sort();
-    assert_eq!(
-        pending_found, want,
-        "还没标记的那几份，调度点处数与 `SCHEDULING_SITES` 对不上 —— 那正是该重新分类的时刻；\
-         趁这一拍就地标上、把那一行删掉最好"
-    );
 }
 
 /// ★ **身份 poller 不许回来** —— `U-NP④`（2026-08-14）之后 `shared/ccm` 里

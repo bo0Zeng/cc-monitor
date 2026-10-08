@@ -8,7 +8,7 @@
 // 把重协作者 mock 成空壳，于是能在真 TabManager 实例上断言状态翻转。
 
 import { fullTitle } from "../../../src/frontend/ui/session-face";
-import { type Mock, describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { type Mock, describe, it, expect, vi, beforeEach, afterEach, onTestFinished } from "vitest";
 
 // ★ audit-0805 F15 第 1 步：**先让「每行调了几次」变得可测**。
 //
@@ -223,6 +223,16 @@ import {
   type TabRect,
 } from "../../../src/frontend/ui/tabs";
 import { COLLECTION_CAP, type TabCollection } from "../../../src/frontend/ui/tab-collections";
+
+/**
+ * 钉住钟面（`performance.now` 恒定，这一条结束还原）：要逐字比「这一问交了多少期限」（`leftMs`）的判据用。
+ * 期限是造的那一刻起算、过线那一刻现算剩下的；真钟下两刻之间被 GC / 调度停几毫秒，交出去的数就少几毫秒
+ * （10-07 负载下红过：同一段问两次，两次的 `leftMs` 差了一档）。
+ */
+function pinClock(): void {
+  const clock = vi.spyOn(performance, "now").mockReturnValue(1_000_000);
+  onTestFinished(() => clock.mockRestore());
+}
 
 // 这一份里的会话都是 claude 会话：建好 tab 就当它的会话事实（`agent`）已经到了 —— 恢复 / 接回 / 选号要知道是哪一家，
 //   事实没到之前那几项灰着的那一形另有判据（下面「还不知道是哪一家」那一组）。
@@ -950,6 +960,7 @@ describe("TabManager 生命周期", () => {
   });
 
   it("F40b 哨兵：账本非空显示剩余条数,补尽之后〔CF2〕按行号问一次更早的、问到顶才消失", async () => {
+    pinClock();
     await spyRender();
     // 按行号取回：答一个空页（from 原样、next = from）。
     // 原先答的是「[from, until) 一条可显示的都没有」—— 答了之后那一段整段记成见过（`seenSeqs.addRange`），
@@ -4629,6 +4640,7 @@ describe("〔CF2〕没接骨架的 tab：按行号往下取", () => {
     }) as never;
 
   it("★ L3：账尽 ＋ 最老那一条不是第 0 行 ⇒ 问 [floor − 200, floor)；回来的进账本、补上屏；问到第 0 行就不再问", async () => {
+    pinClock();
     vi.mocked(invoke).mockImplementation(answerAll("lb"));
     tm.onLine(mk("head", 1)); // 首个 tab ⇒ active
     tm.onLine(mk("lb", 300)); // 后台 tab：非批期直渲、钉 floor = 300；账本空
@@ -4691,6 +4703,7 @@ describe("〔CF2〕没接骨架的 tab：按行号往下取", () => {
   });
 
   it("★ L3：问不动（老后端 / 断了）⇒ 〔GAP1〕下一次上翻再问一次；连续第二次才哨兵说原因、不再自动重问；切走再切回来才再问一次", async () => {
+    pinClock();
     vi.mocked(invoke).mockImplementation(withSessionReads((cmd: string) =>
       cmd === "read_session_lines"
         ? Promise.reject(new Error("那台后端还不认这条查询"))

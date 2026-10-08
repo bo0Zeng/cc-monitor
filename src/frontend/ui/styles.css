@@ -814,7 +814,7 @@
   margin-bottom: 4px;
 }
 
-/* user 卡里不显示 "用户·HH:MM" header；只靠右对齐区分 */
+/* user 卡里不显示「你 · HH:MM」header；只靠右对齐区分 */
 .card-user .card-header {
   display: none;
 }
@@ -1667,7 +1667,7 @@
   color: var(--text);
 }
 
-/* 过程里的工具组整组摊开，不再另起一层「工具调用 · N 个」。 */
+/* 过程里的工具组整组摊开，不再另起一层「过程 · 工具 ×N」。 */
 .card-tool-group[data-proc-of] {
   border: 0;
   margin: 0;
