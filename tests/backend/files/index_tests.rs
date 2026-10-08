@@ -37,8 +37,17 @@ pub(crate) fn resident_lock() -> std::sync::MutexGuard<'static, ()> {
     // 中毒了也要能接着跑：一条判据 panic 不该让其余的全部变成「毒锁」红。
     let g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
     forget_resident();
-    super::super::browse_watch::forget_all();
+    if let Ok(mut w) = super::super::browse_watch::WATCHED.write() {
+        w.clear();
+    }
     g
+}
+
+/// 把常驻那一份清掉（判据之间复位用）。
+fn forget_resident() {
+    if let Ok(mut g) = RESIDENT.write() {
+        *g = None;
+    }
 }
 
 /// 在常驻索引里按一条搜索词查（不带号、不限范围、从头起）。

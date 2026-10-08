@@ -222,6 +222,8 @@ mod session_name_registry; // U11 摸底：会话名产出点清账 + 递减棘�
                            // `sftp_move_ledger`〔散文墓碑〕（K-R78：那 14 处 SFTP 拨号今天各自卡在哪 —— 乙为什么没搬 + 甲的四条挡路石）
                            //   **退役**：那 14 处全搬了（界面进程零 SFTP），底账要记的那件事做完了；它的挡路石各自怎么被拆的写在 SR1b 的记录里。
 #[cfg(test)]
+mod pub_reader_registry; // 后端 · 壳 · 共享 crate 的 `pub` 项要有产品读者（只被测试读算零）
+#[cfg(test)]
 mod shared_crate_registry; // U8c-1：新增共享 crate 时 CI 三样都要补 —— 从散文变机检
 mod shell_lint_registry; // audit-0805 08-08：每个 shell 脚本要么进 shellcheck 要么登记豁免
 #[cfg(test)]

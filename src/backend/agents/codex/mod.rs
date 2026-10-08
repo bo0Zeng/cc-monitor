@@ -16,8 +16,6 @@ pub(crate) mod parse;
 // 记录分类 ＋ 映射进渲染模型。
 pub(crate) mod record;
 pub(crate) mod resume;
-// Codex `token_count` → token 增量的唯一映射（原共享 crate `codex-token-core`，唯一消费者 `parse.rs`）。
-pub(crate) mod token;
 
 /// 这一家的历史清单面（注册表 `Adapter.history` 那一格；通用层经注册表够到它，不直呼本模块）。
 pub(crate) const HISTORY: crate::agents::HistoryFace = crate::agents::HistoryFace {
@@ -25,7 +23,7 @@ pub(crate) const HISTORY: crate::agents::HistoryFace = crate::agents::HistoryFac
     excerpt: history::first_user_excerpt,
     root: history::records_root,
 };
-/// 记录解释面（注册表 `Adapter.records` 那一格）。轮次边沿与漂移账这一家今天不报（`parse::codex_turn_end_uuid` 仍 staged）。
+/// 记录解释面（注册表 `Adapter.records` 那一格）。轮次边沿与漂移账这一家今天不报。
 pub(crate) const RECORDS: crate::agents::RecordFace = crate::agents::RecordFace {
     parse: record::parsed_line,
     sid: parse::codex_sid_from_path,
@@ -48,7 +46,6 @@ pub(crate) const RECORDS: crate::agents::RecordFace = crate::agents::RecordFace 
     children: None,
     project_dir: Some(history::project_dir),
 };
-// token 字段映射：`parse.rs::last_token_delta` → `token::codex_delta`。
 
 /// 本 agent 在 wire 上的 **`agent_kind` 值**。
 ///

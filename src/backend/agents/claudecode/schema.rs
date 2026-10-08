@@ -615,34 +615,6 @@ pub struct Usage {
     pub output_tokens: u32,
 }
 
-/// ApiMessage.content 的强类型 schema（仅作文档参考）。当前 monitor 反序列化
-/// `content` 为 `serde_json::Value`，TS 端做形状判断（详 `src/frontend/ui/cards/index.ts`）。
-/// 保留此类型供后续做 Rust 端 typed parsing 时使用，无外部调用方。
-#[allow(dead_code)]
-#[derive(Debug, Deserialize, Serialize, Clone)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum ContentBlock {
-    Text {
-        text: String,
-    },
-    Thinking {
-        thinking: String,
-        #[serde(default)]
-        signature: Option<String>,
-    },
-    ToolUse {
-        id: String,
-        name: String,
-        input: serde_json::Value,
-    },
-    ToolResult {
-        tool_use_id: String,
-        content: serde_json::Value,
-        #[serde(default)]
-        is_error: bool,
-    },
-}
-
 impl JsonlRecord {
     /// 是否应该被 emit 到前端。
     ///

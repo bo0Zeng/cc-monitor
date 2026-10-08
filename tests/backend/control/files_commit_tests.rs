@@ -227,7 +227,7 @@ fn the_wire_face_requires_an_explicit_overwrite_and_knows_only_its_command() {
     let e = answer_wire("files-create", &serde_json::json!({})).expect_err("不是这一面的");
     assert_eq!(e.0, "bad_args");
     assert_eq!(
-        commit_command_names(),
+        COMMIT_COMMANDS.iter().map(|c| c.name).collect::<Vec<_>>(),
         vec![
             "files-commit-upload",
             "files-stage-chunk",

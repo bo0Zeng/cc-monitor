@@ -12,21 +12,7 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct FileTime(pub u64);
 
-impl FileTime {
-    // Win32 那一件（`from_win32`，`cfg(windows)`）住 `platform/filetime.rs`（同一个类型的第二个 impl 块）。
-    /// 从字符串解析（PS 端 ToFileTime() 输出形式）。失败返 None。
-    /// 保留未用：将来若给 `verify_binding` 加 ps_proc_start 校验 / 合并
-    /// `HwndEntry` 跟 `SidHwndBinding` 时即用。
-    #[allow(dead_code)]
-    pub fn parse_str(s: &str) -> Option<Self> {
-        s.parse::<u64>().ok().map(Self)
-    }
-
-    #[allow(dead_code)]
-    pub fn abs_diff(self, other: Self) -> u64 {
-        self.0.abs_diff(other.0)
-    }
-}
+// 它的方法（`from_win32`，`cfg(windows)`）住 `platform/filetime.rs`。
 
 // === P3：时间换算（归并 history / subagent / bind 三处独立实现） ===
 

@@ -818,11 +818,24 @@ fn the_files_read_family_is_online_exactly_as_it_is_declared() {
     // 写那一侧从此是**两张表**：写面 `MANAGE_COMMANDS` ＋ 上传提交
     //   `files_commit::COMMIT_COMMANDS`（`readonly_guard` 第三层第二个登记的模块）。减法按两张表的并。
     let write_face: std::collections::BTreeSet<String> =
-        crate::control::files_write::manage_command_names()
+        crate::control::files_write::MANAGE_COMMANDS
+            .iter()
+            .map(|c| c.name)
+            .collect::<Vec<_>>()
             .into_iter()
-            .chain(crate::control::files_commit::commit_command_names())
+            .chain(
+                crate::control::files_commit::COMMIT_COMMANDS
+                    .iter()
+                    .map(|c| c.name)
+                    .collect::<Vec<_>>(),
+            )
             // 解压（`control/files_extract.rs`，第三层第四个模块）。
-            .chain(crate::control::files_extract::extract_command_names())
+            .chain(
+                crate::control::files_extract::EXTRACT_COMMANDS
+                    .iter()
+                    .map(|c| c.name)
+                    .collect::<Vec<_>>(),
+            )
             .map(str::to_string)
             .collect();
     assert!(

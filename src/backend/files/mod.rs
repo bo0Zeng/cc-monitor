@@ -41,6 +41,7 @@ pub mod raw;
 pub mod size;
 
 /// 这一族的名字。
+#[cfg(test)]
 pub const FAMILY: &str = "files-read";
 
 /// 一条能力的**副作用档**。**闭集。**
