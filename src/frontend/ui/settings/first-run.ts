@@ -1,23 +1,24 @@
 /**
  * 机器页顶上「开始用」那一块（稿 03 · §4.8）：三步一行一行（圈 · 名字 · 一句 · 修法按钮），哪步做了由后端事实打勾（`readiness`）；
- * 全做完不出现；「跳过」收起、记住。构造零 I/O：宿主在机器页可见时调 [`loadNow`]。
+ * 三步都做完 / 点过「跳过」不出现（「跳过」交本机后端记下，跨重启还在）。构造零 I/O：宿主在机器页可见时调 [`loadNow`]。
  */
 import { copyText } from "../copy-table";
 import { button } from "../kit/button";
 import { icon } from "../kit/icon";
 import { LOCAL_ORIGIN } from "../ipc/origin";
 import type { SettingsTarget } from "./open-settings";
-import { firstRunSkipped, readReadiness, skipFirstRun, type Readiness, type ReadinessStep } from "./readiness-reads";
+import { readReadiness, skipStart, type Readiness, type ReadinessStep } from "./readiness-reads";
+import { toast } from "../kit/toast";
 
 export interface FirstRunHost {
   go(t: SettingsTarget): void;
   addMachine(): void;
-  /** 那份数变了（主窗口状态栏那一枚跟着）。 */
-  onLeft?(left: number | null): void;
+
 }
 
 export class FirstRun {
   readonly element: HTMLElement;
+  private remotes: number | undefined;
   constructor(private readonly host: FirstRunHost) {
     this.element = document.createElement("section");
     this.element.className = "first-run";
@@ -25,14 +26,14 @@ export class FirstRun {
     this.element.hidden = true;
   }
 
-  async loadNow(): Promise<void> {
-    const got = await readReadiness();
-    this.paint(got);
-    this.host.onLeft?.(got?.left ?? null);
+  /** `remotes` ＝ 宿主手上那一份机器表的台数（没有 ⇒ 现读一次配置）。 */
+  async loadNow(remotes?: number): Promise<void> {
+    if (remotes !== undefined) this.remotes = remotes;
+    this.paint(await readReadiness(this.remotes));
   }
 
   private paint(r: Readiness | null): void {
-    this.element.hidden = r === null || r.left === 0 || firstRunSkipped();
+    this.element.hidden = r === null || r.skipped || r.steps.every((s) => s.done);
     if (this.element.hidden || r === null) {
       this.element.replaceChildren();
       return;
@@ -50,9 +51,10 @@ export class FirstRun {
       kind: "ghost",
       size: "compact",
       onClick: () => {
-        skipFirstRun();
-        this.paint(r);
-        this.host.onLeft?.(null);
+        void skipStart().then(
+          () => this.loadNow(),
+          (e: unknown) => toast(copyText("firstRun.head.skipFailed"), e instanceof Error ? e.message : String(e), { level: "error" }),
+        );
       },
     });
     skip.dataset.action = "skip";

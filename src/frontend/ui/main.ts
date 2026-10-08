@@ -52,7 +52,7 @@ import { KeysOverview } from "./views/keys-overview";
 import { StatusMessages } from "./status-messages";
 import { StatusChores } from "./status-chores";
 import { choresOf } from "./settings/data-reads";
-import { firstRunSkipped, readReadiness } from "./settings/readiness-reads";
+import { readReadiness } from "./settings/readiness-reads";
 import { StatusStart } from "./status-start";
 import { restoreZoom, stepZoom } from "./zoom";
 import { mountTabBarFold, tabBarManuallyFolded, toggleTabBarFold } from "./tab-bar-fold";
@@ -183,11 +183,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   status.appendChild(chores.el);
   void chores.refreshAll();
   // 「开始用 · 剩 N 步」（有才出，紧跟「要你动手」）：本机后端 `readiness` 的 `left`，与设置窗机器页「开始用」同一个数。
-  const start = new StatusStart({
-    left: async () => (await readReadiness())?.left ?? null,
-    skipped: firstRunSkipped,
-    open: () => void openSettingsWindow(undefined, dest.START),
-  });
+  const start = new StatusStart({ read: readReadiness, open: () => void openSettingsWindow(undefined, dest.START) });
   status.appendChild(start.el);
   void start.refresh();
   void getCurrentWindow()

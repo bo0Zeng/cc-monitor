@@ -270,6 +270,8 @@ export class SettingsPanel {
 
   /** Claude 数据目录输入框 —— 改动后保存会提示需要重启 */
   private claudeDirInput!: HTMLInputElement;
+  /** 机器页顶上「开始用」那一块。 */
+  private firstRun?: FirstRun;
   /** Claude 目录那一行下：「重启 cc-monitor 后生效 ［现在重启］」（存了一个新的目录之后出现）。 */
   private claudeDirRestart!: HTMLElement;
   /** 打开时 claudeDir 的快照，用于判断是否变化（变了就提示重启） */
@@ -385,7 +387,11 @@ export class SettingsPanel {
     // 步 4：`refresh()` 失败时会把原因画到那一块自己的 banner 上；
     // 这里 `catch` 掉是为了不再多产一条走状态栏的未捕获 rejection（同一件事说两遍，
     // 而其中一遍说在了离现场十万八千里的地方）。
-    void this.remoteSection?.refresh().catch(() => {});
+    // 「开始用」那一块：机器表读回来之后问一次（台数随问带上，不另读一遍配置）。
+    void this.remoteSection
+      ?.refresh()
+      .then(() => this.firstRun?.loadNow(this.remoteSection?.machineCount()))
+      .catch(() => {});
     // P2s：状态是**运行期**的东西，每次打开都要重拉 —— 缓存住等于给用户看一张旧照片。
     // ⚠ 它住**落地页**（「机器」），所以它不在延后那一档里：打开就该是新的。
     void this.backendSection?.refresh();
@@ -1047,9 +1053,8 @@ export class SettingsPanel {
       );
     }
     // 「开始用」那一块（稿 03）：列表上方；三步由后端事实打勾，全做完 / 点过「跳过」不出现。机器页可见时才问。
-    const firstRun = new FirstRun({ go: (t) => this.goTo(t), addMachine: () => void this.remoteSection?.addMachine() });
-    machinesPage.appendChild(firstRun.element);
-    this.loadOnFirstVisit("machines", () => void firstRun.loadNow());
+    this.firstRun = new FirstRun({ go: (t) => this.goTo(t), addMachine: () => void this.remoteSection?.addMachine() });
+    machinesPage.appendChild(this.firstRun.element);
     // **T07 审计阻塞 1**：这里必须在 `safeBlock` 里——`RemoteSection` 正是唯一活的同步
     // throw 宿主（构造路径含 `remote-section.ts` 那个三句话必填的 `throw`）。审计真造它抛过：
     // 裸构造会让 `new SettingsPanel` 直接炸穿、**什么都没上屏**。

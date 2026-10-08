@@ -4,7 +4,8 @@
 //! - `named`（给现在登录的号起个名字，可选）：这台启用了多账号（账号库清单读得出，与账号页 `meta.enabled` 同一个判法）。
 //! - `remote`（加一台远端机器，可选）：机器表里至少有一台。机器表住 monitor 那一侧，台数由问的那一方带上（`remotes`），这里只判。
 //!
-//! `left` ＝ 还没打勾的几步（设置窗「开始用」那一块与主窗口状态栏那一枚读同一个数）。只读。
+//! 哪步必做也在这里定（`required`：今天只有 `terminal`；另两步可选）。`left` ＝ 必做而还没打勾的几步（主窗口状态栏那一枚只数它，
+//! 可选的不为它一直催）；`skipped` ＝ 「开始用」那一块点过「跳过」（记在 `chores.json`，经 `chores-mark` 的 `skipStart` 写）。只读。
 
 use crate::assets::door::Door;
 use crate::platform::shell::dialect::Shell;
@@ -13,16 +14,23 @@ use serde_json::{json, Value};
 type Answer = Result<Value, (&'static str, String)>;
 
 /// 三步的事实 ⇒ 成品。**纯函数**。
-pub(crate) fn product(terminal: bool, named: bool, remotes: u64) -> Value {
+pub(crate) fn product(terminal: bool, named: bool, remotes: u64, skipped: bool) -> Value {
     let steps = [
-        ("terminal", terminal),
-        ("named", named),
-        ("remote", remotes > 0),
+        ("terminal", terminal, true),
+        ("named", named, false),
+        ("remote", remotes > 0, false),
     ];
-    let left = steps.iter().filter(|(_, done)| !done).count();
+    let left = steps
+        .iter()
+        .filter(|(_, done, required)| *required && !done)
+        .count();
     json!({
-        "steps": steps.iter().map(|(id, done)| json!({"id": id, "done": done})).collect::<Vec<_>>(),
+        "steps": steps
+            .iter()
+            .map(|(id, done, required)| json!({"id": id, "done": done, "required": required}))
+            .collect::<Vec<_>>(),
         "left": left,
+        "skipped": skipped,
     })
 }
 
@@ -52,10 +60,13 @@ fn terminal_here(door: &dyn Door) -> bool {
 /// `readiness {remotes}`：帧面入口（只读）。
 pub(crate) fn answer(door: &dyn Door, args: &Value) -> Answer {
     let remotes = remotes_arg(args)?;
+    let skipped =
+        super::chores::marks::current(super::chores::marks::marks_path().as_deref()).start_skipped;
     Ok(product(
         terminal_here(door),
         crate::observe::accounts_query::accounts_enabled_here(),
         remotes,
+        skipped,
     ))
 }
 

@@ -1893,6 +1893,21 @@ sid → 上次用哪个号起。
 
 码：`bad_args` · `failed`
 
+#### `readiness`
+
+首次运行「开始用」三步各自打没打勾。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --readiness`
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `left` | ← | 必做而还没打勾的几步（主窗口状态栏那一枚只数它） |
+| `remotes` | → | 机器表里有几台远端（机器表住 monitor 那一侧，问的那一方带上） |
+| `skipped` | ← | 「开始用」那一块点过「跳过」（`chores-mark` 的 `skipStart` 写） |
+| `steps` | ← | 三步 `{id, done, required}`（`required` = 必做；今天只有 `terminal`），`id` 闭集 `terminal`（让终端认得 ccm 和别名：某份启动文件里有别名块）· `named`（给现在登录的号起名字：启用了多账号）· `remote`（加一台远端：`remotes` > 0） |
+
+码：`bad_args`
+
 #### `last-seen-read`
 
 读离线那台的上次值。
@@ -1931,10 +1946,11 @@ sid → 上次用哪个号起。
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `id` | → | `decline` / `undecline` 那一件的 `id`（同 `data-report` 的 `todo[].id`） |
-| `op` | → | `decline`（不用了）· `undecline`（还是要做）· `selfPaste`（我自己贴）· `unselfPaste`（改回让 cc-monitor 接上） |
+| `op` | → | `decline`（不用了）· `undecline`（还是要做）· `selfPaste`（我自己贴）· `unselfPaste`（改回让 cc-monitor 接上）· `skipStart` / `unskipStart`（首次运行「开始用」那一块跳过 / 撤回） |
 | `rc` | → | `selfPaste` 那一份启动文件（绝对路径） |
 | `declined` | ← | 改完记着的「不用了」那几件 |
 | `selfPaste` | ← | 改完记着的「我自己贴」那份启动文件；没选 ⇒ `null` |
+| `startSkipped` | ← | 改完记着的「开始用」跳过没有 |
 
 码：`bad_args` · `io_failed` · `marks_unreadable`
 
@@ -2171,7 +2187,7 @@ skill 装记录的写口。
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `kind` | → | `skill` / `mcp` |
-| `machines` | ← | 勾上的每台一项 `{to, name, card, files, error}`：`card` 同单台那张确认卡（`{kind, name, path, writes, unchanged, suspects, stop, config, slots, tokens}`）；`files` = 会写的文件那一行（MCP：那份配置文件 ＋ 键；skill：目录 ＋ 要写的几个）；那台没拼成 ⇒ `card` 为 `null`、`error` = `{code, said}` |
+| `machines` | ← | 勾上的每台一项 `{to, name, card, files, error}`：`card` 同单台那张确认卡（`{kind, name, path, writes, unchanged, suspects, stop, config, slots, tokens}`）；`files` = 会写的文件那一行（MCP：那份配置文件 ＋ 键；skill：目录 ＋ 要写的几个）；那台没拼成 ⇒ `card` 为 `null`、`error` = 那台说的那一句 |
 | `name` | → | 名字 |
 | `place` | → | 可缺：用户在卡上选的那一处 `{level:"user"}` / `{level:"project", dir}`；对勾上的每台都能装才照它 |
 | `place` | ← | 共用的那一处（没有每台都能装的 ⇒ `null`） |
@@ -2191,7 +2207,7 @@ skill 装记录的写口。
 |---|---|---|
 | `fill` | → | 用户在卡上填的值 `{field: {key: 值}}`（只填一次；每台只交它那张卡要的几格，空的不交 ⇒ 沿用那台已有的）；来源机上的值从不经过这里 |
 | `kind` | → | 同 `ext-hub-preview` |
-| `machines` | ← | 每台一项 `{to, name, done, error}`：`done` = `{path, changed, note}`；没成 ⇒ `error` = `{code, said}`（`stale` = 看过之后变了、那台一个字节不写），一台没成不挡别台 |
+| `machines` | ← | 每台一项 `{to, name, done, error}`：`done` = `{path, changed, note}`；没成 ⇒ `error` = 那台说的那一句（看过之后变了的，那台一个字节不写），一台没成不挡别台 |
 | `name` | → | 同 `ext-hub-preview` |
 | `place` | → | 卡上那一处（`ext-hub-preview` 回的 `place`）；那一组现算的那一处不是它 ⇒ 各台都 `stale` |
 | `to` | → | 同 `ext-hub-preview` |
@@ -3526,6 +3542,7 @@ cc-bus 钩子诊断。
 | `--read-session` `<jsonl>` | 原样透传整份会话字节 |
 | `--read-session-from-offset` `[--index] [--until <end>] <jsonl> <offset>` | 从字节 `offset` 续读：原样透传 `[offset, EOF)`（`--until` ⇒ `[offset, end)`）；`--index` ⇒ 出骨架索引：头 `{kind:"session_index",v:1,from}` · 每个可计行一条 `IndexRow`（见下）· 尾 `{kind:"session_index_end",count,end}`。续点用 `line` 帧的 `byte_offset`，别用 `seq` |
 | `--read-session-tail` `<jsonl> <N>` | 尾部优先：首行 `{kind:"snapshot_meta",total,tail_from}`，随后原样输出最新 N 行 `[tail_from,total)`，再输出 `[0,tail_from)` |
+| `--readiness` | ＝ 帧命令 `readiness`：首次运行「开始用」三步各自打没打勾 |
 | `--remote-reach` | ＝ 帧命令 `remote-reach`：本机后端的可达表登记 |
 | `--resident-ensure` `[--replace]` | 确保这台的常驻后端在听：已在 ⇒ `{port, token, pid:null}`；没在 ⇒ 起一个脱离的自己、回 `{port, token:null, pid}`（钥匙由它绑上口后写进钥匙文件）；`--replace` 先停掉口上那一位再起 |
 | `--resident-stop` `[--grace <秒>]` | 停这台的常驻后端：核身份 → SIGTERM → 宽限（缺省 35 秒）→ SIGKILL；回 `{stopped: graceful\|killed\|not_running, pid}` |

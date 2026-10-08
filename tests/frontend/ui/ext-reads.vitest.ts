@@ -128,11 +128,11 @@ describe("请求：问对那台、说对那条", () => {
     ]);
   });
   it("那一张卡严格收：多一格 / 缺一格 / 那台的错不是一句话 ⇒ 收不下", () => {
-    const ok = { places: [], place: null, slots: [{ field: "env", key: "K", kept: ["laptop"] }], machines: [{ to: null, name: "本机", card: null, files: [], error: "x" }] };
+    const ok = { places: [], place: null, slots: [{ field: "env", key: "K", kept: ["laptop"] }], machines: [{ to: null, name: "here", card: null, files: [], error: "x" }] };
     expect(decodeExtManyCard(ok).slots[0].kept).toEqual(["laptop"]);
     expect(() => decodeExtManyCard({ ...ok, extra: 1 })).toThrow();
     expect(() => decodeExtManyCard({ ...ok, machines: [{ ...ok.machines[0], error: { code: "x" } }] })).toThrow();
-    expect(() => decodeExtManyDone({ machines: [{ to: null, name: "本机", done: null }] })).toThrow();
+    expect(() => decodeExtManyDone({ machines: [{ to: null, name: "here", done: null }] })).toThrow();
   });
   it("备注：问本机后端，种类 · 名字 · 正文原样交；回现在生效的那一份", async () => {
     invokeMock.mockResolvedValueOnce(chanReply({ note: "先加钩子" }));

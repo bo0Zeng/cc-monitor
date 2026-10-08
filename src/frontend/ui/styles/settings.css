@@ -2823,59 +2823,6 @@ body.settings-window-mode .settings-panel {
 .data-offline {
   margin-bottom: 8px;
 }
-/* 机器页顶上「开始用」（稿 03）：左侧强调色竖线 · 三步一行一行。 */
-.first-run {
-  margin-bottom: var(--space-5);
-  padding: var(--space-4) var(--space-5);
-  border: 1px solid var(--border-strong);
-  border-left: 3px solid var(--accent);
-  border-radius: var(--radius-m);
-  background: var(--bg-2);
-}
-.first-run-head {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-4);
-  padding-bottom: var(--space-3);
-  border-bottom: 1px solid var(--border-faint);
-}
-.first-run-title {
-  font-weight: 600;
-}
-.first-run-head > button {
-  margin-left: auto;
-}
-.first-run-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-5);
-  padding: var(--space-4) 0;
-  border-bottom: 1px solid var(--border-faint);
-}
-.first-run-row:last-child {
-  border-bottom: none;
-}
-.first-run-mark {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  border: 1px solid var(--text-faint);
-  border-radius: 50%;
-  color: var(--success);
-}
-.first-run-row[data-done="true"] .first-run-mark {
-  border-color: var(--success);
-}
-.first-run-text {
-  flex: 1;
-  min-width: 0;
-}
-.first-run-name {
-  font-weight: 500;
-}
 /* 恢复命令那一格：下拉（kit）＋ 选了「自定义…」才出现的一格。 */
 .resume-select {
   display: inline-flex;

@@ -4,16 +4,28 @@ use super::*;
 use serde_json::json;
 
 #[test]
-fn 三步照事实打勾_剩几步是没打勾的几步() {
+fn 三步照事实打勾_哪步必做由这里说_剩几步只数必做的() {
     assert_eq!(
-        product(false, false, 0),
-        json!({"steps": [{"id": "terminal", "done": false}, {"id": "named", "done": false}, {"id": "remote", "done": false}], "left": 3})
+        product(false, false, 0, false),
+        json!({"steps": [
+            {"id": "terminal", "done": false, "required": true},
+            {"id": "named", "done": false, "required": false},
+            {"id": "remote", "done": false, "required": false},
+        ], "left": 1, "skipped": false})
     );
-    assert_eq!(product(true, false, 2)["left"], json!(1));
-    assert_eq!(product(true, true, 1)["left"], json!(0));
     assert_eq!(
-        product(true, true, 1)["steps"][2],
-        json!({"id": "remote", "done": true})
+        product(true, false, 0, false)["left"],
+        json!(0),
+        "可选的没做不算剩下的（状态栏不为它们一直催）"
+    );
+    assert_eq!(
+        product(true, true, 1, false)["steps"][2],
+        json!({"id": "remote", "done": true, "required": false})
+    );
+    assert_eq!(
+        product(false, false, 0, true)["skipped"],
+        json!(true),
+        "点过「跳过」原样带回"
     );
 }
 

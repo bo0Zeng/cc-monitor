@@ -6718,8 +6718,10 @@
     },
     "profilesPage.form.noTmux": {
       "kind": "body",
+      "role": "说明",
       "zh": "这台没有 tmux · 起会话会报错",
-      "args": []
+      "args": [],
+      "limited": ["tmux"]
     },
     "profilesPage.form.tmuxNamed": {
       "kind": "control",
@@ -19178,96 +19180,109 @@
     },
     "extPage.legend.same": {
       "kind": "body",
+      "role": "说明",
       "zh": "装了",
       "args": []
     },
     "extPage.legend.differs": {
       "kind": "body",
+      "role": "说明",
       "zh": "装了 · 内容不同",
       "args": []
     },
     "extPage.legend.project": {
       "kind": "body",
+      "role": "说明",
       "zh": "仅项目内",
       "args": []
     },
     "extPage.table.headName": {
       "kind": "title",
+      "role": "标题",
       "zh": "名字",
       "args": []
     },
     "extPage.table.headKind": {
       "kind": "title",
+      "role": "标题",
       "zh": "种类",
       "args": []
     },
     "extPage.table.headAbout": {
       "kind": "title",
+      "role": "标题",
       "zh": "做什么",
       "args": []
     },
     "extPage.offline.bar": {
       "kind": "body",
+      "role": "状态",
       "zh": "{machine} 离线 · 该列是上次同步的样子",
       "args": ["machine"]
     },
     "extPage.install.where": {
       "kind": "title",
+      "role": "标题",
       "zh": "安装位置",
       "args": []
     },
     "extPage.install.differsPick": {
       "kind": "body",
+      "role": "说明",
       "zh": "{state} · 勾上就换成这一版",
       "args": ["state"]
     },
     "extPage.install.kept": {
       "kind": "body",
+      "role": "说明",
       "zh": "勾选的机器共用此值 · {machines} 已有 {key}，留空沿用",
       "args": ["machines", "key"]
     },
     "extPage.install.shared": {
       "kind": "body",
+      "role": "说明",
       "zh": "勾选的机器共用此值",
       "args": []
     },
     "extPage.install.files": {
       "kind": "title",
+      "role": "标题",
       "zh": "会写的文件",
       "args": []
     },
-    "extPage.install.filesLoading": {
-      "kind": "body",
-      "zh": "{machine}：正在看要写哪几个…",
-      "args": ["machine"]
-    },
     "extPage.install.filesSame": {
       "kind": "body",
+      "role": "说明",
       "zh": "{machine}：和现在一样 · 无须写",
       "args": ["machine"]
     },
     "extPage.install.filesLine": {
       "kind": "body",
+      "role": "说明",
       "zh": "{machine}：{files}",
       "args": ["machine", "files"]
     },
     "extPage.install.machineSaid": {
       "kind": "body",
+      "role": "说明",
       "zh": "{machine}：{said}",
       "args": ["machine", "said"]
     },
     "extPage.install.confirm": {
       "kind": "action",
+      "role": "按钮",
       "zh": "装到 {n} 台",
       "args": ["n"]
     },
     "extPage.install.noneChecked": {
       "kind": "body",
+      "role": "空态",
       "zh": "先勾要装的机器",
       "args": []
     },
     "extPage.install.doneOne": {
       "kind": "body",
+      "role": "状态",
       "zh": "{machine} · 装好了 · {said}",
       "args": ["machine", "said"]
     },
@@ -26249,66 +26264,87 @@
     },
     "firstRun.head.title": {
       "kind": "title",
+      "role": "标题",
       "zh": "开始用",
       "args": []
     },
     "firstRun.head.sub": {
       "kind": "body",
+      "role": "说明",
       "zh": "{n} 步 · 完成自动勾选",
       "args": ["n"]
     },
     "firstRun.head.skip": {
       "kind": "action",
+      "role": "按钮",
       "zh": "跳过",
+      "args": []
+    },
+    "firstRun.head.skipFailed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "跳过没记下",
       "args": []
     },
     "firstRun.terminal.name": {
       "kind": "title",
+      "role": "标题",
       "zh": "接上终端",
       "args": []
     },
     "firstRun.terminal.hint": {
       "kind": "body",
+      "role": "说明",
       "zh": "终端里 ccm 启动的会话出现在 cc-monitor",
-      "args": []
+      "args": [],
+      "limited": ["ccm"]
     },
     "firstRun.terminal.action": {
       "kind": "action",
+      "role": "按钮",
       "zh": "接上",
       "args": []
     },
     "firstRun.named.name": {
       "kind": "title",
+      "role": "标题",
       "zh": "给当前登录命名",
       "args": []
     },
     "firstRun.named.hint": {
       "kind": "body",
+      "role": "说明",
       "zh": "可选 · 命名后可加更多账号、按账号启动",
       "args": []
     },
     "firstRun.named.action": {
       "kind": "action",
+      "role": "按钮",
       "zh": "命名",
       "args": []
     },
     "firstRun.remote.name": {
       "kind": "title",
+      "role": "标题",
       "zh": "添加远端机器",
       "args": []
     },
     "firstRun.remote.hint": {
       "kind": "body",
+      "role": "说明",
       "zh": "可选 · 任意 ssh 可达机器",
-      "args": []
+      "args": [],
+      "limited": ["SSH"]
     },
     "firstRun.remote.action": {
       "kind": "action",
+      "role": "按钮",
       "zh": "添加机器",
       "args": []
     },
     "statusBar.start.label": {
       "kind": "action",
+      "role": "按钮",
       "zh": "开始用 · 剩 {n} 步",
       "args": ["n"]
     },
@@ -26985,21 +27021,25 @@
     },
     "beExt.many.noRow": {
       "kind": "error",
+      "role": "报错",
       "zh": "扩展页那张表里没有 {name}",
       "args": ["name"]
     },
     "beExt.many.notThere": {
       "kind": "body",
+      "role": "说明",
       "zh": "{machine} 没有这一处",
       "args": ["machine"]
     },
     "beExt.many.noBring": {
       "kind": "error",
+      "role": "报错",
       "zh": "{machine} 上没有可装的一处",
       "args": ["machine"]
     },
     "beExt.many.noPlace": {
       "kind": "error",
+      "role": "报错",
       "zh": "勾上的几台没有都能装的一处",
       "args": []
     },

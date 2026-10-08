@@ -548,6 +548,9 @@ fn the_profiles_wire_matches_the_cross_language_golden() {
 fn the_read_carries_whether_this_machine_has_tmux() {
     let t = tmp("tmux-fact", None);
     for v in [Some(true), Some(false), None] {
-        assert_eq!(read_with(&t.door(), &json!({}), v).unwrap()["tmux"], json!(v));
+        assert_eq!(
+            read_with(&t.door(), &json!({}), v).unwrap()["tmux"],
+            json!(v)
+        );
     }
 }

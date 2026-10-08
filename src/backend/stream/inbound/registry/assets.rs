@@ -39,7 +39,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "readiness",
         summary: "首次运行「开始用」三步各自打没打勾",
         codes: &["bad_args"],
-        fields: &[out("left", "还没打勾的几步（设置窗「开始用」与主窗口状态栏那一枚读这一个数）"), arg("remotes", "机器表里有几台远端（机器表住 monitor 那一侧，问的那一方带上）"), out("steps", "三步 `{id, done}`，`id` 闭集 `terminal`（让终端认得 ccm 和别名：某份启动文件里有别名块）· `named`（给现在登录的号起名字：启用了多账号）· `remote`（加一台远端：`remotes` > 0）")],
+        fields: &[out("left", "必做而还没打勾的几步（主窗口状态栏那一枚只数它）"), arg("remotes", "机器表里有几台远端（机器表住 monitor 那一侧，问的那一方带上）"), out("skipped", "「开始用」那一块点过「跳过」（`chores-mark` 的 `skipStart` 写）"), out("steps", "三步 `{id, done, required}`（`required` = 必做；今天只有 `terminal`），`id` 闭集 `terminal`（让终端认得 ccm 和别名：某份启动文件里有别名块）· `named`（给现在登录的号起名字：启用了多账号）· `remote`（加一台远端：`remotes` > 0）")],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::footprint::readiness::answer(&LocalFiles, &r.args)
@@ -79,7 +79,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "chores-mark",
         summary: "记下「要你动手」里的一个选择",
         codes: &["bad_args", "io_failed", "marks_unreadable"],
-        fields: &[arg("id", "`decline` / `undecline` 那一件的 `id`（同 `data-report` 的 `todo[].id`）"), arg("op", "`decline`（不用了）· `undecline`（还是要做）· `selfPaste`（我自己贴）· `unselfPaste`（改回让 cc-monitor 接上）"), arg("rc", "`selfPaste` 那一份启动文件（绝对路径）"), out("declined", "改完记着的「不用了」那几件"), out("selfPaste", "改完记着的「我自己贴」那份启动文件；没选 ⇒ `null`")],
+        fields: &[arg("id", "`decline` / `undecline` 那一件的 `id`（同 `data-report` 的 `todo[].id`）"), arg("op", "`decline`（不用了）· `undecline`（还是要做）· `selfPaste`（我自己贴）· `unselfPaste`（改回让 cc-monitor 接上）· `skipStart` / `unskipStart`（首次运行「开始用」那一块跳过 / 撤回）"), arg("rc", "`selfPaste` 那一份启动文件（绝对路径）"), out("declined", "改完记着的「不用了」那几件"), out("selfPaste", "改完记着的「我自己贴」那份启动文件；没选 ⇒ `null`"), out("startSkipped", "改完记着的「开始用」跳过没有")],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::footprint::chores::marks::answer_mark(&r.args)

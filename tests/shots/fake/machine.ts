@@ -236,11 +236,11 @@ export function machineOps(): Record<string, OpHandler> {
     readiness: (_o, r) => {
       const fresh = Number(r.remotes) === 0;
       const steps = [
-        { id: "terminal", done: !fresh },
-        { id: "named", done: false },
-        { id: "remote", done: !fresh },
+        { id: "terminal", done: !fresh, required: true },
+        { id: "named", done: false, required: false },
+        { id: "remote", done: !fresh, required: false },
       ];
-      return { steps, left: steps.filter((s) => !s.done).length };
+      return { steps, left: steps.filter((s) => s.required && !s.done).length, skipped: false };
     },
     "last-seen-write": () => ({ atMs: Date.now() }),
     "last-seen-read": (_o, r) => ({
