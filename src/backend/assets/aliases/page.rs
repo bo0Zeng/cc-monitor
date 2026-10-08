@@ -876,18 +876,24 @@ fn ops_arg(args: &Value) -> Result<Vec<Op>, (&'static str, String)> {
 }
 
 /// 线上那几种改动 ⇒ 配置文件的改动（`AckMigrated` / `Init` 另说，不在这里）。
-fn changes_of(book: &Book, ops: &[Op]) -> Result<Vec<Change>, String> {
+/// **依次**判：每一条都在「盘上那份 ＋ 前面几条改完」那一份上判（后一条看得见前一条新增 / 改名的段）。
+fn changes_of(text: Option<&str>, ops: &[Op]) -> Result<Vec<Change>, String> {
     let mut out = Vec::new();
+    let mut cur = text.unwrap_or("").to_string();
+    let mut book = profile::parse_book(&cur);
     for op in ops {
-        match op {
+        let step = match op {
             Op::Set { was, form } => {
                 let e = edit_of_form(form)?;
-                out.extend(changes_of_set(book, was.as_deref(), &e)?);
+                changes_of_set(&book, was.as_deref(), &e)?
             }
-            Op::Remove { name, children } => out.extend(changes_of_remove(book, name, *children)?),
-            Op::Init { seed: true } => out.extend(seed_changes()),
-            Op::Init { seed: false } | Op::AckMigrated {} => {}
-        }
+            Op::Remove { name, children } => changes_of_remove(&book, name, *children)?,
+            Op::Init { seed: true } => seed_changes(),
+            Op::Init { seed: false } | Op::AckMigrated {} => continue,
+        };
+        cur = profile::apply_changes(Some(&cur), &step)?;
+        book = profile::parse_book(&cur);
+        out.extend(step);
     }
     Ok(out)
 }
@@ -919,7 +925,7 @@ fn broken(book: &Book) -> std::collections::BTreeMap<Option<String>, String> {
 pub(crate) fn answer_impact(d: &dyn Door, args: &Value) -> Answer {
     let ops = ops_arg(args)?;
     let store = super::load(d).map_err(refused)?;
-    let changes = changes_of(&store.book, &ops).map_err(refused)?;
+    let changes = changes_of(store.text.as_deref(), &ops).map_err(refused)?;
     let after_text = text_after(store.text.as_deref(), &changes).map_err(refused)?;
     let after = profile::parse_book(&after_text);
     let named: Vec<String> = changes
@@ -1054,7 +1060,7 @@ pub(crate) fn answer_write(d: &dyn Door, args: &Value) -> Answer {
             ),
         ));
     }
-    let changes = changes_of(&store.book, &ops).map_err(refused)?;
+    let changes = changes_of(store.text.as_deref(), &ops).map_err(refused)?;
     let base = match (
         &store.text,
         ops.iter().any(|o| matches!(o, Op::Init { .. })),
