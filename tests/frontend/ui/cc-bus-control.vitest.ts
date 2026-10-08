@@ -214,7 +214,7 @@ describe("〔C4e〕发出去之前：调用方不能靠对端校验", () => {
 
   it("★★ 派生的形状先核：目录非空；**不判 tool**（空 ⇒ 默认那一家、认不认归后端注册表）；账号名交后端判（`bad_id` 说成人话）", async () => {
     answer({ ok: SPAWN.reply });
-    expect(thrownBy(() => checkSpawnShape({ tool: "claude", dir: " ", task: "" }))).toMatch(copyText("ccBus.spawn.noDir"));
+    expect(thrownBy(() => checkSpawnShape({ tool: "claude", dir: " ", task: "" }))).toMatch(copyText("ccBus.spawn.needDir"));
     expect(invokeMock, "坏形状也发出去了").not.toHaveBeenCalled();
     // 空的 / 没见过的 tool 照样交给后端 —— 本侧不维护第二份名单（后端认不出会拒，那一句走 `bad_args`）。
     expect(() => checkSpawnShape({ tool: "", dir: "/w", task: "" })).not.toThrow();

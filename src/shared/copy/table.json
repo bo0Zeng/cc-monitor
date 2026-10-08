@@ -2334,7 +2334,10 @@
       "role": "报错",
       "zh": "{id} 在线状态未知 · 不在 {machine} 的总线名单 · 或该机查不到 tmux",
       "args": ["id", "machine"],
-      "limited": ["tmux"]
+      "limited": ["tmux"],
+      "waive": {
+        "C-W14": "列出查不到的两种可能，tmux 那半是查不到，不是没装 / 启动失败"
+      }
     },
     "ccBus.read.notInstalled": {
       "kind": "error",
@@ -2411,7 +2414,7 @@
     "ccBus.send.invalidArgs": {
       "kind": "error",
       "role": "报错",
-      "zh": "发给 {id} 失败 · cc-bus 不接受此收件人或参数 · {detail}",
+      "zh": "发给 {id} 失败 · 被拒 · cc-bus 不接受此收件人或参数 · {detail}",
       "args": ["id", "detail"]
     },
     "ccBus.send.notInstalled": {
@@ -2423,7 +2426,7 @@
     "ccBus.send.rejected": {
       "kind": "error",
       "role": "报错",
-      "zh": "发给 {id} 失败 · 被 cc-bus 路由规则拦下 · {detail}",
+      "zh": "发给 {id} 失败 · 被拒 · cc-bus 路由规则拦下 · {detail}",
       "args": ["id", "detail"]
     },
     "ccBus.send.timedOut": {
@@ -2435,7 +2438,7 @@
     "ccBus.send.tooLong": {
       "kind": "error",
       "role": "报错",
-      "zh": "发给 {id} 失败 · 正文过长 · {detail}",
+      "zh": "发给 {id} 失败 · 超出上限 · 正文过长 · {detail}",
       "args": ["id", "detail"]
     },
     "ccBus.send.otherCode": {
@@ -2477,7 +2480,7 @@
     "ccBus.kill.invalidArgs": {
       "kind": "error",
       "role": "报错",
-      "zh": "收掉 {id} 失败 · cc-bus 不接受此名字 · {detail}",
+      "zh": "收掉 {id} 失败 · 被拒 · cc-bus 不接受此名字 · {detail}",
       "args": ["id", "detail"]
     },
     "ccBus.kill.notInstalled": {
@@ -2527,12 +2530,6 @@
       "role": "空态",
       "zh": "未收掉 {id} · 会话未结束 · 登记未摘",
       "args": ["id"]
-    },
-    "ccBus.spawn.noDir": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "工作目录是空的，没有派生。",
-      "args": []
     },
     "ccBus.spawn.invalidArgs": {
       "kind": "error",
@@ -2622,13 +2619,19 @@
       "kind": "body",
       "role": "toast",
       "zh": "已广播 · 在线 {sent} · 跳过离线 {skipped}",
-      "args": ["sent", "skipped"]
+      "args": ["sent", "skipped"],
+      "waive": {
+        "C-W14": "计数格的名字（跳过的离线机器数），不是离线状态句"
+      }
     },
     "ccBus.broadcast.doneFailed": {
       "kind": "body",
       "role": "toast",
       "zh": "已广播 · 在线 {sent} · 跳过离线 {skipped} · 失败 {failed} · {who}",
-      "args": ["sent", "skipped", "failed", "who"]
+      "args": ["sent", "skipped", "failed", "who"],
+      "waive": {
+        "C-W14": "计数格的名字（跳过的离线机器数），不是离线状态句"
+      }
     },
     "ccBus.broadcast.doneUnknown": {
       "kind": "body",
@@ -3857,7 +3860,7 @@
     "keybindingEditor.applyChord.unbindCloseTitle": {
       "kind": "title",
       "role": "标题",
-      "zh": "解绑「关闭弹层」",
+      "zh": "解绑「关最上面一层」",
       "args": []
     },
     "keybindingEditor.applyChord.unbindAction": {
@@ -3869,7 +3872,7 @@
     "keybindingEditor.applyChord.rebindCloseTitle": {
       "kind": "title",
       "role": "标题",
-      "zh": "改绑「关闭弹层」",
+      "zh": "改绑「关最上面一层」",
       "args": []
     },
     "keybindingEditor.applyChord.rebindAction": {
@@ -5714,7 +5717,7 @@
     "machineAliases.ps.autoLaunch": {
       "kind": "control",
       "role": "标签",
-      "zh": "cc-monitor 未开时自动打开",
+      "zh": "cc-monitor 未开时自动开",
       "args": []
     },
     "machineAliases.userPath.removeFailed": {
@@ -5849,7 +5852,7 @@
     "machineAliases.rc.tagSourced": {
       "kind": "control",
       "role": "标签",
-      "zh": "已经接上了",
+      "zh": "已接上",
       "args": []
     },
     "machineAliases.rc.openHint": {
@@ -5892,7 +5895,7 @@
     "cfgPage.head.intro": {
       "kind": "body",
       "role": "说明",
-      "zh": "别名与 cc-monitor 会改的配置文件 · 均需你点击。要你动手的：「文件与数据 → 要你动手」。",
+      "zh": "别名与 cc-monitor 会改的配置文件 · 都要你点\n要你动手的见「文件与数据」页的「要你动手」",
       "args": []
     },
     "cfgPage.cap.terminal": {
@@ -5928,7 +5931,7 @@
     "cfgPage.mcp.noLibraryBody": {
       "kind": "body",
       "role": "说明",
-      "zh": "单账号时 MCP 即 Claude 自己那一份 · 建账号库后各账号共用这一份",
+      "zh": "单账号时 MCP 即 Claude 自己那份 · 建账号库后各账号共用此份",
       "args": []
     },
     "cfgPage.mcp.paused": {
@@ -5976,7 +5979,7 @@
     "cfgPage.mcp.useFrom": {
       "kind": "action",
       "role": "按钮",
-      "zh": "用 {holders} 账号的",
+      "zh": "用 {holders} 的",
       "args": ["holders"]
     },
     "cfgPage.mcp.useGone": {
@@ -6042,7 +6045,7 @@
     "cfgPage.mcp.removeAction": {
       "kind": "action",
       "role": "按钮",
-      "zh": "从所有账号删除",
+      "zh": "从各账号删除",
       "args": []
     },
     "cfgPage.mcp.removeBody": {
@@ -6362,7 +6365,7 @@
     "machineAliases.access.outdated": {
       "kind": "body",
       "role": "说明",
-      "zh": "{path} 里 cc-monitor 加的那几行要更新 · 新别名不认",
+      "zh": "要更新 · {path} 里 cc-monitor 加的那几行 · 新别名不可用",
       "args": ["path"]
     },
     "machineAliases.access.notLoaded": {
@@ -6458,7 +6461,7 @@
     "profilesPage.clash.title": {
       "kind": "title",
       "role": "标题",
-      "zh": "{names} · {path} 行 {lines} 有同名定义 · 生效 {now}",
+      "zh": "{names} · {path} 行 {lines} 同名 · 生效 {now}",
       "args": ["names", "path", "lines", "now"]
     },
     "profilesPage.clash.useList": {
@@ -6675,7 +6678,7 @@
     "profilesPage.form.saveHintEdit": {
       "kind": "body",
       "role": "说明",
-      "zh": "只改配置文件里 [{name}] 那一段",
+      "zh": "只改配置文件里 [{name}] 段",
       "args": ["name"]
     },
     "profilesPage.form.saveHintNew": {
@@ -6707,19 +6710,25 @@
       "role": "标签",
       "zh": "tmux · 以名为底取名",
       "args": [],
-      "limited": ["tmux"]
+      "limited": ["tmux"],
+      "waive": {
+        "C-W14": "字段标签点名 tmux 会话名，不是 tmux 缺失 / 启动失败那一族"
+      }
     },
     "profilesPage.form.tmuxName": {
       "kind": "control",
       "role": "标签",
       "zh": "tmux 会话名",
       "args": [],
-      "limited": ["tmux"]
+      "limited": ["tmux"],
+      "waive": {
+        "C-W14": "字段标签点名 tmux 会话名，不是 tmux 缺失 / 启动失败那一族"
+      }
     },
     "profilesPage.form.noTmux": {
       "kind": "body",
       "role": "说明",
-      "zh": "该机无 tmux · 启动会话会失败",
+      "zh": "无法启动会话 · 该机无 tmux",
       "args": [],
       "limited": ["tmux"]
     },
@@ -6728,7 +6737,10 @@
       "role": "标签",
       "zh": "tmux · 名称固定",
       "args": [],
-      "limited": ["tmux"]
+      "limited": ["tmux"],
+      "waive": {
+        "C-W14": "字段标签点名 tmux 会话名，不是 tmux 缺失 / 启动失败那一族"
+      }
     },
     "profilesPage.form.unnamed": {
       "kind": "body",
@@ -6867,7 +6879,10 @@
       "role": "说明",
       "zh": "合并与「等于」由该机算出 · 同 ccm @{name} -- --ccm-print",
       "args": ["name"],
-      "limited": ["ccm"]
+      "limited": ["ccm"],
+      "waive": {
+        "C-W13": "「」里是同一卡片上那一行的行名（等于），不是按钮 / 页"
+      }
     },
     "profilesPage.merge.overridden": {
       "kind": "body",
@@ -6896,7 +6911,7 @@
     "profilesPage.migrated.line": {
       "kind": "body",
       "role": "说明",
-      "zh": "别名已迁入配置文件 · {n} 条 → {path} · 每条一段 · 以后只在那里写",
+      "zh": "别名已迁入配置文件 · {n} 条 → {path} · 每条一段 · 以后只在此文件写",
       "args": ["n", "path"]
     },
     "profilesPage.open.failed": {
@@ -6950,7 +6965,7 @@
     "profilesPage.remove.goCascade": {
       "kind": "action",
       "role": "按钮",
-      "zh": "{n} 条一起删",
+      "zh": "{n} 条全删",
       "args": ["n"]
     },
     "profilesPage.remove.goReparent": {
@@ -7086,7 +7101,7 @@
     "machineAliases.policy.allow": {
       "kind": "action",
       "role": "按钮",
-      "zh": "允许运行本机脚本",
+      "zh": "允许运行脚本",
       "args": []
     },
     "machineAliases.policy.confirm": {
@@ -7136,12 +7151,15 @@
       "kind": "body",
       "role": "说明",
       "zh": "已装好 · 开新终端或在当前终端 source 该配置后生效",
-      "args": []
+      "args": [],
+      "waive": {
+        "C-W14": "生效条件是开新终端或 source，不是重启 cc-monitor"
+      }
     },
     "machineAliases.posix.blockInstallTitle": {
       "kind": "body",
       "role": "悬停",
-      "zh": "把「让终端认得 ccm、接上别名文件」的段落装进此配置\n只动 cc-monitor 自己的段落 · 写前备份 · 写后回读比对 · 不对即恢复",
+      "zh": "把让终端认得 ccm、接上别名文件的段落装进此配置\n只动 cc-monitor 自己的段落 · 写前备份 · 写后回读比对 · 不对即恢复",
       "args": [],
       "limited": ["ccm"]
     },
@@ -7758,7 +7776,7 @@
     "settingsPanel.behavior.resumeHelp": {
       "kind": "body",
       "role": "说明",
-      "zh": "各机器可单独设 · 机器 ⋯ → 这台上的 cc-monitor",
+      "zh": "各机器可单独设 · 机器 ⋯ → 该机的 cc-monitor",
       "args": [],
       "waive": {
         "C-W1": "⋯ 指认机器行上同形的那个菜单按钮"
@@ -7793,14 +7811,20 @@
       "role": "标签",
       "zh": "恢复到 tmux 里",
       "args": [],
-      "limited": ["tmux"]
+      "limited": ["tmux"],
+      "waive": {
+        "C-W14": "开关说恢复到 tmux 里，不是 tmux 缺失 / 启动失败那一族"
+      }
     },
     "settingsPanel.behavior.resumeInTmuxHelp": {
       "kind": "body",
       "role": "说明",
       "zh": "历史页与标签页「恢复」默认运行于 tmux · 无 tmux 的机器直接恢复",
       "args": [],
-      "limited": ["tmux"]
+      "limited": ["tmux"],
+      "waive": {
+        "C-W14": "说明开关的效果（恢复到 tmux 里），不是 tmux 缺失 / 启动失败那一族"
+      }
     },
     "settingsPanel.behavior.showHiddenTasks": {
       "kind": "control",
@@ -8159,7 +8183,7 @@
     "dataPage.changed.pasted": {
       "kind": "body",
       "role": "说明",
-      "zh": "手动粘贴 · 见「要你动手 · 已做」",
+      "zh": "手动粘贴 · 见「要你动手」的已做",
       "args": []
     },
     "dataPage.undo.ext": {
@@ -8195,8 +8219,11 @@
     "dataPage.own.openRemote": {
       "kind": "action",
       "role": "按钮",
-      "zh": "在文件窗口里打开",
-      "args": []
+      "zh": "在文件窗口打开",
+      "args": [],
+      "waive": {
+        "C-W15": "全产品同一动作名「在文件窗口打开」（与卡片上那条同名）"
+      }
     },
     "dataPage.placed.offline": {
       "kind": "body",
@@ -8330,7 +8357,7 @@
     "ccBus.spawn.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "派生失败：{e}",
+      "zh": "派生失败 · {e}",
       "args": ["e"]
     },
     "ccBus.spawn.running": {
@@ -8342,13 +8369,13 @@
     "ccBus.spawn.confirmBody": {
       "kind": "body",
       "role": "确认框",
-      "zh": "{changed}在 {machine} 的 {dir} 用{account}派生 {tool} · 起真实 agent 进程 · 耗额度\n再点「确认派生」执行",
+      "zh": "{changed}在 {machine} 的 {dir} 用{account}派生 {tool}\n起真实 agent 进程 · 耗额度 · 再点「确认派生」执行",
       "args": ["changed", "machine", "dir", "account", "tool"]
     },
     "ccBus.spawn.changed": {
       "kind": "body",
       "role": "片段",
-      "zh": "参数已改动，请重新确认：",
+      "zh": "参数已改动 · 需重新确认 · ",
       "args": []
     },
     "ccBus.spawn.confirm": {
@@ -8378,7 +8405,7 @@
     "ccBus.broadcast.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "广播失败：{e}",
+      "zh": "广播失败 · {e}",
       "args": ["e"]
     },
     "ccBus.broadcast.confirm": {
@@ -8390,7 +8417,7 @@
     "ccBus.kill.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "收掉失败：{e}",
+      "zh": "收掉失败 · {e}",
       "args": ["e"]
     },
     "ccBus.kill.confirm": {
@@ -8414,7 +8441,7 @@
     "ccBus.send.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "发送失败：{e}",
+      "zh": "发送失败 · {e}",
       "args": ["e"]
     },
     "ccBus.inbox.failed": {
@@ -8558,14 +8585,17 @@
     "ccBus.summary.notOnline": {
       "kind": "body",
       "role": "片段",
-      "zh": "「登记」不等于「在线」",
+      "zh": "登记的不一定在线",
       "args": []
     },
     "ccBus.summary.skipped": {
       "kind": "body",
       "role": "说明",
       "zh": "无法解析 ×{skipped} · 已跳过",
-      "args": ["skipped"]
+      "args": ["skipped"],
+      "waive": {
+        "C-W14": "计数格（跳过的无法解析条目数），不是动作失败句"
+      }
     },
     "ccBus.summary.unregistered": {
       "kind": "body",
@@ -8612,7 +8642,7 @@
     "ccBus.machine.noRemote": {
       "kind": "body",
       "role": "说明",
-      "zh": "未配置远端 —— 可以先看本机的 cc-bus。",
+      "zh": "未配置远端 · 可先看本机 cc-bus",
       "args": []
     },
     "ccBus.machine.local": {
@@ -8651,7 +8681,7 @@
     "ccBus.build.notRead": {
       "kind": "body",
       "role": "片段",
-      "zh": "尚未读取。",
+      "zh": "未读取",
       "args": []
     },
     "ccBus.build.read": {
@@ -8693,7 +8723,7 @@
     "ccBusHooks.snippet.merge": {
       "kind": "body",
       "role": "说明",
-      "zh": "要合并进去，不是整份覆盖。那里可能还有别的工具的钩子，覆盖会把它们删掉。",
+      "zh": "合并进现有文件 · 勿整份覆盖 · 其中可能有别的工具的钩子",
       "args": [],
       "limited": ["hook"]
     },
@@ -18855,13 +18885,19 @@
       "kind": "action",
       "role": "按钮",
       "zh": "在文件窗口打开",
-      "args": []
+      "args": [],
+      "waive": {
+        "C-W15": "全产品同一动作名「在文件窗口打开」（与卡片上那条同名）"
+      }
     },
     "extPage.button.reveal": {
       "kind": "action",
       "role": "按钮",
       "zh": "在文件夹中显示",
-      "args": []
+      "args": [],
+      "waive": {
+        "C-W15": "系统惯用的固定动作名（在文件夹中显示）"
+      }
     },
     "extPage.card.again": {
       "kind": "action",
@@ -18998,7 +19034,7 @@
     "extPage.offline.bar": {
       "kind": "body",
       "role": "状态",
-      "zh": "{machine} 离线 · 该列为上次同步的数据",
+      "zh": "{machine} 离线 · 上次同步",
       "args": ["machine"]
     },
     "extPage.install.where": {
@@ -19011,7 +19047,10 @@
       "kind": "body",
       "role": "说明",
       "zh": "{state} · 勾选后换成此版本",
-      "args": ["state"]
+      "args": ["state"],
+      "waive": {
+        "C-W14": "说勾选后换成此行这一份，不是版本新旧的结论"
+      }
     },
     "extPage.install.kept": {
       "kind": "body",
@@ -19067,7 +19106,7 @@
     "extPage.install.doneOne": {
       "kind": "body",
       "role": "状态",
-      "zh": "{machine} · 已装 · {said}",
+      "zh": "已装 · {machine} · {said}",
       "args": ["machine", "said"]
     },
     "extPage.kind.mcp": {
@@ -19443,15 +19482,16 @@
     "extPage.hooks.installFirst": {
       "kind": "body",
       "role": "说明",
-      "zh": "未装 cc-bus · 先在下面该机那一行点「装到…」再加钩子",
+      "zh": "未装 cc-bus · 先在下面该机所在行点「装到」再加钩子",
       "args": [],
       "limited": ["hook"]
     },
     "extPage.hooks.copy": {
       "kind": "action",
       "role": "按钮",
-      "zh": "复制要加的内容",
-      "args": []
+      "zh": "复制钩子配置",
+      "args": [],
+      "limited": ["hook"]
     },
     "extPage.hooks.target": {
       "kind": "body",
@@ -19710,7 +19750,7 @@
     "extPage.hooks.unsupported": {
       "kind": "body",
       "role": "说明",
-      "zh": "这台不支持自动收信：cc-bus 要 tmux。",
+      "zh": "不支持自动收信 · 该机无 tmux",
       "args": [],
       "limited": ["tmux"]
     },
@@ -23828,7 +23868,7 @@
     "machinePage.cc.title": {
       "kind": "title",
       "role": "标题",
-      "zh": "这台上的 cc-monitor",
+      "zh": "该机的 cc-monitor",
       "args": []
     },
     "machinePage.tab.accounts": {
@@ -24277,7 +24317,10 @@
       "kind": "action",
       "role": "按钮",
       "zh": "从 {machine} 卸载…",
-      "args": ["machine"]
+      "args": ["machine"],
+      "waive": {
+        "C-W15": "带机器名（用户起的名字）"
+      }
     },
     "machineCard.conn.moreJump": {
       "kind": "body",
@@ -24321,7 +24364,10 @@
       "kind": "body",
       "role": "片段",
       "zh": "版本 {ver}",
-      "args": ["ver"]
+      "args": ["ver"],
+      "waive": {
+        "C-W14": "版本号读数，不是版本旧 / 不可比的结论"
+      }
     },
     "machineList.summary.single": {
       "kind": "body",
@@ -24423,7 +24469,10 @@
       "kind": "body",
       "role": "片段",
       "zh": "版本 {ver} · {state}",
-      "args": ["ver", "state"]
+      "args": ["ver", "state"],
+      "waive": {
+        "C-W14": "版本号读数，不是版本旧 / 不可比的结论"
+      }
     },
     "machineState.down.resolve": {
       "kind": "body",
@@ -24959,7 +25008,10 @@
       "kind": "action",
       "role": "按钮",
       "zh": "更多操作 · {name}",
-      "args": ["name"]
+      "args": ["name"],
+      "waive": {
+        "C-W15": "图标按钮的读屏名，带账号名区分各行（带用户名字的那一类）"
+      }
     },
     "acctPage.menu.changeKey": {
       "kind": "action",
@@ -25342,9 +25394,12 @@
     "acctPage.login.inTmux": {
       "kind": "action",
       "role": "按钮",
-      "zh": "在 tmux 里登录",
+      "zh": "tmux 里登录",
       "args": [],
-      "limited": ["tmux"]
+      "limited": ["tmux"],
+      "waive": {
+        "C-W14": "按钮说登录在 tmux 里跑，不是 tmux 缺失 / 启动失败那一族"
+      }
     },
     "acctPage.login.reopen": {
       "kind": "action",
@@ -27056,7 +27111,7 @@
     "dataPage.chore.copyWhole": {
       "kind": "action",
       "role": "按钮",
-      "zh": "复制改好的整份文件",
+      "zh": "复制改后全文",
       "args": []
     },
     "dataPage.chore.copyWholeN": {
@@ -27074,7 +27129,7 @@
     "dataPage.chore.decline": {
       "kind": "action",
       "role": "按钮",
-      "zh": "不用了",
+      "zh": "不需要",
       "args": []
     },
     "dataPage.chore.autoDetect": {
@@ -27110,7 +27165,7 @@
     "machineAliases.selfPaste.waiting": {
       "kind": "body",
       "role": "说明",
-      "zh": "已选自己贴 · 照「要你动手」那一件贴好存盘 · 自动识别",
+      "zh": "已选自己贴 · 照「要你动手」里的条目贴好存盘 · 自动识别",
       "args": []
     },
     "machineAliases.selfPaste.go": {
@@ -27122,7 +27177,7 @@
     "machineAliases.selfPaste.undo": {
       "kind": "action",
       "role": "按钮",
-      "zh": "改由 cc-monitor 接上",
+      "zh": "改为自动接上",
       "args": []
     },
     "machineAliases.selfPaste.failed": {
@@ -27146,7 +27201,7 @@
     "cfgPage.pointer.go": {
       "kind": "action",
       "role": "按钮",
-      "zh": "去「文件与数据」",
+      "zh": "去文件与数据",
       "args": []
     },
     "cfgPage.pointer.changed": {
