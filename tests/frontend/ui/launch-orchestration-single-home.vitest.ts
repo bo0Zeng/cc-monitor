@@ -190,8 +190,7 @@ describe("K4 · D-h：本机后端说「要的号选不了」⇒ 不开窗、说
     const calls = vi.mocked(showActionFailureToast).mock.calls;
     expect(calls).toHaveLength(1);
     expect(calls[0][0]).toBe(copyText("accountPick.refused.title"));
-    expect(calls[0][1]).toContain("「z」");
-    expect(calls[0][1]).toContain("「b」");
+    expect(calls[0][1]).toBe(copyText("accountPick.refused.pinGoneToCurrent", { name: "z", current: "b" }));
     calls[0][2]!.onClick!();
     await vi.waitFor(() => expect(opened()).toBe(1));
     expect(resumes().map((r) => r.account)).toEqual([{ kind: "follow" }, { kind: "named", name: "b" }]);

@@ -270,7 +270,7 @@
       "betacct"
     ],
     "line": null,
-    "lineError": "账号 'b' 不可用（不在 <HOME>/.cc-monitor/accounts/accounts.json，或其目录不存在）。可用: z b",
+    "lineError": "账号 'b' 不可用 · 不在 <HOME>/.cc-monitor/accounts/accounts.json 或其目录不存在 · 可用 z b",
     "problem": null,
     "rows": [
       {

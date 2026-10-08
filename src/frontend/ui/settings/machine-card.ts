@@ -1076,7 +1076,7 @@ export class MachineCard {
         title: copyText("machineCard.uninstall.title", { host: cfg.host }),
         action: copyText("machineCard.uninstall.action"),
         danger: true,
-        body: copyText("machineCard.uninstall.confirm", { host: cfg.host }),
+        body: copyText("machineCard.uninstall.confirm"),
         rows,
       }))
     ) {
