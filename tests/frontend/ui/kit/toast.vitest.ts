@@ -151,4 +151,17 @@ describe("撤销提示条（I11）", () => {
     expect(el.querySelector('[data-part="copy-detail"]')).toBeNull();
     expect(buttonsOf(el.lastElementChild as HTMLElement).map((b) => b.textContent)).toEqual(["act-3", ""]);
   });
+
+  it("合流与不合流：每段复制详情只跟它那一条走（别的句子的详情不进来，同句合流段段按先后接）", async () => {
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: vi.fn(() => Promise.resolve()) } });
+    kit.toast("t-a", "", { detail: "da-1" });
+    kit.toast("t-b", "", { detail: "db-1" });
+    kit.toast("t-a", "", { detail: "da-2" });
+    const recs = kit.recentToasts();
+    const a = recs.find((r) => r.title === "t-a")!;
+    const b = recs.find((r) => r.title === "t-b")!;
+    expect(a.copy.map(([t, d]) => [t, d])).toEqual([["t-a", "da-1"], ["t-a", "da-2"]]);
+    expect(b.copy.map(([t, d]) => [t, d])).toEqual([["t-b", "db-1"]]);
+    expect(kit.recordDetail(b)).toBe("t-b\ndb-1");
+  });
 });

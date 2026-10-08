@@ -275,6 +275,17 @@ const DETAIL = [
   "原话：can't find window: orders-3:2",
 ].join("\n");
 
+/** 「读取 cc-bus 无应答」那一条的复制详情（与它对得上：命令 bus-state · 码 child_timed_out）。 */
+const BUS_DETAIL = (at: string): string =>
+  [
+    `时刻：2026-10-08 ${at} +08:00`,
+    "机器：Linux x86_64 · 后端 p9k-flicker",
+    "本机：cc-monitor 4.1.5 (p9k-flicker) · Linux x86_64",
+    "命令：bus-state",
+    "码：child_timed_out",
+    "原话：cc-list did not exit within 8s; process group killed",
+  ].join("\n");
+
 /** 剪贴板换成写得进 / 写不进的那一份（各态要真点出来）。 */
 function clipboard(ok: boolean): void {
   Object.defineProperty(navigator, "clipboard", {
@@ -348,8 +359,8 @@ async function detailToasts(): Promise<void> {
   document.body.append(h("h1", "g-h1", "复制详情 · toast"), stage(fakeRows(12)));
   clipboard(true);
   toast("结束 orders 失败 · tmux 报错", "devbox", { detail: DETAIL, action: { label: "重试", run: () => {} } });
-  toast("读取 cc-bus 无应答", "devbox", { detail: DETAIL });
-  toast("读取 cc-bus 无应答", "devbox", { detail: DETAIL });
+  toast("读取 cc-bus 无应答", "devbox", { detail: BUS_DETAIL("14:50:01") });
+  toast("读取 cc-bus 无应答", "devbox", { detail: BUS_DETAIL("14:50:31") });
   undoToast("已删除 devbox", () => {}, () => {});
   await new Promise((r) => setTimeout(r, 300));
 }
@@ -357,8 +368,8 @@ async function detailToasts(): Promise<void> {
 async function detailMessages(): Promise<void> {
   document.body.append(h("h1", "g-h1", "复制详情 · 「消息」里那几条"), stage(fakeRows(6)));
   clipboard(true);
-  toast("读取 cc-bus 无应答", "devbox", { detail: DETAIL });
-  toast("读取 cc-bus 无应答", "devbox", { detail: DETAIL.replace("14:32:07", "14:32:37") });
+  toast("读取 cc-bus 无应答", "devbox", { detail: BUS_DETAIL("14:50:01") });
+  toast("读取 cc-bus 无应答", "devbox", { detail: BUS_DETAIL("14:50:31") });
   toast("已删除 devbox", "", { level: "success" });
   const m = new StatusMessages();
   m.el.style.position = "fixed";
