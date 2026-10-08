@@ -192,3 +192,43 @@ export function delegateTooltip(root: HTMLElement, selector: string, content: (e
     if (hit(e.target) && hit(e.target) !== hit(e.relatedTarget)) c.hide();
   });
 }
+
+/**
+ * 全产品的 `title` 属性改走本模块的悬停提示（C20）：系统自己画的那种提示（WebKitGTK 黑底白字 · WebView2 各版本各样）不跟主题、
+ * 不按 500ms 节奏、也不摆在宿主上方。指针 / 焦点进一个带 `title` 的元素那一刻，把它挪进 `data-kit-title`（系统提示就不出了），
+ * 再按这里的节奏出提示；代码之后又写了 `title` ⇒ 下一次进来再挪。三个窗口的入口各装一次（`entry-common.ts`）。
+ */
+export function adoptNativeTitles(doc: Document = document): void {
+  const hostOf = (t: EventTarget | null): HTMLElement | null => {
+    if (!(t instanceof Element) || typeof t.closest !== "function") return null;
+    return t.closest<HTMLElement>("[title], [data-kit-title]");
+  };
+  const take = (el: HTMLElement): void => {
+    const t = el.getAttribute("title");
+    if (t === null) return;
+    if (t === "") delete el.dataset.kitTitle;
+    else el.dataset.kitTitle = t;
+    el.removeAttribute("title");
+  };
+  const c = controller((h) => h.dataset.kitTitle ?? null, {});
+  const enter = (e: Event): void => {
+    const el = hostOf(e.target);
+    if (!el) return;
+    take(el);
+    c.arm(el);
+  };
+  const out = (e: Event & { relatedTarget?: EventTarget | null }): void => {
+    const from = hostOf(e.target);
+    if (from && from !== hostOf(e.relatedTarget ?? null)) c.leave();
+  };
+  doc.addEventListener("mouseover", enter, true);
+  doc.addEventListener("focusin", enter, true);
+  doc.addEventListener("mouseout", out, true);
+  doc.addEventListener("focusout", (e) => {
+    const from = hostOf(e.target);
+    if (from && from !== hostOf(e.relatedTarget)) c.hide();
+  }, true);
+  doc.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") c.hide();
+  }, true);
+}

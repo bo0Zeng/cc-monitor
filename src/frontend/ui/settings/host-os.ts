@@ -91,3 +91,8 @@ export function hostOsAllows(allowed: readonly HostOs[] | undefined): boolean {
   const os = hostOs();
   return os === "unknown" || allowed.includes(os);
 }
+
+/** 根元素上标出界面跑在哪个系统上（`data-host-os`），给只能按平台分的那几条样式用（`tokens.css` 里 Linux 的等宽字体缺省）。三个窗口的入口各标一次。 */
+export function markHostOs(root: HTMLElement): void {
+  root.dataset.hostOs = hostOs();
+}

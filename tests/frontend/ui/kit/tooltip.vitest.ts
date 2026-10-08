@@ -13,7 +13,7 @@
  */
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import { makeInfoIcon } from "../../../../src/frontend/ui/settings/info-icon";
-import { attachTooltip, CARD_CLOSE_MS, delegateTooltip, hideTooltips, __liveTooltipCountForTests, TOOLTIP_DELAY_MS } from "../../../../src/frontend/ui/kit/tooltip";
+import { adoptNativeTitles, attachTooltip, CARD_CLOSE_MS, delegateTooltip, hideTooltips, __liveTooltipCountForTests, TOOLTIP_DELAY_MS } from "../../../../src/frontend/ui/kit/tooltip";
 import { closeMenu, openMenu } from "../../../../src/frontend/ui/kit/menu";
 import { placeFloat } from "../../../../src/frontend/ui/kit/place";
 
@@ -222,5 +222,44 @@ describe("C20：出现时机与摆法", () => {
     expect(tipsInBody()).toBe(0);
     closeMenu();
     hideTooltips(); // 空着时调也无事
+  });
+});
+
+describe("元素上的 title 改走 kit 的悬停提示（adoptNativeTitles）", () => {
+  beforeEach(() => {
+    document.body.replaceChildren();
+    hideTooltips();
+    vi.useFakeTimers();
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("指针一进来 title 就挪走（系统提示不出），500ms 出 kit 那一条；离开即收；之后代码再写 title ⇒ 下一次照样挪", () => {
+    adoptNativeTitles(document);
+    vi.advanceTimersByTime(1000); // 出了「同一组」那段宽限（上一条测试刚收过提示）
+    const row = document.createElement("div");
+    row.title = "整理这周的笔记";
+    const inner = document.createElement("span");
+    row.appendChild(inner);
+    document.body.appendChild(row);
+    inner.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+    expect(row.hasAttribute("title"), "title 还在 ⇒ 系统那种提示照样会出").toBe(false);
+    expect(tipsInBody()).toBe(0);
+    vi.advanceTimersByTime(TOOLTIP_DELAY_MS);
+    const tip = document.querySelector<HTMLElement>('[role="tooltip"]');
+    expect(tip?.textContent).toBe("整理这周的笔记");
+    inner.dispatchEvent(new MouseEvent("mouseout", { bubbles: true, relatedTarget: document.body }));
+    expect(tipsInBody()).toBe(0);
+    vi.advanceTimersByTime(1000);
+    row.title = "改了名";
+    row.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+    vi.advanceTimersByTime(TOOLTIP_DELAY_MS);
+    expect(document.querySelector('[role="tooltip"]')?.textContent).toBe("改了名");
+    expect(row.hasAttribute("title")).toBe(false);
+  });
+
+  it("三个窗口的入口都装它（entry-common 一处）", async () => {
+    const fs = await import("node:fs");
+    const src = fs.readFileSync("src/frontend/ui/entry-common.ts", "utf8");
+    expect(src).toMatch(/^adoptNativeTitles\(\);$/m);
   });
 });
