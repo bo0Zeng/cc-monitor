@@ -48,6 +48,7 @@ fn env_with<'a>(home: &'a Path, fs: &'a FsProbe<'a>, path_env: Option<&'a str>) 
         agent_home: Box::leak(Box::new(home.join(".claude"))),
         fs,
         path_env,
+        session_path: path_env,
         vantage: Vantage::Monitor,
     }
 }

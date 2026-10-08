@@ -360,7 +360,7 @@ pub(crate) const UNMANAGED_ENV: &[UnmanagedEnv] = &[UnmanagedEnv {
     id: "claude-cli",
     display_name: Text(|| copy_text("rsToolRegistry.env.agentCliName", &[])),
     who: Provisioning::UserProvides,
-    probe: EnvProbe::OnPath,
+    probe: EnvProbe::InSessionShell,
     named: "claude",
     host: HostScope::Either,
     why: Text(|| copy_text("rsToolRegistry.env.agentCliWhy", &[])),

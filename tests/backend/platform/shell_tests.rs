@@ -118,3 +118,50 @@ fn a_powershell_starts_without_profile_and_without_the_inherited_policy() {
         );
     }
 }
+
+/// ★ 起会话那个 shell 的 `PATH`：从输出里认标记那一段（rc 文件往标准输出打的杂话不算进去）；没有标记 / 空 ⇒ 问不出来。
+#[test]
+fn the_session_shell_path_is_read_between_its_markers() {
+    use super::{parse_marked_path, SESSION_PATH_MARK as M};
+    assert_eq!(
+        parse_marked_path(&format!("欢迎\n{M}/a/bin:/b/bin{M}\n")),
+        Some("/a/bin:/b/bin".to_string())
+    );
+    assert_eq!(
+        parse_marked_path("欢迎\n/a/bin:/b/bin\n"),
+        None,
+        "没有标记却认出了一段"
+    );
+    assert_eq!(
+        parse_marked_path(&format!("{M}{M}")),
+        None,
+        "空的 PATH 不是答案"
+    );
+}
+
+/// ★ 真问一个登录 shell（沙箱家目录 · `sh` 代替用户的 shell）：家目录里登录要读的那份文件往 `PATH` 前面加的目录问得出来，
+/// 后端进程自己的 `PATH` 里没有它。
+#[test]
+#[cfg(unix)]
+fn the_session_shell_path_comes_from_a_login_shell() {
+    let home = std::env::temp_dir().join(format!("ccm-session-path-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&home);
+    std::fs::create_dir_all(&home).unwrap();
+    std::fs::write(
+        home.join(".profile"),
+        "echo 登录时的杂话\nPATH=\"$HOME/user-bin:$PATH\"\n",
+    )
+    .unwrap();
+    let cmd = super::login_shell_asking_path("sh")
+        .env("HOME", &home)
+        .env("PATH", "/usr/bin:/bin")
+        .env_remove("ENV")
+        .env_remove("BASH_ENV");
+    let got = super::ask_session_path(cmd).expect("沙箱里的登录 shell 问不出 PATH");
+    let want = format!("{}/user-bin", home.display());
+    assert!(
+        std::env::split_paths(&got).any(|d| d.to_string_lossy() == want),
+        "登录时加进 PATH 的目录没问出来：{got}"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}

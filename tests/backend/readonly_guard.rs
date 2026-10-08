@@ -3215,6 +3215,15 @@ mod spawn_registry {
             "有别的办法不起进程就读到 PowerShell 7 的执行策略的那天摘掉只读那一种；\
              ⚠ 写的那一种只许是上一条那一句固定脚本，不许收界面给的策略值。",
         ),
+        (
+            "platform/shell/mod.rs",
+            "<非字面量>",
+            "问**起会话那个 shell** 的 `PATH`（`session_shell_path`）：用户的 `$SHELL` 起一次 `-l -i -c`，固定脚本只 `printf` 出 `PATH`，\
+             不吃任何输入、有期限。被起的是用户自己的登录 shell，它读不读 / 写不写什么由用户的 rc 文件定；后端进程自身不写用户数据。\
+             只从足迹报告（`footprint-report` · `data-report`）判 agent 命令行装没装时进来。",
+            "缩性质",
+            "有别的办法拿到用户登录环境的 `PATH` 而不起他的 shell 的那天摘掉。⚠ 脚本只许是打出 `PATH` 那一句。",
+        ),
         // `relay/machine.rs` 那一行（远端起一个脱离的 `--relay`）摘了：中转只住常驻后端进程里，那一处起法随之删。
         (
             "control/session_batch.rs",

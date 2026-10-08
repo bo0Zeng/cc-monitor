@@ -11620,6 +11620,12 @@
       "zh": "读不到 PATH 或它为空 · 无法判断 {named} 是否存在 · 不代表不存在",
       "args": ["named"]
     },
+    "rsConfigSurface.onPath.noSessionPath": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "问不出起会话那个 shell 的 PATH · 无法判断 {named} 是否装了 · 不代表没装",
+      "args": ["named"]
+    },
     "rsConfigSurface.unmanaged.checkOnlyEffect": {
       "kind": "body",
       "role": "说明",

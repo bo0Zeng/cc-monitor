@@ -902,6 +902,9 @@ pub enum EnvProbe {
     /// 切分必须走 `std::env::split_paths`（Windows 的 `;` 与盘符冒号），
     /// 以及「取不到 `PATH` 就返回 `None`（**不猜**）」。
     OnPath,
+    /// 起会话那个 shell 的 `PATH` 上的一个裸命令（agent 命令行：会话在用户登录 shell 里起，按那里的 `PATH` 找它）。
+    /// 同走 `rows.rs::resolves_on_path`，只是 `PATH` 换成那一份；问不出来 ⇒ 「查不动」，绝不说「缺」。
+    InSessionShell,
     /// 查不动，**理由必填**：值由别处决定（占位符 / 用户配置），本页不猜。
     ///
     /// ⚠ 填这一支之前先问一遍：是真的查不动，还是**懒得查**？后者写在这里就是

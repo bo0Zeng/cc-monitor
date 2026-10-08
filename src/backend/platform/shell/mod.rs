@@ -34,6 +34,62 @@ pub(crate) fn posix_shell(script: &str) -> Option<Child> {
     }
 }
 
+/// 起会话那个 shell 的 `PATH` 夹在这一对标记中间（rc 文件往标准输出打的杂话不算进去）。
+pub(crate) const SESSION_PATH_MARK: &str = "@@ccm-session-path@@";
+
+/// 问 `PATH` 那一趟的期限（交互 rc 卡住 ⇒ 到点算问不出来）。
+const SESSION_PATH_WITHIN: crate::platform::child::Deadline =
+    crate::platform::child::Deadline::secs(10);
+
+/// **起会话那个 shell** 的 `PATH`：会话在 tmux 窗格里的用户登录 shell 里起（交互、登录），agent 命令按那里的 `PATH` 找；
+/// 后端进程自己的 `PATH` 不是那一份（经 ssh 非登录 shell 起时常常没有用户级 `bin`）。
+/// 问法：用 `$SHELL` 起一次 `-l -i -c` 打出 `PATH`。没有 `$SHELL` / 起不来 / 超时 / 没打出来 ⇒ `None`（问不出来，调用方不许当成「没有」）。
+/// 非 unix：会话在本机终端里起，环境与本进程同源 ⇒ 本进程的 `PATH`。
+pub(crate) fn session_shell_path() -> Option<String> {
+    #[cfg(unix)]
+    {
+        let shell = std::env::var("SHELL")
+            .ok()
+            .filter(|s| !s.trim().is_empty())?;
+        ask_session_path(login_shell_asking_path(&shell))
+    }
+    #[cfg(not(unix))]
+    {
+        std::env::var("PATH").ok()
+    }
+}
+
+/// `<shell> -l -i -c <打出 PATH>`（不起）。
+pub(crate) fn login_shell_asking_path(shell: &str) -> Child {
+    Child::new(shell).args([
+        "-l",
+        "-i",
+        "-c",
+        &format!(
+            "printf '%s%s%s' {m} \"$PATH\" {m}",
+            m = shell_quote_core::posix_quote(SESSION_PATH_MARK)
+        ),
+    ])
+}
+
+/// 起它、从输出里认那一段。
+pub(crate) fn ask_session_path(cmd: Child) -> Option<String> {
+    match cmd.run(SESSION_PATH_WITHIN) {
+        Ok(out) => parse_marked_path(&String::from_utf8_lossy(&out.stdout)),
+        Err(e) => {
+            tracing::warn!("问起会话那个 shell 的 PATH 没问成：{e}");
+            None
+        }
+    }
+}
+
+/// 输出里最后一对标记中间那一段；没有 / 空 ⇒ `None`。
+pub(crate) fn parse_marked_path(out: &str) -> Option<String> {
+    let (head, _) = out.rsplit_once(SESSION_PATH_MARK)?;
+    let (_, path) = head.rsplit_once(SESSION_PATH_MARK)?;
+    (!path.trim().is_empty()).then(|| path.to_string())
+}
+
 /// 这台的哪一代 PowerShell：两代各读各的 profile 目录、各有一份执行策略（线上名 `powershell` / `pwsh`）。
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
