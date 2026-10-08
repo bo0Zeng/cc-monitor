@@ -97,7 +97,7 @@
   }
 
   /* 中档 800–1100：列表 340、不可拖。 */
-  @media (max-width: 1099px) {
+  @media (width <= 1099px) {
     .hvCol {
       width: 340px;
     }
@@ -108,7 +108,7 @@
   }
 
   /* 窄档 < 800：单块。只有列表；点开一行 ⇒ 内容盖满（头左端「← 列表」）；「筛选」只剩图标。 */
-  @media (max-width: 799px) {
+  @media (width <= 799px) {
     .hvCol {
       flex: 1;
       width: auto;

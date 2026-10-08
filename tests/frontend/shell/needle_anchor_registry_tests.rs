@@ -43,98 +43,23 @@ const CORPUS_SEEDS: &[&str] = &[
     "scan_tree_excluding_self(",
 ];
 
-/// ★ **递减棘轮的上限**（`P28` 2026-09-22 全树重测 **96** 处；旧值 33 / 旧实测 29）。
-///
-/// # 🔴 这个数从 33 变成 96 —— **人群变了，标准一格没松**
-///
-/// 上一段（63 → 35）记的是「**量准了**所以降」。这一拍是同一件事的**反方向**：
-/// [`CORPUS_SEEDS`] 漏了 `scan_tree_excluding(`、[`corpus_vars`] 不认 `for` 模式绑定
-/// （两个洞**互相独立**，理由各写在那两处），补完之后原先**按构造进不了人群**的那些
-/// 判据一次性全进来了。
-///
-/// ★ **它不是「把上限调上去让今天好过」，判准有两条，都可现打复核**：
-///
-/// 1. **新上限一格富余都没有** —— 逐个原语钉的就是当天实测值本身
-///    （旧的 `.contains(` 上限 33 / 实测 29 ⇒ **有 4 格富余**；今天 96 / 96 ⇒ **0 格**）。
-///    ⇒ 在**旧人群**那一侧，今天比昨天**更紧**：昨天还能白加 4 处，今天加 1 处就红。
-/// 2. **总数 44 → 178 那 134 处的增量，一处都不是新写的代码** —— 基线树一个字没动
-///    （`P28` 只改了本文件与它的生产侧头注）。增量全部来自「本来就在那儿、而尺子够不着」。
-///
-/// # 逐原语新旧两个数（`P28` 现打，诊断里 `by_file` 逐处点名可复核）
-///
-/// | 原语 | 旧上限 | 旧实测 | **新实测＝新上限** |
-/// |---|---|---|---|
-/// | `.contains(` | 33 | 29 | **96** |
-/// | `.starts_with(` | 0 | 0 | **30** |
-/// | `.strip_prefix(` | 0 | 0 | **20** |
-/// | `.find(` | 8 | 8 | **16** |
-/// | `.matches(` | 13 | 6 | **7** |
-/// | `.ends_with(` | 0 | 0 | **6** |
-/// | `.rfind(` | 0 | 0 | **2** |
-/// | `.split(` | 1 | 1 | **1** |
-/// | **合计** | — | **44** | **178** |
-///
-/// # 🔴 那 134 处**没有逐条判过真伪** —— 这一格是账，别读成「已分类的存量」
-///
-/// 头注那张四类表（存在性/自检 vs 正向事实钉）只过了 08-06 那 34 处。
-/// 新进来的这 134 处**一条都没过**，而且**逐处处置这一拍做不完**：
-/// 它们里有相当一批住在 `P28` 的禁区（`structural_scan` 的判据 27 处 ·
-/// `comm_boundary_registry` 的判据 1 处），改不了。
-/// ⇒ 已按交付纪律**停下来报备**，处置另开一件。
-///
-/// ⚠ 尤其要点名一处**被这一拍软化了的承诺**：`.ends_with(` 的上限是
-/// 刻意从 2 拧到 0 的，那一段逐字写着「任何**非**扩展名的裸
-/// `ends_with` 从此当场红」。人群补全之后它实测 **6** 处 ——
-/// 逐处的住址刻意**用那一行的代码本身**报，不用行号（行号每一轮都变，
-/// 写下去下一轮自动变成假话；`structural_scan` 那条行号判据逐字禁这件事）：
-/// `payload_tests.rs` 的 `rel.ends_with(` 取 `/launch.rs` 那一处 ·
-/// `structural_scan_tests.rs` 的行形解析 **4** 处（一处取 `() {`，
-/// 三处在同一行上取 ` < types,` / ` < scan_at,` / ` < act,`）·
-/// `readonly_guard.rs` 的 `entry.ends_with(` 取 `dependencies]` 那一处 ——
-/// 六处里**五处在禁区**，一处都动不了。⇒ 这条上限今天只能写 6，
-/// **而那句「从此当场红」现在是一句半真的话**，如实记在这里。
-///
-/// ⚠⚠ **它从 63 降到 35 不是因为还了债，是因为量准了。**
-/// 原来的传递闭包按「RHS 里**提及**了语料变量」传，会跑飞（见 `is_direct_derivation`）；
-/// 收紧成「直接派生」之后，28 处**本来就不属这一族**的命中退出了计数。
-/// 记下这一句是因为「上限降了」默认会被读成「有人修了 28 处」——那是假的。
-///
-/// ⚠ 这个数里**有假阳性**：语料变量的传递闭包只看 `let` 那一行的右侧，
-/// 于是「先从磁盘读了点什么、后面又 `let` 了个提到它的变量」会被一并算进来
-/// （`pubkey.rs` 那处就是）。假阳性抬高了上限、削弱了它的锐度，但**不影响方向**：
-/// 新增一处仍然会越界。逐条判真伪归下一轮，诚实边界。
-///
-/// 只许降。修一处就把这个数调下来，**不许调上去让今天好过**。
-const BARE_CONTAINS_CEILING: usize = 96;
-
-/// 「匹配单位比事实小」这一族的**全部**原语，各带各的递减棘轮上限。
-///
-/// 原来只有 `contains` 一条。本表把族圈全 ——
-/// 判据的人群应当是**这个族**，不是族里最好数的那一种（本轮逮到的洞用的是 `matches`）。
-/// 数字是 **08-06 全树实测值**，不是估的（先置 0 跑一次，从诊断里读出来再钉）。
-/// ⚠ 这 24 处**没有**像 `contains` 那 34 处一样被逐条判过真伪 —— 那要另开一件。
-/// 棘轮的意义在此刻就是「别再长」；分类是后补的活，不是立棘轮的前提。
-const MATCHER_CEILINGS: &[(&str, usize)] = &[
-    (".contains(", BARE_CONTAINS_CEILING),
-    // 🔴 **下面这七个数全部重测过**，理由与新旧对照表
-    // 逐字住 [`BARE_CONTAINS_CEILING`] 的头注 —— **别在这里再写第二份**（本区 E12：
-    // 一个数字出现在两个地方就会漂）。一句话：人群补全了，**上限一格富余都没留**。
-    (".matches(", 7),
-    (".find(", 16),
-    (".rfind(", 2),
-    (".starts_with(", 30),
-    // 🔴 **2 → 0（往下拧）。** 原来那 2 处是
-    //    `path.ends_with(".rs")` / `.ends_with(".ts")` 这一形 —— 已登记豁免
-    //    （[`needle_is_a_file_extension`]：后缀 + 扩展名撑不大，没有更严的写法可换）。
-    //    摘掉那一形之后全仓真欠账是 0 ⇒ 上限就写 0：从此任何**非**扩展名的
-    //    裸 `ends_with` 当场红。
-    // 🔴 **0 → 6，而上面那句「从此当场红」因此只剩半真** ——
-    //    人群补全之后露出 6 处非扩展名形，其中 5 处在 `P28` 禁区里动不了。
-    //    逐处住址与判词在 [`BARE_CONTAINS_CEILING`] 头注最后一段，**这是账不是分类**。
-    (".ends_with(", 6),
-    (".split(", 1),
-    (".strip_prefix(", 20),
+/// 「匹配单位比事实小」这一族的**全部**原语：语料变量上拿字符串字面量去够的这几种，风险一模一样
+/// （needle 被撑大 ⇒ 判据照样绿）。
+const MARKS: &[&str] = &[
+    ".contains(",
+    ".matches(",
+    ".find(",
+    ".rfind(",
+    ".starts_with(",
+    ".ends_with(",
+    ".split(",
+    ".strip_prefix(",
 ];
+
+/// 欠账名单：今天还在的每一处「语料变量上的裸匹配」，一行一处（`住址\t接收者.原语("字面量")`，同一行可重复）。
+/// 判法是**两向相等**：新写一处 ⇒ 红（改用 `guard_core::find_pinned` / `pin_line` / `contains_word`）；
+/// 修掉一处 ⇒ 红（把那一行删掉）。名单住旁边那份文本（`needle_anchor_debt.txt`），一次性从现状生成。
+const DEBT: &str = include_str!("needle_anchor_debt.txt");
 
 /// 一个 `let` 绑定的名字与右侧表达式（右侧只取本行，多行 `let` 的首行足够判种子）。
 fn let_binding(line: &str) -> Option<(&str, &str)> {
@@ -322,8 +247,8 @@ fn receiver_before(hay: &str, dot_at: usize) -> String {
 /// （那不是以 `.test.ts` 结尾）。⇒ 这一形上 `find_pinned` / `pin_line` / `contains_word`
 /// **一个都不适用**，也没有更严的写法可换 —— 它不是欠账，是这件事的正确写法。
 ///
-/// ⚠ 这条豁免是**收紧**，不是放宽：摘掉它之后 `.ends_with(` 的上限从 2 拧到了 **0**
-/// （见 [`MATCHER_CEILINGS`]）。任何**非**扩展名的裸 `ends_with` 从此当场红。
+/// ⚠ 这条豁免是**收紧**，不是放宽：扩展名形之外，任何裸 `ends_with` 都进欠账名单
+/// （见 [`DEBT`]），新写一处当场红。
 /// 下面 [`the_extension_suffix_exemption_is_still_load_bearing`] 是它的保鲜自检：
 /// 哪天全仓一处都不再用这一形，这条豁免必须删掉，不许留着替真欠账挡枪。
 fn needle_is_a_file_extension(test_src: &str, after_mark: usize) -> bool {
@@ -344,84 +269,75 @@ fn needle_is_a_file_extension(test_src: &str, after_mark: usize) -> bool {
 }
 
 fn bare_matcher_on_corpus(test_src: &str, mark: &str) -> usize {
+    bare_matcher_hits(test_src, mark).len()
+}
+
+/// 每一处命中写成 `接收者.原语("字面量")`（不带行号：行号每一轮都变，字面量与接收者才是那一处的身份）。
+fn bare_matcher_hits(test_src: &str, mark: &str) -> Vec<String> {
     let vars = corpus_vars(test_src);
     if vars.is_empty() {
-        return 0;
+        return Vec::new();
     }
     test_src
         .match_indices(mark)
-        .filter(|(i, _)| {
+        .filter_map(|(i, _)| {
             // 只算 needle 是**字符串字面量**的那些：`v.contains(&x)` 是别的意思。
             let after = test_src[i + mark.len()..].trim_start();
-            if !(after.starts_with('"') && vars.contains(&receiver_before(test_src, *i))) {
-                return false;
+            let recv = receiver_before(test_src, i);
+            if !(after.starts_with('"') && vars.contains(&recv)) {
+                return None;
             }
             // 登记过的豁免：后缀匹配 + 扩展名 needle（撑不大，理由见上）。
-            !(mark == ".ends_with(" && needle_is_a_file_extension(test_src, i + mark.len()))
+            if mark == ".ends_with(" && needle_is_a_file_extension(test_src, i + mark.len()) {
+                return None;
+            }
+            Some(format!("{recv}{mark}{}", string_literal(after)))
         })
-        .count()
+        .collect()
+}
+
+/// `"…"` 打头的那段字面量原文（含两侧引号；转义的引号不算收尾；没收尾 ⇒ 到本行末）。
+fn string_literal(after: &str) -> &str {
+    let b = after.as_bytes();
+    let mut i = 1;
+    while i < b.len() {
+        match b[i] {
+            b'\\' => i += 2,
+            b'"' => return &after[..=i],
+            b'\n' => return &after[..i],
+            _ => i += 1,
+        }
+    }
+    after
 }
 
 /// ★ 正题：**递减棘轮** —— 语料变量上的裸 `contains` 只许比今天少。
 #[test]
-fn bare_contains_on_disk_corpora_only_goes_down() {
+fn bare_matchers_on_disk_corpora_equal_the_debt_list() {
     let root = repo_root();
-    // 🔴 〔步 7c 剖分 2026-09-19〕**补上两棵测试树。**
-    //
-    // 本条数的是**测试段**里的裸匹配，而测试段剖分之后整批住进了 `<repo>/tests/`。
-    // 上一版三棵根全在 `src/` 下 ⇒ 下面那个 `all_contains` 从 500+ 掉到 240，
-    // 自检逐字报「取测试段那步坏了，下面的棘轮此刻是空转的」—— 红得对。
-    // ⇒ 五棵**互不包含**的根（`§5.4b` 纪律 1）。两棵生产树仍然要扫：
-    //   `all(test, …)` 那一形的测试辅助项还住在那儿。
-    // ⚠ A 类同时治掉：原来是 `scan_tree!`（靠 `file!()` 摘自己），而语料现在**含本文件**
-    //   ⇒ 摘除失效不再无害（本文件头注逐字写着 `.contains("` 当例子）。
-    //   改成 `scan_tree_excluding` 的明写名单，摘不到就 panic。
-    // 每份文件带着「整份就是测试段」这一位：按它从哪棵根扫出来定（根名是本文件写死的 `/` 串），
-    // 不看操作系统渲出来的路径 —— Windows 上那是 `\`，拿 `"/tests/"` 去比，整棵测试树都会落空。
+    // 测试段整批住 `<repo>/tests/`；两棵生产树仍然要扫（`all(test, …)` 那一形的测试辅助项还住在那儿）。
+    // 每份文件带着「整份就是测试段」这一位：按它从哪棵根扫出来定（根名是本文件写死的 `/` 串）。
     let mut files = Vec::new();
     for (sub, excluded) in [
         ("src/frontend/shell/src", &[] as &[&str]),
         ("src/backend", &[]),
         ("src/common", &[]),
         ("tests/frontend/shell", &["needle_anchor_registry_tests.rs"]),
-        ("tests/frontend/filewin", &[]), // 文件窗口独立成包，它的判据搬到这里
+        ("tests/frontend/filewin", &[]),
         ("tests/backend", &[]),
-        ("tests/comms", &[]), // 通信层成员的单测镜像
+        ("tests/comms", &[]),
     ] {
         let whole = sub.starts_with("tests/");
-        files.extend(
-            guard_core::scan_tree_excluding(&root.join(sub), &["rs"], excluded)
-                .into_iter()
-                .map(|(path, src)| (path, src, whole)),
-        );
+        let got = guard_core::scan_tree_excluding(&root.join(sub), &["rs"], excluded);
+        // ★ 抽取器自检：哪一棵根一份都没扫到 ⇒ 那一块零命中地绿。
+        assert!(!got.is_empty(), "`{sub}` 下一份 .rs 都没扫到 —— 遍历坏了");
+        files.extend(got.into_iter().map(|(path, src)| (path, src, whole)));
     }
-    // 抽取器自检 ①：遍历活着。
-    assert!(
-        files.len() >= 100,
-        "只扫到 {} 个 .rs（**08-08 复核：真值 135**；原写「08-06 实测 200+」是假的 —— \
-             那种记下来就不再有人核的数，正是本区在治的病）—— 遍历坏了，下面的棘轮此刻是空转的",
-        files.len()
-    );
-    // 抽取器自检 ②：**与被棘轮的那个数无关**的一个量 —— 测试段里的 `.contains("` 总数。
-    // 用它而不是给棘轮配个地板：地板会在「修好一批」时变红，那是在挡住进步（F18 的教训）。
+    let mut now: Vec<String> = Vec::new();
     let mut all_contains = 0usize;
-    let mut hits = 0usize;
-    let mut by_file: Vec<(String, usize)> = Vec::new();
-    let mut per_prim: std::collections::BTreeMap<&str, usize> = Default::default();
     for (path, src, whole) in &files {
-        // ★ **剥掉注释再数**〔08-06 Phase G 后续：逐条判真伪时撞出来的〕。
-        //
-        // 不剥的话，一条**解释「这里原来是裸 contains」的注释**会被算成一处欠账
-        // （`polling_registry` 那条 F24 的更正注释就是：它逐字写着
-        // `body.contains("sleep 1")`，而那处早已改成 `pin_line`）。
-        // ⇒ 判据把**自己留下的病历**当成了病。
-        //
-        // ⚠ 这是 F12 那条老病（判据数到注释）在本扫描器里的复发 ——
-        // 而它这次的方向是**假阳性**（虚高欠账），不是假绿。虚高一样有害：
-        // 它让棘轮的那个数不再等于「还欠多少」，于是「只许降」失去意义。
-        // 🔴 住 `tests/` 的文件**整份就是测试段** —— 对它们再走一遍 `test_source()`
-        // 会返回空串（那份文件里没有 `#[cfg(test)]` 块），于是整棵测试树零命中地绿。
-        // 这一格与 `scanning_guard_registry_tests::test_side_of` 是同一条口径（仓内住址以 `tests/` 起头）。
+        // 剥掉注释再数：解释「这里原来是裸 contains」的注释不是欠账。
+        // 住 `tests/` 的文件**整份就是测试段**（对它们再取 `test_source()` 会得到空串）。
         let test_src: String = (if *whole {
             (*src).clone()
         } else {
@@ -432,83 +348,60 @@ fn bare_contains_on_disk_corpora_only_goes_down() {
         .collect::<Vec<_>>()
         .join("\n");
         all_contains += test_src.matches(".contains(\"").count();
-        for (mark, _) in MATCHER_CEILINGS {
-            let n = bare_matcher_on_corpus(&test_src, mark);
-            if n > 0 {
-                by_file.push((format!("{} {mark}", path.to_string_lossy()), n));
-                *per_prim.entry(*mark).or_insert(0) += n;
-                if *mark == ".contains(" {
-                    hits += n;
-                }
+        let rel = path
+            .strip_prefix(&root)
+            .unwrap_or(path)
+            .to_string_lossy()
+            .replace('\\', "/");
+        for mark in MARKS {
+            for hit in bare_matcher_hits(&test_src, mark) {
+                now.push(format!("{rel}\t{hit}"));
             }
         }
     }
-    assert!(
-        all_contains >= 300,
-        "整棵树的测试段里只找到 {all_contains} 个 `.contains(\"`（08-06 实测 500+）\
-             —— 取测试段那步坏了，下面的棘轮此刻是空转的"
-    );
-
-    by_file.sort_by_key(|(_, n)| std::cmp::Reverse(*n));
-    assert!(
-        hits <= BARE_CONTAINS_CEILING,
-        "语料变量上的裸 `contains(\"…\")` 有 {hits} 处 > 棘轮上限 \
-             {BARE_CONTAINS_CEILING}（08-06 全树实测 33）。\n\
-             ★ 匹配单位（子串）比事实（整行 / 完整签名 / 一个词）小时，把事实撑大的改动\n\
-             会从缝里溜过去而判据照样绿。本区实测四次，前三次都只在造变异时才看得见。\n\
-             改用 `guard_core::find_pinned`（恰好一处 + 两侧有边界）/ `pin_line`（整行相等）/\n\
-             `contains_word`（有边界、不要求唯一）。\n\
-             ⚠ **不许把上限调上去让今天好过** —— 这是递减棘轮。\n\
-             当前分布：\n{}",
-        by_file
-            .iter()
-            .map(|(f, n)| format!("  {n:3}  {f}"))
-            .collect::<Vec<_>>()
-            .join("\n")
-    );
-
-    // ★**族里其余原语各自一条棘轮**。
-    //
-    // 它们没有像 `contains` 那 34 处那样被逐条判过真伪 —— 那要另开一件。
-    // 但**棘轮不需要分类，只需要一个今天的数**：先把「只许降」立起来，
-    // 挡住这一族继续长；分类可以后补。
-    // ⇒ 这是「降级做」，不是把标准放低：覆盖面从 1 种原语扩到 8 种。
-    let over: Vec<String> = MATCHER_CEILINGS
-        .iter()
-        .filter(|(mark, _)| *mark != ".contains(") // 上面那条已经管了，且带完整诊断
-        .filter_map(|(mark, ceiling)| {
-            let n = per_prim.get(mark).copied().unwrap_or(0);
-            (n > *ceiling).then(|| format!("  {mark}\"…\")  {n} 处 > 上限 {ceiling}"))
-        })
+    // ★ 抽取器自检：取测试段那步坏了 ⇒ 一个 `.contains("` 都见不到，下面的相等是空转的。
+    assert!(all_contains > 0, "整棵树的测试段里一个 `.contains(\"` 都没有 —— 取测试段那步坏了");
+    now.sort();
+    let mut want: Vec<String> = DEBT
+        .lines()
+        .filter(|l| !l.trim().is_empty() && !l.starts_with('#'))
+        .map(str::to_string)
         .collect();
-    // 🔴 诊断里**逐处点名**。原来只打「N 处 > 上限 M」——
-    // 那句话读完之后不知道该去改哪一行，而这一族的默认结局就是「把上限调上去」。
-    // `by_file` 本来就带着 `路径 + 原语`，只是没打出来。
-    let where_of = |mark: &str| -> String {
-        by_file
-            .iter()
-            .filter(|(f, _)| f.ends_with(mark))
-            .map(|(f, n)| format!("      {n:3}  {f}"))
-            .collect::<Vec<_>>()
-            .join("\n")
-    };
+    want.sort();
+    let (mut extra, mut gone) = (Vec::new(), Vec::new());
+    let (mut i, mut j) = (0, 0);
+    while i < now.len() || j < want.len() {
+        match (now.get(i), want.get(j)) {
+            (Some(a), Some(b)) if a == b => {
+                i += 1;
+                j += 1;
+            }
+            (Some(a), Some(b)) if a < b => {
+                extra.push(a.clone());
+                i += 1;
+            }
+            (Some(a), None) => {
+                extra.push(a.clone());
+                i += 1;
+            }
+            (_, Some(b)) => {
+                gone.push(b.clone());
+                j += 1;
+            }
+            (None, None) => break,
+        }
+    }
     assert!(
-        over.is_empty(),
-        "语料变量上的裸匹配又长了（与 `contains` 同族同险：**needle 被撑大时照样绿**）：\n{}\n\
-             改用 `guard_core::find_pinned`（恰好一处 + 两侧有边界）/ `pin_line`（整行相等）/\n\
-             `contains_word`（有边界）。⚠ **不许把上限调上去让今天好过** —— 这是递减棘轮。",
-        over.iter()
-            .map(|line| {
-                let mark = line
-                    .trim_start()
-                    .split('"')
-                    .next()
-                    .unwrap_or("")
-                    .to_string();
-                format!("{line}\n{}", where_of(&mark))
-            })
-            .collect::<Vec<_>>()
-            .join("\n")
+        extra.is_empty(),
+        "语料变量上又多了裸匹配（匹配单位比事实小：needle 被撑大时照样绿）：\n{}\n\
+         改用 `guard_core::find_pinned`（恰好一处 + 两侧有边界）/ `pin_line`（整行相等）/ `contains_word`（有边界）。\n\
+         ⚠ 不许把这几行抄进 `needle_anchor_debt.txt` 让它绿 —— 名单只许删行。",
+        extra.iter().map(|l| format!("+ {l}")).collect::<Vec<_>>().join("\n")
+    );
+    assert!(
+        gone.is_empty(),
+        "名单里这几处盘上已经没有了（修掉了 / 改写了）—— 把它们从 `needle_anchor_debt.txt` 里删掉：\n{}",
+        gone.iter().map(|l| format!("- {l}")).collect::<Vec<_>>().join("\n")
     );
 }
 
@@ -556,14 +449,14 @@ fn the_extension_suffix_exemption_is_still_load_bearing() {
     assert!(
         used > 0,
         "全仓一处扩展名形的 `ends_with` 都没有了 —— 把那条豁免连同 \
-         `needle_is_a_file_extension` 一起删掉，并把 `.ends_with(` 的上限留在 0"
+         `needle_is_a_file_extension` 一起删掉"
     );
 }
 
 /// 抽取器的**行为**自检：喂一份人造测试段，它必须只数该数的那一处。
 ///
-/// 没有这条，上面那个 33 只是「今天碰巧数出来的一个数」——
-/// 数错方向（比如把纯字面量夹具也算进来）时它照样在上限之下。
+/// 没有这条，欠账名单只是「今天碰巧扫出来的一份」——
+/// 数错方向（比如把纯字面量夹具也算进来）时它照样能和名单对上。
 #[test]
 fn the_extractor_counts_only_disk_corpora() {
     let fixture = "\
@@ -623,7 +516,7 @@ fn the_extractor_sees_the_for_pattern_and_the_designated_tree_primitive() {
         "`scan_tree_excluding(` 没被当成语料种子 —— 用这个原语取语料的判据**整批**掉出人群"
     );
     // 负对照：**旧的那张种子表**在这一行上够不着。旧的两个种子逐字写在这里 ——
-    // 本文件已在 [`bare_contains_on_disk_corpora_only_goes_down`] 的排除名单上
+    // 本文件已在 [`bare_matchers_on_disk_corpora_equal_the_debt_list`] 的排除名单上
     // （摘不到就 panic），写出来不会自匹配。
     let seed_line = by_let.lines().next().expect("夹具第一行");
     for old_seed in ["read_to_string(", "scan_tree!"] {

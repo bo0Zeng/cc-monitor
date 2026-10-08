@@ -10,7 +10,7 @@
  *
  * 本文件装的是**这一面的第一批机检**。量具（遍历 ＋ 词法 ＋ 两个方向的账）住
  * `tests/evidence/S25-class-ledger.ts`，**本文件只登记与判**。分工的理由写在那份文件的头注里
- * （一句话：`scanning-guard-registry.vitest.ts` 的 `WALKER_CEILING` 不许测试文件再多一个遍历者）。
+ * （一句话：`scanning-guard-registry.vitest.ts` 的 `WALKERS` 不许测试文件不登记就多一个遍历者）。
  *
  * ## 装了四格，另有一格**明确没装**
  *
@@ -161,21 +161,21 @@ const ALLOWED_PREFIXES: readonly { prefix: string; why: string }[] = [
 const KNOWN_DEAD: readonly { name: string; why: string }[] = [];
 
 /**
- * ★ **`npx stylelint "src/**\/*.css"` 的报错总数上限**。现打 **47**（`S21 §5` 同数）。
- *
- * **只许降。** 47 这个数本身不是目标（其中 43 条 `--fix` 就能自动改），
- * 本格买的是「它不许悄悄变大」—— 在这之前这个数**全仓无人机检**：
- * `tests/frontend/ui/eslint-baseline.vitest.ts` 的头注逐字登记过「本条不管 stylelint，登记在此，不假装覆盖了」，
- * 而 `ci.yml` 那一步是 `npm run lint:css || true`（结构上不会红）。本格接的就是那半格。
+ * ★ **`npx stylelint "src/**\/*.css"` 的报错（除 `no-descending-specificity`）== 本表**（两向，多重集）。
+ * 键是「文件 :: 规则 :: 报错原文去掉行号」（行号随别处增删漂移）。新写出一条 ⇒ 红（改掉它，不许抄进来）；
+ * 修掉一条 ⇒ 红（删那一行）。今天剩的三条都是重复选择器：两块合成一块要逐条核中间那段的级联先后，没做。
  */
-// 〔2026-09-24 U1 合并那一拍棘 47 → 39〕三入口 ＋ CSS 拆 10 份 ＋ 层真包进去之后现打 39（现打，不是 47−8 算的）。
-// 〔F7b 09-24 棘 39 → 36〕老 SFTP 面板那整段 CSS 退役，带走 `shared.css` 里 3 条 `color-function-alias-notation`
-//   （`rgba` → `rgb`；那一份 7 → 4，现打，不是 39−3 算的：全仓 `npx stylelint` 现打 36）。
-// `no-descending-specificity` 打开（待拍 2）。它的命中**不进**本棘轮 ——
-//   另由 ④b 的两向相等登记表管（比棘轮严）；本上限仍是「除它以外」的报错总数，数值不动（现打 36）。
-// 〔棘 36 → 35〕`styles.css` 的 `.status-tasks` 里那条被 `font: inherit` 整条盖掉的 `line-height: 16px` 删了
-//   （`css-conventions` ⑨「活规则里的死声明」逮到的；stylelint 的 `declaration-block-no-shorthand-property-overrides` 正是它，现打 35）。
-const STYLELINT_CEILING = 35;
+const STYLELINT_KNOWN: readonly string[] = [
+  'src/frontend/ui/styles.css :: no-duplicate-selectors :: Duplicate selector ".branch-fold-body-inner > *"',
+  'src/frontend/ui/styles/settings.css :: no-duplicate-selectors :: Duplicate selector ".cfg-list"',
+  'src/frontend/ui/styles/settings.css :: no-duplicate-selectors :: Duplicate selector ".cfg-list-row"',
+];
+
+/** 一条 stylelint 报错的键：文件 ＋ 规则 ＋ 原文（摘掉「first used at line N」与末尾的规则名括号）。 */
+function lintKey(file: string, rule: string, text: string): string {
+  const said = text.replace(/ \([a-z-]+\)$/, "").replace(/, first used at line \d+/, "");
+  return `${file} :: ${rule} :: ${said}`;
+}
 
 /**
  * ★ **`no-descending-specificity` 的例外登记表**（④b · 待拍 2 · 「特异度冲突」）。
@@ -292,47 +292,41 @@ function ndsKey(file: string, text: string): string {
 }
 
 /**
- * ★ **靠前缀（而不是靠直接住址）才解释得通的 CSS 类名个数**上限。现打 **35**（分母 777）。
+ * ★ **靠前缀（而不是靠直接住址）才解释得通的 CSS 类名** == 本表（两向）。
  *
- * 🔴 **它堵的是本条最大的一个洞**：前缀是**开区间**。`status-` 这一条在解释
- * `.status-running` 等 5 个真类的同时，也会顺手把**任何**将来变死的 `.status-xxx` 一起掩掉 ——
- * 死规则与活规则在开区间前缀下长得一模一样。
- * 死值验现打过这一形：把 `FIRST_RUN_HINT_CLASS` 改成 `.join("-")` 之后，
- * `.status-first-run-open` 的裁决从 `const-concat` 掉成了 `prefix` —— **识别路径断了，而它照样"活着"**。
- *
- * ⇒ 开区间关不上（关上就要手工枚举每个后缀，那份清单一加新状态就假红），
- *   但**它掩掉的总量可以钉住**：这个数只许降。新添一个被前缀掩掉的类名 ⇒ 当场红，
- *   那时要么它真有住址（那就该落在 `literal` 那一档，说明代码写法变了），要么它就是新的死规则。
+ * 前缀是**开区间**：`status-` 在解释 `.status-running` 等真类的同时，也会顺手把将来变死的 `.status-xxx` 一起掩掉 ——
+ * 死规则与活规则在开区间前缀下长得一模一样。开区间关不上，但**它掩掉的是谁**可以钉住：
+ * 新添一个被前缀掩掉的类名 ⇒ 当场红（它真有住址就该落在 `literal` 那一档，说明代码写法变了；没有就是新的死规则）；
+ * 少了一个 ⇒ 删那一行。
  */
-const PREFIX_COVERAGE_CEILING = 35;
+const PREFIX_MASKED: readonly string[] = [
+  "acct-c0", "acct-c1", "acct-c2", "acct-c3", "acct-c4", "acct-c5",
+  "acct-c6", "acct-c7", "agent-failed", "agent-running", "agent-stopped", "agent-timeline",
+  "block-diff-add", "block-diff-del", "pf-dot-err", "pf-dot-ok", "status-completed", "status-deleted",
+  "status-failed", "status-in_progress", "status-msg", "status-running", "status-stopped",
+];
 
 /**
- * ★ **代码里挂了、CSS 里没有规则的类名个数**上限。现打 **163**（分母 859）。
- *
- * **只许降。** 这 163 个是**混合人群**，如实说清楚，别当成 163 个缺陷：
- * - 大部分是**纯 JS 钩子** —— 挂上去只为 `querySelector` / 事件代理找得到它
- *   （`.sftp-close` · `.pf-start` · `.panorama-back` 这一族），本来就不需要样式；
- * - 一部分是**真悬空** —— 比如当年的 `.settings-btn-secondary`（`src/frontend/ui/settings/**` 53 处在挂它〔W5-AUX 已摘，见下〕），
- *   CSS 里一条规则都没有。〔AR1 现打订正〕上一版说「同族的 `.settings-btn` / `.cc-bus-online` 都 styled ⇒
- *   多半是改名只改了一边」：`git log -S` 两个名字在 CSS 里**从来没有过规则**，`.cc-bus-online` 也没有 ——
- *   不是改名漏了一边，是一开始就只当标记挂。`cc-bus-online-*` 那几个状态类已改成 `data-state`。
- *
- * ⇒ 本格**不区分这两者**（机械上区分不了：「钩子」与「忘了写样式」在语法上一模一样），
- * 它买的只有一件事：**这个数不许再涨**。涨了就说明又多了一个挂着却没规则的类名，
- * 那时要么补样式、要么改成 `data-*` 钩子（状态表达约定正是这条）。
- *
- * ⚠ 它也会在**另一个方向**红：有人删掉了一条 CSS 规则而代码还在挂那个类。那种红是对的。
+ * ★ **代码里挂了、CSS 里没有规则的类名** == 本表（两向）。混合人群：大部分是纯 JS 钩子（挂上去只为 `querySelector` /
+ * 事件代理找得到它），一部分是真悬空 —— 机械上区分不了。新挂一个没有样式的类名 ⇒ 红（补样式，或改成 `data-*` 钩子）；
+ * 有人删了一条 CSS 规则而代码还在挂那个类 ⇒ 也红（那是真回归）；修掉一个 ⇒ 删那一行。
  */
-// 〔D §D8 · 09-25 棘 163 → 147〕起步现打 150（D 审计同数）；`cc-bus-section.ts` 在线状态那三个
-//   从没有过规则的类名（`cc-bus-online-unknown` / `-checking` / `-error`）按约定 3 改成 `data-state`
-//   ⇒ 现打 147（少的就是这三个；`-yes` / `-no` 由模板拼、本来就不进这一数）。
-//   `.settings-btn-secondary`（53 处挂、git 史里从没有过规则、外观即 `.settings-btn` 默认）仍在这 147 里，理由见 `AR1.md §2`。
-// 〔棘 147 → 146〕「删类名」：`.settings-btn-secondary` 从 `src/` 12 份文件里摘掉
-//   （现打 55 处字面量 ＋ `panel.ts::makeBtn` 那一处模板拼接；三个按钮助手的 `variant` 空串 = 默认那一种）⇒ 少的就是它这一个。
-//   外观不变：它从来没有规则，挂与不挂算出来的样式一样。
-// 〔09-29 棘 146 → 141〕设置 → 机器那一行的后端四格补了样式（`settings.css`）⇒
-//   `.backend-row` · `-state` · `-kill` · `-exit` · `-health` 这五个从「挂着没规则」里出去，少的就是它们。
-const DANGLING_CEILING = 141;
+const DANGLING: readonly string[] = [
+  "acct-enable", "acct-form-slot", "acct-new-cell", "agent-older", "agents-page", "all",
+  "api-error-next-text", "backend-list", "backend-row-drift", "backend-row-name", "backend-section", "badge-agents",
+  "badge-unread", "block-body-json", "block-body-result", "block-text", "card-user-queued", "cc-bus-broadcast",
+  "cc-bus-broadcast-input", "cc-bus-check", "cc-bus-controls", "cc-bus-detail", "cc-bus-id", "cc-bus-inbox",
+  "cc-bus-kill", "cc-bus-list", "cc-bus-meta", "cc-bus-msg", "cc-bus-msg-line", "cc-bus-online",
+  "cc-bus-origin", "cc-bus-read", "cc-bus-row", "cc-bus-section", "cc-bus-send", "cc-bus-spawn",
+  "cc-bus-spawn-acct", "cc-bus-spawn-dir", "cc-bus-spawn-go", "cc-bus-spawn-out", "cc-bus-spawn-task", "cc-bus-spawn-tool",
+  "cc-bus-status", "ccm-rc-block", "ccm-rc-block-legacy", "code-pending", "ctx-limits", "data-claude-dir",
+  "data-machine", "data-page", "data-pane", "diag-fallback", "diag-page", "has-unread",
+  "history-search", "kind-ls", "machine-aliases", "machine-conn-fp", "machine-conn-toggle", "machine-page",
+  "machine-page-local", "machine-page-sections", "machine-part-components", "machine-part-connection", "md", "paste-block-actions",
+  "paste-block-copy", "pf-close", "pf-start", "remote-config-unrecognized", "remote-machine-count", "remote-machine-local",
+  "settings-nav-badge", "settings-section", "status-agents", "status-tasks", "tab-bar-reread", "tab-dot",
+  "tab-needs-kbd", "tasks-page", "text", "turn-tip",
+];
 
 /** 本文件只在这儿读一次盘，后面各格共用。 */
 let cached: Ledger | null = null;
@@ -544,22 +538,21 @@ describe("S25 ② CSS 里的类名有人用", () => {
       `这些已知死规则已经不在 CSS 里了：${gone.join(", ")}\n⇒ 有人把它删了（好事），把 \`KNOWN_DEAD\` 里那一条也删掉。`,
     ).toEqual([]);
 
-    // 🔴 前缀是开区间 —— 掩掉的总量必须钉住，理由全文见 `PREFIX_COVERAGE_CEILING`。
+    // 🔴 前缀是开区间 —— 掩掉的是谁必须钉住，理由全文见 `PREFIX_MASKED`。
     const maskedAll = [...covered.values()].flat().sort();
     expect(
-      maskedAll.length,
-      `靠前缀才解释得通的 CSS 类名有 ${maskedAll.length} 个 > 棘轮上限 ${PREFIX_COVERAGE_CEILING}（分母 ${led.cssClasses.size}）。\n` +
-        "★ 前缀是**开区间**：它掩得住真死规则。这个数只许降。\n" +
-        "★ 涨了先问：新增的那个类名在代码里有没有**直接住址**？有 ⇒ 它本该落在 `literal` 档，\n" +
-        "  落到 `prefix` 说明代码那边的写法变了（比如拼接取代了字面量），去看那处改动是不是想要的。\n" +
-        `当前被掩的清单：\n  ${maskedAll.join(" ")}`,
-    ).toBeLessThanOrEqual(PREFIX_COVERAGE_CEILING);
+      maskedAll,
+      "靠前缀才解释得通的 CSS 类名与 `PREFIX_MASKED` 不等。\n" +
+        "★ 多出来的那个类名在代码里有没有**直接住址**？有 ⇒ 它本该落在 `literal` 档，落到 `prefix` 说明代码那边的写法变了\n" +
+        "  （比如拼接取代了字面量），去看那处改动是不是想要的；没有 ⇒ 它是新的死规则。\n" +
+        "★ 少了的：删那一行。",
+    ).toEqual([...PREFIX_MASKED].sort());
 
     const lines = [...covered].sort().map(([p, ns]) => `${p}→${ns.length}`);
     denom(
       "②",
       ALLOWED_PREFIXES.length + KNOWN_DEAD.length,
-      `条登记（前缀共掩 ${maskedAll.length}/${PREFIX_COVERAGE_CEILING} 个类：${lines.join(" ")}）`,
+      `条登记（前缀共掩 ${maskedAll.length} 个类 == 登记：${lines.join(" ")}）`,
     );
   }, SCAN_TIMEOUT_MS);
 
@@ -579,28 +572,27 @@ describe("S25 ② CSS 里的类名有人用", () => {
   }, SCAN_TIMEOUT_MS);
 });
 
-describe("S25 ③ 代码挂的类名，CSS 里有没有规则（递减棘轮）", () => {
-  it("悬空的类名引用只许变少", () => {
+describe("S25 ③ 代码挂的类名，CSS 里有没有规则（两向等于登记）", () => {
+  it("悬空的类名引用 == 登记", () => {
     const led = ledger();
     expect(led.usedClasses.size, "方向 ② 一个调用点都没扫到 —— 本条会零命中地绿").toBeGreaterThan(0);
-    const dangling = [...led.usedClasses]
-      .filter(([name]) => !led.cssClasses.has(name) && !led.vendorClasses.has(name))
-      .map(([name, sites]) => `.${name}  ←  ${sites.slice(0, 2).join(" ")}`)
-      .sort();
+    const dangling = [...led.usedClasses].filter(([name]) => !led.cssClasses.has(name) && !led.vendorClasses.has(name));
+    const where = new Map(dangling.map(([name, sites]) => [name, sites.slice(0, 2).join(" ")]));
+    const got = dangling.map(([name]) => name).sort();
+    const extra = got.filter((n) => !DANGLING.includes(n)).map((n) => `+ .${n}  ←  ${where.get(n)}`);
+    const gone = DANGLING.filter((n) => !got.includes(n)).map((n) => `- .${n}`);
     expect(
-      dangling.length,
-      `代码里挂着、CSS 里没规则的类名有 ${dangling.length} 个 > 棘轮上限 ${DANGLING_CEILING}（分母 ${led.usedClasses.size}）。\n` +
-        "★ 这是**递减棘轮**：只许降。涨了是两种情况之一 ——\n" +
-        "  ① 新挂了一个没有样式的类名 ⇒ 补样式，或按改成 `data-*` 钩子；\n" +
-        "  ② 有人删了一条 CSS 规则而代码还在挂它 ⇒ 那是真回归。\n" +
-        `当前清单（前 40 条）：\n  ${dangling.slice(0, 40).join("\n  ")}`,
-    ).toBeLessThanOrEqual(DANGLING_CEILING);
-    denom("③", led.usedClasses.size, `个代码侧类名引用（其中 ${dangling.length} 个 CSS 里没规则，棘轮上限 ${DANGLING_CEILING}）`);
+      [...extra, ...gone],
+      "代码里挂着、CSS 里没规则的类名与 `DANGLING` 不等 ——\n" +
+        "  多出来的（+）：新挂了一个没有样式的类名 ⇒ 补样式，或改成 `data-*` 钩子；或者有人删了一条 CSS 规则而代码还在挂它 ⇒ 那是真回归。\n" +
+        "  少了的（-）：修掉了，删那一行。",
+    ).toEqual([]);
+    denom("③", led.usedClasses.size, `个代码侧类名引用（其中 ${dangling.length} 个 CSS 里没规则 == 登记）`);
   }, SCAN_TIMEOUT_MS);
 });
 
-describe("S25 ④ stylelint 报错总数（递减棘轮）", () => {
-  it("只许变少，且被 lint 的那批文件就是本账扫的那批", async () => {
+describe("S25 ④ stylelint 报错 == 登记", () => {
+  it("报错两向等于登记，且被 lint 的那批文件就是本账扫的那批", async () => {
     const led = ledger();
     const res = await stylelint.lint({
       files: "src/**/*.css",
@@ -626,20 +618,19 @@ describe("S25 ④ stylelint 报错总数（递减棘轮）", () => {
     ).toEqual([...led.cssFiles].sort());
 
     const all = linted.flatMap((r) => r.warnings);
-    // `no-descending-specificity` 不进棘轮，由 ④b 的等号登记表管
+    // `no-descending-specificity` 不进本表，由 ④b 的等号登记表管
     const warnings = all.filter((w) => w.rule !== NDS);
     const byRule = new Map<string, number>();
     for (const w of warnings) byRule.set(w.rule, (byRule.get(w.rule) ?? 0) + 1);
-    const top = [...byRule].sort((a, b) => b[1] - a[1]).map(([r, n]) => `${r}×${n}`);
-
+    const keys = linted
+      .flatMap((r) => r.warnings.filter((w) => w.rule !== NDS).map((w) => lintKey((r.source ?? "").slice(REPO_ROOT.length + 1).split("\\").join("/"), w.rule, w.text)))
+      .sort();
     expect(
-      warnings.length,
-      `stylelint 报错 ${warnings.length} 条 > 棘轮上限 ${STYLELINT_CEILING}（现打基线 47，\`S21 §5\` 同数）。\n` +
-        "★ 这是**递减棘轮**：只许降。修好了就把 `STYLELINT_CEILING` 一起调下来，别只改代码不棘紧。\n" +
-        "★ 为什么这里是棘轮不是等号：本条落地时另有一路在改 `src/frontend/ui/styles.css`，等号在并发下互相打架。\n" +
-        "  代价（拦不住判据空转）由上面那两条反空真接着。理由全文见本文件头注。\n" +
-        `逐规则：\n  ${top.join("\n  ")}`,
-    ).toBeLessThanOrEqual(STYLELINT_CEILING);
+      keys,
+      "stylelint 的报错与 `STYLELINT_KNOWN` 不等。\n" +
+        "★ 多出来的：新写出了一条 —— 改掉它（不许抄进表里让它绿）。\n" +
+        "★ 少了的：那一条修掉了 —— 把那一行删掉。",
+    ).toEqual([...STYLELINT_KNOWN].sort());
 
     // 本格新开的那条规则**必须真的在跑**：它今天该是 0 命中，但「规则没开」与「0 命中」
     // 在报错总数上一模一样 ⇒ 上面那条 `.stylelintrc.json` 的对拍是它的另一条腿。
@@ -648,7 +639,7 @@ describe("S25 ④ stylelint 报错总数（递减棘轮）", () => {
       "z-index 白名单在真 stylelint 下报出了命中 —— 与格 ① 的读数矛盾，两把尺子有一把坏了",
     ).toBe(0);
 
-    denom("④", linted.length, `份 CSS 文件（报错 ${warnings.length}/${STYLELINT_CEILING}，棘轮只许降；另 ${all.length - warnings.length} 条 ${NDS} 归 ④b）`);
+    denom("④", linted.length, `份 CSS 文件（报错 ${warnings.length} 条 == 登记；另 ${all.length - warnings.length} 条 ${NDS} 归 ④b）`);
 
     // ── ④b no-descending-specificity 的命中 == 登记的例外（两向，多重集）──
     const got = linted
@@ -684,19 +675,6 @@ describe("S25 ④ stylelint 报错总数（递减棘轮）", () => {
     for (const e of DESCENDING_SPECIFICITY_EXCEPTIONS) kinds.set(e.kind, (kinds.get(e.kind) ?? 0) + (e.n ?? 1));
     denom("④b", [...kinds.values()].reduce((a, b) => a + b, 0), `条登记的例外（${[...kinds].map(([k, n]) => `${k} ${n}`).join(" · ")}），与真 stylelint 的命中两向相等`);
   }, TIMEOUT_MS);
-
-  it("`ci.yml` 里那个数与本文件的上限是同一个值（散文要有一条会红的判据读它）", () => {
-    const yml = readFileSync(resolve(REPO_ROOT, ".github/workflows/ci.yml"), "utf8");
-    const m = /S25-STYLELINT-CEILING:\s*(\d+)/.exec(yml);
-    expect(
-      m,
-      "`.github/workflows/ci.yml` 里找不到 `S25-STYLELINT-CEILING: <数>` 这个标记 —— 措辞改了？\n" +
-        "改了就把本条的正则一起改，别让它零命中地绿（`ci.yml` 里那句「50 项基线」正是这么腐了一年的：\n" +
-        "实测 47，而散文一直写着 50，`eslint-baseline.vitest.ts` 的头注逐字登记过「本条不管 stylelint」）。",
-    ).toBeTruthy();
-    expect(Number(m?.[1]), "`ci.yml` 里的数与 `STYLELINT_CEILING` 漂了").toBe(STYLELINT_CEILING);
-    denom("④", 1, "处 CI 侧散文（与判据常量对上了）");
-  });
 });
 
 // ═══════════════════════════ ⑤ 层真包进去（件 2）═══════════════════════════

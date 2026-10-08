@@ -17,8 +17,8 @@
  * - **不判用户那一侧真不真的显示出来**。那条在 `tests/frontend/ui/settings/unknown-keys-notice.vitest.ts`
  *   （真渲染设置面板，去 DOM 里找那个键名）。两条缺一不可：这里证明「数得出来」，
  *   那里证明「说出来了」。
- * - **不盖「一个新模块开始用 config.json 却没登记」**。今天没有目录遍历的余量
- *   （`tests/frontend/ui/scanning-guard-registry.vitest.ts` 的 `WALKER_CEILING` 已经顶格），
+ * - **不盖「一个新模块开始用 config.json 却没登记」**。测试里做目录遍历的文件要逐个登记理由
+ *   （`tests/frontend/ui/scanning-guard-registry.vitest.ts` 的 `WALKERS`），
  *   所以下面的对拍是**逐个登记的主人**去核，不是全树扫。
  *   ⚠ 但那种漏登记**不是静默的**：漏了的键会当场被当成未知键、指名喊出来。
  *   吵，但不瞎 —— 失效方向是对的。
