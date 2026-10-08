@@ -162,6 +162,7 @@ export class AccountsSection {
     const origins: Origin[] = [LOCAL_ORIGIN, ...((await this.readHosts()) ?? []).map((h) => h.label)];
     const pushed = (): void => {
       if (this.pushTimer !== null) clearTimeout(this.pushTimer);
+      // 调度：合批 —— 后端推来的账号 / 额度变更：300ms 内几帧合成一次重读
       this.pushTimer = setTimeout(() => {
         this.pushTimer = null;
         void this.reload(true, true);

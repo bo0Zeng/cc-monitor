@@ -65,6 +65,7 @@ export function familyLine(family: InterruptFamily, names: string[]): string {
 export async function askWithin(ask: AskInterrupts, ms = INTERRUPTS_WITHIN_MS): Promise<Interrupts | null> {
   let timer: ReturnType<typeof setTimeout> | null = null;
   const late = new Promise<null>((resolve) => {
+    // 调度：一次性 —— 问「会打断什么」的 2s 上限，答到了就清
     timer = setTimeout(() => resolve(null), ms);
   });
   try {

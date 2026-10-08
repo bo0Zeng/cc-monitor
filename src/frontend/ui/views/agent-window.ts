@@ -198,6 +198,7 @@ export class AgentWindow {
     const sub = await followSession(this.origin, this.sid, (e) => this.onFollow(e));
     this.following = true;
     // 时长都只写到分钟：每分钟按已有的运行表重画一次（不取数）。
+    // 调度：钟 —— 每分钟重画标题区（时长只写到分钟），不取数；关窗即清
     const clock = window.setInterval(() => this.paint(), CLOCK_MS);
     window.addEventListener("pagehide", () => {
       sub.stop();

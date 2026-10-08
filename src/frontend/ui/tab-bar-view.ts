@@ -209,6 +209,7 @@ export class TabBarView {
     let needsHover: ReturnType<typeof setTimeout> | null = null;
     this.needsEl.addEventListener("mouseenter", () => {
       if (needsHover !== null) clearTimeout(needsHover);
+      // 调度：一次性 —— 「需要你」悬停 500ms 才开菜单，移开就清
       needsHover = setTimeout(() => {
         needsHover = null;
         if (!menuAnchoredOn(this.needsEl)) this.openNeedsMenu();
@@ -578,8 +579,10 @@ export class TabBarView {
       this.host.refreshTabBar();
     };
     if (typeof requestAnimationFrame === "function") {
+      // 调度：合批 —— 后台标签页的未读徽标排到帧末合批，排一次位
       requestAnimationFrame(run);
     } else {
+      // 调度：合批 —— 上面那一处在没有 rAF 时的兜底，0ms 一次
       window.setTimeout(run, 0);
     }
   }

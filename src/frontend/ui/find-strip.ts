@@ -256,6 +256,7 @@ export class FindStrip {
   private armAuto(): void {
     if (this.opts.autoMs === undefined) return;
     this.disarm();
+    // 调度：一次性 —— 停 300ms 自己找（防抖），再输入就清掉重排
     this.timer = setTimeout(() => {
       this.timer = null;
       void this.run();

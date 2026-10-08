@@ -717,6 +717,7 @@ export class BackendSection {
   private async settleStatus(origin: string, want: boolean): Promise<void> {
     for (let i = 0; i < SETTLE_TRIES; i++) {
       if ((await this.paintStatus(origin)) === want) return;
+      // 调度：自链 —— 起 / 停之后等状态落定：上限 30 次 × 100ms，落定即停
       await new Promise((r) => setTimeout(r, SETTLE_INTERVAL_MS));
     }
   }

@@ -220,11 +220,13 @@ function makeItem(o: Open, it: MenuItem): HTMLElement {
     };
     wrap.addEventListener("mouseenter", () => {
       clear();
+      // 调度：一次性 —— 子菜单悬停 150ms 才开，关菜单时清
       openT = setTimeout(() => openSub(false), OPEN_SUB_MS);
       o.timers.push(openT);
     });
     wrap.addEventListener("mouseleave", () => {
       clear();
+      // 调度：一次性 —— 子菜单离开 250ms 才关，关菜单时清
       closeT = setTimeout(closeSub, CLOSE_SUB_MS);
       o.timers.push(closeT);
     });
@@ -353,6 +355,7 @@ export function openMenu(anchor: MenuAnchor, items: MenuItem[], opts: { onClose?
   if ("el" in anchor) window.addEventListener("pointerdown", onPointer, true);
   else
     o.timers.push(
+      // 调度：一次性 —— 右键开的菜单下一拍才挂「点外面」监听
       setTimeout(() => {
         if (current !== o) return;
         window.addEventListener("pointerdown", onPointer, true);

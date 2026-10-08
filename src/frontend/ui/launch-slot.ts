@@ -103,6 +103,7 @@ export class LaunchSlots {
       row,
       stop: watchUntilArrived(spec.origin, spec.match, (sid) => this.arrived(id, sid)),
       // 一次性：到点只把样子换成「未报到」（不放弃等、不重试、不轮询）。
+      // 调度：一次性 —— 占位标签页 20s 的点：到点换成「未报到」、问一次；报到了 / 关掉时清
       timer: setTimeout(() => void this.miss(id), SLOT_MISS_MS),
     };
     this.slots.set(id, slot);

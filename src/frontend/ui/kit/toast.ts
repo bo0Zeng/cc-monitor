@@ -177,6 +177,7 @@ function arm(t: Live): void {
   t.timer = null;
   if (t.paused || !Number.isFinite(t.remaining)) return;
   t.started = Date.now();
+  // 调度：一次性 —— 到点收起这一条；悬停 / 焦点时清掉、离开后按剩下的时间重排
   t.timer = setTimeout(() => drop(t, true), t.remaining);
 }
 

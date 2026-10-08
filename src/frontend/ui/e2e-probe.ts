@@ -74,8 +74,10 @@ export function startReplayJitterProbe(): void {
       }
       tops.push(target.getBoundingClientRect().top);
     }
+    // 调度：自链 —— 探针每帧取样重排自己，`stopReplayJitterProbe` 取消即停；只在 e2e 探针里开
     rafId = requestAnimationFrame(sample);
   };
+  // 调度：自链 —— 同上，链内那一处
   rafId = requestAnimationFrame(sample);
 }
 

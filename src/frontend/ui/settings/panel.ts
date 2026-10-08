@@ -690,6 +690,7 @@ export class SettingsPanel {
     spot.dispatchEvent(new Event(REVEAL_EVENT));
     spot.scrollIntoView?.({ block: "nearest" });
     spot.classList.add("settings-highlight");
+    // 调度：一次性 —— 带目的地打开：1.5 秒后撤掉那一节的高亮
     window.setTimeout(() => spot.classList.remove("settings-highlight"), SETTINGS_HIGHLIGHT_MS);
   }
 

@@ -197,8 +197,10 @@ export class BranchFolder {
       }
     };
     if (typeof requestAnimationFrame === "function") {
+      // 调度：合批 —— live 模式主线重算排到帧末，排一次位、回调里不再排
       requestAnimationFrame(run);
     } else {
+      // 调度：合批 —— 上面那一处在没有 rAF 时的兜底，0ms 一次
       setTimeout(run, 0);
     }
   }

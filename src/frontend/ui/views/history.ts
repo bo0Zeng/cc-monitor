@@ -243,6 +243,7 @@ export class HistoryView {
     this.content = null;
     this.contentSeq++;
     if (this.queryTimer) clearTimeout(this.queryTimer);
+    // 调度：一次性 —— 敲字之后停 150ms 才问清单，再敲就重来
     this.queryTimer = setTimeout(() => {
       this.queryTimer = null;
       const q = this.searchInput.value.trim();
@@ -360,6 +361,7 @@ export class HistoryView {
     this.listEl.addEventListener("pointerenter", () => hold(true));
     this.listEl.addEventListener("pointerleave", () => hold(false));
     this.listEl.addEventListener("focusin", () => hold(true));
+    // 调度：一次性 —— 焦点离开列表那一下推到下一拍再看焦点去了哪
     this.listEl.addEventListener("focusout", () => setTimeout(() => hold(false), 0));
     col.append(this.stripsEl, this.listHead, this.listEl);
     this.contentEl = document.createElement("div");
@@ -800,6 +802,7 @@ export class HistoryView {
       el.scrollIntoView({ block: "nearest" });
     }
     if (this.previewTimer) clearTimeout(this.previewTimer);
+    // 调度：一次性 —— 方向键走行时停 200ms 才读右边，快速划过不读
     this.previewTimer = setTimeout(() => {
       this.previewTimer = null;
       const r = this.rowsByKey.get(k);
