@@ -655,13 +655,22 @@ export const FRONT_SCENES: Scene[] = [
     await waitFor("[data-role=front-result]");
     await sleep(400);
   }, tooOld(() => new Promise(() => {}))),
-  frontScene("panel-front-updated", "↗ · ［更新］换上了", "部署回来了 ⇒ 浮层说 devbox 已更新、带后端那句结果，［重试］再切一次", async () => {
+  frontScene("panel-front-updated", "↗ · ［更新］换上了", "部署回来了、重拨成了 ⇒ 浮层说 devbox 已更新、带后端那句结果，只留关闭", async () => {
     await frontTooOld();
     await clickUpdate();
     await byText("[data-role=front-result]", /已更新/);
     await sleep(400);
-  }, tooOld(() => "已安装后端（p13，x86_64）到 ~/.cc-monitor/bin/ccm（版本较旧）。重连远端即可用。")),
-  frontScene("panel-front-update-failed", "↗ · ［更新］没成", "部署失败 ⇒ 浮层红着说更新失败、带原文，［复制详情］", async () => {
+  }, tooOld(() => "已安装后端（p13，x86_64）到 ~/.cc-monitor/bin/ccm（那台上是 p12，这一版是 p13）。")),
+  frontScene("panel-front-updated-redial-failed", "↗ · ［更新］换上了、重拨没成", "部署回来了、重拨那台没成 ⇒ 已更新那句后面说重新连接失败，给［重新连接］", async () => {
+    await frontTooOld();
+    await clickUpdate();
+    await byText("[data-role=front-result]", /重新连接失败/);
+    await sleep(400);
+  }, (w) => {
+    tooOld(() => "已安装后端（p13，x86_64）到 ~/.cc-monitor/bin/ccm（那台上是 p12，这一版是 p13）。")(w);
+    w.commands.backend_start = () => Promise.reject("拨不通");
+  }),
+  frontScene("panel-front-update-failed", "↗ · ［更新］没成", "部署失败 ⇒ 浮层红着说更新失败、带原文，［重试］再更新一次 ·［复制详情］", async () => {
     await frontTooOld();
     await clickUpdate();
     await byText("[data-role=front-result]", /更新失败/);

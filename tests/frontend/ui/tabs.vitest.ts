@@ -2298,16 +2298,35 @@ describe("：↗ 远端那一格按顺序问三方", () => {
     for (let i = 0; i < 4; i++) await new Promise((r) => setTimeout(r, 0));
     expect(pop()!.firstElementChild!.textContent).toBe(copyText("front.title.updated", { machine: "devbox" }));
     expect(popText()).toContain("已部署 X");
-    expect(popButtons(), "换上了：给［重试］再切一次").toEqual([copyText("front.act.retry")]);
+    expect(popButtons(), "换上了：只留关闭，不挂［重试］").toEqual([]);
+    expect(popText(), "重拨成了：不叫人去重连").not.toContain(copyText("front.body.redialFailed"));
+    expect(mockInvoke.mock.calls.filter((c) => c[0] === "backend_start").map((c) => c[1]), "换上了就重拨那台").toEqual([{ origin: "devbox" }]);
 
-    // 部署失败：同一个浮层里红着说，带原文可复制。
+    // 换上了、重拨没成：才说要重连，给［重新连接］。
+    vi.mocked(updateBackendOf).mockReset();
+    vi.mocked(updateBackendOf).mockResolvedValue("已部署 Y");
+    mockInvoke.mockReset();
+    mockInvoke.mockImplementation((cmd: string, args: unknown) =>
+      isChanCall(cmd, args, "session-terminals") ? Promise.reject(UNSUPPORTED) : cmd === "backend_start" ? Promise.reject(new Error("拨不通")) : Promise.resolve([]),
+    );
+    await clickFront(tm, "r5");
+    [...pop()!.querySelectorAll("button")].find((b) => b.textContent === copyText("front.act.update"))!.click();
+    for (let i = 0; i < 6; i++) await new Promise((r) => setTimeout(r, 0));
+    expect(pop()!.firstElementChild!.textContent).toBe(copyText("front.title.updated", { machine: "devbox" }));
+    expect(popText()).toContain(copyText("front.body.redialFailed"));
+    expect(popButtons()).toEqual([copyText("front.act.reconnect")]);
+
+    // 部署失败：同一个浮层里红着说，带原文可复制；［重试］再更新一次。
     vi.mocked(updateBackendOf).mockReset();
     vi.mocked(updateBackendOf).mockRejectedValue(new Error("上传失败"));
     await clickUpdate();
     expect(pop()!.firstElementChild!.textContent).toBe(copyText("front.title.updateFailed", { machine: "devbox" }));
     expect(pop()!.dataset.shade).toBe("red");
     expect(popText()).toContain("上传失败");
-    expect(popButtons()).toEqual([copyText("front.act.copy")]);
+    expect(popButtons()).toEqual([copyText("front.act.retry"), copyText("front.act.copy")]);
+    [...pop()!.querySelectorAll("button")].find((b) => b.textContent === copyText("front.act.retry"))!.click();
+    for (let i = 0; i < 4; i++) await new Promise((r) => setTimeout(r, 0));
+    expect(vi.mocked(updateBackendOf), "失败态的［重试］是再更新一次").toHaveBeenCalledTimes(2);
 
     // 会打断什么的确认框里点了取消：浮层收起，什么都不做。
     vi.mocked(updateBackendOf).mockReset();

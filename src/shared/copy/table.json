@@ -4626,6 +4626,12 @@
       "zh": "{machine} 更新失败",
       "args": ["machine"]
     },
+    "front.body.redialFailed": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "重新连接失败，点［重新连接］再试",
+      "args": []
+    },
     "front.title.failed": {
       "kind": "title",
       "role": "标题",
@@ -9819,7 +9825,7 @@
     "rsSftp.deploy.done": {
       "kind": "body",
       "role": "toast",
-      "zh": "已安装后端（{buildId}，{machine}）到 {path}（{reason}）。重连远端即可用。",
+      "zh": "已安装后端（{buildId}，{machine}）到 {path}（{reason}）。",
       "args": ["buildId", "machine", "path", "reason"]
     },
     "rsSftp.deploy.upToDate": {

@@ -153,7 +153,12 @@ export class TabSessionActions {
    */
   /** 离线条的［重新连接］：那台断着在退避里等 ⇒ 立刻重拨一次（壳那一侧 `backend_start`：流在跑就是「别等了」）。 */
   reconnect(origin: string): void {
-    void commands.backend_start({ origin }).catch((e: unknown) => console.warn("reconnect failed:", e));
+    void this.redial(origin).catch((e: unknown) => console.warn("reconnect failed:", e));
+  }
+
+  /** 立刻重拨那台一次；没拨成 ⇒ 抛（↗ 浮层［更新］换上之后要知道拨没拨成）。 */
+  redial(origin: string): Promise<void> {
+    return commands.backend_start({ origin }).then(() => undefined);
   }
 
   async rereadMachines(origins: Iterable<string>): Promise<string[]> {

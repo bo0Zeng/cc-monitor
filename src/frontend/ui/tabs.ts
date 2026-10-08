@@ -1655,6 +1655,7 @@ export class TabManager {
         await copyFrontDetail(a.detail);
         return;
       case "update":
+      case "retry-update":
         await this.updateInPlace(sid, from, origin);
         return;
       case "retry":
@@ -1668,7 +1669,8 @@ export class TabManager {
 
   /**
    * ↗ 浮层的［更新］：就地把这一版换到那台（部署住 `backend-deploy.ts`，与机器卡同一处），不开设置；
-   * 正在更新 · 换上了 · 没换上都在同一个浮层里说。确认框里取消 ⇒ 什么都不出。
+   * 正在更新 · 换上了 · 没换上都在同一个浮层里说。换上了就重拨那条流：拨成了只留关闭；没拨成才说要重连、给［重新连接］。
+   * 没换上 ⇒ ［重试］再更新一次 ·［复制详情］。确认框里取消 ⇒ 什么都不出。
    */
   private async updateInPlace(sid: string, from: "row" | "head", origin: Origin): Promise<void> {
     const machine = machineName(origin);
@@ -1677,15 +1679,22 @@ export class TabManager {
       if (anchor) showFrontResult(anchor, sid, view, (a) => this.frontAct(sid, from, origin, a));
     };
     const view = (title: string, body: string, tone: FrontView["tone"], acts: FrontAct[]): FrontView => ({ title, body, hint: null, tone, acts });
+    let done: string | null;
     try {
-      const done = await updateBackendOf(origin, machine, () => show(view(copyText("front.title.updating", { machine }), "", "grey", [])));
-      if (done === null) return;
-      // 换上了就重拨那条流（同设置窗问题行［更新］）。
-      this.reconnect(origin);
-      show(view(copyText("front.title.updated", { machine }), done, "grey", [{ kind: "retry" }]));
+      done = await updateBackendOf(origin, machine, () => show(view(copyText("front.title.updating", { machine }), "", "grey", [])));
     } catch (e) {
       const detail = e instanceof Error ? e.message : String(e);
-      show(view(copyText("front.title.updateFailed", { machine }), detail, "red", [{ kind: "copy", detail }]));
+      show(view(copyText("front.title.updateFailed", { machine }), detail, "red", [{ kind: "retry-update" }, { kind: "copy", detail }]));
+      return;
+    }
+    if (done === null) return;
+    const title = copyText("front.title.updated", { machine });
+    try {
+      await this.actions.redial(origin);
+      show(view(title, done, "grey", []));
+    } catch (e) {
+      console.warn(`[front] ${origin} 换上之后重拨没成：`, e);
+      show(view(title, `${done} ${copyText("front.body.redialFailed")}`, "amber", [{ kind: "reconnect" }]));
     }
   }
 
