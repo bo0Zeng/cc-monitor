@@ -49,7 +49,6 @@ import { invoke } from "@tauri-apps/api/core";
 //   形状由跨语言金样 `tests/__fixtures__/apikey.golden.json` 两侧对拍）；本文件那条 `import type … from "../accounts"`（
 //   必须拆 4 点名的「闭合类型环的那条边」）随 `apikey_routing_for` 一起走了。
 
-
 import type { AutoLaunchConfig } from "../generated/AutoLaunchConfig";
 // 合并后的命令一律收 `origin`。**`Origin` 是生成物**
 // ⇒ 这里不许手写 `string | null`：手写的那一份与 Rust 的 `origin::Origin` 之间没有任何东西钉着。
@@ -122,7 +121,8 @@ export const commands = {
   //   （状态 ＋ 扫一份 → `aliases_read` · 预览 → `aliases_block_render` · 装 / 卸 → `aliases_block_install` / `aliases_block_remove`）。
 
   /** 写 `cc_set_auto_launch`。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
-  cc_set_auto_launch: (args: { enabled: boolean }) => invoke<void>("cc_set_auto_launch", args),
+  cc_set_auto_launch: (args: { enabled: boolean }) =>
+    invoke<void>("cc_set_auto_launch", args),
 
   /**
    * `K-R135` / `R85`：用户级 PATH 那一格的**现状**。**现算，不缓存** ——
@@ -151,7 +151,8 @@ export const commands = {
    * **两个调用方**（`e2e-probe.ts` 与 `events.ts`）—— 这正是包装层的价值：
    * 原来两处各自手写这个命令名。
    */
-  frontend_perf_log: (args: { lines: string }) => invoke<void>("frontend_perf_log", args),
+  frontend_perf_log: (args: { lines: string }) =>
+    invoke<void>("frontend_perf_log", args),
 
   /** 设置面板「数据」区：枚举 monitor 写到磁盘的所有路径。返回值字段被真消费 ⇒ 用生成物（桶③）。 */
   get_data_paths: () => invoke<DataPathsResponse>("get_data_paths"),
@@ -162,8 +163,10 @@ export const commands = {
    * 写配置：只交「改哪几条路径」（整份替换的 `save_config` 删了）。Rust 返回 `Result<(), String>` ⇒ **桶①**。 〔散文墓碑〕
    * 补丁的形状由生成物 `ConfigEdit` 钉（Rust `config.rs::ConfigEdit`）；值本身仍是不透明 JSON（见 `load_config`）。
    */
-  patch_config: (args: { edits: ConfigEdit[] }) => invoke<void>("patch_config", args),
-  machine_table_try: (args: { edits: ConfigEdit[] }) => invoke<MachineFault | null>("machine_table_try", args),
+  patch_config: (args: { edits: ConfigEdit[] }) =>
+    invoke<void>("patch_config", args),
+  machine_table_try: (args: { edits: ConfigEdit[] }) =>
+    invoke<MachineFault | null>("machine_table_try", args),
 
   /**
    * 写诊断配置。返回 `RestartHint` —— **它是个只有 unit variant 的外部标记枚举**
@@ -213,7 +216,8 @@ export const commands = {
   //   （`src/frontend/ui/launch-render.ts::planLocalLaunch`），monitor 只剩开终端窗口（下一条）。
 
   /** 在本机开一个终端窗口跑 `cmd`（工作目录 `cwd`）：POSIX 上交用户自己的终端 / Windows 上 PowerShell。桶①。 */
-  open_local_terminal: (args: { cmd: string; cwd: string | null }) => invoke<void>("open_local_terminal", args),
+  open_local_terminal: (args: { cmd: string; cwd: string | null }) =>
+    invoke<void>("open_local_terminal", args),
 
   // 「resume 之前问记录还在不在」那一条退役：界面经通道直接问后端 `history-record`
   //   （`src/frontend/ui/session-reads.ts::probeSessionRecord`，成品 `{present, root}`）。
@@ -225,7 +229,8 @@ export const commands = {
    *
    *  ⚠ 它**只读**：跑两次 `--ccm-probe`，一个字节都不写；产品也**不删**用户 `~/.local/bin/ccm`
    *  下那份旧的（用户逐字「原本的配置要手动删除」）。 */
-  local_ccm_entry_status: (fresh?: boolean) => invoke<LocalCcmEntry>("local_ccm_entry_status", { fresh: fresh ?? null }),
+  local_ccm_entry_status: (fresh?: boolean) =>
+    invoke<LocalCcmEntry>("local_ccm_entry_status", { fresh: fresh ?? null }),
 
   // 某会话的任务快照那一条退役：界面经通道直接问那台机器的后端 `tasks-list`
   //   （后端出成品，`tasks-panel.ts::fetchSessionTasks` / `decodeTasks`）。
@@ -234,14 +239,16 @@ export const commands = {
    *  Rust 返回 `Result<(), String>` ⇒ **桶①**。`ssh`：这一行要跑本机的 ssh（Windows 上先查 ssh.exe 在不在）。
    *  只经 `src/frontend/ui/terminal-open.ts::openTerminal` 调（开终端只有一个家）。 */
   open_terminal_window: (args: { command: string; ssh: boolean }) =>
-    invoke<void>("open_terminal_window", args),
+    invoke<"opened" | "noWindow">("open_terminal_window", args),
 
   /** 开终端那一问要的机器事实 `{machine, saved, jump, prefer}`（monitor 的机器表 ＋ 上次赢的那条）。
    *  **桶②**：TS 不读它的字段，原样转交本机后端 `terminal-ssh`（组请求与渲染都在那里）。 */
-  terminal_dial: (args: { origin: string }) => invoke<unknown>("terminal_dial", args),
+  terminal_dial: (args: { origin: string }) =>
+    invoke<unknown>("terminal_dial", args),
 
   /** 诊断配置（log 开关 / 级别 / error toast / 保留天数）。返回值字段被真消费 ⇒ 生成物（桶③）。 */
-  get_diagnostics_config: () => invoke<DiagnosticsConfig>("get_diagnostics_config"),
+  get_diagnostics_config: () =>
+    invoke<DiagnosticsConfig>("get_diagnostics_config"),
 
   /** log 目录与文件清单。`current_size_bytes`/`size_bytes` 是**字节数**、`modified_ms` 是**毫秒时间戳**——两个量纲的上限论证在 Rust 侧分开写（C03 纪律）。 */
   get_log_file_info: () => invoke<LogFileInfo>("get_log_file_info"),
@@ -250,12 +257,15 @@ export const commands = {
    * 日志页「复制诊断信息」：整段诊断文本 ＋ 那一行「未识别数据」用的数（同一份）。`configUnknown` 是界面那份键表认不出的顶层键；
    * `drift` 是界面经通道问回来的各台记录账（`drift-report` 的应答，问不到 ⇒ `null`）。
    */
-  diagnostics_report: (args: { configUnknown: string[]; drift: { origin: string; report: unknown }[] }) =>
-    invoke<DiagnosticsReport>("diagnostics_report", args),
+  diagnostics_report: (args: {
+    configUnknown: string[];
+    drift: { origin: string; report: unknown }[];
+  }) => invoke<DiagnosticsReport>("diagnostics_report", args),
 
   /** 部署内嵌的后端到远端。Rust 返回 `Result<String, String>`（人话结果）⇒ 原始类型。 */
   /** 部署远端后端（连同 `ccm` 入口，一次）。 */
-  deploy_remote_backend: (args: { cfg: unknown }) => invoke<string>("deploy_remote_backend", args),
+  deploy_remote_backend: (args: { cfg: unknown }) =>
+    invoke<string>("deploy_remote_backend", args),
 
   // 分叉那条退役：分叉经通道直说那台后端 `session-fork`（`src/frontend/ui/session-writes.ts::forkSession`）。
 
@@ -269,7 +279,8 @@ export const commands = {
    * 它自己进程的 `{home, path}`。成品由本机后端出（`src/frontend/ui/settings/footprint-reads.ts` 经通道问 `footprint-report`，把这一份原样带过去），
    * 本侧不认识它的形状 ⇒ **桶②**。〔`config_surface_report`〔散文墓碑〕随判定进后端删了。〕
    */
-  footprint_client_facts: () => invoke<Record<string, unknown>>("footprint_client_facts"),
+  footprint_client_facts: () =>
+    invoke<Record<string, unknown>>("footprint_client_facts"),
 
   // U-CC1：数据面漂移记账（只读、按需一次，不轮询）。
   // 按机器分：问哪台答哪台，回包带回 `origin`（界面按回声判）。monitor 自己的命令，不经后端。
@@ -288,18 +299,14 @@ export const commands = {
 
   // cc-bus 钩子诊断两条（本机 / 远端）退役：界面经通道直问那台后端 `hooks-diag`（`settings/cc-bus-hooks-section.ts::fetchHooksReport`）。
 
-
   // 骨架索引那一条（`read_session_index`〔散文墓碑〕）退役：经通道直接说帧命令 `history-index`，
   //   后端出成品（`src/frontend/ui/session-reads.ts::readSessionIndex`）。
-
 
   // 「接上骨架 ⇒ 重放缓冲只留尾巴」那一条（`replay_keep_tail_only`〔散文墓碑〕）退役：
   //   重放缓冲对每个会话都只留尾巴，前端不再登记。
 
   // 大纲清单与会话内查找那两条（`list_user_inputs` / `find_in_session`〔散文墓碑〕）退役：
   //   经通道直接说帧命令 `history-user-inputs` / `history-find`，后端出成品（`src/frontend/ui/session-reads.ts`）。
-
-
 
   /** 装了 MCP 的远端 host 列表。原始类型数组，无需生成物。 */
   list_remote_mcp_origins: () => invoke<string[]>("list_remote_mcp_origins"),
@@ -331,14 +338,15 @@ export const commands = {
   backend_machines: () => invoke<string[]>("backend_machines"),
 
   /** P2s（C8）：起这台机的后端。返回一句人话（已起 / 已经在跑 / 起不来的理由）⇒ **桶②**。 */
-  backend_start: (args: { origin: string }) => invoke<string>("backend_start", args),
+  backend_start: (args: { origin: string }) =>
+    invoke<string>("backend_start", args),
 
   /**
    * P2s（C8）：停这台机的后端 ⇒ **桶②**。本机远端同形：那台机器上的一次性 `--resident-stop` 做「请它收尾 → 宽限期内等 → 到点强杀」，
    * 这里拿回结局（`remote_resident.rs::StopAnswer`）。
    */
-  backend_stop: (args: { origin: string }) => invoke<StopAnswer>("backend_stop", args),
-
+  backend_stop: (args: { origin: string }) =>
+    invoke<StopAnswer>("backend_stop", args),
 
   /**
    * `24e` 第二刀（第三段）：在**原生窗口**（egui，同进程、次线程）
@@ -374,10 +382,14 @@ export const commands = {
   }) => invoke<number>("open_file_window", args),
 
   /** 开设置窗；`target` 是目的地 JSON（`settings/open-settings.ts`）。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
-  open_settings_window: (target: string | null = null) => invoke<void>("open_settings_window", { target }),
+  open_settings_window: (target: string | null = null) =>
+    invoke<void>("open_settings_window", { target }),
 
   /** 机器表热加载：照 config.json 的机器表起 / 断 / 重起远端那几条流（不要重启 cc-monitor）。 */
-  remote_reconcile: () => invoke<{ started: string[]; stopped: string[]; restarted: string[] }>("remote_reconcile"),
+  remote_reconcile: () =>
+    invoke<{ started: string[]; stopped: string[]; restarted: string[] }>(
+      "remote_reconcile",
+    ),
 
   /** 卸远端后端。Rust 返回 `Result<String, String>` ⇒ 原始类型。 */
   uninstall_remote_backend: (args: { cfg: unknown }) =>
@@ -414,11 +426,13 @@ export const commands = {
     invoke<FrontOutcome>("bring_terminal_to_front", args),
 
   /** 远端会话拉前，两问：交那台回的 `terminals` ⇒ 按窗口标签找（对不上回 `null`）；交本机后端的进程链 ⇒ 沿链找窗口。回结局族。**桶①**。 */
-  bring_remote_terminal_to_front: (args: { terminals: unknown[] } | { chain: unknown[] }) =>
-    invoke<FrontOutcome | null>("bring_remote_terminal_to_front", args),
+  bring_remote_terminal_to_front: (
+    args: { terminals: unknown[] } | { chain: unknown[] },
+  ) => invoke<FrontOutcome | null>("bring_remote_terminal_to_front", args),
 
   /** 关 tab 时让事件重放忘掉这个会话。**桶①**。 */
-  forget_session: (args: { sessionId: string }) => invoke<void>("forget_session", args),
+  forget_session: (args: { sessionId: string }) =>
+    invoke<void>("forget_session", args),
 
   /** 把监控窗口拉到最前。**桶①**。 */
   bring_monitor_to_front: () => invoke<void>("bring_monitor_to_front"),
@@ -427,15 +441,19 @@ export const commands = {
   // 账号清单两条（远端 / 本机）与换号前的信任预检退役：前端经通道直接说帧命令
   //   `accounts-list` / `accounts-trust`（`src/frontend/ui/account-reads.ts::fetchAccounts` / `checkTrust`），后端出成品。
 
-
   /**
    * **通道在 Tauri IPC 这一跳上的那条命令**（`chan/webview.rs`）。
    * ⚠ 调用方**不直接用它**：一律经 `src/comms/inward/chan.ts` 的 `chan.call(origin, op, payload, budget)`
    * （期限换算、本地撤单、三层错误解码都住那里）。载荷去程是字节数组、回程是原样字节（`ArrayBuffer`）。
    * **桶②**：回的是不透明字节，本表不认识它的形状。
    */
-  chan_call: (args: { origin: Origin; op: string; payload: number[]; leftMs: number; callId: string | null }) =>
-    invoke<ArrayBuffer>("chan_call", args),
+  chan_call: (args: {
+    origin: Origin;
+    op: string;
+    payload: number[];
+    leftMs: number;
+    callId: string | null;
+  }) => invoke<ArrayBuffer>("chan_call", args),
 
   /**
    * 〔「撤单不许回退」〕撤掉 webview 这一跳上带编号的那一问（`chan/webview.rs::chan_cancel`）。
@@ -449,7 +467,11 @@ export const commands = {
    * ⚠ 调用方经 `src/comms/inward/chan.ts` 的 `chan.offer` / `chan.cachedOffer` 用它。
    */
   chan_offer: (args: { origin: Origin }) =>
-    invoke<{ ops: string[]; unavailable: [string, string][]; stoppable: string[] } | null>("chan_offer", args),
+    invoke<{
+      ops: string[];
+      unavailable: [string, string][];
+      stoppable: string[];
+    } | null>("chan_offer", args),
 
   /**
    * **通道 `subscribe` 在 Tauri IPC 这一跳上的三条命令**（`chan/webview.rs`）。
@@ -463,6 +485,7 @@ export const commands = {
     want: number;
     id: number;
   }) => invoke<void>("chan_subscribe", args),
-  chan_want: (args: { id: number; more: number }) => invoke<void>("chan_want", args),
+  chan_want: (args: { id: number; more: number }) =>
+    invoke<void>("chan_want", args),
   chan_stop: (args: { id: number }) => invoke<void>("chan_stop", args),
 } as const;

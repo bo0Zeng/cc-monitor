@@ -71,7 +71,6 @@ src/comms/inward/chan.ts:75	第 {…} 跳卡在 {…}：{…}（发出去了没�
 src/comms/inward/chan.ts:77	对端不认这个操作	保留	[不对外] 同上（`peer/unsupported` 那一档的日志句）
 src/comms/inward/chan.ts:77	对端答「不行」	保留	[不对外] 同上（`peer/refused` 那一档的日志句）
 src/comms/inward/chan.ts:79	本侧：{…}	保留	[不对外] 同上（`ours` 那一档的日志句）
-src/frontend/ui/remote-launch-run.ts:338	刻意不替你挑终端模拟器	保留	[不对外] 对后端错误串做 includes 的匹配锚点（那句话本身由后端产、另行裁）
 src/frontend/ui/settings/machine-status.ts:33	（本机）	保留	[不对外] LOCAL_MACHINE_KEY 是本机那一行的存储键（头注：刻意取一个用户填不出的名字防撞车），显示时 describeGap 等处换成「本机」
 src/comms/inward/chan/router.rs:146	回 Welcome 写不出去：{e}	保留	[不对外] 只进日志（host.rs 的 tracing::warn），连接结束原因
 src/comms/inward/chan/router.rs:171	读出错：{e}	保留	[不对外] 只进日志（host.rs 的 tracing::warn），连接结束原因

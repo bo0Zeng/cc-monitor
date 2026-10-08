@@ -7,12 +7,19 @@
  * - 远端：① monitor 交那台的机器事实（`terminal_dial`：它的机器表 ＋ 上次赢的那条）→ ② 本机后端 `terminal-ssh` 渲出那一行
  *   PowerShell（`& ssh -t[ -J …] … -- '<bash -lic ''…''>'`）→ ③ monitor 开窗（`ssh: true`）。
  *
- * 哪一步不成 ⇒ 抛一句人话（调用方照旧走剪贴板回退 / 出声）。POSIX 上开窗那一步回 `POSIX_NO_TERMINAL_WINDOW`
- * （既定设计：刻意不替你挑终端模拟器；调用方按 `POSIX_NO_WINDOW_MARKER` 判，不按 OS 猜）。
+ * 哪一步不成 ⇒ 抛一句人话（调用方照旧走剪贴板回退 / 出声）。POSIX 上没有终端出口时壳回 `"noWindow"` 这个结局
+ * （既定设计，不是失败）⇒ 抛 {@link NoTerminalWindow}；调用方按类型判，不按哪句话里的字判、也不按 OS 猜。
  */
 import { commands } from "./ipc/commands";
+import { copyText } from "./copy-table";
 import { chan } from "../../comms/inward/chan";
-import { budgetWithin, jsonBody, readJson, ReplyUnreadable, saidFrom } from "./ipc/chan-caller";
+import {
+  budgetWithin,
+  jsonBody,
+  readJson,
+  ReplyUnreadable,
+  saidFrom,
+} from "./ipc/chan-caller";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 
 /** 期限：`terminal-ssh` 是本机后端里的纯计算（不拨号），给足本机那条流的往返即可。 */
@@ -23,7 +30,12 @@ export function decodeTerminalLine(v: unknown): string {
   if (v !== null && typeof v === "object" && !Array.isArray(v)) {
     const o = v as Record<string, unknown>;
     const keys = Object.keys(o);
-    if (keys.length === 1 && keys[0] === "command" && typeof o.command === "string" && o.command !== "") {
+    if (
+      keys.length === 1 &&
+      keys[0] === "command" &&
+      typeof o.command === "string" &&
+      o.command !== ""
+    ) {
       return o.command;
     }
   }
@@ -39,15 +51,34 @@ async function lineOf(ask: Promise<Uint8Array>): Promise<string> {
   }
 }
 
+/** 这台按既定设计不开终端窗口（壳回 `"noWindow"`）。`message` 是给人看的那一句；判「是不是既定设计」只认类型。 */
+export class NoTerminalWindow extends Error {
+  constructor() {
+    super(copyText("rsLaunch.posix.noTerminalWindow"));
+    this.name = "NoTerminalWindow";
+  }
+}
+
+/** 开窗那一下：壳回 `"noWindow"` ⇒ 抛 {@link NoTerminalWindow}；真失败壳那边抛一句人话，原样往上走。 */
+async function openWindow(command: string, ssh: boolean): Promise<void> {
+  if ((await commands.open_terminal_window({ command, ssh })) === "noWindow")
+    throw new NoTerminalWindow();
+}
+
 /** 在用户面前这台机器上开一个终端跑 `command`（`origin` = 命令要在哪台跑）。 */
-export async function openTerminal(origin: Origin, command: string): Promise<void> {
+export async function openTerminal(
+  origin: Origin,
+  command: string,
+): Promise<void> {
   if (isLocalOrigin(origin)) {
-    await commands.open_terminal_window({ command, ssh: false });
+    await openWindow(command, false);
     return;
   }
   const facts = await commands.terminal_dial({ origin });
   const body = jsonBody({ ...(facts as Record<string, unknown>), command });
   const budget = budgetWithin(RENDER_BUDGET_MS);
-  const line = await lineOf(chan.call(LOCAL_ORIGIN, "terminal-ssh", body, budget));
-  await commands.open_terminal_window({ command: line, ssh: true });
+  const line = await lineOf(
+    chan.call(LOCAL_ORIGIN, "terminal-ssh", body, budget),
+  );
+  await openWindow(line, true);
 }
