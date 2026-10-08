@@ -40,6 +40,47 @@ import { loadTable, NAMED_PH, type Table } from "./copy-support.ts";
 
 // 第六档 aria：只进 aria-label 的无障碍名。
 const KINDS = new Set(["title", "control", "action", "body", "error", "aria"]);
+/**
+ * 界面角色（文案新写法 `规范.md` §2 按角色分节）：闭集 ＋ 每个角色许配的 kind。
+ * 两向相等：表里出现的（role · kind）== 这张搭配表里的格（多一格 ⇒ 搭错了；少一格 ⇒ 这张表写了没人用的格，删掉）。
+ */
+export const ROLE_KINDS: Readonly<Record<string, readonly string[]>> = {
+  按钮: ["action"],
+  菜单项: ["action"],
+  标题: ["title"],
+  标签: ["control"],
+  占位: ["control"],
+  状态: ["body"],
+  说明: ["body"],
+  悬停: ["body"],
+  toast: ["body"],
+  报错: ["error"],
+  原因格: ["error"],
+  确认框: ["title", "body", "action"],
+  空态: ["body"],
+  进度: ["body"],
+  命令行: ["body", "error"],
+  读屏: ["aria"],
+  片段: ["body"],
+  图标: ["body"],
+};
+
+/** role 的问题：没写 · 不在闭集 · 与 kind 搭不上；以及搭配表里有、表里一条都没用到的格（`unused`）。 */
+export function roleProblems(table: Table): { bad: string[]; unused: string[] } {
+  const bad: string[] = [];
+  const seen = new Set<string>();
+  for (const [key, e] of Object.entries(table)) {
+    const allowed = e.role === undefined ? undefined : ROLE_KINDS[e.role];
+    if (typeof e.role !== "string" || e.role === "") bad.push(`${key}：没写 role`);
+    else if (!allowed) bad.push(`${key}：role「${e.role}」不在闭集里`);
+    else if (!allowed.includes(e.kind)) bad.push(`${key}：role「${e.role}」不配 kind「${e.kind}」（许配 ${allowed.join(" / ")}）`);
+    else seen.add(`${e.role} · ${e.kind}`);
+  }
+  const unused = Object.entries(ROLE_KINDS)
+    .flatMap(([r, ks]) => ks.map((k) => `${r} · ${k}`))
+    .filter((cell) => !seen.has(cell));
+  return { bad, unused };
+}
 const KEY_RE = /^[a-z][A-Za-z0-9]*\.[a-z][A-Za-z0-9]*\.[a-z][A-Za-z0-9]*$/;
 /** 取文口自己住的文件：它里头的 `copyText` 是定义，不是引用。 */
 const HOME = "src/frontend/ui/copy-table.ts";
@@ -259,6 +300,12 @@ describe("CP2a · 文案表：形状", () => {
   it("[C-K2] kind == title 的条数不为 0（全填成 body 会让 R5 静默空转）", () => {
     expect(Object.values(table).filter((e) => e.kind === "title").length).toBeGreaterThan(0);
   });
+
+  it("[C-K4] 每条带 role，取自闭集；role 与 kind 的搭配取自搭配表，搭配表与表里出现的格两向相等", () => {
+    const { bad, unused } = roleProblems(table);
+    expect(bad, "role 写错或与 kind 搭不上").toEqual([]);
+    expect(unused, "搭配表里这几格表里一条都没有 —— 删掉那一格（或那个角色）").toEqual([]);
+  });
 });
 
 describe("CP2a · 文案表 ↔ 生产代码引用", () => {
@@ -322,15 +369,25 @@ describe("CP2a · 文案表 ↔ 生产代码引用", () => {
 
 describe("CP2a · 文案表判据自己会不会死（正控）", () => {
   const t: Table = {
-    "a.b.c": { kind: "body", zh: "你好 {name}", args: ["name"] },
+    "a.b.c": { kind: "body", role: "说明", zh: "你好 {name}", args: ["name"] },
   };
 
   it("形状：两段 key / 未知 kind / 位置式占位符 / args 与占位符不相等 —— 各红一次", () => {
     expect(tableProblems({ "a.b": t["a.b.c"] }).join()).toMatch(/三段式/);
     expect(tableProblems({ "a.b.c": { ...t["a.b.c"], kind: "label" } }).join()).toMatch(/六档/);
-    expect(tableProblems({ "a.b.c": { kind: "body", zh: "第 {} 条", args: [] } }).join()).toMatch(/不具名/);
-    expect(tableProblems({ "a.b.c": { kind: "body", zh: "你好 {name}", args: [] } }).join()).toMatch(/没登记/);
-    expect(tableProblems({ "a.b.c": { kind: "body", zh: "你好", args: ["name"] } }).join()).toMatch(/没有这个占位符/);
+    expect(tableProblems({ "a.b.c": { kind: "body", role: "说明", zh: "第 {} 条", args: [] } }).join()).toMatch(/不具名/);
+    expect(tableProblems({ "a.b.c": { kind: "body", role: "说明", zh: "你好 {name}", args: [] } }).join()).toMatch(/没登记/);
+    expect(tableProblems({ "a.b.c": { kind: "body", role: "说明", zh: "你好", args: ["name"] } }).join()).toMatch(/没有这个占位符/);
+  });
+
+  it("[C-K4] role：没写 / 不在闭集 / 与 kind 搭不上 各红一次；搭配表里没人用的格逮得住", () => {
+    expect(roleProblems({ "a.b.c": { ...t["a.b.c"], role: "" } }).bad.join()).toMatch(/没写 role/);
+    expect(roleProblems({ "a.b.c": { ...t["a.b.c"], role: "旁白" } }).bad.join()).toMatch(/不在闭集/);
+    expect(roleProblems({ "a.b.c": { ...t["a.b.c"], role: "菜单项" } }).bad.join()).toMatch(/不配 kind/);
+    const one = roleProblems(t);
+    expect(one.bad).toEqual([]);
+    expect(one.unused).toContain("按钮 · action");
+    expect(one.unused).not.toContain("说明 · body");
   });
 
   it("引用：真调用读得出 key 与参数；四种绕法各被逮住", () => {
