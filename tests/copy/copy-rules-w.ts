@@ -78,7 +78,8 @@ export const W_CHECKS: Record<string, Check> = {
   "C-W3": (e, ctx) => {
     if (e.role !== "状态") return null;
     const cells = ctx.byId.get("C-W3")?.cells ?? [];
-    const head = speech(e.zh).trim().split(" · ")[0].trim();
+    // 正在进行的那一格可带省略号（读取中…）。
+    const head = speech(e.zh).trim().split(" · ")[0].trim().replace(/…$/, "");
     if (cells.includes(head)) return null;
     // 只有 embeddable 里那几格可连同主语 / 宾语嵌在句里（该远端未启用多账号 · 未连接远端）；别的格（失败 · 完成 …）要打头。
     const emb = ctx.byId.get("C-W3")?.embeddable ?? [];
@@ -115,8 +116,9 @@ export const W_CHECKS: Record<string, Check> = {
     const s = speech(e.zh);
     const h = words(ctx, "C-W7").find((w) => s.includes(w));
     if (h) return `报错里有「${h}」`;
-    const n = (s.match(/失败/g) ?? []).length;
-    return n > 1 ? `「失败」${n} 次（两层主语）` : null;
+    // 一行一件事：「失败」每行至多一次（同一行里两次 ＝ 两层主语）；分行写的是两件先后的事。
+    const n = Math.max(...s.split("\n").map((l) => (l.match(/失败/g) ?? []).length));
+    return n > 1 ? `一行里「失败」${n} 次（两层主语）` : null;
   },
   // N6b：「失败 · X」的 X 取自原因词闭集或占位符。
   "C-W8": (e, ctx) => {
@@ -128,8 +130,9 @@ export const W_CHECKS: Record<string, Check> = {
       if (m.index === 0 && e.role === "状态") continue;
       const x = m[1].trim();
       if (ok(x)) continue;
-      // 写入 / 读取 / 删除失败 · <对象> · <原因>：整条以它开头时第一格是对象，原因在下一格。
-      if (m.index === 2 && /^(写入|读取|删除)失败 · /.test(e.zh)) {
+      // 写入 / 读取 / 删除失败 · <对象> · <原因>：一行以它开头时第一格是对象，原因在下一格。
+      const lineStart = e.zh.lastIndexOf("\n", m.index) + 1;
+      if (m.index === lineStart + 2 && /^(写入|读取|删除)失败 · /.test(e.zh.slice(lineStart))) {
         const next = e.zh.slice(m.index + m[0].length).match(/^ · ([^\n]*?)(?= · |\n|$)/);
         if (next && ok(next[1].trim())) continue;
         return next ? `「失败 · ${x} · ${next[1].trim()}」的原因格不是原因词` : `「失败 · ${x}」后面缺原因格`;

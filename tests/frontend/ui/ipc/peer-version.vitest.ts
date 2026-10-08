@@ -62,6 +62,5 @@ describe("文案表里这一族只剩两句", () => {
 
 /** 还没收进两句、照实登记的那几条（后端 / 壳 / 文件窗口里还没换的；换一条删一条）。 */
 const EXPECTED_REMAINING: string[] = [
-  "beProbe.test.noControl",
   "rsLinkMux.data.noCredit",
 ];

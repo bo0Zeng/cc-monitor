@@ -1651,7 +1651,7 @@
     "rsRemoteResident.tunnel.forwardingProhibited": {
       "kind": "error",
       "role": "报错",
-      "zh": "接入失败 · 被拒 · 远端 sshd 禁止转发（AllowTcpForwarding no）\n把远端 sshd_config 里的 AllowTcpForwarding 改成 yes 或 local · 重启 sshd 后再接入",
+      "zh": "接入失败 · 被拒 · 远端 sshd 禁止转发（AllowTcpForwarding no）\n把远端 sshd_config 里的 AllowTcpForwarding 改成 yes 或 local\n重启 sshd 后再接入",
       "args": []
     },
     "rsRemoteResident.handshake.attachNotSent": {
@@ -2371,7 +2371,7 @@
     "ccBus.kill.badId": {
       "kind": "error",
       "role": "报错",
-      "zh": "收掉失败 · {detail}",
+      "zh": "结束失败 · {detail}",
       "args": ["detail"]
     },
     "ccBus.spawn.badId": {
@@ -2389,7 +2389,7 @@
     "beCcBus.parse.badKillId": {
       "kind": "error",
       "role": "报错",
-      "zh": "要收掉的不是合法 agent 名 · 只许字母、数字、_、- · 不以 - 开头 · {id}",
+      "zh": "要结束的不是合法 agent 名 · 只许字母、数字、_、- · 不以 - 开头 · {id}",
       "args": ["id"]
     },
     "beCcBus.parse.badAccount": {
@@ -2467,43 +2467,43 @@
     "ccBus.kill.invalidArgs": {
       "kind": "error",
       "role": "报错",
-      "zh": "收掉 {id} 失败 · 被拒 · cc-bus 不接受此名字 · {detail}",
+      "zh": "结束 {id} 失败 · 被拒 · cc-bus 不接受此名字 · {detail}",
       "args": ["id", "detail"]
     },
     "ccBus.kill.notInstalled": {
       "kind": "error",
       "role": "报错",
-      "zh": "收掉 {id} 失败 · 未装 · 找不到 cc-bus · {detail}",
+      "zh": "结束 {id} 失败 · 未装 · 找不到 cc-bus · {detail}",
       "args": ["id", "detail"]
     },
     "ccBus.kill.timedOut": {
       "kind": "error",
       "role": "报错",
-      "zh": "收掉 {id} 结果未知 · 执行超时 · 先刷新名单再决定是否重来 · {detail}",
+      "zh": "结束 {id} 结果未知 · 执行超时 · 先刷新名单再决定是否重来 · {detail}",
       "args": ["id", "detail"]
     },
     "ccBus.kill.otherCode": {
       "kind": "error",
       "role": "报错",
-      "zh": "收掉 {id} 失败 · {detail}",
+      "zh": "结束 {id} 失败 · {detail}",
       "args": ["id", "detail"]
     },
     "ccBus.kill.noReason": {
       "kind": "error",
       "role": "报错",
-      "zh": "收掉 {id} 失败 · 原因不明",
+      "zh": "结束 {id} 失败 · 原因不明",
       "args": ["id"]
     },
     "ccBus.kill.unsure": {
       "kind": "error",
       "role": "报错",
-      "zh": "{machine} 回复无法解析 · 收掉 {id} 结果未知\n先刷新名单再决定 · 勿直接重来",
+      "zh": "{machine} 回复无法解析 · 结束 {id} 结果未知\n先刷新名单再决定 · 勿直接重来",
       "args": ["machine", "id"]
     },
     "ccBus.kill.killed": {
       "kind": "body",
       "role": "说明",
-      "zh": "已收掉 {id} · 会话与进程树均终止",
+      "zh": "{id} 的会话与进程树已全部结束",
       "args": ["id"]
     },
     "ccBus.kill.staleOnly": {
@@ -2515,7 +2515,7 @@
     "ccBus.kill.nothing": {
       "kind": "body",
       "role": "空态",
-      "zh": "未收掉 {id} · 会话未结束 · 登记未摘",
+      "zh": "未结束 {id} · 会话还在 · 登记未摘",
       "args": ["id"]
     },
     "ccBus.spawn.invalidArgs": {
@@ -8422,7 +8422,7 @@
     "ccBus.row.kill": {
       "kind": "action",
       "role": "按钮",
-      "zh": "收掉",
+      "zh": "结束",
       "args": []
     },
     "ccBus.broadcast.failed": {
@@ -8440,13 +8440,13 @@
     "ccBus.kill.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "收掉失败 · {e}",
+      "zh": "结束失败 · {e}",
       "args": ["e"]
     },
     "ccBus.kill.confirm": {
       "kind": "action",
       "role": "确认框",
-      "zh": "确认收掉 {id}",
+      "zh": "确认结束 {id}",
       "args": ["id"]
     },
     "ccBus.acctLabel.none": {
@@ -8530,7 +8530,7 @@
     "ccBus.row.killHint": {
       "kind": "body",
       "role": "说明",
-      "zh": "收掉此 agent 的会话与进程树 · 不可撤销",
+      "zh": "结束此 agent 的会话与进程树 · 不可撤销",
       "args": []
     },
     "ccBus.row.send": {
@@ -10491,7 +10491,7 @@
     "rsFilewinBookmarks.store.noDataDir": {
       "kind": "error",
       "role": "报错",
-      "zh": "保存书签失败 · 找不到数据目录",
+      "zh": "保存书签失败 · 无数据目录",
       "args": []
     },
     "rsFilewinBookmarks.mutate.failed": {
@@ -12887,7 +12887,7 @@
     },
     "rsByteTable.key.unreadable": {
       "kind": "error",
-      "role": "报错",
+      "role": "原因格",
       "zh": "应答无法解析 · 「{reply}」",
       "args": ["reply"]
     },
@@ -12905,8 +12905,8 @@
     },
     "rsByteTable.key.notUtf8": {
       "kind": "error",
-      "role": "报错",
-      "zh": "内容无法解析",
+      "role": "原因格",
+      "zh": "应答无法解析",
       "args": []
     },
     "rsFootprintClient.env.noHome": {
@@ -13160,7 +13160,7 @@
     "rsBackendPolicy.health.detail": {
       "kind": "body",
       "role": "说明",
-      "zh": "本次运行：异常退出 {crashed} · 被拒 {refused} · 未启动 {neverStarted} · 读取失败 {misread} · 完整记录见日志",
+      "zh": "本次运行：异常退出 {crashed} · 被拒 {refused} · 未启动 {neverStarted} · 未读到 {misread} · 完整记录见日志",
       "args": ["crashed", "refused", "neverStarted", "misread"]
     },
     "rsBackendPolicy.death.listSep": {
@@ -13336,7 +13336,7 @@
     "rsSshSource.health.degradedNoOwnBytes": {
       "kind": "body",
       "role": "说明",
-      "zh": "远端后端 {build} 降级运行；后台会话不可见、历史易卡 · 未带后端字节 · 版本不可比",
+      "zh": "远端后端版本不可比\n现为 {build} · 未带后端字节\n降级运行 · 后台会话不可见 · 历史易卡",
       "args": ["build"]
     },
     "rsSshSource.upgrade.reconnect": {
@@ -13348,13 +13348,13 @@
     "rsSshSource.version.protoMismatch": {
       "kind": "body",
       "role": "说明",
-      "zh": "{label} 后端要更新 · 版本不兼容 · 到设置里更新",
+      "zh": "{label} 后端要更新\n版本不兼容 · 到设置里更新",
       "args": ["label"]
     },
     "rsSshSource.version.remoteOlder": {
       "kind": "body",
       "role": "说明",
-      "zh": "远端 [{label}] 后端要更新 · 现为 {reported} · 下次连上自动换成 {mine}",
+      "zh": "{label} 后端要更新\n现为 {reported} · 下次连上自动换成 {mine}",
       "args": ["label", "reported", "mine"]
     },
     "rsSshSource.version.remoteNotOlder": {
@@ -13366,7 +13366,7 @@
     "rsSshSource.version.noOwnBytes": {
       "kind": "body",
       "role": "说明",
-      "zh": "{label} 后端 {reported} · 未带后端字节 · 版本不可比",
+      "zh": "{label} 后端版本不可比\n现为 {reported} · 未带后端字节",
       "args": ["label", "reported"]
     },
     "rsSshSource.health.overflowLost": {
@@ -14633,7 +14633,7 @@
     "rsToolRegistry.tools.ccBusStateNote": {
       "kind": "body",
       "role": "说明",
-      "zh": "运行期状态：收件箱、名册、队列、日志\n本机与远端都读；发消息、派活、广播、收掉这些写操作只动远端那份",
+      "zh": "运行期状态：收件箱、名册、队列、日志\n本机与远端都读；发消息、派活、广播、结束 agent 这些写操作只动远端那份",
       "args": []
     },
     "rsToolRegistry.tools.ccBusBinNote": {
@@ -15335,7 +15335,8 @@
       "zh": "（账号清单无法解析）",
       "args": [],
       "waive": {
-        "C-L4": "拼在「可用:」后面、代替账号名单的占位"
+        "C-L4": "拼在「可用:」后面、代替账号名单的占位",
+        "C-W14": "ccm 命令行里「可用」后面那一格的括注，与「(无账号库)」同形；整句是「账号 X 不可用 · … · 可用 <这一格>」"
       }
     },
     "bePlan.names.none": {
@@ -15694,7 +15695,7 @@
     "beProbe.test.noControl": {
       "kind": "error",
       "role": "报错",
-      "zh": "后端版本过旧 · 无法在远端新建会话 · 设置里重装此机后端",
+      "zh": "后端要更新 · 远端新建会话不可用\n设置里重装此机后端",
       "args": []
     },
     "beProbe.client.gone": {
@@ -17472,14 +17473,14 @@
     "beFilesCommit.upload.moveFailedNote": {
       "kind": "error",
       "role": "报错",
-      "zh": "写入失败 · {path} · {e}{note}",
-      "args": ["path", "e", "note"]
+      "zh": "写入失败 · {path} · {e}",
+      "args": ["path", "e"]
     },
     "beFilesCommit.upload.placeholderLeft": {
-      "kind": "body",
-      "role": "说明",
-      "zh": " · 目标位置留下 0 字节空文件 {path} · 删除失败 · {e} · 非你的数据 · 删后再试",
-      "args": ["path", "e"]
+      "kind": "error",
+      "role": "报错",
+      "zh": "写入失败 · {path} · {e}\n删除失败 · 留下的 0 字节空文件 · {left}\n非你的数据 · 删后再试",
+      "args": ["path", "e", "left"]
     },
     "beFilesCommit.staging.notDir": {
       "kind": "error",
@@ -19695,7 +19696,7 @@
     },
     "rsFilewinChrome.status.count": {
       "kind": "body",
-      "role": "状态",
+      "role": "片段",
       "zh": "{n} 项",
       "args": ["n"]
     },
@@ -20713,19 +20714,19 @@
     },
     "rsFilewinFind.status.count": {
       "kind": "body",
-      "role": "状态",
+      "role": "片段",
       "zh": "{n}",
       "args": ["n"]
     },
     "rsFilewinFind.status.age": {
       "kind": "body",
-      "role": "状态",
+      "role": "说明",
       "zh": "文件清单 · {age} 前",
       "args": ["age"]
     },
     "rsFilewinFind.status.truncated": {
       "kind": "body",
-      "role": "状态",
+      "role": "说明",
       "zh": "清单仅前 {n} 项",
       "args": ["n"]
     },
@@ -21085,7 +21086,7 @@
     },
     "rsFilewinFind.status.notBuilt": {
       "kind": "body",
-      "role": "状态",
+      "role": "说明",
       "zh": "文件清单未建 · 结果不全",
       "args": []
     },
@@ -21203,7 +21204,7 @@
     "rsFilewinChrome.side.homeFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "主目录读取失败 · 点击重试",
+      "zh": "主目录未读到 · 点击重试",
       "args": []
     },
     "rsFilewinChrome.status.hits": {
@@ -21226,7 +21227,7 @@
     },
     "rsFilewinChrome.status.zoomReset": {
       "kind": "body",
-      "role": "状态",
+      "role": "悬停",
       "zh": "回 100%",
       "args": []
     },
@@ -22300,7 +22301,7 @@
     "rsFilewinProgress.cross.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "复制失败 · {name} → {machine}",
+      "zh": "复制 {name} 到 {machine} 失败",
       "args": ["name", "machine"]
     },
     "rsFilewinProgress.cross.stopped": {
@@ -22342,7 +22343,7 @@
     "rsFilewinProgress.delete.failed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "删除失败 {n}",
+      "zh": "{n} 项未删除",
       "args": ["n"]
     },
     "rsFilewinProgress.detail.failedOne": {
@@ -26801,7 +26802,10 @@
       "kind": "body",
       "role": "说明",
       "zh": "离线机器的上次值 · 账号与文件清单 · 再连上就更新",
-      "args": []
+      "args": [],
+      "waive": {
+        "C-W14": "数据页里讲离线机器显示的是什么（标签说明），不是在报某台离线"
+      }
     },
     "dataPage.kind.must": {
       "kind": "control",
