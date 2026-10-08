@@ -71,6 +71,7 @@
       "agentWindow.why.failed",
       "credsPerm.windowsProbe.unreadable",
       "diagnostics.copy.fallback",
+      "front.body.redialFailed",
       "rsFilewinBookmarks.store.noDataDir",
       "rsFilewinChrome.side.homeFailed",
       "rsFilewinEntry.open.noHost",
