@@ -531,7 +531,7 @@ FRONTEND_NON_ENTRY: "OrderedDict[str, str]" = OrderedDict([
     # 〔墓碑 MIG-2〕`src/ccm-probe.ts`（`probe_ccm_cli` 的按 origin 5 分钟缓存，渲染链的非入口落点）随命令删了：
     #   远端装没装 ccm 由那台后端渲染时自己现查，前端不再转述探测结果。
     ("src/frontend/ui/backend-deploy.ts",
-     "远端后端装 / 卸的共用模块：机器卡（问题行［更新］·「卸载后端」）与主窗口 ↗ 浮层［更新］（`稿 §5.14`「不开设置、就地做」）都调它。"
+     "远端后端装 / 卸的共用模块：机器卡（问题行［更新］·「卸载后端」）与主窗口 ↗ 浮层［更新］（就地部署，不开设置窗）都调它。"
      "它没有界面，用户去的地方是那两处 ⇒ 不是「用户要去装东西的那一处」；全前端调这两条命令只这一份（`R9` 钉 S1 的落点就是它）。"),
     ("src/frontend/ui/views/inbox-view.ts",
      "它是收件箱**编辑 overlay** 的保存按钮，调 `write_skill_file`。而 `write_skill_file` "
