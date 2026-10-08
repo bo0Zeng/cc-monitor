@@ -62,10 +62,8 @@ describe("文案表里这一族只剩两句", () => {
 
 /** 还没收进两句、照实登记的那几条（后端 / 壳 / 文件窗口里还没换的；换一条删一条）。 */
 const EXPECTED_REMAINING: string[] = [
-  "accountOps.said.contract",
   "beInbound.dispatch.unknown",
   "beProbe.test.noControl",
-  "beRemoteAsk.json.unreadable",
   "rsFilewinCopy.remote.noBytes",
   "rsFilewinCopy.remote.noCount",
   "rsFilewinEditor.reply.noDigest",
@@ -76,5 +74,4 @@ const EXPECTED_REMAINING: string[] = [
   "rsFilewinSize.reply.missingField",
   "rsFilewinTransfer.reply.missingField",
   "rsLinkMux.data.noCredit",
-  "rsSftp.plan.badProduct",
 ];

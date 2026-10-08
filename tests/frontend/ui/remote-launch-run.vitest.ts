@@ -122,7 +122,7 @@ describe("那台说「要的号选不了」⇒ 不开窗、说清、给显式选
       { onClick?: () => void },
     ];
     expect(title).toBe(copyText("accountPick.refused.title"));
-    expect(body).toContain("「z」");
+    expect(body).toBe(copyText("accountPick.refused.pinGoneToCurrent", { name: "z", current: "b" }));
     opts.onClick!();
     await vi.waitFor(() => expect(term.openTerminal).toHaveBeenCalledTimes(1));
     expect(requests().map((r) => r.account)).toEqual([
