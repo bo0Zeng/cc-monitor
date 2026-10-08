@@ -3,12 +3,13 @@
  * 由本机后端渲（组请求用 `dial/machine.rs::resolve`），monitor 只开终端」。
  *
  * **在用户面前这台机器上开一个终端，跑 `command`** —— 全仓开终端只有这一个家；命令都是后端出的成品，monitor 只开窗。
- * - 本机：`command` 已是本机后端渲好的那一串 ⇒ monitor 直接开窗（`open_terminal_window`，`ssh: false`）；
+ * - 本机：`command` 已是本机后端渲好的那一串 ⇒ monitor 直接开窗（`open_terminal_window`，`ssh: false`；要起始目录的走
+ *   {@link openLocalTerminal} → `open_local_terminal`）；
  * - 远端：① monitor 交那台的机器事实（`terminal_dial`：它的机器表 ＋ 上次赢的那条）→ ② 本机后端 `terminal-ssh` 渲出那一行
- *   PowerShell（`& ssh -t[ -J …] … -- '<bash -lic ''…''>'`）→ ③ monitor 开窗（`ssh: true`）。
+ *   这台终端方言的那一行（Windows 上 PowerShell `& ssh -t[ -J …] … -- '<bash -lic ''…''>'`，别处 POSIX 一行）→ ③ monitor 开窗（`ssh: true`）。
  *
- * 哪一步不成 ⇒ 抛一句人话（调用方照旧走剪贴板回退 / 出声）。POSIX 上没有终端出口时壳回 `"noWindow"` 这个结局
- * （既定设计，不是失败）⇒ 抛 {@link NoTerminalWindow}；调用方按类型判，不按哪句话里的字判、也不按 OS 猜。
+ * 哪一步不成 ⇒ 抛一句人话（调用方出声）。这台找不到终端（设置里没指定、自动也没探到）时壳回 `"noWindow"` 这个结局
+ * ⇒ 抛 {@link NoTerminalWindow}；调用方按类型判（照实说 ＋ 设置入口，不把命令塞进剪贴板），不按哪句话里的字判、也不按 OS 猜。
  */
 import { commands } from "./ipc/commands";
 import { copyText } from "./copy-table";
@@ -21,6 +22,8 @@ import {
   saidFrom,
 } from "./ipc/chan-caller";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
+import { toast } from "./kit/toast";
+import { openSettingsWindow } from "./settings/open-settings";
 
 /** 期限：`terminal-ssh` 是本机后端里的纯计算（不拨号），给足本机那条流的往返即可。 */
 const RENDER_BUDGET_MS = 10_000;
@@ -51,18 +54,49 @@ async function lineOf(ask: Promise<Uint8Array>): Promise<string> {
   }
 }
 
-/** 这台按既定设计不开终端窗口（壳回 `"noWindow"`）。`message` 是给人看的那一句；判「是不是既定设计」只认类型。 */
+/** 这台找不到终端（壳回 `"noWindow"`）。`message` 是给人看的那一句（说去设置里哪一格指定）；判只认类型。
+ *  `command` 是本来要在窗口里跑的那一行（用户点［复制命令］时才进剪贴板）。 */
 export class NoTerminalWindow extends Error {
-  constructor() {
+  readonly command: string;
+  constructor(command: string) {
     super(copyText("rsLaunch.posix.noTerminalWindow"));
     this.name = "NoTerminalWindow";
+    this.command = command;
   }
 }
 
-/** 开窗那一下：壳回 `"noWindow"` ⇒ 抛 {@link NoTerminalWindow}；真失败壳那边抛一句人话，原样往上走。 */
+/** 设置里指定终端的那一格（通用页 · 恢复组）。 */
+const TERMINAL_SETTING = { page: "general", anchor: "terminal" } as const;
+
+/** 找不到终端时说的那一条：照实说 ＋［设置］直达那一格 ＋［复制命令］（不自动写剪贴板，用户点了才复制那一行）。 */
+export function sayNoTerminal(err: NoTerminalWindow): void {
+  toast(copyText("terminalOpen.noTerminal.title"), copyText("terminalOpen.noTerminal.detail"), {
+    level: "error",
+    action: [
+      { label: copyText("terminalOpen.noTerminal.settings"), run: () => void openSettingsWindow(null, TERMINAL_SETTING) },
+      {
+        label: copyText("terminalOpen.noTerminal.copy"),
+        run: () =>
+          void navigator.clipboard.writeText(err.command).catch((e: unknown) => {
+            toast(copyText("terminalOpen.noTerminal.copyFailed"), err.command, { level: "error", detail: String(e) });
+          }),
+      },
+    ],
+  });
+}
+
+/** 壳回的结局：`"noWindow"` ⇒ 抛 {@link NoTerminalWindow}；真失败壳那边抛一句人话，原样往上走。 */
+async function opened(command: string, got: Promise<"opened" | "noWindow">): Promise<void> {
+  if ((await got) === "noWindow") throw new NoTerminalWindow(command);
+}
+
 async function openWindow(command: string, ssh: boolean): Promise<void> {
-  if ((await commands.open_terminal_window({ command, ssh })) === "noWindow")
-    throw new NoTerminalWindow();
+  await opened(command, commands.open_terminal_window({ command, ssh }));
+}
+
+/** 在本机开一个终端窗口、起始目录 `cwd`，跑本机后端渲好的 `cmd`（本机起会话 · 批量各开一个）。 */
+export async function openLocalTerminal(cmd: string, cwd: string | null): Promise<void> {
+  await opened(cmd, commands.open_local_terminal({ cmd, cwd }));
 }
 
 /** 在用户面前这台机器上开一个终端跑 `command`（`origin` = 命令要在哪台跑）。 */

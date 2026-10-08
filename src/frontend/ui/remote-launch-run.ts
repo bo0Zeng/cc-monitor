@@ -8,7 +8,7 @@
  * 失败回退：复制命令 ＋ 提示（开不了终端窗口时用户仍拿得到可粘贴的那一行，功能永不变砖）。
  */
 // 本机 origin（`"<local>"`，与 Rust `inbound_client::LOCAL_ORIGIN` 逐字节相同、有跨语言判据钉着）。
-import { NoTerminalWindow, openTerminal } from "./terminal-open";
+import { NoTerminalWindow, openTerminal, sayNoTerminal } from "./terminal-open";
 // 「是不是本机」只经 `ipc/origin.ts` 判。
 import { isLocalOrigin } from "./ipc/origin";
 import { planResumeDirect, planAttach } from "./launch-requests";
@@ -101,8 +101,7 @@ const sent = (o: Opened): boolean => o !== "unsent";
 
 /** 账本对 `remote-launch-run.ts` 的既定最终形态之一：「剪贴板回退集中一处」。
  *  6 个 executor 的 invoke→toast/剪贴板回退骨架逐字相同，只有文案与 `origin` 不同——收敛成
- *  这一个函数，返回「IPC 是否真的被接受」（true=拉起成功；false=已走剪贴板回退）。 */
-
+ *  这一个函数，返回「IPC 是否真的被接受」（true=拉起成功；false=已走剪贴板回退 / 找不到终端已照实说）。 */
 async function invokeLaunchOrCopyFallback(
   origin: string,
   cmd: string,
@@ -124,25 +123,19 @@ async function invokeLaunchOrCopyFallback(
     }
     return "sent";
   } catch (err) {
-    // 回退：复制命令让用户自己粘贴（保留 F09 语义）。
+    // 本机找不到终端：照实说、给设置入口；命令不进剪贴板（按壳回的结局判，不按那句话里的字、也不按 OS 猜）。
+    if (err instanceof NoTerminalWindow) {
+      sayNoTerminal(err);
+      return "unsent";
+    }
+    // 别的失败：复制命令让用户自己粘贴（保留 F09 语义）。
     let copied = true;
     try {
       await navigator.clipboard.writeText(cmd);
     } catch {
       copied = false; // 命令在 toast 里仍可见，可手动复制
     }
-    // U8b：**POSIX 上不开终端窗口是既定设计，不是失败。**
-    // 原来这里一律报「拉起失败」，在 Linux 上每次点 ↗ 都会读到 —— 那是把一个正常状态
-    // 训练成「坏了」。标题按后端的声明分档；正文原样带上后端那句话（它自己会解释为什么）。
-    // 按壳回的结局判（`NoTerminalWindow`），不按那句话里的字、也不按 `hostOs` 猜（那会把真失败也软化成「设计」）。
-    const byDesign = err instanceof NoTerminalWindow;
-    const headline = byDesign
-      ? copied
-        ? copyText("remoteLaunchRun.copyFallback.noWindowCopied")
-        : copyText("remoteLaunchRun.copyFallback.noWindowManual")
-      : copied
-        ? toasts.failureCopied
-        : toasts.failureNotCopied;
+    const headline = copied ? toasts.failureCopied : toasts.failureNotCopied;
     // ★ 本机没有 ssh 那一跳，文案不能照抄远端那句。
     const where = isLocalOrigin(origin)
       ? copyText("remoteLaunchRun.copyFallback.runLocal")

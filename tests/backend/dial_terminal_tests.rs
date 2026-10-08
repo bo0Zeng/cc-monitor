@@ -8,6 +8,15 @@
 use super::*;
 use serde_json::json;
 
+// 下面除末尾 POSIX 那一节外都量 PowerShell 那一形（Windows 上开终端的那一行）：按方言显式取，不随跑测试的这台机器变。
+fn answer(args: &Value) -> Result<Value, CmdErr> {
+    answer_in(args, true)
+}
+
+fn known_hosts_arg(p: Option<&std::path::Path>) -> String {
+    super::known_hosts_arg(p, true)
+}
+
 fn machine(host: &str, user: &str, port: u16, key: Option<&str>) -> Value {
     json!({ "host": host, "user": user, "port": port, "keyPath": key, "label": host })
 }
@@ -385,4 +394,90 @@ fn the_terminal_hop_trusts_the_monitor_known_hosts_without_disabling_the_check()
         " -o 'UserKnownHostsFile=/home/u/100%%/.cc-monitor/known_hosts'"
     );
     assert_eq!(known_hosts_arg(None), "");
+}
+
+// ── POSIX 那一形（Linux 上开终端的那一行）──────────────────────────────────────────
+
+/// 本机是 POSIX 时那一行：交给真 `bash -c` 跑一遍，`PATH` 前面垫一个只记参数的假 `ssh` ⇒ 读它收到的 argv。
+/// 量的是行为（引号过了真 shell 之后每个参数是不是原样），不是串的样子。
+#[cfg(unix)]
+#[test]
+fn the_posix_line_hands_ssh_the_same_arguments_a_real_shell_would() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = std::env::temp_dir().join(format!("ccm-posix-line-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let out = dir.join("argv");
+    let fake = dir.join("ssh");
+    std::fs::write(
+        &fake,
+        format!(
+            "#!/bin/sh\nfor a in \"$@\"; do printf '%s\\0' \"$a\"; done > '{}'\n",
+            out.display()
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+    let cmd = r#"unset X; cd '/home/u/it'\''s 文档' && echo "$HOME" && claude --resume s1"#;
+    let mut m = machine("192.0.2.3", "u", 2222, Some("/home/u/my key's/id"));
+    m["jump"] = json!("bastion");
+    let jump = json!({ "host": "jump.local", "user": "pi", "port": 22, "label": "bastion" });
+    let line = answer_in(
+        &json!({ "machine": m, "jump": jump, "command": cmd }),
+        false,
+    )
+    .unwrap()["command"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert!(
+        !line.starts_with('&'),
+        "POSIX 那一形带了 PowerShell 的调用符：{line}"
+    );
+
+    let st = std::process::Command::new("bash")
+        .arg("-c")
+        .arg(&line)
+        .env("PATH", format!("{}:/usr/bin:/bin", dir.display()))
+        .status()
+        .unwrap();
+    assert!(st.success(), "{line}");
+    let got: Vec<String> = std::fs::read(&out)
+        .unwrap()
+        .split(|b| *b == 0)
+        .filter(|a| !a.is_empty())
+        .map(|a| String::from_utf8(a.to_vec()).unwrap())
+        .collect();
+    let known = format!(
+        "UserKnownHostsFile={}",
+        known_hosts_value(&crate::dial::known_hosts::path().unwrap().to_string_lossy())
+    );
+    let want: Vec<String> = [
+        "-t",
+        "-J",
+        "pi@jump.local",
+        "-p",
+        "2222",
+        "-i",
+        "/home/u/my key's/id",
+        "-o",
+        &known,
+        "u@192.0.2.3",
+        "--",
+        &format!("bash -lic {}", shell_quote_core::posix_quote(cmd)),
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect();
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(got, want, "那一行：{line}");
+}
+
+/// 双引号只在 PowerShell 那一形拒（那是 PowerShell 5.1 传参的毛病）；POSIX 那一形照常渲。
+#[test]
+fn only_the_powershell_line_refuses_double_quotes() {
+    let args = json!({ "machine": machine("h", "u", 22, None), "command": r#"echo "a b""# });
+    assert_eq!(answer_in(&args, true).unwrap_err().0, "refused");
+    assert!(answer_in(&args, false).is_ok());
 }

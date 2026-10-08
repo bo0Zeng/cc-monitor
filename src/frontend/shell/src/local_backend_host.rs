@@ -52,10 +52,8 @@ static LIFECYCLE: std::sync::Mutex<()> = std::sync::Mutex::new(());
 /// 判据是 `LOCAL_BACKEND`（进程内的 `Mutex<Option<_>>`）⇒ 同机**两个 monitor 进程**
 /// 仍然是两个后端，而且互相认不到。
 ///
-/// ⚠ 补审 08-11 量到这条比原先登记的更糟：`tauri_plugin_single_instance` **只在
-/// `#[cfg(windows)]` 注册**（`lib.rs` 那处）⇒ **Linux/macOS 上两个 monitor 天然能并存**，
-/// 连那道兜底都没有。它们会撞同一个 `~/.cc-monitor/bin/.<name>.partial`（补审 C2）。
-/// ⇒ 真正的「每台机一个」要等 `P2d`（backend 自己有监听口 + 起时认已有实例）。
+/// 单实例插件各平台都注册（`lib.rs` 那处），但 Linux 上它靠会话总线：没有会话总线（或两个登录会话）时
+/// 两个 monitor 仍能并存，会撞同一个 `~/.cc-monitor/bin/.<name>.partial`（临时名带进程 id 治的就是这个）。
 /// 起本机后端的结局 —— **三态，不是两态**〔D 阶段补审 08-11 新增，A6〕。
 ///
 /// 原来三种结局全塞在 `Resolved` 里：`Found` 与两种 `Missing`（「已经在跑」与「起不来」）。

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # auto-e2e F-E2(命令级整合):resume idle 就地复用（#75/#76）——真源命令构造 + 真 tmux + fake-claude,
-# 断言 argv.log(CLAUDE_CONFIG_DIR + resume 命令) 与 `tmux ls` 孤儿数。**GUI 触发在 Linux 结构性不可达**:
-# `platform/terminal.rs::launch_powershell_window` 仅 Windows(`Err("拉起终端窗口仅支持 Windows")`)——headless Linux
-# 的 GUI resume 必回退剪贴板、绝不执行,故 argv 断言的诚实天花板 = 命令级(直接驱真源 builder)。见 tests/e2e/README。
+# 断言 argv.log(CLAUDE_CONFIG_DIR + resume 命令) 与 `tmux ls` 孤儿数。**GUI 触发在门禁里不走**:
+# 点 resume 要真开一个终端窗口(`platform/terminal.rs::open_local`),无头门禁不开窗,
+# 故 argv 断言的诚实天花板 = 命令级(直接驱真源 builder)。见 tests/e2e/README。
 #
 # 每条边界:①用 `resume-cmd-driver.ts` 取 app **真正会跑**的命令串(走生产渲染链:生产 plan* →
 # 生产 Rust render_launch_payload,不重写);②断言命令形状(复用 cc-<sid8> 名/无 new-session/无 -N/CLAUDE_CONFIG_DIR 前缀);③真把该串

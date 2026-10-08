@@ -154,7 +154,7 @@ monitor 里仍直读本机 agent 目录的地方逐处登记，条数以 `local_
 2. 执行面「在那台真的建 tmux」→ 后端 `control/launch`，argv 直传、不过 shell；
 3. 开窗面 → 只能是 monitor（`open_terminal_window`）：后端在远端，开不了你面前的窗。平面 ③ 永远搬不走。
 
-平面 ③ 在 POSIX 上只走规范化出口 `xdg-terminal-exec`，不替用户挑具名终端模拟器；没有这个出口就不开窗、说清楚（`launch_tests.rs::no_terminal_emulator_is_ever_spawned_from_this_file` 钉着）。
+平面 ③ 在 POSIX 上挑一个终端开窗：设置里指定的 → 系统出口（`xdg-terminal-exec` · `x-terminal-emulator`）→ 常见终端逐个探；都没有就不开窗、说清楚去设置里指定（`launch_tests.rs::the_terminal_is_picked_by_setting_then_system_exits_then_common_ones` 钉着）。
 
 ### 2.5 `platform/`：判据是跨 target 编译
 

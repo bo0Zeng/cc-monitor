@@ -70,11 +70,16 @@ const MONITOR_OWN: &[(&str, Own, &str)] = &[
         Own::Lifecycle,
         "停后端（SIGTERM → 等 → 超时才 SIGKILL）",
     ),
-    // 开终端：monitor 只开窗（接令牌握手前奏 → PowerShell 窗口），交来的是成品（远端那一行由本机后端 `terminal-ssh` 渲）。
+    // 开终端：monitor 只开窗，交来的是成品（远端那一行由本机后端 `terminal-ssh` 渲）。
     (
         "open_terminal_window",
         Own::Window,
-        "开一个终端窗口跑交来的那一串：接上令牌握手前奏（窗口登记进 monitor 自己那张 `bind.rs` 表）再开 PowerShell 窗口；不拼 ssh、不判命令",
+        "开一个终端窗口跑交来的那一串（Windows：PowerShell 窗口；Linux：挑到的终端）；不拼 ssh、不判命令",
+    ),
+    (
+        "terminal_choices",
+        Own::Window,
+        "开窗用哪个终端（设置里那一格 · 本机探到的终端）：窗口开在 monitor 面前这台，挑终端是开窗那一侧的事",
     ),
     (
         "terminal_dial",

@@ -402,7 +402,7 @@ jsonl watcher 与它的第二套游标 / seq 已删，本机会话的行也是�
 
 同 user / 同机器同时只允许一个 cc-monitor 进程。由 [`tauri-plugin-single-instance`](https://v2.tauri.app/plugin/single-instance/) 强制 —— **必须是 Builder 链上第一个 plugin**（plugin 文档约束）。第二个实例启动时：
 
-1. plugin 通过 OS mutex 检测到第一个实例存在
+1. plugin 检测到第一个实例存在（Windows：OS mutex；Linux：会话总线上的名字，没有会话总线时不拦）
 2. 通知第一个实例的回调（在 [`lib.rs::run()`](../../src/frontend/shell/src/lib.rs) 里 `unminimize + show + set_focus` 主窗口）
 3. 第二个实例自身立即退出
 
@@ -412,7 +412,7 @@ jsonl watcher 与它的第二套游标 / seq 已删，本机会话的行也是�
 - cc 握手 race（两个 monitor 都 EnumWindows 找 marker，先到先赢 / 后到的写不到 `ps-registry/`）
 - 不可预测的 `auto-launch.json` last-writer-wins 覆盖
 
-跨 user session（同一台机器两个用户登录）不冲突 —— plugin 默认 mutex 是 user-scoped。
+跨 user session（同一台机器两个用户登录）不冲突 —— Windows 的 mutex 是 user-scoped，Linux 的会话总线每个登录会话一条。
 
 详见 issue #9。
 

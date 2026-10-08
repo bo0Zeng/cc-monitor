@@ -272,9 +272,7 @@ fixtures:
 跨进程验 resume:远端 archived/idle-tmux 会话 resume 时**复用原会话名 `cc-<sid8>`、不产 `cc-<sid8>-N`
 孤儿**(治 #76),且账号注入正确的 `CLAUDE_CONFIG_DIR`(治 #75)。复用 F-E0 的 fake-claude/gen-idle-tmux。
 
-**★ 诚实分层(硬结构限)**:Linux headless 的 GUI resume **结构性不可执行**——一键拉起走
-`platform/terminal.rs::launch_powershell_window`,该函数 `#[cfg(not(windows))]` 直接 `Err("拉起终端窗口仅支持
-Windows")`,故 app 里点 resume 在 Linux 必回退剪贴板、**绝不真执行**命令。因此 argv/孤儿断言的诚实天花板
+**★ 诚实分层**:GUI resume 一键拉起要真开一个终端窗口(`platform/terminal.rs::open_local`),无头门禁里不开窗。因此 argv/孤儿断言的诚实天花板
 = **命令级**:直接驱**生产渲染链**(生产 `launch-requests.ts::plan*` → 生产 `buildLaunchRenderRequest` →
 生产 Rust `render_launch_payload`,经 `resume-cmd-driver.ts` → `launch-render-driver.ts`,不重写)拿到 app **真正会跑**的命令串,再把该串真跑到真 tmux + fake-claude,
 断言 argv.log(`--resume <sid>` + `CLAUDE_CONFIG_DIR`)与 `tmux ls` 孤儿数。复活(灰→live)的**检测**由

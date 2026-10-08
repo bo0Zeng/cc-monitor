@@ -24,6 +24,7 @@ const FAMILY_B = [
   // 共用的 `entry-render-common.ts`（viewer 不再加载 `main.ts`）。语义一字未改。
   "src/frontend/ui/entry-render-common.ts",
   "src/frontend/ui/remote-launch-run.ts", // 回退：复制命令让用户自己跑
+  "src/frontend/ui/terminal-open.ts", // 找不到终端时的［复制命令］：用户点了才复制那一行
   "src/frontend/ui/kit/detail.ts", // 全产品那一颗［复制详情］：一条报错的那句 ＋ 详情，复制给人看（不贴进任何配置）
   // 原先这里还有 `src/frontend/ui/views/usage-view.ts`（用量视图里「复制这一屏」）——
   // 用量 ② 轴整轴退役，那份文件整删。

@@ -22,23 +22,9 @@ fn nudge_should_skip(last_nudged: u64, packed: u64) -> bool {
 #[path = "../../../../../tests/frontend/shell/lib_nudge_skip_tests.rs"]
 mod nudge_skip_tests;
 
-/// Windows：单实例插件（第二个实例把主窗口拉前）＋ WebView2 最大化 / 全屏后内容错位的修复（resize 去抖后三板斧）。别处原样返回。
+/// Windows：WebView2 最大化 / 全屏后内容错位的修复（resize 去抖后三板斧）。别处原样返回。
 #[cfg(windows)]
 pub fn desktop_fixes(mut builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wry> {
-    builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
-        // 第二个实例若带 --background（cc auto-launch 竞态下偶发）→ 只 show 不抢焦点；
-        // 普通双击拉起第二个实例则照常置前（用户显式想看）。
-        let background = args.iter().any(|a| a == "--background");
-        tracing::info!("second cc-monitor instance detected (background={background})");
-        if let Some(win) = app.get_webview_window("main") {
-            let _ = win.unminimize();
-            let _ = win.show();
-            if !background {
-                let _ = win.set_focus();
-            }
-        }
-    }));
-
     // WebView2 maximize / 全屏后内容错位修复。根因在 WebView2 Runtime 内部：maximize / restore / 全屏切换后丢失 / 挂起对宿主 bounds 更新的处理
     // （WebView2Feedback #4095 族）：宿主侧 put_Bounds 成功、容器 HWND 已是全尺寸，但合成层（「Intermediate D3D Window」）停在旧尺寸 → 内容不铺满、周围留白。
     // ±1px 抖动会被 Runtime 合并 / 丢弃，所以用 controller 级三板斧（with_webview 闭包内直接 COM 调用）：
@@ -178,7 +164,7 @@ pub fn desktop_fixes(mut builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<
     builder
 }
 
-/// 非 Windows：没有这两件（单实例插件只在 Windows 注册；WebView2 那个错位是 Windows 专属）。
+/// 非 Windows：没有这一件（WebView2 那个错位是 Windows 专属）。
 #[cfg(not(windows))]
 pub fn desktop_fixes(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wry> {
     builder

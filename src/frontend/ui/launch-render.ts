@@ -13,7 +13,7 @@ import { machineName, settle, unreadable, type Refusals } from "./control-said";
 import { exactKeys, isObj } from "./ipc/decode";
 import type { Origin } from "./ipc/origin";
 import { LOCAL_ORIGIN } from "./backend-policy";
-import { commands } from "./ipc/commands";
+import { openLocalTerminal } from "./terminal-open";
 import { defaultLauncherOf } from "./agent-profile";
 import type { CliRenderRequest, CliRendered } from "./launch-cli-wire";
 import type { AccountAsk } from "./generated/AccountAsk";
@@ -115,6 +115,6 @@ export async function launchLocal(
 ): Promise<LocalLaunchPlan | null> {
   const plan = await planLocalLaunch(req);
   if (preflight && !(await preflight(plan.account?.configDir))) return null;
-  await commands.open_local_terminal({ cmd: plan.cmd, cwd: terminalCwd });
+  await openLocalTerminal(plan.cmd, terminalCwd);
   return plan;
 }
