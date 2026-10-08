@@ -44,9 +44,18 @@ process.env.LANG = "zh_CN.UTF-8";
 //   JS 那一层由 `setupFiles` 里的 `tests/test-support/pin-locale.ts` 按这一行的值钉住（每个平台同一条路）；
 //   `LANG` 留着管 ICU 本身与子进程。`TZ` 两边都认，不用另钉。
 
+// 门禁分核（`tests/scripts/gate.sh` 的「vitest 分核」那一段）：门禁里 `npm` 与 `coverage` 两格同时各起一整套 vitest，
+// 各按默认起 worker 合起来近两倍核数 ⇒ 门禁给每格设 `GATE_VITEST_WORKERS`（核数 ÷ 格数），这里当 `maxWorkers`。
+// CI 与平时不设 ⇒ 照 vitest 默认。设了却不是正整数 ⇒ 当场报错（静默落回默认等于这一手没生效）。
+const GATE_WORKERS = process.env.GATE_VITEST_WORKERS;
+if (GATE_WORKERS !== undefined && !/^[1-9]\d*$/.test(GATE_WORKERS)) {
+  throw new Error(`GATE_VITEST_WORKERS=${JSON.stringify(GATE_WORKERS)} 不是正整数`);
+}
+
 export default defineConfig({
   server: { fs: { allow: nodeModulesAllow() } },
   test: {
+    ...(GATE_WORKERS === undefined ? {} : { maxWorkers: Number(GATE_WORKERS) }),
     environment: "jsdom",
     include: ["tests/**/*.vitest.ts"],
     setupFiles: ["tests/test-support/pin-locale.ts"], // 默认 locale 钉在上面那行 `LANG` 上（Windows 那一半，见顶上）
