@@ -34,6 +34,6 @@ fn a_missing_key_says_its_name_instead_of_panicking() {
     assert_eq!(copy_text("no.such.key", &[]), "〔no.such.key〕");
     assert_eq!(
         copy_text("panePreview.head.title", &[("origin", "devbox")]),
-        "预览画面 · [devbox] tmux: {target}"
+        "预览 · devbox · tmux 会话 {target}"
     );
 }

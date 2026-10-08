@@ -19,7 +19,7 @@ fn it_embeds_the_one_table_on_disk() {
             "panePreview.head.title",
             &[("origin", "devbox"), ("target", "%1")]
         ),
-        "预览画面 · [devbox] tmux: %1"
+        "预览 · devbox · tmux 会话 %1"
     );
 }
 
@@ -29,7 +29,7 @@ fn a_missing_key_says_its_name_instead_of_panicking() {
     assert_eq!(copy_text("no.such.key", &[]), "〔no.such.key〕");
     assert_eq!(
         copy_text("panePreview.head.title", &[("origin", "devbox")]),
-        "预览画面 · [devbox] tmux: {target}"
+        "预览 · devbox · tmux 会话 {target}"
     );
 }
 
@@ -95,7 +95,7 @@ fn the_interpolation_is_one_pass_and_never_rescans_a_value() {
             "panePreview.head.title",
             &[("origin", "{target}"), ("target", "%1")]
         ),
-        "预览画面 · [{target}] tmux: %1"
+        "预览 · {target} · tmux 会话 %1"
     );
     // 参数给的顺序反过来也一样（先前的写法只在一个方向上重扫 —— 顺序不该是语义的一部分）。
     assert_eq!(
@@ -103,7 +103,7 @@ fn the_interpolation_is_one_pass_and_never_rescans_a_value() {
             "panePreview.head.title",
             &[("target", "{origin}"), ("origin", "devbox")]
         ),
-        "预览画面 · [devbox] tmux: {origin}"
+        "预览 · devbox · tmux 会话 {origin}"
     );
     // 值里带它自己的占位符、带花括号残片：都原样。
     assert_eq!(
@@ -111,7 +111,7 @@ fn the_interpolation_is_one_pass_and_never_rescans_a_value() {
             "panePreview.head.title",
             &[("origin", "{origin}"), ("target", "{a{b}")]
         ),
-        "预览画面 · [{origin}] tmux: {a{b}"
+        "预览 · {origin} · tmux 会话 {a{b}"
     );
     // 正控：两个占位符都真换了（不是「一个都不换」）。
     assert_eq!(
@@ -119,7 +119,7 @@ fn the_interpolation_is_one_pass_and_never_rescans_a_value() {
             "panePreview.head.title",
             &[("origin", "devbox"), ("target", "%1")]
         ),
-        "预览画面 · [devbox] tmux: %1"
+        "预览 · devbox · tmux 会话 %1"
     );
 }
 
