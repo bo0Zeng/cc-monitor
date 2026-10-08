@@ -22,7 +22,7 @@ import { confirmDialog } from "../../../src/frontend/ui/kit/dialog";
 import { commands } from "../../../src/frontend/ui/ipc/commands";
 import { resolveRemoteConfigByOrigin, type RemoteHostConfig } from "../../../src/frontend/ui/remote-config";
 
-const CFG = { host: "10.0.0.9", user: "u", label: "devbox" } as unknown as RemoteHostConfig;
+const CFG = { host: "192.0.2.9", user: "u", label: "devbox" } as unknown as RemoteHostConfig;
 const ROW = { text: "1 个会话会断" } as never;
 
 describe("backend-deploy：把这一版换到那台", () => {
