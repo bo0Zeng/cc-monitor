@@ -9,7 +9,7 @@ export type AliasChange = { path: string,
  */
 changed: boolean, 
 /**
- * 建号：加进去的别名（如 `alphacc` `alphacct`）。
+ * 建号：加进去的别名（如 `workcc` `workcct`）。
  */
 added: Array<string>, 
 /**

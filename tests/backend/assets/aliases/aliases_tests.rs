@@ -195,22 +195,21 @@ fn link_of(h: &TmpHome, name: &str) -> Option<String> {
 fn rewriting_drops_the_alias_you_deleted() {
     let h = tmp_home("regen");
     let two = vec![
-        al("alphacc", &["--account", "z"]),
-        al("betacc", &["--account", "b"]),
+        al("workcc", &["--account", "work"]),
+        al("teamcc", &["--account", "team"]),
     ];
     assert!(inst(&h, &two, P).unwrap());
-    assert_eq!(link_of(&h, "alphacc").as_deref(), Some("ccm"));
-    assert_eq!(link_of(&h, "betacc").as_deref(), Some("ccm"));
-    let one = vec![al("alphacc", &["--account", "z"])];
+    assert_eq!(link_of(&h, "workcc").as_deref(), Some("ccm"));
+    assert_eq!(link_of(&h, "teamcc").as_deref(), Some("ccm"));
+    let one = vec![al("workcc", &["--account", "work"])];
     inst(&h, &one, P).unwrap();
     assert_eq!(
-        link_of(&h, "alphacc").as_deref(),
+        link_of(&h, "workcc").as_deref(),
         Some("ccm"),
         "留下来的那条没了"
     );
-    assert_eq!(link_of(&h, "betacc"), None, "★ 删了一条，它的链接还在");
-    let book = profile::parse_book(&std::fs::read_to_string(profiles_path(&h.0)).unwrap());
-    assert!(book.find("betacc").is_none() && book.find("alphacc").is_some());
+    assert_eq!(link_of(&h, "teamcc"), None, "★ 删了一条，它的链接还在");
+    assert_eq!(names_on_disk(&h), ["workcc"], "配置文件里只剩留下的那一段");
     assert!(
         h.0.join(links::bin_rel()).join("ccm").is_file(),
         "ccm 本身不许动"
@@ -224,7 +223,7 @@ fn the_old_alias_file_name_is_not_read() {
     std::fs::create_dir_all(h.0.join(".cc-monitor")).unwrap();
     std::fs::write(
         h.0.join(".cc-monitor/account-aliases.sh"),
-        "alphacc() { ccm --account z \"$@\"; }\n",
+        "workcc() { ccm --account work \"$@\"; }\n",
     )
     .expect("铺旧文件");
     read_in(&h.0, P, None).expect("读回");
@@ -302,7 +301,7 @@ fn the_alias_blocks_only_wire_up_ccm() {
 /// 生成文件里**没有时间戳** —— 有了就永远比不出「内容没变」。
 #[test]
 fn the_generated_file_is_byte_stable() {
-    let lines = vec!["alphacc() { ccm --account 'z' \"$@\"; }".to_string()];
+    let lines = vec!["workcc() { ccm --account 'work' \"$@\"; }".to_string()];
     assert_eq!(render_file(P, &lines), render_file(P, &lines));
     assert!(render_file(P, &[]).contains(copy_core::copy_static!("rsAccountAliases.file.empty")));
 }
@@ -372,8 +371,8 @@ fn the_old_alias_file_is_migrated_once_into_the_profiles_file() {
         &p,
         "# === cc-monitor account aliases BEGIN v1 ===\n\
          # 注释\n\
-         alphacc() { ccm \"$@\" -- --account 'z'; }\n\
-         betacct() { \"${CCM:-/h/.cc-monitor/bin/ccm}\" \"$@\" -- new --ccm-tmux --account 'b'; }\n\
+         workcc() { ccm \"$@\" -- --account 'work'; }\n\
+         teamcct() { \"${CCM:-/h/.cc-monitor/bin/ccm}\" \"$@\" -- new --ccm-tmux --account 'team'; }\n\
          cca() { ccm -- --attach \"$@\"; }\n\
          alias x=ls\n\
          bad() { ccm \"$@\" -- --ccm-print; }\n\
@@ -392,8 +391,11 @@ fn the_old_alias_file_is_migrated_once_into_the_profiles_file() {
     assert_eq!(
         got,
         vec![
-            ("alphacc".to_string(), w(&["--account", "z"])),
-            ("betacct".to_string(), w(&["--ccm-tmux", "--account", "b"])),
+            ("workcc".to_string(), w(&["--account", "work"])),
+            (
+                "teamcct".to_string(),
+                w(&["--ccm-tmux", "--account", "team"])
+            ),
         ]
     );
     let new_file = std::fs::read_to_string(&p).unwrap();
@@ -401,12 +403,12 @@ fn the_old_alias_file_is_migrated_once_into_the_profiles_file() {
         !new_file.contains("--account"),
         "别名文件里不再有规则：{new_file}"
     );
-    assert_eq!(link_of(&h, "alphacc").as_deref(), Some("ccm"));
-    assert_eq!(link_of(&h, "betacct").as_deref(), Some("ccm"));
+    assert_eq!(link_of(&h, "workcc").as_deref(), Some("ccm"));
+    assert_eq!(link_of(&h, "teamcct").as_deref(), Some("ccm"));
     // 迁过了 ⇒ 旧文件再出现也不看。
-    std::fs::write(&p, "gammacc() { ccm \"$@\" -- --account q; }\n").unwrap();
+    std::fs::write(&p, "altcc() { ccm \"$@\" -- --account alt; }\n").unwrap();
     read_in(&h.0, P, None).unwrap();
-    assert!(!names_on_disk(&h).contains(&"gammacc".to_string()));
+    assert!(!names_on_disk(&h).contains(&"altcc".to_string()));
     // 两样都不在 ≠ 读失败（配置文件不建）。
     let empty = tmp_home("none");
     read_in(&empty.0, P, None).unwrap();
@@ -518,7 +520,7 @@ fn the_generic_layer_holds_no_shell_text() {
 fn the_powershell_arm_writes_and_reads_back_the_same_list() {
     let h = tmp_home("ps");
     let list = vec![
-        al("alphacc", &["--account", "z"]),
+        al("workcc", &["--account", "work"]),
         al(
             "mine",
             &["--cwd", "C:\\x y", "--ccm-agent", "codex", "--", "--foo"],
@@ -542,7 +544,7 @@ fn the_powershell_arm_writes_and_reads_back_the_same_list() {
         format!("\u{feff}{}", render_file(PS, &lines)),
         "落盘的不是每条一个函数的那一份"
     );
-    assert_eq!(names_on_disk(&h), ["alphacc", "mine"]);
+    assert_eq!(names_on_disk(&h), ["workcc", "mine"]);
     run(block::install_to_profile(&door(&h), &profile)).expect("装别名块");
     let cand = read_in(&h.0, PS, None)
         .unwrap()
@@ -570,8 +572,8 @@ fn a_users_function_always_beats_a_link_but_only_a_later_one_beats_a_function() 
     inst(
         &h,
         &[
-            al("zzlinkq", &["--account", "z"]),
-            al("sh", &["--account", "z"]),
+            al("zzlinkq", &["--account", "work"]),
+            al("sh", &["--account", "work"]),
         ],
         P,
     )

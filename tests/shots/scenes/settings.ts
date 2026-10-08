@@ -267,12 +267,12 @@ export const SETTINGS_SCENES: Scene[] = [
     await click('[data-account="api"] .acct-row');
     await sleep(600);
   }, acctWorld()),
-  settings("settings-acct-new", "设置 · 账号 · 新建（API key）", "［新建账号］就地展开：名字 b · 选 API key", async () => {
+  settings("settings-acct-new", "设置 · 账号 · 新建（API key）", "［新建账号］就地展开：名字 team · 选 API key", async () => {
     await go("machine:devbox", "machine:devbox#acct");
     await click(await byText(".settings-page:not([hidden]) button", "新建账号"));
     await sleep(300);
     const name = document.querySelector<HTMLInputElement>(".acct-new input")!;
-    name.value = "b";
+    name.value = "team";
     name.dispatchEvent(new Event("input"));
     await click(await byText(".acct-new label", "API key"));
     await sleep(600);
@@ -368,16 +368,16 @@ export const SETTINGS_SCENES: Scene[] = [
     top(".settings-page:not([hidden]) .machine-aliases");
     await sleep(300);
   }, defaultWorld, 860),
-  settings("profiles-02-merge", "设置 · 别名 · 02 点一行看合并表（宽窗）", "点 betacct：右栏合并表（项 · 值 · 来自哪一段）· 假设在这个目录敲 · 等于", async () => {
+  settings("profiles-02-merge", "设置 · 别名 · 02 点一行看合并表（宽窗）", "点 teamcct：右栏合并表（项 · 值 · 来自哪一段）· 假设在这个目录敲 · 等于", async () => {
     await profilesPage();
-    await click(pf('.prof-trow[data-name="betacct"]'));
+    await click(pf('.prof-trow[data-name="teamcct"]'));
     await sleep(700);
     top(pf("[data-role=tree]"));
     await sleep(300);
   }, defaultWorld, 860, 1180),
   settings("profiles-02-merge-narrow", "设置 · 别名 · 02 点一行看合并表（窄窗）", "窄窗：合并表落到那一行下面", async () => {
     await profilesPage();
-    await click(pf('.prof-trow[data-name="betacct"]'));
+    await click(pf('.prof-trow[data-name="teamcct"]'));
     await sleep(700);
     top(pf('.prof-trow[data-name="cct"]'));
     await sleep(300);
@@ -392,7 +392,7 @@ export const SETTINGS_SCENES: Scene[] = [
     await sleep(300);
     await click(await byText("[role^=menuitem]", /^cct/));
     await sleep(500);
-    await click(await byText(pf("[data-role=profile-form] .prof-segb"), "b"));
+    await click(await byText(pf("[data-role=profile-form] .prof-segb"), "team"));
     await sleep(700);
     top(pf("[data-role=profile-form]"));
     await sleep(300);
@@ -422,7 +422,7 @@ export const SETTINGS_SCENES: Scene[] = [
     top(pf(".prof-notes"));
     await sleep(300);
   }, profilesWorld("edited"), 860),
-  settings("profiles-07-broken", "设置 · 别名 · 07 手改写错一段", "betacct 写错：行上标现在不能用、摘要换成后端原话带行号；别的照常", async () => {
+  settings("profiles-07-broken", "设置 · 别名 · 07 手改写错一段", "teamcct 写错：行上标现在不能用、摘要换成后端原话带行号；别的照常", async () => {
     await profilesPage();
     top(pf("[data-role=tree]"));
     await sleep(300);
@@ -432,9 +432,9 @@ export const SETTINGS_SCENES: Scene[] = [
     top(".settings-page:not([hidden]) .machine-aliases");
     await sleep(300);
   }, profilesWorld("syntax"), 760),
-  settings("profiles-08-stale", "设置 · 别名 · 08 保存时被别处改过", "改 betacct 的账号存：配置文件已不是打开时那一份 ⇒ 一个字节不写、填的还在、重新读", async () => {
+  settings("profiles-08-stale", "设置 · 别名 · 08 保存时被别处改过", "改 teamcct 的账号存：配置文件已不是打开时那一份 ⇒ 一个字节不写、填的还在、重新读", async () => {
     await profilesPage();
-    await click(pf('.prof-trow[data-name="betacct"] .cfg-link'));
+    await click(pf('.prof-trow[data-name="teamcct"] .cfg-link'));
     await sleep(600);
     await click(await byText(pf("[data-role=profile-form] .prof-segb"), "z"));
     await sleep(500);

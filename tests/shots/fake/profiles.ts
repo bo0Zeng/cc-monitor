@@ -56,11 +56,11 @@ function book(): P[] {
   return [
     p("cc", null, ["cwd-if", ["~", "~/projects/notes"]]),
     p("acc", "cc", ["account", ["a"]]),
-    p("betacc", "cc", ["account", ["b"]]),
-    p("zetacc", "cc", ["account", ["d"]]),
+    p("teamcc", "cc", ["account", ["team"]]),
+    p("labcc", "cc", ["account", ["lab"]]),
     p("cct", "cc", ["ccm-tmux", []]),
     p("acct", "cct", ["account", ["a"]]),
-    p("betacct", "cct", ["account", ["b"]]),
+    p("teamcct", "cct", ["account", ["team"]]),
     p("workcct", "cct", ["account", ["work"]]),
     p("workcc", "cc", ["account", ["work"]]),
     p("codex", null, ["ccm-agent", ["codex"]]),
@@ -114,7 +114,7 @@ function state(w: World): string {
 function current(w: World): P[] {
   const b = book();
   if (state(w) === "broken") {
-    const x = b.find((p) => p.name === "betacct")!;
+    const x = b.find((p) => p.name === "teamcct")!;
     // 认不得的键不是一项（后端记成这一段的坏处，见 `problemOf`）。
     x.own = [];
   }
@@ -123,7 +123,7 @@ function current(w: World): P[] {
 
 const problemOf = (w: World, p: P, all: P[]): { line: number; message: string } | null => {
   if (state(w) !== "broken") return null;
-  if (p.name === "betacct") return { line: 23, message: copyText("beProfile.chain.broken", { name: "betacct", e: copyText("beProfile.at.line", { line: "23", e: copyText("beProfile.value.unknown", { key: "tmux-sise" }) }) }) };
+  if (p.name === "teamcct") return { line: 23, message: copyText("beProfile.chain.broken", { name: "teamcct", e: copyText("beProfile.at.line", { line: "23", e: copyText("beProfile.value.unknown", { key: "tmux-sise" }) }) }) };
   void all;
   return null;
 };
@@ -169,7 +169,7 @@ function rows(all: P[], name: string): Record<string, unknown>[] {
 }
 
 const LINE: Record<string, string> = {
-  betacct: "tmux new-session -s notes-cc … ccm -- --cwd ~/projects/notes --account b --ccm-tmux",
+  teamcct: "tmux new-session -s notes-cc … ccm -- --cwd ~/projects/notes --account team --ccm-tmux",
   cc: "cd ~/projects/notes && exec claude",
 };
 
@@ -195,7 +195,7 @@ export function profilesOps(): Record<string, OpHandler> {
         migrated: st === "migrated" ? { count: 11, path: PATH, skipped: [copyText("beProfile.migrate.restToCcm", { name: "cca" })] } : null,
         binDir: `${HOME}/.cc-monitor/bin`,
         tmux: true,
-        accounts: ["a", "b", "d", "work"],
+        accounts: ["a", "lab", "team", "work"],
       };
     },
     "profiles-resolve": (_o, req, w) => {

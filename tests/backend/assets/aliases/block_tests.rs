@@ -823,7 +823,7 @@ export EDITOR=vim
 cc()   { ccm \"$@\"; }
 cct()  { ccm --ccm-tmux \"$@\"; }
 oo()   { ccm --ccm-agent codex \"$@\"; }
-alphacc()  { ccm --account z \"$@\"; }
+workcc()  { ccm --account work \"$@\"; }
 alias  ccx='ccm --base'
 
 # 与 ccm 无关的一行
@@ -1040,7 +1040,7 @@ fn bare_lines_with_no_fence_at_all_are_named_line_by_line() {
             (5, "cc()   { ccm \"$@\"; }"),
             (6, "cct()  { ccm --ccm-tmux \"$@\"; }"),
             (7, "oo()   { ccm --ccm-agent codex \"$@\"; }"),
-            (8, "alphacc()  { ccm --account z \"$@\"; }"),
+            (8, "workcc()  { ccm --account work \"$@\"; }"),
             (9, "alias  ccx='ccm --base'"),
             (11, "# 与 ccm 无关的一行"),
         ],
@@ -1065,7 +1065,7 @@ fn bare_lines_with_no_fence_at_all_are_named_line_by_line() {
         hits.iter()
             .filter_map(|h| h.name.clone())
             .collect::<Vec<_>>(),
-        vec!["cc", "cct", "oo", "alphacc"]
+        vec!["cc", "cct", "oo", "workcc"]
     );
 
     // ④ 与 ccm 无关的行一条都不许进来（`gs() { git status; }` 与 `export EDITOR=vim`）。

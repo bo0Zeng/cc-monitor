@@ -6651,7 +6651,7 @@
     "profilesPage.form.nameHint": {
       "kind": "control",
       "role": "占位",
-      "zh": "比如 betacct",
+      "zh": "比如 workcct",
       "args": []
     },
     "profilesPage.form.renameHint": {
@@ -14510,7 +14510,7 @@
     "rsToolRegistry.tools.posixAliasesName": {
       "kind": "title",
       "role": "标题",
-      "zh": "POSIX rc 里的 ccm 别名块（cc / cct / alphacc …）",
+      "zh": "POSIX rc 里的 ccm 别名块（cc / cct / workcc …）",
       "args": [],
       "limited": ["ccm"]
     },

@@ -47,13 +47,13 @@ cwd-if = [[\"~\", \"~/projects/notes\"]]
 from = \"cc\"   # tmux 版
 ccm-tmux = true
 
-[betacct]
+[teamcct]
 from = \"cct\"
-account = \"b\"
+account = \"team\"
 
-[alphacct]
+[workcct]
 from = \"cct\"
-account = \"z\"
+account = \"work\"
 
 [pcc]
 base = true
@@ -79,24 +79,24 @@ fn read_gives_each_section_its_own_items_with_lines_and_the_shared_labels() {
     let r = read(&t);
     assert_eq!(r["exists"], true);
     assert!(r["fingerprint"].is_string());
-    let b = prof(&r, "betacct");
+    let b = prof(&r, "teamcct");
     assert_eq!(b["from"], "cct");
     assert_eq!(b["usable"], true);
     assert!(b["problem"].is_null());
     assert_eq!(b["own"][0]["key"], "account");
     assert_eq!(b["own"][0]["slot"], "account");
-    assert_eq!(b["own"][0]["vals"], json!(["b"]));
+    assert_eq!(b["own"][0]["vals"], json!(["team"]));
     assert_eq!(b["own"][0]["line"], 11);
     // 树里那一行的摘要与表单、合并表同一套词：标签「账号」＋ 值。
     let label = copy_text("beProfile.slot.account", &[]);
     assert_eq!(
         b["said"],
-        copy_text("beProfile.said.slot", &[("label", &label), ("val", "b")])
+        copy_text("beProfile.said.slot", &[("label", &label), ("val", "team")])
     );
     // 表单回填：自己写的那几格有值，没写的继承（null）。
     assert_eq!(
         b["form"]["account"],
-        json!({"kind": "account", "name": "b"})
+        json!({"kind": "account", "name": "team"})
     );
     assert!(b["form"]["tmux"].is_null());
     let p = prof(&r, "pcc");
@@ -106,19 +106,19 @@ fn read_gives_each_section_its_own_items_with_lines_and_the_shared_labels() {
 
 #[test]
 fn a_broken_section_and_those_based_on_it_are_unusable_with_the_line_others_stay_usable() {
-    let broken = BOOK.replace("account = \"b\"", "tmux-sise = \"200x50\"");
+    let broken = BOOK.replace("account = \"team\"", "tmux-sise = \"200x50\"");
     let t = tmp("broken", Some(&broken));
     let r = read(&t);
-    let b = prof(&r, "betacct");
+    let b = prof(&r, "teamcct");
     assert_eq!(b["usable"], false);
     let said = b["problem"]["message"].as_str().unwrap();
     assert!(said.contains("tmux-sise"), "{said}");
     assert_eq!(b["problem"]["line"], 11);
-    // 终端里敲 betacct 得到的是同一句（ccm 也走 resolve）。
+    // 终端里敲 teamcct 得到的是同一句（ccm 也走 resolve）。
     let book = profile::parse_book(&broken);
-    let ccm_said = profile::resolve(&book, "betacct", &[]).unwrap_err();
+    let ccm_said = profile::resolve(&book, "teamcct", &[]).unwrap_err();
     assert_eq!(said, ccm_said);
-    assert_eq!(prof(&r, "alphacct")["usable"], true);
+    assert_eq!(prof(&r, "workcct")["usable"], true);
     assert!(r["fileProblem"].is_null());
 }
 
@@ -172,21 +172,21 @@ fn row<'a>(r: &'a Value, key: &str, from: &str) -> &'a Value {
 #[test]
 fn resolve_lists_every_item_with_label_origin_and_the_overridden_ones_struck() {
     let book = BOOK.replace(
-        "[betacct]\nfrom = \"cct\"\n",
-        "[betacct]\nfrom = \"cct\"\nccm-tmux = \"work\"\n",
+        "[teamcct]\nfrom = \"cct\"\n",
+        "[teamcct]\nfrom = \"cct\"\nccm-tmux = \"work\"\n",
     );
     let t = tmp("resolve", Some(&book));
-    let r = answer_resolve(&t.door(), &json!({"name": "betacct"})).unwrap();
-    assert_eq!(r["chain"], json!(["cc", "cct", "betacct"]));
+    let r = answer_resolve(&t.door(), &json!({"name": "teamcct"})).unwrap();
+    assert_eq!(r["chain"], json!(["cc", "cct", "teamcct"]));
     assert!(row(&r, "cwd-if", "cc")["overriddenBy"].is_null());
-    assert_eq!(row(&r, "ccm-tmux", "cct")["overriddenBy"], "betacct");
-    assert!(row(&r, "ccm-tmux", "betacct")["overriddenBy"].is_null());
-    let acct = row(&r, "account", "betacct");
+    assert_eq!(row(&r, "ccm-tmux", "cct")["overriddenBy"], "teamcct");
+    assert!(row(&r, "ccm-tmux", "teamcct")["overriddenBy"].is_null());
+    let acct = row(&r, "account", "teamcct");
     assert_eq!(acct["label"], copy_text("beProfile.slot.account", &[]));
-    assert_eq!(acct["vals"], json!(["b"]));
-    // 「等于」那一行是这台后端算的（同 `ccm @betacct -- --ccm-print`）：这台没有 b 号 ⇒ 不给行、给 ccm 那一句。
+    assert_eq!(acct["vals"], json!(["team"]));
+    // 「等于」那一行是这台后端算的（同 `ccm @teamcct -- --ccm-print`）：这台没有 team 号 ⇒ 不给行、给 ccm 那一句。
     assert!(r["line"].is_null());
-    assert!(r["lineError"].as_str().unwrap().contains("'b'"), "{r}");
+    assert!(r["lineError"].as_str().unwrap().contains("'team'"), "{r}");
     let p = answer_resolve(&t.door(), &json!({"name": "pcc"})).unwrap();
     let line = p["line"].as_str().unwrap_or_else(|| panic!("{p}"));
     assert!(line.contains("/srv/p"), "{line}");
@@ -238,7 +238,7 @@ fn impact_names_only_the_children_whose_merged_result_changes_with_before_and_af
         .iter()
         .map(|a| a["name"].as_str().unwrap())
         .collect();
-    assert_eq!(names, ["betacct", "alphacct"]);
+    assert_eq!(names, ["teamcct", "workcct"]);
     let c = &r["affected"][0]["changes"][0];
     assert_eq!(c["slot"], "tmux");
     assert_eq!(c["before"], copy_text("beProfile.val.tmuxAuto", &[]));
@@ -263,7 +263,7 @@ fn bases_lists_only_what_cannot_loop_and_greys_itself() {
             )
         })
         .collect();
-    // betacct / alphacct 基于 cct ⇒ 选了就成圈，不列；cct 自己灰着。
+    // teamcct / workcct 基于 cct ⇒ 选了就成圈，不列；cct 自己灰着。
     assert_eq!(pick, [("cc", true), ("cct", false), ("pcc", true)]);
 }
 
@@ -277,7 +277,7 @@ fn write_set_changes_only_that_section_and_keeps_hand_comments() {
     let t = tmp("set", Some(BOOK));
     write(
         &t,
-        json!([{"op": "set", "was": "betacct", "form": {"name": "betacct", "from": "cct", "account": {"kind": "account", "name": "q"}}}]),
+        json!([{"op": "set", "was": "teamcct", "form": {"name": "teamcct", "from": "cct", "account": {"kind": "account", "name": "q"}}}]),
     )
     .unwrap();
     let now = t.text();
@@ -285,7 +285,7 @@ fn write_set_changes_only_that_section_and_keeps_hand_comments() {
         now.contains("# 我的配置") && now.contains("# tmux 版"),
         "{now}"
     );
-    assert_eq!(now, BOOK.replace("account = \"b\"", "account = \"q\""));
+    assert_eq!(now, BOOK.replace("account = \"team\"", "account = \"q\""));
 }
 
 #[test]
@@ -299,8 +299,8 @@ fn write_rename_moves_the_section_in_place_and_children_follow() {
     let now = t.text();
     let book = profile::parse_book(&now);
     let order: Vec<&str> = book.profiles.iter().map(|p| p.name.as_str()).collect();
-    assert_eq!(order, ["cc", "tt", "betacct", "alphacct", "pcc"]);
-    assert_eq!(book.find("betacct").unwrap().from.as_deref(), Some("tt"));
+    assert_eq!(order, ["cc", "tt", "teamcct", "workcct", "pcc"]);
+    assert_eq!(book.find("teamcct").unwrap().from.as_deref(), Some("tt"));
     assert!(now.contains("# tmux 版"), "{now}");
 }
 
@@ -318,7 +318,7 @@ fn removing_a_base_needs_a_choice_and_each_choice_does_what_it_says() {
     .unwrap();
     let b = profile::parse_book(&t.text());
     assert!(b.find("cct").is_none());
-    assert_eq!(b.find("betacct").unwrap().from.as_deref(), Some("cc"));
+    assert_eq!(b.find("teamcct").unwrap().from.as_deref(), Some("cc"));
 
     let t = tmp("cascade", Some(BOOK));
     write(
@@ -365,15 +365,15 @@ fn edited_at_says_the_file_changed_after_cc_monitor_last_wrote_it() {
         at.as_str().is_some_and(|s| s.contains(':')),
         "手改过 ⇒ 给好显示的时刻：{at}"
     );
-    write(&t, json!([{"op": "remove", "name": "alphacct"}])).unwrap();
+    write(&t, json!([{"op": "remove", "name": "workcct"}])).unwrap();
     assert!(read(&t)["editedAt"].is_null(), "再经这里存一次 ⇒ 不说");
 }
 
 #[test]
 fn a_write_may_fix_the_broken_section_but_may_not_break_another() {
-    let broken = BOOK.replace("account = \"b\"", "tmux-sise = \"200x50\"");
+    let broken = BOOK.replace("account = \"team\"", "tmux-sise = \"200x50\"");
     let t = tmp("fix", Some(&broken));
-    // 别的段照样能改（betacct 坏着不挡）。
+    // 别的段照样能改（teamcct 坏着不挡）。
     write(
         &t,
         json!([{"op": "set", "was": "pcc", "form": {"name": "pcc", "cwd": "/srv/q"}}]),
@@ -382,7 +382,7 @@ fn a_write_may_fix_the_broken_section_but_may_not_break_another() {
     // 改坏的那一段：按条目改会覆盖那一项 ⇒ 存了就修好。
     write(
         &t,
-        json!([{"op": "set", "was": "betacct", "form": {"name": "betacct", "from": "cct", "account": {"kind": "account", "name": "b"}}}]),
+        json!([{"op": "set", "was": "teamcct", "form": {"name": "teamcct", "from": "cct", "account": {"kind": "account", "name": "team"}}}]),
     )
     .unwrap();
     assert!(
@@ -459,7 +459,7 @@ fn a_migration_is_told_once_with_what_could_not_move_and_ack_removes_it() {
     let t = tmp("migrated", None);
     std::fs::write(
         t.0.join(relay_route_core::POSIX_ALIASES_REL),
-        "alphacc() { ccm \"$@\" -- --account 'z'; }\ncca() { ccm -- --attach \"$@\"; }\n",
+        "workcc() { ccm \"$@\" -- --account 'work'; }\ncca() { ccm -- --attach \"$@\"; }\n",
     )
     .unwrap();
     let r = read(&t);
@@ -502,7 +502,7 @@ fn the_profiles_wire_matches_the_cross_language_golden() {
     )
     .unwrap();
     let read = read_with(&t.door(), &json!({}), Some(true)).unwrap();
-    let resolve = answer_resolve(&t.door(), &json!({"name": "betacct", "at": "/tmp"})).unwrap();
+    let resolve = answer_resolve(&t.door(), &json!({"name": "teamcct", "at": "/tmp"})).unwrap();
     let impact = answer_impact(&t.door(), &g["impactArgs"]).unwrap();
     let bases = answer_bases(&t.door(), &json!({"name": "mycct"})).unwrap();
     let write = answer_write(

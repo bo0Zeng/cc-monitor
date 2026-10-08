@@ -100,27 +100,27 @@ describe("新建账号表单", () => {
     expect(f.el.textContent).toContain(copyText("acctNew.key.help", { machine: "devbox" }));
   });
 
-  it("名字下面「新增命令：betacc、betacct」是那台预演答的别名名字", async () => {
+  it("名字下面「新增命令：teamcc、teamcct」是那台预演答的别名名字", async () => {
     const f = form();
-    await f.type(f.name, "b");
-    expect(f.el.textContent).toContain(copyText("acctNew.name.commands", { names: "betacc、betacct" }));
+    await f.type(f.name, "team");
+    expect(f.el.textContent).toContain(copyText("acctNew.name.commands", { names: "teamcc、teamcct" }));
     expect(aliasHintFor([])).toBe("");
   });
 
   it("订阅：交出去的是 {name, kind: subscription, credFile?}，交完各格清空", async () => {
     const f = form();
-    await f.type(f.name, "b");
+    await f.type(f.name, "team");
     f.btn(copyText("acctNew.import.toggle")).click();
     await f.type(f.cred, "~/snap.json");
     expect(f.btn(copyText("acctNew.form.createLogin")).disabled).toBe(false);
     f.btn(copyText("acctNew.form.createLogin")).click();
-    expect(f.seen).toEqual([{ name: "b", kind: "subscription", credFile: "~/snap.json" }]);
+    expect(f.seen).toEqual([{ name: "team", kind: "subscription", credFile: "~/snap.json" }]);
     expect([f.name.value, f.cred.value, f.key.value]).toEqual(["", "", ""]);
   });
 
   it("API key：没填 key 时主按钮是灰的，填了才交；交出去带 key、不带凭据文件；预演从不带 key", async () => {
     const f = form();
-    await f.type(f.name, "b");
+    await f.type(f.name, "team");
     await f.pick("API key");
     expect(f.btn(copyText("acctNew.form.create")).disabled).toBe(true);
     f.btn(copyText("acctNew.form.create")).click(); // jsdom 里 disabled 不拦 click —— 表单自己也得挡
@@ -128,7 +128,7 @@ describe("新建账号表单", () => {
     await f.type(f.key, "  sk-ant-TYPED  ");
     expect(f.btn(copyText("acctNew.form.create")).disabled).toBe(false);
     f.btn(copyText("acctNew.form.create")).click();
-    expect(f.seen).toEqual([{ name: "b", kind: "api-key", key: "sk-ant-TYPED" }]);
+    expect(f.seen).toEqual([{ name: "team", kind: "api-key", key: "sk-ant-TYPED" }]);
     for (const a of asked) expect((chanArgsJson(a) as { key?: string }).key, "预演带上了 key 的明文").toBeUndefined();
     expect(f.key.value, "交完 key 还留在输入框里").toBe("");
   });
@@ -140,24 +140,24 @@ describe("新建账号表单", () => {
     expect(f.el.querySelector("[data-error]")).not.toBeNull();
     f.btn(copyText("acctNew.form.createLogin")).click();
     expect(f.seen).toEqual([]);
-    refuse = copyText("rsFilewinCrossCopy.ask.taken", { path: "b", machine: "devbox" });
-    await f.type(f.name, "b");
-    expect(f.el.textContent).toContain(copyText("rsFilewinCrossCopy.ask.taken", { path: "b", machine: "devbox" }));
+    refuse = copyText("rsFilewinCrossCopy.ask.taken", { path: "team", machine: "devbox" });
+    await f.type(f.name, "team");
+    expect(f.el.textContent).toContain(copyText("rsFilewinCrossCopy.ask.taken", { path: "team", machine: "devbox" }));
     expect(f.btn(copyText("acctNew.form.createLogin")).disabled).toBe(true);
   });
 
   it("名字框里 Enter ＝ 点主按钮（合法时）", async () => {
     const f = form();
-    await f.type(f.name, "b");
+    await f.type(f.name, "team");
     f.name.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
-    expect(f.seen).toEqual([{ name: "b", kind: "subscription" }]);
+    expect(f.seen).toEqual([{ name: "team", kind: "subscription" }]);
   });
 
   it("地址填错：表单那一句、主按钮灰（规则读生成物，与后端同一条）", async () => {
     expect(checkBaseUrl("").ok).toBe(true);
     expect(checkBaseUrl("ftp://x").ok).toBe(false);
     const f = form();
-    await f.type(f.name, "b");
+    await f.type(f.name, "team");
     await f.pick("API key");
     await f.type(f.base, "ftp://x");
     await f.type(f.key, "sk");
@@ -169,7 +169,7 @@ describe("新建账号表单", () => {
     expect(await a.f.dismiss()).toBe(true);
     expect([a.asks, a.cancelled()]).toEqual([[], 1]);
     const b = form(false);
-    await b.type(b.name, "b");
+    await b.type(b.name, "team");
     expect(await b.f.dismiss()).toBe(false);
     expect([b.asks, b.cancelled()]).toEqual([[copyText("acctNew.discard.title")], 0]);
   });

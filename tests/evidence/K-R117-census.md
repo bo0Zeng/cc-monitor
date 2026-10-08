@@ -184,8 +184,8 @@ PM 现打的 `grep -c "installable: true" src-tauri/src/tool_registry.rs` = **19
 
 | 谁产的 | 产出逐字 | 住址 |
 |---|---|---|
-| ② `write_account_aliases` | `alphacc() { ccm --account 'z' "$@"; }` | `account_aliases.rs`（渲染样例在它自己的判据里） |
-| `cc-acct-iso shellinit` | `alphacc() { CLAUDE_CONFIG_DIR=<dir> command claude "$@"; }` | `vendor/cc-acct-iso/scripts/cc-acct-iso::cmd_shellinit` |
+| ② `write_account_aliases` | `workcc() { ccm --account 'work' "$@"; }` | `account_aliases.rs`（渲染样例在它自己的判据里） |
+| `cc-acct-iso shellinit` | `workcc() { CLAUDE_CONFIG_DIR=<dir> command claude "$@"; }` | `vendor/cc-acct-iso/scripts/cc-acct-iso::cmd_shellinit` |
 
 **同一个函数名 `<账号名>cc`，两套不同实现**；谁后被 source 谁生效。
 `cc-acct-iso-install.sh` 的第 5 条手动步骤自己逐字警告过这一形：

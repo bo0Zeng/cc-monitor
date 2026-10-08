@@ -422,9 +422,9 @@ cwd-if = [["~", "~/projects/notes"]]
 from = "cc"
 ccm-tmux = true
 
-[betacc]
+[teamcc]
 from = "cc"
-account = "b"
+account = "team"
 
 [loop1]
 from = "loop2"
@@ -434,7 +434,7 @@ from = "loop1"
 [orphan]
 from = "nobody"
 TOML
-ln -s "$CCM_NATIVE" "$CCMDIR/betacc"
+ln -s "$CCM_NATIVE" "$CCMDIR/teamcc"
 pccm() { (cd "$1" && shift && env -u CLAUDE_CONFIG_DIR HOME="$PHOME" "$@" 2>&1); }
 ck "@cc 从家目录起：进 cwd-if 给的那个目录，你好原样交 claude" \
    "$UNSET; cd '$PHOME/projects/notes' && exec claude '你好'" \
@@ -442,11 +442,11 @@ ck "@cc 从家目录起：进 cwd-if 给的那个目录，你好原样交 claude
 ck "@cc 从别处起：cwd-if 没对上 ⇒ 就在当前目录" \
    "$UNSET; cd '$(cd "$CCMDIR/elsewhere" && pwd -P)' && exec claude '你好'" \
    "$(pccm "$CCMDIR/elsewhere" "$CCM" @cc 你好 -- --ccm-print)"
-ck "被叫成 betacc（指向 ccm 的链接）＝ ccm @betacc：继承 cc 的目录规则；临时选项盖住配置里的号" \
-   "$(pccm "$PHOME" "$CCM" @betacc 你好 -- --ccm-print --base)" \
-   "$(pccm "$PHOME" "$CCMDIR/betacc" 你好 -- --ccm-print --base)"
-ck "betacc 里的 b 号真用上了（这台没有账号库 ⇒ ccm 说 b 不可用，退出码 2）" \
-   "2" "$(pccm "$PHOME" "$CCMDIR/betacc" -- --ccm-print >/dev/null 2>&1; echo $?)"
+ck "被叫成 teamcc（指向 ccm 的链接）＝ ccm @teamcc：继承 cc 的目录规则；临时选项盖住配置里的号" \
+   "$(pccm "$PHOME" "$CCM" @teamcc 你好 -- --ccm-print --base)" \
+   "$(pccm "$PHOME" "$CCMDIR/teamcc" 你好 -- --ccm-print --base)"
+ck "teamcc 里的 team 号真用上了（这台没有账号库 ⇒ ccm 说 team 不可用，退出码 2）" \
+   "2" "$(pccm "$PHOME" "$CCMDIR/teamcc" -- --ccm-print >/dev/null 2>&1; echo $?)"
 ck "「基于」绕成圈：报错退出 2" \
    "ccm: $(zh beProfile.chain.cycle "chain=loop1$(zh beProfile.chain.arrow)loop2$(zh beProfile.chain.arrow)loop1")" \
    "$(pccm "$PHOME" "$CCM" @loop1 -- --ccm-print)"

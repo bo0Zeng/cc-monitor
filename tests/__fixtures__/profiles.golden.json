@@ -1,19 +1,19 @@
 {
   "说明": "设置窗「别名与配置文件」五口（profiles-read / -resolve / -impact / -bases / -write）的跨语言金样：后端 page_tests.rs::the_profiles_wire_matches_the_cross_language_golden 现算对拍，界面 profiles-reads.ts 的解码器读同一份。<HOME> · <LINE> 是机器上会变的几格。",
-  "book": "# 我的配置\n[mycc]\ncwd-if = [[\"~\", \"~/projects/notes\"]]\n\n[mycct]\nfrom = \"mycc\"   # tmux 版\nccm-tmux = true\n\n[betacct]\nfrom = \"mycct\"\naccount = \"b\"\n\n[alphacct]\nfrom = \"mycct\"\ntmux-sise = \"200x50\"\n\n[pcc]\nbase = true\ncwd = \"/srv/p\"\nargs = [\"--model\", \"opus\"]\n",
+  "book": "# 我的配置\n[mycc]\ncwd-if = [[\"~\", \"~/projects/notes\"]]\n\n[mycct]\nfrom = \"mycc\"   # tmux 版\nccm-tmux = true\n\n[teamcct]\nfrom = \"mycct\"\naccount = \"team\"\n\n[workcct]\nfrom = \"mycct\"\ntmux-sise = \"200x50\"\n\n[pcc]\nbase = true\ncwd = \"/srv/p\"\nargs = [\"--model\", \"opus\"]\n",
   "manifest": {
     "accounts": [
       {
-        "configDir": "<HOME>/.cc-monitor/accounts/z",
+        "configDir": "<HOME>/.cc-monitor/accounts/work",
         "email": "",
         "isDefault": true,
-        "name": "z"
+        "name": "work"
       },
       {
-        "configDir": "<HOME>/.cc-monitor/accounts/b",
+        "configDir": "<HOME>/.cc-monitor/accounts/team",
         "email": "",
         "isDefault": false,
-        "name": "b"
+        "name": "team"
       }
     ],
     "version": 1
@@ -36,14 +36,14 @@
   },
   "readReply": {
     "accounts": [
-      "z",
-      "b"
+      "work",
+      "team"
     ],
     "binDir": "<HOME>/.cc-monitor/bin",
     "editedAt": null,
     "exists": true,
     "fileProblem": null,
-    "fingerprint": "253-b24855836c65cba3",
+    "fingerprint": "262-7fa1ba83a62d7966",
     "home": "<HOME>",
     "migrated": null,
     "path": "<HOME>/.cc-monitor/profiles.toml",
@@ -131,14 +131,14 @@
       },
       {
         "accountShape": {
-          "account": "b",
+          "account": "team",
           "tmux": true
         },
         "agent": [],
         "form": {
           "account": {
             "kind": "account",
-            "name": "b"
+            "name": "team"
           },
           "agent": null,
           "args": null,
@@ -149,7 +149,7 @@
           "detach": false,
           "from": "mycct",
           "launcher": null,
-          "name": "betacct",
+          "name": "teamcct",
           "tmux": null,
           "tmuxSize": null
         },
@@ -157,19 +157,19 @@
         "functionLine": null,
         "functionWhy": null,
         "kind": "link",
-        "name": "betacct",
+        "name": "teamcct",
         "own": [
           {
             "key": "account",
             "line": 11,
             "slot": "account",
             "vals": [
-              "b"
+              "team"
             ]
           }
         ],
         "problem": null,
-        "said": "账号 b",
+        "said": "账号 team",
         "usable": true
       },
       {
@@ -186,7 +186,7 @@
           "detach": false,
           "from": "mycct",
           "launcher": null,
-          "name": "alphacct",
+          "name": "workcct",
           "tmux": null,
           "tmuxSize": null
         },
@@ -194,11 +194,11 @@
         "functionLine": null,
         "functionWhy": null,
         "kind": "link",
-        "name": "alphacct",
+        "name": "workcct",
         "own": [],
         "problem": {
           "line": 15,
-          "message": "alphacct 写错 · 当前不可用 · 行 15 · 未知选项 tmux-sise"
+          "message": "workcct 写错 · 当前不可用 · 行 15 · 未知选项 tmux-sise"
         },
         "said": "",
         "usable": false
@@ -268,10 +268,10 @@
     "chain": [
       "mycc",
       "mycct",
-      "betacct"
+      "teamcct"
     ],
     "line": null,
-    "lineError": "账号 'b' 不可用 · 不在 <HOME>/.cc-monitor/accounts/accounts.json 或其目录不存在 · 可用 z b",
+    "lineError": "账号 'team' 不可用 · 不在 <HOME>/.cc-monitor/accounts/accounts.json 或其目录不存在 · 可用 work team",
     "problem": null,
     "rows": [
       {
@@ -296,14 +296,14 @@
         "vals": []
       },
       {
-        "from": "betacct",
+        "from": "teamcct",
         "key": "account",
         "label": "账号",
         "overriddenBy": null,
-        "said": "b",
+        "said": "team",
         "slot": "account",
         "vals": [
-          "b"
+          "team"
         ]
       }
     ]
@@ -319,7 +319,7 @@
             "slot": "tmux"
           }
         ],
-        "name": "betacct",
+        "name": "teamcct",
         "problem": null
       }
     ]
@@ -347,7 +347,7 @@
     ]
   },
   "writeReply": {
-    "fingerprint": "255-e36e1d1a256debd6",
+    "fingerprint": "264-1093cf62d3b20d25",
     "reload": "已开的终端要运行「. <HOME>/.cc-monitor/aliases.sh」或新开一个",
     "wrote": true
   },

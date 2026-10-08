@@ -827,7 +827,7 @@ impl ShellDialect for PowerShell {
         Some(rest[..end].to_string())
     }
 
-    /// PowerShell 的函数名大小写不敏感：`Zcc` 与 `alphacc` 是同一个函数，后定义的盖掉先定义的。
+    /// PowerShell 的函数名大小写不敏感：`Workcc` 与 `workcc` 是同一个函数，后定义的盖掉先定义的。
     fn same_name(&self, a: &str, b: &str) -> bool {
         a.eq_ignore_ascii_case(b)
     }

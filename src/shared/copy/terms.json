@@ -63,7 +63,7 @@
     {
       "word": "别名",
       "tier": "正名",
-      "meaning": "写进 shell 配置的一行命令（如 alphacc、cct），本质是给 ccm 预先带上一组参数。",
+      "meaning": "写进 shell 配置的一行命令（如 workcc、cct），本质是给 ccm 预先带上一组参数。",
       "source": "对外文案"
     },
     {

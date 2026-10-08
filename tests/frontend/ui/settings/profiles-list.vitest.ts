@@ -56,11 +56,11 @@ describe("buildProfilesList", () => {
       fingerprint: "fp-1",
       editedAt: null,
       fileProblem: null,
-      profiles: [row("cc", null, { kind: "function", functionWhy: "和 /usr/bin/cc 同名" }), row("alphacc", "cc"), row("cct", "cc"), row("betacct", "cct"), row("pcc", null)],
+      profiles: [row("cc", null, { kind: "function", functionWhy: "和 /usr/bin/cc 同名" }), row("workcc", "cc"), row("cct", "cc"), row("teamcct", "cct"), row("pcc", null)],
       seed: [],
       migrated: null,
       binDir: "/h/.cc-monitor/bin",
-      accounts: ["b", "z"],
+      accounts: ["team", "work"],
       tmux: true,
     };
     vi.resetModules();
@@ -91,7 +91,7 @@ describe("buildProfilesList", () => {
             lineError: null,
             problem: null,
           }),
-        profileImpact: () => Promise.resolve([{ name: "betacct", changes: [{ slot: "tmux", label: "在哪起", before: "A", after: "B" }], problem: null }]),
+        profileImpact: () => Promise.resolve([{ name: "teamcct", changes: [{ slot: "tmux", label: "在哪起", before: "A", after: "B" }], problem: null }]),
         writeProfiles: (_o: string, changes: ProfileOp[], fingerprint: string | null) => {
           writes.push({ changes, fingerprint });
           if (staleOnce) {
@@ -126,23 +126,23 @@ describe("buildProfilesList", () => {
     expect(rows[0]).toContain("cc" + copyText("profilesPage.chip.function"));
     expect(rows.map((t) => t.split("说：")[0])).toEqual([
       "cc" + copyText("profilesPage.chip.function"),
-      "├ alphacc",
+      "├ workcc",
       "└ cct",
-      "  └ betacct",
+      "  └ teamcct",
       "pcc",
     ]);
-    expect(rows[1]).toContain("说：alphacc");
+    expect(rows[1]).toContain("说：workcc");
     expect(heads.at(-1)).toBe(copyText("profilesPage.head.line", { n: "5", path: "~/.cc-monitor/profiles.toml" }));
   });
 
   it("点一行：合并表照后端回的画（标签 · 小字原键 · 来自哪一段）·「等于」那一行；改「假设在这个目录敲」重问", async () => {
     const { el } = await mount();
-    el.querySelector<HTMLElement>('.prof-trow[data-name="betacct"]')!.click();
+    el.querySelector<HTMLElement>('.prof-trow[data-name="teamcct"]')!.click();
     await flush();
     const box = el.querySelector<HTMLElement>('[data-role="merge"]')!;
     expect(box.textContent).toContain("按目录");
     expect(box.textContent).toContain("cwd-if");
-    expect(box.querySelector('[data-role="equals"]')!.textContent).toBe("LINE betacct");
+    expect(box.querySelector('[data-role="equals"]')!.textContent).toBe("LINE teamcct");
   });
 
   it("改一条：表单回填后端给的那一份；存时交 set（带原来的名字与读回时的指纹），存完收起、选中它", async () => {
@@ -152,12 +152,12 @@ describe("buildProfilesList", () => {
     await flush();
     const f = el.querySelector<HTMLElement>('[data-role="profile-form"]')!;
     expect((f.querySelector('[data-role="name"]') as HTMLInputElement).value).toBe("cct");
-    expect(el.querySelector('[data-role="impact-note"]')!.textContent).toContain("betacct");
-    [...f.querySelectorAll<HTMLButtonElement>(".prof-segb")].find((b) => b.textContent === "z")!.click();
+    expect(el.querySelector('[data-role="impact-note"]')!.textContent).toContain("teamcct");
+    [...f.querySelectorAll<HTMLButtonElement>(".prof-segb")].find((b) => b.textContent === "work")!.click();
     await flush();
     el.querySelector<HTMLButtonElement>('[data-role="save"]')!.click();
     await flush();
-    expect(writes).toEqual([{ changes: [{ op: "set", was: "cct", form: { ...form("cct", "cc"), account: { kind: "account", name: "z" } } }], fingerprint: "fp-1" }]);
+    expect(writes).toEqual([{ changes: [{ op: "set", was: "cct", form: { ...form("cct", "cc"), account: { kind: "account", name: "work" } } }], fingerprint: "fp-1" }]);
     expect(el.querySelector('[data-role="profile-form"]')).toBeNull();
   });
 
@@ -177,7 +177,7 @@ describe("buildProfilesList", () => {
   it("存的时候被别处改过：一个字节没写、表单留着、顶上说一句 ＋ 重新读", async () => {
     staleOnce = true;
     const { el } = await mount();
-    [...el.querySelectorAll<HTMLElement>('.prof-trow[data-name="alphacc"] .cfg-link')][0].click();
+    [...el.querySelectorAll<HTMLElement>('.prof-trow[data-name="workcc"] .cfg-link')][0].click();
     await flush();
     el.querySelector<HTMLButtonElement>('[data-role="save"]')!.click();
     await flush();
@@ -224,9 +224,9 @@ describe("buildProfilesList", () => {
   });
 
   it("写坏的那一段标「现在不能用」、摘要换成后端原话；TOML 写坏 ⇒ 清单换成一张卡、没有表单入口", async () => {
-    book.profiles[3] = row("betacct", "cct", { usable: false, problem: { line: 23, message: "第 23 行：未知选项 tmux-sise" } });
+    book.profiles[3] = row("teamcct", "cct", { usable: false, problem: { line: 23, message: "第 23 行：未知选项 tmux-sise" } });
     const { el } = await mount();
-    const b = el.querySelector<HTMLElement>('.prof-trow[data-name="betacct"]')!;
+    const b = el.querySelector<HTMLElement>('.prof-trow[data-name="teamcct"]')!;
     expect(b.textContent).toContain(copyText("profilesPage.chip.unusable"));
     expect(b.textContent).toContain("第 23 行：未知选项 tmux-sise");
     document.body.replaceChildren();

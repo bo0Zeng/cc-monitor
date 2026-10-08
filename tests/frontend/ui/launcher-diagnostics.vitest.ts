@@ -18,7 +18,7 @@ describe("diagnoseRemoteLauncher", () => {
   });
   it("命令本身含 ccm → 不诊断（已经在用统一 CLI，可能是自定义包装）", () => {
     expect(diagnoseRemoteLauncher("ccm")).toBeNull();
-    expect(diagnoseRemoteLauncher("ccm --tmux --account z")).toBeNull();
+    expect(diagnoseRemoteLauncher("ccm --tmux --account work")).toBeNull();
     expect(diagnoseRemoteLauncher("my-ccm-wrapper")).toBeNull();
   });
   // Phase D 审计（建议项修复）：连写形式（前后无分隔符）也要命中"含 ccm 子串"——早期实现用
@@ -29,8 +29,8 @@ describe("diagnoseRemoteLauncher", () => {
   it("旧式绕过命令（cct/oot 这类）→ 命中诊断", () => {
     expect(diagnoseRemoteLauncher("cct")).not.toBeNull();
     expect(diagnoseRemoteLauncher("oot")).not.toBeNull();
-    expect(diagnoseRemoteLauncher("alphacct")).not.toBeNull();
-    expect(diagnoseRemoteLauncher("betacct")).not.toBeNull();
+    expect(diagnoseRemoteLauncher("workcct")).not.toBeNull();
+    expect(diagnoseRemoteLauncher("teamcct")).not.toBeNull();
   });
   it("任意不含 ccm 且非 claude 的自定义命令 → 命中诊断（不局限于已知旧命令名单）", () => {
     expect(diagnoseRemoteLauncher("my-custom-launcher")).not.toBeNull();

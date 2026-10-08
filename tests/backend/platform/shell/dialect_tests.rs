@@ -22,13 +22,13 @@ fn sv(xs: &[&str]) -> Vec<String> {
 fn sample() -> Vec<(&'static str, Vec<String>, RestTo)> {
     let c = RestTo::Agent;
     vec![
-        ("alphacc", sv(&["--account", "z"]), c),
+        ("workcc", sv(&["--account", "work"]), c),
         (
             "convz",
             sv(&[
                 "--ccm-tmux=w.1",
                 "--account",
-                "z",
+                "work",
                 "--cwd",
                 "/home/u/文档/c c",
             ]),
@@ -51,8 +51,8 @@ fn posix_golden() {
     assert_eq!(
         got,
         vec![
-            r#"alphacc() { ccm --account z "$@"; }"#.to_string(),
-            r#"convz() { ccm --ccm-tmux=w.1 --account z --cwd '/home/u/文档/c c' "$@"; }"#
+            r#"workcc() { ccm --account work "$@"; }"#.to_string(),
+            r#"convz() { ccm --ccm-tmux=w.1 --account work --cwd '/home/u/文档/c c' "$@"; }"#
                 .to_string(),
             r#"mo() { ccm --model 'it'\''s' "$@" -- --verbose; }"#.to_string(),
             "curly() { ccm --model 'a\u{2019}b' \"$@\"; }".to_string(),
@@ -83,9 +83,9 @@ fn powershell_golden() {
     assert_eq!(
         got,
         vec![
-            body(" '--account' 'z'", "alphacc"),
+            body(" '--account' 'work'", "workcc"),
             body(
-                " '--ccm-tmux=w.1' '--account' 'z' '--cwd' '/home/u/文档/c c'",
+                " '--ccm-tmux=w.1' '--account' 'work' '--cwd' '/home/u/文档/c c'",
                 "convz"
             ),
             // `$RemainingArgs`（敲别名时跟的）交 claude，别名的 ccm 选项在单引号的 `'--'` 右边。
@@ -124,24 +124,28 @@ fn both_dialects_read_back_exactly_what_they_wrote() {
 /// 块外的非注释行、没收尾的函数也都说出来，不静默丢。
 #[test]
 fn powershell_reader_names_what_it_cannot_take() {
-    let good = PowerShell.render_alias(C, "alphacc", &sv(&["--account", "z"]), RestTo::Agent);
+    let good = PowerShell.render_alias(C, "workcc", &sv(&["--account", "work"]), RestTo::Agent);
     let edited = good.replace("__ccm_bind }", "__ccm_bind; Write-Host hi }");
     let text = format!(
         "\u{feff}# 注释\nSet-Alias x ls\n{good}\n{}\nfunction open {{\n",
-        edited.replace("alphacc", "zcd")
+        edited.replace("workcc", "workcd")
     );
     let got = PowerShell.parse_file(C, PowerShell.decode_from_disk(&text));
     assert_eq!(got.len(), 4, "{got:?}");
     assert_eq!(
         got[1],
-        Ok(("alphacc".to_string(), sv(&["--account", "z"]), RestTo::Agent))
+        Ok((
+            "workcc".to_string(),
+            sv(&["--account", "work"]),
+            RestTo::Agent
+        ))
     );
     assert!(
         matches!(&got[0], Err(e) if e.starts_with("Set-Alias x ls") && copy_core::copy_matches("rsShellDialect.ps.outsideFn", e)),
         "{got:?}"
     );
     assert!(
-        matches!(&got[2], Err(e) if e.contains("zcd") && copy_core::copy_matches("rsShellDialect.ps.handEdited", &e)),
+        matches!(&got[2], Err(e) if e.contains("workcd") && copy_core::copy_matches("rsShellDialect.ps.handEdited", &e)),
         "{got:?}"
     );
     assert!(
@@ -174,19 +178,19 @@ fn only_powershell_gets_a_bom() {
     assert_eq!(Posix.decode_from_disk("\u{feff}# x\n"), "\u{feff}# x\n");
 }
 
-/// 名字：两种方言同一个字符集；PowerShell 大小写不敏感（`Zcc` 与 `alphacc` 是同一个函数）。
+/// 名字：两种方言同一个字符集；PowerShell 大小写不敏感（`Workcc` 与 `workcc` 是同一个函数）。
 #[test]
 fn names_are_portable_and_powershell_folds_case() {
     for (sh, d) in [Shell::Posix, Shell::PowerShell].map(|x| (x, x.dialect())) {
-        for ok in ["alphacc", "_x", "a1_b"] {
+        for ok in ["workcc", "_x", "a1_b"] {
             assert!(d.name_is_valid(ok), "{:?} {ok}", sh);
         }
         for bad in ["", "1a", "a-b", "a.b", "a b", "名字"] {
             assert!(!d.name_is_valid(bad), "{:?} {bad}", sh);
         }
     }
-    assert!(PowerShell.same_name("Zcc", "alphacc"));
-    assert!(!Posix.same_name("Zcc", "alphacc"));
+    assert!(PowerShell.same_name("Workcc", "workcc"));
+    assert!(!Posix.same_name("Workcc", "workcc"));
 }
 
 /// 值能不能原样到达 ccm：POSIX 恒能；PowerShell 拒空串、拒 `"`、拒「含空白且以 `\` 结尾」。
@@ -452,9 +456,9 @@ fn a_powershell_builtin_alias_is_named_and_an_unknown_listing_is_said() {
     let ok: PsAliases = Ok(table);
     let hit = builtin_alias_note("LS", &ok).expect("撞了内建别名却没说");
     assert!(hit.contains("LS") && hit.contains("Get-ChildItem"), "{hit}");
-    assert_eq!(builtin_alias_note("alphacc", &ok), None);
+    assert_eq!(builtin_alias_note("workcc", &ok), None);
     let unknown: PsAliases = Err("exit Some(1)".into());
-    let said = builtin_alias_note("alphacc", &unknown).expect("问不到却当成没撞");
+    let said = builtin_alias_note("workcc", &unknown).expect("问不到却当成没撞");
     assert!(said.contains("exit Some(1)"), "{said}");
 }
 
@@ -531,7 +535,7 @@ fn on_path_child_reports_what_it_sees() {
     if std::env::var_os(ON_PATH_CHILD_MARK).is_none() {
         return;
     }
-    for name in ["alphacc", "realtool"] {
+    for name in ["workcc", "realtool"] {
         println!("{name}={}", on_path(name, &[""]).is_some());
     }
 }
@@ -546,7 +550,7 @@ fn our_own_alias_links_on_path_are_not_a_name_clash() {
     let bin = d.join("bin");
     std::fs::create_dir_all(&bin).unwrap();
     std::fs::write(bin.join("ccm"), "#!/bin/sh\n").unwrap();
-    std::os::unix::fs::symlink("ccm", bin.join("alphacc")).unwrap();
+    std::os::unix::fs::symlink("ccm", bin.join("workcc")).unwrap();
     std::fs::write(bin.join("realtool"), "#!/bin/sh\n").unwrap();
     let out = std::process::Command::new(std::env::current_exe().unwrap())
         .args([
@@ -565,7 +569,7 @@ fn our_own_alias_links_on_path_are_not_a_name_clash() {
     std::fs::remove_dir_all(&d).ok();
     assert!(out.status.success(), "{said}");
     assert!(
-        said.lines().any(|l| l.ends_with("alphacc=false")),
+        said.lines().any(|l| l.ends_with("workcc=false")),
         "指向 ccm 的链接被当成撞名：{said}"
     );
     assert!(

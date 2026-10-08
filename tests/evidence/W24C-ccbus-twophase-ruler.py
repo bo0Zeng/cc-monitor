@@ -489,19 +489,19 @@ def behavioral(tmp):
     b6.add(2)
     wenv = b6.env(CCBUS_ADAPT_OS="windows")
     rc, out, tok6 = peek_token(b6, env=wenv)
-    deltacc, _, _ = run(["cc-commit", "tester", tok6], wenv)
+    rc_c, _, _ = run(["cc-commit", "tester", tok6], wenv)
     caps = subprocess.run(
         ["bash", "-c", f'. "{SCRIPTS}/cc-bus-adapt.sh"; ccbus_adapt_load && store_caps && os_caps; '
                        f'os_send_keys x y; echo "send_rc=$?"'],
         env=wenv, capture_output=True, text=True).stdout
     log = (b6.home / "log" / "bus.log").read_text(encoding="utf-8") if (b6.home / "log" / "bus.log").exists() else ""
-    if (rc == 0 and deltacc == 0 and b6.pos() == "2"
+    if (rc == 0 and rc_c == 0 and b6.pos() == "2"
             and "shared_lock=no" in caps and "deliver=none" in caps and "send_rc=13" in caps
             and "DEGRADE lock:shared→exclusive" in log):
         ok("B10", "Windows 那一侧:两阶段口整段跑通(pos→2)· `shared_lock=no` 自陈 · "
                   "共享锁退化成排他且 bus.log 里留了 DEGRADE · 投递 os_send_keys 显式 rc=13(不假装投递)")
     else:
-        bad("B10", f"Windows 那一侧不对:peek={rc} commit={deltacc} pos={b6.pos()} "
+        bad("B10", f"Windows 那一侧不对:peek={rc} commit={rc_c} pos={b6.pos()} "
                    f"caps={caps.strip()[:120]!r} 降级日志={'有' if 'DEGRADE' in log else '无'}")
 
     # B11 这台机器上没有 flock 时,Windows 侧**拒绝**而不是假装锁上了
@@ -725,8 +725,8 @@ def check_k3(tmp):
     # c) CRLF 的表(Windows 上编辑过)⇒ 敲门那一行尾巴上**没有** \r(\r 打进屏幕就是一个回车)
     crlf = "crlf\tyes\tyes\tacl,rate,loop\tT {body}\tknock {from}\r\n"
     b3, env3, log3 = kinds_bus(tmp, "k3c", crlf)
-    deltacc, _, _ = run(["cc-send", "--kind", "crlf", "bob", "x"], env3)
-    c_ok = deltacc == 0 and knocks(log3) == ["knock alice"]
+    rc_c, _, _ = run(["cc-send", "--kind", "crlf", "bob", "x"], env3)
+    c_ok = rc_c == 0 and knocks(log3) == ["knock alice"]
     # d) T2 用 {ts},而信封的 ts 里塞了换行 ⇒ 渲染被拒,退回内置那一句,并留痕
     tsk = "tsk\tyes\tyes\tacl,rate,loop\tT {body}\tknock {ts}\n"
     b4, env4, log4 = kinds_bus(tmp, "k3d", tsk)
@@ -742,7 +742,7 @@ def check_k3(tmp):
                  f"{{ts}} 带换行 ⇒ 渲染被拒退回内置;{len(all_knocks)} 次真敲门里零换行零正文")
     else:
         bad("K3", f"🔴 敲门安全那一格不对:a={a_ok}(rc={rc}) b={b_ok}(rc={rcb} 敲={kb}) "
-                  f"c={c_ok}(rc={deltacc} 敲={knocks(log3)}) d={d_ok}(rc={rcd} 敲={knocks(log4)}) 漏={leak}")
+                  f"c={c_ok}(rc={rc_c} 敲={knocks(log3)}) d={d_ok}(rc={rcd} 敲={knocks(log4)}) 漏={leak}")
 
 
 def json_env(frm, to, text, kind=None, ts="t0"):

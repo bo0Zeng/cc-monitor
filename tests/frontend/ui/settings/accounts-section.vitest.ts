@@ -144,10 +144,10 @@ beforeEach(() => {
   confirmed = [];
   answer = true;
   for (const m of [fetchAccounts, readQuota, accountsVerify, accountsRemove, accountsSetDefault, readProfiles, readRemoteConfig, emit, openLoginWindow, loginInTmux, setModelForAccount, accountsInit, accountsRepair, accountsAdd, writeApikeyKey]) m.mockReset();
-  const change = (p: object = {}) => ({ applied: true, steps: ["一步"], notes: [], backup: null, account: null, loginCmd: null, aliasNames: ["betacc", "betacct"], keyMasked: null, keyProblem: null, aliases: [], ...p });
+  const change = (p: object = {}) => ({ applied: true, steps: ["一步"], notes: [], backup: null, account: null, loginCmd: null, aliasNames: ["teamcc", "teamcct"], keyMasked: null, keyProblem: null, aliases: [], ...p });
   accountsInit.mockResolvedValue(change());
   accountsRepair.mockResolvedValue(change());
-  accountsAdd.mockImplementation((_o: string, a: { dryRun?: boolean }) => Promise.resolve(change(a.dryRun ? {} : { loginCmd: "ccm -- --account b" })));
+  accountsAdd.mockImplementation((_o: string, a: { dryRun?: boolean }) => Promise.resolve(change(a.dryRun ? {} : { loginCmd: "ccm -- --account team" })));
   readRemoteConfig.mockResolvedValue({ enabled: true, hosts: [{ label: "devbox" }, { label: "gpu-01" }] });
   fetchAccounts.mockResolvedValue(state());
   readQuota.mockResolvedValue(quota());
@@ -368,44 +368,44 @@ describe("各态", () => {
 
 describe("登录与指路", () => {
   it("开不了终端窗口 ⇒ 那一行说「本机无法开终端窗口」＋［在 tmux 里登录］，点了用这个号起 tmux 会话", async () => {
-    fetchAccounts.mockResolvedValue(state({ accounts: [acct({ name: "work", isDefault: true }), acct({ name: "b", loggedIn: false, authReady: false })] }));
+    fetchAccounts.mockResolvedValue(state({ accounts: [acct({ name: "work", isDefault: true }), acct({ name: "team", loggedIn: false, authReady: false })] }));
     openLoginWindow.mockResolvedValue("noWindow");
     loginInTmux.mockResolvedValue(undefined);
     const el = await mount();
-    expect(rowOf(el, "b").querySelector(".acct-row-kind")!.textContent).toBe(copyText("acctPage.row.notLoggedIn"));
-    buttonNamed(rowOf(el, "b"), copyText("acctPage.row.more", { name: "b" })).click();
+    expect(rowOf(el, "team").querySelector(".acct-row-kind")!.textContent).toBe(copyText("acctPage.row.notLoggedIn"));
+    buttonNamed(rowOf(el, "team"), copyText("acctPage.row.more", { name: "team" })).click();
     const relogin = [...document.querySelectorAll<HTMLElement>("[role=menuitem]")].find((m) => m.textContent?.includes(copyText("acctPage.menu.relogin")))!;
     relogin.click();
     await settle();
-    expect(openLoginWindow).toHaveBeenCalledWith("devbox", "b", undefined);
-    expect(rowOf(el, "b").textContent).toContain(copyText("acctPage.login.noWindow"));
-    buttonNamed(rowOf(el, "b"), copyText("acctPage.login.inTmux")).click();
+    expect(openLoginWindow).toHaveBeenCalledWith("devbox", "team", undefined);
+    expect(rowOf(el, "team").textContent).toContain(copyText("acctPage.login.noWindow"));
+    buttonNamed(rowOf(el, "team"), copyText("acctPage.login.inTmux")).click();
     await settle();
-    expect(loginInTmux).toHaveBeenCalledWith("devbox", "b", "/h/.cc-monitor/accounts/z");
+    expect(loginInTmux).toHaveBeenCalledWith("devbox", "team", "/h/.cc-monitor/accounts/z");
   });
 
   it("那台说了没有 tmux ⇒ 开不了终端窗口时只说那一句，不出［在 tmux 里登录］", async () => {
     noteMachineTmux("devbox", false);
-    fetchAccounts.mockResolvedValue(state({ accounts: [acct({ name: "work", isDefault: true }), acct({ name: "b", loggedIn: false, authReady: false })] }));
+    fetchAccounts.mockResolvedValue(state({ accounts: [acct({ name: "work", isDefault: true }), acct({ name: "team", loggedIn: false, authReady: false })] }));
     openLoginWindow.mockResolvedValue("noWindow");
     const el = await mount();
-    buttonNamed(rowOf(el, "b"), copyText("acctPage.row.more", { name: "b" })).click();
+    buttonNamed(rowOf(el, "team"), copyText("acctPage.row.more", { name: "team" })).click();
     [...document.querySelectorAll<HTMLElement>("[role=menuitem]")].find((m) => m.textContent?.includes(copyText("acctPage.menu.relogin")))!.click();
     await settle();
-    expect(rowOf(el, "b").textContent).toContain(copyText("acctPage.login.noWindow"));
-    expect([...rowOf(el, "b").querySelectorAll("button")].some((b) => b.textContent === copyText("acctPage.login.inTmux"))).toBe(false);
+    expect(rowOf(el, "team").textContent).toContain(copyText("acctPage.login.noWindow"));
+    expect([...rowOf(el, "team").querySelectorAll("button")].some((b) => b.textContent === copyText("acctPage.login.inTmux"))).toBe(false);
     noteMachineTmux("devbox", true);
   });
 
   it("开了登录窗口 ⇒ 那一行「等待终端登录…」＋［重新打开登录窗口］；后端推来已登录 ⇒ 行变回正常", async () => {
-    fetchAccounts.mockResolvedValue(state({ accounts: [acct({ name: "work", isDefault: true }), acct({ name: "b", loggedIn: false, email: "" })] }));
+    fetchAccounts.mockResolvedValue(state({ accounts: [acct({ name: "work", isDefault: true }), acct({ name: "team", loggedIn: false, email: "" })] }));
     openLoginWindow.mockResolvedValue("opened");
     const el = await mount();
-    buttonNamed(rowOf(el, "b"), copyText("acctPage.row.more", { name: "b" })).click();
+    buttonNamed(rowOf(el, "team"), copyText("acctPage.row.more", { name: "team" })).click();
     [...document.querySelectorAll<HTMLElement>("[role=menuitem]")].find((m) => m.textContent?.includes(copyText("acctPage.menu.relogin")))!.click();
     await settle();
-    expect(rowOf(el, "b").querySelector(".acct-row-kind")!.textContent).toBe(copyText("acctPage.row.waiting"));
-    expect(buttonNamed(rowOf(el, "b"), copyText("acctPage.login.reopen"))).toBeDefined();
+    expect(rowOf(el, "team").querySelector(".acct-row-kind")!.textContent).toBe(copyText("acctPage.row.waiting"));
+    expect(buttonNamed(rowOf(el, "team"), copyText("acctPage.login.reopen"))).toBeDefined();
   });
 
   it("指路框只有「时间轴 · 默认轮换」两项（没有自动起算），点了发 open-account-panel {machine, anchor}", async () => {
@@ -463,27 +463,27 @@ describe("动作", () => {
     const el = await mount();
     buttonNamed(el, copyText("acctPage.head.new")).click();
     const name = el.querySelector<HTMLInputElement>(".acct-new input")!;
-    name.value = "b";
+    name.value = "team";
     name.dispatchEvent(new Event("input"));
     await settle();
-    fetchAccounts.mockResolvedValue(state({ accounts: [acct({ name: "work", isDefault: true }), acct({ name: "b", loggedIn: false, email: "" })] }));
+    fetchAccounts.mockResolvedValue(state({ accounts: [acct({ name: "work", isDefault: true }), acct({ name: "team", loggedIn: false, email: "" })] }));
     buttonNamed(el, copyText("acctNew.form.createLogin")).click();
     await settle();
-    expect(accountsAdd).toHaveBeenLastCalledWith("devbox", { name: "b", kind: "subscription" });
-    expect(openLoginWindow).toHaveBeenCalledWith("devbox", "b", "ccm -- --account b");
+    expect(accountsAdd).toHaveBeenLastCalledWith("devbox", { name: "team", kind: "subscription" });
+    expect(openLoginWindow).toHaveBeenCalledWith("devbox", "team", "ccm -- --account team");
     expect(el.querySelector(".acct-new")).toBeNull();
-    expect(rowOf(el, "b").querySelector(".acct-row-kind")!.textContent).toBe(copyText("acctPage.row.waiting"));
+    expect(rowOf(el, "team").querySelector(".acct-row-kind")!.textContent).toBe(copyText("acctPage.row.waiting"));
   });
 
   it("★ 建好那一句的下一行照后端回的提示（如「已开的终端要重读别名」），界面不另拼", async () => {
     openLoginWindow.mockResolvedValue("opened");
     accountsAdd.mockImplementation((_o: string, a: { dryRun?: boolean }) =>
-      Promise.resolve({ applied: true, steps: [], notes: a.dryRun ? [] : ["已开的终端要重读别名-xyz"], backup: null, account: null, loginCmd: "ccm -- --account b", aliasNames: ["betacc", "betacct"], keyMasked: null, keyProblem: null, aliases: [] }),
+      Promise.resolve({ applied: true, steps: [], notes: a.dryRun ? [] : ["已开的终端要重读别名-xyz"], backup: null, account: null, loginCmd: "ccm -- --account team", aliasNames: ["teamcc", "teamcct"], keyMasked: null, keyProblem: null, aliases: [] }),
     );
     const el = await mount();
     buttonNamed(el, copyText("acctPage.head.new")).click();
     const name = el.querySelector<HTMLInputElement>(".acct-new input")!;
-    name.value = "b";
+    name.value = "team";
     name.dispatchEvent(new Event("input"));
     await settle();
     buttonNamed(el, copyText("acctNew.form.createLogin")).click();

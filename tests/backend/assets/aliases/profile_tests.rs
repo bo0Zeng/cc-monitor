@@ -12,9 +12,9 @@ cwd-if = [["~", "~/projects/notes"]]
 from = "cc"   # 在 cc 上加 tmux
 ccm-tmux = true
 
-[betacct]
+[teamcct]
 from = "cct"
-account = "b"
+account = "team"
 "#;
 
 fn v(a: &[&str]) -> Vec<String> {
@@ -52,26 +52,26 @@ fn origin_of<'a>(r: &'a Resolved, f: &str) -> &'a str {
 }
 
 #[test]
-fn bcct_is_the_dir_rule_of_cc_plus_the_tmux_of_cct_plus_its_own_account() {
-    let r = resolved(BOOK, "betacct", &[]);
+fn teamcct_is_the_dir_rule_of_cc_plus_the_tmux_of_cct_plus_its_own_account() {
+    let r = resolved(BOOK, "teamcct", &[]);
     let o = opts_of(&r);
     assert_eq!(
         o.cwd_if,
         vec![("~".to_string(), "~/projects/notes".to_string())]
     );
     assert!(o.use_tmux, "cct 的 tmux 要传下来");
-    assert_eq!(o.account, "b");
+    assert_eq!(o.account, "team");
     assert!(o.passthru.is_empty());
     assert_eq!(origin_of(&r, flag::CWD_IF), "cc");
     assert_eq!(origin_of(&r, flag::TMUX), "cct");
-    assert_eq!(origin_of(&r, flag::ACCOUNT), "betacct");
+    assert_eq!(origin_of(&r, flag::ACCOUNT), "teamcct");
 }
 
 #[test]
 fn words_after_the_name_reach_claude_untouched_and_options_after_dashdash_win() {
     let r = resolved(
         BOOK,
-        "betacct",
+        "teamcct",
         &["你好", "--model", "opus", "--", "--account", "x"],
     );
     let o = opts_of(&r);
@@ -228,7 +228,7 @@ fn the_file_speaks_exactly_the_command_lines_words() {
 
 #[test]
 fn the_command_line_form_and_the_file_form_say_the_same_thing() {
-    let by_file = resolved(BOOK, "betacct", &["你好"]);
+    let by_file = resolved(BOOK, "teamcct", &["你好"]);
     let by_cli = crate::control::ccm::argv::parse(&v(&[
         "你好",
         "--",
@@ -237,7 +237,7 @@ fn the_command_line_form_and_the_file_form_say_the_same_thing() {
         "~/projects/notes",
         "--ccm-tmux",
         "--account",
-        "b",
+        "team",
     ]))
     .unwrap();
     let (Parsed::Opts(a), Parsed::Opts(b)) = (&by_file.parsed, &by_cli) else {
@@ -272,12 +272,12 @@ fn editing_one_profile_keeps_the_hand_written_comments_and_the_other_profiles_by
     );
     assert!(out.contains("account = \"z\""), "{out}");
     assert!(
-        out.contains("[betacct]\nfrom = \"cct\"\naccount = \"b\"\n"),
+        out.contains("[teamcct]\nfrom = \"cct\"\naccount = \"team\"\n"),
         "{out}"
     );
     let back = parse_book(&out);
     assert!(back.problems.is_empty(), "{:?}", back.problems);
-    assert_eq!(opts_of(&resolved(&out, "betacct", &[])).account, "b");
+    assert_eq!(opts_of(&resolved(&out, "teamcct", &[])).account, "team");
 }
 
 #[test]
@@ -286,21 +286,21 @@ fn a_new_profile_is_appended_and_a_removed_one_is_gone() {
     set_profile(
         &mut f,
         &ProfileEdit {
-            name: "alphacc".into(),
+            name: "workcc".into(),
             from: Some("cc".into()),
             agent: Vec::new(),
-            ccm: v(&["--account", "z", "--cwd-if", "/a", "/b"]),
+            ccm: v(&["--account", "work", "--cwd-if", "/a", "/b"]),
         },
     )
     .unwrap();
-    remove_profile(&mut f, "betacct");
+    remove_profile(&mut f, "teamcct");
     let out = f.to_string();
     let b = parse_book(&out);
     assert!(b.problems.is_empty(), "{:?}\n{out}", b.problems);
-    assert!(b.find("betacct").is_none());
-    let r = resolved(&out, "alphacc", &[]);
+    assert!(b.find("teamcct").is_none());
+    let r = resolved(&out, "workcc", &[]);
     let o = opts_of(&r);
-    assert_eq!(o.account, "z");
+    assert_eq!(o.account, "work");
     assert_eq!(
         o.cwd_if,
         vec![
@@ -313,9 +313,9 @@ fn a_new_profile_is_appended_and_a_removed_one_is_gone() {
 #[test]
 fn a_profile_reads_back_as_its_own_layer_in_command_line_words() {
     let b = parse_book(BOOK);
-    let p = b.find("betacct").unwrap();
+    let p = b.find("teamcct").unwrap();
     assert_eq!(p.from.as_deref(), Some("cct"));
-    assert_eq!(p.ccm_words(), v(&["--account", "b"]));
+    assert_eq!(p.ccm_words(), v(&["--account", "team"]));
     let cc = b.find("cc").unwrap();
     assert_eq!(cc.ccm_words(), v(&["--cwd-if", "~", "~/projects/notes"]));
 }

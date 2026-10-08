@@ -29,7 +29,7 @@ pub(crate) fn alias_name(account: &str, tmux: bool) -> Option<String> {
 }
 
 /// 这一段是不是「账号那一形」：自己只写了号（可再加 tmux），没有交给 agent 的词 ⇒ `(号, 是否 tmux)`，号与 tmux 按合并下来的算
-/// （`alphacct` 基于 `cct` 只写了号，也是「z 号 ＋ tmux」）。**不看名字**（名字是用户可改的）；合不下来的那一段不算。
+/// （`workcct` 基于 `cct` 只写了号，也是「work 号 ＋ tmux」）。**不看名字**（名字是用户可改的）；合不下来的那一段不算。
 pub(crate) fn shape_of(book: &Book, p: &Profile) -> Option<(String, bool)> {
     let acct = flag::ACCOUNT.trim_start_matches('-');
     let tmux = flag::TMUX.trim_start_matches('-');

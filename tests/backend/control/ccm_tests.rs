@@ -90,22 +90,22 @@ fn routing_reads_the_name_it_was_called_by_then_the_argv() {
     }
     assert_eq!(
         route(
-            "/home/u/.cc-monitor/bin/betacct",
+            "/home/u/.cc-monitor/bin/teamcct",
             &v(&["你好", "--", "--ccm-print"])
         ),
-        Entry::Ccm(v(&["@betacct", "你好", "--", "--ccm-print"]))
+        Entry::Ccm(v(&["@teamcct", "你好", "--", "--ccm-print"]))
     );
     assert_eq!(
-        route("betacct", &v(&["--", "--ping"])),
-        Entry::Ccm(v(&["@betacct", "--", "--ping"])),
+        route("teamcct", &v(&["--", "--ping"])),
+        Entry::Ccm(v(&["@teamcct", "--", "--ping"])),
         "被叫成配置名的那一趟不进后端"
     );
     let inner = v(&["--tail-only", "--", "--cwd", "/p", "--ccm-agent", "claude"]);
     for (a0, me) in [
         ("/x/ccm", "/x/ccm"),
         ("/x/cc-monitor-backend", "/x/cc-monitor-backend"),
-        ("/x/betacct", "/x/ccm"),
-        ("betacct", "ccm"),
+        ("/x/teamcct", "/x/ccm"),
+        ("teamcct", "ccm"),
     ] {
         let mut again = self_invocation(&v(&[a0, "--", "--ccm-tmux=n"]));
         assert_eq!(again, v(&[me]), "「怎么叫我」（{a0}）");

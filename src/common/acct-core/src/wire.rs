@@ -128,7 +128,7 @@ pub struct AliasChange {
     pub path: String,
     /// 这一趟真写了没有（内容没变 ⇒ 一个字节不写）。
     pub changed: bool,
-    /// 建号：加进去的别名（如 `alphacc` `alphacct`）。
+    /// 建号：加进去的别名（如 `workcc` `workcct`）。
     pub added: Vec<String>,
     /// 删号：删掉的别名（参数指向这个号的全部）。
     pub removed: Vec<String>,

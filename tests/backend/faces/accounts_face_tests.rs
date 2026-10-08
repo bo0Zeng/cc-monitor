@@ -171,10 +171,10 @@ fn code(t: &Tmp, cmd: &str, args: Value) -> &'static str {
     }
 }
 
-/// 装一套：d（从现有登录收成默认号）＋ x（订阅号，导入一份凭据）。
+/// 装一套：lab（从现有登录收成默认号）＋ x（订阅号，导入一份凭据）。
 fn two_accounts(tag: &str) -> Tmp {
     let t = machine(tag);
-    ok(&t, "accounts-init", json!({ "name": "d" }));
+    ok(&t, "accounts-init", json!({ "name": "lab" }));
     t.write("snap/cred-x.json", "{\"fake\":\"cred-x\"}");
     ok(
         &t,
@@ -235,18 +235,22 @@ fn tree(root: &Path) -> Vec<(String, String, String)> {
 
 // ───────────────────────────── 建账号库 ─────────────────────────────
 
-/// ★ 预演一个字节都不写；真做：身份那几份搬进 `<库>/d`、共享项全是链回共享库的链接、排除的不链、权限 0700 / 0600、
-/// 清单 v1 的五格 ＋ 账号 0 在末尾且没有 `configDir` 键、别名文件里有 `zetacc`。
+/// ★ 预演一个字节都不写；真做：身份那几份搬进 `<库>/lab`、共享项全是链回共享库的链接、排除的不链、权限 0700 / 0600、
+/// 清单 v1 的五格 ＋ 账号 0 在末尾且没有 `configDir` 键、别名文件里有 `labcc`。
 #[test]
 fn init_moves_the_identity_links_the_rest_and_writes_the_manifest_and_alias() {
     let t = machine("init");
     let before = tree(&t.0);
-    let dry = ok(&t, "accounts-init", json!({ "name": "d", "dryRun": true }));
+    let dry = ok(
+        &t,
+        "accounts-init",
+        json!({ "name": "lab", "dryRun": true }),
+    );
     assert_eq!(dry["applied"], false);
     assert!(dry["steps"].as_array().unwrap().len() >= 8, "{dry}");
     assert_eq!(tree(&t.0), before, "预演动了盘");
 
-    let got = ok(&t, "accounts-init", json!({ "name": "d" }));
+    let got = ok(&t, "accounts-init", json!({ "name": "lab" }));
     assert_eq!(got["applied"], true);
     assert!(got["backup"].is_string());
     for moved in [
@@ -256,20 +260,20 @@ fn init_moves_the_identity_links_the_rest_and_writes_the_manifest_and_alias() {
         ".claude.json",
     ] {
         assert!(
-            t.p(&format!(".cc-monitor/accounts/d/{moved}")).is_file(),
+            t.p(&format!(".cc-monitor/accounts/lab/{moved}")).is_file(),
             "{moved} 没搬进来"
         );
-        assert!(!t.is_link(&format!(".cc-monitor/accounts/d/{moved}")));
+        assert!(!t.is_link(&format!(".cc-monitor/accounts/lab/{moved}")));
     }
     assert!(
-        t.p(".cc-monitor/accounts/d/backups").is_dir()
-            && !t.is_link(".cc-monitor/accounts/d/backups")
+        t.p(".cc-monitor/accounts/lab/backups").is_dir()
+            && !t.is_link(".cc-monitor/accounts/lab/backups")
     );
     assert!(!t.exists(".claude/.credentials.json"), "共享库里还留着凭据");
     assert!(!t.exists(".claude.json"), "$HOME/.claude.json 没迁走");
     for shared in ["skills", "projects", "settings.json", "CLAUDE.md"] {
         assert_eq!(
-            t.link_of(&format!(".cc-monitor/accounts/d/{shared}")),
+            t.link_of(&format!(".cc-monitor/accounts/lab/{shared}")),
             t.s(&format!(".claude/{shared}")),
             "{shared}"
         );
@@ -280,14 +284,14 @@ fn init_moves_the_identity_links_the_rest_and_writes_the_manifest_and_alias() {
         "settings.json.bak-before-x",
     ] {
         assert!(
-            !t.exists(&format!(".cc-monitor/accounts/d/{excluded}")),
+            !t.exists(&format!(".cc-monitor/accounts/lab/{excluded}")),
             "{excluded} 被链了"
         );
     }
     assert_eq!(t.mode(".cc-monitor/accounts"), 0o700);
-    assert_eq!(t.mode(".cc-monitor/accounts/d"), 0o700);
-    assert_eq!(t.mode(".cc-monitor/accounts/d/.credentials.json"), 0o600);
-    assert_eq!(t.mode(".cc-monitor/accounts/d/.claude.json"), 0o600);
+    assert_eq!(t.mode(".cc-monitor/accounts/lab"), 0o700);
+    assert_eq!(t.mode(".cc-monitor/accounts/lab/.credentials.json"), 0o600);
+    assert_eq!(t.mode(".cc-monitor/accounts/lab/.claude.json"), 0o600);
     assert_eq!(t.mode(".cc-monitor/accounts/accounts.json"), 0o600);
     let m = t.manifest();
     assert_eq!(m["version"], 1);
@@ -300,7 +304,7 @@ fn init_moves_the_identity_links_the_rest_and_writes_the_manifest_and_alias() {
     assert_eq!(accts.len(), 2);
     assert_eq!(
         accts[0],
-        json!({ "name": "d", "email": "first@example.test", "configDir": t.s(".cc-monitor/accounts/d"),
+        json!({ "name": "lab", "email": "first@example.test", "configDir": t.s(".cc-monitor/accounts/lab"),
                 "isDefault": true, "mode": "isolated" })
     );
     assert_eq!(accts[1]["name"], "0");
@@ -315,22 +319,25 @@ fn init_moves_the_identity_links_the_rest_and_writes_the_manifest_and_alias() {
         "清单里漏了凭据"
     );
     // 配置文件第一次建出来：首建那两段 ＋ 这个号的两段（基于 cc / cct、只写自己的号；只在建号那一刻加）。
-    assert_eq!(profile_names(&t), ["cc", "cct", "zetacc", "zetacct"]);
-    assert_eq!(own(&t, "zetacc"), (Some("cc".into()), sv(&["--account", "d"])));
+    assert_eq!(profile_names(&t), ["cc", "cct", "labcc", "labcct"]);
     assert_eq!(
-        own(&t, "zetacct"),
-        (Some("cct".into()), sv(&["--account", "d"]))
+        own(&t, "labcc"),
+        (Some("cc".into()), sv(&["--account", "lab"]))
     );
     assert_eq!(
-        std::fs::read_link(t.p(".cc-monitor/bin/zetacct"))
+        own(&t, "labcct"),
+        (Some("cct".into()), sv(&["--account", "lab"]))
+    );
+    assert_eq!(
+        std::fs::read_link(t.p(".cc-monitor/bin/labcct"))
             .unwrap()
             .display()
             .to_string(),
         "ccm",
         "不撞名的做成指向 ccm 的链接"
     );
-    assert_eq!(got["aliases"][0]["added"], json!(["zetacc", "zetacct"]));
-    assert_eq!(got["aliasNames"], json!(["zetacc", "zetacct"]));
+    assert_eq!(got["aliases"][0]["added"], json!(["labcc", "labcct"]));
+    assert_eq!(got["aliasNames"], json!(["labcc", "labcct"]));
 }
 
 /// 拒绝：已建过 · 名字不合规（空格 · `../` · `/` · 保留名 `0`）· 身份文件是链接（旧的软链切号方案）。拒了一个字节都不写。
@@ -345,19 +352,25 @@ fn init_refusals_leave_nothing_behind() {
         );
     }
     assert!(!t.exists(".cc-monitor/accounts"), "被拒后落了盘");
-    assert_eq!(code(&t, "accounts-init", json!({ "nam": "d" })), "bad_args");
     assert_eq!(
-        code(&t, "accounts-init", json!({ "name": "d", "extra": 1 })),
+        code(&t, "accounts-init", json!({ "nam": "lab" })),
+        "bad_args"
+    );
+    assert_eq!(
+        code(&t, "accounts-init", json!({ "name": "lab", "extra": 1 })),
         "bad_args"
     );
 
     std::fs::rename(t.p(".claude/.credentials.json"), t.p("real-cred.json")).unwrap();
     std::os::unix::fs::symlink(t.p("real-cred.json"), t.p(".claude/.credentials.json")).unwrap();
-    assert_eq!(code(&t, "accounts-init", json!({ "name": "d" })), "refused");
+    assert_eq!(
+        code(&t, "accounts-init", json!({ "name": "lab" })),
+        "refused"
+    );
     assert!(!t.exists(".cc-monitor/accounts"));
 
     let u = machine("init-twice");
-    ok(&u, "accounts-init", json!({ "name": "d" }));
+    ok(&u, "accounts-init", json!({ "name": "lab" }));
     assert_eq!(code(&u, "accounts-init", json!({ "name": "e" })), "refused");
 }
 
@@ -365,8 +378,8 @@ fn init_refusals_leave_nothing_behind() {
 #[test]
 fn init_on_an_empty_home_creates_the_shared_root_too() {
     let t = tmp("empty");
-    let got = ok(&t, "accounts-init", json!({ "name": "d" }));
-    assert!(t.p(".claude").is_dir() && t.p(".cc-monitor/accounts/d").is_dir());
+    let got = ok(&t, "accounts-init", json!({ "name": "lab" }));
+    assert!(t.p(".claude").is_dir() && t.p(".cc-monitor/accounts/lab").is_dir());
     assert!(!got["notes"].as_array().unwrap().is_empty(), "{got}");
     assert_eq!(t.manifest()["accounts"][0]["email"], "");
 }
@@ -374,11 +387,11 @@ fn init_on_an_empty_home_creates_the_shared_root_too() {
 // ───────────────────────────── 加号 ─────────────────────────────
 
 /// ★ 订阅号从一份凭据导入：`0600` 的一份拷贝（源不动）· 共享项全链 · 身份之外那几份状态从共享库复制成它自己的（不是链接）·
-/// `.claude.json` 不从别人那儿复制 · 清单追加 · 别名文件多一条 `xcc`、原来的 `zetacc` 与用户自己的别名都在 · 导入了就不给登录那一行。
+/// `.claude.json` 不从别人那儿复制 · 清单追加 · 别名文件多一条 `xcc`、原来的 `labcc` 与用户自己的别名都在 · 导入了就不给登录那一行。
 #[test]
 fn add_imports_credentials_links_shared_items_and_updates_manifest_and_aliases() {
     let t = machine("add");
-    ok(&t, "accounts-init", json!({ "name": "d" }));
+    ok(&t, "accounts-init", json!({ "name": "lab" }));
     // 用户自己手写进配置文件的一段：建号不碰它。
     t.write(
         ".cc-monitor/profiles.toml",
@@ -429,9 +442,9 @@ fn add_imports_credentials_links_shared_items_and_updates_manifest_and_aliases()
         .iter()
         .map(|a| a["name"].as_str().unwrap())
         .collect();
-    assert_eq!(names, ["d", "x", "0"]);
+    assert_eq!(names, ["lab", "x", "0"]);
     let have = profile_names(&t);
-    for n in ["zetacc", "xcc", "xcct", "mine"] {
+    for n in ["labcc", "xcc", "xcct", "mine"] {
         assert!(have.iter().any(|h| h == n), "少了 {n}：{have:?}");
     }
     assert_eq!(got["aliases"][0]["added"], json!(["xcc", "xcct"]));
@@ -442,7 +455,7 @@ fn add_imports_credentials_links_shared_items_and_updates_manifest_and_aliases()
 
     // 两个号的身份互不覆盖：各写各的。
     t.write(
-        ".cc-monitor/accounts/d/.credentials.json",
+        ".cc-monitor/accounts/lab/.credentials.json",
         "{\"fake\":\"d2\"}",
     );
     assert_eq!(
@@ -452,7 +465,7 @@ fn add_imports_credentials_links_shared_items_and_updates_manifest_and_aliases()
     // 共享是活的：共享库改一处，两个号都看得见；一个号写的落进共享库。
     t.write(".claude/skills/new.md", "n");
     assert!(
-        t.p(".cc-monitor/accounts/d/skills/new.md").is_file()
+        t.p(".cc-monitor/accounts/lab/skills/new.md").is_file()
             && t.p(".cc-monitor/accounts/x/skills/new.md").is_file()
     );
     t.write(".cc-monitor/accounts/x/skills/from-x.md", "y");
@@ -463,7 +476,7 @@ fn add_imports_credentials_links_shared_items_and_updates_manifest_and_aliases()
 #[test]
 fn add_without_credentials_hands_back_the_login_line() {
     let t = machine("add-login");
-    ok(&t, "accounts-init", json!({ "name": "d" }));
+    ok(&t, "accounts-init", json!({ "name": "lab" }));
     let got = ok(
         &t,
         "accounts-add",
@@ -478,8 +491,8 @@ fn add_without_credentials_hands_back_the_login_line() {
     assert_eq!(m["accounts"][0]["isDefault"], false);
     assert_eq!(m["accounts"][1]["isDefault"], true);
     assert_eq!(
-        ok(&t, "accounts-login-cmd", json!({ "name": "d" }))["cmd"],
-        format!("'{}' -- --account 'd'", t.s(".cc-monitor/bin/ccm"))
+        ok(&t, "accounts-login-cmd", json!({ "name": "lab" }))["cmd"],
+        format!("'{}' -- --account 'lab'", t.s(".cc-monitor/bin/ccm"))
     );
     assert_eq!(
         code(&t, "accounts-login-cmd", json!({ "name": "nope" })),
@@ -500,12 +513,12 @@ fn add_refusals_leave_no_half_built_account() {
         "not_enabled"
     );
     assert!(!t.exists(".cc-monitor/accounts"));
-    ok(&t, "accounts-init", json!({ "name": "d" }));
+    ok(&t, "accounts-init", json!({ "name": "lab" }));
     assert_eq!(
         code(
             &t,
             "accounts-add",
-            json!({ "name": "d", "kind": "subscription" })
+            json!({ "name": "lab", "kind": "subscription" })
         ),
         "refused"
     );
@@ -565,7 +578,7 @@ fn add_refusals_leave_no_half_built_account() {
 #[test]
 fn api_key_account_lands_its_key_in_the_apikey_table_not_in_the_manifest() {
     let t = machine("api");
-    ok(&t, "accounts-init", json!({ "name": "d" }));
+    ok(&t, "accounts-init", json!({ "name": "lab" }));
     let keys = Mutex::new(Vec::new());
     let got = call_with(
         &t,
@@ -617,7 +630,7 @@ fn api_key_account_lands_its_key_in_the_apikey_table_not_in_the_manifest() {
 #[test]
 fn a_key_that_does_not_land_is_said_not_swallowed() {
     let t = machine("api-fail");
-    ok(&t, "accounts-init", json!({ "name": "d" }));
+    ok(&t, "accounts-init", json!({ "name": "lab" }));
     let key_set =
         |_: &Value| -> file_face::FileFaceAnswer { Err(("io_failed", "盘满了".to_string())) };
     let got = call_door(
@@ -645,17 +658,17 @@ fn remove_deletes_only_the_account_dir_and_its_alias() {
     assert!(!t.exists(".cc-monitor/accounts/x"));
     assert_eq!(tree(&t.p(".claude")), shared_before, "共享库被动了");
     assert!(!profile_names(&t).iter().any(|n| n.starts_with("xcc")));
-    assert!(profile_names(&t).iter().any(|n| n == "zetacc"));
+    assert!(profile_names(&t).iter().any(|n| n == "labcc"));
     assert!(
         !t.p(".cc-monitor/bin/xcc").is_symlink(),
         "删掉的那一段，链接也没了"
     );
     assert_eq!(got["aliases"][0]["removed"], json!(["xcc", "xcct"]));
     assert_eq!(
-        code(&t, "accounts-remove", json!({ "name": "d" })),
+        code(&t, "accounts-remove", json!({ "name": "lab" })),
         "refused"
     );
-    assert!(t.p(".cc-monitor/accounts/d").is_dir());
+    assert!(t.p(".cc-monitor/accounts/lab").is_dir());
     assert_eq!(
         code(&t, "accounts-remove", json!({ "name": "0" })),
         "refused"
@@ -682,7 +695,7 @@ fn default_moves_on_remove_and_can_be_set() {
     let again = ok(&t, "accounts-set-default", json!({ "name": "x" }));
     assert_eq!(again["applied"], false, "已是默认还改了一遍");
     let got = ok(&t, "accounts-remove", json!({ "name": "x", "force": true }));
-    assert!(got["notes"].to_string().contains('d'), "{got}");
+    assert!(got["notes"].to_string().contains("lab"), "{got}");
     assert_eq!(t.manifest()["accounts"][0]["isDefault"], true);
 }
 
@@ -690,7 +703,7 @@ fn default_moves_on_remove_and_can_be_set() {
 #[test]
 fn removing_an_api_account_drops_its_key_row_and_rollback_puts_it_back() {
     let t = machine("rmk");
-    ok(&t, "accounts-init", json!({ "name": "d" }));
+    ok(&t, "accounts-init", json!({ "name": "lab" }));
     for (name, key) in [("k1", "sk-first-1111"), ("k2", "sk-second-2222")] {
         ok(
             &t,
@@ -764,7 +777,7 @@ fn set_default_repair_and_verify_refuse_what_they_cannot_do() {
         "refused"
     );
     assert_eq!(
-        code(&t, "accounts-verify", json!({ "names": ["d"] })),
+        code(&t, "accounts-verify", json!({ "names": ["lab"] })),
         "bad_args"
     );
     assert_eq!(
@@ -776,7 +789,7 @@ fn set_default_repair_and_verify_refuse_what_they_cannot_do() {
     let empty_before = tree(&empty.0);
     assert_eq!(code(&empty, "accounts-repair", json!({})), "not_enabled");
     assert_eq!(
-        code(&empty, "accounts-set-default", json!({ "name": "d" })),
+        code(&empty, "accounts-set-default", json!({ "name": "lab" })),
         "not_enabled"
     );
     assert_eq!(tree(&empty.0), empty_before, "没有账号库时动了盘");
@@ -882,7 +895,7 @@ fn verify_fails_on_each_broken_invariant() {
 #[test]
 fn verify_on_empty_shared_and_broken_sources() {
     let t = tmp("v-empty");
-    ok(&t, "accounts-init", json!({ "name": "d" }));
+    ok(&t, "accounts-init", json!({ "name": "lab" }));
     assert!(checks(&verify(&t), "fail")
         .iter()
         .any(|f| f.contains(&t.s(".claude"))));
@@ -890,7 +903,10 @@ fn verify_on_empty_shared_and_broken_sources() {
     let u = two_accounts("v-src");
     std::os::unix::fs::symlink(u.p("gone"), u.p(".claude/local")).unwrap();
     ok(&u, "accounts-repair", json!({}));
-    assert!(u.is_link(".cc-monitor/accounts/d/local"), "断链项也该链上");
+    assert!(
+        u.is_link(".cc-monitor/accounts/lab/local"),
+        "断链项也该链上"
+    );
     let v = verify(&u);
     assert_eq!(v["pass"], true, "{v}");
     assert!(checks(&v, "warn").iter().any(|w| w.contains("local")));
@@ -912,7 +928,7 @@ fn repair_restores_every_invariant_and_is_idempotent() {
     t.write(".claude/newdir/a", "a");
     std::os::unix::fs::symlink(
         t.p(".claude/retired"),
-        t.p(".cc-monitor/accounts/d/retired"),
+        t.p(".cc-monitor/accounts/lab/retired"),
     )
     .unwrap();
     t.chmod(".cc-monitor/accounts/x", 0o755);
@@ -933,14 +949,14 @@ fn repair_restores_every_invariant_and_is_idempotent() {
         t.link_of(".cc-monitor/accounts/x/skills"),
         t.s(".claude/skills")
     );
-    for a in ["d", "x"] {
+    for a in ["lab", "x"] {
         assert_eq!(
             t.link_of(&format!(".cc-monitor/accounts/{a}/newdir")),
             t.s(".claude/newdir"),
             "{a}"
         );
     }
-    assert!(!t.exists(".cc-monitor/accounts/d/retired"));
+    assert!(!t.exists(".cc-monitor/accounts/lab/retired"));
     assert_eq!(t.mode(".cc-monitor/accounts/x"), 0o700);
     assert_eq!(t.mode(".cc-monitor/accounts/x/.credentials.json"), 0o600);
     assert_eq!(t.manifest()["accounts"][1]["email"], "second@example.test");
@@ -992,19 +1008,19 @@ fn isolate_makes_a_private_copy_per_account() {
         json!({ "item": "settings.json", "dryRun": true }),
     );
     assert!(
-        t.is_link(".cc-monitor/accounts/d/settings.json"),
+        t.is_link(".cc-monitor/accounts/lab/settings.json"),
         "预演动了盘"
     );
     assert!(!dry["notes"].as_array().unwrap().is_empty());
     ok(&t, "accounts-isolate", json!({ "item": "settings.json" }));
-    for a in ["d", "x"] {
+    for a in ["lab", "x"] {
         let rel = format!(".cc-monitor/accounts/{a}/settings.json");
         assert!(!t.is_link(&rel), "{a}");
         assert_eq!(t.read(&rel), "{\"theme\":\"dark\"}");
     }
     assert_eq!(t.read(".claude/settings.json"), "{\"theme\":\"dark\"}");
     t.write(
-        ".cc-monitor/accounts/d/settings.json",
+        ".cc-monitor/accounts/lab/settings.json",
         "{\"theme\":\"zzz\"}",
     );
     assert_eq!(
@@ -1059,15 +1075,15 @@ fn rollback_returns_to_the_state_before_a_repair() {
 #[test]
 fn rollback_of_init_puts_the_identity_back() {
     let t = machine("rb-init");
-    let got = ok(&t, "accounts-init", json!({ "name": "d" }));
+    let got = ok(&t, "accounts-init", json!({ "name": "lab" }));
     let id = got["backup"].as_str().unwrap().to_string();
     ok(&t, "accounts-rollback", json!({ "backup": id }));
     assert_eq!(t.read(".claude/.credentials.json"), "{\"fake\":\"cred-d\"}");
     assert!(t.p(".claude.json").is_file());
     assert!(t.p(".claude/backups/one.json").is_file());
-    assert!(!t.exists(".cc-monitor/accounts/d"));
+    assert!(!t.exists(".cc-monitor/accounts/lab"));
     assert!(!t.exists(".cc-monitor/accounts/accounts.json"));
-    assert!(!profile_names(&t).iter().any(|n| n == "zetacc"));
+    assert!(!profile_names(&t).iter().any(|n| n == "labcc"));
 }
 
 /// 回滚一次删号 ⇒ 号回来了，它的两条也按建号加回（清单只跟着账号表里号的增减走）；用户改过名的那条不重复加。
@@ -1086,7 +1102,7 @@ fn rollback_of_a_removal_brings_the_accounts_aliases_back() {
 #[test]
 fn rollback_refuses_traversal_and_skips_out_of_bounds_entries() {
     let t = machine("rb-safe");
-    ok(&t, "accounts-init", json!({ "name": "d" }));
+    ok(&t, "accounts-init", json!({ "name": "lab" }));
     for bad in ["../evil", "a/b", "20260101-000000..x", ""] {
         assert_eq!(
             code(&t, "accounts-rollback", json!({ "backup": bad })),
@@ -1124,11 +1140,11 @@ fn rollback_refuses_traversal_and_skips_out_of_bounds_entries() {
 fn a_profiles_file_with_a_mistake_is_left_alone() {
     let t = machine("alias-odd");
     t.write(".cc-monitor/profiles.toml", "[cc]\nbogus = 1\n");
-    let got = ok(&t, "accounts-init", json!({ "name": "d" }));
+    let got = ok(&t, "accounts-init", json!({ "name": "lab" }));
     assert_eq!(t.read(".cc-monitor/profiles.toml"), "[cc]\nbogus = 1\n");
     assert_eq!(got["aliases"][0]["changed"], false);
     assert!(got["aliases"][0]["note"].is_string());
-    assert!(t.p(".cc-monitor/accounts/d").is_dir());
+    assert!(t.p(".cc-monitor/accounts/lab").is_dir());
 }
 
 /// 名字被用户别的别名占着（参数不一样）⇒ 不盖它、回执里说跳过了它；另一条照加。
@@ -1137,16 +1153,16 @@ fn a_user_alias_with_the_same_name_is_not_overwritten() {
     let t = machine("alias-taken");
     t.write(
         ".cc-monitor/aliases.sh",
-        "zetacc() { ccm \"$@\" -- --ccm-tmux; }\n",
+        "labcc() { ccm \"$@\" -- --ccm-tmux; }\n",
     );
-    let got = ok(&t, "accounts-init", json!({ "name": "d" }));
+    let got = ok(&t, "accounts-init", json!({ "name": "lab" }));
     assert_eq!(
-        own(&t, "zetacc"),
+        own(&t, "labcc"),
         (None, sv(&["--ccm-tmux"])),
         "用户那一条（迁进配置文件的）没被盖"
     );
-    assert_eq!(got["aliases"][0]["skipped"], json!(["zetacc"]));
-    assert_eq!(got["aliases"][0]["added"], json!(["zetacct"]));
+    assert_eq!(got["aliases"][0]["skipped"], json!(["labcc"]));
+    assert_eq!(got["aliases"][0]["added"], json!(["labcct"]));
 }
 
 // ───────────────────────────── 现有账号库原样接着用 ─────────────────────────────
@@ -1155,7 +1171,7 @@ fn a_user_alias_with_the_same_name_is_not_overwritten() {
 #[test]
 fn an_existing_manifest_keeps_what_it_does_not_understand() {
     let t = machine("keep");
-    ok(&t, "accounts-init", json!({ "name": "d" }));
+    ok(&t, "accounts-init", json!({ "name": "lab" }));
     let m = t.manifest();
     let mut v = m.clone();
     v["claudeVersionPinned"] = json!("2.1.200");
