@@ -102,7 +102,7 @@ pub fn measure(rows: &[Listed], frames: usize) -> F1 {
         samples.push(t.elapsed().as_secs_f64() * 1000.0);
         scroll_rows_max = scroll_rows_max.max(tally.rows_materialized);
     }
-    samples.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    samples.sort_by(f64::total_cmp);
     let median = samples[samples.len() / 2];
     let p99 = samples[((samples.len() as f64 * 0.99) as usize).min(samples.len() - 1)];
 

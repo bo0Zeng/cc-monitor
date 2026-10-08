@@ -286,15 +286,19 @@ pub fn escaped_len(c: char) -> usize {
 /// 每块内容（转义之后）最多占多少字节 ＝ 一行上限 − 空内容那一块的信封（块号按最大的算）。
 pub fn chunk_budget() -> usize {
     let key = "0".repeat(32);
-    SAVE_LINE_CAP - request_line_len(CMD_STAGE_CHUNK, &stage_args(&key, u64::MAX, ""))
+    SAVE_LINE_CAP.saturating_sub(request_line_len(
+        CMD_STAGE_CHUNK,
+        &stage_args(&key, u64::MAX, ""),
+    ))
 }
 
 /// 把全文按字切成几块：每块转义之后 ≤ `budget`，**贪心取满**（下一块的第一个字放不进上一块）。
 ///
 /// 按字符边界切 ⇒ 每块都是合法 UTF-8、能原样作为 JSON 字符串发出去；拼回来逐字节等于原文。
-/// `budget` 至少要放得下一个最长的字（6 字节），否则一块都切不出来 —— 那是调用方的错，这里 `assert`。
+/// `budget` 要放得下一个最长的字（6 字节；[`chunk_budget`] 由常量算出，判据钉着它够）。放不下时照 6 切、不 panic：
+/// 那一块超出一行的上限，后端拒，原话照常回到界面（发布档 panic = abort，一 panic 整个窗口就没了）。
 pub fn plan_chunks(content: &str, budget: usize) -> Vec<&str> {
-    assert!(budget >= 6, "plan_chunks: budget {budget} < 6");
+    let budget = budget.max(6);
     let mut out = Vec::new();
     let (mut start, mut used) = (0usize, 0usize);
     for (at, c) in content.char_indices() {
