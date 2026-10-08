@@ -3464,7 +3464,7 @@
     "bash.output.showAll": {
       "kind": "action",
       "role": "按钮",
-      "zh": "全部 {n} 行",
+      "zh": "展开 {n} 行",
       "args": ["n"]
     },
     "bash.output.empty": {
