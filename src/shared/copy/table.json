@@ -235,8 +235,11 @@
     "peerVersion.said.old": {
       "kind": "error",
       "role": "报错",
-      "zh": "{machine} 要更新",
-      "args": ["machine"]
+      "zh": "{machine} 后端要更新",
+      "args": ["machine"],
+      "waive": {
+        "C-W14": "主语是那台的后端，不是机器本身：「{machine} 后端要更新」"
+      }
     },
     "peerVersion.said.unreadable": {
       "kind": "error",
@@ -4978,8 +4981,12 @@
     "accountChip.label.backendOld": {
       "kind": "body",
       "role": "状态",
-      "zh": "要更新",
-      "args": []
+      "zh": "后端要更新",
+      "args": [],
+      "waive": {
+        "C-W3": "chip 上只写「要更新」读着像账号要更新，主语「后端」必须留（定过）",
+        "C-W14": "chip 上只写「要更新」读着像账号要更新，主语「后端」必须留（定过）"
+      }
     },
     "accountChip.label.queryFailed": {
       "kind": "body",
@@ -7095,7 +7102,7 @@
     "machineAliases.policy.allow": {
       "kind": "action",
       "role": "按钮",
-      "zh": "允许运行脚本",
+      "zh": "允许运行本机脚本",
       "args": []
     },
     "machineAliases.policy.confirm": {
@@ -19738,7 +19745,7 @@
     "extPage.hooks.unsupported": {
       "kind": "body",
       "role": "说明",
-      "zh": "不支持自动收信 · 该机无 tmux",
+      "zh": "cc-bus 不支持自动收信 · 该机无 tmux",
       "args": [],
       "limited": ["tmux"]
     },
@@ -27171,7 +27178,7 @@
     "machineAliases.selfPaste.undo": {
       "kind": "action",
       "role": "按钮",
-      "zh": "改为自动接上",
+      "zh": "改由 cc-monitor 接上",
       "args": []
     },
     "machineAliases.selfPaste.failed": {
