@@ -39,12 +39,12 @@ import { copyPattern } from "../../test-support/copy-pattern";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 const FACTS = {
-  machine: { host: "10.0.0.2", user: "u", port: 22, label: "devbox" },
+  machine: { host: "192.0.2.2", user: "u", port: 22, label: "devbox" },
   saved: null,
   jump: null,
   prefer: null,
 };
-const LINE = "& ssh -t -p 22 u@10.0.0.2 -- 'bash -lic ''claude --resume s1'''";
+const LINE = "& ssh -t -p 22 u@192.0.2.2 -- 'bash -lic ''claude --resume s1'''";
 
 /** 替身：机器事实 · 后端渲的那一行（`render` 回 `undefined` ⇒ 通道那一层失败）· 开窗照单全收。 */
 function serve(render: () => unknown): void {

@@ -8,11 +8,11 @@ use serde_json::json;
 fn tables() -> String {
     json!({
         "tcp": [
-            { "la": "10.0.0.5", "lp": 62415, "ra": "10.0.0.9", "rp": 22, "pid": 900 },
-            { "la": "10.0.0.5", "lp": 62414, "ra": "10.0.0.9", "rp": 22, "pid": 700 },
-            { "la": "10.0.0.5", "lp": 50001, "ra": "172.16.0.1", "rp": 443, "pid": 990 },
-            { "la": "10.0.0.5", "lp": 50002, "ra": "192.168.7.7", "rp": 22, "pid": 910 },
-            { "la": "::ffff:10.0.0.5", "lp": 50003, "ra": "10.0.0.20", "rp": 22, "pid": 920 }
+            { "la": "192.0.2.5", "lp": 62415, "ra": "192.0.2.9", "rp": 22, "pid": 900 },
+            { "la": "192.0.2.5", "lp": 62414, "ra": "192.0.2.9", "rp": 22, "pid": 700 },
+            { "la": "192.0.2.5", "lp": 50001, "ra": "198.51.100.1", "rp": 443, "pid": 990 },
+            { "la": "192.0.2.5", "lp": 50002, "ra": "203.0.113.7", "rp": 22, "pid": 910 },
+            { "la": "::ffff:192.0.2.5", "lp": 50003, "ra": "192.0.2.20", "rp": 22, "pid": 920 }
         ],
         "proc": [
             { "pid": 4, "ppid": 0, "name": "System", "start": 0 },
@@ -46,7 +46,7 @@ fn link(pid: u32, name: &str, start: u64) -> Value {
 #[test]
 fn the_exact_connection_names_its_owner_and_the_chain_above_it() {
     assert_eq!(
-        ask(vec![term("10.0.0.5", 62414, "10.0.0.9", 22)]),
+        ask(vec![term("192.0.2.5", 62414, "192.0.2.9", 22)]),
         json!({ "chain": [
             link(700, "ssh.exe", 4000),
             link(600, "powershell.exe", 3000),
@@ -55,16 +55,16 @@ fn the_exact_connection_names_its_owner_and_the_chain_above_it() {
     );
     // 只差对面端口 / 只差本机端口：这台有那个地址 ⇒ 对不上，不是认成别的进程。
     for t in [
-        term("10.0.0.5", 62414, "10.0.0.9", 2222),
-        term("10.0.0.5", 62416, "10.0.0.9", 22),
+        term("192.0.2.5", 62414, "192.0.2.9", 2222),
+        term("192.0.2.5", 62416, "192.0.2.9", 22),
     ] {
         assert_eq!(ask(vec![t]), json!({ "chain": [], "why": "mismatch" }));
     }
     // 第一个对不上、第二个对得上 ⇒ 给第二个的链；那台写的是 IPv4 映射形也认。
     assert_eq!(
         ask(vec![
-            term("10.9.9.9", 1, "10.0.0.9", 22),
-            term("::ffff:10.0.0.5", 62415, "10.0.0.9", 22),
+            term("198.51.100.9", 1, "192.0.2.9", 22),
+            term("::ffff:192.0.2.5", 62415, "192.0.2.9", 22),
         ])["chain"][0],
         link(900, "ssh.exe", 4100)
     );
@@ -79,22 +79,22 @@ fn every_miss_says_which_fact_it_is() {
         json!({ "chain": [], "why": "not-ssh" })
     );
     assert_eq!(
-        ask(vec![term("203.0.113.8", 40000, "10.0.0.9", 22)]),
+        ask(vec![term("203.0.113.8", 40000, "192.0.2.9", 22)]),
         json!({ "chain": [], "why": "elsewhere", "addr": "203.0.113.8" })
     );
-    // 那台看到的对面是 192.168.7.7，这台的 ssh 正连着它 ⇒ 经跳板。
+    // 那台看到的对面是 203.0.113.7，这台的 ssh 正连着它 ⇒ 经跳板。
     assert_eq!(
-        ask(vec![term("192.168.7.7", 41000, "10.0.0.9", 22)]),
+        ask(vec![term("203.0.113.7", 41000, "192.0.2.9", 22)]),
         json!({ "chain": [], "why": "mismatch" })
     );
-    // 连着 172.16.0.1 的是浏览器，不是 ssh ⇒ 不在这台电脑上。
+    // 连着 198.51.100.1 的是浏览器，不是 ssh ⇒ 不在这台电脑上。
     assert_eq!(
-        ask(vec![term("172.16.0.1", 41000, "10.0.0.9", 22)])["why"],
+        ask(vec![term("198.51.100.1", 41000, "192.0.2.9", 22)])["why"],
         "elsewhere"
     );
     assert_eq!(
         ask(vec![
-            term("203.0.113.8", 40000, "10.0.0.9", 22),
+            term("203.0.113.8", 40000, "192.0.2.9", 22),
             json!({ "ssh": null })
         ])["why"],
         "elsewhere"
@@ -105,10 +105,10 @@ fn every_miss_says_which_fact_it_is() {
 #[test]
 fn a_reused_parent_ends_the_chain_and_a_failed_query_is_said() {
     assert_eq!(
-        ask(vec![term("10.0.0.5", 50003, "10.0.0.20", 22)]),
+        ask(vec![term("192.0.2.5", 50003, "192.0.2.20", 22)]),
         json!({ "chain": [link(920, "ssh.exe", 4300)] })
     );
-    let t = json!({ "terminals": [term("10.0.0.5", 62414, "10.0.0.9", 22)] });
+    let t = json!({ "terminals": [term("192.0.2.5", 62414, "192.0.2.9", 22)] });
     for q in [
         Err("exit Some(1): boom".to_string()),
         Ok("not json".to_string()),
@@ -123,8 +123,8 @@ fn a_reused_parent_ends_the_chain_and_a_failed_query_is_said() {
         json!({}),
         json!({ "terminals": [] }),
         json!({ "terminals": [{ "activity": 1 }] }),
-        json!({ "terminals": [term("not-an-ip", 1, "10.0.0.9", 22)] }),
-        json!({ "terminals": [{ "ssh": { "clientAddr": "10.0.0.5", "clientPort": 70000, "serverAddr": "10.0.0.9", "serverPort": 22 } }] }),
+        json!({ "terminals": [term("not-an-ip", 1, "192.0.2.9", 22)] }),
+        json!({ "terminals": [{ "ssh": { "clientAddr": "192.0.2.5", "clientPort": 70000, "serverAddr": "192.0.2.9", "serverPort": 22 } }] }),
     ] {
         let e = answer_with(&bad, || panic!("入参不对还去问了系统")).unwrap_err();
         assert_eq!(e.0, "bad_args", "{bad}");

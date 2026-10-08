@@ -16,7 +16,7 @@ let tauriDriver;
 // 被测 app 产物 exe。**必须由 APP_EXE 给**。
 //
 // 🔴这里原先兜着一个默认值
-// `C:/Users/vm260726/cc-monitor/src/frontend/shell/target/debug/monitor.exe` —— **三段全错**：
+// `C:/Users/user/cc-monitor/src/frontend/shell/target/debug/monitor.exe` —— **三段全错**：
 // 用户名（真机是 `user`）· 构建目录（本仓是 `.build/shell/debug/`，不是 `src/frontend/shell/target/`）·
 // 以及**那台机器上压根没有这个仓**（现打：没有 git/cargo/node）。
 // 而 `run-in-session1.ps1` 里**抄着同一个错值** ⇒ 一个错的默认值有两处住址。

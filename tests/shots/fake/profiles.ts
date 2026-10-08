@@ -55,11 +55,11 @@ function book(): P[] {
   };
   return [
     p("cc", null, ["cwd-if", ["~", "~/projects/notes"]]),
-    p("alphacc", "cc", ["account", ["z"]]),
+    p("acc", "cc", ["account", ["a"]]),
     p("betacc", "cc", ["account", ["b"]]),
-    p("gammacc", "cc", ["account", ["q"]]),
+    p("zetacc", "cc", ["account", ["d"]]),
     p("cct", "cc", ["ccm-tmux", []]),
-    p("alphacct", "cct", ["account", ["z"]]),
+    p("acct", "cct", ["account", ["a"]]),
     p("betacct", "cct", ["account", ["b"]]),
     p("workcct", "cct", ["account", ["work"]]),
     p("workcc", "cc", ["account", ["work"]]),
@@ -169,7 +169,7 @@ function rows(all: P[], name: string): Record<string, unknown>[] {
 }
 
 const LINE: Record<string, string> = {
-  betacct: "tmux new-session -s projects/notes-cc … ccm -- --cwd ~/projects/notes --account b --ccm-tmux",
+  betacct: "tmux new-session -s notes-cc … ccm -- --cwd ~/projects/notes --account b --ccm-tmux",
   cc: "cd ~/projects/notes && exec claude",
 };
 
@@ -194,7 +194,7 @@ export function profilesOps(): Record<string, OpHandler> {
         seed: empty ? seed.map((p) => row(w, p, seed)) : [],
         migrated: st === "migrated" ? { count: 11, path: PATH, skipped: [copyText("beProfile.migrate.restToCcm", { name: "cca" })] } : null,
         binDir: `${HOME}/.cc-monitor/bin`,
-        accounts: ["b", "z", "q", "work"],
+        accounts: ["a", "b", "d", "work"],
       };
     },
     "profiles-resolve": (_o, req, w) => {

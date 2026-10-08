@@ -97,8 +97,8 @@ export function machineOps(): Record<string, OpHandler> {
     }),
     "ssh-config-import": () => ({
       groups: [
-        { label: "devbox", host: "10.0.0.11", port: 22, user: "user", keyPath: null, addresses: ["devbox.example.com:22"], jump: null, members: [{ alias: "devbox", host: "10.0.0.11", port: 22, proxyJump: null }, { alias: "devbox-wan", host: "devbox.example.com", port: 22, proxyJump: null }], inList: true },
-        { label: "build-02", host: "10.0.0.31", port: 2222, user: "ci", keyPath: null, addresses: [], jump: "bastion", members: [{ alias: "build-02", host: "10.0.0.31", port: 2222, proxyJump: "bastion" }], inList: false },
+        { label: "devbox", host: "192.0.2.11", port: 22, user: "user", keyPath: null, addresses: ["devbox.example.com:22"], jump: null, members: [{ alias: "devbox", host: "192.0.2.11", port: 22, proxyJump: null }, { alias: "devbox-wan", host: "devbox.example.com", port: 22, proxyJump: null }], inList: true },
+        { label: "build-02", host: "192.0.2.31", port: 2222, user: "ci", keyPath: null, addresses: [], jump: "bastion", members: [{ alias: "build-02", host: "192.0.2.31", port: 2222, proxyJump: "bastion" }], inList: false },
         { label: "bastion", host: "bastion.example.com", port: 22, user: "user", keyPath: null, addresses: [], jump: null, members: [{ alias: "bastion", host: "bastion.example.com", port: 22, proxyJump: null }], inList: false },
       ],
     }),

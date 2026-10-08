@@ -8,7 +8,7 @@ fn table_with(origin: &str) -> remote_ask::Table {
     let t: remote_ask::Table = Mutex::new(BTreeMap::new());
     remote_ask::register(
         &t,
-        &json!({"origin": origin, "dial": {"machine": {"host": "10.0.0.2", "port": 22, "user": "u", "keyPath": "/k"}, "use": "capture"}}),
+        &json!({"origin": origin, "dial": {"machine": {"host": "192.0.2.2", "port": 22, "user": "u", "keyPath": "/k"}, "use": "capture"}}),
     )
     .unwrap();
     t
@@ -86,7 +86,7 @@ async fn an_unknown_machine_is_not_dialled_and_a_known_one_gets_a_forward_reques
     assert_eq!(list_with(&ledger)["forwards"], json!([]));
 
     let req = forward_request(
-        &json!({"machine": {"host": "10.0.0.2", "port": 22, "user": "u", "keyPath": "/k"}, "use": "capture"}),
+        &json!({"machine": {"host": "192.0.2.2", "port": 22, "user": "u", "keyPath": "/k"}, "use": "capture"}),
         &parse_spec(&args("dev", 15432, "db.internal", 5432)).unwrap(),
     )
     .unwrap();
@@ -98,7 +98,7 @@ async fn an_unknown_machine_is_not_dialled_and_a_known_one_gets_a_forward_reques
     );
     assert_eq!(
         (req.host.as_str(), req.key_path.as_deref()),
-        ("10.0.0.2", Some("/k"))
+        ("192.0.2.2", Some("/k"))
     );
 }
 
@@ -220,7 +220,7 @@ async fn a_machine_that_never_streamed_is_dialled_from_its_config() {
     let seen = Arc::new(Mutex::new(None::<(String, u16, crate::dial::Use)>));
     let s = Arc::clone(&seen);
     let mut a = args("dev", 15434, "localhost", 5432);
-    a["machine"] = json!({"host": "10.9.9.9", "label": "dev", "port": 2201, "user": "u"});
+    a["machine"] = json!({"host": "198.51.100.9", "label": "dev", "port": 2201, "user": "u"});
     start_with(&a, &empty, &ledger, move |req, _up, mut down| {
         *s.lock().unwrap() = Some((req.host.clone(), req.port, req.use_));
         async move {
@@ -234,7 +234,7 @@ async fn a_machine_that_never_streamed_is_dialled_from_its_config() {
     .expect("流没起的那台照样开得起转发");
     assert_eq!(
         seen.lock().unwrap().clone(),
-        Some(("10.9.9.9".to_string(), 2201, crate::dial::Use::Forward))
+        Some(("198.51.100.9".to_string(), 2201, crate::dial::Use::Forward))
     );
     assert_eq!(list_with(&ledger)["forwards"][0]["origin"], "dev");
 }

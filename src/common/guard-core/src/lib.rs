@@ -2437,3 +2437,8 @@ mod build_features;
 #[cfg(test)]
 #[path = "../../../../tests/common/guard-core/no_outside_refs_tests.rs"]
 mod no_outside_refs;
+
+/// 仓里不留私人标识的形状（家目录名 · 私网地址 · 记忆链接 · 邮箱）：只认形状，不点名。
+#[cfg(test)]
+#[path = "../../../../tests/common/guard-core/private_shape_guard_tests.rs"]
+mod private_shape_guard;

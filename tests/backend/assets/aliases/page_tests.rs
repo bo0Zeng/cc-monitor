@@ -202,8 +202,8 @@ fn resolve_takes_the_directory_you_pretend_to_type_in() {
         home["line"].as_str().unwrap(),
         elsewhere["line"].as_str().unwrap(),
     );
-    assert!(a.contains("projects/notes"), "{a}");
-    assert!(!b.contains("projects/notes"), "{b}");
+    assert!(a.contains("notes"), "{a}");
+    assert!(!b.contains("notes"), "{b}");
 }
 
 #[test]

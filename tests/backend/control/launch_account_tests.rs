@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 fn acct(name: &str, f: impl FnOnce(&mut Value)) -> Value {
     let mut a = json!({
-        "name": name, "email": format!("{name}@x.edu"), "configDir": format!("/h/{name}"),
+        "name": name, "email": format!("{name}@example.test"), "configDir": format!("/h/{name}"),
         "isDefault": false, "mode": "isolated", "exists": true, "loggedIn": true,
         "authKind": "subscription", "authReady": true,
     });

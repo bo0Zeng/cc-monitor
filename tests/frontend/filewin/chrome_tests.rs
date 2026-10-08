@@ -253,7 +253,12 @@ fn clicking_a_header_sorts_and_clicking_again_reverses() {
 #[test]
 fn other_machines_exclude_this_one_and_the_local_one() {
     let mut w = window("/m", Vec::new());
-    w.machines = vec!["<local>".into(), "box".into(), "laptop".into(), "devbox".into()];
+    w.machines = vec![
+        "<local>".into(),
+        "box".into(),
+        "laptop".into(),
+        "devbox".into(),
+    ];
     let mut ws = Workspace::new(w);
     assert_eq!(ws.other_machines(), ["laptop", "devbox"]);
     assert!(!ws.open_other("laptop", None), "没通道不该发");

@@ -42,7 +42,7 @@ const saveCfg = fakeCfg.saved;
 function acct(p: Partial<Account>): Account {
   return {
     name: "z",
-    email: "z@x.edu",
+    email: "z@example.test",
     configDir: "/h/.claude-alt/z",
     isDefault: false,
     mode: "isolated",
@@ -214,7 +214,7 @@ describe("detectAccountMismatch（account-ux U1）", () => {
 });
 
 describe("sessionBadge source 字段（account-ux U1/U5）", () => {
-  const emailBy = new Map([["z", "z@x.edu"]]);
+  const emailBy = new Map([["z", "z@example.test"]]);
   it("live → source:'live' + account 全名", () => {
     const m = new Map<string, SessionAccount>([
       ["s1", { pid: 1, sessionId: "s1", cwd: "/w", configDir: "/h/.claude-alt/z", account: "z", bare: false, alive: true }],
@@ -264,7 +264,7 @@ describe("badgeText", () => {
 });
 
 describe("sessionBadge（§3 优先级）", () => {
-  const emailBy = new Map([["z", "z@x.edu"]]);
+  const emailBy = new Map([["z", "z@example.test"]]);
   function live(rows: SessionAccount[]): Map<string, SessionAccount> {
     const m = new Map<string, SessionAccount>();
     for (const r of rows) if (r.sessionId) m.set(r.sessionId, r);
@@ -278,7 +278,7 @@ describe("sessionBadge（§3 优先级）", () => {
     const b = sessionBadge("s1", "devbox", m, emailBy);
     expect(b?.known).toBe(true);
     expect(b?.text).toBe("z");
-    expect(b?.tooltip).toContain("z@x.edu");
+    expect(b?.tooltip).toContain("z@example.test");
     expect(b?.tooltip).toMatch(copyPattern("accounts.sessionBadge.live"));
   });
   it("account:null（探测不到）→ — 不猜", () => {
@@ -352,9 +352,9 @@ describe("modelByAccount config 读写（F07，按机器）", () => {
   });
   it("机器改名：那台的偏好整段搬到新名字下", async () => {
     loadCfg.mockResolvedValue({ accounts: { byMachine: { devbox: { other: "z", modelByAccount: { z: "opus" } }, nano: { other: "a" } } } });
-    await moveMachinePrefs("devbox", "aya2");
+    await moveMachinePrefs("devbox", "devbox2");
     const by = ((saveCfg.mock.calls[0][0] as Record<string, unknown>).accounts as Record<string, unknown>).byMachine as Record<string, unknown>;
-    expect(by).toEqual({ aya2: { other: "z", modelByAccount: { z: "opus" } }, nano: { other: "a" } });
+    expect(by).toEqual({ devbox2: { other: "z", modelByAccount: { z: "opus" } }, nano: { other: "a" } });
   });
 });
 
@@ -510,8 +510,8 @@ describe("parseSessionAccountLines（`--session-accounts` 的逐行）", () => {
 
 describe("sessionBadge 源②（lastAccount 兜底，A4）", () => {
   const emailBy = new Map([
-    ["z", "z@x.edu"],
-    ["b", "b@y.com"],
+    ["z", "z@example.test"],
+    ["b", "b@example.org"],
   ]);
   function live(rows: SessionAccount[]): Map<string, SessionAccount> {
     const m = new Map<string, SessionAccount>();
@@ -531,7 +531,7 @@ describe("sessionBadge 源②（lastAccount 兜底，A4）", () => {
     expect(b?.known).toBe(true);
     expect(b?.text).toBe("b");
     expect(b?.tooltip).toMatch(copyPattern("accounts.sessionBadge.last"));
-    expect(b?.tooltip).toContain("b@y.com");
+    expect(b?.tooltip).toContain("b@example.org");
   });
   it("live 存在但已死 + 有 lastAccount → 回退源②", () => {
     const m = live([

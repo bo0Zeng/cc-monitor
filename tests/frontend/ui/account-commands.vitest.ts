@@ -11,7 +11,7 @@ import { copyPattern } from "../../test-support/copy-pattern";
 function acct(p: Partial<Account>): Account {
   return {
     name: "wei",
-    email: "wei@x.edu",
+    email: "wei@example.test",
     configDir: "/h/.claude-alt/wei",
     isDefault: false,
     mode: "isolated",

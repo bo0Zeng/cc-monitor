@@ -58,7 +58,7 @@
     { "url": "https://h//x", "want": "doubleSlash" },
     { "url": "https://h///x/", "want": "doubleSlash" },
     { "url": "http://api.example.com", "want": "plaintextOffLoopback" },
-    { "url": "http://10.0.0.1:8000", "want": "plaintextOffLoopback" },
+    { "url": "http://192.0.2.1:8000", "want": "plaintextOffLoopback" },
     { "url": "http://127.0.0.01", "want": "plaintextOffLoopback" },
     { "url": "http://128.0.0.1", "want": "plaintextOffLoopback" },
     { "url": "http://127.0.0.256", "want": "plaintextOffLoopback" },

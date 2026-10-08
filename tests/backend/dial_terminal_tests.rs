@@ -55,13 +55,13 @@ fn the_basic_shape_goes_through_the_agent_and_wraps_the_payload_only_twice() {
 #[test]
 fn a_key_and_a_port_render_as_flags_and_the_key_is_ps_quoted() {
     let got = run(
-        machine("10.0.0.2", "u", 2222, Some(r"C:\Users\z's\id_ed25519\")),
+        machine("192.0.2.2", "u", 2222, Some(r"C:\Users\z's\id_ed25519\")),
         "claude --resume s1",
     )
     .unwrap();
     assert!(
         got.starts_with(&format!(
-            "& ssh -t -p 2222 -i 'C:\\Users\\z''s\\id_ed25519'{} u@10.0.0.2 -- ",
+            "& ssh -t -p 2222 -i 'C:\\Users\\z''s\\id_ed25519'{} u@192.0.2.2 -- ",
             kh()
         )),
         "{got}"
@@ -82,21 +82,21 @@ fn single_quotes_in_the_payload_survive_both_layers() {
 
 #[test]
 fn the_address_is_the_first_in_race_order_so_the_last_winner_is_used() {
-    let m = json!({ "host": "lan.example", "user": "u", "port": 22, "label": "m", "addresses": ["10.0.0.9:2200"] });
+    let m = json!({ "host": "lan.example", "user": "u", "port": 22, "label": "m", "addresses": ["192.0.2.9:2200"] });
     let plain = answer(&json!({ "machine": m, "command": "x" })).unwrap();
     assert!(plain["command"]
         .as_str()
         .unwrap()
         .starts_with(&format!("& ssh -t -p 22{} u@lan.example -- ", kh())));
     let won = answer(
-        &json!({ "machine": m, "prefer": { "host": "10.0.0.9", "port": 2200 }, "command": "x" }),
+        &json!({ "machine": m, "prefer": { "host": "192.0.2.9", "port": 2200 }, "command": "x" }),
     )
     .unwrap();
     assert!(
         won["command"]
             .as_str()
             .unwrap()
-            .starts_with(&format!("& ssh -t -p 2200{} u@10.0.0.9 -- ", kh())),
+            .starts_with(&format!("& ssh -t -p 2200{} u@192.0.2.9 -- ", kh())),
         "上次赢的那条没排首：{won}"
     );
 }
@@ -361,7 +361,7 @@ fn a_cwd_intent_renders_exactly_like_the_command_it_stands_for() {
 /// （不出现 `StrictHostKeyChecking` / `/dev/null` 那一类）；路径带空格 / `'` / `%` 照 ssh 的切词规矩写。
 #[test]
 fn the_terminal_hop_trusts_the_monitor_known_hosts_without_disabling_the_check() {
-    let got = run(machine("10.0.0.2", "u", 2222, None), "claude").unwrap();
+    let got = run(machine("192.0.2.2", "u", 2222, None), "claude").unwrap();
     let file = crate::dial::known_hosts::path().unwrap();
     let want = format!(
         " -o {} ",

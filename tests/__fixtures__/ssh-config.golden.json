@@ -7,7 +7,7 @@
     ]
   },
   "ssh-config-resolve": {
-    "host": "10.0.0.2",
+    "host": "192.0.2.2",
     "port": 2222,
     "user": "user",
     "keyPath": null,
@@ -17,7 +17,7 @@
     "groups": [
       {
         "label": "devbox",
-        "host": "10.0.0.2",
+        "host": "192.0.2.2",
         "port": 2222,
         "user": "user",
         "keyPath": null,
@@ -28,7 +28,7 @@
         "members": [
           {
             "alias": "devbox-lan",
-            "host": "10.0.0.2",
+            "host": "192.0.2.2",
             "port": 2222,
             "proxyJump": "bastion"
           },
