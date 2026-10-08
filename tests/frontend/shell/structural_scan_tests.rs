@@ -4102,8 +4102,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ("src/frontend/shell/src/lib.rs", "list_active_sessions", 1), // ⑬ 会话生命周期并进会话流后退役
         ("src/frontend/shell/src/lib.rs", "list_session_activity", 1), // ⑬ 会话生命周期并进会话流后退役
         ("src/doc/ARCHITECTURE.md", "list_active_sessions", 1), // ⑬ 会话生命周期并进会话流后退役
-        ("src/frontend/ui/main.ts", "list_active_sessions", 1), // ⑬ 会话生命周期并进会话流后退役
-        ("src/frontend/ui/main.ts", "list_session_activity", 1), // ⑬ 会话生命周期并进会话流后退役
         (
             "src/frontend/ui/tab-session-state.ts",
             "list_active_sessions",
@@ -4523,7 +4521,6 @@ fn every_prose_tombstone_mark_is_registered() {
         //   以及 KS7 那一格为什么改盯 `patch_config`。
         ("src/frontend/shell/src/logging.rs", 1),
         ("src/frontend/ui/config.ts", 1),
-        ("src/frontend/ui/settings/remote-section.ts", 2),
         ("tests/frontend/ui/config-lost-update.vitest.ts", 1),
         ("tests/frontend/ui/remote-config.vitest.ts", 1),
         ("tests/frontend/ui/settings/remote-section.vitest.ts", 1),
@@ -4823,7 +4820,6 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/frontend/ui/account-availability-guard.vitest.ts", 1),
         // 同一判据 J2 / J3：TS 的 `isValidConfigDir`（渲染侧 configDir 拒绝集的手抄）与 `sanitizeRemoteLauncher`
         //   （同一字符集、却静默换成默认 launcher）删了，点它们的散文各挂一块。
-        ("src/frontend/ui/shell-quote.ts", 7), // +1：`tmuxNameSegment` 随派生 ＋ 避让搬进后端删了 // +2：头注记 `isValidSessionId` · `isValidModelName` 删了 ·+2：两个 tmux 名谓词删了
         // `launch-dimensions.ts` · `launch-dimensions.test.ts` · `launch-payload-golden.ts` 三行随文件删了；
         //   `remote-launch.test.ts` 那一行摘了：套件重写，旧 TS 判定的墓碑随之走了（起会话只交一行 `ccm …`（载荷那一层与它的判据整层删了））。
         // sid 那一族（J5）：TS `isValidSessionId` 与只剩那一格的 `validateLocalLaunch` 删了、wire 多报一格 `resumeSid`。
@@ -4846,14 +4842,12 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/frontend/shell/launch_tests.rs", 2),
         ("tests/frontend/shell/quote_singleton_guard_tests.rs", 2),
         ("tests/frontend/shell/lib_invariant_population_tests.rs", 1),
-        ("src/frontend/ui/settings/machine-card.ts", 1), // 「后端路径」那一格删了，按用户名预填它的函数原地留一块
         ("src/backend/control/ccm/plan.rs", 1),          // `self_argv` 的入口②那一形删了，原地一块
         ("tests/e2e/backend-cc-bus.sh", 1),              // [17] 前的入口②说明删了，原地一块
         ("tests/e2e/backend-gate2-acceptance.sh", 1), // `meta_dollar` 那条登记豁免换成版本门，原地一块
         ("tests/backend/control/ccm_tests.rs", 1), // 那条路由判据并进 claude_flags_tests，原地一块
         // 人读表解析器删了，一处点它旧名的散文挂墓碑。
         ("tests/backend/plugin_walk_fixture.rs", 1),
-        ("src/frontend/ui/main.ts", 4), // 会话起停两个裸事件名（已并进会话流）挂墓碑 2 → 4 // 新贴：⑬ 会话生命周期并进会话流，退役的 list_active_sessions / list_session_activity / buffered_* 旧名挂墓碑
         ("src/frontend/ui/tab-session-state.ts", 1), // 新贴：⑬ 会话生命周期并进会话流，退役的 list_active_sessions / list_session_activity / buffered_* 旧名挂墓碑
         ("src/frontend/ui/tab-store.ts", 1), // 新贴：⑬ 会话生命周期并进会话流，退役的 list_active_sessions / list_session_activity / buffered_* 旧名挂墓碑
         ("src/frontend/ui/tabs.ts", 1), // 新贴：⑬ 会话生命周期并进会话流，退役的 list_active_sessions / list_session_activity / buffered_* 旧名挂墓碑
@@ -4865,7 +4859,6 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/backend/agents/claudecode/branch.rs", 2), // 住址随 branch-core 收进后端适配层；1 → 2：`is_plain_sid` 那个再导出删了，原处一块 // 新贴：删会话 / 分叉 / 钩子诊断的转交退役，点旧名的散文挂墓碑
         ("src/frontend/ui/account-reads.ts", 1), // 起会话的计划与渲染搬进后端：墓碑随搬家换住址 / 点已删命令名的散文挂墓碑
         // `agent-profile.ts` 那一行摘了：适配器 id 那个导出零消费者、随起会话只交一行 `ccm …` 删了，它头注那块墓碑跟着走。
-        ("src/frontend/ui/backend-policy.ts", 1), // 起会话的计划与渲染搬进后端：墓碑随搬家换住址 / 点已删命令名的散文挂墓碑
         // `upstream_select/endpoint.rs` 那一行摘了：头注重写成「中转地址只在 `ccm` 最终 exec 那一处定」，点旧命令名的那块随之走了。
         // `observe/accounts_query.rs` 那一行摘了：身份 token 双写点那段头注改写成今天的两侧（写侧是 `ccm`），点旧判据名的那块随之走了。
         ("src/frontend/shell/src/sync_command_registry.rs", 1), // 起会话的计划与渲染搬进后端：墓碑随搬家换住址 / 点已删命令名的散文挂墓碑
