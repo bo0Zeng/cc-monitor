@@ -309,20 +309,6 @@ pub mod writeops;
 
 // 与 app 那条边界的判据（`boundary_tests`）挂在 monitor 那一侧（壳里 `filewin/mod.rs`）：它判的是 monitor 那一侧够不够得着这里。
 
-/// 🔴 **锁中毒不崩**：后台任务拿着一把锁时 panic ⇒ 那把锁中毒，往后每帧 `lock().unwrap()` 都 panic、整扇窗退出。
-/// 锁里装的都是「这一屏摆什么」的状态（行 · 一问 · 进度），中毒时照旧拿里面那份接着画，比整窗没了强。
-/// 本包的 `std::sync::Mutex` 一律经 `.held()` 取（`workspace_tests::lock_guard_window_takes_locks_via_held` 钉住没有回潮）。
-pub(crate) trait Held<T: ?Sized> {
-    fn held(&self) -> std::sync::MutexGuard<'_, T>;
-}
-
-impl<T: ?Sized> Held<T> for std::sync::Mutex<T> {
-    fn held(&self) -> std::sync::MutexGuard<'_, T> {
-        self.lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-    }
-}
-
 /// 窗口进程的入口：monitor 包里 `[[bin]] cc-monitor-filewin`（`src/frontend/shell/src/filewin/win_main.rs`）只转调这一个函数。
 pub fn run() -> i32 {
     proc::child_main()

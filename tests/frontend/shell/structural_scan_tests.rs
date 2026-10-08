@@ -2483,16 +2483,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             1,
         ),
         // `ccm_probe.rs` 那一行出列：探针头注里「本机远端同一条」那段改写了（远端改问那台后端 `ccm-probe`），不再点那条旧判据名。
-        // 🔴 这两个是 **Codex 自己的 wire 字段名**（仓外：它的
-        //    `token_count` 事件里那个 token 用量子对象的键），本仓一处声明都没有 ——
-        //    散文里点它们是为了说清「入参长什么样 / 哪些字段刻意不单列」。
-        //    ⚠ 它们在改名前住 `crates/usage-core/src/lib.rs`，这张表按路径认键 ⇒ 随改名换住址。
-        (
-            "src/backend/agents/codex/token.rs",
-            "reasoning_output_tokens",
-            1,
-        ),
-        ("src/backend/agents/codex/token.rs", "total_token_usage", 2),
         (
             // 〔搬树 2026-09-18〕散文随测试段搬家，处数一格没变。
             "tests/backend/footprint/rows_tests.rs",
@@ -3725,7 +3715,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "aggregate_remote_usage_all",
             1,
         ),
-        ("src/backend/agents/codex/token.rs", "kou_jing_singleton", 1),
         // `inbound_client_tests.rs` 里 `the_two_tmux_primitive_arg_builders_…` 那一行摘掉：那条判据（它的后继）
         //   随抓屏的参数构造器一起退役，原处换成一块只点后继名的墓碑（`command_args` 那一行登记着）。
         (
@@ -4225,11 +4214,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "codex_sid_from_rollout",
             1,
         ), // 记录解释进后端 / 会话正文四条退役，点旧名
-        (
-            "src/backend/agents/codex/record.rs",
-            "token_usage_fields",
-            1,
-        ), // 记录解释进后端 / 会话正文四条退役，点旧名
         // `adapter.rs` 的 `codex_sid_from_rollout` · `kind_of_record_name` 两行摘了：那份文件删了。
         (
             "src/frontend/shell/src/frame_query.rs",
@@ -4642,7 +4626,6 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/backend/stream/wire.rs", 2), // 1 → 2：会话 / tmux 账本搬进后端，原处墓碑与点旧名的散文 //
         // +2：`install_remote_ccm_helper` 改名那两行。
         ("src/frontend/shell/README.md", 15), // 列 tmux 会话那一行改写（不再点旧名）⇒ 与前一拍同数 // 主线 13 ＋ MIG-1 本路增量 ⇒ 15（盘上现打） // −1：IPC 清单 MCP 那一段整段删了（带墓碑的那句注释随之走） // +2：mcp.rs 那一行（读面改问后端）· 远端项目目录旧名那句 // +1：远端读会话函数（本机远端合成一条）· 3 → 6（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）· 6 → 8：`atomic_write_string` 那一节 ＋ 远端删会话那道结构守卫 ·README 历史那一段重写（历史清单搬进本机后端），用量那句旧线索留着 // 11 → 13
-        ("src/backend/agents/codex/token.rs", 1),
         // 6 → 10：派生改走 `bus-spawn` 原语，删了 SSH 那条构造器与对 `<local>` 的公共拒绝
         //   ⇒ 两块整段墓碑 ＋ 两处订正行（`cc_bus_send` 头注 · `kill_via_backend` 头注里那句旧拒绝）。
         ("src/frontend/shell/src/cc_bus.rs", 1), // 19 → 1：驾驶舱读面迁走、整份收成两句共用说法，旧墓碑段随之删，新头注一处 // 11 → 19：−1 点杀会话发送端那条理由的一处随收掉命令删了；＋9 写面五条迁到界面，原处两块墓碑 ＋ 更早几块墓碑里「换了住址」指向的住址也走了、逐行补标 // +1：点 monitor 杀会话发送端那条读 `killed` 的理由，发送端迁到界面
@@ -4905,7 +4888,6 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/frontend/shell/src/dial_host.rs", 1), // `stream` 用法那一个开链路口删了，原地一块
         ("src/backend/agents/claudecode/schema.rs", 1), // 新行：记录解释进后端 / 会话正文四条退役，点旧名的散文挂墓碑
         ("src/backend/agents/codex/parse.rs", 1), // 新行：记录解释进后端 / 会话正文四条退役，点旧名的散文挂墓碑
-        ("src/backend/agents/codex/record.rs", 1), // 新行：记录解释进后端 / 会话正文四条退役，点旧名的散文挂墓碑
         ("src/comms/inward/origin.rs", 1), // 新行：记录解释进后端 / 会话正文四条退役，点旧名的散文挂墓碑
         ("src/frontend/ui/cards/index.ts", 1), // 2 → 1：卡头按文件名猜家那一段（点 `codex_sid_from_rollout` · `kind_of_record_name` 的墓碑）随「会话是哪一家由后端说」删了 // 1 → 2：结果默认怎么画的那个谓词（`defaultModeForTool`）删了，卡型随记录成品带来 // 新行：记录解释进后端 / 会话正文四条退役，点旧名的散文挂墓碑
         // `src/frontend/ui/record-reads.ts` 那一行摘了：头注里点旧命令名的那一句改成说它做什么（按目录读子 agent 那一条整轴退役），不再提那个名字。

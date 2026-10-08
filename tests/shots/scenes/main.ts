@@ -20,14 +20,31 @@ function card(id: string, title: string, desc: string, act: Scene["act"], world:
   return { id, page: "index", dir: "主窗口-卡片", title, desc, width: W, height: H, world, act };
 }
 
-/** 把第一个会话里某种卡展开（连同它所在的工具组）、滚到它。 */
-async function openCard(sel: string, nth = 0): Promise<void> {
+/** 把第一个会话里某种卡展开（连同它所在的那一轮「过程」与工具组）、滚到它；截之前核它真的在眼前。 */
+async function openCard(sel: string, nth = 0, block: ScrollLogicalPosition = "start"): Promise<void> {
   await mainReady(ALL_TABS);
   const el = document.querySelectorAll<HTMLElement>(sel)[nth];
   if (!el) throw new Error(`没有 ${sel}（第 ${nth} 个）`);
+  await showCard(el, block);
+}
+
+/**
+ * 让一张卡真的出现在视口里：做完的那一轮过程默认折成一行（`turn-fold.ts` 给过程里的卡挂 `proc-hidden`），
+ * 先点开那一轮的过程行，再一层层打开包着它的折叠，最后滚到它。没出现在视口里 ⇒ 抛（宁可这张图截失败，也不截一张主窗口顶部充数）。
+ */
+async function showCard(el: HTMLElement, block: ScrollLogicalPosition = "start"): Promise<void> {
+  const top = el.closest<HTMLElement>("[data-proc-of]");
+  if (top?.classList.contains("proc-hidden")) {
+    document.querySelector<HTMLElement>(`.proc-line[data-turn="${top.dataset.procOf}"]`)?.click();
+    await sleep(400);
+  }
   await expand(el);
-  el.scrollIntoView({ block: "start" });
+  el.scrollIntoView({ block });
   await sleep(400);
+  const r = el.getBoundingClientRect();
+  if (el.closest(".proc-hidden") || r.height === 0 || r.bottom <= 0 || r.top >= window.innerHeight) {
+    throw new Error(`卡没出现在视口里（${el.className}）`);
+  }
 }
 
 /** 展开一张卡：先把外面包着它的折叠（工具组）一层层打开，再打开它自己。 */
@@ -397,21 +414,13 @@ export const MAIN_SCENES: Scene[] = [
     await mainReady(ALL_TABS);
     const all = [...document.querySelectorAll<HTMLDetailsElement>(".block-tool-use")];
     const el = all.find((d) => (d.textContent ?? "").includes("全量测试")) ?? all[all.length - 1];
-    await expand(el);
-    el.scrollIntoView({ block: "center" });
-    await sleep(400);
+    await showCard(el, "center");
   }),
   card("card-retry", "API 重试细条", "调用失败、CLI 正在重试（第 1/2 次）", async () => {
-    await mainReady(ALL_TABS);
-    await scrollStream(".card-api-retry");
+    await openCard(".card-api-retry", 0, "center");
   }),
   card("card-ask", "提问卡与计划卡", "AskUserQuestion（已选）＋ ExitPlanMode 计划", async () => {
-    await mainReady(ALL_TABS);
-    await scrollStream(".block-plan");
-    await sleep(100);
-    const s = document.querySelector(".block-plan");
-    s?.scrollIntoView({ block: "center" });
-    await sleep(300);
+    await openCard(".block-plan", 0, "center");
   }),
   card("card-compact-error", "续接摘要 · 斜杠命令 · API 报错 · 打断", "一个会话里：/compact 续接摘要、斜杠命令卡、529 报错卡、重试细条、用户打断与打断时说的话", async () => {
     await mainReady(ALL_TABS);
@@ -419,9 +428,7 @@ export const MAIN_SCENES: Scene[] = [
   }, oddCardsWorld),
   card("card-table-code", "表格与代码块", "assistant 正文里的表格、有序列表、代码块", async () => {
     await mainReady(ALL_TABS);
-    const el = [...document.querySelectorAll("table")][0];
-    el?.scrollIntoView({ block: "center" });
-    await sleep(400);
+    await openCard("table", 0, "center");
   }),
 ];
 

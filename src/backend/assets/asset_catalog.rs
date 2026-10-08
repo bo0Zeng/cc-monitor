@@ -37,6 +37,7 @@ pub const KIND_SKILL: &str = "skill";
 pub const KIND_MCP: &str = "mcp";
 
 /// 「这台对那一条」的三态闭集（线上 `rows[].state`）。
+#[cfg(test)]
 pub const HERE_STATES: &[&str] = &[HERE_MISSING, HERE_DIFFERS, HERE_SAME];
 /// 这台一条同名的都没有。
 pub const HERE_MISSING: &str = "missing";

@@ -14,7 +14,6 @@
 //! - 取消与进度：后端阻塞档一趟做完才回话（与复制同）⇒ 只有「正在那台机器上算 …」一行。
 //! - 真远端：合成后端上真跑（线上那一行逐格相等），后端那一侧在本机临时目录上真跑，连起来经真远端没有读数。
 
-use crate::Held;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -145,27 +144,27 @@ struct Desk {
 
 impl SizeBoard {
     pub fn attach(&self, ctx: Option<egui::Context>) {
-        *self.ctx.held() = ctx;
+        *self.ctx.lock().unwrap() = ctx;
     }
 
     fn poke(&self) {
-        if let Some(c) = self.ctx.held().as_ref() {
+        if let Some(c) = self.ctx.lock().unwrap().as_ref() {
             c.request_repaint();
         }
     }
 
     pub fn begin(&self, name: &str) {
-        self.inner.held().running = Some(name.to_string());
+        self.inner.lock().unwrap().running = Some(name.to_string());
         self.poke();
     }
 
     pub fn running(&self) -> Option<String> {
-        self.inner.held().running.clone()
+        self.inner.lock().unwrap().running.clone()
     }
 
     pub fn finish(&self, results: Vec<SizeResult>) {
         {
-            let mut d = self.inner.held();
+            let mut d = self.inner.lock().unwrap();
             d.running = None;
             d.last = Some(results);
         }
@@ -178,7 +177,7 @@ impl SizeBoard {
     }
 
     pub fn last(&self) -> Option<Vec<SizeResult>> {
-        self.inner.held().last.clone()
+        self.inner.lock().unwrap().last.clone()
     }
 }
 

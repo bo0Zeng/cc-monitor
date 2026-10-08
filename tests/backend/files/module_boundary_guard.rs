@@ -355,6 +355,11 @@ const OUTWARD: &[(&str, Kind, &str)] = &[
         "同上一格：自家目录里新建的目录给的那个权限位（与 `ensure_private_dir` 同一个值）",
     ),
     (
+        "common::time::mtime_texts_here",
+        Kind::Common,
+        "列目录 · 问元数据 · 查找回的修改时间旁边那两格（列里那一格 · 完整那一格）按这台本地钟写好，文件窗口照抄",
+    ),
+    (
         "TARGETS",
         Kind::Infra,
         "能力声明表（`files::CAPABILITIES`）逐条声明「在哪几个 target 上做得到」，那个轴住汇总层 `lib.rs`\

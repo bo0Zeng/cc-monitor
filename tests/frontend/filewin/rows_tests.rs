@@ -930,7 +930,7 @@ fn the_toolbox_hands_out_a_different_display_to_each_screen() {
 
 /// 三行：一条链接（带时间）· 一个目录（带时间）· 一个文件（时间没送）。
 fn linked_rows() -> Vec<Listed> {
-    let mk = |name: &str, is_dir: bool, link: bool, t: Option<u64>| Listed {
+    let mk = |name: &str, is_dir: bool, link: bool, t: Option<(u64, &str)>| Listed {
         row: Row {
             name: name.to_string(),
             path: format!("/srv/{name}"),
@@ -941,12 +941,15 @@ fn linked_rows() -> Vec<Listed> {
         link,
         link_dir: false,
         link_broken: false,
-        mtime_secs: t,
+        mtime_secs: t.map(|(s, _)| s),
+        // 后端写好的两格（故意与 `mtime_secs` 对不上：窗口若还在自己换算就红）。
+        mtime_text: t.map(|(_, x)| x.to_string()),
+        mtime_full: t.map(|(_, x)| format!("2026-{x} 00:00:00")),
         raw_name: None,
     };
     vec![
-        mk("to-elsewhere", false, true, Some(1_700_000_000)),
-        mk("adir", true, false, Some(951_782_400)),
+        mk("to-elsewhere", false, true, Some((1_700_000_000, "07-01"))),
+        mk("adir", true, false, Some((951_782_400, "07-02"))),
         mk("plain.txt", false, false, None),
     ]
 }
@@ -992,10 +995,7 @@ fn the_time_column_shows_exactly_the_times_that_were_sent() {
     let rows = linked_rows();
     let _ = render_headless_with_events_and_text(&ctx, &rows, screen(), 0.0, Vec::new());
     let (_, painted) = render_headless_with_events_and_text(&ctx, &rows, screen(), 0.1, Vec::new());
-    let want: Vec<String> = rows
-        .iter()
-        .filter_map(|r| r.mtime_secs.map(|t| crate::source::mtime_text(t).short))
-        .collect();
+    let want: Vec<String> = rows.iter().filter_map(|r| r.mtime_text.clone()).collect();
     assert_eq!(want.len(), 2, "语料自己变了");
     for s in &want {
         assert_eq!(

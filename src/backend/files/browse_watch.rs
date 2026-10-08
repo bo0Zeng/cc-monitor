@@ -25,13 +25,13 @@ use std::path::{Path, PathBuf};
 pub const MAX_BROWSE_WATCHES: usize = 64;
 
 /// 一个被盯着的目录，以及它**最近一次重列**出来的直接子项（全路径原始字节 ＋ 类型字节）。
-struct Watched {
+pub(super) struct Watched {
     dir: Vec<u8>,
     children: Vec<(Vec<u8>, u8)>,
 }
 
 /// 眼下盯着的那几个目录。**进程里只有这一份。**
-static WATCHED: std::sync::RwLock<Vec<Watched>> = std::sync::RwLock::new(Vec::new());
+pub(super) static WATCHED: std::sync::RwLock<Vec<Watched>> = std::sync::RwLock::new(Vec::new());
 
 /// 查询时拿的那一份 overlay（只读快照）。
 pub struct Overlay {
@@ -192,14 +192,6 @@ pub fn dir_for_event(path_bytes: &[u8]) -> Option<Vec<u8>> {
         .find(|w| w.dir == path_bytes || super::raw::is_direct_child(path_bytes, &w.dir))
         .map(|w| w.dir.clone())
 }
-
-/// 只给判据用：把名单清空，让每条判据从一个已知状态起跑。
-pub fn forget_all() {
-    if let Ok(mut g) = WATCHED.write() {
-        g.clear();
-    }
-}
-
 // ══════════════════════ 真的挂上去那一跳 ══════════════════════
 
 /// 一个活着的监听器。它一被丢掉，watch 就跟着没了 —— 调用方要拿住它。

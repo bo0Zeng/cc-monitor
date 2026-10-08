@@ -118,3 +118,79 @@ fn a_powershell_starts_without_profile_and_without_the_inherited_policy() {
         );
     }
 }
+
+/// ★ 起会话那个 shell 的 `PATH`：从输出里认标记那一段（rc 文件往标准输出打的杂话不算进去）；没有标记 / 空 ⇒ 问不出来。
+#[test]
+fn the_session_shell_path_is_read_between_its_markers() {
+    use super::{parse_marked_path, SESSION_PATH_MARK as M};
+    assert_eq!(
+        parse_marked_path(&format!("欢迎\n{M}/a/bin:/b/bin{M}\n")),
+        Some("/a/bin:/b/bin".to_string())
+    );
+    assert_eq!(
+        parse_marked_path("欢迎\n/a/bin:/b/bin\n"),
+        None,
+        "没有标记却认出了一段"
+    );
+    assert_eq!(
+        parse_marked_path(&format!("{M}{M}")),
+        None,
+        "空的 PATH 不是答案"
+    );
+}
+
+/// 沙箱家目录（`sh` 代替用户的 shell；登录时读的那份文件由各条自己写）。
+#[cfg(unix)]
+fn login_box(tag: &str, profile: &str) -> std::path::PathBuf {
+    let home = std::env::temp_dir().join(format!("ccm-session-path-{tag}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&home);
+    std::fs::create_dir_all(&home).unwrap();
+    std::fs::write(home.join(".profile"), profile).unwrap();
+    home
+}
+
+#[cfg(unix)]
+fn sandboxed(home: &std::path::Path) -> crate::platform::child::Child {
+    super::login_shell_asking_path("sh")
+        .env("HOME", home)
+        .env("PATH", "/usr/bin:/bin")
+        .env_remove("ENV")
+        .env_remove("BASH_ENV")
+}
+
+/// ★ 真问一个登录 shell：登录时加进 `PATH` 的目录问得出来（后端进程自己的 `PATH` 里没有它）；
+/// 问的那一趟 `TERM=dumb`（rc 里看终端类型的那几样别当成真终端）。
+#[test]
+#[cfg(unix)]
+fn the_session_shell_path_comes_from_a_login_shell() {
+    let home = login_box(
+        "login",
+        "echo 登录时的杂话\nPATH=\"$HOME/user-bin:$HOME/term-$TERM:$PATH\"\n",
+    );
+    let got = super::ask_session_path(sandboxed(&home), super::SESSION_PATH_WITHIN)
+        .expect("沙箱里的登录 shell 问不出 PATH");
+    let dirs: Vec<String> = std::env::split_paths(&got)
+        .map(|d| d.to_string_lossy().into_owned())
+        .collect();
+    for want in ["user-bin", "term-dumb"] {
+        let want = format!("{}/{want}", home.display());
+        assert!(dirs.contains(&want), "{want} 不在问出来的 PATH 里：{got}");
+    }
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// ★ rc 卡住（等终端 / 自动接 tmux 之类）⇒ 到期限算问不出来（`None`），不挂住后端。
+#[test]
+#[cfg(unix)]
+fn a_stuck_login_shell_is_unknown_not_hung() {
+    let home = login_box("stuck", "sleep 30\n");
+    let t0 = std::time::Instant::now();
+    let got = super::ask_session_path(sandboxed(&home), crate::platform::child::Deadline::secs(1));
+    assert_eq!(got, None, "卡住的登录 shell 竟然答出了 PATH");
+    assert!(
+        t0.elapsed() < std::time::Duration::from_secs(10),
+        "到期限没收手：等了 {:?}",
+        t0.elapsed()
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}

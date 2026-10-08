@@ -2020,3 +2020,42 @@ fn a_directory_entry_that_cannot_be_read_is_counted_not_skipped() {
     assert_eq!(v["unreadable"], serde_json::json!(0));
     std::fs::remove_dir_all(&dir).ok();
 }
+
+/// 列目录与问元数据回的修改时间旁边各有两格：`mtime_text`（列里那一格：今天 `HH:MM` · 今年 `MM-DD` · 往年带年）与
+/// `mtime_full`（`YYYY-MM-DD HH:MM:SS`），都按这台本地钟写好（文件窗口照抄、不换算）；声明表里也列着这两格。
+#[test]
+fn ls_and_stat_carry_mtime_texts_written_by_this_machine() {
+    let dir = std::env::temp_dir().join(format!("p15-mtime-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let f = dir.join("a.txt");
+    std::fs::write(&f, b"x").unwrap();
+    let ls = answer(
+        "files.ls",
+        &serde_json::json!({"path": dir.to_string_lossy()}),
+    )
+    .expect("ls");
+    let e = &ls["entries"][0];
+    let t = e["mtime_secs"].as_u64().expect("这一项有修改时间");
+    let (short, full) = crate::common::time::mtime_texts_here(t);
+    assert_eq!(
+        (e["mtime_text"].as_str(), e["mtime_full"].as_str()),
+        (Some(short.as_str()), Some(full.as_str()))
+    );
+    let st = answer(
+        "files.stat",
+        &serde_json::json!({"path": f.to_string_lossy()}),
+    )
+    .expect("stat");
+    assert_eq!(
+        (st["mtime_text"].as_str(), st["mtime_full"].as_str()),
+        (Some(short.as_str()), Some(full.as_str()))
+    );
+    for cap in ["files.ls", "files.stat"] {
+        let fields = CAPABILITIES.iter().find(|c| c.name == cap).unwrap().fields;
+        assert!(
+            fields.contains(&"mtime_text") && fields.contains(&"mtime_full"),
+            "{cap} 的声明表没列这两格"
+        );
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}

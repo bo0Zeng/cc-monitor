@@ -41,6 +41,7 @@ pub mod raw;
 pub mod size;
 
 /// 这一族的名字。
+#[cfg(test)]
 pub const FAMILY: &str = "files-read";
 
 /// 一条能力的**副作用档**。**闭集。**
@@ -101,7 +102,9 @@ pub const CAPABILITIES: &[Capability] = &[
             "kind",
             "link_dir",
             "link_to",
+            "mtime_full",
             "mtime_secs",
+            "mtime_text",
             "path",
             "size",
             "total",
@@ -119,7 +122,18 @@ pub const CAPABILITIES: &[Capability] = &[
         args: &["path"],
         // +`mode`（unix 权限位低 12 位；非 unix 缺席）—— 文件窗口改权限那个框要显示现值。
         // +`owner` · `link_target`：文件窗口「属性」要列属主与链接指向（取不到 / 不是链接 ⇒ `null`）。
-        fields: &["kind", "link_target", "mode", "mtime_secs", "owner", "path", "readonly", "size"],
+        fields: &[
+            "kind",
+            "link_target",
+            "mode",
+            "mtime_full",
+            "mtime_secs",
+            "mtime_text",
+            "owner",
+            "path",
+            "readonly",
+            "size",
+        ],
         codes: &["bad_path", "unreadable"],
     },
     Capability {
@@ -536,6 +550,9 @@ fn answer_ls(args: &serde_json::Value) -> Answer {
             row.insert("size".to_string(), serde_json::json!(md.len()));
             if let Some(t) = epoch_secs(md.modified()) {
                 row.insert("mtime_secs".to_string(), serde_json::json!(t));
+                let (short, full) = crate::common::time::mtime_texts_here(t);
+                row.insert("mtime_text".to_string(), serde_json::json!(short));
+                row.insert("mtime_full".to_string(), serde_json::json!(full));
             }
             // 链接指向的是不是目录（跟链接那一次 `metadata` 顺带的）：窗口据此给「打开」。断链不出这一格。
             if kind == "symlink" {
@@ -612,6 +629,9 @@ fn answer_stat(args: &serde_json::Value) -> Answer {
     }
     if let Some(ms) = epoch_secs(md.modified()) {
         out.insert("mtime_secs".to_string(), serde_json::json!(ms));
+        let (short, full) = crate::common::time::mtime_texts_here(ms);
+        out.insert("mtime_text".to_string(), serde_json::json!(short));
+        out.insert("mtime_full".to_string(), serde_json::json!(full));
     }
     // 属主（跟链接，同上几格）：用户名，查不到名字给 uid 数字串；非 unix 给 `null`。
     out.insert(
@@ -735,6 +755,7 @@ fn answer_find(args: &serde_json::Value) -> Answer {
             "location": raw::to_json(index::location_of(&h.path, start.as_deref())),
             "size": h.meta.size,
             "mtime_secs": h.meta.mtime_secs,
+            "mtime_text": h.meta.mtime_secs.map(|t| crate::common::time::mtime_texts_here(t).0),
             "marks": matcher.marks(&h.path).iter().map(|(a, b)| [a, b]).collect::<Vec<_>>(),
         })).collect::<Vec<_>>(),
         "start": path_or_null(&start),

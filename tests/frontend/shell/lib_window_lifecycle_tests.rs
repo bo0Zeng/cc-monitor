@@ -239,3 +239,48 @@ fn every_tauri_window_is_fitted_once_after_it_is_built() {
         "主窗那一处不在"
     );
 }
+
+/// ★ 接管了关窗（`onCloseRequested`）而没有拦下（处理里不 `preventDefault`）的窗口，Tauri 在处理完之后替它 `destroy()` ——
+/// 那一下要 `core:window:allow-destroy`，权限里没有 ⇒ 点 × 窗口关不掉（agent 窗口撞过：最小化 · 放大都行，× 不行）。
+/// 人群：界面生产段（`src/frontend/ui/**.ts`）每一处 `onCloseRequested(`，看它到处理结束（下一个 `});`）之前有没有 `preventDefault`。
+#[test]
+fn a_window_that_lets_close_through_may_destroy_itself() {
+    let shell = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let mut through: Vec<String> = Vec::new();
+    let mut held = 0usize;
+    for (path, src) in guard_core::scan_tree_excluding(&shell.join("../ui"), &["ts"], &[]) {
+        for (at, _) in src.match_indices("onCloseRequested(") {
+            let tail = &src[at..];
+            let end = tail
+                .match_indices("});")
+                .next()
+                .map_or(tail.len(), |(e, _)| e);
+            if guard_core::contains_word(&tail[..end], "preventDefault") {
+                held += 1;
+            } else {
+                through.push(path.display().to_string());
+            }
+        }
+    }
+    assert!(
+        held > 0,
+        "一处拦下关窗的都没找到（设置窗那一处）—— 扫描面坏了"
+    );
+    if through.is_empty() {
+        return;
+    }
+    let caps: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(shell.join("capabilities/default.json"))
+            .expect("读不到 capabilities/default.json"),
+    )
+    .expect("capabilities/default.json 不是合法 JSON");
+    let granted = caps["permissions"]
+        .as_array()
+        .expect("找不到 permissions")
+        .iter()
+        .any(|p| p.as_str() == Some("core:window:allow-destroy"));
+    assert!(
+        granted,
+        "这些窗口接管了关窗又放行（Tauri 随后替它 destroy），权限里却没有 core:window:allow-destroy ⇒ 点 × 关不掉：{through:?}"
+    );
+}

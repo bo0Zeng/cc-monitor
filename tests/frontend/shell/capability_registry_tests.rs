@@ -22,6 +22,11 @@ const ALLOWED: &[(&str, &str)] = &[
         "把窗口拉到前面那一下先还原：主窗口（点系统通知 · 设置窗跳回账号面板 · 起会话落地）与 agent 窗口（滚到派出卡）",
     ),
     ("core:window:allow-set-focus", "同上，还原之后给它焦点"),
+    (
+        "core:window:allow-destroy",
+        "agent 窗口接管了关窗（关之前告诉别的窗口「这扇关了」）又放行：Tauri 在处理完之后替它 `destroy()`，\
+             没有这一格 ⇒ 点 × 关不掉。同发给三类窗口（理由同 `allow-hide` 那一条）",
+    ),
     ("core:webview:allow-set-webview-zoom", "主窗口放大 / 缩小 / 还原（Ctrl+= · Ctrl+- · Ctrl+0，记住）"),
     (
         "core:window:allow-hide",

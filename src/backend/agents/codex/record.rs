@@ -83,27 +83,6 @@ pub fn classify(v: &Value) -> CodexRecordKind {
     }
 }
 
-/// token_count 的 `payload.info.last_token_usage`（本轮增量用量；F5 抽字段）。原样返回 Value。
-/// **实测 total_token_usage 严格单调、final == Σlast**——故 F5 按 (model,天) 累加各事件 last 增量，
-/// 与 Claude 逐 request 归桶一致（取 final total 会丢跨天/跨模型粒度）。
-#[allow(dead_code)] // staged：用量那一轴随删了，复活点就是这里（codex 专项）。
-pub fn token_usage_last(v: &Value) -> Option<&Value> {
-    unwrap_envelope(v)?.1.get("info")?.get("last_token_usage")
-}
-
-// 此处原有 `token_usage_fields`：从 token 用量子对象读三元组、由调用方各自做〔散文墓碑〕
-// `input -= cached`。它与 backend `agents/codex/parse.rs` 的那份**逐字相同却各写一遍**
-// ——U7-2 收 Claude 口径时漏了 Codex 这半。现已收进 `token::codex_delta`
-// （唯一权威源），调用方直接拿映射好的增量。
-// 🔴 **钉住它「是唯一家」的那条判据没了**：它住 monitor 的用量模块，
-// 而用量 ②③ 两轴整轴退役、那份文件整删 ⇒ 今天没有任何东西在数这个映射有几个家。
-// ⚠ 同一刀还让**本文件对那个 crate 零调用** —— 上面这段说的是历史，别读成今天还在共用。
-
-/// response_item.message 的 `payload.role`（user/assistant/developer；F7 渲染用）。
-pub fn message_role(v: &Value) -> Option<&str> {
-    unwrap_envelope(v)?.1.get("role").and_then(Value::as_str)
-}
-
 // ─── F2b：Codex→JsonlRecord 映射的文本抽取助手（trap-critical，口径对齐 aterm CodexRecordParser.kt c03e46f）───
 
 /// **数组文本拍平**——Codex 的 `message.content` 与 `custom_tool_call_output.output` **真机恒数组**
@@ -453,18 +432,6 @@ fn agent_mail_said(payload: &Value) -> UserText {
     mail_said(&text, s("author"), s("recipient"))
 }
 
-/// session_meta 的 `payload.timestamp`（会话起始，F1a list 的 lastActivity 兜底）。非 session_meta → None。
-#[allow(dead_code)] // F1a-3（list 枚举）consumer 接线前 staged
-pub fn session_meta_timestamp(v: &Value) -> Option<&str> {
-    if classify(v) != CodexRecordKind::SessionMeta {
-        return None;
-    }
-    unwrap_envelope(v)?
-        .1
-        .get("timestamp")
-        .and_then(Value::as_str)
-}
-
 // ─── F2b-2：Codex 记录 → 现有 `JsonlRecord`（第三条路组装。口径对齐 aterm CodexRecordParser.kt c03e46f）───
 
 /// 一行 rollout 原文 ⇒ 交给通用层的那一形（注册表 `RecordFace.parse`；契约同 Claude 那一家：
@@ -486,7 +453,7 @@ pub(crate) fn parsed_line(raw: &str) -> Result<Option<crate::agents::ParsedLine>
 /// Codex rollout 记录（已解析 `v` + 原始行 `raw`）→ 现有 `JsonlRecord`（复用渲染模型）。
 /// - message/reasoning/tool → User/Assistant + content（`[{type,text/…}]` Value，喂现有 `renderMessage`）。
 /// - event_msg/token_count/session_meta/turn_context/world_state/未知 → `Unrecognized`（保 `raw`；
-///   turn-end/用量走 per-kind 从 raw 读，见 `turn_id`/`token_usage_last`）。
+///   轮次键从 raw 读，见 `turn_id`）。
 ///
 /// **cc-monitor 适配 vs aterm**：`JsonlRecord::User/Assistant.uuid` 是必填 `String` → 无 `payload.id`
 /// 时给 `""`（Codex 无 parentUuid 链、`parent_uuid=None`；F7 渲染按文件序+timestamp、不套 Claude 链）。

@@ -111,7 +111,10 @@ fn routing_reads_the_name_it_was_called_by_then_the_argv() {
         assert_eq!(again, v(&[me]), "「怎么叫我」（{a0}）");
         again.extend(inner.iter().cloned());
         assert_eq!(
-            intercept(&again[0], &again[1..]),
+            match route(&again[0], &again[1..]) {
+                Entry::Ccm(v) => Some(v),
+                Entry::Backend(_) => None,
+            },
             Some(inner.clone()),
             "从 {a0} 进来的在 pane 里叫不回 ccm"
         );

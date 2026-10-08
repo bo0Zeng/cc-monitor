@@ -9,9 +9,15 @@ use crate::select::Action;
 fn a_stat_reply_is_read_with_owner_and_link_target() {
     let d = serde_json::json!({
         "path": "/srv/ln", "kind": "file", "size": 3, "mtime_secs": 0, "mode": 493,
+        "mtime_full": "2026-10-02 15:01:23",
         "owner": "user", "link_target": { "b16": "612e62696e" }
     });
     let s = stat_from_reply(&d).unwrap();
+    assert_eq!(
+        s.mtime_full.as_deref(),
+        Some("2026-10-02 15:01:23"),
+        "修改时间照抄后端写好的完整写法"
+    );
     assert_eq!(s.owner.as_deref(), Some("user"));
     assert_eq!(s.link_target.as_deref(), Some("a.bin"));
     assert_eq!(s.mode, Some(0o755));

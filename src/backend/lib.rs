@@ -864,7 +864,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// p9h-update-in-place：↗ 浮层［更新］就地部署（部署 / 卸载收进共用模块）· last-seen-write 收 forget（删机器时清那台的上次值）· 改调用点那段文案（原因值留句里）· 随产物发出去的文件去掉私人标识。
 ///
 /// p9i-no-legacy-entry：部署落点上不说自己是谁的文件一律显式失败（删旧三行入口识别与只为它的读口）· 界面机器状态账本整份删 · 登记表瘦身三第一段。
-pub const BUILD_ID: &str = "p9i-no-legacy-entry";
+///
+/// p9j-local-clock：记录 / 轮次 / 历史 / 查找 / 文件窗口的时刻由后端按那台本地钟写好（…Text 格）· 足迹判 claude 装没装按起会话那个 shell 的 PATH · .bashrc 被守着的 source 不报失效 · profiles-write 一批依次判 · Rust 零读者 pub 项清理。
+pub const BUILD_ID: &str = "p9j-local-clock";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
