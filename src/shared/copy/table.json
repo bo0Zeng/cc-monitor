@@ -19157,13 +19157,13 @@
     "extPage.install.confirm": {
       "kind": "action",
       "role": "按钮",
-      "zh": "安装 · 机器 {n}",
+      "zh": "装到 {n} 台",
       "args": ["n"]
     },
     "extPage.install.noneChecked": {
       "kind": "body",
       "role": "空态",
-      "zh": "未勾选机器",
+      "zh": "先勾选要装的机器",
       "args": []
     },
     "extPage.install.doneOne": {

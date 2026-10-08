@@ -220,7 +220,7 @@ export const SETTINGS_SCENES: Scene[] = [
     },
     troubleWorld,
   ),
-  settings("settings-ext-install", "设置 · 扩展 · 一次装到两台", "github 那一行点开：安装位置每台一行（勾选 · 现状）· 勾 devbox 与 win-laptop ⇒ 一张卡：装到哪 · token 只填一次（win-laptop 已有）· 将写入的文件逐台 ·［安装 · 机器 2］", async () => {
+  settings("settings-ext-install", "设置 · 扩展 · 一次装到两台", "github 那一行点开：安装位置每台一行（勾选 · 现状）· 勾 devbox 与 win-laptop ⇒ 一张卡：装到哪 · token 只填一次（win-laptop 已有）· 将写入的文件逐台 ·［装到 2 台］", async () => {
     await go("ext");
     await sleep(600);
     document.querySelector<HTMLElement>('.settings-page:not([hidden]) .ext-row[data-key="mcp/github"]')?.click();
