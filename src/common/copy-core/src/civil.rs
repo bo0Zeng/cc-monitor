@@ -1,4 +1,4 @@
-//! 天数 ⇒ 公历（Howard Hinnant 的 `civil_from_days`，前推公历、负年按 `div_euclid`）。两个前端画日期都调这里，不引日期库。
+//! 天数 ⇒ 公历（Howard Hinnant 的 `civil_from_days`，前推公历、负年按 `div_euclid`）。后端 · monitor · 文件窗口画日期都调这里，不引日期库。
 
 /// 自 1970-01-01 起第几天 ⇒ (年, 月, 日)。不带时区：时区差由调用方先加进天数。
 pub fn civil_from_days(z: i64) -> (i64, i64, i64) {
@@ -14,5 +14,5 @@ pub fn civil_from_days(z: i64) -> (i64, i64, i64) {
 }
 
 #[cfg(test)]
-#[path = "../../../../tests/common/host-core/civil_tests.rs"]
+#[path = "../../../../tests/common/copy-core/civil_tests.rs"]
 mod tests;

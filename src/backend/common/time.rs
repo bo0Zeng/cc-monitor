@@ -12,18 +12,11 @@ pub(crate) fn days_from_civil(y: i64, m: u32, d: u32) -> i64 {
     era * 146_097 + doe - 719_468
 }
 
-/// 自 1970-01-01 起第几天 ⇒ 公历 (年, 月, 日)。
+/// 自 1970-01-01 起第几天 ⇒ 公历 (年, 月, 日)。换算只住 `copy_core::civil_from_days` 一份。
 pub(crate) fn civil_from_days(z: i64) -> (i64, u32, u32) {
-    let z = z + 719_468;
-    let era = z.div_euclid(146_097);
-    let doe = z.rem_euclid(146_097);
-    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = doy - (153 * mp + 2) / 5 + 1;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let (y, m, d) = copy_core::civil_from_days(z);
     // 月 ∈ 1..=12、日 ∈ 1..=31，转窄不丢。
-    (yoe + era * 400 + i64::from(m <= 2), m as u32, d as u32)
+    (y, m as u32, d as u32)
 }
 
 /// `YYYY-MM-DDTHH:MM:SS(.f{1,})?Z` ⇒ 自 1970 起的毫秒（UTC）。小数秒取前 3 位、不足右补 0；太短或某格不是数字 ⇒ `None`。

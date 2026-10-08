@@ -9,6 +9,7 @@ fn failed((code, message, data): crate::control::launch_render::Failed) -> Fail 
         code: code.to_string(),
         message,
         data,
+        raw: None,
     }
 }
 
@@ -294,6 +295,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
                         code,
                         message,
                         data,
+                        raw: None,
                     })
             })
         }),

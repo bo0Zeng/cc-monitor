@@ -51,6 +51,8 @@ pub enum CallError {
     Remote {
         code: String,
         message: String,
+        /// 「复制详情」那几行（那台后端写好；老后端没有 ⇒ 空串）。
+        detail: String,
         data: Option<String>,
     },
 }
@@ -194,11 +196,12 @@ pub fn layer_call_error(e: &CallError, hop: u8) -> Layered {
         CallError::Remote {
             code,
             message,
+            detail,
             data,
         } => Layered {
             error: w::CallError::Peer {
                 why: w::PeerFault::Refused {
-                    body: w::Body(refusal_body(code, message, data.as_deref())),
+                    body: w::Body(refusal_body(code, message, detail, data.as_deref())),
                 },
             },
             detail: Detail::Remote {
@@ -209,9 +212,12 @@ pub fn layer_call_error(e: &CallError, hop: u8) -> Layered {
     }
 }
 
-/// 对端拒绝体 `{code, message}`；带了 `data` 的那几个码再多一格 `data`。
-fn refusal_body(code: &str, message: &str, data: Option<&str>) -> Vec<u8> {
+/// 对端拒绝体 `{code, message}`；带了 `data` 的那几个码再多一格 `data`；那台写了详情 ⇒ 再多一格 `detail`。
+fn refusal_body(code: &str, message: &str, detail: &str, data: Option<&str>) -> Vec<u8> {
     let mut v = serde_json::json!({ "code": code, "message": message });
+    if !detail.trim().is_empty() {
+        v["detail"] = serde_json::Value::String(detail.to_string());
+    }
     if let Some(d) = data.and_then(|d| serde_json::from_str::<serde_json::Value>(d).ok()) {
         v["data"] = d;
     }

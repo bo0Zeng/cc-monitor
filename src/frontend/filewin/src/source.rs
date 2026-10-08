@@ -516,7 +516,7 @@ pub struct MtimeText {
 /// 纯函数：`offset` 是那一刻本机时区与 UTC 的差（秒，含夏令时），`today` 是本机此刻的年月日。
 pub fn mtime_text_at(secs: u64, offset: i64, today: (i64, i64, i64)) -> MtimeText {
     let t = secs as i64 + offset;
-    let (y, m, d) = host_core::civil_from_days(t.div_euclid(86_400));
+    let (y, m, d) = copy_core::civil_from_days(t.div_euclid(86_400));
     let rem = t.rem_euclid(86_400);
     let (hh, mm, ss) = (rem / 3600, (rem % 3600) / 60, rem % 60);
     let short = if (y, m, d) == today {
@@ -532,14 +532,7 @@ pub fn mtime_text_at(secs: u64, offset: i64, today: (i64, i64, i64)) -> MtimeTex
     }
 }
 
-/// 那一刻本机时区与 UTC 的差（秒；夏令时按那一刻算）。问不到 ⇒ 0。
-pub fn local_offset_at(secs: i64) -> i64 {
-    use chrono::{Offset, TimeZone};
-    chrono::Local
-        .timestamp_opt(secs, 0)
-        .single()
-        .map_or(0, |t| i64::from(t.offset().fix().local_minus_utc()))
-}
+use host_core::local_offset_at;
 
 /// 按**本机**的本地时间画 —— 只给**这台自己的事**用：窗口自己记下的时刻（保存于 · 断线于 · 一件传输收尾于）
 /// 与这台盘上的文件（上传撞名那张表「这台」那一格）。
@@ -550,7 +543,7 @@ pub fn mtime_text(secs: u64) -> MtimeText {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_secs() as i64);
-    let today = host_core::civil_from_days((now + local_offset_at(now)).div_euclid(86_400));
+    let today = copy_core::civil_from_days((now + local_offset_at(now)).div_euclid(86_400));
     mtime_text_at(secs, local_offset_at(secs as i64), today)
 }
 

@@ -524,6 +524,7 @@ async fn spawn_handler<F, Fut>(
     Fut: std::future::Future<Output = Outcome> + Send,
 {
     let id = req.id.clone();
+    let cmd = req.cmd.clone();
 
     // ── ★ 拒重复 `id` ─────────────────────────────────────────────────────
     //
@@ -572,15 +573,10 @@ async fn spawn_handler<F, Fut>(
                 ok: true,
                 code: None,
                 message: None,
+                detail: None,
                 data,
             },
-            Err(f) => Frame::Reply {
-                id: id_for_task.clone(),
-                ok: false,
-                code: Some(f.code),
-                message: Some(f.message),
-                data: f.data,
-            },
+            Err(f) => f.into_reply(id_for_task.clone(), &cmd),
         };
         // 先摘登记再回应答：反过来的话，客户端收到应答后立刻发 cancel，
         // 可能命中一个已经跑完但还没摘掉的句柄，白 abort 一个空壳。

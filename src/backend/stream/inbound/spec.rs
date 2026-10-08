@@ -11,11 +11,13 @@ pub(super) type CmdResult = Result<Option<serde_json::Value>, (String, String)>;
 pub(crate) type Outcome = Result<Option<serde_json::Value>, Fail>;
 
 /// 命令级失败。`data` 只给在协议文档里按码定了形的那几个码（多数码没有 ⇒ 应答里不出这一格）。
+/// `raw` 是下层原话（子进程 stderr · 系统报错）：不进 `message`，进应答的 `detail`（[`crate::stream::detail::of`]）。
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Fail {
     pub(crate) code: String,
     pub(crate) message: String,
     pub(crate) data: Option<serde_json::Value>,
+    pub(crate) raw: Option<String>,
 }
 
 impl From<(String, String)> for Fail {
@@ -24,6 +26,22 @@ impl From<(String, String)> for Fail {
             code,
             message,
             data: None,
+            raw: None,
+        }
+    }
+}
+
+impl Fail {
+    /// 这次失败的应答帧（`cmd` 是命令名，进详情的「命令」那一项）。
+    pub(crate) fn into_reply(self, id: String, cmd: &str) -> crate::stream::wire::Frame {
+        let detail = crate::stream::detail::of(Some(cmd), &self.code, self.raw.as_deref());
+        crate::stream::wire::Frame::Reply {
+            id,
+            ok: false,
+            code: Some(self.code),
+            message: Some(self.message),
+            detail: Some(detail),
+            data: self.data,
         }
     }
 }

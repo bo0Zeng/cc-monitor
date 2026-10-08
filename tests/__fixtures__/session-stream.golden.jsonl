@@ -14,7 +14,7 @@
 {"kind":"turn_end","session_id":"s1","uuid":"u1"}
 {"kind":"overflow","dropped":7,"lost":[{"kind":"session_added","subject":"s1"}],"lost_truncated":true}
 {"kind":"overflow","dropped":7}
-{"kind":"reply","id":"q1","ok":false,"code":"bad_args","message":"m","data":{"k":1}}
+{"kind":"reply","id":"q1","ok":false,"code":"bad_args","message":"m","detail":"码：bad_args","data":{"k":1}}
 {"kind":"reply","id":"q1","ok":true}
 {"kind":"cancelled","id":"q1"}
 {"kind":"cancelled","id":"q1"}

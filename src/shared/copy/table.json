@@ -26968,6 +26968,108 @@
       "role": "按钮",
       "zh": "去看",
       "args": []
+    },
+    "detail.act.copy": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "复制详情",
+      "args": []
+    },
+    "detail.act.copied": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "已复制",
+      "args": []
+    },
+    "detail.act.failed": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "复制失败",
+      "args": []
+    },
+    "detail.fallback.hint": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "已选中 · 按 {copyKey} 复制",
+      "args": ["copyKey"]
+    },
+    "detail.aria.copied": {
+      "kind": "aria",
+      "role": "读屏",
+      "zh": "已复制详情",
+      "args": []
+    },
+    "detail.label.at": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "时刻",
+      "args": []
+    },
+    "detail.label.machine": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "机器",
+      "args": []
+    },
+    "detail.label.local": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "本机",
+      "args": []
+    },
+    "detail.label.command": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "命令",
+      "args": []
+    },
+    "detail.label.path": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "路径",
+      "args": []
+    },
+    "detail.label.target": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "对象",
+      "args": []
+    },
+    "detail.label.hop": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "断在",
+      "args": []
+    },
+    "detail.label.code": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "码",
+      "args": []
+    },
+    "detail.label.raw": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "原话",
+      "args": []
+    },
+    "detail.value.notConnected": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "（未连上）",
+      "args": []
+    },
+    "detail.value.truncated": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "…（截断）",
+      "args": []
+    },
+    "detail.value.backend": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "后端 {build}",
+      "args": ["build"]
     }
   }
 }

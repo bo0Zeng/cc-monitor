@@ -122,7 +122,8 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | `id` | string | 回显请求的 `id` |
 | `ok` | bool | 成功与否 |
 | `code` | string? | 失败时的码（协议级或命令级） |
-| `message` | string? | 失败时的原话 |
+| `message` | string? | 失败时给人看的那一句（不含下层原话与码：那些进 `detail`） |
+| `detail` | string? | 失败时「复制详情」那几行（句子下面的「项名：值」：时刻 · 机器 · 命令 · 码 · 原话），后端写好、界面原样复制 |
 | `data` | JSON? | 命令的返回值（如 `resolve` 的 CommandPlan） |
 
 ### `cancelled`

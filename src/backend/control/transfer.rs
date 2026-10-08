@@ -632,18 +632,13 @@ fn ok(id: &str, data: Option<serde_json::Value>) -> Frame {
         ok: true,
         code: None,
         message: None,
+        detail: None,
         data,
     }
 }
 
 fn err(id: &str, code: &str, message: &str) -> Frame {
-    Frame::Reply {
-        id: id.to_string(),
-        ok: false,
-        code: Some(code.to_string()),
-        message: Some(message.to_string()),
-        data: None,
-    }
+    Frame::err(id, code, message)
 }
 
 /// 下载的本机落点：字符串或 `{"b16": …}`（与文件管理面同一个字节形）。
