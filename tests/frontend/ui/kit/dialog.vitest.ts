@@ -411,6 +411,23 @@ describe("D2 · confirmDialog / askText 的结算语义（C10）", () => {
     expect(dialog()).toBeNull();
   });
 
+  it("formDialog：交了没成且带复制详情 ⇒ 按钮行上方一行句子 ＋［复制详情］、不关；改任一格那一行就消失", async () => {
+    const body = document.createElement("div");
+    const input = document.createElement("input");
+    body.appendChild(input);
+    formDialog({ title: "t", action: "a", body, submit: async () => ({ said: "s-1", detail: "d-1" }) });
+    okBtn().click();
+    for (let i = 0; i < 3; i++) await Promise.resolve();
+    const line = [...dialog()!.querySelectorAll<HTMLElement>("div")].find((d) => d.firstChild?.textContent === "s-1");
+    expect(line, "没出那一行").toBeDefined();
+    expect(line!.hidden).toBe(false);
+    expect(line!.querySelector('[data-part="copy-detail"]'), "那一行没带［复制详情］").not.toBeNull();
+    expect(line!.compareDocumentPosition(okBtn()) & Node.DOCUMENT_POSITION_FOLLOWING, "那一行不在按钮行上方").toBeTruthy();
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    expect(line!.hidden).toBe(true);
+    cancelBtn().click();
+  });
+
   it("formDialog 的宽度刻度：缺省不标（560）· wide 580 · narrow 520", () => {
     const sizes = [{}, { wide: true }, { narrow: true }].map((extra) => {
       formDialog({ title: "t", action: "a", body: document.createElement("div"), submit: async () => null, ...extra });

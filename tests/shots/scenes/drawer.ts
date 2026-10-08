@@ -2,7 +2,7 @@
  * 主窗口状态栏（这个会话的几枚 · 竖线 · 命令）与底部抽屉（任务 · agent · 终端）。
  */
 import type { Scene } from "./index";
-import type { World } from "../fake/types";
+import { Refuse, type World } from "../fake/types";
 import { defaultWorld } from "../fake/world";
 import { emit } from "@tauri-apps/api/event";
 import { Convo } from "../fake/records";
@@ -87,6 +87,24 @@ export const DRAWER_SCENES: Scene[] = [
     await waitFor("#bottom-drawer pre");
     await sleep(800);
   }),
+  scene(
+    "drawer-terminal-failed",
+    "底部抽屉 · 终端 · 画面读不出",
+    "那台说「无运行中的 tmux」：终端页顶一条错误条 ＝ 一句 ＋［刷新］＋［复制详情］（详情是那台后端写好、monitor 转交的那几行）",
+    async () => {
+      await mainReady(ALL_TABS);
+      await click("#session-head button[aria-label='看它的终端']");
+      await waitFor('#bottom-drawer [data-part="copy-detail"]');
+      await sleep(500);
+    },
+    () => {
+      const w = defaultWorld();
+      w.ops["terminal-preview"] = () => {
+        throw new Refuse("no_server", "no server running on /tmp/tmux-1000/default");
+      };
+      return w;
+    },
+  ),
   scene("drawer-terminal-bg", "底部抽屉 · 终端 · 后台", "没有终端窗口连着的那个会话：写「后台 · 输入直达」", async () => {
     await mainReady(ALL_TABS);
     await openTab(1);

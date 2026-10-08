@@ -13,6 +13,7 @@
 import { dispatcher, type OverlayHandle } from "../keybindings/registry";
 import { button, buttonRow, setBusy, setButtonLabel, setDisabled } from "./button";
 import { banner } from "./banner";
+import { sayWithDetail } from "./detail";
 import { icon } from "./icon";
 import { copyText } from "../copy-table";
 import s from "./dialog.module.css";
@@ -335,7 +336,7 @@ export interface FormSpec {
   /** 主按钮可不可点：`null` ⇒ 可；一句话 ⇒ 禁用、悬停说为什么。内容变了由宿主调 `refresh()`。 */
   blocked?: () => string | null;
   /**
-   * 点主按钮：`null` ⇒ 成了、关框；一句话 ⇒ 框顶一条错误、不关、填的都在；`{ said, detail }` ⇒ 同上，那条错误带［复制详情］；
+   * 点主按钮：`null` ⇒ 成了、关框；一句话 ⇒ 框顶一条错误、不关、填的都在；`{ said, detail }` ⇒ 不关、按钮行上方一行红字句 ＋［复制详情］（改任一格就消失）；
    * `false` ⇒ 不关、错误由宿主画在框里（落在哪一格下）。
    */
   submit: () => Promise<string | { said: string; detail: string } | null | false>;
@@ -358,15 +359,29 @@ export function formDialog(spec: FormSpec): FormHandle {
   if (spec.wide) b.panel.dataset.size = "wide";
   else if (spec.narrow) b.panel.dataset.size = "narrow";
   const errBox = document.createElement("div");
-  b.body.append(errBox, spec.body);
+  // 带复制详情的提交失败：按钮行上方一行红字句 ＋［复制详情］；改了任一格就消失（条带 §5.3「对话框」）。
+  const failLine = document.createElement("div");
+  failLine.className = s.dlgFail;
+  failLine.hidden = true;
+  b.body.append(errBox, spec.body, failLine);
+  spec.body.addEventListener("input", () => {
+    failLine.hidden = true;
+    failLine.replaceChildren();
+  });
   const refresh = (): void => setDisabled(b.ok, spec.blocked?.() ?? null);
   refresh();
   const submit = async (): Promise<boolean | undefined> => {
+    failLine.hidden = true;
+    failLine.replaceChildren();
     const why = await spec.submit();
     if (why === null) return true;
     if (why === false) errBox.replaceChildren();
     else if (typeof why === "string") errBox.replaceChildren(banner("error", why));
-    else errBox.replaceChildren(banner("error", why.said, [], why.detail));
+    else {
+      errBox.replaceChildren();
+      sayWithDetail(failLine, why.said, why.detail);
+      failLine.hidden = false;
+    }
     return undefined;
   };
   const first = spec.focusAction

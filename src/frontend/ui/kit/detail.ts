@@ -118,6 +118,8 @@ export function copyDetailButton(said: string | (() => string), detail: string, 
     area.className = s.detailText;
     area.readOnly = true;
     area.value = body;
+    // 高按行数给（限高 160 px 由样式管，超了可滚）。
+    area.rows = Math.min(body.split("\n").length, 8);
     area.addEventListener("keydown", (ev) => {
       if (ev.key === "Escape") {
         ev.stopPropagation();

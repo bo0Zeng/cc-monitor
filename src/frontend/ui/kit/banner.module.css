@@ -26,8 +26,9 @@
     color: var(--warn);
   }
 
+  /* 放得下就一行；窄到放不下一句 ＋ 按钮 ⇒ 按钮折到下一行（句子在上）。 */
   .bannerText {
-    flex: 1;
+    flex: 1 1 14em;
     min-width: 0;
   }
 }

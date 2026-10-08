@@ -4,6 +4,7 @@
  */
 import type { SessionStreamFrame } from "../../../src/frontend/ui/generated/SessionStreamFrame";
 import { Refuse, type World } from "./types";
+import { copyText } from "../../../src/frontend/ui/copy-table";
 
 type Emit = (event: string, payload: unknown) => unknown;
 
@@ -92,10 +93,10 @@ export class FakeBackend {
       const v = handler(origin, req, this.world);
       return Promise.resolve(v).then(
         (value) => Array.from(enc.encode(JSON.stringify(TIMED_OPS.has(op) ? withTexts(value) : value))),
-        (e: unknown) => Promise.reject(refusal(e)),
+        (e: unknown) => Promise.reject(refusal(e, op)),
       );
     } catch (e) {
-      return Promise.reject(refusal(e));
+      return Promise.reject(refusal(e, op));
     }
   }
 
@@ -199,12 +200,24 @@ export class FakeBackend {
   }
 }
 
-function refusal(e: unknown): { err: unknown; body: number[] } {
+/** 替身那一份复制详情（那台后端写、monitor 转交的那几行）：钟停在夹具那一刻，机器与版本是合成的。 */
+function detailOf(op: string, e: Refuse): string {
+  const l = (k: Parameters<typeof copyText>[0]): string => copyText(k);
+  return [
+    `${l("detail.label.at")}：2026-10-08 14:35:50 +08:00`,
+    `${l("detail.label.machine")}：Linux x86_64 · ${copyText("detail.value.backend", { build: "p9k-shots" })}`,
+    `${l("detail.label.command")}：${op}`,
+    `${l("detail.label.code")}：${e.code}`,
+    `${l("detail.label.raw")}：${e.message}`,
+  ].join("\n");
+}
+
+function refusal(e: unknown, op = ""): { err: unknown; body: number[]; detail?: string } {
   // 场景要演通道那一跳的失败（够不着 · 期限到）：直接抛线上形状 `{err, body}`，原样交回。
   if (e !== null && typeof e === "object" && "err" in e && "body" in e) return e as { err: unknown; body: number[] };
   if (e instanceof Refuse) {
     const body = e.data === undefined ? { code: e.code, message: e.message } : { code: e.code, message: e.message, data: e.data };
-    return { err: "Refused", body: Array.from(enc.encode(JSON.stringify(body))) };
+    return { err: "Refused", body: Array.from(enc.encode(JSON.stringify(body))), detail: detailOf(op, e) };
   }
   return { err: "Refused", body: Array.from(enc.encode(JSON.stringify({ code: "shots", message: String(e) }))) };
 }
