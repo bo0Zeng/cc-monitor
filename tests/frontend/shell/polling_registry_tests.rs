@@ -473,11 +473,12 @@ fn scheduling_marks(raw: &str) -> Vec<(usize, &'static str, Option<String>)> {
         for api in APIS {
             for _ in 0..count_calls(line, api) {
                 let mut mark = raw_lines.get(i).and_then(|l| kind_in(l));
+                // 往上走那一串注释行：剥注释（共享原语）之后空了、原文不空的就是注释行。
                 let mut j = i;
                 while mark.is_none() && j > 0 {
                     j -= 1;
-                    let up = raw_lines.get(j).map_or("", |l| l.trim_start());
-                    if !up.starts_with("//") {
+                    let up = raw_lines.get(j).copied().unwrap_or("");
+                    if !(code[j].trim().is_empty() && !up.trim().is_empty()) {
                         break;
                     }
                     mark = kind_in(up);
