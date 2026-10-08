@@ -657,13 +657,35 @@ fn account_zero_without_shared_store_is_not_logged_in() {
 /// 从前两条用例拿测试进程自己当会话、见变量有值就 `return` —— 而在 Claude Code 会话里跑测试时
 /// 它恒有值 ⇒ 两条在门禁上**从没执行过**。`/proc/self/environ` 是进程起来那一刻的环境，
 /// 事后 `remove_var` 改不了它 ⇒ 只能另起一个清掉该变量的子进程。
+///
+/// 回来之前**等 exec 完**（[`wait_exec_done`]）：`spawn` 回来时 exec 可能还没走完，那一刻读环境是 0 字节，
+/// 判成「环境读不出来」而不是「裸起」（10-07 整套跑时红过一次，并发起几十份时每千趟红几趟）。
 #[cfg(target_os = "linux")]
 fn bare_child() -> std::process::Child {
-    std::process::Command::new("sleep")
+    let child = std::process::Command::new("sleep")
         .arg("30")
         .env_remove("CLAUDE_CONFIG_DIR")
         .spawn()
-        .expect("起一个 sleep 子进程当裸起会话")
+        .expect("起一个 sleep 子进程当裸起会话");
+    wait_exec_done(child.id(), "sleep");
+    child
+}
+
+/// 等子进程的 exec 走完：`/proc/<pid>/cmdline` 以程序名开头的那一刻。
+///
+/// `Command::spawn` 在旧程序的 close-on-exec 管道关掉时就回来了，而内核到那时还没给新程序摆好
+/// 参数与环境（`arg_start` / `env_start` 是 exec 最后一段才一起写上的）⇒ 那段窗口里 `environ` 读回 0 字节。
+/// 看 `cmdline` 而不看 `comm`：`comm` 在 exec 前段就换了名字，换了名字时环境可能还没摆好；
+/// `cmdline` 与环境是同一刻摆上的，看见它就一定读得到环境，而 `sleep` 不会再 exec ⇒ 窗口不会再开。
+#[cfg(target_os = "linux")]
+fn wait_exec_done(pid: u32, prog: &str) {
+    let until = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while !std::fs::read(format!("/proc/{pid}/cmdline"))
+        .is_ok_and(|c| c.starts_with(prog.as_bytes()))
+    {
+        assert!(std::time::Instant::now() < until, "{prog} 起不来（10 秒没走完 exec）");
+        std::thread::yield_now();
+    }
 }
 
 /// 裸起会话（活着但没设 CLAUDE_CONFIG_DIR）现在归属账号 0。
@@ -1997,17 +2019,7 @@ fn hx1_via_relay_says_which_live_sessions_point_at_the_local_relay_and_never_lea
         }
         let child = cmd.spawn().expect("起 sleep");
         let pid = child.id();
-        // 等 exec 完（环境在 exec 之后才是新程序的）：/proc/<pid>/cmdline 变成 sleep 那一刻。
-        let until = std::time::Instant::now() + std::time::Duration::from_secs(10);
-        while std::fs::read(format!("/proc/{pid}/cmdline"))
-            .ok()
-            .and_then(|c| c.get(..5).map(<[u8]>::to_vec))
-            .as_deref()
-            != Some(b"sleep".as_slice())
-        {
-            assert!(std::time::Instant::now() < until, "sleep 起不来");
-            std::thread::sleep(std::time::Duration::from_millis(5));
-        }
+        wait_exec_done(pid, "sleep"); // 环境在 exec 走完之后才是新程序的
         let ticks = proc_starttime(pid).expect("starttime");
         fs::write(
             sessions.join(format!("{pid}.json")),

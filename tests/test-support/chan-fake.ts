@@ -251,10 +251,9 @@ export function recordReadOf(cmd: string, args: unknown): [RecordRead, Record<st
   }
   if (a.op === "history-lines") {
     const b = chanArgsJson(a) as Record<string, unknown>;
-    // `leftMs`：旧命令收的是调用方给的那个数；今天是通道那一跳现算的「还剩多少」（造期限到过线之间走的那零点几毫秒会让它
-    //   比整数少一点）⇒ 取到 10 ms 译回旧形参，判据照旧按那一件的整份比。
-    const leftMs = Math.round(a.leftMs / 10) * 10;
-    const out: Record<string, unknown> = { origin, jsonlPath: b.path, from: b.from, leftMs };
+    // `leftMs`：通道那一跳现算的「还剩多少」，原样译回。造期限到过线之间走的时间取决于真钟（负载下一次 GC / 调度停顿
+    //   就是好几毫秒）⇒ 要逐字比整份的判据先钉住钟面（`tabs.vitest.ts::pinClock`），这里不取整、不替它容差。
+    const out: Record<string, unknown> = { origin, jsonlPath: b.path, from: b.from, leftMs: a.leftMs };
     if (b.until !== undefined) out.until = b.until;
     return ["read_session_lines", out];
   }
