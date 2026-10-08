@@ -40,8 +40,10 @@
  *    本秤在 `32-128K` 就到顶，**「617 KB 那一档」谁都没量过**。
  * 4. **单条 tool-group。** 语料按 seq 顺序喂，连续 tool-only 会走合并支；
  *    但生产里一张外壳能吃下几十条，`merge` 段在长会话上的真实量级本秤看不到。
- * 5. **时间是这台机器这一次的。** 绝对毫秒不可跨机比较，能跨机比较的只有
- *    「段之间的占比」与「桶之间的倍率」—— 下面的判据只钉后两者。
+ * 5. **时间是这台机器这一次的，而且随负载抖。** 绝对毫秒不可跨机比较，段占比与桶倍率在门禁并发时也会飘
+ *    ⇒ 10-07 起**没有一条闸看墙钟**：复杂度那几条（随字节单调 · 长比短多一个量级 · 长尾桶里的折叠卡便宜一个量级）
+ *    数的是**物化进 DOM 的字符数**（`domChars`，确定量），理由与等价性写在那一组的头注；
+ *    墙钟读数（四段 p50 · 占比 · 残余）照旧印进报表，只当读数。原来量什么、现在量什么见 `tests/evidence/S1-render-cost.md`「判据换轴」。
  * 6. **探针自己要钱。** 分桶轴要「记录字节」，而 payload 上没有该字段 ⇒
  *    只能 `JSON.stringify(message)` 现算（它自己就是 §2.4 那一形）。
  *    ⇒ 探针默认关；开着时字节数在总时刻取完之后才算，**不进任何一段读数**，
@@ -533,17 +535,10 @@ describe("秤 1 · 四个子段真的各自被量到（死值验的着力点）"
     ).toBe(0);
   });
 
-  it("★ 残余（total − Σ四段）**两侧都钉**：既不能变大，也不能恒为 0", () => {
+  // 残余中位占比（原来钉 < 10%）是墙钟读数，随负载抖 ⇒ 10-07 起只进报表；「真夹」那一侧（存在正残余）照钉。
+  it("★ 残余（total − Σ四段）不恒为 0：total 是入口出口真夹的，不是算成 Σ四段", () => {
     const withTime = samples.filter((s) => s.total > 0);
-    const rest = withTime.map((s) => (s.total - segSum(s)) / s.total);
-    // 上侧：某一段的计时被摘掉 ⇒ 那段时间掉进残余 ⇒ 残余变大
-    expect(
-      p(rest, 0.5),
-      `残余中位占比 ${(p(rest, 0.5) * 100).toFixed(2)}% ——` +
-        "四段之外的开销不该是大头；它变大通常意味着某一段的计时被删了",
-    ).toBeLessThan(0.1);
-    // 下侧（对照组）：`total` 如果被写成 Σ四段，残余就恒 0，而「入口出口真夹」
-    // 这句话当场变成假话，却没有任何一格会红。**这一条就是补那个洞的。**
+    // `total` 如果被写成 Σ四段，残余就恒 0，而「入口出口真夹」这句话当场变成假话，却没有任何一格会红。
     // 真夹的话，分派与 `onRealUserInput` 回调必然在某些样本上留下正残余。
     const positive = withTime.filter((s) => s.total - segSum(s) > 0).length;
     expect(
@@ -612,156 +607,65 @@ describe("秤 1 · 〔SC1〕成本轴是卡型 —— 不看墙钟的那一半",
   });
 });
 
-describe("秤 1 · 它要验的那条声称：长尾桶被 O(len) 操作主导", () => {
-  // 🔴 **这一组的写法是被读数改过一次的，别照「设计怎么说」回写。**
+describe("秤 1 · 它要验的那条声称：长尾桶被 O(len) 操作主导（数物化字符，不看墙钟）", () => {
+  // 🔴 **口径 10-07 换过：原来量墙钟，今天数物化字符（`domChars`）。**
   //
-  // 第一版照声称写成「按字节分桶，桶越大越贵」，**当场红**：
-  // 现打 `32-128K` 桶的 total p50 只有 **0.157 ms**，比 `2-8K` 桶的 **1.891 ms**
-  // 便宜一个量级。原因不是仪表坏了，是**桶的轴选错了**——
-  // 最大的那几条记录全是 `tool_result` 回灌，渲染成**折叠的 tool-group**，
-  // 正文根本不进 DOM（`buildResultBody` 要展开才建，自己写着这一条，
-  // 只是把它归成了**内存**问题而不是时间问题 —— 本秤证实了那个归类是对的）。
-  // ⇒ 下面钉三件**确实成立**的事，外加一格把那条**反例**本身钉住，
-  //   免得下一个人又按「字节即成本」去改口径。原文见 `tests/evidence/S1-render-cost.md`。
+  // 原来这一组量的是 `total` / `render` / `merge` 的墙钟：「render 段在正文卡上占 total 过 55%」·
+  // 「合并卡的桶 merge 段过 10%」·「正文卡 total p50 随字节单调涨」·「8-32K 比 <2K 贵十倍以上」·
+  // 「长尾桶的折叠卡比 2-8K 正文卡便宜十倍以上」。它们本意都是**复杂度**：O(len) 的活住在哪条路上、
+  // 随正文长度怎么涨。墙钟在门禁并发时抖（render 占比红过一次 53.0%），一个会随机红的判据就是会随机骗人的判据。
+  //
+  // 今天数的是**这条记录物化进 DOM 的字符数**（探针在同一处取，`textContent` 长度）。为什么与原来等价：
+  // · 那几条 O(len) 操作（建正文 · 高亮 · 公式 · 估高按正文算）的工作量都正比于**进了 DOM 的正文** ——
+  //   正文卡把正文整段物化，折叠卡（惰性正文 · 摘要）只物化一行摘要；同一条记录只加字节时，
+  //   折叠卡物化量不动、正文卡跟着涨（上一组 S2 已逐卡钉过这一条）。
+  // · ⇒「正文卡随字节单调涨」「长比短多一个量级」「长尾桶里的折叠卡比正文卡少一个量级」这三句话
+  //   换成物化字符说，判的是**同一件事的原因**，而且是整数、确定、不随负载变。
+  // · 两条**分段占比**（render ≥55% · merge ≥10%）没有确定量可换：它们问的是墙钟落在哪一段。
+  //   它们承担的那句「O(len) 住在 renderMessage 里」由下面第一条（正文卡物化量随字节涨，而物化就发生在
+  //   renderMessage 里）接住；占比本身留在报表里当读数，不再当闸。
+  const bodyByBucket = (): { name: string; dom: number }[] =>
+    BUCKETS.map(([name]) => ({ name, xs: steady.filter((s) => bucketOf(s.bytes) === name && isBodyCard(s)) }))
+      .filter((b) => b.xs.length > 0)
+      .map((b) => ({ name: b.name, dom: p(b.xs.map((s) => s.domChars), 0.5) }));
 
-  // 🔴 **人群是「建卡那条路」，不是「每个非空桶」**
-  //
-  // 第一版写的是「每个非空桶」，在全量并发下**红过一次**：`32-128K` 桶的
-  // `render` 占比掉到 **53.0%**（阈值 55%）。
-  // ⚠ **那不是抖动，是本判据自己没吃透本秤的发现** —— 那个桶 **100% 是
-  //   `tool-group-merged`**，而对合并折叠卡来说 `merge` 段占掉一半**是对的**：
-  //   正文根本不进 DOM，`render` 本来就没什么活干。
-  // ⇒ 拿它去判「O(len) 还是不是大头」，判的是一条**它压根不走的路**。
-  //
-  // ⚠ **这不是放宽**：阈值 55% 一个点没动，人群从「所有记录」收到「真建卡的那些」——
-  //   而「字节不是成本轴，卡型才是」正是本秤最重要的那条产出。判据跟着它走。
-  //   纯 merged 那一档由下面那条**单独**钉（`merge` 占大头在那里是正确态）。
-  //
-  // 人群再收一层：从「`card` 分支」收到「**正文卡型**」（`BODY_CARD_TYPES`）。
-  //   `card` 分支里的 `card-compact` 是折叠卡型（物化 27 个字），拿它算「O(len) 还是不是大头」
-  //   同样是判一条它压根不走的路。阈值与本组另两条的阈值一个不动。
-  //   ⚠ 本组仍是**墙钟**判据，随负载抖；「卡型才是成本轴」这句话今天由上一组 S2（不看墙钟）承担。
-  it("★ `render` 段在**建卡那条路**上，每个非空桶都是大头（O(len) 的那几条声称都住在它里面）", () => {
-    const weak: string[] = [];
-    for (const [name] of BUCKETS) {
-      const rows = samples.filter((s) => bucketOf(s.bytes) === name && isBodyCard(s));
-      if (!rows.length) continue;
-      const share = p(
-        rows.map((s) => (s.total > 0 ? s.render / s.total : 0)),
-        0.5,
-      );
-      if (share <= 0.55) weak.push(`${name}=${(share * 100).toFixed(1)}%`);
-    }
-    expect(
-      weak.join(" / "),
-      `这些桶里 render 段占 total 不到 55%：[${weak.join(" / ")}] ——` +
-        "§2.4/§2.5/§2.6/§2.8 点名的 O(len) 操作全在 `renderMessage` 里，" +
-        "它不再是大头就说明成本已经搬到别处（或者某一段计时被摘了）",
-    ).toBe("");
-  });
-
-  it("★ 纯 `tool-group-merged` 的桶：`merge` 段占大头**是正确态**，不是回归", () => {
-    // ⚠ 上一条把人群收到 `card` 之后，**折叠那条路就没人看了** —— 这一格补上。
-    //    它钉的是反向的事实：那条路上 `render` 本来就该小，而 `merge` 本来就该大。
-    //    没有这一格，「merge 段某天被整个摘掉」会零命中地绿。
-    const mergedOnly = BUCKETS.map(([name]) => name).filter((name) => {
-      const rows = samples.filter((s) => bucketOf(s.bytes) === name);
-      return rows.length > 0 && rows.every((s) => s.branch === "tool-group-merged");
-    });
-    expect(
-      mergedOnly.length,
-      "一个纯 merged 的桶都没有 —— 语料变了，本格此刻在空转（现打：`32-128K` 是这样的桶）",
-    ).toBeGreaterThan(0);
-    for (const name of mergedOnly) {
-      const rows = samples.filter((s) => bucketOf(s.bytes) === name);
-      const mergeShare = p(
-        rows.map((s) => (s.total > 0 ? s.merge / s.total : 0)),
-        0.5,
-      );
+  it("★ 正文卡型：物化字符 p50 随记录字节单调上升", () => {
+    const rows = bodyByBucket();
+    expect(rows.length, "正文卡只落在不到三个桶里 —— 没有对照组，下面的单调性恒真").toBeGreaterThanOrEqual(3);
+    for (let i = 1; i < rows.length; i++) {
       expect(
-        mergeShare,
-        `${name} 桶全是 tool-group-merged，而 \`merge\` 段占 total 只有 ` +
-          `${(mergeShare * 100).toFixed(1)}% —— 合并那一跳的计时多半被摘了`,
-      ).toBeGreaterThan(0.1);
+        rows[i].dom,
+        `正文卡 ${rows[i].name} 的物化字符 p50（${rows[i].dom}）不比 ${rows[i - 1].name}（${rows[i - 1].dom}）多 ——` +
+          "「同一种卡，正文越长活越多」这条不成立的话，§2.4/§2.5/§2.6 的修法都失去依据",
+      ).toBeGreaterThan(rows[i - 1].dom);
     }
   });
 
-  it("★ 只看 `card` 分支：total p50 **确实**随记录字节单调上升", () => {
-    const rows = BUCKETS.map(([name]) => ({
-      name,
-      xs: steady.filter(
-        (s) => bucketOf(s.bytes) === name && isBodyCard(s),
-      ),
-    })).filter((b) => b.xs.length > 0);
-    expect(
-      rows.length,
-      "`card` 分支只落在一个桶里 —— 没有对照组，下面的单调性恒真",
-    ).toBeGreaterThanOrEqual(3);
-    const p50 = rows.map((b) => ({
-      name: b.name,
-      v: p(
-        b.xs.map((s) => s.total),
-        0.5,
-      ),
-    }));
-    for (let i = 1; i < p50.length; i++) {
-      expect(
-        p50[i].v,
-        `card 桶 ${p50[i].name} 的 p50 (${p50[i].v.toFixed(3)}ms) 不比 ` +
-          `${p50[i - 1].name} (${p50[i - 1].v.toFixed(3)}ms) 贵 —— ` +
-          "「同一种卡，正文越长越贵」这条不成立的话，§2.4/§2.5/§2.6 的修法都失去依据",
-      ).toBeGreaterThan(p50[i - 1].v);
-    }
-  });
-
-  it("★ 建卡那条路上，长记录比短记录贵一个量级以上（倍率，跨机可比）", () => {
-    const at = (name: string): number =>
-      p(
-        steady
-          .filter((s) => bucketOf(s.bytes) === name && isBodyCard(s))
-          .map((s) => s.total),
-        0.5,
-      );
+  it("★ 正文卡型：8-32K 的物化字符比 <2K 多一个量级以上（倍率）", () => {
+    const at = (name: string): number => bodyByBucket().find((b) => b.name === name)?.dom ?? 0;
     const small = at("<2K");
     const big = at("8-32K");
     expect(small).toBeGreaterThan(0);
-    expect(
-      big / small,
-      `8-32K 的 card 只比 <2K 贵 ${(big / small).toFixed(1)} 倍 ——` +
-        "§1.1「推论二：任何 O(单条长度) 的操作都要按长尾估」失去依据",
-    ).toBeGreaterThan(10);
+    expect(big / small, `8-32K 的正文卡只比 <2K 多物化 ${(big / small).toFixed(1)} 倍 —— 「任何 O(单条长度) 的操作都要按长尾估」失去依据`).toBeGreaterThan(10);
   });
 
-  it("🔴 反例也要钉住：按**字节**取的「长尾桶」里全是**便宜**的折叠 tool-group", () => {
+  it("🔴 反例也要钉住：按**字节**取的「长尾桶」里全是折叠 tool-group，物化量比 2-8K 正文卡少一个量级", () => {
     const tail = steady.filter((s) => bucketOf(s.bytes) === "32-128K");
     expect(tail.length, "长尾桶空着 —— 本格恒绿").toBeGreaterThan(0);
     // ① 成分：这一桶 100% 是合并进已有外壳的 tool_result
     const branches = [...new Set(tail.map((s) => s.branch))].sort();
-    expect(
-      branches,
-      "32-128K 桶的成分变了 —— 上面那段「轴选错了」的诊断要重做",
-    ).toEqual(["tool-group-merged"]);
+    expect(branches, "32-128K 桶的成分变了 —— 上面那段「轴选错了」的诊断要重做").toEqual(["tool-group-merged"]);
     // ①′按卡型说同一件事：字节最重的那一桶里只有一种卡，而且是**折叠卡型**
     const cards = [...new Set(tail.map((s) => s.card))].sort();
     expect(cards, "32-128K 桶的卡型变了").toEqual(["card-tool-group"]);
     expect(FOLDED_CARD_TYPES.has(cards[0])).toBe(true);
-    // ② 量级：它比 2-8K 的 card 便宜至少一个量级
-    const tailP50 = p(
-      tail.map((s) => s.total),
-      0.5,
-    );
-    const cardMid = p(
-      steady
-        .filter((s) => bucketOf(s.bytes) === "2-8K" && isBodyCard(s))
-        .map((s) => s.total),
-      0.5,
-    );
-    expect(tailP50).toBeGreaterThan(0);
+    // ② 量级：物化字符比 2-8K 的正文卡少至少一个量级
+    const tailDom = p(tail.map((s) => s.domChars), 0.5);
+    const cardMid = bodyByBucket().find((b) => b.name === "2-8K")?.dom ?? 0;
+    expect(tailDom).toBeGreaterThan(0);
     expect(
-      cardMid / tailP50,
-      `2-8K 的 card (${cardMid.toFixed(3)}ms) 只比 32-128K 的折叠 tool-group ` +
-        `(${tailP50.toFixed(3)}ms) 贵 ${(cardMid / tailP50).toFixed(1)} 倍 ——` +
-        "「字节不是成本轴、卡型才是」这条结论要重新量",
+      cardMid / tailDom,
+      `2-8K 的正文卡（${cardMid} 字）只比 32-128K 的折叠 tool-group（${tailDom} 字）多 ${(cardMid / tailDom).toFixed(1)} 倍 —— 「字节不是成本轴、卡型才是」这条结论要重新量`,
     ).toBeGreaterThan(10);
   });
 });

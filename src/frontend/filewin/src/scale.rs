@@ -19,12 +19,16 @@
 //! ⚠ **射程**：本秤买「同一台机器上，行数涨 64 倍时这三个数涨不涨」；
 //! **不买**「在你所有机器上都流畅」，**不买** GPU 那一段，**不买**真机字体回落 / DPI / 合成器差异。
 //!
-//! # 🔴 二、判的是**关系**，不是绝对毫秒数
+//! # 🔴 二、判的是**关系**，而且数的是确定量，不是毫秒
 //!
-//! 绝对阈值换台机器就得改，改着改着就变成「调宽了凑绿」。
+//! 绝对阈值换台机器就得改，改着改着就变成「调宽了凑绿」；毫秒的比值在门禁并发时也会飘。
 //! 本秤钉的是**虚拟滚动买到的那条性质本身**：
 //!
-//! > 行数从 10 000 涨到 640 413（**64 倍**），帧时**不许跟着涨**。
+//! > 行数从 10 000 涨到 640 413（**64 倍**），每帧的活**不许跟着涨**。
+//!
+//! 10-07 起「每帧的活」数的是**这一帧 row-painter 真被调用了几次**（[`F1::rows_materialized`] · [`F1::scroll_rows_max`]，
+//! 生产那条画列表的路自己记的数）：一帧的布局 ＋ 文字整形正比于画了几行，行数与总行数无关 ⇔ 帧时与总行数无关。
+//! 毫秒（首屏 · 帧时中位 · p99）照旧量、照旧印，只当读数。
 //!
 //! 这条在 `ScrollArea::show` 上结构上不成立（10 万行 83.6 ms/帧）
 //! ⇒ 它同时也是「有没有用对 API」的第二道门。
@@ -65,8 +69,10 @@ pub struct F1 {
     /// 差的那 15 倍就是「每帧给新出现的约 44 行整形文字」⇒ **该用的是滚动那个数**。
     pub frame_median_ms: f64,
     pub frame_p99_ms: f64,
-    /// 这一帧物化了多少行（应当与行数无关）。
+    /// 首屏那一帧物化了多少行（应当与行数无关）。
     pub rows_materialized: usize,
+    /// 滚动那几帧里物化行数最多的一帧（row-painter 真被调用的次数；确定量，平坦性的闸看它）。
+    pub scroll_rows_max: usize,
     /// 进程 RSS（KiB）。拿不到就是 0（非 Linux）。
     pub rss_kib: u64,
 }
@@ -88,11 +94,13 @@ pub fn measure(rows: &[Listed], frames: usize) -> F1 {
     let total_h = rows.len() as f32 * super::theme::metrics(&ctx).row_h;
     let span = (total_h - SCREEN.1).max(1.0);
     let mut samples: Vec<f64> = Vec::with_capacity(frames);
+    let mut scroll_rows_max = 0;
     for i in 0..frames {
         let off = span * (i as f32 / frames.max(1) as f32);
         let t = std::time::Instant::now();
-        let _ = render_headless(&ctx, rows, screen, off);
+        let tally = render_headless(&ctx, rows, screen, off);
         samples.push(t.elapsed().as_secs_f64() * 1000.0);
+        scroll_rows_max = scroll_rows_max.max(tally.rows_materialized);
     }
     samples.sort_by(|a, b| a.partial_cmp(b).unwrap());
     let median = samples[samples.len() / 2];
@@ -104,6 +112,7 @@ pub fn measure(rows: &[Listed], frames: usize) -> F1 {
         frame_median_ms: median,
         frame_p99_ms: p99,
         rows_materialized: first.rows_materialized,
+        scroll_rows_max,
         rss_kib: rss_kib(),
     }
 }

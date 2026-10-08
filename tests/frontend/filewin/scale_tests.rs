@@ -1,98 +1,72 @@
 use super::*;
 
-/// 行数涨 64 倍，帧时**不许跟着涨**。
+/// 行数涨 64 倍，每帧的活**不许跟着涨**。
 ///
-/// 🔴 判的是**比值**，不是绝对毫秒 —— 绝对阈值换台机器就得改，
-/// 改着改着就变成调宽了凑绿。这里的闸是 **3 倍**，而
-/// 现打的真实比值是 **1.00**（0.90 ms → 0.90 ms）
-/// ⇒ 3 倍是给机器噪声留的余量，不是给退化留的：
-/// 用不虚拟的那条路，同样的跨度会是 **64 倍**量级（见下一条对照）。
+/// # 口径 10-07 换过：原来量帧时毫秒，今天数每帧物化的行数
+///
+/// 原来判的是**帧时中位的比值**（闸 3 倍，现打 1.00）与**首屏毫秒的比值**（闸 10 倍）。
+/// 本意是复杂度：虚拟滚动下一帧的代价与总行数无关。毫秒在门禁并发时会飘。
+/// 今天数的是**这一帧 row-painter 真被调用了几次**（生产那条画列表的路自己记的 `rows_materialized`）：
+/// 一帧的布局 ＋ 文字整形 ＋ 生成绘制命令正比于画了几行（每行同一套控件），
+/// ⇒ 「画的行数与总行数无关」就是「帧时与总行数无关」的原因，而且是整数、确定。
+/// 首屏那一帧与滚动扫过全程的每一帧都数（滚动那几帧取最多的一帧）。毫秒照旧印出来，只当读数。
 #[test]
-fn frame_time_stays_flat_from_ten_thousand_rows_to_six_hundred_thousand() {
+fn rows_painted_per_frame_stay_flat_from_ten_thousand_rows_to_six_hundred_thousand() {
     let small = corpus::synth_rows(10_000, 0xF1);
     let big = corpus::synth_rows(640_413, 0xF1);
-
-    // 两档交替量 3 趟、各取最快那一趟：负载只会给某一趟加时间，交替让两档摊到同样的负载。
-    let best = |x: F1, y: F1| F1 {
-        first_paint_ms: x.first_paint_ms.min(y.first_paint_ms),
-        frame_median_ms: x.frame_median_ms.min(y.frame_median_ms),
-        ..y
-    };
-    let (mut a, mut b) = (measure(&small, 60), measure(&big, 60));
-    for _ in 1..3 {
-        a = best(a, measure(&small, 60));
-        b = best(b, measure(&big, 60));
-    }
+    let (a, b) = (measure(&small, 60), measure(&big, 60));
     println!("  F1 · 虚拟滚动");
-    println!("    {a}");
-    println!("    {b}");
+    println!("    {a} · 滚动一帧最多画 {} 行", a.scroll_rows_max);
+    println!("    {b} · 滚动一帧最多画 {} 行", b.scroll_rows_max);
 
-    // ① 平坦性 —— 本条是承重的。
-    let ratio = b.frame_median_ms / a.frame_median_ms.max(1e-6);
-    println!("    帧时比值 640413/10000 = {ratio:.2}（闸 ≤ 3.0；99 现打 1.00）");
-    assert!(
-        ratio <= 3.0,
-        "行数涨 64 倍、帧时涨了 {ratio:.2} 倍 —— 虚拟滚动没生效，或者有人把 show_rows 换掉了"
-    );
-
-    // ② 物化行数与行数无关（与 rows.rs 那条同源，这里再钉一次是因为
-    //    帧时平坦也可能来自「两档都慢得一样」）。
+    // ① 首屏那一帧：两档物化的行数相等。
     assert_eq!(
         a.rows_materialized, b.rows_materialized,
-        "两档物化的行数不等 —— 平坦是假的"
+        "两档首屏物化的行数不等 —— 虚拟滚动没生效，或者有人把 show_rows 换掉了"
     );
-
-    // ③ 反空真：真的量到了东西。
-    assert!(a.frame_median_ms > 0.0 && b.frame_median_ms > 0.0);
-    assert!(a.rows_materialized > 0);
-
-    // ④ 首屏：64 倍数据，首屏不许涨成另一个量级。
-    //    ⚠ 首屏含建字体图集，噪声比帧时大 ⇒ 闸放到 10 倍。
-    let fp = b.first_paint_ms / a.first_paint_ms.max(1e-6);
-    println!("    首屏比值 = {fp:.2}（闸 ≤ 10.0）");
-    assert!(fp <= 10.0, "首屏时延涨了 {fp:.2} 倍");
+    // ② 滚动扫过全程：每帧最多画的行数相等（判的是斜率：行数 ×64，每帧的活 ×1）。
+    assert_eq!(
+        a.scroll_rows_max, b.scroll_rows_max,
+        "行数涨 64 倍、滚动时一帧最多画的行数从 {} 变成 {} —— 每帧的活跟着总行数涨了",
+        a.scroll_rows_max, b.scroll_rows_max
+    );
+    // ③ 反空真：真的画了东西，而且一帧只画一屏上下（远小于小档的总行数）。
+    assert!(a.rows_materialized > 0 && a.scroll_rows_max > 0);
+    assert!(
+        a.scroll_rows_max * 10 < small.len(),
+        "一帧画了 {} 行，小档总共才 {} 行 —— 这不是虚拟滚动",
+        a.scroll_rows_max,
+        small.len()
+    );
 }
 
 /// 🔴 **对照组：证明上面那把尺子量得出斜率。**
 ///
-/// 没有这一条，「比值 ≤ 3」可能在任何实现上都成立（比如两档都被别的开销淹掉）
-/// ⇒ 那就是一条空真判据。这里用**不虚拟**的那条路跑同样的跨度，
-/// 断言它**真的会超过那道闸**。
-///
-/// ⚠ 跨度只取 1 000 → 20 000（20 倍）：现打 10 万行是 83.6 ms/帧，
-/// 再往上跑完要几分钟而结论不变 —— 同一条「刻意不跑」的理由。
+/// 没有这一条，「两档行数相等」可能在任何实现上都成立（比如计数器根本没在数）
+/// ⇒ 那就是一条空真判据。这里用**不虚拟**的那条路跑同样形状的跨度，
+/// 断言它每帧画的行数**真的跟着总行数涨**（原来比的是帧时毫秒的比值 > 3，10-07 起数行数，理由同上一条）。
 #[test]
 fn the_flatness_meter_can_actually_see_a_slope() {
     use super::super::rows::testing::render_headless_nonvirtual;
     let screen = egui::vec2(SCREEN.0, SCREEN.1);
-
-    // 两档各热身一帧，再交替各量 7 帧、各取最快那一帧：负载只会给某一帧加时间，
-    // 交替让两档摊到同样的负载，取最快的比的是两档本身。
     let sizes = [1_000usize, 20_000];
-    let rows: Vec<_> = sizes.iter().map(|&n| corpus::synth_rows(n, 0xF1)).collect();
-    let ctxs: Vec<_> = rows
+    let painted: Vec<usize> = sizes
         .iter()
-        .map(|r| {
+        .map(|&n| {
+            let rows = corpus::synth_rows(n, 0xF1);
             let ctx = egui::Context::default();
-            let _ = render_headless_nonvirtual(&ctx, r, screen);
-            ctx
+            render_headless_nonvirtual(&ctx, &rows, screen).rows_materialized
         })
         .collect();
-    let mut best = [f64::INFINITY; 2];
-    for _ in 0..7 {
-        for i in 0..2 {
-            let t0 = std::time::Instant::now();
-            let _ = render_headless_nonvirtual(&ctxs[i], &rows[i], screen);
-            best[i] = best[i].min(t0.elapsed().as_secs_f64() * 1000.0);
-        }
-    }
-    let [a, b] = best;
-    let ratio = b / a.max(1e-6);
+    let ratio = painted[1] as f64 / painted[0].max(1) as f64;
     println!("  F1 · 对照组（不虚拟 ScrollArea::show）");
-    println!("    1 000 行 {a:.3} ms → 20 000 行 {b:.3} ms，比值 {ratio:.2}");
+    println!(
+        "    1 000 行画 {} 行 → 20 000 行画 {} 行，比值 {ratio:.2}",
+        painted[0], painted[1]
+    );
     assert!(
         ratio > 3.0,
-        "不虚拟的那条路在 20 倍数据上只涨了 {ratio:.2} 倍 —— \
+        "不虚拟的那条路在 20 倍数据上每帧只多画了 {ratio:.2} 倍 —— \
              那说明这把尺子量不出斜率，上面那条平坦性判据是空的"
     );
 }
