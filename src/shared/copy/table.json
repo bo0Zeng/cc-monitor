@@ -1928,14 +1928,14 @@
     "sessionState.liveAttachable.tooltip": {
       "kind": "body",
       "role": "悬停",
-      "zh": "在 tmux 会话里运行：程序退了也能接回去",
+      "zh": "在 tmux 会话里运行 · 程序退出后可接回",
       "args": [],
       "limited": ["tmux"]
     },
     "sessionState.liveResumable.tooltip": {
       "kind": "body",
       "role": "悬停",
-      "zh": "不在 tmux 会话里：程序退了只能 resume",
+      "zh": "不在 tmux 会话里运行 · 程序退出后只能恢复",
       "args": [],
       "limited": ["tmux"]
     },
@@ -1966,7 +1966,7 @@
     "sessionState.unseen.noResume": {
       "kind": "body",
       "role": "片段",
-      "zh": "现在不恢复这个会话",
+      "zh": "暂不恢复",
       "args": []
     },
     "sessionState.unseen.tooltip": {
@@ -1990,25 +1990,25 @@
     "sessionState.recordFile.gone": {
       "kind": "body",
       "role": "说明",
-      "zh": "记录文件不见了。它被删掉或改了名，会话本身还在跑；文件回来后接着显示。",
+      "zh": "会话记录不见 · 会话仍运行 · 记录回来后续显",
       "args": []
     },
     "sessionState.recordFile.truncated": {
       "kind": "body",
       "role": "说明",
-      "zh": "记录文件被改短了，已从头重读。",
+      "zh": "会话记录被改短 · 已从头重显",
       "args": []
     },
     "sessionState.recordFile.rewritten": {
       "kind": "body",
       "role": "说明",
-      "zh": "记录文件被改过了，已从头重读。",
+      "zh": "会话记录被改过 · 已从头重显",
       "args": []
     },
     "sessionState.recordGone.title": {
       "kind": "error",
       "role": "报错",
-      "zh": "没法 resume：记录已不在",
+      "zh": "恢复失败 · 记录已不在",
       "args": []
     },
     "sessionState.recordGone.body": {
@@ -2020,37 +2020,37 @@
     "sessionState.pin.pinHint": {
       "kind": "body",
       "role": "说明",
-      "zh": "固定后，关掉 app 再打开它还在，显示为已结束，可以 resume。位置不变。",
+      "zh": "固定 · 关闭 cc-monitor 后仍保留 · 可恢复",
       "args": []
     },
     "sessionState.pin.unpinHint": {
       "kind": "body",
       "role": "说明",
-      "zh": "取消后，这个会话结束之后，关掉 app 再打开就没了",
+      "zh": "取消固定 · 会话结束后下次启动不再显示",
       "args": []
     },
     "sessionState.pinned.head": {
       "kind": "title",
       "role": "标题",
-      "zh": "📌 固定下来的会话",
+      "zh": "已固定的会话",
       "args": []
     },
     "sessionState.pinned.body": {
       "kind": "body",
       "role": "说明",
-      "zh": "这里只留着它的条目，不能回看内容，只能 resume。resume 接上之后，这个标签会自己亮起来。",
+      "zh": "不载入内容 · 只能恢复 · 恢复后自动显示",
       "args": []
     },
     "sessionState.pinnedEmpty.head": {
       "kind": "title",
       "role": "标题",
-      "zh": "这个会话没有留下记录",
+      "zh": "会话无记录",
       "args": []
     },
     "sessionState.pinnedEmpty.body": {
       "kind": "body",
       "role": "说明",
-      "zh": "固定它的时候它还没写下任何内容，没有可以 resume 的记录。点标签上的 × 可以关掉它。",
+      "zh": "无内容 · 不可恢复 · 点 × 关闭",
       "args": []
     },
     "deploy.refused.unsupportedMachine": {
@@ -2177,7 +2177,7 @@
     "tabMenu.item.resume": {
       "kind": "action",
       "role": "菜单项",
-      "zh": "恢复这个会话",
+      "zh": "恢复",
       "args": []
     },
     "tabMenu.item.close": {
@@ -2802,7 +2802,7 @@
     "gridMonitor.renderPeek.filesMore": {
       "kind": "body",
       "role": "说明",
-      "zh": "还有 {more} 个更早改过的没列出",
+      "zh": "更早改过的另有 {more}",
       "args": ["more"]
     },
     "gridMonitor.renderPeek.filesHead": {
@@ -2814,7 +2814,7 @@
     "gridMonitor.renderPeek.agentsHead": {
       "kind": "title",
       "role": "标题",
-      "zh": "subagent · {running} 运行中 / 共 {agentsCount}",
+      "zh": "agent {agentsCount} · {running} 在跑",
       "args": ["running", "agentsCount"]
     },
     "gridMonitor.fact.model": {
@@ -2862,25 +2862,25 @@
     "gridMonitor.renderPeek.jump": {
       "kind": "action",
       "role": "按钮",
-      "zh": "跳转到该会话 →",
+      "zh": "切到此会话",
       "args": []
     },
     "gridMonitor.render.empty": {
       "kind": "body",
       "role": "空态",
-      "zh": "暂无会话。",
+      "zh": "无会话",
       "args": []
     },
     "gridMonitor.render.summary": {
       "kind": "body",
       "role": "说明",
-      "zh": "{machines} 台机器 · {liveSessions} 个活跃会话 · {runningAgents} 个 agent 运行中",
+      "zh": "机器 {machines} · 会话 {liveSessions} · agent 在跑 {runningAgents}",
       "args": ["machines", "liveSessions", "runningAgents"]
     },
     "gridMonitor.build.intro": {
       "kind": "body",
       "role": "说明",
-      "zh": "跨机器只读监控：一屏看所有会话的实时状态。点卡片看详情，这块板不会关，可以连着查；详情里点「跳转」切到那个会话。只读，不会向 agent 发任何东西。",
+      "zh": "各机器会话状态 · 点卡片看详情 · 只看不发",
       "args": []
     },
     "gridMonitor.build.title": {
@@ -2892,43 +2892,43 @@
     "gridMonitor.build.back": {
       "kind": "action",
       "role": "按钮",
-      "zh": "← 返回",
+      "zh": "返回",
       "args": []
     },
     "gridMonitor.renderBadges.waitingHover": {
       "kind": "body",
       "role": "悬停",
-      "zh": "等待操作：{waitingFor}",
+      "zh": "等 {waitingFor}",
       "args": ["waitingFor"]
     },
     "gridMonitor.renderBadges.waiting": {
       "kind": "body",
       "role": "状态",
-      "zh": "等待：{waitingFor}",
+      "zh": "等 {waitingFor}",
       "args": ["waitingFor"]
     },
     "gridMonitor.renderBadges.unread": {
       "kind": "body",
       "role": "状态",
-      "zh": "{unread} 条未读",
+      "zh": "未读 {unread}",
       "args": ["unread"]
     },
     "gridMonitor.renderBadges.ctxTokensHint": {
       "kind": "body",
       "role": "说明",
-      "zh": "最新一轮用了这么多 token；看不出这个会话的上限，所以不算百分比",
+      "zh": "最新一轮用量 · 上限未知 · 不算百分比",
       "args": []
     },
     "gridMonitor.renderBadges.ctxHint": {
       "kind": "body",
       "role": "说明",
-      "zh": "context 占用近似（最新一轮 prompt token ÷ 模型上限）",
+      "zh": "上下文占用 · 按最新一轮估算",
       "args": []
     },
     "gridMonitor.renderBadges.agents": {
       "kind": "body",
       "role": "说明",
-      "zh": "{runningAgents} 个 subagent 运行中（共 {totalAgents}）",
+      "zh": "agent {totalAgents} · {runningAgents} 在跑",
       "args": ["runningAgents", "totalAgents"]
     },
     "gridMonitor.groups.local": {
@@ -4254,7 +4254,7 @@
     "tabBatch.menu.head": {
       "kind": "title",
       "role": "标题",
-      "zh": "已选 {n} 个",
+      "zh": "已选 {n}",
       "args": ["n"]
     },
     "tabBatch.menu.stop": {
@@ -4285,13 +4285,13 @@
     "tabBatch.menu.unpin": {
       "kind": "action",
       "role": "菜单项",
-      "zh": "取消固定（{n}）",
+      "zh": "取消固定 ×{n}",
       "args": ["n"]
     },
     "tabBatch.menu.joinOne": {
       "kind": "action",
       "role": "菜单项",
-      "zh": "{name}（{n}）",
+      "zh": "{name} ×{n}",
       "args": ["name", "n"]
     },
     "tabBatch.menu.found": {
@@ -4321,13 +4321,13 @@
     "tabBatch.stop.title": {
       "kind": "title",
       "role": "标题",
-      "zh": "结束 {n} 个会话",
+      "zh": "结束会话 ×{n}",
       "args": ["n"]
     },
     "tabBatch.stop.action": {
       "kind": "action",
       "role": "按钮",
-      "zh": "结束 {n} 个会话",
+      "zh": "结束 ×{n}",
       "args": ["n"]
     },
     "tabBatch.action.startTmux": {
@@ -4406,31 +4406,31 @@
     "tabBatch.why.live": {
       "kind": "body",
       "role": "片段",
-      "zh": "会话还在运行",
+      "zh": "运行中",
       "args": []
     },
     "tabBatch.why.pinned": {
       "kind": "body",
       "role": "片段",
-      "zh": "已经固定了",
+      "zh": "已固定",
       "args": []
     },
     "tabBatch.why.notPinned": {
       "kind": "body",
       "role": "片段",
-      "zh": "没有固定",
+      "zh": "未固定",
       "args": []
     },
     "tabBatch.why.inThatGroup": {
       "kind": "body",
       "role": "片段",
-      "zh": "已经在这个集合里",
+      "zh": "已在此分组",
       "args": []
     },
     "tabBatch.why.notInGroup": {
       "kind": "body",
       "role": "片段",
-      "zh": "不在任何集合里",
+      "zh": "不在分组",
       "args": []
     },
     "tabBatch.why.noTmux": {
@@ -4443,7 +4443,7 @@
     "tabBatch.why.notInTmux": {
       "kind": "error",
       "role": "报错",
-      "zh": "在 {machine} 上找不到跑着它的 tmux 会话",
+      "zh": "{machine} 上找不到它的 tmux 会话",
       "args": ["machine"],
       "limited": ["tmux"]
     },
@@ -4457,7 +4457,7 @@
     "tabBatch.why.running": {
       "kind": "body",
       "role": "说明",
-      "zh": "已经在 tmux 会话「{name}」里跑着",
+      "zh": "已在 tmux 会话「{name}」运行",
       "args": ["name"],
       "limited": ["tmux"]
     },
@@ -4476,52 +4476,53 @@
     "tabBatch.why.nameTaken": {
       "kind": "error",
       "role": "报错",
-      "zh": "{machine} 上 tmux 会话名「{name}」已经被占了，没有起",
+      "zh": "{machine} tmux 会话名「{name}」被占用 · 未启动",
       "args": ["machine", "name"],
       "limited": ["tmux"]
     },
     "tabBatch.why.childTimedOut": {
       "kind": "error",
       "role": "报错",
-      "zh": "{machine} 起会话：{detail}",
+      "zh": "{machine} 新建会话无应答 · {detail}",
       "args": ["machine", "detail"]
     },
     "tabBatch.why.startFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "{machine} 上没起成：{detail}",
+      "zh": "{machine} 启动失败 · {detail}",
       "args": ["machine", "detail"]
     },
     "tabBatch.why.windowFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "终端窗口没开出来：{detail}",
+      "zh": "终端窗口打不开 · {detail}",
       "args": ["detail"]
     },
     "tabBatch.why.batchRefused": {
       "kind": "error",
       "role": "报错",
-      "zh": "{machine} 的后端没接这一批：{detail}",
+      "zh": "{machine} 未执行 · {detail}",
       "args": ["machine", "detail"]
     },
     "tabBatch.why.accountGone": {
       "kind": "error",
       "role": "报错",
-      "zh": "上次用的账号「{name}」现在选不了。单独右键这个标签点 Resume，可以改用当前账号。",
+      "zh": "上次的账号 {name} 不可用 · 单独恢复时可换账号",
       "args": ["name"]
     },
     "tabMenu.dupes.body": {
       "kind": "error",
       "role": "报错",
-      "zh": "这个会话同时活在 {n} 个 tmux 会话里，这次接的是「{name}」。其余几个要不要清理，请到终端里看。",
+      "zh": "会话在 tmux 会话 ×{n} · 已打开「{name}」 · 其余的到终端里清理",
       "args": ["n", "name"],
       "limited": ["tmux"]
     },
     "tabMenu.dupes.title": {
       "kind": "error",
       "role": "报错",
-      "zh": "检测到多个同身份会话",
-      "args": []
+      "zh": "会话在多个 tmux 会话里",
+      "args": [],
+      "limited": ["tmux"]
     },
     "tabMenu.collection.remove": {
       "kind": "action",
@@ -4854,13 +4855,13 @@
     "tabSessionActions.who.remote": {
       "kind": "body",
       "role": "片段",
-      "zh": "远端 [{machine}]",
+      "zh": "{machine}",
       "args": ["machine"]
     },
     "tabSessionActions.recordUnknown.title": {
       "kind": "error",
       "role": "报错",
-      "zh": "查不到记录还在不在，照常 resume",
+      "zh": "记录状态未知 · 照常恢复",
       "args": []
     },
     "tabSessionActions.who.local": {
@@ -4884,20 +4885,21 @@
     "tabSessionActions.dupes.body": {
       "kind": "error",
       "role": "报错",
-      "zh": "这个会话同时活在 {n} 个 tmux 会话里，这次接的是「{name}」。其余几个要不要清理，请到终端里看。",
+      "zh": "会话在 tmux 会话 ×{n} · 已打开「{name}」 · 其余的到终端里清理",
       "args": ["n", "name"],
       "limited": ["tmux"]
     },
     "tabSessionActions.dupes.title": {
       "kind": "error",
       "role": "报错",
-      "zh": "检测到多个同身份会话",
-      "args": []
+      "zh": "会话在多个 tmux 会话里",
+      "args": [],
+      "limited": ["tmux"]
     },
     "tabSessionActions.openInWindow.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "打开新窗口失败",
+      "zh": "新窗口打不开",
       "args": []
     },
     "render.codeBlock.copy": {
@@ -4909,7 +4911,7 @@
     "accountChip.selectDefault.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "切换当前账号失败",
+      "zh": "设默认账号失败",
       "args": []
     },
     "accountChip.menu.refresh": {
@@ -4939,7 +4941,7 @@
     "accountChip.menu.queryFailed": {
       "kind": "body",
       "role": "说明",
-      "zh": "这台的账号没查到：{reason}",
+      "zh": "读取账号失败 · {reason}",
       "args": ["reason"]
     },
     "accountChip.menu.label": {
@@ -4963,7 +4965,7 @@
     "accountChip.label.disabled": {
       "kind": "body",
       "role": "状态",
-      "zh": "未启用",
+      "zh": "未启用多账号",
       "args": []
     },
     "accountChip.label.backendOld": {
@@ -4975,7 +4977,7 @@
     "accountChip.label.queryFailed": {
       "kind": "body",
       "role": "状态",
-      "zh": "账号没查到",
+      "zh": "读取账号失败",
       "args": []
     },
     "accountChip.label.noRemote": {
@@ -5251,7 +5253,7 @@
     "agentsPanel.group.older": {
       "kind": "action",
       "role": "按钮",
-      "zh": "更早的（{n}）",
+      "zh": "更早 ×{n}",
       "args": ["n"]
     },
     "agentsPanel.row.opened": {
@@ -7475,7 +7477,7 @@
     "machineCard.test.unreachable": {
       "kind": "body",
       "role": "片段",
-      "zh": "离线",
+      "zh": "连接失败",
       "args": []
     },
     "machineCard.test.stalled": {
@@ -14107,13 +14109,13 @@
     "tabSessionActions.agent.unknown": {
       "kind": "error",
       "role": "报错",
-      "zh": "还不知道这个会话是哪一家 agent，先没动",
+      "zh": "agent 未知 · 未执行",
       "args": []
     },
     "tabBatch.why.agentUnknown": {
       "kind": "body",
       "role": "说明",
-      "zh": "还不知道是哪一家 agent",
+      "zh": "agent 未知",
       "args": []
     },
     "acct.agent.unknown": {
@@ -16664,25 +16666,25 @@
     "tabBar.close.doneUnpinned": {
       "kind": "body",
       "role": "toast",
-      "zh": "已关闭「{title}」，也取消了固定",
+      "zh": "已关闭「{title}」 · 已取消固定",
       "args": ["title"]
     },
     "tabBar.persist.collectionsFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "分组没存上，重启后会回到上次存下的分组",
+      "zh": "保存分组失败 · 重启后回到上次",
       "args": []
     },
     "tabBar.persist.pinnedFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "固定没存上，重启后会回到上次存下的固定",
+      "zh": "保存固定失败 · 重启后回到上次",
       "args": []
     },
     "tabBar.persist.orderFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "顺序没存上，重启后会回到上次存下的顺序",
+      "zh": "保存顺序失败 · 重启后回到上次",
       "args": []
     },
     "settings.behavior.saveFailedLine": {
@@ -18441,13 +18443,13 @@
     "sessionState.pinGone.title": {
       "kind": "title",
       "role": "标题",
-      "zh": "固定的会话找不到记录了",
+      "zh": "固定的会话无记录",
       "args": []
     },
     "sessionState.pinGone.body": {
       "kind": "body",
       "role": "说明",
-      "zh": "这台上有 {n} 个固定的会话找不到记录：{names}。没有自动摘掉；点这条提示把它们从固定里摘掉。",
+      "zh": "找不到记录的固定会话 ×{n} · {names} · 未自动摘除 · 点此摘除",
       "args": ["n", "names"]
     },
     "beMcpEdit.path.emptyDir": {
@@ -22940,7 +22942,7 @@
     "tabBar.hover.key": {
       "kind": "body",
       "role": "悬停",
-      "zh": "{key} 切到这里",
+      "zh": "切到此处 · {key}",
       "args": ["key"]
     },
     "tabBar.hover.account": {
@@ -26173,7 +26175,7 @@
     "sessionState.batch.skipped": {
       "kind": "body",
       "role": "说明",
-      "zh": "另 {n} 个已结束 · 跳过",
+      "zh": "另 ×{n} 已结束 · 跳过",
       "args": ["n"]
     },
     "statusBar.todo.label": {
@@ -26203,7 +26205,7 @@
     "statusBar.messages.empty": {
       "kind": "body",
       "role": "空态",
-      "zh": "本次运行还没有提示",
+      "zh": "无提示",
       "args": []
     },
     "statusBar.messages.line": {
