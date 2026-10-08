@@ -344,7 +344,7 @@ pub(crate) async fn upload_to_staging(
         })?;
     let mut lf = tokio::fs::File::open(local_path).await.map_err(|e| {
         copy_text(
-            "beTransfer.local.openFailed",
+            "beTransfer.local.readFailed",
             &[("path", local_path), ("e", &e.to_string())],
         )
     })?;
@@ -383,7 +383,7 @@ pub(crate) async fn upload_to_staging(
     if resume_from > 0 {
         lf.seek(std::io::SeekFrom::Start(0)).await.map_err(|e| {
             copy_text(
-                "beTransfer.local.rewindFailed",
+                "beTransfer.local.readFailed",
                 &[("path", local_path), ("e", &e.to_string())],
             )
         })?;
@@ -393,7 +393,7 @@ pub(crate) async fn upload_to_staging(
             let want = left.min(CHUNK as u64) as usize;
             lf.read_exact(&mut buf[..want]).await.map_err(|e| {
                 copy_text(
-                    "beTransfer.local.prefixFailed",
+                    "beTransfer.local.readFailed",
                     &[("path", local_path), ("e", &e.to_string())],
                 )
             })?;
@@ -424,8 +424,8 @@ pub(crate) async fn upload_to_staging(
             }
             let n = lf.read(&mut buf).await.map_err(|e| {
                 copy_text(
-                    "beTransfer.upload.readLocalFailed",
-                    &[("e", &e.to_string())],
+                    "beTransfer.local.readFailed",
+                    &[("path", local_path), ("e", &e.to_string())],
                 )
             })?;
             if n == 0 {
@@ -444,9 +444,12 @@ pub(crate) async fn upload_to_staging(
                 on_progress(done, total);
             }
         }
-        rf.flush()
-            .await
-            .map_err(|e| copy_text("beTransfer.upload.flushFailed", &[("e", &e.to_string())]))?;
+        rf.flush().await.map_err(|e| {
+            copy_text(
+                "beTransfer.upload.writeRemoteFailed",
+                &[("e", &e.to_string())],
+            )
+        })?;
         Ok(done)
     }
     .await;
@@ -560,9 +563,12 @@ pub(crate) async fn download_to_local(
                 on_progress(done, total);
             }
         }
-        lf.flush()
-            .await
-            .map_err(|e| copy_text("beTransfer.download.flushFailed", &[("e", &e.to_string())]))?;
+        lf.flush().await.map_err(|e| {
+            copy_text(
+                "beTransfer.download.writeLocalFailed",
+                &[("e", &e.to_string())],
+            )
+        })?;
         Ok(done)
     }
     .await;

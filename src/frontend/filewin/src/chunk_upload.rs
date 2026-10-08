@@ -41,7 +41,7 @@ pub async fn upload_by_chunks(
     let key = uuid::Uuid::new_v4().simple().to_string();
     let local_err = |e: std::io::Error| {
         copy_text(
-            "rsFilewinChunkUpload.local.unreadable",
+            "beTransfer.local.readFailed",
             &[("path", &p.local_path), ("e", &e.to_string())],
         )
     };

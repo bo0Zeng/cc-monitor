@@ -159,7 +159,10 @@ impl std::fmt::Display for ChildFail {
                 "beChild.run.timedOut",
                 &[
                     ("program", program.as_str()),
-                    ("secs", &after.shown_secs().to_string()),
+                    (
+                        "dur",
+                        &copy_core::format_duration(after.shown_secs().saturating_mul(1000)),
+                    ),
                 ],
             )),
         }

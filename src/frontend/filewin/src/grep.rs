@@ -119,7 +119,7 @@ pub struct GrepOutcome {
 }
 
 fn bad() -> String {
-    copy_text("rsFilewinGrep.reply.badShape", &[])
+    copy_text("rsFilewinSource.said.badReply", &[])
 }
 
 fn u(d: &Value, k: &str) -> Result<u64, String> {

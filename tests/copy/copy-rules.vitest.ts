@@ -277,6 +277,17 @@ describe("CP2a · 文案规范", () => {
     expect(w.length, "rules.json 里一条 C-W 都没有").toBe(Object.keys(W_CHECKS).length);
     expect(w.filter((r) => r.bad.length === 0 || r.good.length === 0).map((r) => r.id)).toEqual([]);
   });
+
+  it("C-W14 的 roleTemplates：原因格「<对象> 无法解析」放过，同一串换个角色照逮；对象里夹「 · 」的原因格照逮", () => {
+    const fam = rules.find((r) => r.id === "C-W14")?.families?.find((f) => f.roleTemplates);
+    expect(fam?.roleTemplates?.["原因格"], "C-W14 没有原因格的 roleTemplates —— 下面零命中地绿").toBeDefined();
+    const run = (role: string, zh: string) => CHECKS["C-W14"]({ kind: "error", role, zh, args: [] }, ctx);
+    for (const zh of ["登录信息无法解析", "行 {line} 无法解析", "对端回的目录无法解析 · {e}", "内容无法解析 · 已跳过"]) {
+      expect(run("原因格", zh), `原因格逮住了「${zh}」`).toBeNull();
+      expect(run("报错", zh), `报错放过了「${zh}」`).not.toBeNull();
+    }
+    expect(run("原因格", "回的内容读不懂 · 无法解析")).not.toBeNull();
+  });
 });
 
 describe("复选框 / 开关标签允许动词开头 —— 规矩与检法同拍", () => {

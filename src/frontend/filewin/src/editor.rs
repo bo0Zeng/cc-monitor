@@ -847,7 +847,7 @@ pub fn text_from_reply(
             .get("text")
             .and_then(serde_json::Value::as_str)
             .map(|t| Some(t.to_string()))
-            .ok_or_else(|| copy_text("rsFilewinEditor.reply.noText", &[])),
+            .ok_or_else(|| copy_text("rsFilewinSource.said.badReply", &[])),
         Err(f) if matches!(f.code.as_deref(), Some("too_large" | "not_text")) => Ok(None),
         Err(f) => Err(f.said),
     }

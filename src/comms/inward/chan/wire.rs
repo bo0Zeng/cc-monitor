@@ -238,7 +238,7 @@ impl std::fmt::Display for CallError {
                     copy_text("rsChanWire.ours.cancelledRunsOn", &[])
                 }
                 OursFault::Cancelled => copy_text("rsChanWire.ours.cancelled", &[]),
-                OursFault::Misuse => copy_text("rsChanWire.ours.misuse", &[]),
+                OursFault::Misuse => copy_text("rsChanWire.ours.broken", &[]),
                 OursFault::Broken => copy_text("rsChanWire.ours.broken", &[]),
             }),
         }

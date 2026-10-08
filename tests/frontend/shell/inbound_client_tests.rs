@@ -859,7 +859,7 @@ async fn a_peer_that_cannot_withdraw_is_said_out_loud() {
         };
         assert_eq!(withdraw, want, "{ops:?}");
         let said = err.to_string();
-        let ms = after.as_millis().to_string();
+        let dur = copy_core::format_elapsed(after);
         let told = warns.peer_cannot_withdraw();
         match want {
             Withdraw::NotOffered => {
@@ -868,7 +868,7 @@ async fn a_peer_that_cannot_withdraw_is_said_out_loud() {
                     said,
                     crate::copy_table::copy_text(
                         "rsInboundClient.error.timeoutPeerRunsOn",
-                        &[("after", &ms)]
+                        &[("dur", &dur)]
                     ),
                     "结果里没说对端不认"
                 );
@@ -878,10 +878,7 @@ async fn a_peer_that_cannot_withdraw_is_said_out_loud() {
             Withdraw::Asked | Withdraw::Unsent => {
                 assert_eq!(
                     said,
-                    crate::copy_table::copy_text(
-                        "rsInboundClient.error.timeout",
-                        &[("after", &ms)]
-                    )
+                    crate::copy_table::copy_text("rsInboundClient.error.timeout", &[("dur", &dur)])
                 );
                 assert!(told.is_empty(), "{told:?}");
             }

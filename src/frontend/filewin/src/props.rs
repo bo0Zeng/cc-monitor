@@ -29,7 +29,7 @@ pub fn stat_from_reply(d: &serde_json::Value) -> Result<Stat, String> {
     let path = d
         .get("path")
         .and_then(super::find::decode_path)
-        .ok_or_else(|| copy_text("rsFilewinSource.path.badShape", &[]))?;
+        .ok_or_else(|| copy_text("rsFilewinSource.said.badReply", &[]))?;
     let text = |v: Option<&serde_json::Value>| -> Option<String> {
         let v = v?;
         if v.is_null() {

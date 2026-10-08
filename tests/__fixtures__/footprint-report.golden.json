@@ -19,7 +19,7 @@
       "uninstallable": true
     },
     {
-      "effect_label": "插入或更新一段带标记的内容；卸载时只删这一段",
+      "effect_label": "插入或更新一段带标记的内容；卸载时只删此段",
       "host_label": "远端",
       "installable": true,
       "note": "或你在「别名」区选的其它 profile",
@@ -38,7 +38,7 @@
       "effect_label": "整个文件由 cc-monitor 拥有，部署时整体覆盖",
       "host_label": "远端",
       "installable": true,
-      "note": "固定放在那台的 ~/.cc-monitor/bin/ccm",
+      "note": "固定放在该机的 ~/.cc-monitor/bin/ccm",
       "path_declared": "~/.cc-monitor/bin/ccm",
       "path_resolved": "/nonexistent-footprint-golden/.cc-monitor/bin/ccm",
       "source_label": "随 cc-monitor 一起安装的程序",
@@ -60,7 +60,7 @@
       "source_label": "随 cc-monitor 一起安装",
       "state": {
         "kind": "undetermined",
-        "why": "本机没找到（/nonexistent-footprint-golden/.claude/skills/cc-bus）。这套东西装在 Claude Code 跑的那台上，很可能是某个远端；本页不连 SSH，远端状态请到对应页面查。"
+        "why": "本机未找到 /nonexistent-footprint-golden/.claude/skills/cc-bus；它装在运行 Claude Code 的机器上 · 可能在远端\n本页不连 SSH · 远端状态到对应页面查"
       },
       "tier": "AppInstalls",
       "tool_id": "cc-bus",
@@ -68,7 +68,7 @@
       "uninstallable": false
     },
     {
-      "effect_label": "只生成待贴文本，由你自己粘贴——cc-monitor 不写这个文件",
+      "effect_label": "只生成待贴文本 · 由你自己粘贴 · cc-monitor 不写此文件",
       "host_label": "本机或远端",
       "installable": true,
       "note": "只碰 hooks 段，而且 cc-monitor 不写，只生成待贴文本",
@@ -77,7 +77,7 @@
       "source_label": "随 cc-monitor 一起安装",
       "state": {
         "kind": "undetermined",
-        "why": "本机没找到（/nonexistent-footprint-golden/.claude/settings.json）。这套东西装在 Claude Code 跑的那台上，很可能是某个远端；本页不连 SSH，远端状态请到对应页面查。"
+        "why": "本机未找到 /nonexistent-footprint-golden/.claude/settings.json；它装在运行 Claude Code 的机器上 · 可能在远端\n本页不连 SSH · 远端状态到对应页面查"
       },
       "tier": "AppInstalls",
       "tool_id": "cc-bus",
@@ -88,13 +88,13 @@
       "effect_label": "只读（诊断用），cc-monitor 不写",
       "host_label": "本机或远端",
       "installable": true,
-      "note": "cc-bus 自己的安装脚本建的命令链接，不是 cc-monitor 建的。钩子诊断只查 cc-register 与 cc-bus-stop-hook 在不在；计数按 cc- 前缀数，别的工具建的同前缀链接也会算进去",
+      "note": "cc-bus 自己的安装脚本建的命令链接 · 非 cc-monitor 所建\n钩子诊断只查 cc-register 与 cc-bus-stop-hook 在不在\n计数按 cc- 前缀数 · 别的工具建的同前缀链接也算在内",
       "path_declared": "~/.local/bin/cc-*",
       "path_resolved": "/nonexistent-footprint-golden/.local/bin/cc-*",
       "source_label": "随 cc-monitor 一起安装",
       "state": {
         "kind": "undetermined",
-        "why": "列不出目录 /nonexistent-footprint-golden/.local/bin（不存在或无权限）；而且这套东西装在 Claude Code 跑的那台上，很可能是某个远端——本页不连 SSH。"
+        "why": "列不出目录 /nonexistent-footprint-golden/.local/bin（不存在或无权限）；且它装在运行 Claude Code 的机器上 · 可能在远端 · 本页不连 SSH"
       },
       "tier": "AppInstalls",
       "tool_id": "cc-bus",
@@ -105,13 +105,13 @@
       "effect_label": "cc-monitor 不直接写它；但你在 cc-monitor 里的操作会让它被写（由被调用的命令追加内容）",
       "host_label": "本机或远端",
       "installable": true,
-      "note": "运行期状态：收件箱、名册、队列、日志。本机与远端都读；发消息、派活、广播、收掉这些写操作只动远端那份",
+      "note": "运行期状态：收件箱、名册、队列、日志\n本机与远端都读；发消息、派活、广播、收掉这些写操作只动远端那份",
       "path_declared": "~/.cc-bus/",
       "path_resolved": "/nonexistent-footprint-golden/.cc-bus",
       "source_label": "随 cc-monitor 一起安装",
       "state": {
         "kind": "undetermined",
-        "why": "本机没找到（/nonexistent-footprint-golden/.cc-bus）。这套东西装在 Claude Code 跑的那台上，很可能是某个远端；本页不连 SSH，远端状态请到对应页面查。"
+        "why": "本机未找到 /nonexistent-footprint-golden/.cc-bus；它装在运行 Claude Code 的机器上 · 可能在远端\n本页不连 SSH · 远端状态到对应页面查"
       },
       "tier": "AppInstalls",
       "tool_id": "cc-bus",
@@ -122,13 +122,13 @@
       "effect_label": "整个文件由 cc-monitor 拥有，部署时整体覆盖",
       "host_label": "本机或远端",
       "installable": true,
-      "note": "账号库：清单 accounts.json、每个号的目录和改动前的备份都在这里。启用多账号时，这台现在登录的身份文件（~/.claude/.credentials.json、~/.claude.json）会搬进默认号的目录。之后各号的 .claude.json 里只有用户级 MCP 那一段会被同步改写，各号共用一份，别的内容一个字节不碰。",
+      "note": "账号库：清单 accounts.json、各号目录与改动前的备份都在此\n启用多账号时 · 该机当前登录的身份文件（~/.claude/.credentials.json、~/.claude.json）搬进默认号的目录\n之后各号 .claude.json 里只有用户级 MCP 段会被同步改写 · 各号共用一份 · 别的内容不碰",
       "path_declared": "~/.cc-monitor/accounts/",
       "path_resolved": "/nonexistent-footprint-golden/.cc-monitor/accounts",
       "source_label": "由 cc-monitor 现场生成的文本",
       "state": {
         "kind": "undetermined",
-        "why": "本机没找到（/nonexistent-footprint-golden/.cc-monitor/accounts）。这套东西装在 Claude Code 跑的那台上，很可能是某个远端；本页不连 SSH，远端状态请到对应页面查。"
+        "why": "本机未找到 /nonexistent-footprint-golden/.cc-monitor/accounts；它装在运行 Claude Code 的机器上 · 可能在远端\n本页不连 SSH · 远端状态到对应页面查"
       },
       "tier": "AppInstalls",
       "tool_id": "accounts",
@@ -139,13 +139,13 @@
       "effect_label": "整个文件由 cc-monitor 拥有，部署时整体覆盖",
       "host_label": "本机或远端",
       "installable": true,
-      "note": "这台各账号共用的用户级 MCP，以及上次同步时每个号的样子。在任一个号里加或改的 MCP 会进这里、再同步到所有号；里面带着 MCP 的密钥，只有你自己读得了。",
+      "note": "该机各账号共用的用户级 MCP · 及上次同步时各号的样子\n任一号里加或改的 MCP 会进此处 · 再同步到所有号\n内含 MCP 密钥 · 仅本人可读",
       "path_declared": "~/.cc-monitor/accounts-mcp.json",
       "path_resolved": "/nonexistent-footprint-golden/.cc-monitor/accounts-mcp.json",
       "source_label": "由 cc-monitor 现场生成的文本",
       "state": {
         "kind": "undetermined",
-        "why": "本机没找到（/nonexistent-footprint-golden/.cc-monitor/accounts-mcp.json）。这套东西装在 Claude Code 跑的那台上，很可能是某个远端；本页不连 SSH，远端状态请到对应页面查。"
+        "why": "本机未找到 /nonexistent-footprint-golden/.cc-monitor/accounts-mcp.json；它装在运行 Claude Code 的机器上 · 可能在远端\n本页不连 SSH · 远端状态到对应页面查"
       },
       "tier": "AppInstalls",
       "tool_id": "accounts",
@@ -162,7 +162,7 @@
       "source_label": "由 cc-monitor 现场生成的文本",
       "state": {
         "kind": "undetermined",
-        "why": "本机没找到（/nonexistent-footprint-golden/.cc-monitor/quota.json）。这套东西装在 Claude Code 跑的那台上，很可能是某个远端；本页不连 SSH，远端状态请到对应页面查。"
+        "why": "本机未找到 /nonexistent-footprint-golden/.cc-monitor/quota.json；它装在运行 Claude Code 的机器上 · 可能在远端\n本页不连 SSH · 远端状态到对应页面查"
       },
       "tier": "AppInstalls",
       "tool_id": "accounts",
@@ -179,7 +179,7 @@
       "source_label": "由 cc-monitor 现场生成的文本",
       "state": {
         "kind": "undetermined",
-        "why": "本机没找到（/nonexistent-footprint-golden/.cc-monitor/rotation.json）。这套东西装在 Claude Code 跑的那台上，很可能是某个远端；本页不连 SSH，远端状态请到对应页面查。"
+        "why": "本机未找到 /nonexistent-footprint-golden/.cc-monitor/rotation.json；它装在运行 Claude Code 的机器上 · 可能在远端\n本页不连 SSH · 远端状态到对应页面查"
       },
       "tier": "AppInstalls",
       "tool_id": "accounts",
@@ -196,7 +196,7 @@
       "source_label": "由 cc-monitor 现场生成的文本",
       "state": {
         "kind": "undetermined",
-        "why": "本机没找到（/nonexistent-footprint-golden/.cc-monitor/launch-accounts.json）。这套东西装在 Claude Code 跑的那台上，很可能是某个远端；本页不连 SSH，远端状态请到对应页面查。"
+        "why": "本机未找到 /nonexistent-footprint-golden/.cc-monitor/launch-accounts.json；它装在运行 Claude Code 的机器上 · 可能在远端\n本页不连 SSH · 远端状态到对应页面查"
       },
       "tier": "AppInstalls",
       "tool_id": "accounts",
@@ -213,7 +213,7 @@
       "source_label": "由 cc-monitor 现场生成的文本",
       "state": {
         "kind": "undetermined",
-        "why": "本机没找到（/nonexistent-footprint-golden/.cc-monitor/launch-pending）。这套东西装在 Claude Code 跑的那台上，很可能是某个远端；本页不连 SSH，远端状态请到对应页面查。"
+        "why": "本机未找到 /nonexistent-footprint-golden/.cc-monitor/launch-pending；它装在运行 Claude Code 的机器上 · 可能在远端\n本页不连 SSH · 远端状态到对应页面查"
       },
       "tier": "AppInstalls",
       "tool_id": "accounts",
@@ -224,13 +224,13 @@
       "effect_label": "整个文件由 cc-monitor 拥有，部署时整体覆盖",
       "host_label": "本机或远端",
       "installable": true,
-      "note": "同步改写之前的原文放在这里。改写某个号的 .claude.json 之前留一份，每个号一份，下一次改写前换成新的；要找回就从这里拿。",
+      "note": "同步改写前的原文 · 改写某号的 .claude.json 前留一份\n每号一份 · 下次改写前换新 · 要找回就从此处拿",
       "path_declared": "~/.cc-monitor/backups/accounts-mcp",
       "path_resolved": "/nonexistent-footprint-golden/.cc-monitor/backups/accounts-mcp",
       "source_label": "由 cc-monitor 现场生成的文本",
       "state": {
         "kind": "undetermined",
-        "why": "本机没找到（/nonexistent-footprint-golden/.cc-monitor/backups/accounts-mcp）。这套东西装在 Claude Code 跑的那台上，很可能是某个远端；本页不连 SSH，远端状态请到对应页面查。"
+        "why": "本机未找到 /nonexistent-footprint-golden/.cc-monitor/backups/accounts-mcp；它装在运行 Claude Code 的机器上 · 可能在远端\n本页不连 SSH · 远端状态到对应页面查"
       },
       "tier": "AppInstalls",
       "tool_id": "accounts",
@@ -247,7 +247,7 @@
       "source_label": "由 cc-monitor 现场生成的文本",
       "state": {
         "kind": "undetermined",
-        "why": "本机没找到（/nonexistent-footprint-golden/.claude/skills）。这套东西装在 Claude Code 跑的那台上，很可能是某个远端；本页不连 SSH，远端状态请到对应页面查。"
+        "why": "本机未找到 /nonexistent-footprint-golden/.claude/skills；它装在运行 Claude Code 的机器上 · 可能在远端\n本页不连 SSH · 远端状态到对应页面查"
       },
       "tier": "AppInstalls",
       "tool_id": "skill-install",
@@ -258,13 +258,13 @@
       "effect_label": "整个文件由 cc-monitor 拥有，部署时整体覆盖",
       "host_label": "本机或远端",
       "installable": true,
-      "note": "装到哪台就记在哪台。那台后端自己的装记录：每个装写进去的文件的摘要，和装之前在不在。卸只认这里记着的，卸掉的从这里摘掉",
+      "note": "装到哪台就记在哪台 · 该机后端自己的安装记录\n记每个写入文件的摘要与装前在不在\n卸载只认此处记着的 · 卸掉的从此摘掉",
       "path_declared": "~/.cc-monitor/skill-installs.json",
       "path_resolved": "/nonexistent-footprint-golden/.cc-monitor/skill-installs.json",
       "source_label": "由 cc-monitor 现场生成的文本",
       "state": {
         "kind": "undetermined",
-        "why": "本机没找到（/nonexistent-footprint-golden/.cc-monitor/skill-installs.json）。这套东西装在 Claude Code 跑的那台上，很可能是某个远端；本页不连 SSH，远端状态请到对应页面查。"
+        "why": "本机未找到 /nonexistent-footprint-golden/.cc-monitor/skill-installs.json；它装在运行 Claude Code 的机器上 · 可能在远端\n本页不连 SSH · 远端状态到对应页面查"
       },
       "tier": "AppInstalls",
       "tool_id": "skill-install",
@@ -275,13 +275,13 @@
       "effect_label": "整个文件由 cc-monitor 拥有，部署时整体覆盖",
       "host_label": "本机或远端",
       "installable": true,
-      "note": "卸掉不是 cc-monitor 装的 skill 或 MCP 之前，原样放一份在这里",
+      "note": "卸载非 cc-monitor 安装的 skill 或 MCP 前 · 在此备份一份",
       "path_declared": "~/.cc-monitor/backups",
       "path_resolved": "/nonexistent-footprint-golden/.cc-monitor/backups",
       "source_label": "由 cc-monitor 现场生成的文本",
       "state": {
         "kind": "undetermined",
-        "why": "本机没找到（/nonexistent-footprint-golden/.cc-monitor/backups）。这套东西装在 Claude Code 跑的那台上，很可能是某个远端；本页不连 SSH，远端状态请到对应页面查。"
+        "why": "本机未找到 /nonexistent-footprint-golden/.cc-monitor/backups；它装在运行 Claude Code 的机器上 · 可能在远端\n本页不连 SSH · 远端状态到对应页面查"
       },
       "tier": "AppInstalls",
       "tool_id": "skill-install",
@@ -292,13 +292,13 @@
       "effect_label": "整个文件由 cc-monitor 拥有，部署时整体覆盖",
       "host_label": "项目目录",
       "installable": true,
-      "note": "装进某个项目的 skill 落在这里。在那个项目的这个目录下，以 skill 的名字为名",
+      "note": "装进某项目的 skill 落在此处 · 在该项目的此目录下 · 以 skill 名为名",
       "path_declared": ".claude/skills",
       "path_resolved": null,
       "source_label": "由 cc-monitor 现场生成的文本",
       "state": {
         "kind": "undetermined",
-        "why": "相对项目目录（.claude/skills）——要先选定项目才知道查哪里"
+        "why": "相对项目目录（.claude/skills） · 先选定项目才知道查哪里"
       },
       "tier": "AppInstalls",
       "tool_id": "skill-install",
@@ -309,13 +309,13 @@
       "effect_label": "只读（诊断用），cc-monitor 不写",
       "host_label": "本机或远端",
       "installable": false,
-      "note": "历史浏览与搜索索引的全部输入，每个会话一份会话记录。cc-monitor 只读，装不了，也不该由它装",
+      "note": "历史浏览与搜索索引的全部输入 · 每个会话一份会话记录\ncc-monitor 只读 · 不安装也不该由它安装",
       "path_declared": "~/.claude/projects/",
       "path_resolved": "/nonexistent-footprint-golden/.claude/projects",
       "source_label": "不由 cc-monitor 提供：Claude Code 自己建、自己写",
       "state": {
         "kind": "undetermined",
-        "why": "本机没找到（/nonexistent-footprint-golden/.claude/projects）。这套东西装在 Claude Code 跑的那台上，很可能是某个远端；本页不连 SSH，远端状态请到对应页面查。"
+        "why": "本机未找到 /nonexistent-footprint-golden/.claude/projects；它装在运行 Claude Code 的机器上 · 可能在远端\n本页不连 SSH · 远端状态到对应页面查"
       },
       "tier": "AppOnlyChecks",
       "tool_id": "claude-code",
@@ -332,7 +332,7 @@
       "source_label": "由 cc-monitor 现场生成的文本",
       "state": {
         "kind": "undetermined",
-        "why": "相对项目目录（.mcp.json）——要先选定项目才知道查哪里"
+        "why": "相对项目目录（.mcp.json） · 先选定项目才知道查哪里"
       },
       "tier": "AppInstalls",
       "tool_id": "project-mcp",
@@ -343,13 +343,13 @@
       "effect_label": "整个文件由 cc-monitor 拥有，部署时整体覆盖",
       "host_label": "项目目录",
       "installable": true,
-      "note": "相对所选项目目录 · 项目在确认卡上选\n只加或覆盖那一条 · 其余不动",
+      "note": "相对所选项目目录 · 项目在确认卡上选\n只加或覆盖该条 · 其余不动",
       "path_declared": ".mcp.json",
       "path_resolved": null,
       "source_label": "由 cc-monitor 现场生成的文本",
       "state": {
         "kind": "undetermined",
-        "why": "相对项目目录（.mcp.json）——要先选定项目才知道查哪里"
+        "why": "相对项目目录（.mcp.json） · 先选定项目才知道查哪里"
       },
       "tier": "AppInstalls",
       "tool_id": "project-mcp",
@@ -357,13 +357,13 @@
       "uninstallable": true
     },
     {
-      "effect_label": "cc-monitor 不装它，只查它在不在；缺了这一行会告诉你，去装上就好",
+      "effect_label": "cc-monitor 不装它 · 只查它在不在；缺失时此行会提示 · 装上即可",
       "host_label": "本机或远端",
       "installable": false,
-      "note": "在 tmux 里启动会话靠它 · 缺了则起会话被拒时提示",
+      "note": "在 tmux 里启动会话靠它 · 缺失则起会话被拒时提示",
       "path_declared": "tmux",
       "path_resolved": null,
-      "source_label": "不由 cc-monitor 提供 —— 这是通用工具，请你自己装",
+      "source_label": "不由 cc-monitor 提供 · 通用工具 · 需自行安装",
       "state": {
         "kind": "undetermined",
         "why": "读不到 PATH 或它为空 · 无法判断 tmux 是否存在 · 不代表不存在"
@@ -374,13 +374,13 @@
       "uninstallable": false
     },
     {
-      "effect_label": "cc-monitor 不装它，只查它在不在；缺了这一行会告诉你，去装上就好",
+      "effect_label": "cc-monitor 不装它 · 只查它在不在；缺失时此行会提示 · 装上即可",
       "host_label": "本机或远端",
       "installable": false,
       "note": "查 ccm 时用登录 shell 读你的 rc",
       "path_declared": "bash",
       "path_resolved": null,
-      "source_label": "不由 cc-monitor 提供 —— 这是通用工具，请你自己装",
+      "source_label": "不由 cc-monitor 提供 · 通用工具 · 需自行安装",
       "state": {
         "kind": "undetermined",
         "why": "读不到 PATH 或它为空 · 无法判断 bash 是否存在 · 不代表不存在"
@@ -391,16 +391,16 @@
       "uninstallable": false
     },
     {
-      "effect_label": "cc-monitor 不装它，只查它在不在；缺了这一行会告诉你，去装上就好",
+      "effect_label": "cc-monitor 不装它 · 只查它在不在；缺失时此行会提示 · 装上即可",
       "host_label": "项目目录",
       "installable": false,
       "note": "cc-monitor 只写配置 · 所指程序不装也不查",
       "path_declared": "$MCP_COMMAND",
       "path_resolved": null,
-      "source_label": "不由 cc-monitor 提供 —— 这是通用工具，请你自己装",
+      "source_label": "不由 cc-monitor 提供 · 通用工具 · 需自行安装",
       "state": {
         "kind": "undetermined",
-        "why": "查不动：它的名字由你项目 .mcp.json 里那行 command 决定，这一页不猜是哪个项目。要查，先选定项目再看那份配置"
+        "why": "无法查 · 名字由项目 .mcp.json 里的 command 决定 · 本页不猜是哪个项目；要查就先选定项目再看该配置"
       },
       "tier": "UserInstallsWePrompt",
       "tool_id": "mcp-server",
@@ -408,13 +408,13 @@
       "uninstallable": false
     },
     {
-      "effect_label": "cc-monitor 不装它，只查它在不在；缺了这一行会告诉你，去装上就好",
+      "effect_label": "cc-monitor 不装它 · 只查它在不在；缺失时此行会提示 · 装上即可",
       "host_label": "本机或远端",
       "installable": false,
       "note": "起会话直接拿它当启动器 · 不查是否装、哪个版本",
       "path_declared": "claude",
       "path_resolved": null,
-      "source_label": "不由 cc-monitor 提供 —— 这是通用工具，请你自己装",
+      "source_label": "不由 cc-monitor 提供 · 通用工具 · 需自行安装",
       "state": {
         "kind": "undetermined",
         "why": "读不到 PATH 或它为空 · 无法判断 claude 是否存在 · 不代表不存在"
@@ -429,7 +429,7 @@
     {
       "has_cc_bus_hooks": null,
       "path": "/nonexistent-footprint-golden/.claude/settings.json",
-      "precedence_note": "钩子诊断读的就是这一份；是否已装以「cc-bus 钩子」页为准",
+      "precedence_note": "钩子诊断读的就是此份；是否已装以 cc-bus 钩子页为准",
       "scope": "用户级",
       "state": {
         "kind": "absent"
@@ -438,7 +438,7 @@
     {
       "has_cc_bus_hooks": null,
       "path": "/nonexistent-footprint-golden/.claude/settings.local.json",
-      "precedence_note": "优先级高于上一行；这里定义的钩子同样生效",
+      "precedence_note": "优先级高于上一行；此处定义的钩子同样生效",
       "scope": "用户级 local",
       "state": {
         "kind": "absent"
@@ -451,7 +451,7 @@
       "scope": "项目级",
       "state": {
         "kind": "undetermined",
-        "why": "本页不猜项目目录，所以没查。若钩子定义在项目级，上面那两行「没装」的结论可能是错的"
+        "why": "本页不猜项目目录 · 未查；若钩子定义在项目级 · 上面两行的未装结论可能有误"
       }
     }
   ]

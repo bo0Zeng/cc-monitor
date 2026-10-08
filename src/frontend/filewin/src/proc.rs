@@ -108,7 +108,7 @@ pub fn child_main() -> i32 {
     let mut raw = String::new();
     if let Err(e) = std::io::Read::read_to_string(&mut std::io::stdin(), &mut raw) {
         return refuse(
-            copy_text("rsFilewinProc.seed.readFailed", &[("e", &e.to_string())]),
+            copy_text("rsFilewinProc.child.noRuntime", &[("e", &e.to_string())]),
             EXIT_BAD_SEED,
         );
     }

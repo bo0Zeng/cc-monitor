@@ -69,7 +69,7 @@ pub fn window_bin_name() -> String {
 /// 三处都给不出一个存在的文件；或自带的那份放不下来。
 pub fn resolve_window_bin() -> Result<PathBuf, String> {
     let exe = std::env::current_exe()
-        .map_err(|e| copy_text("rsFilewinProc.selfPath.failed", &[("e", &e.to_string())]))?;
+        .map_err(|e| copy_text("rsFilewinProc.child.noRuntime", &[("e", &e.to_string())]))?;
     resolve_window_bin_in(
         std::env::var_os(BIN_ENV).map(PathBuf::from),
         exe.parent().unwrap_or(Path::new(".")),
@@ -383,7 +383,7 @@ pub fn read_ready(r: &mut impl std::io::BufRead) -> Result<Option<Ready>, String
     let mut line = String::new();
     let n = r
         .read_line(&mut line)
-        .map_err(|e| copy_text("rsFilewinProc.ready.readFailed", &[("e", &e.to_string())]))?;
+        .map_err(|e| copy_text("rsFilewinProc.child.noRuntime", &[("e", &e.to_string())]))?;
     if n == 0 {
         return Ok(None);
     }

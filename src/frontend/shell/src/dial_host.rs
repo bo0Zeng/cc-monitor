@@ -228,17 +228,17 @@ impl<S> Bounded<S> {
 /// 到点那句话：**一个预算、按段归因**。纯函数（判据直接喂时长，不睡墙钟）。
 /// `shaken` = 起算之后多久握完手（`None` = 到点时还在握手）；`waited` = 起算到此刻。
 pub(crate) fn expiry_note(total: Duration, shaken: Option<Duration>, waited: Duration) -> String {
-    let secs = total.as_secs().to_string();
+    let dur = copy_core::format_elapsed(total);
     match shaken {
-        None => copy_text("rsDialHost.deadline.expiredInShake", &[("secs", &secs)]),
+        None => copy_text("rsDialHost.deadline.expiredInShake", &[("dur", &dur)]),
         Some(shake) => copy_text(
             "rsDialHost.deadline.expired",
             &[
-                ("secs", &secs),
-                ("shake", &format!("{:.1}", shake.as_secs_f64())),
+                ("dur", &dur),
+                ("shake", &copy_core::format_elapsed(shake)),
                 (
                     "run",
-                    &format!("{:.1}", waited.saturating_sub(shake).as_secs_f64()),
+                    &copy_core::format_elapsed(waited.saturating_sub(shake)),
                 ),
             ],
         ),
@@ -384,7 +384,7 @@ async fn open(
                 copy_text(
                     "rsDialHost.open.timeout",
                     &[
-                        ("secs", &(ACK_DEADLINE.as_secs()).to_string()),
+                        ("dur", &copy_core::format_elapsed(ACK_DEADLINE)),
                         (
                             "addr",
                             // 原样列出配置里那几行（地址不在这里解析，组法在后端 `dial/machine.rs`）。
@@ -769,7 +769,7 @@ impl RemoteFs {
             let mut line = req.to_string();
             line.push('\n');
             link.write_all(line.as_bytes()).await.map_err(|e| {
-                copy_text("rsDialHost.ask.sendRequestFailed", &[("e", &e.to_string())])
+                copy_text("rsDialHost.ask.sendBytesFailed", &[("e", &e.to_string())])
             })?;
             if let Some(b) = bytes {
                 link.write_all(b).await.map_err(|e| {
@@ -777,7 +777,7 @@ impl RemoteFs {
                 })?;
             }
             link.flush().await.map_err(|e| {
-                copy_text("rsDialHost.ask.sendRequestFailed", &[("e", &e.to_string())])
+                copy_text("rsDialHost.ask.sendBytesFailed", &[("e", &e.to_string())])
             })?;
             ssh_link::reply_line(&mut link.r, files_reply_cap())
                 .await
@@ -786,7 +786,7 @@ impl RemoteFs {
         let v = tokio::time::timeout(deadline, round).await.map_err(|_| {
             copy_text(
                 "rsDialHost.ask.timeout",
-                &[("secs", &(deadline.as_secs()).to_string())],
+                &[("dur", &copy_core::format_elapsed(deadline))],
             )
         })??;
         if let Some(code) = v.get("code").and_then(serde_json::Value::as_str) {

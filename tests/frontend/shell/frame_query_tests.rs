@@ -1093,7 +1093,10 @@ async fn an_expired_deadline_sends_nothing() {
         err,
         copy_text(
             "rsFrameQuery.call.overdue",
-            &[("who", &who(&origin)), ("secs", &"0".to_string())]
+            &[
+                ("who", &who(&origin)),
+                ("dur", &copy_core::format_elapsed(Duration::ZERO))
+            ]
         )
     );
     assert!(

@@ -434,7 +434,7 @@ pub fn copied_from_reply(job: &CopyJob, d: &serde_json::Value) -> Result<Copied,
     let bytes = d
         .get("bytes")
         .and_then(serde_json::Value::as_u64)
-        .ok_or_else(|| copy_text("rsFilewinCopy.remote.noBytes", &[]))?;
+        .ok_or_else(|| copy_text("rsFilewinSource.said.badReply", &[]))?;
     let count = |k: &str, old: u64| -> Result<u64, String> {
         match d.get(k).and_then(serde_json::Value::as_u64) {
             Some(n) => Ok(n),
@@ -467,7 +467,7 @@ pub async fn copy_remote(
     let d = super::source::ask(line, origin, CMD_COPY, &args, COPY_BUDGET).await?;
     d.get("bytes")
         .and_then(serde_json::Value::as_u64)
-        .ok_or_else(|| copy_text("rsFilewinCopy.remote.noBytes", &[]))
+        .ok_or_else(|| copy_text("rsFilewinSource.said.badReply", &[]))
 }
 
 // ═══════════════════════════════════════════════════════════════════════

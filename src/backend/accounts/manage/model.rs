@@ -74,7 +74,10 @@ impl Manifest {
     pub(crate) fn parse(text: &str) -> Result<Manifest, String> {
         let body = text.strip_prefix('\u{feff}').unwrap_or(text);
         let root: Value = serde_json::from_str(body).map_err(|e| {
-            copy_core::copy_text("beAcctModel.parse.badJson", &[("e", &e.to_string())])
+            copy_core::copy_text(
+                "beAccountsQuery.loadManifest.badJson",
+                &[("e", &e.to_string())],
+            )
         })?;
         let Value::Object(obj) = root else {
             return Err(copy_core::copy_text("beAcctModel.parse.notObject", &[]));
@@ -84,7 +87,7 @@ impl Manifest {
             other => {
                 let shown = other.map_or_else(|| "-".to_string(), |v| v.to_string());
                 return Err(copy_core::copy_text(
-                    "beAcctModel.parse.badVersion",
+                    "beAccountsQuery.loadManifest.badVersion",
                     &[("v", &shown)],
                 ));
             }

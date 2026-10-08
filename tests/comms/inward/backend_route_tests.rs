@@ -124,7 +124,7 @@ fn the_collapse_to_three_states_is_byte_identical_to_the_table_before_layering()
             },
             Routed::Refused(unsure(copy_text(
                 "rsInboundClient.error.timeout",
-                &[("after", "1500")],
+                &[("dur", "1.5 秒")],
             ))),
         ),
         (

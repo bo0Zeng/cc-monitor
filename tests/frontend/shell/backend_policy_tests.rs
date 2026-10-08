@@ -405,7 +405,7 @@ fn every_abnormal_exit_leaves_one_line_carrying_its_exit_status() {
                 reader: ReaderEnd::CleanEof,
                 start_failure: None,
             },
-            "signal 11",
+            "信号 11",
         ),
     ];
     assert_eq!(cases.len(), 2, "夹具少了一形");
@@ -507,7 +507,7 @@ fn the_reading_defaults_to_unknown_not_to_clean() {
     let face = health_face(&health(origin));
     let said = face.summary.clone();
     assert!(
-        said.contains("×2") && said.contains("signal 6"),
+        said.contains("×2") && said.contains("信号 6"),
         "读数没带出次数与最后那一行：{said}"
     );
     assert_eq!(
@@ -1391,5 +1391,10 @@ fn only_that_one_code_gets_words_the_neighbours_stay_bare() {
     let sig = Death::Crashed {
         how: Outcome::Signalled(9),
     };
-    assert_eq!(exit_status(&sig), "signal 9");
+    // 「signal N」那一截也走文案表（不在代码里写死英文）。
+    assert_eq!(
+        exit_status(&sig),
+        crate::copy_table::copy_text("rsBackendPolicy.status.signal", &[("sig", "9")])
+    );
+    assert_eq!(exit_status(&sig), "信号 9");
 }

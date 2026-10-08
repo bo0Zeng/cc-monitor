@@ -466,7 +466,7 @@ pub(crate) async fn put_atomic(
         .await
         .map_err(|e| {
             io(copy_text(
-                "beSftp.put.createFailed",
+                "beSftp.put.writeFailed",
                 &[("path", &tmp), ("e", &e.to_string())],
             ))
         })?;
@@ -480,13 +480,13 @@ pub(crate) async fn put_atomic(
         // `write_all` 只把 WRITE 包入队；ack 只在 flush / shutdown 里收（同 monitor 那一份的理由）。
         file.flush().await.map_err(|e| {
             io(copy_text(
-                "beSftp.put.flushFailed",
+                "beSftp.put.writeFailed",
                 &[("path", &tmp), ("e", &e.to_string())],
             ))
         })?;
         file.shutdown().await.map_err(|e| {
             io(copy_text(
-                "beSftp.put.closeFailed",
+                "beSftp.put.writeFailed",
                 &[("path", &tmp), ("e", &e.to_string())],
             ))
         })
@@ -608,7 +608,7 @@ pub(crate) async fn make_dir(s: &Session, path: &str) -> Result<(), Refusal> {
         // 并发的另一趟刚建好它 —— 那不算错（也不是这一趟建的 ⇒ 不去动它的权限位）。
         if !s.sftp().try_exists(rel.clone()).await.unwrap_or(false) {
             return Err(io(copy_text(
-                "beSftp.mkdir.failed",
+                "beSftp.put.writeFailed",
                 &[("path", &rel), ("e", &e.to_string())],
             )));
         }
@@ -662,7 +662,7 @@ pub(crate) async fn open_for_write(
         .await
         .map_err(|e| {
             io(copy_text(
-                "beSftp.open.writeFailed",
+                "beSftp.put.writeFailed",
                 &[("path", &rel), ("e", &e.to_string())],
             ))
         })
