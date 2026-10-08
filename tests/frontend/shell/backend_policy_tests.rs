@@ -1180,6 +1180,18 @@ fn what_reaches_the_settings_panel_carries_no_markdown_no_argument_no_log_format
             Vec::<&str>::new(),
             "「{what}」进界面的那一格犯了：{brief}"
         );
+        // 拼法走文案表（不在代码里写死「，」）。
+        assert_eq!(
+            brief,
+            crate::copy_table::copy_text(
+                "rsBackendPolicy.death.brief",
+                &[
+                    ("kind", death_kind(&d).as_str()),
+                    ("status", exit_status(&d).as_str())
+                ]
+            ),
+            "「{what}」的短摘要没走文案表"
+        );
         // 判定词与退出状态都在（界面上要读得出「怎么死的、退出码多少」）。
         assert!(
             brief.contains(&death_kind(&d)) && brief.contains(&exit_status(&d)),
@@ -1312,17 +1324,29 @@ fn a_console_ctrl_kill_is_said_in_words_not_as_a_bare_code() {
     };
     assert_eq!(
         last_brief(&crashed),
-        format!(
-            "{}，{said}",
-            copy_core::copy_static!("rsBackendPolicy.death.crashed")
+        crate::copy_table::copy_text(
+            "rsBackendPolicy.death.brief",
+            &[
+                (
+                    "kind",
+                    copy_core::copy_static!("rsBackendPolicy.death.crashed")
+                ),
+                ("status", said)
+            ]
         )
     );
     let refused = Death::Refused { code: -1073741510 };
     assert_eq!(
         last_brief(&refused),
-        format!(
-            "{}，{said}",
-            copy_core::copy_static!("rsBackendPolicy.death.refused")
+        crate::copy_table::copy_text(
+            "rsBackendPolicy.death.brief",
+            &[
+                (
+                    "kind",
+                    copy_core::copy_static!("rsBackendPolicy.death.refused")
+                ),
+                ("status", said)
+            ]
         )
     );
     for d in [&crashed, &refused] {

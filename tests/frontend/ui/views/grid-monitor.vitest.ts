@@ -223,7 +223,7 @@ describe("F91 GridMonitorView", () => {
     const view = new GridMonitorView(mkSource([snap({ sessionId: "l1", contextPct: null, contextTokens: 350_000 })]));
     view.open();
     const b = document.querySelector(".badge-ctx");
-    expect(b?.textContent).toBe("ctx 350k");
+    expect(b?.textContent).toBe(copyText("gridMonitor.renderBadges.ctxTokens", { tokens: "350k" }));
     expect(b?.classList.contains("is-high")).toBe(false);
     view.close();
   });
@@ -378,10 +378,18 @@ describe("F91 GridMonitorView", () => {
     view.open();
     const ctx = [...document.querySelectorAll<HTMLElement>(".badge-ctx")];
     expect(ctx.length).toBe(2);
-    const hot = ctx.find((e) => e.textContent === "ctx 88%");
-    const cool = ctx.find((e) => e.textContent === "ctx 30%");
+    const hot = ctx.find((e) => e.textContent === copyText("gridMonitor.renderBadges.ctxPct", { pct: 88 }));
+    const cool = ctx.find((e) => e.textContent === copyText("gridMonitor.renderBadges.ctxPct", { pct: 30 }));
     expect(hot?.classList.contains("is-high")).toBe(true);
     expect(cool?.classList.contains("is-high")).toBe(false);
+    view.close();
+  });
+
+  it("在跑 agent 的徽标走文案表（不写死 ▶ / agent）", () => {
+    document.body.replaceChildren();
+    const view = new GridMonitorView(mkSource([snap({ sessionId: "l1", runningAgents: 2, totalAgents: 3 })]));
+    view.open();
+    expect(document.querySelector(".badge-agents")?.textContent).toBe(copyText("gridMonitor.renderBadges.agentsLabel", { runningAgents: 2 }));
     view.close();
   });
 

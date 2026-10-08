@@ -1006,10 +1006,10 @@ export class MachineCard {
     out.textContent = `${busyLabel}…`;
     try {
       const msg = await fn();
-      out.textContent = `✓ ${msg}`;
+      out.replaceChildren(resultLine("remote-test-ok", msg));
       return true;
     } catch (e) {
-      out.textContent = `✗ ${String(e)}`;
+      out.replaceChildren(resultLine("remote-test-err", String(e)));
       return false;
     } finally {
       btn.disabled = false;
@@ -1159,4 +1159,12 @@ export class MachineCard {
       fpLine.textContent = copyText("machineCard.test.pinned");
     }
   }
+}
+
+/** 结果区的一行：成败由样式类表达（图标由代码画），字只是那句原话。 */
+function resultLine(cls: "remote-test-ok" | "remote-test-err", text: string): HTMLElement {
+  const line = document.createElement("div");
+  line.className = `remote-test-line ${cls}`;
+  line.textContent = text;
+  return line;
 }

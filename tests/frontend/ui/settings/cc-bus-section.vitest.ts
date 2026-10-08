@@ -290,6 +290,27 @@ describe("B03 批二：派活 / 收信 / 图形化 spawn", () => {
     expect(row.querySelector(".cc-bus-detail")?.textContent).toContain(`A ${copyText("machineCard.seg.ready")}`);
   });
 
+  it("收件箱一行的拼法走文案表：时刻 · 发信方 · 类别 · 正文，缺值写「—」", async () => {
+    const s = await setup();
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === "read_cc_bus_inbox")
+        return [
+          { from: "peer_a", ts: "2026-07-26T05:06:19-07:00", text: "hello", class: "direct" },
+          { from: "", ts: "", text: "bare", class: "" },
+        ];
+      throw new Error(cmd);
+    });
+    const row = s.element.querySelector<HTMLElement>(".cc-bus-row")!;
+    (row.querySelector(".cc-bus-inbox") as HTMLButtonElement).click();
+    await flush();
+    const lines = [...row.querySelectorAll(".cc-bus-msg-line")].map((l) => l.textContent);
+    const none = copyText("ccBus.inbox.missing");
+    expect(lines).toEqual([
+      copyText("ccBus.inbox.lineClass", { ts: "2026-07-26T05:06:19-07:00", from: "peer_a", cls: "direct", text: "hello" }),
+      copyText("ccBus.inbox.line", { ts: none, from: none, text: "bare" }),
+    ]);
+  });
+
   it("空收件箱要说「空」，不能留个空白让人以为坏了", async () => {
     const s = await setup();
     mockInvoke.mockImplementation(async () => []);

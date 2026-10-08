@@ -1098,6 +1098,28 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     });
   });
 
+  // 结果区的成败由样式类表达（图标由代码画），字只是那句原话 —— 不在字前面拼写死的 ✓ / ✗。
+  it("组件动作的结果区：成败落在样式类上，字里不拼 ✓ / ✗", async () => {
+    for (const [reply, cls, text] of [
+      [new Error("ssh: connect refused"), "remote-test-err", "Error: ssh: connect refused"],
+      ["done-ok", "remote-test-ok", "done-ok"],
+    ] as const) {
+      localStorage.clear();
+      ipcReplies.set("uninstall_remote_backend", reply);
+      const p = fakePages();
+      await mount([mkH("a", "1.1.1.1")], p.host);
+      (p.addedParts[1]!.uninstall as HTMLButtonElement).click();
+      await tick();
+      [...document.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("machineCard.uninstall.action"))!.click();
+      for (let i = 0; i < 4; i++) await tick();
+      const roots = [...p.added.map((x) => x.element), ...Object.values(p.addedParts[1] ?? {})];
+      const lines = roots.flatMap((r) => [...r.querySelectorAll<HTMLElement>(`.remote-test-result .${cls}`)]);
+      expect(lines.map((l) => l.textContent)).toContain(text);
+      for (const r of roots) expect(r.textContent ?? "").not.toMatch(/[✓✗] /);
+      ipcReplies.clear();
+      document.body.replaceChildren();
+    }
+  });
 });
 
 
