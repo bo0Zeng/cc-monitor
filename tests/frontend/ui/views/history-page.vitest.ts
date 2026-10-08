@@ -745,10 +745,10 @@ describe("内容搜索的其余几态", () => {
 
   it("搜着时列表头转圈 ＋［停止］，点了回到清单、晚到的结果不画", async () => {
     world.local = [row({ sessionId: "a" })];
-    let release: () => void = () => {};
+    const held: (() => void)[] = [];
     const base = invokeMock.getMockImplementation() as (cmd: string, a: unknown) => Promise<unknown>;
     invokeMock.mockImplementation(async (cmd: string, a: unknown) => {
-      if (cmd === "chan_call" && (a as ChanCallArgs).op === "history-search") await new Promise<void>((r) => (release = r));
+      if (cmd === "chan_call" && (a as ChanCallArgs).op === "history-search") await new Promise<void>((r) => held.push(r));
       return base(cmd, a);
     });
     const v = await opened();
@@ -757,9 +757,12 @@ describe("内容搜索的其余几态", () => {
     expect(document.body.textContent).toContain(copyText("history.search.searching"));
     byText("button", copyText("history.search.stop"))!.click();
     expect(titles()).toEqual(["标题 a"]);
-    release();
+    for (const r of held) r();
     await flush();
+    await flush();
+    expect(held.length).toBe(2);
     expect(document.querySelector("mark"), "停了之后结果又画上来").toBeNull();
+    expect(titles()).toEqual(["标题 a"]);
     v.close();
   });
 
