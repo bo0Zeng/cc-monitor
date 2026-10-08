@@ -27,6 +27,13 @@ function exitedErrorWorld(): World {
   return w;
 }
 
+/** 第一个会话（本机）活着、但不在 tmux 里（直接敲 cc 起的）。 */
+function outsideWorld(): World {
+  const w = defaultWorld();
+  w.sessions[0].container = { form: "none" };
+  return w;
+}
+
 function emptyWorld(): World {
   const w = defaultWorld();
   w.sessions = [];
@@ -106,6 +113,12 @@ export const DRAWER_SCENES: Scene[] = [
     await openTab(2);
     await sleep(900);
   }),
+  scene("drawer-terminal-outside", "底部抽屉 · 终端 · 不在 tmux 里", "活着、不在 tmux 里的会话（直接敲 cc 起的）：照实写「不在 tmux 里」，不说「非 cc-monitor 启动」（这台不是 Windows ⇒ 没有［切到终端］）", async () => {
+    await mainReady(ALL_TABS);
+    await click("#session-head button[aria-label='看它的终端']");
+    await waitFor("#bottom-drawer [class*=empty]");
+    await sleep(800);
+  }, outsideWorld),
   scene("error-card-terminal", "报错卡 · 去它的终端", "远端会话 Claude 已退出、tmux 还在：报错卡上出［在终端里打开］（与会话头同一道；这台不是 Windows ⇒ 没有［切到终端］）", async () => {
     await mainReady(ALL_TABS);
     await openTab(5);

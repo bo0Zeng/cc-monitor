@@ -1,8 +1,9 @@
 /**
  * 底部抽屉的「终端」页：当前标签页那个会话所在终端的一屏（这一版是快照）＋ 一行输入 ＋ 几颗常用键。跟着当前标签页走。
  *
- * - 找终端：问那台 `terminals-list`，按会话 ID 认出那一行；没有那一行 ⇒ 已结束的写「已结束 · 无终端」，活着的写「非 cc-monitor 启动」。
- * - 画面：开到这一页 / 切到这个标签页时抓一次；送字送键之后 0.5 · 1.5 · 3 秒各再抓一次；其余时候点「重新看」。开着不轮询。
+ * - 找终端：问那台 `terminals-list`，按会话 ID 认出那一行；没有那一行 ⇒ 已结束的写「已结束 · 无终端」；活着、不在 tmux 里的（容器事实 none）
+ *   写「不在 tmux 里」（↗ 真能用时给「切到终端」）；在 tmux 里却认不出的写「非 cc-monitor 启动」。
+ * - 画面：带颜色（`terminal-screen.ts` 照后端给的颜色段画）。开到这一页 / 切到这个标签页时抓一次；送字送键之后 0.5 · 1.5 · 3 秒各再抓一次；其余时候点「重新看」。开着不轮询。
  * - 能不能送、输入会不会和别的终端窗口混在一起：只读名单里后端给的 `can.input` · `clients` · `input`，界面不判。
  * - 送字带上看到的那一屏的指纹：画面已经变了 ⇒ 后端不送，这里重抓给人看。不知道送没送到 ⇒ 照实说、不重发。
  * - 输入框：回车送字并补回车 · Shift+回车换行 · Ctrl+回车只送字；组字时回车归输入法；Esc 只把焦点还给消息流（不清字、不收抽屉）。
@@ -15,6 +16,7 @@ import { saidOfControl, machineName } from "./control-said";
 import { canResume, hasTerminal } from "./tab-session-state";
 import { terminalFrontAvailable } from "./terminal-front";
 import { dotLabel, dotOf, fullTitle, machineOf } from "./session-face";
+import { renderScreen, screenPre } from "./terminal-screen";
 import { listTerminals, previewShot, sendToTerminal, type TerminalRow, type TerminalSend, type TerminalSent, type TerminalShot } from "./terminal-reads";
 import type { Origin } from "./ipc/origin";
 import { button, setBusy, setButtonLabel, setDisabled } from "./kit/button";
@@ -101,6 +103,8 @@ export class TerminalPage {
   private origin: Origin | undefined = undefined;
   private row: TerminalRow | null = null;
   private shot: TerminalShot | null = null;
+  /** 画面上此刻画着的是哪一张（同一张不重画）。 */
+  private painted: TerminalShot | null = null;
   /** 名单那一步的结局：还在问 · 认出来了 · 名单里没有 · 问不到（那一句）。 */
   private phase: "loading" | "ready" | "none" | "error" = "loading";
   private error = "";
@@ -126,7 +130,8 @@ export class TerminalPage {
   private readonly at: HTMLElement;
   private readonly frontBtn: HTMLButtonElement;
   private readonly bar: HTMLElement;
-  private readonly screen: HTMLPreElement;
+  private readonly screen: HTMLElement;
+  private readonly pre: HTMLPreElement;
   private readonly inputArea: HTMLElement;
   private readonly to: HTMLElement;
   private readonly owner: HTMLElement;
@@ -162,9 +167,12 @@ export class TerminalPage {
     this.head.append(this.dot, this.title, this.where, this.tag, this.tag2, this.at, again, sp, this.frontBtn);
     this.bar = el("div");
     this.bar.className = s.termBar;
-    this.screen = el("pre");
+    // 画面：外面一格管版位与滚动（本页的类），里面那块 `pre` 只挂画面的类（`terminal-screen.ts`）。
+    this.screen = el("div");
     this.screen.className = s.termScreen;
     this.screen.tabIndex = 0;
+    this.pre = screenPre();
+    this.screen.appendChild(this.pre);
 
     this.inputArea = el("div");
     this.inputArea.className = s.termInput;
@@ -417,12 +425,20 @@ export class TerminalPage {
     }
     if (this.phase === "none") {
       const ended = canResume(tab.state); // 已结束（能恢复的那一态）
+      // 活着、容器事实是「不在任何 tmux 里」（后端 `session_added.container` = none）：照实说，不当成别人起的。
+      const outside = tab.state.liveness === "live" && tab.state.recoverability === "resumable";
+      const sid = this.sid;
       this.body.replaceChildren(
-        emptyState({
-          icon: "terminal",
-          text: ended ? copyText("terminal.empty.ended", { state: copyText("sessionState.ended.name") }) : copyText("terminal.empty.notOurs"),
-          hint: ended ? copyText("terminal.empty.endedHint") : copyText("terminal.empty.notOursHint"),
-        }),
+        ended
+          ? emptyState({ icon: "terminal", text: copyText("terminal.empty.ended", { state: copyText("sessionState.ended.name") }), hint: copyText("terminal.empty.endedHint") })
+          : outside
+            ? emptyState({
+                icon: "terminal",
+                text: copyText("terminal.empty.notInTmux"),
+                hint: copyText("terminal.empty.notInTmuxHint"),
+                ...(terminalFrontAvailable() ? { action: button({ label: copyText("terminal.head.front"), size: "compact", icon: "front", onClick: () => this.host.front(sid) }) } : {}),
+              })
+            : emptyState({ icon: "terminal", text: copyText("terminal.empty.notOurs"), hint: copyText("terminal.empty.notOursHint") }),
       );
       return;
     }
@@ -456,7 +472,10 @@ export class TerminalPage {
     }
     if (this.shotError !== null) bars.push(banner("warn", this.shotError, [button({ label: copyText("terminal.state.refresh"), size: "compact", onClick: () => void this.refresh() })]));
     this.bar.replaceChildren(...bars);
-    this.screen.textContent = this.shot?.text ?? "";
+    if (this.painted !== this.shot) {
+      renderScreen(this.pre, this.shot?.lines ?? []);
+      this.painted = this.shot;
+    }
     this.screen.dataset.stale = String(this.shotError !== null);
 
     this.to.textContent = copyText("terminal.input.to", { title: fullTitle(tab), machine: machineOf(tab) });

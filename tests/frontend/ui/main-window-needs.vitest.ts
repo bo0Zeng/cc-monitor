@@ -15,7 +15,7 @@ import type { TabBarPrefs } from "../../../src/frontend/ui/tab-bar-prefs";
 import type { Tab } from "../../../src/frontend/ui/tab-model";
 import type { Needs } from "../../../src/frontend/ui/session-reads";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
-import { ENDED, GONE, LIVE, LIVE_ATTACHABLE, RECONNECTABLE, UNSEEN } from "../../../src/frontend/ui/tab-session-state";
+import { ENDED, GONE, LIVE, LIVE_ATTACHABLE, LIVE_RESUMABLE, RECONNECTABLE, UNSEEN } from "../../../src/frontend/ui/tab-session-state";
 import { abbrOf, dotOf, needsOf, needsOrder, nextNeeds, peekLine, stateLine, titleParts } from "../../../src/frontend/ui/session-face";
 import { NeedsBar, NeedsWatch, NOTIFY_WAIT_MS, answerWhere, needsHeadline } from "../../../src/frontend/ui/needs-bar";
 import { SessionHead, terminalActsOf } from "../../../src/frontend/ui/session-head";
@@ -365,7 +365,7 @@ describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键�
       list: vi.fn(async () => rows),
       shot: vi.fn(async () => {
         shots++;
-        return { text: `屏 ${shots}`, screen: `fp${shots}`, atText: "22:13:20" };
+        return { lines: [{ text: `屏 ${shots}`, spans: [] }], text: `屏 ${shots}`, screen: `fp${shots}`, atText: "22:13:20" };
       }),
       send: vi.fn(async (_o, _t, what, seen) => {
         sent.push({ what, seen });
@@ -414,6 +414,33 @@ describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键�
     c.page.setVisible(true);
     await flush();
     expect(c.page.el.textContent).toContain(copyText("terminal.empty.ended", { state: copyText("sessionState.ended.name") }));
+  });
+
+  it("★ 活着、不在 tmux 里（容器 none）⇒ 照实说「不在 tmux 里」，不说「非 cc-monitor 启动」；↗ 真能用时给［切到终端］", async () => {
+    vi.mocked(terminalFrontAvailable).mockReturnValue(true);
+    try {
+      const d = rig([], { t: tab("d", { state: LIVE_RESUMABLE }) });
+      d.page.setVisible(true);
+      await flush();
+      expect(d.page.el.textContent).toContain(copyText("terminal.empty.notInTmux"));
+      expect(d.page.el.textContent).toContain(copyText("terminal.empty.notInTmuxHint"));
+      expect(d.page.el.textContent).not.toContain(copyText("terminal.empty.notOurs"));
+      const front = [...d.page.el.querySelectorAll("button")].find((x) => x.textContent?.includes(copyText("terminal.head.front")));
+      expect(front, "Windows 上不在 tmux 里的会话还能切到它的终端窗口").toBeDefined();
+      front!.click();
+      expect(d.host.front).toHaveBeenCalledWith("d");
+      vi.mocked(terminalFrontAvailable).mockReturnValue(false);
+      const e = rig([], { t: tab("e", { state: LIVE_RESUMABLE }) });
+      e.page.setVisible(true);
+      await flush();
+      expect([...e.page.el.querySelectorAll("button")].some((x) => x.textContent?.includes(copyText("terminal.head.front")))).toBe(false);
+      const f = rig([], { t: tab("f", { state: LIVE_ATTACHABLE }) });
+      f.page.setVisible(true);
+      await flush();
+      expect(f.page.el.textContent, "在 tmux 里、名单却认不出的才是「非 cc-monitor 启动」").toContain(copyText("terminal.empty.notOurs"));
+    } finally {
+      vi.mocked(terminalFrontAvailable).mockReturnValue(false);
+    }
   });
 
   it("★ 回车送字并补回车、带上看到的那一屏的指纹；送到了清框、写「已送达」，0.5 · 1.5 · 3 秒各再抓一次；Ctrl+回车只送字；Shift+回车与组字不送", async () => {

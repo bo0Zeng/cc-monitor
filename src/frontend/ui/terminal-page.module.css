@@ -79,15 +79,9 @@
   .termScreen {
     flex: 1;
     min-height: 0;
-    margin: 0;
     padding: var(--space-3) var(--space-5);
     overflow: auto;
-    background: var(--bg-2);
-    color: var(--text);
-    font-family: var(--font-mono);
-    font-size: var(--font-size-mono);
-    line-height: 1.4;
-    white-space: pre;
+    background: var(--term-bg);
   }
 
   .termScreen[data-stale="true"] {

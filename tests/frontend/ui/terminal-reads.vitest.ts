@@ -5,7 +5,7 @@
  * |---|---|
  * | 解码器读得懂后端真出的成品（跨语言金样 `terminals.golden.json`，后端 `terminals_tests` 对拍同一份）；空屏是合法的成功 | 「金样」 |
  * | 这边要用的格缺 / 类型不对 ⇒ 抛；多出来的格照收（那几条命令只加不改） | 「形状」 |
- * | 请求只按名单里的句柄 / 会话 ID 指，要纯文本；本机照样经通道问 | 「发出去」 |
+ * | 请求只按名单里的句柄 / 会话 ID 指，要带颜色的成品；本机照样经通道问 | 「发出去」 |
  * | 拒绝码（取自金样）逐码一句、两两不同、带名字与后端原话；认不出的码不上屏 | 「拒绝码」 |
  * | 只有 tmux 名在手 ⇒ 先问名单认出那一行、再按句柄抓；名单里没有 ⇒ 说不在名单 | 「按名字」 |
  */
@@ -18,7 +18,8 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 import { invoke } from "@tauri-apps/api/core";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { ControlError } from "../../../src/frontend/ui/control-said";
-import { decodePreview, decodeSent, decodeShot, decodeTerminals, previewByTmuxName, previewText, sendToTerminal } from "../../../src/frontend/ui/terminal-reads";
+import { decodeSent, decodeShot, decodeTerminals, previewByTmuxName, previewText, sendToTerminal } from "../../../src/frontend/ui/terminal-reads";
+import { decodeScreenLines, screenText } from "../../../src/frontend/ui/terminal-screen";
 import { REPO_ROOT } from "../../test-support/repo-root";
 import { chanArgsJson, chanReply, refusedReply, UNSUPPORTED, NO_CHANNEL, type ChanCallArgs } from "../../test-support/chan-fake";
 import { copyText } from "../../../src/frontend/ui/copy-table";
@@ -72,14 +73,15 @@ describe("抓一屏：金样与形状", () => {
   it("★★ 金样：解码器读得懂后端真出的成品（每行 `text` 用换行接起来）", () => {
     const lines = (PREVIEW.reply.lines as { text: string }[]).map((l) => l.text);
     expect(lines.length, "金样里没有行 —— 下面是空转").toBeGreaterThan(0);
-    expect(decodePreview("devbox", PREVIEW.reply)).toBe(lines.join("\n"));
+    expect(decodeShot("devbox", PREVIEW.reply).text).toBe(lines.join("\n"));
   });
 
   it("★ 空屏是合法的成功；多出来的格照收；要用的格缺 / 类型不对 ⇒ 抛", () => {
-    expect(decodePreview("devbox", { lines: [] })).toBe("");
-    expect(decodePreview("devbox", { lines: [{ text: "a", spans: [] }], extra: 1 })).toBe("a");
+    const plain = (v: unknown): string => screenText(decodeScreenLines("devbox", v));
+    expect(plain({ lines: [] })).toBe("");
+    expect(plain({ lines: [{ text: "a", spans: [] }], extra: 1 })).toBe("a");
     for (const v of [{}, { lines: "x" }, { lines: [{}] }, { lines: [{ text: 1 }] }, null, "screen"]) {
-      expect(() => decodePreview("devbox", v), JSON.stringify(v)).toThrow(copyPattern("peerVersion.said.unreadable"));
+      expect(() => plain(v), JSON.stringify(v)).toThrow(copyPattern("peerVersion.said.unreadable"));
     }
   });
 
@@ -99,6 +101,7 @@ describe("抓一屏：金样与形状", () => {
   it("★ 抓一屏连指纹与时刻；送字送键的三种回话（取自金样）都读得出、认不出的 ⇒ 抛", () => {
     const shot = decodeShot("devbox", PREVIEW.reply);
     expect([shot.screen, shot.atText]).toEqual([PREVIEW.reply.screen, PREVIEW.reply.captured_at_text]);
+    expect(shot.lines[0].spans, "抓一屏要连颜色段一起交给画面").toEqual([{ from: 0, to: 4, fg: "red", bold: true }]);
     const INPUT = golden["terminal-input"] as unknown as { replies: unknown[] };
     expect(INPUT.replies.map((r) => decodeSent("devbox", r))).toEqual([
       { result: "delivered" },
@@ -120,13 +123,13 @@ describe("抓一屏：金样与形状", () => {
 });
 
 describe("抓一屏：发出去", () => {
-  it("★ 按句柄 / 会话 ID 指、要纯文本；本机照样经通道问、期限交了", async () => {
+  it("★ 按句柄 / 会话 ID 指、要带颜色的成品；本机照样经通道问、期限交了", async () => {
     answer({ "terminal-preview": { ok: PREVIEW.reply } });
     await previewText("devbox", { sid: "sid-a" }, "demo-cc");
     await previewText(LOCAL_ORIGIN, { terminal: "tmux-1" }, "demo-cc");
     expect(sentCalls()).toEqual([
-      ["devbox", "terminal-preview", { sid: "sid-a", color: false }],
-      [LOCAL_ORIGIN, "terminal-preview", { terminal: "tmux-1", color: false }],
+      ["devbox", "terminal-preview", { sid: "sid-a", color: true }],
+      [LOCAL_ORIGIN, "terminal-preview", { terminal: "tmux-1", color: true }],
     ]);
     expect((invokeMock.mock.calls[0][1] as ChanCallArgs).leftMs, "期限没交").toBeGreaterThan(0);
   });
@@ -137,7 +140,7 @@ describe("抓一屏：发出去", () => {
     await previewByTmuxName("devbox", terminals[0].tmux_name);
     expect(sentCalls()).toEqual([
       ["devbox", "terminals-list", {}],
-      ["devbox", "terminal-preview", { terminal: terminals[0].terminal, color: false }],
+      ["devbox", "terminal-preview", { terminal: terminals[0].terminal, color: true }],
     ]);
     await expect(previewByTmuxName("devbox", "no-such-cc")).rejects.toThrow(copyPattern("terminalReads.preview.notKnown"));
   });

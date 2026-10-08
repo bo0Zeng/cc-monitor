@@ -1,7 +1,7 @@
 /**
  * F60：远端 tmux 画面预览（只读快照）。轻量 overlay（照 pf 范式，body-level fixed，
- * 点外关 + Esc + ✕，z-index 200）——经 `src/frontend/ui/terminal-reads.ts::previewText` 问那台机器的后端抓挂着这个会话的那个终端
- * 的屏幕文本（`terminal-preview`，纯文本），等宽 `<pre>` 展示；失败弹 toast。此前经 monitor 的一条 Tauri 命令。**非 attach、不接管终端；只读快照非实时**
+ * 点外关 + Esc + ✕，z-index 200）——经 `src/frontend/ui/terminal-reads.ts::previewShot` 问那台机器的后端抓挂着这个会话的那个终端
+ * 的那一屏（`terminal-preview`，带颜色段），等宽 `<pre>` 带颜色展示（`terminal-screen.ts` 同一个画法）；失败弹 toast。此前经 monitor 的一条 Tauri 命令。**非 attach、不接管终端；只读快照非实时**
  * （「重新抓取」按钮手动刷新，要动态看去 attach）。一次只开一个。
  *
  * 本文件是抽表的**样板区**：它的对外文案全部住 `src/shared/copy/table.json` 的
@@ -10,7 +10,8 @@
 import { copyText } from "../copy-table";
 import { toast } from "../kit/toast";
 import { saidOfControl } from "../control-said";
-import { previewText, type TerminalTarget } from "../terminal-reads";
+import { previewShot, type TerminalTarget } from "../terminal-reads";
+import { renderScreen, screenPre } from "../terminal-screen";
 
 let current: HTMLElement | null = null;
 
@@ -61,12 +62,14 @@ export async function openPanePreview(origin: string, target: string, which: Ter
   closeBtn.addEventListener("click", closePanePreview);
   head.appendChild(closeBtn);
 
-  const pre = document.createElement("pre");
-  pre.className = "pane-preview-pre";
+  const scroller = document.createElement("div");
+  scroller.className = "pane-preview-pre";
+  const pre = screenPre();
+  scroller.appendChild(pre);
   pre.textContent = copyText("panePreview.body.loading");
 
   box.appendChild(head);
-  box.appendChild(pre);
+  box.appendChild(scroller);
   overlay.appendChild(box);
   document.body.appendChild(overlay);
   current = overlay;
@@ -77,9 +80,10 @@ export async function openPanePreview(origin: string, target: string, which: Ter
     refreshBtn.disabled = true;
     if (!loaded) pre.textContent = copyText("panePreview.body.loading");
     try {
-      const text = await previewText(origin, which, target);
+      const shot = await previewShot(origin, which, target);
       if (current !== overlay) return; // 抓取途中被关/换
-      pre.textContent = text.length > 0 ? text : copyText("panePreview.body.empty");
+      if (shot.text.length > 0) renderScreen(pre, shot.lines);
+      else pre.textContent = copyText("panePreview.body.empty");
       loaded = true;
     } catch (e) {
       if (current !== overlay) return;

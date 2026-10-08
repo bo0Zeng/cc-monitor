@@ -179,26 +179,29 @@ export function machineOps(): Record<string, OpHandler> {
       synced: w.machines.slice(1).map((origin) => ({ origin, peer: null, changed: false, pushed: 0, error: null })),
       reach: w.machines.slice(1).map((origin) => ({ origin, machine: null })),
     }),
+    // 画面带颜色段（列按字符计，同后端）：边框与说明暗、工具名粗、✻ 黄、「accept edits」品红。
     "terminal-preview": () => ({
-      lines: [
-        "╭──────────────────────────────────────────────╮",
-        "│ ✻ Welcome to Claude Code!                    │",
-        "╰──────────────────────────────────────────────╯",
-        "",
-        "> 订单服务调用库存接口时偶尔超时，帮我加上重试…",
-        "",
-        "● 我先看一下现在的调用点和配置。",
-        "",
-        "● Bash(pytest -q)",
-        "  ⎿  213 passed in 9.41s",
-        "",
-        "✻ Thinking… (esc to interrupt)",
-        "",
-        "─────────────────────────────────────────────────",
-        "> ",
-        "─────────────────────────────────────────────────",
-        "  ⏵⏵ accept edits on (shift+tab to cycle)",
-      ].map((text) => ({ text })),
+      lines: (
+        [
+          ["╭──────────────────────────────────────────────╮", [{ from: 0, to: 48, fg: "bright-black" }]],
+          ["│ ✻ Welcome to Claude Code!                    │", [{ from: 0, to: 1, fg: "bright-black" }, { from: 2, to: 3, fg: "yellow" }, { from: 47, to: 48, fg: "bright-black" }]],
+          ["╰──────────────────────────────────────────────╯", [{ from: 0, to: 48, fg: "bright-black" }]],
+          ["", []],
+          ["> 订单服务调用库存接口时偶尔超时，帮我加上重试…", [{ from: 0, to: 1, fg: "bright-black" }]],
+          ["", []],
+          ["● 我先看一下现在的调用点和配置。", []],
+          ["", []],
+          ["● Bash(pytest -q)", [{ from: 0, to: 1, fg: "green" }, { from: 2, to: 6, bold: true }]],
+          ["  ⎿  213 passed in 9.41s", [{ from: 2, to: 24, fg: "bright-black" }]],
+          ["", []],
+          ["✻ Thinking… (esc to interrupt)", [{ from: 0, to: 11, fg: "yellow" }, { from: 12, to: 30, fg: "bright-black" }]],
+          ["", []],
+          ["─────────────────────────────────────────────────", [{ from: 0, to: 49, fg: "bright-black" }]],
+          ["> ", []],
+          ["─────────────────────────────────────────────────", [{ from: 0, to: 49, fg: "bright-black" }]],
+          ["  ⏵⏵ accept edits on (shift+tab to cycle)", [{ from: 2, to: 20, fg: "magenta" }, { from: 21, to: 41, fg: "bright-black" }]],
+        ] as [string, object[]][]
+      ).map(([text, spans]) => ({ text, spans })),
       screen: "00000000000000a1",
       captured_at: Math.floor(Date.parse("2026-10-06T10:42:05") / 1000),
       captured_at_text: hms(Date.parse("2026-10-06T10:42:05")),
@@ -207,7 +210,7 @@ export function machineOps(): Record<string, OpHandler> {
     "terminals-list": (o, _r, w) => ({
       complete: true,
       terminals: w.sessions
-        .filter((x) => !x.ended && x.origin === o)
+        .filter((x) => !x.ended && x.origin === o && x.container.form === "hosted")
         .map((x, i) => {
           const name = `cc-${x.cwd.split(/[/\\]/).pop()}`;
           return {

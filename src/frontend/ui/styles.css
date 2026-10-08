@@ -2560,14 +2560,9 @@
 }
 
 .pane-preview-pre {
-  margin: 0;
   padding: 12px 14px;
   overflow: auto;
-  white-space: pre;
-  font-family: var(--font-mono);
-  font-size: var(--font-size-mono);
-  line-height: var(--line-height-mono);
-  color: var(--text);
+  background: var(--term-bg);
 }
 
 /* account-ux U5：徽章 span 退化为纯容器（内含 .acct-avatar 头像，仅"不在当前账号"时出现）；

@@ -23496,6 +23496,20 @@
       "args": [],
       "limited": ["ccm"]
     },
+    "terminal.empty.notInTmux": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "不在 tmux 里 · 画面 / 送字不可用",
+      "args": [],
+      "limited": ["tmux"]
+    },
+    "terminal.empty.notInTmuxHint": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "在 tmux 里起的会话可用",
+      "args": [],
+      "limited": ["tmux"]
+    },
     "terminal.empty.noSession": {
       "kind": "body",
       "role": "片段",
@@ -25812,12 +25826,6 @@
       "kind": "action",
       "role": "菜单项",
       "zh": "看它的终端",
-      "args": []
-    },
-    "tabMenu.preview.label": {
-      "kind": "action",
-      "role": "菜单项",
-      "zh": "看一眼终端画面",
       "args": []
     },
     "tabMenu.attach.label": {

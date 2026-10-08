@@ -264,14 +264,6 @@ export const PANEL_SCENES: Scene[] = [
     }),
     height: 220,
   },
-  panel("panel-pane-preview", "预览终端画面", "远端会话的 tab 右键「预览画面」：那个 tmux 窗口此刻的样子", async () => {
-    await mainReady(ALL_TABS);
-    await rightClick(document.querySelectorAll("#tab-bar .tab")[3]);
-    await sleep(800);
-    await click(await byText("[role^=menuitem]", copyText("tabMenu.preview.label")));
-    await waitFor(".pane-preview-box");
-    await sleep(700);
-  }),
   panel("panel-agents", "子 agent 面板", "状态栏点「agent 2 · 1 在跑」：本会话的子 agent 列表（一个跑完、一个在跑）", async () => {
     await mainReady(ALL_TABS);
     await click(".status-agents");

@@ -1592,6 +1592,24 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     expect(whyOf(killBtn())).toBe(copyText("tabMenu.kill.dupesWhy", { n: 2 }));
   });
 
+  // 〔终端 L1〕看画面只有一个入口：抽屉终端页（「看它的终端」）；盖住主窗口的旧浮层那一项不再出（远端本机都一样）。
+  it("〔终端 L1〕远端 tab 右键：有「看它的终端」，没有开旧浮层的那一项", async () => {
+    vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
+      cmd === "list_remote_tmux"
+        ? Promise.resolve([{ name: "cc-A1", path: "/a", command: "claude", attached: false, windows: 1, sid: "A", agent: true }])
+        : Promise.resolve(undefined),
+    ));
+    tm.ensureTab("A", "/a", "p", "hostA");
+    rightClick("A");
+    await flush();
+    const items = [...(document.body.querySelector("[role=menu]")?.querySelectorAll<HTMLElement>("[role^=menuitem]") ?? [])];
+    const labels = items.map((b) => b.querySelector("[data-part=label]")?.textContent);
+    expect(labels).toContain(copyText("tabMenu.open.drawer"));
+    expect(items.filter((b) => b.dataset.id === "preview" || b.querySelector("[data-part=label]")?.textContent?.includes("画面")), "旧浮层那一项还在").toEqual([]);
+    itemLabeled(copyText("tabMenu.open.drawer"))?.click();
+    expect(document.querySelector(".pane-preview-overlay"), "点了不许开旧浮层").toBeNull();
+  });
+
   it("R-1 守卫:tab A 查询在飞时右键 tab B → A 迟到结果不污染 B 的菜单", async () => {
     let resolveA!: (v: unknown) => void;
     const aPending = new Promise((r) => (resolveA = r));
