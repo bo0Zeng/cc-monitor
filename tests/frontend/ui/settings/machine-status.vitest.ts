@@ -159,6 +159,6 @@ describe("describeFacet", () => {
       T0 + 2 * 3_600_000,
     );
     expect(fail.icon).toBe("✗");
-    expect(fail.text).toBe(copyText("machineStatus.age.hours", { n: copyText("events.unseen.unreachableTitle", { machine: "· 2" }) }));
+    expect(fail.text).toBe(`${copyText("machineCard.test.unreachable")} · ${copyText("machineStatus.age.hours", { n: "2" })}`);
   });
 });

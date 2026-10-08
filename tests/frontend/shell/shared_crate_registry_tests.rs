@@ -1154,3 +1154,100 @@ fn a_skipped_windows_check_cannot_look_like_a_full_pass() {
              ⇒ 它一跳过，E8 的前提就整个没了，结论必须自己把这件事说出来。"
     );
 }
+
+/// 一份 workflow（剔掉整行注释）切成步骤：每一步从 `      - ` 起，到下一步或缩进退回步骤那一层之外为止。
+fn workflow_steps(rel: &str) -> (String, Vec<String>) {
+    let raw = fs::read_to_string(crate::guard_support::repo_root().join(rel))
+        .unwrap_or_else(|e| panic!("{rel} 读不到：{e}"));
+    let live = guard_core::strip_hash_comment_lines(&raw);
+    let mut steps: Vec<String> = Vec::new();
+    let mut cur: Option<Vec<&str>> = None;
+    for line in live.lines() {
+        let line = line.trim_end();
+        let indent = line.len() - line.trim_start().len();
+        if line.starts_with("      - ") {
+            if let Some(s) = cur.take() {
+                steps.push(s.join("\n"));
+            }
+            cur = Some(vec![line]);
+        } else if !line.is_empty() && indent < 8 {
+            if let Some(s) = cur.take() {
+                steps.push(s.join("\n"));
+            }
+        } else if let Some(s) = cur.as_mut() {
+            s.push(line);
+        }
+    }
+    if let Some(s) = cur.take() {
+        steps.push(s.join("\n"));
+    }
+    (live, steps)
+}
+
+/// CI 上装 apt 包卡住要几分钟就失败、自己重来（10-07 两回：runner 上 apt 挂住，整个 job 等满 35 分钟被取消）：
+/// 两份 workflow 里不直接写 `apt-get`，装包一律经 `tests/scripts/apt-install.sh`（重试的写法只这一处），
+/// 调它的每一步自带 `timeout-minutes`；那份脚本里每条 `apt-get` 都套着 `timeout`、带 `Acquire::Retries=3`、最多 3 趟。
+#[test]
+fn every_apt_install_in_ci_sits_in_a_step_with_its_own_timeout() {
+    const HELPER: &str = "tests/scripts/apt-install.sh";
+    let mut total = 0;
+    for rel in [".github/workflows/ci.yml", ".github/workflows/release.yml"] {
+        let (live, steps) = workflow_steps(rel);
+        let raw_apt: Vec<&String> = steps.iter().filter(|s| s.contains("apt-get")).collect();
+        assert!(
+            raw_apt.is_empty(),
+            "{rel} 里有步骤直接写 apt-get（该经 {HELPER}，重试与超时只写那一处）：\n{}",
+            raw_apt
+                .iter()
+                .map(|s| s.as_str())
+                .collect::<Vec<_>>()
+                .join("\n---\n")
+        );
+        let calls: Vec<&String> = steps.iter().filter(|s| s.contains(HELPER)).collect();
+        assert!(
+            !calls.is_empty(),
+            "{rel} 里一步装 apt 包的都没切到（切步骤坏了？）"
+        );
+        assert_eq!(
+            calls.len(),
+            live.matches(HELPER).count(),
+            "{rel}：调 {HELPER} 的次数与切出来的步骤数对不上（一步调两次，或切步骤漏了）"
+        );
+        for s in &calls {
+            assert!(
+                s.lines().any(|l| l.starts_with("        timeout-minutes:")),
+                "{rel} 里这一步装 apt 包却没有自己的 timeout-minutes（卡住会等满整个 job）：\n{s}"
+            );
+        }
+        total += calls.len();
+    }
+    assert!(
+        total >= 5,
+        "两份 workflow 里装 apt 包的步骤只切到 {total} 步"
+    );
+
+    let script = fs::read_to_string(crate::guard_support::repo_root().join(HELPER))
+        .unwrap_or_else(|e| panic!("{HELPER} 读不到：{e}"));
+    let code = guard_core::strip_hash_comment_lines(&script);
+    let apt: Vec<&str> = code.lines().filter(|l| l.contains("apt-get")).collect();
+    assert!(
+        apt.len() >= 2,
+        "{HELPER} 里 update 与 install 至少两条 apt-get"
+    );
+    for l in &apt {
+        let at = l.find("apt-get").expect("刚筛过");
+        assert!(
+            l[..at].contains("timeout "),
+            "{HELPER} 里这条 apt-get 没套 timeout：{l}"
+        );
+    }
+    assert!(
+        code.contains("Acquire::Retries=3"),
+        "{HELPER} 没给 apt 带 Acquire::Retries=3"
+    );
+    assert!(
+        code.contains("Acquire::http::Timeout=") && code.contains("Acquire::https::Timeout="),
+        "{HELPER} 没给 apt 带短的连接超时（单个包停住会一直等，主线那趟 CI 一个 32 kB 的包停了 625 秒）"
+    );
+    assert!(code.contains("tries=3"), "{HELPER} 的重试趟数不是 3");
+}

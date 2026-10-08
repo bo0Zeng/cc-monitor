@@ -491,9 +491,16 @@ function missingIn(win: Win, links: readonly string[]): string[] {
 }
 
 /** 构建产物 CSS 里出现过的类名（压缩过的文本，只取选择器段）。 */
+/** 一个窗口产物 CSS 里出现的类名。产物在 `beforeAll` 里建一次、之后不变 ⇒ 每个窗口只解析一遍、记下来。
+ *  （原先每次调用都把这个窗口的全部产物 CSS 重新解析一遍；〔UC2〕那一格按「每份 module × 它进的每个窗口」调它，
+ *  一趟解析上百遍，覆盖率插桩 ＋ 整套并跑时撞过 5 s 默认期限。） */
+const BUILT_CLASSES = new Map<Win, Set<string>>();
 function builtClasses(win: Win): Set<string> {
+  const had = BUILT_CLASSES.get(win);
+  if (had) return had;
   const out = new Set<string>();
   for (const css of CLOSURES[win].cssAssets.values()) for (const sels of selectorsOf(css)) for (const s of sels) for (const c of needs(s).classes) out.add(c);
+  BUILT_CLASSES.set(win, out);
   return out;
 }
 
