@@ -23382,6 +23382,100 @@
       "zh": "重新看",
       "args": []
     },
+    "terminal.head.live": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "实时",
+      "args": []
+    },
+    "terminal.head.liveHint": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "画面随终端实时更新",
+      "args": []
+    },
+    "terminal.head.joining": {
+      "kind": "body",
+      "role": "进度",
+      "zh": "接入实时",
+      "args": []
+    },
+    "terminal.head.snapshotOnly": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "仅快照",
+      "args": []
+    },
+    "terminal.head.snapshotOnlyOld": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "{machine} 要更新 · 实时画面不可用",
+      "args": [
+        "machine"
+      ]
+    },
+    "terminal.head.snapshotOnlyTmux": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "{machine} 的 tmux 低于 3.2 · 不支持实时",
+      "args": [
+        "machine"
+      ],
+      "limited": [
+        "tmux"
+      ]
+    },
+    "terminal.head.snapshotOnlyNoTmux": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "{machine} 无 tmux",
+      "args": [
+        "machine"
+      ],
+      "limited": [
+        "tmux"
+      ]
+    },
+    "terminal.bar.liveStopped": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "实时已停 · {why}",
+      "args": [
+        "why"
+      ]
+    },
+    "terminal.bar.liveRetry": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "重新接上",
+      "args": []
+    },
+    "terminal.liveWhy.lost": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "画面中断",
+      "args": []
+    },
+    "terminal.liveWhy.offline": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{machine} 断开",
+      "args": [
+        "machine"
+      ]
+    },
+    "terminal.liveWhy.tooBig": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "画面过大",
+      "args": []
+    },
+    "terminal.screen.follow": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "回到最新",
+      "args": []
+    },
     "terminal.head.front": {
       "kind": "action",
       "role": "按钮",

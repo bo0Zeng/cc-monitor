@@ -305,6 +305,14 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
     "`this.perMachineFallbackHint` —— 类名由 `skeleton.ts::makeSkeleton` 挂，跨文件",
   "src/frontend/ui/status-messages.ts::this.dot":
     "「消息」那一枚右上的琥珀点 `this.dot`（`s.smDot`）—— 建时收起；CSS 里另有 `.smDot[hidden]` 收住",
+  "src/frontend/ui/terminal-page.ts::this.followBox":
+    "终端页「回到最新」外面那一格 `this.followBox`（`s.termFollow`：只定位、不写 display）—— 贴着底时收起",
+  "src/frontend/ui/terminal-page.ts::this.liveTag":
+    "终端页头上「● 实时 / 接入实时」`this.liveTag`（`s.termLive`：不写 display，圆点在 `::before` 上）—— 没在实时时收起",
+  "src/frontend/ui/terminal-page.ts::this.snapGroup":
+    "终端页头上「画面几点 ＋ 重新看」那一组 `this.snapGroup`（`s.termSnap`：不写 display）—— 实时中整组收起",
+  "src/frontend/ui/terminal-page.ts::this.snapTag":
+    "终端页头上「仅快照」`this.snapTag`（`s.termTag`：不写 display）—— 那台能实时就收起",
   "src/frontend/ui/views/agent-window.ts::this.pill":
     "「↓ 新内容」那一枚 `this.pill`（kit 按钮，再挂 `sv.svPill`）—— 没有新内容时收起",
   "src/frontend/ui/views/session-find.ts::this.box":

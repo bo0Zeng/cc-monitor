@@ -5,7 +5,7 @@
 //! | 订上 ⇒ 当场推第一帧（与抓一屏同一份成品 ＋ 票 ＋ 序号） | `first_frame_comes_at_once_with_the_preview_product` |
 //! | 一帧在途：没回执之前画面再变也不推；回执之后推最新那一屏（中间的合并掉） | `one_frame_in_flight_until_acked` |
 //! | 画面没变（指纹相同）不推 | 同上 |
-//! | 订阅那个只读、不改尺寸的客户端不算「连着几个终端窗口」（名单 `clients` 与 ↗ 的 `list-clients` 两处） | `the_follower_is_not_counted_as_a_terminal_window` |
+//! | 订阅那个只读、不改尺寸的客户端不算「连着几个终端窗口」（名单 `clients` 与 ↗ 的 `list-clients` 两处）；tmux 快照读出来的不变；本仓不装客户端那一族钩子 | `the_follower_is_not_counted_as_a_terminal_window` |
 //! | 退订 ⇒ 那个客户端没了、不再推；连接走了（票表丢了）⇒ 同样全收 | `unfollow_and_drop_reap_the_client` |
 //! | 窗格没了 ⇒ 推一帧结束（`gone`） | `a_closed_pane_ends_the_follow` |
 //! | 形状：票重复 / 不认的票 / 超过上限 / 目标不在名单 ⇒ 各自的码 | `shape_and_limits` |
@@ -264,7 +264,16 @@ fn one_frame_in_flight_until_acked() {
 fn the_follower_is_not_counted_as_a_terminal_window() {
     let iso = Iso::new("count");
     iso.session("c-cc");
+    iso.tmux(&["set-option", "-t", "=c-cc:", "@ccm_sid", "sid-c"]);
     let h = iso.handle_of("c-cc");
+    let ls = || {
+        String::from_utf8_lossy(
+            &iso.tmux(&["ls", "-F", crate::observe::tmux_observe::TMUX_LS_FMT])
+                .stdout,
+        )
+        .to_string()
+    };
+    let before = ls();
     let (d, mut rx) = desk(&iso);
     assert!(reply_ok(&d.answer_wire(
         FOLLOW,
@@ -296,6 +305,29 @@ fn the_follower_is_not_counted_as_a_terminal_window() {
     let who = crate::observe::session_terminals::list_clients(iso.sock.to_str().unwrap(), "=c-cc:")
         .expect("list-clients");
     assert_eq!(who, vec![], "↗ 那一条把订阅客户端当成了终端窗口");
+    // tmux 快照（喂会话账本 · 会话快照）：「有人连着」那一列会因订阅客户端变成 1，读出来的东西必须一样（那一列今天没有读者）。
+    let during = ls();
+    assert_ne!(
+        before, during,
+        "订阅客户端连上之后 `session_attached` 那一列没变 —— 正控没成立，下面那条在空转"
+    );
+    assert_eq!(
+        crate::observe::tmux_observe::session_rows(&before),
+        crate::observe::tmux_observe::session_rows(&during),
+        "订阅客户端改了会话快照读出来的行"
+    );
+    assert_eq!(
+        crate::observe::tmux_observe::ledger_view(&before),
+        crate::observe::tmux_observe::ledger_view(&during),
+        "订阅客户端改了会话账本读的那一份"
+    );
+    // 本仓自己装的 tmux 钩子里没有客户端那一族（订阅客户端接上 / 断开会触发 client-attached / client-detached）。
+    assert!(
+        !crate::control::tmux_hook::HOOK_EVENTS
+            .iter()
+            .any(|e| e.starts_with("client-")),
+        "本仓装了客户端那一族钩子：订阅客户端每次接上 / 断开都会触发它，先想清楚再装"
+    );
 }
 
 #[test]
