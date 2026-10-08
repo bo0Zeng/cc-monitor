@@ -2400,19 +2400,19 @@
     "ccBus.read.otherCode": {
       "kind": "error",
       "role": "报错",
-      "zh": "读不到：{detail}",
+      "zh": "读取失败 · {detail}",
       "args": ["detail"]
     },
     "ccBus.read.noReason": {
       "kind": "error",
       "role": "报错",
-      "zh": "读不到，后端没有给出原因。",
+      "zh": "读取失败 · 原因不明",
       "args": []
     },
     "ccBus.send.empty": {
       "kind": "error",
       "role": "报错",
-      "zh": "消息是空的，没有发出去。",
+      "zh": "消息为空 · 未发送",
       "args": []
     },
     "ccBus.send.badId": {
@@ -2484,13 +2484,13 @@
     "ccBus.send.otherCode": {
       "kind": "error",
       "role": "报错",
-      "zh": "{id} 的消息没有发出去：{detail}",
+      "zh": "发给 {id} 失败 · {detail}",
       "args": ["id", "detail"]
     },
     "ccBus.send.noReason": {
       "kind": "error",
       "role": "报错",
-      "zh": "{id} 的消息没有发出去，后端没有给出原因。",
+      "zh": "发给 {id} 失败 · 原因不明",
       "args": ["id"]
     },
     "ccBus.send.delivered": {
@@ -2508,13 +2508,13 @@
     "ccBus.send.ghost": {
       "kind": "body",
       "role": "说明",
-      "zh": "已投递给 {id}，但这个名字没在总线上登记过。现在没有进程会读它的收件箱，名字打错了吗？",
+      "zh": "已投递 {id} · 此名未在总线登记\n无进程读它的收件箱 · 核对名字拼写",
       "args": ["id"]
     },
     "ccBus.send.unknownLive": {
       "kind": "body",
       "role": "说明",
-      "zh": "已投递给 {id}，在不在线问不到。",
+      "zh": "已投递 {id} · 在线状态未知",
       "args": ["id"]
     },
     "ccBus.kill.invalidArgs": {
@@ -2538,13 +2538,13 @@
     "ccBus.kill.otherCode": {
       "kind": "error",
       "role": "报错",
-      "zh": "没有收掉 {id}：{detail}",
+      "zh": "收掉 {id} 失败 · {detail}",
       "args": ["id", "detail"]
     },
     "ccBus.kill.noReason": {
       "kind": "error",
       "role": "报错",
-      "zh": "没有收掉 {id}，后端没有给出原因。",
+      "zh": "收掉 {id} 失败 · 原因不明",
       "args": ["id"]
     },
     "ccBus.kill.unsure": {
@@ -2556,19 +2556,19 @@
     "ccBus.kill.killed": {
       "kind": "body",
       "role": "说明",
-      "zh": "已收掉 {id}，会话与进程树都结束了。",
+      "zh": "已收掉 {id} · 会话与进程树均终止",
       "args": ["id"]
     },
     "ccBus.kill.staleOnly": {
       "kind": "body",
       "role": "说明",
-      "zh": "{id} 的登记摘掉了，会话没动：这个名字现在挂在别人的会话上。",
+      "zh": "已摘除 {id} 的登记 · 会话未动 · 此名现挂在另一会话上",
       "args": ["id"]
     },
     "ccBus.kill.nothing": {
       "kind": "body",
       "role": "空态",
-      "zh": "{id} 没有被收掉：会话没结束，登记也没摘。多半这个名字不在总线上。",
+      "zh": "未收掉 {id} · 会话未结束 · 登记未摘",
       "args": ["id"]
     },
     "ccBus.spawn.noDir": {
@@ -2598,13 +2598,13 @@
     "ccBus.spawn.otherCode": {
       "kind": "error",
       "role": "报错",
-      "zh": "没有派生：{detail}",
+      "zh": "派生失败 · {detail}",
       "args": ["detail"]
     },
     "ccBus.spawn.noReason": {
       "kind": "error",
       "role": "报错",
-      "zh": "没有派生，后端没有给出原因。",
+      "zh": "派生失败 · 原因不明",
       "args": []
     },
     "ccBus.spawn.unsure": {
@@ -2628,7 +2628,7 @@
     "ccBus.broadcast.empty": {
       "kind": "error",
       "role": "报错",
-      "zh": "广播内容是空的，没有发出去。",
+      "zh": "广播内容为空 · 未发送",
       "args": []
     },
     "ccBus.broadcast.invalidArgs": {
@@ -2652,37 +2652,37 @@
     "ccBus.broadcast.otherCode": {
       "kind": "error",
       "role": "报错",
-      "zh": "没有广播：{detail}",
+      "zh": "广播失败 · {detail}",
       "args": ["detail"]
     },
     "ccBus.broadcast.noReason": {
       "kind": "error",
       "role": "报错",
-      "zh": "没有广播，后端没有给出原因。",
+      "zh": "广播失败 · 原因不明",
       "args": []
     },
     "ccBus.broadcast.done": {
       "kind": "body",
       "role": "toast",
-      "zh": "已广播给 {sent} 个在线的 agent，跳过 {skipped} 个不在线的。",
+      "zh": "已广播 · 在线 {sent} · 跳过离线 {skipped}",
       "args": ["sent", "skipped"]
     },
     "ccBus.broadcast.doneFailed": {
       "kind": "body",
       "role": "toast",
-      "zh": "已广播给 {sent} 个在线的 agent，跳过 {skipped} 个不在线的。{failed} 个失败：{who}",
+      "zh": "已广播 · 在线 {sent} · 跳过离线 {skipped} · 失败 {failed} · {who}",
       "args": ["sent", "skipped", "failed", "who"]
     },
     "ccBus.broadcast.doneUnknown": {
       "kind": "body",
       "role": "toast",
-      "zh": "已广播给 {sent} 个已登记的 agent。问不到谁在线，所以全发了。",
+      "zh": "已广播 · 名单全部 {sent} · 在线状态未知",
       "args": ["sent"]
     },
     "ccBus.broadcast.doneUnknownFailed": {
       "kind": "body",
       "role": "toast",
-      "zh": "已广播给 {sent} 个已登记的 agent。问不到谁在线，所以全发了。{failed} 个失败：{who}",
+      "zh": "已广播 · 名单全部 {sent} · 在线状态未知 · 失败 {failed} · {who}",
       "args": ["sent", "failed", "who"]
     },
     "portForward.onStop.failed": {
@@ -5698,7 +5698,7 @@
     "machineAliases.ps.pathUnknown": {
       "kind": "body",
       "role": "说明",
-      "zh": "未记录，启动一次 monitor 后自动记录",
+      "zh": "未记录 · 启动一次 cc-monitor 后自动记录",
       "args": []
     },
     "machineAliases.ps.empty": {
@@ -5722,19 +5722,19 @@
     "machineAliases.userPath.removeFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "从用户级 PATH 撤掉失败",
+      "zh": "从用户 PATH 移除失败",
       "args": []
     },
     "machineAliases.userPath.addFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "加到用户级 PATH 失败",
+      "zh": "加进用户 PATH 失败",
       "args": []
     },
     "machineAliases.userPath.readFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "读不出来：{error}",
+      "zh": "读取用户 PATH 失败 · {error}",
       "args": ["error"]
     },
     "machineAliases.userPath.on": {
@@ -5746,7 +5746,7 @@
     "machineAliases.userPath.notWindows": {
       "kind": "body",
       "role": "说明",
-      "zh": "这一项只有 Windows 有。这台机器上让终端找到 ccm 的，是「本机 → 终端 → 别名」里那个别名块。",
+      "zh": "仅 Windows · 本机接上终端后即可敲 ccm",
       "args": [],
       "limited": ["ccm"]
     },
@@ -5784,31 +5784,31 @@
     "machineAliases.runRc.removeFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "卸失败：{e}",
+      "zh": "卸载失败 · {e}",
       "args": ["e"]
     },
     "machineAliases.runRc.installFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "装失败：{e}",
+      "zh": "接上失败 · {e}",
       "args": ["e"]
     },
     "machineAliases.runRc.removing": {
       "kind": "body",
       "role": "片段",
-      "zh": "卸别名块中…",
+      "zh": "卸载中",
       "args": []
     },
     "machineAliases.runRc.installing": {
       "kind": "body",
       "role": "片段",
-      "zh": "装别名块中…",
+      "zh": "接上中",
       "args": []
     },
     "machineAliases.rcStatus.duplicates": {
       "kind": "body",
       "role": "说明",
-      "zh": "别名块还装在这几份里：\n{others}\n同一台机器上装一份就够；多的那几份可以在下拉里选中后卸掉。",
+      "zh": "别名块还接在这几份里\n{others}\n一台留一份即可 · 多的在下拉里选中后卸载",
       "args": ["others"]
     },
     "machineAliases.rcStatus.unreadable": {
@@ -5820,32 +5820,32 @@
     "machineAliases.other.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "用不了这份：{e}",
+      "zh": "此文件不可用 · {e}",
       "args": ["e"]
     },
     "machineAliases.load.ccmFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "查不了本机终端里的 ccm：{e}",
+      "zh": "检查本机 ccm 失败 · {e}",
       "args": ["e"],
       "limited": ["ccm"]
     },
     "machineAliases.readBack.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "读不了这台机器上的别名文件：{e}",
+      "zh": "读取别名失败 · {e}",
       "args": ["e"]
     },
     "machineAliases.rc.tagNew": {
       "kind": "control",
       "role": "标签",
-      "zh": "还不存在，写入时新建",
+      "zh": "不存在 · 接上时新建",
       "args": []
     },
     "machineAliases.rc.tagBlock": {
       "kind": "control",
       "role": "标签",
-      "zh": "已接入",
+      "zh": "已接上",
       "args": []
     },
     "machineAliases.rc.tagSourced": {
@@ -5857,19 +5857,19 @@
     "machineAliases.rc.openHint": {
       "kind": "body",
       "role": "说明",
-      "zh": "用系统默认编辑器打开选中的那份",
+      "zh": "用默认编辑器打开",
       "args": []
     },
     "machineAliases.rc.open": {
       "kind": "action",
       "role": "按钮",
-      "zh": "打开这份文件",
+      "zh": "打开文件",
       "args": []
     },
     "machineAliases.rc.uninstallHint": {
       "kind": "body",
       "role": "说明",
-      "zh": "只删 cc-monitor 那一小块，你写的任何一行都不动。",
+      "zh": "只删 cc-monitor 加的行 · 你写的不动",
       "args": []
     },
     "machineAliases.rc.uninstall": {
@@ -5888,7 +5888,7 @@
     "machineAliases.rc.other": {
       "kind": "control",
       "role": "标签",
-      "zh": "其它文件：绝对路径，或 ~/ 开头",
+      "zh": "其他文件 · 绝对路径或 ~/ 开头",
       "args": []
     },
     "cfgPage.head.intro": {
@@ -5924,25 +5924,25 @@
     "cfgPage.mcp.noLibrary": {
       "kind": "body",
       "role": "说明",
-      "zh": "这台没有账号库 · 不同步",
+      "zh": "无账号库 · 不同步",
       "args": []
     },
     "cfgPage.mcp.noLibraryBody": {
       "kind": "body",
       "role": "说明",
-      "zh": "只有一个账号时，MCP 就是 Claude 自己那一份；建了账号库之后，各账号共用这里的一份。",
+      "zh": "单账号时 MCP 即 Claude 自己那一份 · 建账号库后各账号共用这一份",
       "args": []
     },
     "cfgPage.mcp.paused": {
       "kind": "body",
       "role": "说明",
-      "zh": "已停止同步 · 各账号各管各的 · 共用的 {n} 个留着",
+      "zh": "同步已停止 · 各账号各自管理 · 保留共用 ×{n}",
       "args": ["n"]
     },
     "cfgPage.mcp.pausedBody": {
       "kind": "body",
       "role": "说明",
-      "zh": "已停止同步：各账号的 MCP 各管各的，同步过去的一条不删。开回同步时，停着期间各账号加的会同步到全部账号。",
+      "zh": "同步已停止 · 各账号各自管理 · 已同步的不删\n恢复同步后 · 停止期间各账号加的同步到全部账号",
       "args": []
     },
     "cfgPage.mcp.conflict": {
@@ -5960,13 +5960,13 @@
     "cfgPage.mcp.same": {
       "kind": "body",
       "role": "说明",
-      "zh": "{n} 个 · {machine} 的各账号一致",
+      "zh": "×{n} · {machine} 各账号一致",
       "args": ["n", "machine"]
     },
     "cfgPage.mcp.shared": {
       "kind": "body",
       "role": "说明",
-      "zh": "任一账号加的同步到 {machine} 全部账号。只在这里删，账号里删会被补回。",
+      "zh": "任一账号加的同步到 {machine} 全部账号\n只在此处删 · 账号里删会被补回",
       "args": ["machine"]
     },
     "cfgPage.mcp.conflictHead": {
@@ -6074,7 +6074,7 @@
     "cfgPage.mcp.readFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "读不出这台的共用 MCP",
+      "zh": "读取共用 MCP 失败",
       "args": []
     },
     "cfgPage.ext.title": {
@@ -6104,13 +6104,13 @@
     "cfgPage.ext.count": {
       "kind": "body",
       "role": "片段",
-      "zh": "{skills} 个 skill",
+      "zh": "skill ×{skills}",
       "args": ["skills"]
     },
     "cfgPage.ext.countWithMcp": {
       "kind": "body",
       "role": "说明",
-      "zh": "{skills} 个 skill · {mcp} 个 MCP 在项目里",
+      "zh": "skill ×{skills} · 项目 MCP ×{mcp}",
       "args": ["skills", "mcp"]
     },
     "cfgPage.ext.skills": {
@@ -6165,7 +6165,7 @@
     "machineAliases.access.otherFile": {
       "kind": "body",
       "role": "说明",
-      "zh": "另选的 {path} 还没接上",
+      "zh": "{path} 未接上",
       "args": ["path"]
     },
     "machineAliases.access.outdatedHint": {
@@ -6183,7 +6183,7 @@
     "machineAliases.access.whatAdded": {
       "kind": "action",
       "role": "按钮",
-      "zh": "看加了什么",
+      "zh": "查看改动",
       "args": []
     },
     "machineAliases.access.willAdd": {
@@ -6233,13 +6233,13 @@
     "machineAliases.clash.mixed": {
       "kind": "body",
       "role": "说明",
-      "zh": "各自不同 · 点开那一条看",
+      "zh": "各不相同 · 点开查看",
       "args": []
     },
     "machineAliases.clash.nowYours": {
       "kind": "body",
       "role": "片段",
-      "zh": "你写的 · 清单那条被盖",
+      "zh": "手写的生效 · 盖过清单",
       "args": []
     },
     "machineAliases.clash.nowList": {
@@ -6275,7 +6275,7 @@
     "machineAliases.status.readFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "读不出这台的别名",
+      "zh": "读取别名失败",
       "args": []
     },
     "machineAliases.status.connect": {
@@ -6293,7 +6293,7 @@
     "machineAliases.userPath.offHelp": {
       "kind": "body",
       "role": "说明",
-      "zh": "会把 {dir} 加进用户 PATH · 只改你这个用户、不用管理员 · 重开终端生效",
+      "zh": "把 {dir} 加进用户 PATH · 只改本用户 · 不用管理员 · 重开终端生效",
       "args": ["dir"]
     },
     "machineAliases.win.title": {
@@ -6312,7 +6312,7 @@
     "machineAliases.win.bindHelp": {
       "kind": "body",
       "role": "说明",
-      "zh": "与别名一起接在 PowerShell 配置文件 · 当前 {n} 个窗口可切回",
+      "zh": "与别名一起接在 PowerShell 配置文件 · 可切回窗口 {n}",
       "args": ["n"],
       "limited": ["PowerShell"]
     },
@@ -6325,14 +6325,14 @@
     "machineAliases.win.statusPathOn": {
       "kind": "body",
       "role": "说明",
-      "zh": "能切回 {n} 个窗口 · cmd 里也敲得到 ccm",
+      "zh": "可切回窗口 {n} · cmd 里有 ccm",
       "args": ["n"],
       "limited": ["ccm"]
     },
     "machineAliases.win.statusPathOff": {
       "kind": "body",
       "role": "说明",
-      "zh": "能切回 {n} 个窗口 · cmd 里还敲不到 ccm",
+      "zh": "可切回窗口 {n} · cmd 里无 ccm",
       "args": ["n"],
       "limited": ["ccm"]
     },
@@ -6345,7 +6345,7 @@
     "machineAliases.access.connect": {
       "kind": "action",
       "role": "按钮",
-      "zh": "接入",
+      "zh": "接上",
       "args": []
     },
     "machineAliases.access.connectTo": {
@@ -6370,13 +6370,13 @@
     "machineAliases.access.notLoaded": {
       "kind": "body",
       "role": "说明",
-      "zh": "⚠ {path} 已接入，但 {ps} 不会加载它",
+      "zh": "已接在 {path} · {ps} 不加载它",
       "args": ["path", "ps"]
     },
     "machineAliases.access.reconnect": {
       "kind": "action",
       "role": "按钮",
-      "zh": "换成新版",
+      "zh": "更新",
       "args": []
     },
     "machineAliases.access.off": {
@@ -6406,9 +6406,8 @@
     "machineAliases.unknownOs.said": {
       "kind": "body",
       "role": "说明",
-      "zh": "认不出这台的系统，没法生成别名块。不知道该写 bash 的还是 PowerShell 的，不替你猜。",
-      "args": [],
-      "limited": ["PowerShell"]
+      "zh": "系统未识别 · 无法生成别名块",
+      "args": []
     },
     "profilesPage.chip.function": {
       "kind": "control",
@@ -6419,7 +6418,7 @@
     "profilesPage.chip.unusable": {
       "kind": "control",
       "role": "标签",
-      "zh": "现在不能用",
+      "zh": "不可用",
       "args": []
     },
     "profilesPage.clash.copied": {
@@ -6431,7 +6430,7 @@
     "profilesPage.clash.copyLines": {
       "kind": "action",
       "role": "按钮",
-      "zh": "复制要删的行号",
+      "zh": "复制行号",
       "args": []
     },
     "profilesPage.clash.keepBoth": {
@@ -6443,7 +6442,7 @@
     "profilesPage.clash.keepBothHint": {
       "kind": "body",
       "role": "说明",
-      "zh": "新开的终端敲这个名字起的还是你写的那个。",
+      "zh": "新终端里敲该名字 · 起的是手写那条",
       "args": []
     },
     "profilesPage.clash.rename": {
@@ -6473,7 +6472,7 @@
     "profilesPage.clash.useListHint": {
       "kind": "body",
       "role": "说明",
-      "zh": "你那几行留在原处不动，cc-monitor 不改它；清单里已有 {names}。你自己删掉那几行后就是清单的生效。",
+      "zh": "手写的行不动 · cc-monitor 不改 · 清单已有 {names}\n删掉手写的行后清单生效",
       "args": ["names"]
     },
     "profilesPage.edited.look": {
@@ -6485,13 +6484,13 @@
     "profilesPage.edited.line": {
       "kind": "body",
       "role": "说明",
-      "zh": "配置文件 {time} 改过，不是在这里改的；清单已按新内容列出。你写的注释在这里改别名时会留着。",
+      "zh": "配置文件 {time} 在别处改过 · 清单已按新内容列出 · 注释保留",
       "args": ["time"]
     },
     "profilesPage.edited.lineOpen": {
       "kind": "body",
       "role": "说明",
-      "zh": "配置文件 {time} 在别处改过；关了表单之后清单按新内容列出。",
+      "zh": "配置文件 {time} 在别处改过 · 关闭表单后按新内容列出",
       "args": ["time"]
     },
     "profilesPage.file.at": {
@@ -6503,7 +6502,7 @@
     "profilesPage.file.broken": {
       "kind": "title",
       "role": "标题",
-      "zh": "配置文件写坏了，整份不能用",
+      "zh": "配置文件无法解析 · 整份不可用",
       "args": []
     },
     "profilesPage.form.addCase": {
@@ -6576,7 +6575,7 @@
     "profilesPage.form.discardBody": {
       "kind": "body",
       "role": "片段",
-      "zh": "表单里改的还没存。",
+      "zh": "表单改动未保存",
       "args": []
     },
     "profilesPage.form.discardTitle": {
@@ -6594,7 +6593,7 @@
     "profilesPage.form.fromHelp": {
       "kind": "body",
       "role": "说明",
-      "zh": "下拉只列不会绕成圈的那几条。",
+      "zh": "只列不会成环的",
       "args": []
     },
     "profilesPage.form.fromNone": {
@@ -6648,7 +6647,7 @@
     "profilesPage.form.nameHelp": {
       "kind": "body",
       "role": "说明",
-      "zh": "在终端里敲的那个词。",
+      "zh": "终端里敲的命令名",
       "args": []
     },
     "profilesPage.form.nameHint": {
@@ -6690,7 +6689,7 @@
     "profilesPage.form.stale": {
       "kind": "error",
       "role": "报错",
-      "zh": "没保存：配置文件在你打开之后被别处改过。你填的还在。",
+      "zh": "保存失败 · 配置文件已在别处改过 · 填写内容保留",
       "args": []
     },
     "profilesPage.form.titleEdit": {
@@ -6741,13 +6740,13 @@
     "profilesPage.head.line": {
       "kind": "body",
       "role": "说明",
-      "zh": "{n} 条 · 规则住 {path} · 改了下次起会话就生效",
+      "zh": "{n} 条 · 存于 {path} · 改后下次启动会话生效",
       "args": ["n", "path"]
     },
     "profilesPage.head.none": {
       "kind": "body",
       "role": "空态",
-      "zh": "还没有配置文件",
+      "zh": "无配置文件",
       "args": []
     },
     "profilesPage.impact.colAfter": {
@@ -6789,13 +6788,13 @@
     "profilesPage.impact.show": {
       "kind": "action",
       "role": "按钮",
-      "zh": "看每条改前改后",
+      "zh": "逐条对比",
       "args": []
     },
     "profilesPage.list.add": {
       "kind": "action",
       "role": "按钮",
-      "zh": "＋ 新增别名",
+      "zh": "新增别名",
       "args": []
     },
     "profilesPage.list.empty": {
@@ -6807,7 +6806,7 @@
     "profilesPage.list.hint": {
       "kind": "body",
       "role": "说明",
-      "zh": "按「基于」排成树 · 子那一条只写和父不一样的",
+      "zh": "按「基于」排成树 · 子项只写与父不同的",
       "args": []
     },
     "profilesPage.list.open": {
@@ -6825,13 +6824,13 @@
     "profilesPage.merge.asking": {
       "kind": "body",
       "role": "片段",
-      "zh": "正在问这台…",
+      "zh": "读取中",
       "args": []
     },
     "profilesPage.merge.at": {
       "kind": "control",
       "role": "标签",
-      "zh": "假设在这个目录敲：",
+      "zh": "假设所在目录",
       "args": []
     },
     "profilesPage.merge.colFrom": {
@@ -6861,7 +6860,7 @@
     "profilesPage.merge.hint": {
       "kind": "body",
       "role": "说明",
-      "zh": "合并与「等于」都是这台后端算的（同 ccm @{name} -- --ccm-print）",
+      "zh": "合并与「等于」由该机算出 · 同 ccm @{name} -- --ccm-print",
       "args": ["name"],
       "limited": ["ccm"]
     },
@@ -6892,7 +6891,7 @@
     "profilesPage.migrated.line": {
       "kind": "body",
       "role": "说明",
-      "zh": "别名改存在配置文件：{n} 条已转进 {path}。每条一段，规则以后只写在那里。",
+      "zh": "别名已迁入配置文件 · {n} 条 → {path} · 每条一段 · 以后只在那里写",
       "args": ["n", "path"]
     },
     "profilesPage.open.failed": {
@@ -6910,25 +6909,25 @@
     "profilesPage.read.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "读不了配置文件：{e}",
+      "zh": "读取配置文件失败 · {e}",
       "args": ["e"]
     },
     "profilesPage.remove.ask": {
       "kind": "body",
       "role": "说明",
-      "zh": "{name} 还被 {n} 条基于：{kids}。删了它，它们怎么办？",
+      "zh": "{name} 被 {n} 条基于 · {kids}",
       "args": ["name", "n", "kids"]
     },
     "profilesPage.remove.cancel": {
       "kind": "action",
       "role": "按钮",
-      "zh": "不删了",
+      "zh": "取消",
       "args": []
     },
     "profilesPage.remove.cancelHint": {
       "kind": "body",
       "role": "说明",
-      "zh": "Esc 也是这个。",
+      "zh": "Esc 同此",
       "args": []
     },
     "profilesPage.remove.cascade": {
@@ -6940,7 +6939,7 @@
     "profilesPage.remove.cascadeHint": {
       "kind": "body",
       "role": "说明",
-      "zh": "连同 {kids}，{n} 条一起删。",
+      "zh": "连同 {kids} · 共删 {n} 条",
       "args": ["kids", "n"]
     },
     "profilesPage.remove.goCascade": {
@@ -6964,7 +6963,7 @@
     "profilesPage.remove.reparentHint": {
       "kind": "body",
       "role": "说明",
-      "zh": "{name} 自己那几项（{items}）会从它们身上没了。",
+      "zh": "{name} 自有的项（{items}）从它们身上移除",
       "args": ["name", "items"]
     },
     "profilesPage.remove.reparent": {
@@ -7012,7 +7011,7 @@
     "profilesPage.seed.hint": {
       "kind": "body",
       "role": "说明",
-      "zh": "别名是 ccm 的具名配置：一条一组选项，可以基于另一条。先建这两条？",
+      "zh": "别名 = ccm 的具名配置 · 一条一组选项\n可基于另一条 · 先建下面两条",
       "args": [],
       "limited": ["ccm"]
     },
@@ -7037,7 +7036,7 @@
     "machineAliases.powershell.blockAfterInstall": {
       "kind": "body",
       "role": "说明",
-      "zh": "装好了。开一个新的 PowerShell 窗口生效。",
+      "zh": "已接上 · 新 PowerShell 窗口生效",
       "args": [],
       "limited": ["PowerShell"]
     },
@@ -7058,25 +7057,25 @@
     "machineAliases.policy.blocks": {
       "kind": "body",
       "role": "说明",
-      "zh": "{ps} 不会运行这份 $PROFILE：执行策略是 {policy}。装在这里的别名块不会生效。",
+      "zh": "{ps} 执行策略 {policy} · 不运行 $PROFILE · 此处的别名块不生效",
       "args": ["ps", "policy"]
     },
     "machineAliases.policy.groupPolicy": {
       "kind": "body",
       "role": "说明",
-      "zh": "{ps} 的执行策略（{policy}）由组策略定，这里改不了。",
+      "zh": "{ps} 执行策略 {policy} · 由组策略管 · 不可改",
       "args": ["ps", "policy"]
     },
     "machineAliases.policy.unknown": {
       "kind": "body",
       "role": "说明",
-      "zh": "问不到 {ps} 的执行策略，说不清装上的块会不会生效。原因：{e}",
+      "zh": "{ps} 执行策略未知 · 别名块是否生效未知 · {e}",
       "args": ["ps", "e"]
     },
     "machineAliases.policy.unclear": {
       "kind": "body",
       "role": "说明",
-      "zh": "{ps} 的执行策略是 {policy}，说不清它会不会运行这份 $PROFILE。",
+      "zh": "{ps} 执行策略 {policy} · 是否运行 $PROFILE 未知",
       "args": ["ps", "policy"]
     },
     "machineAliases.policy.allow": {
@@ -7088,29 +7087,27 @@
     "machineAliases.policy.confirm": {
       "kind": "body",
       "role": "确认框",
-      "zh": "把 {ps} 的执行策略设成 RemoteSigned（只改你这个用户）？本机的脚本照常运行，从网上下载的脚本要有签名才运行。这是 PowerShell 的标准做法。",
-      "args": ["ps"],
-      "limited": ["PowerShell"]
+      "zh": "改动  {ps} 执行策略 → RemoteSigned · 仅当前用户\n之后  本机脚本照常运行 · 网上下载的脚本须签名",
+      "args": ["ps"]
     },
     "machineAliases.policy.setDone": {
       "kind": "body",
       "role": "说明",
-      "zh": "改好了：{ps} 的执行策略现在是 {policy}。开一个新的 PowerShell 窗口生效。",
+      "zh": "已改 · {ps} 执行策略 {policy} · 新 PowerShell 窗口生效",
       "args": ["ps", "policy"],
       "limited": ["PowerShell"]
     },
     "machineAliases.policy.setFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "没改成 {ps} 的执行策略。{e}",
+      "zh": "改执行策略失败 · {ps} · {e}",
       "args": ["ps", "e"]
     },
     "machineAliases.policy.afterInstall": {
       "kind": "body",
       "role": "说明",
-      "zh": "装进去了。它能不能生效要看这台 PowerShell 的执行策略，见上面那一行。",
-      "args": [],
-      "limited": ["PowerShell"]
+      "zh": "已接上 · 是否生效取决于执行策略 · 见上一行",
+      "args": []
     },
     "machineAliases.policy.title": {
       "kind": "title",
@@ -7380,7 +7377,7 @@
     "machineCard.test.pinUpdate": {
       "kind": "action",
       "role": "按钮",
-      "zh": "改记这一枚",
+      "zh": "改记此指纹",
       "args": []
     },
     "machineCard.status.uninstalled": {
@@ -7392,7 +7389,7 @@
     "machineCard.uninstall.running": {
       "kind": "body",
       "role": "进度",
-      "zh": "卸载后端中",
+      "zh": "卸载中",
       "args": []
     },
     "machineCard.uninstall.confirm": {
@@ -7405,7 +7402,7 @@
     "machineCard.uninstall.needFields": {
       "kind": "error",
       "role": "报错",
-      "zh": "请先填好主机和用户再卸载后端。",
+      "zh": "先填主机与用户名",
       "args": []
     },
     "machineCard.uninstall.title": {
@@ -7423,7 +7420,7 @@
     "machineCard.status.installFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "装失败",
+      "zh": "安装失败",
       "args": []
     },
     "machineCard.status.installed": {
@@ -7435,19 +7432,19 @@
     "machineCard.launch.needHost": {
       "kind": "error",
       "role": "报错",
-      "zh": "请先填好 host / user 再开新 Claude。",
+      "zh": "先填主机与用户名",
       "args": []
     },
     "machineCard.pushKey.already": {
       "kind": "body",
       "role": "说明",
-      "zh": "公钥已存在，无需重复推送：{path}",
+      "zh": "公钥已存在 · {path} · 无需推送",
       "args": ["path"]
     },
     "machineCard.pushKey.added": {
       "kind": "body",
       "role": "片段",
-      "zh": "公钥已推送：{path}",
+      "zh": "已推送公钥 · {path}",
       "args": ["path"]
     },
     "machineCard.pushKey.pushing": {
@@ -7465,13 +7462,13 @@
     "machineCard.pushKey.dialogTitle": {
       "kind": "body",
       "role": "悬停",
-      "zh": "选择要推送的公钥 (.pub)",
+      "zh": "选择公钥（.pub）",
       "args": []
     },
     "machineCard.pushKey.needHost": {
       "kind": "error",
       "role": "报错",
-      "zh": "请先填好 host / user 再推送公钥。",
+      "zh": "先填主机与用户名",
       "args": []
     },
     "machineCard.test.unreachable": {
@@ -7489,26 +7486,26 @@
     "machineCard.stall.start": {
       "kind": "error",
       "role": "报错",
-      "zh": "还没开始连（本机后端一步进度都没报）",
+      "zh": "未开始连接 · 本机后端无进度",
       "args": []
     },
     "machineCard.stall.handshake": {
       "kind": "error",
       "role": "报错",
-      "zh": "连 SSH 这一步（最后一步：{step}）",
+      "zh": "停在 SSH 连接 · 最后一步 {step}",
       "args": ["step"],
       "limited": ["SSH"]
     },
     "machineCard.stall.hello": {
       "kind": "error",
       "role": "报错",
-      "zh": "已连上这台机器，在等它的后端回话",
+      "zh": "已连上 · 等 cc-monitor 应答",
       "args": []
     },
     "machineCard.stall.control": {
       "kind": "error",
       "role": "报错",
-      "zh": "后端已回话，在等它确认能起会话",
+      "zh": "cc-monitor 已应答 · 等确认能起会话",
       "args": []
     },
     "machineCard.test.failed": {
@@ -7526,7 +7523,7 @@
     "machineCard.test.alive": {
       "kind": "body",
       "role": "片段",
-      "zh": "在跑",
+      "zh": "运行中",
       "args": []
     },
     "machineCard.test.running": {
@@ -7538,7 +7535,7 @@
     "machineCard.test.needFields": {
       "kind": "error",
       "role": "报错",
-      "zh": "请先填好主机和用户再测试。",
+      "zh": "先填主机与用户名",
       "args": []
     },
     "machineCard.displayName.unnamed": {
@@ -7563,7 +7560,7 @@
     "machineCard.resetFingerprint.thisHost": {
       "kind": "body",
       "role": "片段",
-      "zh": "该主机",
+      "zh": "此机器",
       "args": []
     },
     "machineCard.resetFingerprint.title": {
@@ -7601,19 +7598,19 @@
     "machineCard.deploy.uninstallHint": {
       "kind": "body",
       "role": "说明",
-      "zh": "删除远端后端（机器仍启用的话，下次连接会自动装回）",
+      "zh": "从此机器卸载 cc-monitor · 仍启用则下次连接重装",
       "args": []
     },
     "machineCard.field.nameTaken": {
       "kind": "error",
       "role": "报错",
-      "zh": "已经有一台叫「{name}」，这次没存。",
+      "zh": "已有「{name}」 · 未保存",
       "args": ["name"]
     },
     "machineCard.field.portRange": {
       "kind": "error",
       "role": "报错",
-      "zh": "端口要在 1 到 65535 之间，这次没存。",
+      "zh": "端口限 1–65535 · 未保存",
       "args": []
     },
     "machineCard.field.resumeCmd": {
@@ -7625,13 +7622,13 @@
     "machineCard.build.filesNeedHost": {
       "kind": "error",
       "role": "报错",
-      "zh": "请先填好 host / user 再打开文件窗口。",
+      "zh": "先填主机与用户名",
       "args": []
     },
     "machineCard.build.pushKeyHint": {
       "kind": "body",
       "role": "说明",
-      "zh": "把本地公钥追加到远端 ~/.ssh/authorized_keys（免密登录）；已填私钥则取同名 .pub，否则弹框选文件",
+      "zh": "把本机公钥加进远端 ~/.ssh/authorized_keys · 免密登录\n已填私钥取同名 .pub · 否则弹框选",
       "args": [],
       "limited": ["SSH"]
     },
@@ -7644,7 +7641,7 @@
     "machineCard.build.testHint": {
       "kind": "body",
       "role": "说明",
-      "zh": "测试 SSH 连接 / 主机指纹 / 后端是否在线",
+      "zh": "测试 SSH 连接 · 主机指纹 · cc-monitor 是否在线",
       "args": [],
       "limited": ["SSH", "SSH 主机指纹"]
     },
@@ -7657,7 +7654,7 @@
     "machineCard.field.jumpHint": {
       "kind": "control",
       "role": "占位",
-      "zh": "另一台已配置机器的名称，留空为直连",
+      "zh": "列表里另一台机器名 · 留空不经跳板机",
       "args": []
     },
     "machineCard.field.jump": {
@@ -7669,7 +7666,7 @@
     "machineCard.field.addressesHint": {
       "kind": "control",
       "role": "占位",
-      "zh": "10.0.0.2\npi.example.com:2222\n[fe80::1]:22\n首选地址填在上方的主机里",
+      "zh": "10.0.0.2\npi.example.com:2222\n[fe80::1]:22\n首选地址填在上方主机",
       "args": []
     },
     "machineCard.field.addresses": {
@@ -7681,7 +7678,7 @@
     "machineCard.field.resetFingerprintHint": {
       "kind": "body",
       "role": "说明",
-      "zh": "清除已固化的主机指纹，下次连接重新记下。只在你确知服务器合法换过 host key 时用。",
+      "zh": "清除已记的主机指纹 · 下次连接重新记下\n仅在确知对方合法换过 host key 时用",
       "args": [],
       "limited": ["SSH 主机指纹"]
     },
@@ -7707,7 +7704,7 @@
     "machineCard.field.userHint": {
       "kind": "control",
       "role": "占位",
-      "zh": "如 ubuntu / pi / root",
+      "zh": "例 ubuntu / pi / root",
       "args": []
     },
     "machineCard.field.user": {
@@ -7749,7 +7746,7 @@
     "machineCard.build.deleteHint": {
       "kind": "body",
       "role": "说明",
-      "zh": "从列表移除这台机器",
+      "zh": "从列表删除",
       "args": []
     },
     "machineCard.build.delete": {
@@ -7779,7 +7776,7 @@
     "machineCard.stage.authFailed": {
       "kind": "body",
       "role": "说明",
-      "zh": "鉴权失败：{detail}",
+      "zh": "登录失败 · {detail}",
       "args": ["detail"]
     },
     "machineCard.stage.failIcon": {
@@ -7791,7 +7788,7 @@
     "machineCard.stage.authOk": {
       "kind": "body",
       "role": "片段",
-      "zh": "鉴权通过",
+      "zh": "已登录",
       "args": []
     },
     "machineCard.stage.okIcon": {
@@ -7803,19 +7800,19 @@
     "machineCard.stage.won": {
       "kind": "body",
       "role": "说明",
-      "zh": "{endpoint} 胜出（其余地址已取消）",
+      "zh": "已连 {endpoint} · 其余地址停止",
       "args": ["endpoint"]
     },
     "machineCard.stage.failed": {
       "kind": "body",
       "role": "片段",
-      "zh": "{endpoint} 失败：{reason}",
+      "zh": "{endpoint} 连接失败 · {reason}",
       "args": ["endpoint", "reason"]
     },
     "machineCard.stage.fingerprint": {
       "kind": "body",
       "role": "说明",
-      "zh": "{endpoint} 主机指纹 {fingerprint}",
+      "zh": "{endpoint} · 主机指纹 {fingerprint}",
       "args": ["endpoint", "fingerprint"],
       "limited": ["SSH 主机指纹"]
     },
@@ -7828,7 +7825,7 @@
     "machineCard.stage.dial": {
       "kind": "body",
       "role": "片段",
-      "zh": "拨号 {endpoint}",
+      "zh": "连接 {endpoint}",
       "args": ["endpoint"]
     },
     "machineCard.stage.dialIcon": {
@@ -7858,7 +7855,7 @@
     "accounts.status.count": {
       "kind": "body",
       "role": "状态",
-      "zh": "{n} 个",
+      "zh": "账号 {n}",
       "args": ["n"]
     },
     "accounts.status.read": {
@@ -7876,7 +7873,7 @@
     "accounts.status.pullFailed": {
       "kind": "body",
       "role": "状态",
-      "zh": "拉取失败",
+      "zh": "读取失败",
       "args": []
     },
     "settingsPanel.save.appearance": {
@@ -7888,7 +7885,7 @@
     "settingsPanel.field.resetHint": {
       "kind": "body",
       "role": "说明",
-      "zh": "恢复「{label}」的默认值",
+      "zh": "恢复「{label}」默认",
       "args": ["label"]
     },
     "settingsPanel.field.reset": {
@@ -7900,7 +7897,7 @@
     "settingsPanel.safeBlock.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "此区块加载失败：{e}",
+      "zh": "此区块读取失败 · {e}",
       "args": ["e"]
     },
     "settingsPanel.dataDir.resetHint": {
@@ -7942,13 +7939,13 @@
     "settingsPanel.keybindings.customized": {
       "kind": "body",
       "role": "片段",
-      "zh": "已自定义 {n} 项",
+      "zh": "已自定义 {n}",
       "args": ["n"]
     },
     "settingsPanel.keybindings.open": {
       "kind": "action",
       "role": "按钮",
-      "zh": "打开快捷键编辑器",
+      "zh": "快捷键…",
       "args": []
     },
     "settingsPanel.behavior.turnNotify": {
@@ -7972,7 +7969,7 @@
     "settingsPanel.behavior.resumeHelp": {
       "kind": "body",
       "role": "说明",
-      "zh": "各机器可单独设：机器 ⋯ → 这台上的 cc-monitor",
+      "zh": "各机器可单独设 · 机器 ⋯ → 这台上的 cc-monitor",
       "args": []
     },
     "resumeSelect.option.inherit": {
@@ -8040,19 +8037,19 @@
     "settingsPanel.behavior.autoFollow": {
       "kind": "control",
       "role": "标签",
-      "zh": "终端回车 → 切到该会话标签页",
+      "zh": "终端回车时切到该会话",
       "args": []
     },
     "settingsPanel.machines.unreadable": {
       "kind": "body",
       "role": "说明",
-      "zh": "这台机器上的机器列表没读出来",
+      "zh": "读取机器列表失败",
       "args": []
     },
     "settingsPanel.fallback.body": {
       "kind": "body",
       "role": "说明",
-      "zh": "{why}。这几块先放在这里，照常能用。",
+      "zh": "{why} · 这几块暂放此处 · 照常可用",
       "args": ["why"]
     },
     "settingsPanel.nav.machines": {
@@ -8064,13 +8061,13 @@
     "settingsPanel.machines.buildFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "机器列表加载失败",
+      "zh": "读取机器列表失败",
       "args": []
     },
     "settingsPanel.machines.loading": {
       "kind": "body",
       "role": "进度",
-      "zh": "正在列这台机器上的账号与终端设置…",
+      "zh": "读取中",
       "args": []
     },
     "settingsPanel.group.aliases": {
@@ -8112,7 +8109,7 @@
     "settingsPanel.appearance.reset": {
       "kind": "action",
       "role": "按钮",
-      "zh": "恢复外观默认",
+      "zh": "外观恢复默认",
       "args": []
     },
     "settingsPanel.group.colors": {
@@ -8154,13 +8151,13 @@
     "settingsPanel.claudeDir.pickTitle": {
       "kind": "body",
       "role": "悬停",
-      "zh": "选择 Claude 数据目录（含 projects 和 sessions 子目录）",
+      "zh": "选择 Claude 数据目录（含 projects 与 sessions）",
       "args": []
     },
     "settingsPanel.appearance.resetConfirm": {
       "kind": "body",
       "role": "确认框",
-      "zh": "确定要恢复全部外观默认？已保存的颜色和字体偏好会丢失。",
+      "zh": "删除  已保存的颜色与字体偏好",
       "args": []
     },
     "settingsPanel.appearance.resetTitle": {
@@ -8178,13 +8175,13 @@
     "settingsPanel.save.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "{what}没存下：{e}",
+      "zh": "{what}保存失败 · {e}",
       "args": ["what", "e"]
     },
     "settingsPanel.claudeDir.updated": {
       "kind": "body",
       "role": "说明",
-      "zh": "Claude 数据目录已更新 —— 重启本机上的 cc-monitor 后生效",
+      "zh": "已更新 Claude 数据目录 · 重启本机 cc-monitor 后生效",
       "args": []
     },
     "settingsPanel.claudeDir.missing": {
@@ -8208,13 +8205,13 @@
     "settingsPanel.claudeDir.uncheckable": {
       "kind": "error",
       "role": "报错",
-      "zh": "没法确认 {path} 在不在（{said}）",
+      "zh": "无法确认 {path} 是否存在 · {said}",
       "args": ["path", "said"]
     },
     "settingsPanel.close.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "关不掉这个窗口：{e}",
+      "zh": "关闭窗口失败 · {e}",
       "args": ["e"]
     },
     "settingsPanel.close.saveFailed": {
@@ -8232,7 +8229,7 @@
     "settingsPanel.open.partialFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "部分设置项加载失败：{e}",
+      "zh": "部分设置读取失败 · {e}",
       "args": ["e"]
     },
     "settingsPanel.nav.data": {
@@ -8250,7 +8247,7 @@
     "dataPage.tab.placed": {
       "kind": "control",
       "role": "标签",
-      "zh": "cc-monitor 放了什么",
+      "zh": "cc-monitor 放置的文件",
       "args": []
     },
     "dataPage.tab.aria": {
@@ -8370,7 +8367,7 @@
     "dataPage.changed.pasted": {
       "kind": "body",
       "role": "说明",
-      "zh": "你自己贴的：见「要你动手 · 已做」",
+      "zh": "手动粘贴 · 见「要你动手 · 已做」",
       "args": []
     },
     "dataPage.undo.ext": {
@@ -8502,7 +8499,7 @@
     "settingsPanel.field.fontSizeRange": {
       "kind": "error",
       "role": "报错",
-      "zh": "字号要在 10 到 24 之间，这次没存。",
+      "zh": "字号限 10–24 · 未保存",
       "args": []
     },
     "settingsPanel.field.fontMono": {
@@ -8547,13 +8544,13 @@
     "ccBus.spawn.running": {
       "kind": "body",
       "role": "进度",
-      "zh": "派生中…",
+      "zh": "派生中",
       "args": []
     },
     "ccBus.spawn.confirmBody": {
       "kind": "body",
       "role": "确认框",
-      "zh": "{changed}将在 {machine} 的 {dir} 上用{account}派生一个 {tool}——这会起一个真实 agent 进程并消耗额度。再点一次「确认派生」执行。",
+      "zh": "{changed}在 {machine} 的 {dir} 用{account}派生 {tool} · 起真实 agent 进程 · 耗额度\n再点「确认派生」执行",
       "args": ["changed", "machine", "dir", "account", "tool"]
     },
     "ccBus.spawn.changed": {
@@ -8571,7 +8568,7 @@
     "ccBus.spawn.needDir": {
       "kind": "error",
       "role": "报错",
-      "zh": "请先填工作目录。",
+      "zh": "工作目录必填",
       "args": []
     },
     "ccBus.spawn.go": {
@@ -8631,13 +8628,13 @@
     "ccBus.inbox.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "读收件箱失败：{e}",
+      "zh": "读取收件箱失败 · {e}",
       "args": ["e"]
     },
     "ccBus.inbox.empty": {
       "kind": "body",
       "role": "空态",
-      "zh": "收件箱是空的。",
+      "zh": "收件箱为空",
       "args": []
     },
     "ccBus.loadInbox.reading": {
@@ -8649,7 +8646,7 @@
     "ccBus.check.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "查不到（{e}）",
+      "zh": "检查失败 · {e}",
       "args": ["e"]
     },
     "ccBus.check.offline": {
@@ -8673,7 +8670,7 @@
     "ccBus.row.killHint": {
       "kind": "body",
       "role": "说明",
-      "zh": "杀掉这个 agent 的会话与进程树 —— 不可撤销",
+      "zh": "收掉此 agent 的会话与进程树 · 不可撤销",
       "args": []
     },
     "ccBus.row.send": {
@@ -8685,7 +8682,7 @@
     "ccBus.row.messageHint": {
       "kind": "control",
       "role": "占位",
-      "zh": "发给它一条消息…",
+      "zh": "消息…",
       "args": []
     },
     "ccBus.row.inbox": {
@@ -8739,7 +8736,7 @@
     "ccBus.render.empty": {
       "kind": "body",
       "role": "空态",
-      "zh": "这台机器上没有登记过的 cc-bus agent（或未装 cc-bus）。",
+      "zh": "无登记过的 agent · 或未装 cc-bus",
       "args": []
     },
     "ccBus.summary.sep": {
@@ -8757,31 +8754,31 @@
     "ccBus.summary.skipped": {
       "kind": "body",
       "role": "说明",
-      "zh": "{skipped} 条无法解析（已跳过）",
+      "zh": "无法解析 ×{skipped} · 已跳过",
       "args": ["skipped"]
     },
     "ccBus.summary.unregistered": {
       "kind": "body",
       "role": "说明",
-      "zh": "另有 {n} 个派生过但未登记",
+      "zh": "另有派生未登记 {n}",
       "args": ["n"]
     },
     "ccBus.summary.spawned": {
       "kind": "body",
       "role": "片段",
-      "zh": "其中派生的 {n} 个",
+      "zh": "其中派生 {n}",
       "args": ["n"]
     },
     "ccBus.summary.registered": {
       "kind": "body",
       "role": "片段",
-      "zh": "登记 {n} 个",
+      "zh": "登记 {n}",
       "args": ["n"]
     },
     "ccBus.reload.readFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取失败：{e}",
+      "zh": "读取失败 · {e}",
       "args": ["e"]
     },
     "ccBus.reload.reading": {
@@ -8823,13 +8820,13 @@
     "ccBus.spawn.dir": {
       "kind": "control",
       "role": "标签",
-      "zh": "工作目录：那台机器上的绝对路径",
+      "zh": "工作目录 · 该机绝对路径",
       "args": []
     },
     "ccBus.spawn.intro": {
       "kind": "body",
       "role": "说明",
-      "zh": "在上面选中的那台机器的某个目录开一个独立 agent。走那台机器上的 cc-spawn：每次都新起一个会话，不复用同目录里已有的，名字撞了就往后排。注意这会起一个真实的 agent 进程并消耗账号额度，所以要点两次确认。",
+      "zh": "在所选机器的某目录派生一个独立 agent · 经该机 cc-spawn\n每次新起会话 · 不复用同目录已有的 · 同名往后排\n起真实 agent 进程 · 耗账号额度 · 要点两次确认",
       "args": [],
       "waive": {
         "C-T1": "cc-spawn 是那台机器上真实的命令名，用户在终端里就叫它这个"
@@ -13620,25 +13617,25 @@
     "machineAliases.aliasPreview.asking": {
       "kind": "body",
       "role": "片段",
-      "zh": "正在问这台机器的后端…",
+      "zh": "查询中",
       "args": []
     },
     "machineAliases.tmuxNaming.auto": {
       "kind": "body",
       "role": "说明",
-      "zh": "自动取名：名字取自工作目录（目录名-cc），已经被占了就依次试 -2、-3 …；本来就在一个会话窗格里敲它时，直接在这个窗格里起。",
+      "zh": "名字取自工作目录（目录名-cc） · 被占用依次试 -2 -3…\n在会话窗格里敲则就地启动",
       "args": []
     },
     "machineAliases.tmuxNaming.named": {
       "kind": "body",
       "role": "说明",
-      "zh": "用指定的名字：就用这个名；已经被占了就报错退出，不改名。",
+      "zh": "用填的名字 · 被占用则报错退出 · 不改名",
       "args": []
     },
     "machineAliases.tmuxNaming.base": {
       "kind": "body",
       "role": "说明",
-      "zh": "以某个名字为底：先试这个名，已经被占了就依次试 -2、-3 …",
+      "zh": "先用填的名字 · 被占用依次 -2 -3",
       "args": []
     },
     "rsAssetSync.reach.said": {
@@ -14166,7 +14163,7 @@
     "ccBus.spawn.arrived": {
       "kind": "body",
       "role": "说明",
-      "zh": "派生的 agent 起来了",
+      "zh": "派生的 agent 已启动",
       "args": []
     },
     "contextLimits.editor.title": {
@@ -14376,13 +14373,13 @@
     "accounts.setModel.invalid": {
       "kind": "error",
       "role": "报错",
-      "zh": "模型名不合法，没有保存：{model}",
+      "zh": "模型名无效 · {model} · 未保存",
       "args": ["model"]
     },
     "accounts.sessionBadge.noneHint": {
       "kind": "body",
       "role": "空态",
-      "zh": "该会话不是本工具启动的，或已停止，无法判定账号",
+      "zh": "账号未知 · 非 cc-monitor 启动或已停止",
       "args": []
     },
     "accounts.sessionBadge.none": {
@@ -14394,13 +14391,13 @@
     "accounts.sessionBadge.last": {
       "kind": "body",
       "role": "说明",
-      "zh": "账号 {last}{email} · 来源：上次用本工具起",
+      "zh": "账号 {last}{email} · 来自上次 cc-monitor 启动",
       "args": ["last", "email"]
     },
     "accounts.sessionBadge.live": {
       "kind": "body",
       "role": "说明",
-      "zh": "账号 {account}{email} · 来源：实时探测",
+      "zh": "账号 {account}{email} · 来自实时探测",
       "args": ["account", "email"]
     },
     "accounts.badge.signedIn": {
@@ -14412,37 +14409,37 @@
     "accounts.badge.notSignedInHint": {
       "kind": "body",
       "role": "说明",
-      "zh": "该账号尚未登录——请在终端里用它 /login",
+      "zh": "未登录 · 终端里用该账号运行 /login",
       "args": []
     },
     "accounts.badge.notSignedIn": {
       "kind": "body",
       "role": "状态",
-      "zh": "未登录",
+      "zh": "需登录",
       "args": []
     },
     "accounts.badge.apikeyNoEndpointHint": {
       "kind": "body",
       "role": "说明",
-      "zh": "这个号用 API key 鉴权，不看 ~/.claude 里的订阅凭据。它可以设为当前账号，会话也起得来；但请求地址不一定配好了：{why}\n没配好就起会话，请求会在 claude 那边报鉴权失败。",
+      "zh": "用 API key 鉴权 · 不读 ~/.claude 订阅凭据 · 可设为默认、会话能起\n请求地址未必配好 · {why}\n未配好时请求会在 claude 侧鉴权失败",
       "args": ["why"]
     },
     "accounts.badge.apikeyNoEndpoint": {
       "kind": "body",
       "role": "状态",
-      "zh": "API key（未配置端点）",
+      "zh": "按量 · 端点未配置",
       "args": []
     },
     "accounts.badge.whyUnknown": {
       "kind": "body",
       "role": "说明",
-      "zh": "无法判断端点是否已配置。两件事都成立才会替它配好：凭据文件里有这个账号的一行，这台机器上的中转在跑。",
+      "zh": "无法判断端点是否已配置 · 两条都满足才自动配好\n凭据文件里有该账号一行 · 该机中转在运行",
       "args": []
     },
     "accounts.badge.whyNoRow": {
       "kind": "body",
       "role": "说明",
-      "zh": "凭据文件里没有这个账号的一行，不会替它配置请求地址。要用它：在那份 JSON 里给这个账号加一行（端点 + key），或者在这个账号自己的 shell 环境里配好第三方端点。",
+      "zh": "凭据文件里无该账号一行 · 不会替它配请求地址\n要用它 · 在该 JSON 里加一行（端点 + key）或在该账号 shell 环境里配好第三方端点",
       "args": []
     },
     "accounts.badge.apikeyRelayDownHint": {
@@ -14454,7 +14451,7 @@
     "accounts.badge.apikeyRelayDown": {
       "kind": "body",
       "role": "状态",
-      "zh": "API key（中转未运行）",
+      "zh": "按量 · 中转未运行",
       "args": []
     },
     "accounts.badge.apikeyRelayedHint": {
@@ -14466,13 +14463,13 @@
     "accounts.badge.apikeyRelayed": {
       "kind": "body",
       "role": "状态",
-      "zh": "API key（经中转）",
+      "zh": "按量 · 经中转",
       "args": []
     },
     "accounts.badge.inPlaceHint": {
       "kind": "body",
       "role": "说明",
-      "zh": "in-place 模式：cc-monitor 不支持对它按会话切号",
+      "zh": "in-place · 不支持按会话切换",
       "args": [],
       "limited": ["in-place"]
     },
@@ -14491,7 +14488,7 @@
     "accounts.deriveUi.unavailable": {
       "kind": "error",
       "role": "报错",
-      "zh": "账号功能暂不可用",
+      "zh": "账号功能不可用",
       "args": []
     },
     "rsToolRegistry.environment.managedWhy": {
@@ -16648,13 +16645,13 @@
     "settingsPanel.claudeDir.pickFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "选目录的窗口打不开：{e}。可以直接在输入框里填路径。",
+      "zh": "选择目录窗口打不开 · {e} · 可直接在输入框填路径",
       "args": ["e"]
     },
     "machineAliases.autoLaunch.unreadable": {
       "kind": "error",
       "role": "报错",
-      "zh": "读不到这项设置：{e}",
+      "zh": "读取设置失败 · {e}",
       "args": ["e"]
     },
     "tabBar.close.done": {
@@ -16690,7 +16687,7 @@
     "settings.behavior.saveFailedLine": {
       "kind": "error",
       "role": "报错",
-      "zh": "未保存：{why}",
+      "zh": "保存失败 · {why}",
       "args": ["why"]
     },
     "keybindings.persist.failed": {
@@ -16744,7 +16741,7 @@
     "ccBus.broadcast.title": {
       "kind": "title",
       "role": "标题",
-      "zh": "广播 · {n} 个 agent",
+      "zh": "广播 · agent ×{n}",
       "args": ["n"]
     },
     "ccBus.broadcast.action": {
@@ -16768,7 +16765,7 @@
     "accounts.status.multiOff": {
       "kind": "body",
       "role": "状态",
-      "zh": "多账号没启用",
+      "zh": "未启用多账号",
       "args": []
     },
     "rsDialHost.hostKey.pinned": {
@@ -18791,7 +18788,7 @@
     "machineCard.test.gapRow": {
       "kind": "body",
       "role": "说明",
-      "zh": "{reason}：{n} 项做不到",
+      "zh": "{reason} · 不可用 ×{n}",
       "args": ["reason", "n"]
     },
     "beExt.suspect.commandMissing": {
@@ -18815,7 +18812,7 @@
     "extPage.card.loading": {
       "kind": "body",
       "role": "进度",
-      "zh": "正在看要写哪几个…",
+      "zh": "查改动中",
       "args": []
     },
     "beExt.suspect.absUnknown": {
@@ -18875,7 +18872,7 @@
     "extPage.status.syncRow": {
       "kind": "error",
       "role": "报错",
-      "zh": "{machine} 这一趟没对上（{e}），它那一列是上次对上时的样子。",
+      "zh": "读取 {machine} 失败 · {e} · 该列为上次结果",
       "args": ["machine", "e"]
     },
     "extPage.card.cancel": {
@@ -18929,25 +18926,25 @@
     "extPage.drawer.detail": {
       "kind": "action",
       "role": "按钮",
-      "zh": "看内容",
+      "zh": "详情",
       "args": []
     },
     "extPage.state.differs": {
       "kind": "body",
       "role": "状态",
-      "zh": "有，和别处那一版不同",
+      "zh": "内容不同",
       "args": []
     },
     "extPage.error.install": {
       "kind": "error",
       "role": "报错",
-      "zh": "装到{machine}失败：{said}",
+      "zh": "安装失败 · {machine} · {said}",
       "args": ["machine", "said"]
     },
     "extPage.error.uninstall": {
       "kind": "error",
       "role": "报错",
-      "zh": "从{machine}卸载失败：{said}",
+      "zh": "卸载失败 · {machine} · {said}",
       "args": ["machine", "said"]
     },
     "beExt.card.sameMachine": {
@@ -18977,7 +18974,7 @@
     "extPage.card.unchanged": {
       "kind": "body",
       "role": "说明",
-      "zh": "装上之后和现在一样，没有要写的。",
+      "zh": "内容相同 · 无需写入",
       "args": []
     },
     "beExt.uninstall.changed": {
@@ -19007,7 +19004,7 @@
     "extPage.error.noHostConfig": {
       "kind": "error",
       "role": "报错",
-      "zh": "找不到{machine}的连接设置，打不开文件窗口。到「机器」里看看这台还在不在。",
+      "zh": "找不到 {machine} 的连接设置 · 打不开文件窗口\n到「机器」里查它是否还在",
       "args": ["machine"]
     },
     "extPage.list.sep": {
@@ -19019,7 +19016,7 @@
     "extPage.state.project": {
       "kind": "body",
       "role": "状态",
-      "zh": "只在项目里有：{dirs}",
+      "zh": "仅项目 {dirs}",
       "args": ["dirs"]
     },
     "rsDataPaths.backend.extBackups": {
@@ -19031,7 +19028,7 @@
     "extPage.state.same": {
       "kind": "body",
       "role": "状态",
-      "zh": "有，和别处一致",
+      "zh": "已装",
       "args": []
     },
     "extPage.dot.project": {
@@ -19079,7 +19076,7 @@
     "extPage.button.openFiles": {
       "kind": "action",
       "role": "按钮",
-      "zh": "在文件窗口里打开",
+      "zh": "在文件窗口打开",
       "args": []
     },
     "extPage.button.reveal": {
@@ -19091,13 +19088,13 @@
     "extPage.card.slotEmpty": {
       "kind": "body",
       "role": "空态",
-      "zh": "待填：来源机上的值不会抄过来",
+      "zh": "待填 · 不从来源带入",
       "args": []
     },
     "extPage.card.again": {
       "kind": "action",
       "role": "按钮",
-      "zh": "重看",
+      "zh": "刷新",
       "args": []
     },
     "extPage.filter.mcp": {
@@ -19115,7 +19112,7 @@
     "extPage.status.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "读不出这张表：{e}",
+      "zh": "读取扩展失败 · {e}",
       "args": ["e"]
     },
     "beExt.suspect.other": {
@@ -19127,7 +19124,7 @@
     "extPage.card.bringTitle": {
       "kind": "body",
       "role": "说明",
-      "zh": "从{from}装到{to}：写入这几个文件",
+      "zh": "{from} → {to} · 写入以下文件",
       "args": ["from", "to"]
     },
     "extPage.filter.skill": {
@@ -19151,13 +19148,13 @@
     "extPage.status.problems": {
       "kind": "body",
       "role": "状态",
-      "zh": "有几份读不出来：{list}",
+      "zh": "部分不可读 · {list}",
       "args": ["list"]
     },
     "extPage.done.removed": {
       "kind": "body",
       "role": "toast",
-      "zh": "卸掉了，删了 {n} 个。",
+      "zh": "已卸载 · 删除 {n} 项",
       "args": ["n"]
     },
     "beExt.detail.binary": {
@@ -19193,7 +19190,7 @@
     "extPage.state.missing": {
       "kind": "body",
       "role": "状态",
-      "zh": "没有",
+      "zh": "未装",
       "args": []
     },
     "extPage.kind.mcp": {
@@ -19229,7 +19226,7 @@
     "extPage.table.noMatch": {
       "kind": "body",
       "role": "说明",
-      "zh": "没有对得上的。换个字搜，或者把种类换成「全部」。",
+      "zh": "无匹配 · 换个字搜或把种类换成「全部」",
       "args": []
     },
     "extPage.search.aria": {
@@ -19241,13 +19238,13 @@
     "extPage.drawer.close": {
       "kind": "action",
       "role": "按钮",
-      "zh": "关上",
+      "zh": "关闭",
       "args": []
     },
     "extPage.status.syncFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "没能和别的机器对上（{e}），表里是上次对上时的样子。",
+      "zh": "读取其他机器失败 · {e} · 表里为上次结果",
       "args": ["e"]
     },
     "extPage.card.confirmRemove": {
@@ -19265,7 +19262,7 @@
     "extPage.status.loading": {
       "kind": "body",
       "role": "进度",
-      "zh": "正在读…",
+      "zh": "读取中",
       "args": []
     },
     "beExt.suspect.executable": {
@@ -19283,7 +19280,7 @@
     "extPage.card.removeTitle": {
       "kind": "body",
       "role": "说明",
-      "zh": "从{machine}卸掉：{path}",
+      "zh": "从 {machine} 卸载 {path}",
       "args": ["machine", "path"]
     },
     "beExt.uninstall.backupOutsideHome": {
@@ -19307,7 +19304,7 @@
     "extPage.card.slotKept": {
       "kind": "body",
       "role": "片段",
-      "zh": "不填就沿用目标机已有的值",
+      "zh": "留空沿用目标已有值",
       "args": []
     },
     "extPage.drawer.detailLine": {
@@ -19343,7 +19340,7 @@
     "extPage.done.written": {
       "kind": "body",
       "role": "toast",
-      "zh": "装好了，写了 {n} 个。",
+      "zh": "已安装 · 写入 {n} 项",
       "args": ["n"]
     },
     "beExt.suspect.binary": {
@@ -19355,7 +19352,7 @@
     "extPage.table.empty": {
       "kind": "body",
       "role": "空态",
-      "zh": "这几台机器上还没有 skill 或 MCP。",
+      "zh": "无 skill 或 MCP",
       "args": []
     },
     "runs.state.running": {
@@ -19481,7 +19478,7 @@
     "extPage.loc.user": {
       "kind": "body",
       "role": "说明",
-      "zh": "全局（这台所有项目都能用）",
+      "zh": "全局 · 该机所有项目可用",
       "args": []
     },
     "extPage.loc.project": {
@@ -19499,7 +19496,7 @@
     "extPage.card.where": {
       "kind": "control",
       "role": "标签",
-      "zh": "装到哪",
+      "zh": "装到",
       "args": []
     },
     "extPage.note.aria": {
@@ -19529,7 +19526,7 @@
     "extPage.note.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "备注没存上：{said}",
+      "zh": "保存备注失败 · {said}",
       "args": ["said"]
     },
     "extPage.hooks.title": {
@@ -19548,14 +19545,14 @@
     "extPage.hooks.loading": {
       "kind": "body",
       "role": "进度",
-      "zh": "正在看这台的钩子…",
+      "zh": "读取钩子中",
       "args": [],
       "limited": ["hook"]
     },
     "extPage.hooks.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "读不到这台的钩子：{said}",
+      "zh": "读取钩子失败 · {said}",
       "args": ["said"],
       "limited": ["hook"]
     },
@@ -19581,7 +19578,7 @@
     "extPage.hooks.installFirst": {
       "kind": "body",
       "role": "说明",
-      "zh": "这台还没装 cc-bus。先在下面这台那一行点「装到…」装上，再来加钩子。",
+      "zh": "未装 cc-bus · 先在下面该机那一行点「装到…」再加钩子",
       "args": [],
       "limited": ["hook"]
     },
@@ -24272,7 +24269,7 @@
     "machineCard.conn.connect": {
       "kind": "control",
       "role": "标签",
-      "zh": "连接这台",
+      "zh": "连接该机",
       "args": []
     },
     "machineCard.conn.connectHint": {
@@ -24369,7 +24366,7 @@
     "machineCard.hostKey.seen": {
       "kind": "body",
       "role": "片段",
-      "zh": "现在的",
+      "zh": "当前",
       "args": []
     },
     "machineCard.hostKey.none": {
@@ -25183,7 +25180,7 @@
     "acctPage.offline.noLast": {
       "kind": "error",
       "role": "报错",
-      "zh": "{machine} 账号读不到：{why}",
+      "zh": "读取账号失败 · {machine} · {why}",
       "args": ["machine", "why"]
     },
     "acctPage.offline.hover": {
@@ -25207,7 +25204,7 @@
     "acctPage.unsupported.hint": {
       "kind": "body",
       "role": "说明",
-      "zh": "会话用这台 ~/.claude 的登录",
+      "zh": "会话用该机 ~/.claude 的登录",
       "args": []
     },
     "acctPage.notEnabled.title": {
@@ -25267,7 +25264,7 @@
     "acctPage.verify.andMore": {
       "kind": "body",
       "role": "片段",
-      "zh": "另 {n} 处",
+      "zh": "另 ×{n}",
       "args": ["n"]
     },
     "acctPage.verify.fix": {
@@ -25321,7 +25318,7 @@
     "acctPage.verify.rollback": {
       "kind": "action",
       "role": "按钮",
-      "zh": "恢复到修复之前",
+      "zh": "撤销修复",
       "args": []
     },
     "acctPage.verify.rollbackTitle": {
@@ -25363,7 +25360,7 @@
     "acctPage.default.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "没设成默认：{name}",
+      "zh": "设为默认失败 · {name}",
       "args": ["name"]
     },
     "acctPage.remove.title": {
@@ -25429,7 +25426,7 @@
     "acctPage.remove.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "没删成：{name}",
+      "zh": "删除账号失败 · {name}",
       "args": ["name"]
     },
     "acctPage.login.noWindow": {
@@ -25448,13 +25445,13 @@
     "acctPage.login.reopen": {
       "kind": "action",
       "role": "按钮",
-      "zh": "重新打开登录窗口",
+      "zh": "重开登录窗口",
       "args": []
     },
     "acctPage.login.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "登录窗口没开成：{name}",
+      "zh": "打开登录窗口失败 · {name}",
       "args": ["name"]
     },
     "acctPage.new.done": {
@@ -25472,7 +25469,7 @@
     "acctPage.new.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "没建成：{name}",
+      "zh": "新建账号失败 · {name}",
       "args": ["name"]
     },
     "acctPage.reveal.failed": {
@@ -27038,7 +27035,7 @@
     "dataPage.chore.openFile": {
       "kind": "action",
       "role": "按钮",
-      "zh": "打开这份文件",
+      "zh": "打开文件",
       "args": []
     },
     "dataPage.chore.decline": {
@@ -27050,7 +27047,7 @@
     "dataPage.chore.autoDetect": {
       "kind": "body",
       "role": "说明",
-      "zh": "存盘后这里自己认出",
+      "zh": "存盘后自动识别",
       "args": []
     },
     "dataPage.chore.recheck": {
@@ -27068,13 +27065,13 @@
     "dataPage.chore.openFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "打不开这份文件",
+      "zh": "打开文件失败",
       "args": []
     },
     "dataPage.chore.markFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "没记下这个选择",
+      "zh": "记录选择失败",
       "args": []
     },
     "machineAliases.selfPaste.waiting": {
@@ -27098,19 +27095,19 @@
     "machineAliases.selfPaste.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "没记下「自己贴」",
+      "zh": "记录「自己贴」失败",
       "args": []
     },
     "cfgPage.pointer.chores": {
       "kind": "body",
       "role": "说明",
-      "zh": "{machine} 上有 {n} 件要你动手 · 另 {m} 件可选",
+      "zh": "{machine} 要你动手 {n} · 可选 {m}",
       "args": ["machine", "n", "m"]
     },
     "cfgPage.pointer.optional": {
       "kind": "body",
       "role": "说明",
-      "zh": "{machine} 上另有 {m} 件可选",
+      "zh": "{machine} 可选 {m}",
       "args": ["machine", "m"]
     },
     "cfgPage.pointer.go": {
@@ -27122,7 +27119,7 @@
     "cfgPage.pointer.changed": {
       "kind": "body",
       "role": "说明",
-      "zh": "cc-monitor 在 {machine} 上改过你的 {n} 个文件",
+      "zh": "cc-monitor 在 {machine} 上改过你的文件 ×{n}",
       "args": ["machine", "n"]
     },
     "cfgPage.pointer.changedGo": {
