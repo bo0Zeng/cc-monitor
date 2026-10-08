@@ -100,9 +100,11 @@ export function revealCard(container: HTMLElement, uuid: string): HTMLElement | 
   el.scrollIntoView({ block: "center" });
   // Batch13-F38:首次落点基于 content-visibility 估值几何;双 rAF 后周边已
   // 材料化(真实尺寸),幂等重发一次让 block:center 落点精确
+  // 调度：一次性 —— 双 rAF 之后重发 scrollIntoView（等 content-visibility 材料化）
   requestAnimationFrame(() => requestAnimationFrame(() => el.scrollIntoView({ block: "center" })));
   el.classList.add("search-hit-flash");
   // 动画结束后移除 class（再次跳同一条还能重放）
+  // 调度：一次性 —— 1.5s 后摘掉搜索命中的闪烁
   window.setTimeout(() => el.classList.remove("search-hit-flash"), 1500);
   return el;
 }
@@ -512,6 +514,7 @@ export class SessionViewer {
       // 上翻补批:挂在 .stream 滚动容器上(dispose 时随 streamEl 替换自然解绑)
       this.streamEl.addEventListener("scroll", this.onScrollFill, { passive: true });
       // R1(D 审计):短会话首屏不足一屏时永远不会有 scroll 事件——主动踢一脚自链
+      // 调度：自链 —— 向上补料：世代 / 已到顶 / 在途几道守卫挡着，不满足即停
       requestAnimationFrame(() => void this.maybeFillAbove());
       // 索引到了就接骨架（首屏已经在了，不等它）
       void indexP.then((res) => this.attachSkeleton(gen, res));
@@ -795,6 +798,7 @@ export class SessionViewer {
     this.renderingBatch = true;
     try {
       // 让状态文先绘一帧再做同步渲染批
+      // 调度：一次性 —— 渲染批之前先让状态文绘一帧
       await new Promise((r) => requestAnimationFrame(() => r(null)));
       // 世代守卫:rAF 间隙里可能已切换会话(旧 gap 套新会话会渲出错乱岛/覆写状态栏)
       if (!this.stream || this.loadGeneration !== gen) return;
@@ -818,6 +822,7 @@ export class SessionViewer {
       this.renderingBatch = false;
     }
     // 自链:下一帧复检(补批通常把 scrollTop 顶过阈值自然停;零高批/不足一屏则继续)
+    // 调度：自链 —— 向上补料（同上那一条链）
     requestAnimationFrame(() => void this.maybeFillAbove());
   }
 

@@ -7,9 +7,8 @@
 //!
 //! 1. `uname -s -m`（[`deploy_contract::key_from_uname`]）→ 表 A / 表 B（[`judge`]）→ 这一版带没带那一格（`carried`）——
 //!    **换成什么**；拒绝点在写第一个字节之前；
-//! 2. 落点那一份是谁：stat（没有 / 0 字节就不必再问）→ 扫它字节里的身份戳（一次 exec，不跑它）；
-//!    不肯说自己是谁时读回来看是不是从前那份三行入口 —— **身份判定**；
-//! 3. **该不该换**（[`landing_verdict`]：只升不降）；
+//! 2. 落点那一份是谁：stat（没有 / 0 字节就不必再问）→ 扫它字节里的身份戳（一次 exec，不跑它）—— **身份判定**；
+//! 3. **该不该换**（[`identity_decision`]：只升不降；不说自己是谁 ⇒ 显式失败、不动）；
 //! 4. 落点那个目录里上一趟没收拾掉的临时件 / 备份件（[`stale_leftovers`]）—— 每次连上都问一次，交 monitor 删。
 //!
 //! 回计划，一个字节都不写：放字节（mkdir · 原子上传 · 读回比对）与删残件是 monitor 经 `files` 链路做。
@@ -41,9 +40,6 @@ use copy_core::copy_text;
 use deploy_contract::{Arch, DeployAction, Key, Marks, Os, Refusal, RemoteIdentity, Route, LINES};
 use serde_json::{json, Value};
 
-/// 认从前那份三行入口时最多读多少（它几十字节；比这大就不是那一形 ⇒ 不读，按「不说自己是谁」显式失败）。
-const ENTRY_READ_MAX: u64 = 64 * 1024;
-
 /// 身份戳的两个界标（住契约 crate）。
 const MARKS: Marks<'static> = Marks {
     open: deploy_contract::STAMP_OPEN,
@@ -61,8 +57,6 @@ pub trait Facing: Send + Sync {
         &'a self,
         rel: &'a str,
     ) -> Fut<'a, Result<(Option<Option<u64>>, Option<bool>), String>>;
-    /// 整份读回来；读不出 · 比 `max` 大（先问大小，大了不读）⇒ `None`。
-    fn read<'a>(&'a self, rel: &'a str, max: u64) -> Fut<'a, Option<Vec<u8>>>;
     /// 列一个目录：`(名字, 修改时间秒)`；列不出 ⇒ `None`。
     fn list<'a>(&'a self, rel: &'a str) -> Fut<'a, Option<Vec<(String, Option<u64>)>>>;
 }
@@ -216,41 +210,6 @@ pub fn identity_decision(
     }
 }
 
-/// 这份文本是不是我们从前放的那一形 `ccm` 入口（三行 shim / bash 启动器两形之一）。**纯函数**。
-/// 用户：今天的落点上从前那份三行入口（[`landing_verdict`]）。
-/// 两形的记号是文件格式（`deploy_contract::SHIM_MARK` · `LAUNCHER_MARK`）。
-pub fn is_ours(text: &str) -> bool {
-    let mut lines = text.lines();
-    let (Some(first), Some(second)) = (lines.next(), lines.next()) else {
-        return false;
-    };
-    if !first.starts_with("#!") {
-        return false;
-    }
-    second == deploy_contract::SHIM_MARK || second.starts_with(deploy_contract::LAUNCHER_MARK)
-}
-
-/// 落点那一份怎么办：先按身份戳判（[`identity_decision`]）；「不说自己是谁」时再看它是不是我们从前放的
-/// 三行入口（[`is_ours`]，`old_entry` = 读回来的那一份字节，读不到 ⇒ `None`）—— 是 ⇒ 换成后端本体（部署那一步是原子替换）；
-/// 不是 ⇒ 照旧显式失败、不动。**纯函数**。
-pub fn landing_verdict(
-    id: &RemoteIdentity,
-    old_entry: Option<&[u8]>,
-    expected: &str,
-    machine: &str,
-    path: &str,
-) -> Result<DeployAction, String> {
-    if matches!(id, RemoteIdentity::NoStamp)
-        && old_entry.is_some_and(|b| is_ours(&String::from_utf8_lossy(b)))
-    {
-        return Ok(DeployAction::Deploy(copy_text(
-            "rsSftp.identity.oldEntry",
-            &[],
-        )));
-    }
-    identity_decision(id, expected, machine, path)
-}
-
 /// 残件多久没动过才算没人要：远大于 monitor 等一次 `put` 的上限（`dial_host::FILES_PUT_DEADLINE`，600 秒）
 /// ⇒ 另一个部署者正在写的那一份（修改时间随写不断刷新）不会被当成残件；也容得下两台机器之间一些钟差。
 pub const LEFTOVER_STALE_SECS: u64 = 3600;
@@ -358,26 +317,8 @@ pub async fn plan(
     let id = identity_at(facing, landing, relay_route_core::BACKEND_LANDING_SHELL)
         .await
         .map_err(|e| ("io_failed", e))?;
-    let old = match id {
-        RemoteIdentity::NoStamp => {
-            let got = facing.read(landing, ENTRY_READ_MAX).await;
-            if got.is_none() {
-                tracing::warn!(
-                    "部署计划 [{machine}]：~/{landing} 不说自己是谁，读不回来或比三行入口的上限大 —— 不当成从前那份三行入口"
-                );
-            }
-            got
-        }
-        _ => None,
-    };
-    let action = landing_verdict(
-        &id,
-        old.as_deref(),
-        &expected,
-        machine,
-        &format!("~/{landing}"),
-    )
-    .map_err(|e| ("undecidable", e))?;
+    let action = identity_decision(&id, &expected, machine, &format!("~/{landing}"))
+        .map_err(|e| ("undecidable", e))?;
     let bin = landing.rsplit_once('/').map_or(".", |(d, _)| d);
     let leftovers = facing
         .list(bin)
@@ -476,19 +417,6 @@ impl Facing for DialFacing {
                 None => crate::dial::sftp::exists(s, rel).await,
             };
             Ok((size, exists))
-        })
-    }
-
-    fn read<'a>(&'a self, rel: &'a str, max: u64) -> Fut<'a, Option<Vec<u8>>> {
-        Box::pin(async move {
-            let s = self.session().await.ok()?;
-            let size = crate::dial::sftp::metadata_size(s, rel).await.flatten()?;
-            if size > max {
-                return None;
-            }
-            crate::dial::sftp::read_all(s, rel)
-                .await
-                .filter(|b| b.len() as u64 <= max)
         })
     }
 

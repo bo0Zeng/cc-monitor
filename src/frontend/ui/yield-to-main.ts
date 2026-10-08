@@ -17,6 +17,7 @@ export function makeYieldToMain(run: () => void): () => void {
     }
   }
   return (): void => {
+    // 调度：自链 —— 探不到 MessageChannel 时让出一跳的兜底，由调用方自链（队列空 / 片渲完即停）
     setTimeout(run, 0);
   };
 }

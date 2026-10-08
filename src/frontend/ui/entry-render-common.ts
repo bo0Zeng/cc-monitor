@@ -28,6 +28,7 @@ export function installGlobalClickDelegation(): void {
       () => {
         btn.classList.add("copied");
         btn.textContent = copyText("render.codeBlock.copied");
+        // 调度：一次性 —— 1.2s 后把「已复制」还原成「复制」
         window.setTimeout(() => {
           btn.classList.remove("copied");
           btn.textContent = copyText("render.codeBlock.copy");
@@ -35,6 +36,7 @@ export function installGlobalClickDelegation(): void {
       },
       () => {
         btn.textContent = copyText("render.codeBlock.failed");
+        // 调度：一次性 —— 1.2s 后把「失败」还原成「复制」
         window.setTimeout(() => (btn.textContent = copyText("render.codeBlock.copy")), 1200);
       },
     );

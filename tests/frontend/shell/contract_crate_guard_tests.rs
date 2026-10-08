@@ -57,8 +57,6 @@ const DEPLOY_DECISIONS: &[&str] = &[
     "promised",
     "is_newer",
     "identity_decision",
-    "landing_verdict",
-    "is_ours",
     "interpret_target_probe",
     "place_verdict",
 ];

@@ -300,6 +300,7 @@ export class TabBarDrag {
     if (d.dwellTimer !== null) window.clearTimeout(d.dwellTimer);
     d.dwellTimer = null;
     if (hovered === null) return;
+    // 调度：一次性 —— 拖动时压住一个标签页满 250ms 才切成「与它成组」；换目标 / 收尾时清
     d.dwellTimer = window.setTimeout(() => {
       const cur = this.drag;
       // 计时器到点时拖拽可能已经结束 / 已经换了目标 —— 两者都不许再改状态。

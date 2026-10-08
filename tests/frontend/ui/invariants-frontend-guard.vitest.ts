@@ -2,8 +2,8 @@
  * `P21` —— **`INVARIANTS.md` 里讲前端那五条（条 12 / 13 / 14 / 21 / 22）的判据。**
  *
  * 量具住 `tests/evidence/P21-frontend-invariants.ts`，**本文件只登记与判**
- * （分家的理由写在那边：`scanning-guard-registry.vitest.ts` 的 `WALKER_CEILING`
- * 不许测试文件再多一个遍历者）。
+ * （分家的理由写在那边：`scanning-guard-registry.vitest.ts` 的 `WALKERS`
+ * 不许测试文件不登记就多一个遍历者）。
  *
  * # 🔴 先说这条判据**为什么**存在，以及它订正了哪一句
  *

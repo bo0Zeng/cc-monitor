@@ -51,7 +51,7 @@ const listWith = (there: unknown, extra: ReturnType<typeof row>[] = []) => ({
   machines,
   problems: [],
   rows: [
-    row("skill", "demo", [here, there], { about: "does demo", detail: [{ label: copyText("diagnostics.files.title"), value: copyText("accounts.status.count", { n: "1" }) }], new: true }),
+    row("skill", "demo", [here, there], { about: "does demo", detail: [{ label: copyText("diagnostics.files.title"), value: copyText("machineList.summary.count", { n: "1" }) }], new: true }),
     row("mcp", "fs", [cell("same", [place(user, "same", false, copyText("agentWindow.status.plain"))], bring({ scope: { from: user, to: proj }, targets: targets(false, "全局的只读") })), cell("missing", [place(user, "missing")], null, "没项目")], {
       about: "npx fs",
     }),

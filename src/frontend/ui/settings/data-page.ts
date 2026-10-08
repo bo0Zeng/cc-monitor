@@ -175,6 +175,7 @@ export class DataPage {
     sec.scrollIntoView?.({ block: "start" });
     const head = sec.querySelector<HTMLElement>(".data-machine-head");
     head?.classList.add("settings-highlight");
+    // 调度：一次性 —— 段头高亮 1.5 秒后摘掉
     window.setTimeout(() => head?.classList.remove("settings-highlight"), FOCUS_HIGHLIGHT_MS);
   }
 

@@ -454,6 +454,7 @@ export async function bindEvents(
     if (endTimer !== null) {
       clearTimeout(endTimer);
     }
+    // 调度：一次性 —— batch-end 哨兵：每次重排前清掉上一个，另有 5 分钟防呆上限
     endTimer = window.setTimeout(() => {
       endTimer = null;
       // Batch9-F30：回填在途 → 续期（除非超 5min 防呆上限）
@@ -631,6 +632,7 @@ export async function bindEvents(
     // 被钳的只有 `drain → drain` 那条自链，换掉的也正是那一条（见 `yieldToDrain`）。
     // ⇒ 入口保持 `setTimeout` 还白得一样东西：它在假定时器下是**决定性**的，
     //    而 `MessagePort` 的投递时机不归假定时器管（实测：`advanceTimersByTime` 推不动它）。
+    // 调度：自链 —— 队列 drain：队列空即停，`scheduled` 防重入
     setTimeout(drain, 0);
   };
 
@@ -653,6 +655,7 @@ export async function bindEvents(
     if (at !== "open") s.ever = true;
     if (s.timer !== null) return;
     const ever = s.ever;
+    // 调度：一次性 —— 一台机器看不见满 20s 才说一句；又看见了当场清
     s.timer = setTimeout(() => {
       s.timer = null;
       sayUnseen(origin, ever, why, handlers.openMachineSettings ? () => handlers.openMachineSettings?.(origin) : undefined);

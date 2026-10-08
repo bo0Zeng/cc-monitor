@@ -7115,78 +7115,6 @@
       "args": [],
       "limited": ["ccm"]
     },
-    "machineStatus.facet.failIcon": {
-      "kind": "body",
-      "role": "状态",
-      "zh": "✗",
-      "args": []
-    },
-    "machineStatus.facet.okIcon": {
-      "kind": "body",
-      "role": "状态",
-      "zh": "✓",
-      "args": []
-    },
-    "machineStatus.facet.na": {
-      "kind": "body",
-      "role": "状态",
-      "zh": "不需要",
-      "args": []
-    },
-    "machineStatus.facet.naIcon": {
-      "kind": "body",
-      "role": "状态",
-      "zh": "—",
-      "args": []
-    },
-    "machineStatus.facet.untested": {
-      "kind": "body",
-      "role": "状态",
-      "zh": "未测",
-      "args": []
-    },
-    "machineStatus.facet.untestedIcon": {
-      "kind": "body",
-      "role": "状态",
-      "zh": "·",
-      "args": []
-    },
-    "machineStatus.age.days": {
-      "kind": "body",
-      "role": "状态",
-      "zh": "{n}d 前",
-      "args": ["n"]
-    },
-    "machineStatus.age.hours": {
-      "kind": "body",
-      "role": "状态",
-      "zh": "{n}h 前",
-      "args": ["n"]
-    },
-    "machineStatus.age.minutes": {
-      "kind": "body",
-      "role": "状态",
-      "zh": "{n}m 前",
-      "args": ["n"]
-    },
-    "machineStatus.age.justNow": {
-      "kind": "body",
-      "role": "状态",
-      "zh": "刚才",
-      "args": []
-    },
-    "machineStatus.facet.accounts": {
-      "kind": "title",
-      "role": "标题",
-      "zh": "账号",
-      "args": []
-    },
-    "machineStatus.facet.connection": {
-      "kind": "title",
-      "role": "标题",
-      "zh": "连接",
-      "args": []
-    },
     "unknownKeysNotice.unknownKeysMessage.message": {
       "kind": "body",
       "role": "说明",
@@ -7271,12 +7199,6 @@
       "zh": "改记此指纹",
       "args": []
     },
-    "machineCard.status.uninstalled": {
-      "kind": "body",
-      "role": "状态",
-      "zh": "已卸载",
-      "args": []
-    },
     "machineCard.uninstall.running": {
       "kind": "body",
       "role": "进度",
@@ -7306,18 +7228,6 @@
       "kind": "action",
       "role": "按钮",
       "zh": "卸载",
-      "args": []
-    },
-    "machineCard.status.installFailed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "安装失败",
-      "args": []
-    },
-    "machineCard.status.installed": {
-      "kind": "body",
-      "role": "状态",
-      "zh": "已装",
       "args": []
     },
     "machineCard.launch.needHost": {
@@ -7362,12 +7272,6 @@
       "zh": "先填主机与用户名",
       "args": []
     },
-    "machineCard.test.unreachable": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "连接失败 · {e}",
-      "args": ["e"]
-    },
     "machineCard.test.stalled": {
       "kind": "error",
       "role": "报错",
@@ -7404,18 +7308,6 @@
       "role": "报错",
       "zh": "测试失败 · {e}",
       "args": ["e"]
-    },
-    "machineCard.test.silent": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "无应答",
-      "args": []
-    },
-    "machineCard.test.alive": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "运行中",
-      "args": []
     },
     "machineCard.test.running": {
       "kind": "action",
@@ -7741,30 +7633,6 @@
       "kind": "error",
       "role": "报错",
       "zh": "Base URL 格式 https://主机[:端口][/路径] · 留空用默认上游",
-      "args": []
-    },
-    "accounts.status.count": {
-      "kind": "body",
-      "role": "状态",
-      "zh": "账号 {n}",
-      "args": ["n"]
-    },
-    "accounts.status.read": {
-      "kind": "body",
-      "role": "状态",
-      "zh": "已读取",
-      "args": []
-    },
-    "accounts.status.backendOld": {
-      "kind": "body",
-      "role": "状态",
-      "zh": "后端要更新",
-      "args": []
-    },
-    "accounts.status.pullFailed": {
-      "kind": "body",
-      "role": "状态",
-      "zh": "读取失败",
       "args": []
     },
     "settingsPanel.save.appearance": {
@@ -8860,18 +8728,6 @@
       "zh": "本机",
       "args": []
     },
-    "remote.local.notStarted": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "未启动",
-      "args": []
-    },
-    "remote.local.connected": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "已连接",
-      "args": []
-    },
     "remote.localRow.title": {
       "kind": "title",
       "role": "标题",
@@ -9733,13 +9589,6 @@
       "role": "报错",
       "zh": "{machine} 的 {path} 自报多个版本 {ids} · {handsOff}",
       "args": ["machine", "path", "ids", "handsOff"]
-    },
-    "rsSftp.identity.oldEntry": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "已更新旧的 ccm 入口",
-      "args": [],
-      "limited": ["ccm"]
     },
     "rsSftp.identity.unstamped": {
       "kind": "error",
@@ -16638,12 +16487,6 @@
       "kind": "error",
       "role": "报错",
       "zh": "base_url 含空白字符（空格、制表符或换行） · 去掉它",
-      "args": []
-    },
-    "accounts.status.multiOff": {
-      "kind": "body",
-      "role": "状态",
-      "zh": "未启用多账号",
       "args": []
     },
     "rsDialHost.hostKey.pinned": {

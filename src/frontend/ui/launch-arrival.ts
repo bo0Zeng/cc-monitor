@@ -182,6 +182,7 @@ export function watchArrival(spec: ArrivalSpec): void {
     ...spec,
     before: new Set(seenLive.get(key(spec.origin)) ?? []),
     // 一次性的预算（`polling_registry` 登记）：到点只说一次「没看到」，不重试、不轮询。
+    // 调度：一次性 —— 起会话之后等那台报出它的预算，到点只说一次；见到了当场清
     timer: setTimeout(() => {
       if (!pending.delete(p)) return;
       void sayMissed(p);
@@ -232,6 +233,7 @@ export async function awaitArrival(spec: ArrivalSpec): Promise<string | null> {
     console.warn("[launch-arrival] 听不了主窗口的回话：", e);
     return null;
   }
+  // 调度：一次性 —— 发起方自己的上界（预算 ＋ 15s），回话一到就清
   const cap = setTimeout(() => done(null), AWAIT_CAP_MS);
   try {
     expectArrival({ ...spec, ticket });

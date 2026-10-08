@@ -319,6 +319,7 @@ export class TerminalPage {
 
   private schedule(): void {
     this.stopTimers();
+    // 调度：一次性 —— 送字送键之后 0.5 · 1.5 · 3 秒各抓一屏；换会话 / 收起即清，不轮询
     for (const ms of RECAPTURE_AFTER_MS) this.timers.push(setTimeout(() => void this.recapture(), ms));
   }
 
@@ -327,6 +328,7 @@ export class TerminalPage {
     if (this.noteTimer !== null) clearTimeout(this.noteTimer);
     this.noteTimer = null;
     if (note?.tone === "ok") {
+      // 调度：一次性 —— 「已送达」2 秒后收
       this.noteTimer = setTimeout(() => {
         this.note = null;
         this.paint();

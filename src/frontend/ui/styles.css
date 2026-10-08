@@ -1059,7 +1059,7 @@
   font-size: var(--font-size-mono);
   line-height: var(--line-height-mono);
   white-space: pre-wrap;
-  word-break: break-word;
+  overflow-wrap: anywhere;
   max-height: 480px;
   overflow-y: auto;
 }
@@ -1248,7 +1248,7 @@
   font-family: var(--font-mono);
   font-size: var(--font-size-xs);
   white-space: pre-wrap;
-  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 /* 形态 2：重试细条（相邻的并成一条）：在重试 左 2px 琥珀 · 接上了 / 中断了变淡 · 没接上收起（次数进报错卡）。 */
@@ -1434,7 +1434,7 @@
   font-family: var(--font-mono);
   font-size: var(--font-size-small);
   white-space: pre-wrap;
-  word-break: break-word;
+  overflow-wrap: anywhere;
   color: var(--text);
   max-height: 600px;
   overflow: auto;

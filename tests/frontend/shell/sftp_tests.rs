@@ -425,10 +425,8 @@ fn the_deploy_paths_only_place_bytes_the_backend_decides() {
             "interpret_stamp_scan(",
             "interpret_target_probe(",
             "identity_decision(",
-            "landing_verdict(",
             "legacy_verdict(",
             "is_newer(",
-            "is_ours(",
             "connect_and_exec_capture(",
         ]
         .into_iter()
@@ -460,8 +458,8 @@ fn the_deploy_paths_only_place_bytes_the_backend_decides() {
     }
     // 正控：每一种判定写法都认得出来。
     assert_eq!(
-        decisions("probe_key( choose( key_from_uname( judge( stamp_scan_cmd( interpret_stamp_scan( interpret_target_probe( identity_decision( landing_verdict( legacy_verdict( is_newer( is_ours( connect_and_exec_capture(").len(),
-        13
+        decisions("probe_key( choose( key_from_uname( judge( stamp_scan_cmd( interpret_stamp_scan( interpret_target_probe( identity_decision( legacy_verdict( is_newer( connect_and_exec_capture(").len(),
+        11
     );
 }
 
@@ -739,7 +737,7 @@ fn the_landing_holds_the_backend_bytes_and_nothing_else_is_put_there() {
 /// 只由 `tests/evidence/SR1b-sftp-loopback.py --monitor` 带 `SR1B_LOOPBACK`
 /// （`{host,port,user,key_path,backend,home,rhome,up,dl_remote,dl_local}`）来跑；那台 sshd 的 sftp 起始目录是临时的 `rhome`，
 /// 写不到真 home。买到：部署判定四形（缺 ⇒ 部署 · 装完 ⇒ 那台 sshd 上真扫出戳、跳过 · 截成 0 字节 ⇒ 重部署 ·
-/// 无戳的文件 ⇒ 显式失败不覆盖）·旧三行入口 ⇒ 认出来、换成后端本体 ·
+/// 无戳的文件 ⇒ 显式失败不覆盖；从前那份三行入口也一样）·
 /// 卸载按钮删后端那一份 · 两个写根之外 ⇒ 后端围栏拒、原话带回 · 上传 / 下载经中继走完、帧翻成 `Snap` 终局。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "要真 sshd ＋ 真后端二进制：由 tests/evidence/SR1b-sftp-loopback.py --monitor 带环境变量来跑"]
@@ -842,7 +840,7 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
         matches!(&d3, Err(e) if e.contains("不说自己是哪一版")),
         "无戳的文件 ⇒ 该显式失败：{d3:?}"
     );
-    // ② 落点上是旧版放的三行入口 ⇒ 认得出、判「换成后端本体」。
+    // ② 落点上是旧版放的三行入口 ⇒ 同样不说自己是谁 ⇒ 显式失败、不覆盖（不留旧兼容）。
     std::fs::write(
         &backend_path,
         "#!/bin/sh\n# cc-monitor: ccm = 后端本体的一次性模式（K33：所有命令只许有一处）\nexec '/x/cc-monitor-backend' ccm \"$@\"\n",
@@ -850,8 +848,8 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
     .unwrap();
     let d4 = decide().await;
     assert!(
-        matches!(d4, Ok(DeployAction::Deploy(_))),
-        "旧入口 ⇒ 该换成后端本体：{d4:?}"
+        matches!(&d4, Err(e) if e.contains("不说自己是哪一版")),
+        "旧入口 ⇒ 该显式失败：{d4:?}"
     );
     upload_verified(&fs, LANDING_REL, &bytes, 0o700)
         .await

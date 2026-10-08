@@ -84,7 +84,7 @@
   --overlay-dim: #00000020;
   --overlay-deep: #00000040;
   --overlay-shadow: #00000080;
-  --overlay-backdrop: #00000099; /* 模态背后的遮罩 */
+  --overlay-backdrop: #0009; /* 模态背后的遮罩 */
   --shadow-float: 0 6px 24px #00000073; /* 菜单 · 下拉 · 浮层 · toast */
   --shadow-modal: 0 12px 40px #0000008c; /* 对话框 · 抽屉 */
 

@@ -121,6 +121,7 @@ function controller(content: (host: HTMLElement) => TipContent, opts: TooltipOpt
     clearTimer();
     if (!opts.hold || !shown()) return hide();
     clearCloser();
+    // 调度：一次性 —— 卡式离开宿主与卡 120ms 才收，移进卡即清
     closer = setTimeout(hide, CARD_CLOSE_MS);
   }
   const show = (): void => {
@@ -166,6 +167,7 @@ function controller(content: (host: HTMLElement) => TipContent, opts: TooltipOpt
     if (same && shown()) return;
     const inGroup = Date.now() - lastHiddenAt < GROUP_GRACE_MS || [...hiders.keys()].some((t) => t.isConnected);
     if (opts.immediate || inGroup) return show();
+    // 调度：一次性 —— 悬停 500ms 才出提示，离开即清
     timer = setTimeout(show, TOOLTIP_DELAY_MS);
   };
   return { arm, leave, hide, host: () => host };

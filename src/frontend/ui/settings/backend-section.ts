@@ -39,7 +39,7 @@ import { chan } from "../../../comms/inward/chan";
 import { budgetWithin, jsonBody, peerVersionSaid, readJson, saidFrom, unreadableFrom } from "../ipc/chan-caller";
 import { isLocalOrigin, type Origin } from "../ipc/origin";
 import { hostOs } from "./host-os";
-import { noteLocalCcm } from "./machine-aliases"; // 本机 ccm 那一格的唯一写点
+import { askLocalCcm } from "./machine-aliases";
 
 /** 起/停之后轮询状态的次数与间隔 —— 命令是「发出去就返回」的，不轮询看到的是操作前的状态。 */
 const SETTLE_TRIES = 30;
@@ -52,7 +52,6 @@ import { makeInfoIcon } from "./info-icon";
 import { LOCAL_ORIGIN } from "../backend-policy";
 import { copyText } from "../copy-table";
 import { formatBytes } from "../format";
-import { recordFacet } from "./machine-status";
 import { confirmDialog, type ConfirmFn } from "../kit/dialog";
 import { machineName } from "../control-said";
 import { askInterrupts, interruptRows, type Interrupts } from "./interrupts";
@@ -254,7 +253,6 @@ export class BackendSection {
    * 只装「后端清单里有、机器列表里没有」的那几台（见 `refresh` 的头注）。
    */
   private readonly hosted: boolean;
-  private readonly onLinkSeen: ((origin: string) => void) | undefined;
   private readonly onChannel: ((origin: string, connected: boolean | null) => void) | undefined;
   private readonly onMachine: ((origin: string, machine: MachineState | null) => void) | undefined;
   /** 后端清单（`backend_machines`）。`null` = 还没问到 —— 那时寄居的四格先不画。 */
@@ -270,15 +268,12 @@ export class BackendSection {
       hosted?: boolean;
       confirm?: ConfirmFn;
       interrupts?: (origin: Origin) => Promise<Interrupts | null>;
-      /** 远端那台画出「已连上」之后（连接 · backend 两格已记进账本）叫一声，宿主据它重画那一行与「诊断」。 */
-      onLinkSeen?: (origin: string) => void;
       /** 每次问完那台的连接（`null` ＝ 没问到）。 */
       onChannel?: (origin: string, connected: boolean | null) => void;
       /** 每次问完那台的状态成品（收不下 / 没问到 ⇒ `null`）。 */
       onMachine?: (origin: string, machine: MachineState | null) => void;
     } = {},
   ) {
-    this.onLinkSeen = opts.onLinkSeen;
     this.onChannel = opts.onChannel;
     this.onMachine = opts.onMachine;
     this.hosted = opts.hosted ?? false;
@@ -469,9 +464,9 @@ export class BackendSection {
     btn.disabled = true;
     try {
       const r = await resync(origin);
-      // 手动兜底：本机那一行对齐 ⇒ 顺手作废「PATH 上的 ccm」那份 5 分钟缓存、重记那一格（Windows 不适用）。
+      // 手动兜底：本机那一行对齐 ⇒ 顺手作废「PATH 上的 ccm」那份 5 分钟缓存（Windows 不适用）。
       if (isLocalOrigin(origin) && hostOs() !== "windows") {
-        noteLocalCcm(true).catch((e: unknown) => console.warn("[resync] 本机 ccm 那一格没重问：", e));
+        askLocalCcm(true).catch((e: unknown) => console.warn("[resync] 本机 ccm 那一格没重问：", e));
       }
       toast(copyText("backend.resync.doneTitle"), resyncSaid(r), { level: "info" });
       void emit(RESYNC_DONE_EVENT, { origin }); // ㉟①：主窗口标出这台上记录没了的固定条
@@ -722,6 +717,7 @@ export class BackendSection {
   private async settleStatus(origin: string, want: boolean): Promise<void> {
     for (let i = 0; i < SETTLE_TRIES; i++) {
       if ((await this.paintStatus(origin)) === want) return;
+      // 调度：自链 —— 起 / 停之后等状态落定：上限 30 次 × 100ms，落定即停
       await new Promise((r) => setTimeout(r, SETTLE_INTERVAL_MS));
     }
   }
@@ -738,18 +734,6 @@ export class BackendSection {
       toast(copyText("backend.policy.saveFailed"), e instanceof Error ? e.message : String(e));
       return false;
     }
-  }
-
-  /**
-   * **远端那几台 `connection` / `backend` 两格的实况写点**：常驻那条连接此刻通着（同一次 `backend_status`，不另问）
-   * ⇒ 两格都记 ✓（连着、后端在答 —— 会话就是从那里流过来的）。没连着 ⇒ **不写**（「此刻没连着」不是「连不上」，
-   * 上一次「测试连接」的结论照留）。
-   */
-  private noteRemoteLink(origin: string): void {
-    const detail = copyText("remote.local.connected");
-    recordFacet(origin, "connection", { kind: "ok", detail });
-    recordFacet(origin, "backend", { kind: "ok", detail });
-    this.onLinkSeen?.(origin);
   }
 
   /** 那台记下的认不出的会话流：几种（两本账并起来数）；读不到 ⇒ 说读不到。 */
@@ -784,7 +768,6 @@ export class BackendSection {
       if (on) void this.paintDrift(origin);
       this.onChannel?.(origin, on);
       this.onMachine?.(origin, machine);
-      if (on && !isLocalOrigin(origin)) this.noteRemoteLink(origin);
       // 那个值问那台机器的后端要（**每次现问**，不用上一次的）；问不到就是 `null`。
       let answer: ExitAnswer | null;
       try {

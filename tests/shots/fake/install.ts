@@ -9,7 +9,6 @@ import { emit } from "@tauri-apps/api/event";
 import { FakeBackend } from "./backend";
 import { DEFAULT_STORAGE, sceneById } from "../scenes";
 import type { ShotsHandle } from "./types";
-import { LOCAL_MACHINE_KEY, MACHINE_FACETS, recordFacet } from "../../../src/frontend/ui/settings/machine-status";
 import { __setHostOsForTests } from "../../../src/frontend/ui/settings/host-os";
 
 const params = new URLSearchParams(location.search);
@@ -31,14 +30,6 @@ try {
   localStorage.clear();
   sessionStorage.clear();
   for (const [k, v] of Object.entries(scene.storage ?? DEFAULT_STORAGE)) localStorage.setItem(k, v);
-  // 用过一阵的样子：各台机器的各格都测过、是好的（第一次打开那一张不写，看「还没测过」）。
-  if (scene.storage === undefined) {
-    const at = Date.parse("2026-10-01T11:50:00Z");
-    const world = backend.world;
-    for (const m of [LOCAL_MACHINE_KEY, ...world.machines.slice(1)]) {
-      for (const f of MACHINE_FACETS) recordFacet(m, f, { kind: world.unseenMachines.includes(m) ? "fail" : "ok", at });
-    }
-  }
 } catch {
   // 读不了存储就当它是空的
 }

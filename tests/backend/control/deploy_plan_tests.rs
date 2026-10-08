@@ -14,7 +14,6 @@ use std::sync::Mutex;
 struct Fake {
     exec: BTreeMap<String, Result<crate::dial::Captured, String>>,
     stat: BTreeMap<String, (Option<Option<u64>>, Option<bool>)>,
-    read: BTreeMap<String, Vec<u8>>,
     /// `list` 按目录查表；没登记 ⇒ 列不出。
     list: BTreeMap<String, Vec<(String, Option<u64>)>>,
     asked: Mutex<Vec<String>>,
@@ -102,15 +101,6 @@ impl Facing for Fake {
             .get(rel)
             .cloned()
             .ok_or_else(|| format!("替身没登记这个路径：{rel}"));
-        Box::pin(async move { got })
-    }
-
-    fn read<'a>(&'a self, rel: &'a str, max: u64) -> Fut<'a, Option<Vec<u8>>> {
-        let got = self
-            .read
-            .get(rel)
-            .cloned()
-            .filter(|b| b.len() as u64 <= max);
         Box::pin(async move { got })
     }
 
@@ -217,7 +207,8 @@ async fn a_link_that_cannot_ask_uname_is_unreachable_not_a_refusal() {
 }
 
 #[tokio::test]
-async fn an_unstamped_landing_is_undecidable_unless_it_is_our_old_three_line_entry() {
+async fn an_unstamped_landing_is_undecidable_whatever_it_holds() {
+    // 落点上不说自己是谁的文件：一律显式失败、不动 —— 不认「从前那份三行入口」（不留旧兼容）。
     let mut f = Fake::linux(Some("x"));
     f.exec.insert(landing_scan(), said(1, ""));
     let (code, _) = plan(&f, &carried("p9a-mine"), "box", NOW)
@@ -225,18 +216,7 @@ async fn an_unstamped_landing_is_undecidable_unless_it_is_our_old_three_line_ent
         .unwrap_err();
     assert_eq!(code, "undecidable");
 
-    f.read.insert(
-        relay_route_core::BACKEND_LANDING_REL.into(),
-        "#!/bin/sh\n# cc-monitor: ccm = 后端本体的一次性模式（K33：所有命令只许有一处）\nexec x\n"
-            .as_bytes()
-            .to_vec(),
-    );
-    let p = plan(&f, &carried("p9a-mine"), "box", NOW).await.unwrap();
-    assert!(
-        matches!(p.action, DeployAction::Deploy(_)),
-        "{:?}",
-        p.action
-    );
+    // 计划这一路只 stat 与扫戳：对面那一口（`Facing`）连「读回落点那一份」都没有，落点上是什么字节都认不成「我们从前那份」。
 }
 
 /// 要求：「部署失败留下半截 ~/.cc-monitor/bin/ccm.…tmp，之后连上也不清」⇒「下次连上清旧的」。
@@ -654,43 +634,6 @@ fn hx2_a_different_build_is_replaced_only_when_it_is_older() {
             other => panic!("{theirs:?} 不比 {MINE} 旧 ⇒ 该不动它，却是 {other:?}"),
         }
     }
-}
-
-/// 已部署的机器上落点是旧的三行入口（无身份戳）：认得出 ⇒ 换成后端本体；认不出的无戳文件照旧显式失败。
-/// 原是 `sftp.rs` 那个落点判定函数体的源码切片判据，判定搬来之后改成行为判据。
-#[test]
-fn an_old_three_line_entry_at_the_landing_is_recognised_as_ours() {
-    let old = "#!/bin/sh\n# cc-monitor: ccm = 后端本体的一次性模式（K33：所有命令只许有一处）\nexec '/home/u/.cc-monitor/bin/cc-monitor-backend' ccm \"$@\"\n";
-    assert!(is_ours(old), "旧入口没认出来");
-    assert!(
-        !is_ours("#!/bin/sh\necho mine\n"),
-        "用户自己的脚本被当成了我们的"
-    );
-    let v = |id: RemoteIdentity, bytes: Option<&[u8]>| {
-        landing_verdict(&id, bytes, "p9b-mine", "devbox", "~/.cc-monitor/bin/ccm")
-    };
-    assert!(matches!(
-        v(RemoteIdentity::NoStamp, Some(old.as_bytes())),
-        Ok(DeployAction::Deploy(_))
-    ));
-    assert!(v(RemoteIdentity::NoStamp, Some(b"#!/bin/sh\necho mine\n")).is_err());
-    assert!(
-        v(RemoteIdentity::NoStamp, None).is_err(),
-        "读不到那份 ⇒ 照旧显式失败"
-    );
-    // 认旧入口只在「无戳」那一格：别的格子里带着同样的字节也照身份判。
-    assert_eq!(
-        v(
-            RemoteIdentity::Stamp("p9b-mine".into()),
-            Some(old.as_bytes())
-        ),
-        Ok(DeployAction::Skip)
-    );
-    assert!(v(
-        RemoteIdentity::Ambiguous(vec!["a1".into(), "b2".into()]),
-        Some(old.as_bytes())
-    )
-    .is_err());
 }
 
 /// 拒绝点的前三步各在一步上：键拒 · 产线拒 · 承诺拒，第四步（带没带）不在这里。

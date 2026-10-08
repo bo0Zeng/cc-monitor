@@ -381,7 +381,7 @@ describe("fetchAccounts TTL 缓存", () => {
     invokeMock.mockImplementation(withHistoryReads(withAccountReads(() => ({ available: true, error: null, meta, accounts: [acct({})] }))));
     const first = await fetchAccounts("devbox");
     expect(first.available).toBe(true);
-    invokeMock.mockImplementation(withHistoryReads(withAccountReads(() => Promise.reject(copyText("machineCard.test.unreachable", { e: "ETIMEDOUT" })))));
+    invokeMock.mockImplementation(withHistoryReads(withAccountReads(() => Promise.reject(copyText("beServer.words.cantConnect")))));
     const down = await fetchAccounts("devbox", true);
     expect(down.available).toBe(false);
     expect(down.accounts, "上次的混进了此刻的事实").toEqual([]);

@@ -10,7 +10,6 @@
 //! | 身份戳的格式（读它字节里那段，不跑它） | | [`STAMP_OPEN`] · [`STAMP_CLOSE`] · [`Marks`] · [`RemoteIdentity`] · [`identity_of_bytes`] · [`stamp_scan_cmd`] · [`interpret_stamp_scan`] · [`build_order`] |
 //! | 流模式能力 token（hello 的 `capabilities`） | | [`STREAM_CAPABILITIES`] |
 //! | 计划答话的形状 | `IPC-PROTOCOL.md` 的 `deploy-plan` | [`DeployAction`] |
-//! | 从前那份三行入口两形的记号 | | [`SHIM_MARK`] · [`LAUNCHER_MARK`] |
 //!
 //! 判定（那台要哪一格 · 表 B 承诺 · 换不换 · 落点那一份认不认）住后端 `control/deploy_plan.rs` 一家；
 //! monitor 自举那一刻（本机后端还没起）问的是手上那份字节自己（帧命令 `place-verdict`，CLI 面自动派生）。
@@ -427,14 +426,6 @@ pub fn build_order(id: &str) -> Option<(u32, u8)> {
         _ => None,
     }
 }
-
-/// 09-11 之前那份 bash 启动器第二行的开头（那份文件已删，记号只能是字面量；出处：`git show e8f9e08e^:shared/ccm`）。
-/// 从前那份入口两形的文件格式；认不认得出是后端判（`control/deploy_plan.rs::is_ours`，落点上那一份是不是它）。
-pub const LAUNCHER_MARK: &str = "# ccm — cc-monitor 统一启动器";
-
-/// 三行 shim（09-11 起历代）第二行的原文。它的生成器随「`ccm` 就是后端本体」删了（那一形只剩在已部署的机器上），
-/// 记号从此只能是字面量（出处：`git show ef7baa63:src/frontend/shell/src/local_backend.rs` 的 `ccm_entry_shim`〔散文墓碑〕）。
-pub const SHIM_MARK: &str = "# cc-monitor: ccm = 后端本体的一次性模式（K33：所有命令只许有一处）";
 
 #[cfg(test)]
 #[path = "../../../../tests/common/deploy-contract/lib_tests.rs"]

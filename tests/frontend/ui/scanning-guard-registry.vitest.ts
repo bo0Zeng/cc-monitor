@@ -79,31 +79,33 @@ const IS_TEST = (f: string): boolean => f.endsWith(".vitest.ts") || f.endsWith("
 const WALK_FORMS = ["readdirSync", "globSync", "readdir("];
 
 /**
- * ★ **今天在测试里做目录遍历的文件**（08-06 实测 9 个 → `P9` 08-12 起 **10** 个
- *    → 2026-09-18 起 **11** 个）。
- *
- * 🔴 **09-18 那一格抬得起来的理由，逐字记在这里**（抬上限只有这一种合法写法）：
- * 新增的是 `tests/frontend/ui/scale3-one-screen-gate.vitest.ts`（秤 3）。
- * 它**结构上读不到自己** —— 它遍历的是 `src/frontend/ui/cards/`（`readdirSync(CARD_SRC_DIR)`，
- * 从卡片源码里派生出全部 `card-*` 类名），而它自己住 `tests/`。**两棵不同的树。**
- * 这是本条诊断给的第二条出路（「或者干脆扫别的扩展名」）的更彻底版：扫别的**目录**。
- * ⇒ 它不可能在自己的语料里找到自己 ⇒ 不会恒绿。
- *
- * 只许降 —— 新增一个就红，那时要么让它摘掉自己、要么把它加进来并写明凭什么安全。
- *
- * ⚠⚠ 第 10 个曾是 `session-backend-gate.vitest.ts`（把 `INVARIANTS §31` 最终形态第①条
- * 从散文里的一条手工 grep 变成机检）。它随 TS 座 `session-backend.ts` 一起退役，接替它的
- * `tests/frontend/ui/launch-no-shell-in-ts.vitest.ts`（条 1）走共享遍历 `test-support/production-sources.ts`
- * （那一份按构造排掉 `.vitest.ts` / `.test.ts`），自己不做目录遍历 ⇒ **11 → 10**，棘到现打值。
+ * ★ **今天在测试里做目录遍历的文件**（两向相等：新增一个就红，那时要么让它摘掉自己、要么把它加进来并写明凭什么安全；
+ * 不再遍历了也红，删那一行）。每一个都得说得清它靠什么读不到自己。
  */
-const WALKER_CEILING = 10;
+const WALKERS: Record<string, string> = {
+  "tests/frontend/ui/generated-boundary-guard.vitest.ts": "扫的是 Rust 源码（`.rs`），读不到自己",
+  "tests/frontend/ui/import-cycle-guard.vitest.ts": "扫的是 `src/` 里的产品 TS，自己住 `tests/`",
+  "tests/frontend/ui/ipc/commands.vitest.ts": "扫的是 `src/` 里的产品 TS，自己住 `tests/`",
+  "tests/frontend/ui/node-suite-registry-guard.vitest.ts": "只列文件名对登记，不在文本里找字",
+  "tests/frontend/ui/paste-block-guard.vitest.ts": "扫的是 `src/` 里的产品 TS，自己住 `tests/`",
+  "tests/frontend/ui/scale3-one-screen-gate.vitest.ts": "遍历的是 `src/frontend/ui/cards/`（从卡片源码派生 `card-*` 类名），自己住 `tests/`",
+  "tests/frontend/ui/settings/base-wording-guard.vitest.ts": "扫的是 `src/` 里的产品 TS，自己住 `tests/`",
+};
 
 /**
- * ★ **磁盘语料上的裸 `.includes("…")`**（08-06 实测 8 处）。
- *
- * 只许降。判准同 Rust 侧：存在性断言不危险，正向事实钉才危险。
+ * ★ **磁盘语料上的裸 `.includes("…")`**（两向相等：`文件 :: 接收者.includes("字面量"`，同一处可重复）。
+ * 存在性断言不危险，正向事实钉才危险；新写一处就红（换成整行 / 有边界的比法），修掉一处也红（删那一行）。
  */
-const BARE_INCLUDES_CEILING = 8;
+const BARE_INCLUDES: readonly string[] = [
+  'tests/frontend/ui/generated-boundary-guard.vitest.ts :: attrs.includes("ts_rs::TS"',
+  'tests/frontend/ui/generated-boundary-guard.vitest.ts :: attrs.includes("ts_rs::TS"',
+  'tests/frontend/ui/generated-boundary-guard.vitest.ts :: own.includes("skip_serializing_if"',
+  'tests/frontend/ui/gray-light-wiring.vitest.ts :: viewer.includes("markTmuxIdle"',
+  'tests/frontend/ui/gray-light-wiring.vitest.ts :: viewer.includes("follow: {"',
+  'tests/frontend/ui/paste-block-guard.vitest.ts :: code.includes("writeText"',
+  'tests/frontend/ui/paste-block.vitest.ts :: block.includes("**"',
+  'tests/frontend/ui/settings/accounts-section.vitest.ts :: code.includes("api_key"',
+];
 
 /** 一个 `const`/`let` 绑定的名字与右侧（右侧只取本行）。 */
 function letBinding(line: string): [string, string] | null {
@@ -169,50 +171,41 @@ describe("TS 侧扫描型判据的卫生（F23/F24 的 TS 那半）", () => {
     ).toBe(true);
   });
 
-  it("★ 测试里做目录遍历的文件只许变少", () => {
+  it("★ 测试里做目录遍历的文件 == 登记（两向）", () => {
     const walkers = files
       .filter(IS_TEST)
       .filter((f) => f !== SELF)
-      .filter((f) => WALK_FORMS.some((w) => readFileSync(f, "utf8").includes(w)));
+      .filter((f) => WALK_FORMS.some((w) => readFileSync(f, "utf8").includes(w)))
+      .sort();
     expect(
-      walkers.length,
-      `测试里做目录遍历的文件有 ${walkers.length} 个 > 上限 ${WALKER_CEILING}（08-06 实测 9）。\n` +
-        "★ 新增的那个**必须能说清它靠什么读不到自己**：扫的树排掉 `.vitest.ts`/`.test.ts`\n" +
-        "（TS 版的「剥生产段」），或者干脆扫别的扩展名。\n" +
-        "判据在自己的登记表/注释里找到自己 ⇒ **恒绿**，而恒绿看起来和真绿一模一样。\n" +
-        `当前清单：\n${walkers.map((w) => `  ${w}`).join("\n")}`,
-    ).toBeLessThanOrEqual(WALKER_CEILING);
+      walkers,
+      "测试里做目录遍历的文件与 `WALKERS` 对不上。\n" +
+        "★ 新增的那个**必须能说清它靠什么读不到自己**：扫的树排掉 `.vitest.ts`/`.test.ts`（TS 版的「剥生产段」），\n" +
+        "或者干脆扫别的扩展名 / 别的目录 —— 写进 `WALKERS` 那一行的理由里。判据在自己的登记表 / 注释里找到自己 ⇒ **恒绿**。\n" +
+        "不再遍历了 ⇒ 删那一行。",
+    ).toEqual(Object.keys(WALKERS).sort());
   });
 
-  it("★ 磁盘语料上的裸 `.includes(\"…\")` 只许变少", () => {
-    let total = 0;
-    const byFile: string[] = [];
+  it("★ 磁盘语料上的裸 `.includes(\"…\")` == 登记（两向）", () => {
+    const got: string[] = [];
     for (const f of files.filter(IS_TEST)) {
       const src = readFileSync(f, "utf8");
       const vars = corpusVars(src);
       if (vars.size === 0) continue;
-      let n = 0;
-      for (const m of src.matchAll(/\b(\w+)\.includes\(\s*"/g)) {
-        if (vars.has(m[1])) n++;
-      }
-      if (n > 0) {
-        total += n;
-        byFile.push(`  ${n}  ${f}`);
+      for (const m of src.matchAll(/\b(\w+)\.includes\(\s*("(?:[^"\\\n]|\\.)*")/g)) {
+        if (vars.has(m[1])) got.push(`${f} :: ${m[1]}.includes(${m[2]}`);
       }
     }
-    // 抽取器自检：与被棘轮的那个数**无关**的一个量 —— 测试里 `.includes("` 的总数。
+    // 抽取器自检：测试里 `.includes("` 一个都没找到 ⇒ 下面的相等是空转的。
     const allIncludes = files
       .filter(IS_TEST)
       .reduce((acc, f) => acc + (readFileSync(f, "utf8").match(/\.includes\(\s*"/g)?.length ?? 0), 0);
     expect(allIncludes, "整棵树的测试里一个 `.includes(\"` 都没找到 —— 抽取器坏了").toBeGreaterThan(0);
-
     expect(
-      total,
-      `磁盘语料上的裸 \`.includes("…")\` 有 ${total} 处 > 上限 ${BARE_INCLUDES_CEILING}（08-06 实测 8）。\n` +
-        "★ 匹配单位（子串）比事实（一整行 / 一个完整的词）小时，把事实撑大的改动会从缝里\n" +
-        "溜过去而判据照样绿。**存在性断言不危险**（只需要「有」）；**正向事实钉危险**。\n" +
-        "⚠ 不许把上限调上去让今天好过 —— 这是递减棘轮。\n" +
-        `当前分布：\n${byFile.join("\n")}`,
-    ).toBeLessThanOrEqual(BARE_INCLUDES_CEILING);
+      got.sort(),
+      "磁盘语料上的裸 `.includes(\"…\")` 与 `BARE_INCLUDES` 对不上。\n" +
+        "★ 匹配单位（子串）比事实（一整行 / 一个完整的词）小时，把事实撑大的改动会从缝里溜过去而判据照样绿。\n" +
+        "多出来的：换成整行 / 有边界的比法（不许抄进名单让它绿）；少了的：修掉了，删那一行。",
+    ).toEqual([...BARE_INCLUDES].sort());
   });
 });

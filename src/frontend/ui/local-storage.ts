@@ -38,9 +38,6 @@ export const LS_KEYS = {
   historyPrefs: "cc-monitor.history.prefs",
   /** F84b-fix(batch18)：命令栏可发现 chip 是否已被用户见过——首运行给一次性微高亮，之后不再。 */
   cmdkHintSeen: "cc-monitor.cmdk-hint.seen",
-  /** S3(settings-ia)：机器列表行上那几个状态格子的账本（origin → facet → 结论+时刻）。
-   *  **纯 UI 缓存，不是权威数据**；丢了只是列表回到「未测过」，不影响任何行为。 */
-  machineStatus: "cc-monitor.settings.machine-status",
   /** 「有改动需重启」的原因集。存在设置窗网页的**会话存储**里（这一次启动的状态，重启即清），不在 localStorage。 */
   restartReasons: "cc-monitor.settings.restart-reasons",
   /** Batch11-F33：竖直 tab 栏拖出来的宽度（px）。从 `main.ts` 的直写收进来，读写者只有 `tab-bar-width.ts`。 */

@@ -1228,6 +1228,7 @@ export class TabStreamView {
    * 「仍没满一屏」那一问用真实布局（`contentReachesBottom`），不只看滚不滚得动。
    */
   private scheduleFillContinuation(tab: Tab): void {
+    // 调度：自链 —— 向上补料批末复检：仍在触发区且账本有余就再补，切走了或账尽即停
     requestAnimationFrame(() => {
       if (this.store.activeId !== tab.sessionId) return;
       const t = this.store.tabs.get(tab.sessionId);
@@ -1345,8 +1346,10 @@ export class TabStreamView {
       this.scheduleIdleMaterialize();
     };
     if (typeof window.requestIdleCallback === "function") {
+      // 调度：自链 —— 后台标签页空闲物化队列：处理一个再排自己，队列空即停
       window.requestIdleCallback(run, { timeout: 2000 });
     } else {
+      // 调度：自链 —— 上面那条队列在没有 rIC 时的兜底，同一条链
       window.setTimeout(run, 200);
     }
   }

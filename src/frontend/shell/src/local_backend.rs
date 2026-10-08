@@ -1272,7 +1272,7 @@ pub fn local_ccm_entry_name() -> String {
 }
 
 // 远端三行入口的生成器 `ccm_entry_shim`〔散文墓碑〕删了：远端落点 `~/.cc-monitor/bin/ccm` 上放的就是
-//   后端字节（`sftp.rs::LANDING_REL`）。落点上从前那份三行入口由本机常驻后端认（`deploy_plan::landing_verdict` 调 `deploy_plan::is_ours`）。
+//   后端字节（`sftp.rs::LANDING_REL`）。落点上不说自己是谁的文件（从前那份三行入口也一样）一律显式失败、不动（`deploy_plan::identity_decision`）。
 
 // `install_local_ccm_entry`〔散文墓碑〕（把后端逐字节拷一份叫 `ccm`，「第二份拷贝」）删了：
 //   落点 `~/.cc-monitor/bin/ccm` 放的就是后端本身（[`extract_embedded_to`]）。

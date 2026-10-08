@@ -46,6 +46,7 @@ export function flashFrontDone(anchor: HTMLElement | null): void {
   ok.dataset.role = "front-done";
   was.replaceWith(ok);
   anchor.dataset.done = "true";
+  // 调度：一次性 —— ↗ 切过去了：1 秒后把对勾换回 ↗
   window.setTimeout(() => {
     ok.replaceWith(was);
     delete anchor.dataset.done;
