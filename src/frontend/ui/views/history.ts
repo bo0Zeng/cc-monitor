@@ -282,6 +282,24 @@ export class HistoryView {
   private build(): HTMLElement {
     const root = document.createElement("div");
     root.className = `${s.hv} history-view`;
+    root.appendChild(this.buildTop());
+    const split = document.createElement("div");
+    split.className = s.hvSplit;
+    // 窄档单块：`list` 只有列表 · `content` 内容盖满（宽档、中档不看它）。
+    split.dataset.pane = "list";
+    this.splitEl = split;
+    this.contentEl = document.createElement("div");
+    this.contentEl.className = s.hvContent;
+    const col = this.buildList();
+    split.append(col, this.sizer(root), this.contentEl);
+    root.appendChild(split);
+    if (this.prefs.listWidth) root.style.setProperty("--hv-list-w", `${this.prefs.listWidth}px`);
+    this.showPlaceholder();
+    return root;
+  }
+
+  /** 顶栏：返回 · 两种看法 · 搜索框 · 筛选 · 刷新。 */
+  private buildTop(): HTMLElement {
     const top = document.createElement("div");
     top.className = s.hvTop;
     const back = button({ label: copyText("history.page.back"), kind: "ghost", icon: "back", onClick: () => this.close() });
@@ -330,13 +348,11 @@ export class HistoryView {
       onClick: () => this.refresh(true),
     });
     top.append(back, views, search, this.filterBtn, this.refreshBtn);
-    root.appendChild(top);
+    return top;
+  }
 
-    const split = document.createElement("div");
-    split.className = s.hvSplit;
-    // 窄档单块：`list` 只有列表 · `content` 内容盖满（宽档、中档不看它）。
-    split.dataset.pane = "list";
-    this.splitEl = split;
+  /** 左栏：提示条 · 列表头 · 列表（键盘走行 · Tab 进来落到选中行 · 鼠标 / 焦点在上面时不重排）。 */
+  private buildList(): HTMLElement {
     const col = document.createElement("div");
     col.className = s.hvCol;
     this.stripsEl = document.createElement("div");
@@ -363,57 +379,15 @@ export class HistoryView {
     // 调度：一次性 —— 焦点离开列表那一下推到下一拍再看焦点去了哪
     this.listEl.addEventListener("focusout", () => setTimeout(() => hold(false), 0));
     col.append(this.stripsEl, this.listHead, this.listEl);
-    this.contentEl = document.createElement("div");
-    this.contentEl.className = s.hvContent;
-    split.append(col, this.sizer(root), this.contentEl);
-    root.appendChild(split);
-    if (this.prefs.listWidth) root.style.setProperty("--hv-list-w", `${this.prefs.listWidth}px`);
-    this.showPlaceholder();
-    return root;
+    return col;
   }
 
-  /** 列表与内容之间那一道（宽档）：拖改列表宽（320–640），← → 一步 16；松手记下。 */
+  /** 列表与内容之间那一道（宽档）：拖改列表宽，松手记下。 */
   private sizer(root: HTMLElement): HTMLElement {
-    const el = document.createElement("div");
-    el.className = s.hvSizer;
-    el.tabIndex = 0;
-    el.setAttribute("role", "separator");
-    el.setAttribute("aria-orientation", "vertical");
-    el.setAttribute("aria-label", copyText("history.page.resize"));
-    el.setAttribute("aria-valuemin", String(LIST_MIN));
-    el.setAttribute("aria-valuemax", String(LIST_MAX));
-    const set = (w: number, save: boolean): void => {
-      const v = Math.round(Math.max(LIST_MIN, Math.min(LIST_MAX, w)));
-      root.style.setProperty("--hv-list-w", `${v}px`);
-      el.setAttribute("aria-valuenow", String(v));
-      if (save) {
-        this.prefs.listWidth = v;
-        this.savePrefs();
-      }
-    };
-    el.setAttribute("aria-valuenow", String(this.prefs.listWidth ?? 420));
-    el.addEventListener("pointerdown", (ev) => {
-      ev.preventDefault();
-      el.setPointerCapture?.(ev.pointerId);
-      el.dataset.grabbed = "true";
-      const left = this.listEl.parentElement!.getBoundingClientRect().left;
-      const move = (e: PointerEvent): void => set(e.clientX - left, false);
-      const up = (e: PointerEvent): void => {
-        el.removeEventListener("pointermove", move);
-        el.removeEventListener("pointerup", up);
-        delete el.dataset.grabbed;
-        set(e.clientX - left, true);
-      };
-      el.addEventListener("pointermove", move);
-      el.addEventListener("pointerup", up);
+    return listSizer(root, this.prefs.listWidth ?? 420, () => this.listEl.parentElement!.getBoundingClientRect().left, (v) => {
+      this.prefs.listWidth = v;
+      this.savePrefs();
     });
-    el.addEventListener("keydown", (ev) => {
-      if (ev.key !== "ArrowLeft" && ev.key !== "ArrowRight") return;
-      ev.preventDefault();
-      const now = Number(el.getAttribute("aria-valuenow"));
-      set(now + (ev.key === "ArrowLeft" ? -LIST_STEP : LIST_STEP), true);
-    });
-    return el;
   }
 
   /** 窄档：内容 ⇒ 回列表（焦点回选中的那一行）。 */
@@ -444,89 +418,56 @@ export class HistoryView {
   }
 
   private openFilter(): void {
-    const panel = document.createElement("div");
-    panel.className = s.hvFilter;
-    const group = (title: string, ...items: HTMLElement[]): HTMLElement => {
-      const g = document.createElement("div");
-      g.className = s.hvFilterGroup;
-      const h = document.createElement("div");
-      h.className = s.hvFilterHead;
-      h.textContent = title;
-      g.append(h, ...items);
-      return g;
-    };
     const changed = (refetch: boolean): void => {
       this.savePrefs();
       this.markFilterBtn();
       if (refetch) this.refresh(false);
       else this.renderNow();
     };
-    const machines = this.machines.map((m) => {
-      const c = checkbox(m ? m : copyText("history.filter.local"), !this.prefs.off.includes(m), (on) => {
-        this.prefs.off = on ? this.prefs.off.filter((x) => x !== m) : [...this.prefs.off, m];
-        if (on) this.refresh(false, m);
+    const researchIfContent = (): void => {
+      if (this.content) void this.runContentSearch();
+    };
+    const panel = filterPanel(this.prefs, this.machines.map((m) => this.machineCheck(m, changed)), {
+      time: (v) => {
+        this.prefs.withinDays = v;
+        changed(true);
+      },
+      sort: (v) => {
+        this.prefs.sort = v;
+        changed(true);
+      },
+      hidden: (on) => {
+        this.prefs = { ...this.prefs, hidden: on };
+        changed(true);
+      },
+      scope: (v) => {
+        this.prefs.scope = v;
         changed(false);
-      });
-      if (this.per.get(m)?.state === "failed") {
-        const w = document.createElement("span");
-        w.className = s.hvFilterWarn;
-        w.textContent = copyText("history.filter.offline");
-        c.appendChild(w);
-      }
-      return c;
+        researchIfContent();
+      },
+      tools: (on) => {
+        this.prefs.tools = on;
+        changed(false);
+        researchIfContent();
+      },
     });
-    const radios = <T extends string | number>(name: string, cur: T, opts: [T, string][], set: (v: T) => void): HTMLElement[] =>
-      opts.map(([v, label]) => radio(name, label, v === cur, () => set(v)));
-    panel.append(
-      group(copyText("history.filter.machines"), ...machines),
-      group(
-        copyText("history.filter.time"),
-        ...radios<0 | 7 | 30>("hv-time", this.prefs.withinDays, [
-          [0, copyText("history.filter.timeAll")],
-          [7, copyText("history.filter.time7d")],
-          [30, copyText("history.filter.time30d")],
-        ], (v) => {
-          this.prefs.withinDays = v;
-          changed(true);
-        }),
-      ),
-      group(
-        copyText("history.filter.sort"),
-        ...radios<Prefs["sort"]>("hv-sort", this.prefs.sort, [
-          ["activity", copyText("history.filter.sortActivity")],
-          ["created", copyText("history.filter.sortCreated")],
-        ], (v) => {
-          this.prefs.sort = v;
-          changed(true);
-        }),
-      ),
-      group(
-        "",
-        checkbox(copyText("history.filter.showHidden"), this.prefs.hidden, (on) => {
-          this.prefs = { ...this.prefs, hidden: on };
-          changed(true);
-        }),
-      ),
-      group(
-        copyText("history.filter.scope"),
-        ...radios<Scope>("hv-scope", this.prefs.scope, [
-          ["all", copyText("history.filter.scopeAll")],
-          ["user", copyText("history.filter.scopeYou")],
-          ["assistant", copyText("history.filter.scopeAgent")],
-          ["report", copyText("history.filter.scopeReport")],
-        ], (v) => {
-          this.prefs.scope = v;
-          changed(false);
-          if (this.content) void this.runContentSearch();
-        }),
-        checkbox(copyText("history.filter.tools"), this.prefs.tools, (on) => {
-          this.prefs.tools = on;
-          changed(false);
-          if (this.content) void this.runContentSearch();
-        }),
-      ),
-    );
     openPopover(this.filterBtn, panel, { label: copyText("history.page.filter") });
+  }
+
+  /** 筛选里一台机器那一格：勾回 ⇒ 只再问它；那台上次没答上 ⇒ 标「离线」。 */
+  private machineCheck(m: string, changed: (refetch: boolean) => void): HTMLElement {
+    const c = checkbox(m ? m : copyText("history.filter.local"), !this.prefs.off.includes(m), (on) => {
+      this.prefs.off = on ? this.prefs.off.filter((x) => x !== m) : [...this.prefs.off, m];
+      if (on) this.refresh(false, m);
+      changed(false);
+    });
+    if (this.per.get(m)?.state === "failed") {
+      const w = document.createElement("span");
+      w.className = s.hvFilterWarn;
+      w.textContent = copyText("history.filter.offline");
+      c.appendChild(w);
+    }
+    return c;
   }
 
   private clearFilters(): void {
@@ -553,6 +494,11 @@ export class HistoryView {
     const loading = this.wanted().some((m) => this.per.get(m)?.state === "loading");
     this.refreshBtn.dataset.busy = String(loading);
     this.markFilterBtn();
+    this.stripsEl.replaceChildren(...this.machineStrips(), ...this.contentStrips());
+  }
+
+  /** 每台一条：没答上 ⇒［重新连接］（本机 ⇒［重试］）；答了但说清单不全 ⇒［重试］。 */
+  private machineStrips(): HTMLElement[] {
     const strips: HTMLElement[] = [];
     for (const m of this.wanted()) {
       const st = this.per.get(m);
@@ -566,6 +512,12 @@ export class HistoryView {
         strips.push(strip("warn", copyText("history.list.notice"), { label: copyText("history.list.retry"), run: () => this.refresh(true, m) }));
       }
     }
+    return strips;
+  }
+
+  /** 内容搜索那几条：哪台没搜到 · 跳过的那一家 · 读不了的份数；整次失败 ⇒ 红条［重试］。 */
+  private contentStrips(): HTMLElement[] {
+    const strips: HTMLElement[] = [];
     const c = this.content;
     if (c?.state === "done") {
       for (const h of c.r.failedHosts) strips.push(strip("warn", copyText("history.search.machineDown", { machine: h }), { label: copyText("history.list.reconnect"), run: () => void this.runContentSearch() }));
@@ -574,7 +526,7 @@ export class HistoryView {
     } else if (c?.state === "failed") {
       strips.push(strip("error", copyText("history.search.failed", { why: c.why }), { label: copyText("history.list.retry"), run: () => void this.runContentSearch() }));
     }
-    this.stripsEl.replaceChildren(...strips);
+    return strips;
   }
 
   private lists(): HistoryList[] {
@@ -599,17 +551,8 @@ export class HistoryView {
     const hooks = this.hooks();
     if (this.content) {
       this.renderContent(body, hooks);
-    } else if (rows.length === 0 && anyLoading) {
-      this.listHead.replaceChildren(copyText("history.list.reading", { machines: this.wanted().map((m) => m || copyText("history.filter.local")).join(` ${copyText("cssMarks.sep.dot")} `) }));
-      body.push(skeletonRows(6));
     } else if (rows.length === 0) {
-      this.listHead.replaceChildren();
-      const filtered = this.query !== "" || this.activeFilters() > 0;
-      body.push(
-        filtered
-          ? emptyState({ icon: "search", text: copyText("history.list.noMatch"), action: button({ label: copyText("history.list.clearFilter"), onClick: () => this.clearFilters() }) })
-          : emptyState({ text: copyText("history.list.empty"), hint: copyText("history.list.emptyHint") }),
-      );
+      body.push(this.emptyList(anyLoading));
     } else if (this.prefs.view === "time") {
       this.renderByTime(body, rows, hooks, lists);
     } else {
@@ -625,6 +568,19 @@ export class HistoryView {
     this.listEl.replaceChildren(...body);
     this.listEl.scrollTop = top;
     this.markRows();
+  }
+
+  /** 一行都没有：还在读 ⇒ 骨架；带着字或筛选 ⇒「没有匹配」＋［清除筛选］；否则说还没有会话。 */
+  private emptyList(anyLoading: boolean): HTMLElement {
+    if (anyLoading) {
+      this.listHead.replaceChildren(copyText("history.list.reading", { machines: this.wanted().map((m) => m || copyText("history.filter.local")).join(` ${copyText("cssMarks.sep.dot")} `) }));
+      return skeletonRows(6);
+    }
+    this.listHead.replaceChildren();
+    const filtered = this.query !== "" || this.activeFilters() > 0;
+    return filtered
+      ? emptyState({ icon: "search", text: copyText("history.list.noMatch"), action: button({ label: copyText("history.list.clearFilter"), onClick: () => this.clearFilters() }) })
+      : emptyState({ text: copyText("history.list.empty"), hint: copyText("history.list.emptyHint") });
   }
 
   /** 每个父会话下挂着的分叉（同一台；只认清单里的父会话）。 */
@@ -671,27 +627,8 @@ export class HistoryView {
 
   private renderByProject(body: HTMLElement[], rows: HistoryRow[], hooks: RowHooks, lists: HistoryList[]): void {
     const groups = mergeGroups(lists.map((l) => l.groups));
-    const sessions = groups.reduce((n, g) => n + g.count, 0);
-    const head = document.createElement("span");
-    head.textContent = copyText("history.list.countProjects", { p: groups.length, n: sessions });
-    const end = document.createElement("span");
-    end.className = s.hvHeadEnd;
-    const all = (open: boolean): void => {
-      this.openGroups = open ? new Set(groups.map(groupKey)) : new Set();
-      this.renderNow();
-    };
-    end.append(
-      button({ label: copyText("history.list.expandAll"), kind: "ghost", size: "compact", onClick: () => all(true) }),
-      button({ label: copyText("history.list.collapseAll"), kind: "ghost", size: "compact", onClick: () => all(false) }),
-    );
-    this.listHead.replaceChildren(head, end);
-    const byGroup = new Map<string, HistoryRow[]>();
-    for (const r of rows) {
-      const k = `${r.origin ?? ""}\u0000${r.group}`;
-      const a = byGroup.get(k) ?? [];
-      a.push(r);
-      byGroup.set(k, a);
-    }
+    this.projectHead(groups);
+    const byGroup = rowsByGroup(rows);
     const kids = this.forksOf(rows);
     for (const g of groups) {
       const gk = groupKey(g);
@@ -717,18 +654,30 @@ export class HistoryView {
     }
   }
 
+  /** 按项目那一看法的列表头：几个项目 · 几个会话 ＋ 全部展开 / 全部收起。 */
+  private projectHead(groups: HistoryGroup[]): void {
+    const sessions = groups.reduce((n, g) => n + g.count, 0);
+    const head = document.createElement("span");
+    head.textContent = copyText("history.list.countProjects", { p: groups.length, n: sessions });
+    const end = document.createElement("span");
+    end.className = s.hvHeadEnd;
+    const all = (open: boolean): void => {
+      this.openGroups = open ? new Set(groups.map(groupKey)) : new Set();
+      this.renderNow();
+    };
+    end.append(
+      button({ label: copyText("history.list.expandAll"), kind: "ghost", size: "compact", onClick: () => all(true) }),
+      button({ label: copyText("history.list.collapseAll"), kind: "ghost", size: "compact", onClick: () => all(false) }),
+    );
+    this.listHead.replaceChildren(head, end);
+  }
+
   /** 内容搜索的结果：每个会话一块（会话行 ＋ 前几处命中）。 */
   private renderContent(body: HTMLElement[], hooks: RowHooks): void {
     const c = this.content;
     if (!c) return;
     if (c.state === "searching") {
-      const stop = button({ label: copyText("history.search.stop"), kind: "ghost", size: "compact", onClick: () => {
-        this.contentSeq++;
-        this.content = null;
-        this.renderNow();
-      } });
-      this.listHead.replaceChildren(spinner(), copyText("history.search.searching"), stop);
-      body.push(skeletonRows(4));
+      body.push(this.searchingHead());
       return;
     }
     if (c.state === "failed") {
@@ -742,22 +691,7 @@ export class HistoryView {
         : copyText("history.search.summary", { q: c.q, n: r.totalHits, m: r.sessionCount }),
     );
     if (r.sessions.length === 0) {
-      body.push(
-        emptyState({
-          icon: "search",
-          text: copyText("history.search.noMatch", { q: c.q }),
-          action: this.prefs.tools
-            ? undefined
-            : button({
-                label: copyText("history.filter.tools"),
-                onClick: () => {
-                  this.prefs.tools = true;
-                  this.savePrefs();
-                  void this.runContentSearch();
-                },
-              }),
-        }),
-      );
+      body.push(this.noHits(c.q));
       return;
     }
     for (const sh of r.sessions) {
@@ -766,6 +700,35 @@ export class HistoryView {
       this.order.push(rowKey(row));
       body.push(hitsBlock(el, sh, (uuid) => this.show(row, uuid ?? undefined)));
     }
+  }
+
+  /** 搜着时：列表头转圈 ＋［停止］（停了回到清单，晚到的结果不画）；列表里给骨架。 */
+  private searchingHead(): HTMLElement {
+    const stop = button({ label: copyText("history.search.stop"), kind: "ghost", size: "compact", onClick: () => {
+      this.contentSeq++;
+      this.content = null;
+      this.renderNow();
+    } });
+    this.listHead.replaceChildren(spinner(), copyText("history.search.searching"), stop);
+    return skeletonRows(4);
+  }
+
+  /** 没搜到：没含工具输出与思考时给那颗（点了带上它再搜）。 */
+  private noHits(q: string): HTMLElement {
+    return emptyState({
+      icon: "search",
+      text: copyText("history.search.noMatch", { q }),
+      action: this.prefs.tools
+        ? undefined
+        : button({
+            label: copyText("history.filter.tools"),
+            onClick: () => {
+              this.prefs.tools = true;
+              this.savePrefs();
+              void this.runContentSearch();
+            },
+          }),
+    });
   }
 
   /** 选中 / 正在显示的那一行（`aria-selected` 淡底 · `aria-current` 左边一道）。 */
@@ -811,25 +774,18 @@ export class HistoryView {
   private onListKey(ev: KeyboardEvent): void {
     if (ev.isComposing) return;
     const i = this.selected ? this.order.indexOf(this.selected) : -1;
-    const at = (j: number): string | null => this.order[Math.max(0, Math.min(this.order.length - 1, j))] ?? null;
     const page = Math.max(1, Math.floor(this.listEl.clientHeight / 52));
+    const to = navTarget(ev.key, i, this.order.length, page);
+    if (to === "search") return this.consume(ev, () => this.searchInput.focus());
+    if (to !== null) return this.consume(ev, () => this.moveSelection(this.order[Math.max(0, Math.min(this.order.length - 1, to))] ?? null, true));
     const r = this.selected ? this.rowsByKey.get(this.selected) : undefined;
+    if (r) this.onRowKey(ev, r);
+  }
+
+  /** 选中那一行上的键：回车看 / Ctrl+回车恢复 / Shift+回车新窗口 · F2 改标题 · Delete 删 · 菜单键与 Shift+F10 开菜单。 */
+  private onRowKey(ev: KeyboardEvent, r: HistoryRow): void {
     switch (ev.key) {
-      case "ArrowDown":
-        return this.consume(ev, () => this.moveSelection(at(i + 1), true));
-      case "ArrowUp":
-        if (i <= 0) return this.consume(ev, () => this.searchInput.focus());
-        return this.consume(ev, () => this.moveSelection(at(i - 1), true));
-      case "Home":
-        return this.consume(ev, () => this.moveSelection(at(0), true));
-      case "End":
-        return this.consume(ev, () => this.moveSelection(at(this.order.length - 1), true));
-      case "PageDown":
-        return this.consume(ev, () => this.moveSelection(at(i + page), true));
-      case "PageUp":
-        return this.consume(ev, () => this.moveSelection(at(i - page), true));
       case "Enter":
-        if (!r) return;
         if (ev.ctrlKey || ev.metaKey) return this.consume(ev, () => void this.resume(r));
         if (ev.shiftKey) return this.consume(ev, () => this.openWindow(r));
         return this.consume(ev, () => {
@@ -838,16 +794,13 @@ export class HistoryView {
           this.viewer?.element.querySelector<HTMLElement>(".session-viewer-stream")?.focus();
         });
       case "F2":
-        if (r) this.consume(ev, () => void this.rename(r));
-        return;
+        return this.consume(ev, () => void this.rename(r));
       case "Delete":
-        if (r) this.consume(ev, () => void this.remove(r));
-        return;
+        return this.consume(ev, () => void this.remove(r));
       case "ContextMenu":
-        if (r) this.consume(ev, () => this.menu(r, this.rowEl(rowKey(r)) ?? this.listEl));
-        return;
+        return this.consume(ev, () => this.menu(r, this.rowEl(rowKey(r)) ?? this.listEl));
       case "F10":
-        if (r && ev.shiftKey) this.consume(ev, () => this.menu(r, this.rowEl(rowKey(r)) ?? this.listEl));
+        if (ev.shiftKey) this.consume(ev, () => this.menu(r, this.rowEl(rowKey(r)) ?? this.listEl));
         return;
     }
   }
@@ -1138,6 +1091,134 @@ export class HistoryView {
     toast(copyText("history.delete.done", { label }), "", { level: "success" });
     this.refresh(false, keyOf(r.origin));
   }
+}
+
+/** 列表里走行的键 ⇒ 走到第几行（未夹到两头）；↑ 在第一行 ⇒ 回搜索框；不是走行的键 ⇒ `null`。 */
+function navTarget(key: string, i: number, n: number, page: number): number | "search" | null {
+  switch (key) {
+    case "ArrowDown":
+      return i + 1;
+    case "ArrowUp":
+      return i <= 0 ? "search" : i - 1;
+    case "Home":
+      return 0;
+    case "End":
+      return n - 1;
+    case "PageDown":
+      return i + page;
+    case "PageUp":
+      return i - page;
+    default:
+      return null;
+  }
+}
+
+/** 筛选浮层里的一组：小标题 ＋ 几格。 */
+function filterGroup(title: string, ...items: HTMLElement[]): HTMLElement {
+  const g = document.createElement("div");
+  g.className = s.hvFilterGroup;
+  const h = document.createElement("div");
+  h.className = s.hvFilterHead;
+  h.textContent = title;
+  g.append(h, ...items);
+  return g;
+}
+
+function radioSet<T extends string | number>(name: string, cur: T, opts: [T, string][], set: (v: T) => void): HTMLElement[] {
+  return opts.map(([v, label]) => radio(name, label, v === cur, () => set(v)));
+}
+
+/** 筛选浮层：机器 · 时间 · 排序 · 显示已隐藏 · 搜内容时谁说的 ＋ 含工具输出与思考。勾的是 `p` 此刻的值，改了交给 `on`。 */
+function filterPanel(
+  p: Prefs,
+  machines: HTMLElement[],
+  on: { time(v: Prefs["withinDays"]): void; sort(v: Prefs["sort"]): void; hidden(on: boolean): void; scope(v: Scope): void; tools(on: boolean): void },
+): HTMLElement {
+  const panel = document.createElement("div");
+  panel.className = s.hvFilter;
+  panel.append(
+    filterGroup(copyText("history.filter.machines"), ...machines),
+    filterGroup(
+      copyText("history.filter.time"),
+      ...radioSet<0 | 7 | 30>("hv-time", p.withinDays, [
+        [0, copyText("history.filter.timeAll")],
+        [7, copyText("history.filter.time7d")],
+        [30, copyText("history.filter.time30d")],
+      ], on.time),
+    ),
+    filterGroup(
+      copyText("history.filter.sort"),
+      ...radioSet<Prefs["sort"]>("hv-sort", p.sort, [
+        ["activity", copyText("history.filter.sortActivity")],
+        ["created", copyText("history.filter.sortCreated")],
+      ], on.sort),
+    ),
+    filterGroup("", checkbox(copyText("history.filter.showHidden"), p.hidden, on.hidden)),
+    filterGroup(
+      copyText("history.filter.scope"),
+      ...radioSet<Scope>("hv-scope", p.scope, [
+        ["all", copyText("history.filter.scopeAll")],
+        ["user", copyText("history.filter.scopeYou")],
+        ["assistant", copyText("history.filter.scopeAgent")],
+        ["report", copyText("history.filter.scopeReport")],
+      ], on.scope),
+      checkbox(copyText("history.filter.tools"), p.tools, on.tools),
+    ),
+  );
+  return panel;
+}
+
+/** 列表与内容之间那一道：拖改列表宽（320–640），← → 一步 16；松手 / 按键之后交 `save`。`leftEdge` = 列表那一栏的左边。 */
+function listSizer(root: HTMLElement, initial: number, leftEdge: () => number, save: (w: number) => void): HTMLElement {
+  const el = document.createElement("div");
+  el.className = s.hvSizer;
+  el.tabIndex = 0;
+  el.setAttribute("role", "separator");
+  el.setAttribute("aria-orientation", "vertical");
+  el.setAttribute("aria-label", copyText("history.page.resize"));
+  el.setAttribute("aria-valuemin", String(LIST_MIN));
+  el.setAttribute("aria-valuemax", String(LIST_MAX));
+  const set = (w: number, keep: boolean): void => {
+    const v = Math.round(Math.max(LIST_MIN, Math.min(LIST_MAX, w)));
+    root.style.setProperty("--hv-list-w", `${v}px`);
+    el.setAttribute("aria-valuenow", String(v));
+    if (keep) save(v);
+  };
+  el.setAttribute("aria-valuenow", String(initial));
+  el.addEventListener("pointerdown", (ev) => {
+    ev.preventDefault();
+    el.setPointerCapture?.(ev.pointerId);
+    el.dataset.grabbed = "true";
+    const left = leftEdge();
+    const move = (e: PointerEvent): void => set(e.clientX - left, false);
+    const up = (e: PointerEvent): void => {
+      el.removeEventListener("pointermove", move);
+      el.removeEventListener("pointerup", up);
+      delete el.dataset.grabbed;
+      set(e.clientX - left, true);
+    };
+    el.addEventListener("pointermove", move);
+    el.addEventListener("pointerup", up);
+  });
+  el.addEventListener("keydown", (ev) => {
+    if (ev.key !== "ArrowLeft" && ev.key !== "ArrowRight") return;
+    ev.preventDefault();
+    const now = Number(el.getAttribute("aria-valuenow"));
+    set(now + (ev.key === "ArrowLeft" ? -LIST_STEP : LIST_STEP), true);
+  });
+  return el;
+}
+
+/** 行按「那台 ＋ 组」归堆（键与 [`groupKey`] 同形）。 */
+function rowsByGroup(rows: HistoryRow[]): Map<string, HistoryRow[]> {
+  const byGroup = new Map<string, HistoryRow[]>();
+  for (const r of rows) {
+    const k = `${r.origin ?? ""}\u0000${r.group}`;
+    const a = byGroup.get(k) ?? [];
+    a.push(r);
+    byGroup.set(k, a);
+  }
+  return byGroup;
 }
 
 function groupKey(g: HistoryGroup): string {

@@ -302,6 +302,156 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
     expect(last.rcPath, "指过的那一份之后每次读回都带着").toBe("~/.zshrc");
   });
 
+  it("执行策略那一行：不会挡 ⇒ 不占地方；挡住 / 说不清 / 组策略钉着 / 问不到各说各的；只有挡住且不是组策略才给按钮", async () => {
+    const pol = (over: Partial<ExecPolicy>): ExecPolicy => ({ host: "powershell", effective: "Restricted", loads: false, groupPolicy: false, error: null, ...over });
+    const ps = copyText("machineAliases.policy.hostPowershell");
+    const cases: Array<[ExecPolicy, string, boolean]> = [
+      [pol({ loads: true }), "", false],
+      [pol({}), copyText("machineAliases.policy.blocks", { ps, policy: "Restricted" }), true],
+      [pol({ loads: null }), copyText("machineAliases.policy.unclear", { ps, policy: "Restricted" }), false],
+      [pol({ groupPolicy: true }), copyText("machineAliases.policy.groupPolicy", { ps, policy: "Restricted" }), false],
+      [pol({ effective: null, loads: null, error: "问不到" }), copyText("machineAliases.policy.unknown", { ps, e: "问不到" }), false],
+    ];
+    for (const [p, said, btn] of cases) {
+      policyA = p;
+      blockAt.add("/h/rc-a");
+      const el = await mount();
+      await open(el);
+      const access = el.querySelector<HTMLElement>('[data-role="access"]')!;
+      const line = access.querySelector<HTMLElement>(":scope > .cfg-hint:not([data-role])")!;
+      expect(line.textContent, JSON.stringify(p)).toBe(said);
+      expect(line.hidden).toBe(said === "");
+      const allow = [...access.querySelectorAll<HTMLButtonElement>(":scope > button")].find((b) => b.textContent === copyText("machineAliases.policy.allow"))!;
+      expect(allow.hidden, JSON.stringify(p)).toBe(!btn);
+      const loads = p.loads === false;
+      expect(access.textContent!.includes(copyText("machineAliases.access.notLoaded", { path: "~/rc-a", ps })), JSON.stringify(p)).toBe(loads);
+      document.body.replaceChildren();
+    }
+  });
+
+  it("［允许本地脚本］先问一句；不答应不动；答应 ⇒ 请那台设、重读，接着说设好了没有", async () => {
+    policyA = { host: "pwsh", effective: "Restricted", loads: false, groupPolicy: false, error: null };
+    policyAfter = { host: "pwsh", effective: "RemoteSigned", loads: true, groupPolicy: false, error: null };
+    blockAt.add("/h/rc-a");
+    let answer = false;
+    const asked: string[] = [];
+    const el = await mount((spec) => {
+      asked.push(spec.body ?? "");
+      return answer;
+    });
+    await open(el);
+    const ps = copyText("machineAliases.policy.hostPwsh");
+    clickText(el, copyText("machineAliases.policy.allow"));
+    await flush();
+    expect(asked).toEqual([copyText("machineAliases.policy.confirm", { ps })]);
+    expect(seen.some((c) => c.cmd === "powershell_policy_set"), "没答应就改了").toBe(false);
+    answer = true;
+    seen = [];
+    clickText(el, copyText("machineAliases.policy.allow"));
+    await flush();
+    expect(seen.map((c) => c.cmd).slice(0, 2)).toEqual(["powershell_policy_set", "aliases_read"]);
+    expect(el.querySelector('[data-role="access-note"]')!.textContent).toBe(copyText("machineAliases.policy.setDone", { ps, policy: "RemoteSigned" }));
+    expect(el.textContent).not.toContain(copyText("machineAliases.access.notLoaded", { path: "~/rc-a", ps }));
+  });
+
+  it("收着时那一行：没接上 ⇒ 主动作「接上 …」；旧版块 ⇒ 主动作「更新」；已接上 ⇒ 不给主动作；有同名 ⇒ 点变黄、尾巴点名", async () => {
+    const statusOf = (el: HTMLElement): { text: string; dot: string; acts: string[] } => {
+      const row = el.querySelector<HTMLElement>('[data-role="access"]')!.closest<HTMLElement>(".cfg-row")!;
+      if (!row.querySelector<HTMLElement>(".cfg-body")!.hidden) row.querySelector<HTMLButtonElement>(".cfg-toggle")!.click();
+      const head = row.querySelector<HTMLElement>(".cfg-head")!;
+      return { text: head.querySelector(".cfg-status")!.textContent ?? "", dot: head.querySelector<HTMLElement>(".cfg-dot")!.dataset.dot ?? "", acts: [...head.querySelectorAll(".cfg-action button")].map((b) => b.textContent ?? "") };
+    };
+    let el = await mount();
+    await open(el);
+    expect(statusOf(el)).toMatchObject({ dot: "off", acts: [copyText("machineAliases.status.connect", { path: "~/rc-a" })] });
+    document.body.replaceChildren();
+    blockAt.add("/h/rc-a");
+    oldAt.add("/h/rc-a");
+    el = await mount();
+    await open(el);
+    expect(statusOf(el)).toMatchObject({ dot: "warn", acts: [copyText("machineAliases.status.update")] });
+    document.body.replaceChildren();
+    oldAt.clear();
+    clashes = [{ name: "cc", line: 5, wins: "yours" }];
+    el = await mount();
+    await open(el);
+    const st = statusOf(el);
+    expect(st).toMatchObject({ dot: "warn", acts: [] });
+    expect(st.text).toContain(copyText("machineAliases.status.clashTail", { names: "cc" }));
+    document.body.replaceChildren();
+    clashes = [];
+    el = await mount();
+    await open(el);
+    expect(statusOf(el)).toMatchObject({ dot: "ok", acts: [] });
+  });
+
+  it("换一份文件的下拉：人换了选项 ⇒ 接上那一跳跟着换文件；候选标出已接上 / 新建", async () => {
+    const el = await mount();
+    await open(el);
+    clickText(el, copyText("machineAliases.access.choose"));
+    const sel = el.querySelector<HTMLSelectElement>(".ccm-acct-alias-rc")!;
+    expect([...sel.options].map((o) => o.textContent)).toEqual(["/h/rc-a", `/h/rc-b（${copyText("machineAliases.rc.tagNew")}）`]);
+    expect(sel.value).toBe("/h/rc-a");
+    sel.value = "/h/rc-b";
+    sel.dispatchEvent(new Event("change"));
+    await flush();
+    const access = el.querySelector<HTMLElement>('[data-role="access"]')!;
+    clickText(access, copyText("machineAliases.access.connectTo", { path: "~/rc-b" }));
+    await flush();
+    expect(sel.value, "接上之后下拉停在已接上的那份").toBe("/h/rc-b");
+    expect([...sel.options].map((o) => o.textContent)[1]).toContain(copyText("machineAliases.rc.tagBlock"));
+    sel.value = "/h/rc-a";
+    sel.dispatchEvent(new Event("change"));
+    await flush();
+    expect(access.textContent).toContain(copyText("machineAliases.access.otherFile", { path: "~/rc-a" }));
+    clickText(access, copyText("machineAliases.access.connectTo", { path: "~/rc-a" }));
+    await flush();
+    expect(seen.filter((c) => c.cmd === "aliases_block_install").map((c) => (c.args as { rcPath: string }).rcPath)).toEqual(["/h/rc-b", "/h/rc-a"]);
+  });
+
+  it("「看加了什么」与「卸载」是同一块的两面：再点同一个就收起；没接上时「看一眼」说「会加」", async () => {
+    const el = await mount();
+    await open(el);
+    const access = el.querySelector<HTMLElement>('[data-role="access"]')!;
+    const panel = access.querySelector<HTMLElement>(".cfg-panel")!;
+    clickText(access, copyText("machineAliases.access.peek"));
+    await flush();
+    expect(panel.hidden).toBe(false);
+    expect(panel.textContent).toContain(copyText("machineAliases.access.previewOff", { path: "~/rc-a" }));
+    clickText(access, copyText("machineAliases.access.peek"));
+    await flush();
+    expect(panel.hidden, "再点同一个没收起").toBe(true);
+    clickText(access, copyText("machineAliases.access.connectTo", { path: "~/rc-a" }));
+    await flush();
+    clickText(access, copyText("machineAliases.access.whatAdded"));
+    await flush();
+    expect(panel.textContent).toContain(copyText("machineAliases.access.previewOn", { path: "~/rc-a" }));
+    clickText(access, copyText("machineAliases.rc.uninstall"));
+    await flush();
+    const sub = plat === "powershell" ? copyText("machineAliases.access.uninstallSubWindow") : copyText("machineAliases.access.uninstallSub");
+    expect(panel.textContent).toContain(sub);
+    expect(panel.textContent).toContain(copyText("machineAliases.access.uninstallWhat", { path: "~/rc-a" }));
+    clickText(panel, copyText("machineAliases.form.cancel"));
+    await flush();
+    expect(panel.hidden).toBe(true);
+    expect(seen.some((c) => c.cmd === "aliases_block_remove")).toBe(false);
+  });
+
+  it("本机才有「用系统编辑器打开」：打开选中的那份；打不开 ⇒ 出声", async () => {
+    const opener = await import("@tauri-apps/plugin-opener");
+    const openPath = opener.openPath as unknown as ReturnType<typeof vi.fn>;
+    const el = await mount();
+    await open(el);
+    clickText(el, copyText("machineAliases.access.choose"));
+    clickText(el, copyText("machineAliases.rc.open"));
+    await flush();
+    expect(openPath.mock.calls).toEqual([["/h/rc-a"]]);
+    openPath.mockRejectedValueOnce(new Error("没有关联程序"));
+    clickText(el, copyText("machineAliases.rc.open"));
+    await flush();
+    expect(toasted).toEqual([`${copyText("machineAliases.openRc.failed")}|${copyText("machineAliases.openRc.failedBody", { e: "Error: 没有关联程序", path: "/h/rc-a" })}`]);
+  });
+
   it("远端卡是同一个组件：每一发都带那台的 origin，只本机的那几格不挂", async () => {
     const m = await import("../../../../src/frontend/ui/settings/machine-aliases");
     const mgr = m.buildAliasManager({
