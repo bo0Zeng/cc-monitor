@@ -870,7 +870,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// p9k-flicker：后端无用代码清零（dead_code 门禁格）· 删两个备用函数；文件窗口标签 × 不再逐帧翻 · 后台不 panic；界面定位收成一处、窗口写口补权限。
 ///
 /// p9l-term-follow：终端实时画面订阅（terminal-follow / -ack / -unfollow 三条帧命令 · terminal_screen / terminal_follow_end 两种帧 · tmux 控制模式只读客户端当变化信号 · 一帧在途、512 KiB 上限）· 远端版本不符分要更新 / 较新 / 不可比三类由壳判；文件窗口 shell.rs 拆函数。
-pub const BUILD_ID: &str = "p9l-term-follow";
+///
+/// p9m-copy-detail：失败应答多一格 detail（时刻 · 机器 · 命令 · 码 · 原话，排版只在 copy-core::detail）· 结束会话 / 读画面 / 送字 / cc-bus / 账号库「契约对不上」的码 → 句搬进后端 stream/said.rs、处理器原句进详情 · 批量停 / 起每项带 said 与详情 · 句子里不许接原话（C-W18）。
+pub const BUILD_ID: &str = "p9m-copy-detail";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
