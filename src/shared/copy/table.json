@@ -85,7 +85,7 @@
     "beOwnState.write.noParent": {
       "kind": "error",
       "role": "原因格",
-      "zh": "写入失败 · {path} · 路径不存在",
+      "zh": "写入失败 · {path} · 无上一级目录",
       "args": ["path"]
     },
     "beOwnState.write.renameFailed": {
@@ -964,7 +964,7 @@
     "beAssetCatalog.write.noParent": {
       "kind": "error",
       "role": "原因格",
-      "zh": "写入失败 · {path} · 路径不存在",
+      "zh": "写入失败 · {path} · 无上一级目录",
       "args": ["path"]
     },
     "beAssetCatalog.write.mkdirFailed": {
@@ -1090,7 +1090,7 @@
     "beSkillLedger.write.noParent": {
       "kind": "error",
       "role": "原因格",
-      "zh": "写入失败 · {path} · 路径不存在",
+      "zh": "写入失败 · {path} · 无上一级目录",
       "args": ["path"]
     },
     "beSkillLedger.add.tooMany": {
@@ -1156,7 +1156,7 @@
     "beUpstreamFileFace.write.noParent": {
       "kind": "error",
       "role": "原因格",
-      "zh": "写入失败 · {path} · 路径不存在",
+      "zh": "写入失败 · {path} · 无上一级目录",
       "args": ["path"]
     },
     "beUpstreamFileFace.write.mkdirFailed": {
@@ -1571,7 +1571,7 @@
     "beDoor.fs.noParent": {
       "kind": "error",
       "role": "原因格",
-      "zh": "写入失败 · {path} · 路径不存在",
+      "zh": "写入失败 · {path} · 无上一级目录",
       "args": ["path"]
     },
     "beDoor.fs.mkdirFailed": {
@@ -1643,7 +1643,7 @@
     "rsRemoteResident.ensure.tooOld": {
       "kind": "error",
       "role": "原因格",
-      "zh": "要更新",
+      "zh": "后端要更新",
       "args": []
     },
     "rsRemoteResident.ensure.unsupported": {
@@ -2128,7 +2128,7 @@
     "control.channel.localDown": {
       "kind": "error",
       "role": "报错",
-      "zh": "本机离线 · 未执行",
+      "zh": "本机后端未运行 · 未执行",
       "args": []
     },
     "control.channel.remoteDown": {
@@ -2345,7 +2345,7 @@
     "tmuxControl.kill.notConfirmed": {
       "kind": "error",
       "role": "报错",
-      "zh": "结束结果未知 · 「{target}」 · {machine} 无应答",
+      "zh": "{machine} 的后端没有确认 {target} 已经结束。这次按没结束处理，刷新会话列表后再决定要不要重试。",
       "args": ["machine", "target"]
     },
     "ccBus.online.notInstalled": {
@@ -2610,7 +2610,7 @@
     "ccBus.spawn.unsure": {
       "kind": "error",
       "role": "报错",
-      "zh": "新开结果未知",
+      "zh": "新开结果未知 · 先看 cc-bus 名单再重试",
       "args": []
     },
     "ccBus.spawn.done": {
@@ -4969,7 +4969,7 @@
     "accountChip.label.backendOld": {
       "kind": "body",
       "role": "状态",
-      "zh": "要更新",
+      "zh": "后端要更新",
       "args": []
     },
     "accountChip.label.queryFailed": {
@@ -5462,7 +5462,7 @@
     "remoteHealth.head.degraded": {
       "kind": "body",
       "role": "片段",
-      "zh": "要更新",
+      "zh": "远端降级模式",
       "args": []
     },
     "remoteHealth.head.versionMismatch": {
@@ -7868,7 +7868,7 @@
     "accounts.status.backendOld": {
       "kind": "body",
       "role": "状态",
-      "zh": "要更新",
+      "zh": "后端要更新",
       "args": []
     },
     "accounts.status.pullFailed": {
@@ -8973,7 +8973,7 @@
     "remote.local.notStarted": {
       "kind": "body",
       "role": "片段",
-      "zh": "离线",
+      "zh": "未启动",
       "args": []
     },
     "remote.local.connected": {
@@ -9565,7 +9565,7 @@
     "backend.unregistered.why": {
       "kind": "body",
       "role": "说明",
-      "zh": "重启 cc-monitor 后生效",
+      "zh": "本次启动没登记这台的后端 · 重启 cc-monitor 后生效",
       "args": []
     },
     "backend.column.exit": {
@@ -10280,7 +10280,7 @@
     "rsFilewinSource.said.unknownCmd": {
       "kind": "error",
       "role": "报错",
-      "zh": "要更新",
+      "zh": "后端要更新 · 此操作不可用",
       "args": []
     },
     "rsFilewinSource.said.refused": {
@@ -11108,7 +11108,7 @@
     "beFilesCommit.exdev.copyFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "写入失败 · {e} · 原文件未动",
+      "zh": "写入失败 · {e} · 原文件未动 · 临时文件保留",
       "args": ["e"]
     },
     "rsFilewinCopy.ui.askOverwriteMany": {
@@ -11426,7 +11426,7 @@
     "rsFilewinEntry.open.noHost": {
       "kind": "error",
       "role": "报错",
-      "zh": "程序出错",
+      "zh": "文件窗口连不上后端（主程序那一侧没准备好）",
       "args": []
     },
     "rsFilewinEntry.plan.noTarget": {
@@ -11571,7 +11571,7 @@
     "rsLocalBackend.resolve.noSelfPath": {
       "kind": "error",
       "role": "报错",
-      "zh": "本机离线",
+      "zh": "拿不到本程序的可执行文件路径，找不到本机后端",
       "args": []
     },
     "rsLocalBackend.supervise.spawnFailed": {
@@ -11673,7 +11673,7 @@
     "rsInboundClient.error.unsupported": {
       "kind": "error",
       "role": "原因格",
-      "zh": "要更新",
+      "zh": "远端后端要更新 · 此操作不可用",
       "args": []
     },
     "rsBackendRoute.noChannel.message": {
@@ -11697,7 +11697,7 @@
     "rsBackendRoute.layer.unsupported": {
       "kind": "error",
       "role": "原因格",
-      "zh": "要更新",
+      "zh": "远端后端要更新 · 此操作不可用",
       "args": []
     },
     "rsConfigSurface.scope.projectNote": {
@@ -12475,8 +12475,9 @@
     "rsCcBusDeploy.ccm.tooOld": {
       "kind": "body",
       "role": "说明",
-      "zh": "本机要更新 · cc-bus 新开 agent 不可用",
-      "args": []
+      "zh": "本机 ccm 要更新 · cc-bus 新开 agent 不可用",
+      "args": [],
+      "limited": ["ccm"]
     },
     "rsCcBusDeploy.ccm.notFound": {
       "kind": "body",
@@ -12509,7 +12510,7 @@
     "rsPlatformFs.lock.openFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "写入失败 · {dir} · {e}",
+      "zh": "加锁失败 · {dir} · {e}",
       "args": ["dir", "e"]
     },
     "rsPlatformFs.lock.failed": {
@@ -13345,7 +13346,7 @@
     "rsLib.run.localBackendDown": {
       "kind": "error",
       "role": "原因格",
-      "zh": "本机离线",
+      "zh": "本机后端未运行",
       "args": []
     },
     "backendPolicy.exit.kills": {
@@ -13471,7 +13472,7 @@
     "rsBackendPolicy.call.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取失败 · {machine} · {message}",
+      "zh": "读取退出策略失败 · {machine} · {message}",
       "args": ["machine", "message"]
     },
     "beSshConfig.host.sshGExit": {
@@ -14893,7 +14894,7 @@
     "rsLocalBackendHost.dataDir.otherDataDir": {
       "kind": "error",
       "role": "报错",
-      "zh": "本机离线 · 端口上的 cc-monitor 用另一数据位置 · {diffs}",
+      "zh": "这个口上的后端住另一个数据目录，没有接它。{diffs}。接上它，凭据与历史注解会写进那个数据目录。先把那个后端停掉再起。",
       "args": ["diffs"]
     },
     "rsLocalBackendHost.stop.noBin": {
@@ -14941,7 +14942,7 @@
     "rsLocalBackendHost.local.noStamp": {
       "kind": "error",
       "role": "原因格",
-      "zh": "内嵌 · 版本不可比",
+      "zh": "内嵌后端 · 版本不明",
       "args": []
     },
     "rsLocalBackendHost.adopt.waited": {
@@ -15662,7 +15663,7 @@
     "beExitPolicy.writeAt.noParent": {
       "kind": "error",
       "role": "原因格",
-      "zh": "写入失败 · {path} · 路径不存在",
+      "zh": "写入失败 · {path} · 无上一级目录",
       "args": ["path"]
     },
     "beResolveQuery.resolve.unsafeLauncher": {
@@ -15686,7 +15687,7 @@
     "bePlatformLock.hold.openFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "写入失败 · {dir} · {e}",
+      "zh": "加锁失败 · {dir} · {e}",
       "args": ["dir", "e"]
     },
     "bePlatformLock.hold.lockFailed": {
@@ -15710,7 +15711,7 @@
     "beHistoryAnnotations.writeAt.noParent": {
       "kind": "error",
       "role": "原因格",
-      "zh": "写入失败 · {path} · 路径不存在",
+      "zh": "写入失败 · {path} · 无上一级目录",
       "args": ["path"]
     },
     "beHistoryAnnotations.readForWrite.notObject": {
@@ -15770,7 +15771,7 @@
     "beRemoteAsk.run.tooOld": {
       "kind": "error",
       "role": "报错",
-      "zh": "要更新",
+      "zh": "后端要更新 · 资产目录不可用",
       "args": []
     },
     "beRemoteAsk.run.resultUnreadable": {
@@ -15794,13 +15795,13 @@
     "beRemoteAsk.run.unreachable": {
       "kind": "error",
       "role": "原因格",
-      "zh": "离线 · {why}",
+      "zh": "连接失败 · {why}",
       "args": ["why"]
     },
     "beRemoteAsk.run.droppedBeforeReady": {
       "kind": "error",
       "role": "原因格",
-      "zh": "离线",
+      "zh": "连接还没接通就断了",
       "args": []
     },
     "beRemoteAsk.cappedLine.tooLong": {
@@ -15930,7 +15931,7 @@
     "beRemoteAsk.unreachableMessage.say": {
       "kind": "error",
       "role": "报错",
-      "zh": "{machine} 离线",
+      "zh": "本机后端还不知道怎么连到 [{machine}]。那台还没连上，或本机后端刚重启过，下次连上就好了。",
       "args": ["machine"]
     },
     "beRemoteAsk.register.full": {
@@ -16074,7 +16075,7 @@
     "beAccountsQuery.accountTrust.unsafeDir": {
       "kind": "error",
       "role": "报错",
-      "zh": "信任检查失败 · 程序出错",
+      "zh": "信任检查失败 · 路径不合规",
       "args": []
     },
     "beAccountsQuery.loadManifest.noVersion": {
@@ -16320,7 +16321,7 @@
     "beServer.words.cantConnect": {
       "kind": "body",
       "role": "片段",
-      "zh": "离线",
+      "zh": "连接失败",
       "args": []
     },
     "beServer.words.closedBeforeAnswer": {
@@ -17169,7 +17170,7 @@
     "beFilesWrite.path.empty": {
       "kind": "error",
       "role": "原因格",
-      "zh": "程序出错",
+      "zh": "路径是空的",
       "args": []
     },
     "beFilesWrite.path.parentStep": {
@@ -18015,13 +18016,13 @@
     "beSftp.fence.rootUnresolved": {
       "kind": "error",
       "role": "报错",
-      "zh": "写入失败 · ~/{root} · {e}",
+      "zh": "读取失败 · ~/{root} · {e}",
       "args": ["root", "e"]
     },
     "beSftp.fence.parentUnresolved": {
       "kind": "error",
       "role": "报错",
-      "zh": "写入失败 · ~/{parent} · {e}",
+      "zh": "读取失败 · ~/{parent} · {e}",
       "args": ["parent", "e"]
     },
     "beSftp.fence.escaped": {
@@ -18219,7 +18220,7 @@
     "beConnect.jump.dialFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "跳板机 {hop} 离线 · {e}",
+      "zh": "跳板机 {hop} 连接失败 · {e}",
       "args": ["hop", "e"]
     },
     "beConnect.jump.authFailed": {
@@ -18452,7 +18453,7 @@
     "beMcpEdit.path.emptyDir": {
       "kind": "error",
       "role": "原因格",
-      "zh": "程序出错",
+      "zh": "项目目录为空，拒绝写",
       "args": []
     },
     "beMcpEdit.path.notAbsolute": {
@@ -18656,7 +18657,7 @@
     "beCcBusInstall.root.unknown": {
       "kind": "error",
       "role": "报错",
-      "zh": "程序出错",
+      "zh": "安装 cc-bus 失败 · 不支持",
       "args": []
     },
     "beCcBusInstall.backup.failed": {
@@ -19876,7 +19877,7 @@
     "rsFilewinEntry.other.badArgs": {
       "kind": "error",
       "role": "报错",
-      "zh": "窗口出错 · 打开其他机器未完成",
+      "zh": "打开其他机器的文件窗口失败 · 重开本窗口再试",
       "args": []
     },
     "rsFilewinKind.label.folder": {
@@ -20056,7 +20057,7 @@
     "rsFilewinChrome.other.noTheme": {
       "kind": "error",
       "role": "报错",
-      "zh": "窗口出错 · 打开其他机器未完成",
+      "zh": "打开其他机器的文件窗口失败 · 重开本窗口再试",
       "args": []
     },
     "rsFilewinChrome.other.opening": {
@@ -20722,7 +20723,7 @@
     "beQuotaLedger.write.noParent": {
       "kind": "error",
       "role": "原因格",
-      "zh": "写入失败 · {path} · 路径不存在",
+      "zh": "写入失败 · {path} · 无上一级目录",
       "args": ["path"]
     },
     "beQuotaLedger.write.failed": {
@@ -20746,7 +20747,7 @@
     "beRotation.write.noParent": {
       "kind": "error",
       "role": "原因格",
-      "zh": "写入失败 · {path} · 路径不存在",
+      "zh": "写入失败 · {path} · 无上一级目录",
       "args": ["path"]
     },
     "beRotation.write.failed": {
@@ -21761,14 +21762,14 @@
     "acct.sw.hotHint": {
       "kind": "body",
       "role": "说明",
-      "zh": "热切换  只换计费账号 · 设置 / MCP / 钩子仍为 {name}",
+      "zh": "热切换 · 只换计费账号 · 设置 / MCP / 钩子仍为 {name}",
       "args": ["name"],
       "limited": ["hook"]
     },
     "acct.sw.restartHint": {
       "kind": "body",
       "role": "说明",
-      "zh": "重启切换  连配置一起换 · 中断当前轮次",
+      "zh": "重启切换 · 连配置一起换 · 中断当前轮次",
       "args": []
     },
     "acct.sw.go": {
