@@ -866,7 +866,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// p9i-no-legacy-entry：部署落点上不说自己是谁的文件一律显式失败（删旧三行入口识别与只为它的读口）· 界面机器状态账本整份删 · 登记表瘦身三第一段。
 ///
 /// p9j-local-clock：记录 / 轮次 / 历史 / 查找 / 文件窗口的时刻由后端按那台本地钟写好（…Text 格）· 足迹判 claude 装没装按起会话那个 shell 的 PATH · .bashrc 被守着的 source 不报失效 · profiles-write 一批依次判 · Rust 零读者 pub 项清理。
-pub const BUILD_ID: &str = "p9j-local-clock";
+///
+/// p9k-flicker：后端无用代码清零（dead_code 门禁格）· 删两个备用函数；文件窗口标签 × 不再逐帧翻 · 后台不 panic；界面定位收成一处、窗口写口补权限。
+pub const BUILD_ID: &str = "p9k-flicker";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
