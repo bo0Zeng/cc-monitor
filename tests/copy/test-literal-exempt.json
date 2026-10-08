@@ -17,12 +17,6 @@
     "tests/backend/control/deploy_plan_tests.rs": [
       { "text": "本机", "use": "输入" }
     ],
-    "tests/backend/files/capability_guard.rs": [
-      { "text": "没有", "use": "非文案" }
-    ],
-    "tests/backend/files/size_tests.rs": [
-      { "text": "没有", "use": "输入" }
-    ],
     "tests/backend/platform/cfgless_guard.rs": [
       { "text": "路径", "use": "非文案" }
     ],
@@ -46,9 +40,6 @@
       { "text": "模型", "use": "输入" },
       { "text": "账号", "use": "输入" }
     ],
-    "tests/frontend/filewin/editor_tests.rs": [
-      { "text": "没有", "use": "输入" }
-    ],
     "tests/frontend/filewin/progress_tests.rs": [
       { "text": "已取消", "use": "回显" }
     ],
@@ -57,9 +48,6 @@
     ],
     "tests/frontend/filewin/source_tests.rs": [
       { "text": "上一级", "use": "非文案" }
-    ],
-    "tests/frontend/filewin/workspace_tests.rs": [
-      { "text": "没有权限", "use": "回显" }
     ],
     "tests/frontend/shell/atomic_replace_registry_tests.rs": [
       { "text": "用户", "use": "非文案" }
@@ -116,14 +104,10 @@
     "tests/frontend/ui/front-result.vitest.ts": [
       { "text": "本机", "use": "输入" }
     ],
-    "tests/frontend/ui/ipc/commands.vitest.ts": [
-      { "text": "时间", "use": "回显" }
-    ],
     "tests/frontend/ui/kit/components.vitest.ts": [
       { "text": "关闭", "use": "输入" },
       { "text": "卸载", "use": "输入" },
       { "text": "保存", "use": "输入" },
-      { "text": "显示隐藏文件", "use": "输入" },
       { "text": "取消", "use": "输入" },
       { "text": "端口", "use": "输入" },
       { "text": "路径", "use": "输入" },
@@ -134,8 +118,6 @@
       { "text": "终端", "use": "输入" },
       { "text": "默认", "use": "输入" },
       { "text": "本会话", "use": "输入" },
-      { "text": "详情", "use": "输入" },
-      { "text": "复制", "use": "输入" },
       { "text": "远端", "use": "输入" },
       { "text": "运行中", "use": "输入" },
       { "text": "失败", "use": "输入" },

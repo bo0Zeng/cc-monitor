@@ -20,7 +20,15 @@ pct?: number,
 /**
  * 几点重置；有 ＝ 这个窗口在计时。
  */
-resetsAt?: number, seenAt: number, from: QuotaSource, 
+resetsAt?: number, 
+/**
+ * `resets_at` 写给人看的样子（回包出口 `common::time::with_texts` 添；内部与记账一律不填）。
+ */
+resetsAtText?: string, seenAt: number, 
+/**
+ * `seen_at` 写给人看的样子（回包出口 `common::time::with_texts` 添；内部与记账一律不填）。
+ */
+seenAtText?: string, from: QuotaSource, 
 /**
  * 重置时刻已过、之后没再看到：上次的数不再作数（用量当 0、窗口没开）。
  */

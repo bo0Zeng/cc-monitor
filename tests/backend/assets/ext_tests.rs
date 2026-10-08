@@ -885,14 +885,20 @@ async fn an_mcp_entry_goes_global_into_the_shared_set_and_comes_back_off() {
     let card = ext_preview(&t.here, &args, &t.reach, &t.remote)
         .await
         .expect("看卡");
-    let suspects = card["suspects"].to_string();
+    // 逐条比字符串本身（不比 JSON 文本：句子里有换行时 JSON 里是转义的 `\n`）。
+    let suspects: Vec<&str> = card["suspects"]
+        .as_array()
+        .expect("suspects 是数组")
+        .iter()
+        .filter_map(Value::as_str)
+        .collect();
     for k in [
         "beExt.card.sharedDeleteHere",
         "beExt.card.sharedNewSessions",
     ] {
         assert!(
-            suspects.contains(&copy_text(k, &[])),
-            "卡上缺一句 {k}：{suspects}"
+            suspects.iter().any(|s| s.contains(&copy_text(k, &[]))),
+            "卡上缺一句 {k}：{suspects:?}"
         );
     }
     let mut apply = args.clone();

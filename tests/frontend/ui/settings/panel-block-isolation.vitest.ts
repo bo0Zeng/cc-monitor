@@ -1,5 +1,5 @@
-// F82b（#56+#47）+ A3：设置面板 4 组终态结构测试。把各重子分区 stub 成占位 div、保留真
-// CollapsibleGroup，只钉「buildBody 产出 连接/外观/账号/集成 四组（顺序）+ 账号组含 AccountsSection」。
+// F82b（#56+#47）+ A3：设置面板 4 组终态结构测试。把各重子分区 stub 成占位 div，
+// 只钉「buildBody 产出 连接/外观/账号/集成 四组（顺序）+ 账号组含 AccountsSection」。
 // 构造 SettingsPanel 不调 open()（配置读取在 open 里；本测只验 buildBody 的静态分组结构）。
 import { describe, it, expect, vi } from "vitest";
 

@@ -7,27 +7,27 @@
   "cases": [
     {
       "key": "panePreview.head.refresh",
-      "zh": "重新抓取",
+      "zh": "刷新",
       "args": {},
-      "want": "重新抓取"
+      "want": "刷新"
     },
     {
       "key": "ccBus.send.ghost",
-      "zh": "已投递给 {id}，但这个名字没在总线上登记过。现在没有进程会读它的收件箱，名字打错了吗？",
+      "zh": "已投递 {id} · 此名未在总线登记\n无进程读它的收件箱 · 核对名字拼写",
       "args": { "id": "a b'c" },
-      "want": "已投递给 a b'c，但这个名字没在总线上登记过。现在没有进程会读它的收件箱，名字打错了吗？"
+      "want": "已投递 a b'c · 此名未在总线登记\n无进程读它的收件箱 · 核对名字拼写"
     },
     {
       "key": "panePreview.head.title",
-      "zh": "预览画面 · [{origin}] tmux: {target}",
+      "zh": "预览 · {origin} · tmux 会话 {target}",
       "args": { "origin": "devbox", "target": "%1" },
-      "want": "预览画面 · [devbox] tmux: %1"
+      "want": "预览 · devbox · tmux 会话 %1"
     },
     {
       "key": "rsShellDialect.posix.nameTakenPath",
-      "zh": "{name}：PATH 上已经有一个同名程序（{cand}）。装上之后在终端敲 {name}，打到的是这条别名，不再是那个程序",
+      "zh": "{name} 与 PATH 上的 {cand} 同名 · 装上后在终端敲 {name} 用此别名",
       "args": { "name": "cc", "cand": "/usr/bin/cc" },
-      "want": "cc：PATH 上已经有一个同名程序（/usr/bin/cc）。装上之后在终端敲 cc，打到的是这条别名，不再是那个程序"
+      "want": "cc 与 PATH 上的 /usr/bin/cc 同名 · 装上后在终端敲 cc 用此别名"
     },
     {
       "key": "beExt.suspect.absAbsent",
@@ -38,23 +38,23 @@
     {
       "_": "〔插值不该重新解释值〕值里带另一个参数的占位符：两个读口都一趟换完，值原样留着（此前 Rust 逐个 replace 会把 {target} 再换成 %1）。",
       "key": "panePreview.head.title",
-      "zh": "预览画面 · [{origin}] tmux: {target}",
+      "zh": "预览 · {origin} · tmux 会话 {target}",
       "args": { "origin": "{target}", "target": "%1" },
-      "want": "预览画面 · [{target}] tmux: %1"
+      "want": "预览 · {target} · tmux 会话 %1"
     },
     {
       "_": "〔rules.json C-L5〕值与相邻汉字之间的空格随值定：模板紧贴着写、值以字母数字收尾 ⇒ 补一个空格。",
       "key": "launchArrival.arrived.body",
-      "zh": "{machine}上报出了这个会话。",
+      "zh": "{machine}已报出此会话",
       "args": { "machine": "lx" },
-      "want": "lx 上报出了这个会话。"
+      "want": "lx 已报出此会话"
     },
     {
       "_": "同一句，值是汉字 ⇒ 不补。",
       "key": "launchArrival.arrived.body",
-      "zh": "{machine}上报出了这个会话。",
+      "zh": "{machine}已报出此会话",
       "args": { "machine": "本机" },
-      "want": "本机上报出了这个会话。"
+      "want": "本机已报出此会话"
     },
     {
       "_": "值以全角标点收尾 ⇒ 接缝不管；后一个值是数字、模板已写了空格 ⇒ 照留（不叠第二个）。",
@@ -73,9 +73,9 @@
     {
       "_": "接缝上两个以上空格是排版，照留。",
       "key": "rsProfileInstaller.hint.line",
-      "zh": "  第 {lineNo} 行  {text}\n",
+      "zh": "  行 {lineNo}  {text}\n",
       "args": { "lineNo": "三", "text": "甲" },
-      "want": "  第三行  甲\n"
+      "want": "  行三  甲\n"
     }
   ]
 }

@@ -335,7 +335,7 @@ describe("B03 批二：派活 / 收信 / 图形化 spawn", () => {
     btn.click();
     await flush();
     expect(mockInvoke.mock.calls.filter((c) => c[0] === "cc_bus_spawn")).toHaveLength(0);
-    expect(btn.textContent).toContain(copyText("extPage.card.confirm"));
+    expect(btn.textContent).toContain(copyText("ccBus.spawn.confirm"));
     expect(s.element.querySelector(".cc-bus-spawn-out")?.textContent).toMatch(copyPattern("ccBus.spawn.confirmBody"));
   });
 

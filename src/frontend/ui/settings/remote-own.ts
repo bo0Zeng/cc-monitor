@@ -24,6 +24,8 @@ function whatOf(id: string): string {
       return copyText("rsDataPaths.backend.profiles");
     case "profilesMigrated":
       return copyText("rsDataPaths.backend.profilesMigrated");
+    case "profilesWritten":
+      return copyText("rsDataPaths.backend.profilesWritten");
     case "aliasesPosix":
       return copyText("rsDataPaths.backend.aliasesPosix");
     case "aliasesPs":

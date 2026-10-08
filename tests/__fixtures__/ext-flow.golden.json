@@ -54,13 +54,13 @@
         "about": null,
         "builtin": {
           "hooks": true,
-          "note": "cc-bus 让几个 Claude Code 实例互发消息、接力协作。装上之后，要在那台的 ~/.claude/settings.json 里加两条钩子才能自动收信；cc-monitor 不替你改那份文件。下面每台一行：钩子装了没有，以及要加的内容。"
+          "note": "cc-bus 让几个 Claude Code 实例互发消息、接力协作\n装上后要在该机 ~/.claude/settings.json 加两条钩子才自动收信 · cc-monitor 不替你改\n下面每台一行 · 钩子装没装与要加的内容"
         },
         "cells": [
           {
             "bring": {
               "from": null,
-              "fromName": "cc-monitor 自带的那一份",
+              "fromName": "cc-monitor 自带",
               "scope": {
                 "from": {
                   "level": "user"
@@ -82,7 +82,7 @@
                     "dir": "<BASE>/a/proj",
                     "level": "project"
                   },
-                  "note": "cc-bus 只装到全局：钩子要指向这台全局那一份。",
+                  "note": "cc-bus 只装到全局 · 钩子要指向该机全局那份",
                   "ok": false
                 }
               ]
@@ -104,7 +104,7 @@
           {
             "bring": {
               "from": null,
-              "fromName": "cc-monitor 自带的那一份",
+              "fromName": "cc-monitor 自带",
               "scope": {
                 "from": {
                   "level": "user"
@@ -126,7 +126,7 @@
                     "dir": "<BASE>/b/proj",
                     "level": "project"
                   },
-                  "note": "cc-bus 只装到全局：钩子要指向这台全局那一份。",
+                  "note": "cc-bus 只装到全局 · 钩子要指向该机全局那份",
                   "ok": false
                 }
               ]
@@ -174,7 +174,7 @@
                   "at": {
                     "level": "user"
                   },
-                  "note": "来源和目标是同一处，没有可装的。",
+                  "note": "来源与目标相同",
                   "ok": false
                 },
                 {
@@ -249,7 +249,7 @@
         "detail": [
           {
             "label": "文件",
-            "value": "1 个，共 23 字节"
+            "value": "文件 1 · 23 字节"
           }
         ],
         "kind": "skill",
@@ -268,7 +268,7 @@
     "name": "demo",
     "path": "<BASE>/b/.claude/skills/demo",
     "recorded": true,
-    "said": "这是 cc-monitor 装的：删掉装时写进去的 1 个文件，你后来加的留着。",
+    "said": "cc-monitor 安装 · 删除装入的文件 ×1 · 后加的保留",
     "token": "7c026244ae70e7a4"
   },
   "uninstallDone": {

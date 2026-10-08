@@ -338,7 +338,7 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
       if (t) {
         const hint = el("div", "cfg-hint cfg-access-hint");
         hint.append(
-          el("span", "", copyText("machineAliases.access.willAdd", { path: short(t.path) })),
+          el("span", "", copyText("machineAliases.access.willAdd", { path: short(t.path), n: t.blockLines })),
           linkBtn(copyText("machineAliases.access.peek"), () => togglePanel("preview")),
           linkBtn(copyText("machineAliases.access.choose"), () => togglePanel("choose")),
           linkBtn(copyText("machineAliases.access.selfPaste"), () => void onSelfPaste()),
@@ -373,7 +373,7 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
   const renderWrites = (): void => {
     const t = cands.find((c) => c.block.present) ?? target();
     writes.hidden = !t;
-    if (t) writes.textContent = copyText("machineAliases.writes.line", { path: short(t.path) });
+    if (t) writes.textContent = copyText("machineAliases.writes.line", { path: short(t.path), n: t.blockLines });
   };
 
   /** 收着时那一行：清单给的那一句（条数 · 规则住哪 · 下次起会话生效）＋ 同名提示；点的颜色与主动作看接入那一格。 */

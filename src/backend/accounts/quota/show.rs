@@ -67,6 +67,10 @@ pub struct SlotShow {
     #[serde(skip_serializing_if = "Option::is_none", default)]
     #[cfg_attr(test, ts(optional, type = "number"))]
     pub resets_at: Option<u64>,
+    /// `resets_at` 写给人看的样子（回包出口 `common::time::with_texts` 添；内部与记账一律不填）。
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    #[cfg_attr(test, ts(optional))]
+    pub resets_at_text: Option<String>,
     /// 用满：这个窗口用到 100%、还没重置（画 `✕`；被拒而没用满画「{pct}% · 被拒」）。没用满 ⇒ 缺。
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     #[cfg_attr(test, ts(optional, as = "Option<bool>"))]
@@ -120,8 +124,16 @@ pub struct WindowShow {
     #[serde(skip_serializing_if = "Option::is_none", default)]
     #[cfg_attr(test, ts(optional, type = "number"))]
     pub resets_at: Option<u64>,
+    /// `resets_at` 写给人看的样子（回包出口 `common::time::with_texts` 添；内部与记账一律不填）。
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    #[cfg_attr(test, ts(optional))]
+    pub resets_at_text: Option<String>,
     #[cfg_attr(test, ts(type = "number"))]
     pub seen_at: u64,
+    /// `seen_at` 写给人看的样子（回包出口 `common::time::with_texts` 添；内部与记账一律不填）。
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    #[cfg_attr(test, ts(optional))]
+    pub seen_at_text: Option<String>,
     pub from: super::ledger::Source,
     /// 重置时刻已过、之后没再看到：上次的数不再作数（用量当 0、窗口没开）。
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -142,6 +154,8 @@ pub(crate) fn windows_of(
             let seen = o.window_seen(&w.name);
             let reset = super::reset_since_seen(w.resets_at, now);
             WindowShow {
+                resets_at_text: None,
+                seen_at_text: None,
                 name: w.name.clone(),
                 key: key(&w.name),
                 pct: w
@@ -191,6 +205,7 @@ fn slots_of(
                         .total_cmp(&b.used.unwrap_or(f64::MIN))
                 })?;
             Some(SlotShow {
+                resets_at_text: None,
                 slot: (*s).to_string(),
                 pct: w.used.map(|u| (u * 100.0).round().max(0.0) as u32),
                 resets_at: w.resets_at,

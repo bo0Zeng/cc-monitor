@@ -1,5 +1,5 @@
 {
-  "说明": "设置窗「别名与配置文件」五口（profiles-read / -resolve / -impact / -bases / -write）的跨语言金样：后端 page_tests.rs::the_profiles_wire_matches_the_cross_language_golden 现算对拍，界面 profiles-reads.ts 的解码器读同一份。<HOME> · <MTIME> · <LINE> 是机器上会变的几格。",
+  "说明": "设置窗「别名与配置文件」五口（profiles-read / -resolve / -impact / -bases / -write）的跨语言金样：后端 page_tests.rs::the_profiles_wire_matches_the_cross_language_golden 现算对拍，界面 profiles-reads.ts 的解码器读同一份。<HOME> · <LINE> 是机器上会变的几格。",
   "book": "# 我的配置\n[mycc]\ncwd-if = [[\"~\", \"~/projects/notes\"]]\n\n[mycct]\nfrom = \"mycc\"   # tmux 版\nccm-tmux = true\n\n[betacct]\nfrom = \"mycct\"\naccount = \"b\"\n\n[alphacct]\nfrom = \"mycct\"\ntmux-sise = \"200x50\"\n\n[pcc]\nbase = true\ncwd = \"/srv/p\"\nargs = [\"--model\", \"opus\"]\n",
   "manifest": {
     "accounts": [
@@ -40,12 +40,12 @@
       "b"
     ],
     "binDir": "<HOME>/.cc-monitor/bin",
+    "editedAt": null,
     "exists": true,
     "fileProblem": null,
     "fingerprint": "265-4aa8e333d281dd83",
     "home": "<HOME>",
     "migrated": null,
-    "modified": "<MTIME>",
     "path": "<HOME>/.cc-monitor/profiles.toml",
     "profiles": [
       {
@@ -198,7 +198,7 @@
         "own": [],
         "problem": {
           "line": 15,
-          "message": "alphacct 写错了，此刻不能用 —— 行 15 · 未知选项 tmux-sise"
+          "message": "alphacct 写错 · 当前不可用 · 行 15 · 未知选项 tmux-sise"
         },
         "said": "",
         "usable": false
@@ -261,7 +261,8 @@
         "usable": true
       }
     ],
-    "seed": []
+    "seed": [],
+    "tmux": true
   },
   "resolveReply": {
     "chain": [
@@ -347,7 +348,6 @@
   },
   "writeReply": {
     "fingerprint": "267-301db343883b70b6",
-    "modified": "<MTIME>",
     "reload": "已开的终端要运行「. <HOME>/.cc-monitor/aliases.sh」或新开一个",
     "wrote": true
   },

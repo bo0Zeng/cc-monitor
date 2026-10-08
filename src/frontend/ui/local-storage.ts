@@ -23,13 +23,9 @@ const LS_PREFIX = "cc-monitor." as const;
 export const LS_KEYS = {
   /** 主窗口底部抽屉：开着哪一页、多高（`{"page":"tasks"|"agents"|"terminal"|null,"height":240}`）。纯界面偏好，丢了回到收着、缺省高。 */
   bottomDrawer: "cc-monitor.bottom-drawer",
-  /** 设置窗别名清单：上次在这一页存完时各台配置文件的修改时间（`{origin: 秒}`），比它晚 ⇒ 说「不是在这里改的」。丢了只是少这一句。 */
-  profilesLastWrite: "cc-monitor.profiles.lastWrite",
   // 🔴 `tabArchiveCollapsed` 删掉 —— 归档抽屉整个不存在了。
   //    用户逐字「没有归档这个东西，不要归档，就是灰 tab」。盘上遗留的那个键无人再读
   //    （条 80：不为盘上已有状态留兼容 ⇒ 不写清理，让它自然作废）。
-  /** v2.1.0 issue #7：每分组的折叠状态。动态生成 key。 */
-  settingsCollapsed: (groupId: string) => `cc-monitor.settings.collapsed.${groupId}`,
   /** issue #12：fork 树展开状态（按 sessionId 入集合）。 */
   historyExpandedForks: "cc-monitor.history.expanded-forks",
   /** v2.3.0：tool result 渲染模式偏好（per tool name）。 */

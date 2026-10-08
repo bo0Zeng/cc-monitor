@@ -206,23 +206,60 @@ export function extList(visit: boolean): Promise<ExtList> {
   return ask((body, budget) => chan.call(LOCAL_ORIGIN, "ext-list", body, budget), { visit }, LIST_BUDGET_MS, decodeExtList);
 }
 
-/** 装到一台时要交给枢纽的那几格（`from` / `to` = 枢纽认的键，`null` = 本机后端自己；`scope.to` = 用户在卡上选的那一处）。 */
-export interface ExtAsk {
-  kind: ExtKind;
-  name: string;
-  from: string | null;
-  to: string | null;
-  scope: ExtScope;
+/** 「装到 N 台」那一张卡（本机后端当枢纽，向各台问完并好）：落点交集 · 共用的那一处 · 并好的要填格 · 各台的卡。 */
+export interface ExtManyCard {
+  places: ExtTarget[];
+  place: ExtLoc | null;
+  slots: { field: string; key: string; kept: string[] }[];
+  /** 那台没拼成 ⇒ `card` 为 `null`、`error` 是那台说的那一句。 */
+  machines: { to: string | null; name: string; card: ExtCard | null; files: string[]; error: string | null }[];
 }
 
-/** 确认卡（只问本机后端：它当枢纽）。 */
-export function extHubPreview(b: ExtAsk): Promise<ExtCard> {
-  return ask((body, budget) => chan.call(LOCAL_ORIGIN, "ext-hub-preview", body, budget), { ...b }, WRITE_BUDGET_MS, decodeExtCard);
+/** 各台各自结局。 */
+export interface ExtManyDone {
+  machines: { to: string | null; name: string; done: ExtDone | null; error: string | null }[];
 }
 
-/** 装：卡上的记号原样交回；`fill` = 用户在卡上填的值（`{env: {键: 值}}`）。 */
-export function extHubApply(b: ExtAsk, card: ExtCard, fill: Record<string, Record<string, string>>): Promise<ExtDone> {
-  return ask((body, budget) => chan.call(LOCAL_ORIGIN, "ext-hub-apply", body, budget), { ...b, tokens: card.tokens, fill }, WRITE_BUDGET_MS, decodeExtDone);
+const keyOrNull = (v: unknown): string | null => (v === null ? null : str(v));
+/** `ext-hub-preview` 的成品。严格收。 */
+export function decodeExtManyCard(v: unknown): ExtManyCard {
+  const o = obj(v, ["places", "place", "slots", "machines"]);
+  return {
+    places: arr(o.places, target),
+    place: o.place === null ? null : loc(o.place),
+    slots: arr(o.slots, (x) => {
+      const s = obj(x, ["field", "key", "kept"]);
+      return { field: str(s.field), key: str(s.key), kept: arr(s.kept, str) };
+    }),
+    machines: arr(o.machines, (x) => {
+      const m = obj(x, ["to", "name", "card", "files", "error"]);
+      return { to: keyOrNull(m.to), name: str(m.name), card: m.card === null ? null : decodeExtCard(m.card), files: arr(m.files, str), error: optStr(m.error) };
+    }),
+  };
+}
+
+/** `ext-hub-apply` 的成品。严格收。 */
+export function decodeExtManyDone(v: unknown): ExtManyDone {
+  const o = obj(v, ["machines"]);
+  return {
+    machines: arr(o.machines, (x) => {
+      const m = obj(x, ["to", "name", "done", "error"]);
+      return { to: keyOrNull(m.to), name: str(m.name), done: m.done === null ? null : decodeExtDone(m.done), error: optStr(m.error) };
+    }),
+  };
+}
+
+/** 「装到 N 台」那一张卡：勾上的几台（`null` = 本机后端自己）＋ 用户选的那一处（没选 ⇒ 后端建议）。 */
+export function extHubPreview(kind: ExtKind, name: string, to: (string | null)[], place: ExtLoc | null): Promise<ExtManyCard> {
+  return ask((body, budget) => chan.call(LOCAL_ORIGIN, "ext-hub-preview", body, budget), { kind, name, to, place }, WRITE_BUDGET_MS, decodeExtManyCard);
+}
+
+/** 装到那几台：卡上那一处 ＋ 各台卡上的记号原样交回；`fill` 只填一次。 */
+export function extHubApply(kind: ExtKind, name: string, card: ExtManyCard, fill: Record<string, Record<string, string>>): Promise<ExtManyDone> {
+  const tokens: Record<string, unknown> = {};
+  for (const m of card.machines) if (m.card) tokens[m.to ?? ""] = m.card.tokens;
+  const to = card.machines.map((m) => m.to);
+  return ask((body, budget) => chan.call(LOCAL_ORIGIN, "ext-hub-apply", body, budget), { kind, name, to, place: card.place, tokens, fill }, WRITE_BUDGET_MS, decodeExtManyDone);
 }
 
 /** 卸之前那张卡（问被卸的那一台）。 */

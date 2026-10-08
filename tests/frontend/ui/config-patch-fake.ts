@@ -138,7 +138,7 @@ export function makeFakeConfigDisk(initial: Record<string, unknown> = {}) {
 //   `vi.mock("../../../src/frontend/ui/config", async (orig) => (await import("./config-patch-fake")).mockedConfigModule(orig));`
 // `loadConfig` 是 `fakeCfg.load`（照旧 `mockResolvedValue` 摆盘上那份）；每次写经 [`applyConfigEdits`]
 // 算出**写完之后的整份**交给 `fakeCfg.saved`（`saved.mock.calls[i][0]`），并成为之后 `load` 读到的那份。`setAt` / `removeAt` / 登记表用真的。
-// ⚠ `patchConfig` / `patchConfigFrom` 刻意**不是** `vi.fn`：`vi.resetAllMocks()` 会把 `vi.fn` 的实现一起清掉。
+// ⚠ `patchConfig` 刻意**不是** `vi.fn`：`vi.resetAllMocks()` 会把 `vi.fn` 的实现一起清掉。
 export const fakeCfg = {
   load: vi.fn(),
   saved: vi.fn(),
@@ -159,13 +159,7 @@ export async function mockedConfigModule(
     fakeCfg.load.mockResolvedValue(JSON.parse(JSON.stringify(doc)));
     fakeCfg.saved(doc);
   };
-  const patchConfigFrom = async (
-    build: (cfg: Record<string, unknown>) => readonly Edit[],
-  ): Promise<void> => {
-    const edits = build(((await fakeCfg.load()) ?? {}) as Record<string, unknown>);
-    if (edits.length > 0) await patchConfig(edits);
-  };
-  return { ...actual, loadConfig: fakeCfg.load, patchConfig, patchConfigFrom };
+  return { ...actual, loadConfig: fakeCfg.load, patchConfig };
 }
 
 /**

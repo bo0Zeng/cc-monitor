@@ -39,5 +39,8 @@ export const CONTEXT_LIMITS: SettingsTarget = { page: "general", anchor: "contex
 /** 文件与数据（「要你动手」那一栏）。 */
 export const CHORES: SettingsTarget = { page: "data" };
 
+/** 机器页顶上「开始用」那一块。 */
+export const START: SettingsTarget = { page: "machines", anchor: "first-run" };
+
 /** 快捷键那一节。 */
 export const KEYBINDINGS: SettingsTarget = { page: "appearance", anchor: "keybindings" };

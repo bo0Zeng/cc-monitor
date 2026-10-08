@@ -856,7 +856,11 @@ pub const PROTO_VERSION: u32 = 1;
 /// p9d-trust-sync：信任在 cc-monitor 管的各号之间同步（并 MCP 同步监听器），起会话 / 重启前预标目标目录；线上形状不变。
 ///
 /// p9e-arm-then-scan：会话监听改成先挂耳朵再初扫（扫的过程中落下的 pidfile 不再漏报）；session_terminals · oauth 续期锁 · 换号重启 R2 · entry-graphs 四条负载偶发修根因；CI 装 apt 走带超时的重试脚本。
-pub const BUILD_ID: &str = "p9e-arm-then-scan";
+///
+/// p9f-copy-backend：后端 be* 那一面文案按新写法压缩（只改表值）；远端后端随新版本重新部署后才说新话。
+///
+/// p9g-first-run：后端新帧命令 first-run（开始用三步、必做与跳过都由后端判）· ext-hub-preview / apply 收一组机器（落点交集、要填格合并在枢纽）· profiles-read 多 tmux 一格。
+pub const BUILD_ID: &str = "p9g-first-run";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
@@ -1017,6 +1021,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 离线那台的上次值（`last-seen-read` / `last-seen-write`，读写后端自己的 `~/.cc-monitor/last-seen.json`）派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     "--last-seen-read",
     "--last-seen-write",
+    // 首次运行「开始用」那份数（`first-run`）派生的 CLI 面。只读。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    "--first-run",
     // 帧命令 `ccm-print` 的 CLI 面删了：`--ccm-*` 这族名字归 ccm 的诊断口，二进制叫 `ccm` 时
     //   按本表分流会把 `ccm --ccm-print` 抢进后端（`cli_control::cli_exposed` 排除 ccm 的词）。逼出 `BUILD_ID` bump，本路不 bump。
     // MCP 资产同步的判定（`inbound::REGISTRY` 的 `mcp-sync-plan`）派生的 CLI 面。只读，入参从 stdin 读。

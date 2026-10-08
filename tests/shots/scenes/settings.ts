@@ -197,12 +197,12 @@ export const SETTINGS_SCENES: Scene[] = [
   }),
   settings("settings-data-placed", "设置 · 文件与数据 · 放了什么", "第二栏：机器 chip · Claude 目录 · 改过你的文件（撤回在哪 ［前往］）· cc-monitor 的文件", async () => {
     await go("data");
-    await click(await byText(".settings-page:not([hidden]) button", "cc-monitor 放了什么"));
+    await click(await byText(".settings-page:not([hidden]) button", "cc-monitor 放置的文件"));
     await sleep(700);
   }),
   settings("settings-data-placed-remote", "设置 · 文件与数据 · 放了什么 · devbox", "第二栏选 devbox：只列那台改过你的文件", async () => {
     await go("data");
-    await click(await byText(".settings-page:not([hidden]) button", "cc-monitor 放了什么"));
+    await click(await byText(".settings-page:not([hidden]) button", "cc-monitor 放置的文件"));
     await sleep(400);
     await click(await byText(".settings-page:not([hidden]) .data-chip", "devbox"));
     await sleep(700);
@@ -213,13 +213,24 @@ export const SETTINGS_SCENES: Scene[] = [
     "gpu-01 连不上：照本机后端记着的上次那一份画（改过你的文件 · cc-monitor 的文件）＋ 警告条说多旧 ［重试］",
     async () => {
       await go("data");
-      await click(await byText(".settings-page:not([hidden]) button", "cc-monitor 放了什么"));
+      await click(await byText(".settings-page:not([hidden]) button", "cc-monitor 放置的文件"));
       await sleep(400);
       await click(await byText(".settings-page:not([hidden]) .data-chip", "gpu-01"));
       await sleep(700);
     },
     troubleWorld,
   ),
+  settings("settings-ext-install", "设置 · 扩展 · 一次装到两台", "github 那一行点开：安装位置每台一行（勾选 · 现状）· 勾 devbox 与 win-laptop ⇒ 一张卡：装到哪 · token 只填一次（win-laptop 已有）· 会写的文件逐台 ·［装到 2 台］", async () => {
+    await go("ext");
+    await sleep(600);
+    document.querySelector<HTMLElement>('.settings-page:not([hidden]) .ext-row[data-key="mcp/github"]')?.click();
+    await sleep(300);
+    for (const m of ["devbox", "win-laptop"]) {
+      document.querySelector<HTMLInputElement>(`.settings-page:not([hidden]) .ext-pick[data-machine="${m}"]`)?.click();
+      await sleep(300);
+    }
+    await sleep(500);
+  }, troubleWorld),
   settings("settings-general-resume-open", "设置 · 通用 · 恢复命令下拉", "恢复命令点开：默认那一家的启动器（灰字默认）· 用过的 · 自定义…", async () => {
     await go("general");
     await sleep(500);
@@ -373,7 +384,7 @@ export const SETTINGS_SCENES: Scene[] = [
   }, defaultWorld, 860, 860),
   settings("profiles-03-new", "设置 · 别名 · 03 新建", "＋ 新增别名：名字 bcct2 · 基于 cct · 账号 b；在哪起 / 按目录灰着写继承值；等于问后端", async () => {
     await profilesPage();
-    await click(await byText(pf(".prof-head button"), "＋ 新增别名"));
+    await click(await byText(pf(".prof-head button"), "新增别名"));
     await sleep(500);
     setField(pf("[data-role=profile-form] [data-role=name]"), "bcct2");
     await sleep(400);
@@ -394,7 +405,7 @@ export const SETTINGS_SCENES: Scene[] = [
     await sleep(500);
     setField(pf('[data-role=profile-form] [data-slot=tmux] input'), "work");
     await sleep(700);
-    await click(await byText(pf("[data-role=impact-note] .cfg-link"), "看每条改前改后"));
+    await click(await byText(pf("[data-role=impact-note] .cfg-link"), "逐条对比"));
     await sleep(400);
     top(pf(".prof-notes"));
     await sleep(300);
@@ -406,12 +417,7 @@ export const SETTINGS_SCENES: Scene[] = [
     top(pf(".prof-notes"));
     await sleep(300);
   }, defaultWorld, 900),
-  settings("profiles-06-edited", "设置 · 别名 · 06 配置文件被手改过", "配置文件的修改时间比这页上次存的晚：清单头一行小字 ＋ 看配置文件", async () => {
-    try {
-      localStorage.setItem("cc-monitor.profiles.lastWrite", JSON.stringify({ devbox: 1 }));
-    } catch {
-      // 截图沙箱里存不了就不出那一句。
-    }
+  settings("profiles-06-edited", "设置 · 别名 · 06 配置文件被手改过", "后端说上次 cc-monitor 写过之后有人改过：清单头一行小字 ＋ 看配置文件", async () => {
     await profilesPage();
     top(pf(".prof-notes"));
     await sleep(300);

@@ -1,11 +1,11 @@
 /**
- * 额度的**行模型**：`quota-read` 一份回包 ＋ 此刻 ＋ 时区偏移 ⇒ 每号几行（悬停卡那几行）。
+ * 额度的**行模型**：`quota-read` 一份回包 ＋ 此刻 ⇒ 每号几行（悬停卡那几行）。
  *
  * - 只排版、不判：「快满 · 被拒 · 超额在兜 · 上一窗已过 · 数旧 · 卡人的窗口」都是回包里后端给的词，这里照词选字。
  * - 终端 `--text`（后端 CLI 那个口旁边的 `quota_text.rs`）排同一份回包；两边锁同一份金样
  *   `tests/__fixtures__/quota-text.golden.json`，逐字对拍 —— 想改写法先改金样。
- * - 时刻写法（当天 `HH:MM` · 非当天 `MM-DD HH:MM` · 非当年 `YYYY-MM-DD HH:MM` · 距今 `+1h50m` / `+3d`）只住
- *   [`fmtAt`] / [`fmtRel`]；会话那几行（`⇄ 14:20 ← work`）也用它们。
+ * - 时刻怎么写（当天 `HH:MM` · 非当天 `MM-DD HH:MM` · 非当年带年）是后端回包里每个时刻旁边那一格 `…Text`（后端按那台的钟写好），
+ *   这里照抄、不换算；距今（`+1h50m` / `+3d`）只住 [`fmtRel`]。
  */
 import { copyText } from "./copy-table";
 import type { LoginState } from "./generated/LoginState";
@@ -18,7 +18,9 @@ export interface QuotaReadAccount {
   agent: string;
   account: string;
   seenAt: number;
-  reading?: { resetsAt?: number };
+  /** `seenAt` 写给人看的样子（后端写好）。 */
+  seenAtText?: string;
+  reading?: { resetsAt?: number; resetsAtText?: string };
   kind: QuotaKind;
   state: QuotaState;
   stale: boolean;
@@ -46,7 +48,7 @@ export interface QuotaRead {
   accounts: QuotaReadAccount[];
   unseen: QuotaReadUnseen[];
   usableNow: string[];
-  earliestReturn: { account: string; at: number } | null;
+  earliestReturn: { account: string; at: number; atText?: string } | null;
 }
 
 /** 一个号那一段：首行 `名 类型 [标签]`，其余每行一组格（键 · 值 · ↻ · 距今，缺的格不出）。 */
@@ -57,35 +59,6 @@ export interface QuotaBlock {
 }
 
 const DAY = 86_400;
-
-/** 天数（自 1970-01-01）⇒ 年月日（Howard Hinnant 的 civil_from_days）。 */
-function civil(days: number): { y: number; m: number; d: number } {
-  const z = days + 719_468;
-  const era = Math.floor(z / 146_097);
-  const doe = z - era * 146_097;
-  const yoe = Math.floor((doe - Math.floor(doe / 1460) + Math.floor(doe / 36_524) - Math.floor(doe / 146_096)) / 365);
-  const doy = doe - (365 * yoe + Math.floor(yoe / 4) - Math.floor(yoe / 100));
-  const mp = Math.floor((5 * doy + 2) / 153);
-  const d = doy - Math.floor((153 * mp + 2) / 5) + 1;
-  const m = mp < 10 ? mp + 3 : mp - 9;
-  return { y: era * 400 + yoe + (m <= 2 ? 1 : 0), m, d };
-}
-
-const two = (n: number): string => String(n).padStart(2, "0");
-
-/** 一个时刻（unix 秒）按此刻与时区偏移（分钟，东正）写：当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年 `YYYY-MM-DD HH:MM`。 */
-export function fmtAt(t: number, now: number, tzOffsetMin: number): string {
-  const local = t + tzOffsetMin * 60;
-  const here = now + tzOffsetMin * 60;
-  const day = Math.floor(local / DAY);
-  const today = Math.floor(here / DAY);
-  const secs = local - day * DAY;
-  const hm = `${two(Math.floor(secs / 3600))}:${two(Math.floor((secs % 3600) / 60))}`;
-  if (day === today) return hm;
-  const a = civil(day);
-  const md = `${two(a.m)}-${two(a.d)} ${hm}`;
-  return a.y === civil(today).y ? md : `${a.y}-${md}`;
-}
 
 /** 距今（只写未来）：`+12m` · `+1h50m` · `+2h` · `+3d`（满 24h 只写天）；已过 ⇒ `null`。分钟向上取整。 */
 export function fmtRel(t: number, now: number): string | null {
@@ -154,16 +127,16 @@ function head(account: string, kind: QuotaKind, login: LoginState): string[] {
   return row;
 }
 
-/** 重置那一格与距今那一格（没给时刻 ⇒ 都不出；已过 ⇒ `↻.. 已过`、没有距今）。 */
-function resetCells(at: number | undefined, now: number, tz: number): string[] {
+/** 重置那一格与距今那一格（没给时刻 ⇒ 都不出；已过 ⇒ `↻.. 已过`、没有距今）。`text` 是后端写好的那一格。 */
+function resetCells(at: number | undefined, text: string | undefined, now: number): string[] {
   if (at === undefined) return [];
-  const s = fmtAt(at, now, tz);
+  const s = text ?? "";
   const rel = fmtRel(at, now);
   return rel === null ? [copyText("acct.reset.past", { at: s })] : [copyText("acct.reset.at", { at: s }), rel];
 }
 
 /** 一个语义位那一行。用满 `✕`；卡着的窗口按显示态换字（被拒 `58% · 被拒` · 超额在兜 `超额` · 上一窗已过 `—`）。 */
-function slotRow(a: QuotaReadAccount, slot: string, now: number, tz: number): string[] {
+function slotRow(a: QuotaReadAccount, slot: string, now: number): string[] {
   const s = a.slots.find((x) => x.slot === slot);
   if (!s) return [slotLabel(slot), copyText("acct.val.none")];
   const here = a.limiting === slot;
@@ -174,20 +147,20 @@ function slotRow(a: QuotaReadAccount, slot: string, now: number, tz: number): st
   else if (here && a.state === "refused") value = s.pct === undefined ? copyText("acct.val.refusedOnly") : copyText("acct.val.refusedPct", { pct: s.pct });
   else if (s.pct === undefined) value = copyText("acct.val.none");
   else value = copyText("acct.val.pct", { pct: s.pct });
-  return [slotLabel(slot), value, ...resetCells(s.resetsAt, now, tz)];
+  return [slotLabel(slot), value, ...resetCells(s.resetsAt, s.resetsAtText, now)];
 }
 
 /** 被拒 / 被拒过、却没有分窗口的数可画（按量号 · 被拒时回包没带那一族头）⇒ `状态` 一行。 */
-function stateRow(a: QuotaReadAccount, now: number, tz: number): string[] | null {
+function stateRow(a: QuotaReadAccount, now: number): string[] | null {
   if (a.state !== "refused" && a.state !== "resetSinceSeen") return null;
   const value = a.state === "refused" ? copyText("acct.val.refusedOnly") : copyText("acct.val.none");
-  return [copyText("acct.row.state"), value, ...resetCells(a.reading?.resetsAt, now, tz)];
+  return [copyText("acct.row.state"), value, ...resetCells(a.reading?.resetsAt, a.reading?.resetsAtText, now)];
 }
 
 /** 采样那一行：几点 · 哪台；数旧 ⇒ 几点 · 旧。 */
-function seenRow(at: number, stale: boolean, now: number, tz: number, machine: string): string[] {
-  const s = fmtAt(at, now, tz);
-  return [copyText("acct.row.seen"), stale ? copyText("acct.seen.staleShort", { at: s }) : copyText("acct.seen.at", { at: s, machine })];
+function seenRow(a: QuotaReadAccount, machine: string): string[] {
+  const s = a.seenAtText ?? "";
+  return [copyText("acct.row.seen"), a.stale ? copyText("acct.seen.staleShort", { at: s }) : copyText("acct.seen.at", { at: s, machine })];
 }
 
 /** 按量号没有分窗口的限额：`5h/7d — 无限额`。 */
@@ -196,14 +169,14 @@ function noLimitRow(): string[] {
 }
 
 /** 出过数的号那一段。 */
-export function seenBlock(a: QuotaReadAccount, now: number, tz: number, machine: string): QuotaBlock {
+export function seenBlock(a: QuotaReadAccount, now: number, machine: string): QuotaBlock {
   const rows = [head(a.account, a.kind, a.login)];
   const windowed = a.limiting !== undefined && a.slots.some((s) => s.slot === a.limiting);
   if (a.kind === "api") {
-    rows.push(stateRow(a, now, tz) ?? noLimitRow());
+    rows.push(stateRow(a, now) ?? noLimitRow());
   } else {
-    rows.push(slotRow(a, "5h", now, tz), slotRow(a, "7d", now, tz));
-    const st = windowed ? null : stateRow(a, now, tz);
+    rows.push(slotRow(a, "5h", now), slotRow(a, "7d", now));
+    const st = windowed ? null : stateRow(a, now);
     if (st) rows.push(st);
     rows.push(
       a.state === "overageInUse"
@@ -211,7 +184,7 @@ export function seenBlock(a: QuotaReadAccount, now: number, tz: number, machine:
         : [copyText("acct.row.over"), copyText("acct.val.none")],
     );
   }
-  rows.push(seenRow(a.seenAt, a.stale, now, tz, machine));
+  rows.push(seenRow(a, machine));
   return { agent: a.agent, account: a.account, rows };
 }
 
@@ -233,6 +206,6 @@ export function fiveHourCell(r: QuotaRead | null | undefined, agent: string, acc
   if (!r || r.state === "unreadable") return null;
   const a = r.accounts.find((x) => x.account === account && x.agent === agent);
   if (!a || a.kind === "api") return null;
-  const [slot, value] = slotRow(a, "5h", r.now, 0);
+  const [slot, value] = slotRow(a, "5h", r.now);
   return copyText("resumeMenu.account.quota", { slot, value });
 }

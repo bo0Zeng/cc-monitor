@@ -458,7 +458,7 @@ describe("[C-L5] 值与汉字之间的空格随值定", () => {
     const raw = (zh: string, v: string): string => zh.replace(/\{[A-Za-z][A-Za-z0-9]*\}/g, v);
     expect(new RegExp(`${HAN}${ASCII}|${ASCII}${HAN}`).test(raw("在{machine}上", ASCII))).toBe(true);
     expect(new RegExp(`(?!${HANV})${HAN} ${HANV}|${HANV} (?!${HANV})${HAN}`).test(raw("{machine} 上没有", HANV))).toBe(true);
-    expect(copyText("launchArrival.arrived.body", { machine: ASCII })).toBe(`${ASCII} 上报出了这个会话。`);
+    expect(copyText("launchArrival.arrived.body", { machine: ASCII })).toBe(`${ASCII} 已报出此会话`);
     expect(copyText("extPage.card.slot", { field: HANV, key: "b" })).toBe(`${HANV}里的 b`);
   });
 });

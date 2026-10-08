@@ -128,7 +128,6 @@ vi.mock("../../../../src/frontend/ui/turn-notify", () => ({ turnEndNotifier: { o
 vi.mock("../../../../src/frontend/ui/behavior", () => ({
   getBehavior: () => ({ resumeCommand: "" }),
 }));
-vi.mock("../../../../src/frontend/ui/format", () => ({ formatTimestampSmart: () => "时间" }));
 
 import { REPO_ROOT } from "../../../test-support/repo-root";
 import { stripComments } from "../../../test-support/strip-comments";

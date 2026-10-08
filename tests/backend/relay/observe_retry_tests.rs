@@ -520,6 +520,8 @@ fn a_refused_account_is_swapped_for_the_next_one_without_the_agent_noticing() {
     assert_eq!(
         s.history,
         [rotation::SwitchRecord {
+            at_text: None,
+            from_resets_at_text: None,
             at: s.since,
             from: "a".into(),
             to: "b".into(),

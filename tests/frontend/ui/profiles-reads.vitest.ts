@@ -25,25 +25,24 @@ import { refusedReply } from "../../test-support/chan-fake";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 const G = JSON.parse(readFileSync(resolve(REPO_ROOT, "tests/__fixtures__/profiles.golden.json"), "utf8")) as Record<string, unknown>;
-// 修改时间在金样里是占位（机器上会变）：换成一个数再收。
-const withTime = (v: unknown): Record<string, unknown> => ({ ...(v as Record<string, unknown>), modified: 1791380000 });
 
 describe("profiles-* 五问的成品按金样严格收", () => {
   it("五口的金样都收得下，收下来逐字不变", () => {
-    expect(decodeBook(withTime(G.readReply))).toEqual(withTime(G.readReply));
+    expect(decodeBook(G.readReply)).toEqual(G.readReply);
     expect(decodeResolved(G.resolveReply)).toEqual(G.resolveReply);
-    expect(() => decodeBook(G.readReply)).toThrow(ReplyUnreadable);
     expect({ affected: decodeImpact(G.impactReply) }).toEqual(G.impactReply);
     expect({ bases: decodeBases(G.basesReply) }).toEqual(G.basesReply);
   });
 
-  it("写那一口的占位（修改时间）换成数之后收得下", () => {
-    const w = withTime(G.writeReply);
-    expect(decodeWriteDone(w)).toEqual(w);
+  it("写那一口收得下；「手改过」那一格是后端写好的时刻串或 null，给数不收", () => {
+    expect(decodeWriteDone(G.writeReply)).toEqual(G.writeReply);
+    const book = G.readReply as Record<string, unknown>;
+    expect(decodeBook({ ...book, editedAt: "14:20" }).editedAt).toBe("14:20");
+    expect(() => decodeBook({ ...book, editedAt: 1791380000 })).toThrow(ReplyUnreadable);
   });
 
   it("多一格 / 缺一格 / 类型不对 ⇒ 抛「两端契约对不上」，不猜", () => {
-    const book = withTime(G.readReply);
+    const book = G.readReply as Record<string, unknown>;
     expect(() => decodeBook({ ...book, extra: 1 })).toThrow(ReplyUnreadable);
     const { accounts: _gone, ...short } = book;
     expect(() => decodeBook(short)).toThrow(ReplyUnreadable);
