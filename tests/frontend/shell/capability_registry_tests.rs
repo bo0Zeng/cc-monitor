@@ -17,6 +17,11 @@ const ALLOWED: &[(&str, &str)] = &[
     ("core:window:allow-set-fullscreen", "全屏"),
     ("core:window:allow-is-fullscreen", "查全屏状态"),
     ("core:window:allow-close", "关窗"),
+    (
+        "core:window:allow-destroy",
+        "agent 窗口接管了关窗（关之前告诉别的窗口「这扇关了」）又放行：Tauri 在处理完之后替它 `destroy()`，\
+             没有这一格 ⇒ 点 × 关不掉。同发给三类窗口（理由同 `allow-hide` 那一条）",
+    ),
     ("core:webview:allow-set-webview-zoom", "主窗口放大 / 缩小 / 还原（Ctrl+= · Ctrl+- · Ctrl+0，记住）"),
     (
         "core:window:allow-hide",
