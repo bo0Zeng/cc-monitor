@@ -8,6 +8,7 @@ const sent: { op: string; body: Record<string, unknown> }[] = [];
 const replies = new Map<string, unknown>();
 let refusal: { op: string; code: string; message: string; data: unknown } | null = null;
 let hang = false;
+let boom: Error | null = null;
 
 vi.mock("../../../src/comms/inward/chan", async (importOriginal) => {
   const real = await importOriginal<typeof import("../../../src/comms/inward/chan")>();
@@ -21,6 +22,7 @@ vi.mock("../../../src/comms/inward/chan", async (importOriginal) => {
           refusal = null;
           throw new real.ChanError({ layer: "peer", why: "refused", body: new TextEncoder().encode(JSON.stringify({ code: r.code, message: r.message, data: r.data })) });
         }
+        if (boom && op === "session-new") throw boom;
         if (hang && op === "session-new") {
           throw new real.ChanError({ layer: "hop", at: { idx: 0, tag: "wait" }, reach: "Sent", why: "Overrun" });
         }
@@ -56,6 +58,7 @@ vi.mock("../../../src/frontend/ui/tab-batch-run", () => win);
 vi.mock("@tauri-apps/api/event", () => ({ emit: vi.fn(async () => {}), listen: vi.fn(async () => () => {}) }));
 
 import { openNewSession, setNewSessionPlaceholder } from "../../../src/frontend/ui/new-session";
+import { commands } from "../../../src/frontend/ui/ipc/commands";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 
 const flush = async (): Promise<void> => {
@@ -94,6 +97,9 @@ beforeEach(() => {
   replies.clear();
   refusal = null;
   hang = false;
+  boom = null;
+  vi.mocked(commands.backend_status).mockImplementation(async () => ({ channel: true }) as never);
+  vi.mocked(commands.backend_start).mockClear();
   replies.set("session-new-facts", FACTS);
   replies.set("session-new-dir", { exists: true, tmuxName: "orders-cc" });
   replies.set("session-new", OK);
@@ -247,5 +253,193 @@ describe("分叉那一形", () => {
     expect(req.forkFrom).toEqual({ sid: "src-1", uuid: "msg-9" });
     expect(req.account, "源会话的号说不出 ⇒ 跟随（那台按源会话上次的号判），不拿当前号顶替").toBeUndefined();
     expect(req.tmuxName).toBeUndefined();
+  });
+});
+
+describe("换机器 · 换一家 · 那台问不到", () => {
+  const top = (): string => dialog().querySelector<HTMLElement>("[class*=nsTop]")!.textContent ?? "";
+
+  it("换一台 ⇒ 目录清空、照新那台重问、重新预填", async () => {
+    replies.set("session-new-facts", { ...FACTS, recent: [{ cwd: "/srv/a", lastMs: 1 }] });
+    void openNewSession({ origin: "<local>" });
+    await flush();
+    const cwd = input(copyText("newSession.label.cwd"));
+    cwd.value = "/typed";
+    replies.set("session-new-facts", { ...FACTS, recent: [{ cwd: "/srv/b", lastMs: 1 }] });
+    const asked = sent.filter((x) => x.op === "session-new-facts").length;
+    choose(sel(copyText("newSession.label.machine")), "devbox");
+    await flush();
+    expect(sent.filter((x) => x.op === "session-new-facts").length).toBe(asked + 1);
+    expect(cwd.value, "换机器没清掉手填的目录").toBe("/srv/b");
+  });
+
+  it("那台连不上 ⇒ 框顶说离线 ＋［重连］（点了请后端起那台）、［新建］灰着说为什么；不问那台", async () => {
+    vi.mocked(commands.backend_status).mockImplementation((async (a: { origin: string }) => ({ channel: a.origin !== "devbox" })) as never);
+    void openNewSession({ origin: "devbox" });
+    await flush();
+    expect(top()).toContain(copyText("newSession.machine.offline", { machine: "devbox" }));
+    expect(createBtn().title).toBe(copyText("newSession.machine.offline", { machine: "devbox" }));
+    expect(sent.filter((x) => x.op.startsWith("session-new")), "连不上还去问那台").toEqual([]);
+    [...dialog().querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("newSession.machine.reconnect"))!.click();
+    expect(commands.backend_start).toHaveBeenCalledWith({ origin: "devbox" });
+  });
+
+  it("那台问不到能起什么 ⇒ 框顶说原因、［新建］灰着说还在读", async () => {
+    refusal = { op: "session-new-facts", code: "boom", message: "读不出", data: null };
+    void openNewSession({ origin: "devbox" });
+    await flush();
+    expect(top()).toContain(copyText("newSession.facts.failed", { machine: "devbox", why: "\u0000" }).split("\u0000")[0]);
+    expect(createBtn().title).toBe(copyText("newSession.facts.loading"));
+  });
+
+  it("目录空着 ⇒ ［新建］灰着说要填；填了就亮", async () => {
+    replies.set("session-new-facts", { ...FACTS, recent: [] });
+    void openNewSession({ origin: "devbox" });
+    await flush();
+    expect(createBtn().title).toBe(copyText("newSession.cwd.empty"));
+    const cwd = input(copyText("newSession.label.cwd"));
+    cwd.value = "/home/u/x";
+    cwd.dispatchEvent(new Event("input"));
+    expect(createBtn().getAttribute("aria-disabled")).toBeNull();
+  });
+
+  it("换一家 ⇒ 启动命令的占位跟着那一家、号那一行照那一家重列", async () => {
+    replies.set("session-new-facts", { ...FACTS, agents: ["claude", "codex"] });
+    void openNewSession({ origin: "devbox" });
+    await flush();
+    const cmd = input(copyText("newSession.label.command"));
+    const before = cmd.placeholder;
+    choose(sel(copyText("newSession.label.agent")), "codex");
+    await flush();
+    expect(sel(copyText("newSession.label.agent")).dataset.value).toBe("codex");
+    expect(cmd.placeholder).not.toBe(before);
+    createBtn().click();
+    await flush();
+    expect(newRequests()[0].agent).toBe("codex");
+  });
+});
+
+describe("目录格 · 最近的 · 更多那几格", () => {
+  it("离开目录格 ⇒ 问那台在不在：不在 ⇒ 那一格下黄字；终端名占位跟着那台铸的名字", async () => {
+    void openNewSession({ origin: "devbox" });
+    await flush();
+    replies.set("session-new-dir", { exists: false, tmuxName: "nope-cc" });
+    const cwd = input(copyText("newSession.label.cwd"));
+    cwd.value = "/nope";
+    cwd.dispatchEvent(new Event("blur"));
+    await flush();
+    expect(sent.filter((x) => x.op === "session-new-dir").at(-1)!.body).toEqual({ cwd: "/nope" });
+    expect(rowOf(cwd).textContent).toContain(copyText("launch.dir.missing", { machine: "devbox" }));
+    expect(input(copyText("newSession.label.tmuxName")).placeholder).toBe("nope-cc");
+  });
+
+  it("［最近的］列那台用过的目录（当前那个打勾），点一项填进目录格；那台一个都没有 ⇒ 一项灰着的「没有」", async () => {
+    void openNewSession({ origin: "devbox" });
+    await flush();
+    const recent = dialog().querySelector<HTMLButtonElement>(`button[aria-label="${copyText("newSession.recent.label")}"]`)!;
+    recent.click();
+    const items = [...document.querySelectorAll<HTMLElement>('[role="menu"] [role^="menuitem"]')];
+    expect(items.map((i) => i.textContent)).toEqual(["/home/u/srv/orders", "/home/u/srv/billing"]);
+    expect(items.map((i) => i.getAttribute("aria-checked"))).toEqual(["true", "false"]);
+    items[1].click();
+    await flush();
+    expect(input(copyText("newSession.label.cwd")).value).toBe("/home/u/srv/billing");
+    document.body.replaceChildren();
+    replies.set("session-new-facts", { ...FACTS, recent: [] });
+    void openNewSession({ origin: "devbox" });
+    await flush();
+    dialog().querySelector<HTMLButtonElement>(`button[aria-label="${copyText("newSession.recent.label")}"]`)!.click();
+    const none = [...document.querySelectorAll<HTMLElement>('[role="menu"] [role^="menuitem"]')];
+    expect(none.map((i) => [i.textContent, (i.closest("button") ?? i.querySelector("button") ?? (i as HTMLButtonElement)).disabled])).toEqual([[copyText("newSession.recent.none"), true]]);
+  });
+
+  it("填了终端名与启动命令 ⇒ 请求里带上（tmux 那一形才带终端名）；在格里回车 = 点［新建］", async () => {
+    void openNewSession({ origin: "devbox" });
+    await flush();
+    input(copyText("newSession.label.tmuxName")).value = " mine ";
+    const cmd = input(copyText("newSession.label.command"));
+    cmd.value = " ccm -- x ";
+    cmd.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
+    await flush();
+    expect(newRequests()).toHaveLength(1);
+    expect(newRequests()[0]).toMatchObject({ tmuxName: "mine", command: "ccm -- x", place: "tmux" });
+  });
+
+  it("切到终端窗口 ⇒ 终端名那一格收起、请求里不带它", async () => {
+    void openNewSession({ origin: "devbox" });
+    await flush();
+    const tmuxName = input(copyText("newSession.label.tmuxName"));
+    tmuxName.value = "mine";
+    const w = dialog().querySelector<HTMLInputElement>('input[value="window"]')!;
+    w.click();
+    expect(rowOf(tmuxName).hidden).toBe(true);
+    createBtn().click();
+    await flush();
+    expect(newRequests()[0].tmuxName).toBeUndefined();
+  });
+});
+
+describe("那台说不行的其余几形", () => {
+  it("哪一格不行落在哪一格下（终端名 · 启动命令）；那一格收着 ⇒ 落到框顶", async () => {
+    refusal = { op: "session-new", code: "tmux_taken", message: "原话", data: { field: "tmuxName", unavailable: null } };
+    void openNewSession({ origin: "devbox" });
+    await flush();
+    createBtn().click();
+    await flush();
+    expect(rowOf(input(copyText("newSession.label.tmuxName"))).textContent).toContain(copyText("launch.tmux.taken"));
+    refusal = { op: "session-new", code: "bad_cmd", message: "命令不行", data: { field: "command", unavailable: null } };
+    createBtn().click();
+    await flush();
+    expect(rowOf(input(copyText("newSession.label.command"))).textContent).toContain("命令不行");
+    expect(rowOf(input(copyText("newSession.label.tmuxName"))).textContent, "再交一次先清掉上一次的话").not.toContain(copyText("launch.tmux.taken"));
+    refusal = { op: "session-new", code: "bad_agent", message: "这一家不行", data: { field: "agent", unavailable: null } };
+    createBtn().click();
+    await flush();
+    expect(dialog().querySelector<HTMLElement>("[class*=nsTop]")!.textContent).toContain("这一家不行");
+  });
+
+  it("通道不通 ⇒ 框顶说原话；号被钉住 ⇒ 那一格下说钉住、只给［登录…］", async () => {
+    boom = new Error("线断了");
+    void openNewSession({ origin: "devbox" });
+    await flush();
+    createBtn().click();
+    await flush();
+    expect(dialog().querySelector<HTMLElement>("[class*=nsTop]")!.textContent).toContain("线断了");
+    boom = null;
+    refusal = {
+      op: "session-new",
+      code: "account_unavailable",
+      message: "x",
+      data: { field: "account", unavailable: { requested: "work", pinned: true, listKnown: true, alternative: null } },
+    };
+    createBtn().click();
+    await flush();
+    const note = rowOf(sel(copyText("newSession.label.account"))).querySelector<HTMLElement>("[class*=nsNote]")!;
+    expect(note.textContent).toContain(copyText("newSession.account.pinned"));
+    expect([...note.querySelectorAll("button")].map((b) => b.textContent)).toEqual([copyText("newSession.account.login")]);
+  });
+});
+
+describe("分叉：那台说得出源会话的号与终端", () => {
+  it("号说得出 ⇒ 预选那个号、没有「跟随」；源会话在终端窗口里 ⇒ 预选终端窗口；那一家照源会话", async () => {
+    replies.set("session-new-facts", {
+      ...FACTS,
+      agents: ["codex", "claude"],
+      fork: {
+        agent: "claude",
+        launch: { cwd: { kind: "unknown", why: "exited" }, account: { kind: "known", value: "personal", from: "record" }, terminal: { kind: "known", value: { host: "none" }, from: "record" } },
+        turn: null,
+        startText: null,
+      },
+    });
+    void openNewSession({ origin: "devbox", fork: { sid: "src-1", uuid: "msg-9", title: "t" } });
+    await flush();
+    expect(dialog().textContent).toContain(copyText("newSession.fork.fromBare", { title: "t" }));
+    expect(input(copyText("newSession.label.cwd")).value, "源会话目录说不出 ⇒ 用最近的").toBe("/home/u/srv/orders");
+    expect(dialog().querySelector<HTMLInputElement>('input[value="window"]')!.checked).toBe(true);
+    expect(sel(copyText("newSession.label.agent")).dataset.value).toBe("claude");
+    const acct = sel(copyText("newSession.label.account"));
+    expect(acct.dataset.value).toBe("personal");
+    expect(optionsOf(acct).some((o) => o.includes(copyText("newSession.account.follow")))).toBe(false);
   });
 });
