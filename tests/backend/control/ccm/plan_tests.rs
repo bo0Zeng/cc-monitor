@@ -1965,13 +1965,7 @@ fn the_relay_address_is_decided_at_the_final_exec_and_only_there() {
     ) -> Result<Option<String>, String> {
         Err("中转没在听".into())
     }
-    let args = [
-        "--resume",
-        "s1",
-        "--",
-        "--account-dir",
-        "/h/.claude-alt/w",
-    ];
+    let args = ["--resume", "s1", "--", "--account-dir", "/h/.claude-alt/w"];
     let mut e = env();
     e.relay = Some(inject);
     let Plan::Direct(d) = plan_split(&args, &e).unwrap() else {

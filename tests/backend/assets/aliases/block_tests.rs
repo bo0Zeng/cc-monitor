@@ -1779,17 +1779,11 @@ fn hx2_the_bind_helper_finds_the_monitor_data_dir_through_the_one_exit() {
         assert!(!out.contains("{{"), "有占位符没填：{out}");
     }
     let tpl = include_str!("../../../../src/shared/cc.ps1.tpl");
-    assert_eq!(
-        tpl.matches("work").count(),
-        0,
-        "模板里又写死了一份数据目录"
-    );
+    assert_eq!(tpl.matches("work").count(), 0, "模板里又写死了一份数据目录");
     assert_eq!(tpl.matches("{{MONITOR_DATA_DIR}}").count(), 1);
     let default_dir = std::path::Path::new("/home/u/.claude/work");
     assert_eq!(
-        render_cc_code(default_dir)
-            .matches("work")
-            .count(),
+        render_cc_code(default_dir).matches("work").count(),
         1,
         "正控：喂一个带它的目录时产物里数得到那一个"
     );
