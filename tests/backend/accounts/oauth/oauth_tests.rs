@@ -260,33 +260,13 @@ fn the_registered_token_endpoint_parses() {
 // ── 续期与被拒进日志：按号一行，令牌形状一样都不许进 ──────────────────────────────
 
 /// 跑 `f`，把这段里 `tracing` 打出来的全部文本收回来（只收本线程：续期是同步的）。
+/// 本线程上 `f` 期间 `tracing` 说了什么。听法只有一处（`stream::run_route::tests::heard`）：
+/// 它进来先重算 callsite 的 interest 缓存 —— 这里原先自己起一个订阅者、不重算，并行的别的测试先碰到同一个
+/// callsite 就把它缓存成「没人要」，这条线程上那几行就听不见（`a_stale_lock_directory_…` 负载下间歇红的根因）。
 fn logged<T>(f: impl FnOnce() -> T) -> (T, String) {
-    #[derive(Clone, Default)]
-    struct Buf(Arc<Mutex<Vec<u8>>>);
-    impl std::io::Write for Buf {
-        fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
-            self.0.lock().expect("lock").extend_from_slice(b);
-            Ok(b.len())
-        }
-        fn flush(&mut self) -> std::io::Result<()> {
-            Ok(())
-        }
-    }
-    impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for Buf {
-        type Writer = Buf;
-        fn make_writer(&'a self) -> Buf {
-            self.clone()
-        }
-    }
-    let buf = Buf::default();
-    let sub = tracing_subscriber::fmt()
-        .with_writer(buf.clone())
-        .with_ansi(false)
-        .without_time()
-        .finish();
-    let out = tracing::subscriber::with_default(sub, f);
-    let text = String::from_utf8_lossy(&buf.0.lock().expect("lock")).into_owned();
-    (out, text)
+    let mut out = None;
+    let lines = crate::stream::run_route::tests::heard(|| out = Some(f()));
+    (out.expect("f 跑过了"), lines.join("\n"))
 }
 
 /// 日志里像令牌的东西：`sk-ant` 前缀 · UUID（8-4-4-4-12 位十六进制）· 连着 24 个以上的令牌字符。
@@ -472,6 +452,33 @@ fn a_panic_while_holding_the_refresh_lock_leaves_no_lock_behind() {
     assert!(!acct.join(FACE.lock_inside).exists(), "里面那把留下了");
     assert!(!d.join("acct.lock").exists(), "旁边那把留下了");
     let _ = std::fs::remove_dir_all(&d);
+}
+
+/// 听日志那一手（`logged`）不怕「别的线程先碰到同一个 callsite」：并行的测试线程上没有订阅者，它先碰到
+/// 续期那几行，interest 就被按它的默认缓存成「没人要」；本线程随后再听就听不见（`a_stale_lock_directory_…` 负载下间歇红的那一形）。
+/// 这里把那一形做成确定的：另起一条没有订阅者的线程先续一次，再在 `logged` 里续一次。
+#[test]
+fn logging_is_heard_even_when_another_thread_touched_the_same_lines_first() {
+    let other = temp_dir("heard-other");
+    let other_acct = other.join("acct");
+    write_creds(&other_acct, "acc-old", "ref-old", NOW_MS - 1);
+    let (other_addr, _) = spawn_token_endpoint(NEW_TOKENS, 200, None);
+    let d = temp_dir("heard");
+    let acct = d.join("acct");
+    write_creds(&acct, "acc-old", "ref-old", NOW_MS - 1);
+    let (addr, _) = spawn_token_endpoint(NEW_TOKENS, 200, None);
+    let (r, log) = logged(|| {
+        std::thread::spawn(move || {
+            let _ = access_token(&other_acct, &FACE, &endpoint_at(other_addr), NOW_MS, "b");
+        })
+        .join()
+        .expect("另一条线程");
+        access_token(&acct, &FACE, &endpoint_at(addr), NOW_MS, "b")
+    });
+    assert_eq!(r.map(|s| expose(&s)), Ok("acc-new".to_string()), "{log}");
+    assert!(log.contains("[auth] 续期：号 b · 成"), "{log}");
+    let _ = std::fs::remove_dir_all(&d);
+    let _ = std::fs::remove_dir_all(&other);
 }
 
 #[test]
