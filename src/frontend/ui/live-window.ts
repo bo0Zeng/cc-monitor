@@ -1,25 +1,11 @@
 /**
- * Batch13-F40a:live Tab 尾部优先的窗口账本(纯数据,零 DOM,对标 render-window.ts)。
+ * 实时 Tab 尾部优先的窗口账本（纯数据，零 DOM；查看器那一份是 render-window.ts）。
  *
- * live 与 viewer(F39 UnrenderedRanges)的关键差异:live 无深链入口,已渲染集
- * **恒为按 seq 连续的尾后缀 [floor, +∞)**——无岛、无中缝(单洞不变量)。
- * 所以不用区间代数,一个 floor 水位 + 待渲染数组就够。
+ * 没接骨架的 tab：已渲染集恒为按 seq 连续的尾后缀 [floor, +∞)（单洞不变量）⇒ 一个 floor 水位 ＋ 待渲染数组就够。
+ * 重放到达序是末块先发、块内升序，pending 是「按块降序、块内升序」的非连续集合；唯一的消费方式 takeTail（取 seq 最高的 k 条）前惰性 sort 一次。
  *
- * 启动重放到达序:同 session 末块先发、块内 seq 升序。尾块被 admit 直渲(进步式
- * 首屏),更早的块整块 defer——pending 此刻是「按块降序、块内升序」的非连续集合,
- * 但唯一消费方式是 takeTail(取 seq 最高的 k 条),消费前惰性 sort 一次即可,
- * 洞的几何从不需要被查询。补批后窗口仍是后缀。
- *
- * 若未来 live 出现深链跳转需求(跳到任意历史位置),本结构需升级为
- * UnrenderedRanges 语义(区间集,render-window.ts 已有现成实现)——单洞后缀
- * 不变量在"跳到中部"时不再成立,届时窗口=多区间、fill=按洞取段。
- *
- * 〔骨架〕**上面预言的那次升级发生了，但只在骨架接上的 tab 上。**
- * 骨架（`skeleton-view.ts`）按可见区取**岛**（`takeRange`），于是已渲染集 = 尾后缀 ∪ 若干岛，
- * 单洞后缀不变量**不再成立**；「哪些 seq 还没物化」的源头换成骨架的占位集（`SkeletonView.isPending`），
- * 本类退成「还没建卡的 payload 放哪」的账本。没接上骨架的 tab（没索引 / 老后端 / seq 对不上）
- * 仍是原来的单洞后缀，行为逐字不变。⚠ `INVARIANTS.md §21.3` 与 `ARCHITECTURE.md` 那两处
- * 「单洞后缀」的描述**还没同步**（不在本刀写区）。
+ * 接了骨架的 tab：骨架（`skeleton-view.ts`）按可见区取岛（`takeRange`），已渲染集 = 尾后缀 ∪ 若干岛，
+ * 「哪些 seq 还没物化」以骨架的占位集（`SkeletonView.isPending`）为准，本类只是「还没建卡的 payload 放哪」的账本。
  */
 import type { JsonlLinePayload } from "./events";
 import {
@@ -109,8 +95,7 @@ function lowerBound(arr: JsonlLinePayload[], x: number): number {
  * **账本（还没上屏的那些）的上界**：超过 {@link PENDING_CAP} 条就只留 seq 最高的
  * {@link PENDING_KEEP} 条，其余出账 —— 它们往上翻到时按行号取回（`fetchBelow`；接了骨架的按字节，`fetchMissingRows`）。
  *
- * 「⇒ **级 3 是判据**：任何一个订阅侧缓冲都要有上界」—— 这本账本就是 webview 这一侧的订阅缓冲：
- * 原来没接骨架的 tab 在这里驻留整段历史（一份 4 万行的会话，后台 tab 里 4 万个 payload）。
+ * 订阅侧缓冲都要有上界（没有的话一份 4 万行的会话，后台 tab 里就驻留 4 万个 payload）。
  * 取数：一次物化最多 600 条（`materializeUntilFilled` 150 × 4）、上翻一批 200 条 ⇒ 留 2000 条够首屏 ＋ 七八次上翻不用等 IPC；
  * 摊还余量 1000（与 monitor 那一侧 `TRIM_SLACK` 同一个道理：每来一条都修会让收纳路付 O(n)）。
  */

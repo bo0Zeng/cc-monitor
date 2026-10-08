@@ -1,7 +1,7 @@
 /**
- * 〔拆 `tabs.ts` ④〕**标签页栏视图**：栏顶一排（全局入口 · 刷新）· 「需要你 N」· 机器离线条 · 列表（分组 ＋ 每个会话一行）。
+ * 标签页栏视图：栏顶一排（全局入口 · 刷新）· 「需要你 N」· 机器离线条 · 列表（分组 ＋ 每个会话一行）。
  *
- * 一行：状态点（V10）· 窄窗两字母 · 机器徽标（远端）· 项目名 ＋ 标题（后台多一个齿轮）· 行尾（等批准 / 未读数 · 额度 `✕` ·
+ * 一行：状态点 · 窄窗两字母 · 机器徽标（远端）· 项目名 ＋ 标题（后台多一个齿轮）· 行尾（等批准 / 未读数 · 额度 `✕` ·
  * 与默认不同的账号头像 · 图钉）· 悬停时盖在行尾的动作（目录 · ↗ · 更多 / 关闭）。悬停卡（kit 悬停提示的卡式）锚在行右侧。
  * 一句话怎么写全从 `session-face.ts` 取（状态点 · 状态句 · peek · 需要你）；这里只排。
  *
@@ -36,7 +36,7 @@ import { abbrOf, dotLabel, dotOf, fullTitle, machineOf, needsOf, needsOrder, nee
 /** TabButton 的 DOM 引用：refreshTabBar 局部更新依赖这些 ref 避免重新创建 button */
 export interface TabButtonRefs {
   root: HTMLButtonElement;
-  /** 状态点（kit V10）。 */
+  /** 状态点（kit 的 status-dot）。 */
   dot: HTMLSpanElement;
   /** 窄窗那一格的两个字母。 */
   abbr: HTMLSpanElement;
@@ -53,7 +53,7 @@ export interface TabButtonRefs {
   badge: HTMLSpanElement;
   /** 额度：被卡住的会话标题后那一格红字 `✕ 5h`（能发时藏着）。 */
   quotaBadge: HTMLSpanElement;
-  /** A3：账号徽章（该会话属于哪个账号；本地会话不显示，未知显 —）。 */
+  /** 账号徽章（该会话属于哪个账号；本机会话不显示，未知显 —）。 */
   acctBadge: HTMLSpanElement;
   cwdBtn: HTMLSpanElement;
   /**
@@ -122,18 +122,7 @@ export class TabBarView {
   readonly tabButtons = new Map<string, TabButtonRefs>();
   /** 每个集合在主栏里的容器（组头 + 成员列表）。 */
   private readonly groupEls = new Map<string, { wrap: HTMLElement; head: HTMLElement; list: HTMLElement }>();
-  // 🔴 **`ensureArchiveUi()` 整个删掉。**
-  //
-  // 抬头逐字「**已定**：删归档抽屉 · 固定灰 tab」，三条独立理由：
-  //   ① 它永久吃 450px 屏宽（`.tab-archive` 是 `#app` 的 grid item 却没认领格子）
-  //   ② 它是个撕窗口陷阱（tear-off 判定线对抽屉没有意义）
-  //   ③ **它的存在理由本来就自相矛盾** —— 原 `belongsInArchive` 的注释自己写着：
-  //      active tab 会「在你正看着它的时候」掉进折叠的抽屉里 ⇒ 已经为 active 开了例外。
-  //      把例外推广到全部，抽屉就没了。
-  //
-  // ⚠ **删的是抽屉，不是状态。** 已结束（`isResumeOnly(tab.state)`）照旧存在，那种 tab
-  //   **留在原位变淡**（`.tab.ended`，原名 `.tab.archived`，`§A.3` 逐字「不用新写」）。
-  //   用户 2026-09-19 逐字：「没有归档这个东西，不要归档，就是灰 tab。」
+  // 没有归档抽屉：已结束的 tab（`isResumeOnly(tab.state)`）留在原位变淡（`.tab.ended`）。
 
   /**
    * 按钮根 → sid。事件委托靠它从 `closest(".tab")` 找回 sid（不往 DOM 上加属性）。
@@ -166,13 +155,9 @@ export class TabBarView {
     barEl: HTMLElement,
     private readonly host: TabBarViewHost,
   ) {
-    // **事件委托**：整条栏只在 `barEl` 上挂三个监听器，不再每个 tab 挂 10 个
-    // （原先 📂 / ↗ / × 各 click ＋ mousedown，根上 click ＋ 两个 mousedown ＋ contextmenu）。
-    //
-    // 原先三颗子按钮上的 `stopPropagation` 有两层意思，这里都保住：
-    // ① 子按钮上按下**不起拖、不触发中键关** ⇒ mousedown 先看目标在不在子按钮里；
-    // ② 子按钮的 click / mousedown **不往上冒到 `document`** ⇒ 这里照样 `stopPropagation()`
-    //   （`barEl` 与按钮之间只隔组容器，组容器上没有 click / mousedown 监听）。
+    // 事件委托：整条栏只在 `barEl` 上挂三个监听器。子按钮上：
+    // ① 按下不起拖、不触发中键关 ⇒ mousedown 先看目标在不在子按钮里；
+    // ② click / mousedown 不往上冒到 `document` ⇒ 这里 `stopPropagation()`（`barEl` 与按钮之间只隔组容器，组容器上没有这两个监听）。
     barEl.addEventListener("click", (e) => this.onBarClick(e));
     barEl.addEventListener("mousedown", (e) => this.onBarMouseDown(e));
     barEl.addEventListener("contextmenu", (e) => this.onBarContextMenu(e));
@@ -372,8 +357,6 @@ export class TabBarView {
     }
     if (e.button === 0) {
       // 左键 mousedown：候选 Tab 撕离拖拽（越过阈值才真拖，否则仍是普通 click）。
-      // 原先这里有一条「归档区里的 tab 不参与拖拽」的例外 ——
-      // 抽屉没了，那条例外自动不需要（`§A.3` 逐字「净收益」）。
       this.host.beginDrag(e, hit.sid, hit.root);
       return;
     }
@@ -387,7 +370,7 @@ export class TabBarView {
     }
   }
 
-  /** issue #10：右键菜单「在新窗口打开」（双屏 / 并排）。菜单里放哪几项住 `tab-menu.ts`。 */
+  /** 右键菜单「在新窗口打开」（双屏 / 并排）。菜单里放哪几项住 `tab-menu.ts`。 */
   private onBarContextMenu(e: MouseEvent): void {
     const hit = this.hitOf(e);
     if (!hit) return;
@@ -434,16 +417,8 @@ export class TabBarView {
     }
     for (const col of this.prefs.collections) this.groupElFor(col);
     const cursors = new Map<HTMLElement, ChildNode | null>();
-    // ★ **未归组的排在所有组之后**〔D 阶段补审〕。
-    //
-    // `barEl` 的游标若从 `firstChild` 起，散 tab 会插到**组容器之前** ——
-    // 而 `P7a3-Y2` 逐字写的是「未归组的照常**在后面**」。
-    // 实现与自己的 DoD 措辞不符，是那种「读起来都对、跑起来是另一回事」的差错。
-    // ⇒ 把 `barEl` 的起点定在最后一个组容器上（没有组则是栏顶那颗「重新读取」）。
-    // 「最后一个组容器」不再把 `barEl.children` 物化成数组去找。
-    // 组容器只在建的那一刻 `appendChild` 到 `barEl` 末尾、之后从不挪（挪的只有 tab 按钮），
-    // 删的时候同时出 `groupEls` ⇒ **`groupEls` 的插入序就是组容器在 DOM 里的顺序**，最后一个就是它。
-    // 没有组时从栏顶那颗「重新读取」之后起，它恒在第一个。
+    // 未归组的排在所有组之后：`barEl` 的游标从最后一个组容器起（没有组则从栏顶那颗「重新读取」之后起）。
+    // 组容器只在建的那一刻 appendChild 到末尾、之后不挪，删时同时出 `groupEls` ⇒ `groupEls` 的插入序就是 DOM 序，最后一个就是它。
     let lastGroup: HTMLElement | null = null;
     for (const g of this.groupEls.values()) lastGroup = g.wrap;
     cursors.set(this.listEl, lastGroup);
@@ -462,9 +437,7 @@ export class TabBarView {
         }
       }
       this.updateTabButton(refs, sid, tab);
-      // 分流从三路（抽屉 / 组 / 主栏）降到**两路**（组 / 主栏）。
-      // 「归档优先于集合」那条判定整条消失 ⇒ **灰 tab 也能在组里**（`§A.3` 逐字）。
-      // 在哪个组读 tab 自己的 `group`（组表只有 `{id, name}`，不再扫成员名单）。
+      // 两路：组 / 主栏（灰 tab 也能在组里）。在哪个组读 tab 自己的 `group`（组表只有 `{id, name}`）。
       const col =
         tab.group === null ? undefined : this.prefs.collections.find((c) => c.id === tab.group);
       const host = col ? this.groupElFor(col) : this.listEl;
@@ -588,7 +561,7 @@ export class TabBarView {
   }
 
   /**
-   * P7a-3：拿到某集合在主栏里的容器（没有就建）。
+   * 拿到某集合在主栏里的容器（没有就建）。
    *
    * 组头点一下改名、右侧 `×` 解散。**解散只去掉分组，一个 tab 都不动** ——
    * 集合是个视图，不是容器。
@@ -635,8 +608,7 @@ export class TabBarView {
   }
 
   /**
-   * P-extra：组头**就地**改名 —— 名字那一格换成 `<input>`：Enter 提交 / Esc 取消 / blur 提交。
-   * 原先是 `window.prompt`（原生阻塞弹窗）。
+   * 组头就地改名 —— 名字那一格换成 `<input>`：Enter 提交 / Esc 取消 / blur 提交。
    *
    * - 名字按钮只藏不摘（`hidden`），输入框插在它后面 ⇒ 整刷那条「名字没变就不写」照旧写在按钮上，不碰输入框。
    * - Esc 走 overlay 栈（INVARIANTS「别手搓 window 级 Esc 监听」）：改名时 Esc 只取消改名，不连带关别的弹层；
@@ -687,7 +659,7 @@ export class TabBarView {
     input.select();
   }
 
-  /** A3：账号快照换了 ⇒ 所有 tab 的账号徽章就地重刷（原是 `setSessionAccounts` 末尾那个循环，逐字）。 */
+  /** 账号快照换了 ⇒ 所有 tab 的账号徽章就地重刷。 */
   refreshAccountBadges(): void {
     for (const [sid, refs] of this.tabButtons) {
       const tab = this.store.tabs.get(sid);
@@ -696,7 +668,7 @@ export class TabBarView {
   }
 
   /**
-   * 账号头像：**只在这个会话用的号与那台的默认号不同时出**（全都出 ⇒ 每行一块、信息为零，规范 V2）；
+   * 账号头像：只在这个会话用的号与那台的默认号不同时出（全都出 ⇒ 每行一块、信息为零）；
    * 默认号不知道 ⇒ 不出（说不出「不同」）。悬停卡里永远写账号。头像悬停说「账号 {name}」。
    */
   private updateAccountBadge(refs: TabButtonRefs, sid: string, tab: Tab): void {
@@ -742,7 +714,7 @@ export class TabBarView {
 
     const dot = statusDot("running", copyText("sessionFace.dot.running"), "compact");
     dot.classList.add("tab-dot");
-    dot.removeAttribute("title"); // 悬停卡说状态；点上不再挂一层原生提示
+    dot.removeAttribute("title"); // 悬停卡说状态；点上不挂原生提示
     const abbr = span("tab-abbr");
     const machine = tag("");
     machine.classList.add("tab-machine");
@@ -794,7 +766,7 @@ export class TabBarView {
   }
 
   /**
-   * 悬停卡（C12）：标题全名 · 机器 · 目录 · 状态句（点 ＋ 一句，在等你时琥珀）· peek 一句 · 账号 · 分叉自 · 写入进程 · `5 切到这里`。
+   * 悬停卡：标题全名 · 机器 · 目录 · 状态句（点 ＋ 一句，在等你时琥珀）· peek 一句 · 账号 · 分叉自 · 写入进程 · `5 切到这里`。
    * 卡里没有能点的东西；peek 拿不到就不出那一行。tab 已经没了 ⇒ 不出。
    */
   hoverCard(sid: string): HTMLElement | null {

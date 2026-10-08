@@ -8,12 +8,10 @@
 import { copyText } from "./copy-table";
 
 /**
- * P7a-2：把被拖的那个 `sid` 挪到 `beforeSid` 之前。
+ * 把被拖的那个 `sid` 挪到 `beforeSid` 之前。
  * `beforeSid === null` = 挪到末尾。**纯函数** —— 判据直接打在落位上，不必先造一次真拖拽。
  *
- * ⚠ 落点就是它自己 ⇒ **原样返回**（拖到自己身上不是一次重排，把它算成「挪到末尾」是错的）。
- * 〔「删掉树」〕原先挪的是「一块」（被拖的交互 tab 连同它的 bg 子串）；
- *   树删了 ⇒ 块的概念没了，一次只拖一个。
+ * 落点就是它自己 ⇒ 原样返回（拖到自己身上不是重排）。一次只拖一个。
  */
 export function moveTab(
   order: readonly string[],
@@ -84,10 +82,8 @@ export function tabUnderY(
  *                 不在这里判 —— 但「攒满之后指针有没有还在那个矩形里」在这里**再判一次**：
  *                 计时器与指针是两个来源，只信计时器的话，指针早已划走还会合并成组。
  *
- * 🔴 **必须按视觉序（`top` 升序）扫，不能按 `orderedIds` 扫。**
- *   `§D.2` 拆掉「组里的 tab 不参与」那道过滤之后，`orderedIds` 的次序与屏幕上的次序
- *   **不再一致**（组容器整块排在散 tab 前面，见 `refreshTabBar`）⇒ 按 `orderedIds` 扫会
- *   在第一个「中线在指针下方」的元素上停住，而那个元素可能在屏幕上离指针很远。
+ * 按视觉序（`top` 升序）扫，不按 `orderedIds`：组容器整块排在散 tab 前面（见 `refreshTabBar`），两个次序不一致，
+ *   按 `orderedIds` 扫会停在一个屏幕上离指针很远的元素上。
  */
 export function pickDropTarget(
   rects: readonly TabRect[],
@@ -164,7 +160,7 @@ function defaultNameNumber(name: string): number | null {
 
 /**
  * 一次落点对**被拖那个 tab 的组**意味着什么。
- * 组员关系是 tab 自己的属性（`Tab.group`）⇒ 这里不再重算整张组表，只回「这个 tab 怎么动」。
+ * 组员关系是 tab 自己的属性（`Tab.group`）⇒ 只回「这个 tab 怎么动」。
  */
 export type GroupMove =
   | { kind: "stay" } // 归属不变（零写盘：拖动是高频动作，没改归属就不许每拖一下写一次 `config.json`）
@@ -173,10 +169,7 @@ export type GroupMove =
   | { kind: "leave" }; // 移出所在的组，回到散 tab
 
 /**
- * 一次落点对**组**的全部后果。`§D.7` 那条判据的唯一住址：
- * 「**落点宿主 ≠ 该 tab 当前所属组的容器 ⇒ 视为移出**」。
- *
- * 这里把它写成对称的一句话：**归属跟着落点宿主走**。
+ * 一次落点对组的全部后果：归属跟着落点宿主走（落点宿主 ≠ 当前所属组的容器 ⇒ 移出）。
  * | 落点 | 宿主 | 后果 |
  * |---|---|---|
  * | `onto X` | X 所在的组；X 还没组 ⇒ 现建一个 | **入组** / **现建** |
@@ -184,10 +177,7 @@ export type GroupMove =
  * | `end` | 无宿主（末尾就是散 tab 区）| **拖出组** |
  * 宿主就是它现在那个组 ⇒ `stay`（`before` 同组的另一个 · 散 tab 拖到散 tab 之间 · 压在自己身上）。
  *
- * 〔「删掉树」〕归属只跟着被拖的那一个走：原先这里收的是「一块」（交互 tab 连同它的
- *   bg 子串整块入组 / 出组）—— 那是 bg 树借集合开的第二条分类路，与不变量 3
- *   「集合归属是唯一分类维」相违，随树一起删。
- * ⚠ 现建到上界（32 个组）怎么办不归这里：`TabBarPrefs.foundGroup` 回拒绝原因、什么都不做，调用方出声（E13）。
+ * 归属只跟着被拖的那一个走。现建到上界（32 个组）不归这里：`TabBarPrefs.foundGroup` 回拒绝原因，调用方出声。
  *
  * @param groupOf 此刻某个 tab 的组 id（`null` = 散 tab）—— 读 `Tab.group`，由调用方给（本文件零 DOM、零 store）。
  */

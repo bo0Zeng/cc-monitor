@@ -8,24 +8,13 @@ import "katex/dist/katex.min.css";
 import { copyText } from "./copy-table";
 
 /**
- * v2.3.1 (issue #1 性能): lazy 模式 ——
- * - **急**（默认 / live 模式）：renderMarkdown 走全功能 pipeline（hljs 同步高亮）
- * - **惰**（batch 重放期）：marked + DOMPurify + KaTeX 同步出 HTML，但代码块
- *   hljs **不跑**——留 `<div class="code-block code-pending">` 占位。IntersectionObserver
- *   在卡片进可视区时调 enhanceCard 跑 hljs。
+ * 两种渲染：
+ * - 急（默认 / 实时）：全功能，代码块当场高亮、公式当场算；
+ * - 惰（批量重放）：marked ＋ DOMPurify 出 HTML，代码块与公式只留占位（`code-pending` · `data-math-pending`），
+ *   卡片进可视区时 `enhanceCard` 再补 —— 含几十个公式的长消息当场算要几百毫秒。
  *
- * **数学也 lazy 了**。原来这里写着「为什么单独 lazy hljs 而不 lazy KaTeX」
- * 三条理由（hljs 是大头 · KaTeX 触发条件严 · 拆 lazy 复杂度高收益小）；D1 逐字「KaTeX 从不 lazy —— 含 `$$` 的
- * 长公式在重放期同步阻塞主线程」。现打：40 个块公式 ＋ 40 个行内公式的一条 7 KB 消息，惰路 `renderMarkdown`
- * 518 ms（jsdom，每个公式 ~6.5 ms），期间 `katex.renderToString` 80 次。拆 lazy 并不复杂：惰实例对
- * `inlineKatex` / `blockKatex` 两个 token 另挂一个同名渲染器（marked 的同名扩展后注册者先试），
- * 只出一个带 TeX 原文的占位，`enhanceCard` 进视口时再算。
- *
- * 急 / 惰是**两个 `Marked` 实例**，各带各的代码块渲染器；
- * 本模块里零可变状态。原来是一个全局 `marked` ＋ 一个模块级 `currentLazy` 标志、靠
- * 「同步调用栈里 save / restore」撑着 —— 「安全性依赖『同步调用栈』这条隐式不变量」。
- * 两个实例之间没有任何共享的开关，谁先谁后、谁嵌套谁都串不了。
- * 判据：`tests/frontend/ui/render.vitest.ts`「D3」一组（模块顶层零 `let` ＋ 两个实例互不串味）。
+ * 急 / 惰是两个 `Marked` 实例，各带各的渲染器，模块里零可变状态 ⇒ 谁先谁后、谁嵌套谁都串不了
+ * （`tests/frontend/ui/render.vitest.ts`「D3」：模块顶层零 `let` ＋ 两个实例互不串味）。
  */
 
 /**
@@ -121,7 +110,7 @@ function codeRenderer(lazy: boolean): MarkedExtension {
               ignoreIllegals: true,
             }).value;
           } else {
-            // 不再 highlightAuto —— 改为转义后原样输出
+            // 不认的语言不猜（不 highlightAuto）：转义后原样输出
             highlighted = escapeHtml(code);
           }
         } catch {
@@ -143,10 +132,8 @@ function codeRenderer(lazy: boolean): MarkedExtension {
   };
 }
 
-// v2.4.3 issue #13: 外链由系统默认浏览器打开。renderer 阶段给 http/https/mailto
-// 链接打 data-external 标记 + target=_blank + rel=noopener noreferrer；main.ts
-// 全局 click delegation 捕获 data-external 调 openUrl(). 相对路径 / 锚点保留
-// 默认行为（默认就是站内导航，无 target）。
+// 外链由系统默认浏览器打开：http / https / mailto 链接打 data-external ＋ target=_blank ＋ rel=noopener noreferrer，
+// main.ts 的全局 click 委托见 data-external 调 openUrl()。相对路径 / 锚点照默认（站内导航）。
 const LINK_RENDERER: MarkedExtension = {
   renderer: {
     link(token) {
@@ -164,13 +151,9 @@ const LINK_RENDERER: MarkedExtension = {
   },
 };
 
-// #71：GFM strikethrough 规范允许**单**波浪号(`~x~`),marked 默认据此把成对单 `~` 之间的字划成
-// `<del>`——静默改内容。触发要**闭合 `~` 贴非空白**(GFM flanking):`见 ~/foo~/bar`、`cd ~/a~/b`、
-// `a ~foo~ b` 会被划;而 `~/.claude … ~/.codex` 因第二个 `~` 前是空格、flanking 已挡、**反而不触发**
-// (此前注释举这个例子是错的)。覆盖内建 `del` tokenizer:**只认双波浪号 `~~x~~`**;单 `~` 返回
-// **`undefined`**(★必须 undefined、**不能 `false`**——marked 的 `use()` 包装只在 `=== false` 时回退内建
-// del、会复活单 `~` 把本修复静默还原)→ 词法器把单 `~` 当普通文本。真·删除线 `~~text~~` 仍渲染。
-// (`~~~` 围栏是块级,由 preprocessMath/marked 代码 tokenizer 处理,不进本行内路径。)
+// 删除线只认双波浪号 `~~x~~`：GFM 允许单 `~`，会把 `cd ~/a~/b` 这类路径静默划掉。
+// 单 `~` 交回 `undefined`（不能是 `false`：marked 的 `use()` 包装见 `false` 会回退内建 del、又认单 `~`）。
+// `~~~` 围栏是块级，不走这里。
 const DEL_TOKENIZER: MarkedExtension = {
   tokenizer: {
     del(src: string) {
@@ -188,7 +171,7 @@ const DEL_TOKENIZER: MarkedExtension = {
 };
 
 /**
- * 建一个实例：两个实例的扩展与顺序**逐项相同**（KaTeX → 代码块 → 外链 → `del`，与原来全局 `marked.use` 的顺序一致），
+ * 建一个实例：两个实例的扩展与顺序逐项相同（KaTeX → 代码块 → 外链 → `del`），
  * 只有代码块渲染器按 `lazy` 分叉；惰实例在 KaTeX 之后多挂一层同名数学渲染器（`LAZY_MATH`，出占位）。
  */
 function makeMarked(lazy: boolean): Marked {
@@ -210,27 +193,13 @@ export interface RenderMarkdownOptions {
   lazy?: boolean;
 }
 
+/** 基础 Markdown 渲染：GFM ＋ KaTeX ＋ 代码高亮 ＋ sanitize。`opts.lazy` 选惰实例。 */
 /**
- * 基础 Markdown 渲染：GFM + KaTeX + 代码高亮 + sanitize。
- *
- * P2.3：opts.lazy 显式传入，用 save/restore 模式避免"另一个 caller 同时调时被
- * 错误共享"（session-viewer 历史 load 期间被 tabs batch 模式污染走 lazy 路径
- * 是已知 bug）。同步调用栈内 try/finally 严格恢复，并发也安全（JS 单线程）。
+ * 多行块级公式预处理：`marked-katex-extension` 的块规则要 `$$` 独占一行、块前没空行会被段落吞掉、也不认 `\[...\]`。
+ * 这里在 `marked.parse` 前把块公式规整成 `$$` 独占行 ＋ 前后空行，并把 `\[..\]` → `$$..$$`、`\(..\)` → `$..$`；先保护代码围栏与行内代码。
+ * 边界：4 空格缩进的代码块不保护；正文里恰好配对的 `$$…$$`（"from $$5 to $$10"）会被当成公式。
  */
-/**
- * F73（issue #42）：多行块级 LaTeX 公式预处理。`marked-katex-extension` 的块规则要求 `$$` **独占
- * 行**、且块扩展无 `start()` 钩子会被段落**吞并**（块公式前无空行时）、且**完全不认 `\[...\]`**——
- * 导致「结果是：<换行>$$…多行…$$」这类最常见形态不渲染（单行 `$$x$$` 走行内规则不受影响，故
- * "单行能、多行不能"的错觉）。在 `marked.parse` 前把块公式规整成扩展唯一能吃的形态（`$$` 独占行
- * + 前后空行），并把 `\[..\]`→`$$..$$`、`\(..\)`→`$..$`。**先保护代码围栏/行内代码**（别动代码里
- * 的 `$$`/`\[`）。纯函数、可单测。占位符用 Unicode 非字符 `\uFDD0`（`STUB_MARK`）包裹防与正文串位。
- * 已知边界：4 空格缩进代码块不保护（Claude 输出几乎只用围栏）；prose 里恰好配对的 `$$…$$`（如
- * "from $$5 to $$10"）会误判为公式——与既有 `nonStandard:true` 对单 `$` 的误判同源、不新增暴露面。
- */
-/**
- * 代码 stub 的包边字符：Unicode 非字符 U+FDD0（永不分配字符，标准建议的程序内部哨兵）。先前是 `\u0000`，
- * 还原正则里带控制字符撞 eslint `no-control-regex`（全仓最后一条基线错）。
- */
+/** 代码 stub 的包边字符：Unicode 非字符 U+FDD0（永不分配，程序内部哨兵；控制字符会撞 eslint `no-control-regex`）。 */
 const STUB_MARK = "\uFDD0";
 
 export function preprocessMath(md: string): string {
@@ -240,29 +209,12 @@ export function preprocessMath(md: string): string {
 }
 
 /**
- * **六遍全文正则的前置闸**。
+ * 六遍全文正则的前置闸：多数消息不含 LaTeX，没有这几个记号就跳过 `preprocessMathUnguarded`（最多五次 `indexOf`）。
  *
- * 为什么值：`render.ts` 自己在上面写着「多数消息不含 LaTeX」，而
- * `preprocessMathUnguarded` 里那六遍 `replace` 是**无条件**从头扫到尾的。
- * 【现打】44 万字符 **5.81 ms**⇒ 绝大多数调用从六遍全文正则
- * 降到最多五次 `indexOf`。读数见 `tests/evidence/W2-17s7-readings.md`。
- *
- * 闸认的记号 = 下面那六遍**唯一可能改到东西**的入口，逐条对得上：
- *  - `\r` ⇒ 第 1 遍（CRLF/CR 归一）
- *  - `\[` / `\(` ⇒ 第 2 遍（翻译成 `$$`/`$`）
- *  - `$` ⇒ 第 3 遍（块级 `$$` 规整）
- *  - 第 2a/2b 遍（代码围栏 / 行内 code 打 stub）与第 4 遍（还原）是**一对**：
- *    中间那两遍没东西可改时，打 stub 再原样还原**净效果是恒等** ⇒ 代码记号
- *    （``` ``` ``` / `~~~` / 反引号）**不必**进闸。
- *  - 🔴 `\uFDD0` ⇒ **规格那 4 条之外、本轮现打补的第 5 条**。第 4 遍的还原正则认的是
- *    `\uFDD0M<数字>\uFDD0`；正文里若**本来就**带着这个串，慢路会把它替换成
- *    `stash[i]`（多半是 `undefined`，或者错位成别人的代码块）。那是一条**既存**缺陷，
- *    本轮**不修**（它与本条改动无关，修它要改语义）。把它放进闸里，只是为了让
- *    「**走快路 ⇒ 逐字节等于走慢路**」这句话**无条件成立** —— 判据钉的就是这句，
- *    留个例外它就只能钉一半。
- *
- * 导出仅为单测：判据要能**独立**数出「语料里几条走了快路」，不能拿被测函数自己的
- * 返回值反推（那样恒等两侧同源，会恒真）。
+ * 闸认的记号就是那六遍里唯一可能改到东西的入口：`\r`（CRLF 归一）· `\[` / `\(`（翻译）· `$`（块级规整）·
+ * `\uFDD0`（还原正则认的包边字符：正文里本来就带着它时慢路会错换，进闸是为了「走快路 ⇒ 与慢路逐字相同」无条件成立）。
+ * 代码记号不必进闸：打 stub 与还原是一对，中间没东西可改时净效果恒等。
+ * 导出给判据独立数「语料里几条走了快路」。
  */
 export function needsMathPreprocess(md: string): boolean {
   return (
@@ -293,14 +245,9 @@ export function preprocessMathUnguarded(md: string): string {
   // 2) \[ ... \] → 块级 $$；\( ... \) → 行内 $。
   md = md.replace(/\\\[([\s\S]*?)\\\]/g, (_m, x: string) => `\n\n$$\n${x.trim()}\n$$\n\n`);
   md = md.replace(/\\\(([\s\S]*?)\\\)/g, (_m, x: string) => `$${x.trim()}$`);
-  // 3) 块级 $$ ... $$ 统一规整成独占行 + 空行包裹。#42:一个 `$$` 只有**贴着行边界**才算**块定界符**
-  //    ——开定界符 = 行首(`(^|\n)[ \t]*$$`)**或**其后紧跟换行(`$$[ \t]*\n`);闭定界符 = 行尾
-  //    (`$$[ \t]*(\n|$)`)**或**其前紧接换行(`\n[ \t]*$$`)。据此把散文里游离/未配对的 `$$`(漏闭合、或
-  //    "用 $$ 包裹显示公式"这类元讨论:`$$` 前后都是正文、不贴行边界)排除;否则原全局按数配对器遇**奇数
-  //    `$$`** 会错位、吞掉后一个真公式的开 `$$`、把散文当公式渲染并**丢真公式**(比留字面更糟)。
-  //    "开=行首或后接换行 / 闭=行尾或前接换行"修掉首版"须行首/行尾"过严的回归(CRLF已归一、`文字：$$⏎…`
-  //    开前有字、`…⏎$$。`闭后有标点)。行中 `$$x$$`(前后有正文)不匹配、留 marked-katex 行内。去掉 `[^$]`
-  //    守卫(误伤 `$$$…`)。lookbehind 需 V8/Chromium(WebView2 ✓;Node/vitest ✓)。
+  // 3) 块级 $$ ... $$ 规整成独占行 ＋ 空行包裹。`$$` 贴着行边界才算块定界符：开 = 行首或其后紧跟换行，闭 = 行尾或其前紧接换行；
+  //    散文里游离 / 未配对的 `$$`（前后都是正文）不算 —— 按个数配对会在奇数个时错位、吞掉后一个真公式。
+  //    行中 `$$x$$` 不匹配，留给 marked-katex 的行内规则。lookbehind 要 V8 / Chromium。
   md = md.replace(
     /(?:(?<=^|\n)[ \t]*\$\$|\$\$(?=[ \t]*\n))([\s\S]*?)(?:(?<=\n[ \t]{0,32})\$\$|\$\$(?=[ \t]*(?:\n|$)))/g,
     (_m, x: string) => `\n\n$$\n${x.trim()}\n$$\n\n`,
@@ -310,9 +257,9 @@ export function preprocessMathUnguarded(md: string): string {
 }
 
 export function renderMarkdown(md: string, opts: RenderMarkdownOptions = {}): string {
-  // lazy 必须 caller 显式传（不传默认 false）；选实例，不再改任何共享状态。
+  // lazy 由调用方显式传（不传 = 急）；只选实例，不改任何共享状态。
   const m = opts.lazy ? LAZY : EAGER;
-  // F73：数学预处理（多行块公式规整 + \[..\]/\(..\) 翻译）后再交给 marked。
+  // 数学预处理（多行块公式规整 ＋ \[..\] / \(..\) 翻译）后再交给 marked。
   const raw = m.parse(preprocessMath(md), { async: false }) as string;
   return DOMPurify.sanitize(raw, SANITIZE_OPTIONS);
 }
@@ -331,13 +278,8 @@ function escapeHtml(s: string): string {
 }
 
 /**
- * v2.3.1 (issue #1) Phase 2：找卡片内**剩下没处理的代码块** (`.code-block.code-pending`)
- * 跑 hljs 高亮。idempotent — 标 `data-enhanced` 防重复。
- *
- * 没 pending 时是 fast path：单次 querySelector 找不到东西后立即标记返回。
- *
- * **也补数学**：惰路留下的 `[data-math-pending]` 占位在这里算 KaTeX、过同一道清洗、原位替换
- * （原来这里写「不处理 LaTeX：KaTeX 在 markedKatex 扩展里同步处理过了」—— D1 之后不再成立）。
+ * 补卡片里惰路留下的占位：代码块（`.code-block.code-pending`）跑高亮，数学（`[data-math-pending]`）算 KaTeX、过同一道清洗、原位替换。
+ * 幂等：标 `data-enhanced`；没有占位时一次 querySelector 就返回。
  */
 export function enhanceCard(el: HTMLElement): void {
   if (el.dataset.enhanced === "1") return;
@@ -395,17 +337,11 @@ function enhanceMath(ph: HTMLElement): void {
 }
 
 /**
- * **每个滚动容器一个** IntersectionObserver（root = 那个容器）：
- * 观察容器内的卡片，进可视区（± 300px）调 enhanceCard，然后 unobserve（一次性，不来回触发）。
+ * 每个滚动容器一个 IntersectionObserver（root = 那个容器）：卡片进可视区（± 300px，快滚到时就补、不让高亮「弹」出来）调 enhanceCard，然后 unobserve。
+ * root 必填：主窗里各 tab 的 `.stream` 叠在同一块区域（后台 tab 是 `visibility:hidden`，仍有几何），拿视口当 root 分不清卡属于哪一条流。
  *
- * 原来是**一个**模块级 IO、没有 root ⇒ 量的是浏览器视口，而真正的滚动容器是 `.stream` —— D2 逐字
- * 「查看器里几何不同 ⇒ lazy 高亮触发时机不可靠」；主窗里各 tab 的 `.stream` 叠在同一块区域（后台 tab 是
- * `visibility:hidden`，仍有几何），视口 root 分不清卡属于哪一条流。
- *
- * - root 必填（类型上就交不出「没有 root」）；同一个 root 复用一个 IO（`WeakMap`，root 被摘掉即可回收）。
- * - 容器销毁时调 {@link releaseEnhanceRoot} 断开它的 IO（`TabStreamView.disposeTab` · `SessionViewer`）。
- * - 没有 IO 的环境（jsdom / 极老浏览器）⇒ 退化到立即 enhance。
- * rootMargin: 300px 让卡片在快滚到时就预先 enhance，避免视觉看到 hljs "弹"出来。
+ * - 同一个 root 复用一个 IO（`WeakMap`）；容器销毁时调 {@link releaseEnhanceRoot}（`TabStreamView.disposeTab` · `SessionViewer`）。
+ * - 没有 IO 的环境（jsdom）⇒ 立即 enhance。
  */
 const enhanceObservers = new WeakMap<HTMLElement, IntersectionObserver>();
 

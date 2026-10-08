@@ -1,12 +1,11 @@
 /**
- * Batch13-F40c:DEV-only E2E 探针。生产构建零包含——main.ts 以
+ * 只在 DEV 的 E2E 探针。生产构建不含 —— main.ts 以
  * `if (import.meta.env.DEV)` 门控动态 import,vite build 时整支消除。
  *
  * 背景:生产/CCM_NO_DEVTOOLS 下 webview 无 devtools、无 eval 通道,自动化断言的
  * 唯一出口是后端日志(frontend_perf_log → grep fe_perf)。本模块把两类不可见状态
  * 变成可 grep 的 `[e2e]` 行:
- * - 启动重放抖动:§21 明示「scrollTop 单调不震荡,只测 scrollTop 发现不了」——
- *   必须逐帧采样可见元素 getBoundingClientRect().top 的方向反转。
+ * - 启动重放抖动：只测 scrollTop 发现不了（§21）—— 逐帧采样可见元素 getBoundingClientRect().top 的方向反转。
  * - 状态快照:贴底距离/账本余量/fold 数等(Ctrl+Alt+F9 触发,e2e 套件用 xdotool 按)。
  */
 import { commands } from "./ipc/commands";
@@ -41,15 +40,10 @@ let retargets = 0;
 /**
  * 启动重放抖动探针:锁定 active stream 的**首卡**,逐 rAF 采样其 top。
  *
- * 为什么是首卡不是末卡:末卡上方的异步内容沉降(lazy hljs 高亮、字体后载、图片)
- * 会推挤其位置——那是内容加载不是抖动(首跑实测 +23 伪反转)。首卡文档位置在
- * F40a 语义下重放期恒定(零上方插入),top = 常数 − scrollTop,信号最干净。
+ * 用首卡不用末卡：末卡上方的异步内容（惰性高亮、字体后载、图片）会推挤它，那是加载不是抖动；首卡在重放期文档位置恒定（零上方插入）。
  *
- * **指标语义 = 密度绊线,不是零断言**(2026-07-08 标定):守卫 snap 的整数
- * scrollTop 对分数行高布局天然有 ±亚像素合法舍入摆动,幅度与 §21 病态抖动同级
- * (±0.5px),**幅度/次数阈值无法区分,密度可以**——健康基线 ≈0.12-0.16 反转/帧,
- * deferMode 缺位的病态 ≈1.0 反转/帧(66 帧 66 反转)。套件断言 density ≤0.4,
- * 两边都有余量;回归到逐帧震荡必然绊线。
+ * 指标是密度绊线，不是零断言：整数 scrollTop 对分数行高天然有 ±亚像素的合法摆动，幅度与病态抖动同级，只有密度分得开
+ * （健康 ≈ 0.12–0.16 反转 / 帧，逐帧震荡 ≈ 1.0）；套件断言 density ≤ 0.4。
  * onBatchStart 起、onBatchEnd 停(批末 fold/物化的一次性位移不在测量窗内)。
  */
 export function startReplayJitterProbe(): void {
@@ -110,11 +104,10 @@ export function stopReplayJitterProbe(report = true): void {
 }
 
 /**
- * 状态快照触发器:①Ctrl+Alt+F9(真桌面调试用);②**中键点状态栏**——xdotool 的
- * XTEST 合成键盘事件进不了 WebKitGTK webview(Xvfb 实测),鼠标事件畅通,headless
- * 套件走这条。getSnapshot 由 main.ts 提供(读 TabManager)。
+ * 状态快照触发器：① Ctrl+Alt+F9（真桌面调试用）；② 中键点状态栏 —— xdotool 的合成键盘事件进不了 WebKitGTK webview，
+ * 鼠标事件畅通，headless 套件走这条。getSnapshot 由 main.ts 提供（读 TabManager）。
  *
- * auto-e2e F-E0:第二出口 `getSessionsSnapshot`(全会话 status/tmuxIdle/origin/account/mismatch)——
+ * 第二出口 `getSessionsSnapshot`（全会话 状态 / origin / 账号 / 不一致）——
  * Ctrl+Alt+F10(真桌面/Tier2 WebDriver 键盘可达)或**中键点账号 chip**(`.status-account`,headless
  * 走鼠标)触发,emit `[e2e] sessions …`。中键落在 `.status-account` 上不触发 #status-bar 的 per-tab
  * 快照(closest 命中更内层元素即可,但两 handler 各判各的;套件按 `[e2e] sessions` / `[e2e] snapshot`
