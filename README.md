@@ -2,7 +2,7 @@
 
 **把你在各台机器上跑的 Claude Code 会话收进一个窗口：实时看、随时接着用、一处管好所有机器。**
 
-> [English](./README.en.md) · 中文 | License: MIT | 平台: Windows 10/11 · Linux（.deb） | 当前版本: v4.1.3
+> [English](./README.en.md) · 中文 | License: MIT | 平台: Windows 10/11 · Linux（.deb） | 当前版本: v4.1.4
 
 ![主界面：左边每个 tab 是一个正在跑的 Claude Code 会话，右边实时显示对话与工具调用](docs/screenshots/main.png)
 
@@ -211,8 +211,8 @@ ccm -- --ccm-help                 # 全部选项
 
 ## 项目当前状态
 
-- **版本**：v4.1.3（Released）
-- 当前发布 **v4.1.3**：详见 [CHANGELOG](CHANGELOG.md)
+- **版本**：v4.1.4（Released）
+- 当前发布 **v4.1.4**：详见 [CHANGELOG](CHANGELOG.md)
 
 ## License
 
