@@ -167,8 +167,7 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
         //   这台的活会话经不经本机中转 · 活着的几个 · 这台账上通往 `machine` 的转发。只读。
         "machine-interrupts" => {
             let machine = opt_str_arg(args, "machine")?;
-            let lines =
-                accounts_query::lines_for_frame(home, accounts_query::FrameAccounts::BySession);
+            let lines = accounts_query::session_lines_for_frame(home);
             if args.get("appExit").and_then(Value::as_bool) == Some(true) {
                 let kill = crate::control::exit_policy::read_now().kill_on_exit();
                 return Ok(accounts_query::app_exit_product(
@@ -181,8 +180,7 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
             Ok(accounts_query::machine_product(&lines, forwards))
         }
         "accounts-sessions" => {
-            let rows =
-                accounts_query::lines_for_frame(home, accounts_query::FrameAccounts::BySession);
+            let rows = accounts_query::session_lines_for_frame(home);
             let size: usize = rows.iter().map(|l| l.len() + 1).sum();
             if size > LINES_CAP_BYTES {
                 return Err(too_large(size));

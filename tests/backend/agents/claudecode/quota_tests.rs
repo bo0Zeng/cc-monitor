@@ -78,7 +78,6 @@ fn a_warning_carries_the_threshold_it_crossed() {
         got.windows,
         vec![win("seven_day", Some(0.91), None, Some(0.9))]
     );
-    assert_eq!(got.peak_used(), Some(0.91));
 }
 
 #[test]

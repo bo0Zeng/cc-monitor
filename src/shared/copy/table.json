@@ -11893,27 +11893,6 @@
       "zh": "# （当前一条别名都没有）\n",
       "args": []
     },
-    "rsShellDialect.ps.trailingBackslash": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "带空格的值不能以反斜杠结尾 · PowerShell 传参会改坏",
-      "args": [],
-      "limited": ["PowerShell"]
-    },
-    "rsShellDialect.ps.doubleQuote": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "值不能含双引号 · PowerShell 传给 ccm 时不转义",
-      "args": [],
-      "limited": ["PowerShell", "ccm"]
-    },
-    "rsShellDialect.ps.emptyArg": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "参数不能为空 · PowerShell 传参会丢",
-      "args": [],
-      "limited": ["PowerShell"]
-    },
     "rsShellDialect.ps.nameTakenBuiltinAlias": {
       "kind": "body",
       "role": "说明",

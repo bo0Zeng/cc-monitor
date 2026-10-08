@@ -432,9 +432,9 @@ fn the_form_slots_cover_exactly_the_profile_keys() {
         })
         .collect();
     keys.sort();
-    let mut want: Vec<String> = profile::PROFILE_KEYS
+    let mut want: Vec<String> = profile::PROFILE_FLAGS
         .iter()
-        .map(|k| k.to_string())
+        .map(|f| profile::key_of(f).to_string())
         .chain([profile::ARGS_KEY.to_string()])
         .collect();
     want.sort();

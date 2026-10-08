@@ -75,7 +75,6 @@ pub(crate) struct Hooks {
 /// 收齐的事实。
 pub(crate) struct Facts {
     pub windows: bool,
-    pub home: String,
     /// 足迹里这台确实缺的那几样（`data.rs::missing` 的形状）。
     pub needs_install: Vec<Value>,
     pub stale_ccm: Option<StaleCcm>,

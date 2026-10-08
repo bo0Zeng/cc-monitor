@@ -191,7 +191,7 @@ pub(crate) fn blank_opts(left: &[String]) -> Opts {
 }
 
 /// `--` 右边认得的全部词（[`flag::END`] 不在其中：右边不会再有它）。
-const RIGHT_WORDS: &[&str] = &[
+pub(crate) const RIGHT_WORDS: &[&str] = &[
     flag::NEW,
     flag::TMUX,
     flag::TMUX_BASE,
@@ -328,11 +328,6 @@ pub(crate) fn apply_word(o: &mut Opts, w: &Word, at: usize) -> Result<Option<Ear
         }
     }
     Ok(None)
-}
-
-/// `--` 右边认得的全部词（配置文件那一侧拿它对词表）。
-pub(crate) fn right_words() -> &'static [&'static str] {
-    RIGHT_WORDS
 }
 
 /// 这套 argv 的唯一解析口。

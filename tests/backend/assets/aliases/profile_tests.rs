@@ -209,16 +209,17 @@ fn the_file_speaks_exactly_the_command_lines_words() {
         flag::CCM_SID,
         flag::ACCOUNT_DIR,
     ];
-    for k in PROFILE_KEYS.iter() {
+    let keys: Vec<&str> = PROFILE_FLAGS.iter().map(|f| key_of(f)).collect();
+    for k in &keys {
         assert!(is_ccm_word(&format!("--{k}")), "配置里的 {k} 不是 ccm 的词");
     }
-    let all = crate::control::ccm::argv::right_words();
+    let all = crate::control::ccm::argv::RIGHT_WORDS;
     let want: Vec<String> = all
         .iter()
         .filter(|w| !per_call.contains(*w))
         .map(|w| w.trim_start_matches("--").to_string())
         .collect();
-    let mut have: Vec<String> = PROFILE_KEYS.iter().map(|k| k.to_string()).collect();
+    let mut have: Vec<String> = keys.iter().map(|k| k.to_string()).collect();
     let mut want = want;
     have.sort();
     want.sort();

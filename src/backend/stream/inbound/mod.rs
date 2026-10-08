@@ -57,7 +57,10 @@ pub(crate) use drain::{DRAIN, DRAIN_DEADLINE};
 use sniff::sniff_id;
 pub use sniff::ID_SNIFF_BYTES;
 use spec::{BlockingHandler, BoxFut, DataHandler, Fail, Handler, Outcome};
-pub(crate) use spec::{CommandSpec, Dir, Run};
+pub(crate) use spec::{CommandSpec, Run};
+// 字段的向只有协议文档生成器读（测试档）。
+#[cfg(test)]
+pub(crate) use spec::Dir;
 
 /// 单行上限。超过即整行丢弃 + 回 `line_too_long`。
 ///

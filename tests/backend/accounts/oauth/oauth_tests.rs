@@ -4,6 +4,7 @@
 use super::*;
 use std::io::{BufRead, Read as _, Write as _};
 use std::net::{SocketAddr, TcpListener};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 const FACE: LoginFace = crate::agents::claudecode::LOGIN;

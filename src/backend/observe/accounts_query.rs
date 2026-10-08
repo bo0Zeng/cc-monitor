@@ -252,7 +252,7 @@ fn list_accounts(accts_dir: &Path) -> Vec<String> {
 }
 
 /// 清单的**扫描本体**：`(meta, 账号们)`。CLI 那一臂（[`list_accounts`]）与帧面成品
-/// （[`list_product_at`]）两个出口共用它 —— 「一份扫描、两个出口」，读 manifest / 判安全 / 判鉴权方式一行不重写。
+/// （[`list_product_with`]）两个出口共用它 —— 「一份扫描、两个出口」，读 manifest / 判安全 / 判鉴权方式一行不重写。
 ///
 /// `in_table(configDir)`：这个号在**这台机器**的 apikey 表里有没有行（帧面那一臂由调用方按
 /// `acct_core::apikey_routed_subset` 答；CLI 那一臂恒答没有）。它是鉴权方式的**第二个输入**，
@@ -399,17 +399,7 @@ pub(crate) fn list_product(rows: &[String], agent: &str, table_agent: &str) -> s
     )
 }
 
-/// [`list_product`] 的本体，账号库目录是参数（判据拿夹具喂它，不碰真家目录）；家目录与 key 那两格空着。
-pub(crate) fn list_product_at(
-    accts_dir: &Path,
-    rows: &[String],
-    agent: &str,
-    table_agent: &str,
-) -> serde_json::Value {
-    list_product_with(accts_dir, None, rows, &[], agent, table_agent)
-}
-
-/// [`list_product`] 的全参本体。
+/// [`list_product`] 的全参本体（账号库目录是参数：判据拿夹具喂它，不碰真家目录）。
 ///
 /// - `meta.home`：这台的家目录（界面把路径里的它缩成 `~`；推不出 ⇒ `null`）。
 /// - 每个号 `keyMasked` · `baseUrl`：API 号在这台 apikey 表里那一行的掩码（只留末四位）与端点；
@@ -769,13 +759,9 @@ pub(crate) fn app_exit_product(
     }
 }
 
-/// 走同一个解析（只跟着家走）。
-pub(crate) fn lines_for_frame(agent_home: &Path, which: FrameAccounts) -> Vec<String> {
-    let accts_dir = resolve_accts_dir();
-    match which {
-        FrameAccounts::List => list_accounts(&accts_dir),
-        FrameAccounts::BySession => session_accounts(agent_home, &accts_dir),
-    }
+/// 帧面那几问要的「哪个会话在用哪个号」（同 `--session-accounts` 那一臂，走同一个解析，只跟着家走）。
+pub(crate) fn session_lines_for_frame(agent_home: &Path) -> Vec<String> {
+    session_accounts(agent_home, &resolve_accts_dir())
 }
 
 /// 帧面 `accounts-trust`：换号前的信任预检。`config_dir == None` ⇒ 账号 0（同 `--account-trust-zero`：路径写死在 `$HOME`，不收路径参数）；
@@ -816,15 +802,6 @@ pub(crate) fn trust_product_at(
             crate::common::contract::malformed("trust line lacks `trusted` / `known`"),
         )),
     }
-}
-
-/// [`lines_for_frame`] 问的是哪一条。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum FrameAccounts {
-    /// `--list-accounts` 那一臂。
-    List,
-    /// `--session-accounts` 那一臂。
-    BySession,
 }
 
 /// 查询模式入口。返回进程退出码（0 ok / 2 err），同 `history_query::run` 约定。
