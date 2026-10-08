@@ -110,3 +110,43 @@ fn 台数封顶_超了先丢最久没更新的那台() {
             .is_null()
     );
 }
+
+#[test]
+fn 删机器时清掉那台_两样都读不到_别的台不动_没记过的那台照样回成() {
+    let d = Dir::new("forget");
+    for (o, k) in [
+        ("devbox", "accounts"),
+        ("devbox", "data"),
+        ("gpu-01", "data"),
+    ] {
+        write_at(
+            &d.file(),
+            &json!({"origin": o, "kind": k, "value": {"x": 1}}),
+            10,
+        )
+        .unwrap();
+    }
+    write_at(&d.file(), &json!({"origin": "devbox", "forget": true}), 20).unwrap();
+    assert_eq!(
+        read_at(&d.file(), &json!({"origin": "devbox"})).unwrap(),
+        json!({"accounts": null, "data": null})
+    );
+    assert_eq!(
+        read_at(&d.file(), &json!({"origin": "gpu-01"})).unwrap(),
+        json!({"accounts": null, "data": {"atMs": 10, "value": {"x": 1}}})
+    );
+    let raw: serde_json::Value = serde_json::from_slice(&std::fs::read(d.file()).unwrap()).unwrap();
+    assert!(raw.get("devbox").is_none(), "盘上还留着那台：{raw}");
+    write_at(&d.file(), &json!({"origin": "never", "forget": true}), 30).unwrap();
+    // 清就只清：带着 kind / value 的 forget 不收（两件事别混在一次里）。
+    let mixed = write_at(
+        &d.file(),
+        &json!({"origin": "gpu-01", "forget": true, "kind": "data", "value": {"x": 2}}),
+        40,
+    );
+    assert_eq!(mixed.unwrap_err().0, "bad_args");
+    assert_eq!(
+        read_at(&d.file(), &json!({"origin": "gpu-01"})).unwrap()["data"]["atMs"],
+        10
+    );
+}

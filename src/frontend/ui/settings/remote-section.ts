@@ -48,6 +48,7 @@ import { icon } from "../kit/icon";
 import { openMenu, type MenuItem } from "../kit/menu";
 import { statusDot, setDot } from "../kit/status-dot";
 import { toast, undoToast } from "../kit/toast";
+import { forgetSeen } from "../last-seen";
 import { openAddMachine } from "./add-machine";
 import { localMeta, machineMeta, NO_FACTS, type MachineFacts, type MachineSection } from "./machine-page";
 import { fetchAccounts, fetchLocalAccounts } from "../account-reads";
@@ -869,7 +870,7 @@ export class RemoteSection {
 
   /**
    * 从列表删除（撤得回 ⇒ 不问）：那一行、那一页当场拿掉，出「已删除 X ［撤销］」8 秒；
-   * 撤销 ⇒ 原样放回（连接设置一格不丢）；没撤 ⇒ 到点才写盘、清那台的状态账本、停掉经它的端口转发。
+   * 撤销 ⇒ 原样放回（连接设置一格不丢）；没撤 ⇒ 到点才写盘、清那台的状态账本与上次值（本机后端记的）、停掉经它的端口转发。
    * 那台正有端口转发 ⇒ 那一句带上「停止转发 n」（数由壳答，`machine_interrupts`）。
    */
   private async removeCard(card: MachineCard): Promise<void> {
@@ -896,7 +897,10 @@ export class RemoteSection {
       },
       () => {
         if (undone) return;
-        if (card.persistedKey) forgetMachine(card.persistedKey);
+        if (card.persistedKey) {
+          forgetMachine(card.persistedKey);
+          void forgetSeen(card.persistedKey);
+        }
         this.pageIdOf.delete(card);
         void this.save();
         if (origin && forwards > 0) void stopForwardsOf(origin);
