@@ -683,7 +683,10 @@ fn wait_exec_done(pid: u32, prog: &str) {
     while !std::fs::read(format!("/proc/{pid}/cmdline"))
         .is_ok_and(|c| c.starts_with(prog.as_bytes()))
     {
-        assert!(std::time::Instant::now() < until, "{prog} 起不来（10 秒没走完 exec）");
+        assert!(
+            std::time::Instant::now() < until,
+            "{prog} 起不来（10 秒没走完 exec）"
+        );
         std::thread::yield_now();
     }
 }
