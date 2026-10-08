@@ -81,7 +81,8 @@ import {
   frontOnce,
   forgetSession,
 } from "./tab-session-actions";
-import { frontView, type FrontAct, type FrontResult } from "./front-result";
+import { frontView, type FrontAct, type FrontResult, type FrontView } from "./front-result";
+import { updateBackendOf } from "./backend-deploy";
 import { awaitedFor, paintWaiting } from "./cards/step-line";
 import { machineName } from "./control-said";
 import { closeFrontResult, copyFrontDetail, flashFrontDone, setFrontBusy, showFrontResult } from "./front-pop";
@@ -1606,8 +1607,6 @@ export class TabManager {
 
   /** ↗ 浮层的［接上终端］（主窗口接到设置窗那一节）。 */
   onConnectTerminal: (() => void) | null = null;
-  /** ↗ 浮层的［更新］：开那台机器页（把这一版换到那台的那一颗住机器卡上，主窗口接）。 */
-  onUpdateMachine: ((origin: Origin) => void) | null = null;
 
   /** ↗ 的锚：行尾那颗（从行上点的）或会话头那颗（别的入口；会话头没在画它 ⇒ 退到行尾那颗）。 */
   private frontAnchor(sid: string, from: "row" | "head"): HTMLElement | null {
@@ -1656,7 +1655,8 @@ export class TabManager {
         await copyFrontDetail(a.detail);
         return;
       case "update":
-        this.onUpdateMachine?.(origin);
+      case "retry-update":
+        await this.updateInPlace(sid, from, origin);
         return;
       case "retry":
         await this.frontFrom(sid, from);
@@ -1664,6 +1664,37 @@ export class TabManager {
       case "reconnect":
         this.reconnect(origin);
         return;
+    }
+  }
+
+  /**
+   * ↗ 浮层的［更新］：就地把这一版换到那台（部署住 `backend-deploy.ts`，与机器卡同一处），不开设置；
+   * 正在更新 · 换上了 · 没换上都在同一个浮层里说。换上了就重拨那条流：拨成了只留关闭；没拨成才说要重连、给［重新连接］。
+   * 没换上 ⇒ ［重试］再更新一次 ·［复制详情］。确认框里取消 ⇒ 什么都不出。
+   */
+  private async updateInPlace(sid: string, from: "row" | "head", origin: Origin): Promise<void> {
+    const machine = machineName(origin);
+    const show = (view: FrontView): void => {
+      const anchor = this.frontAnchor(sid, from);
+      if (anchor) showFrontResult(anchor, sid, view, (a) => this.frontAct(sid, from, origin, a));
+    };
+    const view = (title: string, body: string, tone: FrontView["tone"], acts: FrontAct[]): FrontView => ({ title, body, hint: null, tone, acts });
+    let done: string | null;
+    try {
+      done = await updateBackendOf(origin, machine, () => show(view(copyText("front.title.updating", { machine }), "", "grey", [])));
+    } catch (e) {
+      const detail = e instanceof Error ? e.message : String(e);
+      show(view(copyText("front.title.updateFailed", { machine }), detail, "red", [{ kind: "retry-update" }, { kind: "copy", detail }]));
+      return;
+    }
+    if (done === null) return;
+    const title = copyText("front.title.updated", { machine });
+    try {
+      await this.actions.redial(origin);
+      show(view(title, done, "grey", []));
+    } catch (e) {
+      console.warn(`[front] ${origin} 换上之后重拨没成：`, e);
+      show(view(title, `${done} ${copyText("front.body.redialFailed")}`, "amber", [{ kind: "reconnect" }]));
     }
   }
 

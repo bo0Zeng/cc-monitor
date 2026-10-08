@@ -63,9 +63,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
     },
     CommandSpec {
         name: "last-seen-write",
-        summary: "记下一台这一次读成的那一份",
+        summary: "记下一台这一次读成的那一份（或清掉那台）",
         codes: &["bad_args", "io_failed", "too_large"],
-        fields: &[out("atMs", "记下的时刻（毫秒）"), arg("kind", "闭集 `accounts` · `data`"), arg("origin", "哪台（机器名）"), arg("value", "那一份应答（对象，序列化后 ≤ 256 KiB）；最多记 64 台，超了先丢最久没更新的那台")],
+        fields: &[out("atMs", "记下的时刻（毫秒）"), arg("forget", "`true` ⇒ 清掉这台的上次值（删机器时；不带 `kind` / `value`）"), arg("kind", "闭集 `accounts` · `data`"), arg("origin", "哪台（机器名）"), arg("value", "那一份应答（对象，序列化后 ≤ 256 KiB）；最多记 64 台，超了先丢最久没更新的那台")],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::footprint::last_seen::answer_write(&r.args)

@@ -15,7 +15,7 @@
 | [`third-party-notices.py`](third-party-notices.py) | 第三方许可声明的生成器：用 cargo-about（版本钉在脚本里，没有就装进 `.build/tools`）与 `node_modules/` 生成仓根 `THIRD-PARTY-NOTICES.txt`（随安装包与 Release 分发）和 `tests/evidence/third-party-not-shipped.txt`；`--check` 只验不写，`release.yml` 发版那一趟调它；加删依赖后重跑一次再提交（门禁 `release-gate` ⑰ 两向核） |
 | [`third-party-about.toml`](third-party-about.toml) | 上面那个生成器给 cargo-about 的配置：收哪几种许可 · 按哪几个目标平台收依赖 · 不收开发期依赖 |
 
-跑法与射程都在各脚本自己的头注里。这张表由 `doc_claim_registry_tests.rs::every_script_in_the_directory_is_listed_in_its_readme` 钉住：往本目录放新文件而不登记就会红。
+跑法与射程都在各脚本自己的头注里。
 
 另有一份 PowerShell 模板存在 `src/frontend/shell/scripts/`（编译时 `include_str!` 进 Rust 二进制，不在本目录）：
 

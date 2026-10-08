@@ -17,6 +17,10 @@ vi.mock("../../../src/comms/inward/chan", () => ({
       const args = JSON.parse(new TextDecoder().decode(body)) as Record<string, unknown>;
       calls.push({ origin, op, args });
       const enc = (v: unknown) => Promise.resolve(new TextEncoder().encode(JSON.stringify(v)));
+      if (op === "last-seen-write" && args.forget === true) {
+        store.delete(args.origin as string);
+        return enc({ atMs: 43 });
+      }
       if (op === "last-seen-write") {
         store.set(args.origin as string, { ...(store.get(args.origin as string) ?? {}), [args.kind as string]: { atMs: 42, value: args.value } });
         return enc({ atMs: 42 });
@@ -31,7 +35,7 @@ vi.mock("../../../src/comms/inward/chan", () => ({
   },
 }));
 
-import { recallSeen, rememberSeen, __resetLastSeenForTests } from "../../../src/frontend/ui/last-seen";
+import { forgetSeen, recallSeen, rememberSeen, __resetLastSeenForTests } from "../../../src/frontend/ui/last-seen";
 import { fetchAccounts, __resetAccountsCacheForTest } from "../../../src/frontend/ui/account-reads";
 
 const settle = async () => {
@@ -73,5 +77,21 @@ describe("上次值交本机后端记", () => {
     expect(off.available).toBe(false);
     expect(off.last?.atMs).toBe(42);
     expect(off.last?.meta.enabled).toBe(true);
+  });
+
+  it("★ 删机器：交本机后端清掉那台（只带 origin ＋ forget）；之后问不到它；同名再加回来、同一份照样再交", async () => {
+    await rememberSeen("devbox", "data", { a: 1 });
+    await rememberSeen("gpu-01", "data", { b: 1 });
+    calls.length = 0;
+    await forgetSeen("devbox");
+    expect(calls.map((c) => [c.origin, c.op, c.args])).toEqual([["<local>", "last-seen-write", { origin: "devbox", forget: true }]]);
+    expect(await recallSeen("devbox", "data")).toBeNull();
+    expect(await recallSeen("gpu-01", "data")).toEqual({ atMs: 42, value: { b: 1 } });
+    calls.length = 0;
+    await rememberSeen("devbox", "data", { a: 1 });
+    expect(calls.map((c) => c.op), "同名那台再加回来：这次运行里交过的记忆跟着清").toEqual(["last-seen-write"]);
+    calls.length = 0;
+    await forgetSeen("<local>");
+    expect(calls, "本机那台不记，也不清").toEqual([]);
   });
 });

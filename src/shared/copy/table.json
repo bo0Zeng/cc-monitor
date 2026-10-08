@@ -4558,6 +4558,30 @@
       "zh": "{machine} 要更新",
       "args": ["machine"]
     },
+    "front.title.updating": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "正在更新 {machine}",
+      "args": ["machine"]
+    },
+    "front.title.updated": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "{machine} 已更新",
+      "args": ["machine"]
+    },
+    "front.title.updateFailed": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "{machine} 更新失败",
+      "args": ["machine"]
+    },
+    "front.body.redialFailed": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "重新连接失败，点［重新连接］再试",
+      "args": []
+    },
     "front.title.failed": {
       "kind": "title",
       "role": "标题",
@@ -9665,7 +9689,7 @@
     "rsSftp.deploy.done": {
       "kind": "body",
       "role": "toast",
-      "zh": "已安装后端（{buildId}，{machine}）到 {path}（{reason}）。重连远端即可用。",
+      "zh": "已安装后端（{buildId}，{machine}）到 {path}（{reason}）。",
       "args": ["buildId", "machine", "path", "reason"]
     },
     "rsSftp.deploy.upToDate": {
@@ -9726,7 +9750,7 @@
     "rsSftp.identity.other": {
       "kind": "body",
       "role": "说明",
-      "zh": "该机 {s} · 本版 {expected}",
+      "zh": "原 {s} · 换为 {expected}",
       "args": ["s", "expected"]
     },
     "rsSftp.identity.empty": {
@@ -19058,6 +19082,12 @@
       "zh": "做什么",
       "args": []
     },
+    "extPage.install.offline": {
+      "kind": "body",
+      "role": "状态",
+      "zh": "离线 · 上次同步：{state}",
+      "args": ["state"]
+    },
     "extPage.offline.bar": {
       "kind": "body",
       "role": "状态",
@@ -24547,6 +24577,12 @@
       "role": "说明",
       "zh": "启动 cc-monitor",
       "args": []
+    },
+    "backendDeploy.update.noMachine": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "设置里没有 {machine}",
+      "args": ["machine"]
     },
     "interrupts.row.untilStart": {
       "kind": "body",

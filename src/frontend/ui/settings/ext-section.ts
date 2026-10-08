@@ -507,7 +507,8 @@ export class ExtSection {
   private machineRow(r: ExtRow, c: ExtCell, m: ExtMachine): HTMLElement {
     const key = machineKey(m);
     const slot = this.slots.get(key) ?? {};
-    const line = el("div", "ext-machine");
+    // 连不上的那台：这一行照表上「离线整列半透明」那一套变淡、勾不了、卸不了，现状后面点明是上次同步的样子。
+    const line = el("div", m.reachable ? "ext-machine" : "ext-machine is-offline");
     const top = el("label", "ext-machine-top");
     const bring = c.bring;
     // 装得了的那台才给勾（勾上 ＝ 装到 / 换成这一版）；装了而且一样的勾不了，卸在它那几处。
@@ -520,12 +521,13 @@ export class ExtSection {
     top.appendChild(pick);
     top.appendChild(el("span", "ext-machine-name", machineName(m)));
     top.appendChild(el("span", DOT_CLASS[c.state], dotOf(c.state)));
-    top.appendChild(el("span", "ext-machine-state", c.state === "differs" && bring ? copyText("extPage.install.differsPick", { state: stateText(c.state, c.places) }) : stateText(c.state, c.places)));
+    const said = c.state === "differs" && bring && m.reachable ? copyText("extPage.install.differsPick", { state: stateText(c.state, c.places) }) : stateText(c.state, c.places);
+    top.appendChild(el("span", "ext-machine-state", m.reachable ? said : copyText("extPage.install.offline", { state: said })));
     // 只有全局那一处 ⇒ 不另起一行，「卸载…」直接跟在这一台后面；装在几个项目里的才逐处列。
     const only = c.places.length === 1 && c.places[0].at.level === "user" ? c.places[0] : null;
     if (only?.uninstall) {
       const b = button(copyText("extPage.button.uninstall"), () => void this.openRemove(r, m, only.at));
-      b.disabled = slot.busy === true || slot.card !== undefined;
+      b.disabled = slot.busy === true || slot.card !== undefined || !m.reachable;
       top.appendChild(b);
     }
     line.appendChild(top);
@@ -553,7 +555,7 @@ export class ExtSection {
     row.appendChild(el("span", "ext-machine-state", stateText(p.state, [])));
     if (p.uninstall && !uninstallAbove) {
       const b = button(copyText("extPage.button.uninstall"), () => void this.openRemove(r, m, p.at));
-      b.disabled = slot.busy === true || slot.card !== undefined;
+      b.disabled = slot.busy === true || slot.card !== undefined || !m.reachable;
       row.appendChild(b);
     }
     if (r.kind === "skill" && p.dir !== null && isLocalOrigin(originOf(m))) {

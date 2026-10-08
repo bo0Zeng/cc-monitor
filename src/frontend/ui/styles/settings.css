@@ -1745,6 +1745,13 @@ body.settings-window-mode .settings-panel {
     align-items: center;
     flex-wrap: wrap;
   }
+  /* 连不上的那台：整行半透明（同表上离线那一列），勾选框不可用。 */
+  .ext-machine.is-offline {
+    opacity: 0.45;
+  }
+  .ext-machine.is-offline .ext-pick {
+    cursor: not-allowed;
+  }
   .ext-machine-name {
     font-weight: 600;
   }

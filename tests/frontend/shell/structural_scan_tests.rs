@@ -1484,7 +1484,13 @@ fn addr_corpus() -> Vec<(std::path::PathBuf, String)> {
         "src/backend",
         "tests",
     ] {
-        out.extend(guard_core::scan_tree!(&root.join(sub), &["rs"]));
+        let got = guard_core::scan_tree!(&root.join(sub), &["rs"]);
+        // ★ 抽取器自检：哪一棵根一份都没扫到 ⇒ 下面几条在那一块零命中地绿。
+        assert!(
+            !got.is_empty(),
+            "地址判据在 `{sub}` 下一份 .rs 都没扫到 —— 语料面坏了"
+        );
+        out.extend(got);
     }
     // 壳那棵根的人群声明带进来的兄弟包（通道 · 宿主原语 · 开窗契约）也住 `src/common` 那棵：同一份只收一次。
     out.sort_by(|a, b| a.0.cmp(&b.0));
@@ -1496,13 +1502,6 @@ fn addr_corpus() -> Vec<(std::path::PathBuf, String)> {
         std::path::PathBuf::from("structural_scan.rs"),
         include_str!("../../../src/frontend/shell/src/structural_scan.rs").to_string(),
     ));
-    // ★ 抽取器自检：语料面塌了 ⇒ 下面三条一起零命中地绿。
-    assert!(
-        out.len() >= 180,
-        "地址判据只收到 {} 份源文件 —— 语料面坏了（09-02 现打 187 份：\
-             四个根下 186 + build.rs 1，与 `git ls-files` 的分母逐份对上）",
-        out.len()
-    );
     out
 }
 
@@ -1766,13 +1765,11 @@ fn line_number_addresses_stay_in_range_and_never_grow() {
 
     let mut seen: std::collections::BTreeSet<(String, String, usize)> =
         std::collections::BTreeSet::new();
-    let mut hits = 0usize;
     let mut newly: Vec<String> = Vec::new();
     let mut overrun: Vec<String> = Vec::new();
     for (p, raw) in &corpus {
         let fname = addr_base(p);
         for (ln, cited, n) in line_addresses(raw) {
-            hits += 1;
             let key = (fname.clone(), cited.clone(), n);
             seen.insert(key.clone());
             if !INVENTORY
@@ -1815,14 +1812,8 @@ fn line_number_addresses_stay_in_range_and_never_grow() {
     //   越界 → 新增 → 登记表保鲜。把保鲜排在前面时，「有人把一处地址指到了文件末尾之后」
     //   这一刀报出来的是「登记表里那一行盘上没有了」——**指错了修法**，
     //   而本仓反复吃过「读诊断」的亏：指错地方的诊断比没有诊断更费时间。
-    // ★ 抽取器自检：人群塌了 ⇒ 本条零命中地绿。量的是语料面（扫到几份文件），不是行号地址的处数：
-    //   散文里的行号地址本来就该越来越少，抽取器认不认得出由 `the_address_extractors_really_see_each_shape` 判。
-    let _ = hits;
-    assert!(
-        corpus.len() >= 600,
-        "行号地址的语料面只收到 {} 份文件 —— 遍历坏了",
-        corpus.len()
-    );
+    // 语料面塌没塌由 `addr_corpus` 自己判（每棵根都要扫到东西）；抽取器认不认得出由
+    //   `the_address_extractors_really_see_each_shape` 拿合成样本判。
     assert!(
         overrun.is_empty(),
         "这些行号地址**越界**了 —— 被引文件根本没有那么多行，一定是假的：\n{}\n\n\

@@ -15,7 +15,6 @@
 import { ResumeSelect } from "./resume-select";
 import { getBehavior } from "../behavior";
 import { listen } from "@tauri-apps/api/event";
-import { commands } from "../ipc/commands";
 import { open } from "@tauri-apps/plugin-dialog";
 import { homeDir, join } from "@tauri-apps/api/path";
 import { openFileWindow } from "../file-window";
@@ -25,6 +24,7 @@ import { hostKey, readRemoteConfig, resolveRemoteConfigByOrigin, type RemoteHost
 import { parseAddressLines } from "../remote-config";
 import type { MachineFault } from "../generated/MachineFault";
 import { askInterrupts, interruptRows } from "./interrupts";
+import { uninstallBackend, updateBackend } from "../backend-deploy";
 // E80：`ConnectStage` 直连生成物，不再绕道 `remote-section`（那条绕道是 import 环的一半）。
 import type { ConnectStage } from "../generated/ConnectStage";
 // 起新会话：全产品一个框（机器卡 ⋯「新建会话…」开它，机器锁定）。
@@ -825,17 +825,10 @@ export class MachineCard {
       ?.remove();
   }
 
-  /** 问题行［更新］：先问会打断什么（有才弹框，确认键「更新」），再把这一版换上去。 */
+  /** 问题行［更新］：把这一版换上去（先问会打断什么，部署住 `backend-deploy.ts`，与主窗口 ↗ 浮层同一处）。 */
   async update(): Promise<void> {
-    const machine = this.displayName();
-    const rows = interruptRows(await askInterrupts(this.persistedKey ?? hostKey(this.collect())), machine, "update");
-    if (
-      rows.length > 0 &&
-      !(await confirmDialog({ title: copyText("interrupts.update.title", { machine }), action: copyText("interrupts.update.action"), rows }))
-    ) {
-      return;
-    }
-    await commands.deploy_remote_backend({ cfg: this.collect() });
+    const cfg = this.collect();
+    await updateBackend(cfg, this.persistedKey ?? hostKey(cfg), this.displayName());
   }
 
   /** 问题行［推送公钥…］。 */
@@ -1085,7 +1078,7 @@ export class MachineCard {
     const done = await this.runRemoteAction(
       this.backendUninstallButton,
       copyText("machineCard.uninstall.running"),
-      () => commands.uninstall_remote_backend({ cfg }),
+      () => uninstallBackend(cfg),
       // 卸载**成功**意味着这台机器现在没有 backend —— 结论是 `fail`（缺组件），不是 `ok`。
       // 这里刻意不用 ledger 参数：它把「动作成功」映射成 `ok`，而本例正好相反。
       undefined,

@@ -7,10 +7,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 vi.mock("../../../../src/frontend/ui/config", async (orig) => (await import("../config-patch-fake")).mockedConfigModule(orig));
 // S3：把整个 IPC 面 mock 成一个**会记账的 Proxy** —— 用来钉「渲染机器列表时零次
 // 后端调用」。这比源码扫描强：扫描只能证明「没 import」，证明不了「渲染时没调」。
-const { ipcCalls, chanOps, ipcReplies } = vi.hoisted(() => ({
+const { ipcCalls, chanOps, chanSent, ipcReplies } = vi.hoisted(() => ({
   ipcCalls: [] as string[],
   /** 经 `commands.chan_call` 发出去的那几问的 op（按发出顺序）。 */
   chanOps: [] as string[],
+  /** 经 `commands.chan_call` 发出去的那几问：问谁 · op · 请求体（按发出顺序）。 */
+  chanSent: [] as { origin: string; op: string; req: unknown }[],
   /** 按命令名设定返回值；没设的一律 resolve(undefined)。 */
   ipcReplies: new Map<string, unknown>(),
 }));
@@ -30,7 +32,12 @@ vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
       get: (_t, name: string) => (...args: unknown[]) => {
         ipcCalls.push(name);
         const op = name === "chan_call" ? String((args[0] as { op?: unknown } | undefined)?.op) : "";
-        if (name === "chan_call") chanOps.push(op);
+        if (name === "chan_call") {
+          chanOps.push(op);
+          const a0 = args[0] as { origin: string; payload?: number[] };
+          const req: unknown = a0.payload ? JSON.parse(new TextDecoder().decode(new Uint8Array(a0.payload))) : null;
+          chanSent.push({ origin: a0.origin, op, req });
+        }
         // 铸名那一问（`terminal-name-mint`）按帧命令名回：名字 ⇒ 那台后端的成品 `{name}`；别的 ⇒ 原样 reject（通道那一层的错）。
         // 「会打断什么」按帧命令名回：一个函数 (那台, 请求) ⇒ 那台后端的成品；没摆 ⇒ 原样 reject（问不到）。
         if (op === "machine-interrupts") {
@@ -460,6 +467,22 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     for (const b of [...document.querySelectorAll<HTMLButtonElement>("button[aria-label]")].filter((x) => x.getAttribute("aria-label") === copyText("kit.toast.close"))) b.click();
     for (let k = 0; k < 4; k++) await new Promise((r) => setTimeout(r, 0));
     expect(chanOps.filter((o) => o === "forward-list"), "到点没去停经它的转发").toHaveLength(1);
+  });
+
+  it("★ 删机器：撤销条到点才交本机后端清掉那台的上次值；撤销了就不清", async () => {
+    const sec = await mount([mkH("a", "1.1.1.1"), mkH("b", "2.2.2.2")]);
+    const forgets = () => chanSent.filter((c) => c.op === "last-seen-write").map((c) => [c.origin, c.req]);
+    chanSent.length = 0;
+    await removeAt(sec, 0, false);
+    expect(forgets(), "撤销条还在：不清").toEqual([]);
+    const undo = [...document.querySelectorAll<HTMLButtonElement>("button")].filter((b) => (b.textContent ?? "").startsWith(copyText("kit.toast.undo")));
+    undo.at(-1)!.click();
+    for (let k = 0; k < 4; k++) await new Promise((r) => setTimeout(r, 0));
+    expect(forgets(), "撤销了：不清").toEqual([]);
+    // 这个挂法没有机器页：撤回来的卡不回 DOM，眼下能点的删除只剩 b 那张。
+    await removeAt(sec, 0);
+    for (let k = 0; k < 4; k++) await new Promise((r) => setTimeout(r, 0));
+    expect(forgets()).toEqual([["<local>", { origin: "b", forget: true }]]);
   });
 
   it("★ 改机器名 ⇒ 是**改**那一条，不是新增一台 + 留下孤儿", async () => {
