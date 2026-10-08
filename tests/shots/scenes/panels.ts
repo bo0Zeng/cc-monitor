@@ -1,6 +1,8 @@
 /**
  * 主窗口上的面板与浮层：子 agent / 任务 / 账号 / 命令面板 / 会话内查找 / 大纲 / 监控板 / 历史 / 右键菜单 / 提示。
  */
+import { copyText } from "../../../src/frontend/ui/copy-table";
+import { copyPattern } from "../../test-support/copy-pattern";
 import { hms } from "../fake/clock";
 import type { Scene } from "./index";
 import { Refuse, type World } from "../fake/types";
@@ -176,7 +178,7 @@ export const PANEL_SCENES: Scene[] = [
     await type("[data-role=command-input]", "新建会话");
     await key("Enter");
     await waitFor('[role="dialog"] button[aria-label="账号"]:not([data-value=""])');
-    await click(await byText('[role="dialog"] button', "更多：tmux 会话名 · 启动命令"));
+    await click(await byText('[role="dialog"] button', copyText("newSession.more.plain")));
     await sleep(500);
   }),
   panel("panel-new-session-nodir", "起新会话 · 目录那一格不行", "点［新建］、那台说目录不在：错误落在目录那一格下，框不关", async () => {
@@ -256,7 +258,7 @@ export const PANEL_SCENES: Scene[] = [
       }
       await rightClick(tabs[0]);
       await sleep(600);
-      await click(await byText("[role^=menuitem]", "结束会话（"));
+      await click(await byText("[role^=menuitem]", copyPattern("tabBatch.menu.stop")));
       await waitFor("[aria-modal='true']");
       await sleep(400);
     }),
@@ -266,7 +268,7 @@ export const PANEL_SCENES: Scene[] = [
     await mainReady(ALL_TABS);
     await rightClick(document.querySelectorAll("#tab-bar .tab")[3]);
     await sleep(800);
-    await click(await byText("[role^=menuitem]", "预览画面"));
+    await click(await byText("[role^=menuitem]", copyText("tabMenu.preview.label")));
     await waitFor(".pane-preview-box");
     await sleep(700);
   }),
@@ -436,8 +438,8 @@ export const PANEL_SCENES: Scene[] = [
   panel("panel-account-unavailable", "Resume · 上次用的号选不了", "右键已结束的「账单导出」→ Resume → 直连：那台说上次用的号 personal 选不了，不起、给「改用 work」的选择", async () => {
     await mainReady(ALL_TABS);
     await rightClick(document.querySelectorAll<HTMLElement>("#tab-bar .tab")[3]);
-    await click(await byText("[role^=menuitem]", "恢复"));
-    await click(await byText("[role^=menuitem]", "直连 · 不建 tmux 会话"));
+    await click(await byText("[role^=menuitem]", copyText("tabMenu.item.resume")));
+    await click(await byText("[role^=menuitem]", copyText("resumeMenu.run.direct")));
     await waitFor("#kit-toast-stack > [data-level=error]");
     await sleep(600);
   }, accountGoneWorld),
@@ -509,7 +511,7 @@ export const PANEL_SCENES: Scene[] = [
     }
     await rightClick(tabs[0]);
     await sleep(600);
-    await click(await byText("[role^=menuitem]", "结束会话（"));
+    await click(await byText("[role^=menuitem]", copyPattern("tabBatch.menu.stop")));
     await waitFor("[aria-modal='true']");
     await sleep(400);
   }),
@@ -523,11 +525,11 @@ export const PANEL_SCENES: Scene[] = [
     }
     await rightClick(tabs[0]);
     await sleep(600);
-    await click(await byText("[role^=menuitem]", "结束会话（"));
+    await click(await byText("[role^=menuitem]", copyPattern("tabBatch.menu.stop")));
     await waitFor("[aria-modal='true']");
     await sleep(300);
-    await click(await byText("[aria-modal='true'] button", /^结束 \d+ 个会话$/));
-    await click(await byText("#kit-toast-stack button", "查看"));
+    await click(await waitFor("[aria-modal='true'] button[data-kind='danger']"));
+    await click(await byText("#kit-toast-stack button", copyText("tabBatch.result.view")));
     await waitFor("[data-role=message-more]");
     await sleep(500);
   }, () => {

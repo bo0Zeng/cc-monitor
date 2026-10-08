@@ -1,6 +1,7 @@
 /**
  * 历史页（主窗口里那一层）与查看窗（单个会话另开一扇窗）。
  */
+import { copyText } from "../../../src/frontend/ui/copy-table";
 import type { Scene } from "./index";
 import { defaultWorld } from "../fake/world";
 import { SEARCH_WORD } from "../fake/history";
@@ -114,7 +115,7 @@ export const HISTORY_SCENES: Scene[] = [
   }),
   hist("history-forks", "历史 · 分叉", "devbox 上那个在跑的会话下挂着两个分叉：点「2 个分叉 ▸」展开", async () => {
     await openHistory();
-    await click(await byText(".history-view button", "2 个分叉"));
+    await click(await byText(".history-view button", copyText("history.row.forks", { n: 2 })));
     await sleep(300);
   }),
   {
