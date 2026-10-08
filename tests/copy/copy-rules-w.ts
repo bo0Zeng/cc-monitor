@@ -1,5 +1,5 @@
 /**
- * CP2a · 新写法（`调研/…/文案/新写法/规范.md` §1 的 N 系）落成的机检：C-W1–C-W17 ＋ 收严的 C-L2 · C-P1 · C-Y4。
+ * CP2a · 文案新写法那套规矩（N 系）落成的机检：C-W1–C-W17 ＋ 收严的 C-L2 · C-P1 · C-Y4。
  *
  * 每条检法读的词表 / 闭集都住 `src/shared/copy/rules.json` 那一条的 `words` · `cells` · `limits` · `families` 格，
  * 检法里不另抄一份 —— 改规矩就是改那一格。
