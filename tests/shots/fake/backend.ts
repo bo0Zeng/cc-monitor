@@ -125,6 +125,13 @@ export class FakeBackend {
           this.send(sub, [{ t: "unseen", idx: 1, tag: "read", why: "Dropped" }]);
         }, 1500);
       }
+    } else if (sub.kind.startsWith("terminal-screen/")) {
+      // 终端实时画面：订上之后推一屏（就是那一刻的 `terminal-preview` 成品）；按场景随后停（画面中断 · 那台断开）。
+      const mode = this.world.terminalLive ?? "live";
+      const view = this.world.ops["terminal-preview"]?.(sub.origin, {}, this.world);
+      setTimeout(() => this.send(sub, [{ t: "frame", seq: 0, body: JSON.stringify({ seq: 1, view }) }]), 200);
+      if (mode === "lost") setTimeout(() => this.send(sub, [{ t: "frame", seq: 1, body: JSON.stringify({ end: "lost" }) }]), 500);
+      if (mode === "offline") setTimeout(() => this.send(sub, [{ t: "unseen", idx: 1, tag: "read", why: "Dropped" }]), 500);
     } else if (sub.kind === "session-tap" || sub.kind === "accounts-changed" || sub.kind === "profiles-changed" || sub.kind === "session-tasks" || sub.kind === "quota-changed") {
       this.send(sub, [{ t: "seen", from: null }]);
     } else {

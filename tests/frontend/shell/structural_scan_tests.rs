@@ -4091,14 +4091,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ("src/frontend/shell/src/lib.rs", "list_active_sessions", 1), // ⑬ 会话生命周期并进会话流后退役
         ("src/frontend/shell/src/lib.rs", "list_session_activity", 1), // ⑬ 会话生命周期并进会话流后退役
         ("src/doc/ARCHITECTURE.md", "list_active_sessions", 1), // ⑬ 会话生命周期并进会话流后退役
-        ("src/frontend/ui/main.ts", "list_active_sessions", 1), // ⑬ 会话生命周期并进会话流后退役
-        ("src/frontend/ui/main.ts", "list_session_activity", 1), // ⑬ 会话生命周期并进会话流后退役
-        (
-            "src/frontend/ui/tab-session-state.ts",
-            "list_active_sessions",
-            1,
-        ), // ⑬ 会话生命周期并进会话流后退役
-        ("src/frontend/ui/tab-store.ts", "list_active_sessions", 1), // ⑬ 会话生命周期并进会话流后退役
         ("src/frontend/ui/tabs.ts", "list_active_sessions", 1), // ⑬ 会话生命周期并进会话流后退役
         (
             "tests/frontend/shell/event_replay_tests.rs",
@@ -4496,8 +4488,6 @@ fn every_prose_tombstone_mark_is_registered() {
         //   换成只出补丁的 `remoteEdit`：讲来历的散文逐处一块（配置写口的头注 · 诊断写口 · 远端保存那段 · 各判据头注），
         //   以及 KS7 那一格为什么改盯 `patch_config`。
         ("src/frontend/shell/src/logging.rs", 1),
-        ("src/frontend/ui/config.ts", 1),
-        ("src/frontend/ui/settings/remote-section.ts", 2),
         ("tests/frontend/ui/config-lost-update.vitest.ts", 1),
         ("tests/frontend/ui/remote-config.vitest.ts", 1),
         ("tests/frontend/ui/settings/remote-section.vitest.ts", 1),
@@ -4756,7 +4746,6 @@ fn every_prose_tombstone_mark_is_registered() {
         // `src/frontend/shell/src/command_args.rs` 那一行删了：整份随它最后两个调用方（送键 · 就地 resume 的发送端）删掉。
         ("src/frontend/shell/src/ccm_probe.rs", 3), // 1 → 4
         // cc-bus 驾驶舱写面五条改由界面经通道直接说：新家的头注点 monitor 那五条旧命令名。
-        ("src/frontend/ui/cc-bus-control.ts", 4), // +3：TS 副本 `isValidBusId` / `refuseBadId` 删了（原处一行两块）· `checkSpawnShape` 头注点它一块
         // `backend/mod.rs` 那一行摘了：随 `backend` 目录删了。
         ("tests/frontend/shell/backend_route_senders_tests.rs", 5), // 9 → 8：全景发送端那一行的墓碑随代码全景整条摘掉删了 // 8 → 9：足迹发送端那一行删了、留墓碑 // 7 → 8：全景发送端那一行删了、留墓碑 // 两边各自贴的墓碑相加，按盘上现数（跑出来核过） 6 → 7 // +1：`apikey_remote`整删，发送端表摘掉那一行处一块挂墓碑 // +1：发送端表摘掉 `mcp_sync.rs` 那一行处一块 // // +1：SENDERS 头三行（三个发送端）摘掉的那一块
         // `launch-cli-wire.ts` · `remote-launch-run.ts` 两行摘了：两份重写成只问那一行 `ccm …`，讲旧 TS 判定来历的墓碑随起会话只交一行 `ccm …`（载荷那一层与它的判据整层删了）走了。
@@ -4794,11 +4783,9 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/frontend/shell/write_site_registry_spawn_sites.rs", 2),
         // `accounts.ts` 里 `auth_ready` 订阅分支的第二份（带「旧后端」回落的 `authReady()` 包装）删了，
         //   点它的散文各挂一块：`Account.authReady` 字段头注那一处 · KAY4 判据头注第 4 条那一处。
-        ("src/frontend/ui/accounts.ts", 1), // 2 → 1：API key 徽章那段头注改成现状（本机远端同一条路），那一块随之去掉 // 3 → 2：空态那句的墓碑随「只能在终端里做」那条理由退役 // 2 → 3：点 `deploy_remote_acct_iso` 旧名那几处挂墓碑 // // 1 → 2
         ("tests/frontend/ui/account-availability-guard.vitest.ts", 1),
         // 同一判据 J2 / J3：TS 的 `isValidConfigDir`（渲染侧 configDir 拒绝集的手抄）与 `sanitizeRemoteLauncher`
         //   （同一字符集、却静默换成默认 launcher）删了，点它们的散文各挂一块。
-        ("src/frontend/ui/shell-quote.ts", 7), // +1：`tmuxNameSegment` 随派生 ＋ 避让搬进后端删了 // +2：头注记 `isValidSessionId` · `isValidModelName` 删了 ·+2：两个 tmux 名谓词删了
         // `launch-dimensions.ts` · `launch-dimensions.test.ts` · `launch-payload-golden.ts` 三行随文件删了；
         //   `remote-launch.test.ts` 那一行摘了：套件重写，旧 TS 判定的墓碑随之走了（起会话只交一行 `ccm …`（载荷那一层与它的判据整层删了））。
         // sid 那一族（J5）：TS `isValidSessionId` 与只剩那一格的 `validateLocalLaunch` 删了、wire 多报一格 `resumeSid`。
@@ -4821,16 +4808,12 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/frontend/shell/launch_tests.rs", 2),
         ("tests/frontend/shell/quote_singleton_guard_tests.rs", 2),
         ("tests/frontend/shell/lib_invariant_population_tests.rs", 1),
-        ("src/frontend/ui/settings/machine-card.ts", 1), // 「后端路径」那一格删了，按用户名预填它的函数原地留一块
-        ("src/backend/control/ccm/plan.rs", 1),          // `self_argv` 的入口②那一形删了，原地一块
-        ("tests/e2e/backend-cc-bus.sh", 1),              // [17] 前的入口②说明删了，原地一块
+        ("src/backend/control/ccm/plan.rs", 1), // `self_argv` 的入口②那一形删了，原地一块
+        ("tests/e2e/backend-cc-bus.sh", 1),     // [17] 前的入口②说明删了，原地一块
         ("tests/e2e/backend-gate2-acceptance.sh", 1), // `meta_dollar` 那条登记豁免换成版本门，原地一块
         ("tests/backend/control/ccm_tests.rs", 1), // 那条路由判据并进 claude_flags_tests，原地一块
         // 人读表解析器删了，一处点它旧名的散文挂墓碑。
         ("tests/backend/plugin_walk_fixture.rs", 1),
-        ("src/frontend/ui/main.ts", 4), // 会话起停两个裸事件名（已并进会话流）挂墓碑 2 → 4 // 新贴：⑬ 会话生命周期并进会话流，退役的 list_active_sessions / list_session_activity / buffered_* 旧名挂墓碑
-        ("src/frontend/ui/tab-session-state.ts", 1), // 新贴：⑬ 会话生命周期并进会话流，退役的 list_active_sessions / list_session_activity / buffered_* 旧名挂墓碑
-        ("src/frontend/ui/tab-store.ts", 1), // 新贴：⑬ 会话生命周期并进会话流，退役的 list_active_sessions / list_session_activity / buffered_* 旧名挂墓碑
         ("src/frontend/ui/tabs.ts", 1), // 新贴：⑬ 会话生命周期并进会话流，退役的 list_active_sessions / list_session_activity / buffered_* 旧名挂墓碑
         ("tests/frontend/shell/event_replay_tests.rs", 1), // 新贴：⑬ 会话生命周期并进会话流，退役的 list_active_sessions / list_session_activity / buffered_* 旧名挂墓碑
         // `history.rs` 的 `up_to_message_id` · `read_jsonl_values` · `write_branch_file` 三行摘了：点它们的那段（分叉转交的来历）随命令删了。
@@ -4840,7 +4823,6 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/backend/agents/claudecode/branch.rs", 2), // 住址随 branch-core 收进后端适配层；1 → 2：`is_plain_sid` 那个再导出删了，原处一块 // 新贴：删会话 / 分叉 / 钩子诊断的转交退役，点旧名的散文挂墓碑
         ("src/frontend/ui/account-reads.ts", 1), // 起会话的计划与渲染搬进后端：墓碑随搬家换住址 / 点已删命令名的散文挂墓碑
         // `agent-profile.ts` 那一行摘了：适配器 id 那个导出零消费者、随起会话只交一行 `ccm …` 删了，它头注那块墓碑跟着走。
-        ("src/frontend/ui/backend-policy.ts", 1), // 起会话的计划与渲染搬进后端：墓碑随搬家换住址 / 点已删命令名的散文挂墓碑
         // `upstream_select/endpoint.rs` 那一行摘了：头注重写成「中转地址只在 `ccm` 最终 exec 那一处定」，点旧命令名的那块随之走了。
         // `observe/accounts_query.rs` 那一行摘了：身份 token 双写点那段头注改写成今天的两侧（写侧是 `ccm`），点旧判据名的那块随之走了。
         ("src/frontend/shell/src/sync_command_registry.rs", 1), // 起会话的计划与渲染搬进后端：墓碑随搬家换住址 / 点已删命令名的散文挂墓碑
@@ -4863,7 +4845,6 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/backend/agents/claudecode/schema.rs", 1), // 新行：记录解释进后端 / 会话正文四条退役，点旧名的散文挂墓碑
         ("src/backend/agents/codex/parse.rs", 1), // 新行：记录解释进后端 / 会话正文四条退役，点旧名的散文挂墓碑
         ("src/comms/inward/origin.rs", 1), // 新行：记录解释进后端 / 会话正文四条退役，点旧名的散文挂墓碑
-        ("src/frontend/ui/cards/index.ts", 1), // 2 → 1：卡头按文件名猜家那一段（点 `codex_sid_from_rollout` · `kind_of_record_name` 的墓碑）随「会话是哪一家由后端说」删了 // 1 → 2：结果默认怎么画的那个谓词（`defaultModeForTool`）删了，卡型随记录成品带来 // 新行：记录解释进后端 / 会话正文四条退役，点旧名的散文挂墓碑
         // `src/frontend/ui/record-reads.ts` 那一行摘了：头注里点旧命令名的那一句改成说它做什么（按目录读子 agent 那一条整轴退役），不再提那个名字。
         // `tests/backend/agents/claudecode/parse_tests.rs` 出表：那份文件随记录解释进后端删了（或墓碑随被守的东西整轴退役）
         (

@@ -1,25 +1,20 @@
 /**
- * 设置面板「远端 (SSH)」区（SSH-remote issue #15 / 多机 #30）。
+ * 设置面板「远端 (SSH)」区：配置并启用远端模式 —— monitor 经 SSH 连 0..N 台远端，各台的后端作为数据源（与本机后端那一路聚合）。
+ * 配置写进 config.json 的 `remote`（`{ enabled, hosts: [...] }`），Rust 侧 `lib.rs::load_remote_configs` 启动时读。
  *
- * 让用户配置 + 启用「远端模式」：monitor 通过 SSH 连到 **0..N 台** 远端主机，由各台的
- * backend 作为额外数据源（与本机后端那一路聚合 ——本机会话内容 CF1 起也走本机后端，不再是 monitor 自己读）。配置写入 config.json 的 `remote`
- * 子对象（`{ enabled, hosts: [...] }`），由 Rust 侧 `lib.rs::load_remote_configs` 启动时读。
+ * camelCase key 必须与 Rust reader 一致（否则后端读不到）：
+ *   enabled (bool) / hosts[] 内每台：label (可选，默认 host) / host / port (默认 22) / user / keyPath (可选) / hostKeyFingerprint (可选)。
+ *   落点恒是那台的 `~/.cc-monitor/bin/ccm`。
  *
- * **camelCase key 必须与 Rust reader 严格一致**（否则后端读不到）：
- *   enabled (bool) / hosts[] 内每台：label (string, 可选默认 host) / host / port (默认 22) /
- *   user / keyPath (可选) / hostKeyFingerprint (可选)（`backendPath` 删了：落点恒是那台的 `~/.cc-monitor/bin/ccm`）
+ * 没有 `hosts` 键的单对象形状不认：一台都不显示，机器列表顶上说「远端配置认不出：…」（`remote-config.ts::REMOTE_CONFIG_UNRECOGNIZED`）。
  *
- * 旧的单对象 `remote: { enabled, host, ... }`（无 `hosts` 键）**不再认**：一台都不显示，
- * 机器列表顶上说「远端配置认不出：…」（`remote-config.ts::REMOTE_CONFIG_UNRECOGNIZED`）。
- *
- * 设计（对齐 behavior.ts / diagnostics-section.ts 范式）：
  * - 读走 config.ts 的 loadConfig；写经 `remote-config.ts::patchRemoteConfig`（schema-agnostic 透传）。
  * - **只动 `remote` 这一个键**：写口是按键补丁（`config.ts::patchConfigFrom` 现读 → 只交 `set ["remote"]`），
  *   盘上别的键不经这里。
  * - 改动后需**重启 monitor 才生效**（数据源在 setup() 启动时定型），保存后 banner 提示。
  * - 每次输入 change 立即保存（无"未保存"中间态）→ refresh() 可安全从 config 重建卡片。
  *
- * Tier 1（issue #15）：从 ~/.ssh/config 导入别名（`ssh -G`）→ 作为**新机器**加入列表；
+ * 从 ~/.ssh/config 导入别名（`ssh -G`）→ 作为新机器加入列表；
  * 每台各有「测试连接」（问本机后端 `remote-probe`）展示 SSH/指纹/backend，指纹可一键固化。
  */
 
@@ -27,7 +22,7 @@ import { commands } from "../ipc/commands";
 import { openPortForwardPanel } from "../views/port-forward";
 import { listForwards, stopForward } from "../port-forward-reads";
 import { askInterrupts } from "./interrupts";
-// F12：配置数据层已抽到 src/frontend/ui/remote-config.ts（治分层倒挂）——UI 从数据模块 import，不再自持 CRUD。
+// 配置数据层在 src/frontend/ui/remote-config.ts，这里只排版。
 import {
   readRemoteConfig,
   tryRemoteConfig,
@@ -55,26 +50,17 @@ import { machineFace, paintProblem, type MachineFace, type MachineFix, type Mach
 import { isLocalOrigin } from "../ipc/origin";
 import type { AccountsState } from "../accounts";
 import { moveMachinePrefs } from "../account-prefs";
-// K-P1/P2s：本机后端那条把手的 origin（后端注册表里的键 `inbound_client::LOCAL_ORIGIN`）。**与本机那一页的路由键不是同一个串**。
+// 本机后端那条把手的 origin（后端注册表里的键 `inbound_client::LOCAL_ORIGIN`），与本机那一页的路由键不是同一个串。
 import { LOCAL_ORIGIN } from "../backend-policy";
-// 旧调用点从本模块 import 这两个（测试也是）——搬家后原样再导出，不制造无谓的改动面。
+// 调用点（含测试）从本模块 import 它，原样再导出。
 export { shouldShowResetFingerprint };
 import { makeInfoIcon } from "./info-icon";
 
-// C04d 批 5c：五个类型换成生成物（源 `stream_source/`）。手写版与生成物**逐字等价** ⇒ 零漂移。
+// 这几个类型是生成物（源 `stream_source/`）。
 import { importSshHosts } from "../ssh-config-reads";
 
-// E80（2026-08-01）：`describeStage` 与 `ConnectStage` 的再导出**搬去 `machine-card.ts`**。
-//
-// 那两样此前住在这里，而唯一的消费者是 `machine-card.ts` —— 于是 `machine-card`（从本文件
-// 抽出去的那个）回头 import 本文件的**值**，构成一条真的运行期 import 环
-// （`remote-section → machine-card → remote-section`）。今天不炸只是因为两边的用点都在
-// 方法体里、模块求值期不触发，属 TDZ 型隐患；而本仓的 eslint 没有 `import/no-cycle`，
-// 环在这里是**结构性不可见**的（Phase G 代码工程视角独立写 DFS 才扫出来）。
-// ⇒ 把只有一个消费者的东西搬到那个消费者身边，环就没了。环守卫见 `tests/frontend/ui/import-cycle-guard.vitest.ts`。
-
-// F12：`RemoteHostConfig` / `RemoteConfig` / `parseAddressLines` / `sftpEligibleHosts` 已移入
-// `src/frontend/ui/remote-config.ts`（数据层），本文件从那里 import（见顶部）。
+// `describeStage` / `ConnectStage` 住在唯一的消费者 `machine-card.ts` 身边：放这里会成 `remote-section ⇄ machine-card` 的运行期 import 环
+//   （环守卫 `tests/frontend/ui/import-cycle-guard.vitest.ts`）。
 
 
 
@@ -87,17 +73,17 @@ const REMOTE_INFO_TEXT = (): string =>
  * 不装成 shell 函数的理由：函数**优先于 PATH**，与用户已有同名函数硬冲突且必然遮蔽；远端是 zsh/fish 时 `.bashrc` 根本不被 source。
  */
 // 单一来源：src/shared/ccm-aliases.sh（后端 sftp.rs include_str! 同一文件，杜绝漂移）
-import { copyText } from "../copy-table"; // T03：待贴文本统一组件
+import { copyText } from "../copy-table";
 
 /**
- * S4b：「每台机器一页」的宿主。由 `panel.ts` 用 `SettingsRouter` 实现。
+ * 「每台机器一页」的宿主。由 `panel.ts` 用 `SettingsRouter` 实现。
  *
  * 抽成接口而不是直接把 router 传进来：本分节只需要「给我开一页 / 收掉一页 / 跳过去」
  * 这三件事，不该知道路由器长什么样（也让它在没有路由器的场合——如既有单测——照常工作）。
  */
 export interface MachinePagesHost {
   /**
-   * `parts` 有值时宿主可以把它拆成「连接 / 组件」两栏（S4b-3b-2）；
+   * `parts` 有值时宿主可以把它拆成「连接 / 组件」两栏；
    * 本机页没有卡片、不带 parts。
    */
   addMachinePage(
@@ -111,13 +97,8 @@ export interface MachinePagesHost {
   /** 机器改了名称：那一页的导航项与页头跟着改（没有这一页 ⇒ 不动）。 */
   renameMachinePage?(id: string, title: string): void;
   /**
-   * 🔴 步 3：**这一趟「同步机器页」收尾了**（成或败都叫一次）。
-   *
-   * 宿主要它是为了分开两件在屏幕上长得一样的事：
-   * 「还在加载」与「一个机器页都注册不出来」。没有这个回调，宿主只能靠定时器猜 ——
-   * 而猜错的方向正好是本件要治的那一个（让兜底态提前露脸）。
-   *
-   * ⚠ 可选：不带路由器的宿主（既有单测）不必实现它。
+   * 这一趟「同步机器页」收尾了（成或败都叫一次）：宿主靠它分开「还在加载」与「一个机器页都注册不出来」，不靠定时器猜。
+   * 可选：不带路由器的宿主（单测）不必实现。
    */
   machinePagesSettled?(): void;
   /** 进那台的页并展开卡头里的「连接设置」/「这台上的 cc-monitor」。 */
@@ -133,8 +114,7 @@ export interface MachinePagesHost {
 /**
  * 机器列表那一行上**别人挂进来的格子**。
  *
- * 用途只有一个：DAEMON 开关（后端的 状态 / 操作 / 退出行为 / 健康 四格）**并进列表行**，
- * 不再在列表页上单独占一块。本分节不认识那四格长什么样 —— 只管「每一行给它留个位置」。
+ * 用途：后端的 状态 / 操作 / 退出行为 / 健康 四格并进列表行。本分节不认识那四格长什么样，只给每一行留个位置。
  */
 export interface MachineRowExtras {
   /** 列表末尾：后端清单里有、机器列表里没有的那几台。 */
@@ -147,21 +127,20 @@ export interface RemoteSectionOptions {
   /** 见 `MachineRowExtras`。不传就是老形态（行上只有名字 ＋ 状态条）。 */
   rowExtras?: MachineRowExtras;
   /**
-   * S4b：有它就把每台机器的编辑表单搬到**它自己那一页**，列表里只留一行
-   * （名字 + 状态 + 点进去）。**不传就是老形态**（卡片就地折叠展开）——
-   * 既有单测与任何不带路由器的宿主照常工作。
+   * 有它 ⇒ 每台机器的编辑表单在它自己那一页，列表里只留一行（名字 ＋ 状态 ＋ 点进去）；
+   * 不传 ⇒ 卡片就地折叠展开（单测与不带路由器的宿主）。
    */
   pages?: MachinePagesHost;
 }
 
-/** S4b：机器详情页的路由 id 前缀。 */
+/** 机器详情页的路由 id 前缀。 */
 export const MACHINE_PAGE_PREFIX = "machine:";
 /**
  * 本机那一页的路由键。本机没有 origin 那一格的写法（它不走 ssh），用一个**不可能与真实 origin 撞车**的名字：
  * origin 来自 `label || host`，用户填不出带中文括号的 host，label 也不会长这样。
  */
 const LOCAL_MACHINE_KEY = "（本机）";
-/** S4b-2：本机那一页的路由 id。 */
+/** 本机那一页的路由 id。 */
 export const LOCAL_MACHINE_PAGE_ID = `${MACHINE_PAGE_PREFIX}${LOCAL_MACHINE_KEY}`;
 
 /**
@@ -210,9 +189,9 @@ async function stopForwardsOf(origin: string): Promise<void> {
 export class RemoteSection {
   private root: HTMLElement;
   private headless: boolean;
-  /** S4b：机器详情页宿主（没有就退回「卡片就地展开」的老形态）。 */
+  /** 机器详情页宿主（没有就卡片就地展开）。 */
   private pages?: MachinePagesHost;
-  /** S4b：已注册的机器页 id —— 重建列表时按它收掉旧页。 */
+  /** 已注册的机器页 id —— 重建列表时按它收掉旧页。 */
   private machinePageIds: string[] = [];
   /**
    * Phase G：卡片 → 它那一页的 id。**创建时写一次，之后只读**。
@@ -220,7 +199,7 @@ export class RemoteSection {
    * 卡片不该知道自己被谁注册成了哪一页。
    */
   private pageIdOf = new Map<MachineCard, string>();
-  /** S5/E56：「还差什么」清单容器。 */
+  /** 「还差什么」清单容器。 */
   private countLine!: HTMLElement;
   /** 后端报来的各台事实（系统 · 版本），按后端那套名字。 */
   private readonly facts = new Map<string, MachineFacts>();
@@ -235,8 +214,8 @@ export class RemoteSection {
   private original: RemoteConfig = { hosts: [] };
 
   /**
-   * S1：本编辑器**加载时**看到的机器 key 列表。保存时 `remove = loadedKeys − 现存卡片的 key`。
-   * 基准取「加载时看到的」而非「盘上全量」，是为了让 S2 拆页后一页只对自己那几台负责。
+   * 本编辑器加载时看到的机器 key 列表。保存时 `remove = loadedKeys − 现存卡片的 key`。
+   * 基准取「加载时看到的」而非「盘上全量」：一页只对自己加载过的那几台负责。
    */
   private loadedKeys: string[] = [];
 
@@ -289,15 +268,8 @@ export class RemoteSection {
       );
       this.hideBanner();
     } catch (e) {
-      // 🔴 步 4：**异步失败落在这一块上**，不再只打到状态栏。
-      //
-      // 这个方法的两个调用点都是 `void this.refresh()`（本类构造器 ＋ `panel.open()`），
-      // 而 `void` 掉的 Promise 其 reject 是**未捕获 rejection** ⇒ 今天它一路走到
-      // `main.ts` 那条全局兜底，变成状态栏上一行 `REJ: …`
-      //（截图里那句 `REJ: Command plugin:dialog|confirm not allowed
-      //   by ACL` 就是这条路出来的）。状态栏离出事的那一块十万八千里，用户看不出
-      //   「机器列表为什么是空的」。
-      // ⇒ 就地说一句，并把异常继续往外抛（调用方要判成不成功，本行只负责说出口）。
+      // 异步失败就地说在这一块上：两个调用点都是 `void this.refresh()`，不说的话只会变成状态栏上一行 `REJ: …`，
+      //   用户看不出机器列表为什么是空的。说完照样往外抛（调用方要判成不成功）。
       this.showBanner(copyText("remote.refresh.failed", { e: String(e) }));
       throw e;
     } finally {
@@ -306,15 +278,9 @@ export class RemoteSection {
   }
 
   /**
-   * S3：本机行 —— 列表**第一行、不可删**。
-   *
-   * 这是 `INVARIANTS §40`「本地 = 不走 ssh 的远端」的诚实表达：本机不是一个特殊物种，
-   * 它就是机器列表里的一行，只是那几个格子的取值不同。
-   *
-   * ★ **它刻意不是一张 `MachineCard`，也绝不进 `this.cards`。**
-   * `this.cards` 是 S1 保存路径的输入（每张卡 = config.json 里的一条 `RemoteHostConfig`）。
-   * 把本机混进去，保存时就会往用户的远端机器列表里写一台叫「本机」的假机器。
-   * 由 `remote-section.vitest.ts` 里那条「加了本机行之后写出去的机器数不变」钉住。
+   * 本机行：列表第一行、不可删（`INVARIANTS §40`「本地 = 不走 ssh 的远端」：只是那几格取值不同）。
+   * 它不是一张 `MachineCard`、不进 `this.cards`（那是保存路径的输入，混进去就往远端列表里写一台叫「本机」的假机器；
+   * `remote-section.vitest.ts`「加了本机行之后写出去的机器数不变」钉着）。
    */
   private buildLocalRow(): HTMLElement {
     const row = this.buildRow(LOCAL_MACHINE_PAGE_ID, copyText("remote.localRow.title"), localMeta("list", this.factsOfOrigin(LOCAL_ORIGIN)), LOCAL_ORIGIN);
@@ -602,7 +568,7 @@ export class RemoteSection {
 
   /** 用 config 里的机器列表重建卡片。 */
   private rebuildCards(hosts: RemoteHostConfig[]): void {
-    // S4b：重建前先把上一批机器页收掉，否则改完配置会留下一串指向已不存在机器的导航项。
+    // 重建前先把上一批机器页收掉，否则改完配置会留下一串指向已不存在机器的导航项。
     for (const id of this.machinePageIds) this.pages?.removeMachinePage(id);
     this.machinePageIds = [];
     this.cards = [];
@@ -621,11 +587,10 @@ export class RemoteSection {
     }
     for (const h of hosts) {
       // 从 config 重建的卡片默认折叠（只显示机器名）——多机时列表整洁；点名称展开编辑。
-      // S1：从盘上来的卡片带着它此刻的 origin 当 persistedKey。
+      // 从盘上来的卡片带着它此刻的 origin 当 persistedKey。
       this.appendCard(h, true, hostKey(h));
     }
-    // S1：本编辑器**这次加载时**看到的 key 集合。删除判据以它为基准，
-    // 而**不是**「盘上全量」—— 这正是 S2 拆页后的安全边界：一页只对自己加载过的负责。
+    // 本编辑器这次加载时看到的 key 集合：删除以它为基准，不以盘上全量（一页只对自己加载过的负责）。
     this.loadedKeys = hosts.map(hostKey);
     if (this.rowExtras) {
       this.rowsTail = this.guardedExtra(() => this.rowExtras!.tail());
@@ -653,7 +618,7 @@ export class RemoteSection {
     );
     this.cards.push(card);
     if (this.pages) {
-      // S4b：表单搬到这台机器自己那一页；列表里只留一行（名字 + 状态 + 点进去）。
+      // 表单在这台机器自己那一页；列表里只留一行（名字 ＋ 状态 ＋ 点进去）。
       const id = this.assignPageId(card, persistedKey ?? hostKey(initial));
       card.setPageMode();
       this.pages.addMachinePage(id, card.displayName(), card.element, card.parts());
@@ -682,10 +647,8 @@ export class RemoteSection {
   }
 
   /**
-   * S4b：列表里的一行 —— 名字 + 状态条 + 点进去。**编辑表单不在这里**（在那台机器自己那页）。
-   *
-   * 状态条只渲染在行上，不再渲染在卡片 legend 上：§2.3 那张图里状态就是**列表**的一列，
-   * 而详情页上用户看的是那些动作按钮本身的结果，不需要再来一份缓存结论。
+   * 列表里的一行：名字 ＋ 状态条 ＋ 点进去（编辑表单在那台机器自己那页）。
+   * 状态条只在行上：详情页上看的是那些动作按钮本身的结果，不需要再来一份缓存结论。
    */
   private findMachineRow(pageId: string): HTMLElement | null {
     for (const el of this.machinesContainer.children) {
@@ -695,27 +658,9 @@ export class RemoteSection {
   }
 
   /**
-   * Phase G：**给这张卡定一个此后不再变的页 id**。
-   *
-   * # 它修的是两个实测复现的缺陷（都源自「页 id 每次现算」）
-   *
-   * 原来 `appendCard` / `refreshMachineRow` / `removeCard` 三处各自算一遍
-   * `MACHINE_PAGE_PREFIX + (persistedKey ?? hostKey(collect()))` —— 而那个 key 是**会变的**：
-   *
-   * 1. **连点两次「+ 添加机器」直接抛**：空白卡的 `hostKey()` 是 `""` ⇒ id 恒为 `machine:`，
-   *    第二次撞上 `router.addRoute` 的重复注册 `throw`。而 `this.cards.push` 已经执行、
-   *    页和行都没建 ⇒ 之后任何一次 `save()` 会把这张**界面上看不见的幽灵卡**写进 `config.json`。
-   *    异常在 click handler 里没人接，屏幕上零提示。
-   * 2. **改名之后删不掉（UI 侧）**：`save()` 会把 `persistedKey` 改成新 origin，
-   *    于是后两处算出的 id 与注册时那个永久分叉 ⇒ `removeMachinePage` 空转、
-   *    `findMachineRow` 返回 null ⇒ **列表行 / 导航项 / 详情页三者全留下**，
-   *    而盘上那台已经删了。用户看到「删了还在」，再点进那个幽灵页编辑就把机器写回去。
-   *
-   * ⇒ 身份只在**创建**时定一次，之后一律查表。这与 S1 给 `persistedKey` 立的规矩同源：
-   * **「这一条是谁」不能从会变的显示值里现推**。
-   *
-   * 冲突时加 `#n` 后缀而不是抛：重名是用户输入的正常后果，不该炸掉整个列表
-   * （E48「UI 该拦重名」仍然要做，但那是**提示**，不是靠崩溃来阻止）。
+   * 给这张卡定一个此后不再变的页 id：只在创建时定一次，之后一律查表 ——「这一条是谁」不能从会变的显示值（名字、origin）里现推，
+   * 否则空白卡连点两次「添加」撞重复注册，改名之后列表行 / 导航项 / 详情页对不上、删不掉。
+   * 冲突时加 `#n` 后缀而不是抛：重名是用户输入的正常后果，不该炸掉整个列表。
    */
   private assignPageId(card: MachineCard, base: string): string {
     // 空白卡（还没填 host/label）没有可读身份 —— 给个占位，别让它变成裸 `machine:`。
@@ -756,7 +701,7 @@ export class RemoteSection {
     return this.pageIdOf.get(card) ?? null;
   }
 
-  /** S4b：刷新某台机器在列表里那一行（名字 + 状态条）。没有分页宿主时什么都不用做。 */
+  /** 刷新某台机器在列表里那一行（名字 ＋ 状态条）。没有分页宿主时什么都不用做。 */
   private refreshMachineRow(card: MachineCard): void {
     if (!this.pages) return;
     const pageId = this.pageIdFor(card);
@@ -887,15 +832,8 @@ export class RemoteSection {
     this.unrecognizedNote.className = "settings-banner remote-config-unrecognized";
     group.appendChild(this.unrecognizedNote);
 
-    // ★ S4b-3b：**一条工具条**（那张图逐字给的顺序）：
-    //   + 添加 · 从 ssh config 导入 · 批量导入 · 端口转发 · [x] 启用远端模式
-    //
-    // 此前这几个控件散在列表**上下两侧**（导入在最上、端口转发和启用 toggle 在中间、
-    // 添加按钮在列表下方），空列表提示还得写「点**下方**添加机器，或从**上方**下拉导入」
-    // ——一句提示要同时指两个方向，本身就是布局在报警。
-    //
-    // 归拢的判据与 §2.1 同源：**它们改的都不是某一台机器的状态，而是这份列表本身**
-    //（加一台 / 导入一批 / 全局开关 / 跨机器的隧道台）。per-machine 的东西在机器详情页上。
+    // 一条工具条：＋ 添加 · 从 ssh config 导入 · 批量导入 · 端口转发 · [x] 启用远端模式。
+    //   都是改这份列表本身的（加一台 / 导入一批 / 全局开关 / 跨机器的隧道台）；某一台的事在它的详情页上。
     this.countLine = document.createElement("div");
     this.countLine.className = "settings-page-sub remote-machine-count";
     group.appendChild(this.countLine);
@@ -905,14 +843,12 @@ export class RemoteSection {
     this.importHint.style.display = "none";
     group.appendChild(this.importHint);
 
-    // ★ S5 / E56：「还差什么」——新用户一站式的落点。
-    // **只读 S3 的账本，不发任何请求**（§1-2）；空的时候整块不渲染，不打扰老用户。
+    // 「还差什么」—— 新用户一站式的落点：只读账本、不发请求；空的时候整块不渲染。
     this.machinesContainer = document.createElement("div");
     this.machinesContainer.className = "remote-machines";
     group.appendChild(this.machinesContainer);
 
-    // 空列表提示。文案跟着布局改：控件全在**上方**那条工具条上了，
-    // 不再需要「点下方…或从上方…」这种同时指两个方向的说法。
+    // 空列表提示（控件都在上方那条工具条上）。
     this.emptyHint = document.createElement("div");
     this.emptyHint.className = "settings-hint";
     this.emptyHint.textContent =
@@ -955,21 +891,10 @@ export class RemoteSection {
     }
 
     try {
-      // ★ S1：**局部合并，不再整表覆盖**。
-      //
-      // 老写法是 `writeRemoteConfig(next)` —— 把 `cfg.remote` 整个换成本编辑器手上这份。 〔散文墓碑〕
-      // 它今天之所以不出事，纯粹是因为 `collect()` 恰好映射了**全部**卡片：
-      // **正确性来自 UI 的巧合，不是来自构造**。S2 一旦把机器拆成一页一台，
-      // 同一句调用就会把不在本页的机器**静默删光**。
-      //
-      // 现在改成显式的 upsert/remove：
-      // - upsert 用每张卡的 `persistedKey` 定位盘上那一条 ⇒ 改 label（换 origin）
-      //   仍然是**改**那一条，不会变成「新增 + 孤儿」。
-      // - remove 只取「本编辑器加载时见过、现在卡片没了」的那些 ⇒ 没加载过的机器
-      //   既不 upsert 也不 remove，**字节不动**。
-      // 按**出现次数**比，不是按集合比。集合比在「两台机器 origin 相同、删掉其中一台」
-      // 时会算出 remove=[]（另一张卡还占着同一个 key）⇒ 删除静默失效。
-      // 老的整表覆盖写法没这个问题，所以这属于必须挡住的回归。
+      // 局部合并，不整表覆盖（整表覆盖会把不在本页的机器静默删光）：
+      // - upsert 用每张卡的 `persistedKey` 定位盘上那一条 ⇒ 改 label（换 origin）仍是改那一条，不变成「新增 ＋ 孤儿」；
+      // - remove 只取「加载时见过、现在卡片没了」的那些 ⇒ 没加载过的机器字节不动。
+      // 按出现次数比、不按集合比：两台 origin 相同时删掉其中一台，集合比会算出 remove=[]。
       const countBy = (keys: (string | null)[]): Map<string, number> => {
         const m = new Map<string, number>();
         for (const k of keys) if (k !== null) m.set(k, (m.get(k) ?? 0) + 1);
@@ -1057,10 +982,7 @@ export class RemoteSection {
 // === config.json 读写（多机）===
 
 /** 把一个任意 JSON 对象规整成 RemoteHostConfig（缺失/类型不对走默认）。 */
-// F12：`coerceAddresses` / `coerceHost` / `readRemoteConfig` / `findHostByOrigin` /
-// `resolveRemoteConfigByOrigin` / 写入口已移入 `src/frontend/ui/remote-config.ts`（数据层）。
-// S1：写入口 = `patchRemoteConfig`（局部合并）；整表覆盖的 `writeRemoteConfig` 已收回该文件内部、不再导出（今天连函数都没了；增删改全按键认元素）。 〔散文墓碑〕
-// `sameHost` / `sameRemote`（下方）是 UI dirty-check，留本文件。
+// 读写都在 `remote-config.ts`（写入口 `patchRemoteConfig`，按键认元素局部合并）；`sameHost` / `sameRemote`（下方）是界面的 dirty-check。
 
 function sameHost(a: RemoteHostConfig, b: RemoteHostConfig): boolean {
   return (
@@ -1072,8 +994,7 @@ function sameHost(a: RemoteHostConfig, b: RemoteHostConfig): boolean {
     a.hostKeyFingerprint === b.hostKeyFingerprint &&
     a.jump === b.jump &&
     a.connect === b.connect &&
-    // F45（Phase G 补）:仅改「备用地址」也算变更。此前独漏 addresses（jump 比了）
-    // → 只改多地址、其它不动时「需重启生效」横幅被静默抑制，用户可能不重启、新地址不生效。
+    // 只改「备用地址」也算变更：漏了它，「需重启生效」横幅不出，新地址不生效。
     a.addresses.length === b.addresses.length &&
     a.addresses.every((x, i) => x === b.addresses[i])
   );

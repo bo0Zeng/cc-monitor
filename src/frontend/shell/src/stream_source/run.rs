@@ -486,6 +486,15 @@ async fn stream_loop(
             Some(InboundFrame::RotationChanged { sid }) => {
                 replay.quota_changed(&crate::origin::Origin(host_label.clone()), Some(&sid));
             }
+            // 终端实时预览：这台推来的一屏 / 收尾 ⇒ 交订了这台 `terminal-screen/<票>` 的那条订阅（从不阻塞）。
+            Some(
+                InboundFrame::TerminalScreen { ticket, cell }
+                | InboundFrame::TerminalFollowEnd { ticket, cell },
+            ) => crate::terminal_screen_relay::deliver(
+                &crate::origin::Origin(host_label.clone()),
+                &ticket,
+                cell,
+            ),
             // 认识但不消费（理由在变体上）。
             Some(InboundFrame::TurnEnd) => {}
             // 不认识的种类 / 形状不对：`take` 已记账、每种说过一次；跳过，绝不中断流。
@@ -738,20 +747,20 @@ fn on_hello(
     connected.store(true, Ordering::Release);
     // 订了这台会话流的那些订阅原位收一格 `Seen`（`Item::Seen`）。
     replay.origin_seen(&crate::origin::Origin(host_label.clone()), true);
-    // issue #33：版本协商。不兼容/偏旧经 SS-F remote-health 通道醒目提示（前端
-    // headlineFor 已含 version case，零前端改动）。不 hard-disconnect（向前兼容）。
+    // issue #33：版本协商。不兼容/偏旧经 SS-F remote-health 通道醒目提示；类别（要更新 · 较新 · 不可比）
+    // 这里判好（`version_health_kind`），前端按类别挑标题。不 hard-disconnect（向前兼容）。
     // 手上没带后端字节（「我这一版」是 `None`）⇒ 同一条通道说一句「版本不可比」，照常接。
     let mine = crate::byte_table::my_backend_id();
-    crate::machine_state::up(
-        &host_label,
-        &build_id,
-        version_relation(v, &build_id, remote_older, mine),
-    );
-    if let Some(msg) = version_warning(v, &build_id, &host_label, remote_older, mine) {
+    let rel = version_relation(v, &build_id, remote_older, mine);
+    crate::machine_state::up(&host_label, &build_id, rel);
+    if let (Some(kind), Some(msg)) = (
+        version_health_kind(rel),
+        version_warning(v, &build_id, &host_label, remote_older, mine),
+    ) {
         tracing::warn!("stream_source remote [{host_label}] version: {msg}");
         let payload = crate::ui_contract::RemoteHealthPayload {
             origin: host_label.clone(),
-            kind: "version".to_string(),
+            kind: kind.to_string(),
             message: msg,
         };
         if let Err(e) = health(payload) {

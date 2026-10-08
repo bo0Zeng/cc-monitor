@@ -1,15 +1,9 @@
 /**
- * S4b-3b-3（settings-ia）：单台远端机器的编辑卡片 —— **机器详情页的主体**。
+ * 单台远端机器的编辑卡片 —— 机器详情页的主体（一个类 = 一台机器）。
  *
- * 从 `remote-section.ts` 提出来（那个文件此前 2100 行、住着两个类）。**接缝是天然的**：
- * `MachineCard` 早就是「一个类 = 一台机器」，S4b-1 起它已经独占一页、S4b-3b-2 起
- * 它的 body 被拆成「连接 / 组件」两栏交给详情页。这次只是让文件边界追上早已成型的职责边界。
- *
- * # 对外的三个契约（搬家时逐条保住，都有测试钉着）
- *
- * 1. `persistedKey` —— **卡片身份**（这张卡对应盘上哪一条）。S1 加的，不是渲染细节：
- *    origin 可被用户编辑，没有它改个名就会变成「新增一台 + 留下孤儿」。
- * 2. `parts()` —— 交出「连接 / 组件」两块，详情页据此分栏（S4b-3b-2）；外加「终端」栏那一块（别名）。
+ * 对外三个契约（都有测试钉着）：
+ * 1. `persistedKey` —— 卡片身份（对应盘上哪一条）：origin 可被用户编辑，没有它改个名就成了「新增一台 ＋ 留下孤儿」；
+ * 2. `parts()` —— 交出「连接 / 组件」两块（详情页据此分栏），外加「终端」栏那一块（别名）；
  * 3. `setPageMode()` —— 进入独占一页的形态（去折叠箭头与删除按钮）。
  */
 import { ResumeSelect } from "./resume-select";
@@ -24,7 +18,7 @@ import { parseAddressLines } from "../remote-config";
 import type { MachineFault } from "../generated/MachineFault";
 import { askInterrupts, interruptRows } from "./interrupts";
 import { uninstallBackend, updateBackend } from "../backend-deploy";
-// E80：`ConnectStage` 直连生成物，不再绕道 `remote-section`（那条绕道是 import 环的一半）。
+// `ConnectStage` 直接用生成物（绕道 `remote-section` 会成 import 环）。
 import type { ConnectStage } from "../generated/ConnectStage";
 // 起新会话：全产品一个框（机器卡 ⋯「新建会话…」开它，机器锁定）。
 import { openNewSession } from "../new-session";
@@ -133,15 +127,8 @@ const SEG_LABEL: Record<ConnSeg, () => string> = {
 };
 
 /**
- * F46：阶段事件 → 泳道行的图标 + 文案。纯函数便于单测。
- *
- * **E80：从 `remote-section.ts` 搬来。** 它此前住在那边而唯一的消费者在这边，于是
- * 「从 remote-section 抽出去的 machine-card」回头 import 它的**值** ⇒ 一条真的运行期
- * import 环。搬到唯一消费者身边，环就没了。
- *
- * **`ConnectStage` 用生成物不是「顺手」**：下面有 `const _never: never = st` 穷尽性兜底，
- * 而**手写类型时 Rust 新增一个 variant 并不会让它红** —— 那条 `never` 会一直在守一个
- * TS 侧自己造的联合，不是 Rust 的真实形状。换成生成物它才真正对 Rust 的改动有牙。
+ * 阶段事件 → 泳道行的图标 ＋ 文案。纯函数。
+ * `ConnectStage` 用生成物：下面 `const _never: never = st` 的穷尽性兜底才真对 Rust 新增的 variant 有牙。
  */
 /** 测试连接到点没等到结局时「停在哪一段」的那句话（最后收到的那一格；握手中那一段带上最后一行阶段）。 */
 export function describeStop(stop: ProbeStop): string {
@@ -177,7 +164,7 @@ export function describeStage(st: ConnectStage): {
     case "established":
       return { icon: copyText("machineCard.stage.readyIcon"), text: copyText("machineCard.stage.ready") };
     default: {
-      // F46 建议 E：穷尽性兜底——未来新增 ConnectStage 变体时编译期(never)即报错。
+      // 穷尽性兜底：新增 ConnectStage 变体时编译期（never）报错。
       const _never: never = st;
       return {
         icon: copyText("machineCard.stage.otherIcon"),
@@ -192,17 +179,13 @@ export interface MachineCardHooks {
   onChange: () => void;
   /** 点删除 → 让 section 移除本卡片。 */
   onRemove: (card: MachineCard) => void;
-  /** S4b：这张卡的状态/名字变了，宿主该刷新列表那一行。 */
+  /** 这张卡的状态 / 名字变了，宿主该刷新列表那一行。 */
   onStatusChanged?: (card: MachineCard) => void;
   /** 列表里别的机器已经叫这个名字了没有（名字是机器的键，重名就存不进、也改不了删不了）。 */
   tryCells?: (card: MachineCard, next: RemoteHostConfig) => Promise<MachineFault | null>;
 }
-// 「后端路径」那一格删了：落点恒是那台的 `~/.cc-monitor/bin/ccm`（它就是后端本身），
-//   从前按用户名预填的 `defaultBackendPathFor`〔散文墓碑〕随之删。
-/**
- * F43：是否显示「重置为 TOFU」按钮——当且仅当当前已固化了非空指纹。
- * 抽成纯函数便于单测（trim 后非空 = 已固化严格校验）。
- */
+// 没有「后端路径」那一格：落点恒是那台的 `~/.cc-monitor/bin/ccm`（它就是后端本身）。
+/** 是否显示「重置为 TOFU」按钮：当且仅当已固化了非空指纹（trim 后非空）。 */
 export function shouldShowResetFingerprint(current: string): boolean {
   return current.trim().length > 0;
 }
@@ -249,7 +232,7 @@ export class MachineCard {
   private fingerprintInput!: HTMLInputElement;
   private addressesInput!: HTMLTextAreaElement;
   private jumpInput!: HTMLInputElement;
-  /** S4b-3（§5-1）：这台机器的 resume 启动命令（空 = 用全局默认）。 */
+  /** 这台机器的 resume 启动命令（空 = 用全局默认）。 */
   private resumeCmdInput!: ResumeSelect;
   /** 恢复命令那一行的说明（`仅 {machine} · 留空 = 通用设置`，跟着名字换）。 */
   private resumeHelp!: HTMLElement;
@@ -271,7 +254,7 @@ export class MachineCard {
   private actionResult!: HTMLElement;
   /** 折叠时隐藏的字段 + 测试/安装区（legend 始终可见）。 */
   private body!: HTMLElement;
-  /** S4b-3b-2：body 的两半 —— 详情页据此拆「连接 / 组件」两栏。 */
+  /** body 的两半 —— 详情页据此拆「连接 / 组件」两栏。 */
   private connectionPart!: HTMLElement;
   private componentsPart!: HTMLElement;
   /**
@@ -285,11 +268,8 @@ export class MachineCard {
   private collapsed = false;
 
   /**
-   * S1：这张卡对应的记录**在盘上当前的 origin**。`null` = 还没落过盘（新增的卡）。
-   *
-   * 为什么需要它：机器的定位键是 origin（`label || host`），而 origin **可以被用户
-   * 编辑**。整表覆盖时这问题被掩盖着（反正全写）；改成局部合并后，「这张卡对应盘上
-   * 哪一条」必须有确定答案，否则改个名就会变成「新增一台 + 留下一条孤儿」。
+   * 这张卡对应的记录在盘上当前的 origin；`null` = 还没落过盘（新增的卡）。
+   * 机器的定位键是 origin（`label || host`），而它可以被用户编辑 ⇒ 局部合并要靠它认出盘上那一条，否则改个名就成了「新增 ＋ 孤儿」。
    */
   persistedKey: string | null;
 
@@ -362,7 +342,7 @@ export class MachineCard {
     this.portInput.value = resolved.port ? String(resolved.port) : "22";
     this.userInput.value = resolved.user;
     this.keyPathInput.value = resolved.keyPath ?? "";
-    if (resolved.proxyJump) this.jumpInput.value = resolved.proxyJump; // F57 S-2:单别名也填跳板
+    if (resolved.proxyJump) this.jumpInput.value = resolved.proxyJump; // 单别名也填跳板
     this.acceptInputs();
     this.updateLegend();
   }
@@ -420,14 +400,9 @@ export class MachineCard {
     this.body.className = "remote-machine-body";
     card.appendChild(this.body);
 
-    // ★ S4b-3b-2：body 内部再分成**两块**，供机器详情页拆成「连接 / 组件」两栏。
-    // 分界就在 resume 命令那一行：
-    //   连接 = 怎么连上这台机（host/port/user/密钥/指纹/地址/跳板…）
-    //   组件 = 这台机上装了什么、怎么起（resume 命令 + ① 部署后端 + ② 别名；测试连接回了连接栏）
-    //
-    // **顺带把 S4b-3a 摆错的位置纠正了**：那轮我把 resume 命令插在那个降级开关之后，
-    // commit 里却说它「放在装/卸 ccm 按钮紧邻处」—— 实际隔着那段安装位置说明等约 120 行。
-    // §5-1 要的正是这两者相邻（装完 ccm 就该顺手改 resume 命令），现在真的相邻了。
+    // body 分两块，供机器详情页拆成「连接 / 组件」两栏：
+    //   连接 = 怎么连上这台机（host / port / user / 密钥 / 指纹 / 地址 / 跳板 …，测试连接也在这栏）
+    //   组件 = 这台机上装了什么、怎么起（resume 命令 ＋ ① 部署后端 ＋ ② 别名）；resume 命令紧挨着部署（装完顺手改）。
     this.connectionPart = document.createElement("div");
     this.connectionPart.className = "machine-part machine-part-connection";
     this.body.appendChild(this.connectionPart);
@@ -480,7 +455,7 @@ export class MachineCard {
       hint: copyText("machineCard.field.hostHint"),
       onChange: () => void onNameChange(),
     });
-    // 端口不是 1–65535 ⇒ 就地说、不存（不再悄悄存成 22）。
+    // 端口不是 1–65535 ⇒ 就地说、不存（不悄悄存成 22）。
     const onPortChange = async (): Promise<void> => {
       const port = parsePort(this.portInput.value);
       const mine = ++asking;
@@ -546,8 +521,7 @@ export class MachineCard {
     this.syncResetFpVisibility = syncResetVisibility;
     syncResetVisibility();
 
-    // F45：备用地址（多行，每行一个 host / host:port / [IPv6]:port）。竞发时首选 host
-    // 字段、其余并发拨号，首个握手成功者胜——内网 IP 死了公网顶上。
+    // 备用地址（多行，每行一个 host / host:port / [IPv6]:port）：首选 host 字段、其余并发拨号，首个握手成功者胜。
     const addrRow = document.createElement("div");
     addrRow.className = "machine-conn-field";
     const addrLabel = document.createElement("span");
@@ -567,7 +541,7 @@ export class MachineCard {
     addrRow.appendChild(this.addressesInput);
     body.appendChild(addrRow);
 
-    // F56：跳板 ProxyJump——填另一台已配置主机的 label（空=直连）。经该跳板机隧道连本机。
+    // 跳板 ProxyJump：填另一台已配置主机的 label（空 = 直连），经那台隧道连这台。
     this.jumpInput = connField(body, copyText("machineCard.field.jump"), {
       placeholder: copyText("machineCard.field.jumpHint"),
       onChange: () => {
@@ -585,7 +559,7 @@ export class MachineCard {
       onClick: () => void this.onTestConnection(),
     });
     connRow.appendChild(this.testButton);
-    // F50：一键把本地公钥推到远端 authorized_keys（onboarding 免密）。
+    // 一键把本地公钥推到远端 authorized_keys（免密）。
     const pushKeyBtn: HTMLButtonElement = button({
       label: copyText("machineCard.build.pushKey"),
       hint: copyText("machineCard.build.pushKeyHint"),
@@ -723,9 +697,8 @@ export class MachineCard {
   }
 
   /**
-   * F43：重置主机指纹 → 回到 TOFU（清空固化指纹）。LOUD 二次确认——清除后下次连接会
-   * 接受新主机密钥;若此刻正被中间人攻击,会信任攻击者的密钥。仅当确知服务器合法换过
-   * host key 时才该重置。
+   * 重置主机指纹 → 回到 TOFU（清空固化指纹）。醒目的二次确认：清除后下次连接会接受新主机密钥，
+   * 此刻若正被中间人攻击就信了攻击者的密钥 —— 只在确知服务器合法换过 host key 时才该重置。
    */
   private async onResetFingerprint(): Promise<void> {
     const host =
@@ -767,16 +740,12 @@ export class MachineCard {
     this.renderStatusStrip();
   }
 
-  /**
-   * S4b：列表那一行的状态条要跟着动作结果刷新。卡片自己不再渲染状态
-   *（状态是列表的一列，见 `RemoteSection.buildMachineRow` 的注释），
-   * 所以这里只是把「该刷了」这件事转给宿主。
-   */
+  /** 列表那一行的状态条要跟着动作结果刷新：卡片自己不画状态（那是列表的一列），只把「该刷了」转给宿主。 */
   renderStatusStrip(): void {
     this.hooks.onStatusChanged?.(this);
   }
 
-  /** S4b-3b-2：交出「连接 / 组件」两块，供宿主拆成两栏；外加「终端」栏那一块（别名）。 */
+  /** 交出「连接 / 组件」两块，供宿主拆成两栏；外加「终端」栏那一块（别名）。 */
   parts(): MachineCardParts {
     return {
       connection: this.connectionPart,
@@ -801,10 +770,7 @@ export class MachineCard {
     );
   }
 
-  /**
-   * S4b：进入「独占一页」形态 —— 去掉折叠（一页只有它，没有可折的必要）
-   * 与删除按钮（删除入口在列表行上，那里才看得见「删的是哪一台」）。
-   */
+  /** 进入「独占一页」形态：去掉折叠（一页只有它）与删除按钮（删除入口在列表行上，那里才看得见删的是哪一台）。 */
   setPageMode(): void {
     this.setCollapsed(false);
     this.toggleIndicator.remove();
@@ -947,7 +913,7 @@ export class MachineCard {
     };
   }
 
-  /** F50：一键推送本地公钥到远端 authorized_keys。已填私钥 → 取同名 .pub；否则弹框选 .pub。 */
+  /** 一键推送本地公钥到远端 authorized_keys。已填私钥 → 取同名 .pub；否则弹框选 .pub。 */
   private async onPushPubkey(btn: HTMLButtonElement): Promise<void> {
     const cfg = this.collect();
     if (!cfg.host || !cfg.user) {
@@ -1017,7 +983,7 @@ export class MachineCard {
     }
   }
 
-  /** F08c：点「卸载后端」——删远端后端二进制（二次确认；旁挂的版本标记退役了，不再删它）。 */
+  /** 点「卸载后端」—— 删远端后端二进制（二次确认）。 */
   private async onUninstallBackend(): Promise<void> {
     const cfg = this.collect();
     if (!cfg.host || !cfg.user) {
@@ -1150,7 +1116,7 @@ export class MachineCard {
   private async onSaveFingerprint(fingerprint: string): Promise<void> {
     this.fingerprintInput.value = fingerprint;
     this.pinnedAt = today();
-    this.syncResetFpVisibility(); // F43：程序化赋值不触发 input 事件，手动同步重置按钮显隐
+    this.syncResetFpVisibility(); // 程序化赋值不触发 input 事件，手动同步重置按钮显隐
     this.hooks.onChange(); // 触发 section 保存
     // 就地把［记录］那一行换成「已记录」（不重连）。
     const fpLine = this.testResult.querySelector(".remote-test-fp");

@@ -6,23 +6,21 @@
  * | 活性 | 活 / 死 | 会话所在的那台机器（后端 pidfile ＋ 探活） |
  * | 可恢复性 | 能接回去（容器还在）/ 只能 resume / 连记录都没了 | 活着时由容器类型定（后端 `session_added.container`）；死的那一刻由 monitor 裁（`idle` 格 / `ended` 格）；记录在不在由 resume 一跳问那台后端 |
  *
- * 「死了」与「能不能接回去」是两件事，不许挤在一个词里。改之前它们挤在 `Tab.status` ＋ `Tab.tmuxIdle`
- * 两个字段里：可重连的会话在活性那一格被记成 `live`（claude 进程其实已经没了）。
+ * 「死了」与「能不能接回去」是两件事，不许挤在一个词里（不然可重连的会话会被记成活的，claude 进程其实已经没了）。
  *
- * # 这份文件管三件事，别处不再各判一遍
+ * # 这份文件管四件事，别处不各判一遍
  *
  * 1. **形状**：`SessionState` 判别联合（为什么是联合、为什么没有 `gone`，见类型头注）。
  * 2. **转移**：五种事件怎么改它（`nextState`）—— 事件从哪来（只远端 / 只本机）那道门留在 `TabManager`。
- * 3. **行为谓词**：× 能不能关、↗ 能不能拉前、算不算活跃……每一处旧判断换成这里的一个谓词。
+ * 3. **行为谓词**：× 能不能关、↗ 能不能拉前、算不算活跃……都是这里的一个谓词。
  *
  * 4. **呈现**：CSS 类开关 · 状态名 · 提示句（`stateView`）—— 界面上说到会话状态的字只从两轴派生，文字住文案表
  *    `src/shared/copy/table.json` 的 `sessionState.*`（那张表：已结束 / 可重连）。
  *
- * 缺的格（要后端补，不在前端猜）记在：G1 记录没了 · G2 本机容器还在 · G3 活会话的容器类型。
- * 三格都补上了，外加「说不清」：
- * - G3：活着时可恢复性那一格来自后端的容器事实（`container-hosted` / `container-none` / `container-other` 三个事件）；
- * - G1：可恢复性第三值 `gone`（resume 一跳问过那台后端、记录不在）；
- * - 说不清：活性第三值 `unseen`（固定复活、那台机器还没把活会话清单报完）。
+ * 后端给的几格事实：
+ * - 活着时可恢复性那一格来自容器事实（`container-hosted` / `container-none` / `container-other`）；
+ * - 可恢复性第三值 `gone`（resume 一跳问过那台后端、记录不在）；
+ * - 活性第三值 `unseen` = 说不清（固定复活、那台机器还没把活会话清单报完）。
  */
 import type { SessionContainer } from "./generated/SessionContainer";
 import { copyText } from "./copy-table";
@@ -99,7 +97,7 @@ export const UNSEEN: SessionState = Object.freeze({ liveness: "unseen", recovera
  * - `container-hosted` / `container-none` / `container-other`：`container` 格（后端 `session_added.container`：
  *   在认得的宿主里 · 不在任何宿主里 · 这边不认识的宿主）
  * - `record-gone` / `record-present`：resume 一跳问那台后端（`history-record`）的答案
- * - `seen-absent`：那台机器的活会话清单报完了、里面没有它（`origin-sessions-listed` / 本机 `list_active_sessions`〔散文墓碑〕）
+ * - `seen-absent`：那台机器的活会话清单报完了、里面没有它（会话流的 `listed` 格）
  * - `unseen`：那台机器看不见了（`unseen` 格：到它的连接断了 / F5 时它还没报完清单）
  */
 export type StateEvent =
@@ -132,7 +130,7 @@ export function containerEvent(c: SessionContainer): ContainerEvent {
 }
 
 /**
- * 转移表（`U4b.md §1.3` 那张表逐格）。返回值与入参**是同一个对象** ⇔ 这次事件不改状态
+ * 转移表。返回值与入参是同一个对象 ⇔ 这次事件不改状态
  * （调用方靠它决定要不要重画、要不要打探针）。
  *
  * 几条「不变」是刻意的：
@@ -174,14 +172,13 @@ export function nextState(s: SessionState, ev: StateEvent): SessionState {
 }
 
 /**
- * 没有终端可去，只能 resume（旧 `status === "archived"`）：已结束 · 记录没了 · 说不清。
+ * 没有终端可去，只能 resume：已结束 · 记录没了 · 说不清。
  *
  * 用在：关得掉（右键菜单 · 批量）· 自动跟随不跟 · 后台物化不排 · 活动信号不收。
- * 可重连的会话**不**在其中：它的终端还在（↗ 拉前照样有效），今天也不许关（与改之前逐条相同）。
+ * 可重连的会话不在其中：它的终端还在（↗ 拉前照样有效），也不许关。
  * 说不清在其中，但它不当已结束画、不给恢复（[`canResume`]）、× / 中键 / W 不关它（[`closesWithoutMenu`]）。
  *
- * ⚠ 不能再写成 `recoverability === "resumable"`：G3 之后「活 ＋ 只能重开」也是 `resumable`，
- *   那样写会把一条活着、只是不在 tmux 里的会话当成死的（能关、不跟随、菜单给 Resume）。
+ * 不能写成 `recoverability === "resumable"`：「活 ＋ 只能重开」也是 `resumable`，那样会把活着、只是不在 tmux 里的会话当成死的。
  */
 export function isResumeOnly(s: SessionState): boolean {
   return s.liveness !== "live" && s.recoverability !== "attachable";
@@ -223,7 +220,7 @@ export function isLive(s: SessionState): boolean {
 }
 
 /**
- * 一个状态在界面上长什么样（`U4b.md §1.3` 呈现表）。**这是说会话状态的字的唯一出处**：
+ * 一个状态在界面上长什么样。这是说会话状态的字的唯一出处：
  * tab 栏的类与 tooltip、机器总览的类 / 灯 / 「状态」一格都从这里取。
  */
 export interface StateView {
@@ -237,7 +234,7 @@ export interface StateView {
   reconnectable: boolean;
   /** 状态名（「已结束」「可重连」「记录已不在」「说不清」）；活着 ⇒ `null`（活着不另说状态，灯自己说）。 */
   name: string | null;
-  /** 提示句（「说给用户的话」一列 ＋ U4b 的四句）；活着且容器没报 ⇒ `null`。 */
+  /** 提示句；活着且容器没报 ⇒ `null`。 */
   tooltip: string | null;
 }
 

@@ -1,15 +1,7 @@
-// A3：多账号前端的**账号模型** —— 形状与规则的单一真相（纯，零 IO）。
-//
-// 账号 = 一个 CLAUDE_CONFIG_DIR。本模块只装「一个账号长什么样、它能不能选、它该显示成什么」：
-//   形状（`Account` · `AccountsState` · `SessionAccount`）· 降级判定（`deriveUi`）· 可用性唯一出口（`isSelectable`）·
-//   徽章与本机那一节的界面文案。起会话用哪个号由会话所在那台的后端判（这里不判）。
-//
-// 先前这一个文件（1527 行 · 61 export · 20 个生产 importer）跨账号 · 起停 · 历史三个域（审计 B §6 必须拆 4）。
-// 守的要求：「一个判定只有一个家」。按域拆开之后各住各的：
-//   - 经通道读 ＋ 缓存（`accounts-list` · `accounts-sessions` · `accounts-trust`）→ `account-reads.ts`
-//   - config.json 里的账号偏好（每号模型）→ `account-prefs.ts`
-//   - 起会话那一格「要哪个号」与「选不了」那个选择框 → `launch-account.ts`
-// 本文件从此**不 import 任何有 IO 的模块**（不碰通道、不碰 config、不碰历史注解）。
+// 多账号前端的账号模型（纯，零 IO）。账号 = 一个 CLAUDE_CONFIG_DIR。
+// 只装「一个账号长什么样、能不能选、该显示成什么」：形状（`Account` · `AccountsState` · `SessionAccount`）· 降级判定（`deriveUi`）·
+// 可用性唯一出口（`isSelectable`）· 徽章文案。起会话用哪个号由会话所在那台的后端判。
+// 别处：经通道读 ＋ 缓存 → `account-reads.ts`；每号模型偏好 → `account-prefs.ts`；起会话「要哪个号」→ `launch-account.ts`。
 import { machineName, peerVersionSaid } from "./ipc/chan-caller";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
 // API key 那两问的成品（`apikey-routing`）住 `apikey-reads.ts`（经通道、后端出成品）；本文件只把那份读数落到账号上。
@@ -18,16 +10,11 @@ import type { ApikeyRoutingView } from "./apikey-reads";
 import { copyText } from "./copy-table";
 import type { AuthKind } from "./generated/judgment-rules";
 
-// ---- 账号的形状：从生成物改回手写，形状由后端成品 ＋ 跨语言金样定 ----
+// ---- 账号的形状（手写；由后端成品 ＋ 跨语言金样定）----
 //
-// K-A1 起这一格是 ts-rs 生成物（`src/frontend/ui/generated/RemoteAccount.ts`，Rust 那份在 monitor 的 `accounts.rs`）。
-// C4c 起账号清单由**那台机器的后端出成品**、界面严格收（`accounts-decode.ts::decodeAccountsList`）；
-// monitor 里最后一个产出那份 Rust 结构的是一份零生产调用方的本机参照实现，已删 ⇒ 生成源没了。
-// 形状今天由两样东西钉：后端 `observe/accounts_query.rs::list_product`（产）＋ 跨语言金样
-// `tests/__fixtures__/accounts.golden.json`（Rust 与 TS 两侧同读）＋ 解码器逐键核（多一格 / 缺一格 / 类型不对都抛）。
-// `AuthKind` 那两个字面量是 `acct-core` 的契约常量（`AUTH_KIND_SUBSCRIPTION` / `AUTH_KIND_API_KEY`）；
-// 类型从生成物派生（`acct_core::AUTH_KINDS` 现生成进 `src/frontend/ui/generated/judgment-rules.ts`），不再手写字面量；
-// 后端改了它 ⇒ 生成物与金样跟着变 ⇒ 解码器认不出旧的 ⇒ `accounts-decode.vitest.ts` 金样那条红。
+// 产：后端 `observe/accounts_query.rs::list_product`；钉：跨语言金样 `tests/__fixtures__/accounts.golden.json`（Rust 与 TS 同读）
+// ＋ 解码器 `accounts-decode.ts::decodeAccountsList` 逐键核（多一格 / 缺一格 / 类型不对都抛）。
+// `AuthKind` 从生成物派生（`acct_core::AUTH_KINDS` 生成进 `generated/judgment-rules.ts`）：后端改了它，金样那条判据红。
 /** 一个账号的鉴权方式（`acct-core` 的契约字面量）。 */
 export type { AuthKind };
 
@@ -35,7 +22,7 @@ export type { AuthKind };
 export interface Account {
   name: string;
   email: string;
-  /** Z01：`null` = 账号 0（「不设 `CLAUDE_CONFIG_DIR`」这个状态）。 */
+  /** `null` = 账号 0（不设 `CLAUDE_CONFIG_DIR`）。 */
   configDir: string | null;
   isDefault: boolean;
   /** `isolated`（正常）/ `in-place`（逃生口，前端应拒绝使用）/ `bare`（账号 0）。 */
@@ -43,18 +30,11 @@ export interface Account {
   exists: boolean;
   /** 只是 stat 了 `.credentials.json` 在不在，**不代表凭据有效**；可用性走 `authReady`。前端零处读它（收成品那一格除外）。 */
   loggedIn: boolean;
-  /** 后端按 `acct_core::auth_kind_from_manifest` ＋ apikey 表并出的结论（缺省落订阅那一格也在那里判，`KA6d`）。 */
+  /** 后端按 `acct_core::auth_kind_from_manifest` ＋ apikey 表并出的结论（缺省落订阅那一格也在那里判）。 */
   authKind: AuthKind;
   /**
-   * 鉴权方式这一维**不再阻塞**这个号被选中 —— 规则住 `acct_core::auth_ready`，后端算好放进这一格，前端只读。
-   *
-   * ⚠ **`KA6b`（诚实边界）**：订阅那一支只是 stat 了 `.credentials.json` 在不在 —— 凭据过期 / 被吊销看不出来；
-   * api-key 那一支恒真（它不用那个文件），`true` 也不等于「真能连上」（`KA6a`，徽章那段文案说出来）。
-   *
-   * 这一格与 `authKind` 原来都是**可缺**的，缺了由 `accounts.ts::authReady`〔散文墓碑〕
-   * 回落到 `loggedIn`、`authKind` 读成订阅 —— 那是 `auth_ready` 订阅分支与 `auth_kind_from_manifest` 缺省那一格
-   * 在 TS 里的第二份，而且是「旧后端」的退路（`D11`）。解码器（`accounts-decode.ts`）早就逐键要求这两格、
-   * 缺了就抛 ⇒ 回落今天不可达，删了。
+   * 能不能起会话（鉴权那一维）：规则住 `acct_core::auth_ready`，后端算好，前端只读。
+   * 订阅那一支只看 `.credentials.json` 在不在（凭据过期 / 被吊销看不出来）；api-key 那一支恒真，也不等于真能连上（徽章文案说出来）。
    */
   authReady: boolean;
   /** API 号在那台 apikey 表里那一行的 key 掩码（只留末四位，那台后端遮好的）；订阅号 / 没配 ⇒ `null`。线上恒有这一格，本地造的夹具可以不写。 */
@@ -63,10 +43,7 @@ export interface Account {
   baseUrl?: string | null;
 }
 
-/**
- * 那台机器的账号库（manifest）的概况 —— 后端 `accounts-list` 成品的 `meta` 那一格，逐键照收。
- * `accountZeroAware` 那一格退役：出成品的后端按构造认得账号 0（老后端回的是旧形状，当场认出）。
- */
+/** 那台机器的账号库（manifest）的概况 —— 后端 `accounts-list` 成品的 `meta` 那一格，逐键照收。 */
 export interface AccountsMeta {
   enabled: boolean;
   acctsDir: string;
@@ -110,11 +87,7 @@ export interface AccountsState {
   oldBackend: boolean;
   meta: AccountsMeta | null;
   accounts: Account[];
-  /**
-   * Z01：**能用但有缺**时的人话说明（`available` 仍是 true）。null = 无缺。
-   * 「绝不静默降级」是它存在的全部理由——旧 backend / 旧的写清单那一侧会让账号 0
-   * 从列表里凭空少一行，用户看不出区别。
-   */
+  /** 能用但有缺时的人话说明（`available` 仍是 true）；null = 无缺。不出这一句，列表里少一行用户看不出来。 */
   notice: string | null;
   /**
    * 这一次没问到（`available:false`）时，这次运行里那台最近一次答成的那一份＋ 答成的时刻：
@@ -124,9 +97,6 @@ export interface AccountsState {
 }
 
 /** chip / 设置组据此决定怎么显示。纯派生自 AccountsState。 */
-// 🔴 `K-R59`（09-11）：这里原来还有一档 `{ kind: "hidden" }` —— 它**只由**
-// 「该主机配置为 daemonless（无后端）」那条错误串产出，而 `K35` 把那一档整个删了
-//（`accounts.rs::cfg_for` 那个早返回一起走）⇒ 留着就是一档**再也到不了**的 UI 状态。
 export type AccountsUi =
   | { kind: "needs-update"; reason: string } // 旧 backend（只有对端说「不认这条命令」那一形）
   | { kind: "query-failed"; reason: string } // 没问出来（够不着 / 期限到 / 对端说不行 / 形状不对）
@@ -135,11 +105,11 @@ export type AccountsUi =
 
 // ------------------------------------------------------------ 纯函数
 
-/** A2 返回 → UI 判定（DESIGN §7 降级矩阵）。纯函数，vitest 锁死。 */
+/** 账号读回 → 界面判定（降级矩阵）。纯函数。 */
 export function deriveUi(state: AccountsState): AccountsUi {
   if (!state.available) {
     const e = state.error ?? "";
-    // 按失败的**种类**分（从前按原因串里有没有「过旧」猜，又把其余一律并进「需更新」—— 真机上远端没部署上 / 拒转发都说成要更新）。
+    // 按失败的种类分（不按原因串猜：远端没部署上 / 拒转发不是「需更新」）。
     if (state.oldBackend) return { kind: "needs-update", reason: peerVersionSaid("backend_old", state.origin) };
     return { kind: "query-failed", reason: e || copyText("accounts.deriveUi.unavailable") };
   }
@@ -169,18 +139,8 @@ export function currentWorkingAccount(state: AccountsState): Account | null {
 }
 
 /**
- * 账号状态徽章（`KA6a` 的那段文案）——**两处渲染同一个概念，取值只许有一处**。
- *
- * 设置里的账号表（`settings/accounts-section.ts`）与状态栏 chip 的账号菜单
- * （`account-chip.ts`）各渲染一份这个三态。K-A1 之前两处各写一遍
- * `a.mode === "in-place" ? … : !a.loggedIn ? … : "已登录"`。
- *
- * ★ **`KA6a`：api-key 号今天「选得中、起得来、但请求发不出去」** ——
- * 配端点那条路要等第三方 API 路线裁定（`BACKLOG.md` `E36` 的甲/乙/丙）。
- * 所以它的徽章**不许写「已登录」**：那会让用户以为可以用，起了会话才在 claude 里
- * 撞一个鉴权失败，而 UI 说这个号没问题。
- *
- * ⚠ 「已登录」这一档仍然只代表 `.credentials.json` 在（`KA6b`）：凭据过期/被吊销看不出来。
+ * 账号状态徽章：设置里的账号表（`settings/accounts-section.ts`）与状态栏 chip 的账号菜单（`account-chip.ts`）共用这一份取值。
+ * api-key 号不写「已登录」（选得中、起得来，但请求未必发得出去）；「已登录」只代表 `.credentials.json` 在，凭据过期 / 被吊销看不出来。
  */
 export interface AccountStatusBadge {
   /** 徽章文本。 */
@@ -205,10 +165,7 @@ export interface AccountStatusBadge {
  */
 export type ApikeyEndpointState = { hasRow: boolean; running: boolean };
 
-/**
- * 账号表那一行第二行要的那一档（设置窗账号页）：API key 号 · 订阅号已登录 · 订阅号还没登录。
- * 「已登录」仍只代表凭据文件在（`KA6b`）。
- */
+/** 账号表那一行第二行要的那一档（设置窗账号页）：API key 号 · 订阅号已登录 · 订阅号还没登录（「已登录」只代表凭据文件在）。 */
 export type AccountRowKind = "apikey" | "subscription" | "notLoggedIn";
 
 export function accountRowKind(a: Account): AccountRowKind {
@@ -279,42 +236,23 @@ export function accountStatusBadge(
 
 /** 某账号是否可被选为默认 / 用来起会话。 */
 export function isSelectable(a: Account): boolean {
-  // 账号 0（mode "bare"）在这里**天然落选**。
-  //
-  // ★ **Z02 订正了 Z01 在这儿写的一句错话**。Z01 写的是「从 UI 起它需要『显式 unset』的
-  // 注入路径，而 launch-plan 今天只会 export」——**不对**：那条路径早就有了，两条渲染路各一份
-  //   · CLI 路径：CLI 渲染器的 `account` 维度（今天只在 Rust `ccm_invocation.rs`）对非 account 态吐 `--base`，
-  //     而 `shared/ccm` 收到 `--base` 会 `unset CLAUDE_CONFIG_DIR`（两处落点，
-  //     由 `base-flag-contract-guard.vitest.ts` 钉住）
-  //   · 兜底渲染路径：`ENV_RESET_DIMENSION` 推 `unset-config-dir` op
-  //
-  // 真正缺的是**选择链路**，不是注入形态：
-  //   1. 它不可选 ⇒ 选号那一步说不出「用户显式选了账号 0」
-  //      （只能说 `unavailable`，那是「你要的号不能用」，语义不同）
-  //   2. `AccountModifierOption` 没有账号 0 这个选项
-  //   3. `tabs.ts:2283` 那个 `opt.kind === "base" ? … : …` 三元**不会编译报错**地把新变体
-  //      送进 else 分支（拿 `opt.name === undefined` 去起会话）⇒ 加变体前必须先改它
-  // 第 3 条卡 `tabs.ts` 红线 ⇒ 放开这条门槛要等红线松（见 features/Z02-PARTIAL.md）。
-  //
-  // ★ **K-A1 把第二项从 `a.loggedIn` 换成了后端算好的 `a.authReady`**（原先经一个带「旧后端回落」的包装读，包装删了）。
-  // 订阅号那一支的值与 `loggedIn` **逐字节相同**（`acct_core::auth_ready` 的订阅分支就是
-  // 「凭据文件在不在」）⇒ 订阅号一格没变，包括「缺凭据 ⇒ 不可选」那道保护（`KAY3`）。
-  // 变的只有 api-key 号：它压根不用那个文件，所以不再因为缺文件而被判不可用（`KAY2`）。
+  // 账号 0（mode "bare"）在这里天然落选（起它走 `--base`，不经选号）。
+  // 第二项是后端算好的 `authReady`：订阅号就是「凭据文件在不在」，api-key 号不用那个文件、恒真。
   return a.mode === "isolated" && a.authReady && a.exists;
 }
 
-/** account-ux U8：可选账号列表（`isSelectable` 过滤）。休眠判据 / 计数一律走它，别各处再 filter 一遍。 */
+/** 可选账号列表（`isSelectable` 过滤）。休眠判据 / 计数一律走它，别各处再 filter 一遍。 */
 export function selectableAccounts(state: AccountsState): Account[] {
   return state.accounts.filter(isSelectable);
 }
 
 /**
- * account-ux U8：**账号色系统是否该激活**（休眠固化）。
+ * 账号色系统是否该激活。
  *
  * 只有一个可选账号时，彩色头像不携带任何信息——它区分不了任何东西，纯属噪音；等用户加了
  * 第二个号，颜色才开始有意义。故 `≥2 个可选账号 && 该 origin 账号确实可查询` 才激活。
  *
- * **作用面只有状态栏 chip 与 tab 徽章**。设置里的账号表（U7 的横幅 + 表格行）**恒显豁免**：
+ * 作用面只有状态栏 chip 与 tab 徽章。设置里的账号表恒显：
  * 那是全应用唯一能让用户学到「色块 ↔ 账号 ↔ 邮箱」映射的图例面，单账号期把它也休眠掉，
  * 等加了第二个号就会突然满屏彩块。
  */
@@ -323,22 +261,15 @@ export function accountColorsActive(state: AccountsState): boolean {
 }
 
 /**
- * account-ux U6：**真正可用**的当前账号——`currentWorkingAccount` 再过一道 `isSelectable`。
- *
- * `currentWorkingAccount`(=`effectiveDefault`) 只挑"被指定/第一个"，不管它能不能用；而拿未过滤
- * 的值去判"不一致"，会让徽章指着一个系统自己永远不会 follow 过去的账号说"你不一致"。故账号
- * 徽章的 mismatch 判定统一用这个（F09 后：⚠k/⇄/批量对齐已删除，本函数现在只喂徽章
- * `tabs.ts::updateAccountBadge` 一处消费者）。
+ * 真正可用的当前账号：`currentWorkingAccount` 再过一道 `isSelectable`。
+ * 拿未过滤的值判「不一致」，徽章会指着一个永远不会被跟过去的号说「你不一致」。消费者：`tabs.ts::updateAccountBadge`。
  */
 export function currentAccountForBadge(state: AccountsState): Account | null {
   const cur = currentWorkingAccount(state);
   return cur && isSelectable(cur) ? cur : null;
 }
 
-/**
- * account-ux U1:活会话账号是否与当前账号**不一致**(纯函数)。
- * 仅当两者都确知且不同才判 true;任一未知(live 探不到 / 无当前账号)→ false(不误报)。
- */
+/** 活会话账号是否与当前账号不一致（纯函数）：两者都确知且不同才 true；任一未知 ⇒ false（不误报）。 */
 export function detectAccountMismatch(
   liveAccount: string | null,
   current: string | null,
@@ -366,9 +297,9 @@ export interface SessionBadge {
   text: string; // 显示文本；"—" = 未知
   known: boolean; // 是否确知账号
   tooltip: string;
-  /** account-ux U5:徽章数据来源。'live'=实时探测(硬真相,实心头像)/ 'last'=上次记录(源②,幽灵头像)/ 'unknown'=不猜。 */
+  /** 徽章数据来源：'live' = 实时探测（实心头像）/ 'last' = 上次记录（幽灵头像）/ 'unknown' = 不猜。 */
   source: "live" | "last" | "unknown";
-  /** account-ux U5:确知时的账号名(text 是缩写,这里是全名,供 mismatch 比对/tooltip);未知为 null。 */
+  /** 确知时的账号名（text 是缩写，这里是全名，供不一致比对 / 悬停）；未知为 null。 */
   account: string | null;
 }
 export function sessionBadge(
@@ -378,7 +309,7 @@ export function sessionBadge(
   emailByName: Map<string, string>,
   lastAccountByS?: Map<string, string>,
 ): SessionBadge | null {
-  if (isLocalOrigin(origin)) return null; // 本地会话 A7 前不支持
+  if (isLocalOrigin(origin)) return null; // 本机会话不出账号徽章
   // 源①：live 探测——唯一硬真相，优先。
   const live = liveByS.get(sid);
   if (live && live.alive && live.account) {
@@ -415,15 +346,14 @@ export function sessionBadge(
 }
 
 /**
- * A4/§7 降级：某会话是否**该显**账号徽章。只有「账号可查询」的远端才显（即 available 的
- * origin,由 main.ts 收进 readyOrigins）。本地会话（`LOCAL_ORIGIN`）与不可查询的远端
- * （未迁移 / 旧后端）一律不显——否则满屏 `—` 是噪音、违反 §7「不可用即安静隐藏」。
+ * 某会话该不该显账号徽章：只有账号可查询的远端才显（available 的 origin，main.ts 收进 readyOrigins）。
+ * 本机会话与不可查询的远端不显 —— 满屏 `—` 是噪音，不可用就安静隐藏。
  */
 export function shouldShowAccountBadge(
   origin: Origin,
   readyOrigins: Set<string>,
 ): boolean {
-  if (isLocalOrigin(origin)) return false; // 本地会话 A7 前不支持
+  if (isLocalOrigin(origin)) return false; // 本机会话不出账号徽章
   return readyOrigins.has(origin);
 }
 

@@ -106,7 +106,7 @@ gate_cargo_test_nonet() {
   local dir="$1" out rc
   shift
   [ -z "$GATE_NONET_WHY" ] || { gate_nonet; return; }
-  out="$(cd "$dir" && cargo test --no-run "$@" 2>&1)"; rc=$?
+  out="$(cd "$dir" && gate_yield cargo test --no-run "$@" 2>&1)"; rc=$?   # 编那一半不按墙钟判 ⇒ 让路
   if [ "$rc" -ne 0 ]; then printf '%s\n' "$out"; return "$rc"; fi
   gate_nonet bash -c 'cd "$1" && shift && cargo test "$@" 2>&1' _ "$dir" "$@"
 }
@@ -166,6 +166,35 @@ else
   printf '  ·    %-14s %s\n' "并行" "不并（GATE_SERIAL=1 或没有无网沙箱 / 私有 tmux 目录）：逐格跑完立刻判"
 fi
 GATE_CELL_DIR="$(mktemp -d "${TMPDIR:-/tmp}/gate-cells.XXXXXX")" || { echo "GATE: FAIL —— 建不了各格的输出目录"; exit 2; }
+
+# ── 机器忙时谁让路（10-08）──────────────────────────────────────────────────
+# 拿锁那一刻看一次负载（`gate-clean.sh`）管不住跑起来之后才涨上来的负载 ⇒ 门禁自己分两手：
+#
+# ① **整套 vitest 分核**：`npm` 与 `coverage` 两格在两条道里同时各起一整套 vitest，各按默认（核数 − 1）起 worker
+#    ⇒ 合起来近两倍核数，再叠 Rust 与 e2e，按墙钟判的用例被挤过期限。并跑时每格只拿「核数 ÷ 格数」个 worker
+#    （经 `GATE_VITEST_WORKERS` 交给 `vitest.config.ts` 的 `maxWorkers`；CI 与平时不设这个变量，照 vitest 默认）。
+#    不并跑时一次只有一格在跑，拿满核数。判据：`tests/frontend/ui/gate-vitest-workers.vitest.ts`（两格合起来不超过核数）。
+# >>> vitest 分核
+GATE_VITEST_CELLS=(npm coverage)
+if [ "$GATE_PAR" = 1 ]; then GATE_VITEST_EACH=$(( $(nproc) / ${#GATE_VITEST_CELLS[@]} )); else GATE_VITEST_EACH=$(nproc); fi
+[ "$GATE_VITEST_EACH" -ge 1 ] || GATE_VITEST_EACH=1
+# <<< vitest 分核
+gate_vitest_share() { ( export GATE_VITEST_WORKERS="$GATE_VITEST_EACH"; "$@" ); }
+#
+# ② **不按墙钟判的格让路**（`nice -n 10`：负载涨上来时 CPU 先给按墙钟判的那些）：
+#    · 按墙钟判（有期限、超时即红 ⇒ 普通优先级）—— `npm` · `coverage`（vitest 每条有期限）· `cargo` · `backend`
+#      · `comm-boundary` · `test-tiers`（`cargo test` 里有带期限 / 等待上限的用例；这两格的 `cargo test --no-run` 那一半让路，
+#      见 `gate_cargo_test_nonet`）· `ccbus-twophase`（真跑、带等待上限）· e2e 各套 · `env-sandbox` · `weak-net`；
+#    · 不按墙钟判（只看编得过 / 诊断零条 / 盘上文本 / 两份对得上 ⇒ 让路）—— 编译类 `deadcode` · `deadcode-backend` · `clippy`
+#      · `clippy-backend` · `appbuild` · `winchk` · `winchk-backend` · `winlink` · `muslbuild` · `tsc` · e2e 前置那趟 `cargo build`（`e2e-prep`）；
+#      读文本类 `worktree-clean` · `hooks` · `copy2` · `shellcheck` · `e2e-smoke` · `release-gate` · `platform` · `installface`
+#      · `fmt` · `fmt-backend` · `audit` · `generated` · `tmux-default`。
+#    两张表与盘上的格两向相等（同一个判据文件钉）：新加一格就得在这里归一边。
+GATE_WALL_CELLS=" npm coverage cargo backend comm-boundary test-tiers ccbus-twophase e2e env-sandbox weak-net "
+GATE_YIELD_CELLS=" deadcode deadcode-backend clippy clippy-backend appbuild winchk winchk-backend winlink muslbuild tsc e2e-prep worktree-clean hooks copy2 shellcheck e2e-smoke release-gate platform installface fmt fmt-backend audit generated tmux-default "
+gate_yields() { case "$GATE_YIELD_CELLS" in *" $1 "*) return 0 ;; esac; return 1; }
+# 只降调它所在的那个子 shell（`$BASHPID`）及其往后起的子进程；调用方负责把它放进子 shell 里。
+gate_yield() { renice -n 10 -p "$BASHPID" >/dev/null 2>&1 || true; "$@"; }
 GATE_LANE=""              # 现在往哪条道里排（空 = 不排）
 GATE_LANES=()             # 道名，按声明顺序
 GATE_LANE_PIDS=()         # 起跑后各道的 pid（中断时按 pid 收）
@@ -423,7 +452,7 @@ run_gate() {
   local name="$1"; local denom="$2"; shift 2
   gate_wants "$name" || return 0
   local ex ju
-  printf -v ex '%q ' gate_exec_cmd "$@"
+  if gate_yields "$name"; then printf -v ex '%q ' gate_exec_cmd gate_yield "$@"; else printf -v ex '%q ' gate_exec_cmd "$@"; fi
   printf -v ju '%q ' gate_judge_gate "$name" "$denom"
   gate_cell "$name" "$ex" "$ju"
 }
@@ -934,7 +963,7 @@ gate_e2e_wanted() {
 }
 gate_exec_prep() {
   gate_now_ms > "$GATE_K.t0"
-  ( cd src/backend && cargo build --bin cc-monitor-backend >/dev/null 2>&1 ) || true
+  ( cd src/backend && gate_yield cargo build --bin cc-monitor-backend >/dev/null 2>&1 ) || true
   printf 0 > "$GATE_K.rc"
   gate_now_ms > "$GATE_K.t1"
 }
@@ -985,7 +1014,7 @@ gate_lane 前端 after cargo backend
 # 本格不走 `run_gate`，`gate_wants` / `gate_cell` 手接；漏接会让收据少一格，`K-G4C-gate-receipt.py` 的两向相等当场分叉。
 gate_exec_generated() {
   gate_now_ms > "$GATE_K.t0"
-  git diff --quiet --exit-code -- src/frontend/ui/generated/
+  ( gate_yield git diff --quiet --exit-code -- src/frontend/ui/generated/ )
   printf '%s' "$?" > "$GATE_K.rc"
   gate_now_ms > "$GATE_K.t1"
   git diff --stat -- src/frontend/ui/generated/ > "$GATE_K.out" 2>&1
@@ -1027,7 +1056,7 @@ if [ "$got" -ne "$want" ]; then printf "tsc: 真读进程序的 %s 份 != 盘上
 printf "tsc: %s passed（仓内 %s 份 .ts 全部过 tsc --noEmit；两个数同一趟现打）\n" "$got" "$want"'
 
 run_gate npm '`npm test` 串起来的各套件里，只有 vitest（`test:dom`）那一套的数大，取最大值 ⇒ 这个数是 `test:dom` 的；只打「all X tests passed」的 tsx 套件「跑了 0 个」这一格守不住（失败仍由 && 链的退出码守）' \
-         npm test
+         gate_vitest_share npm test
 
 # ── `coverage`：`ci.yml` 的 `frontend` job 里那两步覆盖率 ─────────────────────
 # 覆盖率逐文件地板（`tests/scripts/assert-coverage-floors.mjs`）点名具体文件：文件被删或改名而清单还点着它，本格红。
@@ -1047,7 +1076,7 @@ gate_private_vite() {
 }
 gate_lane 覆盖率 after cargo backend
 run_gate coverage '这一趟 vitest（带 v8 覆盖率）真跑过的条数：`ci.yml` 的 `coverage floor (vitest jsdom)`（`npm run coverage`，`vitest.config.ts` 里的全局阈值）＋ `coverage per-file floors + zero-coverage ratchet`（逐文件地板与零覆盖棘轮）两步原样跑。⚠ 与 `npm` 那格是同一批 vitest 文件再跑一遍（带插桩，慢一截）；覆盖率只量 `src/**/*.ts`，tsx 套件与 Rust 一概不进分母' \
-         gate_private_vite gate_ci_steps coverage "coverage floor (vitest jsdom)" "coverage per-file floors + zero-coverage ratchet"
+         gate_vitest_share gate_private_vite gate_ci_steps coverage "coverage floor (vitest jsdom)" "coverage per-file floors + zero-coverage ratchet"
 
 # 18 套摊成几条道（按热缓存时长大致拉平）；各套各在自己的网络命名空间与 `/tmp` 里，互不相见。
 # `local-backend` 在壳里跑 `cargo test --lib`，等 `cargo` 那格编完再起，免得两条道抢壳的 target 锁。

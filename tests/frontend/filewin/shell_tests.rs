@@ -3549,3 +3549,106 @@ fn no_runtime(e: &str) -> bool {
     .iter()
     .any(|k| copy_core::copy_matches(&format!("rsFilewinShell.{k}.noRuntime"), e))
 }
+
+/// 目录打不开：照后端的码说是哪一种（名字带进那一句）＋ 三条出路；点「回上一级」就往上走、点「回主目录」记下要回家。
+#[test]
+fn a_directory_that_cannot_be_opened_says_which_kind_and_offers_the_way_out() {
+    use crate::source::OpenFail;
+    let ctx = egui::Context::default();
+    let painted_of = |w: &mut FileWindow| -> Vec<String> {
+        let _ = crate::chrome::testing::frame(&ctx, w, Vec::new());
+        crate::chrome::testing::frame(&ctx, w, Vec::new())
+            .into_iter()
+            .map(|(t, _)| t)
+            .collect()
+    };
+    for (kind, key) in [
+        (OpenFail::NotFound, "rsFilewinShell.open.notFound"),
+        (OpenFail::Denied, "rsFilewinShell.open.denied"),
+        (OpenFail::NotDir, "rsFilewinShell.open.notDir"),
+        (OpenFail::Other, "rsFilewinShell.open.other"),
+    ] {
+        let mut w = remote_window_with_rows("/srv/data/gone", vec![]);
+        *w.listing.open_fail.lock().unwrap() = Some((kind, "系统原话".into()));
+        let painted = painted_of(&mut w);
+        let said = copy_text(key, &[("name", "gone")]);
+        for want in [
+            said.as_str(),
+            &copy_text("rsFilewinShell.open.up", &[]),
+            &copy_text("rsFilewinShell.open.home", &[]),
+            &copy_text("rsFilewinShell.open.copyDetail", &[]),
+        ] {
+            assert!(
+                painted.iter().any(|t| t == want),
+                "{key}：这一帧上没有「{want}」。画出来的是：{painted:?}"
+            );
+        }
+    }
+    let mut w = remote_window_with_rows("/srv/data/gone", vec![]);
+    *w.listing.open_fail.lock().unwrap() = Some((OpenFail::NotFound, "系统原话".into()));
+    let _ = crate::chrome::testing::frame(&ctx, &mut w, Vec::new());
+    crate::chrome::testing::click(&ctx, &mut w, &copy_text("rsFilewinShell.open.up", &[]));
+    assert_eq!(w.cwd, "/srv/data", "点了「回上一级」没往上走");
+    let mut w = remote_window_with_rows("/srv/data/gone", vec![]);
+    *w.listing.open_fail.lock().unwrap() = Some((OpenFail::Denied, "系统原话".into()));
+    let _ = crate::chrome::testing::frame(&ctx, &mut w, Vec::new());
+    crate::chrome::testing::click(&ctx, &mut w, &copy_text("rsFilewinShell.open.home", &[]));
+    assert!(w.want_home, "点了「回主目录」没记下要回家");
+}
+
+/// 后端只给了前 N 条：列表上面一条黄条说清楚（N 与总数都在那一句里）＋「按名字搜」，点了焦点进搜索框、搜的是名字。
+#[test]
+fn a_truncated_listing_says_so_and_offers_search_by_name() {
+    let ctx = egui::Context::default();
+    let mut w = remote_window_with_rows("/srv/data", vec![file_row("a.bin")]);
+    w.listing.truncated.store(true, Ordering::SeqCst);
+    w.listing.total.store(123_456, Ordering::SeqCst);
+    w.search_content = true;
+    let said = copy_text(
+        "rsFilewinShell.frame.truncated",
+        &[
+            ("n", &crate::source::LS_LIMIT.to_string()),
+            ("total", "123456"),
+        ],
+    );
+    let _ = crate::chrome::testing::frame(&ctx, &mut w, Vec::new());
+    let painted: Vec<String> = crate::chrome::testing::frame(&ctx, &mut w, Vec::new())
+        .into_iter()
+        .map(|(t, _)| t)
+        .collect();
+    assert!(painted.iter().any(|t| *t == said), "没说截断：{painted:?}");
+    crate::chrome::testing::click(
+        &ctx,
+        &mut w,
+        &copy_text("rsFilewinShell.frame.searchByName", &[]),
+    );
+    assert!(!w.search_content, "点了「按名字搜」还停在按内容搜");
+    assert!(
+        ctx.memory(|m| m.has_focus(egui::Id::new(SEARCH_BOX_ID))),
+        "点了「按名字搜」焦点没进搜索框"
+    );
+}
+
+/// 编辑页那一份打不开（被拒）：编辑面那里说原因 ＋「下载」「重试」，不是空着。
+#[test]
+fn an_edit_page_that_was_refused_says_why_where_the_text_would_be() {
+    let ctx = egui::Context::default();
+    let mut w = remote_window_with_rows("/srv/data", vec![file_row("a.bin")]);
+    w.edit_tab = true;
+    w.edit_refused = Some("这份不是文本".into());
+    let _ = crate::chrome::testing::frame(&ctx, &mut w, Vec::new());
+    let painted: Vec<String> = crate::chrome::testing::frame(&ctx, &mut w, Vec::new())
+        .into_iter()
+        .map(|(t, _)| t)
+        .collect();
+    for want in [
+        "这份不是文本".to_string(),
+        copy_text("rsFilewinEditPage.action.download", &[]),
+        copy_text("rsFilewinEditPage.action.retry", &[]),
+    ] {
+        assert!(
+            painted.iter().any(|t| *t == want),
+            "这一帧上没有「{want}」。画出来的是：{painted:?}"
+        );
+    }
+}

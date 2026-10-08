@@ -1,5 +1,5 @@
 /**
- * 〔拆 `tabs.ts` ① · 「一个 store，一个 router」〕**会话状态账**。
+ * 会话状态账。
  *
  * tab 集合 · 顺序（连同盘上那份顺序意图）· 当前 tab · 是否在重放批里 · 早于 tab 到达的信号暂存
  * （已结束 / 可重连 / 红绿灯）· 不可 attach 的 sid · 账号快照 · 任务快照 —— **收进一处**；
@@ -7,7 +7,6 @@
  *
  * 零 DOM、零 IPC：它只存东西、只做「新 tab 落在哪一格」这类纯顺序运算。谁什么时候改它、
  * 改完要刷哪块界面，是 `TabManager`（组装根）与各视图的事。
- * 字段与三个落位方法逐字从 `tabs.ts` 搬来（原先是 `TabManager` 的私有成员）。
  */
 import type { SessionAccount } from "./accounts";
 import type { TaskEntry } from "./tasks-panel";
@@ -50,9 +49,7 @@ export class TabStore {
   /**
    * **盘上那份顺序（`tabBar.order`），启动读一次之后留着。**
    *
-   * 🔴 **它是「一份意图」，不是一次性的动作** —— 这就是那个 no-op 的修法所在
-   *   （成因与现打见 `loadOrder` 头注）。tab 是**陆续**到的，所以这份顺序必须活过
-   *   整个启动窗口期，每来一个 tab 就再应用一次（`placeInOrder` → `applySavedOrder`）。
+   * 它是一份意图，不是一次性的动作：tab 是陆续到的，这份顺序要活过整个启动期，每来一个 tab 就再应用一次（`placeInOrder` → `applySavedOrder`）。
    * ⚠ 里面**允许有今天不存在的 sid**（被删的 / 还没宣告到的）——
    *   它们进不了 `orderedIds`（`applySavedOrder` 按 `present` 筛），所以不会造出假 tab；
    *   上界由 `ORDER_CAP` 在读的那一侧管。
@@ -61,37 +58,22 @@ export class TabStore {
    */
   savedOrder: string[] = [];
   /**
-   * E73：sid → **attach 进去对人有没有意义**（来自 pidfile 的 `attachable`，经后端帧透传）。
-   *
-   * 只记**显式 false** 的那些。缺席 = 可以 —— 存量会话与旧后端一律照旧，零迁移。
-   *
-   * # 为什么单独一张表而不是 `Tab` 的字段
-   *
-   * 加字段要动 `ensureTab` 的位置参数列车（R03 刚把那种形状收拾过一轮），而这就是
-   * 「某个 sid 的一条会话级元信息」—— 与 `sessionAccountsByS` 同形，放这儿更合身。
+   * sid → attach 进去对人有没有意义（pidfile 的 `attachable`，经后端帧透传）。只记显式 false 的那些；缺席 = 可以。
+   * 单独一张表：它是「某个 sid 的一条会话级元信息」，与 `sessionAccountsByS` 同形。
    */
   readonly notAttachableSids = new Set<string>();
-  /** A3：远端 live 探测的会话账号归属（sid → 探测行）。main.ts 定期喂。 */
+  /** 远端 live 探测的会话账号归属（sid → 探测行）。main.ts 喂。 */
   sessionAccountsByS = new Map<string, SessionAccount>();
-  /** A3：账号名 → 邮箱（徽章 tooltip 用）。 */
+  /** 账号名 → 邮箱（徽章悬停用）。 */
   accountEmailByName = new Map<string, string>();
-  /** A4：sid → lastAccount（history-metadata）。徽章源②：live 探测不到时兜底。main.ts 定期喂。 */
+  /** sid → lastAccount（history-metadata）：live 探测不到时徽章的兜底来源。main.ts 喂。 */
   accountLastByS = new Map<string, string>();
-  /** A4/§7：账号可查询的远端 origin 集（available）。只有这些 origin 的会话才显徽章。 */
+  /** 账号可查询的远端 origin 集（available）。只有这些 origin 的会话才显徽章。 */
   accountReadyOrigins = new Set<string>();
-  /** account-ux U5：origin → 当前账号名。徽章「信息才显」比对：会话账号==它 → 不挂徽章。main.ts 定期喂。
-   *  **只放 isSelectable 的账号**（main.ts 侧过滤）：不可选的当前账号对齐必失败，指着它说"你不一致"
-   *  是假信息。 */
+  /** origin → 当前账号名：会话账号 == 它 → 不挂徽章。只放 isSelectable 的账号（main.ts 过滤）：拿不可选的号说「你不一致」是假信息。 */
   currentByOrigin = new Map<string, string>();
   activeId: string | null = null;
-  /**
-   * v2.2 (issue #12): 当前是否在 batch 模式（启动重放 jsonl-batch 期间）。
-   * batch 模式中 ensureTab 创建的新 Tab 也要把 BranchFolder 设成 batch。
-   *
-   * P5.2 B 重构：inPrependMode / pendingPrependFragment / source flag 全删 —— 前端
-   * 改用 RecordTimeline 按 seq binary-insert，DOM 位置由 seq 决定不受 emit 顺序影响。
-   * 仍保留 inBatch 是因为它控两件事：(1) lazy hljs 注册 (2) BranchFolder.batchMode。
-   */
+  /** 是否在批模式（启动重放期间）。控两件事：惰性高亮、BranchFolder.batchMode（批里新建的 Tab 也设成 batch）。 */
   inBatch = false;
   /**
    * 此刻喂进 `onLine` 的是**取回来的历史**（按偏移 / 按行号，`TabStreamView.feedHistoryRows`），
@@ -99,38 +81,26 @@ export class TabStore {
    * 在一个已结束的远端 tab 上往上翻、取回几条旧行，不许把它翻活。
    */
   historyFeed = false;
-  /**
-   * issue #11: 每个 sid 当前 task 列表（由 ensureTab 拉初次快照 + task-update 事件
-   * 更新）。切 Tab 时把对应 sid 的快照喂给全局 TasksPanel。
-   */
+  /** 每个 sid 当前的任务列表（ensureTab 拉初次快照，之后按通道的任务变更重问）。切 Tab 时把那个 sid 的快照喂给 TasksPanel。 */
   readonly tasksBySid = new Map<string, TaskEntry[]>();
   /**
-   * issue #19：归档信号（ended 格）可能早于 replay 把该 sid 的 Tab 建出来。
-   * archiveTab 时若 Tab 还不存在，记进这里；ensureTab 建 Tab 时回查、落实归档。
-   *
-   * issue #20 后 ended 格 已改进 events.ts 的 queue 与行同序处理（否则补发
-   * 归档会被后续 drain 的远端行 un-archive 吃掉），正常路径下 ended 不会再早于
-   * 行到达——本集合降级为防御层（§ 17a 双层防御），保留兜“ended 先于该 sid 任何
-   * 行”的异常序。
+   * 归档信号（ended 格）早于这个 sid 的 Tab 建出来时记在这里，ensureTab 建 Tab 时落实。
+   * ended 与行同一条队列，正常路径下不会先到；这一层兜「ended 先于该 sid 任何行」的异常序（§ 17a）。
    */
   readonly pendingArchive = new Set<string>();
   /**
-   * audit-fixes F03.2：灰灯（idle-tmux）信号早于 Tab 建出时暂存（同 pendingArchive 模式）。
-   * F5 frontend-ready 重放会重发 SESSION_IDLE，可能早于骨架 remote-added 建 Tab——不暂存则
-   * markTmuxIdle no-op、灰灯丢。ensureTab 建 Tab 时落实（除非同时 pendingArchive→归档优先）。
+   * 灰灯（idle-tmux）信号早于 Tab 建出时暂存（同 pendingArchive）：F5 后重发的 idle 可能早于骨架建 Tab，不暂存灰灯就丢了。
+   * ensureTab 建 Tab 时落实（同时有 pendingArchive ⇒ 归档优先）。
    */
   readonly pendingTmuxIdle = new Set<string>();
-  /**
-   * issue #23：红绿灯信号早于 Tab 建出来时暂存（同 pendingArchive 的时序竞争模式：
-   * activity 格 同步派发，而建 Tab 的行走异步 queue/drain）。ensureTab 时落实。
-   */
+  /** 红绿灯信号早于 Tab 建出来时暂存（activity 格当场派，而建 Tab 的行走异步队列）。ensureTab 时落实。 */
   /**
    * 容器事实（`container` 格）早于 Tab 建出时暂存。ensureTab 建 Tab 时落实
    * （建出来就是活的；早到的死亡信号优先 —— 那时容器一格由死的那一刻的裁决说了算）。
    */
   readonly pendingContainer = new Map<string, ContainerEvent>();
   /**
-   * 〔说不清〕已经把活会话清单报完了的机器（`origin-sessions-listed` / 本机 `list_active_sessions`〔散文墓碑〕）。
+   * 已经把活会话清单报完了的机器（会话流的 `listed` 格）。
    * 固定复活时据它分：报完了 ⇒ 已结束（它不在清单里，不然 tab 早就被建成活的了）；没报完 ⇒ 说不清。
    */
   readonly seenOrigins = new Set<string>();
@@ -183,14 +153,9 @@ export class TabStore {
   /**
    * 新 tab 落位 = **追加到末尾，再按盘上那份顺序摆**。
    *
-   * 🔴 **后一半是那个 no-op 的第二半修法**：tab 是陆续到的，而 `loadOrder` 只跑一次
-   *   ⇒ 只在 `loadOrder` 里应用一次，**后到的每一个 tab 都会落到末尾**，
-   *   盘上给它留的那一格永远用不上（现打：会话到齐后顺序 == 到达序）。
-   * ⚠ 这里**只动 `orderedIds`、不碰 DOM** —— 拖拽期间的重画抑制（★ 6d）由
-   *   `refreshTabBar` 那道守卫管，与本函数无关。
-   * 〔「删掉树」〕bg 会话与普通 tab 走**同一条**落位：原先这里先把 bg 挂到同
-   *   `(cwd, origin)` 交互宿主之后排成树（Batch7-F24），已删 —— 与
-   *   「不做自动归组、集合是唯一分类维」一致。本函数里零处按 kind 分叉（`tests/frontend/ui/bg-flat.vitest.ts` 钉着）。
+   * 每来一个都按盘上顺序再摆一次：只在 `loadOrder` 里摆一次的话，后到的 tab 都落到末尾、盘上给它留的那一格用不上。
+   * 只动 `orderedIds`、不碰 DOM（拖拽期间的重画抑制由 `refreshTabBar` 那道守卫管）。
+   * bg 会话与普通 tab 走同一条落位，零处按 kind 分叉（不自动归组；`tests/frontend/ui/bg-flat.vitest.ts` 钉着）。
    */
   placeInOrder(tab: Tab): void {
     this.orderedIds.push(tab.sessionId);
