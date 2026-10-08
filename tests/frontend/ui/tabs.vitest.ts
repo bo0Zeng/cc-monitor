@@ -1841,20 +1841,21 @@ describe("已结束的 tab 右键「恢复 ▸」：与历史页「恢复 ▾」
       const resumeBtn = resumeWrap!.querySelector<HTMLButtonElement>(":scope > button")!;
       const fly = resumeWrap!.querySelector<HTMLElement>("[role=menu][data-sub]")!;
       HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
-        if (this === resumeWrap) return { right: 380 } as DOMRect;
+        if (this === resumeWrap) return { left: 200, right: 380, top: 100, bottom: 128 } as DOMRect;
         if (this === fly) return { width: 0 } as DOMRect; // 未展开时宽度未知，兜底成 160
         return origGBCR.call(this);
       };
       resumeBtn.click();
-      expect(fly.dataset.flip).toBe("true");
+      // 右边 380 + 160 > 400 − 8 ⇒ 翻到那一项左侧：相对那一项的偏移 = −160。
+      expect(fly.style.left).toBe("-160px");
       resumeBtn.click();
       HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
-        if (this === resumeWrap) return { right: 50 } as DOMRect;
+        if (this === resumeWrap) return { left: 10, right: 50, top: 100, bottom: 128 } as DOMRect;
         if (this === fly) return { width: 0 } as DOMRect;
         return origGBCR.call(this);
       };
       resumeBtn.click();
-      expect(fly.dataset.flip).toBeUndefined();
+      expect(fly.style.left).toBe("40px");
     } finally {
       HTMLElement.prototype.getBoundingClientRect = origGBCR;
       Object.defineProperty(window, "innerWidth", { value: origInnerWidth, configurable: true });

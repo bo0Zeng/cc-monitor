@@ -4,15 +4,21 @@
  * - 第一行写这个东西是什么 / 现在怎样，第二行起才是补充；不放能点的东西。
  * - 挂 `document.body`（脱离带 `transform` 的祖先，`fixed` 才按视口算）、只在显示期间存在：
  *   宿主被销毁时提示本就不在 DOM 里；正显示着宿主没了 ⇒ 下一次显示前扫掉（残留上限 1 条）。
- * - 躲窗口边：放不下就翻到另一侧，贴边内缩 8px。
+ * - 摆在哪由 `place.ts` 那一处算（缺省上方居中、卡式右侧顶对齐 / 左侧居中；放不下翻到另一侧，贴边内缩 8px）。
  */
 import s from "./tooltip.module.css";
+import { placeFloat, putAt, type Align, type Side } from "./place";
 
 /** 悬停多久出现；离开后多久内移到下一个仍算「同一组」。 */
 export const TOOLTIP_DELAY_MS = 500;
 const GROUP_GRACE_MS = 300;
-const EDGE = 8;
 const GAP = 6;
+/** 三种摆法 ⇒ 哪一侧、怎么对齐。 */
+const PLACEMENT: Record<NonNullable<TooltipOpts["placement"]>, { side: Side; align: Align }> = {
+  above: { side: "above", align: "center" },
+  right: { side: "right", align: "start" },
+  left: { side: "left", align: "center" },
+};
 
 const live = new Map<HTMLElement, HTMLElement>();
 let lastHiddenAt = Number.NEGATIVE_INFINITY;
@@ -29,38 +35,6 @@ function sweep(): void {
 /** 仅供测试：此刻挂在 body 上的提示条数。 */
 export function __liveTooltipCountForTests(): number {
   return live.size;
-}
-
-/** 摆到宿主上方居中；上面放不下翻到下方；左右夹进视口（纯函数，判据直接调）。 */
-export function placeTip(host: DOMRect, tip: { width: number; height: number }, view: { width: number; height: number }): { left: number; top: number } {
-  let left = host.left + host.width / 2 - tip.width / 2;
-  let top = host.top - tip.height - GAP;
-  if (top < EDGE) top = host.bottom + GAP;
-  if (top + tip.height > view.height - EDGE) top = Math.max(EDGE, view.height - EDGE - tip.height);
-  left = Math.max(EDGE, Math.min(left, view.width - EDGE - tip.width));
-  return { left, top };
-}
-
-/**
- * 卡锚在宿主右侧、顶对齐（标签页悬停卡）：右边放不下翻到左侧；上下夹进视口（纯函数，判据直接调）。
- */
-export function placeCardRight(host: DOMRect, tip: { width: number; height: number }, view: { width: number; height: number }): { left: number; top: number } {
-  let left = host.right + GAP;
-  if (left + tip.width > view.width - EDGE) left = Math.max(EDGE, host.left - GAP - tip.width);
-  let top = host.top;
-  if (top + tip.height > view.height - EDGE) top = Math.max(EDGE, view.height - EDGE - tip.height);
-  return { left, top };
-}
-
-/**
- * 卡锚在宿主左侧、竖直居中（消息流右缘的轮次刻度）：左边放不下翻到右侧；上下夹进视口（纯函数，判据直接调）。
- */
-export function placeCardLeft(host: DOMRect, tip: { width: number; height: number }, view: { width: number; height: number }): { left: number; top: number } {
-  let left = host.left - GAP - tip.width;
-  if (left < EDGE) left = Math.min(host.right + GAP, view.width - EDGE - tip.width);
-  let top = host.top + host.height / 2 - tip.height / 2;
-  top = Math.max(EDGE, Math.min(top, view.height - EDGE - tip.height));
-  return { left, top };
 }
 
 /** 卡式（`hold`）离开宿主与卡之后多久关。 */
@@ -154,9 +128,7 @@ function controller(content: (host: HTMLElement) => TipContent, opts: TooltipOpt
     const r = tip.getBoundingClientRect();
     const view = { width: window.innerWidth, height: window.innerHeight };
     const box = host.getBoundingClientRect();
-    const at = opts.placement === "right" ? placeCardRight(box, r, view) : opts.placement === "left" ? placeCardLeft(box, r, view) : placeTip(box, r, view);
-    tip.style.left = `${at.left}px`;
-    tip.style.top = `${at.top}px`;
+    putAt(tip, placeFloat({ rect: box, ...PLACEMENT[opts.placement ?? "above"], gap: GAP }, r, view));
     tip.style.visibility = "";
   };
   const arm = (h: HTMLElement): void => {

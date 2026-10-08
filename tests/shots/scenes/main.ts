@@ -6,7 +6,7 @@ import type { Scene } from "./index";
 import type { World } from "../fake/types";
 import { Convo } from "../fake/records";
 import { answerConvo, defaultWorld, LOCAL, session } from "../fake/world";
-import { mainReady, openTab, rightClick, scrollStream, sleep, waitFor } from "./helpers";
+import { click, mainReady, openTab, rightClick, scrollStream, sleep, waitFor } from "./helpers";
 
 const W = 1280;
 const H = 800;
@@ -357,6 +357,19 @@ export const MAIN_SCENES: Scene[] = [
     await mainReady(ALL_TABS);
     await sleep(600);
   }, oldBackendWorld),
+  main("main-head-menu-after-tab", "主窗口 · 点标签页之后开会话头「⋯」", "先点第二个标签页、再点会话头右上角「⋯」：菜单贴在「⋯」下方、右端对齐（场景自己量）", async () => {
+    await mainReady(ALL_TABS);
+    await openTab(1);
+    const more = await waitFor<HTMLElement>("#session-head button:has([data-icon='more'])");
+    console.log("DBG before", JSON.stringify(more.getBoundingClientRect()));
+    await click(more);
+    const m = document.querySelector<HTMLElement>("[role='menu']");
+    console.log("DBG at once", more.isConnected, JSON.stringify(more.getBoundingClientRect()), m && JSON.stringify(m.getBoundingClientRect()), m?.style.left);
+    await sleep(400);
+    const m2 = document.querySelector<HTMLElement>("[role='menu']");
+    const nm = document.querySelector<HTMLElement>("#session-head button:has([data-icon='more'])")!;
+    console.log("DBG later", more.isConnected, nm === more, JSON.stringify(nm.getBoundingClientRect()), m2 && JSON.stringify(m2.getBoundingClientRect()), m2?.style.left);
+  }),
   main("main-narrow", "主窗口 · 窄窗口", "窗口 900×640：tab 栏与状态栏挤一挤的样子", async () => {
     await mainReady(ALL_TABS);
   }, defaultWorld, [900, 640]),

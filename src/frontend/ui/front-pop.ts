@@ -5,6 +5,7 @@
 import { button } from "./kit/button";
 import { icon } from "./kit/icon";
 import { closePopover, openPopover, popoverOpenOn, swapPopoverContent } from "./kit/popover";
+import { placeBeside } from "./kit/place";
 import { copyText } from "./copy-table";
 import { frontActLabel, type FrontAct, type FrontView } from "./front-result";
 import s from "./front-pop.module.css";
@@ -30,10 +31,7 @@ export function setFrontBusy(anchor: HTMLElement | null, on: boolean): void {
   tag.textContent = copyText("front.pending.label");
   document.body.appendChild(tag);
   // 贴在 ↗ 正下方（结局浮层出来也在那里），不盖住旁边那几颗按钮；右端对齐，躲窗口右边。
-  const r = anchor.getBoundingClientRect();
-  const w = tag.getBoundingClientRect().width;
-  tag.style.left = `${Math.max(4, Math.round(Math.min(r.right, window.innerWidth - 4) - w))}px`;
-  tag.style.top = `${Math.round(r.bottom + 4)}px`;
+  placeBeside(tag, anchor, { side: "below", align: "end", gap: 4 });
   busy.set(anchor, tag);
 }
 
