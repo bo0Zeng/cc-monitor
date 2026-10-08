@@ -223,7 +223,7 @@ describe("那台握手时说过做不到的，菜单置灰并说为什么", () =
     const click = vi.fn();
     const kill = gateByOffer("net2-box", { id: "kill", label: copyText("tabSessionActions.kill.action"), onClick: click });
     expect(kill.enabled).toBe(false);
-    expect(kill.why, "第二行写为什么（不拼进项名）").toContain(`${copyText("extPage.state.missing")} tmux`);
+    expect(kill.why, "第二行写为什么（不拼进项名）").toBe(copyText("control.unavailable.noTmux", { machine: "net2-box" }));
     expect(kill.label).toBe(copyText("tabSessionActions.kill.action"));
     kill.onClick?.();
     expect(click).not.toHaveBeenCalled();
