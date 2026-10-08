@@ -732,8 +732,6 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
   },
   // 部署那一族的契约（`deploy-core` 拆开：判定那一半进了后端 `control/deploy_plan.rs`，这里只剩两侧对上的形状）。TS 侧零处判部署 ⇒ 全 NONE。
   "deploy-contract": {
-    LAUNCHER_MARK: NONE, // 从前那份入口两形的记号（文件格式；认不认得出是后端判）
-    SHIM_MARK: NONE,
     LINES: NONE,
     UNAME_CMD: NONE,
     STAMP_OPEN: NONE, // 身份戳界标（后端拼戳 · monitor 扫字节两侧同一份；TS 不扫字节）

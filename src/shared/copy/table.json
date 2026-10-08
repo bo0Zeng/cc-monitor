@@ -9590,13 +9590,6 @@
       "zh": "{machine} 的 {path} 自报了不止一个版本（{ids}），{handsOff}",
       "args": ["machine", "path", "ids", "handsOff"]
     },
-    "rsSftp.identity.oldEntry": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "已更新旧的 ccm 入口",
-      "args": [],
-      "limited": ["ccm"]
-    },
     "rsSftp.identity.unstamped": {
       "kind": "error",
       "role": "报错",

@@ -673,13 +673,6 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "本机那份 `.pub`（公钥一行几百字节；超了就不是公钥）",
         "拒收+回错",
     ),
-    // 部署计划（本机常驻后端）认从前那份三行入口时读落点那一份的上限：先问大小、大了不读。
-    (
-        "src/backend/control/deploy_plan.rs",
-        "ENTRY_READ_MAX",
-        "部署计划读回落点那一份（只在它不说自己是谁时，认从前那份几十字节的三行入口）",
-        "跳过+说清",
-    ),
     // SFTP 住本机常驻后端：部署链路（`use:"files"`）一问一答的两个界。
     (
         "src/backend/dial/sftp.rs",
