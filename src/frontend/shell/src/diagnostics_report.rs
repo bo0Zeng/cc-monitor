@@ -6,6 +6,7 @@
 //! 日志页那一行「未识别数据 · …」读同一份答复里的数（不另起一个数）。
 
 use crate::copy_table::copy_text;
+use crate::detail::Said;
 use serde::{Deserialize, Serialize};
 
 /// 界面交来的一台的记录账（`drift-report` 的应答原样；读不到 ⇒ `null`）。
@@ -156,7 +157,7 @@ pub async fn diagnostics_report(
     config_unknown: Vec<String>,
     drift: Vec<DriftIn>,
     state: tauri::State<'_, std::sync::Arc<crate::logging::LoggingState>>,
-) -> Result<DiagnosticsReport, String> {
+) -> Result<DiagnosticsReport, Said> {
     let log_file = state.log_file_info().current_file;
     let local = crate::inbound_client::LOCAL_ORIGIN;
     let mut origins: Vec<(String, String)> =

@@ -18,9 +18,9 @@ import { isLocalOrigin, type Origin } from "./ipc/origin";
 export { machineName };
 
 /**
- * 一次控制动作没做成。`message` 就是给人看的那一句（已经说成人话）；`detail` 只进日志；
- * `error` 是通道那一跳分好层的结局（失败出在通道上时才有）—— 就地 resume 据它判能不能回落。
- * 调用方拿 [`saidOfControl`] 取那一句，不自己拼。
+ * 一次控制动作没做成。`message` 就是给人看的那一句（已经说成人话）；`detail` 是「复制详情」那几行（出错那一端写好，
+ * 界面原样放进［复制详情］，`kit/detail.ts::detailOf` 取）；`error` 是通道那一跳分好层的结局（失败出在通道上时才有）——
+ * 就地 resume 据它判能不能回落。调用方拿 [`saidOfControl`] 取那一句，不自己拼。
  */
 export class ControlError extends Error {
   readonly detail: string;
@@ -38,9 +38,10 @@ export function saidOfControl(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
-/** 应答形状不对 ⇒ 抛（哪一格不对只进 `detail`；那句话按码取，不猜版本）。 */
+/** 应答形状不对 ⇒ 抛（哪一格不对只进日志；那句话按码取，不猜版本）。 */
 export function unreadable(origin: Origin, op: string, what: string): ControlError {
-  return new ControlError(peerVersionSaid("reply_unreadable", origin), `${op} reply ${what}`);
+  console.warn(`${op} reply ${what} (from ${origin})`);
+  return new ControlError(peerVersionSaid("reply_unreadable", origin), "");
 }
 
 /**
@@ -85,9 +86,9 @@ export async function settle(origin: Origin, op: string, sent: Promise<Uint8Arra
     const err = e.error;
     if (err.layer === "peer" && err.why === "refused") {
       const r = refusalOf(err.body);
-      throw new ControlError(r ? refusals.byCode(r.code, r.message) : refusals.noReason(), `${op} refused: ${r ? r.code : "unreadable refusal body"}`, err);
+      throw new ControlError(r ? refusals.byCode(r.code, r.message) : refusals.noReason(), e.detail, err);
     }
-    throw new ControlError(saidOfTransport(origin, err), `${op}：${e.message}`, err);
+    throw new ControlError(saidOfTransport(origin, err), e.detail, err);
   }
   try {
     return readJson(body);

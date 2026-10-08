@@ -432,7 +432,7 @@ describe("乙4-④ 查看器的头 · 底一行 · 各态", () => {
     expect(kids.map((k) => k.dataset.uuid ?? `broken:${k.dataset.seq}`)).toEqual(["u1", "broken:2", "a1"]);
     const broken = streamOf(v).querySelector<HTMLElement>('[data-role="broken"]')!;
     expect(broken.textContent).toContain(copyText("sessionViewer.card.broken"));
-    [...broken.querySelectorAll("button")].find((b) => b.textContent === copyText("sessionViewer.card.copyDetail"))!.click();
+    [...broken.querySelectorAll("button")].find((b) => b.textContent === copyText("detail.act.copy"))!.click();
     expect(write.mock.calls[0][0]).toContain("这一条坏了");
     expect(write.mock.calls[0][0]).toContain('"uuid": "boom"');
     expect(status(v)).toBe(copyText("sessionViewer.status.all", { n: "3" }));

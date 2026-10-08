@@ -2181,12 +2181,12 @@ describe("：↗ 远端那一格按顺序问三方", () => {
     const cases: [unknown, unknown, string, string, string[], string][] = [
       [{ terminals: [], why: "detached" }, null, copyText("front.title.noTerminal"), copyText("front.body.detached"), [copyText("front.act.openInTerminal")], "grey"],
       [{ terminals: [], why: "no-terminal" }, null, copyText("front.title.noTerminal"), copyText("front.body.background"), [], "grey"],
-      [{ terminals: [], why: "unreadable" }, null, copyText("front.title.unsure"), copyText("front.body.unreadable", { machine: "devbox" }), [copyText("front.act.copy")], "grey"],
+      [{ terminals: [], why: "unreadable" }, null, copyText("front.title.unsure"), copyText("front.body.unreadable", { machine: "devbox" }), [copyText("detail.act.copy")], "grey"],
       [{ terminals: TERMINALS }, { chain: [], why: "not-ssh" }, copyText("front.title.elsewhere"), copyText("front.body.notSsh", { machine: "devbox" }), [], "grey"],
       [{ terminals: TERMINALS }, { chain: [], why: "elsewhere", addr: "203.0.113.8" }, copyText("front.title.elsewhere"), copyText("front.body.elsewhere", { addr: "203.0.113.8" }), [], "grey"],
       [{ terminals: TERMINALS }, { chain: [], why: "mismatch" }, copyText("front.title.unsure"), copyText("front.body.mismatch"), [], "grey"],
-      [{ terminals: TERMINALS }, { chain: [], why: "query-failed" }, copyText("front.title.unknown"), "", [copyText("front.act.retry"), copyText("front.act.copy")], "red"],
-      [{ terminals: [], why: "<新原因>" }, null, copyText("front.title.badShape"), "", [copyText("front.act.copy")], "red"],
+      [{ terminals: TERMINALS }, { chain: [], why: "query-failed" }, copyText("front.title.unknown"), "", [copyText("front.act.retry"), copyText("detail.act.copy")], "red"],
+      [{ terminals: [], why: "<新原因>" }, null, copyText("front.title.badShape"), "", [copyText("detail.act.copy")], "red"],
     ];
     const tm = makeTM();
     tm.createSkeletonTab("r1", "/p", "devbox", false, null);
@@ -2335,7 +2335,7 @@ describe("：↗ 远端那一格按顺序问三方", () => {
     expect(pop()!.firstElementChild!.textContent).toBe(copyText("front.title.updateFailed", { machine: "devbox" }));
     expect(pop()!.dataset.shade).toBe("red");
     expect(popText()).toContain("上传失败");
-    expect(popButtons()).toEqual([copyText("front.act.retry"), copyText("front.act.copy")]);
+    expect(popButtons()).toEqual([copyText("front.act.retry"), copyText("detail.act.copy")]);
     [...pop()!.querySelectorAll("button")].find((b) => b.textContent === copyText("front.act.retry"))!.click();
     for (let i = 0; i < 4; i++) await new Promise((r) => setTimeout(r, 0));
     expect(vi.mocked(updateBackendOf), "失败态的［重试］是再更新一次").toHaveBeenCalledTimes(2);

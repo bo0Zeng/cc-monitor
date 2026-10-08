@@ -22,8 +22,8 @@ pub(crate) fn local_line() -> String {
     format!(
         "cc-monitor {} ({build}) · {} {}",
         crate::machine_state::PRODUCT_VERSION,
-        os_word(std::env::consts::OS),
-        std::env::consts::ARCH
+        os_word(host_core::OS),
+        host_core::ARCH
     )
 }
 
@@ -54,7 +54,10 @@ pub(crate) fn of_channel(origin: &crate::origin::Origin, op: &str, e: &w::CallEr
     let (machine, hop, code) = match e {
         w::CallError::Hop { at, reach, why } => {
             let machine = if *reach == w::Reach::NotSent {
-                format!("{machine}{}", copy_text("detail.value.notConnected", &[]))
+                format!(
+                    "{machine}（{}）",
+                    copy_text("detail.value.notConnected", &[])
+                )
             } else {
                 machine
             };
@@ -90,6 +93,16 @@ pub(crate) fn of_channel(origin: &crate::origin::Origin, op: &str, e: &w::CallEr
         .render()
 }
 
+/// 一条 ERROR 级日志事件（`monitor-error` 那条 toast）的详情：时刻 · 本机 · 对象（来源模块）· 原话（那条日志）。
+pub(crate) fn of_log_event(target: &str, message: &str) -> String {
+    Detail::new()
+        .item(Label::At, now())
+        .item(Label::Local, local_line())
+        .item(Label::Target, target)
+        .item(Label::Raw, message)
+        .render()
+}
+
 /// 壳自己那几条命令的失败：给人看的那一句 ＋ 复制详情那几行。全仓壳命令的失败只这一形（ts-rs 导出）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -111,6 +124,25 @@ impl Said {
                 .maybe(Label::Raw, raw)
                 .render(),
         }
+    }
+}
+
+/// 壳命令里那句话（`?` 与 `.into()` 经这里）：详情带时刻与本机。
+impl From<String> for Said {
+    fn from(said: String) -> Said {
+        Said {
+            said,
+            detail: Detail::new()
+                .item(Label::At, now())
+                .item(Label::Local, local_line())
+                .render(),
+        }
+    }
+}
+
+impl From<&str> for Said {
+    fn from(said: &str) -> Said {
+        Said::from(said.to_string())
     }
 }
 

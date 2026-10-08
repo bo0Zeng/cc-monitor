@@ -41,6 +41,7 @@ import {
   type ExtRow,
   type ExtUninstallCard,
 } from "../ext-reads";
+import { detailOf, sayWithDetail } from "../kit/detail";
 
 type KindFilter = "all" | "skill" | "mcp";
 
@@ -272,7 +273,7 @@ export class ExtSection {
       if (visit) void this.reload(false, LOCAL_ORIGIN);
     } catch (e) {
       if (my !== this.seq) return;
-      this.status.textContent = copyText("extPage.status.failed", { e: e instanceof Error ? e.message : String(e) });
+      sayWithDetail(this.status, copyText("extPage.status.failed", { e: e instanceof Error ? e.message : String(e) }), detailOf(e));
     }
   }
 

@@ -40,11 +40,20 @@
       { "text": "模型", "use": "输入" },
       { "text": "账号", "use": "输入" }
     ],
+    "tests/frontend/filewin/copy_tests.rs": [
+      { "text": "原话", "use": "输入" }
+    ],
+    "tests/frontend/filewin/editor_tests.rs": [
+      { "text": "原话", "use": "输入" }
+    ],
     "tests/frontend/filewin/progress_tests.rs": [
       { "text": "已取消", "use": "回显" }
     ],
     "tests/frontend/filewin/select_tests.rs": [
       { "text": "回车", "use": "用例名" }
+    ],
+    "tests/frontend/filewin/size_tests.rs": [
+      { "text": "原话", "use": "输入" }
     ],
     "tests/frontend/filewin/source_tests.rs": [
       { "text": "上一级", "use": "非文案" }

@@ -24,6 +24,7 @@ import { shouldShowHealthToast } from "./remote-health-throttle";
 // 现在字段名由生成物负责，不必再靠注释提醒。
 import type { RemoteHealthPayload } from "./generated/RemoteHealthPayload";
 import { copyText } from "./copy-table";
+import { detailOf } from "./kit/detail";
 
 /** kind → toast 标题（未知 kind 回退到通用「远端提示」）。 */
 function headlineFor(kind: string): string {
@@ -60,7 +61,7 @@ export function bindRemoteHealthToast(): void {
     const now = Date.now();
     if (!shouldShowHealthToast(lastShown.get(key), now)) return;
     lastShown.set(key, now);
-    toast(headlineFor(p.kind), p.message || copyText("remoteHealth.bindRemoteHealthToast.noMessage"), {
+    toast(headlineFor(p.kind), p.message || copyText("remoteHealth.bindRemoteHealthToast.noMessage"), { detail: detailOf(p),
       level: "info",
     });
   });

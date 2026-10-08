@@ -35,6 +35,7 @@ import {
   type Resolved,
   type SlotId,
 } from "../profiles-reads";
+import { detailOf, sayWithDetail } from "../kit/detail";
 
 /** 启动文件里块外与清单同名的函数（接入那一格读到的）。 */
 export interface ProfileClash {
@@ -251,7 +252,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
       book = await readProfiles(opts.origin());
       status.textContent = "";
     } catch (e) {
-      status.textContent = copyText("profilesPage.read.failed", { e: e instanceof Error ? e.message : String(e) });
+      sayWithDetail(status, copyText("profilesPage.read.failed", { e: e instanceof Error ? e.message : String(e) }), detailOf(e));
       return render();
     }
     editedAt = book.editedAt;
@@ -730,7 +731,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
     try {
       await openPath(book.path);
     } catch (e) {
-      toast(copyText("profilesPage.open.failed"), copyText("profilesPage.open.failedBody", { e: String(e), path: book.path }));
+      toast(copyText("profilesPage.open.failed"), copyText("profilesPage.open.failedBody", { e: String(e), path: book.path }), { detail: detailOf(e) });
     }
   };
 

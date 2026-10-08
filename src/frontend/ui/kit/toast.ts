@@ -3,6 +3,7 @@
  *
  * - 右下角堆叠，最多 3 条；第 4 条进来最老的那条收进「消息」记录（[`recentToasts`]，本次运行内最近 20 条，不落盘）。
  * - 一条 ＝ 一句话（＋ 一行灰字细节）＋ 至多一个动作按钮（撤销 · 查看 · 重试）＋ 关闭 ×；左侧状态图标。
+ * - 带复制详情的出错（`opts.detail` 非空）：动作排到第二行（修法在前、［复制详情］在后），× 留右上；别的 toast 版式不变（条带 §5.3）。
  * - 停留：纯告知 4s；带动作 8s；出错不自己走（点 × 或做了动作才走）；鼠标悬停或键盘焦点在上面时停表。
  * - 同类合流：同一级别同一标题连发并成一条 `×N`，明细不丢（展开看每一条）。带动作的各自一条。
  * - toast 不是唯一入口：里面的动作在别处也必须做得到（调用方的责任，评审看）。
@@ -10,6 +11,7 @@
 import { button } from "./button";
 import { icon, type IconName } from "./icon";
 import { copyText } from "../copy-table";
+import { copyDetailButton, detailBody } from "./detail";
 import s from "./toast.module.css";
 
 export type ToastLevel = "success" | "info" | "warn" | "error";
@@ -24,6 +26,8 @@ export interface ToastOptions {
   onExpire?: () => void;
   /** 逐条明细：不上 toast，只进记录（在「消息」里展开那一条看）。 */
   more?: readonly string[];
+  /** 复制详情（出错那一端写好的那几行，`kit/detail.ts::detailOf` 取）；非空 ⇒ 出［复制详情］、动作排第二行。 */
+  detail?: string;
 }
 
 export interface ToastAction {
@@ -51,6 +55,13 @@ export interface ToastRecord {
   seen: boolean;
   /** 逐条明细（`ToastOptions.more`）；没有 ⇒ 空。 */
   more: readonly string[];
+  /** 复制详情：每段「那句 ＋ 详情」（合流 ×N 一段一段接）；没有 ⇒ 空。 */
+  copy: [said: string, detail: string][];
+}
+
+/** 这一条复制出去的那一段（合流 ×N 段段接起来）；没有详情 ⇒ 空串。 */
+export function recordDetail(r: ToastRecord): string {
+  return detailBody(r.copy);
 }
 
 const listeners = new Set<() => void>();
@@ -201,7 +212,9 @@ export function toast(title: string, detail: string, opts: ToastOptions = {}): (
   // 带动作 · 带逐条明细的各自一条（明细要原样留在自己那条记录上）。
   const key = opts.action || opts.more?.length ? `action\u0000${++actionSeq}` : `${level}\u0000${title}`;
   const same = live.find((t) => t.key === key);
+  const copyDetail = opts.detail ?? "";
   if (same) {
+    if (copyDetail.trim() !== "") same.record.copy.push([title, copyDetail]);
     same.details.push(detail);
     same.record.count += 1;
     same.record.detail = detail;
@@ -236,7 +249,17 @@ export function toast(title: string, detail: string, opts: ToastOptions = {}): (
   el.append(icon(LEVEL_ICON[level]), text);
 
   const acts0 = opts.action === undefined ? [] : Array.isArray(opts.action) ? opts.action : [opts.action];
-  const rec: ToastRecord = { level, title, detail, count: 1, at: Date.now(), actions: acts0, seen: level !== "error", more: opts.more ?? [] };
+  const rec: ToastRecord = {
+    level,
+    title,
+    detail,
+    count: 1,
+    at: Date.now(),
+    actions: acts0,
+    seen: level !== "error",
+    more: opts.more ?? [],
+    copy: copyDetail.trim() !== "" ? [[title, copyDetail]] : [],
+  };
   const t: Live = {
     key,
     el,
@@ -253,8 +276,25 @@ export function toast(title: string, detail: string, opts: ToastOptions = {}): (
 
   const acts = document.createElement("div");
   acts.className = s.toastActions;
+  // 带复制详情 ⇒ 修法与［复制详情］排进句子下面那一行，右边只留 ×。
+  const copyBtn =
+    copyDetailButton(
+      () => {
+        rec.seen = true;
+        changed();
+        return recordDetail(rec);
+      },
+      copyDetail,
+    ) ?? null;
+  const row = copyBtn ? document.createElement("div") : acts;
+  if (copyBtn) {
+    row.className = s.toastRow;
+    el.dataset.layout = "two";
+    text.dataset.detailHost = "";
+    text.appendChild(row);
+  }
   for (const act of opts.action === undefined ? [] : Array.isArray(opts.action) ? opts.action : [opts.action]) {
-    acts.appendChild(
+    row.appendChild(
       button({
         label: act.label,
         kind: "ghost",
@@ -267,6 +307,7 @@ export function toast(title: string, detail: string, opts: ToastOptions = {}): (
       }),
     );
   }
+  if (copyBtn) row.appendChild(copyBtn);
   acts.appendChild(
     button({
       label: copyText("kit.toast.close"),

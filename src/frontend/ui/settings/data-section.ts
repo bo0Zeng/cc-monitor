@@ -40,6 +40,7 @@ import type { DataClass } from "../generated/DataClass";
 import type { DataPathInfo } from "../generated/DataPathInfo";
 import type { DataPathsResponse } from "../generated/DataPathsResponse";
 import { copyText } from "../copy-table";
+import { detailOf, sayWithDetail } from "../kit/detail";
 
 /**
  * 每一行那一格「删了会怎样」。
@@ -160,7 +161,7 @@ export class DataSection {
       this.mainBody.replaceChildren();
       const err = document.createElement("div");
       err.className = "settings-data-error";
-      err.textContent = copyText("data.load.failed", { e: String(e) });
+      sayWithDetail(err, copyText("data.load.failed", { e: String(e) }), detailOf(e));
       this.mainBody.appendChild(err);
     }
   }
@@ -411,7 +412,7 @@ async function openItem(path: string): Promise<void> {
     await openPath(path);
   } catch (e) {
     console.warn(`[data-section] openPath ${path} failed:`, e);
-    toast(copyText("data.open.failed"), String(e));
+    toast(copyText("data.open.failed"), String(e), { detail: detailOf(e) });
   }
 }
 

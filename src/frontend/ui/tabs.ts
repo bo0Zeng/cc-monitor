@@ -85,7 +85,7 @@ import { frontView, type FrontAct, type FrontResult, type FrontView } from "./fr
 import { updateBackendOf } from "./backend-deploy";
 import { awaitedFor, paintWaiting } from "./cards/step-line";
 import { machineName } from "./control-said";
-import { closeFrontResult, copyFrontDetail, flashFrontDone, setFrontBusy, showFrontResult } from "./front-pop";
+import { closeFrontResult, flashFrontDone, setFrontBusy, showFrontResult } from "./front-pop";
 import { CHANNEL_ACTS, LaunchSlots, type SlotSpec } from "./launch-slot";
 import { applyHandedBack } from "./cards/speaker-bar";
 import { applyRetries } from "./cards/api-error";
@@ -1652,7 +1652,7 @@ export class TabManager {
         await this.menu.attachRemote(sid);
         return;
       case "copy":
-        await copyFrontDetail(a.detail);
+        // 浮层里那颗自己复制（`kit/detail.ts`），不经这里。
         return;
       case "update":
       case "retry-update":

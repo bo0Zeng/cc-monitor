@@ -12,6 +12,11 @@ mod geometry;
 
 pub use atomic::{atomic_write_json, win32_long_path};
 pub use clock::local_offset_at;
+
+/// 这一份编给的系统与架构（「复制详情」里写「本机」那一行用）。平台形态只许住宿主原语与 `platform/`。
+pub const OS: &str = std::env::consts::OS;
+/// 同上，架构。
+pub const ARCH: &str = std::env::consts::ARCH;
 pub use geometry::{center_in_work_area, fit_into_work_area, WorkArea};
 
 #[cfg(test)]

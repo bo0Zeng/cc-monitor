@@ -7,6 +7,7 @@ import { copyText } from "../copy-table";
 import { getLocalResumeCommand, setLocalResumeCommand } from "../local-machine-prefs";
 import { getBehavior } from "../behavior";
 import { ResumeSelect } from "./resume-select";
+import { detailOf, sayWithDetail } from "../kit/detail";
 
 export function localResumeRow(): HTMLElement {
   const help = document.createElement("div");
@@ -27,7 +28,7 @@ export function localResumeRow(): HTMLElement {
         },
         (e: unknown) => {
           sel.set(saved, presets);
-          err.textContent = copyText("settings.behavior.saveFailedLine", { why: String(e) });
+          sayWithDetail(err, copyText("settings.behavior.saveFailedLine", { why: String(e) }), detailOf(e));
           err.hidden = false;
         },
       );

@@ -7,11 +7,12 @@
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { toast } from "./kit/toast";
 import { copyText } from "./copy-table";
+import { detailOf } from "./kit/detail";
 
 export async function revealInFolder(path: string): Promise<void> {
   try {
     await revealItemInDir(path);
   } catch (e) {
-    toast(copyText("revealInFolder.reveal.failed"), String(e));
+    toast(copyText("revealInFolder.reveal.failed"), String(e), { detail: detailOf(e) });
   }
 }

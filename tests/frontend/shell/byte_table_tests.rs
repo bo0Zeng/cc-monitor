@@ -644,6 +644,8 @@ fn my_version_is_read_only_through_my_backend_id() {
         "backend_control.rs",
         // 日志页「复制诊断信息」那一段里写出这一版的构建标识（只读出来写进文本，不判）
         "diagnostics_report.rs",
+        // 「复制详情」里「本机」那一行写出这一版的构建标识（同上，只读出来写进文本，不判）
+        "detail.rs",
     ]
     .into_iter()
     .map(String::from)

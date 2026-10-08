@@ -269,7 +269,7 @@ enum Kind {
     // 「monitor 自己的状态」那一类（`OwnState`：原子写 · 书签文件名）清零删了：原子写进 `host_core`，书签全路径由开窗入口算好随种子交来。
     /// **对外文案表的取文口**（`copy_table::copy_text`）。它不是欠账：
     /// 「所有对外文案与报错都从一张表来」—— 表是编译期内嵌的一份 JSON，窗口进程与 app 读同一份字节，
-    /// 取文口是纯函数（查表 ＋ 填占位符），不碰进程外任何东西。
+    /// 取文口是纯函数（查表 ＋ 填占位符），不碰进程外任何东西。同住那一家的公历换算（`civil_from_days`）同理。
     Copy,
     /// **窗口几何**：工作区那个类型 ＋「一扇窗夹进工作区」那一个判定（今天住 `host_core`，`geometry.rs::fit_into_work_area`；壳里只剩问 Tauri 的 `lib.rs::work_area_of`）。
     /// 不是欠账：它与 Tauri 那几扇窗共用一个家（一个判定不许两个家），不碰进程外任何东西。
@@ -291,6 +291,8 @@ enum Kind {
     /// 这一类原先还装着「开窗前解 home」（走 SFTP，后端没有这一问）——
     /// 现在问后端 `files-home`，走的是 `Host` 那一类的同一个句柄 ⇒ 这一类只剩配置，改了名。
     Config,
+    /// monitor 那一侧：壳命令失败的那一形（`detail::Said`：一句 ＋ 复制详情）。开窗那条命令也是壳命令，全仓同一形。
+    Said,
 }
 
 // 两张点名表（monitor 那一侧的函数 · 整份算那一侧的文件）删了：窗口进程那一侧（`proc::child_main` · `dial_back` · `first_screen`）随躯体搬进窗口包，
@@ -343,6 +345,8 @@ const WINDOW_SIDE: &[(&str, Kind)] = &[
     // 书签那份文件的名字住数据目录的唯一枚举点（设置页「数据位置」列它），窗口这一侧引过来。
     // ── 对外文案表（CP2b）──
     ("copy_core::copy_text", Kind::Copy),
+    // 天数 ⇒ 公历：与取文口同住 copy-core（「复制详情」的时刻要它，后端也链，宿主原语那一家后端不许链）。纯函数。
+    ("copy_core::civil_from_days", Kind::Copy),
     // ── 窗口几何（开窗第一拍夹进种子带来的工作区）──
     // `WorkArea` · `fit_into_work_area` 两行摘了：类型与判定搬进 `host_core`（Tauri 那几扇窗与文件窗口共用那一份）。
 ];
@@ -352,6 +356,8 @@ const MONITOR_SIDE: &[(&str, Kind)] = &[
     // 开窗前那两问（`files-home` / `files-ls`）进了窗口进程 ⇒ monitor 这一侧问后端的五样
     //   （宿主句柄 `InboundBackends` · `router::Backends` · `wire::Body` / `CancelToken` / `Op`）退役，只剩交接件那一样。
     ("chan::host::handoff", Kind::Host),
+    // 开窗那条命令失败时回的那一形（全仓壳命令同一形）。
+    ("detail::Said", Kind::Said),
     ("spawn_managed::ConsolePolicy", Kind::Spawn),
     ("spawn_managed::Lifetime", Kind::Spawn),
     ("spawn_managed::ManagedChild", Kind::Spawn),

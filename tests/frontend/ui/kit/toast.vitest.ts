@@ -123,4 +123,32 @@ describe("撤销提示条（I11）", () => {
     buttonsOf(toasts()[0]).at(-1)!.click();
     expect(log).toEqual(["commit"]);
   });
+
+  it("带复制详情的出错：动作排到句子下面那一行（修法在前、复制详情在后）、× 留右上；合流 ×N 复制出全部段；点了算看过", async () => {
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: vi.fn(() => Promise.resolve()) } });
+    kit.toast("t-1", "devbox", { detail: "码：a", action: { label: "act-1", run: () => {} } });
+    const [el] = toasts();
+    expect(el.dataset.layout).toBe("two");
+    const row = el.querySelector('[data-part="detail"]')!.parentElement!.lastElementChild as HTMLElement;
+    expect([...row.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["act-1", copyText("detail.act.copy")]);
+    const right = el.lastElementChild as HTMLElement;
+    expect([...right.querySelectorAll("button")].map((b) => b.getAttribute("aria-label"))).toEqual([copyText("kit.toast.close")]);
+    kit.toast("t-2", "", { detail: "码：b" });
+    kit.toast("t-2", "", { detail: "码：c" });
+    const merged = toasts()[0];
+    expect(kit.unseenErrors()).toBe(true);
+    merged.querySelector<HTMLButtonElement>('[data-part="copy-detail"] button')!.click();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(navigator.clipboard.writeText).toHaveBeenLastCalledWith(`t-2 ${copyText("kit.toast.count", { n: 2 })}\n\n码：b\n\n码：c`);
+    expect(toasts()).toHaveLength(2);
+    expect(kit.recentToasts()[0].seen).toBe(true);
+  });
+
+  it("没有复制详情的 toast 版式不变（动作仍在右边那一列）", () => {
+    kit.toast("t-3", "", { level: "success", action: { label: "act-3", run: () => {} } });
+    const [el] = toasts();
+    expect(el.dataset.layout).toBeUndefined();
+    expect(el.querySelector('[data-part="copy-detail"]')).toBeNull();
+    expect(buttonsOf(el.lastElementChild as HTMLElement).map((b) => b.textContent)).toEqual(["act-3", ""]);
+  });
 });

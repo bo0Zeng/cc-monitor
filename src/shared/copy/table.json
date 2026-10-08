@@ -4787,12 +4787,6 @@
       "zh": "在终端里打开",
       "args": []
     },
-    "front.act.copy": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "复制详情",
-      "args": []
-    },
     "front.act.update": {
       "kind": "action",
       "role": "按钮",
@@ -5362,7 +5356,7 @@
     "errorToast.showErrorToast.openLog": {
       "kind": "action",
       "role": "按钮",
-      "zh": "打开日志",
+      "zh": "看日志",
       "args": []
     },
     "fileWindow.openFileWindow.failed": {
@@ -22976,12 +22970,6 @@
       "zh": "无法显示",
       "args": []
     },
-    "sessionViewer.card.copyDetail": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "复制详情",
-      "args": []
-    },
     "sessionViewer.tools.said": {
       "kind": "action",
       "role": "按钮",
@@ -26994,8 +26982,8 @@
       "args": ["copyKey"]
     },
     "detail.aria.copied": {
-      "kind": "aria",
-      "role": "读屏",
+      "kind": "body",
+      "role": "说明",
       "zh": "已复制详情",
       "args": []
     },
@@ -27056,7 +27044,7 @@
     "detail.value.notConnected": {
       "kind": "body",
       "role": "片段",
-      "zh": "（未连上）",
+      "zh": "未连上",
       "args": []
     },
     "detail.value.truncated": {

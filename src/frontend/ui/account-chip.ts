@@ -30,6 +30,7 @@ import { icon } from "./kit/icon";
 import { acctAvatar, hoverTable } from "./acct-dom";
 import { sessionChip, sessionHoverRows, usageOf, usageText, type ChipModel } from "./acct-view";
 import s from "./acct.module.css";
+import { detailOf } from "./kit/detail";
 
 // ------------------------------------------------------------ 纯函数（可测）
 
@@ -445,7 +446,7 @@ export class AccountChip {
       this.deps.onDefaultChanged?.();
       // 选即生效、不另报：下拉合上、按钮上的字就是结果。
     } catch (e) {
-      toast(copyText("accountChip.selectDefault.failed"), String(e), { level: "error" });
+      toast(copyText("accountChip.selectDefault.failed"), String(e), { detail: detailOf(e), level: "error" });
     }
   }
 

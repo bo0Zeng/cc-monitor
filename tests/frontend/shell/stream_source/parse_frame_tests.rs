@@ -162,8 +162,7 @@ fn parses_reply_and_cancelled_field_by_field() {
             data: Some(serde_json::json!({ "pong": 1 })),
         }
     );
-    let err_line =
-        r#"{"kind":"reply","id":"a-2","ok":false,"code":"bad_request","message":"缺 sid","detail":"码：bad_request"}"#;
+    let err_line = r#"{"kind":"reply","id":"a-2","ok":false,"code":"bad_request","message":"缺 sid","detail":"码：bad_request"}"#;
     assert_eq!(
         parse_frame(err_line).expect("reply must parse"),
         InboundFrame::Reply {

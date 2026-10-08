@@ -15,6 +15,7 @@
 //! - WebView2 UserDataFolder 推断路径（基于 Tauri 默认约定）
 
 use crate::copy_table::copy_text;
+use crate::detail::Said;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager};
@@ -448,7 +449,7 @@ fn detect_webview_data_dir(handle: &AppHandle) -> Option<DataPathInfo> {
 ///
 /// async + spawn_blocking：probe 涉及若干次 stat / read_dir，量小但仍是阻塞 IO。
 #[tauri::command]
-pub async fn get_data_paths(handle: AppHandle) -> Result<DataPathsResponse, String> {
+pub async fn get_data_paths(handle: AppHandle) -> Result<DataPathsResponse, Said> {
     tokio::task::spawn_blocking(move || Ok(collect(&handle)))
         .await
         .map_err(|e| format!("spawn_blocking join error: {e}"))?

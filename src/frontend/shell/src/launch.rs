@@ -15,6 +15,7 @@
 //! - **PowerShell 层**（本模块）：全命令体经 `-EncodedCommand`（base64）穿 wt.exe（`;` 分 tab 不会切碎）。
 
 use crate::copy_table::copy_text;
+use crate::detail::Said;
 
 /// 远端命令长度上限（防 IPC 侧异常输入；正常 resume 命令 <300 字节）。
 const MAX_REMOTE_CMD: usize = 4096;
@@ -90,9 +91,9 @@ pub fn build_local_posix_argv(cmd: &str) -> Result<Vec<String>, String> {
 pub async fn open_terminal_window(
     command: String,
     ssh: bool,
-) -> Result<crate::platform::terminal::TerminalOpen, String> {
+) -> Result<crate::platform::terminal::TerminalOpen, Said> {
     // §10（Phase G 对齐）：`where.exe` 预检（阻塞）＋ 进程 spawn 挪到阻塞线程池，不堵 IPC 派发线程。
-    tokio::task::spawn_blocking(move || {
+    Ok(tokio::task::spawn_blocking(move || {
         if ssh && crate::platform::terminal::ssh_client_missing() {
             return Err(copy_text("rsLaunch.remote.noOpenSsh", &[]));
         }
@@ -101,16 +102,16 @@ pub async fn open_terminal_window(
         Ok(opened)
     })
     .await
-    .map_err(|e| copy_text("rsLaunch.remote.taskFailed", &[("e", &e.to_string())]))?
+    .map_err(|e| copy_text("rsLaunch.remote.taskFailed", &[("e", &e.to_string())]))??)
 }
 
 /// 开终端那一问（本机后端 `terminal-ssh`）要的**机器事实**：`{machine, saved, jump, prefer}`
 /// —— monitor 自己的机器表 ＋ 上次赢的那条（[`crate::dial_host::machine_facts`]，与拨号请求同一份）。只读 monitor 自己的状态。
 #[tauri::command]
-pub async fn terminal_dial(origin: String) -> Result<serde_json::Value, String> {
+pub async fn terminal_dial(origin: String) -> Result<serde_json::Value, Said> {
     // 本机那一支不经 ssh（前端 `terminal-open.ts` 原串直接开窗）⇒ 这里先分本机、说清，别掉进下面那句「未找到远端配置」。
     if origin == crate::inbound_client::LOCAL_ORIGIN {
-        return Err(copy_text("rsLaunch.terminalDial.local", &[]));
+        return Err(copy_text("rsLaunch.terminalDial.local", &[]).into());
     }
     let cfg = crate::load_remote_config_by_label(&origin).ok_or_else(|| {
         copy_text(
@@ -125,10 +126,12 @@ pub async fn terminal_dial(origin: String) -> Result<serde_json::Value, String> 
 /// 那一串由本机后端出成品（帧命令 `launch-local`：计划 · 账号前缀 · 中转前缀 · 身份 token 全在那里），这里不判、不拼。
 /// POSIX：交用户的终端出口（[`launch_local_posix`](crate::platform::terminal::launch_local_posix)）；Windows：PowerShell 窗口（[`launch_powershell_window`](crate::platform::terminal::launch_powershell_window)）。阻塞那一截不占 IPC 线程。
 #[tauri::command]
-pub async fn open_local_terminal(cmd: String, cwd: Option<String>) -> Result<(), String> {
-    tokio::task::spawn_blocking(move || crate::platform::terminal::open_local(&cmd, cwd.as_deref()))
-        .await
-        .map_err(|e| copy_text("rsLaunch.remote.taskFailed", &[("e", &e.to_string())]))?
+pub async fn open_local_terminal(cmd: String, cwd: Option<String>) -> Result<(), Said> {
+    Ok(tokio::task::spawn_blocking(move || {
+        crate::platform::terminal::open_local(&cmd, cwd.as_deref())
+    })
+    .await
+    .map_err(|e| copy_text("rsLaunch.remote.taskFailed", &[("e", &e.to_string())]))??)
 }
 
 #[cfg(test)]

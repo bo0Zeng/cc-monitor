@@ -246,7 +246,8 @@ describe("报错卡上的几颗", () => {
     acts.kill.mockRejectedValueOnce(new Error("不在名单"));
     click("kill");
     await vi.advanceTimersByTimeAsync(0);
-    expect(vi.mocked(toast)).toHaveBeenCalledWith(copyText("tabSessionActions.kill.failed", { title: "billing-2" }), "不在名单");
+    // 那次失败没带复制详情（不是出错那一端写的）⇒ 详情是空的，toast 不出按钮。
+    expect(vi.mocked(toast)).toHaveBeenCalledWith(copyText("tabSessionActions.kill.failed", { title: "billing-2" }), "不在名单", { detail: "" });
     expect(rows()).toHaveLength(1);
   });
 

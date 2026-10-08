@@ -18,6 +18,7 @@ import { mintFreshTmuxName } from "./terminal-name-mint";
 import { toast } from "./kit/toast";
 import { copyText } from "./copy-table";
 import { arrivedBody, expectArrival } from "./launch-arrival";
+import { detailOf } from "./kit/detail";
 
 export interface LocalResumeRequest {
   /** 这个会话是哪一家（线上的 kind）。没有账号这一维的那一家不跟随上次的号。 */
@@ -82,7 +83,7 @@ async function resumeLocalCore(req: LocalResumeRequest): Promise<"unsent" | "sen
       });
       return "unsent";
     }
-    toast(copyText("localResume.launch.failed"), String(err), {
+    toast(copyText("localResume.launch.failed"), String(err), { detail: detailOf(err),
       level: "error",
     });
     return "unsent";

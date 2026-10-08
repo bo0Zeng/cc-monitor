@@ -46,6 +46,7 @@ import type { Tab } from "./tab-model";
 import { copyText } from "./copy-table";
 import { decodeKilled, saidOfControl } from "./tmux-control";
 import { offerResyncRetry, resyncMachines, resyncMachinesSaid } from "./resync";
+import { detailOf } from "./kit/detail";
 
 /**
  * auto-e2e F-E0:DEV-only 断言出口。同 e2e-probe.ts 的 `log()`——把状态转移写成可 grep 的
@@ -101,7 +102,7 @@ export class TabSessionActions {
           : {}),
       });
     } catch (e) {
-      toast(copyText("tabSessionActions.openInWindow.failed"), String(e));
+      toast(copyText("tabSessionActions.openInWindow.failed"), String(e), { detail: detailOf(e) });
     }
   }
 
@@ -340,7 +341,7 @@ export class TabSessionActions {
       try {
         [r] = await callStop(origin, [sid]);
       } catch (e) {
-        toast(copyText("tabSessionActions.kill.failed", { title }), saidOfControl(e));
+        toast(copyText("tabSessionActions.kill.failed", { title }), saidOfControl(e), { detail: detailOf(e) });
         return;
       }
       if (r.outcome !== "done") {

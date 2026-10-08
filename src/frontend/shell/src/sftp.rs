@@ -37,6 +37,7 @@
 //! 用户 09-18 拍的落点；自带别名块把 `~/.cc-monitor/bin` 加进 PATH）。
 
 use crate::copy_table::copy_text;
+use crate::detail::Said;
 
 use crate::dial_host::{Readback, RemoteFs};
 use crate::stream_source::RemoteConfig;
@@ -428,7 +429,7 @@ pub fn bytes_carry_build_stamp(bytes: &[u8], build_id: &str) -> bool {
 /// 但**返回人读结果**，且把自动部署里「优雅跳过」的几种情况（探测不到 arch / 无该 arch 内嵌）显式报错。
 /// 落点就是 `~/.cc-monitor/bin/ccm`（后端本体，没有 shim）⇒ 部署后端就是放 `ccm`，没有第二样要放。
 #[tauri::command]
-pub async fn deploy_remote_backend(cfg: RemoteConfig) -> Result<String, String> {
+pub async fn deploy_remote_backend(cfg: RemoteConfig) -> Result<String, Said> {
     // 与自动部署同一份计划（本机常驻后端判）、同一个取字节口、同一句拒绝的话。
     let plan = ask_plan(&cfg).await?;
     let bin = planned_binary(&plan)?;
@@ -473,7 +474,7 @@ pub async fn deploy_remote_backend(cfg: RemoteConfig) -> Result<String, String> 
 /// 卸载远端后端（设置面板「卸载后端」按钮）：删落点那个文件（它就是 `ccm`，卸后端就是卸 `ccm`）。
 /// 只读铁律豁免（SS-G）：用户显式触发的删。注意：若该机器仍启用，自动部署会在下次连接重新装回——提示见返回消息。
 #[tauri::command]
-pub async fn uninstall_remote_backend(cfg: RemoteConfig) -> Result<String, String> {
+pub async fn uninstall_remote_backend(cfg: RemoteConfig) -> Result<String, Said> {
     // 经本机常驻后端那条 `files` 链路删（写只许 `~/.cc-monitor/bin/` 与暂存区 —— 围栏拒 ⇒ 原话带回）。
     let fs = RemoteFs::open(&cfg).await?;
     let removed = fs.remove(LANDING_REL).await?;

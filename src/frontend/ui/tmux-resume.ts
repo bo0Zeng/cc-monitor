@@ -13,6 +13,7 @@ import { runRemoteAttach } from "./remote-launch-run";
 import { saidOfControl } from "./tmux-control";
 import { offerResyncRetry } from "./resync";
 import { callStart, sayReply, type Reply, type StartItem } from "./tab-batch-run";
+import { detailOf } from "./kit/detail";
 
 /** 起哪一个：哪台 · 哪一家 · 哪个会话 · 在哪个目录。 */
 export interface TmuxResumeTarget {
@@ -37,7 +38,7 @@ export async function startInTmuxThenAttach(t: TmuxResumeTarget, account: Accoun
   try {
     [r] = await callStart(origin, "tmux", [item], t.agent);
   } catch (e) {
-    toast(copyText("remoteLaunchRun.inPlace.notRun"), saidOfControl(e));
+    toast(copyText("remoteLaunchRun.inPlace.notRun"), saidOfControl(e), { detail: detailOf(e) });
     return false;
   }
   if (r.unavailable) {

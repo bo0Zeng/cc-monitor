@@ -3,6 +3,7 @@
  * （不自动消失；Esc / 点外面 / × 关；按钮做完就关；同一个会话再失败一次 ⇒ 原地换内容，不另弹）。
  */
 import { button } from "./kit/button";
+import { copyDetailButton } from "./kit/detail";
 import { icon } from "./kit/icon";
 import { closePopover, openPopover, popoverOpenOn, swapPopoverContent } from "./kit/popover";
 import { placeBeside } from "./kit/place";
@@ -83,6 +84,12 @@ export function showFrontResult(anchor: HTMLElement, sid: string, view: FrontVie
     const acts = document.createElement("div");
     acts.className = s.fpActs;
     for (const a of view.acts) {
+      // ［复制详情］：全产品那一颗（点了不收浮层，自己给反馈）。
+      if (a.kind === "copy") {
+        const c = copyDetailButton(view.title, a.detail);
+        if (c) acts.appendChild(c);
+        continue;
+      }
       acts.appendChild(
         button({
           label: frontActLabel(a),
@@ -105,11 +112,6 @@ export function showFrontResult(anchor: HTMLElement, sid: string, view: FrontVie
       if (shownFor?.anchor === anchor) shownFor = null;
     },
   });
-}
-
-/** ［复制详情］：那一族的细节原文复制给人看（不贴进任何配置）。 */
-export function copyFrontDetail(text: string): Promise<void> {
-  return navigator.clipboard?.writeText(text).catch(() => {}) ?? Promise.resolve();
 }
 
 /** 这个会话切过去了：它开着的结局浮层收起。 */

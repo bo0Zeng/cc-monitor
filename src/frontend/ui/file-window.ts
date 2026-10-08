@@ -24,6 +24,7 @@ import { commands } from "./ipc/commands";
 import { toast } from "./kit/toast";
 import type { RemoteHostConfig } from "./remote-config";
 import { copyText } from "./copy-table";
+import { detailOf } from "./kit/detail";
 
 /**
  * 文件窗口要的那几格设计令牌：开窗那一刻 `:root` 上的计算值（含用户在设置里改过的）原样交给 Rust 侧，
@@ -101,7 +102,7 @@ export async function openFileWindow(cfg: RemoteHostConfig, at?: FileWindowTarge
     await commands.open_file_window({ cfg, path, revealFile, theme: fileWindowTheme() });
     return true;
   } catch (e) {
-    toast(copyText("fileWindow.openFileWindow.failed"), String(e));
+    toast(copyText("fileWindow.openFileWindow.failed"), String(e), { detail: detailOf(e) });
     return false;
   }
 }

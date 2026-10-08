@@ -19,13 +19,12 @@ const FAMILY_A = [
  * 会让族 A 的三个必填槽在族 B 全是空的。
  */
 const FAMILY_B = [
-  "src/frontend/ui/views/session-viewer.ts", // 显示不了的那一条［复制详情］：那一条原文 ＋ 原因，复制给人看（不贴进任何配置）
   "src/frontend/ui/settings/diagnostics-section.ts", // 日志页「复制诊断信息」（复制完就完事，不贴进任何配置）
   // 〔三入口拆分 · 住址搬家〕代码块「复制」那处全局代理从 `main.ts` 搬到了主窗与 viewer 窗
   // 共用的 `entry-render-common.ts`（viewer 不再加载 `main.ts`）。语义一字未改。
   "src/frontend/ui/entry-render-common.ts",
   "src/frontend/ui/remote-launch-run.ts", // 回退：复制命令让用户自己跑
-  "src/frontend/ui/front-pop.ts", // ↗ 结局浮层的［复制详情］：那一族的细节原文，复制给人看
+  "src/frontend/ui/kit/detail.ts", // 全产品那一颗［复制详情］：一条报错的那句 ＋ 详情，复制给人看（不贴进任何配置）
   // 原先这里还有 `src/frontend/ui/views/usage-view.ts`（用量视图里「复制这一屏」）——
   // 用量 ② 轴整轴退役，那份文件整删。
   "src/frontend/ui/paste-block.ts", // 组件自己

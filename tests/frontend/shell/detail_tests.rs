@@ -42,7 +42,7 @@ fn a_channel_failure_detail_names_the_machine_command_hop_and_code() {
     let d = of_channel(&Origin("devbox".into()), "accounts-list", &e);
     for want in [
         format!(
-            "{}：devbox{}",
+            "{}：devbox（{}）",
             label("detail.label.machine"),
             label("detail.value.notConnected")
         ),

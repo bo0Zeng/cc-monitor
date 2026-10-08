@@ -334,8 +334,11 @@ export interface FormSpec {
   focusAction?: boolean;
   /** 主按钮可不可点：`null` ⇒ 可；一句话 ⇒ 禁用、悬停说为什么。内容变了由宿主调 `refresh()`。 */
   blocked?: () => string | null;
-  /** 点主按钮：`null` ⇒ 成了、关框；一句话 ⇒ 框顶一条错误、不关、填的都在；`false` ⇒ 不关、错误由宿主画在框里（落在哪一格下）。 */
-  submit: () => Promise<string | null | false>;
+  /**
+   * 点主按钮：`null` ⇒ 成了、关框；一句话 ⇒ 框顶一条错误、不关、填的都在；`{ said, detail }` ⇒ 同上，那条错误带［复制详情］；
+   * `false` ⇒ 不关、错误由宿主画在框里（落在哪一格下）。
+   */
+  submit: () => Promise<string | { said: string; detail: string } | null | false>;
   /** 填过东西：点遮罩不关。 */
   dirty?: () => boolean;
 }
@@ -362,7 +365,8 @@ export function formDialog(spec: FormSpec): FormHandle {
     const why = await spec.submit();
     if (why === null) return true;
     if (why === false) errBox.replaceChildren();
-    else errBox.replaceChildren(banner("error", why));
+    else if (typeof why === "string") errBox.replaceChildren(banner("error", why));
+    else errBox.replaceChildren(banner("error", why.said, [], why.detail));
     return undefined;
   };
   const first = spec.focusAction

@@ -61,6 +61,7 @@ import { readRecordDrift } from "../record-reads";
 import { ccRow } from "./cc-row";
 import { decodeMachineState, type MachineState } from "./machine-state";
 import { exactKeys, isObj } from "../ipc/decode";
+import { detailOf, sayWithDetail } from "../kit/detail";
 
 /**
  * 「停」的结局说一句（三个词各一句，穷举 —— 多一个词 tsc 就红）。机器页那一行照它说，不只进 console。
@@ -471,7 +472,7 @@ export class BackendSection {
       toast(copyText("backend.resync.doneTitle"), resyncSaid(r), { level: "info" });
       void emit(RESYNC_DONE_EVENT, { origin }); // ㉟①：主窗口标出这台上记录没了的固定条
     } catch (e) {
-      toast(copyText("backend.resync.failed"), e instanceof Error ? e.message : String(e));
+      toast(copyText("backend.resync.failed"), e instanceof Error ? e.message : String(e), { detail: detailOf(e) });
     } finally {
       btn.disabled = false;
     }
@@ -667,7 +668,7 @@ export class BackendSection {
       head.textContent = h;
       pre.textContent = body;
     } catch (e) {
-      head.textContent = copyText("backend.log.failed", { e: e instanceof Error ? e.message : String(e) });
+      sayWithDetail(head, copyText("backend.log.failed", { e: e instanceof Error ? e.message : String(e) }), detailOf(e));
     } finally {
       btn.disabled = false;
     }
@@ -707,7 +708,7 @@ export class BackendSection {
       }
       if (what !== "stop") console.info(`[P2s] ${origin} start: ${await commands.backend_start({ origin })}`);
     } catch (e) {
-      toast(what === "stop" ? copyText("backend.stop.failed") : copyText("backend.start.failed"), String(e));
+      toast(what === "stop" ? copyText("backend.stop.failed") : copyText("backend.start.failed"), String(e), { detail: detailOf(e) });
     }
     await this.settleStatus(origin, what !== "stop");
     for (const b of btns) b.disabled = false;
@@ -731,7 +732,7 @@ export class BackendSection {
       void this.paintStatus(origin);
       return true;
     } catch (e) {
-      toast(copyText("backend.policy.saveFailed"), e instanceof Error ? e.message : String(e));
+      toast(copyText("backend.policy.saveFailed"), e instanceof Error ? e.message : String(e), { detail: detailOf(e) });
       return false;
     }
   }

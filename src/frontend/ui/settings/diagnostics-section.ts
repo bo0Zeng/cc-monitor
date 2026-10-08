@@ -26,6 +26,7 @@ import type { DiagnosticsReport } from "../generated/DiagnosticsReport";
 import { readRecordDrift, type RecordDriftFace } from "../record-reads";
 import { hostKey, readRemoteConfig } from "../remote-config";
 import { LOCAL_ORIGIN } from "../ipc/origin";
+import { detailOf, sayWithDetail } from "../kit/detail";
 
 /** 记多细：界面上的四档（后端那一格的值 ＋ 怎么说）。 */
 const LEVELS = (): readonly (readonly [string, string])[] => [
@@ -214,7 +215,7 @@ export class DiagnosticsSection {
       this.setControlsReady(true);
     } catch (e) {
       this.setControlsReady(false);
-      this.readFailLine.textContent = copyText("diagnostics.refresh.settingsUnreadable", { e: String(e) });
+      sayWithDetail(this.readFailLine, copyText("diagnostics.refresh.settingsUnreadable", { e: String(e) }), detailOf(e));
       this.readFailLine.hidden = false;
     }
     await Promise.all([this.paintFiles(), this.readReport()]);
@@ -241,7 +242,7 @@ export class DiagnosticsSection {
       this.unknownLine.textContent = unknownSaid(this.report);
     } catch (e) {
       this.report = null;
-      this.unknownLine.textContent = copyText("diagnostics.unknown.unread", { e: String(e) });
+      sayWithDetail(this.unknownLine, copyText("diagnostics.unknown.unread", { e: String(e) }), detailOf(e));
     }
     this.paintCopy();
   }
@@ -278,7 +279,7 @@ export class DiagnosticsSection {
     try {
       await commands.set_diagnostics_config({ cfg });
     } catch (e) {
-      this.saveError.textContent = copyText("diagnostics.save.failedLine", { e: String(e) });
+      sayWithDetail(this.saveError, copyText("diagnostics.save.failedLine", { e: String(e) }), detailOf(e));
       this.saveError.hidden = false;
       this.levelSelect.value = cur.log_level;
       return false;
@@ -378,7 +379,7 @@ async function openFile(path: string): Promise<void> {
   try {
     await openPath(path);
   } catch (e) {
-    toast(copyText("diagnostics.openFile.failed"), String(e));
+    toast(copyText("diagnostics.openFile.failed"), String(e), { detail: detailOf(e) });
   }
 }
 
@@ -386,6 +387,6 @@ async function openDir(): Promise<void> {
   try {
     await commands.open_log_dir();
   } catch (e) {
-    toast(copyText("diagnostics.openDir.failed"), String(e));
+    toast(copyText("diagnostics.openDir.failed"), String(e), { detail: detailOf(e) });
   }
 }

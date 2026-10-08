@@ -44,6 +44,7 @@ import { SETTINGS_APPLIED_EVENT } from "../settings/events";
 import { confirmDialog } from "../kit/dialog";
 import { toast } from "../kit/toast";
 import { copyText } from "../copy-table";
+import { detailOf } from "../kit/detail";
 
 export class KeybindingsEditor implements OverlayHandle {
   private overlay: HTMLElement;
@@ -377,7 +378,7 @@ export class KeybindingsEditor implements OverlayHandle {
     } catch (e) {
       console.warn("[keybindings] persist failed:", e);
       // 从前只记日志：这次改的键位眼下生效、重启就回去，界面一句不说（E §3.3）。
-      toast(copyText("keybindings.persist.failed"), String(e));
+      toast(copyText("keybindings.persist.failed"), String(e), { detail: detailOf(e) });
     }
   }
 }
