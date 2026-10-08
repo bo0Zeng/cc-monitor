@@ -139,7 +139,7 @@ describe("FIX4 · 杀会话顺手注销的结局", () => {
     const bus = (b: unknown) => ({ ...KILL.reply, bus: b });
     expect(decodeKilled("devbox", "demo-cc", KILL.reply)).toBeNull();
     expect(decodeKilled("devbox", "demo-cc", bus({ removed: ["p_cc", "q_cc"], failed: [], unread: null }))).toBe(
-      copyText("tmuxControl.kill.busRemoved", { ids: "p_cc、q_cc" }),
+      copyText("tmuxControl.kill.busRemoved", { ids: ["p_cc", "q_cc"].join(copyText("tmuxControl.kill.listSep")) }),
     );
     expect(decodeKilled("devbox", "demo-cc", bus({ removed: [], failed: [{ id: "r_cc", why: "它不在" }], unread: null }))).toBe(
       copyText("tmuxControl.kill.busFailed", { id: "r_cc", why: "它不在" }),

@@ -67,6 +67,8 @@ export function censusList(py: string, name: string): string[] {
 
 export interface Entry {
   kind: string;
+  /** 界面角色（按钮 · 菜单项 · 标题 …），闭集与它许配的 kind 住 `copy-table.vitest.ts::ROLE_KINDS`。 */
+  role?: string;
   zh: string;
   args: string[];
   waive?: Record<string, string>;

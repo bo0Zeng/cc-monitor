@@ -1,5 +1,7 @@
-//! **什么时候同步**：常驻后端里一个监听器盯账号库目录与每个号的目录（只盯直接子项），只认两个名字 ——
-//! 各号的配置文件（Claude 改了它、用户在那个号里 `claude mcp add` 了）与账号清单（加号 / 删号 ⇒ 盯的名单跟着换）。
+//! **什么时候同步**：常驻后端里一个监听器盯账号库目录 · 每个号的目录 · 家目录（都只盯直接子项），只认两个名字 ——
+//! 各号的配置文件（Claude 改了它、用户在那个号里 `claude mcp add` 了、在那个号里信任了一个目录）· 家目录下账号 0 那一份
+//! （信任只读它，一个字节不写）与账号清单（加号 / 删号 ⇒ 盯的名单跟着换）。每一趟先同步用户级 MCP（[`super::mcp_share_exec`]），
+//! 再同步信任（[`super::trust_share_exec`]）。
 //!
 //! 不轮询、不传时间窗：事件进一条无超时的通道，工作线程收到一条就把攒着的排空、同步一趟（一阵连着的改动并成一趟）。
 //! 同步自己写回去的那一下也会来一个事件，下一趟算出来没有要写的 ⇒ 停在那里。
@@ -28,12 +30,13 @@ fn relevant(p: &std::path::Path) -> bool {
     })
 }
 
-/// 此刻该盯的目录：账号库目录 ＋ 清单里每个号的目录（在的那几个）。
+/// 此刻该盯的目录：账号库目录 ＋ 清单里每个号的目录（在的那几个）＋ 有账号库时家目录（账号 0 那一份是信任的来源之一）。
 fn wanted(home: &str) -> Vec<PathBuf> {
     let accts = super::scan::accts_root(home);
     let mut out = vec![PathBuf::from(&accts)];
     if let Ok(Some(list)) = super::mcp_share_exec::accounts_in(home) {
         out.extend(list.into_iter().map(|(_, dir)| PathBuf::from(dir)));
+        out.push(PathBuf::from(home));
     }
     out.retain(|p| p.is_dir());
     out
@@ -85,6 +88,13 @@ fn work(rx: Receiver<()>, d: &'static (dyn Door + Sync)) {
                 }
             }
             Err((_, why)) => tracing::warn!("账号之间同步 MCP：这一趟没做成：{why}"),
+        }
+        match super::trust_share_exec::sync(d) {
+            Ok(changed) if !changed.is_empty() => {
+                tracing::info!("账号之间同步信任：改写了 {}", changed.join(" · "))
+            }
+            Ok(_) => {}
+            Err((_, why)) => tracing::warn!("账号之间同步信任：这一趟没做成：{why}"),
         }
     }
 }

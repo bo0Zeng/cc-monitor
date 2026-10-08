@@ -80,6 +80,9 @@ pub(super) mod tests {
         "manage/mod.rs",
         "manage/model.rs",
         "manage/scan.rs",
+        // 信任在各号之间同步（纯 · 读改写）＋ 起会话前预标：账号库管理的一部分，与上游选择零引用。
+        "manage/trust_share.rs",
+        "manage/trust_share_exec.rs",
         "manage/verify.rs",
         "manage/wire.rs",
         // 订阅号令牌：读 · 续 · 加锁整份写回。上游选择换到别的订阅号时问它要令牌；它不许认识上游选择与账号库管理。

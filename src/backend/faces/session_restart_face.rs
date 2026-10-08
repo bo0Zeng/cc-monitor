@@ -12,6 +12,7 @@ use std::future::Future;
 struct Prod {
     client: Option<String>,
     agent: String,
+    files: crate::faces::launch_face::Files,
 }
 
 impl Wait for Armed {
@@ -35,9 +36,14 @@ impl Host for Prod {
         &self,
         f: impl FnOnce(&Deps<'_>) -> T + Send + 'static,
     ) -> impl Future<Output = T> + Send {
-        let (client, agent) = (self.client.clone(), self.agent.clone());
+        let (client, agent, files) = (self.client.clone(), self.agent.clone(), self.files);
         joined(tokio::task::spawn_blocking(move || {
-            crate::faces::session_batch_face::with_deps_as(client.as_deref(), &agent, f)
+            crate::faces::session_batch_face::with_deps_as(
+                client.as_deref(),
+                &agent,
+                Some(files),
+                f,
+            )
         }))
     }
 
@@ -46,14 +52,19 @@ impl Host for Prod {
         f: impl FnOnce(&Deps<'_>) -> T + Send + 'static,
     ) -> impl Future<Output = Option<T>> + Send {
         let ticket = crate::stream::inbound::DRAIN.enter("session-restart".to_string());
-        let (client, agent) = (self.client.clone(), self.agent.clone());
+        let (client, agent, files) = (self.client.clone(), self.agent.clone(), self.files);
         async move {
             let ticket = ticket?;
             // 外层被撤只丢掉这一头的等待：阻塞线程照样做完、票跟着它落。
             Some(
                 joined(tokio::task::spawn_blocking(move || {
                     let _ticket = ticket;
-                    crate::faces::session_batch_face::with_deps_as(client.as_deref(), &agent, f)
+                    crate::faces::session_batch_face::with_deps_as(
+                        client.as_deref(),
+                        &agent,
+                        Some(files),
+                        f,
+                    )
                 }))
                 .await,
             )
@@ -83,6 +94,7 @@ impl Host for Prod {
 pub(crate) async fn answer(
     args: Value,
     until: Option<crate::platform::child::Until>,
+    files: crate::faces::launch_face::Files,
 ) -> Result<Value, restart::Fault> {
     let client =
         crate::control::gate::requester_of(&args).map_err(|(c, m)| (c.to_string(), m, None))?;
@@ -91,5 +103,14 @@ pub(crate) async fn answer(
         .and_then(Value::as_str)
         .unwrap_or_default()
         .to_string();
-    restart::run(args, until, Prod { client, agent }).await
+    restart::run(
+        args,
+        until,
+        Prod {
+            client,
+            agent,
+            files,
+        },
+    )
+    .await
 }

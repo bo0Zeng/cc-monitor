@@ -119,6 +119,7 @@ impl Rig {
                 self.live_before.clone()
             }
         };
+        let pretrust = |dir: &str, cwd: &str| note(format!("pretrust {dir} {cwd}"));
         f(&Deps {
             list: &list,
             record: &record,
@@ -134,6 +135,7 @@ impl Rig {
             },
             accounts: &facts,
             writers: &writers,
+            pretrust: &pretrust,
         })
     }
 }
@@ -222,6 +224,7 @@ fn a_failed_stop_never_starts_the_new_one() {
     assert_eq!(data, Some(json!({ "why": "wrong_owner" })));
     assert_eq!(rig.did("kill"), 1);
     assert_eq!(rig.did("ccm"), 0, "停失败还起了新的：{:?}", rig.calls());
+    assert_eq!(rig.did("pretrust"), 0, "没起却预标了：{:?}", rig.calls());
 }
 
 /// 一路走通：停那个终端、在同一个名字里用点名的号起（带那台偏好表里那个号的模型），回 `{compact, started, terminal, account}`。
@@ -236,8 +239,12 @@ fn a_restart_stops_and_starts_under_the_same_terminal_name() {
     assert_eq!(v["account"]["model"], "opus");
     let calls = rig.calls();
     assert_eq!(calls[0], format!("kill proj-cc {SID}"));
+    assert_eq!(
+        calls[1], "pretrust /h/.cc/work /p",
+        "新号起之前先把工作目录标成它信任过：{calls:?}"
+    );
     assert!(
-        calls[1].starts_with("ccm ") && calls[1].contains("proj-cc"),
+        calls[2].starts_with("ccm ") && calls[2].contains("proj-cc"),
         "{calls:?}"
     );
     assert_eq!(rig.did("send"), 0, "没要求压缩却送了那一句");

@@ -361,7 +361,12 @@ async fn terminal_open(origin: Origin, payload: Body, left: Duration) -> Result<
         ));
     };
     match crate::launch::open_terminal_window(line.to_string(), true).await {
-        Ok(()) => Ok(Body(b"{}".to_vec())),
+        Ok(crate::platform::terminal::TerminalOpen::Opened) => Ok(Body(b"{}".to_vec())),
+        // 这台按既定设计不开窗：窗口那一侧把这句当原话画出来（它没有剪贴板兜底，不说「已复制」）。
+        Ok(crate::platform::terminal::TerminalOpen::NoWindow) => Err(refused(
+            "no_window",
+            copy_text("rsLaunch.posix.noTerminalWindow", &[]),
+        )),
         Err(why) => Err(refused("terminal_failed", why)),
     }
 }

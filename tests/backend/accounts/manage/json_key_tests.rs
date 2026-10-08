@@ -132,3 +132,37 @@ fn what_is_not_one_json_object_is_refused_not_rewritten() {
         assert!(set_top_key(bad, KEY, &json!({})).is_err(), "{bad:?} 该拒");
     }
 }
+
+fn path(p: &[&str]) -> Vec<String> {
+    p.iter().map(|s| s.to_string()).collect()
+}
+
+/// 往下几层换一格：沿途那几层原样（键序与排版不动），只多出 / 换掉那一格；缺的层补成只含这条路的对象。
+#[test]
+fn a_nested_cell_changes_and_the_layers_on_the_way_stay() {
+    let text = "{\n  \"b\": 1,\n  \"t\": {\n    \"/z\": {\n      \"y\": 1,\n      \"f\": false\n    },\n    \"/a\": {}\n  },\n  \"a\": [1, 2]\n}\n";
+    let out = set_paths(
+        text,
+        &[
+            (path(&["t", "/z", "f"]), json!(true)),
+            (path(&["t", "/n", "f"]), json!(true)),
+            (path(&["u", "/q", "f"]), json!(true)),
+        ],
+    )
+    .unwrap();
+    assert_eq!(
+        serde_json::from_str::<Value>(&out).unwrap(),
+        json!({ "b": 1, "t": { "/z": { "y": 1, "f": true }, "/a": {}, "/n": { "f": true } }, "a": [1, 2], "u": { "/q": { "f": true } } })
+    );
+    assert!(out.starts_with("{\n  \"b\": 1,\n  \"t\": {\n    \"/z\": {\n      \"y\": 1,\n      \"f\": true\n    },\n    \"/a\": {},\n    \"/n\": {"), "{out}");
+    assert!(out.contains("\"a\": [1, 2]"), "{out}");
+}
+
+#[test]
+fn a_nested_path_through_a_non_object_or_a_duplicate_is_refused() {
+    let one = |t: &str| set_paths(t, &[(path(&["t", "/z", "f"]), json!(true))]);
+    assert!(one("{\"t\": [1]}").is_err());
+    assert!(one("{\"t\": {\"/z\": 3}}").is_err());
+    assert!(one("{\"t\": {}, \"t\": {}}").is_err());
+    assert!(one("{\"t\": {\"/z\": {}, \"/z\": {}}}").is_err());
+}

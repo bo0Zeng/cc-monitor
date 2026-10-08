@@ -241,14 +241,10 @@ fn no_prose_claims_the_session_container_is_always_tmux() {
 
 #[test]
 fn the_posix_message_states_a_decision_not_a_missing_feature() {
-    let m: &str = &POSIX_NO_TERMINAL_WINDOW;
+    let m = &*copy_core::copy_text("rsLaunch.posix.noTerminalWindow", &[]);
     assert!(
         !m.contains("v1") && !m.contains("v2"),
         "文案里带版本号会被读成「以后会支持」：{m}"
-    );
-    assert!(
-        m.contains(copy_core::copy_static!("rsLaunch.posix.noTerminalWindow")),
-        "没说清这是刻意的：{m}"
     );
     assert!(
         m.contains("tmux"),
@@ -283,40 +279,36 @@ fn the_posix_message_states_a_decision_not_a_missing_feature() {
     );
 }
 
-/// ★ U8b **跨轨对拍**：前端匹配的那个标记，必须真的在后端那句话里。
+/// ★ U8b：「本机不开终端窗口」是一个**结局**（[`TerminalOpen::NoWindow`]，线上 `"noWindow"`），不是一句话里的标记。
 ///
-/// 前端据它把标题从「拉起失败」换成「本机不开终端窗口」。两边漂开的症状是
-/// **静默退回**：用户又开始在 Linux 上每次点 ↗ 都读到「拉起失败」，而两边各自看都对。
+/// 前端据它把标题从「拉起失败」换成「本机不开终端窗口」⇒ 判据钉：结局按码说、前端按码判 ——
+/// 改了那条文案（`rsLaunch.posix.noTerminalWindow`），判断照样对；前端源码里不许再有按那句话找字的写法。
 #[test]
-fn the_posix_marker_is_the_one_the_frontend_matches_on() {
+fn the_no_window_outcome_is_a_code_not_a_phrase_the_frontend_greps_for() {
+    assert_eq!(
+        serde_json::to_value(TerminalOpen::NoWindow).unwrap(),
+        serde_json::json!("noWindow")
+    );
+    assert_eq!(
+        serde_json::to_value(TerminalOpen::Opened).unwrap(),
+        serde_json::json!("opened")
+    );
     const RUNNER: &str = include_str!("../../../src/frontend/ui/remote-launch-run.ts");
-    let key = "export const POSIX_NO_WINDOW_MARKER = \"";
-    let at = RUNNER
-        .find(key)
-        .expect("前端找不到 POSIX_NO_WINDOW_MARKER —— 抽取坏了，本断言在空转");
-    let rest = &RUNNER[at + key.len()..];
-    let marker = &rest[..rest.find('"').expect("字面量没收尾")];
-    assert!(
-        marker.chars().count() >= 6,
-        "抽到的标记太短（{marker:?}）—— 抽取坏了"
-    );
-    assert!(
-        POSIX_NO_TERMINAL_WINDOW.contains(marker),
-        "\n前端按 {marker:?} 判「这是既定设计」，但后端那句话里没有它：\n  {POSIX_NO_TERMINAL_WINDOW}\n\
-             ⇒ 用户会退回去看到「拉起失败」。两边必须一起改。",
-        POSIX_NO_TERMINAL_WINDOW = POSIX_NO_TERMINAL_WINDOW.as_str()
-    );
-    // 反面：标记不许宽到把**真失败**也软化掉。
-    for real_failure in [
-        "未找到远端配置: \"x\"",
-        &*copy_core::copy_text("rsLaunch.refuse.control", &[("what", "远端命令")]),
-        "spawn powershell failed: No such file",
+    const LOGIN: &str = include_str!("../../../src/frontend/ui/settings/account-login.ts");
+    const OPEN: &str = include_str!("../../../src/frontend/ui/terminal-open.ts");
+    for (name, src) in [
+        ("remote-launch-run.ts", RUNNER),
+        ("account-login.ts", LOGIN),
     ] {
         assert!(
-            !real_failure.contains(marker),
-            "标记 {marker:?} 太宽，会把真失败 {real_failure:?} 也报成「既定设计」"
+            !src.contains("POSIX_NO_WINDOW_MARKER") && src.contains("instanceof NoTerminalWindow"),
+            "{name} 还在按那句话找字判「既定设计」，或没按结局判"
         );
     }
+    assert!(
+        OPEN.contains("\"noWindow\""),
+        "terminal-open.ts 不认壳回的 noWindow 那个结局"
+    );
 }
 
 /// ★ P5L-Y1/Y3：**候选表有序，且第一个存在的胜出**。
@@ -1238,7 +1230,7 @@ fn the_thin_wrapper_hands_the_command_straight_through_to_the_via_form() {
 // IPv6 · 跳板参数 · 坏输入 · 单引号过两层）：ssh 外壳搬进本机后端（帧命令 `terminal-ssh`），期望原样搬进
 // `tests/backend/dial_terminal_tests.rs`（被测对象搬了家，一个期望没改；跳板那一格改经 `machine::resolve`）。
 
-/// 开终端窗口那一问只答一处（`open_window`）：POSIX 没有终端出口 ⇒ 回那句跨语言标记（前端据此说「本机无法开终端窗口」、
+/// 开终端窗口那一问只答一处（`open_window`）：POSIX 没有终端出口 ⇒ 回「不开窗」那个结局（前端据此说「本机无法开终端窗口」、
 /// 给「在 tmux 里登录」），**不**回落到无窗口直起（要人登录的那一行跑在看不见的地方 = 没跑）。
 /// 有出口那一支交 `launch_local_posix_via`（它的 spawn 由假终端那条判据买到）。
 #[cfg(not(windows))]
@@ -1255,8 +1247,8 @@ fn without_a_terminal_exit_the_window_open_says_so_instead_of_running_headless()
     std::fs::remove_dir_all(&dir).ok();
     assert_eq!(
         got,
-        Err(POSIX_NO_TERMINAL_WINDOW.to_string()),
-        "没有终端出口时该回那句标记"
+        Ok(TerminalOpen::NoWindow),
+        "没有终端出口时该回「不开窗」那个结局"
     );
     assert!(!ran_headless, "没有终端出口时那一行被无窗口直起了");
 }
