@@ -15,6 +15,7 @@
 pub(crate) mod agent_home_check;
 pub(crate) mod chores;
 pub(crate) mod data;
+pub(crate) mod last_seen;
 pub(crate) mod registry;
 pub(crate) mod rows;
 
@@ -64,7 +65,10 @@ pub(crate) fn data_answer(door: &dyn crate::assets::door::Door, args: &Value) ->
         Ok(None) => Some(false),
         Err(_) => None,
     };
-    Ok(data::shape(&report, todo, tmux))
+    let own = crate::platform::paths::home_dir()
+        .map(|h| data::own_rows(&h))
+        .unwrap_or_default();
+    Ok(data::shape(&report, todo, tmux, own))
 }
 
 /// 整份足迹（两种问法共用这一份）。

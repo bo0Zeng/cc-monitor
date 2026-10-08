@@ -7,6 +7,7 @@
  * 能不能开终端窗口（壳那一处）。这里只排版、只认最后一趟回答（切机器快过读时，晚到的整份作废）。
  * 那台账号清单 / 凭据 / 用量一变，后端推一帧（`accounts-changed` · `quota-changed`），这一页自己重读。
  */
+import { agoText } from "./ago";
 import { emit } from "@tauri-apps/api/event";
 import { getCurrentMachine, subscribeMachine } from "./machine-context";
 import { recordFacet, LOCAL_MACHINE_KEY } from "./machine-status";
@@ -901,15 +902,6 @@ function fillUsage(u5: HTMLElement, u7: HTMLElement, q: QuotaShow | null, now: n
     else if (here && (q.state === "near" || q.state === "overageInUse")) cell.dataset.shade = "warn";
     if (q.stale) cell.dataset.stale = "true";
   }
-}
-
-/** 采样多久前：`3m` · `2h` · `1d`。 */
-function agoText(ms: number): string {
-  const m = Math.max(0, Math.round(ms / 60_000));
-  if (m < 60) return copyText("acctPage.ago.minutes", { n: m });
-  const h = Math.round(m / 60);
-  if (h < 48) return copyText("acctPage.ago.hours", { n: h });
-  return copyText("acctPage.ago.days", { n: Math.round(h / 24) });
 }
 
 function hostOf(url: string): string {

@@ -2039,3 +2039,20 @@ fn the_list_meta_says_who_becomes_default_once_the_default_is_removed() {
     let _ = fs::remove_dir_all(&root);
     let _ = fs::remove_dir_all(&empty);
 }
+
+/// 「现在重启 cc-monitor」那一问（`appExit`）：这台后端选了随 cc-monitor 退出一起停 ⇒ 这台的会话 ＋ 账上全部转发都会断；
+/// 选了留着 ⇒ 什么都不断（全零，界面就不弹框）。
+#[test]
+fn app_exit_interrupts_follow_this_backends_own_exit_choice() {
+    let lines = vec![
+        r#"{"alive":true,"viaRelay":true}"#.to_string(),
+        r#"{"alive":true,"viaRelay":false}"#.to_string(),
+    ];
+    let zero =
+        serde_json::json!({"relayedSessions":0,"relayedMaybe":0,"liveStreams":0,"forwards":0});
+    assert_eq!(app_exit_product(false, &lines, 3), zero);
+    assert_eq!(
+        app_exit_product(true, &lines, 3),
+        serde_json::json!({"relayedSessions":1,"relayedMaybe":0,"liveStreams":2,"forwards":3})
+    );
+}

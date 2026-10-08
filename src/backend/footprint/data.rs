@@ -7,6 +7,8 @@
 //! - `tmux`：这台有没有 tmux（查不动 ⇒ `null`；与起新会话那一问同一个判法 `control::terminals::rows_here`）。
 //! - `chores`：「要你动手」里进角标的件数（要做 ＋ 要装 ＋ 要你定，还没做完的），设置窗左栏角标与主窗口状态栏那一枚读这一个数。
 //!
+//! - `own`：cc-monitor 在这台自己家里（`~/.cc-monitor/`）放的每一样（[`own_rows`]）：在不在 · 文件多大 · 删了会丢还是能重建。
+//!
 //! 另带 `home`（显示用：路径的 `~` 缩写按它）。
 //!
 //! 判定只在这里：哪一行算「改过你的文件」、撤回去哪、哪一样缺了起不了会话、怎么装的链接。
@@ -80,8 +82,34 @@ pub(crate) fn needs_install(report: &ConfigSurfaceReport) -> Vec<Value> {
     report.rows.iter().filter_map(missing).collect()
 }
 
-/// 整份足迹 ＋「要你动手」各件 ＋ 有没有 tmux ⇒ 这一页的成品。
-pub(crate) fn shape(report: &ConfigSurfaceReport, todo: Vec<Value>, tmux: Option<bool>) -> Value {
+/// 这台家里那几样（契约里那一份 `relay_route_core::OWN_HOME_ENTRIES`）各一行 `{id, path, dir, class, exists, size}`：`path` 写成 `~/…`；目录不算大小（不递归，免得大目录卡住）。
+pub(crate) fn own_rows(home: &std::path::Path) -> Vec<Value> {
+    relay_route_core::OWN_HOME_ENTRIES
+        .iter()
+        .map(|&(id, rel, dir, truth)| {
+            let p = home.join(rel);
+            let meta = std::fs::metadata(&p).ok();
+            let exists = meta.as_ref().is_some_and(|m| m.is_dir() == dir);
+            let size = meta.filter(|m| exists && m.is_file()).map(|m| m.len());
+            json!({
+                "id": id,
+                "path": format!("~/{rel}"),
+                "dir": dir,
+                "class": if truth { "truth" } else { "cache" },
+                "exists": exists,
+                "size": size,
+            })
+        })
+        .collect()
+}
+
+/// 整份足迹 ＋「要你动手」各件 ＋ 有没有 tmux ＋ 自己家里那几样 ⇒ 这一页的成品。
+pub(crate) fn shape(
+    report: &ConfigSurfaceReport,
+    todo: Vec<Value>,
+    tmux: Option<bool>,
+    own: Vec<Value>,
+) -> Value {
     let changed_files: Vec<Value> = report.rows.iter().filter_map(changed).collect();
     let chores = super::chores::badge(&todo);
     json!({
@@ -90,6 +118,7 @@ pub(crate) fn shape(report: &ConfigSurfaceReport, todo: Vec<Value>, tmux: Option
         "todo": todo,
         "tmux": tmux,
         "chores": chores,
+        "own": own,
     })
 }
 

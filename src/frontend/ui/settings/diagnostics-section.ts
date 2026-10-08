@@ -16,6 +16,7 @@ import { icon } from "../kit/icon";
 import { homeShort } from "../kit/path";
 import { formatBytes } from "../format";
 import { clearRestartNeeded, markRestartNeeded } from "./restart-notice";
+import { restartNowButton } from "./restart-now";
 import { unknownConfigKeys } from "../config";
 import { copyText } from "../copy-table";
 import { openPath } from "@tauri-apps/plugin-opener";
@@ -76,7 +77,7 @@ export class DiagnosticsSection {
     this.restartLine = document.createElement("div");
     this.restartLine.className = "diag-restart";
     this.restartLine.hidden = true;
-    this.restartLine.append(icon("warning", "compact"), document.createTextNode(copyText("diagnostics.file.restart")));
+    this.restartLine.append(icon("warning", "compact"), document.createTextNode(copyText("diagnostics.file.restart")), restartNowButton());
     this.logEnabled = toggleSwitch({
       label: copyText("diagnostics.file.enable"),
       on: false,

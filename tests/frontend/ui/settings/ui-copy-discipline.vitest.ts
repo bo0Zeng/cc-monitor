@@ -259,6 +259,7 @@ describe(" 文案纪律 ＋ `§8` #5：界面上零 markdown / 零源码住址",
       ],
       tmux: false,
       chores: 1,
+      own: [],
     };
     ipc.replies.set("footprint_client_facts", { home: "/h", path: null });
     ipc.replies.set("chan_call", (a: unknown) => {

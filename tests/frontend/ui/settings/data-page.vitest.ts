@@ -4,7 +4,9 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { disk, answers, opened, marks, clip } = vi.hoisted(() => ({
+const { disk, answers, opened, marks, clip, seen, fileWin } = vi.hoisted(() => ({
+  seen: new Map<string, Record<string, { atMs: number; value: unknown }>>(),
+  fileWin: [] as Array<{ host: unknown; at: unknown }>,
   disk: { cfg: {} as Record<string, unknown> },
   answers: new Map<string, unknown>(),
   opened: vi.fn(),
@@ -26,6 +28,15 @@ vi.mock("../../../../src/comms/inward/chan", () => ({
         marks.push({ origin, args: JSON.parse(new TextDecoder().decode(body)) });
         return Promise.resolve(new TextEncoder().encode("{}"));
       }
+      // 本机后端那份上次值（`last-seen-*`）：照后端的样子记在内存里。
+      if (op === "last-seen-write" || op === "last-seen-read") {
+        const a = JSON.parse(new TextDecoder().decode(body)) as { origin: string; kind?: string; value?: unknown };
+        if (origin !== "<local>") return Promise.reject(new Error("上次值只问本机后端"));
+        const mine = seen.get(a.origin) ?? {};
+        if (op === "last-seen-write") seen.set(a.origin, { ...mine, [a.kind!]: { atMs: Date.now(), value: a.value } });
+        const out = op === "last-seen-read" ? { accounts: mine.accounts ?? null, data: mine.data ?? null } : { atMs: 1 };
+        return Promise.resolve(new TextEncoder().encode(JSON.stringify(out)));
+      }
       if (op !== "data-report") return Promise.reject(new Error(`没料到 ${op}`));
       const a = answers.get(origin);
       if (a === undefined) return Promise.reject(new Error(`${origin} 连不上`));
@@ -35,6 +46,7 @@ vi.mock("../../../../src/comms/inward/chan", () => ({
 }));
 vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: opened, openPath: vi.fn() }));
 vi.mock("../../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn() }));
+vi.mock("../../../../src/frontend/ui/file-window", () => ({ openFileWindow: (host: unknown, at: unknown) => (fileWin.push({ host, at }), Promise.resolve()) }));
 
 import { DataPage } from "../../../../src/frontend/ui/settings/data-page";
 import { decodeDataReport } from "../../../../src/frontend/ui/settings/data-reads";
@@ -42,6 +54,7 @@ import { defaultPick } from "../../../../src/frontend/ui/resume-menu";
 import { setResumeInTmux } from "../../../../src/frontend/ui/resume-defaults";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
+import { __resetLastSeenForTests } from "../../../../src/frontend/ui/last-seen";
 
 const settle = async () => {
   for (let i = 0; i < 4; i++) await new Promise((r) => setTimeout(r, 0));
@@ -77,6 +90,11 @@ const report = (over: Record<string, unknown> = {}) => ({
   ],
   tmux: false,
   chores: 1,
+  own: [
+    { id: "profiles", path: "~/.cc-monitor/profiles.toml", dir: false, class: "truth", exists: true, size: 2048 },
+    { id: "accounts", path: "~/.cc-monitor/accounts", dir: true, class: "truth", exists: true, size: null },
+    { id: "bin", path: "~/.cc-monitor/bin", dir: true, class: "cache", exists: false, size: null },
+  ],
   ...over,
 });
 
@@ -96,6 +114,9 @@ function mount(): { page: DataPage; badge: number[]; went: unknown[] } {
 beforeEach(() => {
   document.body.replaceChildren();
   answers.clear();
+  seen.clear();
+  fileWin.length = 0;
+  __resetLastSeenForTests();
   opened.mockClear();
   marks.length = 0;
   clip.length = 0;
@@ -115,6 +136,10 @@ describe("data-report 的应答严格收", () => {
     expect(() => decodeDataReport(report({ todo: [chore({ state: "copied" })] })), "「已复制」只住界面").toThrow();
     expect(() => decodeDataReport(report({ todo: [{ ...chore({}), extra: 1 }] }))).toThrow();
     expect(() => decodeDataReport(report({ todo: [chore({ diff: [{ n: 0, op: "add", text: "" }] })] }))).toThrow();
+    expect(() => decodeDataReport(report({ own: [{ id: "x", path: "~/.cc-monitor/x", dir: false, class: "maybe", exists: true, size: 1 }] })), "class 闭集").toThrow();
+    expect(() => decodeDataReport(report({ own: [{ id: "x", path: "~/.cc-monitor/x", dir: false, class: "cache", exists: true, size: -1 }] }))).toThrow();
+    const { own: _o, ...noOwn } = report();
+    expect(() => decodeDataReport(noOwn)).toThrow();
   });
 });
 
@@ -241,5 +266,57 @@ describe("cc-monitor 放了什么", () => {
     expect(block.hidden, "远端那台不该出本机的 Claude 目录").toBe(true);
     chip(copyText("remote.cards.local")).click();
     expect(block.hidden).toBe(false);
+  });
+
+  it("★ 远端那台的「cc-monitor 的文件」照那台 own 排：名字 · 是什么 · 删了会怎样 · 大小；不在的不给打开；打开 ＝ 在文件窗口里打开那一样", async () => {
+    answers.set(LOCAL_ORIGIN, report());
+    answers.set("devbox", report({ home: "/home/u" }));
+    const { page } = mount();
+    page.openTab("placed");
+    page.loadNow();
+    await settle();
+    const pane = page.element.querySelector<HTMLElement>('[data-pane="placed"]')!;
+    const remote = pane.querySelector<HTMLElement>(".data-remote-only")!;
+    expect(remote.hidden, "本机 chip 上不出远端那一块").toBe(true);
+    [...page.element.querySelectorAll<HTMLButtonElement>(".data-chip")].find((b) => b.textContent === "devbox")!.click();
+    expect(remote.hidden).toBe(false);
+    const rows = [...remote.querySelectorAll<HTMLElement>("[data-own]")];
+    expect(rows.map((r) => r.dataset.own)).toEqual(["profiles", "accounts", "bin"]);
+    expect(rows[0].textContent).toContain("profiles.toml");
+    expect(rows[0].textContent).toContain(copyText("rsDataPaths.backend.profiles"));
+    expect(rows[0].textContent).toContain(copyText("data.class.keep"));
+    expect(rows[1].textContent).toContain("accounts/");
+    expect(rows[2].textContent).toContain(copyText("data.class.disposable"));
+    expect(rows[2].querySelector("button")!.disabled, "不在的那一样没有可打开的").toBe(true);
+    rows[0].querySelector("button")!.click();
+    await settle();
+    expect(fileWin.map((f) => f.at)).toEqual([{ revealFile: "/home/u/.cc-monitor/profiles.toml" }]);
+  });
+
+  it("★ 连不上的那台：本机后端记着上次读成的那一份 ⇒ 照上次的画 ＋ 警告条说多旧（跨重启：上次值不住界面）", async () => {
+    answers.set(LOCAL_ORIGIN, report());
+    answers.set("devbox", report({ changedFiles: [{ path: "~/.zshrc", what: "上次那一份", undo: null }] }));
+    const first = mount();
+    first.page.loadNow();
+    await settle();
+    expect(seen.get("devbox")?.data, "读成了那台 ⇒ 交本机后端记下").toBeTruthy();
+    expect(seen.has(LOCAL_ORIGIN), "本机那台不记").toBe(false);
+    // 「重启」：界面那份记忆清掉，那台这回连不上。
+    __resetLastSeenForTests();
+    answers.delete("devbox");
+    document.body.replaceChildren();
+    const { page } = mount();
+    page.openTab("placed");
+    page.loadNow();
+    await settle();
+    [...page.element.querySelectorAll<HTMLButtonElement>(".data-chip")].find((b) => b.textContent === "devbox")!.click();
+    const pane = page.element.querySelector<HTMLElement>('[data-pane="placed"]')!;
+    expect(pane.textContent).toContain("~/.zshrc");
+    expect(pane.textContent).toContain(copyText("dataPage.placed.stale", { machine: "devbox", ago: copyText("acctPage.ago.minutes", { n: 0 }) }));
+    expect(pane.querySelectorAll(".data-remote-only [data-own]").length).toBe(3);
+    expect([...pane.querySelectorAll<HTMLButtonElement>(".data-remote-only [data-own] button")].every((b) => b.disabled), "连不上的那台打不开文件窗口 ⇒ 置灰").toBe(true);
+    // 从没读成过的那台照旧说读不到。
+    [...page.element.querySelectorAll<HTMLButtonElement>(".data-chip")].find((b) => b.textContent === "gpu")!.click();
+    expect(pane.textContent).toContain(copyText("dataPage.placed.offline", { machine: "gpu" }));
   });
 });

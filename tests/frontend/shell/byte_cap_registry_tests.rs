@@ -903,6 +903,19 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "后端自有的「要你动手」选择 `~/.cc-monitor/chores.json`（读不出来就不覆盖）",
         "拒收+回错",
     ),
+    // 离线那台的上次值：一份超了拒收回错（`too_large`，不落一个字节）；整份超了当读不懂、照没记过算，写的那一下整份重来（它只是缓存）。
+    (
+        "src/backend/footprint/last_seen.rs",
+        "MAX_VALUE_BYTES",
+        "一台一样上次值（`accounts-list` / `data-report` 的一份应答）序列化后的字节数",
+        "拒收+回错",
+    ),
+    (
+        "src/backend/footprint/last_seen.rs",
+        "MAX_FILE_BYTES",
+        "后端自有的上次值 `~/.cc-monitor/last-seen.json` 整份（每份封顶 × 两样 × 台数封顶）；超了 `warn!` 带路径说读不懂，照没记过算",
+        "跳过+说清",
+    ),
     (
         "src/backend/assets/skill_ledger.rs",
         "MAX_BYTES",

@@ -338,8 +338,19 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     // 文件与数据：同一份足迹重排的成品（`src/backend/footprint/data.rs`）。
     (
         "data-report",
-        "后端出成品 `{home, changedFiles, todo, tmux, chores}`；前端 `src/frontend/ui/settings/data-reads.ts::readDataReport` 问、\
+        "后端出成品 `{home, changedFiles, todo, tmux, chores, own}`；前端 `src/frontend/ui/settings/data-reads.ts::readDataReport` 问、\
          `decodeDataReport` 按恰好的键集合收；monitor 这一侧零发送点，本机那一栏只答它自己那台那几行的事实（`footprint_client_facts`）",
+    ),
+    // 离线那台的上次值：本机后端读写它自己的 `~/.cc-monitor/last-seen.json`。
+    (
+        "last-seen-read",
+        "本机后端读自己那份小文件（`src/backend/footprint/last_seen.rs`）；前端 `src/frontend/ui/last-seen.ts::recallSeen` 问（那台问不到时画上次的），\
+         monitor 这一侧零发送点",
+    ),
+    (
+        "last-seen-write",
+        "本机后端读—改—写自己那份小文件；前端 `src/frontend/ui/last-seen.ts::rememberSeen` 交（账号清单 · 「文件与数据」读成了那一份），\
+         monitor 这一侧零发送点",
     ),
     // 「要你动手」记下的一个选择：后端写它自己的 `~/.cc-monitor/chores.json`。
     (
