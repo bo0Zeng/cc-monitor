@@ -4,7 +4,7 @@
 
 住址：`<仓根>/tests/evidence/CP2c-backend-copy-pending.py`
 待办表：`<仓根>/tests/evidence/CP2c-backend-copy-pending.tsv`（一行一个文件 ＋ 一句理由）
-挂进 `npm test`：`tests/copy/backend-copy-pending.vitest.ts`
+挂进 `npm test`：`tests/copy/copy-ledgers.vitest.ts`（经 `CP-copy-judges.py`，与 CP1 · CP2b 共用一趟普查）
 
 要求住址（逐字）：
   · 「**所有对外文案与报错都从一张表来**（结构化的 key → 文本，插值点留在表里）」；
@@ -87,15 +87,20 @@ def load_cp1():
     return mod
 
 
-def outward_literals(cp1, src_root: Path | None = None, ledger: Path | None = None):
-    """→ (literals, scope_files)：射程里今天全部对外字面量 [dict(file, line, text, src)] ＋ 扫到的射程内生产文件数。"""
-    census = cp1.load_census()
+def outward_literals(cp1, src_root: Path | None = None, ledger: Path | None = None, census=None):
+    """→ (literals, scope_files)：射程里今天全部对外字面量 [dict(file, line, text, src)] ＋ 扫到的射程内生产文件数。
+
+    `census`：调用方已经扫过真树、`scan` 只算一次的那份普查（`CP-copy-judges.py` 三条判据共用一趟）；不给就现载一份。"""
+    shared = census is not None
+    if not shared:
+        census = cp1.load_census()
     if src_root is not None:
         census.SRC_ROOT = src_root
-    scope_files = sum(1 for _p, rel in census.production_files(census.SRC_ROOT) if in_scope(rel))
     scanned = census.scan(census.SRC_ROOT)
     _f, _l, entries, _r, _en, _cc = scanned
-    census.scan = lambda _root: scanned   # doubt_band 里还要扫一遍同一份语料：用这一次的结果
+    scope_files = sum(1 for _p, rel in scanned[0] if in_scope(rel))   # scan 吐的第一项就是 production_files 的结果，不再走一遍树
+    if not shared:
+        census.scan = lambda _root: scanned   # doubt_band 里还要扫一遍同一份语料：用这一次的结果
     out = []
     for e in entries:
         if not in_scope(e["file"]) or e["bucket"] in census.RESERVE_BUCKETS or e.get("via", "literal") != "literal":

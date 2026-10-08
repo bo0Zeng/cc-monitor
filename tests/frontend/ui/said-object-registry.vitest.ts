@@ -5,7 +5,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join, resolve, sep } from "node:path";
 
 const ROOT = resolve(__dirname, "../../..");
 const CALLS = ["previewText", "previewShot", "previewByTmuxName", "sendToTerminal", "agentOnline", "readState", "readInbox", "spawnAgent", "broadcast"];
@@ -39,7 +39,8 @@ describe("不带对象的那几句：每个出处对象都看得见（登记两�
   it("★ 调用点 == 登记表", () => {
     const got = new Set<string>();
     for (const f of walk(resolve(ROOT, "src/frontend/ui"))) {
-      const rel = f.slice(ROOT.length + 1);
+      // 登记表写正斜杠；Windows 上 join 出来是反斜杠，先归一（不然「家」认不出、键也对不上）。
+      const rel = f.slice(ROOT.length + 1).split(sep).join("/");
       if (HOMES.has(rel)) continue;
       // 去掉 import 那几行再找（当值传的 `send: sendToTerminal` 也算一处）。
       const code = readFileSync(f, "utf8").replace(/^import [^;]*;$/gms, "");

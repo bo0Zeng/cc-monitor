@@ -120,6 +120,11 @@ def missing(pairs, dirs: list[Path]) -> list[tuple[str, str]]:
 
 
 def main() -> int:
+    # 读数里有汉字（结构失败那几句）。windows runner 上 python 的 stdout 默认 cp1252 ⇒ 不钉 UTF-8 就当场 UnicodeEncodeError，
+    # vitest 那边只看得到「量具跑不起来」—— 理由是假的（CI 37848630512）。调用方按 UTF-8 解（`execFileSync(..., {encoding: "utf8"})`）。
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
     as_json = "--json" in sys.argv
     fail: list[str] = []
 
