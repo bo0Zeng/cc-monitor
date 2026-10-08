@@ -46,3 +46,7 @@
 {"kind":"tap","stream":"s1","resp":0,"n":1,"end":"done"}
 {"kind":"session_runs","sid":"s1","runs":[{"run":"a1","label":"scan","kind":"Explore","tool":"t1","parent":"a9","state":"failed","last":{"t":"tool","name":"Bash"},"waiting":"Bash","started_ms":1000,"started_text":"00:00","active_ms":2000,"ended_ms":3000,"why":"reported","error":"boom","calls":7,"background":true}],"ended":[{"run":"a0","tool":"t0","state":"failed"}]}
 {"kind":"session_runs","sid":"s1","runs":[{"run":"a1","state":"running"}],"ended":[]}
+{"kind":"terminal_screen","ticket":"t1","seq":2,"view":{"capped":false,"captured_at":1,"captured_at_text":"00:00:01","cols":80,"cursor":{"visible":true,"x":0,"y":0},"lines":[{"spans":[{"fg":"green","from":0,"to":2}],"text":"ok"}],"rows":1,"screen":"00000000000000a1","scrollback_lines":0}}
+{"kind":"terminal_screen","ticket":"t1","seq":1,"view":{}}
+{"kind":"terminal_follow_end","ticket":"t1","why":"too_big"}
+{"kind":"terminal_follow_end","ticket":"t1","why":"gone"}

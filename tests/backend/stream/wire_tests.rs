@@ -519,6 +519,28 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 ended: vec![],
             },
         ],
+        [
+            Frame::TerminalScreen {
+                ticket: s("t1"),
+                seq: 2,
+                view: serde_json::json!({"screen": "00000000000000a1", "cols": 80, "rows": 1, "cursor": {"x": 0, "y": 0, "visible": true}, "lines": [{"text": "ok", "spans": [{"from": 0, "to": 2, "fg": "green"}]}], "scrollback_lines": 0, "capped": false, "captured_at": 1, "captured_at_text": "00:00:01"}),
+            },
+            Frame::TerminalScreen {
+                ticket: s("t1"),
+                seq: 1,
+                view: serde_json::json!({}),
+            },
+        ],
+        [
+            Frame::TerminalFollowEnd {
+                ticket: s("t1"),
+                why: crate::stream::wire::FollowEnd::TooBig,
+            },
+            Frame::TerminalFollowEnd {
+                ticket: s("t1"),
+                why: crate::stream::wire::FollowEnd::Gone,
+            },
+        ],
     ]
 }
 

@@ -253,6 +253,25 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | `runs` | [RunInfo] | 在表里的子运行（整份） |
 | `ended` | [RunEnded] | 被挤出表的已收场子运行 |
 
+### `terminal_screen`
+
+**一个终端此刻的一整屏**（终端实时预览，`control/terminal_follow.rs`；`terminal-follow` 之后才出现）。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `ticket` | string | 订阅票（`terminal-follow` 时客户端给的，本后端只当不透明的串回填） |
+| `seq` | number | 这条订阅里第几帧（从 1 连续） |
+| `view` | JSON | 那一屏（同 `terminal-preview` 的回话） |
+
+### `terminal_follow_end`
+
+**一条终端订阅停了**（不会再有画面）；后端已经忘掉这张票。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `ticket` | string | 订阅票 |
+| `why` | FollowEnd | 为什么停了 |
+
 ## 2. 信封与帧里用到的类型
 
 #### `RemovalCause`
@@ -309,6 +328,14 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 |---|---|---|
 | `command` | string | 哪条命令 —— 取值空间与 `Hello.commands` **同一套**（`inbound::command_names`） |
 | `code` | string | 为什么做不到 —— **就是真调用那一刻会回的那个命令级 code**（如 `no_tmux`） |
+
+#### `FollowEnd`
+
+一条终端订阅为什么停了（`Frame::TerminalFollowEnd` 的 `why`）。
+
+- `gone` —— 那个终端没了（窗格 / tmux 会话关了）
+- `lost` —— 看着它的那条路断了（tmux 控制模式客户端退了、抓屏失败），终端也许还在
+- `too_big` —— 那一屏大过一帧的上限
 
 #### `RunEnded`
 
@@ -2836,6 +2863,45 @@ cc-bus 钩子诊断。
 | `why` | ← | `refused` 的原因：`not-known` · `ambiguous` · `ended` · `not-yours` · `not-managed` · `screen-changed` |
 
 码：`bad_target` · `bad_args` · `no_tmux` · `no_server` · `no_such_session` · `capture_failed` · `unobservable` · `child_timed_out`
+
+#### `terminal-follow`
+
+订阅一个终端的画面（有变化推一整屏，一帧在途等回执）。
+
+收 `args` · 连接内就地做完 · 只在流上 · 没有 tmux 的机器上做不到（hello `unavailable` 会列它）
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `sid` | → | 目标：会话 id（与 `terminal` 恰给一个） |
+| `terminal` | → | 目标：名单里的句柄（与 `sid` 恰给一个） |
+| `ticket` | → | 订阅票（客户端铸的不透明串，至多 128 字节）；之后的 `terminal_screen` / `terminal_follow_end` 帧带它 |
+
+码：`bad_target` · `bad_args` · `not_known` · `ambiguous` · `no_tmux` · `tmux_too_old` · `too_many_follows` · `unobservable` · `child_timed_out`
+
+#### `terminal-follow-ack`
+
+订阅的第 `seq` 帧画完了（画面有变化就推下一帧）。
+
+收 `args` · 连接内就地做完 · 只在流上
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `seq` | → | 画完的那一帧的序号 |
+| `ticket` | → | 订阅票 |
+
+码：`bad_args` · `not_known`
+
+#### `terminal-unfollow`
+
+退订一个终端的画面（幂等，不发收尾帧）。
+
+收 `args` · 连接内就地做完 · 只在流上
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `ticket` | → | 订阅票；退不在册的也回 `ok` |
+
+码：`bad_args`
 
 #### `terminal-name-mint`
 

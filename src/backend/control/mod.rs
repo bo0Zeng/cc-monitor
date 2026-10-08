@@ -52,6 +52,8 @@ pub(crate) mod session_new;
 pub(crate) mod session_restart;
 // 终端管理 L1：名单 · 抓一屏 · 送字送键（两个前端共用，形状与宿主无关；这一版宿主是 tmux）。
 pub(crate) mod terminals;
+// 终端实时预览（L2）：订阅一个终端的画面，有变化就推一整屏（tmux 控制模式报变化 · 一帧在途等回执）。
+pub(crate) mod terminal_follow;
 pub mod tmux_hook;
 // 传输台住本机常驻后端（第三层成员：本机下载落点的写 · 票表 · 进度帧）。
 pub mod transfer;
