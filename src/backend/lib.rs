@@ -854,7 +854,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// p9c-last-seen：新命令 last-seen-read / -write（last-seen.json）；data-report 多 own（cc-monitor 的文件逐样 stat）；machine-interrupts 收 appExit。
 ///
 /// p9d-trust-sync：信任在 cc-monitor 管的各号之间同步（并 MCP 同步监听器），起会话 / 重启前预标目标目录；线上形状不变。
-pub const BUILD_ID: &str = "p9d-trust-sync";
+///
+/// p9e-arm-then-scan：会话监听改成先挂耳朵再初扫（扫的过程中落下的 pidfile 不再漏报）；session_terminals · oauth 续期锁 · 换号重启 R2 · entry-graphs 四条负载偶发修根因；CI 装 apt 走带超时的重试脚本。
+pub const BUILD_ID: &str = "p9e-arm-then-scan";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
