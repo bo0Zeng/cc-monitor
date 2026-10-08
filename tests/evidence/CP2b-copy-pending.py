@@ -4,7 +4,7 @@
 
 住址：`<仓根>/tests/evidence/CP2b-copy-pending.py`
 待办表：`<仓根>/tests/evidence/CP2b-copy-pending.tsv`（一行一个文件 ＋ 一句理由）
-挂进 `npm test`：`tests/copy/copy-pending.vitest.ts`
+挂进 `npm test`：`tests/copy/copy-ledgers.vitest.ts`（经 `CP-copy-judges.py`，与 CP1 · CP2c 共用一趟普查）
 
 要求住址（逐字）：
   · 「**所有对外文案与报错都从一张表来**（结构化的 key → 文本，插值点留在表里）」；
@@ -93,9 +93,11 @@ def load_cp1():
 CP2C_SCOPE = ("src/backend/", "src/common/")
 
 
-def outward_literals(cp1, src_root: Path | None = None, ledger: Path | None = None):
-    """→ [dict(file, line, text, from)]：今天源码里全部对外字面量（CP2c 那两棵除外）。"""
-    return [x for x in _outward_literals_all(cp1, src_root, ledger) if not _in_cp2c_scope(x["file"])]
+def outward_literals(cp1, src_root: Path | None = None, ledger: Path | None = None, census=None):
+    """→ [dict(file, line, text, from)]：今天源码里全部对外字面量（CP2c 那两棵除外）。
+
+    `census`：调用方已经扫过真树、`scan` 只算一次的那份普查（`CP-copy-judges.py` 三条判据共用一趟）；不给就现载一份。"""
+    return [x for x in _outward_literals_all(cp1, src_root, ledger, census) if not _in_cp2c_scope(x["file"])]
 
 
 def _in_cp2c_scope(rel: str) -> bool:
@@ -106,13 +108,16 @@ def _in_cp2c_scope(rel: str) -> bool:
     return rel.startswith(CP2C_SCOPE)
 
 
-def _outward_literals_all(cp1, src_root: Path | None = None, ledger: Path | None = None):
-    census = cp1.load_census()
+def _outward_literals_all(cp1, src_root: Path | None = None, ledger: Path | None = None, census=None):
+    shared = census is not None
+    if not shared:
+        census = cp1.load_census()
     if src_root is not None:
         census.SRC_ROOT = src_root
     scanned = census.scan(census.SRC_ROOT)
     _f, _l, entries, _r, _en, _cc = scanned
-    census.scan = lambda _root: scanned   # doubt_band 里还要扫一遍同一份语料：用这一次的结果，不扫两遍
+    if not shared:
+        census.scan = lambda _root: scanned   # doubt_band 里还要扫一遍同一份语料：用这一次的结果，不扫两遍
     out = []
     PROBE["via_table"] = sum(1 for e in entries if e.get("via") == "table" and e["bucket"] not in census.RESERVE_BUCKETS)
     PROBE["is_copy_text"] = {t: census.is_copy_text(t) for t in PROBE_SAMPLES}
