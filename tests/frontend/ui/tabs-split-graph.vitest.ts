@@ -237,7 +237,6 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/kit/menu.ts",
     "src/frontend/ui/tab-session-state.ts", // 给 Resume 还是给换号重启 · 本机「杀死会话」占位
     "src/frontend/ui/sessions-where.ts", // 在 tmux 里那几项亮不亮、写哪个名字：问那台（`sessions-where`）
-    "src/frontend/ui/views/pane-preview.ts",
     "src/frontend/ui/keybindings/registry.ts", // 菜单项右侧现拼当前键位（在新窗口打开 N · 打开工作目录 E …）
     "src/frontend/ui/session-face.ts", // 结束确认框标题里那个会话的名字（`fullTitle`，与会话头同一份）
     "src/frontend/ui/terminal-front.ts", // 「切到终端」只在 cc-monitor 跑在 Windows 上才列（与 tab 上那颗 ↗ 同一道门）

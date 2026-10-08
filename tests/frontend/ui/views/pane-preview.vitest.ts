@@ -21,10 +21,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 const capture = vi.fn<(args: { origin: string; target: string; which: unknown }) => Promise<string>>();
 const toast = vi.fn();
 
-// 抓屏经通道问那台后端（`src/frontend/ui/terminal-reads.ts::previewText`）：
+// 抓屏经通道问那台后端（`src/frontend/ui/terminal-reads.ts::previewShot`）：
 //   本文件只关心「回包晚于关闭」这条竞态，于是把那一问整个替掉（通道那一跳的判据在 `tests/frontend/ui/terminal-reads.vitest.ts`）。
 vi.mock("../../../../src/frontend/ui/terminal-reads", () => ({
-  previewText: (origin: string, which: unknown, target: string) => capture({ origin, target, which }),
+  previewShot: (origin: string, which: unknown, target: string) =>
+    capture({ origin, target, which }).then((text) => ({ lines: text === "" ? [] : text.split("\n").map((t) => ({ text: t, spans: [] })), text, screen: "", atText: "" })),
 }));
 vi.mock("../../../../src/frontend/ui/control-said", () => ({
   saidOfControl: (e: unknown) => (e instanceof Error ? e.message : String(e)),
