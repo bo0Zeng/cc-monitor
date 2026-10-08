@@ -17,6 +17,8 @@
     "core:window:allow-set-fullscreen",
     "core:window:allow-is-fullscreen",
     "core:window:allow-close",
+    "core:window:allow-unminimize",
+    "core:window:allow-set-focus",
     "core:webview:allow-set-webview-zoom",
     "core:window:allow-hide"
   ]

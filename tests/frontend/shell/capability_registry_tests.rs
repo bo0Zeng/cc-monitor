@@ -17,6 +17,11 @@ const ALLOWED: &[(&str, &str)] = &[
     ("core:window:allow-set-fullscreen", "全屏"),
     ("core:window:allow-is-fullscreen", "查全屏状态"),
     ("core:window:allow-close", "关窗"),
+    (
+        "core:window:allow-unminimize",
+        "把窗口拉到前面那一下先还原：主窗口（点系统通知 · 设置窗跳回账号面板 · 起会话落地）与 agent 窗口（滚到派出卡）",
+    ),
+    ("core:window:allow-set-focus", "同上，还原之后给它焦点"),
     ("core:webview:allow-set-webview-zoom", "主窗口放大 / 缩小 / 还原（Ctrl+= · Ctrl+- · Ctrl+0，记住）"),
     (
         "core:window:allow-hide",
@@ -1549,5 +1554,139 @@ fn tauri_loads_capabilities_from_exactly_one_source() {
         hits.is_empty(),
         "生产源码里出现了运行期加能力（`{needle}`）：{hits:?}\n\
          ⇒ 那是第四个来源，同样不过 `ALLOWED` 那张表。"
+    );
+}
+
+/// ★ 界面里调到的窗口 / 网页视图写口，每一个都要在 `default.json` 的权限里。
+/// `core:default` 只带读的那几样（`is*` · 尺寸 · 位置 · 标题读 · 监听）；写口（最小化 · 还原 · 拉到前面 · 关 · 藏 · 改标题 · 全屏 · 缩放）
+/// 各要一格，缺了 ⇒ 调用被 ACL 静默拒绝、`.catch(() => {})` 吞掉 ⇒ 点了没反应（agent 窗口「滚到派出卡」那下
+/// `unminimize()` / `setFocus()` 就是这样：窗口不还原也不到前面）。
+///
+/// 人群：界面与通信层的 `.ts`（`src/frontend/ui/**` · `src/comms/**`），接收者 = `getCurrentWindow()` /
+/// `getCurrentWebviewWindow()` / `getCurrentWebview()` 本身，或 `const <名> = 上面三者()` 绑出来的名字；
+/// 在接收者上的每一个 `.<方法>(` 查下表。表外的方法名 ⇒ 红（新写口先查它要哪格，再登记）。
+#[test]
+fn every_window_write_the_ui_calls_is_granted() {
+    /// `(方法名, 要的权限；None = core:default 已含，读或监听)`。
+    const METHODS: &[(&str, Option<&str>)] = &[
+        ("minimize", Some("core:window:allow-minimize")),
+        ("unminimize", Some("core:window:allow-unminimize")),
+        ("setFocus", Some("core:window:allow-set-focus")),
+        ("setTitle", Some("core:window:allow-set-title")),
+        ("setFullscreen", Some("core:window:allow-set-fullscreen")),
+        ("close", Some("core:window:allow-close")),
+        ("hide", Some("core:window:allow-hide")),
+        ("destroy", Some("core:window:allow-destroy")),
+        ("setZoom", Some("core:webview:allow-set-webview-zoom")),
+        ("isFullscreen", None),
+        ("listen", None),
+        ("once", None),
+        ("onCloseRequested", None),
+        ("onFocusChanged", None),
+    ];
+    const RECEIVERS: &[&str] = &[
+        "getCurrentWindow()",
+        "getCurrentWebviewWindow()",
+        "getCurrentWebview()",
+    ];
+    fn ident(c: char) -> bool {
+        c.is_ascii_alphanumeric() || c == '_' || c == '$'
+    }
+    /// `rest` 以接收者之后的文本开头：跳过空白（含换行）找 `.方法(`。
+    fn method_after(rest: &str) -> Option<&str> {
+        let rest = rest.trim_start().strip_prefix('.')?.trim_start();
+        let end = rest.find(|c: char| !ident(c)).unwrap_or(rest.len());
+        let (name, tail) = rest.split_at(end);
+        (!name.is_empty() && tail.trim_start().starts_with('(')).then_some(name)
+    }
+    let shell = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let mut calls: Vec<(String, String)> = Vec::new();
+    for root in ["../ui", "../../comms"] {
+        for (path, ts_text) in guard_core::scan_tree_excluding(&shell.join(root), &["ts"], &[]) {
+            let file = path.display().to_string();
+            let mut names: Vec<(String, &str)> = Vec::new();
+            for r in RECEIVERS {
+                for (at, _) in ts_text.match_indices(r) {
+                    if let Some(m) = method_after(&ts_text[at + r.len()..]) {
+                        calls.push((file.clone(), m.to_string()));
+                    }
+                    // `const <名> = getCurrentWindow();`
+                    let head = ts_text[..at].trim_end();
+                    if let Some(head) = head.strip_suffix('=') {
+                        let head = head.trim_end();
+                        let start = head.rfind(|c: char| !ident(c)).map_or(0, |i| i + 1);
+                        let before = head[..start].trim_end();
+                        let kw = &before[before.rfind(|c: char| !ident(c)).map_or(0, |i| i + 1)..];
+                        if kw == "const" || kw == "let" {
+                            // 名字只在绑定所在的块里算（同一文件里别处的 `w` 可能是别的东西）：到外层 `}` 为止。
+                            let body = &ts_text[at..];
+                            let mut depth = 0i32;
+                            let end = body
+                                .char_indices()
+                                .find(|&(_, c)| {
+                                    match c {
+                                        '{' => depth += 1,
+                                        '}' => depth -= 1,
+                                        _ => {}
+                                    }
+                                    depth < 0
+                                })
+                                .map_or(body.len(), |(i, _)| i);
+                            names.push((head[start..].to_string(), &ts_text[at..at + end]));
+                        }
+                    }
+                }
+            }
+            for (n, scope) in names {
+                for (at, _) in scope.match_indices(n.as_str()) {
+                    let left_ok = scope[..at]
+                        .chars()
+                        .next_back()
+                        .is_none_or(|c| !ident(c) && c != '.');
+                    let after = &scope[at + n.len()..];
+                    let right_ok = after.chars().next().is_none_or(|c| !ident(c));
+                    if left_ok && right_ok {
+                        if let Some(m) = method_after(after) {
+                            calls.push((file.clone(), m.to_string()));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    assert!(
+        calls.iter().any(|(_, m)| m == "minimize") && calls.iter().any(|(_, m)| m == "setZoom"),
+        "最小化 / 缩放那几处一处没扫到 —— 扫描面坏了：{calls:?}"
+    );
+    let caps: serde_json::Value =
+        serde_json::from_str(&capability_json()).expect("capabilities/default.json 不是合法 JSON");
+    let granted: Vec<&str> = caps["permissions"]
+        .as_array()
+        .expect("找不到 permissions")
+        .iter()
+        .filter_map(|p| p.as_str().or_else(|| p["identifier"].as_str()))
+        .collect();
+    let mut unknown = Vec::new();
+    let mut missing = Vec::new();
+    for (file, m) in &calls {
+        match METHODS.iter().find(|(name, _)| name == m) {
+            None => unknown.push(format!("{file}: .{m}(")),
+            Some((_, Some(need))) if !granted.contains(need) => {
+                missing.push(format!("{file}: .{m}( 要 {need}"))
+            }
+            Some(_) => {}
+        }
+    }
+    unknown.sort();
+    unknown.dedup();
+    missing.sort();
+    missing.dedup();
+    assert!(
+        unknown.is_empty(),
+        "界面在窗口上调了表外的方法：{unknown:#?}\n⇒ 查它走哪个 `plugin:window|…` / `plugin:webview|…` 命令、`core:default` 含不含，登记进 METHODS"
+    );
+    assert!(
+        missing.is_empty(),
+        "界面调到的窗口写口不在权限里（会被静默拒绝，点了没反应）：{missing:#?}"
     );
 }
