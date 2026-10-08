@@ -31,6 +31,7 @@ import { toast, undoToast } from "../../src/frontend/ui/kit/toast";
 import { openDrawer } from "../../src/frontend/ui/kit/drawer";
 import { copyDetailButton, sayWithDetail } from "../../src/frontend/ui/kit/detail";
 import { formDialog } from "../../src/frontend/ui/kit/dialog";
+import { StatusMessages } from "../../src/frontend/ui/status-messages";
 
 import type { ShotsHandle } from "./fake/types";
 
@@ -353,6 +354,23 @@ async function detailToasts(): Promise<void> {
   await new Promise((r) => setTimeout(r, 300));
 }
 
+async function detailMessages(): Promise<void> {
+  document.body.append(h("h1", "g-h1", "复制详情 · 「消息」里那几条"), stage(fakeRows(6)));
+  clipboard(true);
+  toast("读取 cc-bus 无应答", "devbox", { detail: DETAIL });
+  toast("读取 cc-bus 无应答", "devbox", { detail: DETAIL.replace("14:32:07", "14:32:37") });
+  toast("已删除 devbox", "", { level: "success" });
+  const m = new StatusMessages();
+  m.el.style.position = "fixed";
+  m.el.style.left = "40px";
+  m.el.style.top = "240px";
+  document.body.appendChild(m.el);
+  m.el.querySelector<HTMLElement>('[data-role="status-messages"]')?.click();
+  await new Promise((r) => setTimeout(r, 50));
+  [...document.querySelectorAll("button")].find((b) => b.textContent === "详情")?.click();
+  await new Promise((r) => setTimeout(r, 100));
+}
+
 const scene = new URLSearchParams(location.search).get("scene") ?? "kit-overview";
 const run: Record<string, () => void | Promise<void>> = {
   "kit-overview": overview,
@@ -363,6 +381,7 @@ const run: Record<string, () => void | Promise<void>> = {
   "kit-detail": details,
   "kit-detail-dialog": detailDialog,
   "kit-detail-toast": detailToasts,
+  "kit-detail-messages": detailMessages,
 };
 window.__shots = { state: "booting", error: null, unhandled: [], layout: [] } satisfies ShotsHandle;
 Promise.resolve(run[scene]?.())
