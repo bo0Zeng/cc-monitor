@@ -18,12 +18,15 @@ fn agent_of(args: &Value) -> &str {
 }
 
 /// `session-new`。
-pub(crate) fn answer(args: &Value) -> Result<Value, session_new::Failed> {
+pub(crate) fn answer(
+    args: &Value,
+    files: super::launch_face::Files,
+) -> Result<Value, session_new::Failed> {
     let home = crate::observe::history_query::agent_home();
     let fork =
         |sid: &str, uuid: &str| crate::control::fork_write::fork_for_launch(&home, sid, uuid);
     let user_home = crate::platform::paths::home_dir();
-    super::session_batch_face::with_deps_as(None, agent_of(args), |d| {
+    super::session_batch_face::with_deps_as(None, agent_of(args), Some(files), |d| {
         session_new::answer(args, d, &fork, user_home.as_deref())
     })
 }
@@ -31,7 +34,7 @@ pub(crate) fn answer(args: &Value) -> Result<Value, session_new::Failed> {
 /// `session-new-dir`：`{cwd, forkOf?}` ⇒ `{exists, tmuxName}`。
 pub(crate) fn dir(args: &Value) -> Answer {
     let user_home = crate::platform::paths::home_dir();
-    super::session_batch_face::with_deps_as(None, "", |d| {
+    super::session_batch_face::with_deps_as(None, "", None, |d| {
         session_new::dir_answer(args, d, user_home.as_deref())
     })
 }

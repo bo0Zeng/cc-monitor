@@ -153,6 +153,83 @@ fn render(value: &Value, indent: Option<&str>) -> Result<String, String> {
 
 /// 顶层键 `key` 的值换成 `value`（不在就补在最后一个成员之后）。原文不是 JSON 对象 / 那个键出现了不止一次 ⇒ `Err`、不出新原文。
 pub(crate) fn set_top_key(text: &str, key: &str, value: &Value) -> Result<String, String> {
+    let out = splice_top(text, key, value)?;
+    verify(text, &out, key, value)?;
+    Ok(out)
+}
+
+/// 一组「沿这条键路放上这个值」，按序做完、末了核一次：新原文解得开，且恰等于原文解开之后照样放上这几格 ——
+/// 不对就不交出去。沿途的对象原样留着（键序与排版不动），只换最后那一格的值；最后那一格不在 ⇒ 补在那一层末尾；
+/// 沿途某一层不在 ⇒ 从那一层起补一个只含这条路的对象。沿途某一层不是对象 / 某个键出现了不止一次 ⇒ `Err`。
+pub(crate) fn set_paths(text: &str, edits: &[(Vec<String>, Value)]) -> Result<String, String> {
+    let mut out = text.to_string();
+    for (path, v) in edits {
+        out = splice_path(&out, path, v)?;
+    }
+    let parse = |t: &str| serde_json::from_str::<Value>(t.trim_start_matches('\u{feff}')).ok();
+    let failed = || copy_text("beAcctJsonKey.verify.failed", &[]);
+    let mut want = parse(text).ok_or_else(failed)?;
+    for (path, v) in edits {
+        put_at(&mut want, path, v.clone()).ok_or_else(failed)?;
+    }
+    if parse(&out).as_ref() != Some(&want) {
+        return Err(failed());
+    }
+    Ok(out)
+}
+
+/// 在解开的值上沿键路放上 `v`（沿途缺的层补成空对象）；沿途某一层不是对象 ⇒ `None`。
+fn put_at(root: &mut Value, path: &[String], v: Value) -> Option<()> {
+    let (last, lead) = path.split_last()?;
+    let mut at = root;
+    for k in lead {
+        at = at
+            .as_object_mut()?
+            .entry(k.clone())
+            .or_insert_with(|| Value::Object(Default::default()));
+    }
+    at.as_object_mut()?.insert(last.clone(), v);
+    Some(())
+}
+
+/// 沿 `path` 往下找到那一层对象的原文片段，换它里面那一格（不核；核在 [`set_paths`] 末了）。
+fn splice_path(text: &str, path: &[String], value: &Value) -> Result<String, String> {
+    let (first, rest) = path.split_first().ok_or_else(bad)?;
+    if rest.is_empty() {
+        return splice_top(text, first, value);
+    }
+    let top = scan(text)?;
+    let hits: Vec<&Member> = top
+        .members
+        .iter()
+        .filter(|(k, _)| k == first)
+        .map(|(_, m)| m)
+        .collect();
+    match hits.as_slice() {
+        [m] => {
+            let (vs, ve) = m.value;
+            let inner = &text[vs..ve];
+            if !inner.starts_with('{') {
+                return Err(bad());
+            }
+            let inner = splice_path(inner, rest, value)?;
+            Ok(format!("{}{inner}{}", &text[..vs], &text[ve..]))
+        }
+        [] => {
+            let mut nested = value.clone();
+            for k in rest.iter().rev() {
+                let mut m = serde_json::Map::new();
+                m.insert(k.clone(), nested);
+                nested = Value::Object(m);
+            }
+            splice_top(text, first, &nested)
+        }
+        _ => Err(copy_text("beAcctJsonKey.parse.duplicate", &[])),
+    }
+}
+
+/// [`set_top_key`] 换字节的那一半（不核）。
+fn splice_top(text: &str, key: &str, value: &Value) -> Result<String, String> {
     let top = scan(text)?;
     let hits: Vec<&Member> = top
         .members
@@ -187,7 +264,6 @@ pub(crate) fn set_top_key(text: &str, key: &str, value: &Value) -> Result<String
         },
         _ => return Err(copy_text("beAcctJsonKey.parse.duplicate", &[])),
     };
-    verify(text, &out, key, value)?;
     Ok(out)
 }
 

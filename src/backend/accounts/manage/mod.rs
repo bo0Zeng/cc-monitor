@@ -14,7 +14,9 @@
 //! | [`mcp_share`] | 各号共用的用户级 MCP：共享集合 ＋ 底 ＋ 各号此刻 ⇒ 计划（三方对照）| 纯 |
 //! | [`json_key`] | 一份 JSON 原文里只换顶层一个键的值，别的字节不动 | 纯 |
 //! | [`mcp_share_exec`] | 读各号与共享集合 → 算 → 备份 → CAS 写那一个键 → 写回共享集合 | 写 |
-//! | [`mcp_share_watch`] | 常驻后端里盯各号配置文件的文件事件，一有动静同步一趟（不轮询）| 起线程 |
+//! | [`trust_share`] | 信任过的目录：一份配置里有哪些 · 把几个目录标成信任过（只换那一格）| 纯 |
+//! | [`trust_share_exec`] | 各号（＋ 家目录下那一份，只读）信任过的并集标进每个号 · 起会话前给要用的号预标 | 写 |
+//! | [`mcp_share_watch`] | 常驻后端里盯各号配置文件的文件事件，一有动静同步一趟 MCP 与信任（不轮询）| 起线程 |
 //! | [`wire`] | 入参严格收 → 快照 → 计划 → 预演或执行 | 经上面几块 |
 //!
 //! 平台差异（符号链接 · 权限位 · 这台做不做得了多账号）只在 `platform::acct_view`。
@@ -30,5 +32,7 @@ pub(crate) mod mcp_share_exec;
 pub(crate) mod mcp_share_watch;
 pub(crate) mod model;
 pub(crate) mod scan;
+pub(crate) mod trust_share;
+pub(crate) mod trust_share_exec;
 pub(crate) mod verify;
 pub(crate) mod wire;

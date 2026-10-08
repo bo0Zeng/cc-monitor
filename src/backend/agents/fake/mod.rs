@@ -396,8 +396,16 @@ fn accounts_face(account_env: &'static str) -> crate::agents::AccountsFace {
             settings_may_set_base_url: |_, _, _| false,
         },
         trust_in: trust_line,
+        trust: Some(TRUST_CELLS),
     }
 }
+
+/// 信任那一格：`fake-config.json` → `trusted[<目录>] = true`（目录那一项本身就是那个布尔；键原样）。
+pub(crate) const TRUST_CELLS: crate::agents::TrustCells = crate::agents::TrustCells {
+    table: "trusted",
+    flag: None,
+    dir_key: |cwd| cwd.to_string(),
+};
 
 /// [`trust_of_config`] 说成账号库面那一形（`{trusted, known, error}` 一行；读不了 ⇒ `(码, 原话)`）。
 fn trust_line(root: &Path, cwd: &str) -> Result<String, (String, String)> {

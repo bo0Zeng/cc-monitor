@@ -58,6 +58,8 @@ struct Rig {
     fork_name: Option<&'static str>,
     /// 此刻持着某个 sid 的活进程（替身的 pidfile）。
     live: Vec<(&'static str, u32)>,
+    /// 预标信任那几下：`pretrust <号目录> <工作目录> @<此前已交的 ccm 数>/<此前已键入的数>`。
+    marks: RefCell<Vec<String>>,
 }
 
 impl Rig {
@@ -73,6 +75,7 @@ impl Rig {
             cwd_name: "proj-cc-2",
             fork_name: None,
             live: vec![],
+            marks: RefCell::new(vec![]),
         }
     }
     fn run<T>(&self, f: impl FnOnce(&Deps) -> T) -> T {
@@ -128,6 +131,16 @@ impl Rig {
                 .map(|(_, p)| *p)
                 .collect()
         };
+        let pretrust = |dir: &str, cwd: &str| {
+            let at = format!(
+                "{}/{}",
+                self.ccm.borrow().len(),
+                self.launched.borrow().len()
+            );
+            self.marks
+                .borrow_mut()
+                .push(format!("pretrust {dir} {cwd} @{at}"));
+        };
         with_accounts(|accounts| {
             f(&Deps {
                 list: &list,
@@ -144,6 +157,7 @@ impl Rig {
                 },
                 accounts,
                 writers: &writers,
+                pretrust: &pretrust,
             })
         })
     }
@@ -541,6 +555,7 @@ fn the_first_stuck_item_spends_the_batch_total_and_the_rest_time_out_on_their_ow
             last: &|_| None,
         },
         writers: &|_| Vec::new(),
+        pretrust: &|_, _| {},
     };
     let sids: Vec<String> = [A, B, C].map(str::to_string).to_vec();
     let t0 = std::time::Instant::now();
@@ -728,5 +743,54 @@ fn fresh_terminal_and_fork_of_are_checked() {
             .run(|d| start(&batch("tmux", false, vec![bad.clone()]), d))
             .unwrap_err();
         assert_eq!(code, "bad_args", "{bad}");
+    }
+}
+
+/// 起之前预标信任：用账号库里的号起的每一种起法（tmux 新建 · tmux 空终端就地键入 · 本机开窗 · 远端开窗），
+/// 都在交 ccm / 键入之前把工作目录标进那个号；没起的（在跑 · 已有活进程在写）与账号 0 一个都不标。
+#[test]
+fn every_start_marks_the_cwd_trusted_in_its_account_before_it_starts() {
+    let acct = json!({ "kind": "named", "name": "work" });
+    let mut rig = Rig::new(Some(vec![
+        row("a-cc", Some(A), true),  // 在跑 ⇒ 不起
+        row("b-cc", Some(B), false), // 空 tmux ⇒ 就地键入
+    ]));
+    rig.live = vec![("dddddddd-1111-2222-3333-444444444444", 9)];
+    let d = "dddddddd-1111-2222-3333-444444444444";
+    let args = batch(
+        "tmux",
+        false,
+        vec![
+            item(A, acct.clone()),
+            item(B, acct.clone()),
+            item(C, acct.clone()),
+            item(d, acct.clone()),
+            json!({ "sid": "eeeeeeee-1111-2222-3333-444444444444", "cwd": "/w/base", "account": { "kind": "base" } }),
+        ],
+    );
+    rig.run(|deps| start(&args, deps)).unwrap();
+    assert_eq!(
+        *rig.marks.borrow(),
+        vec![
+            "pretrust /h/.cc/work /w/proj @0/0".to_string(),
+            "pretrust /h/.cc/work /w/proj @0/1".to_string(),
+        ],
+        "B 键入之前 · C 交 ccm 之前各标一次；A 在跑 · D 有活进程 · 账号 0 不标"
+    );
+    assert_eq!(
+        (rig.ccm.borrow().len(), rig.launched.borrow().len()),
+        (2, 1)
+    );
+
+    for local in [true, false] {
+        let rig = Rig::new(None);
+        let args = batch("window", local, vec![item(A, acct.clone())]);
+        let out = rig.run(|deps| start(&args, deps)).unwrap();
+        assert_eq!(out["results"][0]["outcome"], "done");
+        assert_eq!(
+            *rig.marks.borrow(),
+            vec!["pretrust /h/.cc/work /w/proj @0/0".to_string()],
+            "开窗（local={local}）交回那一行之前标"
+        );
     }
 }

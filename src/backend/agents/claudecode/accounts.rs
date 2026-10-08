@@ -3,7 +3,7 @@
 //! ⚠ 只装 Claude Code 自己的布局与格式。**账号清单（manifest）与配置目录白名单不在这里** ——
 //! 那是账号库的格式（`accounts/manage/model.rs` 读写、`observe/accounts_query.rs` 只读）。
 
-use crate::agents::{AccountsFace, IdentityCell, IdentityClass, IdentityRoot};
+use crate::agents::{AccountsFace, IdentityCell, IdentityClass, IdentityRoot, TrustCells};
 use crate::common::fs::read_regular_capped;
 use std::path::Path;
 
@@ -73,7 +73,27 @@ pub(crate) const FACE: AccountsFace = AccountsFace {
     watched: &[super::paths::SESSIONS_DIR, super::paths::PROJECTS_DIR],
     session_env: super::paths::SESSION_ENV_KEYS,
     trust_in: |root, cwd| trust_of_config(&config_path_in(root), cwd),
+    trust: Some(TRUST_CELLS),
 };
+
+/// `.claude.json` 里信任记在 `projects[<目录>].hasTrustDialogAccepted`。
+pub(crate) const TRUST_CELLS: TrustCells = TrustCells {
+    table: "projects",
+    flag: Some("hasTrustDialogAccepted"),
+    dir_key: trust_dir_key,
+};
+
+/// Claude 记项目用的那个键：进程的工作目录（POSIX 上是解开符号链接之后的那一形；Windows 上分隔符换成 `/`）。
+/// 目录此刻解不开（不在）⇒ 原样。
+pub(crate) fn trust_dir_key(cwd: &str) -> String {
+    if cfg!(windows) {
+        return cwd.replace('\\', "/");
+    }
+    std::fs::canonicalize(cwd)
+        .ok()
+        .and_then(|p| p.to_str().map(str::to_string))
+        .unwrap_or_else(|| cwd.to_string())
+}
 
 /// 没设 `CLAUDE_CONFIG_DIR` 时的配置根（家目录下），也就是各号链回去的那个共享库。
 pub(crate) fn shared_root_in(home: &Path) -> std::path::PathBuf {

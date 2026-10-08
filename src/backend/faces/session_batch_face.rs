@@ -6,23 +6,30 @@
 //! 谁在写 = 这台 pidfile 里持着那个 sid 的活进程（`observe::accounts_query::session_writers`）。
 
 use crate::control::session_batch::{self as batch, Deps, TmuxEntry};
+use crate::faces::launch_face::{pretrust_with, Files};
 use serde_json::Value;
 
 type Answer = Result<Value, (&'static str, String)>;
 
 /// `client` ＝ 请求自报的前端（`args.client`，「哪个前端的会话」那一维）：杀与就地键入都带它过门。
-fn with_deps(args: &Value, f: impl FnOnce(&Deps) -> Answer) -> Answer {
+fn with_deps(args: &Value, files: Option<Files>, f: impl FnOnce(&Deps) -> Answer) -> Answer {
     let client = crate::control::gate::requester_of(args)?;
     // 批量起说是哪一家（整批一格）；停 / 问样子用不着挑号。
     let agent = args
         .get("agent")
         .and_then(Value::as_str)
         .unwrap_or_default();
-    with_deps_as(client.as_deref(), agent, f)
+    with_deps_as(client.as_deref(), agent, files, f)
 }
 
 /// 同 [`with_deps`]，前端与那一家已经取好（换号重启每一步在自己的阻塞线程上各拼一份）。
-pub(crate) fn with_deps_as<T>(client: Option<&str>, agent: &str, f: impl FnOnce(&Deps) -> T) -> T {
+/// `files` ＝ 起之前预标信任经它写；`None` ＝ 这一趟不起会话（问样子 · 停 · 核目录）。
+pub(crate) fn with_deps_as<T>(
+    client: Option<&str>,
+    agent: &str,
+    files: Option<Files>,
+    f: impl FnOnce(&Deps) -> T,
+) -> T {
     let list = tmux_rows;
     let record = |sid: &str, dir: Option<&str>| -> Result<(bool, String), String> {
         crate::observe::history_query::record_for(
@@ -61,6 +68,7 @@ pub(crate) fn with_deps_as<T>(client: Option<&str>, agent: &str, f: impl FnOnce(
             sid,
         )
     };
+    let pretrust = |dir: &str, cwd: &str| pretrust_with(files, agent, dir, cwd);
     let caps = crate::ccm_launcher_with(crate::TMUX_PLATFORM)
         .into_iter()
         .map(str::to_string)
@@ -77,6 +85,7 @@ pub(crate) fn with_deps_as<T>(client: Option<&str>, agent: &str, f: impl FnOnce(
             local_facts: crate::control::launch_render::local::Facts::PRODUCTION,
             accounts,
             writers: &writers,
+            pretrust: &pretrust,
         })
     })
 }
@@ -98,15 +107,15 @@ pub(crate) fn tmux_rows() -> Result<Option<Vec<TmuxEntry>>, String> {
 
 /// `sessions-where`：`{sids}` ⇒ 每个的样子（菜单就绪时问）。
 pub(crate) fn where_(args: &Value) -> Answer {
-    with_deps(args, |d| batch::where_(args, d))
+    with_deps(args, None, |d| batch::where_(args, d))
 }
 
 /// `sessions-stop`：`{sids}` ⇒ `{results}`。
 pub(crate) fn stop(args: &Value) -> Answer {
-    with_deps(args, |d| batch::stop(args, d))
+    with_deps(args, None, |d| batch::stop(args, d))
 }
 
 /// `sessions-start`：`{mode, local, items}` ⇒ `{results}`。
-pub(crate) fn start(args: &Value) -> Answer {
-    with_deps(args, |d| batch::start(args, d))
+pub(crate) fn start(args: &Value, files: Files) -> Answer {
+    with_deps(args, Some(files), |d| batch::start(args, d))
 }
