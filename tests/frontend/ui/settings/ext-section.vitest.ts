@@ -110,8 +110,8 @@ describe("扩展页：表 · 抽屉 · 确认卡", () => {
     const noted = row("skill", "noted", [here, demoMissing], { note: "我写的" });
     const s = await page([listWith(demoMissing, [noted])]);
     expect(dots(s, "demo")).toEqual([
-      ["●", `${copyText("extPage.machine.here")}：${copyText("extPage.state.same")}`],
-      ["○", `laptop：${copyText("extPage.state.missing")}`],
+      ["●", copyText("extPage.dot.title", { machine: copyText("extPage.machine.here"), state: copyText("extPage.state.same") })],
+      ["○", copyText("extPage.dot.title", { machine: "laptop", state: copyText("extPage.state.missing") })],
     ]);
     const rows = () => [...s.element.querySelectorAll(".ext-row")].map((r) => r.getAttribute("data-key"));
     expect(rows()).toEqual(["skill/demo", "mcp/fs", "skill/noted"]);

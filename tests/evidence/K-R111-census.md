@@ -154,7 +154,7 @@
 | `probe_ccm_cli` | `ccm_probe.rs:250` | 一条常量 SSH 串 `CCM_PROBE_CMD`（`command -v ccm` 门控 + `NO_CCM` 哨兵） | 同上；而且这整个探针形态是 `R64` 的病灶（用户逐字「不存在什么没装 ccm 装了后端的情况」）⇒ 要连「有后端 ⟺ 有 ccm」一起处置 |
 | `resume_history_session` | `launch.rs:290`（`launch_local_posix_via`） | 本机 POSIX：渲染出命令后 `Command::new(终端)` 直接 spawn，**不绕 IPC** | 后端**有**对侧（`--launch` / 帧 `launch` / `--oneshot-session`），但 `launch_wire` 头注逐字「POSIX 本机那条路住在 Rust 里，**不必绕一圈 IPC 问自己** ⇒ 这是**路由事实**，不是禁令」⇒ **先要一句产品判断**：`K28` 裁定二要不要吃掉这条捷径 |
 | `new_local_session` | 同上 | 同上 | 同上 |
-| `launch_remote_terminal` | `launch.rs:500`（`launch_powershell_window`） | 拉一个真终端窗口（`wt.exe`/`powershell.exe`；POSIX 臂回 `POSIX_NO_TERMINAL_WINDOW` 让用户自己粘） | 与 `terminal.focus`（`K-R107` 判 **B4 要用户裁**）**是同一件事**：`K28` 裁定二说调出终端该找本地后端，而本机后端今天是 headless、**没有窗口原语**（26+10 条里零窗口原语）⇒ 缺一条产品判断 |
+| `launch_remote_terminal` | `launch.rs:500`（`launch_powershell_window`） | 拉一个真终端窗口（`wt.exe`/`powershell.exe`；POSIX 臂回「不开窗」结局 `TerminalOpen::NoWindow` 让用户自己粘） | 与 `terminal.focus`（`K-R107` 判 **B4 要用户裁**）**是同一件事**：`K28` 裁定二说调出终端该找本地后端，而本机后端今天是 headless、**没有窗口原语**（26+10 条里零窗口原语）⇒ 缺一条产品判断 |
 | `relay_routing_for` | `history.rs:1968`（`relay_rows_at`） | `fs::read_to_string` 读 `~/.claude/work/<creds 文件>`，解析出账号 id 列表；再问 `local_daemon::relay_running`（monitor 自己起没起中转） | 后端 `relay/creds.rs` 读**同一份文件**，但**没有一条子命令把「今天路由表里有哪几行」答出来**；而这份文件住在 **monitor 自己的数据目录**里 ⇒ 归属本身要一句话（`K28` 裁定一「自己的配置」vs 裁定二「一切对外经后端」） |
 
 ---

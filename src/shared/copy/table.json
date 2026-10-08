@@ -1501,13 +1501,13 @@
     "beSessionRestart.locate.notInTerminal": {
       "kind": "error",
       "role": "原因格",
-      "zh": "{sid}：无运行中的终端",
+      "zh": "{sid} 无运行中的终端",
       "args": ["sid"]
     },
     "beSessionRestart.locate.ambiguous": {
       "kind": "error",
       "role": "报错",
-      "zh": "多个终端运行同一会话：{names}",
+      "zh": "多个终端运行同一会话 · {names}",
       "args": ["names"]
     },
     "beSessionRestart.live.before": {
@@ -2092,7 +2092,7 @@
     "liveCard.state.streaming": {
       "kind": "body",
       "role": "状态",
-      "zh": "生成中…",
+      "zh": "生成中",
       "args": []
     },
     "liveCard.state.awaitingRecord": {
@@ -2104,7 +2104,7 @@
     "liveCard.block.thinking": {
       "kind": "body",
       "role": "片段",
-      "zh": "思考中…",
+      "zh": "思考中",
       "args": []
     },
     "liveCard.block.toolUse": {
@@ -2321,7 +2321,7 @@
     "tmuxControl.kill.listSep": {
       "kind": "body",
       "role": "片段",
-      "zh": "、",
+      "zh": " · ",
       "args": []
     },
     "tmuxControl.kill.busRemoved": {
@@ -2808,7 +2808,7 @@
     "gridMonitor.renderPeek.filesHead": {
       "kind": "title",
       "role": "标题",
-      "zh": "改过的文件（{recentFilesCount}）",
+      "zh": "改过的文件 {recentFilesCount}",
       "args": ["recentFilesCount"]
     },
     "gridMonitor.renderPeek.agentsHead": {
@@ -3102,7 +3102,7 @@
     "cards.remoteFile.open": {
       "kind": "action",
       "role": "按钮",
-      "zh": "📂 在文件窗口打开：{path}",
+      "zh": "在文件窗口打开 {path}",
       "args": ["path"]
     },
     "cards.renderBlock.unknownBlock": {
@@ -3537,7 +3537,7 @@
     "interactive.ask.multi": {
       "kind": "body",
       "role": "说明",
-      "zh": "{question}（可多选）",
+      "zh": "{question} · 可多选",
       "args": ["question"]
     },
     "interactive.ask.title": {
@@ -3663,13 +3663,13 @@
     "behaviorToggle.autoFollow.on": {
       "kind": "body",
       "role": "片段",
-      "zh": "自动跟随：开",
+      "zh": "自动跟随 · 开",
       "args": []
     },
     "behaviorToggle.autoFollow.off": {
       "kind": "body",
       "role": "片段",
-      "zh": "自动跟随：关",
+      "zh": "自动跟随 · 关",
       "args": []
     },
     "behaviorToggle.bringFront.on": {
@@ -4062,7 +4062,7 @@
     "launchRender.refused.onMachine": {
       "kind": "error",
       "role": "报错",
-      "zh": "{machine}：{said}",
+      "zh": "{machine} · {said}",
       "args": ["machine", "said"]
     },
     "remoteLaunchRun.renderCli.noReason": {
@@ -4464,7 +4464,7 @@
     "tabBatch.why.alreadyLive": {
       "kind": "error",
       "role": "报错",
-      "zh": "{machine}：已有进程在写此会话（pid {pids}），未起",
+      "zh": "{machine} · 已有进程在写会话 · pid {pids} · 未新建",
       "args": ["machine", "pids"]
     },
     "tabBatch.why.recordGone": {
@@ -5287,7 +5287,7 @@
     "agentsPanel.row.last": {
       "kind": "body",
       "role": "片段",
-      "zh": "最近：{last}",
+      "zh": "最近 {last}",
       "args": ["last"]
     },
     "branchButton.attachBranchButton.icon": {
@@ -5420,7 +5420,7 @@
     "pasteBlock.buildPasteBlock.target": {
       "kind": "body",
       "role": "片段",
-      "zh": "贴到：{target}",
+      "zh": "贴到  {target}",
       "args": ["target"]
     },
     "remoteConfig.remoteConfigUnrecognized.unrecognized": {
@@ -5438,7 +5438,7 @@
     "remoteHealth.head.notice": {
       "kind": "body",
       "role": "片段",
-      "zh": "⚠ 远端提示",
+      "zh": "远端提示",
       "args": []
     },
     "remoteHealth.head.notDeployed": {
@@ -5770,7 +5770,7 @@
     "machineAliases.openRc.failedBody": {
       "kind": "error",
       "role": "报错",
-      "zh": "{e}\n路径：{path}",
+      "zh": "{e}\n路径  {path}",
       "args": ["e", "path"]
     },
     "machineAliases.openRc.failed": {
@@ -6453,13 +6453,13 @@
     "profilesPage.clash.renameHint": {
       "kind": "body",
       "role": "说明",
-      "zh": "比如把 {name} 改成 c{name}，两边都能用。",
+      "zh": "如 {name} 改成 c{name} · 两边都可用",
       "args": ["name"]
     },
     "profilesPage.clash.title": {
       "kind": "title",
       "role": "标题",
-      "zh": "{names}：{path} 第 {lines} 行有同名定义 · 生效：{now}",
+      "zh": "{names} · {path} 行 {lines} 有同名定义 · 生效 {now}",
       "args": ["names", "path", "lines", "now"]
     },
     "profilesPage.clash.useList": {
@@ -6495,7 +6495,7 @@
     "profilesPage.file.at": {
       "kind": "error",
       "role": "报错",
-      "zh": "第 {line} 行：{e}",
+      "zh": "行 {line} · {e}",
       "args": ["line", "e"]
     },
     "profilesPage.file.broken": {
@@ -6555,7 +6555,7 @@
     "profilesPage.form.chain": {
       "kind": "body",
       "role": "说明",
-      "zh": "ccm @{name} ＝ {chain} 合下来",
+      "zh": "ccm @{name} = {chain} 合并",
       "args": ["name", "chain"],
       "limited": ["ccm"]
     },
@@ -6902,7 +6902,7 @@
     "profilesPage.open.failedBody": {
       "kind": "error",
       "role": "报错",
-      "zh": "{path}：{e}",
+      "zh": "{path} · {e}",
       "args": ["e", "path"]
     },
     "profilesPage.read.failed": {
@@ -7222,25 +7222,25 @@
     "readiness.gaps.blocking": {
       "kind": "body",
       "role": "片段",
-      "zh": "必需：{parts}",
+      "zh": "必需 {parts}",
       "args": ["parts"]
     },
     "readiness.gaps.optional": {
       "kind": "body",
       "role": "片段",
-      "zh": "可选：{parts}",
+      "zh": "可选 {parts}",
       "args": ["parts"]
     },
     "readiness.gaps.groupSep": {
       "kind": "body",
       "role": "片段",
-      "zh": "；",
+      "zh": " · ",
       "args": []
     },
     "readiness.gaps.sep": {
       "kind": "body",
       "role": "片段",
-      "zh": "，",
+      "zh": " · ",
       "args": []
     },
     "readiness.gaps.unknown": {
@@ -7300,7 +7300,7 @@
     "unknownKeysNotice.unknownKeysMessage.listSep": {
       "kind": "body",
       "role": "片段",
-      "zh": "、",
+      "zh": " · ",
       "args": []
     },
     "router.ctor.ariaLabel": {
@@ -7512,7 +7512,7 @@
     "machineCard.test.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "测试失败：{e}",
+      "zh": "测试失败 · {e}",
       "args": ["e"]
     },
     "machineCard.test.silent": {
@@ -8218,7 +8218,7 @@
     "settingsPanel.close.saveFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "保存失败：{e}",
+      "zh": "保存失败 · {e}",
       "args": ["e"]
     },
     "settingsPanel.behavior.hiddenTasks": {
@@ -8494,7 +8494,7 @@
     "settingsPanel.field.fontSize": {
       "kind": "control",
       "role": "标签",
-      "zh": "基础字号 (px)",
+      "zh": "基础字号（px）",
       "args": []
     },
     "settingsPanel.field.fontSizeRange": {
@@ -8641,7 +8641,7 @@
     "ccBus.loadInbox.reading": {
       "kind": "body",
       "role": "片段",
-      "zh": "读取中…",
+      "zh": "读取中",
       "args": []
     },
     "ccBus.check.failed": {
@@ -8665,7 +8665,7 @@
     "ccBus.check.running": {
       "kind": "body",
       "role": "进度",
-      "zh": "检查中…",
+      "zh": "检查中",
       "args": []
     },
     "ccBus.row.killHint": {
@@ -8785,19 +8785,19 @@
     "ccBus.reload.reading": {
       "kind": "body",
       "role": "片段",
-      "zh": "读取中…",
+      "zh": "读取中",
       "args": []
     },
     "ccBus.spawn.accountNamed": {
       "kind": "control",
       "role": "标签",
-      "zh": "账号：{n}",
+      "zh": "账号 {n}",
       "args": ["n"]
     },
     "ccBus.spawn.accountNone": {
       "kind": "control",
       "role": "标签",
-      "zh": "账号：不指定",
+      "zh": "账号 不指定",
       "args": []
     },
     "ccBus.machine.noRemote": {
@@ -8922,7 +8922,7 @@
     "remote.save.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "保存失败：{e}",
+      "zh": "保存失败 · {e}",
       "args": ["e"]
     },
     "remote.save.done": {
@@ -9505,7 +9505,7 @@
     "backend.log.head": {
       "kind": "body",
       "role": "片段",
-      "zh": "{path}（{size}）",
+      "zh": "{path} · {size}",
       "args": ["path", "size"]
     },
     "backend.log.truncated": {
@@ -9535,7 +9535,7 @@
     "backend.buildCells.querying": {
       "kind": "body",
       "role": "片段",
-      "zh": "查询中…",
+      "zh": "查询中",
       "args": []
     },
     "backend.machine.local": {
@@ -9835,7 +9835,7 @@
     "rsSftp.identity.listSep": {
       "kind": "body",
       "role": "片段",
-      "zh": "、",
+      "zh": " · ",
       "args": []
     },
     "rsSftp.identity.multiple": {
@@ -10094,7 +10094,7 @@
     "rsFilewinShell.copyUi.heading": {
       "kind": "body",
       "role": "片段",
-      "zh": "复制 {name} 为：",
+      "zh": "复制 {name} 为",
       "args": ["name"]
     },
     "rsFilewinShell.copy.noRuntime": {
@@ -10286,7 +10286,7 @@
     "rsFilewinSource.said.refused": {
       "kind": "error",
       "role": "原因格",
-      "zh": "被拒：{detail}",
+      "zh": "被拒 · {detail}",
       "args": ["detail"]
     },
     "rsFilewinSource.watch.localBreak": {
@@ -10514,7 +10514,7 @@
     "rsFilewinFind.round.findFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "搜索失败：{e}",
+      "zh": "搜索失败 · {e}",
       "args": ["e"]
     },
     "rsFilewinFind.round.statusFailed": {
@@ -10526,7 +10526,7 @@
     "rsFilewinFind.refusal.line": {
       "kind": "error",
       "role": "原因格",
-      "zh": "{hint}：{message}",
+      "zh": "{hint} · {message}",
       "args": ["hint", "message"]
     },
     "rsFilewinFind.refusal.other": {
@@ -10796,7 +10796,7 @@
     "beFilesWrite.name.notOne": {
       "kind": "error",
       "role": "原因格",
-      "zh": "名称不能是路径：{name}",
+      "zh": "名称不能是路径 · {name}",
       "args": ["name"]
     },
     "beFilesWrite.name.reserved": {
@@ -10808,13 +10808,13 @@
     "beFilesWrite.name.badChar": {
       "kind": "error",
       "role": "报错",
-      "zh": "名称不能含 {char}：{name}",
+      "zh": "名称不能含 {char} · {name}",
       "args": ["name", "char"]
     },
     "beFilesWrite.name.trailing": {
       "kind": "error",
       "role": "报错",
-      "zh": "名称不能以点或空格结尾：{name}",
+      "zh": "名称不能以点或空格结尾 · {name}",
       "args": ["name"]
     },
     "beFilesWrite.copy.modeFailed": {
@@ -11030,7 +11030,7 @@
     "rsFilewinSize.outcome.sep": {
       "kind": "body",
       "role": "片段",
-      "zh": "；",
+      "zh": " · ",
       "args": []
     },
     "rsFilewinShell.size.noRuntime": {
@@ -11120,7 +11120,7 @@
     "rsFilewinCopy.batch.listSep": {
       "kind": "body",
       "role": "片段",
-      "zh": "、",
+      "zh": " · ",
       "args": []
     },
     "rsFilewinCopy.batch.dirClash": {
@@ -11150,7 +11150,7 @@
     "rsFilewinCopy.outcome.batchFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "；{name} 复制失败：{why}",
+      "zh": " · {name} 复制失败 · {why}",
       "args": ["name", "why"]
     },
     "rsFilewinCopy.remote.noCount": {
@@ -11192,7 +11192,7 @@
     "rsFilewinCopy.outcome.failed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "复制失败：{e}",
+      "zh": "复制失败 · {e}",
       "args": ["e"]
     },
     "rsFilewinCopy.outcome.skipped": {
@@ -12469,7 +12469,7 @@
     "rsCcBusDeploy.win.listSep": {
       "kind": "body",
       "role": "片段",
-      "zh": "、",
+      "zh": " · ",
       "args": []
     },
     "rsCcBusDeploy.ccm.tooOld": {
@@ -12582,7 +12582,7 @@
     "rsSshLink.parse.withLine": {
       "kind": "error",
       "role": "原因格",
-      "zh": "{e}（原文 {line}）",
+      "zh": "{e} · 原文 {line}",
       "args": ["e", "line"]
     },
     "rsSshLink.dial.noReason": {
@@ -12594,13 +12594,13 @@
     "rsSshLink.parse.ackLine": {
       "kind": "error",
       "role": "报错",
-      "zh": "应答 {e}（原文 {line}）",
+      "zh": "应答 {e} · 原文 {line}",
       "args": ["e", "line"]
     },
     "rsSshLink.parse.stageLine": {
       "kind": "error",
       "role": "报错",
-      "zh": "阶段行 {e}（原文 {line}）",
+      "zh": "阶段行 {e} · 原文 {line}",
       "args": ["e", "line"]
     },
     "rsSshLink.dial.readFailed": {
@@ -13774,7 +13774,7 @@
     "newSession.fork.from": {
       "kind": "body",
       "role": "说明",
-      "zh": "分叉自「{title}」· 第 {n} 轮 {time}",
+      "zh": "分叉自「{title}」 · 轮次 {n} · {time}",
       "args": ["title", "n", "time"]
     },
     "newSession.fork.note": {
@@ -13934,14 +13934,14 @@
     "newSession.more.plain": {
       "kind": "control",
       "role": "标签",
-      "zh": "更多：tmux 会话名 · 启动命令",
+      "zh": "更多 · tmux 会话名 · 启动命令",
       "args": [],
       "limited": ["tmux"]
     },
     "newSession.more.fork": {
       "kind": "control",
       "role": "标签",
-      "zh": "更多：启动命令",
+      "zh": "更多 · 启动命令",
       "args": []
     },
     "newSession.command.placeholder": {
@@ -14268,7 +14268,7 @@
     "history.search.searching": {
       "kind": "body",
       "role": "片段",
-      "zh": "搜索中…",
+      "zh": "搜索中",
       "args": []
     },
     "history.search.summary": {
@@ -14890,7 +14890,7 @@
     "rsLocalBackendHost.dataDir.slotSep": {
       "kind": "body",
       "role": "片段",
-      "zh": "；",
+      "zh": " · ",
       "args": []
     },
     "rsLocalBackendHost.dataDir.otherDataDir": {
@@ -15166,7 +15166,7 @@
     "ccBus.broadcast.listSep": {
       "kind": "body",
       "role": "片段",
-      "zh": "、",
+      "zh": " · ",
       "args": []
     },
     "beContract.malformed.say": {
@@ -15239,7 +15239,7 @@
     "beArgv.validate.cwdIfNotPinned": {
       "kind": "error",
       "role": "命令行",
-      "zh": "--cwd-if 的第一个目录要写完整路径或以 ~ 开头：{at}",
+      "zh": "--cwd-if 的第一个目录要写完整路径或以 ~ 开头 · {at}",
       "args": ["at"]
     },
     "beArgv.validate.accountDirAndAccount": {
@@ -16509,7 +16509,7 @@
     "beAssetSync.report.errorSep": {
       "kind": "body",
       "role": "片段",
-      "zh": "；",
+      "zh": " · ",
       "args": []
     },
     "beDiscover.notInstalledMessage.placesSep": {
@@ -16788,7 +16788,7 @@
     "rsDialHost.hostKey.listSep": {
       "kind": "body",
       "role": "片段",
-      "zh": "；",
+      "zh": " · ",
       "args": []
     },
     "beFilesLink.land.failed": {
@@ -16998,7 +16998,7 @@
     "beFilesExtract.undo.at": {
       "kind": "body",
       "role": "片段",
-      "zh": "{path}：{e}",
+      "zh": "{path} · {e}",
       "args": ["path", "e"]
     },
     "rsFilewinLossyPull.note.renamed": {
@@ -17442,7 +17442,7 @@
     "beFilesWrite.put.restored": {
       "kind": "body",
       "role": "片段",
-      "zh": "原文件已恢复。",
+      "zh": " · 原文件已恢复",
       "args": []
     },
     "beFilesWrite.put.createdRemoved": {
@@ -18431,7 +18431,7 @@
     "resync.machines.ok": {
       "kind": "body",
       "role": "片段",
-      "zh": "{machine}：{said}",
+      "zh": "{machine} · {said}",
       "args": ["machine", "said"]
     },
     "resync.machines.failed": {
@@ -18602,7 +18602,7 @@
     "beSkillFlow.stopped.listSep": {
       "kind": "body",
       "role": "片段",
-      "zh": "、",
+      "zh": " · ",
       "args": []
     },
     "rsAccountAliases.dialect.notHere": {
@@ -19013,7 +19013,7 @@
     "extPage.list.sep": {
       "kind": "body",
       "role": "片段",
-      "zh": "、",
+      "zh": " · ",
       "args": []
     },
     "extPage.state.project": {
@@ -19043,7 +19043,7 @@
     "extPage.dot.title": {
       "kind": "body",
       "role": "片段",
-      "zh": "{machine}：{state}",
+      "zh": "{machine} · {state}",
       "args": ["machine", "state"]
     },
     "beExt.apply.changed": {
@@ -19259,7 +19259,7 @@
     "beExt.card.fileLead": {
       "kind": "body",
       "role": "片段",
-      "zh": "{path}：",
+      "zh": "{path}",
       "args": ["path"]
     },
     "extPage.status.loading": {
@@ -19313,7 +19313,7 @@
     "extPage.drawer.detailLine": {
       "kind": "body",
       "role": "片段",
-      "zh": "{label}：{value}",
+      "zh": "{label}  {value}",
       "args": ["label", "value"]
     },
     "rsToolRegistry.tools.projectSkillInstallWhat": {
@@ -19575,7 +19575,7 @@
     "extPage.hooks.stateLine": {
       "kind": "body",
       "role": "片段",
-      "zh": "{hook}：{state}",
+      "zh": "{hook}  {state}",
       "args": ["hook", "state"]
     },
     "extPage.hooks.installFirst": {
@@ -19600,7 +19600,7 @@
     "extPage.done.warn": {
       "kind": "body",
       "role": "toast",
-      "zh": "⚠ {said}",
+      "zh": "{said}",
       "args": ["said"]
     },
     "beExt.target.builtinUserOnly": {
@@ -19818,13 +19818,13 @@
     "accountsMcp.list.sep": {
       "kind": "body",
       "role": "片段",
-      "zh": "、",
+      "zh": " · ",
       "args": []
     },
     "beAcctFace.mcp.listSep": {
       "kind": "body",
       "role": "片段",
-      "zh": "、",
+      "zh": " · ",
       "args": []
     },
     "beExt.card.sharedDeleteHere": {
@@ -20131,7 +20131,7 @@
     "rsFilewinProps.value.size": {
       "kind": "body",
       "role": "片段",
-      "zh": "{human}（{bytes} 字节）",
+      "zh": "{human} · {bytes} 字节",
       "args": ["human", "bytes"]
     },
     "rsFilewinPreview.decide.imageKind": {
@@ -20773,19 +20773,19 @@
     "beQuotaProbe.agent.unsupported": {
       "kind": "error",
       "role": "原因格",
-      "zh": "{agent}：无用量查询",
+      "zh": "{agent} · 无用量查询",
       "args": ["agent"]
     },
     "beQuotaProbe.account.notFound": {
       "kind": "error",
       "role": "原因格",
-      "zh": "{account}：不在账号库",
+      "zh": "{account} · 不在账号库",
       "args": ["account"]
     },
     "beQuotaProbe.account.apiKey": {
       "kind": "error",
       "role": "报错",
-      "zh": "{account}：按量号，无订阅用量",
+      "zh": "{account} · 按量 · 无订阅用量",
       "args": ["account"]
     },
     "beQuotaProbe.run.failed": {
@@ -20797,7 +20797,7 @@
     "beQuotaProbe.run.exit": {
       "kind": "error",
       "role": "报错",
-      "zh": "{program} 退出码 {exit}：{said}",
+      "zh": "{program} 退出码 {exit} · {said}",
       "args": ["program", "exit", "said"]
     },
     "rsDataPaths.backend.quota": {
@@ -23122,7 +23122,7 @@
     "needs.notify.title": {
       "kind": "title",
       "role": "标题",
-      "zh": "{title}（{machine}）· {kind}",
+      "zh": "{title} · {machine} · {kind}",
       "args": ["title", "machine", "kind"]
     },
     "settingsPanel.behavior.notifyNeeds": {
@@ -24041,7 +24041,7 @@
     "machineCard.conn.more": {
       "kind": "title",
       "role": "标题",
-      "zh": "更多：备用地址 · 跳板机",
+      "zh": "更多 · 备用地址 · 跳板机",
       "args": []
     },
     "addMachine.dialog.title": {
@@ -24479,7 +24479,7 @@
     "backend.cc.driftSome": {
       "kind": "body",
       "role": "说明",
-      "zh": "会话流 {n} 种 · 已记入诊断信息 · 不影响显示",
+      "zh": "会话流 ×{n} · 已记入诊断信息 · 不影响显示",
       "args": ["n"]
     },
     "backend.cc.driftNone": {
@@ -25291,7 +25291,7 @@
     "acctPage.verify.repairBody": {
       "kind": "body",
       "role": "说明",
-      "zh": "按下面几步改账号库；改之前先备份，步骤进日志。",
+      "zh": "按下列步骤改账号库 · 先备份 · 步骤记入日志",
       "args": []
     },
     "acctPage.verify.repair": {
@@ -26260,13 +26260,13 @@
     "beProfile.value.parser": {
       "kind": "error",
       "role": "原因格",
-      "zh": "{key}：{e}",
+      "zh": "{key} · {e}",
       "args": ["e", "key"]
     },
     "beProfile.value.notPinned": {
       "kind": "error",
       "role": "报错",
-      "zh": "{key} 里的目录要以 ~ 打头或写绝对路径：{value}",
+      "zh": "{key} 的目录要以 ~ 开头或写绝对路径 · {value}",
       "args": ["key", "value"]
     },
     "beProfile.value.from": {
@@ -26474,7 +26474,7 @@
     "beProfile.at.line": {
       "kind": "error",
       "role": "原因格",
-      "zh": "第 {line} 行：{e}",
+      "zh": "行 {line} · {e}",
       "args": ["e", "line"]
     },
     "beProfile.chain.unknown": {
