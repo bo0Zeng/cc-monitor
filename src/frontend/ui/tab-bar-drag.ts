@@ -1,14 +1,11 @@
 /**
- * 〔拆 `tabs.ts` ④〕**tab 栏上的拖拽状态机**：栏内拖动排序 · 压住停留成组 / 拖进拖出组 ·
+ * tab 栏上的拖拽状态机：栏内拖动排序 · 压住停留成组 / 拖进拖出组 ·
  * 拖出右缘松手撕成独立窗口。
  *
  * 「落在哪」的算术全在 `tab-drop.ts`（纯函数，判据直接打它）；这里只管量尺寸、挂 / 摘 document 监听、
  * ghost 与落点标记、停留计时器，以及松手那一拍把「顺序 ＋ 集合归属」一次落实（顺序落盘与集合落盘走
  * `tab-bar-prefs.ts`）。还有一件与 tab 栏视图的约定：**拖拽进行中不重排 tab 栏**（`deferRefresh`），
- * 被挡下的刷新收尾时补一次（★ 6d）。
- *
- * 字段与方法逐字从 `tabs.ts` 搬来，唯一的改写：刷 tab 栏 / 在新窗口打开 两样换成 `this.host.…`，
- * `this.tabButtons` 换成本类收到的同一张按钮表 `this.buttons`，入口 `beginTabDrag` 改名 `begin`。
+ * 被挡下的刷新收尾时补一次。
  */
 import {
   groupMoveForDrop,
@@ -38,7 +35,7 @@ export class TabBarDrag {
    * Tab 撕离（tear-off）拖拽状态机。同一时刻只允许一个拖拽，整段存这里。
    * - mousedown（左键，非子动作按钮）记录起点 → 候选拖拽（dragging=false）
    * - document mousemove 越过 6px 阈值 → dragging=true，建 ghost、源 Tab 变暗
-   * - 指针拖离 tab 栏右缘（clientX > barRight + 16，F33 竖栏后为横向判定）→ armed=true（松手即弹窗）
+   * - 指针拖离竖栏右缘（clientX > barRight + 16）→ armed=true（松手即弹窗）
    * - document mouseup：armed → openInNewWindow(落点)；否则取消。两种情况都抑制后续 click
    * null = 当前无拖拽。
    */
@@ -67,11 +64,10 @@ export class TabBarDrag {
     ghost: HTMLElement | null;
     /**
      * 栏里每个 tab 的矩形，**起拖后第一次要用时量一次**，之后 mousemove 只做算术。
-     * `null` = 该量了。原先每次 mousemove 量 2N 次（停留判定与落点各一遍），而且紧挨在前面有一次写
-     * （`ghost.style.left/top`）⇒ 读前有写，每次 mousemove 都是一次强制同步布局。
+     * `null` = 该量了。每次 mousemove 都量的话，前面紧挨着一次写（`ghost.style.left/top`），每次都是一次强制同步布局。
      *
      * 什么时候会过期、过期了怎么办：
-     * - 整刷挪节点 —— 拖拽期间整刷本来就挂起（`deferRefresh`，6d）⇒ 不会发生；
+     * - 整刷挪节点 —— 拖拽期间整刷挂起（`deferRefresh`）⇒ 不会发生；
      * - tab 栏滚动（按着拖的时候转滚轮）/ 窗口尺寸变 ⇒ `onInvalidate` 置回 `null`，下一次 mousemove 重量。
      * ⚠ 被标成 `drop-onto` 的那个 tab 有 `transform: scale(1.03)`，会改它自己的 `getBoundingClientRect`；
      *   缓存量的是没放大那一刻的矩形 ⇒ 停留判定不会被自己放大后的矩形带偏。
@@ -83,7 +79,7 @@ export class TabBarDrag {
   } | null = null;
   /**
    * 此刻打着落点标记的是谁（`drop-before` / `drop-onto` 各一个）。
-   * 换标记只动**旧的与新的**那两个，不再遍历全部 N 个按钮。
+   * 换标记只动旧的与新的那两个，不遍历全部按钮。
    */
   private marked: { before: string | null; onto: string | null } = { before: null, onto: null };
   /**
@@ -213,8 +209,7 @@ export class TabBarDrag {
       d.ghost.style.top = `${e.clientY + 8}px`;
     }
 
-    // P7a-2：**纵向那根轴今天一个消费者都没有** —— arm 只看 `clientX`（见下一行）。
-    // 所以栏内重排走 `clientY`，与 tear-off 天然不争同一根轴。
+    // 栏内重排走 `clientY`，撕窗口（arm）只看 `clientX` —— 两者不争同一根轴。
     // 这里先更新停留状态，再算落点 —— 落点的 `onto` 那一支要读停留的结论。
     this.updateDwell(e.clientX, e.clientY);
     d.dropTarget = this.computeDropTarget(e.clientY);
@@ -223,7 +218,7 @@ export class TabBarDrag {
     // armed（拖出右缘）时不指示：那一路根本不重排，指一条不会发生的落点是在骗人。
     this.markDropTarget(e.clientX > d.barRight + 16 ? null : d.dropTarget);
 
-    // arm：指针拖离竖栏右缘一段距离 = 松手即弹独立窗口（F33 前是下缘判定）。
+    // arm：指针拖离竖栏右缘一段距离 = 松手即弹独立窗口。
     const armed = e.clientX > d.barRight + 16;
     if (armed !== d.armed) {
       d.armed = armed;
@@ -237,16 +232,8 @@ export class TabBarDrag {
   }
 
   /**
-   * 〔`§D.2`〕量一遍栏里每个 tab 在纵轴上占的那一段。
-   *
-   * 🔴 **`parentElement !== this.barEl` 那道过滤没了。**
-   *   `§D.2` 现打它是两个缺口之一：它把**组里的 tab 整体排除**在落点之外
-   *   ⇒ 拖不进组、也拖不出组。换成 `barEl.contains(...)`：组容器是 `barEl` 的子树，
-   *   组里的 tab 因此照常参与，而栏外的东西（撕出去的窗口等）仍然不参与。
-   *
-   * ⚠ 返回纯数据 —— 判定逻辑在 `pickDropTarget`（纯函数，判据直接打它）。
-   * 原先这里自称「顺带守住 `§3 P3`」，其实每次 mousemove 都调它两次（量 2N 次）；
-   *   「一次拖拽只量一次」现在住 `dragRects`（缓存 ＋ 滚动 / 改尺寸作废），本函数只管量。
+   * 量一遍栏里每个 tab 在纵轴上占的那一段。用 `barEl.contains(...)`：组里的 tab 照常参与（拖得进也拖得出组），栏外的东西不参与。
+   * 返回纯数据 —— 判定在 `pickDropTarget`（纯函数）；「一次拖拽只量一次」住 `dragRects`（缓存 ＋ 滚动 / 改尺寸作废）。
    */
   tabRects(): TabRect[] {
     const out: TabRect[] = [];
@@ -279,12 +266,10 @@ export class TabBarDrag {
   }
 
   /**
-   * 〔`§D.4`〕停留（dwell）判定：**压住 ≥250ms 且抖动 <4px ⇒ 切进 `onto` 态**。
+   * 停留（dwell）判定：压住 ≥ 250ms 且抖动 < 4px ⇒ 切进 `onto` 态。
+   * 用计时器，不在 `mousemove` 里数时间：指针停住之后 `mousemove` 就不来了。
    *
-   * 🔴 **必须用计时器，不能只在 `mousemove` 里数时间** —— 指针停住之后
-   *   `mousemove` 就不再来了，靠事件驱动的话「停留」永远攒不满，这个手势等于没做。
-   *
-   * 三种情况清零重来（`§D.4` 逐字「一旦移出该 tab 的矩形 **或** 移动超过 4px ⇒ 退回」）：
+   * 三种情况清零重来：
    * ① 换了压着的 tab；② 没压在任何 tab 上；③ 还在同一个上但离锚点超过 `DWELL_MOVE_PX`。
    */
   private updateDwell(clientX: number, clientY: number): void {
@@ -315,15 +300,12 @@ export class TabBarDrag {
   }
 
   /**
-   * P7a-2 D 补审：给落点那个 tab 打标（`null` = 不指示，armed 那一路用）。
-   *
-   * 〔`§D.5`〕两种态两种标：`before` 顶部一条线（原样）· `onto` 整块描边 + 轻微放大。
-   * `end` 不标（原样 —— 末尾没有可以描的对象）。
+   * 给落点那个 tab 打标（`null` = 不指示，armed 那一路用）：`before` 顶部一条线 · `onto` 整块描边 ＋ 轻微放大；`end` 不标（末尾没有可描的对象）。
    */
   private markDropTarget(target: DropTarget | null): void {
     const beforeSid = target?.kind === "before" ? target.sid : null;
     const ontoSid = target?.kind === "onto" ? target.sid : null;
-    // 只动旧的与新的那两个（原先每次 mousemove 遍历全部 N 个按钮、各 toggle 两次）。
+    // 只动旧的与新的那两个。
     const flip = (sid: string | null, cls: string, on: boolean): void => {
       if (sid !== null) this.buttons.get(sid)?.root.classList.toggle(cls, on);
     };
@@ -347,9 +329,8 @@ export class TabBarDrag {
    *   在这之前这里叫 `applyReorder`，只管顺序、`if (没变化) return` 直接结束。
    */
   applyDrop(sid: string, target: DropTarget): void {
-    // 〔「删掉树」〕只拖被按下的那一个：原先这里先算「一块」（交互 tab 连同紧跟其后的
-    //   同 `(cwd, origin)` bg 子串）再整块改顺序与归属 —— 树删了，bg tab 与普通 tab 拖法相同。
-    // ① 集合归属跟着落点宿主走（`§D.7` 的「拖出组」与「拖进组」是同一条规则的两侧）。
+    // 只拖被按下的那一个（bg tab 与普通 tab 拖法相同）。
+    // ① 集合归属跟着落点宿主走（「拖出组」与「拖进组」是同一条规则的两侧）。
     // 组员关系是 tab 自己的属性 ⇒ 只改被拖那个 tab（现建组时连落点那个）的 `group`，
     //   先改内存（下面统一重画一次），再由落盘偏好把那几条补丁一次写掉；归属没变（`stay`）⇒ 零写。
     if (this.prefs.collectionsLoaded) {
@@ -403,7 +384,7 @@ export class TabBarDrag {
     window.removeEventListener("resize", d.onInvalidate);
     // 停留计时器必须在这里清。不清的话它会在拖拽结束之后才到点，
     // 往一个已经收尾的状态上写 `onto` —— 而那时 `this.drag` 已是 null，
-    // 回调里的守卫会吞掉它，但计时器本身是条悬空引线（同 `pendingMenuTimers` 那条教训）。
+    // 回调里的守卫会吞掉它，但计时器本身是条悬空引线。
     if (d.dwellTimer !== null) window.clearTimeout(d.dwellTimer);
     d.dwellTimer = null;
     this.markDropTarget(null); // 拖拽结束必须清掉落点标记，否则它会挂在那儿
@@ -433,8 +414,7 @@ export class TabBarDrag {
     // 起过拖（无论 armed 与否）都抑制紧随的 click —— 拖完不该顺带切 Tab。
     this.suppressClickSid = sid;
     if (armed) {
-      // ★ P7a-2-Y2：撕窗口这一路**顺序一个字不动**。两件事都做的话，
-      // 用户撕出一个窗口的同时原栏的序被改了 —— 他没要求过那件事。
+      // 撕窗口这一路顺序不动：用户撕出一个窗口时没要求改原栏的序。
       void this.host.openInNewWindow(sid, e.screenX, e.screenY);
       return;
     }
