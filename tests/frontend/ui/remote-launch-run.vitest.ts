@@ -222,17 +222,21 @@ describe("失败怎么说", () => {
     expect(String(toastMock.mock.calls[0][1])).toContain(line);
   });
 
-  it("壳回「找不到终端」那个结局 ⇒ 照实说 ＋ 一颗「设置」直达那一格，命令不进剪贴板", async () => {
-    term.openTerminal.mockRejectedValue(new NoTerminalWindow());
+  it("壳回「找不到终端」那个结局 ⇒ 照实说 ＋［设置］直达那一格 ＋［复制命令］；不自动写剪贴板，点了才复制那一行", async () => {
+    term.openTerminal.mockRejectedValue(new NoTerminalWindow("ssh -t devbox -- 'ccm --resume sid-1'"));
     const writeText = vi.fn().mockResolvedValue(undefined);
     stubClipboard(writeText);
     await runRemoteResume("<local>", "claude", "sid-1", "/p", "claude");
-    expect(writeText).not.toHaveBeenCalled();
-    const [title, , opts] = toastMock.mock.calls[0] as [string, string, { action?: { label: string; run: () => void } }];
+    expect(writeText, "不许自动写剪贴板").not.toHaveBeenCalled();
+    const [title, , opts] = toastMock.mock.calls[0] as [string, string, { action?: { label: string; run: () => void }[] }];
     expect(title).toBe(copyText("terminalOpen.noTerminal.title"));
-    expect(opts.action?.label).toBe(copyText("terminalOpen.noTerminal.settings"));
-    opts.action?.run();
+    const acts = opts.action ?? [];
+    expect(acts.map((a) => a.label)).toEqual([copyText("terminalOpen.noTerminal.settings"), copyText("terminalOpen.noTerminal.copy")]);
+    acts[0].run();
     expect(settingsWin.openSettingsWindow).toHaveBeenCalledWith(null, { page: "general", anchor: "terminal" });
+    acts[1].run();
+    await Promise.resolve();
+    expect(writeText).toHaveBeenCalledWith("ssh -t devbox -- 'ccm --resume sid-1'");
   });
 
   it("按结局判、不按字判：真失败的话里就算带着「找不到终端」那一句的原文，也照样叫失败、照样复制命令", async () => {

@@ -124,7 +124,7 @@ async function invokeLaunchOrCopyFallback(
   } catch (err) {
     // 本机找不到终端：照实说、给设置入口；命令不进剪贴板（按壳回的结局判，不按那句话里的字、也不按 OS 猜）。
     if (err instanceof NoTerminalWindow) {
-      sayNoTerminal();
+      sayNoTerminal(err);
       return "unsent";
     }
     // 别的失败：复制命令让用户自己粘贴（保留 F09 语义）。

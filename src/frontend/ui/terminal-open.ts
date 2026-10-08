@@ -54,37 +54,49 @@ async function lineOf(ask: Promise<Uint8Array>): Promise<string> {
   }
 }
 
-/** 这台找不到终端（壳回 `"noWindow"`）。`message` 是给人看的那一句（说去设置里哪一格指定）；判只认类型。 */
+/** 这台找不到终端（壳回 `"noWindow"`）。`message` 是给人看的那一句（说去设置里哪一格指定）；判只认类型。
+ *  `command` 是本来要在窗口里跑的那一行（用户点［复制命令］时才进剪贴板）。 */
 export class NoTerminalWindow extends Error {
-  constructor() {
+  readonly command: string;
+  constructor(command: string) {
     super(copyText("rsLaunch.posix.noTerminalWindow"));
     this.name = "NoTerminalWindow";
+    this.command = command;
   }
 }
 
 /** 设置里指定终端的那一格（通用页 · 恢复组）。 */
 const TERMINAL_SETTING = { page: "general", anchor: "terminal" } as const;
 
-/** 找不到终端时说的那一条：照实说 ＋［设置］直达那一格（命令不进剪贴板）。 */
-export function sayNoTerminal(): void {
+/** 找不到终端时说的那一条：照实说 ＋［设置］直达那一格 ＋［复制命令］（不自动写剪贴板，用户点了才复制那一行）。 */
+export function sayNoTerminal(err: NoTerminalWindow): void {
   toast(copyText("terminalOpen.noTerminal.title"), copyText("terminalOpen.noTerminal.detail"), {
     level: "error",
-    action: { label: copyText("terminalOpen.noTerminal.settings"), run: () => void openSettingsWindow(null, TERMINAL_SETTING) },
+    action: [
+      { label: copyText("terminalOpen.noTerminal.settings"), run: () => void openSettingsWindow(null, TERMINAL_SETTING) },
+      {
+        label: copyText("terminalOpen.noTerminal.copy"),
+        run: () =>
+          void navigator.clipboard.writeText(err.command).catch((e: unknown) => {
+            toast(copyText("terminalOpen.noTerminal.copyFailed"), `${String(e)}\n${err.command}`, { level: "error" });
+          }),
+      },
+    ],
   });
 }
 
 /** 壳回的结局：`"noWindow"` ⇒ 抛 {@link NoTerminalWindow}；真失败壳那边抛一句人话，原样往上走。 */
-async function opened(got: Promise<"opened" | "noWindow">): Promise<void> {
-  if ((await got) === "noWindow") throw new NoTerminalWindow();
+async function opened(command: string, got: Promise<"opened" | "noWindow">): Promise<void> {
+  if ((await got) === "noWindow") throw new NoTerminalWindow(command);
 }
 
 async function openWindow(command: string, ssh: boolean): Promise<void> {
-  await opened(commands.open_terminal_window({ command, ssh }));
+  await opened(command, commands.open_terminal_window({ command, ssh }));
 }
 
 /** 在本机开一个终端窗口、起始目录 `cwd`，跑本机后端渲好的 `cmd`（本机起会话 · 批量各开一个）。 */
 export async function openLocalTerminal(cmd: string, cwd: string | null): Promise<void> {
-  await opened(commands.open_local_terminal({ cmd, cwd }));
+  await opened(cmd, commands.open_local_terminal({ cmd, cwd }));
 }
 
 /** 在用户面前这台机器上开一个终端跑 `command`（`origin` = 命令要在哪台跑）。 */

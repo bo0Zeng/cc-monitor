@@ -318,6 +318,31 @@ fn the_no_window_outcome_is_a_code_not_a_phrase_the_frontend_greps_for() {
     );
 }
 
+/// 「终端」那一行只在 Linux 上出：Windows 上开终端恒是 PowerShell 窗口、没得选 ⇒ 壳答 `applies: false`，前端整行不画
+/// （`terminal-row.vitest.ts` 那一格钉前端那一半）。Windows 那一臂在本机编不进来 ⇒ 钉它的正文；POSIX 那一臂行为地钉。
+#[test]
+fn the_terminal_row_only_applies_where_there_is_a_choice() {
+    let prod = guard_core::production_code(LAUNCH_SRC);
+    let at = guard_core::find_pinned(&prod, "pub fn terminal_choices() -> TerminalChoices {")
+        .unwrap_or_else(|e| panic!("terminal_choices 的签名不是恰好一处：{e}"));
+    let body = &prod[at..at
+        + prod[at..]
+            .find("\n}\n")
+            .expect("切不出 terminal_choices 的体")];
+    let win = guard_core::find_pinned(body, "#[cfg(windows)]")
+        .unwrap_or_else(|e| panic!("terminal_choices 的 Windows 那一臂不是恰好一处：{e}"));
+    assert!(
+        guard_core::pin_line(&body[win..], "applies: false,").is_ok(),
+        "Windows 那一臂不再答 applies: false：{}",
+        &body[win..]
+    );
+    #[cfg(not(windows))]
+    assert!(
+        terminal_choices_from(None, "", &|_| false).applies,
+        "Linux 上那一行该出（哪怕一个都没探到）"
+    );
+}
+
 /// 设置页那一行的事实与开窗时挑的是同一份判定：自动那一项 ＝ 开窗时自动会挑的那个；探到的按同一顺序。
 #[cfg(not(windows))]
 #[test]

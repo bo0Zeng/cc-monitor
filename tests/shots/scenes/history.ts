@@ -129,7 +129,7 @@ export const HISTORY_SCENES: Scene[] = [
     world: withQuota,
   },
   {
-    ...hist("history-resume-no-terminal", "历史 · 恢复 · 找不到终端", "本机那条已结束的会话点［恢复］，这台一个终端都没探到：右下「未找到终端」＋［设置］（直达 通用 → 终端），命令不进剪贴板", async () => {
+    ...hist("history-resume-no-terminal", "历史 · 恢复 · 找不到终端", "本机那条已结束的会话点［恢复］，这台一个终端都没探到：右下「未找到终端」＋［设置］（直达 通用 → 终端）＋［复制命令］，不自动写剪贴板", async () => {
       await openHistory();
       await click(await byText('.history-view [role="option"]', "周报草稿"));
       await sleep(900);

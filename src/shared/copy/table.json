@@ -12854,6 +12854,18 @@
       "zh": "设置",
       "args": []
     },
+    "terminalOpen.noTerminal.copy": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "复制命令",
+      "args": []
+    },
+    "terminalOpen.noTerminal.copyFailed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "复制失败 · 手动复制以下命令",
+      "args": []
+    },
     "beTerminal.refuse.empty": {
       "kind": "error",
       "role": "原因格",

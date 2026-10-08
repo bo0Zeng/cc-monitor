@@ -84,7 +84,7 @@ async function resumeLocalCore(req: LocalResumeRequest): Promise<"unsent" | "sen
       return "unsent";
     }
     if (err instanceof NoTerminalWindow) {
-      sayNoTerminal();
+      sayNoTerminal(err);
       return "unsent";
     }
     toast(copyText("localResume.launch.failed"), String(err), {
