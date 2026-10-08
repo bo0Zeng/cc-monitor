@@ -58,7 +58,7 @@ function previewRefusals(target: string): Refusals {
       no_such_session: (detail) => copyText("terminalReads.preview.noSuchSession", { target, detail }),
       capture_failed: (detail) => copyText("terminalReads.preview.failed", { target, detail }),
       bad_target: (detail) => copyText("terminalReads.preview.badTarget", { target, detail }),
-      invalid_args: (detail) => copyText("terminalReads.preview.badTarget", { target, detail }),
+      bad_args: (detail) => copyText("terminalReads.preview.badTarget", { target, detail }),
       not_known: (detail) => copyText("terminalReads.preview.notKnown", { target, detail }),
       ambiguous: (detail) => copyText("terminalReads.preview.ambiguous", { target, detail }),
       unobservable: (detail) => copyText("terminalReads.preview.unobservable", { target, detail }),

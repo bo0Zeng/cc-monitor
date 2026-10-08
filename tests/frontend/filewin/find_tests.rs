@@ -947,7 +947,13 @@ async fn the_cold_first_build_line_is_on_the_frame_while_it_runs_and_gone_after(
         );
         // 🔴 **异源那一侧**：上面那条相等的两侧都过 `first_build_line` —— 它写死一个数，两侧一起写死
         //    （死值验刀 K4 现打：把函数体写死成 10，上面那条照绿）。⇒ 再用**本文件自己拼**的措辞 ＋ 后端那个数找一遍。
-        let mine = format!("首建文件清单 · {machine} · 约 {secs}s");
+        let mine = copy_core::copy_text(
+            "rsFilewinFind.firstBuild.line",
+            &[
+                ("machine", machine.as_str()),
+                ("secs", secs.to_string().as_str()),
+            ],
+        );
         assert!(
             painted.iter().any(|t| *t == mine),
             "帧上没有 {mine:?} —— 画出来的不是后端报的那个数：{painted:?}"

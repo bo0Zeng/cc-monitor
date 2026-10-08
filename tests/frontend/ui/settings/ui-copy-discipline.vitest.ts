@@ -252,10 +252,10 @@ describe(" 文案纪律 ＋ `§8` #5：界面上零 markdown / 零源码住址",
     // 文件与数据经通道问本机后端（`data-report`，一问）；monitor 自己进程的那几条事实问 `footprint_client_facts`。
     const report = {
       home: "/h",
-      changedFiles: [{ path: "~/.bashrc", what: "ccm 命令入口", undo: { page: "machine", tab: "config", anchor: "connect-terminal" } }],
+      changedFiles: [{ path: "~/.bashrc", what: copyText("rsToolRegistry.tools.ccmName"), undo: { page: "machine", tab: "config", anchor: "connect-terminal" } }],
       todo: [
         { ...CHORE, id: "install:claude-cli", kind: "install", name: "Claude Code", loc: "claude", said: copyText("dataPage.chores.countInstall", { n: 1 }), action: "how", howUrl: "https://example.invalid/claude" },
-        { ...CHORE, id: "relay", name: "实时显示", loc: "~/.claude/settings.json · env", said: "当前：写入记录后才显示", why: "慢一拍", steps: ["打开 ~/.claude/settings.json"], diff: [{ n: 3, op: "same", text: '  "env": {' }, { n: null, op: "add", text: '    "K": "v",' }], copy: '"K": "v"', whole: "{}", wholeCovers: ["relay"], file: "/h/.claude/settings.json" },
+        { ...CHORE, id: "relay", name: "实时显示", loc: "~/.claude/settings.json · env", said: copyText("beChore.relay.saidTodo"), why: "慢一拍", steps: ["打开 ~/.claude/settings.json"], diff: [{ n: 3, op: "same", text: '  "env": {' }, { n: null, op: "add", text: '    "K": "v",' }], copy: '"K": "v"', whole: "{}", wholeCovers: ["relay"], file: "/h/.claude/settings.json" },
       ],
       tmux: false,
       chores: 1,

@@ -8,11 +8,11 @@
   "kill": {
     "request": { "name": "demo-cc" },
     "reply": { "session": "demo-cc", "killed": true, "bus": { "removed": [], "failed": [], "unread": null } },
-    "codes": ["invalid_args", "no_tmux", "no_such_session", "wrong_owner", "too_many_windows", "kill_failed", "child_timed_out"]
+    "codes": ["bad_args", "no_tmux", "no_such_session", "wrong_owner", "too_many_windows", "kill_failed", "child_timed_out"]
   },
   "launch": {
     "request": { "mode": "send-into", "name": "demo-cc", "payload": "/compact" },
     "reply": { "session": "demo-cc", "created": false, "typed": true },
-    "codes": ["invalid_args", "no_tmux", "no_such_session", "wrong_owner", "create_failed", "typed_unconfirmed", "child_timed_out"]
+    "codes": ["bad_args", "no_tmux", "no_such_session", "wrong_owner", "create_failed", "typed_unconfirmed", "child_timed_out"]
   }
 }

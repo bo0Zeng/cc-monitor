@@ -9,10 +9,10 @@
 //! | 拒绝的形状与对人说的话 | | [`Refusal`] · [`Refusal::say`] |
 //! | 身份戳的格式（读它字节里那段，不跑它） | | [`STAMP_OPEN`] · [`STAMP_CLOSE`] · [`Marks`] · [`RemoteIdentity`] · [`identity_of_bytes`] · [`stamp_scan_cmd`] · [`interpret_stamp_scan`] · [`build_order`] |
 //! | 流模式能力 token（hello 的 `capabilities`） | | [`STREAM_CAPABILITIES`] |
-//! | 计划答话的形状 | `IPC-PROTOCOL.md` 的 `deploy-plan` | [`DeployAction`] · [`LegacyVerdict`] |
-//! | 落点路径 · 旧入口两形的记号 | | [`LEGACY_ENTRY_REL`] · [`LEGACY_BACKEND_REL`] · [`SHIM_MARK`] · [`LAUNCHER_MARK`] |
+//! | 计划答话的形状 | `IPC-PROTOCOL.md` 的 `deploy-plan` | [`DeployAction`] |
+//! | 从前那份三行入口两形的记号 | | [`SHIM_MARK`] · [`LAUNCHER_MARK`] |
 //!
-//! 判定（那台要哪一格 · 表 B 承诺 · 换不换 · 落点那一份认不认 · 旧落点删不删）住后端 `control/deploy_plan.rs` 一家；
+//! 判定（那台要哪一格 · 表 B 承诺 · 换不换 · 落点那一份认不认）住后端 `control/deploy_plan.rs` 一家；
 //! monitor 自举那一刻（本机后端还没起）问的是手上那份字节自己（帧命令 `place-verdict`，CLI 面自动派生）。
 //!
 //! # 不在本 crate 的
@@ -429,38 +429,12 @@ pub fn build_order(id: &str) -> Option<(u32, u8)> {
 }
 
 /// 09-11 之前那份 bash 启动器第二行的开头（那份文件已删，记号只能是字面量；出处：`git show e8f9e08e^:shared/ccm`）。
-/// 旧入口两形的文件格式；认不认得出是后端判（`control/deploy_plan.rs::is_ours`）。
+/// 从前那份入口两形的文件格式；认不认得出是后端判（`control/deploy_plan.rs::is_ours`，落点上那一份是不是它）。
 pub const LAUNCHER_MARK: &str = "# ccm — cc-monitor 统一启动器";
 
 /// 三行 shim（09-11 起历代）第二行的原文。它的生成器随「`ccm` 就是后端本体」删了（那一形只剩在已部署的机器上），
 /// 记号从此只能是字面量（出处：`git show ef7baa63:src/frontend/shell/src/local_backend.rs` 的 `ccm_entry_shim`〔散文墓碑〕）。
 pub const SHIM_MARK: &str = "# cc-monitor: ccm = 后端本体的一次性模式（K33：所有命令只许有一处）";
-
-/// 旧版放在远端的 `ccm` 入口（三行 shim / 更早的 bash 启动器）：家目录相对。
-/// 后端判它的去向（`control/deploy_plan.rs::retired_verdict`）· monitor 照删 · 足迹那一行，同一个常量。
-pub const LEGACY_ENTRY_REL: &str = ".local/bin/ccm";
-
-/// 旧默认 `backendPath` 落下的那份后端字节（`backendPath` 那一格删了之后没人再用它）：SFTP 那一侧（家目录相对）。
-/// 后端问它是谁、monitor 删它，同一个常量。
-/// 不进 `relay_route_core` 的「家」那一族：那一族是后端**住**在 `~/.cc-monitor` 里的东西（数据位置页逐行列出，判据两向）；
-/// 这一个是退役落点，只认出来删、不住人 ⇒ 留在部署这一族，全仓一份。
-pub const LEGACY_BACKEND_REL: &str = ".cc-monitor/bin/cc-monitor-backend";
-
-/// 同一个文件在远端 shell 里的写法（扫身份戳那一条命令用）。
-pub const LEGACY_BACKEND_WORD: &str = "\"$HOME\"/.cc-monitor/bin/cc-monitor-backend";
-
-/// 旧落点那份后端字节怎么办（部署时与每次连上各判一次）。
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum LegacyVerdict {
-    /// 不在 ⇒ 不说话。
-    Absent,
-    /// 身份戳恰一个（是我们编的）⇒ 删。
-    Remove,
-    /// 别的（0 字节 · 没戳 · 多个戳 · 扫不动）⇒ 不动、说一句。
-    Keep,
-    /// 连问都没问成（链路）⇒ 不动、带上原话。
-    Unknown(String),
-}
 
 #[cfg(test)]
 #[path = "../../../../tests/common/deploy-contract/lib_tests.rs"]

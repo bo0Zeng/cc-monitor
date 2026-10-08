@@ -1891,6 +1891,8 @@ fn walk_repo(root: &std::path::Path, keep: &dyn Fn(&std::path::Path, &str) -> bo
     const SKIP: &[&str] = &[
         ".git",
         "target",
+        // 本仓的编译产物目录（各 workspace 的 CARGO_TARGET_DIR 落在这里）：并行门禁里别的道正往里编，临时目录随建随删，扫到会读一半就没了。
+        ".build",
         "node_modules",
         "dist",
         "coverage",

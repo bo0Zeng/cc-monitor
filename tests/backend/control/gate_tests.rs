@@ -693,7 +693,7 @@ fn the_identity_door_reads_which_client_started_the_session() {
     }
 }
 
-/// 请求里的 `client`：没给 ⇒ 没报；给了就得合形状（会进 tmux 会话选项），不合 ⇒ `invalid_args`。
+/// 请求里的 `client`：没给 ⇒ 没报；给了就得合形状（会进 tmux 会话选项），不合 ⇒ `bad_args`。
 #[test]
 fn the_requester_is_optional_and_shaped() {
     assert_eq!(requester_of(&serde_json::json!({})), Ok(None));
@@ -711,7 +711,7 @@ fn the_requester_is_optional_and_shaped() {
     ] {
         assert_eq!(
             requester_of(&bad).map_err(|(c, _)| c),
-            Err("invalid_args"),
+            Err("bad_args"),
             "{bad}"
         );
     }

@@ -15,7 +15,7 @@
 //! - **F10**：别名块装/卸——今天是 `lib.rs` 的 `aliases_block_install` / `aliases_block_remove`（带 `origin`，本机远端同一条）
 //!   （从前这一对叫 `install_remote_ccm_helper`〔散文墓碑〕/ `uninstall_…`，推入口那一半并进了 [`deploy_remote_backend`]）
 //!   （BEGIN/END 块 + 备份 + 写后校验回滚）；本机 profile 写在 `profile_installer`。（batch20 审计修：原「非远端」措辞误——本模块确写远端 `~/.bashrc`。）
-//! **落盘已不在本模块**：经那台后端读改写（`user_files`）；规划那一半
+//! **落盘已不在本模块**：那台后端自己读改写（文件管理那一面）；规划那一半
 //!   （`merge_profile_block` / `strip_profile_block`）住 `profile_installer`。
 //! - **F50**：追加公钥到远端 `~/.ssh/authorized_keys`今天是本机常驻后端的帧命令 `pubkey-push`（那台后端在就经它写 · 不在就一次 exec；不在本模块，登记于此备查）。
 //!
@@ -148,14 +148,13 @@ pub use deploy_contract::DeployAction;
 //   （账号库今天由那台后端自己建，不再部署外部工具）。后端那条路的判定住 `deploy_contract::identity_decision`。
 
 /// **本机常驻后端出的部署计划**（帧命令 `deploy-plan`，线上形状 `tests/__fixtures__/deploy-plan.golden.json`）。
-/// 该不该换 · 换成哪一格 · 落点那一份是谁 · 旧落点那份删不删 —— 全是后端判的；本模块只照它放字节。
+/// 该不该换 · 换成哪一格 · 落点那一份是谁 —— 全是后端判的；本模块只照它放字节。
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct Plan {
     pub(crate) key: deploy_contract::Key,
     /// 那一格这一版带着的字节自报的身份（后端拿它当对照物）。
     pub(crate) expected: String,
     pub(crate) action: DeployAction,
-    pub(crate) legacy: deploy_contract::LegacyVerdict,
     /// 落点目录里没人要的上传残件（家目录相对；后端判的，这里只照删）。
     pub(crate) leftovers: Vec<String>,
     /// 问 `uname` 那一趟拨号的 ack（拨号在本机后端里）：逐地址指纹由 [`ask_plan_for`] 交给
@@ -165,15 +164,13 @@ pub(crate) struct Plan {
 
 /// `deploy-plan` 的应答 → [`Plan`]（**严格收**：少一格、多一格、认不出的值都是错 —— 两侧漂了要当场说出来）。
 pub(crate) fn decode_plan(v: &serde_json::Value) -> Result<Plan, String> {
-    const KEYS: [&str; 11] = [
+    const KEYS: [&str; 9] = [
         "ack",
         "action",
         "arch",
         "expected",
         "label",
         "leftovers",
-        "legacy",
-        "legacy_why",
         "os",
         "theirs",
         "why",
@@ -198,13 +195,6 @@ pub(crate) fn decode_plan(v: &serde_json::Value) -> Result<Plan, String> {
         },
         _ => return Err(bad()),
     };
-    let legacy = match (text("legacy"), text("legacy_why")) {
-        (Some("absent"), None) => deploy_contract::LegacyVerdict::Absent,
-        (Some("remove"), None) => deploy_contract::LegacyVerdict::Remove,
-        (Some("keep"), None) => deploy_contract::LegacyVerdict::Keep,
-        (Some("unknown"), Some(e)) => deploy_contract::LegacyVerdict::Unknown(e.to_string()),
-        _ => return Err(bad()),
-    };
     let leftovers: Vec<String> = obj
         .get("leftovers")
         .cloned()
@@ -223,7 +213,6 @@ pub(crate) fn decode_plan(v: &serde_json::Value) -> Result<Plan, String> {
             .ok_or_else(bad)?
             .to_string(),
         action,
-        legacy,
         leftovers,
     })
 }
@@ -320,27 +309,6 @@ impl From<String> for DeployError {
 pub(crate) const LANDING_REL: &str = relay_route_core::BACKEND_LANDING_REL;
 const LANDING_SHOWN: &str = "~/.cc-monitor/bin/ccm";
 
-/// 旧落点那份后端字节：照计划删（后端认出身份戳恰一个 = 我们编的）· 不在 ⇒ 不说话 · 别的 ⇒ 不动、说一句为什么。
-/// 回「要对人说的那一句」（空 = 没东西）。
-async fn apply_legacy(verdict: &deploy_contract::LegacyVerdict, fs: &RemoteFs) -> String {
-    let shown = format!("~/{}", deploy_contract::LEGACY_BACKEND_REL);
-    match verdict {
-        deploy_contract::LegacyVerdict::Absent => String::new(),
-        deploy_contract::LegacyVerdict::Remove => {
-            match fs.remove(deploy_contract::LEGACY_BACKEND_REL).await {
-                Ok(_) => copy_text("rsSftp.legacyBackend.removed", &[("rel", &shown)]),
-                Err(e) => copy_text("rsSftp.legacyBackend.failed", &[("rel", &shown), ("e", &e)]),
-            }
-        }
-        deploy_contract::LegacyVerdict::Keep => {
-            copy_text("rsSftp.legacyBackend.kept", &[("rel", &shown)])
-        }
-        deploy_contract::LegacyVerdict::Unknown(e) => {
-            copy_text("rsSftp.legacyBackend.failed", &[("rel", &shown), ("e", e)])
-        }
-    }
-}
-
 /// 照计划删上一趟没收拾掉的上传残件（后端判的哪几份；删不掉只进日志、不挡连接，下次连上再来）。
 async fn sweep_leftovers(leftovers: &[String], fs: &RemoteFs, origin: &str) {
     for rel in leftovers {
@@ -414,12 +382,8 @@ pub async fn ensure_backend_deployed(cfg: &RemoteConfig) -> Result<String, Deplo
             None
         }
     };
-    // 每次连上（预检）都照计划处理一次旧落点；结局只进日志，不挡连接。上传残件同一拍。
+    // 每次连上（预检）都照计划删一次上传残件；结局只进日志，不挡连接。
     sweep_leftovers(&plan.leftovers, &fs, &cfg.origin_label()).await;
-    let swept = apply_legacy(&plan.legacy, &fs).await;
-    if !swept.is_empty() {
-        tracing::info!("远端 [{}] {swept}", cfg.origin_label());
-    }
     Ok(theirs.unwrap_or_else(|| bin.build_id.to_string()))
 }
 
@@ -501,23 +465,9 @@ pub async fn deploy_remote_backend(cfg: RemoteConfig) -> Result<String, String> 
             )
         }
     };
-    // 旧落点那份后端字节（后端认出是我们编的才删）。上传残件同一拍。
+    // 上传残件（后端判的哪几份）。
     sweep_leftovers(&plan.leftovers, &fs, &cfg.origin_label()).await;
-    let swept = apply_legacy(&plan.legacy, &fs).await;
-    // 迁移 ② ③：旧版放在 `~/.local/bin/ccm` 的那一份，认出是我们放的就删
-    //   （认不认得出由本机常驻后端判，这里照答经那台的后端删、带 CAS；那一格在 SFTP 两个写根之外）。
-    //   没东西 ⇒ 不多说一句；查不成 ⇒ 说出来，不挡部署。
-    let legacy = match crate::ccm_legacy::sweep(&cfg).await {
-        Ok(s) => s.say(),
-        Err(e) => copy_text(
-            "rsSftp.ccmLegacy.checkFailed",
-            &[
-                ("rel", &crate::ccm_legacy::LEGACY_REL.to_string()),
-                ("e", &e.to_string()),
-            ],
-        ),
-    };
-    Ok(format!("{backend_msg}{swept}{legacy}"))
+    Ok(backend_msg)
 }
 
 /// 卸载远端后端（设置面板「卸载后端」按钮）：删落点那个文件（它就是 `ccm`，卸后端就是卸 `ccm`）。

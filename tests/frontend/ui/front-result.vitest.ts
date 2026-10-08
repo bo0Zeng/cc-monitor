@@ -29,16 +29,16 @@ describe("↗ 结局族", () => {
     expect(shape({ kind: "window-gone" })?.acts, "不在 tmux 里：没有可接回的").toEqual([]);
     expect(shape({ kind: "window-gone" }, true)).toEqual({ title: copyText("front.title.gone"), body: "", hint: null, tone: "grey", acts: [copyText("front.act.openInTerminal")] });
     expect(shape({ kind: "hosted-by-wt", program: "ssh.exe" })).toEqual({
-      title: "未切换 · 终端由 Windows 托管",
-      body: "Windows 交给「终端」应用托管 · 定位失败",
-      hint: "在「终端」应用里新开标签页再连",
+      title: copyText("front.title.hosted"),
+      body: copyText("front.body.hosted"),
+      hint: copyText("front.hint.hosted"),
       tone: "amber",
       acts: [],
     });
     expect(shape({ kind: "background-tab", program: "ssh.exe" })).toEqual({
-      title: "未切换 · 终端在后台标签页",
-      body: "「终端」应用里那个标签页不在前台 · 找不到窗口",
-      hint: "切到那个标签页再点 ↗",
+      title: copyText("front.title.backgroundTab"),
+      body: copyText("front.body.backgroundTab"),
+      hint: copyText("front.hint.backgroundTab"),
       tone: "amber",
       acts: [],
     });

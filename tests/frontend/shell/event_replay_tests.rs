@@ -1110,7 +1110,7 @@ fn mig1_the_credit_exemption_is_exactly_the_registered_lifecycle_frames() {
         F::Live(b::SessionLivePayload {
             session_id: sid(),
             origin: "<local>".into(),
-            kind: None,
+            background: false,
             attachable: None,
             cwd: None,
             project_dir: None,
@@ -1118,7 +1118,7 @@ fn mig1_the_credit_exemption_is_exactly_the_registered_lifecycle_frames() {
         }),
         F::Activity(b::SessionActivityPayload {
             session_id: sid(),
-            status: None,
+            activity: None,
             waiting_for: None,
         }),
         F::Container(b::SessionContainerPayload {

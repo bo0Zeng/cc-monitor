@@ -510,11 +510,7 @@ pub(crate) fn session_writers(agent_home: &Path, sid: &str) -> Vec<u32> {
     let mut pids: Vec<u32> = pidfiles(agent_home)
         .into_iter()
         .filter(|(_, v)| v.get("sessionId").and_then(|x| x.as_str()) == Some(sid))
-        .filter(|(_, v)| {
-            v.get("kind")
-                .and_then(|k| k.as_str())
-                .is_none_or(|k| k == "interactive")
-        })
+        .filter(|(_, v)| !crate::agents::pidfile_background(v))
         .filter(|(pid, v)| crate::platform::proc::session_alive(*pid, parse_procstart_ticks(v)))
         .map(|(pid, _)| pid)
         .collect();
@@ -522,19 +518,17 @@ pub(crate) fn session_writers(agent_home: &Path, sid: &str) -> Vec<u32> {
     pids
 }
 
-/// 那台 pidfile 说这条会话**此刻在等人**（`status: "waiting"`）：等的是哪一类（`waitingFor` 原样）· 从何时起等（`statusUpdatedAt`，epoch ms）。
+/// 那台 pidfile 说这条会话**此刻在等人**（适配层翻成 [`crate::agents::SessionActivity::NeedsYou`]）：等的是哪一类（`waitingFor` 原样）· 从何时起等（`statusUpdatedAt`，epoch ms）。
 /// 判活同 [`session_writers`]；不在等 / 没有活进程持着它 ⇒ `None`。几个进程同时持着、有一个在等 ⇒ 取它（等得最早的那个）。
 /// 「等的是什么」不在这里判：配上记录里那个还没有结果的工具调用，在 `facts_query::needs_of`。
 pub(crate) fn session_wait(agent_home: &Path, sid: &str) -> Option<super::facts_query::PidWait> {
     pidfiles(agent_home)
         .into_iter()
         .filter(|(_, v)| v.get("sessionId").and_then(|x| x.as_str()) == Some(sid))
-        .filter(|(_, v)| v.get("status").and_then(|x| x.as_str()) == Some("waiting"))
         .filter(|(_, v)| {
-            v.get("kind")
-                .and_then(|k| k.as_str())
-                .is_none_or(|k| k == "interactive")
+            crate::agents::pidfile_activity(v) == Some(crate::agents::SessionActivity::NeedsYou)
         })
+        .filter(|(_, v)| !crate::agents::pidfile_background(v))
         .filter(|(pid, v)| crate::platform::proc::session_alive(*pid, parse_procstart_ticks(v)))
         .map(|(_, v)| super::facts_query::PidWait {
             waiting_for: v

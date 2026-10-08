@@ -44,7 +44,6 @@ mod ui_contract;
 // 通信层面 A 的第一个进程外客户端那条路（末尾「面 A 的第一个外部客户端：通道」）。
 // `pub` 同 `filewin`：它的客户端那一半给另一个二进制（外部前端）经 `monitor_lib::chan` 用。
 mod cc_bus_deploy; // PS1：把内嵌的 cc-bus 装到 <claude_dir>/skills/（U10b 裁「开」后落地；只读铁律第 7 条例外）
-mod ccm_legacy; // 旧版放在 `~/.local/bin/ccm` 的那一份：认出是我们放的就删（迁移 ② ③）
 pub mod chan;
 mod config;
 // `mod config_surface;` · `mod footprint_remote;` · `mod tool_registry;`〔散文墓碑〕（足迹的申报表 ＋ 判定 ＋ 远端事实两趟问法）整族进了后端
@@ -136,10 +135,9 @@ mod spawn_managed;
 // F03 接上之后删掉那个模块级 `#[allow(dead_code)]`；若 F03 收工时它仍零消费者，
 // 就该删掉整个模块，而不是让它当装饰。
 mod sftp_pool;
-mod user_files; // RW1：monitor 够用户文件的唯一开口 —— 读·算·交给那台机器的后端，自己一个字节不落盘
-                // `verified_write`〔散文墓碑〕模块删了：它的判定只剩 `fenced_block::apply`〔散文墓碑〕一个调用方，
-                //   那个序列删了之后零调用方；用户文件的回读比对只住后端 `files_write.rs::put_text`，部署物按字节比住 `sftp::verify_readback`。
-                // SS-D 统一 SFTP 写层（issue #29 自动部署 F08；后续 F11/F10 复用）。
+// `verified_write`〔散文墓碑〕模块删了：它的判定只剩 `fenced_block::apply`〔散文墓碑〕一个调用方，
+//   那个序列删了之后零调用方；用户文件的回读比对只住后端 `files_write.rs::put_text`，部署物按字节比住 `sftp::verify_readback`。
+// SS-D 统一 SFTP 写层（issue #29 自动部署 F08；后续 F11/F10 复用）。
 mod sftp;
 // SSH-remote Phase 0 (issue #15)：从 setup() 调用 —— 当 config.json 的
 // `remote.enabled = true` 时，stream_source::run 作为**附加**数据源与本机那条流

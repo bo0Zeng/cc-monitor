@@ -216,7 +216,7 @@ describe("〔C4e〕发出去之前：调用方不能靠对端校验", () => {
     answer({ ok: SPAWN.reply });
     expect(thrownBy(() => checkSpawnShape({ tool: "claude", dir: " ", task: "" }))).toMatch(copyText("ccBus.spawn.noDir"));
     expect(invokeMock, "坏形状也发出去了").not.toHaveBeenCalled();
-    // 空的 / 没见过的 tool 照样交给后端 —— 本侧不维护第二份名单（后端认不出会拒，那一句走 `invalid_args`）。
+    // 空的 / 没见过的 tool 照样交给后端 —— 本侧不维护第二份名单（后端认不出会拒，那一句走 `bad_args`）。
     expect(() => checkSpawnShape({ tool: "", dir: "/w", task: "" })).not.toThrow();
     expect(() => checkSpawnShape({ tool: "some-future-agent", dir: "/w", task: "" })).not.toThrow();
     await spawnAgent("devbox", { tool: "some-future-agent", dir: "/w", task: "", account: "z" });
@@ -299,7 +299,7 @@ describe("〔C4e〕回值几态逐态一句", () => {
     expect(said[0]).toMatch(copyPattern("ccBus.broadcast.done", { sent: 3, skipped: 2 }));
     expect(said[1]).toMatch(copyPattern("ccBus.broadcast.doneFailed", { failed: 1, who: "x_cc（timed_out）" }));
     expect(said[2]).toMatch(copyPattern("ccBus.broadcast.doneUnknown"));
-    expect(said[3]).toMatch(/所以全发了。1 个失败/);
+    expect(said[3]).toMatch(copyPattern("ccBus.broadcast.doneUnknownFailed", { failed: 1, who: "x_cc（timed_out）" }));
   });
 });
 

@@ -1,4 +1,4 @@
-//! cc-bus 在 monitor 侧**只剩两句共用的说法**（机器怎么称呼 · 「那台后端太旧」）与 id 规则的再导出。
+//! cc-bus 在 monitor 侧**只剩一句共用的说法**（机器怎么称呼）与 id 规则的再导出。
 //!
 //! 驾驶舱读面（名册 · 收件箱）迁到界面经通道直接问那台后端（`bus-state` / `bus-inbox`，
 //! 后端转调 cc-bus 新加的机器可读读命令）：monitor 这里原先那一整套 shell 读（本机 `bash -lc` ＋ 远端拨号链路，
@@ -26,18 +26,6 @@ pub(crate) fn machine_label(origin: &str) -> String {
     } else {
         origin.to_string()
     }
-}
-
-/// 「这台的后端太旧」讲成人话 —— **能力协商的结论**，纯函数（那一句是全产品同一句，`copy_core::backend_old`）。
-///
-/// # 🔴 它为什么必须与超时 / 断连长得不一样
-///
-/// 「这台机器的后端没有这条命令」是一件**问得出答案**的事（`hello` 里那张命令表），
-/// 而「超时」「连接断了」是**问不出答案**的事。把它们压成同一句「发消息失败」，
-/// 就是本工作区最贵的那一形 —— **一个值装了两件事**：用户拿到它既不知道该升级，
-/// 也不知道该重试，只能两样都试一遍。
-pub(crate) fn describe_backend_too_old(origin: &str) -> String {
-    copy_core::backend_old(&machine_label(origin))
 }
 
 #[cfg(test)]

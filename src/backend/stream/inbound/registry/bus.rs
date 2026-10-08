@@ -24,7 +24,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         summary: "给总线上在线的成员群发一条",
         // `bad_id`：给的 `from` 形状过不了 `shell_quote_core::bus_id_ok`（交给 `cc-send` 之前先判，一个人都没发）。
         codes: &[
-            "invalid_args",
+            "bad_args",
             "not_installed",
             "timed_out",
             "failed",
@@ -38,7 +38,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "bus-kill",
         summary: "收掉一个总线成员",
         codes: &[
-            "invalid_args",
+            "bad_args",
             "bad_id",
             "not_installed",
             "timed_out",
@@ -52,7 +52,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "bus-send",
         summary: "发一条消息",
         codes: &[
-            "invalid_args",
+            "bad_args",
             // 收件人的形状在交给 `cc-send` 之前就过不了（`INVARIANTS §47` ①）。
             "bad_id",
             "not_installed",
@@ -72,7 +72,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "bus-spawn",
         summary: "派生一个协作 agent",
         codes: &[
-            "invalid_args",
+            "bad_args",
             "bad_id",
             "not_installed",
             "timed_out",
@@ -102,7 +102,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "bus-inbox",
         summary: "只读看一个 agent 收件箱的尾巴",
         codes: &[
-            "invalid_args",
+            "bad_args",
             "bad_id",
             "not_installed",
             "timed_out",

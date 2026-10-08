@@ -37,13 +37,12 @@ import { productionCssFiles, productionTsFiles, SCAN_TIMEOUT_MS } from "../../te
 /** `(文件, 所在声明)` —— 今天 tab 代码里按 bg 分叉 / 搬运 bg 字段的全部住处，逐条写理由。 */
 const REGISTERED: ReadonlyArray<readonly [string, string, string]> = [
   ["src/frontend/ui/tab-model.ts", "Tab", "字段声明：bg 任务名（pidfile 的 name）"],
-  ["src/frontend/ui/tab-model.ts", "isBgKind", "「是不是 bg」的唯一判法（唯一拼 \"interactive\" 字面量的地方）"],
   [
     "src/frontend/ui/tab-model.ts",
     "computeTitleFor",
     "标题 `⚙ 任务名` —— 没要求删它；要删就删这一行",
   ],
-  ["src/frontend/ui/tabs.ts", "TabManager.ensureTab", "同 sid 两份身份（bg-spare 谎报父 sid）⇒ interactive 恒压过 bg 的升格；建 tab 时带上任务名"],
+  ["src/frontend/ui/tabs.ts", "TabManager.ensureTab", "同 sid 两份身份（bg-spare 谎报父 sid）⇒ 交互恒压过后台的升格；建 tab 时带上任务名"],
   ["src/frontend/ui/tabs.ts", "TabManager.computeTitle", "搬运：把任务名交给 `computeTitleFor`"],
   ["src/frontend/ui/tab-bar-prefs.ts", "TabBarPrefs.pinRecordFor", "搬运：固定条落盘带上任务名，复活时标题不丢"],
 ];

@@ -233,7 +233,7 @@ const PENDING: &[(&str, &str)] = &[
     // `config_surface_report`〔散文墓碑〕已迁：申报表 ＋ 判定进了后端（`footprint-report`，界面经通道直问），
     //   monitor 只答它自己那台那几行的事实（`footprint_client_facts`，进「monitor 自己的事」）。
     // 漂移账那一条迁了：两路进料（未知记录类型 · 已知类型解析失败）随记录解释进了那台后端（`drift-report`）；
-    //   monitor 天生观测的两面（`UnknownBackendToken` · `UnknownSessionKind`）留在 `drift_ledger_report`，进「monitor 自己的事」（日志）。
+    //   monitor 天生观测的那一面（hello 里不认识的能力 token）留在 `drift_ledger_report`，进「monitor 自己的事」（日志）。
     // 会话正文四条（`stream_read_session_jsonl` · `load_subagent` · `read_session_range` ·
     //   `read_session_lines`〔散文墓碑〕）迁了：记录解释进了后端，界面经通道直问那台后端（`history-page` · `history-subagent` ·
     //   `history-lines`，`src/frontend/ui/record-reads.ts`）。

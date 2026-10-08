@@ -18,6 +18,7 @@ import type { TurnRail } from "./turn-rail";
 import type { FactsSource } from "./views/facts-source";
 import type { ToolUseSeen } from "./cards/index";
 import type { Origin } from "./ipc/origin";
+import type { SessionActivity } from "./generated/SessionActivity";
 import type { SessionState } from "./tab-session-state";
 import type { Needs, PendingCall, RetryOutcome, UsageFact } from "./session-reads";
 
@@ -26,8 +27,8 @@ import type { Needs, PendingCall, RetryOutcome, UsageFact } from "./session-read
 
 export interface Tab {
   sessionId: string;
-  /** Batch7-F24：会话类型（"interactive"/"bg"/null=未知视为交互）。bg → ⚙ 标题（不再挂树，见 `isBgKind`）。 */
-  kind: string | null;
+  /** 后台会话（后端判好的 `background`）⇒ ⚙ 标题。 */
+  background: boolean;
   /** Batch7-F24：bg 任务名（pidfile name 字段）；bg 标题优先用它。 */
   bgName: string | null;
   /**
@@ -95,10 +96,9 @@ export interface Tab {
    */
   group: string | null;
   /**
-   * issue #23：红绿灯（与 `state` 正交）。null=未知（旧版 CC
-   * 无 status 字段 / 远端 v1 暂无透传）→ 维持现状绿点。
+   * 红绿灯（与 `state` 正交）：此刻在干什么（后端翻好的）＋ 在等什么。null = 说不清 → 默认绿点。
    */
-  activity: { status: string; waitingFor: string | null } | null;
+  activity: { doing: SessionActivity; waitingFor: string | null } | null;
   // 原先这里是 `tmuxIdle: boolean`（「claude 已退但 tmux 会话还在」，与 `status` 正交、却让 `status` 留在 live）。
   //   它说的是可恢复性那一轴 ⇒ 并进 `state`：`RECONNECTABLE`（死 ＋ 容器还在）。
   /** F70：本会话写类工具（Edit/Write/MultiEdit/NotebookEdit）碰过的文件路径（原样、去重、近因序）。
@@ -235,17 +235,6 @@ export function projectNameFromCwd(dir: string): string | null {
 }
 
 /**
- * 〔「删掉树」〕「这是不是 bg 会话」在 tab 代码里的**唯一**判法（原先同一条式子散写四处：
- * 树状落位 · 拖拽块 · `.tab-bg` 类 · 标题）。kind 缺失（旧 CC）恒视为交互。
- *
- * 树删了之后按它分叉的只剩两处，都不是 tab 栏：标题的 `⚙`（`computeTitleFor`）与同 sid 两份身份的
- * 升格（`tabs.ts::ensureTab`）。tab 栏通用代码（落位 · 拖拽 · 集合 · 渲染）零处 —— `tests/frontend/ui/bg-flat.vitest.ts`。
- */
-export function isBgKind(kind: string | null): boolean {
-  return kind !== null && kind !== "interactive";
-}
-
-/**
  * 标题格式（决策见 project_monitor_decisions.md）：
  *   aiTitle 有 + 项目目录有 → `[项目] aiTitle`
  *   aiTitle 有 + 项目目录无 → `aiTitle`
@@ -266,7 +255,7 @@ export function computeTitleFor(
   projectDir: string | null,
   aiTitle: string | null,
   remoteLabel: string | null = null,
-  kind: string | null = null,
+  background = false,
   bgName: string | null = null,
   forkedFromSessionId: string | null = null,
 ): string {
@@ -274,7 +263,7 @@ export function computeTitleFor(
   const mark = (s: string): string => (forkedFromSessionId ? `↳ ${s}` : s);
   const project = projectDir ? projectNameFromCwd(projectDir) : null;
   // Batch7-F24：bg 任务 → ⚙ + 任务名（原先还有缩进 / ⌞ 的 `.tab-bg` 样式，随树一起删了）
-  if (isBgKind(kind)) {
+  if (background) {
     const base = `⚙ ${bgName ?? aiTitle ?? project ?? sessionId.slice(0, 8)}`;
     return mark(remoteLabel !== null ? `[${remoteLabel}] ${base}` : base);
   }
