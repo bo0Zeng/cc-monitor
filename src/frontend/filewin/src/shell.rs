@@ -5008,6 +5008,8 @@ pub fn open_detached_seeded(
                 ws.theme = theme;
                 // 上次的缩放（主界面的字号随样子交过来，这里在它之上整体缩放）。
                 ws.zoom = super::workspace::Zoom::open(view);
+                // 帧日志：设了 `CCM_FILEWIN_FRAME_LOG=<文件>` 才开（收集「一闪一闪」的证据）。
+                ws.frame_log = super::frame_log::FrameLog::from_env();
                 cc.egui_ctx.set_zoom_factor(ws.zoom.factor());
                 Ok(Box::new(FitOnce {
                     inner: ws,

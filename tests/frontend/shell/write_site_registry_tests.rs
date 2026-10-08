@@ -126,6 +126,9 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
     ("bookmarks.rs", "lock_store", None,
      "monitor 自己的状态：文件窗口书签的锁旁件（`<数据目录>/filewin-bookmarks.json.lock`，空文件）"),
     ("atomic.rs", "atomic_replace_path", None, "同上，原语的本地副本"),
+    // 文件窗口的帧日志：只在设了 `CCM_FILEWIN_FRAME_LOG=<文件>` 时开，往那份文件追加（收集「一闪一闪」的证据）。
+    ("frame_log.rs", "to_file", None,
+     "文件窗口自己的诊断日志：用户经环境变量点名的那一份文件，只追加；不设就不碰盘"),
     // 钥匙文件那一行摘了：monitor 只交路径、只读，常驻后端绑上口之后自己换一把写进去（`control/resident.rs::rotate_token`）。
     // 「谁在听」那一行摘了：monitor 不再写那份记录，由常驻后端绑上口之后自己记（`control/resident.rs::record_owner`，本机远端同一个写者）。
     // ── 起脱离那条载体之前建好后端 stderr 诊断文件那一层目录。**不是安装动作**。
@@ -448,6 +451,8 @@ const SITE_CLASS: &[(&str, &str, Lands)] = &[
     // 文件窗口书签的锁旁件（`<monitor 数据目录>/filewin-bookmarks.json.lock`）——
     //   书签是 monitor 自己的状态（FW34 头注逐字「不是用户文件 ⇒ 不走后端写面」）。
     ("bookmarks.rs", "lock_store", Lands::OwnState),
+    // 文件窗口的帧日志（自己的诊断日志，落点是用户经 `CCM_FILEWIN_FRAME_LOG` 点名的那一份；不设就不写）。
+    ("frame_log.rs", "to_file", Lands::OwnState),
 ];
 
 /// ① 的判定（抽出来好喂正控）：两边的键两向对不上的那几条。
