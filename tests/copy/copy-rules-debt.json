@@ -145,7 +145,6 @@
     ],
     "C-W13": [
       "credsPerm.judge.fixWindows",
-      "diagnostics.refresh.settingsUnreadable",
       "settingsPanel.behavior.showHiddenTasksHelp"
     ],
     "C-W14": [
@@ -447,7 +446,6 @@
       "credsStore.error.notJson",
       "data.load.failed",
       "diagnostics.refresh.dirUnreadable",
-      "diagnostics.refresh.settingsUnreadable",
       "diagnostics.save.failedLine",
       "diagnostics.unknown.unread",
       "extPage.status.failed",

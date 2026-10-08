@@ -215,7 +215,7 @@ export class DiagnosticsSection {
       this.setControlsReady(true);
     } catch (e) {
       this.setControlsReady(false);
-      sayWithDetail(this.readFailLine, copyText("diagnostics.refresh.settingsUnreadable", { e: String(e) }), detailOf(e));
+      sayWithDetail(this.readFailLine, copyText("diagnostics.refresh.settingsUnreadable"), detailOf(e));
       this.readFailLine.hidden = false;
     }
     await Promise.all([this.paintFiles(), this.readReport()]);

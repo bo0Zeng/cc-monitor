@@ -8842,8 +8842,8 @@
     "diagnostics.refresh.settingsUnreadable": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取日志设置失败 · {e} · 下面三项暂不可改 · 点「刷新信息」重试",
-      "args": ["e"]
+      "zh": "读取日志设置失败",
+      "args": []
     },
     "diagnostics.toast.enable": {
       "kind": "control",
