@@ -269,6 +269,8 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
     "会话内查找的命中清单 `strip`（`s.fsStrip`）—— 它写了 display:flex，CSS 里另有 `.fsStrip[hidden]` 收住",
   "src/frontend/ui/kit/dialog.ts::err":
     "填值框的错误句 `err`（`s.error`）—— 开时收起",
+  "src/frontend/ui/kit/dialog.ts::failLine":
+    "表单框提交没成那一行 `failLine`（`s.dlgFail`，自己不写 display）—— 没出错 / 改了一格时收起",
   "src/frontend/ui/kit/dock.ts::this.el":
     "底部抽屉网格那一格 `this.el`（`s.dockSlot`，自己不写 display；竖排的 flex 在里层 `s.dock`）—— 收着时 hidden",
   "src/frontend/ui/kit/fold.ts::body":
