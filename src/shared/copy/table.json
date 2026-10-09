@@ -5323,12 +5323,6 @@
       "zh": "窗口出错 · 无会话可显示",
       "args": []
     },
-    "errorToast.showErrorToast.noMessage": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "无消息内容",
-      "args": []
-    },
     "errorToast.showErrorToast.openLog": {
       "kind": "action",
       "role": "按钮",
@@ -28961,6 +28955,48 @@
       "role": "片段",
       "zh": "{machine} · {sid}",
       "args": ["machine", "sid"]
+    },
+    "errorToast.showErrorToast.reconnect": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "重新连接",
+      "args": []
+    },
+    "rsUiError.localExited.restarted": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "本机上的 cc-monitor 意外退出 · 已重启",
+      "args": []
+    },
+    "rsUiError.localExited.down": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "本机离线 · cc-monitor 意外退出",
+      "args": []
+    },
+    "rsUiError.localQuit.restarted": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "本机上的 cc-monitor 启动即退出 · 已重启",
+      "args": []
+    },
+    "rsUiError.localQuit.down": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "本机离线 · cc-monitor 启动即退出",
+      "args": []
+    },
+    "rsUiError.localUnreadable.down": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "本机离线 · 程序出错",
+      "args": []
+    },
+    "rsUiError.machines.unreadable": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "读取机器列表失败 · 内容无法解析",
+      "args": []
     }
   }
 }

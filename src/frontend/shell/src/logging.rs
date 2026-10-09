@@ -13,14 +13,14 @@
 //!    按天滚动，保留最近 N 天（默认 3）。non_blocking writer 不阻塞业务线程。
 //! 2. **EnvFilter reload**：用 `tracing_subscriber::reload::Layer<EnvFilter>` 让
 //!    "改日志级别" 这种运行时操作不重启就生效。
-//! 3. **ErrorEmitter Layer**：自定义 Layer 拦截 `Level::ERROR`，emit `monitor-error`
-//!    事件给前端 → 弹红色 toast，关键错误用户**一定能看到**。
+//! 3. **日志行不上屏**：要让用户知道的出错走 `ui_error::tell`（码 ＋ 文案键 ＋ 那句话 ＋ 复制详情），
+//!    这里只管那条出口的装与开关（设置「后台出错 · 弹提示」）。
 //!
 //! ## 解耦边界
 //!
 //! - 本模块完全不知道 Tauri State / IPC 的存在。`init()` 返回 `Arc<LoggingState>`，
 //!   由 `lib.rs` 自己 `app.manage()`。
-//! - ErrorEmitter Layer 通过 closure 注入 emit 行为（`install_error_emitter`），
+//! - 出错出口通过 closure 注入 emit 行为（`install_error_emitter`），
 //!   避免对 `tauri::Runtime` generic 的依赖泄漏。
 //! - DiagnosticsConfig 字段读写 `config.json` 的 `diagnostics` 子对象；写经 `config::patch_config_at`
 //!   （`config.json` 唯一的写函数）。
@@ -35,7 +35,6 @@
 //!   │   │     .with(reload<EnvFilter>)
 //!   │   │     .with(stdout fmt::layer)
 //!   │   │     .with(file fmt::layer + non_blocking)   ← log_enabled=true 才装
-//!   │   │     .with(ErrorEmitterLayer)                ← 始终装；用 atomic enabled 切开关
 //!   │   │     .init()
 //!   │   └─ WorkerGuard 存到 state 字段（必须保持存活到进程退出，drop 时 flush）
 //!   ├─ tauri::Builder::default().setup(|app| {
@@ -54,20 +53,15 @@ use crate::copy_table::copy_text;
 use crate::detail::Said;
 use parking_lot::{Mutex, RwLock};
 use serde::{Deserialize, Serialize};
-use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Runtime};
-use tracing::{Event, Level, Subscriber};
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_appender::rolling::{Builder as RollingBuilder, Rotation};
-use tracing_subscriber::field::Visit;
 use tracing_subscriber::filter::EnvFilter;
 use tracing_subscriber::fmt;
-use tracing_subscriber::layer::{Context as LayerContext, Layer, SubscriberExt};
-use tracing_subscriber::registry::LookupSpan;
+use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::reload;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::Registry;
@@ -77,7 +71,6 @@ const LOG_DIR_NAME: &str = "logs";
 const MONITOR_LOG_DIR: &str = "monitor";
 const LOG_FILE_PREFIX: &str = "monitor";
 const LOG_FILE_SUFFIX: &str = "log";
-const ERROR_EVENT: &str = "monitor-error";
 
 /// 本机后端**脱离常驻**时自己的 stderr 诊断文件：住日志目录下这一层子目录
 /// （后端那侧 `src/backend/stderr_log.rs` 满了换份，同一目录里多一份旧的）。与 [`MONITOR_LOG_DIR`] 分开放：
@@ -113,7 +106,7 @@ pub struct DiagnosticsConfig {
     /// "trace" / "debug" / "info" / "warn" / "error" / "off"。set 后立即 reload 生效。
     #[serde(default = "default_log_level")]
     pub log_level: String,
-    /// ERROR 级别是否 emit 给前端弹 toast。set 后立即生效。
+    /// 要让用户知道的出错（`ui_error`）弹不弹 toast。set 后立即生效。
     #[serde(default = "default_error_toast")]
     pub error_toast: bool,
     /// 保留最近多少天的 log 文件。需要重启生效（rolling builder 启动时定型）。
@@ -163,21 +156,11 @@ pub enum RestartHint {
 /// 组合下类型链很长，alias 简化。
 type FilterReloadHandle = reload::Handle<EnvFilter, Registry>;
 
-/// 由 setup() 注入的 emit closure 类型 —— 把 `AppHandle<R>` 的 generic 限制隔在
-/// closure 里面，对外暴露统一的 `Fn(&MonitorErrorPayload)` trait object。
-type ErrorEmitFn = Box<dyn Fn(&MonitorErrorPayload) + Send + Sync>;
-
 pub struct LoggingState {
     cfg: RwLock<DiagnosticsConfig>,
     reload_handle: FilterReloadHandle,
     log_dir: PathBuf,
     monitor_data_dir: PathBuf,
-    /// emit 给前端 toast 的 closure。`install_error_emitter` 之前是 None
-    /// （setup 期间的 ERROR 只写 log 不发 toast；不致命，setup 失败的 ERROR 用户
-    /// 也看不见 GUI 框）。
-    error_emit_fn: Arc<RwLock<Option<ErrorEmitFn>>>,
-    /// error_toast toggle 用 atomic 实现"运行时切换不重装 layer"
-    error_emit_enabled: Arc<AtomicBool>,
     /// non_blocking writer 的 WorkerGuard。drop 时 worker 线程 flush + 退出。
     /// 必须跟 monitor 进程同生命周期 → 挂在 app.manage 的 state 上。
     _guard: Mutex<Option<WorkerGuard>>,
@@ -199,14 +182,13 @@ impl LoggingState {
         find_latest_log_file(&self.log_dir)
     }
 
-    /// 由 lib.rs::setup() 调用：把 AppHandle wrap 成 emit closure 存到 state，
-    /// ErrorEmitterLayer 拦到 ERROR 时调用它。
+    /// 由 lib.rs::setup() 调用：把 AppHandle 包成 `ui_error` 的出口（之前要告诉用户的出错只记日志）。
     ///
     /// 用 closure 隔绝 `AppHandle<R>` 的 generic R，对外接口统一。
     pub fn install_error_emitter<R: Runtime>(&self, handle: AppHandle<R>) {
         let h = handle;
-        *self.error_emit_fn.write() = Some(Box::new(move |p: &MonitorErrorPayload| {
-            let _ = h.emit(ERROR_EVENT, p);
+        crate::ui_error::install(Box::new(move |p: &crate::ui_error::UiErrorPayload| {
+            let _ = h.emit(crate::ui_error::EVENT, p);
         }));
     }
 
@@ -230,10 +212,9 @@ impl LoggingState {
             );
         }
 
-        // 2. error_toast 改变 → 切 atomic 开关
+        // 2. error_toast 改变 → 切出口的开关
         if new_cfg.error_toast != old.error_toast {
-            self.error_emit_enabled
-                .store(new_cfg.error_toast, Ordering::Relaxed);
+            crate::ui_error::set_enabled(new_cfg.error_toast);
             tracing::info!("error_toast: {} → {}", old.error_toast, new_cfg.error_toast);
         }
 
@@ -246,112 +227,6 @@ impl LoggingState {
         write_diagnostics_to_config(&self.monitor_data_dir, &new_cfg)?;
         *self.cfg.write() = new_cfg;
         Ok(hint)
-    }
-}
-
-// ===== MessageVisitor + ErrorEmitterLayer =====
-
-/// 提取 tracing event 的 message 字段（其他字段忽略）。tracing 用 visitor pattern
-/// 是因为 event field 是泛型 + lazy formatted，必须 visit 才能取值。
-#[derive(Default)]
-struct MessageVisitor {
-    message: String,
-}
-
-impl Visit for MessageVisitor {
-    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
-        if field.name() == "message" {
-            self.message = format!("{value:?}");
-        }
-    }
-    fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
-        if field.name() == "message" {
-            self.message = value.to_string();
-        }
-    }
-}
-
-/// emit 给前端的 ERROR 事件 payload。
-#[derive(Serialize, Clone)]
-pub struct MonitorErrorPayload {
-    pub level: &'static str,
-    /// 触发 ERROR 的 tracing target（如 `monitor_lib::bind` / `monitor_lib::config`）。
-    /// 前端 toast 用作 headline，让用户看到错误来源模块。
-    pub target: String,
-    pub message: String,
-    pub timestamp: i64,
-    /// 「复制详情」那几行（时刻 · 本机 · 对象 = 来源模块 · 原话 = 那条日志）。
-    pub detail: String,
-}
-
-struct ErrorEmitterLayer {
-    emit_fn: Arc<RwLock<Option<ErrorEmitFn>>>,
-    enabled: Arc<AtomicBool>,
-    /// 简单限频：60s 窗口内最多 20 条；超出丢弃（避免错误风暴 toast 满屏）。
-    /// "多一点无所谓"（issue 决策）：20 比较宽，但大于 20 的密度本来就 UI 没法看
-    recent: Mutex<VecDeque<Instant>>,
-}
-
-const RATE_WINDOW: Duration = Duration::from_secs(60);
-const RATE_MAX: usize = 20;
-
-impl ErrorEmitterLayer {
-    fn new(emit_fn: Arc<RwLock<Option<ErrorEmitFn>>>, enabled: Arc<AtomicBool>) -> Self {
-        Self {
-            emit_fn,
-            enabled,
-            recent: Mutex::new(VecDeque::new()),
-        }
-    }
-}
-
-impl<S> Layer<S> for ErrorEmitterLayer
-where
-    S: Subscriber + for<'a> LookupSpan<'a>,
-{
-    fn on_event(&self, event: &Event<'_>, _ctx: LayerContext<'_, S>) {
-        if *event.metadata().level() != Level::ERROR {
-            return;
-        }
-        if !self.enabled.load(Ordering::Relaxed) {
-            return;
-        }
-        let guard = self.emit_fn.read();
-        let Some(emit) = guard.as_ref() else {
-            return; // setup 前还没注入；ERROR 只写 log 文件
-        };
-
-        // 限频
-        let now = Instant::now();
-        {
-            let mut q = self.recent.lock();
-            while q
-                .front()
-                .is_some_and(|t| now.duration_since(*t) > RATE_WINDOW)
-            {
-                q.pop_front();
-            }
-            if q.len() >= RATE_MAX {
-                return;
-            }
-            q.push_back(now);
-        }
-
-        let mut v = MessageVisitor::default();
-        event.record(&mut v);
-
-        let target = event.metadata().target().to_string();
-        let payload = MonitorErrorPayload {
-            level: "error",
-            detail: crate::detail::of_log_event(&target, &v.message),
-            target,
-            message: v.message,
-            timestamp: SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .map(|d| d.as_millis() as i64)
-                .unwrap_or(0),
-        };
-        emit(&payload);
     }
 }
 
@@ -400,17 +275,14 @@ pub fn init(monitor_data_dir: &Path) -> Arc<LoggingState> {
         (None, None)
     };
 
-    // 4. error emitter layer（始终装；emit_fn=None 时 noop，enabled=false 时 skip）
-    let emit_fn_slot: Arc<RwLock<Option<ErrorEmitFn>>> = Arc::new(RwLock::new(None));
-    let enabled_flag = Arc::new(AtomicBool::new(cfg.error_toast));
-    let error_layer = ErrorEmitterLayer::new(emit_fn_slot.clone(), enabled_flag.clone());
+    // 4. 出错出口的开关照配置（出口本身 setup 那一拍才装）
+    crate::ui_error::set_enabled(cfg.error_toast);
 
     // 5. 组装 + init
     let init_result = tracing_subscriber::registry()
         .with(filter_layer)
         .with(stdout_layer)
         .with(file_layer)
-        .with(error_layer)
         .try_init();
     if let Err(e) = init_result {
         // 测试场景可能已有 subscriber；非测试场景到这一步算严重 bug 但不致命
@@ -422,8 +294,6 @@ pub fn init(monitor_data_dir: &Path) -> Arc<LoggingState> {
         reload_handle,
         log_dir,
         monitor_data_dir: monitor_data_dir.to_path_buf(),
-        error_emit_fn: emit_fn_slot,
-        error_emit_enabled: enabled_flag,
         _guard: Mutex::new(guard),
     })
 }

@@ -231,7 +231,7 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/frontend/shell/src/link_mux.rs", "let _ = slot.tx.send(Piece::End(error));", Why::PeerGone, ""),
     ("src/frontend/shell/src/local_backend_host.rs", "let _ = sock.set_read_timeout(None);", Why::NotAnError, "这条 socket 下一行就转成非阻塞交给 tokio：`SO_RCVTIMEO` / `SO_SNDTIMEO` 对非阻塞读写不起作用，摘不掉也没有残留"),
     ("src/frontend/shell/src/local_backend_host.rs", "let _ = sock.set_write_timeout(None);", Why::NotAnError, "这条 socket 下一行就转成非阻塞交给 tokio：`SO_RCVTIMEO` / `SO_SNDTIMEO` 对非阻塞读写不起作用，摘不掉也没有残留"),
-    ("src/frontend/shell/src/logging.rs", "let _ = h.emit(ERROR_EVENT, p);", Why::Diag, "把一条错误日志推给界面；推不上它照样进了日志文件"),
+    ("src/frontend/shell/src/logging.rs", "let _ = h.emit(crate::ui_error::EVENT, p);", Why::Diag, "把一条要让用户知道的出错推给界面；推不上它照样进了日志文件"),
     // 下面两行随 Job Object 那一段搬进 `platform/spawn.rs`（处数不变）。
     ("src/frontend/shell/src/platform/spawn.rs", "let _ = CloseHandle(job);", Why::Reap, "Windows 句柄 / 内存释放"),
     ("src/frontend/shell/src/platform/spawn.rs", "let _ = windows::Win32::Foundation::CloseHandle(h);", Why::Reap, "Windows 句柄 / 内存释放"),

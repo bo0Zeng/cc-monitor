@@ -2826,6 +2826,7 @@ fn a_child_that_floods_stdout_and_exits_is_still_detected_as_dead() {
                 attempt: _,
                 status,
                 witness,
+                next: _,
             }) => {
                 assert_eq!(
                     witness,
