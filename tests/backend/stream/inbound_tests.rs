@@ -424,6 +424,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "`launch` 不在阻塞档上 —— 它会占住 tokio worker（单核机器上把出方向也一起卡死），\n\
              而且 `cancel` 会对它撒谎（abort 对 spawn_blocking 是空操作）"
     );
+    // 开终端那一串要查几个文件找本机 ssh 客户端（PATH 里可能有网络盘）⇒ 阻塞档。
+    assert!(matches!(d("terminal-ssh"), Disposition::SpawnBlocking(..)));
     // 纯计算的两条留在普通 spawn 上（它们能在 await 点被真取消）。
     // `assets-sync`：等拨号 / 等远端 capture —— 真异步，也在普通 spawn 上。
     // `remote-reach`：纯内存登记（一把锁、插一行），同 `ping` 在普通 spawn 上。
@@ -432,7 +434,6 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "ping",
         "resolve",
         "ccm-probe",            // 纯函数，普通 spawn
-        "terminal-ssh",         // 纯函数（校验 ＋ quote），普通 spawn
         "history-search-merge", // 纯计算（合并排序），普通 spawn
         "assets-sync",
         // 两台之间「装」那一件的枢纽：等远端 capture（真异步），本机那一跳自己挪到阻塞线程池。
@@ -674,7 +675,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "resolve",
         // `ccm-probe`：纯函数，普通 spawn。
         "ccm-probe",
-        // `terminal-ssh`：纯函数，普通 spawn。
+        // `terminal-ssh`：查几个文件找 ssh 客户端，阻塞档（上面单独断）。
         "terminal-ssh",
         // `history-search-merge`：纯计算，普通 spawn。
         "history-search-merge",

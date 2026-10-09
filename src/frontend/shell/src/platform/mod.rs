@@ -22,6 +22,8 @@ pub mod login_shell;
 pub mod notify;
 pub mod pid;
 pub mod proc;
+// 只开一个 cc-monitor（Linux 自己占会话总线上的名字、转交激活令牌；别处经插件）。
+pub mod single_instance;
 pub mod spawn;
 pub mod ssh_agent;
 // 开终端窗口的平台那一半，原住 `launch.rs`。

@@ -8,6 +8,7 @@
 //! 我方几个后端之间不会两个同时判同一把过期；与那一家自己的进程之间，「判过期 → 删 → 重拿」不是原子的，与 proper-lockfile 自己的做法同一个窗口。
 
 use crate::agents::LoginFace;
+use crate::common::said::Said;
 use copy_core::copy_text;
 use serde_json::{Map, Value};
 use std::path::{Path, PathBuf};
@@ -27,9 +28,9 @@ pub(crate) fn read(dir: &Path, face: &LoginFace) -> Read {
     crate::common::own_state::read_bytes(&creds_path(dir, face), MAX_BYTES).and_then(|b| {
         match serde_json::from_slice::<Value>(&b) {
             Ok(Value::Object(m)) => Read::Present(m),
-            Ok(_) => Read::Unreadable(copy_text("beOauthStore.read.notObject", &[])),
+            Ok(_) => Read::Unreadable(copy_text("beOauthStore.read.notObject", &[]).into()),
             // 解析错误的文本可能带着原文片段 ⇒ 只说「不是 JSON」。
-            Err(_) => Read::Unreadable(copy_text("beOauthStore.read.notJson", &[])),
+            Err(_) => Read::Unreadable(copy_text("beOauthStore.read.notJson", &[]).into()),
         }
     })
 }
@@ -49,7 +50,7 @@ pub(crate) fn with_refresh_lock<T>(
     dir: &Path,
     face: &LoginFace,
     work: impl FnOnce(&Reclaimed) -> T,
-) -> Result<Locked<T>, String> {
+) -> Result<Locked<T>, Said> {
     let _held = crate::platform::lock::hold(dir)?;
     let stale = Duration::from_millis(face.lock_stale_ms);
     let mut reclaimed = Reclaimed::default();
@@ -95,7 +96,7 @@ fn take(
     stale: Duration,
     name: &'static str,
     reclaimed: &mut Reclaimed,
-) -> Result<Option<Hold>, String> {
+) -> Result<Option<Hold>, Said> {
     if make(p)? {
         return Ok(Some(Hold(p.to_path_buf())));
     }
@@ -111,13 +112,19 @@ fn take(
 }
 
 /// `mkdir`：建成 ⇒ `true`；已在 ⇒ `false`。
-fn make(p: &Path) -> Result<bool, String> {
+fn make(p: &Path) -> Result<bool, Said> {
     match std::fs::create_dir(p) {
         Ok(()) => Ok(true),
         Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(false),
-        Err(e) => Err(copy_text(
-            "beOauthStore.lock.failed",
-            &[("path", &p.display().to_string()), ("e", &e.to_string())],
+        Err(e) => Err(Said::with_raw(
+            copy_text(
+                "beOauthStore.lock.failed",
+                &[
+                    ("path", &p.display().to_string()),
+                    ("why", &copy_core::io_reason(e.kind())),
+                ],
+            ),
+            &e,
         )),
     }
 }
@@ -127,12 +134,15 @@ pub(crate) fn write_tokens(
     dir: &Path,
     face: &LoginFace,
     doc: &Map<String, Value>,
-) -> Result<(), String> {
+) -> Result<(), Said> {
     let path = creds_path(dir, face);
     let body = serde_json::to_vec(&Value::Object(doc.clone())).map_err(|e| {
-        copy_text(
-            "beOauthStore.write.failed",
-            &[("path", &path.display().to_string()), ("e", &e.to_string())],
+        Said::with_raw(
+            copy_text(
+                "beOauthStore.write.failed",
+                &[("path", &path.display().to_string())],
+            ),
+            e,
         )
     })?;
     crate::common::own_state::write(&path, &body)

@@ -1123,26 +1123,28 @@ fn fn_name_on(line: &str, fn_word: &str) -> Option<String> {
 #[test]
 fn each_layer_of_a_channel_failure_says_something_different() {
     use comms_inward::chan::wire::{Body, CallError, HopFault, HopId, OursFault, PeerFault, Reach};
+    let o = crate::source::Origin("devbox".into());
     let hop = |idx, reach| CallError::Hop {
         at: HopId { idx, tag: "wait" },
         reach,
         why: HopFault::Overrun,
     };
-    let not_sent = said("files-delete", &hop(1, Reach::NotSent));
-    let unknown = said("files-delete", &hop(1, Reach::Unknown));
-    let sent = said("files-delete", &hop(1, Reach::Sent));
+    let not_sent = said(&o, "files-delete", &hop(1, Reach::NotSent));
+    let unknown = said(&o, "files-delete", &hop(1, Reach::Unknown));
+    let sent = said(&o, "files-delete", &hop(1, Reach::Sent));
     assert_ne!(not_sent, unknown, "「没发出去」与「拿不准」说成了同一句");
     assert_eq!(
         unknown, sent,
         "`Sent` 与 `Unknown` 对用户是同一件事（对面可能已经做了）"
     );
     assert_ne!(
-        said("x", &hop(0, Reach::NotSent)),
-        said("x", &hop(1, Reach::NotSent)),
+        said(&o, "x", &hop(0, Reach::NotSent)),
+        said(&o, "x", &hop(1, Reach::NotSent)),
         "断在哪一段没说出来"
     );
     // 对端拒绝：原话在、码不上屏（走 `find::refusal` 那一个翻译）。
     let refused = said(
+        &o,
         "files-mkdir",
         &CallError::Peer {
             why: PeerFault::Refused {
@@ -1158,18 +1160,19 @@ fn each_layer_of_a_channel_failure_says_something_different() {
     // 按文案键断言，不按原文（CP1 裁掉了命令名，「是哪条命令」那一维不在句子里）。
     assert_eq!(
         said(
+            &o,
             "files-chmod",
             &CallError::Peer {
                 why: PeerFault::Unsupported
             }
         ),
-        copy_text("rsFilewinSource.said.unknownCmd", &[])
+        copy_core::backend_old("devbox")
     );
     // 本侧三种互不相同。
     let ours: std::collections::BTreeSet<String> =
         [OursFault::Cancelled, OursFault::Misuse, OursFault::Broken]
             .into_iter()
-            .map(|why| said("x", &why.into()))
+            .map(|why| said(&o, "x", &why.into()))
             .collect();
     assert_eq!(ours.len(), 3, "本侧三种错说成了同一句");
 }

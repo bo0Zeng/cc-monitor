@@ -87,7 +87,7 @@ fn read_raw(path: &Path) -> Result<Option<Vec<u8>>, String> {
     match read_bytes(path, MAX_BYTES) {
         Read::Absent => Ok(None),
         Read::Present(b) => Ok(Some(b)),
-        Read::Unreadable(why) => Err(why),
+        Read::Unreadable(why) => Err(why.said_logging_raw()),
     }
 }
 
@@ -145,7 +145,12 @@ fn lock_for_write(path: &Path) -> Result<crate::platform::lock::DirLock, (&'stat
             ),
         ));
     }
-    crate::platform::lock::hold(dir).map_err(|e| ("io_failed", e))
+    crate::platform::lock::hold(dir).map_err(|e| {
+        (
+            "io_failed",
+            crate::common::said::Said::from(e).said_logging_raw(),
+        )
+    })
 }
 
 /// 一次改动（线上 `patch`）：缺格 / `null` = 不改；标题给空白串 = 清空。
@@ -241,9 +246,11 @@ fn put_entry(raw: &mut Value, sid: &str, entry: Option<&Entry>) {
 }
 
 /// 唯一的写者（经 `own_state` 原子写；目录由 [`lock_for_write`] 建）。序列化用 `to_string_pretty`。
-fn write_at(path: &Path, raw: &Value) -> Result<(), String> {
+fn write_at(path: &Path, raw: &Value) -> Result<(), crate::common::said::Said> {
     let body = serde_json::to_string_pretty(raw).map_err(|e| {
-        crate::common::contract::malformed(&format!("serializing the annotations failed: {e}"))
+        crate::common::said::Said::from(crate::common::contract::malformed(&format!(
+            "serializing the annotations failed: {e}"
+        )))
     })?;
     crate::common::own_state::write(path, body.as_bytes())
 }
@@ -298,7 +305,7 @@ pub fn answer_annotate_at(
     }
     entry.updated_at = now;
     put_entry(&mut raw, sid, Some(&entry));
-    write_at(path, &raw).map_err(|e| ("io_failed", e))?;
+    write_at(path, &raw).map_err(|e| ("io_failed", e.said_logging_raw()))?;
     Ok(json!({ "entry": entry }))
 }
 
@@ -316,7 +323,7 @@ pub fn answer_forget_at(path: &Path, args: &Value) -> Result<Value, (&'static st
         return Ok(json!({ "removed": false }));
     }
     put_entry(&mut raw, sid, None);
-    write_at(path, &raw).map_err(|e| ("io_failed", e))?;
+    write_at(path, &raw).map_err(|e| ("io_failed", e.said_logging_raw()))?;
     Ok(json!({ "removed": true }))
 }
 

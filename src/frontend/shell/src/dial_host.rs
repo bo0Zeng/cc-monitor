@@ -25,6 +25,7 @@
 //! 这里就是界面拿到一条 SSH 链路的**唯一**入口。
 
 use crate::copy_table::copy_text;
+use crate::detail::Said;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -343,22 +344,23 @@ impl tokio::io::AsyncWrite for DialStream {
 
 /// 开链路、交请求、在 [`ACK_DEADLINE`] 内读完握手。成功 ⇒ 链路 ＋ ack。
 ///
-/// 失败回 `(说法, 开通道被远端回拒的原因码)` —— 原因码只有 `tunnel` 那一形会有（[`tunnel`] 的调用方据它决定停不停）。
+/// 失败回 `(那一句 ＋ 复制详情, 开通道被远端回拒的原因码)` —— 原因码只有 `tunnel` 那一形会有（[`tunnel`] 的调用方据它决定停不停）。
+/// 后端说没拨成 ⇒ 详情是它写的那一份（远端补「本机」一行，[`crate::detail::relayed`]）；读应答这一跳坏了 ⇒ 壳写、原话进详情。
 async fn open(
     cfg: &RemoteConfig,
     req: &serde_json::Value,
     want: &str,
     on_stage: &mut (dyn FnMut(ConnectStage) + Send),
-) -> Result<(DialStream, Ack), (String, Option<String>)> {
+) -> Result<(DialStream, Ack), (Said, Option<String>)> {
     // 这一趟的总时限从这一刻起算（开链路本身也在里面）。
     let due = tokio::time::Instant::now() + ONE_SHOT_DEADLINE;
-    let client = local_channel().await.map_err(|e| (e, None))?;
+    let client = local_channel().await.map_err(|e| (Said::from(e), None))?;
     // ★ F05 下半的那条埋点跟着拨号搬到这里：量的是「开链路 ＋（池里没有时）TCP ＋ 握手 ＋ 指纹校验 ＋ 鉴权 ＋ 开通道」。
     // 同一台远端已经有连接时，这个数只剩「开一条 channel」—— 复用的收益就在这一行里看得见。
     let t_handshake = std::time::Instant::now();
     let link = LinkStream::open(client, req.clone(), LINK_CALL_BUDGET)
         .await
-        .map_err(|e| (e, None))?;
+        .map_err(|e| (Said::from(e), None))?;
     let mut r = BufReader::new(Bounded::new(link, Some((due, ONE_SHOT_DEADLINE))));
     let shake = ssh_link::handshake(&mut r, want, ack_line_cap(), on_stage);
     let ack = match tokio::time::timeout(ACK_DEADLINE, shake).await {
@@ -368,20 +370,23 @@ async fn open(
             open_refused,
             reason,
             fingerprint,
+            detail,
         })) => {
-            // 后端带回的原因码与那台出示的指纹进那台的状态成品（这一轮收尾时按它说那一句、给修法）。
+            let said = refused_said(why, detail.as_deref());
+            // 后端带回的原因码 · 那台出示的指纹 · 那一句与详情进那台的状态成品（这一轮收尾时按码说那一句、给修法，详情跟着）。
             crate::machine_state::dial_failed(
                 &cfg.origin_label(),
                 reason.as_deref(),
                 fingerprint.as_deref(),
+                &said,
             );
-            return Err((why, open_refused));
+            return Err((said, open_refused));
         }
-        Ok(Err(e)) => return Err((e.to_string(), None)),
+        Ok(Err(e)) => return Err((link_said(e), None)),
         // 到点：`r`（链路）随本函数返回被丢掉 ⇒ `link-close` ⇒ 后端收掉这条链路的拨号。
         Err(_) => {
             return Err((
-                copy_text(
+                Said::from(copy_text(
                     "rsDialHost.open.timeout",
                     &[
                         ("dur", &copy_core::format_elapsed(ACK_DEADLINE)),
@@ -399,7 +404,7 @@ async fn open(
                                 .join(", "),
                         ),
                     ],
-                ),
+                )),
                 None,
             ));
         }
@@ -421,6 +426,23 @@ async fn open(
         ack.fingerprint
     );
     Ok((DialStream { r }, ack))
+}
+
+/// 本机后端说没拨成 / 没做成：那一句 ＋ 它写好的详情（拨号与 files 链路都跑在**本机**常驻后端里 ⇒ 原样，不补「本机」行）；
+/// 老后端没写详情 ⇒ 壳写时刻与本机。
+pub(crate) fn refused_said(why: String, detail: Option<&str>) -> Said {
+    match detail.filter(|d| !d.trim().is_empty()) {
+        Some(d) => Said::with_written(why, d),
+        None => Said::from(why),
+    }
+}
+
+/// 读应答这一跳坏了（管子读错 · 形状不对）：那一句不带原话，原话进详情。
+pub(crate) fn link_said(e: LinkError) -> Said {
+    match &e {
+        LinkError::Io(raw) | LinkError::Garbled(raw) => Said::with_raw(e.to_string(), raw),
+        _ => Said::from(e.to_string()),
+    }
 }
 
 // ═══ 〔「自动固化 ＋ 默认转严格 ＋ 保住多地址那一格」〕host key 自动固化 ═══════════════
@@ -664,9 +686,9 @@ fn settle_one(path: &std::path::Path, origin: &str, host: &str, verdict: PinVerd
 pub(crate) async fn tunnel(
     cfg: &RemoteConfig,
     port: u16,
-) -> Result<DialStream, (String, Option<String>)> {
+) -> Result<DialStream, (Said, Option<String>)> {
     let req = request(cfg, "tunnel", serde_json::json!({ "tunnel_port": port }))
-        .map_err(|e| (e, None))?;
+        .map_err(|e| (Said::from(e), None))?;
     open(cfg, &req, "tunnel", &mut |_| {}).await.map(|(s, _)| s)
 }
 
@@ -676,7 +698,7 @@ pub(crate) async fn capture(
     cmd: &str,
     abort_marker: Option<&str>,
     max_bytes: usize,
-) -> Result<RemoteExec, String> {
+) -> Result<RemoteExec, Said> {
     let req = request(
         cfg,
         "capture",
@@ -692,7 +714,7 @@ pub(crate) async fn capture(
     let cap = (max_bytes as u64).saturating_mul(4).max(ack_line_cap());
     let got = ssh_link::captured(&mut link.r, cap)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(link_said)?;
     Ok(RemoteExec {
         stdout: got.stdout,
         stderr: got.stderr,
@@ -736,7 +758,7 @@ pub(crate) struct RemoteFs {
 
 impl RemoteFs {
     /// 开一条 `files` 链路（拨号 / 池里复用 · 开 sftp 子系统），问一次起始目录（答得出 = 链路通了；值本身没人要）。
-    pub(crate) async fn open(cfg: &RemoteConfig) -> Result<RemoteFs, String> {
+    pub(crate) async fn open(cfg: &RemoteConfig) -> Result<RemoteFs, Said> {
         let req = request(cfg, "files", serde_json::json!({}))?;
         let (link, _) = open(cfg, &req, "files", &mut |_| {})
             .await
@@ -748,16 +770,16 @@ impl RemoteFs {
         let v = fs.ask(serde_json::json!({"op": "home"}), None).await?;
         v.get("home")
             .and_then(serde_json::Value::as_str)
-            .ok_or_else(|| copy_text("rsDialHost.open.noHome", &[("v", &v.to_string())]))?;
+            .ok_or_else(|| Said::with_raw(copy_text("rsDialHost.open.noHome", &[]), &v))?;
         Ok(fs)
     }
 
-    /// 一问一答。`bytes` 跟在请求行后面（只有 `put` 用）。失败那一形（`{"code","message"}`）⇒ `Err(message)`。
+    /// 一问一答。`bytes` 跟在请求行后面（只有 `put` 用）。失败那一形（`{"code","message","detail"}`）⇒ 那一句 ＋ 后端写的详情。
     async fn ask(
         &self,
         req: serde_json::Value,
         bytes: Option<&[u8]>,
-    ) -> Result<serde_json::Value, String> {
+    ) -> Result<serde_json::Value, Said> {
         use tokio::io::AsyncWriteExt;
         let deadline = if bytes.is_some() {
             FILES_PUT_DEADLINE
@@ -768,40 +790,45 @@ impl RemoteFs {
         let round = async {
             let mut line = req.to_string();
             line.push('\n');
-            link.write_all(line.as_bytes()).await.map_err(|e| {
-                copy_text("rsDialHost.ask.sendBytesFailed", &[("e", &e.to_string())])
-            })?;
+            let sent = |e: std::io::Error| {
+                Said::with_raw(
+                    copy_text(
+                        "rsDialHost.ask.sendBytesFailed",
+                        &[("why", &copy_core::io_reason(e.kind()))],
+                    ),
+                    &e,
+                )
+            };
+            link.write_all(line.as_bytes()).await.map_err(sent)?;
             if let Some(b) = bytes {
-                link.write_all(b).await.map_err(|e| {
-                    copy_text("rsDialHost.ask.sendBytesFailed", &[("e", &e.to_string())])
-                })?;
+                link.write_all(b).await.map_err(sent)?;
             }
-            link.flush().await.map_err(|e| {
-                copy_text("rsDialHost.ask.sendBytesFailed", &[("e", &e.to_string())])
-            })?;
+            link.flush().await.map_err(sent)?;
             ssh_link::reply_line(&mut link.r, files_reply_cap())
                 .await
-                .map_err(|e| e.to_string())
+                .map_err(link_said)
         };
         let v = tokio::time::timeout(deadline, round).await.map_err(|_| {
-            copy_text(
+            Said::from(copy_text(
                 "rsDialHost.ask.timeout",
                 &[("dur", &copy_core::format_elapsed(deadline))],
-            )
+            ))
         })??;
         if let Some(code) = v.get("code").and_then(serde_json::Value::as_str) {
             let message = v
                 .get("message")
                 .and_then(serde_json::Value::as_str)
                 .unwrap_or("");
-            return Err(if code == "fenced" {
+            let said = if code == "fenced" {
                 copy_text(
                     "rsDialHost.ask.writeFenced",
                     &[("message", &message.to_string())],
                 )
             } else {
                 message.to_string()
-            });
+            };
+            let detail = v.get("detail").and_then(serde_json::Value::as_str);
+            return Err(refused_said(said, detail));
         }
         Ok(v)
     }
@@ -819,7 +846,7 @@ impl RemoteFs {
         bytes: &[u8],
         mode: u32,
         verify: bool,
-    ) -> Result<Readback, String> {
+    ) -> Result<Readback, Said> {
         let v = self
             .ask(
                 serde_json::json!({"op": "put", "path": path, "size": bytes.len(), "mode": mode, "verify": verify}),
@@ -838,7 +865,7 @@ impl RemoteFs {
     }
 
     /// 删一份（不在 ⇒ `false`）。
-    pub(crate) async fn remove(&self, path: &str) -> Result<bool, String> {
+    pub(crate) async fn remove(&self, path: &str) -> Result<bool, Said> {
         let v = self
             .ask(serde_json::json!({"op": "remove", "path": path}), None)
             .await?;
@@ -846,7 +873,7 @@ impl RemoteFs {
     }
 
     /// `mkdir -p`（每一级都过后端那道围栏）。
-    pub(crate) async fn mkdirs(&self, path: &str) -> Result<(), String> {
+    pub(crate) async fn mkdirs(&self, path: &str) -> Result<(), Said> {
         self.ask(serde_json::json!({"op": "mkdirs", "path": path}), None)
             .await
             .map(|_| ())

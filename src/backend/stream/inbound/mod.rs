@@ -456,10 +456,8 @@ fn dispatch(
             None => Disposition::Reply(Frame::err(
                 &req.id,
                 "unknown_command",
-                &copy_text(
-                    "beInbound.dispatch.unknown",
-                    &[("other", &other.to_string())],
-                ),
+                // 说这句的就是那台不认的后端，它不知道 monitor 怎么称呼它 ⇒「该机」。
+                &copy_core::backend_old(&copy_core::peer_machine()),
             )),
         },
     }

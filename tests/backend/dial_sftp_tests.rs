@@ -121,12 +121,12 @@ async fn a_symlinked_directory_under_a_root_cannot_carry_a_write_out() {
     let s = rig::session_on(fs.clone()).await;
     let r = super::put_atomic(&s, ".cc-monitor/bin/evil/authorized_keys", b"k", 0o600).await;
     assert!(
-        matches!(&r, Err(Refusal::Fenced(m)) if copy_core::copy_matches("beSftp.fence.escaped", &m)),
+        matches!(&r, Err(Refusal::Fenced { said: m, .. }) if copy_core::copy_matches("beSftp.fence.escaped", &m)),
         "解链接那一道没拦住：{r:?}"
     );
     let r2 = super::make_dirs(&s, ".cc-monitor/bin/evil/deeper").await;
     assert!(
-        matches!(r2, Err(Refusal::Fenced(_))),
+        matches!(r2, Err(Refusal::Fenced { .. })),
         "建目录也要拦：{r2:?}"
     );
     assert!(
@@ -163,7 +163,7 @@ async fn opening_a_symlink_for_write_is_refused() {
     let s = rig::session_on(fs.clone()).await;
     let r = open_for_write(&s, ".cc-monitor/staging/k.part", false).await;
     assert!(
-        matches!(r, Err(Refusal::Fenced(ref m)) if m.contains(copy_core::copy_static!("rsFilewinKind.label.link"))),
+        matches!(r, Err(Refusal::Fenced { said: ref m, .. }) if m.contains(copy_core::copy_static!("rsFilewinKind.label.link"))),
         "链接没拦住"
     );
     assert!(fs.lock().unwrap().mutated.is_empty());
@@ -361,6 +361,27 @@ async fn a_garbled_request_line_is_answered_and_the_link_keeps_going() {
     r.read_line(&mut back).await.unwrap();
     let v: serde_json::Value = serde_json::from_str(&back).unwrap();
     assert_eq!(v["code"], "bad_request");
+    // 那一句不带解析器的原话；原话与命令进 `detail`（复制详情）。
+    let said = v["message"].as_str().unwrap();
+    let detail = v["detail"].as_str().expect("失败应答行没有 detail");
+    assert!(!said.contains("expected"), "解析器原话上了句子：{said}");
+    assert!(detail.contains("expected"), "解析器原话没进详情：{detail}");
+    assert!(detail.contains("bad_request"), "详情里没有码：{detail}");
+    // 围栏拒绝那一形同样带详情（命令那一项写到 `files <op>`）。
+    let v = ask(
+        &mut w,
+        &mut r,
+        serde_json::json!({"op":"remove","path":"elsewhere/x"}),
+        None,
+    )
+    .await;
+    assert_eq!(v["code"], "fenced");
+    assert!(
+        v["detail"]
+            .as_str()
+            .is_some_and(|d| d.contains("files remove")),
+        "围栏拒绝的应答没有带命令的详情：{v}"
+    );
     let v = ask(&mut w, &mut r, serde_json::json!({"op":"home"}), None).await;
     assert_eq!(v["home"], HOME);
 }

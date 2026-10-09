@@ -1063,6 +1063,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `accounts` | ← | 每个号一条，按 `(agent, account)` 排：`agent` 路由第 1 段（哪一家）· `account` 路由第 2 段（哪个号 |
+| `detail` | ← | 只在 `unreadable` 时有：复制详情（时刻 · 机器 · 命令 · 码 · 原话；排法同失败应答），`reason` 那一句不带原话 |
 | `earliestReturn` | ← | 被拒 / 超额在兜的号里最早回来的那个 `{account, at}`；没有、或都说不出时刻 ⇒ `null` |
 | `now` | ← | 这台此刻的 unix 秒（界面算「几分钟前看到的」「还有多久重置」都按这台的钟）；回包里每个时刻（`at` · `seenAt` · `resetsAt` · `fromResetsAt` · `since`）旁边有一格 `…Text`：出口按这台本地钟写好的字（当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年带年），界面照抄、不换算 |
 | `path` | ← | 那份文件的绝对路径（家推不出来时 `null`） |
@@ -1098,6 +1099,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 | 字段 | 向 | 说明 |
 |---|---|---|
+| `detail` | ← | 只在 `unreadable` 时有：复制详情（时刻 · 机器 · 命令 · 码 · 原话；排法同失败应答），`reason` 那一句不带原话 |
 | `followers` | ← | 跟随默认轮换、此刻活着的会话有几个（判活同历史清单：pidfile 里的会话 id ＋ 进程还是同一个） |
 | `path` | ← | 那份文件的绝对路径（家推不出 ⇒ `null`） |
 | `reason` | ← | 只在 `unreadable` 时有 |
@@ -1112,6 +1114,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 | 字段 | 向 | 说明 |
 |---|---|---|
+| `detail` | ← | 同 `rotation-read` |
 | `followers` | ← | 跟随默认轮换的会话 |
 | `path` | ← | 同 `rotation-read` |
 | `reason` | ← | 同 `rotation-read` |
@@ -1128,6 +1131,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 | 字段 | 向 | 说明 |
 |---|---|---|
+| `detail` | ← | 同 `rotation-read` |
 | `now` | ← | 那份文件的三态（同 `rotation-read`）· 这台此刻的 unix 秒；回包里每个时刻（`at` · `seenAt` · `resetsAt` · `fromResetsAt` · `since`）旁边有一格 `…Text`：出口按这台本地钟写好的字（当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年带年），界面照抄、不换算 |
 | `reason` | ← | 那份文件的三态（同 `rotation-read`）· 这台此刻的 unix 秒 |
 | `sessions` | ← | 每个 sid 一份 |
@@ -2738,13 +2742,13 @@ cc-bus 钩子诊断。
 
 给一台远端开终端要跑的那一串。
 
-收 `args` · 可撤 · 只在流上
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `command` | → ← | 要在那台跑的命令；应答里是那一整行 PowerShell `& ssh -t … -- 'bash -lic …'` |
+| `command` | → ← | 要在那台跑的命令；应答里是那一整行 PowerShell `& '<ssh 全路径>' -t … -- 'bash -lic …'` |
 
-码：`bad_args` · `bad_jump` · `refused`
+码：`bad_args` · `bad_jump` · `refused` · `no_ssh_client` · `unobservable`
 
 #### `terminal-processes`
 
@@ -3271,6 +3275,7 @@ cc-bus 钩子诊断。
 
 | 字段 | 向 | 说明 |
 |---|---|---|
+| `detail` | ← | `unreadable` 时的复制详情（时刻 · 机器 · 命令 · 码 · 原话；排法同失败应答），`reason` 那一句不带原话 |
 | `killOnExit` | ← | monitor 退出时结束本机常驻后端 |
 | `path` | ← | 那份文件的路径（在 `~/.cc-monitor/` 下） |
 | `reason` | ← | `unreadable` 时的原因 |
@@ -3285,6 +3290,7 @@ cc-bus 钩子诊断。
 
 | 字段 | 向 | 说明 |
 |---|---|---|
+| `detail` | ← | 同 `exit-policy-read` |
 | `killOnExit` | → ← | 要写的值（布尔） |
 | `path` | ← | 同 `exit-policy-read` |
 | `reason` | ← | 同 `exit-policy-read` |
@@ -3297,18 +3303,19 @@ cc-bus 钩子诊断。
 
 直接敲的 agent 也走中转。
 
-不收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
 
 | 字段 | 向 | 说明 |
 |---|---|---|
+| `agent` | → | 哪一家的那一份（适配器 id）。空串 ⇒ 默认那一家；注册表里没有 ⇒ `bad_args`，那句话列出认得的几家 |
 | `listening` | ← | 这台我们的中转此刻在不在听（与 `apikey-routing.running` 同一个判准） |
 | `missing` | ← | 那一段为什么生成不了（这台的中转还没起来过、没有钥匙 · 决策表不给这一条）；已装 / 生成得了 ⇒ 空串 |
 | `note` | ← | 那份文件为什么读不了（`unreadable` 才有，其余空串） |
-| `snippet` | ← | 要合并进 `env` 的那一段（**带钥匙**：设置文件里写不了 `$(cat …)`）；`installed` 或生成不了 ⇒ `null` |
+| `snippet` | ← | 要合并进那份文件的那一段（**带钥匙**：设置文件里写不了 `$(cat …)`）；`installed` 或生成不了 ⇒ `null` |
 | `source` | ← | 读的是哪份文件（这台后端看到的路径） |
 | `state` | ← | `installed`（写着的就是现在那一条）· `stale`（是我们那一形 |
 
-码：`failed`
+码：`bad_args` · `failed`
 
 #### `drift-report`
 

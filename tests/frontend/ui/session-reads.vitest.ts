@@ -315,13 +315,15 @@ describe("〔MOD〕会话正文：按形状收那台后端出的成品", () => {
 
 // 第六问：每轮的摘要（`history-turns`）。金样同一份文件的 `history-turns` 一格（异源：Rust 造、TS 解）。
 describe("主窗口第 2 批：每轮的摘要", () => {
-  it("★★ 金样：两轮 —— 第一轮收尾（思考 1 · 调用 2 · 失败 1〔被拒不算〕· 结论那一条 · 回复头三行），第二轮还在跑", () => {
+  it("★★ 金样：两轮 —— 第一轮收尾（思考 1 · 调用 2 · 失败 1〔被拒不算〕· 结尾那一条 · 回复头三行 · 过程行的字与语气），第二轮还在跑", () => {
     const t = decodeTurns(golden["history-turns"]);
     expect(t.from).toBe(0);
-    expect(t.turns.map((x) => [x.uuid, x.said, x.tools, x.thinking, x.fails, x.conclusion, x.reply, x.done])).toEqual([
-      ["t-1", "first line", 2, 1, 1, ["t-8"], "r1\nr2\nr3", true],
-      ["t-9", "next", 1, 0, 0, [], "", false],
+    expect(t.turns.map((x) => [x.uuid, x.said, x.tools, x.thinking, x.agents, x.background, x.retries, x.peers, x.fails, x.ending, x.reply, x.done, x.phase])).toEqual([
+      ["t-1", "first line", 2, 1, 0, 0, 0, 0, 1, ["t-8"], "r1\nr2\nr3", true, "idle"],
+      ["t-9", "next", 1, 0, 0, 0, 0, 0, 0, [], "", false, "idle"],
     ]);
+    expect(t.turns[0].parts.map((p) => p.tone)).toEqual(["plain", "plain", "plain", "fail"]);
+    expect(t.turns[0].span).toEqual({ text: "", from: null, to: null });
     expect(t.turns[1].at).toBeGreaterThan(0);
   });
 
@@ -330,6 +332,9 @@ describe("主窗口第 2 批：每轮的摘要", () => {
     const turn = good.turns[0];
     expect(() => decodeTurns({ ...good, extra: 1 })).toThrow(ReplyUnreadable);
     expect(() => decodeTurns({ ...good, turns: [{ ...turn, done: "yes" }] })).toThrow(ReplyUnreadable);
+    expect(() => decodeTurns({ ...good, turns: [{ ...turn, phase: "busy" }] })).toThrow(ReplyUnreadable);
+    expect(() => decodeTurns({ ...good, turns: [{ ...turn, parts: [{ text: "x", tone: "loud" }] }] })).toThrow(ReplyUnreadable);
+    expect(() => decodeTurns({ ...good, turns: [{ ...turn, span: { text: "x", from: "1", to: null } }] })).toThrow(ReplyUnreadable);
     expect(() => decodeTurns({ ...good, turns: [Object.fromEntries(Object.entries(turn).filter(([k]) => k !== "reply"))] })).toThrow(ReplyUnreadable);
     invokeMock.mockReset().mockResolvedValueOnce(chanReply(golden["history-turns"]));
     const ok = await readTurns("devbox" as never, "/p/s.jsonl", 0);

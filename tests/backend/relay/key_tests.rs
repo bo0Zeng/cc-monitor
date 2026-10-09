@@ -10,9 +10,21 @@ use super::*;
 pub(crate) const TEST_KEY: &str =
     "7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57";
 
+/// 判据用的那把只许直通的钥匙（与中转那一份 `door_tests::TEST_PASS_KEY` 同值）。
+pub(crate) const TEST_PASS_KEY: &str =
+    "7a557a557a557a557a557a557a557a557a557a557a557a557a557a557a557a55";
+
 /// 判据用：[`TEST_KEY`] 那一把。
 pub(crate) fn test_key() -> Key {
     Key::from_text(TEST_KEY).expect("夹具钥匙过得了形状闸")
+}
+
+/// 判据用：[`TEST_KEY`] ＋ [`TEST_PASS_KEY`]（中转门上那两把）。
+pub(crate) fn test_keys() -> comms_outward::Keys {
+    comms_outward::Keys {
+        full: test_key(),
+        pass: Key::from_text(TEST_PASS_KEY).expect("夹具钥匙过得了形状闸"),
+    }
 }
 
 /// 判据用：在一个**夹具家目录**里预先放好 [`TEST_KEY`]（`0600`，走生产段那一份落盘），回这个家目录。
@@ -39,8 +51,12 @@ fn the_key_file_is_minted_once_private_and_read_back_across_restarts() {
     ));
     std::fs::create_dir_all(&home).expect("建夹具家目录");
     let get = |k: &str| (k == "HOME").then(|| home.display().to_string());
-    let p = key_path(&get).expect("有 HOME 就有路径");
+    let p = key_path(&get, KeyKind::Full).expect("有 HOME 就有路径");
     assert_eq!(p, home.join(".cc-monitor").join("relay-key"));
+    assert_eq!(
+        key_path(&get, KeyKind::Pass),
+        Some(home.join(".cc-monitor").join("relay-pass-key"))
+    );
     assert!(!p.exists(), "夹具家目录一开始不该有钥匙");
 
     let first = ensure_key(&p).expect("第一次铸");
@@ -97,14 +113,17 @@ fn the_key_file_is_minted_once_private_and_read_back_across_restarts() {
 /// 家目录解析不出来 ⇒ 没有路径（上层据此**拒绝起**，不猜一个路径去写）。
 #[test]
 fn no_home_means_no_key_path() {
-    assert_eq!(key_path(&|_| None), None);
+    assert_eq!(key_path(&|_| None, KeyKind::Full), None);
     assert_eq!(
-        key_path(&|k| (k == "HOME").then(String::new)),
+        key_path(&|k| (k == "HOME").then(String::new), KeyKind::Full),
         None,
         "空 HOME == 没有"
     );
     assert_eq!(
-        key_path(&|k| (k == "USERPROFILE").then(|| "C:/Users/u".to_string())),
+        key_path(
+            &|k| (k == "USERPROFILE").then(|| "C:/Users/u".to_string()),
+            KeyKind::Full
+        ),
         Some(std::path::Path::new("C:/Users/u").join(KEY_FILE_REL)),
         "没有 HOME 退 USERPROFILE"
     );

@@ -37,15 +37,29 @@ pub(crate) struct DirLock {
     mutex: std::os::windows::io::RawHandle,
 }
 
+/// 拿不到锁：那一句（带原因词）＋ 系统原话（可缺）。本层在 `common/` 之下、够不到 `common::said::Said`
+/// ⇒ 交一对 std 类型，上面那一层经 `From` 换成 `Said`（`?` 直接过）。
+pub(crate) type LockFail = (String, Option<String>);
+
+fn lock_fail(said: String, raw: &std::io::Error) -> LockFail {
+    (said, Some(raw.to_string()))
+}
+
 /// 拿 `dir` 那把锁（阻塞到拿到为止）。`dir` 必须已经在（调用方先建那一层 —— 建目录在第四层的动词闭集里，
 /// 本层不建：`platform/` 在默认层，一个写动词都不许有）。
 #[cfg(unix)]
-pub(crate) fn hold(dir: &Path) -> Result<DirLock, String> {
+pub(crate) fn hold(dir: &Path) -> Result<DirLock, LockFail> {
     use std::os::unix::io::AsRawFd;
     let f = std::fs::File::open(dir).map_err(|e| {
-        copy_text(
-            "bePlatformLock.hold.openFailed",
-            &[("dir", &dir.display().to_string()), ("e", &e.to_string())],
+        lock_fail(
+            copy_text(
+                "bePlatformLock.hold.openFailed",
+                &[
+                    ("dir", &dir.display().to_string()),
+                    ("why", &copy_core::io_reason(e.kind())),
+                ],
+            ),
+            &e,
         )
     })?;
     loop {
@@ -56,9 +70,15 @@ pub(crate) fn hold(dir: &Path) -> Result<DirLock, String> {
         }
         let e = std::io::Error::last_os_error();
         if e.kind() != std::io::ErrorKind::Interrupted {
-            return Err(copy_text(
-                "bePlatformLock.hold.lockFailed",
-                &[("dir", &dir.display().to_string()), ("e", &e.to_string())],
+            return Err(lock_fail(
+                copy_text(
+                    "bePlatformLock.hold.lockFailed",
+                    &[
+                        ("dir", &dir.display().to_string()),
+                        ("why", &copy_core::io_reason(e.kind())),
+                    ],
+                ),
+                &e,
             ));
         }
     }
@@ -93,7 +113,7 @@ fn mutex_name(namespace: &str, dir: &Path) -> Vec<u16> {
 }
 
 #[cfg(windows)]
-pub(crate) fn hold(dir: &Path) -> Result<DirLock, String> {
+pub(crate) fn hold(dir: &Path) -> Result<DirLock, LockFail> {
     /// 「一直等」—— 只等内核那一个事件（同 `win_proc.rs` 那一格）。
     const WAIT_FOREVER: u32 = 0xFFFF_FFFF;
     const WAIT_OBJECT_0: u32 = 0;
@@ -109,12 +129,16 @@ pub(crate) fn hold(dir: &Path) -> Result<DirLock, String> {
         }
     }
     if handle.is_null() {
-        return Err(copy_text(
-            "bePlatformLock.hold.lockFailed",
-            &[
-                ("dir", &dir.display().to_string()),
-                ("e", &std::io::Error::last_os_error().to_string()),
-            ],
+        let e = std::io::Error::last_os_error();
+        return Err(lock_fail(
+            copy_text(
+                "bePlatformLock.hold.lockFailed",
+                &[
+                    ("dir", &dir.display().to_string()),
+                    ("why", &copy_core::io_reason(e.kind())),
+                ],
+            ),
+            &e,
         ));
     }
     // SAFETY: `handle` 是刚拿到的互斥量句柄。
@@ -123,12 +147,15 @@ pub(crate) fn hold(dir: &Path) -> Result<DirLock, String> {
         other => {
             // SAFETY: 同上；没拿到就只关句柄。
             unsafe { CloseHandle(handle) };
-            Err(copy_text(
-                "bePlatformLock.hold.waitFailed",
-                &[
-                    ("dir", &dir.display().to_string()),
-                    ("status", &format!("{other:#x}")),
-                ],
+            Err((
+                copy_text(
+                    "bePlatformLock.hold.waitFailed",
+                    &[
+                        ("dir", &dir.display().to_string()),
+                        ("status", &format!("{other:#x}")),
+                    ],
+                ),
+                None,
             ))
         }
     }

@@ -16,6 +16,8 @@ vi.mock("../../../src/frontend/ui/terminal-open", async (orig) => ({
   ...(await orig<typeof import("../../../src/frontend/ui/terminal-open")>()),
   openTerminal: term.openTerminal,
 }));
+const clip = vi.hoisted(() => ({ writeClipboard: vi.fn() }));
+vi.mock("../../../src/frontend/ui/clipboard", () => clip);
 const mint = vi.hoisted(() => ({ mintFreshTmuxName: vi.fn() }));
 const settingsWin = vi.hoisted(() => ({ openSettingsWindow: vi.fn() }));
 vi.mock("../../../src/frontend/ui/settings/open-settings", () => settingsWin);
@@ -49,11 +51,9 @@ const arrivalMock = expectArrival as unknown as ReturnType<typeof vi.fn>;
 const lineFor = (req: CliRenderRequest): string =>
   `ccm <rendered:${JSON.stringify(req)}>`;
 
+/** 写剪贴板那一口（`clipboard.ts`，经壳）换成 `writeText`。 */
 function stubClipboard(writeText: (t: string) => Promise<void>): void {
-  Object.defineProperty(globalThis.navigator, "clipboard", {
-    value: { writeText },
-    configurable: true,
-  });
+  clip.writeClipboard.mockImplementation(writeText);
 }
 
 function requests(): CliRenderRequest[] {
@@ -220,6 +220,18 @@ describe("失败怎么说", () => {
     const line = lineFor(requests()[0]);
     expect(writeText).toHaveBeenCalledWith(line);
     expect(String(toastMock.mock.calls[0][1])).toContain(line);
+  });
+
+  it("接回开不了终端 ⇒ 剪贴板与提示里是那一整行，长 tmux 名不截（超过 15 个字也是全名）", async () => {
+    term.openTerminal.mockRejectedValue(new Error("没开成"));
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    stubClipboard(writeText);
+    const name = "android-terminal-session";
+    await runRemoteAttach("devbox", "claude", name);
+    const line = lineFor(requests()[0]);
+    expect(line).toContain(name);
+    expect(writeText).toHaveBeenCalledWith(line);
+    expect(String(toastMock.mock.calls[0][1]).split("\n")).toContain(line);
   });
 
   it("壳回「找不到终端」那个结局 ⇒ 照实说 ＋［设置］直达那一格 ＋［复制命令］；不自动写剪贴板，点了才复制那一行", async () => {

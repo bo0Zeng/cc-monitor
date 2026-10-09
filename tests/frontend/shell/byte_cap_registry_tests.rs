@@ -833,6 +833,13 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "`relay-optin` 读那台 `~/.claude/settings.json` 多大",
         "降级+说清",
     ),
+    // 同上，Codex 那一家：读那台 `~/.codex/config.toml` 多大。
+    (
+        "src/backend/agents/codex/relay.rs",
+        "CONFIG_CAP_BYTES",
+        "`relay-optin` 读那台 `~/.codex/config.toml` 多大",
+        "降级+说清",
+    ),
     // 资产目录那六个数（`agents/claudecode/assets.rs` · `asset_catalog.rs` · `asset_sync.rs`）。
     (
         "src/backend/agents/claudecode/assets.rs",
@@ -1063,13 +1070,13 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "tee 侧解码缓冲攒着的那截（SSE 半行 / chunked 还没成形的块长度行）",
         "丢弃+带身份报告",
     ),
-    // tee 交给 tap 口的**一个 SSE 事件**的原文字节数。超了这一件不交、位置号照占 ⇒
-    // 接收侧看见 `n` 的缺口（身份 = 哪个响应的第几号）；下游的字节一个不少（tap 是抄一份）。
+    // tee 交给 tap 口的**一个 SSE 事件**的原文字节数。超了只交开头这么多、明标截断与原长（`TapBody::Clipped`）⇒
+    // 接收侧只从开头认类型与标识；下游的字节一个不少（tap 是抄一份）。
     (
         "src/comms/outward/tee.rs",
         "TAP_DATA_CAP",
         "tee 交给 tap 口的一个 SSE 事件（`data:` 后那段原文）的字节数",
-        "丢弃+带身份报告",
+        "截断+说清",
     ),
     // 续订阅号登录令牌那一发：令牌端点回包的头与体各自的上限（经中转的一问一答原语读，超了整发作错、不截断）。
     (

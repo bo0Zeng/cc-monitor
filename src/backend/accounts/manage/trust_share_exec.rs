@@ -52,7 +52,9 @@ pub(crate) fn sync(d: &dyn Door) -> Result<Vec<String>, Refusal> {
 
 /// 一份配置：原文（不在 ⇒ `None`）＋ 信任过的目录。读不出来 / 解不开 ⇒ `Err`。
 fn read_conf(cells: &TrustCells, path: &str) -> Result<(Option<String>, BTreeSet<String>), String> {
-    let Some(raw) = read_text(path, MAX_CONFIG_BYTES)? else {
+    let Some(raw) =
+        read_text(path, MAX_CONFIG_BYTES).map_err(crate::common::said::Said::said_logging_raw)?
+    else {
         return Ok((None, BTreeSet::new()));
     };
     let v: serde_json::Value =
@@ -176,7 +178,8 @@ pub(crate) fn pretrust_with(
     let dirs: BTreeSet<String> = (cells.dir_keys)(cwd).into_iter().collect();
     let path = join(dir, file);
     for _ in 0..2 {
-        let raw = read_text(&path, MAX_CONFIG_BYTES)?;
+        let raw = read_text(&path, MAX_CONFIG_BYTES)
+            .map_err(crate::common::said::Said::said_logging_raw)?;
         match write_marks(d, home, cells, &path, raw.as_deref(), &dirs)? {
             Marked::Stale => continue,
             done => return Ok(done),

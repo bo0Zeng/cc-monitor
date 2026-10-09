@@ -1360,11 +1360,14 @@ fn run_resident_stop_within(
             ))
         }
     };
-    crate::remote_resident::read_stop(&crate::stream_source::RemoteExec {
-        stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
-        stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
-        exit_status: out.code.and_then(|c| u32::try_from(c).ok()),
-    })
+    crate::remote_resident::read_stop(
+        &crate::stream_source::RemoteExec {
+            stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
+            stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
+            exit_status: out.code.and_then(|c| u32::try_from(c).ok()),
+        },
+        &copy_core::local_machine(),
+    )
     .map_err(Said::from)
 }
 

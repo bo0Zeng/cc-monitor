@@ -431,7 +431,7 @@ fn the_prompt_tier_declares_how_it_will_look() {
             )
         };
         match probe {
-            EnvProbe::OnPath | EnvProbe::InSessionShell => probeable += 1,
+            EnvProbe::OnPath | EnvProbe::InSessionShell | EnvProbe::SshClient => probeable += 1,
             EnvProbe::CannotProbe { why } => {
                 blind += 1;
                 assert!(

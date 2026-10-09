@@ -108,6 +108,35 @@ impl Detail {
         self
     }
 
+    /// 读回一份按本模块排法写好的详情（对端 / 本机后端写的）：行首是项名的起一项，别的行接在上一项后面；
+    /// 「原话」排在最后（[`Label::ALL`]），读到它之后的行一律算原话的续行 —— 原话里恰好有一行以项名打头也不会被拆成别的项。
+    /// 开头不是项名的那几行原样当一块。
+    pub fn parse(written: &str) -> Detail {
+        let mut d = Detail::new();
+        let mut raw = false;
+        for line in written.trim_end().lines() {
+            let label = (!raw)
+                .then(|| {
+                    Label::ALL
+                        .into_iter()
+                        .find(|l| line.starts_with(&format!("{}：", l.said())))
+                })
+                .flatten();
+            match (label, d.items.last_mut()) {
+                (Some(l), _) => {
+                    raw = l == Label::Raw;
+                    d.items.push(Item::Line(l, line.to_string()));
+                }
+                (None, Some(Item::Line(_, s) | Item::Block(s))) => {
+                    s.push('\n');
+                    s.push_str(line);
+                }
+                (None, None) => d.items.push(Item::Block(line.to_string())),
+            }
+        }
+        d
+    }
+
     /// 补一项，按 [`Label::ALL`] 的次序插在第一条后排项之前（没有后排项 ⇒ 末尾）；值空 ⇒ 原样。
     pub fn insert(mut self, label: Label, value: impl AsRef<str>) -> Detail {
         let Some(line) = line_of(label, value.as_ref()) else {

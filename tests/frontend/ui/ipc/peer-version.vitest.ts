@@ -49,8 +49,9 @@ describe("调用方不再自拼「版本旧」那一句", () => {
 });
 
 describe("文案表里这一族只剩两句", () => {
-  // 不在这一族的：机器状态词（要更新 / 版本较新）、部署换版本、文件格式版本、cc-bus / ccm 自己的版本 —— 它们不是「这条命令因对方版本说不成」。
-  const FAMILY = /后端(版本)?(太旧|过旧|旧了|版本旧|版本不对|版本对不上)|多半是.{0,6}版本|可能是.{0,6}版本|版本可能对不上|两边版本不一样|多半太旧/;
+  // 不在这一族的：部署换版本、文件格式版本、cc-bus / ccm / tmux 自己的版本 —— 它们不是「这条命令因对方版本说不成」。
+  const FAMILY =
+    /后端要更新|后端不支持此操作|后端(版本)?(太旧|过旧|旧了|版本旧|版本不对|版本对不上)|版本(不配|过旧|可能不对)|可能过旧|多半是.{0,6}版本|可能是.{0,6}版本|版本可能对不上|两边版本不一样|多半太旧/;
   it("新增一条自拼的「后端太旧 / 多半是版本不对」⇒ 红", () => {
     const hits = Object.entries(TABLE.entries as Record<string, { zh: string }>)
       .filter(([k, v]) => FAMILY.test(v.zh) && !k.startsWith("peerVersion."))
@@ -60,7 +61,11 @@ describe("文案表里这一族只剩两句", () => {
   });
 });
 
-/** 还没收进两句、照实登记的那几条（后端 / 壳 / 文件窗口里还没换的；换一条删一条）。 */
+/** 状态词：那台处在「要更新」状态时的标签（账号徽标 · 远端健康 · 连上时的版本判定），不是命令被拒；机器状态成品那一刀统一。 */
 const EXPECTED_REMAINING: string[] = [
-  "rsLinkMux.data.noCredit",
+  "accountChip.label.backendOld",
+  "remoteHealth.head.backendOld",
+  "rsSshSource.health.degraded",
+  "rsSshSource.version.protoMismatch",
+  "rsSshSource.version.remoteOlder",
 ];

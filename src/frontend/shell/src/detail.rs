@@ -168,7 +168,7 @@ impl Said {
         use crate::inbound_client::CallError;
         let parts = match e {
             CallError::Remote { detail, .. } if !detail.trim().is_empty() => {
-                let wrote = Detail::new().block(detail);
+                let wrote = Detail::parse(detail);
                 if origin.is_local() {
                     wrote
                 } else {
@@ -214,6 +214,11 @@ impl Said {
         )
     }
 
+    /// 一句话 ＋ 别处按同一排法写好的那一份详情（本机后端写的 · 上一步留下的），读回成一项一项（之后补项照次序插）。
+    pub(crate) fn with_written(said: String, detail: &str) -> Said {
+        Said::of_parts(said, Detail::parse(detail))
+    }
+
     /// 换一句给人看的话，复制详情照旧（外层接手下层那一形失败时说得更具体）。
     pub(crate) fn restate(said: String, from: Said) -> Said {
         Said::of_parts(said, from.parts)
@@ -238,13 +243,18 @@ impl Said {
         }
     }
 
-    /// 壳命令的失败补上命令名（复制详情的「命令」那一项）：已经有一项「命令」（自己写的）或那份是后端写好的（它自己写了命令）⇒ 原样。
+    /// 壳命令的失败补上命令名（复制详情的「命令」那一项）：已经有一项「命令」⇒ 原样。
     /// 「命令」按项名次序插（[`Label::ALL`]：本机之后、其余几项之前）。每条壳命令的最外层经这里一次（`#[tauri::command]` 那几十条，判据扫着）。
     pub(crate) fn named(self, command: &str) -> Said {
-        if self.parts.has(Label::Command) || self.parts.has_block() {
+        self.with_item(Label::Command, command)
+    }
+
+    /// 详情里补一项，按 [`Label::ALL`] 的次序插（结构化）。已有这一项 · 值空 · 那份里有读不出项名的一块（不知道它写了什么）⇒ 原样。
+    pub(crate) fn with_item(self, label: Label, value: &str) -> Said {
+        if self.parts.has_block() || self.parts.has(label) || value.trim().is_empty() {
             return self;
         }
-        Said::of_parts(self.said, self.parts.insert(Label::Command, command))
+        Said::of_parts(self.said, self.parts.insert(label, value))
     }
 }
 

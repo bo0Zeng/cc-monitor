@@ -45,16 +45,16 @@ struct Here {
     notes: Vec<String>,
 }
 
-pub(crate) fn read_text(p: &str, cap: u64) -> Result<Option<String>, String> {
+pub(crate) fn read_text(p: &str, cap: u64) -> Result<Option<String>, crate::common::said::Said> {
     match item_at(p) {
         Item::Absent => Ok(None),
         Item::File { .. } => {
             let b = crate::common::fs::read_regular_capped(Path::new(p), cap)?;
             String::from_utf8(b)
                 .map(Some)
-                .map_err(|_| copy_text("beAcctMcpShare.read.notText", &[]))
+                .map_err(|_| copy_text("beAcctMcpShare.read.notText", &[]).into())
         }
-        _ => Err(copy_text("beAcctMcpShare.read.notFile", &[])),
+        _ => Err(copy_text("beAcctMcpShare.read.notFile", &[]).into()),
     }
 }
 
@@ -64,15 +64,15 @@ pub(crate) fn accounts_in(home: &str) -> Result<Option<Vec<(String, String)>>, R
         return Ok(None);
     }
     let mpath = join(&super::scan::accts_root(home), super::scan::MANIFEST_FILE);
-    let text = read_text(&mpath, MAX_SMALL_BYTES).map_err(|e| {
-        (
-            "io_failed",
-            copy_text(
-                "beAcctScan.manifest.unreadable",
-                &[("path", &mpath), ("e", &e)],
-            ),
+    // 那一句只带路径与原因词；原话记日志（这一族的应答还没有详情那一格）。
+    let say = |w: &str| {
+        copy_text(
+            "beAcctScan.manifest.unreadable",
+            &[("path", &mpath), ("why", w)],
         )
-    })?;
+    };
+    let text = read_text(&mpath, MAX_SMALL_BYTES)
+        .map_err(|e| ("io_failed", e.wrap(say).said_logging_raw()))?;
     let Some(text) = text else {
         return Ok(None);
     };
@@ -122,15 +122,15 @@ fn load(home: &str, list: Vec<(String, String)>) -> Result<Here, Refusal> {
     let key = layout::user_mcp_key();
     let file = layout::identity_config_file();
     let spath = door::join_under(home, relay_route_core::ACCOUNTS_MCP_REL);
-    let store_raw = read_text(&spath, MAX_SMALL_BYTES).map_err(|e| {
-        (
-            "io_failed",
-            copy_text(
-                "beAcctMcpShare.store.unreadable",
-                &[("path", &spath), ("e", &e)],
-            ),
+    // 那一句只带路径与原因词；原话记日志（这一族的应答还没有详情那一格）。
+    let say = |w: &str| {
+        copy_text(
+            "beAcctMcpShare.store.unreadable",
+            &[("path", &spath), ("why", w)],
         )
-    })?;
+    };
+    let store_raw = read_text(&spath, MAX_SMALL_BYTES)
+        .map_err(|e| ("io_failed", e.wrap(say).said_logging_raw()))?;
     let store = match &store_raw {
         Some(t) => Store::parse(t, key).map_err(|e| {
             (
@@ -148,16 +148,17 @@ fn load(home: &str, list: Vec<(String, String)>) -> Result<Here, Refusal> {
     for (name, dir) in list {
         let path = join(&dir, file);
         let got = read_text(&path, MAX_CONFIG_BYTES)
-            .and_then(|raw| servers_in(raw.as_deref(), key).map(|s| (raw, s)));
+            .and_then(|raw| Ok((servers_in(raw.as_deref(), key)?, raw)));
         let (raw, now) = match got {
-            Ok((raw, s)) => (raw, Some(s)),
+            Ok((s, raw)) => (raw, Some(s)),
             Err(e) => {
+                let why = e.logged();
                 tracing::warn!(
-                    "账号之间同步 MCP：{name} 号的配置 {path} 读不出来，这一次跳过它：{e}"
+                    "账号之间同步 MCP：{name} 号的配置 {path} 读不出来，这一次跳过它：{why}"
                 );
                 notes.push(copy_text(
                     "beAcctMcpShare.note.unreadable",
-                    &[("account", &name), ("path", &path), ("e", &e)],
+                    &[("account", &name), ("path", &path), ("why", &e.said)],
                 ));
                 (None, None)
             }
@@ -205,9 +206,13 @@ fn backup(d: &dyn Door, home: &str, name: &str, raw: &str) -> Result<(), String>
         layout::identity_config_file()
     );
     let abs = door::join_under(home, &rel);
-    let before = read_text(&abs, MAX_CONFIG_BYTES).inspect_err(|e| {
-        tracing::warn!("账号之间同步 MCP：{name} 号上一份备份 {abs} 读不出来，这一次跳过它：{e}");
-    })?;
+    let before = read_text(&abs, MAX_CONFIG_BYTES)
+        .map_err(|e| e.logged())
+        .inspect_err(|e| {
+            tracing::warn!(
+                "账号之间同步 MCP：{name} 号上一份备份 {abs} 读不出来，这一次跳过它：{e}"
+            );
+        })?;
     put_private(d, home, &rel, raw, before.as_deref()).map_err(Refused::said)
 }
 
@@ -262,7 +267,12 @@ pub(crate) fn lock(home: &str) -> Result<Option<crate::platform::lock::DirLock>,
     if item_at(&accts).exists() {
         crate::platform::lock::hold(Path::new(&accts))
             .map(Some)
-            .map_err(|e| ("io_failed", e))
+            .map_err(|e| {
+                (
+                    "io_failed",
+                    crate::common::said::Said::from(e).said_logging_raw(),
+                )
+            })
     } else {
         Ok(None)
     }

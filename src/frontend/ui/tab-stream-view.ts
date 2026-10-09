@@ -249,11 +249,17 @@ export class TabStreamView {
       const t = this.store.tabs.get(sessionId);
       return t?.parentPath ? { origin: t.origin, jsonlPath: t.parentPath } : null;
     });
-    // 按轮折叠：一轮的边界与结论问后端（`history-turns`），路径同大纲每次现取。
-    const turnFold = new TurnFold(stream.contentElement, streamEl, () => {
-      const t = this.store.tabs.get(sessionId);
-      return t?.parentPath ? { origin: t.origin, jsonlPath: t.parentPath } : null;
-    });
+    // 按轮折叠：一轮的边界与结论问后端（`history-turns`），路径同大纲每次现取；占位里有没有下一轮开头问这个 tab 的骨架。
+    const turnFold = new TurnFold(
+      stream.contentElement,
+      streamEl,
+      () => {
+        const t = this.store.tabs.get(sessionId);
+        return t?.parentPath ? { origin: t.origin, jsonlPath: t.parentPath } : null;
+      },
+      undefined,
+      () => this.store.tabs.get(sessionId)?.skeleton ?? null,
+    );
     // 轮次刻度：同一份轮；跳与查找 / 大纲同一个住址（`jumpInTab`）。挂在流外（不随流滚），随 tab 同进同出。
     const turnRail = new TurnRail(streamEl, stream.contentElement, {
       turns: () => turnFold.all,

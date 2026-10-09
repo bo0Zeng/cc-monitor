@@ -5,7 +5,8 @@
 // ② 三句话缺失 → 退化回 `remote-section.ts` 迁移前那个形态（不知道贴哪、不知道怎么生效）；
 // ③ 复制失败被吞 → 用户点了按钮、什么反应都没有，然后粘到上一次剪贴板里的东西。
 //    ③ 正是迁移前 A3 的真缺陷，所以这里有一条专门的测试。
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { fakeClipboard, type ClipboardFake } from "../../test-support/clipboard-fake";
 
 const toastMock = vi.fn();
 vi.mock("../../../src/frontend/ui/kit/toast", () => ({
@@ -25,20 +26,14 @@ function spec(over: Partial<PasteSpec> = {}): PasteSpec {
   };
 }
 
-let writeText: ReturnType<typeof vi.fn>;
-function stubClipboard(impl?: () => Promise<void>): void {
-  writeText = vi.fn(impl ?? (() => Promise.resolve()));
-  Object.defineProperty(navigator, "clipboard", {
-    value: { writeText },
-    configurable: true,
-  });
-}
+let clip: ClipboardFake;
 
 beforeEach(() => {
   toastMock.mockReset();
-  stubClipboard();
+  clip = fakeClipboard();
   document.body.textContent = "";
 });
+afterEach(() => clip.restore());
 
 describe("三句话是这个组件存在的理由", () => {
   it.each(["target", "mergeNote", "activation"] as const)(
@@ -73,7 +68,7 @@ describe("校验门", () => {
       }),
     );
     b.element.querySelector<HTMLButtonElement>(".paste-block-copy")!.click();
-    expect(writeText).not.toHaveBeenCalled();
+    expect(clip.written).toEqual([]);
     expect(toastMock).toHaveBeenCalledWith(
       copyText("pasteBlock.buildPasteBlock.notReady"),
       "先填一个合法的别名名字。",
@@ -84,9 +79,8 @@ describe("校验门", () => {
   it("通过时才写剪贴板，且写的是输出面上那份", async () => {
     const b = buildPasteBlock(spec({ invalidReason: () => null }));
     b.element.querySelector<HTMLButtonElement>(".paste-block-copy")!.click();
-    expect(writeText).toHaveBeenCalledWith("alias x=y");
-    await Promise.resolve();
-    await Promise.resolve();
+    expect(clip.written).toEqual(["alias x=y"]);
+    await new Promise((r) => setTimeout(r, 0));
     // 成功提示必须**同时**带三句话——否则复制完用户还是不知道该干什么
     const [, body] = toastMock.mock.calls.at(-1)!;
     expect(body).toContain("~/.bashrc");
@@ -97,34 +91,20 @@ describe("校验门", () => {
   it("没有校验门时默认放行（A3 那种恒有效的固定文本）", () => {
     const b = buildPasteBlock(spec());
     b.element.querySelector<HTMLButtonElement>(".paste-block-copy")!.click();
-    expect(writeText).toHaveBeenCalledTimes(1);
+    expect(clip.written).toHaveLength(1);
   });
 });
 
 describe("复制失败必须说出来（迁移前 A3 的真缺陷）", () => {
-  it("writeText reject → error toast，不是 console.warn", async () => {
-    stubClipboard(() => Promise.reject(new Error("denied")));
+  it("写不进（壳回失败）→ error toast，不是 console.warn，也不说已复制", async () => {
+    clip.refuse();
     const b = buildPasteBlock(spec());
     b.element.querySelector<HTMLButtonElement>(".paste-block-copy")!.click();
-    await Promise.resolve();
-    await Promise.resolve();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(toastMock).toHaveBeenCalledTimes(1);
     expect(toastMock).toHaveBeenCalledWith(
       copyText("pasteBlock.buildPasteBlock.copyFailed"),
       expect.stringContaining(copyText("pasteBlock.buildPasteBlock.noClipboard")),
-      expect.objectContaining({ level: "error" }),
-    );
-  });
-
-  it("整个 clipboard API 不可用（非 https / 老 WebView）也要提示", () => {
-    Object.defineProperty(navigator, "clipboard", {
-      value: undefined,
-      configurable: true,
-    });
-    const b = buildPasteBlock(spec());
-    b.element.querySelector<HTMLButtonElement>(".paste-block-copy")!.click();
-    expect(toastMock).toHaveBeenCalledWith(
-      copyText("pasteBlock.buildPasteBlock.copyFailed"),
-      expect.any(String),
       expect.objectContaining({ level: "error" }),
     );
   });

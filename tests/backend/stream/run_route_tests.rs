@@ -117,3 +117,32 @@ fn every_kind_of_drop_is_counted_and_spoken_at_powers_of_two() {
         "出声的节奏不对：{said:#?}"
     );
 }
+
+/// ★ 自报的运行等于会话标签 ⇒ 主运行（有的家主运行也带那个头）；不等 ⇒ 那个子运行。
+#[test]
+fn an_owner_equal_to_the_stream_is_the_main_run() {
+    let mut r = router();
+    let run_of = |frames: Vec<Frame>| -> Vec<Option<String>> {
+        frames
+            .into_iter()
+            .map(|f| match f {
+                Frame::Tap { run, .. } => run,
+                _ => panic!("不是 tap 帧"),
+            })
+            .collect()
+    };
+    let owned = |owner: &str, resp: u64| TapEvent {
+        owner: owner.into(),
+        ..data(SID, resp, 0, OPEN)
+    };
+    assert_eq!(
+        run_of(r.on_tap(owned(SID, 1))),
+        vec![None],
+        "等于会话标签的那一发没归主运行"
+    );
+    assert_eq!(
+        run_of(r.on_tap(owned("child-7", 2))),
+        vec![Some("child-7".to_string())],
+        "不等的那一发没归它自报的子运行"
+    );
+}

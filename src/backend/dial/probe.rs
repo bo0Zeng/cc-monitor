@@ -281,9 +281,14 @@ where
         .and_then(Value::as_array)
         .is_some_and(|a| a.iter().any(|c| c.as_str() == Some("ping")));
     let (line, message) = if !accepts_ping {
+        // 那台的后端不认控制命令：全产品同一句（按名字取）。
+        let said = copy_core::backend_old(machine.name());
         (
-            copy_text("beProbe.hello.tooOld", &[("build", &build)]),
-            copy_text("beProbe.test.noControl", &[]),
+            copy_text(
+                "beProbe.hello.tooOld",
+                &[("build", &build), ("said", &said)],
+            ),
+            said,
         )
     } else {
         // 量一次往返经过的墙钟（不是节拍：只读两次钟、算个差）。

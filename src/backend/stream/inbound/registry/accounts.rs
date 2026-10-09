@@ -18,7 +18,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "quota-read",
         summary: "这台的额度账",
         codes: &[],
-        fields: &[out("accounts", "每个号一条，按 `(agent, account)` 排：`agent` 路由第 1 段（哪一家）· `account` 路由第 2 段（哪个号"), out("earliestReturn", "被拒 / 超额在兜的号里最早回来的那个 `{account, at}`；没有、或都说不出时刻 ⇒ `null`"), out("now", "这台此刻的 unix 秒（界面算「几分钟前看到的」「还有多久重置」都按这台的钟）；回包里每个时刻（`at` · `seenAt` · `resetsAt` · `fromResetsAt` · `since`）旁边有一格 `…Text`：出口按这台本地钟写好的字（当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年带年），界面照抄、不换算"), out("path", "那份文件的绝对路径（家推不出来时 `null`）"), out("reason", "只在 `unreadable` 时有：为什么读不出来；其余 `null`"), out("state", "`\"present\"`（读得懂）· `\"absent\"`（还没看到过任何回包）· `\"unreadable\"`（文件读不出来 / 家推不出来）"), out("unseen", "账号库里有、额度账上从没出过数的号：`{agent, account, kind, login, subId?}`（几格同下）"), out("usableNow", "此刻发得出去的号（路由第 2 段）：登录拿得到、不是被拒 / 超额在兜（快满 · 数旧 · 没采样 · 上一窗已过都算）")],
+        fields: &[out("accounts", "每个号一条，按 `(agent, account)` 排：`agent` 路由第 1 段（哪一家）· `account` 路由第 2 段（哪个号"), out("detail", "只在 `unreadable` 时有：复制详情（时刻 · 机器 · 命令 · 码 · 原话；排法同失败应答），`reason` 那一句不带原话"), out("earliestReturn", "被拒 / 超额在兜的号里最早回来的那个 `{account, at}`；没有、或都说不出时刻 ⇒ `null`"), out("now", "这台此刻的 unix 秒（界面算「几分钟前看到的」「还有多久重置」都按这台的钟）；回包里每个时刻（`at` · `seenAt` · `resetsAt` · `fromResetsAt` · `since`）旁边有一格 `…Text`：出口按这台本地钟写好的字（当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年带年），界面照抄、不换算"), out("path", "那份文件的绝对路径（家推不出来时 `null`）"), out("reason", "只在 `unreadable` 时有：为什么读不出来；其余 `null`"), out("state", "`\"present\"`（读得懂）· `\"absent\"`（还没看到过任何回包）· `\"unreadable\"`（文件读不出来 / 家推不出来）"), out("unseen", "账号库里有、额度账上从没出过数的号：`{agent, account, kind, login, subId?}`（几格同下）"), out("usableNow", "此刻发得出去的号（路由第 2 段）：登录拿得到、不是被拒 / 超额在兜（快满 · 数旧 · 没采样 · 上一窗已过都算）")],
         takes_input: false,
         run: Run::Blocking(|_r| Ok(Some(crate::faces::rotation_face::answer_quota_read()))),
     },
@@ -36,11 +36,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         ],
         fields: &[both("account", "账号库里的号（配置目录末段；账号 0 是 `0`）"), both("agent", "路由第 1 段：哪一家"), out("from", "恒 `\"usage\"`"), out("now", "这台此刻的 unix 秒"), out("path", "额度账那份文件的绝对路径"), out("reason", "只在 `unreadable` 时有：哪一处读不懂（英文诊断）"), out("state", "`\"read\"`（读得懂、已记进额度账）· `\"unreadable\"`（输出对不上：**不猜、不写账**）"), out("windows", "读到的窗口（形状同 `reading.windows`）；`unreadable` ⇒ `[]`")],
         takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::faces::quota_probe_face::answer_probe(&r.args)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
+        run: Run::BlockingData(|r| crate::faces::quota_probe_face::answer_probe(&r.args).map(Some)),
     },
     // 换号那一族（帧面宿主 `faces/rotation_face.rs`）：默认轮换读 / 写 · 一批会话的轮换与「账号」格读 / 写 · 现在就换。
     //   同步文件 I/O ⇒ 阻塞档；「现在就换」里重启换那一半要等 `session-restart` ⇒ 异步、失败可带码。
@@ -48,37 +44,25 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "rotation-read",
         summary: "这台的默认轮换",
         codes: &[],
-        fields: &[out("followers", "跟随默认轮换、此刻活着的会话有几个（判活同历史清单：pidfile 里的会话 id ＋ 进程还是同一个）"), out("path", "那份文件的绝对路径（家推不出 ⇒ `null`）"), out("reason", "只在 `unreadable` 时有"), out("rotation", "默认轮换；没动过 / 读不出 ⇒ 缺省那一份（只有占位、`\"full\"`、`\"continue\"`）"), out("state", "`\"present\"` · `\"absent\"`（没动过）· `\"unreadable\"`（读不出 / 家推不出）")],
+        fields: &[out("detail", "只在 `unreadable` 时有：复制详情（时刻 · 机器 · 命令 · 码 · 原话；排法同失败应答），`reason` 那一句不带原话"), out("followers", "跟随默认轮换、此刻活着的会话有几个（判活同历史清单：pidfile 里的会话 id ＋ 进程还是同一个）"), out("path", "那份文件的绝对路径（家推不出 ⇒ `null`）"), out("reason", "只在 `unreadable` 时有"), out("rotation", "默认轮换；没动过 / 读不出 ⇒ 缺省那一份（只有占位、`\"full\"`、`\"continue\"`）"), out("state", "`\"present\"` · `\"absent\"`（没动过）· `\"unreadable\"`（读不出 / 家推不出）")],
         takes_input: false,
-        run: Run::Blocking(|_r| {
-            crate::faces::rotation_face::answer_read()
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
+        run: Run::BlockingData(|_r| crate::faces::rotation_face::answer_read().map(Some)),
     },
     CommandSpec {
         name: "rotation-set",
         summary: "写这台的默认轮换",
         codes: &["bad_args", "io_failed"],
-        fields: &[out("followers", "跟随默认轮换的会话"), out("path", "同 `rotation-read`"), out("reason", "同 `rotation-read`"), arg("rotation", "整份默认轮换 `{order, enabled, when, atLimit?, cap?, stint?, preempt?}`"), out("state", "应答同 `rotation-read`")],
+        fields: &[out("detail", "同 `rotation-read`"), out("followers", "跟随默认轮换的会话"), out("path", "同 `rotation-read`"), out("reason", "同 `rotation-read`"), arg("rotation", "整份默认轮换 `{order, enabled, when, atLimit?, cap?, stint?, preempt?}`"), out("state", "应答同 `rotation-read`")],
         takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::faces::rotation_face::answer_set(&r.args)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
+        run: Run::BlockingData(|r| crate::faces::rotation_face::answer_set(&r.args).map(Some)),
     },
     CommandSpec {
         name: "rotation-session-read",
         summary: "一批会话的轮换与「账号」格",
         codes: &["bad_args", "failed"],
-        fields: &[out("now", "那份文件的三态（同 `rotation-read`）· 这台此刻的 unix 秒；回包里每个时刻（`at` · `seenAt` · `resetsAt` · `fromResetsAt` · `since`）旁边有一格 `…Text`：出口按这台本地钟写好的字（当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年带年），界面照抄、不换算"), out("reason", "那份文件的三态（同 `rotation-read`）· 这台此刻的 unix 秒"), out("sessions", "每个 sid 一份"), arg("sids", "会话 id 的数组"), out("state", "那份文件的三态（同 `rotation-read`）· 这台此刻的 unix 秒")],
+        fields: &[out("detail", "同 `rotation-read`"), out("now", "那份文件的三态（同 `rotation-read`）· 这台此刻的 unix 秒；回包里每个时刻（`at` · `seenAt` · `resetsAt` · `fromResetsAt` · `since`）旁边有一格 `…Text`：出口按这台本地钟写好的字（当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年带年），界面照抄、不换算"), out("reason", "那份文件的三态（同 `rotation-read`）· 这台此刻的 unix 秒"), out("sessions", "每个 sid 一份"), arg("sids", "会话 id 的数组"), out("state", "那份文件的三态（同 `rotation-read`）· 这台此刻的 unix 秒")],
         takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::faces::rotation_face::answer_session_read(&r.args)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
+        run: Run::BlockingData(|r| crate::faces::rotation_face::answer_session_read(&r.args).map(Some)),
     },
     CommandSpec {
         name: "rotation-session-set",
@@ -86,11 +70,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         codes: &["bad_args", "failed", "io_failed"],
         fields: &[arg("agent", "这台没见过的会话要另给：哪一家"), arg("rotation", "`\"follow\"` · `\"custom\"` · `{\"custom\":{…}}`"), out("sessions", "逐个结果 `{sid: {state:\"done\"} | {state:\"skipped\", code}}`"), arg("sids", "要改的会话"), arg("start", "起它的号")],
         takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::faces::rotation_face::answer_session_set(&r.args)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
+        run: Run::BlockingData(|r| crate::faces::rotation_face::answer_session_set(&r.args).map(Some)),
     },
     CommandSpec {
         name: "rotation-switch",

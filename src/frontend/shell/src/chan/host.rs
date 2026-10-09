@@ -387,7 +387,7 @@ async fn terminal_open(origin: Origin, payload: Body, left: Duration) -> Result<
             copy_text("rsChanHost.terminal.badReply", &[]),
         ));
     };
-    match crate::launch::open_terminal_window(line.to_string(), true).await {
+    match crate::launch::open_terminal_window(line.to_string()).await {
         Ok(crate::platform::terminal::TerminalOpen::Opened) => Ok(Body(b"{}".to_vec())),
         // 这台找不到终端：窗口那一侧把这句当原话画出来（说去设置里指定）。
         Ok(crate::platform::terminal::TerminalOpen::NoWindow) => Err(refused(

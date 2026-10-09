@@ -17,6 +17,7 @@ use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 
 use crate::copy_table::copy_text;
+use crate::detail::Said;
 use crate::dial_host::DialStream;
 use crate::stream_source::RemoteConfig;
 
@@ -40,27 +41,45 @@ impl std::fmt::Debug for Ensured {
     }
 }
 
-/// 为什么没接上那台的常驻后端。
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// 为什么没接上那台的常驻后端（那一句 ＋ 复制详情）。比较只比那一句与码（详情里有时刻）。
+#[derive(Debug, Clone)]
 pub(crate) enum AttachErr {
     /// 那台不是 Unix（后端脱离不了）⇒ **永久不支持**：记在那台的连接状态里，
     /// 不再自动按退避重连；界面出声，用户点「起」（`backend_start`）才再试一次。
     /// 那台 sshd 不许端口转发（控制隧道被回拒 `administratively_prohibited`）同属这一形：重试不会变，要那台改配置。
     /// 第二格是那台状态成品里的原因码（`machine_state::NOT_UNIX` · `NO_FORWARDING`）。
-    Unsupported(String, &'static str),
+    Unsupported(Said, &'static str),
     /// 别的失败 ⇒ 照常按退避重连。
-    Failed(String),
+    Failed(Said),
+}
+
+impl PartialEq for AttachErr {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (AttachErr::Unsupported(a, x), AttachErr::Unsupported(b, y)) => {
+                a.said == b.said && x == y
+            }
+            (AttachErr::Failed(a), AttachErr::Failed(b)) => a.said == b.said,
+            _ => false,
+        }
+    }
 }
 
 impl From<String> for AttachErr {
     fn from(s: String) -> Self {
+        AttachErr::Failed(s.into())
+    }
+}
+
+impl From<Said> for AttachErr {
+    fn from(s: Said) -> Self {
         AttachErr::Failed(s)
     }
 }
 
 impl AttachErr {
-    /// 给人看的那句。
-    pub(crate) fn said(self) -> String {
+    /// 给人看的那句 ＋ 复制详情。
+    pub(crate) fn said(self) -> Said {
         match self {
             AttachErr::Unsupported(s, _) | AttachErr::Failed(s) => s,
         }
@@ -69,17 +88,19 @@ impl AttachErr {
 
 /// 读 `--resident-ensure` / `--resident-stop` 那一趟的结果（纯函数）：退出 0 ⇒ stdout 那一行；退出 2 ⇒ stderr 的 `{code,message}`。
 /// `unsupported`（那台脱离不了，非 unix）明说「远端只支持 Unix」；老后端 ⇒ 「太旧」—— 都是失败，没有回落。
+/// `machine` 是那台给人看的称呼（老后端 ⇒「{machine} 后端要更新」）。
 pub(crate) fn parse_answer(
     exec: &crate::stream_source::RemoteExec,
+    machine: &str,
 ) -> Result<serde_json::Value, AttachErr> {
     if exec.stdout.contains(OLD_BACKEND_MARKER) {
-        return Err(copy_text("rsRemoteResident.ensure.tooOld", &[]).into());
+        return Err(copy_core::backend_old(machine).into());
     }
     match exec.exit_status {
         Some(0) => serde_json::from_str(exec.stdout.trim()).map_err(|e| {
-            copy_text(
-                "rsRemoteResident.ensure.answerUnreadable",
-                &[("e", &e.to_string())],
+            Said::with_raw(
+                copy_text("rsRemoteResident.ensure.answerUnreadable", &[]),
+                &e,
             )
             .into()
         }),
@@ -99,11 +120,11 @@ pub(crate) fn parse_answer(
                 });
             if err["code"] == "unsupported" {
                 Err(AttachErr::Unsupported(
-                    copy_text("rsRemoteResident.ensure.unsupported", &[("why", &msg)]),
+                    copy_text("rsRemoteResident.ensure.unsupported", &[("why", &msg)]).into(),
                     crate::machine_state::NOT_UNIX,
                 ))
             } else {
-                Err(AttachErr::Failed(msg))
+                Err(AttachErr::Failed(msg.into()))
             }
         }
     }
@@ -136,7 +157,7 @@ async fn ensure(cfg: &RemoteConfig, replace: bool) -> Result<Ensured, AttachErr>
     }
     let exec =
         crate::stream_source::connect_and_exec_capture(cfg, &cmd, Some(OLD_BACKEND_MARKER)).await?;
-    Ok(parse_ensured(&parse_answer(&exec)?)?)
+    Ok(parse_ensured(&parse_answer(&exec, &cfg.origin_label())?)?)
 }
 
 /// hello 那一行里那台报的 build（纯函数，只读线上形状）。口上不是常驻后端（第一行不是 hello）⇒ `Err`（那句话）。
@@ -163,13 +184,9 @@ pub(crate) struct Verdict {
 }
 
 /// 应答 → [`Verdict`]（**严格收**：恰 `{action, older}` 两格、`action` 只认两个词 —— 两侧漂了当场说出来）。
-pub(crate) fn decode_verdict(v: &serde_json::Value) -> Result<Verdict, String> {
-    let bad = |what: &str| {
-        copy_text(
-            "rsRemoteResident.verdict.unreadable",
-            &[("e", &what.to_string())],
-        )
-    };
+pub(crate) fn decode_verdict(v: &serde_json::Value) -> Result<Verdict, Said> {
+    let bad =
+        |what: &str| Said::with_raw(copy_text("rsRemoteResident.verdict.unreadable", &[]), what);
     let obj = v.as_object().ok_or_else(|| bad("not an object"))?;
     if obj.len() != 2 {
         return Err(bad("expected exactly `action` and `older`"));
@@ -188,13 +205,10 @@ pub(crate) fn decode_verdict(v: &serde_json::Value) -> Result<Verdict, String> {
 
 /// 换不换、旧不旧：「我这一版」（`mine`）有值才去问（`ask`，生产里是 [`ask_verdict`]）；手上没带后端字节（`None`）⇒
 /// **不问**、直接「接、不判旧」—— 没有可放的字节，换装无从发起，新旧也无从比（版本那句话说「不可比」）。
-pub(crate) async fn verdict_for<F, Fut>(
-    mine: Option<&'static str>,
-    ask: F,
-) -> Result<Verdict, String>
+pub(crate) async fn verdict_for<F, Fut>(mine: Option<&'static str>, ask: F) -> Result<Verdict, Said>
 where
     F: FnOnce(&'static str) -> Fut,
-    Fut: std::future::Future<Output = Result<Verdict, String>>,
+    Fut: std::future::Future<Output = Result<Verdict, Said>>,
 {
     match mine {
         Some(m) => ask(m).await,
@@ -206,18 +220,20 @@ where
 }
 
 /// 问本机常驻后端「那台报 `theirs`，换还是接」。入参只有事实（手上这一版 · 那台报的 · 这一趟换过没有）。
-async fn ask_verdict(mine: &str, theirs: &str, replaced: bool) -> Result<Verdict, String> {
+async fn ask_verdict(mine: &str, theirs: &str, replaced: bool) -> Result<Verdict, Said> {
     use crate::backend_route::{route_call_error, Routed};
     let client = crate::dial_host::local_backend_accepting(VERDICT_CMD).await?;
     let args = serde_json::json!({ "mine": mine, "theirs": theirs, "replaced": replaced });
     let data = client
         .call(VERDICT_CMD, args, VERDICT_BUDGET)
         .await
-        .map_err(
-            |e| match route_call_error(&e, |_code, message| message.to_string()) {
-                Routed::NoChannel(s) | Routed::Refused(s) => s,
-            },
-        )?;
+        .map_err(|e| {
+            match route_call_error(&e, &copy_core::local_machine(), |_code, message| {
+                message.to_string()
+            }) {
+                Routed::NoChannel(s) | Routed::Refused(s) => Said::from(s),
+            }
+        })?;
     decode_verdict(&data.unwrap_or_default())
 }
 
@@ -237,10 +253,7 @@ pub(crate) fn attach_line(token: &str, flags: (bool, bool)) -> String {
 }
 
 /// 读握手那一行（hello / attach 应答）；`hello` 选哪一句说「没答完」。
-async fn read_line(
-    r: &mut tokio::io::BufReader<DialStream>,
-    hello: bool,
-) -> Result<String, String> {
+async fn read_line(r: &mut tokio::io::BufReader<DialStream>, hello: bool) -> Result<String, Said> {
     let mut buf = Vec::new();
     let got = crate::stream_source::read_capped_line(
         r,
@@ -253,11 +266,11 @@ async fn read_line(
         Ok(crate::stream_source::CappedLine::Line) => Ok(String::from_utf8_lossy(&buf)
             .trim_end_matches(['\n', '\r'])
             .to_string()),
-        Ok(_) if hello => Err(copy_text("rsRemoteResident.handshake.helloCut", &[])),
-        Ok(_) => Err(copy_text("rsRemoteResident.handshake.replyCut", &[])),
-        Err(e) => Err(copy_text(
-            "rsRemoteResident.handshake.readFailed",
-            &[("e", &e.to_string())],
+        Ok(_) if hello => Err(copy_text("rsRemoteResident.handshake.helloCut", &[]).into()),
+        Ok(_) => Err(copy_text("rsRemoteResident.handshake.replyCut", &[]).into()),
+        Err(e) => Err(Said::with_raw(
+            copy_text("rsRemoteResident.handshake.readFailed", &[]),
+            e,
         )),
     }
 }
@@ -333,26 +346,31 @@ pub(crate) const FORWARDING_PROHIBITED: &str = "administratively_prohibited";
 pub(crate) async fn retry_tunnel<T, F, Fut>(mut open: F, port: u16) -> Result<T, AttachErr>
 where
     F: FnMut() -> Fut,
-    Fut: std::future::Future<Output = Result<T, (String, Option<String>)>>,
+    Fut: std::future::Future<Output = Result<T, (Said, Option<String>)>>,
 {
-    let mut last = String::new();
+    let mut last: Option<Said> = None;
     for _ in 0..TUNNEL_TRIES {
         match open().await {
             Ok(s) => return Ok(s),
             Err((_, Some(code))) if code == FORWARDING_PROHIBITED => {
                 return Err(AttachErr::Unsupported(
-                    copy_text("rsRemoteResident.tunnel.forwardingProhibited", &[]),
+                    copy_text("rsRemoteResident.tunnel.forwardingProhibited", &[]).into(),
                     crate::machine_state::NO_FORWARDING,
                 ));
             }
-            Err((e, _)) => last = e,
+            Err((e, _)) => last = Some(e),
         }
         tokio::time::sleep(TUNNEL_WAIT).await;
     }
-    Err(AttachErr::Failed(copy_text(
+    // 那一句只说一直连不上；最后一次没开成的详情（本机后端写的原话）跟着走。
+    let said = copy_text(
         "rsRemoteResident.tunnel.unreachable",
-        &[("port", &port.to_string()), ("e", &last)],
-    )))
+        &[("port", &port.to_string())],
+    );
+    Err(AttachErr::Failed(match last {
+        Some(l) => Said::restate(said, l),
+        None => said.into(),
+    }))
 }
 
 /// **接上那台的常驻后端**（没有就起一个）：起 · 找 → 隧道 → hello（旧 ⇒ 换一次）→ attach。
@@ -382,15 +400,17 @@ pub(crate) async fn attach(cfg: &RemoteConfig, flags: (bool, bool)) -> Result<Re
         // 刚起的那一个：钥匙是它绑上口之后自己写的（每次起都换一把）⇒ 读到 hello 之后再问一次，读盘上那一份。
         let token = match ensured.token.take() {
             Some(t) => t,
-            None => ensure(cfg, false)
-                .await?
-                .token
-                .ok_or_else(|| copy_text("rsRemoteResident.ensure.answerIncomplete", &[]))?,
+            None => ensure(cfg, false).await?.token.ok_or_else(|| {
+                Said::from(copy_text("rsRemoteResident.ensure.answerIncomplete", &[]))
+            })?,
         };
         let not_sent = |e: std::io::Error| {
-            copy_text(
-                "rsRemoteResident.handshake.attachNotSent",
-                &[("e", &e.to_string())],
+            Said::with_raw(
+                copy_text(
+                    "rsRemoteResident.handshake.attachNotSent",
+                    &[("why", &copy_core::io_reason(e.kind()))],
+                ),
+                &e,
             )
         };
         r.get_mut()
@@ -445,16 +465,19 @@ pub struct StopAnswer {
 }
 
 /// 读 `--resident-stop` 那一趟（纯函数）：三个词之外的一律是错，不猜（本机那一趟也经它，`local_backend_host::run_resident_stop`）。
-pub(crate) fn read_stop(exec: &crate::stream_source::RemoteExec) -> Result<StopAnswer, String> {
-    let v = parse_answer(exec).map_err(AttachErr::said)?;
+pub(crate) fn read_stop(
+    exec: &crate::stream_source::RemoteExec,
+    machine: &str,
+) -> Result<StopAnswer, Said> {
+    let v = parse_answer(exec, machine).map_err(AttachErr::said)?;
     let stopped = match v["stopped"].as_str() {
         Some("graceful") => StopWord::Graceful,
         Some("killed") => StopWord::Killed,
         Some("not_running") => StopWord::NotRunning,
         _ => {
-            return Err(copy_text(
-                "rsRemoteResident.stop.unknownAnswer",
-                &[("line", &exec.stdout.trim().to_string())],
+            return Err(Said::with_raw(
+                copy_text("rsRemoteResident.stop.unknownAnswer", &[]),
+                exec.stdout.trim(),
             ))
         }
     };
@@ -463,7 +486,7 @@ pub(crate) fn read_stop(exec: &crate::stream_source::RemoteExec) -> Result<StopA
 }
 
 /// **停那台的常驻后端**（机器页「停」）：发**一次** `--resident-stop`，等与强杀由那台自己做（同机监督者），这里只拿回结局。
-pub(crate) async fn stop(cfg: &RemoteConfig) -> Result<StopAnswer, String> {
+pub(crate) async fn stop(cfg: &RemoteConfig) -> Result<StopAnswer, Said> {
     // 落点固定、打头的 `--` 让那台的 `ccm` 当后端用。
     let cmd = format!(
         "{} {} --resident-stop",
@@ -472,7 +495,7 @@ pub(crate) async fn stop(cfg: &RemoteConfig) -> Result<StopAnswer, String> {
     );
     let exec =
         crate::stream_source::connect_and_exec_capture(cfg, &cmd, Some(OLD_BACKEND_MARKER)).await?;
-    read_stop(&exec)
+    read_stop(&exec, &cfg.origin_label())
 }
 
 #[cfg(test)]

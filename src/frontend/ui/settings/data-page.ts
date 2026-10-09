@@ -15,6 +15,7 @@ import { countBadge } from "../kit/badge";
 import { banner } from "../kit/banner";
 import { homeShort } from "../kit/path";
 import { copyText } from "../copy-table";
+import { writeClipboard } from "../clipboard";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
 import { findHostByOrigin, hostKey, readRemoteConfig } from "../remote-config";
 import { noteMachineTmux } from "../resume-defaults";
@@ -360,7 +361,7 @@ export class DataPage {
 
   private async copyFor(origin: Origin, text: string, ids: string[]): Promise<void> {
     try {
-      await navigator.clipboard.writeText(text);
+      await writeClipboard(text);
     } catch (e) {
       failToast(copyText("dataPage.chore.copyFailed"), e, { level: "error" });
       return;

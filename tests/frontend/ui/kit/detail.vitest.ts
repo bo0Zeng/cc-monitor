@@ -7,21 +7,21 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { copyDetailButton, detailOf, detailBody, detailMany, failSaid, sayFailure, COPIED_MS } from "../../../../src/frontend/ui/kit/detail";
 import { REPO_ROOT } from "../../../test-support/repo-root";
+import { fakeClipboard, type ClipboardFake } from "../../../test-support/clipboard-fake";
 
 const label = (b: HTMLElement): string => b.querySelector("button")?.textContent ?? "";
 
 describe("复制详情按钮", () => {
-  let written: string[];
+  let clip: ClipboardFake;
   beforeEach(() => {
     vi.useFakeTimers();
     document.body.innerHTML = "";
-    written = [];
-    Object.defineProperty(navigator, "clipboard", {
-      configurable: true,
-      value: { writeText: (t: string) => (written.push(t), Promise.resolve()) },
-    });
+    clip = fakeClipboard();
   });
-  afterEach(() => vi.useRealTimers());
+  afterEach(() => {
+    clip.restore();
+    vi.useRealTimers();
+  });
 
   it("详情是空的 ⇒ 不出按钮", () => {
     expect(copyDetailButton("端口限 1–65535", "")).toBeNull();
@@ -34,7 +34,7 @@ describe("复制详情按钮", () => {
     expect(label(el)).toBe(copyText("detail.act.copy"));
     el.querySelector("button")!.click();
     await vi.advanceTimersByTimeAsync(0);
-    expect(written).toEqual(["结束 orders 失败\n码：kill_failed\n原话：boom"]);
+    expect(clip.written).toEqual(["结束 orders 失败\n码：kill_failed\n原话：boom"]);
     expect(label(el)).toBe(copyText("detail.act.copied"));
     expect(el.textContent).toContain(copyText("detail.aria.copied"));
     await vi.advanceTimersByTimeAsync(COPIED_MS - 200);
@@ -45,11 +45,10 @@ describe("复制详情按钮", () => {
     expect(label(el)).toBe(copyText("detail.act.copy"));
   });
 
-  it("剪贴板写不进 ⇒ 复制失败 ＋ 就地展开原文全选，Esc 收起", async () => {
-    Object.defineProperty(navigator, "clipboard", {
-      configurable: true,
-      value: { writeText: () => Promise.reject(new Error("denied")) },
-    });
+  it("剪贴板写不进（壳回失败；网页自己的剪贴板口照样说成功也不信）⇒ 复制失败 ＋ 就地展开原文全选，Esc 收起", async () => {
+    // WebView2 在剪贴板被占着时 `navigator.clipboard.writeText` 照样 resolve（WIN5 · 10-08）：这里让它「成功」，真成败只看壳。
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: () => Promise.resolve() } });
+    clip.refuse();
     const host = document.createElement("div");
     const el = copyDetailButton("读取失败", "码：x")!;
     host.appendChild(el);

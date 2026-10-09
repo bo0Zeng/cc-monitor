@@ -171,10 +171,14 @@ pub(crate) fn scan(home: &str, extra_dirs: &[String], extra_files: &[String]) ->
             }
             Err(e) => (
                 None,
-                Some(Err(copy_core::copy_text(
-                    "beAcctScan.manifest.unreadable",
-                    &[("path", &mpath), ("e", &e)],
-                ))),
+                Some(Err(e
+                    .wrap(|why| {
+                        copy_core::copy_text(
+                            "beAcctScan.manifest.unreadable",
+                            &[("path", &mpath), ("why", why)],
+                        )
+                    })
+                    .said_logging_raw())),
             ),
         },
     };
@@ -240,9 +244,14 @@ pub(crate) fn scan(home: &str, extra_dirs: &[String], extra_files: &[String]) ->
 }
 
 /// 清单全文（在却读不动 ⇒ `Err`，调用方把它记进快照、由用的那一步报出来）。
-pub(crate) fn manifest_text_at(p: &Path) -> Result<String, String> {
+pub(crate) fn manifest_text_at(p: &Path) -> Result<String, crate::common::said::Said> {
     let bytes = crate::common::fs::read_regular_capped(p, MAX_MANIFEST_BYTES)?;
-    String::from_utf8(bytes).map_err(|e| e.to_string())
+    String::from_utf8(bytes).map_err(|e| {
+        crate::common::said::Said::with_raw(
+            copy_core::copy_text("beAcctScan.manifest.notUtf8", &[]),
+            e,
+        )
+    })
 }
 
 fn dir_state(p: &str) -> DirState {

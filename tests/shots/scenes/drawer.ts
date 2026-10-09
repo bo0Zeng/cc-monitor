@@ -122,8 +122,7 @@ export const DRAWER_SCENES: Scene[] = [
       await mainReady(ALL_TABS);
       await click("#session-head button[aria-label='看它的终端']");
       await waitFor('#bottom-drawer [data-part="copy-detail"]');
-      // 剪贴板写不进（截图里没有剪贴板）⇒ 点［复制详情］就地展开那一段：看得见复制出去的是什么。
-      Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: () => Promise.reject(new Error("denied")) } });
+      // 剪贴板写不进（假后端的 `clipboard_write` 一律拒）⇒ 点［复制详情］就地展开那一段：看得见复制出去的是什么。
       document.querySelector<HTMLButtonElement>('#bottom-drawer [data-part="copy-detail"] button')?.click();
       await sleep(500);
     },

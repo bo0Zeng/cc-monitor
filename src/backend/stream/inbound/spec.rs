@@ -37,6 +37,13 @@ impl From<(&'static str, String)> for Fail {
     }
 }
 
+impl From<(&'static str, crate::common::said::Said)> for Fail {
+    /// 码 ＋ 那一句与它的原话（原话进复制详情）。
+    fn from((code, s): (&'static str, crate::common::said::Said)) -> Self {
+        Fail::new(code, s.said).with_raw(s.raw.as_deref())
+    }
+}
+
 impl Fail {
     /// 码 ＋ 那一句（没有原话、没有 `data`）。
     pub(crate) fn new(code: &str, message: String) -> Fail {

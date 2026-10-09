@@ -305,6 +305,7 @@ async fn the_ack_is_exactly_one_newline_terminated_line() {
         &DialAck {
             ok: true,
             error: None,
+            detail: None,
             fingerprint: Some("SHA256:x".into()),
             fingerprints: [("a:22", "SHA256:x"), ("b:22", "SHA256:y")]
                 .map(|(k, v)| (k.to_string(), v.to_string()))
@@ -541,7 +542,7 @@ async fn the_ack_and_the_stage_lines_have_the_shape_the_monitor_reads() {
     write_stages_then_ack(
         &mut buf,
         &sink,
-        &DialAck::failed("x".into(), Some("SHA256:x".into())),
+        &DialAck::failed("x".to_string().into(), Some("SHA256:x".into())),
     )
     .await
     .unwrap();
@@ -577,9 +578,13 @@ async fn the_ack_and_the_stage_lines_have_the_shape_the_monitor_reads() {
     let mut quiet: Vec<u8> = Vec::new();
     let off = StageSink::new(false);
     off.emit(Stage::Established);
-    write_stages_then_ack(&mut quiet, &off, &DialAck::failed("x".into(), None))
-        .await
-        .unwrap();
+    write_stages_then_ack(
+        &mut quiet,
+        &off,
+        &DialAck::failed("x".to_string().into(), None),
+    )
+    .await
+    .unwrap();
     assert_eq!(String::from_utf8(quiet).unwrap().lines().count(), 1);
 }
 
@@ -758,4 +763,32 @@ fn a_password_only_server_is_its_own_reason() {
         why::AUTH
     );
     assert_eq!(connect::rejected_why(&fail(&[])), why::AUTH);
+}
+
+/// 没拨成的 ack：`error` 只是那一句，下层原话进 `detail`（复制详情那几行：命令 · 原话）；成功的 ack 不出 `detail` 这一格。
+#[tokio::test]
+async fn a_failed_ack_keeps_the_raw_words_in_the_detail_not_the_sentence() {
+    let mut buf: Vec<u8> = Vec::new();
+    let said =
+        crate::common::said::Said::with_raw("step-said".to_string(), "russh: raw-words-here");
+    write_ack(&mut buf, &DialAck::failed(said, None))
+        .await
+        .unwrap();
+    let v: serde_json::Value =
+        serde_json::from_str(String::from_utf8(buf).unwrap().trim()).unwrap();
+    assert_eq!(v["error"], "step-said");
+    let detail = v["detail"].as_str().expect("没拨成的 ack 没有 detail");
+    assert!(
+        detail.contains("russh: raw-words-here"),
+        "原话没进详情：{detail}"
+    );
+    assert!(detail.contains("dial"), "详情里没有命令那一项：{detail}");
+    let mut ok: Vec<u8> = Vec::new();
+    let mut a = DialAck::failed("x".to_string().into(), None);
+    a.ok = true;
+    a.error = None;
+    a.detail = None;
+    write_ack(&mut ok, &a).await.unwrap();
+    let v: serde_json::Value = serde_json::from_str(String::from_utf8(ok).unwrap().trim()).unwrap();
+    assert!(v.get("detail").is_none(), "成功的 ack 多出了 detail：{v}");
 }

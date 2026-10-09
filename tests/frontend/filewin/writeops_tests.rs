@@ -189,11 +189,7 @@ async fn a_refusal_from_the_backend_fence_comes_back_as_a_sentence() {
     .await
     .expect_err("后端没声明 `files-chmod`，却成了");
     // 按文案键断言，不按原文：「是哪条命令」由下面线上那张单子认（没上线），不靠句子点名。
-    assert_eq!(
-        e,
-        copy_text("rsFilewinSource.said.unknownCmd", &[]),
-        "没说后端不支持"
-    );
+    assert_eq!(e, copy_core::backend_old(&origin.0), "没说后端不支持");
     assert_eq!(
         wired.cmds(),
         ["files-mkdir", "files-mkdir"],

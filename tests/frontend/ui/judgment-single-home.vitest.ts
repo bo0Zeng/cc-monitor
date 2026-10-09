@@ -469,8 +469,9 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   },
   J22: {
     what: "因对方版本说不成的两个码（版本旧 / 回的认不出）各取哪一句、本机怎么称呼",
-    // 两侧各一个取句口，取的是表里同两条键（`peerVersion.said.*`）与同一个本机称呼（`control.machine.local`）。
-    homes: ["copy-core::backend_old", "copy-core::reply_unreadable", "copy-core::local_machine"],
+    // 两侧各一个取句口，取的是表里同两条键（`peerVersion.said.*`）与同一个本机称呼（`control.machine.local`）；
+    // 说话那一层不知道名字时的称呼（`control.machine.peer`）只有 Rust 那一侧用（通信层兜底 · 后端自己答不认）。
+    homes: ["copy-core::backend_old", "copy-core::reply_unreadable", "copy-core::local_machine", "copy-core::peer_machine"],
     status: "mirror",
     defs: ["peerVersionSaid"],
     needles: [],
@@ -584,6 +585,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     format_duration: "J24",
     format_elapsed: "J24",
     local_machine: "J22",
+    peer_machine: "J22",
     reply_unreadable: "J22",
     TABLE_JSON: NONE,
     // 天数 ⇒ 公历（后端 · monitor · 文件窗口写日期与「复制详情」的时刻都经它）；界面那一份 TS 删了（J23 zero）。
@@ -601,6 +603,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     item: NONE,
     many: "J26",
     // 自己写的那一行里某一项的值 · 对端写好的那一整份（壳的日志与「放程序」那一口要原话；界面不取）。
+    parse: NONE,
     value: NONE,
     written: NONE,
     maybe: NONE,
@@ -754,6 +757,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     base_url: NONE,
     base_url_shape_ok: NONE,
     KEY_FILE_REL: "J14",
+    // 只许直通的那把钥匙住哪（中转的门 · ccm 起地址拼进参数的那一家 · 直接敲的也走中转）；TS 侧没有孪生。
+    PASS_KEY_FILE_REL: NONE,
     key_shape_ok: NONE,
     // 把钥匙插进中转地址（`split_keyed_base_url` 的逆，给用户自己贴的那一段用）；TS 侧没有孪生。
     keyed_base_url: NONE,

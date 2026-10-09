@@ -86,7 +86,11 @@ fn s3_concurrent_writers_never_collide_on_the_side_name() {
                 let p = p.clone();
                 s.spawn(move || {
                     (0..20)
-                        .filter_map(|j| write(&p, format!("{i}-{j}").as_bytes()).err())
+                        .filter_map(|j| {
+                            write(&p, format!("{i}-{j}").as_bytes())
+                                .err()
+                                .map(|e| e.said)
+                        })
                         .collect::<Vec<_>>()
                 })
             })
@@ -120,5 +124,34 @@ fn s4_failed_rename_removes_only_its_own_side_file() {
         "旁名没删，或删了别人的文件"
     );
     assert!(target.join("keep").is_file(), "挪的目标被动了");
+    std::fs::remove_dir_all(&base).ok();
+}
+
+/// S5：读不出 / 写不进的那一句只带路径与原因词，下层原话（解析器 · 系统）进 `raw`（复制详情）。
+#[test]
+fn s5_the_sentence_carries_the_reason_word_and_the_raw_words_go_to_the_detail() {
+    let base = sandbox("s5");
+    let p = base.join("x.json");
+    std::fs::write(&p, b"{").expect("seed");
+    let Read::Unreadable(s) = read_json::<serde_json::Value>(&p, 64) else {
+        panic!("坏 JSON 没读成读不出");
+    };
+    let shown = p.display().to_string();
+    assert_eq!(
+        s.said,
+        copy_text("beOwnState.read.notJson", &[("path", &shown)])
+    );
+    assert!(
+        s.raw.as_deref().is_some_and(|r| r.contains("EOF")),
+        "解析器原话没进详情：{s:?}"
+    );
+    let gone = base.join("no-such-dir").join("y.json");
+    let e = write(&gone, b"x").expect_err("父目录不在也写成了");
+    assert!(
+        e.said
+            .ends_with(&copy_core::io_reason(std::io::ErrorKind::NotFound)),
+        "写不进那一句没带原因词：{e:?}"
+    );
+    assert!(e.raw.is_some(), "系统原话没进详情：{e:?}");
     std::fs::remove_dir_all(&base).ok();
 }

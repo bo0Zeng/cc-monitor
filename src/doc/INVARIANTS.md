@@ -201,7 +201,7 @@ data dir 里两类东西**语义上一刀两断**，别搅混到「迁移/重建
 | `ps-registry/` `ps-await/` | **缓存/IPC** | `bind.rs` | 跨进程握手，启动重扫 |
 | `logs/` | **缓存/派生** | `logging.rs` · 本机常驻后端 | 诊断日志：`monitor/` 是本进程按天滚动、保留 3 天（§15）；`backend/` 是脱离运行的本机后端 stderr |
 | `bin/` `staging/` `logs/backend/` `assets-catalog.json` `last-seen.json` `launch-pending/` `known_hosts` `profiles-written.json` | **缓存** | 本机后端（`bin/` 里的后端由宿主放；`launch-pending/` 由 `ccm` 最终那一跳写、观测侧清；`known_hosts` 由拨号侧写） | 一台机器一个家：后端住在同一个家里、能重建的：程序（缺了重放）· 上传暂存区 · 错误输出 · 资产目录（重新扫出来、各台之间再对上）· 离线那台的上次值（再连上一次就有）· 起会话便条（进程退出即清）· 主机钥匙（下次拨号按固化的指纹再认下）· 配置文件上次经 cc-monitor 写出时的指纹（删了只是下次不说「手改过」） |
-| `relay-key` `listen-token` `listen-<口>.pid` `backend.json` `profiles.toml` `profiles-migrated.json` `aliases.sh` `aliases.ps1` `skill-installs.json` `chores.json` `backups/` `accounts/` `accounts-mcp.json` `apikey-credentials.json` `quota.json` `rotation.json` `launch-accounts.json` | **真相** | 本机后端（`listen-token` · 进程记录由宿主铸 / 写；`launch-accounts.json` 只有观测侧写） | 删了会丢的：后端跑着时要用的两把钥匙与进程记录（删了要重起后端）· 退出行为设置 · 你建的别名（配置文件 `profiles.toml`；`aliases.sh` / `aliases.ps1` 照它生成）· skill / MCP 装记录 · 「要你动手」里点过「不用了」的几件与选了自己贴的那份启动文件 · 从「扩展」卸掉不是 cc-monitor 装的东西之前放的那一份 · 账号库（清单与每个号的登录凭据）· 你填的 API key · 各号最近一次看到的用量（没流量的号补不回来）与账号轮换的设置和换号记录 · 每条会话上次用哪个号起的（删了 ⇒ 下次跟随落到默认号）。名字各取契约常量（`relay_route_core` · `creds_core::store`）与宿主那一处（`logging::backend_stderr_log_path`），`data_paths.rs::backend_entries` 列它们 |
+| `relay-key` `relay-pass-key` `listen-token` `listen-<口>.pid` `backend.json` `profiles.toml` `profiles-migrated.json` `aliases.sh` `aliases.ps1` `skill-installs.json` `chores.json` `backups/` `accounts/` `accounts-mcp.json` `apikey-credentials.json` `quota.json` `rotation.json` `launch-accounts.json` | **真相** | 本机后端（`listen-token` · 进程记录由宿主铸 / 写；`launch-accounts.json` 只有观测侧写） | 删了会丢的：后端跑着时要用的三把钥匙（中转两把 · 监听口一把）与进程记录（删了要重起后端）· 退出行为设置 · 你建的别名（配置文件 `profiles.toml`；`aliases.sh` / `aliases.ps1` 照它生成）· skill / MCP 装记录 · 「要你动手」里点过「不用了」的几件与选了自己贴的那份启动文件 · 从「扩展」卸掉不是 cc-monitor 装的东西之前放的那一份 · 账号库（清单与每个号的登录凭据）· 你填的 API key · 各号最近一次看到的用量（没流量的号补不回来）与账号轮换的设置和换号记录 · 每条会话上次用哪个号起的（删了 ⇒ 下次跟随落到默认号）。名字各取契约常量（`relay_route_core` · `creds_core::store`）与宿主那一处（`logging::backend_stderr_log_path`），`data_paths.rs::backend_entries` 列它们 |
 
 - **真相** = 用户手写/意图，**删了丢东西、要备份、要迁移友好**。
 - **缓存/派生** = 能从别处重建，**随便删**。
@@ -400,10 +400,10 @@ jsonl watcher 与它的第二套游标 / seq 已删，本机会话的行也是�
 
 ## 16. monitor 单实例运行
 
-同 user / 同机器同时只允许一个 cc-monitor 进程。由 [`tauri-plugin-single-instance`](https://v2.tauri.app/plugin/single-instance/) 强制 —— **必须是 Builder 链上第一个 plugin**（plugin 文档约束）。第二个实例启动时：
+同 user / 同机器同时只允许一个 cc-monitor 进程。Windows / macOS 由 [`tauri-plugin-single-instance`](https://v2.tauri.app/plugin/single-instance/) 强制；Linux 由壳自己的那一个插件（[`platform/single_instance.rs`](../../src/frontend/shell/src/platform/single_instance.rs)：会话总线上的名字 `com.ccmonitor.app.SingleInstance`）强制 —— 官方插件在 Linux 上不转交激活令牌，GNOME（Wayland）上第一个拉不到前台。两者都**必须是 Builder 链上第一个 plugin**。第二个实例启动时：
 
-1. plugin 检测到第一个实例存在（Windows：OS mutex；Linux：会话总线上的名字，没有会话总线时不拦）
-2. 通知第一个实例的回调（在 [`lib.rs::run()`](../../src/frontend/shell/src/lib.rs) 里 `unminimize + show + set_focus` 主窗口）
+1. 检测到第一个实例存在（Windows：OS mutex；Linux：会话总线上的名字，没有会话总线时不拦）
+2. 通知第一个实例的回调（在 [`lib.rs::run()`](../../src/frontend/shell/src/lib.rs) 里经 `platform::window::raise_main` 还原 · 显示 · 拉前主窗口；Linux 带上第二个实例启动时拿到的 `XDG_ACTIVATION_TOKEN` / `DESKTOP_STARTUP_ID`）
 3. 第二个实例自身立即退出
 
 **为什么不能松动**：cc-monitor 全局共享多个文件状态 —— `auto-launch.json`、`ps-await/`、`ps-registry/`、`sid-hwnd-cache.json`、jsonl watcher、`logs/monitor/monitor.YYYY-MM-DD.log`。两个 monitor 同时跑会触发：
@@ -2038,11 +2038,20 @@ CSP 兜底源是 `'self'` · 脚本执行面的几种放开形逐个禁 ＋ 那�
 **性质**：中转口（回环；住常驻后端进程内，本机远端同一份代码）每一条请求在读请求体、问上游选择**之前**过三问：
 带 `Origin` ⇒ **403**（浏览器页面发的请求）；`Host` 不是回环字面量（`127.0.0.1` · `localhost` · `[::1]`，可带口）、缺或不止一个 ⇒ **421**（防 DNS rebinding）；
 路径第一段不是钥匙（没有 / 错 / 前缀 / 多一截 / 大小写不同 / 空段）⇒ **403**，比对定长时间（与控制口同一份 `listen::tokens_match`）。
+钥匙只认路径第一段（请求头里的不认）。
 过了才剥掉那一段交给路由（`/s/` 与 `/t/` 一样要过）⇒ 「钥匙对、表里没这一行」仍是 **404**，与 403 **可分**；三种拒法各带一句说得清是哪一问的话。
+**门上两把钥匙**：全权那一把（`~/.cc-monitor/relay-key`）`/s/` `/t/` 都开；**只许直通**那一把（`~/.cc-monitor/relay-pass-key`，同一个铸法、同样 `0600`）只开 `/t/`，
+打 `/s/` ⇒ **403**、原因头 `key-scope`（路由认出来就判，在读请求体与问上游选择之前）。
+只许直通那一把**能做的**：经 `/t/` 把请求原样转给那一家的默认上游 —— 中转在 `/t/` **永不代入凭据**，请求得自己带登录头；
+**不能做的**：碰 `/s/`（代入账号库那几行 API key 的那一形）。
+**为什么它进 argv 可以接受**：有的家的上游地址只能经命令行参数交给它（适配层注入格 `Inject::Args`；Codex 只认配置键 `openai_base_url`），
+argv 同机别的用户读得到、那一家还会把地址原样写进它自己的日志；漏了的这把顶多让别人拿我们的中转转发**他自己**带登录的请求、往活卡里塞几段假流，
+花不到任何一个号的额度。全权那一把照旧**不进 argv**。
 钥匙 256 位（OS 密码学随机数），住**中转所在那台机器**的 `~/.cc-monitor/relay-key`（`0600`），由中转自己在**绑上口之后**读回或铸（只有绑上口的那一个会写）；
 拿不到钥匙 ⇒ **不起**（出声、后端照常）。钥匙**跨中转重起不变** —— 端口是固定常量，老会话手里的 URL 重起后本来就还有效，换钥匙会打断每一条活会话。
 **钥匙只从那份文件进 agent 进程自己的 env**：交给终端的那一行 `ccm …` 不带中转地址也不带钥匙；`ccm` 直路在自己进程里读那份文件、拼进 agent 进程的环境再 exec，
-非得经 shell 那一趟（与 `--ccm-print` 预览同形）把钥匙段写成 `$(cat ~/.cc-monitor/relay-key)`、在那台机器的 shell 里展开
+地址只能拼进参数的那一家（`Inject::Args`）：参数里那条地址插的是只许直通那一把（`ccm` exec 那一刻插；直接敲的那一家贴进配置的那一行也是这一把，两处地址一模一样）；
+非得经 shell 那一趟（与 `--ccm-print` 预览同形）把钥匙段写成 `$(cat ~/.cc-monitor/relay-key)`（参数里那一形写 `relay-pass-key`）、在那台机器的 shell 里展开
 ⇒ 载荷、`tmux send-keys` 的 argv、shell 历史、终端回滚、webview 里都没有它；后端 / monitor 自己的 argv、env、日志、tee、上游、成品应答里也没有它。
 **唯一的例外**：用户自己选「让直接敲的 claude 也走中转」时（设置文件里写不了 `$(cat …)`），帧命令 `relay-optin` 的成品带着要贴的那一段 ——
 钥匙在里面、进界面、经用户的剪贴板由用户自己合并进 `~/.claude/settings.json`（界面上逐条写明的代价之一）。只这一条成品、只在没装 / 过期时带（已装不带）、
@@ -2054,7 +2063,8 @@ CSP 兜底源是 `'self'` · 脚本执行面的几种放开形逐个禁 ＋ 那�
 **为什么不能松动**：回环 TCP 没有权限位；中转会**代入账号的凭据**去打上游 —— 门开着，同机任何进程（别的 OS 用户、浏览器里的一张网页）就能以这个账号的额度与身份发请求。
 路由键第三段（会话 id / nonce）是公开可铸的标签，**不是**认证。
 
-**谁在守**：`door_tests.rs::only_the_exact_key_as_the_first_segment_gets_in` · `door_tests.rs::any_origin_header_is_refused_before_the_key_is_looked_at` ·
+**谁在守**：`door_tests.rs::only_the_exact_key_as_the_first_segment_gets_in` · `door_tests.rs::the_pass_key_gets_in_but_only_for_passthrough_routes` ·
+`two_form_tests.rs::the_pass_key_reaches_passthrough_but_is_refused_on_substitute_routes` · `plan_tests.rs::the_relay_is_injected_the_way_that_family_declares` · `door_tests.rs::any_origin_header_is_refused_before_the_key_is_looked_at` ·
 `door_tests.rs::only_a_loopback_literal_host_gets_in` · `door_tests.rs::the_three_refusals_are_distinct_faces` ·
 `key_tests.rs::the_key_file_is_minted_once_private_and_read_back_across_restarts`（`0600` · 跨重起同一把 · 坏文件换新）· `key_tests.rs::the_key_file_and_the_key_shape_come_from_the_shared_crate`（钥匙路径与形状只住共享 crate `relay-route-core`，两半同一个 const）·
 `server_tests.rs::rk1_the_door_refuses_without_the_key_and_that_is_not_a_404` · `server_tests.rs::rk1_browser_and_rebinding_requests_are_refused_but_the_cli_shape_passes` ·

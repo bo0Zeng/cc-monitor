@@ -103,17 +103,22 @@ pub(crate) async fn upload_verified(
     remote_path: &str,
     bytes: &[u8],
     mode: u32,
-) -> Result<(), String> {
+) -> Result<(), Said> {
     let back = fs.put(remote_path, bytes, mode, true).await?;
     let Err(bad) = verify_readback(remote_path, bytes.len() as u64, back) else {
         return Ok(());
     };
     Err(match fs.remove(remote_path).await {
-        Ok(_) => copy_text("rsSftp.upload.badRemoved", &[("bad", &bad.to_string())]),
-        Err(e) => copy_text(
-            "rsSftp.upload.badKept",
-            &[("bad", &bad.to_string()), ("e", &e.to_string())],
-        ),
+        Ok(_) => copy_text("rsSftp.upload.badRemoved", &[("bad", &bad.to_string())]).into(),
+        // 删也没删成：那一句说清两件事，删那一步的详情（本机后端写的原话）跟着走。
+        Err(e) => {
+            let step = e.said.clone();
+            Said::restate(
+                copy_text("rsSftp.upload.badKept", &[("bad", &bad.to_string())]),
+                e,
+            )
+            .with_item(copy_core::detail::Label::Hop, &step)
+        }
     })
 }
 
@@ -254,7 +259,9 @@ async fn ask_plan_for(
         .call(PLAN_CMD, args, PLAN_BUDGET)
         .await
         .map_err(|e| {
-            let said = match route_call_error(&e, |_code, message| message.to_string()) {
+            let said = match route_call_error(&e, &copy_core::local_machine(), |_code, message| {
+                message.to_string()
+            }) {
                 Routed::NoChannel(s) | Routed::Refused(s) => s,
             };
             Said::of_call(said, PLAN_CMD, &crate::origin::Origin::local(), &e)
@@ -290,24 +297,30 @@ fn planned_binary(plan: &Plan) -> Result<BackendBinary, String> {
 /// 「没部署也算成功」那一支，路径含 `~` / 问不出 arch / 没这格字节 / 字节问不出身份全落在它上面、只留一行 `debug!`。〕
 #[derive(Debug)]
 pub enum DeployError {
-    /// 那台要不了这份 / 这一版没带 / 判不清它是谁 —— 那句话是本机常驻后端说的（`deploy-plan` 失败那一形），原样带回。
-    Refused(String),
-    /// 做了但没做成（配置、链路、放字节那几步）—— 一句说清楚的话。
-    Failed(String),
+    /// 那台要不了这份 / 这一版没带 / 判不清它是谁 —— 那句话是本机常驻后端说的（`deploy-plan` 失败那一形），原样带回（带它的详情）。
+    Refused(Said),
+    /// 做了但没做成（配置、链路、放字节那几步）—— 一句说清楚的话 ＋ 复制详情。
+    Failed(Said),
 }
 
 impl DeployError {
-    /// 对用户说的那一句。
-    pub fn say(&self) -> String {
+    /// 对用户说的那一句 ＋ 复制详情。
+    pub fn said(self) -> Said {
         match self {
-            DeployError::Refused(why) | DeployError::Failed(why) => why.clone(),
+            DeployError::Refused(s) | DeployError::Failed(s) => s,
         }
     }
 }
 
 impl From<String> for DeployError {
     fn from(why: String) -> Self {
-        DeployError::Failed(why)
+        DeployError::Failed(why.into())
+    }
+}
+
+impl From<Said> for DeployError {
+    fn from(s: Said) -> Self {
+        DeployError::Failed(s)
     }
 }
 
@@ -339,7 +352,7 @@ async fn sweep_leftovers(leftovers: &[String], fs: &RemoteFs, origin: &str) {
 pub async fn ensure_backend_deployed(cfg: &RemoteConfig) -> Result<String, DeployError> {
     let plan = match ask_plan(cfg).await {
         Ok(p) => p,
-        Err(why) => return Err(DeployError::Refused(why.said)),
+        Err(why) => return Err(DeployError::Refused(why)),
     };
     let bin = planned_binary(&plan)?;
     // 🔴 `K-R70`：**把这几 MB 字节推到别人机器上之前，先让它自己说一遍它是谁。**
@@ -350,10 +363,9 @@ pub async fn ensure_backend_deployed(cfg: &RemoteConfig) -> Result<String, Deplo
              （这份字节不是这套源码编出来的，或它太旧、还没有身份戳；重跑 zigbuild 重铺）",
             bin.build_id
         );
-        return Err(DeployError::Failed(copy_text(
-            "rsSftp.deploy.noBuildId",
-            &[],
-        )));
+        return Err(DeployError::Failed(
+            copy_text("rsSftp.deploy.noBuildId", &[]).into(),
+        ));
     }
     // 经本机常驻后端那条 `files` 链路（写只许 `~/.cc-monitor/bin/` 与暂存区）。
     let fs = RemoteFs::open(cfg).await?;

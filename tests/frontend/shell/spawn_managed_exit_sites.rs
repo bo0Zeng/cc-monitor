@@ -140,14 +140,6 @@ const SITES: &[(&str, &str, &str, &str)] = &[
          env 在这一跳**一定继承**（Plan A 未必）⇒ 两跳的 `Command` 内容真的不同。",
     ),
     (
-        "platform/terminal.rs", // 原 `launch.rs`
-        "ssh_client_available",
-        "spawn_managed_cmd",
-        "`where.exe ssh` 探测：stdout 要 piped，因为它的输出**是返回值**\
-         （`status.success()` 那一格）。这一处先前是裸 `.output()` —— 也就是\
-         「要不要窗口」没人回答过；今天它自己造 `Command`、再由出口回答那一格。",
-    ),
-    (
         "local_backend_host.rs",
         "spawn_detached",
         "managed_spawner",

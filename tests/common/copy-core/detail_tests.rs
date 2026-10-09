@@ -159,3 +159,22 @@ fn labels_are_a_closed_set_equal_to_the_copy_table() {
     assert_eq!(said, want, "Label 闭集 ≠ 文案表 detail.label.*");
     assert_eq!(in_table.len(), Label::ALL.len());
 }
+
+/// 读回别处写好的详情：项名起项、续行跟上一项；「原话」之后的行一律算原话（原话里以项名打头的行不被拆走）；读回再排一字不差。
+#[test]
+fn a_written_detail_parses_back_into_items() {
+    let w = "时刻：t\n机器：m\n码：x\n原话：line one\n命令：not a command\n码：not a code";
+    let d = Detail::parse(w);
+    assert_eq!(d.render(), w);
+    assert!(d.has(Label::Code) && d.has(Label::Raw) && !d.has(Label::Command));
+    assert_eq!(
+        d.value(Label::Raw),
+        Some("line one\n命令：not a command\n码：not a code")
+    );
+    let d = d.insert(Label::Command, "c");
+    assert_eq!(
+        d.render(),
+        "时刻：t\n机器：m\n命令：c\n码：x\n原话：line one\n命令：not a command\n码：not a code"
+    );
+    assert!(Detail::parse("random words\n码：x").has_block());
+}

@@ -2,7 +2,7 @@
 //!
 //! 只用适配层给的那几格（协议面 `StreamFace` · 请求自报的运行 · 运行簿里学到的对账键），不认任何一家的形状：
 //! 1. 用哪个协议面：头一件事折得出「开始」的那一个（各家上游的协议面挨个问）；都折不出 ⇒ 这段不收。
-//! 2. 归哪个运行：请求自报了（中转从登记的头里取到值）⇒ 就是它；没自报而这一家声明了自报的头 ⇒ 就是主运行（当场定）；
+//! 2. 归哪个运行：请求自报了（中转从登记的头里取到值）且不等于会话标签 ⇒ 就是它（等于 ⇒ 主运行）；没自报而这一家声明了自报的头 ⇒ 就是主运行（当场定）；
 //!    这一家没声明那个头 ⇒ 这个会话此刻**没有在跑的子运行**就归主运行，**有**就先挂起，等哪条记录（主或子）的对账键对上，
 //!    按它的归属放出来。挂起的那段在对上之前不上任何活卡。
 //! 3. 号：放出去的帧按段重新从 0 连续编号（界面靠它看缺口）；上游那一侧缺了号（tap 通道满）⇒ 这一段收尾成 `broken`、不再收。
@@ -116,9 +116,12 @@ impl RunRouter {
         }
         if !self.resps.contains_key(&resp) {
             // 头一件不是 0 号 ⇒ 开头丢了（对账键在里面）；没有会话标签 ⇒ 对不上任何 tab。都不收。
-            let TapBody::Data(d) = &ev.body else {
-                self.lose(resp, Lost::Head);
-                return Vec::new();
+            let d = match &ev.body {
+                TapBody::Data(_) | TapBody::Clipped { .. } => &ev.body,
+                TapBody::End { .. } => {
+                    self.lose(resp, Lost::Head);
+                    return Vec::new();
+                }
             };
             if ev.n != 0 {
                 self.lose(resp, Lost::Head);
@@ -129,7 +132,7 @@ impl RunRouter {
                 return Vec::new();
             }
             let Some(family) = self.families.iter().copied().find(|f| {
-                (f.face.fold)(d)
+                fold_body(f.face, d)
                     .iter()
                     .any(|e| matches!(e, StreamEv::Start { .. }))
             }) else {
@@ -137,7 +140,8 @@ impl RunRouter {
                 return Vec::new();
             };
             let face = family.face;
-            let route = if !ev.owner.is_empty() {
+            // 自报的运行就是会话本身（有的家主运行也带那个头、值等于会话标识）⇒ 主运行。
+            let route = if !ev.owner.is_empty() && ev.owner != ev.stream {
                 Route::Run(Some(ev.owner.clone()))
             } else if family.owns || self.book.running(&ev.stream) == 0 {
                 Route::Run(None)
@@ -175,7 +179,7 @@ impl RunRouter {
         }
         r.raw_next += 1;
         let items: Vec<Item> = match ev.body {
-            TapBody::Data(d) => (r.face.fold)(&d)
+            body @ (TapBody::Data(_) | TapBody::Clipped { .. }) => fold_body(r.face, &body)
                 .into_iter()
                 .map(|e| {
                     if let StreamEv::Start { rid } = &e {
@@ -253,6 +257,15 @@ impl RunRouter {
             self.bury(resp);
         }
         out
+    }
+}
+
+/// 一件事 ⇒ 那一家协议面折出的归一事件（截断的那一件只走它的截断折法）。
+fn fold_body(face: StreamFace, body: &TapBody) -> Vec<StreamEv> {
+    match body {
+        TapBody::Data(d) => (face.fold)(d),
+        TapBody::Clipped { head, .. } => (face.fold_clipped)(head),
+        TapBody::End { .. } => Vec::new(),
     }
 }
 

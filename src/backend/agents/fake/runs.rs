@@ -185,4 +185,7 @@ fn fold(data: &str) -> Vec<StreamEv> {
 }
 
 /// 本假适配层上游的流协议面。
-pub(crate) const STREAM: StreamFace = StreamFace { fold };
+pub(crate) const STREAM: StreamFace = StreamFace {
+    fold,
+    fold_clipped: |_| Vec::new(),
+};

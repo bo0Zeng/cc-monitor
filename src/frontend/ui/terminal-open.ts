@@ -1,9 +1,9 @@
 /**
  * 在用户面前这台机器上开一个终端，跑 `command` —— 全仓开终端只有这一个家；命令都是后端出的成品，monitor 只开窗。
- * - 本机：`command` 已是本机后端渲好的那一串 ⇒ monitor 直接开窗（`open_terminal_window`，`ssh: false`；要起始目录的走
+ * - 本机：`command` 已是本机后端渲好的那一串 ⇒ monitor 直接开窗（`open_terminal_window`；要起始目录的走
  *   {@link openLocalTerminal} → `open_local_terminal`）；
  * - 远端：① monitor 交那台的机器事实（`terminal_dial`）→ ② 本机后端 `terminal-ssh` 渲出这台终端方言的那一行
- *   （Windows 上 PowerShell `& ssh -t[ -J …] … -- '<bash -lic ''…''>'`，别处 POSIX 一行）→ ③ monitor 开窗（`ssh: true`）。
+ *   （Windows 上 PowerShell `& '<ssh 全路径>' -t[ -J …] … -- '<bash -lic ''…''>'`，别处 POSIX 一行；本机没装 ssh 客户端 / 判不了 ⇒ 后端不出那一行、说一句）→ ③ monitor 开窗。
  *
  * 哪一步不成 ⇒ 抛一句人话（调用方出声）。这台找不到终端时壳回 `"noWindow"` ⇒ 抛 {@link NoTerminalWindow}；
  * 调用方按类型判（照实说 ＋ 设置入口，不把命令塞进剪贴板），不按哪句话里的字判、也不按 OS 猜。
@@ -20,6 +20,8 @@ import {
 } from "./ipc/chan-caller";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { toast } from "./kit/toast";
+import { writeClipboard } from "./clipboard";
+import { detailOf, failSaid } from "./kit/detail";
 import { openSettingsWindow } from "./settings/open-settings";
 
 /** 期限：`terminal-ssh` 是本机后端里的纯计算（不拨号），给足本机那条流的往返即可。 */
@@ -83,8 +85,8 @@ export function sayNoTerminal(err: NoTerminalWindow): void {
       {
         label: copyText("terminalOpen.noTerminal.copy"),
         run: () =>
-          void navigator.clipboard.writeText(err.command).catch((e: unknown) => {
-            toast(copyText("terminalOpen.noTerminal.copyFailed"), err.command, { level: "error", detail: String(e) });
+          void writeClipboard(err.command).catch((e: unknown) => {
+            toast(failSaid(copyText("terminalOpen.noTerminal.copyFailed"), e), err.command, { level: "error", detail: detailOf(e) });
           }),
       },
     ],
@@ -98,8 +100,8 @@ async function opened(command: string, got: Promise<TerminalOpened>): Promise<vo
   if (r === "setMissing") throw new NoTerminalWindow(command, "setMissing");
 }
 
-async function openWindow(command: string, ssh: boolean): Promise<void> {
-  await opened(command, commands.open_terminal_window({ command, ssh }));
+async function openWindow(command: string): Promise<void> {
+  await opened(command, commands.open_terminal_window({ command }));
 }
 
 /** 在本机开一个终端窗口、起始目录 `cwd`，跑本机后端渲好的 `cmd`（本机起会话 · 批量各开一个）。 */
@@ -113,7 +115,7 @@ export async function openTerminal(
   command: string,
 ): Promise<void> {
   if (isLocalOrigin(origin)) {
-    await openWindow(command, false);
+    await openWindow(command);
     return;
   }
   const facts = await commands.terminal_dial({ origin });
@@ -122,5 +124,5 @@ export async function openTerminal(
   const line = await lineOf(
     chan.call(LOCAL_ORIGIN, "terminal-ssh", body, budget),
   );
-  await openWindow(line, true);
+  await openWindow(line);
 }

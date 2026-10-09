@@ -19,6 +19,7 @@ use russh::client;
 use russh::keys::{load_secret_key, HashAlg, PrivateKeyWithHashAlg, PublicKey};
 
 use super::{DialRequest, Endpoint, Stage, StageSink};
+use crate::common::said::Said;
 
 /// 长连接的 SSH 层 keepalive：每 30 秒无收包发一个，连发三个无回应才判死（≈90 s 探活）。
 /// **不靠 inactivity 拆链**：russh 的 inactivity 计时在无 keepalive 时会拆掉一条健康的空闲连接
@@ -288,7 +289,7 @@ async fn race(
         Endpoint,
         bool,
     ),
-    (String, Option<String>),
+    (Said, Option<String>),
 > {
     use tokio::task::JoinSet;
     let addr_list = order.iter().map(label).collect::<Vec<_>>().join(", ");
@@ -370,19 +371,26 @@ async fn race(
                     errors.push(e)
                 }
                 Err(je) if je.is_cancelled() => {}
-                Err(je) => errors.push(copy_text(
-                    "beConnect.race.taskFailed",
-                    &[("e", &je.to_string())],
+                Err(je) => errors.push(format!(
+                    "{}: {je}",
+                    copy_text("beConnect.race.taskFailed", &[])
                 )),
             }
         }
         stages.note_why(super::why_of_stage(worst.unwrap_or("resolve")));
+        // 句子只带原因词（按最说明问题的那一格）；各地址的原话进详情。
         Err(if errors.is_empty() {
-            copy_text("beConnect.race.noAddress", &[])
+            Said::from(copy_text("beConnect.race.noAddress", &[]))
         } else {
-            copy_text(
-                "beConnect.race.allFailed",
-                &[("errors", &errors.join("; "))],
+            Said::with_raw(
+                copy_text(
+                    "beConnect.race.allFailed",
+                    &[
+                        ("why", &race_reason(worst)),
+                        ("addrs", &addr_list.to_string()),
+                    ],
+                ),
+                errors.join("\n"),
             )
         })
     };
@@ -392,14 +400,18 @@ async fn race(
         Ok(w) => Ok(w),
         Err(e) => {
             let fp = seen.lock().ok().and_then(|g| g.clone());
-            Err((
-                copy_text(
-                    "beConnect.race.tried",
-                    &[("e", &e.to_string()), ("addrs", &addr_list.to_string())],
-                ),
-                fp,
-            ))
+            Err((e, fp))
         }
+    }
+}
+
+/// 竞速全输了那一句的原因词（按最说明问题的那一格）：解析不出 · 拨不通 · 超时有词；指纹不对另有那台的状态、别的说不清 ⇒ 原因不明。
+pub(crate) fn race_reason(worst: Option<&str>) -> String {
+    match worst {
+        Some("resolve") => copy_text("reason.dial.resolve", &[]),
+        Some("tcp") => copy_text("reason.dial.refused", &[]),
+        Some("timeout") => copy_text("reason.dial.timeout", &[]),
+        _ => copy_core::io_reason(std::io::ErrorKind::Other),
     }
 }
 
@@ -409,7 +421,7 @@ async fn authenticate(
     user: &str,
     key_path: Option<&str>,
     agent_sock: Option<&str>,
-) -> Result<(), (&'static str, String)> {
+) -> Result<(), (&'static str, Said)> {
     use super::why;
     // RSA key 要协商出服务端支持的 hash；非 RSA 时 flatten 成 None。
     let best_hash = session
@@ -418,7 +430,7 @@ async fn authenticate(
         .map_err(|e| {
             (
                 why::OTHER,
-                copy_text("beConnect.auth.rsaHash", &[("e", &e.to_string())]),
+                Said::with_raw(copy_text("beConnect.auth.rsaHash", &[]), &e),
             )
         })?
         .flatten();
@@ -427,9 +439,9 @@ async fn authenticate(
             let key_pair = load_secret_key(key_path, None).map_err(|e| {
                 (
                     why::KEY_UNREADABLE,
-                    copy_text(
-                        "beConnect.auth.keyLoad",
-                        &[("path", key_path), ("e", &e.to_string())],
+                    Said::with_raw(
+                        copy_text("beConnect.auth.keyLoad", &[("path", key_path)]),
+                        &e,
                     ),
                 )
             })?;
@@ -442,13 +454,13 @@ async fn authenticate(
                 .map_err(|e| {
                     (
                         why::AUTH,
-                        copy_text("beConnect.auth.keyFailed", &[("e", &e.to_string())]),
+                        Said::with_raw(copy_text("beConnect.auth.keyFailed", &[]), &e),
                     )
                 })?;
             if !authenticated.success() {
                 return Err((
                     rejected_why(&authenticated),
-                    copy_text("beConnect.auth.keyRejected", &[("user", user)]),
+                    copy_text("beConnect.auth.keyRejected", &[("user", user)]).into(),
                 ));
             }
             Ok(())
@@ -495,26 +507,26 @@ async fn agent_auth(
     user: &str,
     best_hash: Option<HashAlg>,
     agent_sock: Option<&str>,
-) -> Result<(), (&'static str, String)> {
+) -> Result<(), (&'static str, Said)> {
     use super::why;
     let mut agent = crate::platform::ssh_agent::connect(agent_sock)
         .await
         .map_err(|e| {
             (
                 why::AUTH,
-                copy_text("beConnect.agent.unreachable", &[("e", &e.to_string())]),
+                Said::with_raw(copy_text("beConnect.agent.unreachable", &[]), &e),
             )
         })?;
     let identities = agent.request_identities().await.map_err(|e| {
         (
             why::AUTH,
-            copy_text("beConnect.agent.listFailed", &[("e", &e.to_string())]),
+            Said::with_raw(copy_text("beConnect.agent.listFailed", &[]), &e),
         )
     })?;
     if identities.is_empty() {
-        return Err((why::AUTH, copy_text("beConnect.agent.empty", &[])));
+        return Err((why::AUTH, copy_text("beConnect.agent.empty", &[]).into()));
     }
-    let mut last_err: Option<(&'static str, String)> = None;
+    let mut last_err: Option<(&'static str, Said)> = None;
     for id in identities {
         let pubkey = id.public_key().into_owned();
         match session
@@ -525,18 +537,32 @@ async fn agent_auth(
             Ok(res) => {
                 last_err = Some((
                     rejected_why(&res),
-                    copy_text("beConnect.agent.rejected", &[("user", user)]),
+                    copy_text("beConnect.agent.rejected", &[("user", user)]).into(),
                 ))
             }
             Err(e) => {
                 last_err = Some((
                     why::AUTH,
-                    copy_text("beConnect.agent.signFailed", &[("e", &e.to_string())]),
+                    Said::with_raw(copy_text("beConnect.agent.signFailed", &[]), &e),
                 ))
             }
         }
     }
-    Err(last_err.unwrap_or_else(|| (why::AUTH, copy_text("beConnect.agent.allFailed", &[]))))
+    Err(last_err.unwrap_or_else(|| {
+        (
+            why::AUTH,
+            copy_text("beConnect.agent.allFailed", &[]).into(),
+        )
+    }))
+}
+
+/// 跳板那一步没成：外层那一句（哪一步）＋ 里层那一句与它的原话一起进详情（里层的句子不上外层的句子）。
+fn inner(said: String, e: Said) -> Said {
+    let raw = match e.raw {
+        Some(raw) => format!("{}: {raw}", e.said),
+        None => e.said,
+    };
+    Said::with_raw(said, raw)
 }
 
 /// 连 ＋ 鉴权。`jump` 在就先连跳板、经它开 direct-tcpip 到目标主地址、在隧道上跑目标的握手
@@ -544,7 +570,7 @@ async fn agent_auth(
 pub(crate) async fn establish(
     req: &DialRequest,
     stages: &StageSink,
-) -> Result<Linked, (String, Option<String>)> {
+) -> Result<Linked, (Said, Option<String>)> {
     // 目标那一趟（直连竞速 / 经跳板那一次握手）报过的逐地址指纹；跳板自己那一趟另开一格、不进来。
     let reported: Arc<Mutex<BTreeMap<String, String>>> = Arc::default();
     // 〔第二问〕跳板那一趟自己的一格：跳板是另一台机器，界面按它自己那一台固化（不再一直 TOFU）。
@@ -588,9 +614,9 @@ pub(crate) async fn establish(
             .map_err(|(e, fp)| {
                 stages.note_why(super::why::JUMP);
                 (
-                    copy_text(
-                        "beConnect.jump.dialFailed",
-                        &[("hop", &hop_name), ("e", &e.to_string())],
+                    inner(
+                        copy_text("beConnect.jump.dialFailed", &[("hop", &hop_name)]),
+                        e,
                     ),
                     fp,
                 )
@@ -605,9 +631,9 @@ pub(crate) async fn establish(
             .map_err(|(_, e)| {
                 stages.note_why(super::why::JUMP);
                 (
-                    copy_text(
-                        "beConnect.jump.authFailed",
-                        &[("hop", &hop_name), ("e", &e.to_string())],
+                    inner(
+                        copy_text("beConnect.jump.authFailed", &[("hop", &hop_name)]),
+                        e,
                     ),
                     None,
                 )
@@ -623,13 +649,12 @@ pub(crate) async fn establish(
                 .map_err(|e| {
                     stages.note_why(super::why::JUMP);
                     (
-                        copy_text(
-                            "beConnect.jump.tunnelFailed",
-                            &[
-                                ("host", &req.host),
-                                ("port", &req.port.to_string()),
-                                ("e", &e.to_string()),
-                            ],
+                        Said::with_raw(
+                            copy_text(
+                                "beConnect.jump.tunnelFailed",
+                                &[("host", &req.host), ("port", &req.port.to_string())],
+                            ),
+                            &e,
                         ),
                         None,
                     )
@@ -659,7 +684,7 @@ pub(crate) async fn establish(
                 stages.note_why(super::why_of_stage(stage_of_russh(&e)));
                 let fp = observed.lock().ok().and_then(|g| g.clone());
                 (
-                    copy_text("beConnect.jump.targetFailed", &[("e", &e.to_string())]),
+                    Said::with_raw(copy_text("beConnect.jump.targetFailed", &[]), &e),
                     fp,
                 )
             })?;
@@ -683,7 +708,7 @@ pub(crate) async fn establish(
         stages.note_why(code);
         stages.emit(Stage::Auth {
             ok: false,
-            detail: Some(e.clone()),
+            detail: Some(e.said.clone()),
         });
         return Err((e, fingerprint));
     }

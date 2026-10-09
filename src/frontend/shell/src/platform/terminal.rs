@@ -1,9 +1,7 @@
 //! 开终端窗口的平台那一半：壳里平台 cfg 的唯一住址（同 [`super::fs`]）。
 //! POSIX：挑一个终端（设置里指定的 · 系统出口 · 常见终端逐个探）开窗跑 `bash -lic <命令>`；
-//! Windows：`wt.exe` / `powershell.exe` 开窗 · `ssh.exe` 预检。「跑什么」的校验与 argv 住 `launch.rs::build_local_posix_argv`；
+//! Windows：`wt.exe` / `powershell.exe` 开窗。「跑什么」的校验与 argv 住 `launch.rs::build_local_posix_argv`；
 //! 两条 Tauri 命令（`open_terminal_window` · `open_local_terminal`）也留在 `launch.rs`，都经本文件的 [`open_local`] 开窗。
-
-use crate::copy_table::copy_text;
 
 /// 常见终端怎么交给它一条命令：`(程序名, 命令前垫的参数)`，各家约定不同（逐个照它的用法串核过；后面整串 argv 原样接上）。
 /// 先两个「交给系统定」的出口（freedesktop `xdg-terminal-exec` —— Ubuntu 26.04 的「默认终端」就按它的配置走 ·
@@ -311,7 +309,9 @@ pub(crate) fn launch_local_posix_via(
         Lifetime::Detached,
         StderrSink::Null,
     )
-    .map_err(|e| copy_text("rsLaunch.local.spawnFailed", &[("e", &e.to_string())]))?;
+    .map_err(|e| {
+        crate::copy_table::copy_text("rsLaunch.local.spawnFailed", &[("e", &e.to_string())])
+    })?;
     // `process_group` 不改父子关系 ⇒ 收尸线程（终端程序多半很快把窗口交给自己的服务进程就退）。
     std::thread::spawn(move || {
         let _ = child.wait();
@@ -488,47 +488,6 @@ pub fn launch_powershell_window(ps_command: &str, local_cwd: Option<&str>) -> Re
     .map_err(|e| format!("spawn powershell failed: {e}"))?;
     tracing::info!("launch: powershell window via fallback console");
     Ok(())
-}
-
-/// Windows 本机 ssh.exe 可用性预检：缺 OpenSSH 客户端时 spawn 出的窗口只会报
-/// "not recognized"（spawn 本身成功→前端误报成功）——预检失败直接 Err 走剪贴板回退。
-#[cfg(windows)]
-pub(crate) fn ssh_client_available() -> bool {
-    use crate::spawn_managed::{spawn_managed_cmd, ConsolePolicy, Lifetime, StderrSink};
-    let mut cmd = std::process::Command::new("where.exe");
-    cmd.arg("ssh").stdout(std::process::Stdio::piped());
-    // 三条策略：
-    // · `Hidden` —— 🔴 **这处先前是裸 `.output()`，也就是没人回答过这个问题**：
-    //   monitor 是 `windows_subsystem = "windows"` 的 GUI app，起一个控制台子系统的
-    //   `where.exe` 而不带 `CREATE_NO_WINDOW` ⇒ 用户桌面上会闪一个黑框。
-    //   这正是「唯一出口」顺手关掉的那一族。
-    // · `JobKillOnClose` —— 一次性探测，我们就地等它退；掐断时不许留后代。
-    // · `Captured` —— 它的输出**是返回值**（`status.success()` 那一格），不是被丢了。
-    spawn_managed_cmd(
-        &mut cmd,
-        ConsolePolicy::Hidden,
-        Lifetime::JobKillOnClose,
-        StderrSink::Captured,
-    )
-    .and_then(|c| c.wait_with_output())
-    .map(|o| o.status.success())
-    .unwrap_or(false)
-}
-
-/// 开远端终端之前先查本机有没有 ssh 客户端：缺了窗口里只会报「找不到命令」（spawn 本身成功 ⇒ 前端误报成功）。
-/// 缺 ⇒ 那一句怎么装的话；在 ⇒ `None`。
-pub fn ssh_client_missing() -> Option<String> {
-    #[cfg(windows)]
-    let missing = !ssh_client_available();
-    #[cfg(not(windows))]
-    let missing = !program_exists("ssh");
-    missing.then(|| {
-        if cfg!(windows) {
-            copy_text("rsLaunch.remote.noOpenSsh", &[])
-        } else {
-            copy_text("rsLaunch.remote.noSsh", &[])
-        }
-    })
 }
 
 /// 开窗那一下**成了**的两种结局（真失败走 `Err`，一句人话）。调用方按它判，不按哪句话里的字判。

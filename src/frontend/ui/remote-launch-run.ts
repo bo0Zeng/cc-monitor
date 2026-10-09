@@ -24,6 +24,7 @@ import { renderCli } from "./launch-render";
 import { toast, failToast } from "./kit/toast";
 import { detailOf } from "./kit/detail";
 import { copyText } from "./copy-table";
+import { writeClipboard } from "./clipboard";
 import {
   arrivedBody,
   expectArrival,
@@ -131,7 +132,7 @@ async function invokeLaunchOrCopyFallback(
     // 别的失败：复制命令让用户自己粘贴（保留 F09 语义）。
     let copied = true;
     try {
-      await navigator.clipboard.writeText(cmd);
+      await writeClipboard(cmd);
     } catch {
       copied = false; // 命令在 toast 里仍可见，可手动复制
     }

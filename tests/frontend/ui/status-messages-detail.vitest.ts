@@ -2,14 +2,15 @@
  * 「消息」里带复制详情的那条（条带 §5.5）：同一颗［复制详情］复制出全部段；［详情］展开只显示最近一段 ＋「另 n 段」，再点收起。
  */
 import { describe, it, expect, vi } from "vitest";
+import { fakeClipboard } from "../../test-support/clipboard-fake";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { toast } from "../../../src/frontend/ui/kit/toast";
 import { StatusMessages } from "../../../src/frontend/ui/status-messages";
 
 describe("「消息」里的复制详情", () => {
   it("★ 展开看最近一段 ＋ 另 n 段；复制出全部段", async () => {
-    const written: string[] = [];
-    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: (t: string) => (written.push(t), Promise.resolve()) } });
+    const clip = fakeClipboard();
+    const written = clip.written;
     const m = new StatusMessages();
     document.body.appendChild(m.el);
     toast("t-9", "", { detail: "d-1" });
@@ -25,5 +26,6 @@ describe("「消息」里的复制详情", () => {
     expect(written[0]).toBe(`t-9 ${copyText("kit.toast.count", { n: 2 })}\n\nt-9\nd-1\n\nt-9\nd-2`);
     [...document.querySelectorAll("button")].find((b) => b.textContent === copyText("messages.record.expand"))!.click();
     expect(document.querySelector('[data-role="message-detail"]')).toBeNull();
+    clip.restore();
   });
 });

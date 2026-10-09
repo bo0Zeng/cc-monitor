@@ -117,10 +117,15 @@ pub(crate) fn scan_skills_at(root: &Path, project: Option<&str>, out: &mut Sight
         let description = match skill_description(&doc) {
             Ok(d) => d,
             Err(e) => {
-                out.problems.push(copy_text(
-                    "beClaudeAssets.skill.docFailed",
-                    &[("path", &doc.display().to_string()), ("e", &e.to_string())],
-                ));
+                out.problems.push(
+                    e.wrap(|why| {
+                        copy_text(
+                            "beClaudeAssets.skill.docFailed",
+                            &[("path", &doc.display().to_string()), ("why", why)],
+                        )
+                    })
+                    .said_logging_raw(),
+                );
                 None
             }
         };
@@ -137,7 +142,7 @@ pub(crate) fn scan_skills_at(root: &Path, project: Option<&str>, out: &mut Sight
 
 /// `SKILL.md` 头部 front matter（三个 `-` 包着的那一段）里的 `description:`。没有这份文件 / 没有那一格 ⇒ `Ok(None)`；
 /// 读不出来（超上限 / 不是常规文件 / 权限）⇒ `Err`（调用方说出来）。
-fn skill_description(doc: &Path) -> Result<Option<String>, String> {
+fn skill_description(doc: &Path) -> Result<Option<String>, crate::common::said::Said> {
     if !doc.exists() {
         return Ok(None);
     }
@@ -166,17 +171,18 @@ pub(crate) fn scan_user_mcp_at(claude_json: &Path, out: &mut Sightings) {
     if !claude_json.exists() {
         return;
     }
-    match read_regular_capped(claude_json, MAX_CONFIG_BYTES)
-        .and_then(|b| serde_json::from_slice(strip_bom(&b)).map_err(|e| e.to_string()))
-    {
+    match crate::common::fs::read_json_capped(claude_json, MAX_CONFIG_BYTES) {
         Ok(v) => servers_into(&v, claude_json, None, out),
-        Err(e) => out.problems.push(copy_text(
-            "beClaudeAssets.mcp.configFailed",
-            &[
-                ("path", &claude_json.display().to_string()),
-                ("e", &e.to_string()),
-            ],
-        )),
+        // 这一条只是资产目录上的一句说明（没有复制详情那一格）：原话记日志。
+        Err(e) => out.problems.push(
+            e.wrap(|why| {
+                copy_text(
+                    "beClaudeAssets.mcp.configFailed",
+                    &[("path", &claude_json.display().to_string()), ("why", why)],
+                )
+            })
+            .said_logging_raw(),
+        ),
     }
 }
 
@@ -186,26 +192,34 @@ pub(crate) fn scan_project_mcp_at(dir: &Path, out: &mut Sightings) {
     match std::fs::metadata(&file) {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return,
         Err(e) => {
-            out.problems.push(copy_text(
-                "beClaudeAssets.mcp.statFailed",
-                &[("path", &file.display().to_string()), ("e", &e.to_string())],
-            ));
+            out.problems.push(
+                crate::common::said::Said::with_raw(
+                    copy_text(
+                        "beClaudeAssets.mcp.statFailed",
+                        &[
+                            ("path", &file.display().to_string()),
+                            ("why", &copy_core::io_reason(e.kind())),
+                        ],
+                    ),
+                    &e,
+                )
+                .said_logging_raw(),
+            );
             return;
         }
         Ok(_) => {}
     }
-    let parsed: Result<serde_json::Value, String> =
-        read_regular_capped(&file, MAX_PROJECT_MCP_BYTES)
-            .and_then(|b| serde_json::from_slice(strip_bom(&b)).map_err(|e| e.to_string()));
-    match parsed {
+    match crate::common::fs::read_json_capped(&file, MAX_PROJECT_MCP_BYTES) {
         Ok(v) => servers_into(&v, &file, Some(&dir.display().to_string()), out),
         Err(e) => {
-            let why = copy_text(
-                "beClaudeAssets.mcp.readFailed",
-                &[("path", &file.display().to_string()), ("e", &e.to_string())],
-            );
-            tracing::warn!("资产目录：{why}");
-            out.problems.push(why);
+            let e = e.wrap(|why| {
+                copy_text(
+                    "beClaudeAssets.mcp.readFailed",
+                    &[("path", &file.display().to_string()), ("why", why)],
+                )
+            });
+            tracing::warn!("资产目录：{}", e.logged());
+            out.problems.push(e.said);
         }
     }
 }
@@ -230,10 +244,6 @@ fn servers_into(v: &serde_json::Value, file: &Path, project: Option<&str>, out: 
             file: file.to_path_buf(),
         });
     }
-}
-
-fn strip_bom(b: &[u8]) -> &[u8] {
-    b.strip_prefix(&[0xEF, 0xBB, 0xBF][..]).unwrap_or(b)
 }
 
 #[cfg(test)]

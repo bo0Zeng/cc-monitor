@@ -179,8 +179,11 @@ impl DialRequest {
 #[derive(Debug, Clone, Serialize)]
 pub struct DialAck {
     pub ok: bool,
-    /// `ok=false` 时的人话原因。界面把它原样冒泡给重连那一层。
+    /// `ok=false` 时的那一句（只带原因词，不带下层原话）。界面把它原样冒泡给重连那一层。
     pub error: Option<String>,
+    /// `ok=false` 时的复制详情（时刻 · 机器 · 命令 · 下层原话，后端这一端写好；排法同失败应答那一格）。成功 ⇒ 不出这一格。additive。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
     /// 实际观察到的 host key 指纹 —— 界面侧 TOFU 固化要它（失败时也尽量带上）。
     pub fingerprint: Option<String>,
     /// 〔「保住多地址那一格」〕这一趟报过指纹的每条地址 → 指纹。additive（`ACK_V` 不动）；
@@ -211,10 +214,12 @@ pub struct DialAck {
 }
 
 impl DialAck {
-    fn failed(error: String, fingerprint: Option<String>) -> Self {
+    /// 没拨成 / 没开成：那一句 ＋ 下层原话（进 `detail`，不进 `error`）。
+    pub(crate) fn failed(error: crate::common::said::Said, fingerprint: Option<String>) -> Self {
         DialAck {
             ok: false,
-            error: Some(error),
+            detail: Some(crate::stream::detail::of_run("dial", error.raw.as_deref())),
+            error: Some(error.said),
             fingerprint,
             fingerprints: Default::default(),
             jump_fingerprints: Default::default(),
@@ -238,7 +243,11 @@ impl DialAck {
     }
 
     /// 同 [`DialAck::failed`]，带上远端回拒开通道的原因码。
-    fn open_refused(error: String, fingerprint: Option<String>, why: &'static str) -> Self {
+    fn open_refused(
+        error: crate::common::said::Said,
+        fingerprint: Option<String>,
+        why: &'static str,
+    ) -> Self {
         DialAck {
             open_refused: Some(why),
             ..DialAck::failed(error, fingerprint)

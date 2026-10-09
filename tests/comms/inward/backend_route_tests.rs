@@ -20,7 +20,7 @@ fn only_the_errors_that_prove_nothing_was_sent_allow_a_fallback() {
     ];
     for e in &fallback_ok {
         assert!(
-            matches!(route_call_error(e, plain), Routed::NoChannel(_)),
+            matches!(route_call_error(e, "devbox", plain), Routed::NoChannel(_)),
             "{e:?} 是在写出去之前返回的，应当允许回落"
         );
     }
@@ -64,7 +64,7 @@ fn only_the_errors_that_prove_nothing_was_sent_allow_a_fallback() {
     ];
     for e in &no_fallback {
         assert!(
-            matches!(route_call_error(e, plain), Routed::Refused(_)),
+            matches!(route_call_error(e, "devbox", plain), Routed::Refused(_)),
             "{e:?} **不能证明**这条命令没发出去（或后端已经说了话）——\n\
                  允许回落就等于在未知状态上再做一次动作，\
                  而 `wrong_owner`/`too_many_windows` 更是把门拒绝洗成另一条路的成功"
@@ -112,7 +112,7 @@ fn the_collapse_to_three_states_is_byte_identical_to_the_table_before_layering()
                 cmd: "kill".into(),
                 offered: vec!["ping".into(), "cancel".into()],
             },
-            Routed::NoChannel(t("rsBackendRoute.layer.unsupported")),
+            Routed::NoChannel(copy_core::backend_old("devbox")),
         ),
         (
             CallError::TooManyPending,
@@ -160,7 +160,7 @@ fn the_collapse_to_three_states_is_byte_identical_to_the_table_before_layering()
     for (e, want) in table {
         witness(&e);
         assert_eq!(
-            route_call_error(&e, plain),
+            route_call_error(&e, "devbox", plain),
             want,
             "`{e:?}` 收拢出来的三态（或那句话）变了 —— 旧三态一个字节都不许变"
         );

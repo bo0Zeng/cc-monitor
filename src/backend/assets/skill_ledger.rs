@@ -123,20 +123,26 @@ pub fn read_at(path: &Path) -> Read {
             .ok()
             .and_then(|j| j.get("v").and_then(Value::as_u64));
         if let Some(v) = v.filter(|v| *v != FORMAT_V) {
-            return Read::Unreadable(copy_text(
-                "beSkillLedger.read.otherVersion",
-                &[
-                    ("path", &path.display().to_string()),
-                    ("mine", &FORMAT_V.to_string()),
-                    ("theirs", &v.to_string()),
-                ],
-            ));
+            return Read::Unreadable(
+                copy_text(
+                    "beSkillLedger.read.otherVersion",
+                    &[
+                        ("path", &path.display().to_string()),
+                        ("mine", &FORMAT_V.to_string()),
+                        ("theirs", &v.to_string()),
+                    ],
+                )
+                .into(),
+            );
         }
         match serde_json::from_slice::<Ledger>(&bytes) {
             Ok(l) => Read::Present(l),
-            Err(e) => Read::Unreadable(copy_text(
-                "beSkillLedger.read.unknown",
-                &[("path", &path.display().to_string()), ("e", &e.to_string())],
+            Err(e) => Read::Unreadable(crate::common::said::Said::with_raw(
+                copy_text(
+                    "beSkillLedger.read.unknown",
+                    &[("path", &path.display().to_string())],
+                ),
+                e,
             )),
         }
     })
@@ -147,12 +153,12 @@ pub fn load_at(path: &Path) -> Result<Ledger, (&'static str, String)> {
     match read_at(path) {
         Read::Absent => Ok(Ledger::default()),
         Read::Present(l) => Ok(l),
-        Read::Unreadable(why) => Err(("ledger_unreadable", why)),
+        Read::Unreadable(why) => Err(("ledger_unreadable", why.said_logging_raw())),
     }
 }
 
 /// **全仓唯一的写者**（经 `own_state` 原子写；那一层目录由 [`record_at`] 在拿锁之前建）。
-fn write_at(path: &Path, ledger: &Ledger) -> Result<(), String> {
+fn write_at(path: &Path, ledger: &Ledger) -> Result<(), crate::common::said::Said> {
     crate::common::own_state::write_json(path, ledger)
 }
 
@@ -291,7 +297,12 @@ pub fn record_at(path: &Path, skills_root: Option<&Path>, args: &Value) -> Answe
             ),
         )
     })?;
-    let _g = crate::platform::lock::hold(lock_dir).map_err(|e| ("io_failed", e))?;
+    let _g = crate::platform::lock::hold(lock_dir).map_err(|e| {
+        (
+            "io_failed",
+            crate::common::said::Said::from(e).said_logging_raw(),
+        )
+    })?;
     let mut ledger = load_at(path)?;
     let (dir, name, changed, left) = match op {
         "add" => {
@@ -439,7 +450,7 @@ pub fn record_at(path: &Path, skills_root: Option<&Path>, args: &Value) -> Answe
         }
     };
     if changed {
-        write_at(path, &ledger).map_err(|e| ("io_failed", e))?;
+        write_at(path, &ledger).map_err(|e| ("io_failed", e.said_logging_raw()))?;
     }
     Ok(json!({ "dir": dir, "name": name, "changed": changed, "remaining": left }))
 }

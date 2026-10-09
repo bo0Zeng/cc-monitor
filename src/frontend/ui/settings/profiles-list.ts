@@ -12,6 +12,7 @@
 import { chan, type Sub } from "../../../comms/inward/chan";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { copyText } from "../copy-table";
+import { writeClipboard } from "../clipboard";
 import { homeShort } from "../kit/path";
 import { select as kitSelect } from "../kit/select";
 import { toast, undoToast, failToast } from "../kit/toast";
@@ -596,8 +597,10 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
       return o;
     };
     const copyLines = link(copyText("profilesPage.clash.copyLines"), () => {
-      void navigator.clipboard?.writeText(clashes.map((c) => `${short(c.path)}:${c.line}`).join("\n"));
-      toast(copyText("profilesPage.clash.copied"), "", { level: "info" });
+      void writeClipboard(clashes.map((c) => `${short(c.path)}:${c.line}`).join("\n")).then(
+        () => toast(copyText("profilesPage.clash.copied"), "", { level: "info" }),
+        (e: unknown) => failToast(copyText("detail.act.failed"), e, { level: "error" }),
+      );
     });
     const opts3 = el("div", "prof-opts");
     opts3.append(

@@ -286,6 +286,7 @@ export function machineOps(): Record<string, OpHandler> {
         own: [
           { id: "bin", path: "~/.cc-monitor/bin", dir: true, class: "cache", exists: true, size: null },
           { id: "relayKey", path: "~/.cc-monitor/relay-key", dir: false, class: "truth", exists: true, size: 64 },
+          { id: "relayPassKey", path: "~/.cc-monitor/relay-pass-key", dir: false, class: "truth", exists: true, size: 64 },
           { id: "policy", path: "~/.cc-monitor/backend.json", dir: false, class: "truth", exists: false, size: null },
           { id: "profiles", path: "~/.cc-monitor/profiles.toml", dir: false, class: "truth", exists: true, size: 1840 },
           { id: "aliasesPosix", path: "~/.cc-monitor/aliases.sh", dir: false, class: "truth", exists: true, size: 512 },
@@ -325,13 +326,21 @@ const BASHRC_CHANGED = { path: "~/.bashrc", what: copyText("rsToolRegistry.tools
 
 /** 那台的状态成品（形状同 `tests/__fixtures__/machine-state.golden.json`）：看不见的那台 ＝ 密钥被拒。 */
 function machineOf(origin: string, w: World): Record<string, unknown> {
-  const base = { stage: null, os: origin === "win-laptop" ? "Windows" : "Linux", version: "4.1.1" as string | null, versionRelation: "same" as string | null, seenHostKey: null as string | null };
+  const base = { stage: null, os: origin === "win-laptop" ? "Windows" : "Linux", version: "4.1.1" as string | null, versionRelation: "same" as string | null, seenHostKey: null as string | null, detail: null as string | null };
   if (w.installingMachines?.includes(origin)) return { ...base, state: "installing", reason: null, version: null, versionRelation: null, fixes: [] };
   if (w.hostKeyChanged?.includes(origin))
     return { ...base, state: "host_key_changed", reason: "host_key", version: null, versionRelation: null, fixes: ["compare_fingerprint"], seenHostKey: "SHA256:Zq81nVb0cR2yT6wXe4uLm9kPp3sHd7fJg5aQiO1tYw8" };
   if (w.staleMachines.includes(origin)) return { ...base, state: "needs_update", reason: null, version: null, versionRelation: "older", fixes: ["update"] };
   if (!w.unseenMachines.includes(origin)) return { ...base, state: "up", reason: null, fixes: [] };
-  return { ...base, state: "down", reason: "auth", version: null, versionRelation: null, fixes: ["push_key", "conn_settings"] };
+  return {
+    ...base,
+    state: "down",
+    reason: "auth",
+    version: null,
+    versionRelation: null,
+    fixes: ["push_key", "conn_settings"],
+    detail: `时刻：2026-10-08 21:04:11 +08:00\n机器：Linux x86_64 · 后端 p9z-fixture\n命令：dial\n对象：${origin}\n断在：私钥登录失败\n码：auth\n原话：Authentication failed (publickey)`,
+  };
 }
 
 export function machineCommands(): Record<string, CommandHandler> {
@@ -443,8 +452,8 @@ const DEVBOX_CHORES = [
   chore({ id: "clash:cct", kind: "decide", name: "cct 重名 · 你写的 / 清单", loc: "~/.bashrc 第 129 行", said: copyText("beChore.clash.winsYours"), why: "现在敲 cct 起的是后定义的那一个；没生效的那一条白放着", copy: `${HOME}/.bashrc:129`, file: `${HOME}/.bashrc`, go: { page: "machine", tab: "config", anchor: "clash" }, action: "decide" }),
   chore({ id: `dead:${HOME}/.bashrc`, name: ".bashrc · 2 行失效", loc: "~/.bashrc 第 118, 119 行", said: copyText("beChore.dead.said"), why: copyText("beChore.dead.why"), steps: ["第 118 行：source ~/.old-ccm.sh", "第 119 行：. ~/bin/ccm-env"], copy: `${HOME}/.bashrc:118`, file: `${HOME}/.bashrc`, action: "locate" }),
   chore({
-    id: "relay",
-    name: copyText("beChore.relay.name"),
+    id: "relay:claude-code",
+    name: copyText("beChore.relay.name", { agent: "Claude Code" }),
     loc: "~/.claude/settings.json · env",
     said: copyText("beChore.relay.saidTodo"),
     why: copyText("beChore.relay.why"),
@@ -456,13 +465,30 @@ const DEVBOX_CHORES = [
     ],
     copy: '    "ANTHROPIC_BASE_URL": "http://127.0.0.1:8788/k/9f3c2a71/claude",',
     whole: WHOLE,
-    wholeCovers: ["relay", "cc-bus-hooks"],
+    wholeCovers: ["relay:claude-code", "cc-bus-hooks"],
     file: SETTINGS,
     mask: "9f3c2a71",
   }),
-  chore({ id: "cc-bus-hooks", name: copyText("beChore.hooks.name"), loc: "~/.claude/settings.json · hooks", said: copyText("beChore.hooks.said"), why: copyText("beChore.hooks.why"), steps: ["打开 ~/.claude/settings.json", "在第 5 行后面加下面 12 行", copyText("beChore.step.save")], copy: '"hooks": {}', whole: WHOLE, wholeCovers: ["relay", "cc-bus-hooks"], file: SETTINGS }),
+  chore({
+    id: "relay:codex",
+    name: copyText("beChore.relay.name", { agent: "Codex" }),
+    loc: "~/.codex/config.toml · openai_base_url",
+    said: copyText("beChore.relay.saidTodo"),
+    why: copyText("beChore.relay.why"),
+    steps: ["打开 ~/.codex/config.toml", copyText("beChore.step.insertTop", { n: "1" }), copyText("beChore.step.save")],
+    diff: [
+      { n: null, op: "add", text: 'openai_base_url = "http://127.0.0.1:8788/9f3c2a71/t/codex/_"' },
+      { n: 1, op: "same", text: 'model = "gpt-5"' },
+    ],
+    copy: 'openai_base_url = "http://127.0.0.1:8788/9f3c2a71/t/codex/_"',
+    whole: 'openai_base_url = "http://127.0.0.1:8788/9f3c2a71/t/codex/_"\nmodel = "gpt-5"\n',
+    wholeCovers: ["relay:codex"],
+    file: `${HOME}/.codex/config.toml`,
+    mask: "9f3c2a71",
+  }),
+  chore({ id: "cc-bus-hooks", name: copyText("beChore.hooks.name"), loc: "~/.claude/settings.json · hooks", said: copyText("beChore.hooks.said"), why: copyText("beChore.hooks.why"), steps: ["打开 ~/.claude/settings.json", "在第 5 行后面加下面 12 行", copyText("beChore.step.save")], copy: '"hooks": {}', whole: WHOLE, wholeCovers: ["relay:claude-code", "cc-bus-hooks"], file: SETTINGS }),
 ];
 const LOCAL_CHORES = [
   chore({ id: "install:xdg-terminal-exec", kind: "installOptional", name: "xdg-terminal-exec", loc: "xdg-terminal-exec", said: copyText("beChore.install.saidOptional"), action: "how", howUrl: "https://gitlab.freedesktop.org/terminal-wg/specifications" }),
-  chore({ id: "relay", state: "done", name: copyText("beChore.relay.name"), loc: "~/.claude/settings.json · env", said: copyText("beChore.relay.saidDone"), file: SETTINGS }),
+  chore({ id: "relay:claude-code", state: "done", name: copyText("beChore.relay.name", { agent: "Claude Code" }), loc: "~/.claude/settings.json · env", said: copyText("beChore.relay.saidDone"), file: SETTINGS }),
 ];
