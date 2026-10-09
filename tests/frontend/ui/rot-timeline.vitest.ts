@@ -8,6 +8,7 @@ import {
   cellSay,
   headLine,
   timelineAxis,
+  whyShort,
 } from "../../../src/frontend/ui/rot-timeline";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 
@@ -177,5 +178,12 @@ describe("时间轴 · 悬停与键盘", () => {
     expect(card.textContent?.startsWith("g0")).toBe(true);
     key("Escape");
     expect(card.dataset.shown).toBeUndefined();
+  });
+});
+
+describe("换号点短码", () => {
+  it("离开兜底 ⇒ 自己的短码，不与抢回混", () => {
+    expect(whyShort("leaveFallback")).toBe(copyText("rot.why.leave"));
+    expect(whyShort("leaveFallback")).not.toBe(whyShort("preempt"));
   });
 });

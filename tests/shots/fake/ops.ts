@@ -138,7 +138,7 @@ export function defaultOps(): Record<string, OpHandler> {
           isDefault: true,
           users: { live: 0, ended: 0, follow: 0, doing: {}, sids: [], endedSids: [] },
           summary: "起始 · 满",
-          explain: "起始账号先用 · 被拒才换 · 不主动换回 · 其余号 40m 内恢复则不切兜底",
+          explain: "起始账号先用 · 被拒才换 · 不主动换回",
           missing: [],
           atLimitApplies: false,
         },

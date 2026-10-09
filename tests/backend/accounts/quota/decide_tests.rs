@@ -1226,3 +1226,101 @@ fn effective_caps_name_their_layer_and_the_one_below() {
         )
     );
 }
+
+// ── 兜底只临时用：在兜底号上，池里有非兜底号能用了 ⇒ 下一发按池序切到首个能用的非兜底号（不管换法）──────────
+
+/// 用户那套 `r → z → q → haoyang → y → d → b`，b 兜底，到 90% 换，按顺序（不抢回）。
+fn seven() -> World {
+    let mut w = with_fallback(&["r", "z", "q", "haoyang", "y", "d", "b"], &["b"]);
+    w.when = RotationWhen::Threshold { n: 90 };
+    let far = NOW + 3 * 3600;
+    for a in ["r", "z", "q", "haoyang", "y", "d"] {
+        w.seen.insert(a.into(), at(0.95, far));
+    }
+    w.seen.insert("b".into(), at(0.10, far));
+    w
+}
+
+fn leave_to(to: &str) -> Verdict {
+    Verdict::Switch {
+        to: to.into(),
+        why: SwitchWhy::LeaveFallback,
+        from_resets_at: None,
+        skipped: vec![],
+    }
+}
+
+/// ★ 在 b 上、r 恢复、按顺序 ⇒ 下一发切 r（记「兜底 · r 已恢复」）；刚回来的那一发照过 ⇒ 这一问不换。
+#[test]
+fn on_the_fallback_a_recovered_account_takes_over_even_without_preempt() {
+    let mut w = seven();
+    w.seen.insert("r".into(), at(0.0, NOW + 5 * 3600));
+    assert_eq!(w.judge("b", None, &[]).0, leave_to("r"));
+    let served = at(0.10, NOW + 3600);
+    assert_eq!(w.judge("b", Some(&served), &["b"]).0, Verdict::Stay);
+    // 按池序取首个能用的非兜底号：r 还满、d 与 z 恢复 ⇒ z。
+    w.seen.insert("r".into(), at(0.95, NOW + 3600));
+    w.seen.insert("d".into(), at(0.0, NOW + 5 * 3600));
+    w.seen.insert("z".into(), at(0.0, NOW + 5 * 3600));
+    assert_eq!(w.judge("b", None, &[]).0, leave_to("z"));
+}
+
+/// ★ 在 b 上、谁都没恢复 ⇒ 留 b。
+#[test]
+fn on_the_fallback_with_nobody_back_it_stays() {
+    let w = seven();
+    assert_eq!(w.judge("b", None, &[]).0, Verdict::Stay);
+}
+
+/// ★ 在 d（非兜底）上、r 恢复、按顺序 ⇒ 留 d（非兜底号之间照旧按换法走）。
+#[test]
+fn off_the_fallback_order_mode_still_never_switches_back() {
+    let mut w = seven();
+    w.seen.insert("d".into(), at(0.10, NOW + 3600));
+    w.seen.insert("r".into(), at(0.0, NOW + 5 * 3600));
+    assert_eq!(w.judge("d", None, &[]).0, Verdict::Stay);
+}
+
+/// ★ 没标兜底的规则：在最后一号上、前面恢复 ⇒ 不动。
+#[test]
+fn without_a_fallback_the_last_account_stays_when_others_recover() {
+    let mut w = seven();
+    w.fallback.clear();
+    w.seen.insert("r".into(), at(0.0, NOW + 5 * 3600));
+    assert_eq!(w.judge("b", None, &[]).0, Verdict::Stay);
+}
+
+/// ★ q 时段停用中（上限 0）：用量恢复也不算能用 ⇒ 留 b；时段一过 ⇒ 切 q。
+#[test]
+fn an_account_off_for_its_slot_does_not_count_as_back() {
+    let mut w = seven();
+    w.cap = caps(&[("q", "*", slots("17:00-02:00", 0))]);
+    local(&mut w, 18, 0);
+    let far = w.now + 3 * 86_400;
+    for a in ["r", "z", "haoyang", "y", "d"] {
+        w.seen.insert(a.into(), at(0.95, far));
+    }
+    w.seen.insert("b".into(), at(0.10, far));
+    w.seen.insert("q".into(), at(0.0, far));
+    assert_eq!(w.judge("b", None, &[]).0, Verdict::Stay);
+    local(&mut w, 2, 0);
+    w.now += 86_400;
+    assert_eq!(w.judge("b", None, &[]).0, leave_to("q"));
+}
+
+/// 预览跟着 decide：在 b 上、r 一小时后重置 ⇒ 那一刻起切 r。
+#[test]
+fn the_plan_leaves_the_fallback_when_an_account_resets() {
+    let mut w = seven();
+    let reset = NOW + 3600;
+    w.seen.insert("r".into(), at(0.95, reset));
+    let end = NOW + 2 * 3600;
+    let p = w.plan("b", end);
+    assert_eq!(
+        p,
+        vec![
+            step(NOW, reset, Some("b"), None),
+            step(reset, end, Some("r"), Some(SwitchWhy::LeaveFallback)),
+        ]
+    );
+}

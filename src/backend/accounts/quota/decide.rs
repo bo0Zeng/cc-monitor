@@ -12,7 +12,8 @@
 //! 「几点回来」＝ 卡着它的每一处（被拒 / 超额那个窗口 · 过了上限的每个窗口）都重置的那一刻；有一处说不出 ⇒ 说不出。
 //!
 //! **挑法** [`decide`]：
-//! 1. 此刻的号能用：这一段用完了单段预算（`stint`，软的）⇒ 想走；或 `preempt` 开着、换进它那一刻挡在它前面的号
+//! 1. 此刻的号能用：此刻的号是兜底号（`fallback`）、池里有非兜底的号能用了 ⇒ 切到首个能用的那个（按池序，不管换法：
+//!    兜底只临时用）；这一段用完了单段预算（`stint`，软的）⇒ 想走；或 `preempt` 开着、换进它那一刻挡在它前面的号
 //!    （[`blocked_above`]，随会话记下）有一个又能用了 ⇒ 切回去（按池序取首个）；
 //!    都不是 ⇒ 不换。想走而没有能接的 ⇒ 留着。刚回来的那一发照过了 ⇒ 这一问不换。
 //! 2. 此刻的号不能用 ⇒ 按池序**从头**取首个能用、接得上的号（列表顺序 ＝ 偏好；超额在兜 ⇒ 只找订阅号接，没有就留在超额 `toOverage`）。
@@ -484,6 +485,14 @@ pub(crate) fn decide(f: &Facts<'_>, ready: &mut dyn FnMut(&str) -> Result<(), Un
         // 1. 能用：刚回来的那一发照过了 ⇒ 不换；单段预算用完（软的）⇒ 换到首个能用的；前面的号回来了 ⇒ 切回去。
         if f.heard.is_some() {
             return Verdict::Stay;
+        }
+        // 兜底只临时用：在兜底号上、有非兜底的号能用了 ⇒ 切到首个能用的那个（不管换法）。
+        if f.fallback.iter().any(|x| x == f.current) {
+            let usable = usable_one(f, false);
+            let back = |a: &str| !f.fallback.iter().any(|x| x == a) && usable(a);
+            if let v @ Verdict::Switch { .. } = leave(f, SwitchWhy::LeaveFallback, &back, ready) {
+                return v;
+            }
         }
         if let Some((w, n)) = stint_spent(f) {
             return leave(f, SwitchWhy::Stint { w, n }, &usable_one(f, false), ready);

@@ -20463,8 +20463,14 @@
     "beRotation.explain.wait": {
       "kind": "body",
       "role": "说明",
-      "zh": "其余号 {dur} 内恢复则不切兜底",
+      "zh": "{dur} 内恢复则不切兜底",
       "args": ["dur"]
+    },
+    "beRotation.explain.leave": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "其余号恢复即切回",
+      "args": []
     },
     "beRotation.explain.off": {
       "kind": "body",
@@ -22399,6 +22405,12 @@
       "zh": "抢回",
       "args": []
     },
+    "rot.why.leave": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "离兜底",
+      "args": []
+    },
     "rot.why.stint": {
       "kind": "body",
       "role": "片段",
@@ -22825,6 +22837,12 @@
       "kind": "body",
       "role": "片段",
       "zh": "{name} 已恢复",
+      "args": ["name"]
+    },
+    "acct.hist.leaveFallback": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "兜底 · {name} 已恢复",
       "args": ["name"]
     },
     "acct.hist.more": {
