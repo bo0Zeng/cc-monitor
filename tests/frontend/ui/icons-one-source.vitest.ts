@@ -6,6 +6,8 @@
  * - CSS 里要画图标（`<details>` 摘要的箭头那一类伪元素）只走 `mask: var(--icon-…)`；`--icon-…` 只由 `css-marks.ts` 从登记表取（`iconMaskUrl`），CSS 里不写 svg 地址。
  * - 产品里的 `<details>` 都不出浏览器自带三角：三扇窗都加载的 `reset.css` 里一条全局规则关掉，
  *   箭头只在一处画（`summary::before` 那颗 caretRight，展开转 90°，同 kit 折叠块）；别处不许另画、也不许各自再关一遍。
+ * - 能展开的行（折叠块 · 过程行 · 消息记录 · 维护项 · 历史页项目头）的折叠号都是 `kit/fold.ts` 的 `foldCaret()`：同一颗 caretRight，
+ *   所在元素 `aria-expanded="true"` 时转 90°；不按开合在 caretDown / caretRight 两张图之间换。
  */
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
@@ -59,6 +61,17 @@ describe("图标只有一个出处", () => {
     expect(carets, "摘要箭头画了不止一处（或一处都没有）").toHaveLength(1);
     const caretRule = css.flatMap((f) => [...f.text.matchAll(/([^{}]+)\{[^}]*mask:\s*var\(--icon-caret-right\)/g)].map((m) => m[1].trim()));
     expect(caretRule[0], "箭头那一条得是全局的 summary::before（只许排除几类标题行）").toMatch(/^summary(?::not\([^)]*\))?::before$/);
+  });
+
+  it("折叠号只有 foldCaret 一颗：不按开合换图", () => {
+    const fold = ts.find((f) => f.file.endsWith("kit/fold.ts"))?.text ?? "";
+    expect(fold, "kit/fold.ts 里没有 foldCaret").toMatch(/export function foldCaret\(/);
+    const swap = /\?\s*["']caret(?:Down|Right)["']\s*:\s*["']caret(?:Down|Right)["']/;
+    expect(swap.test('open ? "caretDown" : "caretRight"'), "量具：换图写法认得出").toBe(true);
+    const bad = ts.filter((f) => swap.test(f.text)).map((f) => f.file);
+    expect(bad, "这几份按开合换折叠号的图（改用 foldCaret）").toEqual([]);
+    const users = ts.filter((f) => /\bfoldCaret\(\)/.test(f.text)).map((f) => f.file.replace(/^.*src\/frontend\/ui\//, "")).sort();
+    expect(users).toEqual(["kit/fold.ts", "settings/chore-row.ts", "status-messages.ts", "turn-fold.ts", "views/history-rows.ts"]);
   });
 
   it("--icon-… 只由 css-marks.ts 经登记表设", () => {

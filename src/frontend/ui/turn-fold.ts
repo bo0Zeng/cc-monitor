@@ -24,7 +24,7 @@ import { readTurns, type TurnSummary, type TurnsResult } from "./session-reads";
 import type { Origin } from "./ipc/origin";
 import { copyText } from "./copy-table";
 import { durBetween, fmtStepDur } from "./cards/step-line";
-import { icon } from "./kit/icon";
+import { foldCaret } from "./kit/fold";
 import { SKELETON_GAP_CLASS } from "./skeleton-view";
 import { LS_KEYS, safeGet, safeSet } from "./local-storage";
 
@@ -265,7 +265,7 @@ export class TurnFold {
 export function paintLine(line: HTMLElement, turn: TurnSummary, open: boolean): void {
   line.setAttribute("aria-expanded", String(open));
   line.replaceChildren();
-  line.appendChild(icon(open ? "caretDown" : "caretRight", "compact"));
+  line.appendChild(foldCaret());
   const text = document.createElement("span");
   text.className = "proc-text";
   line.appendChild(text);

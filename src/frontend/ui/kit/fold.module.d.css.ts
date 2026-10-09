@@ -2,6 +2,7 @@
 declare const classes: {
   readonly fold: string;
   readonly foldBody: string;
+  readonly foldCaret: string;
   readonly foldHead: string;
   readonly foldSummary: string;
   readonly foldTitle: string;

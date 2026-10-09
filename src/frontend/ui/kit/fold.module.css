@@ -24,10 +24,14 @@
 
   .foldHead > svg {
     color: var(--text-2);
+  }
+
+  .foldCaret {
+    flex: none;
     transition: transform var(--dur-expand);
   }
 
-  .foldHead[aria-expanded="true"] > svg {
+  [aria-expanded="true"] > .foldCaret {
     transform: rotate(90deg);
   }
 

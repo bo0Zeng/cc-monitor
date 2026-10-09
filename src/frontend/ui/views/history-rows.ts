@@ -4,6 +4,7 @@
  */
 import { button, setDisabled } from "../kit/button";
 import { icon } from "../kit/icon";
+import { foldCaret } from "../kit/fold";
 import { tag } from "../kit/badge";
 import { statusDot } from "../kit/status-dot";
 import { banner } from "../kit/banner";
@@ -208,7 +209,7 @@ export function groupHead(
   el.setAttribute("role", "treeitem");
   el.setAttribute("aria-expanded", String(o.open));
   el.tabIndex = -1;
-  el.appendChild(icon(o.open ? "caretDown" : "caretRight", "compact"));
+  el.appendChild(foldCaret());
   const n = document.createElement("span");
   n.className = s.hvGroupName;
   n.textContent = g.projectName || copyText("history.row.noDir");

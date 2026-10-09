@@ -5,6 +5,7 @@
  * 每一格都照那台后端的成品画（类 · 态 · 字 · 行号 · diff · 要复制的原文），界面只多记一个「已复制」。
  */
 import { button } from "../kit/button";
+import { foldCaret } from "../kit/fold";
 import { tag } from "../kit/badge";
 import { copyText } from "../copy-table";
 import type { Chore, ChoreKind } from "./data-reads";
@@ -107,7 +108,8 @@ export function choreRow(c: Chore, host: ChoreRowHost): HTMLElement {
   if (c.state === "declined") top.appendChild(button({ label: copyText("dataPage.chore.undecline"), size: "compact", onClick: () => host.onDecline(c, false) }));
   const hasDetail = c.why !== "" || c.steps.length > 0 || c.diff.length > 0;
   if (hasDetail && c.state !== "declined") {
-    const caret = button({ label: host.open ? copyText("dataPage.chore.collapse") : copyText("dataPage.chore.expand"), kind: "icon", icon: host.open ? "caretDown" : "caretRight", size: "compact", onClick: () => host.onToggle(!host.open) });
+    const caret = button({ label: host.open ? copyText("dataPage.chore.collapse") : copyText("dataPage.chore.expand"), kind: "icon", size: "compact", onClick: () => host.onToggle(!host.open) });
+    caret.prepend(foldCaret());
     caret.setAttribute("aria-expanded", String(host.open));
     top.appendChild(caret);
   }
