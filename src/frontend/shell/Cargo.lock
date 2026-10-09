@@ -3370,6 +3370,7 @@ dependencies = [
  "walkdir",
  "windows 0.56.0",
  "windows 0.61.3",
+ "x11rb",
  "zbus",
 ]
 

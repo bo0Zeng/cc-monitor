@@ -4589,6 +4589,12 @@
       "zh": "未切换 · 终端由 Windows 托管",
       "args": []
     },
+    "front.title.desktopWontSwitch": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "未切换 · Wayland 下切不了终端窗口",
+      "args": []
+    },
     "front.title.unknown": {
       "kind": "title",
       "role": "标题",
@@ -4695,6 +4701,20 @@
       "zh": "Windows 交给「终端」应用托管 · 定位失败",
       "args": []
     },
+    "front.body.desktopWontSwitch": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "cc-monitor 在 {desktop}（Wayland）上看不到也切不了别的程序的窗口",
+      "args": [
+        "desktop"
+      ]
+    },
+    "front.body.desktopWontSwitchBare": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "cc-monitor 在这个 Wayland 桌面上看不到也切不了别的程序的窗口",
+      "args": []
+    },
     "front.title.backgroundTab": {
       "kind": "title",
       "role": "标题",
@@ -4738,6 +4758,12 @@
       "kind": "action",
       "role": "按钮",
       "zh": "在终端里打开",
+      "args": []
+    },
+    "front.act.openHere": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "在 cc-monitor 里打开",
       "args": []
     },
     "front.act.update": {
@@ -5610,7 +5636,7 @@
     "terminalFront.unavailable.detail": {
       "kind": "error",
       "role": "报错",
-      "zh": "仅 Windows 可切到终端窗口",
+      "zh": "仅 Windows · Linux 可切到终端窗口",
       "args": []
     },
     "terminalFront.unavailable.title": {
@@ -25506,7 +25532,7 @@
     "terminalFront.unavailable.short": {
       "kind": "body",
       "role": "片段",
-      "zh": "仅 Windows",
+      "zh": "仅 Windows · Linux",
       "args": []
     },
     "keys.title.main": {

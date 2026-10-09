@@ -436,3 +436,62 @@ fn a_window_label_names_the_registered_shell_only_when_its_start_time_matches() 
         assert_eq!(labeled_registration(&ts(bad.clone()), reg), None, "{bad}");
     }
 }
+
+/// ★ 会话由环境认：说了 Wayland 或挂着 `$WAYLAND_DISPLAY` ⇒ Wayland（哪怕也有 `$DISPLAY`：那是 Xwayland）；只有 `$DISPLAY` ⇒ X11；都没有 / 空串 ⇒ 不支持。
+#[test]
+fn the_display_session_is_read_from_the_environment() {
+    use crate::platform::hwnd::{session_from, DisplaySession as S};
+    let wl = |d: &str| S::Wayland { desktop: d.into() };
+    assert_eq!(
+        session_from(Some("x11"), None, Some(":0"), Some("XFCE")),
+        S::X11
+    );
+    assert_eq!(session_from(None, None, Some(":100"), None), S::X11);
+    assert_eq!(
+        session_from(
+            Some("wayland"),
+            Some("wayland-0"),
+            Some(":0"),
+            Some("GNOME")
+        ),
+        wl("GNOME")
+    );
+    assert_eq!(
+        session_from(None, Some("wayland-1"), Some(":1"), Some("KDE")),
+        wl("KDE")
+    );
+    assert_eq!(session_from(Some("wayland"), None, None, None), wl(""));
+    assert_eq!(
+        session_from(Some("wayland"), None, None, Some("ubuntu:GNOME")),
+        wl("GNOME")
+    );
+    assert_eq!(
+        session_from(Some("tty"), Some(""), Some(""), None),
+        S::Unsupported
+    );
+    assert_eq!(session_from(None, None, None, None), S::Unsupported);
+}
+
+/// ★ Windows · X11 走得通；Wayland 照实说切不了（带桌面名）；别的不支持。
+#[test]
+fn each_session_kind_says_whether_front_can_work() {
+    use crate::platform::hwnd::DisplaySession as S;
+    assert_eq!(refusal_of(&S::Win32), None);
+    assert_eq!(refusal_of(&S::X11), None);
+    assert_eq!(
+        refusal_of(&S::Wayland {
+            desktop: "GNOME".into()
+        }),
+        Some(FrontOutcome::DesktopWontSwitch {
+            desktop: "GNOME".into()
+        })
+    );
+    assert_eq!(refusal_of(&S::Unsupported), Some(FrontOutcome::Unsupported));
+    assert_eq!(
+        serde_json::to_value(FrontOutcome::DesktopWontSwitch {
+            desktop: "GNOME".into()
+        })
+        .unwrap(),
+        serde_json::json!({ "kind": "desktop-wont-switch", "desktop": "GNOME" })
+    );
+}

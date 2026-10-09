@@ -34,6 +34,8 @@ pub(crate) mod child_env;
 #[path = "../../../tests/backend/platform/fallback_guard.rs"]
 mod fallback_guard;
 pub(crate) mod fs;
+#[cfg(target_os = "linux")]
+pub(crate) mod linux_tables;
 pub(crate) mod liveness;
 pub(crate) mod local_tz;
 pub(crate) mod lock;
@@ -52,17 +54,28 @@ pub(crate) mod win_tables;
 #[cfg(windows)]
 pub(crate) mod win_tz;
 
-/// ↗ 那一问的系统事实（已建立的 TCP 连接表 ＋ 进程表，一行 JSON）。只有 Windows 有这一问；别的平台 ⇒ `Err`。
+/// ↗ 那一问的系统事实（已建立的 TCP 连接表 ＋ 进程表，一行 JSON，两个平台同形）。Windows 直调系统接口 · Linux 读 `/proc`；
+/// 别的平台 ⇒ `Err`。`start` 只在同一台上比先后：Windows 是 FILETIME，Linux 是开机后的时钟滴答。
 pub(crate) fn connection_and_process_tables() -> Result<String, String> {
     #[cfg(windows)]
     {
         win_tables::connection_and_process_tables()
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "linux")]
     {
-        Err("connection / process tables are only read on Windows".to_string())
+        linux_tables::connection_and_process_tables()
+    }
+    #[cfg(not(any(windows, target_os = "linux")))]
+    {
+        Err("connection / process tables are only read on Windows and Linux".to_string())
     }
 }
+
+/// 进程表里 ssh 客户端的名字（↗ 那一问认「这台有 ssh 连着那个地址」用）：Windows `ssh.exe` · Linux `ssh`。
+/// 两台的名字都列着（不按 cfg 分）：判定在哪台跑都认两种写法，判据在 Linux 上就测得到 Windows 那一形。
+pub(crate) const SSH_CLIENT_NAMES: &[&str] = &["ssh.exe", "ssh"];
+/// 进程链数到这些就停（它们不算终端：Windows 的桌面外壳 · Linux 的 init / 用户服务管理器）。
+pub(crate) const CHAIN_STOP_NAMES: &[&str] = &["explorer.exe", "systemd", "init"];
 // Windows 判活那一臂在本机（Linux）够得着的那几半：纯换算 · 与 Linux 同契约的映射 · 唯一住址。
 #[cfg(test)]
 #[path = "../../../tests/backend/platform/win_proc_contract_tests.rs"]

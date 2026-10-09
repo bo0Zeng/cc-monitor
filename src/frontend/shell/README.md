@@ -125,8 +125,8 @@ src/frontend/shell/
 | `chan_cancel` (MIG-3b 续) | `{ id }` | `boolean`（那一问此刻在不在飞） | 撤掉 webview 那一跳上带编号的一问：路由器丢掉调用 ⇒ 补发 `cancel` 给后端（撤单先到也撤得到） |
 | 端口转发那三条命令（起 · 停 · 列）删了 | — | — | 界面经通道问本机常驻后端 `forward-*`（`IPC-PROTOCOL.md` 那三节） |
 | 历史全文搜索那三条命令（搜索 · 查索引状态 · 重建索引，issue #6）删了 | — | — | 本机搜索也经通道问本机后端 `history-search`（与远端同一条路，界面 `src/frontend/ui/views/history-search.ts`）；monitor 进程内那份索引一起没了 |
-| `bring_terminal_to_front` | `{ sessionId }` | `()` | Tab ↗ / `Ctrl+\`` 跳焦 |
-| `bring_remote_terminal_to_front` (issue #18) | `{ terminals: [...] }` 或 `{ chain: [{ pid, name, start }] }` | 结局族 `FrontOutcome`；按标签那一问没对上 ⇒ `null` | 远端 Tab ↗ 的两跳：交那台 `session-terminals` 的 `terminals` ⇒ 按窗口标签查握手表；没对上再交本机后端 `terminal-processes` 的进程链 ⇒ 沿链找属主的可见顶层窗口（恰好一个才认；默认终端交接那一档借控制台挂记号标题找）、校验三重指纹后拉到前台 |
+| `bring_terminal_to_front` | `{ sessionId }` | 结局族 `FrontOutcome` | Tab ↗ / `Ctrl+\`` 跳焦（Windows 走 Win32 · Linux 的 X11 会话走 EWMH · Wayland 会话回 `desktop-wont-switch`） |
+| `bring_remote_terminal_to_front` (issue #18) | `{ terminals: [...] }` 或 `{ chain: [{ pid, name, start }] }` | 结局族 `FrontOutcome`；按标签那一问没对上 ⇒ `null` | 远端 Tab ↗ 的两跳：交那台 `session-terminals` 的 `terminals` ⇒ 按窗口标签查握手表；没对上再交本机后端 `terminal-processes` 的进程链 ⇒ 沿链找属主的可见顶层窗口（恰好一个才认；默认终端交接那一档借控制台挂记号标题找）、校验三重指纹后拉到前台；Linux 同一套判定，窗口那一跳走 EWMH（`platform/ewmh.rs`），Wayland 会话回 `desktop-wont-switch` |
 | `list_session_activity`〔散文墓碑〕 (issue #23) | — | `SessionActivityPayload[]` | 启动/F5 后拉一次红绿灯快照（增量走 `session-activity` 事件，双路收敛） |
 | `list_active_sessions`〔散文墓碑〕 (Batch5-F18) | — | `ActiveSessionPayload[] {session_id, cwd}` | frontend-ready 前拉一次本地活跃清单建骨架 Tab（按 (cwd,sid) 排序防 tab 栏洗牌；远端骨架走 `remote-session-added` 事件） |
 | `bring_monitor_to_front` (v2.4.0 issue #2) | — | `()` | watcher 反推用户在终端输入时，可选拉前 monitor 自身窗口（unminimize + show + set_focus） |

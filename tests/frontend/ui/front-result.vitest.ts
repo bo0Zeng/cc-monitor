@@ -44,6 +44,14 @@ describe("↗ 结局族", () => {
     });
     expect(shape({ kind: "no-window", program: "ssh.exe" })).toEqual({ title: copyText("front.title.noTerminal"), body: copyText("front.body.background"), hint: null, tone: "grey", acts: [] });
     expect(shape({ kind: "unclear" }), "句柄 / 进程号复用：不上细节，并进「窗口无法确定」").toEqual({ title: copyText("front.title.unsure"), body: "", hint: null, tone: "grey", acts: [] });
+    expect(shape({ kind: "desktop-wont-switch", desktop: "GNOME" }), "Wayland：照实说切不了、给在 cc-monitor 里打开").toEqual({
+      title: copyText("front.title.desktopWontSwitch"),
+      body: copyText("front.body.desktopWontSwitch", { desktop: "GNOME" }),
+      hint: null,
+      tone: "grey",
+      acts: [copyText("front.act.openHere")],
+    });
+    expect(shape({ kind: "desktop-wont-switch", desktop: "" })?.body, "桌面名读不到：不写空名字").toBe(copyText("front.body.desktopWontSwitchBare"));
     expect(shape({ kind: "unknown", detail: "x" })).toEqual({ title: copyText("front.title.failed"), body: copyText("front.body.unknown"), hint: null, tone: "red", acts: [copyText("detail.act.copy")] });
   });
 

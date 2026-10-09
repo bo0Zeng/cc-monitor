@@ -54,6 +54,13 @@ const REGISTERED: &[(&str, &str, &str, &str)] = &[
              不是节拍器。（**2 → 1**：远端那条点 ↗ 时的现扫重试随窗口标题那一套删了。）",
     ),
     (
+        "src/platform/ewmh.rs",
+        "activate",
+        "wait-for-condition",
+        "↗ 在 X11 上的最后一跳：发了 `_NET_ACTIVE_WINDOW` 之后读回根窗口那一格，看窗口管理器答没答应，30ms 一步、≤600ms（调用方给的上限）；\
+             对上就停。**有上限**、只在点 ↗ 那一下跑，不是节拍器。（换成订根窗口的属性变更事件要一个带期限的事件等待，x11rb 不带，今天不做。）",
+    ),
+    (
         "src/ccm_probe.rs",
         "capture_full",
         "wait-for-condition",

@@ -18,8 +18,6 @@ type CmdErr = (&'static str, String);
 const MAX_TERMINALS: usize = 16;
 /// 进程链最多几级（父进程表成环 / 读坏了也停得下来）。
 const MAX_CHAIN: usize = 32;
-/// 数到桌面外壳就停（它不算：它的窗口是桌面与任务栏）。
-const DESKTOP_SHELL: &str = "explorer.exe";
 
 /// 那台看到的那条连接（`SSH_CONNECTION` 四段）：对面 ＝ 这台电脑这一端。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -40,7 +38,7 @@ pub(crate) struct Conn {
     pub(crate) pid: u32,
 }
 
-/// 进程表一行（只这四格）。`start` 是启动时刻（FILETIME）；0 = 系统没给。
+/// 进程表一行（只这四格）。`start` 是启动时刻（只在同一台上比先后：Windows FILETIME · Linux 开机后的滴答）；0 = 系统没给。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Proc {
     pub(crate) ppid: u32,
@@ -66,7 +64,7 @@ pub(crate) struct Link {
 /// 查到的事实。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Found {
-    /// 开着那条连接的进程在前，往上到桌面外壳之前。
+    /// 开着那条连接的进程在前，往上到桌面外壳 / init 之前。
     Chain(Vec<Link>),
     /// 那个终端不是经 ssh 连的（那台报的是 `ssh: null`）。
     NotSsh,
@@ -74,7 +72,7 @@ pub(crate) enum Found {
     Elsewhere(String),
     /// 这台电脑有那个地址、或有 ssh 连着那个地址，但四元组对不上（经跳板机 / 端口转换）。
     Mismatch,
-    /// 这一次没查成（没有 PowerShell · 报错 · 两张表对不上）。
+    /// 这一次没查成（系统那一趟报错 · 两张表对不上）。
     QueryFailed,
 }
 
@@ -237,7 +235,7 @@ fn one(w: &Wanted, t: &Tables) -> Found {
             || (c.remote == w.client
                 && t.procs
                     .get(&c.pid)
-                    .is_some_and(|p| p.name.eq_ignore_ascii_case("ssh.exe")))
+                    .is_some_and(|p| named(&p.name, crate::platform::SSH_CLIENT_NAMES)))
     });
     if here {
         Found::Mismatch
@@ -246,7 +244,12 @@ fn one(w: &Wanted, t: &Tables) -> Found {
     }
 }
 
-/// 从 `pid` 往上数：到桌面外壳之前为止；父进程不在表里 / 比子进程晚起（进程号被复用过）/ 启动时刻不明 ⇒ 链在那里断。
+/// 进程名是不是这几个之一（不分大小写：Windows 的名字大小写不定）。
+fn named(name: &str, names: &[&str]) -> bool {
+    names.iter().any(|n| name.eq_ignore_ascii_case(n))
+}
+
+/// 从 `pid` 往上数：到桌面外壳 / init 之前为止；父进程不在表里 / 比子进程晚起（进程号被复用过）/ 启动时刻不明 ⇒ 链在那里断。
 /// `pid` 自己不在进程表里 ⇒ `None`。
 pub(crate) fn chain(pid: u32, procs: &HashMap<u32, Proc>) -> Option<Vec<Link>> {
     let mut cur = pid;
@@ -263,7 +266,9 @@ pub(crate) fn chain(pid: u32, procs: &HashMap<u32, Proc>) -> Option<Vec<Link>> {
         if parent.start == 0 || p.start == 0 || parent.start > p.start {
             break;
         }
-        if parent.name.eq_ignore_ascii_case(DESKTOP_SHELL) || out.iter().any(|l| l.pid == p.ppid) {
+        if named(&parent.name, crate::platform::CHAIN_STOP_NAMES)
+            || out.iter().any(|l| l.pid == p.ppid)
+        {
             break;
         }
         cur = p.ppid;
