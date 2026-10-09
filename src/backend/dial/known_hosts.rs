@@ -63,18 +63,20 @@ pub(crate) fn remember(file: &std::path::Path, host: &str, port: u16, key: &str)
 fn remember_locked(file: &std::path::Path, host: &str, port: u16, key: &str) -> Result<(), String> {
     let dir = file.parent().ok_or_else(|| file.display().to_string())?;
     crate::common::own_dir::ensure_private_dir(dir).map_err(|e| e.to_string())?;
-    let _lock = crate::platform::lock::hold(dir)?;
+    let _lock = crate::platform::lock::hold(dir)
+        .map_err(|e| crate::common::said::Said::from(e).said_logging_raw())?;
     use crate::common::own_state::{read_bytes, Read};
     // 读不出来的那份不覆盖（当成空的写回会把别的几台认下的钥匙一起抹掉）。
     let existing = match read_bytes(file, MAX_BYTES) {
         Read::Absent => String::new(),
         Read::Present(b) => String::from_utf8(b).map_err(|e| e.to_string())?,
-        Read::Unreadable(why) => return Err(why),
+        Read::Unreadable(why) => return Err(why.said_logging_raw()),
     };
     let Some(body) = merged(&existing, &host_pattern(host, port), key) else {
         return Ok(());
     };
     crate::common::own_state::write(file, body.as_bytes())
+        .map_err(crate::common::said::Said::said_logging_raw)
 }
 
 /// 读盘的上限（一台一行，远到不了）。

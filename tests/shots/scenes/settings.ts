@@ -133,6 +133,7 @@ const pushed = (state: string, extra: Record<string, unknown> = {}): Record<stri
   os: "Linux",
   fixes: [],
   seenHostKey: null,
+  detail: null,
   ...extra,
 });
 

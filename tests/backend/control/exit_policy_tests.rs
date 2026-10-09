@@ -44,7 +44,7 @@ fn three_states_are_told_apart() {
         std::fs::write(&f, body).unwrap();
         match read_at(&f) {
             Read::Unreadable(reason) => assert!(
-                !reason.trim().is_empty(),
+                !reason.said.trim().is_empty(),
                 "「{why}」读成了 Unreadable，但原因是空的 —— 读不出来要说出为什么"
             ),
             other => panic!("「{why}」应当是读不出来，实得 {other:?}"),
@@ -107,7 +107,7 @@ fn set_rejects_a_non_boolean_and_writes_nothing() {
         serde_json::json!({ "killOnExit": 1 }),
     ] {
         let err = answer_set(&bad).expect_err("非布尔应当被拒");
-        assert_eq!(err.0, "bad_args", "{bad} 应当回 bad_args");
+        assert_eq!(err.code, "bad_args", "{bad} 应当回 bad_args");
     }
 }
 
@@ -160,7 +160,7 @@ fn the_wire_shape_is_exactly_the_registered_fields() {
         );
     }
     let want: std::collections::BTreeSet<String> =
-        ["killOnExit", "path", "reason", "said", "state"]
+        ["detail", "killOnExit", "path", "reason", "said", "state"]
             .iter()
             .map(|s| s.to_string())
             .collect();

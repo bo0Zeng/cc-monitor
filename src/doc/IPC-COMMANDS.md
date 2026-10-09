@@ -1062,6 +1062,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `accounts` | ← | 每个号一条，按 `(agent, account)` 排：`agent` 路由第 1 段（哪一家）· `account` 路由第 2 段（哪个号 |
+| `detail` | ← | 只在 `unreadable` 时有：复制详情（时刻 · 机器 · 命令 · 码 · 原话；排法同失败应答），`reason` 那一句不带原话 |
 | `earliestReturn` | ← | 被拒 / 超额在兜的号里最早回来的那个 `{account, at}`；没有、或都说不出时刻 ⇒ `null` |
 | `now` | ← | 这台此刻的 unix 秒（界面算「几分钟前看到的」「还有多久重置」都按这台的钟）；回包里每个时刻（`at` · `seenAt` · `resetsAt` · `fromResetsAt` · `since`）旁边有一格 `…Text`：出口按这台本地钟写好的字（当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年带年），界面照抄、不换算 |
 | `path` | ← | 那份文件的绝对路径（家推不出来时 `null`） |
@@ -1097,6 +1098,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 | 字段 | 向 | 说明 |
 |---|---|---|
+| `detail` | ← | 只在 `unreadable` 时有：复制详情（时刻 · 机器 · 命令 · 码 · 原话；排法同失败应答），`reason` 那一句不带原话 |
 | `followers` | ← | 跟随默认轮换、此刻活着的会话有几个（判活同历史清单：pidfile 里的会话 id ＋ 进程还是同一个） |
 | `path` | ← | 那份文件的绝对路径（家推不出 ⇒ `null`） |
 | `reason` | ← | 只在 `unreadable` 时有 |
@@ -1111,6 +1113,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 | 字段 | 向 | 说明 |
 |---|---|---|
+| `detail` | ← | 同 `rotation-read` |
 | `followers` | ← | 跟随默认轮换的会话 |
 | `path` | ← | 同 `rotation-read` |
 | `reason` | ← | 同 `rotation-read` |
@@ -1127,6 +1130,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 | 字段 | 向 | 说明 |
 |---|---|---|
+| `detail` | ← | 同 `rotation-read` |
 | `now` | ← | 那份文件的三态（同 `rotation-read`）· 这台此刻的 unix 秒；回包里每个时刻（`at` · `seenAt` · `resetsAt` · `fromResetsAt` · `since`）旁边有一格 `…Text`：出口按这台本地钟写好的字（当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年带年），界面照抄、不换算 |
 | `reason` | ← | 那份文件的三态（同 `rotation-read`）· 这台此刻的 unix 秒 |
 | `sessions` | ← | 每个 sid 一份 |
@@ -3268,6 +3272,7 @@ cc-bus 钩子诊断。
 
 | 字段 | 向 | 说明 |
 |---|---|---|
+| `detail` | ← | `unreadable` 时的复制详情（时刻 · 机器 · 命令 · 码 · 原话；排法同失败应答），`reason` 那一句不带原话 |
 | `killOnExit` | ← | monitor 退出时结束本机常驻后端 |
 | `path` | ← | 那份文件的路径（在 `~/.cc-monitor/` 下） |
 | `reason` | ← | `unreadable` 时的原因 |
@@ -3282,6 +3287,7 @@ cc-bus 钩子诊断。
 
 | 字段 | 向 | 说明 |
 |---|---|---|
+| `detail` | ← | 同 `exit-policy-read` |
 | `killOnExit` | → ← | 要写的值（布尔） |
 | `path` | ← | 同 `exit-policy-read` |
 | `reason` | ← | 同 `exit-policy-read` |

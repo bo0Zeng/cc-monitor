@@ -775,20 +775,23 @@ pub fn read_at(path: &Path) -> Read {
         if c.v == FORMAT_V {
             Read::Present(c)
         } else {
-            Read::Unreadable(copy_text(
-                "beAssetCatalog.read.newer",
-                &[
-                    ("path", &path.display().to_string()),
-                    ("mine", &FORMAT_V.to_string()),
-                    ("theirs", &c.v.to_string()),
-                ],
-            ))
+            Read::Unreadable(
+                copy_text(
+                    "beAssetCatalog.read.newer",
+                    &[
+                        ("path", &path.display().to_string()),
+                        ("mine", &FORMAT_V.to_string()),
+                        ("theirs", &c.v.to_string()),
+                    ],
+                )
+                .into(),
+            )
         }
     })
 }
 
 /// **全仓唯一的写者**（经 `own_state` 原子写）。目录由 [`update_at`] 在拿锁之前建（那一层）。
-fn write_at(path: &Path, cat: &Catalog) -> Result<(), String> {
+fn write_at(path: &Path, cat: &Catalog) -> Result<(), crate::common::said::Said> {
     crate::common::own_state::write_json(path, cat)
 }
 
@@ -857,11 +860,16 @@ fn update_core(
             ),
         )
     })?;
-    let _lock = crate::platform::lock::hold(dir).map_err(|e| ("io_failed", e))?;
+    let _lock = crate::platform::lock::hold(dir).map_err(|e| {
+        (
+            "io_failed",
+            crate::common::said::Said::from(e).said_logging_raw(),
+        )
+    })?;
     let mut cat = match read_at(path) {
         Read::Present(c) => c,
         Read::Absent => fresh(new_machine_id()),
-        Read::Unreadable(why) => return Err(("catalog_unreadable", why)),
+        Read::Unreadable(why) => return Err(("catalog_unreadable", why.said_logging_raw())),
     };
     let Scanned {
         assets,
@@ -886,7 +894,7 @@ fn update_core(
         dirty = true;
     }
     if dirty || !path.exists() {
-        write_at(path, &cat).map_err(|e| ("io_failed", e))?;
+        write_at(path, &cat).map_err(|e| ("io_failed", e.said_logging_raw()))?;
     }
     Ok((cat, problems, changed))
 }

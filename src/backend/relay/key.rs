@@ -73,7 +73,8 @@ pub(crate) fn ensure_key(path: &Path) -> Result<Key, String> {
             &[("dir", &dir.display().to_string()), ("e", &e.to_string())],
         )
     })?;
-    let _lock = crate::platform::lock::hold(dir)?;
+    let _lock = crate::platform::lock::hold(dir)
+        .map_err(|e| crate::common::said::Said::from(e).said_logging_raw())?;
     if let Some(k) = read_key(path) {
         return Ok(k);
     }
@@ -100,6 +101,7 @@ fn mint() -> Result<Key, String> {
 /// 报错里只有路径，**永远没有钥匙本身**。
 fn write_key(path: &Path, k: &Key) -> Result<(), String> {
     crate::common::own_state::write(path, k.expose().as_bytes())
+        .map_err(crate::common::said::Said::said_logging_raw)
 }
 
 // 判据 ＋ 同层判据共用的夹具（`TEST_KEY` · `test_key` · `seed_test_home`）都住这一份测试文件里。

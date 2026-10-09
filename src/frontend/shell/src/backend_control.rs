@@ -287,18 +287,24 @@ pub async fn backend_stop(origin: String) -> Result<crate::remote_resident::Stop
 }
 
 /// 停那台的常驻后端（`--resident-stop`，经链路在那台跑）。只由 [`backend_stop`] 在分过本机之后调。
-async fn stop_remote_resident(origin: &str) -> Result<crate::remote_resident::StopAnswer, String> {
+async fn stop_remote_resident(origin: &str) -> Result<crate::remote_resident::StopAnswer, Said> {
     let cfg = crate::load_remote_config_by_label(origin).ok_or_else(|| {
-        copy_text(
+        Said::from(copy_text(
             "rsBackendControl.handle.missing",
             &[("origin", &origin.to_string())],
-        )
+        ))
     })?;
+    // 那一句只说哪台没停成；没停成的那一步（那台答的 · 链路断在哪）进「断在」，原话照它的详情。
     crate::remote_resident::stop(&cfg).await.map_err(|e| {
-        copy_text(
-            "rsBackendControl.remote.stopFailed",
-            &[("origin", &origin.to_string()), ("e", &e)],
-        )
+        let step = e.said.clone();
+        Said {
+            said: copy_text(
+                "rsBackendControl.remote.stopFailed",
+                &[("origin", &origin.to_string())],
+            ),
+            detail: e.detail,
+        }
+        .with_item(copy_core::detail::Label::Hop, &step)
     })
 }
 

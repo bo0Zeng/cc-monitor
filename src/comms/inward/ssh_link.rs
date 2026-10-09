@@ -61,8 +61,12 @@ pub struct Endpoint {
 #[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct Ack {
     pub ok: bool,
+    /// 没拨成时那一句（只带原因词）。
     #[serde(default)]
     pub error: Option<String>,
+    /// 没拨成时后端写好的复制详情（时刻 · 机器 · 命令 · 下层原话）；老后端 / 拨成了 ⇒ `None`。
+    #[serde(default)]
+    pub detail: Option<String>,
     /// 握手时看到的 host key 指纹（失败时也尽量带上）。
     #[serde(default)]
     pub fingerprint: Option<String>,
@@ -118,6 +122,8 @@ pub enum LinkError {
         open_refused: Option<String>,
         /// 没拨成的原因码（[`Ack::reason`] 原样）。
         reason: Option<String>,
+        /// 后端写好的复制详情（[`Ack::detail`] 原样；老后端 ⇒ `None`）。
+        detail: Option<String>,
     },
     /// 代理不认所请求的用法 —— 它比界面老。
     TooOld { wanted: String, v: u32 },
@@ -145,11 +151,8 @@ impl std::fmt::Display for LinkError {
             LinkError::LineTooLong(_) => {
                 write!(f, "{}", copy_text("rsSshLink.dial.tooLong", &[]))
             }
-            LinkError::Io(e) => write!(
-                f,
-                "{}",
-                copy_text("rsSshLink.dial.readFailed", &[("e", &e.to_string())])
-            ),
+            // 管子读错的原话不上这一句（调用方把它交给复制详情）。
+            LinkError::Io(_) => write!(f, "{}", copy_text("rsSshLink.dial.readFailed", &[])),
         }
     }
 }
@@ -190,28 +193,16 @@ pub async fn handshake<R: AsyncBufRead + Unpin>(
         let Some(line) = read_line_capped(r, cap).await? else {
             return Err(LinkError::Silent);
         };
-        let v: serde_json::Value = serde_json::from_str(&line).map_err(|e| {
-            LinkError::Garbled(copy_text(
-                "rsSshLink.parse.withLine",
-                &[("e", &e.to_string()), ("line", &format!("{:?}", line))],
-            ))
-        })?;
+        let v: serde_json::Value = serde_json::from_str(&line)
+            .map_err(|e| LinkError::Garbled(format!("{e}: {line:?}")))?;
         if let Some(stage) = v.get("stage") {
-            let stage: ConnectStage = serde_json::from_value(stage.clone()).map_err(|e| {
-                LinkError::Garbled(copy_text(
-                    "rsSshLink.parse.stageLine",
-                    &[("e", &e.to_string()), ("line", &format!("{:?}", line))],
-                ))
-            })?;
+            let stage: ConnectStage = serde_json::from_value(stage.clone())
+                .map_err(|e| LinkError::Garbled(format!("stage line: {e}: {line:?}")))?;
             on_stage(stage);
             continue;
         }
-        let ack: Ack = serde_json::from_value(v).map_err(|e| {
-            LinkError::Garbled(copy_text(
-                "rsSshLink.parse.ackLine",
-                &[("e", &e.to_string()), ("line", &format!("{:?}", line))],
-            ))
-        })?;
+        let ack: Ack = serde_json::from_value(v)
+            .map_err(|e| LinkError::Garbled(format!("ack line: {e}: {line:?}")))?;
         if !ack.ok {
             return Err(LinkError::Refused {
                 why: ack
@@ -220,6 +211,7 @@ pub async fn handshake<R: AsyncBufRead + Unpin>(
                 fingerprint: ack.fingerprint,
                 open_refused: ack.open_refused,
                 reason: ack.reason,
+                detail: ack.detail,
             });
         }
         if !ack.uses.iter().any(|u| u == want) {
@@ -237,12 +229,7 @@ pub async fn captured<R: AsyncBufRead + Unpin>(r: &mut R, cap: u64) -> Result<Ca
     let Some(line) = read_line_capped(r, cap).await? else {
         return Err(LinkError::Silent);
     };
-    serde_json::from_str(&line).map_err(|e| {
-        LinkError::Garbled(copy_text(
-            "rsSshLink.parse.withLine",
-            &[("e", &e.to_string()), ("line", &format!("{:?}", line))],
-        ))
-    })
+    serde_json::from_str(&line).map_err(|e| LinkError::Garbled(format!("{e}: {line:?}")))
 }
 
 /// `files` 用法：ack 之后一问一答，这里读**一行应答**（JSON 对象）。管子关了 ⇒ [`LinkError::Silent`]。
@@ -253,12 +240,7 @@ pub async fn reply_line<R: AsyncBufRead + Unpin>(
     let Some(line) = read_line_capped(r, cap).await? else {
         return Err(LinkError::Silent);
     };
-    serde_json::from_str(&line).map_err(|e| {
-        LinkError::Garbled(copy_text(
-            "rsSshLink.parse.withLine",
-            &[("e", &e.to_string()), ("line", &format!("{:?}", line))],
-        ))
-    })
+    serde_json::from_str(&line).map_err(|e| LinkError::Garbled(format!("{e}: {line:?}")))
 }
 
 #[cfg(test)]

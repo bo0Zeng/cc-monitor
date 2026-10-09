@@ -126,7 +126,12 @@ fn lock(home: &str) -> Result<Option<crate::platform::lock::DirLock>, Refusal> {
     if scan::item_at(&accts).exists() {
         crate::platform::lock::hold(std::path::Path::new(&accts))
             .map(Some)
-            .map_err(|e| ("io_failed", e))
+            .map_err(|e| {
+                (
+                    "io_failed",
+                    crate::common::said::Said::from(e).said_logging_raw(),
+                )
+            })
     } else {
         Ok(None)
     }
