@@ -117,6 +117,8 @@ const browser = spawn(
     "--no-default-browser-check",
     "--no-sandbox",
     "--disable-gpu",
+    // 不碰桌面钥匙环（D-Bus 上的 secret service）：它不应答时网络进程起不来，每个 http 页面都挂着
+    "--password-store=basic",
     "--force-device-scale-factor=1",
     "--lang=zh-CN",
     "--window-size=1280,800",
@@ -182,7 +184,8 @@ async function openPage() {
   await page.send("Page.addScriptToEvaluateOnNewDocument", { source: probe });
   await page.send("Performance.enable", { timeDomain: "timeTicks" });
   const b0 = Date.now();
-  await page.goto(`${base}/index.html?scene=perf-tabs`);
+  // 开页最多等 2 分钟（load 事件不来时 `goto` 自己不会超时）
+  await Promise.race([page.goto(`${base}/index.html?scene=perf-tabs`), sleep(120_000).then(() => Promise.reject(new Error("开页 2 分钟没等到 load")))]);
   await page.waitFor("window.__shots && window.__shots.state !== 'booting'", 120_000);
   const st = await page.eval("window.__shots.state");
   if (st !== "done") throw new Error(`场景没起来：${await page.eval("window.__shots.error")}`);
@@ -283,7 +286,9 @@ async function benchSwitch(run) {
     for (let i = 0; i < n; i++) {
       const t = await tabAt(page, i);
       if (t.active) continue; // 已经是当前的那个点了不切
-      rows.push({ run, pass, ...(await measuredClick(page, i)) });
+      const row = { run, pass, ...(await measuredClick(page, i)) };
+      rows.push(row);
+      if (args.verbose) console.log(`    ${pass} #${i} 等安静 ${Math.round(row.waited)} ms · 按下到画出 ${Math.round(row.inp)} · ${new Date().toISOString().slice(11, 19)}`);
     }
     // 第二遍从另一个起点开始（不然最后一个已经是当前、第一个热切永远跳过）
     const first = await tabAt(page, 0);
