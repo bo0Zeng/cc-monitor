@@ -1,11 +1,12 @@
-//! 通道的判据 —— 一个**合成的外部前端**（真 TCP 回环 ＋ 真钥匙 ＋ 真路由器）对着一个**合成后端句柄**说话。
+//! 通道的判据 —— 一个**合成的外部前端**（一对内存管子 ＋ 真路由器 ＋ 真客户端）对着一个**合成后端句柄**说话。
+//! 生产里那一对管子是窗口进程的 stdin / stdout（父子管道，没有监听口、没有钥匙）；路由器与客户端只认一对读写半边，管子换成内存的一模一样。
 //!
 //! # 它证明什么（逐条对任务书那五件）
 //!
 //! | 件 | 判据 |
 //! |---|---|
-//! | 连得上 | [`a_synthetic_frontend_connects_over_loopback_and_calls_through`] |
-//! | 认证不过的被拒 | [`a_wrong_key_is_refused_and_nothing_reaches_the_backend`] ＋ [`a_frame_before_hello_or_silence_is_refused_too`] |
+//! | 连得上 | [`a_synthetic_frontend_connects_over_a_pipe_pair_and_calls_through`] |
+//! | 没有监听口 | [`nothing_in_the_channel_listens`] |
 //! | `call` 走得通 | 同第一条（载荷逐字节、含非 UTF-8 字节；`origin`/`op` 原样到句柄） |
 //! | `subscribe` 收得到帧 | [`subscribe_receives_frames_in_order_and_from_passes_through`] ＋ [`credit_is_backpressure_not_loss`] |
 //! | 期限到了按约定的形状报错 | [`a_passed_deadline_answers_hop_overrun_in_the_05_shape`] |
@@ -18,13 +19,12 @@
 //!   证明不了「永远不会多取」。它红了一定是真的（多取了），绿了只是这一趟没看见。
 
 use super::client::Client;
-use super::dial::dial;
-use super::host::{self, start_with, Handoff, InboundBackends};
+use super::host::{self, InboundBackends};
 use super::router::{self, Backends, Terms};
 use super::wire::{
-    err_from_wire, err_to_wire, item_from_wire, item_to_wire, read_frame, write_frame, Body,
-    Budget, By, CallError, CancelToken, Comms, Cursor, Head, HopFault, HopId, Item, Key, Kind,
-    Offer, Op, Origin, OursFault, PeerFault, Reach, Sub, HOP_TAGS,
+    err_from_wire, err_to_wire, item_from_wire, item_to_wire, Body, Budget, By, CallError,
+    CancelToken, Comms, Cursor, HopFault, HopId, Item, Kind, Offer, Op, Origin, OursFault,
+    PeerFault, Reach, Sub, HOP_TAGS,
 };
 use futures::future::BoxFuture;
 use futures::stream::{BoxStream, StreamExt};
@@ -141,30 +141,26 @@ impl Backends for Fake {
     }
 }
 
-/// 起一个挂着合成句柄的真通道口（真回环、真钥匙）。
-async fn rig(hello_within: Duration) -> (Arc<Fake>, Handoff) {
+/// 起一条挂着合成句柄的真通道：一对内存管子，一头交给宿主（[`host::serve_with`]，生产里它接的是窗口进程的 stdout / stdin），
+/// 另一头起客户端（生产里是窗口进程自己的 stdin / stdout）。
+fn rig() -> (Arc<Fake>, Client) {
     let fake = Arc::new(Fake::default());
-    let h = start_with(fake.clone(), host::mint_key(), FRAME, hello_within)
-        .await
-        .expect("回环口绑得上");
-    (fake, h)
+    let (ours, theirs) = tokio::io::duplex(1 << 16);
+    let (host_rd, host_wr) = tokio::io::split(theirs);
+    host::serve_with(host_rd, host_wr, fake.clone());
+    let (rd, wr) = tokio::io::split(ours);
+    (fake, Client::over(rd, wr, host::FRAME_MAX_BYTES))
 }
 
 // ════════════════════════════════════════════════════════════════════════════
 //  一、连得上 · call 走得通
 // ════════════════════════════════════════════════════════════════════════════
 
-/// ★ 合成外部前端经真回环连上、出示钥匙、`call` 一次：载荷**逐字节**回来（含非 UTF-8 字节），
+/// ★ 合成外部前端经一对管子连上、`call` 一次：载荷**逐字节**回来（含非 UTF-8 字节），
 /// `origin` 与 `op` **原样**到了句柄手里（路由器没解释它们）。
 #[tokio::test]
-async fn a_synthetic_frontend_connects_over_loopback_and_calls_through() {
-    let (fake, h) = rig(Duration::from_secs(5)).await;
-    assert!(
-        h.addr.ip().is_loopback(),
-        "通道口绑在了 {} —— 它只许绑回环（一个对外端口必须仍然成立）",
-        h.addr
-    );
-    let c = dial(&h, budget(5_000)).await.expect("连得上并过认证");
+async fn a_synthetic_frontend_connects_over_a_pipe_pair_and_calls_through() {
+    let (fake, c) = rig();
     let payload = vec![0u8, 1, 2, 0xfe, 0xff, b'{'];
     let got = c
         .call(
@@ -199,8 +195,7 @@ async fn a_synthetic_frontend_connects_over_loopback_and_calls_through() {
 /// `Refused` 那份不透明体一个字节不改。
 #[tokio::test]
 async fn peer_and_hop_errors_cross_the_wire_intact() {
-    let (_fake, h) = rig(Duration::from_secs(5)).await;
-    let c = dial(&h, budget(5_000)).await.expect("连得上");
+    let (_fake, c) = rig();
     let o = Origin("<local>".into());
     let r = c
         .call(&o, &Op("refuse".into()), Body::default(), budget(5_000))
@@ -230,86 +225,13 @@ async fn peer_and_hop_errors_cross_the_wire_intact() {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  二、认证不过的被拒
-// ════════════════════════════════════════════════════════════════════════════
-
-/// ★ 钥匙不对 ⇒ `Peer{Refused}`，而且**一帧业务都没到句柄**。
-#[tokio::test]
-async fn a_wrong_key_is_refused_and_nothing_reaches_the_backend() {
-    let (fake, h) = rig(Duration::from_secs(5)).await;
-    let mut wrong = h.clone();
-    wrong.key = host::mint_key();
-    assert_ne!(wrong.key, h.key, "两把新钥匙撞了 —— 随机源坏了");
-    let r = dial(&wrong, budget(5_000)).await;
-    assert!(
-        matches!(
-            r,
-            Err(CallError::Peer {
-                why: PeerFault::Refused { .. }
-            })
-        ),
-        "错钥匙没有被拒（实得 {:?}）",
-        r.as_ref().err()
-    );
-    // 差一个字节的钥匙也不行（比对不是前缀比对）。
-    let mut near = h.clone();
-    near.key = Key(format!("{}x", h.key.0));
-    assert!(
-        dial(&near, budget(5_000)).await.is_err(),
-        "多一个字节的钥匙被放进来了"
-    );
-    assert!(
-        fake.calls.lock().unwrap().is_empty(),
-        "没过认证的连接让句柄看见了调用"
-    );
-}
-
-/// 不出示钥匙就发业务帧 / 一言不发 ⇒ 同样被拒，句柄同样什么都没看见。
-#[tokio::test]
-async fn a_frame_before_hello_or_silence_is_refused_too() {
-    let (fake, h) = rig(Duration::from_millis(300)).await;
-
-    // ① 第一帧就是 `Call`。
-    let mut s = tokio::net::TcpStream::connect(h.addr)
-        .await
-        .expect("连得上");
-    let call = Head::Call {
-        id: 1,
-        origin: Origin("<local>".into()),
-        op: "echo".into(),
-        left: Duration::from_secs(1),
-    };
-    write_frame(&mut s, &call, b"{}").await.expect("写得出去");
-    let (head, _) = read_frame(&mut s, FRAME).await.expect("路由器应当回一帧");
-    assert_eq!(head, Head::Denied, "Hello 之前的业务帧没有被拒");
-
-    // ② 一言不发：`hello_within` 之后被关。
-    let mut s = tokio::net::TcpStream::connect(h.addr)
-        .await
-        .expect("连得上");
-    let t0 = Instant::now();
-    let (head, _) = tokio::time::timeout(Duration::from_secs(5), read_frame(&mut s, FRAME))
-        .await
-        .expect("路由器在认证等待时长之后应当说话，而不是一直挂着")
-        .expect("应当回一帧");
-    assert_eq!(head, Head::Denied);
-    assert!(
-        t0.elapsed() >= Duration::from_millis(250),
-        "认证等待时长没按宿主给的值执行（{:?} 就关了）",
-        t0.elapsed()
-    );
-    assert!(fake.calls.lock().unwrap().is_empty());
-}
-
-// ════════════════════════════════════════════════════════════════════════════
 //  三、subscribe 收得到帧 · credit 是回推不是丢
 // ════════════════════════════════════════════════════════════════════════════
 
 /// ★ 订阅收得到帧，**原位有序**；`from`（续传游标）原样到了句柄；以 `Closed{Peer}` 收尾后流结束。
 #[tokio::test]
 async fn subscribe_receives_frames_in_order_and_from_passes_through() {
-    let (_fake, h) = rig(Duration::from_secs(5)).await;
-    let c = dial(&h, budget(5_000)).await.expect("连得上");
+    let (_fake, c) = rig();
     let from = Some(Cursor(b"at-7\x00".to_vec()));
     let sub = c.subscribe(
         &Origin("<local>".into()),
@@ -336,8 +258,7 @@ async fn subscribe_receives_frames_in_order_and_from_passes_through() {
 /// ★ credit 就是回推：给多少取多少，**不多取、不丢**（级 1）。
 #[tokio::test]
 async fn credit_is_backpressure_not_loss() {
-    let (fake, h) = rig(Duration::from_secs(5)).await;
-    let c = dial(&h, budget(5_000)).await.expect("连得上");
+    let (fake, c) = rig();
     let mut sub = c.subscribe(&Origin("<local>".into()), &Kind("endless".into()), None, 2);
     let mut seqs = Vec::new();
     for _ in 0..2 {
@@ -382,8 +303,7 @@ async fn credit_is_backpressure_not_loss() {
 /// 一个预算、说得出卡在哪一跳）；按时回来；并且**尽力**补发的撤单真的到了句柄那一侧。
 #[tokio::test]
 async fn a_passed_deadline_answers_hop_overrun_in_the_05_shape() {
-    let (fake, h) = rig(Duration::from_secs(5)).await;
-    let c = dial(&h, budget(5_000)).await.expect("连得上");
+    let (fake, c) = rig();
     let t0 = Instant::now();
     let r = c
         .call(
@@ -454,8 +374,7 @@ async fn a_passed_deadline_answers_hop_overrun_in_the_05_shape() {
 /// 本地撤单：立即、`Ours{Cancelled}`，**不是**空答案。
 #[tokio::test]
 async fn a_local_cancel_is_immediate_and_says_cancelled() {
-    let (fake, h) = rig(Duration::from_secs(5)).await;
-    let c = dial(&h, budget(5_000)).await.expect("连得上");
+    let (fake, c) = rig();
     let b = budget(10_000);
     let cancel = b.cancel.clone();
     let task = tokio::spawn({
@@ -490,17 +409,11 @@ async fn a_local_cancel_is_immediate_and_says_cancelled() {
 #[tokio::test]
 async fn losing_the_connection_turns_calls_into_dropped_and_subs_into_unseen_not_closed() {
     let (a, b) = tokio::io::duplex(1 << 16);
-    let key = host::mint_key();
     let fake: Arc<dyn Backends> = Arc::new(Fake::default());
-    let terms = Terms {
-        key: key.clone(),
-        frame: FRAME,
-        hello_within: Duration::from_secs(5),
-    };
-    let server = tokio::spawn(router::serve(b, terms, fake));
-    let c = Client::open(a, &key, FRAME, budget(5_000))
-        .await
-        .expect("过认证");
+    let (brd, bwr) = tokio::io::split(b);
+    let server = tokio::spawn(router::serve(brd, bwr, Terms { frame: FRAME }, fake));
+    let (ard, awr) = tokio::io::split(a);
+    let c = Client::over(ard, awr, FRAME);
     let mut sub = c.subscribe(&Origin("<local>".into()), &Kind("endless".into()), None, 1);
     assert!(matches!(
         tokio::time::timeout(Duration::from_secs(5), sub.next()).await,
@@ -596,45 +509,11 @@ async fn the_production_handle_says_unreachable_and_no_such_stream_out_loud() {
     );
 }
 
-/// 钥匙不进日志：交接件与钥匙的 `Debug` 都不含钥匙内容。
-#[test]
-fn the_key_never_shows_up_in_debug_output() {
-    let key = host::mint_key();
-    assert_eq!(key.0.len(), 64, "钥匙应当是 64 位十六进制");
-    assert!(key.0.chars().all(|c| c.is_ascii_hexdigit()));
-    let h = Handoff {
-        addr: "127.0.0.1:1".parse().unwrap(),
-        key: key.clone(),
-        frame: FRAME,
-    };
-    for shown in [format!("{key:?}"), format!("{h:?}"), format!("{h:#?}")] {
-        assert!(
-            !shown.contains(&key.0) && !shown.contains(&key.0[..16]),
-            "钥匙出现在了 Debug 输出里：{shown}"
-        );
-    }
-    // 交接件能整份过一次进程边界（F2 会把它写进子进程 stdin）。
-    let wire = serde_json::to_string(&h).expect("序列化");
-    let back: Handoff = serde_json::from_str(&wire).expect("反序列化");
-    assert_eq!((back.addr, back.key, back.frame), (h.addr, h.key, h.frame));
-}
-
-/// 钥匙比对：相等才过；前缀 / 多一字节 / 空串一律不过。
-#[test]
-fn key_matching_is_whole_string_equality() {
-    let k = Key("abc123".into());
-    assert!(k.matches("abc123"));
-    for bad in ["abc12", "abc1234", "", "abc124", "ABC123"] {
-        assert!(!k.matches(bad), "`{bad}` 被当成了对的钥匙");
-    }
-}
-
-/// 绑口只在宿主那一份里、只绑回环、全模块恰好一处（`C5` 的分界在盘上看得见）。
+/// 通道里没有监听口：壳里 `chan/` ＋ 通信层 crate 的 `chan/` 两棵，生产段零处绑口、零处拨号（谁连得上由父子管道给）。
 ///
-/// 通道分住两处：壳里 `chan/`（monitor 自己的宿主那几份）＋ 通信层 crate `comms-inward` 的 `chan/`（线上词汇 · 客户端 · 路由器 · 拨号 · 交接件的形状）。
-/// 绑口那一处在宿主 `host.rs`（`start_with`），两棵合起来恰好一处。
+/// 通道分住两处：壳里 `chan/`（monitor 自己的宿主那几份）＋ 通信层 crate `comms-inward` 的 `chan/`（线上词汇 · 客户端 · 路由器）。
 #[test]
-fn only_the_host_binds_and_only_to_loopback() {
+fn nothing_in_the_channel_listens() {
     let root = crate::guard_support::repo_root();
     let mut files = Vec::new();
     for (dir, who) in [
@@ -652,34 +531,23 @@ fn only_the_host_binds_and_only_to_loopback() {
         sorted,
         vec![
             "comms-inward:client.rs",
-            "comms-inward:dial.rs",
-            "comms-inward:handoff.rs",
             "comms-inward:router.rs",
             "comms-inward:wire.rs",
             "壳:host.rs",
             "壳:mod.rs",
             "壳:webview.rs",
         ],
-        "通道目录的份数变了 —— 回来重读本条与 `chan/mod.rs` 那张表\n\
-         （`webview.rs` 是主界面那一跳的宿主：不绑口，下面那条「绑口恰好一处」照样量它）"
+        "通道目录的份数变了 —— 回来重读本条与 `chan/mod.rs` 那张表"
     );
-    let bind = format!("TcpListener::{}(", "bind");
     for (name, text) in &files {
         let prod = guard_core::production_code(text);
-        let n = prod.matches(bind.as_str()).count();
-        let expect = usize::from(name == "壳:host.rs");
-        assert_eq!(n, expect, "`{name}` 里绑口 {n} 处（应当 {expect} 处）");
+        for word in ["TcpListener", "TcpStream", "UnixListener", "NamedPipe"] {
+            assert!(
+                !guard_core::contains_word(&prod, word),
+                "`{name}` 里又有 `{word}` —— 通道是父子管道，不监听、不拨号"
+            );
+        }
     }
-    let host_src = files
-        .iter()
-        .find(|(n, _)| n == "壳:host.rs")
-        .map(|(_, t)| t.clone())
-        .expect("host.rs 在上面那张名单里");
-    guard_core::find_pinned(
-        &guard_core::production_code(&host_src),
-        &format!("TcpListener::{}((Ipv4Addr::LOCALHOST, 0))", "bind"),
-    )
-    .expect("host.rs 里那一处绑口不是「回环 ＋ 内核挑口」");
 }
 
 /// 线上形状：每一种错误、每一种 `Item` 过一趟线都原样回来；认不出的跳号标签 ⇒ 协议坏了。
@@ -791,8 +659,7 @@ fn the_client_implements_the_05_signature() {
 /// 右边是合成句柄交出的那份 `Offer` 里的名单。
 #[tokio::test]
 async fn a_local_cancel_says_the_peer_may_run_on_when_the_offer_says_so() {
-    let (fake, h) = rig(Duration::from_secs(5)).await;
-    let c = dial(&h, budget(5_000)).await.expect("连得上");
+    let (fake, c) = rig();
     let origin = Origin("<local>".into());
     let got = c.offer(&origin, budget(5_000)).await.expect("问得到");
     assert_eq!(got, fake.offer(&origin));

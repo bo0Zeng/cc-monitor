@@ -677,9 +677,8 @@ pub fn home_from_reply(d: &serde_json::Value) -> Result<String, String> {
 //
 // # 形状
 //
-// 窗口进程（`proc::child_main`）从 stdin 拿到交接件（`chan::host::Handoff`：回环地址 ＋
-// 钥匙 ＋ 帧长），用 `chan::dial::dial` 连上 monitor 那个通道口，换一个
-// `chan::client::Client`（[`Line`]）。此后读侧与写面**每一条**都经 [`ask`] 说
+// 窗口进程（`proc::child_main`）从 stdin 第一行拿到种子（含帧长），在自己的 stdin / stdout 上
+// 起一个 `chan::client::Client`（[`Line`]）—— 起它的 monitor 在那对管子的另一头（父子管道，没有钥匙）。此后读侧与写面**每一条**都经 [`ask`] 说
 // `call(origin, op, payload, budget)`，由 monitor 那一侧的路由器转给 `inbound_client`
 // ——本机与远端同一条路。
 //

@@ -187,7 +187,7 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/comms/inward/chan/client.rs", "tx.send(r).ok();", Why::PeerGone, ""),
     ("src/comms/inward/chan/client.rs", "w.send(()).ok();", Why::Signal, ""),
     ("src/comms/inward/chan/router.rs", "tx.send(out).await.ok();", Why::PeerGone, ""),
-    ("src/comms/inward/chan/router.rs", "write_frame(&mut wr, &Head::Denied, &[]).await.ok();", Why::DeadLink, ""),
+    ("src/frontend/filewin/src/proc.rs", "let _ = err.write_all(encode_ready(r).as_bytes()).and_then(|()| err.flush());", Why::DeadLink, "就绪那一行写不出去 = 起它的 monitor 已经不在了（stderr 管子断了），没人收"),
     ("src/comms/inward/chan/wire.rs", "rx.wait_for(|c| *c).await.ok();", Why::Signal, ""),
     ("src/frontend/shell/src/config.rs", "let _ = std::fs::remove_file(&tmp);", Why::CleanupAfterFailure, "原子写的临时件：换名失败之后删它；主错误已在回"),
     // 窗口那几问的答复送回等答的那一趟（它已收场 ⇒ 没人要）· 暂存件收尾删不掉交孤儿扫（不盖下载 / 复制本身的结局）。

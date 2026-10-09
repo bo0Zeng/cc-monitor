@@ -446,6 +446,13 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "首连快照单会话体量",
         "截断+说清",
     ),
+    // 文件窗口通道（窗口进程的 stdin / stdout）上一帧的头 / 体各自的上限：一屏目录的 JSON 在兆字节级。两端同一个数（随种子交过去）。
+    (
+        "src/frontend/shell/src/chan/host.rs",
+        "FRAME_MAX_BYTES",
+        "文件窗口通道上一帧的帧头 / 帧体（一屏目录的 JSON 在兆字节级）",
+        "拒收+回错",
+    ),
     // ── `K-P1`：常驻监听口的握手（**两侧各一条，方向不同**）───────────
     (
         "src/frontend/shell/src/local_backend_host.rs",

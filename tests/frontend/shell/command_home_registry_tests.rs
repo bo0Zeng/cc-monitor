@@ -108,8 +108,8 @@ const MONITOR_OWN: &[(&str, Own, &str)] = &[
     ),
     (
         "open_file_window",
-        Own::Window,
-        "〔09-28 裁 3〕起文件窗口进程、读它那一行就绪 / 原话（第一屏由窗口进程经通道自己列；本侧只拿交接件）",
+        Own::Channel,
+        "起文件窗口进程、把它的 stdin / stdout 接进通道（窗口的 call 经通道到后端）、读它那一行就绪 / 原话（第一屏由窗口进程经通道自己列）",
     ),
     ("bring_monitor_to_front", Own::Window, "拉前 monitor 自己"),
     ("bring_terminal_to_front", Own::Front, "拉前本机终端窗口"),

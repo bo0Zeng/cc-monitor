@@ -9478,12 +9478,6 @@
       "zh": "公钥为空",
       "args": []
     },
-    "rsFilewinProc.dialBack.failed": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "文件窗口连接主程序失败 · {e}",
-      "args": ["e"]
-    },
     "rsFilewinProc.open.noStderr": {
       "kind": "error",
       "role": "原因格",
@@ -11098,12 +11092,6 @@
       "zh": "文件窗口未启动 · {why}",
       "args": ["why"]
     },
-    "rsFilewinEntry.open.noHost": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "文件窗口连接后端失败 · 主程序一侧未就绪",
-      "args": []
-    },
     "rsFilewinEntry.plan.noTarget": {
       "kind": "error",
       "role": "报错",
@@ -12524,12 +12512,6 @@
       "role": "报错",
       "zh": "本机侧无 SFTP 传输 · 文件窗口只开在远端",
       "args": []
-    },
-    "rsChanHost.start.bindFailed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "本机连接服务绑定 127.0.0.1 失败 · {e}",
-      "args": ["e"]
     },
     "rsOrigin.route.blank": {
       "kind": "error",

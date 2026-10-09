@@ -668,12 +668,6 @@ pub fn run() {
                 }
             }
 
-            // 面 A 通道：绑回环、起路由器，外部前端（下一波接进文件窗口）经它说 call/subscribe。
-            // 起不来只出声、不退回别的路（`D11`）；钥匙永不进日志（`chan::host` 头注）。
-            if let Err(e) = tauri::async_runtime::block_on(chan::host::start()) {
-                tracing::warn!("面 A 通道没起来：{e}");
-            }
-
             // 主窗的初始尺寸（`tauri.conf.json`）夹进工作区（小屏上底边别压在任务栏下）、摆在正中（重启不漂）。
             if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
                 center_window_in_work_area(&window);
