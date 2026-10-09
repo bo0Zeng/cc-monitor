@@ -594,6 +594,9 @@ fn followers_count_only_live_sessions_on_the_default() {
     assert_eq!(rules["rules"][0]["users"]["follow"], 1);
     assert_eq!(rules["rules"][0]["users"]["live"], 1);
     assert_eq!(rules["rules"][0]["users"]["ended"], 1);
+    // 设置里「在用」展开要列名单：活着的与已结束的各给 sid（已结束的折在「已结束 N」里）。
+    assert_eq!(rules["rules"][0]["users"]["sids"], json!(["s-1"]));
+    assert_eq!(rules["rules"][0]["users"]["endedSids"], json!(["s-2"]));
 }
 
 /// ★ 会话已结束 ⇒ `inPlace = ended`，不重启换跳过它（`skipped{ended}`）。
@@ -824,6 +827,41 @@ fn rule_names_are_checked_by_the_backend() {
         renamed["rule"]["rotation"]["enabled"],
         json!(["b"]),
         "改名不动内容"
+    );
+}
+
+/// ★ `dedupe: true`（复制 · 复制到别的机器）：重名不拒，后端在名后加 ` 2` · ` 3` … 取第一个不重的；
+/// 不给它照旧拒 `dup`；加了后缀超长照旧拒 `tooLong`。
+#[test]
+fn a_copy_gets_the_first_free_numbered_name() {
+    let home = Home::new("dedupe");
+    let ctx = home.ctx();
+    let id = new_rule(&ctx, "夜间", &["b"]);
+    let copy = |name: &str| {
+        answer_rule_save_with(
+            &ctx,
+            &json!({"name": name, "from": id, "dedupe": true}),
+            now(),
+        )
+        .expect("ok")
+    };
+    let a = copy("夜间");
+    assert_eq!(a["rule"]["name"], "夜间 2", "{a}");
+    assert_eq!(a["rule"]["rotation"]["enabled"], json!(["b"]), "从那条拷");
+    assert_eq!(copy(" 夜间 ")["rule"]["name"], "夜间 3");
+    assert_eq!(copy("夜间 副本")["rule"]["name"], "夜间 副本", "不重名就照原名");
+    assert_eq!(copy(&"长".repeat(24))["state"], "saved", "不重名的 24 字照存");
+    assert_eq!(
+        errors_of(&copy(&"长".repeat(24))),
+        [("name".into(), "tooLong".into())],
+        "加了后缀超 24 字 ⇒ 照旧拒"
+    );
+    assert_eq!(
+        errors_of(
+            &answer_rule_save_with(&ctx, &json!({"name": "夜间", "from": id}), now()).expect("ok")
+        ),
+        [("name".into(), "dup".into())],
+        "不给 dedupe ⇒ 照旧拒"
     );
 }
 

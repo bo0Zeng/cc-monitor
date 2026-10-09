@@ -227,8 +227,8 @@ fn rule_wire(
     r: &Rule,
     live: &std::collections::BTreeSet<String>,
 ) -> Value {
-    let mut sids: Vec<&String> = Vec::new();
-    let (mut ended, mut follow) = (0usize, 0usize);
+    let (mut sids, mut ended_sids): (Vec<&String>, Vec<&String>) = (Vec::new(), Vec::new());
+    let mut follow = 0usize;
     for (sid, s) in &book.sessions {
         if book.rule_of(s) != Some(id) {
             continue;
@@ -239,7 +239,7 @@ fn rule_wire(
                 follow += 1;
             }
         } else {
-            ended += 1;
+            ended_sids.push(sid);
         }
     }
     let lib = ctx.hop.library();
@@ -259,7 +259,7 @@ fn rule_wire(
         "rev": r.rev,
         "updatedAt": r.updated_at,
         "isDefault": book.default_rule == id,
-        "users": {"live": sids.len(), "ended": ended, "follow": follow, "sids": sids},
+        "users": {"live": sids.len(), "ended": ended_sids.len(), "follow": follow, "sids": sids, "endedSids": ended_sids},
         "summary": rule_text::summary(&r.rotation),
         "explain": rule_text::explain(&r.rotation),
         "missing": missing,
@@ -317,6 +317,23 @@ fn name_errors(book: &Book, id: Option<&str>, name: &str) -> Vec<CellError> {
     .collect()
 }
 
+/// 复制出来的那条取名：不重名照原名；重名 ⇒ 名后加 ` 2` · ` 3` … 取第一个不重的（超长照旧由 [`name_errors`] 拒）。
+fn free_name(book: &Book, id: Option<&str>, name: &str) -> String {
+    let taken = |n: &str| {
+        book.rules.iter().any(|(k, r)| {
+            Some(k.as_str()) != id && rotation::name_key(&r.name) == rotation::name_key(n)
+        })
+    };
+    let base = name.trim();
+    if !taken(base) {
+        return base.to_string();
+    }
+    (2..)
+        .map(|i| format!("{base} {i}"))
+        .find(|n| !taken(n))
+        .unwrap_or_default()
+}
+
 fn refused(errors: Vec<CellError>) -> Answer {
     Ok(json!({"state": "refused", "errors": errors}))
 }
@@ -360,8 +377,9 @@ fn saved(ctx: &Ctx, id: &str) -> Answer {
     Ok(json!({"state": "saved", "rule": rule_wire(ctx, &book, id, r, &live)}))
 }
 
-/// `rotation-rule-save`：新建（不给 `id`）或整份改一条（给 `id` ＋ `ifRev`）。`{id?, name, rotation?, ifRev?, from?}`：
-/// 新建时不给 `rotation` 就从 `from` 那条拷（`from: "blank"` ＝ 只有起始账号）。
+/// `rotation-rule-save`：新建（不给 `id`）或整份改一条（给 `id` ＋ `ifRev`）。`{id?, name, rotation?, ifRev?, from?, dedupe?}`：
+/// 新建时不给 `rotation` 就从 `from` 那条拷（`from: "blank"` ＝ 只有起始账号）；`dedupe: true`（复制 · 复制到别的机器）⇒
+/// 重名不拒、名后加 ` 2` · ` 3` … 取第一个不重的。
 /// 回 `{state: "saved", rule}` · `{state: "refused", errors: [{cell, code, with?}]}`（逐格，界面照它标红）·
 /// `{state: "conflict", rev}`（别处先改过了）。形状不对 ⇒ `bad_args`；改的那条不在 ⇒ `no_such_rule`。
 pub(crate) fn answer_rule_save(args: &Value) -> Answer {
@@ -370,14 +388,22 @@ pub(crate) fn answer_rule_save(args: &Value) -> Answer {
 
 pub(crate) fn answer_rule_save_with(ctx: &Ctx, args: &Value, now: u64) -> Answer {
     let id = rule_id_arg(args, "id")?;
-    let name = args
+    let mut name = args
         .get("name")
         .and_then(Value::as_str)
         .ok_or_else(|| bad("missing `name`"))?
         .to_string();
+    let dedupe = match args.get("dedupe") {
+        None | Some(Value::Null) => false,
+        Some(Value::Bool(b)) => *b,
+        Some(_) => return Err(bad("`dedupe` must be a boolean")),
+    };
     let want_rev = if_rev(args)?;
     store_path(ctx)?;
     let book = ctx.hop.store.now();
+    if dedupe {
+        name = free_name(&book, id.as_deref(), &name);
+    }
     let prior = id.as_deref().and_then(|i| book.rules.get(i));
     if id.is_some() && prior.is_none() {
         return Err(("no_such_rule", copy_text("beRotation.rule.gone", &[])));

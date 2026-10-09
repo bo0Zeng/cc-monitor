@@ -48,7 +48,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "rotation-rules-read",
         summary: "这台的轮换规则表",
         codes: &[],
-        fields: &[out("defaultRule", "默认规则的 id"), out("path", "那份文件的绝对路径（家推不出 ⇒ `null`）"), out("reason", "只在 `unreadable` 时有"), out("rules", "每条一项（默认那条在最前、其余按名字）：`{id, name, rotation, rev, updatedAt, isDefault, users: {live, ended, follow, sids}, summary, explain, missing, atLimitApplies}`；`users` 只数此刻生效的是这条的会话（跟随默认的算在默认那条，`follow` 是其中几个），`missing` ＝ 顺序里这台账号库没有的号，`summary` / `explain` 是后端写好的两句"), out("state", "`\"present\"` · `\"absent\"`（没动过：只有缺省的「默认」一条）· `\"unreadable\"`")],
+        fields: &[out("defaultRule", "默认规则的 id"), out("path", "那份文件的绝对路径（家推不出 ⇒ `null`）"), out("reason", "只在 `unreadable` 时有"), out("rules", "每条一项（默认那条在最前、其余按名字）：`{id, name, rotation, rev, updatedAt, isDefault, users: {live, ended, follow, sids, endedSids}, summary, explain, missing, atLimitApplies}`；`users` 只数此刻生效的是这条的会话（跟随默认的算在默认那条，`follow` 是其中几个；`sids` 活着的、`endedSids` 已结束的），`missing` ＝ 顺序里这台账号库没有的号，`summary` / `explain` 是后端写好的两句"), out("state", "`\"present\"` · `\"absent\"`（没动过：只有缺省的「默认」一条）· `\"unreadable\"`")],
         takes_input: false,
         run: Run::Blocking(|_r| {
             crate::faces::rotation_face::answer_rules_read()
@@ -60,7 +60,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "rotation-rule-save",
         summary: "新建或整份改一条轮换规则",
         codes: &["bad_args", "io_failed", "no_such_rule"],
-        fields: &[arg("from", "新建时不给 `rotation`：从哪条规则拷（`\"blank\"` ＝ 只有起始账号）"), arg("id", "改哪条；不给 ＝ 新建"), arg("ifRev", "改之前读到的 `rev`；对不上 ⇒ `{state:\"conflict\", rev}`、不写"), arg("name", "规则名（1–24 字，这台不重名：去首尾空白、不分大小写）"), arg("rotation", "整份 `{order, enabled, when, atLimit?, cap?, stint?, preempt?, fallback?, wait?}`"), out("state", "`\"saved\"`（带 `rule`，形状同 `rotation-rules-read` 的一项）· `\"refused\"`（带 `errors: [{cell, code, with?}]`：哪一格 · 短码 `empty` `dup` `tooLong` `range` `time` `same` `overlap` · 重叠时与第几段）· `\"conflict\"`（带 `rev`：此刻的版本）")],
+        fields: &[arg("dedupe", "可缺席：`true` ⇒ 重名不拒，名后加 ` 2` · ` 3` … 取第一个不重的（复制 · 复制到别的机器）"), arg("from", "新建时不给 `rotation`：从哪条规则拷（`\"blank\"` ＝ 只有起始账号）"), arg("id", "改哪条；不给 ＝ 新建"), arg("ifRev", "改之前读到的 `rev`；对不上 ⇒ `{state:\"conflict\", rev}`、不写"), arg("name", "规则名（1–24 字，这台不重名：去首尾空白、不分大小写）"), arg("rotation", "整份 `{order, enabled, when, atLimit?, cap?, stint?, preempt?, fallback?, wait?}`"), out("state", "`\"saved\"`（带 `rule`，形状同 `rotation-rules-read` 的一项）· `\"refused\"`（带 `errors: [{cell, code, with?}]`：哪一格 · 短码 `empty` `dup` `tooLong` `range` `time` `same` `overlap` · 重叠时与第几段）· `\"conflict\"`（带 `rev`：此刻的版本）")],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::faces::rotation_face::answer_rule_save(&r.args)
