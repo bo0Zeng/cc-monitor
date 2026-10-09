@@ -784,58 +784,59 @@ fn priced(req: &str, model: &str, usage: Value) -> Value {
         "message": {"model": model, "usage": usage, "content": [{"type": "text", "text": "x"}]}})
 }
 
-/// 用量与花费成品：同一次请求写出的几条只算一次（取最后一条）· 写缓存分 5m / 1h 两档（没分档的整份算 5m）·
-/// 花费按定价算好 · 定不了价的型号单列、不算进花费 · 成品串由后端写好。
+/// 用量成品：同一次请求写出的几条只算一次（取最后一条）· 写缓存分 5m / 1h 两档（没分档的整份算 5m）· 成品串后端写好；
+/// 续传接力（从任一行边界接着扫）== 一次扫完。
 #[test]
-fn spend_counts_each_request_once_and_prices_it() {
+fn tokens_count_each_request_once_with_two_cache_write_tiers() {
     let text = jsonl(&[
         priced(
             "r1",
-            "claude-opus-4-6",
+            "m-x",
             json!({"input_tokens": 10, "output_tokens": 5,
             "cache_read_input_tokens": 1000, "cache_creation_input_tokens": 300,
             "cache_creation": {"ephemeral_5m_input_tokens": 100, "ephemeral_1h_input_tokens": 200}}),
         ),
-        // 同一次请求的后一条：数照它（不叠加）。
         priced(
             "r1",
-            "claude-opus-4-6",
+            "m-x",
             json!({"input_tokens": 10, "output_tokens": 50,
             "cache_read_input_tokens": 1000, "cache_creation_input_tokens": 300,
             "cache_creation": {"ephemeral_5m_input_tokens": 100, "ephemeral_1h_input_tokens": 200}}),
         ),
-        // 没分档 ⇒ 整份算 5m。
         priced(
             "r2",
-            "claude-opus-4-6",
+            "m-x",
             json!({"input_tokens": 0, "output_tokens": 0,
             "cache_read_input_tokens": 0, "cache_creation_input_tokens": 1000}),
         ),
-        priced(
-            "r3",
-            "some-unknown-model",
-            json!({"input_tokens": 7, "output_tokens": 7}),
-        ),
+        priced("r3", "m-y", json!({"input_tokens": 7, "output_tokens": 7})),
     ]);
     let f = scan_all(&text);
-    let s = f.spend.clone().expect("spend");
+    let t = f.tokens.clone().expect("tokens");
     assert_eq!(
         (
-            s.input,
-            s.output,
-            s.cache_read,
-            s.cache_write5m,
-            s.cache_write1h,
-            s.requests
+            t.input,
+            t.output,
+            t.cache_read,
+            t.cache_write5m,
+            t.cache_write1h,
+            t.requests
         ),
         (17, 57, 1000, 1100, 200, 3)
     );
-    // opus 4.6：$5 / $25 / 读 0.1× / 写 1.25× · 2×（每百万）⇒ 微美元。
-    // 10×5 + 50×25 + 1000×0.5 + 100×6.25 + 200×10 + 1000×6.25 = 50+1250+500+625+2000+6250
-    assert_eq!(s.cost_micros, 10675);
-    assert_eq!(s.unpriced, ["some-unknown-model"]);
-    assert!(!s.cost_text.is_empty() && !s.tokens_text.is_empty());
-    // 续传接力：从任一行边界接着扫 == 一次扫完。
+    assert_eq!(
+        t.text,
+        copy_core::copy_text(
+            "beSpend.tokens.line",
+            &[
+                ("input", "17"),
+                ("output", "57"),
+                ("read", "1.0k"),
+                ("write", "1.3k")
+            ]
+        )
+    );
+    assert_eq!(f.cost, None, "记录里没有花费那一条 ⇒ 不给花费");
     let cut = text.find('\n').unwrap() + 1;
     let first = scan_facts(
         &text.as_bytes()[..cut],
@@ -846,7 +847,35 @@ fn spend_counts_each_request_once_and_prices_it() {
     .unwrap();
     let prior = prior_from(&serde_json::to_value(&first).unwrap()).unwrap();
     let resumed = scan_facts(&text.as_bytes()[cut..], prior, &Vec::new(), None).unwrap();
-    assert_eq!(resumed.spend, f.spend);
+    assert_eq!(resumed.tokens, f.tokens);
+}
+
+/// 花费照记录里那一家自己记的（最后一条为准），不按定价自己算；有定不了价的型号 ⇒ 串里带「约」；不到一分 ⇒ 另一句。
+#[test]
+fn cost_is_the_last_cost_record_as_written() {
+    let cost = |usd: f64, unknown: bool| json!({"type": "cost-state", "totalCostUSD": usd, "modelUsage": {}, "hasUnknownModelCost": unknown});
+    let f = scan_all(&jsonl(&[cost(0.5, true), cost(1.234, false)]));
+    assert_eq!(
+        f.cost,
+        Some(Cost {
+            micros: 1_234_000,
+            partial: false,
+            text: copy_core::copy_text("beSpend.cost.exact", &[("usd", "1.23")])
+        })
+    );
+    let f = scan_all(&jsonl(&[cost(2.0, true)]));
+    assert_eq!(
+        f.cost.as_ref().map(|c| c.text.clone()),
+        Some(copy_core::copy_text(
+            "beSpend.cost.about",
+            &[("usd", "2.00")]
+        ))
+    );
+    let f = scan_all(&jsonl(&[cost(0.001, false)]));
+    assert_eq!(
+        f.cost.map(|c| c.text),
+        Some(copy_core::copy_text("beSpend.cost.tiny", &[]))
+    );
 }
 
 /// 许可档：最后一条许可档记录说的那一档（会话事实；记录流里不显示）。

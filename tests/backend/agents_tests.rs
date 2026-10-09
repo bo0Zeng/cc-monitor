@@ -673,7 +673,6 @@ const fn records(find: fn(&Path, &str) -> Result<PathBuf, String>) -> RecordFace
         tree: None,
         turn_end: None,
         chain: None,
-        price: None,
         find_session: Some(find),
         branch: None,
         drift: None,

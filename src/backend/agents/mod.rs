@@ -372,8 +372,6 @@ pub(crate) struct RecordFace {
     pub(crate) turn_end: Option<fn(&str) -> Option<String>>,
     /// 一行原文 ⇒ 它在记录链上的事实（主线外清单由通用层 [`mainline`] 按它算）。`None` ＝ 这一家的记录没有链（清单恒空）。
     pub(crate) chain: Option<fn(&str) -> Option<mainline::ChainFact>>,
-    /// 型号名 ⇒ 它的定价（会话花费成品按它算）。`None` ＝ 这一家不定价（花费不出）。
-    pub(crate) price: Option<fn(&str) -> Option<Rates>>,
     /// 在这一家的记录树（`records_root`）下按 sid 找那份会话文件（原共享 crate `branch-core`）。`None` ＝ 这一家不按 sid 找。
     pub(crate) find_session: Option<fn(&Path, &str) -> Result<PathBuf, String>>,
     /// 分叉的记录变换：`(记录, 分叉点 uuid, 源 sid, 新 sid)` ⇒ 新会话的记录（原共享 crate `branch-core`）。`None` ＝ 这一家不分叉。
@@ -394,24 +392,6 @@ pub(crate) struct RecordFace {
     pub(crate) children: Option<ChildFace>,
     /// 会话的项目目录（会话起在哪个目录）：只读记录开头（[`first_in_head`]，有上界）。`None` 这一格 ＝ 这一家的记录里没有这件事。
     pub(crate) project_dir: Option<fn(&Path) -> Option<String>>,
-}
-
-/// 一个型号的定价：微美元 / 每百万 token（输入 · 输出 · 读缓存 · 写缓存 5 分钟档 · 1 小时档）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct Rates {
-    pub(crate) input: u64,
-    pub(crate) output: u64,
-    pub(crate) cache_read: u64,
-    pub(crate) cache_write5m: u64,
-    pub(crate) cache_write1h: u64,
-}
-
-/// 记录树那一家给这个型号定的价（会话事实的花费那一格）；那一家不定价 / 认不出 ⇒ `None`。
-pub(crate) fn price_of(model: &str) -> Option<Rates> {
-    record_tree_kind()
-        .and_then(record_face)
-        .and_then(|f| f.price)
-        .and_then(|p| p(model))
 }
 
 /// 一家的记录树：会话按项目目录分，住在家目录下的一棵树里。

@@ -340,7 +340,6 @@ fn records_face(
         tree: Some(crate::agents::RecordTree { root, file_name }),
         turn_end: None,
         chain: Some(chain_fact),
-        price: None,
         find_session: None,
         branch: None,
         drift: None,

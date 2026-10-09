@@ -1,7 +1,12 @@
 {
   "history-facts": {
     "agent": "claude",
-    "end": 1469,
+    "cost": {
+      "micros": 424200,
+      "partial": false,
+      "text": "$0.42"
+    },
+    "end": 1633,
     "forkedFrom": "src-0",
     "handedBack": [
       "ag-7"
@@ -29,7 +34,7 @@
         "why": "noWriter"
       }
     ],
-    "permissionMode": null,
+    "permissionMode": "acceptEdits",
     "projectDir": "/g/proj",
     "retries": [
       {
@@ -41,15 +46,12 @@
         "outcome": "retrying"
       }
     ],
-    "spend": {
+    "tokens": {
       "cacheRead": 3,
       "cacheWrite1h": 0,
       "cacheWrite5m": 2,
-      "costMicros": 0,
-      "costText": "没有定价",
       "input": 1,
       "last": {
-        "costMicros": 0,
         "id": "",
         "tokens": [
           1,
@@ -61,10 +63,7 @@
       },
       "output": 0,
       "requests": 1,
-      "tokensText": "输入 1 · 输出 0 · 读缓存 3 · 写缓存 2",
-      "unpriced": [
-        "m-g"
-      ]
+      "text": "输入 1 · 输出 0 · 读缓存 3 · 写缓存 2"
     },
     "touchedFiles": [
       "/w/a.ts"

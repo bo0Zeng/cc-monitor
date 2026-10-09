@@ -198,7 +198,7 @@ describe("〔STC〕第五问：会话事实", () => {
   it("★★ 金样：TS 解码器读得懂后端真出的会话事实（逐字段）", () => {
     const f = decodeFacts(golden["history-facts"]);
     expect(f).toEqual({
-      end: 1469,
+      end: 1633,
       forkedFrom: "src-0",
       touchedFiles: ["/w/a.ts"],
       usage: { promptTokens: 6, model: "m-g", peakPromptTokens: 6, limit: 1_000_000, limitFrom: "assumed" },
@@ -216,20 +216,18 @@ describe("〔STC〕第五问：会话事实", () => {
         { id: "rt-1", outcome: "recovered" },
         { id: "rt-2", outcome: "retrying" },
       ],
-      permissionMode: null,
-      spend: {
+      permissionMode: "acceptEdits",
+      tokens: {
         input: 1,
         output: 0,
         cacheRead: 3,
         cacheWrite5m: 2,
         cacheWrite1h: 0,
         requests: 1,
-        costMicros: 0,
-        unpriced: ["m-g"],
-        costText: copyText("beSpend.cost.none"),
-        tokensText: copyText("beSpend.tokens.line", { input: "1", output: "0", read: "3", write: "2" }),
-        last: { id: "", tokens: [1, 0, 3, 2, 0], costMicros: 0 },
+        text: copyText("beSpend.tokens.line", { input: "1", output: "0", read: "3", write: "2" }),
+        last: { id: "", tokens: [1, 0, 3, 2, 0] },
       },
+      cost: { micros: 424200, partial: false, text: copyText("beSpend.cost.exact", { usd: "0.42" }) },
     });
   });
 

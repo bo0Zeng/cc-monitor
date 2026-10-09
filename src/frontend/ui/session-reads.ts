@@ -146,23 +146,22 @@ export interface SessionFacts {
   retries: RetryRun[];
   /** 此刻的许可档（原样）；没有 ⇒ `null`。 */
   permissionMode: string | null;
-  /** 全会话用量与花费（后端按请求去重、按定价算好；两个串是写好的成品）。 */
-  spend: Spend | null;
+  /** 全会话用量（后端按请求去重、写缓存分两档；`text` 是写好的成品）。 */
+  tokens: TokenUse | null;
+  /** 全会话花费（记录里那一家自己记的；`text` 是写好的成品）。记录里没有 ⇒ `null`。 */
+  cost: { micros: number; partial: boolean; text: string } | null;
 }
 
-/** 全会话用量与花费（后端 `facts_query::Spend`）。`last` 只是续传要的，界面不读。 */
-export interface Spend {
+/** 全会话用量（后端 `facts_query::TokenUse`）。`last` 只是续传要的，界面不读。 */
+export interface TokenUse {
   input: number;
   output: number;
   cacheRead: number;
   cacheWrite5m: number;
   cacheWrite1h: number;
   requests: number;
-  costMicros: number;
-  unpriced: string[];
-  costText: string;
-  tokensText: string;
-  last: { id: string; tokens: number[]; costMicros: number } | null;
+  text: string;
+  last: { id: string; tokens: number[] } | null;
 }
 
 /** 一串相邻的 API 重试（后端 `facts_query::RetryRun`）。 */
@@ -401,33 +400,36 @@ export function decodeFacts(v: unknown): SessionFacts {
   const bad = (): never => {
     throw new ShapeError("history-facts", copyText("sessionReads.missing.facts"));
   };
-  if (!isObj(v) || !exactKeys(v, ["agent", "end", "forkedFrom", "handedBack", "lastSay", "needs", "pending", "permissionMode", "projectDir", "retries", "spend", "touchedFiles", "usage", "writers"])) return bad();
+  if (!isObj(v) || !exactKeys(v, ["agent", "cost", "end", "forkedFrom", "handedBack", "lastSay", "needs", "pending", "permissionMode", "projectDir", "retries", "tokens", "touchedFiles", "usage", "writers"])) return bad();
   if (!strOrNull(v.permissionMode)) return bad();
-  let spend: Spend | null = null;
-  if (v.spend !== null) {
-    const p = v.spend;
-    const nums = ["input", "output", "cacheRead", "cacheWrite5m", "cacheWrite1h", "requests", "costMicros"] as const;
-    if (!isObj(p) || !exactKeys(p, ["cacheRead", "cacheWrite1h", "cacheWrite5m", "costMicros", "costText", "input", "last", "output", "requests", "tokensText", "unpriced"])) return bad();
-    if (!nums.every((k) => isNum(p[k])) || !isStr(p.costText) || !isStr(p.tokensText) || !Array.isArray(p.unpriced) || !p.unpriced.every(isStr)) return bad();
-    let last: Spend["last"] = null;
+  let tokens: TokenUse | null = null;
+  if (v.tokens !== null) {
+    const p = v.tokens;
+    const nums = ["input", "output", "cacheRead", "cacheWrite5m", "cacheWrite1h", "requests"] as const;
+    if (!isObj(p) || !exactKeys(p, ["cacheRead", "cacheWrite1h", "cacheWrite5m", "input", "last", "output", "requests", "text"])) return bad();
+    if (!nums.every((k) => isNum(p[k])) || !isStr(p.text)) return bad();
+    let last: TokenUse["last"] = null;
     if (p.last !== null) {
       const l = p.last;
-      if (!isObj(l) || !exactKeys(l, ["costMicros", "id", "tokens"]) || !isStr(l.id) || !isNum(l.costMicros) || !Array.isArray(l.tokens) || !l.tokens.every(isNum)) return bad();
-      last = { id: l.id, tokens: [...(l.tokens as number[])], costMicros: l.costMicros };
+      if (!isObj(l) || !exactKeys(l, ["id", "tokens"]) || !isStr(l.id) || !Array.isArray(l.tokens) || !l.tokens.every(isNum)) return bad();
+      last = { id: l.id, tokens: [...(l.tokens as number[])] };
     }
-    spend = {
+    tokens = {
       input: p.input as number,
       output: p.output as number,
       cacheRead: p.cacheRead as number,
       cacheWrite5m: p.cacheWrite5m as number,
       cacheWrite1h: p.cacheWrite1h as number,
       requests: p.requests as number,
-      costMicros: p.costMicros as number,
-      unpriced: [...(p.unpriced as string[])],
-      costText: p.costText,
-      tokensText: p.tokensText,
+      text: p.text,
       last,
     };
+  }
+  let cost: SessionFacts["cost"] = null;
+  if (v.cost !== null) {
+    const c = v.cost;
+    if (!isObj(c) || !exactKeys(c, ["micros", "partial", "text"]) || !isNum(c.micros) || typeof c.partial !== "boolean" || !isStr(c.text)) return bad();
+    cost = { micros: c.micros, partial: c.partial, text: c.text };
   }
   if (!Array.isArray(v.pending)) return bad();
   const pending: PendingCall[] = [];
@@ -496,7 +498,8 @@ export function decodeFacts(v: unknown): SessionFacts {
     handedBack: v.handedBack as string[],
     retries,
     permissionMode: v.permissionMode as string | null,
-    spend,
+    tokens,
+    cost,
   };
 }
 

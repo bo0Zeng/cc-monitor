@@ -17227,28 +17227,22 @@
       "zh": "{path} 非会话记录 · 未删除",
       "args": ["path"]
     },
-    "beSpend.cost.priced": {
+    "beSpend.cost.exact": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "${usd}",
+      "args": ["usd"]
+    },
+    "beSpend.cost.about": {
       "kind": "body",
       "role": "片段",
       "zh": "约 ${usd}",
-      "args": ["usd"]
-    },
-    "beSpend.cost.partial": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "约 ${usd} · 部分型号没有定价",
       "args": ["usd"]
     },
     "beSpend.cost.tiny": {
       "kind": "body",
       "role": "片段",
       "zh": "不到 $0.01",
-      "args": []
-    },
-    "beSpend.cost.none": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "没有定价",
       "args": []
     },
     "beSpend.tokens.line": {
