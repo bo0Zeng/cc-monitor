@@ -641,6 +641,33 @@ async function slowDom(): Promise<Record<string, unknown>> {
   return { name: "slow-dom", slowDom: out };
 }
 
+/** 暂时摘掉选择器文本命中 `hit` 的规则（含 @layer / @media 里套着的）跑 `fn`，跑完原样插回。 */
+async function withoutRules(hit: (selector: string) => boolean, fn: () => Promise<Record<string, unknown>>): Promise<Record<string, unknown>> {
+  const removed: Array<{ list: CSSStyleSheet | CSSGroupingRule; at: number; text: string }> = [];
+  const walk = (list: CSSStyleSheet | CSSGroupingRule): void => {
+    for (let i = list.cssRules.length - 1; i >= 0; i--) {
+      const r = list.cssRules[i];
+      if (r instanceof CSSStyleRule && hit(r.selectorText)) {
+        removed.push({ list, at: i, text: r.cssText });
+        list.deleteRule(i);
+      } else if ("cssRules" in r) walk(r as CSSGroupingRule);
+    }
+  };
+  for (const sh of document.styleSheets) {
+    try {
+      walk(sh);
+    } catch {
+      /* 跨源的表读不了 */
+    }
+  }
+  await sleep(300);
+  try {
+    return { ...(await fn()), rulesRemoved: removed.map((x) => x.text.slice(0, 80)) };
+  } finally {
+    for (const x of removed.reverse()) x.list.insertRule(x.text, x.at);
+  }
+}
+
 const ACTIONS: Record<string, () => Promise<Record<string, unknown>>> = {
   "slow-dom": slowDom,
   idle: () => idle(),
@@ -754,6 +781,11 @@ const ACTIONS: Record<string, () => Promise<Record<string, unknown>>> = {
     for (const x of got) (by[x.what] ??= []).push(Math.round(x.paint));
     return { ...r, byWhat: by };
   },
+  // 试一刀：摘掉样式表里带 `:has(` 的规则（全部 / 只摘某一条）再量一遍 paint-probe —— 看 WebKit 上摘一个节点就几百毫秒是不是 :has 的整页失效
+  "paint-probe-nohas": async () => ({ ...(await withoutRules((t) => t.includes(":has("), ACTIONS["paint-probe"])), name: "paint-probe-nohas" }),
+  "paint-probe-nochecked": async () => ({ ...(await withoutRules((t) => t.includes(":has(input:checked)"), ACTIONS["paint-probe"])), name: "paint-probe-nochecked" }),
+  "paint-probe-nodisabled": async () => ({ ...(await withoutRules((t) => t.includes(":disabled)"), ACTIONS["paint-probe"])), name: "paint-probe-nodisabled" }),
+  "paint-probe-nolastempty": async () => ({ ...(await withoutRules((t) => t.includes(":last-child:empty"), ACTIONS["paint-probe"])), name: "paint-probe-nolastempty" }),
   // 试一刀：账号面板开关时不往根元素上写自定义属性（看 WebKit 上那一下慢是不是它）
   "acct-noroot": async () => {
     const st = document.documentElement.style;
