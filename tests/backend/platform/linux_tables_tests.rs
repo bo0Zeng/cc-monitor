@@ -11,7 +11,7 @@ const TCP4: &str = "  sl  local_address rem_address   st tx_queue rx_queue tr tm
 ";
 
 const TCP6: &str = "  sl  local_address                         remote_address                        st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode
-   0: 0000000000000000FFFF00000502000A:C351 0000000000000000FFFF00001400000A:0016 01 00000000:00000000 00:00000000 00000000  1000        0 33333 1 0000000000000000 20 4 0 10 -1
+   0: 0000000000000000FFFF0000050200C0:C351 0000000000000000FFFF0000140200C0:0016 01 00000000:00000000 00:00000000 00000000  1000        0 33333 1 0000000000000000 20 4 0 10 -1
    1: B80D0120000000000000000001000000:D431 B80D0120000000000000000002000000:0016 01 00000000:00000000 00:00000000 00000000  1000        0 44444 1 0000000000000000 20 4 0 10 -1
 ";
 
@@ -35,9 +35,9 @@ fn proc_net_tcp_rows_read_back_to_addresses_ports_and_inodes() {
         v6,
         vec![
             TcpLine {
-                local: "::ffff:10.0.2.5".parse::<Ipv6Addr>().unwrap().into(),
+                local: "::ffff:192.0.2.5".parse::<Ipv6Addr>().unwrap().into(),
                 local_port: 0xC351,
-                remote: "::ffff:10.0.0.20".parse::<Ipv6Addr>().unwrap().into(),
+                remote: "::ffff:192.0.2.20".parse::<Ipv6Addr>().unwrap().into(),
                 remote_port: 22,
                 inode: 33333,
             },
