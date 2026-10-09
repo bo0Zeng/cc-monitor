@@ -866,8 +866,7 @@ fn spawn_fake_terminal(
             Err(e) if spawn_error_is_etxtbsy(&e) => {
                 // 🔴 **出声**（本波派工单逐字要的那一格）：重试**不许静默** ——
                 //    静默的重试会让「这条前提今天被破了几次」变成一个**没人量得到的数**，
-                //    而那正是本件在治的病换个地方长。这一行同时是量具的读数来源
-                //   （`tests/evidence/K-R24-D7-load-axis-stress.py` 数的就是它）。
+                //    而那正是本件在治的病换个地方长。
                 eprintln!(
                     "[K-R24] 前提被破了一次：exec 假终端撞上 ETXTBSY（第 {} 次），\
                          上限 {tries} 次内重试；逐字：{e}",
@@ -1047,8 +1046,7 @@ fn the_terminal_we_hand_the_command_to_really_gets_the_relay_prefix() {
 ///
 /// - **它复现的不是真实那条时序**：真实成因是别的线程 fork 出来的子进程**短暂**继承了写 fd，
 ///   本条是**自己长时间攥着**。两者对 execve 是同一件事（都是「有人开着写」），
-///   但本条**不证明**那条 fork 竞态真的发生过 —— 那一格由病历里那两趟读数与
-///   `tests/evidence/K-R24-D7-load-axis-stress.py` 那份量具承重，如实登记。
+///   但本条**不证明**那条 fork 竞态真的发生过 —— 那一格由病历里那两趟读数承重，如实登记。
 /// - **不证明重试上限选得对**：上限是宽的，那是取舍，不是判据。
 #[cfg(not(windows))]
 #[test]

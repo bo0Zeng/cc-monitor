@@ -2,10 +2,10 @@
   "说明": [
     "壳给界面的「本机能力」（`src/frontend/shell/src/platform/host_facts.rs`，起页时注入 `window.__CCM_HOST__`）：每个平台一行。",
     "壳那一侧按编它的那个平台对拍自己那一行（tests/frontend/shell/platform/host_facts_tests.rs）；界面测试拿这里的行当「壳在那个平台上给的那一份」（tests/test-support/host-facts.ts）。",
-    "↗：Windows 走 Win32（EnumWindows · SetForegroundWindow）；别的平台上那几跳今天是桩 ⇒ 不显示。",
+    "↗：Windows 走 Win32（EnumWindows · SetForegroundWindow）；Linux 的 X11 会话走 EWMH（_NET_WM_PID 认窗口 · _NET_ACTIVE_WINDOW 拉前），Wayland 会话按钮照常显示、点了由壳照实说「这个桌面上切不了」并给［在 cc-monitor 里打开］（结局族 desktop-wont-switch）；macOS 上那几跳是桩 ⇒ 不显示。",
     "判断只住壳的 platform/：↗ 在哪个平台上是真的、本机 shell 说哪种方言、本机 PATH 上 ccm 那份缓存作不作数，界面不再按 User-Agent 猜。"
   ],
-  "linux": { "os": "linux", "terminalFront": false, "shellDialect": "posix", "ccmPathCache": true },
+  "linux": { "os": "linux", "terminalFront": true, "shellDialect": "posix", "ccmPathCache": true },
   "macos": { "os": "macos", "terminalFront": false, "shellDialect": "posix", "ccmPathCache": true },
   "windows": { "os": "windows", "terminalFront": true, "shellDialect": "powershell", "ccmPathCache": false }
 }

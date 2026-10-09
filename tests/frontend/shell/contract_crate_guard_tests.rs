@@ -41,6 +41,7 @@ const CRATES: &[(&str, Class, &str)] = &[
     ("host-core", Class::HostPrimitive, "两个前端（monitor 主界面 · 文件窗口进程）共用的宿主那几件：自有状态文件的原子写 · 窗口夹进工作区；不裁决业务，后端不链"),
     ("relay-route-core", Class::Contract, "端口 · 路径 · 路由语法：中转与常驻监听口的门牌、后端落点，两侧拼 / 拆同一份"),
     ("shell-quote-core", Class::Contract, "令牌形状：POSIX 单引号 quote 与标识符放行形状（session id · 启动令牌 · cc-bus id · 路径），两侧拼进 shell 前对上同一份"),
+    ("win-path-core", Class::Contract, "路径：交给 Win32 文件 API 的那一形（UTF-16 ＋ 长路径前缀），后端 · monitor · 文件窗口 · creds-core 拼同一份，不裁决"),
     ("upstream-url-core", Class::Decision, "上游 URL 能不能用是裁决；界面读的是生成器现生成的式子（monitor 只在 dev 侧链它）"),
 ];
 

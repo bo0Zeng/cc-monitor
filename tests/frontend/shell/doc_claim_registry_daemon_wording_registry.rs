@@ -23,8 +23,7 @@ const SITES: &[&str] = &[
 
 /// 写区里**裸着的 `daemon`，而它一个字都不许动** —— `(文件, 逐字片段, 理由)`。
 ///
-/// 🔴 **这是本仓这个闭集的唯一住址**：量具 `tests/evidence/K-R116-ruler.py` 不抄一份，
-/// 它**解析本表**（`--apply` 与本闸因此不可能对不上）。
+/// 🔴 **这是本仓这个闭集的唯一住址**。
 ///
 /// 每条片段必须在那份文件里**恰好命中一次** —— 命中 0 次 = 那句话被改过了、这条例外
 /// 此刻在空转；命中多次 = 片段太短，说不清点的是哪一处。两侧都由下面的判据断言。
@@ -80,7 +79,7 @@ fn hits(haystack: &str) -> Vec<usize> {
     //   **按名字**跑（不看类型），而本文件里 `text` / `b` / `lower` 这几个短名
     //   早就被别的判据用着 —— 在这里复用一个，就会把同文件里
     //   `name.starts_with("README")` 那一族**早已存在**的匹配一起卷进它的人群，
-    //   那条递减棘轮当场 33 → 34。〔09-14 实打逮到过一次，读数在 `tests/evidence/K-R116-deathvalue.md`〕
+    //   那条递减棘轮当场 33 → 34。〔09-14 实打逮到过一次〕
     let folded_haystack = haystack.to_ascii_lowercase();
     let folded_bytes = folded_haystack.as_bytes();
     let width = NEEDLE.len();
@@ -130,7 +129,7 @@ fn no_prose_in_the_wording_sites_still_says_daemon() {
         //   09-18 那次把它们从 `remote-daemon-proto` 换成了当时活着的四个标识符
         //   （`embedded-daemons/` · `daemon_send_keys.rs` · `--daemon-probe` · `backendPath`），
         //   而**步 8 把那四个全改名了** —— 夹具又一次指向不存在的东西。
-        //   ⇒ 这一次换成**本仓明写保护、不会再改的那一档**（`tests/evidence/w8-rename.py` 的 `PROTECTED`）：
+        //   ⇒ 这一次换成**本仓明写保护、不会再改的那一档**：
         //   `backendPath` —— **用户盘上 `config.json` 里那个现役的键**（步 8 刻意摘出去，
         //   改它要配一次迁移，见）；
         //   `DaemonTransport` —— **仓外 aterm 自己的类型名**（冻结在 2026-07-18 那份契约里）。

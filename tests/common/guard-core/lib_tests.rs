@@ -596,8 +596,7 @@ fn this_crate_never_falls_back_to_not_stripping() {
 /// `/*` 落在 A 块里、`*/` 落在 B 块里 —— **整份文件配平、单块不配平**。
 /// 对 rustc 这就是一条普通的跨行块注释（编得过），所以
 /// **看门判据的文件那一半在它上面是绿的**，而块那一半会红。
-/// 这一形是 `K-R9` 落定拍在真仓上实打出来的（`tests/evidence/K-R9-R2-fallback-watch-scope.md §C 刀 2`：
-/// 那一趟两条判据全绿、全量 monitor `1278 passed; 0 failed`）。
+/// 这一形是 `K-R9` 落定拍在真仓上实打出来的（那一趟两条判据全绿、全量 monitor `1278 passed; 0 failed`）。
 ///
 /// ⚠ **谁退掉哪一格会让本条红**：兜底改成「照剥」⇒ ② 断；
 /// 词法不再跨行延续状态 ⇒ ① 或 ④ 断；剥法不再抹掉注释内容 ⇒ ③ 断；
@@ -743,7 +742,7 @@ fn vis_fixture(vis: &str) -> String {
 /// 而按整段字面比对的写法接不住。
 ///
 /// **死值验**：把 `test_module_ranges` 里那一句退回 `mod_line.starts_with("mod ")`
-/// ⇒ 本条必须红（读数落 `tests/evidence/K-R75-剥法认形状与真静默读数.md`）。
+/// ⇒ 本条必须红。
 #[test]
 fn a_test_module_is_recognised_whatever_its_visibility() {
     let mut vis: Vec<String> = ["", "pub ", "pub(crate) ", "pub(super) ", "pub(self) "]

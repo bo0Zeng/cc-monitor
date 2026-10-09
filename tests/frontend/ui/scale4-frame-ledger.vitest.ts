@@ -39,8 +39,6 @@
  *
  * ⚠ **反空真**：命中率这个数，只走到一条路时照样算得出来、判据照样绿。
  * 所以有一格（`★ 反空真`）专门用**相等断言**钉住两条路都真的被走到了。
- *
- * 读数：`tests/evidence/S4-frame-ledger.md`（含死值验原文）
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { readFileSync } from "node:fs";

@@ -84,7 +84,7 @@ def cargo_cache_dirs() -> list[Path]:
 def lock_pairs(path: Path) -> list[tuple[str, str]]:
     """把一份 Cargo.lock 切成 crates.io 来源的 `(name, version)`。
 
-    切法与 `K-P6b-r3-lock-prime.py` 同源：以 `[[package]]` 为界，只认块内三行，
+    切法：以 `[[package]]` 为界，只认块内三行，
     **不解析 TOML**（不引第三方依赖 —— 本仓的判据一律不许为了好看去联网装包）。
     没有 `source` 的块 = `path` 依赖（本仓自己的 crate），不进人群。
     """

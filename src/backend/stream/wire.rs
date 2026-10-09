@@ -564,6 +564,8 @@ pub enum Frame {
     QuotaChanged,
 
     /// **这台某个会话的轮换或「账号」格变了**（换了号 · 记了一条 · 改了它的轮换 · 它跟随的默认轮换改了）。
+    /// 别的进程写的也推（命令行 `ccm -- --rotation-session-set` · quota-warm）：流那一路的后端盯着 `rotation.json`，
+    /// 盘上那一份变了且不是本进程写的 ⇒ 重读、比对、改到的会话各推一次。
     ///
     /// 只带 sid：客户端收到就重问一次 `rotation-session-read`（那一份的唯一出口仍是那条查询，同 `quota_changed`）。
     /// 走 tap 那条可丢的通道（轮换在盘上，丢了重问就补上）。旧 monitor / 仓外 aterm 不认这个 kind ⇒ 忽略（additive）。

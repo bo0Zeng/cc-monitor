@@ -8,7 +8,7 @@
  *   ③「验 `§2.8`、`§5.5`，**并核对 `tabs.ts` 那句「文本前端零处留存」**」
  *
  * 第 ③ 件才是这杆秤真正值钱的地方：那是一句**声称**，本文件要给出它成不成立的**读数**。
- * 判词与全部读数在 `tests/evidence/S6-memory-ledger.md`，**结论是「不成立」**，
+ * **结论是「不成立」**，
  * 下面「留存活体」那两格就是它的活体。
  *
  * # 🔴 它量不到什么（这一段不完整本身就是缺陷）
@@ -34,8 +34,6 @@
  * 本文件**不读** `~/.claude/projects`，也不新造含真实会话正文的夹具。
  *
  * 复算：`npx vitest run tests/frontend/ui/scale6-memory-ledger.vitest.ts`
- * 死值验：`bash tests/evidence/S6-mutations.sh`
- * 读数：  `tests/evidence/S6-memory-ledger.md`
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { readFileSync } from "node:fs";
@@ -296,7 +294,7 @@ describe("秤 6 甲：69 条语料上的读数（那 7 MB 的现打版）", () =
     expect(resultTextLedger.captured).toBe(expected);
     expect(resultTextLedger.capturedUnits).toBe(unitsProduced);
 
-    // 读数（进 `tests/evidence/S6-memory-ledger.md`）
+    // 读数
     console.log(
       [
         "[S6-甲] 语料=tests/__fixtures__/scale2-height-records.jsonl（69 条，结构真/正文合成）",

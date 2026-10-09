@@ -2137,7 +2137,7 @@ monitor 那条跨 SSH `tmux ls` 已改问那台后端（今天是终端名单 `t
 - 口径一个家：`tmux_utf8_tests.rs::each_kou_jing_has_exactly_one_home_and_it_is_this_file` · `tmux_utf8_tests.rs::both_consumer_layers_reference_the_home_instead_of_declaring_their_own` ·
   `tmux_utf8_tests.rs::the_one_home_scan_actually_bites`（量具）· monitor 侧 `tmux_backend_gate_guard_tests.rs::utf8_client_kou_jing_has_one_home_and_this_side_has_none`（跨仓：monitor 零份）。
 
-**违反过几次**：`K-R12`（09-04）在无挂载容器里量：当时**六处**读 tmux 的调用点，在 POSIX 客户端 locale 下**六处全部被改写**，一处不剩（`tests/evidence/K-R12-deathvalue.md`）。
+**违反过几次**：`K-R12`（09-04）在无挂载容器里量：当时**六处**读 tmux 的调用点，在 POSIX 客户端 locale 下**六处全部被改写**，一处不剩。
 同一趟逮到一条真缺陷：monitor 送键前远端核验那条串用 `cut -f` 取 sid，没有分隔符的整行被原样放行 ⇒ sid 变成整行 ⇒ `[ -n "$sid" ]` 恒真 ⇒ **远端核验被静默绕过**（fail-open）。
 都是量出来的，不是用户报的。
 

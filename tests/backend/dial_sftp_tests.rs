@@ -673,3 +673,65 @@ async fn hx1_the_dirs_a_deploy_creates_are_made_private_and_an_existing_one_is_l
         g.mutated
     );
 }
+
+// ═══ 原因词：SFTP 那一层的失败落到哪个词 ═════════════════════════════════════════════
+
+/// 屏上那一格原因要说准：SFTP 文件句柄的读写把状态包成 `io::Error`（种类多是 Other，状态码只剩服务端那句话），
+/// 别的路把 `russh_sftp` 的错整个包进去 —— 两形都按 SFTP 状态认出原因词；认不出才「原因不明」。
+#[test]
+fn sftp_failures_wrapped_in_io_errors_still_land_on_the_right_reason_word() {
+    use russh_sftp::client::error::Error as E;
+    use russh_sftp::protocol::{Status, StatusCode as C};
+    use std::io::{Error as Io, ErrorKind as K};
+    let st = |code: C| {
+        E::Status(Status {
+            id: 1,
+            status_code: code,
+            error_message: String::new(),
+            language_tag: String::new(),
+        })
+    };
+    let word = |k: &str| copy_core::copy_text(k, &[]);
+    let cases: Vec<(Io, String)> = vec![
+        // 句柄读写那一形：服务端那句标准话（OpenSSH sftp-server）。
+        (Io::other("No such file"), word("reason.io.notFound")),
+        (Io::other("Permission denied"), word("reason.io.denied")),
+        (
+            Io::other("Operation unsupported"),
+            word("reason.sftp.unsupported"),
+        ),
+        (Io::other("Bad message"), word("reason.sftp.badMessage")),
+        (Io::other("Failure"), word("reason.io.unknown")),
+        // 整个包进去那一形。
+        (Io::from(st(C::NoSuchFile)), word("reason.io.notFound")),
+        (Io::from(st(C::PermissionDenied)), word("reason.io.denied")),
+        (
+            Io::from(st(C::OpUnsupported)),
+            word("reason.sftp.unsupported"),
+        ),
+        (Io::from(E::Timeout), word("reason.sftp.noAnswer")),
+        (
+            Io::from(st(C::ConnectionLost)),
+            word("reason.sftp.connectionLost"),
+        ),
+        (
+            Io::other("Connection lost"),
+            word("reason.sftp.connectionLost"),
+        ),
+        (Io::from(K::BrokenPipe), word("reason.sftp.connectionLost")),
+        (
+            Io::from(K::ConnectionReset),
+            word("reason.sftp.connectionLost"),
+        ),
+        (
+            Io::from(E::Limited("n".into())),
+            word("reason.sftp.overLimit"),
+        ),
+        // 本来就是 IO 种类的照 IO 那张表。
+        (Io::from(K::PermissionDenied), word("reason.io.denied")),
+        (Io::other("something else"), word("reason.io.unknown")),
+    ];
+    for (e, want) in cases {
+        assert_eq!(super::why_of_io(&e), want, "{e:?}");
+    }
+}

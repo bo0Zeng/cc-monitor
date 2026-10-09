@@ -711,12 +711,113 @@ impl RotationStore {
                 let (r, before, after) = write_locked(path, f)?;
                 g.0 = stamp(path);
                 g.1 = after.clone();
-                (r, before, after)
+                // 上一回见过的那一份（别的进程在那之后写过 ⇒ 它改到的会话也在这一下里响）；本进程记下自己写成的这一份，
+                // 盯盘那一路再看见同一个戳就不重推。
+                let base = seen_swap(path, g.0, &after).unwrap_or(before.clone());
+                (r, base, after)
             }
         };
         drop(g);
         ring_changed(&before, &after);
         Ok(r)
+    }
+}
+
+/// 本进程最后见过的盘上那一份（按路径）：本进程写成的 · 盯盘重扫读到的。别的进程写了 ⇒ 戳对不上 ⇒ 重扫时比对它推。
+type DiskSeen = std::collections::HashMap<PathBuf, (Option<Stamp>, Book)>;
+
+fn seen() -> &'static Mutex<DiskSeen> {
+    static SEEN: std::sync::OnceLock<Mutex<DiskSeen>> = std::sync::OnceLock::new();
+    SEEN.get_or_init(|| Mutex::new(DiskSeen::new()))
+}
+
+/// 记下这一份，回上一份（没见过 ⇒ `None`）。
+fn seen_swap(path: &Path, st: Option<Stamp>, book: &Book) -> Option<Book> {
+    let mut g = seen().lock().unwrap_or_else(|e| e.into_inner());
+    g.insert(path.to_path_buf(), (st, book.clone()))
+        .map(|(_, b)| b)
+}
+
+/// 重扫一次盘：戳与上回见过的不同（别的进程写了）⇒ 重读、比对、改到的会话各响一下。第一次 ⇒ 只记下。读不懂 ⇒ 不动。
+pub(crate) fn rescan(path: &Path) {
+    let st = stamp(path);
+    let known = {
+        let g = seen().lock().unwrap_or_else(|e| e.into_inner());
+        g.get(path).map(|(s, _)| *s)
+    };
+    if known == Some(st) {
+        return;
+    }
+    let now = match read_at(path) {
+        Read::Present(b) => b,
+        Read::Absent => Book::default(),
+        Read::Unreadable(e) => {
+            tracing::warn!("[rotation] 重扫 {} 读不懂：{e}", path.display());
+            return;
+        }
+    };
+    if let Some(prev) = seen_swap(path, st, &now) {
+        if known.is_some() {
+            ring_changed(&prev, &now);
+        }
+    }
+}
+
+/// 盯 `rotation.json` 所在的目录（只认这个文件名）：别的进程写了 ⇒ [`rescan`]。返回的那一份活着就一直盯。
+/// 起的时候先记下此刻那一份（之后的改动才有得比）。
+pub(crate) fn watch(path: &Path) -> Result<notify::RecommendedWatcher, String> {
+    use notify::Watcher;
+    let dir = path
+        .parent()
+        .ok_or_else(|| format!("{} has no parent", path.display()))?
+        .to_path_buf();
+    crate::common::own_dir::ensure_private_dir(&dir).map_err(|e| e.to_string())?;
+    rescan(path);
+    let (tx, rx) = std::sync::mpsc::channel::<()>();
+    let mut w = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
+        let Ok(ev) = res else { return };
+        if matches!(ev.kind, notify::EventKind::Access(_)) {
+            return;
+        }
+        if ev
+            .paths
+            .iter()
+            .any(|p| p.file_name().and_then(|n| n.to_str()) == Some(FILE_NAME))
+        {
+            let _ = tx.send(());
+        }
+    })
+    .map_err(|e| e.to_string())?;
+    w.watch(&dir, notify::RecursiveMode::NonRecursive)
+        .map_err(|e| e.to_string())?;
+    let target = path.to_path_buf();
+    std::thread::Builder::new()
+        .name("rotation-watch".to_string())
+        .spawn(move || {
+            // 监听器一丢（发端随它走）⇒ 收不到 ⇒ 线程退出。
+            while rx.recv().is_ok() {
+                while rx.try_recv().is_ok() {}
+                rescan(&target);
+            }
+        })
+        .map_err(|e| e.to_string())?;
+    Ok(w)
+}
+
+/// 常驻 / 流那一路的后端起来时调一次：盯这台的 `rotation.json`，进程活着就一直盯。盯不上只出声。
+pub(crate) fn watch_here() {
+    static HELD: Mutex<Option<notify::RecommendedWatcher>> = Mutex::new(None);
+    let Some(path) = path_now() else { return };
+    let mut g = HELD.lock().unwrap_or_else(|e| e.into_inner());
+    if g.is_some() {
+        return;
+    }
+    match watch(&path) {
+        Ok(w) => *g = Some(w),
+        Err(e) => tracing::warn!(
+            "[rotation] 盯不上 {}：{e}（别处写的轮换要等面板重开才看得见）",
+            path.display()
+        ),
     }
 }
 

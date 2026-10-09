@@ -11,6 +11,6 @@ export function terminalFrontAvailable(): boolean {
   return hostFacts().terminalFront;
 }
 
-/** 快捷键 / 命令面板走到 ↗ 而本机不是 Windows 时说的话（标题 · 正文）。 */
+/** 快捷键 / 命令面板走到 ↗ 而这台上 ↗ 不是真的时说的话（标题 · 正文）。 */
 export const TERMINAL_FRONT_UNAVAILABLE_TITLE = copyText("terminalFront.unavailable.title");
 export const TERMINAL_FRONT_UNAVAILABLE_DETAIL = copyText("terminalFront.unavailable.detail");

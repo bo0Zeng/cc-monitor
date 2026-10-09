@@ -495,7 +495,7 @@ pub(crate) fn fence(home: &str, raw: &str) -> Result<String, String> {
 // **`ccm` 照旧找不到**。回头查：`$ccmBinDir` 是空的，而 `$env:PATH` 前面多了一个 `;`
 // ⇒ 赋值那一行**根本没执行**，而 `if` 那一行执行了。
 //
-// 用 PowerShell 自己的 `Get-Content` 读回来（真机逐字，住 `tests/evidence/K-R132-摸底.md`）：
+// 用 PowerShell 自己的 `Get-Content` 读回来（win11 真机逐字）：
 //
 // ```text
 // line 88 : # cc-monitor锛氳 `ccm` 鍦ㄨ繖涓?PowerShell …銆擪-R132銆曘€?$ccmBinDir = Join-Path …

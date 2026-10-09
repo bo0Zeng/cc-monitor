@@ -214,6 +214,25 @@ impl Said {
         )
     }
 
+    /// 详情里「原话」那一项的值（自己写的那一行）；没有、而那份是对端写好的 ⇒ 那一整份（日志里照样看得到下层说了什么）；都没有 ⇒ 空串。
+    pub(crate) fn raw(&self) -> String {
+        self.parts
+            .value(Label::Raw)
+            .map(str::to_string)
+            .or_else(|| self.parts.written().map(str::to_string))
+            .unwrap_or_default()
+    }
+
+    /// 交给只收 `io::Error` 的那一口（放程序那条路）：那一句 ＋ 原话合成一条，原话不丢。
+    pub(crate) fn into_io(self) -> std::io::Error {
+        let raw = self.raw();
+        if raw.is_empty() {
+            std::io::Error::other(self.said)
+        } else {
+            std::io::Error::other(format!("{}: {raw}", self.said))
+        }
+    }
+
     /// 壳命令的失败补上命令名（复制详情的「命令」那一项）：已经有一项「命令」（自己写的）或那份是后端写好的（它自己写了命令）⇒ 原样。
     /// 「命令」按项名次序插（[`Label::ALL`]：本机之后、其余几项之前）。每条壳命令的最外层经这里一次（`#[tauri::command]` 那几十条，判据扫着）。
     pub(crate) fn named(self, command: &str) -> Said {
@@ -221,6 +240,13 @@ impl Said {
             return self;
         }
         Said::of_parts(self.said, self.parts.insert(Label::Command, command))
+    }
+}
+
+impl std::fmt::Display for Said {
+    /// 只出那一句（详情不跟着进任何拼出来的句子 · 日志里要原话的另取 [`Said::raw`]）。
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.said)
     }
 }
 

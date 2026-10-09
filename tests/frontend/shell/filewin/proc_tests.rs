@@ -178,7 +178,7 @@ fn the_window_binary_is_never_guessed() {
     let dir = std::env::temp_dir().join(format!("filewin-bin-{}", std::process::id()));
     std::fs::create_dir_all(&dir).expect("造不出临时目录");
     let landing = dir.join("home-bin");
-    let mk = |_: &Path| -> Result<(), String> { Ok(()) };
+    let mk = |_: &Path| -> Result<(), crate::detail::Said> { Ok(()) };
     let ensure = crate::platform::fs::ensure_private_dir;
     // ① 纯函数那一格：落点的形状（Windows 上带 `.exe`）。
     let p = window_bin_in(&dir);
@@ -250,7 +250,7 @@ fn with_nothing_beside_the_exe_the_carried_window_binary_is_placed_and_returned(
     std::fs::create_dir_all(&exe_dir).expect("造不出 exe 目录");
     let landing = root.join("home").join(".cc-monitor").join("bin");
     let made = std::cell::Cell::new(0usize);
-    let mk = |_: &Path| -> Result<(), String> {
+    let mk = |_: &Path| -> Result<(), crate::detail::Said> {
         made.set(made.get() + 1);
         Ok(())
     };
@@ -298,7 +298,7 @@ fn with_nothing_beside_the_exe_the_carried_window_binary_is_placed_and_returned(
             .said,
         copy_text("rsFilewinProc.bin.noHome", &[])
     );
-    let no_dir = |_: &Path| -> Result<(), String> { Err("不许建".to_string()) };
+    let no_dir = |_: &Path| -> Result<(), crate::detail::Said> { Err("不许建".into()) };
     let fresh = root.join("fresh");
     let e = resolve_window_bin_in(None, &exe_dir, Some(b"x"), Some(&fresh), &mk, &no_dir)
         .expect_err("建不了目录也解出来了");
@@ -319,7 +319,7 @@ fn with_nothing_beside_the_exe_the_carried_window_binary_is_placed_and_returned(
     {
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&denied, std::fs::Permissions::from_mode(0o500)).unwrap();
-        let ok_dir = |_: &Path| -> Result<(), String> { Ok(()) };
+        let ok_dir = |_: &Path| -> Result<(), crate::detail::Said> { Ok(()) };
         let e = resolve_window_bin_in(None, &exe_dir, Some(b"x"), Some(&denied), &mk, &ok_dir)
             .expect_err("只读目录里竟然写进去了");
         // root 跑测试时只读挡不住 —— 那一形不判。

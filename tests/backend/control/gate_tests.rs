@@ -85,7 +85,7 @@ fn the_liveness_answer_comes_from_this_moment_not_from_a_cache() {
 /// 本模块的两处是 **argv 直传**（`Command::new("tmux")`），没有 builder 能把命令行取回来，
 /// 也没有办法在不污染整个测试进程 `PATH` 的前提下把它指向一个假 tmux
 /// （`Command::new` 走进程级 `PATH`，`std::env::set_var` 会波及并行跑的别的测试）。
-/// ⇒ **行为那一半的死值不在 cargo 里**，在 `tests/evidence/K-R12-deathvalue.md`：
+/// ⇒ **行为那一半的死值不在 cargo 里**：
 /// 同样这两条 argv 对真 tmux 3.4 私有 socket 打过，改前 `段数=1`、改后 `段数=3`。
 ///
 /// 🔴 **本条守的是「别漏、别搬错位置」，不是「它真的生效了」**（「盘上有 ≠ 被走到」）。
@@ -167,7 +167,7 @@ fn both_tmux_call_sites_ask_for_a_utf8_client_before_the_subcommand() {
 
 /// ★★ **K-R12 `J1` 死值验（本模块这一侧）：段数下溢必须红。**
 ///
-/// 死值取自 `tests/evidence/K-R12-deathvalue.md` ①：真 tmux 3.4 + POSIX 客户端下，
+/// 死值取自真 tmux 3.4 + POSIX 客户端下现打：
 /// `list-sessions` 那三列打出来是 `kr12_$0_cc-deadval1`、
 /// `display-message` 那三列打出来是 `$0_cc-deadval1_1` —— **TAB 全没了，段数 1**。
 ///

@@ -332,25 +332,65 @@ impl From<Refusal> for Said {
     }
 }
 
-/// 下层错 ⇒ 句子里那一格原因词：IO 错按种类（`copy_core::io_reason`）；SFTP 状态码认得的两种（不在 · 无权限）同那张表；其余「原因不明」。
+/// 下层错 ⇒ 句子里那一格原因词：SFTP 那一层的按状态（[`why_of_sftp`]），IO 错按种类（[`why_of_io`]）；其余「原因不明」。
 /// 原话不在这里丢：调用方把它交给 [`Said`] / [`Refusal::Io`] 进复制详情。
 fn why_of(e: &(dyn std::error::Error + 'static)) -> String {
-    use russh_sftp::client::error::Error as E;
-    use russh_sftp::protocol::StatusCode as C;
+    if let Some(io) = e.downcast_ref::<std::io::Error>() {
+        return why_of_io(io);
+    }
+    match e.downcast_ref::<russh_sftp::client::error::Error>() {
+        Some(se) => why_of_sftp(se),
+        None => copy_core::io_reason(std::io::ErrorKind::Other),
+    }
+}
+
+/// SFTP 文件句柄读写那一形的原因词。`russh_sftp` 把失败包进 `io::Error` 有两种包法，种类多是 Other：
+/// ① 整个 SFTP 错包在里面（取出来按 [`why_of_sftp`]）；② 只剩服务端那句话（状态码丢了 —— 认 SFTP v3 标准码的那几句标准话）。
+/// 都不是 ⇒ 按 IO 种类（`copy_core::io_reason`）。传输台写 / 读 / 挪远端那份时经这里。
+pub(crate) fn why_of_io(e: &std::io::Error) -> String {
     use std::io::ErrorKind as K;
-    let kind = if let Some(io) = e.downcast_ref::<std::io::Error>() {
-        io.kind()
-    } else {
-        match e.downcast_ref::<E>() {
-            Some(E::Status(st)) => match st.status_code {
-                C::NoSuchFile => K::NotFound,
-                C::PermissionDenied => K::PermissionDenied,
-                _ => K::Other,
-            },
-            _ => K::Other,
+    match e.kind() {
+        K::TimedOut => return copy_text("reason.sftp.noAnswer", &[]),
+        K::BrokenPipe | K::ConnectionReset => {
+            // 传输中对端断了 ＝ SFTP 标准码 7（连接断）那一件。
+            return copy_core::sftp_status_reason(7);
         }
+        _ => {}
+    }
+    if e.kind() != K::Other {
+        return copy_core::io_reason(e.kind());
+    }
+    let Some(inner) = e.get_ref() else {
+        return copy_core::io_reason(K::Other);
     };
-    copy_core::io_reason(kind)
+    if let Some(se) = inner.downcast_ref::<russh_sftp::client::error::Error>() {
+        return why_of_sftp(se);
+    }
+    // 服务端那句标准话（OpenSSH sftp-server 按码给的那几句；大小写不论）。
+    let code = match inner.to_string().trim().to_ascii_lowercase().as_str() {
+        "no such file" => 2,
+        "permission denied" => 3,
+        "failure" => 4,
+        "bad message" => 5,
+        "no connection" => 6,
+        "connection lost" => 7,
+        "operation unsupported" => 8,
+        _ => 0,
+    };
+    copy_core::sftp_status_reason(code)
+}
+
+/// `russh_sftp` 的错 ⇒ 原因词：状态按码（`copy_core::sftp_status_reason`）· 等不到回包 ⇒ 无应答 · 超出那台的限额 ⇒ 超出上限 ·
+/// 回了不该回的包 ⇒ 程序出错（两端协议对不上）；其余（底层 IO 已成字串 · 通道收发断了）⇒ 原因不明。
+fn why_of_sftp(e: &russh_sftp::client::error::Error) -> String {
+    use russh_sftp::client::error::Error as E;
+    match e {
+        E::Status(st) => copy_core::sftp_status_reason(st.status_code as u32),
+        E::Timeout => copy_text("reason.sftp.noAnswer", &[]),
+        E::Limited(_) => copy_text("reason.sftp.overLimit", &[]),
+        E::UnexpectedPacket => copy_text("reason.sftp.badMessage", &[]),
+        E::IO(_) | E::UnexpectedBehavior(_) => copy_core::io_reason(std::io::ErrorKind::Other),
+    }
 }
 
 /// **纯词法那一道**：把 `path` 归一成 home 相对，判它落不落在两个根里。

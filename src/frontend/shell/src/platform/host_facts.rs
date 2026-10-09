@@ -12,7 +12,9 @@ use serde::Serialize;
 pub struct HostFacts {
     /// 系统：`linux` · `macos` · `windows`（别的原样）。根元素 `data-host-os` 与「这台电脑」那一行的系统名用它。
     pub os: String,
-    /// ↗「切到对应终端窗口」在这台上是不是真的：Windows 走 Win32（`EnumWindows` · `SetForegroundWindow`）；别的平台上那几跳今天是桩 ⇒ 不显示。
+    /// ↗「切到对应终端窗口」在这台上是不是真的：Windows 走 Win32（`EnumWindows` · `SetForegroundWindow`）；Linux 的 X11 会话走 EWMH，
+    /// Wayland 会话照常显示、点了由壳照实说「这个桌面上切不了」并给［在 cc-monitor 里打开］（结局族 `desktop-wont-switch`）；
+    /// macOS 上那几跳是桩 ⇒ 不显示。
     pub terminal_front: bool,
     /// 本机 shell 说哪种方言（别名块按它写）：`posix` · `powershell`。
     pub shell_dialect: String,
@@ -24,7 +26,7 @@ pub struct HostFacts {
 pub fn host_facts() -> HostFacts {
     HostFacts {
         os: host_core::OS.to_string(),
-        terminal_front: cfg!(windows),
+        terminal_front: cfg!(any(windows, target_os = "linux")),
         shell_dialect: if cfg!(windows) { "powershell" } else { "posix" }.to_string(),
         ccm_path_cache: !cfg!(windows),
     }

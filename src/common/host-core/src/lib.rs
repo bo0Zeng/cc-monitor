@@ -10,7 +10,7 @@ mod atomic;
 mod clock;
 mod geometry;
 
-pub use atomic::{atomic_write_json, win32_long_path};
+pub use atomic::atomic_write_json;
 pub use clock::local_offset_at;
 
 /// 这一份编给的系统与架构（「复制详情」里写「本机」那一行用）。平台形态只许住宿主原语与 `platform/`。

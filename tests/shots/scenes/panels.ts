@@ -638,6 +638,23 @@ export const FRONT_SCENES: Scene[] = [
   }, (w) => {
     w.commands.bring_terminal_to_front = () => ({ kind: "several", program: "WindowsTerminal.exe", count: 3 });
   }),
+  { ...frontScene("panel-front-wayland", "↗ · Wayland 桌面上切不了", "Linux 的 Wayland 会话（GNOME）：别的程序的窗口 cc-monitor 看不见也切不了 ⇒ 照实说，给［在 cc-monitor 里打开］", async () => {
+    await mainReady(ALL_TABS);
+    await clickHeadFront();
+    await waitFor("[data-role=front-result]");
+    await sleep(400);
+  }, (w) => {
+    w.commands.bring_terminal_to_front = () => ({ kind: "desktop-wont-switch", desktop: "GNOME" });
+  }), hostOs: "linux" },
+  { ...frontScene("panel-front-wayland-open-here", "↗ · ［在 cc-monitor 里打开］", "上一张点了［在 cc-monitor 里打开］⇒ 浮层收起，底部抽屉开到这个会话的「终端」页", async () => {
+    await mainReady(ALL_TABS);
+    await clickHeadFront();
+    await waitFor("[data-role=front-result]");
+    await click(await byText("[data-role=front-result] button", "在 cc-monitor 里打开"));
+    await sleep(800);
+  }, (w) => {
+    w.commands.bring_terminal_to_front = () => ({ kind: "desktop-wont-switch", desktop: "GNOME" });
+  }), hostOs: "linux" },
   frontScene("panel-front-background-tab", "↗ · 终端在后台标签页", "单独起的 PowerShell 被 Win11 交给「终端」应用（进程链断）、借它的控制台挂了记号标题，却没有窗口带着它（那个标签页不在前台）：浮层照实说找不到窗口，灰字给改法", async () => {
     await mainReady(ALL_TABS);
     await clickHeadFront();

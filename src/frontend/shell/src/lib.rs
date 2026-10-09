@@ -475,7 +475,7 @@ pub fn run() {
     let born_private = platform::fs::ensure_private_dir(&monitor_data_dir);
     let logging_state = logging::init(&monitor_data_dir);
     if let Err(e) = born_private {
-        tracing::warn!("{e}");
+        tracing::warn!("{}（{}）", e.said, e.raw());
     }
     tracing::info!(
         "[perf] T+{}ms cc-monitor starting (data_dir={}, log_dir={})",
@@ -642,7 +642,11 @@ pub fn run() {
                         //   **不是**去 `reason` 串里认字（那是 `KPY5` 治的那种假信号）。
                         match local_backend_host::take_start_refusal() {
                             Some(next_step) => {
-                                tracing::warn!("本机后端未启动: {reason}；找过 {looked_at:?}");
+                                tracing::warn!(
+                                    "本机后端未启动: {}（{}）；找过 {looked_at:?}",
+                                    reason.said,
+                                    reason.raw()
+                                );
                                 if let Err(e) = crate::platform::notify::show(
                                     app.handle(),
                                     &copy_text("rsLib.run.localBackendDown", &[]),
@@ -655,7 +659,11 @@ pub fn run() {
                                 }
                             }
                             None => {
-                                tracing::info!("本机后端未启动: {reason}；找过 {looked_at:?}")
+                                tracing::info!(
+                                    "本机后端未启动: {}（{}）；找过 {looked_at:?}",
+                                    reason.said,
+                                    reason.raw()
+                                )
                             }
                         }
                     }
@@ -961,7 +969,6 @@ pub fn run() {
             //    ⚠ 界面上点得到它的地方是旧 SFTP 面板的表头 —— 那块面板按 `§6.6 C`
             //    要退役，而在这个窗口真能替代它之前删掉旧的等于把功能拿走 ⇒ 这一刀不删。
             filewin::entry::open_file_window,
-            // `push_public_key`〔散文墓碑〕退役：界面经通道问本机后端 `pubkey-push`。
             // 远端 `ccm` 探针那条命令退役：渲染进了那台后端，能力问它自己。
             // 🔴 `K-R69` / `KR69D2`：本机 `ccm` 这一格（我们那一份 · PATH 上那一份 · 判词）。
             ccm_probe::local_ccm_entry_status,
@@ -1612,6 +1619,9 @@ async fn bring_terminal_to_front(
     let r: Result<bind::FrontOutcome, Said> = async move {
         let cache = cache.inner().clone();
         Ok(tokio::task::spawn_blocking(move || {
+            if let Some(o) = bind::front_refusal() {
+                return o;
+            }
             let Some(binding) = cache.lookup(&session_id) else {
                 return bind::FrontOutcome::Unbound;
             };

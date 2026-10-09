@@ -84,7 +84,7 @@ pub(crate) fn find_pair(
 // **规则只有一份** —— 拼接一处，落盘序列一处
 // ═══════════════════════════════════════════════════════════════════════════
 //
-// 立件时现打（`tests/evidence/MC1-AL1-摸底.md` 第四节）：配对判定早就只有 [`find_pair`] 一份，
+// 立件时现打：配对判定早就只有 [`find_pair`] 一份，
 // 但「配对之后怎么拼」写了三份（`sftp::merge/strip_profile_block` · `profile_installer` 的
 // `replace_or_append_block/strip_block` · `account_aliases::ensure_rc_source_line` 里内联的那一段 —— 那一跳后来整个退役了），〔散文墓碑〕
 // 「备份 → 原子写 → 回读比对 → 回滚」这个序列写了五个函数体（本机三处 ＋ 远端装/卸）。

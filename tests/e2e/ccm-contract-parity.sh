@@ -16,7 +16,6 @@
 #        `control::ccm::plan::tests::a_command_from_the_backend_is_never_rewritten_by_the_shell`）·
 #        `A′h`(5) `$CCM_BACKEND_BIN` → 部署落点 → PATH 的查找次序（`K-R48` `§0h` 逐字：
 #        「这道题消失了，不是被挑了边」）。
-#   逐条判词住 `tests/evidence/K-R48-356-verdicts.tsv`（第 285–356 行就是本套件那 72 条）。
 #
 # ## 为什么单独一套，而不是塞进既有五套
 #
@@ -178,8 +177,7 @@ BASE_EXTRA=(CLAUDE_CONFIG_DIR="$W/acct-z")
 pair "codex + --base（没有账号这一维：什么都不做）" -- --ccm-agent codex --base
 BASE_EXTRA=()
 
-# ⚠ **`A″` 组 7 条整组删了**（判词 `N`，住 `tests/evidence/K-R48-356-verdicts.tsv`
-#   第 297–303 行）。它问的是「`--account b` 拿到的 `configDir` **来自哪一条路**」，
+# ⚠ **`A″` 组 7 条整组删了**（判词 `N`）。它问的是「`--account b` 拿到的 `configDir` **来自哪一条路**」，
 #   而它的夹具要害逐字是「**backend 与 manifest 必须答不同的目录**」——
 #   同一个进程之下两者**是同一件事**，这个夹具造不出来了。
 #   ⚠ 「值真的跟着账号表走」这一半**没丢**：backend 侧 `control::ccm` 的

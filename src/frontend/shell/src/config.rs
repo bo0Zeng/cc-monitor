@@ -175,31 +175,41 @@ impl ConfigEdit {
 #[derive(Debug)]
 pub(crate) enum ConfigWriteError {
     /// 盘上那份读不懂 / 根不是对象 ⇒ **一个字节没写**（红线 ④）。
-    Unreadable {
-        path: PathBuf,
-        detail: String,
-    },
+    Unreadable { path: PathBuf, detail: String },
     /// 补丁本身不成形（空路径 —— 那就是「整份替换」换了个名字）⇒ 整批拒，盘上一个字节不动。
     BadEdit(String),
     /// `setin` 认不出那一个元素（`ambiguous` = 认出了不止一个）⇒ **整批拒**，盘上一个字节不动
     /// （设置页按格改一台，而那台在盘上已被改名 / 删掉：不许一半落盘、一半静默丢掉）。
-    NoSuchElement {
-        ambiguous: bool,
-    },
+    NoSuchElement { ambiguous: bool },
     /// `insertin` 要插的那个键盘上已经有了 ⇒ **整批拒**，盘上一个字节不动（不静默变成改那一台）。
     ElementExists,
     /// 改完的机器表不成立（同名 · 端口越界 · 地址 / 用户空）⇒ **整批拒**，盘上一个字节不动。
     /// 单台改、添加一台、批量添加都走这一口（同一份校验，[`check_machine_table`]）。
     BadMachine(MachineFault),
-    Io(String),
+    /// 盘上那一步没成：那一句 ＋ 复制详情（原话在详情里）。
+    Io(Said),
+}
+
+impl ConfigWriteError {
+    /// 交给界面的那一形：读不懂那份的解析错与盘上那一步的原话进复制详情，其余只有那一句。
+    pub(crate) fn into_said(self) -> Said {
+        match self {
+            ConfigWriteError::Io(s) => s,
+            ConfigWriteError::Unreadable { ref detail, .. } => {
+                let raw = detail.clone();
+                Said::with_raw(self.to_string(), raw)
+            }
+            other => Said::from(other.to_string()),
+        }
+    }
 }
 
 impl std::fmt::Display for ConfigWriteError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ConfigWriteError::Unreadable { path, detail } => f.write_str(&copy_text(
+            ConfigWriteError::Unreadable { path, .. } => f.write_str(&copy_text(
                 "rsConfig.write.unreadable",
-                &[("path", &path.display().to_string()), ("e", detail)],
+                &[("path", &path.display().to_string())],
             )),
             ConfigWriteError::NoSuchElement { .. } => {
                 f.write_str(&copy_text("rsConfig.write.elementGone", &[]))
@@ -208,7 +218,8 @@ impl std::fmt::Display for ConfigWriteError {
                 f.write_str(&copy_text("rsConfig.write.elementExists", &[]))
             }
             ConfigWriteError::BadMachine(m) => f.write_str(&m.said()),
-            ConfigWriteError::BadEdit(m) | ConfigWriteError::Io(m) => f.write_str(m),
+            ConfigWriteError::BadEdit(m) => f.write_str(m),
+            ConfigWriteError::Io(s) => f.write_str(&s.said),
         }
     }
 }
@@ -220,10 +231,10 @@ static WRITE_LOCK: Mutex<()> = Mutex::new(());
 #[tauri::command]
 pub fn patch_config(edits: Vec<ConfigEdit>) -> Result<(), Said> {
     let r: Result<(), Said> = (move || -> Result<(), Said> {
-        let path = resolve_config_path().ok_or_else(|| "no home dir".to_string())?;
+        let path = resolve_config_path().ok_or_else(|| copy_text("rsConfig.write.noHome", &[]))?;
         Ok(patch_config_at(&path, &edits)
             .map(|_| ())
-            .map_err(|e| e.to_string())?)
+            .map_err(ConfigWriteError::into_said)?)
     })();
     r.map_err(|s| s.named("patch_config"))
 }
@@ -253,17 +264,33 @@ pub(crate) fn patch_config_at(
     // ② 串行化。锁中毒（别的写者 panic 了）不妨碍这一次：锁只护「读-改-写」这一段，没有要恢复的内存状态。
     let _guard = WRITE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     // ②b 跨进程：两个 monitor 进程同写也串起来 —— 先保证目录在（锁的就是它），再拿它的锁，锁住之后才现读。
-    let dir = path
-        .parent()
-        .ok_or_else(|| ConfigWriteError::Io(format!("no parent dir for {}", path.display())))?;
+    let dir = path.parent().ok_or_else(|| {
+        ConfigWriteError::Io(
+            copy_text(
+                "rsConfig.write.noParent",
+                &[("path", &path.display().to_string())],
+            )
+            .into(),
+        )
+    })?;
     // 数据目录只给本人（缺的几层建成 0700，已在的不动）；下面那份临时件出生即 0600，换名上位后 `config.json` 就是它的权限。
     crate::platform::fs::ensure_private_dir(dir).map_err(ConfigWriteError::Io)?;
     let _cross = crate::platform::fs::hold_dir_lock(dir).map_err(ConfigWriteError::Io)?;
 
     // ③ 锁内现读。不存在 ⇒ 空对象；读不懂 / 根不是对象 ⇒ 不写。
     let mut root: Map<String, Value> = if path.exists() {
-        let raw = std::fs::read_to_string(path)
-            .map_err(|e| ConfigWriteError::Io(format!("read {}: {e}", path.display())))?;
+        let raw = std::fs::read_to_string(path).map_err(|e| {
+            ConfigWriteError::Io(Said::with_raw(
+                copy_text(
+                    "rsConfig.write.readFailed",
+                    &[
+                        ("path", &path.display().to_string()),
+                        ("why", &copy_core::io_reason(e.kind())),
+                    ],
+                ),
+                &e,
+            ))
+        })?;
         match serde_json::from_str::<Value>(&raw) {
             Ok(Value::Object(m)) => m,
             Ok(_) => {
@@ -291,18 +318,42 @@ pub(crate) fn patch_config_at(
     }
 
     // ⑤ 临时件带 pid：两个 monitor 进程不互删对方的临时件。
-    let pretty = serde_json::to_string_pretty(&Value::Object(root))
-        .map_err(|e| ConfigWriteError::Io(e.to_string()))?;
+    let pretty = serde_json::to_string_pretty(&Value::Object(root)).map_err(|e| {
+        ConfigWriteError::Io(Said::with_raw(
+            copy_text("rsConfig.write.encodeFailed", &[]),
+            &e,
+        ))
+    })?;
     let tmp = path.with_extension(format!("json.{}.tmp", std::process::id()));
     let mut opts = std::fs::OpenOptions::new();
     opts.write(true).create(true).truncate(true);
     crate::platform::fs::only_me_on_create(&mut opts);
     opts.open(&tmp)
         .and_then(|mut f| std::io::Write::write_all(&mut f, pretty.as_bytes()))
-        .map_err(|e| ConfigWriteError::Io(format!("write {}: {e}", tmp.display())))?;
+        .map_err(|e| {
+            ConfigWriteError::Io(Said::with_raw(
+                copy_text(
+                    "rsConfig.write.tmpFailed",
+                    &[
+                        ("path", &tmp.display().to_string()),
+                        ("why", &copy_core::io_reason(e.kind())),
+                    ],
+                ),
+                &e,
+            ))
+        })?;
     crate::platform::fs::atomic_replace(&tmp, path).map_err(|e| {
         let _ = std::fs::remove_file(&tmp);
-        ConfigWriteError::Io(format!("replace → {}: {e}", path.display()))
+        ConfigWriteError::Io(Said::with_raw(
+            copy_text(
+                "rsConfig.write.replaceFailed",
+                &[
+                    ("path", &path.display().to_string()),
+                    ("why", &copy_core::io_reason(e.kind())),
+                ],
+            ),
+            &e,
+        ))
     })?;
     Ok(applied)
 }
@@ -393,7 +444,8 @@ impl MachineFault {
 pub async fn machine_table_try(edits: Vec<ConfigEdit>) -> Result<Option<MachineFault>, Said> {
     let r: Result<Option<MachineFault>, Said> = async move {
         Ok(tauri::async_runtime::spawn_blocking(move || {
-            let path = resolve_config_path().ok_or_else(|| "no home dir".to_string())?;
+            let path =
+                resolve_config_path().ok_or_else(|| copy_text("rsConfig.write.noHome", &[]))?;
             machine_table_try_at(&path, &edits)
         })
         .await
@@ -407,14 +459,25 @@ pub async fn machine_table_try(edits: Vec<ConfigEdit>) -> Result<Option<MachineF
 pub(crate) fn machine_table_try_at(
     path: &Path,
     edits: &[ConfigEdit],
-) -> Result<Option<MachineFault>, String> {
+) -> Result<Option<MachineFault>, Said> {
     let mut root: Map<String, Value> = match std::fs::read_to_string(path) {
         Ok(raw) => match serde_json::from_str::<Value>(&raw) {
             Ok(Value::Object(m)) => m,
             _ => return Ok(None),
         },
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Map::new(),
-        Err(e) => return Err(format!("read {}: {e}", path.display())),
+        Err(e) => {
+            return Err(Said::with_raw(
+                copy_text(
+                    "rsConfig.write.readFailed",
+                    &[
+                        ("path", &path.display().to_string()),
+                        ("why", &copy_core::io_reason(e.kind())),
+                    ],
+                ),
+                &e,
+            ))
+        }
     };
     if edits.iter().any(|e| e.path().is_empty()) {
         return Ok(None);

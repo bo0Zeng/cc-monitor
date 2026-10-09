@@ -62,6 +62,22 @@ describe("下拉", () => {
     expect(menu()).not.toBeNull();
   });
 
+  it("★ closedKeys: open ⇒ 合着时方向键 / Home / End 一个都不换值；↓ 只展开；开着选了才回调", () => {
+    const onChange = vi.fn();
+    const h = select({ label: "去向", options: OPTS, value: "work", onChange, closedKeys: "open" });
+    document.body.appendChild(h.el);
+    const press = (key: string, mods: KeyboardEventInit = {}) => h.el.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, ...mods }));
+    for (const k of ["ArrowUp", "ArrowLeft", "ArrowRight", "Home", "End", "PageDown"]) press(k);
+    press("ArrowUp", { altKey: true });
+    press("ArrowRight", { ctrlKey: true });
+    expect([h.value(), menu(), onChange.mock.calls.length]).toEqual(["work", null, 0]);
+    press("ArrowDown");
+    expect(menu(), "↓ 展开").not.toBeNull();
+    expect([h.value(), onChange.mock.calls.length], "展开不换值").toEqual(["work", 0]);
+    rows()[2].click();
+    expect(onChange.mock.calls.map((c) => c[0])).toEqual(["personal"]);
+  });
+
   it("setValue / setOptions 不回调；换了选项、原值不在了 ⇒ 落到第一个能选的", () => {
     const onChange = vi.fn();
     const h = select({ label: "机器", options: OPTS, onChange });
