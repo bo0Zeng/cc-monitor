@@ -16,9 +16,10 @@ use std::path::{Path, PathBuf};
 
 use crate::assets::door::{self, Door};
 
-type Answer = Result<Value, (&'static str, String)>;
+type Answer = Result<Value, crate::stream::inbound::spec::Fail>;
 /// 装记录的写口（`skill_ledger::answer_record`）—— **由门（`stream/inbound/`）递进来**，本模块不直呼它（第四层判据 ④）。
-pub(crate) type Record<'a> = &'a dyn Fn(&Value) -> Result<Value, (&'static str, String)>;
+pub(crate) type Record<'a> =
+    &'a dyn Fn(&Value) -> Result<Value, crate::stream::inbound::spec::Fail>;
 
 /// 装记录里这一件叫什么（记录按 `skills 根 / name` 算目录 ⇒ 就是 `<skills 根>/cc-bus`）。
 pub(crate) const NAME: &str = "cc-bus";
@@ -226,10 +227,15 @@ pub(crate) fn state_at(skills: &Path) -> Value {
     })
 }
 
-fn skills_root() -> Result<PathBuf, (&'static str, String)> {
+fn skills_root() -> Result<PathBuf, crate::stream::inbound::spec::Fail> {
     super::asset_kind()
         .and_then(crate::agents::skills_root)
-        .ok_or(("refused", copy_text("beCcBusInstall.root.unknown", &[])))
+        .ok_or_else(|| {
+            crate::stream::inbound::spec::Fail::from((
+                "refused",
+                copy_text("beCcBusInstall.root.unknown", &[]),
+            ))
+        })
 }
 
 /// `cc-bus-install-state {}` → [`state_at`]。
@@ -279,7 +285,7 @@ pub(crate) fn install_at(d: &dyn Door, skills: &Path, record: Record) -> Answer 
                 "refused",
                 copy_text(
                     "beCcBusInstall.backup.failed",
-                    &[("dest", &dest_s), ("bak", &bak), ("e", &e)],
+                    &[("dest", &dest_s), ("bak", &bak), ("why", &e)],
                 ),
             )
         })?;
@@ -310,7 +316,7 @@ pub(crate) fn install_at(d: &dyn Door, skills: &Path, record: Record) -> Answer 
     }
     let record_failed = record(&json!({ "op": "add", "name": NAME, "files": files }))
         .err()
-        .map(|(_, e)| copy_text("beCcBusInstall.record.failed", &[("e", &e)]));
+        .map(|f| copy_text("beCcBusInstall.record.failed", &[("why", &f.into_note())]));
     Ok(json!({
         "dest": dest_s,
         "written": FILES.iter().map(|(rel, _)| *rel).collect::<Vec<_>>(),

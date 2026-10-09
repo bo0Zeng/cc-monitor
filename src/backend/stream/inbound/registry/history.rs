@@ -17,10 +17,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
         ],
         fields: &[out("customTitle", "自定义标题（`null` = 没改过名）"), out("entry", "改完的那一条：`starred` · `customTitle`（`null` = 没改过名）· `hidden` · `updatedAt`（毫秒，= 这一次）"), out("hidden", "隐藏"), arg("patch", "要改的那几格：`starred` / `customTitle` / `hidden`（`customTitle` 也认蛇形 `custom_title`）"), arg("sid", "会话 id"), both("starred", "星标"), out("updatedAt", "毫秒，= 这一次")],
         takes_input: true,
-        run: Run::Blocking(|r| {
+        run: Run::BlockingData(|r| {
             crate::history::history_annotations::answer_annotate(&r.args)
                 .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
     CommandSpec {
@@ -34,10 +33,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
         ],
         fields: &[out("removed", "真删了一条没有（`false` = 本来就没有这一条，文件没动）"), arg("sid", "会话 id")],
         takes_input: true,
-        run: Run::Blocking(|r| {
+        run: Run::BlockingData(|r| {
             crate::history::history_annotations::answer_forget(&r.args)
                 .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
     // 「这台上每条会话上次用哪个号起的」（起会话账号记录，会话所在那台各问一次）。读不懂 ⇒ `unreadable`。
@@ -47,10 +45,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
         codes: &["unreadable"],
         fields: &[out("accounts", "`{sid: 账号名}`")],
         takes_input: false,
-        run: Run::Blocking(|_| {
+        run: Run::BlockingData(|_| {
             crate::control::launch_account::answer_last_accounts()
                 .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
     // ── 只读查询面上线 —— 层 1 ＋ ──────────

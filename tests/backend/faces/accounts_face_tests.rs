@@ -164,10 +164,10 @@ fn ok(t: &Tmp, cmd: &str, args: Value) -> Value {
     call(t, cmd, args.clone()).unwrap_or_else(|e| panic!("{cmd} {args}：{e:?}"))
 }
 
-fn code(t: &Tmp, cmd: &str, args: Value) -> &'static str {
+fn code(t: &Tmp, cmd: &str, args: Value) -> String {
     match call(t, cmd, args.clone()) {
         Ok(v) => panic!("{cmd} {args} 本该被拒，却成了：{v}"),
-        Err((c, _)) => c,
+        Err(f) => f.code,
     }
 }
 
@@ -621,7 +621,7 @@ fn api_key_account_lands_its_key_in_the_apikey_table_not_in_the_manifest() {
             Some(b) => json!({ "name": "k2", "kind": "api-key", "key": key, "baseUrl": b }),
             None => json!({ "name": "k2", "kind": "api-key", "key": key }),
         };
-        assert_eq!(call(&t, "accounts-add", args).unwrap_err().0, "bad_args");
+        assert_eq!(call(&t, "accounts-add", args).unwrap_err().code, "bad_args");
         assert!(!t.exists(".cc-monitor/accounts/k2"));
     }
 }
@@ -631,8 +631,12 @@ fn api_key_account_lands_its_key_in_the_apikey_table_not_in_the_manifest() {
 fn a_key_that_does_not_land_is_said_not_swallowed() {
     let t = machine("api-fail");
     ok(&t, "accounts-init", json!({ "name": "lab" }));
-    let key_set =
-        |_: &Value| -> file_face::FileFaceAnswer { Err(("io_failed", "盘满了".to_string())) };
+    let key_set = |_: &Value| -> file_face::FileFaceAnswer {
+        Err(crate::stream::inbound::spec::Fail::from((
+            "io_failed",
+            "盘满了".to_string(),
+        )))
+    };
     let got = call_door(
         &t,
         &key_set,
@@ -1084,7 +1088,7 @@ fn rollback_refuses_traversal_and_skips_out_of_bounds_entries() {
     )
     .unwrap();
     let e = call(&t, "accounts-rollback", json!({})).unwrap_err();
-    assert_eq!(e.0, "io_failed");
+    assert_eq!(e.code, "io_failed");
     assert!(t.p("victim/precious.txt").is_file(), "越界的删除照做了");
     assert_eq!(
         t.read(".claude/.credentials.json"),

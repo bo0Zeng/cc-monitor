@@ -67,3 +67,30 @@ fn each_standard_sftp_status_becomes_a_word_in_the_closed_set_and_the_rest_is_un
         assert!(words.contains(&got), "码 {code} ⇒「{got}」不在原因词闭集里");
     }
 }
+
+#[test]
+fn a_program_that_is_not_there_is_not_installed_and_other_spawn_errors_read_as_io() {
+    let rules: serde_json::Value =
+        serde_json::from_str(include_str!("../../../src/shared/copy/rules.json")).unwrap();
+    let c_w8 = rules["rules"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["id"] == "C-W8")
+        .unwrap();
+    let words: Vec<&str> = c_w8["words"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|w| w.as_str().unwrap())
+        .collect();
+    let missing = spawn_reason(K::NotFound);
+    assert_eq!(missing, crate::copy_text("reason.spawn.notInstalled", &[]));
+    assert!(
+        words.contains(&missing.as_str()),
+        "「{missing}」不在原因词闭集里"
+    );
+    for kind in [K::PermissionDenied, K::Other] {
+        assert_eq!(spawn_reason(kind), io_reason(kind), "{kind:?}");
+    }
+}

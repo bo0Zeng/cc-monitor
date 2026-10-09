@@ -196,6 +196,26 @@ impl ChildFail {
     }
 }
 
+impl ChildFail {
+    /// 同 [`ChildFail::into_cmd_err`]，但句子里只给原因词（`said` 拿到的是 [`copy_core::spawn_reason`] 那一词），
+    /// 系统原话另带（进复制详情）。超时那一档照旧：原语那句就是成品，没有原话。
+    pub(crate) fn into_cmd_said(
+        self,
+        other: &'static str,
+        said: impl FnOnce(&str) -> String,
+    ) -> (&'static str, copy_core::said::Said) {
+        match self {
+            ChildFail::TimedOut { .. } => {
+                (TIMED_OUT, copy_core::said::Said::from(self.to_string()))
+            }
+            ChildFail::NotFound(e) | ChildFail::Io(e) => (
+                other,
+                copy_core::said::Said::with_raw(said(&copy_core::spawn_reason(e.kind())), &e),
+            ),
+        }
+    }
+}
+
 /// 命令级码：这条命令起的子进程过了期限没结束（已杀整组）。
 pub(crate) const TIMED_OUT: &str = "child_timed_out";
 

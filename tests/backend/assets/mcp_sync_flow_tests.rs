@@ -116,7 +116,7 @@ fn the_target_fills_each_slot_from_the_card_or_its_own_value_and_never_from_the_
         Ok(json!({}))
     };
     let before = std::fs::read_to_string(dst.join(mcp_json())).unwrap();
-    let (code, _) = answer_apply(
+    let crate::stream::inbound::spec::Fail { code, .. } = answer_apply(
         &LocalFiles,
         &record,
         &json!({ "name": "s", "at": at(&dst), "def": def, "fill": {}, "target": pre["target"] }),
@@ -150,7 +150,7 @@ fn the_target_fills_each_slot_from_the_card_or_its_own_value_and_never_from_the_
         ))
     );
     // 交来的定义里夹着值 ⇒ 拒（值只许从卡上或这台来）
-    let (code, _) = answer_preview(
+    let crate::stream::inbound::spec::Fail { code, .. } = answer_preview(
         &LocalFiles,
         &NoFacts,
         &json!({ "name": "s", "at": at(&dst), "def": { "command": "x", "env": { "API_KEY": "leak" } } }),
@@ -175,7 +175,7 @@ fn a_target_that_changed_after_the_preview_is_left_alone_and_user_level_is_read_
     .unwrap();
     std::fs::write(dst.join(mcp_json()), "{\"mcpServers\":{\"z\":{}}}").unwrap();
     let record = |_: &Value| Ok(json!({}));
-    let (code, _) = answer_apply(
+    let crate::stream::inbound::spec::Fail { code, .. } = answer_apply(
         &LocalFiles,
         &record,
         &json!({ "name": "a", "at": at(&dst), "def": def, "target": pre["target"] }),
@@ -187,7 +187,7 @@ fn a_target_that_changed_after_the_preview_is_left_alone_and_user_level_is_read_
         "{\"mcpServers\":{\"z\":{}}}"
     );
     // 这台没建账号库（家目录是临时目录）⇒ 用户级只读。
-    let (code, _) = answer_preview(
+    let crate::stream::inbound::spec::Fail { code, .. } = answer_preview(
         &crate::assets::aliases::tests::HomeDoor(d.clone()),
         &NoFacts,
         &json!({ "name": "a", "at": { "level": "user" }, "def": def }),

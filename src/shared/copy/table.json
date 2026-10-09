@@ -43,8 +43,8 @@
     "beAcctFace.key.unreadable": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取 key 表失败 · {e} · 该账号的行未清掉",
-      "args": ["e"]
+      "zh": "读取 key 表失败 · {why} · 该账号的行未清掉",
+      "args": ["why"]
     },
     "beAcctPlan.remove.keyOutside": {
       "kind": "body",
@@ -349,14 +349,14 @@
     "beAcctFace.aliases.writeFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "写入失败 · 别名文件 · {e}",
-      "args": ["e"]
+      "zh": "写入失败 · 别名文件 · {why}",
+      "args": ["why"]
     },
     "beAcctFace.key.notSaved": {
       "kind": "error",
       "role": "报错",
-      "zh": "已建账号 · API key 保存失败 · {e} · 在该账号的行重填",
-      "args": ["e"]
+      "zh": "已建账号 · API key 保存失败 · {why} · 在该账号的行重填",
+      "args": ["why"]
     },
     "beAcctModel.parse.notObject": {
       "kind": "error",
@@ -874,8 +874,8 @@
     "beAssetCatalog.write.mkdirFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "写入失败 · {dir} · {e}",
-      "args": ["dir", "e"]
+      "zh": "写入失败 · {dir} · {why}",
+      "args": ["dir", "why"]
     },
     "beAssetCatalog.write.noHome": {
       "kind": "error",
@@ -1012,8 +1012,8 @@
     "beSkillLedger.write.mkdirFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "写入失败 · {dir} · {e}",
-      "args": ["dir", "e"]
+      "zh": "写入失败 · {dir} · {why}",
+      "args": ["dir", "why"]
     },
     "beSkillLedger.add.noRoot": {
       "kind": "error",
@@ -1066,8 +1066,8 @@
     "beUpstreamFileFace.write.mkdirFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "写入失败 · {dir} · {e}",
-      "args": ["dir", "e"]
+      "zh": "写入失败 · {dir} · {why}",
+      "args": ["dir", "why"]
     },
     "beClaudeAssets.scan.noHome": {
       "kind": "body",
@@ -1078,8 +1078,8 @@
     "beClaudeAssets.scan.listFailed": {
       "kind": "body",
       "role": "说明",
-      "zh": "读取失败 · {path} · {e}",
-      "args": ["path", "e"]
+      "zh": "读取失败 · {path} · {why}",
+      "args": ["path", "why"]
     },
     "beClaudeAssets.scan.notUtf8": {
       "kind": "body",
@@ -1282,29 +1282,29 @@
     "beCapturePane.run.noTmux": {
       "kind": "error",
       "role": "报错",
-      "zh": "tmux 启动失败 · {e}",
-      "args": ["e"],
+      "zh": "tmux 启动失败 · {why}",
+      "args": ["why"],
       "limited": ["tmux"]
     },
     "beCapturePane.classify.noServer": {
       "kind": "error",
       "role": "报错",
-      "zh": "tmux 读取画面失败 · {tail} · 此机无运行中的 tmux",
-      "args": ["tail"],
+      "zh": "tmux 读取画面失败 · tmux 报错 · 此机无运行中的 tmux",
+      "args": [],
       "limited": ["tmux"]
     },
     "beCapturePane.classify.noTarget": {
       "kind": "error",
       "role": "报错",
-      "zh": "tmux 读取画面失败 · {tail} · tmux 会话不存在",
-      "args": ["tail"],
+      "zh": "tmux 读取画面失败 · tmux 报错 · tmux 会话不存在",
+      "args": [],
       "limited": ["tmux"]
     },
     "beCapturePane.classify.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "tmux 读取画面失败 · 退出码 {status} · {tail}",
-      "args": ["status", "tail"],
+      "zh": "tmux 读取画面失败 · tmux 报错",
+      "args": [],
       "limited": ["tmux"]
     },
     "beGate.probe.noTmux": {
@@ -1481,8 +1481,8 @@
     "beDoor.fs.mkdirFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "写入失败 · {dir} · {e}",
-      "args": ["dir", "e"]
+      "zh": "写入失败 · {dir} · {why}",
+      "args": ["dir", "why"]
     },
     "beDoor.key.noRandom": {
       "kind": "error",
@@ -1543,8 +1543,8 @@
     "beResident.fs.mkdirFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "写入失败 · {dir} · {e}",
-      "args": ["dir", "e"]
+      "zh": "写入失败 · {dir} · {why}",
+      "args": ["dir", "why"]
     },
     "rsRemoteResident.stop.unknownAnswer": {
       "kind": "error",
@@ -6015,7 +6015,7 @@
     "cfgPage.mcp.removeTitle": {
       "kind": "title",
       "role": "标题",
-      "zh": "从所有账号删除 {name}",
+      "zh": "从所有账号删除「{name}」",
       "args": ["name"]
     },
     "cfgPage.mcp.removeAction": {
@@ -6672,7 +6672,7 @@
     "profilesPage.form.titleEdit": {
       "kind": "title",
       "role": "标题",
-      "zh": "改 {name}",
+      "zh": "改「{name}」",
       "args": ["name"]
     },
     "profilesPage.form.titleNew": {
@@ -6718,7 +6718,7 @@
     "profilesPage.function.title": {
       "kind": "title",
       "role": "标题",
-      "zh": "{name} · 终端函数",
+      "zh": "「{name}」 · 终端函数",
       "args": ["name"]
     },
     "profilesPage.head.line": {
@@ -6860,13 +6860,13 @@
     "profilesPage.merge.titleBare": {
       "kind": "title",
       "role": "标题",
-      "zh": "{name} 合下来",
+      "zh": "「{name}」合下来",
       "args": ["name"]
     },
     "profilesPage.merge.title": {
       "kind": "title",
       "role": "标题",
-      "zh": "{name} 合下来 · 继承链 {chain}",
+      "zh": "「{name}」合下来 · 继承链 {chain}",
       "args": ["name", "chain"]
     },
     "profilesPage.migrated.ack": {
@@ -6956,7 +6956,7 @@
     "profilesPage.remove.reparent": {
       "kind": "title",
       "role": "标题",
-      "zh": "改成基于 {parent} · 推荐",
+      "zh": "改成基于「{parent}」 · 推荐",
       "args": ["parent"]
     },
     "profilesPage.remove.reparentRoot": {
@@ -15679,14 +15679,14 @@
     "bePlatformLock.hold.waitFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "加锁 {dir} 失败 · 等待返回 {status}",
-      "args": ["dir", "status"]
+      "zh": "加锁 {dir} 失败 · 原因不明",
+      "args": ["dir"]
     },
     "beHistoryAnnotations.writeAt.mkdirFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "写入失败 · {dir} · {e}",
-      "args": ["dir", "e"]
+      "zh": "写入失败 · {dir} · {why}",
+      "args": ["dir", "why"]
     },
     "beHistoryAnnotations.writeAt.noParent": {
       "kind": "error",
@@ -18388,8 +18388,8 @@
     "beSkillFlow.install.recordFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "已安装 · 安装记录未写入（{e}） · 卸载时先整份备份再删",
-      "args": ["e"]
+      "zh": "已安装 · 安装记录未写入（{why}） · 卸载时先整份备份再删",
+      "args": ["why"]
     },
     "beSkillFlow.uninstall.noSeen": {
       "kind": "error",
@@ -18406,8 +18406,8 @@
     "beSkillFlow.uninstall.dropFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "已删的项未从安装记录摘掉 · {e} · 下次会显示为已不在",
-      "args": ["e"]
+      "zh": "已删的项未从安装记录摘掉 · {why} · 下次会显示为已不在",
+      "args": ["why"]
     },
     "beSkillFlow.uninstall.noneDeleted": {
       "kind": "body",
@@ -18418,8 +18418,8 @@
     "beSkillFlow.uninstall.dirFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "文件已删除 · 空目录 {path} 未删除 · {e}",
-      "args": ["path", "e"]
+      "zh": "文件已删除 · 空目录 {path} 未删除 · {why}",
+      "args": ["path", "why"]
     },
     "beSkillFlow.install.someWritten": {
       "kind": "body",
@@ -18504,8 +18504,8 @@
     "beCcBusInstall.backup.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "备份 {dest} → {bak} 失败 · {e} · 原目录未动",
-      "args": ["dest", "bak", "e"]
+      "zh": "备份 {dest} → {bak} 失败 · {why} · 原目录未动",
+      "args": ["dest", "bak", "why"]
     },
     "beCcBusInstall.embed.notUtf8": {
       "kind": "error",
@@ -18516,8 +18516,8 @@
     "beCcBusInstall.record.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "已安装 · 未记进安装记录 · {e}",
-      "args": ["e"]
+      "zh": "已安装 · 未记进安装记录 · {why}",
+      "args": ["why"]
     },
     "rsFilewinProc.child.noRuntime": {
       "kind": "error",
@@ -18600,20 +18600,20 @@
     "beExt.uninstall.dropFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "已卸载 · 未从安装记录摘掉 · {e}",
-      "args": ["e"]
+      "zh": "已卸载 · 未从安装记录摘掉 · {why}",
+      "args": ["why"]
     },
     "beExt.apply.recordFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "已装好 · 未记录 · {e}\n以后卸载时按非 cc-monitor 安装项处理 · 先备份再删",
-      "args": ["e"]
+      "zh": "已装好 · 未记录 · {why}\n以后卸载时按非 cc-monitor 安装项处理 · 先备份再删",
+      "args": ["why"]
     },
     "beExt.uninstall.backupFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "备份失败 · {e} · 未删除",
-      "args": ["e"]
+      "zh": "备份失败 · {why} · 未删除",
+      "args": ["why"]
     },
     "beExt.suspect.commandUnknown": {
       "kind": "body",
@@ -19505,8 +19505,8 @@
     "beAcctMcpShare.store.writeFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "保存共用 MCP 失败 · {e}",
-      "args": ["e"]
+      "zh": "保存共用 MCP 失败 · {why}",
+      "args": ["why"]
     },
     "beAcctMcpShare.read.notText": {
       "kind": "error",
@@ -19547,14 +19547,14 @@
     "beAcctMcpShare.note.backupFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "备份失败 · {e} · 未改动",
-      "args": ["e"]
+      "zh": "备份失败 · {why} · 未改动",
+      "args": ["why"]
     },
     "beAcctMcpShare.note.writeFailed": {
       "kind": "body",
       "role": "说明",
-      "zh": "{account} 同步失败 · {e}",
-      "args": ["account", "e"]
+      "zh": "{account} 同步失败 · {why}",
+      "args": ["account", "why"]
     },
     "beAcctMcpShare.note.stale": {
       "kind": "body",
@@ -19589,8 +19589,8 @@
     "beAcctFace.mcp.failed": {
       "kind": "body",
       "role": "说明",
-      "zh": "共用 MCP 同步失败 · {e}",
-      "args": ["e"]
+      "zh": "共用 MCP 同步失败 · {why}",
+      "args": ["why"]
     },
     "rsToolRegistry.tools.accountsMcpStoreNote": {
       "kind": "body",
@@ -20871,8 +20871,8 @@
     "beLaunchAccount.write.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "写入失败 · {path} · {e}",
-      "args": ["path", "e"]
+      "zh": "写入失败 · {path} · {why}",
+      "args": ["path", "why"]
     },
     "rsToolRegistry.tools.launchAccountsNote": {
       "kind": "body",
@@ -27223,7 +27223,7 @@
     "sessionState.killIdle.title": {
       "kind": "title",
       "role": "标题",
-      "zh": "结束 tmux 会话 {name}",
+      "zh": "结束 tmux 会话「{name}」",
       "args": ["name"],
       "limited": ["tmux"]
     },
@@ -27942,7 +27942,7 @@
     "beChore.clash.name": {
       "kind": "title",
       "role": "标题",
-      "zh": "{name} 重名 · 你写的 / 清单",
+      "zh": "「{name}」重名 · 你写的 / 清单",
       "args": ["name"]
     },
     "beChore.clash.loc": {
@@ -28122,8 +28122,8 @@
     "beChore.marks.mkdirFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "创建 {dir} 失败 · {e}",
-      "args": ["dir", "e"]
+      "zh": "创建 {dir} 失败 · {why}",
+      "args": ["dir", "why"]
     },
     "beChore.marks.noHome": {
       "kind": "error",
@@ -28620,6 +28620,12 @@
       "zh": "原因不明",
       "args": []
     },
+    "reason.spawn.notInstalled": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "未装",
+      "args": []
+    },
     "beFilesCommit.land.badPath": {
       "kind": "error",
       "role": "原因格",
@@ -28793,6 +28799,12 @@
       "role": "原因格",
       "zh": "内容无法解析",
       "args": []
+    },
+    "detail.target.session": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{machine} · {sid}",
+      "args": ["machine", "sid"]
     }
   }
 }

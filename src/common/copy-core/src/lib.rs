@@ -29,9 +29,10 @@ mod peer;
 pub use civil::civil_from_days;
 pub use duration::{format_duration, format_elapsed};
 pub use peer::{backend_old, local_machine, peer_machine, reply_unreadable};
-pub use reason::{io_reason, sftp_status_reason};
+pub use reason::{io_reason, sftp_status_reason, spawn_reason};
 pub mod detail;
 pub mod reason;
+pub mod said;
 
 fn entries() -> &'static serde_json::Map<String, serde_json::Value> {
     static TABLE: OnceLock<serde_json::Map<String, serde_json::Value>> = OnceLock::new();

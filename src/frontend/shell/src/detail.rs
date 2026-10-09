@@ -102,7 +102,7 @@ pub(crate) fn of_log_event(target: &str, message: &str) -> String {
     Detail::new()
         .item(Label::At, now())
         .item(Label::Local, local_line())
-        .item(Label::Target, target)
+        .target(copy_core::detail::Target::Module(target))
         .item(Label::Raw, message)
         .render()
 }
@@ -255,6 +255,14 @@ impl Said {
             return self;
         }
         Said::of_parts(self.said, self.parts.insert(label, value))
+    }
+
+    /// 详情里补「对象」那一项（只收标识，[`copy_core::detail::Target`]）。已有 · 那份里有读不出项名的一块 ⇒ 原样。
+    pub(crate) fn with_target(self, t: copy_core::detail::Target<'_>) -> Said {
+        if self.parts.has_block() || self.parts.has(Label::Target) {
+            return self;
+        }
+        Said::of_parts(self.said, self.parts.target(t))
     }
 }
 

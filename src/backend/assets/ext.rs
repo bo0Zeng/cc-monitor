@@ -28,7 +28,7 @@ use super::asset_catalog::{self, Asset, Catalog, KIND_MCP, KIND_SKILL};
 use super::door::{self, Door, Refused};
 use super::skill_flow::Record;
 
-type Answer = Result<Value, (&'static str, String)>;
+type Answer = Result<Value, crate::stream::inbound::spec::Fail>;
 
 // ───────────────────────── 线上形状（界面那一份由这里生成） ─────────────────────────
 
@@ -269,12 +269,18 @@ pub struct ExtDone {
 
 impl ExtLoc {
     /// 线上 `{level, dir?}` → 位置；项目目录须是**这台**上的绝对路径（路径所属的那台自己的内层命令用）。
-    pub(crate) fn from_arg(v: Option<&Value>, key: &str) -> Result<ExtLoc, (&'static str, String)> {
+    pub(crate) fn from_arg(
+        v: Option<&Value>,
+        key: &str,
+    ) -> Result<ExtLoc, crate::stream::inbound::spec::Fail> {
         Self::judged(v, key, Some(super::mcp_edit::PathForm::HERE))
     }
 
     /// 只认形状（`{level: user}` · `{level: project, dir}` 且 dir 非空）：枢纽用，别台的路径由那台自己判。
-    pub(crate) fn shape_of(v: Option<&Value>, key: &str) -> Result<ExtLoc, (&'static str, String)> {
+    pub(crate) fn shape_of(
+        v: Option<&Value>,
+        key: &str,
+    ) -> Result<ExtLoc, crate::stream::inbound::spec::Fail> {
         Self::judged(v, key, None)
     }
 
@@ -283,11 +289,13 @@ impl ExtLoc {
         v: Option<&Value>,
         key: &str,
         form: Option<super::mcp_edit::PathForm>,
-    ) -> Result<ExtLoc, (&'static str, String)> {
-        let v = v.ok_or((
-            "bad_args",
-            crate::common::contract::malformed(&format!("missing `{key}`")),
-        ))?;
+    ) -> Result<ExtLoc, crate::stream::inbound::spec::Fail> {
+        let v = v.ok_or_else(|| {
+            crate::stream::inbound::spec::Fail::from((
+                "bad_args",
+                crate::common::contract::malformed(&format!("missing `{key}`")),
+            ))
+        })?;
         let loc: ExtLoc = serde_json::from_value(v.clone()).map_err(|e| {
             (
                 "bad_args",
@@ -302,7 +310,10 @@ impl ExtLoc {
                 dir: super::mcp_edit::project_root_as(&dir, form)?,
             }),
             (ExtLoc::Project { dir }, None) if dir.trim().is_empty() => {
-                Err(("bad_args", copy_text("beMcpEdit.path.emptyDir", &[])))
+                Err(crate::stream::inbound::spec::Fail::from((
+                    "bad_args",
+                    copy_text("beMcpEdit.path.emptyDir", &[]),
+                )))
             }
             (ExtLoc::Project { dir }, None) => Ok(ExtLoc::Project {
                 dir: dir.trim().to_string(),
@@ -334,9 +345,9 @@ impl ExtKind {
         }
     }
 
-    pub(crate) fn from_arg(args: &Value) -> Result<ExtKind, (&'static str, String)> {
+    pub(crate) fn from_arg(args: &Value) -> Result<ExtKind, crate::stream::inbound::spec::Fail> {
         serde_json::from_value(args.get("kind").cloned().unwrap_or(Value::Null)).map_err(|_| {
-            (
+            crate::stream::inbound::spec::Fail::new(
                 "bad_args",
                 crate::common::contract::malformed("`kind` must be skill or mcp"),
             )
@@ -495,14 +506,17 @@ pub(crate) fn writable(kind: ExtKind, at: &ExtLoc, shared: bool) -> Result<(), S
 pub(crate) fn mcp_file(
     d: &dyn Door,
     at: &ExtLoc,
-) -> Result<(String, String), (&'static str, String)> {
+) -> Result<(String, String), crate::stream::inbound::spec::Fail> {
     match at {
         ExtLoc::Project { dir } => Ok((dir.clone(), super::mcp_edit::mcp_json().to_string())),
         ExtLoc::User => {
             let store = shared_mcp_file(d)?;
             let p = Path::new(&store);
             let (Some(dir), Some(file)) = (p.parent(), p.file_name()) else {
-                return Err(("io_failed", copy_text("beExt.uninstall.noHome", &[])));
+                return Err(crate::stream::inbound::spec::Fail::from((
+                    "io_failed",
+                    copy_text("beExt.uninstall.noHome", &[]),
+                )));
             };
             Ok((
                 dir.display().to_string(),
@@ -513,7 +527,7 @@ pub(crate) fn mcp_file(
 }
 
 /// 这台的用户级 MCP 落在哪（被写的那一台自己判）：各账号共用的那一份（有账号库）；没有 ⇒ 按 [`writable`] 拒。
-pub(crate) fn shared_mcp_file(d: &dyn Door) -> Result<String, (&'static str, String)> {
+pub(crate) fn shared_mcp_file(d: &dyn Door) -> Result<String, crate::stream::inbound::spec::Fail> {
     let home = door::home(d).map_err(|e| ("io_failed", e))?;
     let store = crate::accounts::manage::mcp_share_exec::store_file_in(&home);
     writable(ExtKind::Mcp, &ExtLoc::User, store.is_some()).map_err(|why| ("refused", why))?;
@@ -841,7 +855,7 @@ fn pick_source<'c, 'a>(
 
 /// 目录的写口（现扫 ＋ 记下 ＋ 交回整份与读不出来的那几份）：生产 = `asset_catalog::answer_current`。
 pub(crate) type Current<'a> =
-    &'a dyn Fn(bool) -> Result<(Catalog, Vec<String>), (&'static str, String)>;
+    &'a dyn Fn(bool) -> Result<(Catalog, Vec<String>), crate::stream::inbound::spec::Fail>;
 
 /// `ext-list {visit}`：这台现扫一次、记下（`current` = 目录的写口，由 `stream/inbound/` 递进来），出表。
 pub(crate) fn answer_list(
@@ -853,23 +867,25 @@ pub(crate) fn answer_list(
         None | Some(Value::Null) => false,
         Some(Value::Bool(b)) => *b,
         Some(_) => {
-            return Err((
+            return Err(crate::stream::inbound::spec::Fail::from((
                 "bad_args",
                 crate::common::contract::malformed("`visit` must be a boolean"),
-            ))
+            )))
         }
     };
     let (cat, problems) = current(visit)?;
     let mut list = table(&cat, reach);
     list.problems = problems;
-    serde_json::to_value(list).map_err(|e| ("io_failed", e.to_string()))
+    serde_json::to_value(list)
+        .map_err(|e| crate::stream::inbound::spec::Fail::new("io_failed", e.to_string()))
 }
 
 /// 备注最长多少个字（超了拒，不截断）。
 pub const NOTE_MAX_CHARS: usize = 2000;
 
 /// 备注的写口（现扫 ＋ 记进本机目录自己那一格 ＋ 交回整份）：生产 = `asset_catalog::answer_note`。
-pub(crate) type NoteWrite<'a> = &'a dyn Fn(&str, &str) -> Result<Catalog, (&'static str, String)>;
+pub(crate) type NoteWrite<'a> =
+    &'a dyn Fn(&str, &str) -> Result<Catalog, crate::stream::inbound::spec::Fail>;
 
 /// `ext-note-set {kind, name, text}`：用户写 / 改 / 清（空串）一个条目的备注。记在本机目录自己那一格，随目录同步到别的后端。
 /// 回 `{note}`（现在生效的那一份，清掉了 ⇒ `null`）。
@@ -877,20 +893,20 @@ pub(crate) fn answer_note(args: &Value, write: NoteWrite) -> Answer {
     let kind = ExtKind::from_arg(args)?;
     let name = str_arg(args, "name")?;
     if name.trim().is_empty() {
-        return Err((
+        return Err(crate::stream::inbound::spec::Fail::from((
             "bad_args",
             crate::common::contract::malformed("`name` is empty"),
-        ));
+        )));
     }
     let text = str_arg(args, "text")?;
     if text.chars().count() > NOTE_MAX_CHARS {
-        return Err((
+        return Err(crate::stream::inbound::spec::Fail::from((
             "bad_args",
             copy_text(
                 "beExt.note.tooLong",
                 &[("max", &NOTE_MAX_CHARS.to_string())],
             ),
-        ));
+        )));
     }
     let key = asset_catalog::entry_key(kind.wire(), name);
     let cat = write(&key, text)?;
@@ -940,15 +956,22 @@ impl Env {
 }
 
 /// 这台上缺了家目录那一格（装记录 · 备份 · skill 根都从它来）。
-fn need<T>(v: Option<T>) -> Result<T, (&'static str, String)> {
-    v.ok_or(("io_failed", copy_text("beExt.uninstall.noHome", &[])))
+fn need<T>(v: Option<T>) -> Result<T, crate::stream::inbound::spec::Fail> {
+    v.ok_or_else(|| {
+        crate::stream::inbound::spec::Fail::from((
+            "io_failed",
+            copy_text("beExt.uninstall.noHome", &[]),
+        ))
+    })
 }
 
-fn str_arg<'a>(args: &'a Value, k: &str) -> Result<&'a str, (&'static str, String)> {
-    args.get(k).and_then(Value::as_str).ok_or((
-        "bad_args",
-        crate::common::contract::malformed(&format!("missing `{k}` (a string)")),
-    ))
+fn str_arg<'a>(args: &'a Value, k: &str) -> Result<&'a str, crate::stream::inbound::spec::Fail> {
+    args.get(k).and_then(Value::as_str).ok_or_else(|| {
+        crate::stream::inbound::spec::Fail::from((
+            "bad_args",
+            crate::common::contract::malformed(&format!("missing `{k}` (a string)")),
+        ))
+    })
 }
 
 /// 一段值的记号（看过的那一份 · 应用时再算一次比）。
@@ -991,7 +1014,11 @@ enum SkillPlan {
     Foreign { digest: String, files: Vec<String> },
 }
 
-fn skill_plan(env: &Env, name: &str, dir: &Path) -> Result<SkillPlan, (&'static str, String)> {
+fn skill_plan(
+    env: &Env,
+    name: &str,
+    dir: &Path,
+) -> Result<SkillPlan, crate::stream::inbound::spec::Fail> {
     let ledger = need(env.ledger.clone())?;
     let key = dir.display().to_string();
     let recorded = super::skill_ledger::load_at(&ledger)?
@@ -1022,22 +1049,26 @@ fn skill_plan(env: &Env, name: &str, dir: &Path) -> Result<SkillPlan, (&'static 
     })
 }
 
-fn skill_dir_of(env: &Env, name: &str, at: &ExtLoc) -> Result<PathBuf, (&'static str, String)> {
+fn skill_dir_of(
+    env: &Env,
+    name: &str,
+    at: &ExtLoc,
+) -> Result<PathBuf, crate::stream::inbound::spec::Fail> {
     if !super::skill_install::valid_name(name) {
-        return Err((
+        return Err(crate::stream::inbound::spec::Fail::from((
             "bad_args",
             copy_text("beSkillInstall.read.badName", &[("name", name)]),
-        ));
+        )));
     }
     let dir = need(env.skill_root(at))?.join(name);
     if !dir.is_dir() {
-        return Err((
+        return Err(crate::stream::inbound::spec::Fail::from((
             "not_found",
             copy_text(
                 "beExt.uninstall.notThere",
                 &[("path", &dir.display().to_string())],
             ),
-        ));
+        )));
     }
     Ok(dir)
 }
@@ -1056,24 +1087,28 @@ fn mcp_here(
     env: &Env,
     name: &str,
     at: &ExtLoc,
-) -> Result<McpHere, (&'static str, String)> {
+) -> Result<McpHere, crate::stream::inbound::spec::Fail> {
     let (root, rel) = mcp_file(d, at)?;
     let got = door::peek(d, &root, &rel).map_err(|m| ("refused", m))?;
-    let text = got.text.ok_or((
-        "not_found",
-        copy_text("beExt.uninstall.notThere", &[("path", &got.path)]),
-    ))?;
+    let text = got.text.ok_or_else(|| {
+        crate::stream::inbound::spec::Fail::from((
+            "not_found",
+            copy_text("beExt.uninstall.notThere", &[("path", &got.path)]),
+        ))
+    })?;
     let servers = super::mcp_sync::servers_of(
         Some(&text),
         &copy_text("beMcpSync.answerWith.targetSide", &[]),
     )?;
-    let def = servers.get(name).cloned().ok_or((
-        "not_found",
-        copy_text(
-            "beExt.uninstall.noEntry",
-            &[("name", name), ("path", &got.path)],
-        ),
-    ))?;
+    let def = servers.get(name).cloned().ok_or_else(|| {
+        crate::stream::inbound::spec::Fail::from((
+            "not_found",
+            copy_text(
+                "beExt.uninstall.noEntry",
+                &[("name", name), ("path", &got.path)],
+            ),
+        ))
+    })?;
     // 全局那一份不记装记录：从它删只有一条路（各账号一起撤）。
     let recorded = match at {
         ExtLoc::User => None,
@@ -1193,11 +1228,12 @@ pub(crate) fn answer_uninstall_preview(d: &dyn Door, env: &Env, args: &Value) ->
             }
         }
     };
-    serde_json::to_value(card).map_err(|e| ("io_failed", e.to_string()))
+    serde_json::to_value(card)
+        .map_err(|e| crate::stream::inbound::spec::Fail::new("io_failed", e.to_string()))
 }
 
-fn stale() -> (&'static str, String) {
-    ("stale", copy_text("beExt.uninstall.changed", &[]))
+fn stale() -> crate::stream::inbound::spec::Fail {
+    crate::stream::inbound::spec::Fail::new("stale", copy_text("beExt.uninstall.changed", &[]))
 }
 
 /// `ext-uninstall-apply {kind, name, at, token}`：看卡时那一份（`token`）与现在不同 ⇒ `stale`、一个字节不动。
@@ -1273,7 +1309,7 @@ pub(crate) fn answer_uninstall_apply(
                     door::rename(d, &home_s, &from, &rel).map_err(|e| {
                         (
                             "refused",
-                            copy_text("beExt.uninstall.backupFailed", &[("e", &e)]),
+                            copy_text("beExt.uninstall.backupFailed", &[("why", &e)]),
                         )
                     })?;
                     ExtDone {
@@ -1317,7 +1353,7 @@ pub(crate) fn answer_uninstall_apply(
                 .map_err(|e| {
                     (
                         "refused",
-                        copy_text("beExt.uninstall.backupFailed", &[("e", &e.said())]),
+                        copy_text("beExt.uninstall.backupFailed", &[("why", &e.said())]),
                     )
                 })?;
                 note = Some(copy_text("beExt.uninstall.copiedTo", &[("path", &abs)]));
@@ -1338,14 +1374,20 @@ pub(crate) fn answer_uninstall_apply(
                 ) {
                     Ok(_) => {}
                     Err(Refused::Stale(_)) => return Err(stale()),
-                    Err(e) => return Err(("refused", e.said())),
+                    Err(e) => {
+                        return Err(crate::stream::inbound::spec::Fail::from((
+                            "refused",
+                            e.said(),
+                        )))
+                    }
                 }
             }
             if m.recorded.is_some() {
-                if let Err((_, e)) =
-                    record(&json!({ "op": "mcp-drop", "file": m.path, "name": name }))
-                {
-                    note = Some(copy_text("beExt.uninstall.dropFailed", &[("e", &e)]));
+                if let Err(f) = record(&json!({ "op": "mcp-drop", "file": m.path, "name": name })) {
+                    note = Some(copy_text(
+                        "beExt.uninstall.dropFailed",
+                        &[("why", &f.into_note())],
+                    ));
                 }
             }
             ExtDone {
@@ -1355,24 +1397,25 @@ pub(crate) fn answer_uninstall_apply(
             }
         }
     };
-    serde_json::to_value(done).map_err(|e| ("io_failed", e.to_string()))
+    serde_json::to_value(done)
+        .map_err(|e| crate::stream::inbound::spec::Fail::new("io_failed", e.to_string()))
 }
 
 /// `~/.cc-monitor/backups` 不在就建（它的上一层是后端自己的家，一定在）。
-fn ensure_backups_dir(d: &dyn Door, home: &str) -> Result<(), (&'static str, String)> {
+fn ensure_backups_dir(d: &dyn Door, home: &str) -> Result<(), crate::stream::inbound::spec::Fail> {
     let abs = door::join_under(home, relay_route_core::EXT_BACKUPS_DIR_REL);
     match door::stat_kind(d, &abs) {
         Ok(Some(_)) => Ok(()),
         Ok(None) => door::mkdir(d, home, relay_route_core::EXT_BACKUPS_DIR_REL).map_err(|e| {
-            (
+            crate::stream::inbound::spec::Fail::new(
                 "refused",
-                copy_text("beExt.uninstall.backupFailed", &[("e", &e)]),
+                copy_text("beExt.uninstall.backupFailed", &[("why", &e)]),
             )
         }),
-        Err(e) => Err((
+        Err(e) => Err(crate::stream::inbound::spec::Fail::from((
             "refused",
-            copy_text("beExt.uninstall.backupFailed", &[("e", &e)]),
-        )),
+            copy_text("beExt.uninstall.backupFailed", &[("why", &e)]),
+        ))),
     }
 }
 

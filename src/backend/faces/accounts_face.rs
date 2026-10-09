@@ -12,6 +12,7 @@ use crate::accounts::upstream_select::file_face;
 use crate::assets::aliases::{self, AmendErr};
 use crate::assets::door::Door;
 use crate::platform::shell::dialect::Shell;
+use crate::stream::inbound::spec::Fail;
 use acct_core::wire::{AccountChange, AccountKind, AliasChange};
 use copy_core::copy_text;
 use serde_json::{json, Value};
@@ -29,11 +30,11 @@ pub(crate) struct KeyDoor<'a> {
     pub(crate) path: &'a dyn Fn() -> Result<PathBuf, String>,
 }
 
-/// 本族的应答：`data` 或 `(code, message)`。
-pub(crate) type Answer = Result<Value, (&'static str, String)>;
+/// 本族的应答：`data` 或失败（码 ＋ 那一句 ＋ 下层原话，原话进复制详情）。
+pub(crate) type Answer = Result<Value, Fail>;
 
 fn to_value<T: serde::Serialize>(v: &T) -> Answer {
-    serde_json::to_value(v).map_err(|e| ("io_failed", e.to_string()))
+    serde_json::to_value(v).map_err(|e| Fail::new("io_failed", e.to_string()))
 }
 
 /// 帧面入口。key 表那几口由门递进来（[`KeyDoor`]）。
@@ -62,7 +63,7 @@ pub(crate) fn answer(d: &dyn Door, cmd: &str, args: &Value, keys: &KeyDoor) -> A
             Ok(p) => match file_face::account_ids_at(&p) {
                 Ok(ids) => Some((p.display().to_string(), ids)),
                 Err(e) => {
-                    unreadable = Some(copy_text("beAcctFace.key.unreadable", &[("e", &e)]));
+                    unreadable = Some(copy_text("beAcctFace.key.unreadable", &[("why", &e)]));
                     None
                 }
             },
@@ -73,12 +74,12 @@ pub(crate) fn answer(d: &dyn Door, cmd: &str, args: &Value, keys: &KeyDoor) -> A
     let drop = |dir: &str| {
         (keys.drop)(&json!({ "configDir": dir }))
             .map(|_| ())
-            .map_err(|(_, m)| m)
+            .map_err(Fail::into_note)
     };
     let restore = |dir: &str, from: &str| {
         (keys.restore)(&json!({ "configDir": dir, "from": from }))
             .map(|_| ())
-            .map_err(|(_, m)| m)
+            .map_err(Fail::into_note)
     };
     let kt = table.map(|(path, ids)| wire::KeyTable {
         path,
@@ -136,9 +137,10 @@ fn sync_mcp(d: &dyn Door, change: &mut AccountChange) {
                 ));
             }
         }
-        Err((_, why)) => change
-            .notes
-            .push(copy_text("beAcctFace.mcp.failed", &[("e", &why)])),
+        Err(f) => change.notes.push(copy_text(
+            "beAcctFace.mcp.failed",
+            &[("why", &f.into_note())],
+        )),
     }
     mcp_share_watch::kick();
 }
@@ -152,8 +154,11 @@ fn put_key(
 ) {
     match key_set(&json!({ "configDir": config_dir, "key": key, "baseUrl": base_url })) {
         Ok(v) => change.key_masked = v.get("masked").and_then(Value::as_str).map(str::to_string),
-        Err((_, why)) => {
-            change.key_problem = Some(copy_text("beAcctFace.key.notSaved", &[("e", &why)]))
+        Err(f) => {
+            change.key_problem = Some(copy_text(
+                "beAcctFace.key.notSaved",
+                &[("why", &f.into_note())],
+            ))
         }
     }
 }
@@ -210,7 +215,7 @@ fn amend_aliases(d: &dyn Door, events: &[wire::AliasEvent]) -> (AliasChange, Vec
             added: Vec::new(),
             removed: Vec::new(),
             skipped: Vec::new(),
-            note: Some(copy_text("beAcctFace.aliases.writeFailed", &[("e", &e)])),
+            note: Some(copy_text("beAcctFace.aliases.writeFailed", &[("why", &e)])),
         },
     };
     (change, rewrote)

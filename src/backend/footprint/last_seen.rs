@@ -18,10 +18,10 @@ const MAX_FILE_BYTES: u64 = 32 * 1024 * 1024;
 /// 机器名最长多少字节。
 const MAX_ORIGIN_BYTES: usize = 256;
 
-type Answer = Result<Value, (&'static str, String)>;
+type Answer = Result<Value, crate::stream::inbound::spec::Fail>;
 
-fn bad(d: &str) -> (&'static str, String) {
-    ("bad_args", crate::common::contract::malformed(d))
+fn bad(d: &str) -> crate::stream::inbound::spec::Fail {
+    crate::stream::inbound::spec::Fail::new("bad_args", crate::common::contract::malformed(d))
 }
 
 /// 这台机器上那份文件的路径；家目录解析不出来 ⇒ `None`。
@@ -29,7 +29,7 @@ pub(crate) fn store_path() -> Option<PathBuf> {
     Some(crate::platform::paths::home_dir()?.join(relay_route_core::LAST_SEEN_REL))
 }
 
-fn origin_arg(args: &Value) -> Result<&str, (&'static str, String)> {
+fn origin_arg(args: &Value) -> Result<&str, crate::stream::inbound::spec::Fail> {
     args.get("origin")
         .and_then(Value::as_str)
         .filter(|s| !s.trim().is_empty() && s.len() <= MAX_ORIGIN_BYTES)
@@ -88,7 +88,7 @@ pub(crate) fn write_at(path: &Path, args: &Value, now_ms: u64) -> Answer {
         .ok_or_else(|| bad("`value` must be an object"))?;
     let size = value.to_string().len();
     if size > MAX_VALUE_BYTES {
-        return Err((
+        return Err(crate::stream::inbound::spec::Fail::from((
             "too_large",
             copy_text(
                 "beLastSeen.value.tooLarge",
@@ -97,7 +97,7 @@ pub(crate) fn write_at(path: &Path, args: &Value, now_ms: u64) -> Answer {
                     ("max", &MAX_VALUE_BYTES.to_string()),
                 ],
             ),
-        ));
+        )));
     }
     let dir = path
         .parent()
@@ -123,17 +123,14 @@ fn locked_edit(
     dir: &Path,
     path: &Path,
     edit: impl FnOnce(&mut Map<String, Value>) -> bool,
-) -> Result<(), (&'static str, String)> {
+) -> Result<(), crate::stream::inbound::spec::Fail> {
     let _g = crate::platform::lock::hold(dir).map_err(|e| {
-        (
-            "io_failed",
-            crate::common::said::Said::from(e).said_logging_raw(),
-        )
+        crate::stream::inbound::spec::Fail::from(("io_failed", crate::common::said::Said::from(e)))
     })?;
     let mut all = load(path);
     if edit(&mut all) {
         crate::common::own_state::write_json(path, &all)
-            .map_err(|e| ("io_failed", e.said_logging_raw()))?;
+            .map_err(|e| crate::stream::inbound::spec::Fail::from(("io_failed", e)))?;
     }
     Ok(())
 }

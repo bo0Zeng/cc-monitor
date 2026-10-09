@@ -65,7 +65,10 @@ impl Machine {
             label: name,
         }
     }
-    fn update(&self, incoming: Option<&Value>) -> Result<Value, (&'static str, String)> {
+    fn update(
+        &self,
+        incoming: Option<&Value>,
+    ) -> Result<Value, crate::stream::inbound::spec::Fail> {
         let inc = incoming.map(|c| cat::machines_from_wire(c).expect("载荷形状"));
         cat::update_at(&self.path, skills(&self.scan), self.label, inc)
     }
@@ -113,7 +116,7 @@ impl Remote for FakeRemotes {
             let m = self.by_host.get(&host).ok_or("没这台")?;
             if command == pull_command() {
                 assert_eq!(stdin, None, "拉那一趟不写 stdin");
-                return m.update(None).map(|v| v.to_string()).map_err(|e| e.1);
+                return m.update(None).map(|v| v.to_string()).map_err(|e| e.message);
             }
             // 推那一趟：命令行逐字 == `<落点> --assets-catalog-merge --stdin-line`（不含载荷），载荷恰好一行进 stdin。
             if command != push_command() {
@@ -127,7 +130,7 @@ impl Remote for FakeRemotes {
             let v: Value = serde_json::from_str(payload).map_err(|e| e.to_string())?;
             m.update(Some(&v["catalog"]))
                 .map(|v| v.to_string())
-                .map_err(|e| e.1)
+                .map_err(|e| e.message)
         })
     }
 }

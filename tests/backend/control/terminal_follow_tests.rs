@@ -562,24 +562,24 @@ fn a_seat_being_started_counts() {
     assert_eq!(
         d.reserve(&json!({ "terminal": h, "ticket": "s0" }))
             .err()
-            .map(|e| e.0),
-        Some("bad_args"),
+            .map(|e| e.code),
+        Some("bad_args".to_string()),
         "正在起的票再订一次 ⇒ 重复"
     );
     // 起不成的那一张让出名额。
     let bad = json!({ "terminal": "tmux-999", "ticket": "s0" });
     assert!(d.reserve(&bad).is_err());
     assert_eq!(
-        d.follow(&bad).err().map(|e| e.0),
-        Some("bad_args"),
+        d.follow(&bad).err().map(|e| e.code),
+        Some("bad_args".to_string()),
         "s0 还占着（重复）"
     );
     d.release(&seats[0]);
     assert_eq!(
         d.follow(&json!({ "terminal": "tmux-999", "ticket": "x" }))
             .err()
-            .map(|e| e.0),
-        Some("not_known"),
+            .map(|e| e.code),
+        Some("not_known".to_string()),
         "让出名额之后、目标不在名单 ⇒ not_known"
     );
     assert!(

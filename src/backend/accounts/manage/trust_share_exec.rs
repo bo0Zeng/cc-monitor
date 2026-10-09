@@ -14,7 +14,7 @@ use crate::agents::TrustCells;
 use crate::assets::door::{self, Door, Refused};
 use std::collections::BTreeSet;
 
-type Refusal = (&'static str, String);
+type Refusal = crate::stream::inbound::spec::Fail;
 
 /// 预标那一下的结局。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -36,7 +36,7 @@ pub(crate) fn sync(d: &dyn Door) -> Result<Vec<String>, Refusal> {
     let Some(cells) = layout::face().and_then(|f| f.trust) else {
         return Ok(Vec::new());
     };
-    let home = door::home(d).map_err(|e| ("io_failed", e))?;
+    let home = door::home(d).map_err(|e| Refusal::new("io_failed", e))?;
     let _held = lock(&home)?;
     let Some(list) = accounts_in(&home)? else {
         return Ok(Vec::new());
@@ -51,14 +51,15 @@ pub(crate) fn sync(d: &dyn Door) -> Result<Vec<String>, Refusal> {
 }
 
 /// 一份配置：原文（不在 ⇒ `None`）＋ 信任过的目录。读不出来 / 解不开 ⇒ `Err`。
-fn read_conf(cells: &TrustCells, path: &str) -> Result<(Option<String>, BTreeSet<String>), String> {
-    let Some(raw) =
-        read_text(path, MAX_CONFIG_BYTES).map_err(crate::common::said::Said::said_logging_raw)?
-    else {
+fn read_conf(
+    cells: &TrustCells,
+    path: &str,
+) -> Result<(Option<String>, BTreeSet<String>), crate::common::said::Said> {
+    let Some(raw) = read_text(path, MAX_CONFIG_BYTES)? else {
         return Ok((None, BTreeSet::new()));
     };
-    let v: serde_json::Value =
-        serde_json::from_str(raw.trim_start_matches('\u{feff}')).map_err(|e| e.to_string())?;
+    let v: serde_json::Value = serde_json::from_str(raw.trim_start_matches('\u{feff}'))
+        .map_err(|e| crate::common::said::Said::from(e.to_string()))?;
     let set = trust_share::trusted(cells, &v);
     Ok((Some(raw), set))
 }
@@ -86,7 +87,10 @@ pub(crate) fn sync_with(
     let zero = join(home, file);
     match read_conf(cells, &zero) {
         Ok((_, set)) => union.extend(set),
-        Err(e) => tracing::warn!("账号之间同步信任：{zero} 读不出来，这一次不并它：{e}"),
+        Err(e) => tracing::warn!(
+            "账号之间同步信任：{zero} 读不出来，这一次不并它：{}",
+            e.logged()
+        ),
     }
     let mut seen = Vec::new();
     for (name, dir) in list {
@@ -101,7 +105,8 @@ pub(crate) fn sync_with(
                 seen.push((name, path, raw));
             }
             Err(e) => tracing::warn!(
-                "账号之间同步信任：{name} 号的配置 {path} 读不出来，这一次跳过它：{e}"
+                "账号之间同步信任：{name} 号的配置 {path} 读不出来，这一次跳过它：{}",
+                e.logged()
             ),
         }
     }
@@ -115,7 +120,7 @@ pub(crate) fn sync_with(
                 )
             }
             Ok(_) => {}
-            Err(e) => tracing::warn!("账号之间同步信任：{name} 号这一次没写上：{e}"),
+            Err(e) => tracing::warn!("账号之间同步信任：{name} 号这一次没写上：{}", e.logged()),
         }
     }
     changed
@@ -129,7 +134,7 @@ fn write_marks(
     path: &str,
     raw: Option<&str>,
     dirs: &BTreeSet<String>,
-) -> Result<Marked, String> {
+) -> Result<Marked, crate::common::said::Said> {
     let Some(text) = trust_share::mark(cells, raw.unwrap_or("{}\n"), dirs)? else {
         return Ok(Marked::Already);
     };
@@ -137,18 +142,22 @@ fn write_marks(
     match put_private(d, home, &rel, &text, raw) {
         Ok(()) => Ok(Marked::Wrote),
         Err(Refused::Stale(_)) => Ok(Marked::Stale),
-        Err(e) => Err(e.said()),
+        Err(e) => Err(crate::common::said::Said::from(e.said())),
     }
 }
 
 /// 起会话之前：`cwd` 标进 `config_dir` 那个号（必须在清单里）。这台没有账号库 / 那一家没有「信任」这件事 ⇒ [`Marked::Nothing`]。
-pub(crate) fn pretrust(d: &dyn Door, config_dir: &str, cwd: &str) -> Result<Marked, String> {
+pub(crate) fn pretrust(
+    d: &dyn Door,
+    config_dir: &str,
+    cwd: &str,
+) -> Result<Marked, crate::common::said::Said> {
     let Some(cells) = layout::face().and_then(|f| f.trust) else {
         return Ok(Marked::Nothing);
     };
     let home = door::home(d)?;
-    let _held = lock(&home).map_err(|(_, e)| e)?;
-    let Some(list) = accounts_in(&home).map_err(|(_, e)| e)? else {
+    let _held = lock(&home).map_err(crate::common::said::Said::from)?;
+    let Some(list) = accounts_in(&home).map_err(crate::common::said::Said::from)? else {
         return Ok(Marked::Nothing);
     };
     pretrust_with(
@@ -171,15 +180,14 @@ pub(crate) fn pretrust_with(
     list: &[(String, String)],
     config_dir: &str,
     cwd: &str,
-) -> Result<Marked, String> {
+) -> Result<Marked, crate::common::said::Said> {
     let Some((_, dir)) = listed(list, config_dir) else {
         return Ok(Marked::NotListed);
     };
     let dirs: BTreeSet<String> = (cells.dir_keys)(cwd).into_iter().collect();
     let path = join(dir, file);
     for _ in 0..2 {
-        let raw = read_text(&path, MAX_CONFIG_BYTES)
-            .map_err(crate::common::said::Said::said_logging_raw)?;
+        let raw = read_text(&path, MAX_CONFIG_BYTES)?;
         match write_marks(d, home, cells, &path, raw.as_deref(), &dirs)? {
             Marked::Stale => continue,
             done => return Ok(done),

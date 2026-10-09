@@ -221,7 +221,7 @@ impl Stopped {
 }
 
 /// `~/.cc-monitor` → `logs` → `backend` 逐层建（每层 0700，已在的不动）。
-fn log_dir_chain(home: &Path) -> Result<(), String> {
+fn log_dir_chain(home: &Path) -> Result<(), crate::common::said::Said> {
     let Some(dir) = home.join(STDERR_LOG_REL).parent().map(Path::to_path_buf) else {
         return Ok(());
     };
@@ -233,21 +233,27 @@ fn log_dir_chain(home: &Path) -> Result<(), String> {
 /// 常驻后端**绑上口之后**换一把新钥匙写回钥匙文件（临时件出生即只给本人 → 写满 → 原子挪过去），回这一把。
 /// 每次起都换 ⇒ 旧环境里漏出去的那把随之作废；抢不到口的后起者走不到这里（不碰在跑那一个的钥匙）。
 /// 本机远端都由常驻后端自己写（起它的那一方只交路径）；连上来的客户端每次读文件。
+/// 失败交的是进日志的那一行（那一句 ＋ 原话，[`crate::common::said::Said::logged`]）：读它的只有入口那一处日志。
 pub fn rotate_token(path: &Path) -> Result<String, String> {
     if let Some(dir) = path.parent() {
-        ensure_dir(dir)?;
+        ensure_dir(dir).map_err(|e| e.logged())?;
     }
     let t = mint()?;
-    crate::common::own_state::write(path, t.as_bytes())
-        .map_err(crate::common::said::Said::said_logging_raw)?;
+    crate::common::own_state::write(path, t.as_bytes()).map_err(|e| e.logged())?;
     Ok(t)
 }
 
-fn ensure_dir(dir: &Path) -> Result<(), String> {
+fn ensure_dir(dir: &Path) -> Result<(), crate::common::said::Said> {
     crate::common::own_dir::ensure_private_dir(dir).map_err(|e| {
-        copy_text(
-            "beResident.fs.mkdirFailed",
-            &[("dir", &dir.display().to_string()), ("e", &e.to_string())],
+        crate::common::said::Said::with_raw(
+            copy_text(
+                "beResident.fs.mkdirFailed",
+                &[
+                    ("dir", &dir.display().to_string()),
+                    ("why", &copy_core::io_reason(e.kind())),
+                ],
+            ),
+            &e,
         )
     })
 }
@@ -312,18 +318,19 @@ fn spawn_detached(exe: &Path, env: &[(String, String)]) -> Result<u32, (&'static
 }
 
 /// 常驻后端绑上口之后记下「谁在听」（`pid\n二进制\n`）—— 本机远端都由它自己记（起它的那一方不写这份）。
+/// 失败同 [`rotate_token`]：交进日志的那一行。
 pub fn record_owner(port: u16) -> Result<(), String> {
     let dh = data_home().ok_or_else(|| copy_text("beResident.home.missing", &[]))?;
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let path = pid_path(&dh, port);
     if let Some(dir) = path.parent() {
-        ensure_dir(dir)?;
+        ensure_dir(dir).map_err(|e| e.logged())?;
     }
     crate::common::own_state::write(
         &path,
         format!("{}\n{}\n", std::process::id(), exe.display()).as_bytes(),
     )
-    .map_err(crate::common::said::Said::said_logging_raw)
+    .map_err(|e| e.logged())
 }
 
 /// 解 pid 文件那两行（纯函数）。
