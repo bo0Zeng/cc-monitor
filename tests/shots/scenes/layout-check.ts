@@ -6,6 +6,8 @@
  *    浮层与展开着的子菜单都不许伸出窗口。
  * 2. 单行文字不压按钮：会话头标题 / 机器 / 目录 / 状态一句与右侧按钮不相交；标签页的名字与它行尾的徽标不相交。
  * 3. 折叠块标题行：标题与摘要各一行（窄了摘要省略，标题不被挤成竖排）。
+ * 5. 规则编辑器：预览「这条规则」每段要么段里的号名全字可见、要么收起（不许露半截）；封顶表宽时一号一行、各格同一行，
+ *    窄（窗 <640）时每号一张卡：表头那一行收起、各格竖排、每格前写着列名。
  * 4. 账号面板轮换列表一行：每段字一行不折（重置时刻那种）；状态标签（在用 · 起始 …）全字可见、不被省略
  *    （号名可以省略，只读的封顶标签可以省略）；兜底开关开着 ⇒ 看得见、有底色；关着 ⇒ 所在行没悬停、没焦点时看不见。
  *
@@ -123,6 +125,37 @@ function acctRows(): string[] {
   return out;
 }
 
+function ruleEditor(): string[] {
+  const out: string[] = [];
+  for (const n of document.querySelectorAll<HTMLElement>('[data-ed-lane="rule"] [data-ed-seg-name]')) {
+    if (!visible(n)) continue;
+    const seg = n.parentElement!;
+    if (n.scrollWidth > n.clientWidth + EPS) out.push(`预览：段 ${seg.dataset.edSeg} 的号名被截（${n.scrollWidth} > ${n.clientWidth}）`);
+  }
+  for (const seg of document.querySelectorAll<HTMLElement>('[data-ed-lane="rule"] [data-ed-seg]')) {
+    if (!visible(seg)) continue;
+    const n = seg.querySelector<HTMLElement>("[data-ed-seg-name]");
+    if (!n || (!visible(n) && !seg.getAttribute("aria-label")?.includes(n.textContent ?? "\u0000"))) out.push(`预览：段 ${seg.dataset.edSeg} 读不出号名`);
+  }
+  const narrow = innerWidth < 640;
+  for (const row of document.querySelectorAll<HTMLElement>("[data-ed-cap-row]")) {
+    if (!visible(row)) continue;
+    const who = row.dataset.edCapRow;
+    const cells = [...row.querySelectorAll<HTMLElement>("[data-ed-cap], [data-ed-stint-cell]")].filter(visible);
+    const tops = new Set(cells.map((c) => Math.round(c.getBoundingClientRect().top)));
+    const lefts = new Set(cells.map((c) => Math.round(c.getBoundingClientRect().left)));
+    const labels = [...row.querySelectorAll<HTMLElement>("[data-ed-cap-label]")].filter(visible);
+    if (narrow) {
+      if (tops.size !== cells.length || lefts.size !== 1) out.push(`封顶表 ${who}：窄窗里各格没有竖排（${cells.length} 格 · ${tops.size} 行 · ${lefts.size} 列）`);
+      if (labels.length !== cells.length) out.push(`封顶表 ${who}：窄窗里 ${cells.length} 格只有 ${labels.length} 个列名`);
+    } else if (tops.size > 1) out.push(`封顶表 ${who}：各格折成了 ${tops.size} 行`);
+  }
+  if (narrow)
+    for (const head of document.querySelectorAll<HTMLElement>('[data-ed-caps] [role="row"]:not([data-ed-cap-row])'))
+      if (visible(head)) out.push("封顶表：窄窗里表头那一行还在（应收进每张卡）");
+  return out;
+}
+
 /** 一个元素里的字占了几行（数不同的行顶；省略号会把一行拆成几个框，不算折行）。 */
 function lineCount(el: Element): number {
   const rg = document.createRange();
@@ -143,7 +176,7 @@ function foldHeads(): string[] {
 }
 
 export function layoutProblems(): string[] {
-  const out = [...floats(), ...singleLines(), ...foldHeads(), ...acctRows()];
+  const out = [...floats(), ...singleLines(), ...foldHeads(), ...acctRows(), ...ruleEditor()];
   // 也写进页里的控制台（截图工具每张存一份），整趟被打断时还查得到。
   for (const p of out) console.warn(`[layout] ${p}`);
   return out;

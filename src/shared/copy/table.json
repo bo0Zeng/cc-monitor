@@ -22217,6 +22217,18 @@
       "zh": "{from}–{to} · {acct}",
       "args": ["from", "to", "acct"]
     },
+    "rot.pv.segWhy": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "{from}–{to} · {acct} · {why}",
+      "args": ["from", "to", "acct", "why"]
+    },
+    "rot.pv.whyOff": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{acct} 时段停用",
+      "args": ["acct"]
+    },
     "rot.why.full": {
       "kind": "body",
       "role": "片段",

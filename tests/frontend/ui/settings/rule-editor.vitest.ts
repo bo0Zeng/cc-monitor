@@ -55,6 +55,7 @@ import {
   setCurrentMachine,
 } from "../../../../src/frontend/ui/settings/machine-context";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
+import { accountColorSlot } from "../../../../src/frontend/ui/account-color";
 
 const ROT: Rotation = {
   order: [{ start: true }, "team", "lab"],
@@ -401,6 +402,38 @@ describe("规则编辑器 · 每格改完即存", () => {
 });
 
 describe("规则编辑器 · 封顶表与预览", () => {
+  it("预览「这条规则」不只靠颜色：两号同色（team · lab）时每段段里写号名，读屏名 ＝ 悬停那句 `起止 · 号 · 为什么换`", async () => {
+    expect(accountColorSlot("team"), "夹具前提：两号同一个号色").toBe(
+      accountColorSlot("lab"),
+    );
+    const el = await mount();
+    await openNight(el);
+    await settlePlan();
+    const segs = [
+      ...editor()!.querySelectorAll<HTMLElement>(
+        '[data-ed-lane="rule"] [data-ed-seg]',
+      ),
+    ];
+    expect(
+      segs.map((x) => x.querySelector("[data-ed-seg-name]")?.textContent),
+    ).toEqual(["team", "lab", copyText("rot.pv.held")]);
+    expect(segs.map((x) => x.getAttribute("aria-label"))).toEqual([
+      copyText("rot.pv.seg", { from: "21:00", to: "22:00", acct: "team" }),
+      copyText("rot.pv.segWhy", {
+        from: "22:00",
+        to: "23:00",
+        acct: "lab",
+        why: copyText("rot.pv.whyOff", { acct: "team" }),
+      }),
+      copyText("rot.pv.segWhy", {
+        from: "23:00",
+        to: "09:00",
+        acct: copyText("rot.pv.held"),
+        why: copyText("acct.hist.held", { name: "lab", n: 90 }),
+      }),
+    ]);
+  });
+
   it("封顶表：行 ＝ 勾上的号，列 5h · 7d · 全部窗口；点一格开那一格的浮层", async () => {
     const el = await mount();
     await openNight(el);
@@ -418,6 +451,28 @@ describe("规则编辑器 · 封顶表与预览", () => {
       document.querySelector('[data-rot-cap="team"]'),
       "开那一格的封顶浮层",
     ).not.toBeNull();
+  });
+
+  it("封顶格悬停 ＝ 此刻实际取的值与来自哪一层（后端 effective）：`此刻 ≤99 · 来自 全部窗口`；后端没给那一格 ⇒ 不出", async () => {
+    const el = await mount();
+    await openNight(el);
+    await settlePlan();
+    const tipOf = async (sel: string): Promise<string | null> => {
+      const b = editor()!.querySelector<HTMLElement>(sel)!;
+      b.dispatchEvent(new Event("mouseenter"));
+      await new Promise((r) => setTimeout(r, 560));
+      const t = document.querySelector('[role="tooltip"]')?.textContent ?? null;
+      b.dispatchEvent(new Event("mouseleave"));
+      await new Promise((r) => setTimeout(r, 600));
+      return t;
+    };
+    expect(await tipOf('[data-ed-cap="team.5h"]')).toBe(
+      copyText("rot.capT.effective", {
+        v: copyText("rot.cap.fixedShort", { n: 99 }),
+        layer: copyText("rot.capT.layerAll"),
+      }),
+    );
+    expect(await tipOf('[data-ed-cap="lab.5h"]')).toBeNull();
   });
 
   it("预览：问 `{rule, span: 12h}`；「这条规则」按段排、换号点写原因短码（时段停用 · 停发）；泳道里不能用的段带它的样子；换视窗 ⇒ 重问", async () => {

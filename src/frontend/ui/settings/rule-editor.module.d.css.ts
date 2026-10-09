@@ -5,6 +5,8 @@ declare const classes: {
   readonly edAxisGrid: string;
   readonly edAxisSeg: string;
   readonly edBlock: string;
+  readonly edCapCell: string;
+  readonly edCapCellLabel: string;
   readonly edCapHead: string;
   readonly edCapRow: string;
   readonly edCapWho: string;
@@ -45,6 +47,7 @@ declare const classes: {
   readonly edRow: string;
   readonly edRowName: string;
   readonly edSaved: string;
+  readonly edSegName: string;
   readonly edSlash: string;
   readonly edSp: string;
   readonly edSpanSel: string;

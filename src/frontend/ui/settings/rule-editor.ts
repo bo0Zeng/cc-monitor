@@ -34,6 +34,7 @@ import {
   type Row,
 } from "../rot-editor";
 import { accountAvatarEl, accountColorSlot } from "../account-color";
+import { whyOf } from "../acct-view";
 import {
   accountLabel,
   slotLabel,
@@ -103,6 +104,33 @@ function whyText(w: SwitchWhy | null): string {
   if ("wait" in w)
     return copyText("rot.why.wait", { acct: accountLabel(w.wait.account) });
   return "";
+}
+
+/** 悬停 / 读屏那句里的「为什么换」：与换号记录同一套说法（`team ≥90%` · `lab ✕` …）；时段停用另说（触发 0 ＝ 那段封顶为 0）。 */
+function segWhy(
+  prev: string | null,
+  to: string | null,
+  w: SwitchWhy | null,
+): string {
+  if (w === null) return "";
+  const from = prev ?? to ?? "";
+  if (typeof w !== "string" && "threshold" in w && w.threshold.n === 0)
+    return copyText("rot.pv.whyOff", { acct: accountLabel(from) });
+  return whyOf({ at: 0, from, to: to ?? from, why: w }).why;
+}
+
+/** 段里的号名放不下（段比字窄）⇒ 收起那一格；轴变宽变窄时重量。没排版的环境（量不出宽）一律留着。 */
+function fitNames(track: HTMLElement): void {
+  const measure = (): void => {
+    for (const n of track.querySelectorAll<HTMLElement>("[data-ed-seg-name]")) {
+      const seg = n.parentElement!;
+      delete n.dataset.fit;
+      if (seg.clientWidth > 0 && n.scrollWidth > seg.clientWidth - 4)
+        n.dataset.fit = "no";
+    }
+  };
+  if (typeof ResizeObserver === "undefined") return;
+  new ResizeObserver(measure).observe(track);
 }
 
 function layerText(c: CapAt): string {
@@ -830,6 +858,7 @@ export class RuleEditor {
   private caps(r: Rotation, write: (r: Rotation) => void): HTMLElement {
     const box = el("div", (e) => (e.className = s.edCaps));
     box.setAttribute("role", "table");
+    box.dataset.edCaps = "";
     const stint = howOf(r) === "stint";
     const cols: { w: string; label: string }[] = [
       { w: "5h", label: slotLabel("5h") },
@@ -864,6 +893,15 @@ export class RuleEditor {
     const named = r.order.filter((x): x is string => typeof x === "string");
     const on = named.filter((a) => r.enabled.includes(a));
     const off = named.filter((a) => !r.enabled.includes(a));
+    // 一格 ＝ 列名 ＋ 那颗按钮：宽时列名收起（表头那一行说），窄时整行变成每号一张卡、四格竖排，各格前写列名。
+    const cell = (label: string, b: HTMLElement): HTMLElement => {
+      const c = el("span", (e) => (e.className = s.edCapCell));
+      const l = el("span", (e) => (e.className = s.edCapCellLabel), label);
+      l.dataset.edCapLabel = "";
+      l.setAttribute("aria-hidden", "true");
+      c.append(l, b);
+      return c;
+    };
     const line = (a: string): HTMLElement => {
       const row = el("div", (e) => (e.className = s.edCapRow));
       row.setAttribute("role", "row");
@@ -885,7 +923,7 @@ export class RuleEditor {
         b.dataset.edCap = `${a}.${c.w}`;
         const eff = this.plan?.effective[a]?.[c.w];
         if (eff) attachTooltip(b, layerText(eff));
-        row.appendChild(b);
+        row.appendChild(cell(c.label, b));
       }
       if (stint) {
         const v = r.stint?.[a]?.[ALL];
@@ -896,7 +934,7 @@ export class RuleEditor {
           onClick: () => this.openStint(b, r, a, write),
         });
         b.dataset.edStintCell = a;
-        row.appendChild(b);
+        row.appendChild(cell(copyText("rot.capT.colStint"), b));
       }
       return row;
     };
@@ -1033,24 +1071,40 @@ export class RuleEditor {
       el("span", (e) => (e.className = s.edLaneName), copyText("rot.pv.rule")),
       "rule",
     );
+    // 号色按号粘着（规范 V2），同一份规则里两号可能同色 ⇒ 不只靠颜色：段里写号名（放不下就收起，悬停 / 读屏照样念全句）。
+    let prev: string | null = null;
     for (const seg of p.plan) {
       const b = el("span", (e) => (e.className = s.edPlanSeg));
       b.style.left = pos(seg.from);
       b.style.width = wid(seg.from, seg.to);
       b.dataset.edSeg = seg.account ?? "";
+      const acct =
+        seg.account === null
+          ? copyText("rot.pv.held")
+          : accountLabel(seg.account);
       if (seg.account === null) b.dataset.held = "true";
-      else b.style.background = `var(--acct-c${accountColorSlot(seg.account)})`;
-      attachTooltip(
-        b,
-        copyText("rot.pv.seg", {
-          from: seg.fromText,
-          to: seg.toText,
-          acct:
-            seg.account === null
-              ? copyText("rot.pv.held")
-              : accountLabel(seg.account),
-        }),
-      );
+      else {
+        const slot = accountColorSlot(seg.account);
+        b.style.background = `var(--acct-c${slot})`;
+        b.style.color = `var(--acct-ink${slot})`;
+      }
+      const because = segWhy(prev, seg.account, seg.why);
+      const say = because
+        ? copyText("rot.pv.segWhy", {
+            from: seg.fromText,
+            to: seg.toText,
+            acct,
+            why: because,
+          })
+        : copyText("rot.pv.seg", { from: seg.fromText, to: seg.toText, acct });
+      b.setAttribute("role", "img");
+      b.setAttribute("aria-label", say);
+      attachTooltip(b, say);
+      const name = el("span", (e) => (e.className = s.edSegName), acct);
+      name.dataset.edSegName = "";
+      name.setAttribute("aria-hidden", "true");
+      b.appendChild(name);
+      prev = seg.account;
       const why = whyText(seg.why);
       if (why) {
         const w = el("span", (e) => (e.className = s.edWhy), why);
@@ -1059,6 +1113,7 @@ export class RuleEditor {
       }
       ruleTrack.appendChild(b);
     }
+    fitNames(ruleTrack);
     for (const lane of p.lanes) {
       const name = el("span", (e) => (e.className = s.edLaneName));
       name.append(
