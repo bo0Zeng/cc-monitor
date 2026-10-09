@@ -3,6 +3,7 @@
 
 use copy_core::copy_text;
 use std::sync::Arc;
+use crate::common::said::Said;
 
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
@@ -28,6 +29,7 @@ fn ok_ack(l: &Linked, req: &DialRequest) -> DialAck {
     DialAck {
         ok: true,
         error: None,
+        detail: None,
         fingerprint: l.fingerprint.clone(),
         fingerprints: l.fingerprints.clone(),
         jump_fingerprints: l.jump_fingerprints.clone(),
@@ -144,7 +146,7 @@ impl Lease {
         req: &DialRequest,
         stages: &StageSink,
         lane: Lane,
-    ) -> Result<Lease, (String, Option<String>)> {
+    ) -> Result<Lease, (Said, Option<String>)> {
         if req.probe || req.stages {
             let linked = Arc::new(connect::establish(req, stages).await?);
             let permit = linked.budget.try_take(lane);
@@ -164,7 +166,7 @@ impl Lease {
         stages: &StageSink,
         key: String,
         lane: Lane,
-    ) -> Result<Lease, (String, Option<String>)> {
+    ) -> Result<Lease, (Said, Option<String>)> {
         let placed = pool::ssh()
             .place(&key, lane, || connect::establish(req, stages))
             .await?;
@@ -210,10 +212,10 @@ impl Lease {
         &mut self,
         req: &DialRequest,
         stages: &StageSink,
-    ) -> Result<(russh::Channel<russh::client::Msg>, pool::Permit), String> {
+    ) -> Result<(russh::Channel<russh::client::Msg>, pool::Permit), Said> {
         for _ in 0..=pool::MAX_CONNECTIONS_PER_HOST {
             let Some(permit) = self.permit.take() else {
-                return Err(copy_text("beUses.session.noSlot", &[]));
+                return Err(copy_text("beUses.session.noSlot", &[]).into());
             };
             // 等远端回「开好了」这一段被打断（链路被关）⇒ 摘掉这条连接（`pool::Watch`）。
             let opened = {
@@ -233,9 +235,9 @@ impl Lease {
             };
             drop(permit);
             let Some(key) = self.key.clone() else {
-                return Err(copy_text(
-                    "beUses.session.openFailed",
-                    &[("e", &e.to_string())],
+                return Err(Said::with_raw(
+                    copy_text("beUses.session.openFailed", &[]),
+                    &e,
                 ));
             };
             if refused_by_remote(&e) && !self.linked.session.is_closed() {
@@ -245,25 +247,25 @@ impl Lease {
                     self.linked.endpoint
                 );
                 if cap == 0 {
-                    return Err(copy_text(
-                        "beUses.session.refusedAll",
-                        &[("e", &e.to_string())],
+                    return Err(Said::with_raw(
+                        copy_text("beUses.session.refusedAll", &[]),
+                        &e,
                     ));
                 }
             } else if self.reused {
                 tracing::warn!("dial: 复用的连接上开 channel 失败（{e}）—— 摘掉它、重拨一次");
                 pool::ssh().evict(&key, &self.linked);
             } else {
-                return Err(copy_text(
-                    "beUses.session.openFailed",
-                    &[("e", &e.to_string())],
+                return Err(Said::with_raw(
+                    copy_text("beUses.session.openFailed", &[]),
+                    &e,
                 ));
             }
             *self = Self::place(req, stages, key, self.lane)
                 .await
                 .map_err(|(e, _)| e)?;
         }
-        Err(copy_text("beUses.session.exhausted", &[]))
+        Err(copy_text("beUses.session.exhausted", &[]).into())
     }
 }
 
@@ -319,11 +321,11 @@ async fn serve<R, W>(
                     return;
                 }
             };
-            let fail = |e: String| DialAck::failed(e, lease.linked.fingerprint.clone());
+            let fail = |e: Said| DialAck::failed(e, lease.linked.fingerprint.clone());
             // want_reply = true：等远端确认 exec 成功再回 ack。
             let opened = exec(&channel, req.command.as_bytes().to_vec())
                 .await
-                .map_err(|e| copy_text("beUses.exec.failed", &[("e", &e.to_string())]));
+                .map_err(|e| Said::with_raw(copy_text("beUses.exec.failed", &[]), &e));
             if let Err(e) = opened {
                 let _ = write_stages_then_ack(out, stages, &fail(e)).await;
                 return;
@@ -354,7 +356,7 @@ async fn serve<R, W>(
                     out,
                     stages,
                     &DialAck::failed(
-                        crate::common::contract::malformed("use=capture without `capture`"),
+                        crate::common::contract::malformed("use=capture without `capture`").into(),
                         fp,
                     ),
                 )
@@ -376,7 +378,7 @@ async fn serve<R, W>(
                     out,
                     stages,
                     &DialAck::failed(
-                        copy_text("beUses.exec.failed", &[("e", &e.to_string())]),
+                        Said::with_raw(copy_text("beUses.exec.failed", &[]), &e),
                         fp,
                     ),
                 )
@@ -390,7 +392,7 @@ async fn serve<R, W>(
                         out,
                         stages,
                         &DialAck::failed(
-                            copy_text("beUses.exec.stdinLost", &[("e", &e.to_string())]),
+                            Said::with_raw(copy_text("beUses.exec.stdinLost", &[]), &e),
                             fp,
                         ),
                     )
@@ -414,7 +416,7 @@ async fn serve<R, W>(
                     out,
                     stages,
                     &DialAck::failed(
-                        crate::common::contract::malformed("use=forward without `forward`"),
+                        crate::common::contract::malformed("use=forward without `forward`").into(),
                         fp,
                     ),
                 )
@@ -430,12 +432,15 @@ async fn serve<R, W>(
                         out,
                         stages,
                         &DialAck::failed(
-                            copy_text(
-                                "beUses.forward.bindFailed",
-                                &[
-                                    ("port", &spec.local_port.to_string()),
-                                    ("e", &e.to_string()),
-                                ],
+                            Said::with_raw(
+                                copy_text(
+                                    "beUses.forward.bindFailed",
+                                    &[
+                                        ("port", &spec.local_port.to_string()),
+                                        ("why", &copy_core::io_reason(e.kind())),
+                                    ],
+                                ),
+                                &e,
                             ),
                             fp,
                         ),
@@ -459,7 +464,8 @@ async fn serve<R, W>(
                     out,
                     stages,
                     &DialAck::failed(
-                        crate::common::contract::malformed("use=tunnel without `tunnel_port`"),
+                        crate::common::contract::malformed("use=tunnel without `tunnel_port`")
+                            .into(),
                         fp,
                     ),
                 )
@@ -475,9 +481,9 @@ async fn serve<R, W>(
             let channel = match opened {
                 Ok(c) => c,
                 Err(e) => {
-                    let said = copy_text(
-                        "beUses.tunnel.unreachable",
-                        &[("port", &port.to_string()), ("e", &e.to_string())],
+                    let said = Said::with_raw(
+                        copy_text("beUses.tunnel.unreachable", &[("port", &port.to_string())]),
+                        &e,
                     );
                     // 远端回拒开通道 ⇒ 原因码随 ack 交回（`AllowTcpForwarding no` 回的是
                     //   `administratively_prohibited`，口上没人听回的是 `connect_failed`）；界面据它决定停不停。
@@ -512,11 +518,8 @@ async fn serve<R, W>(
             let session = match super::sftp::open(lease, req, stages).await {
                 Ok(s) => s,
                 Err(e) => {
-                    // 拨号应答那一行只带一句话：SFTP 那一下的原话进后端日志。
-                    if let Some(raw) = &e.raw {
-                        tracing::warn!("files link: opening sftp failed: {raw}");
-                    }
-                    let _ = write_stages_then_ack(out, stages, &DialAck::failed(e.said, fp)).await;
+                    // 拨号应答那一行：那一句进 `error`，SFTP 那一下的原话进 `detail`。
+                    let _ = write_stages_then_ack(out, stages, &DialAck::failed(e, fp)).await;
                     return;
                 }
             };

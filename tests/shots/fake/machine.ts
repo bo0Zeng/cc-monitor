@@ -325,13 +325,21 @@ const BASHRC_CHANGED = { path: "~/.bashrc", what: copyText("rsToolRegistry.tools
 
 /** 那台的状态成品（形状同 `tests/__fixtures__/machine-state.golden.json`）：看不见的那台 ＝ 密钥被拒。 */
 function machineOf(origin: string, w: World): Record<string, unknown> {
-  const base = { stage: null, os: origin === "win-laptop" ? "Windows" : "Linux", version: "4.1.1" as string | null, versionRelation: "same" as string | null, seenHostKey: null as string | null };
+  const base = { stage: null, os: origin === "win-laptop" ? "Windows" : "Linux", version: "4.1.1" as string | null, versionRelation: "same" as string | null, seenHostKey: null as string | null, detail: null as string | null };
   if (w.installingMachines?.includes(origin)) return { ...base, state: "installing", reason: null, version: null, versionRelation: null, fixes: [] };
   if (w.hostKeyChanged?.includes(origin))
     return { ...base, state: "host_key_changed", reason: "host_key", version: null, versionRelation: null, fixes: ["compare_fingerprint"], seenHostKey: "SHA256:Zq81nVb0cR2yT6wXe4uLm9kPp3sHd7fJg5aQiO1tYw8" };
   if (w.staleMachines.includes(origin)) return { ...base, state: "needs_update", reason: null, version: null, versionRelation: "older", fixes: ["update"] };
   if (!w.unseenMachines.includes(origin)) return { ...base, state: "up", reason: null, fixes: [] };
-  return { ...base, state: "down", reason: "auth", version: null, versionRelation: null, fixes: ["push_key", "conn_settings"] };
+  return {
+    ...base,
+    state: "down",
+    reason: "auth",
+    version: null,
+    versionRelation: null,
+    fixes: ["push_key", "conn_settings"],
+    detail: `时刻：2026-10-08 21:04:11 +08:00\n机器：Linux x86_64 · 后端 p9z-fixture\n命令：dial\n对象：${origin}\n断在：私钥登录失败\n码：auth\n原话：Authentication failed (publickey)`,
+  };
 }
 
 export function machineCommands(): Record<string, CommandHandler> {

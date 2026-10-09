@@ -696,6 +696,7 @@ fn a_jump_host_is_pinned_under_its_own_entry_and_a_direct_dial_judges_only_the_t
     let ack = Ack {
         ok: true,
         error: None,
+        detail: None,
         fingerprint: None,
         fingerprints: fp(&[("h.example:2222", "SHA256:T")]),
         jump_fingerprints: fp(&[("j.lan:22", "SHA256:J")]),
@@ -765,4 +766,21 @@ fn utc_day_is_the_civil_date() {
     assert_eq!(at(4_107_542_400), "2100-03-01");
     assert_eq!(at(1_798_761_599), "2026-12-31");
     assert_eq!(at(1_798_761_600), "2027-01-01");
+}
+
+/// 本机后端说没拨成：那一句原样、详情是它写的那一份（拨号跑在本机后端里 ⇒ 不补「本机」行）；老后端没写详情 ⇒ 壳写时刻与本机。
+/// 读应答这一跳坏了：那一句不带原话，管子 / 解析器的原话进详情。
+#[test]
+fn a_dial_refusal_keeps_the_backend_detail_and_link_faults_keep_raw_out_of_the_sentence() {
+    let s = refused_said("step-said".into(), Some("命令：dial\n原话：raw words"));
+    assert_eq!(s.said, "step-said");
+    assert_eq!(s.detail, "命令：dial\n原话：raw words");
+    let old = refused_said("step-said".into(), None);
+    assert!(old.detail.contains(&crate::detail::local_line()), "{}", old.detail);
+    let io = link_said(LinkError::Io("broken pipe here".into()));
+    assert_eq!(io.said, copy_text("rsSshLink.dial.readFailed", &[]));
+    assert!(io.detail.contains("broken pipe here"), "{}", io.detail);
+    let garbled = link_said(LinkError::Garbled("expected value: \"zz\"".into()));
+    assert!(!garbled.said.contains("expected"), "{}", garbled.said);
+    assert!(garbled.detail.contains("expected value"), "{}", garbled.detail);
 }

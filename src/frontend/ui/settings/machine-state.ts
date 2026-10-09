@@ -10,6 +10,7 @@ import type { MachineDotState } from "../kit/status-dot";
 import { button } from "../kit/button";
 import { icon } from "../kit/icon";
 import { spinner } from "../kit/progress";
+import { copyDetailButton } from "../kit/detail";
 import { copyText } from "../copy-table";
 import { exactKeys, isObj } from "../ipc/decode";
 
@@ -30,16 +31,16 @@ const KINDS: readonly MachineStateKind[] = [
 ];
 const RELATIONS: readonly VersionRelation[] = ["same", "older", "newer", "incomparable"];
 const FIXES: readonly MachineFix[] = ["retry", "conn_settings", "push_key", "compare_fingerprint", "update", "connect"];
-const KEYS = ["fixes", "os", "reason", "seenHostKey", "stage", "state", "version", "versionRelation"];
+const KEYS = ["detail", "fixes", "os", "reason", "seenHostKey", "stage", "state", "version", "versionRelation"];
 
 const strOrNull = (v: unknown): v is string | null => v === null || (typeof v === "string" && v !== "");
 
-/** 严格收：键集恰好那八格、每格取值在闭集里；收不下 ⇒ `null`（那一行照「没问到」画，不替后端编一态）。 */
+/** 严格收：键集恰好那九格、每格取值在闭集里；收不下 ⇒ `null`（那一行照「没问到」画，不替后端编一态）。 */
 export function decodeMachineState(raw: unknown): MachineState | null {
   if (!isObj(raw) || !exactKeys(raw, KEYS)) return null;
   const v = raw;
   if (!KINDS.includes(v.state as MachineStateKind)) return null;
-  if (!strOrNull(v.reason) || !strOrNull(v.stage) || !strOrNull(v.version) || !strOrNull(v.os) || !strOrNull(v.seenHostKey)) return null;
+  if (!strOrNull(v.reason) || !strOrNull(v.stage) || !strOrNull(v.version) || !strOrNull(v.os) || !strOrNull(v.seenHostKey) || !strOrNull(v.detail)) return null;
   if (v.versionRelation !== null && !RELATIONS.includes(v.versionRelation as VersionRelation)) return null;
   if (!Array.isArray(v.fixes) || !v.fixes.every((f) => FIXES.includes(f as MachineFix))) return null;
   return v as unknown as MachineState;
@@ -58,6 +59,8 @@ export interface MachineFace {
   /** 页头「N 台离线 · M 台要更新」那两段各算不算它。 */
   offline: boolean;
   needsUpdate: boolean;
+  /** 问题行那句后面跟的复制详情（壳写好的；空 ＝ 不出［复制详情］）。 */
+  detail: string;
 }
 
 const DOT: Record<MachineStateKind, MachineDotState> = {
@@ -109,6 +112,7 @@ export function machineFace(m: MachineState, machine: string): MachineFace {
     fixes: m.fixes,
     offline: m.state === "down" || m.state === "host_key_changed" || m.state === "unsupported",
     needsUpdate: m.state === "needs_update",
+    detail: m.detail ?? "",
   });
   switch (m.state) {
     case "up":
@@ -175,6 +179,8 @@ export function paintProblem(el: HTMLElement, face: MachineFace, onFix: (fix: Ma
   const text = document.createElement("span");
   text.textContent = face.problem;
   el.append(face.tone === "busy" ? spinner() : icon(face.tone === "warn" ? "warning" : "error", "compact"), text);
+  const copy = face.tone === "busy" ? null : copyDetailButton(face.problem, face.detail);
+  if (copy) el.appendChild(copy);
   if (face.bar) {
     const bar = document.createElement("span");
     bar.className = "machine-problem-bar";

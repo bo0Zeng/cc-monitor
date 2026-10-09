@@ -1579,8 +1579,8 @@
     "rsRemoteResident.stop.unknownAnswer": {
       "kind": "error",
       "role": "报错",
-      "zh": "停止后端的结果无法识别 · {line}",
-      "args": ["line"]
+      "zh": "停止后端的结果无法识别",
+      "args": []
     },
     "rsRemoteResident.ensure.tooOld": {
       "kind": "error",
@@ -1597,8 +1597,8 @@
     "rsRemoteResident.ensure.answerUnreadable": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取远端启动常驻后端的回答失败 · 内容无法解析 · {e}",
-      "args": ["e"]
+      "zh": "读取远端启动常驻后端的回答失败 · 内容无法解析",
+      "args": []
     },
     "rsRemoteResident.ensure.noReason": {
       "kind": "error",
@@ -1621,8 +1621,8 @@
     "rsRemoteResident.verdict.unreadable": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取本机后端的回复失败 · 内容无法解析 · {e}；无法决定是否替换远端后端",
-      "args": ["e"]
+      "zh": "本机后端回复内容无法解析 · 未定是否替换远端后端",
+      "args": []
     },
     "rsRemoteResident.handshake.helloCut": {
       "kind": "error",
@@ -1639,14 +1639,14 @@
     "rsRemoteResident.handshake.readFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取远端常驻后端的回话失败 · {e}",
-      "args": ["e"]
+      "zh": "读取远端常驻后端的回话失败",
+      "args": []
     },
     "rsRemoteResident.tunnel.unreachable": {
       "kind": "error",
       "role": "报错",
-      "zh": "远端常驻后端端口 127.0.0.1:{port} 一直连接失败 · {e}",
-      "args": ["port", "e"]
+      "zh": "远端常驻后端端口 127.0.0.1:{port} 一直连接失败",
+      "args": ["port"]
     },
     "rsRemoteResident.tunnel.forwardingProhibited": {
       "kind": "error",
@@ -1657,8 +1657,8 @@
     "rsRemoteResident.handshake.attachNotSent": {
       "kind": "error",
       "role": "报错",
-      "zh": "接入请求未送到远端常驻后端 · {e}",
-      "args": ["e"]
+      "zh": "接入请求未送到远端常驻后端 · {why}",
+      "args": ["why"]
     },
     "rsRemoteResident.handshake.notAttachReply": {
       "kind": "error",
@@ -1675,8 +1675,8 @@
     "rsBackendControl.remote.stopFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "停止 {origin} 后端失败 · {e} · 连接已断开",
-      "args": ["origin", "e"]
+      "zh": "停止 {origin} 后端失败\n与它的连接已断开",
+      "args": ["origin"]
     },
     "beResident.home.missing": {
       "kind": "error",
@@ -9572,8 +9572,8 @@
     "rsSftp.upload.badKept": {
       "kind": "error",
       "role": "报错",
-      "zh": "{bad} · 传坏的文件未删掉 · {e}",
-      "args": ["bad", "e"]
+      "zh": "{bad} · 传坏的文件未删掉",
+      "args": ["bad"]
     },
     "rsSftp.upload.badRemoved": {
       "kind": "error",
@@ -12172,35 +12172,17 @@
       "zh": "程序出错",
       "args": []
     },
-    "rsSshLink.parse.withLine": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "{e} · 原文 {line}",
-      "args": ["e", "line"]
-    },
     "rsSshLink.dial.noReason": {
       "kind": "error",
       "role": "原因格",
       "zh": "原因不明",
       "args": []
     },
-    "rsSshLink.parse.ackLine": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "应答 {e} · 原文 {line}",
-      "args": ["e", "line"]
-    },
-    "rsSshLink.parse.stageLine": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "阶段行 {e} · 原文 {line}",
-      "args": ["e", "line"]
-    },
     "rsSshLink.dial.readFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "与本机后端的连接断开 · {e}",
-      "args": ["e"]
+      "zh": "与本机后端的连接断开",
+      "args": []
     },
     "rsSshLink.dial.tooLong": {
       "kind": "error",
@@ -12247,14 +12229,14 @@
     "rsDialHost.ask.sendBytesFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "向本机后端送字节失败 · {e}",
-      "args": ["e"]
+      "zh": "向本机后端送字节失败 · {why}",
+      "args": ["why"]
     },
     "rsDialHost.open.noHome": {
       "kind": "error",
       "role": "报错",
-      "zh": "本机后端未答出远端起始目录 · {v}",
-      "args": ["v"]
+      "zh": "本机后端未答出远端起始目录",
+      "args": []
     },
     "rsDialHost.open.timeout": {
       "kind": "error",
@@ -17646,8 +17628,8 @@
     "beConnect.race.taskFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "连接中断 · {e}",
-      "args": ["e"]
+      "zh": "连接失败 · 程序出错",
+      "args": []
     },
     "beConnect.race.noAddress": {
       "kind": "error",
@@ -17658,32 +17640,26 @@
     "beConnect.race.allFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "所有地址均连接失败 · {errors}",
-      "args": ["errors"]
-    },
-    "beConnect.race.tried": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{e} · 已试 {addrs}",
-      "args": ["e", "addrs"]
+      "zh": "所有地址均连接失败 · {why} · 已试 {addrs}",
+      "args": ["why", "addrs"]
     },
     "beConnect.auth.rsaHash": {
       "kind": "error",
       "role": "报错",
-      "zh": "和远端商定 RSA 签名算法失败 · {e}",
-      "args": ["e"]
+      "zh": "和远端商定 RSA 签名算法失败",
+      "args": []
     },
     "beConnect.auth.keyLoad": {
       "kind": "error",
       "role": "原因格",
-      "zh": "读取私钥失败 · {path} · {e}",
-      "args": ["path", "e"]
+      "zh": "读取私钥失败 · {path}",
+      "args": ["path"]
     },
     "beConnect.auth.keyFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "私钥登录失败 · {e}",
-      "args": ["e"]
+      "zh": "私钥登录失败",
+      "args": []
     },
     "beConnect.auth.keyRejected": {
       "kind": "error",
@@ -17694,15 +17670,15 @@
     "beConnect.agent.unreachable": {
       "kind": "error",
       "role": "报错",
-      "zh": "未配密钥文件 · ssh-agent 也失败 · {e}",
-      "args": ["e"],
+      "zh": "未配密钥文件 · 连接 ssh-agent 失败",
+      "args": [],
       "limited": ["SSH"]
     },
     "beConnect.agent.listFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取 ssh-agent 失败 · {e}",
-      "args": ["e"],
+      "zh": "读取 ssh-agent 失败",
+      "args": [],
       "limited": ["SSH"]
     },
     "beConnect.agent.empty": {
@@ -17722,8 +17698,8 @@
     "beConnect.agent.signFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "ssh-agent 签名登录出错 · {e}",
-      "args": ["e"],
+      "zh": "ssh-agent 签名登录失败",
+      "args": [],
       "limited": ["SSH"]
     },
     "beConnect.agent.allFailed": {
@@ -17742,20 +17718,20 @@
     "beConnect.jump.dialFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "跳板机 {hop} 连接失败 · {e}",
-      "args": ["hop", "e"]
+      "zh": "跳板机 {hop} 连接失败",
+      "args": ["hop"]
     },
     "beConnect.jump.authFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "跳板机 {hop} 登录失败 · {e}",
-      "args": ["hop", "e"]
+      "zh": "跳板机 {hop} 登录失败",
+      "args": ["hop"]
     },
     "beConnect.jump.tunnelFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "经跳板机连 {host}:{port} 失败 · {e}",
-      "args": ["host", "port", "e"]
+      "zh": "经跳板机连 {host}:{port} 失败",
+      "args": ["host", "port"]
     },
     "beConnect.jump.target": {
       "kind": "body",
@@ -17766,8 +17742,8 @@
     "beConnect.jump.targetFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "经跳板机连上目标后 SSH 连接建立失败 · {e}",
-      "args": ["e"],
+      "zh": "经跳板机连上目标后 SSH 连接建立失败",
+      "args": [],
       "limited": ["SSH"]
     },
     "beUses.session.noSlot": {
@@ -17780,15 +17756,15 @@
     "beUses.session.openFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "新开 SSH 会话失败 · {e}",
-      "args": ["e"],
+      "zh": "新开 SSH 会话失败",
+      "args": [],
       "limited": ["SSH"]
     },
     "beUses.session.refusedAll": {
       "kind": "error",
       "role": "报错",
-      "zh": "远端拒绝新开 SSH 会话 · {e} · 可能远端 sshd MaxSessions 为 0",
-      "args": ["e"],
+      "zh": "远端拒绝新开 SSH 会话 · 可能远端 sshd MaxSessions 为 0",
+      "args": [],
       "limited": ["SSH"]
     },
     "beUses.session.exhausted": {
@@ -17801,20 +17777,20 @@
     "beUses.exec.failed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "远端命令启动失败 · {e}",
-      "args": ["e"]
+      "zh": "远端命令启动失败",
+      "args": []
     },
     "beUses.exec.stdinLost": {
       "kind": "error",
       "role": "报错",
-      "zh": "远端命令已启动 · 输入未送达 · {e}",
-      "args": ["e"]
+      "zh": "远端命令已启动 · 输入未送达",
+      "args": []
     },
     "beUses.forward.bindFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "绑定本地端口 127.0.0.1:{port} 失败 · {e}",
-      "args": ["port", "e"]
+      "zh": "绑定本地端口 127.0.0.1:{port} 失败 · {why}",
+      "args": ["port", "why"]
     },
     "beHistory.dir.denied": {
       "kind": "error",
@@ -17837,8 +17813,8 @@
     "beUses.tunnel.unreachable": {
       "kind": "error",
       "role": "报错",
-      "zh": "连接远端 127.0.0.1:{port} 失败 · {e}",
-      "args": ["port", "e"]
+      "zh": "连接远端 127.0.0.1:{port} 失败",
+      "args": ["port"]
     },
     "beLink.install.tooMany": {
       "kind": "error",
@@ -27190,6 +27166,24 @@
       "role": "报错",
       "zh": "写入失败 · {path} · {why}",
       "args": ["path", "why"]
+    },
+    "reason.dial.resolve": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "地址无法解析",
+      "args": []
+    },
+    "reason.dial.refused": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "端口不通",
+      "args": []
+    },
+    "reason.dial.timeout": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "无应答",
+      "args": []
     }
   }
 }

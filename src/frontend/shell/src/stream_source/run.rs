@@ -542,15 +542,16 @@ async fn open_round(
             Ok(c) => Some(c),
             Err(e) => {
                 // 不阻断（手动部署的后端照样能连），但那句话要到界面上。
-                let msg = e.say();
+                let said = e.said();
                 tracing::warn!(
-                    "stream_source [{host_label}] 后端没部署上（继续尝试连接已有后端）: {msg}"
+                    "stream_source [{host_label}] 后端没部署上（继续尝试连接已有后端）: {said}: {}",
+                    said.raw()
                 );
                 let payload = crate::ui_contract::RemoteHealthPayload {
                     origin: host_label.clone(),
                     kind: "deploy".to_string(),
-                    message: msg,
-                    detail: String::new(),
+                    message: said.said,
+                    detail: said.detail,
                 };
                 if let Err(e) = health(payload) {
                     tracing::warn!("stream_source remote-health (deploy) emit failed: {e}");
@@ -592,10 +593,13 @@ async fn open_round(
         Err(e) => {
             // 非 unix ⇒ 记进这台的连接状态（`run` 据此停下，不再按退避重连）。
             if let crate::remote_resident::AttachErr::Unsupported(why, code) = &e {
-                *unsupported = Some(why.clone());
+                *unsupported = Some(why.said.clone());
                 *unsupported_code = Some(code);
             }
-            let e = e.said();
+            let said = e.said();
+            // 这一轮没成的那一句与详情进那台的状态成品（收尾时机器那一行的［复制详情］跟它）。
+            crate::machine_state::round_failed(&host_label, &said);
+            let e = format!("{said}: {}", said.raw());
             if skip_preflight {
                 tracing::warn!(
                     "stream_source [{host_label}] 跳过预检后起流失败，抹掉自证记忆，下一轮重新预检: {e}"

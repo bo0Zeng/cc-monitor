@@ -4539,7 +4539,7 @@ mod error_envelope_registry {
         //   两问上了帧面，失败走帧面的 `(code, message)` 应答，iso.rs 里不再自己拼信封。
         (
             "dial/sftp.rs",
-            "serde_json::json!({ \"code\": code, \"message\": message })",
+            "serde_json::json!({ \"code\": code, \"message\": message, \"detail\": detail })",
             "部署链路（`use:\"files\"`）一问一答的失败应答",
             "它**不是 CLI 出口**，是一条链路上的一行应答（monitor 那侧 `dial_host::RemoteFs` 读它）；\
              与 CLI 信封同一对键是刻意的（读的人少记一种形状），但它住 `dial/`、成功那一形是别的键 \
