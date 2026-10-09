@@ -214,3 +214,21 @@ fn the_record_product_carries_steps_results_and_reasons() {
         .get("apiReason")
         .is_none());
 }
+
+/// 新建整份文件：原文写的是**空的** `structuredPatch` ＋ `type: "create"`（真记录里新建文件全是这一形）。
+/// 空表当没有 ⇒ 走「整份都是加的」，而不是报 `+0 −0`（桌面端那一行人话与手机端都读这两格）。
+#[test]
+fn creating_a_whole_file_counts_every_line_even_though_the_patch_is_empty() {
+    let r = result_of(
+        &json!({"type": "tool_result", "tool_use_id": "t", "content": "…"}),
+        Some(&json!({
+            "type": "create", "filePath": "/w/new.md",
+            "content": "甲\n乙\n丙", "structuredPatch": [], "userModified": false
+        })),
+    );
+    assert_eq!(
+        (r.added, r.removed),
+        (Some(3), Some(0)),
+        "空的 structuredPatch 不是「没改动」，是「没有改之前」"
+    );
+}

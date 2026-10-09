@@ -1304,3 +1304,109 @@ fn find_hits_carry_their_time_text() {
     assert_eq!(v["hits"][1]["tsText"], "", "读不出时刻 ⇒ 空串");
     let _ = std::fs::remove_dir_all(&home);
 }
+
+/// ★ **`summaryOnly` 那一位真的接到了三条读记录命令上，而且两头都断。**
+///
+/// 核那一层（剥哪几格 · 折起那一行要用的那几格一格不少）由
+/// `observe/record_page_tests.rs::the_summary_only_product_drops_every_body_cell_and_keeps_every_folded_cell`
+/// 逐标记两向钉着。本条钉的是**宿主这一跳**：三条命令各自把 `args` 里那一位读出来、原样递进核。
+/// 核那条判据单独立不住这件事 —— `read_face` 一行都不读那一位，它照样全绿。
+///
+/// 两头都断：置真 ⇒ 正文标记一个不剩且**条数不变**；缺席（= 今天的行为）⇒ 正文标记**必须**在。
+/// 只断前一头的话，宿主把成品整个弄空也能绿。
+#[test]
+fn the_three_record_reads_each_honour_summary_only_both_ways() {
+    let home = scratch("summary-only");
+    let dir = home.join("projects").join("-p");
+    std::fs::create_dir_all(&dir).unwrap();
+    let p = dir.join("s.jsonl");
+    // 结构占位：`ZQBODY-*` 只住正文（思考 · 说的话 · 工具结果），`ZQKEEP-*` 另有一份住后端判好的 `userText`
+    //   —— 不采任何真会话正文。
+    let body = [
+        r#"{"type":"user","uuid":"u1","timestamp":"2026-01-02T03:04:05.000Z","message":{"role":"user","content":[{"type":"text","text":"ZQKEEP-asked"}]}}"#,
+        r#"{"type":"assistant","uuid":"a1","parentUuid":"u1","timestamp":"2026-01-02T03:04:06.000Z","message":{"role":"assistant","content":[{"type":"thinking","thinking":"ZQBODY-think"},{"type":"text","text":"ZQBODY-said"},{"type":"tool_use","id":"t1","name":"Read","input":{"file_path":"/w/f.txt"}}]}}"#,
+        r#"{"type":"user","uuid":"u2","parentUuid":"a1","timestamp":"2026-01-02T03:04:07.000Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"ZQBODY-result"}]}}"#,
+    ]
+    .iter()
+    .map(|r| format!("{r}\n"))
+    .collect::<String>();
+    std::fs::write(&p, &body).unwrap();
+    let path = p.to_string_lossy().to_string();
+    const GONE: &[&str] = &["ZQBODY-think", "ZQBODY-said", "ZQBODY-result"];
+
+    // 三条各自的入参与装成品的那一格。
+    let cases: [(&str, serde_json::Value, &str); 3] = [
+        ("history-read", serde_json::json!({"path": path}), "rows"),
+        ("history-page", serde_json::json!({"path": path}), "lines"),
+        (
+            "history-lines",
+            serde_json::json!({"path": path, "from": 0}),
+            "lines",
+        ),
+    ];
+    for (cmd, base, key) in cases {
+        let ask = |summary_only: Option<bool>| {
+            let mut args = base.clone();
+            if let Some(b) = summary_only {
+                args[&"summaryOnly".to_string()] = serde_json::json!(b);
+            }
+            answer_at(&home, cmd, &args)
+                .unwrap_or_else(|(c, m)| panic!("`{cmd}` 答错了（{c}）：{m}"))
+        };
+        let full = ask(None);
+        let fold = ask(Some(true));
+        let off = ask(Some(false));
+        let text = |v: &serde_json::Value| serde_json::to_string(&v[key]).unwrap();
+        let count = |v: &serde_json::Value| v[key].as_array().map_or(0, Vec::len);
+
+        // ── 缺席（今天的行为）＋ 显式 false：正文**必须**在 ──
+        for (what, v) in [("缺席", &full), ("显式 false", &off)] {
+            let t = text(v);
+            for m in GONE {
+                assert!(
+                    t.contains(m),
+                    "`{cmd}`（`summaryOnly` {what}）的成品里没有正文标记 `{m}` —— \
+                     默认那一形变了，或者夹具没打到（下面那一半会恒绿）"
+                );
+            }
+            assert!(
+                t.contains("ZQKEEP-asked"),
+                "`{cmd}`（{what}）连人说的话都没有"
+            );
+        }
+        // ── 置真：正文一个不剩，条数一条不少 ──
+        let t = text(&fold);
+        for m in GONE {
+            assert!(
+                !t.contains(m),
+                "`{cmd}` 收了 `summaryOnly: true` 还在给正文 `{m}`：{t}"
+            );
+        }
+        assert!(
+            t.contains("ZQKEEP-asked"),
+            "`{cmd}` 把折起那一行要显示的人说的话也剥掉了"
+        );
+        assert_eq!(
+            count(&fold),
+            count(&full),
+            "`{cmd}` 收了 `summaryOnly` 之后条数变了 —— 剥的该是内容，不是行"
+        );
+        assert_eq!(count(&fold), 3, "`{cmd}` 的夹具三行都该出成品");
+        // 两形除了 `{key}` 那一格之外逐格相同（`next` / `eof` / `nextSeq` / `from` 不许受它影响）。
+        let strip = |v: &serde_json::Value| {
+            let mut o = v.as_object().unwrap().clone();
+            o.remove(key);
+            o
+        };
+        assert_eq!(
+            strip(&fold),
+            strip(&full),
+            "`{cmd}` 收了 `summaryOnly` 之后 `{key}` 之外的格也变了"
+        );
+        assert!(
+            t.len() < text(&full).len(),
+            "`{cmd}` 的折起那一形没比全文小"
+        );
+    }
+    let _ = std::fs::remove_dir_all(&home);
+}

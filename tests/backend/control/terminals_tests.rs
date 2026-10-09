@@ -210,23 +210,23 @@ fn each_row_says_whether_this_caller_may_act_on_it() {
     );
     assert_eq!(
         see(&theirs, None)["can"]["input"],
-        json!({ "no": "not-yours", "said": no_said("not-yours") })
+        json!({ "no": "not_yours", "said": no_said("not_yours") })
     );
     assert_eq!(see(&theirs, Some("mobile"))["can"]["input"], json!(true));
     assert_eq!(
         see(&plain, None)["can"]["end"],
-        json!({ "no": "not-managed", "said": no_said("not-managed") })
+        json!({ "no": "not_managed", "said": no_said("not_managed") })
     );
     assert_eq!(see(&plain, None)["started_by"]["client"], Value::Null);
     assert_eq!(
         see(&wide, None)["can"]["end"],
-        json!({ "no": "other-windows", "said": no_said("other-windows") })
+        json!({ "no": "other_windows", "said": no_said("other_windows") })
     );
     assert_eq!(see(&wide, None)["can"]["input"], json!(true));
     assert_eq!(see(&plain, None)["state"], "idle");
     assert_eq!(
         see(&row("$5", "x-cc", "s", "", "zsh"), None)["state"],
-        "program-exited"
+        "program_exited"
     );
     assert_eq!(see(&shared, None)["state"], "running");
     assert_eq!(see(&shared, None)["title"], "t");
@@ -343,7 +343,7 @@ fn the_products_match_the_golden() {
     }
     let built = [
         input_reply("delivered", None, None),
-        input_reply("refused", Some("screen-changed"), Some("0000000000000000")),
+        input_reply("refused", Some("screen_changed"), Some("0000000000000000")),
         input_reply("unsure", None, None),
     ];
     assert_eq!(serde_json::to_value(built).unwrap(), i["replies"]);
@@ -502,8 +502,8 @@ fn on_a_real_tmux_the_three_commands_do_what_they_say() {
     )
     .unwrap();
     assert_eq!(r["result"], "refused");
-    assert_eq!(r["why"], "screen-changed");
-    assert_eq!(r["said"], no_said("screen-changed"));
+    assert_eq!(r["why"], "screen_changed");
+    assert_eq!(r["said"], no_said("screen_changed"));
     assert_ne!(r["screen"], json!(seen));
 
     // 送键：ctrl-c 把前台的 cat 停掉 ⇒ 那个会话随之结束、从名单里消失。
@@ -527,7 +527,7 @@ fn on_a_real_tmux_the_three_commands_do_what_they_say() {
         }
         assert_eq!(
             input_on(iso.on(), &args).unwrap(),
-            json!({ "result": "refused", "why": "not-yours", "said": no_said("not-yours") })
+            json!({ "result": "refused", "why": "not_yours", "said": no_said("not_yours") })
         );
     }
     let r = input_on(
@@ -547,7 +547,7 @@ fn on_a_real_tmux_the_three_commands_do_what_they_say() {
     for raw in ["=pipe-x:", "$1", "%0", "pipe-x"] {
         assert_eq!(
             input_on(iso.on(), &json!({ "terminal": raw, "text": "x" })).unwrap(),
-            json!({ "result": "refused", "why": "not-known", "said": no_said("not-known") })
+            json!({ "result": "refused", "why": "not_known", "said": no_said("not_known") })
         );
         assert_eq!(
             preview_on(iso.on(), &json!({ "terminal": raw })).map_err(|e| e.0),
@@ -741,25 +741,65 @@ fn the_container_handle_is_the_list_handle_of_the_same_pane() {
     );
 }
 
-/// 原因码（线上那一形，短横）各有一句（彼此不同的那几种不同句；`not-known` 与 `ended` 都是「终端已不在」）；认不出的落「被拒」。
+/// 原因码（线上那一形，下划线）各有一句（彼此不同的那几种不同句；`not_known` 与 `ended` 都是「终端已不在」）；认不出的落「被拒」。
 #[test]
 fn every_refusal_reason_has_its_sentence() {
     let codes = [
-        "not-yours",
-        "not-managed",
-        "other-windows",
-        "not-known",
+        "not_yours",
+        "not_managed",
+        "other_windows",
+        "not_known",
         "ambiguous",
-        "screen-changed",
+        "screen_changed",
     ];
     let said: Vec<String> = codes.iter().map(|c| no_said(c)).collect();
     let mut uniq = said.clone();
     uniq.sort();
     uniq.dedup();
     assert_eq!(uniq.len(), codes.len(), "两种原因同一句：{said:?}");
-    assert_eq!(no_said("ended"), no_said("not-known"));
+    assert_eq!(no_said("ended"), no_said("not_known"));
     assert_eq!(no_said("what"), copy_text("beTerminal.no.other", &[]));
     assert!(!said.contains(&no_said("what")));
-    let r = input_reply("refused", Some("not-yours"), None);
-    assert_eq!(r["said"], no_said("not-yours"));
+    let r = input_reply("refused", Some("not_yours"), None);
+    assert_eq!(r["said"], no_said("not_yours"));
+}
+
+/// 终端这一族线上的原因码与状态（名单 `can.*.no` · `terminal-input` 的 `why` · 名单行的 `state`）和同族命令级码一个写法：
+/// 小写 ＋ 下划线，不带短横。从金样里真出的成品逐格取，不另列一份码表。
+#[test]
+fn terminal_reason_codes_use_underscores_like_command_codes() {
+    fn walk(v: &Value, out: &mut Vec<String>) {
+        match v {
+            Value::Object(m) => {
+                for (k, x) in m {
+                    if matches!(k.as_str(), "no" | "why" | "state") {
+                        if let Some(s) = x.as_str() {
+                            out.push(s.to_string());
+                        }
+                    }
+                    walk(x, out);
+                }
+            }
+            Value::Array(a) => a.iter().for_each(|x| walk(x, out)),
+            _ => {}
+        }
+    }
+    let mut codes = Vec::new();
+    walk(&golden(), &mut codes);
+    assert!(
+        codes.len() >= 4,
+        "金样里取到的码太少（{codes:?}）—— 本条在空转"
+    );
+    for c in &codes {
+        assert!(
+            !c.is_empty() && c.chars().all(|ch| ch.is_ascii_lowercase() || ch == '_'),
+            "终端码 `{c}` 不是小写下划线写法"
+        );
+    }
+    for code in codes_of("terminal-input")
+        .iter()
+        .chain(codes_of("terminals-list").iter())
+    {
+        assert!(!code.contains('-'), "命令级码 `{code}` 带短横");
+    }
 }

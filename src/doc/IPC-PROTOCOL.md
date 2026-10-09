@@ -84,6 +84,8 @@ monitor 只对 hello 里**声明了对应能力**（`capabilities`）的后端�
   `kill` · `launch` 的 `send-into` · `sessions-*` · `terminal-input` · `session-restart` 共用这一维；它防误动，不是安全边界。
 - **破坏性动作三道门**：名字精确匹配（`=name:`，不许含 `:` / `=` / 控制字符）⇒ 名字像我们铸的（`cc-*` / `<X>-cc`）或已挂 `@ccm_sid` ⇒ 只有一个窗口（只给杀会话）。杀的是 `#{session_id}` 句柄，不是名字。
 - **终端句柄**：`terminals-list` 每行的 `terminal` 是不透明句柄，前端不拼、不解析；后端不收任意 tmux 目标串，句柄 / sid 先在那一刻的名单里对上才动手。
+- **送字的回话不带画面**：`terminal-input` 回 `delivered` 时**不带** `screen`（`screen` 只跟 `refused` ＋ `screen_changed` 一起回，是那一刻的新指纹）。
+  要连着按，要么订 `terminal-follow`（只在帧面），要么每按一下之前问一次 `terminal-preview` 拿新指纹。重抓的节拍归前端。
 
 ## 7. 两个前端共吃的冻结面
 
@@ -92,13 +94,16 @@ monitor 只对 hello 里**声明了对应能力**（`capabilities`）的后端�
 - 帧：`hello` `v` `build_id` `host_arch` `claude_dir` `capabilities` `emits` · `line` `session_id` `path` `seq` `byte_offset` `raw`（`--with-raw`）·
   `session_added` `sid` `path` `session_kind` `cwd` `name` `lines` `status` `waiting_for` `agent_kind` `liveness_confidence` `attachable` ·
   `session_status` `sid` `status` `waiting_for` `liveness_confidence` · `session_removed` `sid` `cause` · `overflow` `dropped` `lost` `lost_truncated` ·
-  `turn_end` `session_id` `uuid` · 请求信封 `id` `cmd` `args` `within_ms`（可缺）。
+  `turn_end` `session_id` `uuid` · `tap` `stream` `run` `resp` `n` `ev` · `reply` `id` `ok` `code` `message` `detail` `data` · `cancelled` `id` ·
+  请求信封 `id` `cmd` `args` `within_ms`（可缺）。`line` 里成品那一格（今天叫 `message`）不在这张冻结表里：记录帧换形之后按新形状另立。
 - 一次性子命令（叫法 · 位置参数个数 · 输出里它读的那几格）：`--list-projects`（`dirName` `projectPath` `sessionCount` `lastActivityMs`）·
   `--list-sessions <项目目录名>`（`sessionId` `aiTitle` `cwd` `jsonlPath` `messageCountApprox` `startedAtMs` `updatedAtMs` `isBg`）· `--read-session <路径>` ·
-  `--read-session-tail <路径> <N>` · `--read-session-from-offset <路径> <偏移>` · `--search <查询串>` · `--fork-session <会话 id> <消息 uuid>` · `--resolve`（stdin）；
+  `--read-session-tail <路径> <N>` · `--read-session-from-offset <路径> <偏移>` · `--search <查询串>` · `--fork-session <会话 id> <消息 uuid>` · `--resolve`（stdin）·
+  `--backend-probe` · `--find-in-session --query <q> <路径>` · `--list-user-inputs <路径>` ·
+  帧命令派生、入参走 stdin 的 `--ping` `--terminals-list` `--terminal-preview` `--terminal-input` `--history-page` `--history-facts`（这几条要真能派发，不只是串在表里）；
   会话 id 的校验规则（非空 · ≤128 · 只 `[0-9A-Za-z_-]`）同样不许改。
 - `session_kind` · `status` 是那一家的原词，monitor 不读（读后端判好的 `background` · `activity`），只为第二个前端留着。
-- 判据：`wire_tests::the_shapes_the_second_frontend_reads_stay_put`（表在那里，类型逐格对）。
+- 判据：`wire_tests::the_shapes_the_second_frontend_reads_stay_put`（帧那张表，类型逐格对）· `wire_tests::the_subcommands_the_second_frontend_calls_stay_put`（子命令那张）。
 - 跨语言金样：`tests/__fixtures__/session-stream.golden.jsonl`，每种帧两行（「全格」与「最少格」），由后端真序列化器写；最少格里的格就是必填格。
   终端管理 `tests/__fixtures__/terminals.golden.json` · `--resolve` `tests/__fixtures__/resolve-contract.golden.json` · 换号重启 `tests/__fixtures__/rotation-switch-restart.golden.json`。
 - 部署：第二个前端从 GitHub Release 下后端字节（两个 musl 目标），按 `SHA256SUMS-linux.txt` 与字节里的身份戳校验；资产名登记在 [RELEASING.md](RELEASING.md)。
