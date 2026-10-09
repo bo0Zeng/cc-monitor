@@ -877,7 +877,7 @@ pub const PROTO_VERSION: u32 = 1;
 ///
 /// p9o-detail-everywhere：拨号应答 · files 链路失败应答 · backend_status.machine · 六条读答（unreadable）各多可缺 detail · 自有状态文件失败带原话 · 「那台不认这条命令」统一按码取一句、remote_ask 遇老后端回 unknown_command · Codex 中转（relay-optin 入参 agent · 426 / 403 key-scope · 直通钥匙 relay-pass-key）· Linux 单实例令牌转交 · 找 ssh 进后端。
 ///
-/// p9p-rotation-rules：轮换规则（存规则 · 默认 · 一键套用 · 批量管理）与 rotation-plan 预览 / 时间轴；兜底等待（往兜底号切前等非兜底号 wait 分钟）；session-new 带 rotation（先定 sid）与 ticket；终端订阅先占位、壳替界面退订；remote-probe 结局带 detail；复制详情拼法收进 copy_core。
+/// p9p-rotation-rules：轮换规则（存规则 · 默认 · 一键套用 · 批量管理）与 rotation-plan 预览 / 时间轴；兜底等待（往兜底号切前等非兜底号 wait 分钟）；session-new 带 rotation（先定 sid）；终端订阅先占位、壳替界面退订；remote-probe 结局带 detail；复制详情拼法收进 copy_core。
 pub const BUILD_ID: &str = "p9p-rotation-rules";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
