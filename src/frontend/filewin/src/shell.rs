@@ -475,6 +475,8 @@ pub struct FileWindow {
     inline_gen: u64,
     inline_busy: bool,
     inline_select: Option<usize>,
+    /// 上一次就地那一趟没成时框里那串字：没改过就不让「点别处」再发一趟（回车照样重试）。
+    inline_failed_text: Option<String>,
     /// 已经消化过几摞写操作（同 [`Self::seen_rounds`]，每条路各一个数）。
     seen_write_rounds: u64,
     /// 🔴**往外拖**那一趟的共享落点（进度 · 结局）。
@@ -745,6 +747,7 @@ impl FileWindow {
             inline_gen: 0,
             inline_busy: false,
             inline_select: None,
+            inline_failed_text: None,
             seen_write_rounds: 0,
             pull: super::download::DownloadBoard::default(),
             pull_want: None,
@@ -2090,6 +2093,7 @@ impl FileWindow {
     pub(super) fn begin_inline(&mut self, p: WritePrompt) -> bool {
         *self.prompt_error.lock().unwrap() = None;
         self.inline_select = Some(p.select_chars());
+        self.inline_failed_text = None;
         self.inline_busy = false;
         self.inline_gen += 1;
         self.write_prompt = Some(p);
@@ -2176,6 +2180,7 @@ impl FileWindow {
     /// 收掉那个框，什么都不做。
     pub fn cancel_write(&mut self) {
         self.write_prompt = None;
+        self.inline_failed_text = None;
         self.inline_busy = false;
         self.inline_gen += 1;
         *self.prompt_error.lock().unwrap() = None;
@@ -2226,16 +2231,19 @@ impl FileWindow {
             Err(why) => {
                 *self.prompt_error.lock().unwrap() = Some(why.into());
                 self.inline_select = Some(p.select_chars());
+                self.inline_failed_text = Some(p.text.clone());
                 return false;
             }
         };
         let Some(h) = self.rt.clone() else {
             *self.prompt_error.lock().unwrap() =
                 Some(copy_text("rsFilewinShell.writes.noRuntime", &[]).into());
+            self.inline_failed_text = Some(p.text.clone());
             return false;
         };
         let Some(line) = self.line.clone() else {
             *self.prompt_error.lock().unwrap() = Some(NO_LINE.to_string().into());
+            self.inline_failed_text = Some(p.text.clone());
             return false;
         };
         *self.prompt_error.lock().unwrap() = None;
@@ -2293,6 +2301,7 @@ impl FileWindow {
                     }
                 }
                 *self.prompt_error.lock().unwrap() = None;
+                self.inline_failed_text = None;
                 self.selection.clear_picked();
                 self.set_reveal(&name);
                 self.reload();
@@ -2310,9 +2319,18 @@ impl FileWindow {
                 };
                 *self.prompt_error.lock().unwrap() = Some(why);
                 self.inline_select = self.write_prompt.as_ref().map(WritePrompt::select_chars);
+                self.inline_failed_text = self.write_prompt.as_ref().map(|p| p.text.clone());
             }
         }
         true
+    }
+
+    /// 判据与截图场景用：就地那一趟当作已发出、带着 `f` 回来（下一帧 [`Self::settle_inline`] 收）。
+    #[cfg(test)]
+    pub(crate) fn land_inline_failure(&mut self, f: super::source::Failed) {
+        self.inline_busy = true;
+        self.inline_gen += 1;
+        *self.inline_done.lock().unwrap() = Some((self.inline_gen, Err(f)));
     }
 
     /// 回执上点了［撤销］⇒ 那几件直接做（不问、不再出回执），做完重列。
@@ -4704,11 +4722,14 @@ impl FileWindow {
             // 就地那一格：新建 ⇒ 文件夹那一段之后插一行（名字缺省、选中）；改名 ⇒ 那一行的名字格换成输入框。
             let (mut text, shown, at) =
                 inline_rows(&rows, self.write_prompt.as_ref().filter(|p| p.is_inline()));
-            let err = self.prompt_error();
+            let fail = self.prompt_failure();
+            let blur_submits = self.inline_failed_text.as_deref() != Some(text.as_str());
             let mut cell = at.map(|row| super::rows::InlineCell {
                 row,
                 text: &mut text,
-                error: err.as_deref(),
+                error: fail.as_ref().map(|f| f.said.as_str()),
+                detail: fail.as_ref().map_or("", |f| f.detail.as_str()),
+                blur_submits,
                 select: self.inline_select.take(),
                 busy: self.inline_busy,
                 outcome: None,

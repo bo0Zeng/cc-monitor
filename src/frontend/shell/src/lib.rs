@@ -475,7 +475,7 @@ pub fn run() {
     let born_private = platform::fs::ensure_private_dir(&monitor_data_dir);
     let logging_state = logging::init(&monitor_data_dir);
     if let Err(e) = born_private {
-        tracing::warn!("{e}");
+        tracing::warn!("{}（{}）", e.said, e.raw());
     }
     tracing::info!(
         "[perf] T+{}ms cc-monitor starting (data_dir={}, log_dir={})",
@@ -620,7 +620,11 @@ pub fn run() {
                         //   **不是**去 `reason` 串里认字（那是 `KPY5` 治的那种假信号）。
                         match local_backend_host::take_start_refusal() {
                             Some(next_step) => {
-                                tracing::warn!("本机后端未启动: {reason}；找过 {looked_at:?}");
+                                tracing::warn!(
+                                    "本机后端未启动: {}（{}）；找过 {looked_at:?}",
+                                    reason.said,
+                                    reason.raw()
+                                );
                                 if let Err(e) = crate::platform::notify::show(
                                     app.handle(),
                                     &copy_text("rsLib.run.localBackendDown", &[]),
@@ -633,7 +637,11 @@ pub fn run() {
                                 }
                             }
                             None => {
-                                tracing::info!("本机后端未启动: {reason}；找过 {looked_at:?}")
+                                tracing::info!(
+                                    "本机后端未启动: {}（{}）；找过 {looked_at:?}",
+                                    reason.said,
+                                    reason.raw()
+                                )
                             }
                         }
                     }
