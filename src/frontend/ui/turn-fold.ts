@@ -6,14 +6,14 @@
  *
  * # 排版的口径（界面不判谁是过程）
  *
- * - 顺着流的顶层子节点走：遇到 `data-uuid` 等于某一轮 `uuid` 的那张卡 ＝ 那一轮开头；之后的卡属于这一轮，直到下一轮开头。
+ * - 顺着流的顶层子节点走：遇到 `data-id` 等于某一轮 `uuid` 的那张卡 ＝ 那一轮开头；之后的卡属于这一轮，直到下一轮开头。
  * - 这一轮有过程行（后端给的 `parts` 非空）⇒ 开头之后、结尾以外的顶层卡全收进去；没有 ⇒ 一张不折。
  * - 遇到骨架占位：归哪一轮、藏不藏不顺着 DOM 猜，按账本那一段认（`turnSpans`：开头之后、下一轮开头之前、结尾以外的行是过程）——
  *   整块是某一轮的过程 ⇒ 折着就藏（高 0、骨架也不物化它，同一个口径交给骨架）；里面有哪一轮的开头 ⇒ 后面的卡归最后那个开头的轮
  *   （开头那张还没建 ⇒ 行等它建出来再画）；骨架没接上认不出 ⇒ 之后不再归轮，直到认出下一轮开头。
  * - ESC 回退的折叠段之后不再归轮（宁可不折，不折错；它后面的占位照样按账本认）。
  * - 过程行插在那一轮开头那张卡后面；它不是时间线条目（`RecordTimeline` 按后继锚插入，不受它影响），
- *   `BranchFolder` 认的是 `data-uuid`，过程行没有。
+ *   `BranchFolder` 认的是 `data-id`，过程行没有。
  * - 「暂定结论」被降级（露着的最后一段正文，Claude 又调了工具 ⇒ 它成了中间的话）：收尾那一刻视口正落在它上面 ⇒ 先不收，
  *   等滚出去（宿主转来的 scroll）或切走再收。
  *
@@ -225,7 +225,7 @@ export class TurnFold {
     const heads: Head[] | null = spans && spans.map((r) => ({ seq: r.head, uuid: r.turn.uuid }));
     for (const el of Array.from(this.content.children)) {
       if (!(el instanceof HTMLElement) || isOurs(el)) continue;
-      const uuid = el.getAttribute("data-uuid");
+      const uuid = el.getAttribute("data-id");
       const turn = uuid ? this.byUuid.get(uuid) : undefined;
       if (turn) {
         cur = hasLine(turn) ? turn : null;
@@ -354,7 +354,7 @@ export class TurnFold {
 
   private mark(el: HTMLElement, turn: TurnSummary): void {
     el.dataset.procOf = turn.uuid;
-    const uuid = el.getAttribute("data-uuid");
+    const uuid = el.getAttribute("data-id");
     let open = this.expanded(turn);
     // 暂定结论被降级：此刻视口正落在它上面 ⇒ 先不收。
     if (!open && uuid !== null && (this.held.has(uuid) || (this.shownEnding.has(uuid) && this.inView(el)))) {
@@ -475,9 +475,9 @@ export class TurnFold {
     return null;
   }
 
-  /** 流里 `data-uuid` 是它的那张顶层卡。 */
+  /** 流里 `data-id` 是它的那张顶层卡。 */
   private cardOf(uuid: string): HTMLElement | null {
-    for (const el of Array.from(this.content.children)) if (el instanceof HTMLElement && el.getAttribute("data-uuid") === uuid) return el;
+    for (const el of Array.from(this.content.children)) if (el instanceof HTMLElement && el.getAttribute("data-id") === uuid) return el;
     return null;
   }
 

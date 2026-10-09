@@ -702,7 +702,7 @@
   contain-intrinsic-size: auto 120px;
 }
 
-/* Batch13-F40b:上翻补批顶端哨兵(非 timeline 实体,无 data-uuid,恒为首子)。
+/* Batch13-F40b:上翻补批顶端哨兵(非 timeline 实体,无 data-id,恒为首子)。
    contain-intrinsic-size 显式覆盖 120px 兜底(它匹配 .stream-content > *)。 */
 .stream-more-above {
   text-align: center;

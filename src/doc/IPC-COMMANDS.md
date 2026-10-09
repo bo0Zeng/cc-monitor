@@ -39,7 +39,7 @@ Handshake sent once when a client connects。
 | `cwd` | string? | 这条记录自己的工作目录 |
 | `byte_offset` | number? | 本行末尾（含 `\n`）在文件中的**累计原始字节 offset**——语义**逐字节对齐 aterm `LineFramer.endOffset`**：计 CRLF 的 `\r`、含 `\n`、残行不计；resume N ⇒ `tail -c +(N+1)` |
 | `rid` | string? | 这一行的对账键（适配层 `RecordFace::response_id` 给；流的「开始」带同一个值） |
-| `raw` | string? | 这一行记录的**原文**（去掉行尾换行） |
+| `raw` | string? | 这一行记录的**原文**（去掉行尾：`\n`，CRLF 行连 `\r` 一起去） |
 
 ### `session_added`
 

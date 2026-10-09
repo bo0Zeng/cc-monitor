@@ -50,13 +50,13 @@ describe("查看器 0 条消息", () => {
 
   it("只有不显示的行（标题行）⇒ 也是空态", async () => {
     const v = await mount([line(0, { t: "title", id: "@0", text: "标题", by: "agent" })]);
-    expect(v.element.querySelector("[data-uuid]")).toBeNull();
+    expect(v.element.querySelector("[data-id]")).toBeNull();
     expect(shown(v)).toBe(true);
   });
 
   it("有一条消息 ⇒ 不出空态", async () => {
     const v = await mount([userLine(0, "u0", "你好")]);
-    expect(v.element.querySelector('[data-uuid="u0"]')).not.toBeNull();
+    expect(v.element.querySelector('[data-id="u0"]')).not.toBeNull();
     expect(shown(v)).toBe(false);
   });
 
@@ -70,7 +70,7 @@ describe("查看器 0 条消息", () => {
     const v = await mount([], { follow: { sid: "s1", live: true } });
     expect(shown(v)).toBe(true);
     follow.sink!({ t: "lines", lines: [userLine(1, "u1", "来了")] });
-    expect(v.element.querySelector('[data-uuid="u1"]')).not.toBeNull();
+    expect(v.element.querySelector('[data-id="u1"]')).not.toBeNull();
     expect(shown(v)).toBe(false);
   });
 });

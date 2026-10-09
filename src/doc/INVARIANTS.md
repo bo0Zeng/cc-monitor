@@ -453,7 +453,7 @@ v2.4.2 之前 `SessionInfo.proc_start: String` 必填 → serde 直接解析失�
 **应用范围**：
 - `sessions/<PID>.json` (`session_map::SessionInfo`) —— procStart 字段在 v2.6 后端按 `Option<String>` 反序列化；调用点用 `utils::NetTicks::parse_str` 转 typed value 比较。同样 wire 字符串可缺，Rust 内部用 newtype 隔离避免跟 `bind.rs::HwndEntry.owner_proc_start` (FILETIME) 单位混用
 - `tasks/<sid>/<id>.json` (`tasks::TaskEntry`) — 已经按宽容处理
-- `projects/**/*.jsonl` 的 `messages::JsonlRecord` enum — 非核心字段一律 `Option`/`default`。**未知 type 的处理见 § 18.1（F63 起变了）**。
+- `projects/**/*.jsonl` 的 `agents/claudecode/schema.rs::JsonlRecord` enum — 非核心字段一律 `Option`/`default`。**未知 type 的处理见 § 18.1（F63 起变了）**。
 - 未来添加任何 Claude Code 数据源读取一律照此办
 
 ### 18.1 看不懂的记录不静默丢 —— 抢救成 `Unrecognized`（F63 / issue #49）
@@ -463,7 +463,7 @@ v2.4.2 之前 `SessionInfo.proc_start: String` 必填 → serde 直接解析失�
 1. **未知 `type`** → serde 落到 `#[serde(other)] Unknown`。**`Unknown` 现在只是 serde 落点，绝不出 `parser::parse_line`** —— 它被抢救成 `JsonlRecord::Unrecognized`（留 `raw` 原文 + `uuid`/`parentUuid`/`timestamp`）。
 2. **已知 `type` 但字段解析失败**（`from_str` 返回 Err）且原文仍是合法 JSON → 同样抢救成 `Unrecognized`（`reason="parse-failed: …"`，并 `tracing::warn` 一条）。只有**连 JSON 语法都不成立**的行才仍返回 `Err`。
 
-**为什么**：记录一旦静默消失，它的 children 的 `parentUuid` 就指向集合外 → `branching.ts:100-106` 判孤儿 root → 死胡同 plain user root **整棵误折叠**（`branching.ts:24` 早预警、2026-06-13 咬过一次）。`Unrecognized` **带链身份（`uuid` / `parentUuid`）的**进 `is_displayable()` 白名单（没有链身份的不进前端：前端没有它的读者，也不会让别人成孤儿；新类型仍由 `drift_ledger` 报出，不静默）（照 `Attachment` 先例：不建卡但进链）；前端 `branching.ts::extractBranchRecord` 白名单含 `"cc-monitor-unrecognized"`。
+**为什么**：记录一旦静默消失，它的 children 的 `parentUuid` 就指向集合外 → 主线判定（后端 `agents/mainline.rs`）当孤儿 root → 死胡同那一支 **整棵误判成回退掉的**（2026-06-13 咬过一次）。带链身份（`uuid` / `parentUuid`）的记录不论认不认得都由 `chain.rs` 读原文进链（照 `Attachment` 先例：不出通用记录但进链）；没有链身份的不出记录、也不会让别人成孤儿；新类型由 `drift_ledger` 报出，不静默。
 
 **实测（F63 当时，2026-07-16）**：本机 771 会话 / 16 万行，7 个未知 type 共 ~8,800 条以前被静默丢弃（占 5.6%），**uuid 全为 0**——即此刻并没有在误折叠，F63 是**保险**（不再丢 + Claude 发带链身份新类型时自动扛住）。`cc-monitor-unrecognized` 是**本地自造信封**（前缀防撞真类型），**不是** Claude 真实 jsonl 类型、不参与两端 schema 对账。
 
@@ -542,7 +542,7 @@ Claude Code 把很多不是人说的东西也写成 `type=user`（排队消息 `
    - **已渲染集 = 尾后缀 ∪ 若干岛**；「哪些 seq 还没物化」的源头是 `SkeletonView` 的**占位集**（`isPending`），不再是 `floor`。占位与已渲染卡**不相交**：占位 `[lo,hi)` 里一张卡都没有。
    - **往占位里建卡只许经骨架**（`fillVisible` / `ensure`）—— 骨架先交给宿主建、再把占位切开。绕开它在占位中间直接 `renderRange` / `renderPayloadsBatch` ＝ 卡落进占位里、总高算两遍。
    - **只物化与视口相交的那一段**（±0.5 屏，每轮 ≤300 行、≤4 轮）；一次滚动不从尾巴往上一批批补。
-   - 占位本身是 timeline 条目（`seq = lo − 0.5`、`kind: "card"`、无 `data-uuid`）⇒ 二分插入的锚照常、工具组不跨空洞合并、`BranchFolder` 把它当断 run。
+   - 占位本身是 timeline 条目（`seq = lo − 0.5`、`kind: "card"`、无 `data-id`）⇒ 二分插入的锚照常、工具组不跨空洞合并、`BranchFolder` 把它当断 run。
    - **视口稳定**：物化与 `attachGaps` 钉住**视口里最上面那张已渲染卡**的屏幕位置（占位可能同时插在它上下两侧，ΔscrollHeight 补偿只对「全在上方」成立）；视口整个落在占位里就不补偿。同一同步任务内测 → 改 → 回写、临时 `overflow-anchor:none`、`finally` 还原（与第 3 条同一豁免类）。
    - **接之前对拍 seq 空间**（抽几条 uuid → 索引里必须同 seq），对不上就不接；接上之后再发生截断重读**不会被发现**（没有持续对拍）。
    - **正文不再驻留**：接上之后前端账本只留离尾巴最近的 `FILL_BATCH` 条、monitor 重放缓冲只留尾巴 `REPLAY_TAIL_KEEP` 条；其余滚到时按偏移要回来（`read_session_range`）——**没见过**的行走 `onLine` 全套（按重放语义：不触发自动切 tab / 轮次通知），**见过**的只建卡（旁路账早记过、去重会拒）。岛里迟到的 live 行就地建卡，占位里的照旧收纳。

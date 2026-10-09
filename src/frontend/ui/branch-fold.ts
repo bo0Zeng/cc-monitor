@@ -3,7 +3,7 @@
  * 把连续的主线外卡包进 `.branch-fold-wrap`。
  *
  * 清单是那台后端给的成品（实时帧 `branch` 整份 · 冷读 `history-branch`），界面不判谁在主线上、只按清单排版：
- * - 段：`data-uuid` 在清单里的卡连成一段；不在清单里的卡与没有 `data-uuid` 的元素断段。
+ * - 段：`data-id` 在清单里的卡连成一段；不在清单里的卡与没有 `data-id` 的元素断段。
  *   清单一换可能一大段卡转进 / 转出主线，重折按段差量做，见 `rebuild`。
  * - 折叠状态保留：wrap 的展开态记在 `foldExpanded`（key = 段首条 id）。
  * - 增量读到的、在已有清单里的那几条照样折（清单不随读法变；插卡之后 `rebuildNow` 重折一遍）。
@@ -97,7 +97,7 @@ export class BranchFolder {
    * 按主线外清单重折 fold 结构 —— 按段差量，不全量解开重包。
    *
    * 1. 逻辑序列：顶层子节点依次读；遇到 wrap 就读它 inner 里的卡（不搬）。
-   * 2. 目标段：逻辑序列里连续的、`data-uuid` 在清单里的卡（无 `data-uuid` 的元素断段）。
+   * 2. 目标段：逻辑序列里连续的、`data-id` 在清单里的卡（无 `data-id` 的元素断段）。
    * 3. 现存 wrap 若**恰好**等于某个目标段（inner 的卡 == 段成员、同序）⇒ 原地不动（展开态、DOM 都不碰）；
    *    其余 wrap 解开（卡搬回 wrap 所在位置）；没有现成 wrap 的目标段新包一个。
    *
@@ -125,7 +125,7 @@ export class BranchFolder {
     const runs: Array<Array<{ el: HTMLElement; wrap: HTMLElement | null; uuid: string }>> = [];
     let cur: (typeof runs)[number] | null = null;
     for (const it of items) {
-      const uuid = it.el.getAttribute("data-uuid");
+      const uuid = it.el.getAttribute("data-id");
       if (uuid && off.has(uuid)) {
         if (!cur) {
           cur = [];

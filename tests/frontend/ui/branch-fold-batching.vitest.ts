@@ -17,7 +17,7 @@ function mount(ids: Array<string | null>): { el: HTMLElement; folder: BranchFold
   for (const id of ids) {
     const c = document.createElement("div");
     c.className = "card";
-    if (id) c.setAttribute("data-uuid", id);
+    if (id) c.setAttribute("data-id", id);
     c.textContent = id ?? "sep";
     el.appendChild(c);
   }
@@ -57,7 +57,7 @@ describe("按清单折", () => {
     folder.setOff(new Set(["x", "y"]));
     for (const id of ["x", "y"]) {
       const c = document.createElement("div");
-      c.setAttribute("data-uuid", id);
+      c.setAttribute("data-id", id);
       c.textContent = id;
       el.appendChild(c);
       folder.cardsAdded();
@@ -103,7 +103,7 @@ describe("C1 · 差量重折 == 从零折", () => {
   const card = (uuid: string | null): HTMLElement => {
     const el = document.createElement("div");
     el.className = "card";
-    if (uuid) el.dataset.uuid = uuid;
+    if (uuid) el.dataset.id = uuid;
     el.textContent = uuid ?? "sep";
     return el;
   };
@@ -140,7 +140,7 @@ describe("C1 · 差量重折 == 从零折", () => {
         // 换主线外清单：每张卡独立地以 0.3 的概率在清单里
         const off = new Set<string>();
         for (const c of Array.from(el.querySelectorAll<HTMLElement>(".card"))) {
-          const u = c.dataset.uuid;
+          const u = c.dataset.id;
           if (u && r() < 0.3) off.add(u);
         }
         folder.setOff(off);

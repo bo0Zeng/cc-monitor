@@ -173,7 +173,8 @@ fn inflate(v: &mut serde_json::Value) {
 /// 原文语料（可先膨胀）⇒ 逐行成品，一行一条。
 fn scale_records(inflated: bool) -> String {
     let root = crate::guard_support::repo_root();
-    let raw = std::fs::read_to_string(root.join("tests/__fixtures__/scale2-height-records.jsonl")).unwrap();
+    let raw = std::fs::read_to_string(root.join("tests/__fixtures__/scale2-height-records.jsonl"))
+        .unwrap();
     let mut got = String::new();
     let mut off = 0u64;
     for line in raw.lines().filter(|l| !l.trim().is_empty()) {

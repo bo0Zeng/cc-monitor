@@ -95,7 +95,7 @@ async function rig() {
         const el = document.createElement("div");
         el.dataset.h = "60";
         el.dataset.seq = String(s);
-        el.setAttribute("data-uuid", `u${s}`);
+        el.setAttribute("data-id", `u${s}`);
         timeline.insert({ seq: s, element: el, kind: "card", toolGroup: null });
       }
     },

@@ -25,7 +25,7 @@
  * # 台子的保真边界（搬家不改这一段，只把它挪到一个家）
  *
  * - 渲染管线是**真的**：真 `cards/renderMessage` → 真 `render-stream-record` → 真
- *   `markCardUuid` 写 `data-uuid`。**没有** mock 掉「卡上有没有 `data-uuid`」这件事。
+ *   `markCardId` 写 `data-id`。**没有** mock 掉「卡上有没有 `data-id`」这件事。
  * - **只有 IPC 那一层是假的**：`invoke` 换成「把 `viewerRig.chunk` 从 `Channel` 灌回去」。
  * - jsdom 没有 `ResizeObserver` / `scrollIntoView` / **`CSS`** ⇒ 这里补桩。
  *   `scrollIntoView` 的桩正是观测口：jsdom 无布局，「滚没滚到」量不了，

@@ -168,8 +168,8 @@ export class FakeBackend {
       });
       frames.push({ container: { session_id: s.sid, container: s.container } });
       const from = this.world.replayTail === undefined ? 0 : Math.max(0, s.records.length - this.world.replayTail);
-      s.records.slice(from).forEach((message, i) => {
-        frames.push({ line: { session_id: s.sid, cwd: s.cwd, path: `${s.cwd}/${s.sid}.jsonl`, seq: from + i, origin, message } });
+      s.records.slice(from).forEach((record, i) => {
+        frames.push({ line: { session_id: s.sid, cwd: s.cwd, path: `${s.cwd}/${s.sid}.jsonl`, seq: from + i, origin, record } });
       });
       if (s.runs.length > 0) frames.push({ runs: { session_id: s.sid, runs: s.runs, ended: [] } });
       frames.push({ activity: { session_id: s.sid, activity: s.activity, waiting_for: s.waitingFor } });

@@ -2,7 +2,7 @@
 //!
 //! 这里是「零信息损失」的唯一关口：后端读正文的每一条路（实时 `line` 帧 · 按页 · 按偏移 · 按行号 · 子 agent）都经这一个函数出成品。
 //! 能解成合法 JSON 的行一律留下：未知 `type`、或已知 `type` 但字段解析失败，都抢救原文 + uuid/parentUuid/timestamp 组 `Unrecognized`；
-//! 只有连 JSON 语法都不成立的行才返回 `Err`。丢一条的后果：children 的 parentUuid 指向集合外 → 前端 `branching.ts` 判孤儿 root → 整棵误折叠。
+//! 只有连 JSON 语法都不成立的行才返回 `Err`。丢一条的后果：children 的 parentUuid 指向集合外 → 主线判定（`chain.rs`）当孤儿 root → 整棵误判成回退掉的。
 
 use super::drift::{self as drift_ledger, DriftFace};
 use super::schema::JsonlRecord;

@@ -48,7 +48,7 @@ const turn = (uuid: string, at: number, over: Partial<TurnSummary> = {}): TurnSu
 function card(cls: string, uuid?: string): HTMLElement {
   const el = cls === "card-tool-group" ? document.createElement("details") : document.createElement("div");
   el.className = `card ${cls}`;
-  if (uuid) el.setAttribute("data-uuid", uuid);
+  if (uuid) el.setAttribute("data-id", uuid);
   return el;
 }
 
@@ -140,7 +140,7 @@ describe("按轮折叠", () => {
   it("跳卡 / 查找落在折着的过程里（revealCard）：展开那一轮再滚；工具组里的一步也找得到", async () => {
     const g = card("card-tool-group", "a1") as HTMLDetailsElement;
     const unit = document.createElement("div");
-    unit.dataset.memberUuid = "a2";
+    unit.dataset.memberId = "a2";
     g.appendChild(unit);
     const { content, fold } = rig([card("card-user", "u1"), g, card("card-assistant", "a3")], [
       { available: true, from: 0, end: 10, turns: [turn("u1", 0, { ending: ["a3"] })] },
@@ -399,7 +399,7 @@ describe("系统注入的旁注细条", () => {
     const kids = [...content.children] as HTMLElement[];
     expect(kids.map((k) => k.classList.contains("card-tool-group") ? "group" : k.classList.contains("card-injected") ? "aside" : "?")).toEqual(["group", "aside"]);
     expect(kids[0].querySelectorAll(".card-tool-group-body > *").length).toBe(2);
-    expect([kids[1].getAttribute("data-uuid"), kids[1].querySelector(".injected-body")?.textContent]).toEqual(["m1", "注入词乙"]);
+    expect([kids[1].getAttribute("data-id"), kids[1].querySelector(".injected-body")?.textContent]).toEqual(["m1", "注入词乙"]);
   });
 
   it("★ 估高跟着开关：关着 0、开着一条细条；它不是任何一类（前后的工具照样并成一组）", () => {

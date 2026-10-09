@@ -489,6 +489,10 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "改一条注解：后端严格读 → 只改那一条 → 原子写，回那一条（`history-reads.ts::decodeEntry` 按形状收）",
     ),
     (
+        "history-branch",
+        "主线外清单冷读：查看器与子运行窗口打开时问一次（`record-reads.ts::decodeBranch` 按形状收），之后跟实时帧 `branch`",
+    ),
+    (
         "history-forget",
         "删会话之后连带删那一条注解（界面删成功之后交；从前是 monitor 删完顺手清）",
     ),

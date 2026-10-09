@@ -1174,7 +1174,7 @@ export class TabStreamView {
 
   /**
    * DEV 探针用：active tab 状态一行 JSON（没有 devtools 时 E2E 断言的出口，经 e2e-probe 热键 → fe_perf 日志）。生产不接线，无副作用。
-   * 含三个账本的条数：`branchRecords` / `userInputs` / `pending`（口径见 `branchRecordCount` 头注）。
+   * 含三个账本的条数：`branchOff`（后端给的主线外清单）/ `userInputs` / `pending`（秤 6 量它们）。
    */
   debugSnapshot(): string {
     const tab = this.store.activeId !== null ? this.store.tabs.get(this.store.activeId) : undefined;
@@ -1214,7 +1214,7 @@ export class TabStreamView {
 
   /**
    * 顶端哨兵：账本非空时置顶「还有 N 条更早消息」，账尽移除。
-   * 不是 timeline 实体、没有 data-uuid（BranchFolder 当它断段，不会被折）；二分插入的锚点恒为 timeline 元素，最老卡自然落在哨兵后。
+   * 不是 timeline 实体、没有 data-id（BranchFolder 当它断段，不会被折）；二分插入的锚点恒为 timeline 元素，最老卡自然落在哨兵后。
    */
   updateSentinel(tab: Tab): void {
     const content = tab.stream.contentElement;

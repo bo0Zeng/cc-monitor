@@ -1,17 +1,18 @@
 /**
- * 合成会话记录：按 Claude Code 记录的结构造（user / assistant / tool_use / tool_result / thinking …），
- * 正文全是编的占位，不取任何真会话。
+ * 合成会话记录：直接造后端的成品（通用记录 `LineRecord`：said / reply / retry / title / queued），
+ * 正文全是编的占位，不取任何真会话。成品里没有、假后端几问要用的那几样（用量）记在旁边一张表里（`usageOf`）。
  */
 import { hm } from "./clock";
-import type { JsonlRecord } from "../../../src/frontend/ui/generated/JsonlRecord";
+import type { LineRecord } from "../../../src/frontend/ui/generated/LineRecord";
+import type { Block } from "../../../src/frontend/ui/generated/Block";
+import type { ApiReason } from "../../../src/frontend/ui/generated/ApiReason";
 import type { ToolCard } from "../../../src/frontend/ui/generated/ToolCard";
 import type { ChildRunTag } from "../../../src/frontend/ui/generated/ChildRunTag";
-import type { Usage } from "../../../src/frontend/ui/generated/Usage";
 import type { ToolStep } from "../../../src/frontend/ui/generated/ToolStep";
 import type { StepResult } from "../../../src/frontend/ui/generated/StepResult";
 import type { Speaker } from "../../../src/frontend/ui/generated/Speaker";
 
-// 假后端也出记录成品里过程那几格（`toolSteps` · `toolResults` · `apiReason`），口径照真后端 `agents/claudecode/steps.rs` 的那张表抄一份小的。
+// 假后端也出记录成品里过程那几格（`steps` · `results` · 报错原因），口径照真后端 `agents/claudecode/steps.rs` 的那张表抄一份小的。
 const PATH_ARG: Record<string, string> = { Read: "file_path", Edit: "file_path", Write: "file_path", MultiEdit: "file_path" };
 const MAIN_ARG: Record<string, string> = { Bash: "command", Grep: "pattern", Glob: "pattern", WebFetch: "url", WebSearch: "query", Task: "description", Agent: "description" };
 const BARE = new Set(["TodoWrite", "ExitPlanMode", "AskUserQuestion"]);
@@ -34,7 +35,8 @@ function fakeResult(name: string, input: Record<string, unknown>, content: strin
   return { ok: true };
 }
 
-type Block = Record<string, unknown> & { type: string };
+/** 造 assistant 那一条时传进来的块：thinking 照 Claude 的叫法给，其余就是成品块。 */
+type InBlock = Block | { type: "thinking"; thinking: string; signature?: string };
 
 let uid = 0;
 const nextUuid = (): string => {
@@ -42,12 +44,22 @@ const nextUuid = (): string => {
   return `00000000-0000-4000-8000-${uid.toString(16).padStart(12, "0")}`;
 };
 
+/** Claude 那一家记在回复上的用量（成品里没有；假后端算「上下文用了多少」时读）。 */
+export interface Usage {
+  input_tokens: number;
+  cache_creation_input_tokens: number;
+  cache_read_input_tokens: number;
+  output_tokens: number;
+}
+
+/** 成品里没有的用量：回复那一条 ⇒ 它的用量。 */
+export const usageOf = new WeakMap<LineRecord, Usage>();
+
 export interface ToolOpts {
   card?: ToolCard;
   child?: ChildRunTag;
 }
 
-/** 一段对话：按时间往后排，每条记录挂在上一条后面。 */
 /** 人粘贴进来的块：照后端 `claudecode/text.rs::pasted_spans` 那一形（UTF-16 下标 · 正文那一截 · 行数）。没有 ⇒ 缺。 */
 function pastedOf(text: string): { id?: string; start: number; end: number; bodyStart: number; bodyEnd: number; lines: number }[] | undefined {
   const out = [];
@@ -60,11 +72,15 @@ function pastedOf(text: string): { id?: string; start: number; end: number; body
   return out.length > 0 ? out : undefined;
 }
 
+const reasonOf = (status: number): ApiReason =>
+  status === 429 ? "quota" : status === 401 || status === 403 ? "auth" : status >= 500 ? "overloaded" : "unknown";
+
+/** 一段对话：按时间往后排。 */
 export class Convo {
-  readonly records: JsonlRecord[] = [];
+  readonly records: LineRecord[] = [];
   private t: number;
-  private prev: string | null = null;
   private toolN = 0;
+  private titles = 0;
 
   constructor(
     readonly sid: string,
@@ -75,109 +91,79 @@ export class Convo {
     this.t = Date.parse(start);
   }
 
-  private stamp(stepSec = 20): string {
-    this.t += stepSec * 1000;
-    return new Date(this.t).toISOString();
-  }
-
   /** 下一条的时刻 ＋ 它的钟面（真后端解析时填 `timeText`）。 */
-  private at(stepSec = 20): { timestamp: string; timeText: string } {
-    const timestamp = this.stamp(stepSec);
-    return { timestamp, timeText: hm(this.t) };
+  private at(stepSec = 20): { at: string; timeText: string } {
+    this.t += stepSec * 1000;
+    return { at: new Date(this.t).toISOString(), timeText: hm(this.t) };
   }
 
   title(text: string): this {
-    this.records.push({ type: "ai-title", aiTitle: text, sessionId: this.sid });
+    this.titles += 1;
+    this.records.push({ agent: "claude", id: `@title-${this.titles}`, t: "title", text, by: "agent" });
     return this;
   }
 
   user(text: string, opts: { interrupt?: boolean; meta?: boolean } = {}): this {
-    const uuid = nextUuid();
     this.records.push({
-      type: "user",
-      uuid,
+      agent: "claude",
+      id: nextUuid(),
       ...this.at(45),
-      message: { role: "user", content: text, model: null, usage: null },
-      cwd: this.cwd,
-      sessionId: this.sid,
-      parentUuid: this.prev,
-      forkedFrom: null,
-      userText: opts.interrupt
+      t: "said",
+      who: opts.interrupt
         ? { speaker: { kind: "interrupt" }, text: "" }
         : opts.meta
           ? { speaker: { kind: "system", body: text.trim() }, text: "" }
           : { speaker: { kind: "human" }, text, pasted: pastedOf(text) },
+      blocks: [{ type: "text", text }],
+      cwd: this.cwd,
     });
-    this.prev = uuid;
     return this;
   }
 
-  /** 一条 assistant：`blocks` 里的 tool_use 用 [`tool`] 造。 */
-  assistant(blocks: Block[], opts: { cards?: Record<string, ToolCard>; runs?: Record<string, ChildRunTag>; usage?: Usage; stop?: string } = {}): this {
-    const uuid = nextUuid();
-    this.records.push({
-      type: "assistant",
-      uuid,
+  /** 一条 assistant：`blocks` 里的 tool_use 用 [`tool`] 造。`stop: "end_turn"` ＝ 这一轮说完了。 */
+  assistant(blocks: InBlock[], opts: { cards?: Record<string, ToolCard>; runs?: Record<string, ChildRunTag>; usage?: Usage; stop?: string } = {}): this {
+    const out: Block[] = blocks.map((b) => (b.type === "thinking" && "thinking" in b ? { type: "thinking", text: b.thinking } : (b as Block)));
+    const uses = out.filter((b): b is Extract<Block, { type: "tool_use" }> => b.type === "tool_use");
+    const rec: LineRecord = {
+      agent: "claude",
+      id: nextUuid(),
       ...this.at(),
-      message: {
-        role: "assistant",
-        content: blocks,
-        model: this.model,
-        usage: opts.usage ?? usage(42_000),
-        stop_reason: opts.stop,
-      },
-      sessionId: this.sid,
-      requestId: `req_${uuid.slice(-8)}`,
-      parentUuid: this.prev,
-      forkedFrom: null,
-      isApiErrorMessage: false,
-      error: null,
-      apiErrorStatus: null,
-      toolCards: opts.cards,
-      childRuns: opts.runs,
-      toolSteps: Object.fromEntries(
-        blocks.filter((b): b is Block & { type: "tool_use"; id: string; name: string; input: Record<string, unknown> } => b.type === "tool_use").map((b) => [b.id, fakeStep(b.name, b.input)]),
-      ),
-    });
-    this.prev = uuid;
+      t: "reply",
+      blocks: out,
+      model: this.model,
+      autoReply: false,
+      endsTurn: opts.stop === "end_turn",
+      cards: opts.cards,
+      steps: uses.length > 0 ? Object.fromEntries(uses.map((b) => [b.id, fakeStep(b.name, b.input as Record<string, unknown>)])) : undefined,
+      runs: opts.runs,
+    };
+    usageOf.set(rec, opts.usage ?? usage(42_000));
+    this.records.push(rec);
     return this;
   }
 
   /** 一条不是人说的 user 记录（事件条：agent 交回 / 来话 · 另一会话 · 后台通知）。 */
   from(speaker: Speaker): this {
-    const uuid = nextUuid();
-    this.records.push({
-      type: "user",
-      uuid,
-      ...this.at(20),
-      message: { role: "user", content: "<frame/>", model: null, usage: null },
-      cwd: this.cwd,
-      sessionId: this.sid,
-      parentUuid: this.prev,
-      forkedFrom: null,
-      userText: { speaker, text: "" },
-    });
-    this.prev = uuid;
+    this.records.push({ agent: "claude", id: nextUuid(), ...this.at(20), t: "said", who: { speaker, text: "" }, blocks: [], cwd: this.cwd });
     return this;
   }
 
-  /** `stop: "end_turn"` ＝ 这一轮说完了（一轮的摘要据它认「收尾」）。 */
   say(markdown: string, tokens = 42_000, stop?: string): this {
     return this.assistant([{ type: "text", text: markdown }], { usage: usage(tokens), stop });
   }
 
   think(thinking: string, then: string): this {
     return this.assistant([
-      { type: "thinking", thinking, signature: "sig" },
+      { type: "thinking", thinking },
       { type: "text", text: then },
     ]);
   }
 
-  /** 一次工具调用 ＋ 它的结果（结果是下一条 user 记录里的 tool_result）。返回 tool_use 的 id。 */
+  /** 一次工具调用 ＋ 它的结果（结果是下一条 said 里的 tool_result）。返回 tool_use 的 id。 */
   tool(name: string, input: Record<string, unknown>, result: string | null, opts: ToolOpts & { error?: boolean; lead?: string } = {}): string {
     this.toolN += 1;
     const id = `toolu_${this.sid.slice(0, 4)}${String(this.toolN).padStart(4, "0")}`;
-    const blocks: Block[] = [];
+    const blocks: InBlock[] = [];
     if (opts.lead) blocks.push({ type: "text", text: opts.lead });
     blocks.push({ type: "tool_use", id, name, input });
     this.assistant(blocks, {
@@ -189,93 +175,41 @@ export class Convo {
   }
 
   result(id: string, content: string, isError = false, res?: StepResult): this {
-    const uuid = nextUuid();
     this.records.push({
-      type: "user",
-      uuid,
+      agent: "claude",
+      id: nextUuid(),
       ...this.at(8),
-      message: {
-        role: "user",
-        content: [{ type: "tool_result", tool_use_id: id, content, is_error: isError }],
-        model: null,
-        usage: null,
-      },
+      t: "said",
+      who: { speaker: { kind: "toolResult" }, text: "" },
+      blocks: [{ type: "tool_result", for: id, content: [{ type: "text", text: content }], isError }],
+      results: { [id]: res ?? { ok: !isError } },
       cwd: this.cwd,
-      sessionId: this.sid,
-      parentUuid: this.prev,
-      forkedFrom: null,
-      userText: { speaker: { kind: "toolResult" }, text: "" },
-      toolResults: { [id]: res ?? { ok: !isError } },
     });
-    this.prev = uuid;
     return this;
   }
 
   apiError(status: number, text: string): this {
-    const uuid = nextUuid();
     this.records.push({
-      type: "assistant",
-      uuid,
+      agent: "claude",
+      id: nextUuid(),
       ...this.at(),
-      message: { role: "assistant", content: [{ type: "text", text }], model: "<synthetic>", usage: null },
-      sessionId: this.sid,
-      requestId: null,
-      parentUuid: this.prev,
-      forkedFrom: null,
-      isApiErrorMessage: true,
-      error: { type: "api_error" },
-      apiErrorStatus: status,
-      apiReason: status === 429 ? "quota" : status === 401 || status === 403 ? "auth" : status >= 500 ? "overloaded" : "unknown",
+      t: "reply",
+      blocks: [{ type: "text", text }],
+      autoReply: false,
+      endsTurn: false,
+      error: { reason: reasonOf(status), status },
     });
-    this.prev = uuid;
     return this;
   }
 
   retry(attempt: number, max: number): this {
-    const uuid = nextUuid();
-    this.records.push({
-      type: "system",
-      subtype: "api_error",
-      durationMs: null,
-      messageCount: null,
-      ...this.at(5),
-      sessionId: this.sid,
-      uuid,
-      parentUuid: this.prev,
-      level: "error",
-      retryAttempt: attempt,
-      maxRetries: max,
-      error: { status: 529, error: { type: "overloaded_error", message: "Overloaded" } },
-      apiReason: "overloaded",
-    });
-    // 记录链照真记录接着走（不接 ⇒ 下一条与它同父，界面会当成被 ESC 回退过的分叉）
-    this.prev = uuid;
+    this.records.push({ agent: "claude", id: nextUuid(), ...this.at(5), t: "retry", reason: "overloaded", attempt, max });
     return this;
   }
 
-  turnDuration(ms: number): this {
-    const uuid = nextUuid();
-    this.records.push({
-      type: "system",
-      subtype: "turn_duration",
-      durationMs: ms,
-      messageCount: this.records.length,
-      ...this.at(1),
-      sessionId: this.sid,
-      uuid,
-      parentUuid: this.prev,
-      level: null,
-      retryAttempt: null,
-      maxRetries: null,
-      error: null,
-    });
-    this.prev = uuid;
-    return this;
-  }
-
-  /** 用户打断时说的那句话（jsonl 里唯一的存在是一条 queue-operation remove）。 */
+  /** 用户打断时说的那句话（插进正在跑的那一轮）。 */
   queued(text: string): this {
-    this.records.push({ type: "queue-operation", operation: "remove", content: text, ...this.at(3) });
+    this.records.push({ agent: "claude", id: `@queued-${nextUuid().slice(-6)}`, ...this.at(3), t: "queued", who: { speaker: { kind: "human" }, text } });
     return this;
   }
 }

@@ -365,7 +365,7 @@ export class FindStrip {
     el.dataset.role = "find-hit";
     el.setAttribute("role", "option");
     el.setAttribute("aria-selected", "false");
-    // 🔴 与「你说过的话」清单行同一条纪律：**不叫 `data-uuid`**（那个名字在本仓只指「一张渲染出来的消息卡」）。
+    // 🔴 与「你说过的话」清单行同一条纪律：**不叫 `data-id`**（那个名字在本仓只指「一张渲染出来的消息卡」）。
     el.dataset.hitUuid = h.uuid;
     el.dataset.kind = h.kind;
     if (this.opts.meta) {

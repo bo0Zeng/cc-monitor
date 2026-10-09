@@ -325,7 +325,7 @@ export function renderContentRecord(
       const group = buildToolGroup(result.time);
       addToToolGroup(group, result.units);
       const tMerge = probe ? performance.now() : 0;
-      // tool-group root 也写 data-uuid（首条贡献 id）让 BranchFolder 把它当卡识别
+      // tool-group root 也写 data-id（首条贡献 id）让 BranchFolder 把它当卡识别
       markCardId(group.root, message);
       applyIntrinsicSize(group.root); // 折叠组 = summary 常数
       const tEstimate = probe ? performance.now() : 0;
@@ -358,31 +358,31 @@ export function renderContentRecord(
 
 /**
  * **落点标记**：一条记录若没有自己的卡（工具单元并进左邻居的工具组 ·
- * 工具结果被注入进它那个工具调用的单元里），就在它真正落下的那一块上记 `data-member-uuid`，
+ * 工具结果被注入进它那个工具调用的单元里），就在它真正落下的那一块上记 `data-member-id`，
  * 会话内查找 / 大纲命中它时 `revealCard` 找得到。
- * - 工具组的单元（新建组与并入左邻居两支都记；新建组的外壳另有 `data-uuid`）；
+ * - 工具组的单元（新建组与并入左邻居两支都记；新建组的外壳另有 `data-id`）；
  * - said 记录里的工具结果块：注入到了哪个工具调用单元的结果区块，就记在那个区块上。
- * 不用 `data-uuid`：那是 `BranchFolder` 认卡、切折叠段的键。放在管线这一层、不放进 `renderMessage`：
+ * 不用 `data-id`：那是 `BranchFolder` 认卡、切折叠段的键。放在管线这一层、不放进 `renderMessage`：
  * 后者的产物是秤 2 金标准的 DOM 指纹，落点是管线的事。
  */
 function markMemberUuids(record: LineRecord, ctx: RenderContext, result: ReturnType<typeof renderMessage>): void {
   const id = record.id;
   if (result.kind === "tool-group") {
-    for (const u of result.units) if (!u.dataset.memberUuid) u.dataset.memberUuid = id;
+    for (const u of result.units) if (!u.dataset.memberId) u.dataset.memberId = id;
   }
   if (record.t !== "said") return;
   for (const b of record.blocks) {
     if (b.type !== "tool_result") continue;
     const inline = ctx.toolUseElements.get(b.for)?.querySelector<HTMLElement>(".block-tool-result-inline");
-    if (inline) inline.dataset.memberUuid = id;
+    if (inline) inline.dataset.memberId = id;
   }
 }
 
 /**
- * 给卡的 root 写 data-uuid（记录的 `id`）：BranchFolder 按它认主线外清单里的那几条，轮次 / 跳转 / 查找按它找卡。
+ * 给卡的 root 写 data-id（记录的 `id`）：BranchFolder 按它认主线外清单里的那几条，轮次 / 跳转 / 查找按它找卡。
  * 重试细条也要写：回退掉的那一段里夹着它时，不写会把折叠段劈成两段。排队那一句不写（它不在哪一轮的链上）。
  */
 export function markCardId(el: HTMLElement, rec: LineRecord): void {
   if (rec.t !== "said" && rec.t !== "reply" && rec.t !== "retry") return;
-  el.setAttribute("data-uuid", rec.id);
+  el.setAttribute("data-id", rec.id);
 }

@@ -100,15 +100,15 @@ const saidOf = (v: SessionViewer): string => toggleOf(v).querySelector('[data-pa
 const panelOf = (_v: SessionViewer): HTMLElement =>
   document.querySelector<HTMLElement>(".user-inputs")!;
 /**
- * 🔴 **找卡一律限定在消息流容器里**。`[data-uuid]` 在本仓只有一个意思（渲染出来的消息卡），
- * 而清单行是另一种东西 —— 早期一版把行也写成 `data-uuid`，这个判据当场把两者混在一起
+ * 🔴 **找卡一律限定在消息流容器里**。`[data-id]` 在本仓只有一个意思（渲染出来的消息卡），
+ * 而清单行是另一种东西 —— 早期一版把行也写成 `data-id`，这个判据当场把两者混在一起
  * 数成 **350**（150 张卡 + 200 行）。行的属性因此改名 `data-input-uuid`；
  * 这两个 helper 让「卡」与「行」在判据里也分得开，别再退回 `v.element.querySelector`。
  */
 const streamOf = (v: SessionViewer): HTMLElement =>
   v.element.querySelector<HTMLElement>(".session-viewer-stream")!;
 const cardOf = (v: SessionViewer, uuid: string): HTMLElement | null =>
-  streamOf(v).querySelector<HTMLElement>(`[data-uuid="${uuid}"]`);
+  streamOf(v).querySelector<HTMLElement>(`[data-id="${uuid}"]`);
 
 beforeEach(() => {
   rig = installViewerRig();
@@ -203,7 +203,7 @@ describe("KR45D1 点一下跳过去", () => {
     const lines = Array.from({ length: 200 }, (_, i) => userLine(i + 1, `u${i + 1}`, `第 ${i + 1} 句`));
     const v = await mount(lines);
 
-    const inDom = streamOf(v).querySelectorAll("[data-uuid]").length;
+    const inDom = streamOf(v).querySelectorAll("[data-id]").length;
     expect(inDom).toBe(150); // TAIL_INITIAL：首屏只渲染末尾 150 条
     expect(rowsOf(v).length).toBe(200); // 而清单是 200 条 —— 分母 = 全部 200 条用户输入
     // 分水岭：清单条数 > DOM 里的卡数 ⇒ 它确实不是扫 DOM 扫出来的
@@ -427,8 +427,8 @@ describe("乙4-④ 查看器的头 · 底一行 · 各态", () => {
 
   it("某一条显示不了 ⇒ 卡的位置上「这一条显示不了」［复制详情］（复制的是那一条原文 ＋ 原因），其余照画、状态行不报数", async () => {
     const v = await mount([userLine(1, "u1", "第一句"), userLine(2, "boom", "坏的"), assistantLine(3, "a1", "回复")]);
-    const kids = [...streamOf(v).querySelectorAll<HTMLElement>("[data-uuid], [data-role=\"broken\"]")];
-    expect(kids.map((k) => k.dataset.uuid ?? `broken:${k.dataset.seq}`)).toEqual(["u1", "broken:2", "a1"]);
+    const kids = [...streamOf(v).querySelectorAll<HTMLElement>("[data-id], [data-role=\"broken\"]")];
+    expect(kids.map((k) => k.dataset.id ?? `broken:${k.dataset.seq}`)).toEqual(["u1", "broken:2", "a1"]);
     const broken = streamOf(v).querySelector<HTMLElement>('[data-role="broken"]')!;
     expect(broken.textContent).toContain(copyText("sessionViewer.card.broken"));
     [...broken.querySelectorAll("button")].find((b) => b.textContent === copyText("detail.act.copy"))!.click();

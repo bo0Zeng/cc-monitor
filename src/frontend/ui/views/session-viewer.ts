@@ -47,15 +47,15 @@ import { copyText } from "../copy-table";
 
 /**
  * 在一条消息流里按 uuid 找到那张卡、展开挡着它的折叠（过程折叠 · `<details>` · ESC 回退段）、滚过去并闪一下；找不到 ⇒ `null`、什么都不做（兜底归调用方）。
- * 导出给 `tabs.ts` 的实时窗口共用：两条路的卡由同一个 `renderStreamRecord` 建、`data-uuid` 由同一处写。
+ * 导出给 `tabs.ts` 的实时窗口共用：两条路的卡由同一个 `renderStreamRecord` 建、`data-id` 由同一处写。
  */
 export function revealCard(container: HTMLElement, uuid: string): HTMLElement | null {
   // CSS.escape 防 uuid 里有特殊字符破坏选择器
   const key = CSS.escape(uuid);
-  // 卡找不到 ⇒ 再找「被并进工具组 / 被注入进 tool_use」的那一块（`data-member-uuid`）
+  // 卡找不到 ⇒ 再找「被并进工具组 / 被注入进 tool_use」的那一块（`data-member-id`）
   const el =
-    container.querySelector<HTMLElement>(`[data-uuid="${key}"]`) ??
-    container.querySelector<HTMLElement>(`[data-member-uuid="${key}"]`);
+    container.querySelector<HTMLElement>(`[data-id="${key}"]`) ??
+    container.querySelector<HTMLElement>(`[data-member-id="${key}"]`);
   if (!el) return null;
   // 落在某一轮折着的过程里 ⇒ 先让那一轮展开（记成手动开；`turn-fold.ts`）。
   revealProcessOf(el, container);
@@ -809,7 +809,7 @@ export class SessionViewer {
     let cur: HTMLElement | null = null;
     for (const row of this.said.panel.querySelectorAll<HTMLElement>(".user-input-row")) {
       const uuid = row.dataset.inputUuid;
-      const card = uuid ? this.streamEl.querySelector<HTMLElement>(`[data-uuid="${CSS.escape(uuid)}"]`) : null;
+      const card = uuid ? this.streamEl.querySelector<HTMLElement>(`[data-id="${CSS.escape(uuid)}"]`) : null;
       if (!card) continue;
       if (card.getBoundingClientRect().top <= top || cur === null) cur = row;
       else break;
