@@ -362,6 +362,8 @@ async fn stream_loop(
                 path,
                 lines,
                 activity,
+                activity_text,
+                activity_tone,
                 waiting_for,
                 container,
                 // pid 只给本机那条流用（本机 ↗ 绑窗口）；远端这一支不读。
@@ -377,6 +379,8 @@ async fn stream_loop(
                     project_dir,
                     name,
                     activity,
+                    activity_text,
+                    activity_tone,
                     waiting_for,
                     container,
                     pid: None,
@@ -387,6 +391,8 @@ async fn stream_loop(
             Some(InboundFrame::SessionStatus {
                 sid,
                 activity,
+                activity_text,
+                activity_tone,
                 waiting_for,
             }) => {
                 // 红绿灯这一跳也要看得见：「全绿」既可能是都在忙，也可能是 status 一条都没到。
@@ -398,6 +404,8 @@ async fn stream_loop(
                     origin: host_label.clone(),
                     sid,
                     activity,
+                    activity_text,
+                    activity_tone,
                     waiting_for,
                 });
             }
@@ -418,12 +426,13 @@ async fn stream_loop(
                 intake.removed(&sid);
             }
             // 后端裁好的去向（可重连 / 已结束）原样交出口（残批已在循环头冲掉）。
-            Some(InboundFrame::SessionState { sid, state }) => {
+            Some(InboundFrame::SessionState { sid, state, words }) => {
                 tracing::info!("session-state: [{host_label}] sid={sid} → {state:?}");
                 crate::session_book::feed(BookIn::Left {
                     origin: host_label.clone(),
                     sid,
                     fate: state,
+                    words: Some(words),
                 });
             }
             Some(InboundFrame::Overflow {

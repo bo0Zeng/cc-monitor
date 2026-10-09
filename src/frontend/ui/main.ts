@@ -860,7 +860,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     onQuotaChanged,
     // 会话红绿灯（后端翻好的活动态）
     onSessionActivity: (e) =>
-      tabs.updateActivity(e.session_id, e.activity, e.waiting_for),
+      tabs.updateActivity(e.session_id, e.activity, e.waiting_for, e.activity_text, e.activity_tone),
     // 远端会话宣告 → 骨架 Tab，附项目目录 / kind / name：骨架标题当场完整（bg → ⚙ ＋ 任务名）；没给项目目录 ⇒ 标题退到 aiTitle / sid。
     onRemoteSessionAdded: (sessionId, origin, meta) => {
       noteLive(origin, sessionId, { cwd: meta.cwd }); // 起会话的真成功正信号

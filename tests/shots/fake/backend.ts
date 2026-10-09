@@ -172,9 +172,11 @@ export class FakeBackend {
         frames.push({ line: { session_id: s.sid, cwd: s.cwd, path: `${s.cwd}/${s.sid}.jsonl`, seq: from + i, origin, message } });
       });
       if (s.runs.length > 0) frames.push({ runs: { session_id: s.sid, runs: s.runs, ended: [] } });
-      frames.push({ activity: { session_id: s.sid, activity: s.activity, waiting_for: s.waitingFor } });
-      if (s.ended) frames.push({ ended: { session_id: s.sid } });
-      else if (s.idle) frames.push({ idle: { session_id: s.sid } });
+      // 字与语气照后端 `wire::activity_cells` / `SessionFate::cells`（同一张文案表的 `beSession.*`）。
+      const act = s.activity === null ? null : ({ working: ["working", "now"], needs_you: ["needsYou", "need"], idle: ["idle", "plain"] } as const)[s.activity];
+      frames.push({ activity: { session_id: s.sid, activity: s.activity, activity_text: act ? copyText(`beSession.activity.${act[0]}`) : null, activity_tone: act ? act[1] : null, waiting_for: s.waitingFor } });
+      if (s.ended) frames.push({ ended: { session_id: s.sid, text: copyText("beSession.fate.ended"), hint: copyText("beSession.fate.endedHint"), tone: "plain" } });
+      else if (s.idle) frames.push({ idle: { session_id: s.sid, text: copyText("beSession.fate.reconnectable"), hint: copyText("beSession.fate.reconnectableHint"), tone: "plain" } });
     }
     this.listedOrigins.add(origin);
     frames.push({ listed: { origin, all: this.world.machines.every((m) => this.listedOrigins.has(m)) } });

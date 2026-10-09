@@ -32,8 +32,8 @@ import { countBadge, tag, kbd } from "./kit/badge";
 import { attachTooltip, delegateTooltip, TOOLTIP_DELAY_MS } from "./kit/tooltip";
 import { closeMenu, menuAnchoredOn, openMenu, type MenuAnchor, type MenuItem } from "./kit/menu";
 import { foldCaret } from "./kit/fold";
-import { abbrOf, dotOf, fullTitle, groupSummary, machineOf, needsOf, needsOrder, nextNeeds, peekLine, stateLine, titleParts, sinceText } from "./session-face";
-import { dotLabel, needsWord } from "./session-words";
+import { abbrOf, dotOf, fullTitle, groupSummary, machineOf, needsOf, needsOrder, nextNeeds, peekLine, stateLine, stateWord, titleParts, sinceText } from "./session-face";
+import { dotLabel } from "./session-words";
 
 /** TabButton 的 DOM 引用：refreshTabBar 局部更新依赖这些 ref 避免重新创建 button */
 export interface TabButtonRefs {
@@ -1093,7 +1093,7 @@ export class TabBarView {
     const state = document.createElement("div");
     state.className = st.needs ? "tab-hover-state tab-hover-need" : "tab-hover-state";
     const d = dotOf(tab);
-    state.append(statusDot(d, dotLabel(d), "compact"), document.createTextNode(st.text));
+    state.append(statusDot(d, stateWord(tab), "compact"), document.createTextNode(st.text));
     card.appendChild(state);
     const peek = peekLine(tab);
     if (peek) card.appendChild(line("tab-hover-peek", peek));
@@ -1124,7 +1124,7 @@ export class TabBarView {
     const reconnectable = view.reconnectable;
     const dot = dotOf(tab);
     const n = needsOf(tab);
-    const needsText = n ? needsWord(n.kind) : "";
+    const needsText = n ? n.text : "";
     const parts = titleParts(tab);
     const unread = tab.unread > 0 && !active;
     // 未读数只在有未读、又不在等你时出（等你 ＞ 未读数）。
@@ -1155,9 +1155,10 @@ export class TabBarView {
       refs.root.classList.toggle("unseen-done", unseenDone);
       refs.root.classList.toggle("waiting-you", n !== null);
       // 只写真变了的那几格（一个状态变了 ⇒ 这颗按钮上恰好：类 · 点的样子 · 点的读屏名）。
-      if (refs.dot.dataset.state !== dot) {
+      const dotName = stateWord(tab);
+      if (refs.dot.dataset.state !== dot || refs.dot.getAttribute("aria-label") !== dotName) {
         refs.dot.dataset.state = dot;
-        refs.dot.setAttribute("aria-label", dotLabel(dot));
+        refs.dot.setAttribute("aria-label", dotName);
       }
       if (refs.label.textContent !== titleText) refs.label.textContent = titleText;
       setText(refs.proj, parts.proj ?? "");

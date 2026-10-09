@@ -122,8 +122,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/tab-selection.ts", // 多选的选中集合 ＋ 锚点
     "src/frontend/ui/tab-session-actions.ts",
     "src/frontend/ui/tab-session-facts.ts",
-    "src/frontend/ui/session-face.ts", // 历史页那一行的「需要你」徽标问它（`needsWordOf`：与标签页行同一份 `needsOf` · `needsWord`）
-    "src/frontend/ui/session-words.ts", // 「需要你」徽标那个词（`needsWord`：标签页行 · 设置里轮换规则的在用名单同一份）
+    "src/frontend/ui/session-face.ts", // 历史页那一行的「需手动」徽标问它（`needsWordOf`：与标签页行同一份 `needsOf`，字照抄核心写的）
     "src/frontend/ui/tab-session-state.ts", // 会话状态只经 `nextState` 改（转移表）＋ 关 / 拉前两道谓词
     "src/frontend/ui/tab-store.ts",
     "src/frontend/ui/tab-stream-view.ts",
@@ -211,8 +210,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/copy-table.ts",
     "src/frontend/ui/keybindings/registry.ts", // 拖拽中 Esc ＝ 取消：走弹层栈
     "src/frontend/ui/kit/status-dot.ts", // 影子：状态点 ＋ 标题（同行上的写法）
-    "src/frontend/ui/session-face.ts", // 影子那一行读成什么（`dotOf` · `titleParts`）
-    "src/frontend/ui/session-words.ts", // 影子状态点的读屏名
+    "src/frontend/ui/session-face.ts", // 影子那一行读成什么（`dotOf` · `titleParts` · 点的名字 `stateWord`）
     "src/frontend/ui/tab-bar-prefs.ts",
     "src/frontend/ui/tab-collections.ts",
     "src/frontend/ui/tab-drop.ts",

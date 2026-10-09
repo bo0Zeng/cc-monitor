@@ -15,13 +15,22 @@ import { activityFace } from "./session-status";
 import { isLive } from "./tab-session-state";
 import { isRemoteOrigin } from "./ipc/origin";
 import { copyText } from "./copy-table";
-import { dotLabel, needsWord } from "./session-words";
+import { dotLabel } from "./session-words";
 import { fmtDur } from "./quota-lines";
 
-/** 此刻在等你（活着 ＋ 活动信号说在等人）⇒ 等的是什么；不在等 ⇒ `null`。 */
+/** 此刻在等你（活着 ＋ 活动信号说在等人）⇒ 等的是什么；不在等 ⇒ `null`。会话事实还没到 ⇒ 种类判不出，字照抄活动信号带来的那个。 */
 export function needsOf(tab: Tab): Needs | null {
   if (!isLive(tab.state) || tab.activity?.doing !== "needs_you") return null;
-  return tab.needs ?? { kind: "unknown", tool: null, call: null, what: null, sinceMs: null };
+  return tab.needs ?? { kind: "unknown", tool: null, call: null, what: null, sinceMs: null, text: tab.activity.text ?? "", tone: tab.activity.tone ?? "need" };
+}
+
+/**
+ * 状态点的名字（读屏名 / 悬停名）：活着 ⇒ 那台核心写好的那个字（活动信号带来的，照抄）；
+ * 活动信号说不清、或不是活着的那几种 ⇒ 状态点那一档的名字（`session-words.ts::dotLabel`）。
+ */
+export function stateWord(tab: Tab): string {
+  const text = isLive(tab.state) ? tab.activity?.text : null;
+  return text ?? dotLabel(dotOf(tab));
 }
 
 /** 状态点：颜色 ＝ 在干什么，形状 ＝ 进程还在不在。 */
@@ -58,19 +67,19 @@ export function stateLine(tab: Tab, now: number): { text: string; needs: boolean
   const n = needsOf(tab);
   if (n) {
     const waited = sinceText(n.sinceMs, now);
-    const word = needsWord(n.kind);
+    const word = n.text;
     return { text: waited ? copyText("sessionFace.state.waiting", { kind: word, waited }) : word, needs: true };
   }
   switch (dotOf(tab)) {
     case "running": {
       const p = tab.pending[0];
-      if (!p) return { text: copyText("sessionFace.dot.running"), needs: false };
+      if (!p) return { text: stateWord(tab), needs: false };
       const dur = sinceText(p.at, now);
       return { text: dur ? copyText("sessionFace.state.runningFor", { tool: p.name, dur }) : copyText("sessionFace.state.running", { tool: p.name }), needs: false };
     }
     case "idle": {
       const ago = sinceText(tab.lastSay?.at ?? null, now);
-      if (!ago) return { text: copyText("sessionFace.dot.idle"), needs: false };
+      if (!ago) return { text: stateWord(tab), needs: false };
       return { text: tab.unread > 0 ? copyText("sessionFace.state.idleUnseen", { ago }) : copyText("sessionFace.state.idleSeen", { ago }), needs: false };
     }
     case "unknown":
@@ -83,7 +92,7 @@ export function stateLine(tab: Tab, now: number): { text: string; needs: boolean
       return { text: copyText("sessionState.gone.tooltip"), needs: false };
     case "needs-you":
     case "failed":
-      return { text: dotLabel(dotOf(tab)), needs: false };
+      return { text: stateWord(tab), needs: false };
   }
 }
 

@@ -272,6 +272,7 @@ fn when_full_sessions_that_are_not_live_go_first() {
         origin: "<local>".into(),
         sid: "done".into(),
         fate: Fate::Ended,
+        words: None,
     });
     let rows = |sid: &str| -> Vec<JsonlLinePayload> {
         (0..10).map(|i| sized(None, sid, i, 100)).collect()
@@ -1057,6 +1058,7 @@ async fn mig1_lifecycle_frames_take_no_credit_and_the_ready_point_puts_them_arou
         origin: "<local>".into(),
         sid: "b".into(),
         fate: Fate::Ended,
+        words: None,
     });
     r.on_line_batch_awaited(lines("b", 0..2)).await; // 就绪点之前：只进留存
     r.subscribe("w", 1, &local(), "session-lines", None, 10);
@@ -1078,6 +1080,9 @@ async fn mig1_lifecycle_frames_take_no_credit_and_the_ready_point_puts_them_arou
         vec![crate::ui_contract::SessionStreamFrame::Ended(
             crate::ui_contract::SessionEndedPayload {
                 session_id: "c".into(),
+                text: None,
+                hint: None,
+                tone: None,
             },
         )],
     );
@@ -1119,14 +1124,26 @@ fn mig1_the_credit_exemption_is_exactly_the_registered_lifecycle_frames() {
         F::Activity(b::SessionActivityPayload {
             session_id: sid(),
             activity: None,
+            activity_text: None,
+            activity_tone: None,
             waiting_for: None,
         }),
         F::Container(b::SessionContainerPayload {
             session_id: sid(),
             container: crate::session_book::SessionContainer::None,
         }),
-        F::Idle(b::SessionIdlePayload { session_id: sid() }),
-        F::Ended(b::SessionEndedPayload { session_id: sid() }),
+        F::Idle(b::SessionIdlePayload {
+            session_id: sid(),
+            text: None,
+            hint: None,
+            tone: None,
+        }),
+        F::Ended(b::SessionEndedPayload {
+            session_id: sid(),
+            text: None,
+            hint: None,
+            tone: None,
+        }),
         F::Unseen(b::SessionUnseenPayload {
             origin: crate::origin::Origin::local(),
         }),
@@ -1173,6 +1190,9 @@ fn a_single_session_subscription_hears_the_machine_level_unseen_only() {
     });
     let other = F::Ended(b::SessionEndedPayload {
         session_id: "other".into(),
+        text: None,
+        hint: None,
+        tone: None,
     });
     assert!(unseen.reaches(Some("mine")) && unseen.reaches(None));
     assert!(!listed.reaches(Some("mine")) && listed.reaches(None));

@@ -86,7 +86,7 @@ export interface Tab {
   /**
    * 红绿灯（与 `state` 正交）：此刻在干什么（后端翻好的）＋ 在等什么。null = 说不清 → 默认绿点。
    */
-  activity: { doing: SessionActivity; waitingFor: string | null } | null;
+  activity: { doing: SessionActivity; waitingFor: string | null; text: string | null; tone: string | null } | null;
   // 「claude 已退但 tmux 会话还在」是 `state` 的 `RECONNECTABLE`（死 ＋ 容器还在）。
   /** 本会话写类工具（Edit / Write / MultiEdit / NotebookEdit）碰过的文件路径（原样、去重、近因序）。
    * 后端出成品（`history-facts` 的 `touchedFiles`），供监控板 peek 列最近改过的文件。纯内存、不落盘（守 §28）。 */

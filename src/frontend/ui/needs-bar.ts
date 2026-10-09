@@ -16,7 +16,6 @@ import { copyText } from "./copy-table";
 import { button } from "./kit/button";
 import { statusDot } from "./kit/status-dot";
 import { machineOf, needsOf, sinceText, fullTitle } from "./session-face";
-import { needsWord } from "./session-words";
 import s from "./needs-bar.module.css";
 
 export interface NeedsBarHost {
@@ -29,7 +28,7 @@ export interface NeedsBarHost {
 export function needsHeadline(n: Needs): { label: string; code: string | null } {
   switch (n.kind) {
     case "approve":
-      return { label: n.tool ? copyText("needs.bar.approve", { tool: n.tool }) : needsWord("approve"), code: n.what };
+      return { label: n.tool ? copyText("needs.bar.approve", { tool: n.tool }) : n.text, code: n.what };
     case "answer":
       return { label: copyText("needs.bar.answer"), code: n.what };
     case "plan":
@@ -156,7 +155,7 @@ export class NeedsWatch {
     if (this.deps.isFocused()) return;
     try {
       if (!(await this.deps.enabled())) return;
-      await this.deps.send(copyText("needs.notify.title", { title: fullTitle(t), machine: machineOf(t), kind: needsWord(need.kind) }), need.what ?? "");
+      await this.deps.send(copyText("needs.notify.title", { title: fullTitle(t), machine: machineOf(t), kind: need.text }), need.what ?? "");
     } catch (e) {
       console.warn("needs-notify: send failed:", e);
     }
