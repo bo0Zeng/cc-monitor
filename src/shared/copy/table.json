@@ -7911,19 +7911,19 @@
     "settingsPanel.claudeDir.missing": {
       "kind": "error",
       "role": "报错",
-      "zh": "{path} 不存在 · 未保存",
+      "zh": "{path} 不存在",
       "args": ["path"]
     },
     "settingsPanel.claudeDir.notDir": {
       "kind": "error",
       "role": "报错",
-      "zh": "{path} 不是目录 · 未保存",
+      "zh": "{path} 不是目录",
       "args": ["path"]
     },
     "settingsPanel.claudeDir.noRecords": {
       "kind": "error",
       "role": "报错",
-      "zh": "{path} 无会话记录 · 未保存",
+      "zh": "{path} 无会话记录",
       "args": ["path"]
     },
     "settingsPanel.claudeDir.uncheckable": {
@@ -27118,6 +27118,12 @@
       "role": "报错",
       "zh": "读取设置失败 · 无主目录",
       "args": []
+    },
+    "settingsPanel.save.notSaved": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "{what}未保存 · {said}",
+      "args": ["what", "said"]
     }
   }
 }

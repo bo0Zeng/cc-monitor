@@ -77,7 +77,7 @@ import { BEHAVIOR_TOGGLED_EVENT, SETTINGS_APPLIED_EVENT, SETTINGS_GO_EVENT, type
 import { confirmDialog } from "../kit/dialog";
 import { copyText } from "../copy-table";
 import { parseSettingsTarget, type SettingsTarget } from "./open-settings";
-import { detailOf, sayFailure, sayWithDetail } from "../kit/detail";
+import { detailOf, failSaid, sayFailure, sayWithDetail, writtenSaid } from "../kit/detail";
 import { ControlError } from "../control-said";
 
 /**
@@ -803,7 +803,7 @@ export class SettingsPanel {
   private async persistClaudeDir(): Promise<void> {
     const nextDir = this.claudeDirInput.value.trim();
     if (nextDir === this.claudeDirOriginal) return;
-    // 不在的目录不存：照收的话重启后会被悄悄忽略。那一句（「{path} 不存在 · 未保存」这一族）抛出去由调用方原样上屏。
+    // 不在的目录不存：照收的话重启后会被悄悄忽略。那一句（「{path} 不存在」这一族）抛出去，调用方接在「Claude 数据目录未保存 · 」后面。
     const problem = nextDir === "" ? null : await claudeDirProblem(nextDir);
     if (problem !== null) throw new ControlError(problem, "");
     await setClaudeDirOverride(nextDir === "" ? null : nextDir);
@@ -819,7 +819,10 @@ export class SettingsPanel {
 
   /** 落盘失败时说出来（全即时的每一格都走它，不许静默吞）。 */
   private reportSaveFailure(what: string, e: unknown): void {
-    sayFailure(this.banner, copyText("settingsPanel.save.failed", { what }), e);
+    // 「哪一项」只有界面知道 ⇒ 打头；出错那端写好的那一句跟在后面一格。JS 自己抛的 ⇒「{what}保存失败」，原文进控制台。
+    const said = writtenSaid(e);
+    const line = said === null ? failSaid(copyText("settingsPanel.save.failed", { what }), e) : copyText("settingsPanel.save.notSaved", { what, said });
+    sayWithDetail(this.banner, line, detailOf(e));
     this.banner.classList.add("settings-banner-show");
   }
 

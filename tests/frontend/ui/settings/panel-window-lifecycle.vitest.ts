@@ -225,8 +225,10 @@ describe("ST1：设置窗关窗 ＝ 隐藏；〔ST2〕全即时：改了就落�
     dirCheck.problem = null;
     expect(setDir).not.toHaveBeenCalled();
     expect(document.querySelector(".settings-restart-bar")!.textContent).not.toContain(copyText("settingsPanel.save.claudeDir"));
-    // 查目录那一句（「{path} 不存在 · 未保存」这一族）原样上屏。
-    expect(document.querySelector(".settings-panel .settings-banner")!.textContent).toBe("/mnt/x 不在");
+    // 主语「Claude 数据目录」打头，查目录那一句（「{path} 不存在」这一族）跟在后面。
+    expect(document.querySelector(".settings-panel .settings-banner")!.textContent).toBe(
+      copyText("settingsPanel.save.notSaved", { what: copyText("settingsPanel.save.claudeDir"), said: "/mnt/x 不在" }),
+    );
     void p;
   });
 

@@ -27,9 +27,15 @@ export function detailOf(e: unknown): string {
  * 别的（JS 自己抛的 · 形状不认）⇒ 界面那句 `title`（哪件事没成），原文进控制台、不上屏。toast 与行内都经这里定那一句。
  */
 export function failSaid(title: string, e: unknown): string {
-  if (e instanceof Error && typeof (e as { detail?: unknown }).detail === "string" && e.message.trim() !== "") return e.message;
+  const said = writtenSaid(e);
+  if (said !== null) return said;
   console.warn(title, e);
   return title;
+}
+
+/** 出错那一端写好的那一句（[`failSaid`] 的判法）；JS 自己抛的 · 形状不认 ⇒ `null`。主语只有界面知道时（「哪一项设置」），界面把它放句首、这一句跟在后面。 */
+export function writtenSaid(e: unknown): string | null {
+  return e instanceof Error && typeof (e as { detail?: unknown }).detail === "string" && e.message.trim() !== "" ? e.message : null;
 }
 
 /** 行内那一句报错（一块里的状态行 · 一行下面那句红字）：[`failSaid`] 定那一句，有详情 ⇒ 后面跟［复制详情］。 */
