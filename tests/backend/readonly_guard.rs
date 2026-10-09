@@ -5085,6 +5085,13 @@ mod g6_dependency_signoff {
             "上游 base URL 的形状 ＋ 明文只许回环（纯字符串判定）；仓内 crate、零依赖，现打 0 处写面、0 处 I/O",
         ),
         (
+            // 交给 Win32 的路径（长路径前缀）的唯一一份：不覆盖改名那一处用。
+            "win-path-core",
+            DEPS,
+            MEASURED_CLEAN,
+            "路径编成 UTF-16 并补长路径前缀（纯变换；Windows 那一半只取绝对路径）；仓内 crate、零依赖，现打 0 处写面、0 处 I/O",
+        ),
+        (
             // 部署那一族的契约（表 A 的键与行 · 戳格式 · 答话形状 · 路径）；判定那一半住 `control/deploy_plan.rs`。
             "deploy-contract",
             DEPS,
@@ -5223,8 +5230,10 @@ mod g6_dependency_signoff {
     /// 清单里那条依赖的 `path = "…"`（`None` = 它不是仓内 crate ⇒ 本尺子够不着它的源码）。
     fn dep_path_of(manifest_text: &str, name: &str) -> Option<String> {
         let line = dep_line(manifest_text, name)?;
-        let at = line.find("path")?;
-        let rest = line[at + "path".len()..].trim_start();
+        // 只在等号右边找：名字里也可能带 `path`（`win-path-core`）。
+        let (_, value) = line.split_once('=')?;
+        let at = value.find("path")?;
+        let rest = value[at + "path".len()..].trim_start();
         let rest = rest.strip_prefix('=')?.trim_start();
         let rest = rest.strip_prefix('"')?;
         let end = rest.find('"')?;

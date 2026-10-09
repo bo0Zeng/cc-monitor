@@ -1,5 +1,5 @@
 /**
- * 要求：「`push_public_key`〔散文墓碑〕：本机后端帧命令 `pubkey-push {machine}`，与 `remote-probe` 同形」。
+ * 要求：推送公钥是本机后端帧命令 `pubkey-push {machine}`，与 `remote-probe` 同形。
  *
  * ① 应答两侧对拍：后端判据核键集 == 金样 `tests/__fixtures__/pubkey-push.golden.json`，这里的解码器读同一份（多一格 / 缺一格 / 值不在闭集 ⇒ 抛）；
  * ② 请求发给本机那一台、op 是 `pubkey-push`、体恰是金样那四格（已保存的同名那一份 · 跳板那一台从 `saved` 里找）、带期限。

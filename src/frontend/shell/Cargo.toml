@@ -26,6 +26,8 @@ members = [
     "../../comms/outward",
     # 前端宿主原语（两个前端共用、后端不链）：自有状态文件的原子写 · 窗口夹进工作区。
     "../../common/host-core",
+    # 交给 Win32 的路径（长路径前缀）：后端 · monitor · 文件窗口 · creds-core 共用那一份。
+    "../../common/win-path-core",
     # monitor 与文件窗口进程之间的契约（开窗种子 · 就绪那一行 · 「在此打开终端」那一问）。
     "../../common/filewin-contract",
     # 文件窗口（又一个前端）：独立成包，monitor 包里的 `[[bin]] cc-monitor-filewin` 转调它。

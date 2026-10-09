@@ -2839,19 +2839,11 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         // 远端 `ccm` 探针那几行摘了：主线里 `probe_ccm_cli` 这个名字还活在一份测试替身的字符串里
         //   （`remote-launch-run.vitest.ts`），不算死名 ⇒ 挂在它上面的墓碑不进本表。
         // 公钥推送那条 Tauri 命令退役（本机后端 `pubkey-push`）：点它旧名讲来历的散文挂墓碑。
-        ("src/backend/assets/pubkey.rs", "push_public_key", 1),
-        ("src/frontend/ui/pubkey-push.ts", "push_public_key", 1),
-        (
-            "tests/frontend/ui/pubkey-push.vitest.ts",
-            "push_public_key",
-            1,
-        ),
         (
             "tests/frontend/shell/parity_ledger_tests.rs",
             "push_public_key",
             2,
         ),
-        ("src/frontend/shell/src/lib.rs", "push_public_key", 1),
         // 删会话 · 分叉 · 钩子诊断三件转交退役（界面经通道直说那台后端）：散文里点那几个旧名讲来历的，逐处挂墓碑。
         ("src/README.md", "create_branch_session", 1),
         (
@@ -4457,7 +4449,7 @@ fn every_prose_tombstone_mark_is_registered() {
         // 新行：hello 的「换不换」进了本机常驻后端，原判定函数那一处（`hello_decision`）挂墓碑。
         ("src/frontend/shell/src/remote_resident.rs", 1),
         // 新行四条：界面按工具名 / 命令名判的四个谓词删了（卡型随记录成品、tmux 那一格随 `tmux-list` 带来），原处各一块。
-        ("src/frontend/ui/cards/interactive.ts", 1),
+        // `src/frontend/ui/cards/interactive.ts` 那一行摘了：点旧谓词名的那句删了（卡型随记录成品带来，头注已说）。
         // `src/frontend/ui/cards/subagent.ts` 那一行摘了：那张卡整份重写成按运行读的通用卡，点旧判定名（按工具名认 agent 工具）的散文随之没了。
         // `src/frontend/ui/tmux-sessions.ts` 那一行摘了：那份改名 `sessions-where.ts`，点旧过滤名的散文随之没了。
         // 全景「那台要哪一格」那两块墓碑（`byte_table.rs` · `deploy_plan.rs` 各一）随那一问整个删了（代码全景整条摘掉）。
@@ -4585,7 +4577,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/frontend/filewin/src/fonts.rs", 2), // 0 → 2（探针来路里那两句「存不回去」的函数名随只读一档删了）
         ("src/frontend/shell/src/history.rs", 7),
         ("src/frontend/shell/src/launch.rs", 2), // 8 → 2：六处随开窗的平台臂进了 `platform/terminal.rs` //7 → 8：开终端 ssh 外壳进本机后端，点旧名的散文挂墓碑  // 1 → 7
-        ("src/frontend/shell/src/lib.rs", 36), // 37 → 36：全景问 · 写 · 撤那一跳的墓碑随代码全景整条摘掉删了 // 35 → 37：`mod agent_dispatch_registry;` 那一行换成一块墓碑 ＋ 跨轨对拍锚点 `agent_profile_parity` 那一句挂一块 // 31 → 35 // 30 → 31：足迹三个 mod 删了那一块 // 29 → 30：`mod panorama_call;` 换成一块墓碑 // +2：`mod pubkey;` 与 `push_public_key` 注册那一行各换成一块墓碑 // 26 → 27：`mod acct_iso_deploy` 那一行换成一块墓碑 // // 两边各自贴的墓碑相加，按盘上现数（跑出来核过） 21 → 26 // 两边各自贴的墓碑相加，按盘上现数（跑出来核过） // 基数 16 ＋ 主线 +1 ＋ MIG-3a +2 ＋ MIG-2 +1（`apikey_remote` 整删）⇒ 20 // +1：`mod stop_grace;` 那一行换成一块墓碑（「请它收尾 → 等 → 强杀」搬进一次性 `--resident-stop`）。 〔删 `fenced_block::apply` 那一族〕主线 13 ＋ 本路 +2（`verified_write` 模块删了那一行：`verified_write` · `fenced_block::apply` 各一）⇒ 15。主线原注：基数 10 ＋ LOC1b +3 ＋ HX2 ±0 ⇒ 13。LOC1b 原注：+2：本机判活那一段（`SessionMap::load_with_changes` 起步 · `app.manage(session_map)`）删了，原处各挂一块 // 主线 10 ＋ LOC1b +1（`mod search;` 那一行挂一块，本机内存索引删了） // +1 // +1：`write_apikey_credentials_key` 头注里「整段论证见」那个旧写口 // 主线 7 ＋ 本路 +1 ⇒ 8（本机账号参照实现删了（list_from_dir 一族 ＋ accounts.rs 整份），点旧名的散文挂墓碑） // 主线 6 ＋ 本路 +1（独立窗口的定向重放命令退役那一段）// +2（「终端集成」五条命令退役：注册表旁一句 ＋ 原住址一句；合并主线 636cc1a0 按两边增量相加 4 + 2） // 1 → 2（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）· +1：`sftp_move_ledger` 退役 · +1：`plugins` 模块删了，那一行挂一块（合并按两边增量相加 ⇒ 4） ｜ HX2 原注：±0：`write_apikey_credentials_key` 整条删，原处换一块墓碑（点旧命令名 ＋ `KH2C1` 那条旧判据名）// +1 // +1：`write_apikey_credentials_key` 头注里「整段论证见」那个旧写口 // 主线 7 ＋ 本路 +1 ⇒ 8（本机账号参照实现删了（list_from_dir 一族 ＋ accounts.rs 整份），点旧名的散文挂墓碑） // 主线 6 ＋ 本路 +1（独立窗口的定向重放命令退役那一段）// +2（「终端集成」五条命令退役：注册表旁一句 ＋ 原住址一句；合并主线 636cc1a0 按两边增量相加 4 + 2） // 1 → 2（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）· +1：`sftp_move_ledger` 退役 · +1：`plugins` 模块删了，那一行挂一块（合并按两边增量相加 ⇒ 4） // 16 → 17
+        ("src/frontend/shell/src/lib.rs", 35), // 36 → 35：`push_public_key` 注册旁那块删了 // 37 → 36：全景问 · 写 · 撤那一跳的墓碑随代码全景整条摘掉删了 // 35 → 37：`mod agent_dispatch_registry;` 那一行换成一块墓碑 ＋ 跨轨对拍锚点 `agent_profile_parity` 那一句挂一块 // 31 → 35 // 30 → 31：足迹三个 mod 删了那一块 // 29 → 30：`mod panorama_call;` 换成一块墓碑 // +2：`mod pubkey;` 与 `push_public_key` 注册那一行各换成一块墓碑 // 26 → 27：`mod acct_iso_deploy` 那一行换成一块墓碑 // // 两边各自贴的墓碑相加，按盘上现数（跑出来核过） 21 → 26 // 两边各自贴的墓碑相加，按盘上现数（跑出来核过） // 基数 16 ＋ 主线 +1 ＋ MIG-3a +2 ＋ MIG-2 +1（`apikey_remote` 整删）⇒ 20 // +1：`mod stop_grace;` 那一行换成一块墓碑（「请它收尾 → 等 → 强杀」搬进一次性 `--resident-stop`）。 〔删 `fenced_block::apply` 那一族〕主线 13 ＋ 本路 +2（`verified_write` 模块删了那一行：`verified_write` · `fenced_block::apply` 各一）⇒ 15。主线原注：基数 10 ＋ LOC1b +3 ＋ HX2 ±0 ⇒ 13。LOC1b 原注：+2：本机判活那一段（`SessionMap::load_with_changes` 起步 · `app.manage(session_map)`）删了，原处各挂一块 // 主线 10 ＋ LOC1b +1（`mod search;` 那一行挂一块，本机内存索引删了） // +1 // +1：`write_apikey_credentials_key` 头注里「整段论证见」那个旧写口 // 主线 7 ＋ 本路 +1 ⇒ 8（本机账号参照实现删了（list_from_dir 一族 ＋ accounts.rs 整份），点旧名的散文挂墓碑） // 主线 6 ＋ 本路 +1（独立窗口的定向重放命令退役那一段）// +2（「终端集成」五条命令退役：注册表旁一句 ＋ 原住址一句；合并主线 636cc1a0 按两边增量相加 4 + 2） // 1 → 2（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）· +1：`sftp_move_ledger` 退役 · +1：`plugins` 模块删了，那一行挂一块（合并按两边增量相加 ⇒ 4） ｜ HX2 原注：±0：`write_apikey_credentials_key` 整条删，原处换一块墓碑（点旧命令名 ＋ `KH2C1` 那条旧判据名）// +1 // +1：`write_apikey_credentials_key` 头注里「整段论证见」那个旧写口 // 主线 7 ＋ 本路 +1 ⇒ 8（本机账号参照实现删了（list_from_dir 一族 ＋ accounts.rs 整份），点旧名的散文挂墓碑） // 主线 6 ＋ 本路 +1（独立窗口的定向重放命令退役那一段）// +2（「终端集成」五条命令退役：注册表旁一句 ＋ 原住址一句；合并主线 636cc1a0 按两边增量相加 4 + 2） // 1 → 2（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）· +1：`sftp_move_ledger` 退役 · +1：`plugins` 模块删了，那一行挂一块（合并按两边增量相加 ⇒ 4） // 16 → 17
         ("src/frontend/shell/src/local_backend_host.rs", 3), // 〔🔴-3〕+1：中转「在不在」那一行原先点着已删的回环探针，改成今天由后端答、旧名留一块 // +1：`relay_running` 一族退役那一块 // +1：`fresh_token` 头注里「不需要密码学随机数」那一段整段删，原处留一块（合并按两边增量相加：1 ＋ 1 ＋ 1）// −1：宿主不再铸钥匙，`fresh_token` 连同那一块删了
         // monitor 自己那份本机判活整份删了（本机活会话表改由本机后端的帧喂），头注点旧实现的几个名字各挂一块。
         // `src/frontend/shell/src/session_map.rs` 那一行摘了：那份文件整删（会话账本搬进后端）。
@@ -4807,10 +4799,6 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/backend/agents/claudecode/footprint.rs", 1), // 新行：cc-bus 那一条随 Claude 布局那一半搬来，带着它那块（`~/.cc-bus/` note 点写面旧命令名）
         ("tests/e2e/local-backend-supervise.sh", 2), // e2e 起真后端那条删掉的判据名挂墓碑（gate · local-backend 套件）
         ("tests/scripts/gate.sh", 1), // 2 → 1：shellcheck 那一格「立项理由已不成立、原话照留」那段随人群搬进门禁一起删了（那段讲的是 CI 独有、人群住 ci.yml）· 3 → 2：e2e 那段逐套条数的沿革注释删了，local-backend 那块墓碑随之没了
-        // 公钥推送进本机后端：新文件头注点旧命令名挂墓碑。
-        ("src/backend/assets/pubkey.rs", 1),
-        ("src/frontend/ui/pubkey-push.ts", 1),
-        ("tests/frontend/ui/pubkey-push.vitest.ts", 1),
         ("src/frontend/shell/src/dial_host.rs", 1), // `stream` 用法那一个开链路口删了，原地一块
         ("src/backend/agents/claudecode/schema.rs", 1), // 新行：记录解释进后端 / 会话正文四条退役，点旧名的散文挂墓碑
         ("src/backend/agents/codex/parse.rs", 1), // 新行：记录解释进后端 / 会话正文四条退役，点旧名的散文挂墓碑
