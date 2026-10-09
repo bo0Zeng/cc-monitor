@@ -359,15 +359,31 @@
     touch-action: none;
   }
 
+  /* 一行挤了先截号名（头像已带缩写）；状态标签与行尾用量不缩、不折行；只读的封顶标签文字长，排在号名之后再缩。 */
   .acctRowName {
+    flex: 0 4 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     color: var(--text);
+  }
+
+  .acctRow > .acctTag {
+    flex: none;
+  }
+
+  .acctRow > .acctTag[data-cap] {
+    flex: 0 1 auto;
   }
 
   .acctRowUsage {
     display: inline-flex;
+    flex: none;
     gap: var(--space-5);
     margin-left: auto;
     color: var(--text-2);
+    white-space: nowrap;
   }
 
   .acctRowUsage[data-shade="refused"] {

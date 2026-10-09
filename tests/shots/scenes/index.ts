@@ -31,6 +31,8 @@ export interface Scene {
   hostOs?: "windows" | "linux";
   /** 开页之前写进 localStorage 的（tab 栏宽、提示看过没有 …）；不给 ⇒ 用 [`DEFAULT_STORAGE`]。 */
   storage?: Record<string, string>;
+  /** 截之前把真鼠标停在这个元素中央（CSS `:hover` 只有真鼠标才触发，页里派事件不算）；量排版也在停好之后。 */
+  pointer?: string;
   /** 开页之后：等界面画好、点开要截的那一块。返回即可截。 */
   act: (ctx: SceneCtx) => Promise<void>;
 }

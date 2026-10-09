@@ -96,6 +96,9 @@ export interface ShotsHandle {
   unhandled: string[];
   /** 截之前量 DOM 外接框发现的排版问题（`scenes/layout-check.ts`）。 */
   layout: string[];
+  /** 场景要真鼠标停的那一点（页坐标）；截图工具停好之后调 `remeasure` 重量一遍排版。 */
+  pointer?: { x: number; y: number };
+  remeasure?: () => string[];
 }
 
 export interface SceneCtx {

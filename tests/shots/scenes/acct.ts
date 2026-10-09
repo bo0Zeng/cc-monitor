@@ -240,8 +240,8 @@ function world(build: (aw: AcctWorld) => void, base: () => World = defaultWorld)
   };
 }
 
-function scene(id: string, title: string, desc: string, act: Scene["act"], w: () => World, size: [number, number] = [W, H]): Scene {
-  return { id, page: "index", dir: "额度与账号", title, desc, width: size[0], height: size[1], world: w, act };
+function scene(id: string, title: string, desc: string, act: Scene["act"], w: () => World, size: [number, number] = [W, H], pointer?: string): Scene {
+  return { id, page: "index", dir: "额度与账号", title, desc, width: size[0], height: size[1], world: w, act, ...(pointer ? { pointer } : {}) };
 }
 
 async function hover(sel: string | Element): Promise<void> {
@@ -405,13 +405,26 @@ export const ACCT_SCENES: Scene[] = [
     aw.rules = [{ id: "r_night", name: "夜间", rotation: { order: [{ start: true }, "team", "personal"], enabled: ["team", "personal"], when: { threshold: { n: 90 } }, atLimit: "continue", wait: 40, preempt: true }, users: 2 }];
     aw.sessions[0] = { ...swappedSess(), follow: false, rule: "r_night", custom: undefined };
   })),
-  scene("acct-rule-readonly", "面板 · 来源 ＝ 规则 夜间（只读）", "上方一行 规则 夜间 · 在用 2 会话 ［编辑规则…］［转为本会话］；触发灰、列表只读、personal 行尾封顶写成标签 17:00-02:00 停用", openPanel, world((aw) => {
-    aw.rules = [{ id: "r_night", name: "夜间", rotation: { order: [{ start: true }, "team", "personal"], enabled: ["team", "personal"], when: { threshold: { n: 90 } }, atLimit: "continue", wait: 40, preempt: true, cap: { personal: { "*": [{ at: "17:00-02:00", n: 0 }] } } }, users: 2 }];
+  scene("acct-rule-readonly", "面板 · 来源 ＝ 规则 夜间（只读）", "上方一行 规则 夜间 · 在用 2 会话 ［编辑规则…］［转为本会话］；触发灰、列表只读、personal 行尾封顶写成标签 17:00-02:00 停用；team 一枚实心 兜底（关着的不画）", openPanel, world((aw) => {
+    aw.rules = [{ id: "r_night", name: "夜间", rotation: { order: [{ start: true }, "team", "personal"], enabled: ["team", "personal"], when: { threshold: { n: 90 } }, atLimit: "continue", wait: 40, preempt: true, fallback: ["team"], cap: { personal: { "*": [{ at: "17:00-02:00", n: 0 }] } } }, users: 2 }];
     aw.sessions[0] = { ...swappedSess(), follow: false, rule: "r_night", custom: undefined };
   })),
   scene("acct-custom-edit", "面板 · 本会话（可改）", "换法 按顺序 | 抢回 | 单段预算 · 最多等 10 分；每行行尾 封顶 按钮（team 设了 ≤80）；右上 存为规则…", openPanel, world((aw) => {
     aw.sessions[0] = { ...swappedSess(), custom: { ...ROT_CUSTOM, cap: { team: { "*": 80 } } } };
   })),
+  scene("acct-fallback-on", "面板 · 兜底开着", "team 标了兜底：行里一枚实心 兜底；别的号的开关平时不显示", openPanel, world((aw) => {
+    aw.sessions[0] = { ...swappedSess(), custom: { ...ROT_CUSTOM, fallback: ["team"] } };
+  })),
+  scene("acct-fallback-off", "面板 · 兜底都关着", "没有号标兜底：每行都不显示 兜底（悬停或键盘到那一行才出）", openPanel, world((aw) => {
+    aw.sessions[0] = { ...swappedSess(), custom: { ...ROT_CUSTOM } };
+  })),
+  scene("acct-fallback-hover", "面板 · 悬停一行 ⇒ 兜底开关出来", "鼠标停在 team 那一行：行尾出一枚描边 兜底（点了才变实心）；api 标了兜底、实心", openPanel, world((aw) => {
+    aw.sessions[0] = { ...swappedSess(), custom: { ...ROT_CUSTOM, fallback: ["api"] } };
+  }), [W, H], '[data-acct-row="team"]'),
+  scene("acct-rows-narrow", "面板 · 窄窗 · 行挤了先截号名", "窗宽 700：长号名截成省略号，在用 · 起始 · 兜底 等标签全字、重置时刻一行", openPanel, world((aw) => {
+    aw.accounts.push({ account: "research-shared-pool-01", kind: "sub", state: "ok", limiting: "5h", slots: [{ slot: "5h", pct: 22, resetsAt: 3.2 * H1 }, { slot: "7d", pct: 30, resetsAt: 90 * H1 }] });
+    aw.sessions[0] = { ...swappedSess(), current: "research-shared-pool-01", custom: { ...ROT_CUSTOM, order: [{ start: true }, "research-shared-pool-01", "personal", "team", "api"], enabled: ["research-shared-pool-01", "personal", "team"], fallback: ["team"], cap: { personal: { "*": 99 } } } };
+  }), [700, 600]),
   scene("acct-cap-pop", "面板 · 封顶浮层 · 按时段", "personal 行尾 封顶 ⇒ 浮层 personal · 全部窗口：不设 | 固定 | 按时段；两段 17:00–02:00 上限 0 · 02:00–17:00 上限 99；24h 色带（0 斜纹）", async () => {
     await openPanel();
     await click('aside[role="dialog"] [data-rot-cap-btn="personal"]');

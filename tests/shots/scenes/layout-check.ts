@@ -5,6 +5,8 @@
  *    竖直方向在触发物下方或上方 4px（±1）、水平方向与触发物那一列有交叠；右键开的（没有触发物）只查在窗口里。
  *    浮层与展开着的子菜单都不许伸出窗口。
  * 2. 单行文字不压按钮：会话头标题 / 机器 / 目录 / 状态一句与右侧按钮不相交；标签页的名字与它行尾的徽标不相交。
+ * 3. 账号面板轮换列表一行：每段字一行不折（重置时刻那种）；状态标签（在用 · 起始 …）全字可见、不被省略
+ *    （号名可以省略，只读的封顶标签可以省略）；兜底开关开着 ⇒ 看得见、有底色；关着 ⇒ 所在行没悬停、没焦点时看不见。
  *
  * 回一串「哪里不对」；空 ＝ 都对。
  */
@@ -94,8 +96,37 @@ function singleLines(): string[] {
   return out;
 }
 
+function acctRows(): string[] {
+  const out: string[] = [];
+  for (const row of document.querySelectorAll<HTMLElement>("[data-acct-row]")) {
+    if (!visible(row)) continue;
+    const who = row.dataset.acctRow;
+    for (const leaf of row.querySelectorAll<HTMLElement>("*")) {
+      if (leaf.childElementCount > 0 || !leaf.textContent?.trim() || !visible(leaf)) continue;
+      // 数不同的行顶（省略号会把一行拆成几个框，不算折行）
+      const rg = document.createRange();
+      rg.selectNodeContents(leaf);
+      const tops = new Set([...rg.getClientRects()].filter((r) => r.width > 0).map((r) => Math.round(r.top)));
+      if (tops.size > 1) out.push(`轮换列表 ${who}：${name(leaf)} 折成了 ${tops.size} 行`);
+    }
+    for (const tag of row.querySelectorAll<HTMLElement>("[data-acct-tag]:not([data-cap])")) {
+      if (visible(tag) && tag.scrollWidth > tag.clientWidth + EPS) out.push(`轮换列表 ${who}：标签 ${name(tag)} 被截（${tag.scrollWidth} > ${tag.clientWidth}）`);
+    }
+    for (const fb of row.querySelectorAll<HTMLElement>("[data-rot-fallback]")) {
+      const cs = getComputedStyle(fb);
+      const on = fb.getAttribute("aria-pressed") === "true";
+      const shown = Number(cs.opacity) > 0.5 && fb.getBoundingClientRect().width > 0;
+      const lit = fb.parentElement?.matches(":hover, :focus-within") ?? false;
+      if (on && (!shown || cs.backgroundColor === "rgba(0, 0, 0, 0)")) out.push(`轮换列表 ${who}：兜底开着却不是实心标`);
+      if (!on && !lit && Number(cs.opacity) > 0 && fb.getBoundingClientRect().width > 0) out.push(`轮换列表 ${who}：兜底关着、行没悬停没焦点却看得见`);
+      if (!on && lit && !shown) out.push(`轮换列表 ${who}：兜底关着、行悬停 / 有焦点却没出来`);
+    }
+  }
+  return out;
+}
+
 export function layoutProblems(): string[] {
-  const out = [...floats(), ...singleLines()];
+  const out = [...floats(), ...singleLines(), ...acctRows()];
   // 也写进页里的控制台（截图工具每张存一份），整趟被打断时还查得到。
   for (const p of out) console.warn(`[layout] ${p}`);
   return out;

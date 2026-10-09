@@ -28,7 +28,7 @@ import { closeMenu, openMenu, type MenuItem } from "./kit/menu";
 import { meter, type MeterState } from "./kit/meter";
 import { segmented } from "./kit/tabs";
 import { select } from "./kit/select";
-import { capButton, capTags, fallbackToggle, howControl, openSaveAsRule, waitControl } from "./rot-editor";
+import { capButton, capTags, fallbackMark, fallbackToggle, howControl, openSaveAsRule, waitControl } from "./rot-editor";
 import { toast } from "./kit/toast";
 import { attachTooltip } from "./kit/tooltip";
 import { ARRIVAL_BUDGET_MS } from "./launch-arrival";
@@ -254,6 +254,7 @@ function slotMeter(q: QuotaShow, slot: string, now: number): HTMLElement {
 function tagEl(text: string, tone?: "cur" | "warn" | "error"): HTMLElement {
   const t = el("span", s.acctTag, text);
   t.title = text;
+  t.dataset.acctTag = "";
   if (tone) t.dataset.shade = tone;
   return t;
 }
@@ -643,12 +644,17 @@ function rotationList(o: Open, host: AcctPanelHost, read: Present, r: Rotation, 
       if (q.state === "overageInUse") line.appendChild(tagEl(copyText("acct.val.over"), "warn"));
     }
     // 封顶：本会话那份可改（行尾一个小按钮开浮层，编的是这号全部窗口那一格）；只读的写成小标签。
-    // 兜底：本会话那份顺序里具名的号上一个开关；只读的写成标签。
+    // 兜底（排在封顶之后）：本会话那份顺序里具名的号上一个开关（开 ⇒ 实心标；关 ⇒ 悬停 / 行内有焦点才出）；只读的只画开着的那个实心标。
     const named = r.order.includes(row.account);
-    if (editable && named) line.appendChild(fallbackToggle(r, row.account, (next) => void save(o, host, { custom: next })));
-    else if ((r.fallback ?? []).includes(row.account)) line.appendChild(tagEl(copyText("rot.fallback.tag")));
     if (editable && !row.start) line.appendChild(capButton(o.origin, r, row.account, (next) => void save(o, host, { custom: next })));
-    else for (const t of capTags(r, row.account)) line.appendChild(tagEl(t));
+    else
+      for (const t of capTags(r, row.account)) {
+        const tag = tagEl(t);
+        tag.dataset.cap = "";
+        line.appendChild(tag);
+      }
+    if (editable && named) line.appendChild(fallbackToggle(r, row.account, accountLabel(row.account), (next) => void save(o, host, { custom: next })));
+    else if ((r.fallback ?? []).includes(row.account)) line.appendChild(fallbackMark());
     line.appendChild(rowUsage(q, now, ledgerOf(quota, read.agent, row.account)?.reading));
     if (editable) {
       // 键盘：Alt+↑ / Alt+↓ 移位、空格勾（复选框自己管）。

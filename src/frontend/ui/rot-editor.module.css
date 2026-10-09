@@ -108,4 +108,46 @@
   .rotBandPiece[data-zero="true"] {
     background: repeating-linear-gradient(135deg, var(--text-faint) 0 3px, transparent 3px 6px);
   }
+
+  /*
+   * 兜底：开 ⇒ 实心标（开关与只读标同一个样子）；关 ⇒ 平时不显示（仍在 Tab 序里，键盘能到），
+   * 它所在的那一行悬停或行内有焦点时才出（描边、淡字，像一枚可点的标签）。排在封顶之后、用量之前，出来时只占中间空出的地方，左边不跳。
+   */
+  button.rotFallback[data-kind],
+  .rotFallbackMark {
+    flex: none;
+    height: auto;
+    padding: 0 var(--space-2);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-s);
+    color: var(--text-2);
+    font-size: var(--font-size-xs);
+    font-weight: normal;
+    line-height: inherit;
+    white-space: nowrap;
+  }
+
+  button.rotFallback[aria-pressed="true"],
+  .rotFallbackMark {
+    border-color: transparent;
+    background: var(--text-2);
+    color: var(--bg);
+  }
+
+  /* 关着且没悬停：收成 0 宽（不白占一行里本来就紧的地方），但不是 display:none —— 仍可聚焦，聚焦了所在行 focus-within 它就出来。 */
+  button.rotFallback[aria-pressed="false"] {
+    max-width: 0;
+    padding: 0;
+    overflow: hidden;
+    border-width: 0;
+    opacity: 0;
+  }
+
+  :hover > button.rotFallback[aria-pressed="false"],
+  :focus-within > button.rotFallback[aria-pressed="false"] {
+    max-width: none;
+    padding: 0 var(--space-2);
+    border-width: 1px;
+    opacity: 1;
+  }
 }

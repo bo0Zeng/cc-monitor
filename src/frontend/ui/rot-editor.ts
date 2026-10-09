@@ -132,12 +132,25 @@ export function withFallback(r: Rotation, account: string, on: boolean): Rotatio
 }
 
 /** 号那一行的「兜底」开关（只在顺序里具名的号上有）：点即写。 */
-export function fallbackToggle(r: Rotation, account: string, write: (r: Rotation) => void): HTMLButtonElement {
+export function fallbackToggle(r: Rotation, account: string, name: string, write: (r: Rotation) => void): HTMLButtonElement {
   const on = (r.fallback ?? []).includes(account);
-  const b = button({ label: copyText("rot.fallback.tag"), kind: on ? "secondary" : "ghost", size: "compact", hint: copyText("rot.fallback.hint"), onClick: () => write(withFallback(r, account, !on)) });
+  // 开 ⇒ 实心的「兜底」标；关 ⇒ 平时不显示（透明、仍占位、仍在 Tab 序里），行悬停或行内有焦点才出（`rot-editor.module.css`）。
+  const b = button({ label: copyText("rot.fallback.tag"), kind: "ghost", size: "compact", hint: copyText("rot.fallback.hint"), onClick: () => write(withFallback(r, account, !on)) });
+  b.classList.add(s.rotFallback);
+  b.setAttribute("aria-label", copyText("rot.fallback.aria", { name }));
   b.setAttribute("aria-pressed", String(on));
   b.dataset.rotFallback = account;
   return b;
+}
+
+/** 只读视图里开着的兜底：与开关「开」同一个实心标；关着的不画。 */
+export function fallbackMark(): HTMLElement {
+  const t = document.createElement("span");
+  t.className = s.rotFallbackMark;
+  t.textContent = copyText("rot.fallback.tag");
+  t.title = copyText("rot.fallback.hint");
+  t.dataset.rotFallbackMark = "";
+  return t;
 }
 
 // ─────────────────────────────── 封顶

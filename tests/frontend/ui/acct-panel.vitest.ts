@@ -348,19 +348,25 @@ describe("账号面板 · 规则（来源下拉 · 用规则时只读 · 本会�
     expect((writeSessionRotation.mock.calls.at(-1)![2] as { custom: Rotation }).custom.cap).toEqual({ team: { "*": [{ at: "17:00-02:00", n: 0 }] } });
   });
 
-  it("★ 本会话：顺序里具名的号上有「兜底」开关，点 ⇒ 写 fallback；来源是规则时兜底写成标签", async () => {
-    seed({}, { order: [{ start: true }, "team"], enabled: ["team"], when: "full", atLimit: "continue", wait: 40 });
+  it("★ 本会话：顺序里具名的号上有「兜底」开关（开 ⇒ 实心标 · 关 ⇒ 平时藏着、悬停 / 行内有焦点才出），名字带号名、aria-pressed 对；点 ⇒ 写 fallback；来源是规则时只画开着的那个", async () => {
+    seed({}, { order: [{ start: true }, "team", "personal"], enabled: ["team", "personal"], when: "full", atLimit: "continue", wait: 40, fallback: ["personal"] });
     openAccountPanel("s1", "<local>", host);
     expect(panel().querySelector('[data-rot-fallback="api"]'), "序外的号没有开关").toBeNull();
-    panel().querySelector<HTMLButtonElement>('[data-rot-fallback="team"]')!.click();
+    const on = panel().querySelector<HTMLButtonElement>('[data-rot-fallback="personal"]')!;
+    const off = panel().querySelector<HTMLButtonElement>('[data-rot-fallback="team"]')!;
+    expect([on.getAttribute("aria-pressed"), on.getAttribute("aria-label"), on.textContent]).toEqual(["true", copyText("rot.fallback.aria", { name: "personal" }), copyText("rot.fallback.tag")]);
+    expect([off.getAttribute("aria-pressed"), off.getAttribute("aria-label")]).toEqual(["false", copyText("rot.fallback.aria", { name: "team" })]);
+    expect(off.tabIndex, "关着也在 Tab 序里（键盘能到）").toBe(0);
+    off.click();
     await flush();
-    expect((writeSessionRotation.mock.calls.at(-1)![2] as { custom: Rotation }).custom.fallback).toEqual(["team"]);
+    expect((writeSessionRotation.mock.calls.at(-1)![2] as { custom: Rotation }).custom.fallback).toEqual(["personal", "team"]);
     toggleAccountPanel("s1", "<local>", host);
     seed({ source: { rule: "r_night" } }, undefined);
     withNight({ ...NIGHT, fallback: ["team"] });
     openAccountPanel("s1", "<local>", host);
     expect(panel().querySelector("[data-rot-fallback]"), "只读没有开关").toBeNull();
-    expect(panel().querySelector('[data-acct-row="team"]')!.textContent).toContain(copyText("rot.fallback.tag"));
+    expect(panel().querySelector('[data-acct-row="team"] [data-rot-fallback-mark]')!.textContent).toBe(copyText("rot.fallback.tag"));
+    expect(panel().querySelectorAll("[data-rot-fallback-mark]").length, "只画开着的那个").toBe(1);
   });
 
   it("★ 存为规则：名称对错照后端（重名 ⇒ 红字、不写会话）；存成且勾着「本会话改用」⇒ 会话改用那一条", async () => {

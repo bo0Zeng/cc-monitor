@@ -507,6 +507,8 @@ const STATE_CLASS_UNRESOLVED: Readonly<Record<string, string>> = {
   "src/frontend/ui/kit/split-button.ts · classList.add(s.splitMain)":
     "CSS Modules（`split-button.module.css`）：给拆分按钮的两半（kit 按钮）挂拼接用的版位类；哈希过的类名，不是状态名",
   "src/frontend/ui/kit/split-button.ts · classList.add(s.splitMore)": "同上（▾ 那一半）",
+  "src/frontend/ui/rot-editor.ts · classList.add(s.rotFallback)":
+    "CSS Modules（`rot-editor.module.css`）：给 kit 按钮挂兜底开关的样子类；哈希过的类名，开 / 关走 `aria-pressed`，不是状态名",
 } as const;
 
 /** 名字形的已知违例（今天空：立格那一拍逮到的两处已改）。 */

@@ -21563,6 +21563,12 @@
       "zh": "其余号均不可用且等不到恢复时才切兜底",
       "args": []
     },
+    "rot.fallback.aria": {
+      "kind": "aria",
+      "role": "读屏",
+      "zh": "兜底 {name}",
+      "args": ["name"]
+    },
     "rot.done.src": {
       "kind": "body",
       "role": "toast",
