@@ -845,6 +845,13 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "`relay-optin` 读那台 `~/.claude/settings.json` 多大",
         "降级+说清",
     ),
+    // 一次改动的结果里随记录带出的逐段 diff 至多多少字；超了在段的边界停下、立 `patchTruncated`（数照整份）。
+    (
+        "src/backend/agents/claudecode/steps.rs",
+        "PATCH_MAX",
+        "一次改动结果里逐段 diff 的行正文总字数",
+        "截断+说清",
+    ),
     // 同上，Codex 那一家：读那台 `~/.codex/config.toml` 多大。
     (
         "src/backend/agents/codex/relay.rs",

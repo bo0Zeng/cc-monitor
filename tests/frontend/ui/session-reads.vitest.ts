@@ -51,15 +51,15 @@ beforeEach(() => invokeMock.mockReset());
 describe("〔C4b〕会话读面三问：按形状收", () => {
   it("★★ 金样：TS 解码器读得懂后端真出的三份成品（逐字段）", () => {
     const idx = decodeIndex(golden["history-index"]);
-    expect([idx.from, idx.end, idx.rows.length]).toEqual([0, 376, 4]);
+    expect([idx.from, idx.end, idx.rows.length]).toEqual([0, 476, 4]);
     expect(idx.rows.map((r) => [r.o, r.n, r.u])).toEqual([
       [0, 86, "in-1"],
-      [86, 137, "out-1"],
-      [224, 75, "meta-1"],
-      [299, 77, "in-2"],
+      [86, 175, "out-1"],
+      [262, 115, "meta-1"],
+      [377, 99, "in-2"],
     ]);
     const ui = decodeUserInputs(golden["history-user-inputs"]);
-    expect([ui.from, ui.end]).toEqual([0, 376]);
+    expect([ui.from, ui.end]).toEqual([0, 476]);
     expect(ui.entries).toEqual([
       { uuid: "in-1", excerpt: "alpha zqx beta", timestamp: "t1" },
       { uuid: "in-2", excerpt: "delta", timestamp: "t2" },
@@ -107,7 +107,7 @@ describe("〔C4b〕会话读面三问：经通道说对的帧命令", () => {
     invokeMock.mockResolvedValueOnce(chanReply(golden["history-index"]));
     const idx = await readSessionIndex("<local>", "/p/s.jsonl", 7);
     expect(sent()).toEqual(["<local>", "history-index", { path: "/p/s.jsonl", offset: 7 }]);
-    expect([idx.available, idx.end, idx.rows.length]).toEqual([true, 376, 4]);
+    expect([idx.available, idx.end, idx.rows.length]).toEqual([true, 476, 4]);
 
     invokeMock.mockReset().mockResolvedValueOnce(chanReply(golden["history-user-inputs"]));
     const ui = await listUserInputs("devbox", "/p/s.jsonl", 42);
@@ -198,7 +198,7 @@ describe("〔STC〕第五问：会话事实", () => {
   it("★★ 金样：TS 解码器读得懂后端真出的会话事实（逐字段）", () => {
     const f = decodeFacts(golden["history-facts"]);
     expect(f).toEqual({
-      end: 1241,
+      end: 1633,
       forkedFrom: "src-0",
       touchedFiles: ["/w/a.ts"],
       usage: { promptTokens: 6, model: "m-g", peakPromptTokens: 6, limit: 1_000_000, limitFrom: "assumed" },
@@ -216,6 +216,18 @@ describe("〔STC〕第五问：会话事实", () => {
         { id: "rt-1", outcome: "recovered" },
         { id: "rt-2", outcome: "retrying" },
       ],
+      permissionMode: "acceptEdits",
+      tokens: {
+        input: 1,
+        output: 0,
+        cacheRead: 3,
+        cacheWrite5m: 2,
+        cacheWrite1h: 0,
+        requests: 1,
+        text: copyText("beSpend.tokens.line", { input: "1", output: "0", read: "3", write: "2" }),
+        last: { id: "", tokens: [1, 0, 3, 2, 0] },
+      },
+      cost: { micros: 424200, partial: false, text: copyText("beSpend.cost.exact", { usd: "0.42" }) },
     });
   });
 

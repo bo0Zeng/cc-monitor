@@ -478,13 +478,13 @@ export class TerminalPage {
       return false;
     }
     const why = sent?.result === "refused" ? sent.why : "";
-    if (why === "screen-changed") {
+    if (why === "screen_changed") {
       this.showNote({ text: copyText("terminal.input.screenChanged"), tone: "error" });
       void this.recapture();
       return false;
     }
     this.showNote({ text: copyText("terminal.input.failed", { why: sent?.result === "refused" ? sent.said : copyText("terminal.why.other") }), tone: "error", retry: what });
-    if (why === "not-known" || why === "ended") void this.refresh();
+    if (why === "not_known" || why === "ended") void this.refresh();
     return false;
   }
 

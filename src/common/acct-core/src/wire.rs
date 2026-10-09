@@ -1,5 +1,5 @@
 //! 账号库那几条帧命令（`accounts-init` · `accounts-add` · `accounts-remove` · `accounts-set-default` · `accounts-repair` ·
-//! `accounts-isolate` · `accounts-rollback` · `accounts-verify` · `accounts-login-cmd`）的**线上形状** —— 两侧同一份：
+//! `accounts-rollback` · `accounts-verify` · `accounts-login-cmd`）的**线上形状** —— 两侧同一份：
 //! 后端按这里的入参严格收（多一个键 ⇒ 拒）、按这里的成品回；界面用从这里导出的类型（`src/frontend/ui/generated/`）。
 
 use serde::{Deserialize, Serialize};
@@ -82,17 +82,6 @@ pub struct AccountNameArgs {
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../../frontend/ui/generated/"))]
 pub struct AccountRepairArgs {
-    #[cfg_attr(test, ts(optional))]
-    pub dry_run: Option<bool>,
-}
-
-/// `accounts-isolate`：把共享库里的一项变成每个号各自一份（共享库那份留作新号的模板）。
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(deny_unknown_fields, rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../frontend/ui/generated/"))]
-pub struct AccountIsolateArgs {
-    pub item: String,
     #[cfg_attr(test, ts(optional))]
     pub dry_run: Option<bool>,
 }

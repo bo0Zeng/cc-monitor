@@ -412,36 +412,6 @@
       "zh": "{path} 是指向 {target} 的链接 · 先换回普通文件再建账号库",
       "args": ["path", "target"]
     },
-    "beAcctPlan.isolate.already": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "{name} 的 {item} 已单独 · 跳过",
-      "args": ["name", "item"]
-    },
-    "beAcctPlan.isolate.badItem": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{item} 无效 · 只能是共享库顶层的一个名字",
-      "args": ["item"]
-    },
-    "beAcctPlan.isolate.notDeclared": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "{item} 不是身份文件 · 之后提示它非共享链接属预期",
-      "args": ["item"]
-    },
-    "beAcctPlan.isolate.watched": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{item} 不可隔离 · 会话列表只看共享库那份\n隔离后此号会话主窗口看不见",
-      "args": ["item"]
-    },
-    "beAcctPlan.isolate.notShared": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{shared} 里无 {item}",
-      "args": ["shared", "item"]
-    },
     "beAcctPlan.links.noneShared": {
       "kind": "body",
       "role": "空态",
@@ -17256,6 +17226,30 @@
       "role": "原因格",
       "zh": "{path} 非会话记录 · 未删除",
       "args": ["path"]
+    },
+    "beSpend.cost.exact": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "${usd}",
+      "args": ["usd"]
+    },
+    "beSpend.cost.about": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "约 ${usd}",
+      "args": ["usd"]
+    },
+    "beSpend.cost.tiny": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "不到 $0.01",
+      "args": []
+    },
+    "beSpend.tokens.line": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "输入 {input} · 输出 {output} · 读缓存 {read} · 写缓存 {write}",
+      "args": ["input", "output", "read", "write"]
     },
     "beFilesWrite.session.noReader": {
       "kind": "error",

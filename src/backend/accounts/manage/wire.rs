@@ -7,10 +7,9 @@ use super::layout::{self, AddIntent, Plan, Refusal};
 use super::scan::{self, is_under, join, KeyRows, Snapshot};
 use crate::assets::door::{self, Door};
 use acct_core::wire::{
-    AccountAddArgs, AccountChange, AccountInitArgs, AccountIsolateArgs, AccountKind,
-    AccountLoginCmd, AccountMcpNameArgs, AccountMcpPickArgs, AccountMcpSyncArgs, AccountMcpView,
-    AccountNameArgs, AccountRef, AccountRemoveArgs, AccountRepairArgs, AccountRollbackArgs,
-    VerifyReport,
+    AccountAddArgs, AccountChange, AccountInitArgs, AccountKind, AccountLoginCmd,
+    AccountMcpNameArgs, AccountMcpPickArgs, AccountMcpSyncArgs, AccountMcpView, AccountNameArgs,
+    AccountRef, AccountRemoveArgs, AccountRepairArgs, AccountRollbackArgs, VerifyReport,
 };
 use copy_core::copy_text;
 use serde_json::Value;
@@ -23,7 +22,6 @@ pub(crate) enum Request {
     Remove(AccountRemoveArgs),
     SetDefault(AccountNameArgs),
     Repair(AccountRepairArgs),
-    Isolate(AccountIsolateArgs),
     Rollback(AccountRollbackArgs),
     Verify,
     LoginCmd(AccountNameArgs),
@@ -50,7 +48,6 @@ pub(crate) fn parse(cmd: &str, args: &Value) -> Result<Request, Refusal> {
         "accounts-remove" => Request::Remove(take(args)?),
         "accounts-set-default" => Request::SetDefault(take(args)?),
         "accounts-repair" => Request::Repair(take(args)?),
-        "accounts-isolate" => Request::Isolate(take(args)?),
         "accounts-rollback" => Request::Rollback(take(args)?),
         "accounts-login-cmd" => Request::LoginCmd(take(args)?),
         "accounts-verify" => {
@@ -306,11 +303,6 @@ pub(crate) fn run_change(
         ),
         Request::Repair(a) => (
             layout::plan_repair(&snap)?,
-            a.dry_run == Some(true),
-            AccountChange::default(),
-        ),
-        Request::Isolate(a) => (
-            layout::plan_isolate(&snap, &a.item)?,
             a.dry_run == Some(true),
             AccountChange::default(),
         ),

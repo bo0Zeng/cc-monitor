@@ -65,6 +65,8 @@ use std::path::{Path, PathBuf};
 pub mod claudecode;
 // 上游协议的流面（按协议分，不按 agent 分）。
 pub(crate) mod codex;
+pub(crate) mod mainline;
+pub(crate) mod record;
 pub(crate) mod sse_anthropic;
 pub(crate) mod sse_openai_responses;
 
@@ -369,6 +371,8 @@ pub(crate) struct RecordFace {
     pub(crate) tree: Option<RecordTree>,
     /// 这一行是不是一轮的结束 ⇒ 那条记录的 uuid（`turn_end` 帧）。`None` ＝ 这一家今天不报轮次边沿。
     pub(crate) turn_end: Option<fn(&str) -> Option<String>>,
+    /// 一行原文 ⇒ 它在记录链上的事实（主线外清单由通用层 [`mainline`] 按它算）。`None` ＝ 这一家的记录没有链（清单恒空）。
+    pub(crate) chain: Option<fn(&str) -> Option<mainline::ChainFact>>,
     /// 在这一家的记录树（`records_root`）下按 sid 找那份会话文件（原共享 crate `branch-core`）。`None` ＝ 这一家不按 sid 找。
     pub(crate) find_session: Option<fn(&Path, &str) -> Result<PathBuf, String>>,
     /// 分叉的记录变换：`(记录, 分叉点 uuid, 源 sid, 新 sid)` ⇒ 新会话的记录（原共享 crate `branch-core`）。`None` ＝ 这一家不分叉。
@@ -552,6 +556,32 @@ pub struct StepResult {
     #[serde(rename = "exitCode", skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional))]
     pub exit_code: Option<i32>,
+    /// 这次改动说的是哪个文件（结果里写着的路径，原样）。只有改文件那几类结果有。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub file: Option<String>,
+    /// 逐段的改动本身（[`PatchHunk`]）。新建整份文件 / 没有改动 ⇒ 缺。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub patch: Option<Vec<PatchHunk>>,
+    /// diff 太大、只给了前几段（`added` / `removed` 仍是整份的数）。
+    #[serde(rename = "patchTruncated", skip_serializing_if = "std::ops::Not::not")]
+    #[cfg_attr(test, ts(optional, as = "Option<bool>"))]
+    pub patch_truncated: bool,
+}
+
+/// 一段改动（统一 diff 的一个 hunk）。行正文带着头字（` ` 没变 · `+` 加的 · `-` 删的）。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub struct PatchHunk {
+    /// 改之前这段从第几行起（1 起）· 占几行；改之后同。
+    pub old_start: u32,
+    pub old_lines: u32,
+    pub new_start: u32,
+    pub new_lines: u32,
+    pub lines: Vec<String>,
 }
 
 /// 提问 / 计划答了什么（B7）。界面写「已批准」/「已选「{option}」」，不显示 Claude Code 的英文原句。

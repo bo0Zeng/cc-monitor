@@ -596,9 +596,10 @@ fn stream_from_offset<W: std::io::Write>(
 /// # 🔴 为什么是选项，不是一条新子命令 `--session-index`
 ///
 /// 加子命令 ⇒ `build_id_guard` 的指纹变 ⇒ 必须 bump `BUILD_ID`（远端才会判 stale 重装）。
-/// 本轮（10 路并行）**明令不许 bump**。选项不进指纹 —— 这正是那条护栏头注自陈的盲区
-/// 「子命令集没变但行为变了它不管」。⇒ **这一刀在已部署的老后端上是休眠的**，
-/// 直到下一次有人 bump；**老后端上的行为已设计成可认出来**：
+/// 当时（10 路并行）**明令不许 bump**，而那时选项还不进指纹，于是选成了选项。
+/// ⚠ 那个前提已经不在：从 `p4m-tail` 起 `SUBCOMMAND_OPTIONS` 也进 `build_id_guard` 的指纹（`#options` 段），
+/// 今天加一个选项和加一条子命令一样逼出 bump。留成选项的理由只剩下面两节（语义上就是「从偏移读」· 老后端上认得出来）。
+/// **老后端上的行为已设计成可认出来**：
 /// 老后端不认 `--index`/`--until`（它只读 `args[1..=2]`，多余参数不看）⇒ 照旧透传字节
 /// ⇒ 首行不是 `{"kind":"session_index",…}` ⇒ monitor 据此判「对面不会出索引」并诚实降级
 /// （`--until` 同理：多拿到的尾巴由 monitor 自己按 `end` 截掉，结果仍然对，只是多传了字节）。
@@ -712,6 +713,12 @@ pub(crate) fn list_user_inputs_into(
     from: u64,
     mut out: &mut dyn Write,
 ) -> Result<(), String> {
+    // 从头要 ⇒ 共用扫描图那一份（回退掉的那几句已经不在里面，与帧面同一份）。
+    if from == 0 {
+        let map = cold_scan(agent_home, jsonl_path)?;
+        return crate::observe::user_inputs::write_rows(&map.inputs, map.end, &mut out)
+            .map_err(|e| format!("stream failed: {e}"));
+    }
     crate::observe::user_inputs::write_user_inputs(
         open_user_inputs_at(agent_home, jsonl_path, from)?,
         from,

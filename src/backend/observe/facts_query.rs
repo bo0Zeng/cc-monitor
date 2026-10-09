@@ -159,6 +159,49 @@ pub(crate) struct SessionFacts {
     pub(crate) handed_back: Vec<String>,
     /// 一串一串的 API 重试与结局（按首条的 `uuid`，文件序）；最后一串可能还没有下文（`retrying`）。
     pub(crate) retries: Vec<RetryRun>,
+    /// 此刻的许可档（最后一条许可档记录写的那一档，原样）；没有 ⇒ `null`。
+    pub(crate) permission_mode: Option<String>,
+    /// 全会话用量（按请求去重）；一条带用量的回复都没有 ⇒ `null`。
+    pub(crate) tokens: Option<TokenUse>,
+    /// 全会话花费（记录里那一家自己记的花费那一条，最后一条为准）；记录里没有 ⇒ `null`（不按定价自己算）。
+    pub(crate) cost: Option<Cost>,
+}
+
+/// 全会话用量：同一次请求写出的几条回复只算一次（取最后一条的数）；写缓存分 5 分钟 / 1 小时两档（原文没分档 ⇒ 整份算 5 分钟档）。
+/// `text` 是写好的成品串（随数一起更新）。
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct TokenUse {
+    pub(crate) input: u64,
+    pub(crate) output: u64,
+    pub(crate) cache_read: u64,
+    #[serde(rename = "cacheWrite5m")]
+    pub(crate) cache_write5m: u64,
+    #[serde(rename = "cacheWrite1h")]
+    pub(crate) cache_write1h: u64,
+    /// 算进来的请求数。
+    pub(crate) requests: u64,
+    /// 写好的串（输入 · 输出 · 读缓存 · 写缓存）。
+    pub(crate) text: String,
+    /// 上一次请求（续传时同一次请求的后一条要替掉它）：键 · 那一次的五个数。
+    pub(crate) last: Option<LastRequest>,
+}
+
+/// [`TokenUse::last`]。
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct LastRequest {
+    pub(crate) id: String,
+    pub(crate) tokens: [u64; 5],
+}
+
+/// 全会话花费：记录里那一家自己记的数（微美元）· 它说有没有定不了价的型号 · 写好的串（币种、精度、「约」都在里面）。
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct Cost {
+    pub(crate) micros: u64,
+    pub(crate) partial: bool,
+    pub(crate) text: String,
 }
 
 /// 一串相邻的 API 重试。
@@ -411,14 +454,17 @@ pub(crate) fn context_limit(
 pub(crate) fn prior_from(v: &Value) -> Result<SessionFacts, String> {
     const TOP: &[&str] = &[
         "agent",
+        "cost",
         "end",
         "forkedFrom",
         "handedBack",
         "lastSay",
         "needs",
         "pending",
+        "permissionMode",
         "projectDir",
         "retries",
+        "tokens",
         "touchedFiles",
         "usage",
         "writers",
@@ -431,6 +477,28 @@ pub(crate) fn prior_from(v: &Value) -> Result<SessionFacts, String> {
         "promptTokens",
     ];
     exact_keys(v, TOP, "prior")?;
+    if !v["tokens"].is_null() {
+        exact_keys(
+            &v["tokens"],
+            &[
+                "cacheRead",
+                "cacheWrite1h",
+                "cacheWrite5m",
+                "input",
+                "last",
+                "output",
+                "requests",
+                "text",
+            ],
+            "prior.tokens",
+        )?;
+        if !v["tokens"]["last"].is_null() {
+            exact_keys(&v["tokens"]["last"], &["id", "tokens"], "prior.tokens.last")?;
+        }
+    }
+    if !v["cost"].is_null() {
+        exact_keys(&v["cost"], &["micros", "partial", "text"], "prior.cost")?;
+    }
     if !v["usage"].is_null() {
         exact_keys(&v["usage"], USAGE, "prior.usage")?;
     }
@@ -508,6 +576,8 @@ pub(crate) fn settle_limit(facts: &mut SessionFacts, limits: &ContextLimits, rel
 /// 这一行有没有可能改动事实（快路，见头注）。**只许放过、不许误拦**：凡是 [`note_record`] 会动的记录，这里必为真。
 pub(crate) fn could_matter(line: &[u8], facts: &SessionFacts) -> bool {
     (facts.forked_from.is_none() && contains(line, b"\"forkedFrom\""))
+        || contains(line, b"\"permission-mode\"")
+        || contains(line, b"\"cost-state\"")
         || contains(line, b"\"usage\"")
         || contains(line, b"\"tool_use\"")
         || (contains(line, b"\"assistant\"") && contains(line, b"\"text\""))
@@ -692,6 +762,13 @@ pub(crate) fn note_record(f: &mut SessionFacts, v: &Value) {
                 }
             }
             note_usage(f, v);
+            note_tokens(f, v);
+        }
+        Some("cost-state") => note_cost(f, v),
+        Some("permission-mode") => {
+            if let Some(m) = v.get("permissionMode").and_then(Value::as_str) {
+                f.permission_mode = Some(m.to_string());
+            }
         }
         _ => {}
     }
@@ -765,6 +842,111 @@ fn note_usage(f: &mut SessionFacts, v: &Value) {
         limit,
         limit_from,
     });
+}
+
+/// 一条回复的用量记进全会话用量：同一次请求（`requestId`）紧跟着的后一条替掉前一条的数。
+fn note_tokens(f: &mut SessionFacts, v: &Value) {
+    let Some(u) = v
+        .get("message")
+        .and_then(|m| m.get("usage"))
+        .filter(|u| u.is_object())
+    else {
+        return;
+    };
+    let num = |k: &str| u.get(k).and_then(Value::as_u64).unwrap_or(0);
+    let write = num("cache_creation_input_tokens");
+    let tier = |k: &str| {
+        u.get("cache_creation")
+            .and_then(|c| c.get(k))
+            .and_then(Value::as_u64)
+    };
+    let (w5, w1) = match (
+        tier("ephemeral_5m_input_tokens"),
+        tier("ephemeral_1h_input_tokens"),
+    ) {
+        (None, None) => (write, 0),
+        (a, b) => (a.unwrap_or(0), b.unwrap_or(0)),
+    };
+    let tokens = [
+        num("input_tokens"),
+        num("output_tokens"),
+        num("cache_read_input_tokens"),
+        w5,
+        w1,
+    ];
+    if tokens.iter().all(|&n| n == 0) {
+        return;
+    }
+    let id = v
+        .get("requestId")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    let s = f.tokens.get_or_insert_with(TokenUse::default);
+    let mut add = |sign: bool, t: &[u64; 5]| {
+        let fields = [
+            &mut s.input,
+            &mut s.output,
+            &mut s.cache_read,
+            &mut s.cache_write5m,
+            &mut s.cache_write1h,
+        ];
+        for (x, &n) in fields.into_iter().zip(t) {
+            *x = if sign {
+                x.saturating_add(n)
+            } else {
+                x.saturating_sub(n)
+            };
+        }
+    };
+    match s.last.take() {
+        Some(prev) if !id.is_empty() && prev.id == id => add(false, &prev.tokens),
+        _ => s.requests += 1,
+    }
+    add(true, &tokens);
+    s.last = Some(LastRequest { id, tokens });
+    s.text = copy_core::copy_text(
+        "beSpend.tokens.line",
+        &[
+            ("input", &short_tokens(s.input)),
+            ("output", &short_tokens(s.output)),
+            ("read", &short_tokens(s.cache_read)),
+            ("write", &short_tokens(s.cache_write5m + s.cache_write1h)),
+        ],
+    );
+}
+
+/// 花费那一条（`totalCostUSD` 是到此刻为止的全会话总数；`hasUnknownModelCost` 为真 ⇒ 有型号定不了价、数只是下限）。
+fn note_cost(f: &mut SessionFacts, v: &Value) {
+    let Some(usd) = v
+        .get("totalCostUSD")
+        .and_then(Value::as_f64)
+        .filter(|x| x.is_finite() && *x >= 0.0)
+    else {
+        return;
+    };
+    let micros = (usd * 1e6).round() as u64;
+    let partial = v.get("hasUnknownModelCost").and_then(Value::as_bool) == Some(true);
+    let shown = format!("{:.2}", micros as f64 / 1e6);
+    let text = match (micros, partial) {
+        (1..=4_999, _) => copy_core::copy_text("beSpend.cost.tiny", &[]),
+        (_, false) => copy_core::copy_text("beSpend.cost.exact", &[("usd", &shown)]),
+        (_, true) => copy_core::copy_text("beSpend.cost.about", &[("usd", &shown)]),
+    };
+    f.cost = Some(Cost {
+        micros,
+        partial,
+        text,
+    });
+}
+
+/// 用量 token 数写成短串（1234 ⇒ 1.2k · 1234567 ⇒ 1.2M）。
+fn short_tokens(n: u64) -> String {
+    match n {
+        0..=999 => n.to_string(),
+        1_000..=999_999 => format!("{:.1}k", n as f64 / 1e3),
+        _ => format!("{:.1}M", n as f64 / 1e6),
+    }
 }
 
 #[cfg(test)]

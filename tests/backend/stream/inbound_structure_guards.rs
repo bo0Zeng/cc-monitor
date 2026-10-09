@@ -265,6 +265,7 @@ fn every_registered_command_declares_its_run_kind() {
                 | "history-find"
                 | "backend-log" // 读一份诊断文件的尾部（同步文件 I/O），同档
                 | "history-turns" // 一轮的摘要：扫一段会话，同档
+                | "history-branch" // 主线外清单：扫一份会话（共用扫描图），同档
                 | "history-facts" // 会话事实：扫一份会话（首次整份，续传只读新写的一截），同档
                 | "history-read"
                 | "history-lines" // 按行号取回：从文件头数，同档
@@ -350,7 +351,6 @@ fn every_registered_command_declares_its_run_kind() {
                 | "accounts-remove"
                 | "accounts-set-default"
                 | "accounts-repair"
-                | "accounts-isolate"
                 | "accounts-rollback"
                 | "accounts-verify"
                 | "accounts-login-cmd"
@@ -389,6 +389,8 @@ fn every_registered_command_declares_its_run_kind() {
                 // 装记录的写口 ＋ 扩展页那张表（扫盘 ＋ 原子写目录文件）＋ 卸之前那张卡（读装记录 · 逐个读盘比摘要），同步文件 I/O。
                 | "skill-install-record"
                 | "ext-list"
+                // 同 `ext-list`：同一个本体（目录裁到本机那一格再进去），同样是扫盘 ＋ 原子写目录文件。
+                | "ext-list-here"
                 | "ext-uninstall-preview"
                 // 扩展页写备注：现扫 ＋ 原子写目录文件。
                 | "ext-note-set"
@@ -523,6 +525,7 @@ fn every_registered_command_declares_its_run_kind() {
         "backend-log",   //
         "history-turns", //
         "history-facts", //
+        "history-branch",
         "history-read",
         "history-lines",  //
         "history-record", //
@@ -576,6 +579,7 @@ fn every_registered_command_declares_its_run_kind() {
         // skill 卸三条（阻塞档，理由在上面 `expected_blocking`）。
         "skill-install-record",
         "ext-list",
+        "ext-list-here",
         "ext-uninstall-preview",
         "ext-note-set",
         // 历史注解三条（阻塞档，理由在上面 `expected_blocking`）。
@@ -607,7 +611,6 @@ fn every_registered_command_declares_its_run_kind() {
         "accounts-remove",
         "accounts-set-default",
         "accounts-repair",
-        "accounts-isolate",
         "accounts-rollback",
         "accounts-verify",
         "accounts-login-cmd",

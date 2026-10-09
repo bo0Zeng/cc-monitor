@@ -131,7 +131,6 @@ export const ACCOUNT_OPS = [
   "accounts-remove",
   "accounts-set-default",
   "accounts-repair",
-  "accounts-isolate",
   "accounts-rollback",
   "accounts-verify",
   "accounts-login-cmd",

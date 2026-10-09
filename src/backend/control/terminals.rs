@@ -280,15 +280,15 @@ pub(crate) fn parse_clients(text: &str) -> Vec<(String, u64, u64)> {
 }
 
 /// 送不了 / 结束不了的原因码 ⇒ 给人看的那一句（`terminal-input` 被拒的 `said` · 名单 `can.*` 里 `{no, said}` 的 `said`）。
-/// 码照线上那一形（短横：手机端也吃这两格，只加不改）；认不出的 ⇒ 「被拒」。
+/// 码照线上那一形（小写下划线，与同族命令级码同一写法；手机端也吃这两格）；认不出的 ⇒ 「被拒」。
 pub(crate) fn no_said(why: &str) -> String {
     match why {
-        "not-yours" => copy_text("beTerminal.no.notYours", &[]),
-        "not-managed" => copy_text("beTerminal.no.notManaged", &[]),
-        "other-windows" => copy_text("beTerminal.no.otherWindows", &[]),
-        "not-known" | "ended" => copy_text("beTerminal.no.gone", &[]),
+        "not_yours" => copy_text("beTerminal.no.notYours", &[]),
+        "not_managed" => copy_text("beTerminal.no.notManaged", &[]),
+        "other_windows" => copy_text("beTerminal.no.otherWindows", &[]),
+        "not_known" | "ended" => copy_text("beTerminal.no.gone", &[]),
         "ambiguous" => copy_text("beTerminal.no.ambiguous", &[]),
-        "screen-changed" => copy_text("beTerminal.no.screenChanged", &[]),
+        "screen_changed" => copy_text("beTerminal.no.screenChanged", &[]),
         _ => copy_text("beTerminal.no.other", &[]),
     }
 }
@@ -303,18 +303,18 @@ pub(crate) fn terminal_json(
     let not = |why: &str| json!({ "no": why, "said": no_said(why) });
     let input = match who {
         Who::Pass => json!(true),
-        Who::OtherClient => not("not-yours"),
-        Who::NotOurs => not("not-managed"),
+        Who::OtherClient => not("not_yours"),
+        Who::NotOurs => not("not_managed"),
     };
     let end = match who {
         Who::Pass if row.shared || row.windows == 1 => json!(true),
-        Who::Pass => not("other-windows"),
-        Who::OtherClient => not("not-yours"),
-        Who::NotOurs => not("not-managed"),
+        Who::Pass => not("other_windows"),
+        Who::OtherClient => not("not_yours"),
+        Who::NotOurs => not("not_managed"),
     };
     let shell = SHELLS.contains(&row.program.as_str());
     let state = match (row.sid.is_empty(), shell) {
-        (false, true) => "program-exited",
+        (false, true) => "program_exited",
         (true, true) => "idle",
         _ => "running",
     };
@@ -767,7 +767,7 @@ pub(crate) fn preview_on(on: On<'_>, args: &Value) -> Result<Value, CmdErr> {
     let (rows, _, _) = rows_on(on)?;
     let row = match find(&rows, &target) {
         Found::One(r) => r,
-        Found::NotKnown => return Err(not_known("not-known")),
+        Found::NotKnown => return Err(not_known("not_known")),
         Found::Ambiguous => {
             return Err((
                 "ambiguous",
@@ -810,7 +810,7 @@ pub(crate) fn follow_target_on(on: On<'_>, args: &Value) -> Result<FollowTarget,
             session: r.id.clone(),
             pane: r.pane.clone(),
         }),
-        Found::NotKnown => Err(not_known("not-known")),
+        Found::NotKnown => Err(not_known("not_known")),
         Found::Ambiguous => Err((
             "ambiguous",
             crate::common::contract::malformed(
@@ -919,7 +919,7 @@ pub(crate) fn input_on(on: On<'_>, args: &Value) -> Result<Value, CmdErr> {
     let (rows, _, _) = rows_on(on)?;
     let row = match find(&rows, &target) {
         Found::One(r) => r,
-        Found::NotKnown => return Ok(input_reply("refused", Some("not-known"), None)),
+        Found::NotKnown => return Ok(input_reply("refused", Some("not_known"), None)),
         Found::Ambiguous => return Ok(input_reply("refused", Some("ambiguous"), None)),
     };
     // 身份门照 `send-into` 那一道：此刻再探一次（名单那一刻之后可能换了人）。探的是挂着 sid 的那个窗格 ⇒ 按它判。
@@ -928,19 +928,19 @@ pub(crate) fn input_on(on: On<'_>, args: &Value) -> Result<Value, CmdErr> {
     };
     if row.pane.is_some() && p.ccm_sid != row.sid {
         // 那个窗格此刻挂的已经不是名单里那个 sid 了。
-        return Ok(input_reply("refused", Some("not-known"), None));
+        return Ok(input_reply("refused", Some("not_known"), None));
     }
     match gate::identity(&row.name, &p, requester.as_deref()) {
         Who::Pass => {}
-        Who::OtherClient => return Ok(input_reply("refused", Some("not-yours"), None)),
-        Who::NotOurs => return Ok(input_reply("refused", Some("not-managed"), None)),
+        Who::OtherClient => return Ok(input_reply("refused", Some("not_yours"), None)),
+        Who::NotOurs => return Ok(input_reply("refused", Some("not_managed"), None)),
     }
     // 送到哪：挂着 sid 的那个窗格（窗格 ID 同样是句柄、不复用），没挂 sid 的会话 ⇒ 探回来的会话句柄。
     let at = row.pane.clone().unwrap_or(p.session_id);
     if let Some(seen) = seen {
         let now = screen_now(on, &at)?;
         if now != seen {
-            return Ok(input_reply("refused", Some("screen-changed"), Some(&now)));
+            return Ok(input_reply("refused", Some("screen_changed"), Some(&now)));
         }
     }
     let tmux = |a: &[&str]| super::launch::ran(on.cmd(), a);

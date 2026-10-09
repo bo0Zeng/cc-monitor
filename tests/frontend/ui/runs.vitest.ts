@@ -246,7 +246,7 @@ describe("真 TabManager ＋ 真 agent 面板", () => {
     expect(notices().join("|")).toContain("扫目录");
     // 句子里的状态写字（完成 / 失败），不拿字符当图标（C-W1）。
     expect(notices()).toContain(copyText("speaker.notice.row", { what: "扫目录", state: copyText("runs.state.done"), time: notices()[0].split(" · ").at(-1) ?? "" }));
-    const facts = { agent: "claude", end: 1, forkedFrom: null, touchedFiles: [], usage: null, projectDir: null, writers: [], pending: [], lastSay: null, needs: null, handedBack: ["w6"], retries: [] };
+    const facts = { agent: "claude", end: 1, forkedFrom: null, touchedFiles: [], usage: null, projectDir: null, writers: [], pending: [], lastSay: null, needs: null, handedBack: ["w6"], retries: [], permissionMode: null, tokens: null, cost: null };
     (tm as unknown as { onSessionFacts(sid: string, f: unknown): void }).onSessionFacts(SID, facts);
     expect(notices().join("|")).not.toContain("扫目录");
     expect(notices().join("|"), "别的子运行的通知照常").toContain("别的");

@@ -996,46 +996,6 @@ fn repair_privatises_a_linked_identity_item_instead_of_deleting_it() {
     );
 }
 
-// ───────────────────────────── 隔离 ─────────────────────────────
-
-/// 把一个共享项隔离成每个号各一份：内容取自共享库、共享库那份留着、各号互不影响；不在身份表里 ⇒ 提示下次修复不会再链它。
-#[test]
-fn isolate_makes_a_private_copy_per_account() {
-    let t = two_accounts("iso");
-    let dry = ok(
-        &t,
-        "accounts-isolate",
-        json!({ "item": "settings.json", "dryRun": true }),
-    );
-    assert!(
-        t.is_link(".cc-monitor/accounts/lab/settings.json"),
-        "预演动了盘"
-    );
-    assert!(!dry["notes"].as_array().unwrap().is_empty());
-    ok(&t, "accounts-isolate", json!({ "item": "settings.json" }));
-    for a in ["lab", "x"] {
-        let rel = format!(".cc-monitor/accounts/{a}/settings.json");
-        assert!(!t.is_link(&rel), "{a}");
-        assert_eq!(t.read(&rel), "{\"theme\":\"dark\"}");
-    }
-    assert_eq!(t.read(".claude/settings.json"), "{\"theme\":\"dark\"}");
-    t.write(
-        ".cc-monitor/accounts/lab/settings.json",
-        "{\"theme\":\"zzz\"}",
-    );
-    assert_eq!(
-        t.read(".cc-monitor/accounts/x/settings.json"),
-        "{\"theme\":\"dark\"}"
-    );
-    for bad in ["", "a/b", "..", "no-such-thing"] {
-        assert_eq!(
-            code(&t, "accounts-isolate", json!({ "item": bad })),
-            "refused",
-            "{bad:?}"
-        );
-    }
-}
-
 // ───────────────────────────── 回滚 ─────────────────────────────
 
 /// ★ 修复之前那一刻可以原样回去：修复前后各拍一张（不跟链接的）目录树，回滚之后与修复前逐项相同。

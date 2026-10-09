@@ -342,9 +342,7 @@ pub enum Frame {
     },
     /// A new session file appeared.
     ///
-    /// Batch7-F24（additive，向后兼容）：附带 pidfile 元信息——`session_kind`
-    /// （"interactive"/"bg"；字段名避开 enum tag `kind`）、`cwd`、`name`。
-    /// None 时不上线（旧行为字节不变）；旧 monitor 忽略未知字段。
+    /// 附带 pidfile 元信息（`cwd` · `name` …）；缺的格不上线。
     SessionAdded {
         /// 会话 id。
         sid: String,
@@ -356,16 +354,13 @@ pub enum Frame {
         /// Claude（pidfile 权威）**省略**（skip_if_none）→ 消费侧缺=authoritative（向后兼容）。
         #[serde(skip_serializing_if = "Option::is_none")]
         liveness_confidence: Option<String>,
-        /// pidfile 里的会话种类原词（`interactive` · `bg` …）。monitor 不读它（读 `background`）；第二个前端在读，冻结。
-        #[serde(skip_serializing_if = "Option::is_none")]
-        session_kind: Option<String>,
         /// 是不是后台会话（不是人坐在终端里对话的那种）。适配层判（`agents::pidfile_background`），客户端只读这一格。
         /// 只在 `true` 时上线（缺 ＝ 交互会话；交互会话的帧字节与本字段加进来之前一字不差）。
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         background: bool,
         /// **E73（additive）：attach 进去对人有没有意义。**
         ///
-        /// `session_kind` 今天把两件事压在一个轴上：①「该不该在 UI 出现」②「是不是一个人
+        /// pidfile 的会话种类把两件事压在一个轴上：①「该不该在 UI 出现」②「是不是一个人
         /// 坐在终端里跟它对话」。SDK / 脚本驱动的会话正好是「①要②不要」—— 它有 tmux、
         /// `@ccm_sid` 也对，但 `stdin=DEVNULL`，用户敲的字会被脚本吃掉。
         ///
@@ -399,10 +394,6 @@ pub enum Frame {
         /// 全量模式 None。
         #[serde(skip_serializing_if = "Option::is_none")]
         lines: Option<u64>,
-        /// Batch9-F27（additive）：宣告时的初始 status/waitingFor——连接建立灯就对。
-        /// `status` 是 pidfile 原词：monitor 不读它（读 `activity`）；第二个前端在读，冻结。
-        #[serde(skip_serializing_if = "Option::is_none")]
-        status: Option<String>,
         /// 宣告时此刻在干什么（适配层翻好的，[`SessionActivity`]）。说不清 ⇒ 不上线。
         #[serde(skip_serializing_if = "Option::is_none")]
         activity: Option<SessionActivity>,
@@ -430,9 +421,6 @@ pub enum Frame {
     SessionStatus {
         /// 会话 id。
         sid: String,
-        /// 红绿灯状态（pidfile 里的 `status` 原词；monitor 读 `activity`，第二个前端读它，冻结）。
-        #[serde(skip_serializing_if = "Option::is_none")]
-        status: Option<String>,
         /// 此刻在干什么（同 `session_added.activity`）。说不清 ⇒ 不上线。
         #[serde(skip_serializing_if = "Option::is_none")]
         activity: Option<SessionActivity>,
@@ -732,6 +720,16 @@ pub enum Frame {
         runs: Vec<RunInfo>,
         /// 被挤出表的已收场子运行。
         ended: Vec<RunEnded>,
+    },
+    /// 一份会话记录的**主线外清单**（用户回退重发后留在文件里的旧那一支）：那几条记录的 `id`（与记录成品的 `id` 同值；只含进界面的，文件序）。
+    /// 整份、变了才发（宣告之后历史里已经有就发一次）；从没发过 ＝ 空。冷读那一路是读命令 `history-branch`。这一家的记录没有链 ⇒ 从不发。
+    SessionBranch {
+        /// 会话 id。
+        sid: String,
+        /// 这份会话记录在那台机器上的绝对路径。
+        path: String,
+        /// 主线外那几条的 `id`。
+        off: Vec<String>,
     },
 
     /// **一个终端此刻的一整屏**（终端实时预览，`control/terminal_follow.rs`；`terminal-follow` 之后才出现）。
@@ -1068,6 +1066,8 @@ impl Frame {
             Frame::Tap { .. } => true,
             // 整份快照：下一次表一变就整份重发；丢了那个会话的子运行行停在旧的那一份，直到下一次变（带身份，客户端知道）。
             Frame::SessionRuns { .. } => false,
+            // 同上：整份快照，下一次变就整份重发。
+            Frame::SessionBranch { .. } => false,
             // 终端实时预览：丢了在途那一帧，客户端等不到它就不回执，订阅停住；也走应答通道。
             Frame::TerminalScreen { .. } => false,
             Frame::TerminalFollowEnd { .. } => false,
@@ -1108,6 +1108,7 @@ impl Frame {
             Frame::Probe { ticket, .. } => ("probe", Some(ticket.clone())),
             Frame::Tap { stream, .. } => ("tap", Some(stream.clone())),
             Frame::SessionRuns { sid, .. } => ("session_runs", Some(sid.clone())),
+            Frame::SessionBranch { sid, .. } => ("session_branch", Some(sid.clone())),
             Frame::TerminalScreen { ticket, .. } => ("terminal_screen", Some(ticket.clone())),
             Frame::TerminalFollowEnd { ticket, .. } => {
                 ("terminal_follow_end", Some(ticket.clone()))

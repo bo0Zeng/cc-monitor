@@ -944,7 +944,6 @@ pub const SUBCOMMANDS: &[&str] = &[
     // `--accounts-add` 的入参（API 号的 key 在内）**从 stdin 读**，不收 argv。⚠ 加这几行会逼出一次 `BUILD_ID` bump。
     "--accounts-add",
     "--accounts-init",
-    "--accounts-isolate",
     "--accounts-login-cmd",
     // 各号共用的用户级 MCP 那四条（`accounts-mcp-*`）派生的 CLI 面；`remove` / `pick` / `sync` 的入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     "--accounts-mcp-pick",
@@ -1089,6 +1088,10 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 扩展页「从这台卸」那两条（`ext-uninstall-preview` / `ext-uninstall-apply`）派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     "--ext-uninstall-preview",
     "--ext-uninstall-apply",
+    // 扩展页那张表的本机那一半（`ext-list-here`）派生的 CLI 面：只有这台一列，一格都不问可达表
+    //   （跨机那一整张仍只在帧面的 `ext-list`）。登记理由同上面那几族 —— `is_query_mode` 那道闸门读本表。
+    // ⚠ 是新子命令 ⇒ `build_id_guard` 红是预期的，BUILD_ID 由合并那一拍统一 bump（本路不 bump）。
+    "--ext-list-here",
     // 扩展页写备注那一条（`ext-note-set`）派生的 CLI 面。
     "--ext-note-set",
     // 可达表登记（`inbound::REGISTRY` 的 `remote-reach`）派生的 CLI 面，入参从 stdin 读。
@@ -1170,6 +1173,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     //   登记理由同上 —— `is_query_mode` 那道闸门读本表。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     // `history-facts`（会话事实出成品）的 CLI 面（从 `REGISTRY` 派生，`is_query_mode` 那道闸门读本表）。
     //   **是新子命令** ⇒ `build_id_guard` 红是预期的，BUILD_ID 由合并那一拍统一 bump（本路不 bump）。
+    // 主线外清单的冷读（手机端不发帧命令，从 CLI 面问）。⚠ 新子命令 ⇒ BUILD_ID 由合并那一拍统一 bump。
+    "--history-branch",
     "--history-facts",
     "--history-find",
     "--history-index",
@@ -1215,6 +1220,18 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--search",
     "--session-accounts",
     "--session-interrupts",
+    // 起新会话框那三问 ＋ tab 栏多选的批量停 / 起 / 问样子（`inbound::REGISTRY` 的 `session-new*` / `sessions-*`）
+    //   自动派生的 CLI 面：六条的事实**全在这台**（tmux 名单现探 · 记录在不在 · 铸名经同一张会话快照 ——
+    //   `SessionSnapshot::query` 没有「只读缓存」那条路，一次性进程问它一次它就重探一次），
+    //   一格都不读本进程的可达表 / 监听状态 / 在飞表 ⇒ 不进 `cli_control::STREAM_ONLY`，照派生规则上 CLI 面。
+    //   登记在本表的理由与上面那几族逐字相同 —— `is_query_mode` 那道闸门读的就是本表，不在表里 ⇒ 当未知 flag 静默进流模式。
+    // ⚠ 是新子命令 ⇒ `build_id_guard` 红是预期的，BUILD_ID 由合并那一拍统一 bump（本路不 bump）。
+    "--session-new",
+    "--session-new-dir",
+    "--session-new-facts",
+    "--sessions-start",
+    "--sessions-stop",
+    "--sessions-where",
     // `ssh-config-*` 三条帧命令自动派生的 CLI 面（理由同 `--tasks-list`）。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     "--ssh-config-aliases",
     "--ssh-config-import",
@@ -2088,6 +2105,8 @@ pub const EMITS: &[&str] = &[
     "tap",
     // 一个会话的运行表（watcher 读子运行记录、表变了真发，登记 = 承诺真发）。⚠ hello 字节变了 ⇒ 合并那一拍 bump `BUILD_ID`。
     "session_runs",
+    // 一份会话记录的主线外清单（watcher 逐行维护链索引、清单变了真发，登记 = 承诺真发）。⚠ hello 字节变了 ⇒ 合并那一拍 bump `BUILD_ID`。
+    "session_branch",
     // 终端实时预览的一屏与收尾（`control/terminal_follow.rs` 的订阅线程真发，登记 = 承诺真发）。
     // 只在客户端 `terminal-follow` 之后才出现；旧客户端不认 ⇒ 忽略（additive）。⚠ hello 字节变了 ⇒ 合并那一拍 bump `BUILD_ID`。
     "terminal_screen",

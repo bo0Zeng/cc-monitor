@@ -5206,6 +5206,9 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     needs: null,
     handedBack: [],
     retries: [],
+    permissionMode: null,
+    tokens: null,
+    cost: null,
     ...p,
   });
   const line = (sid: string, seq: number, origin: string | null = null) =>
