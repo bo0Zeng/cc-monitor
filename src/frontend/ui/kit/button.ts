@@ -9,6 +9,7 @@
 import { icon, type IconName } from "./icon";
 import { spinner } from "./progress";
 import s from "./button.module.css";
+import { hideTooltipOf } from "./tooltip";
 
 export type ButtonKind = "primary" | "secondary" | "danger" | "danger-text" | "ghost" | "icon";
 export type ButtonSize = "regular" | "compact";
@@ -64,12 +65,19 @@ export function button(spec: ButtonSpec): HTMLButtonElement {
 /** 禁用 / 解禁。`why` 进悬停提示（说为什么、怎么才能用）；`null` ⇒ 解禁并还原原提示。 */
 export function setDisabled(b: HTMLButtonElement, why: string | null): void {
   if (why === null) {
+    if (b.getAttribute("aria-disabled") !== "true") return;
     b.removeAttribute("aria-disabled");
-    b.title = b.dataset.hint ?? b.title;
+    // 禁用那句说明收掉（悬停提示接管 title 时挪进了 `data-kit-title`，那一份也换回原来的说明）；正显示着 ⇒ 当场收。
+    const hint = b.dataset.hint ?? "";
     delete b.dataset.hint;
+    delete b.dataset.kitTitle;
+    if (hint) b.title = hint;
+    else b.removeAttribute("title");
+    hideTooltipOf(b);
     return;
   }
-  if (b.getAttribute("aria-disabled") !== "true") b.dataset.hint = b.title;
+  // 原来的说明（悬停提示接管过 title ⇒ 在 `data-kit-title` 里）留着，恢复时还原。
+  if (b.getAttribute("aria-disabled") !== "true") b.dataset.hint = b.getAttribute("title") || b.dataset.kitTitle || "";
   b.setAttribute("aria-disabled", "true");
   b.title = why;
 }

@@ -320,10 +320,17 @@ fn a_taken_name_at_start_time_is_reported_on_the_name_slot() {
     assert_eq!((e.0, field_of(&e)), ("tmux_taken", json!("tmuxName")));
     rig.ccm_rc = 1;
     let e = rig.call(req(json!({}))).unwrap_err();
+    // 那一句只说原因（C-W18：句子里不接原话、不带退出码）；退出码与 ccm 的 stderr 进复制详情（`raw`）。
     assert_eq!(
         (e.0, field_of(&e), e.1.as_str()),
-        ("start_failed", Value::Null, "boom")
+        (
+            "start_failed",
+            Value::Null,
+            copy_core::copy_text("beSessionNew.start.failed", &[]).as_str()
+        )
     );
+    let raw = e.3.as_deref().unwrap_or_default();
+    assert!(raw.contains("boom") && raw.contains('1'), "{raw}");
 }
 
 #[test]

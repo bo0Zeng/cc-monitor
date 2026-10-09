@@ -2242,6 +2242,11 @@ mod window_raise_guard;
 
 #[allow(clippy::items_after_test_module)]
 #[cfg(test)]
+#[path = "../../tests/backend/raw_said_guard.rs"]
+mod raw_said_guard;
+
+#[allow(clippy::items_after_test_module)]
+#[cfg(test)]
 #[path = "../../tests/backend/main_stream_flag_tests.rs"]
 mod stream_flag_tests;
 

@@ -14,6 +14,7 @@ import { banner } from "./kit/banner";
 import { button } from "./kit/button";
 import { fold } from "./kit/fold";
 import { icon } from "./kit/icon";
+import { spinner } from "./kit/progress";
 import { openMenu } from "./kit/menu";
 import { select, type SelectOption } from "./kit/select";
 import { tag } from "./kit/badge";
@@ -335,8 +336,11 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   let forkLine: HTMLElement | null = null;
   let dirSeq = 0;
   let pendingTop: { text: string; acts: HTMLElement[]; detail: string } | null = null;
-  // 这一趟的票（一个框一张）：期限到了带同一张再问 ⇒ 那台认出同一趟，起好了回原样那一份、不起第二个。
-  const ticket = crypto.randomUUID();
+  // 这一趟的票：期限到了带同一张再问 ⇒ 那台认出同一趟，起好了回原样那一份、不起第二个。
+  // 表单一格没改就再点［新建］⇒ 还是这一张（等于再核一次）；改过任一格 ⇒ 换一张（那是另一趟）。
+  let ticket = crypto.randomUUID();
+  /** 上一次交出去的那一份（不含票）：比它就知道表单改没改。 */
+  let lastAsked: string | null = null;
 
   const form = el("div");
   form.className = s.nsForm;
@@ -600,10 +604,16 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     paintTop();
     for (const r of [cwdRow, accountRow, tmuxRow, cmdRow, agentRow, placeRow]) r.setNote("");
     const req = await buildRequest();
+    const asked = JSON.stringify({ ...req, ticket: null });
+    if (lastAsked !== null && asked !== lastAsked) {
+      ticket = crypto.randomUUID();
+      req.ticket = ticket;
+    }
+    lastAsked = asked;
     let res = await askNew(origin, req);
     if (res.kind === "timeout") {
       // 结果未知：同一张票自己再核一次（那台认得出是不是同一趟 —— 起好了回原样那一份，落过去；不起第二个）。
-      sayTop(copyText("newSession.timeout.checking", { machine: machineName(origin) }), [], res.detail);
+      sayTop(copyText("newSession.timeout.checking", { machine: machineName(origin) }), [spinner()], res.detail);
       res = await askNew(origin, req);
     }
     if (res.kind === "ok") {

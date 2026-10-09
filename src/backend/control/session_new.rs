@@ -16,8 +16,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 
-/// 失败：码 ＋ 那一句 ＋ `data`（[`Refusal`]）。
-pub(crate) type Failed = (&'static str, String, Option<Value>);
+/// 失败：码 ＋ 那一句 ＋ `data`（[`Refusal`]）＋ 下层原话（不进那一句，进应答的复制详情；没有 ⇒ `None`）。
+pub(crate) type Failed = (&'static str, String, Option<Value>, Option<String>);
 
 /// 放在哪：这台 tmux 里后台起（关终端不断）· 开一个新的终端窗口直接跑。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -138,6 +138,7 @@ fn rule_of(v: Option<&Value>) -> Result<Option<String>, Failed> {
             "bad_args",
             crate::common::contract::malformed("`rotation` must be \"follow\" or {\"rule\": id}"),
             None,
+            None,
         )
     };
     match v {
@@ -161,7 +162,7 @@ fn fail(code: &'static str, said: String, field: Option<SessionNewField>) -> Fai
         field,
         unavailable: None,
     };
-    (code, said, serde_json::to_value(data).ok())
+    (code, said, serde_json::to_value(data).ok(), None)
 }
 
 /// `~` / `~/…` ⇒ 这台的家目录下（界面显示的目录常写成 `~/…`）。家说不出 ⇒ 原样。
@@ -189,6 +190,7 @@ pub(crate) fn answer(
             "bad_args",
             crate::common::contract::malformed(&e.to_string()),
             None,
+            None,
         )
     })?;
     let ticket = req.ticket.clone();
@@ -199,6 +201,7 @@ pub(crate) fn answer(
         return Err((
             "bad_args",
             crate::common::contract::malformed("`ticket` must be 1..=64 chars of [A-Za-z0-9-]"),
+            None,
             None,
         ));
     }
@@ -239,6 +242,7 @@ fn start(
         return Err((
             "bad_args",
             crate::common::contract::malformed("this agent cannot take a rotation rule at launch"),
+            None,
             None,
         ));
     }
@@ -301,7 +305,12 @@ fn start(
             field: Some(SessionNewField::Account),
             unavailable: Some(u),
         };
-        ("account_unavailable", said, serde_json::to_value(data).ok())
+        (
+            "account_unavailable",
+            said,
+            serde_json::to_value(data).ok(),
+            None,
+        )
     })?;
     // 终端名（只 tmux 那一形）：给了 ⇒ 核写法与不占用；没给 ⇒ 这台铸（分叉从源会话此刻的终端名铸）。
     let name = match req.place {
@@ -386,8 +395,14 @@ fn start(
                             Some(SessionNewField::TmuxName),
                         ))
                     }
-                    Ok((_, _, err)) => {
-                        return Err(fail("start_failed", err.trim().to_string(), None))
+                    // 别的退出码：那一句只说原因；退出码与 ccm 的 stderr 进复制详情（C-W18：句子里不接原话）。
+                    Ok((rc, _, err)) => {
+                        let (code, said, data, _) = fail(
+                            "start_failed",
+                            copy_core::copy_text("beSessionNew.start.failed", &[]),
+                            None,
+                        );
+                        return Err((code, said, data, Some(format!("exit {rc}\n{}", err.trim()))));
                     }
                     Err((c, m)) => return Err(fail(c, m, None)),
                 }
@@ -438,7 +453,7 @@ fn start(
         })
     };
     let out = launch().map_err(undo)?;
-    serde_json::to_value(out).map_err(|e| ("bad_args", e.to_string(), None))
+    serde_json::to_value(out).map_err(|e| ("bad_args", e.to_string(), None, None))
 }
 
 /// tmux 那一形的会话名。这台没 tmux ⇒ `place` 那一格不行；看不见名单 ⇒ 整体不行（不拿空名单铸：那是不避让）。

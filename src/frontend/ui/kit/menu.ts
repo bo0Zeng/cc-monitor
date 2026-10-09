@@ -11,7 +11,7 @@
 import { dispatcher, type OverlayHandle } from "../keybindings/registry";
 import { icon, type IconName } from "./icon";
 import s from "./menu.module.css";
-import { hideTooltips } from "./tooltip";
+import { holdTooltips } from "./tooltip";
 import { spinner } from "./progress";
 import { EDGE, placeBeside, placeFloat, putAt, type Box } from "./place";
 
@@ -73,6 +73,8 @@ interface Open {
   /** 此刻浮着的那张小卡（`peek`）。 */
   peek: HTMLElement | null;
   peekT: ReturnType<typeof setTimeout> | null;
+  /** 开着期间压住悬停提示的那只手（关时松开）。 */
+  tips: () => void;
 }
 
 const OPEN_SUB_MS = 150;
@@ -470,8 +472,6 @@ export function openMenu(
     return false;
   }
   closeMenu();
-  // 菜单弹出时收起悬停提示 / 悬停卡：不许压在菜单第一项上。
-  hideTooltips();
   const root = document.createElement("div");
   root.className = s.menu;
   root.setAttribute("role", "menu");
@@ -498,6 +498,8 @@ export function openMenu(
     anchorBox: null,
     peek: null,
     peekT: null,
+    // 菜单开着期间压住悬停提示 / 悬停卡（已出的收掉，等着出的也不出）：不许压在菜单上；菜单里那几项的说明照常。
+    tips: holdTooltips(root),
   };
   current = o;
   const filter = opts.filter ? filterBox(root, opts.filter) : null;
@@ -537,6 +539,7 @@ export function closeMenu(): void {
   current = null;
   for (const t of o.timers) clearTimeout(t);
   hidePeek(o);
+  o.tips();
   o.root.remove();
   generation++;
   dispatcher.popOverlay(o.layer);

@@ -52,6 +52,32 @@ export function hideTooltips(): void {
   }
 }
 
+/** 此刻压着悬停提示的那几层（右键菜单 / 下拉开着）：它们开着时，只有宿主在这些层里面的提示才出（菜单里那几项的说明照常）。 */
+const holders = new Set<HTMLElement>();
+
+/**
+ * 一层浮层（菜单）开着期间压住悬停提示：已出的收掉；等着出的、指针再动想出的，都不出 —— 悬停卡不许压在菜单上。
+ * 宿主在 `layer` 里面的照常出。回收手（浮层关掉时调一次）。
+ */
+export function holdTooltips(layer: HTMLElement): () => void {
+  holders.add(layer);
+  hideTooltips();
+  return () => void holders.delete(layer);
+}
+
+/** 宿主此刻能不能出提示：没有浮层压着 · 或宿主就在压着的那一层里。 */
+function mayShow(host: HTMLElement): boolean {
+  if (holders.size === 0) return true;
+  for (const layer of holders) if (layer.isConnected && layer.contains(host)) return true;
+  for (const layer of [...holders]) if (!layer.isConnected) holders.delete(layer);
+  return holders.size === 0;
+}
+
+/** 收起挂在 `host` 上、此刻显示着的那一条（宿主的说明变了 / 不再适用时：按钮从禁用恢复可点）。 */
+export function hideTooltipOf(host: HTMLElement): void {
+  for (const [tip, owner] of [...live]) if (owner === host) hiders.get(tip)?.();
+}
+
 export interface TooltipOpts {
   /** 不等 500ms（信息图标那种点名要看的）。 */
   immediate?: boolean;
@@ -105,7 +131,7 @@ function controller(content: (host: HTMLElement) => TipContent, opts: TooltipOpt
       if (!other.isConnected) hiders.delete(other);
       else if (other !== tip) h();
     }
-    if (!host?.isConnected) return;
+    if (!host?.isConnected || !mayShow(host)) return;
     const t = content(host);
     if (t === "" || t === null) return hide();
     tip ??= document.createElement("div");
@@ -138,7 +164,9 @@ function controller(content: (host: HTMLElement) => TipContent, opts: TooltipOpt
     const same = h === host;
     host = h;
     if (same && shown()) return;
-    const inGroup = Date.now() - lastHiddenAt < GROUP_GRACE_MS || [...hiders.keys()].some((t) => t.isConnected);
+    // 钟往回拨了（系统改时间）那一下不算「刚收过」。
+    const since = Date.now() - lastHiddenAt;
+    const inGroup = (since >= 0 && since < GROUP_GRACE_MS) || [...hiders.keys()].some((t) => t.isConnected);
     if (opts.immediate || inGroup) return show();
     // 调度：一次性 —— 悬停 500ms 才出提示，离开即清
     timer = setTimeout(show, TOOLTIP_DELAY_MS);

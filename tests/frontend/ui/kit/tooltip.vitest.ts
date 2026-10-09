@@ -16,6 +16,7 @@ import { makeInfoIcon } from "../../../../src/frontend/ui/settings/info-icon";
 import { adoptNativeTitles, attachTooltip, CARD_CLOSE_MS, delegateTooltip, hideTooltips, __liveTooltipCountForTests, TOOLTIP_DELAY_MS } from "../../../../src/frontend/ui/kit/tooltip";
 import { closeMenu, openMenu } from "../../../../src/frontend/ui/kit/menu";
 import { placeFloat } from "../../../../src/frontend/ui/kit/place";
+import { button, setDisabled } from "../../../../src/frontend/ui/kit/button";
 
 /** 悬停提示的两种摆法（`tooltip.ts` 的 PLACEMENT 表）：上方居中 · 卡式右侧顶对齐，间距 6。 */
 const placeTip = (host: DOMRect, tip: { width: number; height: number }, view: { width: number; height: number }) => placeFloat({ rect: host, side: "above", align: "center", gap: 6 }, tip, view);
@@ -223,6 +224,31 @@ describe("出现时机与摆法", () => {
     closeMenu();
     hideTooltips(); // 空着时调也无事
   });
+
+  it("★ 菜单开着时悬停卡不出：右键时卡还在等 500ms ⇒ 到点也不出；指针在宿主上再动也不出；菜单收了才照常", () => {
+    const root = document.createElement("div");
+    const row = document.createElement("div");
+    row.className = "row";
+    root.appendChild(row);
+    document.body.appendChild(root);
+    delegateTooltip(root, ".row", () => "卡", { placement: "right", hold: true });
+    vi.advanceTimersByTime(1000);
+    row.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+    // 还没到 500ms 就右键：菜单出来。
+    openMenu({ x: 1, y: 1 }, [{ label: "一项", onClick: () => {} }]);
+    vi.advanceTimersByTime(TOOLTIP_DELAY_MS);
+    expect(tipsInBody(), "菜单开着，等着的那张卡到点也不出").toBe(0);
+    row.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+    vi.advanceTimersByTime(TOOLTIP_DELAY_MS);
+    expect(tipsInBody(), "指针在宿主上再动也不出").toBe(0);
+    closeMenu();
+    vi.advanceTimersByTime(1000);
+    row.dispatchEvent(new MouseEvent("mouseout", { bubbles: true, relatedTarget: document.body }));
+    row.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+    vi.advanceTimersByTime(TOOLTIP_DELAY_MS);
+    expect(tipsInBody(), "菜单收了 ⇒ 照常出").toBe(1);
+    hideTooltips();
+  });
 });
 
 describe("元素上的 title 改走 kit 的悬停提示（adoptNativeTitles）", () => {
@@ -255,6 +281,29 @@ describe("元素上的 title 改走 kit 的悬停提示（adoptNativeTitles）",
     vi.advanceTimersByTime(TOOLTIP_DELAY_MS);
     expect(document.querySelector('[role="tooltip"]')?.textContent).toBe("改了名");
     expect(row.hasAttribute("title")).toBe(false);
+  });
+
+  it("★ 按钮禁用时那句说明（悬停出着）：恢复可点那一刻收掉，之后再悬停也不再出那一句；原来的说明回来", () => {
+    adoptNativeTitles(document);
+    vi.advanceTimersByTime(1000);
+    const plain = button({ label: "甲钮" });
+    const hinted = button({ label: "看", hint: "乙钮的说明" });
+    document.body.append(plain, hinted);
+    for (const [b, back] of [[plain, null], [hinted, "乙钮的说明"]] as const) {
+      setDisabled(b, "丙原因");
+      b.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+      vi.advanceTimersByTime(TOOLTIP_DELAY_MS);
+      expect(document.querySelector('[role="tooltip"]')?.textContent).toBe("丙原因");
+      setDisabled(b, null);
+      expect(tipsInBody(), "恢复可点 ⇒ 禁用那句当场收掉").toBe(0);
+      b.dispatchEvent(new MouseEvent("mouseout", { bubbles: true, relatedTarget: document.body }));
+      vi.advanceTimersByTime(1000);
+      b.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+      vi.advanceTimersByTime(TOOLTIP_DELAY_MS);
+      expect(document.querySelector('[role="tooltip"]')?.textContent ?? null, "再悬停：原来的说明（没有就不出）").toBe(back);
+      b.dispatchEvent(new MouseEvent("mouseout", { bubbles: true, relatedTarget: document.body }));
+      vi.advanceTimersByTime(1000);
+    }
   });
 
   it("三个窗口的入口都装它（entry-common 一处）", async () => {

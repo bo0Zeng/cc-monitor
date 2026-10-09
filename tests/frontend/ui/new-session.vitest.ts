@@ -253,6 +253,28 @@ describe("点［新建］：交那台的那一份", () => {
     expect(arrival.awaitArrival).toHaveBeenCalled();
   });
 
+  it("★ 起没起未知时：表单一格没改就点［新建］⇒ 还是那张票（等于再核一次，不起第二个）；改过任一格再点 ⇒ 换一张新票", async () => {
+    hang = 2;
+    void openNewSession({ origin: "devbox" });
+    await flush();
+    createBtn().click();
+    await flush();
+    hang = 2;
+    createBtn().click();
+    await flush();
+    const t = newRequests().map((r) => r.ticket);
+    expect(t).toHaveLength(4);
+    expect(new Set(t).size, "没改表单 ⇒ 同一张票").toBe(1);
+    const cwd = input(copyText("newSession.label.cwd"));
+    cwd.value = "/home/u/srv/billing";
+    cwd.dispatchEvent(new Event("input", { bubbles: true }));
+    createBtn().click();
+    await flush();
+    const last = newRequests().at(-1)!;
+    expect(last.cwd).toBe("/home/u/srv/billing");
+    expect(last.ticket, "改过一格 ⇒ 新票").not.toBe(t[0]);
+  });
+
   it("那台说这一趟还在起 ⇒ 框顶那一句 ＋［再核一次］＋［复制详情］，不重起", async () => {
     hang = 1;
     refusal = { op: "session-new", code: "launch_pending", message: "还在起-甲", data: { field: null, unavailable: null }, detail: "码：launch_pending" };

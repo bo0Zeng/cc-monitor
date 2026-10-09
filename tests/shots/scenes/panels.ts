@@ -7,7 +7,7 @@ import { hms } from "../fake/clock";
 import type { Scene } from "./index";
 import { Refuse, type World } from "../fake/types";
 import { defaultWorld } from "../fake/world";
-import { byText, click, key, mainReady, openTab, rightClick, sleep, type, waitFor } from "./helpers";
+import { byText, click, hover, key, mainReady, openTab, rightClick, sleep, type, waitFor } from "./helpers";
 
 const ALL_TABS = 7;
 
@@ -112,7 +112,7 @@ function noAnswerWorld(): World {
 function startFailedWorld(): World {
   const w = defaultWorld();
   w.ops["session-new"] = () => {
-    throw new Refuse("start_failed", "启动失败 · ccm 退出码 1", { field: null, unavailable: null }, "ccm: launcher exited 1");
+    throw new Refuse("start_failed", copyText("beSessionNew.start.failed"), { field: null, unavailable: null }, "exit 1\nccm: launcher exited 1");
   };
   return w;
 }
@@ -455,6 +455,13 @@ export const PANEL_SCENES: Scene[] = [
   panel("panel-tab-menu", "tab 右键菜单 · 本机会话", "在第一个 tab 上点右键", async () => {
     await mainReady(ALL_TABS);
     await rightClick("#tab-bar .tab");
+    await sleep(900);
+  }),
+  panel("panel-tab-menu-hovered", "tab 右键菜单 · 指针停在 tab 上", "指针停在第一个 tab 上、悬停卡还没出就点右键：菜单开着期间悬停卡不出（不压在菜单上）", async () => {
+    await mainReady(ALL_TABS);
+    await hover("#tab-bar .tab");
+    await rightClick("#tab-bar .tab");
+    await hover("#tab-bar .tab");
     await sleep(900);
   }),
   panel("panel-tab-menu-remote", "tab 右键菜单 · 远端会话", "在 devbox 那个 tab 上点右键", async () => {
