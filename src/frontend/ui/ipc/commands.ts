@@ -165,7 +165,7 @@ export const commands = {
   open_terminal_window: (args: { command: string }) =>
     invoke<TerminalOpened>("open_terminal_window", args),
 
-  /** 发一条系统通知（「一轮完成」「需要你」）。界面判要不要发，壳只发（`platform/notify.rs`）。桶①。 */
+  /** 发一条系统通知（「一轮完成」「需手动」）。界面判要不要发，壳只发（`platform/notify.rs`）。桶①。 */
   notify_desktop: (args: { title: string; body: string }) => invoke<void>("notify_desktop", args),
 
   /** 写系统剪贴板（`clipboard.rs`，回真成败）。桶①。只经 `src/frontend/ui/clipboard.ts` 调（复制只有一个家）。 */

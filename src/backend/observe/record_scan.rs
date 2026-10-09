@@ -107,7 +107,7 @@ impl ScanMap {
         f
     }
 
-    /// 还没结果的工具调用（文件序；种类判「需要你」用）。
+    /// 还没结果的工具调用（文件序；种类判「需手动」用）。
     pub(crate) fn pending(&self) -> &[super::facts_query::PendingCall] {
         &self.facts.pending
     }

@@ -256,7 +256,7 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
     await open(el);
     // 同名函数交给清单那一块画（三个选择）：标题里说生效的是哪一个（按后端给的码取句）。
     const clash = el.querySelector<HTMLElement>('[data-role="clash"]')!;
-    expect(clash.dataset.anchor, "「要你动手」同名那一件［去定…］落不到这里").toBe("clash");
+    expect(clash.dataset.anchor, "「待办」同名那一件［去定…］落不到这里").toBe("clash");
     expect(clash.textContent).toContain(copyText("machineAliases.clash.nowYours"));
     expect(clash.textContent).toContain("~/rc-a");
     const access = el.querySelector<HTMLElement>('[data-role="access"]')!;
@@ -271,7 +271,7 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
     expect(el.querySelector('[data-role="clash"]')!.textContent).toContain(copyText("machineAliases.clash.nowList"));
   });
 
-  it("「我自己贴」交那台记下、去「要你动手」那一件（不再就地弹代码）；那一行变「已选自己贴」；［改由 cc-monitor 接上］撤记录再照常接上", async () => {
+  it("「我自己贴」交那台记下、去「待办」那一件（不再就地弹代码）；那一行变「已选自己贴」；［改由 cc-monitor 接上］撤记录再照常接上", async () => {
     const el = await mount();
     const went: unknown[] = [];
     el.addEventListener("settings-go", (e) => went.push((e as CustomEvent).detail));

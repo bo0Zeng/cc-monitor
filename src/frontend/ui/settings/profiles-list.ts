@@ -574,7 +574,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
   const clashCard = (): HTMLElement => {
     const card = el("div", "prof-card prof-card-warn");
     card.dataset.role = "clash";
-    // 「要你动手」里同名那一件［去定…］带 `clash` 锚点跳到这里。
+    // 「待办」里同名那一件［去定…］带 `clash` 锚点跳到这里。
     card.dataset.anchor = "clash";
     const names = [...new Set(clashes.map((c) => c.name))];
     const paths = [...new Set(clashes.map((c) => c.path))];

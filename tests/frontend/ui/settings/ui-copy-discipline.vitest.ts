@@ -237,7 +237,7 @@ describe(" 文案纪律 ＋ `§8` #5：界面上零 markdown / 零源码住址",
     const root = document.querySelector<HTMLElement>(".settings-panel")!;
     const copy = visibleCopy(root);
     // 量具自检：扫到的文字量要够大。零字节时下面那条「一条都不许命中」是空转。
-    // 下限 1500：「直接敲的也走中转」那一大块搬进「要你动手」（要读回成品才上屏）、上下文上限那段长说明退场之后，静态面板约 1800 字。
+    // 下限 1500：「直接敲的也走中转」那一大块搬进「待办」（要读回成品才上屏）、上下文上限那段长说明退场之后，静态面板约 1800 字。
     expect(copy.length, "面板上一个字都没扫到 ⇒ 本条在空转").toBeGreaterThan(1500);
     const bad = violationsOf(copy);
     expect(
@@ -249,7 +249,7 @@ describe(" 文案纪律 ＋ `§8` #5：界面上零 markdown / 零源码住址",
 
   const CHORE = { id: "", kind: "optional", state: "todo", name: "", loc: "", said: "", why: "", steps: [], diff: [], copy: null, whole: null, wholeCovers: [], file: null, go: null, howUrl: null, mask: null, action: "copySnippet" };
 
-  it("〔ST2〕文件与数据**喂一份真成品**再扫：要你动手各类 ＋ 改过你的文件都上屏，一条都不许命中", async () => {
+  it("〔ST2〕文件与数据**喂一份真成品**再扫：待办各类 ＋ 改过你的文件都上屏，一条都不许命中", async () => {
     // 文件与数据经通道问本机后端（`data-report`，一问）；monitor 自己进程的那几条事实问 `footprint_client_facts`。
     const report = {
       home: "/h",
@@ -276,7 +276,7 @@ describe(" 文案纪律 ＋ `§8` #5：界面上零 markdown / 零源码住址",
       await tick();
       await tick();
       const root = document.querySelector<HTMLElement>(".data-page")!;
-      expect(root.querySelectorAll("[data-chore]").length, "要你动手那几件一件都没上屏 ⇒ 下面的零命中是空转").toBe(2);
+      expect(root.querySelectorAll("[data-chore]").length, "待办那几件一件都没上屏 ⇒ 下面的零命中是空转").toBe(2);
       root.querySelector<HTMLButtonElement>('[data-chore="relay"] [aria-expanded]')!.click();
       // 反空真：类的标签与展开后的几段**真的在**被扫的文字里（按文案键取，不钉原文）。
       expect(visibleCopy(root)).toContain(copyText("dataPage.install.kind"));

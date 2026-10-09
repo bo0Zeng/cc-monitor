@@ -84,7 +84,7 @@ export const ACTIONS: ReadonlyArray<Action> = [
   { id: "tab.pop-out", label: copyText("keybindingActions.tab.openInWindow"), category: "Tab", default: "KeyN", available: true, scope: "bare" },
   // 在当前标签页上开右键菜单（会话头「更多」是同一份菜单）。菜单键是固定的另一个键。
   { id: "tab.context-menu", label: copyText("keybindingActions.tab.menu"), category: "Tab", default: "Shift+F10", available: true, scope: "nav", also: "ContextMenu" },
-  // 跳到下一个需要你的会话（等得最久的在前）。带 Ctrl：任何时候都要能按到。
+  // 跳到下一个需手动的会话（等得最久的在前）。带 Ctrl：任何时候都要能按到。
   { id: "needs.next", label: copyText("tabBar.needs.hint"), category: "Tab", default: "Ctrl+KeyJ", available: true, scope: "any" },
   // 会话内查找（大纲在同一块面板里）：只搜当前 tab 这一份会话；跨全部会话的全文搜索在历史页里。
   { id: "session.find", label: copyText("keybindingActions.session.find"), category: "Tab", default: "Ctrl+KeyF", available: true, scope: "any" },

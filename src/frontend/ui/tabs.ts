@@ -917,7 +917,7 @@ export class TabManager {
     return tab !== undefined && isLive(tab.state);
   }
 
-  /** 这个会话此刻「需要你」的那个词（等批准 …）；没有这个 tab / 不需要 ⇒ `null`（历史页那一行的徽标与状态点）。 */
+  /** 这个会话此刻「需手动」的那个词（等批准 …）；没有这个 tab / 不需要 ⇒ `null`（历史页那一行的徽标与状态点）。 */
   needsWordOf(sessionId: string): string | null {
     const tab = this.store.tabs.get(sessionId);
     const n = tab ? needsOf(tab) : null;
@@ -1080,23 +1080,23 @@ export class TabManager {
     this.bar.mountHeadActions(buttons);
   }
 
-  /** `Ctrl+J` · 点「需要你」：跳到下一个需要你的会话（等得最久的在前；当前就是 ⇒ 下一个）。 */
+  /** `Ctrl+J` · 点「需手动」：跳到下一个需手动的会话（等得最久的在前；当前就是 ⇒ 下一个）。 */
   jumpToNextNeeds(): void {
     const sid = this.bar.nextNeedsSid();
     if (sid !== null) this.switchTo(sid);
   }
 
-  /** 此刻需要你的会话数（窗口标题 · 系统通知用）。 */
+  /** 此刻需手动的会话数（窗口标题 · 系统通知用）。 */
   needsCount(): number {
     return this.bar.needsCountNow();
   }
 
-  /** 全部 tab，按条上看到的顺序（窗口标题 · 系统通知数「需要你」用）。 */
+  /** 全部 tab，按条上看到的顺序（窗口标题 · 系统通知数「需手动」用）。 */
   tabsInOrder(): Tab[] {
     return this.bar.visibleOrder().map((sid) => this.store.tabs.get(sid)).filter((t): t is Tab => t !== undefined);
   }
 
-  /** 会话头 · 「需要你」钉条读的那一份：当前 tab（没有 ⇒ `null`）。 */
+  /** 会话头 · 「需手动」钉条读的那一份：当前 tab（没有 ⇒ `null`）。 */
   activeTab(): Tab | null {
     const sid = this.store.activeId;
     return sid === null ? null : (this.store.tabs.get(sid) ?? null);
@@ -1208,7 +1208,7 @@ export class TabManager {
       if (clearedIdle) this.refreshTabBar();
       return;
     }
-    // 需要你的种类与那一句在会话事实里（后端配着记录判）：状态一变就再要一份；不在等了 ⇒ 手上那份当场作废（不等回包）。
+    // 需手动的种类与那一句在会话事实里（后端配着记录判）：状态一变就再要一份；不在等了 ⇒ 手上那份当场作废（不等回包）。
     if (act?.doing !== "needs_you") tab.needs = null;
     tab.facts.markStale();
     void tab.facts.refresh();

@@ -123,8 +123,8 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/tab-selection.ts", // 多选的选中集合 ＋ 锚点
     "src/frontend/ui/tab-session-actions.ts",
     "src/frontend/ui/tab-session-facts.ts",
-    "src/frontend/ui/session-face.ts", // 历史页那一行的「需要你」徽标问它（`needsWordOf`：与标签页行同一份 `needsOf` · `needsWord`）
-    "src/frontend/ui/session-words.ts", // 「需要你」徽标那个词（`needsWord`：标签页行 · 设置里轮换规则的在用名单同一份）
+    "src/frontend/ui/session-face.ts", // 历史页那一行的「需手动」徽标问它（`needsWordOf`：与标签页行同一份 `needsOf` · `needsWord`）
+    "src/frontend/ui/session-words.ts", // 「需手动」徽标那个词（`needsWord`：标签页行 · 设置里轮换规则的在用名单同一份）
     "src/frontend/ui/tab-session-state.ts", // 会话状态只经 `nextState` 改（转移表）＋ 关 / 拉前两道谓词
     "src/frontend/ui/tab-store.ts",
     "src/frontend/ui/tab-stream-view.ts",
@@ -189,12 +189,12 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/copy-table.ts", // 按钮上的图标 · 悬停提示 · 集合名提示进了文案表
     "src/frontend/ui/ipc/origin.ts", // 远端 tab 才挂 `.remote` / 走远端那条 ↗
     "src/frontend/ui/keybindings/registry.ts", // 组头就地改名：改名时 Esc 走 overlay 栈；悬停提示里现拼键位
-    "src/frontend/ui/kit/badge.ts", // 机器徽标 · 「需要你」计数 · 键帽
+    "src/frontend/ui/kit/badge.ts", // 机器徽标 · 「需手动」计数 · 键帽
     "src/frontend/ui/kit/icon.ts", // 行尾动作 · 刷新 · 图钉 · 齿轮（Phosphor）
-    "src/frontend/ui/kit/menu.ts", // 「需要你」悬停菜单（点一行切过去）
+    "src/frontend/ui/kit/menu.ts", // 「需手动」悬停菜单（点一行切过去）
     "src/frontend/ui/kit/status-dot.ts", // 状态点
     "src/frontend/ui/kit/tooltip.ts", // 悬停卡（锚在行右侧）· 行尾动作的悬停提示
-    "src/frontend/ui/session-face.ts", // 一个会话读成什么：状态点 · 状态句 · peek · 需要你（标签页行 · 会话头 · 悬停卡同一份）
+    "src/frontend/ui/session-face.ts", // 一个会话读成什么：状态点 · 状态句 · peek · 需手动（标签页行 · 会话头 · 悬停卡同一份）
     "src/frontend/ui/session-words.ts", // 状态点的读屏名 · 等的是什么（`dotLabel` · `needsWord`，与设置里轮换规则的在用名单同一份）
     "src/frontend/ui/tab-group-rename.module.css", // 组头就地改名那个输入框的样式（UC2：新样式一律 module）
     "src/frontend/ui/tab-quota.module.css", // `✕ 5h` 那一格的样式

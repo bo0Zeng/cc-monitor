@@ -336,7 +336,7 @@ export const PANEL_SCENES: Scene[] = [
     await waitFor('aside[role="dialog"]');
     await sleep(500);
   }),
-  panel("panel-cmdk", "命令面板", "Ctrl+K：空输入时分组（需要你 · 当前会话 · 打开 · 窗口 · 账号），会话行带数字键", async () => {
+  panel("panel-cmdk", "命令面板", "Ctrl+K：空输入时分组（需手动 · 当前会话 · 打开 · 窗口 · 账号），会话行带数字键", async () => {
     await openCommandBar();
     await sleep(300);
   }),

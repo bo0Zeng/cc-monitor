@@ -94,7 +94,7 @@ pub const PROFILES_MIGRATED_REL: &str = ".cc-monitor/profiles-migrated.json";
 /// 〔同上〕配置文件上次经 cc-monitor 写出去的那一份的指纹（后端读配置文件时拿它比 ⇒「之后有人手改过」；删了只是不再说那一句）。
 pub const PROFILES_WRITTEN_REL: &str = ".cc-monitor/profiles-written.json";
 
-/// 〔同上〕「要你动手」里记下的选择：点过「不用了」的那几件 · 选了「我自己贴」的那份启动文件（后端 `footprint/chores/marks.rs` 写）。
+/// 〔同上〕「待办」里记下的选择：点过「不用了」的那几件 · 选了「我自己贴」的那份启动文件（后端 `footprint/chores/marks.rs` 写）。
 pub const CHORES_REL: &str = ".cc-monitor/chores.json";
 
 /// 〔同上〕离线那台的上次值：本机后端替界面记下每台最近一次读成的账号清单与「文件与数据」那一份（后端 `footprint/last_seen.rs` 写；连不上时照它画、跨重启还在）。

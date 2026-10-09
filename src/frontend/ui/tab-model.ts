@@ -99,7 +99,7 @@ export interface Tab {
   latestContextLimit: number | null;
   /** 上限从哪来（与上一格同一份成品；`assumed` ＝ 判不出）。 */
   latestLimitFrom: UsageFact["limitFrom"];
-  /** 需要你（后端 `history-facts` 的 `needs`：种类 · 那一句 · 何时起等）；不在等 ⇒ `null`。与 `activity` 对不上时以后者为准（见 `tab-needs.ts`）。 */
+  /** 需手动（后端 `history-facts` 的 `needs`：种类 · 那一句 · 何时起等）；不在等 ⇒ `null`。与 `activity` 对不上时以后者为准（见 `tab-needs.ts`）。 */
   needs: Needs | null;
   /** 还没有结果的工具调用（后端 `pending`，文件序）：悬停卡「在做什么」。 */
   pending: PendingCall[];

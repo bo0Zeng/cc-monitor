@@ -422,7 +422,7 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
             let (_, total) = hits.finish(scanned)?;
             Ok(json!({ "total": total, "hits": hits.rows }))
         }
-        // 会话事实出成品（分叉血缘 · 改动文件集 · 最新 usage 与上下文上限 · 项目目录 · 此刻在写它的进程 · 没结果的调用 · 最后一句 · 需要你）。
+        // 会话事实出成品（分叉血缘 · 改动文件集 · 最新 usage 与上下文上限 · 项目目录 · 此刻在写它的进程 · 没结果的调用 · 最后一句 · 需手动）。
         //   `limits` = 设置里的上限表（模型名子串 → 上限），可缺；上限每次按它重判。
         //   `prior` = 调用方上一次拿到的应答**原样**（续传令牌，后端零状态）：缺席 / `null` ⇒ 从字节 0 扫；
         //   给了 ⇒ 形状必须恰好是本命令出的那一形（`facts_query::prior_from`），从它的 `end` 接着扫、累加在它上面。
@@ -466,7 +466,7 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
                 facts.agent = history_query::facts_agent(home, path);
             }
             facts.writers = accounts_query::session_writers(home, sid);
-            // 需要你：那台 pidfile 此刻说在等 ⇒ 配上记录里没结果的那一步判种类（不累加，`prior` 里那一份不用）。
+            // 需手动：那台 pidfile 此刻说在等 ⇒ 配上记录里没结果的那一步判种类（不累加，`prior` 里那一份不用）。
             facts.needs = facts_query::needs_of(
                 &facts.pending,
                 accounts_query::session_wait(home, sid).as_ref(),

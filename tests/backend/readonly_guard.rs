@@ -916,7 +916,7 @@ mod tests {
         ),
         (
             "footprint/chores/marks.rs",
-            "**「要你动手」记下的选择** `~/.cc-monitor/chores.json`：点过「不用了」的那几件 · 选了「我自己贴」的那份启动文件。\
+            "**「待办」记下的选择** `~/.cc-monitor/chores.json`：点过「不用了」的那几件 · 选了「我自己贴」的那份启动文件。\
              文件名 / 格式 / 落点都是本仓定的、只有后端读它 ⇒ 后端**自己的**状态，不是用户数据。在跨进程锁里读盘 → 改 → \
              经 `own_state` 原子写（`O_EXCL` 临时文件 · 0600 · 写满 → 挪过去）；只建 `~/.cc-monitor` 那一层；读不懂的那份不覆盖。\
              线上入口只有命令表资产那一族的 `chores-mark`（＋ 派生的 CLI 面）",
@@ -1145,7 +1145,7 @@ mod tests {
             "skill_ledger::answer_",
             "stream/inbound/registry/assets.rs",
         ),
-        // 「要你动手」记下的选择：一条写口 `answer_mark`（`mark_at` 是它的本体，判据直接喂临时目录）。
+        // 「待办」记下的选择：一条写口 `answer_mark`（`mark_at` 是它的本体，判据直接喂临时目录）。
         (
             "footprint/chores/marks.rs",
             "marks::answer_mark",

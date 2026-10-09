@@ -162,7 +162,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   status.innerHTML = "";
   // 最左「消息」：本次运行里最近 20 条提示（toast 收进来的那几条也在这里找得回）。
   status.appendChild(new StatusMessages().el);
-  // 「要你动手 N」（有才出）：各台「文件与数据」进角标的件数相加，与设置窗左栏同一个数。
+  // 「待办 N」（有才出）：各台「文件与数据」进角标的件数相加，与设置窗左栏同一个数。
   const chores = new StatusChores({
     machines: async () => {
       const got: unknown = await commands.backend_machines();
@@ -173,7 +173,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   });
   status.appendChild(chores.el);
   void chores.refreshAll();
-  // 「开始用 · 剩 N 步」（有才出，紧跟「要你动手」）：本机后端 `first-run` 的 `left`，与设置窗机器页「开始用」同一个数。
+  // 「开始用 · 剩 N 步」（有才出，紧跟「待办」）：本机后端 `first-run` 的 `left`，与设置窗机器页「开始用」同一个数。
   const start = new StatusStart({ read: readReadiness, open: () => void openSettingsWindow(undefined, dest.START) });
   status.appendChild(start.el);
   void start.refresh();
@@ -233,7 +233,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   // 启动时记住的那一格（上次所在的 tab）：只在那个会话出现时恢复、就绪前不许被覆盖、没等到就明说（`startup-active.ts`）。
   let startup: StartupActive | null = null;
 
-  // 会话头（主区顶上 40px）与「需要你」钉条（消息流底部）：只读当前 tab，做事经 `tabs` 那几条。
+  // 会话头（主区顶上 40px）与「需手动」钉条（消息流底部）：只读当前 tab，做事经 `tabs` 那几条。
   const sessionHead = new SessionHead({
       active: () => tabs.activeTab(),
       viewTerminal: () => mainDrawer.dock.show("terminal"),
@@ -270,7 +270,7 @@ window.addEventListener("DOMContentLoaded", async () => {
       // tab 集合变了 ⇒ 新出现的会话问一次它那台的轮换格（构造途中也会叫到这里 ⇒ 排到下一拍，`tabs` 已赋值）。
       queueMicrotask(() => syncSessions(tabs.snapshotSessions()));
       empty.style.display = total > 0 ? "none" : "";
-      // 会话头 · 「需要你」钉条 · 窗口标题与系统通知：跟着标签页栏一起刷（构造途中也会叫到 ⇒ 排到下一拍）。
+      // 会话头 · 「需手动」钉条 · 窗口标题与系统通知：跟着标签页栏一起刷（构造途中也会叫到 ⇒ 排到下一拍）。
       queueMicrotask(() => {
         sessionHead.render();
         terminalPage.sessionChanged();
@@ -438,7 +438,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     else if (b.dataset.act === "attach") tabs.attachInTerminal(sid);
   });
   tabs.active.subscribe((a) => {
-    // 切了 tab ⇒ 会话头 · 「需要你」钉条 · 抽屉的终端页换成这一个。
+    // 切了 tab ⇒ 会话头 · 「需手动」钉条 · 抽屉的终端页换成这一个。
     sessionHead.render();
     terminalPage.sessionChanged();
     paintTerminalActs();
@@ -573,7 +573,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     const cur = tabs.activeSessionId();
     const curOrigin = cur === null ? null : tabs.originOf(cur);
     const cmds: Command[] = [];
-    // 会话（空输入时只列在等你的那几行，在「需要你」一组）。
+    // 会话（空输入时只列在等你的那几行，在「需手动」一组）。
     cmds.push(...sessionCommands(tabs.tabsInOrder(), (sid) => tabs.switchTo(sid), (n) => chordHint(`tab.jump-${n}` as Parameters<typeof chordHint>[0])));
     if (cur !== null && curOrigin !== null) {
       cmds.push(

@@ -144,7 +144,6 @@ export const CHECKS: Record<string, Check> = {
     const m = /\{([A-Za-z_]*(?:code|Code))\}/.exec(e.zh);
     return m ? `把错误码插进了话里（{${m[1]}}）` : null;
   },
-  "C-P1": (e) => (/您/.test(e.zh) ? "称用户用了「您」" : null),
   "C-P2": (e) => (/我们/.test(e.zh) ? "产品自称「我们」" : null),
   "C-T1": (e, ctx) => {
     const hits = r1Hits(speech(e.zh), ctx.terms);
@@ -171,7 +170,7 @@ export const CHECKS: Record<string, Check> = {
     return n > 1 ? `括号补充 ${n} 处 > 1` : null;
   },
   "C-L4": (e) => (/^\s*(?:（[^（）]*）|\([^()]*\))\s*$/.test(e.zh) ? "整条被括号包住" : null),
-  // 收严的三条（C-L2 · C-P1 · C-Y4）替掉上面的旧实现；W 系（新写法 N 系）跟在后面。
+  // 收严的两条（C-L2 · C-Y4）替掉上面的旧实现；W 系（新写法 N 系）跟在后面。
   ...TIGHTENED,
   ...W_CHECKS,
 };

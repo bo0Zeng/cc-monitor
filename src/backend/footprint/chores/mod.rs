@@ -1,6 +1,6 @@
-//! 「要你动手」那几件（`机器配置-v2.md` §2–§3）：这台后端按事实判类 · 态、算好要贴的东西（行号 · diff · 合好的整份），界面只画。
+//! 「待办」那几件（`机器配置-v2.md` §2–§3）：这台后端按事实判类 · 态、算好要贴的东西（行号 · diff · 合好的整份），界面只画。
 //!
-//! - 类：`must`（要做）· `install`（要装）· `decide`（要你定）· `installOptional`（要装 · 可选）· `optional`（可选）。
+//! - 类：`must`（要做）· `install`（要装）· `decide`（待定）· `installOptional`（要装 · 可选）· `optional`（可选）。
 //!   角标只数前三类里还没做完的（[`badge`]）。
 //! - 态：`todo` · `done`（自己认出）· `expired`（贴过的失效了，升成要做）· `blocked`（先决没满足）· `declined`（可选的点过「不用了」）。
 //!   「已复制」只住界面（点了复制的那一刻），不进这里。
@@ -171,7 +171,7 @@ impl Chore {
     }
 }
 
-/// 进角标的件数：要做 ＋ 要装 ＋ 要你定，还没做完的（没做 · 过期）。
+/// 进角标的件数：要做 ＋ 要装 ＋ 待定，还没做完的（没做 · 过期）。
 pub(crate) fn badge(chores: &[Value]) -> usize {
     chores
         .iter()
@@ -180,7 +180,7 @@ pub(crate) fn badge(chores: &[Value]) -> usize {
         .count()
 }
 
-/// 事实 ⇒ 各件（急的在前：要做 · 要你定 · 要装 · 要装 · 可选 · 可选）。
+/// 事实 ⇒ 各件（急的在前：要做 · 待定 · 要装 · 要装 · 可选 · 可选）。
 pub(crate) fn chores(f: &Facts) -> Vec<Value> {
     let mut out: Vec<Chore> = Vec::new();
     if let Some(s) = &f.stale_ccm {

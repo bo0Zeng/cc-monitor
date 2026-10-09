@@ -671,8 +671,8 @@ fn facts_say_what_the_session_is_waiting_for() {
         waiting,
         serde_json::json!({"kind": "approve", "tool": "Bash", "call": "b1", "what": "rm -rf build/", "sinceMs": 1_700_000_000_000u64})
     );
-    assert_eq!(busy, serde_json::Value::Null, "不在等却报了需要你");
-    assert_eq!(dead, serde_json::Value::Null, "在等的进程死了还算需要你");
+    assert_eq!(busy, serde_json::Value::Null, "不在等却报了需手动");
+    assert_eq!(dead, serde_json::Value::Null, "在等的进程死了还算需手动");
 }
 
 /// `history-facts` 的 `limits`：设置里的上限表随请求交来、上限在这里定；形状不对 ⇒ `bad_args`。
