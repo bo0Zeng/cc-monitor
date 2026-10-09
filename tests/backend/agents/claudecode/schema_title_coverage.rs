@@ -11,7 +11,7 @@
 ///
 /// ⇒ 本条把「谁承载标题」这件事变成可机检的：
 /// 人群 = `agents/claudecode/schema.rs`（原 monitor `messages.rs`）的 `JsonlRecord` 里**带 `*title` 字段**的变体（今天 2 个）；
-/// 性质 = 它必须被标题抽取段接住 ——那一段今天住后端 `observe/history_query.rs::analyze_session`
+/// 性质 = 它必须被标题抽取段接住 ——那一段今天住后端 `observe/listing_scan.rs::SessionScan::absorb`（`history_query.rs::analyze_session` 转调）
 /// （本机与远端同一个函数），按记录的线上类型名分臂。
 /// 加第三种标题记录而忘了接 ⇒ 红。
 ///
@@ -72,14 +72,13 @@ fn every_title_bearing_record_is_consumed_by_the_extractor() {
     //   （`src/backend/observe/history_query.rs::analyze_session`，按记录的**线上类型名**分臂）。
     //   ⇒ 本条的「被接住」从「`history.rs` 里有 `JsonlRecord::<变体>`」换成「后端那个函数里有 `Some("<线上类型名>")` 那一臂」；
     //   人群（带 `*title` 字段的变体）照旧从记录的 schema（今天在 `agents/claudecode/schema.rs`）抠，线上类型名从它上面那行 `serde(rename)` 抠 —— 两份源码异源。
-    let backend = include_str!("../../../../src/backend/observe/history_query.rs");
-    let at = guard_core::find_pinned(
-        backend,
-        "fn analyze_session(p: &Path) -> serde_json::Value {",
-    )
-    .unwrap_or_else(|e| panic!("后端那个会话行函数不是恰好一处：{e}"));
+    //   清单缓存那一刀之后 `analyze_session` 只转调 `ListingEntry::scan`，逐行分臂住 `observe/listing_scan.rs` 的 `SessionScan::absorb`
+    //   （变长只扫尾巴也走它）⇒ 「被接住」看那一个方法体。
+    let backend = include_str!("../../../../src/backend/observe/listing_scan.rs");
+    let at = guard_core::find_pinned(backend, "pub(super) fn absorb(&mut self, line: &str) {")
+        .unwrap_or_else(|e| panic!("后端逐行吸收记录的那个方法不是恰好一处：{e}"));
     let body_end = backend[at + 1..]
-        .find("\nfn ")
+        .find("\n    pub(super) fn ")
         .map_or(backend.len(), |k| at + 1 + k);
     let here = &backend[at..body_end];
     let missing: Vec<String> = bearers
@@ -94,7 +93,7 @@ fn every_title_bearing_record_is_consumed_by_the_extractor() {
         .collect();
     assert!(
         missing.is_empty(),
-        "这些记录类型带 `*title` 字段，却没被后端会话行（`analyze_session`）的标题抽取接住：{missing:?}\n\
+        "这些记录类型带 `*title` 字段，却没被后端会话行（`SessionScan::absorb`）的标题抽取接住：{missing:?}\n\
              ⚠ 后果不是报错，是**标题静默消失** —— 会话列表上那一行变回默认名，\n\
              而没有任何判据会红。这件事真发生过一次（`ai-title` 改名成 `custom-title`），\n\
              那次是靠人发现的。\n\
