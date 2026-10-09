@@ -342,9 +342,7 @@ pub enum Frame {
     },
     /// A new session file appeared.
     ///
-    /// Batch7-F24（additive，向后兼容）：附带 pidfile 元信息——`session_kind`
-    /// （"interactive"/"bg"；字段名避开 enum tag `kind`）、`cwd`、`name`。
-    /// None 时不上线（旧行为字节不变）；旧 monitor 忽略未知字段。
+    /// 附带 pidfile 元信息（`cwd` · `name` …）；缺的格不上线。
     SessionAdded {
         /// 会话 id。
         sid: String,
@@ -356,16 +354,13 @@ pub enum Frame {
         /// Claude（pidfile 权威）**省略**（skip_if_none）→ 消费侧缺=authoritative（向后兼容）。
         #[serde(skip_serializing_if = "Option::is_none")]
         liveness_confidence: Option<String>,
-        /// pidfile 里的会话种类原词（`interactive` · `bg` …）。monitor 不读它（读 `background`）；第二个前端在读，冻结。
-        #[serde(skip_serializing_if = "Option::is_none")]
-        session_kind: Option<String>,
         /// 是不是后台会话（不是人坐在终端里对话的那种）。适配层判（`agents::pidfile_background`），客户端只读这一格。
         /// 只在 `true` 时上线（缺 ＝ 交互会话；交互会话的帧字节与本字段加进来之前一字不差）。
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         background: bool,
         /// **E73（additive）：attach 进去对人有没有意义。**
         ///
-        /// `session_kind` 今天把两件事压在一个轴上：①「该不该在 UI 出现」②「是不是一个人
+        /// pidfile 的会话种类把两件事压在一个轴上：①「该不该在 UI 出现」②「是不是一个人
         /// 坐在终端里跟它对话」。SDK / 脚本驱动的会话正好是「①要②不要」—— 它有 tmux、
         /// `@ccm_sid` 也对，但 `stdin=DEVNULL`，用户敲的字会被脚本吃掉。
         ///
@@ -399,10 +394,6 @@ pub enum Frame {
         /// 全量模式 None。
         #[serde(skip_serializing_if = "Option::is_none")]
         lines: Option<u64>,
-        /// Batch9-F27（additive）：宣告时的初始 status/waitingFor——连接建立灯就对。
-        /// `status` 是 pidfile 原词：monitor 不读它（读 `activity`）；第二个前端在读，冻结。
-        #[serde(skip_serializing_if = "Option::is_none")]
-        status: Option<String>,
         /// 宣告时此刻在干什么（适配层翻好的，[`SessionActivity`]）。说不清 ⇒ 不上线。
         #[serde(skip_serializing_if = "Option::is_none")]
         activity: Option<SessionActivity>,
@@ -430,9 +421,6 @@ pub enum Frame {
     SessionStatus {
         /// 会话 id。
         sid: String,
-        /// 红绿灯状态（pidfile 里的 `status` 原词；monitor 读 `activity`，第二个前端读它，冻结）。
-        #[serde(skip_serializing_if = "Option::is_none")]
-        status: Option<String>,
         /// 此刻在干什么（同 `session_added.activity`）。说不清 ⇒ 不上线。
         #[serde(skip_serializing_if = "Option::is_none")]
         activity: Option<SessionActivity>,

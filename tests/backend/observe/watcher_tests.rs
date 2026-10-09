@@ -1470,13 +1470,11 @@ fn status_diff_emits_session_status_frame() {
     match rx.try_recv() {
         Ok(Frame::SessionAdded {
             sid,
-            status,
             activity,
             background,
             ..
         }) => {
             assert_eq!(sid, "st-sid");
-            assert_eq!(status.as_deref(), Some("busy"), "宣告带初始 status");
             assert_eq!(
                 activity,
                 Some(SessionActivity::Working),
@@ -1495,13 +1493,11 @@ fn status_diff_emits_session_status_frame() {
     match rx.try_recv() {
         Ok(Frame::SessionStatus {
             sid,
-            status,
             activity,
             waiting_for,
             ..
         }) => {
             assert_eq!(sid, "st-sid");
-            assert_eq!(status.as_deref(), Some("waiting"));
             assert_eq!(activity, Some(SessionActivity::NeedsYou));
             assert_eq!(waiting_for.as_deref(), Some("permission prompt"));
         }
@@ -1512,7 +1508,11 @@ fn status_diff_emits_session_status_frame() {
     process_session_added(&pidfile, &mut state, &mut sink);
     assert!(matches!(
         rx.try_recv(),
-        Ok(Frame::SessionStatus { status: Some(s), activity: Some(SessionActivity::Idle), waiting_for: None, .. }) if s == "idle"
+        Ok(Frame::SessionStatus {
+            activity: Some(SessionActivity::Idle),
+            waiting_for: None,
+            ..
+        })
     ));
     std::fs::remove_dir_all(&dir).ok();
 }
@@ -1635,14 +1635,9 @@ fn with_bg_and_tail_only_combined() {
     process_session_added(&pidfile, &mut state, &mut sink);
     match rx.try_recv() {
         Ok(Frame::SessionAdded {
-            sid,
-            session_kind,
-            lines,
-            path,
-            ..
+            sid, lines, path, ..
         }) => {
             assert_eq!(sid, "combo-sid");
-            assert_eq!(session_kind.as_deref(), Some("bg"), "with_bg 放行");
             assert_eq!(lines, Some(2), "tail-only 带 L");
             assert!(path.is_some());
         }
@@ -1675,14 +1670,12 @@ fn with_bg_announces_bg_with_metadata() {
     match rx.try_recv() {
         Ok(Frame::SessionAdded {
             sid,
-            session_kind,
             background,
             cwd,
             name,
             ..
         }) => {
             assert_eq!(sid, "bg-sid");
-            assert_eq!(session_kind.as_deref(), Some("bg"));
             assert!(background, "后台会话那一格由适配层判好");
             assert_eq!(cwd.as_deref(), Some("/proj/x"));
             assert_eq!(name.as_deref(), Some("评估任务"));
@@ -2022,7 +2015,6 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         sid: "a".into(),
         agent_kind: None,
         liveness_confidence: None,
-        session_kind: None,
         background: false,
         attachable: None,
         cwd: None,
@@ -2030,7 +2022,6 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         name: None,
         path: None,
         lines: None,
-        status: None,
         activity: None,
         waiting_for: None,
         container: None,
@@ -2040,7 +2031,6 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         sid: "b".into(),
         agent_kind: None,
         liveness_confidence: None,
-        session_kind: None,
         background: false,
         attachable: None,
         cwd: None,
@@ -2048,7 +2038,6 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         name: None,
         path: None,
         lines: None,
-        status: None,
         activity: None,
         waiting_for: None,
         container: None,
@@ -2064,7 +2053,6 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         sid: "c".into(),
         agent_kind: None,
         liveness_confidence: None,
-        session_kind: None,
         background: false,
         attachable: None,
         cwd: None,
@@ -2072,7 +2060,6 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         name: None,
         path: None,
         lines: None,
-        status: None,
         activity: None,
         waiting_for: None,
         container: None,
@@ -2082,7 +2069,6 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         sid: "d".into(),
         agent_kind: None,
         liveness_confidence: None,
-        session_kind: None,
         background: false,
         attachable: None,
         cwd: None,
@@ -2090,7 +2076,6 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         name: None,
         path: None,
         lines: None,
-        status: None,
         activity: None,
         waiting_for: None,
         container: None,
@@ -2100,7 +2085,6 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         sid: "e".into(),
         agent_kind: None,
         liveness_confidence: None,
-        session_kind: None,
         background: false,
         attachable: None,
         cwd: None,
@@ -2108,7 +2092,6 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         name: None,
         path: None,
         lines: None,
-        status: None,
         activity: None,
         waiting_for: None,
         container: None,
@@ -2141,7 +2124,6 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         sid: "g".into(),
         agent_kind: None,
         liveness_confidence: None,
-        session_kind: None,
         background: false,
         attachable: None,
         cwd: None,
@@ -2149,7 +2131,6 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         name: None,
         path: None,
         lines: None,
-        status: None,
         activity: None,
         waiting_for: None,
         container: None,

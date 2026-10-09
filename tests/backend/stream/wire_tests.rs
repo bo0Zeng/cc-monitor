@@ -313,7 +313,6 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 sid: s("s1"),
                 agent_kind: Some(s("claude")),
                 liveness_confidence: Some(s("pidfile")),
-                session_kind: Some(s("bg")),
                 background: true,
                 attachable: Some(true),
                 cwd: Some(s("/w")),
@@ -321,7 +320,6 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 name: Some(s("n")),
                 path: Some(s("/p/s1.jsonl")),
                 lines: Some(9),
-                status: Some(s("waiting")),
                 activity: Some(crate::agents::SessionActivity::NeedsYou),
                 waiting_for: Some(s("permission prompt")),
                 container: Some(SessionContainer::Hosted {
@@ -334,7 +332,6 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 sid: s("s1"),
                 agent_kind: None,
                 liveness_confidence: None,
-                session_kind: None,
                 background: false,
                 attachable: None,
                 cwd: None,
@@ -342,7 +339,6 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 name: None,
                 path: None,
                 lines: None,
-                status: None,
                 activity: None,
                 waiting_for: None,
                 container: None,
@@ -352,14 +348,12 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
         [
             Frame::SessionStatus {
                 sid: s("s1"),
-                status: Some(s("waiting")),
                 activity: Some(crate::agents::SessionActivity::NeedsYou),
                 waiting_for: Some(s("permission prompt")),
                 liveness_confidence: Some(s("pidfile")),
             },
             Frame::SessionStatus {
                 sid: s("s1"),
-                status: None,
                 activity: None,
                 waiting_for: None,
                 liveness_confidence: None,
@@ -520,6 +514,18 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                     ..RunInfo::default()
                 }],
                 ended: vec![],
+            },
+        ],
+        [
+            Frame::SessionBranch {
+                sid: s("s1"),
+                path: s("/p/s1.jsonl"),
+                off: vec![s("u2"), s("a2")],
+            },
+            Frame::SessionBranch {
+                sid: s("s1"),
+                path: s("/p/s1.jsonl"),
+                off: vec![],
             },
         ],
         [
@@ -1229,7 +1235,6 @@ fn dg3_codex_fields_serialize_when_present() {
         sid: "s".into(),
         agent_kind: Some("codex".into()),
         liveness_confidence: Some("heuristic".into()),
-        session_kind: None,
         background: false,
         attachable: None,
         cwd: None,
@@ -1237,7 +1242,6 @@ fn dg3_codex_fields_serialize_when_present() {
         name: None,
         path: None,
         lines: None,
-        status: None,
         activity: None,
         waiting_for: None,
         container: None,
@@ -1251,7 +1255,6 @@ fn dg3_codex_fields_serialize_when_present() {
 
     let ss = to_line(&Frame::SessionStatus {
         sid: "s".into(),
-        status: Some("busy".into()),
         activity: None,
         waiting_for: None,
         liveness_confidence: Some("heuristic".into()),
@@ -1259,7 +1262,7 @@ fn dg3_codex_fields_serialize_when_present() {
     .unwrap();
     assert_eq!(
         ss,
-        "{\"kind\":\"session_status\",\"sid\":\"s\",\"status\":\"busy\",\"liveness_confidence\":\"heuristic\"}\n"
+        "{\"kind\":\"session_status\",\"sid\":\"s\",\"liveness_confidence\":\"heuristic\"}\n"
     );
 }
 
@@ -1294,7 +1297,6 @@ fn dg3_codex_fields_skipped_when_absent_claude_byte_equivalent() {
         sid: "s".into(),
         agent_kind: None,
         liveness_confidence: None,
-        session_kind: None,
         background: false,
         attachable: None,
         cwd: None,
@@ -1302,7 +1304,6 @@ fn dg3_codex_fields_skipped_when_absent_claude_byte_equivalent() {
         name: None,
         path: None,
         lines: None,
-        status: None,
         activity: None,
         waiting_for: None,
         container: None,
@@ -1316,14 +1317,13 @@ fn dg3_codex_fields_skipped_when_absent_claude_byte_equivalent() {
 
     let ss = to_line(&Frame::SessionStatus {
         sid: "s".into(),
-        status: Some("idle".into()),
         activity: None,
         waiting_for: None,
         liveness_confidence: None,
     })
     .unwrap();
     assert_eq!(
-        ss, "{\"kind\":\"session_status\",\"sid\":\"s\",\"status\":\"idle\"}\n",
+        ss, "{\"kind\":\"session_status\",\"sid\":\"s\"}\n",
         "liveness_confidence 省略，字节等价旧形"
     );
 }
@@ -1440,7 +1440,6 @@ fn session_added_container_is_an_object_with_host_and_terminal() {
             sid: "s".into(),
             agent_kind: None,
             liveness_confidence: None,
-            session_kind: None,
             background: false,
             attachable: None,
             cwd: None,
@@ -1448,7 +1447,6 @@ fn session_added_container_is_an_object_with_host_and_terminal() {
             name: None,
             path: None,
             lines: None,
-            status: None,
             activity: None,
             waiting_for: None,
             container: c,
@@ -1513,7 +1511,6 @@ fn loc1b_session_added_pid_is_additive() {
             sid: "s".into(),
             agent_kind: None,
             liveness_confidence: None,
-            session_kind: None,
             background: false,
             attachable: None,
             cwd: None,
@@ -1521,7 +1518,6 @@ fn loc1b_session_added_pid_is_additive() {
             name: None,
             path: None,
             lines: None,
-            status: None,
             activity: None,
             waiting_for: None,
             container: None,
@@ -1672,17 +1668,14 @@ const SECOND_FRONTEND_READS: &[(&str, &str, &str)] = &[
     ("line", "raw", "string"),
     ("session_added", "sid", "string"),
     ("session_added", "path", "string"),
-    ("session_added", "session_kind", "string"),
     ("session_added", "cwd", "string"),
     ("session_added", "name", "string"),
     ("session_added", "lines", "number"),
-    ("session_added", "status", "string"),
     ("session_added", "waiting_for", "string"),
     ("session_added", "agent_kind", "string"),
     ("session_added", "liveness_confidence", "string"),
     ("session_added", "attachable", "bool"),
     ("session_status", "sid", "string"),
-    ("session_status", "status", "string"),
     ("session_status", "waiting_for", "string"),
     ("session_status", "liveness_confidence", "string"),
     ("session_removed", "sid", "string"),
@@ -1717,7 +1710,6 @@ fn every_frame_the_second_frontend_reads() -> Vec<Value> {
             sid: "s".into(),
             agent_kind: s.clone(),
             liveness_confidence: s.clone(),
-            session_kind: s.clone(),
             background: false,
             attachable: Some(false),
             cwd: s.clone(),
@@ -1725,7 +1717,6 @@ fn every_frame_the_second_frontend_reads() -> Vec<Value> {
             name: s.clone(),
             path: s.clone(),
             lines: Some(3),
-            status: s.clone(),
             activity: None,
             waiting_for: s.clone(),
             container: None,
@@ -1733,7 +1724,6 @@ fn every_frame_the_second_frontend_reads() -> Vec<Value> {
         },
         Frame::SessionStatus {
             sid: "s".into(),
-            status: s.clone(),
             activity: None,
             waiting_for: s.clone(),
             liveness_confidence: s.clone(),

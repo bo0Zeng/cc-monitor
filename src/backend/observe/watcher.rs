@@ -2206,7 +2206,6 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
             entry.waiting_for = new_waiting.clone();
             sink.send(Frame::SessionStatus {
                 sid: sid.clone(),
-                status: new_status,
                 activity: meta.as_ref().and_then(crate::agents::pidfile_activity),
                 waiting_for: new_waiting,
                 // Claude pidfile 路 → 判活权威、省略 liveness_confidence（缺=authoritative）。DG2 判活/DG1
@@ -2310,7 +2309,6 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
         // DG1 Codex 发现路才发 agent_kind="codex"+liveness_confidence="heuristic"。
         agent_kind: None,
         liveness_confidence: None,
-        session_kind: meta_str("kind"),
         background,
         // E73：pidfile 的 `attachable`。**只认真正的布尔** —— 字符串 "false" 之类当没写
         //（缺席 = true = 照旧），宁可少一次门控也不要把一个拼错的值当成"不可 attach"。
@@ -2326,7 +2324,6 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
         name: meta_str("name"),
         path: jsonls.first().map(|p| p.to_string_lossy().into_owned()),
         lines: first_lines,
-        status: meta_str("status"),
         activity: meta.as_ref().and_then(crate::agents::pidfile_activity),
         waiting_for: meta_str("waitingFor"),
         // 判不了 ⇒ `None` ⇒ 不上线（与本字段加进来之前逐字节相同）。
