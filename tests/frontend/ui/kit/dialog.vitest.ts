@@ -395,6 +395,33 @@ describe("D2 · confirmDialog / askText 的结算语义", () => {
     before.remove();
   });
 
+  it("打开之前焦点在 body（什么都没聚焦）：关了焦点照样在 body，但不去叫 body.focus()（WebKitGTK 上长会话开着时那一下一百多毫秒）—— 对话框 · 面板 · 抽屉都是", async () => {
+    const { panelDialog } = await import("../../../../src/frontend/ui/kit/dialog");
+    const { openDrawer } = await import("../../../../src/frontend/ui/kit/drawer");
+    (document.activeElement as HTMLElement | null)?.blur();
+    expect(document.activeElement).toBe(document.body);
+    const calls: Element[] = [];
+    const orig = HTMLElement.prototype.focus;
+    HTMLElement.prototype.focus = function (this: HTMLElement, o?: FocusOptions) {
+      calls.push(this);
+      return orig.call(this, o);
+    };
+    try {
+      const p = ask();
+      cancelBtn().click();
+      await p;
+      const first = document.createElement("input");
+      const pd = panelDialog({ label: "x", size: "palette", content: [first], first });
+      pd.close();
+      const dr = openDrawer({ title: "x", body: document.createElement("div") });
+      await dr.close();
+    } finally {
+      HTMLElement.prototype.focus = orig;
+    }
+    expect(document.activeElement).toBe(document.body);
+    expect(calls.filter((e) => e === document.body)).toEqual([]);
+  });
+
   it("formDialog：拦着时主按钮禁用并说为什么；交了没成 ⇒ 框顶一条错、不关；成了 ⇒ 关、答 true", async () => {
     const body = document.createElement("div");
     const input = document.createElement("input");

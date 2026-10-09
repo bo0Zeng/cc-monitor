@@ -518,7 +518,118 @@ async function viewerFind(): Promise<Record<string, unknown>> {
   });
 }
 
+/**
+ * 慢 DOM 调用追踪（WebKit 没有性能面板）：`fn` 跑的期间把几类会逼样式 / 布局 / 改 DOM 的调用包一层，
+ * 单次超过 `ms` 的记下来（哪个调用 · 多久 · 调用栈）。生产构建带 sourcemap（`CCM_SHOTS_SOURCEMAP=1`）时栈能对回源码。
+ */
+async function traceDom(fn: () => Promise<void>, ms = 15): Promise<Array<{ api: string; ms: number; stack: string }>> {
+  const slow: Array<{ api: string; ms: number; stack: string }> = [];
+  const undo: Array<() => void> = [];
+  const wrapMethod = (proto: object, name: string): void => {
+    const d = Object.getOwnPropertyDescriptor(proto, name);
+    if (!d || typeof d.value !== "function") return;
+    const orig = d.value as (...a: unknown[]) => unknown;
+    Object.defineProperty(proto, name, {
+      ...d,
+      value: function (this: unknown, ...a: unknown[]) {
+        const t0 = performance.now();
+        try {
+          return orig.apply(this, a);
+        } finally {
+          const dt = performance.now() - t0;
+          if (dt > ms) slow.push({ api: name, ms: Math.round(dt), stack: (new Error().stack ?? "").split("\n").slice(1, 9).join(" | ") });
+        }
+      },
+    });
+    undo.push(() => Object.defineProperty(proto, name, d));
+  };
+  const wrapGetter = (proto: object, name: string): void => {
+    const d = Object.getOwnPropertyDescriptor(proto, name);
+    if (!d?.get) return;
+    const g = d.get;
+    Object.defineProperty(proto, name, {
+      ...d,
+      get: function (this: unknown) {
+        const t0 = performance.now();
+        try {
+          return g.call(this);
+        } finally {
+          const dt = performance.now() - t0;
+          if (dt > ms) slow.push({ api: name, ms: Math.round(dt), stack: (new Error().stack ?? "").split("\n").slice(1, 9).join(" | ") });
+        }
+      },
+    });
+    undo.push(() => Object.defineProperty(proto, name, d));
+  };
+  for (const n of ["getBoundingClientRect", "getClientRects", "scrollIntoView", "setAttribute", "removeAttribute", "replaceChildren", "remove", "append", "after", "before", "replaceWith", "toggleAttribute"]) wrapMethod(Element.prototype, n);
+  for (const n of ["focus", "blur", "click"]) wrapMethod(HTMLElement.prototype, n);
+  for (const n of ["appendChild", "insertBefore", "removeChild", "replaceChild"]) wrapMethod(Node.prototype, n);
+  for (const n of ["offsetHeight", "offsetWidth", "offsetTop", "offsetParent"]) wrapGetter(HTMLElement.prototype, n);
+  for (const n of ["clientHeight", "clientWidth", "scrollHeight", "scrollWidth", "scrollTop"]) wrapGetter(Element.prototype, n);
+  const gcs = window.getComputedStyle;
+  window.getComputedStyle = ((el: Element, p?: string | null) => {
+    const t0 = performance.now();
+    const r = gcs(el, p);
+    const dt = performance.now() - t0;
+    if (dt > ms) slow.push({ api: "getComputedStyle", ms: Math.round(dt), stack: (new Error().stack ?? "").split("\n").slice(1, 9).join(" | ") });
+    return r;
+  }) as typeof getComputedStyle;
+  undo.push(() => (window.getComputedStyle = gcs));
+  try {
+    await fn();
+  } finally {
+    for (const u of undo.reverse()) u();
+  }
+  return slow;
+}
+
+/** 新建会话框 / 命令面板 / 账号面板各开关两次，记下慢的 DOM 调用。 */
+async function slowDom(): Promise<Record<string, unknown>> {
+  await toLongest();
+  await window.__perf.quiet(500, 10_000);
+  const out: Record<string, unknown> = {};
+  const desc = (el: Element | null): string => {
+    if (!el) return "null";
+    const where = el.closest(".stream") ? `stream${el.closest(".stream.active") ? "(当前)" : "(后台)"}` : el.closest("#tab-bar") ? "tab-bar" : el.closest("#status-bar") ? "status-bar" : el.closest("[data-role=session-find-panel]") ? "find-panel" : el.parentElement?.closest("[id]")?.id ?? "?";
+    return `${el.tagName.toLowerCase()}.${String((el as HTMLElement).className).split(" ")[0]}[${el.getAttribute("data-role") ?? el.getAttribute("aria-label") ?? ""}] in ${where} · 有几何 ${el.getClientRects().length > 0}`;
+  };
+  const timed = async (what: string, f: () => void | Promise<void>): Promise<void> => {
+    (out[`${what} · 之前焦点`] ??= [] as unknown[]) as unknown[];
+    (out[`${what} · 之前焦点`] as unknown[]).push(desc(document.activeElement));
+    const t0 = performance.now();
+    const slow = await traceDom(async () => {
+      await f();
+    });
+    (out[what] ??= [] as unknown[]) as unknown[];
+    (out[what] as unknown[]).push({ ms: Math.round(performance.now() - t0), slow });
+  };
+  for (let k = 0; k < 2; k++) {
+    key("k", { ctrl: true });
+    const input = await waitSel<HTMLInputElement>("[data-role=command-input]");
+    typeInto(input, copyText("newSession.title.plain"));
+    await sleep(200);
+    await timed("新建会话框：回车开", () => keyOn(input, "Enter", { code: "Enter" }));
+    await waitSel('[role="dialog"] button[aria-label="账号"]:not([data-value=""])');
+    await sleep(400);
+    await timed("新建会话框：Esc 关", () => key("Escape"));
+    await sleep(400);
+    await timed("命令面板：Ctrl+K 开", () => key("k", { ctrl: true }));
+    const inp = await waitSel<HTMLInputElement>("[data-role=command-input]");
+    await timed("命令面板：打字", () => typeInto(inp, copyText("acct.rot.title")));
+    await sleep(200);
+    await timed("命令面板：Esc 关", () => keyOn(inp, "Escape", { code: "Escape" }));
+    await sleep(300);
+    const chip = await waitSel(".status-account");
+    await timed("账号面板：开", () => clickEl(chip));
+    await sleep(600);
+    await timed("账号面板：Esc 关", () => key("Escape"));
+    await sleep(400);
+  }
+  return { name: "slow-dom", slowDom: out };
+}
+
 const ACTIONS: Record<string, () => Promise<Record<string, unknown>>> = {
+  "slow-dom": slowDom,
   idle: () => idle(),
   "scroll-up": () => scroll("up"),
   "scroll-down": () => scroll("down"),
@@ -588,6 +699,11 @@ const ACTIONS: Record<string, () => Promise<Record<string, unknown>>> = {
       if (inp) rec("命令面板 ↓", () => keyOn(inp, "ArrowDown", { code: "ArrowDown" }));
       if (inp) rec("Esc 关命令面板（打过字）", () => keyOn(inp, "Escape", { code: "Escape" }));
       await sleep(150);
+      rec("焦点进输入框（再）", () => input.focus());
+      rec("body.focus()（焦点从输入框过来）", () => document.body.focus());
+      rec("焦点进输入框（再再）", () => input.focus());
+      rec("body.focus({preventScroll})", () => document.body.focus({ preventScroll: true }));
+      rec("body.focus()（本来就在 body）", () => document.body.focus());
       rec("body 写一个 data 属性", () => (document.body.dataset.perfProbe = String(k)));
       rec("body 删 data 属性", () => delete document.body.dataset.perfProbe);
       await sleep(200);

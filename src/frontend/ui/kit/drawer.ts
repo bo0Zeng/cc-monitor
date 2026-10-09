@@ -6,7 +6,7 @@
  */
 import { dispatcher, type OverlayHandle } from "../keybindings/registry";
 import { button } from "./button";
-import { confirmDialog } from "./dialog";
+import { confirmDialog, restoreFocus } from "./dialog";
 import { setDrawerRight } from "./toast";
 import { copyText } from "../copy-table";
 import s from "./drawer.module.css";
@@ -80,7 +80,7 @@ export function openDrawer(spec: DrawerSpec): DrawerHandle {
     setDrawerRight(null);
     dim.remove();
     panel.remove();
-    if (before instanceof HTMLElement && before.isConnected) before.focus();
+    restoreFocus(before);
     spec.onClose?.();
     return true;
   };
