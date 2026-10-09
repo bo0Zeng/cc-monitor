@@ -167,3 +167,38 @@ fn the_real_check_wants_a_runnable_file_and_reads_absence_as_absence() {
     assert!(!runnable(&dir).unwrap(), "目录不算");
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+/// ★ 全仓只有这一处在找 ssh 客户端：生产代码里别处不许出现找它的写法
+/// （拼 System32\OpenSSH · 起 `where` · 按 PATH 找名叫 ssh / ssh.exe 的文件）。
+/// 进程表里认「这个进程是不是 ssh」（`dial/terminal_processes.rs` 比进程名）不是找，不在射程里。
+#[test]
+fn ssh_client_guard_only_this_file_locates_ssh() {
+    let src = crate::guard_support::src_root().join("../..").join("src");
+    let needles = [
+        "OpenSSH\\\\ssh",
+        "OpenSSH\\ssh",
+        "Command::new(\"where",
+        "program_exists(\"ssh",
+        "resolves_on_path(\"ssh",
+        "join(\"ssh\")",
+        "join(\"ssh.exe\")",
+    ];
+    let files =
+        guard_core::scan_tree_excluding(&src, &["rs"], &["src/backend/platform/ssh_client.rs"]);
+    let scanned = files.len();
+    let mut hits = Vec::new();
+    for (p, text) in &files {
+        let code = guard_core::production_code(text);
+        for n in needles {
+            if code.contains(n) {
+                hits.push(format!("{} : {n}", p.display()));
+            }
+        }
+    }
+    assert!(scanned > 200, "只扫到 {scanned} 个文件 —— 采集坏了");
+    assert!(
+        hits.is_empty(),
+        "找 ssh 客户端只许住 `platform/ssh_client.rs`（开远端终端与「这台需要的东西」那一行共用）：\n{}",
+        hits.join("\n")
+    );
+}

@@ -49,8 +49,52 @@ fn env_with<'a>(home: &'a Path, fs: &'a FsProbe<'a>, path_env: Option<&'a str>) 
         fs,
         path_env,
         session_path: path_env,
+        system_root: None,
+        windows: false,
         vantage: Vantage::Monitor,
     }
+}
+
+/// 「这台需要的东西」里 ssh 那一行走开远端终端用的同一个找法（`platform::ssh_client::locate_with`）：
+/// Windows 上找 `ssh.exe`、先查 System32\OpenSSH，不在 PATH 上也算在；PATH 读不到 ⇒ 查不动，不说缺。
+#[test]
+fn the_ssh_row_uses_the_one_ssh_locator() {
+    use crate::platform::ssh_client::WINDOWS_OPENSSH_REL;
+    let h = home();
+    let sys = Path::new("/sr").join(WINDOWS_OPENSSH_REL);
+    let sys_s = sys.to_string_lossy().into_owned();
+    let meta = move |p: &Path| (p == sys.as_path()).then_some((false, 1u64));
+    let fs = FsProbe {
+        meta: &meta,
+        list: &|_| None,
+    };
+    let mut env = env_with(&h, &fs, Some("/usr/bin"));
+    env.windows = true;
+    env.system_root = Some("/sr");
+    let (at, found) = observe_unmanaged("ssh", EnvProbe::SshClient, &env);
+    assert_eq!(at.as_deref(), Some(sys_s.as_str()));
+    assert!(matches!(found, SurfaceState::Present { .. }), "{found:?}");
+
+    let none = empty_probe();
+    let mut env = env_with(&h, &none, Some("/usr/bin"));
+    env.windows = true;
+    env.system_root = Some("/sr");
+    assert_eq!(
+        observe_unmanaged("ssh", EnvProbe::SshClient, &env).1,
+        SurfaceState::Absent
+    );
+
+    let blind = env_with(&h, &none, None);
+    assert!(matches!(
+        observe_unmanaged("ssh", EnvProbe::SshClient, &blind).1,
+        SurfaceState::Undetermined { .. }
+    ));
+    // 登记表里 ssh 那一行用的就是这个查法。
+    let row = crate::footprint::registry::UNMANAGED_ENV
+        .iter()
+        .find(|u| u.id == "ssh")
+        .expect("ssh 那一行");
+    assert_eq!(row.probe, EnvProbe::SshClient);
 }
 
 // ===== 解析：五种结果各一条 =====

@@ -11373,6 +11373,12 @@
       "zh": "无法查 · {why}",
       "args": ["why"]
     },
+    "rsConfigSurface.ssh.found": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "找到 {path}",
+      "args": ["path"]
+    },
     "rsConfigSurface.onPath.present": {
       "kind": "body",
       "role": "片段",
