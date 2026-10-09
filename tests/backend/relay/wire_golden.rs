@@ -45,7 +45,7 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener, TcpStream};
 use std::sync::{mpsc, Arc, Mutex};
 
-/// 只听回环。**字面量**，不是拼出来的（同 `stream/listen.rs::LOOPBACK` 那条理由）。
+/// 只听回环。**字面量**，不是拼出来的（同 `common/net.rs::LOOPBACK` 那条理由）。
 const STUB_LOOPBACK: IpAddr = IpAddr::V4(Ipv4Addr::LOCALHOST);
 
 /// 假上游**一字不差**回这一串。响应体是一条 chunked 包着的 SSE 事件 ＋ 终止块。

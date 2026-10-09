@@ -125,7 +125,7 @@ pub fn run_ensure(args: &[String], hosted: &[(&str, String)]) -> i32 {
 
 /// 这台回环上那个口此刻有没有人在听（连一下：回环上「没人」是立刻被拒，不等）。
 fn someone_listening(port: u16) -> bool {
-    std::net::TcpStream::connect((crate::stream::listen::LOOPBACK, port)).is_ok()
+    std::net::TcpStream::connect((crate::common::net::LOOPBACK, port)).is_ok()
 }
 
 /// `--resident-ensure` 的入口：宿主层环境 = 中转口 · stderr 诊断文件（凭据与历史注解住家里，那台后端按家自己推）。

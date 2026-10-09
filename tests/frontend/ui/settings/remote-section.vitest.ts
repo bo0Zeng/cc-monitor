@@ -110,7 +110,7 @@ import {
 } from "../../../../src/frontend/ui/remote-config";
 import type { RemoteHostConfig, RemoteConfig } from "../../../../src/frontend/ui/remote-config";
 import * as remoteConfigModule from "../../../../src/frontend/ui/remote-config";
-import { __setHostOsForTests } from "../../../../src/frontend/ui/settings/host-os";
+import { __setHostFactsForTests } from "../../../../src/frontend/ui/settings/host-os";
 // `KR59D3`：那条**有名字**的告知 —— 名字的家只有一个（`readiness.ts`），
 // 判据与 DOM 上那个 `data-code` 断的是同一个串，不在这里另抄一份字面量。
 import { readFileSync } from "node:fs";
@@ -433,7 +433,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
   beforeEach(() => vi.resetAllMocks());
   // S9：jsdom 的 UA 是 linux。默认清掉覆盖值，用真实探测（= linux），
   // 需要别的 OS 的那条测试自己置。
-  afterEach(() => __setHostOsForTests(null));
+  afterEach(() => __setHostFactsForTests(null));
 
   it("删掉一张卡 ⇒ 只有那台从盘上消失，其余原样", async () => {
     const sec = await mount([mkH("a", "1.1.1.1"), mkH("b", "2.2.2.2")]);

@@ -204,7 +204,7 @@ pub(crate) struct Wire;
 
 impl Reach for Wire {
     fn backend_up(&self, machine: &str) -> bool {
-        crate::stream::remote_ask::lock(&crate::stream::remote_ask::REACH).contains_key(machine)
+        crate::dial::remote_ask::lock(&crate::dial::remote_ask::REACH).contains_key(machine)
     }
 
     fn ask_add<'a>(
@@ -214,12 +214,12 @@ impl Reach for Wire {
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<String, String>> + Send + 'a>>
     {
         Box::pin(async move {
-            let v = crate::stream::remote_ask::ask_json(
+            let v = crate::dial::remote_ask::ask_json(
                 machine,
                 "authorized-keys-add",
                 &json!({ "key": key }),
-                &crate::stream::remote_ask::REACH,
-                &crate::stream::remote_ask::DialRemote,
+                &crate::dial::remote_ask::REACH,
+                &crate::dial::remote_ask::DialRemote,
             )
             .await
             .map_err(|s| s.message)?;
@@ -237,7 +237,7 @@ impl Reach for Wire {
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<String, String>> + Send + 'a>>
     {
         Box::pin(async move {
-            let (got, _ack) = crate::stream::remote_ask::capture_full(dial, command).await?;
+            let (got, _ack) = crate::dial::remote_ask::capture_full(dial, command).await?;
             match got.exit_status {
                 Some(0) => Ok(got.stdout),
                 _ => Err(copy_text(

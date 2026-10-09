@@ -1,53 +1,57 @@
 /**
- * monitor 跑在哪个 OS 上：本机页上 PowerShell 那一侧的别名块（`machine-aliases.ts::localShell`）按它选平台。
- * 用 UA 判：零依赖、零 IPC、纯函数好测（三个平台的 webview 是 WebView2 / WKWebView / WebKitGTK，
- * `Windows NT` / `Macintosh` / `X11; Linux` 都是稳定标识）；不为一个显隐装插件或新开命令。
- * 测不出就照常显示（见 `hostOsAllows`）。
+ * **本机能力**（界面这一半）：monitor 跑在哪个系统上、↗ 在这台上是不是真的、本机 shell 说哪种方言、本机 PATH 上 `ccm` 那份短缓存作不作数。
+ * 判定只住壳（`src/frontend/shell/src/platform/host_facts.rs`）：它在每个 webview 起页时注入 `window.__CCM_HOST__`，这里只读、不猜
+ * （User-Agent 判法退役）。读不到 / 形状不对（不该发生：壳每一页都注入）⇒ 「认不出」那一份 {@link UNKNOWN_HOST}：系统写不出、方言不猜，
+ * ↗ 照常显示（错藏起来用户就找不到这颗按钮）。
  */
 
 export type HostOs = "windows" | "macos" | "linux" | "unknown";
 
-/**
- * 从 UA 串判 OS（纯函数）。顺序从窄到宽：先 Windows、再 macOS、最后 Linux（`Linux` 最容易出现在别的平台的 UA 里，如 Android）。
- * 对今天三个平台的真实 UA 这顺序是等价变异，留给将来加平台；`host-os.vitest.ts` 不假装守它。
- */
-export function detectHostOs(ua: string): HostOs {
-  if (/Windows NT|Windows/i.test(ua)) return "windows";
-  if (/Macintosh|Mac OS X/i.test(ua)) return "macos";
-  if (/X11|Linux/i.test(ua)) return "linux";
-  return "unknown";
+/** 壳给的那一份（`platform/host_facts.rs::HostFacts` 的 JSON 形）。 */
+export interface HostFacts {
+  os: HostOs;
+  terminalFront: boolean;
+  /** `null` ＝ 认不出（别名那一格明说、安装入口置灰）。 */
+  shellDialect: "posix" | "powershell" | null;
+  ccmPathCache: boolean;
 }
 
-/** 测试覆盖值。非 null 时 `hostOs()` 直接返回它。 */
-let override: HostOs | null = null;
+/** 读不到壳那一份时的样子。 */
+export const UNKNOWN_HOST: HostFacts = { os: "unknown", terminalFront: true, shellDialect: null, ccmPathCache: true };
 
-/** 缓存（UA 在一个进程里不会变）；`null` ＝ 还没算过。 */
-let cached: HostOs | null = null;
+const OSES: readonly HostOs[] = ["windows", "macos", "linux"];
 
-/** 当前 monitor 跑在哪个 OS 上。 */
-export function hostOs(): HostOs {
+/** `window.__CCM_HOST__` ⇒ 那一份；形状不对 ⇒ {@link UNKNOWN_HOST}（纯函数）。 */
+export function readHostFacts(v: unknown): HostFacts {
+  if (v === null || typeof v !== "object") return UNKNOWN_HOST;
+  const o = v as Record<string, unknown>;
+  if (typeof o.terminalFront !== "boolean" || typeof o.ccmPathCache !== "boolean") return UNKNOWN_HOST;
+  const os = OSES.find((x) => x === o.os) ?? "unknown";
+  const shellDialect = o.shellDialect === "posix" || o.shellDialect === "powershell" ? o.shellDialect : null;
+  return { os, terminalFront: o.terminalFront, shellDialect, ccmPathCache: o.ccmPathCache };
+}
+
+/** 测试覆盖值。非 null 时 `hostFacts()` 直接返回它。 */
+let override: HostFacts | null = null;
+/** 缓存（一页里不会变）；`null` ＝ 还没读过。 */
+let cached: HostFacts | null = null;
+
+/** 这台的那一份。 */
+export function hostFacts(): HostFacts {
   if (override !== null) return override;
-  if (cached !== null) return cached;
-  const ua =
-    typeof navigator === "undefined" ? "" : (navigator.userAgent ?? "");
-  cached = detectHostOs(ua);
+  cached ??= readHostFacts(typeof window === "undefined" ? undefined : (window as { __CCM_HOST__?: unknown }).__CCM_HOST__);
   return cached;
 }
 
-/** 仅供测试：置 / 清覆盖值（`null` 同时清缓存）。jsdom 的 UA 含 `linux`：面板测试不置成 windows，PowerShell 那块就不出现。 */
-export function __setHostOsForTests(os: HostOs | null): void {
-  override = os;
-  cached = null;
+/** 当前 monitor 跑在哪个系统上。 */
+export function hostOs(): HostOs {
+  return hostFacts().os;
 }
 
-/**
- * 这块在当前 OS 上该不该出现（`undefined` ＝ 与 OS 无关）。`unknown` 走显示：错藏起来 Windows 用户找不到安装入口、
- * 也没线索说它去哪了；错显示只是多一块。
- */
-export function hostOsAllows(allowed: readonly HostOs[] | undefined): boolean {
-  if (!allowed) return true;
-  const os = hostOs();
-  return os === "unknown" || allowed.includes(os);
+/** 仅供测试：置 / 清覆盖值（`null` 同时清缓存）。 */
+export function __setHostFactsForTests(f: HostFacts | null): void {
+  override = f;
+  cached = null;
 }
 
 /** 根元素上标出界面跑在哪个系统上（`data-host-os`），给只能按平台分的那几条样式用（`tokens.css` 里 Linux 的等宽字体缺省）。三个窗口的入口各标一次。 */

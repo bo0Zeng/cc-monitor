@@ -5,7 +5,7 @@
 //! 中转自己不绑口、不读盘、不读环境（边界判据 `C4` / `C5`）。
 
 use super::key;
-use crate::stream::listen::LOOPBACK;
+use crate::common::net::LOOPBACK;
 use comms_outward::{Relay, Startup, TeeSink};
 use copy_core::copy_text;
 use std::net::{SocketAddr, TcpListener};

@@ -5,6 +5,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { ExecPolicy, NameClash } from "../../../../src/frontend/ui/alias-reads";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
+import { factsOn } from "../../../test-support/host-facts";
 
 const flush = async (): Promise<void> => {
   for (let i = 0; i < 12; i += 1) await Promise.resolve();
@@ -488,16 +489,16 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
 
 describe("localShell：本机用哪种方言", () => {
   afterEach(async () => {
-    const { __setHostOsForTests } = await import("../../../../src/frontend/ui/settings/host-os");
-    __setHostOsForTests(null);
+    const { __setHostFactsForTests } = await import("../../../../src/frontend/ui/settings/host-os");
+    __setHostFactsForTests(null);
   });
   it("Windows ⇒ powershell；Linux / macOS ⇒ posix；认不出 ⇒ 不猜（null），那一格明说、接入入口置灰", async () => {
     vi.resetModules();
-    const { __setHostOsForTests } = await import("../../../../src/frontend/ui/settings/host-os");
+    const { __setHostFactsForTests } = await import("../../../../src/frontend/ui/settings/host-os");
     const { localShell, buildUnknownOsAliasBlock } = await import("../../../../src/frontend/ui/settings/machine-aliases");
     const want = { windows: "powershell", linux: "posix", macos: "posix", unknown: null } as const;
     for (const [os, sh] of Object.entries(want)) {
-      __setHostOsForTests(os as "windows" | "linux" | "macos" | "unknown");
+      __setHostFactsForTests(factsOn(os as "windows" | "linux" | "macos" | "unknown"));
       expect(localShell(), os).toBe(sh);
     }
     const block = buildUnknownOsAliasBlock();

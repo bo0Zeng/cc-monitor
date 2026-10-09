@@ -3,7 +3,6 @@
 pub(crate) mod detail; // 失败应答的「复制详情」那一格（时刻 · 机器 · 命令 · 码 · 原话）
 pub mod inbound; // U6b-1：流连接上的入方向（信封 / 分派 / 取消）
 pub mod listen; // K-P1：常驻监听口 —— 脱离宿主之后还能被找到 / 被问到 / 被接上（纯判定住这里，接受循环住 main.rs）
-pub mod remote_ask; // 本机后端问远端后端的那一跳（池里那条 SSH 上 capture 一次性子命令）＋ 可达表 —— 全后端只此一处；帧面 `remote-reach`
 pub(crate) mod run_route; // 流归位：每段流折成归一事件、定它归哪个运行（只用适配层给的那几格）
 pub(crate) mod said; // 那几条命令被拒时给人看的那一句（界面那五张「码 → 句」表搬来）
 pub mod tap; // tee 的消费侧（后端这一半）：进程级 tap 口 → 当前那条流连接的 `tap` 帧

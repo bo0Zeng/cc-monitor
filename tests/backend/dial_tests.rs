@@ -180,7 +180,7 @@ fn the_link_arms_are_actually_wired_into_the_dispatch() {
     ];
     for (cmd, method) in arms {
         let arm = format!("\"{cmd}\" => ");
-        let call = format!("links.{method}(&req.id, &req.args)");
+        let call = format!("links.{method}(&req.cmd, &req.id, &req.args)");
         assert_eq!(
             inbound_prod.matches(arm.as_str()).count(),
             1,

@@ -153,18 +153,19 @@ vi.mock("@tauri-apps/api/window", () => ({
 }));
 
 import { SettingsPanel } from "../../../../src/frontend/ui/settings/panel";
-import { __setHostOsForTests } from "../../../../src/frontend/ui/settings/host-os";
+import { __setHostFactsForTests } from "../../../../src/frontend/ui/settings/host-os";
 import * as machineAliases from "../../../../src/frontend/ui/settings/machine-aliases";
 import { __resetMachineContextForTests } from "../../../../src/frontend/ui/settings/machine-context";
+import { factsOn } from "../../../test-support/host-facts";
 
 // jsdom 的 UA 含 `linux`；本文件照 Windows 形态跑（第三条那块 `appliesTo: "local"` 的分节今天是「别名」，
 // 两个平台都构造 —— 钉成 windows 只是沿用本文件一直以来的形态）。
 beforeEach(() => {
-  __setHostOsForTests("windows");
+  __setHostFactsForTests(factsOn("windows"));
   captured.pages = null;
   document.body.textContent = "";
 });
-afterEach(() => __setHostOsForTests(null));
+afterEach(() => __setHostFactsForTests(null));
 
 /** 建面板并等机器页注册落定（替身在 `setTimeout(0)` 里注册）。 */
 async function mountPanel(): Promise<void> {

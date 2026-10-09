@@ -3,7 +3,7 @@
 //!
 //! # 走回环 TCP
 //!
-//! 形状照中转（`relay/`）：`LOOPBACK` 字面量常量 + 非回环 bind 的零命中守卫 + 在途上界 + 出声的拒绝。
+//! 形状照中转（`relay/`）：`LOOPBACK` 字面量常量（住 `common/net.rs`，中转的宿主同用） + 非回环 bind 的零命中守卫 + 在途上界 + 出声的拒绝。
 //! 代价：回环 TCP 上同机任何本地进程都连得上（Unix socket 有文件权限位而它没有）⇒ 收窄靠钥匙：起它的那一方只交钥匙文件的路径
 //! （[`ENV_TOKEN_FILE`]），常驻后端绑上口之后自己铸一把新的、原子写进那份 `0600` 的文件（`control/resident.rs::rotate_token`，
 //! 后端自有状态文件，`readonly_guard` 第四层登记）。每次起都换 ⇒ 漏出去的旧钥匙随之作废；客户端每次读文件。
@@ -25,12 +25,6 @@
 //! 2. `EADDRINUSE` 只说明有人占着这个口，不说明是我们的 backend：宿主连上去先读 hello 比对，对不上就出声并拒绝；
 //!    这一侧 bind 不上就带 [`EXIT_ADDR_IN_USE`] 退出，绝不自己换端口（换端口 = 每台机 N 个 backend，中转口与全部 SSH 各 N 份）。
 //! 3. 一个定时器都没有：`accept` 与读一行都阻塞在内核事件上（`no_timer_guard::backend_production_code_has_no_periodic_wakeups`）。
-
-use std::net::{IpAddr, Ipv4Addr};
-
-/// 只听回环。**字面量常量，不是拼出来的** —— 拼出来的地址源码扫描看不见。
-/// 中转的宿主（`relay/listen.rs`）绑口用的也是这一个。
-pub const LOOPBACK: IpAddr = IpAddr::V4(Ipv4Addr::LOCALHOST);
 
 /// 宿主告诉后端「听哪个口」的 env 名。端口只算一份、住宿主那一侧（`local_backend_host::listen_port_for`）：两边各算一份就会漂。
 pub const ENV_PORT: &str = crate::platform::child_env::LISTEN_PORT;

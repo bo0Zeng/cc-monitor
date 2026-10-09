@@ -203,7 +203,7 @@ import {
 import type { SessionFacts } from "../../../src/frontend/ui/session-reads";
 import { invalidateAccountsCache } from "../../../src/frontend/ui/account-reads";
 import { failToast, toast as showActionFailureToast } from "../../../src/frontend/ui/kit/toast";
-import { __setHostOsForTests, type HostOs } from "../../../src/frontend/ui/settings/host-os";
+import { __setHostFactsForTests, type HostOs } from "../../../src/frontend/ui/settings/host-os";
 import {
   runRemoteResume,
   runRemoteAttach,
@@ -272,6 +272,7 @@ const usageOf = (promptTokens: number, model: string | null) => ({
 import { applyConfigEdits, type Edit } from "./config-patch-fake";
 import { dispatcher } from "../../../src/frontend/ui/keybindings/registry";
 import { copyPattern } from "../../test-support/copy-pattern";
+import { factsOn } from "../../test-support/host-facts";
 
 // `TabManager` 拆开之后各样东西住各自的家（store · tab 栏视图 · 拖拽 · 落盘偏好 · 流视图 · 会话动作）。
 // 判据**直接指向新家**；`TabManager` 上不再为旧判据留同名转交。TS 的 `private` 只在编译期，运行时这几个字段就在实例上。仅测试用。
@@ -2151,10 +2152,10 @@ describe("：↗ 远端那一格按顺序问三方", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockInvoke.mockReset();
-    __setHostOsForTests("windows");
+    __setHostFactsForTests(factsOn("windows"));
     document.querySelectorAll("[data-role=front-result]").forEach((e) => e.closest("[role=dialog]")?.remove());
   });
-  afterEach(() => __setHostOsForTests(null));
+  afterEach(() => __setHostFactsForTests(null));
 
   const frontBtn = (tm: TabManager, sid: string): HTMLElement | null =>
     (home(tm).bar.tabButtons.get(sid)?.root.querySelector(".tab-focus") as HTMLElement | null) ?? null;
@@ -2445,7 +2446,7 @@ describe("LF1：↗ 只在 Windows 上出现", () => {
     mockInvoke.mockReset();
     mockInvoke.mockResolvedValue(undefined);
   });
-  afterEach(() => __setHostOsForTests(null));
+  afterEach(() => __setHostFactsForTests(null));
 
   const focusBtnOf = (tm: TabManager, sid: string) =>
     home(tm).bar.tabButtons.get(sid)?.root.querySelector(".tab-focus") ?? null;
@@ -2458,7 +2459,7 @@ describe("LF1：↗ 只在 Windows 上出现", () => {
       ["macos", false],
     ];
     for (const [os, shown] of want) {
-      __setHostOsForTests(os);
+      __setHostFactsForTests(factsOn(os));
       const tm = makeTM();
       tm.ensureTab("l1", "/w", "p", LOCAL_ORIGIN);
       tm.createSkeletonTab("r1", "/p", "devbox", false, null);
@@ -2469,7 +2470,7 @@ describe("LF1：↗ 只在 Windows 上出现", () => {
   });
 
   it("★ 快捷键 / 命令面板在 linux 上走到 ↗ ⇒ 说实话、**不发 IPC**", async () => {
-    __setHostOsForTests("linux");
+    __setHostFactsForTests(factsOn("linux"));
     const tm = makeTM();
     tm.createSkeletonTab("r1", "/p", "devbox", false, null);
     tm.switchTo("r1");
@@ -2490,7 +2491,7 @@ describe("LF1：↗ 只在 Windows 上出现", () => {
   });
 
   it("★ 对照：windows 上快捷键照常发 IPC（上一条不是因为别的原因没发）", async () => {
-    __setHostOsForTests("windows");
+    __setHostFactsForTests(factsOn("windows"));
     const tm = makeTM();
     tm.createSkeletonTab("r1", "/p", "devbox", false, null);
     tm.switchTo("r1");

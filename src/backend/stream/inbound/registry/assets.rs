@@ -159,7 +159,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
                 crate::assets::asset_sync::answer(
                     &r.args,
                     fold,
-                    &crate::stream::remote_ask::DialRemote,
+                    &crate::dial::remote_ask::DialRemote,
                 )
                 .await
                 .map(Some)
@@ -304,8 +304,8 @@ pub(super) const SPECS: &[CommandSpec] = &[
                 crate::assets::hub::ext_preview_many(
                     &hub_here(),
                     &r.args,
-                    &crate::stream::remote_ask::REACH,
-                    &crate::stream::remote_ask::DialRemote,
+                    &crate::dial::remote_ask::REACH,
+                    &crate::dial::remote_ask::DialRemote,
                     crate::assets::asset_catalog::answer_current,
                 )
                 .await
@@ -329,8 +329,8 @@ pub(super) const SPECS: &[CommandSpec] = &[
                 crate::assets::hub::ext_apply_many(
                     &hub_here(),
                     &r.args,
-                    &crate::stream::remote_ask::REACH,
-                    &crate::stream::remote_ask::DialRemote,
+                    &crate::dial::remote_ask::REACH,
+                    &crate::dial::remote_ask::DialRemote,
                     crate::assets::asset_catalog::answer_current,
                 )
                 .await
@@ -350,7 +350,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
             crate::assets::ext::answer_list(
                 &r.args,
                 &crate::assets::asset_catalog::answer_current,
-                &crate::assets::ext::reach_of(&crate::stream::remote_ask::REACH),
+                &crate::assets::ext::reach_of(&crate::dial::remote_ask::REACH),
             )
             .map(Some)
             .map_err(|(c, m)| (c.to_string(), m))

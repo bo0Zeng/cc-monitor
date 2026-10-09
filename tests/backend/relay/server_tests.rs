@@ -3,7 +3,7 @@
 
 use super::listen::{listen, serve, DOWNSTREAM_DEADLINE, INFLIGHT_CONNECTIONS, UPSTREAM_DEADLINE};
 use crate::accounts::upstream_select::{self as accounts, table::RoutingTable, Accounts};
-use crate::stream::listen::LOOPBACK;
+use crate::common::net::LOOPBACK;
 use comms_outward::test_support::http1::RequestHead;
 use comms_outward::test_support::server::*;
 use comms_outward::test_support::tee::RequestMark;

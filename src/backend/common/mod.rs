@@ -7,6 +7,8 @@
 
 pub(crate) mod contract;
 pub(crate) mod fs;
+/// 只听回环的那一个地址。① stream（常驻监听口）· relay（中转的宿主）· control（本机探口）都绑 / 连它 · ② `std::net` 的常量 · ③ 只认「回环」。
+pub mod net;
 /// 后端建自家目录的那一个函数。① 原生那一块（退出行为 · 资产目录 · skill 装记录 · 中转钥匙 · 常驻登记）与文件管理那一块（暂存区，
 /// `control/files_commit.rs`）都建这一层，两块之间零互相依赖（`files/module_boundary_guard.rs`）· ② unix 权限位那一句是 `std` 的扩展 trait ·
 /// ③ 只认「建一层目录、只给本人」。它写盘（建目录）：`readonly_guard` 第四层登记它（`common/own_dir.rs`）。

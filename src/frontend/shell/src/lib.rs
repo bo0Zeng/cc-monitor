@@ -541,6 +541,12 @@ pub fn run() {
         }
     });
 
+    // 本机能力（↗ · shell 方言 · ccm 缓存）：每个 webview 起页时注入 `window.__CCM_HOST__`，判定只住 `platform/host_facts.rs`。
+    builder = builder.plugin(
+        tauri::plugin::Builder::<tauri::Wry>::new("host-facts")
+            .js_init_script(crate::platform::host_facts::init_script())
+            .build(),
+    );
     // 页面重载（开发者工具刷新 · 窗口重建同一个 webview）：旧页面的订阅整份作废 —— 重载后编号从头来，
     //   没被重订到的旧订阅（尤其终端画面流：后端那张票占着一个 tmux 客户端）不留成孤儿。
     builder = builder.on_page_load(|webview, payload| {

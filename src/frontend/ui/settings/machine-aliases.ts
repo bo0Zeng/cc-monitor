@@ -37,7 +37,7 @@ import type { Origin } from "../generated/Origin";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { cfgRow, type CfgDot, type CfgRow } from "./cfg-row";
 import { homeShort } from "../kit/path";
-import { hostOs } from "./host-os";
+import { hostFacts } from "./host-os";
 import { copyText } from "../copy-table";
 import type { LocalCcmEntry } from "../generated/LocalCcmEntry";
 import { detailOf, sayFailure, sayWithDetail } from "../kit/detail";
@@ -51,9 +51,7 @@ const psName = (h: PsHost): string =>
  * **认不出就不猜**（`null`）：别名那一格明说「认不出这台的系统」、安装入口置灰（[`buildUnknownOsAliasBlock`]）。
  */
 export function localShell(): Shell | null {
-  const os = hostOs();
-  if (os === "unknown") return null;
-  return os === "windows" ? "powershell" : "posix";
+  return hostFacts().shellDialect;
 }
 
 /** 认不出本机系统时别名那一格：说清为什么没有，接入入口在、但置灰（出声不静默）。 */

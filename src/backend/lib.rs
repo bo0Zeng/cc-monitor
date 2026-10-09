@@ -75,7 +75,7 @@ mod runs_guard; // 子运行：通用层只认「运行」（扫描 ＋ 假适�
 #[path = "../../tests/backend/single_stream_guard.rs"]
 mod single_stream_guard; // K-P1 KPY8：多客户按连接各一份 —— 「源码里恰好一份、按连接实例化」那几处的触发器（整体 #[cfg(test)]）
 pub mod stderr_log; // 脱离常驻那条载体的 stderr 落进一份有上限、滚动的文件（宿主交 `CCM_BACKEND_STDERR_LOG` 才接；第四层自有状态，写口只从 main.rs 进）
-pub mod stream; // 进后端的口 ① 帧面 ＋ 跨机问答原语：wire · inbound · listen · remote_ask · tap
+pub mod stream; // 进后端的口 ① 帧面：wire · inbound · listen · tap
 
 /// Streaming wire-protocol major version, reported as `v` in the `Hello` frame.
 /// Bump ONLY on a breaking wire change; additive forward-compatible frame kinds

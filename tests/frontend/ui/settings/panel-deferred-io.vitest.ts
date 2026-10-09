@@ -112,8 +112,9 @@ vi.mock("@tauri-apps/api/window", () => ({ getCurrentWindow: () => ({ close: vi.
 void stubEl;
 
 import { SettingsPanel } from "../../../../src/frontend/ui/settings/panel";
-import { __setHostOsForTests } from "../../../../src/frontend/ui/settings/host-os";
+import { __setHostFactsForTests } from "../../../../src/frontend/ui/settings/host-os";
 import { __resetMachineContextForTests } from "../../../../src/frontend/ui/settings/machine-context";
+import { factsOn } from "../../../test-support/host-facts";
 
 /**
  * 登记表 ①：**落地页（机器）**这一趟该打的命令。
@@ -189,7 +190,7 @@ describe(" 判据 #3：非落地页零 I/O（第一刀 · 步 2）", () => {
     ipc.calls = [];
     document.body.replaceChildren();
     __resetMachineContextForTests();
-    __setHostOsForTests("windows");
+    __setHostFactsForTests(factsOn("windows"));
   });
 
   it("🔴 量具自检：录音机真的在录（落地页那一趟必须非空且逐字相等）", async () => {
@@ -312,7 +313,7 @@ describe("〔FIX2〕设置窗先开窗，再读一次配置派生外观 · 数�
     ipc.hold = {};
     document.body.replaceChildren();
     __resetMachineContextForTests();
-    __setHostOsForTests("windows");
+    __setHostFactsForTests(factsOn("windows"));
   });
 
   it("★ 配置没读回之前窗已开、三格控件 pending；读回之后恰好一发 load_config 填三格", async () => {

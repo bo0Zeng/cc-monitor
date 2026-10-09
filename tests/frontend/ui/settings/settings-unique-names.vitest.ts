@@ -47,9 +47,10 @@ vi.mock("@tauri-apps/api/event", () => ({ emit: vi.fn(), listen: vi.fn() }));
 vi.mock("@tauri-apps/api/window", () => ({ getCurrentWindow: () => ({ close: vi.fn() }) }));
 
 import { SettingsPanel } from "../../../../src/frontend/ui/settings/panel";
-import { __setHostOsForTests } from "../../../../src/frontend/ui/settings/host-os";
+import { __setHostFactsForTests } from "../../../../src/frontend/ui/settings/host-os";
 import { __resetMachineContextForTests } from "../../../../src/frontend/ui/settings/machine-context";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
+import { factsOn } from "../../../test-support/host-facts";
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
@@ -78,7 +79,7 @@ describe("：面板上没有重名的导航项 / 块标题", () => {
   beforeEach(() => {
     document.body.replaceChildren();
     __resetMachineContextForTests();
-    __setHostOsForTests("windows");
+    __setHostFactsForTests(factsOn("windows"));
     try {
       localStorage.clear();
     } catch {
