@@ -196,7 +196,7 @@ ring = "0.17"
 # `primefield` 那条钉（搬自 `../frontend/shell/Cargo.toml`，那一行随三行一起删了）：russh 的 ECDSA 走 p256/p521 0.14.0-rc.9，
 # 它们要 primefield 0.14.0-rc.9；cargo 默认会在 0.14.0-rc.* 里取最新的 rc.10（改了 ff trait 拆分，与 rc.9 的
 # p256/p521 不兼容 ⇒ `E0277 FieldElement: elliptic_curve::Field`）。本 crate **没有**声明它，靠的是 lock 里锁着的
-# `0.14.0-rc.9`（`K-P6b-r3-lock-prime.py` 播的种）—— 与下面 `crypto-bigint` 那段同一个处境：**重解析就会撞上**。
+# `0.14.0-rc.9`（从 monitor 那份 lock 播的种）—— 与下面 `crypto-bigint` 那段同一个处境：**重解析就会撞上**。
 #
 # ⚠⚠ **两条如实登记的代价，别读成「没问题」**：
 #   ① **`C18`「依赖树零 C」这条本 crate 早就不成立**（`rustls`/`ring` 08-25 就进来了，
@@ -220,7 +220,7 @@ ring = "0.17"
 # ⇒ **`cargo` 在解析这一步拒绝选它**（`=0.7.3` 硬钉也照拒），实打退 101。
 # `cargo` 只在**解析**时拒 yanked，不在「lock 里已经写着」时拒 ——
 # `../frontend/shell/Cargo.lock` 今天就锁着 `crypto-bigint 0.7.3`（在 yank 之前锁进去的），
-# monitor 侧因此断网构建得动。⇒ 本 crate 的 lock 由 `tests/evidence/K-P6b-r3-lock-prime.py`
+# monitor 侧因此断网构建得动。⇒ 本 crate 的 lock 是
 # 把 monitor 那份里 `russh` 可达的包块搬过来，处境与 monitor 侧对齐。
 # 🔴 **代价写明**：本 crate 从此也钉在一个 **yanked** 的 `crypto-bigint 0.7.3` 上
 # （与 monitor 侧同一份）。哪天 `russh` 升到能用 `0.7.5` 的版本，两侧一起挪。

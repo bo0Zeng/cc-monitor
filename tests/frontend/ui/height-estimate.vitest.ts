@@ -150,7 +150,7 @@ describe("applyIntrinsicSize(F39 复用的契约面)", () => {
     const v = el.style.getPropertyValue("contain-intrinsic-size");
     expect(v).toMatch(/^auto \d+px$/);
     // 🔴 这一条 2026-09-18 之前断的是 `>= 24`(`applyIntrinsicSize` 里那个 `Math.max(24, …)` 地板)。
-    //   地板已整个去掉(`99 条 75` /,读数 `tests/evidence/S22-floor-readings.md`):
+    //   地板已整个去掉(`99 条 75` /):
     //   它防的两件事都是空集(0 不可达、负值写不出来且浏览器自己会拒),而它让 13/83 张卡虚高,
     //   300 张细条卡的风暴里总高虚高 +20.5%/+23.8%。保险职责搬到判据层 ——
     //   秤 2 的 **F1**「每 class 估值最小值 ≥ 登记常数」会红,`Math.max` 只会静默抹平。

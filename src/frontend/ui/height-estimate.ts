@@ -6,7 +6,7 @@
  * 文本估高用 pretext（精确钉版 0.0.9：0.0.x 的折行语义可能不打招呼地变，常数是对着这一版标定的）：
  * prepare() 一次分词 ＋ canvas 测宽，layout() 纯算术出高度，不触 DOM。pretext 不可用（没有 canvas、字体未就绪）时退回字符宽度算术。
  * 宽度 / 字体常数镜像 styles.css 的 token（`--stream-max-width` / `--font-*`）。
- * 改这里任何一个常数都要跑 `npx vitest run tests/frontend/ui/scale2-height-truth.vitest.ts`（两个真引擎的金标准，逐 class 读数在 `tests/evidence/U-scale2-height-truth.md`）。
+ * 改这里任何一个常数都要跑 `npx vitest run tests/frontend/ui/scale2-height-truth.vitest.ts`（两个真引擎的金标准）。
  */
 import type { JsonlRecord } from "./generated/JsonlRecord";
 import { drawsCard } from "./speaker";

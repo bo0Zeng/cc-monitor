@@ -86,12 +86,11 @@ VERDICTS = (OUT_OF_TREE, IN_TREE_UNTRACKED, IN_TREE_TRACKED, UNRESOLVED)
 RED_VERDICTS = (IN_TREE_TRACKED, UNRESOLVED)
 
 # 计数自检（要件 3）：扫到的调用点少于这个数 ⇒ **遍历坏了**，不是「大家都改好了」。
-#   〔量于 09-14，本工作树 `track/k-r115`，`--census` 现打〕**11 处**。
-#   ⚠ 本件之前是 **12** 处 —— `kg3-c1-cuts.py::cmd_oldgate` 那一处还原跳改成
-#     `copyfile` ＋ `os.utime` 之后，`copy2` 少了一处 ⇒ 地板同拍从 12 拧到 11。
+#   〔`--census` 现打〕**3 处**：`K-R30-etxtbsy-window.py` · `S27-prove-offline.py` · `W24C-ccbus-twophase-ruler.py` 各一。
+#   ⚠ 11 → 3：不在执行链上的历史量具挪出仓，带走了另外 8 处（全是「树外」那一档）。
 #   ⚠ 真删掉一处要来改这个数，**并在这里写清删的是哪一处** —— 不写就没人分得开
 #     「有人修好了一处」与「遍历少扫了一份文件」。
-SITE_FLOOR = 11
+SITE_FLOOR = 3
 
 # ── 静态路径解析 ────────────────────────────────────────────────────────────
 # 三态：("temp", None) · ("path", 绝对路径字符串) · ("unknown", 为什么)

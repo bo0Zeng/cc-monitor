@@ -254,7 +254,7 @@ fn the_retry_budget_number_has_a_measured_origin_pinned_to_it() {
 /// ⚠ **形态表是枚举，不是全称**：表外的写法（自己 `clone(2)` · 换一个装 fd 的 crate ·
 /// 走 `nix`）**本条一个都看不见**。这条边界也写进失败文案，别读成「这一族已经封死」。
 /// 立本条时逐条现打过一趟：除 `pre_exec` 那 3 行注释外，表里其余六种**全树零命中**
-/// （分母 216 份 `.rs`，量具 `tests/evidence/K-R31-fork-exec-forms.py`）。
+/// （分母 216 份 `.rs`）。
 ///
 /// # 反向那半（没有它，本条会在空串上恒真地绿）
 ///

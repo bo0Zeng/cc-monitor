@@ -8,9 +8,7 @@
 //! ⇒ **那份脚本删了，这些读数没有被测对象了**。
 //!
 //! 删掉的 22 条判据与三张表（`REQUIRED_NEEDLES` / `LEDGER` / `BACKEND_BACKED_PATHS`、
-//! `measure` / `scan_t_targets` / `pin_t_def` 〔散文墓碑〕 / `BASELINE`）逐条判词住
-//! `tests/evidence/K-R48-356-verdicts.tsv` 的同族条目；它们守的**性质**去了哪里，逐条写在
-//! 件文件 `features/K-R48-…md` 的 `§8c`。
+//! `measure` / `scan_t_targets` / `pin_t_def` 〔散文墓碑〕 / `BASELINE`）当时逐条判过，它们守的**性质**由后端二进制自己的契约判据接着守。
 //!
 //! # 留下来的这 7 条为什么留
 //!
