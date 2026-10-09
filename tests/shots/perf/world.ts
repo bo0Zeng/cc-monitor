@@ -112,13 +112,19 @@ export function perfWorld(): World {
     const cwd = `/home/user/work/w${k}t${turns}-perf`;
     return session(n, origin, cwd, convo(n, cwd, turns, turns >= 200), { activity: k % 3 === 0 ? "working" : "idle" });
   });
-  // 整份扫的那几问记一份（同一问同一答）：假后端与产品同一条主线程，不记的话长会话每问都整份重扫，量进去的是假后端。
+  // 整份扫的那几问：造世界时（页面 DOMContentLoaded 之前）就按每个会话的路径各算一份，之后同一路径直接交 ——
+  // 假后端与产品同一条主线程，现算的话长会话每问都整份扫一遍，开窗那一段的长任务里一半是假后端（台架量的是产品）。
+  // 这几问的假实现本来就不看起点（一律从 0 交整份），按路径记不改答法。
   for (const op of ["history-index", "history-turns", "history-user-inputs", "history-facts"]) {
     const inner = w.ops[op];
     if (!inner) continue;
     const memo = new Map<string, unknown>();
+    for (const s of w.sessions) {
+      const path = `${s.cwd}/${s.sid}.jsonl`;
+      memo.set(path, inner(s.origin, { path }, w));
+    }
     w.ops[op] = (origin, req, world) => {
-      const key = `${origin}\u0000${JSON.stringify(req)}`;
+      const key = String(req.path);
       if (!memo.has(key)) memo.set(key, inner(origin, req, world));
       return memo.get(key);
     };
