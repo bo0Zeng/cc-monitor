@@ -13,7 +13,16 @@ function sessionByPath(w: World, path: unknown): SessionSpec | undefined {
 }
 
 /** 记录行的字节布局（骨架 / 大纲按偏移读）：每条一行 JSON。 */
+const layouts = new WeakMap<JsonlRecord[], { at: { o: number; n: number }[]; end: number }>();
 function layout(records: JsonlRecord[]): { at: { o: number; n: number }[]; end: number } {
+  // 记一份（同一个数组只量一次）：长会话每问都整份 stringify 一遍，假后端自己就占掉页里一大截主线程（性能台架量的是产品）。
+  const had = layouts.get(records);
+  if (had && had.at.length === records.length) return had;
+  const fresh = layoutOnce(records);
+  layouts.set(records, fresh);
+  return fresh;
+}
+function layoutOnce(records: JsonlRecord[]): { at: { o: number; n: number }[]; end: number } {
   let o = 0;
   const at = records.map((r) => {
     const n = JSON.stringify(r).length + 1;
@@ -163,15 +172,24 @@ export function defaultOps(): Record<string, OpHandler> {
       return { families: [{ family: "turn", names: [] }, ...(tasks.length ? [{ family: "task", names: tasks }] : [])] };
     },
     // 查看器整份读（按字节分页，这里一页交完）：历史页右边、只读查看器用它。
+    // 带 `until` ＝ 按字节取一段（骨架按偏移取正文）：照字节布局切 `[offset, until)` 那几条；不带 ＝ 从 `offset` 起到末尾。
     "history-page": (_o, req, w) => {
       const s = sessionByPath(w, req.path);
       const recs = s?.records ?? [];
       const path = String(req.path);
+      const { at, end } = layout(recs);
+      const off = Number(req.offset ?? 0);
+      const until = req.until === undefined ? end : Number(req.until);
+      let i0 = at.findIndex((a) => a.o >= off);
+      if (i0 < 0) i0 = recs.length;
+      let i1 = i0;
+      while (i1 < recs.length && at[i1].o < until) i1++;
+      const base = req.seq === undefined ? i0 : Number(req.seq);
       return {
-        lines: recs.map((message, i) => ({ session_id: s?.sid ?? "", path, seq: i, cwd: s?.cwd ?? null, message })),
-        next: Number(req.offset ?? 0) + 1,
-        nextSeq: recs.length,
-        eof: true,
+        lines: recs.slice(i0, i1).map((message, k) => ({ session_id: s?.sid ?? "", path, seq: base + k, cwd: s?.cwd ?? null, message })),
+        next: i1 < recs.length ? at[i1].o : end,
+        nextSeq: base + (i1 - i0),
+        eof: i1 >= recs.length || (i1 < recs.length && at[i1].o >= until),
       };
     },
     "history-lines": (_o, req, w) => {

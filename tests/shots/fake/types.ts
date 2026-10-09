@@ -86,6 +86,8 @@ export interface World {
   terminalLive?: "live" | "lost" | "offline";
   /** 场景故意不答的那几条（演「后端比界面老」）：答不上照样按「不认」拒，只是不报。 */
   quiet?: string[];
+  /** 重放时每个会话只交尾部这么多条（照真壳 `event_replay.rs::REPLAY_TAIL_KEEP`；更早的由骨架索引按偏移取）。不给 ⇒ 整份交。 */
+  replayTail?: number;
   /** Tauri 命令的答法（`load_config` 之类），按命令名；场景可以整条覆盖。 */
   commands: Record<string, (args: Record<string, unknown>, world: World) => unknown>;
 }

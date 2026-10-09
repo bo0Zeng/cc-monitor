@@ -11,6 +11,7 @@ import { KIT_SCENES } from "./kit";
 import { ACCT_SCENES } from "./acct";
 import { DRAWER_SCENES } from "./drawer";
 import { AGENT_SCENES } from "./agent";
+import { PERF_SCENES } from "../perf/scene";
 
 export interface Scene {
   id: string;
@@ -45,7 +46,8 @@ export const SCENES: Scene[] = [...MAIN_SCENES, ...PANEL_SCENES, ...FRONT_SCENES
 
 export function sceneById(id: string): Scene {
   return (
-    SCENES.find((s) => s.id === id) ?? {
+    // 性能台架那几个不进清单（不截图），只按名字认。
+    [...SCENES, ...PERF_SCENES].find((s) => s.id === id) ?? {
       id: "",
       page: "index",
       dir: "",
