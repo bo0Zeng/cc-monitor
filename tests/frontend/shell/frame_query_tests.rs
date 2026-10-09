@@ -171,6 +171,10 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     // 历史页的平铺清单（`src/frontend/ui/history-list-reads.ts`）：本机后端出成品（判活 · 每行能做什么 · 分组 · 搜标题），远端经它问那台。
     ("history-list", "新帧命令：一台的全部会话一次给（`history_list.rs`），界面问 `<local>`、远端带 `origin`；取代按项目逐个展开的那两问"),
     // 额度与轮换（`src/frontend/ui/quota-reads.ts`）：额度账 · 轮换都是那台后端账号域自己的状态，monitor 从没有过这几条命令。
+    ("plan-list", "新帧命令：这台的 pb 工作区与片（找 pb · 跑 pb dump 在后端）；计划页只排版"),
+    ("plan-read", "新帧命令：一个工作区的成品（接手 / 签收人对到会话 · 要你看四种 · 认可与退回的状态都在后端）；计划页只排版"),
+    ("plan-cell-view", "新帧命令：一格的 agent 视角（pb 原样那一段）；计划页详情折着的那一段只排版"),
+    ("plan-command", "新帧命令：以人的身份代敲 pb 的 continue · pause · view（退出码与 pb 那一句在后端认）；计划页开关与［整张图］只排版"),
     ("quota-read", "新帧命令：那台的额度账 ＋ 显示态（判在后端）；界面状态栏按钮 · 悬停卡 · 账号面板只排版"),
     ("rotation-rules-read", "新帧命令：那台的轮换规则表（默认指向哪条 · 每条谁在用 · 摘要与说明由后端写），面板来源下拉与设置里规则管理只排版"),
     ("rotation-plan", "新帧命令：一份轮换草稿逐格校验（封顶时段重叠 · 起止相同 · 时刻写错 · 越界），浮层只照它标红"),

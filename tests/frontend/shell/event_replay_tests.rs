@@ -1240,16 +1240,16 @@ async fn the_quota_stream_carries_ledger_and_rotation_changes_to_its_own_machine
     );
 }
 
-/// `plan-changed` 流：这台某个 pb 工作区的计划变了 ⇒ 体 `{"workspace", "rev", "needs"}`（`needs` 后端不给 ⇒ `null`）。
-/// 只有订了这台 `plan-changed` 的收；别台的 · 同台 `quota-changed` 的都不收。期望手写。
+/// 计划变了走 `quota-changed` 那一条流（「那台某样东西变了」不另开流）：体 `{"plan": {"workspace", "rev", "needs"}}`
+/// （`needs` 后端不给 ⇒ `null`）。只有订了这台 `quota-changed` 的收；别台的 · 同台别的流都不收。期望手写。
 #[tokio::test]
-async fn the_plan_stream_carries_the_workspace_and_rev_to_its_own_machine_only() {
+async fn a_plan_change_rides_the_quota_stream_to_its_own_machine_only() {
     let (r, rec) = hub();
     let box_a = crate::origin::Origin("box-a".into());
     let box_b = crate::origin::Origin("box-b".into());
-    r.subscribe("w", 1, &box_a, "plan-changed", None, 4);
-    r.subscribe("w", 2, &box_a, "quota-changed", None, 4);
-    r.subscribe("w", 3, &box_b, "plan-changed", None, 4);
+    r.subscribe("w", 1, &box_a, "quota-changed", None, 4);
+    r.subscribe("w", 2, &box_a, "session-tasks", None, 4);
+    r.subscribe("w", 3, &box_b, "quota-changed", None, 4);
     rec.clear();
     r.plan_changed(&box_a, "/work/ledger", "r1", Some(3));
     r.plan_changed(&box_a, "/work/site", "r2", None);
@@ -1268,8 +1268,14 @@ async fn the_plan_stream_carries_the_workspace_and_rev_to_its_own_machine_only()
     assert_eq!(
         got,
         vec![
-            (1, serde_json::json!({"workspace": "/work/ledger", "rev": "r1", "needs": 3})),
-            (1, serde_json::json!({"workspace": "/work/site", "rev": "r2", "needs": null}))
+            (
+                1,
+                serde_json::json!({"plan": {"workspace": "/work/ledger", "rev": "r1", "needs": 3}})
+            ),
+            (
+                1,
+                serde_json::json!({"plan": {"workspace": "/work/site", "rev": "r2", "needs": null}})
+            )
         ]
     );
 }

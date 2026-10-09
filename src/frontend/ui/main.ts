@@ -878,8 +878,6 @@ window.addEventListener("DOMContentLoaded", async () => {
     tasks: machines,
     // 每台一条 `quota-changed`（额度账 · 会话轮换变了）。
     quota: machines,
-    // 每台一条 `plan-changed`（那台的 pb 工作区计划变了）。
-    plan: machines,
   });
   // 账号那一格经通道订（每台一条 `accounts-changed`，上面 `bindEvents` 的 `accounts`）。
   //   订阅登记之前那一窗里连上的不会有 `seen`（句柄只在状态变时说）⇒ `bindEvents` 返回（订阅都登记好了）之后补刷一次 ——

@@ -4,7 +4,7 @@
  * 只排版：状态、原因、接手是谁都是后端给的成品；这里只做「按排期先后摆」「按过滤藏」「按标题找」「按时间排签收」。
  */
 import { copyText } from "../copy-table";
-import type { PlanBlock, PlanCell, PlanSign, PlanSlice, PlanWho } from "../plan-reads";
+import type { PlanBlock, PlanCell, PlanSign, PlanSlice } from "../plan-reads";
 
 /** 三种状态画哪一种（图标 · 颜色）：照后端给的码；认不出的状态当没做完画（字照出）。 */
 export type StatusLook = "done" | "open" | "dropped";
@@ -179,24 +179,7 @@ export function kindSlot(slice: PlanSlice, kind: string | null): number | null {
 /** 类颜色有几档（令牌 `--plan-kind-0` … `--plan-kind-6`）。 */
 export const KIND_COLORS = 7;
 
-/** pb 的 ISO 时刻 ⇒ 本机的「HH:MM」（今天）或「MM-DD HH:MM」。读不出 ⇒ 原样。 */
-export function shortTime(iso: string | null, now: Date = new Date()): string {
-  if (!iso) return "";
-  const ms = Date.parse(iso);
-  if (Number.isNaN(ms)) return iso;
-  const d = new Date(ms);
-  const p = (n: number): string => String(n).padStart(2, "0");
-  const hm = `${p(d.getHours())}:${p(d.getMinutes())}`;
-  const same = d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
-  return same ? hm : `${p(d.getMonth() + 1)}-${p(d.getDate())} ${hm}`;
-}
-
 /** 认不出那一位的 id 只露前后几位。 */
 export function shortId(id: string): string {
   return id.length <= 12 ? id : `${id.slice(0, 6)}…${id.slice(-4)}`;
-}
-
-/** 两个 who 是不是同一个会话（子 agent 按父会话算）。 */
-export function sameSession(a: PlanWho | null, b: PlanWho | null): boolean {
-  return a !== null && b !== null && a.sid !== null && a.sid === b.sid;
 }

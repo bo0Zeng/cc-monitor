@@ -10,12 +10,13 @@
 import { button } from "../kit/button";
 import { icon } from "../kit/icon";
 import { foldCaret } from "../kit/fold";
-import { toast } from "../kit/toast";
+import { toast, failToast } from "../kit/toast";
 import { copyText } from "../copy-table";
+import { writeClipboard } from "../clipboard";
 import { renderMarkdown } from "../render";
 import type { Origin } from "../ipc/origin";
 import { fetchCellView, PlanMiss, PLAN_EDGE_KINDS, type PlanCell, type PlanEdgeKind, type PlanRef, type PlanSlice, type PlanWho } from "../plan-reads";
-import { ancestry, blockRoots, cellIndex, kindSlot, shortTime, statusLook } from "./plan-model";
+import { ancestry, blockRoots, cellIndex, kindSlot, statusLook } from "./plan-model";
 import { phaseBadge, setKindColor, STATUS_ICON } from "./plan-bits";
 import s from "./plan-cell.module.css";
 
@@ -314,7 +315,7 @@ export class CellDetail {
       const h = document.createElement("div");
       h.className = s.cdSignHead;
       if (i === 0) h.appendChild(span(copyText("plan.sign.counts"), s.cdCounts));
-      h.appendChild(span(shortTime(g.at)));
+      h.appendChild(span(g.atText ?? ""));
       if (g.by) h.appendChild(this.host.who(g.by, true));
       const r = document.createElement("div");
       r.className = s.cdSignWhy;
@@ -385,7 +386,7 @@ export class CellDetail {
       icon: "copy",
       size: "compact",
       hint: copyText("plan.cell.copyId"),
-      onClick: () => void navigator.clipboard?.writeText(cell.id).then(() => toast(copyText("plan.cell.copied", { id: cell.id }), "")),
+      onClick: () => void writeClipboard(cell.id).then(() => toast(copyText("plan.cell.copied", { id: cell.id }), ""), (e: unknown) => failToast(copyText("detail.act.failed"), e, { level: "error" })),
     });
     row.append(span(copyText("plan.cell.idLine")), id, copy);
     return row;

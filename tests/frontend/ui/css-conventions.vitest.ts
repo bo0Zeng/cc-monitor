@@ -319,6 +319,8 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
     "终端页头上「仅快照」`this.snapTag`（`s.termTag`：不写 display）—— 那台能实时就收起",
   "src/frontend/ui/views/agent-window.ts::this.pill":
     "「↓ 新内容」那一枚 `this.pill`（kit 按钮，再挂 `sv.svPill`）—— 没有新内容时收起",
+  "src/frontend/ui/views/plan.ts::this.subEl":
+    "计划页子头 `this.subEl`（`s.pvSub`：display 只写在 `:not([hidden])` 上）—— 没选中片 / 那一片读不成又没读好过时收起",
   "src/frontend/ui/views/session-find.ts::this.box":
     "面板本体 `this.box`（`s.sfPanel`）—— 建时收起",
   "src/frontend/ui/views/session-find.ts::this.outline.panel":
@@ -506,6 +508,7 @@ const STATE_CLASS_UNRESOLVED: Readonly<Record<string, string>> = {
   "src/frontend/ui/views/history.ts · classList.add(s.hvViews)": "同上（「按时间 | 按项目」那一条分栏）",
   "src/frontend/ui/views/history.ts · classList.add(s.hvFilterBtn)": "同上（「筛选」按钮：窄档只剩图标）",
   "src/frontend/ui/views/history.ts · classList.add(s.hvToList)": "同上（窄档内容头左端的「← 列表」）",
+  "src/frontend/ui/views/plan.ts · classList.add(s.pvAuto)": "同上（计划页：给 kit 开关挂页头里的版位类「自动接着做」）",
   "src/frontend/ui/views/session-viewer.ts · classList.add(sv.svPill)": "「↓ 新内容」那颗 kit 按钮叠上自己的定位类（不是状态名；露 / 收由 `hidden` 管）",
   "src/frontend/ui/kit/split-button.ts · classList.add(s.splitMain)":
     "CSS Modules（`split-button.module.css`）：给拆分按钮的两半（kit 按钮）挂拼接用的版位类；哈希过的类名，不是状态名",

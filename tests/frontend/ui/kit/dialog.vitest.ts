@@ -165,6 +165,7 @@ const ASK_CALLERS = [
   "src/frontend/ui/tab-batch-menu.ts",
   "src/frontend/ui/tab-menu.ts",
   "src/frontend/ui/views/history.ts",
+  "src/frontend/ui/views/plan.ts",
 ];
 
 describe("D1b · 对话框的答案一律 await", () => {

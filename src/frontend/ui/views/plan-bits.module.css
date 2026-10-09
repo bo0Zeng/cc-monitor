@@ -1,5 +1,13 @@
-/* 计划页的小件：阶段 / 领域那一枚小框。 */
+/* 计划页的小件：阶段 / 领域那一枚小框 · 类色那几档（`data-kc` 由 `plan-bits.ts::setKindColor` 挂）。 */
 @layer components {
+  :where([data-kc="0"]) { --kc: var(--plan-kind-0); }
+  :where([data-kc="1"]) { --kc: var(--plan-kind-1); }
+  :where([data-kc="2"]) { --kc: var(--plan-kind-2); }
+  :where([data-kc="3"]) { --kc: var(--plan-kind-3); }
+  :where([data-kc="4"]) { --kc: var(--plan-kind-4); }
+  :where([data-kc="5"]) { --kc: var(--plan-kind-5); }
+  :where([data-kc="6"]) { --kc: var(--plan-kind-6); }
+
   .pbPhase {
     flex: none;
     padding: 0 var(--space-2);

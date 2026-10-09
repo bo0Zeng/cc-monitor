@@ -15401,6 +15401,36 @@
       "zh": "读计划超时 · {dur}",
       "args": ["dur"]
     },
+    "bePlan.face.shape": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "计划回包形状不对",
+      "args": []
+    },
+    "bePlan.command.timedOut": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "pb {verb} 超时 · {dur}",
+      "args": ["verb", "dur"]
+    },
+    "bePlan.command.exited": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "pb {verb} 失败 · 退出码 {rc}",
+      "args": ["verb", "rc"]
+    },
+    "bePlan.command.noPage": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "pb view 没给页面路径",
+      "args": []
+    },
+    "bePlan.command.noVerb": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "要更新 · 计划不可用\nplanned-build 缺 {verb}",
+      "args": ["verb"]
+    },
     "bePlan.dump.notRun": {
       "kind": "error",
       "role": "报错",
@@ -15464,7 +15494,7 @@
     "bePlan.review.noSuchNeed": {
       "kind": "error",
       "role": "报错",
-      "zh": "该条已不在要你看里 · 重读计划后再看",
+      "zh": "该条已不在需手动里 · 重读计划后再看",
       "args": []
     },
     "bePlan.review.notAckable": {
@@ -15488,7 +15518,7 @@
     "bePlan.return.waiting": {
       "kind": "error",
       "role": "原因格",
-      "zh": "会话在等你批准或回答 · 先去会话里答",
+      "zh": "会话在等批准或回答 · 先去会话里答",
       "args": []
     },
     "bePlan.return.ended": {
@@ -28146,7 +28176,7 @@
     "rsDataPaths.backend.planReview": {
       "kind": "body",
       "role": "说明",
-      "zh": "计划要你看里认可过的几条 · 退回过的格",
+      "zh": "计划需手动里认可过的几条 · 退回过的格",
       "args": []
     },
     "rsDataPaths.backend.lastSeen": {
@@ -28872,7 +28902,7 @@
     "plan.filter.needs": {
       "kind": "control",
       "role": "标签",
-      "zh": "要你看",
+      "zh": "需手动",
       "args": []
     },
         "plan.strip.offline": {

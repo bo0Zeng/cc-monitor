@@ -120,7 +120,8 @@ fn a_broken_slice_comes_out_as_name_domain_and_pbs_reason() {
     let sl = &m.doc["slices"][0];
     assert_eq!(sl["name"], "alpha");
     assert_eq!(sl["error"], "图.md 第 3 行：元行缺 id");
-    assert!(sl.get("cells").is_none());
+    assert_eq!(sl["bare"], true);
+    assert_eq!(sl["cells"], serde_json::json!([]));
     assert!(m.views.is_empty());
 }
 
@@ -150,12 +151,74 @@ fn every_pb_word_maps_to_its_code_and_strangers_to_null() {
     assert_eq!(status_code(Some("没做完")), Some("open"));
     assert_eq!(status_code(Some("不做了")), Some("dropped"));
     assert_eq!(status_code(Some("别的")), None);
-    assert_eq!(why_code(Some("等上一级收下")), serde_json::json!({"kind": "upper"}));
-    assert_eq!(why_code(Some("里面 0/3 做完了")), serde_json::json!({"kind": "inside", "done": 0, "of": 3}));
+    assert_eq!(
+        why_code(Some("等上一级收下")),
+        serde_json::json!({"kind": "upper"})
+    );
+    assert_eq!(
+        why_code(Some("里面 0/3 做完了")),
+        serde_json::json!({"kind": "inside", "done": 0, "of": 3})
+    );
     assert_eq!(why_code(Some("别的原因")), Value::Null);
     assert_eq!(why_code(None), Value::Null);
-    for (w, c) in [("在", "ok"), ("缺", "missing"), ("空", "empty"), ("坏", "broken")] {
+    for (w, c) in [
+        ("在", "ok"),
+        ("缺", "missing"),
+        ("空", "empty"),
+        ("坏", "broken"),
+    ] {
         assert_eq!(file_code(Some(w)), Some(c));
     }
     assert_eq!(file_code(Some("?")), None);
+}
+
+/// 会话头那一枚标要的反查表：会话 ⇒ 它接手的那一块（片 · 块 · 块根格标题 · 顶块不顶块 · 阶段 · 站在哪一格）。
+/// 自己接手的压过子 agent 替它接的（MAIN 自己接顶块，它的子 agent 接 B ⇒ MAIN 那一格是顶块）。
+#[test]
+fn by_session_maps_each_owner_session_to_its_block_preferring_its_own_claim() {
+    let m = made();
+    assert_eq!(
+        m.doc["bySession"],
+        serde_json::json!({
+            MAIN: {"slice": "alpha", "block": "project", "title": null, "top": true, "phase": "回看", "at": null, "atTitle": null, "via": "session"}
+        })
+    );
+    // 顶块没人接 ⇒ 子 agent 替 MAIN 接的那一块顶上来，站位换成标题。
+    let mut d = dump("/w");
+    d["slices"][0]["blocks"][0]["owner"] = Value::Null;
+    let m = make(&d, &who);
+    assert_eq!(
+        m.doc["bySession"][MAIN],
+        serde_json::json!({"slice": "alpha", "block": "B", "title": "甲功能", "top": false, "phase": "定架构", "at": "A1-2", "atTitle": "甲的写出", "via": "subagent"})
+    );
+    // 对不上的接手不进表。
+    let mut d = dump("/w");
+    d["slices"][0]["blocks"][0]["owner"] = json!(STRANGER);
+    d["slices"][0]["blocks"][1]["owner"] = json!(STRANGER);
+    assert_eq!(make(&d, &who).doc["bySession"], serde_json::json!({}));
+}
+
+/// 时刻由后端写成给人看的字（界面照抄）：签收的 ISO `at` · 读到的 `readAt` · 读不成以来的 `since` · 退回的 `at`（毫秒）旁边各添 `…Text`；
+/// 块的 `at`（站在哪一格的编号）不是时刻 ⇒ 不添。
+#[test]
+fn time_fields_get_their_text_beside_them_and_cell_ids_do_not() {
+    let now = 1_767_323_400_000_i64; // 2026-01-02T03:10:00Z
+    let mut v = serde_json::json!({
+        "readAt": now - 60_000,
+        "stale": {"said": "x", "since": now - 86_400_000},
+        "slices": [{
+            "blocks": [{"id": "B", "at": "A1-2"}],
+            "cells": [{"signs": [{"at": "2026-01-02T00:00:00Z"}], "returned": {"at": now - 3_600_000}}]
+        }]
+    });
+    with_time_texts(&mut v, now, 0);
+    assert_eq!(v["readAtText"], "03:09");
+    assert_eq!(v["stale"]["sinceText"], "01-01 03:10");
+    assert_eq!(v["slices"][0]["cells"][0]["signs"][0]["atText"], "00:00");
+    assert_eq!(v["slices"][0]["cells"][0]["returned"]["atText"], "02:10");
+    assert!(v["slices"][0]["blocks"][0].get("atText").is_none());
+    // 时区偏移照算（东八区）。
+    let mut w = serde_json::json!({"readAt": now});
+    with_time_texts(&mut w, now, 480);
+    assert_eq!(w["readAtText"], "11:10");
 }

@@ -23,6 +23,7 @@ import { askText } from "../kit/dialog";
 import { toast, failToast } from "../kit/toast";
 import { dispatcher } from "../keybindings/registry";
 import { copyText } from "../copy-table";
+import { writeClipboard } from "../clipboard";
 import { commands } from "../ipc/commands";
 import { LOCAL_ORIGIN, isRemoteOrigin, type Origin } from "../ipc/origin";
 import { LS_KEYS, safeGetJson, safeSetJson } from "../local-storage";
@@ -30,7 +31,7 @@ import type { Tab } from "../tab-model";
 import { dotOf, titleParts } from "../session-face";
 import { dotLabel } from "../session-words";
 import { fetchPlanList, fetchPlanRead, planCommand, PlanMiss, type PlanList, type PlanRead, type PlanSlice, type PlanWho } from "../plan-reads";
-import type { PlanMoved } from "../plan-stream";
+import type { PlanMoved } from "../quota-stream";
 import {
   blockRoots,
   cellIndex,
@@ -39,7 +40,6 @@ import {
   lastSign,
   outlineRows,
   shortId,
-  shortTime,
   signsNewestFirst,
   statusLook,
   topBlock,
@@ -317,7 +317,6 @@ export class PlanView {
     this.bodyEl.className = s.pvBody;
     this.searchInput = document.createElement("input");
     this.searchInput.type = "search";
-    this.searchInput.className = "plan-search";
     this.searchInput.placeholder = copyText("plan.page.search");
     this.searchInput.setAttribute("aria-label", copyText("plan.page.search"));
     this.searchInput.addEventListener("input", () => {
@@ -520,12 +519,12 @@ export class PlanView {
     const m = cur ? this.per.get(cur.origin) : undefined;
     if (cur && m?.state === "failed" && m.why.code === "offline" && m.prev) {
       const re = button({ label: copyText("plan.strip.reconnect"), size: "compact", onClick: () => this.reconnect(cur.origin) });
-      out.push(banner("warn", copyText("plan.strip.offline", { machine: cur.origin, time: m.at ? shortTime(new Date(m.at).toISOString()) : copyText("plan.page.none") }), [re]));
+      out.push(banner("warn", copyText("plan.strip.offline", { machine: cur.origin, time: this.currentDoc()?.readAtText ?? copyText("plan.page.none") }), [re]));
     }
     const doc = this.currentDoc();
     const slice = this.currentSlice();
-    if (doc?.stale) out.push(banner("error", joinSep(copyText("plan.strip.unreadable", { reason: doc.stale.said ?? "" }), copyText("plan.strip.stale", { time: shortTime(new Date(doc.stale.since).toISOString()) }))));
-    else if (slice?.stale) out.push(banner("error", joinSep(copyText("plan.strip.sliceUnreadable", { reason: slice.stale.said ?? "" }), copyText("plan.strip.stale", { time: shortTime(new Date(slice.stale.since).toISOString()) }))));
+    if (doc?.stale) out.push(banner("error", joinSep(copyText("plan.strip.unreadable", { reason: doc.stale.said ?? "" }), copyText("plan.strip.stale", { time: doc.stale.sinceText ?? "" }))));
+    else if (slice?.stale) out.push(banner("error", joinSep(copyText("plan.strip.sliceUnreadable", { reason: slice.stale.said ?? "" }), copyText("plan.strip.stale", { time: slice.stale.sinceText ?? "" }))));
     this.stripsEl.replaceChildren(...out);
   }
 
@@ -676,7 +675,7 @@ export class PlanView {
       }
     } else if (look === "done" && c.children.length === 0) {
       const g = lastSign(c);
-      if (g?.at) trail.appendChild(document.createTextNode(shortTime(g.at)));
+      if (g?.atText) trail.appendChild(document.createTextNode(g.atText));
     }
     if ((slice.needs ?? []).some((n) => n.cell === c.id)) {
       const d = document.createElement("span");
@@ -740,7 +739,7 @@ export class PlanView {
     }
     box.appendChild(h1);
     const doc = this.currentDoc();
-    if (doc) box.appendChild(text(copyText("plan.overview.readAt", { time: shortTime(new Date(doc.readAt).toISOString()) }), s.pvMeta));
+    if (doc?.readAtText) box.appendChild(text(copyText("plan.overview.readAt", { time: doc.readAtText }), s.pvMeta));
 
     // 块
     const blocks = slice.blocks.filter((b) => b.id !== "project");
@@ -796,7 +795,7 @@ export class PlanView {
       for (const it of signs.slice(0, 5)) {
         const row = document.createElement("div");
         row.className = s.pvSign;
-        const tm = text(shortTime(it.sign.at), s.pvSignTm);
+        const tm = text(it.sign.atText ?? "", s.pvSignTm);
         const body = document.createElement("div");
         body.className = s.pvSignBody;
         const tl = document.createElement("div");
@@ -840,7 +839,7 @@ export class PlanView {
       b.appendChild(txt);
       b.addEventListener("click", (ev) => {
         ev.stopPropagation();
-        void navigator.clipboard?.writeText(w.id).then(() => toast(copyText("plan.who.copied"), ""));
+        void writeClipboard(w.id).then(() => toast(copyText("plan.who.copied"), ""), (e: unknown) => failToast(copyText("detail.act.failed"), e, { level: "error" }));
       });
       return b;
     }

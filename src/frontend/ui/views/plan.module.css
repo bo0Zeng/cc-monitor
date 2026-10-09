@@ -155,7 +155,6 @@
   }
 
   .pvSub {
-    display: flex;
     flex: none;
     align-items: center;
     gap: var(--space-5);
@@ -167,6 +166,10 @@
     font-size: var(--font-size-small);
     white-space: nowrap;
   }
+  .pvSub:not([hidden]) {
+    display: flex;
+  }
+
 
   .pvSep {
     flex: none;

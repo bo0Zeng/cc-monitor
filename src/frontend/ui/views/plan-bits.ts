@@ -7,9 +7,9 @@ import s from "./plan-bits.module.css";
 
 export const STATUS_ICON: Record<StatusLook, IconName> = { done: "success", open: "ring", dropped: "prohibit" };
 
-/** 类色：第 i 档令牌（`--plan-kind-i`）；`null` ⇒ 不设（画淡色）。 */
+/** 类色：第 i 档（`data-kc` ⇒ `plan-bits.module.css` 把 `--kc` 指到令牌 `--plan-kind-i`）；`null` ⇒ 不设（画淡色）。 */
 export function setKindColor(el: HTMLElement, slot: number | null): void {
-  if (slot !== null) el.style.setProperty("--kc", `var(--plan-kind-${slot})`);
+  if (slot !== null) el.dataset.kc = String(slot);
 }
 
 /** 阶段 / 领域那一枚小框。 */

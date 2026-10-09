@@ -108,7 +108,34 @@ function build(cells: CellIn[]): Record<string, unknown>[] {
     owner: who(c.owner ?? null),
     refs: { title: [], body: refsIn(c.body ?? "", ids) },
     hasView: true,
+    signer: null,
+    returned: null,
   }));
+}
+
+/** 后端写时刻的那一遍（`plan/product.rs::with_time_texts`）在假后端里的样子：今天 `HH:MM`，别的日子 `MM-DD HH:MM`。 */
+function timeText(ms: number): string {
+  const d = new Date(ms);
+  const now = new Date();
+  const p = (n: number): string => String(n).padStart(2, "0");
+  const hm = `${p(d.getHours())}:${p(d.getMinutes())}`;
+  return d.toDateString() === now.toDateString() ? hm : `${p(d.getMonth() + 1)}-${p(d.getDate())} ${hm}`;
+}
+
+/** 出口那一遍：`readAt` · `since` · `at`（毫秒或 ISO）旁边添 `…Text`；块的 `at`（编号）不是时刻 ⇒ 不添。 */
+function withTexts(v: unknown): void {
+  if (Array.isArray(v)) {
+    v.forEach(withTexts);
+    return;
+  }
+  if (v === null || typeof v !== "object") return;
+  const o = v as Record<string, unknown>;
+  for (const x of Object.values(o)) withTexts(x);
+  for (const k of ["readAt", "since", "at"]) {
+    const x = o[k];
+    const ms = typeof x === "number" ? x : typeof x === "string" ? Date.parse(x) : NaN;
+    if (!Number.isNaN(ms)) o[`${k}Text`] = timeText(ms);
+  }
 }
 
 const today = (h: number, m: number): string => {
@@ -201,7 +228,7 @@ export function ledgerSlice(): Record<string, unknown> {
     check: { unreadable: [], red: [{ rule: "悬空", what: "A4-1 指着 A9", block: "D-3", fix: "改成一个在的编号" }], undecidable: [] },
     cells,
     archived: [{ id: "A5", title: "网页导入", kind: "能力", replacedBy: "A6" }],
-    needs: null,
+    needs: [],
   };
 }
 
@@ -231,7 +258,7 @@ function surveySlice(): Record<string, unknown> {
     check: { unreadable: [], red: [], undecidable: [] },
     cells,
     archived: [],
-    needs: null,
+    needs: [],
   };
 }
 
@@ -261,7 +288,7 @@ function siteSlice(): Record<string, unknown> {
     check: { unreadable: [], red: [], undecidable: [] },
     cells,
     archived: [],
-    needs: null,
+    needs: [],
   };
 }
 
@@ -270,7 +297,24 @@ export const SITE_WS = "/srv/src/site";
 
 /** 一个工作区的成品（`plan-read` 的回包）。 */
 function readOf(origin: string, slices: Record<string, unknown>[], auto: boolean): Record<string, unknown> {
-  return { pb: "0.2.0", workspace: origin === LOCAL ? LEDGER_WS : SITE_WS, repo: (slices[0] as { name: string }).name, auto, slices, rev: `rev-${origin}`, readAt: Date.now() - 60_000, stale: null };
+  for (const sl of slices) {
+    sl.bare = false;
+    sl.needCount = (sl.needs as { acked: boolean; kind: string }[]).filter((n) => !n.acked && n.kind !== "ask").length;
+  }
+  const doc: Record<string, unknown> = {
+    pb: "0.2.0",
+    workspace: origin === LOCAL ? LEDGER_WS : SITE_WS,
+    repo: (slices[0] as { name: string }).name,
+    auto,
+    slices,
+    bySession: {},
+    rev: `rev-${origin}`,
+    readAt: Date.now() - 60_000,
+    stale: null,
+    needCount: slices.reduce((n, sl) => n + (sl.needCount as number), 0),
+  };
+  withTexts(doc);
+  return doc;
 }
 
 export interface PlanWorldOpts {
@@ -291,13 +335,13 @@ export interface PlanWorldOpts {
 export function planOps(o: PlanWorldOpts = {}): Record<string, OpHandler> {
   const ledger = (): Record<string, unknown> => {
     const sl = ledgerSlice();
-    if (o.sliceStale) sl.stale = { said: "图.md 第 142 行：元行缺 kind", since: Date.now() - 5 * 60_000 };
+    if (o.sliceStale) sl.stale = { said: "图.md 第 142 行：元行缺 kind", raw: null, since: Date.now() - 5 * 60_000 };
     return sl;
   };
   let auto = false;
   let devboxAsked = 0;
   const reads = (origin: string): Record<string, unknown> => (origin === LOCAL ? readOf(LOCAL, [ledger(), surveySlice()], auto) : readOf(origin, [siteSlice()], false));
-  const summary = (sl: Record<string, unknown>): Record<string, unknown> => ({ name: sl.name, domain: sl.domain, current: sl.current, progress: sl.progress, error: sl.error, stale: sl.stale });
+  const summary = (sl: Record<string, unknown>): Record<string, unknown> => ({ name: sl.name, domain: sl.domain, current: sl.current, progress: sl.progress, needCount: sl.needCount, error: sl.error, stale: sl.stale });
   return {
     "plan-list": (origin) => {
       if (o.pb === "missing") return { pb: { state: "missing", said: "未装 planned-build" }, workspaces: [] };
@@ -306,7 +350,7 @@ export function planOps(o: PlanWorldOpts = {}): Record<string, OpHandler> {
       if (origin === "devbox" && o.devboxDown && ++devboxAsked > 1) throw { err: { Hop: { idx: 0, tag: "open", reach: "NotSent", why: "Unreachable" } }, body: [] };
       if (origin !== LOCAL && origin !== "devbox") return { pb: { state: "ok", said: null }, workspaces: [] };
       const r = reads(origin);
-      return { pb: { state: "ok", said: null }, workspaces: [{ workspace: r.workspace, repo: r.repo, auto: r.auto, rev: r.rev, stale: null, slices: (r.slices as Record<string, unknown>[]).map(summary) }] };
+      return { pb: { state: "ok", said: null }, workspaces: [{ workspace: r.workspace, repo: r.repo, auto: r.auto, rev: r.rev, stale: null, needCount: r.needCount, bySession: r.bySession, slices: (r.slices as Record<string, unknown>[]).map(summary) }] };
     },
     "plan-read": (origin) => reads(origin),
     "plan-cell-view": (_origin, req) => {

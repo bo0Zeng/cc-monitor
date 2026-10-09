@@ -7,178 +7,75 @@
 import { chan, ChanError } from "../../comms/inward/chan";
 import { budgetWithin, jsonBody, readJson, refusalOf } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
+import type { PlanArchived } from "./generated/PlanArchived";
+import type { PlanBlock } from "./generated/PlanBlock";
+import type { PlanCell } from "./generated/PlanCell";
+import type { PlanCheck } from "./generated/PlanCheck";
+import type { PlanCmdReply } from "./generated/PlanCmdReply";
+import type { PlanEdgeWords } from "./generated/PlanEdgeWords";
+import type { PlanEdges } from "./generated/PlanEdges";
+import type { PlanFile } from "./generated/PlanFile";
+import type { PlanKind } from "./generated/PlanKind";
+import type { PlanList } from "./generated/PlanList";
+import type { PlanListSlice } from "./generated/PlanListSlice";
+import type { PlanListWorkspace } from "./generated/PlanListWorkspace";
+import type { PlanNeed } from "./generated/PlanNeed";
+import type { PlanPb } from "./generated/PlanPb";
+import type { PlanPhase } from "./generated/PlanPhase";
+import type { PlanProgress } from "./generated/PlanProgress";
+import type { PlanRead } from "./generated/PlanRead";
+import type { PlanRed } from "./generated/PlanRed";
+import type { PlanRef } from "./generated/PlanRef";
+import type { PlanRefs } from "./generated/PlanRefs";
+import type { PlanReturned } from "./generated/PlanReturned";
+import type { PlanReturnedChild } from "./generated/PlanReturnedChild";
+import type { PlanSessionBlock } from "./generated/PlanSessionBlock";
+import type { PlanSign } from "./generated/PlanSign";
+import type { PlanSlice } from "./generated/PlanSlice";
+import type { PlanStale } from "./generated/PlanStale";
+import type { PlanUndecidable } from "./generated/PlanUndecidable";
+import type { PlanWho } from "./generated/PlanWho";
+import type { PlanWhyCode } from "./generated/PlanWhyCode";
 
-/** 起一次 pb（研究盘 252 格 1.1 秒）＋ 回程；远端再加一段。 */
-const READ_BUDGET_MS = 20_000;
+/** 起一次 pb（研究盘 252 格 1.1 秒；后端给 pb 的期限 20 秒）＋ 回程；远端再加一段。 */
+const READ_BUDGET_MS = 25_000;
 
-/** 一个 id（块的接手 · 签收的「由」· 在长它的）对到的会话。 */
-export interface PlanWho {
-  id: string;
-  kind: "session" | "subagent" | "unknown";
-  /** 主会话 ⇒ 它自己；子 agent ⇒ 父会话；认不出 ⇒ `null`。 */
-  sid: string | null;
-  alive: boolean;
-  activity: "working" | "needs_you" | "idle" | null;
-  needs: string | null;
-}
+// 线上形状由后端 `plan/wire.rs` 经 ts-rs 生成（不手写）；这里只按它收、再交给画的那几处。
+export type {
+  PlanArchived,
+  PlanBlock,
+  PlanCell,
+  PlanCheck,
+  PlanCmdReply,
+  PlanEdgeWords,
+  PlanEdges,
+  PlanFile,
+  PlanKind,
+  PlanList,
+  PlanListSlice,
+  PlanListWorkspace,
+  PlanNeed,
+  PlanPb,
+  PlanPhase,
+  PlanProgress,
+  PlanRead,
+  PlanRed,
+  PlanRef,
+  PlanRefs,
+  PlanReturned,
+  PlanReturnedChild,
+  PlanSessionBlock,
+  PlanSign,
+  PlanSlice,
+  PlanStale,
+  PlanUndecidable,
+  PlanWho,
+  PlanWhyCode,
+};
 
-export interface PlanFile {
-  path: string;
-  /** pb 的四种：在 · 缺 · 空 · 坏。 */
-  state: string | null;
-  /** 对账的码（后端从 pb 原话翻好）；认不出 ⇒ `null`。 */
-  stateCode: "ok" | "missing" | "empty" | "broken" | null;
-  note: string | null;
-  /** 同一份文件还挂在哪几格（编号）。 */
-  alsoBy: string[];
-}
-
-export interface PlanSign {
-  at: string | null;
-  by: PlanWho | null;
-  reason: string | null;
-  refs: PlanRef[];
-}
-
-/** 话里提到的格：`[start, end)` 按字数，`ids` 是那几格（简写已展开）。 */
-export interface PlanRef {
-  start: number;
-  end: number;
-  ids: string[];
-}
-
-export type PlanEdgeKind = "to" | "with" | "after" | "replaces";
+/** 四种边的名字（`PlanEdges` 的键，界面按这个次序排）。 */
+export type PlanEdgeKind = keyof PlanEdges;
 export const PLAN_EDGE_KINDS: readonly PlanEdgeKind[] = ["to", "with", "after", "replaces"];
-
-export interface PlanCell {
-  id: string;
-  title: string | null;
-  kind: string | null;
-  body: string | null;
-  parent: string | null;
-  children: string[];
-  edges: Record<PlanEdgeKind, string[]>;
-  pointedBy: Record<PlanEdgeKind, string[]>;
-  files: PlanFile[];
-  /** pb 的三种：做完了 · 没做完 · 不做了。 */
-  status: string | null;
-  /** 状态的码（后端从 pb 原话翻好）；pb 给了别的字 ⇒ `null`。 */
-  statusCode: "done" | "open" | "dropped" | null;
-  /** 没做完时的原因（pb 原话）。 */
-  why: string | null;
-  signs: PlanSign[];
-  owner: PlanWho | null;
-  refs: { title: PlanRef[]; body: PlanRef[] };
-  hasView: boolean;
-  /** 没做完时原因的结构化那一份（后端从 pb 的原话拆好）；后端没给 ⇒ `null`，界面照出 `why` 原话。 */
-  whyCode: PlanWhyCode | null;
-}
-
-/** 没做完的三种原因：没签 · 里面 d/m 做完了 · 等上一级收下。 */
-export type PlanWhyCode = { kind: "nosign" } | { kind: "inside"; done: number; of: number } | { kind: "upper" };
-
-/** 要你看的一条（后端判的四种）。 */
-export interface PlanNeed {
-  key: string;
-  kind: string;
-  cell: string | null;
-  block: string | null;
-  acked: boolean;
-}
-
-export interface PlanBlock {
-  id: string;
-  cells: string[];
-  dir: string | null;
-  owner: PlanWho | null;
-  phase: string | null;
-  /** 站在哪一格（编号）。 */
-  at: string | null;
-  row: boolean;
-}
-
-export interface PlanKind {
-  name: string | null;
-  edgeWords: Record<PlanEdgeKind, string | null>;
-}
-
-export interface PlanPhase {
-  name: string | null;
-  does: string | null;
-  marks: string[];
-}
-
-export interface PlanRed {
-  rule: string | null;
-  what: string | null;
-  block: string | null;
-  fix: string | null;
-}
-
-export interface PlanProgress {
-  done: number;
-  open: number;
-  dropped: number;
-}
-
-/** 一片。读不成且没读好过 ⇒ 只有头几格（`error` 有字，`cells` 等为 `null`）。 */
-export interface PlanSlice {
-  name: string;
-  domain: string | null;
-  current: boolean;
-  /** 这一刻读不成的那一句（pb 原样）。 */
-  error: string | null;
-  /** 这一刻读不成、给的是上一次那一份 ⇒ 那一句与那一份读到的时刻。 */
-  stale: { said: string | null; since: number } | null;
-  kinds: PlanKind[];
-  phases: PlanPhase[];
-  done: boolean;
-  top: string[];
-  progress: PlanProgress | null;
-  blocks: PlanBlock[];
-  check: { red: PlanRed[]; undecidable: { rule: string | null; why: string | null }[] };
-  cells: PlanCell[];
-  archived: { id: string; title: string | null; kind: string | null; replacedBy: string | null }[];
-  /** 读不成又没读好过（只有头几格）。 */
-  bare: boolean;
-  /** 要你看的几条；后端还不判 ⇒ `null`（过滤「要你看」那一枚不出）。 */
-  needs: PlanNeed[] | null;
-}
-
-export interface PlanRead {
-  pb: string | null;
-  workspace: string;
-  repo: string | null;
-  auto: boolean;
-  slices: PlanSlice[];
-  rev: string;
-  readAt: number;
-  /** 整次读不成、给的是上一次那一份。 */
-  stale: { said: string | null; since: number } | null;
-}
-
-export interface PlanListSlice {
-  name: string;
-  domain: string | null;
-  current: boolean;
-  progress: PlanProgress | null;
-  error: string | null;
-  stale: { said: string | null; since: number } | null;
-}
-
-export interface PlanListWorkspace {
-  workspace: string;
-  repo: string | null;
-  auto: boolean;
-  rev: string;
-  slices: PlanListSlice[];
-}
-
-export interface PlanList {
-  /** pb 装没装、认不认得它的输出。 */
-  pb: { state: "ok" | "missing" | "unsupported"; said: string | null };
-  workspaces: PlanListWorkspace[];
-}
 
 /** 读不成的几种（后端的码）。 */
 export type PlanMissCode = "no_pb" | "not_workspace" | "pb_unsupported" | "failed" | "no_view" | "offline" | "backend_old" | "other";
@@ -211,6 +108,11 @@ function str(v: unknown, what: string): string {
   return typeof v === "string" ? v : bad(`${what} is not a string`);
 }
 
+/** 后端没写这一格（`?:` 那几格）⇒ `undefined`。 */
+function strOpt(v: unknown, what: string): string | undefined {
+  return v === null || v === undefined ? undefined : str(v, what);
+}
+
 function strOrNull(v: unknown, what: string): string | null {
   if (v === null || v === undefined) return null;
   return str(v, what);
@@ -228,10 +130,54 @@ function strs(v: unknown, what: string): string[] {
   return arr(v, what).map((x, i) => str(x, `${what}[${i}]`));
 }
 
-function staleOf(v: unknown, what: string): { said: string | null; since: number } | null {
+function staleOf(v: unknown, what: string): PlanStale | null {
   if (v === null || v === undefined) return null;
   const o = obj(v, what);
-  return { said: strOrNull(o.said, `${what}.said`), since: num(o.since, `${what}.since`) };
+  return { said: strOrNull(o.said, `${what}.said`), raw: strOrNull(o.raw, `${what}.raw`), since: num(o.since, `${what}.since`), sinceText: strOpt(o.sinceText, `${what}.sinceText`) };
+}
+
+/** 缺 / `null` ⇒ 0（老后端不给数）。 */
+function count(v: unknown, what: string): number {
+  return v === null || v === undefined ? 0 : num(v, what);
+}
+
+function bySessionOf(v: unknown, what: string): Record<string, PlanSessionBlock> {
+  if (v === null || v === undefined) return {};
+  const o = obj(v, what);
+  const out: Record<string, PlanSessionBlock> = {};
+  for (const [sid, e] of Object.entries(o)) {
+    const x = obj(e, `${what}.${sid}`);
+    const via = str(x.via, `${what}.${sid}.via`);
+    if (via !== "session" && via !== "subagent") bad(`${what}.${sid}.via ${via}`);
+    out[sid] = {
+      slice: str(x.slice, `${what}.${sid}.slice`),
+      block: str(x.block, `${what}.${sid}.block`),
+      title: strOrNull(x.title, `${what}.${sid}.title`),
+      top: bool(x.top, `${what}.${sid}.top`),
+      phase: strOrNull(x.phase, `${what}.${sid}.phase`),
+      at: strOrNull(x.at, `${what}.${sid}.at`),
+      atTitle: strOrNull(x.atTitle, `${what}.${sid}.atTitle`),
+      via,
+    };
+  }
+  return out;
+}
+
+const RETURNED_STATES = new Set(["returned", "unsure", "landed"]);
+const LANDED_BY = new Set(["child", "body"]);
+
+function returnedOf(v: unknown, what: string): PlanReturned | null {
+  if (v === null || v === undefined) return null;
+  const o = obj(v, what);
+  const child = o.child === null || o.child === undefined ? null : obj(o.child, `${what}.child`);
+  return {
+    at: num(o.at, `${what}.at`),
+    atText: strOpt(o.atText, `${what}.atText`),
+    to: decodeWho(o.to, `${what}.to`),
+    state: oneOf(o.state, RETURNED_STATES, `${what}.state`) as PlanReturned["state"],
+    by: oneOf(o.by, LANDED_BY, `${what}.by`) as PlanReturned["by"],
+    child: child && { id: str(child.id, `${what}.child.id`), title: strOrNull(child.title, `${what}.child.title`) },
+  };
 }
 
 function progressOf(v: unknown, what: string): PlanProgress | null {
@@ -273,6 +219,7 @@ function edgesOf(v: unknown, what: string): Record<PlanEdgeKind, string[]> {
 }
 
 const STATUS_CODES = new Set(["done", "open", "dropped"]);
+const NEED_KINDS = new Set(["top", "red", "ended", "ask"]);
 const FILE_CODES = new Set(["ok", "missing", "empty", "broken"]);
 
 /** 一个码：缺 / `null` ⇒ `null`；不在闭集里 ⇒ 抛。 */
@@ -311,6 +258,7 @@ function cellOf(v: unknown, what: string): PlanCell {
       const x = obj(g, `${what}.signs[${i}]`);
       return {
         at: strOrNull(x.at, `${what}.signs[${i}].at`),
+        atText: strOpt(x.atText, `${what}.signs[${i}].atText`),
         by: decodeWho(x.by, `${what}.signs[${i}].by`),
         reason: strOrNull(x.reason, `${what}.signs[${i}].reason`),
         refs: refsOf(x.refs, `${what}.signs[${i}].refs`),
@@ -320,6 +268,8 @@ function cellOf(v: unknown, what: string): PlanCell {
     refs: { title: refsOf(refs.title, `${what}.refs.title`), body: refsOf(refs.body, `${what}.refs.body`) },
     hasView: bool(o.hasView, `${what}.hasView`),
     whyCode: whyCodeOf(o.whyCode, `${what}.whyCode`),
+    signer: decodeWho(o.signer, `${what}.signer`),
+    returned: returnedOf(o.returned, `${what}.returned`),
   };
 }
 
@@ -332,15 +282,16 @@ function whyCodeOf(v: unknown, what: string): PlanWhyCode | null {
   return bad(`${what}.kind ${kind}`);
 }
 
-function needsOf(v: unknown, what: string): PlanNeed[] | null {
-  if (v === null || v === undefined) return null;
+function needsOf(v: unknown, what: string): PlanNeed[] {
   return arr(v, what).map((n, i) => {
     const x = obj(n, `${what}[${i}]`);
     return {
       key: str(x.key, `${what}[${i}].key`),
-      kind: str(x.kind, `${what}[${i}].kind`),
+      kind: oneOf(x.kind, NEED_KINDS, `${what}[${i}].kind`) as PlanNeed["kind"],
       cell: strOrNull(x.cell, `${what}[${i}].cell`),
       block: strOrNull(x.block, `${what}[${i}].block`),
+      sid: strOrNull(x.sid, `${what}[${i}].sid`),
+      red: x.red === null || x.red === undefined ? undefined : num(x.red, `${what}[${i}].red`),
       acked: bool(x.acked, `${what}[${i}].acked`),
     };
   });
@@ -355,10 +306,8 @@ export function decodeSlice(v: unknown, what: string): PlanSlice {
     error: strOrNull(o.error, `${what}.error`),
     stale: staleOf(o.stale, `${what}.stale`),
   };
-  if (!("cells" in o)) {
-    if (head.error === null) bad(`${what} has neither cells nor error`);
-    return { ...head, kinds: [], phases: [], done: false, top: [], progress: null, blocks: [], check: { red: [], undecidable: [] }, cells: [], archived: [], bare: true, needs: null };
-  }
+  const bare = bool(o.bare, `${what}.bare`);
+  if (bare && head.error === null) bad(`${what} is bare without an error`);
   const check = obj(o.check, `${what}.check`);
   return {
     ...head,
@@ -395,6 +344,7 @@ export function decodeSlice(v: unknown, what: string): PlanSlice {
       };
     }),
     check: {
+      unreadable: arr(check.unreadable, `${what}.check.unreadable`),
       red: arr(check.red, `${what}.check.red`).map((r, i) => {
         const x = obj(r, `${what}.check.red[${i}]`);
         return { rule: strOrNull(x.rule, "red.rule"), what: strOrNull(x.what, "red.what"), block: strOrNull(x.block, "red.block"), fix: strOrNull(x.fix, "red.fix") };
@@ -409,8 +359,9 @@ export function decodeSlice(v: unknown, what: string): PlanSlice {
       const x = obj(a, `${what}.archived[${i}]`);
       return { id: str(x.id, "archived.id"), title: strOrNull(x.title, "archived.title"), kind: strOrNull(x.kind, "archived.kind"), replacedBy: strOrNull(x.replacedBy, "archived.replacedBy") };
     }),
-    bare: false,
+    bare,
     needs: needsOf(o.needs, `${what}.needs`),
+    needCount: count(o.needCount, `${what}.needCount`),
   };
 }
 
@@ -425,7 +376,10 @@ export function decodePlanRead(v: unknown): PlanRead {
     slices: arr(o.slices, "slices").map((s, i) => decodeSlice(s, `slices[${i}]`)),
     rev: str(o.rev, "rev"),
     readAt: num(o.readAt, "readAt"),
+    readAtText: strOpt(o.readAtText, "readAtText"),
     stale: staleOf(o.stale, "stale"),
+    needCount: count(o.needCount, "needCount"),
+    bySession: bySessionOf(o.bySession, "bySession"),
   };
 }
 
@@ -438,7 +392,7 @@ export function decodePlanList(v: unknown): PlanList {
   const state = str(pb.state, "pb.state");
   if (!PB_STATES.has(state)) bad(`pb.state ${state}`);
   return {
-    pb: { state: state as PlanList["pb"]["state"], said: strOrNull(pb.said, "pb.said") },
+    pb: { state: state as PlanList["pb"]["state"], said: strOrNull(pb.said, "pb.said"), version: strOpt(pb.version, "pb.version") },
     workspaces: arr(o.workspaces, "workspaces").map((w, i) => {
       const x = obj(w, `workspaces[${i}]`);
       return {
@@ -446,6 +400,9 @@ export function decodePlanList(v: unknown): PlanList {
         repo: strOrNull(x.repo, `workspaces[${i}].repo`),
         auto: bool(x.auto, `workspaces[${i}].auto`),
         rev: str(x.rev, `workspaces[${i}].rev`),
+        stale: staleOf(x.stale, `workspaces[${i}].stale`),
+        needCount: count(x.needCount, `workspaces[${i}].needCount`),
+        bySession: bySessionOf(x.bySession, `workspaces[${i}].bySession`),
         slices: arr(x.slices, `workspaces[${i}].slices`).map((s, j) => {
           const y = obj(s, `workspaces[${i}].slices[${j}]`);
           const at = `workspaces[${i}].slices[${j}]`;
@@ -456,6 +413,7 @@ export function decodePlanList(v: unknown): PlanList {
             progress: progressOf(y.progress, `${at}.progress`),
             error: strOrNull(y.error, `${at}.error`),
             stale: staleOf(y.stale, `${at}.stale`),
+            needCount: count(y.needCount, `${at}.needCount`),
           };
         }),
       };
@@ -467,11 +425,10 @@ export function decodePlanList(v: unknown): PlanList {
 
 const MISS_CODES = new Set<PlanMissCode>(["no_pb", "not_workspace", "pb_unsupported", "failed", "no_view"]);
 
-/** 拒绝 ⇒ `PlanMiss`（码 ＋ 后端那一句）；连不上 ⇒ `offline`。 */
-async function ask(origin: Origin, cmd: string, args: Record<string, unknown>): Promise<unknown> {
+/** 拒绝 ⇒ `PlanMiss`（码 ＋ 后端那一句）；连不上 ⇒ `offline`。每一问各写一处 `chan.call`，操作名是字面量（通信层判据按字面量认是哪条帧命令）。 */
+async function settle(call: Promise<Uint8Array>): Promise<unknown> {
   try {
-    const body = await chan.call(origin, cmd, jsonBody(args), budgetWithin(READ_BUDGET_MS));
-    return readJson(body);
+    return readJson(await call);
   } catch (e) {
     if (e instanceof ChanError) {
       const err = e.error;
@@ -488,32 +445,33 @@ async function ask(origin: Origin, cmd: string, args: Record<string, unknown>): 
 
 /** 这台的工作区与片（`fresh` ＝ 认过的目录也重问 pb）。 */
 export async function fetchPlanList(origin: Origin, fresh: boolean, dirs: readonly string[] = []): Promise<PlanList> {
-  return decodePlanList(await ask(origin, "plan-list", dirs.length > 0 ? { fresh, dirs } : { fresh }));
+  const body = jsonBody(dirs.length > 0 ? { fresh, dirs } : { fresh });
+  const budget = budgetWithin(READ_BUDGET_MS);
+  return decodePlanList(await settle(chan.call(origin, "plan-list", body, budget)));
 }
 
 /** 一个工作区的成品。 */
 export async function fetchPlanRead(origin: Origin, workspace: string): Promise<PlanRead> {
-  return decodePlanRead(await ask(origin, "plan-read", { workspace }));
+  const body = jsonBody({ workspace });
+  const budget = budgetWithin(READ_BUDGET_MS);
+  return decodePlanRead(await settle(chan.call(origin, "plan-read", body, budget)));
 }
 
 /** 一格的 agent 视角（pb 原样那一段）。 */
 export async function fetchCellView(origin: Origin, workspace: string, slice: string, id: string): Promise<string> {
-  const o = obj(await ask(origin, "plan-cell-view", { workspace, slice, id }), "reply");
+  const body = jsonBody({ workspace, slice, id });
+  const budget = budgetWithin(READ_BUDGET_MS);
+  const o = obj(await settle(chan.call(origin, "plan-cell-view", body, budget)), "reply");
   return str(o.view, "view");
 }
 
 /** 以人的身份代敲的三条用户命令。 */
 export type PlanCmd = "continue" | "pause" | "view";
 
-/** `plan-command` 的回包：pb 的退出码 · 那一句（stderr 第一句）· `view` 给的 html 路径。 */
-export interface PlanCmdReply {
-  rc: number;
-  said: string | null;
-  path: string | null;
-}
-
 /** 代敲一条用户命令（pb 拒 ⇒ 后端回拒绝，`PlanMiss` 带 pb 那一句）。 */
 export async function planCommand(origin: Origin, workspace: string, cmd: PlanCmd): Promise<PlanCmdReply> {
-  const o = obj(await ask(origin, "plan-command", { workspace, cmd }), "reply");
+  const body = jsonBody({ workspace, cmd });
+  const budget = budgetWithin(READ_BUDGET_MS);
+  const o = obj(await settle(chan.call(origin, "plan-command", body, budget)), "reply");
   return { rc: num(o.rc, "rc"), said: strOrNull(o.said, "said"), path: strOrNull(o.path, "path") };
 }

@@ -1,4 +1,5 @@
 //! 命令表 · 计划：读面 `plan-list` · `plan-read` · `plan-cell-view`（planned-build 的工作区 · 片 · 一格的 agent 视角；只读）；
+//! 代敲 `plan-command`（以人的身份跑 pb 的 `continue` · `pause` · `view`；写盘的是 pb）；
 //! 审面 `plan-ack` · `plan-unack` · `plan-return`（认可与退回记在后端自己的 `~/.cc-monitor/plan-review.json`，计划仓一个字节不写）。
 
 use crate::stream::inbound::spec::{arg, out, CommandSpec, Run};
@@ -9,7 +10,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "plan-list",
         summary: "这台的 pb 工作区与片（目录 ＝ 活会话的工作目录 ∪ `dirs`，pb 自己往上找工作区）",
         codes: &["bad_args"],
-        fields: &[arg("dirs", "可选：另要问的目录（串的数组）"), arg("fresh", "可选布尔：`true` ⇒ 认过的目录也重问"), out("pb", "`{state: ok|missing|unsupported, said, version}`：pb 装没装、认不认得它的输出"), out("workspaces", "每个工作区一格 `{workspace, repo, auto, rev, stale, needCount, slices: [{name, domain, current, progress, needCount, error, stale}]}`")],
+        fields: &[arg("dirs", "可选：另要问的目录（串的数组）"), arg("fresh", "可选布尔：`true` ⇒ 认过的目录也重问"), out("pb", "`{state: ok|missing|unsupported, said, version}`：pb 装没装、认不认得它的输出"), out("workspaces", "每个工作区一格 `{workspace, repo, auto, rev, stale, needCount, bySession, slices: [{name, domain, current, progress, needCount, error, stale}]}`")],
         takes_input: true,
         run: Run::BlockingData(|r| crate::faces::plan_face::answer(&r.cmd, &r.args).map(Some)),
     },
@@ -17,7 +18,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "plan-read",
         summary: "一个工作区的成品（几片的图 · 状态 · 签收 · 块 · 判据；接手与签收人对到会话；不带 agent_view）",
         codes: &["bad_args", "failed", "no_pb", "not_workspace", "pb_unsupported"],
-        fields: &[arg("workspace", "工作区根（`plan-list` 给的那个）"), out("rev", "这一份输出的摘要：变了才算计划变了"), out("readAt", "读到的时刻（epoch ms）"), out("needCount", "这个工作区要你看的数（没认可的，不含 agent 问人那一种）"), out("slices", "每片一格：读不成 ⇒ `error`；这一刻读不成但读好过 ⇒ 上一次那一份 ＋ `stale {said, since}`；`needs: [{key, kind: top|red|ended|ask, block, cell, sid, acked}]` · `needCount`；每格 `returned`：退回过 ⇒ `{at, to, state: returned|unsure|landed, by: child|body, child}`，没有 ⇒ `null`"), out("stale", "整次读不成、给的是上一次那一份 ⇒ `{said, raw, since}`；否则 `null`")],
+        fields: &[arg("workspace", "工作区根（`plan-list` 给的那个）"), out("rev", "这一份输出的摘要：变了才算计划变了"), out("readAt", "读到的时刻（epoch ms）"), out("needCount", "这个工作区要你看的数（没认可的，不含 agent 问人那一种）"), out("bySession", "会话 ⇒ 它接手的那一块 `{slice, block, title, top, phase, at, atTitle, via: session|subagent}`（子 agent 接的记在父会话名下；自己接的优先）"), out("slices", "每片一格：读不成 ⇒ `error`；这一刻读不成但读好过 ⇒ 上一次那一份 ＋ `stale {said, since}`；`needs: [{key, kind: top|red|ended|ask, block, cell, sid, acked}]` · `needCount`；每格 `returned`：退回过 ⇒ `{at, to, state: returned|unsure|landed, by: child|body, child}`，没有 ⇒ `null`"), out("stale", "整次读不成、给的是上一次那一份 ⇒ `{said, raw, since}`；否则 `null`")],
         takes_input: true,
         run: Run::BlockingData(|r| crate::faces::plan_face::answer(&r.cmd, &r.args).map(Some)),
     },
@@ -26,6 +27,15 @@ pub(super) const SPECS: &[CommandSpec] = &[
         summary: "一格的 agent 视角（agent 站在这一格时 pb 印给它的那一段，原样）",
         codes: &["bad_args", "no_view"],
         fields: &[arg("id", "格的编号"), arg("slice", "片名"), out("view", "原样那一段"), arg("workspace", "工作区根")],
+        takes_input: true,
+        run: Run::BlockingData(|r| crate::faces::plan_face::answer(&r.cmd, &r.args).map(Some)),
+    },
+    // 代敲也在阻塞档：起一次 pb（`view` 要画整张图）。写盘的是 pb（`.env` 的 auto · 系统临时目录里那一页），本族不写。
+    CommandSpec {
+        name: "plan-command",
+        summary: "以人的身份代敲 pb 的用户命令：`continue` · `pause`（开关自动接着做，管整个工作区）· `view`（pb 画整张图写进系统临时目录，回页面路径）",
+        codes: &["bad_args", "failed", "no_pb", "not_workspace", "pb_unsupported", "refused"],
+        fields: &[arg("cmd", "`continue` · `pause` · `view`"), arg("workspace", "工作区根"), out("rc", "pb 的退出码（成了才回，恒 0）"), out("said", "pb 说的第一句"), out("path", "`view` 写的那一页（那台机器上的路径）；别的 ⇒ `null`")],
         takes_input: true,
         run: Run::BlockingData(|r| crate::faces::plan_face::answer(&r.cmd, &r.args).map(Some)),
     },
