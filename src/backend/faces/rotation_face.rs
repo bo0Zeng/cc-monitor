@@ -60,10 +60,16 @@ type Rows = Box<dyn Fn(&str, &str) -> Option<bool> + Send + Sync>;
 /// 这台此刻活着的会话（sid 集合）。
 type Live = Box<dyn Fn() -> std::collections::BTreeSet<String> + Send + Sync>;
 
+pub(crate) use crate::observe::accounts_query::Doing;
+
+/// 这台此刻活着的会话各在干什么（与主窗口标签页同一判；规则在用名单的状态）。
+type DoingRead = Box<dyn Fn() -> std::collections::BTreeMap<String, Doing> + Send + Sync>;
+
 pub(crate) struct Ctx {
     pub(crate) hop: Hop,
     pub(crate) rows: Rows,
     pub(crate) live: Live,
+    pub(crate) doing: DoingRead,
 }
 
 impl Ctx {
@@ -89,6 +95,11 @@ impl Ctx {
             // 判活同历史清单那一处：pidfile 里的会话 id ＋ 进程还是同一个。
             live: Box::new(|| {
                 crate::observe::accounts_query::live_session_ids(
+                    &crate::observe::history_query::agent_home(),
+                )
+            }),
+            doing: Box::new(|| {
+                crate::observe::accounts_query::live_doing(
                     &crate::observe::history_query::agent_home(),
                 )
             }),
@@ -226,6 +237,7 @@ fn rule_wire(
     id: &str,
     r: &Rule,
     live: &std::collections::BTreeSet<String>,
+    doing: &std::collections::BTreeMap<String, Doing>,
 ) -> Value {
     let (mut sids, mut ended_sids): (Vec<&String>, Vec<&String>) = (Vec::new(), Vec::new());
     let mut follow = 0usize;
@@ -259,7 +271,16 @@ fn rule_wire(
         "rev": r.rev,
         "updatedAt": r.updated_at,
         "isDefault": book.default_rule == id,
-        "users": {"live": sids.len(), "ended": ended_sids.len(), "follow": follow, "sids": sids, "endedSids": ended_sids},
+        "users": {
+            "live": sids.len(),
+            "ended": ended_sids.len(),
+            "follow": follow,
+            "doing": sids.iter().map(|sid| ((*sid).clone(), doing_wire(doing.get(*sid))))
+                .chain(ended_sids.iter().map(|sid| ((*sid).clone(), json!({"state": "ended", "needs": null}))))
+                .collect::<Map<String, Value>>(),
+            "sids": sids,
+            "endedSids": ended_sids,
+        },
         "summary": rule_text::summary(&r.rotation),
         "explain": rule_text::explain(&r.rotation),
         "missing": missing,
@@ -267,9 +288,25 @@ fn rule_wire(
     })
 }
 
+/// 一个活会话的状态（主窗口标签页同一套）：`working` · `idle` · `needsYou`（带 `needs`：approve · answer · plan · unknown）。
+/// 说不清在干什么 ⇒ `working`（主窗口那颗点同样画成在跑）。
+fn doing_wire(d: Option<&Doing>) -> Value {
+    use crate::agents::SessionActivity as A;
+    use crate::observe::facts_query::NeedsKind;
+    match d.and_then(|d| d.activity) {
+        Some(A::NeedsYou) => json!({
+            "state": "needsYou",
+            "needs": d.and_then(|d| d.needs).unwrap_or(NeedsKind::Unknown),
+        }),
+        Some(A::Idle) => json!({"state": "idle", "needs": null}),
+        Some(A::Working) | None => json!({"state": "working", "needs": null}),
+    }
+}
+
 fn rules_wire(ctx: &Ctx) -> Value {
     let (state, reason, book) = read_book(ctx);
     let live = (ctx.live)();
+    let doing = (ctx.doing)();
     let mut rules: Vec<(&String, &Rule)> = book.rules.iter().collect();
     // 默认那条排最前，其余按名字。
     rules.sort_by(|a, b| {
@@ -282,7 +319,7 @@ fn rules_wire(ctx: &Ctx) -> Value {
         "reason": reason,
         "path": ctx.hop.store.path().map(|p| p.display().to_string()),
         "defaultRule": book.default_rule,
-        "rules": rules.iter().map(|(id, r)| rule_wire(ctx, &book, id, r, &live)).collect::<Vec<_>>(),
+        "rules": rules.iter().map(|(id, r)| rule_wire(ctx, &book, id, r, &live, &doing)).collect::<Vec<_>>(),
     })
 }
 
@@ -374,7 +411,8 @@ fn saved(ctx: &Ctx, id: &str) -> Answer {
         .rules
         .get(id)
         .ok_or_else(|| ("failed", format!("rule {id} vanished after write")))?;
-    Ok(json!({"state": "saved", "rule": rule_wire(ctx, &book, id, r, &live)}))
+    let doing = (ctx.doing)();
+    Ok(json!({"state": "saved", "rule": rule_wire(ctx, &book, id, r, &live, &doing)}))
 }
 
 /// `rotation-rule-save`：新建（不给 `id`）或整份改一条（给 `id` ＋ `ifRev`）。`{id?, name, rotation?, ifRev?, from?, dedupe?}`：

@@ -29,6 +29,8 @@ struct Home {
     root: std::path::PathBuf,
     /// 此刻活着的会话（`saw` 记下的都活着，`end` 摘掉）。
     live: Arc<std::sync::Mutex<std::collections::BTreeSet<String>>>,
+    /// 活着的会话此刻在干什么（没写的 ＝ 说不清）。
+    doing: Arc<std::sync::Mutex<std::collections::BTreeMap<String, Doing>>>,
 }
 
 impl Home {
@@ -52,6 +54,7 @@ impl Home {
         Self {
             root,
             live: Arc::default(),
+            doing: Arc::default(),
         }
     }
 
@@ -82,6 +85,10 @@ impl Home {
             live: {
                 let live = Arc::clone(&self.live);
                 Box::new(move || live.lock().expect("lock").clone())
+            },
+            doing: {
+                let doing = Arc::clone(&self.doing);
+                Box::new(move || doing.lock().expect("lock").clone())
             },
         }
     }
@@ -597,6 +604,47 @@ fn followers_count_only_live_sessions_on_the_default() {
     // 设置里「在用」展开要列名单：活着的与已结束的各给 sid（已结束的折在「已结束 N」里）。
     assert_eq!(rules["rules"][0]["users"]["sids"], json!(["s-1"]));
     assert_eq!(rules["rules"][0]["users"]["endedSids"], json!(["s-2"]));
+}
+
+/// ★ 在用名单每个会话的状态由后端给（与主窗口标签页同一判）：运行中 · 空闲 · 在等你（等批准 / 等回答 / 判不出）· 已结束；
+/// 活着却说不清在干什么 ⇒ 运行中（主窗口那颗点同样画成在跑）。
+#[test]
+fn rule_users_carry_each_sessions_state() {
+    use crate::agents::SessionActivity as A;
+    use crate::observe::facts_query::NeedsKind as K;
+    let home = Home::new("doing");
+    let ctx = home.ctx();
+    for sid in ["s-run", "s-idle", "s-ask", "s-wait", "s-quiet", "s-gone"] {
+        home.saw(&ctx, sid);
+    }
+    home.end("s-gone");
+    {
+        let mut d = home.doing.lock().expect("lock");
+        let at = |activity, needs| Doing {
+            activity: Some(activity),
+            needs,
+        };
+        d.insert("s-run".into(), at(A::Working, None));
+        d.insert("s-idle".into(), at(A::Idle, None));
+        d.insert("s-ask".into(), at(A::NeedsYou, Some(K::Approve)));
+        d.insert("s-wait".into(), at(A::NeedsYou, None));
+        // 已结束的会话 pidfile 还留着说「在跑」：已结束为准。
+        d.insert("s-gone".into(), at(A::Working, None));
+    }
+    let rules = answer_rules_read_with(&ctx);
+    let doing = &rules["rules"][0]["users"]["doing"];
+    assert_eq!(
+        doing,
+        &json!({
+            "s-run": {"state": "working", "needs": null},
+            "s-idle": {"state": "idle", "needs": null},
+            "s-ask": {"state": "needsYou", "needs": "approve"},
+            "s-wait": {"state": "needsYou", "needs": "unknown"},
+            "s-quiet": {"state": "working", "needs": null},
+            "s-gone": {"state": "ended", "needs": null},
+        }),
+        "{rules}"
+    );
 }
 
 /// ★ 会话已结束 ⇒ `inPlace = ended`，不重启换跳过它（`skipped{ended}`）。

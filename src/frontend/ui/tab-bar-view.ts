@@ -31,7 +31,8 @@ import { statusDot } from "./kit/status-dot";
 import { countBadge, tag, kbd } from "./kit/badge";
 import { attachTooltip, delegateTooltip, TOOLTIP_DELAY_MS } from "./kit/tooltip";
 import { closeMenu, menuAnchoredOn, openMenu, type MenuItem } from "./kit/menu";
-import { abbrOf, dotLabel, dotOf, fullTitle, machineOf, needsOf, needsOrder, needsWord, nextNeeds, peekLine, stateLine, titleParts, sinceText } from "./session-face";
+import { abbrOf, dotOf, fullTitle, machineOf, needsOf, needsOrder, nextNeeds, peekLine, stateLine, titleParts, sinceText } from "./session-face";
+import { dotLabel, needsWord } from "./session-words";
 
 /** TabButton 的 DOM 引用：refreshTabBar 局部更新依赖这些 ref 避免重新创建 button */
 export interface TabButtonRefs {

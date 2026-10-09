@@ -10,7 +10,7 @@
  * `history-list`（那台的会话清单）。这里只排版、只认最后一趟回答；那台规则一变推 `quota-changed {rules}`，这一栏自己重读。
  */
 import { getCurrentMachine, subscribeMachine } from "./machine-context";
-import { deleteRules, readRules, renameRule, saveRule, setDefaultRule, writeSessionRotation, type RuleRow, type RulesRead, type SessionRotationWrite } from "../quota-reads";
+import { deleteRules, readRules, renameRule, saveRule, setDefaultRule, writeSessionRotation, type RuleRow, type RuleUserDoing, type RulesRead, type SessionRotationWrite } from "../quota-reads";
 import { fetchList } from "../history-list-reads";
 import { readRemoteConfig } from "../remote-config";
 import { bindEvents } from "../events";
@@ -23,7 +23,8 @@ import { openMenu, type MenuItem } from "../kit/menu";
 import { closePopover, openPopover } from "../kit/popover";
 import { select } from "../kit/select";
 import { tag } from "../kit/badge";
-import { statusDot } from "../kit/status-dot";
+import { statusDot, type DotState } from "../kit/status-dot";
+import { dotLabel, needsWord } from "../session-words";
 import { attachTooltip } from "../kit/tooltip";
 import { toast, failToast } from "../kit/toast";
 import { copyText } from "../copy-table";
@@ -37,10 +38,15 @@ const PUSH_COALESCE_MS = 300;
 /** 规则多过这么多条 ⇒ 段头下出筛选框。 */
 const FILTER_OVER = 12;
 
-/** 一个会话在名单里的样子（`history-list` 那一行）。 */
+/** 一个会话在名单里的标题（`history-list` 那一行）；状态取规则表那一格（`users.doing`，后端判）。 */
 interface Who {
   label: string;
-  live: boolean;
+}
+
+/** 名单里一个会话的点与那一句（与主窗口标签页同一套：点 ＝ `dotLabel`，在等你 ⇒ 等的是什么）。 */
+function userFace(d: RuleUserDoing): { dot: DotState; word: string } {
+  const dot: DotState = d.state === "working" ? "running" : d.state === "idle" ? "idle" : d.state === "needsYou" ? "needs-you" : "ended";
+  return { dot, word: d.state === "needsYou" ? needsWord(d.needs ?? "unknown") : dotLabel(dot) };
 }
 
 export interface RulesSectionOptions {
@@ -204,7 +210,7 @@ export class RulesSection {
     if (this.who === null) {
       const origin = this.origin;
       this.who = fetchList(isLocalOrigin(origin) ? undefined : origin, {}).then(
-        (l) => new Map(l.rows.map((r) => [r.sessionId, { label: r.label, live: r.status === "live" }])),
+        (l) => new Map(l.rows.map((r) => [r.sessionId, { label: r.label }])),
         (e: unknown) => {
           console.warn(`[rules] history-list [${origin}] 失败：`, e);
           return new Map<string, Who>();
@@ -220,7 +226,7 @@ export class RulesSection {
   }
 
   private whoOf(sid: string): Who {
-    return this.whoGot?.get(sid) ?? { label: sid.slice(0, 8), live: true };
+    return this.whoGot?.get(sid) ?? { label: sid.slice(0, 8) };
   }
 
   // ───────────────────────────── 画 ─────────────────────────────
@@ -438,15 +444,14 @@ export class RulesSection {
         else picked.delete(sid);
         this.paint();
       });
-      const live = !ended && w.live;
-      const word = live ? copyText("rot.list.live") : copyText("sessionState.ended.name");
+      const { dot, word } = userFace(rule.users.doing[sid] ?? { state: ended ? "ended" : "working", needs: null });
       const t = document.createElement("span");
       t.className = s.rulesUserName;
       t.textContent = w.label;
       const st = document.createElement("span");
       st.className = s.rulesUserState;
       st.textContent = word;
-      l.append(c, statusDot(live ? "running" : "ended", word, "compact"), t, st);
+      l.append(c, statusDot(dot, word, "compact"), t, st);
       return l;
     };
     for (const sid of rule.users.sids) box.appendChild(line(sid, false));

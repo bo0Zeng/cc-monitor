@@ -13,7 +13,7 @@ import {
   type GridSessionSnapshot,
   type SessionPeek,
 } from "../session-status";
-import { dotLabel } from "../session-face";
+import { dotLabel } from "../session-words";
 import { isLive, isResumeOnly, stateView } from "../tab-session-state";
 import { copyText } from "../copy-table";
 import { contextTokensText } from "./context-limit";

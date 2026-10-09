@@ -49,7 +49,7 @@ function rule(id: string, name: string, p: Partial<RuleRow> = {}): RuleRow {
     rev: 3,
     updatedAt: 0,
     isDefault: false,
-    users: { live: 0, ended: 0, follow: 0, sids: [], endedSids: [] },
+    users: { live: 0, ended: 0, follow: 0, doing: {}, sids: [], endedSids: [] },
     summary: `${name} · team · 满`,
     explain: "",
     missing: [],
@@ -58,8 +58,10 @@ function rule(id: string, name: string, p: Partial<RuleRow> = {}): RuleRow {
   };
 }
 
-const DAILY = rule("r_daily", "日常", { isDefault: true, users: { live: 2, ended: 1, follow: 2, sids: ["s-a", "s-b"], endedSids: ["s-c"] } });
-const NIGHT = rule("r_night", "夜间", { users: { live: 1, ended: 2, follow: 0, sids: ["s-d"], endedSids: ["s-e", "s-f"] } });
+const W = { state: "working", needs: null } as const;
+const E = { state: "ended", needs: null } as const;
+const DAILY = rule("r_daily", "日常", { isDefault: true, users: { live: 2, ended: 1, follow: 2, doing: { "s-a": W, "s-b": W, "s-c": E }, sids: ["s-a", "s-b"], endedSids: ["s-c"] } });
+const NIGHT = rule("r_night", "夜间", { users: { live: 1, ended: 2, follow: 0, doing: { "s-d": W, "s-e": E, "s-f": E }, sids: ["s-d"], endedSids: ["s-e", "s-f"] } });
 const SAVER = rule("r_saver", "省额度");
 
 function rules(list: RuleRow[] = [DAILY, NIGHT, SAVER]): RulesRead {
@@ -286,6 +288,7 @@ describe("轮换栏 · 删除", () => {
     await settle();
     const spec = confirmed[0];
     expect(spec.title).toBe(copyText("rot.del.title", { name: "夜间" }));
+    expect(spec.title, "规则名是人敲的字 ⇒ 「」括起（同「结束会话「…」」）").toMatch(/「夜间」$/);
     expect(spec.danger).toBe(true);
     expect(spec.rows![0].items).toEqual([copyText("rot.del.inUse", { n: 1, list: "ranker" })]);
     expect(spec.rows![0].choice!.value).toBe("custom");
@@ -332,7 +335,7 @@ describe("轮换栏 · 在用展开 · 新建", () => {
     rowOf(el, "r_daily").querySelector<HTMLButtonElement>("[data-rules-use]")!.click();
     await settle();
     const box = el.querySelector<HTMLElement>('[data-rules-users="r_daily"]')!;
-    expect([...box.querySelectorAll<HTMLElement>("[data-sid]")].map((x) => x.textContent)).toEqual([`orders${copyText("rot.list.live")}`, `billing${copyText("rot.list.live")}`]);
+    expect([...box.querySelectorAll<HTMLElement>("[data-sid]")].map((x) => x.textContent)).toEqual([`orders${copyText("sessionFace.dot.running")}`, `billing${copyText("sessionFace.dot.running")}`]);
     expect(box.querySelector("[data-rules-ended]")!.textContent).toBe(copyText("rot.list.ended", { n: 1 }));
     const move = box.querySelector<HTMLButtonElement>("[data-rules-move]")!;
     expect(move.textContent).toBe(copyText("rot.batch.moveAll"));
@@ -342,6 +345,48 @@ describe("轮换栏 · 在用展开 · 新建", () => {
     await settle();
     expect(writeSessionRotation).toHaveBeenCalledWith("devbox", ["s-a", "s-b", "s-c"], { rule: "r_night" });
     expect(lastToast().title).toBe(copyText("rot.done.batch", { src: copyText("rot.src.rule", { name: "夜间" }), n: 3 }));
+  });
+
+  it("名单每个会话的状态照后端给的（与主窗口标签页同一套）：运行中 · 空闲 · 等批准 · 等回答 · 需要你 · 已结束；点与读屏名同一句", async () => {
+    const users = {
+      live: 5,
+      ended: 1,
+      follow: 0,
+      doing: {
+        "s-a": { state: "working", needs: null },
+        "s-b": { state: "idle", needs: null },
+        "s-d": { state: "needsYou", needs: "approve" },
+        "s-x": { state: "needsYou", needs: "answer" },
+        "s-y": { state: "needsYou", needs: "unknown" },
+        "s-c": { state: "ended", needs: null },
+      },
+      sids: ["s-a", "s-b", "s-d", "s-x", "s-y"],
+      endedSids: ["s-c"],
+    } as const;
+    readRules.mockResolvedValue(rules([{ ...DAILY, users: { ...users, doing: { ...users.doing }, sids: [...users.sids], endedSids: [...users.endedSids] } }]));
+    // 会话清单说 s-d 已结束、s-c 在跑：状态以规则表那一格为准，会话清单只给标题。
+    fetchList.mockResolvedValue({ ...LIST, rows: LIST.rows.map((r) => (r.sessionId === "s-d" ? { ...r, status: "ended" } : r.sessionId === "s-c" ? { ...r, status: "live" } : r)) });
+    const el = await mount();
+    rowOf(el, "r_daily").querySelector<HTMLButtonElement>("[data-rules-use]")!.click();
+    await settle();
+    const box = el.querySelector<HTMLElement>('[data-rules-users="r_daily"]')!;
+    box.querySelector<HTMLButtonElement>("[data-rules-ended]")!.click();
+    await settle();
+    const lines = [...el.querySelectorAll<HTMLElement>('[data-rules-users="r_daily"] [data-sid]')];
+    const want: Record<string, [string, string]> = {
+      "s-a": ["running", copyText("sessionFace.dot.running")],
+      "s-b": ["idle", copyText("sessionFace.dot.idle")],
+      "s-d": ["needs-you", copyText("tabBar.needsKind.approve")],
+      "s-x": ["needs-you", copyText("tabBar.needsKind.answer")],
+      "s-y": ["needs-you", copyText("tabBar.needsKind.unknown")],
+      "s-c": ["ended", copyText("sessionState.ended.name")],
+    };
+    expect(lines.map((l) => l.dataset.sid)).toEqual(["s-a", "s-b", "s-d", "s-x", "s-y", "s-c"]);
+    for (const l of lines) {
+      const [dot, word] = want[l.dataset.sid!]!;
+      const d = l.querySelector<HTMLElement>('[role="img"]')!;
+      expect([d.dataset.state, d.getAttribute("aria-label"), l.textContent!.endsWith(word)], l.dataset.sid).toEqual([dot, word, true]);
+    }
   });
 
   it("勾一个 ⇒ 按钮换成「改用 · 转为本会话」，只写勾上的；转为本会话 ＝ detach", async () => {

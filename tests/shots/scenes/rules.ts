@@ -12,6 +12,12 @@ const S1 = "5e550001-0000-4000-8000-000000000001";
 const S2 = "5e550002-0000-4000-8000-000000000002";
 const S3 = "5e550003-0000-4000-8000-000000000003";
 
+/** 在用名单里各会话此刻的状态（后端判；这里编的：一个在跑、一个等批准，已结束的照写已结束）。 */
+const DOING: Record<string, { state: string; needs: string | null }> = {
+  [S1]: { state: "working", needs: null },
+  [S2]: { state: "needsYou", needs: "approve" },
+};
+
 interface R {
   id: string;
   name: string;
@@ -45,7 +51,14 @@ function rulesWorld(list: R[] = THREE): () => World {
         rev: 2,
         updatedAt: 0,
         isDefault: r.isDefault ?? false,
-        users: { live: r.live?.length ?? 0, ended: r.ended?.length ?? 0, follow: r.follow ?? 0, sids: r.live ?? [], endedSids: r.ended ?? [] },
+        users: {
+          live: r.live?.length ?? 0,
+          ended: r.ended?.length ?? 0,
+          follow: r.follow ?? 0,
+          doing: Object.fromEntries([...(r.live ?? []).map((sid) => [sid, DOING[sid] ?? { state: "working", needs: null }]), ...(r.ended ?? []).map((sid) => [sid, { state: "ended", needs: null }])]),
+          sids: r.live ?? [],
+          endedSids: r.ended ?? [],
+        },
         summary: r.summary,
         explain: "",
         missing: [],

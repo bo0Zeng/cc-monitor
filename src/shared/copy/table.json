@@ -21683,12 +21683,6 @@
       "zh": "重试",
       "args": []
     },
-    "rot.list.live": {
-      "kind": "body",
-      "role": "状态",
-      "zh": "运行中",
-      "args": []
-    },
     "rot.list.picked": {
       "kind": "body",
       "role": "片段",
@@ -21866,7 +21860,7 @@
     "rot.del.title": {
       "kind": "title",
       "role": "确认框",
-      "zh": "删除规则 {name}",
+      "zh": "删除规则「{name}」",
       "args": ["name"]
     },
     "rot.del.titleN": {

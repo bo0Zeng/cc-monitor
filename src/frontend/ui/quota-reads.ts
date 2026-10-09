@@ -13,6 +13,7 @@ import type { RestartOutcome } from "./generated/RestartOutcome";
 import type { SwitchOutcome } from "./generated/SwitchOutcome";
 import type { CellError } from "./generated/CellError";
 import { exactKeys } from "./ipc/decode";
+import type { NeedsKind } from "./session-reads";
 
 /** 读一份额度账 / 轮换（读盘 ＋ 回程）。 */
 const READ_BUDGET_MS = 15_000;
@@ -48,6 +49,14 @@ export function decodeQuotaRead(v: unknown): QuotaRead {
   return o as unknown as QuotaRead;
 }
 
+/** 在用名单里一个会话此刻的状态（后端判，与主窗口标签页同一套）；`needs` 只在 `needsYou` 时有。 */
+export interface RuleUserDoing {
+  state: "working" | "idle" | "needsYou" | "ended";
+  needs: NeedsKind | null;
+}
+
+const DOING_STATES = new Set(["working", "idle", "needsYou", "ended"]);
+
 /** 规则表里的一条（后端算好的几格一并带来：谁在用 · 摘要 · 说明 · 这台没有的号）。 */
 export interface RuleRow {
   id: string;
@@ -56,8 +65,8 @@ export interface RuleRow {
   rev: number;
   updatedAt: number;
   isDefault: boolean;
-  /** 在用：活着的 `sids` · 已结束的 `endedSids`（`follow` ＝ 活着的里跟随默认的几个）。 */
-  users: { live: number; ended: number; follow: number; sids: string[]; endedSids: string[] };
+  /** 在用：活着的 `sids` · 已结束的 `endedSids`（`follow` ＝ 活着的里跟随默认的几个）· 每个 sid 此刻的状态 `doing`。 */
+  users: { live: number; ended: number; follow: number; doing: Record<string, RuleUserDoing>; sids: string[]; endedSids: string[] };
   summary: string;
   explain: string;
   missing: string[];
@@ -87,6 +96,9 @@ export function decodeRuleRow(v: unknown, what: string): RuleRow {
   decodeRotation(x.rotation, `${what}.rotation`);
   const u = obj(x.users, `${what}.users`);
   if (typeof u.live !== "number" || typeof u.ended !== "number" || !Array.isArray(u.sids) || !Array.isArray(u.endedSids)) bad(`${what}.users`);
+  for (const [sid, d] of Object.entries(obj(u.doing, `${what}.users.doing`))) {
+    if (!DOING_STATES.has(obj(d, `${what}.users.doing.${sid}`).state as string)) bad(`${what}.users.doing.${sid}.state`);
+  }
   arr(x.missing, `${what}.missing`);
   return x as unknown as RuleRow;
 }

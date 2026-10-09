@@ -82,7 +82,7 @@ function rulesOf(rotation: Rotation, more: RuleRow[] = []): RulesRead {
     rev: 1,
     updatedAt: NOW,
     isDefault,
-    users: { live: 1, ended: 0, follow: 1, sids: ["s1"], endedSids: [] },
+    users: { live: 1, ended: 0, follow: 1, doing: { s1: { state: "working", needs: null } }, sids: ["s1"], endedSids: [] },
     summary: "",
     explain: "",
     missing: [],
@@ -281,7 +281,7 @@ describe("账号面板 · 规则（来源下拉 · 用规则时只读 · 本会�
   const NIGHT: Rotation = { order: [{ start: true }, "team"], enabled: ["team"], when: "full", atLimit: "continue", wait: 40, cap: { team: { "*": [{ at: "17:00-02:00", n: 0 }] } } };
   const withNight = (rotation: Rotation = NIGHT): void => {
     const base = appStore.rotationRules.get().get("<local>")!;
-    const night = { ...base.rules[0], id: "r_night", name: "夜间", rotation, isDefault: false, summary: "起始 → team · 满", users: { live: 2, ended: 0, follow: 0, sids: [], endedSids: [] } };
+    const night = { ...base.rules[0], id: "r_night", name: "夜间", rotation, isDefault: false, summary: "起始 → team · 满", users: { live: 2, ended: 0, follow: 0, doing: {}, sids: [], endedSids: [] } };
     appStore.rotationRules.set(new Map([["<local>", { ...base, rules: [...base.rules, night] }]]));
   };
   const btn = (text: string): HTMLButtonElement => [...panel().querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === text)!;

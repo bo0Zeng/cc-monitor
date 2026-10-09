@@ -98,7 +98,7 @@ function ruleRow(id: string, name: string, rotation: Record<string, unknown>, is
     rev: 3,
     updatedAt: now() - 3600,
     isDefault,
-    users: { live, ended: 2, follow: isDefault ? live : 0, sids: [], endedSids: [] },
+    users: { live, ended: 2, follow: isDefault ? live : 0, doing: {}, sids: [], endedSids: [] },
     summary: isDefault ? "起始 → personal · 满" : "team → personal · ≥90% · 抢回",
     explain: "起始账号先用 · 被拒才换 · 不主动换回",
     missing: [],
