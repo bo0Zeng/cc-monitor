@@ -1519,3 +1519,76 @@ fn an_unreadable_rotation_file_answers_a_sentence_and_a_detail() {
     let _ = std::fs::remove_dir_all(&home.root);
     let _ = std::fs::remove_dir_all(&fresh.root);
 }
+
+/// b 的 5h 窗口在 `at` 时用了 `used`（重置在 `resets`）。
+fn seen_at(ctx: &Ctx, account: &str, used: f64, at: u64, resets: u64) {
+    use crate::agents::{QuotaReading, QuotaStatus, QuotaWindow};
+    let r = QuotaReading {
+        status: Some(QuotaStatus::Allowed),
+        refused: false,
+        limiting: Some("five_hour".into()),
+        resets_at: Some(resets),
+        windows: vec![QuotaWindow {
+            name: "five_hour".into(),
+            used: Some(used),
+            resets_at: Some(resets),
+            warned_at: None,
+        }],
+        overage: None,
+    };
+    ledger::record_seen(&ctx.hop.quota, "claude-code", account, r, at);
+}
+
+/// ★ 顶行的「估」：此刻的号这一窗有两次不同的采样、最近 30 分钟在涨 ⇒ `est{at, pct, w}`，到的是这号这窗口此刻取的上限
+/// （封顶 → 触发 → 满）；只有一次采样 ⇒ 不给。
+#[test]
+fn the_timeline_head_estimates_when_the_account_reaches_its_limit_only_with_grounds() {
+    let home = Home::new("tl-est");
+    let ctx = home.ctx();
+    let t = now();
+    let mut r = rot_json(&["b"]);
+    r["when"] = json!({"threshold": {"n": 90}});
+    answer_set_with(&ctx, &json!({"rotation": r.clone()})).expect("set");
+    home.saw(&ctx, "s-1");
+    switched(
+        &ctx,
+        "s-1",
+        "a",
+        "b",
+        t - 3600,
+        SwitchWhy::Threshold { n: 90 },
+    );
+    let resets = t + 5 * 3600;
+    seen_at(&ctx, "b", 0.40, t - 900, resets);
+    let ask = json!({"sid": "s-1", "view": "24h"});
+    let got = answer_plan_with(&ctx, &ask, t).expect("ok");
+    assert!(
+        got["head"].get("est").is_none(),
+        "只有一次采样就给了估：{got}"
+    );
+    seen_at(&ctx, "b", 0.46, t - 300, resets);
+    let got = answer_plan_with(&ctx, &ask, t).expect("ok");
+    // 600 秒涨 6 点 ⇒ 到 90% 还差 44 点 ＝ 4400 秒。
+    let est = &got["head"]["est"];
+    assert_eq!(
+        (est["at"].clone(), est["pct"].clone(), est["w"].clone()),
+        (json!(t - 300 + 4_400), json!(90), json!("5h")),
+        "{got}"
+    );
+    assert!(est["atText"].is_string());
+    r["cap"] = json!({"b": {"5h": 70}});
+    answer_set_with(&ctx, &json!({"rotation": r})).expect("set");
+    let got = answer_plan_with(&ctx, &ask, t).expect("ok");
+    let est = &got["head"]["est"];
+    assert_eq!(
+        (est["at"].clone(), est["pct"].clone()),
+        (json!(t - 300 + 2_400), json!(70)),
+        "到的应是封顶：{got}"
+    );
+    assert!(
+        answer_plan_with(&ctx, &ask, t + 1_800).expect("ok")["head"]
+            .get("est")
+            .is_none(),
+        "涨在 30 分钟以前还给估"
+    );
+}

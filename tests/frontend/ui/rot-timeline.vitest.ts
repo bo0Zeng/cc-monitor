@@ -60,13 +60,8 @@ beforeEach(() => document.body.replaceChildren());
 
 describe("时间轴 · 顶行", () => {
   it("平时 ＝ 在用 号 窗口 用量 · 距触发 N 点；卡住 ＝ 最早回来的号 ↻几点 (+多久) · 哪个窗口重置", () => {
-    expect(headLine(plan())).toEqual({
-      text: [
-        copyText("rot.tl.now", { acct: "team", w: "5h", pct: 63 }),
-        copyText("rot.tl.toTrig", { n: 27 }),
-      ].join(copyText("kit.text.sep")),
-      blocked: false,
-    });
+    const parts = [copyText("rot.tl.now", { acct: "team", w: "5h", pct: 63 }), copyText("rot.tl.toTrig", { n: 27 })];
+    expect(headLine(plan())).toEqual({ text: parts.join(copyText("kit.text.sep")), parts, blocked: false });
     const b = headLine(plan({ head: { blocked: { account: "team", at: T + 38 * 60, atText: "02:38", w: "5h" } } }))!;
     expect(b.blocked).toBe(true);
     expect(b.text).toBe(
@@ -76,6 +71,18 @@ describe("时间轴 · 顶行", () => {
       ].join(copyText("kit.text.sep")),
     );
     expect(headLine(plan({ head: undefined }))).toBeNull();
+  });
+
+  it("后端给了估 ⇒ 顶行末尾接「估 几点 到 N%」；没给就不写", () => {
+    const est = { at: T + 40 * 60, atText: "02:40", pct: 90, w: "5h" };
+    expect(headLine(plan({ head: { account: "team", w: "5h", pct: 63, toTrigger: 27, est } }))!.text).toBe(
+      [
+        copyText("rot.tl.now", { acct: "team", w: "5h", pct: 63 }),
+        copyText("rot.tl.toTrig", { n: 27 }),
+        copyText("rot.tl.est", { at: "02:40", pct: 90 }),
+      ].join(copyText("kit.text.sep")),
+    );
+    expect(headLine(plan())!.text).not.toContain(copyText("rot.tl.est", { at: "02:40", pct: 90 }));
   });
 });
 

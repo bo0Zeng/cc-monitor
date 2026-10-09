@@ -1086,6 +1086,16 @@ fn head_of(
         if let rotation::RotationWhen::Threshold { n } = rot.when {
             h["toTrigger"] = json!(u32::from(n).saturating_sub(pct));
         }
+        // 「估」：到的是这号这窗口此刻取的上限（封顶 → 触发；都没有 ⇒ 满）；没根据（[`Observed::eta`] 那几条）就不给。
+        let target = v
+            .effective
+            .get(&account)
+            .and_then(|m| m.get(&w).or_else(|| m.get("*")))
+            .and_then(|(at, _)| at.v)
+            .map_or(100, u32::from);
+        if let Some(at) = ctx.hop.eta(agent, &account, target, now) {
+            h["est"] = json!({"at": at, "atText": text(at), "pct": target, "w": w});
+        }
     }
     h
 }

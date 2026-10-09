@@ -151,7 +151,7 @@ export function toggleAccountPanel(
   openAccountPanel(sid, origin, host);
 }
 
-/** 命令面板「轮换：套用规则…」：开（或留着）这个会话的面板，直接摊开来源下拉（与面板里同一份项、同一套写法）。 */
+/** 命令面板「套用轮换规则…」：开（或留着）这个会话的面板，直接摊开来源下拉（与面板里同一份项、同一套写法）。 */
 export function openSourcePicker(
   sid: string,
   origin: Origin,
@@ -1100,7 +1100,14 @@ function timelineFold(
   const head = p ? headLine(p) : null;
   const body = el("div", s.acctTimeline);
   const top = el("div", s.acctTlTop);
-  const line = el("span", s.acctTlHead, head?.text ?? "");
+  // 顶行按段换行：窄了在段与段之间换（不把「估 几点 到 N%」拆成两截；一段比整行还宽才在段内折）。
+  //   卡住那一句照常折（琥珀框里按字折更紧）。
+  const line = el("span", s.acctTlHead, head?.blocked ? head.text : "");
+  if (!head?.blocked)
+    (head?.parts ?? []).forEach((t, i) => {
+      if (i > 0) line.append(copyText("kit.text.sep"));
+      line.appendChild(el("span", s.acctTlHeadPart, t));
+    });
   line.dataset.tlHead = head?.blocked ? "blocked" : "now";
   top.append(
     line,

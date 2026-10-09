@@ -78,16 +78,18 @@ function segSay(seg: PlanSeg, prev: string | null): string {
     : copyText("rot.pv.seg", { from: seg.fromText, to: seg.toText, acct });
 }
 
-/** 顶行那一句（后端给的 `head`）：卡住 ⇒ 琥珀条那一句；否则「在用 … · 距触发 …」。没有 ⇒ `null`。 */
+/** 顶行那一句（后端给的 `head`）：卡住 ⇒ 琥珀条那一句；否则「在用 … · 距触发 … · 估 几点 到 N%」。`parts` ＝ 各段（排版时段内不折行）。没有 ⇒ `null`。 */
 export function headLine(
   p: PlanRead,
-): { text: string; blocked: boolean } | null {
+): { text: string; parts: string[]; blocked: boolean } | null {
   const h: PlanHead | undefined = p.head;
   if (!h) return null;
   if ("blocked" in h) {
     const b = h.blocked;
-    if (!b.account || b.at === undefined)
-      return { text: copyText("rot.tl.blockedNone"), blocked: true };
+    if (!b.account || b.at === undefined) {
+      const text = copyText("rot.tl.blockedNone");
+      return { text, parts: [text], blocked: true };
+    }
     const parts = [
       copyText("rot.tl.blocked", {
         acct: accountLabel(b.account),
@@ -96,7 +98,7 @@ export function headLine(
       }),
     ];
     if (b.w) parts.push(copyText("rot.tl.blockedW", { w: slotLabel(b.w) }));
-    return { text: parts.join(copyText("kit.text.sep")), blocked: true };
+    return { text: parts.join(copyText("kit.text.sep")), parts, blocked: true };
   }
   if (!h.account) return null;
   const parts = [
@@ -110,7 +112,8 @@ export function headLine(
   ];
   if (h.toTrigger !== undefined)
     parts.push(copyText("rot.tl.toTrig", { n: h.toTrigger }));
-  return { text: parts.join(copyText("kit.text.sep")), blocked: false };
+  if (h.est) parts.push(copyText("rot.tl.est", { at: h.est.atText, pct: h.est.pct }));
+  return { text: parts.join(copyText("kit.text.sep")), parts, blocked: false };
 }
 
 /** 顶行右侧的视窗分段 `6h | 24h | 7d`。 */

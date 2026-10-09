@@ -37,6 +37,64 @@ pub(crate) struct Observed {
     /// 各窗口最后一次几点、从哪看到的（窗口名 → …）；没列的窗口 ＝ 与 `seen_at` 同一刻、来自回包头。
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub(crate) windows_seen: BTreeMap<String, WindowSeen>,
+    /// 各窗口用量的走势（窗口名 → …）：估「几点到」只按它（[`Observed::eta`]）。只在账上，不上 `quota-read`。
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub(crate) trend: BTreeMap<String, Trend>,
+}
+
+/// 一个窗口用量的走势：此刻这个值头一次看到的时刻 ＋ 同一窗口里上一个**不同**的值（又看到一次同一个值不算新采样：说不出涨多快）。
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub(crate) struct Trend {
+    pub(crate) since: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) prev: Option<Sample>,
+}
+
+/// 一次采样：用量（比例）与它头一次看到的时刻。
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub(crate) struct Sample {
+    pub(crate) used: f64,
+    pub(crate) since: u64,
+}
+
+/// 估「几点到」只看最近这么多秒里头一次看到的值（再早的涨法不作数）。
+pub(crate) const EST_FRESH: u64 = 30 * 60;
+
+/// 两个读数的重置时刻差在这么多秒以内 ⇒ 同一个窗口（来源不同时重置时刻可能差几秒）。
+const SAME_WINDOW_SLACK: u64 = 300;
+
+fn same_window(a: &crate::agents::QuotaWindow, b: &crate::agents::QuotaWindow) -> bool {
+    matches!((a.resets_at, b.resets_at), (Some(x), Some(y)) if x.abs_diff(y) <= SAME_WINDOW_SLACK)
+}
+
+/// 新读数 `new`（`at` 看到的）进来之后这个窗口的走势：值没变 ⇒ 照旧；同一窗口里值变了 ⇒ 旧值成了上一次；
+/// 窗口换了 · 头一次看到 · 说不出用量 ⇒ 从这一刻重新记。
+fn step(
+    old: Option<(&crate::agents::QuotaWindow, Option<Trend>, u64)>,
+    new: &crate::agents::QuotaWindow,
+    at: u64,
+) -> Trend {
+    let fresh = Trend {
+        since: at,
+        prev: None,
+    };
+    let Some((o, t, old_at)) = old else {
+        return fresh;
+    };
+    let since = t.map_or(old_at, |t| t.since);
+    match (o.used, new.used) {
+        (Some(u0), Some(u1)) if same_window(o, new) => {
+            if (u0 - u1).abs() < 1e-9 {
+                t.unwrap_or(Trend { since, prev: None })
+            } else {
+                Trend {
+                    since: at,
+                    prev: Some(Sample { used: u0, since }),
+                }
+            }
+        }
+        _ => fresh,
+    }
 }
 
 /// 一个窗口的数从哪来。
@@ -66,6 +124,25 @@ pub(crate) struct WindowSeen {
 }
 
 impl Observed {
+    /// ★ 按走势估这个窗口几点用到 `target`（比例）：同一窗口有上一次不同的采样 · 此刻这个值是最近 [`EST_FRESH`] 秒里头一次看到的 ·
+    /// 在涨 ⇒ 按这两点的斜率外推。只有一个采样 · 涨在那之前 · 不涨 · 已经到了 · 到之前窗口先重置 · 外推的时刻已过 ⇒ `None`（没根据就不给）。
+    pub(crate) fn eta(&self, name: &str, target: f64, now: u64) -> Option<u64> {
+        let w = self.reading.windows.iter().find(|w| w.name == name)?;
+        let u1 = w.used?;
+        let t = self.trend.get(name)?;
+        let p = t.prev?;
+        if now.saturating_sub(t.since) > EST_FRESH
+            || u1 <= p.used
+            || t.since <= p.since
+            || u1 >= target
+        {
+            return None;
+        }
+        let per_sec = (u1 - p.used) / (t.since - p.since) as f64;
+        let at = t.since + ((target - u1) / per_sec).round() as u64;
+        (at > now && w.resets_at.is_none_or(|r| at < r)).then_some(at)
+    }
+
     /// 一个窗口几点、从哪看到的（没列 ⇒ 这一条的时刻、回包头）。
     pub(crate) fn window_seen(&self, name: &str) -> WindowSeen {
         self.windows_seen.get(name).copied().unwrap_or(WindowSeen {
@@ -86,13 +163,24 @@ pub(crate) fn merge(into: &mut Observed, add: &Observed, headers: bool) {
         .collect();
     for w in &add.reading.windows {
         let m = add.window_seen(&w.name);
+        // 带着走势来的（盘上那份 · 内存里那份）照它的；只有一发读数的照旧值推一步。
+        let trend = |old: Option<(&crate::agents::QuotaWindow, Option<Trend>, u64)>| {
+            add.trend
+                .get(&w.name)
+                .copied()
+                .unwrap_or_else(|| step(old, w, m.at))
+        };
         match into.reading.windows.iter_mut().find(|x| x.name == w.name) {
             Some(_) if meta.get(&w.name).is_some_and(|old| old.at > m.at) => {}
             Some(x) => {
+                let old_at = meta.get(&w.name).map_or(into.seen_at, |o| o.at);
+                let t = trend(Some((x, into.trend.get(&w.name).copied(), old_at)));
+                into.trend.insert(w.name.clone(), t);
                 *x = w.clone();
                 meta.insert(w.name.clone(), m);
             }
             None => {
+                into.trend.insert(w.name.clone(), trend(None));
                 into.reading.windows.push(w.clone());
                 meta.insert(w.name.clone(), m);
             }
@@ -291,6 +379,7 @@ pub(crate) fn record_seen(
         seen_at: now,
         reading,
         windows_seen: BTreeMap::new(),
+        trend: BTreeMap::new(),
     };
     let (changed, persist, entry) = {
         let mut g = ledger.state.lock().unwrap_or_else(|e| e.into_inner());
@@ -302,7 +391,11 @@ pub(crate) fn record_seen(
                 merge(&mut m, &heard, true);
                 m
             }
-            None => heard.clone(),
+            None => {
+                let mut h = heard.clone();
+                merge_trend_fresh(&mut h);
+                h
+            }
         };
         let changed = old.is_none_or(|o| shown(&o.reading) != shown(&entry.reading));
         g.mem.insert(key.clone(), entry.clone());
@@ -367,6 +460,7 @@ pub(crate) fn record_probe(
             overage: None,
         },
         windows_seen,
+        trend: BTreeMap::new(),
     };
     let before = ledger.entry(agent, account);
     let (written, at) = write_merged(path, &probed, false)?;
@@ -434,13 +528,28 @@ fn write_merged(
             merge(&mut e, add, headers);
             e
         }
-        None => add.clone(),
+        None => {
+            let mut a = add.clone();
+            merge_trend_fresh(&mut a);
+            a
+        }
     };
     book.accounts.push(entry.clone());
     book.accounts
         .sort_by(|a, b| (&a.agent, &a.account).cmp(&(&b.agent, &b.account)));
     crate::common::own_state::write_json(path, &book)?;
     Ok((entry, stamp(path)))
+}
+
+/// 头一次看到的那一条：每个窗口从这一刻起记走势（已带着的照旧）。
+fn merge_trend_fresh(o: &mut Observed) {
+    for w in &o.reading.windows {
+        let at = o.window_seen(&w.name).at;
+        o.trend.entry(w.name.clone()).or_insert(Trend {
+            since: at,
+            prev: None,
+        });
+    }
 }
 
 /// 帧命令 `quota-read` 的底子：现读这台的额度账（不读内存 —— 一次性 CLI 那一形里内存是空的）；显示态由帧面宿主补上。
@@ -462,7 +571,8 @@ pub(crate) fn answer_of(path: Option<&Path>, now: u64) -> serde_json::Value {
         "detail": detail,
         "path": path.map(|p| p.display().to_string()),
         "now": now,
-        "accounts": accounts,
+        // 走势只在账上（估「几点到」用），不上线。
+        "accounts": accounts.into_iter().map(|mut o| { o.trend.clear(); o }).collect::<Vec<_>>(),
     })
 }
 

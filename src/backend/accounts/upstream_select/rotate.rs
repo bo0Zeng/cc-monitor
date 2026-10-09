@@ -708,6 +708,22 @@ impl Hop {
     /// 一个号此刻卡人的窗口与用了多少（%）：额度账说卡在哪个窗口就取它，没说 ⇒ 用得最多的那个；没出过数 ⇒ `None`。
     /// 窗口按语义位写（`5h` · `7d`），没有语义位的照这一家的窗口键。
     pub(crate) fn pinch(&self, agent: &str, account: &str, now: u64) -> Option<(String, u32)> {
+        self.pinch_of(agent, account, now)
+            .map(|(_, _, name, pct)| (name, pct))
+    }
+
+    /// [`Hop::pinch`] ＋ 那一条账与那个窗口在这一家的原名。
+    fn pinch_of(
+        &self,
+        agent: &str,
+        account: &str,
+        now: u64,
+    ) -> Option<(
+        crate::accounts::quota::ledger::Observed,
+        String,
+        String,
+        u32,
+    )> {
         let o = self.quota.entry(agent, account)?;
         let (slot, key) = (slot_fn(agent), key_fn(agent));
         let ws = &o.reading.windows;
@@ -723,7 +739,14 @@ impl Hop {
             })?;
         let name = slot(&w.name).map_or_else(|| key(&w.name), |s| Some(s.to_string()))?;
         let pct = (decide::used_now(w, now) * 100.0).round().max(0.0) as u32;
-        Some((name, pct))
+        let raw = w.name.clone();
+        Some((o, raw, name, pct))
+    }
+
+    /// 这个号卡人的那个窗口按目前的涨法几点用到 `target` %（额度账的走势，[`crate::accounts::quota::ledger::Observed::eta`]）；没根据 ⇒ `None`。
+    pub(crate) fn eta(&self, agent: &str, account: &str, target: u32, now: u64) -> Option<u64> {
+        let (o, raw, _, _) = self.pinch_of(agent, account, now)?;
+        o.eta(&raw, f64::from(target) / 100.0, now)
     }
 
     /// 帧面「这份轮换接下来会怎么走」（`rotation-plan`）：从 `now` 到 `until` 的预览 · 池里各号不能用的那几段与重置时刻 ·

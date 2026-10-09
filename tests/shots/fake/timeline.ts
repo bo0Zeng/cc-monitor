@@ -120,7 +120,7 @@ export function fakePlan(o: FakePlanOpts): Record<string, unknown> {
     out.past = pastSegs;
     out.head = o.blocked
       ? { blocked: { account: "team", at: t + 0.63 * H, atText: hm(t + 0.63 * H), w: "5h" } }
-      : { account: "personal", w: "5h", pct: 63, toTrigger: 27 };
+      : { account: "personal", w: "5h", pct: 63, toTrigger: 27, est: { at: t + 1.6 * H, atText: hm(t + 1.6 * H), pct: 90, w: "5h" } };
   }
   return out;
 }

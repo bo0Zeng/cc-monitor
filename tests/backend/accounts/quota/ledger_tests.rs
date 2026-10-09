@@ -56,6 +56,14 @@ fn a_reading_lands_under_its_account_on_disk_and_on_the_wire_field_for_field() {
         seen_at: 1_800_000_000,
         reading: reading(0.42, false),
         windows_seen: Default::default(),
+        trend: [(
+            "five_hour".to_string(),
+            Trend {
+                since: 1_800_000_000,
+                prev: None,
+            },
+        )]
+        .into(),
     };
     assert_eq!(on_disk(&path).accounts, vec![want.clone()]);
     assert_eq!(l.entry("claude-code", "q"), Some(want.clone()));
@@ -332,4 +340,128 @@ fn an_unreadable_book_answers_a_sentence_and_a_detail() {
     let fine = answer_of(Some(&dir.join("absent.json")), 1);
     assert!(fine["detail"].is_null(), "不在那一形多出了详情：{fine}");
     std::fs::remove_dir_all(&dir).ok();
+}
+
+/// 5h 一个窗口的读数（重置时刻另给）。
+fn reading_until(used_5h: f64, resets_at: u64) -> QuotaReading {
+    QuotaReading {
+        status: Some(QuotaStatus::Allowed),
+        refused: false,
+        limiting: Some("five_hour".into()),
+        resets_at: Some(resets_at),
+        windows: vec![QuotaWindow {
+            name: "five_hour".into(),
+            used: Some(used_5h),
+            resets_at: Some(resets_at),
+            warned_at: None,
+        }],
+        overage: None,
+    }
+}
+
+/// ★ 每个窗口记上一次不同的采样：值没变只是又看到一次 ⇒ 不动；值变了 ⇒ 旧值与它头一次看到的时刻成了「上一次」；
+/// 窗口重置了（重置时刻换了）⇒ 上一次清掉。落盘的那份同样带着；quota-read 不往外给这一格。
+#[test]
+fn a_window_keeps_its_last_different_sample_until_it_resets() {
+    let d = temp_dir("trend");
+    let path = d.join(FILE_NAME);
+    let l = Ledger::at(Some(path.clone()));
+    let t = 1_800_000_000;
+    let reset = t + 18_000;
+    let trend = |l: &Ledger| l.entry("claude-code", "q").expect("entry").trend["five_hour"];
+    record_seen(&l, "claude-code", "q", reading_until(0.40, reset), t);
+    assert_eq!(
+        trend(&l),
+        Trend {
+            since: t,
+            prev: None
+        }
+    );
+    record_seen(&l, "claude-code", "q", reading_until(0.40, reset), t + 60);
+    assert_eq!(
+        trend(&l),
+        Trend {
+            since: t,
+            prev: None
+        },
+        "又看到一次同一个值不算新采样"
+    );
+    record_seen(&l, "claude-code", "q", reading_until(0.46, reset), t + 600);
+    let want = Trend {
+        since: t + 600,
+        prev: Some(Sample {
+            used: 0.40,
+            since: t,
+        }),
+    };
+    assert_eq!(trend(&l), want);
+    assert_eq!(
+        on_disk(&path).accounts[0].trend["five_hour"],
+        want,
+        "盘上那份没带上"
+    );
+    record_seen(
+        &l,
+        "claude-code",
+        "q",
+        reading_until(0.02, reset + 18_000),
+        t + 700,
+    );
+    assert_eq!(
+        trend(&l),
+        Trend {
+            since: t + 700,
+            prev: None
+        },
+        "窗口重置了还留着上一窗的采样"
+    );
+    std::fs::remove_dir_all(&d).ok();
+}
+
+/// ★ 估「几点到」：同一窗口有上一次不同的采样 · 此刻这个值是最近 30 分钟里头一次看到的 · 在涨 ⇒ 按两点斜率外推；
+/// 只有一个采样 · 涨在 30 分钟以前 · 不涨 · 到之前窗口先重置 · 已经到了 ⇒ 不给。
+#[test]
+fn the_estimate_needs_two_samples_in_one_window_and_recent_growth() {
+    let l = Ledger::at(None);
+    let t = 1_800_000_000;
+    let reset = t + 18_000;
+    record_seen(&l, "claude-code", "q", reading_until(0.40, reset), t);
+    let o = l.entry("claude-code", "q").expect("entry");
+    assert_eq!(o.eta("five_hour", 0.90, t + 10), None, "只有一个采样");
+    record_seen(&l, "claude-code", "q", reading_until(0.46, reset), t + 600);
+    let o = l.entry("claude-code", "q").expect("entry");
+    // 600 秒涨 6 点 ⇒ 还差 44 点 ＝ 4400 秒。
+    assert_eq!(o.eta("five_hour", 0.90, t + 700), Some(t + 600 + 4_400));
+    assert_eq!(
+        o.eta("five_hour", 0.90, t + 600 + 1_801),
+        None,
+        "涨在 30 分钟以前"
+    );
+    assert_eq!(o.eta("five_hour", 0.46, t + 700), None, "已经到了");
+    assert_eq!(o.eta("seven_day", 0.90, t + 700), None, "没这个窗口");
+    assert_eq!(o.eta("five_hour", 0.99, t + 700), Some(t + 600 + 5_300));
+
+    let soon = Ledger::at(None);
+    record_seen(&soon, "claude-code", "q", reading_until(0.40, t + 3_000), t);
+    record_seen(
+        &soon,
+        "claude-code",
+        "q",
+        reading_until(0.46, t + 3_000),
+        t + 600,
+    );
+    let o = soon.entry("claude-code", "q").expect("entry");
+    assert_eq!(o.eta("five_hour", 0.90, t + 700), None, "到之前窗口先重置");
+
+    let down = Ledger::at(None);
+    record_seen(&down, "claude-code", "q", reading_until(0.46, reset), t);
+    record_seen(
+        &down,
+        "claude-code",
+        "q",
+        reading_until(0.40, reset),
+        t + 600,
+    );
+    let o = down.entry("claude-code", "q").expect("entry");
+    assert_eq!(o.eta("five_hour", 0.90, t + 700), None, "不涨");
 }
