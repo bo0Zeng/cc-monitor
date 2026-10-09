@@ -400,10 +400,10 @@ jsonl watcher 与它的第二套游标 / seq 已删，本机会话的行也是�
 
 ## 16. monitor 单实例运行
 
-同 user / 同机器同时只允许一个 cc-monitor 进程。由 [`tauri-plugin-single-instance`](https://v2.tauri.app/plugin/single-instance/) 强制 —— **必须是 Builder 链上第一个 plugin**（plugin 文档约束）。第二个实例启动时：
+同 user / 同机器同时只允许一个 cc-monitor 进程。Windows / macOS 由 [`tauri-plugin-single-instance`](https://v2.tauri.app/plugin/single-instance/) 强制；Linux 由壳自己的那一个插件（[`platform/single_instance.rs`](../../src/frontend/shell/src/platform/single_instance.rs)：会话总线上的名字 `com.ccmonitor.app.SingleInstance`）强制 —— 官方插件在 Linux 上不转交激活令牌，GNOME（Wayland）上第一个拉不到前台。两者都**必须是 Builder 链上第一个 plugin**。第二个实例启动时：
 
-1. plugin 检测到第一个实例存在（Windows：OS mutex；Linux：会话总线上的名字，没有会话总线时不拦）
-2. 通知第一个实例的回调（在 [`lib.rs::run()`](../../src/frontend/shell/src/lib.rs) 里 `unminimize + show + set_focus` 主窗口）
+1. 检测到第一个实例存在（Windows：OS mutex；Linux：会话总线上的名字，没有会话总线时不拦）
+2. 通知第一个实例的回调（在 [`lib.rs::run()`](../../src/frontend/shell/src/lib.rs) 里经 `platform::window::raise_main` 还原 · 显示 · 拉前主窗口；Linux 带上第二个实例启动时拿到的 `XDG_ACTIVATION_TOKEN` / `DESKTOP_STARTUP_ID`）
 3. 第二个实例自身立即退出
 
 **为什么不能松动**：cc-monitor 全局共享多个文件状态 —— `auto-launch.json`、`ps-await/`、`ps-registry/`、`sid-hwnd-cache.json`、jsonl watcher、`logs/monitor/monitor.YYYY-MM-DD.log`。两个 monitor 同时跑会触发：

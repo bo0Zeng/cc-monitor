@@ -8,6 +8,7 @@
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DisplaySession {
     /// Windows 桌面。
+    #[cfg_attr(not(windows), allow(dead_code))]
     Win32,
     /// X11 会话（窗口管理器挂 EWMH 那几张表）。
     X11,
