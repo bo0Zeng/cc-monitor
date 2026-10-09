@@ -222,6 +222,7 @@ export class TabStreamView {
     this.streamRootEl.appendChild(streamEl);
 
     const stream = new MessageStream(streamEl);
+    stream.park(true); // 新建的 tab 先收着（`.stream` 默认收起），切进来时 `showOnly` 翻出
     const branchFolder = new BranchFolder(stream.contentElement);
     const timeline = new RecordTimeline(stream);
 
@@ -384,6 +385,7 @@ export class TabStreamView {
   showOnly(sessionId: string): void {
     for (const [sid, t] of this.store.tabs) {
       t.streamEl.classList.toggle("active", sid === sessionId);
+      t.stream.park(sid !== sessionId); // 收起期间几何不作数（`MessageStream.park`）
       // 面板与它那条流同进同出：漏掉的话所有 tab 的面板一起挂在屏幕上，点下去找的是别人的流。
       t.inputsEl.classList.toggle("active", sid === sessionId);
       // 切走的 tab 收起面板（出弹层栈）—— 不然 Esc 去关的是一块看不见的面板。

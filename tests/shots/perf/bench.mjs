@@ -66,6 +66,20 @@ function isolatedEnv(extra = {}) {
   return env;
 }
 
+if (args.merge) {
+  // 几次分开跑的读数合成一张（A/B 交替跑时用）：`--merge 目录1,目录2,… --out 目录`
+  const parts = String(args.merge).split(",").map((d) => JSON.parse(readFileSync(path.join(path.resolve(d), "perf.json"), "utf8")));
+  const m = { ...parts[0], runs: 0, switch: [], rapid: [], long: [], boot: [], load: { start: parts[0].load.start, end: parts[parts.length - 1].load.end } };
+  parts.forEach((p, k) => {
+    m.runs += p.runs;
+    for (const key of ["switch", "rapid", "long", "boot"]) m[key].push(...p[key].map((x) => ({ ...x, part: k })));
+  });
+  writeFileSync(path.join(out, "perf.json"), JSON.stringify(m, null, 1));
+  const t = summarize(m);
+  writeFileSync(path.join(out, "perf.md"), t);
+  console.log(t);
+  process.exit(0);
+}
 if (args.summarize) {
   // 只把已有的读数重新出表
   console.log(summarize(JSON.parse(readFileSync(path.join(out, "perf.json"), "utf8"))));
@@ -473,6 +487,7 @@ function groupBy(xs, key) {
  * 一棵进程树（浏览器连同它起的渲染 / GPU 进程）到此刻一共用了多少 CPU 毫秒：每个线程 `/proc/<pid>/task/<tid>/schedstat`
  * 第一格（纳秒，在 CPU 上跑的时长）相加。机器忙时墙钟会被别的活拉长，CPU 时长基本不受影响 ⇒ 两样都记。
  */
+const cpuSeen = new Map();
 function cpuMs(root) {
   const kids = new Map();
   for (const d of readdirSync("/proc")) {
@@ -486,7 +501,6 @@ function cpuMs(root) {
       // 进程刚退
     }
   }
-  let ns = 0;
   const stack = [root];
   while (stack.length) {
     const pid = stack.pop();
@@ -494,7 +508,10 @@ function cpuMs(root) {
     try {
       for (const t of readdirSync(`/proc/${pid}/task`)) {
         try {
-          ns += Number(readFileSync(`/proc/${pid}/task/${t}/schedstat`, "utf8").split(" ")[0]);
+          // 按线程记最后一次读数、只往上加：中途退掉的进程（关页时它的渲染进程）留着最后的读数，合计不倒着走
+          const v = Number(readFileSync(`/proc/${pid}/task/${t}/schedstat`, "utf8").split(" ")[0]);
+          const key = `${pid}/${t}`;
+          cpuSeen.set(key, Math.max(cpuSeen.get(key) ?? 0, v));
         } catch {
           // 线程刚退
         }
@@ -503,6 +520,8 @@ function cpuMs(root) {
       // 进程刚退
     }
   }
+  let ns = 0;
+  for (const v of cpuSeen.values()) ns += v;
   return ns / 1e6;
 }
 
@@ -523,7 +542,8 @@ function findChrome() {
 
 async function devtoolsUrl(dir) {
   const file = path.join(dir, "DevToolsActivePort");
-  for (let i = 0; i < 200; i++) {
+  // 机器忙时浏览器起来要好一阵 ⇒ 最多等 60 s
+  for (let i = 0; i < 600; i++) {
     if (existsSync(file)) {
       const [p, q] = readFileSync(file, "utf8").split("\n");
       if (p && q) return `ws://127.0.0.1:${p}${q}`;
@@ -550,7 +570,7 @@ function parseArgs(argv) {
     const a = argv[i];
     if (!a.startsWith("--")) continue;
     const k = a.slice(2);
-    if (["runs", "out", "only", "css"].includes(k)) o[k] = argv[++i];
+    if (["runs", "out", "only", "css", "merge"].includes(k)) o[k] = argv[++i];
     else o[k] = true;
   }
   return o;

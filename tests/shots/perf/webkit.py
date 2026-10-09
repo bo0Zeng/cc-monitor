@@ -33,6 +33,7 @@ ap.add_argument("--out", default=os.path.join(REPO, ".build/perf-webkit"))
 ap.add_argument("--css", default=None)
 ap.add_argument("--port", type=int, default=None)
 ap.add_argument("--only", default="switch,rapid,long")
+ap.add_argument("--merge", default=None, help="几次分开跑的读数合成一张：目录1,目录2,…")
 ap.add_argument("--dev", action="store_true", help="开发服务器（模块按源码路径可 import ⇒ 能给方法挂计时）")
 ap.add_argument("--profile", default=None, help="开页安静后在页里跑的一段函数体（挂计时）；切一下那一项末尾把 window.__prof 存进 prof.json")
 args = ap.parse_args()
@@ -105,8 +106,12 @@ class View:
         pump(200)
 
 
+_seen = {}
+
+
 def cpu_ms(root=None):
-    """这一棵进程树（本进程 ＝ WebKit 的 UI 进程，连同它起的网页 / 网络 / GPU 进程）到此刻一共用了多少 CPU 毫秒（各线程 schedstat 第一格相加）。"""
+    """这一棵进程树（本进程 ＝ WebKit 的 UI 进程，连同它起的网页 / 网络 / GPU 进程）到此刻一共用了多少 CPU 毫秒（各线程 schedstat 第一格相加）。
+    按线程记最后一次读数、只往上加：中途退掉的进程 / 线程留着它最后的读数（不然一退出，合计倒着走）。"""
     root = root or os.getpid()
     kids = {}
     for d in os.listdir("/proc"):
@@ -118,7 +123,6 @@ def cpu_ms(root=None):
             kids.setdefault(ppid, []).append(int(d))
         except OSError:
             pass
-    ns = 0
     stack = [root]
     while stack:
         pid = stack.pop()
@@ -126,12 +130,14 @@ def cpu_ms(root=None):
         try:
             for t in os.listdir(f"/proc/{pid}/task"):
                 try:
-                    ns += int(open(f"/proc/{pid}/task/{t}/schedstat").read().split()[0])
+                    v = int(open(f"/proc/{pid}/task/{t}/schedstat").read().split()[0])
+                    key = (pid, int(t))
+                    _seen[key] = max(_seen.get(key, 0), v)
                 except OSError:
                     pass
         except OSError:
             pass
-    return ns / 1e6
+    return sum(_seen.values()) / 1e6
 
 
 def pct(xs, q, floor=0):
@@ -383,7 +389,23 @@ def main():
             p.terminate()
 
 
+def merge():
+    parts = [json.load(open(os.path.join(d, "perf-webkit.json"))) for d in args.merge.split(",")]
+    m = {**parts[0], "runs": sum(p["runs"] for p in parts), "load": {"start": parts[0]["load"]["start"], "end": parts[-1]["load"]["end"]}}
+    for key in ("boot", "switch", "rapid", "long"):
+        m[key] = [{**x, "part": k} for k, p in enumerate(parts) for x in p[key]]
+    with open(os.path.join(args.out, "perf-webkit.json"), "w") as f:
+        json.dump(m, f, indent=1)
+    t = summarize(m)
+    with open(os.path.join(args.out, "perf-webkit.md"), "w") as f:
+        f.write(t)
+    print(t)
+
+
 if __name__ == "__main__":
+    if args.merge:
+        merge()
+        sys.exit(0)
     if os.environ.get("DISPLAY_READY") != "1":
         # 自己在一台私有 Xvfb 里重跑自己
         xv = subprocess.Popen(["bash", os.path.join(REPO, "tests/scripts/xvfb-free.sh")], stdout=subprocess.PIPE, text=True)

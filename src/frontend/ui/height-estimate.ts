@@ -29,7 +29,7 @@ const COL_W: number = ((fallback: number): number => {
   const host = typeof document === "undefined" ? null : document.getElementById("message-stream");
   if (!host) return fallback;
   const probe = document.createElement("div");
-  probe.className = "stream";
+  probe.className = "stream active"; // 当前那一形（收起的 `.stream` 内容不排版，量不到列宽）
   const col = document.createElement("div");
   col.className = "stream-content";
   probe.appendChild(col);

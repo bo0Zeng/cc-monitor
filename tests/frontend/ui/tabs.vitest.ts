@@ -58,6 +58,7 @@ vi.mock("@tauri-apps/plugin-opener", () => ({
 vi.mock("../../../src/frontend/ui/stream", () => ({
   MessageStream: class {
     contentElement = document.createElement("div");
+    park(): void {}
     constructor(_root: HTMLElement) {}
     insertNode(): void {}
     batchInsert(fn: () => void): void {
