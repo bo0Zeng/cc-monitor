@@ -64,10 +64,18 @@ impl Label {
     }
 }
 
-/// 写一份详情：按调用次序一项一行；值是空白的项不出。
+/// 写一份详情：按调用次序一项一行；值是空白的项不出。补一项按项名次序插（[`Detail::insert`]）；
+/// 对端写好的一整份原样当一块（[`Detail::block`]）—— 不拆渲染好的字。
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Detail {
-    lines: Vec<String>,
+    items: Vec<Item>,
+}
+
+/// 详情里的一项：自己写的一行（项名 ＋ 那一行）· 对端写好的一整份（原样）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Item {
+    Line(Label, String),
+    Block(String),
 }
 
 impl Detail {
@@ -78,7 +86,7 @@ impl Detail {
     /// 加一项；值去掉首尾空白后是空的 ⇒ 不加。原话（[`Label::Raw`]）截到 [`RAW_CAP`]。
     pub fn item(mut self, label: Label, value: impl AsRef<str>) -> Detail {
         if let Some(line) = line_of(label, value.as_ref()) {
-            self.lines.push(line);
+            self.items.push(Item::Line(label, line));
         }
         self
     }
@@ -91,19 +99,96 @@ impl Detail {
         }
     }
 
+    /// 对端写好的一整份（远端后端那份转交给界面时，本机壳在它后面补「本机」那一行）。空白 ⇒ 不加。
+    pub fn block(mut self, written: &str) -> Detail {
+        let w = written.trim_end();
+        if !w.trim().is_empty() {
+            self.items.push(Item::Block(w.to_string()));
+        }
+        self
+    }
+
+    /// 补一项，按 [`Label::ALL`] 的次序插在第一条后排项之前（没有后排项 ⇒ 末尾）；值空 ⇒ 原样。
+    pub fn insert(mut self, label: Label, value: impl AsRef<str>) -> Detail {
+        let Some(line) = line_of(label, value.as_ref()) else {
+            return self;
+        };
+        let rank = |l: Label| {
+            Label::ALL
+                .iter()
+                .position(|x| *x == l)
+                .unwrap_or(usize::MAX)
+        };
+        let at = self
+            .items
+            .iter()
+            .position(|i| matches!(i, Item::Line(l, _) if rank(*l) > rank(label)))
+            .unwrap_or(self.items.len());
+        self.items.insert(at, Item::Line(label, line));
+        self
+    }
+
+    /// 自己写的那几行里有没有这一项。
+    pub fn has(&self, label: Label) -> bool {
+        self.items
+            .iter()
+            .any(|i| matches!(i, Item::Line(l, _) if *l == label))
+    }
+
+    /// 有没有对端写好的一整份（那一份里有什么由写它的那一端负责）。
+    pub fn has_block(&self) -> bool {
+        self.items.iter().any(|i| matches!(i, Item::Block(_)))
+    }
+
     /// 排成线上那一格（行间 `\n`，无首尾空行）。
     pub fn render(&self) -> String {
-        self.lines.join("\n")
+        self.items
+            .iter()
+            .map(|i| match i {
+                Item::Line(_, s) | Item::Block(s) => s.as_str(),
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 }
 
-/// 已经写好的一份详情后面再接一项（本机壳给转交来的远端详情补「本机」那一行用）。值空 ⇒ 原样。
-pub fn append(detail: &str, label: Label, value: &str) -> String {
-    match line_of(label, value) {
-        Some(line) if detail.trim().is_empty() => line,
-        Some(line) => format!("{}\n{line}", detail.trim_end()),
-        None => detail.to_string(),
-    }
+/// 通道这一跳断了的那一份（monitor 壳与文件窗口进程同一份）：时刻 · 机器（`not_sent` ⇒ 名 ＋「（未连上）」）·
+/// 本机（远端时给；出错的就是本机时不给）· 命令 · 断在（可缺）· 码。那几项的取法住通信层 `HopFacts`。
+pub fn channel(
+    at: &str,
+    machine: &str,
+    not_sent: bool,
+    local: Option<&str>,
+    command: &str,
+    hop: Option<&str>,
+    code: &str,
+) -> Detail {
+    let machine = if not_sent {
+        format!(
+            "{machine}（{}）",
+            copy_text("detail.value.notConnected", &[])
+        )
+    } else {
+        machine.to_string()
+    };
+    Detail::new()
+        .item(Label::At, at)
+        .item(Label::Machine, machine)
+        .maybe(Label::Local, local)
+        .item(Label::Command, command)
+        .maybe(Label::Hop, hop)
+        .item(Label::Code, code)
+}
+
+/// 一行汇总 `head` 底下几件各自的失败 `(那件的那一句, 它的详情)` ⇒ 复制出去的整段：首行 `head`，每件一段（那一句 ＋ 详情），
+/// 段间空一行；详情空的那件不出段；一件都没有 ⇒ `None`（不出按钮）。界面那一侧同一排法（`kit/detail.ts::detailMany`，跨语言金样 `detail-many.golden.json`）。
+pub fn many(head: &str, segments: &[(String, String)]) -> Option<String> {
+    let segs: Vec<String> = segments
+        .iter()
+        .filter(|(_, d)| !d.trim().is_empty())
+        .map(|(said, d)| format!("{said}\n{}", d.trim_end()))
+        .collect();
+    (!segs.is_empty()).then(|| format!("{head}\n\n{}", segs.join("\n\n")))
 }
 
 fn line_of(label: Label, value: &str) -> Option<String> {

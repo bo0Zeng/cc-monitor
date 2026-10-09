@@ -17415,8 +17415,19 @@
     "beFilesCommit.upload.exists": {
       "kind": "error",
       "role": "报错",
-      "zh": "{path} 无法占位 · {why} · 不覆盖 · 先删掉它或换个名字",
-      "args": ["path", "why"]
+      "zh": "{path} 已存在 · 不覆盖 · 先删掉它或换个名字",
+      "args": [
+        "path"
+      ]
+    },
+    "beFilesCommit.upload.cantPlace": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "{path} 无法占位 · {why}",
+      "args": [
+        "path",
+        "why"
+      ]
     },
     "beFilesCommit.upload.moveFailedNote": {
       "kind": "error",

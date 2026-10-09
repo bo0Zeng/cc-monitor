@@ -206,7 +206,7 @@ impl Desk {
         };
         match r {
             Ok(()) => Frame::ok(id),
-            Err((code, m)) => Frame::err(id, code, &m),
+            Err((code, m)) => Frame::refused(id, cmd, code, &m),
         }
     }
 

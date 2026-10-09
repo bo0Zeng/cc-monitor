@@ -44,15 +44,26 @@ export function sayFailure(el: HTMLElement, title: string, e: unknown): void {
 }
 
 /**
- * 复制出去的那一段：一条 ⇒「那句 ＋ 详情」；同一句合流 ×N ⇒ 首行带 ×N，下面每段一份详情，段间空一行。
+ * 复制出去的那一段：一条 ⇒「那句 ＋ 详情」；同一句合流 ×N ⇒ 首行带 ×N，下面每段「那句 ＋ 详情」（{@link detailMany}）。
  * 空详情那段只剩那句（不出空行）。
  */
 export function detailBody(segments: readonly (readonly [said: string, detail: string])[]): string {
   if (segments.length === 0) return "";
-  const joinOne = ([said, detail]: readonly [string, string]): string => (detail.trim() === "" ? said : `${said}\n${detail}`);
-  if (segments.length === 1) return joinOne(segments[0]);
+  if (segments.length === 1) {
+    const [said, detail] = segments[0];
+    return detail.trim() === "" ? said : `${said}\n${detail}`;
+  }
   const head = `${segments[0][0]} ${copyText("kit.toast.count", { n: segments.length })}`;
-  return [head, ...segments.map(([, d]) => d).filter((d) => d.trim() !== "")].join("\n\n");
+  return detailMany(head, segments) ?? head;
+}
+
+/**
+ * 一行汇总 `head` 底下几件各自的失败 ⇒ 复制出去的整段：首行 `head`，每件一段（那件的那一句 ＋ 它的详情），段间空一行；
+ * 详情空的那件不出段；一件都没有 ⇒ `null`。文件窗口那一侧同一排法（Rust `copy_core::detail::many`，跨语言金样 `detail-many.golden.json`）。
+ */
+export function detailMany(head: string, segments: readonly (readonly [said: string, detail: string])[]): string | null {
+  const segs = segments.filter(([, d]) => d.trim() !== "").map(([said, d]) => `${said}\n${d.trimEnd()}`);
+  return segs.length === 0 ? null : `${head}\n\n${segs.join("\n\n")}`;
 }
 
 /** 平台的复制键位（说明那一行用）。 */

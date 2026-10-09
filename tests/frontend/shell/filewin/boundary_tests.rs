@@ -351,12 +351,12 @@ const WINDOW_SIDE: &[(&str, Kind)] = &[
     ("copy_core::detail::Detail::new", Kind::Copy),
     ("copy_core::detail::Label::Path", Kind::Copy),
     ("copy_core::detail::Label::Raw", Kind::Copy),
-    // 窗口进程自己写的那几份详情（通道没走通 · 这一侧的错）：时刻 · 机器 · 命令（`source::detail_of` · `Failed::here`）。
+    // 窗口进程自己写的那几份详情（通道没走通 · 这一侧的错）：时刻 · 机器 · 本机 · 命令（`source::detail_of` · `Failed::here`）；
+    //   通道断了那一份与一行汇总的整段排法住 copy-core（`channel` · `many`，与 monitor 壳 / 主界面同一份）。
     ("copy_core::detail::Detail", Kind::Copy),
     ("copy_core::detail::Label", Kind::Copy),
-    ("copy_core::detail::Label::At", Kind::Copy),
-    ("copy_core::detail::Label::Command", Kind::Copy),
-    ("copy_core::detail::Label::Machine", Kind::Copy),
+    ("copy_core::detail::channel", Kind::Copy),
+    ("copy_core::detail::many", Kind::Copy),
     ("copy_core::detail::stamp", Kind::Copy),
     // 走块上传本机那份读不到：IO 错 → 原因词（全仓那一张表住 copy-core）。
     ("copy_core::io_reason", Kind::Copy),
@@ -371,6 +371,8 @@ const MONITOR_SIDE: &[(&str, Kind)] = &[
     ("chan::host::handoff", Kind::Host),
     // 开窗那条命令失败时回的那一形（全仓壳命令同一形）。
     ("detail::Said", Kind::Said),
+    // 开窗种子里那一格「本机」（窗口自己写的复制详情带它，同主界面那一行）。
+    ("detail::local_line", Kind::Said),
     ("spawn_managed::ConsolePolicy", Kind::Spawn),
     ("spawn_managed::Lifetime", Kind::Spawn),
     ("spawn_managed::ManagedChild", Kind::Spawn),

@@ -926,3 +926,33 @@ fn the_commit_face_lands_under_a_byte_named_rel() {
     assert_eq!(std::fs::read(&want).expect("字节名的那份不在"), b"raw");
     std::fs::remove_dir_all(&h).ok();
 }
+
+/// 不覆盖那一形占位没成：已存在 ⇒「先删掉它或换个名字」那句建议；别的原因（无权限）⇒ 只说占不了位 ＋ 原因词，不配那句建议；原话都进详情。
+#[test]
+fn a_placeholder_failure_gives_the_advice_that_fits_its_reason() {
+    let dest = std::path::Path::new("/srv/up.txt");
+    let said = |e: std::io::Error| match placeholder_refused(dest, &e) {
+        WriteRefusal::IoSaid { said, raw } => {
+            assert!(!raw.trim().is_empty(), "原话丢了");
+            said
+        }
+        other => panic!("不是带原话的那一形：{other:?}"),
+    };
+    let exists = said(std::io::Error::from(std::io::ErrorKind::AlreadyExists));
+    assert_eq!(
+        exists,
+        copy_text("beFilesCommit.upload.exists", &[("path", "/srv/up.txt")])
+    );
+    let denied = said(std::io::Error::from(std::io::ErrorKind::PermissionDenied));
+    assert_eq!(
+        denied,
+        copy_text(
+            "beFilesCommit.upload.cantPlace",
+            &[
+                ("path", "/srv/up.txt"),
+                ("why", &io_reason(std::io::ErrorKind::PermissionDenied))
+            ]
+        )
+    );
+    assert_ne!(denied, exists);
+}

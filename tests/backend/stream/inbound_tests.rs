@@ -1203,6 +1203,45 @@ async fn a_failed_reply_carries_a_detail_with_the_facts_below_the_sentence() {
     );
 }
 
+/// 硬臂那几条（链路 · 传输 · 终端订阅：`Run::Builtin`，就地回应答）被拒：复制详情里也有「命令」那一项（同处理器回的失败）。
+#[tokio::test]
+async fn a_builtin_refusal_names_its_command_in_the_detail() {
+    let cmds = [
+        "link-open",
+        "link-credit",
+        "link-close",
+        "transfer-start",
+        "terminal-follow-ack",
+        "terminal-unfollow",
+    ];
+    let input: String = cmds
+        .iter()
+        .enumerate()
+        .map(|(i, c)| {
+            format!(
+                "{}\n",
+                serde_json::json!({"id": format!("b{i}"), "cmd": c, "args": {}})
+            )
+        })
+        .collect();
+    let out = one_line(&input).await;
+    let label = copy_core::copy_text("detail.label.command", &[]);
+    for (i, c) in cmds.iter().enumerate() {
+        let r: serde_json::Value = serde_json::from_str(
+            out.iter()
+                .find(|l| l.contains(&format!("\"id\":\"b{i}\"")))
+                .unwrap_or_else(|| panic!("{c} 没回：{out:?}")),
+        )
+        .unwrap();
+        assert_eq!(r["ok"], false, "{c}：{r}");
+        let detail = r["detail"].as_str().unwrap_or_default();
+        assert!(
+            detail.contains(&format!("{label}：{c}")),
+            "{c} 的详情里没有命令：{detail}"
+        );
+    }
+}
+
 /// 文件读那一族读不了：句子只带原因词，系统原话进复制详情的「原话」那一行（不进句子）。
 #[tokio::test]
 async fn a_files_read_failure_puts_the_system_words_into_the_detail() {

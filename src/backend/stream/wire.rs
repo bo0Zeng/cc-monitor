@@ -960,6 +960,19 @@ impl Frame {
         }
     }
 
+    /// 硬臂那几条命令（`Run::Builtin`：链路 · 传输 · 终端订阅）就地被拒：详情里带命令名（同处理器回的失败）。
+    pub(crate) fn refused(id: &str, cmd: &str, code: &str, message: &str) -> Frame {
+        Frame::Reply {
+            id: id.to_string(),
+            ok: false,
+            code: Some(code.to_string()),
+            message: Some(message.to_string()),
+            detail: Some(crate::stream::detail::of(Some(cmd), code, None)),
+            data: None,
+        }
+    }
+
+    /// 协议级失败（还没落到哪条命令上：认不出 · 读不懂 · 收场中）：详情里没有命令那一项。
     pub(crate) fn err(id: &str, code: &str, message: &str) -> Frame {
         Frame::Reply {
             id: id.to_string(),

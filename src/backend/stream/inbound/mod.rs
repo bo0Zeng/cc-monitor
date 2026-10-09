@@ -325,13 +325,13 @@ fn dispatch(
         // 链路四条：要碰**本连接的链路表**与应答通道 ⇒ 与 `cancel` 同一档（硬臂、就地做完）。
         // ★ `link-data` **必须就地**（不 `spawn`）：同一条链路的上行块按到达顺序进队，
         //   交给独立 task 就不再保序。它成功时的应答由上行泵在写进管子之后发（背压）。
-        "link-open" => Disposition::Reply(links.open(&req.id, &req.args)),
-        "link-data" => match links.data(&req.id, &req.args) {
+        "link-open" => Disposition::Reply(links.open(&req.cmd, &req.id, &req.args)),
+        "link-data" => match links.data(&req.cmd, &req.id, &req.args) {
             Some(f) => Disposition::Reply(f),
             None => Disposition::Done,
         },
-        "link-credit" => Disposition::Reply(links.credit(&req.id, &req.args)),
-        "link-close" => Disposition::Reply(links.close(&req.id, &req.args)),
+        "link-credit" => Disposition::Reply(links.credit(&req.cmd, &req.id, &req.args)),
+        "link-close" => Disposition::Reply(links.close(&req.cmd, &req.id, &req.args)),
         // 传输四条：要碰**本连接的票表**与应答通道（进度帧走应答通道）⇒ 同一档硬臂。
         //   开单 / 起跑 / 撤都是就地做完的记账（起跑那一下 `spawn` 两个任务，不 await）。
         // 测试连接：进度格走**本连接的应答通道**（不丢、与应答同序）⇒ 与传输四条同一档硬臂；

@@ -158,7 +158,7 @@ describe("撤销提示条", () => {
     expect(kit.unseenErrors()).toBe(true);
     merged.querySelector<HTMLButtonElement>('[data-part="copy-detail"] button')!.click();
     await vi.advanceTimersByTimeAsync(0);
-    expect(navigator.clipboard.writeText).toHaveBeenLastCalledWith(`t-2 ${copyText("kit.toast.count", { n: 2 })}\n\n码：b\n\n码：c`);
+    expect(navigator.clipboard.writeText).toHaveBeenLastCalledWith(`t-2 ${copyText("kit.toast.count", { n: 2 })}\n\nt-2\n码：b\n\nt-2\n码：c`);
     expect(toasts()).toHaveLength(2);
     expect(kit.recentToasts()[0].seen).toBe(true);
   });

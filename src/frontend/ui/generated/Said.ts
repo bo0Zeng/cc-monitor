@@ -3,4 +3,8 @@
 /**
  * 壳自己那几条命令的失败：给人看的那一句 ＋ 复制详情那几行。全仓壳命令的失败只这一形（ts-rs 导出）。
  */
-export type Said = { said: string, detail: string, };
+export type Said = { said: string, 
+/**
+ * 复制详情那几行（[`Said::parts`] 排出来的；线上只有这一格）。
+ */
+detail: string, };
