@@ -53,6 +53,7 @@ mod data_paths;
 mod footprint_client; // 「足迹」里 monitor 自己那台那几行（`HostScope::Client`）只有 monitor 知道的事实：它自己进程的家目录 · agent 家 · PATH（stat 在本机后端）
                       // U-CC1：数据面漂移记账 —— 把「CC 变了」从不可观测变成看一眼就知道。只记账，零行为变化。
 mod app_restart; // 设置窗「现在重启」：重起 cc-monitor 自己
+mod desktop_notify; // 系统通知那一条命令（平台那一半在 platform/notify.rs）
 mod diagnostics_report; // 日志页「复制诊断信息」：一个命令出整段诊断文本
 mod drift_ledger;
 mod event_replay;
@@ -620,14 +621,11 @@ pub fn run() {
                         match local_backend_host::take_start_refusal() {
                             Some(next_step) => {
                                 tracing::warn!("本机后端未启动: {reason}；找过 {looked_at:?}");
-                                use tauri_plugin_notification::NotificationExt;
-                                if let Err(e) = app
-                                    .notification()
-                                    .builder()
-                                    .title(&copy_text("rsLib.run.localBackendDown", &[]))
-                                    .body(&next_step)
-                                    .show()
-                                {
+                                if let Err(e) = crate::platform::notify::show(
+                                    app.handle(),
+                                    &copy_text("rsLib.run.localBackendDown", &[]),
+                                    &next_step,
+                                ) {
                                     // 通知发不出去也要留痕，别让「说出口」这件事静默失败。
                                     tracing::warn!(
                                         "本机后端拒绝的通知发不出去（{e}）：{next_step}"
@@ -868,6 +866,7 @@ pub fn run() {
             drift_ledger::drift_ledger_report,
             diagnostics_report::diagnostics_report,
             app_restart::restart_app,
+            desktop_notify::notify_desktop,
             // `ccm …` 调用行 · 载荷渲染两条退役：那台后端的帧命令 `launch-render-cli` / `launch-render-payload`。
             // MCP 读写（`mcp::*` 六条）与推 / 拉两条退役：界面经通道问那台后端
             //   （`mcp-read` · `mcp-server-put` / `-remove` · `mcp-sync-source` / `-preview` / `-apply`，`src/frontend/ui/mcp-reads.ts` · `src/frontend/ui/mcp-sync-reads.ts`）。

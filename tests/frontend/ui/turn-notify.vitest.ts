@@ -284,3 +284,22 @@ describe("turn-end 判定的跨语言对拍（audit-0805 F12）", () => {
     }
   });
 });
+
+// L2（10-08 · GNOME 真窗口）：系统通知只经壳的 `notify_desktop` 发（平台那一半在 `platform/notify.rs`）。
+// 不再经 notification 插件的 JS：插件在 Linux 上每条通知新开一条会话总线连接、发完就丢，GNOME 见发信人的总线名一没、
+// 而它又认得出是哪个有窗口的程序 ⇒ 当场把那条通知关掉（真窗口上 dbus-monitor 现打：Notify 之后十几毫秒 NotificationClosed）。
+describe("系统通知只经壳的 notify_desktop", () => {
+  it("notifySend ⇒ commands.notify_desktop({title, body})，不碰插件", async () => {
+    vi.resetModules();
+    const sent: unknown[] = [];
+    vi.doMock("../../../src/frontend/ui/ipc/commands", () => ({
+      commands: { notify_desktop: (a: unknown) => (sent.push(a), Promise.resolve()) },
+    }));
+    const m = await import("../../../src/frontend/ui/turn-notify");
+    await m.notifySend("标题", "正文");
+    expect(sent).toEqual([{ title: "标题", body: "正文" }]);
+    const { readFileSync } = await import("node:fs");
+    expect(readFileSync("src/frontend/ui/turn-notify.ts", "utf8")).not.toContain("plugin-notification");
+    vi.doUnmock("../../../src/frontend/ui/ipc/commands");
+  });
+});

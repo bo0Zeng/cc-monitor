@@ -13,6 +13,8 @@ pub mod filetime;
 pub mod fs;
 pub mod hwnd;
 pub mod login_shell;
+// 系统通知（Linux 直调 notify-rust、连接留到通知关掉；别处经插件）。
+pub mod notify;
 pub mod pid;
 pub mod proc;
 pub mod spawn;

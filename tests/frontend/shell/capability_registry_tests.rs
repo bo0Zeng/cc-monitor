@@ -11,7 +11,7 @@ const ALLOWED: &[(&str, &str)] = &[
              ⚠ 它只能**打开**，不能读写内容",
     ),
     ("dialog:default", "文件选择框（SFTP 上传/下载选本地路径）"),
-    ("notification:default", "「Claude 完成一轮」系统通知（F42）· 「有会话在等你」系统通知（主窗口不在前台时）"),
+    // `notification:default` 摘了：界面不再经插件的 JS 发通知，改走壳命令 `notify_desktop`（`platform/notify.rs`）。
     ("core:window:allow-minimize", "最小化"),
     ("core:window:allow-set-title", "窗口标题写「cc-monitor · 需要你 N」（任务栏、Alt+Tab 里看得见谁在等你）"),
     ("core:window:allow-set-fullscreen", "全屏"),

@@ -367,6 +367,11 @@ async fn terminal_open(origin: Origin, payload: Body, left: Duration) -> Result<
             "no_window",
             copy_text("rsLaunch.posix.noTerminalWindow", &[]),
         )),
+        // 设置里指定的那个终端不在：同上，说去设置里改。
+        Ok(crate::platform::terminal::TerminalOpen::SetMissing) => Err(refused(
+            "no_window",
+            copy_text("rsLaunch.posix.setTerminalMissing", &[]),
+        )),
         Err(why) => Err(refused("terminal_failed", why.said)),
     }
 }

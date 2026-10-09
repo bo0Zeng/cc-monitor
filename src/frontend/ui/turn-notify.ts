@@ -8,11 +8,11 @@
  * 4. per-会话防抖 10s；
  * 5. 窗口聚焦跳过（用户正看着，不打扰）；
  * 6.（异步尾）设置开关 `notifyTurnEnd`——只在真 turn-end 才读配置，无需缓存失效;
- *    通知权限懒检查一次，拒绝后记忆、静默降级不再弹。
  *
  * 依赖注入（deps）纯为可测：生产用默认实现，vitest 全量替换。
  */
 import { getBehavior } from "./behavior";
+import { commands } from "./ipc/commands";
 import { copyText } from "./copy-table";
 
 /**
@@ -66,7 +66,7 @@ export class TurnEndNotifier {
       isFocused: () => document.hasFocus(),
       now: () => Date.now(),
       enabled: async () => (await getBehavior()).notifyTurnEnd,
-      send: pluginSend,
+      send: notifySend,
       ...deps,
     };
   }
@@ -100,36 +100,11 @@ export class TurnEndNotifier {
   }
 }
 
-// --- 默认 send：Tauri notification 插件（动态 import，不进主 bundle 关键路径）---
-// 权限检查收敛为共享 Promise：并发首次触发只查一次（无竞态吞通知）；
-// 查询/请求本身抛异常（瞬时错误）→ 重置为 null 下次重试，不永久锁死成"拒绝"。
-let permPromise: Promise<boolean> | null = null;
+// --- 默认 send：壳的 `notify_desktop`（平台那一半在 `platform/notify.rs`：Linux 上连接留到通知关掉，GNOME 才不当场收走）---
 
-type NotifyMod = typeof import("@tauri-apps/plugin-notification");
-
-function ensurePermission(mod: NotifyMod): Promise<boolean> {
-  permPromise ??= (async () => {
-    try {
-      if (await mod.isPermissionGranted()) return true;
-      return (await mod.requestPermission()) === "granted"; // 用户拒绝 → 记忆，不反复弹
-    } catch (e) {
-      console.warn("turn-notify: permission check failed (will retry):", e);
-      permPromise = null;
-      return false;
-    }
-  })();
-  return permPromise;
-}
-
-/** 发一条系统通知（「需要你」那条也走这里：同一份权限检查）。 */
+/** 发一条系统通知（「需要你」那条也走这里）。 */
 export async function notifySend(title: string, body: string): Promise<void> {
-  return pluginSend(title, body);
-}
-
-async function pluginSend(title: string, body: string): Promise<void> {
-  const mod = await import("@tauri-apps/plugin-notification");
-  if (!(await ensurePermission(mod))) return;
-  mod.sendNotification({ title, body });
+  await commands.notify_desktop({ title, body });
 }
 
 /** 生产单例（tabs.ts 用）。 */

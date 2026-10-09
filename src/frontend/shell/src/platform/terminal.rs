@@ -77,25 +77,27 @@ fn prefix_of(setting: &str) -> Vec<String> {
     }
 }
 
-/// 这一趟用哪个终端 ⇒ 它的 argv 前缀（命令接在后面）。自动挑一个都没探到 ⇒ `Ok(None)`（[`TerminalOpen::NoWindow`]：
-/// 前端照实说并给设置入口）；设置里指定的那个不在 ⇒ `Err`（一句说清是哪个、去哪改；不退成自动挑到的别的终端）。
+/// 设置里指定的那个终端这台上没有（名字是设置里那一格的第一个词）。
+#[cfg(not(windows))]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SetMissing(pub String);
+
+/// 这一趟用哪个终端 ⇒ 它的 argv 前缀（命令接在后面）。自动挑一个都没探到 ⇒ `Ok(None)`（[`TerminalOpen::NoWindow`]）；
+/// 设置里指定的那个不在 ⇒ [`SetMissing`]（[`TerminalOpen::SetMissing`]；不退成自动挑到的别的终端）。两种都由前端照实说、给设置入口。
 /// 纯函数：设置 · 桌面 · 「这个程序在不在」都是入参（判据不碰真机器）。
 #[cfg(not(windows))]
 pub(crate) fn pick_terminal_from(
     setting: Option<&str>,
     desktop: &str,
     exists: &dyn Fn(&str) -> bool,
-) -> Result<Option<Vec<String>>, String> {
+) -> Result<Option<Vec<String>>, SetMissing> {
     match setting.map(str::trim).filter(|s| !s.is_empty()) {
         Some(s) => {
             let prefix = prefix_of(s);
             if exists(&prefix[0]) {
                 Ok(Some(prefix))
             } else {
-                Err(copy_text(
-                    "rsLaunch.posix.setTerminalMissing",
-                    &[("name", &prefix[0])],
-                ))
+                Err(SetMissing(prefix[0].clone()))
             }
         }
         None => Ok(auto_order(desktop)
@@ -120,7 +122,7 @@ fn current_desktop() -> String {
 
 /// 生产那一问：按设置 ＋ 这台的 `PATH` 挑。
 #[cfg(not(windows))]
-pub(crate) fn pick_terminal() -> Result<Option<Vec<String>>, String> {
+pub(crate) fn pick_terminal() -> Result<Option<Vec<String>>, SetMissing> {
     pick_terminal_from(
         terminal_setting().as_deref(),
         &current_desktop(),
@@ -252,10 +254,16 @@ pub(crate) fn build_local_posix_spawn(term: &[String], argv: &[String]) -> (Stri
 pub(crate) const ONE_STRING: &[&str] = &["tilix"];
 
 /// 在 **POSIX 本机**开一个终端窗口跑一条命令（不经 ssh、不经 PowerShell）：挑到终端 ⇒ 开窗；一个都没探到 ⇒ [`TerminalOpen::NoWindow`]
-/// （不回落到无窗口直起：要人交互的那一行跑在看不见的地方等于没跑）；设置里指定的不在 ⇒ `Err`。
+/// （不回落到无窗口直起：要人交互的那一行跑在看不见的地方等于没跑）；设置里指定的不在 ⇒ [`TerminalOpen::SetMissing`]。
 #[cfg(not(windows))]
 pub fn launch_local_posix(cmd: &str, cwd: Option<&str>) -> Result<TerminalOpen, String> {
-    open_window_via(cmd, cwd, pick_terminal()?.as_deref())
+    match pick_terminal() {
+        Ok(term) => open_window_via(cmd, cwd, term.as_deref()),
+        Err(SetMissing(name)) => {
+            tracing::info!("launch: 设置里指定的终端 {name} 不在");
+            Ok(TerminalOpen::SetMissing)
+        }
+    }
 }
 
 /// [`launch_local_posix`] 挑完终端之后那一跳，终端是入参（判据传 `None` / 假终端，不在开发者桌面上开真窗口）。
@@ -531,6 +539,8 @@ pub enum TerminalOpen {
     Opened,
     /// 这台找不到能开的终端（POSIX：设置里没指定、自动也没探到）。前端照实说、给设置入口。
     NoWindow,
+    /// 设置里指定的那个终端这台上没有（POSIX）。前端照实说、给设置入口。
+    SetMissing,
 }
 
 /// 在本机开一个终端窗口跑 `cmd`（工作目录 `cwd`，不在就不设）—— 「这台电脑能不能开终端窗口、用哪个」只在这一处答：

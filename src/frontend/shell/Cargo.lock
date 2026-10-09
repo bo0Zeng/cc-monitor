@@ -3346,6 +3346,7 @@ dependencies = [
  "host-core",
  "notify",
  "notify-debouncer-mini",
+ "notify-rust",
  "parking_lot",
  "relay-route-core",
  "serde",
