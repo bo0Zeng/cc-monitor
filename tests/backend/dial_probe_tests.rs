@@ -163,11 +163,15 @@ async fn an_old_backend_without_commands_says_too_old() {
         String::from_utf8_lossy(&got)
     );
     assert_eq!(r["backendOk"], true);
-    assert_eq!(r["message"], copy_text("beProbe.test.noControl", &[]));
+    let said = copy_core::backend_old("devbox");
+    assert_eq!(r["message"], json!(said));
     let unknown = copy_text("beProbe.hello.noBuild", &[]);
     assert_eq!(
         r["backendHello"],
-        json!(copy_text("beProbe.hello.tooOld", &[("build", &unknown)]))
+        json!(copy_text(
+            "beProbe.hello.tooOld",
+            &[("build", &unknown), ("said", &said)]
+        ))
     );
     assert!(is_not_a_log_line(r["backendHello"].as_str().unwrap()));
     assert_eq!(r["backendGaps"], json!([]));

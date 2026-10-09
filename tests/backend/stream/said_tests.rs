@@ -99,9 +99,7 @@ fn every_golden_code_has_its_own_sentence_without_raw_words() {
         reword("ping", &serde_json::json!({}), "x").is_none(),
         "没有表的命令该照原句"
     );
-    assert_eq!(
-        reword("accounts-add", &serde_json::json!({}), "bad_args").as_deref(),
-        Some(copy_text("accountOps.said.contract", &[]).as_str())
-    );
+    // 账号库那几条没有表：契约对不上照处理器那句（「请求格式不对」），不猜成两端版本。
+    assert!(reword("accounts-add", &serde_json::json!({}), "bad_args").is_none());
     assert!(reword("accounts-add", &serde_json::json!({}), "name_taken").is_none());
 }

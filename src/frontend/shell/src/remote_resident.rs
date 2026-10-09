@@ -69,11 +69,13 @@ impl AttachErr {
 
 /// 读 `--resident-ensure` / `--resident-stop` 那一趟的结果（纯函数）：退出 0 ⇒ stdout 那一行；退出 2 ⇒ stderr 的 `{code,message}`。
 /// `unsupported`（那台脱离不了，非 unix）明说「远端只支持 Unix」；老后端 ⇒ 「太旧」—— 都是失败，没有回落。
+/// `machine` 是那台给人看的称呼（老后端 ⇒「{machine} 后端要更新」）。
 pub(crate) fn parse_answer(
     exec: &crate::stream_source::RemoteExec,
+    machine: &str,
 ) -> Result<serde_json::Value, AttachErr> {
     if exec.stdout.contains(OLD_BACKEND_MARKER) {
-        return Err(copy_text("rsRemoteResident.ensure.tooOld", &[]).into());
+        return Err(copy_core::backend_old(machine).into());
     }
     match exec.exit_status {
         Some(0) => serde_json::from_str(exec.stdout.trim()).map_err(|e| {
@@ -136,7 +138,7 @@ async fn ensure(cfg: &RemoteConfig, replace: bool) -> Result<Ensured, AttachErr>
     }
     let exec =
         crate::stream_source::connect_and_exec_capture(cfg, &cmd, Some(OLD_BACKEND_MARKER)).await?;
-    Ok(parse_ensured(&parse_answer(&exec)?)?)
+    Ok(parse_ensured(&parse_answer(&exec, &cfg.origin_label())?)?)
 }
 
 /// hello 那一行里那台报的 build（纯函数，只读线上形状）。口上不是常驻后端（第一行不是 hello）⇒ `Err`（那句话）。
@@ -213,11 +215,13 @@ async fn ask_verdict(mine: &str, theirs: &str, replaced: bool) -> Result<Verdict
     let data = client
         .call(VERDICT_CMD, args, VERDICT_BUDGET)
         .await
-        .map_err(
-            |e| match route_call_error(&e, |_code, message| message.to_string()) {
+        .map_err(|e| {
+            match route_call_error(&e, &copy_core::local_machine(), |_code, message| {
+                message.to_string()
+            }) {
                 Routed::NoChannel(s) | Routed::Refused(s) => s,
-            },
-        )?;
+            }
+        })?;
     decode_verdict(&data.unwrap_or_default())
 }
 
@@ -445,8 +449,11 @@ pub struct StopAnswer {
 }
 
 /// 读 `--resident-stop` 那一趟（纯函数）：三个词之外的一律是错，不猜（本机那一趟也经它，`local_backend_host::run_resident_stop`）。
-pub(crate) fn read_stop(exec: &crate::stream_source::RemoteExec) -> Result<StopAnswer, String> {
-    let v = parse_answer(exec).map_err(AttachErr::said)?;
+pub(crate) fn read_stop(
+    exec: &crate::stream_source::RemoteExec,
+    machine: &str,
+) -> Result<StopAnswer, String> {
+    let v = parse_answer(exec, machine).map_err(AttachErr::said)?;
     let stopped = match v["stopped"].as_str() {
         Some("graceful") => StopWord::Graceful,
         Some("killed") => StopWord::Killed,
@@ -472,7 +479,7 @@ pub(crate) async fn stop(cfg: &RemoteConfig) -> Result<StopAnswer, String> {
     );
     let exec =
         crate::stream_source::connect_and_exec_capture(cfg, &cmd, Some(OLD_BACKEND_MARKER)).await?;
-    read_stop(&exec)
+    read_stop(&exec, &cfg.origin_label())
 }
 
 #[cfg(test)]

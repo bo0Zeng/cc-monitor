@@ -114,7 +114,7 @@ fn relays() -> std::sync::MutexGuard<'static, HashMap<String, Relay>> {
 /// match 那个错误枚举的地方）；后端自己说的码（`busy` / `refused` / `bad_args` …）原样带回，窗口按它画那一行。
 fn said(e: &crate::inbound_client::CallError) -> (String, String) {
     let code = std::cell::RefCell::new(String::from("backend"));
-    let text = match route_call_error(e, |c, m| {
+    let text = match route_call_error(e, &copy_core::local_machine(), |c, m| {
         *code.borrow_mut() = c.to_string();
         m.to_string()
     }) {

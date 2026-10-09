@@ -42,6 +42,9 @@ pub const MAX_REACH: usize = 256;
 /// 老后端不认一次性子命令会进流模式、第一行是 hello —— capture 看见它就收工（不让它装 hook、不挂住）。
 pub(crate) const HELLO_MARKER: &str = "\"kind\":\"hello\"";
 
+/// 那台不认这条命令 / 子命令：与帧协议里同一个码。
+const UNKNOWN_COMMAND: &str = "unknown_command";
+
 /// 对面：在那台上跑一条一次性命令，交回它的 stdout。生产 = [`DialRemote`]（经 `dial` 的 capture）；判据用替身。
 /// `stdin`= exec 之后写进那个进程 stdin 的字节（缺席 = 不写）；收的一侧用 CLI 面的「只读一行」入口。
 pub trait Remote: Send + Sync {
@@ -190,13 +193,20 @@ pub async fn ask_json(
     let line = command_line(&[&flag, crate::STDIN_LINE_FLAG]);
     let out = remote
         .run_coded(&r.dial, line, Some(format!("{args}\n")))
-        .await?;
-    serde_json::from_str(out.trim()).map_err(|e| Said {
-        code: None,
-        message: copy_text(
-            "beRemoteAsk.json.unreadable",
-            &[("machine", machine), ("e", &e.to_string())],
-        ),
+        .await
+        .map_err(|s| match s.code.as_deref() {
+            Some(UNKNOWN_COMMAND) => Said {
+                code: s.code,
+                message: copy_core::backend_old(machine),
+            },
+            _ => s,
+        })?;
+    serde_json::from_str(out.trim()).map_err(|e| {
+        tracing::warn!("reply from {machine} is not JSON: {e}");
+        Said {
+            code: None,
+            message: copy_core::reply_unreadable(machine),
+        }
     })
 }
 
@@ -401,7 +411,11 @@ fn settle_pulled(got: &Value) -> Result<String, Said> {
     };
     let stdout = got.get("stdout").and_then(Value::as_str).unwrap_or("");
     if stdout.contains(HELLO_MARKER) {
-        return Err(plain(copy_text("beRemoteAsk.run.tooOld", &[])));
+        // 那台的后端不认这条子命令（掉进了流模式）：码同「不认这条命令」，话按码取；知道那台名字的调用方换成名字（[`ask`]）。
+        return Err(Said {
+            code: Some(UNKNOWN_COMMAND.to_string()),
+            message: copy_core::backend_old(&copy_core::peer_machine()),
+        });
     }
     if got.get("exit_status").and_then(Value::as_u64) != Some(0) {
         let stderr = got.get("stderr").and_then(Value::as_str).unwrap_or("");

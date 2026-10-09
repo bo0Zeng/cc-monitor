@@ -139,7 +139,7 @@ impl std::fmt::Display for LinkError {
                 copy_text("rsSshLink.dial.failed", &[("why", &why.to_string())])
             ),
             LinkError::TooOld { .. } => {
-                write!(f, "{}", copy_text("rsSshLink.dial.tooOld", &[]))
+                write!(f, "{}", copy_core::backend_old(&copy_core::local_machine()))
             }
             LinkError::Garbled(_) => write!(f, "{}", copy_text("rsSshLink.dial.badShape", &[])),
             LinkError::LineTooLong(_) => {

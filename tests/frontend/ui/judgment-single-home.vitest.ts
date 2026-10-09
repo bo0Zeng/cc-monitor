@@ -469,8 +469,9 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   },
   J22: {
     what: "因对方版本说不成的两个码（版本旧 / 回的认不出）各取哪一句、本机怎么称呼",
-    // 两侧各一个取句口，取的是表里同两条键（`peerVersion.said.*`）与同一个本机称呼（`control.machine.local`）。
-    homes: ["copy-core::backend_old", "copy-core::reply_unreadable", "copy-core::local_machine"],
+    // 两侧各一个取句口，取的是表里同两条键（`peerVersion.said.*`）与同一个本机称呼（`control.machine.local`）；
+    // 说话那一层不知道名字时的称呼（`control.machine.peer`）只有 Rust 那一侧用（通信层兜底 · 后端自己答不认）。
+    homes: ["copy-core::backend_old", "copy-core::reply_unreadable", "copy-core::local_machine", "copy-core::peer_machine"],
     status: "mirror",
     defs: ["peerVersionSaid"],
     needles: [],
@@ -571,6 +572,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     format_duration: "J24",
     format_elapsed: "J24",
     local_machine: "J22",
+    peer_machine: "J22",
     reply_unreadable: "J22",
     TABLE_JSON: NONE,
     // 天数 ⇒ 公历（后端 · monitor · 文件窗口写日期与「复制详情」的时刻都经它）；界面那一份 TS 删了（J23 zero）。

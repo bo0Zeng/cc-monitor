@@ -1155,7 +1155,7 @@ pub async fn ask_coded_cancellable(
         .await
         .map_err(|e| Failed {
             code: refused_code(&e),
-            said: said(cmd, &e),
+            said: said(origin, cmd, &e),
             detail: detail_of(origin, cmd, &e),
         })?;
     let v: serde_json::Value = serde_json::from_slice(&body.0).map_err(|e| {
@@ -1373,7 +1373,7 @@ pub fn refused_code(e: &comms_inward::chan::wire::CallError) -> Option<String> {
 ///
 /// ⚠ `reach` 那一格要说出来：`Sent` / `Unknown` 的意思是「对面可能已经做了」，
 /// 对写面那几条这一句是承重的（用户据此决定要不要再点一次）。
-pub fn said(cmd: &str, e: &comms_inward::chan::wire::CallError) -> String {
+pub fn said(origin: &Origin, cmd: &str, e: &comms_inward::chan::wire::CallError) -> String {
     use comms_inward::chan::wire::{CallError, HopFault, OursFault, PeerFault, Reach};
     match e {
         CallError::Peer { why } => match why {
@@ -1394,7 +1394,8 @@ pub fn said(cmd: &str, e: &comms_inward::chan::wire::CallError) -> String {
                     ),
                 }
             }
-            PeerFault::Unsupported => copy_text("rsFilewinSource.said.unknownCmd", &[]),
+            // 那台不认这条命令：全产品同一句，名字是这扇窗看着的那台。
+            PeerFault::Unsupported => copy_core::backend_old(&origin.0),
         },
         CallError::Hop { at, reach, why } => {
             let what = match why {
