@@ -142,7 +142,8 @@ const DEPS: Record<string, readonly string[]> = {
   "src/frontend/ui/tab-drop.ts": ["src/frontend/ui/copy-table.ts"],
   // ① store：只存东西、只做顺序运算、只有一份订阅。摘要按活性分 ⇒ 要 `isLive` 那一个谓词。
   // 「只有一份订阅」建在唯一的 pub-sub 原语上（`app-store.ts::Slice`）。
-  "src/frontend/ui/tab-store.ts": ["src/frontend/ui/app-store.ts", "src/frontend/ui/tab-session-state.ts"],
+  // 摘要也比每个 tab 的点 · 在等什么（运行中 → 空闲数量不变，会话头也得重画）⇒ 要 `session-face` 的 `dotOf` · `needsOf`。
+  "src/frontend/ui/tab-store.ts": ["src/frontend/ui/app-store.ts", "src/frontend/ui/session-face.ts", "src/frontend/ui/tab-session-state.ts"],
   // ① 会话状态的两个轴：形状 ＋ 转移 ＋ 谓词 ＋ 呈现。呈现的字只经文案表取（`sessionState.*`）。
   "src/frontend/ui/tab-session-state.ts": ["src/frontend/ui/copy-table.ts"],
   // ② 路由：只写「上次的 tab」那一格 localStorage。已结束的不自动跟随 ⇒ `isResumeOnly`。

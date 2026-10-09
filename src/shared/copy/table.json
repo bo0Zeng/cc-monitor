@@ -1661,6 +1661,18 @@
       "args": [],
       "limited": ["ccm"]
     },
+    "beSessionNew.start.failed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "启动失败 · 程序出错",
+      "args": []
+    },
+    "beSessionNew.ticket.pending": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "上一次新建仍在启动 · 稍后再核",
+      "args": []
+    },
     "beSessionNew.agent.missing": {
       "kind": "error",
       "role": "报错",
@@ -13792,11 +13804,23 @@
       "zh": "先填工作目录",
       "args": []
     },
-    "newSession.retry.action": {
+    "newSession.recheck.action": {
       "kind": "action",
       "role": "按钮",
-      "zh": "重试",
+      "zh": "再核一次",
       "args": []
+    },
+    "newSession.timeout.checking": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "正在核实 {machine} 是否已起",
+      "args": ["machine"]
+    },
+    "newSession.timeout.unknown": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "{machine} 启动结果未知",
+      "args": ["machine"]
     },
     "newSession.window.failed": {
       "kind": "error",

@@ -430,8 +430,8 @@ export class RemoteSection {
     [...this.pageIdOf.entries()].find(([, id]) => id === pageId)?.[0].showLive(up);
   }
 
-  /** 问题行的修法：连接这台 / 连接设置在这里就做得了，其余交宿主。 */
-  private runFix(pageId: string, fix: MachineFix): void {
+  /** 问题行的修法（列表那一行与机器单页卡头同一个口子）：连接这台 / 连接设置 / 比对指纹 / 推送公钥在这里就做得了，其余交宿主。 */
+  runFix(pageId: string, fix: MachineFix): void {
     if (fix === "connect") this.setConnect(pageId, true);
     else if (fix === "conn_settings") this.pages?.openMachineSection?.(pageId, "conn");
     else if (fix === "compare_fingerprint") void this.compareFingerprint(pageId);
