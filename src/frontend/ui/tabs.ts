@@ -1,18 +1,11 @@
 ﻿/**
- * 〔「一个 store，一个 router」〕**拆分地图**。
- *
- * 拆之前（基线 `bf3cdc83`，4991 行）本文件是**一个类干五件事**。现打逐件（谁在调 → 拆到哪）：
- *
- * | # | 这件事 | 谁在调（生产） | 拆到 |
- * |---|---|---|---|
- * | ① | **会话状态账**：tab 集合 · 顺序 · 当前 tab · 早于 tab 到达的信号暂存（已结束/可重连/红绿灯）· 账号快照 · 任务快照 · 「变了」那一份订阅 | `main.ts` / `entry-viewer.ts` 把 `events.ts` 的事件喂进来（`onLine` · `archiveTab` · `reviveTab` · `markTmuxIdle` · `updateActivity` · `updateTasks` · `createSkeletonTab` · `setSessionAccounts`）；`main.ts` 读投影（`snapshotSessions` · `peekSession` · `hasTab` · `activeRepoInfo` · `touchedFilesFor` · `activeSessionId`） | `tab-store.ts`（store）· `tab-model.ts`（`Tab` 形状与标题）· `tab-session-facts.ts`（把后端给的会话事实落到 tab 上；数据源 `views/facts-source.ts`）· `tab-session-state.ts`（会话状态的两个轴：活性 × 可恢复性，转移与谓词） |
- * | ② | **路由**：切到哪个 tab、谁有权切（手动 5s 保护 · 自动跟随）、记住上次的 tab | `main.ts` 快捷键 / 命令面板 / 启动选 active（`switchTo` · `cycleActive` · `jumpToIndex` · `applyBehavior` · `persistLastActive` · `onManualSwitch`）；`onLine` 里真用户输入（`userActive`） | `tab-router.ts` |
- * | ③ | **实时流视图**：每个 tab 的流 DOM、按 seq 门控建卡、尾部窗口 / 骨架 / 上翻补批 / 哨兵 / 大纲、重放批 | `events.ts` → `onBatchStart` · `onLine` · `onBatchEnd`；`main.ts` DEV 探针 `debugSnapshot` | `tab-stream-view.ts` |
- * | ④ | **tab 栏视图**：按钮 · 徽章 · 分组 · 拖动排序与成组 · 固定 · 顺序落盘 | 用户手势；`main.ts` 启动 `loadCollections` · `loadPinned` · `loadOrder` | `tab-bar-view.ts` · `tab-bar-drag.ts` · `tab-drop.ts`（纯落点算术）· `tab-bar-prefs.ts`（集合 / 固定 / 顺序三份落盘） |
- * | ⑤ | **会话动作**：右键菜单（resume · 换号重启 · attach · 预览 · 杀会话 · 集合 · 固定）与它背后的 IPC（开目录 · 新窗口 · 切到终端窗口） | 用户右键；`main.ts` 快捷键 / 命令面板（`bringActiveTerminalToFront` · `openActiveTabCwd` · `openActiveInNewWindow` · `closeActiveIfArchived`） | `tab-menu.ts`（菜单项怎么组）· `kit/menu.ts`（菜单这个控件，全产品一份）· `tab-session-actions.ts`（动作本身；IPC 经包装层 `ipc/commands.ts`） |
- *
- * 本文件拆完只剩 `TabManager` 这个**组装根**：对外 API（`main.ts` / `entry-viewer.ts` 调的那些）
- * 逐字不变，事件怎么在上面几份之间流转写在这里。拆分逐子步提交，每一步 `tabs.vitest` 全绿、断言不动。
+ * `TabManager`：标签页这一族的组装根。对外 API（`main.ts` / `entry-viewer.ts` 调的那些）在这里，
+ * 事件怎么在下面几份之间流转也写在这里：
+ * - 会话状态账 `tab-store.ts`（`Tab` 形状与标题 `tab-model.ts` · 会话事实落到 tab 上 `tab-session-facts.ts` · 两轴状态 `tab-session-state.ts`）
+ * - 路由 `tab-router.ts`（切到哪个 · 自动跟随 · 手动 5s 保护 · 记住上次）
+ * - 实时流视图 `tab-stream-view.ts`
+ * - tab 栏 `tab-bar-view.ts` · 拖拽 `tab-bar-drag.ts` · 落点 `tab-drop.ts` · 落盘偏好 `tab-bar-prefs.ts`
+ * - 会话动作 `tab-session-actions.ts`（菜单项 `tab-menu.ts`）
  */
 import { speakerNameOf } from "./agent-profile";
 import { SPEAKER_SELECTOR } from "./cards/speaker";
@@ -44,9 +37,8 @@ import type { SessionActivity } from "./generated/SessionActivity";
 import { ENDED, LIVE, RECONNECTABLE, closesWithoutMenu, containerEvent, isLive, isResumeOnly, hasTerminal, inTmux, nextState, type StateEvent } from "./tab-session-state";
 import type { SessionContainer } from "./generated/SessionContainer";
 import { isLocalOrigin, isRemoteOrigin, LOCAL_ORIGIN, originFromWire, type Origin } from "./ipc/origin";
-// `Tab` 的形状与标题函数搬去了 `tab-model.ts`；这里原样 re-export，既有 import 面零改动。
+// `Tab` 的形状与标题函数在 `tab-model.ts`、落点算术在 `tab-drop.ts`；这里 re-export，调用方只 import 本文件。
 export type { Tab, TabsSummary } from "./tab-model";
-// 落点算术搬去了 `tab-drop.ts`；原样 re-export，`tabs.vitest.ts` 的 import 面零改动。
 export {
   moveTab,
   pickDropTarget,
@@ -93,33 +85,26 @@ import type { ActionId } from "./keybindings/actions";
 
 
 export class TabManager {
-  /**
-   * **会话状态账住 `tab-store.ts`** —— tab 集合 · 顺序 · 当前 tab · 早到信号暂存 · 账号快照 ·
-   * 任务快照，外加「变了」那唯一一份订阅。本类与拆出去的几份都读写同一个实例。
-   */
+  /** 会话状态账（`tab-store.ts`）：本类与拆出去的几份读写同一个实例。 */
   private readonly store = new TabStore();
-  /**
-   * **路由住 `tab-router.ts`**：下一个 / 第 N 个是谁、自动跟随放不放行、
-   * 切完之后记住上次的 tab 与 5s 手动保护。切换本身的编排（可见性 · 物化 · 面板 · 贴底）仍在 `switchTo`。
-   */
+  /** 路由（`tab-router.ts`）；切换本身的编排（可见性 · 物化 · 面板 · 贴底）在 `switchTo`。 */
   private readonly router = new TabRouter(this.store, () => this.bar.visibleOrder());
 
   /**
-   * 实时流视图住 `tab-stream-view.ts`。**在构造体里建，不写成字段初始化**：
-   * 它要 `streamRootEl`，而字段初始化在参数属性赋值之前跑（esbuild 出原生 class field 时就是这个序），
-   * 写成初始化器会拿到 `undefined`。
+   * 实时流视图（`tab-stream-view.ts`）。在构造体里建、不写成字段初始化：它要 `streamRootEl`，
+   * 而字段初始化在参数属性赋值之前跑，会拿到 `undefined`。
    */
   private readonly view: TabStreamView;
 
   constructor(
-    /** tab 栏容器：本类只把它交给 tab 栏视图与拖拽（判据要它时读 `bar` / `dragger` 那两份，或用自己传进来的那个元素）。 */
+    /** tab 栏容器：只交给 tab 栏视图与拖拽。 */
     barEl: HTMLElement,
     streamRootEl: HTMLElement,
-    /** 任何 Tab 增/减/状态变化后回调；宿主用它驱动状态栏等外部 UI。它是 store 那一份订阅的第一个订阅者。 */
+    /** Tab 增 / 减 / 状态变化后回调（宿主驱动状态栏）；store 那份订阅的第一个订阅者。 */
     onTabsChanged?: (summary: TabsSummary) => void,
-    /** issue #11: 全局 TasksPanel，切 Tab / 收事件时由 TabManager 喂数据 */
+    /** 全局任务面板：切 Tab / 收事件时由本类喂数据。 */
     private tasksPanel?: TasksPanel,
-    /** issue #23: 全局 AgentsPanel（子运行列表：运行表的成品），喂数方式同 tasksPanel */
+    /** 全局 agent 面板（子运行列表），喂法同任务面板。 */
     private agentsPanel?: AgentsPanel,
   ) {
     // 子运行的流有动静 ⇒ 面板那一行的「最近：…」跟着变。
@@ -134,7 +119,7 @@ export class TabManager {
       };
     }
     if (onTabsChanged) this.store.subscribe(onTabsChanged);
-    // 「账号快照变了」改订阅 store：宿主整份换快照，这里同一拍应用（原先宿主直调 `setSessionAccounts`）。
+    // 账号快照变了 ⇒ 同一拍应用。
     appStore.sessionAccounts.subscribe((snap) => {
       if (snap) this.setSessionAccounts(snap.rows, snap.emailByName, snap.lastByS, snap.readyOrigins, snap.currentByOrigin);
     });
@@ -198,9 +183,7 @@ export class TabManager {
   );
 
 
-  /**
-   * tab 栏的三份落盘偏好（集合 · 固定 · 顺序）住 `tab-bar-prefs.ts`。
-   */
+  /** tab 栏的三份落盘偏好（集合 · 固定 · 顺序，`tab-bar-prefs.ts`）。 */
   private readonly prefs = new TabBarPrefs(this.store, {
     refreshTabBar: () => this.refreshTabBar(),
     createSkeletonTab: (sid, projectDir, origin, background, name) =>
@@ -208,19 +191,18 @@ export class TabManager {
     resumeTab: (sid) => this.actions.resumeTab(sid),
   });
 
-  /** P7a-3：从 `config.json` 拉一次集合并重画。宿主启动时调一次。 */
+  /** 从 `config.json` 拉一次集合并重画（宿主启动时调一次）。 */
   loadCollections(): Promise<void> {
     return this.prefs.loadCollections().then(() => this.settleUnarrivedOnce());
   }
-  /** 启动时把固定的 tab 复活出来（流程见 `tab-bar-prefs.ts` 那一份的头注）。 */
+  /** 启动时把固定的 tab 复活出来。 */
   loadPinned(): Promise<void> {
     return this.prefs.loadPinned();
   }
-  /** 启动时把落盘的顺序拉回来（为什么它曾是结构性 no-op 见 `tab-bar-prefs.ts` 那一份的头注）。 */
+  /** 启动时把落盘的顺序拉回来。 */
   loadOrder(): Promise<void> {
     return this.prefs.loadOrder();
   }
-  /** 右键菜单那一项：翻转固定。 */
   /** 固定 / 取消固定。取消固定撤得回 ⇒ 不确认：直接做 ＋ 8 秒撤销。 */
   togglePin(sid: string): void {
     const t = this.store.tabs.get(sid);
@@ -242,15 +224,11 @@ export class TabManager {
     }, () => {});
   }
 
-  /**
-   * 拖动排序 / 拖动成组 / 拖出去撕窗口的状态机住 `tab-bar-drag.ts`（落点算术住 `tab-drop.ts`）。
-   * 在构造体里建：它要 `barEl`（参数属性，字段初始化时还没赋上）。
-   */
+  /** 拖动排序 / 成组 / 撕窗口的状态机（`tab-bar-drag.ts`）。在构造体里建：它要 `barEl`。 */
   private readonly dragger: TabBarDrag;
   /**
-   * tab 栏视图（按钮 · 徽章 · 分组容器 · 整刷与帧末合批）住 `tab-bar-view.ts`。
-   * 在构造体里建（要 `barEl`）。**整刷的入口仍是本类的 `refreshTabBar`**：拖拽守卫在这一层，
-   * 而且判据会把实例上的 `refreshTabBar` 换成计数替身 —— 帧末合批那一刷必须经它。
+   * tab 栏视图（`tab-bar-view.ts`），在构造体里建。整刷的入口仍是本类的 `refreshTabBar`：拖拽守卫在这一层，
+   * 判据也会把实例上的 `refreshTabBar` 换成计数替身 —— 帧末合批那一刷必须经它。
    */
   private readonly bar: TabBarView;
   /** 起新会话之后、报到之前的占位标签页（`launch-slot.ts`）：栏里跟在列表末尾，那一页盖在消息流上。 */
@@ -273,17 +251,12 @@ export class TabManager {
     "terminal.bring-front",
   ]);
 
-  /**
-   * F40c DEV 探针用:active tab 状态一行 JSON（形状、口径与秤 6 的三个账本见 `tab-stream-view.ts` 那一份）。
-   * 生产不接线,方法本身无副作用。
-   */
+  /** DEV 探针：当前 tab 状态一行 JSON（形状见 `tab-stream-view.ts`）。生产不接线，无副作用。 */
   debugSnapshot(): string {
     return this.view.debugSnapshot();
   }
 
-  /**
-   * 会话动作住 `tab-session-actions.ts`（它的 IPC 也经包装层 `ipc/commands.ts`）。它只要宿主给四样读数 / 回调。
-   */
+  /** 会话动作（`tab-session-actions.ts`，IPC 经 `ipc/commands.ts`）。 */
   private readonly actions = new TabSessionActions({
     tab: (sid) => this.store.tabs.get(sid),
     isAttachable: (sid) => this.isAttachable(sid),
@@ -387,32 +360,20 @@ export class TabManager {
   }
 
   /**
-   * v2.2 (issue #12): 启动重放（jsonl-batch）开始时调一次。所有现有 Tab 的
-   * BranchFolder 切到 batch 模式 —— 后续 recordAdded 只 push 不算 mainBranch。
-   * 重放期 ensureTab 新创建的 Tab 也会自动进 batch（看 this.store.inBatch）。
-   *
-   * P5.2 B 重构：删了 inPrependMode / pendingToolGroup 清零 —— 前端用 timeline
-   * 按 seq 排序，tool-group 合并改后处理（看左邻居），不再需要 chunk 边界协调。
+   * 启动重放开始时调一次：现有 Tab 的分支折叠切到批模式（只收不算主线）；重放期新建的 Tab 也进批模式（看 `store.inBatch`）。
    */
   onBatchStart(): void {
     this.store.inBatch = true;
-    // P5.5 B 重构：lazy 通过 ctx.lazy 传到 renderMarkdown —— onLine 构造 ctx 时
-    // 用 this.store.inBatch 设置。不再依赖 setRenderLazyMode 全局开关。
     for (const t of this.store.tabs.values()) {
       t.branchFolder.setBatchMode(true);
-      // Batch13-F40a:deferMode 已退役——重放期旧记录根本不建卡(收纳进 tab.window),
-      // "视口上方插入"次数为 0,比"延后到一帧"更强(INVARIANTS §21.3)。
+      // 重放期的旧记录不建卡（收纳进 `tab.window`）⇒ 视口上方零插入。
     }
   }
 
-  /**
-   * v2.2 (issue #12): 重放批次完结。各 Tab 调 flushPending 一次性算 + rebuild，
-   * 然后切回 live 模式。后续真实时新消息按 timeline 路径走。
-   */
+  /** 重放批完结：各 Tab 一次性算完、切回实时。 */
   onBatchEnd(): void {
     this.store.inBatch = false;
-    // 会话事实（含 HUD 那一格 usage）在这里统一问后端（`batchEnd` 里），到了再推给 HUD（`onSessionFacts`）——
-    //   批内不再逐条攒、也就没有「批末 flush 一次」那一步了。
+    // 会话事实（含 HUD 的 usage）在 `batchEnd` 里统一问后端，到了再推给 HUD（`onSessionFacts`）。
     this.view.batchEnd();
   }
 
@@ -426,53 +387,36 @@ export class TabManager {
     }
   }
 
-  /**
-   * 收到一行 JSONL 时调用。
-   *
-   * P5.2 B 重构：路由到 renderStreamRecord（三 caller 共享管线）。
-   * - timeline.insert 按 seq 决定 DOM 位置（不再有 source/inPrependMode 区分）
-   * - tool-group 后处理合并基于 timeline 左邻居
-   * - ai-title 走 sink.onTitleUpdate
-   * - 真用户输入走 sink.onRealUserInput → this.userActive
-   */
+  /** 收到一行记录：走 `renderStreamRecord`（时间线按 seq 定位 · 工具组看左邻居合并 · 标题与真用户输入走 sink）。 */
   onLine(payload: JsonlLinePayload): void {
     // 项目目录不从行里取（行上的 cwd 是那一刻的工作目录，会漂进子目录）：只认后端那一格（会话宣告 / 会话事实）。
     const tab = this.ensureTab(payload.session_id, null, payload.path, originFromWire(payload.origin));
 
-    // 按 seq 去重：旁路快照与实时行的重叠区是精确重复的 (sid, seq)（后端 seq = 行号，§25a），
-    // 老后端重连还会从 seq 0 重发整段。必须在 renderStreamRecord 之前、且覆盖 skip 记录
-    // （attachment/isMeta/空 user 有 seq 但不入 timeline，timeline.has 漏判）。
-    // 本机会话的行也走后端的帧与旁路快照之后，这一道本机同样会命中（原先写「本地永不命中」）。
-    // 这是**唯一**一道：seq ＝ 当前文件里的行号，从头重读先出声、tab 整份重来
-    //   （`onRecordFileReread`）⇒「换新 seq 重投同一条记录」那条路没了，原先按 uuid 再挡的那一道随之删了。
+    // 按 seq 去重（唯一一道）：旁路快照与实时行的重叠区是精确重复的 (sid, seq)（seq ＝ 当前文件里的行号）。
+    // 必须在 renderStreamRecord 之前、且覆盖不入时间线的记录（attachment / isMeta / 空 user 也有 seq）。
+    // 文件从头重读先出声、tab 整份重来（`onRecordFileReread`），不会换新 seq 重投同一条。
     if (tab.seenSeqs.has(payload.seq)) return;
     // monitor 连着见过、都不可显示的那一段一起记（去重集合成区间，段数有上界）。
     if (payload.skipped_from !== undefined) tab.seenSeqs.addRange(payload.skipped_from, payload.seq);
     tab.seenSeqs.add(payload.seq);
 
-    // jsonl 那一轮到了 ⇒ 同 `message.id` 的活卡整轮覆盖（撤掉）；挂在去重**之后**：
-    // 「前端现有的去重层就是吸收层」—— 重投 / 快照重叠区的重复记录不会重复触发。
+    // jsonl 那一轮到了 ⇒ 同 `message.id` 的活卡整轮撤掉；挂在去重之后，重复记录不会重复触发。
     this.live.onRecord(tab.sessionId, payload.rid);
 
     // 大纲：只记一笔「这份会话又长了」（清单问后端要，这里不判、不攒）。
-    this.view.noteGrew(tab); // 会话事实同一笔（分叉 · agent · 改动文件 · usage 问后端要）
+    this.view.noteGrew(tab);
 
-    // Batch14-F42：turn-end 系统通知。放在双重去重之后（重投行不重报）、
-    // 渲染管线之前（通知与渲染/收纳互相独立）。批量重放由 inBatch 短路。
+    // 一轮结束的系统通知：在去重之后（重投行不重报）、渲染之前（与渲染互相独立）；批量重放短路。
     turnEndNotifier.observe(payload.session_id, tab.title, payload, this.store.inBatch);
 
-    // 这里原先还挂着四个旁路记账员（分叉血缘 · agent 配对 · 最新 usage · 改动文件集），
-    //   它们改成问后端要（`history-facts`）；`onLine` 上只剩「真事件」那两个（compact 完成 · 轮次结束）。
-    //   判据 `tests/frontend/ui/online-bypass-ledger.vitest.ts`。
+    // `onLine` 上只挂「真事件」（compact 完成 · 轮次结束），其余事实问后端要（判据 `online-bypass-ledger.vitest.ts`）。
 
     this.view.ingest(tab, payload);
   }
 
   /**
-   * Batch5-F18：骨架 Tab——活跃清单（本地 IPC / 远端 session_added 事件）一到
-   * 即建，不等首条内容行。复用 ensureTab 全部语义：项目目录取后端那一格（给了就对齐）；parentPath 空由
-   * 首条行回填；pendingArchive/pendingActivity 落实、batch 模式继承均沿用。
-   * 已存在同 sid Tab 时不重建（幂等，重连重发 session_added 无害），项目目录按宣告对齐。
+   * 骨架 Tab：活跃清单一到即建，不等首条内容行。语义同 `ensureTab`（parentPath 由首条行回填；暂存信号落实；继承批模式）。
+   * 同 sid 已有 ⇒ 不重建（重连重发宣告无害），只按宣告对齐项目目录。
    */
   createSkeletonTab(
     sessionId: string,
@@ -480,7 +424,7 @@ export class TabManager {
     origin: Origin,
     background: boolean | null = null,
     name: string | null = null,
-    // E73：`null` = 没说（旧 backend / 存量会话）= 视为可以。只有显式 `false` 才记账。
+    // `null` ＝ 没说 ＝ 视为可以；只有显式 `false` 才记账。
     attachable: boolean | null = null,
   ): void {
     if (attachable === false) this.store.notAttachableSids.add(sessionId);
@@ -489,30 +433,20 @@ export class TabManager {
   }
 
   /**
-   * E73：attach / 「杀死空 tmux」这几个动作对这个会话有没有意义。
-   * `↗` 不再看它：点的那一刻现查 —— 那台后端答「此刻连着这个会话的终端」、本机后端答进程链
-   *（`remote-terminal-front.ts`），沿链找窗口拉前的那一跳归 monitor（`lib.rs::bring_remote_terminal_to_front`）。
-   *
-   * **默认 true**：没说就是可以。判据只认后端明说的 `attachable:false`
-   *（源头是 pidfile 的同名布尔，契约见 `src/doc/IPC-PROTOCOL.md` §9.3）。
+   * attach / 「杀死空 tmux」对这个会话有没有意义。默认 true：只认后端明说的 `attachable:false`（契约 `src/doc/IPC-PROTOCOL.md` §9.3）。
+   * ↗ 不看它：点的那一刻现查（`remote-terminal-front.ts`）。
    */
   isAttachable(sid: string): boolean {
     return !this.store.notAttachableSids.has(sid);
   }
 
-  /** Batch5-F19：启动 active 选择用（last-active 是否已有 tab）。 */
+  /** 启动时选当前 tab 用（上次那个有没有 tab）。 */
   hasTab(sessionId: string): boolean {
     return this.store.tabs.has(sessionId);
   }
 
   /**
-   * F91（#27）：跨会话监控快照——`GridMonitorView` 消费的**只读派生 DTO 列表**（本地 + 所有远端会话）。
-   * 纯派生：不外泄任何内部 DOM / Map 引用（防外部改到 TabManager 内部状态）。插入序（同 tab-bar）。
-   * context% 的上限与状态栏同一个数（后端定的 `latestContextLimit`）。
-   */
-  /**
-   * A3：喂入远端 live 探测的会话账号归属（来自 backend `--session-accounts`）+ 账号邮箱表。喂完刷新所有 tab 的账号徽章。
-   * 生产上只由 `appStore.sessionAccounts` 的订阅调（构造体里那一行）；判据可直接喂。
+   * 会话账号归属 ＋ 账号邮箱表，喂完刷新所有 tab 的账号徽章。生产上只由 `appStore.sessionAccounts` 的订阅调；判据可直接喂。
    */
   setSessionAccounts(
     rows: SessionAccount[],
@@ -560,10 +494,8 @@ export class TabManager {
   }
 
   /**
-   * auto-e2e F-E0:全会话状态一行 JSON——Tier1/Tier2 断言出口(经 e2e-probe Ctrl+Alt+F10 触发 →
-   * fe_perf 日志)。复用 `snapshotSessions`(已含两轴状态/origin/account),派生 `mismatch`
-   * (detectAccountMismatch:活会话账号与该 origin 当前账号确知且不一致)。**不动 `debugSnapshot`
-   * 形状**(f40-suite 依赖它),这是并列的第二个探针出口。生产不接线,方法本身无副作用/无落盘。
+   * e2e 探针：全会话状态一行 JSON（含 `mismatch`：活会话账号与那台当前账号确知且不一致）。
+   * 与 `debugSnapshot` 并列、不动它的形状。生产不接线，无副作用。
    */
   debugSessionsSnapshot(): string {
     const sessions = this.snapshotSessions().map((s) => ({
@@ -580,11 +512,7 @@ export class TabManager {
     return JSON.stringify(sessions);
   }
 
-  /**
-   * F91b（batch17）：监控板选中 cell 的「内容 peek」补充数据（纯读派生，无写/无落盘）。
-   * 只给 `snapshotSessions` 之外的细节：model / 改过的文件 / subagent 名单（运行中优先）。
-   * 未知 sid → null（选中会话恰好消失时调用方据此清选中）。
-   */
+  /** 监控板选中格的细节（model · 改过的文件 · 子运行名单，运行中的在前）；未知 sid ⇒ `null`。纯读。 */
   peekSession(sessionId: string): SessionPeek | null {
     const tab = this.store.tabs.get(sessionId);
     if (!tab) return null;
@@ -599,7 +527,7 @@ export class TabManager {
     };
   }
 
-  /** Batch5-F19：switchTo 是否写回 last-active（viewer/tear-off 窗口置 false）。值住路由（`tab-router.ts`）。 */
+  /** `switchTo` 写不写回上次的 tab（查看窗 / 撕出的窗置 false）。值住路由。 */
   get persistLastActive(): boolean {
     return this.router.persistLastActive;
   }
@@ -607,8 +535,7 @@ export class TabManager {
     this.router.persistLastActive = v;
   }
 
-  /** Batch5-F19（G 验收）：用户手动切 tab 时回调——main.ts 用它清 pendingStartupActive，
-   *  防迟到的远端宣告补切抢走用户已选的焦点。值住路由（`tab-router.ts`）。 */
+  /** 用户手动切 tab 时回调：`main.ts` 据此清掉启动时待切的那个，免得迟到的宣告抢走焦点。值住路由。 */
   get onManualSwitch(): (() => void) | null {
     return this.router.onManualSwitch;
   }
@@ -616,10 +543,7 @@ export class TabManager {
     this.router.onManualSwitch = fn;
   }
 
-  /**
-   * 「当前 tab 变了」改订阅 store（原先是 `onActiveUsageChanged` / `onActiveFactsAvailability`
-   * 两个点对点回调）。写它的几处：切 tab（`switchTo`）· 当前 tab 的 usage / 事实可用性 / 项目目录变了 · 关掉最后一个 tab。同值不通知。
-   */
+  /** 「当前 tab 变了」订阅 store。写它的：切 tab · 当前 tab 的 usage / 事实可用性 / 项目目录变了 · 关掉最后一个 tab。同值不通知。 */
   get active(): Slice<ActiveView> {
     return this.store.active;
   }
@@ -662,40 +586,23 @@ export class TabManager {
         if (sessionId === this.store.activeId) this.publishActive();
         if (tab.pinned) void this.prefs.persistPinned(); // 盘上那份同拍改写：等不到宣告的已结束会话下次起来也是对的
       }
-      // SSH 重连：远端会话掉线时被 flush 归档过，现在又收到它的行 = backend 在重放 = 会话仍
-      // 活着 → 复活成 live。必须放在 ensureTab 里（在 onLine 的 seq 去重 return 之前），否则整段
-      // 重放全被去重时连第一条行都走不到翻转。**仅远端**：本地归档由 PID 判活驱动，不靠「收到行」
-      // 翻转，避免会话退出时尾写把已归档的本地 Tab 误复活（远端掉线归档是连接驱动，无此风险）。
-      //
-      // audit-fixes F03.2（D 审计修）：远端**可重连**的 tab 又收到后端重宣告 / jsonl 行 = claude
-      // 复活（backend 只对活 pidfile 重宣告并推行；真 idle 会话已从 remote_active 移出、不重宣告也不
-      // 推行）。这是「可重连 → 活」的**主**信号（queue 内、与行保序，SESSION_IDLE 恒排在会话末行之后，
-      // 故复活行/重宣告严格晚于 idle）。不能只靠 activity 格：那是非 queue 同步派发、且
-      // null-activity 的后端（远端 v1 无 status 字段）下永远不来 → 活跃流式会话永久卡在可重连。
-      //
-      // 上面两件事原先是两段（`status` 翻 live · `tmuxIdle` 清 false），因为两个轴挤在两个字段里；
-      //   两轴之后它们是同一条转移：「远端见行」把**死了的**（已结束 / 可重连）翻回活（`nextState`）。
-      // 取回来的历史行不算「远端见行」（`TabStore.historyFeed` 头注）。
+      // 远端死了的 tab（已结束 / 可重连）又收到行或重宣告 ＝ 会话还活着（后端只对活 pidfile 重宣告并推行）⇒ 翻回活。
+      // 必须在这里（`onLine` 的 seq 去重 return 之前），否则整段重放全被去重时走不到翻转；这是「可重连 → 活」的主信号
+      // （与行同队列保序）。只认远端：本机由 PID 判活，靠「收到行」会被退出时的尾写误复活。取回来的历史行不算（`TabStore.historyFeed`）。
       if (isRemoteOrigin(tab.origin) && !this.store.historyFeed && this.applyState(tab, "remote-line")) {
         this.prefs.clearPinHint(sessionId); // 远端复活：空态提示的对象没了
         this.refreshTabBar();
-        this.emitTabStateProbe(tab); // F-E1:远端复活(死 → 活)
+        this.emitTabStateProbe(tab);
       }
-      // v2.22.2 kind 冲突消解:同一 sid 可能有多份 pidfile(实证:cc-backend 的
-      // bg-spare 备用进程复用**父会话的 sid**写 kind=bg)——宣告到达顺序不定,
-      // bg 先到会把真交互会话降格成 ⚙(用户截图实锤)。
-      // 规则:**interactive 恒压过 bg**——后到的 interactive 宣告在此升格纠正标题;
-      // 反向(bg 后到)绝不降格。
-      // 〔「删掉树」〕升格**不动位置**:原先这里还把它摘下来按宿主重新挂树,
-      // 树删了之后位置与 kind 无关。
+      // 同一 sid 可能有多份 pidfile（备用进程复用父会话的 sid 写 kind=bg），宣告到达顺序不定：
+      // interactive 恒压过 bg —— 后到的 interactive 在此升格纠正标题，反向绝不降格。升格不动位置。
       if (background === false && tab.background) {
         tab.background = false;
         tab.bgName = null;
         tab.title = this.computeTitle(tab);
         this.refreshTabBar();
       }
-      // Batch5-F18：骨架 Tab（无行创建）的 parentPath 为空——首条带路径的行回填，
-      // 保住「在新窗口打开」等依赖 jsonl 路径的功能。
+      // 骨架 Tab 的 parentPath 为空 ⇒ 首条带路径的行回填（「在新窗口打开」等要它）。
       if (!tab.parentPath && sourcePath) {
         tab.parentPath = sourcePath;
       }
@@ -720,8 +627,7 @@ export class TabManager {
     const { streamEl, stream, branchFolder, timeline, inputsEl, inputsPanel, outline, turnFold, turnRail } =
       this.view.mountTabDom(sessionId);
 
-    // v2.3.0 issue #11: 异步 fetch 初始 task 快照。`session-tasks` 流那一路（`refreshTasks`）并行更新
-    // tasksBySid，两路收敛到同一份数据；若 sid 是 active 同步推给全局 panel。
+    // 取一次初始任务快照；`session-tasks` 流那一路（`refreshTasks`）并行更新同一份，当前 tab 的同步推给面板。
     void fetchSessionTasks(sessionId, origin).then((tasks) => {
       this.store.tasksBySid.set(sessionId, tasks);
       if (this.store.activeId === sessionId) {
@@ -736,13 +642,12 @@ export class TabManager {
       title,
       projectDir,
       aiTitle: null,
-      forkedFromSessionId: null, // issue #63①：后端的会话事实到了才有（`onSessionFacts`）
+      forkedFromSessionId: null, // 会话事实到了才有（`onSessionFacts`）
       agent: null, // 是哪一家：会话事实到了才有（`onSessionFacts`），之前要分家的那几项灰着
       writers: [], // 同上
       origin,
       state: LIVE, // 见了行 / 宣告了才建 ⇒ 活着；早到的死亡信号在下面落实
-      // **不做自动固定**（照 `tab-collections.ts` 那条「手动建，不要自动」的先例，
-      // `§B.7` 逐字）。盘上固定过的那些由 `loadPinned` 在复活时置回 true。
+      // 不自动固定；盘上固定过的由 `loadPinned` 在复活时置回 true。
       pinned: false,
       // 组员关系是 tab 自己的属性；盘上有它的组 id ⇒ 下面 `adoptGroup` 归位。
       group: null,
@@ -767,11 +672,11 @@ export class TabManager {
       turnRail,
       inputsPanel,
       inputsEl,
-      // issue #23：红绿灯信号若先于建 Tab 到达，从暂存取（否则 null=未知→绿）
+      // 红绿灯信号早于建 Tab 到达 ⇒ 从暂存取（否则 null ＝ 未知 → 绿）。
       activity: this.store.pendingActivity.get(sessionId) ?? null,
       // 下面三样只经 `facts` 落下来（后端 `history-facts` 出成品，`onSessionFacts`）。
       touchedFiles: new Set(), // 会话改动集
-      latestPromptTokens: null, // F88b：HUD context% 数据
+      latestPromptTokens: null, // HUD 的上下文占用
       latestModel: null,
       latestContextLimit: null,
       latestLimitFrom: "assumed",
@@ -793,16 +698,14 @@ export class TabManager {
     };
     this.store.pendingActivity.delete(sessionId);
     this.view.wireTab(tab);
-    // issue #19：若该 sid 的归档信号先于本次建 Tab 到达（见 archiveTab），落实归档，
-    // 避免重载后已结束会话复活成关不掉的 live Tab。本地 un-archive（上方 origin!==null
-    // 那条）不适用，故归档后续 replay 行也不会把它复活。
+    // 归档信号早于建 Tab 到达 ⇒ 落实，免得重载后已结束的会话复活成关不掉的活 Tab。
     if (this.store.pendingArchive.delete(sessionId)) {
       tab.state = ENDED;
       tab.activity = null; // 同 archiveTab：死会话不留陈旧灯/tooltip
       this.store.pendingTmuxIdle.delete(sessionId); // 已结束优先：真 tmux 没了，暂存的可重连作废
       this.store.pendingContainer.delete(sessionId); // 死了 ⇒ 容器一格由死的那一刻说了算
     } else if (this.store.pendingTmuxIdle.delete(sessionId)) {
-      // audit-fixes F03.2：可重连信号早于建 Tab（F5 重放乱序）→ 落实。
+      // 可重连信号早于建 Tab（重放乱序）⇒ 落实。
       tab.state = RECONNECTABLE;
       this.store.pendingContainer.delete(sessionId);
     } else {
@@ -817,8 +720,7 @@ export class TabManager {
     this.prefs.adoptGroup(tab);
 
     if (this.store.activeId === null) {
-      // "auto"：首个 Tab 的激活不是用户手势，不该占用 5s manualOverride 抑制
-      // auto-follow（G5 验收 S-1）
+      // 首个 Tab 的激活不是用户手势 ⇒ "auto"，不占手动 5s 保护。
       this.switchTo(sessionId, "auto");
     } else {
       this.refreshTabBar();
@@ -826,7 +728,7 @@ export class TabManager {
     return tab;
   }
 
-  /** 应用 ai-title：锁定语义标题，并按 [项目名] aiTitle 格式更新 Tab 标题 */
+  /** 应用 ai-title：锁定语义标题，按 `[项目名] aiTitle` 更新 Tab 标题。 */
   private applyAiTitle(tab: Tab, aiTitle: string): void {
     const trimmed = aiTitle.trim();
     if (!trimmed) return;
@@ -850,12 +752,8 @@ export class TabManager {
   }
 
   /**
-   * auto-e2e F-E1:tab 生命周期状态转移探针。在**真值点**(markTmuxIdle 进可重连 / archiveTab 进已结束 /
-   * reviveTab 复活 / ensureTab 远端复活)emit 可 grep 的 `[e2e] tab-state` 行,gray-light 全链
-   * 套件按它断言 活→可重连→已结束 序列(跨进程整链,单测碰不到)。self-gate
-   * `import.meta.env.DEV`:生产构建整支(含模板串)被 vite 消除。
-   * 行里两个键就是两个轴（原先是 `status=… tmuxIdle=…`）；`tests/e2e/graylight-suite.sh` 的两条 grep 同拍改，
-   *   两边对得上由 `tests/frontend/ui/tab-session-state.vitest.ts` 对拍。
+   * e2e 探针：在状态转移的真值点打一行可 grep 的 `[e2e] tab-state`（两个轴两个键；`tests/e2e/graylight-suite.sh` 按它断言，
+   * 两边对得上由 `tab-session-state.vitest.ts` 对拍）。只在 `import.meta.env.DEV` 下有，生产构建整支消除。
    */
   private emitTabStateProbe(tab: Tab): void {
     if (!import.meta.env.DEV) return;
@@ -877,61 +775,45 @@ export class TabManager {
     return true;
   }
 
-  /** session 退出（~/.claude/sessions/<PID>.json 被删）且容器也没了 —— 已结束，内容保留 */
+  /** 会话退出且容器也没了 ⇒ 已结束，内容保留。 */
   archiveTab(sessionId: string): void {
     this.live.dropTab(sessionId); // 结束了 ⇒ 它的活卡全撤
     const tab = this.store.tabs.get(sessionId);
     if (!tab) {
-      // issue #19：Tab 还没被 ensureTab 建出来（归档信号早于 replay 行到达）——
-      // 记下待归档，建 Tab 时落实。否则这里直接 return 会静默丢弃归档 → 僵尸 live Tab。
+      // Tab 还没建（归档信号早于行）⇒ 记下待归档、建 Tab 时落实；直接 return 会丢掉归档 → 僵尸活 Tab。
       this.store.pendingArchive.add(sessionId);
-      this.store.pendingActivity.delete(sessionId); // issue #23：死会话的暂存灯一并清
-      this.store.pendingTmuxIdle.delete(sessionId); // audit-fixes F03.2：已结束优先，清暂存的可重连
+      this.store.pendingActivity.delete(sessionId); // 死会话的暂存灯一并清
+      this.store.pendingTmuxIdle.delete(sessionId); // 已结束优先，清暂存的可重连
       this.store.pendingContainer.delete(sessionId); // 死了 ⇒ 暂存的容器事实作废
       return;
     }
     // 活 / 可重连 ⇒ 已结束；已经是已结束 ⇒ 不变（`nextState`）。
     if (!this.applyState(tab, "ended")) return;
-    // issue #23：会话结束 → 灯灭（CSS 上 `.ended` 本就隐藏 .live-dot，这里保持状态干净）
+    // 灯灭（CSS 上 `.ended` 本就藏起灯，这里保持状态干净）。
     tab.activity = null;
-    // P5.2 B 重构后无 pendingToolGroup —— archive 不需要打断 tool-group 累积
-    // （tool-group 合并改后处理，看 timeline 邻居；archive 后无新 record 入 timeline）。
     this.refreshTabBar();
-    this.emitTabStateProbe(tab); // F-E1:已结束(tmux 也没了)
+    this.emitTabStateProbe(tab);
   }
 
   /**
-   * 会话（重新）变活 → 复活已归档 Tab。archiveTab 的对称面，由后端 SESSION_STARTED
-   * 事件驱动（见 events.ts；后端已用 is_session_active 门控，只在 PID 真活时发）。
-   *
-   * **仅本地**（origin===null）：本地归档/复活由 PID 探活驱动，不靠「收到行」翻转——
-   * 避免会话退出尾写误复活（见 ensureTab 行 372 的远端-only 复活注释）。远端 Tab 复活
-   * 仍走 ensureTab「掉线归档→重连重放见行复活」路径，与本方法正交、互不触发。
-   *
-   * 先撤 pendingArchive：归档信号若还停在那（Tab 尚未由 ensureTab 建出），不撤的话
-   * 随后建 Tab 会按 pendingArchive 落实归档（行 442）→ 复活被吞。Tab 不存在（全新
-   * 会话首启、jsonl 行尚未建 Tab）则 no-op：随后 jsonl-batch 建的新 Tab 默认即 live。
+   * 本机会话（重新）变活 ⇒ 复活已归档 Tab（后端 PID 真活时才发 started）。远端复活走 `ensureTab` 见行那一路，两路互不触发。
+   * 先撤暂存的归档：不撤的话随后建 Tab 会按它落实归档、复活被吞。Tab 不存在 ⇒ 不做（随后建的新 Tab 默认就是活的）。
    */
   reviveTab(sessionId: string): void {
     this.store.pendingArchive.delete(sessionId);
-    this.store.pendingTmuxIdle.delete(sessionId); // audit-fixes F03.2：复活即清暂存灰灯
+    this.store.pendingTmuxIdle.delete(sessionId); // 复活即清暂存的可重连
     const tab = this.store.tabs.get(sessionId);
     if (!tab) return;
     if (isRemoteOrigin(tab.origin)) return; // 仅本地；远端复活走 ensureTab 见行路径
     if (!this.applyState(tab, "started")) return; // 死 ⇒ 活；已经活着 ⇒ 不变
     this.prefs.clearPinHint(sessionId); // 真接上了 ⇒ 那块「只能 resume」的空态该走了
     this.refreshTabBar();
-    this.emitTabStateProbe(tab); // F-E1:本地复活(死 → 活)
+    this.emitTabStateProbe(tab);
   }
 
   /**
-   * audit-fixes F03.2：远端 claude 退出但 tmux 会话仍在 → **可重连**（死 ＋ 容器还在）。
-   * 后端 emitter 收 backend removed 且 `@ccm_sid` present 时 emit `idle` 格 驱动（**不**
-   * 归档、不 forget）。Tab 未建（F5 重放乱序）则暂存待 ensureTab 落实。已结束的 Tab 不回到可重连
-   * （真 tmux 没了才裁已结束，已结束优先）。无变化不重绘。离开可重连四处：
-   * ensureTab（**主**：远端 tab 又收后端重宣告/行 = 复活，queue 内保序）/ updateActivity
-   * （claude 再产活动，非 queue 的次要信号）/ reviveTab（本地）/ archiveTab（tmux 真没了）。
-   * 改之前这里只置 `tmuxIdle = true`、`status` 留在 live —— 活性一轴说了假话。
+   * 远端 claude 退了、tmux 会话还在 ⇒ 可重连（不归档、不 forget）。Tab 未建 ⇒ 暂存待 `ensureTab` 落实；已结束的不回到可重连。
+   * 离开可重连：`ensureTab`（主：又见行 / 重宣告）· `updateActivity`（又有活动）· `reviveTab`（本机）· `archiveTab`（tmux 真没了）。
    */
   markTmuxIdle(sessionId: string): void {
     this.live.dropTab(sessionId); // claude 退了 ⇒ 它的活卡全撤
@@ -943,7 +825,7 @@ export class TabManager {
     // 活 ⇒ 可重连；已经死了（可重连 / 已结束）⇒ 不变（`nextState`）。
     if (!this.applyState(tab, "idle")) return;
     this.refreshTabBar();
-    this.emitTabStateProbe(tab); // F-E1:可重连(claude 退但 tmux 在)
+    this.emitTabStateProbe(tab);
   }
 
   /** `session-tap`：中转抄出来的一件归一事件（`events.ts` 直派）。 */
@@ -1098,11 +980,9 @@ export class TabManager {
   }
 
   /**
-   * 〔说不清〕这台机器的活会话清单报完了（远端 `origin-sessions-listed`；本机 `list_active_sessions`〔散文墓碑〕）。
-   *
-   * 这台的「说不清」（固定复活、还没被报过）逐条落地：`liveSids` 里有 ⇒ 活（本机那条路给清单；远端的清单
-   * 早已经由 远端 `live` 格 把 tab 建成活的了，不传）；没有 ⇒ 已结束（
-   * 「A 看得见却没报这条」）。记下这台已报完 ⇒ 之后才复活出来的固定 tab 直接落已结束。
+   * 这台机器的活会话清单报完了：这台「说不清」的（固定复活、还没被报过）逐条落地 ——
+   * `liveSids` 里有 ⇒ 活（本机给清单；远端早由 `live` 格建成活的，不传）；没有 ⇒ 已结束。
+   * 记下这台已报完 ⇒ 之后才复活出来的固定 tab 直接落已结束。
    */
   markOriginSeen(origin: Origin, liveSids?: ReadonlySet<string>): void {
     this.store.seenOrigins.add(origin);
@@ -1186,15 +1066,6 @@ export class TabManager {
     if (changed) this.refreshTabBar();
   }
 
-  /**
-   * resume 一跳问过那台后端：这条会话的记录在不在（`history-record`）。
-   * 不在 ⇒ 已结束落到「记录没了」；在 ⇒ 「记录没了」翻回已结束（记录回来了，例：同步盘补齐）。
-   * 别的态不动（`nextState`：可重连的终端还在，接得回去；活的不走 resume）。
-   */
-  /**
-   * 栏顶「重新读取」：栏上每个 tab 所在的机器各对齐 ＋ 补读一次（`resyncMachines` 去重、并行）；
-   * 成功的那几台照「对齐做完」标出记录没了的固定条（与设置页「重新对齐」同一步）。
-   */
   /** 栏顶左边那几颗全局入口（宿主建好交进来）。 */
   mountHeadActions(buttons: HTMLElement[]): void {
     this.bar.mountHeadActions(buttons);
@@ -1304,10 +1175,7 @@ export class TabManager {
     this.emitTabStateProbe(tab);
   }
 
-  /**
-   * 红绿灯状态更新（会话流的 activity 格）。`doing = null`（说不清）→ 清空回默认绿点。Tab 还没建则暂存
-   * （pendingActivity，ensureTab 落实）。无变化不重绘。
-   */
+  /** 红绿灯（会话流的 activity 格）。`doing = null` ⇒ 回默认绿点。Tab 未建 ⇒ 暂存。无变化不重绘。 */
   updateActivity(
     sessionId: string,
     doing: SessionActivity | null,
@@ -1320,12 +1188,9 @@ export class TabManager {
       else this.store.pendingActivity.delete(sessionId);
       return;
     }
-    // 已结束不更新（审计：心跳清死会话后磁盘残留 PID.json 被重扫会推陈旧
-    // activity，已结束的 tab 会挂上过期的 waiting tooltip——灯本身被 CSS 隐藏）。
+    // 已结束不更新：磁盘残留的 PID 文件被重扫会推陈旧 activity。
     if (isResumeOnly(tab.state)) return;
-    // audit-fixes F03.2：收到活动信号 = claude 活着（远端 activity 仅在 claude 存活时由
-    // backend 推）→ 可重连回到活。必须放在下方「无变化早退」之前：复活后首个 activity 未必与
-    // 之前的陈旧 activity 值不同，否则被早退跳过、回不到活。回到活即使 activity 没变也要重绘。
+    // 有活动 ＝ claude 活着 ⇒ 可重连回到活。必须在下面「无变化早退」之前：复活后首个 activity 未必与陈旧值不同。
     const clearedIdle = act !== null && this.applyState(tab, "activity");
     if (
       tab.activity?.doing === act?.doing &&
@@ -1343,9 +1208,7 @@ export class TabManager {
   }
 
   /**
-   * 后端的一份会话事实到了（`views/facts-source.ts`）⇒ 落到 tab 上（`applyFacts`，纯投影），
-   * 只刷变了的那几块：分叉 ⇒ 标题 `↳`（issue #63①）· 在写它的进程 ⇒ tab 的悬停提示 · usage ⇒ HUD（F88b，只 active）。
-   * 改动文件集没有推的去处（监控板 peek 是现取）。
+   * 后端的一份会话事实到了 ⇒ 落到 tab 上（`applyFacts`），只刷变了的：分叉 ⇒ 标题 `↳` · 在写它的进程 ⇒ 悬停提示 · usage ⇒ HUD（只当前 tab）。
    */
   private onSessionFacts(sid: string, f: SessionFacts): void {
     const tab = this.store.tabs.get(sid);
@@ -1392,10 +1255,7 @@ export class TabManager {
 
 
   /**
-   * 关闭 Tab：销毁 stream DOM、从 Map 中移除、通知后端 forget 历史、必要时切到相邻 Tab。
-   * 仅允许关闭**已结束**（只能 resume）的 Tab，避免误关运行中的会话（`tab-session-state.ts::isResumeOnly`；
-   * 可重连的不在其中 —— 与改两轴之前逐条相同）。
-   * forget 后该 session 不会在下次 F5 刷新时被 event_replay 重放复活。
+   * 关闭 Tab：拆流、移除、让后端忘掉（下次 F5 不重放复活）、必要时切到邻居。只许关已结束的（`isResumeOnly`），免得误关在跑的。
    */
   closeTab(sessionId: string): void {
     const tab = this.detachTab(sessionId);
@@ -1471,10 +1331,10 @@ export class TabManager {
         this.switchTo(fallbackId);
       } else {
         this.store.activeId = null;
-        // issue #11: 关掉最后一个 Tab → panel 进入 null session 状态
+        // 关掉最后一个 ⇒ 任务面板进空态。
         this.tasksPanel?.setSession(null, []);
         this.agentsPanel?.setSession(null, []);
-        // F88b（审计）：无 fallback 时 switchTo 不会跑 → 当前 tab 那一格清空（HUD 隐藏，不残留死会话的 ctx% / 原因）
+        // 没有邻居可切 ⇒ 当前 tab 那一格清空（HUD 不残留死会话的数）。
         this.publishActive();
         this.refreshTabBar();
       }
@@ -1490,53 +1350,39 @@ export class TabManager {
     this.live.dropTab(sessionId); // 先撤活卡（它的 DOM 随流容器一起走）
     this.view.disposeTab(tab);
     this.store.tasksBySid.delete(sessionId);
-    // **关掉 = 取消固定。**
-    //
-    // pin 的语义是「别丢」（`§B.3b`），而 `×` 是用户**明确说要丢**。两者撞上时以后者为准 ——
-    // 不摘的话下次开 app 它又回来了，那正是「能操作但没反应」的一种（点了 ×，第二天还在）。
-    // ⚠ 只有真被固定过才写盘：没固定的 tab 关一下不该顺手改 `config.json`。
+    // 关掉 ＝ 取消固定：× 是明确说要丢，不摘的话下次开 app 它又回来了。只有真被固定过才写盘。
     if (tab.pinned) {
       tab.pinned = false;
       this.prefs.pinnedRecords.delete(sessionId);
       void this.prefs.persistPinned();
     }
     this.prefs.clearPinHint(sessionId);
-    // 🔴 〔「x就是没了, 不存在还要移出分组」〕**关掉 = 组关系随它一起没。**
-    //   摘盘上它那一键 `tabBar.groupOf.<sid>`；它是组里最后一个在栏里的 ⇒ 组也没（`TabBarPrefs.forgetTab`）。
-    //   必须在上面 `store.tabs.delete` 之后：「组里还剩谁」只数真在栏里的。没分组的 tab ⇒ 零写。
+    // 关掉 ＝ 组关系随它一起没（摘 `tabBar.groupOf.<sid>`；最后一个 ⇒ 组也没）。
+    // 必须在 `store.tabs.delete` 之后：「组里还剩谁」只数真在栏里的。
     void this.prefs.forgetTab(tab);
 
-    // 盘上顺序里的那一格只在这里摘（还没到的那些在落盘时并回去，见 `TabStore.mergedOrder`）
+    // 盘上顺序里的那一格只在这里摘（还没到的那些落盘时并回去，`TabStore.mergedOrder`）。
     this.store.savedOrder = this.store.savedOrder.filter((s) => s !== sessionId);
-    // 让后端 event_replay 把这个 session 的历史也丢掉
+    // 让后端把这个会话的重放历史丢掉。
     forgetSession(sessionId);
     this.refreshTabBar(); // 出组可能让组没了
   }
 
-  /**
-   * 切到上 / 下一个 Tab。delta=+1 下一个、-1 上一个。环回。
-   * 快捷键 Ctrl+Tab / Ctrl+Shift+Tab 用。
-   */
+  /** 切到上 / 下一个 Tab（delta ±1，环回）。 */
   cycleActive(delta: 1 | -1): void {
     const targetId = this.router.cycleTarget(delta);
     if (targetId !== null) this.switchTo(targetId);
   }
 
-  /**
-   * 跳到第 N 个 Tab（1-indexed，issue #5 快捷键 Ctrl+1..9 用）。
-   * N 大于现有 Tab 数 → 静默忽略；N 对应 Tab 已经 active → 无操作。
-   */
+  /** 跳到第 N 个 Tab（从 1 数）；没有第 N 个 ⇒ 不做。 */
   jumpToIndex(oneBasedIdx: number): void {
     const targetId = this.router.indexTarget(oneBasedIdx);
     if (targetId !== null) this.switchTo(targetId);
   }
 
   /**
-   * issue #11: 任务快照落账（来源是 {@link refreshTasks} 重问回来的成品）——总是更新内存 map（即使 Tab 还没建），
-   * 只有 sid 是当前 active 时才推全局 panel 重渲染。
-   *
-   * 不需要 "Tab 不存在就丢弃"——task 文件先于 jsonl 出现是合法时序，
-   * 之后 ensureTab 时会从 tasksBySid 拿数据；fetchSessionTasks 拿到的也是同样数据。
+   * 任务快照落账（{@link refreshTasks} 重问回来的成品）：总是更新内存（Tab 还没建也记 —— 任务文件先于记录出现是合法时序），
+   * 只有当前 tab 才推面板。
    */
   /**
    * 那台机器说这几个会话的任务变了（`all` ⇒ 那台的每个 tab 都重问：期间可能漏了）⇒ 重问 `tasks-list`、交 {@link updateTasks}。
@@ -1558,40 +1404,24 @@ export class TabManager {
     }
   }
 
-  /**
-   * v2.4 issue #2：把 behavior config 应用到 TabManager。
-   * 启动时由 main.ts 调一次拉初值；设置面板 toggle 改了也调一次同步。
-   */
+  /** 应用行为设置（启动时一次，设置里改了再一次）。 */
   applyBehavior(cfg: BehaviorConfig): void {
     this.router.applyBehavior(cfg);
   }
 
-  /**
-   * v2.4 issue #2：watcher 反推识别到"用户在终端真敲了一行回车"（type=user
-   * 且不是 tool_result 回灌 / CLI noise，由 tabs.onLine 的 result.kind 判定）
-   * 时调用本方法。
-   *
-   * **跳过条件**（任一命中就 silently no-op）：
-   * 1. autoFollowUserActive=false（设置面板关了）
-   * 2. manualOverrideUntil > now（用户 5s 内手动点过 tab，明确意图保护）
-   * 3. sid 不存在 / 已 archive（防御）
-   * 4. sid 已经是 active（无操作）
-   *
-   * 通过后调 switchTo(sid, "auto")，可选 invoke bring_monitor_to_front。
-   */
+  /** 终端里真敲了一行（`onLine` 判出的真用户输入）⇒ 按设置自动跟随到那个 tab，可选把 monitor 拉到前面。 */
   userActive(sessionId: string): void {
-    // 五道跳过条件（批期 · 开关 · 5s 手动保护 · 没有 / 已归档 · 已经是它）住路由（`tab-router.ts::autoFollow`）。
+    // 跳过条件（批期 · 开关 · 手动 5s 保护 · 没有 / 已归档 · 已经是它）住路由（`tab-router.ts::autoFollow`）。
     const decision = this.router.autoFollow(sessionId);
     if (decision === "ignore") return;
-    // 已经在这个 tab（`front-only`）但用户开了"拉前 monitor"也照拉
+    // 已经在这个 tab，但开了「拉前 monitor」也照拉。
     if (decision === "switch") this.switchTo(sessionId, "auto");
     if (this.router.bringMonitorToFront) bringMonitorToFront();
   }
 
-  /** 快捷键 Ctrl+` ：把当前活跃 Tab 对应的终端窗口拉到前台（live 本地 / 远端均可） */
+  /** Ctrl+`：把当前 Tab 的终端窗口拉到前台。 */
   bringActiveTerminalToFront(): void {
-    // 非 Windows 上 ↗ 的最后一跳是桩（每点必败）⇒ 按钮不渲；
-    //   快捷键 / 命令面板（住 `main.ts`）还够得到这里 ⇒ 说一句实话，不发 IPC。见 `terminal-front.ts`。
+    // 非 Windows 上 ↗ 的最后一跳每点必败 ⇒ 按钮不画；快捷键 / 命令面板还够得到这里 ⇒ 说一句实话，不发 IPC。
     if (!terminalFrontAvailable()) {
       toast(TERMINAL_FRONT_UNAVAILABLE_TITLE, TERMINAL_FRONT_UNAVAILABLE_DETAIL, {
         level: "info",
@@ -1713,13 +1543,13 @@ export class TabManager {
     this.view.toggleProcessExpanded();
   }
 
-  /** 快捷键 Ctrl+Shift+E：打开当前活跃 Tab 的工作目录到系统文件管理器 */
+  /** Ctrl+Shift+E：在系统文件管理器里打开当前 Tab 的工作目录。 */
   openActiveTabCwd(): void {
     if (!this.store.activeId) return;
     void this.openTabCwd(this.store.activeId);
   }
 
-  /** issue #10 快捷键 Ctrl+Shift+N：把当前活跃 Tab 在独立只读窗口打开 */
+  /** Ctrl+Shift+N：当前 Tab 在独立只读窗口打开。 */
   openActiveInNewWindow(): void {
     if (this.store.activeId) void this.openInNewWindow(this.store.activeId);
   }
@@ -1747,19 +1577,14 @@ export class TabManager {
     return this.slots.debug();
   }
 
-  /** account-ux U8：当前活跃会话 sid（只读投影，供 Ctrl+K / 快捷键判定"对当前会话做某事"）。 */
+  /** 当前会话 sid（只读）。 */
   activeSessionId(): string | null {
     return this.store.activeId;
   }
 
   /**
-   * 切到目标 Tab。
-   *
-   * v2.4 issue #2：`source` 区分用户主动 vs 自动跟随。
-   * - `"manual"`（默认）：Tab Bar 点击 / Ctrl+Tab / 中键关 / 内部 fallback 切。
-   *   设置 manualOverrideUntil = now+5s，期间拒绝 userActive 自动切。
-   * - `"auto"`：watcher 反推 user-active 触发的自动切。不更新 override，
-   *   不互相锁死（不然 auto 调 switchTo 又设 override 自己就被锁了）。
+   * 切到目标 Tab。`"manual"`（默认：点击 · 快捷键 · 关掉后落邻居）设 5s 手动保护，期间拒绝自动跟随；
+   * `"auto"`（自动跟随）不设，否则它自己就把自己锁了。
    */
   switchTo(sessionId: string, source: "manual" | "auto" = "manual"): void {
     if (!this.store.tabs.has(sessionId)) return;
@@ -1770,21 +1595,19 @@ export class TabManager {
     }
     if (this.store.activeId === sessionId) return;
 
-    // 切 active 走 .active class（CSS visibility 控制），避免 display:none/block
-    // 触发整棵子树重建 layout tree 卡顿。详 styles.css 的 .stream 注释。
+    // 切当前 tab 只换 `.active`（CSS visibility），不用 display，免得整棵子树重建布局。
     this.view.showOnly(sessionId);
     const next = this.store.tabs.get(sessionId);
     if (next) next.unread = 0;
     this.store.activeId = sessionId;
     if (next) this.view.activate(next);
-    // Batch5-F19 记住所在 tab ＋ 手动切的 5s 保护（住路由：`tab-router.ts::noteSwitched`）。
+    // 记住所在 tab ＋ 手动切的 5s 保护（`tab-router.ts::noteSwitched`）。
     this.router.noteSwitched(sessionId, source);
     this.refreshTabBar(); // active 高亮 + badge 立即更新（廉价，不阻塞）
 
     // 回到离开时的位置：切走时贴着底的才贴底（往上翻着看的不拽到底 —— 后台 tab 只是 `visibility:hidden`，滚动位置一直在）。
     // 贴底（读 scrollHeight，强制同步 reflow）与面板整表 re-render 推到下一帧：让 `.active` 的切换先画出来；期间又切走则跳过。
     const stuck = next?.stream.stuckToBottom ?? true;
-    // 调度：合批 —— 切 Tab 后贴底与面板整表重画推到下一帧，期间切走则跳过
     requestAnimationFrame(() => {
       if (this.store.activeId !== sessionId) return;
       if (stuck) next?.stream.scrollToBottom();
@@ -1797,11 +1620,9 @@ export class TabManager {
           this.store.tabs.get(sessionId)?.stream.scrollToBottom();
         });
       }
-      // issue #11: 切换 task panel 数据源到新 active Tab 的 sid
       this.tasksPanel?.setSession(sessionId, this.store.tasksBySid.get(sessionId) ?? []);
-      // issue #23: agents 面板同步切到新 active Tab
       this.agentsPanel?.setSession(sessionId, this.live.board.of(sessionId));
-      // F88b：HUD context% chip 切到新 active 会话的最新 usage（无带 usage 记录 → null → 隐藏）
+      // 任务面板 · agent 面板 · HUD 都切到新的当前会话。
       this.publishActive(); // 当前 tab 那一格（usage · 要不到的原因）
     });
   }
@@ -1810,19 +1631,9 @@ export class TabManager {
 
 
   private refreshTabBar(): void {
-    // ★ 6d（条 54）：**拖拽进行中不重排 tab 栏。**
-    //
-    // `refreshTabBar` 挂在活动路上（`updateActivity` / `archiveTab` / `ensureTab` 末尾都
-    // 无条件调它），而这些事件在拖拽那一两秒里照常来。下面第 4 段那个排序循环一跑，
-    // **指针底下的 tab 就被换掉了** —— 用户松手落到的不是他瞄的那一格。
-    // 会改 DOM 顺序的活动事件：新 tab 到达 ⇒ `placeInOrder` 按盘上那份顺序把它从**中间**插进去
-    // （6d 注入的就是这一形）。原先这里列的第一条「会话跑完 ⇒ 归档 ⇒ tab 离开 `barEl`」
-    // 随归档抽屉删了：会话结束今天只改那颗按钮的 class，tab 留在原位。
-    // 原先还有「bg 挂到宿主之后」那一路，树删了。
-    //
-    // ⚠ 守的是 `d.dragging`（真起拖了）而不是 `this.drag` 在不在 —— 后者在「按下还没动」
-    // 那一段也为真，那段本来就该照常刷新（它与点击没有区别）。
-    // ⚠ 不是丢掉这次刷新：记一笔脏，`teardownDrag` 收尾时补一次（见那里）。
+    // 拖拽进行中不重排 tab 栏：活动事件（新 tab 到达 ⇒ `placeInOrder` 从中间插进去）在拖的那一两秒里照常来，
+    // 一重排指针底下的 tab 就换了，松手落到的不是瞄的那一格。
+    // 守的是真起拖了（`d.dragging`），按下还没动那段照常刷新；也不是丢掉这次刷新：记一笔脏，`teardownDrag` 收尾时补一次。
     if (this.dragger.deferRefresh()) return;
     // tab 没了就从多选里掉出去（与整刷删按钮同一拍）。
     this.selection.retain((sid) => this.store.tabs.has(sid));
@@ -1831,5 +1642,3 @@ export class TabManager {
 
 }
 
-// P5.2 B 重构：markCardUuid + feedBranchFolder 已搬到 render-stream-record.ts
-// （三 caller 共用 renderStreamRecord 函数内部调用）。tabs.ts 不再持有这两个 helper。

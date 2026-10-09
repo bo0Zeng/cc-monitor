@@ -1,39 +1,23 @@
-// B03：cc-bus 驾驶舱（批一只读 + 批二派活/收信/图形化 spawn）。
+// cc-bus 驾驶舱：读名单 · 查在线 · 收信 / 发消息 · 广播 · 收掉 · 图形化派生。
 //
-// 三条硬约束决定了这个形状：
-//  ① **不新增轮询**（红线）。cc-bus 的状态在**跑着 cc-bus 的那台机**的 `~/.cc-bus/`。
-//     ⚠ 原文写「cc-monitor 跑在 Windows 只能经 SSH 看」——**那是把一种部署当成了全部**：
-//     cc-monitor 也跑在 Linux 上，而那台机器上 `~/.cc-bus/` 就在本地（P4a 实测 86 行 agents）。
-//     ⇒ P4a 起，读面三条支持 `<local>`（后端走同一条命令串、只是不包进 ssh）。复用后端的 inotify watcher 要改后端（零改红线），
-//     所以只能按需读。**本文件里不得出现 setInterval / setTimeout 轮询 / 后台定时任务。**
-//  ② **登记 ≠ 在线**。`agents.tsv` 只证明它登记过——实测最早的条目是 10 天前的，进程早没了。
-//     判在线要另查 `tmux has-session`，那是**第二次往返**，所以放在用户点某一行的「检查」上，
-//     不默认全量查（一屏 37 个 agent 就是 37 次 tmux 调用）。
-//  ③ **脏数据不能把面板搞崩**。实测 `spawned.tsv` 15 行里 8 行是坏的（53%），
-//     后端解析器跳过并计数，这里**如实显示「N 条无法解析」**，不假装干净。
+// 三条约束决定了这个形状：
+//  ① 不轮询：状态在跑着 cc-bus 的那台机器的 `~/.cc-bus/`（本机也读，后端同一条命令串、只是不包进 ssh），
+//     只在用户点「读取」时按需问一次。本文件里不得出现 setInterval / setTimeout 轮询 / 后台定时任务。
+//  ② 登记 ≠ 在线：`agents.tsv` 只证明登记过；判在线是第二次往返，放在点某一行的「检查」上，不全量查。
+//  ③ 脏数据不能把面板搞崩：后端解析器跳过坏行并计数，这里如实显示「N 条无法解析」。
 //
-// **与计划措辞的一处偏离（更严格，非放宽）**：计划写「打开分节时才 invoke 一次」。
-// 分节没有展开回调，而为一个消费者去造一个，正是
-// R12/R15 反复拒绝的"为假想需求建抽象"。这里改成**用户点「读取」才发请求**——一次 30s
-// 超时的远端往返，显式触发比"展开即偷偷发"更诚实，也天然满足"启动时不预取"。
-//
-// **批二不重写起会话**：图形化 spawn 调的是收编后的 `cc-spawn`（它内部已改经 `ccm`），
-// cc-monitor 侧不碰建会话逻辑——那正是本工作区消灭的病（账本 K8：再造第 N 套实现）。
-// 也因此本文件**零引用 launch IR 模块**：spawn 是 fire-and-forget 的远端 exec，不开标签页。
+// 派生调的是 `cc-spawn`（内部经 `ccm`），这里不碰建会话逻辑、不开标签页（远端 exec，发出即走）。
 import { setCurrentMachine, subscribeMachine } from "./machine-context";
 import { commands } from "../ipc/commands";
-// 查在线 · 发消息 · 收掉 · 派生 · 广播五件经通道直接问那台机器的后端（原是五条 Tauri 命令）。
+// 查在线 · 发消息 · 收掉 · 派生 · 广播 · 读面都经通道直接问那台机器的后端；形状由 `cc-bus-control.ts` 的解码器严格收。
 import { agentOnline, broadcast, killAgent, readInbox, readState, sendMessage, spawnAgent, type BusState } from "../cc-bus-control";
 import { saidOfControl } from "../control-said";
-// L2：账号选择复用既有封装——`fetchAccounts` 带 TTL 缓存、`selectableAccounts` 是
-// 「可选账号」的单一判据（`accounts.ts:130` 注释明写"别各处再 filter 一遍"）。
+// 「可选账号」只有 `selectableAccounts` 一个判据；`fetchAccounts` 带缓存。
 import { selectableAccounts } from "../accounts";
 import { fetchAccounts } from "../account-reads";
-// 本机 origin：`backend-policy.ts` 的 `"<local>"`（与 Rust 侧 `inbound_client::LOCAL_ORIGIN` 逐字相同，跨语言钉住）。
-// `accounts.ts` 先前那个同名的 `"__local__"`（账号面的标记）已退役 —— 全仓只剩这一个本机表示。
+// 本机 ＝ `LOCAL_ORIGIN`（与 Rust 侧逐字相同，跨语言钉住）。
 import { LOCAL_ORIGIN } from "../backend-policy";
 
-// 读面经通道直接问后端（`bus-state` / `bus-inbox`），形状由 `cc-bus-control.ts` 的解码器严格收。
 import { confirmDialog } from "../kit/dialog";
 import { copyText } from "../copy-table";
 import { DEFAULT_AGENT, listAgents } from "../agent-profile";
@@ -51,23 +35,20 @@ export class CcBusSection {
   private spawnAcct!: HTMLSelectElement;
   private spawnBtn!: HTMLButtonElement;
   private spawnOut!: HTMLElement;
-  /** spawn 二次确认。**记住"确认的是哪一组参数"而不只是一个布尔**（B03 审计重要-1）：
-   *  原实现只有 `spawnArmed: boolean`，且只在成功执行时复位，于是
-   *  「武装 → 改目录/改 tool → 再点」会**用新值执行**，用户确认过的那句话描述的是一个
-   *  从未发生的操作。这里改成存下确认时的参数快照，点第二次时比对，不一致就重新武装。 */
+  /** 派生的两步确认：记住确认的是哪一组参数（不是一个布尔），点第二次时比对，不一致就重新武装 —— 否则改了参数再点会用新值执行。 */
   private armedFor: string | null = null;
-  /** P4c：收掉那颗按钮的两步确认状态（与 spawn 的 `armedFor` 分开 —— 两件事各自武装）。 */
+  /** 「收掉」的两步确认（与派生的 `armedFor` 各自武装）。 */
   private killArmedFor: string | null = null;
-  /** 武装中的那颗按钮本身 —— 只记 id 复位不了它（见 `killOne` 的 D 阶段补审）。 */
+  /** 武装中的那颗按钮本身：只记 id 复位不了它。 */
   private killArmedBtn: HTMLButtonElement | null = null;
   private broadcastInput!: HTMLInputElement;
   private broadcastBtn!: HTMLButtonElement;
-  /** 已加载过的状态；null = 还没读过（**不在构造时预取**）。 */
+  /** 已读过的状态；null ＝ 还没读过（不在构造时预取）。 */
   private state: BusState | null = null;
 
   constructor() {
     this.element = this.build();
-    // **刻意不在这里 invoke** 读 cc-bus 状态。见文件头「与计划措辞的一处偏离」。
+    // 不在这里读 cc-bus 状态：用户点「读取」才发（约束 ①）。
     void this.loadOrigins();
   }
 
@@ -93,7 +74,7 @@ export class CcBusSection {
     this.originSel.className = "settings-input cc-bus-origin";
     row.appendChild(this.originSel);
 
-    // P4c（#77/#78）：广播 —— 面板此前只能给**单个**收件人发。
+    // 广播：一次发给这台总线上的全部收件人。
     const bcast = document.createElement("input");
     bcast.type = "text";
     bcast.className = "settings-input cc-bus-broadcast-input";
@@ -131,7 +112,7 @@ export class CcBusSection {
     return root;
   }
 
-  /** 批二：图形化 spawn。**调收编后的 cc-spawn，不在这里重写起会话。** */
+  /** 图形化派生：调 `cc-spawn`，不在这里重写起会话。 */
   private buildSpawnForm(): HTMLElement {
     const box = document.createElement("div");
     box.className = "cc-bus-spawn";
@@ -171,17 +152,13 @@ export class CcBusSection {
     this.spawnTool.value = DEFAULT_AGENT;
     box.appendChild(this.spawnTool);
 
-    // L2（B03 审计重要-5）：**必须让用户表态用哪个账号**。原实现没有这个控件，于是
-    // 点两下就在 manifest 默认号上起真 agent 烧额度——用户既没选过，也不知道用了哪个号。
-    // 默认项是「基座」而不是某个具体账号：**不替用户默认花掉某个号的额度**。
+    // 必须让用户表态用哪个账号；默认项是「基座」，不替用户默认花掉某个号的额度。
     this.spawnAcct = document.createElement("select");
     this.spawnAcct.className = "settings-input cc-bus-spawn-acct";
     box.appendChild(this.spawnAcct);
     this.renderAccountOptions([]);
 
-    // 任一参数变化立刻解除武装——文案承诺了"参数改动要重新确认"，代码就得兑现。
-    // （原实现的文案还写着"点别处不算"，而代码里根本没有任何"点别处"的处理；
-    //  对用户做代码不兑现的承诺，比不做承诺更坏。那句话已删。）
+    // 任一参数变化立刻解除武装（文案承诺了「参数改动要重新确认」）。
     for (const el of [this.spawnDir, this.spawnTask, this.spawnTool, this.spawnAcct] as HTMLElement[]) {
       el.addEventListener("input", () => this.disarmSpawn());
       el.addEventListener("change", () => this.disarmSpawn());
@@ -201,32 +178,25 @@ export class CcBusSection {
     return box;
   }
 
-  /** 列远端。复用既有 `list_remote_mcp_origins`——它其实是通用的「列远端配置标签」，
-   *  名字带 mcp 只是历史；为同一件事再加一条 IPC 是无谓重复。 */
+  /** 列远端（`list_remote_mcp_origins`：通用的「列远端配置标签」，名字带 mcp 是历史）。 */
   private async loadOrigins(): Promise<void> {
     let origins: string[] = [];
     try {
-      // **别只防 reject**：invoke 也可能 resolve 成 undefined/非数组（桥接层异常、命令改了
-      // 返回类型）。只 catch 不校验形状的话，下一行 `.length` 会直接抛 —— 这正是本工作区
-      // 一路在守的「脏数据不能把面板搞崩」，对自己的 IPC 返回值同样适用。
+      // 不只防 reject：也可能 resolve 成非数组，不校验形状的话下一行就抛。
       const got = await commands.list_remote_mcp_origins();
       if (Array.isArray(got)) origins = got;
     } catch {
       /* 拿不到就当没有远端，不影响面板其余部分 */
     }
     this.originSel.replaceChildren();
-    // P4a：**本机永远在列表里**。cc-monitor 跑在哪台机器上，那台机器的 `~/.cc-bus/`
-    // 就在本地 —— 后端读面已经支持 `<local>`（同一条命令串，不包进 ssh）。
-    // ⇒ 「没有可选项」这种状态不再存在，那条 `origins.length === 0` 的死路去掉了。
+    // 本机永远在列表里（本机的 `~/.cc-bus/` 就在本地）。
     for (const o of origins) {
       const opt = document.createElement("option");
       opt.value = o;
       opt.textContent = o;
       this.originSel.appendChild(opt);
     }
-    // ⚠ **追加在末尾，不是插在开头**：`select` 的默认值是第一项 ——
-    // 放开头会把「配了远端的人打开面板默认看哪台」这件事一起改了，
-    // 而那不是本件要动的东西（P4a 的正题是「本机也能看」，不是「默认改看本机」）。
+    // 本机追加在末尾：`select` 默认第一项，配了远端的人打开面板照旧先看远端。
     {
       const opt = document.createElement("option");
       opt.value = LOCAL_ORIGIN;
@@ -236,37 +206,30 @@ export class CcBusSection {
     if (origins.length === 0) {
       this.statusEl.textContent = copyText("ccBus.machine.noRemote");
     }
-    // 账号随机器变——换台机器，上一台的账号名多半不适用
+    // 换机器 ⇒ 写进共用 store、换账号下拉（订阅看到选择器已是那台会早退，所以这里自己换）。
     this.originSel.addEventListener("change", () => {
-      // S4a：写进共用 store；实际切换由订阅统一处理。
-      // 共用 store 与本选择器现在是**同一个表示**（本机 = `LOCAL_ORIGIN`）——原先那处换算没有了。
       const v = this.originSel.value;
       setCurrentMachine(v);
       this.syncLocalAffordances();
-      // 在这里换账号下拉。原先只靠下面那条订阅去换 —— 而订阅看到选择器**已经**是那台
-      // （就是这一行刚选的）就早退，于是在下拉里换机器，账号下拉一直停在上一台的名单上。
       void this.loadAccounts(v);
     });
-    // S4a：跟随共用 store。本机（`LOCAL_ORIGIN`）—— **P4a 起它不再是「原地不动」**：
-    // 本机这一格今天有意义了（读面已通），所以跟着切到「本机」那一项。
+    // 跟随共用 store 切到那一台（含本机）。
     subscribeMachine((origin) => {
       const want = origin;
       if (![...this.originSel.options].some((o) => o.value === want)) return;
       if (this.originSel.value === want) return;
       this.originSel.value = want;
       this.disarmSpawn();
-      this.disarmKill(); // 切了机器，上一台那颗武装中的「收掉」必须失效
+      this.disarmKill(); // 切了机器，上一台那颗武装中的「收掉」失效
       this.syncLocalAffordances();
       void this.loadAccounts(want);
     });
     this.syncLocalAffordances();
-    // 本机也拉账号列表（BS1b 留下的：原先这两处对本机跳过 ⇒ 本机派生只能选「不指定」）。
-    // `fetchAccounts` 收到后端那个本机串（`backend-policy` 的 `LOCAL_ORIGIN`）自己走本机那条读口
-    // （`accounts.ts` 的 `fetchAccounts` 第一行，A3 接的）—— 这里不另写一条本机分支。
+    // 本机也拉账号列表：`fetchAccounts` 认 `LOCAL_ORIGIN`，这里不另写本机分支。
     void this.loadAccounts(this.originSel.value);
   }
 
-  /** 渲染账号下拉。第一项恒为「基座」——**不替用户默认选一个会花钱的号**。 */
+  /** 渲染账号下拉。第一项恒为「基座」：不替用户默认选一个会花钱的号。 */
   private renderAccountOptions(names: string[]): void {
     this.spawnAcct.replaceChildren();
     const base = document.createElement("option");
@@ -281,16 +244,13 @@ export class CcBusSection {
     }
   }
 
-  /** 取这台机器（远端或本机）的可选账号。**拿不到就只留「基座」**——宁可少一个选项，
-   *  也不能让用户以为选了某个号而其实没生效。 */
-  /** 本机派生今天走后端原语 `bus-spawn`，与远端**同一条路** ⇒ 不再按本机禁用。
-   *  （原先这里对本机禁用派生按钮并挂一句「本机还不能派生」—— 那句话等的原语长出来了。）
-   *  三处切机器的调用点仍调它：哪天真有「这台机器做不了」的东西，写在这里。 */
+  /** 派生按钮今天哪台都能用（本机与远端同一条后端原语）；哪天真有「这台机器做不了」的，写在这里。 */
   private syncLocalAffordances(): void {
     this.spawnBtn.disabled = false;
     this.spawnBtn.title = "";
   }
 
+  /** 这台机器的可选账号；拿不到就只留「基座」（宁可少一个选项，也不让人以为选了某个号）。 */
   private async loadAccounts(origin: string): Promise<void> {
     let names: string[] = [];
     try {
@@ -315,7 +275,7 @@ export class CcBusSection {
       this.render();
     } catch (e) {
       this.state = null;
-      // 失败要说清是哪一步失败，而不是留个空面板让人以为"没有 agent"
+      // 失败说清是哪一步，别留个空面板让人以为「没有 agent」
       sayWithDetail(this.statusEl, copyText("ccBus.reload.readFailed", { e: saidOfControl(e) }), detailOf(e));
     } finally {
       this.readBtn.disabled = false;
@@ -329,14 +289,8 @@ export class CcBusSection {
     const dirOf = new Map(st.spawned.map((s) => [s.id, s.dir]));
     const registered = new Set(st.agents.map((a) => a.id));
 
-    // **spawned-only 的条目也要渲染**（B03 审计阻塞-1，用真实数据复现）：
-    // 盘上实测 agents=37 / spawned=7 / **交集只有 2**——原实现只遍历 `agents`，于是另外
-    // 5 个 cc-spawn 派生的 agent **连同它们的工作目录一行都不显示**，而头条却写着
-    // 「其中 spawn 的 7 个」（`其中` 蕴含子集关系，我却拿 spawned 全集去数）。
-    // 数字与可见行数差 3.5 倍，且差的方向是**让人以为看全了**——这个分节唯一的职责
-    // 就是如实呈现，这是最不该犯的错。
-    // 修法取"并进列表"而非"只改计数"：spawned-only 的条目有 dir 和时间，
-    // 信息量比 agents.tsv 还大，藏起来没有道理。
+    // 只在 spawned 里的条目也渲染（两份名单交集可能很小）：它们有目录和时间，藏起来会让头条的数与可见行数对不上、
+    // 还让人以为看全了。
     const extra = st.spawned.filter((sp) => !registered.has(sp.id));
     const bothCount = st.agents.filter((a) => spawnedIds.has(a.id)).length;
 
@@ -358,7 +312,7 @@ export class CcBusSection {
     for (const a of st.agents) {
       this.listBox.appendChild(this.buildRow(a, spawnedIds.has(a.id), dirOf.get(a.id), true));
     }
-    // 未登记的 spawn 记录：**明确标注它没在总线上**，别让用户以为它是个正常 agent
+    // 未登记的派生记录：明确标注它没在总线上
     for (const sp of extra) {
       this.listBox.appendChild(
         this.buildRow(
@@ -396,11 +350,9 @@ export class CcBusSection {
     meta.textContent = bits.join(copyText("ccBus.row.sep"));
     row.appendChild(meta);
 
-    // **在线状态默认「未知」**——这是本设计的要点，不是偷懒：名单证明不了在线，
-    // 而全量查是 N 次往返。用户想知道哪一个，就点哪一个。
+    // 在线状态默认「未知」：名单证明不了在线，全量查是 N 次往返；想知道哪一个就点哪一个。
     const stateEl = document.createElement("span");
-    // 〔约定 3：状态用 `data-*`，不用类名〕此前是 `cc-bus-online-<态>` 五个类名，
-    //   CSS 里一条规则都没有（git 史里也从来没有过）⇒ 悬空类；改成 `data-state`，界面上只说那几个字。
+    // 状态用 `data-state`，不用类名。
     stateEl.className = "cc-bus-online";
     stateEl.dataset.state = "unknown";
     stateEl.textContent = copyText("ccBus.row.onlineUnknown");
@@ -413,7 +365,7 @@ export class CcBusSection {
     btn.addEventListener("click", () => void this.checkOne(a.id, stateEl, btn));
     row.appendChild(btn);
 
-    // 批二：收信 + 发消息。两者都是按需一次往返，不订阅、不轮询。
+    // 收信 ＋ 发消息：都是按需一次往返，不订阅、不轮询。
     const detail = document.createElement("div");
     detail.className = "cc-bus-detail";
     row.appendChild(detail);
@@ -438,8 +390,7 @@ export class CcBusSection {
     sendBtn.addEventListener("click", () => void this.sendTo(a.id, msg, detail, sendBtn));
     row.appendChild(sendBtn);
 
-    // P4c（#77/#78）：收掉这个 agent。**破坏性且不可撤销**（cc-kill 头注逐字：杀会话+进程树）
-    // ⇒ 两步确认，抄 spawn 那条先例；第二步的文案**逐字带上 id**（回显真名，别让人杀错）。
+    // 收掉这个 agent：杀会话 ＋ 进程树、不可撤销 ⇒ 两步确认，第二步的文案带上 id（回显真名，别杀错）。
     const killBtn = document.createElement("button");
     killBtn.type = "button";
     killBtn.className = "settings-btn cc-bus-kill";
@@ -466,7 +417,7 @@ export class CcBusSection {
       stateEl.dataset.state = online ? "yes" : "no";
       stateEl.textContent = online ? copyText("ccBus.check.online") : copyText("ccBus.check.offline");
     } catch (e) {
-      // 查失败 ≠ 不在线，必须区分开，否则会把"网络抖了一下"报成"agent 死了"
+      // 查失败 ≠ 不在线：要分开，否则网络抖一下就报成 agent 死了
       stateEl.dataset.state = "error";
       sayWithDetail(stateEl, copyText("ccBus.check.failed", { e: saidOfControl(e) }), detailOf(e));
     } finally {
@@ -487,7 +438,7 @@ export class CcBusSection {
         box.textContent = copyText("ccBus.inbox.empty");
         return;
       }
-      // 只渲染尾部若干条：后端已限 200 行，这里再收一次，面板不该被一屏刷爆
+      // 只渲染尾部若干条（后端已限 200 行，这里再收一次）
       for (const m of msgs.slice(-20)) {
         const line = document.createElement("div");
         line.className = "cc-bus-msg-line";
@@ -516,7 +467,7 @@ export class CcBusSection {
     if (!origin || !text.trim()) return;
     btn.disabled = true;
     try {
-      // 那一句由成品的三态说（在线 / 不在线 / 名字没登记过 / 问不到），不再一律「已发送」。
+      // 那一句由成品的三态说（在线 / 不在线 / 名字没登记过 / 问不到）。
       box.textContent = await sendMessage(origin, id, text);
       input.value = "";
     } catch (e) {
@@ -526,7 +477,7 @@ export class CcBusSection {
     }
   }
 
-  /** 当前表单参数的指纹——确认的必须**正好**是执行的那一组。 */
+  /** 当前表单参数的指纹：确认的必须正好是执行的那一组。 */
   private spawnFingerprint(): string {
     return JSON.stringify([
       this.originSel.value,
@@ -537,28 +488,20 @@ export class CcBusSection {
     ]);
   }
 
-  /** 确认文案里要点名账号——「消耗额度」不说清是哪个号的额度等于没说。 */
+  /** 确认文案里点名账号：不说清是哪个号的额度等于没说。 */
   private acctLabel(): string {
     return this.spawnAcct.value ? copyText("ccBus.acctLabel.named", { value: this.spawnAcct.value }) : copyText("ccBus.acctLabel.none");
   }
 
-  /**
-   * P4c：收掉一个 agent。**两步确认** —— 第一次点只武装，第二次才真发。
-   *
-   * ⚠ 第一次点**一条命令都不许发出去**：发出去的那条才是杀人的，
-   * 「弹了确认」和「没发命令」是两件事（判据钉的是后者）。
-   */
+  /** 收掉一个 agent：第一次点只武装、一条命令都不发（判据钉的是这个），第二次才真发。 */
   private async killOne(id: string, detail: HTMLElement, btn: HTMLButtonElement): Promise<void> {
     const origin = this.originSel.value;
     if (!origin) return;
     if (this.killArmedFor !== id) {
-      // ★ **先把上一颗复位**〔D 阶段补审〕：只记 id 不记按钮的话，
-      // 武装 A 之后再点 B，A 那颗仍显示「确认收掉 A」—— **两颗都像武装着**，面板在骗人。
-      // 本文件 `:53` 的注释记过同型病：「原实现只有 `spawnArmed: boolean`，且只在成功执行时复位」。
+      // 先把上一颗复位：只记 id 的话，武装 A 再点 B，A 那颗还显示「确认收掉 A」，两颗都像武装着。
       this.disarmKill();
       this.killArmedFor = id;
       this.killArmedBtn = btn;
-      // 回显真名 —— 一屏几十个 agent，不带名字的「确认」很容易杀错那一个。
       btn.textContent = copyText("ccBus.kill.confirm", { id });
       return;
     }
@@ -573,10 +516,7 @@ export class CcBusSection {
     }
   }
 
-  /**
-   * P4c：广播。**确认必须带数字** —— 一个不带数字的「确定吗」等于没问：
-   * 用户点确认时并不知道有多少人会收到（实测本机 `agents.tsv` 86 行）。
-   */
+  /** 广播：确认必须带数字（会有多少人收到），不带数字的「确定吗」等于没问。 */
   private async doBroadcast(): Promise<void> {
     const origin = this.originSel.value;
     if (!origin) return;
@@ -600,7 +540,7 @@ export class CcBusSection {
     }
   }
 
-  /** P4c D 补审：把武装中的「收掉」复位。切机器 / 重载 / 武装另一颗时都要调。 */
+  /** 把武装中的「收掉」复位：切机器 / 重载 / 武装另一颗时都要调。 */
   private disarmKill(): void {
     if (this.killArmedBtn) this.killArmedBtn.textContent = copyText("ccBus.row.kill");
     this.killArmedBtn = null;
@@ -618,9 +558,7 @@ export class CcBusSection {
     if (!origin) return;
     const dir = this.spawnDir.value.trim();
     if (!dir) {
-      // **先解除武装再返回**（审计重要-1）：原实现这条 return 在武装判断**之前**，于是
-      // 「武装 → 清空 dir → 点击（只提示请填目录，**仍处武装态**）→ 填新 dir → 点一次」
-      // = 一次点击就起 agent，全程没出现过确认文案。
+      // 先解除武装再返回：否则「武装 → 清空目录 → 点 → 填新目录 → 点」一次点击就起了 agent、没见过确认文案。
       this.disarmSpawn();
       this.spawnOut.textContent = copyText("ccBus.spawn.needDir");
       return;
@@ -643,10 +581,10 @@ export class CcBusSection {
         dir,
         task: this.spawnTask.value,
         tool: this.spawnTool.value,
-        // 空串 = 显式基座（发 `base:true`）。**不存在"什么都不传"这一档**。
+        // 空串 ＝ 显式基座（发 `base:true`）；没有「什么都不传」这一档。
         account: this.spawnAcct.value,
       });
-      // 派生完顺手刷新名单——这是**用户动作触发**的一次读，不是后台轮询
+      // 派生完刷新名单（用户动作触发的一次读，不是轮询）
       await this.reload();
     } catch (e) {
       sayWithDetail(this.spawnOut, copyText("ccBus.spawn.failed", { e: saidOfControl(e) }), detailOf(e));

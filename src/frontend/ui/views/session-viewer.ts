@@ -1,16 +1,8 @@
 /**
- * 只读历史会话查看器。
- *
- * 用法：HistoryView 点击一条历史条目时实例化这个组件，给定 jsonl_path 加载并渲染。
- * 复用 cards/renderMessage 与实时 Tab 同一套渲染逻辑（user 气泡 / assistant full-width /
- * tool_use 折叠条 / tool_result 合并等），只是数据源换成"一次性 IPC 读全文件"。
- *
- * 与 TabManager 的关系：完全独立。这里不创建 Tab、不影响实时流、不调 event_replay。
- * 关闭查看器后状态彻底释放。
+ * 只读历史会话查看器：历史页点一条时建，按那台后端读出的记录行渲染（与实时 tab 同一套卡）。
+ * 与 `TabManager` 无关：不建 Tab、不碰实时流；关掉即释放。
  */
 
-// 本机那个 origin 的**唯一住址**（Rust 侧是 `inbound_client::LOCAL_ORIGIN`，
-// 两侧由 `origin_tests::the_sentinel_agrees_with_the_two_existing_homes` 两向钉着）。
 import { speakerNameOf } from "../agent-profile";
 import type { Origin } from "../ipc/origin";
 import { MessageStream } from "../stream";
@@ -41,7 +33,7 @@ import { openNewSession } from "../new-session";
 import { OutlineSource } from "./outline-source";
 // 「你说过的话」清单界面与实时 tab 同一个类（`UserInputPanel`），这里只换开法：工具行一颗按钮 ＋ kit 浮层。
 import { UserInputPanel } from "./user-input-panel";
-// 按轮折叠与主窗口同一个（`turn-fold.ts`）：消息流与主窗口同一套卡（设计稿「文件与历史」乙1 / 乙4-④）。
+// 按轮折叠与主窗口同一个（`turn-fold.ts`）。
 import { TurnFold } from "../turn-fold";
 import { button } from "../kit/button";
 import { icon } from "../kit/icon";
@@ -55,19 +47,8 @@ import sv from "./session-viewer.module.css";
 import { copyText } from "../copy-table";
 
 /**
- * **在一条消息流里按 uuid 找到那张卡、展开挡着它的折叠、滚过去并闪一下。**
- * 找不到返回 `null` 且**什么都不做**（怎么兜底由调用方决定）。
- *
- * # 为什么它是导出的（K-R45 第三轮）
- *
- * 它本轮起有**两个**调用方：本文件的 `scrollToMessage`（搜索命中 + 「我说过的 N 句」）
- * 与 `tabs.ts` 的实时窗口（`KR45D2`）。件 `§5.2` 的 B 段现打核过这一段**真能共用**：
- * 两条路的卡由**同一个** `renderStreamRecord` 建，`data-uuid` 由**唯一一份**
- * `markCardUuid` 写。照抄一份到 `tabs.ts` 的代价是从此两处要一起改。
- *
- * ⚠ 它住在这个文件里是历史原因（当年调度点分类账是一张按「文件 × API × 处数」对账的中心表，搬家就要改那张表）；
- * 今天分类住在调用点旁边（`// 调度：…`），搬进一个中立的 `views/card-jump.ts` 不再牵动登记。
- * 代价仍在：`tabs.ts` 要 `import` 本文件（实时窗口 import 历史查看器，方向是别扭的）；它不成环（本文件不 import `tabs.ts`）。
+ * 在一条消息流里按 uuid 找到那张卡、展开挡着它的折叠、滚过去并闪一下；找不到 ⇒ `null`、什么都不做（兜底归调用方）。
+ * 导出给 `tabs.ts` 的实时窗口共用：两条路的卡由同一个 `renderStreamRecord` 建、`data-uuid` 由同一处写。
  */
 export function revealCard(container: HTMLElement, uuid: string): HTMLElement | null {
   // CSS.escape 防 uuid 里有特殊字符破坏选择器
@@ -77,9 +58,7 @@ export function revealCard(container: HTMLElement, uuid: string): HTMLElement | 
     container.querySelector<HTMLElement>(`[data-uuid="${key}"]`) ??
     container.querySelector<HTMLElement>(`[data-member-uuid="${key}"]`);
   if (!el) return null;
-  // 展开所有折叠祖先，确保目标可见。注:ESC 回退段是 div.branch-fold-wrap
-  // + .expanded 类(非 <details>)——此前只开 details,命中折叠段内的卡会被
-  // 0fr 裁剪、flash 不可见(Batch13 D 审计发现的既有 bug)
+  // 展开所有折叠祖先：ESC 回退段是 `div.branch-fold-wrap` ＋ `.expanded`（不是 `<details>`），不展开的话卡被 0fr 裁掉、闪了也看不见。
   let p: HTMLElement | null = el.parentElement;
   while (p && p !== container) {
     if (p instanceof HTMLDetailsElement) p.open = true;
@@ -90,9 +69,7 @@ export function revealCard(container: HTMLElement, uuid: string): HTMLElement | 
     p = p.parentElement;
   }
   el.scrollIntoView({ block: "center" });
-  // Batch13-F38:首次落点基于 content-visibility 估值几何;双 rAF 后周边已
-  // 材料化(真实尺寸),幂等重发一次让 block:center 落点精确
-  // 调度：一次性 —— 双 rAF 之后重发 scrollIntoView（等 content-visibility 材料化）
+  // 调度：一次性 —— 首次落点按 content-visibility 的估值几何；双 rAF 后周边材料化成真实尺寸，再落一次才准。
   requestAnimationFrame(() => requestAnimationFrame(() => el.scrollIntoView({ block: "center" })));
   el.classList.add("search-hit-flash");
   // 动画结束后移除 class（再次跳同一条还能重放）
@@ -115,12 +92,12 @@ interface JsonlLinePayload {
   session_id: string;
   cwd: string | null;
   path: string;
-  /** P5.1：per-file 单调 seq。SessionViewer 一次性 load 时按 seq 排到 timeline。 */
+  /** 文件内单调的 seq；一次性读完时按它排进时间线。 */
   seq: number;
   message: JsonlRecord;
 }
 
-/** 内容头（设计稿乙4-④）：内容由宿主按那一行的事实拼好，查看器只摆位置。 */
+/** 内容头：内容由宿主按那一行的事实拼好，查看器只摆位置。 */
 export interface ViewerHead {
   /** 标题左边那一格（窄档历史页的「← 列表」）。 */
   lead?: HTMLElement;
@@ -146,29 +123,15 @@ export interface ViewerOptions {
   /** 顶栏标题（后端给的显示标题）。 */
   displayTitle: string;
   head?: ViewerHead;
-  /**
-   * issue #6：从全文搜索结果跳进来时给定命中消息的 uuid。加载完成后定位到该卡片
-   * （展开所在折叠段）滚动居中 + 临时高亮，而非默认贴底。
-   */
+  /** 从全文搜索跳进来时命中的那条 uuid：读完定位到它（展开所在折叠段）、居中并闪一下，不贴底。 */
   scrollToUuid?: string;
-  /**
-   * issue #16：哪台机器的会话（本机 = `LOCAL_ORIGIN`）。
-   * 上一版是「`undefined` = 本地」—— 「没说」被当成本机；
-   * 现在**必填**（子 agent 查看器就曾因此把远端子 agent 的文件拿去本机读）。
-   */
+  /** 哪台机器的会话（本机 ＝ `LOCAL_ORIGIN`）。必填：「没说」不许当成本机。 */
   origin: Origin;
   /** 这个会话是哪一家（历史清单那一行的 `agent`，后端给的）：卡头那一家的名字按它取。 */
   agent?: string | null;
-  /**
-   * F62：会话工作目录（= 历史条目 projectPath）。分叉出新会话后作它的起始目录。
-   * **G6 订正**：原注释写着"远端会话不建分支，可缺省"——远端现在也能分叉了，
-   * 缺了它分叉起会话时会多问一次工作目录。
-   */
+  /** 会话工作目录（历史条目的 projectPath）：分叉出新会话时作起始目录；缺了要多问一次。 */
   cwd?: string;
-  /**
-   * F77：抑制「从这一轮建分支」按钮。子 agent 记录（点进 agent 看记录）不是可分支的会话——
-   * 对子 agent jsonl 建分支会产出残缺/无归属会话，故 F77 传 true 关掉该可操作面。
-   */
+  /** 不挂「从这一轮分叉」：子 agent 的记录不是可分叉的会话。 */
   suppressBranch?: boolean;
   /**
    * 跟着这个会话长（在跑的会话；与独立查看窗同一条订阅 `session-lines/<sid>`）：先订、再读，读完之后流里来的接在后面。
@@ -193,13 +156,12 @@ function pageStatus(s: ViewerStatus): string {
   return s.more ? copyText("sessionViewer.status.more", { n: s.n }) : copyText("sessionViewer.status.all", { n: s.n });
 }
 
-const TAIL_INITIAL = 150; // 首屏渲染的末尾条数(实测 37MB 全量 65s → 首屏 1.1s)
-const BATCH_SIZE = 200; // 上翻每批补渲染条数(实测 200 条 ≈ 1-2s,肉眼可等的一口)
-const TOP_TRIGGER_PX = 800; // 距顶触发补批阈值(约一屏余量,提前于撞顶)
+const TAIL_INITIAL = 150; // 首屏渲染的末尾条数
+const BATCH_SIZE = 200; // 上翻每批补渲染条数（约 1–2 秒一口）
+const TOP_TRIGGER_PX = 800; // 距顶触发补批阈值（约一屏余量，撞顶之前就补）
 
 /**
- * 某一条显示不了 ⇒ 卡的位置上画这一块：「这一条显示不了」［复制详情］（乙4-④ · R2-2-3）。
- * 原因进日志，不在状态行报数；「复制详情」交那一条的原文（后端给的记录行）＋ 原因。
+ * 某一条显示不了 ⇒ 卡的位置上画「这一条显示不了」［复制详情］；原因进日志，不在状态行报数，详情交那一条的原文 ＋ 原因。
  */
 function brokenCard(p: JsonlLinePayload, err: unknown): HTMLElement {
   const card = document.createElement("div");
@@ -230,15 +192,14 @@ export class SessionViewer {
   private toolsEl!: HTMLElement;
   private streamEl!: HTMLElement;
   private stream: MessageStream | null = null;
-  // Batch13-F39:尾部优先增量渲染状态(load 时重建)
+  // 尾部优先的增量渲染状态（load 时重建）
   private payloads: JsonlLinePayload[] = [];
   private unrendered: UnrenderedRanges | null = null;
   private uuidToIdx = new Map<string, number>();
   /**
    * 骨架层：没渲染的 seq 区间由占位顶住（滚动条一开始就是全会话的），滚到哪物化哪。
-   * `null` = 没接上（本机后端不在 / 老后端 / Codex 会话 / seq 对不上）⇒ 行为与之前逐字相同。
-   * ⚠ 查看器仍然**全量收正文**（大纲 / 分叉折叠要全量记录，SE1 那一路在把大纲搬到后端）——
-   * 骨架在这里买的是滚动条与「只建可见区」，**不是**内存。
+   * `null` ＝ 没接上（本机后端不在 / Codex 会话 / seq 对不上）。查看器仍全量收正文（大纲 / 分叉折叠要全量记录），
+   * 骨架买的是滚动条与「只建可见区」，不是内存。
    */
   private skeleton: SkeletonView | null = null;
   private renderCtx: RenderContext | null = null;
@@ -248,7 +209,7 @@ export class SessionViewer {
   private turnFold: TurnFold | null = null;
   private branchRecords: BranchRecord[] = [];
   private renderingBatch = false;
-  /** D 审计 S1/R 竞态:load 世代号——异步间隙(rAF/Channel)后核对,跨会话残余操作直接丢弃 */
+  /** 读取世代号：异步间隙（rAF / 通道）之后核对，换了会话的残余操作直接丢掉。 */
   private loadGeneration = 0;
   private onScrollFill = (): void => {
     void this.maybeFillAbove();
@@ -261,7 +222,7 @@ export class SessionViewer {
   private countEl!: HTMLElement;
   private bannerEl!: HTMLElement;
   private loadingEl!: HTMLElement;
-  /** 读到了、一条可显示的消息都没有 ⇒ 消息流的位置换成这块空态（I5「空」· C16）。 */
+  /** 读到了、一条可显示的消息都没有 ⇒ 消息流的位置换成这块空态。 */
   private emptyEl!: HTMLElement;
   private statusEl!: HTMLElement;
   /** 「你说过的话」那份清单（实时 tab 同一个类）；开法换成工具行的按钮 ＋ 浮层。 */
@@ -288,7 +249,6 @@ export class SessionViewer {
   /** 「↓ 新内容」：不在底部时来了新内容 ⇒ 出；点它或滚回底部 ⇒ 收。 */
   private newPill!: HTMLButtonElement;
   private opts: ViewerOptions | null = null;
-  // 「← 返回历史」那颗删了：历史页右边就地看（设计稿「文件与历史」乙4-④），列表一直在左边。
   constructor(shape: ViewerShape = {}) {
     this.shape = shape;
     this.root = this.build();
@@ -306,9 +266,7 @@ export class SessionViewer {
     return this.root;
   }
 
-  /**
-   * 头下面那一条（恢复失败 · 读不出 …）；`null` ⇒ 收掉。宿主的错误条也挂这里（乙4-⑤「头下面一条错误条」）。
-   */
+  /** 头下面那一条（恢复失败 · 读不出 …，宿主的错误条也挂这里）；`null` ⇒ 收掉。 */
   showBanner(el: HTMLElement | null): void {
     this.bannerEl.replaceChildren(...(el ? [el] : []));
     this.bannerEl.hidden = el === null;
@@ -354,15 +312,9 @@ export class SessionViewer {
   }
 
   /**
-   * Batch13-F39:两阶段加载(实测 37MB 全量渲染 65.5s → 首屏 1.1s)。
-   *
-   * 阶段一(收集):那台后端按页（≤ 1 MiB 原文）出记录行,前端只收集 payload +
-   * 预提取 branch/queue 数据,**不渲染**。
-   * 阶段二(增量渲染):收齐后渲染末尾 TAIL_INITIAL 条首屏(+深链岛)→ fold 一次
-   * 重建 → 贴底/定位;此后上翻由 maybeFillAbove 按批补渲染,每批先摊平再插入再重折。
-   *
-   * 取消:dispose() 时 stream = null + loadGeneration 递增,后续 chunk/异步残余
-   * 双守卫丢弃;翻页循环每页核一次世代号，换了会话就不再问下一页。
+   * 两段加载：先收集（那台后端按页出记录行，只收 payload 并预提取分支 / 队列数据，不渲染），
+   * 收齐后渲染末尾 `TAIL_INITIAL` 条首屏（＋ 深链岛）、折一次、贴底或定位；之后上翻由 `maybeFillAbove` 按批补。
+   * `dispose()` 让世代号递增，在途的页与异步残余都按世代号丢掉。
    */
   async load(opts: ViewerOptions): Promise<void> {
     this.setHead(opts.displayTitle, opts.head);
@@ -395,32 +347,29 @@ export class SessionViewer {
     this.turnFold = new TurnFold(this.stream.contentElement, this.streamEl, () => this.outlineWhere);
     this.streamEl.addEventListener("scroll", this.turnFold.releaseOnScroll, { passive: true });
 
-    // 读取中：骨架（乙4-④ 各态）；状态行不说话。
+    // 读取中：骨架；状态行不说话。
     this.setLoading(true);
     this.statusEl.textContent = "";
 
-    // Batch13-F39:lazy hljs(此前 viewer eager 全量高亮,是 65s 的组成部分)
+    // 高亮按需（lazy hljs）
     const ctx: RenderContext = {
       parentPath: opts.jsonlPath,
       speaker: speakerNameOf(opts.agent ?? null),
       toolUseNames: new Map(),
       toolUseElements: new Map(),
       pendingToolResults: new Map(),
-      // Batch9-F29（审计三家共识）：远端会话展开 subagent 需 origin 降级
+      // 远端会话展开子 agent 要带上 origin
       origin: opts.origin,
       lazy: true,
     };
     const timeline = new RecordTimeline(this.stream);
-    // Batch13-F39:增量渲染期间 renderStreamRecord 会重复 feed branch 记录——
-    // branch/queue 数据在收集阶段一次性预提取,sink 的对应回调置 no-op
+    // 增量渲染时 `renderStreamRecord` 会重复喂分支记录 ⇒ 分支 / 队列数据在收集阶段一次性预提取，sink 的对应回调置空。
     const sink: StreamSink = {
       timeline,
       onBranchRecord: () => {},
       onQueueOperation: () => {},
       enhanceRoot: this.streamEl, // IO 的 root = 查看器自己的滚动容器
-      // F62 / **G6**：给每张 user/assistant 卡挂「从这一轮分叉」按钮。**远端也挂**——
-      // 远端走后端的 `--fork-session`（只认 sid），不再受"远端 jsonl 本机够不着"所限。
-      // F77：子 agent 记录 `suppressBranch` 仍关掉（子 agent jsonl 不是可分支的会话）。
+      // 每张 user / assistant 卡挂「从这一轮分叉」（远端走后端的 `--fork-session`，只认 sid）；子 agent 记录不挂。
       onCardRendered: opts.suppressBranch
         ? undefined
         : (el, msg) =>
@@ -433,14 +382,11 @@ export class SessionViewer {
     this.branchRecords = [];
     const queuedContents: string[] = [];
 
-    // F39:收集阶段只收集 payload + 预提取 branch/queue 数据,不渲染——
-    // 全量渲染 37MB 实测 65s,渲染延后到「尾段首屏 + 上翻增量」
-    // F40c(账本收敛,清偿 F39 parity 欠账):meta/branch 提取与渲染路径共用
-    // routeMetaAndBranch 单一来源——此前手工复刻曾被 D 审计点名为漂移风险。
+    // 收集阶段只收 payload ＋ 预提取 meta / 分支数据，不渲染；提取与渲染共用 `routeMetaAndBranch` 一处。
     const collectSink: MetaSink = {
       onBranchRecord: (br) => this.branchRecords.push(br),
       onQueueOperation: (content) => queuedContents.push(content),
-      onTitleUpdate: () => {}, // viewer 标题静态,不消费 ai-title
+      onTitleUpdate: () => {}, // 查看器标题静态，不认 ai-title
     };
     // 骨架索引与正文**并行**要（索引是另一个后端进程，~0.1 s / 50 MB）；接骨架在首屏之后。
     const origin = opts.origin;
@@ -449,25 +395,24 @@ export class SessionViewer {
     const onChunk = (chunk: JsonlLinePayload[]): void => {
       if (!this.stream || this.loadGeneration !== gen) return; // 已 dispose / 已换会话
       for (const p of chunk) {
-        // 逐条 try/catch:异形 message 抛错不能丢整 chunk 计数
+        // 逐条 try/catch：异形 message 抛错不能丢整页计数
         try {
           routeMetaAndBranch(p, collectSink);
         } catch (err) {
           console.warn("[session-viewer] 收集阶段单条异常(跳过):", err);
         }
-        this.payloads.push(p); // 占位必须 push:下标与总条数对齐(meta 也占位)
+        this.payloads.push(p); // 占位也 push：下标与总条数对齐（meta 也占一格）
       }
     };
 
     try {
-      // 经通道直接问那台后端（`history-page`，`src/frontend/ui/record-reads.ts::readWholeSession`）：
-      //   后端出记录行（记录解释住后端），按页交 `onChunk`、同一个 Promise 链里交完 ⇒ 不再有「两条 IPC 通道谁先到」那一格。
-      //   本机与远端同一条路（`origin` 必填，本机就是 `LOCAL_ORIGIN`）。
+      // 经通道问那台后端（`history-page`，`record-reads.ts::readWholeSession`）：按页交 `onChunk`，同一个 Promise 链里交完。
+      // 本机与远端同一条路（`origin` 必填）。
       await readWholeSession(opts.origin, opts.jsonlPath, onChunk, () => !this.stream || this.loadGeneration !== gen);
       if (this.loadGeneration !== gen) return; // 已换会话
       if (!this.stream) return;
       this.setLoading(false);
-      // F39:排序防御(chunk 应有序,二分插入也容乱序,排序让区间账本与 payload 下标对齐)
+      // 排序兜底（页应有序）：让区间账本与 payload 下标对齐
       this.payloads.sort((a, b) => a.seq - b.seq);
       this.uuidToIdx.clear();
       this.payloads.forEach((p, i) => {
@@ -475,7 +420,7 @@ export class SessionViewer {
         if (u) this.uuidToIdx.set(u, i);
       });
       this.unrendered = new UnrenderedRanges(this.payloads.length);
-      // fold 组件建一次,增量批后幂等重建(branchRecords 全量已知;搬的只是已渲染卡)
+      // 折叠组件建一次，增量批后幂等重建（分支记录全量已知）
       this.folder = new BranchFolder(this.stream.contentElement);
       for (const c of queuedContents) this.folder.addQueuedContent(c);
 
@@ -491,20 +436,18 @@ export class SessionViewer {
       this.rebuildFold();
       this.countEl.textContent = copyText("sessionViewer.head.count", { n: total });
       this.updateStatus(total);
-      // K-R45 甲：清单建在这里。面板默认收着 ⇒ 对下面的定位/贴底**零布局影响**
-      // （建完就滚，滚之前插一块可见的东西会把落点顶歪）。
+      // 清单建在这里：面板默认收着 ⇒ 对下面的定位 / 贴底零布局影响（滚之前插一块可见的东西会把落点顶歪）。
       this.rebuildUserInputs();
       void this.turnFold?.refresh();
-      // issue #6：从搜索结果跳进来 → 定位到命中消息；否则默认贴底。
+      // 从搜索结果跳进来 ⇒ 定位到命中消息；否则贴底。
       if (opts.scrollToUuid) {
         this.scrollToMessage(opts.scrollToUuid);
       } else {
         this.stream?.scrollToBottom();
       }
-      // 上翻补批:挂在 .stream 滚动容器上(dispose 时随 streamEl 替换自然解绑)
+      // 上翻补批挂在 .stream 滚动容器上（dispose 时随 streamEl 替换自然解绑）
       this.streamEl.addEventListener("scroll", this.onScrollFill, { passive: true });
-      // R1(D 审计):短会话首屏不足一屏时永远不会有 scroll 事件——主动踢一脚自链
-      // 调度：自链 —— 向上补料：世代 / 已到顶 / 在途几道守卫挡着，不满足即停
+      // 调度：自链 —— 短会话首屏不足一屏时永远没有 scroll 事件 ⇒ 主动踢一脚；世代 / 已到顶 / 在途几道守卫挡着，不满足即停
       requestAnimationFrame(() => void this.maybeFillAbove());
       // 索引到了就接骨架（首屏已经在了，不等它）
       void indexP.then((res) => this.attachSkeleton(gen, res));
@@ -517,7 +460,7 @@ export class SessionViewer {
     } catch (e) {
       if (this.loadGeneration !== gen) return;
       this.setLoading(false);
-      // 读不出 ⇒ 头下面一条错误条 ＋［重试］（乙4-④ 各态）；状态行不报。
+      // 读不出 ⇒ 头下面一条错误条 ＋［重试］；状态行不报。
       const retry = button({ label: copyText("sessionViewer.load.retry"), size: "compact", onClick: () => void this.load(opts) });
       this.showBanner(banner("error", copyText("sessionViewer.load.failed", { why: String(e) }), [retry], detailOf(e)));
     }
@@ -535,10 +478,9 @@ export class SessionViewer {
   }
 
   /**
-   * 接骨架。先对拍 seq 空间（抽几条 payload，它们的 uuid 在索引里必须落在同一个 seq 上 ——
-   * 查看器两条读路子步 1 起按可计行编号；Codex 会话 / 读完之间文件被改写 ⇒ 对不上就不接），
-   * 再把 `UnrenderedRanges` 的每个洞翻成 seq 区间画成占位：洞 `[a,b)` 的 seq 区间从上一个已渲染记录的
-   * 下一行起、到下一个已渲染记录为止（夹在中间的不可显示行一并归进去，高为 0）。
+   * 接骨架。先对拍 seq 空间（抽几条 payload，它们的 uuid 在索引里必须落在同一个 seq 上；Codex 会话 / 读完之间文件被改写 ⇒ 不接），
+   * 再把 `UnrenderedRanges` 的每个洞翻成 seq 区间画成占位：从上一个已渲染记录的下一行起、到下一个已渲染记录为止
+   * （夹在中间的不可显示行一并归进去，高为 0）。
    */
   private attachSkeleton(
     gen: number,
@@ -578,28 +520,22 @@ export class SessionViewer {
     this.updateStatus(n);
   }
 
-  /** F39:渲染 payload 下标区间 [lo,hi)(逐条 renderStreamRecord,二分插入保序) */
+  /** 渲染 payload 下标区间 [lo,hi)（逐条 renderStreamRecord，二分插入保序）。 */
   private renderRange(lo: number, hi: number): void {
     if (!this.renderCtx || !this.renderSink || !this.unrendered || !this.stream) return;
-    // 不变量:二分插入只发生在**摊平**的 DOM 上——邻居若已被 fold wrap 收编,
-    // insertBefore 会 NotFoundError(E2E 实测 58 条失败)。先摊平,批后重折。
+    // 二分插入只能在摊平的 DOM 上做：邻居若已被折叠层收编，insertBefore 会 NotFoundError ⇒ 先摊平，批后重折。
     this.folder?.unwrapAll();
     const from = Math.max(0, lo);
     const to = Math.min(this.payloads.length, hi);
-    // S-7 对齐(Phase G 终审:同协议修复双向回灌)——批内暂停逐卡守卫 snap:
-    // 首屏 150 卡逐卡 snap 各读一次 scrollHeight = 150 次强制 reflow,直接摊在
-    // 首屏耗时里;批末按粘底状态一次贴底(与 tabs.renderPayloadsBatch 同款)。
+    // 批内暂停逐卡贴底：首屏 150 卡逐卡读 scrollHeight 就是 150 次强制 reflow；批末按粘底状态一次贴底。
     this.stream.batchInsert(() => {
       for (let i = from; i < to; i++) {
-        if (!this.unrendered!.contains(i)) continue; // 已渲染(岛重叠)跳过
+        if (!this.unrendered!.contains(i)) continue; // 已渲染（岛重叠）跳过
         this.renderOne(this.payloads[i]);
       }
     });
     this.unrendered.markRendered(from, to);
-    // R2(D 审计):批缝落在 tool_use/tool_result 配对中间时,result 先渲染成
-    // fallback 孤儿卡;上方批把 tool_use 补出来后必须回填合并(TabManager 每批
-    // onBatchEnd 都做,viewer 此前从未调过——乱序渲染下是确定性视觉回归)。
-    // F40b S-6:孤儿卡出 DOM 的同时出账,防悬空 anchor。
+    // 批缝落在 tool_use / tool_result 中间时 result 先成了孤儿卡；上方批补出 tool_use 后必须回填合并，孤儿卡出 DOM 的同时出账。
     if (this.renderCtx) {
       for (const el of reconcilePendingToolResults(this.renderCtx)) {
         this.renderSink?.timeline.removeByElement(el);
@@ -618,12 +554,7 @@ export class SessionViewer {
     }
   }
 
-  /**
-   * F62 / G4：给一张 user/assistant 卡挂「从这一轮分叉」按钮。
-   *
-   * **按钮本体已抽成共享组件** `branch-button.ts`（G4）——历史查看器与实时 tab 用同一份，
-   * off-main 的呈现区分也在那里。本方法只负责「这条记录该不该有按钮」和「成功之后干什么」。
-   */
+  /** 给一张 user / assistant 卡挂「从这一轮分叉」（按钮本体 `branch-button.ts`，与实时 tab 同一份）：这里只管该不该挂、成功之后干什么。 */
   private attachBranchButton(
     cardEl: HTMLElement,
     message: JsonlRecord,
@@ -635,14 +566,13 @@ export class SessionViewer {
     if (!uuid) return;
     attachBranchButton(cardEl, {
       uuid,
-      // 查看器手上没有独立的 sid 字段，但历史会话的文件名**就是** sid（`remote_history::jsonl_stem` 是同一口径），所以从路径取。
-      // 与实时 tab 那条开同一个框（分叉记录在框里点［新建］那一步才写）。
+      // 历史会话的文件名就是 sid（`sidFromJsonlPath`）；与实时 tab 开同一个框（分叉记录在框里点［新建］才写）。
       onFork: (at) =>
         void openNewSession({ origin, fork: { sid: sidFromJsonlPath(jsonlPath), uuid: at, title: this.titleEl.textContent ?? "" } }),
     });
   }
 
-  /** F39:增量批后幂等重建 fold(branchRecords 全量;未渲染 uuid 的卡不在 DOM,自然跳过) */
+  /** 增量批后幂等重建折叠（没渲染的卡不在 DOM，自然跳过）。 */
   private rebuildFold(): void {
     if (!this.folder || this.branchRecords.length === 0) return;
     try {
@@ -652,10 +582,7 @@ export class SessionViewer {
     }
   }
 
-  /**
-   * 底一行只说条数与时间（乙4-④ · R2-2-3）：`{n} 条` / `{n} 条 · 上翻加载更早`。
-   * 首屏耗时与渲染失败数那类开发读数不在这里（显示不了的那一条在卡位上说）。
-   */
+  /** 底一行只说条数：`{n} 条` / `{n} 条 · 上翻加载更早`（显示不了的那一条在卡位上说）。 */
   private updateStatus(total: number): void {
     // 顶部还有没渲染的（上翻能补）⇒ 说一句；只剩深链岛与尾段之间的内部缝 ⇒ 不说（上翻无洞可补）。
     const fillable = this.unrendered
@@ -757,18 +684,15 @@ export class SessionViewer {
     if (this.newPill) this.newPill.hidden = !on;
   }
 
-  /** R1:触发判定——不足一屏(无滚动条,事件永远不来)或滚近顶部 */
+  /** 要不要补：不足一屏（没有滚动条、事件永远不来）或滚近顶部。 */
   private shouldFill(): boolean {
     const el = this.streamEl;
     return el.scrollHeight - el.clientHeight <= 1 || el.scrollTop <= TOP_TRIGGER_PX;
   }
 
   /**
-   * F39:滚近顶部/不足一屏 → 往上补一批。
-   * 视口稳定不再依赖原生 overflow-anchor(D 审计 R3:每批 fold 全量重建会销毁
-   * 锚点节点致跳视口;且 scrollTop==0 时规范不做补偿、WebKitGTK 根本没有锚定)
-   * ——改为手动补偿:突变同一任务内完成,临时关原生锚定,按 scrollHeight 差值回写。
-   * 批后自链复检(R1:零高批/短内容场景没有 scroll 事件可依赖)。
+   * 滚近顶部 / 不足一屏 ⇒ 往上补一批。视口稳定靠手动补偿（每批重建折叠会销毁原生锚点，WebKitGTK 也没有锚定）：
+   * 同一任务内突变、临时关原生锚定、按 scrollHeight 差值回写。批后自链复检（零高批 / 短内容没有 scroll 事件）。
    */
   private async maybeFillAbove(): Promise<void> {
     // 接上骨架 ⇒ 不再「从顶上往上一批批补」，只物化与视口相交的那段占位（不自链）
@@ -778,8 +702,7 @@ export class SessionViewer {
     }
     if (this.renderingBatch || !this.unrendered || this.unrendered.isEmpty) return;
     if (!this.shouldFill()) return;
-    // 选区守卫(Phase G 终审:与 tabs.fillAbove 对齐)——补批的 unwrapAll/rebuildFold
-    // 会杀进行中的选区,等下次 scroll 再试
+    // 有进行中的选区 ⇒ 这次不补（补批的摊平 / 重折会杀选区），等下次 scroll。
     const sel = document.getSelection();
     if (sel && !sel.isCollapsed) return;
     const gap = this.unrendered.gapAbove(this.unrendered.lowestRenderedIdx());
@@ -787,10 +710,9 @@ export class SessionViewer {
     const gen = this.loadGeneration;
     this.renderingBatch = true;
     try {
-      // 让状态文先绘一帧再做同步渲染批
       // 调度：一次性 —— 渲染批之前先让状态文绘一帧
       await new Promise((r) => requestAnimationFrame(() => r(null)));
-      // 世代守卫:rAF 间隙里可能已切换会话(旧 gap 套新会话会渲出错乱岛/覆写状态栏)
+      // 世代守卫：rAF 间隙里可能已换会话
       if (!this.stream || this.loadGeneration !== gen) return;
       const [a, b] = gap;
       const el = this.streamEl;
@@ -802,38 +724,23 @@ export class SessionViewer {
         this.rebuildFold();
         el.scrollTop = beforeTop + (el.scrollHeight - beforeH);
       } finally {
-        // 还原必须在 finally(Phase G 终审,三家共识——与 tabs.fillAbove 的
-        // F40b-D 修复对齐):renderRange 的 unwrapAll/reconcile 段抛出会留下
-        // overflow-anchor:none,该 viewer 会话永久失去原生锚定(§21.2)
+        // 还原必须在 finally：渲染段抛出会留下 overflow-anchor:none，这个会话永久失去原生锚定。
         el.style.overflowAnchor = "";
       }
       this.updateStatus(this.payloads.length);
     } finally {
       this.renderingBatch = false;
     }
-    // 自链:下一帧复检(补批通常把 scrollTop 顶过阈值自然停;零高批/不足一屏则继续)
-    // 调度：自链 —— 向上补料（同上那一条链）
+    // 调度：自链 —— 下一帧复检（补批通常把 scrollTop 顶过阈值自然停；零高批 / 不足一屏则继续）
     requestAnimationFrame(() => void this.maybeFillAbove());
   }
 
   /**
-   * issue #6：滚动定位到指定 uuid 的卡片并临时高亮。
-   * 命中卡片可能被折叠在 ESC 回退段（`<details>`）里 → 先展开所有祖先 details 再滚。
-   * 找不到（极少：该 uuid 未渲染成带 data-uuid 的卡）则退化为贴底。
-   *
-   * 🔴 **本轮（K-R45 第三轮）改了两处形状，逐字记下来**（`KR45D0` 的告诫要求写明）：
-   * ① 「找卡 → 展开折叠 → 滚 → 闪」那一段提成了本文件里导出的 `revealCard`
-   *    —— 它本轮起有**两个**调用方（这里 + `tabs.ts` 的实时窗口），照抄一份的代价是
-   *    从此两处要一起改。提的是**整段、逐字**，一个分支都没改。
-   *    （它为什么没搬去一个中立文件，见 `revealCard` 的头注 —— 写区的将就，已请裁。）
-   * ② 返回值从 `void` 变成「落到的那张卡 / `null`」—— 调用方本来就要知道跳没跳到
-   *    （`user-input-panel.ts` 此前是自己再 `querySelector` 一遍**猜**的）。
-   * **留在这里没搬的**是两条路结构上不同的那两段：「没渲染就先渲出来」（`uuidToIdx`
-   * + `UnrenderedRanges`，实时窗口没有）与「找不到就退到底部」（实时窗口本来就贴底）。
-   * 改之前那一版过不过：`KR45D0` 那 6 格在改前改后都是绿的（读数在件 `§5.5`）。
+   * 滚到指定 uuid 的卡并闪一下（`revealCard`），返回落到的那张卡 / `null`。
+   * 这里多出实时窗口没有的两段：还没渲染就先渲出目标岛；找不到就退到贴底。
    */
   private scrollToMessage(uuid: string): HTMLElement | null {
-    // F39:目标还没渲染(非首屏路径调进来,如未来的重复定位)→ 先渲染目标岛
+    // 目标还没渲染（非首屏路径调进来）⇒ 先渲染目标岛
     const idx = this.uuidToIdx.get(uuid);
     // 接上骨架 ⇒ 岛也经骨架物化（占位要跟着切开，不许在占位中间凭空插一段卡）
     const seq = idx !== undefined ? this.payloads[idx]?.seq : undefined;
@@ -854,7 +761,7 @@ export class SessionViewer {
   }
 
 
-  // ==== 「你说过的话」（K-R45 甲 · 用户输入清单） ====
+  // ==== 「你说过的话」 ====
 
   /**
    * 清单**问后端要**（`history-user-inputs`），不扫 `payloads`：判定只住后端，两个宿主（本查看器 / 实时 tab）走同一个 `OutlineSource`。
@@ -951,7 +858,7 @@ export class SessionViewer {
     // 骨架随会话走
     this.skeleton?.dispose();
     this.skeleton = null;
-    // F39:释放增量渲染状态(payloads 可达 37MB 量级)
+    // 释放增量渲染状态（payloads 可达几十 MB）
     this.payloads = [];
     this.unrendered = null;
     this.uuidToIdx.clear();
@@ -960,23 +867,17 @@ export class SessionViewer {
     this.folder = null;
     this.branchRecords = [];
     this.renderingBatch = false;
-    // K-R45 甲：清单也要跟着释放 —— 留着就是上一个会话的句子挂在下一个会话上，
-    // 点下去按 uuid 找不到卡，正好落进「静默跳到看不见的东西上」那一形。
-    // `reset` 同时让在途那趟回来后不许回写（换会话之后迟到的清单不属于这一份）。
+    // 清单也跟着释放：留着就是上一个会话的句子挂在下一个会话上、点下去找不到卡。`reset` 同时让在途那趟回来后不许回写。
     this.outline?.reset();
     if (this.said && popoverOpenOn(this.saidBtn)) closePopover();
     // 查找那一半同理：结果清空、在途那趟作废、收起。
     this.find?.reset();
   }
 
-  // (旧的 renderAll 被流式 load 替代，删了 —— v2.2 issue #12)
 
   // === DOM ===
 
-  /**
-   * 设计稿乙4-④：头两行（标题 ＋ 徽标 ｜ 恢复 ▾ · 新窗口 · ⋯；项目 · 机器 · 路径 · 时间段 · 条数）·
-   * 头下一条（错误条）· 工具行（「你说过的话 · N ▾」· 会话内查找）· 消息流 · 底一行。
-   */
+  /** 头两行（标题 ＋ 徽标 ｜ 恢复 ▾ · 新窗口 · ⋯；项目 · 机器 · 路径 · 时间段 · 条数）· 错误条 · 工具行 · 消息流 · 底一行。 */
   private build(): HTMLElement {
     const view = document.createElement("div");
     view.className = "session-viewer";
@@ -1008,7 +909,7 @@ export class SessionViewer {
     view.appendChild(this.bannerEl);
     this.showBanner(null);
 
-    // 工具行：「你说过的话 · N ▾」（浮层列出清单，点一句跳过去）· 会话内查找（Ctrl+F）。大纲只这一处（新-H10）。
+    // 工具行：「你说过的话 · N ▾」（浮层列出清单，点一句跳过去）· 会话内查找（Ctrl+F）。
     const tools = document.createElement("div");
     tools.className = sv.svTools;
     this.toolsEl = tools;

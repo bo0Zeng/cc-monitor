@@ -4091,7 +4091,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ("src/frontend/shell/src/lib.rs", "list_active_sessions", 1), // ⑬ 会话生命周期并进会话流后退役
         ("src/frontend/shell/src/lib.rs", "list_session_activity", 1), // ⑬ 会话生命周期并进会话流后退役
         ("src/doc/ARCHITECTURE.md", "list_active_sessions", 1), // ⑬ 会话生命周期并进会话流后退役
-        ("src/frontend/ui/tabs.ts", "list_active_sessions", 1), // ⑬ 会话生命周期并进会话流后退役
         (
             "tests/frontend/shell/event_replay_tests.rs",
             "buffered_local_session_ids",
@@ -4814,7 +4813,6 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/backend/control/ccm_tests.rs", 1), // 那条路由判据并进 claude_flags_tests，原地一块
         // 人读表解析器删了，一处点它旧名的散文挂墓碑。
         ("tests/backend/plugin_walk_fixture.rs", 1),
-        ("src/frontend/ui/tabs.ts", 1), // 新贴：⑬ 会话生命周期并进会话流，退役的 list_active_sessions / list_session_activity / buffered_* 旧名挂墓碑
         ("tests/frontend/shell/event_replay_tests.rs", 1), // 新贴：⑬ 会话生命周期并进会话流，退役的 list_active_sessions / list_session_activity / buffered_* 旧名挂墓碑
         // `history.rs` 的 `up_to_message_id` · `read_jsonl_values` · `write_branch_file` 三行摘了：点它们的那段（分叉转交的来历）随命令删了。
         ("src/frontend/shell/src/parity_ledger.rs", 1), // 新贴：点远端 `ccm` 探针旧命令名
