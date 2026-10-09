@@ -102,6 +102,9 @@ const WAITING_ROWS: &[(&str, &str)] = &[
     ("wire-commands", "terminal-follow"),
     ("cli-subcommands", "--terminal-preview"),
     ("cli-subcommands", "--terminal-input"),
+    // 计划退回送字走的就是 `terminal-input` 的本体 ⇒ 同那两行一起等。
+    ("wire-commands", "plan-return"),
+    ("cli-subcommands", "--plan-return"),
 ];
 
 /// 理由串里一旦出现就等于替用户选了三种机制里的某一种（丙 · 乙 · 甲）。
@@ -131,7 +134,7 @@ fn no_gap_rationale_picks_the_windows_mechanism() {
     let want: BTreeSet<(&str, &str)> = WAITING_ROWS.iter().copied().collect();
     assert_eq!(
         cites, want,
-        "写「Windows 后台机制」的理由串那几行 ≠ 点名的那 17 行（`ccm-launcher × Windows` 8 ＋ 命令面 9）"
+        "写「Windows 后台机制」的理由串那几行 ≠ 点名的那 19 行（`ccm-launcher × Windows` 8 ＋ 命令面 11）"
     );
     let picks: Vec<String> = TARGET_GAPS
         .iter()

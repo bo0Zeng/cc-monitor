@@ -203,6 +203,7 @@ pub(crate) const RECORDS: super::RecordFace = super::RecordFace {
     children: Some(super::ChildFace {
         sources: runs::sources,
         owner: runs::owner,
+        find: runs::find,
         hint: runs::hint,
         written: runs::written,
     }),
@@ -216,4 +217,5 @@ pub(crate) const ASSETS: super::AssetFace = super::AssetFace {
     user_mcp_file: assets::claude_json,
     project_mcp_file: assets::PROJECT_MCP_FILE,
     servers_key: assets::SERVERS_KEY,
+    plugins: assets::plugins,
 };

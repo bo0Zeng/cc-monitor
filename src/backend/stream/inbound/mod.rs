@@ -487,6 +487,7 @@ pub(crate) mod registry {
     pub(super) mod history;
     pub(super) mod link;
     pub(super) mod machine;
+    pub(super) mod plan;
     pub(super) mod terminals;
 
     /// 族的全集：`registry/` 下每一份文件恰好一行（`inbound_structure_guards` 两向钉住）。次序就是 [`super::REGISTRY`] 里的次序。
@@ -500,6 +501,7 @@ pub(crate) mod registry {
         bus::SPECS,
         terminals::SPECS,
         machine::SPECS,
+        plan::SPECS,
     ];
 }
 

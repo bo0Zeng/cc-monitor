@@ -28,6 +28,8 @@
 {"kind":"rotation_changed","sid":"s1"}
 {"kind":"rotation_rules_changed"}
 {"kind":"rotation_rules_changed"}
+{"kind":"plan_changed","workspace":"/w","rev":"r1","needs":2}
+{"kind":"plan_changed","workspace":"/w","rev":"r1","needs":2}
 {"kind":"tasks_changed","sid":"s1"}
 {"kind":"tasks_changed","sid":"s1"}
 {"kind":"sessions_replayed"}
