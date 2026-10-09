@@ -314,6 +314,10 @@ pub(crate) struct Needs {
     pub(crate) what: Option<String>,
     /// 何时起等（那台 pidfile 的 `statusUpdatedAt`，epoch ms）；没有 ⇒ `null`。
     pub(crate) since_ms: Option<u64>,
+    /// 写好的字（等批准 · 等回答 · 需手动），出口照抄。
+    pub(crate) text: Words,
+    /// 语气（恒 `need`）。
+    pub(crate) tone: crate::common::cells::Tone,
 }
 
 /// 那台 pidfile 说「在等」（`observe::accounts_query::session_wait`）。
@@ -350,12 +354,20 @@ pub(crate) fn needs_of(pending: &[PendingCall], wait: Option<&PidWait>) -> Optio
     } else {
         (NeedsKind::Unknown, None)
     };
+    let text = match kind {
+        NeedsKind::Approve => copy_core::copy_text("beSession.needs.approve", &[]),
+        NeedsKind::Answer => copy_core::copy_text("beSession.needs.answer", &[]),
+        NeedsKind::Plan => copy_core::copy_text("beSession.needs.plan", &[]),
+        NeedsKind::Unknown => copy_core::copy_text("beSession.needs.unknown", &[]),
+    };
     Some(Needs {
         kind,
         tool: call.map(|c| c.name.clone()),
         call: call.map(|c| c.id.clone()),
         what: call.and_then(|c| c.what.clone()),
         since_ms: wait.since_ms,
+        text: Words(text),
+        tone: crate::common::cells::Tone::Need,
     })
 }
 
@@ -509,7 +521,7 @@ pub(crate) fn prior_from(v: &Value) -> Result<SessionFacts, String> {
     if !v["needs"].is_null() {
         exact_keys(
             &v["needs"],
-            &["call", "kind", "sinceMs", "tool", "what"],
+            &["call", "kind", "sinceMs", "text", "tone", "tool", "what"],
             "prior.needs",
         )?;
     }

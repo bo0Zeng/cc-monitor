@@ -58,6 +58,8 @@ A new session file appeared。
 | `path` | string? | 该会话 jsonl 的远端绝对路径（同 sid 多文件时取 mtime 最新者）——monitor 旁路快照（`--read-session`）用 |
 | `lines` | number? | Batch8 审计 D-I2（additive）：tail-only 模式下 prime 时的完整行数 L ——monitor 校验快照拉到的行数 ≥ L 才算成功（不足 = 中途断/backend 报错，触发重试；exit status 经 ChannelStream 拿不到，行数校验更强） |
 | `activity` | SessionActivity? | 宣告时此刻在干什么（适配层翻好的，`SessionActivity`） |
+| `activity_text` | Words? | `activity` 那一态写好的字（`activity_cells`）；没有 `activity` ⇒ 不上线 |
+| `activity_tone` | Tone? | `activity` 那一态的语气（同上） |
 | `waiting_for` | string? | 宣告时在等什么（同 `session_status`） |
 | `container` | SessionContainer? | 这条会话住在什么容器里（见 `SessionContainer`） |
 | `pid` | number? | 那个 claude 进程的 **pid** |
@@ -70,6 +72,8 @@ A new session file appeared。
 |---|---|---|
 | `sid` | string | 会话 id |
 | `activity` | SessionActivity? | 此刻在干什么（同 `session_added.activity`） |
+| `activity_text` | Words? | 同 `session_added.activity_text` |
+| `activity_tone` | Tone? | 同 `session_added.activity_tone` |
 | `waiting_for` | string? | 在等什么（pidfile 里的 `waitingFor`） |
 | `liveness_confidence` | string? | 判活置信度（同 SessionAdded；状态变化时带） |
 
@@ -81,6 +85,9 @@ A new session file appeared。
 |---|---|---|
 | `sid` | string | 会话 id |
 | `state` | SessionFate | 离开「活」之后的去向 |
+| `state_text` | Words | 那一种写好的短名（`SessionFate::cells`） |
+| `state_hint` | Words | 悬停那一句 |
+| `state_tone` | Tone | 语气 |
 
 ### `session_removed`
 

@@ -17425,6 +17425,73 @@
       "zh": "不到 $0.01",
       "args": []
     },
+    "beSession.activity.working": {
+      "kind": "body",
+      "role": "进度",
+      "zh": "运行中",
+      "args": []
+    },
+    "beSession.activity.needsYou": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "需手动",
+      "args": []
+    },
+    "beSession.activity.idle": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "空闲",
+      "args": []
+    },
+    "beSession.fate.reconnectable": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "Claude 已退出",
+      "args": []
+    },
+    "beSession.fate.reconnectableHint": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "Claude 已退出 · tmux 会话在",
+      "args": [],
+      "limited": ["tmux"]
+    },
+    "beSession.fate.ended": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "已结束",
+      "args": []
+    },
+    "beSession.fate.endedHint": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "已结束 · 可恢复",
+      "args": []
+    },
+    "beSession.needs.approve": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "等批准",
+      "args": []
+    },
+    "beSession.needs.answer": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "等回答",
+      "args": []
+    },
+    "beSession.needs.plan": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "等批准",
+      "args": []
+    },
+    "beSession.needs.unknown": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "需手动",
+      "args": []
+    },
     "beSpend.tokens.line": {
       "kind": "body",
       "role": "片段",

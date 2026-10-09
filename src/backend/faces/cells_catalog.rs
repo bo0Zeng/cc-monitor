@@ -716,7 +716,9 @@ mod specimens {
         RetryRun, SessionFacts, StepWait, TokenUse, UnclearWhy, UsageFact,
     };
     use crate::observe::history_query::IndexRow;
-    use crate::stream::wire::{Frame, RemovalCause, SessionContainer, SessionFate, TerminalHost};
+    use crate::stream::wire::{
+        activity_cells, Frame, RemovalCause, SessionContainer, SessionFate, TerminalHost,
+    };
     use std::collections::BTreeMap;
 
     fn s(v: &str) -> String {
@@ -938,6 +940,8 @@ mod specimens {
                         call: some("c"),
                         what: some("ls"),
                         since_ms: Some(1),
+                        text: Words(s("t")),
+                        tone: crate::common::cells::Tone::Need,
                     }),
                     handed_back: vec![s("a")],
                     retries: vec![RetryRun {
@@ -1002,6 +1006,8 @@ mod specimens {
             path: some("/p"),
             lines: Some(1),
             activity: Some(activity),
+            activity_text: activity_cells(Some(activity)).0,
+            activity_tone: activity_cells(Some(activity)).1,
             waiting_for: some("permission prompt"),
             container: Some(SessionContainer::Hosted {
                 host: TerminalHost::Tmux,
@@ -1028,6 +1034,8 @@ mod specimens {
                 node_of(&Frame::SessionStatus {
                     sid: s("s"),
                     activity: Some(a),
+                    activity_text: activity_cells(Some(a)).0,
+                    activity_tone: activity_cells(Some(a)).1,
                     waiting_for: some("permission prompt"),
                     liveness_confidence: some("heuristic"),
                 })
@@ -1038,12 +1046,7 @@ mod specimens {
     pub(super) fn session_state() -> Vec<Specimen> {
         [SessionFate::Reconnectable, SessionFate::Ended]
             .into_iter()
-            .map(|f| {
-                node_of(&Frame::SessionState {
-                    sid: s("s"),
-                    state: f,
-                })
-            })
+            .map(|f| node_of(&Frame::session_state(s("s"), f)))
             .collect()
     }
 

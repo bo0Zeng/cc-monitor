@@ -517,7 +517,9 @@ fn needs_is_decided_from_the_wait_and_the_pending_call() {
             tool: Some("Bash".into()),
             call: Some("b".into()),
             what: Some("rm -rf build/".into()),
-            since_ms: Some(42)
+            since_ms: Some(42),
+            text: crate::common::cells::Words(copy_core::copy_text("beSession.needs.approve", &[])),
+            tone: crate::common::cells::Tone::Need,
         })
     );
     // 提问 ⇒ 回答（不看 waitingFor）；计划 ⇒ 批准计划。
@@ -643,6 +645,8 @@ fn a_product_that_is_waiting_on_you_round_trips_as_prior() {
             call: Some("b1".into()),
             what: None,
             since_ms: Some(1),
+            text: crate::common::cells::Words(copy_core::copy_text("beSession.needs.approve", &[])),
+            tone: crate::common::cells::Tone::Need,
         }),
         ..SessionFacts::default()
     };
@@ -917,5 +921,55 @@ fn every_permission_mode_value_passes_through_as_written() {
         let text =
             jsonl(&[json!({"type": "permission-mode", "permissionMode": m, "sessionId": "s"})]);
         assert_eq!(scan_all(&text).permission_mode.as_deref(), Some(m));
+    }
+}
+
+/// 〔G2〕「需手动」带写好的字与语气：种类 ⇒ 等批准 / 等回答 / 等批准（计划）/ 需手动；语气恒 `need`。出口照抄。
+#[test]
+fn needs_carries_its_words_and_tone() {
+    let call = |name: &str| PendingCall {
+        id: "c".into(),
+        name: name.into(),
+        what: None,
+        at: None,
+        state: StepWait::Running,
+        why: None,
+    };
+    let wait = |w: Option<&str>| PidWait {
+        waiting_for: w.map(str::to_string),
+        since_ms: None,
+    };
+    let cases = [
+        (
+            vec![call("Bash")],
+            Some("permission prompt"),
+            NeedsKind::Approve,
+            "beSession.needs.approve",
+        ),
+        (
+            vec![call("AskUserQuestion")],
+            None,
+            NeedsKind::Answer,
+            "beSession.needs.answer",
+        ),
+        (
+            vec![call("ExitPlanMode")],
+            None,
+            NeedsKind::Plan,
+            "beSession.needs.plan",
+        ),
+        (
+            vec![],
+            Some("dialog open"),
+            NeedsKind::Unknown,
+            "beSession.needs.unknown",
+        ),
+    ];
+    for (pending, w, kind, key) in cases {
+        let n = needs_of(&pending, Some(&wait(w))).unwrap();
+        assert_eq!(n.kind, kind);
+        let v = serde_json::to_value(&n).unwrap();
+        assert_eq!(v["text"], copy_core::copy_text(key, &[]), "{kind:?}");
+        assert_eq!(v["tone"], "need", "{kind:?}");
     }
 }
