@@ -444,7 +444,7 @@ describe("分叉：那台说得出源会话的号与终端", () => {
   });
 });
 
-describe("起新会话框 · 轮换（稿 §5.4）", () => {
+describe("起新会话框 · 轮换", () => {
   const rule = (id: string, name: string, isDefault: boolean) => ({
     id,
     name,

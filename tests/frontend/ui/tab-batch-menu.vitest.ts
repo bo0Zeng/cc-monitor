@@ -169,7 +169,7 @@ describe("批量菜单", () => {
   });
 });
 
-describe("批量菜单 · 轮换规则 ▸（稿 §5.4）", () => {
+describe("批量菜单 · 轮换规则 ▸", () => {
   const RULES = {
     state: "present" as const,
     defaultRule: "r_daily",

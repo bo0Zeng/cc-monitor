@@ -1246,7 +1246,7 @@ export const ACCT_SCENES: Scene[] = [
       };
     }),
   ),
-  // ── 时间轴（稿 §5.7，截图 08）
+  // ── 时间轴
   scene(
     "acct-timeline",
     "面板 · 时间轴 · 平时（24h）",

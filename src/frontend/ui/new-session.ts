@@ -395,7 +395,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   accountRow.root.hidden = true;
   form.appendChild(accountRow.root);
 
-  // 轮换（稿 §5.4）：跟随默认（默认那条的名字）· 那台的各条规则；没有「本会话」（新会话还没有自己那一份）。读不出那台的规则表 ⇒ 不出这一行。
+  // 轮换：跟随默认（默认那条的名字）· 那台的各条规则；没有「本会话」（新会话还没有自己那一份）。读不出那台的规则表 ⇒ 不出这一行。
   const rotSel = select({ label: copyText("newSession.label.rot"), options: [] });
   const rotRow = row(copyText("newSession.label.rot"), rotSel.el, false);
   rotRow.root.hidden = true;

@@ -53,9 +53,9 @@ use std::time::Duration;
 pub struct AwaitRequest {
     pub ps_pid: u32,
     pub marker: String,
-    /// Win32 FILETIME 字符串（PS 端 `[Process].StartTime.ToFileTime()` 输出）。
-    /// **跟 Claude Code 写的 `procStart`（.NET 本地 ticks）不同单位**——前者自 1601-01-01 UTC，
-    /// 后者自 0001-01-01 Local。详 `utils::FileTime`。
+    /// 进程起始时刻戳的字符串：Windows 是 Win32 FILETIME（PS 端 `[Process].StartTime.ToFileTime()`），
+    /// Linux 是开机后的时钟滴答（`/proc/<pid>/stat`）。**跟 Claude Code 写的 `procStart`（.NET 本地 ticks）
+    /// 不是一回事**。同台比较用 `platform::pid::start_stamp`。
     pub proc_start: String,
 }
 

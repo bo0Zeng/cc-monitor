@@ -5,7 +5,7 @@
 
 /// 指定 pid 的 `GetProcessTimes` 起始 FILETIME。读不到 ⇒ `None`。
 #[cfg(windows)]
-pub fn creation_filetime(pid: u32) -> Option<crate::utils::FileTime> {
+pub fn creation_filetime(pid: u32) -> Option<super::filetime::FileTime> {
     use windows::Win32::Foundation::{CloseHandle, FILETIME};
     use windows::Win32::System::Threading::{
         GetProcessTimes, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
@@ -28,13 +28,8 @@ pub fn creation_filetime(pid: u32) -> Option<crate::utils::FileTime> {
         if !ok {
             return None;
         }
-        Some(crate::utils::FileTime::from_win32(&creation))
+        Some(super::filetime::FileTime::from_win32(&creation))
     }
-}
-
-#[cfg(not(windows))]
-pub fn creation_filetime(_pid: u32) -> Option<crate::utils::FileTime> {
-    None
 }
 
 /// 一个进程的起始时刻戳（只在同一台上比「是不是同一个进程」：Windows 是 FILETIME，Linux 是开机后的时钟滴答

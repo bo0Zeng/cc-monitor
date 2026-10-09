@@ -210,7 +210,7 @@ export function openBatchMenu(
 }
 
 /**
- * 「轮换规则 ▸」（稿 §5.4）：子菜单 跟随默认（默认那条的名字）· 各条规则 · 管理规则…（没有「本会话」：批量写本会话没有意义）。
+ * 「轮换规则 ▸」：子菜单 跟随默认（默认那条的名字）· 各条规则 · 管理规则…（没有「本会话」：批量写本会话没有意义）。
  * 账号按机器分开 ⇒ 只许同机批量，跨机灰着写为什么。选一项 ⇒ 这一批一次交那台，逐会话结局照那台说的进结果提示。
  */
 function rotationItem(tabs: readonly Tab[], host: TabBatchHost, run: TabBatchRun, done: () => void): MenuItem | null {
