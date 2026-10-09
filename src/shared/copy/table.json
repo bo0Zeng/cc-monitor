@@ -15434,7 +15434,7 @@
     "bePlan.dump.exited": {
       "kind": "error",
       "role": "报错",
-      "zh": "读计划失败 · 退出码 {rc}",
+      "zh": "读计划失败 · 程序出错 · 退出码 {rc}",
       "args": ["rc"]
     },
     "bePlan.dump.unparsable": {
