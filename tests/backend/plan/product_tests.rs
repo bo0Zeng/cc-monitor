@@ -79,6 +79,12 @@ fn owners_and_signers_are_resolved_to_sessions() {
     assert_eq!(signs[1]["by"]["kind"], "unknown");
     assert_eq!(signs[1]["by"]["id"], STRANGER);
     assert_eq!(signs[1]["by"]["sid"], Value::Null);
+    // 签它的那一位：pb 还没给 ⇒ `null`；给了照样对到会话。
+    assert_eq!(cell(&m.doc, "A1-1")["signer"], Value::Null);
+    let mut d = dump("/w");
+    d["slices"][0]["cells"][1]["signer"] = serde_json::json!(MAIN);
+    let given = make(&d, &who);
+    assert_eq!(cell(&given.doc, "A1-1")["signer"]["kind"], "session");
     let blocks = &m.doc["slices"][0]["blocks"];
     assert_eq!(blocks[0]["owner"]["kind"], "session");
     assert_eq!(blocks[0]["owner"]["sid"], MAIN);

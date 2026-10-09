@@ -416,6 +416,10 @@ fn every_registered_command_declares_its_run_kind() {
                 | "plan-list"
                 | "plan-read"
                 | "plan-cell-view"
+                // 计划审面三条：读—改—写后端自己的小文件（跨进程锁）· 退回现读一次计划（起 pb）再送字（起 tmux）。
+                | "plan-ack"
+                | "plan-unack"
+                | "plan-return"
         );
         let is_blocking = matches!(spec.run, Run::Blocking(_) | Run::BlockingData(_));
         assert_eq!(
@@ -650,6 +654,10 @@ fn every_registered_command_declares_its_run_kind() {
         "plan-list",
         "plan-read",
         "plan-cell-view",
+        // 计划审面三条：阻塞（小文件 I/O · 起 pb · 起 tmux）。
+        "plan-ack",
+        "plan-unack",
+        "plan-return",
         // 换号重启：可撤档（步与步之间 await，起 tmux 的几步自己挪到阻塞线程池）。
         "session-restart",
         // 现在就换：异步（重启换那一半等 `session-restart`；不重启换那一半自己挪到阻塞线程池）。

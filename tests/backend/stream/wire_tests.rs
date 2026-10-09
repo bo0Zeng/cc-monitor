@@ -425,6 +425,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
         both(Frame::PlanChanged {
             workspace: s("/w"),
             rev: s("r1"),
+            needs: 2,
         }),
         both(Frame::TasksChanged { sid: s("s1") }),
         both(Frame::SessionsReplayed),
@@ -698,8 +699,9 @@ fn link_frames_have_exactly_these_bytes() {
             Frame::PlanChanged {
                 workspace: "/w".into(),
                 rev: "0123abcd".into(),
+                needs: 2,
             },
-            "{\"kind\":\"plan_changed\",\"workspace\":\"/w\",\"rev\":\"0123abcd\"}\n",
+            "{\"kind\":\"plan_changed\",\"workspace\":\"/w\",\"rev\":\"0123abcd\",\"needs\":2}\n",
         ),
     ];
     for (f, want) in cases {

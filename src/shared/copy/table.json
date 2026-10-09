@@ -15443,6 +15443,72 @@
       "zh": "不在 planned-build 工作区里",
       "args": []
     },
+    "bePlan.review.mkdirFailed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "创建 {dir} 失败",
+      "args": ["dir"]
+    },
+    "bePlan.review.noHome": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "认可与退回未记下 · 无主目录",
+      "args": []
+    },
+    "bePlan.review.notRead": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "该工作区未读过 · 先打开计划页",
+      "args": []
+    },
+    "bePlan.review.noSuchNeed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "该条已不在要你看里 · 重读计划后再看",
+      "args": []
+    },
+    "bePlan.review.notAckable": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "agent 问人的条目去会话里答 · 不收认可",
+      "args": []
+    },
+    "bePlan.review.noSuchCell": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "计划里无此格 · 重读计划后再看",
+      "args": []
+    },
+    "bePlan.review.noTarget": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "该格无{role} · 换一个送给",
+      "args": ["role"]
+    },
+    "bePlan.return.waiting": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "会话在等你批准或回答 · 先去会话里答",
+      "args": []
+    },
+    "bePlan.return.ended": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "会话已结束 · 复制此行，恢复会话后贴入",
+      "args": []
+    },
+    "bePlan.return.unknown": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "认不出负责的会话 · 复制此行自行贴入",
+      "args": []
+    },
+    "bePlan.return.line": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "人 · {id} {title}：{text}",
+      "args": ["id", "title", "text"]
+    },
     "bePlan.face.noView": {
       "kind": "error",
       "role": "报错",
@@ -28075,6 +28141,12 @@
       "kind": "body",
       "role": "说明",
       "zh": "要你动手里记下的选择 · 不再用的几件 · 自己贴的启动文件",
+      "args": []
+    },
+    "rsDataPaths.backend.planReview": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "计划要你看里认可过的几条 · 退回过的格",
       "args": []
     },
     "rsDataPaths.backend.lastSeen": {

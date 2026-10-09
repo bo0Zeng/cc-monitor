@@ -1,5 +1,6 @@
 //! `plan_changed`：盯认过的工作区（计划仓 `.planned-build/` 整棵 ＋ 工作区根上那份 `.env`），
-//! 有动静就重跑一次 dump，**输出摘要变了**才推一帧 `{workspace, rev}`；界面收到再来 `plan-read`。
+//! 有动静就重跑一次 dump，**输出摘要或要你看的数变了**才推一帧 `{workspace, rev, needs}`；界面收到再来 `plan-read`。
+//! 认可 / 撤销认可不动盘上的计划，由那条命令自己经 [`changes`] 推一帧新的数。
 //!
 //! 合并不靠定时器（后端零定时器）：一次重读期间来的事件全攒着，重读完一并吞掉、再读一次。
 //! 重读本身要 0.1–1 秒，正好把 agent 一口气写的几份并成一两次；写到一半读到的那一刻，
@@ -16,14 +17,20 @@ pub(crate) const PLAN_DIR: &str = ".planned-build";
 /// 工作区根上 pb 记当前片与 auto 的那份文件。
 pub(crate) const WORKSPACE_ENV: &str = ".env";
 
-/// 重读一次、回新的摘要（读不成 ⇒ `None`，不推）。生产由帧面宿主给（真 pb ＋ 会话表），判据喂假的。
-pub(crate) type Reread = Arc<dyn Fn(&Path) -> Option<String> + Send + Sync>;
+/// 一个工作区此刻的样子：输出摘要 · 要你看的数（不含问人那一种）。
+pub(crate) type Seen = (String, u64);
 
-/// 进程里那条「某个工作区的计划变了」的通道（流连接订它推 `plan_changed`）：`(工作区, 摘要)`。
-pub(crate) fn changes() -> &'static tokio::sync::broadcast::Sender<(String, String)> {
-    static TX: std::sync::OnceLock<tokio::sync::broadcast::Sender<(String, String)>> =
+/// 重读一次、回新的样子（读不成 ⇒ `None`，不推）。生产由帧面宿主给（真 pb ＋ 会话表 ＋ 认可记录），判据喂假的。
+pub(crate) type Reread = Arc<dyn Fn(&Path) -> Option<Seen> + Send + Sync>;
+
+/// 一帧 `plan_changed`：`(工作区, 摘要, 要你看的数)`。
+pub(crate) type Change = (String, String, u64);
+
+/// 进程里那条「某个工作区的计划变了」的通道（流连接订它推 `plan_changed`）。
+pub(crate) fn changes() -> &'static tokio::sync::broadcast::Sender<Change> {
+    static TX: std::sync::OnceLock<tokio::sync::broadcast::Sender<Change>> =
         std::sync::OnceLock::new();
-    TX.get_or_init(|| tokio::sync::broadcast::channel::<(String, String)>(64).0)
+    TX.get_or_init(|| tokio::sync::broadcast::channel::<Change>(64).0)
 }
 
 /// 盯着的那几个：工作区 ⇒ 它的监听器（活着就一直盯）。
@@ -34,8 +41,8 @@ pub(crate) fn concerns(ws: &Path, p: &Path) -> bool {
     p.starts_with(ws.join(PLAN_DIR)) || p == ws.join(WORKSPACE_ENV)
 }
 
-/// 开始盯一个工作区（已在盯 ⇒ 什么都不做；满了 ⇒ 只出声）。`last` 是此刻本子里的摘要（之后变了才推）。
-pub(crate) fn arm(ws: &Path, last: Option<String>, reread: Reread) {
+/// 开始盯一个工作区（已在盯 ⇒ 什么都不做；满了 ⇒ 只出声）。`last` 是此刻的样子（之后变了才推）。
+pub(crate) fn arm(ws: &Path, last: Option<Seen>, reread: Reread) {
     let mut g = HELD.lock().unwrap_or_else(|e| e.into_inner());
     if g.iter().any(|(p, _)| p == ws) {
         return;
@@ -59,7 +66,7 @@ pub(crate) fn arm(ws: &Path, last: Option<String>, reread: Reread) {
 /// 挂监听、起那条重读线程。返回的那一份活着就一直盯。
 pub(crate) fn watch(
     ws: &Path,
-    last: Option<String>,
+    last: Option<Seen>,
     reread: Reread,
 ) -> Result<notify::RecommendedWatcher, String> {
     use notify::Watcher;
@@ -90,10 +97,10 @@ pub(crate) fn watch(
             // 监听器一丢（发端随它走）⇒ 收不到 ⇒ 线程退出。
             while rx.recv().is_ok() {
                 while rx.try_recv().is_ok() {}
-                let Some(rev) = reread(&target) else { continue };
-                if last.as_deref() != Some(rev.as_str()) {
-                    last = Some(rev.clone());
-                    let _ = changes().send((target.to_string_lossy().to_string(), rev));
+                let Some(now) = reread(&target) else { continue };
+                if last.as_ref() != Some(&now) {
+                    last = Some(now.clone());
+                    let _ = changes().send((target.to_string_lossy().to_string(), now.0, now.1));
                 }
             }
         })

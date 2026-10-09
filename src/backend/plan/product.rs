@@ -16,8 +16,8 @@ use std::collections::BTreeMap;
 pub(crate) const EDGES: [&str; 4] = ["to", "with", "after", "replaces"];
 
 /// pb 给的状态里「做完了」「不做了」那两个值（进度要数它们；其余都算没做完）。
-const DONE: &str = "做完了";
-const DROPPED: &str = "不做了";
+pub(crate) const DONE: &str = "做完了";
+pub(crate) const DROPPED: &str = "不做了";
 
 /// 一片里每格的 `agent_view`：`(片, 格) ⇒ 原文`。
 pub(crate) type Views = BTreeMap<(String, String), String>;
@@ -220,6 +220,8 @@ pub(crate) fn slice(sl: &Value, repo: Option<&str>, who: WhoPort, views: &mut Vi
                 "why": s(c, "why"),
                 "signs": signs,
                 "owner": who_json(c.get("owner").and_then(Value::as_str), who),
+                // 签它的那一位（pb 还没给 ⇒ `null`；请求单第 2 条）。
+                "signer": who_json(c.get("signer").and_then(Value::as_str), who),
                 "refs": c.get("refs").cloned().unwrap_or_else(|| json!({"title": [], "body": []})),
                 "hasView": has_view,
             })
@@ -329,13 +331,14 @@ pub(crate) fn slice(sl: &Value, repo: Option<&str>, who: WhoPort, views: &mut Vi
     Value::Object(m)
 }
 
-/// 一片的一句话摘要（`plan-list` 那一行要的）：工作区 · 片名 · 领域 · 当前片没有 · 顶层进度 · 读不成的那一句。
+/// 一片的一句话摘要（`plan-list` 那一行要的）：工作区 · 片名 · 领域 · 当前片没有 · 顶层进度 · 要你看的数（标过认可之后才有）· 读不成的那一句。
 pub(crate) fn slice_summary(sl: &Value) -> Value {
     json!({
         "name": sl.get("name").cloned().unwrap_or(Value::Null),
         "domain": sl.get("domain").cloned().unwrap_or(Value::Null),
         "current": sl.get("current").cloned().unwrap_or(Value::Bool(false)),
         "progress": sl.get("progress").cloned().unwrap_or(Value::Null),
+        "needCount": sl.get("needCount").cloned().unwrap_or(Value::Null),
         "error": sl.get("error").cloned().unwrap_or(Value::Null),
         "stale": sl.get("stale").cloned().unwrap_or(Value::Null),
     })
