@@ -358,6 +358,8 @@ const WINDOW_SIDE: &[(&str, Kind)] = &[
     ("copy_core::detail::Label::Command", Kind::Copy),
     ("copy_core::detail::Label::Machine", Kind::Copy),
     ("copy_core::detail::stamp", Kind::Copy),
+    // 走块上传本机那份读不到：IO 错 → 原因词（全仓那一张表住 copy-core）。
+    ("copy_core::io_reason", Kind::Copy),
     // ── 窗口几何（开窗第一拍夹进种子带来的工作区）──
     // `WorkArea` · `fit_into_work_area` 两行摘了：类型与判定搬进 `host_core`（Tauri 那几扇窗与文件窗口共用那一份）。
 ];
