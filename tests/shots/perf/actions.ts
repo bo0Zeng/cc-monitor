@@ -727,6 +727,33 @@ const ACTIONS: Record<string, () => Promise<Record<string, unknown>>> = {
     host.remove();
     return { name: "overlay-probe", focusedAtStart, focusedAtEnd: desc(document.activeElement), probe: Object.fromEntries(Object.entries(out).map(([k, v]) => [k, v.map((x) => Math.round(x))])), dom: document.getElementsByTagName("*").length };
   },
+  // 浮层开关在 WebKit 上画完要几百毫秒、同步段只有几毫秒：看是不是整窗重画本身就这么贵（与浮层无关的一层全窗 / 一小块，加了再摘）
+  "paint-probe": async () => {
+    let got: Step[] = [];
+    const r = await measure("paint-probe", async (steps) => {
+      got = steps;
+      const layer = (full: boolean): HTMLElement => {
+        const d = document.createElement("div");
+        d.style.cssText = full ? "position:fixed;inset:0;background:rgba(0,0,0,0.02);pointer-events:none;z-index:9999" : "position:fixed;right:0;bottom:0;width:10px;height:10px;background:rgba(0,0,0,0.02);pointer-events:none;z-index:9999";
+        return d;
+      };
+      for (let k = 0; k < 5; k++) {
+        const full = layer(true);
+        await step(steps, "full-on", () => document.body.appendChild(full));
+        await sleep(100);
+        await step(steps, "full-off", () => full.remove());
+        await sleep(100);
+        const small = layer(false);
+        await step(steps, "small-on", () => document.body.appendChild(small));
+        await sleep(100);
+        await step(steps, "small-off", () => small.remove());
+        await sleep(100);
+      }
+    });
+    const by: Record<string, number[]> = {};
+    for (const x of got) (by[x.what] ??= []).push(Math.round(x.paint));
+    return { ...r, byWhat: by };
+  },
   // 试一刀：账号面板开关时不往根元素上写自定义属性（看 WebKit 上那一下慢是不是它）
   "acct-noroot": async () => {
     const st = document.documentElement.style;
