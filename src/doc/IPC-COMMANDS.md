@@ -3096,6 +3096,7 @@ cc-bus 钩子诊断。
 
 | 字段 | 向 | 说明 |
 |---|---|---|
+| `rotation` | → | 可缺：轮换来源。缺 / `"follow"` ＝ 跟随默认（不写）· `{rule: id}` ＝ 起之前这台先定好 sid（那一家起新会话认的旗标，如 `--session-id`）、按它把来源写成那条规则，回包 `sid` 就是它；规则不在 ⇒ `no_such_rule`；那一家不认先定 sid ⇒ `bad_args` |
 | `account` | → | 可缺 ＝ 跟随（分叉跟源会话上次的号；新起的 ⇒ 这台的默认号）· `{kind:"base"}` · `{kind:"named", name}` |
 | `agent` | → | 哪一家（线上的 kind） |
 | `cmd` | → ← | `open` 时界面要在终端里跑的那一行 |
@@ -3117,7 +3118,7 @@ cc-bus 钩子诊断。
 | `unavailable` | ← | `account_unavailable` 时那一形，带替代号 |
 | `uuid` | → | `forkFrom` 里：从哪条消息处分叉 |
 
-码：`bad_args` · `unknown_agent` · `bad_command` · `no_dir` · `account_unavailable` · `place_unavailable` · `bad_tmux_name` · `tmux_taken` · `unobservable` · `fork_failed` · `refused` · `start_failed` · `child_timed_out`
+码：`bad_args` · `unknown_agent` · `bad_command` · `no_dir` · `account_unavailable` · `place_unavailable` · `bad_tmux_name` · `tmux_taken` · `unobservable` · `fork_failed` · `refused` · `start_failed` · `child_timed_out` · `no_such_rule`
 
 #### `session-new-facts`
 

@@ -655,6 +655,33 @@ pub(crate) fn new_rule_id(taken: &BTreeMap<String, Rule>) -> String {
     }
 }
 
+/// 起新会话先定好的 sid（UUID v4 的样子：那一家 `--session-id` 只收这一形）。随机来源同规则 id：时刻 · 进程 · 进程内序号。
+pub(crate) fn new_session_id() -> String {
+    use std::hash::{BuildHasher, Hash, Hasher};
+    let seed = std::collections::hash_map::RandomState::new();
+    let half = |salt: u8| {
+        let mut h = seed.build_hasher();
+        salt.hash(&mut h);
+        std::time::SystemTime::now().hash(&mut h);
+        std::process::id().hash(&mut h);
+        RULE_SEQ
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            .hash(&mut h);
+        h.finish()
+    };
+    let (a, b) = (half(1), half(2));
+    let a = (a & !0xF000) | 0x4000; // 版本 4
+    let b = (b & !(0xC000 << 48)) | (0x8000 << 48); // 变体 10xx
+    format!(
+        "{:08x}-{:04x}-{:04x}-{:04x}-{:012x}",
+        a >> 32,
+        (a >> 16) & 0xFFFF,
+        a & 0xFFFF,
+        b >> 48,
+        b & 0xFFFF_FFFF_FFFF
+    )
+}
+
 /// 规则名的比较形：去首尾空白、不分大小写（本机内不许重名按它判）。
 pub(crate) fn name_key(name: &str) -> String {
     name.trim().to_lowercase()

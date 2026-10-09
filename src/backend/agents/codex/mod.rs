@@ -66,6 +66,7 @@ pub(crate) const LAUNCH: crate::agents::LaunchFace = crate::agents::LaunchFace {
     default_launcher: resume::DEFAULT_COMMAND,
     launcher_alias: None,
     resume_token: resume::RESUME_TOKEN,
+    preset_sid: None,
     launch_args: resume::LAUNCH_ARGS,
     nested_env: resume::NESTED_ENV,
     is_default: false,

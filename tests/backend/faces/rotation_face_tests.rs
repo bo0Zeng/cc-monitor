@@ -1437,3 +1437,30 @@ fn the_machine_timeline_lists_every_account_and_who_uses_it() {
         "{got}"
     );
 }
+
+/// ★ 起会话框带规则：起之前给定好的 sid 记一条、来源 ＝ 那条规则；中转随后第一次看见它（起它的号对不上也一样）⇒ 来源不动；
+/// 规则不在 ⇒ `no_such_rule`；起不成撤掉（只撤还没换过号的）。
+#[test]
+fn a_preset_session_keeps_its_rule_when_the_relay_first_sees_it() {
+    let home = Home::new("preset");
+    let ctx = home.ctx();
+    let night = new_rule(&ctx, "夜间", &["b"]);
+    let sid = crate::accounts::quota::rotation::new_session_id();
+    assert!(shell_quote_core::session_id_ok(&sid), "{sid}");
+    assert_ne!(
+        sid,
+        crate::accounts::quota::rotation::new_session_id(),
+        "每次一个新的"
+    );
+    preset_with(&ctx, &sid, "claude", &night, now()).expect("preset");
+    home.saw(&ctx, &sid);
+    assert_eq!(source_of(&ctx, &sid), Source::Rule(night.clone()));
+    assert_eq!(
+        preset_with(&ctx, "s-x", "claude", "r_gone", now())
+            .expect_err("不在")
+            .0,
+        "no_such_rule"
+    );
+    forget_preset_with(&ctx, &sid);
+    assert!(!ctx.hop.store.now().sessions.contains_key(&sid));
+}

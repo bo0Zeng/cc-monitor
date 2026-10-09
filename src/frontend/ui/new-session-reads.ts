@@ -106,6 +106,8 @@ export interface NewRequest {
   forkFrom?: { sid: string; uuid: string };
   models?: Record<string, string>;
   local: boolean;
+  /** 轮换来源：缺 ＝ 跟随默认；`{rule}` ＝ 那台起之前先定 sid、按它写好来源（会话一报到就是那条规则）。 */
+  rotation?: { rule: string };
 }
 
 /** 起的结局：起了 · 某一格不行 / 整体不行（那台说的码与那一句）· 期限到（结果未知）· 够不着那台。 */

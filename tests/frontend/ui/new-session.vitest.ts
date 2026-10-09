@@ -460,23 +460,20 @@ describe("起新会话框 · 轮换（稿 §5.4）", () => {
   });
   const RULES = { state: "present", reason: null, defaultRule: "r_daily", rules: [rule("r_daily", "日常", true), rule("r_night", "夜间", false)] };
 
-  it("账号下一行「轮换」：跟随默认（默认那条的名字）· 各条规则（没有本会话）；缺省跟随默认 ⇒ 不额外写", async () => {
+  it("账号下一行「轮换」：跟随默认（默认那条的名字）· 各条规则（没有本会话）；缺省跟随默认 ⇒ 请求里不带 rotation", async () => {
     replies.set("rotation-rules-read", RULES);
-    const slot = vi.fn();
-    setNewSessionPlaceholder(slot);
     void openNewSession({ origin: "devbox" });
     await flush();
     const b = sel(copyText("newSession.label.rot"));
     expect(optionsOf(b)).toEqual([copyText("rot.src.followOf", { name: "日常" }), `日常${copyText("rot.src.tagDefault")}`, "夜间"]);
     createBtn().click();
     await flush();
-    expect(slot.mock.calls[0][0].onArrive, "跟随默认 ＝ 新会话本来的样子，不写").toBeUndefined();
-    setNewSessionPlaceholder(null);
+    expect(newRequests()[0].rotation).toBeUndefined();
   });
 
-  it("选一条规则起 ⇒ 那个会话一报到就写它的来源 {rule}（同面板来源下拉那一写）", async () => {
+  it("选一条规则起 ⇒ 交那台的请求里带 rotation {rule}（那台起之前先定 sid、写好来源）；界面自己不发 rotation-session-set", async () => {
     replies.set("rotation-rules-read", RULES);
-    replies.set("rotation-session-set", { sessions: { s9: { state: "done" } } });
+    replies.set("session-new", { ...OK, sid: "dddddddd-1111-4222-8333-444444444444" });
     const slot = vi.fn();
     setNewSessionPlaceholder(slot);
     void openNewSession({ origin: "devbox" });
@@ -484,10 +481,9 @@ describe("起新会话框 · 轮换（稿 §5.4）", () => {
     choose(sel(copyText("newSession.label.rot")), "夜间");
     createBtn().click();
     await flush();
-    const spec = slot.mock.calls[0][0];
-    spec.onArrive("s9");
-    await flush();
-    expect(sent.filter((s) => s.op === "rotation-session-set").map((s) => s.body)).toEqual([{ sids: ["s9"], rotation: { rule: "r_night" } }]);
+    expect(newRequests()[0].rotation).toEqual({ rule: "r_night" });
+    expect(sent.some((s) => s.op === "rotation-session-set")).toBe(false);
+    expect(slot.mock.calls[0][0].match, "报到按那台定好的 sid 认").toEqual({ sid: "dddddddd-1111-4222-8333-444444444444" });
     setNewSessionPlaceholder(null);
   });
 

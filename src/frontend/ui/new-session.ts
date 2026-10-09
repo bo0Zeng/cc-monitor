@@ -17,10 +17,9 @@ import { icon } from "./kit/icon";
 import { openMenu } from "./kit/menu";
 import { select, type SelectOption } from "./kit/select";
 import { tag } from "./kit/badge";
-import { failToast, toast } from "./kit/toast";
+import { toast } from "./kit/toast";
 import { copyText } from "./copy-table";
-import { readRules, writeSessionRotation, type RulesRead } from "./quota-reads";
-import { reasonLabel } from "./acct-view";
+import { readRules, type RulesRead } from "./quota-reads";
 import { commands } from "./ipc/commands";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { machineName } from "./control-said";
@@ -588,6 +587,8 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     if (!fork && place() === "tmux" && tmuxInput.value.trim() !== "") req.tmuxName = tmuxInput.value.trim();
     if (cmdInput.value.trim() !== "") req.command = cmdInput.value.trim();
     if (fork) req.forkFrom = { sid: fork.sid, uuid: fork.uuid };
+    const rot = rotRow.root.hidden ? ROT_FOLLOW : rotSel.value();
+    if (rot.startsWith("rule:")) req.rotation = { rule: rot.slice("rule:".length) };
     return req;
   };
 
@@ -597,8 +598,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     for (const r of [cwdRow, accountRow, tmuxRow, cmdRow, agentRow, placeRow]) r.setNote("");
     const res = await askNew(origin, await buildRequest());
     if (res.kind === "ok") {
-      const picked = rotRow.root.hidden ? ROT_FOLLOW : rotSel.value();
-      void afterStart(origin, res, picked.startsWith("rule:") ? picked.slice(5) : null);
+      void afterStart(origin, res);
       return null;
     }
     showFailure(res);
@@ -741,19 +741,7 @@ async function openLogin(origin: Origin): Promise<void> {
 }
 
 /** 起了之后：开窗那一形先开窗；等那台报出这个会话 ⇒ 主窗口里切过去，别的窗口（设置 · 查看）说一句「已启动」＋［切过去］。 */
-/** 选了一条规则起的：那个会话一报到就把它的来源写成那一条（同面板来源下拉那一写）；没写成 ⇒ 说一句。 */
-function applyRuleOnArrive(origin: Origin, rule: string): (sid: string) => void {
-  return (sid) =>
-    void writeSessionRotation(origin, [sid], { rule }).then(
-      (got) => {
-        const o = got[sid];
-        if (o && o.state !== "done") toast(copyText("rot.err.applyFailed"), reasonLabel(o.code, { agent: "", target: "" }), { level: "error" });
-      },
-      (e: unknown) => void failToast(copyText("rot.err.applyFailed"), e),
-    );
-}
-
-async function afterStart(origin: Origin, res: Extract<NewResult, { kind: "ok" }>, rule: string | null = null): Promise<void> {
+async function afterStart(origin: Origin, res: Extract<NewResult, { kind: "ok" }>): Promise<void> {
   const r = res.reply;
   if (r.outcome === "open" && r.cmd !== null) {
     const failed = await openWindow(origin, r.cmd, r.cwd);
@@ -763,14 +751,12 @@ async function afterStart(origin: Origin, res: Extract<NewResult, { kind: "ok" }
     }
   }
   const match: ArrivalMatch = r.sid !== null ? { sid: r.sid } : { cwd: r.cwd };
-  const onArrive = rule === null ? undefined : applyRuleOnArrive(origin, rule);
   if (placeholder) {
-    placeholder({ origin, cwd: r.cwd, tmuxName: r.session, agent: r.agent, match, ...(onArrive ? { onArrive } : {}) });
+    placeholder({ origin, cwd: r.cwd, tmuxName: r.session, agent: r.agent, match });
     return;
   }
   const sid = await awaitArrival({ origin, match, tmuxName: r.session, arrived: null });
   if (sid === null) return;
-  onArrive?.(sid);
   const name = r.session ?? r.cwd.split("/").filter(Boolean).pop() ?? r.cwd;
   toast(copyText("launch.fromSettings.done", { name, machine: machineName(origin) }), "", {
     level: "info",

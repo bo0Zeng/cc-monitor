@@ -186,8 +186,8 @@ describe("批量菜单 · 轮换规则 ▸（稿 §5.4）", () => {
     return menu ? [...menu.querySelectorAll(":scope > [role^=menuitem]")].map(labelOf) : [];
   };
   const openSub = async (): Promise<HTMLButtonElement> => {
-    const b = buttons().find((x) => labelOf(x) === copyText("tabBatch.menu.rot"))!;
-    expect(b, "多选菜单里有「轮换规则」").toBeDefined();
+    const b = buttons().find((x) => labelOf(x) === copyText("tabBatch.menu.rot", { n: 3 }))!;
+    expect(b, "多选菜单里有「轮换规则（3）」：同机可套用的个数").toBeDefined();
     b.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
     b.click();
     await flush();
@@ -224,7 +224,7 @@ describe("批量菜单 · 轮换规则 ▸（稿 §5.4）", () => {
     host.rulesOf = vi.fn(() => RULES as never);
     run.rotate = vi.fn() as never;
     open();
-    const b = buttons().find((x) => labelOf(x) === copyText("tabBatch.menu.rot"))!;
+    const b = buttons().find((x) => labelOf(x) === copyText("tabBatch.menu.rot", { n: 0 }))!;
     expect(b.disabled).toBe(true);
     expect(b.textContent).toContain(copyText("tabBatch.why.crossMachine"));
   });

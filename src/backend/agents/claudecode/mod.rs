@@ -129,6 +129,7 @@ pub(crate) const LAUNCH: super::LaunchFace = super::LaunchFace {
     default_launcher: resume::DEFAULT_COMMAND,
     launcher_alias: Some(resume::LAUNCHER_ALIAS),
     resume_token: resume::RESUME_TOKEN,
+    preset_sid: Some(resume::SESSION_ID_FLAG),
     launch_args: &[],
     nested_env: resume::NESTED_ENV,
     is_default: true,

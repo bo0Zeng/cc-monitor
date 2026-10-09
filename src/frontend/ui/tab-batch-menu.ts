@@ -215,9 +215,11 @@ export function openBatchMenu(
  */
 function rotationItem(tabs: readonly Tab[], host: TabBatchHost, run: TabBatchRun, done: () => void): MenuItem | null {
   if (!host.rulesOf || !run.rotate || tabs.length === 0) return null;
-  const label = copyText("tabBatch.menu.rot");
   const origin = tabs[0].origin;
-  if (tabs.some((t) => t.origin !== origin)) return { label, enabled: false, why: copyText("tabBatch.why.crossMachine") };
+  // 个数 ＝ 同机可套用的那几个（跨机 ⇒ 0、灰着说为什么）。
+  if (tabs.some((t) => t.origin !== origin))
+    return { label: copyText("tabBatch.menu.rot", { n: 0 }), enabled: false, why: copyText("tabBatch.why.crossMachine") };
+  const label = copyText("tabBatch.menu.rot", { n: tabs.length });
   const rules = host.rulesOf(origin);
   if (rules === undefined) return null;
   if (rules === null) return { label, pending: true };

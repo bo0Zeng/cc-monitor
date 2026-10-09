@@ -162,6 +162,9 @@ pub(crate) struct LaunchFace {
     pub(crate) launcher_alias: Option<&'static str>,
     /// resume 那个字面量：`--` 开头 ＝ flag 形（`claude --resume <sid>`），否则 ＝ 子命令形（`codex resume <sid>`）。
     pub(crate) resume_token: &'static str,
+    /// 起**新**会话时先定好 sid 的那个旗标（`claude --session-id <uuid>`）：起会话框选了规则 ⇒ 后端起之前按这个 sid 写好来源。
+    /// 这一家不认 ⇒ `None`（那就不许起的时候带规则）。
+    pub(crate) preset_sid: Option<&'static str>,
     /// `ccm` 起这一家（新起与 resume）时垫在交给它的那一串最前面的参数。
     pub(crate) launch_args: &'static [&'static str],
     /// 起之前要清掉的嵌套会话标记（顺序决定载荷字节）。

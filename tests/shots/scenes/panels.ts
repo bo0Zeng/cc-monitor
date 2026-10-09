@@ -210,7 +210,7 @@ export const PANEL_SCENES: Scene[] = [
     }
     await rightClick(tabs[0]);
     await sleep(600);
-    const item = await byText("[role^=menuitem]", "轮换规则");
+    const item = await byText("[role^=menuitem]", copyText("tabBatch.menu.rot", { n: 3 }));
     item.closest<HTMLElement>("[role=none]")?.dispatchEvent(new MouseEvent("mouseenter"));
     await sleep(500);
   }, rotRulesWorld),

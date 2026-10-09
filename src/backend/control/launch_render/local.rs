@@ -32,6 +32,9 @@ pub(crate) struct LocalLaunchRequest {
     pub(crate) tmux_name: Option<String>,
     /// 这一家 agent 的默认启动器（等于它就不吐 `--launcher`）。
     pub(crate) default_launcher: String,
+    /// 不上线（后端自己起会话时填）：垫在交给那一家的那一串里的参数（起新会话先定 sid：`--session-id <uuid>`）。
+    #[serde(skip)]
+    pub(crate) preset_args: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -176,6 +179,7 @@ fn with_spec<T>(
         ci::Action::Resume { sid } => Some(sid),
         _ => None,
     };
+    let args: Vec<&str> = req.preset_args.iter().map(String::as_str).collect();
     let spec = ci::CliSpec {
         agent: &req.agent,
         action,
@@ -193,7 +197,7 @@ fn with_spec<T>(
         model: None,
         launcher: launcher.as_deref().unwrap_or(&req.default_launcher),
         default_launcher: &req.default_launcher,
-        args: &[],
+        args: &args,
         ccm_path,
         detach,
     };

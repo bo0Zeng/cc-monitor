@@ -4248,8 +4248,8 @@
     "tabBatch.menu.rot": {
       "kind": "action",
       "role": "菜单项",
-      "zh": "轮换规则",
-      "args": []
+      "zh": "轮换规则（{n}）",
+      "args": ["n"]
     },
     "tabBatch.menu.close": {
       "kind": "action",
@@ -21364,12 +21364,6 @@
       "role": "toast",
       "zh": "{session} · 本会话（从 {name} 转来）",
       "args": ["session", "name"]
-    },
-    "rot.err.applyFailed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "套用规则失败",
-      "args": []
     },
     "rot.done.saved": {
       "kind": "body",

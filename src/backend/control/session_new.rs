@@ -59,6 +59,9 @@ pub(crate) struct NewRequest {
     pub(crate) models: BTreeMap<String, String>,
     /// 发请求的界面就在这台上（开窗那一形本机与远端渲法不同）。
     pub(crate) local: bool,
+    /// 轮换来源：缺 / `"follow"` ＝ 跟随默认（新会话本来就这样，不写）· `{rule: id}` ＝ 起之前按定好的 sid 写成那条规则。
+    #[serde(default)]
+    pub(crate) rotation: Option<Value>,
 }
 
 /// 哪一格不行（`data.field`）。
@@ -106,7 +109,7 @@ pub struct SessionNew {
     pub outcome: SessionNewOutcome,
     /// tmux 会话名（`started` 那一形；开窗那一形 ⇒ `null`）。
     pub session: Option<String>,
-    /// 分叉出来的新会话 sid（新起的 ⇒ `null`：报到之前说不出）。
+    /// 分叉出来的新会话 sid · 带规则新起时这台先定好的 sid；别的新起 ⇒ `null`（报到之前说不出）。
     pub sid: Option<String>,
     /// 开窗那一形要跑的那一行（`started` ⇒ `null`）。
     pub cmd: Option<String>,
@@ -116,6 +119,35 @@ pub struct SessionNew {
     pub agent: String,
     /// 起在哪个目录（`~` 已按这台的家目录展开：认报到的会话按它）。
     pub cwd: String,
+}
+
+/// 起会话框选了规则时那几下（宿主给）：铸一个 sid · 起之前把那个会话的来源写成那条规则（规则不在 ⇒ `no_such_rule`）· 起不成撤掉。
+pub(crate) struct PreRotation<'a> {
+    pub(crate) sid: &'a dyn Fn() -> String,
+    pub(crate) write: &'a dyn Fn(&str, &str, &str) -> Result<(), (&'static str, String)>,
+    pub(crate) forget: &'a dyn Fn(&str),
+}
+
+/// `rotation` 那一格：跟随默认 ⇒ `None`；`{rule: id}` ⇒ 那条规则；别的形状 ⇒ `bad_args`。
+fn rule_of(v: Option<&Value>) -> Result<Option<String>, Failed> {
+    let bad = || {
+        (
+            "bad_args",
+            crate::common::contract::malformed("`rotation` must be \"follow\" or {\"rule\": id}"),
+            None,
+        )
+    };
+    match v {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::String(s)) if s == "follow" => Ok(None),
+        Some(Value::Object(o)) if o.len() == 1 => o
+            .get("rule")
+            .and_then(Value::as_str)
+            .filter(|id| !id.is_empty())
+            .map(|id| Some(id.to_string()))
+            .ok_or_else(bad),
+        Some(_) => Err(bad()),
+    }
 }
 
 /// 写分支记录：`(源 sid, 消息 uuid)` ⇒ 新 sid；不成 ⇒ `(码, 那一句)`。
@@ -146,6 +178,7 @@ pub(crate) fn answer(
     args: &Value,
     deps: &Deps,
     fork: ForkWrite,
+    pre: &PreRotation,
     home: Option<&std::path::Path>,
 ) -> Result<Value, Failed> {
     let req: NewRequest = serde_json::from_value(args.clone()).map_err(|e| {
@@ -165,6 +198,15 @@ pub(crate) fn answer(
     }
     let (kind, face) = crate::agents::pick_kind(Some(&req.agent))
         .map_err(|m| fail("unknown_agent", m, Some(SessionNewField::Agent)))?;
+    let rule = rule_of(req.rotation.as_ref())?;
+    // 新起的要先定 sid 才能起之前写好来源：那一家不认 ⇒ 不收规则（分叉的 sid 由分支记录定，不用它）。
+    if rule.is_some() && req.fork_from.is_none() && face.preset_sid.is_none() {
+        return Err((
+            "bad_args",
+            crate::common::contract::malformed("this agent cannot take a rotation rule at launch"),
+            None,
+        ));
+    }
     // 启动命令：拼进那一行之前过全仓那一张命令片段白名单。
     let command = req
         .command
@@ -232,9 +274,34 @@ pub(crate) fn answer(
         Place::Tmux => Some(tmux_name(&req, &cwd, deps)?),
     };
     // 前面几格全过了才写分支记录（取消 / 某格不行都不留东西）。
-    let sid = match &req.fork_from {
+    let forked = match &req.fork_from {
         Some(f) => Some(fork(&f.sid, &f.uuid).map_err(|(c, m)| fail(c, m, None))?),
         None => None,
+    };
+    // 选了规则的新起会话：这台先定 sid（交给那一家的那一串里带 `--session-id <sid>`）。
+    let preset = match (&rule, &forked) {
+        (Some(_), None) => Some((pre.sid)()),
+        _ => None,
+    };
+    let preset_args: Vec<String> = match (&preset, face.preset_sid) {
+        (Some(s), Some(flag)) => vec![flag.to_string(), s.clone()],
+        _ => Vec::new(),
+    };
+    let resumed = forked.clone();
+    let sid = forked.or_else(|| preset.clone());
+    // 起之前把来源写好：会话一报到就已经是那条规则（界面不补写）。
+    let wrote = match (&rule, &sid) {
+        (Some(r), Some(s)) => {
+            (pre.write)(s, kind, r).map_err(|(c, m)| fail(c, m, None))?;
+            Some(s.clone())
+        }
+        _ => None,
+    };
+    let undo = |e: Failed| -> Failed {
+        if let Some(s) = &wrote {
+            (pre.forget)(s);
+        }
+        e
     };
     let launched = match &account {
         Settled::Account(a) => Some(a.clone()),
@@ -251,83 +318,91 @@ pub(crate) fn answer(
     };
     // 起之前：工作目录标成要用的那个号信任过（三种起法同一下）。
     super::session_batch::pretrust(&account, &cwd, deps);
-    let out = match name {
-        Some(name) => {
-            let argv = own_entry(deps).and_then(|entry| {
-                wire::ccm_launch_argv(
-                    &wire_req(
-                        kind,
-                        &launcher,
-                        face.default_launcher,
-                        sid.as_deref(),
-                        Some(&name),
-                        &cwd,
-                        &asked,
-                        &req.models,
-                    ),
-                    &account,
-                    deps.caps,
-                    &entry,
-                    true,
-                )
-            });
-            let argv = argv.map_err(|m| fail("refused", m, None))?;
-            match (deps.run_ccm)(&argv) {
-                Ok((0, _, _)) => reply(SessionNewOutcome::Started, Some(name), None),
-                // ccm 的退出码 3 = 会话名被占（它响亮失败，不接回别人的会话）。
-                Ok((3, _, _)) => {
-                    return Err(fail(
-                        "tmux_taken",
-                        copy_core::copy_text("beSessionNew.tmux.taken", &[("name", &name)]),
-                        Some(SessionNewField::TmuxName),
-                    ))
+    let launch = || -> Result<SessionNew, Failed> {
+        Ok(match name {
+            Some(name) => {
+                let argv = own_entry(deps).and_then(|entry| {
+                    wire::ccm_launch_argv(
+                        &wire_req(
+                            kind,
+                            &launcher,
+                            face.default_launcher,
+                            resumed.as_deref(),
+                            face.preset_sid.zip(preset.as_deref()),
+                            Some(&name),
+                            &cwd,
+                            &asked,
+                            &req.models,
+                        ),
+                        &account,
+                        deps.caps,
+                        &entry,
+                        true,
+                    )
+                });
+                let argv = argv.map_err(|m| fail("refused", m, None))?;
+                match (deps.run_ccm)(&argv) {
+                    Ok((0, _, _)) => reply(SessionNewOutcome::Started, Some(name), None),
+                    // ccm 的退出码 3 = 会话名被占（它响亮失败，不接回别人的会话）。
+                    Ok((3, _, _)) => {
+                        return Err(fail(
+                            "tmux_taken",
+                            copy_core::copy_text("beSessionNew.tmux.taken", &[("name", &name)]),
+                            Some(SessionNewField::TmuxName),
+                        ))
+                    }
+                    Ok((_, _, err)) => {
+                        return Err(fail("start_failed", err.trim().to_string(), None))
+                    }
+                    Err((c, m)) => return Err(fail(c, m, None)),
                 }
-                Ok((_, _, err)) => return Err(fail("start_failed", err.trim().to_string(), None)),
-                Err((c, m)) => return Err(fail(c, m, None)),
             }
-        }
-        None if req.local => {
-            let lreq = local::LocalLaunchRequest {
-                agent: kind.to_string(),
-                action: match &sid {
-                    Some(s) => local::LocalAction::Resume { sid: s.clone() },
-                    None => local::LocalAction::New,
-                },
-                cwd: Some(cwd.clone()),
-                launcher: Some(launcher.clone()).filter(|l| l != face.default_launcher),
-                account: Some(asked.clone()),
-                tmux_name: None,
-                default_launcher: face.default_launcher.to_string(),
-            };
-            let cmd = local::plan(&lreq, &account, &deps.local_facts)
-                .map_err(|m| fail("refused", m, None))?;
-            reply(SessionNewOutcome::Open, None, Some(cmd))
-        }
-        None => {
-            let cmd = own_entry(deps).and_then(|entry| {
-                wire::render_ccm_launch_with(
-                    &wire_req(
-                        kind,
-                        &launcher,
-                        face.default_launcher,
-                        sid.as_deref(),
-                        None,
-                        &cwd,
-                        &asked,
-                        &req.models,
-                    ),
-                    &account,
-                    deps.caps,
-                    &entry,
+            None if req.local => {
+                let lreq = local::LocalLaunchRequest {
+                    agent: kind.to_string(),
+                    action: match &resumed {
+                        Some(s) => local::LocalAction::Resume { sid: s.clone() },
+                        None => local::LocalAction::New,
+                    },
+                    cwd: Some(cwd.clone()),
+                    launcher: Some(launcher.clone()).filter(|l| l != face.default_launcher),
+                    account: Some(asked.clone()),
+                    tmux_name: None,
+                    default_launcher: face.default_launcher.to_string(),
+                    preset_args: preset_args.clone(),
+                };
+                let cmd = local::plan(&lreq, &account, &deps.local_facts)
+                    .map_err(|m| fail("refused", m, None))?;
+                reply(SessionNewOutcome::Open, None, Some(cmd))
+            }
+            None => {
+                let cmd = own_entry(deps).and_then(|entry| {
+                    wire::render_ccm_launch_with(
+                        &wire_req(
+                            kind,
+                            &launcher,
+                            face.default_launcher,
+                            resumed.as_deref(),
+                            face.preset_sid.zip(preset.as_deref()),
+                            None,
+                            &cwd,
+                            &asked,
+                            &req.models,
+                        ),
+                        &account,
+                        deps.caps,
+                        &entry,
+                    )
+                });
+                reply(
+                    SessionNewOutcome::Open,
+                    None,
+                    Some(cmd.map_err(|m| fail("refused", m, None))?),
                 )
-            });
-            reply(
-                SessionNewOutcome::Open,
-                None,
-                Some(cmd.map_err(|m| fail("refused", m, None))?),
-            )
-        }
+            }
+        })
     };
+    let out = launch().map_err(undo)?;
     serde_json::to_value(out).map_err(|e| ("bad_args", e.to_string(), None))
 }
 
@@ -394,6 +469,7 @@ fn wire_req(
     launcher: &str,
     default_launcher: &str,
     sid: Option<&str>,
+    preset: Option<(&str, &str)>,
     tmux: Option<&str>,
     cwd: &str,
     account: &AccountAsk,
@@ -414,12 +490,18 @@ fn wire_req(
         },
         cwd: Some(cwd.to_string()),
         account: account.clone(),
-        // 身份标记打在建出来的 tmux 会话上（resume 才说得出 sid）。
-        ccm_sid: sid.filter(|_| tmux.is_some()).map(str::to_string),
+        // 身份标记打在建出来的 tmux 会话上（resume · 先定好 sid 的新起才说得出 sid）。
+        ccm_sid: sid
+            .or(preset.map(|p| p.1))
+            .filter(|_| tmux.is_some())
+            .map(str::to_string),
         model: None,
         models: models.clone(),
         launcher: launcher.to_string(),
         default_launcher: default_launcher.to_string(),
+        preset_args: preset
+            .map(|(flag, s)| vec![flag.to_string(), s.to_string()])
+            .unwrap_or_default(),
     }
 }
 

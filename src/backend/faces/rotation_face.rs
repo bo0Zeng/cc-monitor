@@ -626,6 +626,45 @@ pub(crate) fn answer_default_set_with(ctx: &Ctx, args: &Value) -> Answer {
     Ok(json!({"defaultRule": id, "followers": followers}))
 }
 
+/// `session-new` 带 `rotation: {rule}`：起之前在这台的账本里给那个定好的 sid 记一条、来源 ＝ 那条规则（会话一报到就已经是它）。
+/// 规则不在 ⇒ `no_such_rule`。`kind` ＝ 线上的那一家（记成它的适配器 id，与中转看见会话时同一格；对不上的那几格中转报到时照常改，来源不动）。
+pub(crate) fn preset_with(
+    ctx: &Ctx,
+    sid: &str,
+    kind: &str,
+    rule: &str,
+    now: u64,
+) -> Result<(), (&'static str, String)> {
+    store_path(ctx)?;
+    if !ctx.hop.store.now().rules.contains_key(rule) {
+        return Err(("no_such_rule", copy_text("beRotation.rule.gone", &[])));
+    }
+    let agent = crate::agents::pick_kind(Some(kind))
+        .map(|(_, f)| f.adapter_id.to_string())
+        .unwrap_or_else(|_| kind.to_string());
+    let zero = crate::accounts::manage::model::ACCOUNT_ZERO;
+    rotation::face_change(&ctx.hop.store, |b| {
+        let mut e = SessionEntry::fresh(&agent, zero, now);
+        e.source = Source::Rule(rule.to_string());
+        b.sessions.insert(sid.to_string(), e);
+    })
+    .map_err(|e| ("io_failed", e))
+}
+
+/// 起不成：撤掉 [`preset_with`] 记的那一条（只撤还没换过号、来源还是规则的；写不成只出声）。
+pub(crate) fn forget_preset_with(ctx: &Ctx, sid: &str) {
+    if let Err(e) = rotation::face_change(&ctx.hop.store, |b| {
+        if b.sessions
+            .get(sid)
+            .is_some_and(|s| s.history.is_empty() && matches!(s.source, Source::Rule(_)))
+        {
+            b.sessions.remove(sid);
+        }
+    }) {
+        tracing::warn!("[rotation] 撤不掉起之前记的那一条 {sid}：{e}");
+    }
+}
+
 /// `rotation-plan`：这份轮换接下来会怎么走 ＋ 草稿逐格校验（都不写）。问的是哪一份：`{rotation}`（草稿：先逐格校验，有错只回 `errors`）·
 /// `{rule}`（这台的一条规则）· `{sid}`（这个会话此刻生效的那一份，从它此刻的号起）；`span`：`6h` · `12h`（缺省）· `24h` · `7d`。
 /// 回 `{errors, now, plan, lanes, effective}`：用量只按此刻的算（以后涨多快没根据，不预测），结论只在重置 · 时段起止时变。
