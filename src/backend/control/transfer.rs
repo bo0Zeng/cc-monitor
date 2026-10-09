@@ -424,7 +424,7 @@ pub(crate) async fn upload_to_staging(
                     "beTransfer.upload.seekStagedFailed",
                     &[
                         ("n", &resume_from.to_string()),
-                        ("why", &io_reason(e.kind())),
+                        ("why", &sftp::why_of_io(&e)),
                     ],
                 ),
                 &e,
@@ -499,7 +499,7 @@ pub(crate) async fn upload_to_staging(
                 Said::with_raw(
                     copy_text(
                         "beTransfer.upload.writeRemoteFailed",
-                        &[("why", &io_reason(e.kind()))],
+                        &[("why", &sftp::why_of_io(&e))],
                     ),
                     &e,
                 )
@@ -515,7 +515,7 @@ pub(crate) async fn upload_to_staging(
             Said::with_raw(
                 copy_text(
                     "beTransfer.upload.writeRemoteFailed",
-                    &[("why", &io_reason(e.kind()))],
+                    &[("why", &sftp::why_of_io(&e))],
                 ),
                 &e,
             )
@@ -599,7 +599,7 @@ pub(crate) async fn download_to_local(
                         &[
                             ("path", remote_path),
                             ("n", &resume_from.to_string()),
-                            ("why", &io_reason(e.kind())),
+                            ("why", &sftp::why_of_io(&e)),
                         ],
                     ),
                     &e,
@@ -619,7 +619,7 @@ pub(crate) async fn download_to_local(
                 Said::with_raw(
                     copy_text(
                         "beTransfer.download.readRemoteFailed",
-                        &[("why", &io_reason(e.kind()))],
+                        &[("why", &sftp::why_of_io(&e))],
                     ),
                     &e,
                 )

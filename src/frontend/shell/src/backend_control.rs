@@ -118,7 +118,7 @@ pub fn backend_machines() -> Result<Vec<String>, Said> {
         let mut out = vec![LOCAL_ORIGIN.to_string()];
         let g = remotes()
             .lock()
-            .map_err(|e| copy_text("rsBackendControl.lock.poisoned", &[("e", &e.to_string())]))?;
+            .map_err(|e| Said::with_raw(copy_text("rsBackendControl.lock.poisoned", &[]), &e))?;
         let mut names: Vec<String> = g.keys().cloned().collect();
         names.sort();
         out.extend(names);
@@ -144,7 +144,7 @@ pub async fn backend_status(origin: String) -> Result<serde_json::Value, Said> {
 }
 
 /// [`backend_status`] 的本体。
-fn backend_status_now(origin: String) -> Result<serde_json::Value, String> {
+fn backend_status_now(origin: String) -> Result<serde_json::Value, Said> {
     check_origin(&origin)?;
     let channel = crate::inbound_client::client_for(&origin).is_some();
     // `detached` 的源头只能是「起它的时候走没走那条路」：`is_detached()` 读的是一条只在真的走过脱离那条路时才写下的记录（`local_backend_host::DETACHED`）。
@@ -212,13 +212,16 @@ pub async fn backend_start(origin: String) -> Result<String, Said> {
                     StartOutcome::AlreadyRunning => {
                         Ok("本机后端已经在跑（C8①：每台机只许一个）".into())
                     }
-                    StartOutcome::Failed { reason, looked_at } => Err(copy_text(
-                        "rsBackendControl.start.notFound",
-                        &[
-                            ("reason", &reason.to_string()),
-                            ("looked", &format!("{:?}", looked_at)),
-                        ],
-                    )),
+                    StartOutcome::Failed { reason, looked_at } => Err(Said {
+                        said: copy_text(
+                            "rsBackendControl.start.notFound",
+                            &[
+                                ("reason", &reason.said),
+                                ("looked", &format!("{:?}", looked_at)),
+                            ],
+                        ),
+                        ..reason
+                    }),
                 }
             })
             .await
@@ -226,7 +229,7 @@ pub async fn backend_start(origin: String) -> Result<String, Said> {
         }
         let mut g = remotes()
             .lock()
-            .map_err(|e| copy_text("rsBackendControl.lock.poisoned", &[("e", &e.to_string())]))?;
+            .map_err(|e| Said::with_raw(copy_text("rsBackendControl.lock.poisoned", &[]), &e))?;
         let slot = g.get_mut(&origin).ok_or_else(|| {
             copy_text(
                 "rsBackendControl.handle.missing",
@@ -261,12 +264,11 @@ pub async fn backend_stop(origin: String) -> Result<crate::remote_resident::Stop
             use tauri::async_runtime::spawn_blocking;
             return spawn_blocking(crate::local_backend_host::stop_local_backend)
                 .await
-                .map_err(|e| e.to_string())?
-                .map_err(Said::from);
+                .map_err(|e| e.to_string())?;
         }
         {
             let mut g = remotes().lock().map_err(|e| {
-                copy_text("rsBackendControl.lock.poisoned", &[("e", &e.to_string())])
+                Said::with_raw(copy_text("rsBackendControl.lock.poisoned", &[]), &e)
             })?;
             let slot = g.get_mut(&origin).ok_or_else(|| {
                 copy_text(

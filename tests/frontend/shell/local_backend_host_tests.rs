@@ -3234,10 +3234,17 @@ fn the_listen_token_file_is_read_fresh_and_never_written_by_the_host() {
     std::fs::create_dir_all(&dir).expect("夹具目录");
     let p = token_path(&dir);
     let e = read_listen_token(&p).expect_err("文件不在也认了");
-    assert!(e.contains(&p.display().to_string()), "{e:?}");
+    assert!(e.said.contains(&p.display().to_string()), "{e:?}");
+    // 句子里是原因词，系统原话进复制详情、不上句子。
+    assert!(
+        e.said
+            .contains(&copy_core::io_reason(std::io::ErrorKind::NotFound)),
+        "{e:?}"
+    );
+    assert!(!e.raw().is_empty() && !e.said.contains(&e.raw()), "{e:?}");
     std::fs::write(&p, b"").expect("零字节");
     let e = read_listen_token(&p).expect_err("空钥匙也认了 —— 那道门形同虚设");
-    assert!(e.contains(&p.display().to_string()), "{e:?}");
+    assert!(e.said.contains(&p.display().to_string()), "{e:?}");
     assert!(p.exists(), "报错的同时把文件删了 —— 那是替用户做决定");
     std::fs::write(&p, b"0123abcd\n").expect("一把");
     assert_eq!(read_listen_token(&p).as_deref(), Ok("0123abcd"));
@@ -4003,7 +4010,7 @@ fn the_stop_run_gives_up_at_its_deadline() {
         )],
     );
     assert_eq!(
-        got.err(),
+        got.err().map(|s| s.said),
         Some(want.to_string()),
         "不答话的那一趟没按期限回来"
     );
@@ -4111,7 +4118,7 @@ fn the_never_started_reason_is_the_same_string_the_caller_gets() {
     ];
     let before = local_health();
     let out = note_never_started(StartOutcome::Failed {
-        reason: reason.clone(),
+        reason: reason.clone().into(),
         looked_at: looked_at.clone(),
     });
     // ① 结局**原样**还回去 —— 记一笔不许动调用方手上的东西。
@@ -4120,7 +4127,7 @@ fn the_never_started_reason_is_the_same_string_the_caller_gets() {
             reason: got,
             looked_at: paths,
         } => {
-            assert_eq!(got, &reason, "记账把调用方那句原因改写了");
+            assert_eq!(got.said, reason, "记账把调用方那句原因改写了");
             assert_eq!(paths, &looked_at, "记账把「找过哪些地方」改了");
         }
         _ => panic!("`Failed` 进去，出来的不是 `Failed` —— 接线把结局换掉了"),
