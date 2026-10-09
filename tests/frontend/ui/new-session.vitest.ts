@@ -443,3 +443,57 @@ describe("分叉：那台说得出源会话的号与终端", () => {
     expect(optionsOf(acct).some((o) => o.includes(copyText("newSession.account.follow")))).toBe(false);
   });
 });
+
+describe("起新会话框 · 轮换（稿 §5.4）", () => {
+  const rule = (id: string, name: string, isDefault: boolean) => ({
+    id,
+    name,
+    isDefault,
+    rev: 1,
+    updatedAt: 0,
+    summary: "s",
+    explain: "e",
+    missing: [],
+    atLimitApplies: false,
+    rotation: { order: [{ start: true }], enabled: [], when: "full", atLimit: "continue", wait: 40 },
+    users: { live: 0, ended: 0, follow: 0, doing: {}, sids: [], endedSids: [] },
+  });
+  const RULES = { state: "present", reason: null, defaultRule: "r_daily", rules: [rule("r_daily", "日常", true), rule("r_night", "夜间", false)] };
+
+  it("账号下一行「轮换」：跟随默认（默认那条的名字）· 各条规则（没有本会话）；缺省跟随默认 ⇒ 不额外写", async () => {
+    replies.set("rotation-rules-read", RULES);
+    const slot = vi.fn();
+    setNewSessionPlaceholder(slot);
+    void openNewSession({ origin: "devbox" });
+    await flush();
+    const b = sel(copyText("newSession.label.rot"));
+    expect(optionsOf(b)).toEqual([copyText("rot.src.followOf", { name: "日常" }), `日常${copyText("rot.src.tagDefault")}`, "夜间"]);
+    createBtn().click();
+    await flush();
+    expect(slot.mock.calls[0][0].onArrive, "跟随默认 ＝ 新会话本来的样子，不写").toBeUndefined();
+    setNewSessionPlaceholder(null);
+  });
+
+  it("选一条规则起 ⇒ 那个会话一报到就写它的来源 {rule}（同面板来源下拉那一写）", async () => {
+    replies.set("rotation-rules-read", RULES);
+    replies.set("rotation-session-set", { sessions: { s9: { state: "done" } } });
+    const slot = vi.fn();
+    setNewSessionPlaceholder(slot);
+    void openNewSession({ origin: "devbox" });
+    await flush();
+    choose(sel(copyText("newSession.label.rot")), "夜间");
+    createBtn().click();
+    await flush();
+    const spec = slot.mock.calls[0][0];
+    spec.onArrive("s9");
+    await flush();
+    expect(sent.filter((s) => s.op === "rotation-session-set").map((s) => s.body)).toEqual([{ sids: ["s9"], rotation: { rule: "r_night" } }]);
+    setNewSessionPlaceholder(null);
+  });
+
+  it("那台读不出规则表 ⇒ 没有这一行（起会话照旧）", async () => {
+    void openNewSession({ origin: "devbox" });
+    await flush();
+    expect(rowOf(sel(copyText("newSession.label.rot"))).hidden).toBe(true);
+  });
+});

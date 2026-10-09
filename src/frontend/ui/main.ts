@@ -79,10 +79,11 @@ import { dispatcher, KeybindingDispatcher } from "./keybindings/registry";
 import { getKeybindings } from "./keybindings/store";
 import { installGlobalClickDelegation } from "./entry-render-common";
 import { AccountChip } from "./account-chip";
-import { onQuotaChanged, syncSessions } from "./acct-center";
-import { followActive, toggleAccountPanel, type AcctPanelHost } from "./acct-panel";
+import { onQuotaChanged, refreshRules, syncSessions } from "./acct-center";
+import { followActive, openSourcePicker, toggleAccountPanel, type AcctPanelHost } from "./acct-panel";
 import { acctSessionWiring } from "./acct-session";
 import { buildAccountCommands } from "./account-commands";
+import { machineName } from "./control-said";
 import { sessionCommands } from "./session-commands";
 import type { FrontendReadyPayload } from "./generated/FrontendReadyPayload";
 import { currentAccountForBadge } from "./accounts";
@@ -315,6 +316,15 @@ window.addEventListener("DOMContentLoaded", async () => {
   };
   const openAcctPanel = (sid: string, origin: string): void => toggleAccountPanel(sid, origin, panelHost);
   tabs.onOpenAccountPanel = openAcctPanel;
+  // 多选右键「轮换规则 ▸」：那台的规则表（还没读过 ⇒ 去读，这一回先转圈）· 管理 ⇒ 设置窗那台的「轮换」栏。
+  tabs.onRotationRules = {
+    rulesOf: (origin) => {
+      const got = appStore.rotationRules.get().get(origin);
+      if (got === undefined) void refreshRules(origin);
+      return got ?? null;
+    },
+    openRules: (origin) => void openSettingsWindow(undefined, dest.rulesOf(origin)),
+  };
   // ↗ 浮层的［接上终端］直达设置那一节（［更新］就地做，住 `tabs.ts`）。
   tabs.onConnectTerminal = () => void openSettingsWindow(undefined, dest.connectTerminalOf(LOCAL_ORIGIN));
   // 起新会话：在主窗口里起的先长出占位标签页、报到了换成真的；在设置 / 查看窗里起的点了［切过去］再切，先把主窗口拉到前面。
@@ -613,6 +623,14 @@ window.addEventListener("DOMContentLoaded", async () => {
         chordHint: (id) => chordHint(id as Parameters<typeof chordHint>[0]),
         setCurrent: (name) => void accountChip.applyDefaultByName(name),
         openSettings: () => void openSettingsWindow(undefined, dest.accountsOf(curOrigin ?? LOCAL_ORIGIN)),
+        rotation:
+          cur !== null && curOrigin !== null
+            ? {
+                machine: machineName(curOrigin),
+                apply: () => openSourcePicker(cur, curOrigin, panelHost),
+                openRules: () => void openSettingsWindow(undefined, dest.rulesOf(curOrigin)),
+              }
+            : null,
       }).map((c) => ({ ...c, group: "account" as const, icon: "account" as const })),
       {
         id: "acct-default-menu",

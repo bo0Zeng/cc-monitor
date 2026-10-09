@@ -20,6 +20,10 @@ import { machineName } from "./control-said";
 import { fullTitle } from "./session-face";
 import { isRemoteOrigin } from "./ipc/origin";
 import { startMany, stopMany, type BatchOutcome } from "./tab-batch-run";
+import { writeSessionRotation, type RulesRead, type SessionRotationWrite } from "./quota-reads";
+import { reasonLabel } from "./acct-view";
+import type { SwitchOutcome } from "./generated/SwitchOutcome";
+import type { Origin } from "./ipc/origin";
 
 /** 批量菜单要宿主给的：按 sid 取 tab · 集合 · 固定 · 关闭（都一次改完、落盘一次）。 */
 export interface TabBatchHost {
@@ -32,6 +36,10 @@ export interface TabBatchHost {
   foundGroup(sids: readonly string[], name: string, id: string): CollectionRefusal | null;
   leaveGroup(sids: readonly string[]): void;
   closeTabs(sids: readonly string[]): void;
+  /** 那台的规则表（还没读到 ⇒ `null`，菜单里那一项转圈）；不给 / 回 `undefined`（宿主没接）⇒ 不出「轮换规则」。 */
+  rulesOf?(origin: Origin): RulesRead | null | undefined;
+  /** 「管理规则…」：设置窗那台的「轮换」栏。 */
+  openRules?(origin: Origin): void;
 }
 
 /** 后端那两件（判据换替身）。 */
@@ -39,9 +47,11 @@ export interface TabBatchRun {
   stop(tabs: readonly Tab[]): Promise<BatchOutcome[]>;
   start(tabs: readonly Tab[], mode: "tmux" | "window"): Promise<BatchOutcome[]>;
   confirm: ConfirmFn;
+  /** 一批同机会话的轮换来源一次写（`rotation-session-set`），回逐会话的结局。 */
+  rotate?(origin: Origin, sids: string[], to: SessionRotationWrite): Promise<Record<string, SwitchOutcome>>;
 }
 
-export const PRODUCTION_RUN: TabBatchRun = { stop: stopMany, start: startMany, confirm: confirmDialog };
+export const PRODUCTION_RUN: TabBatchRun = { stop: stopMany, start: startMany, confirm: confirmDialog, rotate: writeSessionRotation };
 
 /** 把一批 tab 按一个谓词分成「能做的」与「跳过的（原因：一句，或按 tab 说）」。 */
 function split(tabs: readonly Tab[], ok: (t: Tab) => boolean, why: string | ((t: Tab) => string)): [Tab[], BatchOutcome[]] {
@@ -149,6 +159,8 @@ export function openBatchMenu(
       sayBatch(copyText("tabBatch.action.startWindow"), tabs, [...(await run.start(startable, "window")), ...notStartable]);
     }, false, notStartable[0]?.why),
   ];
+  const rot = rotationItem(tabs, host, run, done);
+  if (rot) items.push({ label: "", divider: true }, rot);
   if (host.pinnedLoaded()) {
     const [pinnable, pinnedAlready] = split(tabs, (t) => !t.pinned, copyText("tabBatch.why.pinned"));
     const [unpinnable, notPinned] = split(tabs, (t) => t.pinned, copyText("tabBatch.why.notPinned"));
@@ -195,4 +207,46 @@ export function openBatchMenu(
     false, notClosable[0]?.why),
   );
   openMenu({ x: e.clientX, y: e.clientY }, items);
+}
+
+/**
+ * 「轮换规则 ▸」（稿 §5.4）：子菜单 跟随默认（默认那条的名字）· 各条规则 · 管理规则…（没有「本会话」：批量写本会话没有意义）。
+ * 账号按机器分开 ⇒ 只许同机批量，跨机灰着写为什么。选一项 ⇒ 这一批一次交那台，逐会话结局照那台说的进结果提示。
+ */
+function rotationItem(tabs: readonly Tab[], host: TabBatchHost, run: TabBatchRun, done: () => void): MenuItem | null {
+  if (!host.rulesOf || !run.rotate || tabs.length === 0) return null;
+  const label = copyText("tabBatch.menu.rot");
+  const origin = tabs[0].origin;
+  if (tabs.some((t) => t.origin !== origin)) return { label, enabled: false, why: copyText("tabBatch.why.crossMachine") };
+  const rules = host.rulesOf(origin);
+  if (rules === undefined) return null;
+  if (rules === null) return { label, pending: true };
+  const def = rules.rules.find((r) => r.id === rules.defaultRule);
+  const apply = (to: SessionRotationWrite, src: string): void => {
+    void (async () => {
+      const sids = tabs.map((t) => t.sessionId);
+      let got: Record<string, SwitchOutcome> = {};
+      let failed: string | null = null;
+      try {
+        got = await run.rotate!(origin, sids, to);
+      } catch (e) {
+        failed = e instanceof Error ? e.message : String(e);
+      }
+      const outcomes = tabs.map((t): BatchOutcome => {
+        const o = got[t.sessionId];
+        if (failed !== null || !o) return { sid: t.sessionId, outcome: "failed", why: failed ?? copyText("acct.reason.unknown") };
+        if (o.state === "done") return { sid: t.sessionId, outcome: "done", why: "" };
+        return { sid: t.sessionId, outcome: o.state, why: reasonLabel(o.code, { agent: "", target: "" }) };
+      });
+      sayBatch(copyText("tabBatch.action.rot", { src }), tabs, outcomes);
+      done();
+    })();
+  };
+  const submenu: MenuItem[] = [
+    { label: copyText("rot.src.followOf", { name: def?.name ?? "" }), onClick: () => apply("follow", copyText("rot.src.follow")) },
+    ...rules.rules.map((r): MenuItem => ({ label: r.name, onClick: () => apply({ rule: r.id }, copyText("rot.src.rule", { name: r.name })) })),
+    { label: "", divider: true },
+    { label: copyText("rot.src.manage"), onClick: () => host.openRules?.(origin) },
+  ];
+  return { label, submenu };
 }

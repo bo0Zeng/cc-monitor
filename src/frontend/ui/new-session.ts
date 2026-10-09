@@ -17,8 +17,10 @@ import { icon } from "./kit/icon";
 import { openMenu } from "./kit/menu";
 import { select, type SelectOption } from "./kit/select";
 import { tag } from "./kit/badge";
-import { toast } from "./kit/toast";
+import { failToast, toast } from "./kit/toast";
 import { copyText } from "./copy-table";
+import { readRules, writeSessionRotation, type RulesRead } from "./quota-reads";
+import { reasonLabel } from "./acct-view";
 import { commands } from "./ipc/commands";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { machineName } from "./control-said";
@@ -57,6 +59,9 @@ export interface NewSessionSpec {
 }
 
 /** 主窗口：起好了 ⇒ 长出占位标签页（`main.ts` 装一次；别的窗口没有它 ⇒ 等报到、说一句「已启动」）。 */
+/** 「轮换」那一行跟随默认那一项的值。 */
+const ROT_FOLLOW = "follow";
+
 let placeholder: ((spec: SlotSpec) => void) | null = null;
 export function setNewSessionPlaceholder(fn: ((spec: SlotSpec) => void) | null): void {
   placeholder = fn;
@@ -391,6 +396,37 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   accountRow.root.hidden = true;
   form.appendChild(accountRow.root);
 
+  // 轮换（稿 §5.4）：跟随默认（默认那条的名字）· 那台的各条规则；没有「本会话」（新会话还没有自己那一份）。读不出那台的规则表 ⇒ 不出这一行。
+  const rotSel = select({ label: copyText("newSession.label.rot"), options: [] });
+  const rotRow = row(copyText("newSession.label.rot"), rotSel.el, false);
+  rotRow.root.hidden = true;
+  form.appendChild(rotRow.root);
+  let rotSeq = 0;
+  const paintRotation = async (): Promise<void> => {
+    const my = ++rotSeq;
+    let rules: RulesRead | null = null;
+    try {
+      rules = accounts === null ? null : await readRules(origin);
+    } catch {
+      rules = null;
+    }
+    if (my !== rotSeq) return;
+    rotRow.root.hidden = rules === null;
+    if (rules === null) return;
+    const def = rules.rules.find((r) => r.id === rules.defaultRule);
+    rotSel.setOptions(
+      [
+        { value: ROT_FOLLOW, label: copyText("rot.src.followOf", { name: def?.name ?? "" }) },
+        ...rules.rules.map((r) => ({
+          value: `rule:${r.id}`,
+          label: r.name,
+          note: r.isDefault ? copyText("rot.src.tagDefault") : undefined,
+        })),
+      ],
+      ROT_FOLLOW,
+    );
+  };
+
   // 运行于
   const places = el("div");
   places.className = s.nsPlaces;
@@ -473,6 +509,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     opts.push(...accounts.map(accountOption));
     accountSel.setOptions(opts, accountPick(fork !== null, forkAccount, accounts[0].name));
     paintAccountNote();
+    void paintRotation();
   };
 
   const checkDir = async (): Promise<void> => {
@@ -560,7 +597,8 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     for (const r of [cwdRow, accountRow, tmuxRow, cmdRow, agentRow, placeRow]) r.setNote("");
     const res = await askNew(origin, await buildRequest());
     if (res.kind === "ok") {
-      void afterStart(origin, res);
+      const picked = rotRow.root.hidden ? ROT_FOLLOW : rotSel.value();
+      void afterStart(origin, res, picked.startsWith("rule:") ? picked.slice(5) : null);
       return null;
     }
     showFailure(res);
@@ -703,7 +741,19 @@ async function openLogin(origin: Origin): Promise<void> {
 }
 
 /** 起了之后：开窗那一形先开窗；等那台报出这个会话 ⇒ 主窗口里切过去，别的窗口（设置 · 查看）说一句「已启动」＋［切过去］。 */
-async function afterStart(origin: Origin, res: Extract<NewResult, { kind: "ok" }>): Promise<void> {
+/** 选了一条规则起的：那个会话一报到就把它的来源写成那一条（同面板来源下拉那一写）；没写成 ⇒ 说一句。 */
+function applyRuleOnArrive(origin: Origin, rule: string): (sid: string) => void {
+  return (sid) =>
+    void writeSessionRotation(origin, [sid], { rule }).then(
+      (got) => {
+        const o = got[sid];
+        if (o && o.state !== "done") toast(copyText("rot.err.applyFailed"), reasonLabel(o.code, { agent: "", target: "" }), { level: "error" });
+      },
+      (e: unknown) => void failToast(copyText("rot.err.applyFailed"), e),
+    );
+}
+
+async function afterStart(origin: Origin, res: Extract<NewResult, { kind: "ok" }>, rule: string | null = null): Promise<void> {
   const r = res.reply;
   if (r.outcome === "open" && r.cmd !== null) {
     const failed = await openWindow(origin, r.cmd, r.cwd);
@@ -713,12 +763,14 @@ async function afterStart(origin: Origin, res: Extract<NewResult, { kind: "ok" }
     }
   }
   const match: ArrivalMatch = r.sid !== null ? { sid: r.sid } : { cwd: r.cwd };
+  const onArrive = rule === null ? undefined : applyRuleOnArrive(origin, rule);
   if (placeholder) {
-    placeholder({ origin, cwd: r.cwd, tmuxName: r.session, agent: r.agent, match });
+    placeholder({ origin, cwd: r.cwd, tmuxName: r.session, agent: r.agent, match, ...(onArrive ? { onArrive } : {}) });
     return;
   }
   const sid = await awaitArrival({ origin, match, tmuxName: r.session, arrived: null });
   if (sid === null) return;
+  onArrive?.(sid);
   const name = r.session ?? r.cwd.split("/").filter(Boolean).pop() ?? r.cwd;
   toast(copyText("launch.fromSettings.done", { name, machine: machineName(origin) }), "", {
     level: "info",

@@ -284,6 +284,8 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
     "占位标签页那一页 `this.panel`（`s.slotPanel`）—— 建时收起",
   "src/frontend/ui/new-session.ts::accountRow.root":
     "「账号」那一行 `accountRow.root`（`s.nsRow`）—— 建时收起",
+  "src/frontend/ui/new-session.ts::rotRow.root":
+    "「轮换」那一行 `rotRow.root`（`s.nsRow`）—— 建时收起，读到那台的规则表才出",
   "src/frontend/ui/new-session.ts::agentRow.root":
     "「agent」那一行 `agentRow.root`（`s.nsRow`）—— 建时收起（那台能起的多于一家才出）",
   "src/frontend/ui/new-session.ts::note":

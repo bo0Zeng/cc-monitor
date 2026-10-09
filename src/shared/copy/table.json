@@ -4245,6 +4245,12 @@
       "zh": "移出分组（{n}）",
       "args": ["n"]
     },
+    "tabBatch.menu.rot": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "轮换规则",
+      "args": []
+    },
     "tabBatch.menu.close": {
       "kind": "action",
       "role": "菜单项",
@@ -4312,6 +4318,12 @@
       "zh": "已移出分组",
       "args": []
     },
+    "tabBatch.action.rot": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "已套用 {src}",
+      "args": ["src"]
+    },
     "tabBatch.action.close": {
       "kind": "body",
       "role": "片段",
@@ -4334,6 +4346,12 @@
       "kind": "action",
       "role": "按钮",
       "zh": "查看",
+      "args": []
+    },
+    "tabBatch.why.crossMachine": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "账号按机器分开 · 仅同机批量",
       "args": []
     },
     "tabBatch.why.ended": {
@@ -4933,6 +4951,30 @@
       "role": "状态",
       "zh": "未连接远端",
       "args": []
+    },
+    "accountCommands.rotApply.keywords": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "rotation 轮换 规则 rule 来源 套用",
+      "args": []
+    },
+    "accountCommands.rotApply.title": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "轮换：套用规则…",
+      "args": []
+    },
+    "accountCommands.rotRules.keywords": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "rotation 轮换 规则 rule 设置 管理",
+      "args": []
+    },
+    "accountCommands.rotRules.title": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "设置：{machine}轮换规则",
+      "args": ["machine"]
     },
     "accountCommands.manage.keywords": {
       "kind": "body",
@@ -13505,6 +13547,12 @@
       "zh": "agent",
       "args": []
     },
+    "newSession.label.rot": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "轮换",
+      "args": []
+    },
     "newSession.label.account": {
       "kind": "control",
       "role": "标签",
@@ -21221,6 +21269,12 @@
       "zh": "跟随默认",
       "args": []
     },
+    "rot.src.followOf": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "跟随默认（{name}）",
+      "args": ["name"]
+    },
     "rot.src.custom": {
       "kind": "control",
       "role": "标签",
@@ -21310,6 +21364,12 @@
       "role": "toast",
       "zh": "{session} · 本会话（从 {name} 转来）",
       "args": ["session", "name"]
+    },
+    "rot.err.applyFailed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "套用规则失败",
+      "args": []
     },
     "rot.done.saved": {
       "kind": "body",

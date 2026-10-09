@@ -158,6 +158,7 @@ export class LaunchSlots {
     const sl = this.slots.get(id);
     if (!sl) return;
     const wasShowing = this.showing === id;
+    sl.spec.onArrive?.(sid);
     clearTimeout(sl.timer);
     sl.row.remove();
     this.slots.delete(id);

@@ -39,6 +39,7 @@ import type { SessionActivity } from "./generated/SessionActivity";
 import { ENDED, LIVE, RECONNECTABLE, closesWithoutMenu, containerEvent, isLive, isResumeOnly, hasTerminal, inTmux, nextState, type StateEvent } from "./tab-session-state";
 import type { SessionContainer } from "./generated/SessionContainer";
 import { isLocalOrigin, isRemoteOrigin, LOCAL_ORIGIN, originFromWire, type Origin } from "./ipc/origin";
+import type { RulesRead } from "./quota-reads";
 // `Tab` 的形状与标题函数在 `tab-model.ts`、落点算术在 `tab-drop.ts`；这里 re-export，调用方只 import 本文件。
 export type { Tab, TabsSummary } from "./tab-model";
 export {
@@ -352,7 +353,13 @@ export class TabManager {
     closeTabs: (sids) => {
       for (const sid of sids) this.closeTab(sid);
     },
+    // 「轮换规则 ▸」：宿主（main.ts）接上才有（那台的规则表 · 开设置那台的「轮换」栏）。
+    rulesOf: (origin) => this.onRotationRules?.rulesOf(origin),
+    openRules: (origin) => this.onRotationRules?.openRules(origin),
   };
+
+  /** 批量菜单「轮换规则 ▸」要的两样（main.ts 接）；不接 ⇒ 菜单里没有那一项。 */
+  onRotationRules: { rulesOf(origin: Origin): RulesRead | null; openRules(origin: Origin): void } | null = null;
 
   private openTabCwd(sid: string): Promise<void> {
     return this.actions.openTabCwd(sid);

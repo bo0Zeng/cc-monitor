@@ -48,6 +48,8 @@ export interface SlotSpec {
   agent: string;
   /** 认报到用的那一格（分叉 ⇒ sid；新起的 ⇒ 目录）。 */
   match: ArrivalMatch;
+  /** 报到了（认出 sid）之后要做的（起会话框选了规则 ⇒ 写那个会话的来源）。 */
+  onArrive?: (sid: string) => void;
 }
 
 
