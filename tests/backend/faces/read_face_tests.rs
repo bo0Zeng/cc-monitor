@@ -1348,7 +1348,8 @@ fn the_three_record_reads_each_honour_summary_only_both_ways() {
             if let Some(b) = summary_only {
                 args[&"summaryOnly".to_string()] = serde_json::json!(b);
             }
-            answer_at(&home, cmd, &args).unwrap_or_else(|(c, m)| panic!("`{cmd}` 答错了（{c}）：{m}"))
+            answer_at(&home, cmd, &args)
+                .unwrap_or_else(|(c, m)| panic!("`{cmd}` 答错了（{c}）：{m}"))
         };
         let full = ask(None);
         let fold = ask(Some(true));
@@ -1366,7 +1367,10 @@ fn the_three_record_reads_each_honour_summary_only_both_ways() {
                      默认那一形变了，或者夹具没打到（下面那一半会恒绿）"
                 );
             }
-            assert!(t.contains("ZQKEEP-asked"), "`{cmd}`（{what}）连人说的话都没有");
+            assert!(
+                t.contains("ZQKEEP-asked"),
+                "`{cmd}`（{what}）连人说的话都没有"
+            );
         }
         // ── 置真：正文一个不剩，条数一条不少 ──
         let t = text(&fold);

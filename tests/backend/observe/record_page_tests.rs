@@ -15,7 +15,6 @@ const FOLD_PAGE: &[&str] = &[
     r#"{"type":"zq-no-such-kind","uuid":"x1","timestamp":"2026-01-02T03:04:09.000Z","payload":"ZQBODY-raw"}"#,
 ];
 
-
 /// 行摘要：每个可计行一条；末端是含 `\n` 之后那个字节（CRLF 的 `\r` 计在内）· 残尾 `null` · 空白行不占 ·
 /// 不进界面的只有 `{end, hash}`。
 #[test]
@@ -132,7 +131,6 @@ fn the_record_face_follows_the_root_the_file_lives_under() {
     assert!((claude().parse)("").unwrap().is_none());
 }
 
-
 /// 夹具里只住**正文**那几格的标记（开关开 ⇒ 一个都不许剩）。
 /// 每个标记只有一个出处：思考 · 说的话 · 工具入参里主参数之外的那一格 · 工具结果正文 · 抢救下来的整行原文。
 const GONE: &[&str] = &[
@@ -240,7 +238,11 @@ fn the_summary_only_product_drops_every_body_cell_and_keeps_every_folded_cell() 
             })
             .collect()
     };
-    assert_eq!(ident(&fold_lines), ident(&full_lines), "行标识 / 时刻字格变了");
+    assert_eq!(
+        ident(&fold_lines),
+        ident(&full_lines),
+        "行标识 / 时刻字格变了"
+    );
     let ends = |rows: &[serde_json::Value]| -> Vec<serde_json::Value> {
         rows.iter()
             .map(|r| serde_json::json!([r["end"].clone(), r["hash"].clone(), r["cwd"].clone()]))
@@ -252,7 +254,7 @@ fn the_summary_only_product_drops_every_body_cell_and_keeps_every_folded_cell() 
         "行摘要的 `end` / `hash` / `cwd` 变了（续传要靠它们核「还是不是那一行」）"
     );
     // 剩不下**一个** `content` 键：三处剥（`message.content` · `queue-operation` 的 `content`）漏一处就红。
-    // 比「小了多少」强：省多少是夹具的函数（真数据上的读数住 `zq1_summary_only_saving_reading`），
+    // 比「小了多少」强：省多少是夹具的函数（真数据上的读数是交回时量的一次，约省七成），
     // 而「这个键名一个都不剩」是形状上的话，跟夹具大小无关。
     assert!(
         !fold_text.contains("\"content\""),
@@ -267,71 +269,5 @@ fn the_summary_only_product_drops_every_body_cell_and_keeps_every_folded_cell() 
         "折起那一形没比全文小（{} vs {}）",
         fold_text.len(),
         full_text.len()
-    );
-}
-
-/// 秤（读数不是判据，故 `#[ignore]`）：**真规模本机历史**（只读）上「开 / 不开 `summaryOnly`」的字节差。
-/// 量的是三条读记录命令真正交出去的那一形（`record_lines` 的成品 JSON），按会话抽样、不打印任何正文。
-/// 跑法（`src/backend` 下）：
-/// `cargo test --offline --lib zq1_summary_only_saving_reading -- --ignored --nocapture`
-/// 抽样份数由 `ZQ1_FILES` 调（缺省 120；`0` ＝ 全量）。
-#[test]
-#[ignore = "ZQ1 读数：真规模本机历史（只读）只量字节差；跑法住本条头注"]
-fn zq1_summary_only_saving_reading() {
-    let Ok(home) = std::env::var("HOME") else {
-        println!("无 HOME，跳过");
-        return;
-    };
-    let want: usize = std::env::var("ZQ1_FILES")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(120);
-    let root = std::path::PathBuf::from(&home).join(".claude/projects");
-    let mut files = Vec::new();
-    let mut stack = vec![root];
-    while let Some(d) = stack.pop() {
-        let Ok(rd) = std::fs::read_dir(&d) else {
-            continue;
-        };
-        for e in rd.flatten() {
-            let p = e.path();
-            if p.is_dir() {
-                stack.push(p);
-            } else if p.extension().and_then(|s| s.to_str()) == Some("jsonl") {
-                files.push(p);
-            }
-        }
-    }
-    files.sort();
-    let total_files = files.len();
-    // 等距抽样（不借随机数：同一台机器上两次读数可比）。
-    if want > 0 && files.len() > want {
-        let step = files.len() / want;
-        files = files.into_iter().step_by(step).take(want).collect();
-    }
-    let (mut raw, mut full, mut fold, mut rows, mut n) = (0u64, 0u64, 0u64, 0u64, 0u64);
-    for p in &files {
-        let Ok(bytes) = std::fs::read(p) else { continue };
-        raw += bytes.len() as u64;
-        for summary_only in [false, true] {
-            let (lines, _) = record_lines_of_page(&claude(), p, 0, &bytes, summary_only);
-            let n_bytes = serde_json::to_string(&lines).unwrap().len() as u64;
-            if summary_only {
-                fold += n_bytes;
-            } else {
-                full += n_bytes;
-                rows += lines.len() as u64;
-            }
-        }
-        n += 1;
-    }
-    let pct = |a: u64, b: u64| 100.0 * a as f64 / b.max(1) as f64;
-    println!("ZQ1 build={} files={n}/{total_files} rows={rows}", crate::BUILD_ID);
-    println!("ZQ1 raw_jsonl={raw} full_product={full} ({:.2}% of raw)", pct(full, raw));
-    println!(
-        "ZQ1 summary_only={fold} ({:.2}% of full_product) ⇒ 省 {} 字节 / {:.2}%",
-        pct(fold, full),
-        full - fold,
-        100.0 - pct(fold, full)
     );
 }

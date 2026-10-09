@@ -1481,7 +1481,13 @@ fn a_one_shot_preset_is_seen_by_the_resident_process() {
     let sid = crate::accounts::quota::rotation::new_session_id();
     preset_with(&one_shot, &sid, "claude", &night, now()).expect("一次性那一个认得常驻存的规则");
     assert_eq!(
-        resident.hop.store.now().sessions.get(&sid).map(|s| s.source.clone()),
+        resident
+            .hop
+            .store
+            .now()
+            .sessions
+            .get(&sid)
+            .map(|s| s.source.clone()),
         Some(Source::Rule(night.clone())),
         "常驻那一个读不到一次性记的那一条"
     );
