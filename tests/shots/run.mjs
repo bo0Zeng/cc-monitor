@@ -58,10 +58,10 @@ function scrubbedEnv(extra = {}) {
   return env;
 }
 
-/** 起浏览器 / vite / 文件窗口那几个子进程用：再把 HOME 换成沙箱、XDG 那几格摘掉。 */
+/** 起浏览器 / vite / 文件窗口那几个子进程用：再把 HOME 换成沙箱、XDG 那几格与桌面会话总线摘掉（测试不碰用户的桌面会话）。 */
 function isolatedEnv(extra = {}) {
   const env = scrubbedEnv({ HOME: path.join(sandbox, "home"), ...extra });
-  for (const k of ["XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_DATA_HOME", "XDG_RUNTIME_DIR"]) delete env[k];
+  for (const k of ["XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_DATA_HOME", "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS"]) delete env[k];
   return env;
 }
 
@@ -119,6 +119,8 @@ async function shootWeb() {
       "--no-default-browser-check",
       "--no-sandbox",
       "--disable-gpu",
+      // 钥匙用浏览器自己的明文存储，不问桌面钥匙环（它的登录集合锁着时网络进程一直等，每个 http 页面都挂着）
+      "--password-store=basic",
       "--hide-scrollbars",
       "--force-device-scale-factor=1",
       "--force-color-profile=srgb",
