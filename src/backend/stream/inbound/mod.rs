@@ -48,8 +48,8 @@ pub(crate) mod spec;
 
 pub(crate) use caps::install as install_total;
 pub use cli_only::CLI_ONLY_DOCS;
-pub use doors::watch_account_mcp;
 pub(crate) use doors::LocalFiles;
+pub use doors::{watch_account_mcp, watch_rotation};
 pub use drain::{exit_after_drain, shutdown_listener, SHUTTING_DOWN};
 #[cfg(test)]
 use drain::{exit_after_drain_within, Drain};

@@ -350,6 +350,20 @@ export const ACCT_SCENES: Scene[] = [
   })),
   // ── 面板
   scene("acct-panel", "面板 · 本会话 · 第一屏", "点状态栏按钮：当前（两根条）· 轮换（本会话 · 触发 ≥90% · 无号可换 继续跑）· 切换 · 记录 · 底栏新会话默认", openPanel, world(() => {})),
+  scene("acct-src-open", "面板 · 来源下拉开着", "轮换第一行 来源 [本会话 ▾]：点开列 跟随默认 · 本会话（当前项打勾）；合着时方向键不写", async () => {
+    await openPanel();
+    await click('aside[role="dialog"] [data-acct-src]');
+    await waitFor("[role=menu]");
+    await sleep(400);
+  }, world(() => {})),
+  scene("acct-src-done", "面板 · 换了来源 ⇒ 带撤销的 toast", "下拉里选 跟随默认：只写一次；右下 toast orders · 跟随默认 ［撤销］", async () => {
+    await openPanel();
+    await click('aside[role="dialog"] [data-acct-src]');
+    await waitFor("[role=menu]");
+    await click(await byText('[role=menu] [role^="menuitem"]', "跟随默认"));
+    await waitFor('#kit-toast-stack [role="status"]');
+    await sleep(600);
+  }, world(() => {})),
   scene("acct-panel-toast", "面板开着时来一条提示", "账号面板开着、按快捷键翻一下自动跟随：右下角那条让到面板左边，不压面板底栏「新会话默认」那一行", async () => {
     await openPanel();
     const t = document.activeElement as HTMLElement | null;

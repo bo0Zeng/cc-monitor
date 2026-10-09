@@ -220,10 +220,10 @@ fn the_book_survives_a_restart_and_rings_for_the_sessions_it_changed() {
     let st = RotationStore::at(Some(path.clone()));
     st.change(|b| b.saw("s-ring", "claude-code", "a", 1))
         .expect("write");
-    assert_eq!(rx.try_recv().ok().as_deref(), Some("s-ring"));
+    assert_eq!(drain(&mut rx, "s-ring"), vec!["s-ring".to_string()]);
     st.change(|b| b.saw("s-ring", "claude-code", "a", 2))
         .expect("write");
-    assert!(rx.try_recv().is_err(), "没改就不响");
+    assert!(drain(&mut rx, "s-ring").is_empty(), "没改就不响");
     let again = RotationStore::at(Some(path.clone()));
     assert_eq!(again.now().sessions["s-ring"].start, "a");
     std::fs::write(&path, "{not json").expect("write");
@@ -417,4 +417,77 @@ fn the_baseline_resets_on_a_switch_and_only_fills_what_is_missing() {
     b.rebase("s", &[("5h".to_string(), base(0.2))].into());
     b.saw("s", "claude-code", "c", 30);
     assert!(b.sessions["s"].baseline.is_empty(), "换了起它的号 ⇒ 清掉");
+}
+
+// ── 别的进程写了盘（命令行 · quota-warm · AI 照 skill 调）⇒ 本进程照样推 ─────────────────────
+
+fn drain(rx: &mut tokio::sync::broadcast::Receiver<String>, prefix: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    while let Ok(s) = rx.try_recv() {
+        if s.starts_with(prefix) && !out.contains(&s) {
+            out.push(s);
+        }
+    }
+    out.sort();
+    out
+}
+
+fn sandbox(tag: &str) -> PathBuf {
+    let d = std::env::temp_dir().join(format!("ccm-rot-{tag}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&d);
+    std::fs::create_dir_all(&d).expect("mkdir");
+    d.join(FILE_NAME)
+}
+
+/// 盘上那一份被别处改了 ⇒ 重扫时比对上一份、改到的会话各响一下；本进程自己写的那一下不再响第二次；没变不响。
+#[test]
+fn a_write_from_another_process_rings_here_on_rescan() {
+    let path = sandbox("a1");
+    let st = RotationStore::at(Some(path.clone()));
+    st.change(|b| {
+        b.saw("a1-keep", "claude-code", "a", 1);
+        b.saw("a1-flip", "claude-code", "a", 1)
+    })
+    .expect("write");
+    let mut rx = changes().subscribe();
+    rescan(&path);
+    assert!(drain(&mut rx, "a1-").is_empty(), "本进程写的不重推");
+    // 另一个进程：不经本进程的任何一份 Store，直接整份写盘。
+    let mut b = match read_at(&path) {
+        Read::Present(b) => b,
+        _ => panic!("读不回"),
+    };
+    b.sessions.get_mut("a1-flip").expect("flip").follow = false;
+    b.saw("a1-new", "claude-code", "a", 2);
+    crate::common::own_state::write_json(&path, &b).expect("write");
+    rescan(&path);
+    assert_eq!(
+        drain(&mut rx, "a1-"),
+        vec!["a1-flip".to_string(), "a1-new".to_string()]
+    );
+    rescan(&path);
+    assert!(drain(&mut rx, "a1-").is_empty(), "没变不响");
+    let _ = std::fs::remove_dir_all(path.parent().expect("dir"));
+}
+
+/// 盯着那个目录：别处一写，不用谁来问，本进程就推那个会话。
+#[test]
+fn the_watcher_rings_for_a_foreign_write_without_being_asked() {
+    let path = sandbox("a1w");
+    let st = RotationStore::at(Some(path.clone()));
+    st.change(|b| b.saw("a1w-s", "claude-code", "a", 1))
+        .expect("write");
+    let _w = watch(&path).expect("watch");
+    let mut rx = changes().subscribe();
+    let mut b = st.now();
+    b.sessions.get_mut("a1w-s").expect("s").follow = false;
+    crate::common::own_state::write_json(&path, &b).expect("write");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    let mut got = Vec::new();
+    while got.is_empty() && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        got = drain(&mut rx, "a1w-");
+    }
+    assert_eq!(got, vec!["a1w-s".to_string()]);
+    let _ = std::fs::remove_dir_all(path.parent().expect("dir"));
 }

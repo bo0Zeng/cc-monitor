@@ -60,6 +60,7 @@ declare const classes: {
   readonly acctRowSlotVal: string;
   readonly acctRowUsage: string;
   readonly acctSpacer: string;
+  readonly acctSrcRow: string;
   readonly acctSwitchRow: string;
   readonly acctTag: string;
   readonly acctTimeline: string;

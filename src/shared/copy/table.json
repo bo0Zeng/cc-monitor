@@ -21053,28 +21053,34 @@
       "zh": "{size} · {time}",
       "args": ["size", "time"]
     },
-    "acct.rot.title": {
-      "kind": "title",
-      "role": "标题",
-      "zh": "轮换",
-      "args": []
-    },
-    "acct.rot.follow": {
+    "rot.src.label": {
       "kind": "control",
       "role": "标签",
-      "zh": "默认",
+      "zh": "来源",
       "args": []
     },
-    "acct.rot.custom": {
+    "rot.src.follow": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "跟随默认",
+      "args": []
+    },
+    "rot.src.custom": {
       "kind": "control",
       "role": "标签",
       "zh": "本会话",
       "args": []
     },
-    "acct.rot.modeAria": {
-      "kind": "control",
-      "role": "标签",
-      "zh": "轮换来源",
+    "rot.done.src": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "{session} · {src}",
+      "args": ["session", "src"]
+    },
+    "acct.rot.title": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "轮换",
       "args": []
     },
     "acct.rot.rule": {

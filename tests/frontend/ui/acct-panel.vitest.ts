@@ -121,6 +121,46 @@ describe("账号面板", () => {
     expect(writeSessionRotation).toHaveBeenCalledWith("<local>", ["s1"], { custom: { order: [{ start: true }, "team", "api"], enabled: ["team", "api"], when: "full", atLimit: "continue" } });
   });
 
+  describe("勾 / 不勾只改 enabled，order 逐字不变（不凭空插「起始账号」那一格）", () => {
+    const boxOf = (name: string): HTMLInputElement => panel().querySelector<HTMLInputElement>(`input[aria-label="${copyText("acct.row.checkAria", { name })}"]`)!;
+    const lastWrite = (): Rotation => (writeSessionRotation.mock.calls.at(-1)![2] as { custom: Rotation }).custom;
+
+    it("没有占位的那份：勾上序外的号 ⇒ 只排到末尾、不插占位", async () => {
+      seed({}, { order: ["team", "work"], enabled: ["team", "work"], when: "full", atLimit: "continue" });
+      openAccountPanel("s1", "<local>", host);
+      boxOf("api").click();
+      await flush();
+      expect(lastWrite().order).toEqual(["team", "work", "api"]);
+      expect(lastWrite().enabled).toEqual(["team", "work", "api"]);
+    });
+
+    it("没有占位的那份：取消勾 ⇒ order 原样", async () => {
+      seed({}, { order: ["team", "work"], enabled: ["team", "work"], when: "full", atLimit: "continue" });
+      openAccountPanel("s1", "<local>", host);
+      boxOf("team").click();
+      await flush();
+      expect(lastWrite().order).toEqual(["team", "work"]);
+      expect(lastWrite().enabled).toEqual(["work"]);
+    });
+
+    it("占位 ＋ 起始号也具名在序里：取消勾别的号 ⇒ 具名那格不丢", async () => {
+      seed({}, { order: [{ start: true }, "team", "work"], enabled: ["team", "work"], when: "full", atLimit: "continue" });
+      openAccountPanel("s1", "<local>", host);
+      boxOf("team").click();
+      await flush();
+      expect(lastWrite().order).toEqual([{ start: true }, "team", "work"]);
+      expect(lastWrite().enabled).toEqual(["work"]);
+    });
+
+    it("没有占位的那份：Alt+↓ 移位 ⇒ 只换这两格，不插占位", async () => {
+      seed({}, { order: ["team", "work"], enabled: ["team", "work"], when: "full", atLimit: "continue" });
+      openAccountPanel("s1", "<local>", host);
+      panel().querySelector<HTMLElement>('[data-acct-row="team"]')!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", altKey: true, bubbles: true }));
+      await flush();
+      expect(lastWrite().order).toEqual(["work", "team"]);
+    });
+  });
+
   it("无号可换：「满」触发时两态灰着；≥N% 时点「停」⇒ 写 atLimit stop", async () => {
     seed({}, { order: [{ start: true }], enabled: [], when: "full", atLimit: "continue" });
     openAccountPanel("s1", "<local>", host);
@@ -158,6 +198,50 @@ describe("账号面板", () => {
     expect(panel().querySelectorAll('[aria-label^="拖动排序"]').length).toBe(0);
     expect([...panel().querySelectorAll<HTMLInputElement>('input[type="checkbox"]')].every((b) => b.disabled)).toBe(true);
     expect(panel().textContent).toContain(copyText("acct.rot.leadFollow"));
+  });
+});
+
+describe("账号面板 · 来源下拉（19:52 那件：分段一按方向键就写回跟随默认）", () => {
+  const src = (): HTMLButtonElement => panel().querySelector<HTMLButtonElement>("[data-acct-src]")!;
+  const items = (): HTMLButtonElement[] => [...document.querySelectorAll<HTMLButtonElement>('body > [role="menu"] [role^="menuitem"]')];
+  const toasts = (): string[] => [...document.querySelectorAll<HTMLElement>('[role="status"], [role="alert"]')].map((t) => t.textContent ?? "");
+
+  it("★ 面板打开焦点落在来源下拉上；合着时按任何方向键 / Home / End 都不发 rotation-session-set", async () => {
+    seed({}, { order: [{ start: true }, "team"], enabled: ["team"], when: "full", atLimit: "continue" });
+    openAccountPanel("s1", "<local>", host);
+    expect(document.activeElement, "焦点在来源下拉").toBe(src());
+    for (const key of ["ArrowLeft", "ArrowRight", "ArrowUp", "Home", "End"]) {
+      for (const mods of [{}, { altKey: true }, { ctrlKey: true }, { shiftKey: true }]) src().dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, ...mods }));
+    }
+    await flush();
+    expect(writeSessionRotation).not.toHaveBeenCalled();
+    expect(src().dataset.value).toBe("custom");
+  });
+
+  it("★ 选一项只写一次，toast「orders · 跟随默认」带撤销；撤销 ⇒ 写回原来源", async () => {
+    seed({}, { order: [{ start: true }, "team"], enabled: ["team"], when: "full", atLimit: "continue" });
+    openAccountPanel("s1", "<local>", host);
+    src().click();
+    expect(items().map((i) => i.textContent)).toEqual([copyText("rot.src.follow"), copyText("rot.src.custom")]);
+    items()[0].click();
+    await flush();
+    expect(writeSessionRotation.mock.calls).toEqual([["<local>", ["s1"], "follow"]]);
+    const said = copyText("rot.done.src", { session: "orders", src: copyText("rot.src.follow") });
+    expect(toasts().some((t) => t.includes(said))).toBe(true);
+    const undo = [...document.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("kit.toast.undo"))!;
+    undo.click();
+    await flush();
+    expect(writeSessionRotation.mock.calls.at(-1)).toEqual(["<local>", ["s1"], "custom"]);
+    expect(writeSessionRotation).toHaveBeenCalledTimes(2);
+  });
+
+  it("选当前那一项 ⇒ 不写、不弹", async () => {
+    seed({}, undefined);
+    openAccountPanel("s1", "<local>", host);
+    src().click();
+    items()[0].click();
+    await flush();
+    expect(writeSessionRotation).not.toHaveBeenCalled();
   });
 });
 
@@ -257,8 +341,8 @@ describe("账号面板 · 重启切换", () => {
       seedDefault();
       openAccountPanelAt("s1", "<local>", host, "default-rotation");
       await flush();
-      const seg = panel().querySelector('[role="radiogroup"] [aria-checked="true"]');
-      expect(seg?.textContent, "开关照实显示本会话的档").toBe(copyText("acct.rot.custom"));
+      const src = panel().querySelector<HTMLButtonElement>("[data-acct-src]");
+      expect(src?.dataset.value, "来源照实显示本会话").toBe("custom");
       const box = anchored("default-rotation");
       expect(box, "默认轮换那一块摊开了").not.toBeNull();
       expect(scrolled, "滚到那一块").toHaveBeenLastCalledWith(box);
