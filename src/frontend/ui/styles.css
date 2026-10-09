@@ -1526,6 +1526,11 @@
   color: var(--error);
 }
 
+.proc-line .proc-run {
+  display: inline-flex;
+  color: var(--success);
+}
+
 .proc-line .proc-now {
   color: var(--text);
 }

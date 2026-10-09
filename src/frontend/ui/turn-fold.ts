@@ -8,7 +8,9 @@
  *
  * - 顺着流的顶层子节点走：遇到 `data-uuid` 等于某一轮 `uuid` 的那张卡 ＝ 那一轮开头；之后的卡属于这一轮，直到下一轮开头。
  * - 这一轮有过程行（后端给的 `parts` 非空）⇒ 开头之后、结尾以外的顶层卡全收进去；没有 ⇒ 一张不折。
- * - 遇到骨架占位或 ESC 回退的折叠段 ⇒ 不知道里面有没有下一轮的开头 ⇒ 之后不再归轮，直到认出下一轮开头（宁可不折，不折错）。
+ * - 遇到骨架占位：按账本（uuid→seq）认里面有没有哪一轮的开头——没有 ⇒ 它整块是这一轮的过程，折着就藏（高 0、骨架不物化它）；
+ *   有 ⇒ 后面的卡归里面最后那个开头的轮（开头那张还没建 ⇒ 行等它建出来再画）；骨架没接上认不出 ⇒ 之后不再归轮，
+ *   直到认出下一轮开头。ESC 回退的折叠段同样不再归轮（宁可不折，不折错）。
  * - 过程行插在那一轮开头那张卡后面；它不是时间线条目（`RecordTimeline` 按后继锚插入，不受它影响），
  *   `BranchFolder` 认的是 `data-uuid`，过程行没有。
  * - 「暂定结论」被降级（露着的最后一段正文，Claude 又调了工具 ⇒ 它成了中间的话）：收尾那一刻视口正落在它上面 ⇒ 先不收，
@@ -48,6 +50,8 @@ const MAX_FAILURES = 3;
 /** 这份会话在哪（路径要等首条行回填 ⇒ 每次现取；拿不到 ⇒ 这一趟不要）。 */
 export type TurnsWhere = () => { origin: Origin; jsonlPath: string } | null;
 type Read = (origin: Origin, path: string, from: number) => Promise<TurnsResult>;
+/** 这个 tab 的骨架（没接上 ⇒ `null`）：占位里有没有下一轮的开头按账本的 uuid→seq 认；展开一轮后叫它物化露出来的那段。 */
+export type TurnsSkeleton = () => { ledger: { uuidToSeq: ReadonlyMap<string, number> }; fillVisible(): number } | null;
 
 /** 「显示系统注入」这扇窗的开关（缺省不露）。 */
 export function injectedShownDefault(): boolean {
@@ -108,6 +112,7 @@ export class TurnFold {
     private readonly scroller: HTMLElement,
     private readonly where: TurnsWhere,
     private readonly read: Read = readTurns,
+    private readonly skeleton: TurnsSkeleton = () => null,
   ) {
     this.expandedDefault = processExpandedDefault();
     // 卡进出流（实时到达 · 上翻补批 · 骨架物化 · ESC 折叠重排）⇒ 重排一遍；排版自己插的过程行 / 收起行不算。
@@ -199,6 +204,7 @@ export class TurnFold {
     const lastOf = new Map<string, HTMLElement>();
     let cur: TurnSummary | null = null;
     let curEnding = new Set<string>();
+    const heads = this.headSeqs();
     for (const el of Array.from(this.content.children)) {
       if (!(el instanceof HTMLElement) || isOurs(el)) continue;
       const uuid = el.getAttribute("data-uuid");
@@ -213,7 +219,19 @@ export class TurnFold {
         this.unmark(el);
         continue;
       }
-      if (el.classList.contains(SKELETON_GAP_CLASS) || el.classList.contains(FOLD_WRAP_CLASS)) cur = null;
+      // 骨架占位：账本说里面没有哪一轮的开头 ⇒ 它整块是这一轮的过程（折着就藏、不物化）；有 ⇒ 后面的卡归里面最后那个开头的轮
+      // （开头那张还没建 ⇒ 行先不画，建出来再画）；骨架没接上认不出 ⇒ 之后不再归轮。
+      if (el.classList.contains(SKELETON_GAP_CLASS)) {
+        const inside = heads === null ? undefined : lastHeadIn(el, heads);
+        if (inside !== null) {
+          const t = inside === undefined ? null : this.byUuid.get(inside);
+          cur = t && hasLine(t) ? t : null;
+          curEnding = new Set(t?.ending ?? []);
+          this.unmark(el);
+          continue;
+        }
+      }
+      if (el.classList.contains(FOLD_WRAP_CLASS)) cur = null;
       if (!cur || (uuid !== null && curEnding.has(uuid))) {
         if (uuid !== null && cur) ending.add(uuid);
         this.unmark(el);
@@ -244,11 +262,29 @@ export class TurnFold {
     this.tails.clear();
   }
 
+  /** 各轮开头在账本里的 seq（升序）；骨架没接上 ⇒ `null`（认不出占位里有什么）。 */
+  private headSeqs(): Head[] | null {
+    const sk = this.skeleton();
+    if (!sk) return null;
+    const out: Head[] = [];
+    for (const t of this.turns) {
+      const seq = sk.ledger.uuidToSeq.get(t.uuid);
+      if (seq !== undefined) out.push({ seq, uuid: t.uuid });
+    }
+    return out.sort((a, b) => a.seq - b.seq);
+  }
+
+  /** 这一轮从折着变成展开 ⇒ 露出来的占位要物化（没有 scroll 事件来叫）。 */
+  private opened(): void {
+    this.skeleton()?.fillVisible();
+  }
+
   private readonly onReveal = (e: Event): void => {
     const uuid = (e as CustomEvent<string>).detail;
     if (!this.byUuid.has(uuid)) return;
     this.overrides.set(uuid, true);
     this.apply();
+    this.opened();
   };
 
   private expanded(turn: TurnSummary): boolean {
@@ -357,12 +393,15 @@ export class TurnFold {
     if (onFail) {
       this.overrides.set(uuid, true);
       this.apply();
+      this.opened();
       this.firstFailure(uuid)?.scrollIntoView({ block: "center" });
       return;
     }
-    this.overrides.set(uuid, !this.expanded(turn));
+    const open = !this.expanded(turn);
+    this.overrides.set(uuid, open);
     for (const u of [...this.held]) if (this.cardOf(u)?.dataset.procOf === uuid) this.held.delete(u);
     this.apply();
+    if (open) this.opened();
   }
 
   private firstFailure(uuid: string): HTMLElement | null {
@@ -395,6 +434,28 @@ export class TurnFold {
   }
 }
 
+interface Head {
+  seq: number;
+  uuid: string;
+}
+
+/** 占位 `[lo, hi)` 里最后一个开头是哪一轮（`heads` 按 seq 升序）：没有 ⇒ `null`；占位的区间读不出 ⇒ `undefined`（当作认不出）。 */
+function lastHeadIn(gap: HTMLElement, heads: readonly Head[]): string | null | undefined {
+  const lo = Number(gap.dataset.skeletonLo);
+  const hi = Number(gap.dataset.skeletonHi);
+  if (!Number.isFinite(lo) || !Number.isFinite(hi)) return undefined;
+  // 第一个 seq ≥ hi 的位置，前一个若 ≥ lo 就是占位里最后那个开头。
+  let l = 0;
+  let r = heads.length;
+  while (l < r) {
+    const m = (l + r) >>> 1;
+    if (heads[m].seq < hi) l = m + 1;
+    else r = m;
+  }
+  const h = heads[l - 1];
+  return h !== undefined && h.seq >= lo ? h.uuid : null;
+}
+
 /** 右端那一截：后端写好的字，`{dur}` 填用时（`to` 缺 ⇒ 到 `now`）。 */
 export function fillDur(span: TurnSpan, now: number): string {
   if (!span.text.includes("{dur}") || span.from === null) return span.text;
@@ -407,7 +468,13 @@ export function paintLine(line: HTMLElement, turn: TurnSummary, open: boolean, n
   line.dataset.phase = turn.phase;
   line.replaceChildren();
   line.appendChild(foldCaret());
-  if (turn.phase === "running") line.appendChild(spinner());
+  // 在跑：转圈取「运行中」那一色（规范 V10 · --success），用 currentColor 跟着 .proc-run。
+  if (turn.phase === "running") {
+    const run = document.createElement("span");
+    run.className = "proc-run";
+    run.appendChild(spinner());
+    line.appendChild(run);
+  }
   if (turn.phase === "awaiting") line.appendChild(statusDot("needs-you", turn.parts[turn.parts.length - 1]?.text ?? "", "compact"));
   const text = document.createElement("span");
   text.className = "proc-text";

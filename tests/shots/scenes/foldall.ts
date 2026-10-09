@@ -83,6 +83,24 @@ function foldWorld(activity: "needs_you" | "working" = "needs_you"): World {
   return w;
 }
 
+/** 长会话：很多轮（每轮思考 · 几步工具 · 中间的话 · 结论），尾部窗口装不下 ⇒ 上面由骨架占位顶着、滚到哪物化到哪。 */
+function longWorld(): World {
+  const w = defaultWorld();
+  const c = new Convo(SID, CWD, "2026-10-01T09:00:00Z");
+  c.title("示例项目：长会话");
+  for (let i = 1; i <= 90; i++) {
+    c.user(`第 ${i} 轮：把模块 ${i} 的读取整理一下。`);
+    c.think("先找读取的地方。", `先看模块 ${i}。`);
+    c.tool("Grep", { pattern: `mod${i}`, path: "src" }, `src/m${i}.py:3`);
+    c.tool("Read", { file_path: `${CWD}/src/m${i}.py` }, "def load():\n    return {}\n", { card: "md" });
+    c.say(`模块 ${i} 只有一处，改掉。`);
+    c.tool("Edit", { file_path: `${CWD}/src/m${i}.py`, old_string: "a", new_string: "b" }, "The file has been updated.", { card: "diff" });
+    c.say(`模块 ${i} 改好了。`, 20_000, "end_turn");
+  }
+  w.sessions[0] = session(1, LOCAL, CWD, c, { activity: "idle" });
+  return w;
+}
+
 function live(id: string, title: string, desc: string, act: Scene["act"], height = 800): Scene {
   return { id, page: "index", dir: "大折叠", title, desc, width: 1280, height, world: foldWorld, act };
 }
@@ -133,6 +151,15 @@ export const FOLDALL_SCENES: Scene[] = [
     tail?.scrollIntoView({ block: "center" });
     await sleep(600);
   }, 700),
+  { ...live("foldall-long-top", "大折叠 · 长会话 · 滚到最上面", "九十轮的长会话，上面由骨架占位顶着：滚到最上面，物化出来的轮照样每轮一行过程", async () => {
+    await mainReady(7);
+    await sleep(600);
+    for (let k = 0; k < 6; k++) {
+      await scrollStream("top");
+      await sleep(300);
+    }
+    await sleep(600);
+  }), world: longWorld },
   {
     id: "foldall-viewer-whole",
     page: "viewer",

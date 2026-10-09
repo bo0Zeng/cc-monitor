@@ -210,6 +210,35 @@ describe("按轮折叠", () => {
     expect(hidden(p3)).toBe(true);
   });
 
+  it("骨架占位按账本（uuid→seq）认：里面没有哪一轮的开头 ⇒ 它属于这一轮的过程，折着就藏（不物化）、后面接着折；里面有 ⇒ 后面的卡归最后那个开头的轮（开头还没建 ⇒ 先不画行）；展开 ⇒ 露出并叫骨架物化", async () => {
+    const gapIn = document.createElement("div");
+    gapIn.className = "stream-skeleton-gap";
+    gapIn.dataset.skeletonLo = "3";
+    gapIn.dataset.skeletonHi = "9";
+    const after = card("card-assistant", "x1");
+    const gapCross = document.createElement("div");
+    gapCross.className = "stream-skeleton-gap";
+    gapCross.dataset.skeletonLo = "12";
+    gapCross.dataset.skeletonHi = "30";
+    const tail = card("card-assistant", "x2");
+    const content = document.createElement("div");
+    content.append(card("card-user", "u1"), gapIn, after, card("card-assistant", "e1"), gapCross, tail);
+    document.body.replaceChildren(content);
+    const fill = vi.fn(() => 0);
+    const seqs = new Map([["u1", 1], ["u2", 20]]);
+    const read = vi.fn(async (): Promise<TurnsResult> => ({ available: true, from: 0, end: 10, turns: [turn("u1", 0, { ending: ["e1"] }), turn("u2", 5)] }));
+    const fold = new TurnFold(content, content, () => ({ origin: "local" as never, jsonlPath: "/p/s.jsonl" }), read, () => ({ ledger: { uuidToSeq: seqs }, fillVisible: fill }));
+    await fold.refresh();
+    expect([hidden(gapIn), hidden(after)]).toEqual([true, true]);
+    expect(gapIn.dataset.procOf).toBe("u1");
+    expect([hidden(gapCross), hidden(tail)]).toEqual([false, true]);
+    expect(tail.dataset.procOf).toBe("u2");
+    expect(lines(content)).toHaveLength(1);
+    lines(content)[0].click();
+    expect(hidden(gapIn)).toBe(false);
+    expect(fill).toHaveBeenCalled();
+  });
+
   it("卡后到（上翻补批 / 骨架物化）：DOM 一变就重排", async () => {
     const { content, fold } = rig([card("card-user", "u1")], [{ available: true, from: 0, end: 10, turns: [turn("u1", 0)] }]);
     await fold.refresh();

@@ -346,7 +346,7 @@ export class SessionViewer {
     }
     this.streamEl.replaceChildren();
     this.stream = new MessageStream(this.streamEl);
-    this.turnFold = new TurnFold(this.stream.contentElement, this.streamEl, () => this.outlineWhere);
+    this.turnFold = new TurnFold(this.stream.contentElement, this.streamEl, () => this.outlineWhere, undefined, () => this.skeleton);
     this.streamEl.addEventListener("scroll", this.turnFold.releaseOnScroll, { passive: true });
 
     // 读取中：骨架；状态行不说话。
