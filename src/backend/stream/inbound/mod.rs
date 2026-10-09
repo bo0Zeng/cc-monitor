@@ -47,6 +47,7 @@ mod sniff;
 pub(crate) mod spec;
 
 pub(crate) use caps::install as install_total;
+pub(crate) use caps::until_of;
 pub use cli_only::CLI_ONLY_DOCS;
 pub(crate) use doors::LocalFiles;
 pub use doors::{watch_account_mcp, watch_rotation};

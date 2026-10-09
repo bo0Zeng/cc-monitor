@@ -80,29 +80,36 @@ impl Fail {
         crate::common::said::Said::from(self).into_note()
     }
 
-    /// 这次失败的应答帧（`cmd` 是命令名，进详情的「命令」那一项）。
+    /// 这次失败投出去的那一份（两个面都经这里：帧面的应答 · CLI 面的信封）。`cmd` 是命令名，进详情的「命令」那一项。
     /// 这条命令有「码 → 句」表（[`crate::stream::said::reword`]）⇒ 句子换成表里那一句，处理器原来那句进原话。
-    pub(crate) fn into_reply(
+    pub(crate) fn settle(
         mut self,
-        id: String,
         cmd: &str,
         args: &serde_json::Value,
-    ) -> crate::stream::wire::Frame {
+    ) -> crate::stream::detail::Failed {
         if let Some(said) = crate::stream::said::reword(cmd, args, &self.code) {
             let was = std::mem::replace(&mut self.message, said);
             if self.raw.is_none() && !was.trim().is_empty() {
                 self.raw = Some(was);
             }
         }
-        let detail = crate::stream::detail::of(Some(cmd), &self.code, self.raw.as_deref());
-        crate::stream::wire::Frame::Reply {
-            id,
-            ok: false,
-            code: Some(self.code),
-            message: Some(self.message),
-            detail: Some(detail),
-            data: self.data,
-        }
+        crate::stream::detail::Failed::new(
+            Some(cmd),
+            &self.code,
+            self.message,
+            self.raw.as_deref(),
+            self.data,
+        )
+    }
+
+    /// 这次失败的应答帧（[`Fail::settle`] 那一份装进 `reply`）。
+    pub(crate) fn into_reply(
+        self,
+        id: String,
+        cmd: &str,
+        args: &serde_json::Value,
+    ) -> crate::stream::wire::Frame {
+        crate::stream::wire::Frame::failed(id, self.settle(cmd, args))
     }
 }
 pub(super) type BoxFut =
