@@ -633,6 +633,11 @@ async fn an_undeclared_command_is_refused_without_writing_anything() {
 /// 异源：真 `InboundClient` 接一根内存双工管子，对端由本用例扮演（不经 `frame_query`，不看源码）。
 /// 两向：第一问截止时刻还远 ⇒ 照常拿到应答（正控）；第二问拿**同一个**时刻 ⇒ 只等剩下那一截就报超时，
 /// 而且真等到了点（不是提前放弃）。今天之前的形状（每问 `now + 一整份`）在第二问上会再等一整份 ⇒ 红。
+///
+/// 对端收到第一问之后**暂停时钟**（`tokio::time::pause`）：之后运行时一闲下来就把虚拟钟拨到下一个计时点 ⇒
+/// 「1000 ms 后答」「1500 ms 截止」「第二问等了多久」都是精确的虚拟时长。原先走真钟：截止前只留 500 ms 余量、
+/// 第二问的上限也按真钟量，机器负载高时调度一慢就假红。不从头就停（`start_paused`）：写半边住在别的运行时上，
+/// 等对端读到第一行那会儿本运行时是闲的，虚拟钟会直接拨到截止。
 #[tokio::test]
 async fn two_asks_under_one_deadline_share_it_and_the_second_gets_only_the_rest() {
     let (client, mut peer) = client_on_duplex(&["ping"]);
@@ -647,6 +652,7 @@ async fn two_asks_under_one_deadline_share_it_and_the_second_gets_only_the_rest(
         .as_str()
         .expect("id")
         .to_string();
+    tokio::time::pause();
     tokio::time::sleep(Duration::from_millis(1000)).await;
     assert!(client.route_reply(&id, true, None, None, None, None));
     assert!(first.await.expect("task").is_ok(), "截止之前答了却没拿到");
