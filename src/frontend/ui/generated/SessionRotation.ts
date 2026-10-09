@@ -4,17 +4,26 @@ import type { AtLimit } from "./AtLimit";
 import type { Blocked } from "./Blocked";
 import type { QuotaShow } from "./QuotaShow";
 import type { Rotation } from "./Rotation";
+import type { RotationSource } from "./RotationSource";
 
 /**
  * `rotation-session-read` 里一个会话的那一份。
  */
 export type SessionRotation = { agent: string, 
 /**
- * 跟随这台的默认轮换。
+ * 轮换从哪来：跟随默认 · 某条规则 · 本会话。
  */
-follow: boolean, 
+source: RotationSource, 
 /**
- * 这个会话自己那一份（跟随时也留着）。
+ * 此刻生效的那条规则叫什么（跟随默认 ⇒ 默认那条；本会话 ⇒ 缺）。
+ */
+ruleName?: string, 
+/**
+ * 按此刻生效的那一份写好的一句规则说明（界面照抄）。
+ */
+explain: string, 
+/**
+ * 这个会话自己那一份（换成别的来源时也留着）。
  */
 custom?: Rotation, account: AccountCell, 
 /**

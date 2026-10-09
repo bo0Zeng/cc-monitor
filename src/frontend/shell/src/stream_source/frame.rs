@@ -206,6 +206,8 @@ pub enum InboundFrame {
     QuotaChanged,
     /// 那台某个会话的轮换 / 「账号」格变了（`rotation_changed`，只带 sid）⇒ 同上一格 `{sid}`；界面要就发 `rotation-session-read`。
     RotationChanged { sid: String },
+    /// 那台的轮换规则表 / 默认指向变了（`rotation_rules_changed`，无载荷）⇒ 同上一格 `{"rules":true}`；界面要就发 `rotation-rules-read`。
+    RotationRulesChanged,
 }
 
 /// 拥塞提示的措辞：有没有不可恢复的丢失，说法完全不同。抽成纯函数让措辞可判据（消费点要真 `AppHandle`、测不了）。
@@ -656,6 +658,8 @@ pub fn parse_frame(line: &str) -> Result<InboundFrame, Unread> {
         "rotation_changed" => InboundFrame::RotationChanged {
             sid: req_str(obj, k, "sid")?,
         },
+        // 同上一格 `{"rules":true}`：界面要就发 `rotation-rules-read`。
+        "rotation_rules_changed" => InboundFrame::RotationRulesChanged,
         _ => return Err(Unread::UnknownKind(kind.to_string())),
     })
 }

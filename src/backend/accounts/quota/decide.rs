@@ -16,6 +16,9 @@
 //!    （[`blocked_above`]，随会话记下）有一个又能用了 ⇒ 切回去（按池序取首个）；
 //!    都不是 ⇒ 不换。想走而没有能接的 ⇒ 留着。刚回来的那一发照过了 ⇒ 这一问不换。
 //! 2. 此刻的号不能用 ⇒ 按池序**从头**取首个能用、接得上的号（列表顺序 ＝ 偏好；超额在兜 ⇒ 只找订阅号接，没有就留在超额 `toOverage`）。
+//!    **最多等几分钟**（`wait` 分钟，`0` ＝ 不等）：取到的号排在池里靠后，而排在它前面的号（含此刻的）有一个在 `wait` 分钟内回来
+//!    ⇒ 不往后换：此刻的号被拒 ⇒ 这一发不发上游、回「用满」（[`Verdict::Wait`]，回来的时刻 ＝ 那个号回来的时刻）；此刻的号只是过了上限
+//!    ⇒ 硬上限照 `Wait` 办，软上限留在此刻的号上照发。这一家给不出「用满」回包 ⇒ 照旧往后换。超额在兜不等。
 //! 3. 一个都没有 ⇒ 照到上限那一格：`continue` 且此刻的号被拒 ⇒ 退一步取首个没被拒、也不在超额上的（不管上限）；
 //!    `stop` 且这份轮换有上限（`when` 是到 N%，或给池里的号设了上限）、说得出几点有号回来 ⇒ 这一发不发上游（[`Verdict::Hold`]）；
 //!    其余 ⇒ 不换（被拒就原样交回上游的拒绝，过上限就留在此刻的号上照发）。
@@ -62,6 +65,10 @@ pub(crate) struct Facts<'a> {
     pub(crate) preempt: bool,
     /// 到上限没号可换时怎么办（这一家给不出「用满」回包 ⇒ 调用方交 `continue`）。
     pub(crate) at_limit: AtLimit,
+    /// 最多等几分钟（`0` ＝ 不等）。
+    pub(crate) wait: u8,
+    /// 这一家给得出「用满」回包（停着等那一下要它）。
+    pub(crate) can_hold: bool,
     /// 此刻走的号（刚回来的那个回包就是它答的）。
     pub(crate) current: &'a str,
     /// 此刻的号这一段的基线（换进来那一刻各窗口的用量）。
@@ -105,6 +112,12 @@ pub(crate) enum Verdict {
     /// 硬上限：池里没有能接的号 ⇒ 这一发不发上游，回那一家的「用满」回包；`back` ＝ 池里最早回来的那一刻。
     Hold {
         n: u8,
+        back: Back,
+        skipped: Vec<(String, Unready)>,
+    },
+    /// 最多等几分钟：本要换到 `instead`，排在它前面的 `back.account` 很快回来 ⇒ 这一发不发上游，回「用满」（重置时刻 ＝ `back.at`）。
+    Wait {
+        instead: String,
         back: Back,
         skipped: Vec<(String, Unready)>,
     },
@@ -500,6 +513,12 @@ pub(crate) fn decide(f: &Facts<'_>, ready: &mut dyn FnMut(&str) -> Result<(), Un
     if to.is_none() && f.at_limit == AtLimit::Continue && matches!(cur, Standing::Refused { .. }) {
         to = pick_by(f, &|a| !standing(a, f).shut(), ready, &mut skipped);
     }
+    // 最多等几分钟：要往后换、前面有号很快回来 ⇒ 不换。
+    if let Some(t) = &to {
+        if let Some(v) = wait_for(f, &cur, t, &skipped) {
+            return v;
+        }
+    }
     // 硬上限：有上限、说得出几点有号回来 ⇒ 不发上游（说不出照软上限办）。超额在兜不算。
     if to.is_none() && f.at_limit == AtLimit::Stop && !subs_only && has_caps(f) {
         if let Some(back) = earliest_back(f) {
@@ -527,6 +546,51 @@ pub(crate) fn decide(f: &Facts<'_>, ready: &mut dyn FnMut(&str) -> Result<(), Un
             skipped,
         },
     }
+}
+
+/// 最多等几分钟那一问：本要换到 `to`，池里排在它前面的号（含此刻的；跳过的不算）有一个在 `wait` 分钟内回来 ⇒ 等它
+/// （此刻的号被拒，或硬上限 ⇒ [`Verdict::Wait`]；软上限 ⇒ 留在此刻的号上照发）。不等 ⇒ `None`。
+fn wait_for(
+    f: &Facts<'_>,
+    cur: &Standing,
+    to: &str,
+    skipped: &[(String, Unready)],
+) -> Option<Verdict> {
+    if f.wait == 0 || matches!(cur, Standing::Overage { .. }) {
+        return None;
+    }
+    let limit = f.now + u64::from(f.wait) * 60;
+    let back = f
+        .pool
+        .iter()
+        .take_while(|a| a.as_str() != to)
+        .filter(|a| !skipped.iter().any(|(x, _)| x == *a))
+        .filter_map(|a| {
+            let st = if a == f.current {
+                cur.clone()
+            } else {
+                standing(a, f)
+            };
+            match st.back() {
+                Some((Some(at), slot)) if at > f.now && at <= limit => Some((at, a, slot)),
+                _ => None,
+            }
+        })
+        .min_by_key(|(at, _, _)| *at)
+        .map(|(at, a, slot)| Back {
+            account: a.clone(),
+            at,
+            slot,
+        })?;
+    let hold = matches!(cur, Standing::Refused { .. }) || f.at_limit == AtLimit::Stop;
+    if !hold {
+        return Some(Verdict::Stay);
+    }
+    f.can_hold.then(|| Verdict::Wait {
+        instead: to.to_string(),
+        back,
+        skipped: skipped.to_vec(),
+    })
 }
 
 /// 换进 `target` 那一刻要记下的：池里排在它前面（它不在池里 ⇒ 整个池）、此刻不能用的号，按池序。

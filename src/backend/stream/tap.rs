@@ -128,6 +128,8 @@ pub struct TapRx {
     quota: Option<tokio::sync::watch::Receiver<u64>>,
     /// 某个会话的轮换 / 「账号」格变了的通道（变了推一帧 `rotation_changed`）；`None` ＝ 不订。
     rotation: Option<tokio::sync::broadcast::Receiver<String>>,
+    /// 这台的规则表 / 默认指向变了的通道（变了推一帧 `rotation_rules_changed`）；`None` ＝ 不订。
+    rules: Option<tokio::sync::broadcast::Receiver<()>>,
     book: std::sync::Arc<crate::observe::runs::RunBook>,
     router: super::run_route::RunRouter,
     out: std::collections::VecDeque<Frame>,
@@ -164,6 +166,11 @@ impl TapSource for TapRx {
                     // 落后丢了几件：可丢的通道，客户端下一次变化或重问就补上。
                     Some(None) => {}
                     None => self.rotation = None,
+                },
+                moved = rules_moved(&mut self.rules) => match moved {
+                    // 落后丢了几件也照推一帧（客户端反正整份重问）。
+                    Some(()) => self.out.push_back(Frame::RotationRulesChanged),
+                    None => self.rules = None,
                 }
             }
         }
@@ -176,7 +183,20 @@ pub fn attach(book: std::sync::Arc<crate::observe::runs::RunBook>) -> TapRx {
     let mut rx = attach_rx(hub().attach(), book);
     rx.quota = Some(crate::accounts::quota::ledger::bell().subscribe());
     rx.rotation = Some(crate::accounts::quota::rotation::changes().subscribe());
+    rx.rules = Some(crate::accounts::quota::rotation::rules_changes().subscribe());
     rx
+}
+
+/// 规则表变了（含落后丢了几件）⇒ `Some(())`；通道没了 ⇒ `None`；没订 ⇒ 永远不醒。
+async fn rules_moved(r: &mut Option<tokio::sync::broadcast::Receiver<()>>) -> Option<()> {
+    use tokio::sync::broadcast::error::RecvError;
+    match r {
+        Some(r) => match r.recv().await {
+            Ok(()) | Err(RecvError::Lagged(_)) => Some(()),
+            Err(RecvError::Closed) => None,
+        },
+        None => std::future::pending().await,
+    }
 }
 
 /// 额度账显示变了 ⇒ `true`；通道没了 ⇒ `false`（调用方把它摘掉）；没订 ⇒ 永远不醒。
@@ -214,6 +234,7 @@ pub(crate) fn attach_rx(
         out: std::collections::VecDeque::new(),
         quota: None,
         rotation: None,
+        rules: None,
     }
 }
 

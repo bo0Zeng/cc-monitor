@@ -89,6 +89,7 @@ scripts/quota-warm run         先跑一趟，之后按最早的醒点自己醒�
 都经 `~/.cc-monitor/bin/ccm -- --<命令>`；要参数的从 stdin 读一段 JSON（＝ 参数对象），stdout 一行 JSON。形状与字段全表见仓里 `src/doc/IPC-PROTOCOL.md` 的「额度账与账号轮换」一节及其下各小节。
 
 - `--quota-read`：这台额度账（每个号的状态 · `5h` / `7d` 用量与重置时刻 · 登录 · 从没出过数的号）。
-- `--rotation-read` / `--rotation-set`：这台的默认轮换（顺序 · 勾上哪几个 · 满了才换还是到 N% 就换）；动态改顺序 ＝ 读额度账、自己排好、整份写回。
+- `--rotation-rules-read`：这台的轮换规则表（每条：名字 · 顺序 · 勾上哪几个 · 满了才换还是到 N% 就换 · 封顶与时段 · 最多等几分钟 · 谁在用）；`defaultRule` ＝ 本机默认指向哪条。
+- `--rotation-rule-save`：新建（不给 `id`）或整份改一条（给 `id` ＋ 读到的 `rev` 作 `ifRev`；别处先改过 ⇒ `{state:"conflict"}`、不写）；动态改顺序 ＝ 读额度账、自己排好、整份写回默认那条。`--rotation-rule-rename` · `--rotation-rule-delete` · `--rotation-default-set` 同族。
 - `--rotation-session-read` / `--rotation-session-set`：一批会话的轮换与「账号」格（卡住的会话最早什么时候能续：`blocked.earliest.at`）。
 - `--rotation-switch`：现在就换（`hot` 不重启 · `restart` 重开）。

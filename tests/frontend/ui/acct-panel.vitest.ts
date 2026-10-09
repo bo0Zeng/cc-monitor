@@ -9,12 +9,13 @@ const switchHot = vi.fn();
 const switchRestart = vi.fn();
 const runRemoteAttach = vi.fn();
 const openLog = vi.fn();
-vi.mock("../../../src/frontend/ui/quota-reads", () => ({
+vi.mock("../../../src/frontend/ui/quota-reads", async (orig) => ({
+  ...(await orig<typeof import("../../../src/frontend/ui/quota-reads")>()),
   writeSessionRotation: (...a: unknown[]) => writeSessionRotation(...a),
   switchHot: (...a: unknown[]) => switchHot(...a),
   switchRestart: (...a: unknown[]) => switchRestart(...a),
   readQuota: vi.fn(() => new Promise(() => {})),
-  readRotation: vi.fn(() => new Promise(() => {})),
+  readRules: vi.fn(() => new Promise(() => {})),
   readSessionRotation: vi.fn(() => new Promise(() => {})),
 }));
 
@@ -31,6 +32,7 @@ import { appStore } from "../../../src/frontend/ui/app-store.ts";
 import type { QuotaRead } from "../../../src/frontend/ui/quota-lines.ts";
 import type { Rotation } from "../../../src/frontend/ui/generated/Rotation.ts";
 import type { SessionRotation } from "../../../src/frontend/ui/generated/SessionRotation.ts";
+import type { RuleRow, RulesRead } from "../../../src/frontend/ui/quota-reads.ts";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 
 const NOW = 1_791_189_600;
@@ -66,9 +68,27 @@ const LEDGER: QuotaRead = {
   earliestReturn: null,
 };
 
+/** 一张只有默认那一条的规则表（名字 `默认`）。 */
+function rulesOf(rotation: Rotation, more: RuleRow[] = []): RulesRead {
+  const row = (id: string, name: string, r: Rotation, isDefault: boolean): RuleRow => ({
+    id,
+    name,
+    rotation: r,
+    rev: 1,
+    updatedAt: NOW,
+    isDefault,
+    users: { live: 1, ended: 0, follow: 1, sids: ["s1"] },
+    summary: "",
+    explain: "",
+    missing: [],
+    atLimitApplies: false,
+  });
+  return { state: "present", defaultRule: "r_def", rules: [row("r_def", "日常", rotation, true), ...more] };
+}
+
 function seed(p: Partial<SessionRotation>, custom: Rotation | undefined): void {
   appStore.quota.set(new Map([["<local>", LEDGER]]));
-  appStore.rotationDefault.set(new Map([["<local>", { state: "present", rotation: { order: [{ start: true }], enabled: [], when: "full", atLimit: "continue" }, followers: 1 }]]));
+  appStore.rotationRules.set(new Map([["<local>", rulesOf({ order: [{ start: true }], enabled: [], when: "full", atLimit: "continue", wait: 10 })]]));
   appStore.sessionRotation.set(
     new Map([
       [
@@ -79,7 +99,8 @@ function seed(p: Partial<SessionRotation>, custom: Rotation | undefined): void {
           read: {
             state: "present",
             agent: "claude-code",
-            follow: custom === undefined,
+            source: custom === undefined ? "follow" : "custom",
+            explain: "",
             custom,
             account: { start: "work", current: "work", since: NOW - 600, history: [], inPlace: "ok" },
             next: "team",
@@ -111,14 +132,14 @@ beforeEach(() => {
 
 describe("账号面板", () => {
   it("本会话：勾上一个号 ⇒ 整份写回（顺序里没有的排末尾，挪按量号到末尾是后端的事）", async () => {
-    seed({}, { order: [{ start: true }, "team"], enabled: ["team"], when: "full", atLimit: "continue" });
+    seed({}, { order: [{ start: true }, "team"], enabled: ["team"], when: "full", atLimit: "continue", wait: 10 });
     openAccountPanel("s1", "<local>", host);
     const boxes = [...panel().querySelectorAll<HTMLInputElement>('input[type="checkbox"]')];
     expect(boxes.map((b) => b.getAttribute("aria-label"))).toEqual([copyText("acct.row.checkAria", { name: "work" }), copyText("acct.row.checkAria", { name: "team" }), copyText("acct.row.checkAria", { name: "api" })]);
     expect(boxes[0].disabled, "起始 · 在用那一行锁着").toBe(true);
     boxes[2].click();
     await flush();
-    expect(writeSessionRotation).toHaveBeenCalledWith("<local>", ["s1"], { custom: { order: [{ start: true }, "team", "api"], enabled: ["team", "api"], when: "full", atLimit: "continue" } });
+    expect(writeSessionRotation).toHaveBeenCalledWith("<local>", ["s1"], { custom: { order: [{ start: true }, "team", "api"], enabled: ["team", "api"], when: "full", atLimit: "continue", wait: 10 } });
   });
 
   describe("勾 / 不勾只改 enabled，order 逐字不变（不凭空插「起始账号」那一格）", () => {
@@ -126,7 +147,7 @@ describe("账号面板", () => {
     const lastWrite = (): Rotation => (writeSessionRotation.mock.calls.at(-1)![2] as { custom: Rotation }).custom;
 
     it("没有占位的那份：勾上序外的号 ⇒ 只排到末尾、不插占位", async () => {
-      seed({}, { order: ["team", "work"], enabled: ["team", "work"], when: "full", atLimit: "continue" });
+      seed({}, { order: ["team", "work"], enabled: ["team", "work"], when: "full", atLimit: "continue", wait: 10 });
       openAccountPanel("s1", "<local>", host);
       boxOf("api").click();
       await flush();
@@ -135,7 +156,7 @@ describe("账号面板", () => {
     });
 
     it("没有占位的那份：取消勾 ⇒ order 原样", async () => {
-      seed({}, { order: ["team", "work"], enabled: ["team", "work"], when: "full", atLimit: "continue" });
+      seed({}, { order: ["team", "work"], enabled: ["team", "work"], when: "full", atLimit: "continue", wait: 10 });
       openAccountPanel("s1", "<local>", host);
       boxOf("team").click();
       await flush();
@@ -144,7 +165,7 @@ describe("账号面板", () => {
     });
 
     it("占位 ＋ 起始号也具名在序里：取消勾别的号 ⇒ 具名那格不丢", async () => {
-      seed({}, { order: [{ start: true }, "team", "work"], enabled: ["team", "work"], when: "full", atLimit: "continue" });
+      seed({}, { order: [{ start: true }, "team", "work"], enabled: ["team", "work"], when: "full", atLimit: "continue", wait: 10 });
       openAccountPanel("s1", "<local>", host);
       boxOf("team").click();
       await flush();
@@ -153,7 +174,7 @@ describe("账号面板", () => {
     });
 
     it("没有占位的那份：Alt+↓ 移位 ⇒ 只换这两格，不插占位", async () => {
-      seed({}, { order: ["team", "work"], enabled: ["team", "work"], when: "full", atLimit: "continue" });
+      seed({}, { order: ["team", "work"], enabled: ["team", "work"], when: "full", atLimit: "continue", wait: 10 });
       openAccountPanel("s1", "<local>", host);
       panel().querySelector<HTMLElement>('[data-acct-row="team"]')!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", altKey: true, bubbles: true }));
       await flush();
@@ -162,16 +183,16 @@ describe("账号面板", () => {
   });
 
   it("无号可换：「满」触发时两态灰着；≥N% 时点「停」⇒ 写 atLimit stop", async () => {
-    seed({}, { order: [{ start: true }], enabled: [], when: "full", atLimit: "continue" });
+    seed({}, { order: [{ start: true }], enabled: [], when: "full", atLimit: "continue", wait: 10 });
     openAccountPanel("s1", "<local>", host);
     const seg = (): HTMLButtonElement[] => [...panel().querySelectorAll<HTMLButtonElement>(`[aria-label="${copyText("acct.lim.aria")}"] button`)];
     expect(seg().map((b) => [b.textContent, b.disabled])).toEqual([[copyText("acct.lim.go"), true], [copyText("acct.lim.stop"), true]]);
     toggleAccountPanel("s1", "<local>", host);
-    seed({}, { order: [{ start: true }], enabled: [], when: { threshold: { n: 90 } }, atLimit: "continue" });
+    seed({}, { order: [{ start: true }], enabled: [], when: { threshold: { n: 90 } }, atLimit: "continue", wait: 10 });
     openAccountPanel("s1", "<local>", host);
     seg()[1].click();
     await flush();
-    expect(writeSessionRotation).toHaveBeenCalledWith("<local>", ["s1"], { custom: { order: [{ start: true }], enabled: [], when: { threshold: { n: 90 } }, atLimit: "stop" } });
+    expect(writeSessionRotation).toHaveBeenCalledWith("<local>", ["s1"], { custom: { order: [{ start: true }], enabled: [], when: { threshold: { n: 90 } }, atLimit: "stop", wait: 10 } });
   });
 
   it("切换：缺省选后端给的下一个；热切换 ⇒ rotation-switch hot", async () => {
@@ -207,7 +228,7 @@ describe("账号面板 · 来源下拉（19:52 那件：分段一按方向键就
   const toasts = (): string[] => [...document.querySelectorAll<HTMLElement>('[role="status"], [role="alert"]')].map((t) => t.textContent ?? "");
 
   it("★ 面板打开焦点落在来源下拉上；合着时按任何方向键 / Home / End 都不发 rotation-session-set", async () => {
-    seed({}, { order: [{ start: true }, "team"], enabled: ["team"], when: "full", atLimit: "continue" });
+    seed({}, { order: [{ start: true }, "team"], enabled: ["team"], when: "full", atLimit: "continue", wait: 10 });
     openAccountPanel("s1", "<local>", host);
     expect(document.activeElement, "焦点在来源下拉").toBe(src());
     for (const key of ["ArrowLeft", "ArrowRight", "ArrowUp", "Home", "End"]) {
@@ -219,10 +240,11 @@ describe("账号面板 · 来源下拉（19:52 那件：分段一按方向键就
   });
 
   it("★ 选一项只写一次，toast「orders · 跟随默认」带撤销；撤销 ⇒ 写回原来源", async () => {
-    seed({}, { order: [{ start: true }, "team"], enabled: ["team"], when: "full", atLimit: "continue" });
+    seed({}, { order: [{ start: true }, "team"], enabled: ["team"], when: "full", atLimit: "continue", wait: 10 });
     openAccountPanel("s1", "<local>", host);
     src().click();
-    expect(items().map((i) => i.textContent)).toEqual([copyText("rot.src.follow"), copyText("rot.src.custom")]);
+    const texts = items().map((i) => i.textContent ?? "");
+    expect([texts[0].startsWith(copyText("rot.src.follow")), texts.at(-1)], "跟随默认在头、本会话在尾").toEqual([true, copyText("rot.src.custom")]);
     items()[0].click();
     await flush();
     expect(writeSessionRotation.mock.calls).toEqual([["<local>", ["s1"], "follow"]]);
@@ -322,9 +344,9 @@ describe("账号面板 · 重启切换", () => {
   });
 
   describe("从设置窗那一行点进来：滚到那一节，零写入", () => {
-    const DEF: Rotation = { order: [{ start: true }, "team", "api"], enabled: ["team", "api"], when: { threshold: { n: 80 } }, atLimit: "continue", cap: { team: { "5h": [{ at: "01:00-20:00", n: 99 }] } } };
+    const DEF: Rotation = { order: [{ start: true }, "team", "api"], enabled: ["team", "api"], when: { threshold: { n: 80 } }, atLimit: "continue", wait: 10, cap: { team: { "5h": [{ at: "01:00-20:00", n: 99 }] } } };
     const seedDefault = (): void => {
-      appStore.rotationDefault.set(new Map([["<local>", { state: "present", rotation: DEF, followers: 1 }]]));
+      appStore.rotationRules.set(new Map([["<local>", rulesOf(DEF)]]));
     };
     const anchored = (a: string): HTMLElement | null => panel().querySelector<HTMLElement>(`[data-acct-anchor="${a}"]`);
     // jsdom 没有布局：滚动的桩就是观测口（「请求滚到谁」）。
@@ -337,7 +359,7 @@ describe("账号面板 · 重启切换", () => {
     });
 
     it("本会话用自己的轮换：分段照实停在「本会话」，下面摊开只读的默认轮换（顺序 · 触发 · 封顶）", async () => {
-      seed({}, { order: [{ start: true }, "team"], enabled: ["team"], when: "full", atLimit: "continue" });
+      seed({}, { order: [{ start: true }, "team"], enabled: ["team"], when: "full", atLimit: "continue", wait: 10 });
       seedDefault();
       openAccountPanelAt("s1", "<local>", host, "default-rotation");
       await flush();

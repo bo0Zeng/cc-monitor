@@ -5,7 +5,7 @@ import type { RotationSlot } from "./RotationSlot";
 import type { RotationWhen } from "./RotationWhen";
 
 /**
- * 一份轮换：顺序 · 勾了哪几个 · 缺省上限（`when`）· 每号上限 · 每号单段预算 · 前面的号回来就切回 · 到上限没号可换时怎么办。
+ * 一份轮换：顺序 · 勾了哪几个 · 缺省上限（`when`）· 每号上限 · 每号单段预算 · 前面的号回来就切回 · 到上限没号可换时怎么办 · 最多等几分钟。
  * 起始账号占位恒算勾上。后三格缺省（空 · 空 · 关）时不写出。
  */
 export type Rotation = { order: Array<RotationSlot>, enabled: Array<string>, when: RotationWhen, 
@@ -24,4 +24,9 @@ stint?: { [key in string]: { [key in string]: number } },
 /**
  * 排在此刻的号前面的号又能用了 ⇒ 下一发切回去。
  */
-preempt?: boolean, };
+preempt?: boolean, 
+/**
+ * 最多等几分钟：要往池里更靠后的号换时，排在它前面的号（含此刻的）有一个在这么多分钟内回来 ⇒ 先停着等它，不往后换。
+ * `0` ＝ 不等。盘上缺 ⇒ 缺省 10。
+ */
+wait: number, };

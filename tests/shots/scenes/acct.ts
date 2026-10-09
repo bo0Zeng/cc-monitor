@@ -2,7 +2,7 @@
  * 额度与账号：状态栏账号按钮各态 ＋ 悬停卡 · 「账号」面板（当前 · 轮换 · 无号可换两态 · 切换 · 记录 · 时间轴）·
  * 消息流换号条 · 会话头下提示条 · 标签页 `✕ 5h` · 右键「账号…」。
  *
- * 假后端答 `quota-read` · `rotation-read` · `rotation-session-read/-set` · `rotation-switch`（形状照 IPC-PROTOCOL.md 与生成的类型），
+ * 假后端答 `quota-read` · `rotation-rules-read` · `rotation-session-read/-set` · `rotation-switch`（形状照 IPC-PROTOCOL.md 与生成的类型），
  * 号名是编的。时刻按页里此刻的钟现算（「还有多久」只在画的那一刻算）。
  */
 import type { Scene } from "./index";
@@ -31,6 +31,8 @@ interface Sess {
   start: string;
   current: string;
   follow: boolean;
+  /** 用某条规则（给了就不看 `follow`）。 */
+  rule?: string;
   custom?: Record<string, unknown>;
   history: Record<string, unknown>[];
   inPlace: string;
@@ -42,6 +44,8 @@ interface Sess {
 interface AcctWorld {
   accounts: Acct[];
   default: Record<string, unknown> | null;
+  /** 默认那条（日常）之外的规则。 */
+  rules?: { id: string; name: string; rotation: Record<string, unknown>; users?: number }[];
   /** 按 tab 序号（0 起）。 */
   sessions: Record<number, Sess>;
   /** 重启那一形 `rotation-switch` 每个会话答什么（形状照 `rotation-switch-restart` 金样）；不给 ⇒ 成了、开 `proj-cc`。 */
@@ -61,7 +65,7 @@ function baseAccounts(): Acct[] {
   ];
 }
 
-const ROT_CUSTOM = { order: [{ start: true }, "personal", "team", "api"], enabled: ["personal", "team"], when: { threshold: { n: 90 } }, atLimit: "continue" };
+const ROT_CUSTOM = { order: [{ start: true }, "personal", "team", "api"], enabled: ["personal", "team"], when: { threshold: { n: 90 } }, atLimit: "continue", wait: 10 };
 
 function swappedSess(over: Partial<Sess> = {}): Sess {
   return {
@@ -83,6 +87,23 @@ function abs(t: number | undefined): number | undefined {
 function showOf(a: Acct): Record<string, unknown> {
   const slots = a.slots.map((x) => ({ slot: x.slot, ...(x.pct === undefined ? {} : { pct: x.pct }), ...(x.resetsAt === undefined ? {} : { resetsAt: abs(x.resetsAt) }) }));
   return { kind: a.kind, state: a.unseen ? "unseen" : a.state, stale: a.stale ?? false, ...(a.limiting ? { limiting: a.limiting } : {}), slots, login: a.login ?? "ok" };
+}
+
+/** 规则表里的一行（摘要 · 说明是编的，形状照 `rotation-rules-read`）。 */
+function ruleRow(id: string, name: string, rotation: Record<string, unknown>, isDefault: boolean, live: number): Record<string, unknown> {
+  return {
+    id,
+    name,
+    rotation,
+    rev: 3,
+    updatedAt: now() - 3600,
+    isDefault,
+    users: { live, ended: 2, follow: isDefault ? live : 0, sids: [] },
+    summary: isDefault ? "起始 → personal · 满" : "team → personal · ≥90% · 抢回",
+    explain: "起始账号先用 · 被拒才换 · 不主动换回",
+    missing: [],
+    atLimitApplies: rotation.when !== "full",
+  };
 }
 
 function acctOps(aw: AcctWorld, w: () => World): Record<string, OpHandler> {
@@ -122,12 +143,15 @@ function acctOps(aw: AcctWorld, w: () => World): Record<string, OpHandler> {
       usableNow: aw.accounts.filter((a) => !["refused", "overageInUse"].includes(a.state) && (a.login ?? "ok") === "ok").map((a) => a.account),
       earliestReturn: aw.accounts.some((a) => a.state === "refused") ? { account: "work", at: abs(2.3 * H1) } : null,
     }),
-    "rotation-read": () => ({
+    "rotation-rules-read": () => ({
       state: aw.default ? "present" : "absent",
       reason: null,
       path: "/home/user/.cc-monitor/rotation.json",
-      rotation: aw.default ?? { order: [{ start: true }], enabled: [], when: "full", atLimit: "continue" },
-      followers: 2,
+      defaultRule: "r_daily",
+      rules: [
+        ruleRow("r_daily", "日常", aw.default ?? { order: [{ start: true }], enabled: [], when: "full", atLimit: "continue", wait: 10 }, true, 4),
+        ...(aw.rules ?? []).map((r) => ruleRow(r.id, r.name, r.rotation, false, r.users ?? 0)),
+      ],
     }),
     "rotation-session-read": (_o, req) => {
       const sessions: Record<string, unknown> = {};
@@ -141,7 +165,9 @@ function acctOps(aw: AcctWorld, w: () => World): Record<string, OpHandler> {
         sessions[sid] = {
           state: "present",
           agent: "claude-code",
-          follow: s.follow,
+          source: s.rule ? { rule: s.rule } : s.follow ? "follow" : "custom",
+          ...(s.rule || s.follow ? { ruleName: (aw.rules ?? []).find((r) => r.id === s.rule)?.name ?? "日常" } : {}),
+          explain: "起始账号先用 · 到 90% 从头取首个可用 · 不主动换回 · 前面的号 10m 内恢复则停着等 · 都到上限仍发",
           ...(s.custom ? { custom: s.custom } : {}),
           account: {
             start: s.start,
@@ -165,10 +191,14 @@ function acctOps(aw: AcctWorld, w: () => World): Record<string, OpHandler> {
         const s = sessOf(sid);
         if (!s) continue;
         const r = req.rotation as unknown;
+        s.rule = undefined;
         if (r === "follow") s.follow = true;
-        else if (r === "custom") {
+        else if (r === "custom" || r === "detach") {
           s.follow = false;
           s.custom ??= structuredClone(aw.default ?? ROT_CUSTOM);
+        } else if (typeof r === "object" && r !== null && "rule" in r) {
+          s.follow = false;
+          s.rule = (r as { rule: string }).rule;
         } else {
           s.follow = false;
           s.custom = (r as { custom: Record<string, unknown> }).custom;
@@ -201,7 +231,7 @@ function acctOps(aw: AcctWorld, w: () => World): Record<string, OpHandler> {
 function world(build: (aw: AcctWorld) => void, base: () => World = defaultWorld): () => World {
   return () => {
     const w = base();
-    const aw: AcctWorld = { accounts: baseAccounts(), default: { order: [{ start: true }, "personal"], enabled: ["personal"], when: "full", atLimit: "continue" }, sessions: { 0: swappedSess() } };
+    const aw: AcctWorld = { accounts: baseAccounts(), default: { order: [{ start: true }, "personal"], enabled: ["personal"], when: "full", atLimit: "continue", wait: 10 }, sessions: { 0: swappedSess() } };
     build(aw);
     Object.assign(w.ops, acctOps(aw, () => w));
     return w;
@@ -262,7 +292,7 @@ async function jumpFromSettings(machine: string, anchor: "timeline" | "default-r
   await sleep(900);
 }
 
-const DEFAULT_WITH_CAP = { order: [{ start: true }, "personal", "team"], enabled: ["personal", "team"], when: { threshold: { n: 85 } }, atLimit: "stop", cap: { team: { "5h": [{ at: "01:00-20:00", n: 99 }] } } };
+const DEFAULT_WITH_CAP = { order: [{ start: true }, "personal", "team"], enabled: ["personal", "team"], when: { threshold: { n: 85 } }, atLimit: "stop", wait: 10, cap: { team: { "5h": [{ at: "01:00-20:00", n: 99 }] } } };
 
 export const ACCT_SCENES: Scene[] = [
   scene("acct-jump-default-custom", "从设置窗点「默认轮换」· 本会话用自己的", "分段照实停在「本会话」；轮换块下摊开只读的「默认轮换」（顺序 · 触发 · 封顶），顶上一行灰字；全程不写", async () => {
@@ -364,6 +394,21 @@ export const ACCT_SCENES: Scene[] = [
     await waitFor('#kit-toast-stack [role="status"]');
     await sleep(600);
   }, world(() => {})),
+  scene("acct-src-rules", "面板 · 来源下拉列规则", "这台有 日常（默认）· 夜间 两条：下拉列 跟随默认（灰字 日常）· 规则 日常 · 规则 夜间 · 本会话；本会话在用 夜间", async () => {
+    await openPanel();
+    await click('aside[role="dialog"] [data-acct-src]');
+    await waitFor("[role=menu]");
+    await sleep(400);
+  }, world((aw) => {
+    aw.rules = [{ id: "r_night", name: "夜间", rotation: { order: [{ start: true }, "team", "personal"], enabled: ["team", "personal"], when: { threshold: { n: 90 } }, atLimit: "continue", wait: 10, preempt: true }, users: 2 }];
+    aw.sessions[0] = { ...swappedSess(), follow: false, rule: "r_night", custom: undefined };
+  })),
+  scene("acct-wait-record", "面板 · 记录 · 停着等前面的号", "personal 被拒、work 2 分钟后恢复（最多等 10m）⇒ 不换到 team：记录一行 等 work 恢复 · 不换到 team ↻…", async () => {
+    await openPanel();
+    await scrollPanelTo("记录");
+  }, world((aw) => {
+    aw.sessions[0] = { ...swappedSess(), history: [...swappedSess().history, { at: -0.02 * H1, from: "personal", to: "personal", why: { wait: { account: "work", instead: "team" } }, fromResetsAt: 0.03 * H1 }] };
+  })),
   scene("acct-panel-toast", "面板开着时来一条提示", "账号面板开着、按快捷键翻一下自动跟随：右下角那条让到面板左边，不压面板底栏「新会话默认」那一行", async () => {
     await openPanel();
     const t = document.activeElement as HTMLElement | null;

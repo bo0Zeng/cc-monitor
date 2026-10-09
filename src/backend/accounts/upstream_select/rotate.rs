@@ -240,6 +240,8 @@ impl Hop {
             stint: &rot.stint,
             preempt: rot.preempt,
             at_limit: at_limit_in_effect(&s.agent, rot.at_limit),
+            wait: rot.wait,
+            can_hold: crate::agents::limit_reply_of(&s.agent).is_some(),
             current,
             base: &s.baseline,
             above: &s.blocked_above,
@@ -517,6 +519,29 @@ impl Hop {
                     reply: reply(back.at, a.now, back.slot.as_deref()),
                 })
             }
+            Verdict::Wait {
+                instead,
+                back,
+                skipped,
+            } => {
+                let rec = SwitchRecord {
+                    at_text: None,
+                    from_resets_at_text: None,
+                    at: a.now,
+                    from: current.to_string(),
+                    to: current.to_string(),
+                    why: SwitchWhy::Wait {
+                        account: back.account.clone(),
+                        instead,
+                    },
+                    from_resets_at: Some(back.at),
+                };
+                self.stuck(a.sid, rec, &skipped);
+                let reply = crate::agents::limit_reply_of(a.agent)?;
+                Some(Go::Hold {
+                    reply: reply(back.at, a.now, back.slot.as_deref()),
+                })
+            }
         }
     }
 
@@ -703,7 +728,7 @@ impl Hop {
         let mut ready = |x: &str| self.reach(&a, &lib, x).map(|_| ());
         let next = decide::next_of(&f, &mut ready);
         let held = match decide::decide(&f, &mut ready) {
-            Verdict::Hold { back, .. } => Some(back),
+            Verdict::Hold { back, .. } | Verdict::Wait { back, .. } => Some(back),
             _ => None,
         };
         let blocked = if let Some(back) = held {
@@ -762,7 +787,12 @@ impl Hop {
             .collect();
         SessionRotationState::Present(Box::new(SessionRotation {
             agent: s.agent.clone(),
-            follow: s.follow,
+            source: s.source.clone(),
+            rule_name: book
+                .rule_of(s)
+                .and_then(|id| book.rules.get(id))
+                .map(|r| r.name.clone()),
+            explain: crate::accounts::quota::rule_text::explain(&rot),
             custom: s.custom.clone(),
             account: AccountCell {
                 since_text: None,

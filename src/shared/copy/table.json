@@ -20230,6 +20230,144 @@
       "zh": "找不到该机数据目录 · 额度账无处可读",
       "args": []
     },
+    "beRotation.rule.defaultName": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "默认",
+      "args": []
+    },
+    "beRotation.explain.firstStart": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "起始账号先用",
+      "args": []
+    },
+    "beRotation.explain.firstNamed": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{acct} 先用",
+      "args": ["acct"]
+    },
+    "beRotation.explain.atPct": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "到 {n}% 从头取首个可用",
+      "args": ["n"]
+    },
+    "beRotation.explain.onRefused": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "被拒才换",
+      "args": []
+    },
+    "beRotation.explain.preempt": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "前面的号恢复即切回",
+      "args": []
+    },
+    "beRotation.explain.noPreempt": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "不主动换回",
+      "args": []
+    },
+    "beRotation.explain.stint": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "每号用 {n} 点即让位",
+      "args": ["n"]
+    },
+    "beRotation.explain.wait": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "前面的号 {dur} 内恢复则停着等",
+      "args": ["dur"]
+    },
+    "beRotation.explain.off": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{acct} {at} 停用",
+      "args": ["acct", "at"]
+    },
+    "beRotation.explain.stop": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "都到上限即停",
+      "args": []
+    },
+    "beRotation.explain.go": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "都到上限仍发",
+      "args": []
+    },
+    "beRotation.sum.start": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "起始",
+      "args": []
+    },
+    "beRotation.sum.arrow": {
+      "kind": "body",
+      "role": "片段",
+      "zh": " → ",
+      "args": []
+    },
+    "beRotation.sum.more": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "+{n}",
+      "args": ["n"]
+    },
+    "beRotation.sum.pct": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "≥{n}%",
+      "args": ["n"]
+    },
+    "beRotation.sum.full": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "满",
+      "args": []
+    },
+    "beRotation.sum.preempt": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "抢回",
+      "args": []
+    },
+    "beRotation.sum.stint": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "单段 {n}",
+      "args": ["n"]
+    },
+    "beRotation.sum.stop": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "停",
+      "args": []
+    },
+    "beRotation.sum.cap": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "封顶 {n}",
+      "args": ["n"]
+    },
+    "beRotation.rule.gone": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "规则不存在",
+      "args": []
+    },
+    "beRotation.rule.isDefault": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "默认规则 · 先设别的为默认",
+      "args": []
+    },
     "beRotation.write.noParent": {
       "kind": "error",
       "role": "原因格",
@@ -21071,6 +21209,12 @@
       "zh": "本会话",
       "args": []
     },
+    "rot.src.rule": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "规则 {name}",
+      "args": ["name"]
+    },
     "rot.done.src": {
       "kind": "body",
       "role": "toast",
@@ -21081,12 +21225,6 @@
       "kind": "title",
       "role": "标题",
       "zh": "轮换",
-      "args": []
-    },
-    "acct.rot.rule": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "起始账号先用；触发后按序取首个未满；不主动换回",
       "args": []
     },
     "acct.rot.trigger": {
@@ -21123,12 +21261,6 @@
       "kind": "body",
       "role": "片段",
       "zh": "跟随本机默认",
-      "args": []
-    },
-    "acct.rot.leadDefaultEmpty": {
-      "kind": "body",
-      "role": "空态",
-      "zh": "本机默认：仅起始账号 · 不轮换",
       "args": []
     },
     "acct.rot.settings": {
@@ -21462,6 +21594,12 @@
       "role": "片段",
       "zh": "{name} ≥{n}%",
       "args": ["name", "n"]
+    },
+    "acct.hist.wait": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "等 {name} 恢复 · 不换到 {instead}",
+      "args": ["name", "instead"]
     },
     "acct.hist.held": {
       "kind": "body",

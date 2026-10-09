@@ -68,6 +68,7 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/backend/accounts/manage/exec.rs", "let _ = door::remove(r.d, &r.r.home, &rel, dir);", Why::CleanupAfterFailure, "私有化的临时副本：复制期间源被改了 / 改权限失败之后删它；主错误已在回"),
     ("src/backend/common/own_state.rs", "let _ = std::fs::remove_file(&tmp);", Why::CleanupAfterFailure, "后端自有状态文件原子写的旁名（自己建的那一个）：写或换名失败之后删它；主错误已在回，删不掉只剩一份 0600 的旁名"),
     ("src/backend/accounts/quota/rotation.rs", "let _ = changes().send(sid.clone());", Why::NotAnError, "进程内「某会话变了」的广播：此刻没有流连接订它 ⇒ 发不出是正常的，盘上那份照旧在，客户端重问就有"),
+    ("src/backend/accounts/quota/rotation.rs", "let _ = rules_changes().send(());", Why::NotAnError, "进程内「规则表变了」的广播：此刻没有流连接订它 ⇒ 发不出是正常的，盘上那份照旧在，客户端重问就有"),
     ("src/backend/control/launch_account.rs", "let _ = std::fs::remove_file(&path);", Why::CleanupAfterFailure, "清陈旧便条（进程不在 / pid 被复用）：删不掉下次认便条时再清，它对不上进程不会被认"),
     ("src/backend/control/files_commit.rs", "let _ = std::fs::remove_file(&at);", Why::CleanupAfterFailure, "写块失败 / 收拾旧块：主错误已在回；删不掉等孤儿扫（7 天）"),
     ("src/backend/control/files_commit.rs", "let _ = std::fs::remove_file(&side);", Why::CleanupAfterFailure, "跨盘提交抄写失败后删自己这一趟的旁名；主错误已在回"),

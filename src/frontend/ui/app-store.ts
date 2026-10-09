@@ -11,7 +11,7 @@
 import type { AccountsState, SessionAccount } from "./accounts";
 import { LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import type { QuotaRead } from "./quota-lines";
-import type { RotationRead } from "./quota-reads";
+import type { RulesRead } from "./quota-reads";
 import type { SessionRotationState } from "./generated/SessionRotationState";
 
 /** 一格状态：取值 · 置值（同值不通知）· 订阅（回退订函数；订阅那一刻不回放当前值）。 */
@@ -82,8 +82,8 @@ export const appStore = {
   quota: new Slice<ReadonlyMap<Origin, QuotaRead | null>>(new Map()),
   /** 每个会话的轮换与「账号」格（按 sid）。 */
   sessionRotation: new Slice<ReadonlyMap<string, SessionRotationEntry>>(new Map()),
-  /** 每台的默认轮换（`rotation-read` 那一份；`null` = 那一问没结果）。 */
-  rotationDefault: new Slice<ReadonlyMap<Origin, RotationRead | null>>(new Map()),
+  /** 每台的规则表（`rotation-rules-read` 那一份；`null` = 那一问没结果）。 */
+  rotationRules: new Slice<ReadonlyMap<Origin, RulesRead | null>>(new Map()),
 };
 
 /** 往一张按键的表里换一格（整张换一份新的，订阅者按自己那一格取）。 */

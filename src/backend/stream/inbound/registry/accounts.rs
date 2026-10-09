@@ -42,28 +42,64 @@ pub(super) const SPECS: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // 换号那一族（帧面宿主 `faces/rotation_face.rs`）：默认轮换读 / 写 · 一批会话的轮换与「账号」格读 / 写 · 现在就换。
+    // 换号那一族（帧面宿主 `faces/rotation_face.rs`）：规则表读 / 存 / 改名 / 删 / 设为默认 · 一批会话的轮换与「账号」格读 / 写 · 现在就换。
     //   同步文件 I/O ⇒ 阻塞档；「现在就换」里重启换那一半要等 `session-restart` ⇒ 异步、失败可带码。
     CommandSpec {
-        name: "rotation-read",
-        summary: "这台的默认轮换",
+        name: "rotation-rules-read",
+        summary: "这台的轮换规则表",
         codes: &[],
-        fields: &[out("followers", "跟随默认轮换、此刻活着的会话有几个（判活同历史清单：pidfile 里的会话 id ＋ 进程还是同一个）"), out("path", "那份文件的绝对路径（家推不出 ⇒ `null`）"), out("reason", "只在 `unreadable` 时有"), out("rotation", "默认轮换；没动过 / 读不出 ⇒ 缺省那一份（只有占位、`\"full\"`、`\"continue\"`）"), out("state", "`\"present\"` · `\"absent\"`（没动过）· `\"unreadable\"`（读不出 / 家推不出）")],
+        fields: &[out("defaultRule", "默认规则的 id"), out("path", "那份文件的绝对路径（家推不出 ⇒ `null`）"), out("reason", "只在 `unreadable` 时有"), out("rules", "每条一项（默认那条在最前、其余按名字）：`{id, name, rotation, rev, updatedAt, isDefault, users: {live, ended, follow, sids}, summary, explain, missing, atLimitApplies}`；`users` 只数此刻生效的是这条的会话（跟随默认的算在默认那条，`follow` 是其中几个），`missing` ＝ 顺序里这台账号库没有的号，`summary` / `explain` 是后端写好的两句"), out("state", "`\"present\"` · `\"absent\"`（没动过：只有缺省的「默认」一条）· `\"unreadable\"`")],
         takes_input: false,
         run: Run::Blocking(|_r| {
-            crate::faces::rotation_face::answer_read()
+            crate::faces::rotation_face::answer_rules_read()
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
     CommandSpec {
-        name: "rotation-set",
-        summary: "写这台的默认轮换",
-        codes: &["bad_args", "io_failed"],
-        fields: &[out("followers", "跟随默认轮换的会话"), out("path", "同 `rotation-read`"), out("reason", "同 `rotation-read`"), arg("rotation", "整份默认轮换 `{order, enabled, when, atLimit?, cap?, stint?, preempt?}`"), out("state", "应答同 `rotation-read`")],
+        name: "rotation-rule-save",
+        summary: "新建或整份改一条轮换规则",
+        codes: &["bad_args", "io_failed", "no_such_rule"],
+        fields: &[arg("from", "新建时不给 `rotation`：从哪条规则拷（`\"blank\"` ＝ 只有起始账号）"), arg("id", "改哪条；不给 ＝ 新建"), arg("ifRev", "改之前读到的 `rev`；对不上 ⇒ `{state:\"conflict\", rev}`、不写"), arg("name", "规则名（1–24 字，这台不重名：去首尾空白、不分大小写）"), arg("rotation", "整份 `{order, enabled, when, atLimit?, cap?, stint?, preempt?, wait?}`"), out("state", "`\"saved\"`（带 `rule`，形状同 `rotation-rules-read` 的一项）· `\"refused\"`（带 `errors: [{cell, code, with?}]`：哪一格 · 短码 `empty` `dup` `tooLong` `range` `time` `same` `overlap` · 重叠时与第几段）· `\"conflict\"`（带 `rev`：此刻的版本）")],
         takes_input: true,
         run: Run::Blocking(|r| {
-            crate::faces::rotation_face::answer_set(&r.args)
+            crate::faces::rotation_face::answer_rule_save(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "rotation-rule-rename",
+        summary: "给一条轮换规则改名",
+        codes: &["bad_args", "io_failed", "no_such_rule"],
+        fields: &[arg("id", "哪条"), arg("ifRev", "同 `rotation-rule-save`"), arg("name", "新名字"), out("state", "同 `rotation-rule-save`")],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::faces::rotation_face::answer_rule_rename(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "rotation-rule-delete",
+        summary: "删轮换规则",
+        codes: &["bad_args", "io_failed", "is_default", "no_such_rule"],
+        fields: &[arg("ids", "要删的规则 id"), out("moved", "用着它们的会话落到了哪 `{sid: \"custom\" | \"follow\"}`"), arg("then", "用着它们的会话怎么办：`\"custom\"`（照那条拷一份成本会话的，行为不变）· `\"follow\"`（改跟随默认）")],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::faces::rotation_face::answer_rule_delete(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "rotation-default-set",
+        summary: "设这台的默认规则",
+        codes: &["bad_args", "io_failed", "no_such_rule"],
+        fields: &[out("defaultRule", "此刻的默认规则"), out("followers", "跟随默认、此刻活着的会话有几个"), arg("rule", "设为默认的那条")],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::faces::rotation_face::answer_default_set(&r.args)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
@@ -72,7 +108,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "rotation-session-read",
         summary: "一批会话的轮换与「账号」格",
         codes: &["bad_args", "failed"],
-        fields: &[out("now", "那份文件的三态（同 `rotation-read`）· 这台此刻的 unix 秒；回包里每个时刻（`at` · `seenAt` · `resetsAt` · `fromResetsAt` · `since`）旁边有一格 `…Text`：出口按这台本地钟写好的字（当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年带年），界面照抄、不换算"), out("reason", "那份文件的三态（同 `rotation-read`）· 这台此刻的 unix 秒"), out("sessions", "每个 sid 一份"), arg("sids", "会话 id 的数组"), out("state", "那份文件的三态（同 `rotation-read`）· 这台此刻的 unix 秒")],
+        fields: &[out("now", "那份文件的三态（同 `rotation-rules-read`）· 这台此刻的 unix 秒；回包里每个时刻（`at` · `seenAt` · `resetsAt` · `fromResetsAt` · `since`）旁边有一格 `…Text`：出口按这台本地钟写好的字（当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年带年），界面照抄、不换算"), out("reason", "那份文件的三态（同 `rotation-rules-read`）· 这台此刻的 unix 秒"), out("sessions", "每个 sid 一份"), arg("sids", "会话 id 的数组"), out("state", "那份文件的三态（同 `rotation-rules-read`）· 这台此刻的 unix 秒")],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::faces::rotation_face::answer_session_read(&r.args)
@@ -83,8 +119,8 @@ pub(super) const SPECS: &[CommandSpec] = &[
     CommandSpec {
         name: "rotation-session-set",
         summary: "改一批会话的轮换",
-        codes: &["bad_args", "failed", "io_failed"],
-        fields: &[arg("agent", "这台没见过的会话要另给：哪一家"), arg("rotation", "`\"follow\"` · `\"custom\"` · `{\"custom\":{…}}`"), out("sessions", "逐个结果 `{sid: {state:\"done\"} | {state:\"skipped\", code}}`"), arg("sids", "要改的会话"), arg("start", "起它的号")],
+        codes: &["bad_args", "failed", "io_failed", "no_such_rule"],
+        fields: &[arg("agent", "这台没见过的会话要另给：哪一家"), arg("rotation", "`\"follow\"` · `{\"rule\": id}` · `\"custom\"`（恢复本会话上一份，没有就照此刻生效的那份拷）· `\"detach\"`（照此刻生效的那份拷成本会话的）· `{\"custom\":{…}}`"), out("sessions", "逐个结果 `{sid: {state:\"done\"} | {state:\"skipped\", code}}`"), arg("sids", "要改的会话"), arg("start", "起它的号")],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::faces::rotation_face::answer_session_set(&r.args)

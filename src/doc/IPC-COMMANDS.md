@@ -160,6 +160,12 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 |---|---|---|
 | `sid` | string | 轮换或「账号」格变了的会话 |
 
+### `rotation_rules_changed`
+
+**这台的轮换规则表或默认指向变了**（新建 · 改 · 改名 · 删 · 设为默认；本进程或别的进程写的都推）。
+
+（无字段）
+
 ### `tasks_changed`
 
 **这台机器上某个会话的任务清单变了**（`<agent 家>/tasks/<sid>/` 里有动静）。
@@ -1089,35 +1095,79 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 码：`bad_args` · `child_timed_out` · `failed` · `io_failed` · `not_found` · `unsupported`
 
-#### `rotation-read`
+#### `rotation-rules-read`
 
-这台的默认轮换。
+这台的轮换规则表。
 
-不收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-read`
+不收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-rules-read`
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `followers` | ← | 跟随默认轮换、此刻活着的会话有几个（判活同历史清单：pidfile 里的会话 id ＋ 进程还是同一个） |
+| `defaultRule` | ← | 默认规则的 id |
 | `path` | ← | 那份文件的绝对路径（家推不出 ⇒ `null`） |
 | `reason` | ← | 只在 `unreadable` 时有 |
-| `rotation` | ← | 默认轮换；没动过 / 读不出 ⇒ 缺省那一份（只有占位、`"full"`、`"continue"`） |
-| `state` | ← | `"present"` · `"absent"`（没动过）· `"unreadable"`（读不出 / 家推不出） |
+| `rules` | ← | 每条一项（默认那条在最前、其余按名字）：`{id, name, rotation, rev, updatedAt, isDefault, users: {live, ended, follow, sids}, summary, explain, missing, atLimitApplies}`；`users` 只数此刻生效的是这条的会话（跟随默认的算在默认那条，`follow` 是其中几个），`missing` ＝ 顺序里这台账号库没有的号，`summary` / `explain` 是后端写好的两句 |
+| `state` | ← | `"present"` · `"absent"`（没动过：只有缺省的「默认」一条）· `"unreadable"` |
 
-#### `rotation-set`
+#### `rotation-rule-save`
 
-写这台的默认轮换。
+新建或整份改一条轮换规则。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-set`
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-rule-save`
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `followers` | ← | 跟随默认轮换的会话 |
-| `path` | ← | 同 `rotation-read` |
-| `reason` | ← | 同 `rotation-read` |
-| `rotation` | → | 整份默认轮换 `{order, enabled, when, atLimit?, cap?, stint?, preempt?}` |
-| `state` | ← | 应答同 `rotation-read` |
+| `from` | → | 新建时不给 `rotation`：从哪条规则拷（`"blank"` ＝ 只有起始账号） |
+| `id` | → | 改哪条；不给 ＝ 新建 |
+| `ifRev` | → | 改之前读到的 `rev`；对不上 ⇒ `{state:"conflict", rev}`、不写 |
+| `name` | → | 规则名（1–24 字，这台不重名：去首尾空白、不分大小写） |
+| `rotation` | → | 整份 `{order, enabled, when, atLimit?, cap?, stint?, preempt?, wait?}` |
+| `state` | ← | `"saved"`（带 `rule`，形状同 `rotation-rules-read` 的一项）· `"refused"`（带 `errors: [{cell, code, with?}]`：哪一格 · 短码 `empty` `dup` `tooLong` `range` `time` `same` `overlap` · 重叠时与第几段）· `"conflict"`（带 `rev`：此刻的版本） |
 
-码：`bad_args` · `io_failed`
+码：`bad_args` · `io_failed` · `no_such_rule`
+
+#### `rotation-rule-rename`
+
+给一条轮换规则改名。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-rule-rename`
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `id` | → | 哪条 |
+| `ifRev` | → | 同 `rotation-rule-save` |
+| `name` | → | 新名字 |
+| `state` | ← | 同 `rotation-rule-save` |
+
+码：`bad_args` · `io_failed` · `no_such_rule`
+
+#### `rotation-rule-delete`
+
+删轮换规则。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-rule-delete`
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `ids` | → | 要删的规则 id |
+| `moved` | ← | 用着它们的会话落到了哪 `{sid: "custom" \| "follow"}` |
+| `then` | → | 用着它们的会话怎么办：`"custom"`（照那条拷一份成本会话的，行为不变）· `"follow"`（改跟随默认） |
+
+码：`bad_args` · `io_failed` · `is_default` · `no_such_rule`
+
+#### `rotation-default-set`
+
+设这台的默认规则。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-default-set`
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `defaultRule` | ← | 此刻的默认规则 |
+| `followers` | ← | 跟随默认、此刻活着的会话有几个 |
+| `rule` | → | 设为默认的那条 |
+
+码：`bad_args` · `io_failed` · `no_such_rule`
 
 #### `rotation-session-read`
 
@@ -1127,11 +1177,11 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `now` | ← | 那份文件的三态（同 `rotation-read`）· 这台此刻的 unix 秒；回包里每个时刻（`at` · `seenAt` · `resetsAt` · `fromResetsAt` · `since`）旁边有一格 `…Text`：出口按这台本地钟写好的字（当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年带年），界面照抄、不换算 |
-| `reason` | ← | 那份文件的三态（同 `rotation-read`）· 这台此刻的 unix 秒 |
+| `now` | ← | 那份文件的三态（同 `rotation-rules-read`）· 这台此刻的 unix 秒；回包里每个时刻（`at` · `seenAt` · `resetsAt` · `fromResetsAt` · `since`）旁边有一格 `…Text`：出口按这台本地钟写好的字（当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年带年），界面照抄、不换算 |
+| `reason` | ← | 那份文件的三态（同 `rotation-rules-read`）· 这台此刻的 unix 秒 |
 | `sessions` | ← | 每个 sid 一份 |
 | `sids` | → | 会话 id 的数组 |
-| `state` | ← | 那份文件的三态（同 `rotation-read`）· 这台此刻的 unix 秒 |
+| `state` | ← | 那份文件的三态（同 `rotation-rules-read`）· 这台此刻的 unix 秒 |
 
 码：`bad_args` · `failed`
 
@@ -1144,12 +1194,12 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `agent` | → | 这台没见过的会话要另给：哪一家 |
-| `rotation` | → | `"follow"` · `"custom"` · `{"custom":{…}}` |
+| `rotation` | → | `"follow"` · `{"rule": id}` · `"custom"`（恢复本会话上一份，没有就照此刻生效的那份拷）· `"detach"`（照此刻生效的那份拷成本会话的）· `{"custom":{…}}` |
 | `sessions` | ← | 逐个结果 `{sid: {state:"done"} \| {state:"skipped", code}}` |
 | `sids` | → | 要改的会话 |
 | `start` | → | 起它的号 |
 
-码：`bad_args` · `failed` · `io_failed`
+码：`bad_args` · `failed` · `io_failed` · `no_such_rule`
 
 #### `rotation-switch`
 
@@ -3625,10 +3675,13 @@ cc-bus 钩子诊断。
 | `--resident-stop` `[--grace <秒>]` | 停这台的常驻后端：核身份 → SIGTERM → 宽限（缺省 35 秒）→ SIGKILL；回 `{stopped: graceful\|killed\|not_running, pid}` |
 | `--resident-verdict` | ＝ 帧命令 `resident-verdict`：远端常驻后端要不要换一次 |
 | `--resolve` | ＝ 帧命令 `resolve`：按 `ResumeSpec` 推出恢复命令 `CommandPlan`（与一次性 `--resolve` 同一个函数） |
-| `--rotation-read` | ＝ 帧命令 `rotation-read`：这台的默认轮换 |
+| `--rotation-default-set` | ＝ 帧命令 `rotation-default-set`：设这台的默认规则 |
+| `--rotation-rule-delete` | ＝ 帧命令 `rotation-rule-delete`：删轮换规则 |
+| `--rotation-rule-rename` | ＝ 帧命令 `rotation-rule-rename`：给一条轮换规则改名 |
+| `--rotation-rule-save` | ＝ 帧命令 `rotation-rule-save`：新建或整份改一条轮换规则 |
+| `--rotation-rules-read` | ＝ 帧命令 `rotation-rules-read`：这台的轮换规则表 |
 | `--rotation-session-read` | ＝ 帧命令 `rotation-session-read`：一批会话的轮换与「账号」格 |
 | `--rotation-session-set` | ＝ 帧命令 `rotation-session-set`：改一批会话的轮换 |
-| `--rotation-set` | ＝ 帧命令 `rotation-set`：写这台的默认轮换 |
 | `--rotation-switch` | ＝ 帧命令 `rotation-switch`：现在就换 |
 | `--search` `<query> [--include-tools] [--scope user|assistant] [--after-ms N] [--limit N]` | 全库全文搜索：每命中会话一行 `SessionHits`（camelCase，含 `hitsTruncated`），行序 = 最近优先 |
 | `--session-accounts` | 正在跑的会话各属哪个号：每条 `{pid, sessionId, cwd, configDir, account, bare, alive, viaRelay}`；`account:null` ＝ 查不到（不猜） |

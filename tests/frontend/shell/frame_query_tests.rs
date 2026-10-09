@@ -172,7 +172,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     ("history-list", "新帧命令：一台的全部会话一次给（`history_list.rs`），界面问 `<local>`、远端带 `origin`；取代按项目逐个展开的那两问"),
     // 额度与轮换（`src/frontend/ui/quota-reads.ts`）：额度账 · 轮换都是那台后端账号域自己的状态，monitor 从没有过这几条命令。
     ("quota-read", "新帧命令：那台的额度账 ＋ 显示态（判在后端）；界面状态栏按钮 · 悬停卡 · 账号面板只排版"),
-    ("rotation-read", "新帧命令：那台的默认轮换（面板「默认」那一份只读显示）"),
+    ("rotation-rules-read", "新帧命令：那台的轮换规则表（默认指向哪条 · 每条谁在用 · 摘要与说明由后端写），面板来源下拉与设置里规则管理只排版"),
     ("rotation-session-read", "新帧命令：一批会话的轮换与「账号」格（能不能热切换 · 下一个 · 卡住都由后端给）"),
     ("rotation-session-set", "新帧命令：改会话的轮换（勾号 · 拖序 · 触发 · 无号可换两态），新勾的按量号由后端挪末尾"),
     ("rotation-switch", "新帧命令：现在就换（热切换钉号 · 重启切换逐个交 `session-restart`）"),

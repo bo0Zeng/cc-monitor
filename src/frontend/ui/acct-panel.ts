@@ -3,7 +3,7 @@
  * 当前 · 轮换（来源下拉 `跟随默认 · 本会话`、触发 `满 / ≥N%`、无号可换 `继续跑 / 停`、勾与拖序、折着的时间轴）· 切换（选号、热切换 / 重启切换）· 记录 ·
  * 底栏 `新会话默认 [work ▾] … 管理账号…`。
  *
- * - 数据只经 `quota-read` · `rotation-read` · `rotation-session-read/-set` · `rotation-switch`（`quota-reads.ts`）与推送
+ * - 数据只经 `quota-read` · `rotation-rules-read` · `rotation-session-read/-set` · `rotation-switch`（`quota-reads.ts`）与推送
  *   （`acct-center.ts` 收进 `appStore`）。界面不判「能不能换 / 该不该换」：热切换成不成立看 `inPlace`、下一个看 `next`、
  *   满没满看显示态，都是后端给的。新勾的按量号挪到末尾也是后端做的。
  * - 改即生效，不要保存；存失败列表退回原样、块顶一条 `未保存 · 轮换未变 [重试]`。
@@ -32,7 +32,7 @@ import { toast } from "./kit/toast";
 import { attachTooltip } from "./kit/tooltip";
 import { ARRIVAL_BUDGET_MS } from "./launch-arrival";
 import { accountLabel, fmtRel, slotLabel, slotValue, type QuotaRead, type QuotaReadAccount } from "./quota-lines";
-import { switchHot, switchRestart, writeSessionRotation } from "./quota-reads";
+import { defaultRuleOf, switchHot, switchRestart, writeSessionRotation, type SessionRotationWrite } from "./quota-reads";
 import { runRemoteAttach } from "./remote-launch-run";
 import { standingOf } from "./sessions-where";
 import { startSettings } from "./tab-batch-run";
@@ -40,6 +40,7 @@ import type { AtLimit } from "./generated/AtLimit";
 import type { QuotaShow } from "./generated/QuotaShow";
 import type { Rotation } from "./generated/Rotation";
 import type { RotationSlot } from "./generated/RotationSlot";
+import type { RotationSource } from "./generated/RotationSource";
 import type { SessionRotationState } from "./generated/SessionRotationState";
 import s from "./acct.module.css";
 
@@ -160,7 +161,7 @@ export function openAccountPanel(sid: string, origin: Origin, host: AcctPanelHos
     }
     render(o, host);
   };
-  o.unsub.push(appStore.quota.subscribe(repaint), appStore.sessionRotation.subscribe(repaint), appStore.rotationDefault.subscribe(repaint), appStore.accounts.subscribe(repaint));
+  o.unsub.push(appStore.quota.subscribe(repaint), appStore.sessionRotation.subscribe(repaint), appStore.rotationRules.subscribe(repaint), appStore.accounts.subscribe(repaint));
   render(o, host);
   // 焦点落在来源下拉（合着时不写任何东西）；没有那一块（中转没见过）⇒ 留在关闭钮上。
   body.querySelector<HTMLElement>("[data-acct-src]")?.focus();
@@ -389,34 +390,52 @@ function rowUsage(q: QuotaShow | null, now: number, reading: QuotaReadAccount["r
   return box;
 }
 
+/** 会话的来源在下拉里那一项的值：`follow` · `custom` · `rule:<id>`。 */
+type SrcKey = "follow" | "custom" | `rule:${string}`;
+
+function srcKeyOf(src: RotationSource): SrcKey {
+  return typeof src === "string" ? src : `rule:${src.rule}`;
+}
+
+function srcWrite(k: SrcKey): SessionRotationWrite {
+  return k === "follow" || k === "custom" ? k : { rule: k.slice("rule:".length) };
+}
+
 function rotationBlock(o: Open, entry: SessionRotationEntry, read: Present, quota: QuotaRead | null, host: AcctPanelHost): HTMLElement {
-  const def = appStore.rotationDefault.get().get(o.origin) ?? null;
-  const follow = read.follow;
-  const r: Rotation | null = follow ? (def?.rotation ?? null) : (read.custom ?? def?.rotation ?? null);
+  const rules = appStore.rotationRules.get().get(o.origin) ?? null;
+  const def = defaultRuleOf(rules);
+  const own = read.source === "custom";
+  const follow = !own;
+  const src = read.source;
+  const ruleRow = typeof src === "object" ? (rules?.rules.find((x) => x.id === src.rule) ?? def) : src === "follow" ? def : null;
+  const r: Rotation | null = own ? (read.custom ?? def?.rotation ?? null) : (ruleRow?.rotation ?? null);
   const sec = section(copyText("acct.rot.title"));
   const now = entry.now;
 
   const bar = el("div", s.acctRotBar);
-  const was: "follow" | "custom" = follow ? "follow" : "custom";
+  const was = srcKeyOf(read.source);
+  const label = (k: SrcKey): string => (k === "follow" ? copyText("rot.src.follow") : k === "custom" ? copyText("rot.src.custom") : copyText("rot.src.rule", { name: rules?.rules.find((x) => `rule:${x.id}` === k)?.name ?? "" }));
   // 来源：下拉，只有在面板里明确点一项才写（合着时方向键一概不做）；写成了 toast 带撤销。
-  const src = select({
+  const srcSel = select({
     label: copyText("rot.src.label"),
     options: [
-      { value: "follow", label: copyText("rot.src.follow") },
+      { value: "follow", label: copyText("rot.src.follow"), note: def?.name },
+      ...(rules?.rules ?? []).map((x) => ({ value: `rule:${x.id}`, label: copyText("rot.src.rule", { name: x.name }) })),
       { value: "custom", label: copyText("rot.src.custom") },
     ],
     value: was,
     closedKeys: "open",
-    onChange: (k) => void setSource(o, host, k === "follow" ? "follow" : "custom", was),
+    onChange: (k) => void setSource(o, host, k as SrcKey, was, label),
   });
-  src.el.dataset.acctSrc = "true";
+  const srcEl = srcSel.el;
+  srcEl.dataset.acctSrc = "true";
   const srcRow = el("div", s.acctSrcRow);
-  srcRow.append(el("span", s.acctTriggerLabel, copyText("rot.src.label")), src.el);
+  srcRow.append(el("span", s.acctTriggerLabel, copyText("rot.src.label")), srcEl);
   const info = el("span", s.acctInfo);
   info.tabIndex = 0;
   info.setAttribute("aria-label", copyText("acct.rot.infoAria"));
   info.appendChild(icon("info", "compact"));
-  attachTooltip(info, copyText("acct.rot.rule"));
+  attachTooltip(info, read.explain);
   srcRow.appendChild(info);
   sec.content.appendChild(srcRow);
   if (r) bar.appendChild(triggerControls(o, host, r, follow, read.atLimit));
@@ -427,12 +446,12 @@ function rotationBlock(o: Open, entry: SessionRotationEntry, read: Present, quot
     sec.content.appendChild(banner("error", copyText("acct.rot.saveFail"), [retry]));
   }
   if (follow) {
-    const lead = el("div", s.acctLead, def?.state === "absent" || !def ? copyText("acct.rot.leadDefaultEmpty") : copyText("acct.rot.leadFollow"));
+    const lead = el("div", s.acctLead, copyText("acct.rot.leadFollow"));
     lead.appendChild(button({ label: copyText("acct.rot.settings"), kind: "ghost", size: "compact", onClick: () => host.openSettings(o.origin) }));
     sec.content.appendChild(lead);
   }
   if (r) sec.content.appendChild(rotationList(o, host, read, r, quota, now, !follow));
-  if (o.showDefault && !follow && def?.state === "present") sec.content.appendChild(defaultPreview(o, host, read, def.rotation, quota, now));
+  if (o.showDefault && own && def) sec.content.appendChild(defaultPreview(o, host, read, def.rotation, quota, now));
   const tl = timelineFold(o, read, r, quota, now);
   tl.dataset.acctAnchor = "timeline";
   sec.content.appendChild(tl);
@@ -658,7 +677,7 @@ function startDrag(ev: PointerEvent, o: Open, host: AcctPanelHost, list: HTMLEle
 }
 
 /** 写这个会话的轮换：成 ⇒ 重问这个会话；败 ⇒ 列表退回原样、块顶一条错误条（重试写同一份）。回成没成。 */
-async function save(o: Open, host: AcctPanelHost, w: "follow" | "custom" | { custom: Rotation }): Promise<boolean> {
+async function save(o: Open, host: AcctPanelHost, w: SessionRotationWrite): Promise<boolean> {
   let ok = true;
   try {
     const got = await writeSessionRotation(o.origin, [o.sid], w);
@@ -667,7 +686,7 @@ async function save(o: Open, host: AcctPanelHost, w: "follow" | "custom" | { cus
     o.saveFailed = null;
   } catch (e) {
     console.warn("[acct] rotation-session-set 失败：", e);
-    o.saveFailed = typeof w === "object" ? w.custom : null;
+    o.saveFailed = typeof w === "object" && "custom" in w ? w.custom : null;
     ok = false;
     if (open === o) render(o, host);
   }
@@ -678,12 +697,11 @@ async function save(o: Open, host: AcctPanelHost, w: "follow" | "custom" | { cus
 }
 
 /** 换来源：写一次；成了 toast `orders · 跟随默认 [撤销]`，撤销 ＝ 写回原来源（本会话那份后端一直留着）。 */
-async function setSource(o: Open, host: AcctPanelHost, to: "follow" | "custom", was: "follow" | "custom"): Promise<void> {
-  if (!(await save(o, host, to))) return;
-  const label = (k: "follow" | "custom"): string => (k === "follow" ? copyText("rot.src.follow") : copyText("rot.src.custom"));
+async function setSource(o: Open, host: AcctPanelHost, to: SrcKey, was: SrcKey, label: (k: SrcKey) => string): Promise<void> {
+  if (!(await save(o, host, srcWrite(to)))) return;
   toast(copyText("rot.done.src", { session: host.sessionTitle(o.sid), src: label(to) }), "", {
     level: "success",
-    action: { label: copyText("kit.toast.undo"), run: () => void save(o, host, was) },
+    action: { label: copyText("kit.toast.undo"), run: () => void save(o, host, srcWrite(was)) },
   });
 }
 

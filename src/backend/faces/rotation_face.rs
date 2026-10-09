@@ -131,24 +131,6 @@ fn read_book(ctx: &Ctx) -> (&'static str, Option<String>, Book) {
     }
 }
 
-/// 默认轮换的线上形状（读与写回同一形）。`followers` ＝ 跟随它的活会话有几个。
-fn default_wire(ctx: &Ctx) -> Value {
-    let (state, reason, book) = read_book(ctx);
-    let live = (ctx.live)();
-    let followers = book
-        .sessions
-        .iter()
-        .filter(|(sid, s)| s.follow && live.contains(*sid))
-        .count();
-    json!({
-        "state": state,
-        "reason": reason,
-        "path": ctx.hop.store.path().map(|p| p.display().to_string()),
-        "rotation": book.default_rotation(),
-        "followers": followers,
-    })
-}
-
 /// 凭据文件那一家（账号库是它的）：默认轮换里新勾的按量号按它判。
 const LIBRARY_AGENT: &str = crate::accounts::upstream_select::CREDENTIALS_FILE_AGENT;
 
@@ -232,36 +214,352 @@ pub(crate) fn quota_read_with(ctx: &Ctx, now: u64) -> Value {
     v
 }
 
-/// `rotation-read`：这台的默认轮换。
-pub(crate) fn answer_read() -> Answer {
-    Ok(answer_read_with(&Ctx::here()))
+// ── 规则表：读 · 存 · 改名 · 删 · 设为默认 ────────────────────────────────────────────
+
+use crate::accounts::quota::rotation::{CellError, Rule, Source};
+use crate::accounts::quota::rule_text;
+
+/// 一条规则的线上形状：本身那几格 ＋ 后端算好的（谁在用 · 摘要 · 说明 · 这台没有的号 · 「无号可换」作不作数）。
+fn rule_wire(
+    ctx: &Ctx,
+    book: &Book,
+    id: &str,
+    r: &Rule,
+    live: &std::collections::BTreeSet<String>,
+) -> Value {
+    let mut sids: Vec<&String> = Vec::new();
+    let (mut ended, mut follow) = (0usize, 0usize);
+    for (sid, s) in &book.sessions {
+        if book.rule_of(s) != Some(id) {
+            continue;
+        }
+        if live.contains(sid) {
+            sids.push(sid);
+            if s.source == Source::Follow {
+                follow += 1;
+            }
+        } else {
+            ended += 1;
+        }
+    }
+    let lib = ctx.hop.library();
+    let missing: Vec<&String> = r
+        .rotation
+        .order
+        .iter()
+        .filter_map(|slot| match slot {
+            rotation::RotationSlot::Named(a) if !lib.accounts.iter().any(|x| &x.id == a) => Some(a),
+            _ => None,
+        })
+        .collect();
+    json!({
+        "id": id,
+        "name": r.name,
+        "rotation": r.rotation,
+        "rev": r.rev,
+        "updatedAt": r.updated_at,
+        "isDefault": book.default_rule == id,
+        "users": {"live": sids.len(), "ended": ended, "follow": follow, "sids": sids},
+        "summary": rule_text::summary(&r.rotation),
+        "explain": rule_text::explain(&r.rotation),
+        "missing": missing,
+        "atLimitApplies": rule_text::at_limit_applies(&r.rotation),
+    })
 }
 
-pub(crate) fn answer_read_with(ctx: &Ctx) -> Value {
-    default_wire(ctx)
+fn rules_wire(ctx: &Ctx) -> Value {
+    let (state, reason, book) = read_book(ctx);
+    let live = (ctx.live)();
+    let mut rules: Vec<(&String, &Rule)> = book.rules.iter().collect();
+    // 默认那条排最前，其余按名字。
+    rules.sort_by(|a, b| {
+        (a.0 != &book.default_rule)
+            .cmp(&(b.0 != &book.default_rule))
+            .then_with(|| a.1.name.cmp(&b.1.name))
+    });
+    json!({
+        "state": state,
+        "reason": reason,
+        "path": ctx.hop.store.path().map(|p| p.display().to_string()),
+        "defaultRule": book.default_rule,
+        "rules": rules.iter().map(|(id, r)| rule_wire(ctx, &book, id, r, &live)).collect::<Vec<_>>(),
+    })
 }
 
-/// `rotation-set`：整份写回这台的默认轮换（`{rotation}`）；不合法整份拒、说哪一格。
-pub(crate) fn answer_set(args: &Value) -> Answer {
-    answer_set_with(&Ctx::here(), args)
+/// `rotation-rules-read`：这台的规则表。
+pub(crate) fn answer_rules_read() -> Answer {
+    Ok(answer_rules_read_with(&Ctx::here()))
 }
 
-pub(crate) fn answer_set_with(ctx: &Ctx, args: &Value) -> Answer {
-    let v = args
-        .get("rotation")
-        .ok_or_else(|| bad("missing `rotation`"))?;
+pub(crate) fn answer_rules_read_with(ctx: &Ctx) -> Value {
+    rules_wire(ctx)
+}
+
+/// 名称那一格的错：空 · 超长 · 与这台别的规则重名（不分大小写、去首尾空白）。
+fn name_errors(book: &Book, id: Option<&str>, name: &str) -> Vec<CellError> {
+    let code = if name.trim().is_empty() {
+        Some("empty")
+    } else if name.trim().chars().count() > rotation::RULE_NAME_MAX {
+        Some("tooLong")
+    } else if book.rules.iter().any(|(k, r)| {
+        Some(k.as_str()) != id && rotation::name_key(&r.name) == rotation::name_key(name)
+    }) {
+        Some("dup")
+    } else {
+        None
+    };
+    code.map(|c| CellError {
+        cell: "name".into(),
+        code: c.into(),
+        with: None,
+    })
+    .into_iter()
+    .collect()
+}
+
+fn refused(errors: Vec<CellError>) -> Answer {
+    Ok(json!({"state": "refused", "errors": errors}))
+}
+
+fn conflict(rev: u64) -> Answer {
+    Ok(json!({"state": "conflict", "rev": rev}))
+}
+
+fn if_rev(args: &Value) -> Result<Option<u64>, (&'static str, String)> {
+    match args.get("ifRev") {
+        None | Some(Value::Null) => Ok(None),
+        Some(v) => v
+            .as_u64()
+            .map(Some)
+            .ok_or_else(|| bad("`ifRev` must be a non-negative integer")),
+    }
+}
+
+fn rule_id_arg(args: &Value, key: &str) -> Result<Option<String>, (&'static str, String)> {
+    match args.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::String(s))
+            if !s.is_empty()
+                && s.len() <= 32
+                && s.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_') =>
+        {
+            Ok(Some(s.clone()))
+        }
+        Some(_) => Err(bad(&format!("`{key}` must be a rule id"))),
+    }
+}
+
+/// 写成之后回那一条（线上形状）。
+fn saved(ctx: &Ctx, id: &str) -> Answer {
+    let (_, _, book) = read_book(ctx);
+    let live = (ctx.live)();
+    let r = book
+        .rules
+        .get(id)
+        .ok_or_else(|| ("failed", format!("rule {id} vanished after write")))?;
+    Ok(json!({"state": "saved", "rule": rule_wire(ctx, &book, id, r, &live)}))
+}
+
+/// `rotation-rule-save`：新建（不给 `id`）或整份改一条（给 `id` ＋ `ifRev`）。`{id?, name, rotation?, ifRev?, from?}`：
+/// 新建时不给 `rotation` 就从 `from` 那条拷（`from: "blank"` ＝ 只有起始账号）。
+/// 回 `{state: "saved", rule}` · `{state: "refused", errors: [{cell, code, with?}]}`（逐格，界面照它标红）·
+/// `{state: "conflict", rev}`（别处先改过了）。形状不对 ⇒ `bad_args`；改的那条不在 ⇒ `no_such_rule`。
+pub(crate) fn answer_rule_save(args: &Value) -> Answer {
+    answer_rule_save_with(&Ctx::here(), args, crate::accounts::quota::now_unix())
+}
+
+pub(crate) fn answer_rule_save_with(ctx: &Ctx, args: &Value, now: u64) -> Answer {
+    let id = rule_id_arg(args, "id")?;
+    let name = args
+        .get("name")
+        .and_then(Value::as_str)
+        .ok_or_else(|| bad("missing `name`"))?
+        .to_string();
+    let want_rev = if_rev(args)?;
     store_path(ctx)?;
-    let prior = ctx.hop.store.now().default_rotation();
-    let r = rotation::rotation_from(
-        v,
-        1..=1,
-        &account_ok,
-        &|a| ctx.is_api(LIBRARY_AGENT, a),
-        Some(&prior),
-    )
-    .map_err(|e| bad(&e))?;
-    rotation::face_change(&ctx.hop.store, |b| b.default = Some(r)).map_err(|e| ("io_failed", e))?;
-    Ok(default_wire(ctx))
+    let book = ctx.hop.store.now();
+    let prior = id.as_deref().and_then(|i| book.rules.get(i));
+    if id.is_some() && prior.is_none() {
+        return Err(("no_such_rule", copy_text("beRotation.rule.gone", &[])));
+    }
+    let mut errors = name_errors(&book, id.as_deref(), &name);
+    let rot = match (args.get("rotation"), rule_id_arg(args, "from")?) {
+        (Some(v), _) => {
+            errors.extend(rotation::cell_errors(v));
+            if !errors.is_empty() {
+                return refused(errors);
+            }
+            rotation::rotation_from(
+                v,
+                0..=1,
+                &account_ok,
+                &|a| ctx.is_api(LIBRARY_AGENT, a),
+                prior.map(|p| &p.rotation),
+            )
+            .map_err(|e| bad(&e))?
+        }
+        (None, Some(from)) if prior.is_none() && from == "blank" => Rotation::default(),
+        (None, Some(from)) if prior.is_none() => book
+            .rules
+            .get(&from)
+            .map(|r| r.rotation.clone())
+            .ok_or_else(|| ("no_such_rule", copy_text("beRotation.rule.gone", &[])))?,
+        (None, _) => match prior {
+            Some(p) => p.rotation.clone(),
+            None => return Err(bad("missing `rotation` (or `from` for a new rule)")),
+        },
+    };
+    if !errors.is_empty() {
+        return refused(errors);
+    }
+    let name = name.trim().to_string();
+    let wrote = rotation::face_change(&ctx.hop.store, |b| -> Result<String, u64> {
+        match id.clone() {
+            Some(id) => {
+                let Some(r) = b.rules.get_mut(&id) else {
+                    return Err(0);
+                };
+                if want_rev.is_some_and(|w| w != r.rev) {
+                    return Err(r.rev);
+                }
+                if r.name != name || r.rotation != rot {
+                    r.name = name.clone();
+                    r.rotation = rot.clone();
+                    r.rev += 1;
+                    r.updated_at = now;
+                }
+                Ok(id)
+            }
+            None => {
+                let id = rotation::new_rule_id(&b.rules);
+                b.rules.insert(
+                    id.clone(),
+                    Rule {
+                        name: name.clone(),
+                        rotation: rot.clone(),
+                        rev: 1,
+                        updated_at: now,
+                    },
+                );
+                Ok(id)
+            }
+        }
+    })
+    .map_err(|e| ("io_failed", e))?;
+    match wrote {
+        Ok(id) => saved(ctx, &id),
+        Err(0) => Err(("no_such_rule", copy_text("beRotation.rule.gone", &[]))),
+        Err(rev) => conflict(rev),
+    }
+}
+
+/// `rotation-rule-rename`：`{id, name, ifRev}`；回同 `rotation-rule-save`。
+pub(crate) fn answer_rule_rename(args: &Value) -> Answer {
+    answer_rule_rename_with(&Ctx::here(), args, crate::accounts::quota::now_unix())
+}
+
+pub(crate) fn answer_rule_rename_with(ctx: &Ctx, args: &Value, now: u64) -> Answer {
+    let id = rule_id_arg(args, "id")?.ok_or_else(|| bad("missing `id`"))?;
+    let name = args
+        .get("name")
+        .and_then(Value::as_str)
+        .ok_or_else(|| bad("missing `name`"))?;
+    let mut a = json!({"id": id, "name": name});
+    if let Some(r) = args.get("ifRev") {
+        a["ifRev"] = r.clone();
+    }
+    answer_rule_save_with(ctx, &a, now)
+}
+
+/// `rotation-rule-delete`：`{ids, then: "custom" | "follow"}`；用着它们的会话按 `then` 落（`custom` ＝ 照那条拷一份成本会话的，行为不变）。
+/// 默认那条不许删（`is_default`）。回 `{moved: {sid: "custom" | "follow"}}`。
+pub(crate) fn answer_rule_delete(args: &Value) -> Answer {
+    answer_rule_delete_with(&Ctx::here(), args)
+}
+
+pub(crate) fn answer_rule_delete_with(ctx: &Ctx, args: &Value) -> Answer {
+    let ids: Vec<String> = args
+        .get("ids")
+        .and_then(Value::as_array)
+        .ok_or_else(|| bad("`ids` must be an array of rule ids"))?
+        .iter()
+        .map(|v| match v {
+            Value::String(s) => Ok(s.clone()),
+            _ => Err(bad("`ids` must be an array of rule ids")),
+        })
+        .collect::<Result<_, _>>()?;
+    let to_custom = match args.get("then").and_then(Value::as_str) {
+        Some("custom") => true,
+        Some("follow") => false,
+        _ => return Err(bad("`then` must be \"custom\" or \"follow\"")),
+    };
+    store_path(ctx)?;
+    let book = ctx.hop.store.now();
+    if ids.iter().any(|i| *i == book.default_rule) {
+        return Err(("is_default", copy_text("beRotation.rule.isDefault", &[])));
+    }
+    if let Some(i) = ids.iter().find(|i| !book.rules.contains_key(*i)) {
+        return Err((
+            "no_such_rule",
+            copy_text("beRotation.rule.gone", &[]) + " " + i,
+        ));
+    }
+    let moved = rotation::face_change(&ctx.hop.store, |b| {
+        let mut moved = Map::new();
+        for (sid, s) in b.sessions.iter_mut() {
+            let Source::Rule(id) = &s.source else {
+                continue;
+            };
+            let Some(r) = ids
+                .iter()
+                .find(|i| *i == id)
+                .and_then(|i| book.rules.get(i))
+            else {
+                continue;
+            };
+            if to_custom {
+                s.custom = Some(r.rotation.clone());
+                s.source = Source::Custom;
+            } else {
+                s.source = Source::Follow;
+            }
+            moved.insert(
+                sid.clone(),
+                json!(if to_custom { "custom" } else { "follow" }),
+            );
+        }
+        for i in &ids {
+            b.rules.remove(i);
+        }
+        moved
+    })
+    .map_err(|e| ("io_failed", e))?;
+    Ok(json!({"moved": moved}))
+}
+
+/// `rotation-default-set`：`{rule}` 设为这台的默认；回 `{defaultRule, followers}`（跟随默认、此刻活着的会话有几个）。
+pub(crate) fn answer_default_set(args: &Value) -> Answer {
+    answer_default_set_with(&Ctx::here(), args)
+}
+
+pub(crate) fn answer_default_set_with(ctx: &Ctx, args: &Value) -> Answer {
+    let id = rule_id_arg(args, "rule")?.ok_or_else(|| bad("missing `rule`"))?;
+    store_path(ctx)?;
+    if !ctx.hop.store.now().rules.contains_key(&id) {
+        return Err(("no_such_rule", copy_text("beRotation.rule.gone", &[])));
+    }
+    rotation::face_change(&ctx.hop.store, |b| b.default_rule = id.clone())
+        .map_err(|e| ("io_failed", e))?;
+    let live = (ctx.live)();
+    let followers = ctx
+        .hop
+        .store
+        .now()
+        .sessions
+        .iter()
+        .filter(|(sid, s)| s.source == Source::Follow && live.contains(*sid))
+        .count();
+    Ok(json!({"defaultRule": id, "followers": followers}))
 }
 
 fn sids_of(args: &Value, key: &str) -> Result<Vec<String>, (&'static str, String)> {
@@ -306,9 +604,10 @@ pub(crate) fn answer_session_read_with(ctx: &Ctx, args: &Value, now: u64) -> Ans
     Ok(json!({"state": state, "reason": reason, "now": now, "sessions": sessions}))
 }
 
-/// `rotation-session-set`：一批会话的轮换（`{sids, rotation}`；`rotation` ＝ `"follow"` · `"custom"`（恢复上一份自己的，
-/// 没有就从默认起）· `{"custom": {order, enabled, when}}`）。这台没见过的会话要另给 `agent` 与 `start`（起它的号）才记得下。
-/// 回每个会话的结果。
+/// `rotation-session-set`：一批会话的轮换来源（`{sids, rotation}`；`rotation` ＝ `"follow"` · `{"rule": id}` ·
+/// `"custom"`（恢复上一份自己的，没有就照此刻生效的那份拷）· `"detach"`（照此刻生效的那份拷成本会话的 ＝「转为本会话」）·
+/// `{"custom": {order, enabled, when, …}}`）。这台没见过的会话要另给 `agent` 与 `start`（起它的号）才记得下。
+/// 回每个会话的结果。指向的规则不在 ⇒ `no_such_rule`（整批不写）。
 pub(crate) fn answer_session_set(args: &Value) -> Answer {
     answer_session_set_with(&Ctx::here(), args, crate::accounts::quota::now_unix())
 }
@@ -316,22 +615,32 @@ pub(crate) fn answer_session_set(args: &Value) -> Answer {
 /// 要写成什么样。
 enum Want {
     Follow,
-    Custom(Option<Value>),
+    Rule(String),
+    /// 恢复自己那份（没有 ⇒ 照此刻生效的那份拷）。
+    Restore,
+    /// 照此刻生效的那份拷。
+    Detach,
+    Custom(Value),
 }
 
 pub(crate) fn answer_session_set_with(ctx: &Ctx, args: &Value, now: u64) -> Answer {
     let sids = sids_of(args, "sids")?;
-    let want =
-        match args.get("rotation") {
-            Some(Value::String(s)) if s == "follow" => Want::Follow,
-            Some(Value::String(s)) if s == "custom" => Want::Custom(None),
-            Some(Value::Object(m)) if m.len() == 1 && m.contains_key("custom") => {
-                Want::Custom(Some(m["custom"].clone()))
-            }
-            _ => return Err(bad(
-                "`rotation` must be \"follow\", \"custom\" or {\"custom\": {order, enabled, when}}",
-            )),
-        };
+    let want = match args.get("rotation") {
+        Some(Value::String(s)) if s == "follow" => Want::Follow,
+        Some(Value::String(s)) if s == "custom" => Want::Restore,
+        Some(Value::String(s)) if s == "detach" => Want::Detach,
+        Some(Value::Object(m)) if m.len() == 1 && m.contains_key("custom") => {
+            Want::Custom(m["custom"].clone())
+        }
+        Some(Value::Object(m)) if m.len() == 1 && m.contains_key("rule") => {
+            Want::Rule(rule_id_arg(args.get("rotation").unwrap_or(&Value::Null), "rule")?.unwrap_or_default())
+        }
+        _ => {
+            return Err(bad(
+                "`rotation` must be \"follow\", \"custom\", \"detach\", {\"rule\": id} or {\"custom\": {order, enabled, when}}",
+            ))
+        }
+    };
     let named = |k: &str| {
         args.get(k)
             .and_then(Value::as_str)
@@ -341,14 +650,19 @@ pub(crate) fn answer_session_set_with(ctx: &Ctx, args: &Value, now: u64) -> Answ
     let (agent, start) = (named("agent"), named("start"));
     store_path(ctx)?;
     let book = ctx.hop.store.now();
+    if let Want::Rule(id) = &want {
+        if !book.rules.contains_key(id) {
+            return Err(("no_such_rule", copy_text("beRotation.rule.gone", &[])));
+        }
+    }
     // 先把要写的每一份都判完（不合法整批拒、一个字节不写），再一次写进去。
-    let mut plan: Vec<(String, Option<Rotation>)> = Vec::new();
+    let mut plan: Vec<(String, Source, Option<Rotation>)> = Vec::new();
     let mut outcomes = Map::new();
     for sid in &sids {
         let s = book.sessions.get(sid);
-        let (g, prior) = match (s, &agent, &start) {
-            (Some(s), _, _) => (s.agent.clone(), Some(book.rotation_of(s))),
-            (None, Some(g), Some(_)) => (g.clone(), None),
+        let (g, effective) = match (s, &agent, &start) {
+            (Some(s), _, _) => (s.agent.clone(), book.rotation_of(s)),
+            (None, Some(g), Some(_)) => (g.clone(), book.default_rotation()),
             (None, _, _) => {
                 outcomes.insert(
                     sid.clone(),
@@ -359,28 +673,32 @@ pub(crate) fn answer_session_set_with(ctx: &Ctx, args: &Value, now: u64) -> Answ
                 continue;
             }
         };
-        let custom = match &want {
-            Want::Follow => None,
-            Want::Custom(None) => Some(
-                s.and_then(|s| s.custom.clone())
-                    .unwrap_or_else(|| book.default_rotation()),
+        let (source, custom) = match &want {
+            Want::Follow => (Source::Follow, None),
+            Want::Rule(id) => (Source::Rule(id.clone()), None),
+            Want::Restore => (
+                Source::Custom,
+                Some(s.and_then(|s| s.custom.clone()).unwrap_or(effective)),
             ),
-            Want::Custom(Some(v)) => Some(
-                rotation::rotation_from(
-                    v,
-                    0..=1,
-                    &account_ok,
-                    &|a| ctx.is_api(&g, a),
-                    prior.as_ref(),
-                )
-                .map_err(|e| bad(&e))?,
+            Want::Detach => (Source::Custom, Some(effective)),
+            Want::Custom(v) => (
+                Source::Custom,
+                Some(
+                    rotation::rotation_from(
+                        v,
+                        0..=1,
+                        &account_ok,
+                        &|a| ctx.is_api(&g, a),
+                        Some(&effective),
+                    )
+                    .map_err(|e| bad(&e))?,
+                ),
             ),
         };
-        plan.push((sid.clone(), custom));
+        plan.push((sid.clone(), source, custom));
     }
-    let follow = matches!(want, Want::Follow);
     rotation::face_change(&ctx.hop.store, |b| {
-        for (sid, custom) in &plan {
+        for (sid, source, custom) in &plan {
             if !b.sessions.contains_key(sid) {
                 if let (Some(g), Some(st)) = (&agent, &start) {
                     b.sessions
@@ -388,7 +706,7 @@ pub(crate) fn answer_session_set_with(ctx: &Ctx, args: &Value, now: u64) -> Answ
                 }
             }
             if let Some(s) = b.sessions.get_mut(sid) {
-                s.follow = follow;
+                s.source = source.clone();
                 if custom.is_some() {
                     s.custom.clone_from(custom);
                 }
@@ -396,7 +714,7 @@ pub(crate) fn answer_session_set_with(ctx: &Ctx, args: &Value, now: u64) -> Answ
         }
     })
     .map_err(|e| ("io_failed", e))?;
-    for (sid, _) in plan {
+    for (sid, _, _) in plan {
         outcomes.insert(sid, outcome(SwitchOutcome::Switched)?);
     }
     Ok(json!({ "sessions": outcomes }))

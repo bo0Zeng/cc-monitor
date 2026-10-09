@@ -421,6 +421,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
         both(Frame::ProfilesChanged),
         both(Frame::QuotaChanged),
         both(Frame::RotationChanged { sid: s("s1") }),
+        both(Frame::RotationRulesChanged),
         both(Frame::TasksChanged { sid: s("s1") }),
         both(Frame::SessionsReplayed),
         both(Frame::SessionFileGone {
@@ -678,6 +679,10 @@ fn link_frames_have_exactly_these_bytes() {
         (
             Frame::RotationChanged { sid: "s1".into() },
             "{\"kind\":\"rotation_changed\",\"sid\":\"s1\"}\n",
+        ),
+        (
+            Frame::RotationRulesChanged,
+            "{\"kind\":\"rotation_rules_changed\"}\n",
         ),
         (
             Frame::TasksChanged { sid: "s1".into() },

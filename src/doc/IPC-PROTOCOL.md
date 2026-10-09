@@ -66,7 +66,7 @@ monitor 只对 hello 里**声明了对应能力**（`capabilities`）的后端�
 1. 连上：`hello` → 每个活会话一帧 `session_added`（宣告时带初始 `activity` / `waiting_for`；后台会话带 `background: true`）→ `sessions_replayed`（「清单报完了」：分清「还没说完」与「说完了、里面没有它」）。
 2. 内容：每条记录一帧 `line`，带成品 `message`（缺 ＝ 不进界面、照占号）、`seq`（本条流里按文件单调递增）与 `byte_offset`（这一行末尾在文件里的累计字节）。
    **续传用 `byte_offset`，不用 `seq`**：断线重连后拿它当偏移再读（`history-read` / `--read-session-from-offset`）。
-3. 状态：`session_status`（红绿灯变了才发，天然稀疏；`activity` ＝ `working` · `needs_you` · `idle`，后端适配层从那一家的进程状态翻过来，翻不出就不带）· `turn_end`（一轮结束）· `session_runs`（子运行表，整份）· `tasks_changed` / `rotation_changed` / `accounts_changed` / `quota_changed`（只带 sid 或不带载荷：客户端收到就重问那条查询，清单本身不在帧里）。
+3. 状态：`session_status`（红绿灯变了才发，天然稀疏；`activity` ＝ `working` · `needs_you` · `idle`，后端适配层从那一家的进程状态翻过来，翻不出就不带）· `turn_end`（一轮结束）· `session_runs`（子运行表，整份）· `tasks_changed` / `rotation_changed` / `rotation_rules_changed` / `accounts_changed` / `quota_changed`（只带 sid 或不带载荷：客户端收到就重问那条查询，清单本身不在帧里）。
 4. 离开：`session_removed`（`cause`：`gone` 真没了 · `superseded` 同一个 pidfile 原地换了 sid，后者客户端直接归档、别去查 tmux）→ `session_state`（这台后端自己裁：`reconnectable` 容器还在、接得回去 · `ended` 只能 resume）。
 5. 记录文件被动过：`session_file_gone`（不见了，不误判结束）· `session_file_reread`（被截短 / 改写过、已从头重读；紧排在重读出来的 `line` 之前）。
 6. 背压：实时通道满时丢帧，排空后发一帧 `overflow`（丢了几帧 ＋ 不可恢复的那些帧的身份 `lost`）。`line` / `turn_end` 丢了可以从记录文件补；`session_added` / `session_removed` / `session_status` / `session_state` / `tasks_changed` 这类一次性结论丢了别处没有，客户端按 `lost` 重同步。

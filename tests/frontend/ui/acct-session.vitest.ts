@@ -16,7 +16,8 @@ const entry = (history: SwitchRecord[], blocked?: { account: string; at: number 
   read: {
     state: "present",
     agent: "claude-code",
-    follow: true,
+    source: "follow",
+    explain: "",
     account: { start: "work", current: history.at(-1)?.to ?? "work", since: NOW, history, inPlace: "ok" },
     atLimit: "continue",
     ...(blocked ? { blocked: { earliest: blocked } } : {}),

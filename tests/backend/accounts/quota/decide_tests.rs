@@ -65,6 +65,9 @@ struct World {
     above: Vec<String>,
     now: u64,
     offset: i64,
+    /// 最多等几分钟（缺省 0 ＝ 不等：上面那些判据钉的是不等时的行为）。
+    wait: u8,
+    can_hold: bool,
 }
 
 impl World {
@@ -83,6 +86,8 @@ impl World {
             above: Vec::new(),
             now: NOW,
             offset: 0,
+            wait: 0,
+            can_hold: true,
         }
     }
 
@@ -130,6 +135,8 @@ impl World {
             stint: &self.stint,
             preempt: self.preempt,
             at_limit: self.at_limit,
+            wait: self.wait,
+            can_hold: self.can_hold,
             current,
             base: &self.base,
             above: &self.above,
@@ -913,4 +920,82 @@ fn a_cap_of_zero_keeps_an_account_out_for_its_slot_and_preempt_brings_it_back() 
     w.cap = caps(&[("q", "5h", CapValue::N(0))]);
     assert!(!w.with("z", None, &[], |f| super::standing("q", f)).usable());
     assert_eq!(w.with("z", None, &[], |f| super::back_at("q", f)), None);
+}
+
+// ── 最多等几分钟：前面的号很快回来就停着等，不为一两分钟换到后面的号 ───────────────────────
+
+fn back_of(v: &Verdict) -> Option<(&str, u64, &str)> {
+    match v {
+        Verdict::Wait { instead, back, .. } => {
+            Some((back.account.as_str(), back.at, instead.as_str()))
+        }
+        _ => None,
+    }
+}
+
+/// ★ 此刻的号被拒、1 分钟后就回来 ⇒ 停着等它（这一发不发上游），不换到 b；20 分钟后才回来 ⇒ 换到 b；不等（0）⇒ 今天的行为。
+#[test]
+fn a_refused_account_back_within_the_wait_is_waited_for_instead_of_switching() {
+    let mut w = World::new(&["a", "b"]);
+    w.wait = 10;
+    let soon = reading(true, 1.0, Some(NOW + 60));
+    let (v, _) = w.judge("a", Some(&soon), &["a"]);
+    assert_eq!(back_of(&v), Some(("a", NOW + 60, "b")), "{v:?}");
+    let late = reading(true, 1.0, Some(NOW + 1200));
+    assert_eq!(to_of(&w.judge("a", Some(&late), &["a"]).0), Some("b"));
+    w.wait = 0;
+    assert_eq!(to_of(&w.judge("a", Some(&soon), &["a"]).0), Some("b"));
+}
+
+/// 抢回开着也一样：不出现「换到 b → 一分钟后又切回」。
+#[test]
+fn preempt_on_does_not_flip_to_the_fallback_for_a_minute() {
+    let mut w = World::new(&["a", "b"]);
+    w.wait = 10;
+    w.preempt = true;
+    let soon = reading(true, 1.0, Some(NOW + 60));
+    assert_eq!(
+        back_of(&w.judge("a", Some(&soon), &["a"]).0),
+        Some(("a", NOW + 60, "b"))
+    );
+}
+
+/// 等的是排在候选前面的号，不只此刻的：已在 b 上、b 半小时后才回来，a 2 分钟后回来 ⇒ 等 a，不换到 c。
+#[test]
+fn any_account_ahead_of_the_candidate_counts() {
+    let mut w = World::new(&["a", "b", "c"]);
+    w.wait = 10;
+    w.seen
+        .insert("a".into(), reading(true, 1.0, Some(NOW + 120)));
+    let b = reading(true, 1.0, Some(NOW + 1800));
+    assert_eq!(
+        back_of(&w.judge("b", Some(&b), &["b"]).0),
+        Some(("a", NOW + 120, "c"))
+    );
+}
+
+/// 此刻的号只是过了阈值（还发得出去）：软上限 ⇒ 留着照发（不换、也不停）；硬上限 ⇒ 停着等。
+#[test]
+fn over_a_soft_threshold_stays_and_a_hard_one_waits() {
+    let mut w = World::new(&["a", "b"]);
+    w.wait = 10;
+    w.when = RotationWhen::Threshold { n: 90 };
+    w.seen
+        .insert("a".into(), reading(false, 0.95, Some(NOW + 180)));
+    assert_eq!(w.judge("a", None, &[]).0, Verdict::Stay);
+    w.at_limit = AtLimit::Stop;
+    assert_eq!(
+        back_of(&w.judge("a", None, &[]).0),
+        Some(("a", NOW + 180, "b"))
+    );
+}
+
+/// 这一家给不出「用满」回包 ⇒ 停不了，照旧换。
+#[test]
+fn without_a_limit_reply_it_switches_as_before() {
+    let mut w = World::new(&["a", "b"]);
+    w.wait = 10;
+    w.can_hold = false;
+    let soon = reading(true, 1.0, Some(NOW + 60));
+    assert_eq!(to_of(&w.judge("a", Some(&soon), &["a"]).0), Some("b"));
 }

@@ -73,6 +73,8 @@ pub(crate) enum LocalStep {
     Tasks { sid: String },
     /// 本机的额度账变了（`None`）/ 某个会话的轮换变了（`Some(sid)`）⇒ 交重放缓冲那张订阅表（与远端同一个口）。
     Quota { sid: Option<String> },
+    /// 本机的轮换规则表变了 ⇒ 同上那张订阅表一格 `{"rules":true}`。
+    Rules,
     /// 进 [`LineIntake::notice`]（冲掉残批、交一格出声）。
     Notice {
         sid: String,
@@ -238,6 +240,7 @@ pub(crate) fn local_step(
         LocalItem::Frame(InboundFrame::RotationChanged { sid }) => {
             LocalStep::Quota { sid: Some(sid) }
         }
+        LocalItem::Frame(InboundFrame::RotationRulesChanged) => LocalStep::Rules,
         LocalItem::Frame(_) => LocalStep::Skip,
     }
 }
@@ -322,6 +325,9 @@ pub(crate) async fn consume_local(
                 }
                 LocalStep::Quota { sid } => {
                     replay.quota_changed(&crate::origin::Origin(label.clone()), sid.as_deref())
+                }
+                LocalStep::Rules => {
+                    replay.rotation_rules_changed(&crate::origin::Origin(label.clone()))
                 }
                 LocalStep::Skip => {}
                 LocalStep::Lost => intake.lost().await,

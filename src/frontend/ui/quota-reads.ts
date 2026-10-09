@@ -1,5 +1,5 @@
 /**
- * 额度与轮换那几条命令的界面口：`quota-read` · `rotation-read` · `rotation-session-read/-set` · `rotation-switch`
+ * 额度与轮换那几条命令的界面口：`quota-read` · `rotation-rules-read` · `rotation-session-read/-set` · `rotation-switch`
  * （会话所在那台；本机远端同一条 `chan.call(origin, …)`）。判定全在后端：这里只按形状收、交给画的那几处。
  */
 import { chan } from "../../comms/inward/chan";
@@ -46,21 +46,59 @@ export function decodeQuotaRead(v: unknown): QuotaRead {
   return o as unknown as QuotaRead;
 }
 
-/** `rotation-read` / `rotation-set` 的应答。 */
-export interface RotationRead {
-  state: "present" | "absent" | "unreadable";
+/** 规则表里的一条（后端算好的几格一并带来：谁在用 · 摘要 · 说明 · 这台没有的号）。 */
+export interface RuleRow {
+  id: string;
+  name: string;
   rotation: Rotation;
-  followers: number;
+  rev: number;
+  updatedAt: number;
+  isDefault: boolean;
+  users: { live: number; ended: number; follow: number; sids: string[] };
+  summary: string;
+  explain: string;
+  missing: string[];
+  atLimitApplies: boolean;
 }
 
-export function decodeRotationRead(v: unknown): RotationRead {
+/** `rotation-rules-read` 的应答。 */
+export interface RulesRead {
+  state: "present" | "absent" | "unreadable";
+  defaultRule: string;
+  rules: RuleRow[];
+}
+
+function decodeRotation(v: unknown, what: string): Rotation {
+  const r = obj(v, what);
+  arr(r.order, `${what}.order`);
+  arr(r.enabled, `${what}.enabled`);
+  if (r.atLimit !== "continue" && r.atLimit !== "stop") bad(`${what}.atLimit`);
+  if (typeof r.wait !== "number") bad(`${what}.wait`);
+  return r as unknown as Rotation;
+}
+
+export function decodeRuleRow(v: unknown, what: string): RuleRow {
+  const x = obj(v, what);
+  if (typeof x.id !== "string" || typeof x.name !== "string" || typeof x.rev !== "number" || typeof x.isDefault !== "boolean") bad(what);
+  if (typeof x.summary !== "string" || typeof x.explain !== "string") bad(`${what}.summary`);
+  decodeRotation(x.rotation, `${what}.rotation`);
+  const u = obj(x.users, `${what}.users`);
+  if (typeof u.live !== "number" || typeof u.ended !== "number") bad(`${what}.users`);
+  arr(x.missing, `${what}.missing`);
+  return x as unknown as RuleRow;
+}
+
+export function decodeRulesRead(v: unknown): RulesRead {
   const o = obj(v, "reply");
-  const r = obj(o.rotation, "rotation");
-  arr(r.order, "rotation.order");
-  arr(r.enabled, "rotation.enabled");
-  if (r.atLimit !== "continue" && r.atLimit !== "stop") bad("rotation.atLimit");
-  if (typeof o.followers !== "number") bad("followers");
-  return { state: o.state as RotationRead["state"], rotation: r as unknown as Rotation, followers: o.followers };
+  if (!STATES.has(o.state as string)) bad(`state ${JSON.stringify(o.state)}`);
+  if (typeof o.defaultRule !== "string") bad("defaultRule");
+  const rules = arr(o.rules, "rules").map((r, i) => decodeRuleRow(r, `rules[${i}]`));
+  return { state: o.state as RulesRead["state"], defaultRule: o.defaultRule, rules };
+}
+
+/** 规则表里默认那一条（表里总有它；对不上 ⇒ `null`）。 */
+export function defaultRuleOf(r: RulesRead | null | undefined): RuleRow | null {
+  return r?.rules.find((x) => x.id === r.defaultRule) ?? null;
 }
 
 /** `rotation-session-read`：每个 sid 一份。 */
@@ -118,10 +156,10 @@ export async function readQuota(origin: Origin): Promise<QuotaRead> {
   return decodeQuotaRead(readJson(await chan.call(origin, "quota-read", body, budget)));
 }
 
-export async function readRotation(origin: Origin): Promise<RotationRead> {
+export async function readRules(origin: Origin): Promise<RulesRead> {
   const body = jsonBody({});
   const budget = budgetWithin(READ_BUDGET_MS);
-  return decodeRotationRead(readJson(await chan.call(origin, "rotation-read", body, budget)));
+  return decodeRulesRead(readJson(await chan.call(origin, "rotation-rules-read", body, budget)));
 }
 
 export async function readSessionRotation(origin: Origin, sids: string[]): Promise<SessionRotationRead> {
@@ -130,8 +168,8 @@ export async function readSessionRotation(origin: Origin, sids: string[]): Promi
   return decodeSessionRotationRead(readJson(await chan.call(origin, "rotation-session-read", body, budget)));
 }
 
-/** `"follow"` 跟随默认 · `"custom"` 恢复上一份自己的 · `{custom}` 整份写。 */
-export type SessionRotationWrite = "follow" | "custom" | { custom: Rotation };
+/** `"follow"` 跟随默认 · `{rule}` 用某条规则 · `"custom"` 恢复上一份自己的 · `"detach"` 照此刻生效的那份拷成本会话 · `{custom}` 整份写。 */
+export type SessionRotationWrite = "follow" | "custom" | "detach" | { rule: string } | { custom: Rotation };
 
 export async function writeSessionRotation(origin: Origin, sids: string[], rotation: SessionRotationWrite): Promise<Record<string, SwitchOutcome>> {
   const body = jsonBody({ sids, rotation });

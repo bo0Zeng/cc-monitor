@@ -114,7 +114,27 @@ export function defaultOps(): Record<string, OpHandler> {
     ),
     // 额度与轮换：缺省世界里中转还没见过任何回包、任何会话（额度场景在 `scenes/acct.ts` 整条覆盖）。
     "quota-read": () => ({ state: "absent", reason: null, path: "/home/user/.cc-monitor/quota.json", now: Math.floor(Date.now() / 1000), accounts: [], unseen: [], usableNow: [], earliestReturn: null }),
-    "rotation-read": () => ({ state: "absent", reason: null, path: "/home/user/.cc-monitor/rotation.json", rotation: { order: [{ start: true }], enabled: [], when: "full", atLimit: "continue" }, followers: 0 }),
+    "rotation-rules-read": () => ({
+      state: "absent",
+      reason: null,
+      path: "/home/user/.cc-monitor/rotation.json",
+      defaultRule: "r_00000000",
+      rules: [
+        {
+          id: "r_00000000",
+          name: "日常",
+          rotation: { order: [{ start: true }], enabled: [], when: "full", atLimit: "continue", wait: 10 },
+          rev: 1,
+          updatedAt: 0,
+          isDefault: true,
+          users: { live: 0, ended: 0, follow: 0, sids: [] },
+          summary: "起始 · 满",
+          explain: "起始账号先用 · 被拒才换 · 不主动换回 · 前面的号 10m 内恢复则停着等",
+          missing: [],
+          atLimitApplies: false,
+        },
+      ],
+    }),
     "rotation-session-read": (_o, req) => ({
       state: "absent",
       reason: null,
