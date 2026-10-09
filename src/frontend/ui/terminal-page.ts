@@ -363,8 +363,9 @@ export class TerminalPage {
       this.paint();
       return;
     }
-    await this.capture(mine);
-    if (mine === this.seq && this.visible && this.live.at === "off") this.startLive();
+    // 抓屏失败（没有 tmux server 之类）⇒ 不订实时：订也会被同样拒，叠出第二条警告；［刷新］抓到了再订。
+    const shot = await this.capture(mine);
+    if (shot && mine === this.seq && this.visible && this.live.at === "off") this.startLive();
   }
 
   /** 订这个终端的实时画面（已经订着 ⇒ 先退）。 */
@@ -412,21 +413,24 @@ export class TerminalPage {
     await this.capture(++this.seq);
   }
 
-  private async capture(mine: number): Promise<void> {
+  /** 抓一屏；抓到了（或实时那一帧更新）⇒ `true`，失败 ⇒ `false`。 */
+  private async capture(mine: number): Promise<boolean> {
     const tab = this.host.active();
     const row = this.row;
-    if (!tab || row === null || this.origin === undefined) return;
+    if (!tab || row === null || this.origin === undefined) return false;
     try {
       const shot = await this.reads.shot(this.origin, row.terminal, fullTitle(tab));
-      if (mine !== this.seq) return;
-      if (this.live.at === "on") return; // 实时那一帧比这一张新
+      if (mine !== this.seq) return true;
+      if (this.live.at === "on") return true; // 实时那一帧比这一张新
       this.shotError = null;
       this.applyShot(shot);
+      return true;
     } catch (e) {
-      if (mine !== this.seq) return;
+      if (mine !== this.seq) return false;
       this.shotError = saidOfControl(e);
       this.shotDetail = detailOf(e);
       this.paint();
+      return false;
     }
   }
 
