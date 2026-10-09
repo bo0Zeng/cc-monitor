@@ -615,6 +615,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         // 装记录的写口 ＋ 扩展页那张表 ＋ 卸之前那张卡：同步文件 I/O。
         "skill-install-record",
         "ext-list",
+        // 本机那一半：同一个本体（目录先裁到这台一格），同样是扫盘 ＋ 原子写目录文件。
+        "ext-list-here",
         "ext-uninstall-preview",
         // 扩展页写备注：现扫 ＋ 原子写目录文件（同步文件 I/O）。
         "ext-note-set",
@@ -807,6 +809,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         // skill 卸三条，阻塞档。
         "skill-install-record",
         "ext-list",
+        "ext-list-here",
         "ext-uninstall-preview",
         "ext-note-set",
         // 历史注解三条，阻塞档。

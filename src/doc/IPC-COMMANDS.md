@@ -2348,6 +2348,21 @@ skill 装记录的写口。
 
 码：`bad_args` · `catalog_unreadable` · `io_failed`
 
+#### `ext-list-here`
+
+设置「扩展」页那张表的本机那一半（不问可达表）。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --ext-list-here`
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `machines` | ← | 恒一列（这台自己）`{key: null, here: true, reachable: true, name, projects}`：裁掉了别的台，于是没有一格要问可达表 |
+| `problems` | ← | 同 `ext-list`：这台扫的时候读不出来的那几份 |
+| `rows` | ← | 同 `ext-list` 每个条目一行，`cells` 与 `machines` 同序 ⇒ 恒一格 |
+| `visit` | → | 同 `ext-list`：`true` = 这一问算「来看了一次」 |
+
+码：`bad_args` · `catalog_unreadable` · `io_failed`
+
 #### `ext-note-set`
 
 写 / 改 / 清一个扩展的备注。
@@ -3023,7 +3038,7 @@ cc-bus 钩子诊断。
 
 停一批会话（逐个答，一个不成不挡下一个）。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --sessions-stop`
 
 | 字段 | 向 | 说明 |
 |---|---|---|
@@ -3046,7 +3061,7 @@ cc-bus 钩子诊断。
 
 一批会话各在这台哪个终端里。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --sessions-where`
 
 | 字段 | 向 | 说明 |
 |---|---|---|
@@ -3066,7 +3081,7 @@ cc-bus 钩子诊断。
 
 起 / 接回一批会话（逐个答）。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --sessions-start`
 
 | 字段 | 向 | 说明 |
 |---|---|---|
@@ -3101,7 +3116,7 @@ cc-bus 钩子诊断。
 
 起一个新会话（全产品一个框、一个请求）。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --session-new`
 
 | 字段 | 向 | 说明 |
 |---|---|---|
@@ -3133,7 +3148,7 @@ cc-bus 钩子诊断。
 
 起新会话那个框要的事实：最近目录 · 有没有 tmux · 有哪几家 agent · 分叉时原会话的起法。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --session-new-facts`
 
 | 字段 | 向 | 说明 |
 |---|---|---|
@@ -3156,7 +3171,7 @@ cc-bus 钩子诊断。
 
 起新会话前核一个目录：在不在 · 会用哪个终端名。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --session-new-dir`
 
 | 字段 | 向 | 说明 |
 |---|---|---|
@@ -3629,6 +3644,7 @@ cc-bus 钩子诊断。
 | `--drift-report` | ＝ 帧命令 `drift-report`：这台后端的漂移账 |
 | `--exit-policy-read` | ＝ 帧命令 `exit-policy-read`：读「退出行为」那个值（值住后端所在那台） |
 | `--exit-policy-set` | ＝ 帧命令 `exit-policy-set`：写「退出行为」那个值，写完读回 |
+| `--ext-list-here` | ＝ 帧命令 `ext-list-here`：设置「扩展」页那张表的本机那一半（不问可达表） |
 | `--ext-note-set` | ＝ 帧命令 `ext-note-set`：写 / 改 / 清一个扩展的备注 |
 | `--ext-uninstall-apply` | ＝ 帧命令 `ext-uninstall-apply`：从这台卸一个扩展 |
 | `--ext-uninstall-preview` | ＝ 帧命令 `ext-uninstall-preview`：从这台卸一个扩展之前那张卡 |
@@ -3728,6 +3744,12 @@ cc-bus 钩子诊断。
 | `--session-accounts` | 正在跑的会话各属哪个号：每条 `{pid, sessionId, cwd, configDir, account, bare, alive, viaRelay}`；`account:null` ＝ 查不到（不猜） |
 | `--session-fork` | ＝ 帧命令 `session-fork`：从某条消息处分叉出一个新会话 |
 | `--session-interrupts` | ＝ 帧命令 `session-interrupts`：动一个会话之前，会打断什么 |
+| `--session-new` | ＝ 帧命令 `session-new`：起一个新会话（全产品一个框、一个请求） |
+| `--session-new-dir` | ＝ 帧命令 `session-new-dir`：起新会话前核一个目录：在不在 · 会用哪个终端名 |
+| `--session-new-facts` | ＝ 帧命令 `session-new-facts`：起新会话那个框要的事实：最近目录 · 有没有 tmux · 有哪几家 agent · 分叉时原会话的起法 |
+| `--sessions-start` | ＝ 帧命令 `sessions-start`：起 / 接回一批会话（逐个答） |
+| `--sessions-stop` | ＝ 帧命令 `sessions-stop`：停一批会话（逐个答，一个不成不挡下一个） |
+| `--sessions-where` | ＝ 帧命令 `sessions-where`：一批会话各在这台哪个终端里 |
 | `--skill-install-apply` | ＝ 帧命令 `skill-install-apply`：在要被写的那一台把勾的那几个 skill 文件写进去 |
 | `--skill-install-plan` | ＝ 帧命令 `skill-install-plan`：在要被写的那一台判 skill 装不装得过来 |
 | `--skill-install-record` | ＝ 帧命令 `skill-install-record`：skill 装记录的写口 |

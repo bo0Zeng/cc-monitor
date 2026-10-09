@@ -1467,6 +1467,31 @@ fn a_preset_session_keeps_its_rule_when_the_relay_first_sees_it() {
     assert!(!ctx.hop.store.now().sessions.contains_key(&sid));
 }
 
+/// ★ `session-new` 上了 CLI 面（第二个前端经一次性 `ccm -- --session-new` 调）：带规则那一臂在一次性进程里答得真 ——
+/// 规则表与先定的那一条都在盘上（跨进程锁 ＋ 盘上动过就重读），不读常驻进程的内存。
+/// 两份各自新建的 `Ctx` ＝ 常驻那一个与一次性那一个：常驻存的规则一次性认得；一次性记的那一条常驻读得到；
+/// 一次性起不成撤掉，常驻那边也跟着没了。
+#[test]
+fn a_one_shot_preset_is_seen_by_the_resident_process() {
+    let home = Home::new("preset-cli");
+    let resident = home.ctx();
+    let night = new_rule(&resident, "夜间", &["b"]);
+    let _ = resident.hop.store.now();
+    let one_shot = home.ctx();
+    let sid = crate::accounts::quota::rotation::new_session_id();
+    preset_with(&one_shot, &sid, "claude", &night, now()).expect("一次性那一个认得常驻存的规则");
+    assert_eq!(
+        resident.hop.store.now().sessions.get(&sid).map(|s| s.source.clone()),
+        Some(Source::Rule(night.clone())),
+        "常驻那一个读不到一次性记的那一条"
+    );
+    forget_preset_with(&home.ctx(), &sid);
+    assert!(
+        !resident.hop.store.now().sessions.contains_key(&sid),
+        "一次性撤掉的那一条常驻还看得见"
+    );
+}
+
 /// 读不懂的 rotation.json 在各读答里是成功应答的一格：`reason` 只是那一句（不带解析器原话），原话进 `detail`（复制详情，命令名 · 码 `unreadable`）；
 /// 往读不懂的那份写（存规则）不覆盖，失败带原话（进应答详情）。
 #[test]
