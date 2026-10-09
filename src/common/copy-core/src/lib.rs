@@ -32,6 +32,7 @@ pub use peer::{backend_old, local_machine, peer_machine, reply_unreadable};
 pub use reason::{io_reason, sftp_status_reason};
 pub mod detail;
 pub mod reason;
+pub mod said;
 
 fn entries() -> &'static serde_json::Map<String, serde_json::Value> {
     static TABLE: OnceLock<serde_json::Map<String, serde_json::Value>> = OnceLock::new();

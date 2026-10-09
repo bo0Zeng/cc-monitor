@@ -5,6 +5,7 @@
 
 use crate::agents::{AccountsFace, IdentityCell, IdentityClass, IdentityRoot, TrustCells};
 use crate::common::fs::read_regular_capped;
+use crate::common::said::IntoNote as _;
 use std::path::Path;
 
 /// 账号级配置文件的文件名（住在配置根下）。

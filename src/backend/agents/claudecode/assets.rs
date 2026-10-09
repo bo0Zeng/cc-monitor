@@ -16,6 +16,7 @@ use crate::common::fs::read_regular_capped;
 use super::accounts::{config_path_in, MAX_CONFIG_BYTES};
 use super::paths::{resolve_home, CONFIG_DIR_ENV};
 use crate::agents::{McpSeen, Sightings, SkillSeen};
+use crate::common::said::IntoNote as _;
 
 /// skill 目录名（配置根下）。
 const SKILLS_DIR: &str = "skills";

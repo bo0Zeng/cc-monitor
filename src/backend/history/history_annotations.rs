@@ -23,6 +23,7 @@ use copy_core::copy_text;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
+use crate::common::said::IntoNote as _;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 

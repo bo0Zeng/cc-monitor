@@ -1,5 +1,6 @@
 //! 一条入方向命令的登记形状。各族的命令表（`registry/`）只 use 这一份。
 
+use crate::common::said::IntoNote as _;
 use crate::stream::wire::Request;
 
 /// 处理器：拿走 [`Request`]，返回一个可以在**独立 task** 上跑的 future。

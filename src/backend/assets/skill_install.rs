@@ -18,6 +18,7 @@ use std::path::{Path, PathBuf};
 use serde_json::{json, Map, Value};
 
 use crate::assets::mcp_sync::{self, Facts, State};
+use crate::common::said::IntoNote as _;
 
 /// skill 可疑项的种类（线上名）。**闭集**：界面文案表按它逐键给字。
 pub const SUSPECT_KINDS: &[&str] = &["abs-path", "binary", "command-missing", "executable"];

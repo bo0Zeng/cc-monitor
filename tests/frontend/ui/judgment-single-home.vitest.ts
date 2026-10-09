@@ -603,6 +603,10 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     item: NONE,
     // 「对象」那一项（只收标识：会话写机器 ＋ 短 sid，不写标题）；界面不写详情。
     target: NONE,
+    // 「一句 ＋ 原话」（`said` 模块，后端与共享契约 crate 同一份）：界面只收后端写好的句子与详情，TS 侧没有孪生。
+    logged: NONE,
+    with_raw: NONE,
+    wrap: NONE,
     many: "J26",
     // 自己写的那一行里某一项的值 · 对端写好的那一整份（壳的日志与「放程序」那一口要原话；界面不取）。
     parse: NONE,
