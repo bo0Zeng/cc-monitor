@@ -881,7 +881,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// p9p-rotation-rules：轮换规则（存规则 · 默认 · 一键套用 · 批量管理）与 rotation-plan 预览 / 时间轴；兜底等待（往兜底号切前等非兜底号 wait 分钟）；session-new 带 rotation（先定 sid）；终端订阅先占位、壳替界面退订；remote-probe 结局带 detail；复制详情拼法收进 copy_core。
 ///
 /// p9q-plan-cli-faces：planned-build 读写（plan-list / plan-read / plan-cell-view / plan-ack / plan-unack / plan-return ＋ plan_changed）；CLI 面放出起会话等 9 条与 ext-list-here、--args-b64 载荷口、无输入回 no_input、超大回 args_too_large；记录帧换形的加法（history-branch ＋ session_branch、history-facts 许可档 / 用量 / 花费成品、删 accounts-isolate 与 session_kind / status）；终端原因码统一下划线、terminal-input 删 take、terminals-list 的 can 删 preview；session-new 带 ticket。
-pub const BUILD_ID: &str = "p9q-plan-cli-faces";
+///
+/// p9r-resolve-argv-raw-said：--resolve 认 --args-b64 / --stdin-line（与别的 CLI 子命令同一处读，一次性那条码全集 +args_too_large · no_input · bad_args）；terminals-list 每行删恒为 normal 的 purpose；CLI 失败信封多可缺 raw（下层原话，进复制详情）；profiles-read 的 fileProblem 多可缺 detail；几族失败句只留原因词、原话进详情；轮换说明文案抢回 / 兜底分开说。
+pub const BUILD_ID: &str = "p9r-resolve-argv-raw-said";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
