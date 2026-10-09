@@ -503,3 +503,24 @@ fn the_one_line_entry_stops_at_the_newline_and_never_asks_for_another_byte() {
         ))
     );
 }
+
+/// 失败信封：给人看的那一句在 `message`，下层原话另带在 `raw`（有才带）—— 读的那一方放进复制详情、不上句子。
+#[test]
+fn the_error_envelope_carries_the_raw_words_beside_the_sentence() {
+    let with = err_body(
+        "spawn_failed",
+        &copy_core::said::Said::with_raw("那一句".to_string(), "Permission denied (os error 13)"),
+    );
+    assert_eq!(
+        with,
+        serde_json::json!({"code": "spawn_failed", "message": "那一句", "raw": "Permission denied (os error 13)"})
+    );
+    let without = err_body(
+        "no_home",
+        &copy_core::said::Said::from("那一句".to_string()),
+    );
+    assert_eq!(
+        without,
+        serde_json::json!({"code": "no_home", "message": "那一句"})
+    );
+}

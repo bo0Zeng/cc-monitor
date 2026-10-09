@@ -868,8 +868,8 @@
     "beAssetCatalog.digest.walkFailed": {
       "kind": "body",
       "role": "片段",
-      "zh": "有一处读不出来：{e}",
-      "args": ["e"]
+      "zh": "有一处读不出来：{why}",
+      "args": ["why"]
     },
     "beAssetCatalog.digest.tooMany": {
       "kind": "body",
@@ -886,8 +886,8 @@
     "beAssetCatalog.digest.lenOnly": {
       "kind": "body",
       "role": "说明",
-      "zh": "{rel} 读不出内容，只按长度算：{e}",
-      "args": ["rel", "e"]
+      "zh": "{rel} 读不出内容，只按长度算：{why}",
+      "args": ["rel", "why"]
     },
     "beAssetCatalog.read.newer": {
       "kind": "error",
@@ -940,8 +940,8 @@
     "beSkillInstall.read.walkFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取失败 · {dir} · {e}",
-      "args": ["dir", "e"]
+      "zh": "读取失败 · {dir} · {why}",
+      "args": ["dir", "why"]
     },
     "beSkillInstall.read.tooMany": {
       "kind": "error",
@@ -1585,8 +1585,8 @@
     "rsRemoteResident.ensure.unsupported": {
       "kind": "error",
       "role": "报错",
-      "zh": "接入失败 · 不支持 · 远端只支持 Unix 机器 · 该机报 {why}",
-      "args": ["why"]
+      "zh": "接入失败 · 不支持 · 远端只支持 Unix 机器",
+      "args": []
     },
     "rsRemoteResident.ensure.answerUnreadable": {
       "kind": "error",
@@ -1681,8 +1681,8 @@
     "beResident.spawn.noSelf": {
       "kind": "error",
       "role": "原因格",
-      "zh": "找不到后端自身的程序文件 · {e}",
-      "args": ["e"]
+      "zh": "找不到后端自身的程序文件",
+      "args": []
     },
     "beLaunchRender.entry.noHome": {
       "kind": "error",
@@ -1742,8 +1742,8 @@
     "beResident.spawn.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "常驻后端启动失败 · {exe} · {e}",
-      "args": ["exe", "e"]
+      "zh": "常驻后端启动失败 · {exe} · {why}",
+      "args": ["exe", "why"]
     },
     "beResident.stop.cannotVerify": {
       "kind": "error",
@@ -9211,19 +9211,19 @@
     "backend.stopSaid.graceful": {
       "kind": "body",
       "role": "说明",
-      "zh": "已停：后端（进程 {pid}）做完手上的事，自己退了。",
+      "zh": "已停 · 后端（进程 {pid}）做完手上的事后自行退出",
       "args": ["pid"]
     },
     "backend.stopSaid.killed": {
       "kind": "body",
       "role": "说明",
-      "zh": "已强杀：后端（进程 {pid}）到时间没退。正在做的事可能只做了一半。",
+      "zh": "已强杀 · 后端（进程 {pid}）到时未退 · 正在做的事可能只做一半",
       "args": ["pid"]
     },
     "backend.stopSaid.notRunning": {
       "kind": "body",
       "role": "进度",
-      "zh": "这台机器上没有在跑的常驻后端。",
+      "zh": "此机无运行中的常驻后端",
       "args": []
     },
     "backend.stop.failed": {
@@ -9349,7 +9349,7 @@
     "backend.ctor.intro": {
       "kind": "body",
       "role": "说明",
-      "zh": "每台机各一行。「退出行为」那一栏写着 monitor 退出时这台机会怎样。",
+      "zh": "每台机一行 · 「退出行为」一栏是 monitor 退出时此机后端的去向",
       "args": []
     },
     "backend.ctor.title": {
@@ -9361,7 +9361,7 @@
     "backend.unregistered.why": {
       "kind": "body",
       "role": "说明",
-      "zh": "本次启动没登记这台的后端 · 重启 cc-monitor 后生效",
+      "zh": "本次启动未登记此机后端 · 重启 cc-monitor 后生效",
       "args": []
     },
     "backend.column.exit": {
@@ -10003,8 +10003,8 @@
     "rsFilewinSource.said.refused": {
       "kind": "error",
       "role": "原因格",
-      "zh": "被拒 · {detail}",
-      "args": ["detail"]
+      "zh": "被拒",
+      "args": []
     },
     "rsFilewinSource.watch.localBreak": {
       "kind": "error",
@@ -10027,20 +10027,20 @@
     "rsFilewinSource.ask.unreadable": {
       "kind": "error",
       "role": "原因格",
-      "zh": "读取后端回复失败 · 内容无法解析 · {e}",
-      "args": ["e"]
+      "zh": "读取后端回复失败 · 内容无法解析",
+      "args": []
     },
     "rsFilewinSource.ask.badArgs": {
       "kind": "error",
       "role": "原因格",
-      "zh": "程序出错 · {e}",
-      "args": ["e"]
+      "zh": "程序出错",
+      "args": []
     },
     "rsFilewinSource.ls.badEntry": {
       "kind": "error",
       "role": "原因格",
-      "zh": "条目 {i} · {e}",
-      "args": ["i", "e"]
+      "zh": "条目 {i} · {why}",
+      "args": ["i", "why"]
     },
     "rsFilewinSource.ls.notArray": {
       "kind": "error",
@@ -10081,8 +10081,8 @@
     "rsFilewinSource.local.readDirFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "读取失败 · 目录 · {e}",
-      "args": ["e"]
+      "zh": "读取失败 · 目录 · {why}",
+      "args": ["why"]
     },
     "rsFilewinSource.sort.type": {
       "kind": "control",
@@ -15791,8 +15791,8 @@
     "beAssetSync.syncOne.unparsable": {
       "kind": "error",
       "role": "原因格",
-      "zh": "对端回的目录无法解析 · {e}",
-      "args": ["e"]
+      "zh": "对端回的目录无法解析",
+      "args": []
     },
     "beAssetSync.foldBlocking.failed": {
       "kind": "error",
@@ -15803,8 +15803,8 @@
     "beAssetSync.foldBlocking.unfinished": {
       "kind": "error",
       "role": "原因格",
-      "zh": "本机目录未处理完 · {e}",
-      "args": ["e"]
+      "zh": "本机目录未处理完 · 程序出错",
+      "args": []
     },
     "beAssetSync.pushPlan.tooLarge": {
       "kind": "error",
@@ -15965,8 +15965,8 @@
     "beRelayListen.prepare.bindFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "占用本机端口 {port} 失败 · {e}",
-      "args": ["port", "e"]
+      "zh": "占用本机端口 {port} 失败 · {why}",
+      "args": ["port", "why"]
     },
     "beRelayListen.prepare.badUpstream": {
       "kind": "error",
@@ -18342,8 +18342,8 @@
     "beCcBusInstall.fence.resolveFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "读取失败 · {path} · {e}",
-      "args": ["path", "e"]
+      "zh": "读取失败 · {path} · {why}",
+      "args": ["path", "why"]
     },
     "beCcBusInstall.fence.escapes": {
       "kind": "error",
@@ -19343,8 +19343,8 @@
     "beAcctMcpShare.store.cannotUse": {
       "kind": "error",
       "role": "报错",
-      "zh": "各账号共用的 MCP 文件 {path} 不可用 · {e} · 本次不同步\n挪走它后按各账号当前状态重建",
-      "args": ["path", "e"]
+      "zh": "各账号共用的 MCP 文件 {path} 不可用 · {why} · 本次不同步\n挪走它后按各账号当前状态重建",
+      "args": ["path", "why"]
     },
     "beAcctMcpShare.sync.paused": {
       "kind": "error",

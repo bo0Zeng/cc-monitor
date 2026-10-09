@@ -4443,7 +4443,7 @@ mod g6_scope_pins {
 ///    把 4 份收成 1 份之后，「一处改、全体跟」这句话**仍然是假的**
 ///    〔`split-by-defect-not-size`：拆/合由具体缺陷证成，不由份数证成〕。
 /// 3. **「4 份同形」这个说法按逐字比就不成立。** 规范化函数体之后：`control/capture_pane.rs`
-///    与 `control/oneshot_session.rs` **逐字同形**；`control/cli_control.rs` 差一个 `.into()`；
+///    与 `control/oneshot_session.rs` **逐字同形**；`control/cli_control.rs` 多一格可缺的 `raw`（下层原话）；
 ///    `control/resolve_query.rs` **结构性不同**（走 typed `ResolveError` ＋ 一条序列化失败的兜底）。
 ///    强行收成一份，要么砍掉那条兜底，要么把它摊给另三份 —— 净增复杂度。
 ///
@@ -4510,10 +4510,10 @@ mod error_envelope_registry {
         ),
         (
             "control/cli_control.rs",
-            "message.into()",
-            "一次性 CLI 入口的 `emit_err`",
-            "签名收 `impl Into<String>`（调用点既传 `&str` 也传 `format!` 出来的 `String`）\
-             ⇒ 与另两份差一个 `.into()`。它是**入口层**的出口：命令本体回什么，由它翻成信封。",
+            "let mut body = serde_json::json!",
+            "一次性 CLI 入口的 `emit_err`（信封拼在 `err_body`）",
+            "签名收 `impl Into<Said>`（调用点既传 `&str` / `String`，也传带下层原话的 `Said`）\
+             ⇒ 比另几份多一格可缺的 `raw`（下层原话，读的那一方放进复制详情）。它是**入口层**的出口：命令本体回什么，由它翻成信封。",
         ),
         (
             "control/fork_write.rs",

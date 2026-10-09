@@ -114,13 +114,22 @@ fn walk(dir: &Path) -> Result<Walked, crate::stream::inbound::spec::Fail> {
         .sort_by_file_name()
     {
         let ent = ent.map_err(|e| {
-            (
+            let kind = e
+                .io_error()
+                .map_or(std::io::ErrorKind::Other, std::io::Error::kind);
+            crate::stream::inbound::spec::Fail::from((
                 "io_failed",
-                copy_text(
-                    "beSkillInstall.read.walkFailed",
-                    &[("dir", &dir.display().to_string()), ("e", &e.to_string())],
+                crate::common::said::Said::with_raw(
+                    copy_text(
+                        "beSkillInstall.read.walkFailed",
+                        &[
+                            ("dir", &dir.display().to_string()),
+                            ("why", &copy_core::io_reason(kind)),
+                        ],
+                    ),
+                    &e,
                 ),
-            )
+            ))
         })?;
         if ent.file_type().is_dir() {
             continue;
