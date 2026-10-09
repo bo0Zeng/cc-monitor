@@ -3,11 +3,11 @@
 //!
 //! # 它今天管什么
 //!
-//! - **门牌**：中转口 [`PORT`] · 常驻监听口 [`listen_port_for`] · 两把钥匙 [`KEY_FILE_REL`] / [`LISTEN_TOKEN_FILE_REL`] ·
+//! - **门牌**：中转口 [`PORT`] · 常驻后端的套接字 [`listen_socket_for`] · 中转钥匙 [`KEY_FILE_REL`] ·
 //!   路由路径的语法（两个前缀 · 段闸 · 拼 · 拆）。
 //! - **家**（相对家目录，`.cc-monitor/` 开头的每一个常量）：后端落点 [`BACKEND_LANDING_REL`] · 暂存区 ·
 //!   退出行为设置 · 两份别名文件 · skill 装记录 · 资产目录 · 账号库 [`ACCOUNTS_DIR_REL`] 与它的清单 ·
-//!   监听口的进程记录 [`listen_pid_file_name`]。
+//!   常驻后端的进程记录 [`listen_pid_for`]。
 //!   后端各写者引它们落盘；monitor 的数据位置页（`data_paths.rs::backend_entries`）按它们列出，判据两向对着这一族。
 //! - crate 名还是「relay-route」—— 它最早只装中转门牌。
 //!
@@ -29,18 +29,47 @@
 //!   上游选择 `accounts/upstream_select/endpoint.rs`（[`base_url`]：起会话那一发注入哪个地址，**只有它拼**）·
 //!   起会话载荷 `control/launch_render/payload.rs`（[`PORT`] · 钥匙段渲成 `$(cat ~/<钥匙>)` 的 [`KEY_FILE_REL`] ·
 //!   中转地址的 fail-closed 校验 [`base_url_shape_ok`]（[`base_url`] 的逆）· 起会话身份 token 的字符集 [`segment_is_safe`]）。
-//! - monitor：起本机后端时交的端口（[`PORT`]）· 常驻监听口（[`listen_port_for`]）· 后端落点（[`BACKEND_LANDING_REL`]）·
-//!   监听口的进程记录（`local_backend_host::pid_path`，[`listen_pid_file_name`]）· 数据位置页列家那一族（`data_paths.rs::backend_entries`）。
+//! - monitor：起本机后端时交的端口（[`PORT`]）· 常驻后端的套接字（[`listen_socket_for`]）· 后端落点（[`BACKEND_LANDING_REL`]）·
+//!   常驻后端的进程记录（[`listen_pid_for`]）· 数据位置页列家那一族（`data_paths.rs::backend_entries`）。
 //! - 后端按家那一族落盘：`control/exit_policy` · `control/files_commit` · `control/resident` ·
 //!   `assets/skill_ledger` · `assets/asset_catalog` · `platform/shell/dialect`（两份别名文件）·
 //!   `accounts/manage`（账号库）；读账号库清单的还有 `observe/accounts_query` · `control/ccm`。
 
-/// 〔两个端口〕**常驻监听口**的门牌也住这里（它与中转口是这台机器上后端的两个门）：
-/// 这台机器 ＋ 这个家（`~/.cc-monitor`；隔离跑时 `CCM_DATA_DIR`）⇒ 那一个口。门牌只跟着家走：与 Claude 目录、
-/// 与哪一家 agent 都无关（改一个设置、换一个终端起 monitor，都还是同一个口、同一个后端）。
-/// 本机宿主（monitor `local_backend_host`）与后端 `--resident-ensure` / `--resident-stop` 同一个函数
-/// ⇒ 一台机器一个常驻后端，本机 / 远端视角收敛。FNV-1a 写死（`DefaultHasher` 跨 Rust 版本不稳定，升级后要算出同一个口）。
-pub fn listen_port_for(data_home: &std::path::Path) -> u16 {
+/// 常驻后端听的那个 Unix 套接字所在的目录（相对家目录）：只给本人（`0700`）。常驻后端活着时攥着这个目录的独占锁
+/// （抢不到 = 已有一个在听），套接字与进程记录都住这里。门由内核给：目录权限 ＋ 对端 uid，没有钥匙。
+pub const LISTEN_DIR_REL: &str = ".cc-monitor/run";
+
+/// 套接字的文件名（在 [`LISTEN_DIR_REL`] 里）。
+pub const LISTEN_SOCKET_NAME: &str = "backend.sock";
+
+/// 常驻后端自己记的「谁在听」（`pid\n二进制\n`）的文件名（在 [`LISTEN_DIR_REL`] 里）。
+pub const LISTEN_PID_NAME: &str = "backend.pid";
+
+/// 这个家（`~/.cc-monitor`；隔离跑时 `CCM_DATA_DIR`）⇒ 常驻后端那个目录。门牌只跟着家走：与 Claude 目录、与哪一家 agent 都无关。
+/// 本机宿主（monitor `local_backend_host`）与后端（常驻后端 · `--resident-ensure` / `--resident-attach` / `--resident-stop`）同一个函数
+/// ⇒ 一台机器一个家一个常驻后端。
+pub fn listen_dir_for(data_home: &std::path::Path) -> std::path::PathBuf {
+    data_home.join(file_name_of(LISTEN_DIR_REL))
+}
+
+/// 同上 ⇒ 那个套接字。
+pub fn listen_socket_for(data_home: &std::path::Path) -> std::path::PathBuf {
+    listen_dir_for(data_home).join(LISTEN_SOCKET_NAME)
+}
+
+/// 同上 ⇒ 那份进程记录。
+pub fn listen_pid_for(data_home: &std::path::Path) -> std::path::PathBuf {
+    listen_dir_for(data_home).join(LISTEN_PID_NAME)
+}
+
+/// 「这是一次沙箱跑」的标记（值 `1`）：测试 / 台架起后端时在白名单环境里带上。带着它的常驻后端若要占的家落在本账号真家目录的
+/// `.cc-monitor` 下 ⇒ 拒绝起（后端 `control/resident.rs::sandbox_refusal`）。仓里起沙箱后端的每个入口都带它（判据钉）。
+pub const SANDBOX_ENV: &str = "CCM_SANDBOX";
+
+/// 〔升级那一跳用，跨过 4.1.x 之后删〕4.1.x 及以前的常驻后端听回环 TCP、把「谁在听」记在 `<家>/listen-<口>.pid`，
+/// 口按家用 FNV-1a 算。新的常驻后端起来时按这一份找到还在跑的旧的、停掉它（它占着中转口），再接中转。
+/// 只有那一跳读它；算法逐字是旧版那一份（写死，升级前后要算出同一个口）。
+pub fn legacy_listen_pid_for(data_home: &std::path::Path) -> std::path::PathBuf {
     const PORT_BASE: u16 = 49152;
     const PORT_SPAN: u32 = 16384;
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
@@ -48,8 +77,12 @@ pub fn listen_port_for(data_home: &std::path::Path) -> u16 {
         h ^= u64::from(*b);
         h = h.wrapping_mul(0x1000_0000_01b3);
     }
-    PORT_BASE + ((h % u64::from(PORT_SPAN)) as u16)
+    let port = PORT_BASE + ((h % u64::from(PORT_SPAN)) as u16);
+    data_home.join(format!("listen-{port}.pid"))
 }
+
+/// 〔同上，跨过 4.1.x 之后删〕旧版常驻后端的钥匙文件（在家里）：停掉旧的之后一并删掉。
+pub const LEGACY_LISTEN_TOKEN_NAME: &str = "listen-token";
 
 /// **后端的落点**（相对家目录）：那个文件就是后端二进制本身，名字叫 `ccm`；本机与远端同一个。
 /// 远端的 `backendPath`（可填的格）删了，monitor 与后端往那台拼命令、推字节都只认这一处。
@@ -57,9 +90,6 @@ pub const BACKEND_LANDING_REL: &str = ".cc-monitor/bin/ccm";
 
 /// 同一个落点在远端 POSIX shell 里的写法（远端今天只承诺 POSIX）：`$HOME` 在那台上展开，其余字节都是安全字符。
 pub const BACKEND_LANDING_SHELL: &str = "\"$HOME\"/.cc-monitor/bin/ccm";
-
-/// 常驻监听口的钥匙文件（相对家目录；0600，本机宿主与远端 `--resident-ensure` 同一份）。
-pub const LISTEN_TOKEN_FILE_REL: &str = ".cc-monitor/listen-token";
 
 /// 中转在回环上听的那个口。**本机**：monitor 起常驻后端时以 `CCM_RELAY_PORT` 交给它（它在进程里起中转）；
 /// **远端**：`--resident-ensure` 起那台的常驻后端时交同一个值（本机远端同形）。
@@ -142,12 +172,6 @@ pub const ACCOUNTS_DIR_REL: &str = accounts_dir_rel!();
 
 /// 账号库清单在 [`ACCOUNTS_DIR_REL`] 下的文件名（后端写；ccm 起会话 · 账号查询 · 账号之间同步 MCP 都读它）。
 pub const ACCOUNTS_MANIFEST_NAME: &str = "accounts.json";
-
-/// 〔同上〕常驻监听口的进程记录的文件名（与 [`LISTEN_TOKEN_FILE_REL`] 同一个目录）：本机宿主与远端
-/// `--resident-ensure` 按同一个口（[`listen_port_for`]）找同一份。
-pub fn listen_pid_file_name(port: u16) -> String {
-    format!("listen-{port}.pid")
-}
 
 /// 相对家目录的一段 ⇒ 最后一截（文件名）。给各写者定自己那个 `FILE_NAME`（临时件的名字从它拼），名字仍只住上面那一处。
 pub const fn file_name_of(rel: &'static str) -> &'static str {
@@ -306,14 +330,14 @@ pub fn parse_target(target: &str) -> Option<Parsed<'_>> {
 mod tests;
 
 /// 〔「家里的都进这一份」〕后端在这台自己家里放的每一样：`(名字, 相对家目录, 是目录, 删了会丢)`。名字是闭集（界面按它取说法）；
-/// 后端落点由它所在的 `bin` 那一行代表；只住 monitor 那一侧的（监听口进程记录 · API key 表 · 后端错误输出）不在这里。
+/// 后端落点由它所在的 `bin` 那一行代表；只住 monitor 那一侧的（API key 表 · 后端错误输出）不在这里。
 /// 后端「文件与数据」那一份成品逐样 stat 它（`footprint/data.rs::own_rows`）。
 pub const OWN_HOME_ENTRIES: &[(&str, &str, bool, bool)] = &[
     ("bin", ".cc-monitor/bin", true, false),
     ("staging", STAGING_DIR_REL, true, false),
     ("relayKey", KEY_FILE_REL, false, true),
     ("relayPassKey", PASS_KEY_FILE_REL, false, true),
-    ("listenToken", LISTEN_TOKEN_FILE_REL, false, true),
+    ("listenDir", LISTEN_DIR_REL, true, true),
     ("policy", BACKEND_POLICY_REL, false, true),
     ("profiles", PROFILES_REL, false, true),
     ("profilesMigrated", PROFILES_MIGRATED_REL, false, true),

@@ -12552,16 +12552,10 @@
       "zh": "中转直通专用钥匙 · 地址写进命令行的 agent 用 · 删后要重启后端",
       "args": []
     },
-    "rsDataPaths.backend.listenToken": {
+    "rsDataPaths.backend.listenDir": {
       "kind": "body",
       "role": "说明",
-      "zh": "连本机后端用的钥匙 · 后端运行时用 · 删后要重启后端",
-      "args": []
-    },
-    "rsDataPaths.backend.listenPid": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "本机常驻后端的进程记录 · 后端运行时用 · 删后要重启后端",
+      "zh": "常驻后端的连接入口与进程记录 · 后端运行时用 · 删后要重启后端",
       "args": []
     },
     "rsDataPaths.backend.policy": {

@@ -16,6 +16,7 @@
 //! - [`ssh_client`]：这台的 ssh 客户端在哪（只查文件：Windows 先 System32\OpenSSH 再 PATH，别处 PATH）—— 开远端终端那一行用它的全路径
 //! - [`stderr_fd`]：把本进程的 fd 2 换到一份文件上 · 问它多长（脱离常驻的后端把 stderr 落盘，`crate::stderr_log`）
 //! - [`tcp_rtt`]：一条已连上的 TCP 的往返时间（问内核 `TCP_INFO`，不掐表）—— 压缩判准要它（`dial/connect.rs::compression_for`）
+//! - [`listen_sock`]：常驻后端听的那个 Unix 套接字（目录独占锁 · 绑 · 收连接时核对端 uid · 一次性子命令连它）
 //! - [`lock`]：后端自有状态文件（第四层）的跨进程锁 —— 锁那份文件所在的目录（unix `flock` · Windows 命名互斥量）
 //! - [`acct_view`]：账号库读盘的平台原语（不跟链接地看一项 · unix 权限位 · 这台做不做得了多账号）—— 只读
 //! - [`fs`]：文件管理写面的两样原语：不覆盖改名（`rename_noreplace`）· 开文件不跟链接的旗（`NO_FOLLOW`）
@@ -29,7 +30,7 @@ pub(crate) mod acct_view;
 #[path = "../../../tests/backend/platform/cfgless_guard.rs"]
 mod cfgless_guard;
 pub(crate) mod child;
-/// 常驻后端自有的那几格环境的名字（监听口 · 钥匙文件 · 诊断文件）：起子进程原语无条件摘它们，帧面监听与诊断文件读它们。
+/// 常驻后端自有的那几格环境的名字（常驻开关 · 诊断文件）：起子进程原语无条件摘它们，帧面监听与诊断文件读它们。
 pub(crate) mod child_env;
 #[cfg(test)]
 #[path = "../../../tests/backend/platform/fallback_guard.rs"]
@@ -37,6 +38,8 @@ mod fallback_guard;
 pub(crate) mod fs;
 #[cfg(target_os = "linux")]
 pub(crate) mod linux_tables;
+/// 常驻后端听的那个 Unix 套接字：独占锁 · 绑 · 核对端 uid · 一次性子命令连它。
+pub(crate) mod listen_sock;
 pub(crate) mod liveness;
 pub(crate) mod local_tz;
 pub(crate) mod lock;
