@@ -49,7 +49,7 @@ describe("查看器 0 条消息", () => {
   });
 
   it("只有不显示的行（标题行）⇒ 也是空态", async () => {
-    const v = await mount([line(0, { type: "ai-title", aiTitle: "标题", sessionId: "s1" })]);
+    const v = await mount([line(0, { t: "title", id: "@0", text: "标题", by: "agent" })]);
     expect(v.element.querySelector("[data-uuid]")).toBeNull();
     expect(shown(v)).toBe(true);
   });

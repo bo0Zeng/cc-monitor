@@ -30,11 +30,10 @@ import type { MenuItem } from "./kit/menu";
 import { revealCard } from "./views/session-viewer";
 import {
   renderContentRecord,
-  routeMetaAndBranch,
+  routeMeta,
   type MetaSink,
   type StreamSink,
 } from "./render-stream-record";
-import type { BranchRecord } from "./branching";
 import { releaseEnhanceRoot } from "./render";
 import { remaining } from "../../comms/inward/chan";
 import { budgetWithin } from "./ipc/chan-caller";
@@ -46,7 +45,7 @@ import type { TabStore } from "./tab-store";
 import { copyText } from "./copy-table";
 
 /** 只问「这条是不是 meta」、不喂任何账的空 sink（骨架按偏移取回**见过**的行时用）。 */
-const NOOP_META: MetaSink = { onBranchRecord: () => {}, onQueueOperation: () => {} };
+const NOOP_META: MetaSink = {};
 
 /** 流视图要宿主做的六件事（全是回调；状态本身在 `TabStore`）。 */
 export interface TabStreamHost {
@@ -79,16 +78,6 @@ export interface TabStreamDom {
   turnRail: TurnRail;
 }
 
-/**
- * 读 `BranchFolder.records` 的条数给 `debugSnapshot`（只给 DEV 探针用）。`records` 是 private 字段，运行时按名字读一次。
- * 读不到返 -1 不返 0：返 0 会被读成「账本是空的」（`scale6-memory-ledger.vitest.ts` 有一格钉它不许是 -1）。
- * 量的是条数不是字节（一条 `BranchRecord` 是三个短字符串，不含正文）。
- */
-function branchRecordCount(folder: BranchFolder): number {
-  const inner = folder as unknown as { records?: unknown };
-  return Array.isArray(inner.records) ? inner.records.length : -1;
-}
-
 export class TabStreamView {
   /** 物化 / 后台 tab 尾段条数（与查看器的 TAIL_INITIAL 同义） */
   private static readonly MATERIALIZE_TAIL_K = 150;
@@ -102,7 +91,7 @@ export class TabStreamView {
    */
   private static readonly BATCH_BODY_CHARS = 64 * 1024;
   private static readonly BATCH_BUDGET: TakeBudget = {
-    weight: (p) => eagerBodyChars(p.message),
+    weight: (p) => eagerBodyChars(p.record),
     max: TabStreamView.BATCH_BODY_CHARS,
   };
   private static readonly TOP_TRIGGER_PX = 800;
@@ -209,7 +198,7 @@ export class TabStreamView {
     void Promise.all(fetched)
       .then((pages) => {
         if (this.store.tabs.get(tab.sessionId) !== tab || tab.skeleton !== sk) return;
-        const rows = [...known, ...pages.flat()].map((p) => ({ seq: p.seq, rec: p.message }));
+        const rows = [...known, ...pages.flat()].map((p) => ({ seq: p.seq, rec: p.record }));
         return this.refiner.refine(sk, rows).then((applied) => {
           // 算的途中列宽变了 ⇒ 这一批作废，放回待重交
           if (!applied) sk.returnStale(taken);
@@ -282,10 +271,6 @@ export class TabStreamView {
     });
     turnFold.onTurns = () => turnRail.render();
     this.streamRootEl.appendChild(turnRail.el);
-    // 重放期创建的新 Tab 也进批模式（免得每条记录都 O(N) 算主线），批结束时 onBatchEnd 统一 flush。
-    if (this.store.inBatch) {
-      branchFolder.setBatchMode(true);
-    }
     return { streamEl, stream, branchFolder, timeline, inputsEl, inputsPanel, outline, turnFold, turnRail };
   }
 
@@ -454,7 +439,7 @@ export class TabStreamView {
     const built = revealCard(streamEl, uuid);
     if (built || sk) return built;
     const pending = tab.window.peek(tab.window.pendingCount);
-    const at = pending.findIndex((p) => (p.message as { uuid?: unknown }).uuid === uuid);
+    const at = pending.findIndex((p) => p.record.id === uuid);
     if (at >= 0) {
       this.renderPayloadsBatch(tab, tab.window.takeTail(pending.length - at));
       this.updateSentinel(tab);
@@ -516,10 +501,9 @@ export class TabStreamView {
    */
   batchEnd(): Tab | undefined {
     for (const t of this.store.tabs.values()) {
-      // 先把批期缓冲的中部插入一次挂载（内含 unwrapAll / rebuildNow），再 flushPending / reconcile
+      // 先把批期缓冲的中部插入一次挂载（内含 unwrapAll / rebuildNow），再按清单重折 / reconcile
       this.flushMidBatchBuffer(t);
-      t.branchFolder.flushPending();
-      t.branchFolder.setBatchMode(false);
+      t.branchFolder.rebuildNow();
       // 切块场景下，老块的 tool_use 现在已渲染 → 重试匹配早到的 fallback result
       const ctx: RenderContext = {
         parentPath: t.parentPath,
@@ -576,9 +560,6 @@ export class TabStreamView {
   ingest(tab: Tab, payload: JsonlLinePayload): void {
     const sink: StreamSink = {
       timeline: tab.timeline,
-      onBranchRecord: (rec: BranchRecord) => tab.branchFolder.recordAdded(rec),
-      // 队列消息内容 → 折叠豁免集合
-      onQueueOperation: (content: string) => tab.branchFolder.addQueuedContent(content),
       onTitleUpdate: (title: string) => this.host.applyAiTitle(tab, title),
       onRealUserInput: (sid: string) => {
         this.host.userActive(sid);
@@ -586,18 +567,17 @@ export class TabStreamView {
       },
       enhanceRoot: this.store.inBatch ? tab.streamEl : null, // 批期 lazy ⇒ 交本 tab 的滚动容器
       // 实时会话也挂「从这一轮分叉」按钮（本机远端都挂，两条路都只要 sid）；按钮本体是共享组件。
-      onCardRendered: (el, msg) => {
-        if (msg.type !== "user" && msg.type !== "assistant") return;
-        if (!msg.uuid) return;
+      onCardRendered: (el, rec) => {
+        if (rec.t !== "said" && rec.t !== "reply") return;
         attachBranchButton(el, {
-          uuid: msg.uuid,
+          uuid: rec.id,
           onFork: (uuid) => this.host.forkFrom(tab, uuid),
         });
       },
     };
 
-    // 收纳（不建卡）的记录也要喂 title / queue / branch（routeMetaAndBranch 是两条路共用的一份）。
-    if (routeMetaAndBranch(payload, sink) === "consumed") return;
+    // 收纳（不建卡）的记录也要喂标题（routeMeta 是两条路共用的一份）。
+    if (routeMeta(payload, sink) === "consumed") return;
 
     // 门控（单洞后缀不变量，纯按 seq）：
     // - virgin ＋ 批：active tab 首条 content 钉 floor（尾块直渲）；后台 tab 一律收纳（批后空闲物化）；
@@ -652,6 +632,7 @@ export class TabStreamView {
     const beforeSize = tab.timeline.size;
     renderContentRecord(payload, ctx, sink);
     const inserted = tab.timeline.size > beforeSize;
+    if (inserted) tab.branchFolder.cardsAdded(); // 新卡可能落在回退掉的那一段里 ⇒ 帧末按清单重折
 
     // unread 计数：只有真新 entry 入 timeline 才算（tool-group 合并到旧 group 不算）
     if (inserted && this.store.activeId !== tab.sessionId) {
@@ -803,15 +784,12 @@ export class TabStreamView {
     };
     const sink: StreamSink = {
       timeline: tab.timeline,
-      onBranchRecord: () => {},
-      onQueueOperation: () => {},
       enhanceRoot: tab.streamEl, // IO 的 root = 本 tab 的滚动容器
       // 本机远端都挂（两条路都只要 sid）。
-      onCardRendered: (el, msg) => {
-        if (msg.type !== "user" && msg.type !== "assistant") return;
-        if (!msg.uuid) return;
+      onCardRendered: (el, rec) => {
+        if (rec.t !== "said" && rec.t !== "reply") return;
         attachBranchButton(el, {
-          uuid: msg.uuid,
+          uuid: rec.id,
           onFork: (uuid) => this.host.forkFrom(tab, uuid),
         });
       },
@@ -896,8 +874,7 @@ export class TabStreamView {
     const floor = tab.window.floorSeq;
     if (floor === null || tab.skeleton) return;
     for (const p of tab.window.peek(8)) {
-      const u = (p.message as { uuid?: unknown }).uuid;
-      if (typeof u !== "string") continue;
+      const u = p.record.id;
       const at = ledger.uuidToSeq.get(u);
       if (at !== p.seq) {
         console.warn(
@@ -982,7 +959,7 @@ export class TabStreamView {
           // 见过的 ⇒ 旁路账早记过了、去重会把它拒掉 ⇒ 只建卡（meta 那几类照旧不建）。
           const fresh = payloads.filter((p) => !tab.seenSeqs.has(p.seq));
           const again = payloads.filter(
-            (p) => tab.seenSeqs.has(p.seq) && routeMetaAndBranch(p, NOOP_META) === "content",
+            (p) => tab.seenSeqs.has(p.seq) && routeMeta(p, NOOP_META) === "content",
           );
           this.feedHistoryRows(tab, fresh);
           tab.seenSeqs.addRange(a, b); // 这一段整段到过（不可显示的也算）
@@ -1003,9 +980,9 @@ export class TabStreamView {
   /**
    * 按偏移取回的**历史**行喂进 `onLine` —— 必须按**重放**的语义喂，不能按 live：
    * live 语义下历史 user 卡会触发 `userActive`（自动切 tab / 拉前 monitor）、
-   * 历史的轮次结束会弹系统通知、每条 `recordAdded` 都重算一次主线。
-   * ⇒ 对这一个 tab 走一遍批：`inBatch` 置位（`userActive` / `turnEndNotifier` 都认它）、
-   * 折叠层进批模式；喂完把批期缓冲的中部插入一次挂载、折叠层 flush。
+   * 历史的轮次结束会弹系统通知。
+   * ⇒ 对这一个 tab 走一遍批：`inBatch` 置位（`userActive` / `turnEndNotifier` 都认它）；
+   * 喂完把批期缓冲的中部插入一次挂载、按已有的主线外清单重折（增量读不知道之后的回退，清单由实时帧给）。
    * 若此刻本来就在一个真批里（启动重放未完），只喂不收 —— 真批的 `onBatchEnd` 会收。
    */
   private feedHistoryRows(tab: Tab, payloads: JsonlLinePayload[]): void {
@@ -1014,7 +991,6 @@ export class TabStreamView {
     this.store.inBatch = true;
     // 取回来的是历史：远端 tab「见行就翻活」那一格不认它（`TabStore.historyFeed` 头注）。
     this.store.historyFeed = true;
-    tab.branchFolder.setBatchMode(true);
     try {
       for (const p of payloads) this.host.onLine(p);
     } finally {
@@ -1022,8 +998,7 @@ export class TabStreamView {
       this.store.inBatch = wasBatch;
       if (!wasBatch) {
         this.flushMidBatchBuffer(tab);
-        tab.branchFolder.flushPending();
-        tab.branchFolder.setBatchMode(false);
+        tab.branchFolder.rebuildNow();
       }
     }
   }
@@ -1049,7 +1024,7 @@ export class TabStreamView {
         if (this.store.tabs.get(tab.sessionId) !== tab) return; // 期间关掉了
         const fresh = page.payloads.filter((p) => !tab.seenSeqs.has(p.seq));
         for (const p of page.payloads) {
-          if (tab.seenSeqs.has(p.seq) && routeMetaAndBranch(p, NOOP_META) === "content") {
+          if (tab.seenSeqs.has(p.seq) && routeMeta(p, NOOP_META) === "content") {
             tab.window.restore(p);
           }
         }
@@ -1215,8 +1190,8 @@ export class TabStreamView {
       // 秤 6 的三个账本(`pending` 本来就在,不重复开一个字段):
       // ① `TailWindow.pending` —— 还没上屏的整条 payload,**这一份是真的文本驻留**
       pending: tab.window.pendingCount,
-      // ② `BranchFolder.records` —— 每条一个 {uuid,parentUuid,timestamp} 三元组,不含正文
-      branchRecords: branchRecordCount(tab.branchFolder),
+      // ② 主线外清单的条数（后端给的整份 id 集合，不含正文）
+      branchOff: tab.branchFolder.offCount,
       // ③ 大纲的条数 —— 清单问后端要，前端只留面板上那几行（每行一份 80 字摘要）
       userInputs: tab.outline.count,
       midBuffer: tab.midBatchBuffer.length,

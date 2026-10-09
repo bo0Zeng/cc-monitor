@@ -49,17 +49,6 @@ vi.mock("../../../src/frontend/ui/record-timeline", () => ({
     }
   },
 }));
-vi.mock("../../../src/frontend/ui/branch-fold", () => ({
-  BranchFolder: class {
-    constructor(_e: unknown) {}
-    setBatchMode(): void {}
-    flushPending(): void {}
-    recordAdded(): void {}
-    unwrapAll(): void {}
-    rebuildNow(): void {}
-    dispose(): void {}
-  },
-}));
 vi.mock("../../../src/frontend/ui/tasks-panel", async (orig) => ({
   ...(await orig<typeof import("../../../src/frontend/ui/tasks-panel")>()),
   fetchSessionTasks: vi.fn().mockResolvedValue([]),
@@ -364,7 +353,7 @@ function page(from: number, n: number): unknown {
     path: "/p/r.jsonl",
     end: from + n,
     more: false,
-    rows: Array.from({ length: n }, (_, i) => ({ message: { i: from + i } })),
+    rows: Array.from({ length: n }, (_, i) => ({ record: { t: "said", id: `r${from + i}`, i: from + i } })),
   };
 }
 const renderNum = (rec: unknown): { kind: "card"; element: HTMLElement } => {
@@ -391,6 +380,28 @@ describe("子 agent 的时间线：读失败一次不丢之前显示过的", () 
     await t.refresh();
     expect(nums(t.body)).toEqual(["0", "1", "2", "3", "4"]);
     expect(t.body.querySelector(".block-agent-error")).toBeNull();
+  });
+});
+
+describe("子 agent 的时间线：回退掉的那几条按那份记录的主线外清单折起来", () => {
+  it("读到第一页 ⇒ 问一次那份记录的清单；清单里那几张卡折成一段，之后续读来的不再问", async () => {
+    const asked: string[] = [];
+    const load = async (from: number) => page(from, from === 0 ? 4 : 1) as never;
+    const t = new RunTimeline({
+      origin: LOCAL_ORIGIN,
+      parent: "x",
+      which: { run: "r" },
+      load,
+      render: renderNum,
+      branch: async (path) => (asked.push(path), ["r1", "r2"]),
+    });
+    await t.refresh();
+    await t.refresh();
+    expect(asked).toEqual(["/p/r.jsonl"]);
+    const wrap = t.body.querySelector(".branch-fold-wrap");
+    expect(wrap, "清单里那两条该折成一段").not.toBeNull();
+    expect(nums(wrap as HTMLElement)).toEqual(["1", "2"]);
+    expect(nums(t.body)).toEqual(["0", "1", "2", "3", "4"]);
   });
 });
 

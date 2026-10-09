@@ -105,19 +105,9 @@ vi.mock("../../../../src/frontend/ui/record-timeline", () => ({
     }
   },
 }));
-vi.mock("../../../../src/frontend/ui/branch-fold", () => ({
-  BranchFolder: class {
-    constructor(_el: unknown) {}
-    setBatchMode(): void {}
-    flushPending(): void {}
-    recordAdded(): void {}
-    unwrapAll(): void {}
-    rebuildNow(): void {}
-    dispose(): void {}
-  },
-}));
 vi.mock("../../../../src/frontend/ui/render-stream-record", () => ({
-  routeMetaAndBranch: vi.fn(() => "content"),
+  routeMeta: vi.fn(() => "content"),
+  markCardId: vi.fn(),
   renderContentRecord: vi.fn(),
 }));
 vi.mock("../../../../src/frontend/ui/cards", () => ({

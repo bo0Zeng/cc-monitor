@@ -5,7 +5,7 @@ import { renderMessage, buildToolGroup, addToToolGroup } from "../../../../src/f
 import { buildNoticeLine, mergeNotice } from "../../../../src/frontend/ui/cards/speaker-bar";
 import { factsOf } from "../../../../src/frontend/ui/agent-window-text";
 import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
-import type { JsonlRecord } from "../../../../src/frontend/ui/generated/JsonlRecord";
+import type { LineRecord } from "../../../../src/frontend/ui/generated/LineRecord";
 import type { RunInfo } from "../../../../src/frontend/ui/generated/RunInfo";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 
@@ -14,8 +14,8 @@ const AT = "2026-10-06T02:01:00.000Z";
 
 describe("卡上的时刻照抄后端写好的钟面", () => {
   it("人说的那张卡、助手那张卡：卡头那一格 ＝ timeText", () => {
-    const user = { type: "user", uuid: "u1", parentUuid: null, timestamp: AT, timeText: "17:45", message: { role: "user", content: "hi" }, userText: { speaker: { kind: "human" }, text: "hi" } } as unknown as JsonlRecord;
-    const asst = { type: "assistant", uuid: "a1", parentUuid: null, timestamp: AT, timeText: "17:46", message: { role: "assistant", content: [{ type: "text", text: "ok" }] } } as unknown as JsonlRecord;
+    const user = { agent: "claude", t: "said", id: "u1", at: AT, timeText: "17:45", blocks: [{ type: "text", text: "hi" }], who: { speaker: { kind: "human" }, text: "hi" } } as LineRecord;
+    const asst = { agent: "claude", t: "reply", id: "a1", at: AT, timeText: "17:46", blocks: [{ type: "text", text: "ok" }], autoReply: false, endsTurn: false } as LineRecord;
     for (const [rec, want] of [[user, "17:45"], [asst, "17:46"]] as const) {
       const r = renderMessage(rec, ctx());
       if (r.kind !== "card") throw new Error(r.kind);
@@ -24,7 +24,7 @@ describe("卡上的时刻照抄后端写好的钟面", () => {
   });
 
   it("工具组收着那一行：起始时刻 ＝ 第一条的 timeText", () => {
-    const rec = { type: "assistant", uuid: "a2", parentUuid: null, timestamp: AT, timeText: "17:47", message: { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "Read", input: {} }] } } as unknown as JsonlRecord;
+    const rec = { agent: "claude", t: "reply", id: "a2", at: AT, timeText: "17:47", blocks: [{ type: "tool_use", id: "t1", name: "Read", input: {} }], autoReply: false, endsTurn: false } as LineRecord;
     const r = renderMessage(rec, ctx());
     if (r.kind !== "tool-group") throw new Error(r.kind);
     const g = buildToolGroup(r.time);

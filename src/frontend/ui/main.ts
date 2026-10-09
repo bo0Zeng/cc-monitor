@@ -797,6 +797,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     // 中转抄出来的 SSE 事件（会话流 `session-tap`）→ 活卡（jsonl 到了整轮覆盖）；那台看不见了 ⇒ 活卡全撤。
     onSessionTap: (e) => tabs.onSessionTap(e),
     onSessionRuns: (p) => tabs.onSessionRuns(p),
+    onSessionBranch: (p) => tabs.onSessionBranch(p),
     onSessionTapLost: (origin) => tabs.dropLiveCards(origin),
     // 那台的长连接又通了 / 那台账号清单变了 ⇒ 强制刷账号清单 ＋ chip（`accounts-changed` 流）。
     onAccountsChanged,
@@ -820,7 +821,7 @@ window.addEventListener("DOMContentLoaded", async () => {
       startup?.onAppeared(sessionId);
       noteLive(LOCAL_ORIGIN, sessionId, { cwd: meta.cwd }); // 起会话的真成功正信号
     },
-    // 启动重放期间走批模式（惰性高亮 ＋ BranchFolder.batchMode），结束时 flush。
+    // 启动重放期间走批模式（惰性高亮），结束时 flush。
     // DEV 抖动探针跨在批窗口上（生产 probe 恒 null）。
     onBatchStart: () => {
       e2eProbe?.startReplayJitterProbe();

@@ -18,6 +18,7 @@ import type { SessionActivityPayload } from "./generated/SessionActivityPayload"
 import type { SessionTapPayload } from "./generated/SessionTapPayload";
 import type { SessionRunsPayload } from "./generated/SessionRunsPayload";
 import { decodeRunsPayload } from "./runs";
+import type { SessionBranchPayload } from "./generated/SessionBranchPayload";
 import type { SessionContainer } from "./generated/SessionContainer";
 // 本文件内部也用这些名字（8 处），所以 import + re-export 都要有：
 // 只写 `export type { … } from` 不会把名字带进本地作用域。
@@ -80,6 +81,11 @@ export interface EventHandlers {
    */
   onSessionRuns?: (p: SessionRunsPayload) => void;
   /**
+   * 一个会话的主线外清单（会话流里的 `branch` 格，那台后端的成品、整份）：清单里那几条卡折成「回退掉的」一段。
+   * 进 queue：排在那个会话的宣告之后（处理它时 tab 已在）。
+   */
+  onSessionBranch?: (p: SessionBranchPayload) => void;
+  /**
    * 某台机器的活会话清单报完了（`listed` 格）。进 queue：排在那台的
    * `remote-added` 之后 ⇒ 处理它时，那台此刻全部的活会话都已宣告过。
    * `all` = 壳说这一刻机器表里每一台都报完了（「各台都报完」那一拍，壳那一侧 `session_book` 按机器表算）。
@@ -114,7 +120,7 @@ export interface EventHandlers {
   /** 一台机器一直看不见时，那条提示里「打开设置」按它开（没给 ⇒ 提示里不带按钮）。 */
   openMachineSettings?: (origin: Origin) => void;
   /**
-   * 启动重放的第一块到达时调一次：TabManager 把所有 tab 的 BranchFolder 切到 batch 模式、开惰性高亮。
+   * 启动重放的第一块到达时调一次：TabManager 进批模式、开惰性高亮。
    * 整个重放期间只调一次（多块在 300ms grace 续期下视作连续的一批）。
    */
   onBatchStart?: () => void;
@@ -218,6 +224,7 @@ type QueueItem =
   // 容器事实 / 某台清单报完了 —— 同一 queue 保序（见 EventHandlers 里两条的注释）。
   | { kind: "container"; sessionId: string; container: SessionContainer }
   | { kind: "runs"; payload: SessionRunsPayload }
+  | { kind: "branch"; payload: SessionBranchPayload }
   | { kind: "listed"; origin: string; all: boolean }
   // 那台机器看不见了 —— 同一 queue 保序（见 EventHandlers.onOriginUnseen）。
   | { kind: "unseen"; origin: string }
@@ -432,7 +439,7 @@ export async function bindEvents(
       endTimer = null;
     }
     if (inBatchMode) {
-      // 已在批模式又收到 batch-start：忽略（惰性高亮与 BranchFolder.batchMode 仍开着，无需重入）。
+      // 已在批模式又收到 batch-start：忽略（惰性高亮仍开着，无需重入）。
       return;
     }
     inBatchMode = true;
@@ -502,6 +509,8 @@ export async function bindEvents(
         handlers.onSessionContainer?.(item.sessionId, item.container);
       } else if (item.kind === "runs") {
         handlers.onSessionRuns?.(item.payload);
+      } else if (item.kind === "branch") {
+        handlers.onSessionBranch?.(item.payload);
       } else if (item.kind === "listed") {
         handlers.onOriginSessionsListed?.(item.origin, item.all);
       } else if (item.kind === "unseen") {
@@ -655,6 +664,10 @@ export async function bindEvents(
           const runs = decodeRunsPayload(f.runs);
           if (runs) queue.push({ kind: "runs", payload: runs });
           else console.warn("[events] 运行表那一格形状不对，不收：", JSON.stringify(f.runs).slice(0, 200));
+        } else if (f !== null && typeof f === "object" && "branch" in f) {
+          const branch = decodeBranchPayload(f.branch);
+          if (branch) queue.push({ kind: "branch", payload: branch });
+          else console.warn("[events] 主线外清单那一格形状不对，不收：", JSON.stringify(f.branch).slice(0, 200));
         } else if (f !== null && typeof f === "object" && "idle" in f) {
           queue.push({ kind: "idle", sessionId: f.idle.session_id });
         } else if (f !== null && typeof f === "object" && "ended" in f) {
@@ -830,6 +843,15 @@ function openStream(origin: Origin, kind: string, window: number, sink: (items: 
   return chan.subscribe(origin, kind, null, window, sink);
 }
 
+/** 会话流的 `branch` 格 ⇒ 成品；形状不对 ⇒ `null`（不收，也不猜）。 */
+export function decodeBranchPayload(v: unknown): SessionBranchPayload | null {
+  if (v === null || typeof v !== "object" || Array.isArray(v)) return null;
+  const o = v as { session_id?: unknown; off?: unknown };
+  if (typeof o.session_id !== "string" || !Array.isArray(o.off)) return null;
+  if (!o.off.every((x): x is string => typeof x === "string")) return null;
+  return { session_id: o.session_id, off: o.off };
+}
+
 /** 跟着一个会话（查看器 · 独立查看窗）：流里那一个会话的事。 */
 export type FollowEvent =
   /** 新的记录行（含订阅当场交的留存；已经有的由调用方按 `seq` 去重）。 */
@@ -841,7 +863,9 @@ export type FollowEvent =
   /** 那台看不看得见（看不见 ⇒ 这条流此刻不在交东西）。 */
   | { t: "sight"; seen: boolean }
   /** 这个会话的运行表（每次变都是整份）。 */
-  | { t: "runs"; payload: SessionRunsPayload };
+  | { t: "runs"; payload: SessionRunsPayload }
+  /** 这个会话的主线外清单（每次变都是整份）。 */
+  | { t: "branch"; off: string[] };
 
 /**
  * **跟着一个会话**：订 `session-lines/<sid>`（与独立查看窗同一条订阅；留存订阅当场交、之后的实时行接着交），
@@ -875,6 +899,10 @@ export async function followSession(origin: Origin, sid: string, sink: (e: Follo
           const p = decodeRunsPayload(f.runs);
           if (p === null) console.warn("[events] 运行表那一格形状不对，不收：", JSON.stringify(f.runs).slice(0, 200));
           else if (p.session_id === sid) out.push({ t: "runs", payload: p });
+        } else if ("branch" in f) {
+          const p = decodeBranchPayload(f.branch);
+          if (p === null) console.warn("[events] 主线外清单那一格形状不对，不收：", JSON.stringify(f.branch).slice(0, 200));
+          else if (p.session_id === sid) out.push({ t: "branch", off: p.off });
         }
       } else if (it.t === "gap") {
         out.push({ t: "gap" });

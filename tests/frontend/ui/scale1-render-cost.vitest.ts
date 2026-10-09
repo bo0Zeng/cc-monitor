@@ -13,7 +13,7 @@
  *
  * # 语料
  *
- * `tests/__fixtures__/scale2-height-records.jsonl`（**与秤 2 同一份，不另造**）。
+ * `tests/__fixtures__/scale2-height-line-records.jsonl`（**与秤 2 同一份，不另造**）。
  * 🔴 **结构采自真机、正文一个字都不是真的** —— 数据源纪律
  * 2026-09-18 已改判成「结构照真的，内容一律合成」（用户逐字「这是测试啊 / 不应该进」）。
  * 产出它的是 `tests/evidence/U-scale2-sample-records.ts`（逐字符同形替换 ＋ 两道自检）。
@@ -45,14 +45,13 @@
  *    数的是**物化进 DOM 的字符数**（`domChars`，确定量），理由与等价性写在那一组的头注；
  *    墙钟读数（四段 p50 · 占比 · 残余）照旧印进报表，只当读数。
  * 6. **探针自己要钱。** 分桶轴要「记录字节」，而 payload 上没有该字段 ⇒
- *    只能 `JSON.stringify(message)` 现算（它自己就是 §2.4 那一形）。
+ *    只能 `JSON.stringify(record)` 现算（它自己就是 §2.4 那一形）。
  *    ⇒ 探针默认关；开着时字节数在总时刻取完之后才算，**不进任何一段读数**，
  *    但整体 wall time 确实被抬高了。生产常开会付这份钱。
  *
  * 复算：`npx vitest run tests/frontend/ui/scale1-render-cost.vitest.ts`
  */
 import { describe, it, expect, beforeAll } from "vitest";
-import { withUserText } from "../../test-support/user-text";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -76,11 +75,11 @@ import {
   type StreamSink,
 } from "../../../src/frontend/ui/render-stream-record";
 import type { JsonlLinePayload } from "../../../src/frontend/ui/events";
-import type { JsonlRecord, RenderContext } from "../../../src/frontend/ui/cards/index";
+import type { LineRecord, RenderContext } from "../../../src/frontend/ui/cards/index";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 
 // `__dirname` 在 vitest 里指向 `tests/`（同 `scale2-height-truth.vitest.ts` 的用法）
-const FIXTURE = resolve(__dirname, "../../__fixtures__/scale2-height-records.jsonl");
+const FIXTURE = resolve(__dirname, "../../__fixtures__/scale2-height-line-records.jsonl");
 const fixtureLines = readFileSync(FIXTURE, "utf8")
   .split("\n")
   .filter((l) => l.trim().length > 0);
@@ -129,10 +128,10 @@ const PASSES = 8;
  * 这正是「判据在自己的登记表里找到自己」那一族。⇒ 绝对数必须独立出现一次。
  */
 const EXPECTED_SAMPLES_PER_BUCKET: Readonly<Record<string, number>> = {
-  "<2K": 240,
-  "2-8K": 160,
-  "8-32K": 136,
-  "32-128K": 16,
+  "<2K": 280,
+  "2-8K": 136,
+  "8-32K": 112,
+  "32-128K": 24,
   ">128K": 0,
 };
 /** 样本总数的绝对登记（同上，独立写死） */
@@ -150,13 +149,14 @@ const EXPECTED_SAMPLES = 552;
 /**
  * 每个卡型的**绝对**样本数（69 条 × 8 遍；独立写死，理由同 `EXPECTED_SAMPLES_PER_BUCKET`）。
  * `card-tool-group` = 新建外壳 1 条 ＋ 并入已有外壳 22 条（两条分支，同一种卡）。
+ * 记录换形（10-09）：字节口径换成通用记录的 JSON（桶跟着挪）；那一条代理自动应答（`autoReply`）从 assistant 卡挪进 skip。
  */
 const EXPECTED_SAMPLES_PER_CARD: Readonly<Record<string, number>> = {
-  "card-assistant": 224,
+  "card-assistant": 216,
   "card-user": 80,
   "card-compact": 8,
   "card-tool-group": 184,
-  skip: 56,
+  skip: 64,
 };
 /**
  * **折叠卡型**：正文留在 DOM 外（惰性 body / compact 摘要），
@@ -192,7 +192,8 @@ function inflate(v: unknown): unknown {
   if (Array.isArray(v)) return v.map(inflate);
   if (v && typeof v === "object") {
     const out: Record<string, unknown> = {};
-    for (const [k, x] of Object.entries(v)) out[k] = inflate(x);
+    // 后端给的一行人话（`steps`）是摘要行本身，不是记录正文 ⇒ 不膨胀（膨胀它等于改摘要行，不是「只加字节」）。
+    for (const [k, x] of Object.entries(v)) out[k] = k === "steps" ? x : inflate(x);
     return out;
   }
   return v;
@@ -221,16 +222,16 @@ function drivePass(lines: string[]): void {
   const stream = new MessageStream(root);
   const timeline = new RecordTimeline(stream);
   const ctx = freshCtx();
-  const sink: StreamSink = { timeline, onBranchRecord: () => {} };
+  const sink: StreamSink = { timeline };
   let seq = 0;
   for (const line of lines) {
-    const message = withUserText(JSON.parse(line) as JsonlRecord); // monitor 那一格成品
+    const record = JSON.parse(line) as LineRecord; // 后端的成品（通用记录）
     const payload: JsonlLinePayload = {
       session_id: "scale1",
       cwd: null,
       path: "/tmp/scale1/session.jsonl",
       seq: seq++,
-      message,
+      record,
     };
     renderContentRecord(payload, ctx, sink);
   }
@@ -676,7 +677,7 @@ describe("秤 1 · 环形缓冲（设计逐字 cap 5000）", () => {
     const stream = new MessageStream(root);
     const timeline = new RecordTimeline(stream);
     const ctx = freshCtx();
-    const sink: StreamSink = { timeline, onBranchRecord: () => {} };
+    const sink: StreamSink = { timeline };
     // 系统注入的 user 记录 → `renderMessage` 第一行就 skip，最便宜的一条真路径
     const n = RENDER_COST_RING_CAP + 17;
     for (let i = 0; i < n; i++) {
@@ -686,14 +687,14 @@ describe("秤 1 · 环形缓冲（设计逐字 cap 5000）", () => {
           cwd: null,
           path: "/tmp/scale1/ring.jsonl",
           seq: i,
-          message: {
-            type: "user",
-            userText: { speaker: { kind: "system" }, text: "" },
-            uuid: `ring-${i}`,
-            parentUuid: null,
-            timestamp: "2026-09-18T00:00:00.000Z",
-            message: { role: "user", content: `${i}` },
-          } as unknown as JsonlRecord,
+          record: {
+            agent: "claude",
+            t: "said",
+            who: { speaker: { kind: "system" }, text: "" },
+            id: `ring-${i}`,
+            at: "2026-09-18T00:00:00.000Z",
+            blocks: [{ type: "text", text: `${i}` }],
+          } as LineRecord,
         },
         ctx,
         sink,

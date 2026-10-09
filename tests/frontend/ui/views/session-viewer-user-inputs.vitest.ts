@@ -34,8 +34,8 @@ vi.mock("../../../../src/frontend/ui/render-stream-record", async (orig) => {
   const real = await orig<typeof import("../../../../src/frontend/ui/render-stream-record")>();
   return {
     ...real,
-    renderStreamRecord: (p: { message: { uuid?: string } }, ...rest: unknown[]) => {
-      if (p.message.uuid === "boom") throw new Error("这一条坏了");
+    renderStreamRecord: (p: { record: { id?: string } }, ...rest: unknown[]) => {
+      if (p.record.id === "boom") throw new Error("这一条坏了");
       return (real.renderStreamRecord as (...a: unknown[]) => void)(p, ...rest);
     },
   };
@@ -73,13 +73,13 @@ const INTERRUPT = { clean: "", interrupt: true };
 async function mount(lines: RigPayload[], outline?: string[]): Promise<SessionViewer> {
   viewerRig.chunk = lines;
   const text = (p: RigPayload): string => {
-    const c = (p.message as { message?: { content?: unknown } }).message?.content;
-    return typeof c === "string" ? c : "";
+    const b = (p.record as { blocks?: Array<{ type: string; text?: string }> }).blocks ?? [];
+    return b.length === 1 && b[0].type === "text" ? (b[0].text ?? "") : "";
   };
   outlineBackend.entries = (outline ?? lines
-    .filter((p) => (p.message as { type?: string }).type === "user")
-    .map((p) => (p.message as { uuid: string }).uuid))
-    .map((u) => outlineEntry(u, text(lines.find((p) => (p.message as { uuid?: string }).uuid === u)!)));
+    .filter((p) => (p.record as { t?: string }).t === "said")
+    .map((p) => (p.record as { id: string }).id))
+    .map((u) => outlineEntry(u, text(lines.find((p) => (p.record as { id?: string }).id === u)!)));
   const v = new SessionViewer();
   document.body.appendChild(v.element);
   await v.load({ jsonlPath: "/p/s1.jsonl", displayTitle: "T", origin: LOCAL_ORIGIN, suppressBranch: true });
@@ -122,7 +122,7 @@ describe("SE1 清单挂进查看器：后端给什么就列什么（查看器不
       [
         userLine(1, "u1", "第一句"),
         assistantLine(2, "a1", "回复"),
-        userLine(3, "u3", "skill 展开的 prompt", { isMeta: true }),
+        userLine(3, "u3", "skill 展开的 prompt", { who: { speaker: { kind: "system" }, text: "" } }),
         userLine(7, "u7", "第二句"),
       ],
       ["u1", "u7"], // 后端说：主线用户输入是这两条（isMeta 那条它排掉了）
@@ -223,7 +223,7 @@ describe("KR45D1 点一下跳过去", () => {
   it("跳不过去的那一条不许静默：标出来（这条不等价是自陈的，这里给它一个活体）", async () => {
     const v = await mount([
       userLine(1, "u1", "第一句"),
-      userLine(2, "u2", "[Request interrupted by user]", { userText: INTERRUPT }),
+      userLine(2, "u2", "[Request interrupted by user]", { who: INTERRUPT }),
     ]);
     // 先证明夹具真的落在那一形上：清单有它，DOM 没有它的卡
     expect(rowsOf(v).map((r) => r.dataset.inputUuid)).toEqual(["u1", "u2"]);
@@ -246,7 +246,7 @@ describe("KR45D1 点一下跳过去", () => {
   it("查看器这一侧：跳空是**永久**的（全渲染完照样不建卡）⇒ 转移的真住址不在这里", async () => {
     const v = await mount([
       userLine(1, "u1", "第一句"),
-      userLine(2, "u2", "[Request interrupted by user]", { userText: INTERRUPT }),
+      userLine(2, "u2", "[Request interrupted by user]", { who: INTERRUPT }),
     ]);
     // 先证明「没有任何未渲染的段留着」——否则下面那句「永久」是空真
     const status = v.element.querySelector('[data-role="status"]')!.textContent ?? "";
@@ -289,7 +289,7 @@ describe("KR45 债二：清单的样式住 styles.css，不再内联", () => {
   it("面板与清单行都不带内联 style（含「跳不过去」那一行 —— 变灰也不许退回内联）", async () => {
     const v = await mount([
       userLine(1, "u1", "第一句"),
-      userLine(2, "u2", "[Request interrupted by user]", { userText: INTERRUPT }),
+      userLine(2, "u2", "[Request interrupted by user]", { who: INTERRUPT }),
     ]);
     expect(panelOf(v).getAttribute("style")).toBeNull();
     expect(rowsOf(v).map((r) => r.getAttribute("style"))).toEqual([null, null]);
@@ -435,7 +435,7 @@ describe("乙4-④ 查看器的头 · 底一行 · 各态", () => {
     await vi.waitFor(() => expect(clipboardWrites(vi.mocked(invoke))).toHaveLength(1));
     const [written] = clipboardWrites(vi.mocked(invoke));
     expect(written).toContain("这一条坏了");
-    expect(written).toContain('"uuid": "boom"');
+    expect(written).toContain('"id": "boom"');
     expect(status(v)).toBe(copyText("sessionViewer.status.all", { n: "3" }));
   });
 

@@ -15,7 +15,14 @@ use std::collections::BTreeMap;
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        rename = "LineRecord",
+        export_to = "../../frontend/ui/generated/"
+    )
+)]
 pub struct Record {
     /// 哪一家（注册表里那一家的 `kind`）。
     pub agent: String,
@@ -38,7 +45,14 @@ pub struct Record {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "t", rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        rename = "LineRecordBody",
+        export_to = "../../frontend/ui/generated/"
+    )
+)]
 pub enum Body {
     /// 人那一侧说的一条（人打的字 · 斜杠命令 · 工具结果 · 系统注入 … 谁说的由 `who` 说）。
     #[serde(rename_all = "camelCase")]

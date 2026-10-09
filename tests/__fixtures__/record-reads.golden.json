@@ -1,4 +1,10 @@
 {
+  "history-branch": {
+    "end": 273,
+    "off": [
+      "r-1"
+    ]
+  },
   "history-lines": {
     "eof": true,
     "from": 1,

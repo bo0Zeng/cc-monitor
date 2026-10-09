@@ -49,7 +49,7 @@ import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
 
 /** 一条 user 记录，`parentUuid` 串成链（本套件要 BranchFolder 看到一条正常主线）。 */
 function chained(seq: number, uuid: string, text: string): RigPayload {
-  return userLine(seq, uuid, text, { parentUuid: seq > 1 ? `u${seq - 1}` : null });
+  return userLine(seq, uuid, text);
 }
 
 /** 取 viewer 的私有 `scrollToMessage`（不改被测函数的可见性，见头注）。 */
@@ -223,24 +223,20 @@ describe("R11 · 工具组里被并入 / 被注入的记录也跳得到", () => 
   const ts = (s: number): string => `2026-09-10T00:00:${String(s).padStart(2, "0")}.000Z`;
   const use = (seq: number, uuid: string, id: string, cmd: string): RigPayload =>
     line(seq, {
-      type: "assistant",
-      uuid,
-      timestamp: ts(seq),
-      message: { role: "assistant", content: [{ type: "tool_use", id, name: "Bash", input: { command: cmd } }] },
-      sessionId: "s1",
-      isSidechain: false,
-      parentUuid: null,
+      t: "reply",
+      id: uuid,
+      at: ts(seq),
+      blocks: [{ type: "tool_use", id, name: "Bash", input: { command: cmd } }],
+      autoReply: false,
+      endsTurn: false,
     });
   const res = (seq: number, uuid: string, id: string, out: string): RigPayload =>
     line(seq, {
-      type: "user",
-      uuid,
-      timestamp: ts(seq),
-      message: { role: "user", content: [{ type: "tool_result", tool_use_id: id, content: out }] },
-      sessionId: "s1",
-      isSidechain: false,
-      isMeta: false,
-      parentUuid: null,
+      t: "said",
+      id: uuid,
+      at: ts(seq),
+      who: { speaker: { kind: "toolResult" }, text: "" },
+      blocks: [{ type: "tool_result", for: id, content: [{ type: "text", text: out }], isError: false }],
     });
 
   it("四条记录的 uuid 全跳得到，落点是各自那一块", async () => {

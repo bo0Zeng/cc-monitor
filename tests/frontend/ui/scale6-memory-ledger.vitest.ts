@@ -100,7 +100,7 @@ import {
 import { TabManager, type Tab } from "../../../src/frontend/ui/tabs";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 
-const FIXTURE = resolve(__dirname, "../../__fixtures__/scale2-height-records.jsonl");
+const FIXTURE = resolve(__dirname, "../../__fixtures__/scale2-height-line-records.jsonl");
 
 function freshCtx(): RenderContext {
   return {

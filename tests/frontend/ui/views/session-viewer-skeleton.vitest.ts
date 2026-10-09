@@ -34,7 +34,7 @@ const ROWS = 1000;
 /** payload：偶数 seq 的 user 记录（`u{i}` 在第 i 条可显示记录上） */
 const payloads = (): RigPayload[] =>
   Array.from({ length: ROWS / 2 }, (_, i) =>
-    userLine(2 * i, `u${i}`, `第 ${i} 句`, { parentUuid: i > 0 ? `u${i - 1}` : null }),
+    userLine(2 * i, `u${i}`, `第 ${i} 句`),
   );
 /** 索引：`shift` ≠ 0 模拟「seq 空间对不上」 */
 const index = (shift = 0) => ({

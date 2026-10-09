@@ -381,17 +381,17 @@ describe("轮次刻度", () => {
 // 系统注入（「谁说的」稿 A ⑤）：旁注细条——开关关着不露、估高 0；不算任何人的邻居（不打散工具组的相邻合并）。
 describe("系统注入的旁注细条", () => {
   const tool = (uuid: string, id: string) =>
-    ({ type: "assistant", uuid, timestamp: "2026-01-01T02:02:00.000Z", message: { role: "assistant", content: [{ type: "tool_use", id, name: "Read", input: {} }] } }) as never;
+    ({ agent: "claude", t: "reply", id: uuid, at: "2026-01-01T02:02:00.000Z", blocks: [{ type: "tool_use", id, name: "Read", input: {} }], autoReply: false, endsTurn: false }) as never;
   const injected = (uuid: string, body?: string) =>
-    ({ type: "user", uuid, timestamp: "2026-01-01T02:02:30.000Z", message: { role: "user", content: "x" }, userText: { speaker: { kind: "system", ...(body ? { body } : {}) }, text: "" } }) as never;
+    ({ agent: "claude", t: "said", id: uuid, at: "2026-01-01T02:02:30.000Z", blocks: [{ type: "text", text: "x" }], who: { speaker: { kind: "system", ...(body ? { body } : {}) }, text: "" } }) as never;
 
   it("★ 有正文 ⇒ 一条隐藏的细条进流（带 uuid）；夹在两次工具调用之间也不打散工具组；没正文 ⇒ 什么都不放", () => {
     const content = document.createElement("div");
     const stream = { contentElement: content, insertNode: (el: HTMLElement, ref: HTMLElement | null) => content.insertBefore(el, ref) };
     const timeline = new RecordTimeline(stream as never);
-    const sink: StreamSink = { timeline, onBranchRecord: () => {} };
+    const sink: StreamSink = { timeline };
     const ctx = { parentPath: "/p/s.jsonl", origin: LOCAL_ORIGIN, toolUseNames: new Map(), toolUseElements: new Map(), pendingToolResults: new Map() };
-    const feed = (seq: number, message: never) => renderContentRecord({ session_id: "s", seq, message } as unknown as JsonlLinePayload, ctx, sink);
+    const feed = (seq: number, record: never) => renderContentRecord({ session_id: "s", seq, record } as unknown as JsonlLinePayload, ctx, sink);
     feed(1, tool("a1", "t1"));
     feed(2, injected("m1", "注入词乙"));
     feed(3, tool("a2", "t2"));
