@@ -301,12 +301,36 @@ fn with_nothing_beside_the_exe_the_carried_window_binary_is_placed_and_returned(
     let fresh = root.join("fresh");
     let e = resolve_window_bin_in(None, &exe_dir, Some(b"x"), Some(&fresh), &mk, &no_dir)
         .expect_err("建不了目录也解出来了");
-    assert_eq!(e.said, copy_text("rsFilewinProc.bin.placeFailed", &[]));
+    // 建不了目录（宿主注入那一下只回一句话）⇒ 判不出 IO 种类 ⇒「原因不明」；落点与原话进详情。
+    assert_eq!(
+        e.said,
+        copy_core::reason::io_reason(std::io::ErrorKind::Other)
+    );
     let raw = e.raw.unwrap_or_default();
     assert!(
         raw.contains("不许建") && raw.contains(&fresh.display().to_string()),
         "放不下来的原话与落点没进详情：{raw}"
     );
+    // 落点目录只读（真 IO 错）⇒ 按 IO 种类取词「无权限」，不是「原因不明」。
+    let denied = root.join("ro");
+    std::fs::create_dir_all(&denied).expect("建不出只读目录");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&denied, std::fs::Permissions::from_mode(0o500)).unwrap();
+        let ok_dir = |_: &Path| -> Result<(), String> { Ok(()) };
+        let e = resolve_window_bin_in(None, &exe_dir, Some(b"x"), Some(&denied), &mk, &ok_dir)
+            .expect_err("只读目录里竟然写进去了");
+        // root 跑测试时只读挡不住 —— 那一形不判。
+        if !e.said.is_empty() && std::fs::write(denied.join("probe"), b"").is_err() {
+            assert_eq!(
+                e.said,
+                copy_core::reason::io_reason(std::io::ErrorKind::PermissionDenied),
+                "写不进去说成了别的：{e:?}"
+            );
+        }
+        std::fs::set_permissions(&denied, std::fs::Permissions::from_mode(0o700)).unwrap();
+    }
     std::fs::remove_dir_all(&root).ok();
 }
 

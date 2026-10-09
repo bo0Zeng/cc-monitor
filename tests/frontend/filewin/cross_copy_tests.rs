@@ -206,7 +206,7 @@ async fn a_cross_copy_pulls_from_a_pushes_to_b_and_cleans_the_local_staging() {
 async fn a_failed_push_removes_the_staging_on_b_too() {
     let (o, log) = go(true).await;
     assert!(
-        matches!(&o, Outcome::Failed { why, .. } if why.contains("断网")),
+        matches!(&o, Outcome::Failed { why, .. } if why.said.contains("断网")),
         "{o:?}"
     );
     assert_eq!(

@@ -147,10 +147,10 @@ pub enum Outcome {
         dest: String,
         bytes: u64,
     },
-    /// 带着下层那句**原话**（围栏的拒绝、连接失败、落地失败 …）。
+    /// 带着下层那句话（围栏的拒绝、连接失败、落地失败 …）与它的复制详情。
     Failed {
         dest: String,
-        why: String,
+        why: super::source::Failed,
     },
 }
 
@@ -281,7 +281,7 @@ pub async fn pull_one(
     remote_path: &str,
     dest: &str,
     board: &DownloadBoard,
-) -> Result<(), String> {
+) -> Result<(), super::source::Failed> {
     pull_one_at(
         line,
         origin,
@@ -299,9 +299,9 @@ pub async fn pull_one_at(
     remote_path: &str,
     dest: serde_json::Value,
     board: &DownloadBoard,
-) -> Result<(), String> {
+) -> Result<(), super::source::Failed> {
     let stop = board.cancels().stop_token();
-    let opened = super::source::ask(
+    let opened = super::source::ask_coded(
         line,
         origin,
         OP_DOWNLOAD,
@@ -309,7 +309,8 @@ pub async fn pull_one_at(
         super::transfer::OPEN_BUDGET,
     )
     .await?;
-    let id = super::transfer::field(&opened, OP_DOWNLOAD, "id")?;
+    let id =
+        super::transfer::field(&opened, OP_DOWNLOAD, "id").map_err(super::source::Failed::from)?;
     let sink = board.clone();
     super::source::watch(
         line,
@@ -318,7 +319,8 @@ pub async fn pull_one_at(
         &stop,
         |got, total| sink.progress(got, total),
     )
-    .await?;
+    .await
+    .map_err(super::source::Failed::from)?;
     Ok(())
 }
 

@@ -9413,12 +9413,6 @@
       "zh": "无主目录",
       "args": []
     },
-    "rsFilewinProc.bin.placeFailed": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "原因不明",
-      "args": []
-    },
     "rsFilewinProc.seed.empty": {
       "kind": "error",
       "role": "报错",

@@ -664,8 +664,11 @@ pub enum Arrived {
     },
     /// 后端说它不可编辑（那句话由 [`not_text_notice`] 给）。
     NotText { path: String },
-    /// 下层那句原话（连不上 / 没权限 …）。
-    Failed { path: String, why: String },
+    /// 下层那句话（连不上 / 没权限 …）与它的复制详情。
+    Failed {
+        path: String,
+        why: super::source::Failed,
+    },
 }
 
 #[derive(Default)]
@@ -802,7 +805,7 @@ pub async fn read_text(
     line: &super::source::Line,
     origin: &super::source::Origin,
     path: &str,
-) -> Result<Option<Opened>, String> {
+) -> Result<Option<Opened>, super::source::Failed> {
     read_text_at(line, origin, &super::source::RemotePath::plain(path)).await
 }
 
@@ -811,7 +814,7 @@ pub async fn read_text_at(
     line: &super::source::Line,
     origin: &super::source::Origin,
     at: &super::source::RemotePath,
-) -> Result<Option<Opened>, String> {
+) -> Result<Option<Opened>, super::source::Failed> {
     let args = serde_json::json!({ "path": at.wire(), "max_bytes": MAX_EDIT_BYTES });
     opened_from_reply(
         super::source::ask_coded(line, origin, CMD_READ_TEXT, &args, READ_BUDGET).await,
@@ -831,7 +834,7 @@ pub struct Opened {
 /// 立起一个存不回去的编辑面比不打开更糟 —— 那句话说清是后端太旧。
 pub fn opened_from_reply(
     r: Result<serde_json::Value, super::source::Failed>,
-) -> Result<Option<Opened>, String> {
+) -> Result<Option<Opened>, super::source::Failed> {
     let sha = r
         .as_ref()
         .ok()
@@ -841,9 +844,9 @@ pub fn opened_from_reply(
     let Some(text) = text_from_reply(r)? else {
         return Ok(None);
     };
-    let sha256 = sha
-        .filter(|s| is_sha256_hex(s))
-        .ok_or_else(|| copy_text("rsFilewinEditor.reply.noDigest", &[]))?;
+    let sha256 = sha.filter(|s| is_sha256_hex(s)).ok_or_else(|| {
+        super::source::Failed::from(copy_text("rsFilewinEditor.reply.noDigest", &[]))
+    })?;
     Ok(Some(Opened { text, sha256 }))
 }
 
@@ -856,15 +859,15 @@ pub fn opened_from_reply(
 /// - 其余一律 `Err`（那句话原样）。
 pub fn text_from_reply(
     r: Result<serde_json::Value, super::source::Failed>,
-) -> Result<Option<String>, String> {
+) -> Result<Option<String>, super::source::Failed> {
     match r {
         Ok(d) => d
             .get("text")
             .and_then(serde_json::Value::as_str)
             .map(|t| Some(t.to_string()))
-            .ok_or_else(|| copy_text("rsFilewinSource.said.badReply", &[])),
+            .ok_or_else(|| copy_text("rsFilewinSource.said.badReply", &[]).into()),
         Err(f) if matches!(f.code.as_deref(), Some("too_large" | "not_text")) => Ok(None),
-        Err(f) => Err(f.said),
+        Err(f) => Err(f),
     }
 }
 
@@ -1009,7 +1012,11 @@ pub async fn overwrite_anyway_at(
         }
         Err(why) => {
             return Err(SaveError::Failed(
-                copy_text("rsFilewinEditor.overwrite.readFailed", &[("why", &why)]).into(),
+                copy_text(
+                    "rsFilewinEditor.overwrite.readFailed",
+                    &[("why", &why.said)],
+                )
+                .into(),
             ))
         }
     };

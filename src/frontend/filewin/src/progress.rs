@@ -766,13 +766,28 @@ impl Job {
                         state,
                         icon: icon_for(ph::DOWNLOAD_SIMPLE),
                         title: copy_text("rsFilewinProgress.download.failed", &[("name", name)]),
-                        detail: match o {
-                            Some(super::download::Outcome::Failed { why, .. }) => why,
+                        detail: match &o {
+                            Some(super::download::Outcome::Failed { why, .. }) => why.said.clone(),
                             _ => String::new(),
                         },
                         frac: None,
                         nums: ended,
-                        copy: None,
+                        copy: match &o {
+                            Some(super::download::Outcome::Failed { why, .. }) => {
+                                super::source::Failed::copy_body(
+                                    &format!(
+                                        "{}\n{}",
+                                        copy_text(
+                                            "rsFilewinProgress.download.failed",
+                                            &[("name", name)]
+                                        ),
+                                        why.said
+                                    ),
+                                    &why.detail,
+                                )
+                            }
+                            _ => None,
+                        },
                         button: Some((
                             copy_text("rsFilewinProgress.action.retry", &[]),
                             Ok(Act::RetryDownload {
@@ -830,11 +845,17 @@ impl Job {
                     View {
                         state,
                         icon: icon_for(ph::COPY),
+                        copy: match board.last() {
+                            Some(CopyOutcome::Failed(f)) => super::source::Failed::copy_body(
+                                &format!("{title}\n{detail}"),
+                                &f.detail,
+                            ),
+                            _ => None,
+                        },
                         title,
                         detail,
                         frac: None,
                         nums: ended,
-                        copy: None,
                         button: None,
                     }
                 }
@@ -897,15 +918,30 @@ impl Job {
                             &[("name", name), ("machine", machine)],
                         )
                     },
-                    detail: match (state, o) {
+                    detail: match (state, &o) {
                         (State::Failed, Some(super::cross_copy::Outcome::Failed { why, .. })) => {
-                            why
+                            why.said.clone()
                         }
                         _ => String::new(),
                     },
                     frac: None,
                     nums: ended,
-                    copy: None,
+                    copy: match (state, &o) {
+                        (State::Failed, Some(super::cross_copy::Outcome::Failed { why, .. })) => {
+                            super::source::Failed::copy_body(
+                                &format!(
+                                    "{}\n{}",
+                                    copy_text(
+                                        "rsFilewinProgress.cross.failed",
+                                        &[("name", name), ("machine", machine)],
+                                    ),
+                                    why.said
+                                ),
+                                &why.detail,
+                            )
+                        }
+                        _ => None,
+                    },
                     button: None,
                 },
             },
@@ -949,12 +985,15 @@ impl Job {
                     state,
                     icon: icon_for(ph::FILE_ZIP),
                     title: last
-                        .map(|(n, o)| super::extract::outcome_text(&n, &o))
+                        .as_ref()
+                        .map(|(n, o)| super::extract::outcome_text(n, o))
                         .unwrap_or_default(),
                     detail: String::new(),
                     frac: None,
                     nums: ended,
-                    copy: None,
+                    copy: last
+                        .as_ref()
+                        .and_then(|(n, o)| super::extract::outcome_copy(n, o)),
                     button: None,
                 },
             },

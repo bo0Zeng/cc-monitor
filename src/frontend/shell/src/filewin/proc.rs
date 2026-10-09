@@ -130,7 +130,7 @@ pub fn resolve_window_bin_in(
         ensure_dir,
     )
     .map_err(|e| ProcFail {
-        said: copy_text("rsFilewinProc.bin.placeFailed", &[]),
+        said: copy_core::reason::io_reason(e.kind()),
         code: None,
         raw: Some(format!("{}\n{e}", dir.display())),
     })

@@ -59,7 +59,8 @@ pub enum Outcome {
     Done(Extracted),
     /// 人答了「不解了」。
     Skipped(String),
-    Failed(String),
+    /// 没解成：那一句 ＋ 复制详情（[`super::source::Failed`]）。
+    Failed(super::source::Failed),
 }
 
 /// 结局那一句。
@@ -82,8 +83,16 @@ pub fn outcome_text(name: &str, o: &Outcome) -> String {
         ),
         Outcome::Failed(why) => copy_text(
             "rsFilewinExtract.outcome.failed",
-            &[("name", name), ("why", why)],
+            &[("name", name), ("why", &why.said)],
         ),
+    }
+}
+
+/// 结局那一句的［复制详情］整段（没解成、带详情时才有）。
+pub fn outcome_copy(name: &str, o: &Outcome) -> Option<String> {
+    match o {
+        Outcome::Failed(f) => super::source::Failed::copy_body(&outcome_text(name, o), &f.detail),
+        _ => None,
     }
 }
 
@@ -94,15 +103,13 @@ pub async fn extract_remote(
     root: &serde_json::Value,
     rel: &serde_json::Value,
     fresh: bool,
-) -> Result<Extracted, (Option<String>, String)> {
+) -> Result<Extracted, super::source::Failed> {
     let mut args = serde_json::json!({ "root": root, "rel": rel });
     if fresh {
         args["fresh"] = serde_json::Value::Bool(true);
     }
-    let d = super::source::ask_coded(line, origin, CMD_EXTRACT, &args, EXTRACT_BUDGET)
-        .await
-        .map_err(|f| (f.code, f.said))?;
-    extracted_from_reply(&d).map_err(|e| (None, e))
+    let d = super::source::ask_coded(line, origin, CMD_EXTRACT, &args, EXTRACT_BUDGET).await?;
+    extracted_from_reply(&d).map_err(super::source::Failed::from)
 }
 
 /// 整趟：先发一次；后端说 `exists` ⇒ 把原话交给 `ask`（人答「另起一个名字」⇒ `true`）⇒ 带 `fresh` 再发一次。
@@ -119,16 +126,17 @@ where
 {
     match extract_remote(line, origin, root, rel, false).await {
         Ok(e) => Outcome::Done(e),
-        Err((Some(code), said)) if code == "exists" => {
+        Err(f) if f.code.as_deref() == Some("exists") => {
+            let said = f.said;
             if !ask(said.clone()).await {
                 return Outcome::Skipped(said);
             }
             match extract_remote(line, origin, root, rel, true).await {
                 Ok(e) => Outcome::Done(e),
-                Err((_, why)) => Outcome::Failed(why),
+                Err(why) => Outcome::Failed(why),
             }
         }
-        Err((_, why)) => Outcome::Failed(why),
+        Err(why) => Outcome::Failed(why),
     }
 }
 

@@ -172,7 +172,7 @@ fn the_reply_maps_to_text_not_text_or_failure_by_the_peers_code() {
     // 阴性对照：别的码 / 没有码（没走通）⇒ 原话，**不许**也压成「不可编辑」。
     for code in [Some("unreadable"), Some("bad_args"), None] {
         assert_eq!(
-            text_from_reply(Err(failed(code, "那句原话"))),
+            text_from_reply(Err(failed(code, "那句原话"))).map_err(|f| f.said),
             Err("那句原话".to_string()),
             "`{code:?}` 被压成了「不可编辑」—— 连不上与不是文本在屏幕上就分不开了"
         );
@@ -210,7 +210,7 @@ async fn reading_goes_through_the_channel_and_each_refusal_lands_on_its_own_shap
     let e = got("/srv/gone.txt").await.expect_err("读不到竟然成了");
     // 〔CP1 裁「改·§2.1」〕对外那句不再点内部命令名 ⇒ 改认它说了是哪个文件、带着后端的码。
     assert!(
-        e.contains("/srv/gone.txt") && e.contains("unreadable"),
+        e.said.contains("/srv/gone.txt") && e.said.contains("unreadable"),
         "那句原话没说是哪个文件、后端怎么说：{e}"
     );
     let log = wired.log.lock().unwrap().clone();
@@ -233,7 +233,8 @@ async fn reading_goes_through_the_channel_and_each_refusal_lands_on_its_own_shap
     .await
     .expect_err("旧后端不认这条命令，竟然读到了");
     assert!(
-        e.contains(copy_core::copy_static!("rsFilewinSource.said.unknownCmd")),
+        e.said
+            .contains(copy_core::copy_static!("rsFilewinSource.said.unknownCmd")),
         "旧后端那一形没说清：{e}"
     );
     assert_eq!(old.count(CMD_READ_TEXT), 0);
@@ -662,7 +663,8 @@ fn a_read_without_a_digest_does_not_open_an_editor_that_could_never_save() {
     let e =
         opened_from_reply(Ok(serde_json::json!({ "text": "hi\n" }))).expect_err("没摘要竟然打开了");
     assert!(
-        e.contains(copy_core::copy_static!("rsFilewinEditor.reply.noDigest")),
+        e.said
+            .contains(copy_core::copy_static!("rsFilewinEditor.reply.noDigest")),
         "那句话没说是后端太旧：{e}"
     );
     assert!(opened_from_reply(Ok(serde_json::json!({ "text": "hi\n", "sha256": "abc" }))).is_err());

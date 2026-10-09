@@ -206,12 +206,12 @@ async fn a_failure_comes_back_with_the_message_the_pool_gave() {
         job(),
         |_| async move { false },
         |_| async move { true },
-        |_, _| async move { Err("`files-copy` 被拒（refused）：refuse write: 围栏".to_string()) },
+        |_, _| async move { Err("`files-copy` 被拒（refused）：refuse write: 围栏".into()) },
     )
     .await;
     assert_eq!(
         out,
-        CopyOutcome::Failed("`files-copy` 被拒（refused）：refuse write: 围栏".to_string())
+        CopyOutcome::Failed("`files-copy` 被拒（refused）：refuse write: 围栏".into())
     );
 }
 
@@ -541,7 +541,7 @@ async fn copying_goes_through_the_channel_with_the_overwrite_policy_on_the_wire(
     let e = copy_remote(&wired.line, &origin, &fenced, false)
         .await
         .expect_err("后端拒了，这一层却说成了");
-    assert!(e.contains("refuse write"), "拒的不是后端那一句：{e}");
+    assert!(e.said.contains("refuse write"), "拒的不是后端那一句：{e}");
     let old = wire_up("copy-wire-old", FakeBackend::new(&[], Declared::default())).await;
     let e = copy_remote(
         &old.line,
@@ -552,7 +552,8 @@ async fn copying_goes_through_the_channel_with_the_overwrite_policy_on_the_wire(
     .await
     .expect_err("旧后端不认这条命令，竟然复制成了");
     assert!(
-        e.contains(copy_core::copy_static!("rsFilewinSource.said.unknownCmd")),
+        e.said
+            .contains(copy_core::copy_static!("rsFilewinSource.said.unknownCmd")),
         "旧后端那一形没说清：{e}"
     );
     assert_eq!(old.count(CMD_COPY), 0);
@@ -560,7 +561,7 @@ async fn copying_goes_through_the_channel_with_the_overwrite_policy_on_the_wire(
 
 /// ⚠ **判源码是代理，不是标的**（同 `transfer_tests` / `source_tests` 的如实标注）。
 ///
-/// 买的是：复制经 `source::ask` 说后端那条命令（窗口进程够后端的唯一一处），
+/// 买的是：复制经 `source::ask_coded` 说后端那条命令（失败连码与复制详情一起交回）（窗口进程够后端的唯一一处），
 /// 探测借 `transfer::probe_remote`（「那儿有没有东西」只有一个口径）；
 /// SFTP 池子、进度通道、取消台一样都不碰。买不到：一台真远端上那一趟真跑过。
 #[test]
@@ -574,7 +575,7 @@ fn the_real_adapter_asks_the_backend_and_touches_no_transfer_machinery() {
         prod.len()
     );
     // 〔有损名全寻址〕探目标换成 `probe_remote_at`（路径可以是字节；`probe_remote` 是它路径为串时的那一形，同一个口径）。
-    for needle in ["source::ask(", "transfer::probe_remote_at("] {
+    for needle in ["source::ask_coded(", "transfer::probe_remote_at("] {
         assert_eq!(
             prod.matches(needle).count(),
             1,
@@ -601,7 +602,7 @@ fn the_real_adapter_asks_the_backend_and_touches_no_transfer_machinery() {
         );
     }
     // 反空真：这把尺子认得出「有」。
-    assert!(prod.contains("source::ask("));
+    assert!(prod.contains("source::ask_coded("));
 }
 
 // ════════════════════════════════════════════════════════════════════════

@@ -2629,12 +2629,11 @@ impl FileWindow {
                 let (local, raw_src) = (local.clone(), raw_src.clone());
                 async move {
                     match raw_src {
-                        Some(bytes) => {
-                            super::lossy_pull::pull_by_bytes(
-                                &line, &origin, &bytes, local, overwrite, &b,
-                            )
-                            .await
-                        }
+                        Some(bytes) => super::lossy_pull::pull_by_bytes(
+                            &line, &origin, &bytes, local, overwrite, &b,
+                        )
+                        .await
+                        .map_err(super::source::Failed::from),
                         None => super::download::pull_one(&line, &origin, &src, &to, &b).await,
                     }
                 }
@@ -2806,12 +2805,16 @@ impl FileWindow {
             Arrived::Failed { path, why } => {
                 let said = copy_text(
                     "rsFilewinShell.edit.readFailed",
-                    &[("path", &path.to_string()), ("why", &why.to_string())],
+                    &[("path", &path.to_string()), ("why", &why.said)],
                 );
                 if self.edit_tab {
                     self.edit_refused = Some(said);
                 } else {
-                    *self.listing.error.lock().unwrap() = Some(said.into());
+                    *self.listing.error.lock().unwrap() = Some(super::source::Failed {
+                        code: why.code,
+                        said,
+                        detail: why.detail,
+                    });
                 }
             }
         }

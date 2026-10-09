@@ -158,8 +158,8 @@ pub enum CopyOutcome {
         /// 后端报的复制字节数。
         bytes: u64,
     },
-    /// 起不来 / 半途失败，带原文。
-    Failed(String),
+    /// 起不来 / 半途失败：那一句 ＋ 复制详情。
+    Failed(super::source::Failed),
     /// 一摞（复制到另一栏）跑完的逐件读数。
     Batch(BatchReport),
     /// 一摞里有**目录**撞了名 ⇒ 整摞一件都没做（目录不覆盖、不合并）。带点了名的那句话。
@@ -206,7 +206,7 @@ where
     C: FnOnce(CopyJob) -> CFut,
     CFut: Future<Output = bool>,
     L: FnOnce(CopyJob, bool) -> LFut,
-    LFut: Future<Output = Result<u64, String>>,
+    LFut: Future<Output = Result<u64, super::source::Failed>>,
 {
     // ── ① 问「会不会覆盖」────────────────────────────────────────────────
     let clash = probe(job.clone()).await;
@@ -310,7 +310,7 @@ pub fn outcome_notice(o: &CopyOutcome) -> Notice {
             loud: false,
         },
         CopyOutcome::Failed(e) => Notice {
-            text: copy_text("rsFilewinCopy.outcome.failed", &[("e", &e.to_string())]),
+            text: copy_text("rsFilewinCopy.outcome.failed", &[("e", &e.said)]),
             loud: true,
         },
         CopyOutcome::Done { bytes, asked: _ } => Notice {
@@ -462,12 +462,12 @@ pub async fn copy_remote(
     origin: &super::source::Origin,
     job: &CopyJob,
     overwrite: bool,
-) -> Result<u64, String> {
+) -> Result<u64, super::source::Failed> {
     let args = copy_args(job, overwrite)?;
-    let d = super::source::ask(line, origin, CMD_COPY, &args, COPY_BUDGET).await?;
+    let d = super::source::ask_coded(line, origin, CMD_COPY, &args, COPY_BUDGET).await?;
     d.get("bytes")
         .and_then(serde_json::Value::as_u64)
-        .ok_or_else(|| copy_text("rsFilewinSource.said.badReply", &[]))
+        .ok_or_else(|| copy_text("rsFilewinSource.said.badReply", &[]).into())
 }
 
 // ═══════════════════════════════════════════════════════════════════════
