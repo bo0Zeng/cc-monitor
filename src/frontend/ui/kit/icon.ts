@@ -6,6 +6,7 @@
  * - `currentColor` 上色：默认 `--text-2`，悬停 / 当前由所在控件改 `color`。
  * - 纯装饰的图标读屏器不念（`aria-hidden`）；单独成钮的图标由按钮带读屏名（文案表 `aria` 档），图标自己不带字。
  * - 不拼 HTML：从 svg 文本里取出路径数据，用 `createElementNS` 建。
+ * 判据：`tests/frontend/ui/icons-one-source.vitest.ts`。
  */
 import gearSix from "@phosphor-icons/core/assets/regular/gear-six.svg?raw";
 import clockCounterClockwise from "@phosphor-icons/core/assets/regular/clock-counter-clockwise.svg?raw";

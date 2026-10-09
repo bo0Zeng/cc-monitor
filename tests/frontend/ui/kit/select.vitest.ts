@@ -1,5 +1,5 @@
 /**
- * 下拉（C3）：框上画当前项（身份块 · 字 · 灰字）· 点开是弹出菜单（宽同框、当前项打勾、不可选的灰着说为什么）·
+ * 下拉：框上画当前项（身份块 · 字 · 灰字）· 点开是弹出菜单（宽同框、当前项打勾、不可选的灰着说为什么）·
  * 焦点在框上 ↑↓ 直接换值不展开（跳过不可选）· 换值回调、`setValue` 不回调 · 在模态框里弹出的压过那个框。
  */
 import { describe, it, expect, vi, beforeAll, afterEach } from "vitest";
@@ -30,7 +30,7 @@ afterEach(() => {
   document.body.replaceChildren();
 });
 
-describe("C3 下拉", () => {
+describe("下拉", () => {
   it("★ 框上画当前项：身份块 · 字 · 灰字；点开 ⇒ 菜单宽同框、当前项打勾、不可选的灰着说为什么；点一项 ⇒ 换值、回调、菜单关", () => {
     const onChange = vi.fn();
     const h = select({ label: "账号", options: OPTS, value: "work", onChange });

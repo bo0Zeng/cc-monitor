@@ -1,4 +1,4 @@
-/* 按钮（C1）· 切换按钮（C21）· 按钮行。 */
+/* 按钮 · 切换按钮 · 按钮行。 */
 @layer components {
   .btnButton {
     display: inline-flex;

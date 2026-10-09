@@ -1,5 +1,5 @@
 /**
- * 弹出菜单（C12）：躲窗口边 · 关法（Esc 走弹层栈 · 点外面 · 再点触发物 · 选了一项）· 同一时刻一个 · 键盘 · 不可选的灰着说为什么 · 开着时换项 / 追加 / 摘掉。
+ * 弹出菜单：躲窗口边 · 关法（Esc 走弹层栈 · 点外面 · 再点触发物 · 选了一项）· 同一时刻一个 · 键盘 · 不可选的灰着说为什么 · 开着时换项 / 追加 / 摘掉。
  */
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from "vitest";
 import {
@@ -29,7 +29,7 @@ afterEach(() => {
   document.body.replaceChildren();
 });
 
-describe("C12 弹出菜单", () => {
+describe("弹出菜单", () => {
   it("躲窗口边：靠右靠下放不下 ⇒ 往左往上翻；比窗口还大 ⇒ 贴边内缩 8px", () => {
     const view = { width: 800, height: 600 };
     expect(placeFloat({ x: 10, y: 10 }, { width: 100, height: 50 }, view)).toEqual({ left: 10, top: 10 });

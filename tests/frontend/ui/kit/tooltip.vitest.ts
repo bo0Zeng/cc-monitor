@@ -1,5 +1,5 @@
 /**
- * 悬停提示（C20，`kit/tooltip.ts`）：不许在 body 上越攒越多（E60，经设置里的 `?` 图标测）· 500ms 才出 · 同组立刻换 · 躲窗口边。
+ * 悬停提示（`kit/tooltip.ts`）：不许在 body 上越攒越多（E60，经设置里的 `?` 图标测）· 500ms 才出 · 同组立刻换 · 躲窗口边。
  *
  * E60：tooltip **不许在 body 上越攒越多**。
  *
@@ -112,7 +112,7 @@ describe("E60：tooltip 不泄漏", () => {
 });
 
 
-describe("C20：出现时机与摆法", () => {
+describe("出现时机与摆法", () => {
   beforeEach(() => {
     document.body.replaceChildren();
     vi.useFakeTimers();

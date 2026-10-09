@@ -1,5 +1,5 @@
 /**
- * 通用组件各态（规范 C1–C23 · V10）：每件每一态画出来的形状（角色 · data-* · aria-* · 字），与该态的行为。
+ * 通用组件各态：每件每一态画出来的形状（角色 · data-* · aria-* · 字），与该态的行为。
  * 样子（颜色 · 尺寸）由 CSS Modules 按这些态上，截图那一页（`tests/shots` 的组件总览）看。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -20,7 +20,7 @@ import { icon } from "../../../../src/frontend/ui/kit/icon";
 
 beforeEach(() => document.body.replaceChildren());
 
-describe("C1 按钮", () => {
+describe("按钮", () => {
   it("层级落在 data-kind；图标按钮的字进读屏名、不上屏", () => {
     for (const kind of ["primary", "secondary", "danger", "danger-text", "ghost"] as const) {
       const b = button({ label: "结束", kind });
@@ -61,7 +61,7 @@ describe("C1 按钮", () => {
   });
 });
 
-describe("C2 输入框", () => {
+describe("输入框", () => {
   it("标签连着框；说明在下；出错替换说明的位置、带图标、aria-invalid；消掉回到说明", () => {
     const f = field({ label: "端口", value: "22", help: "1–65535" });
     document.body.appendChild(f.root);
@@ -97,7 +97,7 @@ describe("C2 输入框", () => {
   });
 });
 
-describe("C4 开关 · 复选框", () => {
+describe("开关 · 复选框", () => {
   it("立刻生效：拨了就翻；回 false ⇒ 退回原位", () => {
     const s = toggleSwitch({ label: "自动跟随", on: false, onChange: (on) => on !== true });
     s.input.click();
@@ -136,7 +136,7 @@ describe("C4 开关 · 复选框", () => {
   });
 });
 
-describe("C5 分栏 · C23 分段按钮", () => {
+describe("分栏 · 分段按钮", () => {
   it("当前那一个 aria-selected / aria-checked、只有它进 Tab 顺序；←→ Home End 换并报出", () => {
     const seen: string[] = [];
     const t = tabs({ label: "机器", items: [{ key: "a", label: "连接" }, { key: "b", label: "账号" }, { key: "c", label: "终端" }], current: "a", onChange: (k) => seen.push(k) });
@@ -155,7 +155,7 @@ describe("C5 分栏 · C23 分段按钮", () => {
   });
 });
 
-describe("C6 chip", () => {
+describe("chip", () => {
   it("可点的是按钮、只读的是 span；有事才上色；开着浮层 aria-expanded", () => {
     const c = chip({ text: "需要你 2", tone: "warn", onClick: () => {} });
     expect([c.tagName, c.dataset.intent]).toEqual(["BUTTON", "warn"]);
@@ -166,7 +166,7 @@ describe("C6 chip", () => {
 
 });
 
-describe("C9 折叠块", () => {
+describe("折叠块", () => {
   it("折叠块：aria-expanded 与正文 hidden 同进退；→ 开 ← 收；回调只在真变了时调", () => {
     const seen: boolean[] = [];
     const f = fold({ title: "工具 ×3", summary: "21:14", open: false, body: document.createElement("div"), onToggle: (o) => seen.push(o) });
@@ -180,7 +180,7 @@ describe("C9 折叠块", () => {
   });
 });
 
-describe("C14 转圈 · C22 计量条 · C17 徽标 · C18 键帽 · C19 骨架 · V10 状态点", () => {
+describe("转圈 · 计量条 · 徽标 · 键帽 · 骨架 · 状态点", () => {
   it("转圈：纯装饰，读屏器不念", () => {
     expect(spinner().getAttribute("aria-hidden")).toBe("true");
   });
@@ -219,7 +219,7 @@ describe("C14 转圈 · C22 计量条 · C17 徽标 · C18 键帽 · C19 骨架 
   });
 });
 
-describe("C15 错误条 · C16 空态", () => {
+describe("错误条 · 空态", () => {
   it("错误条 role=alert、警告条 role=status；不带 ×；动作在右", () => {
     const e = banner("error", "读取账号失败 · 内容无法解析", [button({ label: "复制详情" })]);
     expect([e.getAttribute("role"), e.dataset.intent, e.lastElementChild?.textContent]).toEqual(["alert", "error", "复制详情"]);

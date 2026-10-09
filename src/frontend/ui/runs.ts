@@ -93,7 +93,7 @@ export function runStateText(state: RunState): string {
 const RUN_ICON: Record<Exclude<RunState, "running">, IconName> = { done: "check", failed: "failed", stopped: "stop", unknown: "question" };
 
 /**
- * 状态字旁边那一枚：在跑 ＝ 呼吸的状态点（V10），其余四态 ＝ Phosphor 图标。
+ * 状态字旁边那一枚：在跑 ＝ 呼吸的状态点，其余四态 ＝ Phosphor 图标。
  * 旁边总跟着状态字，所以这一枚读屏器不念。
  */
 export function runStateMark(state: RunState): Element {

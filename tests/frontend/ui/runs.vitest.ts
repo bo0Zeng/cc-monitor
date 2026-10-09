@@ -48,7 +48,7 @@ function taps(resp: number, evs: StreamEv[], run?: string): TapPayload[] {
 
 const run = (id: string, state: RunState, label = id, tool?: string): RunInfo => ({ run: id, label, state, ...(tool ? { tool } : {}) });
 
-/** 状态那一格画的是什么：在跑 ＝ 呼吸的状态点（V10），其余四态 ＝ Phosphor 图标（经 kit/icon）；不许是字符。 */
+/** 状态那一格画的是什么：在跑 ＝ 呼吸的状态点，其余四态 ＝ Phosphor 图标（经 kit/icon）；不许是字符。 */
 function markOf(host: Element | null): string | undefined {
   if (!host) return undefined;
   if ((host.textContent ?? "") !== "") return `text:${host.textContent}`;

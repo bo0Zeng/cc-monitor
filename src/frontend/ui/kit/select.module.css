@@ -1,4 +1,4 @@
-/* 下拉（C3）：外观同输入框 ＋ 右侧 14px 向下箭头；面板是弹出菜单（menu.module.css）。 */
+/* 下拉：外观同输入框 ＋ 右侧 14px 向下箭头；面板是弹出菜单（menu.module.css）。 */
 @layer components {
   .select {
     display: flex;

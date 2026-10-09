@@ -1,7 +1,7 @@
 /**
  * 主窗口的标签页栏 · 「需要你」· 会话头：一个会话读成什么、谁在等你、去哪答。
  *
- * - `session-face.ts`：状态点（V10）· 状态句 · peek · 需要你（活动信号说不在等了 ⇒ 手上那份当场不认；说在等、种类没到 ⇒ 不猜）· `Ctrl+J` 的顺序；
+ * - `session-face.ts`：状态点 · 状态句 · peek · 需要你（活动信号说不在等了 ⇒ 手上那份当场不认；说在等、种类没到 ⇒ 不猜）· `Ctrl+J` 的顺序；
  * - 标签页栏：「需要你 N」只在 N ≥ 1 时出、点它跳等得最久的；机器离线条（`{machine} 离线 · N 会话状态不明`）＋［重新连接］；
  * - 钉条：种类 ＋ 工具 ＋ 那一句、去哪答（Windows ↗ / 远端 tmux / 都不行不给按钮）；窗口标题与系统通知；
  * - 会话头：按状态多一颗（已结束［恢复 ▾］· Claude 已退出（远端）［在终端里打开］· 状态不明［重新连接］）。
@@ -70,7 +70,7 @@ describe("一个会话读成什么（session-face）", () => {
     expect(needsOf(tab("a", { state: RECONNECTABLE, activity: waiting, needs: approve() })), "Claude 已退出：陈旧的在等不算").toBeNull();
   });
 
-  it("★ 状态点（V10）：颜色 ＝ 在干什么，形状 ＝ 进程在不在（状态不明不当已结束画）", () => {
+  it("★ 状态点：颜色 ＝ 在干什么，形状 ＝ 进程在不在（状态不明不当已结束画）", () => {
     const got = [
       tab("a", { activity: { doing: "working", waitingFor: null } }),
       tab("b", { activity: waiting }),

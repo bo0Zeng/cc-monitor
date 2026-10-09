@@ -1,7 +1,8 @@
 /**
- * 输入框（C2）：单行 / 多行 / 带前缀。标签在上、说明在下；出错时错误句**替换**说明句的位置（不另起、不跳位）。
+ * 输入框：单行 / 多行 / 带前缀。标签在上、说明在下；出错时错误句**替换**说明句的位置（不另起、不跳位）。
  *
  * 校验时机由调用方定（失焦 · 按确认）；打字时不报错，报过之后边打边消由调用方调 [`FieldHandle.setError`]`(null)`。
+ * 判据：`tests/frontend/ui/kit/components.vitest.ts`「输入框」那一节。
  */
 import { icon } from "./icon";
 import { spinner } from "./progress";
