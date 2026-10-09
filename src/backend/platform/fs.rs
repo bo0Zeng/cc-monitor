@@ -127,7 +127,6 @@ mod imp {
 
 #[cfg(windows)]
 mod imp {
-    use std::os::windows::ffi::OsStrExt as _;
     use std::path::Path;
 
     #[link(name = "kernel32")]
@@ -135,15 +134,12 @@ mod imp {
         fn MoveFileExW(existing: *const u16, new: *const u16, flags: u32) -> i32;
     }
 
-    fn wide(p: &Path) -> Vec<u16> {
-        p.as_os_str()
-            .encode_wide()
-            .chain(std::iter::once(0))
-            .collect()
-    }
-
     pub(super) fn rename_noreplace(from: &Path, to: &Path) -> std::io::Result<()> {
-        let (f, t) = (wide(from), wide(to));
+        // 带长路径前缀：用户目录下过 260 字符的路径照样改得了名。
+        let (f, t) = (
+            win_path_core::win32_path(from)?,
+            win_path_core::win32_path(to)?,
+        );
         // SAFETY：两个以 0 结尾的 UTF-16 串活过这一次调用；flags = 0 ⇒ 目标已在即失败（`ERROR_ALREADY_EXISTS`）。
         if unsafe { MoveFileExW(f.as_ptr(), t.as_ptr(), 0) } != 0 {
             Ok(())

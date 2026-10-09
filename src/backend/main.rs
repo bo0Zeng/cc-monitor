@@ -226,6 +226,8 @@ async fn main() {
     // (b) Emit the Hello handshake FIRST, flushed, before anything else.
     let hello = build_hello(&agent_home);
 
+    // 别的进程（命令行 · quota-warm · AI 照 skill 调）写了这台的轮换 ⇒ 这一路也推 `rotation_changed`（广播通道是进程内的）。
+    inbound::watch_rotation();
     match listening {
         None => run_over_stdio(hello, agent_home, wants).await,
         Some((listener, port, token)) => {

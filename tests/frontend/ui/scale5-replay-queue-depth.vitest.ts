@@ -57,7 +57,6 @@
  *
  * 量出来的是**队列深度**，不是「重放到底卡不卡」。深度 → 耗时那一跳还要过
  * 真机 WebView2 的 V8、真 payload 的大小、真 handler 的成本，这里一个都没有。
- * 读数 `tests/evidence/A-scale5-replay-queue-depth.md` 里「没答什么」那一节写全了。
  *
  * ⚠ 本文件**不引 `src/frontend/ui/events.ts` 的行号**：它正在被另一路 agent 改，行号一天一个样
  * （§6 表里那两个 `:368` / `:402` 今天已经指不到东西了）。引的一律是**构造名**。
@@ -614,7 +613,7 @@ describe("秤 5 · C：本文件镜像的那 3 个常量没有漂（读，不改
       expect(
         Number(m![1]),
         `★ ${pin.where} 的 ${pin.re} 现在是 ${m![1]}，本文件按 ${pin.mine} 算的读数。\n` +
-          "`tests/evidence/A-scale5-replay-queue-depth.md` 里的表**作废**，重跑一遍再改那份读数。",
+          "重跑一遍，把本文件里按旧值算的数一起改掉。",
       ).toBe(pin.mine);
     }
   });

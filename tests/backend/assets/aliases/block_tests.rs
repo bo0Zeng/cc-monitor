@@ -1210,8 +1210,7 @@ fn scanning_a_rc_changes_not_a_single_byte_on_disk() {
 //
 // ⇒ **这四条盘的是「片段生成」那一半**：我们**要写进用户 profile 的那几行**
 // 长不长得对、指不指得到真落点、有没有踩 Windows 改 PATH 的那两个经典地雷。
-// **「写进去之后终端里敲得到吗」仍然只有真机答得了**，本件的真机读数住
-// `tests/evidence/K-R132-摸底.md`。
+// **「写进去之后终端里敲得到吗」仍然只有真机答得了**。
 //
 // ⚠ 别把这段话读成「所以这几条没用」：`K-R129` 那条缺陷的**直接死因**就是
 // 「这几行里根本没有 PATH 这回事」，而那一半恰好是这里盘得住的。
@@ -1343,7 +1342,7 @@ fn the_powershell_cc_goes_through_ccm_exactly_like_the_posix_one() {
 ///
 /// # 这不是风格，是真机上一条「静默吞掉一行代码」的路
 ///
-/// win11 真机现打（读数住 `tests/evidence/K-R132-摸底.md`）：
+/// win11 真机现打：
 /// 本块写成不带 BOM 的 UTF-8 之后，Windows PowerShell 5.1 按系统 ANSI 代码页
 /// （那台机器是 GBK）解它，一行 CJK 注释**把它下面那一行吃掉** ——
 /// `$ccmBinDir = …` 落进了注释里，于是 `$env:PATH` 被赋成 `";" + 原值`，

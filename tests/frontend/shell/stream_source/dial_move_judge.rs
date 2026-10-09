@@ -83,7 +83,7 @@ fn corpus() -> Vec<(&'static str, String)> {
 /// `connect_session(` 的**调用点**处数 —— 剔掉定义行本身（`fn connect_session(`）。
 ///
 /// ⚠ 这把尺子**数不到**：`use` 别名、函数指针、宏里拼出来的调用。
-/// 与 `K-P6-dial-census.py` 头注是同一个洞，**不声称堵住**。
+/// **不声称堵住**。
 fn call_sites(code: &str) -> usize {
     let needle = "connect_session(";
     let mut n = 0usize;

@@ -344,7 +344,7 @@ pub(crate) fn launch_local_posix_via(
 /// 只剥 `#[cfg(test)] mod X { }` 段与注释（整行的与行尾的都剥 —— 行尾那一半是 `K-R3`
 /// 09-01 才补上的），**它不剥任何 `cfg`** ⇒ 本函数体在**文本**这一层原样在场。
 ///
-/// 现打（量具 `tests/evidence/K-H2b-C10-cfgwin-visibility.py`，喂的是本工作树的
+/// 现打（喂的是本工作树的
 /// `src/frontend/shell/src/launch.rs`，09-02；量具先拿本文件那条真判据钉的三个等号自检过
 /// 复刻对不对得上 —— 对不上它就拒绝出读数）：
 ///

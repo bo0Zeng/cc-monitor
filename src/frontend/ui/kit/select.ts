@@ -3,6 +3,7 @@
  * 宽同框、当前项左侧对勾、不可选的灰着并说为什么。
  *
  * - 键盘：焦点在框上 ↑↓ 直接换值不展开（跳过不可选）；Enter / 空格 / Alt+↓ 展开；面板里 ↑↓ 走、Enter 选、Esc 只收面板。
+ *   `closedKeys: "open"`（选一项就写盘的那种，如会话的轮换来源）：合着时方向键一概不换值，↓ 只展开 —— 只有在面板里明确点一项才回调。
  * - 换值（点选或 ↑↓）⇒ `onChange(value)`；`setValue` 不回调。
  * 判据：`tests/frontend/ui/kit/select.vitest.ts`。
  */
@@ -28,6 +29,8 @@ export interface SelectSpec {
   options: SelectOption[];
   value?: string;
   onChange?: (value: string) => void;
+  /** 合着时方向键做什么：`step`（缺省）↑↓ 直接换值 · `open` 只有 ↓ 展开、别的一概不做。 */
+  closedKeys?: "step" | "open";
 }
 
 export interface SelectHandle {
@@ -92,6 +95,13 @@ export function select(spec: SelectSpec): SelectHandle {
   el.addEventListener("click", open);
   el.addEventListener("keydown", (ev) => {
     if (ev.isComposing || menuAnchoredOn(el)) return;
+    if (spec.closedKeys === "open") {
+      if (ev.key === "ArrowDown") {
+        ev.preventDefault();
+        open();
+      }
+      return;
+    }
     if (ev.key === "ArrowDown" && ev.altKey) {
       ev.preventDefault();
       open();

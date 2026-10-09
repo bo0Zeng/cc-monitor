@@ -7,7 +7,7 @@
 /// 这台此刻是哪一种桌面会话（↗ 走哪条路由 `bind.rs` 据此定）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DisplaySession {
-    /// Windows 桌面。
+    /// Windows 桌面（只有 Windows 那一臂造它）。
     #[cfg_attr(not(windows), allow(dead_code))]
     Win32,
     /// X11 会话（窗口管理器挂 EWMH 那几张表）。

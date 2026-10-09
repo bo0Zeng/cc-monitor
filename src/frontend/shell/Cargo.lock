@@ -1069,6 +1069,7 @@ dependencies = [
  "copy-core",
  "guard-core",
  "serde_json",
+ "win-path-core",
  "windows 0.56.0",
 ]
 
@@ -2538,6 +2539,7 @@ dependencies = [
  "chrono",
  "serde",
  "serde_json",
+ "win-path-core",
  "windows 0.56.0",
 ]
 
@@ -3366,6 +3368,7 @@ dependencies = [
  "upstream-url-core",
  "uuid",
  "walkdir",
+ "win-path-core",
  "windows 0.56.0",
  "windows 0.61.3",
  "x11rb",
@@ -7093,6 +7096,13 @@ dependencies = [
  "raw-window-handle",
  "static_assertions",
  "web-sys",
+]
+
+[[package]]
+name = "win-path-core"
+version = "0.1.0"
+dependencies = [
+ "guard-core",
 ]
 
 [[package]]

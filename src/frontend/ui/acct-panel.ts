@@ -1,6 +1,6 @@
 /**
  * 「账号」面板（右侧抽屉）：状态栏账号按钮 · 右键「账号…」· 会话头 ⋯ 三处开的同一个。四块 ＋ 底栏：
- * 当前 · 轮换（`默认 | 本会话`、触发 `满 / ≥N%`、无号可换 `继续跑 / 停`、勾与拖序、折着的时间轴）· 切换（选号、热切换 / 重启切换）· 记录 ·
+ * 当前 · 轮换（来源下拉 `跟随默认 · 本会话`、触发 `满 / ≥N%`、无号可换 `继续跑 / 停`、勾与拖序、折着的时间轴）· 切换（选号、热切换 / 重启切换）· 记录 ·
  * 底栏 `新会话默认 [work ▾] … 管理账号…`。
  *
  * - 数据只经 `quota-read` · `rotation-read` · `rotation-session-read/-set` · `rotation-switch`（`quota-reads.ts`）与推送
@@ -27,6 +27,7 @@ import { confirmInterrupts } from "./kit/interrupts";
 import { closeMenu, openMenu, type MenuItem } from "./kit/menu";
 import { meter, type MeterState } from "./kit/meter";
 import { segmented } from "./kit/tabs";
+import { select } from "./kit/select";
 import { toast } from "./kit/toast";
 import { attachTooltip } from "./kit/tooltip";
 import { ARRIVAL_BUDGET_MS } from "./launch-arrival";
@@ -161,8 +162,8 @@ export function openAccountPanel(sid: string, origin: Origin, host: AcctPanelHos
   };
   o.unsub.push(appStore.quota.subscribe(repaint), appStore.sessionRotation.subscribe(repaint), appStore.rotationDefault.subscribe(repaint), appStore.accounts.subscribe(repaint));
   render(o, host);
-  // 焦点落在「轮换」分段（规范：打开即可键盘改轮换）；没有那一块（中转没见过）⇒ 留在关闭钮上。
-  body.querySelector<HTMLElement>('[role="radiogroup"] [aria-checked="true"]')?.focus();
+  // 焦点落在来源下拉（合着时不写任何东西）；没有那一块（中转没见过）⇒ 留在关闭钮上。
+  body.querySelector<HTMLElement>("[data-acct-src]")?.focus();
   // 打开那一刻再问一次这个会话（推送丢过也能补上）；额度账同理。
   void refreshSessions(origin, [sid]);
   void refreshQuota(origin);
@@ -306,9 +307,11 @@ function nowBlock(o: Open, entry: SessionRotationEntry | undefined, quota: Quota
 
 const START: RotationSlot = { start: true };
 
+type Row = { account: string; start: boolean; on: boolean };
+
 /** 这一份轮换画成哪几行：顺序里的（占位换成起始号）＋ 这台账号库里其余的号（不勾，排后面）。 */
-function rowsOf(r: Rotation, start: string, quota: QuotaRead | null, agent: string): { account: string; start: boolean; on: boolean }[] {
-  const out: { account: string; start: boolean; on: boolean }[] = [];
+function rowsOf(r: Rotation, start: string, quota: QuotaRead | null, agent: string): Row[] {
+  const out: Row[] = [];
   const seen = new Set<string>();
   for (const slot of r.order) {
     const a = typeof slot === "string" ? slot : start;
@@ -325,21 +328,24 @@ function rowsOf(r: Rotation, start: string, quota: QuotaRead | null, agent: stri
   return out;
 }
 
-/** 行的勾 / 序改了 ⇒ 一份新的轮换（占位留在原位；序里没有的号勾上时排到末尾）。 */
-function withRows(r: Rotation, rows: { account: string; start: boolean; on: boolean }[]): Rotation {
-  const order: RotationSlot[] = [];
-  const enabled: string[] = [];
-  for (const row of rows) {
-    if (row.start) {
-      order.push(START);
-      continue;
-    }
-    if (!row.on && !r.order.includes(row.account)) continue;
-    order.push(row.account);
-    if (row.on) enabled.push(row.account);
-  }
-  if (!order.some((x) => typeof x !== "string")) order.unshift(START);
+/** 勾 / 不勾一个号 ⇒ 只改 `enabled`；`order` 逐字不动（序里没有的号勾上时排到末尾），不添占位。 */
+function toggled(r: Rotation, account: string, on: boolean): Rotation {
+  const enabled = on ? (r.enabled.includes(account) ? r.enabled : [...r.enabled, account]) : r.enabled.filter((a) => a !== account);
+  const order = on && !r.order.includes(account) ? [...r.order, account] : r.order;
   return { ...r, order, enabled };
+}
+
+/**
+ * 把第 `from` 行挪到 `to` ⇒ 新的 `order`：按行的新次序写回原来就有的那几格（占位只在原来有时才有；起始号若另外具名在序里，
+ * 那一格跟在占位后面，不丢）；序外的行只有被挪的那一行才进序。`enabled` 不动。
+ */
+function moved(r: Rotation, rows: Row[], from: number, to: number): Rotation {
+  const order: RotationSlot[] = [];
+  move(rows, from, to).forEach((row) => {
+    if (row.start) order.push(START);
+    if (r.order.includes(row.account) || (row === rows[from] && !row.start)) order.push(row.account);
+  });
+  return { ...r, order };
 }
 
 function quotaOf(quota: QuotaRead | null, agent: string, account: string): QuotaShow | null {
@@ -391,21 +397,28 @@ function rotationBlock(o: Open, entry: SessionRotationEntry, read: Present, quot
   const now = entry.now;
 
   const bar = el("div", s.acctRotBar);
-  const seg = segmented<"follow" | "custom">({
-    items: [
-      { key: "follow", label: copyText("acct.rot.follow") },
-      { key: "custom", label: copyText("acct.rot.custom") },
+  const was: "follow" | "custom" = follow ? "follow" : "custom";
+  // 来源：下拉，只有在面板里明确点一项才写（合着时方向键一概不做）；写成了 toast 带撤销。
+  const src = select({
+    label: copyText("rot.src.label"),
+    options: [
+      { value: "follow", label: copyText("rot.src.follow") },
+      { value: "custom", label: copyText("rot.src.custom") },
     ],
-    current: follow ? "follow" : "custom",
-    label: copyText("acct.rot.modeAria"),
-    onChange: (k) => void save(o, host, k === "follow" ? "follow" : "custom"),
+    value: was,
+    closedKeys: "open",
+    onChange: (k) => void setSource(o, host, k === "follow" ? "follow" : "custom", was),
   });
+  src.el.dataset.acctSrc = "true";
+  const srcRow = el("div", s.acctSrcRow);
+  srcRow.append(el("span", s.acctTriggerLabel, copyText("rot.src.label")), src.el);
   const info = el("span", s.acctInfo);
   info.tabIndex = 0;
   info.setAttribute("aria-label", copyText("acct.rot.infoAria"));
   info.appendChild(icon("info", "compact"));
   attachTooltip(info, copyText("acct.rot.rule"));
-  bar.append(seg, info, el("span", s.acctSpacer));
+  srcRow.appendChild(info);
+  sec.content.appendChild(srcRow);
   if (r) bar.appendChild(triggerControls(o, host, r, follow, read.atLimit));
   sec.content.appendChild(bar);
 
@@ -564,8 +577,7 @@ function rotationList(o: Open, host: AcctPanelHost, read: Present, r: Rotation, 
     box.disabled = !editable || locked || q?.login === "needsLogin" || q?.login === "needsKey";
     if (row.account === cur && editable) attachTooltip(line, copyText("acct.rot.lockHint"));
     box.addEventListener("change", () => {
-      const next = rows.map((x, k) => (k === i ? { ...x, on: box.checked } : x));
-      void save(o, host, { custom: withRows(r, next) });
+      void save(o, host, { custom: toggled(r, row.account, box.checked) });
     });
     if (editable) line.appendChild(handle);
     line.append(box, acctAvatar(row.account), el("span", s.acctRowName, accountLabel(row.account)));
@@ -585,9 +597,9 @@ function rotationList(o: Open, host: AcctPanelHost, read: Present, r: Rotation, 
         ev.preventDefault();
         const to = ev.key === "ArrowUp" ? i - 1 : i + 1;
         if (to < 0 || to >= rows.length) return;
-        void save(o, host, { custom: withRows(r, move(rows, i, to)) });
+        void save(o, host, { custom: moved(r, rows, i, to) });
       });
-      handle.addEventListener("pointerdown", (ev) => startDrag(ev, o, host, list, elems, i, (to) => void save(o, host, { custom: withRows(r, move(rows, i, to)) })));
+      handle.addEventListener("pointerdown", (ev) => startDrag(ev, o, host, list, elems, i, (to) => void save(o, host, { custom: moved(r, rows, i, to) })));
     }
     elems.push(line);
     list.appendChild(line);
@@ -645,8 +657,9 @@ function startDrag(ev: PointerEvent, o: Open, host: AcctPanelHost, list: HTMLEle
   document.addEventListener("keydown", esc, true);
 }
 
-/** 写这个会话的轮换：成 ⇒ 重问这个会话；败 ⇒ 列表退回原样、块顶一条错误条（重试写同一份）。 */
-async function save(o: Open, host: AcctPanelHost, w: "follow" | "custom" | { custom: Rotation }): Promise<void> {
+/** 写这个会话的轮换：成 ⇒ 重问这个会话；败 ⇒ 列表退回原样、块顶一条错误条（重试写同一份）。回成没成。 */
+async function save(o: Open, host: AcctPanelHost, w: "follow" | "custom" | { custom: Rotation }): Promise<boolean> {
+  let ok = true;
   try {
     const got = await writeSessionRotation(o.origin, [o.sid], w);
     const one = got[o.sid];
@@ -655,9 +668,23 @@ async function save(o: Open, host: AcctPanelHost, w: "follow" | "custom" | { cus
   } catch (e) {
     console.warn("[acct] rotation-session-set 失败：", e);
     o.saveFailed = typeof w === "object" ? w.custom : null;
+    ok = false;
+    if (open === o) render(o, host);
   }
-  await refreshSessions(o.origin, [o.sid]);
-  if (open === o) render(o, host);
+  void refreshSessions(o.origin, [o.sid]).then(() => {
+    if (open === o) render(o, host);
+  });
+  return ok;
+}
+
+/** 换来源：写一次；成了 toast `orders · 跟随默认 [撤销]`，撤销 ＝ 写回原来源（本会话那份后端一直留着）。 */
+async function setSource(o: Open, host: AcctPanelHost, to: "follow" | "custom", was: "follow" | "custom"): Promise<void> {
+  if (!(await save(o, host, to))) return;
+  const label = (k: "follow" | "custom"): string => (k === "follow" ? copyText("rot.src.follow") : copyText("rot.src.custom"));
+  toast(copyText("rot.done.src", { session: host.sessionTitle(o.sid), src: label(to) }), "", {
+    level: "success",
+    action: { label: copyText("kit.toast.undo"), run: () => void save(o, host, was) },
+  });
 }
 
 // ─────────────────────────────── 时间轴（折在轮换下）

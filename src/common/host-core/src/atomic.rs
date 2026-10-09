@@ -62,7 +62,6 @@ pub fn atomic_write_json<T: serde::Serialize>(
 
 #[cfg(windows)]
 fn atomic_replace_path(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
-    use std::os::windows::ffi::OsStrExt;
     use windows::core::PCWSTR;
     use windows::Win32::Storage::FileSystem::{ReplaceFileW, REPLACEFILE_WRITE_THROUGH};
 
@@ -70,12 +69,11 @@ fn atomic_replace_path(src: &std::path::Path, dst: &std::path::Path) -> std::io:
         // dst 不存在 ReplaceFileW 会失败；首次写直接 rename（标准库自己会给长路径加前缀）
         return std::fs::rename(src, dst);
     }
-    let wide = |p: &std::path::Path| -> std::io::Result<Vec<u16>> {
-        let mut w = win32_long_path(std::path::absolute(p)?.as_os_str().encode_wide());
-        w.push(0);
-        Ok(w)
-    };
-    let (src_w, dst_w) = (wide(src)?, wide(dst)?);
+    // 带长路径前缀：过 260 字符的路径照样覆盖得上。
+    let (src_w, dst_w) = (
+        win_path_core::win32_path(src)?,
+        win_path_core::win32_path(dst)?,
+    );
     unsafe {
         ReplaceFileW(
             PCWSTR(dst_w.as_ptr()),
@@ -87,37 +85,6 @@ fn atomic_replace_path(src: &std::path::Path, dst: &std::path::Path) -> std::io:
         )
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.message().to_string()))
     }
-}
-
-/// 交给 Win32 文件 API 的绝对路径（UTF-16，不带结尾 0）⇒ 带长路径前缀的那一形，过 260 字符照样能用：
-/// `C:\…` → `\\?\C:\…`；`\\服务器\共享\…` → `\\?\UNC\服务器\共享\…`；已带 `\\?\` / `\\.\` 的原样；
-/// 别的（相对路径）原样。带了前缀的路径系统不再替你换分隔符 ⇒ `/` 一并换成 `\`。
-pub fn win32_long_path(path: impl IntoIterator<Item = u16>) -> Vec<u16> {
-    const SEP: u16 = b'\\' as u16;
-    let p: Vec<u16> = path.into_iter().collect();
-    let is_sep = |c: u16| c == SEP || c == b'/' as u16;
-    let at = |i: usize| p.get(i).copied().unwrap_or(0);
-    let verbatim = |c: u16| c == b'?' as u16 || c == b'.' as u16;
-    if is_sep(at(0)) && is_sep(at(1)) && verbatim(at(2)) && is_sep(at(3)) {
-        return p;
-    }
-    let slashed = |s: &[u16]| -> Vec<u16> {
-        s.iter()
-            .map(|&c| if c == b'/' as u16 { SEP } else { c })
-            .collect()
-    };
-    let letter = |c: u16| c < 128 && (c as u8).is_ascii_alphabetic();
-    let drive = letter(at(0)) && at(1) == b':' as u16 && is_sep(at(2));
-    let mut out: Vec<u16> = r"\\?\".encode_utf16().collect();
-    if drive {
-        out.extend(slashed(&p));
-    } else if is_sep(at(0)) && is_sep(at(1)) {
-        out.extend("UNC\\".encode_utf16());
-        out.extend(slashed(&p[2..]));
-    } else {
-        return p;
-    }
-    out
 }
 
 #[cfg(not(windows))]

@@ -262,6 +262,19 @@
     gap: var(--space-5);
   }
 
+  /* 来源一行：`来源 [跟随默认 ▾] ⓘ`，下拉按内容宽（不撑满）。 */
+  .acctSrcRow {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+  }
+
+  .acctSrcRow > button {
+    width: auto;
+    min-width: 132px;
+    max-width: 260px;
+  }
+
   .acctSpacer {
     flex: 1;
   }

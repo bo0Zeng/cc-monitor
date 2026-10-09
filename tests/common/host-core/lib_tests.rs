@@ -120,63 +120,6 @@ fn atomic_write_json_creates_dirs_and_file_only_for_the_owner() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
-/// Windows 上原子写交给 Win32 的路径带长路径前缀（过 260 字符的覆盖写不失败）。Linux 上按 UTF-16 喂 Windows 形的路径，钉拼出来的样子。
-#[test]
-fn win32_paths_get_the_long_path_prefix() {
-    let w = |s: &str| s.encode_utf16().collect::<Vec<u16>>();
-    let long_tail = "d".repeat(300);
-    for (given, want) in [
-        (
-            r"C:\Users\u\.cc-monitor\bind.json".to_string(),
-            r"\\?\C:\Users\u\.cc-monitor\bind.json".to_string(),
-        ),
-        (
-            "C:/Users/u/x.json".to_string(),
-            r"\\?\C:\Users\u\x.json".to_string(),
-        ),
-        (
-            r"\\srv\share\a.json".to_string(),
-            r"\\?\UNC\srv\share\a.json".to_string(),
-        ),
-        (r"\\?\C:\already".to_string(), r"\\?\C:\already".to_string()),
-        (r"\\.\pipe\x".to_string(), r"\\.\pipe\x".to_string()),
-        ("rel\\x.json".to_string(), "rel\\x.json".to_string()),
-        (
-            format!(r"D:\{long_tail}\b.json"),
-            format!(r"\\?\D:\{long_tail}\b.json"),
-        ),
-    ] {
-        assert_eq!(win32_long_path(w(&given)), w(&want), "{given}");
-    }
-}
-
-/// 上面那条在执行链上：两处原子换名（这里的 `ReplaceFileW` · monitor 的 `MoveFileExW`）交给 Win32 的宽串只从它来。
-#[test]
-fn every_win32_atomic_replace_hands_over_a_long_path() {
-    for (file, src) in [
-        (
-            "host-core/src/atomic.rs",
-            include_str!("../../../src/common/host-core/src/atomic.rs"),
-        ),
-        (
-            "shell/src/platform/fs.rs",
-            include_str!("../../../src/frontend/shell/src/platform/fs.rs"),
-        ),
-    ] {
-        let wide: Vec<&str> = src
-            .lines()
-            .filter(|l| l.contains("encode_wide()"))
-            .collect();
-        assert!(!wide.is_empty(), "{file}：找不到宽串那一行（锚丢了）");
-        for l in wide {
-            assert!(
-                l.contains("win32_long_path("),
-                "{file}：交给 Win32 的路径没过长路径前缀：{l}"
-            );
-        }
-    }
-}
-
 // ── 要求：「连着重启 monitor 三次，主窗外框左上 x 78 → 52 → 26，每起一次左移 26 px」──
 
 /// 主窗 / 设置窗每次起都摆在工作区正中：左上只由尺寸与工作区定（入参里没有「它原来在哪」）

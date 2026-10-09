@@ -17,8 +17,7 @@
  *   `tests/evidence/U-scale2-truth-golden.json`。
  *   真高只取决于 DOM + CSS + 引擎，**与 `height-estimate.ts` 一个字都无关** ⇒ 静态固化是合法的。
  * - 估值**每次跑门禁都现算**（`estimateStreamNodeHeight` 现场调用）。
- *   ⇒ 改坏一个常数，下面的门禁当场红。这条是「没红 ≠ 守住了」的解药，
- *     变异自检的原文记在 `tests/evidence/U-scale2-height-truth.md`。
+ *   ⇒ 改坏一个常数，下面的门禁当场红。这条是「没红 ≠ 守住了」的解药。
  *
  * # ⚠ 它量不到什么（这段不完整本身就是缺陷）
  *
@@ -29,13 +28,12 @@
  *    但那一格是**金标准**，改常数不会让它变 —— 两格的分工写在各自的用例名里，别混。
  * 2. **真高是"这台 Linux 无头机 + 这套 fallback 字体"的真高**，不是生产 Windows
  *    WebView2 的真高。`--font-prose` 里的 Source Serif 4 / PingFang SC / Microsoft YaHei
- *    本机一个都没装（读数见 `U-scale2-height-truth.md` 的环境段）。字体一换，
+ *    本机一个都没装。字体一换，
  *    正文卡的真高就会变。**跨平台那一格今天没有。**
  * 3. 「一次强制布局读多少钱」本文件**不答**，它在「分不清」里挂着。
  *
  * 复算（真浏览器那一半）：`bash tests/evidence/U-scale2-run.sh`
  * 复算（本文件）：       `npx vitest run tests/frontend/ui/scale2-height-truth.vitest.ts`
- * 读数：                 `tests/evidence/U-scale2-height-truth.md`
  */
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
@@ -209,7 +207,7 @@ const EXCEEDS_DESIGN_GATE: string[] = [];
  * # 它是来顶班的
  *
  * `applyIntrinsicSize` 里原本有个 `Math.max(24, …)` 地板，注释自陈「防 0/负值」。
- * 2026-09-18 把它去掉了，三条理由（读数 `tests/evidence/S22-floor-readings.md`）：
+ * 2026-09-18 把它去掉了，三条理由：
  *   ① 全局地板**构造上不可能对** —— 正确值逐 class 不同，一个数管九个 class 必然错几个；
  *   ② 按 class 分档 ＝ **把常数抄第二遍**（class 判定整套住在 `estimateStreamNodeHeight` 里）；
  *   ③ 🔴 **它该出声，不该静默夹取** —— `Math.max` 把「估值荒谬地小」抹平了，
@@ -226,8 +224,7 @@ const EXCEEDS_DESIGN_GATE: string[] = [];
  * # 射程（写清，别让人当成"估高全对"）
  *
  * - 对六个**常数驱动**的 class（retry / slash / bash-input / api-error / compact / tool-group），
- *   登记值 **＝ 源码那个常数本身** ⇒ 常数被改小**当场红**（变异 M11/M12 实证，见
- *   `tests/evidence/U-scale2-mutation-log.txt`）。
+ *   登记值 **＝ 源码那个常数本身** ⇒ 常数被改小**当场红**（变异 M11/M12 实证）。
  * - 对三个**算出来**的 class（user / assistant / bash-output），登记的是它们**结构上的下界**
  *   （一行正文 / 卡头 / 输出头），⚠ **比今天实测的 min 松**（见每条的注释）——
  *   它逮得住「塌到荒谬」，逮不住「小幅变差」。小幅变差那一格归 `P90_CEILING`。
@@ -497,7 +494,6 @@ describe("秤 2 · F1：估值最小值不许塌（地板去掉之后接手保�
       "★ **F1 红 = 估算器给某个卡型算出了一个荒谬地小的值。**\n" +
         "  这一格是 `applyIntrinsicSize` 那个 `Math.max(24, …)` 地板的**替身**：\n" +
         "  地板会把这种值**静默顶上去**（谁也不知道估算器坏了），本判据把它**喊出来**。\n" +
-        "  （`99 条 75` /；地板为什么不该留，见 `tests/evidence/S22-floor-readings.md`）\n" +
         "  两条路：① 估高真写坏了 ⇒ 去修 `src/frontend/ui/height-estimate.ts`；\n" +
         "          ② 常数是**故意**改小的 ⇒ 回来改 `CLASS_MIN_EST`，并跑一次\n" +
         "             `bash tests/evidence/U-scale2-run.sh` 重打金标准、重定 `P90_CEILING`。\n" +
@@ -600,8 +596,8 @@ describe("秤 2 · 读数（不做判据，只产表）", () => {
       "★ `applyIntrinsicSize` 又开始夹取估值了。\n" +
         "  2026-09-18 之前这里有个 `Math.max(24, …)` 地板，它把 **13/83 张卡**顶高，\n" +
         "  其中三条细条常数（17/19/19）**整个没出货** —— 改了常数、p90 一个点不动，\n" +
-        "  人却以为修好了。地板已按 `99 条 75` / 去掉，理由与两个真引擎的读数\n" +
-        "  见 `tests/evidence/S22-floor-readings.md`：全局地板构造上不可能对、分档等于把常数抄\n" +
+        "  人却以为修好了。地板已按 `99 条 75` / 去掉，理由：\n" +
+        "  全局地板构造上不可能对、分档等于把常数抄\n" +
         "  第二遍、而「估值荒谬地小」**该出声不该静默夹取**（那一格现在归 F1）。\n" +
         "  要再加夹取，先去推翻那份读数。",
     ).toEqual([]);

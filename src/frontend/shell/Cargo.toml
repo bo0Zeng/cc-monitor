@@ -26,6 +26,8 @@ members = [
     "../../comms/outward",
     # 前端宿主原语（两个前端共用、后端不链）：自有状态文件的原子写 · 窗口夹进工作区。
     "../../common/host-core",
+    # 交给 Win32 的路径（长路径前缀）：后端 · monitor · 文件窗口 · creds-core 共用那一份。
+    "../../common/win-path-core",
     # monitor 与文件窗口进程之间的契约（开窗种子 · 就绪那一行 · 「在此打开终端」那一问）。
     "../../common/filewin-contract",
     # 文件窗口（又一个前端）：独立成包，monitor 包里的 `[[bin]] cc-monitor-filewin` 转调它。
@@ -159,6 +161,8 @@ deploy-contract = { path = "../../common/deploy-contract" }
 comms-inward = { path = "../../comms/inward" }
 # 前端宿主原语（原子写 `atomic_write_json` · `WorkArea` / `fit_into_work_area`）：monitor 与文件窗口共用那一份（`src/common/host-core`）。
 host-core = { path = "../../common/host-core" }
+# 交给 Win32 的路径（长路径前缀）只从它来：配置换名那一处用（`platform/fs.rs`）；仓内 crate、零依赖。
+win-path-core = { path = "../../common/win-path-core" }
 # monitor 与文件窗口进程两边对上的形状（种子 · 就绪行 · 开终端那一问）。
 filewin-contract = { path = "../../common/filewin-contract" }
 # `gate-core` 删了：monitor 侧的 Gate 1 前检与转调壳（只剩跨轨对拍锚点在用）删掉之后它只剩后端用，收成后端模块 `control/gate_rules.rs`。
