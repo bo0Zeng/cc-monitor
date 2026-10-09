@@ -150,12 +150,9 @@ pub(crate) fn hold(dir: &Path) -> Result<DirLock, LockFail> {
             Err((
                 copy_text(
                     "bePlatformLock.hold.waitFailed",
-                    &[
-                        ("dir", &dir.display().to_string()),
-                        ("status", &format!("{other:#x}")),
-                    ],
+                    &[("dir", &dir.display().to_string())],
                 ),
-                None,
+                Some(format!("WaitForSingleObject {other:#x}")),
             ))
         }
     }

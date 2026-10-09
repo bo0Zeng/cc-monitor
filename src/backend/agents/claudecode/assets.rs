@@ -87,10 +87,19 @@ pub(crate) fn scan_skills_at(root: &Path, project: Option<&str>, out: &mut Sight
         Ok(rd) => rd,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return,
         Err(e) => {
-            out.problems.push(copy_text(
-                "beClaudeAssets.scan.listFailed",
-                &[("path", &root.display().to_string()), ("e", &e.to_string())],
-            ));
+            out.problems.push(
+                crate::common::said::Said::with_raw(
+                    copy_text(
+                        "beClaudeAssets.scan.listFailed",
+                        &[
+                            ("path", &root.display().to_string()),
+                            ("why", &copy_core::io_reason(e.kind())),
+                        ],
+                    ),
+                    &e,
+                )
+                .into_note(),
+            );
             return;
         }
     };

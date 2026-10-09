@@ -286,7 +286,7 @@ pub(crate) fn answer_apply(d: &dyn Door, record: Record, args: &Value) -> Answer
         "digest": crate::assets::skill_ledger::mcp_digest(&full),
     }))
     .err()
-    .map(|f| copy_text("beExt.apply.recordFailed", &[("e", &f.into_note())]));
+    .map(|f| copy_text("beExt.apply.recordFailed", &[("why", &f.into_note())]));
     Ok(json!({ "path": landed.path, "written": landed.changed, "recordFailed": record_failed }))
 }
 

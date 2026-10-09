@@ -221,7 +221,7 @@ impl Stopped {
 }
 
 /// `~/.cc-monitor` → `logs` → `backend` 逐层建（每层 0700，已在的不动）。
-fn log_dir_chain(home: &Path) -> Result<(), String> {
+fn log_dir_chain(home: &Path) -> Result<(), crate::common::said::Said> {
     let Some(dir) = home.join(STDERR_LOG_REL).parent().map(Path::to_path_buf) else {
         return Ok(());
     };
@@ -236,18 +236,24 @@ fn log_dir_chain(home: &Path) -> Result<(), String> {
 /// 失败交的是进日志的那一行（那一句 ＋ 原话，[`crate::common::said::Said::logged`]）：读它的只有入口那一处日志。
 pub fn rotate_token(path: &Path) -> Result<String, String> {
     if let Some(dir) = path.parent() {
-        ensure_dir(dir)?;
+        ensure_dir(dir).map_err(|e| e.logged())?;
     }
     let t = mint()?;
     crate::common::own_state::write(path, t.as_bytes()).map_err(|e| e.logged())?;
     Ok(t)
 }
 
-fn ensure_dir(dir: &Path) -> Result<(), String> {
+fn ensure_dir(dir: &Path) -> Result<(), crate::common::said::Said> {
     crate::common::own_dir::ensure_private_dir(dir).map_err(|e| {
-        copy_text(
-            "beResident.fs.mkdirFailed",
-            &[("dir", &dir.display().to_string()), ("e", &e.to_string())],
+        crate::common::said::Said::with_raw(
+            copy_text(
+                "beResident.fs.mkdirFailed",
+                &[
+                    ("dir", &dir.display().to_string()),
+                    ("why", &copy_core::io_reason(e.kind())),
+                ],
+            ),
+            &e,
         )
     })
 }
@@ -318,7 +324,7 @@ pub fn record_owner(port: u16) -> Result<(), String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let path = pid_path(&dh, port);
     if let Some(dir) = path.parent() {
-        ensure_dir(dir)?;
+        ensure_dir(dir).map_err(|e| e.logged())?;
     }
     crate::common::own_state::write(
         &path,

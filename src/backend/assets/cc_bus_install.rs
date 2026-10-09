@@ -285,7 +285,7 @@ pub(crate) fn install_at(d: &dyn Door, skills: &Path, record: Record) -> Answer 
                 "refused",
                 copy_text(
                     "beCcBusInstall.backup.failed",
-                    &[("dest", &dest_s), ("bak", &bak), ("e", &e)],
+                    &[("dest", &dest_s), ("bak", &bak), ("why", &e)],
                 ),
             )
         })?;
@@ -316,7 +316,7 @@ pub(crate) fn install_at(d: &dyn Door, skills: &Path, record: Record) -> Answer 
     }
     let record_failed = record(&json!({ "op": "add", "name": NAME, "files": files }))
         .err()
-        .map(|f| copy_text("beCcBusInstall.record.failed", &[("e", &f.into_note())]));
+        .map(|f| copy_text("beCcBusInstall.record.failed", &[("why", &f.into_note())]));
     Ok(json!({
         "dest": dest_s,
         "written": FILES.iter().map(|(rel, _)| *rel).collect::<Vec<_>>(),

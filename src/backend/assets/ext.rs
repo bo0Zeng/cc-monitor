@@ -1309,7 +1309,7 @@ pub(crate) fn answer_uninstall_apply(
                     door::rename(d, &home_s, &from, &rel).map_err(|e| {
                         (
                             "refused",
-                            copy_text("beExt.uninstall.backupFailed", &[("e", &e)]),
+                            copy_text("beExt.uninstall.backupFailed", &[("why", &e)]),
                         )
                     })?;
                     ExtDone {
@@ -1353,7 +1353,7 @@ pub(crate) fn answer_uninstall_apply(
                 .map_err(|e| {
                     (
                         "refused",
-                        copy_text("beExt.uninstall.backupFailed", &[("e", &e.said())]),
+                        copy_text("beExt.uninstall.backupFailed", &[("why", &e.said())]),
                     )
                 })?;
                 note = Some(copy_text("beExt.uninstall.copiedTo", &[("path", &abs)]));
@@ -1386,7 +1386,7 @@ pub(crate) fn answer_uninstall_apply(
                 if let Err(f) = record(&json!({ "op": "mcp-drop", "file": m.path, "name": name })) {
                     note = Some(copy_text(
                         "beExt.uninstall.dropFailed",
-                        &[("e", &f.into_note())],
+                        &[("why", &f.into_note())],
                     ));
                 }
             }
@@ -1409,12 +1409,12 @@ fn ensure_backups_dir(d: &dyn Door, home: &str) -> Result<(), crate::stream::inb
         Ok(None) => door::mkdir(d, home, relay_route_core::EXT_BACKUPS_DIR_REL).map_err(|e| {
             crate::stream::inbound::spec::Fail::new(
                 "refused",
-                copy_text("beExt.uninstall.backupFailed", &[("e", &e)]),
+                copy_text("beExt.uninstall.backupFailed", &[("why", &e)]),
             )
         }),
         Err(e) => Err(crate::stream::inbound::spec::Fail::from((
             "refused",
-            copy_text("beExt.uninstall.backupFailed", &[("e", &e)]),
+            copy_text("beExt.uninstall.backupFailed", &[("why", &e)]),
         ))),
     }
 }

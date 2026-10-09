@@ -166,9 +166,12 @@ pub(crate) fn answer_install(
         if let Some(p) = args.get("project").filter(|p| p.is_string()) {
             rec["project"] = p.clone();
         }
-        record(&rec)
-            .err()
-            .map(|f| copy_text("beSkillFlow.install.recordFailed", &[("e", &f.into_note())]))
+        record(&rec).err().map(|f| {
+            copy_text(
+                "beSkillFlow.install.recordFailed",
+                &[("why", &f.into_note())],
+            )
+        })
     };
     if let Some(why) = stopped {
         let why = match record_failed {
@@ -229,7 +232,12 @@ pub(crate) fn answer_uninstall(
     } else {
         record(&json!({ "op": "drop", "dir": dir, "paths": drop }))
             .err()
-            .map(|f| copy_text("beSkillFlow.uninstall.dropFailed", &[("e", &f.into_note())]))
+            .map(|f| {
+                copy_text(
+                    "beSkillFlow.uninstall.dropFailed",
+                    &[("why", &f.into_note())],
+                )
+            })
     };
     if let Some(why) = stopped {
         let why = match record_failed {
@@ -259,7 +267,7 @@ fn remove_emptied_dirs(d: &dyn Door, dir: &str, files: &[String]) -> (bool, Opti
     let failed = |at: &str, e: Refused| {
         copy_text(
             "beSkillFlow.uninstall.dirFailed",
-            &[("path", at), ("e", &e.said())],
+            &[("path", at), ("why", &e.said())],
         )
     };
     for sub in &order {

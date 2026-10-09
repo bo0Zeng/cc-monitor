@@ -372,10 +372,16 @@ fn record(home: &Path, sid: &str, account: &str) -> Result<(), crate::common::sa
     crate::common::own_state::write_json(&home.join(FILE_NAME), &book)
 }
 
-fn failed(path: &Path, e: &dyn std::fmt::Display) -> String {
-    copy_text(
-        "beLaunchAccount.write.failed",
-        &[("path", &path.display().to_string()), ("e", &e.to_string())],
+fn failed(path: &Path, e: &std::io::Error) -> crate::common::said::Said {
+    crate::common::said::Said::with_raw(
+        copy_text(
+            "beLaunchAccount.write.failed",
+            &[
+                ("path", &path.display().to_string()),
+                ("why", &copy_core::io_reason(e.kind())),
+            ],
+        ),
+        e,
     )
 }
 

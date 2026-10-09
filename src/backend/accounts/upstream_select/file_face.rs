@@ -398,9 +398,15 @@ fn rewrite_at(path: &Path, change: Rewrite) -> Result<bool, Fail> {
     if let Err(e) = crate::common::own_dir::ensure_private_dir(dir) {
         return Err(Fail::from((
             "io_failed",
-            copy_text(
-                "beUpstreamFileFace.write.mkdirFailed",
-                &[("dir", &dir.display().to_string()), ("e", &e.to_string())],
+            crate::common::said::Said::with_raw(
+                copy_text(
+                    "beUpstreamFileFace.write.mkdirFailed",
+                    &[
+                        ("dir", &dir.display().to_string()),
+                        ("why", &copy_core::io_reason(e.kind())),
+                    ],
+                ),
+                &e,
             ),
         )));
     }

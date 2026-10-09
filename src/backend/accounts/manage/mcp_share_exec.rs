@@ -226,7 +226,7 @@ fn write_account(d: &dyn Door, h: &Here, a: &Account, want: &Servers) -> Result<
     };
     if let Some(t) = &a.raw {
         backup(d, &h.home, &a.seen.name, t)
-            .map_err(|e| copy_text("beAcctMcpShare.note.backupFailed", &[("e", &e)]))?;
+            .map_err(|e| copy_text("beAcctMcpShare.note.backupFailed", &[("why", &e)]))?;
     }
     match put_private(d, &h.home, &rel, &text, a.raw.as_deref()) {
         Ok(()) => Ok(true),
@@ -331,7 +331,7 @@ fn run(
                 notes.push(match other {
                     Err(e) => copy_text(
                         "beAcctMcpShare.note.writeFailed",
-                        &[("account", &a.seen.name), ("e", &e)],
+                        &[("account", &a.seen.name), ("why", &e)],
                     ),
                     _ => copy_text("beAcctMcpShare.note.stale", &[("account", &a.seen.name)]),
                 });
@@ -350,7 +350,7 @@ fn run(
         .map_err(|e| {
             (
                 "io_failed",
-                copy_text("beAcctMcpShare.store.writeFailed", &[("e", &e.said())]),
+                copy_text("beAcctMcpShare.store.writeFailed", &[("why", &e.said())]),
             )
         })?;
     }
@@ -398,7 +398,7 @@ pub(crate) fn set_sync(d: &dyn Door, on: bool) -> Result<AccountMcpView, Refusal
         .map_err(|e| {
             (
                 "io_failed",
-                copy_text("beAcctMcpShare.store.writeFailed", &[("e", &e.said())]),
+                copy_text("beAcctMcpShare.store.writeFailed", &[("why", &e.said())]),
             )
         })?;
         if !on {

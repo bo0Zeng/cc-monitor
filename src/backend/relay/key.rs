@@ -89,9 +89,15 @@ pub(crate) fn ensure_key(path: &Path) -> Result<Key, crate::common::said::Said> 
     })?;
     // 只建那一层、建的那一下就是 0700（`own_dir`：后端建自家目录的那一个函数）。挪到拿锁之前：锁的是这个目录，它得先在。
     crate::common::own_dir::ensure_private_dir(dir).map_err(|e| {
-        copy_text(
-            "beDoor.fs.mkdirFailed",
-            &[("dir", &dir.display().to_string()), ("e", &e.to_string())],
+        crate::common::said::Said::with_raw(
+            copy_text(
+                "beDoor.fs.mkdirFailed",
+                &[
+                    ("dir", &dir.display().to_string()),
+                    ("why", &copy_core::io_reason(e.kind())),
+                ],
+            ),
+            &e,
         )
     })?;
     let _lock = crate::platform::lock::hold(dir).map_err(crate::common::said::Said::from)?;

@@ -293,12 +293,15 @@ pub fn record_at(path: &Path, skills_root: Option<&Path>, args: &Value) -> Answe
     crate::common::own_dir::ensure_private_dir(lock_dir).map_err(|e| {
         (
             "io_failed",
-            copy_text(
-                "beSkillLedger.write.mkdirFailed",
-                &[
-                    ("dir", &lock_dir.display().to_string()),
-                    ("e", &e.to_string()),
-                ],
+            crate::common::said::Said::with_raw(
+                copy_text(
+                    "beSkillLedger.write.mkdirFailed",
+                    &[
+                        ("dir", &lock_dir.display().to_string()),
+                        ("why", &copy_core::io_reason(e.kind())),
+                    ],
+                ),
+                &e,
             ),
         )
     })?;

@@ -63,7 +63,7 @@ pub(crate) fn answer(d: &dyn Door, cmd: &str, args: &Value, keys: &KeyDoor) -> A
             Ok(p) => match file_face::account_ids_at(&p) {
                 Ok(ids) => Some((p.display().to_string(), ids)),
                 Err(e) => {
-                    unreadable = Some(copy_text("beAcctFace.key.unreadable", &[("e", &e)]));
+                    unreadable = Some(copy_text("beAcctFace.key.unreadable", &[("why", &e)]));
                     None
                 }
             },
@@ -137,9 +137,10 @@ fn sync_mcp(d: &dyn Door, change: &mut AccountChange) {
                 ));
             }
         }
-        Err(f) => change
-            .notes
-            .push(copy_text("beAcctFace.mcp.failed", &[("e", &f.into_note())])),
+        Err(f) => change.notes.push(copy_text(
+            "beAcctFace.mcp.failed",
+            &[("why", &f.into_note())],
+        )),
     }
     mcp_share_watch::kick();
 }
@@ -156,7 +157,7 @@ fn put_key(
         Err(f) => {
             change.key_problem = Some(copy_text(
                 "beAcctFace.key.notSaved",
-                &[("e", &f.into_note())],
+                &[("why", &f.into_note())],
             ))
         }
     }
@@ -214,7 +215,7 @@ fn amend_aliases(d: &dyn Door, events: &[wire::AliasEvent]) -> (AliasChange, Vec
             added: Vec::new(),
             removed: Vec::new(),
             skipped: Vec::new(),
-            note: Some(copy_text("beAcctFace.aliases.writeFailed", &[("e", &e)])),
+            note: Some(copy_text("beAcctFace.aliases.writeFailed", &[("why", &e)])),
         },
     };
     (change, rewrote)

@@ -68,9 +68,15 @@ pub(crate) fn mark_at(
     crate::common::own_dir::ensure_private_dir(dir).map_err(|e| {
         (
             "io_failed",
-            copy_text(
-                "beChore.marks.mkdirFailed",
-                &[("dir", &dir.display().to_string()), ("e", &e.to_string())],
+            crate::common::said::Said::with_raw(
+                copy_text(
+                    "beChore.marks.mkdirFailed",
+                    &[
+                        ("dir", &dir.display().to_string()),
+                        ("why", &copy_core::io_reason(e.kind())),
+                    ],
+                ),
+                &e,
             ),
         )
     })?;
