@@ -61,14 +61,21 @@ fn exec(stdout: &str, stderr: &str, code: Option<u32>) -> crate::stream_source::
 /// 要求：「非 unix 远端（Windows 远端，不承诺）连不上常驻时**明说**不支持，不静默」。
 #[test]
 fn the_ensure_answer_names_a_non_unix_remote_as_unsupported_and_never_falls_back() {
-    let ok = parse_answer(&exec(r#"{"port":51000,"token":"ab","pid":7}"#, "", Some(0))).unwrap();
+    let ok = parse_answer(
+        &exec(r#"{"port":51000,"token":"ab","pid":7}"#, "", Some(0)),
+        "devbox",
+    )
+    .unwrap();
     assert_eq!(parse_ensured(&ok).unwrap().port, 51000);
     assert_eq!(
-        parse_answer(&exec(
-            "",
-            r#"{"code":"unsupported","message":"不是 unix"}"#,
-            Some(2)
-        )),
+        parse_answer(
+            &exec(
+                "",
+                r#"{"code":"unsupported","message":"不是 unix"}"#,
+                Some(2)
+            ),
+            "devbox"
+        ),
         Err(AttachErr::Unsupported(
             copy_text(
                 "rsRemoteResident.ensure.unsupported",
@@ -79,18 +86,15 @@ fn the_ensure_answer_names_a_non_unix_remote_as_unsupported_and_never_falls_back
         ))
     );
     assert_eq!(
-        parse_answer(&exec(
-            "",
-            r#"{"code":"spawn_failed","message":"x"}"#,
-            Some(2)
-        )),
+        parse_answer(
+            &exec("", r#"{"code":"spawn_failed","message":"x"}"#, Some(2)),
+            "devbox"
+        ),
         Err(AttachErr::Failed("x".into()))
     );
     assert_eq!(
-        parse_answer(&exec(&hello("p1a-old"), "", None)),
-        Err(AttachErr::Failed(
-            copy_text("rsRemoteResident.ensure.tooOld", &[]).into()
-        ))
+        parse_answer(&exec(&hello("p1a-old"), "", None), "devbox"),
+        Err(AttachErr::Failed(copy_core::backend_old("devbox").into()))
     );
     // 刚起了一个 ⇒ 钥匙是它绑上口之后自己写的，答里没有（读到 hello 之后再问一次）；缺端口才算答不全。
     let fresh = parse_ensured(&serde_json::json!({"port":51000,"token":null,"pid":7})).unwrap();
@@ -141,16 +145,26 @@ fn the_stop_answer_is_one_of_three_words_or_an_error() {
             },
         ),
     ] {
-        assert_eq!(read_stop(&exec(line, "", Some(0))), Ok(want), "{line}");
+        assert_eq!(
+            read_stop(&exec(line, "", Some(0)), "devbox"),
+            Ok(want),
+            "{line}"
+        );
     }
     for line in [r#"{"stopped":42}"#, r#"{"stopped":"stopped"}"#, r#"{}"#] {
-        assert!(read_stop(&exec(line, "", Some(0))).is_err(), "{line}");
+        assert!(
+            read_stop(&exec(line, "", Some(0)), "devbox").is_err(),
+            "{line}"
+        );
     }
-    let err = read_stop(&exec(
-        "",
-        r#"{"code":"stop_failed","message":"强杀之后还在"}"#,
-        Some(2),
-    ))
+    let err = read_stop(
+        &exec(
+            "",
+            r#"{"code":"stop_failed","message":"强杀之后还在"}"#,
+            Some(2),
+        ),
+        "devbox",
+    )
     .unwrap_err();
     assert_eq!(err.said, "强杀之后还在");
     // 交给机器页的线上形：三个词原样（snake_case），不是 Rust 的变体名。

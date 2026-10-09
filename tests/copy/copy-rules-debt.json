@@ -40,12 +40,8 @@
     "C-W12": [],
     "C-W13": [],
     "C-W14": [
-      "accountOps.said.contract",
-      "beProbe.hello.tooOld",
       "ccBus.spawn.timedOut",
       "rsCcBusDeploy.win.noOwnBytes",
-      "rsLinkMux.data.noCredit",
-      "rsSshLink.dial.tooOld",
       "terminal.input.unsure"
     ],
     "C-W15": [],
@@ -123,7 +119,6 @@
       "beRelayListen.key.unavailable",
       "beRelayListen.prepare.bindFailed",
       "beRemoteAsk.cappedLine.readFailed",
-      "beRemoteAsk.json.unreadable",
       "beRemoteAsk.run.resultUnreadable",
       "beResident.fs.mkdirFailed",
       "beResident.spawn.failed",

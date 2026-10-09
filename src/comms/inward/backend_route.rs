@@ -60,8 +60,9 @@ pub enum CallError {
 impl std::fmt::Display for CallError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            // 这一层不知道那台叫什么：给人看的那句由 [`route_call_error`] 按调用方给的名字取。
             CallError::Unsupported { .. } => {
-                write!(f, "{}", copy_text("rsInboundClient.error.unsupported", &[]))
+                write!(f, "{}", copy_core::backend_old(&copy_core::peer_machine()))
             }
             // 码不上屏（调用方要按码分支的读 `code` 本身）。
             CallError::Unavailable { .. } => {
@@ -145,7 +146,7 @@ pub fn layer_call_error(e: &CallError, hop: u8) -> Layered {
             error: w::CallError::Peer {
                 why: w::PeerFault::Unsupported,
             },
-            detail: text(copy_text("rsBackendRoute.layer.unsupported", &[])),
+            detail: Detail::BackendOld,
         },
         // 那台握手时说过做不到、本侧没发：对端的话（只是来得早）⇒ 与它事后回同一个码时同形，
         //   调用方按码说人话；不回落（换条路也做不到）。
@@ -240,6 +241,8 @@ pub enum Detail {
     Text(String),
     /// 对端的原话，由调用方的 `refusal` 翻成用户看的话。
     Remote { code: String, message: String },
+    /// 那台不认这条命令：按码取那一句（`copy_core::backend_old`），名字由 [`route_call_error`] 的调用方给。
+    BackendOld,
 }
 
 /// 没有控制通道（`client_for` 回 `None`）的分层结果 —— **一个字节都没发出去**。
@@ -255,13 +258,18 @@ pub fn layer_no_channel(hop: u8) -> w::CallError {
 }
 
 /// `CallError` → 三态 —— **建在 [`layer_call_error`] 上的一层收拢**，自己不再看 inbound 的枚举。
+/// `machine` 是问的那一台给人看的称呼（本机 ⇒ `copy_core::local_machine()`）：那台不认这条命令时说「{machine} 后端要更新」。
 /// `refusal` 只负责把 `(code, message)` 翻成用户看的话 ——
 /// **分流本身不许由调用方决定**，那就是本模块存在的全部意义。
 ///
 /// 收拢规则只有一条：分层结果**能证明没发出去**（`reach: NotSent`，或对端事前就说不认）
 /// ⇒ `NoChannel`（可回落）；其余一律 `Refused`（不回落）。
 /// 收拢前后逐字节不变由 `the_collapse_to_three_states_is_byte_identical_to_the_table_before_layering` 钉着。
-pub fn route_call_error(e: &CallError, refusal: impl Fn(&str, &str) -> String) -> Routed {
+pub fn route_call_error(
+    e: &CallError,
+    machine: &str,
+    refusal: impl Fn(&str, &str) -> String,
+) -> Routed {
     let Layered { error, detail } = layer_call_error(e, 0);
     let provably_not_sent = match error {
         w::CallError::Hop { reach, .. } => match reach {
@@ -275,6 +283,7 @@ pub fn route_call_error(e: &CallError, refusal: impl Fn(&str, &str) -> String) -
         w::CallError::Ours { .. } => false,
     };
     match (provably_not_sent, detail) {
+        (_, Detail::BackendOld) => Routed::NoChannel(copy_core::backend_old(machine)),
         (true, Detail::Text(s)) => Routed::NoChannel(s),
         (true, Detail::Remote { code, message }) => Routed::NoChannel(refusal(&code, &message)),
         (false, Detail::Text(s)) => Routed::Refused(copy_text(

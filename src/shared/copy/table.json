@@ -22,12 +22,6 @@
       "zh": "账号名不合规 · 只用字母、数字、_、- · 字母或数字开头 · 最长 {max}",
       "args": ["max"]
     },
-    "accountOps.said.contract": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "两端版本不配 · 要更新",
-      "args": []
-    },
     "accountOps.said.noReason": {
       "kind": "error",
       "role": "报错",
@@ -1582,12 +1576,6 @@
       "zh": "停止后端的结果无法识别",
       "args": []
     },
-    "rsRemoteResident.ensure.tooOld": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "后端要更新",
-      "args": []
-    },
     "rsRemoteResident.ensure.unsupported": {
       "kind": "error",
       "role": "报错",
@@ -2065,6 +2053,12 @@
       "kind": "body",
       "role": "片段",
       "zh": "本机",
+      "args": []
+    },
+    "control.machine.peer": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "该机",
       "args": []
     },
     "control.channel.localDown": {
@@ -9475,7 +9469,7 @@
     "rsSftp.plan.badProduct": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取部署计划失败 · 内容无法解析 · 未安装后端；本机后端版本可能不对 · {v}",
+      "zh": "读取部署计划失败 · 内容无法解析 · 未安装后端 · {v}",
       "args": ["v"]
     },
     "rsSftp.plan.internal": {
@@ -9968,12 +9962,6 @@
       "kind": "body",
       "role": "片段",
       "zh": "离线",
-      "args": []
-    },
-    "rsFilewinSource.said.unknownCmd": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "后端要更新 · 此操作不可用",
       "args": []
     },
     "rsFilewinSource.said.refused": {
@@ -11026,12 +11014,6 @@
       "zh": "丢弃并重开",
       "args": []
     },
-    "rsFilewinEditor.reply.noDigest": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "后端要更新 · 未打开 · 存回不可用",
-      "args": []
-    },
     "rsFilewinEditor.saved.noDigest": {
       "kind": "error",
       "role": "报错",
@@ -11315,12 +11297,6 @@
       "zh": "该机不支持 · 未发出",
       "args": []
     },
-    "rsInboundClient.error.unsupported": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "远端后端要更新 · 此操作不可用",
-      "args": []
-    },
     "rsBackendRoute.noChannel.message": {
       "kind": "error",
       "role": "原因格",
@@ -11337,12 +11313,6 @@
       "kind": "error",
       "role": "报错",
       "zh": "待处理命令已达上限 · 未执行 · 稍后重试",
-      "args": []
-    },
-    "rsBackendRoute.layer.unsupported": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "远端后端要更新 · 此操作不可用",
       "args": []
     },
     "rsConfigSurface.scope.projectNote": {
@@ -12171,12 +12141,6 @@
       "zh": "无应答",
       "args": []
     },
-    "rsChanWire.peer.unsupported": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "后端不支持此操作",
-      "args": []
-    },
     "rsChanWire.peer.refused": {
       "kind": "error",
       "role": "原因格",
@@ -12223,12 +12187,6 @@
       "kind": "error",
       "role": "报错",
       "zh": "连接失败 · 内容无法解析",
-      "args": []
-    },
-    "rsSshLink.dial.tooOld": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "本机后端要更新 · 重装后再试",
       "args": []
     },
     "rsSshLink.dial.failed": {
@@ -12320,12 +12278,6 @@
       "role": "报错",
       "zh": "本机后端未接下此连接 · {said}",
       "args": ["said"]
-    },
-    "rsLinkMux.data.noCredit": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "本机后端版本不对 · 此远端连接已断开 · 重开 monitor 后再试",
-      "args": []
     },
     "rsLinkMux.said.refused": {
       "kind": "error",
@@ -15489,12 +15441,6 @@
       "zh": "后端报错 · 原因不明",
       "args": []
     },
-    "beRemoteAsk.run.tooOld": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "后端要更新 · 资产目录不可用",
-      "args": []
-    },
     "beRemoteAsk.run.resultUnreadable": {
       "kind": "error",
       "role": "原因格",
@@ -15574,12 +15520,6 @@
       "kind": "error",
       "role": "原因格",
       "zh": "后端已连上 · 无法在远端新建会话",
-      "args": []
-    },
-    "beProbe.test.noControl": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "后端要更新 · 远端新建会话不可用\n设置里重装此机后端",
       "args": []
     },
     "beProbe.client.gone": {
@@ -15744,12 +15684,6 @@
       "role": "报错",
       "zh": "程序出错",
       "args": []
-    },
-    "beInbound.dispatch.unknown": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "后端要更新 · {other} 不可用",
-      "args": ["other"]
     },
     "beInbound.dispatch.unhandled": {
       "kind": "error",
@@ -18156,12 +18090,6 @@
       "zh": "预览",
       "args": []
     },
-    "beRemoteAsk.json.unreadable": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "读取 {machine} 的回复失败 · 内容无法解析 · {e}；该机后端可能过旧 · 重装即可",
-      "args": ["machine", "e"]
-    },
     "beCcBusInstall.fence.noParent": {
       "kind": "error",
       "role": "报错",
@@ -18231,8 +18159,8 @@
     "beProbe.hello.tooOld": {
       "kind": "body",
       "role": "说明",
-      "zh": "{build} · 版本过旧 · 无法新建会话",
-      "args": ["build"]
+      "zh": "{build} · {said}",
+      "args": ["build", "said"]
     },
     "beProbe.hello.noBuild": {
       "kind": "body",

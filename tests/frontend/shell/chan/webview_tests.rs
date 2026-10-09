@@ -384,7 +384,7 @@ fn the_fallback_rule_equals_the_golden_file_the_ts_side_judges() {
     })];
     for (name, e) in cases {
         let may_fall_back = matches!(
-            route_call_error(&e, |_, _| String::new()),
+            route_call_error(&e, "devbox", |_, _| String::new()),
             Routed::NoChannel(_)
         );
         rows.push(serde_json::json!({
