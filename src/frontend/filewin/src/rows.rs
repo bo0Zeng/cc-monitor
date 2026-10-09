@@ -599,10 +599,15 @@ pub fn show_file_rows(
 ///
 /// 填进来的：正在编辑的字 · 出错那一句（红边 ＋ 格子下面挂一句）· 这一帧要不要把焦点给它、选中前几个字（主名）。
 /// 交回去的：`outcome` ＝ `Some(true)` 回车 / 点别处（＝改）· `Some(false)` Esc（＝不改）。
+/// 点在红字那块里（［复制详情］）不算点别处：不交 `outcome`，焦点还给输入框。
 pub struct InlineCell<'a> {
     pub row: usize,
     pub text: &'a mut String,
     pub error: Option<&'a str>,
+    /// 出错那一句的复制详情（空 ⇒ 红字块里不出按钮）。
+    pub detail: &'a str,
+    /// 点别处算不算提交：刚失败、名字没动过 ⇒ `false`（再发一趟只会再失败一次；回车照样重试）。
+    pub blur_submits: bool,
     /// `Some(n)` ⇒ 这一帧把焦点给输入框并选中前 `n` 个字（打开那一帧 · 出错回来那一帧）。
     pub select: Option<usize>,
     /// 在飞（改名 / 新建那一趟还没回）：输入框只读，不再交 `outcome`。
@@ -824,12 +829,30 @@ fn paint_one_row(
                 st.store(ui.ctx(), id);
             }
         }
+        // 红字那块上一帧占的地方：这一帧的按下点落在里面 ⇒ 不算点别处。
+        let err_id = id.with("err");
+        let err_rect: Option<egui::Rect> = ui.data(|d| d.get_temp(err_id));
         if !c.busy && resp.lost_focus() {
-            let esc = ui.input(|i| i.key_pressed(egui::Key::Escape));
-            c.outcome = Some(!esc);
+            let (esc, enter, at) = ui.input(|i| {
+                (
+                    i.key_pressed(egui::Key::Escape),
+                    i.key_pressed(egui::Key::Enter),
+                    i.pointer.latest_pos(),
+                )
+            });
+            let in_err =
+                c.error.is_some() && matches!((err_rect, at), (Some(r), Some(p)) if r.contains(p));
+            if esc {
+                c.outcome = Some(false);
+            } else if in_err {
+                resp.request_focus();
+            } else if enter || c.blur_submits {
+                c.outcome = Some(true);
+            }
         }
         if let Some(e) = c.error {
-            super::kit::inline_error(ui.ctx(), id.with("err"), field, e);
+            let r = super::kit::inline_error(ui.ctx(), err_id, field, e, c.detail);
+            ui.data_mut(|d| d.insert_temp(err_id, r));
         }
     }
     let room = name_c.right() - nx - PAD - warn.as_ref().map_or(0.0, |w| w.size().x + 6.0);
