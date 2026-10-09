@@ -623,6 +623,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     io_reason: NONE,
     // SFTP 状态码 → 原因词（同一模块）：只有后端的 SFTP 那一层用，TS 侧没有孪生。
     sftp_status_reason: NONE,
+    // 子进程起不来 → 原因词（同一模块）：只有后端起子进程那一口用，TS 侧不起进程，没有孪生。
+    spawn_reason: NONE,
   },
   "creds-core": {
     // monitor 数据目录的规则搬进这里（远端常驻后端按同一份推默认路径）；TS 侧没有孪生。

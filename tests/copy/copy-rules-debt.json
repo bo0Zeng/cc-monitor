@@ -65,8 +65,6 @@
       "beAssetCatalog.digest.walkFailed",
       "beAssetSync.foldBlocking.unfinished",
       "beAssetSync.syncOne.unparsable",
-      "beCapturePane.classify.failed",
-      "beCapturePane.run.noTmux",
       "beCcBusInstall.fence.resolveFailed",
       "beClaudePaths.delete.fileUnresolved",
       "beClaudePaths.delete.notFound",

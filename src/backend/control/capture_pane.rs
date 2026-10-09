@@ -19,12 +19,13 @@
 //! | tmux 这个程序起不来 | `Command::output()` 自己的 `Err`（内核级，不猜） | `no_tmux` |
 //! | tmux 在、但一个 server 都没有 | 退出码非零 ＋ stderr 命中 [`NO_SERVER_NEEDLES`] | `no_server` |
 //! | server 在、这个目标不存在 | 退出码非零 ＋ stderr 命中 [`NO_TARGET_NEEDLES`] | `no_such_session` |
-//! | 其它失败 | 退出码非零、两张针都不命中 | `capture_failed` ＋ stderr 原样回包 |
+//! | 其它失败 | 退出码非零、两张针都不命中 | `capture_failed`（stderr ＋ 退出码原样进复制详情） |
 //! | 成功 | 退出码 0 | `Ok(那一屏)` |
 //!
 //! 空屏是合法的成功（刚建起来的 pane 抓回来就是空串、退出码 0）⇒ 「抓不到」靠退出码判，不靠输出空不空
 //! （与 [`super::gate::probe`] 相反：`display-message` 对不存在的目标是 rc=0 + 空输出）。
 //! tmux 换了措辞 ⇒ 两张针都不命中 ⇒ 落 `capture_failed` 并带 stderr 原样：说不清，但不拿一个具体而错误的答案冒充。
+//! 句子里只留原因词；stderr 与退出码三档都不上句子，跟着失败走进复制详情（原话那一项）。
 //!
 //! # 只读
 //!
@@ -39,8 +40,8 @@ use copy_core::copy_text;
 /// 抓一屏那一发的期限：界面等 `terminal-preview` 的预算是 20 s（抓屏 ＋ 问尺寸两发），tmux 一发 5 s（同 watcher 探测 tmux 的期限）。
 const CAPTURE_WITHIN: Deadline = Deadline::secs(5);
 
-/// 命令级错误：`(code, message)`。与 [`super::launch`] / [`super::gate`] / [`super::kill`] 同型。
-pub(crate) type CmdErr = (&'static str, String);
+/// 命令级错误：码 ＋ 那一句（只带原因词）＋ tmux 的原话（stderr · 退出码，进复制详情）。
+pub(crate) type CmdErr = crate::stream::inbound::spec::Fail;
 
 /// tmux 的「把这一屏打到 stdout」子命令。
 pub(crate) const CAPTURE_SUBCOMMAND: &str = "capture-pane";
@@ -147,9 +148,9 @@ pub(crate) struct RawCapture {
 /// 「tmux 这个程序起不来」那一档的唯一造句处。这一档要与「会话不存在」分得开，而沙箱门禁里摘不掉 tmux ⇒
 /// 判据只能打这一处：钉的是「这一档存在、且与另外两档不同码不同话」，不是在没装 tmux 的机器上实测过。超时那一档另说（`child_timed_out`）。
 pub(crate) fn tmux_unavailable(e: ChildFail) -> CmdErr {
-    e.into_cmd_err("no_tmux", |e| {
-        copy_text("beCapturePane.run.noTmux", &[("e", &e.to_string())])
-    })
+    CmdErr::from(e.into_cmd_said("no_tmux", |why| {
+        copy_text("beCapturePane.run.noTmux", &[("why", why)])
+    }))
 }
 
 /// 把一次原始读数判成结局。**纯函数。**
@@ -161,35 +162,28 @@ pub(crate) fn classify(raw: &RawCapture) -> Result<String, CmdErr> {
     }
     let said = raw.stderr.to_ascii_lowercase();
     let hit = |table: &[(&str, &str)]| table.iter().any(|(n, _)| said.contains(n));
-    let tail = raw.stderr.trim();
-    if hit(NO_SERVER_NEEDLES) {
-        return Err((
+    // tmux 的原话：stderr ＋ 退出码（被信号打断 ⇒ `signal`）。只进复制详情。
+    let rc = raw
+        .code
+        .map_or_else(|| "signal".to_string(), |c| c.to_string());
+    let words = format!("tmux rc={rc}: {}", raw.stderr.trim());
+    let (code, said) = if hit(NO_SERVER_NEEDLES) {
+        (
             "no_server",
-            copy_text(
-                "beCapturePane.classify.noServer",
-                &[("tail", &tail.to_string())],
-            ),
-        ));
-    }
-    if hit(NO_TARGET_NEEDLES) {
-        return Err((
+            copy_text("beCapturePane.classify.noServer", &[]),
+        )
+    } else if hit(NO_TARGET_NEEDLES) {
+        (
             "no_such_session",
-            copy_text(
-                "beCapturePane.classify.noTarget",
-                &[("tail", &tail.to_string())],
-            ),
-        ));
-    }
-    Err((
-        "capture_failed",
-        copy_text(
-            "beCapturePane.classify.failed",
-            &[
-                ("status", &format!("{:?}", raw.code)),
-                ("tail", &tail.to_string()),
-            ],
-        ),
-    ))
+            copy_text("beCapturePane.classify.noTarget", &[]),
+        )
+    } else {
+        (
+            "capture_failed",
+            copy_text("beCapturePane.classify.failed", &[]),
+        )
+    };
+    Err(CmdErr::new(code, said).with_raw(Some(&words)))
 }
 
 /// 本模块唯一起进程的那一处，也是全 crate 唯一一处 `capture-pane`：跑一条只读的抓屏命令，读回退出码与两条流。

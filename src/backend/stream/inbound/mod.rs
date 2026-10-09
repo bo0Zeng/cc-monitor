@@ -368,10 +368,9 @@ fn dispatch(
                         desk.follow_off_worker(r.args)
                             .await
                             .map(|()| None)
-                            .map_err(|(c, m)| {
-                                let mut f = Fail::new(c, m);
+                            .map_err(|mut f| {
                                 f.data = Some(serde_json::json!({
-                                    "live": crate::control::terminal_follow::live_after_refusal(c),
+                                    "live": crate::control::terminal_follow::live_after_refusal(&f.code),
                                 }));
                                 f
                             })

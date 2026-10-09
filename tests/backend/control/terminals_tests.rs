@@ -111,7 +111,11 @@ fn a_target_is_one_handle_or_one_sid_from_the_list_and_nothing_else() {
         json!({ "terminal": 1 }),
         json!({ "sid": "x".repeat(300) }),
     ] {
-        assert_eq!(target_of(&bad).map_err(|e| e.0), Err("bad_target"), "{bad}");
+        assert_eq!(
+            target_of(&bad).map_err(|e| e.code),
+            Err("bad_target".to_string()),
+            "{bad}"
+        );
     }
     let rows = vec![
         row("$1", "a-cc", "s1", "", "claude"),
@@ -187,7 +191,11 @@ fn text_and_keys_are_separate_and_keys_come_from_a_closed_table() {
         json!({ "text": "a\u{1b}b" }),
         json!({ "text": "a", "enter": "yes" }),
     ] {
-        assert_eq!(input_of(&bad).map_err(|e| e.0), Err("bad_args"), "{bad}");
+        assert_eq!(
+            input_of(&bad).map_err(|e| e.code),
+            Err("bad_args".to_string()),
+            "{bad}"
+        );
     }
 }
 
@@ -550,8 +558,8 @@ fn on_a_real_tmux_the_three_commands_do_what_they_say() {
             json!({ "result": "refused", "why": "not-known", "said": no_said("not-known") })
         );
         assert_eq!(
-            preview_on(iso.on(), &json!({ "terminal": raw })).map_err(|e| e.0),
-            Err("not_known")
+            preview_on(iso.on(), &json!({ "terminal": raw })).map_err(|e| e.code),
+            Err("not_known".to_string())
         );
     }
 }

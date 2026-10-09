@@ -88,7 +88,7 @@ fn capturing_a_real_pane_brings_the_screen_back() {
     let miss = capture_with_on(Some(&sock.to_string_lossy()), "=kr86nope:", false, 0)
         .expect_err("不存在的会话不许回成功");
     assert_eq!(
-        miss.0, "no_such_session",
+        miss.code, "no_such_session",
         "server 在、目标不在 ⇒ 该报 `no_such_session`。实得：{miss:?}"
     );
 
@@ -103,9 +103,9 @@ fn a_socket_with_no_server_says_so_in_its_own_words() {
     let e = capture_with_on(Some(&sock.to_string_lossy()), "=whatever:", false, 0)
         .expect_err("没有 server 的 socket 上不许回成功");
     assert_eq!(
-        e.0, "no_server",
+        e.code, "no_server",
         "没有 server 时报的是 `{}` —— 那一档被压进别的码里了。实得：{e:?}",
-        e.0
+        e.code
     );
 }
 
@@ -121,17 +121,17 @@ fn missing_tmux_and_missing_session_are_two_different_answers() {
     let gone =
         classify(&raw(Some(1), "", "can't find pane: =x:")).expect_err("目标不存在不许回成功");
     assert_ne!(
-        absent.0, gone.0,
+        absent.code, gone.code,
         "「这台机没有 tmux」与「会话不存在」共用了同一个码 `{}` —— \
              压成一句之后，拿到这条错的人没法判断该去装 tmux 还是该去看会话名",
-        absent.0
+        absent.code
     );
     assert_ne!(
-        absent.1, gone.1,
+        absent.message, gone.message,
         "两档的码分开了、话却一模一样 —— 人读的是话，那等于没分开"
     );
-    assert_eq!(absent.0, "no_tmux");
-    assert_eq!(gone.0, "no_such_session");
+    assert_eq!(absent.code, "no_tmux");
+    assert_eq!(gone.code, "no_such_session");
 }
 
 /// ★ **空屏是合法的成功** —— 「抓不到」不许靠「输出是空的」判。
@@ -149,9 +149,9 @@ fn an_empty_screen_is_a_success_and_a_failure_is_never_an_empty_string() {
     ] {
         let e = classify(&raw(code, "", stderr)).expect_err("失败不许回成功");
         assert!(
-            !e.1.trim().is_empty(),
+            !e.message.trim().is_empty(),
             "失败那一档回了一句空话 —— 那与静默空串是同一件事。码：{}",
-            e.0
+            e.code
         );
     }
 }
@@ -162,14 +162,53 @@ fn an_unrecognised_failure_carries_the_real_words_instead_of_a_guess() {
     let e =
         classify(&raw(Some(3), "", "tmux: 未来某个版本的新措辞")).expect_err("非零退出不许回成功");
     assert_eq!(
-        e.0, "capture_failed",
+        e.code, "capture_failed",
         "认不出来的失败被塞进了一个具体的码 —— 那是拿一个错答案冒充知识"
     );
+    let raw_said = e.raw.as_deref().unwrap_or_default();
     assert!(
-        e.1.contains("未来某个版本的新措辞"),
-        "认不出来时连原话都没带回去，这条错就成了死胡同。实得：{}",
-        e.1
+        raw_said.contains("未来某个版本的新措辞") && raw_said.contains('3'),
+        "认不出来时连原话（stderr ＋ 退出码）都没带进复制详情，这条错就成了死胡同。实得：{e:?}"
     );
+}
+
+/// 句子里只留原因词：stderr · 退出码进复制详情（原话那一项），不上句子（三档同一条）。
+#[test]
+fn the_sentence_carries_no_stderr_and_no_exit_code() {
+    for (stderr, code) in [
+        ("tmux: 未来某个版本的新措辞", "capture_failed"),
+        (
+            "error connecting to /x/sock (No such file or directory)",
+            "no_server",
+        ),
+        ("can't find pane: =x:", "no_such_session"),
+    ] {
+        let e = classify(&raw(Some(7), "", stderr)).expect_err("非零退出不许回成功");
+        assert_eq!(e.code, code);
+        assert!(
+            !e.message.contains(stderr.trim_start_matches("tmux: ")) && !e.message.contains('7'),
+            "句子里夹了 stderr 或退出码：{e:?}"
+        );
+        assert!(
+            e.raw.as_deref().is_some_and(|r| r.contains(stderr)),
+            "原话没进复制详情：{e:?}"
+        );
+    }
+}
+
+/// 起不来 tmux：句子只留原因词（没装 ⇒ 未装），系统原话进复制详情。
+#[test]
+fn tmux_not_installed_says_the_reason_word_and_keeps_the_os_words_aside() {
+    let os = std::io::Error::new(std::io::ErrorKind::NotFound, "kr86 os words");
+    let e = tmux_unavailable(ChildFail::NotFound(os));
+    assert_eq!(e.code, "no_tmux");
+    assert!(
+        e.message
+            .contains(&copy_text("reason.spawn.notInstalled", &[])),
+        "{e:?}"
+    );
+    assert!(!e.message.contains("kr86 os words"), "{e:?}");
+    assert_eq!(e.raw.as_deref(), Some("kr86 os words"));
 }
 
 /// ★ 两张针**逐条**喂一个合成样本，逐条要求它落在自己那一档。
@@ -185,14 +224,14 @@ fn every_registered_needle_lands_in_its_own_bucket() {
         assert!(why.len() >= 20, "针 {needle:?} 没写清它为什么算这一档");
         let e = classify(&raw(Some(1), "", &format!("tmux: {needle} blah")))
             .expect_err("非零退出不许回成功");
-        assert_eq!(e.0, "no_server", "针 {needle:?} 没落进 `no_server`");
+        assert_eq!(e.code, "no_server", "针 {needle:?} 没落进 `no_server`");
     }
     for (needle, why) in NO_TARGET_NEEDLES {
         assert!(why.len() >= 20, "针 {needle:?} 没写清它为什么算这一档");
         let e = classify(&raw(Some(1), "", &format!("tmux: {needle}: =x:")))
             .expect_err("非零退出不许回成功");
         assert_eq!(
-            e.0, "no_such_session",
+            e.code, "no_such_session",
             "针 {needle:?} 没落进 `no_such_session`"
         );
     }

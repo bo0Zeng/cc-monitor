@@ -1312,29 +1312,29 @@
     "beCapturePane.run.noTmux": {
       "kind": "error",
       "role": "报错",
-      "zh": "tmux 启动失败 · {e}",
-      "args": ["e"],
+      "zh": "tmux 启动失败 · {why}",
+      "args": ["why"],
       "limited": ["tmux"]
     },
     "beCapturePane.classify.noServer": {
       "kind": "error",
       "role": "报错",
-      "zh": "tmux 读取画面失败 · {tail} · 此机无运行中的 tmux",
-      "args": ["tail"],
+      "zh": "tmux 读取画面失败 · tmux 报错 · 此机无运行中的 tmux",
+      "args": [],
       "limited": ["tmux"]
     },
     "beCapturePane.classify.noTarget": {
       "kind": "error",
       "role": "报错",
-      "zh": "tmux 读取画面失败 · {tail} · tmux 会话不存在",
-      "args": ["tail"],
+      "zh": "tmux 读取画面失败 · tmux 报错 · tmux 会话不存在",
+      "args": [],
       "limited": ["tmux"]
     },
     "beCapturePane.classify.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "tmux 读取画面失败 · 退出码 {status} · {tail}",
-      "args": ["status", "tail"],
+      "zh": "tmux 读取画面失败 · tmux 报错",
+      "args": [],
       "limited": ["tmux"]
     },
     "beGate.probe.noTmux": {
@@ -28450,6 +28450,12 @@
       "kind": "error",
       "role": "原因格",
       "zh": "原因不明",
+      "args": []
+    },
+    "reason.spawn.notInstalled": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "未装",
       "args": []
     },
     "beFilesCommit.land.badPath": {
