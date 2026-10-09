@@ -1215,37 +1215,37 @@
     },
     "beCcBus.send.refused": {
       "kind": "error",
-      "role": "报错",
+      "role": "命令行",
       "zh": "cc-bus 拒绝收件人 · {detail}",
       "args": ["detail"]
     },
     "beCcBus.send.rejected": {
       "kind": "error",
-      "role": "报错",
+      "role": "命令行",
       "zh": "被 cc-bus 路由规则拦下 · {detail}",
       "args": ["detail"]
     },
     "beCcBus.send.failed": {
       "kind": "error",
-      "role": "报错",
+      "role": "命令行",
       "zh": "发送失败 · {detail} · 退出码 {status}",
       "args": ["status", "detail"]
     },
     "beCcBus.send.interrupted": {
       "kind": "error",
-      "role": "原因格",
+      "role": "命令行",
       "zh": "发送被中断 · {detail}",
       "args": ["detail"]
     },
     "beCcBus.run.refused": {
       "kind": "error",
-      "role": "报错",
+      "role": "命令行",
       "zh": "{name} 拒绝这组参数 · {detail}",
       "args": ["name", "detail"]
     },
     "beCcBus.run.failed": {
       "kind": "error",
-      "role": "报错",
+      "role": "命令行",
       "zh": "{name} 失败 · {detail} · 退出码 {status}",
       "args": ["name", "status", "detail"]
     },
@@ -1263,19 +1263,19 @@
     },
     "beCcBus.kill.refused": {
       "kind": "error",
-      "role": "报错",
+      "role": "命令行",
       "zh": "cc-bus 拒绝结束此 agent · {detail}",
       "args": ["detail"]
     },
     "beCcBus.kill.failed": {
       "kind": "error",
-      "role": "报错",
+      "role": "命令行",
       "zh": "结束 agent 失败 · {detail} · 退出码 {status}",
       "args": ["status", "detail"]
     },
     "beCcBus.kill.interrupted": {
       "kind": "error",
-      "role": "报错",
+      "role": "命令行",
       "zh": "结束 agent 被中断 · {detail}",
       "args": ["detail"]
     },
@@ -1287,7 +1287,7 @@
     },
     "beCcBus.spawn.refused": {
       "kind": "error",
-      "role": "报错",
+      "role": "命令行",
       "zh": "起 agent 被拒 · {detail}",
       "args": ["detail"]
     },
@@ -1299,13 +1299,13 @@
     },
     "beCcBus.spawn.failed": {
       "kind": "error",
-      "role": "报错",
+      "role": "命令行",
       "zh": "启动 agent 失败 · {detail} · 退出码 {status}",
       "args": ["status", "detail"]
     },
     "beCcBus.spawn.interrupted": {
       "kind": "error",
-      "role": "报错",
+      "role": "命令行",
       "zh": "起 agent 被中断 · {detail}",
       "args": ["detail"]
     },
@@ -11120,8 +11120,8 @@
     "rsLocalBackend.extraction.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "cc-monitor 自带的本机后端{marker} · 写入 {dir} 失败 · {err}\n修法 · 给该目录写权限（查是否只读或被杀毒软件拦截）\n或让 monitor 跑在主目录可写的账号下\n或装一次安装包 · 见 Releases 页 · 装出的后端与 monitor 同目录 · 不写此处",
-      "args": ["marker", "dir", "err"]
+      "zh": "cc-monitor 自带的本机后端{marker} · 写入 {dir} 失败 · {why}\n修法 · 给该目录写权限（查是否只读或被杀毒软件拦截）\n或让 monitor 跑在主目录可写的账号下\n或装一次安装包 · 见 Releases 页 · 装出的后端与 monitor 同目录 · 不写此处",
+      "args": ["marker", "dir", "why"]
     },
     "rsLocalBackend.extraction.refusedMarker": {
       "kind": "body",
@@ -11132,8 +11132,8 @@
     "rsLocalBackend.extract.renameFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "改名到 {dest} 失败 · {e}",
-      "args": ["dest", "e"]
+      "zh": "改名到 {dest} 失败 · {why}",
+      "args": ["dest", "why"]
     },
     "rsLocalBackend.place.unasked": {
       "kind": "error",
@@ -11144,8 +11144,8 @@
     "rsLocalBackend.place.askSpawn": {
       "kind": "body",
       "role": "片段",
-      "zh": "它起不来：{e}",
-      "args": ["e"]
+      "zh": "它起不来",
+      "args": []
     },
     "rsLocalBackend.place.askTimeout": {
       "kind": "body",
@@ -11175,14 +11175,14 @@
     "rsLocalBackend.place.besideReadFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取安装包旁的后端 {bin} 失败 · {e}",
-      "args": ["bin", "e"]
+      "zh": "读取安装包旁的后端 {bin} 失败 · {why}",
+      "args": ["bin", "why"]
     },
     "rsLocalBackend.extract.writeFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "写入失败 · {tmp} · {e}",
-      "args": ["tmp", "e"]
+      "zh": "写入失败 · {tmp} · {why}",
+      "args": ["tmp", "why"]
     },
     "rsLocalBackend.resolve.noSelfPath": {
       "kind": "error",
@@ -11193,8 +11193,8 @@
     "rsLocalBackend.supervise.spawnFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "{bin} 启动失败 · {e}",
-      "args": ["bin", "e"]
+      "zh": "{bin} 启动失败",
+      "args": ["bin"]
     },
     "rsLocalBackend.etxtbsy.gaveUp": {
       "kind": "error",
@@ -11223,8 +11223,8 @@
     "rsBackendControl.lock.poisoned": {
       "kind": "error",
       "role": "原因格",
-      "zh": "程序出错 · 锁中毒 · {e}",
-      "args": ["e"]
+      "zh": "程序出错 · 锁中毒",
+      "args": []
     },
     "rsBackendControl.start.notFound": {
       "kind": "error",
@@ -12103,26 +12103,26 @@
     "rsPlatformFs.chmod.failed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "设可执行失败 · {e}",
-      "args": ["e"]
+      "zh": "设可执行失败 · {why}",
+      "args": ["why"]
     },
     "rsPlatformFs.lock.openFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "加锁失败 · {dir} · {e}",
-      "args": ["dir", "e"]
+      "zh": "加锁失败 · {dir} · {why}",
+      "args": ["dir", "why"]
     },
     "rsPlatformFs.lock.failed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "加锁 {dir} 失败 · {e}",
-      "args": ["dir", "e"]
+      "zh": "加锁 {dir} 失败",
+      "args": ["dir"]
     },
     "rsPlatformFs.mkdir.failed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "写入失败 · {dir} · {e}",
-      "args": ["dir", "e"]
+      "zh": "写入失败 · {dir} · {why}",
+      "args": ["dir", "why"]
     },
     "rsChanWire.hop.unreachable": {
       "kind": "error",
@@ -14609,8 +14609,8 @@
     "rsLocalBackendHost.stop.spawnFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "启动停后端用的 {bin} 失败 · {e}",
-      "args": ["bin", "e"]
+      "zh": "启动停后端用的 {bin} 失败",
+      "args": ["bin"]
     },
     "rsLocalBackendHost.stop.timedOut": {
       "kind": "error",
@@ -14621,8 +14621,8 @@
     "rsLocalBackendHost.stop.readFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "停止本机后端 · {e} · 结果未知",
-      "args": ["e"]
+      "zh": "读不到回答 · 停止本机后端结果未知",
+      "args": []
     },
     "rsLocalBackendHost.stop.noRecord": {
       "kind": "error",
@@ -14633,8 +14633,8 @@
     "rsLocalBackendHost.lock.poisoned": {
       "kind": "error",
       "role": "原因格",
-      "zh": "程序出错 · {e}",
-      "args": ["e"]
+      "zh": "程序出错",
+      "args": []
     },
     "rsLocalBackendHost.local.machine": {
       "kind": "body",
@@ -14675,8 +14675,8 @@
     "rsLocalBackendHost.start.unreachableKilled": {
       "kind": "error",
       "role": "报错",
-      "zh": "后端已启动但连接失败 · {e} · 已把它停掉",
-      "args": ["e"]
+      "zh": "后端已启动但连接失败 · {why} · 已把它停掉",
+      "args": ["why"]
     },
     "rsLocalBackendHost.start.refused": {
       "kind": "error",
@@ -14699,14 +14699,14 @@
     "rsLocalBackendHost.stream.asyncFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "程序出错 · 连接接不进来 · {e}",
-      "args": ["e"]
+      "zh": "程序出错 · 连接接不进来",
+      "args": []
     },
     "rsLocalBackendHost.stream.nonblockingFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "程序出错 · 连接设置失败 · {e}",
-      "args": ["e"]
+      "zh": "程序出错 · 连接设置失败",
+      "args": []
     },
     "rsLocalBackendHost.stream.notHello": {
       "kind": "error",
@@ -14729,8 +14729,8 @@
     "rsLocalBackendHost.spawn.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "启动本机后端失败 · {bin} · {e}",
-      "args": ["bin", "e"]
+      "zh": "启动本机后端失败 · {bin}",
+      "args": ["bin"]
     },
     "rsLocalBackendHost.attach.unreadable": {
       "kind": "error",
@@ -14747,20 +14747,20 @@
     "rsLocalBackendHost.attach.notJson": {
       "kind": "error",
       "role": "报错",
-      "zh": "后端的回答不是 JSON · {e} · {line}",
-      "args": ["e", "line"]
+      "zh": "后端的回答不是 JSON",
+      "args": []
     },
     "rsLocalBackendHost.attach.sendFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "连接请求未发出 · {e}",
-      "args": ["e"]
+      "zh": "连接请求未发出 · {why}",
+      "args": ["why"]
     },
     "rsLocalBackendHost.handshake.readFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "端口上的程序应答不可读 · {e}",
-      "args": ["e"]
+      "zh": "端口上的程序应答不可读 · {why}",
+      "args": ["why"]
     },
     "rsLocalBackendHost.handshake.tooLong": {
       "kind": "error",
@@ -14771,8 +14771,8 @@
     "rsLocalBackendHost.handshake.notUtf8": {
       "kind": "error",
       "role": "报错",
-      "zh": "端口上的程序回的行非 UTF-8 · {e}",
-      "args": ["e"]
+      "zh": "端口上的程序回的行非 UTF-8",
+      "args": []
     },
     "rsLocalBackendHost.handshake.closed": {
       "kind": "error",
@@ -14783,14 +14783,14 @@
     "rsLocalBackendHost.probe.noAnswer": {
       "kind": "error",
       "role": "报错",
-      "zh": "端口 {port} 已连 · {e} · 无应答",
-      "args": ["port", "e"]
+      "zh": "端口 {port} 已连 · {why} · 无应答",
+      "args": ["port", "why"]
     },
     "rsLocalBackendHost.probe.noDeadline": {
       "kind": "error",
       "role": "原因格",
-      "zh": "连接端口上的后端失败 · {e}",
-      "args": ["e"]
+      "zh": "连接端口上的后端失败 · {why}",
+      "args": ["why"]
     },
     "rsLocalBackendHost.hello.buildMismatch": {
       "kind": "error",
@@ -14819,8 +14819,8 @@
     "rsLocalBackendHost.fs.readFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "读取失败 · {path} · {e}",
-      "args": ["path", "e"]
+      "zh": "读取失败 · {path} · {why}",
+      "args": ["path", "why"]
     },
     "rsToolRegistry.tools.skillInstallsLedgerNote": {
       "kind": "body",

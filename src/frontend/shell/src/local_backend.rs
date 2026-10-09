@@ -89,6 +89,7 @@
 //! 被强插 `-L` —— **显式选择器压得过 `$TMUX`**。
 
 use crate::copy_table::copy_text;
+use crate::detail::Said;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
@@ -129,8 +130,9 @@ pub(crate) const BACKEND_BIN_ENV: &str = "CCM_BACKEND_BIN";
 pub enum Resolved {
     Found(PathBuf),
     /// 没找到。`looked_at` 必须**逐个列出找过的路径** —— 只说「没找到」的诊断等于没有诊断。
+    /// `reason`：给人看的那一句 ＋ 复制详情（下层原话在详情里）。
     Missing {
-        reason: String,
+        reason: Said,
         looked_at: Vec<PathBuf>,
     },
 }
@@ -167,7 +169,8 @@ pub fn resolve_with(
         reason: copy_text(
             "rsLocalBackend.resolve.notBeside",
             &[("stem", &LOCAL_BACKEND_STEM.to_string())],
-        ),
+        )
+        .into(),
         looked_at: cands,
     }
 }
@@ -275,6 +278,8 @@ pub enum SuperviseEvent {
     },
     GaveUp {
         reason: String,
+        /// 下层原话（起进程那一下系统给的；这一条只进日志）。
+        raw: Option<String>,
     },
 }
 
@@ -774,6 +779,7 @@ pub fn supervise_with_stdio(
                 Err(SpawnFailure::TransientBusy { tries, last }) => {
                     on_event(SuperviseEvent::GaveUp {
                         reason: etxtbsy_gave_up_reason(&bin, tries, &last),
+                        raw: None,
                     });
                     return;
                 }
@@ -782,8 +788,9 @@ pub fn supervise_with_stdio(
                     on_event(SuperviseEvent::GaveUp {
                         reason: copy_text(
                             "rsLocalBackend.supervise.spawnFailed",
-                            &[("bin", &(bin.display()).to_string()), ("e", &e.to_string())],
+                            &[("bin", &(bin.display()).to_string())],
                         ),
+                        raw: Some(e),
                     });
                     return;
                 }
@@ -919,7 +926,7 @@ pub fn supervise_with_stdio(
             match decision {
                 Decision::Restart => continue,
                 Decision::GiveUp { reason } => {
-                    on_event(SuperviseEvent::GaveUp { reason });
+                    on_event(SuperviseEvent::GaveUp { reason, raw: None });
                     return;
                 }
             }
@@ -1051,9 +1058,9 @@ pub type PlaceAsk<'a> =
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Unplaced {
     /// 写不进去（建目录 · 写暂存件 · 置可执行位 · 换名）：原话，由 [`extraction_failure_reason`] 说成「带了、这台不让放」那一句。
-    Write(String),
+    Write(Said),
     /// 没放，那句话已经说全：手上那份字节说「不」（这台不承诺 · 落点那一份判不了）或问它没问成。盘上那份没动。
-    Said(String),
+    Said(Said),
 }
 
 /// 暂存件任何结局下都清（形状 A 的要求 ②）；清不掉出声（超过一天的那份由下一次放置的 [`sweep_stale_partials`] 收）。
@@ -1069,21 +1076,24 @@ fn drop_partial(tmp: &Path) {
 }
 
 /// 没问成的那几形 → 一句话（手上那份字节说「不」时那句就是它自己的话，原样）。
-fn unasked(e: crate::ccm_probe::OnceErr) -> String {
+fn unasked(e: crate::ccm_probe::OnceErr) -> Said {
     use crate::ccm_probe::OnceErr;
     let why = match e {
-        OnceErr::Refused { message, .. } => return message,
-        OnceErr::Spawn(e) => copy_text("rsLocalBackend.place.askSpawn", &[("e", &e)]),
-        OnceErr::TimedOut => copy_text("rsLocalBackend.place.askTimeout", &[]),
+        OnceErr::Refused { message, .. } => return message.into(),
+        OnceErr::Spawn(e) => Said::with_raw(copy_text("rsLocalBackend.place.askSpawn", &[]), &e),
+        OnceErr::TimedOut => copy_text("rsLocalBackend.place.askTimeout", &[]).into(),
         OnceErr::Unreadable(said) => {
-            copy_text("rsLocalBackend.place.askUnreadable", &[("said", &said)])
+            copy_text("rsLocalBackend.place.askUnreadable", &[("said", &said)]).into()
         }
     };
-    copy_text("rsLocalBackend.place.unasked", &[("why", &why)])
+    Said {
+        said: copy_text("rsLocalBackend.place.unasked", &[("why", &why.said)]),
+        ..why
+    }
 }
 
 /// `place-verdict` 的答 → 放（`true`）/ 不动（`false`）。**严格收**：恰 `{action, why}`、`action` 两个词之一；别的都是没问成（不猜）。
-pub(crate) fn decode_place(v: &serde_json::Value) -> Result<bool, String> {
+pub(crate) fn decode_place(v: &serde_json::Value) -> Result<bool, Said> {
     let bad = || {
         unasked(crate::ccm_probe::OnceErr::Unreadable(
             v.to_string().chars().take(200).collect(),
@@ -1125,9 +1135,9 @@ pub fn extract_embedded_to(
     dir: &Path,
     build_id: &str,
     bytes: &[u8],
-    make_executable: &dyn Fn(&Path) -> Result<(), String>,
+    make_executable: &dyn Fn(&Path) -> Result<(), Said>,
     // 建落点目录（`~/.cc-monitor/bin` 一族）也是宿主知识：建的那一下就只给本人（`platform::fs::ensure_private_dir`）。
-    ensure_dir: &dyn Fn(&Path) -> Result<(), String>,
+    ensure_dir: &dyn Fn(&Path) -> Result<(), Said>,
     ask: PlaceAsk<'_>,
 ) -> Result<PathBuf, Unplaced> {
     let name = local_ccm_entry_name();
@@ -1142,9 +1152,15 @@ pub fn extract_embedded_to(
     sweep_stale_partials(dir, &name);
     if let Err(e) = std::fs::write(&tmp, bytes) {
         drop_partial(&tmp);
-        return Err(Unplaced::Write(copy_text(
-            "rsLocalBackend.extract.writeFailed",
-            &[("tmp", &(tmp.display()).to_string()), ("e", &e.to_string())],
+        return Err(Unplaced::Write(Said::with_raw(
+            copy_text(
+                "rsLocalBackend.extract.writeFailed",
+                &[
+                    ("tmp", &(tmp.display()).to_string()),
+                    ("why", &copy_core::io_reason(e.kind())),
+                ],
+            ),
+            &e,
         )));
     }
     // `backend-split` 的 C10：「怎么置可执行位」是平台知识，由宿主注入（`platform::fs::make_executable`）。
@@ -1173,12 +1189,15 @@ pub fn extract_embedded_to(
     }
     rename_into_place(dir, &name, &tmp, &dest).map_err(|e| {
         drop_partial(&tmp);
-        Unplaced::Write(copy_text(
-            "rsLocalBackend.extract.renameFailed",
-            &[
-                ("dest", &(dest.display()).to_string()),
-                ("e", &e.to_string()),
-            ],
+        Unplaced::Write(Said::with_raw(
+            copy_text(
+                "rsLocalBackend.extract.renameFailed",
+                &[
+                    ("dest", &(dest.display()).to_string()),
+                    ("why", &copy_core::io_reason(e.kind())),
+                ],
+            ),
+            &e,
         ))
     })?;
     Ok(dest)
@@ -1204,9 +1223,9 @@ pub fn place_local_program(
     dir: &Path,
     file: &str,
     bytes: &[u8],
-    make_executable: &dyn Fn(&Path) -> Result<(), String>,
+    make_executable: &dyn Fn(&Path) -> Result<(), Said>,
     // 建落点目录（`~/.cc-monitor/bin` 一族）也是宿主知识：建的那一下就只给本人（`platform::fs::ensure_private_dir`）。
-    ensure_dir: &dyn Fn(&Path) -> Result<(), String>,
+    ensure_dir: &dyn Fn(&Path) -> Result<(), Said>,
 ) -> Result<PathBuf, std::io::Error> {
     // 错交回 `io::Error`：调用方按它的种类取原因词（`copy_core::reason`），原话（带路径）进复制详情。
     // 宿主注入那两样只回一句话 ⇒ 种类判不出（`Other`）。
@@ -1220,12 +1239,12 @@ pub fn place_local_program(
             return Ok(dest);
         }
     }
-    ensure_dir(dir).map_err(std::io::Error::other)?;
+    ensure_dir(dir).map_err(Said::into_io)?;
     let tmp = dir.join(format!(".{file}.{}.partial", std::process::id()));
     sweep_stale_partials(dir, file);
     std::fs::write(&tmp, bytes)
         .map_err(|e| std::io::Error::new(e.kind(), format!("{}: {e}", tmp.display())))?;
-    make_executable(&tmp).map_err(std::io::Error::other)?;
+    make_executable(&tmp).map_err(Said::into_io)?;
     rename_into_place(dir, file, &tmp, &dest).map_err(|e| {
         let _ = std::fs::remove_file(&tmp);
         std::io::Error::new(e.kind(), format!("{}: {e}", dest.display()))
@@ -1299,15 +1318,18 @@ static EXTRACTION_REFUSED_MARKER: std::sync::LazyLock<String> =
 /// # 纯函数
 ///
 /// 不碰文件系统、不碰时钟 ⇒ 两种输入的两句话都测得到（同本模块 [`decide`] 的理由）。
-pub fn extraction_failure_reason(dir: &Path, err: &str) -> String {
-    copy_text(
-        "rsLocalBackend.extraction.failed",
-        &[
-            ("marker", &EXTRACTION_REFUSED_MARKER.to_string()),
-            ("dir", &(dir.display()).to_string()),
-            ("err", &err.to_string()),
-        ],
-    )
+pub fn extraction_failure_reason(dir: &Path, err: Said) -> Said {
+    Said {
+        said: copy_text(
+            "rsLocalBackend.extraction.failed",
+            &[
+                ("marker", &EXTRACTION_REFUSED_MARKER.to_string()),
+                ("dir", &(dir.display()).to_string()),
+                ("why", &err.said),
+            ],
+        ),
+        ..err
+    }
 }
 
 /// [`local_stdio_consumer`] 用的**同步有界读行** —— 远端 `stream_source::read_capped_line` 的孪生。
@@ -1805,9 +1827,9 @@ pub fn resolve_or_extract(
     target_triple: &str,
     extract_dir: &Path,
     embedded: Result<(&str, &[u8]), String>,
-    make_executable: &dyn Fn(&Path) -> Result<(), String>,
+    make_executable: &dyn Fn(&Path) -> Result<(), Said>,
     // 建落点目录（`~/.cc-monitor/bin` 一族）也是宿主知识：建的那一下就只给本人（`platform::fs::ensure_private_dir`）。
-    ensure_dir: &dyn Fn(&Path) -> Result<(), String>,
+    ensure_dir: &dyn Fn(&Path) -> Result<(), Said>,
     // 放不放问手上那份字节自己（[`PlaceAsk`]，宿主注入）。
     ask: PlaceAsk<'_>,
 ) -> Resolved {
@@ -1825,16 +1847,23 @@ pub fn resolve_or_extract(
                             reason: copy_text(
                                 "rsLocalBackend.place.besideUnstamped",
                                 &[("bin", &p.display().to_string())],
-                            ),
+                            )
+                            .into(),
                             looked_at: vec![p.clone()],
                         }
                     }
                 },
                 Err(e) => {
                     break 'resolve Resolved::Missing {
-                        reason: copy_text(
-                            "rsLocalBackend.place.besideReadFailed",
-                            &[("bin", &p.display().to_string()), ("e", &e.to_string())],
+                        reason: Said::with_raw(
+                            copy_text(
+                                "rsLocalBackend.place.besideReadFailed",
+                                &[
+                                    ("bin", &p.display().to_string()),
+                                    ("why", &copy_core::io_reason(e.kind())),
+                                ],
+                            ),
+                            &e,
                         ),
                         looked_at: vec![p.clone()],
                     }
@@ -1850,7 +1879,10 @@ pub fn resolve_or_extract(
                 Err(why) => {
                     break 'resolve match beside {
                         Resolved::Missing { reason, looked_at } => Resolved::Missing {
-                            reason: format!("{reason}\n{why}"),
+                            reason: Said {
+                                said: format!("{}\n{why}", reason.said),
+                                ..reason
+                            },
                             looked_at,
                         },
                         found @ Resolved::Found(_) => found,
@@ -1872,11 +1904,11 @@ pub fn resolve_or_extract(
                 //    它是「带了，但这台机器不让我把它放下来」——两件事的下一步完全不同。
                 // 手上那份字节自己说「不」/ 问它没问成 ⇒ 那句话已经说全，原样交出（不套「写不进去」那一句）。
                 let reason = match e {
-                    Unplaced::Write(e) => extraction_failure_reason(extract_dir, &e),
+                    Unplaced::Write(e) => extraction_failure_reason(extract_dir, e),
                     Unplaced::Said(said) => said,
                 };
                 // 这一支自己吼一声 error，日志里一定留得下（两条生产路共用这一声）。
-                tracing::error!("{reason}");
+                tracing::error!("{}（{}）", reason.said, reason.raw());
                 Resolved::Missing {
                     reason,
                     looked_at: match beside {
@@ -1899,9 +1931,9 @@ pub fn start_or_extract(
     target_triple: &str,
     extract_dir: &Path,
     embedded: Result<(&str, &[u8]), String>,
-    make_executable: &dyn Fn(&Path) -> Result<(), String>,
+    make_executable: &dyn Fn(&Path) -> Result<(), Said>,
     // 建落点目录（`~/.cc-monitor/bin` 一族）也是宿主知识：建的那一下就只给本人（`platform::fs::ensure_private_dir`）。
-    ensure_dir: &dyn Fn(&Path) -> Result<(), String>,
+    ensure_dir: &dyn Fn(&Path) -> Result<(), Said>,
     on_event: Arc<dyn Fn(SuperviseEvent) + Send + Sync>,
     spawn: Arc<crate::spawn_managed::ManagedSpawn>,
     // 交给后端的环境（中转端口 ＋ 凭据路径）由**宿主**给 —— 本层不认识中转，只原样转交。
