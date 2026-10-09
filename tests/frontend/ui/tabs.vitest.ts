@@ -293,6 +293,12 @@ function setGroups(tm: TabManager, groups: { id: string; name: string; tabs?: st
   for (const t of home(tm).store.tabs.values()) t.group = null;
   for (const g of groups) for (const sid of g.tabs ?? []) home(tm).store.tabs.get(sid)!.group = g.id;
 }
+/** 开着的菜单里写着 `label` 的那一项。 */
+function groupMenuItem(label: string): HTMLElement {
+  const it = [...document.body.querySelectorAll<HTMLElement>("[role=menu] [role^=menuitem]")].find((b) => b.textContent?.startsWith(label));
+  if (!it) throw new Error(`菜单里没有「${label}」`);
+  return it;
+}
 /** 组 `gid` 里此刻有谁（按栏里的顺序）。 */
 function membersOf(tm: TabManager, gid: string): string[] {
   return home(tm).store.orderedIds.filter((sid) => home(tm).store.tabs.get(sid)?.group === gid);
@@ -3250,7 +3256,8 @@ describe("P7a-3 集合分组渲染", () => {
     const before = [...order()];
     expect(bar.querySelector(".tab-group")).toBeTruthy();
 
-    (bar.querySelector(".tab-group-del") as HTMLButtonElement).click();
+    (bar.querySelector(".tab-group-more") as HTMLButtonElement).click();
+    groupMenuItem(copyText("tabMenu.group.dissolve")).click();
     flushBar();
     // 「没删掉会话」是**没有发生的事** ⇒ 钉逐项相等，不是钉「没崩」。
     expect(order(), "集合是个视图，不是容器").toEqual(before);
@@ -5789,5 +5796,117 @@ describe("起新会话的占位标签页接在标签页栏里", () => {
     expect(tm.shadowedBySlot("needs.next")).toBe(false);
     tm.switchTo("a");
     expect(tm.shadowedBySlot("session.find"), "切回真标签页 ⇒ 照常").toBe(false);
+  });
+});
+
+// ==========================================================================
+// 组头：收起 / 展开（落盘）· 组员数 · 收着时汇总 · 「⋯」菜单 · 跳到收着的组里自动展开 · 数字键跳过收着的
+// ==========================================================================
+describe("组头", () => {
+  let tm: TabManager;
+  let bar: HTMLElement;
+  const flushBar = (): void => (tm as unknown as { refreshTabBar: () => void }).refreshTabBar();
+  const head = (): HTMLElement => bar.querySelector<HTMLElement>(".tab-group-head")!;
+  const collapsed = (): boolean => bar.querySelector<HTMLElement>(".tab-group")!.classList.contains("is-collapsed");
+  beforeEach(() => {
+    vi.clearAllMocks();
+    closeMenu();
+    tm = makeTM();
+    bar = document.body.firstElementChild as HTMLElement;
+    home(tm).prefs.collectionsLoaded = true;
+    for (const sid of ["x", "a", "b", "c", "y"]) tm.ensureTab(sid, `/w/${sid}`, "p", LOCAL_ORIGIN);
+    setGroups(tm, [{ id: "g", name: "订单", tabs: ["a", "b", "c"] }]);
+    home(tm).store.tabs.get("a")!.activity = { doing: "needs_you", waitingFor: "permission prompt" };
+    home(tm).store.tabs.get("b")!.activity = { doing: "working", waitingFor: null };
+    home(tm).store.tabs.get("c")!.activity = { doing: "idle", waitingFor: null };
+    tm.switchTo("x");
+    flushBar();
+  });
+  afterEach(() => closeMenu());
+
+  it("组头：名字 · 组员数；点 ⌄ 收起（落盘）⇒ 组员藏起、汇总出「等你 1 · 在跑 1」；再点展开、汇总收掉", () => {
+    expect(head().querySelector(".tab-group-name")!.textContent).toBe("订单");
+    expect(head().querySelector(".tab-group-count")!.textContent).toBe("3");
+    expect(head().querySelector(".tab-group-sum")!.textContent, "展开时不汇总").toBe("");
+    head().querySelector<HTMLElement>(".tab-group-caret")!.click();
+    expect(collapsed()).toBe(true);
+    expect(home(tm).prefs.collections[0].collapsed, "收着记在组上（落盘那一格）").toBe(true);
+    expect(head().querySelector(".tab-group-sum")!.textContent).toBe(
+      copyText("tabBar.group.sumNeeds", { n: 1 }) + copyText("tabBar.group.sumRunning", { n: 1 }),
+    );
+    expect(head().querySelector(".tab-group-caret")!.getAttribute("aria-expanded")).toBe("false");
+    head().querySelector<HTMLElement>(".tab-group-caret")!.click();
+    expect(collapsed()).toBe(false);
+    expect(home(tm).prefs.collections[0].collapsed).toBeUndefined();
+    expect(head().querySelector(".tab-group-sum")!.textContent).toBe("");
+  });
+
+  it("点组头空白处 ＝ 收起 / 展开；点名字 ＝ 改名（不收起）", () => {
+    head().querySelector<HTMLElement>(".tab-group-sp")!.click();
+    expect(collapsed()).toBe(true);
+    head().querySelector<HTMLElement>(".tab-group-name")!.click();
+    expect(collapsed(), "点名字不切收展").toBe(true);
+    expect(head().querySelector("input"), "名字框打开").not.toBeNull();
+  });
+
+  it("数字键 · ] [ 跳过收着的组里的；关掉邻居不落进收着的组", () => {
+    head().querySelector<HTMLElement>(".tab-group-caret")!.click();
+    expect(home(tm).bar.navOrder()).toEqual(["x", "y"]);
+    tm.jumpToIndex(2);
+    expect(home(tm).store.activeId, "第 2 个是 y（a b c 收着）").toBe("y");
+    tm.cycleActive(-1);
+    expect(home(tm).store.activeId).toBe("x");
+  });
+
+  it("切到收着的组里的那一个（Ctrl+J · 命令面板 · 通知都走这里）⇒ 那个组展开；当前在收着的组里 ⇒ 组头左边一道 accent", () => {
+    head().querySelector<HTMLElement>(".tab-group-caret")!.click();
+    tm.switchTo("a");
+    expect(collapsed(), "跳进去 ⇒ 展开").toBe(false);
+    head().querySelector<HTMLElement>(".tab-group-caret")!.click();
+    expect(head().classList.contains("is-current"), "当前标签页在收着的组里").toBe(true);
+    tm.switchTo("x");
+    expect(head().classList.contains("is-current")).toBe(false);
+  });
+
+  it("「⋯」菜单：改名 · 收起 · 全部收起 · 全部展开 · 关闭组里已结束的（n，0 时灰）· 解散分组", () => {
+    head().querySelector<HTMLElement>(".tab-group-more")!.click();
+    const labels = [...document.body.querySelectorAll("[role=menu] [role^=menuitem]")].map((b) => b.textContent ?? "");
+    expect(labels.map((l) => l.split("\n")[0])).toEqual([
+      copyText("tabMenu.group.rename"),
+      copyText("tabMenu.group.collapse"),
+      copyText("tabMenu.group.collapseAll"),
+      copyText("tabMenu.group.expandAll"),
+      copyText("sessionState.closeEnded.inGroup", { n: 0 }),
+      copyText("tabMenu.group.dissolve"),
+    ]);
+    expect((groupMenuItem(copyText("sessionState.closeEnded.inGroup", { n: 0 })) as HTMLButtonElement).disabled, "一个已结束的都没有 ⇒ 灰").toBe(true);
+    groupMenuItem(copyText("tabMenu.group.collapseAll")).click();
+    expect(collapsed()).toBe(true);
+  });
+
+  it("关闭组里已结束的：一次关掉、一条「已关闭 N 个［撤销］」；撤销 ⇒ 原位放回", () => {
+    tm.archiveTab("a");
+    tm.archiveTab("c");
+    flushBar();
+    head().querySelector<HTMLElement>(".tab-group-more")!.click();
+    groupMenuItem(copyText("sessionState.closeEnded.inGroup", { n: 2 })).click();
+    expect(home(tm).store.orderedIds).toEqual(["x", "b", "y"]);
+    expect(vi.mocked(undoToast).mock.calls.map((c) => c[0])).toEqual([copyText("tabBar.close.doneMany", { n: 2 })]);
+    vi.mocked(undoToast).mock.calls[0][1]();
+    expect(home(tm).store.orderedIds).toEqual(["x", "a", "b", "c", "y"]);
+    expect(membersOf(tm, "g")).toEqual(["a", "b", "c"]);
+  });
+
+  it("组头右键 ＝ 同一份组的菜单", () => {
+    head().dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 5, clientY: 5 }));
+    expect(groupMenuItem(copyText("tabMenu.group.dissolve"))).toBeTruthy();
+  });
+
+  it("拖到收着的组头上 ⇒ 进组排最后，组保持收着", () => {
+    head().querySelector<HTMLElement>(".tab-group-caret")!.click();
+    home(tm).dragger.applyDrop("y", { kind: "insert", at: { sid: "c", side: "after" }, gid: "g", head: "g" });
+    expect(membersOf(tm, "g")).toEqual(["a", "b", "c", "y"]);
+    expect(collapsed()).toBe(true);
+    expect(head().querySelector(".tab-group-count")!.textContent).toBe("4");
   });
 });

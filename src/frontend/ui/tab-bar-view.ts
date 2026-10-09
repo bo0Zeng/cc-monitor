@@ -30,8 +30,9 @@ import { icon } from "./kit/icon";
 import { statusDot } from "./kit/status-dot";
 import { countBadge, tag, kbd } from "./kit/badge";
 import { attachTooltip, delegateTooltip, TOOLTIP_DELAY_MS } from "./kit/tooltip";
-import { closeMenu, menuAnchoredOn, openMenu, type MenuItem } from "./kit/menu";
-import { abbrOf, dotOf, fullTitle, machineOf, needsOf, needsOrder, nextNeeds, peekLine, stateLine, titleParts, sinceText } from "./session-face";
+import { closeMenu, menuAnchoredOn, openMenu, type MenuAnchor, type MenuItem } from "./kit/menu";
+import { foldCaret } from "./kit/fold";
+import { abbrOf, dotOf, fullTitle, groupSummary, machineOf, needsOf, needsOrder, nextNeeds, peekLine, stateLine, titleParts, sinceText } from "./session-face";
 import { dotLabel, needsWord } from "./session-words";
 
 /** TabButton 的 DOM 引用：refreshTabBar 局部更新依赖这些 ref 避免重新创建 button */
@@ -79,6 +80,8 @@ export interface TabButtonRefs {
 export interface TabBarViewHost {
   /** 整刷 tab 栏的入口（`TabManager.refreshTabBar`：先过拖拽守卫再调本类 `refresh`）。 */
   refreshTabBar(): void;
+  /** 组的菜单「关闭组里已结束的」：一次关掉、给一条可撤的 toast。 */
+  closeEndedIn(gid: string): void;
   /** 📂：打开工作目录。 */
   openTabCwd(sid: string): Promise<void>;
   /** ↗：本机 tab 切到终端窗口。 */
@@ -110,6 +113,19 @@ export interface TabBarViewHost {
   reconnect(origin: string): void;
 }
 
+/** 一个组在栏里的那几块（组头各格 ＋ 组员列表）；`drawn` ＝ 组头上次画的样子（没变就不写）。 */
+interface GroupEls {
+  wrap: HTMLElement;
+  head: HTMLElement;
+  list: HTMLElement;
+  caret: HTMLElement;
+  name: HTMLElement;
+  count: HTMLElement;
+  sum: HTMLElement;
+  mini: HTMLElement;
+  drawn: string;
+}
+
 /** 「需要你」悬停菜单的宽：标题放得下约 28 个汉字（≈ 420px），至少 360、至多 480 与视口减 32 的小者；可以盖过标签页栏伸进消息流。 */
 const NEEDS_MENU = { min: 360, ideal: 420, max: 480, viewportGutter: 32 } as const;
 
@@ -122,7 +138,7 @@ export class TabBarView {
   /** sessionId → button DOM refs，避免 refreshTabBar 每次重建整个 bar */
   readonly tabButtons = new Map<string, TabButtonRefs>();
   /** 每个集合在主栏里的容器（组头 + 成员列表）。 */
-  private readonly groupEls = new Map<string, { wrap: HTMLElement; head: HTMLElement; list: HTMLElement }>();
+  private readonly groupEls = new Map<string, GroupEls>();
   // 没有归档抽屉：已结束的 tab（`isResumeOnly(tab.state)`）留在原位变淡（`.tab.ended`）。
 
   /**
@@ -343,14 +359,25 @@ export class TabBarView {
     this.host.switchTo(sid);
   }
 
-  /** 条上看得到的顺序（组与散的混排、组员聚在第一个组员那一格；整刷就按它摆）。 */
+  /** 条上的顺序（组与散的混排、组员聚在第一个组员那一格；整刷就按它摆）。含收着的组里的。 */
   visibleOrder(): string[] {
     return this.store.visibleOrder(this.prefs.collections.map((c) => c.id));
   }
 
+  /** 数字键 · `]` `[` 走的顺序：同上，但跳过收着的组里的（看不见的不走）。 */
+  navOrder(): string[] {
+    const folded = new Set(this.prefs.collections.filter((c) => c.collapsed).map((c) => c.id));
+    return this.store.visibleOrder(this.prefs.collections.map((c) => c.id), folded);
+  }
+
   /** 栏里从上到下的行（组头 · 标签页）。 */
   private rows(): BarRow[] {
-    return barRows(this.store.orderedIds, (sid) => this.store.tabs.get(sid)?.group ?? null, this.prefs.collections.map((c) => c.id));
+    return barRows(
+      this.store.orderedIds,
+      (sid) => this.store.tabs.get(sid)?.group ?? null,
+      this.prefs.collections.map((c) => c.id),
+      new Set(this.prefs.collections.filter((c) => c.collapsed).map((c) => c.id)),
+    );
   }
 
   /** 量一遍栏里每一行（组头 · 标签页）在纵轴上占的那一段：拖拽判落点用（判定在 `tab-drop.ts::pickDropTarget`）。 */
@@ -358,7 +385,7 @@ export class TabBarView {
     const out: RowRect[] = [];
     for (const [gid, g] of this.groupEls) {
       const r = g.head.getBoundingClientRect();
-      out.push({ kind: "head", id: gid, gid, top: r.top, height: r.height });
+      out.push({ kind: "head", id: gid, gid, top: r.top, height: r.height, collapsed: g.wrap.classList.contains("is-collapsed") });
     }
     for (const [sid, refs] of this.tabButtons) {
       if (!this.listEl.contains(refs.root)) continue;
@@ -596,46 +623,144 @@ export class TabBarView {
   }
 
   /**
-   * 拿到某集合在主栏里的容器（没有就建）。
-   *
-   * 组头点一下改名、右侧 `×` 解散。**解散只去掉分组，一个 tab 都不动** ——
-   * 集合是个视图，不是容器。
+   * 拿到某个组在栏里的容器（没有就建）。组头：⌄（收起 / 展开）· 名字（点一下改名）· 组员数 · 收着时汇总（等你 · 在跑）·
+   * 悬停 / 焦点时右侧「⋯」（组的菜单；组头右键同一份）。点 ⌄ 或组头空白 ＝ 收起 / 展开。
+   * **解散只去掉分组，一个 tab 都不动**（在「⋯」菜单里，撤得回）。
    */
   private groupElFor(col: TabCollection): HTMLElement {
     let g = this.groupEls.get(col.id);
     if (!g) {
+      const gid = col.id;
       const wrap = document.createElement("div");
       wrap.className = "tab-group";
       const head = document.createElement("div");
       head.className = "tab-group-head";
+      const caret = document.createElement("button");
+      caret.type = "button";
+      caret.className = "tab-group-caret";
+      caret.appendChild(foldCaret());
       const name = document.createElement("button");
       name.type = "button";
       name.className = "tab-group-name";
-      name.addEventListener("click", () => this.beginGroupRename(col.id, name));
-      const del = document.createElement("button");
-      del.type = "button";
-      del.className = "tab-group-del";
-      del.textContent = copyText("tabBarView.group.dissolve");
-      del.title = copyText("tabBarView.group.dissolveHint");
-      del.addEventListener("click", () => {
-        // 撤得回 ⇒ 不确认：直接解散 ＋ 8 秒撤销（组员留在原位）。
-        const before = this.prefs.snapshot();
-        void this.prefs.dissolveGroup(col.id);
-        this.host.refreshTabBar();
-        this.prefs.offerUndo(copyText("tabBar.group.dissolved", { name: col.name }), before);
+      name.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.beginGroupRename(gid, name);
       });
-      head.append(name, del);
+      const count = document.createElement("span");
+      count.className = "tab-group-count";
+      const sum = document.createElement("span");
+      sum.className = "tab-group-sum";
+      const mini = document.createElement("span");
+      mini.className = "tab-group-mini";
+      const sp = document.createElement("span");
+      sp.className = "tab-group-sp";
+      const more = document.createElement("button");
+      more.type = "button";
+      more.className = "tab-group-more";
+      more.setAttribute("aria-label", copyText("tabBar.group.more"));
+      more.appendChild(icon("more", "compact"));
+      more.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.openGroupMenu(gid, { el: more, align: "end" });
+      });
+      head.append(caret, name, count, sum, mini, sp, more);
+      // 点 ⌄ 或组头空白（名字与「⋯」自己吞了 click）⇒ 收起 / 展开。
+      head.addEventListener("click", () => this.toggleGroup(gid));
+      head.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.openGroupMenu(gid, { x: e.clientX, y: e.clientY });
+      });
       const list = document.createElement("div");
       list.className = "tab-group-list";
       wrap.append(head, list);
       this.listEl.appendChild(wrap);
-      g = { wrap, head, list };
-      this.groupEls.set(col.id, g);
+      g = { wrap, head, list, caret, name, count, sum, mini, drawn: "" };
+      this.groupEls.set(gid, g);
     }
-    // 名字没变就不写 —— 这里每次整刷都走一遍，无条件写就是每个组每次一条 DOM 写。
-    const nameEl = g.head.firstElementChild as HTMLElement;
-    if (nameEl.textContent !== col.name) nameEl.textContent = col.name;
+    this.paintGroupHead(g, col);
     return g.list;
+  }
+
+  /** 组头那几格照此刻的组员现画：名字 · 组员数 · 收着 · 汇总 · 当前标签页在收着的组里。没变就不写。 */
+  private paintGroupHead(g: GroupEls, col: TabCollection): void {
+    const members = [...this.store.tabs.values()].filter((t) => t.group === col.id);
+    const collapsed = col.collapsed === true;
+    const sum = collapsed ? groupSummary(members) : { needs: 0, running: 0 };
+    const current = collapsed && members.some((t) => t.sessionId === this.store.activeId);
+    const drawn = `${col.name}\u0000${members.length}\u0000${collapsed ? 1 : 0}\u0000${sum.needs}\u0000${sum.running}\u0000${current ? 1 : 0}`;
+    if (g.drawn === drawn) return;
+    g.drawn = drawn;
+    if (g.name.textContent !== col.name) g.name.textContent = col.name;
+    g.name.title = col.name;
+    g.count.textContent = String(members.length);
+    g.caret.setAttribute("aria-expanded", String(!collapsed));
+    g.caret.setAttribute("aria-label", collapsed ? copyText("tabMenu.group.expand") : copyText("tabMenu.group.collapse"));
+    g.wrap.classList.toggle("is-collapsed", collapsed);
+    g.head.classList.toggle("is-current", current);
+    const chips: HTMLElement[] = [];
+    const chip = (dot: "needs-you" | "running", text: string): HTMLElement => {
+      const c = document.createElement("span");
+      c.className = "tab-group-chip";
+      c.dataset.dot = dot;
+      c.append(statusDot(dot, dotLabel(dot), "compact"), document.createTextNode(text));
+      return c;
+    };
+    if (sum.needs > 0) chips.push(chip("needs-you", copyText("tabBar.group.sumNeeds", { n: sum.needs })));
+    if (sum.running > 0) chips.push(chip("running", copyText("tabBar.group.sumRunning", { n: sum.running })));
+    g.sum.replaceChildren(...chips);
+    // 窄栏只放得下一个点：有等你的画琥珀，否则有在跑的画绿。
+    const urgent = sum.needs > 0 ? "needs-you" : sum.running > 0 ? "running" : null;
+    g.mini.replaceChildren(...(urgent ? [statusDot(urgent, dotLabel(urgent), "compact")] : []));
+  }
+
+  /** 收起 / 展开一个组（落盘）。 */
+  private toggleGroup(gid: string): void {
+    const col = this.prefs.collections.find((c) => c.id === gid);
+    if (!col) return;
+    void this.prefs.setCollapsed([gid], col.collapsed !== true);
+    this.host.refreshTabBar();
+  }
+
+  /** 组的菜单（「⋯」/ 组头右键）：改名 · 收起或展开 · 全部收起 · 全部展开 · 关闭组里已结束的（n）· 解散分组。 */
+  private openGroupMenu(gid: string, anchor: MenuAnchor): void {
+    const col = this.prefs.collections.find((c) => c.id === gid);
+    if (!col) return;
+    const all = this.prefs.collections.map((c) => c.id);
+    const ended = [...this.store.tabs.values()].filter((t) => t.group === gid && closesWithoutMenu(t.state)).length;
+    const nameEl = this.groupEls.get(gid)?.name;
+    const items: MenuItem[] = [
+      { label: copyText("tabMenu.group.rename"), onClick: () => nameEl && this.beginGroupRename(gid, nameEl) },
+      { label: col.collapsed ? copyText("tabMenu.group.expand") : copyText("tabMenu.group.collapse"), onClick: () => this.toggleGroup(gid) },
+      {
+        label: copyText("tabMenu.group.collapseAll"),
+        onClick: () => {
+          void this.prefs.setCollapsed(all, true);
+          this.host.refreshTabBar();
+        },
+      },
+      {
+        label: copyText("tabMenu.group.expandAll"),
+        onClick: () => {
+          void this.prefs.setCollapsed(all, false);
+          this.host.refreshTabBar();
+        },
+      },
+      { divider: true, label: "" },
+      { label: copyText("sessionState.closeEnded.inGroup", { n: ended }), enabled: ended > 0, onClick: () => this.host.closeEndedIn(gid) },
+      { divider: true, label: "" },
+      {
+        label: copyText("tabMenu.group.dissolve"),
+        onClick: () => {
+          // 撤得回 ⇒ 不确认：直接解散 ＋ 8 秒撤销（组员留在原位）。
+          const before = this.prefs.snapshot();
+          void this.prefs.dissolveGroup(gid);
+          this.host.refreshTabBar();
+          this.prefs.offerUndo(copyText("tabBar.group.dissolved", { name: col.name }), before);
+        },
+      },
+    ];
+    openMenu(anchor, items, { label: col.name });
   }
 
   /**

@@ -36,7 +36,7 @@ const ROWS: Row[] = [
   { origin: LOCAL, cwd: "/home/user/work/cli", title: "命令行补全", over: { activity: "idle" } },
 ];
 
-function tabWorld(groups = true): World {
+function tabWorld(groups = true, folded: readonly string[] = []): World {
   const w = defaultWorld();
   w.sessions = ROWS.map((r, i) => {
     const sid = `7ab0${(i + 1).toString(16).padStart(4, "0")}-0000-4000-8000-00000000${(i + 1).toString(16).padStart(4, "0")}`;
@@ -54,7 +54,7 @@ function tabWorld(groups = true): World {
         { id: "g1", name: "订单" },
         { id: "g2", name: "训练" },
         { id: "g3", name: "网关" },
-      ],
+      ].map((g) => (folded.includes(g.id) ? { ...g, collapsed: true } : g)),
       tabBar: {
         groupOf: { [sid(0)]: "g1", [sid(1)]: "g1", [sid(2)]: "g1", [sid(3)]: "g2", [sid(4)]: "g2", [sid(5)]: "g3", [sid(6)]: "g3" },
       },
@@ -197,17 +197,17 @@ export const TABGROUP_SCENES: Scene[] = [
     name.click();
     await sleep(300);
   }),
-  tg("tg-14-head-hover", "悬停组头", "悬停「订单」组头", async () => {
+  tg("tg-14-head-hover", "悬停组头", "悬停「订单」组头：右侧出「⋯」", async () => {
     await mainReady(N);
     const head = document.querySelector<HTMLElement>(".tab-group-head")!;
-    head.classList.add("force-hover");
-    const del = head.querySelector<HTMLElement>(".tab-group-del")!;
-    del.style.visibility = "visible";
+    head.style.background = "var(--state-hover)";
+    head.querySelector<HTMLElement>(".tab-group-more")!.style.visibility = "visible";
     await sleep(200);
   }),
-  tg("tg-15-dissolve", "解散组之后", "点「订单」组头 ×：toast 可撤，组员变散的", async () => {
+  tg("tg-15-dissolve", "解散组之后", "「订单」组头「⋯」→ 解散分组：组员留在原位变散的，toast 可撤", async () => {
     await mainReady(N);
-    await click(document.querySelector<HTMLElement>(".tab-group-del")!);
+    await click(document.querySelector<HTMLElement>(".tab-group-more")!);
+    await click(await byText("[role=menu] [role^=menuitem]", "解散分组"));
     await sleep(400);
   }),
   tg("tg-16-narrow", "窄窗（栏收成 44px）", "900 宽", async () => {
@@ -247,6 +247,34 @@ export const TABGROUP_SCENES: Scene[] = [
     keepMoving(r.left + 60, r.bottom + 3);
     await sleep(300);
   }),
+  tg("tg-22-collapsed", "收着的组", "「训练」「网关」收着：组头写组员数，后面汇总在等你 / 在跑", async () => {
+    await mainReady(N);
+    await sleep(200);
+  }, () => tabWorld(true, ["g2", "g3"])),
+  tg("tg-23-head-menu", "组头「⋯」菜单", "点「订单」组头的「⋯」", async () => {
+    await mainReady(N);
+    await click(document.querySelector<HTMLElement>(".tab-group-more")!);
+    await sleep(300);
+  }),
+  tg("tg-24-narrow-collapsed", "窄栏 · 收着的组", "900 宽、「训练」「网关」收着：组头收成「›」＋ 最要紧的点 ＋ 组员数", async () => {
+    await mainReady(N);
+    await sleep(300);
+  }, () => tabWorld(true, ["g2", "g3"]), [900, 700]),
+  tg("tg-25-current-collapsed", "当前标签页在收着的组里", "切到「排序模型训练」再收起「训练」：组头左边一道 accent", async () => {
+    await mainReady(N);
+    await click(tabOf("排序模型训练"));
+    const head = [...document.querySelectorAll<HTMLElement>(".tab-group-head")].find((h) => h.textContent?.includes("训练"))!;
+    await click(head.querySelector<HTMLElement>(".tab-group-caret")!);
+    await sleep(200);
+  }),
+  tg("tg-26-drop-collapsed", "落在收着的组头上", "「命令行补全」拖到收着的「网关」组头：组头高亮，进组排最后、组保持收着", async () => {
+    await mainReady(N);
+    const head = [...document.querySelectorAll<HTMLElement>(".tab-group-head")].find((h) => h.textContent?.includes("网关"))!;
+    const r = head.getBoundingClientRect();
+    await dragTo(tabOf("命令行补全"), r.left + 60, r.top + r.height / 2);
+    keepMoving(r.left + 60, r.top + r.height / 2);
+    await sleep(300);
+  }, () => tabWorld(true, ["g2", "g3"])),
 ];
 
 void waitFor;

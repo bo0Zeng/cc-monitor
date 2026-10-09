@@ -514,7 +514,10 @@ export function openMenu(
   place(o);
   generation++;
   dispatcher.pushOverlay(layer);
-  if ("el" in anchor) anchor.el.setAttribute("aria-expanded", "true");
+  if ("el" in anchor) {
+    anchor.el.setAttribute("aria-haspopup", "menu");
+    anchor.el.setAttribute("aria-expanded", "true");
+  }
   // 锚在触发物上的：点触发物本身不算「点外面」⇒ 当场挂。右键开的：下一拍再挂（开菜单这一下自己的 pointerdown 不算）。
   if ("el" in anchor) window.addEventListener("pointerdown", onPointer, true);
   else

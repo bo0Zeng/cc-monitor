@@ -348,7 +348,10 @@ export class TabBarDrag {
       } else {
         const at = target.at;
         const r = rows.find((x) => x.kind === "tab" && x.id === at.sid);
-        if (r) lineY = at.side === "before" ? r.top : r.top + r.height + (r.gid !== null && target.gid === null ? AFTER_GROUP_PX : 0);
+        // 落点挨着的那一行藏在收着的组里 ⇒ 线画在那个组头下面。
+        const head = r && r.height === 0 ? rows.find((x) => x.kind === "head" && x.id === r.gid) : undefined;
+        if (head) lineY = head.top + head.height + AFTER_GROUP_PX;
+        else if (r) lineY = at.side === "before" ? r.top : r.top + r.height + (r.gid !== null && target.gid === null ? AFTER_GROUP_PX : 0);
       }
       lineGid = target.gid;
       if (target.gid !== null) hot = this.view.groupParts(target.gid)?.list ?? null;

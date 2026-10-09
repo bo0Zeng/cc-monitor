@@ -73,6 +73,14 @@ describe("P7a-3 集合：纯操作", () => {
     );
   });
 
+  it("收着（`collapsed`）是组自己的属性：只认 true，别的值当没写（写回盘也不带）", () => {
+    expect(sanitizeCollections([{ id: "a", name: "A", collapsed: true }, { id: "b", name: "B", collapsed: "yes" }, { id: "c", name: "C", collapsed: false }])).toEqual([
+      { id: "a", name: "A", collapsed: true },
+      c("b", "B"),
+      c("c", "C"),
+    ]);
+  });
+
   it("🔴 旧形状的 `members` 不读、不带出去（`no-legacy-compat`：不迁移不兼容）—— 每一项的键恰好是 {id, name}", () => {
     const got = sanitizeCollections([
       { id: "a", name: "A", members: ["s1", "s2"] },

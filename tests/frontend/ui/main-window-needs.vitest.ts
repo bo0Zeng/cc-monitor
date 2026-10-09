@@ -16,7 +16,7 @@ import type { Tab } from "../../../src/frontend/ui/tab-model";
 import type { Needs } from "../../../src/frontend/ui/session-reads";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { ENDED, GONE, LIVE, LIVE_ATTACHABLE, LIVE_RESUMABLE, RECONNECTABLE, UNSEEN } from "../../../src/frontend/ui/tab-session-state";
-import { abbrOf, dotOf, needsOf, needsOrder, nextNeeds, peekLine, stateLine, titleParts } from "../../../src/frontend/ui/session-face";
+import { abbrOf, dotOf, groupSummary, needsOf, needsOrder, nextNeeds, peekLine, stateLine, titleParts } from "../../../src/frontend/ui/session-face";
 import { NeedsBar, NeedsWatch, NOTIFY_WAIT_MS, answerWhere, needsHeadline } from "../../../src/frontend/ui/needs-bar";
 import { SessionHead, terminalActsOf } from "../../../src/frontend/ui/session-head";
 import { buildApiErrorCard } from "../../../src/frontend/ui/cards/api-error";
@@ -84,6 +84,20 @@ describe("一个会话读成什么（session-face）", () => {
     expect(got).toEqual(["running", "needs-you", "idle", "exited", "ended", "gone", "unknown", "running"]);
   });
 
+  it("收着的组头汇总：等你 · 在跑各数一遍（空闲 · 已结束 · 状态不明 · Claude 已退出不算）", () => {
+    const members = [
+      tab("a", { activity: waiting }),
+      tab("b", { activity: { doing: "working", waitingFor: null } }),
+      tab("c", { activity: { doing: "working", waitingFor: null } }),
+      tab("d", { activity: { doing: "idle", waitingFor: null } }),
+      tab("e", { state: ENDED }),
+      tab("f", { state: UNSEEN }),
+      tab("g", { state: RECONNECTABLE, activity: waiting }),
+    ];
+    expect(groupSummary(members)).toEqual({ needs: 1, running: 2 });
+    expect(groupSummary([]), "空组").toEqual({ needs: 0, running: 0 });
+  });
+
   it("★ 状态句：等批准 · 等了多久 / 运行中 · 调用哪个工具 · 多久 / 空闲 · 完成多久前（没看 ⇒ 多说一个「未看」）/ 状态不明 · 哪台", () => {
     expect(stateLine(tab("a", { activity: waiting, needs: approve() }), NOW)).toEqual({ text: copyText("sessionFace.state.waiting", { kind: copyText("tabBar.needsKind.approve"), waited: "2m" }), needs: true });
     const running = tab("b", { activity: { doing: "working", waitingFor: null }, pending: [{ id: "x", name: "Bash", what: "pytest", at: new Date(NOW - 65_000).toISOString(), state: "running", why: null }] });
@@ -135,6 +149,7 @@ function bar(tabs: Tab[]): { view: TabBarView; host: TabBarViewHost; store: TabS
   store.activeId = tabs[0]?.sessionId ?? null;
   const host = {
     refreshTabBar: vi.fn(),
+    closeEndedIn: vi.fn(),
     openTabCwd: vi.fn().mockResolvedValue(undefined),
     bringTerminalToFront: vi.fn().mockResolvedValue(undefined),
     bringRemoteTerminalToFront: vi.fn().mockResolvedValue(undefined),

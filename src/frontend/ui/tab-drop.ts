@@ -46,8 +46,10 @@ export function contiguous(
   return out;
 }
 
-/** 栏里的一行：组头或标签页。 */
-export type BarRow = { kind: "head"; gid: string } | { kind: "tab"; sid: string; gid: string | null };
+/** 栏里的一行：组头（`collapsed` ＝ 收着）或标签页（`hidden` ＝ 在收着的组里，不显示）。 */
+export type BarRow =
+  | { kind: "head"; gid: string; collapsed?: true }
+  | { kind: "tab"; sid: string; gid: string | null; hidden?: true };
 
 /**
  * 栏里从上到下的行：组头紧在它第一个组员之前；一个组员都还没到的组（重启后等组员）⇒ 组头排在最后。
@@ -57,20 +59,22 @@ export function barRows(
   order: readonly string[],
   groupOf: (sid: string) => string | null,
   groups: readonly string[],
+  collapsed: ReadonlySet<string> = new Set(),
 ): BarRow[] {
   const known = new Set(groups);
   const rows: BarRow[] = [];
   const seen = new Set<string>();
+  const head = (gid: string): BarRow => (collapsed.has(gid) ? { kind: "head", gid, collapsed: true } : { kind: "head", gid });
   for (const sid of contiguous(order, groupOf, known)) {
     const g = groupOf(sid);
     const gid = g !== null && known.has(g) ? g : null;
     if (gid !== null && !seen.has(gid)) {
       seen.add(gid);
-      rows.push({ kind: "head", gid });
+      rows.push(head(gid));
     }
-    rows.push({ kind: "tab", sid, gid });
+    rows.push(gid !== null && collapsed.has(gid) ? { kind: "tab", sid, gid, hidden: true } : { kind: "tab", sid, gid });
   }
-  for (const gid of groups) if (!seen.has(gid)) rows.push({ kind: "head", gid });
+  for (const gid of groups) if (!seen.has(gid)) rows.push(head(gid));
   return rows;
 }
 
@@ -81,7 +85,10 @@ export interface RowRect {
   /** 这一行属于哪个组（散的 ⇒ `null`；组头 ⇒ 它自己）。 */
   gid: string | null;
   top: number;
+  /** 在收着的组里的标签页量出来是 0 ⇒ 不参与落点。 */
   height: number;
+  /** 组头：收着。 */
+  collapsed?: boolean;
 }
 
 /** 插到某个标签页前 / 后；`null` ＝ 末尾。 */
@@ -125,22 +132,26 @@ export function pickDropTarget(
   const sorted = visible(rows);
   const end: DropTarget = { kind: "insert", at: null, gid: null };
   if (sorted.length === 0) return end;
-  const firstOf = (gid: string): string | null => sorted.find((r) => r.kind === "tab" && r.gid === gid)?.id ?? null;
-  const onHead = (r: RowRect, upper: boolean): DropTarget => {
-    const first = firstOf(r.id);
-    if (upper) return first === null ? end : { kind: "insert", at: { sid: first, side: "before" }, gid: null };
-    return { kind: "insert", at: first === null ? null : { sid: first, side: "before" }, gid: r.id, head: r.id };
+  // 组员按全部行找（收着的组员藏着、量出来高 0，但顺序里有它们）。
+  const members = (gid: string): string[] => rows.filter((r) => r.kind === "tab" && r.gid === gid).map((r) => r.id);
+  const onHead = (r: RowRect, q: number): DropTarget => {
+    const m = members(r.id);
+    if (r.collapsed) return { kind: "insert", at: m.length === 0 ? null : { sid: m[m.length - 1], side: "after" }, gid: r.id, head: r.id };
+    if (q < 1 / 3) return m.length === 0 ? end : { kind: "insert", at: { sid: m[0], side: "before" }, gid: null };
+    return { kind: "insert", at: m.length === 0 ? null : { sid: m[0], side: "before" }, gid: r.id, head: r.id };
   };
   const row = sorted.find((r) => inRow(r, y)) ?? (y < sorted[0].top ? sorted[0] : null);
   if (row === null) {
     // 行与行之间的空（组下沿那 6px）⇒ 上一行之后、组外；最后一行以下 ⇒ 末尾。
     const prev = [...sorted].reverse().find((r) => r.top + r.height <= y);
     const last = sorted[sorted.length - 1];
-    if (!prev || prev === last || prev.kind !== "tab") return end;
-    return { kind: "insert", at: { sid: prev.id, side: "after" }, gid: null };
+    if (!prev || prev === last) return end;
+    if (prev.kind === "tab") return { kind: "insert", at: { sid: prev.id, side: "after" }, gid: null };
+    const m = members(prev.id); // 收着的组头（或还没有组员的组头）下面 ⇒ 这个组后面
+    return m.length === 0 ? end : { kind: "insert", at: { sid: m[m.length - 1], side: "after" }, gid: null };
   }
   const q = Math.max(0, (y - row.top) / row.height);
-  if (row.kind === "head") return onHead(row, q < 1 / 3);
+  if (row.kind === "head") return onHead(row, q);
   if (dwellArmed === row.id && !dragged.has(row.id) && q >= 0.25 && q < 0.75) return { kind: "onto", sid: row.id };
   return { kind: "insert", at: { sid: row.id, side: q < 0.5 ? "before" : "after" }, gid: row.gid };
 }

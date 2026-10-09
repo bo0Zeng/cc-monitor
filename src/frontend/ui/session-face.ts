@@ -121,6 +121,18 @@ export function fullTitle(tab: Tab): string {
   return p.proj ? `${p.proj} ${t}` : t;
 }
 
+/** 收着的组头上那一格汇总：几个在等你、几个在跑（按状态点数；空闲 · 已结束 · 状态不明 · Claude 已退出不算）。 */
+export function groupSummary(members: readonly Tab[]): { needs: number; running: number } {
+  let needs = 0;
+  let running = 0;
+  for (const t of members) {
+    const d = dotOf(t);
+    if (d === "needs-you") needs++;
+    else if (d === "running") running++;
+  }
+  return { needs, running };
+}
+
 /** 窄窗那一格的两个字母：项目目录名里的头两个字母（小写）；没有字母 ⇒ 头两个字。 */
 export function abbrOf(tab: Tab): string {
   const name = (tab.projectDir ? projectNameFromCwd(tab.projectDir) : null) ?? tab.aiTitle ?? tab.sessionId;

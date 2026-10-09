@@ -190,7 +190,8 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/keybindings/registry.ts", // 组头就地改名：改名时 Esc 走 overlay 栈；悬停提示里现拼键位
     "src/frontend/ui/kit/badge.ts", // 机器徽标 · 「需要你」计数 · 键帽
     "src/frontend/ui/kit/icon.ts", // 行尾动作 · 刷新 · 图钉 · 齿轮（Phosphor）
-    "src/frontend/ui/kit/menu.ts", // 「需要你」悬停菜单（点一行切过去）
+    "src/frontend/ui/kit/fold.ts", // 组头 ⌄（同一颗折叠号：开合转 90°）
+    "src/frontend/ui/kit/menu.ts", // 「需要你」悬停菜单（点一行切过去）· 组的菜单（「⋯」/ 组头右键）
     "src/frontend/ui/kit/status-dot.ts", // 状态点
     "src/frontend/ui/kit/tooltip.ts", // 悬停卡（锚在行右侧）· 行尾动作的悬停提示
     "src/frontend/ui/session-face.ts", // 一个会话读成什么：状态点 · 状态句 · peek · 需要你（标签页行 · 会话头 · 悬停卡同一份）

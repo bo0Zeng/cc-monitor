@@ -190,3 +190,37 @@ describe("新组名：两个 cwd 完全相同 ⇒ 那个目录名，否则「分
     expect(defaultGroupName("/w/web-console", "/w/web-console", [n(1)])).toBe("web-console");
   });
 });
+
+describe("收着的组", () => {
+  /** 栏：x · 组头 g1（收着，组员 a b 量出来高 0）· y。 */
+  const FOLDED: RowRect[] = [
+    { kind: "tab", id: "x", gid: null, top: 0, height: 30 },
+    { kind: "head", id: "g1", gid: "g1", top: 34, height: 26, collapsed: true },
+    { kind: "tab", id: "a", gid: "g1", top: 0, height: 0 },
+    { kind: "tab", id: "b", gid: "g1", top: 0, height: 0 },
+    { kind: "tab", id: "y", gid: null, top: 66, height: 30 },
+  ];
+
+  it("整个组头 ＝ 进组排最后（组保持收着）", () => {
+    expect(pickDropTarget(FOLDED, 35, none, null)).toEqual({ ...ins("b", "after", "g1"), head: "g1" });
+    expect(pickDropTarget(FOLDED, 58, none, null)).toEqual({ ...ins("b", "after", "g1"), head: "g1" });
+  });
+
+  it("收着的组头下面那段空 ⇒ 组后面、组外", () => {
+    expect(pickDropTarget(FOLDED, 63, none, null)).toEqual(ins("b", "after", null));
+  });
+
+  it("组员藏着：停留攒不到它们身上，指针也落不到它们身上", () => {
+    expect(dwellCandidate(FOLDED, 0, none)).toBeNull();
+    expect(pickDropTarget(FOLDED, 15, none, null)).toEqual(ins("x", "after", null));
+  });
+
+  it("行：收着的组的组员标 hidden（数字键 · ] [ 跳过它们），组头带 collapsed", () => {
+    expect(barRows(["x", "a", "y"], of({ a: "g1" }), ["g1"], new Set(["g1"]))).toEqual([
+      { kind: "tab", sid: "x", gid: null },
+      { kind: "head", gid: "g1", collapsed: true },
+      { kind: "tab", sid: "a", gid: "g1", hidden: true },
+      { kind: "tab", sid: "y", gid: null },
+    ]);
+  });
+});

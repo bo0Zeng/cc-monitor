@@ -80,7 +80,7 @@ export class TabManager {
   /** 会话状态账（`tab-store.ts`）：本类与拆出去的几份读写同一个实例。 */
   private readonly store = new TabStore();
   /** 路由（`tab-router.ts`）；切换本身的编排（可见性 · 物化 · 面板 · 贴底）在 `switchTo`。 */
-  private readonly router = new TabRouter(this.store, () => this.bar.visibleOrder());
+  private readonly router = new TabRouter(this.store, () => this.bar.navOrder());
 
   /**
    * 实时流视图（`tab-stream-view.ts`）。在构造体里建、不写成字段初始化：它要 `streamRootEl`，
@@ -117,6 +117,7 @@ export class TabManager {
     });
     this.bar = new TabBarView(this.store, this.prefs, barEl, {
       refreshTabBar: () => this.refreshTabBar(),
+      closeEndedIn: (gid) => this.closeEndedIn(gid),
       openTabCwd: (sid) => this.openTabCwd(sid),
       bringTerminalToFront: (sid) => this.frontFrom(sid, "row"),
       bringRemoteTerminalToFront: (sid) => this.frontFrom(sid, "row"),
@@ -1271,29 +1272,58 @@ export class TabManager {
     if (!sid) return;
     const current = this.store.tabs.get(sid);
     if (!current || !closesWithoutMenu(current.state)) return;
-    const index = this.store.orderedIds.indexOf(sid);
-    const tab = this.detachTab(sid);
-    if (!tab) return;
-    tab.streamEl.classList.remove("active");
-    tab.inputsEl.classList.remove("active");
-    this.pendingCloses.set(sid, { tab, index });
-    const headline = tab.pinned
-      ? copyText("tabBar.close.doneUnpinned", { title: fullTitle(tab) })
-      : copyText("tabBar.close.done", { title: fullTitle(tab) });
-    undoToast(headline, () => this.undoClose(sid), () => this.settleClose(sid));
+    const headline = current.pinned
+      ? copyText("tabBar.close.doneUnpinned", { title: fullTitle(current) })
+      : copyText("tabBar.close.done", { title: fullTitle(current) });
+    this.closeUndoable([sid], headline, true);
   }
 
-  /** 撤销期里的那一个放回去：原位（顺序里原来那一格）· 原分组 · 原固定，并切回它。 */
-  private undoClose(sid: string): void {
-    const p = this.pendingCloses.get(sid);
-    if (!p) return;
-    this.pendingCloses.delete(sid);
-    const { tab, index } = p;
-    this.store.tabs.set(sid, tab);
-    this.store.orderedIds.splice(Math.min(index, this.store.orderedIds.length), 0, sid);
-    if (tab.group !== null && !this.prefs.collections.some((c) => c.id === tab.group)) tab.group = null;
-    if (tab.pinned) void this.prefs.persistPinned(); // 期间别处落过一次固定表就没有它了
-    this.switchTo(sid);
+  /** 组的菜单「关闭组里已结束的」：一次关掉，一条「已关闭 N 个［撤销］」。 */
+  private closeEndedIn(gid: string): void {
+    const sids = this.bar.visibleOrder().filter((sid) => {
+      const t = this.store.tabs.get(sid);
+      return t !== undefined && t.group === gid && closesWithoutMenu(t.state);
+    });
+    if (sids.length === 0) return;
+    this.closeUndoable(sids, copyText("tabBar.close.doneMany", { n: sids.length }), false);
+  }
+
+  /**
+   * 先只从栏上摘下来，给一条 8 秒「撤销」：撤销 ⇒ 原位、原分组、原固定放回（`refocus` ⇒ 并切回第一个）；
+   * 到点 ⇒ 做完关闭剩下的事（取消固定 · 出组 · 让后端忘掉）。
+   */
+  private closeUndoable(sids: readonly string[], headline: string, refocus: boolean): void {
+    const at = new Map(sids.map((sid) => [sid, this.store.orderedIds.indexOf(sid)]));
+    const taken: string[] = [];
+    for (const sid of sids) {
+      const tab = this.detachTab(sid);
+      if (!tab) continue;
+      tab.streamEl.classList.remove("active");
+      tab.inputsEl.classList.remove("active");
+      this.pendingCloses.set(sid, { tab, index: at.get(sid)! });
+      taken.push(sid);
+    }
+    if (taken.length === 0) return;
+    // 放回按原来的位置从前往后插（摘的时候各自记的是摘之前的那一格）。
+    const back = [...taken].sort((a, b) => at.get(a)! - at.get(b)!);
+    undoToast(headline, () => this.undoClose(back, refocus), () => back.forEach((sid) => this.settleClose(sid)));
+  }
+
+  /** 撤销期里的那几个放回去：原位（顺序里原来那一格）· 原分组 · 原固定；`refocus` ⇒ 切回第一个。 */
+  private undoClose(sids: readonly string[], refocus: boolean): void {
+    let first: string | null = null;
+    for (const sid of sids) {
+      const p = this.pendingCloses.get(sid);
+      if (!p) continue;
+      this.pendingCloses.delete(sid);
+      const { tab, index } = p;
+      this.store.tabs.set(sid, tab);
+      this.store.orderedIds.splice(Math.min(index, this.store.orderedIds.length), 0, sid);
+      if (tab.group !== null && !this.prefs.collections.some((c) => c.id === tab.group)) tab.group = null;
+      if (tab.pinned) void this.prefs.persistPinned(); // 期间别处落过一次固定表就没有它了
+      first ??= sid;
+    }
+    if (first !== null && refocus) this.switchTo(first);
     this.refreshTabBar();
   }
 
@@ -1315,8 +1345,9 @@ export class TabManager {
 
     const wasActive = this.store.activeId === sessionId;
     const idx = this.store.orderedIds.indexOf(sessionId);
-    // 落到条上看到的顺序里的后一个，没有就前一个（落点在别的组里也照这个顺序）
-    const seen = this.bar.visibleOrder();
+    // 落到条上看到的顺序里的后一个，没有就前一个（落点在别的组里也照这个顺序；收着的组里的看不见、不落过去）
+    const nav = this.bar.navOrder();
+    const seen = nav.includes(sessionId) ? nav : this.bar.visibleOrder();
     const at = seen.indexOf(sessionId);
     const fallbackId = seen[at + 1] ?? seen[at - 1] ?? null;
 
@@ -1598,6 +1629,8 @@ export class TabManager {
     }
     if (this.store.activeId === sessionId) return;
 
+    // 要切到的在收着的组里（Ctrl+J · 命令面板 · 通知）⇒ 那个组展开（下面那次整刷画出来）。
+    this.prefs.expandFor(sessionId);
     // 切当前 tab 只换 `.active`（CSS visibility），不用 display，免得整棵子树重建布局。
     this.view.showOnly(sessionId);
     const next = this.store.tabs.get(sessionId);

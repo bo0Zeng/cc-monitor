@@ -2594,20 +2594,43 @@
   margin: 4px 0 6px;
 }
 
-/* 分组头：「⌄ 名字 计数」（26 高、`--text-2` 小字）；悬停出「解散分组」。 */
+/* 组头：⌄ · 名字 · 组员数 · 收着时汇总（等你 · 在跑）· 悬停 / 焦点时右侧「⋯」。点 ⌄ 或空白处收起 / 展开，点名字改名。 */
 .tab-group-head {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-3);
   height: 26px;
   padding: 0 8px 0 6px;
   color: var(--text-2);
   font-size: var(--font-size-small);
+  cursor: pointer;
+}
+
+.tab-group-head:hover {
+  background: var(--state-hover);
+}
+
+/* 当前标签页在收着的组里：组头左边一道 accent（同当前行）。 */
+.tab-group-head.is-current {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.tab-group-caret {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
 }
 
 .tab-group-name {
-  flex: 1;
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   padding: 0;
@@ -2619,20 +2642,62 @@
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
-  cursor: pointer;
+  cursor: text;
 }
 
-.tab-group-del {
-  visibility: hidden;
-  padding: 0 2px;
+.tab-group-count {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.tab-group-sum {
+  display: inline-flex;
+  flex: none;
+  gap: 8px;
+}
+
+.tab-group-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-variant-numeric: tabular-nums;
+}
+
+.tab-group-chip[data-dot="needs-you"] {
+  color: var(--warn);
+}
+
+.tab-group-chip[data-dot="running"] {
+  color: var(--success);
+}
+
+/* 窄栏才出的那个点（最要紧的那个状态）。 */
+.tab-group-mini {
+  display: none;
+}
+
+.tab-group-sp {
+  flex: 1;
+}
+
+.tab-group-more {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  padding: 0;
   border: 0;
+  border-radius: var(--radius-s);
   background: transparent;
   color: var(--text-2);
   cursor: pointer;
+  visibility: hidden;
 }
 
-.tab-group-head:hover .tab-group-del,
-.tab-group-head:focus-within .tab-group-del {
+.tab-group-head:hover .tab-group-more,
+.tab-group-head:focus-within .tab-group-more,
+.tab-group-more[aria-expanded="true"] {
   visibility: visible;
 }
 
@@ -2646,6 +2711,10 @@
 
 .tab-group-list > .tab {
   padding-left: 9px;
+}
+
+.tab-group.is-collapsed > .tab-group-list {
+  display: none;
 }
 
 /* 复活出来的固定 tab 的**空态**。
@@ -2729,9 +2798,22 @@ body[data-tab-bar="folded"]:not(.viewer-mode) .tab-group-list {
   margin-left: 4px;
 }
 body[data-tab-bar="folded"]:not(.viewer-mode) .tab-group-head {
-  height: 10px;
-  margin: 6px 8px 2px;
+  justify-content: center;
+  gap: 2px;
+  height: 22px;
   padding: 0;
-  border-top: 1px solid var(--border-soft);
+  font-size: var(--font-size-xs);
+}
+body[data-tab-bar="folded"]:not(.viewer-mode) .tab-group-head > .tab-group-caret,
+body[data-tab-bar="folded"]:not(.viewer-mode) .tab-group-head > .tab-group-count {
+  display: inline-grid;
+  width: auto;
+}
+body[data-tab-bar="folded"]:not(.viewer-mode) .tab-group.is-collapsed .tab-group-mini {
+  display: inline-flex;
+  order: 1;
+}
+body[data-tab-bar="folded"]:not(.viewer-mode) .tab-group-head > .tab-group-count {
+  order: 2;
 }
 }

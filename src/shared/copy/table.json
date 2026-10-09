@@ -3906,6 +3906,12 @@
         "C-W15": "键位表 / 命令面板里的动作名"
       }
     },
+    "sessionState.closeEnded.inGroup": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "关闭组里已结束的（{n}）",
+      "args": ["n"]
+    },
     "remoteLaunchRun.copyFallback.failedManual": {
       "kind": "error",
       "role": "报错",
@@ -4462,6 +4468,42 @@
       "role": "菜单项",
       "zh": "移出分组「{name}」",
       "args": ["name"]
+    },
+    "tabMenu.group.rename": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "改名",
+      "args": []
+    },
+    "tabMenu.group.collapse": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "收起",
+      "args": []
+    },
+    "tabMenu.group.expand": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "展开",
+      "args": []
+    },
+    "tabMenu.group.collapseAll": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "全部收起",
+      "args": []
+    },
+    "tabMenu.group.expandAll": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "全部展开",
+      "args": []
+    },
+    "tabMenu.group.dissolve": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "解散分组",
+      "args": []
     },
     "tabMenu.pin.pin": {
       "kind": "action",
@@ -5580,18 +5622,6 @@
       "kind": "body",
       "role": "说明",
       "zh": "已固定",
-      "args": []
-    },
-    "tabBarView.group.dissolveHint": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "解散分组 · 标签页不关闭",
-      "args": []
-    },
-    "tabBarView.group.dissolve": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "×",
       "args": []
     },
     "tabDrop.group.defaultName": {
@@ -16477,6 +16507,12 @@
       "role": "toast",
       "zh": "已关闭「{title}」 · 已取消固定",
       "args": ["title"]
+    },
+    "tabBar.close.doneMany": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已关闭标签页 ×{n}",
+      "args": ["n"]
     },
     "tabBar.persist.collectionsFailed": {
       "kind": "error",
@@ -27375,6 +27411,24 @@
       "role": "toast",
       "zh": "已移到「{name}」",
       "args": ["name"]
+    },
+    "tabBar.group.sumNeeds": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "等你 {n}",
+      "args": ["n"]
+    },
+    "tabBar.group.sumRunning": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "在跑 {n}",
+      "args": ["n"]
+    },
+    "tabBar.group.more": {
+      "kind": "aria",
+      "role": "读屏",
+      "zh": "分组操作",
+      "args": []
     },
     "tabBar.unpinned.toast": {
       "kind": "body",

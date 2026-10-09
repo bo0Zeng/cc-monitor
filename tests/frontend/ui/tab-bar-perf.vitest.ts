@@ -14,6 +14,7 @@
  * 设计与读数住（本文件不抄数）。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { closeMenu } from "../../../src/frontend/ui/kit/menu";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn().mockResolvedValue(null) }));
 vi.mock("@tauri-apps/plugin-opener", () => ({ openPath: vi.fn(), openUrl: vi.fn() }));
@@ -89,6 +90,7 @@ function rig(n: number, grouped = 0): Rig {
   };
   const host: TabBarViewHost = {
     refreshTabBar: vi.fn(),
+    closeEndedIn: vi.fn(),
     openTabCwd: vi.fn().mockResolvedValue(undefined),
     bringTerminalToFront: vi.fn().mockResolvedValue(undefined),
     bringRemoteTerminalToFront: vi.fn().mockResolvedValue(undefined),
@@ -517,7 +519,7 @@ describe("P8：事件委托 —— 每个 tab 零监听器，整条栏恒定那�
 
     it("组头上的点击不当成 tab 手势（委托只认 tab 按钮）", () => {
       const r = make(3, 2);
-      (r.bar.querySelector(".tab-group-del") as HTMLElement).dispatchEvent(
+      (r.bar.querySelector(".tab-group-more") as HTMLElement).dispatchEvent(
         new MouseEvent("mousedown", { button: 0, bubbles: true }),
       );
       r.bar.querySelector(".tab-group-head")!.dispatchEvent(
@@ -526,6 +528,8 @@ describe("P8：事件委托 —— 每个 tab 零监听器，整条栏恒定那�
       expect(r.host.beginDrag).not.toHaveBeenCalled();
       expect(r.host.openMenu).not.toHaveBeenCalled();
       expect(r.host.switchTo).not.toHaveBeenCalled();
+      expect(document.querySelector("[role=menu]"), "组头右键开的是组的菜单").not.toBeNull();
+      closeMenu();
     });
 
     it("barEl 里一个不是本视图建的 `.tab` 元素上的手势 ⇒ 不分派（sid 只从本视图那张表里认）", () => {

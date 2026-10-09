@@ -279,6 +279,28 @@ export class TabBarPrefs {
     return this.writeGroups(edits);
   }
 
+  /** 收起 / 展开这几个组（组表那一格 `collapsed`，落盘）。都已是那个样子 ⇒ 零写。 */
+  setCollapsed(gids: readonly string[], on: boolean): Promise<void> {
+    const want = new Set(gids);
+    let changed = false;
+    const next = this.collections.map((c) => {
+      if (!want.has(c.id) || (c.collapsed === true) === on) return c;
+      changed = true;
+      return on ? { ...c, collapsed: true as const } : { id: c.id, name: c.name };
+    });
+    if (!changed) return Promise.resolve();
+    this.collections = next;
+    return this.writeGroups([collectionsEdit(next)]);
+  }
+
+  /** 要切到的标签页在收着的组里（Ctrl+J · 命令面板 · 通知）⇒ 那个组展开（不再自动收回）。回有没有展开。 */
+  expandFor(sid: string): boolean {
+    const col = this.groupOf(sid);
+    if (!col?.collapsed) return false;
+    void this.setCollapsed([col.id], false);
+    return true;
+  }
+
   /** 组头就地改名。空名 / 与现名相同 ⇒ 零写。 */
   renameGroup(gid: string, name: string): Promise<void> {
     const next = renameCollection(this.collections, gid, name);
