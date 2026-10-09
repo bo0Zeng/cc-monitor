@@ -4592,7 +4592,7 @@
     "front.title.desktopWontSwitch": {
       "kind": "title",
       "role": "标题",
-      "zh": "未切换 · Wayland 下切不了终端窗口",
+      "zh": "未切换 · Wayland 下无法切换终端窗口",
       "args": []
     },
     "front.title.unknown": {
@@ -4704,7 +4704,7 @@
     "front.body.desktopWontSwitch": {
       "kind": "body",
       "role": "说明",
-      "zh": "cc-monitor 在 {desktop}（Wayland）上看不到也切不了别的程序的窗口",
+      "zh": "cc-monitor 在 {desktop}（Wayland）上无法查看或切换别的程序的窗口",
       "args": [
         "desktop"
       ]
@@ -4712,7 +4712,7 @@
     "front.body.desktopWontSwitchBare": {
       "kind": "body",
       "role": "说明",
-      "zh": "cc-monitor 在这个 Wayland 桌面上看不到也切不了别的程序的窗口",
+      "zh": "cc-monitor 在此 Wayland 桌面上无法查看或切换别的程序的窗口",
       "args": []
     },
     "front.title.backgroundTab": {
@@ -4764,7 +4764,10 @@
       "kind": "action",
       "role": "按钮",
       "zh": "在 cc-monitor 里打开",
-      "args": []
+      "args": [],
+      "waive": {
+        "C-W15": "压了换事实：去掉「在 cc-monitor 里」就分不清是在 cc-monitor 的终端页打开，还是去外面的终端窗口"
+      }
     },
     "front.act.update": {
       "kind": "action",
