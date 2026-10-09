@@ -67,9 +67,8 @@ pub fn window_bin_name() -> String {
 /// # Errors
 ///
 /// 三处都给不出一个存在的文件；或自带的那份放不下来。
-pub fn resolve_window_bin() -> Result<PathBuf, String> {
-    let exe = std::env::current_exe()
-        .map_err(|e| copy_text("rsFilewinProc.child.noRuntime", &[("e", &e.to_string())]))?;
+pub fn resolve_window_bin() -> Result<PathBuf, ProcFail> {
+    let exe = std::env::current_exe().map_err(|e| crashed(e.to_string()))?;
     resolve_window_bin_in(
         std::env::var_os(BIN_ENV).map(PathBuf::from),
         exe.parent().unwrap_or(Path::new(".")),
@@ -99,7 +98,7 @@ pub fn resolve_window_bin_in(
     landing: Option<&Path>,
     make_executable: &dyn Fn(&Path) -> Result<(), String>,
     ensure_dir: &dyn Fn(&Path) -> Result<(), String>,
-) -> Result<PathBuf, String> {
+) -> Result<PathBuf, ProcFail> {
     let mut looked: Vec<PathBuf> = Vec::new();
     if let Some(p) = env {
         if p.is_file() {
@@ -113,17 +112,15 @@ pub fn resolve_window_bin_in(
     }
     looked.push(beside);
     let Some(bytes) = embedded else {
-        return Err(copy_text(
-            "rsFilewinProc.bin.notFound",
-            &[
-                ("binStem", &BIN_STEM.to_string()),
-                ("looked", &format!("{:?}", looked)),
-                ("binEnv", &BIN_ENV.to_string()),
-            ],
-        ));
+        let looked: Vec<String> = looked.iter().map(|p| p.display().to_string()).collect();
+        return Err(ProcFail {
+            said: copy_text("rsFilewinProc.bin.notFound", &[("binEnv", BIN_ENV)]),
+            code: None,
+            raw: Some(looked.join("\n")),
+        });
     };
     let Some(dir) = landing else {
-        return Err(copy_text("rsFilewinProc.bin.noHome", &[]));
+        return Err(copy_text("rsFilewinProc.bin.noHome", &[]).into());
     };
     crate::local_backend::place_local_program(
         dir,
@@ -132,12 +129,20 @@ pub fn resolve_window_bin_in(
         make_executable,
         ensure_dir,
     )
-    .map_err(|e| {
-        copy_text(
-            "rsFilewinProc.bin.placeFailed",
-            &[("dir", &dir.display().to_string()), ("e", &e)],
-        )
+    .map_err(|e| ProcFail {
+        said: copy_core::reason::io_reason(e.kind()),
+        code: None,
+        raw: Some(format!("{}\n{e}", dir.display())),
     })
+}
+
+/// 进程这一层「程序出错」那一形：下层原话进复制详情。
+fn crashed(raw: String) -> ProcFail {
+    ProcFail {
+        said: copy_text("rsFilewinProc.open.exited", &[]),
+        code: None,
+        raw: Some(raw),
+    }
 }
 
 /// 起一个窗口进程并把种子交给它。回**那个句柄**（还没做早失败判断）。
@@ -162,10 +167,10 @@ pub fn resolve_window_bin_in(
 /// 二进制找不到 · `spawn` 失败 · 种子写不进去（含子进程当场死掉那一形的 `EPIPE`）。
 pub fn spawn_window(
     req: &OpenRequest,
-) -> Result<(crate::spawn_managed::ManagedChild, StderrTail), String> {
+) -> Result<(crate::spawn_managed::ManagedChild, StderrTail), ProcFail> {
     use crate::spawn_managed::{ConsolePolicy, Lifetime, StderrSink};
     let bin = resolve_window_bin()?;
-    let seed = encode_request(req)?;
+    let seed = encode_request(req).map_err(crashed)?;
     // argv 上一个字都没有（理由住头注）；接 stdin（种子）与 stdout（就绪那一行）两根。stdout 一直有人读：
     // [`open_in_new_process`] 读那一行，之后 [`reap_later`] 把它读到 EOF（没人读的管子写满就会卡住窗口）。
     let mut cmd = std::process::Command::new(&bin);
@@ -177,11 +182,10 @@ pub fn spawn_window(
         Lifetime::Detached,
         StderrSink::Captured,
     )
-    .map_err(|e| {
-        copy_text(
-            "rsFilewinProc.spawn.failed",
-            &[("bin", &(bin.display()).to_string()), ("e", &e.to_string())],
-        )
+    .map_err(|e| ProcFail {
+        said: copy_core::reason::io_reason(e.kind()),
+        code: None,
+        raw: Some(format!("{}\n{e}", bin.display())),
     })?;
     let tail = StderrTail::drain(child.stderr.take(), child.id());
     write_seed(&mut child, &seed)?;
@@ -235,34 +239,57 @@ impl StderrTail {
     }
 }
 
-/// 开窗没成 / 开了又退那一句：`why`（退出码那一句）＋ 它 stderr 最后几行说的原因。
-/// 认得出的原因说人话（缺 OpenGL 2.0）；认不出照原话带最后几行；一行都没有 ⇒ 说它没留下原因。
-pub fn exit_said(why: &str, tail: &[String]) -> String {
+/// 进程这一层没成的那一件：给人看的那一句 ＋ 退出状态（复制详情的「码」）＋ 它 stderr 末几行（「原话」）。
+/// 后两样不上句子（原话、退出码一律进复制详情）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProcFail {
+    pub said: String,
+    pub code: Option<String>,
+    pub raw: Option<String>,
+}
+
+/// 只有一句话（起不来 · 收不到回话 · 说的话对不上约定那几形）。
+impl From<String> for ProcFail {
+    fn from(said: String) -> Self {
+        ProcFail {
+            said,
+            code: None,
+            raw: None,
+        }
+    }
+}
+
+/// 开窗没成 / 开了又退那一件：`why`（哪件事没成那一句）＋ 退出状态 ＋ 它 stderr 最后几行。
+/// 认得出的原因说人话（缺 OpenGL 2.0）；一行都没有 ⇒ 说它没留下原因；其余只说 `why`，那几行进复制详情。
+pub fn exit_said(why: &str, code: Option<String>, tail: &[String]) -> ProcFail {
     let all = tail.join("\n");
     let lower = all.to_ascii_lowercase();
-    if lower.contains("opengl") && lower.contains("2.0") {
-        return copy_text("rsFilewinProc.cause.noOpenGl", &[("why", why)]);
-    }
-    if tail.is_empty() {
+    let said = if lower.contains("opengl") && lower.contains("2.0") {
+        copy_text("rsFilewinProc.cause.noOpenGl", &[("why", why)])
+    } else if tail.is_empty() {
         copy_text("rsFilewinProc.open.noStderr", &[("why", why)])
     } else {
-        copy_text(
-            "rsFilewinProc.open.stderrTail",
-            &[("why", why), ("tail", &all)],
-        )
+        why.to_string()
+    };
+    ProcFail {
+        said,
+        code,
+        raw: (!tail.is_empty()).then_some(all),
     }
 }
 
 /// 把种子写进那条 stdin 并关掉它（关掉 = EOF = 「给完了」）。抽成具名函数让 `EPIPE` 那一形判得到：「种子送不进去」不是「窗口画不出来」。
-fn write_seed(child: &mut crate::spawn_managed::ManagedChild, seed: &str) -> Result<(), String> {
+fn write_seed(child: &mut crate::spawn_managed::ManagedChild, seed: &str) -> Result<(), ProcFail> {
     use std::io::Write;
-    let mut pipe = child
-        .stdin
-        .take()
-        .ok_or_else(|| copy_text("rsFilewinProc.spawn.noStdin", &[]))?;
+    let mut pipe = child.stdin.take().ok_or_else(|| ProcFail {
+        said: copy_text("rsFilewinProc.open.exited", &[]),
+        code: Some("no_stdin".to_string()),
+        raw: None,
+    })?;
+    // 送不进去多半是它一启动就退了（`EPIPE`）：原因见它自己的错误输出，不是窗口画不出。
     pipe.write_all(seed.as_bytes())
         .and_then(|()| pipe.flush())
-        .map_err(|e| copy_text("rsFilewinProc.seed.sendFailed", &[("e", &e.to_string())]))
+        .map_err(|e| crashed(e.to_string()))
 }
 
 /// 开窗没成的两种：前一种是窗口进程列不出来时说的原话，入口原样交出去；后一种是进程这一层的事（起不来 · 当场退了 · 一句话都没说），
@@ -272,7 +299,7 @@ pub enum Unopened {
     /// 窗口进程说的「列不出来」那一行（home 问不到 / 目录列不出来 / 拨不回通道 / 种子读不动）。
     Said(String),
     /// 进程这一层没成。
-    Process(String),
+    Process(ProcFail),
 }
 
 /// 开一个窗口 —— 生产那条路的入口。回 `(那个进程的 pid, 第一屏列到的行数)`。没有退路：起不了独立进程就是错，照实报。
@@ -287,7 +314,7 @@ pub enum Unopened {
 ///
 /// [`spawn_window`] 的任何一档 · 窗口进程说列不出来 · 一句话没说就退了 · 说了就绪却在开窗预算内就退了。
 /// 判成功之后窗口进程不体面地退了（退出码非零 / 被信号杀）⇒ 收尸线程把这句话交给 `late`、由调用方出声。
-pub type LateExit = Box<dyn FnOnce(String) + Send + 'static>;
+pub type LateExit = Box<dyn FnOnce(ProcFail) + Send + 'static>;
 
 pub fn open_in_new_process(req: &OpenRequest, late: LateExit) -> Result<(u32, usize), Unopened> {
     let (mut child, tail) = spawn_window(req).map_err(Unopened::Process)?;
@@ -299,10 +326,11 @@ pub fn open_in_new_process(req: &OpenRequest, late: LateExit) -> Result<(u32, us
             );
         }
         reap_later(child, None, tail, None);
-        return Err(Unopened::Process(copy_text(
-            "rsFilewinProc.spawn.noStdout",
-            &[],
-        )));
+        return Err(Unopened::Process(ProcFail {
+            said: copy_text("rsFilewinProc.open.exited", &[]),
+            code: Some("no_stdout".to_string()),
+            raw: None,
+        }));
     };
     let mut out = std::io::BufReader::new(out);
     let n = match read_ready(&mut out) {
@@ -312,12 +340,15 @@ pub fn open_in_new_process(req: &OpenRequest, late: LateExit) -> Result<(u32, us
             return Err(Unopened::Said(said));
         }
         Ok(None) => {
-            let st = child.wait_for_status();
-            let why = match st {
-                Ok(st) => copy_text("rsFilewinProc.open.exited", &[("st", &st.to_string())]),
-                Err(e) => copy_text("rsFilewinProc.open.failedWhy", &[("e", &e.to_string())]),
+            let (why, code) = match child.wait_for_status() {
+                Ok(st) => (copy_text("rsFilewinProc.open.exited", &[]), st.to_string()),
+                Err(e) => (copy_text("rsFilewinProc.open.exited", &[]), e.to_string()),
             };
-            return Err(Unopened::Process(exit_said(&why, &tail.finish())));
+            return Err(Unopened::Process(exit_said(
+                &why,
+                Some(code),
+                &tail.finish(),
+            )));
         }
         Err(garbled) => {
             // 说了一句不是约定形状的话 ⇒ 两端契约漂了；它接下来会不会开窗说不准 ⇒ 收掉它，不留一个没人认的窗口。
@@ -327,26 +358,32 @@ pub fn open_in_new_process(req: &OpenRequest, late: LateExit) -> Result<(u32, us
                 );
             }
             reap_later(child, Some(out), tail, None);
-            return Err(Unopened::Process(garbled));
+            return Err(Unopened::Process(crashed(garbled)));
         }
     };
     if early_failure(
         || matches!(child.try_wait(), Ok(Some(_)) | Err(_)),
         EARLY_FAILURE_BUDGET,
     ) {
-        let why = match child.try_wait() {
-            Ok(Some(st)) => copy_text("rsFilewinProc.open.exited", &[("st", &st.to_string())]),
-            Ok(None) => copy_text("rsFilewinProc.open.failed", &[]),
-            Err(e) => copy_text("rsFilewinProc.open.failedWhy", &[("e", &e.to_string())]),
+        let (why, code) = match child.try_wait() {
+            Ok(Some(st)) => (
+                copy_text("rsFilewinProc.open.exited", &[]),
+                Some(st.to_string()),
+            ),
+            Ok(None) => (copy_text("rsFilewinProc.open.exited", &[]), None),
+            Err(e) => (
+                copy_text("rsFilewinProc.open.exited", &[]),
+                Some(e.to_string()),
+            ),
         };
         // 已经退了（预算内结束）⇒ 等它的 stderr 读完、带着原因说。
         let said = if matches!(child.try_wait(), Ok(Some(_))) {
-            let s = exit_said(&why, &tail.finish());
+            let s = exit_said(&why, code, &tail.finish());
             reap_later(child, Some(out), StderrTail { reader: None }, None);
             s
         } else {
             reap_later(child, Some(out), tail, None);
-            exit_said(&why, &[])
+            exit_said(&why, code, &[])
         };
         return Err(Unopened::Process(said));
     }
@@ -381,9 +418,7 @@ pub const EARLY_FAILURE_BUDGET: std::time::Duration = std::time::Duration::from_
 /// 读失败 · 那一行解不出 [`Ready`]。
 pub fn read_ready(r: &mut impl std::io::BufRead) -> Result<Option<Ready>, String> {
     let mut line = String::new();
-    let n = r
-        .read_line(&mut line)
-        .map_err(|e| copy_text("rsFilewinProc.child.noRuntime", &[("e", &e.to_string())]))?;
+    let n = r.read_line(&mut line).map_err(|e| e.to_string())?;
     if n == 0 {
         return Ok(None);
     }
@@ -411,8 +446,8 @@ fn reap_later(
                 let tail = tail.finish();
                 tracing::warn!("文件窗口开出来之后又退出了：{st}");
                 if let Some(say) = late {
-                    let why = copy_text("rsFilewinProc.late.exited", &[("st", &st.to_string())]);
-                    say(exit_said(&why, &tail));
+                    let why = copy_text("rsFilewinProc.late.exited", &[]);
+                    say(exit_said(&why, Some(st.to_string()), &tail));
                 }
             }
             Ok(_) => drop(tail.finish()),

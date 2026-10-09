@@ -225,7 +225,7 @@ const PLAN_BUDGET: std::time::Duration = std::time::Duration::from_secs(120);
 pub(crate) const PLAN_CMD: &str = "deploy-plan";
 
 /// 问本机常驻后端要一份计划。入参只有事实：怎么够到那台（拨号请求）· 这一版带着哪几格字节、各自自报的身份。
-async fn ask_plan(cfg: &RemoteConfig) -> Result<Plan, String> {
+async fn ask_plan(cfg: &RemoteConfig) -> Result<Plan, Said> {
     ask_plan_for(cfg, &crate::byte_table::carried_backends()).await
 }
 
@@ -233,29 +233,34 @@ async fn ask_plan(cfg: &RemoteConfig) -> Result<Plan, String> {
 async fn ask_plan_for(
     cfg: &RemoteConfig,
     carried: &[(deploy_contract::Key, &str)],
-) -> Result<Plan, String> {
+) -> Result<Plan, Said> {
     use crate::backend_route::{route_call_error, Routed};
     let carried: Vec<serde_json::Value> = carried
         .iter()
         .map(|(k, id)| serde_json::json!({ "os": k.os.label(), "arch": k.arch.label(), "id": id }))
         .collect();
-    let dial = crate::dial_host::transfer_dial(cfg)?;
+    let command = |said: String| Said::new(said, PLAN_CMD, None);
+    let dial = crate::dial_host::transfer_dial(cfg).map_err(command)?;
     let args = serde_json::json!({
         "dial": dial,
         "carried": carried,
         "machine": cfg.origin_label(),
     });
-    let client = crate::dial_host::local_backend_accepting(PLAN_CMD).await?;
-    let data =
-        client
-            .call(PLAN_CMD, args, PLAN_BUDGET)
-            .await
-            .map_err(
-                |e| match route_call_error(&e, |_code, message| message.to_string()) {
-                    Routed::NoChannel(s) | Routed::Refused(s) => s,
-                },
-            )?;
-    let plan = decode_plan(&data.ok_or_else(|| copy_text("rsSftp.plan.internal", &[]))?)?;
+    let client = crate::dial_host::local_backend_accepting(PLAN_CMD)
+        .await
+        .map_err(command)?;
+    // 计划由本机常驻后端出 ⇒ 它写的那份详情（那台答 `uname` 的原话也在里面）原样带上。
+    let data = client
+        .call(PLAN_CMD, args, PLAN_BUDGET)
+        .await
+        .map_err(|e| {
+            let said = match route_call_error(&e, |_code, message| message.to_string()) {
+                Routed::NoChannel(s) | Routed::Refused(s) => s,
+            };
+            Said::of_call(said, PLAN_CMD, &crate::origin::Origin::local(), &e)
+        })?;
+    let plan = decode_plan(&data.ok_or_else(|| command(copy_text("rsSftp.plan.internal", &[])))?)
+        .map_err(command)?;
     crate::machine_state::note_os(&cfg.origin_label(), plan.key.os.label());
     // 第一次连一台没钉过指纹的机器就在这一跳 ⇒ 照 monitor 自己开链路那几条同一个判定固化。
     crate::dial_host::settle_host_key(cfg, &dial, &plan.ack);
@@ -334,7 +339,7 @@ async fn sweep_leftovers(leftovers: &[String], fs: &RemoteFs, origin: &str) {
 pub async fn ensure_backend_deployed(cfg: &RemoteConfig) -> Result<String, DeployError> {
     let plan = match ask_plan(cfg).await {
         Ok(p) => p,
-        Err(why) => return Err(DeployError::Refused(why)),
+        Err(why) => return Err(DeployError::Refused(why.said)),
     };
     let bin = planned_binary(&plan)?;
     // 🔴 `K-R70`：**把这几 MB 字节推到别人机器上之前，先让它自己说一遍它是谁。**
@@ -430,65 +435,75 @@ pub fn bytes_carry_build_stamp(bytes: &[u8], build_id: &str) -> bool {
 /// 落点就是 `~/.cc-monitor/bin/ccm`（后端本体，没有 shim）⇒ 部署后端就是放 `ccm`，没有第二样要放。
 #[tauri::command]
 pub async fn deploy_remote_backend(cfg: RemoteConfig) -> Result<String, Said> {
-    // 与自动部署同一份计划（本机常驻后端判）、同一个取字节口、同一句拒绝的话。
-    let plan = ask_plan(&cfg).await?;
-    let bin = planned_binary(&plan)?;
-    // 经本机常驻后端那条 `files` 链路。
-    let fs = RemoteFs::open(&cfg).await?;
-    let backend_msg = match plan.action {
-        // 手动点也不降级：出路与「它不说自己是谁」那一格同一句（先卸载再部署 = 明确授权覆盖）。
-        DeployAction::Keep { why, .. } => copy_text("rsSftp.deploy.keptNotOlder", &[("why", &why)]),
-        DeployAction::Skip => copy_text(
-            "rsSftp.deploy.upToDate",
-            &[
-                ("buildId", &bin.build_id.to_string()),
-                ("machine", &bin.machine.to_string()),
-                ("path", &LANDING_SHOWN.to_string()),
-            ],
-        ),
-        DeployAction::Deploy(reason) => {
-            crate::machine_state::deploying(&cfg.origin_label(), false);
-            fs.mkdirs(remote_parent(LANDING_REL)).await?;
-            upload_verified(&fs, LANDING_REL, bin.bytes, 0o700).await?;
-            tracing::info!(
-                "远端 [{}] 手动部署后端完成：{}",
-                cfg.origin_label(),
-                bin.build_id
-            );
-            copy_text(
-                "rsSftp.deploy.done",
+    let r: Result<String, Said> = async move {
+        // 与自动部署同一份计划（本机常驻后端判）、同一个取字节口、同一句拒绝的话。
+        let plan = ask_plan(&cfg).await?;
+        let bin = planned_binary(&plan)?;
+        // 经本机常驻后端那条 `files` 链路。
+        let fs = RemoteFs::open(&cfg).await?;
+        let backend_msg = match plan.action {
+            // 手动点也不降级：出路与「它不说自己是谁」那一格同一句（先卸载再部署 = 明确授权覆盖）。
+            DeployAction::Keep { why, .. } => {
+                copy_text("rsSftp.deploy.keptNotOlder", &[("why", &why)])
+            }
+            DeployAction::Skip => copy_text(
+                "rsSftp.deploy.upToDate",
                 &[
                     ("buildId", &bin.build_id.to_string()),
                     ("machine", &bin.machine.to_string()),
                     ("path", &LANDING_SHOWN.to_string()),
-                    ("reason", &reason.to_string()),
                 ],
-            )
-        }
-    };
-    // 上传残件（后端判的哪几份）。
-    sweep_leftovers(&plan.leftovers, &fs, &cfg.origin_label()).await;
-    Ok(backend_msg)
+            ),
+            DeployAction::Deploy(reason) => {
+                crate::machine_state::deploying(&cfg.origin_label(), false);
+                fs.mkdirs(remote_parent(LANDING_REL)).await?;
+                upload_verified(&fs, LANDING_REL, bin.bytes, 0o700).await?;
+                tracing::info!(
+                    "远端 [{}] 手动部署后端完成：{}",
+                    cfg.origin_label(),
+                    bin.build_id
+                );
+                copy_text(
+                    "rsSftp.deploy.done",
+                    &[
+                        ("buildId", &bin.build_id.to_string()),
+                        ("machine", &bin.machine.to_string()),
+                        ("path", &LANDING_SHOWN.to_string()),
+                        ("reason", &reason.to_string()),
+                    ],
+                )
+            }
+        };
+        // 上传残件（后端判的哪几份）。
+        sweep_leftovers(&plan.leftovers, &fs, &cfg.origin_label()).await;
+        Ok(backend_msg)
+    }
+    .await;
+    r.map_err(|s| s.named("deploy_remote_backend"))
 }
 
 /// 卸载远端后端（设置面板「卸载后端」按钮）：删落点那个文件（它就是 `ccm`，卸后端就是卸 `ccm`）。
 /// 只读铁律豁免（SS-G）：用户显式触发的删。注意：若该机器仍启用，自动部署会在下次连接重新装回——提示见返回消息。
 #[tauri::command]
 pub async fn uninstall_remote_backend(cfg: RemoteConfig) -> Result<String, Said> {
-    // 经本机常驻后端那条 `files` 链路删（写只许 `~/.cc-monitor/bin/` 与暂存区 —— 围栏拒 ⇒ 原话带回）。
-    let fs = RemoteFs::open(&cfg).await?;
-    let removed = fs.remove(LANDING_REL).await?;
-    tracing::info!(
-        "远端 [{}] 卸载后端：{LANDING_SHOWN} {}",
-        cfg.origin_label(),
-        if removed { "已删" } else { "本来就不在" }
-    );
-    let path = LANDING_SHOWN.to_string();
-    if removed {
-        Ok(copy_text("rsSftp.uninstall.done", &[("path", &path)]))
-    } else {
-        Ok(copy_text("rsSftp.uninstall.absent", &[("path", &path)]))
+    let r: Result<String, Said> = async move {
+        // 经本机常驻后端那条 `files` 链路删（写只许 `~/.cc-monitor/bin/` 与暂存区 —— 围栏拒 ⇒ 原话带回）。
+        let fs = RemoteFs::open(&cfg).await?;
+        let removed = fs.remove(LANDING_REL).await?;
+        tracing::info!(
+            "远端 [{}] 卸载后端：{LANDING_SHOWN} {}",
+            cfg.origin_label(),
+            if removed { "已删" } else { "本来就不在" }
+        );
+        let path = LANDING_SHOWN.to_string();
+        if removed {
+            Ok(copy_text("rsSftp.uninstall.done", &[("path", &path)]))
+        } else {
+            Ok(copy_text("rsSftp.uninstall.absent", &[("path", &path)]))
+        }
     }
+    .await;
+    r.map_err(|s| s.named("uninstall_remote_backend"))
 }
 
 // ============================================================================

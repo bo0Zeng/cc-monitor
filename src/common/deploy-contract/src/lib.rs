@@ -58,10 +58,10 @@ pub enum Route {
 pub enum Refusal {
     /// 答得出是什么机器，但表 A 里那一格没有产线（或根本不在 6 行里）。
     UnsupportedMachine { os: String, arch: String },
-    /// 问不出 OS。
-    OsUnknown { why: String },
-    /// 问不出 arch。
-    ArchUnknown { why: String },
+    /// 问不出 OS。`why` 是原因词（无应答 · 应答报错 · 应答无法解析），`raw` 是那台答的原话（进复制详情，不上句子）。
+    OsUnknown { why: String, raw: Option<String> },
+    /// 问不出 arch（`why` · `raw` 同 [`Refusal::OsUnknown`]）。
+    ArchUnknown { why: String, raw: Option<String> },
     /// 那一格有产线，但这个 origin 今天不承诺那种机器（表 B；例：远端 Windows · 本机 (Linux, aarch64)）。
     /// 带着 `route`：同一形对「推到远端」与「本机自己」要说两句话（远端那句「只在本机用得上」对本机是假话，`D7`）。
     NotPromisedHere {
@@ -84,11 +84,11 @@ impl Refusal {
                 "deploy.refused.unsupportedMachine",
                 &[("machine", machine), ("os", os), ("arch", arch)],
             ),
-            Refusal::OsUnknown { why } => copy_text(
+            Refusal::OsUnknown { why, .. } => copy_text(
                 "deploy.refused.osUnknown",
                 &[("machine", machine), ("why", why)],
             ),
-            Refusal::ArchUnknown { why } => copy_text(
+            Refusal::ArchUnknown { why, .. } => copy_text(
                 "deploy.refused.archUnknown",
                 &[("machine", machine), ("why", why)],
             ),
@@ -112,6 +112,16 @@ impl Refusal {
                 "deploy.refused.notCarried",
                 &[("machine", machine), ("os", os), ("arch", arch)],
             ),
+        }
+    }
+}
+
+impl Refusal {
+    /// 那台答的原话（问不出 OS / arch 那两形才有）：交给出错那一端写进复制详情，不上句子。
+    pub fn raw(&self) -> Option<&str> {
+        match self {
+            Refusal::OsUnknown { raw, .. } | Refusal::ArchUnknown { raw, .. } => raw.as_deref(),
+            _ => None,
         }
     }
 }
@@ -173,11 +183,13 @@ pub fn key_of(os: &str, arch: &str) -> Result<Key, Refusal> {
     if os.is_empty() {
         return Err(Refusal::OsUnknown {
             why: copy_text("rsByteTable.key.noAnswer", &[]),
+            raw: None,
         });
     }
     if arch.is_empty() {
         return Err(Refusal::ArchUnknown {
             why: copy_text("rsByteTable.key.noAnswer", &[]),
+            raw: Some(os.to_string()),
         });
     }
     match (os_of(os), arch_of(arch)) {
@@ -222,19 +234,22 @@ pub const UNAME_CMD: &str = "uname -s -m";
 
 /// `uname -s -m` 的收全结果 → 键。**纯函数**。
 ///
-/// 退出码非 0 / 空 ⇒ 问不出 OS（Windows 默认 shell 没有 `uname` 就是这一形，那句 stderr 原样带回）；
-/// 只答一段 ⇒ 问不出 arch；多于两段 ⇒ 问不出 OS（认不出哪段是什么）。
+/// 退出码非 0 / 空 ⇒ 问不出 OS（Windows 默认 shell 没有 `uname` 就是这一形）；只答一段 ⇒ 问不出 arch；
+/// 多于两段 ⇒ 问不出 OS（认不出哪段是什么）。句子只说原因词（无应答 · 应答报错 · 应答无法解析）；
+/// 那台答的原话（stderr 或答的那几段）进 [`Refusal::raw`]、由出错那一端写进复制详情 —— 不照抄进句子：
+/// 真 Win11 上 PowerShell 按控制台代码页（GBK）报错，后端那一跳按 UTF-8 有损解（`dial/uses.rs`），照抄就是一串乱码。
 pub fn key_from_uname(exit: Option<u32>, stdout: &str, stderr: &str) -> Result<Key, Refusal> {
     if exit != Some(0) {
         let said = stderr.trim();
         return Err(Refusal::OsUnknown {
             why: if said.is_empty() {
                 copy_text("rsByteTable.key.noAnswer", &[])
-            } else if not_utf8(said) {
-                copy_text("rsByteTable.key.notUtf8", &[])
+            } else if said.contains('\u{FFFD}') {
+                copy_text("rsByteTable.key.unreadable", &[])
             } else {
-                copy_text("rsByteTable.key.said", &[("said", &said.to_string())])
+                copy_text("rsByteTable.key.said", &[])
             },
+            raw: (!said.is_empty()).then(|| said.to_string()),
         });
     }
     let parts: Vec<&str> = stdout.split_whitespace().collect();
@@ -242,29 +257,11 @@ pub fn key_from_uname(exit: Option<u32>, stdout: &str, stderr: &str) -> Result<K
         [] => key_of("", ""),
         [os] => key_of(os, ""),
         [os, arch] => key_of(os, arch),
-        _ if not_utf8(stdout) => Err(Refusal::OsUnknown {
-            why: copy_text("rsByteTable.key.notUtf8", &[]),
-        }),
         _ => Err(Refusal::OsUnknown {
-            why: copy_text(
-                "rsByteTable.key.unreadable",
-                &[("reply", &(stdout.trim()).to_string())],
-            ),
+            why: copy_text("rsByteTable.key.unreadable", &[]),
+            raw: Some(stdout.trim().to_string()),
         }),
     }
-}
-
-/// 那台机器的回话**不是 UTF-8** ⇒ 说 `rsByteTable.key.notUtf8` 那半句（接在「查了什么：问过它，」后面），
-/// 不照抄原文。
-///
-/// 真 Win11 现打（第 3 跳）：Windows 默认 shell 是 PowerShell，它按控制台代码页
-/// （中文系统是 GBK）报「无法将 uname 项识别为 cmdlet…」；回话在后端那一跳按 UTF-8 **有损**解
-/// （`dial/uses.rs`，认不出的字节成了 U+FFFD）⇒ 原样照抄进界面就是一串乱码。
-/// ⇒ 不照抄、也不猜代码页（GBK / Shift-JIS / 1252 都有可能，猜错了一样是乱码），只说「不是 UTF-8」
-/// 与它多半是什么。拒绝本身不变（问不出 OS ＝ 拒绝）。
-/// 回话里有 U+FFFD ⇒ 那几个字节在后端按 UTF-8 解时就没解出来（有损解留下的记号）。
-fn not_utf8(s: &str) -> bool {
-    s.contains('\u{FFFD}')
 }
 
 // ═══ 身份：那台落点上那一份是谁 ═══════════════════════════════════════════════════════

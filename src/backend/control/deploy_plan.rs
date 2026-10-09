@@ -40,6 +40,9 @@ use copy_core::copy_text;
 use deploy_contract::{Arch, DeployAction, Key, Marks, Os, Refusal, RemoteIdentity, Route, LINES};
 use serde_json::{json, Value};
 
+/// 这一串的失败：码 ＋ 那一句 ＋ 下层原话（那台答 `uname` 的原话进复制详情，不上句子）。
+pub(crate) use crate::stream::inbound::spec::Fail;
+
 /// 身份戳的两个界标（住契约 crate）。
 const MARKS: Marks<'static> = Marks {
     open: deploy_contract::STAMP_OPEN,
@@ -274,13 +277,13 @@ async fn slot_of(
     facing: &dyn Facing,
     carried: &[Key],
     machine: &str,
-) -> Result<(Key, Value), (&'static str, String)> {
-    let said = |r: Refusal| ("refused", r.say(machine));
+) -> Result<(Key, Value), Fail> {
+    let said = |r: Refusal| refused(&r, machine);
     let (got, ack) = facing
         .exec(deploy_contract::UNAME_CMD.to_string())
         .await
         .map_err(|e| {
-            (
+            Fail::new(
                 "unreachable",
                 copy_text(
                     "rsSftp.deploy.unameFailed",
@@ -299,13 +302,18 @@ async fn slot_of(
     Ok((key, ack))
 }
 
-/// 出计划。`machine` = monitor 交来的那台的名字（只用来说话）；`now_secs` = 此刻（判残件新旧）。失败 = `(code, 一句话)`。
+/// 一形拒绝 ⇒ `refused`：句子是 [`Refusal::say`]，那台答的原话（[`Refusal::raw`]）随失败交出去。
+fn refused(r: &Refusal, machine: &str) -> Fail {
+    Fail::new("refused", r.say(machine)).with_raw(r.raw())
+}
+
+/// 出计划。`machine` = monitor 交来的那台的名字（只用来说话）；`now_secs` = 此刻（判残件新旧）。
 pub async fn plan(
     facing: &dyn Facing,
     carried: &[(Key, String)],
     machine: &str,
     now_secs: u64,
-) -> Result<Plan, (&'static str, String)> {
+) -> Result<Plan, Fail> {
     let keys: Vec<Key> = carried.iter().map(|(k, _)| *k).collect();
     let (key, ack) = slot_of(facing, &keys, machine).await?;
     let expected = carried
@@ -316,9 +324,9 @@ pub async fn plan(
     let landing = relay_route_core::BACKEND_LANDING_REL;
     let id = identity_at(facing, landing, relay_route_core::BACKEND_LANDING_SHELL)
         .await
-        .map_err(|e| ("io_failed", e))?;
+        .map_err(|e| Fail::new("io_failed", e))?;
     let action = identity_decision(&id, &expected, machine, &format!("~/{landing}"))
-        .map_err(|e| ("undecidable", e))?;
+        .map_err(|e| Fail::new("undecidable", e))?;
     let bin = landing.rsplit_once('/').map_or(".", |(d, _)| d);
     let leftovers = facing
         .list(bin)
@@ -355,8 +363,8 @@ pub fn plan_json(p: &Plan) -> Value {
 }
 
 /// `carried` 那一格：`[{os, arch, id}]`。键认不出 / 身份空 ⇒ `bad_args`（monitor 交的是它自己表里的词，认不出就是两侧漂了）。
-pub fn carried_of(args: &Value) -> Result<Vec<(Key, String)>, (&'static str, String)> {
-    let bad = |m: &str| ("bad_args", crate::common::contract::malformed(m));
+pub fn carried_of(args: &Value) -> Result<Vec<(Key, String)>, Fail> {
+    let bad = |m: &str| Fail::new("bad_args", crate::common::contract::malformed(m));
     let rows = args
         .get("carried")
         .and_then(Value::as_array)
@@ -429,16 +437,18 @@ impl Facing for DialFacing {
 }
 
 /// 帧面入口：`{dial, carried, machine?}` → 计划。
-pub async fn answer(args: &Value, facing: &dyn Facing) -> Result<Value, (&'static str, String)> {
+pub async fn answer(args: &Value, facing: &dyn Facing) -> Result<Value, Fail> {
     let carried = carried_of(args)?;
     let machine = args
         .get("machine")
         .and_then(Value::as_str)
         .filter(|m| !m.trim().is_empty())
-        .ok_or((
-            "bad_args",
-            crate::common::contract::malformed("missing `machine` (string)"),
-        ))?;
+        .ok_or_else(|| {
+            Fail::new(
+                "bad_args",
+                crate::common::contract::malformed("missing `machine` (string)"),
+            )
+        })?;
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
@@ -516,14 +526,14 @@ pub fn place_verdict(
     mine: &str,
     machine: &str,
     dest: &str,
-) -> Result<Placed, (&'static str, String)> {
-    judge(Route::Local, me).map_err(|r| ("refused", r.say(machine)))?;
+) -> Result<Placed, Fail> {
+    judge(Route::Local, me).map_err(|r| refused(&r, machine))?;
     let id = match disk {
         Ok(None) => RemoteIdentity::Missing,
         Ok(Some(b)) => deploy_contract::identity_of_bytes(&b, MARKS),
         Err(e) => RemoteIdentity::Unreadable(e),
     };
-    match identity_decision(&id, mine, machine, dest).map_err(|e| ("undecidable", e))? {
+    match identity_decision(&id, mine, machine, dest).map_err(|e| Fail::new("undecidable", e))? {
         DeployAction::Deploy(why) => Ok(Placed::Place(why)),
         DeployAction::Skip => Ok(Placed::Place(copy_text("bePlaceVerdict.why.rebuilt", &[]))),
         DeployAction::Keep { why, .. } => Ok(Placed::Keep(why)),
@@ -532,8 +542,8 @@ pub fn place_verdict(
 
 /// 帧面入口：`{dest, machine}` → `{action: "place" | "keep", why}`。`dest` 缺 / 不是绝对路径 · `machine` 缺 ⇒ `bad_args`。
 /// 只读落点那一个文件（不在 ⇒ 没装）；这份字节自己的键与身份取自编译期（`Key::this_machine` · `crate::BUILD_ID`）。
-pub fn answer_place(args: &Value) -> Result<Value, (&'static str, String)> {
-    let bad = |m: &str| ("bad_args", crate::common::contract::malformed(m));
+pub fn answer_place(args: &Value) -> Result<Value, Fail> {
+    let bad = |m: &str| Fail::new("bad_args", crate::common::contract::malformed(m));
     let dest = args
         .get("dest")
         .and_then(Value::as_str)

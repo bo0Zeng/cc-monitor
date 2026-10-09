@@ -205,7 +205,7 @@ pub fn commit_upload_in(
         land_staged(home, key, root, rel, &dest, cross_device).map_err(|e| {
             WriteRefusal::Io(copy_text(
                 "beFilesWrite.write.failed",
-                &[("path", &dest.display().to_string()), ("e", &e.to_string())],
+                &[("path", &dest.display().to_string()), ("e", &e.raw)],
             ))
         })?;
         return Ok((dest, bytes));
@@ -221,11 +221,10 @@ pub fn commit_upload_in(
                 &[("path", &dest.display().to_string()), ("e", &e.to_string())],
             ))
         })?;
-    if let Err(e) = land_staged(home, key, root, rel, &dest, cross_device) {
+    if let Err(fail) = land_staged(home, key, root, rel, &dest, cross_device) {
         // 撤掉自己那个 0 字节的占位（它是这一次刚建的，不是用户既有数据）；撤不掉要说出来，不然用户目录里留一份 0 字节文件、重试撞「目标已经在了」。
         let undo = std::fs::remove_file(&dest);
-        let said = e.to_string();
-        return Err(WriteRefusal::Io(move_failed_text(&dest, &said, &undo)));
+        return Err(move_failed(&dest, &fail, &undo));
     }
     Ok((dest, bytes))
 }
@@ -240,23 +239,24 @@ fn land_staged(
     rel: &Path,
     dest: &Path,
     cross_device: bool,
-) -> Result<(), String> {
+) -> Result<(), LandFail> {
     let staging = home.join(STAGING_DIR);
-    let staged = resolve_in_root(&staging, format!("{key}{PART_SUFFIX}"))?;
+    let staged =
+        resolve_in_root(&staging, format!("{key}{PART_SUFFIX}")).map_err(LandFail::path)?;
     let side_rel = {
         let p = rel;
         let name = p.file_name().ok_or_else(|| {
-            copy_text(
+            LandFail::path(copy_text(
                 "beFilesCommit.exdev.noName",
                 &[("rel", &rel.display().to_string())],
-            )
+            ))
         })?;
         let mut side = std::ffi::OsString::from(".");
         side.push(name);
         side.push(format!(".ccm-commit-{key}.part"));
         p.with_file_name(side)
     };
-    let side = resolve_in_root(root, &side_rel)?;
+    let side = resolve_in_root(root, &side_rel).map_err(LandFail::path)?;
     let moved = if cross_device {
         Err(std::io::Error::from(std::io::ErrorKind::CrossesDevices))
     } else {
@@ -264,7 +264,7 @@ fn land_staged(
     };
     match moved {
         Ok(()) => return Ok(()),
-        Err(e) if e.kind() != std::io::ErrorKind::CrossesDevices => return Err(e.to_string()),
+        Err(e) if e.kind() != std::io::ErrorKind::CrossesDevices => return Err(LandFail::io(&e)),
         Err(_) => {}
     }
     let copied = (|| -> std::io::Result<()> {
@@ -277,10 +277,7 @@ fn land_staged(
     })();
     if let Err(e) = copied {
         let _ = std::fs::remove_file(&side);
-        return Err(copy_text(
-            "beFilesCommit.exdev.copyFailed",
-            &[("e", &e.to_string())],
-        ));
+        return Err(LandFail::io(&e));
     }
     // 目标已经落好；暂存件删不掉不算这一趟失败（不覆盖那一支失败时会撤占位 —— 那就把刚落好的删了）：
     // 它是我们自己暂存区里的一份，孤儿扫（`sweep_stale`）按期限收。
@@ -288,19 +285,59 @@ fn land_staged(
     Ok(())
 }
 
+/// 暂存件挪不上位的那一件：原因词（句子里那一格）＋ 下层原话（进复制详情）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LandFail {
+    pub why: String,
+    pub raw: String,
+}
+
+impl LandFail {
+    /// 系统那一下没成：原因词按 IO 错的种类说（`copy_core::reason`），原话照抄进详情。
+    fn io(e: &std::io::Error) -> LandFail {
+        LandFail {
+            why: copy_core::reason::io_reason(e.kind()),
+            raw: e.to_string(),
+        }
+    }
+
+    /// 路径解析拒了（越根 · 名字不成立）：原因词「路径不合规」，那句拒绝进详情。
+    fn path(said: String) -> LandFail {
+        LandFail {
+            why: copy_text("beFilesCommit.land.badPath", &[]),
+            raw: said,
+        }
+    }
+}
+
 /// 提交失败那一句（整句由这里写好，不在别处拼碎片）：撤占位撤掉了 ⇒ 只说写入失败；
 /// 撤不掉 ⇒ 换一条整句键，多说一行「删除失败 · 留下的 0 字节空文件」，不然用户目录里留一份 0 字节文件、重试撞「目标已经在了」。
-pub(crate) fn move_failed_text(dest: &Path, e: &str, undo: &std::io::Result<()>) -> String {
+/// 句子只带原因词；挪不上位与撤不掉的两句系统原话进复制详情（[`WriteRefusal::IoSaid`]）。
+pub(crate) fn move_failed(
+    dest: &Path,
+    fail: &LandFail,
+    undo: &std::io::Result<()>,
+) -> WriteRefusal {
     let path = dest.display().to_string();
     match undo {
-        Ok(()) => copy_text(
-            "beFilesCommit.upload.moveFailedNote",
-            &[("path", &path), ("e", e)],
-        ),
-        Err(left) => copy_text(
-            "beFilesCommit.upload.placeholderLeft",
-            &[("path", &path), ("e", e), ("left", &left.to_string())],
-        ),
+        Ok(()) => WriteRefusal::IoSaid {
+            said: copy_text(
+                "beFilesCommit.upload.moveFailedNote",
+                &[("path", &path), ("why", &fail.why)],
+            ),
+            raw: fail.raw.clone(),
+        },
+        Err(left) => WriteRefusal::IoSaid {
+            said: copy_text(
+                "beFilesCommit.upload.placeholderLeft",
+                &[
+                    ("path", &path),
+                    ("why", &fail.why),
+                    ("leftWhy", &copy_core::reason::io_reason(left.kind())),
+                ],
+            ),
+            raw: format!("{}\n{left}", fail.raw),
+        },
     }
 }
 
@@ -572,17 +609,35 @@ fn str_arg<'a>(args: &'a serde_json::Value, key: &str) -> Result<&'a str, (&'sta
     ))
 }
 
-fn answer_commit(args: &serde_json::Value) -> Answer {
-    answer_commit_at(&home_dir()?, args)
+fn answer_commit(args: &serde_json::Value) -> Result<serde_json::Value, Fail> {
+    answer_commit_at(&home_dir().map_err(plain)?, args)
+}
+
+/// 这一面的失败：码 ＋ 那一句 ＋ 下层原话（有的话；命令表那一层把它交给应答的复制详情）。
+/// 不借流那一层的类型：文件管理后端只许够 platform / common（`module_boundary_guard`）。
+pub type Fail = (&'static str, String, Option<String>);
+
+/// 写面拒绝 ⇒ 失败：码由那个枚举自己答，原话（有的话）随失败交出去。
+fn refused(e: WriteRefusal) -> Fail {
+    (
+        e.code(),
+        e.message().to_string(),
+        e.raw().map(str::to_string),
+    )
+}
+
+/// 没有原话的那几形（参数不对 · 家问不到 · 块那几条）。
+fn plain((code, said): (&'static str, String)) -> Fail {
+    (code, said, None)
 }
 
 /// [`answer_commit`] 去掉「家在哪」那一问之后的全部 —— 判据从这里进（不改进程的 `HOME`：
 /// 那是全进程共享的，改了会波及同一进程里并发跑的别的判据）。
-fn answer_commit_at(home: &Path, args: &serde_json::Value) -> Answer {
-    let root = path_arg(args, "root")?;
+fn answer_commit_at(home: &Path, args: &serde_json::Value) -> Result<serde_json::Value, Fail> {
+    let root = path_arg(args, "root").map_err(plain)?;
     // `rel` 也收 `{"b16": …}`：本机落点是非 UTF-8 名（有损名下载在 Linux 上按原始字节落名）时经这条提交。
-    let rel = path_arg(args, "rel")?;
-    let key = str_arg(args, "key")?.to_string();
+    let rel = path_arg(args, "rel").map_err(plain)?;
+    let key = str_arg(args, "key").map_err(plain)?.to_string();
     // 覆盖策略必须显式给：默认成哪一边都是替用户做了一个他没做的决定。
     let overwrite = args
         .get("overwrite")
@@ -590,17 +645,20 @@ fn answer_commit_at(home: &Path, args: &serde_json::Value) -> Answer {
         .ok_or((
             "bad_args",
             crate::common::contract::malformed("missing `overwrite` (true / false, no default)"),
+            None,
         ))?;
     // 整份摘要**必给**（传输台 done 帧交的那个）：没有「不核就上位」这一形。
-    let expect = sha256_expect_of(args)?;
+    let expect = sha256_expect_of(args).map_err(plain)?;
     // 块形（SFTP 起始目录不是后端 home ⇒ 窗口改走后端链路分块写）：先拼成暂存件，下面照旧同一条提交。
     if args.get("chunks").is_some() {
-        let (chunks, bytes) = (u64_arg(args, "chunks")?, u64_arg(args, "bytes")?);
-        super::files_upload_chunks::assemble_part(home, &key, chunks, bytes)
-            .map_err(|e| (e.code(), e.message().to_string()))?;
+        let (chunks, bytes) = (
+            u64_arg(args, "chunks").map_err(plain)?,
+            u64_arg(args, "bytes").map_err(plain)?,
+        );
+        super::files_upload_chunks::assemble_part(home, &key, chunks, bytes).map_err(refused)?;
     }
-    let (landed, bytes) = commit_upload(home, &key, &root, &rel, overwrite, &expect)
-        .map_err(|e| (e.code(), e.message().to_string()))?;
+    let (landed, bytes) =
+        commit_upload(home, &key, &root, &rel, overwrite, &expect).map_err(refused)?;
     // 暂存区清理「孤儿」那一格的事件：一次提交成功。
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -694,14 +752,19 @@ fn answer_commit_text_at(home: &Path, args: &serde_json::Value) -> Answer {
 }
 
 /// 这一面的**唯一入口**（形状照写面那一个）。
-pub fn answer_wire(wire_name: &str, args: &serde_json::Value) -> Answer {
+pub fn answer_wire(wire_name: &str, args: &serde_json::Value) -> Result<serde_json::Value, Fail> {
     match wire_name {
         "files-commit-upload" => answer_commit(args),
-        "files-stage-chunk" => answer_stage_at(&home_dir()?, args),
-        "files-commit-text" => answer_commit_text_at(&home_dir()?, args),
+        "files-stage-chunk" => home_dir()
+            .and_then(|h| answer_stage_at(&h, args))
+            .map_err(plain),
+        "files-commit-text" => home_dir()
+            .and_then(|h| answer_commit_text_at(&h, args))
+            .map_err(plain),
         other => Err((
             "bad_args",
             crate::common::contract::malformed(&format!("unknown command `{other}`")),
+            None,
         )),
     }
 }

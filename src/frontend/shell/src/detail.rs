@@ -45,51 +45,26 @@ pub(crate) fn of_refusal_body(body: &[u8]) -> String {
 }
 
 /// 通道这一跳（壳自己知道的那几样）的一份详情。`Refused` 不走这里（那份由对端写，见 [`relayed`]）。
+/// 那几项的取法住通信层（`HopFacts`，文件窗口进程同一份）。
 pub(crate) fn of_channel(origin: &crate::origin::Origin, op: &str, e: &w::CallError) -> String {
-    let machine = if origin.is_local() {
+    let f = e.hop_facts();
+    let name = if origin.is_local() {
         copy_text("detail.label.local", &[])
     } else {
         origin.0.clone()
     };
-    let (machine, hop, code) = match e {
-        w::CallError::Hop { at, reach, why } => {
-            let machine = if *reach == w::Reach::NotSent {
-                format!(
-                    "{machine}（{}）",
-                    copy_text("detail.value.notConnected", &[])
-                )
-            } else {
-                machine
-            };
-            (
-                machine,
-                Some(format!("{}:{} {reach:?}", at.idx, at.tag)),
-                format!("{why:?}"),
-            )
-        }
-        w::CallError::Peer {
-            why: w::PeerFault::Unsupported,
-        } => (machine, None, "unsupported".to_string()),
-        w::CallError::Peer {
-            why: w::PeerFault::Refused { .. },
-        } => (machine, None, "refused".to_string()),
-        w::CallError::Ours { why, runs_on } => (
-            machine,
-            None,
-            if *runs_on {
-                format!("{why:?} runs_on")
-            } else {
-                format!("{why:?}")
-            },
-        ),
+    let machine = if f.not_sent {
+        format!("{name}（{}）", copy_text("detail.value.notConnected", &[]))
+    } else {
+        name
     };
     Detail::new()
         .item(Label::At, now())
         .item(Label::Machine, machine)
         .maybe(Label::Local, (!origin.is_local()).then(local_line))
         .item(Label::Command, op)
-        .maybe(Label::Hop, hop)
-        .item(Label::Code, code)
+        .maybe(Label::Hop, f.hop)
+        .item(Label::Code, f.code)
         .render()
 }
 
@@ -115,14 +90,117 @@ pub struct Said {
 impl Said {
     /// 一句话 ＋ 命令名 ＋ 下层原话（可缺）。
     pub fn new(said: impl Into<String>, command: &str, raw: Option<&str>) -> Said {
+        Said::coded(said, command, None, raw)
+    }
+
+    /// 同 [`Said::new`]，多一项码（退出状态 · 系统错误码；可缺）。
+    pub fn coded(
+        said: impl Into<String>,
+        command: &str,
+        code: Option<&str>,
+        raw: Option<&str>,
+    ) -> Said {
         Said {
             said: said.into(),
             detail: Detail::new()
                 .item(Label::At, now())
                 .item(Label::Local, local_line())
                 .item(Label::Command, command)
+                .maybe(Label::Code, code)
                 .maybe(Label::Raw, raw)
                 .render(),
+        }
+    }
+}
+
+impl Said {
+    /// 壳问后端一条命令没成（`inbound_client` 那一口）：那台写了详情 ⇒ 原样带上（远端补「本机」一行）；
+    /// 没写（老后端 / 没走到那台：断了 · 超时 · 不认这条）⇒ 壳写时刻 · 本机 · 命令 · 码。
+    pub(crate) fn of_call(
+        said: String,
+        command: &str,
+        origin: &crate::origin::Origin,
+        e: &crate::inbound_client::CallError,
+    ) -> Said {
+        use crate::inbound_client::CallError;
+        let detail = match e {
+            CallError::Remote { detail, .. } if !detail.trim().is_empty() => {
+                relayed(origin, detail)
+            }
+            other => {
+                let code = match other {
+                    CallError::Remote { code, .. } | CallError::Unavailable { code, .. } => {
+                        code.as_str()
+                    }
+                    CallError::Unsupported { .. } => "unsupported",
+                    CallError::TooManyPending => "too_many_pending",
+                    CallError::Disconnected => "disconnected",
+                    CallError::Cancelled => "cancelled",
+                    CallError::Timeout { .. } => "timeout",
+                };
+                Detail::new()
+                    .item(Label::At, now())
+                    .item(Label::Local, local_line())
+                    .item(Label::Command, command)
+                    .item(Label::Code, code)
+                    .render()
+            }
+        };
+        Said { said, detail }
+    }
+}
+
+impl Said {
+    /// 壳自己那一下没成（后台那条线程没回来 · 窗口建不出来这一类，用户做不了什么）：那一句「cc-monitor 程序出错」，原话进详情。
+    pub(crate) fn crashed(raw: impl std::fmt::Display) -> Said {
+        Said::with_raw(copy_text("rsShellCmd.self.crashed", &[]), raw)
+    }
+
+    /// 一句话 ＋ 下层原话（命令名由最外层 [`Said::named`] 补）。
+    pub(crate) fn with_raw(said: String, raw: impl std::fmt::Display) -> Said {
+        Said {
+            said,
+            detail: Detail::new()
+                .item(Label::At, now())
+                .item(Label::Local, local_line())
+                .item(Label::Raw, raw.to_string())
+                .render(),
+        }
+    }
+
+    /// 壳命令的失败补上命令名（复制详情的「命令」那一项）：详情里已经有一项「命令」（自己写的 · 后端写的）⇒ 原样。
+    /// 每条壳命令的最外层经这里一次（`#[tauri::command]` 那几十条，判据扫着）。
+    pub(crate) fn named(self, command: &str) -> Said {
+        let label = format!("{}：", Label::Command.said());
+        if self.detail.lines().any(|l| l.starts_with(&label)) {
+            return self;
+        }
+        // 「命令」排在本机之后、其余几项之前（[`Label::ALL`] 的次序）：插在第一条后排项名的前面；没有后排项 ⇒ 接在末尾。
+        let later: Vec<String> = [
+            Label::Path,
+            Label::Target,
+            Label::Hop,
+            Label::Code,
+            Label::Raw,
+        ]
+        .iter()
+        .map(|l| format!("{}：", l.said()))
+        .collect();
+        let lines: Vec<&str> = self.detail.lines().collect();
+        let detail = match lines
+            .iter()
+            .position(|l| later.iter().any(|p| l.starts_with(p)))
+        {
+            Some(at) => {
+                let mut v: Vec<String> = lines.iter().map(|l| l.to_string()).collect();
+                v.insert(at, format!("{label}{command}"));
+                v.join("\n")
+            }
+            None => append(&self.detail, Label::Command, command),
+        };
+        Said {
+            detail,
+            said: self.said,
         }
     }
 }

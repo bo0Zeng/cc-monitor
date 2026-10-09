@@ -176,6 +176,53 @@ pub enum Reach {
     Unknown,
 }
 
+/// 复制详情里通道这一跳那几项（壳 · 文件窗口进程各自写详情时同一份取法）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HopFacts {
+    /// 一个字节都没发出去（机器那一项后面标「未连上」）。
+    pub not_sent: bool,
+    /// 断在哪一跳：`<跳号>:<动作> <发没发出>`；不是传输错 ⇒ `None`。
+    pub hop: Option<String>,
+    /// 码：传输错的那一种 · `unsupported` · `refused` · 本侧那一种（那台对撤单不认 ⇒ 后接 ` runs_on`）。
+    pub code: String,
+}
+
+impl CallError {
+    /// 这次失败在复制详情里的通道那几项（对端拒了那一形的详情由那台写，这里只给码 `refused`）。
+    pub fn hop_facts(&self) -> HopFacts {
+        match self {
+            CallError::Hop { at, reach, why } => HopFacts {
+                not_sent: *reach == Reach::NotSent,
+                hop: Some(format!("{}:{} {reach:?}", at.idx, at.tag)),
+                code: format!("{why:?}"),
+            },
+            CallError::Peer {
+                why: PeerFault::Unsupported,
+            } => HopFacts {
+                not_sent: false,
+                hop: None,
+                code: "unsupported".to_string(),
+            },
+            CallError::Peer {
+                why: PeerFault::Refused { .. },
+            } => HopFacts {
+                not_sent: false,
+                hop: None,
+                code: "refused".to_string(),
+            },
+            CallError::Ours { why, runs_on } => HopFacts {
+                not_sent: false,
+                hop: None,
+                code: if *runs_on {
+                    format!("{why:?} runs_on")
+                } else {
+                    format!("{why:?}")
+                },
+            },
+        }
+    }
+}
+
 /// 传输错的三种。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum HopFault {

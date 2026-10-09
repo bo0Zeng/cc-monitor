@@ -92,19 +92,23 @@ pub async fn open_terminal_window(
     command: String,
     ssh: bool,
 ) -> Result<crate::platform::terminal::TerminalOpen, Said> {
-    // 预检（阻塞）＋ 进程 spawn 挪到阻塞线程池，不堵 IPC 派发线程。
-    Ok(tokio::task::spawn_blocking(move || {
-        if ssh {
-            if let Some(why) = crate::platform::terminal::ssh_client_missing() {
-                return Err(why);
+    let r: Result<crate::platform::terminal::TerminalOpen, Said> = async move {
+        // 预检（阻塞）＋ 进程 spawn 挪到阻塞线程池，不堵 IPC 派发线程。
+        Ok(tokio::task::spawn_blocking(move || {
+            if ssh {
+                if let Some(why) = crate::platform::terminal::ssh_client_missing() {
+                    return Err(why);
+                }
             }
-        }
-        let opened = crate::platform::terminal::open_local(&command, None)?;
-        tracing::info!("launch: terminal window {opened:?}");
-        Ok(opened)
-    })
-    .await
-    .map_err(|e| copy_text("rsLaunch.remote.taskFailed", &[("e", &e.to_string())]))??)
+            let opened = crate::platform::terminal::open_local(&command, None)?;
+            tracing::info!("launch: terminal window {opened:?}");
+            Ok(opened)
+        })
+        .await
+        .map_err(|e| copy_text("rsLaunch.remote.taskFailed", &[("e", &e.to_string())]))??)
+    }
+    .await;
+    r.map_err(|s| s.named("open_terminal_window"))
 }
 
 /// 设置页「终端」那一行要的事实（自动会挑谁 · 本机探到哪些 · 现在设的是什么）；判定在平台层，界面只画。
@@ -119,17 +123,21 @@ pub async fn terminal_choices() -> crate::platform::terminal::TerminalChoices {
 /// —— monitor 自己的机器表 ＋ 上次赢的那条（[`crate::dial_host::machine_facts`]，与拨号请求同一份）。只读 monitor 自己的状态。
 #[tauri::command]
 pub async fn terminal_dial(origin: String) -> Result<serde_json::Value, Said> {
-    // 本机那一支不经 ssh（前端 `terminal-open.ts` 原串直接开窗）⇒ 这里先分本机、说清，别掉进下面那句「未找到远端配置」。
-    if origin == crate::inbound_client::LOCAL_ORIGIN {
-        return Err(copy_text("rsLaunch.terminalDial.local", &[]).into());
+    let r: Result<serde_json::Value, Said> = async move {
+        // 本机那一支不经 ssh（前端 `terminal-open.ts` 原串直接开窗）⇒ 这里先分本机、说清，别掉进下面那句「未找到远端配置」。
+        if origin == crate::inbound_client::LOCAL_ORIGIN {
+            return Err(copy_text("rsLaunch.terminalDial.local", &[]).into());
+        }
+        let cfg = crate::load_remote_config_by_label(&origin).ok_or_else(|| {
+            copy_text(
+                "rsLaunch.remote.noConfig",
+                &[("machine", &format!("{:?}", origin))],
+            )
+        })?;
+        Ok(crate::dial_host::machine_facts(&cfg))
     }
-    let cfg = crate::load_remote_config_by_label(&origin).ok_or_else(|| {
-        copy_text(
-            "rsLaunch.remote.noConfig",
-            &[("machine", &format!("{:?}", origin))],
-        )
-    })?;
-    Ok(crate::dial_host::machine_facts(&cfg))
+    .await;
+    r.map_err(|s| s.named("terminal_dial"))
 }
 
 /// **在本机开一个终端窗口跑 `cmd`**（工作目录 `cwd`，不在就不设）—— monitor 在起会话这件事上只剩这一下。
@@ -140,11 +148,15 @@ pub async fn open_local_terminal(
     cmd: String,
     cwd: Option<String>,
 ) -> Result<crate::platform::terminal::TerminalOpen, Said> {
-    Ok(tokio::task::spawn_blocking(move || {
-        crate::platform::terminal::open_local(&cmd, cwd.as_deref())
-    })
-    .await
-    .map_err(|e| copy_text("rsLaunch.remote.taskFailed", &[("e", &e.to_string())]))??)
+    let r: Result<crate::platform::terminal::TerminalOpen, Said> = async move {
+        Ok(tokio::task::spawn_blocking(move || {
+            crate::platform::terminal::open_local(&cmd, cwd.as_deref())
+        })
+        .await
+        .map_err(|e| copy_text("rsLaunch.remote.taskFailed", &[("e", &e.to_string())]))??)
+    }
+    .await;
+    r.map_err(|s| s.named("open_local_terminal"))
 }
 
 #[cfg(test)]

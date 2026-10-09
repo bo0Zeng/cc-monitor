@@ -99,6 +99,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/cards/subagent.ts", // 运行表到了：派出子运行的那张卡标上是哪个、什么状态
     "src/frontend/ui/control-said.ts", // ↗ 结局浮层里的机器名（`machineName`）
     "src/frontend/ui/copy-table.ts", // W 关掉之后那条「已关闭 · 撤销」
+    "src/frontend/ui/kit/detail.ts", // ↗ 浮层更新没成：［复制详情］复制壳带回的那份详情（`detailOf`）
     "src/frontend/ui/kit/toast.ts", // bringActiveTerminalToFront：非 Windows 说一句实话
     "src/frontend/ui/new-session.ts", // forkFrom：消息流「从这里分叉」开起新会话框（分叉随起会话那一个请求写）
     "src/frontend/ui/launch-slot.ts", // 起新会话之后的占位标签页：栏末那几行与盖在消息流上的那一页（报到了换成真的）
@@ -216,7 +217,6 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/config.ts", // 分组一次改动的全部补丁一次 `patchConfig`
     "src/frontend/ui/copy-table.ts",
     "src/frontend/ui/kit/toast.ts", // 分组 / 固定 / 顺序落盘失败出声（INVARIANTS §12）·集合到上界那一句
-    "src/frontend/ui/kit/detail.ts", // 那几条出声带［复制详情］：详情取自那次失败（`detailOf`）
     "src/frontend/ui/tab-bar-state.ts",
     "src/frontend/ui/tab-collections.ts",
     "src/frontend/ui/tab-session-state.ts",
@@ -249,7 +249,6 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/kit/dialog.ts", // 杀会话的确认（原 `window.confirm`：真 app 里恒真值，等于没问）
     "src/frontend/ui/copy-table.ts", // 杀空 tmux / 杀会话的确认与回执（说到会话状态）住文案表
     "src/frontend/ui/kit/toast.ts",
-    "src/frontend/ui/kit/detail.ts", // 失败 toast 的［复制详情］：详情取自那次失败（`detailOf`）
     "src/frontend/ui/file-window.ts", // F78：远端会话「打开工作目录」（老 SFTP 面板删了，改开文件窗口）
     "src/frontend/ui/ipc/commands.ts",
     "src/frontend/ui/ipc/origin.ts", // 本机 / 远端各走哪条动作

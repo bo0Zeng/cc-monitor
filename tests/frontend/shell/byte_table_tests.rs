@@ -87,9 +87,40 @@ fn uname_answers_map_to_a_key_or_a_named_refusal() {
         "",
         "'uname' is not recognized as an internal command",
     ) {
-        Err(Refusal::OsUnknown { why }) => assert!(why.contains("is not recognized"), "{why}"),
+        Err(r @ Refusal::OsUnknown { .. }) => {
+            assert_eq!(
+                r.raw(),
+                Some("'uname' is not recognized as an internal command"),
+                "那台的原话交给复制详情"
+            );
+            let said = r.say("devbox");
+            assert!(!said.contains("is not recognized"), "原话不上句子：{said}");
+            assert!(
+                said.contains(copy_core::copy_static!("rsByteTable.key.said")),
+                "{said}"
+            );
+        }
         other => panic!("退出码 1 该是问不出 OS：{other:?}"),
     }
+    // 答了认不出的几段 ⇒ 句子只说「应答无法解析」，那几段进复制详情。
+    match key_from_uname(Some(0), "Linux x86_64 extra", "") {
+        Err(r @ Refusal::OsUnknown { .. }) => {
+            assert_eq!(r.raw(), Some("Linux x86_64 extra"));
+            let said = r.say("devbox");
+            assert!(!said.contains("extra"), "{said}");
+            assert!(
+                said.contains(copy_core::copy_static!("rsByteTable.key.unreadable")),
+                "{said}"
+            );
+        }
+        other => panic!("{other:?}"),
+    }
+    // 只答一段 ⇒ 问不出 arch，答的那一段进详情；什么都没答 ⇒ 没有原话。
+    match key_from_uname(Some(0), "Linux\n", "") {
+        Err(r @ Refusal::ArchUnknown { .. }) => assert_eq!(r.raw(), Some("Linux")),
+        other => panic!("{other:?}"),
+    }
+    assert_eq!(key_from_uname(Some(0), "", "").unwrap_err().raw(), None);
     // 没送退出码（连接被掐）≠ 0：不许读成「跑成了」。
     assert!(matches!(
         key_from_uname(None, "Linux x86_64", ""),
@@ -133,19 +164,21 @@ fn an_answer_that_is_not_utf8_is_not_parroted_as_mojibake() {
         let said = refusal.say("vmself");
         assert!(!said.contains('\u{FFFD}'), "界面那句里照抄了乱码：{said}");
         assert!(
-            said.contains(copy_core::copy_static!("rsByteTable.key.notUtf8")),
-            "那句话没说出「不是 UTF-8」：{said}"
+            said.contains(copy_core::copy_static!("rsByteTable.key.unreadable")),
+            "那句话没说出「应答无法解析」：{said}"
         );
         assert!(said.contains("vmself"), "{said}");
+        assert_eq!(refusal.raw(), Some(lossy.trim()), "回话原样进复制详情");
     }
-    // 正控：UTF-8 的回话（英文 Windows / 真 POSIX 的报错）照旧原样带出 —— 本件不许把它们也吞掉。
+    // 正控：UTF-8 的报错照旧说「应答报错」（不说成无法解析），原话进复制详情。
     match key_from_uname(Some(1), "", "'uname' is not recognized") {
-        Err(Refusal::OsUnknown { why }) => {
-            assert!(why.contains("'uname' is not recognized"), "{why}");
+        Err(r @ Refusal::OsUnknown { .. }) => {
+            let said = r.say("vmself");
             assert!(
-                !why.contains(copy_core::copy_static!("rsByteTable.key.notUtf8")),
-                "{why}"
+                said.contains(copy_core::copy_static!("rsByteTable.key.said")),
+                "{said}"
             );
+            assert_eq!(r.raw(), Some("'uname' is not recognized"));
         }
         other => panic!("{other:?}"),
     }
@@ -188,7 +221,10 @@ fn choose_answers_every_cell_of_table_a() {
         }
     }
     // 键问不出 ⇒ 原样交回（不走表）。
-    let os_unknown = Refusal::OsUnknown { why: "x".into() };
+    let os_unknown = Refusal::OsUnknown {
+        why: "x".into(),
+        raw: None,
+    };
     assert_eq!(choose(Err(os_unknown.clone())).unwrap_err(), os_unknown);
 }
 
@@ -202,9 +238,11 @@ fn every_refusal_names_the_machine_and_what_it_is() {
         },
         Refusal::OsUnknown {
             why: copy_core::copy_static!("rsByteTable.key.noAnswer").into(),
+            raw: Some("uname: not found".into()),
         },
         Refusal::ArchUnknown {
             why: copy_core::copy_static!("rsByteTable.key.noAnswer").into(),
+            raw: Some("Linux".into()),
         },
         Refusal::NotPromisedHere {
             os: "Windows".into(),
@@ -238,8 +276,10 @@ fn every_refusal_names_the_machine_and_what_it_is() {
                     assert!(s.contains(arch.as_str()), "本机那句要说出是哪种架构：{s}");
                 }
             }
-            Refusal::OsUnknown { why } | Refusal::ArchUnknown { why } => {
-                assert!(s.contains(why.as_str()), "{s}")
+            Refusal::OsUnknown { why, raw } | Refusal::ArchUnknown { why, raw } => {
+                assert!(s.contains(why.as_str()), "{s}");
+                let raw = raw.as_deref().unwrap_or_default();
+                assert!(!s.contains(raw), "原话不上句子：{s}");
             }
         }
         // 禁词表。
@@ -263,8 +303,8 @@ fn every_refusal_names_the_machine_and_what_it_is() {
             Refusal::UnsupportedMachine { os, arch } => {
                 ("unsupportedMachine", os.as_str(), arch.as_str(), "")
             }
-            Refusal::OsUnknown { why } => ("osUnknown", "", "", why.as_str()),
-            Refusal::ArchUnknown { why } => ("archUnknown", "", "", why.as_str()),
+            Refusal::OsUnknown { why, .. } => ("osUnknown", "", "", why.as_str()),
+            Refusal::ArchUnknown { why, .. } => ("archUnknown", "", "", why.as_str()),
             Refusal::NotPromisedHere {
                 os,
                 arch,

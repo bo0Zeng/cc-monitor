@@ -67,8 +67,14 @@ fn a_failed_upload_offers_to_retry_exactly_the_ones_that_failed() {
     b.finish(crate::transfer::DropOutcome {
         ok: 1,
         failed: vec![
-            ("f1.bin".into(), "磁盘满".into()),
-            ("f2.bin".into(), "磁盘满".into()),
+            (
+                "f1.bin".into(),
+                copy_core::copy_text("reason.io.full", &[]).into(),
+            ),
+            (
+                "f2.bin".into(),
+                copy_core::copy_text("reason.io.full", &[]).into(),
+            ),
         ],
         ..Default::default()
     });

@@ -49,7 +49,10 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
     policyAfter = null;
     vi.resetModules();
     toasted.length = 0;
-    vi.doMock("../../../../src/frontend/ui/kit/toast", () => ({ toast: (title: string, body: string) => toasted.push(`${title}|${body}`) }));
+    vi.doMock("../../../../src/frontend/ui/kit/toast", () => ({
+      toast: (title: string, body: string) => toasted.push(`${title}|${body}`),
+      failToast: (title: string, e: unknown, o?: { fact?: string }) => toasted.push(`${title}|${String(e)}|${o?.fact ?? ""}`),
+    }));
     vi.doMock("@tauri-apps/plugin-opener", () => ({ openPath: vi.fn() }));
     vi.doMock("../../../../src/comms/inward/chan", () => ({
       ChanError: class ChanError extends Error {},
@@ -449,7 +452,8 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
     openPath.mockRejectedValueOnce(new Error("没有关联程序"));
     clickText(el, copyText("machineAliases.rc.open"));
     await flush();
-    expect(toasted).toEqual([`${copyText("machineAliases.openRc.failed")}|${copyText("machineAliases.openRc.failedBody", { e: "Error: 没有关联程序", path: "/h/rc-a" })}`]);
+    // 交给失败 toast：那次失败（带详情 ⇒ 换成那一句）＋ 灰字一格事实（那份的路径）。
+    expect(toasted).toEqual([`${copyText("machineAliases.openRc.failed")}|Error: 没有关联程序|/h/rc-a`]);
   });
 
   it("远端卡是同一个组件：每一发都带那台的 origin，只本机的那几格不挂", async () => {

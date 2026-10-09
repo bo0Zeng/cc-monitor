@@ -22,7 +22,7 @@ import { confirmDialog, type ConfirmFn } from "./kit/dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { askOf, FOLLOW, type AccountAsk } from "./launch-account";
 import { resumeLocalSession } from "./local-resume";
-import { toast } from "./kit/toast";
+import { toast, failToast } from "./kit/toast";
 import { runRemoteResume } from "./remote-launch-run";
 // 本机 = `LOCAL_ORIGIN`（`"<local>"`，与 Rust `origin.rs::LOCAL` 跨语言对拍）；
 // 「是不是本机」只经 `ipc/origin.ts` 判。`accounts.ts` 那个同名的 `"__local__"` 已退役 —— 全仓只剩一个本机表示。
@@ -44,9 +44,8 @@ import { startInTmuxThenAttach } from "./tmux-resume";
 // 标签页里的会话都是流跟的那一家（记录树那一家）。
 import type { Tab } from "./tab-model";
 import { copyText } from "./copy-table";
-import { decodeKilled, type KillNote, saidOfControl } from "./tmux-control";
+import { decodeKilled, type KillNote } from "./tmux-control";
 import { offerResyncRetry, resyncMachines, resyncMachinesSaid } from "./resync";
-import { detailOf } from "./kit/detail";
 
 /**
  * auto-e2e F-E0:DEV-only 断言出口。同 e2e-probe.ts 的 `log()`——把状态转移写成可 grep 的
@@ -102,7 +101,7 @@ export class TabSessionActions {
           : {}),
       });
     } catch (e) {
-      toast(copyText("tabSessionActions.openInWindow.failed"), String(e), { detail: detailOf(e) });
+      failToast(copyText("tabSessionActions.openInWindow.failed"), e);
     }
   }
 
@@ -341,7 +340,7 @@ export class TabSessionActions {
       try {
         [r] = await callStop(origin, [sid]);
       } catch (e) {
-        toast(copyText("tabSessionActions.kill.failed", { title }), saidOfControl(e), { detail: detailOf(e) });
+        failToast(copyText("tabSessionActions.kill.failed", { title }), e);
         return;
       }
       if (r.outcome !== "done") {

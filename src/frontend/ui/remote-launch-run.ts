@@ -21,7 +21,7 @@ import {
 import { machineModels } from "./account-prefs";
 import { buildCliRenderRequest } from "./launch-cli-wire.ts";
 import { renderCli } from "./launch-render";
-import { toast } from "./kit/toast";
+import { toast, failToast } from "./kit/toast";
 import { detailOf } from "./kit/detail";
 import { copyText } from "./copy-table";
 import {
@@ -63,7 +63,7 @@ async function renderOrRefuse(
         u,
         choose: (account) => again(account) as Promise<unknown>,
       });
-    else toast(failedTitle, String(err), { detail: detailOf(err) });
+    else failToast(failedTitle, err);
     return null;
   }
   if (mods.preflight && !(await mods.preflight(r.account?.configDir)))
@@ -140,7 +140,8 @@ async function invokeLaunchOrCopyFallback(
     const where = isLocalOrigin(origin)
       ? copyText("remoteLaunchRun.copyFallback.runLocal")
       : copyText("remoteLaunchRun.copyFallback.runRemote", { machine: origin });
-    toast(headline, `${String(err)}\n${where}\n${cmd}`, { detail: detailOf(err), level: "info" });
+    // 标题是「已复制 / 照这一行手动跑」（不是那次失败那一句）；灰字只放那一行与在哪跑，失败原话进复制详情。
+    toast(headline, `${where}\n${cmd}`, { detail: detailOf(err), level: "info" });
     return "unsent";
   }
 }
@@ -200,7 +201,7 @@ export async function runRemoteAttach(
   try {
     cmd = await renderLaunchCommand(origin, planAttach(agent, name));
   } catch (err) {
-    toast(copyText("remoteLaunchRun.attach.buildFailed"), String(err), { detail: detailOf(err) });
+    failToast(copyText("remoteLaunchRun.attach.buildFailed"), err);
     return;
   }
   await invokeLaunchOrCopyFallback(

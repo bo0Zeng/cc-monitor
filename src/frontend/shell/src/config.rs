@@ -49,13 +49,29 @@ use std::sync::Mutex;
 
 #[tauri::command]
 pub fn load_config() -> Result<Value, Said> {
-    let path = resolve_config_path().ok_or_else(|| "no home dir".to_string())?;
-    if !path.exists() {
-        return Ok(default_config());
-    }
-    let raw =
-        std::fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
-    Ok(serde_json::from_str(&raw).map_err(|e| format!("parse {}: {e}", path.display()))?)
+    let r: Result<Value, Said> = (move || -> Result<Value, Said> {
+        let path =
+            resolve_config_path().ok_or_else(|| copy_text("rsShellCmd.config.noHome", &[]))?;
+        if !path.exists() {
+            return Ok(default_config());
+        }
+        let raw = std::fs::read_to_string(&path).map_err(|e| {
+            Said::with_raw(
+                copy_text(
+                    "rsShellCmd.config.readFailed",
+                    &[("why", &copy_core::reason::io_reason(e.kind()))],
+                ),
+                format!("{}\n{e}", path.display()),
+            )
+        })?;
+        Ok(serde_json::from_str(&raw).map_err(|e| {
+            Said::with_raw(
+                copy_text("rsShellCmd.config.unparsable", &[]),
+                format!("{}\n{e}", path.display()),
+            )
+        })?)
+    })();
+    r.map_err(|s| s.named("load_config"))
 }
 
 /// 一条配置补丁。`path[0]` 是顶层键，其后是逐层子键。
@@ -203,10 +219,13 @@ static WRITE_LOCK: Mutex<()> = Mutex::new(());
 /// 前端写配置的唯一口：交一串 [`ConfigEdit`]，这里合并进盘上那份。
 #[tauri::command]
 pub fn patch_config(edits: Vec<ConfigEdit>) -> Result<(), Said> {
-    let path = resolve_config_path().ok_or_else(|| "no home dir".to_string())?;
-    Ok(patch_config_at(&path, &edits)
-        .map(|_| ())
-        .map_err(|e| e.to_string())?)
+    let r: Result<(), Said> = (move || -> Result<(), Said> {
+        let path = resolve_config_path().ok_or_else(|| "no home dir".to_string())?;
+        Ok(patch_config_at(&path, &edits)
+            .map(|_| ())
+            .map_err(|e| e.to_string())?)
+    })();
+    r.map_err(|s| s.named("patch_config"))
 }
 
 /// 🔴 **`config.json` 唯一的写函数。** 锁内现读 → 逐条应用 → 带 pid 的临时件 → 原子替换。回逐条结局；一条都没改动 ⇒ 不写。
@@ -372,12 +391,16 @@ impl MachineFault {
 /// 读盘那一下不落在 IPC 派发线程上（`spawn_blocking`）。
 #[tauri::command]
 pub async fn machine_table_try(edits: Vec<ConfigEdit>) -> Result<Option<MachineFault>, Said> {
-    Ok(tauri::async_runtime::spawn_blocking(move || {
-        let path = resolve_config_path().ok_or_else(|| "no home dir".to_string())?;
-        machine_table_try_at(&path, &edits)
-    })
-    .await
-    .map_err(|e| e.to_string())??)
+    let r: Result<Option<MachineFault>, Said> = async move {
+        Ok(tauri::async_runtime::spawn_blocking(move || {
+            let path = resolve_config_path().ok_or_else(|| "no home dir".to_string())?;
+            machine_table_try_at(&path, &edits)
+        })
+        .await
+        .map_err(|e| e.to_string())??)
+    }
+    .await;
+    r.map_err(|s| s.named("machine_table_try"))
 }
 
 /// [`machine_table_try`] 的本体（判据喂临时路径）。认不出元素 / 补丁不成形 ⇒ 当作「这一道没话说」，留给写口去拒。
@@ -597,14 +620,18 @@ fn default_config() -> Value {
 /// cc-bus 两块 · MCP 推 / 拉面板都用它）：读的是 monitor 自己的配置 —— 从 `mcp.rs` 挪来（MCP 读写进了那台后端，`mcp.rs` 删了）。
 #[tauri::command]
 pub async fn list_remote_mcp_origins() -> Result<Vec<String>, Said> {
-    Ok(tokio::task::spawn_blocking(|| {
-        crate::load_remote_configs()
-            .iter()
-            .map(|c| c.origin_label())
-            .collect()
-    })
-    .await
-    .map_err(|e| format!("spawn_blocking: {e}"))?)
+    let r: Result<Vec<String>, Said> = async move {
+        Ok(tokio::task::spawn_blocking(|| {
+            crate::load_remote_configs()
+                .iter()
+                .map(|c| c.origin_label())
+                .collect()
+        })
+        .await
+        .map_err(Said::crashed)?)
+    }
+    .await;
+    r.map_err(|s| s.named("list_remote_mcp_origins"))
 }
 
 // ═══════════════════════════════════════════════════════════════════════

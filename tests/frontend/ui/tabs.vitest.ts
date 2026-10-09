@@ -160,7 +160,7 @@ vi.mock("../../../src/frontend/ui/cards", () => ({
 }));
 vi.mock("../../../src/frontend/ui/cards/subagent", () => ({ isAgentTool: () => false }));
 vi.mock("../../../src/frontend/ui/tasks-panel", () => ({ fetchSessionTasks: vi.fn().mockResolvedValue([]) }));
-vi.mock("../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn(), undoToast: vi.fn() }));
+vi.mock("../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn(), undoToast: vi.fn(), failToast: vi.fn() }));
 // Batch14-F41：resumeTab 远端分支改走一键拉起 runner；behavior 提供 launcher 配置。
 vi.mock("../../../src/frontend/ui/remote-launch-run", () => ({
   runRemoteResume: vi.fn().mockResolvedValue(undefined),
@@ -202,7 +202,7 @@ import {
 } from "../../test-support/chan-fake";
 import type { SessionFacts } from "../../../src/frontend/ui/session-reads";
 import { invalidateAccountsCache } from "../../../src/frontend/ui/account-reads";
-import { toast as showActionFailureToast } from "../../../src/frontend/ui/kit/toast";
+import { failToast, toast as showActionFailureToast } from "../../../src/frontend/ui/kit/toast";
 import { __setHostOsForTests, type HostOs } from "../../../src/frontend/ui/settings/host-os";
 import {
   runRemoteResume,
@@ -1295,9 +1295,12 @@ describe("单个「在 tmux 里 Resume」交那台（与批量同一条，只差
     vi.mocked(callStart).mockResolvedValue([reply("failed", "start_failed", "proj-cc", "ccm: 起不来")] as never);
     await home(tm).actions.resumeTabTmux("r1", undefined, true);
     vi.mocked(callStart).mockRejectedValue(new Error("通道不在"));
+    vi.mocked(failToast).mockClear();
     await home(tm).actions.resumeTabTmux("r1", undefined, true);
     expect(runRemoteAttach).not.toHaveBeenCalled();
-    expect(vi.mocked(showActionFailureToast).mock.calls.length).toBe(3);
+    expect(vi.mocked(showActionFailureToast).mock.calls.length).toBe(2);
+    // 问不到那台：那次失败交给失败 toast（带详情 ⇒ 换成那一句；不带 ⇒ 标题留「没起」那句）。
+    expect(vi.mocked(failToast).mock.calls.map((c) => c[0])).toEqual([copyText("remoteLaunchRun.inPlace.notRun")]);
   });
 
   it("跟随：交 follow（号与模型那台判，单个与批量同一条）；那台说选不了 ⇒ 不接、给显式选择，点了点名再交", async () => {
@@ -2346,14 +2349,19 @@ describe("：↗ 远端那一格按顺序问三方", () => {
     expect(popText()).toContain(copyText("front.body.redialFailed"));
     expect(popButtons()).toEqual([copyText("front.act.reconnect")]);
 
-    // 部署失败：同一个浮层里红着说，带原文可复制；［重试］再更新一次。
+    // 部署失败：同一个浮层里红着说；壳带回的复制详情挂在［复制详情］上（复制的是那份详情，不是那一句）；［重试］再更新一次。
     vi.mocked(updateBackendOf).mockReset();
-    vi.mocked(updateBackendOf).mockRejectedValue(new Error("上传失败"));
+    vi.mocked(updateBackendOf).mockRejectedValue(Object.assign(new Error("上传失败"), { detail: "码：refused" }));
     await clickUpdate();
     expect(pop()!.firstElementChild!.textContent).toBe(copyText("front.title.updateFailed", { machine: "devbox" }));
     expect(pop()!.dataset.shade).toBe("red");
     expect(popText()).toContain("上传失败");
     expect(popButtons()).toEqual([copyText("front.act.retry"), copyText("detail.act.copy")]);
+    const copied = vi.fn(() => Promise.resolve());
+    Object.defineProperty(navigator, "clipboard", { value: { writeText: copied }, configurable: true });
+    [...pop()!.querySelectorAll("button")].find((b) => b.textContent === copyText("detail.act.copy"))!.click();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(copied.mock.calls.map((c) => (c as unknown[])[0])).toEqual([`${copyText("front.title.updateFailed", { machine: "devbox" })}\n码：refused`]);
     [...pop()!.querySelectorAll("button")].find((b) => b.textContent === copyText("front.act.retry"))!.click();
     for (let i = 0; i < 4; i++) await new Promise((r) => setTimeout(r, 0));
     expect(vi.mocked(updateBackendOf), "失败态的［重试］是再更新一次").toHaveBeenCalledTimes(2);

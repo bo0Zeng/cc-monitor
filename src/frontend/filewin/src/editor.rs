@@ -451,6 +451,8 @@ pub struct Pane {
     base_sha256: String,
     /// 上一次存盘的结局（`None` = 还没存过）。
     pub last_save: Option<Result<(), String>>,
+    /// 上一次存失败那一条的复制详情（首行之外；空 ⇒ 不出按钮）。随 [`Self::last_save`] 一起写。
+    pub save_detail: String,
     /// 上一次存盘撞上了「盘上那份在你打开之后被改过了」（`stale`）⇒ 编辑面摆两颗按钮让人选
     /// （仍然覆盖 · 丢掉我的改动重新打开）。存成 / 重开之后清掉。
     pub stale: bool,
@@ -529,6 +531,7 @@ impl Pane {
             text,
             base_sha256: sha256,
             last_save: None,
+            save_detail: String::new(),
             stale: false,
             big: Default::default(),
             raw_path: None,
@@ -569,6 +572,7 @@ impl Pane {
             None => Some(copy_text("rsFilewinEditor.saved.noDigest", &[])),
         };
         self.last_save = Some(Ok(()));
+        self.save_detail.clear();
         self.stale = false;
         self.saved_at = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -579,6 +583,7 @@ impl Pane {
     /// 存盘撞上 `stale` ⇒ 同 [`Self::mark_failed`]（字一个不动、基准不动），外加摆出那两颗按钮。
     pub fn mark_stale(&mut self, why: String) {
         self.last_save = Some(Err(stale_notice(&why)));
+        self.save_detail.clear();
         self.stale = true;
     }
 
@@ -587,7 +592,13 @@ impl Pane {
     /// 用户敲的那些东西是他**唯一的一份**（远端那份还是旧的）。
     /// 老面板注释里原话是「失败传播 Err(前端保留编辑框内容)」，同一条。
     pub fn mark_failed(&mut self, why: String) {
-        self.last_save = Some(Err(why));
+        self.mark_failed_with(why.into());
+    }
+
+    /// 同 [`Self::mark_failed`]，连复制详情一起记下（保存失败那一条的［复制详情］用）。
+    pub fn mark_failed_with(&mut self, f: super::source::Failed) {
+        self.last_save = Some(Err(f.said));
+        self.save_detail = f.detail;
     }
 
     /// 这一份还差多少到上限（给界面画一句「还能写 N」）。
@@ -653,8 +664,11 @@ pub enum Arrived {
     },
     /// 后端说它不可编辑（那句话由 [`not_text_notice`] 给）。
     NotText { path: String },
-    /// 下层那句原话（连不上 / 没权限 …）。
-    Failed { path: String, why: String },
+    /// 下层那句话（连不上 / 没权限 …）与它的复制详情。
+    Failed {
+        path: String,
+        why: super::source::Failed,
+    },
 }
 
 #[derive(Default)]
@@ -791,7 +805,7 @@ pub async fn read_text(
     line: &super::source::Line,
     origin: &super::source::Origin,
     path: &str,
-) -> Result<Option<Opened>, String> {
+) -> Result<Option<Opened>, super::source::Failed> {
     read_text_at(line, origin, &super::source::RemotePath::plain(path)).await
 }
 
@@ -800,7 +814,7 @@ pub async fn read_text_at(
     line: &super::source::Line,
     origin: &super::source::Origin,
     at: &super::source::RemotePath,
-) -> Result<Option<Opened>, String> {
+) -> Result<Option<Opened>, super::source::Failed> {
     let args = serde_json::json!({ "path": at.wire(), "max_bytes": MAX_EDIT_BYTES });
     opened_from_reply(
         super::source::ask_coded(line, origin, CMD_READ_TEXT, &args, READ_BUDGET).await,
@@ -820,7 +834,7 @@ pub struct Opened {
 /// 立起一个存不回去的编辑面比不打开更糟 —— 那句话说清是后端太旧。
 pub fn opened_from_reply(
     r: Result<serde_json::Value, super::source::Failed>,
-) -> Result<Option<Opened>, String> {
+) -> Result<Option<Opened>, super::source::Failed> {
     let sha = r
         .as_ref()
         .ok()
@@ -830,9 +844,9 @@ pub fn opened_from_reply(
     let Some(text) = text_from_reply(r)? else {
         return Ok(None);
     };
-    let sha256 = sha
-        .filter(|s| is_sha256_hex(s))
-        .ok_or_else(|| copy_text("rsFilewinEditor.reply.noDigest", &[]))?;
+    let sha256 = sha.filter(|s| is_sha256_hex(s)).ok_or_else(|| {
+        super::source::Failed::from(copy_text("rsFilewinEditor.reply.noDigest", &[]))
+    })?;
     Ok(Some(Opened { text, sha256 }))
 }
 
@@ -845,15 +859,15 @@ pub fn opened_from_reply(
 /// - 其余一律 `Err`（那句话原样）。
 pub fn text_from_reply(
     r: Result<serde_json::Value, super::source::Failed>,
-) -> Result<Option<String>, String> {
+) -> Result<Option<String>, super::source::Failed> {
     match r {
         Ok(d) => d
             .get("text")
             .and_then(serde_json::Value::as_str)
             .map(|t| Some(t.to_string()))
-            .ok_or_else(|| copy_text("rsFilewinSource.said.badReply", &[])),
+            .ok_or_else(|| copy_text("rsFilewinSource.said.badReply", &[]).into()),
         Err(f) if matches!(f.code.as_deref(), Some("too_large" | "not_text")) => Ok(None),
-        Err(f) => Err(f.said),
+        Err(f) => Err(f),
     }
 }
 
@@ -895,7 +909,7 @@ pub async fn write_text_at(
     expect_sha256: &str,
 ) -> Result<Saved, SaveError> {
     if content.len() > MAX_EDIT_BYTES {
-        return Err(SaveError::Failed(over_cap_notice(content.len())));
+        return Err(SaveError::Failed(over_cap_notice(content.len()).into()));
     }
     let budget = super::writeops::WRITE_BUDGET;
     let room = "0".repeat(SHA256_HEX_LEN);
@@ -910,7 +924,9 @@ pub async fn write_text_at(
             let args = stage_args(&key, seq as u64, chunk);
             super::source::ask(line, origin, CMD_STAGE_CHUNK, &args, budget)
                 .await
-                .map_err(|why| SaveError::Failed(chunk_failed_notice(seq, chunks.len(), &why)))?;
+                .map_err(|why| {
+                    SaveError::Failed(chunk_failed_notice(seq, chunks.len(), &why).into())
+                })?;
         }
         let args = commit_args_at(at, &key, chunks.len(), content.len(), expect_sha256);
         super::source::ask_coded(line, origin, CMD_COMMIT_TEXT, &args, budget).await
@@ -930,7 +946,8 @@ pub struct Saved {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SaveError {
     Stale(String),
-    Failed(String),
+    /// 别的失败：那一句 ＋ 复制详情（对端拒了 ⇒ 那台写的；通道没走通 ⇒ 窗口写的；这一侧拦下的 ⇒ 空）。
+    Failed(super::source::Failed),
 }
 
 /// 存那一趟的结局 → [`Saved`] / [`SaveError`]。**纯函数**（判得动）。
@@ -951,7 +968,7 @@ pub fn saved_from_reply(
                 .map(str::to_string),
         }),
         Err(f) if f.code.as_deref() == Some("stale") => Err(SaveError::Stale(f.said)),
-        Err(f) => Err(SaveError::Failed(f.said)),
+        Err(f) => Err(SaveError::Failed(f)),
     }
 }
 
@@ -985,16 +1002,22 @@ pub async fn overwrite_anyway_at(
     let now = match read_text_at(line, origin, at).await {
         Ok(Some(o)) => o.sha256,
         Ok(None) => {
-            return Err(SaveError::Failed(copy_text(
-                "rsFilewinEditor.overwrite.notText",
-                &[("why", &not_text_notice(path))],
-            )))
+            return Err(SaveError::Failed(
+                copy_text(
+                    "rsFilewinEditor.overwrite.notText",
+                    &[("why", &not_text_notice(path))],
+                )
+                .into(),
+            ))
         }
         Err(why) => {
-            return Err(SaveError::Failed(copy_text(
-                "rsFilewinEditor.overwrite.readFailed",
-                &[("why", &why)],
-            )))
+            return Err(SaveError::Failed(
+                copy_text(
+                    "rsFilewinEditor.overwrite.readFailed",
+                    &[("why", &why.said)],
+                )
+                .into(),
+            ))
         }
     };
     write_text_at(line, origin, at, content, &now).await

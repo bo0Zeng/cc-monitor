@@ -11,7 +11,7 @@
 import { button } from "./button";
 import { icon, type IconName } from "./icon";
 import { copyText } from "../copy-table";
-import { copyDetailButton, detailBody } from "./detail";
+import { copyDetailButton, detailBody, detailOf } from "./detail";
 import s from "./toast.module.css";
 
 export type ToastLevel = "success" | "info" | "warn" | "error";
@@ -207,6 +207,27 @@ function pause(t: Live, on: boolean): void {
  * 出一条 toast。`title` 一句话（≤40 字）、`detail` 一行灰字（可空）。
  * 返回收起它的函数（做了动作之外的路要提前收时用）。
  */
+export interface FailToastOptions extends Omit<ToastOptions, "detail"> {
+  /** 灰字那一格事实（对象 / 机器）；没有就不放。 */
+  fact?: string;
+}
+
+/**
+ * 一次失败的 toast（条带 §5.3）。全产品「拿一次失败出 toast」只这一口：
+ * - 失败带复制详情（壳 / 后端 / 通道写好了那一句）⇒ 标题就是那一句，灰字只放一格事实，出［复制详情］；
+ * - 不带（JS 自己抛的）⇒ 标题留界面那句（`title`：哪件事没成），无灰字、无按钮；原文进控制台日志，不上屏。
+ */
+export function failToast(title: string, e: unknown, opts: FailToastOptions = {}): () => void {
+  const { fact, ...rest } = opts;
+  const detail = detailOf(e);
+  if (detail.trim() === "") {
+    console.warn(title, e);
+    return toast(title, "", rest);
+  }
+  const said = e instanceof Error && e.message.trim() !== "" ? e.message : title;
+  return toast(said, fact ?? "", { ...rest, detail });
+}
+
 export function toast(title: string, detail: string, opts: ToastOptions = {}): () => void {
   const level = opts.level ?? "error";
   // 带动作 · 带逐条明细的各自一条（明细要原样留在自己那条记录上）。

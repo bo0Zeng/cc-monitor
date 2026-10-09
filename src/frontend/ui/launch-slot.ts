@@ -17,14 +17,13 @@ import { icon } from "./kit/icon";
 import { spinner } from "./kit/progress";
 import { statusDot } from "./kit/status-dot";
 import { confirmDialog, type ConfirmFn } from "./kit/dialog";
-import { toast } from "./kit/toast";
+import { toast, failToast } from "./kit/toast";
 import { lastWords, watchUntilArrived, type SlotSpec } from "./launch-arrival";
 import { listTerminals, previewText } from "./terminal-reads";
 import { openPanePreview } from "./views/pane-preview";
 import { runRemoteAttach } from "./remote-launch-run";
 import { killSession } from "./tmux-control";
 import s from "./launch-slot.module.css";
-import { detailOf } from "./kit/detail";
 
 /** 多久没报到算「未报到」（到点只换样子，不放弃等）。 */
 export const SLOT_MISS_MS = 20_000;
@@ -309,7 +308,7 @@ export class LaunchSlots {
     try {
       await this.acts.kill(sl.spec.origin, name);
     } catch (e) {
-      toast(copyText("tabSessionActions.kill.failed", { title: name }), e instanceof Error ? e.message : String(e), { detail: detailOf(e) });
+      failToast(copyText("tabSessionActions.kill.failed", { title: name }), e);
       return;
     }
     toast(copyText("sessionState.kill.done", { title: name }), "", { level: "success" });

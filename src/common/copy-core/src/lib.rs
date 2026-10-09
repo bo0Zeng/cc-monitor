@@ -28,6 +28,7 @@ mod duration;
 pub use civil::civil_from_days;
 pub use duration::{format_duration, format_elapsed};
 pub mod detail;
+pub mod reason;
 
 fn entries() -> &'static serde_json::Map<String, serde_json::Value> {
     static TABLE: OnceLock<serde_json::Map<String, serde_json::Value>> = OnceLock::new();

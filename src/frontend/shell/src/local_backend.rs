@@ -1207,7 +1207,9 @@ pub fn place_local_program(
     make_executable: &dyn Fn(&Path) -> Result<(), String>,
     // 建落点目录（`~/.cc-monitor/bin` 一族）也是宿主知识：建的那一下就只给本人（`platform::fs::ensure_private_dir`）。
     ensure_dir: &dyn Fn(&Path) -> Result<(), String>,
-) -> Result<PathBuf, String> {
+) -> Result<PathBuf, std::io::Error> {
+    // 错交回 `io::Error`：调用方按它的种类取原因词（`copy_core::reason`），原话（带路径）进复制详情。
+    // 宿主注入那两样只回一句话 ⇒ 种类判不出（`Other`）。
     let dest = dir.join(file);
     sweep_moved_aside(dir, file);
     if let Ok(m) = std::fs::metadata(&dest) {
@@ -1218,25 +1220,15 @@ pub fn place_local_program(
             return Ok(dest);
         }
     }
-    ensure_dir(dir)?;
+    ensure_dir(dir).map_err(std::io::Error::other)?;
     let tmp = dir.join(format!(".{file}.{}.partial", std::process::id()));
     sweep_stale_partials(dir, file);
-    std::fs::write(&tmp, bytes).map_err(|e| {
-        copy_text(
-            "rsLocalBackend.extract.writeFailed",
-            &[("tmp", &(tmp.display()).to_string()), ("e", &e.to_string())],
-        )
-    })?;
-    make_executable(&tmp)?;
+    std::fs::write(&tmp, bytes)
+        .map_err(|e| std::io::Error::new(e.kind(), format!("{}: {e}", tmp.display())))?;
+    make_executable(&tmp).map_err(std::io::Error::other)?;
     rename_into_place(dir, file, &tmp, &dest).map_err(|e| {
         let _ = std::fs::remove_file(&tmp);
-        copy_text(
-            "rsLocalBackend.extract.renameFailed",
-            &[
-                ("dest", &(dest.display()).to_string()),
-                ("e", &e.to_string()),
-            ],
-        )
+        std::io::Error::new(e.kind(), format!("{}: {e}", dest.display()))
     })?;
     Ok(dest)
 }

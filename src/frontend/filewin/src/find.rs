@@ -730,6 +730,8 @@ pub struct Shown {
     pub indexed_root: Option<String>,
     /// 出了事那句话。**画在窗口上**，不是 `tracing`。
     pub notice: Option<String>,
+    /// 那一句的复制详情（首行之外；空 ⇒ 不出按钮）。随 [`Self::notice`] 一起写。
+    pub notice_detail: String,
 }
 
 /// 每块板子一个搜索框名（同一进程里不重）。
@@ -835,6 +837,7 @@ impl SearchBoard {
         s.asked = asked.clone();
         s.outcome = None;
         s.notice = None;
+        s.notice_detail.clear();
     }
 
     /// 眼下这一问的号（翻页用同一个号）。
@@ -895,7 +898,10 @@ impl SearchBoard {
     /// 翻页失败那一行点了「重试」：放开闩，下一趟翻页照常发。
     pub fn retry_more(&self) {
         self.page_failed.store(false, Ordering::SeqCst);
-        self.inner.lock().unwrap().notice = None;
+        let mut s = self.inner.lock().unwrap();
+        s.notice = None;
+        s.notice_detail.clear();
+        drop(s);
     }
 
     /// 往下翻失败过（这一问不再自动往下翻）。
@@ -905,7 +911,10 @@ impl SearchBoard {
 
     /// 摆一句话上去（不经网络的那几档失败走这条）。
     pub fn say(&self, notice: &str) {
-        self.inner.lock().unwrap().notice = Some(notice.to_string());
+        let mut s = self.inner.lock().unwrap();
+        s.notice = Some(notice.to_string());
+        s.notice_detail.clear();
+        drop(s);
         self.rounds.fetch_add(1, Ordering::SeqCst);
         self.poke();
     }
@@ -979,6 +988,7 @@ pub fn store_if_current(b: &SearchBoard, mine: u64, asked: &Asked, round: Round)
             s.status = Some(st);
         }
         s.notice = round.notice;
+        s.notice_detail = round.notice_detail;
     }
     b.rounds.fetch_add(1, Ordering::SeqCst);
     b.poke();
@@ -1008,6 +1018,7 @@ pub fn append_if_current(b: &SearchBoard, mine: u64, page: Result<FindOutcome, S
         Err(e) => {
             b.page_failed.store(true, Ordering::SeqCst);
             s.notice = Some(e);
+            s.notice_detail.clear();
             true
         }
     };
@@ -1025,6 +1036,16 @@ pub struct Round {
     pub status: Option<IndexStatus>,
     pub outcome: Option<FindOutcome>,
     pub notice: Option<String>,
+    /// 那一句的复制详情（`files-find` 没成时才有）。
+    pub notice_detail: String,
+}
+
+impl Round {
+    /// 出了事：那一句 ＋ 复制详情一起记下。
+    fn fail(&mut self, f: super::source::Failed) {
+        self.notice = Some(f.said);
+        self.notice_detail = f.detail;
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -1078,13 +1099,13 @@ async fn ask_find(
     line: &Line,
     origin: &Origin,
     args: &Value,
-) -> Result<Option<FindOutcome>, String> {
+) -> Result<Option<FindOutcome>, super::source::Failed> {
     match super::source::ask_coded(line, origin, CMD_FIND, args, call_timeout()).await {
-        Ok(v) => decode_find(&v)
-            .map(Some)
-            .map_err(|e| copy_text("rsFilewinFind.round.findFailed", &[("e", &e.to_string())])),
+        Ok(v) => decode_find(&v).map(Some).map_err(|e| {
+            copy_text("rsFilewinFind.round.findFailed", &[("e", &e.to_string())]).into()
+        }),
         Err(f) if f.code.as_deref() == Some("superseded") => Ok(None),
-        Err(f) => Err(f.said),
+        Err(f) => Err(f),
     }
 }
 
@@ -1146,8 +1167,8 @@ async fn one_round(
         Ok(Some(o)) => o,
         // 被更新的一趟顶掉了：这一份不落（号也已经对不上）。
         Ok(None) => return round,
-        Err(e) => {
-            round.notice = Some(e);
+        Err(f) => {
+            round.fail(f);
             return round;
         }
     };
@@ -1187,8 +1208,8 @@ async fn one_round(
                 match found {
                     Ok(Some(o)) => round.outcome = Some(o),
                     Ok(None) => return round,
-                    Err(e) => {
-                        round.notice = Some(e);
+                    Err(f) => {
+                        round.fail(f);
                         round.outcome = Some(outcome);
                     }
                 }
@@ -1229,7 +1250,7 @@ pub async fn fetch_more(
         Ok(Some(o)) => Ok(o),
         // 被顶掉了 ⇒ 号也已经换了，下面那一步会丢掉它。
         Ok(None) => Err(String::new()),
-        Err(e) => Err(e),
+        Err(f) => Err(f.said),
     };
     append_if_current(&board, mine, page);
 }
@@ -1242,22 +1263,26 @@ impl SearchBoard {
     /// 搜索结果顶上那一条状态行（`--bg-2`，28）：左「{起点} 以下 · n 个」＋ 范围下拉；右「文件清单 · 3m 前」＋「刷新」。
     /// 首建那一趟：左段换成首建那一句 ＋ 转圈。出了错（这一问没答案）：换成出错条 ＋「重试」。
     pub fn status_ui(&self, ui: &mut egui::Ui, machine: &str, whole: bool) -> Option<SearchAction> {
-        let (outcome_head, status, notice) = {
+        let (outcome_head, status, notice, notice_detail) = {
             let g = self.inner.lock().unwrap();
             (
                 g.outcome.as_ref().map(FindOutcome::clone_head),
                 g.status.clone(),
                 g.notice.clone().filter(|n| !n.is_empty()),
+                g.notice_detail.clone(),
             )
         };
         let mut act = None;
         if outcome_head.is_none() && self.first_build().is_none() {
             if let Some(n) = notice {
-                if super::kit::banner(
+                let id = ui.id().with("find-fail-detail");
+                if super::kit::failure_banner(
                     ui,
                     super::kit::Tone::Error,
                     &n,
                     &[copy_text("rsFilewinFind.action.retry", &[])],
+                    &notice_detail,
+                    id,
                 )
                 .is_some()
                 {

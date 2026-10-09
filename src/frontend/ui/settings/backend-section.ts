@@ -44,7 +44,7 @@ import { askLocalCcm } from "./machine-aliases";
 /** 起/停之后轮询状态的次数与间隔 —— 命令是「发出去就返回」的，不轮询看到的是操作前的状态。 */
 const SETTLE_TRIES = 30;
 const SETTLE_INTERVAL_MS = 100;
-import { toast } from "../kit/toast";
+import { toast, failToast } from "../kit/toast";
 import { resync, resyncSaid } from "../resync";
 import { emit } from "@tauri-apps/api/event";
 import { RESYNC_DONE_EVENT } from "./events";
@@ -472,7 +472,7 @@ export class BackendSection {
       toast(copyText("backend.resync.doneTitle"), resyncSaid(r), { level: "info" });
       void emit(RESYNC_DONE_EVENT, { origin }); // ㉟①：主窗口标出这台上记录没了的固定条
     } catch (e) {
-      toast(copyText("backend.resync.failed"), e instanceof Error ? e.message : String(e), { detail: detailOf(e) });
+      failToast(copyText("backend.resync.failed"), e);
     } finally {
       btn.disabled = false;
     }
@@ -708,7 +708,7 @@ export class BackendSection {
       }
       if (what !== "stop") console.info(`[P2s] ${origin} start: ${await commands.backend_start({ origin })}`);
     } catch (e) {
-      toast(what === "stop" ? copyText("backend.stop.failed") : copyText("backend.start.failed"), String(e), { detail: detailOf(e) });
+      failToast(what === "stop" ? copyText("backend.stop.failed") : copyText("backend.start.failed"), e);
     }
     await this.settleStatus(origin, what !== "stop");
     for (const b of btns) b.disabled = false;
@@ -732,7 +732,7 @@ export class BackendSection {
       void this.paintStatus(origin);
       return true;
     } catch (e) {
-      toast(copyText("backend.policy.saveFailed"), e instanceof Error ? e.message : String(e), { detail: detailOf(e) });
+      failToast(copyText("backend.policy.saveFailed"), e);
       return false;
     }
   }

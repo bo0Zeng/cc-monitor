@@ -588,6 +588,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     said: NONE,
     stamp: NONE,
     truncate_raw: NONE,
+    // 下层 IO 错 → 原因词（`reason` 模块）：后端 · 壳写句子时取词，TS 侧不碰 IO 错，没有孪生。
+    io_reason: NONE,
   },
   "creds-core": {
     // monitor 数据目录的规则搬进这里（远端常驻后端按同一份推默认路径）；TS 侧没有孪生。
@@ -796,6 +798,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     key_from_uname: NONE,
     key_of: NONE,
     label: NONE,
+    raw: NONE, // 拒绝里那台答的原话（进复制详情；TS 不判拒绝）
     say: NONE,
     stamp_scan_cmd: NONE,
     this_machine: NONE,

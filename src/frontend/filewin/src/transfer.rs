@@ -192,8 +192,8 @@ pub struct DropOutcome {
     pub skipped: usize,
     /// 传成功的件数。
     pub ok: usize,
-    /// 传失败的那几件（名字 ＋ 报错原文）。
-    pub failed: Vec<(String, String)>,
+    /// 传失败的那几件（名字 ＋ 那一句与复制详情）。
+    pub failed: Vec<(String, super::source::Failed)>,
     /// 提交时对不上整份摘要（暂存件中间有坏块）、**从头重传了一次**的那几件（名字）。
     /// 重传成了也算在 `ok` 里，但这一句要画出来（从 0 重传并出声）。
     pub redone: Vec<String>,
@@ -222,7 +222,7 @@ where
     C: FnOnce(Vec<Pending>) -> CFut,
     CFut: Future<Output = Vec<Pending>>,
     L: Fn(Pending) -> LFut,
-    LFut: Future<Output = Result<(), String>>,
+    LFut: Future<Output = Result<(), super::source::Failed>>,
 {
     if items.is_empty() {
         return DropOutcome::default();
@@ -425,17 +425,18 @@ impl CancelDesk {
 ///
 /// ⚠ 回值对 `T` 泛型：第五刀时复制那一路也走这道闸（`T` 是它那一层的裁决）；
 /// 复制换到后端、取消不掉之后不再走这里，今天只有 `T = ()` 那一路。
-pub async fn launch_unless_cancelled<T, F, Fut>(
+pub async fn launch_unless_cancelled<T, E, F, Fut>(
     desk: &CancelDesk,
     name: &str,
     go: F,
-) -> Result<T, String>
+) -> Result<T, E>
 where
+    E: From<String>,
     F: FnOnce(String) -> Fut,
-    Fut: Future<Output = Result<T, String>>,
+    Fut: Future<Output = Result<T, E>>,
 {
     if desk.is_cancelled() {
-        return Err(CANCELLED.to_string());
+        return Err(CANCELLED.to_string().into());
     }
     let id = desk.mint(name);
     let r = go(id.clone()).await;
@@ -528,10 +529,12 @@ pub async fn upload_remote(
     origin: &super::source::Origin,
     p: &Pending,
     board: &DropBoard,
-) -> Result<(), String> {
+) -> Result<(), super::source::Failed> {
     // 这一窗已经改走后端链路 ⇒ 不再问 SFTP。
     if board.via_backend().is_some() {
-        return super::chunk_upload::upload_by_chunks(line, origin, p, board).await;
+        return super::chunk_upload::upload_by_chunks(line, origin, p, board)
+            .await
+            .map_err(super::source::Failed::from);
     }
     let home = board.backend_home(line, origin).await;
     let home = home.as_deref();
@@ -548,24 +551,27 @@ pub async fn upload_remote(
         // 连上时比出来 SFTP 起始目录不是后端的 home ⇒ 一个字节没传；这一件起改走后端链路分块写（出声一次）。
         Err(Once::Mismatch(why)) => {
             board.switch_to_backend(why);
-            super::chunk_upload::upload_by_chunks(line, origin, p, board).await
+            super::chunk_upload::upload_by_chunks(line, origin, p, board)
+                .await
+                .map_err(super::source::Failed::from)
         }
-        other => other.map_err(Once::said),
+        other => other.map_err(Once::failed),
     }
 }
 
 /// 一趟上传没成的两形：提交时摘要对不上（`stale`，远端已删掉坏暂存件 ⇒ 值得从头重传）· 别的（原话）。
 enum Once {
-    Stale(String),
-    Failed(String),
+    Stale(super::source::Failed),
+    Failed(super::source::Failed),
     /// 传输台连上之后比出来 SFTP 起始目录不是后端的 home（`sftp_home_mismatch`），一个字节没传。
     Mismatch(String),
 }
 
 impl Once {
-    fn said(self) -> String {
+    fn failed(self) -> super::source::Failed {
         match self {
-            Once::Stale(s) | Once::Failed(s) | Once::Mismatch(s) => s,
+            Once::Stale(f) | Once::Failed(f) => f,
+            Once::Mismatch(s) => s.into(),
         }
     }
 }
@@ -589,9 +595,9 @@ async fn upload_once(
     }
     let opened = super::source::ask(line, origin, OP_UPLOAD, &args, OPEN_BUDGET)
         .await
-        .map_err(Once::Failed)?;
-    let id = field(&opened, OP_UPLOAD, "id").map_err(Once::Failed)?;
-    let key = field(&opened, OP_UPLOAD, "key").map_err(Once::Failed)?;
+        .map_err(|s| Once::Failed(s.into()))?;
+    let id = field(&opened, OP_UPLOAD, "id").map_err(|s| Once::Failed(s.into()))?;
+    let key = field(&opened, OP_UPLOAD, "key").map_err(|s| Once::Failed(s.into()))?;
     // 记下暂存件的键：跨机复制半路失败时，由它去那台机器上把暂存件删掉。
     board.note_staged(&key);
     let name = p.name.clone();
@@ -606,11 +612,11 @@ async fn upload_once(
     .await
     .map_err(|(code, said)| match code.as_deref() {
         Some(SFTP_HOME_MISMATCH) => Once::Mismatch(said),
-        _ => Once::Failed(said),
+        _ => Once::Failed(said.into()),
     })?;
     let sha256 = watched
         .sha256
-        .ok_or_else(|| Once::Failed(copy_text("rsFilewinTransfer.upload.noDigest", &[])))?;
+        .ok_or_else(|| Once::Failed(copy_text("rsFilewinTransfer.upload.noDigest", &[]).into()))?;
     super::source::ask_coded(
         line,
         origin,
@@ -627,8 +633,8 @@ async fn upload_once(
     .await
     .map(|_| ())
     .map_err(|f| match f.code.as_deref() {
-        Some("stale") => Once::Stale(f.said),
-        _ => Once::Failed(f.said),
+        Some("stale") => Once::Stale(f),
+        _ => Once::Failed(f),
     })
 }
 

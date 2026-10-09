@@ -247,7 +247,7 @@ async fn the_question_is_asked_exactly_once_for_the_whole_batch() {
             let t = &tape;
             async move {
                 t.mark("apply");
-                Ok::<(), String>(())
+                Ok::<(), crate::source::Failed>(())
             }
         },
     )
@@ -384,12 +384,12 @@ async fn a_failure_comes_back_with_the_message_the_pool_gave() {
             path: "/srv/data/m".into(),
         }],
         |a| async move { a },
-        |_| async move { Err("新建目录失败: permission denied".to_string()) },
+        |_| async move { Err("新建目录失败: permission denied".into()) },
     )
     .await;
     assert_eq!(out.ok, 0);
     assert_eq!(out.failed.len(), 1);
-    assert_eq!(out.failed[0].1, "新建目录失败: permission denied");
+    assert_eq!(out.failed[0].1.said, "新建目录失败: permission denied");
     assert!(
         out.failed[0].0.contains("/srv/data/m"),
         "失败那一行没说是哪一件：{:?}",

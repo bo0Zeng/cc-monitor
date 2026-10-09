@@ -20,7 +20,7 @@ import { skeletonRows } from "../kit/skeleton";
 import { spinner } from "../kit/progress";
 import { openPopover, closePopover } from "../kit/popover";
 import { openMenu, type MenuItem } from "../kit/menu";
-import { toast, undoToast } from "../kit/toast";
+import { toast, undoToast, failToast } from "../kit/toast";
 import { askText, confirmDialog } from "../kit/dialog";
 import { dispatcher } from "../keybindings/registry";
 import { copyText } from "../copy-table";
@@ -998,7 +998,7 @@ export class HistoryView {
   private openWindow(r: HistoryRow): void {
     void commands
       .open_session_in_new_window({ sessionId: r.sessionId, origin: r.origin ?? LOCAL_ORIGIN, title: labelOf(r) })
-      .catch((e: unknown) => toast(copyText("tabSessionActions.openInWindow.failed"), String(e), { detail: detailOf(e) }));
+      .catch((e: unknown) => failToast(copyText("tabSessionActions.openInWindow.failed"), e));
   }
 
   private menu(r: HistoryRow, at: HTMLElement | { x: number; y: number }): void {
@@ -1031,7 +1031,7 @@ export class HistoryView {
       await annotate(r.sessionId, { starred: !r.starred });
       this.refresh(false, keyOf(r.origin));
     } catch (e) {
-      toast(copyText("history.star.failed", { why: String(e) }), "", { detail: detailOf(e) });
+      failToast(copyText("history.star.failed"), e);
     }
   }
 
@@ -1043,7 +1043,7 @@ export class HistoryView {
       if (to)
         undoToast(copyText("history.hide.done", { label: labelOf(r) }), () => void annotate(r.sessionId, { hidden: false }).then(() => this.refresh(false, keyOf(r.origin))), () => {});
     } catch (e) {
-      toast(copyText("history.hide.failed", { why: String(e) }), "", { detail: detailOf(e) });
+      failToast(copyText("history.hide.failed"), e);
     }
   }
 
@@ -1061,7 +1061,7 @@ export class HistoryView {
       this.refresh(false, keyOf(r.origin));
       undoToast(copyText("history.rename.done"), () => void annotate(r.sessionId, { customTitle: before ?? "" }).then(() => this.refresh(false, keyOf(r.origin))), () => {});
     } catch (e) {
-      toast(copyText("history.rename.failed", { why: String(e) }), "", { detail: detailOf(e) });
+      failToast(copyText("history.rename.failed"), e);
     }
   }
 
@@ -1081,7 +1081,7 @@ export class HistoryView {
     try {
       await deleteSession(r.origin ?? LOCAL_ORIGIN, r.sessionId);
     } catch (e) {
-      toast(copyText("history.delete.failed", { label, why: String(e) }), "", { detail: detailOf(e) });
+      failToast(copyText("history.delete.failed", { label }), e);
       return;
     }
     void forgetAnnotation(r.sessionId);

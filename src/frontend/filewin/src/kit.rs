@@ -88,6 +88,31 @@ pub fn banner_with_detail(
     hit
 }
 
+/// 一次失败的错误条：那一句 `shown`（屏上那句，可以套了别的字）＋ 复制详情 `detail`（首行之外那几行；空 ⇒ 不出按钮）。
+/// 复制出去的首行就是 `shown`。全窗口「拿一次失败画错误条」只这一口。
+pub fn failure_banner(
+    ui: &mut Ui,
+    tone: Tone,
+    shown: &str,
+    actions: &[String],
+    detail: &str,
+    id: egui::Id,
+) -> Option<usize> {
+    let body = super::source::Failed::copy_body(shown, detail);
+    banner_with_detail(ui, tone, shown, actions, body.as_deref().map(|b| (id, b)))
+}
+
+/// 框里那一行红字（提交没成）：有复制详情 ⇒ 句子后面直接跟［复制详情］（条带 §5.3「对话框」）。
+pub fn failure_line(ui: &mut Ui, shown: &str, detail: &str, id: egui::Id) {
+    let p = palette(ui.ctx());
+    ui.horizontal_wrapped(|ui| {
+        ui.label(egui::RichText::new(shown).size(12.0).color(p.error_text));
+        if let Some(body) = super::source::Failed::copy_body(shown, detail) {
+            copy_detail_button(ui, id, &body);
+        }
+    });
+}
+
 /// 〔复制详情条带 §5.1〕「复制详情」停多久回默认。
 pub const COPIED_FOR: std::time::Duration = std::time::Duration::from_millis(1500);
 
@@ -392,6 +417,8 @@ pub struct Toast {
     pub action: Option<String>,
     /// 调用方给的记号（点了动作 ⇒ [`Toasts::show`] 交回它；`0` ＝ 不带）：撤销那一下据它找要做的那几件。
     pub tag: u64,
+    /// ［复制详情］复制出去的整段（首行是 `text`）；`None` ＝ 不出按钮。
+    pub copy: Option<String>,
     /// 还剩几秒。
     pub left: f32,
 }
@@ -412,11 +439,21 @@ impl Toasts {
 
     /// 同 [`Self::push`]，带一个记号（点了动作 ⇒ [`Self::show`] 交回它）。
     pub fn push_tagged(&mut self, text: String, action: Option<String>, tag: u64) {
+        self.push_full(text, action, tag, None);
+    }
+
+    /// 同 [`Self::push`]，多一颗［复制详情］（`copy` 是复制出去的整段；`None` ＝ 不出）。
+    pub fn push_copy(&mut self, text: String, copy: Option<String>) {
+        self.push_full(text, None, 0, copy);
+    }
+
+    fn push_full(&mut self, text: String, action: Option<String>, tag: u64, copy: Option<String>) {
         self.items.retain(|t| t.text != text);
         self.items.push(Toast {
             text,
             action,
             tag,
+            copy,
             left: TOAST_SECS,
         });
         if self.items.len() > 3 {
@@ -456,6 +493,9 @@ impl Toasts {
                                     if ui.button(a).clicked() {
                                         hit = Some(i);
                                     }
+                                }
+                                if let Some(body) = &t.copy {
+                                    copy_detail_button(ui, id.with("copy"), body);
                                 }
                             });
                         });
@@ -632,9 +672,10 @@ pub fn task_row(ui: &mut Ui, id: u64, v: &super::progress::View) -> Option<super
                     egui::Label::new(egui::RichText::new(v.icon).color(icon_c)),
                 );
                 ui.add_space(10.0);
-                // 进度条 240 ＋ 读数 150 ＋ 按钮约 110 ＋ 间距：窄了先缩进度条，标题一栏至少 120。
-                let bar = (ui.available_width() - 150.0 - 110.0 - 30.0 - 120.0).clamp(60.0, 240.0);
-                let what_w = (ui.available_width() - bar - 150.0 - 110.0 - 30.0).max(80.0);
+                // 进度条 240 ＋ 读数 150 ＋ 按钮约 110（多一颗［复制详情］再 ＋110）＋ 间距：窄了先缩进度条，标题一栏至少 120。
+                let btn_w = if v.copy.is_some() { 220.0 } else { 110.0 };
+                let bar = (ui.available_width() - 150.0 - btn_w - 30.0 - 120.0).clamp(60.0, 240.0);
+                let what_w = (ui.available_width() - bar - 150.0 - btn_w - 30.0).max(80.0);
                 ui.allocate_ui_with_layout(
                     egui::vec2(what_w, h),
                     egui::Layout::top_down(egui::Align::LEFT),
@@ -673,6 +714,10 @@ pub fn task_row(ui: &mut Ui, id: u64, v: &super::progress::View) -> Option<super
                 );
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.add_space(10.0);
+                    // ［复制详情］永远在最右（条带 §5.1：修法在前、复制详情在后）。
+                    if let Some(body) = &v.copy {
+                        copy_detail_button(ui, ui.id().with(("task-copy", id)), body);
+                    }
                     if let Some((label, a)) = &v.button {
                         let stop = matches!(a, Ok(super::progress::Act::Stop(_)) | Err(_));
                         let text = if stop {

@@ -197,11 +197,25 @@ fn the_window_binary_is_never_guessed() {
         &ensure,
     )
     .expect_err("指着一个不存在的文件居然解出来了");
-    assert!(
-        e.contains("根本没有这个文件"),
-        "报错里没有那条被看过的路径 —— `D7`：归因得说准是「二进制不在」而不是「窗口画不出来」：{e}"
+    // 句子只说原因词「未装」＋ 出路；看过的那几条路径进复制详情（原话）。
+    assert_eq!(
+        e.said,
+        copy_text("rsFilewinProc.bin.notFound", &[("binEnv", BIN_ENV)])
     );
-    assert!(e.contains(BIN_STEM), "报错里没点名要找的是哪个二进制：{e}");
+    let looked = e.raw.clone().unwrap_or_default();
+    assert!(
+        looked.contains("根本没有这个文件"),
+        "详情里没有那条被看过的路径 —— `D7`：归因得说准是「二进制不在」而不是「窗口画不出来」：{e:?}"
+    );
+    assert!(
+        looked.contains(BIN_STEM),
+        "详情里没点名要找的是哪个二进制：{e:?}"
+    );
+    assert!(
+        !e.said.contains("根本没有这个文件"),
+        "路径上了句子：{}",
+        e.said
+    );
     assert!(!landing.exists(), "没带那一份却往落点里建了东西");
     // ③ 阴性对照：指着一个**真存在**的文件 ⇒ 原样回它，不再往别处找。
     let real = dir.join("假装是那个二进制");
@@ -279,19 +293,44 @@ fn with_nothing_beside_the_exe_the_carried_window_binary_is_placed_and_returned(
     // ⑥ 家目录问不到 ⇒ 「不知道放哪」那一句；放不下来 ⇒ 带着原话的那一句 —— 都不是「没带」。
     assert_eq!(
         resolve_window_bin_in(None, &exe_dir, Some(b"x"), None, &mk, &ensure)
-            .expect_err("没有落点也解出来了"),
+            .expect_err("没有落点也解出来了")
+            .said,
         copy_text("rsFilewinProc.bin.noHome", &[])
     );
     let no_dir = |_: &Path| -> Result<(), String> { Err("不许建".to_string()) };
     let fresh = root.join("fresh");
+    let e = resolve_window_bin_in(None, &exe_dir, Some(b"x"), Some(&fresh), &mk, &no_dir)
+        .expect_err("建不了目录也解出来了");
+    // 建不了目录（宿主注入那一下只回一句话）⇒ 判不出 IO 种类 ⇒「原因不明」；落点与原话进详情。
     assert_eq!(
-        resolve_window_bin_in(None, &exe_dir, Some(b"x"), Some(&fresh), &mk, &no_dir)
-            .expect_err("建不了目录也解出来了"),
-        copy_text(
-            "rsFilewinProc.bin.placeFailed",
-            &[("dir", &fresh.display().to_string()), ("e", "不许建")]
-        )
+        e.said,
+        copy_core::reason::io_reason(std::io::ErrorKind::Other)
     );
+    let raw = e.raw.unwrap_or_default();
+    assert!(
+        raw.contains("不许建") && raw.contains(&fresh.display().to_string()),
+        "放不下来的原话与落点没进详情：{raw}"
+    );
+    // 落点目录只读（真 IO 错）⇒ 按 IO 种类取词「无权限」，不是「原因不明」。
+    let denied = root.join("ro");
+    std::fs::create_dir_all(&denied).expect("建不出只读目录");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&denied, std::fs::Permissions::from_mode(0o500)).unwrap();
+        let ok_dir = |_: &Path| -> Result<(), String> { Ok(()) };
+        let e = resolve_window_bin_in(None, &exe_dir, Some(b"x"), Some(&denied), &mk, &ok_dir)
+            .expect_err("只读目录里竟然写进去了");
+        // root 跑测试时只读挡不住 —— 那一形不判。
+        if !e.said.is_empty() && std::fs::write(denied.join("probe"), b"").is_err() {
+            assert_eq!(
+                e.said,
+                copy_core::reason::io_reason(std::io::ErrorKind::PermissionDenied),
+                "写不进去说成了别的：{e:?}"
+            );
+        }
+        std::fs::set_permissions(&denied, std::fs::Permissions::from_mode(0o700)).unwrap();
+    }
     std::fs::remove_dir_all(&root).ok();
 }
 
@@ -409,7 +448,7 @@ fn opening_a_window_three_times_really_starts_three_independent_processes() {
     let mut codes: Vec<String> = Vec::new();
     for trip in 1..=3 {
         let (child, _tail) = spawn_window(&req).unwrap_or_else(|e| {
-            panic!("第 {trip} 趟连进程都起不来：{e}\n⚠ 这一形是台架坏了，不是被测性质红了")
+            panic!("第 {trip} 趟连进程都起不来：{e:?}\n⚠ 这一形是台架坏了，不是被测性质红了")
         });
         pids.push(child.id());
         let st = child
@@ -547,12 +586,12 @@ fn the_window_process_lists_first_and_the_parent_carries_its_words() {
     );
     // ③
     match run("silent", "", 0) {
-        Err(Unopened::Process(e)) => assert!(!e.is_empty()),
+        Err(Unopened::Process(e)) => assert!(!e.said.is_empty()),
         other => panic!("一句不说就退，却回了：{other:?}"),
     }
     // ④
     match run("garbled", "{\"ok\":1}", 0) {
-        Err(Unopened::Process(e)) => assert!(!e.is_empty()),
+        Err(Unopened::Process(e)) => assert!(!e.said.is_empty()),
         other => panic!("说了一句不是约定形状的话，却回了：{other:?}"),
     }
     std::fs::remove_dir_all(&dir).ok();
@@ -591,7 +630,7 @@ fn a_window_that_dies_after_being_judged_open_is_still_reported() {
         .unwrap();
         std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
         std::env::set_var(BIN_ENV, &p);
-        let (tx, rx) = std::sync::mpsc::channel::<String>();
+        let (tx, rx) = std::sync::mpsc::channel::<ProcFail>();
         let r = open_in_new_process(&req, Box::new(move |said| tx.send(said).unwrap()));
         std::env::remove_var(BIN_ENV);
         (r, rx.recv_timeout(std::time::Duration::from_secs(10)))
@@ -599,12 +638,18 @@ fn a_window_that_dies_after_being_judged_open_is_still_reported() {
     let (r, said) = run(7);
     assert_eq!(r.map(|(_, n)| n), Ok(3), "活过预算的那一形该先回成功");
     let said = said.expect("判成功之后退出码 7 退了，却一句都没交");
-    let why = copy_text("rsFilewinProc.late.exited", &[("st", "exit status: 7")]);
-    assert_eq!(said, exit_said(&why, &[]));
+    let why = copy_text("rsFilewinProc.late.exited", &[]);
+    assert_eq!(said, exit_said(&why, Some("exit status: 7".into()), &[]));
     assert_eq!(
-        said,
+        said.said,
         copy_text("rsFilewinProc.open.noStderr", &[("why", &why)])
     );
+    assert_eq!(
+        said.code.as_deref(),
+        Some("exit status: 7"),
+        "退出状态进复制详情"
+    );
+    assert!(!said.said.contains('7'), "退出状态不上句子：{}", said.said);
     let (r, said) = run(0);
     assert!(r.is_ok());
     assert!(said.is_err(), "体面退出（用户关窗）也报了：{said:?}");
@@ -712,7 +757,7 @@ fn a_window_process_that_dies_at_once_comes_back_as_a_reason() {
     let Unopened::Process(e) = e else {
         panic!("起不来那一形被说成了窗口进程的话：{e:?}")
     };
-    assert!(!e.is_empty(), "报了错但原因是空的 —— 上层连话都没有");
+    assert!(!e.said.is_empty(), "报了错但原因是空的 —— 上层连话都没有");
     std::env::remove_var(BIN_ENV);
     std::fs::remove_dir_all(&dir).ok();
 }
@@ -895,22 +940,28 @@ fn the_window_process_own_reason_reaches_the_sentence() {
             other => panic!("{tag}：带着 stderr 退了，却回了：{other:?}"),
         }
     };
-    let why = copy_text("rsFilewinProc.open.exited", &[("st", "exit status: 1")]);
+    // 句子只说哪件事没成 ＋ 原因词；退出状态进「码」、stderr 末几行进「原话」（复制详情）。
+    let why = copy_text("rsFilewinProc.open.exited", &[]);
+    let gl = run("gl", "'Error: egui_glow requires opengl 2.0+.'");
     assert_eq!(
-        run("gl", "'Error: egui_glow requires opengl 2.0+.'"),
+        gl.said,
         copy_text("rsFilewinProc.cause.noOpenGl", &[("why", &why)])
     );
     assert_eq!(
-        run("other", "'line a' 'line b'"),
-        copy_text(
-            "rsFilewinProc.open.stderrTail",
-            &[("why", &why), ("tail", "line a\nline b")]
-        )
+        gl.raw.as_deref(),
+        Some("Error: egui_glow requires opengl 2.0+.")
     );
+    let other = run("other", "'line a' 'line b'");
+    assert_eq!(other.said, why);
+    assert_eq!(other.code.as_deref(), Some("exit status: 1"));
+    assert_eq!(other.raw.as_deref(), Some("line a\nline b"));
+    assert!(!other.said.contains("line a"), "{}", other.said);
+    let quiet = exit_said(&why, None, &[]);
     assert_eq!(
-        exit_said(&why, &[]),
+        quiet.said,
         copy_text("rsFilewinProc.open.noStderr", &[("why", &why)])
     );
+    assert_eq!(quiet.raw, None);
     std::fs::remove_dir_all(&dir).ok();
 }
 
@@ -936,7 +987,7 @@ fn reopening_after_a_crash_starts_a_clean_new_process() {
         .unwrap();
         std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
         std::env::set_var(BIN_ENV, &p);
-        let (tx, rx) = std::sync::mpsc::channel::<String>();
+        let (tx, rx) = std::sync::mpsc::channel::<ProcFail>();
         let r = open_in_new_process(&req, Box::new(move |said| tx.send(said).unwrap()));
         std::env::remove_var(BIN_ENV);
         (r, rx.recv_timeout(std::time::Duration::from_secs(10)))
@@ -949,8 +1000,11 @@ fn reopening_after_a_crash_starts_a_clean_new_process() {
     let (pid1, _) = first.expect("第一趟该先判成功");
     let said = said.expect("判成功之后崩了，却一句都没交");
     assert!(
-        said.contains("index out of bounds"),
-        "崩溃那几行没带进那一句：{said}"
+        said.raw
+            .as_deref()
+            .unwrap_or_default()
+            .contains("index out of bounds"),
+        "崩溃那几行没带进复制详情：{said:?}"
     );
     let (second, said2) = run("clean", "", 0);
     let (pid2, n) = second.expect("崩过一次之后再开没开成");

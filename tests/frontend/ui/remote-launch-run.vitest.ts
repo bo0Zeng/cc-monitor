@@ -23,14 +23,14 @@ vi.mock("../../../src/frontend/ui/terminal-name-mint", () => mint);
 vi.mock("../../../src/frontend/ui/resync", () => ({
   offerResyncRetry: vi.fn(),
 }));
-vi.mock("../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn() }));
+vi.mock("../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn(), failToast: vi.fn() }));
 vi.mock("../../../src/frontend/ui/launch-arrival", () => ({
   expectArrival: vi.fn(),
   awaitArrival: vi.fn().mockResolvedValue(true),
   arrivedBody: (o: string) => `报出了@${o}`,
 }));
 
-import { toast as showActionFailureToast } from "../../../src/frontend/ui/kit/toast";
+import { failToast, toast as showActionFailureToast } from "../../../src/frontend/ui/kit/toast";
 import { expectArrival } from "../../../src/frontend/ui/launch-arrival";
 import {
   runRemoteResume,
@@ -204,11 +204,10 @@ describe("失败怎么说", () => {
     );
     expect(term.openTerminal).not.toHaveBeenCalled();
     expect(writeText).not.toHaveBeenCalled();
-    expect(toastMock).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.stringContaining("会话 ID 不合法"),
-      { detail: "" },
-    );
+    // 交给失败 toast：带详情 ⇒ 标题换成那台写好的那一句；这次是 JS 层的 Error ⇒ 标题留界面那句、原文进控制台。
+    const calls = vi.mocked(failToast).mock.calls;
+    expect(calls).toHaveLength(1);
+    expect(String(calls[0][1])).toContain("会话 ID 不合法");
   });
 
   it("开不了终端 ⇒ 剪贴板里是那一行 ＋ 提示里带原因与那一行", async () => {

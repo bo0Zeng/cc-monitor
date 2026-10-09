@@ -154,6 +154,7 @@ fn the_reply_maps_to_text_not_text_or_failure_by_the_peers_code() {
     let failed = |code: Option<&str>, said: &str| Failed {
         code: code.map(str::to_string),
         said: said.to_string(),
+        detail: String::new(),
     };
     assert_eq!(
         text_from_reply(Ok(
@@ -171,7 +172,7 @@ fn the_reply_maps_to_text_not_text_or_failure_by_the_peers_code() {
     // 阴性对照：别的码 / 没有码（没走通）⇒ 原话，**不许**也压成「不可编辑」。
     for code in [Some("unreadable"), Some("bad_args"), None] {
         assert_eq!(
-            text_from_reply(Err(failed(code, "那句原话"))),
+            text_from_reply(Err(failed(code, "那句原话"))).map_err(|f| f.said),
             Err("那句原话".to_string()),
             "`{code:?}` 被压成了「不可编辑」—— 连不上与不是文本在屏幕上就分不开了"
         );
@@ -209,7 +210,7 @@ async fn reading_goes_through_the_channel_and_each_refusal_lands_on_its_own_shap
     let e = got("/srv/gone.txt").await.expect_err("读不到竟然成了");
     // 〔CP1 裁「改·§2.1」〕对外那句不再点内部命令名 ⇒ 改认它说了是哪个文件、带着后端的码。
     assert!(
-        e.contains("/srv/gone.txt") && e.contains("unreadable"),
+        e.said.contains("/srv/gone.txt") && e.said.contains("unreadable"),
         "那句原话没说是哪个文件、后端怎么说：{e}"
     );
     let log = wired.log.lock().unwrap().clone();
@@ -232,7 +233,8 @@ async fn reading_goes_through_the_channel_and_each_refusal_lands_on_its_own_shap
     .await
     .expect_err("旧后端不认这条命令，竟然读到了");
     assert!(
-        e.contains(copy_core::copy_static!("rsFilewinSource.said.unknownCmd")),
+        e.said
+            .contains(copy_core::copy_static!("rsFilewinSource.said.unknownCmd")),
         "旧后端那一形没说清：{e}"
     );
     assert_eq!(old.count(CMD_READ_TEXT), 0);
@@ -559,7 +561,7 @@ async fn the_worst_case_full_cap_file_saves_back_through_the_staging_area() {
             ("over", "1"),
         ],
     );
-    assert!(why.contains(&want), "那句话不是「{want}」：{why}");
+    assert!(why.said.contains(&want), "那句话不是「{want}」：{why}");
 }
 
 /// 🔴 **送到一半断了 ⇒ 不发提交，那句话说第几段、共几段、原话**；编辑框的字一个不丢。
@@ -578,7 +580,8 @@ async fn a_chunk_that_fails_stops_the_save_before_the_commit() {
     else {
         panic!("断块落成了 stale")
     };
-    p.mark_failed(why.clone());
+    p.mark_failed_with(why.clone());
+    let why = why.said;
     assert_eq!(
         wired.cmds(),
         vec![CMD_STAGE_CHUNK; 3],
@@ -608,6 +611,7 @@ fn a_save_reply_splits_into_saved_stale_and_failed_by_the_peers_code() {
     let failed = |code: Option<&str>| Failed {
         code: code.map(str::to_string),
         said: "原话".to_string(),
+        detail: String::new(),
     };
     let sha = crate::find::testing::fake_sha256("x");
     assert_eq!(
@@ -624,7 +628,7 @@ fn a_save_reply_splits_into_saved_stale_and_failed_by_the_peers_code() {
     for code in [Some("refused"), Some("io_failed"), None] {
         assert_eq!(
             saved_from_reply("x", Err(failed(code))),
-            Err(SaveError::Failed("原话".into())),
+            Err(SaveError::Failed(failed(code))),
             "`{code:?}` 被当成了 stale —— 那会给人摆一颗对这件事没用的「仍然覆盖」"
         );
     }
@@ -659,7 +663,8 @@ fn a_read_without_a_digest_does_not_open_an_editor_that_could_never_save() {
     let e =
         opened_from_reply(Ok(serde_json::json!({ "text": "hi\n" }))).expect_err("没摘要竟然打开了");
     assert!(
-        e.contains(copy_core::copy_static!("rsFilewinEditor.reply.noDigest")),
+        e.said
+            .contains(copy_core::copy_static!("rsFilewinEditor.reply.noDigest")),
         "那句话没说是后端太旧：{e}"
     );
     assert!(opened_from_reply(Ok(serde_json::json!({ "text": "hi\n", "sha256": "abc" }))).is_err());

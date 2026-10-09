@@ -52,9 +52,9 @@ async fn without_a_channel_no_window_process_is_started() {
         .await
         .expect_err("没有通道口竟然开了窗");
         assert_eq!(
-            e,
+            e.said,
             copy_text("rsFilewinEntry.open.noHost", &[]),
-            "早退的话不对：{e}"
+            "早退的话不对：{e:?}"
         );
     }
     assert_eq!(
@@ -68,13 +68,38 @@ async fn without_a_channel_no_window_process_is_started() {
 #[test]
 fn the_window_process_words_reach_the_webview_verbatim() {
     let said = "那台说：没有这个目录 /srv/不在";
-    assert_eq!(unopened_said(Unopened::Said(said.into())), said);
-    let wrapped = unopened_said(Unopened::Process("退出码 1".into()));
+    assert_eq!(unopened_said(Unopened::Said(said.into())).said, said);
+    let why = copy_text("rsFilewinProc.open.exited", &[]);
+    let wrapped = unopened_said(Unopened::Process(ProcFail::from(why.clone())));
     assert_eq!(
-        wrapped,
-        copy_text("rsFilewinEntry.open.failed", &[("why", "退出码 1")])
+        wrapped.said,
+        copy_text("rsFilewinEntry.open.failed", &[("why", &why)])
     );
-    assert_ne!(wrapped, "退出码 1", "进程层的错没套上「文件窗口没起来」");
+    assert_ne!(wrapped.said, why, "进程层的错没套上「文件窗口没起来」");
+}
+
+/// 进程这一层没成：退出状态与 stderr 末几行不上句子，进复制详情的「码」与「原话」（命令名也在）。
+#[test]
+fn a_process_failure_puts_its_exit_status_and_stderr_in_the_detail() {
+    let f = ProcFail {
+        said: copy_text("rsFilewinProc.open.exited", &[]),
+        code: Some("exit status: 1".into()),
+        raw: Some("line a\nline b".into()),
+    };
+    let s = unopened_said(Unopened::Process(f));
+    assert!(
+        !s.said.contains("line a") && !s.said.contains("exit status"),
+        "{}",
+        s.said
+    );
+    let label = |k: &str| copy_text(k, &[]);
+    for want in [
+        format!("{}：open_file_window", label("detail.label.command")),
+        format!("{}：exit status: 1", label("detail.label.code")),
+        format!("{}：line a\nline b", label("detail.label.raw")),
+    ] {
+        assert!(s.detail.contains(&want), "缺「{want}」：\n{}", s.detail);
+    }
 }
 
 /// 🔴 **这条命令真的在命令面上。**

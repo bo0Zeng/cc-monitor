@@ -58,7 +58,7 @@ use crate::copy_table::copy_text;
 use crate::detail::Said;
 use crate::stream_source::RemoteConfig;
 
-use super::proc::{open_in_new_process, OpenRequest, Unopened};
+use super::proc::{open_in_new_process, OpenRequest, ProcFail, Unopened};
 
 /// 这一趟要落在哪儿。
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -175,27 +175,33 @@ pub async fn open_file_window(
     reveal_file: Option<String>,
     theme: std::collections::BTreeMap<String, String>,
 ) -> Result<usize, Said> {
-    use tauri::{Emitter, Manager};
-    // 窗口的样子：主界面此刻 `:root` 上的那一套（含用户改过的）解成数。解不出来就不开（不替它补一套）。
-    let theme = filewin_contract::Theme::from_tokens(&theme)?;
-    // 主窗所在那台显示器的工作区（窗口进程开出来第一拍夹进它）。
-    let work_area = app
-        .get_webview_window(crate::MAIN_WINDOW_LABEL)
-        .as_ref()
-        .and_then(crate::work_area_of);
-    // 开出来之后又不体面地退了 ⇒ 经远端健康那条通道出声（同一个 toast 出口）。
-    let origin = cfg.origin_label();
-    let late: super::proc::LateExit = Box::new(move |said| {
-        let payload = crate::ui_contract::RemoteHealthPayload {
-            origin,
-            kind: FILEWIN_EXIT_KIND.to_string(),
-            message: said,
-        };
-        if let Err(e) = app.emit(crate::ui_contract::events::REMOTE_HEALTH, payload) {
-            tracing::warn!("文件窗口没了那一条没有发出去：{e}");
-        }
-    });
-    Ok(open_with(cfg, path, reveal_file, work_area, theme, late).await?)
+    let r: Result<usize, Said> = async move {
+        use tauri::{Emitter, Manager};
+        // 窗口的样子：主界面此刻 `:root` 上的那一套（含用户改过的）解成数。解不出来就不开（不替它补一套）。
+        let theme = filewin_contract::Theme::from_tokens(&theme)?;
+        // 主窗所在那台显示器的工作区（窗口进程开出来第一拍夹进它）。
+        let work_area = app
+            .get_webview_window(crate::MAIN_WINDOW_LABEL)
+            .as_ref()
+            .and_then(crate::work_area_of);
+        // 开出来之后又不体面地退了 ⇒ 经远端健康那条通道出声（同一个 toast 出口）。
+        let origin = cfg.origin_label();
+        let late: super::proc::LateExit = Box::new(move |f| {
+            let said = process_said(f);
+            let payload = crate::ui_contract::RemoteHealthPayload {
+                origin,
+                kind: FILEWIN_EXIT_KIND.to_string(),
+                message: said.said,
+                detail: said.detail,
+            };
+            if let Err(e) = app.emit(crate::ui_contract::events::REMOTE_HEALTH, payload) {
+                tracing::warn!("文件窗口没了那一条没有发出去：{e}");
+            }
+        });
+        Ok(open_with(cfg, path, reveal_file, work_area, theme, late).await?)
+    }
+    .await;
+    r.map_err(|s| s.named("open_file_window"))
 }
 
 /// 文件窗口开出来之后又退了那一形在 `remote-health` 上的 `kind`（界面 `remote-health.ts` 按它选标题）。
@@ -209,7 +215,7 @@ pub(crate) async fn open_with(
     work_area: Option<host_core::WorkArea>,
     theme: filewin_contract::Theme,
     late: super::proc::LateExit,
-) -> Result<usize, String> {
+) -> Result<usize, Said> {
     // 窗口进程只拿那台的名字（寻址用，`origin_label` 口径）；它不认识 monitor 的配置类型。
     let origin = cfg.origin_label();
     // 书签文件住 monitor 自己的数据目录（不是用户文件），路径在这一侧算好交过去（名字只住 `data_paths`）。
@@ -219,14 +225,14 @@ pub(crate) async fn open_with(
         .map(|d| d.join(crate::data_paths::FILEWIN_VIEW_FILE));
     // ⓪ 三者优先级 —— 那一段是**纯函数**（[`plan_target`]），理由见它的头注。
     //    〔09-28 裁 3〕home 那一支不在这里问了：`cwd` 缺席交给窗口进程（`proc::first_screen`）。
-    let (cwd, reveal) = match plan_target(&path, reveal_file.as_deref())? {
+    let (cwd, reveal) = match plan_target(&path, reveal_file.as_deref()).map_err(command)? {
         Target::Dir(d) => (Some(d), None),
         Target::Reveal { dir, name } => (Some(dir), Some(name)),
         Target::Home => (None, None),
     };
     // 🔴通道没起来 ⇒ 开不了窗（`D11`：窗口只有这一条路够后端）。
-    let handoff =
-        crate::chan::host::handoff().ok_or_else(|| copy_text("rsFilewinEntry.open.noHost", &[]))?;
+    let handoff = crate::chan::host::handoff()
+        .ok_or_else(|| command(copy_text("rsFilewinEntry.open.noHost", &[])))?;
     let req = OpenRequest {
         origin,
         cwd,
@@ -250,7 +256,13 @@ pub(crate) async fn open_with(
     //      各自带着自己的原因），**不许**退回同进程开一个。
     let opened = tokio::task::spawn_blocking(move || open_in_new_process(&req, late))
         .await
-        .map_err(|e| copy_text("rsFilewinEntry.open.failed", &[("why", &e.to_string())]))?;
+        .map_err(|e| {
+            Said::new(
+                copy_text("rsFilewinEntry.open.crashed", &[]),
+                OPEN_COMMAND,
+                Some(&e.to_string()),
+            )
+        })?;
     let (pid, n) = opened.map_err(unopened_said)?;
     tracing::info!("文件窗口起在进程 {pid} 上（第一屏 {n} 行，它自己列的）");
     Ok(n)
@@ -282,19 +294,36 @@ pub(crate) async fn open_from_window(
             ),
         ));
     };
-    let late: super::proc::LateExit = Box::new(|said| tracing::warn!("另开的文件窗口退了：{said}"));
+    let late: super::proc::LateExit =
+        Box::new(|f| tracing::warn!("另开的文件窗口退了：{} {:?} {:?}", f.said, f.code, f.raw));
     open_with(cfg, String::new(), None, None, theme, late)
         .await
         .map(|_| ())
-        .map_err(|why| ("open_failed", why))
+        .map_err(|why| ("open_failed", why.said))
+}
+
+/// 开窗那条命令的名字（复制详情的「命令」那一项）。
+const OPEN_COMMAND: &str = "open_file_window";
+
+/// 开窗那条路上只有一句话的失败 ⇒ 带命令名的那一形。
+fn command(said: String) -> Said {
+    Said::new(said, OPEN_COMMAND, None)
+}
+
+/// 进程这一层没成 ⇒ 那一句 ＋ 复制详情（命令 · 退出状态 · stderr 末几行）。
+fn process_said(f: ProcFail) -> Said {
+    Said::coded(f.said, OPEN_COMMAND, f.code.as_deref(), f.raw.as_deref())
 }
 
 /// 开窗没成 ⇒ 给 webview 的那一句。窗口进程列不出来时说的那句**原话原样**交出去（与上一版 monitor 自己列不出来时回的是同一句）；
-/// 进程这一层的错套上「文件窗口没起来」。
-fn unopened_said(u: Unopened) -> String {
+/// 进程这一层的错套上「文件窗口没起来」，退出状态与 stderr 进复制详情。
+fn unopened_said(u: Unopened) -> Said {
     match u {
-        Unopened::Said(said) => said,
-        Unopened::Process(why) => copy_text("rsFilewinEntry.open.failed", &[("why", &why)]),
+        Unopened::Said(said) => command(said),
+        Unopened::Process(f) => process_said(ProcFail {
+            said: copy_text("rsFilewinEntry.open.failed", &[("why", &f.said)]),
+            ..f
+        }),
     }
 }
 

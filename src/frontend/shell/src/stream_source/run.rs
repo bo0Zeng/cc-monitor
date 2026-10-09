@@ -166,6 +166,7 @@ pub async fn run(
                     origin: cfg.origin_label(),
                     kind: "unsupported".to_string(),
                     message: why.clone(),
+                    detail: String::new(),
                 };
                 if let Err(e) = health(payload) {
                     tracing::warn!("stream_source remote-health (unsupported) emit failed: {e}");
@@ -549,6 +550,7 @@ async fn open_round(
                     origin: host_label.clone(),
                     kind: "deploy".to_string(),
                     message: msg,
+                    detail: String::new(),
                 };
                 if let Err(e) = health(payload) {
                     tracing::warn!("stream_source remote-health (deploy) emit failed: {e}");
@@ -763,6 +765,7 @@ fn on_hello(
             origin: host_label.clone(),
             kind: kind.to_string(),
             message: msg,
+            detail: String::new(),
         };
         if let Err(e) = health(payload) {
             tracing::warn!("stream_source remote-health (version) emit failed: {e}");
@@ -817,6 +820,7 @@ fn on_hello(
                 origin: host_label.clone(),
                 kind: "degraded".to_string(),
                 message,
+                detail: String::new(),
             };
             if let Err(e) = health(payload) {
                 tracing::warn!("stream_source remote-health (degraded) emit failed: {e}");
@@ -879,6 +883,7 @@ fn on_overflow(
         origin: host_label.to_string(),
         kind: "overflow".to_string(),
         message,
+        detail: String::new(),
     };
     if let Err(e) = health(payload) {
         tracing::warn!("stream_source remote-health emit failed: {e}");

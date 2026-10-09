@@ -979,18 +979,128 @@ pub async fn ask(
 /// 🔴为什么要把码留下来：编辑器读文本那一问，后端的
 /// `too_large` / `not_text` 与「连不上」是**两件事**（前者说「这份不是一份能编辑的文本」，
 /// 后者说「这一趟没走通」），而 [`said`] 翻完之后只剩一句话 —— 分它们就只能猜字符串前缀。
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Failed {
     /// 对端拒绝时它给的那个码（`None` = 不是对端拒的：没走通 / 这一侧拼错 / 对端不认这条命令）。
     pub code: Option<String>,
     /// 给人看的那句话（[`said`] 翻过的，或这一侧自己的那句）。
     pub said: String,
+    /// 「复制详情」那几行（首行之外）：对端拒了 ⇒ 那台后端写好的那份；通道没走通 / 这一侧的错 ⇒ 窗口进程自己写（[`detail_of`]）。
+    /// 空 ⇒ 不出按钮。
+    pub detail: String,
 }
 
 impl Failed {
     fn local(said: String) -> Self {
-        Self { code: None, said }
+        Self {
+            code: None,
+            said,
+            detail: String::new(),
+        }
     }
+
+    /// 这一侧的错（问之前拼不出参数 · 回来的读不懂）：窗口进程写详情（时刻 · 机器 · 命令 · 原话）。
+    fn here(said: String, origin: &Origin, cmd: &str, raw: Option<&str>) -> Self {
+        Self {
+            code: None,
+            said,
+            detail: copy_core::detail::Detail::new()
+                .item(copy_core::detail::Label::At, now_stamp())
+                .item(copy_core::detail::Label::Machine, &origin.0)
+                .item(copy_core::detail::Label::Command, cmd)
+                .maybe(copy_core::detail::Label::Raw, raw)
+                .render(),
+        }
+    }
+
+    /// 一行汇总（「上传失败 · n 项」）底下几件各自的失败 ⇒ 复制出去的整段：首行是那一行，每件一段（名字 · 那一句 ＋ 它的详情），
+    /// 段间空一行（与主界面合流 ×N 同一排法）；没有一件带详情 ⇒ `None`（不出按钮）。
+    pub fn copy_many(head: &str, items: &[(String, Failed)]) -> Option<String> {
+        let segs: Vec<String> = items
+            .iter()
+            .filter(|(_, f)| !f.detail.trim().is_empty())
+            .map(|(name, f)| {
+                format!(
+                    "{}\n{}",
+                    copy_text(
+                        "rsFilewinProgress.detail.failedOne",
+                        &[("name", name), ("why", &f.said)]
+                    ),
+                    f.detail
+                )
+            })
+            .collect();
+        (!segs.is_empty()).then(|| format!("{head}\n\n{}", segs.join("\n\n")))
+    }
+
+    /// 屏上那一句 `shown`（可能套了别的字）＋ 详情 ⇒ 复制出去的整段；没详情 ⇒ `None`（不出按钮）。
+    pub fn copy_body(shown: &str, detail: &str) -> Option<String> {
+        (!detail.trim().is_empty()).then(|| format!("{shown}\n{detail}"))
+    }
+}
+
+/// 只有一句话（这一侧说的，没有详情 ⇒ 不出按钮）。
+impl From<String> for Failed {
+    fn from(said: String) -> Self {
+        Failed::local(said)
+    }
+}
+
+impl From<&str> for Failed {
+    fn from(said: &str) -> Self {
+        Failed::local(said.to_string())
+    }
+}
+
+/// 写出来就是给人看的那一句（详情另取）。
+impl std::fmt::Display for Failed {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.said)
+    }
+}
+
+/// 此刻（本机本地时间 ＋ 偏移）。
+fn now_stamp() -> String {
+    let t = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX));
+    copy_core::detail::stamp(t, local_offset_at(t))
+}
+
+/// 一趟 `call` 没成的复制详情：对端拒了、那台写了详情 ⇒ 原样；别的（通道没走通 · 对端不认 · 本侧）⇒ 窗口进程写
+/// 时刻 · 机器（没发出去标「未连上」）· 命令 · 断在 · 码（那几项的取法住通信层 `HopFacts`，与 monitor 壳同一份）。
+pub fn detail_of(origin: &Origin, cmd: &str, e: &comms_inward::chan::wire::CallError) -> String {
+    let origin = origin.0.as_str();
+    use comms_inward::chan::wire::{CallError, PeerFault};
+    use copy_core::detail::{Detail, Label};
+    if let CallError::Peer {
+        why: PeerFault::Refused { body },
+    } = e
+    {
+        let wrote = serde_json::from_slice::<serde_json::Value>(&body.0)
+            .ok()
+            .and_then(|v| v.get("detail").and_then(|d| d.as_str()).map(str::to_string))
+            .unwrap_or_default();
+        if !wrote.trim().is_empty() {
+            return wrote;
+        }
+    }
+    let f = e.hop_facts();
+    let machine = if f.not_sent {
+        format!(
+            "{origin}（{}）",
+            copy_text("detail.value.notConnected", &[])
+        )
+    } else {
+        origin.to_string()
+    };
+    Detail::new()
+        .item(Label::At, now_stamp())
+        .item(Label::Machine, machine)
+        .item(Label::Command, cmd)
+        .maybe(Label::Hop, f.hop)
+        .item(Label::Code, f.code)
+        .render()
 }
 
 /// 与 [`ask`] 同一件事，失败时**把对端的码一起交出来**（[`Failed`]）。
@@ -1032,10 +1142,12 @@ pub async fn ask_coded_cancellable(
         cancel,
     };
     let payload = Body(serde_json::to_vec(args).map_err(|e| {
-        Failed::local(copy_text(
-            "rsFilewinSource.ask.badArgs",
-            &[("e", &e.to_string())],
-        ))
+        Failed::here(
+            copy_text("rsFilewinSource.ask.badArgs", &[("e", &e.to_string())]),
+            origin,
+            cmd,
+            None,
+        )
     })?);
     let op = Op(cmd.to_string());
     let body = line
@@ -1044,18 +1156,23 @@ pub async fn ask_coded_cancellable(
         .map_err(|e| Failed {
             code: refused_code(&e),
             said: said(cmd, &e),
+            detail: detail_of(origin, cmd, &e),
         })?;
     let v: serde_json::Value = serde_json::from_slice(&body.0).map_err(|e| {
-        Failed::local(copy_text(
-            "rsFilewinSource.ask.unreadable",
-            &[("e", &e.to_string())],
-        ))
+        Failed::here(
+            copy_text("rsFilewinSource.ask.unreadable", &[("e", &e.to_string())]),
+            origin,
+            cmd,
+            None,
+        )
     })?;
     if v.is_null() {
-        return Err(Failed::local(copy_text(
-            "rsFilewinSource.said.badReply",
-            &[],
-        )));
+        return Err(Failed::here(
+            copy_text("rsFilewinSource.said.badReply", &[]),
+            origin,
+            cmd,
+            None,
+        ));
     }
     Ok(v)
 }

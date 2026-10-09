@@ -63,13 +63,17 @@ fn snapshot_in_book(book: &Book, origin: &crate::origin::Origin) -> Vec<String> 
 /// **monitor 自己的命令，不经后端**。
 #[tauri::command]
 pub async fn drift_ledger_report(origin: crate::origin::Origin) -> Result<DriftLedgerReport, Said> {
-    match origin.route("drift_ledger_report")? {
-        crate::origin::Route::Local | crate::origin::Route::Remote(_) => {}
+    let r: Result<DriftLedgerReport, Said> = async move {
+        match origin.route("drift_ledger_report")? {
+            crate::origin::Route::Local | crate::origin::Route::Remote(_) => {}
+        }
+        Ok(DriftLedgerReport {
+            unknown_tokens: snapshot_in_book(&lock(), &origin),
+            origin,
+        })
     }
-    Ok(DriftLedgerReport {
-        unknown_tokens: snapshot_in_book(&lock(), &origin),
-        origin,
-    })
+    .await;
+    r.map_err(|s| s.named("drift_ledger_report"))
 }
 
 #[cfg(test)]

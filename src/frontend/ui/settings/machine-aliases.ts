@@ -24,7 +24,7 @@
  */
 import { commands } from "../ipc/commands";
 import { isLocalOrigin } from "../ipc/origin";
-import { toast } from "../kit/toast"; // `K-R135`：用户级 PATH 那一格的失败要出声
+import { failToast } from "../kit/toast"; // `K-R135`：用户级 PATH 那一格的失败要出声
 import { markChore } from "./data-reads";
 import { SETTINGS_GO_EVENT } from "./events";
 // 接入那几问走通道、那台后端出成品（`../alias-reads`）；类型随成品住那边。
@@ -577,7 +577,7 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
       await markChore(opts.origin(), spec);
       return true;
     } catch (e) {
-      toast(copyText("machineAliases.selfPaste.failed"), e instanceof Error ? e.message : String(e), { detail: detailOf(e), level: "error" });
+      failToast(copyText("machineAliases.selfPaste.failed"), e, { level: "error" });
       return false;
     }
   };
@@ -633,7 +633,7 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
     try {
       await openPath(path);
     } catch (e) {
-      toast(copyText("machineAliases.openRc.failed"), copyText("machineAliases.openRc.failedBody", { e: String(e), path }), { detail: detailOf(e) });
+      failToast(copyText("machineAliases.openRc.failed"), e, { fact: path });
     }
   };
 
@@ -710,7 +710,7 @@ function buildPsExtras(row: CfgRow): PsExtras {
         await commands.cc_set_auto_launch({ enabled });
         return true;
       } catch (e) {
-        toast(copyText("machineAliases.ps.saveFailed"), String(e), { detail: detailOf(e) });
+        failToast(copyText("machineAliases.ps.saveFailed"), e);
         return false;
       }
     },
@@ -727,7 +727,7 @@ function buildPsExtras(row: CfgRow): PsExtras {
         if (on) await commands.ccm_user_path_add();
         else await commands.ccm_user_path_remove();
       } catch (e) {
-        toast(on ? copyText("machineAliases.userPath.addFailed") : copyText("machineAliases.userPath.removeFailed"), String(e), { detail: detailOf(e) });
+        failToast(on ? copyText("machineAliases.userPath.addFailed") : copyText("machineAliases.userPath.removeFailed"), e);
       }
       // 成功失败都重扫：盘上现在是什么样，就显示什么样（不拿我们以为的结果去写界面）。
       await refreshPath();

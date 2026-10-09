@@ -895,10 +895,9 @@ fn the_files_read_family_is_online_exactly_as_it_is_declared() {
                 &super::registry::file_manager::SESSION_PORT,
             )
         }),
-        (
-            crate::control::files_commit::COMMIT_COMMANDS,
-            crate::control::files_commit::answer_wire,
-        ),
+        (crate::control::files_commit::COMMIT_COMMANDS, |c, a| {
+            crate::control::files_commit::answer_wire(c, a).map_err(|(code, said, _)| (code, said))
+        }),
     ];
     for (cap, answer) in tables
         .iter()

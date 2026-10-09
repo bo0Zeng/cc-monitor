@@ -18,7 +18,7 @@ const boom = async (): Promise<void> => {
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(), Channel: class {} }));
 vi.mock("@tauri-apps/api/event", () => ({ emit: vi.fn(), listen: vi.fn(async () => () => {}) }));
-vi.mock("../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn() }));
+vi.mock("../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn(), failToast: vi.fn() }));
 // 分组的每一个动作把组表与几个 tab 的组 id 键装进一次 `patchConfig`（`TabBarPrefs.writeGroups`）⇒ 失败注入在写口这一层。
 //   别的几个写者在下面各自被替掉，不经这里。
 vi.mock("../../../src/frontend/ui/config", async (orig) => ({
@@ -40,12 +40,12 @@ vi.mock("../../../src/frontend/ui/keybindings/registry", () => ({
   KeybindingDispatcher: class {},
 }));
 
-import { toast as showActionFailureToast } from "../../../src/frontend/ui/kit/toast";
+import { failToast } from "../../../src/frontend/ui/kit/toast";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { TabBarPrefs } from "../../../src/frontend/ui/tab-bar-prefs";
 import { KeybindingsEditor } from "../../../src/frontend/ui/keybindings/editor";
 
-const toast = vi.mocked(showActionFailureToast);
+const toast = vi.mocked(failToast);
 
 function prefs(): TabBarPrefs {
   const store = { orderedIds: [], tabs: new Map(), savedOrder: [], mergedOrder: () => [] };
@@ -80,7 +80,7 @@ describe("CFG1 J8 · 配置落盘失败出声", () => {
   });
 
   for (const c of CASES) {
-    it(`${c.name}：写失败 ⇒ 恰好一条 toast、标题是表里那句、原因带着；写成功 ⇒ 零条`, async () => {
+    it(`${c.name}：写失败 ⇒ 恰好一条失败 toast、标题是表里那句、那次失败交给它（带详情的换成那一句）；写成功 ⇒ 零条`, async () => {
       fail.on = true;
       await c.run();
       expect(toast.mock.calls.map((a) => a[0])).toEqual([c.head]);

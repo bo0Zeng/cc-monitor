@@ -129,3 +129,24 @@ async fn an_unknown_archive_says_so_and_a_directory_is_not_offered() {
         "文件上没给解压"
     );
 }
+
+/// 没解成那一句带复制详情（首行就是屏上那一句）；没详情 ⇒ 不出按钮；解成了 / 不解了 ⇒ 不出。
+#[test]
+fn a_failed_extract_copies_its_detail_under_the_sentence() {
+    let with = Outcome::Failed(crate::source::Failed {
+        code: Some("io_failed".into()),
+        said: "夹具：写不进去".into(),
+        detail: "码：io_failed".into(),
+    });
+    let body = outcome_copy("a.zip", &with).expect("带详情却不出按钮");
+    assert!(body.starts_with(&outcome_text("a.zip", &with)), "{body}");
+    assert!(body.ends_with("码：io_failed"), "{body}");
+    assert_eq!(
+        outcome_copy("a.zip", &Outcome::Failed("夹具：没详情".to_string().into())),
+        None
+    );
+    assert_eq!(
+        outcome_copy("a.zip", &Outcome::Skipped("夹具".into())),
+        None
+    );
+}

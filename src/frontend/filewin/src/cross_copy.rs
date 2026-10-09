@@ -72,13 +72,11 @@ pub enum Outcome {
         bytes: u64,
     },
     /// 人答了「不盖」。
-    Skipped {
-        name: String,
-        path: String,
-    },
+    Skipped { name: String, path: String },
+    /// 没复制成：那一句 ＋ 复制详情（哪一步没成由那一步写）。
     Failed {
         name: String,
-        why: String,
+        why: super::source::Failed,
     },
 }
 
@@ -105,7 +103,7 @@ pub fn outcome_text(o: &Outcome) -> String {
         ),
         Outcome::Failed { name, why } => copy_text(
             "rsFilewinCrossCopy.outcome.failed",
-            &[("name", name), ("why", why)],
+            &[("name", name), ("why", &why.said)],
         ),
     }
 }
@@ -480,7 +478,7 @@ where
     A: FnOnce(String) -> AFut,
     AFut: std::future::Future<Output = bool>,
 {
-    let failed = |why: String| Outcome::Failed {
+    let failed = |why: super::source::Failed| Outcome::Failed {
         name: name.to_string(),
         why,
     };
@@ -498,15 +496,15 @@ where
     {
         Ok(h) => h,
         Err(e) => {
-            return failed(copy_text(
+            return failed(super::source::Failed::from(copy_text(
                 "rsFilewinCrossCopy.target.unreachable",
                 &[("machine", machine), ("why", &e)],
-            ))
+            )))
         }
     };
     let dir = match target_dir(typed_dir, &bhome) {
         Ok(d) => d,
-        Err(e) => return failed(e),
+        Err(e) => return failed(e.into()),
     };
     let dest = format!("{}/{name}", dir.trim_end_matches('/'));
     let mut overwrite = false;
@@ -535,6 +533,7 @@ where
                 &board.pull,
             )
             .await
+            .map_err(super::source::Failed::from)
         } else {
             super::download::pull_one(line, from, &src.shown, &dest, &board.pull).await
         };
@@ -561,7 +560,7 @@ where
     .and_then(|d| super::source::home_from_reply(&d))
     {
         Ok(h) => h,
-        Err(e) => return failed(e),
+        Err(e) => return failed(e.into()),
     };
     let own = format!("{}/.cc-monitor", lhome.trim_end_matches('/'));
     let staging = format!("{own}/staging");
@@ -584,7 +583,7 @@ where
         )
         .await
         {
-            return failed(e);
+            return failed(e.into());
         }
     }
     let key = uuid::Uuid::new_v4().simple().to_string();
@@ -601,6 +600,7 @@ where
             &board.pull,
         )
         .await
+        .map_err(super::source::Failed::from)
     } else {
         super::download::pull_one(line, from, &src.shown, &local_path, &board.pull).await
     };

@@ -246,7 +246,10 @@ fn the_epoch_guard_is_not_just_refusing_everything() {
 
     let mine = l.start();
     assert!(store_if_current(&l, mine, Err("炸了".into())));
-    assert_eq!(l.error.lock().unwrap().clone(), Some("炸了".to_string()));
+    assert_eq!(
+        l.error.lock().unwrap().clone().map(|f| f.said),
+        Some("炸了".to_string())
+    );
 }
 
 /// 「正在列」这件事要看得见 —— 否则远端慢的时候屏幕上是一个空列表，
@@ -1292,7 +1295,8 @@ fn a_delete_click_goes_straight_to_the_batch_and_says_so_when_it_cannot_run() {
         .lock()
         .unwrap()
         .clone()
-        .expect("一次删除被吞了，屏幕上一句话都没有");
+        .expect("一次删除被吞了，屏幕上一句话都没有")
+        .said;
     assert!(no_runtime(&e), "报的不是「没有运行时」：{e}");
 }
 
@@ -1811,7 +1815,8 @@ async fn an_oversized_row_never_asks_the_remote_and_still_says_why() {
         .lock()
         .unwrap()
         .clone()
-        .expect("拒了却一个字都没说 —— 那与「点了没反应」同形");
+        .expect("拒了却一个字都没说 —— 那与「点了没反应」同形")
+        .said;
     assert!(
         copy_core::copy_matches_with("rsFilewinEditor.notEditable.tooBig", &[("over", "1")], &e),
         "那句话没说超出多少：{e}"
@@ -2027,7 +2032,14 @@ async fn a_second_open_while_one_is_still_reading_is_not_sent() {
     // a.txt 那一趟还在路上。
     w.edits.begin_open("/srv/data/a.txt");
     assert!(!w.begin_edit(1, None), "a.txt 还在读，b.txt 那一趟竟然发了");
-    let e = w.listing.error.lock().unwrap().clone().expect("拒了却没说");
+    let e = w
+        .listing
+        .error
+        .lock()
+        .unwrap()
+        .clone()
+        .expect("拒了却没说")
+        .said;
     assert!(e.contains("/srv/data/a.txt"), "没说在等哪一份：{e}");
     // 读完了、还没落进编辑面那一拍：同样不发。
     w.edits.deliver(crate::editor::Arrived::Text {

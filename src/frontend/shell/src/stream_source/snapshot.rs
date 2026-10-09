@@ -208,6 +208,7 @@ pub(super) async fn snapshot_dispatcher(
                         ("err", &last_err.to_string()),
                     ],
                 ),
+                detail: String::new(),
             };
             if let Err(e) = health(payload) {
                 tracing::warn!("snapshot remote-health emit failed: {e}");

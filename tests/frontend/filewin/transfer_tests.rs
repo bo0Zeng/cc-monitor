@@ -289,10 +289,7 @@ async fn failures_come_back_named_and_with_their_own_message() {
     )
     .await;
     assert_eq!(out.ok, 1);
-    assert_eq!(
-        out.failed,
-        vec![("a".to_string(), "对面盘满了".to_string())]
-    );
+    assert_eq!(out.failed, vec![("a".to_string(), "对面盘满了".into())]);
 }
 
 /// 空拖入 ⇒ 空结果，一个探测都不发。
@@ -895,7 +892,7 @@ async fn a_commit_that_finds_a_bad_staging_part_restarts_once_and_says_so() {
     let e = upload_remote(&line, &origin, &p("a.bin"), &DropBoard::default())
         .await
         .expect_err("一直对不上竟然成了");
-    assert!(e.contains("对不上"), "原话没带回来：{e}");
+    assert!(e.said.contains("对不上"), "原话没带回来：{e}");
     assert_eq!(
         steps(&log)
             .iter()
@@ -913,7 +910,7 @@ async fn a_failed_transfer_is_never_committed() {
     let e = upload_remote(&line, &origin, &p("a.bin"), &DropBoard::default())
         .await
         .expect_err("该失败");
-    assert!(e.contains("断网（合成）"), "失败原话没带回来：{e}");
+    assert!(e.said.contains("断网（合成）"), "失败原话没带回来：{e}");
     assert!(
         !steps(&log).iter().any(|s| s == "files-commit-upload"),
         "传输失败了还去提交：{:?}",
@@ -944,7 +941,7 @@ async fn pressing_cancel_stops_the_subscription_and_nothing_is_committed() {
         .await
         .expect("按了取消，那一趟该收场")
         .expect("任务没 panic");
-    assert_eq!(r, Err(CANCELLED.to_string()));
+    assert_eq!(r.map_err(|f| f.said), Err(CANCELLED.to_string()));
     tokio::time::timeout(std::time::Duration::from_secs(10), async {
         while !steps(&log).iter().any(|s| s == "dropped") {
             tokio::task::yield_now().await;
@@ -1053,7 +1050,11 @@ async fn pressing_cancel_stops_every_transfer_that_had_not_started_yet() {
          `DropOutcome` 上「取消了」与「传完了」分不开"
     );
     for (_, why) in &out.failed {
-        assert_eq!(why, super::CANCELLED.as_str(), "被取消那一件报的不是取消");
+        assert_eq!(
+            why.said,
+            super::CANCELLED.as_str(),
+            "被取消那一件报的不是取消"
+        );
     }
     // 收场之后在飞表是空的（每一趟都摘掉了自己的登记）。
     assert_eq!(board.cancels().in_flight_ids(), Vec::<String>::new());
@@ -1112,7 +1113,7 @@ async fn the_transfer_id_the_pool_gets_is_the_one_the_window_can_name() {
             );
             assert_eq!(desk.in_flight_names(), vec![name.to_string()]);
             seen.lock().unwrap().push(id);
-            async move { Ok(()) }
+            async move { Ok::<(), String>(()) }
         })
         .await;
         assert!(r.is_ok());

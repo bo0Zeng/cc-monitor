@@ -115,11 +115,14 @@ fn a_failure_carries_the_reason_it_was_given() {
         "拒绝写 Claude 数据源文件(/home/u/.claude/projects/p/s.jsonl)——管理会话文件请用历史浏览器";
     b.finish(Outcome::Failed {
         dest: "/home/u/.claude/projects/p/s.jsonl".into(),
-        why: why.to_string(),
+        why: why.into(),
     });
     match b.last().expect("没有结局") {
         Outcome::Failed { dest, why: got } => {
-            assert_eq!(got, why, "原话被改写了 —— 用户看到的就不是下层说的那句");
+            assert_eq!(
+                got.said, why,
+                "原话被改写了 —— 用户看到的就不是下层说的那句"
+            );
             assert!(dest.contains(".jsonl"));
         }
         other => panic!("{other:?}"),

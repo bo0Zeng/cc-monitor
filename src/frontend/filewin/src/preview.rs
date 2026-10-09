@@ -375,6 +375,7 @@ impl Preview {
                         .await,
                     )
                     .map(Got::Text)
+                    .map_err(|f| f.said)
                 }
                 Want::Image => read_image(&line, &origin, &wire).await.map(Got::Image),
             };

@@ -35,7 +35,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
-vi.mock("../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn() }));
+vi.mock("../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn(), failToast: vi.fn() }));
 vi.mock("../../../src/frontend/ui/behavior", () => ({
   getBehavior: vi.fn().mockResolvedValue({ resumeCommand: "" }),
 }));
@@ -47,7 +47,7 @@ import { stripComments } from "../../test-support/strip-comments.ts";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { mintFreshTmuxName } from "../../../src/frontend/ui/terminal-name-mint";
 import { resumeLocalSession } from "../../../src/frontend/ui/local-resume";
-import { toast as showActionFailureToast } from "../../../src/frontend/ui/kit/toast";
+import { failToast, toast as showActionFailureToast } from "../../../src/frontend/ui/kit/toast";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
@@ -154,7 +154,7 @@ describe("K3 · 列不出 ⇒ 不铸名（三态不许压成两态）", () => {
       await resumeLocalSession({ agent: "claude", sid: "a b", cwd: "/p", account: { kind: "base" } }),
     ).toBe(false);
     expect(localLaunchCalls(invokeMock.mock.calls, "resume_history_session")).toHaveLength(1);
-    expect(vi.mocked(showActionFailureToast)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(failToast)).toHaveBeenCalledTimes(1);
   });
 });
 

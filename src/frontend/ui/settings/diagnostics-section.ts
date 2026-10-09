@@ -9,7 +9,7 @@
  */
 
 import { commands } from "../ipc/commands";
-import { toast } from "../kit/toast";
+import { toast, failToast } from "../kit/toast";
 import { button, setDisabled } from "../kit/button";
 import { toggleSwitch } from "../kit/switch";
 import { icon } from "../kit/icon";
@@ -379,7 +379,7 @@ async function openFile(path: string): Promise<void> {
   try {
     await openPath(path);
   } catch (e) {
-    toast(copyText("diagnostics.openFile.failed"), String(e), { detail: detailOf(e) });
+    failToast(copyText("diagnostics.openFile.failed"), e);
   }
 }
 
@@ -387,6 +387,6 @@ async function openDir(): Promise<void> {
   try {
     await commands.open_log_dir();
   } catch (e) {
-    toast(copyText("diagnostics.openDir.failed"), String(e), { detail: detailOf(e) });
+    failToast(copyText("diagnostics.openDir.failed"), e);
   }
 }

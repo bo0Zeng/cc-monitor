@@ -532,6 +532,48 @@ export const PANEL_SCENES: Scene[] = [
     };
     return w;
   }),
+  panel(
+    "panel-filewin-open-failed",
+    "打开文件 · 窗口没起来",
+    "文件窗口进程一启动就退了：toast 标题是壳写好的那一句（只说原因词），灰字是那台，［复制详情］里是退出状态与它的错误输出",
+    async () => {
+      await mainReady(ALL_TABS);
+      await click(".sftp-trigger");
+      const item = await byText("[role^=menuitem]", "devbox", 2000).catch(() => null);
+      if (item) await click(item);
+      await byText("[role=alert]", /文件窗口未启动/);
+      await sleep(300);
+    },
+    () => {
+      const w = defaultWorld();
+      w.commands.open_file_window = () =>
+        Promise.reject({
+          said: "文件窗口未启动 · 程序出错",
+          detail: "时刻：2026-10-08 15:20:44 +08:00\n本机：cc-monitor 4.1.5 (p13-shots) · Linux x86_64\n命令：open_file_window\n码：exit status: 1\n原话：thread 'main' panicked at src/main.rs:12:5:\nwinit: no display",
+        });
+      return w;
+    },
+  ),
+  panel(
+    "panel-settings-open-failed",
+    "设置窗口没开起来",
+    "壳命令失败：toast 标题是壳写好的那一句（哪件事 ＋ 原因词），不再在界面那句后面接原文；［复制详情］里是时刻 · 本机 · 命令 · 原话",
+    async () => {
+      await mainReady(ALL_TABS);
+      await click(".settings-trigger");
+      await byText("[role=alert]", /打开设置窗口失败/);
+      await sleep(300);
+    },
+    () => {
+      const w = defaultWorld();
+      w.commands.open_settings_window = () =>
+        Promise.reject({
+          said: "打开设置窗口失败 · 程序出错",
+          detail: "时刻：2026-10-08 16:05:12 +08:00\n本机：cc-monitor 4.1.5 (p13-shots) · Linux x86_64\n命令：open_settings_window\n原话：a webview with label `settings` already exists",
+        });
+      return w;
+    },
+  ),
   panel("panel-first-run", "首次打开", "第一次开：命令面板入口高亮、tab 栏默认宽度", async () => {
     await mainReady(ALL_TABS);
   }),
@@ -666,12 +708,17 @@ export const FRONT_SCENES: Scene[] = [
     tooOld(() => "已安装后端（p13，x86_64）到 ~/.cc-monitor/bin/ccm（原 p12 · 换为 p13）。")(w);
     w.commands.backend_start = () => Promise.reject("拨不通");
   }),
-  frontScene("panel-front-update-failed", "↗ · ［更新］没成", "部署失败 ⇒ 浮层红着说更新失败、带原文，［重试］再更新一次 ·［复制详情］", async () => {
+  frontScene("panel-front-update-failed", "↗ · ［更新］没成", "那台答不出系统（默认 shell 没有 uname）⇒ 浮层红着说更新失败、那一句只说原因词，［重试］再更新一次 ·［复制详情］（那台的原话在详情里）", async () => {
     await frontTooOld();
     await clickUpdate();
     await byText("[data-role=front-result]", /更新失败/);
     await sleep(400);
-  }, tooOld(() => Promise.reject("上传 ~/.cc-monitor/bin/ccm 失败：磁盘已满"))),
+  }, tooOld(() =>
+    Promise.reject({
+      said: "devbox 系统未知 · 未安装 · 应答报错",
+      detail: "时刻：2026-10-08 14:02:11 +08:00\n机器：Linux x86_64 · 后端 p13-shots\n命令：deploy-plan\n码：refused\n原话：uname : The term 'uname' is not recognized",
+    }),
+  )),
   frontScene("panel-front-busy", "↗ · 在找终端", "壳那一跳超过 300ms 还没回 ⇒ ↗ 转圈、旁边「查找终端…」", async () => {
     await mainReady(ALL_TABS);
     await clickHeadFront();

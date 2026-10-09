@@ -5711,12 +5711,6 @@
       "args": [],
       "limited": ["git", "ccm"]
     },
-    "machineAliases.openRc.failedBody": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{e}\n路径 · {path}",
-      "args": ["e", "path"]
-    },
     "machineAliases.openRc.failed": {
       "kind": "error",
       "role": "报错",
@@ -6851,12 +6845,6 @@
       "role": "报错",
       "zh": "打不开配置文件",
       "args": []
-    },
-    "profilesPage.open.failedBody": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{path} · {e}",
-      "args": ["e", "path"]
     },
     "profilesPage.read.failed": {
       "kind": "error",
@@ -9413,12 +9401,6 @@
       "zh": "文件窗口连接主程序失败 · {e}",
       "args": ["e"]
     },
-    "rsFilewinProc.open.stderrTail": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{why} · 错误输出末几行\n{tail}",
-      "args": ["why", "tail"]
-    },
     "rsFilewinProc.open.noStderr": {
       "kind": "error",
       "role": "原因格",
@@ -9431,65 +9413,29 @@
       "zh": "此电脑的显卡或驱动不支持 OpenGL 2.0 · {why}",
       "args": ["why"]
     },
-    "rsFilewinProc.open.failedWhy": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "打开文件窗口失败 · {e}",
-      "args": ["e"]
-    },
-    "rsFilewinProc.open.failed": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "打开文件窗口失败",
-      "args": []
-    },
     "rsFilewinProc.open.exited": {
       "kind": "error",
-      "role": "报错",
-      "zh": "文件窗口打开失败 · 进程退出 {st}",
-      "args": ["st"]
+      "role": "原因格",
+      "zh": "程序出错",
+      "args": []
     },
     "rsFilewinProc.late.exited": {
       "kind": "error",
       "role": "报错",
-      "zh": "文件窗口打开后又退出 · {st}",
-      "args": ["st"]
-    },
-    "rsFilewinProc.seed.sendFailed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "启动参数送不进文件窗口进程 · {e}\n通常是它一启动就退出 · 不是窗口画不出 · 原因见它自己的错误输出",
-      "args": ["e"]
-    },
-    "rsFilewinProc.spawn.noStdin": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "文件窗口启动失败 · 程序出错",
+      "zh": "文件窗口打开后又退出",
       "args": []
-    },
-    "rsFilewinProc.spawn.failed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "文件窗口进程启动失败 · {bin} · {e}",
-      "args": ["bin", "e"]
     },
     "rsFilewinProc.bin.notFound": {
       "kind": "error",
-      "role": "报错",
-      "zh": "找不到文件窗口程序 {binStem} · 查过 {looked}\n此 cc-monitor 未自带它 · 要用别处的一份 · 设环境变量 {binEnv}",
-      "args": ["binStem", "looked", "binEnv"]
+      "role": "原因格",
+      "zh": "未装\n此 cc-monitor 未自带它 · 要用别处的一份 · 设环境变量 {binEnv}",
+      "args": ["binEnv"]
     },
     "rsFilewinProc.bin.noHome": {
       "kind": "error",
-      "role": "报错",
-      "zh": "找不到主目录 · 无处放文件窗口程序",
+      "role": "原因格",
+      "zh": "无主目录",
       "args": []
-    },
-    "rsFilewinProc.bin.placeFailed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "写入失败 · {dir} · {e}",
-      "args": ["dir", "e"]
     },
     "rsFilewinProc.seed.empty": {
       "kind": "error",
@@ -10789,12 +10735,6 @@
       "role": "原因格",
       "zh": "目标 {rel} 无文件名",
       "args": ["rel"]
-    },
-    "beFilesCommit.exdev.copyFailed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "写入失败 · {e} · 原文件未动 · 临时文件保留",
-      "args": ["e"]
     },
     "rsFilewinCopy.ui.askOverwriteMany": {
       "kind": "title",
@@ -12827,25 +12767,19 @@
     "rsByteTable.key.unreadable": {
       "kind": "error",
       "role": "原因格",
-      "zh": "应答无法解析 · 「{reply}」",
-      "args": ["reply"]
+      "zh": "应答无法解析",
+      "args": []
     },
     "rsByteTable.key.said": {
       "kind": "error",
       "role": "原因格",
-      "zh": "应答「{said}」",
-      "args": ["said"]
+      "zh": "应答报错",
+      "args": []
     },
     "rsByteTable.key.noAnswer": {
       "kind": "error",
       "role": "原因格",
       "zh": "无应答",
-      "args": []
-    },
-    "rsByteTable.key.notUtf8": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "应答无法解析",
       "args": []
     },
     "rsFootprintClient.env.noHome": {
@@ -13496,8 +13430,8 @@
     "history.delete.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "删除失败 · {label} · {why}",
-      "args": ["label", "why"]
+      "zh": "删除失败 · {label}",
+      "args": ["label"]
     },
     "history.delete.title": {
       "kind": "title",
@@ -16427,14 +16361,14 @@
     "history.star.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "标星失败 · {why}",
-      "args": ["why"]
+      "zh": "标星失败",
+      "args": []
     },
     "history.rename.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "改标题失败 · {why}",
-      "args": ["why"]
+      "zh": "改标题失败",
+      "args": []
     },
     "history.rename.title": {
       "kind": "title",
@@ -16451,8 +16385,8 @@
     "history.hide.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "隐藏失败 · {why}",
-      "args": ["why"]
+      "zh": "隐藏失败",
+      "args": []
     },
     "beCcBus.parse.badSender": {
       "kind": "error",
@@ -17412,14 +17346,14 @@
     "beFilesCommit.upload.moveFailedNote": {
       "kind": "error",
       "role": "报错",
-      "zh": "写入失败 · {path} · {e}",
-      "args": ["path", "e"]
+      "zh": "写入失败 · {path} · {why}",
+      "args": ["path", "why"]
     },
     "beFilesCommit.upload.placeholderLeft": {
       "kind": "error",
       "role": "报错",
-      "zh": "写入失败 · {path} · {e}\n删除失败 · 留下的 0 字节空文件 · {left}\n非你的数据 · 删后再试",
-      "args": ["path", "e", "left"]
+      "zh": "写入失败 · {path} · {why}\n删除失败 · 留下的 0 字节空文件 · {leftWhy}\n非你的数据 · 删后再试",
+      "args": ["path", "why", "leftWhy"]
     },
     "beFilesCommit.staging.notDir": {
       "kind": "error",
@@ -18264,12 +18198,6 @@
       "role": "报错",
       "zh": "已安装 · 未记进安装记录 · {e}",
       "args": ["e"]
-    },
-    "rsFilewinProc.spawn.noStdout": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "文件窗口启动失败 · 程序出错 · 收不到回话",
-      "args": []
     },
     "rsFilewinProc.child.noRuntime": {
       "kind": "error",
@@ -27088,6 +27016,108 @@
       "role": "说明",
       "zh": "另 {n} 段",
       "args": ["n"]
+    },
+    "rsFilewinEntry.open.crashed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "文件窗口未启动 · 程序出错",
+      "args": []
+    },
+    "reason.io.denied": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "无权限",
+      "args": []
+    },
+    "reason.io.notFound": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "路径不存在",
+      "args": []
+    },
+    "reason.io.full": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "磁盘满",
+      "args": []
+    },
+    "reason.io.busy": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "被占用",
+      "args": []
+    },
+    "reason.io.exists": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "已存在",
+      "args": []
+    },
+    "reason.io.unknown": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "原因不明",
+      "args": []
+    },
+    "beFilesCommit.land.badPath": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "路径不合规",
+      "args": []
+    },
+    "rsShellCmd.self.crashed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "cc-monitor 程序出错",
+      "args": []
+    },
+    "rsShellCmd.autoLaunch.readNoDir": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "读取开机启动设置失败 · 无数据目录",
+      "args": []
+    },
+    "rsShellCmd.autoLaunch.writeNoDir": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "保存开机启动设置失败 · 无数据目录",
+      "args": []
+    },
+    "rsShellCmd.viewer.openFailed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "打开会话窗口失败 · 程序出错",
+      "args": []
+    },
+    "rsShellCmd.settings.openFailed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "打开设置窗口失败 · 程序出错",
+      "args": []
+    },
+    "rsShellCmd.logDir.createFailed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "打开日志目录失败 · {why}",
+      "args": ["why"]
+    },
+    "rsShellCmd.config.readFailed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "读取设置失败 · {why}",
+      "args": ["why"]
+    },
+    "rsShellCmd.config.unparsable": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "读取设置失败 · 内容无法解析",
+      "args": []
+    },
+    "rsShellCmd.config.noHome": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "读取设置失败 · 无主目录",
+      "args": []
     }
   }
 }

@@ -158,47 +158,51 @@ pub async fn diagnostics_report(
     drift: Vec<DriftIn>,
     state: tauri::State<'_, std::sync::Arc<crate::logging::LoggingState>>,
 ) -> Result<DiagnosticsReport, Said> {
-    let log_file = state.log_file_info().current_file;
-    let local = crate::inbound_client::LOCAL_ORIGIN;
-    let mut origins: Vec<(String, String)> =
-        vec![(local.to_string(), copy_text("rsDiagReport.text.local", &[]))];
-    for (cfg, _) in crate::load_all_remote_configs() {
-        let label = cfg.origin_label();
-        origins.push((label.clone(), label));
+    let r: Result<DiagnosticsReport, Said> = async move {
+        let log_file = state.log_file_info().current_file;
+        let local = crate::inbound_client::LOCAL_ORIGIN;
+        let mut origins: Vec<(String, String)> =
+            vec![(local.to_string(), copy_text("rsDiagReport.text.local", &[]))];
+        for (cfg, _) in crate::load_all_remote_configs() {
+            let label = cfg.origin_label();
+            origins.push((label.clone(), label));
+        }
+        let mine = crate::byte_table::my_backend_id();
+        let machines: Vec<MachineLine> = origins
+            .into_iter()
+            .map(|(origin, name)| {
+                let m = crate::backend_control::machine_now(&origin);
+                let build = if origin == local {
+                    mine.map(str::to_string)
+                } else {
+                    crate::machine_state::build_of(&origin)
+                };
+                let records = drift
+                    .iter()
+                    .find(|d| d.origin == origin)
+                    .and_then(|d| d.report.as_ref())
+                    .and_then(records_in);
+                MachineLine {
+                    name,
+                    os: m.os.clone(),
+                    state: state_word(&m),
+                    reason: m.reason.clone(),
+                    version: m.version.clone(),
+                    build,
+                    records,
+                }
+            })
+            .collect();
+        Ok(render(
+            crate::machine_state::PRODUCT_VERSION,
+            mine,
+            &machines,
+            &config_unknown,
+            log_file.as_deref(),
+        ))
     }
-    let mine = crate::byte_table::my_backend_id();
-    let machines: Vec<MachineLine> = origins
-        .into_iter()
-        .map(|(origin, name)| {
-            let m = crate::backend_control::machine_now(&origin);
-            let build = if origin == local {
-                mine.map(str::to_string)
-            } else {
-                crate::machine_state::build_of(&origin)
-            };
-            let records = drift
-                .iter()
-                .find(|d| d.origin == origin)
-                .and_then(|d| d.report.as_ref())
-                .and_then(records_in);
-            MachineLine {
-                name,
-                os: m.os.clone(),
-                state: state_word(&m),
-                reason: m.reason.clone(),
-                version: m.version.clone(),
-                build,
-                records,
-            }
-        })
-        .collect();
-    Ok(render(
-        crate::machine_state::PRODUCT_VERSION,
-        mine,
-        &machines,
-        &config_unknown,
-        log_file.as_deref(),
-    ))
+    .await;
+    r.map_err(|s| s.named("diagnostics_report"))
 }
 
 #[cfg(test)]

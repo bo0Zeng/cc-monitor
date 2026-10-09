@@ -373,6 +373,8 @@ pub struct RemoteHealthPayload {
     pub origin: String,
     pub kind: String,
     pub message: String,
+    /// 「复制详情」那几行（壳写；空 ⇒ 界面不出按钮）。今天只有文件窗口开了又退那一形带（退出状态 · stderr 末几行）。
+    pub detail: String,
 }
 
 /// 会话红绿灯：此刻在干什么（那台后端翻好的 [`crate::session_book::SessionActivity`]；`None` ＝ 说不清）；

@@ -9,11 +9,10 @@
 import { copyText } from "./copy-table";
 import { settle, unreadable, type Refusals } from "./control-said";
 import { exactKeys, isObj } from "./ipc/decode";
-import { toast } from "./kit/toast";
+import { toast, failToast } from "./kit/toast";
 import { chan } from "../../comms/inward/chan";
 import { budgetWithin, jsonBody } from "./ipc/chan-caller";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
-import { detailOf } from "./kit/detail";
 
 /** 期限：后端要等每份 watcher 对完表、打完标（起几次 tmux）。 */
 const RESYNC_BUDGET_MS = 20_000;
@@ -117,7 +116,7 @@ export function offerResyncRetry(origin: Origin, sid: string | undefined, headli
           await resync(origin, sid);
           await again();
         } catch (e) {
-          toast(copyText("resync.retry.failed"), e instanceof Error ? e.message : String(e), { detail: detailOf(e) });
+          failToast(copyText("resync.retry.failed"), e);
         }
       })(),
   });

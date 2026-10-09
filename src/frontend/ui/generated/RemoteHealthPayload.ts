@@ -7,4 +7,8 @@
  * `kind` = 类别（"overflow" / "version-older" / "version-newer" / "version-incomparable" / …）供前端节流键与图标选择；`message` =
  * 直接展示给用户的人读说明。
  */
-export type RemoteHealthPayload = { origin: string, kind: string, message: string, };
+export type RemoteHealthPayload = { origin: string, kind: string, message: string, 
+/**
+ * 「复制详情」那几行（壳写；空 ⇒ 界面不出按钮）。今天只有文件窗口开了又退那一形带（退出状态 · stderr 末几行）。
+ */
+detail: string, };
