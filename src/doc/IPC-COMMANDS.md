@@ -409,7 +409,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 一趟传输怎么收场的（`Frame::Transfer` 的 `end`）。
 
 - `state: "done"`，带 `bytes` number · `sha256` string? —— 传完了
-- `state: "failed"`，带 `why` string · `code` string? —— 失败（带下层原话）
+- `state: "failed"`，带 `why` string · `code` string? · `detail` string? —— 失败（那一句 ＋ 复制详情）
 - `state: "cancelled"` —— 撤了（`transfer-stop` / 本机流断了）
 
 #### `Request`

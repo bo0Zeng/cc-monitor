@@ -26,7 +26,7 @@ import type { DiagnosticsReport } from "../generated/DiagnosticsReport";
 import { readRecordDrift, type RecordDriftFace } from "../record-reads";
 import { hostKey, readRemoteConfig } from "../remote-config";
 import { LOCAL_ORIGIN } from "../ipc/origin";
-import { detailOf, sayWithDetail } from "../kit/detail";
+import { copyDetailButton, detailOf, failSaid, sayFailure, sayWithDetail } from "../kit/detail";
 
 /** 记多细：界面上的四档（后端那一格的值 ＋ 怎么说）。 */
 const LEVELS = (): readonly (readonly [string, string])[] => [
@@ -242,7 +242,7 @@ export class DiagnosticsSection {
       this.unknownLine.textContent = unknownSaid(this.report);
     } catch (e) {
       this.report = null;
-      sayWithDetail(this.unknownLine, copyText("diagnostics.unknown.unread", { e: String(e) }), detailOf(e));
+      sayFailure(this.unknownLine, copyText("diagnostics.unknown.unread"), e);
     }
     this.paintCopy();
   }
@@ -279,7 +279,7 @@ export class DiagnosticsSection {
     try {
       await commands.set_diagnostics_config({ cfg });
     } catch (e) {
-      sayWithDetail(this.saveError, copyText("diagnostics.save.failedLine", { e: String(e) }), detailOf(e));
+      sayFailure(this.saveError, copyText("diagnostics.save.failedLine"), e);
       this.saveError.hidden = false;
       this.levelSelect.value = cur.log_level;
       return false;
@@ -319,7 +319,9 @@ export class DiagnosticsSection {
         this.outputRow.replaceChildren(fileText(copyText("diagnostics.files.output"), copyText("diagnostics.files.outputNone"), false));
       }
     } catch (e) {
-      this.todayRow.replaceChildren(fileText(copyText("diagnostics.files.today"), copyText("diagnostics.refresh.dirUnreadable", { e: String(e) }), false));
+      const said = failSaid(copyText("diagnostics.refresh.dirUnreadable"), e);
+      const copy = copyDetailButton(said, detailOf(e));
+      this.todayRow.replaceChildren(fileText(copyText("diagnostics.files.today"), said, false), ...(copy ? [copy] : []));
     }
   }
 }

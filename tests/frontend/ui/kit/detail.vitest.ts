@@ -3,7 +3,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
-import { copyDetailButton, detailOf, detailBody, COPIED_MS } from "../../../../src/frontend/ui/kit/detail";
+import { copyDetailButton, detailOf, detailBody, failSaid, sayFailure, COPIED_MS } from "../../../../src/frontend/ui/kit/detail";
 
 const label = (b: HTMLElement): string => b.querySelector("button")?.textContent ?? "";
 
@@ -86,5 +86,27 @@ describe("复制详情按钮", () => {
     expect(detailOf(new Error("s"))).toBe("");
     expect(detailOf("s")).toBe("");
     expect(detailOf({ detail: "码：x" })).toBe("");
+  });
+});
+
+describe("一次失败给人看的那一句（failSaid · sayFailure）", () => {
+  it("出错那端写好的（Error 带字符串 detail，空的也算）⇒ 它的那一句；JS 自己抛的 ⇒ 界面那句，原文进控制台、不上屏", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const written = Object.assign(new Error("夹具动作未成 · 夹具原因"), { detail: "码：not_installed" });
+    const noDetail = Object.assign(new Error("夹具机 · 夹具版本旧"), { detail: "" });
+    expect(failSaid("夹具动作没成", written)).toBe("夹具动作未成 · 夹具原因");
+    expect(failSaid("夹具动作没成", noDetail)).toBe("夹具机 · 夹具版本旧");
+    expect(failSaid("夹具动作没成", new TypeError("x is undefined"))).toBe("夹具动作没成");
+    expect(failSaid("夹具动作没成", "boom")).toBe("夹具动作没成");
+    expect(warn.mock.calls.flat().some((x) => x instanceof TypeError), "原文进控制台").toBe(true);
+    const el = document.createElement("div");
+    sayFailure(el, "夹具动作没成", written);
+    expect(el.textContent).toContain("夹具动作未成 · 夹具原因");
+    expect(el.textContent).not.toContain("夹具动作没成");
+    expect(el.querySelector('[data-part="copy-detail"]')).not.toBeNull();
+    sayFailure(el, "夹具动作没成", new TypeError("x is undefined"));
+    expect(el.textContent).toBe("夹具动作没成");
+    expect(el.querySelector('[data-part="copy-detail"]')).toBeNull();
+    warn.mockRestore();
   });
 });

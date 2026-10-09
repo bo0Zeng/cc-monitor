@@ -249,7 +249,7 @@ async fn without_the_backend_home_nothing_is_written_and_it_says_so() {
         .await
         .expect_err("后端的家不在，不该写");
     assert_eq!(
-        e,
+        e.said,
         copy_core::copy_text("beTransfer.upload.notDeployed", &[]),
         "没说清为什么"
     );
@@ -821,4 +821,64 @@ fn the_start_dir_check_passes_the_same_home_and_names_both_paths_otherwise() {
         );
     }
     assert_eq!(SFTP_HOME_MISMATCH, "sftp_home_mismatch");
+}
+
+/// 复制详情：传坏了 ⇒ 那一句只说原因词，下层原话交给 `raw`（收场帧的 `detail` 从它来），不上句子。
+#[tokio::test]
+async fn a_failed_upload_says_a_reason_word_and_hands_the_raw_text_on() {
+    let fs = rig::home(false, true);
+    let s = rig::session_on(fs.clone()).await;
+    let tmp = Tmp::dir("raw-up");
+    let local = tmp.file("c.bin", &rig::corpus(200_000));
+    fs.lock().unwrap().fail_write_after = Some(1);
+    let e = upload_to_staging(&s, &local, KEY, &Cancel::default(), &no_progress)
+        .await
+        .expect_err("第 2 块坏");
+    assert!(
+        copy_core::copy_matches("beTransfer.upload.writeRemoteFailed", &e.said),
+        "{}",
+        e.said
+    );
+    let raw = e
+        .raw
+        .clone()
+        .unwrap_or_else(|| panic!("原话没交出来：{}", e.said));
+    assert!(
+        !raw.trim().is_empty() && !e.said.contains(&raw),
+        "{} / {raw}",
+        e.said
+    );
+}
+
+/// 收场帧：失败那一形多一格 `detail`（复制详情那几行：时刻 · 机器 · 命令 · 原话），缺 ⇒ 不出这一格。
+#[test]
+fn a_failed_transfer_end_carries_the_detail_beside_the_sentence() {
+    let end = crate::stream::wire::TransferEnd::failed(
+        "写入远端失败 · 原因不明".into(),
+        None,
+        super::TRANSFER_START,
+        Some("夹具原话"),
+    );
+    let v = serde_json::to_value(&end).unwrap();
+    let d = v["detail"].as_str().expect("没有 detail");
+    assert!(
+        d.contains(&format!(
+            "{}：夹具原话",
+            copy_core::copy_text("detail.label.raw", &[])
+        )),
+        "{d}"
+    );
+    assert!(
+        d.contains(&format!(
+            "{}：transfer-start",
+            copy_core::copy_text("detail.label.command", &[])
+        )),
+        "{d}"
+    );
+    let bare = crate::stream::wire::TransferEnd::Failed {
+        why: "x".into(),
+        code: None,
+        detail: None,
+    };
+    assert!(serde_json::to_value(&bare).unwrap().get("detail").is_none());
 }

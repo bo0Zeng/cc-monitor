@@ -9,7 +9,7 @@
 
 use super::files_commit::{chunk_name, drop_chunks, is_key, STAGING_DIR};
 use super::files_write::{opener, resolve_in_root, WriteRefusal};
-use copy_core::copy_text;
+use copy_core::{copy_text, io_reason};
 use std::path::Path;
 
 /// 把 `<key>.0.chunk` … `<key>.<chunks-1>.chunk` 依次拼成 `<key>.part`（`O_EXCL` 新建），总长必须恰好 `bytes`、不多一块。
@@ -29,10 +29,16 @@ fn assemble(home: &Path, key: &str, chunks: u64, bytes: u64) -> Result<(), Write
     let dir = home.join(STAGING_DIR);
     let part = resolve_in_root(&dir, format!("{key}.part")).map_err(WriteRefusal::Refused)?;
     let io = |what: &Path, e: std::io::Error| {
-        WriteRefusal::Io(copy_text(
-            "beFilesWrite.write.failed",
-            &[("path", &what.display().to_string()), ("e", &e.to_string())],
-        ))
+        WriteRefusal::io(
+            copy_text(
+                "beFilesWrite.write.failed",
+                &[
+                    ("path", &what.display().to_string()),
+                    ("why", &io_reason(e.kind())),
+                ],
+            ),
+            &e,
+        )
     };
     let mut out = opener()
         .write(true)

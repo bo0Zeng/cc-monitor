@@ -188,7 +188,8 @@ describe("T07 分区块隔离（真行为）", () => {
     );
     expect(failed, "失败块必须在").not.toBeNull();
     expect(failed!.textContent).toMatch(copyPattern("settingsPanel.safeBlock.failed"));
-    expect(failed!.textContent).toContain("REMOTE_BOOM");
+    // 原文在那块可复制的只读框里（句子只说「程序出错」）。
+    expect(failed!.querySelector("textarea")!.value).toContain("REMOTE_BOOM");
     expect(failed!.dataset.failedBlock).toBe(copyText("settingsPanel.group.remote"));
     // 其余块照常出——「每块一个 catch」的真正含义。
     // S2 后判据从「四个折叠组」换成「四页都在」：折叠组只剩两个（外观 / 日志与数据），
@@ -239,7 +240,7 @@ describe("T07 分区块隔离（真行为）", () => {
       ".settings-block-failed",
     );
     expect(failed.length, "只该坏一块").toBe(1);
-    expect(failed[0].textContent).toContain("EXT_BOOM");
+    expect(failed[0].querySelector("textarea")!.value).toContain("EXT_BOOM");
     expect(document.querySelector(".accounts-section-stub")).not.toBeNull();
   });
 

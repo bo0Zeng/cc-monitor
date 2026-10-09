@@ -91,7 +91,7 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
       return {
         readAliases: (origin: string, shell: Plat, rcPath: string | null) => {
           seen.push({ cmd: "aliases_read", args: { origin, shell, rcPath } });
-          if (rcPath === "/etc/x") return Promise.reject(new Error("拒绝写这个配置文件：只能落在 home 之内"));
+          if (rcPath === "/etc/x") return Promise.reject(Object.assign(new Error("拒绝写这个配置文件：只能落在 home 之内"), { detail: "d-fence" }));
           const other = rcPath ? `/h/${rcPath.replace(/^~\//, "")}` : null;
           return Promise.resolve({
             home: "/h",

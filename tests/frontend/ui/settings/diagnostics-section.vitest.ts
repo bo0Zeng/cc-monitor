@@ -109,7 +109,8 @@ describe("日志写入文件：改了要重启、拨回原值两处一起消", (
 
   it("★ 存失败 ⇒ 拇指退回 ＋ 行下一句，不说要重启", async () => {
     const sec = await loaded();
-    setDiag.fail = new Error("写不进去-xyz");
+    // 壳命令失败带复制详情（`SaidError` 那一形）⇒ 那一句原样上屏。
+    setDiag.fail = Object.assign(new Error("写不进去-xyz"), { detail: "d-xyz" });
     fileSwitch(sec.element).click();
     await settle();
     expect(fileSwitch(sec.element).getAttribute("aria-checked"), "存失败了拇指还停在新位置").toBe("true");
@@ -186,7 +187,7 @@ describe("复制诊断信息 · 未识别数据那一行", () => {
   });
 
   it("★ 读不到 ⇒ 复制一直灰着、那一行说读不到（不拿空段冒充「都认得」）", async () => {
-    report.fail = new Error("壳没答-xyz");
+    report.fail = Object.assign(new Error("壳没答-xyz"), { detail: "d-xyz" });
     const sec = new DiagnosticsSection();
     const head = sec.headButton();
     sec.loadNow();

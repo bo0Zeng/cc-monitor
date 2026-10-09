@@ -18,9 +18,9 @@
 
 use super::files_write::{
     lexical_in_root, opener, resolve_existing_in_root, resolve_in_root, Answer, ManageCommand,
-    WriteRefusal, TREE_ENTRY_CAP,
+    WriteFail, WriteRefusal, TREE_ENTRY_CAP,
 };
-use copy_core::copy_text;
+use copy_core::{copy_text, io_reason};
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -42,10 +42,16 @@ pub const LINKS_SUPPORTED: bool = cfg!(unix);
 pub fn land_link(root: &Path, rel: &Path, target: &Path) -> Result<PathBuf, WriteRefusal> {
     let at = resolve_in_root(root, rel).map_err(WriteRefusal::Refused)?;
     std::os::unix::fs::symlink(target, &at).map_err(|e| {
-        WriteRefusal::Io(copy_text(
-            "beFilesWrite.write.failed",
-            &[("path", &at.display().to_string()), ("e", &e.to_string())],
-        ))
+        WriteRefusal::io(
+            copy_text(
+                "beFilesWrite.write.failed",
+                &[
+                    ("path", &at.display().to_string()),
+                    ("why", &io_reason(e.kind())),
+                ],
+            ),
+            &e,
+        )
     })?;
     Ok(at)
 }
@@ -129,14 +135,19 @@ pub struct Extracted {
     pub bytes: u64,
 }
 
-type Fail = (&'static str, String);
+type Fail = WriteFail;
 
 fn refused(said: String) -> Fail {
-    ("refused", said)
+    WriteFail::from(("refused", said))
 }
 
-fn io_failed(said: String) -> Fail {
-    ("io_failed", said)
+/// 盘上 / 包里这一步没成：句子带原因词，下层原话进复制详情。
+fn io_failed(said: String, raw: impl std::fmt::Display) -> Fail {
+    WriteFail {
+        code: "io_failed",
+        said,
+        raw: Some(raw.to_string()),
+    }
 }
 
 fn shown(b: &[u8]) -> String {
@@ -218,7 +229,7 @@ fn admit(plan: &mut Plan, index: usize, name: &[u8], raw: Raw, zip: bool) -> Res
     let rel = match entry_rel(name, zip) {
         Ok(Some(r)) => r,
         Ok(None) => return Ok(()),
-        Err(m) => return Err(("refused", m)),
+        Err(m) => return Err(refused(m)),
     };
     let what = match raw {
         Raw::Skip => return Ok(()),
@@ -317,18 +328,27 @@ fn close_plan(plan: &mut Plan, cap: usize) -> Result<(), Fail> {
 
 fn open_archive(path: &Path) -> Result<std::fs::File, Fail> {
     opener().read(true).open(path).map_err(|e| {
-        io_failed(copy_text(
-            "beFilesExtract.archive.unreadable",
-            &[("path", &path.display().to_string()), ("e", &e.to_string())],
-        ))
+        io_failed(
+            copy_text(
+                "beFilesExtract.archive.unreadable",
+                &[
+                    ("path", &path.display().to_string()),
+                    ("why", &io_reason(e.kind())),
+                ],
+            ),
+            e,
+        )
     })
 }
 
 fn broken(path: &Path, e: impl std::fmt::Display) -> Fail {
-    io_failed(copy_text(
-        "beFilesExtract.archive.broken",
-        &[("path", &path.display().to_string()), ("e", &e.to_string())],
-    ))
+    io_failed(
+        copy_text(
+            "beFilesExtract.archive.broken",
+            &[("path", &path.display().to_string())],
+        ),
+        e,
+    )
 }
 
 fn tar_raw<R: Read>(e: &tar::Entry<'_, R>) -> Raw {
@@ -430,10 +450,16 @@ pub fn plan(archive: &Path, kind: Kind, cap: usize) -> Result<Plan, Fail> {
 fn land_file(root: &Path, rel: &Path, body: &mut dyn Read, mode: Option<u32>) -> Result<u64, Fail> {
     let at = resolve_in_root(root, rel).map_err(|m| ("refused", m))?;
     let fail = |e: std::io::Error| {
-        io_failed(copy_text(
-            "beFilesWrite.write.failed",
-            &[("path", &at.display().to_string()), ("e", &e.to_string())],
-        ))
+        io_failed(
+            copy_text(
+                "beFilesWrite.write.failed",
+                &[
+                    ("path", &at.display().to_string()),
+                    ("why", &io_reason(e.kind())),
+                ],
+            ),
+            e,
+        )
     };
     let mut out = opener()
         .write(true)
@@ -463,19 +489,25 @@ fn land_file(root: &Path, rel: &Path, body: &mut dyn Read, mode: Option<u32>) ->
 fn land_dir(root: &Path, rel: &Path) -> Result<(), Fail> {
     let at = resolve_in_root(root, rel).map_err(|m| ("refused", m))?;
     std::fs::create_dir(&at).map_err(|e| {
-        io_failed(copy_text(
-            "beFilesWrite.write.failed",
-            &[("path", &at.display().to_string()), ("e", &e.to_string())],
-        ))
+        io_failed(
+            copy_text(
+                "beFilesWrite.write.failed",
+                &[
+                    ("path", &at.display().to_string()),
+                    ("why", &io_reason(e.kind())),
+                ],
+            ),
+            e,
+        )
     })
 }
 
-/// 回滚：倒序删掉这一趟**自己建的**（每条先过路径解析）。回撤不掉的那一条的说法。
-fn undo(root: &Path, made: &[(PathBuf, bool)]) -> Option<String> {
+/// 回滚：倒序删掉这一趟**自己建的**（每条先过路径解析）。回撤不掉的那一条的说法 ＋ 系统原话（有的话）。
+fn undo(root: &Path, made: &[(PathBuf, bool)]) -> Option<(String, Option<String>)> {
     for (rel, is_dir) in made.iter().rev() {
         let at = match resolve_in_root(root, rel) {
             Ok(a) => a,
-            Err(m) => return Some(m),
+            Err(m) => return Some((m, None)),
         };
         let done = if *is_dir {
             std::fs::remove_dir(&at)
@@ -483,9 +515,15 @@ fn undo(root: &Path, made: &[(PathBuf, bool)]) -> Option<String> {
             std::fs::remove_file(&at)
         };
         if let Err(e) = done {
-            return Some(copy_text(
-                "beFilesExtract.undo.at",
-                &[("path", &at.display().to_string()), ("e", &e.to_string())],
+            return Some((
+                copy_text(
+                    "beFilesExtract.undo.at",
+                    &[
+                        ("path", &at.display().to_string()),
+                        ("why", &io_reason(e.kind())),
+                    ],
+                ),
+                Some(e.to_string()),
             ));
         }
     }
@@ -582,30 +620,36 @@ pub fn extract_with(root: &Path, rel: &Path, into: &Path, cap: usize) -> Result<
     let archive = resolve_existing_in_root(root, rel).map_err(|m| ("refused", m))?;
     let dest = resolve_in_root(root, into).map_err(|m| ("refused", m))?;
     if std::fs::symlink_metadata(&dest).is_ok() {
-        return Err((
+        return Err(WriteFail::from((
             "exists",
             copy_text(
                 "beFilesExtract.into.exists",
                 &[("path", &dest.display().to_string())],
             ),
-        ));
+        )));
     }
     let plan = plan(&archive, kind, cap)?;
     // 落点目录：`create_dir` 自己就是「不在才建」（与探的那一眼之间有人建了 ⇒ 仍是 `exists`）。
     if let Err(e) = std::fs::create_dir(&dest) {
         return Err(if e.kind() == std::io::ErrorKind::AlreadyExists {
-            (
+            WriteFail::from((
                 "exists",
                 copy_text(
                     "beFilesExtract.into.exists",
                     &[("path", &dest.display().to_string())],
                 ),
-            )
-        } else {
-            io_failed(copy_text(
-                "beFilesWrite.write.failed",
-                &[("path", &dest.display().to_string()), ("e", &e.to_string())],
             ))
+        } else {
+            io_failed(
+                copy_text(
+                    "beFilesWrite.write.failed",
+                    &[
+                        ("path", &dest.display().to_string()),
+                        ("why", &io_reason(e.kind())),
+                    ],
+                ),
+                e,
+            )
         });
     }
     let mut made: Vec<(PathBuf, bool)> = vec![(into.to_path_buf(), true)];
@@ -620,18 +664,24 @@ pub fn extract_with(root: &Path, rel: &Path, into: &Path, cap: usize) -> Result<
                 bytes,
             })
         }
-        Err((code, why)) => {
-            let tail = match undo(root, &made) {
-                None => copy_text("beFilesExtract.undo.all", &[]),
-                Some(stuck) => copy_text("beFilesExtract.undo.stuck", &[("what", &stuck)]),
-            };
-            Err((
-                code,
-                copy_text(
-                    "beFilesExtract.stopped.say",
-                    &[("why", &why), ("tail", &tail)],
+        Err(f) => {
+            let (tail, stuck_raw) = match undo(root, &made) {
+                None => (copy_text("beFilesExtract.undo.all", &[]), None),
+                Some((stuck, raw)) => (
+                    copy_text("beFilesExtract.undo.stuck", &[("what", &stuck)]),
+                    raw,
                 ),
-            ))
+            };
+            // 两句原话（停下的那一步 · 撤不掉的那一条）都进复制详情，各占一行。
+            let raw: Vec<String> = f.raw.into_iter().chain(stuck_raw).collect();
+            Err(WriteFail {
+                code: f.code,
+                said: copy_text(
+                    "beFilesExtract.stopped.say",
+                    &[("why", &f.said), ("tail", &tail)],
+                ),
+                raw: (!raw.is_empty()).then(|| raw.join("\n")),
+            })
         }
     }
 }
@@ -710,17 +760,17 @@ pub fn extract_here(root: &Path, rel: &Path, fresh: bool) -> Result<Extracted, F
     }
     for n in 2..=FRESH_TRIES + 1 {
         match extract(root, rel, &at(n)) {
-            Err(("exists", _)) => continue,
+            Err(WriteFail { code: "exists", .. }) => continue,
             other => return other,
         }
     }
-    Err((
+    Err(WriteFail::from((
         "exists",
         copy_text(
             "beFilesExtract.into.noFresh",
             &[("n", &FRESH_TRIES.to_string())],
         ),
-    ))
+    )))
 }
 
 fn answer_extract(args: &serde_json::Value) -> Answer {
@@ -747,7 +797,7 @@ fn answer_link(args: &serde_json::Value) -> Answer {
     let root = path_arg(args, "root")?;
     let rel = path_arg(args, "rel")?;
     let target = path_arg(args, "target")?;
-    let at = land_link(&root, &rel, &target).map_err(|e| (e.code(), e.message().to_string()))?;
+    let at = land_link(&root, &rel, &target).map_err(WriteFail::from)?;
     Ok(serde_json::json!({
         "path": crate::files::raw::to_json(crate::files::raw::path_bytes(&at)),
     }))
@@ -758,10 +808,10 @@ pub fn answer_wire(wire_name: &str, args: &serde_json::Value) -> Answer {
     match wire_name {
         "files-extract" => answer_extract(args),
         "files-link" => answer_link(args),
-        other => Err((
+        other => Err(WriteFail::from((
             "bad_args",
             copy_text("beFilesExtract.args.unknownCmd", &[("cmd", other)]),
-        )),
+        ))),
     }
 }
 

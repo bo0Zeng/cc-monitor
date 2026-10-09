@@ -72,12 +72,26 @@ pub struct Snap {
 pub enum End {
     /// 传完了。上传那一路带整份本机文件的摘要（窗口提交时原样交回当 `expect`）；下载那一路 `None`。
     Done { bytes: u64, sha256: Option<String> },
-    /// 失败（带下层原话）。上传那一路的暂存件**留着**给续传。
-    Failed(String),
-    /// 带码的失败（传输台说的码，今天只有 `sftp_home_mismatch`：SFTP 起始目录不是那台后端的 home）。
-    FailedCoded { why: String, code: String },
+    /// 失败：那一句 ＋ 复制详情（传输台写的；壳自己这一侧收场的 ⇒ 空，窗口进程自己写）。上传那一路的暂存件**留着**给续传。
+    /// `code`：传输台说的码（今天只有 `sftp_home_mismatch`：SFTP 起始目录不是那台后端的 home）；缺 ＝ 一般的失败。
+    Failed {
+        why: String,
+        code: Option<String>,
+        detail: String,
+    },
     /// 撤了（停订 / 连接断了）。上传那一路的暂存件已删。
     Cancelled,
+}
+
+impl End {
+    /// 壳这一侧收场的失败（流断了 · 开跑那一问没成）：只有那一句，详情由窗口进程自己写。
+    pub(crate) fn failed(why: String) -> End {
+        End::Failed {
+            why,
+            code: None,
+            detail: String::new(),
+        }
+    }
 }
 
 /// 一趟在本机后端册上的传输，在 monitor 这一侧的影子。
@@ -255,7 +269,7 @@ pub fn watch_ticket(
         tokio::spawn(async move {
             let Some(client) = owner.upgrade() else {
                 state.send_modify(|s| {
-                    s.end = Some(End::Failed(copy_text("rsSftpPool.watch.streamGone", &[])))
+                    s.end = Some(End::failed(copy_text("rsSftpPool.watch.streamGone", &[])))
                 });
                 return;
             };
@@ -264,7 +278,7 @@ pub fn watch_ticket(
                 .await
             {
                 let why = said(&e).1;
-                state.send_modify(|s| s.end = Some(End::Failed(why)));
+                state.send_modify(|s| s.end = Some(End::failed(why)));
             }
         });
     }
@@ -283,7 +297,7 @@ pub fn watch_ticket(
             if !first && rx.changed().await.is_err() {
                 // 发送端在守卫里 ⇒ 这一支到不了；到了就当它收场了。
                 let snap = Snap {
-                    end: Some(End::Failed(copy_text("rsSftpPool.watch.lost", &[]))),
+                    end: Some(End::failed(copy_text("rsSftpPool.watch.lost", &[]))),
                     ..Snap::default()
                 };
                 return Some((snap, (rx, guard, false, true)));
@@ -317,7 +331,7 @@ pub(crate) fn fail_owned_by(client: &Arc<InboundClient>, why: &str) {
         {
             r.state.send_modify(|s| {
                 if s.end.is_none() {
-                    s.end = Some(End::Failed(why.to_string()));
+                    s.end = Some(End::failed(why.to_string()));
                 }
             });
         }

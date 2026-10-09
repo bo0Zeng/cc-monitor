@@ -78,7 +78,7 @@ fn a_copy_lands_whole_or_not_at_all_and_does_not_clobber_a_newcomer() {
         Some(false),
         "字节写满之前目标那一格已经露出来了（半份）"
     );
-    assert!(matches!(got, Err(WriteRefusal::Io(_))), "{got:?}");
+    assert!(matches!(&got, Err(e) if e.code() == "io_failed"), "{got:?}");
     assert_eq!(
         std::fs::read(&target).unwrap(),
         b"theirs",
@@ -184,7 +184,7 @@ fn a_source_swapped_for_a_link_after_resolving_is_not_followed() {
     std::os::unix::fs::symlink(&secret, &src).unwrap();
     let perms = std::fs::metadata(&secret).unwrap().permissions();
     let got = land_copy(&root, Path::new("dst"), &src, perms, false, &mut || {});
-    assert!(matches!(got, Err(WriteRefusal::Io(_))), "{got:?}");
+    assert!(matches!(&got, Err(e) if e.code() == "io_failed"), "{got:?}");
     assert!(!root.join("dst").exists(), "跟着链接把根外那一份抄进来了");
     assert_eq!(
         leftovers(&root, "dst", "copy", &COPY_SEQ),

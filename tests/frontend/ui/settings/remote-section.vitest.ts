@@ -593,7 +593,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     expect(sent.map((e) => e.op)).toContain("removein");
     expect(saveConfig).not.toHaveBeenCalled();
     expect(sec.element.querySelector(".settings-banner-show")?.textContent ?? "").toContain(
-      copyText("remote.save.failed", { e: "" }).trim(),
+      copyText("remote.save.failed"),
     );
   });
 

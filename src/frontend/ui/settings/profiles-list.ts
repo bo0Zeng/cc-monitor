@@ -35,7 +35,7 @@ import {
   type Resolved,
   type SlotId,
 } from "../profiles-reads";
-import { detailOf, sayWithDetail } from "../kit/detail";
+import { sayFailure } from "../kit/detail";
 
 /** 启动文件里块外与清单同名的函数（接入那一格读到的）。 */
 export interface ProfileClash {
@@ -252,7 +252,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
       book = await readProfiles(opts.origin());
       status.textContent = "";
     } catch (e) {
-      sayWithDetail(status, copyText("profilesPage.read.failed", { e: e instanceof Error ? e.message : String(e) }), detailOf(e));
+      sayFailure(status, copyText("profilesPage.read.failed"), e);
       return render();
     }
     editedAt = book.editedAt;

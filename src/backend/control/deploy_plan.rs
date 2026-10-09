@@ -400,7 +400,13 @@ impl DialFacing {
         self.fs
             .get_or_init(|| async {
                 let d = crate::dial::sftp::Dial::parse(&self.dial)?;
-                crate::dial::sftp::open_for_transfer(&d).await
+                // 部署这一问只带一句话（`Facing::stat` 回 `String`）：SFTP 那一下的原话进后端日志。
+                crate::dial::sftp::open_for_transfer(&d).await.map_err(|s| {
+                    if let Some(raw) = &s.raw {
+                        tracing::warn!("deploy: opening sftp failed: {raw}");
+                    }
+                    s.said
+                })
             })
             .await
             .as_ref()

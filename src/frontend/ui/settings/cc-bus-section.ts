@@ -11,7 +11,6 @@ import { setCurrentMachine, subscribeMachine } from "./machine-context";
 import { commands } from "../ipc/commands";
 // 查在线 · 发消息 · 收掉 · 派生 · 广播 · 读面都经通道直接问那台机器的后端；形状由 `cc-bus-control.ts` 的解码器严格收。
 import { agentOnline, broadcast, killAgent, readInbox, readState, sendMessage, spawnAgent, type BusState } from "../cc-bus-control";
-import { saidOfControl } from "../control-said";
 // 「可选账号」只有 `selectableAccounts` 一个判据；`fetchAccounts` 带缓存。
 import { selectableAccounts } from "../accounts";
 import { fetchAccounts } from "../account-reads";
@@ -21,7 +20,7 @@ import { LOCAL_ORIGIN } from "../backend-policy";
 import { confirmDialog } from "../kit/dialog";
 import { copyText } from "../copy-table";
 import { DEFAULT_AGENT, listAgents } from "../agent-profile";
-import { detailOf, sayWithDetail } from "../kit/detail";
+import { sayFailure } from "../kit/detail";
 
 export class CcBusSection {
   readonly element: HTMLElement;
@@ -276,7 +275,7 @@ export class CcBusSection {
     } catch (e) {
       this.state = null;
       // 失败说清是哪一步，别留个空面板让人以为「没有 agent」
-      sayWithDetail(this.statusEl, copyText("ccBus.reload.readFailed", { e: saidOfControl(e) }), detailOf(e));
+      sayFailure(this.statusEl, copyText("ccBus.reload.readFailed"), e);
     } finally {
       this.readBtn.disabled = false;
     }
@@ -419,7 +418,7 @@ export class CcBusSection {
     } catch (e) {
       // 查失败 ≠ 不在线：要分开，否则网络抖一下就报成 agent 死了
       stateEl.dataset.state = "error";
-      sayWithDetail(stateEl, copyText("ccBus.check.failed", { e: saidOfControl(e) }), detailOf(e));
+      sayFailure(stateEl, copyText("ccBus.check.failed"), e);
     } finally {
       btn.disabled = false;
     }
@@ -450,7 +449,7 @@ export class CcBusSection {
         box.appendChild(line);
       }
     } catch (e) {
-      sayWithDetail(box, copyText("ccBus.inbox.failed", { e: saidOfControl(e) }), detailOf(e));
+      sayFailure(box, copyText("ccBus.inbox.failed"), e);
     } finally {
       btn.disabled = false;
     }
@@ -471,7 +470,7 @@ export class CcBusSection {
       box.textContent = await sendMessage(origin, id, text);
       input.value = "";
     } catch (e) {
-      sayWithDetail(box, copyText("ccBus.send.failed", { e: saidOfControl(e) }), detailOf(e));
+      sayFailure(box, copyText("ccBus.send.failed"), e);
     } finally {
       btn.disabled = false;
     }
@@ -511,7 +510,7 @@ export class CcBusSection {
       detail.textContent = await killAgent(origin, id);
       await this.reload();
     } catch (e) {
-      sayWithDetail(detail, copyText("ccBus.kill.failed", { e: saidOfControl(e) }), detailOf(e));
+      sayFailure(detail, copyText("ccBus.kill.failed"), e);
       btn.disabled = false;
     }
   }
@@ -534,7 +533,7 @@ export class CcBusSection {
       this.statusEl.textContent = await broadcast(origin, text);
       this.broadcastInput.value = "";
     } catch (e) {
-      sayWithDetail(this.statusEl, copyText("ccBus.broadcast.failed", { e: saidOfControl(e) }), detailOf(e));
+      sayFailure(this.statusEl, copyText("ccBus.broadcast.failed"), e);
     } finally {
       this.broadcastBtn.disabled = false;
     }
@@ -587,7 +586,7 @@ export class CcBusSection {
       // 派生完刷新名单（用户动作触发的一次读，不是轮询）
       await this.reload();
     } catch (e) {
-      sayWithDetail(this.spawnOut, copyText("ccBus.spawn.failed", { e: saidOfControl(e) }), detailOf(e));
+      sayFailure(this.spawnOut, copyText("ccBus.spawn.failed"), e);
     } finally {
       this.spawnBtn.disabled = false;
     }

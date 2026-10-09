@@ -581,7 +581,9 @@ fn the_command_face_reaches_the_lexical_fence() {
     std::fs::create_dir_all(&root).expect("建目标根");
     let outside = base.join("escape.txt");
 
-    let (code, msg) = answer_wire(
+    let WriteFail {
+        code, said: msg, ..
+    } = answer_wire(
         "files-create",
         &serde_json::json!({"root": root.to_str().expect("utf8"), "rel": "../escape.txt"}),
     )
@@ -611,7 +613,9 @@ fn the_command_face_reaches_the_resolved_fence() {
     std::fs::create_dir_all(&outside).expect("建根外目录");
     std::os::unix::fs::symlink(&outside, root.join("docs")).expect("放 symlink");
 
-    let (code, msg) = answer_wire(
+    let WriteFail {
+        code, said: msg, ..
+    } = answer_wire(
         "files-create",
         &serde_json::json!({"root": root.to_str().expect("utf8"), "rel": "docs/abc.txt"}),
     )
@@ -670,7 +674,9 @@ fn the_command_face_creates_an_empty_file_when_no_content_is_given() {
     );
 
     // ★ 两档 code 在命令面这一侧**真的分得开**：同名第二次是 `O_EXCL` 兜的 ⇒ `exists`。
-    let (code, msg) = answer_wire(
+    let WriteFail {
+        code, said: msg, ..
+    } = answer_wire(
         "files-create",
         &serde_json::json!({"root": root.to_str().expect("utf8"), "rel": "b.md"}),
     )
@@ -703,7 +709,9 @@ fn the_command_face_says_which_argument_is_wrong() {
         ),
     ] {
         let out = answer_wire("files-create", &args);
-        let (code, msg) = match out {
+        let WriteFail {
+            code, said: msg, ..
+        } = match out {
             Err(e) => e,
             Ok(v) => panic!("这一组参数本该被拒，却过了：{args} ⇒ {v}"),
         };
@@ -1052,7 +1060,9 @@ fn the_five_mutating_commands_are_reachable_and_fenced_on_the_command_face() {
             serde_json::json!({"root": r, "rel": "../esc"}),
         ),
     ] {
-        let (code, msg) = match answer_wire(cmd, &args) {
+        let WriteFail {
+            code, said: msg, ..
+        } = match answer_wire(cmd, &args) {
             Err(e) => e,
             Ok(v) => panic!("🔴 `{cmd}` 带上跳段成功了：{v}"),
         };
@@ -1061,7 +1071,7 @@ fn the_five_mutating_commands_are_reachable_and_fenced_on_the_command_face() {
     assert!(!base.join("esc").exists(), "🔴 根外多出了东西");
     // `files-write-text` 不给 `content` ⇒ 不许默认成空。
     std::fs::write(root.join("keep.md"), b"keep").expect("铺");
-    let (code, _) = answer_wire(
+    let WriteFail { code, .. } = answer_wire(
         "files-write-text",
         &serde_json::json!({"root": r, "rel": "keep.md"}),
     )
@@ -1271,7 +1281,9 @@ fn copy_refuses_its_shapes_and_is_reachable_on_the_command_face() {
         (serde_json::json!({"root": r, "from": "a.md"}), "bad_args"),
     ] {
         match answer_wire("files-copy", &args) {
-            Err((c, m)) => assert_eq!(c, want, "{args}：{m}"),
+            Err(WriteFail {
+                code: c, said: m, ..
+            }) => assert_eq!(c, want, "{args}：{m}"),
             Ok(v) => panic!("🔴 {args} 竟然成了：{v}"),
         }
     }
@@ -1534,12 +1546,13 @@ fn the_command_face_recurses_only_when_asked_and_says_how_many() {
     let planted = plant_tree(&root);
     let r = root.to_str().expect("utf8");
     // 不给 ⇒ 不递归（非空目录 ⇒ io_failed，树原样）。
-    let (code, _) = answer_wire("files-delete", &serde_json::json!({"root": r, "rel": "t"}))
-        .expect_err("🔴 没说 recursive 就删掉了整棵树");
+    let WriteFail { code, .. } =
+        answer_wire("files-delete", &serde_json::json!({"root": r, "rel": "t"}))
+            .expect_err("🔴 没说 recursive 就删掉了整棵树");
     assert_eq!(code, "io_failed");
     // 给了但不是布尔 ⇒ 不猜。
     for bad in [serde_json::json!("yes"), serde_json::json!(1)] {
-        let (code, _) = answer_wire(
+        let WriteFail { code, .. } = answer_wire(
             "files-delete",
             &serde_json::json!({"root": r, "rel": "t", "recursive": bad}),
         )
@@ -1633,7 +1646,9 @@ fn a_non_utf8_name_can_be_renamed_chmodded_and_deleted_through_b16() {
     );
 
     // 阴性：b16 解出来的段照样逐段过路径解析。
-    let (code, msg) = answer_wire(
+    let WriteFail {
+        code, said: msg, ..
+    } = answer_wire(
         "files-delete",
         &serde_json::json!({"root": r, "rel": b16(b"../escape")}),
     )
@@ -1648,7 +1663,7 @@ fn a_non_utf8_name_can_be_renamed_chmodded_and_deleted_through_b16() {
     .expect("🔴 b16 的会话文件删不掉");
     assert!(!live.exists());
     // 形状不对 ⇒ bad_args（不猜）。
-    let (code, _) = answer_wire(
+    let WriteFail { code, .. } = answer_wire(
         "files-delete",
         &serde_json::json!({"root": r, "rel": {"b16": "zz"}}),
     )
@@ -1707,7 +1722,7 @@ fn peek_tells_absent_from_present_and_goes_through_the_same_resolution() {
     let none = peek_text(&root, "nope.txt").expect("不在不是错");
     assert_eq!(none.text, None, "不在的文件该答 `None`，不是空串");
     for (rel, want) in [("../x", "refused"), ("/etc/passwd", "refused")] {
-        assert_eq!(peek_text(&root, rel).unwrap_err().0, want, "{rel}");
+        assert_eq!(peek_text(&root, rel).unwrap_err().code, want, "{rel}");
     }
     std::fs::create_dir_all(root.join("cfg/projects/-p")).expect("建会话目录");
     std::fs::write(root.join("cfg/projects/-p/s1.jsonl"), "{}\n").expect("铺会话");
@@ -1720,9 +1735,9 @@ fn peek_tells_absent_from_present_and_goes_through_the_same_resolution() {
         Some("{}\n")
     );
     std::fs::write(root.join("bin.dat"), [0xffu8, 0xfe, 0x00]).expect("铺二进制");
-    assert_eq!(peek_text(&root, "bin.dat").unwrap_err().0, "not_text");
+    assert_eq!(peek_text(&root, "bin.dat").unwrap_err().code, "not_text");
     std::fs::write(root.join("big.txt"), vec![b'x'; PEEK_MAX_BYTES + 1]).expect("铺大文件");
-    assert_eq!(peek_text(&root, "big.txt").unwrap_err().0, "too_large");
+    assert_eq!(peek_text(&root, "big.txt").unwrap_err().code, "too_large");
     std::fs::remove_dir_all(&base).ok();
 }
 
@@ -1891,7 +1906,7 @@ fn the_read_modify_write_commands_answer_with_their_declared_fields() {
         "files-put",
         &serde_json::json!({"root": r, "rel": "a", "content": "x"}),
     ) {
-        Err((c, _)) => assert_eq!(c, "bad_args", "缺 `expect` 该回 bad_args"),
+        Err(WriteFail { code: c, .. }) => assert_eq!(c, "bad_args", "缺 `expect` 该回 bad_args"),
         Ok(v) => panic!("🔴 没给 `expect` 竟然写了：{v}"),
     }
     assert!(!root.join("a").exists(), "没给 `expect` 的那一趟落了盘");
@@ -1899,7 +1914,7 @@ fn the_read_modify_write_commands_answer_with_their_declared_fields() {
         "files-put",
         &serde_json::json!({"root": r, "rel": "a", "content": "x", "expect": null, "backup": 1}),
     ) {
-        Err((c, _)) => assert_eq!(c, "bad_args"),
+        Err(WriteFail { code: c, .. }) => assert_eq!(c, "bad_args"),
         Ok(v) => panic!("🔴 `backup: 1` 竟然被当成了布尔：{v}"),
     }
     let keys = |v: &serde_json::Value| -> std::collections::BTreeSet<String> {
@@ -1933,7 +1948,7 @@ fn the_read_modify_write_commands_answer_with_their_declared_fields() {
         "files-put",
         &serde_json::json!({"root": r, "rel": "a", "content": "y", "expect": "not-x"}),
     ) {
-        Err((c, _)) => assert_eq!(c, "stale"),
+        Err(WriteFail { code: c, .. }) => assert_eq!(c, "stale"),
         Ok(v) => panic!("🔴 期望对不上竟然写了：{v}"),
     }
     std::fs::remove_dir_all(&base).ok();
@@ -2146,7 +2161,7 @@ fn the_command_face_takes_expect_only_as_bytes_of_one_file() {
             "stale",
         ),
     ] {
-        let (code, _) = answer_wire("files-delete", &bad).expect_err("该拒的收下了");
+        let WriteFail { code, .. } = answer_wire("files-delete", &bad).expect_err("该拒的收下了");
         assert_eq!(code, want, "{bad}");
     }
     assert_eq!(
@@ -2193,15 +2208,17 @@ fn w5vis_a_backup_that_cannot_keep_the_original_mode_is_removed_and_refused() {
         |b| std::fs::remove_file(b),
     )
     .expect_err("chmod 失败却放行了");
+    // 句子只说原因词；注入的那句原话进复制详情（不上句子）。
     match e {
-        WriteRefusal::Io(m) => {
+        WriteRefusal::IoSaid { said, raw } => {
             assert!(
-                m.contains("w5vis 注入的 chmod 失败")
-                    && copy_core::copy_matches("beFilesWrite.backup.modeFailed", &m),
-                "{m}"
-            )
+                copy_core::copy_matches("beFilesWrite.backup.modeFailed", &said)
+                    && !said.contains("w5vis 注入的 chmod 失败"),
+                "{said}"
+            );
+            assert!(raw.contains("w5vis 注入的 chmod 失败"), "{raw}");
         }
-        other => panic!("不是 Io 拒绝：{other:?}"),
+        other => panic!("不是带原话的 Io 拒绝：{other:?}"),
     }
     assert!(!bak.exists(), "沿用不上权限位的那份备份还留在盘上");
     // 另一向：chmod 成功 ⇒ 放行、备份还在、权限位就是交进来的那个。
@@ -2445,13 +2462,13 @@ fn the_command_face_copies_a_directory_only_when_asked() {
         &serde_json::json!({"root": r, "from": "t", "to": "u"}),
     )
     .expect_err("不带 recursive 复制了目录");
-    assert_eq!(e.0, "refused", "{e:?}");
+    assert_eq!(e.code, "refused", "{e:?}");
     let e = answer_wire(
         "files-copy",
         &serde_json::json!({"root": r, "from": "t", "to": "u", "recursive": true, "overwrite": true}),
     )
     .expect_err("recursive ＋ overwrite 竟然收了");
-    assert_eq!(e.0, "bad_args", "{e:?}");
+    assert_eq!(e.code, "bad_args", "{e:?}");
     assert!(std::fs::symlink_metadata(root.join("u")).is_err());
     let v = answer_wire(
         "files-copy",
@@ -2563,7 +2580,7 @@ fn a_save_over_a_file_changed_or_removed_since_it_was_read_is_stale_and_writes_n
         &serde_json::json!({"root": r, "rel": "rc", "content": "mine edited\n", "expect": {"sha256": seen}}),
     )
     .expect_err("盘上已经变了，竟然写成了");
-    assert_eq!(e.0, "stale", "{e:?}");
+    assert_eq!(e.code, "stale", "{e:?}");
     assert_eq!(
         std::fs::read(root.join("rc")).unwrap(),
         b"mine\n# alias block\n",
@@ -2576,7 +2593,7 @@ fn a_save_over_a_file_changed_or_removed_since_it_was_read_is_stale_and_writes_n
         &serde_json::json!({"root": r, "rel": "rc", "content": "x", "expect": {"sha256": seen}}),
     )
     .expect_err("不在了，竟然写成了");
-    assert_eq!(e.0, "stale", "{e:?}");
+    assert_eq!(e.code, "stale", "{e:?}");
     assert!(!root.join("rc").exists(), "不在的那份被建出来了");
 }
 
@@ -2597,7 +2614,7 @@ fn the_write_text_expect_is_required_and_takes_exactly_one_shape() {
     ];
     for args in bad {
         let e = answer_wire("files-write-text", &args).expect_err("形状不对竟然收了");
-        assert_eq!(e.0, "bad_args", "{args}: {e:?}");
+        assert_eq!(e.code, "bad_args", "{args}: {e:?}");
     }
     assert_eq!(std::fs::read(root.join("a")).unwrap(), b"keep");
     // 正控：同一份、形状对 ⇒ 写成（上面的拒不是因为别的）。
@@ -2634,15 +2651,15 @@ fn the_empty_dir_form_deletes_only_an_empty_real_directory() {
     std::fs::create_dir_all(root.join("full")).unwrap();
     std::fs::write(root.join("full/keep.md"), b"keep").unwrap();
     let e = del("full").expect_err("不空竟然删了");
-    assert_eq!(e.0, "stale", "{e:?}");
+    assert_eq!(e.code, "stale", "{e:?}");
     assert_eq!(std::fs::read(root.join("full/keep.md")).unwrap(), b"keep");
 
     let e = del("nope").expect_err("不在竟然成了");
-    assert_eq!(e.0, "stale", "{e:?}");
+    assert_eq!(e.code, "stale", "{e:?}");
 
     std::fs::write(root.join("afile"), b"x").unwrap();
     let e = del("afile").expect_err("文件竟然按空目录删了");
-    assert_eq!(e.0, "refused", "{e:?}");
+    assert_eq!(e.code, "refused", "{e:?}");
     assert!(root.join("afile").exists());
 
     #[cfg(unix)]
@@ -2650,7 +2667,7 @@ fn the_empty_dir_form_deletes_only_an_empty_real_directory() {
         std::fs::create_dir_all(root.join("realdir")).unwrap();
         std::os::unix::fs::symlink(root.join("realdir"), root.join("link")).unwrap();
         let e = del("link").expect_err("指向目录的链接竟然按空目录删了");
-        assert_eq!(e.0, "refused", "{e:?}");
+        assert_eq!(e.code, "refused", "{e:?}");
         assert!(root.join("link").exists() && root.join("realdir").is_dir());
     }
 }
@@ -2674,14 +2691,14 @@ fn the_empty_dir_form_takes_exactly_one_shape() {
             &serde_json::json!({"root": r, "rel": "d", "expect": expect}),
         )
         .expect_err("形状不对竟然删了");
-        assert_eq!(e.0, code, "{expect}: {e:?}");
+        assert_eq!(e.code, code, "{expect}: {e:?}");
     }
     let e = answer_wire(
         "files-delete",
         &serde_json::json!({"root": r, "rel": "d", "recursive": true, "expect": {"empty_dir": true}}),
     )
     .expect_err("与 recursive 同给竟然收了");
-    assert_eq!(e.0, "bad_args");
+    assert_eq!(e.code, "bad_args");
     assert!(root.join("d").is_dir(), "拒了却动了盘");
 }
 
@@ -2875,7 +2892,9 @@ fn a_bad_name_is_refused_with_its_own_code_before_anything_lands() {
             serde_json::json!({"root": r, "from": "sub", "to": "a/b", "single": true}),
         ),
     ] {
-        let (code, msg) = answer_wire(cmd, &args).expect_err(&format!("{cmd} {args} 竟然过了"));
+        let WriteFail {
+            code, said: msg, ..
+        } = answer_wire(cmd, &args).expect_err(&format!("{cmd} {args} 竟然过了"));
         assert_eq!(code, BAD_NAME, "{cmd} {args}：{msg}");
         assert!(!msg.is_empty());
     }
@@ -2883,7 +2902,7 @@ fn a_bad_name_is_refused_with_its_own_code_before_anything_lands() {
         !root.join("sub/x").exists() && root.join("sub").is_dir(),
         "拒了却动了盘"
     );
-    let (code, _) = answer_wire(
+    let WriteFail { code, .. } = answer_wire(
         "files-mkdir",
         &serde_json::json!({"root": r, "rel": "y", "single": "yes"}),
     )
@@ -2901,5 +2920,47 @@ fn a_bad_name_is_refused_with_its_own_code_before_anything_lands() {
     )
     .expect("多段相对路径");
     assert!(root.join("ok").is_dir() && root.join("sub/deep").is_dir());
+    std::fs::remove_dir_all(&root).ok();
+}
+
+/// 复制详情：盘上那一步没成 ⇒ 句子只说原因词（`reason::io_reason`），系统原话不上句子、交到 `raw`
+/// （命令表那一层把它交给应答的复制详情）。
+#[cfg(unix)]
+#[test]
+fn a_disk_failure_says_a_reason_word_and_hands_the_system_text_to_raw() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let root = temp_root("io-said");
+    std::fs::create_dir(root.join("ro")).expect("建目录");
+    std::fs::write(root.join("ro/a.txt"), b"x").expect("写一份");
+    let mode = |m| std::fs::Permissions::from_mode(m);
+    std::fs::set_permissions(root.join("ro"), mode(0o500)).expect("只读");
+    let r = root.to_str().expect("utf8");
+    let got = answer_wire(
+        "files-delete",
+        &serde_json::json!({"root": r, "rel": "ro/a.txt"}),
+    );
+    let renamed = answer_wire(
+        "files-rename",
+        &serde_json::json!({"root": r, "from": "ro/a.txt", "to": "ro/b.txt"}),
+    );
+    std::fs::set_permissions(root.join("ro"), mode(0o700)).expect("还原");
+    let why = copy_core::copy_text("reason.io.denied", &[]);
+    for f in [
+        got.expect_err("只读目录里删竟然成了"),
+        renamed.expect_err("只读目录里改名竟然成了"),
+    ] {
+        assert_eq!(f.code, "io_failed", "{}", f.said);
+        assert!(
+            f.said.contains(&format!(" · {why}")),
+            "句子里没有原因词：{}",
+            f.said
+        );
+        let raw = f
+            .raw
+            .clone()
+            .unwrap_or_else(|| panic!("原话没交出来：{}", f.said));
+        assert!(raw.contains("os error"), "{raw}");
+        assert!(!f.said.contains("os error"), "原话进了句子：{}", f.said);
+    }
     std::fs::remove_dir_all(&root).ok();
 }

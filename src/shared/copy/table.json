@@ -4428,8 +4428,8 @@
     "tabBatch.why.windowFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "终端窗口打不开 · {detail}",
-      "args": ["detail"]
+      "zh": "终端窗口打不开",
+      "args": []
     },
     "tabBatch.why.batchRefused": {
       "kind": "error",
@@ -5720,14 +5720,14 @@
     "machineAliases.runRc.removeFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "卸载失败 · {e}",
-      "args": ["e"]
+      "zh": "卸载失败",
+      "args": []
     },
     "machineAliases.runRc.installFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "接上失败 · {e}",
-      "args": ["e"]
+      "zh": "接上失败",
+      "args": []
     },
     "machineAliases.runRc.removing": {
       "kind": "body",
@@ -5756,21 +5756,21 @@
     "machineAliases.other.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "此文件不可用 · {e}",
-      "args": ["e"]
+      "zh": "此文件不可用",
+      "args": []
     },
     "machineAliases.load.ccmFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "检查本机 ccm 失败 · {e}",
-      "args": ["e"],
+      "zh": "检查本机 ccm 失败",
+      "args": [],
       "limited": ["ccm"]
     },
     "machineAliases.readBack.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取别名失败 · {e}",
-      "args": ["e"]
+      "zh": "读取别名失败",
+      "args": []
     },
     "machineAliases.rc.tagNew": {
       "kind": "control",
@@ -6193,8 +6193,8 @@
     "machineAliases.preview.failedLine": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取失败 · {e}",
-      "args": ["e"]
+      "zh": "读取失败 · 别名块 · 原因不明",
+      "args": []
     },
     "machineAliases.rc.chooseTitle": {
       "kind": "title",
@@ -6849,8 +6849,8 @@
     "profilesPage.read.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取配置文件失败 · {e}",
-      "args": ["e"]
+      "zh": "读取配置文件失败",
+      "args": []
     },
     "profilesPage.remove.ask": {
       "kind": "body",
@@ -7283,8 +7283,8 @@
     "machineCard.test.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "测试失败 · {e}",
-      "args": ["e"]
+      "zh": "测试失败",
+      "args": []
     },
     "machineCard.test.running": {
       "kind": "action",
@@ -7579,8 +7579,8 @@
     "settingsPanel.safeBlock.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取失败 · 此区块 · {e}",
-      "args": ["e"]
+      "zh": "读取失败 · 此区块 · 程序出错",
+      "args": []
     },
     "settingsPanel.dataDir.resetHint": {
       "kind": "body",
@@ -7899,8 +7899,8 @@
     "settingsPanel.save.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "{what}保存失败 · {e}",
-      "args": ["what", "e"]
+      "zh": "{what}保存失败",
+      "args": ["what"]
     },
     "settingsPanel.claudeDir.updated": {
       "kind": "body",
@@ -7911,19 +7911,19 @@
     "settingsPanel.claudeDir.missing": {
       "kind": "error",
       "role": "报错",
-      "zh": "{path} 不存在 · 未保存",
+      "zh": "{path} 不存在",
       "args": ["path"]
     },
     "settingsPanel.claudeDir.notDir": {
       "kind": "error",
       "role": "报错",
-      "zh": "{path} 不是目录 · 未保存",
+      "zh": "{path} 不是目录",
       "args": ["path"]
     },
     "settingsPanel.claudeDir.noRecords": {
       "kind": "error",
       "role": "报错",
-      "zh": "{path} 无会话记录 · 未保存",
+      "zh": "{path} 无会话记录",
       "args": ["path"]
     },
     "settingsPanel.claudeDir.uncheckable": {
@@ -7935,14 +7935,14 @@
     "settingsPanel.close.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "关闭窗口失败 · {e}",
-      "args": ["e"]
+      "zh": "关闭窗口失败",
+      "args": []
     },
     "settingsPanel.close.saveFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "保存失败 · {e}",
-      "args": ["e"]
+      "zh": "保存失败",
+      "args": []
     },
     "settingsPanel.behavior.hiddenTasks": {
       "kind": "control",
@@ -7953,8 +7953,8 @@
     "settingsPanel.open.partialFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取失败 · 部分设置 · {e}",
-      "args": ["e"]
+      "zh": "读取失败 · 部分设置 · 原因不明",
+      "args": []
     },
     "settingsPanel.nav.data": {
       "kind": "title",
@@ -8265,8 +8265,8 @@
     "ccBus.spawn.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "派生失败 · {e}",
-      "args": ["e"]
+      "zh": "派生失败",
+      "args": []
     },
     "ccBus.spawn.running": {
       "kind": "body",
@@ -8313,8 +8313,8 @@
     "ccBus.broadcast.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "广播失败 · {e}",
-      "args": ["e"]
+      "zh": "广播失败",
+      "args": []
     },
     "ccBus.broadcast.confirm": {
       "kind": "body",
@@ -8325,8 +8325,8 @@
     "ccBus.kill.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "结束失败 · {e}",
-      "args": ["e"]
+      "zh": "结束 agent 失败",
+      "args": []
     },
     "ccBus.kill.confirm": {
       "kind": "action",
@@ -8349,14 +8349,14 @@
     "ccBus.send.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "发送失败 · {e}",
-      "args": ["e"]
+      "zh": "发送失败",
+      "args": []
     },
     "ccBus.inbox.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取收件箱失败 · {e}",
-      "args": ["e"]
+      "zh": "读取收件箱失败",
+      "args": []
     },
     "ccBus.inbox.empty": {
       "kind": "body",
@@ -8391,8 +8391,8 @@
     "ccBus.check.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "检查失败 · {e}",
-      "args": ["e"]
+      "zh": "检查失败",
+      "args": []
     },
     "ccBus.check.offline": {
       "kind": "body",
@@ -8526,8 +8526,8 @@
     "ccBus.reload.readFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取失败 · {e}",
-      "args": ["e"]
+      "zh": "读取名单失败",
+      "args": []
     },
     "ccBus.reload.reading": {
       "kind": "body",
@@ -8669,8 +8669,8 @@
     "remote.save.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "保存失败 · {e}",
-      "args": ["e"]
+      "zh": "保存失败",
+      "args": []
     },
     "remote.save.done": {
       "kind": "body",
@@ -8725,8 +8725,8 @@
     "remote.refresh.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取机器列表失败 · {e}",
-      "args": ["e"]
+      "zh": "读取机器列表失败",
+      "args": []
     },
     "remote.info.remote": {
       "kind": "body",
@@ -8750,8 +8750,8 @@
     "diagnostics.save.failedLine": {
       "kind": "error",
       "role": "报错",
-      "zh": "保存失败 · {e}",
-      "args": ["e"]
+      "zh": "保存失败",
+      "args": []
     },
     "diagnostics.save.fileSwitch": {
       "kind": "body",
@@ -8762,8 +8762,8 @@
     "diagnostics.refresh.dirUnreadable": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取日志目录失败 · {e}",
-      "args": ["e"]
+      "zh": "读取日志目录失败",
+      "args": []
     },
     "diagnostics.refresh.settingsUnreadable": {
       "kind": "error",
@@ -8876,8 +8876,8 @@
     "diagnostics.unknown.unread": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取失败 · {e}",
-      "args": ["e"]
+      "zh": "读取失败 · 诊断信息 · 原因不明",
+      "args": []
     },
     "diagnostics.unknown.none": {
       "kind": "body",
@@ -9092,8 +9092,8 @@
     "data.load.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取失败 · {e}",
-      "args": ["e"]
+      "zh": "读取失败 · 数据目录 · 原因不明",
+      "args": []
     },
     "data.renderPlaceholder.loading": {
       "kind": "body",
@@ -9260,8 +9260,8 @@
     "backend.log.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取日志失败 · {e}",
-      "args": ["e"]
+      "zh": "读取日志失败",
+      "args": []
     },
     "backend.buildCells.start": {
       "kind": "action",
@@ -10469,8 +10469,8 @@
     "beFilesWrite.copy.modeFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "复制权限位到 {path} 失败 · {e}",
-      "args": ["path", "e"]
+      "zh": "复制权限位到 {path} 失败 · {why}",
+      "args": ["path", "why"]
     },
     "beFilesWrite.copy.notRegular": {
       "kind": "error",
@@ -10499,8 +10499,8 @@
     "beFilesWrite.copyTree.rootUnresolved": {
       "kind": "error",
       "role": "报错",
-      "zh": "解析目标根失败 · {path} · {e}",
-      "args": ["path", "e"]
+      "zh": "解析目标根失败 · {path} · {why}",
+      "args": ["path", "why"]
     },
     "beFilesWrite.copyTree.srcIsRoot": {
       "kind": "error",
@@ -10517,8 +10517,8 @@
     "beFilesWrite.copyTree.unlistable": {
       "kind": "error",
       "role": "原因格",
-      "zh": "读取失败 · {path} · {e}",
-      "args": ["path", "e"]
+      "zh": "读取失败 · {path} · {why}",
+      "args": ["path", "why"]
     },
     "beFilesWrite.copyTree.entryRefused": {
       "kind": "error",
@@ -13906,14 +13906,14 @@
     "contextLimits.editor.loadFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取设置失败 · {e}",
-      "args": ["e"]
+      "zh": "读取设置失败",
+      "args": []
     },
     "contextLimits.editor.saveFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "保存失败 · {e}",
-      "args": ["e"]
+      "zh": "保存失败",
+      "args": []
     },
     "localResume.launch.arrived": {
       "kind": "body",
@@ -16307,14 +16307,14 @@
     "settingsPanel.claudeDir.pickFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "选择目录窗口打不开 · {e} · 可直接在输入框填路径",
-      "args": ["e"]
+      "zh": "选择目录窗口打不开 · 可直接在输入框填路径",
+      "args": []
     },
     "machineAliases.autoLaunch.unreadable": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取设置失败 · {e}",
-      "args": ["e"]
+      "zh": "读取设置失败",
+      "args": []
     },
     "tabBar.close.done": {
       "kind": "body",
@@ -16525,14 +16525,14 @@
     "beFilesExtract.archive.unreadable": {
       "kind": "error",
       "role": "原因格",
-      "zh": "打开包失败 · {path} · {e}",
-      "args": ["path", "e"]
+      "zh": "打开包失败 · {path} · {why}",
+      "args": ["path", "why"]
     },
     "beFilesExtract.archive.broken": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取包 {path} 失败 · {e} · 包损坏或用到不认的压缩 / 加密方式",
-      "args": ["path", "e"]
+      "zh": "读取包 {path} 失败 · 内容无法解析 · 包损坏或压缩 / 加密方式不认",
+      "args": ["path"]
     },
     "beFilesExtract.archive.unknownKind": {
       "kind": "error",
@@ -16639,8 +16639,8 @@
     "beFilesExtract.undo.at": {
       "kind": "body",
       "role": "片段",
-      "zh": "{path} · {e}",
-      "args": ["path", "e"]
+      "zh": "{path} · {why}",
+      "args": ["path", "why"]
     },
     "rsFilewinLossyPull.note.renamed": {
       "kind": "body",
@@ -16834,8 +16834,8 @@
     "beFilesWrite.path.unresolved": {
       "kind": "error",
       "role": "原因格",
-      "zh": "解析 {path} 失败 · {e}",
-      "args": ["path", "e"]
+      "zh": "解析 {path} 失败 · {why}",
+      "args": ["path", "why"]
     },
     "beFilesWrite.path.noParent": {
       "kind": "error",
@@ -16858,14 +16858,14 @@
     "beFilesWrite.create.failed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "新建失败 · {path} · {e}",
-      "args": ["path", "e"]
+      "zh": "新建失败 · {path} · {why}",
+      "args": ["path", "why"]
     },
     "beFilesWrite.write.failed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "写入失败 · {path} · {e}",
-      "args": ["path", "e"]
+      "zh": "写入失败 · {path} · {why}",
+      "args": ["path", "why"]
     },
     "beFilesWrite.rename.exists": {
       "kind": "error",
@@ -16876,14 +16876,14 @@
     "beFilesWrite.rename.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "改名失败 · {e} · {src} → {dst}",
-      "args": ["src", "dst", "e"]
+      "zh": "改名失败 · {why} · {src} → {dst}",
+      "args": ["why", "src", "dst"]
     },
     "beFilesWrite.delete.failed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "删除失败 · {path} · {e}",
-      "args": ["path", "e"]
+      "zh": "删除失败 · {path} · {why}",
+      "args": ["path", "why"]
     },
     "beFilesWrite.delete.gone": {
       "kind": "error",
@@ -16900,8 +16900,8 @@
     "beFilesWrite.read.failed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "读取失败 · {path} · {e}",
-      "args": ["path", "e"]
+      "zh": "读取失败 · {path} · {why}",
+      "args": ["path", "why"]
     },
     "beFilesWrite.delete.changed": {
       "kind": "error",
@@ -16936,8 +16936,8 @@
     "beFilesWrite.chmod.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "改权限失败 · {path} · {e}",
-      "args": ["path", "e"]
+      "zh": "改权限失败 · {path} · {why}",
+      "args": ["path", "why"]
     },
     "beFilesWrite.chmod.unsupported": {
       "kind": "error",
@@ -17038,8 +17038,8 @@
     "beFilesWrite.put.verifyUnreadable": {
       "kind": "body",
       "role": "片段",
-      "zh": "写后回读失败 · {e}",
-      "args": ["e"]
+      "zh": "写后回读失败 · {why}",
+      "args": ["why"]
     },
     "beFilesWrite.put.restored": {
       "kind": "body",
@@ -17086,8 +17086,8 @@
     "beFilesWrite.backup.createFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "备份失败 · {path} · {e} · 原文件未动",
-      "args": ["path", "e"]
+      "zh": "备份失败 · {path} · {why} · 原文件未动",
+      "args": ["path", "why"]
     },
     "beFilesWrite.backup.removed": {
       "kind": "body",
@@ -17098,20 +17098,20 @@
     "beFilesWrite.backup.notRemoved": {
       "kind": "body",
       "role": "说明",
-      "zh": "备份也未删掉 · {e} · 可能比原文件更易被他人读到 · 手动删除",
-      "args": ["e"]
+      "zh": "备份也未删掉 · {why} · 可能比原文件更易被他人读到 · 手动删除",
+      "args": ["why"]
     },
     "beFilesWrite.backup.modeFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "备份 {path} 权限位未沿用原文件 · {e} · {gone} · 原文件未动",
-      "args": ["path", "e", "gone"]
+      "zh": "备份 {path} 权限位未沿用原文件 · {why} · {gone} · 原文件未动",
+      "args": ["path", "why", "gone"]
     },
     "beFilesWrite.session.deleteFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "删除失败 · {path} · {e}",
-      "args": ["path", "e"]
+      "zh": "删除失败 · {path} · {why}",
+      "args": ["path", "why"]
     },
     "beFilesWrite.session.nameMismatch": {
       "kind": "error",
@@ -17152,38 +17152,38 @@
     "beTransfer.land.dropPartFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "删除未下载完的旧文件 {path} 失败 · {e}",
-      "args": ["path", "e"]
+      "zh": "删除未下载完的旧文件 {path} 失败 · {why}",
+      "args": ["path", "why"]
     },
     "beTransfer.land.createFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "创建本机 {path} 失败 · {e}",
-      "args": ["path", "e"]
+      "zh": "创建本机 {path} 失败 · {why}",
+      "args": ["path", "why"]
     },
     "beTransfer.land.dropLeftoverFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "删除上次留下的 {path} 失败 · {e}",
-      "args": ["path", "e"]
+      "zh": "删除上次留下的 {path} 失败 · {why}",
+      "args": ["path", "why"]
     },
     "beTransfer.land.moveAsideFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "挪开未下载完的旧文件 {path} 失败 · {e}",
-      "args": ["path", "e"]
+      "zh": "挪开未下载完的旧文件 {path} 失败 · {why}",
+      "args": ["path", "why"]
     },
     "beTransfer.land.readPartFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取未下载完的旧文件 {path} 失败 · {e}",
-      "args": ["path", "e"]
+      "zh": "读取未下载完的旧文件 {path} 失败 · {why}",
+      "args": ["path", "why"]
     },
     "beTransfer.land.copyPrefixFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "续传时抄回前 {n} 字节失败 · {e}",
-      "args": ["n", "e"]
+      "zh": "续传时抄回前 {n} 字节失败 · {why}",
+      "args": ["n", "why"]
     },
     "beTransfer.land.copyPrefixShort": {
       "kind": "error",
@@ -17194,14 +17194,14 @@
     "beTransfer.land.commitFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "下载文件放入 {path} 失败 · {e}",
-      "args": ["path", "e"]
+      "zh": "下载文件放入 {path} 失败 · {why}",
+      "args": ["path", "why"]
     },
     "beTransfer.local.readFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取失败 · 本机 {path} · {e}",
-      "args": ["path", "e"]
+      "zh": "读取失败 · 本机 {path} · {why}",
+      "args": ["path", "why"]
     },
     "beTransfer.upload.notDeployed": {
       "kind": "error",
@@ -17212,14 +17212,14 @@
     "beTransfer.upload.seekStagedFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "续传时定位到字节 {n} 失败 · {e}",
-      "args": ["n", "e"]
+      "zh": "续传时定位到字节 {n} 失败 · {why}",
+      "args": ["n", "why"]
     },
     "beTransfer.local.seekFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "本机 {path} 定位到字节 {n} 失败 · {e}",
-      "args": ["path", "n", "e"]
+      "zh": "本机 {path} 定位到字节 {n} 失败 · {why}",
+      "args": ["path", "n", "why"]
     },
     "beTransfer.run.cancelled": {
       "kind": "error",
@@ -17230,26 +17230,26 @@
     "beTransfer.upload.writeRemoteFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "写入远端失败 · {e}",
-      "args": ["e"]
+      "zh": "写入远端失败 · {why}",
+      "args": ["why"]
     },
     "beTransfer.download.seekFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取远端文件失败 · {e} · {path} 定位到字节 {n}",
-      "args": ["path", "n", "e"]
+      "zh": "读取远端文件失败 · {why} · {path} 定位到字节 {n}",
+      "args": ["why", "path", "n"]
     },
     "beTransfer.download.readRemoteFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "读取远端文件失败 · {e}",
-      "args": ["e"]
+      "zh": "读取远端文件失败 · {why}",
+      "args": ["why"]
     },
     "beTransfer.download.writeLocalFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "写入本机失败 · {e}",
-      "args": ["e"]
+      "zh": "写入本机失败 · {why}",
+      "args": ["why"]
     },
     "beTransfer.register.tooMany": {
       "kind": "error",
@@ -17316,8 +17316,8 @@
     "beFilesCommit.upload.stagedMissing": {
       "kind": "error",
       "role": "报错",
-      "zh": "找不到上传的临时文件 {path} · {e} · 可能传输未完成",
-      "args": ["path", "e"]
+      "zh": "找不到上传的临时文件 {path} · {why} · 可能传输未完成",
+      "args": ["path", "why"]
     },
     "beFilesCommit.upload.stagedNotRegular": {
       "kind": "error",
@@ -17328,8 +17328,8 @@
     "beFilesCommit.upload.stagedUnreadable": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取上传的临时文件失败 · {path} · {e}",
-      "args": ["path", "e"]
+      "zh": "读取上传的临时文件失败 · {path} · {why}",
+      "args": ["path", "why"]
     },
     "beFilesCommit.upload.corrupt": {
       "kind": "error",
@@ -17340,8 +17340,8 @@
     "beFilesCommit.upload.exists": {
       "kind": "error",
       "role": "报错",
-      "zh": "{path} 已存在或无法占位 · {e} · 不覆盖 · 先删掉它或换个名字",
-      "args": ["path", "e"]
+      "zh": "{path} 无法占位 · {why} · 不覆盖 · 先删掉它或换个名字",
+      "args": ["path", "why"]
     },
     "beFilesCommit.upload.moveFailedNote": {
       "kind": "error",
@@ -17364,20 +17364,20 @@
     "beFilesCommit.chunk.createFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "写入失败 · 块 {seq} · {path} · {e}",
-      "args": ["seq", "path", "e"]
+      "zh": "写入失败 · 块 {seq} · {path} · {why}",
+      "args": ["seq", "path", "why"]
     },
     "beFilesCommit.chunk.writeBroke": {
       "kind": "error",
       "role": "报错",
-      "zh": "写入中断 · 块 {seq} · {path} · {e}",
-      "args": ["seq", "path", "e"]
+      "zh": "写入中断 · 块 {seq} · {path} · {why}",
+      "args": ["seq", "path", "why"]
     },
     "beFilesCommit.chunk.missing": {
       "kind": "error",
       "role": "报错",
-      "zh": "缺块 {seq} · 共 {chunks} 块 · {path} · {e} · 未保存",
-      "args": ["seq", "chunks", "path", "e"]
+      "zh": "缺块 {seq} · 共 {chunks} 块 · {path} · {why} · 未保存",
+      "args": ["seq", "chunks", "path", "why"]
     },
     "beFilesCommit.chunk.notRegular": {
       "kind": "error",
@@ -17394,8 +17394,8 @@
     "beFilesCommit.chunk.unreadable": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取失败 · 块 {seq} · {path} · {e}",
-      "args": ["seq", "path", "e"]
+      "zh": "读取失败 · 块 {seq} · {path} · {why}",
+      "args": ["seq", "path", "why"]
     },
     "beFilesCommit.chunk.lengthMismatch": {
       "kind": "error",
@@ -17520,20 +17520,20 @@
     "beSftp.open.subsystem": {
       "kind": "error",
       "role": "报错",
-      "zh": "无法打开远端 SFTP · {e} · 可能远端 sshd 未开 SFTP",
-      "args": ["e"]
+      "zh": "无法打开远端 SFTP · 可能远端 sshd 未开 SFTP",
+      "args": []
     },
     "beSftp.open.initFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "SFTP 连接建立失败 · {e}",
-      "args": ["e"]
+      "zh": "SFTP 连接建立失败 · {why}",
+      "args": ["why"]
     },
     "beSftp.open.noHome": {
       "kind": "error",
       "role": "原因格",
-      "zh": "读取远端主目录失败 · {e}",
-      "args": ["e"]
+      "zh": "读取远端主目录失败 · {why}",
+      "args": ["why"]
     },
     "beSftp.fence.empty": {
       "kind": "error",
@@ -17568,14 +17568,14 @@
     "beSftp.fence.rootUnresolved": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取失败 · ~/{root} · {e}",
-      "args": ["root", "e"]
+      "zh": "读取失败 · ~/{root} · {why}",
+      "args": ["root", "why"]
     },
     "beSftp.fence.parentUnresolved": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取失败 · ~/{parent} · {e}",
-      "args": ["parent", "e"]
+      "zh": "读取失败 · ~/{parent} · {why}",
+      "args": ["parent", "why"]
     },
     "beSftp.fence.escaped": {
       "kind": "error",
@@ -17586,26 +17586,26 @@
     "beSftp.put.writeFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "写入失败 · ~/{path} · {e}",
-      "args": ["path", "e"]
+      "zh": "写入失败 · ~/{path} · {why}",
+      "args": ["path", "why"]
     },
     "beSftp.put.backupFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "备份旧文件失败 · {e} · ~/{path} → ~/{backup}",
-      "args": ["path", "backup", "e"]
+      "zh": "备份旧文件失败 · {why} · ~/{path} → ~/{backup}",
+      "args": ["why", "path", "backup"]
     },
     "beSftp.put.renameFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "写入失败 · ~/{path} · {e} · 临时文件 ~/{tmp}",
-      "args": ["tmp", "path", "e"]
+      "zh": "写入失败 · ~/{path} · {why} · 临时文件 ~/{tmp}",
+      "args": ["path", "why", "tmp"]
     },
     "beSftp.remove.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "删除失败 · ~/{path} · {e}",
-      "args": ["path", "e"]
+      "zh": "删除失败 · ~/{path} · {why}",
+      "args": ["path", "why"]
     },
     "beSftp.open.isLink": {
       "kind": "error",
@@ -17616,14 +17616,14 @@
     "beSftp.open.readFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取失败 · {path} · {e}",
-      "args": ["path", "e"]
+      "zh": "读取失败 · {path} · {why}",
+      "args": ["path", "why"]
     },
     "beSftp.request.readFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "读取失败 · 与本机的连接 · {e}",
-      "args": ["e"]
+      "zh": "读取失败 · 与本机的连接 · {why}",
+      "args": ["why"]
     },
     "beSftp.read.tooBig": {
       "kind": "error",
@@ -17634,8 +17634,8 @@
     "beSftp.put.receiveFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "接收上传内容失败 · {e}",
-      "args": ["e"]
+      "zh": "接收上传内容失败 · {why}",
+      "args": ["why"]
     },
     "beSftp.put.short": {
       "kind": "error",
@@ -18538,8 +18538,8 @@
     "extPage.status.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取扩展失败 · {e}",
-      "args": ["e"]
+      "zh": "读取扩展失败",
+      "args": []
     },
     "beExt.suspect.other": {
       "kind": "body",
@@ -18943,8 +18943,8 @@
     "runs.timeline.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取 agent 记录失败 · {e}",
-      "args": ["e"]
+      "zh": "读取 agent 记录失败",
+      "args": []
     },
     "rsRun.load.notFound": {
       "kind": "error",
@@ -23873,8 +23873,8 @@
     "machineList.reconcile.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "连接未更新 · {e}",
-      "args": ["e"]
+      "zh": "连接未更新",
+      "args": []
     },
     "machineCard.conn.connect": {
       "kind": "control",
@@ -25944,8 +25944,8 @@
     "statusBar.messages.line": {
       "kind": "body",
       "role": "片段",
-      "zh": "{title} · {detail}",
-      "args": ["title", "detail"]
+      "zh": "{title} · {fact}",
+      "args": ["title", "fact"]
     },
     "tabBar.group.dissolved": {
       "kind": "body",
@@ -27118,6 +27118,12 @@
       "role": "报错",
       "zh": "读取设置失败 · 无主目录",
       "args": []
+    },
+    "settingsPanel.save.notSaved": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "{what}未保存 · {said}",
+      "args": ["what", "said"]
     }
   }
 }

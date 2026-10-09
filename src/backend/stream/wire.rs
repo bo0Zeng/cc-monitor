@@ -902,15 +902,34 @@ pub enum TransferEnd {
         #[serde(skip_serializing_if = "Option::is_none")]
         sha256: Option<String>,
     },
-    /// 失败（带下层原话）。上传那一路的暂存件**留着**给续传；下载那一路的 `.part` 删了。
+    /// 失败（那一句 ＋ 复制详情）。上传那一路的暂存件**留着**给续传；下载那一路的 `.part` 删了。
     /// `code`：调用方要按它换路的那几形（今天只有 `sftp_home_mismatch`）；缺席 ＝ 一般的失败。
+    /// `detail`：复制详情那几行（时刻 · 机器 · 命令 · 下层原话），`why` 只带原因词；缺席 ＝ 没写。
     Failed {
         why: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         code: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        detail: Option<String>,
     },
     /// 撤了（`transfer-stop` / 本机流断了）。上传那一路的暂存件已删；下载那一路的 `.part` 留着。
     Cancelled,
+}
+
+impl TransferEnd {
+    /// 跑起来之后才停下的那一形：那一句 ＋ 复制详情（命令 `cmd` · 下层原话，后端这一端写好）。
+    pub(crate) fn failed(
+        why: String,
+        code: Option<String>,
+        cmd: &str,
+        raw: Option<&str>,
+    ) -> TransferEnd {
+        TransferEnd::Failed {
+            why,
+            code,
+            detail: Some(crate::stream::detail::of_run(cmd, raw)),
+        }
+    }
 }
 
 impl Frame {
@@ -927,6 +946,18 @@ impl Frame {
     }
 
     /// 协议级失败应答（还没落到哪条命令上）：码 ＋ 一句话 ＋ 详情。
+    /// 一条命令当场失败、带下层原话的那一种应答（原话进复制详情，句子 `message` 里没有它）。
+    pub(crate) fn err_raw(id: &str, cmd: &str, code: &str, message: &str, raw: &str) -> Frame {
+        Frame::Reply {
+            id: id.to_string(),
+            ok: false,
+            code: Some(code.to_string()),
+            message: Some(message.to_string()),
+            detail: Some(crate::stream::detail::of(Some(cmd), code, Some(raw))),
+            data: None,
+        }
+    }
+
     pub(crate) fn err(id: &str, code: &str, message: &str) -> Frame {
         Frame::Reply {
             id: id.to_string(),

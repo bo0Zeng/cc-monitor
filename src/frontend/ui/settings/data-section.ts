@@ -18,7 +18,7 @@ import type { DataClass } from "../generated/DataClass";
 import type { DataPathInfo } from "../generated/DataPathInfo";
 import type { DataPathsResponse } from "../generated/DataPathsResponse";
 import { copyText } from "../copy-table";
-import { detailOf, sayWithDetail } from "../kit/detail";
+import { sayFailure } from "../kit/detail";
 import { icon } from "../kit/icon";
 
 /** 每一行那一格「删了会怎样」（后端 `DataPathInfo.class`）：看得出哪个删了会丢东西。后端加了第三类不许整页炸、原样说出来。 */
@@ -109,7 +109,7 @@ export class DataSection {
       this.mainBody.replaceChildren();
       const err = document.createElement("div");
       err.className = "settings-data-error";
-      sayWithDetail(err, copyText("data.load.failed", { e: String(e) }), detailOf(e));
+      sayFailure(err, copyText("data.load.failed"), e);
       this.mainBody.appendChild(err);
     }
   }

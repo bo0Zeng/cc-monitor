@@ -33,6 +33,7 @@ import { icon } from "../kit/icon";
 import { ccRow } from "./cc-row";
 import { toggleSwitch } from "../kit/switch";
 import { unavailableReason } from "../control-said";
+import { failSaid } from "../kit/detail";
 
 /**
  * 连接设置的一格：标签（上）· 框（中，右侧可挂一颗按钮）· 下面一行说明（出错时错误句换在同一行）。
@@ -827,7 +828,7 @@ export class MachineCard {
       const said =
         e instanceof ProbeStalled
           ? copyText("machineCard.test.stalled", { said: e.message, where: describeStop(e.stop) })
-          : copyText("machineCard.test.failed", { e: String(e) });
+          : failSaid(copyText("machineCard.test.failed"), e);
       segs.stop();
       this.renderTestResult(null, said, segs.el);
     } finally {

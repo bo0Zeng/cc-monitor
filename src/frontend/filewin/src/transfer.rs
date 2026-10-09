@@ -532,9 +532,7 @@ pub async fn upload_remote(
 ) -> Result<(), super::source::Failed> {
     // 这一窗已经改走后端链路 ⇒ 不再问 SFTP。
     if board.via_backend().is_some() {
-        return super::chunk_upload::upload_by_chunks(line, origin, p, board)
-            .await
-            .map_err(super::source::Failed::from);
+        return super::chunk_upload::upload_by_chunks(line, origin, p, board).await;
     }
     let home = board.backend_home(line, origin).await;
     let home = home.as_deref();
@@ -551,9 +549,7 @@ pub async fn upload_remote(
         // 连上时比出来 SFTP 起始目录不是后端的 home ⇒ 一个字节没传；这一件起改走后端链路分块写（出声一次）。
         Err(Once::Mismatch(why)) => {
             board.switch_to_backend(why);
-            super::chunk_upload::upload_by_chunks(line, origin, p, board)
-                .await
-                .map_err(super::source::Failed::from)
+            super::chunk_upload::upload_by_chunks(line, origin, p, board).await
         }
         other => other.map_err(Once::failed),
     }
@@ -610,9 +606,9 @@ async fn upload_once(
         |got, total| sink.progress(&name, got, total),
     )
     .await
-    .map_err(|(code, said)| match code.as_deref() {
-        Some(SFTP_HOME_MISMATCH) => Once::Mismatch(said),
-        _ => Once::Failed(said.into()),
+    .map_err(|f| match f.code.as_deref() {
+        Some(SFTP_HOME_MISMATCH) => Once::Mismatch(f.said),
+        _ => Once::Failed(f),
     })?;
     let sha256 = watched
         .sha256

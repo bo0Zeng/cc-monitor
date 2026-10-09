@@ -163,7 +163,8 @@ describe("B03 登记 ≠ 在线", () => {
     (row.querySelector(".cc-bus-check") as HTMLButtonElement).click();
     await flush();
     const el = row.querySelector(".cc-bus-online")!;
-    expect(el.textContent).toMatch(copyPattern("ccBus.check.failed", {}, { whole: true }));
+    // 那台写好的那一句原样上屏（垫片把夹具原话当成对端的那一句交回），后面跟［复制详情］。
+    expect(el.textContent).toContain("connection reset");
     expect(el.textContent).not.toBe(copyText("ccBus.check.offline"));
     expect((el as HTMLElement).dataset.state).toBe("error"); // 状态从类名改成 data-state
   });
@@ -212,7 +213,7 @@ describe("B03 脏数据如实呈现", () => {
     (s.element.querySelector(".cc-bus-read") as HTMLButtonElement).click();
     await flush();
     const txt = s.element.querySelector(".cc-bus-status")?.textContent ?? "";
-    expect(txt).toMatch(copyPattern("ccBus.reload.readFailed"));
+    // 对端写好的那一句原样上屏（不再套一层「读取名单失败 · 」）。
     expect(txt).toContain("ssh timeout");
   });
 

@@ -35,7 +35,7 @@ import { readRecordDrift } from "../record-reads";
 import { ccRow } from "./cc-row";
 import { decodeMachineState, type MachineState } from "./machine-state";
 import { exactKeys, isObj } from "../ipc/decode";
-import { detailOf, sayWithDetail } from "../kit/detail";
+import { sayFailure } from "../kit/detail";
 
 /** 「停」的结局说一句（三个词各一句，穷举 —— 多一个词 tsc 就红）；机器页那一行照它说。 */
 export function stopSaid(a: StopAnswer): string {
@@ -560,7 +560,7 @@ export class BackendSection {
       head.textContent = h;
       pre.textContent = body;
     } catch (e) {
-      sayWithDetail(head, copyText("backend.log.failed", { e: e instanceof Error ? e.message : String(e) }), detailOf(e));
+      sayFailure(head, copyText("backend.log.failed"), e);
     } finally {
       btn.disabled = false;
     }

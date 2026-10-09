@@ -89,7 +89,7 @@ describe("数据位置：给路径，不给删 / 清空", () => {
       "@tauri-apps/plugin-opener": ["openPath"],
       "../reveal-in-folder": ["revealInFolder"],
       "../kit/toast": ["failToast"],
-      "../kit/detail": ["detailOf", "sayWithDetail"], // 读失败那一句 ＋ 它的［复制详情］：只取详情、排版，不是效应
+      "../kit/detail": ["sayFailure"], // 读失败那一句 ＋ 它的［复制详情］：只取那一句与详情、排版，不是效应
       "../local-storage": ["enumeratePrefix"],
       "../format": ["formatBytes"],
       "./skeleton": ["holdSkeletonHeight", "makeSkeleton"],

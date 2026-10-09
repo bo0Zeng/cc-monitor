@@ -774,12 +774,15 @@ fn transfer_end(e: &serde_json::Value) -> Option<crate::sftp_pool::End> {
             sha256: e.get("sha256").and_then(|v| v.as_str()).map(str::to_string),
         },
         // 带码的那一形（今天只有 `sftp_home_mismatch`）单列一形，窗口按码换路。
-        "failed" => match e.get("code").and_then(|v| v.as_str()) {
-            Some(code) => crate::sftp_pool::End::FailedCoded {
-                why: e.get("why")?.as_str()?.to_string(),
-                code: code.to_string(),
-            },
-            None => crate::sftp_pool::End::Failed(e.get("why")?.as_str()?.to_string()),
+        // 码（今天只有 `sftp_home_mismatch`）与复制详情都可缺席，在就原样带着（窗口按码换路、详情进［复制详情］）。
+        "failed" => crate::sftp_pool::End::Failed {
+            why: e.get("why")?.as_str()?.to_string(),
+            code: e.get("code").and_then(|v| v.as_str()).map(str::to_string),
+            detail: e
+                .get("detail")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_string(),
         },
         "cancelled" => crate::sftp_pool::End::Cancelled,
         _ => return None,

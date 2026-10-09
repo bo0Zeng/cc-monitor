@@ -335,6 +335,11 @@ const OUTWARD: &[(&str, Kind, &str)] = &[
         "线上那个键名 `b16`（本族判据按它对拍）",
     ),
     (
+        "common::said::Said",
+        Kind::Common,
+        "传输台停下的那一句 ＋ 下层原话（原话进收场帧的复制详情，不上句子）",
+    ),
+    (
         "common::contract::malformed",
         Kind::Common,
         "契约错只进表一句（「请求格式不对：{detail}」）",

@@ -30,6 +30,7 @@
 //! - **`ChrootDirectory` / `internal-sftp -d`**：起始目录不是 `$HOME` 的机器上，这里的「home」是 SFTP 的起始目录，
 //!   与远端后端的 `$HOME` 不是同一个 ⇒ 暂存件提交会答「不在」（`files_commit` 头注那一格照旧）。
 
+use crate::common::said::Said;
 use copy_core::copy_text;
 use std::sync::Arc;
 
@@ -129,11 +130,11 @@ pub(crate) async fn open(
     lease: &mut Lease,
     req: &DialRequest,
     stages: &StageSink,
-) -> Result<Session, String> {
+) -> Result<Session, Said> {
     let (channel, permit) = lease.session_channel(req, stages).await?;
     subsystem(&channel)
         .await
-        .map_err(|e| copy_text("beSftp.open.subsystem", &[("e", &e.to_string())]))?;
+        .map_err(|e| Said::with_raw(copy_text("beSftp.open.subsystem", &[]), &e))?;
     let stream = channel.into_stream();
     let linked = Arc::clone(lease.linked());
     if lease.lane() != Lane::Transfer {
@@ -200,7 +201,7 @@ impl Dial {
 
 /// 传输那一趟的会话：先找一条停着的空闲会话（1 个往返）；没有 ⇒ 在池里放置（同身份复用 / 分道到批量连接）
 /// → 过**传输车道**开一条 sftp 通道（4 个往返）。
-pub(crate) async fn open_for_transfer(d: &Dial) -> Result<Session, String> {
+pub(crate) async fn open_for_transfer(d: &Dial) -> Result<Session, Said> {
     let req = &d.0;
     if let Some(s) = take_parked(req).await {
         return Ok(s);
@@ -213,17 +214,19 @@ pub(crate) async fn open_for_transfer(d: &Dial) -> Result<Session, String> {
 }
 
 /// `SSH_FXP_INIT` ＋ 问一次起始目录的真路径。
-async fn init<S>(stream: S) -> Result<(SftpSession, String), String>
+async fn init<S>(stream: S) -> Result<(SftpSession, String), Said>
 where
     S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
-    let sftp = SftpSession::new(stream)
-        .await
-        .map_err(|e| copy_text("beSftp.open.initFailed", &[("e", &e.to_string())]))?;
-    let home = sftp
-        .canonicalize(".")
-        .await
-        .map_err(|e| copy_text("beSftp.open.noHome", &[("e", &e.to_string())]))?;
+    let sftp = SftpSession::new(stream).await.map_err(|e| {
+        Said::with_raw(
+            copy_text("beSftp.open.initFailed", &[("why", &why_of(&e))]),
+            &e,
+        )
+    })?;
+    let home = sftp.canonicalize(".").await.map_err(|e| {
+        Said::with_raw(copy_text("beSftp.open.noHome", &[("why", &why_of(&e))]), &e)
+    })?;
     Ok((sftp, home))
 }
 
@@ -233,7 +236,7 @@ impl Session {
     pub(crate) async fn over<S>(
         stream: S,
         keep: Box<dyn std::any::Any + Send + Sync>,
-    ) -> Result<Session, String>
+    ) -> Result<Session, Said>
     where
         S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
     {
@@ -273,19 +276,30 @@ pub(crate) enum Intent {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Refusal {
     Fenced(String),
-    Io(String),
+    /// `raw`：下层原话（进复制详情，不上句子；没有 ⇒ `None`）。
+    Io {
+        said: String,
+        raw: Option<String>,
+    },
 }
 
 impl Refusal {
     pub(crate) fn code(&self) -> &'static str {
         match self {
             Refusal::Fenced(_) => "fenced",
-            Refusal::Io(_) => "io",
+            Refusal::Io { .. } => "io",
         }
     }
     pub(crate) fn message(&self) -> &str {
         match self {
-            Refusal::Fenced(m) | Refusal::Io(m) => m,
+            Refusal::Fenced(m) | Refusal::Io { said: m, .. } => m,
+        }
+    }
+    /// 下层原话（只有盘上没成那一档带）。
+    pub(crate) fn raw(&self) -> Option<&str> {
+        match self {
+            Refusal::Io { raw, .. } => raw.as_deref(),
+            Refusal::Fenced(_) => None,
         }
     }
 }
@@ -301,7 +315,49 @@ fn fenced(msg: String) -> Refusal {
 }
 
 fn io(msg: String) -> Refusal {
-    Refusal::Io(msg)
+    Refusal::Io {
+        said: msg,
+        raw: None,
+    }
+}
+
+/// 盘上没成：句子（已带原因词）＋ 下层原话。
+fn io_raw(said: String, raw: impl std::fmt::Display) -> Refusal {
+    let r = Said::with_raw(said, raw);
+    Refusal::Io {
+        said: r.said,
+        raw: r.raw,
+    }
+}
+
+impl From<Refusal> for Said {
+    fn from(r: Refusal) -> Said {
+        Said {
+            said: r.message().to_string(),
+            raw: r.raw().map(str::to_string),
+        }
+    }
+}
+
+/// 下层错 ⇒ 句子里那一格原因词：IO 错按种类（`copy_core::io_reason`）；SFTP 状态码认得的两种（不在 · 无权限）同那张表；其余「原因不明」。
+/// 原话不在这里丢：调用方把它交给 [`Said`] / [`Refusal::Io`] 进复制详情。
+fn why_of(e: &(dyn std::error::Error + 'static)) -> String {
+    use russh_sftp::client::error::Error as E;
+    use russh_sftp::protocol::StatusCode as C;
+    use std::io::ErrorKind as K;
+    let kind = if let Some(io) = e.downcast_ref::<std::io::Error>() {
+        io.kind()
+    } else {
+        match e.downcast_ref::<E>() {
+            Some(E::Status(st)) => match st.status_code {
+                C::NoSuchFile => K::NotFound,
+                C::PermissionDenied => K::PermissionDenied,
+                _ => K::Other,
+            },
+            _ => K::Other,
+        }
+    };
+    copy_core::io_reason(kind)
 }
 
 /// **纯词法那一道**：把 `path` 归一成 home 相对，判它落不落在两个根里。
@@ -388,14 +444,14 @@ pub(crate) async fn fenced_remote(
     let real_root = s.sftp().canonicalize(root).await.map_err(|e| {
         fenced(copy_text(
             "beSftp.fence.rootUnresolved",
-            &[("root", root), ("e", &e.to_string())],
+            &[("root", root), ("why", &why_of(&e))],
         ))
     })?;
     let parent = parent_of(&rel);
     let real_parent = s.sftp().canonicalize(parent).await.map_err(|e| {
         fenced(copy_text(
             "beSftp.fence.parentUnresolved",
-            &[("parent", parent), ("e", &e.to_string())],
+            &[("parent", parent), ("why", &why_of(&e))],
         ))
     })?;
     let inside = real_parent == real_root
@@ -465,30 +521,42 @@ pub(crate) async fn put_atomic(
         )
         .await
         .map_err(|e| {
-            io(copy_text(
-                "beSftp.put.writeFailed",
-                &[("path", &tmp), ("e", &e.to_string())],
-            ))
+            io_raw(
+                copy_text(
+                    "beSftp.put.writeFailed",
+                    &[("path", &tmp), ("why", &why_of(&e))],
+                ),
+                &e,
+            )
         })?;
     let written = async {
         file.write_all(bytes).await.map_err(|e| {
-            io(copy_text(
-                "beSftp.put.writeFailed",
-                &[("path", &tmp), ("e", &e.to_string())],
-            ))
+            io_raw(
+                copy_text(
+                    "beSftp.put.writeFailed",
+                    &[("path", &tmp), ("why", &why_of(&e))],
+                ),
+                &e,
+            )
         })?;
         // `write_all` 只把 WRITE 包入队；ack 只在 flush / shutdown 里收（同 monitor 那一份的理由）。
         file.flush().await.map_err(|e| {
-            io(copy_text(
-                "beSftp.put.writeFailed",
-                &[("path", &tmp), ("e", &e.to_string())],
-            ))
+            io_raw(
+                copy_text(
+                    "beSftp.put.writeFailed",
+                    &[("path", &tmp), ("why", &why_of(&e))],
+                ),
+                &e,
+            )
         })?;
         file.shutdown().await.map_err(|e| {
-            io(copy_text(
-                "beSftp.put.writeFailed",
-                &[("path", &tmp), ("e", &e.to_string())],
-            ))
+            io_raw(
+                copy_text(
+                    "beSftp.put.writeFailed",
+                    &[("path", &tmp), ("why", &why_of(&e))],
+                ),
+                &e,
+            )
         })
     }
     .await;
@@ -502,10 +570,13 @@ pub(crate) async fn put_atomic(
         let b = format!("{rel}.{}.bak", trip_tag());
         if let Err(e) = s.sftp().rename(rel.clone(), b.clone()).await {
             drop_own_tmp().await;
-            return Err(io(copy_text(
-                "beSftp.put.backupFailed",
-                &[("path", &rel), ("backup", &b), ("e", &e.to_string())],
-            )));
+            return Err(io_raw(
+                copy_text(
+                    "beSftp.put.backupFailed",
+                    &[("path", &rel), ("backup", &b), ("why", &why_of(&e))],
+                ),
+                &e,
+            ));
         }
         Some(b)
     } else {
@@ -522,10 +593,13 @@ pub(crate) async fn put_atomic(
                 let _ = s.sftp().rename(b, rel.clone()).await;
             }
         }
-        return Err(io(copy_text(
-            "beSftp.put.renameFailed",
-            &[("tmp", &tmp), ("path", &rel), ("e", &e.to_string())],
-        )));
+        return Err(io_raw(
+            copy_text(
+                "beSftp.put.renameFailed",
+                &[("tmp", &tmp), ("path", &rel), ("why", &why_of(&e))],
+            ),
+            &e,
+        ));
     }
     if let Some(b) = bak {
         let _ = s.sftp().remove_file(b).await;
@@ -583,10 +657,13 @@ pub(crate) async fn remove(s: &Session, path: &str) -> Result<bool, Refusal> {
         return Ok(false);
     }
     s.sftp().remove_file(rel.clone()).await.map_err(|e| {
-        io(copy_text(
-            "beSftp.remove.failed",
-            &[("path", &rel), ("e", &e.to_string())],
-        ))
+        io_raw(
+            copy_text(
+                "beSftp.remove.failed",
+                &[("path", &rel), ("why", &why_of(&e))],
+            ),
+            &e,
+        )
     })?;
     Ok(true)
 }
@@ -607,10 +684,13 @@ pub(crate) async fn make_dir(s: &Session, path: &str) -> Result<(), Refusal> {
     if let Err(e) = s.sftp().create_dir(rel.clone()).await {
         // 并发的另一趟刚建好它 —— 那不算错（也不是这一趟建的 ⇒ 不去动它的权限位）。
         if !s.sftp().try_exists(rel.clone()).await.unwrap_or(false) {
-            return Err(io(copy_text(
-                "beSftp.put.writeFailed",
-                &[("path", &rel), ("e", &e.to_string())],
-            )));
+            return Err(io_raw(
+                copy_text(
+                    "beSftp.put.writeFailed",
+                    &[("path", &rel), ("why", &why_of(&e))],
+                ),
+                &e,
+            ));
         }
         return Ok(());
     }
@@ -661,24 +741,30 @@ pub(crate) async fn open_for_write(
         .open_with_flags(rel.clone(), flags)
         .await
         .map_err(|e| {
-            io(copy_text(
-                "beSftp.put.writeFailed",
-                &[("path", &rel), ("e", &e.to_string())],
-            ))
+            io_raw(
+                copy_text(
+                    "beSftp.put.writeFailed",
+                    &[("path", &rel), ("why", &why_of(&e))],
+                ),
+                &e,
+            )
         })
 }
 
 // ═══ 读（不改任何东西；不过围栏）══════════════════════════════════════════════════════
 
 /// 打开一份远端文件只读。
-pub(crate) async fn open_for_read(s: &Session, path: &str) -> Result<RemoteFile, String> {
+pub(crate) async fn open_for_read(s: &Session, path: &str) -> Result<RemoteFile, Said> {
     s.sftp()
         .open_with_flags(path.to_string(), OpenFlags::READ)
         .await
         .map_err(|e| {
-            copy_text(
-                "beSftp.open.readFailed",
-                &[("path", path), ("e", &e.to_string())],
+            Said::with_raw(
+                copy_text(
+                    "beSftp.open.readFailed",
+                    &[("path", path), ("why", &why_of(&e))],
+                ),
+                &e,
             )
         })
 }
@@ -717,7 +803,11 @@ async fn read_line_capped<R: AsyncBufRead + Unpin>(
         .take(cap + 1)
         .read_line(&mut line)
         .await
-        .map_err(|e| copy_text("beSftp.request.readFailed", &[("e", &e.to_string())]))?;
+        .map_err(|e| {
+            // 这条链路（`serve_files` 的应答行）没有复制详情那一格：原话进后端日志。
+            tracing::warn!("sftp files link: reading the request failed: {e}");
+            copy_text("beSftp.request.readFailed", &[("why", &why_of(&e))])
+        })?;
     if n == 0 {
         return Ok(None);
     }
@@ -843,9 +933,11 @@ async fn answer<R: AsyncRead + Unpin>(
                     .read_to_end(&mut bytes)
                     .await
                     .map_err(|e| {
+                        // 应答行没有复制详情那一格：原话进后端日志。
+                        tracing::warn!("sftp files link: receiving the upload failed: {e}");
                         refused(
                             "io",
-                            &copy_text("beSftp.put.receiveFailed", &[("e", &e.to_string())]),
+                            &copy_text("beSftp.put.receiveFailed", &[("why", &why_of(&e))]),
                         )
                     })?;
                 if bytes.len() as u64 != size {

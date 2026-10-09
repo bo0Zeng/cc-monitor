@@ -81,10 +81,10 @@ pub(super) const SPECS: &[CommandSpec] = &[
         ],
         fields: &[out("bytes", "这一趟写进去了几个字节"), arg("content", "要写进去的字节"), out("path", "真正落盘的那个绝对路径，**解完 symlink 的**（原始字节形）"), arg("rel", "相对 `root` 的那一段"), arg("root", "**用户指定的那个文件管理目标根**"), arg("single", "可选布尔：`true` ⇒ `rel` 只许是**一段名字**（界面就地新建 / 改名敲的那一格）；`files-mkdir` 的 `rel`、`files-rename` 的 `to` 同")],
         takes_input: true,
-        run: Run::Blocking(|r| {
+        run: Run::BlockingData(|r| {
             crate::control::files_write::answer_wire(&r.cmd, &r.args, &SESSION_PORT)
                 .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
+                .map_err(|f| Fail::new(f.code, f.said).with_raw(f.raw.as_deref()))
         }),
     },
     // ── 〔波 5 ㈡〕 **第 3 步**：改动既有数据的那五条 ──────────
@@ -108,10 +108,10 @@ pub(super) const SPECS: &[CommandSpec] = &[
         ],
         fields: &[out("path", "建出来的那个目录（父目录解完 symlink 的）"), arg("rel", "目标根 ＋ 相对段"), arg("root", "目标根 ＋ 相对段"), arg("single", "可选布尔：`true` ⇒ `rel` 只许一段名字；名字规则同 `files-create`，不合 ⇒ `bad_name`")],
         takes_input: true,
-        run: Run::Blocking(|r| {
+        run: Run::BlockingData(|r| {
             crate::control::files_write::answer_wire(&r.cmd, &r.args, &SESSION_PORT)
                 .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
+                .map_err(|f| Fail::new(f.code, f.said).with_raw(f.raw.as_deref()))
         }),
     },
     CommandSpec {
@@ -127,10 +127,10 @@ pub(super) const SPECS: &[CommandSpec] = &[
         ],
         fields: &[arg("from", "两个相对段，**各过一遍路径解析**（只解 `from` 的话，`to` 半路一条链接就能把东西搬到根外）"), out("path", "新名字的落点"), arg("root", "目标根"), arg("single", "可选布尔：`true` ⇒ `to` 只许一段名字；`to` 的名字规则同 `files-create`，不合 ⇒ `bad_name`"), arg("to", "两个相对段，**各过一遍路径解析**（只解 `from` 的话，`to` 半路一条链接就能把东西搬到根外）")],
         takes_input: true,
-        run: Run::Blocking(|r| {
+        run: Run::BlockingData(|r| {
             crate::control::files_write::answer_wire(&r.cmd, &r.args, &SESSION_PORT)
                 .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
+                .map_err(|f| Fail::new(f.code, f.said).with_raw(f.raw.as_deref()))
         }),
     },
     CommandSpec {
@@ -142,10 +142,10 @@ pub(super) const SPECS: &[CommandSpec] = &[
         // `limit`（入）· `remaining`（出）：递归删一趟至多删几条、还剩几条（调用方接着发）。
         fields: &[arg("expect", "可选，字符串或 `{\"b16\": …}`：「我读到的是这一份」"), arg("limit", "可选，只对 `recursive: true`：这一趟至多删几条"), out("path", "删掉的那一项"), arg("recursive", "布尔，**缺省 `false`**"), arg("rel", "目标根 ＋ 相对段"), out("remaining", "还剩几条没删（只有带 `limit` 删够了停下时不是 `0`）：调用方再发一趟同样的请求接着删"), out("removed", "这一趟真删掉了几条（含目标自己；不递归那一支恒 `1`）"), arg("root", "目标根 ＋ 相对段")],
         takes_input: true,
-        run: Run::Blocking(|r| {
+        run: Run::BlockingData(|r| {
             crate::control::files_write::answer_wire(&r.cmd, &r.args, &SESSION_PORT)
                 .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
+                .map_err(|f| Fail::new(f.code, f.said).with_raw(f.raw.as_deref()))
         }),
     },
     CommandSpec {
@@ -161,10 +161,10 @@ pub(super) const SPECS: &[CommandSpec] = &[
         ],
         fields: &[out("before", "**改之前**的权限位（十进制、低 12 位）：撤销 ＝ 拿它再发一趟"), both("mode", "**十进制数值**（`493` = `0o755`），只收低 12 位；超出 ⇒ `refused`"), out("path", "**解到底**的那个真路径"), arg("rel", "目标根 ＋ 相对段"), arg("root", "目标根 ＋ 相对段")],
         takes_input: true,
-        run: Run::Blocking(|r| {
+        run: Run::BlockingData(|r| {
             crate::control::files_write::answer_wire(&r.cmd, &r.args, &SESSION_PORT)
                 .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
+                .map_err(|f| Fail::new(f.code, f.said).with_raw(f.raw.as_deref()))
         }),
     },
     // 写面第七条：同根内复制。与上面五条同住一个模块、
@@ -177,10 +177,10 @@ pub(super) const SPECS: &[CommandSpec] = &[
         // `recursive`（入）· `files` / `dirs`（出）：显式才复制目录。
         fields: &[out("bytes", "复制了几个字节（整棵时是全部普通文件之和）"), out("dirs", "几个目录（单文件那一形恒是 `1` / `0`）"), out("files", "复制了几个普通文件"), arg("from", "两个相对段"), out("links", "照原样复制了几条符号链接（单文件那一形恒是 `0`）"), arg("overwrite", "🔴 **覆盖策略显式**"), out("path", "落点（父目录解完 symlink 的）"), arg("recursive", "**复制目录显式**"), arg("root", "目标根（与写面其余几条同形）"), arg("to", "两个相对段")],
         takes_input: true,
-        run: Run::Blocking(|r| {
+        run: Run::BlockingData(|r| {
             crate::control::files_write::answer_wire(&r.cmd, &r.args, &SESSION_PORT)
                 .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
+                .map_err(|f| Fail::new(f.code, f.said).with_raw(f.raw.as_deref()))
         }),
     },
     // 解压：处理器住
@@ -198,10 +198,10 @@ pub(super) const SPECS: &[CommandSpec] = &[
         ],
         fields: &[out("bytes", "文件字节之和"), out("dirs", "几个目录（含补出来的上级）"), out("files", "建了几份文件（含硬链接落成的拷贝）"), arg("fresh", "可缺席的布尔"), out("links", "几条符号链接"), out("path", "落点目录（父目录解完 symlink 的）"), arg("rel", "包在 `root` 下的相对段；格式按名字后缀认：`.zip` · `.tar` · `.tar.gz` · `.tgz`（不分大小写），其余 ⇒ `unsupported`（「不认这种包」）"), arg("root", "那个目录（字符串或 `{\"b16\": …}`）")],
         takes_input: true,
-        run: Run::Blocking(|r| {
+        run: Run::BlockingData(|r| {
             crate::control::files_extract::answer_wire(&r.cmd, &r.args)
                 .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
+                .map_err(|f| Fail::new(f.code, f.said).with_raw(f.raw.as_deref()))
         }),
     },
     // 建一条链接（`files_extract.rs::land_link` 那一个动词，FILES2 已在写面闭集里）：链接那条路径过根底下的解析，
@@ -212,10 +212,10 @@ pub(super) const SPECS: &[CommandSpec] = &[
         codes: &["bad_args", "bad_path", "io_failed", "refused"],
         fields: &[out("path", "建出来的那条链接（父目录解完 symlink 的）"), arg("rel", "链接自己那条路径：`rel` 在 `root` 下过路径解析（同写面其余几条；字符串或 `{\"b16\": …}`）"), arg("root", "链接自己那条路径：`rel` 在 `root` 下过路径解析（同写面其余几条；字符串或 `{\"b16\": …}`）"), arg("target", "链接的目标文本，**原样**写进去（不解、不判，同 `cp -P`）")],
         takes_input: true,
-        run: Run::Blocking(|r| {
+        run: Run::BlockingData(|r| {
             crate::control::files_extract::answer_wire(&r.cmd, &r.args)
                 .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
+                .map_err(|f| Fail::new(f.code, f.said).with_raw(f.raw.as_deref()))
         }),
     },
     CommandSpec {
@@ -224,10 +224,10 @@ pub(super) const SPECS: &[CommandSpec] = &[
         codes: &["bad_args", "bad_path", "io_failed", "refused", "stale"],
         fields: &[out("bytes", "写进去了几个字节"), arg("content", "字符串或 `{\"b16\":…}`"), arg("expect", "🔴 **必须给**，恰好 `{\"sha256\": \"<64 位小写十六进制>\"}`：「我看的时候那一份」的摘要（`files-read-text` 交的那个）"), out("path", "**解到底**的那个真路径（它跟链接，理由同 `files-chmod`）"), arg("rel", "目标根 ＋ 相对段"), arg("root", "目标根 ＋ 相对段"), out("sha256", "写进去那份的摘要 —— 调用方拿它当下一次存的 `expect`（连存两次不自撞）")],
         takes_input: true,
-        run: Run::Blocking(|r| {
+        run: Run::BlockingData(|r| {
             crate::control::files_write::answer_wire(&r.cmd, &r.args, &SESSION_PORT)
                 .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
+                .map_err(|f| Fail::new(f.code, f.said).with_raw(f.raw.as_deref()))
         }),
     },
     // ── 用户文件的读改写 ＋ 删历史会话 ─────────────────────────
@@ -251,10 +251,10 @@ pub(super) const SPECS: &[CommandSpec] = &[
         ],
         fields: &[out("exists", "`false` ⇒ **确定不存在**（`text` 为 `null`）"), out("path", "读的是哪一份（最后一段是链接时是解到底的那一份）"), arg("rel", "与写面其余几条同形；**与 `files-put` 同一道围栏**（读的那一份就是写的那一份）"), arg("root", "与写面其余几条同形；**与 `files-put` 同一道围栏**（读的那一份就是写的那一份）"), out("text", "全文（UTF-8）；不在时 `null`")],
         takes_input: true,
-        run: Run::Blocking(|r| {
+        run: Run::BlockingData(|r| {
             crate::control::files_write::answer_wire(&r.cmd, &r.args, &SESSION_PORT)
                 .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
+                .map_err(|f| Fail::new(f.code, f.said).with_raw(f.raw.as_deref()))
         }),
     },
     CommandSpec {
@@ -263,10 +263,10 @@ pub(super) const SPECS: &[CommandSpec] = &[
         codes: &["bad_args", "bad_path", "io_failed", "refused", "stale"],
         fields: &[arg("backup", "可缺席的布尔（缺省否）"), out("bytes", "新内容的字节数"), out("changed", "真的写了吗（新内容与盘上逐字节相同 ⇒ `false`，一个字节不动）"), arg("content", "新全文（字符串或 `{\"b16\":…}`），**必须给**"), out("created", "这份文件是这一次新建的"), arg("expect", "🔴 **必须给**：`null` = 「我读的时候它不在」；字符串 / b16 = 「我读到的就是这一份」"), arg("parents", "可缺席的布尔（缺省否）"), out("path", "落点"), arg("rel", "同 `files-peek`"), arg("root", "同 `files-peek`")],
         takes_input: true,
-        run: Run::Blocking(|r| {
+        run: Run::BlockingData(|r| {
             crate::control::files_write::answer_wire(&r.cmd, &r.args, &SESSION_PORT)
                 .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
+                .map_err(|f| Fail::new(f.code, f.said).with_raw(f.raw.as_deref()))
         }),
     },
     CommandSpec {
@@ -275,10 +275,10 @@ pub(super) const SPECS: &[CommandSpec] = &[
         codes: &["bad_args", "io_failed", "refused"],
         fields: &[out("path", "删掉的那一份"), arg("sid", "🔴 **只收 sid**：多给任何一个键 ⇒ `bad_args`")],
         takes_input: true,
-        run: Run::Blocking(|r| {
+        run: Run::BlockingData(|r| {
             crate::control::files_write::answer_wire(&r.cmd, &r.args, &SESSION_PORT)
                 .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
+                .map_err(|f| Fail::new(f.code, f.said).with_raw(f.raw.as_deref()))
         }),
     },
     // ──：上传的**提交** ──────────────────────
@@ -298,7 +298,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         run: Run::BlockingData(|r| {
             crate::control::files_commit::answer_wire(&r.cmd, &r.args)
                 .map(Some)
-                .map_err(|(code, said, raw)| Fail::new(code, said).with_raw(raw.as_deref()))
+                .map_err(|f| Fail::new(f.code, f.said).with_raw(f.raw.as_deref()))
         }),
     },
     CommandSpec {
@@ -310,7 +310,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         run: Run::BlockingData(|r| {
             crate::control::files_commit::answer_wire(&r.cmd, &r.args)
                 .map(Some)
-                .map_err(|(code, said, raw)| Fail::new(code, said).with_raw(raw.as_deref()))
+                .map_err(|f| Fail::new(f.code, f.said).with_raw(f.raw.as_deref()))
         }),
     },
     CommandSpec {
@@ -322,7 +322,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         run: Run::BlockingData(|r| {
             crate::control::files_commit::answer_wire(&r.cmd, &r.args)
                 .map(Some)
-                .map_err(|(code, said, raw)| Fail::new(code, said).with_raw(raw.as_deref()))
+                .map_err(|f| Fail::new(f.code, f.said).with_raw(f.raw.as_deref()))
         }),
     },
     CommandSpec {

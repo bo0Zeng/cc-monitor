@@ -281,7 +281,7 @@ describe("批量起：每项只交 sid 与目录，整批带用户设置的原�
       {
         sid: "y",
         outcome: "failed",
-        why: copyText("tabBatch.why.windowFailed", { detail: "Error: 开不了" }),
+        why: copyText("tabBatch.why.windowFailed"),
       },
     ]);
   });
