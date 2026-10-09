@@ -16,6 +16,12 @@
  * - 「暂定结论」被降级（露着的最后一段正文，Claude 又调了工具 ⇒ 它成了中间的话）：收尾那一刻视口正落在它上面 ⇒ 先不收，
  *   等滚出去（宿主转来的 scroll）或切走再收。
  *
+ * # 折着的不建 DOM（骨架接上了的那一段历史）
+ *
+ * 折着的轮的过程那一段（seq：开头之后到第一条结尾之前）交给骨架（`SkeletonView.setFolds`）：账本按 0 高、滚到那里也不物化，
+ * 带过程行的轮的开头多算一条过程行的高 ⇒ 滚动条按「人话 ＋ 一行 ＋ 结尾」估。展开 ⇒ 撤掉那一段、叫骨架物化露出来的部分。
+ * 已经建了的卡（尾部窗口直渲的 · 展开过又收起的）照样由本模块藏（`display:none`），收起后不拆。
+ *
  * # 展开状态
  *
  * 默认展开与否是每扇窗一个开关（会话头「⋯」·`Ctrl+O`，`LS_KEYS.processExpanded`），正在跑的与收尾了的同一个默认；
@@ -33,6 +39,7 @@ import { foldCaret } from "./kit/fold";
 import { spinner } from "./kit/progress";
 import { statusDot } from "./kit/status-dot";
 import { SKELETON_GAP_CLASS } from "./skeleton-view";
+import type { TurnFolds } from "./live-window";
 import { LS_KEYS, safeGet, safeSet } from "./local-storage";
 
 export const PROC_LINE_CLASS = "proc-line";
@@ -44,14 +51,23 @@ export const PROC_REVEAL_EVENT = "proc-reveal";
 const FOLD_WRAP_CLASS = "branch-fold-wrap";
 /** 过程里出了错的那一处（点「失败 ×N」滚到第一处）。 */
 const FAILED_SELECTOR = '.step-line[data-state="failed"], .card-api-error, [data-failed="1"]';
+/** 过程行占的高（还没建出一条可量时用）：稿上的 28 高 ＋ 12 下边距。 */
+const LINE_PX_FALLBACK = 40;
 /** 连续要不到几次就不再要（同大纲 / 事实的口径）。 */
 const MAX_FAILURES = 3;
 
 /** 这份会话在哪（路径要等首条行回填 ⇒ 每次现取；拿不到 ⇒ 这一趟不要）。 */
 export type TurnsWhere = () => { origin: Origin; jsonlPath: string } | null;
 type Read = (origin: Origin, path: string, from: number) => Promise<TurnsResult>;
-/** 这个 tab 的骨架（没接上 ⇒ `null`）：占位里有没有下一轮的开头按账本的 uuid→seq 认；展开一轮后叫它物化露出来的那段。 */
-export type TurnsSkeleton = () => { ledger: { uuidToSeq: ReadonlyMap<string, number> }; fillVisible(): number } | null;
+/**
+ * 这个 tab 的骨架（没接上 ⇒ `null`）：占位里有没有下一轮的开头按账本的 uuid→seq 认；折着的轮的过程那一段告诉它（按 0 高、不物化）；
+ * 展开一轮后叫它物化露出来的那段。
+ */
+export type TurnsSkeleton = () => {
+  ledger: { uuidToSeq: ReadonlyMap<string, number>; endSeq: number };
+  fillVisible(): number;
+  setFolds(f: TurnFolds): void;
+} | null;
 
 /** 「显示系统注入」这扇窗的开关（缺省不露）。 */
 export function injectedShownDefault(): boolean {
@@ -247,6 +263,7 @@ export class TurnFold {
       this.lines.delete(uuid);
     }
     this.lastOf = lastOf;
+    this.foldSkeleton();
     this.placeTails(lastOf);
     this.sizeRules();
     this.mo.takeRecords();
@@ -272,6 +289,47 @@ export class TurnFold {
       if (seq !== undefined) out.push({ seq, uuid: t.uuid });
     }
     return out.sort((a, b) => a.seq - b.seq);
+  }
+
+  /**
+   * 折着的轮的过程那一段（seq：开头之后到第一条结尾之前；没有结尾 ⇒ 到下一轮开头 / 账本尾）交给骨架：按 0 高、滚到那里也不物化。
+   * 只管还没建的行（建了的照样由本模块藏），同一组骨架那边原样不动。
+   */
+  private foldSkeleton(): void {
+    const sk = this.skeleton();
+    if (!sk) return;
+    const seq = sk.ledger.uuidToSeq;
+    const ranges: Array<[number, number]> = [];
+    const lines: number[] = [];
+    // 从后往前走：`next` ＝ 后面最近那一轮开头的 seq（没有 ⇒ 账本尾），O(轮数)。
+    let next = sk.ledger.endSeq;
+    for (let i = this.turns.length - 1; i >= 0; i--) {
+      const t = this.turns[i];
+      const head = seq.get(t.uuid);
+      if (head === undefined) continue;
+      if (hasLine(t)) lines.push(head);
+      if (hasLine(t) && !this.expanded(t)) {
+        let to = next;
+        for (const u of t.ending) {
+          const e = seq.get(u);
+          if (e !== undefined && e > head && e < to) to = e;
+        }
+        if (to > head + 1) ranges.push([head + 1, to]);
+      }
+      next = head;
+    }
+    ranges.reverse();
+    sk.setFolds({ folded: ranges, lines, linePx: this.linePx() });
+  }
+
+  /** 一条过程行在流里占多高（量第一条建出来的：盒高 ＋ 下边距；还没有 ⇒ 稿上的 28 ＋ 12）。 */
+  private linePx(): number {
+    const line = this.lines.values().next().value;
+    if (line?.isConnected) {
+      const h = line.getBoundingClientRect().height;
+      if (h > 0) return h + parseFloat(getComputedStyle(line).marginBottom || "0");
+    }
+    return LINE_PX_FALLBACK;
   }
 
   /** 这一轮从折着变成展开 ⇒ 露出来的占位要物化（没有 scroll 事件来叫）。 */

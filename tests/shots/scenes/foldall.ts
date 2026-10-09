@@ -84,11 +84,11 @@ function foldWorld(activity: "needs_you" | "working" = "needs_you"): World {
 }
 
 /** 长会话：很多轮（每轮思考 · 几步工具 · 中间的话 · 结论），尾部窗口装不下 ⇒ 上面由骨架占位顶着、滚到哪物化到哪。 */
-function longWorld(): World {
+function longWorld(n = 90): World {
   const w = defaultWorld();
   const c = new Convo(SID, CWD, "2026-10-01T09:00:00Z");
   c.title("示例项目：长会话");
-  for (let i = 1; i <= 90; i++) {
+  for (let i = 1; i <= n; i++) {
     c.user(`第 ${i} 轮：把模块 ${i} 的读取整理一下。`);
     c.think("先找读取的地方。", `先看模块 ${i}。`);
     c.tool("Grep", { pattern: `mod${i}`, path: "src" }, `src/m${i}.py:3`);
@@ -99,6 +99,37 @@ function longWorld(): World {
   }
   w.sessions[0] = session(1, LOCAL, CWD, c, { activity: "idle" });
   return w;
+}
+
+
+/**
+ * 读数（左上角那一行）：查看窗只渲尾巴、其余由骨架占位顶着 ⇒ 刚接上时的滚动高度（估）与一路往上滚到顶、全部物化之后的滚动高度（实）
+ * 对一下；折着的过程不物化，剩下几块 0 高的占位。
+ */
+async function measure(): Promise<void> {
+  await waitFor(".session-viewer [data-uuid]", 15_000);
+  await sleep(1500);
+  const scroller = document.querySelector<HTMLElement>(".session-viewer-stream")!;
+  const est = scroller.scrollHeight;
+  const t0 = performance.now();
+  let still = 0;
+  let lastH = -1;
+  while (performance.now() - t0 < 22_000 && still < 5) {
+    scroller.scrollTop = Math.max(0, scroller.scrollTop - scroller.clientHeight);
+    scroller.dispatchEvent(new Event("scroll"));
+    await sleep(8);
+    const h = scroller.scrollHeight;
+    still = scroller.scrollTop === 0 && h === lastH ? still + 1 : 0;
+    lastH = h;
+  }
+  await sleep(800);
+  const real = scroller.scrollHeight;
+  const cards = document.querySelectorAll(".session-viewer .stream-content > [data-uuid]").length;
+  const left = document.querySelectorAll(".session-viewer .stream-skeleton-gap").length;
+  const d = document.createElement("div");
+  d.style.cssText = "position:fixed;top:0;left:0;z-index:99999;background:#000;color:#0f0;font:16px monospace;padding:6px";
+  d.textContent = `est=${est} real=${real} est/real=${(est / real).toFixed(3)} cards=${cards} gapsLeft=${left} ms=${Math.round(performance.now() - t0)}`;
+  document.body.appendChild(d);
 }
 
 function live(id: string, title: string, desc: string, act: Scene["act"], height = 800): Scene {
@@ -160,6 +191,13 @@ export const FOLDALL_SCENES: Scene[] = [
     }
     await sleep(600);
   }), world: longWorld },
+  { id: "foldall-measure-viewer-folded", page: "viewer", query: `viewer=${SID}`, dir: "大折叠", title: "大折叠 · 读数 · 查看窗 · 折着", desc: "460 轮的会话在独立查看窗里：刚接上骨架时的滚动高度 vs 滚到顶全部物化后的（左上角）；机器忙时读数不稳，要在空的时候截", width: 1100, height: 800, world: () => longWorld(460), act: measure },
+  { id: "foldall-viewer-long-expand", page: "viewer", query: `viewer=${SID}`, dir: "大折叠", title: "大折叠 · 查看窗 · 长会话里点开一轮", desc: "460 轮、滚到顶（折着的过程都没建），点开第二轮：它那段过程这时才建出来", width: 1100, height: 900, world: () => longWorld(460), act: async () => {
+    await measure();
+    document.querySelectorAll<HTMLElement>(".session-viewer .proc-line")[1]?.click();
+    await sleep(1200);
+  } },
+  { id: "foldall-measure-viewer-open", page: "viewer", query: `viewer=${SID}`, dir: "大折叠", title: "大折叠 · 读数 · 查看窗 · 全展开", desc: "同上，「过程默认展开」开着", width: 1100, height: 800, world: () => longWorld(460), storage: { "cc-monitor.stream.process-expanded": "1" }, act: measure },
   {
     id: "foldall-viewer-whole",
     page: "viewer",

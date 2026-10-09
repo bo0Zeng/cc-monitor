@@ -76,6 +76,30 @@ describe("SkeletonLedger", () => {
     user(5, { u: "h" }),
   ];
 
+  it("折着的过程（setFolds 的那几段）按 0 高：区间高 · 总高 · seqAt 都跳过它；带过程行的开头加一条行高；换一组 / 清空 ⇒ 回原高；精算 · 列宽重估后照样 0", () => {
+    const l = new SkeletonLedger(0, rows);
+    const fold = (folded: Array<[number, number]>, lines: number[] = [], linePx = 0) => l.setFolds({ folded, lines, linePx });
+    const full = l.totalHeight;
+    const mid = l.heightOf(1, 3);
+    const head = l.heightOf(0, 1);
+    expect(fold([[1, 3]])).toBe(true);
+    expect(l.heightOf(1, 3)).toBe(0);
+    expect(l.totalHeight).toBeCloseTo(full - mid);
+    expect(l.heightOf(0, 8)).toBeCloseTo(full - mid);
+    expect(l.seqAt(0, 8, l.heightOf(0, 1) + 0.5)).toBeGreaterThanOrEqual(3);
+    expect(fold([[1, 3]])).toBe(false);
+    expect(fold([[1, 3]], [0], 40)).toBe(true);
+    expect(l.heightOf(0, 1)).toBeCloseTo(head + 40);
+    expect(l.totalHeight).toBeCloseTo(full - mid + 40);
+    l.refine([[1, 999]]);
+    expect(l.heightOf(1, 3)).toBe(0);
+    l.relayout(500);
+    expect(l.heightOf(1, 3)).toBe(0);
+    expect(fold([])).toBe(true);
+    expect(l.heightOf(1, 3)).toBeCloseTo(new SkeletonLedger(0, rows, 500).heightOf(1, 3));
+    expect(l.heightOf(1, 3)).toBeGreaterThan(0);
+  });
+
   it("总条数 / seq 边界 / uuid 定位", () => {
     const l = new SkeletonLedger(0, rows);
     expect(l.count).toBe(8);

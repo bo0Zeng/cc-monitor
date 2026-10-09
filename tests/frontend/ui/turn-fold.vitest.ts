@@ -227,7 +227,7 @@ describe("按轮折叠", () => {
     const fill = vi.fn(() => 0);
     const seqs = new Map([["u1", 1], ["u2", 20]]);
     const read = vi.fn(async (): Promise<TurnsResult> => ({ available: true, from: 0, end: 10, turns: [turn("u1", 0, { ending: ["e1"] }), turn("u2", 5)] }));
-    const fold = new TurnFold(content, content, () => ({ origin: "local" as never, jsonlPath: "/p/s.jsonl" }), read, () => ({ ledger: { uuidToSeq: seqs }, fillVisible: fill }));
+    const fold = new TurnFold(content, content, () => ({ origin: "local" as never, jsonlPath: "/p/s.jsonl" }), read, () => ({ ledger: { uuidToSeq: seqs, endSeq: 40 }, fillVisible: fill, setFolds: vi.fn() }));
     await fold.refresh();
     expect([hidden(gapIn), hidden(after)]).toEqual([true, true]);
     expect(gapIn.dataset.procOf).toBe("u1");
@@ -237,6 +237,26 @@ describe("按轮折叠", () => {
     lines(content)[0].click();
     expect(hidden(gapIn)).toBe(false);
     expect(fill).toHaveBeenCalled();
+  });
+
+  it("折着的轮把它过程那一段（开头之后到第一条结尾之前，没有结尾 ⇒ 到下一轮开头 / 账本尾）告诉骨架：按 0 高、不物化；带行的开头多一条行高；展开 ⇒ 撤掉那一段", async () => {
+    const content = document.createElement("div");
+    content.append(card("card-user", "u1"), card("card-assistant", "e1"), card("card-user", "u2"), card("card-user", "u3"));
+    document.body.replaceChildren(content);
+    const setFolds = vi.fn();
+    const seqs = new Map([["u1", 1], ["e1", 10], ["u2", 12], ["u3", 30]]);
+    const read = vi.fn(async (): Promise<TurnsResult> => ({
+      available: true,
+      from: 0,
+      end: 10,
+      turns: [turn("u1", 0, { ending: ["e1"] }), turn("u2", 5), turn("u3", 9, { parts: [] })],
+    }));
+    const sk = { ledger: { uuidToSeq: seqs, endSeq: 40 }, fillVisible: vi.fn(() => 0), setFolds };
+    const fold = new TurnFold(content, content, () => ({ origin: "local" as never, jsonlPath: "/p/s.jsonl" }), read, () => sk);
+    await fold.refresh();
+    expect(setFolds).toHaveBeenLastCalledWith({ folded: [[2, 10], [13, 30]], lines: [12, 1], linePx: 40 });
+    lines(content)[0].click();
+    expect(setFolds.mock.lastCall?.[0].folded).toEqual([[13, 30]]);
   });
 
   it("卡后到（上翻补批 / 骨架物化）：DOM 一变就重排", async () => {
