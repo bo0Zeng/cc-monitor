@@ -16,6 +16,20 @@ pub fn io_reason(kind: std::io::ErrorKind) -> String {
     }
 }
 
+/// 一个 SFTP 状态码（v3 标准码的数）→ 原因词：无此文件 · 无权限同 IO 那两个词，坏报文是两端协议对不上（程序出错），
+/// 无连接 · 连接断是这一趟走的那条连接断了（「连接断开」，不是机器状态的「离线」），不支持就是不支持；
+/// 通用失败（服务端把盘满等都归这一码）与没认出的码一律「原因不明」。
+pub fn sftp_status_reason(code: u32) -> String {
+    match code {
+        2 => io_reason(std::io::ErrorKind::NotFound),
+        3 => io_reason(std::io::ErrorKind::PermissionDenied),
+        5 => copy_text("reason.sftp.badMessage", &[]),
+        6 | 7 => copy_text("reason.sftp.connectionLost", &[]),
+        8 => copy_text("reason.sftp.unsupported", &[]),
+        _ => io_reason(std::io::ErrorKind::Other),
+    }
+}
+
 #[cfg(test)]
 #[path = "../../../../tests/common/copy-core/reason_tests.rs"]
 mod tests;

@@ -12569,8 +12569,8 @@
     "rsConfig.write.unreadable": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取 {path} 失败 · 内容无法解析 · {e} · 本次设置未保存\n写回会把该文件里别的设置一起覆盖 · 先改成合法 JSON",
-      "args": ["path", "e"]
+      "zh": "读取 {path} 失败 · 内容无法解析 · 本次设置未保存\n写回会把该文件里别的设置一起覆盖 · 先改成合法 JSON",
+      "args": ["path"]
     },
     "rsConfig.write.elementExists": {
       "kind": "error",
@@ -12593,8 +12593,8 @@
     "rsLogging.diagnostics.badConfig": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取 {path} 失败 · 内容无法解析 · {e} · 诊断设置未保存\n写回会把该文件里别的设置一起覆盖 · 先改成合法 JSON",
-      "args": ["path", "e"]
+      "zh": "读取 {path} 失败 · 内容无法解析 · 诊断设置未保存\n写回会把该文件里别的设置一起覆盖 · 先改成合法 JSON",
+      "args": ["path"]
     },
     "rsLaunch.remote.taskFailed": {
       "kind": "error",
@@ -27124,6 +27124,72 @@
       "role": "报错",
       "zh": "{what}未保存 · {said}",
       "args": ["what", "said"]
+    },
+    "reason.sftp.badMessage": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "程序出错",
+      "args": []
+    },
+    "reason.sftp.unsupported": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "不支持",
+      "args": []
+    },
+    "reason.sftp.noAnswer": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "无应答",
+      "args": []
+    },
+    "reason.sftp.overLimit": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "超出上限",
+      "args": []
+    },
+    "reason.sftp.connectionLost": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "连接断开",
+      "args": []
+    },
+    "rsConfig.write.noHome": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "保存失败 · 无主目录",
+      "args": []
+    },
+    "rsConfig.write.noParent": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "写入失败 · {path} · 路径不合规",
+      "args": ["path"]
+    },
+    "rsConfig.write.readFailed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "读取失败 · {path} · {why}",
+      "args": ["path", "why"]
+    },
+    "rsConfig.write.encodeFailed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "程序出错 · 设置未保存",
+      "args": []
+    },
+    "rsConfig.write.tmpFailed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "写入失败 · {path} · {why}",
+      "args": ["path", "why"]
+    },
+    "rsConfig.write.replaceFailed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "写入失败 · {path} · {why}",
+      "args": ["path", "why"]
     }
   }
 }

@@ -634,3 +634,29 @@ fn the_machine_table_is_checked_on_every_identity_write() {
     patch_config_at(&path, &[pin]).expect("固化指纹被别的格挡住了");
     std::fs::remove_dir_all(&dir).ok();
 }
+
+/// 盘上那一步没成（这里：数据目录的位置被一个普通文件占着）⇒ 句子是「写入失败 · 那个目录 · 原因词」，系统原话进复制详情、不上句子。
+#[test]
+fn a_disk_failure_says_the_reason_word_and_keeps_the_os_text_in_the_detail() {
+    let base = std::env::temp_dir().join(format!("ccm-cfg-io-{}-{}", std::process::id(), line!()));
+    let _ = std::fs::remove_dir_all(&base);
+    std::fs::create_dir_all(&base).unwrap();
+    let blocker = base.join("occupied");
+    std::fs::write(&blocker, b"x").unwrap();
+    let path = blocker.join("sub").join("config.json");
+    let edit = ConfigEdit::Set {
+        path: vec!["theme".to_string()],
+        value: serde_json::json!("dark"),
+    };
+    let Err(ConfigWriteError::Io(s)) = patch_config_at(&path, &[edit]) else {
+        panic!("父路径是个普通文件，写口居然没走盘上失败那一形");
+    };
+    assert!(s.said.contains("occupied"), "没说清是哪个目录：{s}");
+    let raw = s.raw();
+    assert!(
+        !raw.is_empty() && !s.said.contains(&raw),
+        "系统原话没进详情 / 还在句子里：{s} · {}",
+        s.detail
+    );
+    let _ = std::fs::remove_dir_all(&base);
+}
