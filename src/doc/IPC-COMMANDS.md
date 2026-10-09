@@ -2857,13 +2857,13 @@ cc-bus 钩子诊断。
 | `key` | → | 送键：`esc` · `ctrl-c` · `ctrl-d` · `up` · `down` · `left` · `right` · `tab` · `shift-tab` · `enter` · `backspace` · `page-up` · `page-down` |
 | `result` | ← | `delivered` · `unsure`（不知道送没送到，别重发）· `refused` |
 | `said` | ← | `refused` 时给人看的那一句（后端写好） |
-| `screen` | ← | `screen_changed` 时带的新指纹 |
-| `seen_screen` | → | 送之前看到的那一屏的指纹；画面已经变了 ⇒ 不送、回 `refused` ＋ `screen_changed` |
+| `screen` | ← | `screen-changed` 时带的新指纹 |
+| `seen_screen` | → | 送之前看到的那一屏的指纹；画面已经变了 ⇒ 不送、回 `refused` ＋ `screen-changed` |
 | `sid` | → | 目标：会话 id（与 `terminal` 恰给一个） |
 | `take` | → | 要不要先接管输入（tmux 上无所谓，各端都能打字） |
 | `terminal` | → | 目标：名单里的不透明句柄（前端不拼、不解析） |
 | `text` | → | 送字：字面字，原样送、不解释成键名；多行按粘贴送（与 `key` 恰给一个） |
-| `why` | ← | `refused` 的原因：`not_known` · `ambiguous` · `ended` · `not_yours` · `not_managed` · `screen_changed` |
+| `why` | ← | `refused` 的原因：`not-known` · `ambiguous` · `ended` · `not-yours` · `not-managed` · `screen-changed` |
 
 码：`bad_target` · `bad_args` · `no_tmux` · `no_server` · `no_such_session` · `capture_failed` · `unobservable` · `child_timed_out`
 

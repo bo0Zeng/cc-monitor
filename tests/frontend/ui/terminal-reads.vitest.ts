@@ -109,7 +109,7 @@ describe("抓一屏：金样与形状", () => {
     const INPUT = golden["terminal-input"] as unknown as { replies: unknown[] };
     expect(INPUT.replies.map((r) => decodeSent("devbox", r))).toEqual([
       { result: "delivered" },
-      { result: "refused", why: "screen_changed", said: (INPUT.replies[1] as { said: string }).said, screen: "0000000000000000" },
+      { result: "refused", why: "screen-changed", said: (INPUT.replies[1] as { said: string }).said, screen: "0000000000000000" },
       { result: "unsure" },
     ]);
     expect(() => decodeSent("devbox", { result: "maybe" })).toThrow(copyPattern("peerVersion.said.unreadable"));

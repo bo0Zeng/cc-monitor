@@ -496,7 +496,7 @@ describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键�
     await flush();
     const b = box(r.page);
     b.value = "1";
-    r.setReply(async () => ({ result: "refused", why: "screen_changed", said: "那台写的一句 · 画面", screen: "fp9" }));
+    r.setReply(async () => ({ result: "refused", why: "screen-changed", said: "那台写的一句 · 画面", screen: "fp9" }));
     key(b, "Enter");
     await flush();
     expect([b.value, r.shotCount()]).toEqual(["1", 2]);
@@ -522,7 +522,7 @@ describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键�
     await flush();
     const b = box(r.page);
     b.value = "1";
-    r.setReply(async () => ({ result: "refused", why: "not_known", said: "那台写的一句 · 不在", screen: null }));
+    r.setReply(async () => ({ result: "refused", why: "not-known", said: "那台写的一句 · 不在", screen: null }));
     const lists = vi.mocked(r.reads.list).mock.calls.length;
     key(b, "Enter");
     await flush();

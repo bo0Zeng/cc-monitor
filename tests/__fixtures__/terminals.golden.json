@@ -187,7 +187,7 @@
       },
       {
         "result": "refused",
-        "why": "screen_changed",
+        "why": "screen-changed",
         "said": "画面已变",
         "screen": "0000000000000000"
       },
