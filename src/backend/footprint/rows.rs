@@ -115,7 +115,7 @@ pub enum Vantage {
     Remote,
 }
 
-// `claude_config_dir`〔散文墓碑〕删了：agent 家由调用方按 `agents/claudecode/paths.rs` 那一条规则算好交进来（[`SurfaceEnv::agent_home`]）。
+// agent 家由调用方按 `agents/claudecode/paths.rs` 那一条规则算好交进来（[`SurfaceEnv::agent_home`]）。
 
 /// 按 `$PATH` 逐目录反查一个裸命令在不在（`exists` 注入）。切分走 `std::env::split_paths`（T03 阻塞 1：
 /// 写死 `':'` 在 Windows 上把盘符切碎、给出确定的否定答案）；`path_env` 取不到 / 空 ⇒ `None`（不猜）。
