@@ -63,6 +63,7 @@ interface CellIn {
   edges?: Partial<Record<"to" | "with" | "after" | "replaces", string[]>>;
   files?: { path: string; state: string; note: string | null }[];
   signs?: { at: string; by: string; reason: string }[];
+  signer?: string;
   owner?: string;
 }
 
@@ -108,7 +109,7 @@ function build(cells: CellIn[]): Record<string, unknown>[] {
     owner: who(c.owner ?? null),
     refs: { title: [], body: refsIn(c.body ?? "", ids) },
     hasView: true,
-    signer: null,
+    signer: who(c.signer ?? null),
     returned: null,
   }));
 }
@@ -162,7 +163,18 @@ const SOFT_PHASES = [
   { name: "回看", does: "看全局", marks: ["看全局"] },
 ];
 
-export function ledgerSlice(): Record<string, unknown> {
+export /** 需手动那几条（后端 `plan/needs.rs` 判的四种）：判据红 · agent 提问 · 接手的会话停了；`topDone` ⇒ 再加顶块走到看全局。 */
+function ledgerNeeds(o: PlanWorldOpts, acked: ReadonlySet<string>): Record<string, unknown>[] {
+  const n = (kind: string, key: string, block: string, cell: string, sid: string | null, red?: number): Record<string, unknown> => ({ key, kind, block, cell, sid, ...(red !== undefined ? { red } : {}), acked: acked.has(key) });
+  return [
+    ...(o.topDone ? [n("top", "top:rev-local", "project", "project", null)] : []),
+    n("red", "red:悬空@D-3", "D-3", "A4", null, 0),
+    n("ask", `ask:D-1@${SUB_ID}`, "D-1", "A2-1-3", PLAN_SIDS.parse),
+    n("ended", `ended:D-2@${PLAN_SIDS.export}`, "D-2", "A3-1", PLAN_SIDS.export),
+  ];
+}
+
+function ledgerSlice(): Record<string, unknown> {
   const P = PLAN_SIDS;
   const cells = build([
     { id: "A1", title: "命令行入口", kind: "能力", status: "做完了", children: ["A1-1", "A1-2"], owner: P.lead, body: "一条命令跑完导入与导出，参数照 A2 与 A3 的约定。" },
@@ -203,7 +215,7 @@ export function ledgerSlice(): Record<string, unknown> {
     { id: "A3-1", title: "导出实现", kind: "模块", status: "没做完", why: "没签", owner: P.export, edges: { with: ["A3"] }, files: [{ path: "ledger/export_csv.py", state: "坏", note: "第 12 行语法错" }] },
     { id: "A3-2", title: "导出验收测试", kind: "测试", status: "没做完", why: "没签", owner: P.lead, edges: { with: ["A3"] } },
     { id: "A4", title: "工程底座", kind: "能力", status: "没做完", why: "等上一级收下", children: ["A4-1", "A4-2"], owner: P.base, body: "检查脚本与打包配置，一条命令跑全部检查。" },
-    { id: "A4-1", title: "检查脚本", kind: "模块", status: "做完了", owner: P.base, files: [{ path: "scripts/check.sh", state: "在", note: "0.9 KB" }, { path: "pyproject.toml", state: "在", note: "1.2 KB" }], signs: [{ at: today(2, 6), by: P.base, reason: "ruff · mypy · pytest 一条命令跑完。" }] },
+    { id: "A4-1", title: "检查脚本", kind: "模块", status: "做完了", owner: P.base, signer: P.lead, files: [{ path: "scripts/check.sh", state: "在", note: "0.9 KB" }, { path: "pyproject.toml", state: "在", note: "1.2 KB" }], signs: [{ at: today(2, 6), by: P.base, reason: "ruff · mypy · pytest 一条命令跑完。" }] },
     { id: "A4-2", title: "打包配置", kind: "模块", status: "做完了", owner: P.base, signs: [{ at: today(2, 6), by: STRANGER, reason: "pyproject 元数据 ＋ pytest ＋ coverage(fail_under=85)，tomllib 解析通过。" }] },
     { id: "A5", title: "网页导入", kind: "能力", status: "不做了", owner: P.lead, body: "从网页表单导入账单。" },
     { id: "A6", title: "网页导入（换成命令行）", kind: "能力", status: "不做了", owner: P.lead, edges: { replaces: ["A5"] } },
@@ -293,6 +305,13 @@ function siteSlice(): Record<string, unknown> {
 }
 
 export const LEDGER_WS = "/home/user/work/ledger";
+
+/** 本机那个工作区：会话 ⇒ 它接手的那一块（后端 `product::by_session`）。 */
+const LEDGER_BY_SESSION: Record<string, unknown> = {
+  [PLAN_SIDS.lead]: { slice: "ledger", block: "project", cell: "project", title: null, top: true, phase: "执行", at: "A3", atTitle: "导出 CSV", via: "session" },
+  [PLAN_SIDS.base]: { slice: "ledger", block: "D-3", cell: "A4", title: "工程底座", top: false, phase: "回看", at: null, atTitle: null, via: "session" },
+  [PLAN_SIDS.export]: { slice: "ledger", block: "D-2", cell: "A3-1", title: "导出实现", top: false, phase: "执行", at: null, atTitle: null, via: "session" },
+};
 export const SITE_WS = "/srv/src/site";
 
 /** 一个工作区的成品（`plan-read` 的回包）。 */
@@ -307,7 +326,7 @@ function readOf(origin: string, slices: Record<string, unknown>[], auto: boolean
     repo: (slices[0] as { name: string }).name,
     auto,
     slices,
-    bySession: {},
+    bySession: origin === LOCAL ? LEDGER_BY_SESSION : {},
     rev: `rev-${origin}`,
     readAt: Date.now() - 60_000,
     stale: null,
@@ -324,17 +343,29 @@ export interface PlanWorldOpts {
   pb?: "missing" | "old";
   /** 一片都没有。 */
   empty?: boolean;
-  /** devbox 第一次答了、之后离线（页上留着第一次读到的那一份）。 */
+  /** devbox 计划页第一次问（`fresh`）答了、之后离线（页上留着第一次读到的那一份）；「需手动」的账那几问不算。 */
   devboxDown?: boolean;
   /** 自动接着做那一下 pb 拒。 */
   autoRefuse?: boolean;
   /** 本机读计划要多久（演首次加载）。 */
   slowMs?: number;
+  /** 顶块走到看全局（需手动多一条「整片做完 · 待过目」）。 */
+  topDone?: boolean;
+  /** 已认可的几条（键）。 */
+  acked?: string[];
+  /** 「检查脚本」退回过：等它改 / 已落地。 */
+  returned?: "returned" | "landed";
 }
 
 export function planOps(o: PlanWorldOpts = {}): Record<string, OpHandler> {
+  const acked = new Set<string>(o.acked ?? []);
   const ledger = (): Record<string, unknown> => {
     const sl = ledgerSlice();
+    sl.needs = ledgerNeeds(o, acked);
+    if (o.returned) {
+      const c = (sl.cells as Record<string, unknown>[]).find((x) => x.id === "A4-1")!;
+      c.returned = { at: Date.now() - 4 * 60_000, to: who(PLAN_SIDS.base), state: o.returned, by: o.returned === "landed" ? "child" : null, child: o.returned === "landed" ? { id: "A4-1-1", title: "收集 0 条时退 5" } : null };
+    }
     if (o.sliceStale) sl.stale = { said: "图.md 第 142 行：元行缺 kind", raw: null, since: Date.now() - 5 * 60_000 };
     return sl;
   };
@@ -343,11 +374,11 @@ export function planOps(o: PlanWorldOpts = {}): Record<string, OpHandler> {
   const reads = (origin: string): Record<string, unknown> => (origin === LOCAL ? readOf(LOCAL, [ledger(), surveySlice()], auto) : readOf(origin, [siteSlice()], false));
   const summary = (sl: Record<string, unknown>): Record<string, unknown> => ({ name: sl.name, domain: sl.domain, current: sl.current, progress: sl.progress, needCount: sl.needCount, error: sl.error, stale: sl.stale });
   return {
-    "plan-list": (origin) => {
+    "plan-list": (origin, req) => {
       if (o.pb === "missing") return { pb: { state: "missing", said: "未装 planned-build" }, workspaces: [] };
       if (o.pb === "old") return { pb: { state: "unsupported", said: "要更新 · 计划不可用\nplanned-build 缺 dump" }, workspaces: [] };
       if (o.empty) return { pb: { state: "ok", said: null }, workspaces: [] };
-      if (origin === "devbox" && o.devboxDown && ++devboxAsked > 1) throw { err: { Hop: { idx: 0, tag: "open", reach: "NotSent", why: "Unreachable" } }, body: [] };
+      if (origin === "devbox" && o.devboxDown && req.fresh === true && ++devboxAsked > 1) throw { err: { Hop: { idx: 0, tag: "open", reach: "NotSent", why: "Unreachable" } }, body: [] };
       if (origin !== LOCAL && origin !== "devbox") return { pb: { state: "ok", said: null }, workspaces: [] };
       const r = reads(origin);
       return { pb: { state: "ok", said: null }, workspaces: [{ workspace: r.workspace, repo: r.repo, auto: r.auto, rev: r.rev, stale: null, needCount: r.needCount, bySession: r.bySession, slices: (r.slices as Record<string, unknown>[]).map(summary) }] };
@@ -357,6 +388,18 @@ export function planOps(o: PlanWorldOpts = {}): Record<string, OpHandler> {
       const id = String(req.id);
       if (id === "A3-2") throw new Refuse("no_view", "无 agent 视角 · 重读计划后再看");
       return { view: `── ${id}（站在这一格时 pb 印给 agent 的一段）\n> id: ${id} | kind: 模块 | with: A2-1\n> 文件: ledger/import_csv.py\n\n要做成什么样：见上。\n下一步：pb sign ${id} <理由>` };
+    },
+    "plan-ack": (_origin, req) => {
+      acked.add(String(req.key));
+      return { acked: true, key: req.key, needCount: 0 };
+    },
+    "plan-unack": (_origin, req) => {
+      acked.delete(String(req.key));
+      return { acked: false, key: req.key, needCount: 0 };
+    },
+    "plan-return": (_origin, req) => {
+      const line = `人 · ${String(req.id)} 检查脚本：${String(req.text).split(/\s+/).filter(Boolean).join(" ")}`;
+      return { line, to: who(req.to === "signer" ? PLAN_SIDS.lead : PLAN_SIDS.base), result: "delivered", why: null, said: null, screen: null };
     },
     "plan-command": (_origin, req) => {
       if (req.cmd === "view") return { rc: 0, said: null, path: "/tmp/pb-读图-0000.html" };

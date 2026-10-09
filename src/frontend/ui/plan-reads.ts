@@ -7,7 +7,9 @@
 import { chan, ChanError } from "../../comms/inward/chan";
 import { budgetWithin, jsonBody, readJson, refusalOf } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
+import type { PlanAckReply } from "./generated/PlanAckReply";
 import type { PlanArchived } from "./generated/PlanArchived";
+import type { PlanReturnReply } from "./generated/PlanReturnReply";
 import type { PlanBlock } from "./generated/PlanBlock";
 import type { PlanCell } from "./generated/PlanCell";
 import type { PlanCheck } from "./generated/PlanCheck";
@@ -42,6 +44,8 @@ const READ_BUDGET_MS = 25_000;
 
 // 线上形状由后端 `plan/wire.rs` 经 ts-rs 生成（不手写）；这里只按它收、再交给画的那几处。
 export type {
+  PlanAckReply,
+  PlanReturnReply,
   PlanArchived,
   PlanBlock,
   PlanCell,
@@ -152,6 +156,7 @@ function bySessionOf(v: unknown, what: string): Record<string, PlanSessionBlock>
     out[sid] = {
       slice: str(x.slice, `${what}.${sid}.slice`),
       block: str(x.block, `${what}.${sid}.block`),
+      cell: strOrNull(x.cell, `${what}.${sid}.cell`),
       title: strOrNull(x.title, `${what}.${sid}.title`),
       top: bool(x.top, `${what}.${sid}.top`),
       phase: strOrNull(x.phase, `${what}.${sid}.phase`),
@@ -474,4 +479,32 @@ export async function planCommand(origin: Origin, workspace: string, cmd: PlanCm
   const budget = budgetWithin(READ_BUDGET_MS);
   const o = obj(await settle(chan.call(origin, "plan-command", body, budget)), "reply");
   return { rc: num(o.rc, "rc"), said: strOrNull(o.said, "said"), path: strOrNull(o.path, "path") };
+}
+
+/** 认可一条 / 撤掉认可（只记在 cc-monitor，不写计划仓）。 */
+export async function ackNeed(origin: Origin, workspace: string, slice: string, key: string, on: boolean): Promise<PlanAckReply> {
+  const body = jsonBody({ workspace, slice, key });
+  const budget = budgetWithin(READ_BUDGET_MS);
+  const o = obj(on ? await settle(chan.call(origin, "plan-ack", body, budget)) : await settle(chan.call(origin, "plan-unack", body, budget)), "reply");
+  return { acked: bool(o.acked, "acked"), key: str(o.key, "key"), needCount: num(o.needCount, "needCount") };
+}
+
+const RETURN_RESULTS = new Set(["delivered", "unsure", "refused", "copy"]);
+
+/** 把人的话送给负责那一格的会话（后端拼那一行、判能不能送）。 */
+export async function returnCell(
+  origin: Origin,
+  a: { workspace: string; slice: string; id: string; text: string; to: "owner" | "signer" },
+): Promise<PlanReturnReply> {
+  const body = jsonBody(a);
+  const budget = budgetWithin(READ_BUDGET_MS);
+  const o = obj(await settle(chan.call(origin, "plan-return", body, budget)), "reply");
+  return {
+    line: str(o.line, "line"),
+    to: decodeWho(o.to, "to"),
+    result: oneOf(o.result, RETURN_RESULTS, "result") as PlanReturnReply["result"],
+    why: strOrNull(o.why, "why"),
+    said: strOrNull(o.said, "said"),
+    screen: strOrNull(o.screen, "screen"),
+  };
 }

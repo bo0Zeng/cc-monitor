@@ -28899,6 +28899,261 @@
       "zh": "没做完",
       "args": []
     },
+    "plan.review.topDone": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "整片做完 · 待过目",
+      "args": []
+    },
+    "plan.review.topDoneWhat": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "顶块阶段「{phase}」（看全局） · 顶层做完 {done} / {of}",
+      "args": ["phase", "done", "of"]
+    },
+    "plan.review.red": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "判据红 · {rule} · 块「{block}」",
+      "args": ["rule", "block"],
+      "waive": {
+        "C-T1": "pb 自己的叫法（planned-build 的检查叫判据），用户在 pb 里也这么叫"
+      }
+    },
+    "plan.review.redFix": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "改法（pb 给的）：{fix}",
+      "args": ["fix"]
+    },
+    "plan.review.ask": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "agent 在此格提问 · 等回答",
+      "args": []
+    },
+    "plan.review.askGo": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "去会话答",
+      "args": []
+    },
+    "plan.review.ended": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "接手的会话已结束",
+      "args": []
+    },
+    "plan.review.endedWhat": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "块没做完 · 里面 {done}/{of}",
+      "args": ["done", "of"]
+    },
+    "plan.review.endedOpen": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "块没做完",
+      "args": []
+    },
+    "plan.review.endedSub": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "接手是 agent 的块：父会话也停才算",
+      "args": []
+    },
+    "plan.review.resume": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "恢复会话",
+      "args": []
+    },
+    "plan.review.pos": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "需手动 {i} / {n}",
+      "args": ["i", "n"]
+    },
+    "plan.review.next": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "下一条",
+      "args": []
+    },
+    "plan.review.ack": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "认可",
+      "args": []
+    },
+    "plan.review.ackNote": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "认可只记在 cc-monitor · 不写计划仓",
+      "args": []
+    },
+    "plan.review.acked": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已认可 · {what}",
+      "args": ["what"]
+    },
+    "plan.review.undo": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "撤销",
+      "args": []
+    },
+    "plan.review.ackFailed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "认可没记上",
+      "args": []
+    },
+    "plan.review.return": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "退回…",
+      "args": []
+    },
+    "plan.review.tell": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "说给负责的…",
+      "args": []
+    },
+    "plan.return.title": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "退回「{title}」",
+      "args": ["title"]
+    },
+    "plan.return.titleSend": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "说给负责的 · {title}",
+      "args": ["title"]
+    },
+    "plan.return.what": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "要改什么",
+      "args": []
+    },
+    "plan.return.to": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "送给",
+      "args": []
+    },
+    "plan.return.roleOwner": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "在长它的（块「{block}」的接手）",
+      "args": ["block"]
+    },
+    "plan.return.roleSigner": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "签它的（上一级）",
+      "args": []
+    },
+    "plan.return.noSigner": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "pb 未给 signer",
+      "args": []
+    },
+    "plan.return.noOwner": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "此格无接手",
+      "args": []
+    },
+    "plan.return.line": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "送出的一行",
+      "args": []
+    },
+    "plan.return.lineNote": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "只带事实；收到人话怎么做，pb 已教过 agent",
+      "args": []
+    },
+    "plan.return.send": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "退回",
+      "args": []
+    },
+    "plan.return.sendTell": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "送出",
+      "args": []
+    },
+    "plan.return.autoSwitched": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "默认项送不到，改选上一级",
+      "args": []
+    },
+    "plan.return.copyLine": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "复制此行",
+      "args": []
+    },
+    "plan.return.sent": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已送给 {session}",
+      "args": ["session"]
+    },
+    "plan.return.unsure": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "送达未知 · 别重发",
+      "args": []
+    },
+    "plan.return.copied": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已复制此行",
+      "args": []
+    },
+    "plan.bar.returned": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "已退回 · 送给 {session} · {time} · 等它在底下加一格或改正文",
+      "args": ["session", "time"]
+    },
+    "plan.bar.landedChild": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "退回已落地 · 底下新加「{title}」",
+      "args": ["title"]
+    },
+    "plan.bar.landedBody": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "退回已落地 · 正文已改",
+      "args": []
+    },
+    "plan.head.mark": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "此会话接手「{slice}」里一块 · 点开计划页选中那块",
+      "args": ["slice"]
+    },
+    "plan.head.top": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "顶块",
+      "args": []
+    },
     "plan.filter.needs": {
       "kind": "control",
       "role": "标签",

@@ -180,7 +180,7 @@ fn by_session_maps_each_owner_session_to_its_block_preferring_its_own_claim() {
     assert_eq!(
         m.doc["bySession"],
         serde_json::json!({
-            MAIN: {"slice": "alpha", "block": "project", "title": null, "top": true, "phase": "回看", "at": null, "atTitle": null, "via": "session"}
+            MAIN: {"slice": "alpha", "block": "project", "cell": "project", "title": null, "top": true, "phase": "回看", "at": null, "atTitle": null, "via": "session"}
         })
     );
     // 顶块没人接 ⇒ 子 agent 替 MAIN 接的那一块顶上来，站位换成标题。
@@ -189,7 +189,7 @@ fn by_session_maps_each_owner_session_to_its_block_preferring_its_own_claim() {
     let m = make(&d, &who);
     assert_eq!(
         m.doc["bySession"][MAIN],
-        serde_json::json!({"slice": "alpha", "block": "B", "title": "甲功能", "top": false, "phase": "定架构", "at": "A1-2", "atTitle": "甲的写出", "via": "subagent"})
+        serde_json::json!({"slice": "alpha", "block": "B", "cell": "A1", "title": "甲功能", "top": false, "phase": "定架构", "at": "A1-2", "atTitle": "甲的写出", "via": "subagent"})
     );
     // 对不上的接手不进表。
     let mut d = dump("/w");

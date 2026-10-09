@@ -3615,7 +3615,7 @@ cc-bus 钩子诊断。
 | `rev` | ← | 这一份输出的摘要：变了才算计划变了 |
 | `readAt` | ← | 读到的时刻（epoch ms） |
 | `needCount` | ← | 这个工作区要你看的数（没认可的，不含 agent 问人那一种） |
-| `bySession` | ← | 会话 ⇒ 它接手的那一块 `{slice, block, title, top, phase, at, atTitle, via: session\|subagent}`（子 agent 接的记在父会话名下；自己接的优先） |
+| `bySession` | ← | 会话 ⇒ 它接手的那一块 `{slice, block, cell, title, top, phase, at, atTitle, via: session\|subagent}`（子 agent 接的记在父会话名下；自己接的优先） |
 | `slices` | ← | 每片一格：读不成 ⇒ `error`；这一刻读不成但读好过 ⇒ 上一次那一份 ＋ `stale {said, since}`；`needs: [{key, kind: top\|red\|ended\|ask, block, cell, sid, acked}]` · `needCount`；每格 `returned`：退回过 ⇒ `{at, to, state: returned\|unsure\|landed, by: child\|body, child}`，没有 ⇒ `null` |
 | `stale` | ← | 整次读不成、给的是上一次那一份 ⇒ `{said, raw, since}`；否则 `null` |
 

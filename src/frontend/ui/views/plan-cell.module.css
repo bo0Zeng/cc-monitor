@@ -32,6 +32,10 @@
     margin-top: var(--space-4);
   }
 
+  .cdGap {
+    flex: 1 1 auto;
+  }
+
   .cdSt {
     display: inline-grid;
     flex: none;

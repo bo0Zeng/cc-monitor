@@ -164,7 +164,7 @@ pub(crate) fn read_fresh(ws: &str) -> Result<Value, Fail> {
 }
 
 /// 出口过一遍线上类型（[`crate::plan::wire::checked`]）；对不上是拼的那一侧的错 ⇒ `failed`。
-fn wired<T: serde::Serialize + serde::de::DeserializeOwned>(v: Value) -> Answer {
+pub(crate) fn wired<T: serde::Serialize + serde::de::DeserializeOwned>(v: Value) -> Answer {
     wire::checked::<T>(v)
         .map_err(|e| Fail::new("failed", copy_text("bePlan.face.shape", &[])).with_raw(Some(&e)))
 }

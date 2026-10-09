@@ -41,6 +41,7 @@ import {
 import { listen } from "@tauri-apps/api/event";
 import { HistoryView } from "./views/history";
 import { PlanView } from "./views/plan";
+import { PlanNeedsBook } from "./plan-needs";
 import { CcBusView } from "./views/cc-bus-view";
 import { GridMonitorView } from "./views/grid-monitor";
 import { CommandBarView, type Command } from "./views/command-bar";
@@ -233,6 +234,8 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   // 启动时记住的那一格（上次所在的 tab）：只在那个会话出现时恢复、就绪前不许被覆盖、没等到就明说（`startup-active.ts`）。
   let startup: StartupActive | null = null;
+  // 计划那一侧的「需手动」的账（会话头那一枚标 · 标签栏的数 · Ctrl J 都读它；计划页问到的交给它）。
+  const planNeeds = new PlanNeedsBook();
 
   // 会话头（主区顶上 40px）与「需要你」钉条（消息流底部）：只读当前 tab，做事经 `tabs` 那几条。
   const sessionHead = new SessionHead({
@@ -245,6 +248,12 @@ window.addEventListener("DOMContentLoaded", async () => {
       resume: (anchor, sid) => tabs.openResumeFor(anchor, sid),
       attach: (sid) => tabs.attachInTerminal(sid),
       reconnect: (origin) => tabs.reconnect(origin),
+      planMark: (tab) => {
+        const b = planNeeds.sessionBlock(tab.origin, tab.sessionId);
+        if (!b) return null;
+        const label = [b.slice, b.top ? copyText("plan.head.top") : (b.title ?? b.block), b.phase ?? ""].filter((x) => x !== "").join(copyText("kit.text.sep"));
+        return { slice: b.slice, label, open: () => void planView.openAt(tab.origin, b.workspace, b.slice, b.top ? null : b.cell) };
+      },
   });
   document.getElementById("session-head")?.replaceWith(sessionHead.el);
   const needsBar = new NeedsBar({
@@ -548,7 +557,16 @@ window.addEventListener("DOMContentLoaded", async () => {
   planView.tabOf = (sid) => tabs.tabsInOrder().find((t) => t.sessionId === sid) ?? null;
   planView.switchTo = (sid) => tabs.switchTo(sid);
   planView.reconnect = (origin) => tabs.reconnect(origin);
+  planView.resume = (anchor, sid) => tabs.openResumeFor(anchor, sid);
+  // 计划那一侧的「需手动」：数进标签栏「需手动 N」与窗口标题，Ctrl J 会话在前、计划项在后（不发系统通知）。
+  planView.book = planNeeds;
+  tabs.attachPlanNeeds({ count: () => planNeeds.total(), at: () => planView.needAt(), open: (i) => void planView.openNeedItem(i) });
   const planTrigger = headButton("plan-trigger", "plan", copyText("main.cmd.openPlan"), hintWithKey(copyText("main.topbar.planHint"), "app.toggle-plan"), () => overlays.toggle("plan"));
+  planNeeds.subscribe(() => {
+    tabs.planNeedsChanged();
+    sessionHead.render();
+    planTrigger.dataset.needs = String(planNeeds.total() > 0);
+  });
 
   // 多 agent 并排监控入口：跨机器只读状态板（一屏看所有会话实时状态，点卡片跳会话；不派发、不驱动 agent）。
   const gridMonitorView = new GridMonitorView(tabs);
@@ -791,8 +809,10 @@ window.addEventListener("DOMContentLoaded", async () => {
       recordFile.afterLine(e.session_id); // 又来了一行 ⇒ 「记录文件不见了」那一句收掉
     },
     onSessionEnded: (sessionId) => {
+      const origin = tabs.tabsInOrder().find((t) => t.sessionId === sessionId)?.origin ?? null;
       tabs.archiveTab(sessionId);
       accountsRefresher.request(); // 会话结束了
+      if (origin !== null) void planNeeds.refresh(origin); // 接手的会话停了 ⇒ 那台的「需手动」可能多一条
     },
     // 远端 claude 退了但 tmux 会话仍在 → 灰灯（idle-tmux，不归档）。
     onSessionIdle: (sessionId) => tabs.markTmuxIdle(sessionId),
@@ -846,7 +866,10 @@ window.addEventListener("DOMContentLoaded", async () => {
     // 那台的额度账 / 某个会话的轮换变了 ⇒ 重问（`acct-center.ts`；画的那几处订 store）。
     onQuotaChanged,
     // 那台某个 pb 工作区的计划变了 ⇒ 计划页开着就重问（摘要没变不问）。
-    onPlanChanged: (origin, change) => planView.onChanged(origin, change),
+    onPlanChanged: (origin, change) => {
+      planView.onChanged(origin, change);
+      planNeeds.onChanged(origin, change);
+    },
     // 会话红绿灯（后端翻好的活动态）
     onSessionActivity: (e) =>
       tabs.updateActivity(e.session_id, e.activity, e.waiting_for),
@@ -883,6 +906,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   //   订阅登记之前那一窗里连上的不会有 `seen`（句柄只在状态变时说）⇒ `bindEvents` 返回（订阅都登记好了）之后补刷一次 ——
   //   与「独立窗口的订阅本身就是它的就绪点」同一个道理。
   onAccountsChanged();
+  // 计划那一侧的「需手动」：起来每台问一次（之后靠「计划变了」与会话结束再问）。
+  for (const m of machines) void planNeeds.refresh(m);
 
   // 后端 ERROR 级别 tracing → 右下角红色 toast
   bindErrorToast();

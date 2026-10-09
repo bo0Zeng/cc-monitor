@@ -45,6 +45,7 @@
       { "text": "失败", "use": "词义" }
     ],
     "tests/backend/ratchet_guard.rs": [
+      { "text": "退回", "use": "词义" },
       { "text": "兜底", "use": "非文案" },
       { "text": "刷新", "use": "非文案" }
     ],

@@ -5,6 +5,10 @@
  */
 export type PlanSessionBlock = { slice: string, block: string, 
 /**
+ * 块根格（编号；点会话头那一枚标选中它）。
+ */
+cell: string | null, 
+/**
  * 块根格的标题；顶块 ⇒ `null`。
  */
 title: string | null, top: boolean, phase: string | null, at: string | null, atTitle: string | null, via: "session" | "subagent", };

@@ -743,6 +743,7 @@ const MODULE_STACKING: Record<string, { stacked: boolean; why: string }> = {
   "src/frontend/ui/views/keys-overview.module.css": { stacked: false, why: "快捷键一览：外框是 kit 面板，里面全是自己的类" },
   "src/frontend/ui/views/plan-bits.module.css": { stacked: false, why: "计划页小件：阶段框与类色那几档，全是自己的类" },
   "src/frontend/ui/views/plan-cell.module.css": { stacked: true, why: "一格详情：给 kit 建的按钮 · 徽标 · 提示条挂本页的版位类" },
+  "src/frontend/ui/views/plan-review.module.css": { stacked: false, why: "计划需手动那一条 · 退回框：全是自己的类（按钮用 kit 原样）" },
   "src/frontend/ui/views/plan.module.css": { stacked: true, why: "计划页：给 kit 建的按钮 · 开关 · 状态点挂本页的版位类" },
   "src/frontend/ui/views/session-find.module.css": { stacked: false, why: "会话内查找面板本体（外框 .session-find 只在 styles.css 管位置，不叠这些类）" },
   "src/frontend/ui/usage-hud.module.css": { stacked: false, why: "状态栏「上下文」chip 与它的浮层：只挂自己的哈希类（chip 本身叠在 kit chip 的哈希类上，不是全局类）" },

@@ -16,7 +16,7 @@ import type { Tab } from "../../../src/frontend/ui/tab-model";
 import type { Needs } from "../../../src/frontend/ui/session-reads";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { ENDED, GONE, LIVE, LIVE_ATTACHABLE, LIVE_RESUMABLE, RECONNECTABLE, UNSEEN } from "../../../src/frontend/ui/tab-session-state";
-import { abbrOf, dotOf, needsOf, needsOrder, nextNeeds, peekLine, stateLine, titleParts } from "../../../src/frontend/ui/session-face";
+import { abbrOf, dotOf, needsOf, needsOrder, nextNeedsStep, peekLine, stateLine, titleParts } from "../../../src/frontend/ui/session-face";
 import { NeedsBar, NeedsWatch, NOTIFY_WAIT_MS, answerWhere, needsHeadline } from "../../../src/frontend/ui/needs-bar";
 import { SessionHead, terminalActsOf } from "../../../src/frontend/ui/session-head";
 import { buildApiErrorCard } from "../../../src/frontend/ui/cards/api-error";
@@ -111,7 +111,7 @@ describe("一个会话读成什么（session-face）", () => {
     ];
     const order = needsOrder(tabs);
     expect(order).toEqual(["d", "b", "c"]);
-    expect([nextNeeds(order, "a"), nextNeeds(order, "d"), nextNeeds(order, "c"), nextNeeds([], "a")]).toEqual(["d", "b", "d", null]);
+    expect([nextNeedsStep(order, "a", null, 0), nextNeedsStep(order, "d", null, 0), nextNeedsStep(order, "c", null, 0), nextNeedsStep([], "a", null, 0)]).toEqual([{ sid: "d" }, { sid: "b" }, { sid: "d" }, null]);
   });
 
   it("窄窗两个字母取项目目录名里的字母；标题拆成项目名 ＋ 标题（没有 ai 标题 ⇒ 项目名当标题）", () => {
@@ -313,7 +313,7 @@ describe("「需要你」钉条 · 窗口标题 · 系统通知", () => {
 
 describe("会话头", () => {
   const head = (t: Tab | null) => {
-    const host = { active: () => t, viewTerminal: vi.fn(), openCwd: vi.fn(), front: vi.fn(), find: vi.fn(), more: vi.fn(), resume: vi.fn(), attach: vi.fn(), reconnect: vi.fn() };
+    const host = { active: () => t, viewTerminal: vi.fn(), openCwd: vi.fn(), front: vi.fn(), find: vi.fn(), more: vi.fn(), resume: vi.fn(), attach: vi.fn(), reconnect: vi.fn(), planMark: () => null };
     const h = new SessionHead(host);
     document.body.appendChild(h.el);
     h.render(NOW);

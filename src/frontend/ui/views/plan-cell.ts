@@ -26,6 +26,8 @@ export interface CellDetailHost {
   origin(): Origin;
   workspace(): string;
   switchTo(sid: string): void;
+  /** 头右那一颗：做完了 ⇒［退回…］；没做完 ⇒［说给负责的…］（同一个框）。 */
+  returnCell(slice: PlanSlice, cell: PlanCell): void;
 }
 
 /** 正文里占位的两头（私用区的两个字，渲 md 时原样过）。 */
@@ -98,6 +100,11 @@ export class CellDetail {
     badge.textContent = cell.status ?? "";
     h.appendChild(badge);
     if (look === "open" && cell.why) h.appendChild(span(cell.why, s.cdWhy));
+    if (look !== "dropped") {
+      const gap = document.createElement("span");
+      gap.className = s.cdGap;
+      h.append(gap, button({ label: look === "done" ? copyText("plan.review.return") : copyText("plan.review.tell"), icon: "send", size: "compact", onClick: () => this.host.returnCell(slice, cell) }));
+    }
     return h;
   }
 
@@ -386,7 +393,7 @@ export class CellDetail {
       icon: "copy",
       size: "compact",
       hint: copyText("plan.cell.copyId"),
-      onClick: () => void writeClipboard(cell.id).then(() => toast(copyText("plan.cell.copied", { id: cell.id }), ""), (e: unknown) => failToast(copyText("detail.act.failed"), e, { level: "error" })),
+      onClick: () => void writeClipboard(cell.id).then(() => toast(copyText("plan.cell.copied", { id: cell.id }), "", { level: "success" }), (e: unknown) => failToast(copyText("detail.act.failed"), e, { level: "error" })),
     });
     row.append(span(copyText("plan.cell.idLine")), id, copy);
     return row;

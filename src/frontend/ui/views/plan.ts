@@ -30,7 +30,7 @@ import { LS_KEYS, safeGetJson, safeSetJson } from "../local-storage";
 import type { Tab } from "../tab-model";
 import { dotOf, titleParts } from "../session-face";
 import { dotLabel } from "../session-words";
-import { fetchPlanList, fetchPlanRead, planCommand, PlanMiss, type PlanList, type PlanRead, type PlanSlice, type PlanWho } from "../plan-reads";
+import { ackNeed, fetchPlanList, fetchPlanRead, planCommand, PlanMiss, type PlanCell, type PlanNeed, type PlanList, type PlanRead, type PlanSlice, type PlanWho } from "../plan-reads";
 import type { PlanMoved } from "../quota-stream";
 import {
   blockRoots,
@@ -47,6 +47,8 @@ import {
   type PlanFilter,
 } from "./plan-model";
 import { CellDetail } from "./plan-cell";
+import { needBar, openNeeds, openReturn, returnedBar, type ReviewHost } from "./plan-review";
+import type { PlanNeedsBook } from "../plan-needs";
 import { phaseBadge, setKindColor, STATUS_ICON } from "./plan-bits";
 import s from "./plan.module.css";
 
@@ -89,6 +91,15 @@ export class PlanView {
   switchTo: (sid: string) => void = () => {};
   /** 那台离线 ⇒［重新连接］。 */
   reconnect: (origin: Origin) => void = () => {};
+  /** 会话的［恢复 ▾］菜单（接手的会话停了那一条）。 */
+  resume: (anchor: HTMLElement, sid: string) => void = () => {};
+  /** 「需手动」的账（标签栏的数与 Ctrl J 读它）；问到的 `plan-list` 交给它。 */
+  book: PlanNeedsBook | null = null;
+  /** 经 Ctrl J 打开时站在第几条计划项（`book.items()` 的下标）；用户自己点别处 ⇒ 清掉。 */
+  private atItem: number | null = null;
+  /** 打开某一条计划项之后、读回来之前：要选中那一片里第几条需手动。 */
+  private pendingNeed: number | null = null;
+  private readonly review: ReviewHost;
 
   private readonly root: HTMLElement;
   private isOpen = false;
@@ -120,7 +131,24 @@ export class PlanView {
       origin: () => this.current?.origin ?? LOCAL_ORIGIN,
       workspace: () => this.current?.workspace ?? "",
       switchTo: (sid) => this.goSession(sid),
+      returnCell: (slice, cell) => openReturn(this.review, slice, cell),
     });
+    this.review = {
+      origin: () => this.current?.origin ?? LOCAL_ORIGIN,
+      workspace: () => this.current?.workspace ?? "",
+      who: (w) => this.whoChip(w),
+      sessionName: (w) => {
+        const tab = w?.sid ? this.tabOf(w.sid) : null;
+        return tab ? titleParts(tab).title : w ? shortId(w.id) : "";
+      },
+      switchTo: (sid) => this.goSession(sid),
+      resume: (anchor, sid) => this.resume(anchor, sid),
+      ack: (need) => void this.ack(need),
+      next: () => this.nextNeed(),
+      reread: () => {
+        if (this.current) this.read(this.current.origin, this.current.workspace);
+      },
+    };
     this.root = this.build();
   }
 
@@ -135,6 +163,11 @@ export class PlanView {
     dispatcher.pushOverlay(this.layer);
     this.render();
     this.machines = [LOCAL_ORIGIN, ...(await commands.list_remote_mcp_origins().catch(() => [] as string[]))];
+    // 关着时「需手动」的账已问过各台：先拿那一份画（问回来再换；那台这会儿离线就留着它、整体变淡）。
+    for (const m of this.machines) {
+      const known = this.book?.list(m);
+      if (known && !this.per.has(m)) this.per.set(m, { state: "ok", list: known, at: Date.now() });
+    }
     this.refresh(true);
   }
 
@@ -143,6 +176,23 @@ export class PlanView {
     this.current = { origin, workspace, name: slice };
     this.selected = cell;
     await this.open();
+  }
+
+  /** 此刻站在第几条计划项（标签栏「需手动」的下一站从它算）；不在计划页 / 没站在哪一条 ⇒ `null`。 */
+  needAt(): number | null {
+    return this.isOpen ? this.atItem : null;
+  }
+
+  /** 去第 `i` 条计划项（`Ctrl J`）：开那一片、选中那一条所在的格。 */
+  async openNeedItem(i: number): Promise<void> {
+    const it = this.book?.items()[i];
+    if (!it) return;
+    this.atItem = i;
+    this.pendingNeed = it.k;
+    this.current = { origin: it.origin, workspace: it.workspace, name: it.slice };
+    this.selected = null;
+    if (this.isOpen) this.afterList();
+    else await this.open();
   }
 
   close(): void {
@@ -198,6 +248,7 @@ export class PlanView {
         (list) => {
           if (seq !== this.seq && only === undefined) return;
           this.per.set(m, { state: "ok", list, at: Date.now() });
+          this.book?.take(m, list);
           this.afterList();
         },
         (e: unknown) => {
@@ -257,6 +308,7 @@ export class PlanView {
       (doc) => {
         if (seq !== this.seq && !this.isOpen) return;
         this.reads.set(key, { state: "ok", doc });
+        this.takePending();
         this.render();
       },
       (e: unknown) => {
@@ -294,7 +346,80 @@ export class PlanView {
 
   private select(id: string | null): void {
     this.selected = id;
+    this.atItem = null;
     this.render();
+  }
+
+  /** 经 Ctrl J 开的那一条：读回来了 ⇒ 选中它所在的格（顶块那一种没有格 ⇒ 概览）。 */
+  private takePending(): void {
+    const k = this.pendingNeed;
+    const slice = this.currentSlice();
+    if (k === null || !slice) return;
+    this.pendingNeed = null;
+    const n = openNeeds(slice).filter((x) => x.kind !== "ask")[k];
+    const id = n?.cell ?? null;
+    this.selected = id !== null && cellIndex(slice).has(id) ? id : null;
+  }
+
+  /** 这一片里下一条需手动（绕回第一条）。 */
+  private nextNeed(): void {
+    const slice = this.currentSlice();
+    if (!slice) return;
+    const all = openNeeds(slice);
+    if (all.length === 0) return;
+    const i = all.findIndex((n) => this.needHere(slice, n));
+    const n = all[(i + 1) % all.length];
+    const byId = cellIndex(slice);
+    this.select(n.cell !== null && byId.has(n.cell) ? n.cell : null);
+  }
+
+  /** 这一条画在此刻这一页上：选着的格就是它的格；概览上画没有格可落的那几条（顶块那一种）。 */
+  private needHere(slice: PlanSlice, n: PlanNeed): boolean {
+    const has = n.cell !== null && cellIndex(slice).has(n.cell);
+    return this.selected === null ? !has : n.cell === this.selected;
+  }
+
+  /** 认可一条：记上 ⇒ toast［撤销］8 秒 ⇒ 选下一条 ⇒ 重读。 */
+  private async ack(need: PlanNeed): Promise<void> {
+    const cur = this.current;
+    const slice = this.currentSlice();
+    if (!cur || !slice) return;
+    try {
+      await ackNeed(cur.origin, cur.workspace, slice.name, need.key, true);
+    } catch (e) {
+      failToast(copyText("plan.review.ackFailed"), e instanceof PlanMiss ? e.said : e);
+      return;
+    }
+    const what = need.cell ? (cellIndex(slice).get(need.cell)?.title ?? need.cell) : slice.name;
+    toast(copyText("plan.review.acked", { what }), "", {
+      level: "success",
+      action: {
+        label: copyText("plan.review.undo"),
+        run: () =>
+          void ackNeed(cur.origin, cur.workspace, slice.name, need.key, false).then(
+            () => this.read(cur.origin, cur.workspace),
+            (e: unknown) => failToast(copyText("plan.review.ackFailed"), e instanceof PlanMiss ? e.said : e),
+          ),
+      },
+    });
+    const rest = openNeeds(slice).filter((n) => n.key !== need.key);
+    const n = rest[0];
+    this.selected = n && n.cell !== null && cellIndex(slice).has(n.cell) ? n.cell : null;
+    this.read(cur.origin, cur.workspace);
+  }
+
+  /** 此刻这一页顶上那几条：需手动（这一页的）· 退回过的那一格。 */
+  private reviewBars(slice: PlanSlice, cell: PlanCell | undefined): HTMLElement[] {
+    const all = openNeeds(slice);
+    const out: HTMLElement[] = [];
+    all.forEach((n, i) => {
+      if (this.needHere(slice, n)) out.push(needBar(this.review, slice, n, { i, n: all.length }));
+    });
+    if (cell) {
+      const r = returnedBar(this.review, cell);
+      if (r) out.push(r);
+    }
+    return out;
   }
 
   private goSession(sid: string): void {
@@ -442,7 +567,7 @@ export class PlanView {
       const r = await planCommand(cur.origin, cur.workspace, "view");
       if (!r.path) throw new PlanMiss("other", r.said ?? "");
       await openPath(r.path);
-      toast(copyText("plan.page.wholeOpened"), "");
+      toast(copyText("plan.page.wholeOpened"), "", { level: "success" });
     } catch (e) {
       failToast(copyText("plan.page.wholeFailed"), e instanceof PlanMiss ? e.said : e);
     } finally {
@@ -489,7 +614,7 @@ export class PlanView {
       { key: "all", label: copyText("plan.filter.all"), n: total },
       { key: "open", label: copyText("plan.filter.open"), n: open },
     ];
-    if (slice.needs !== null) items.push({ key: "needs", label: copyText("plan.filter.needs"), n: slice.needs.length, tone: "needs" });
+    items.push({ key: "needs", label: copyText("plan.filter.needs"), n: slice.needCount, tone: "needs" });
     for (const it of items) {
       const b = document.createElement("button");
       b.type = "button";
@@ -555,11 +680,10 @@ export class PlanView {
     }
     tree.append(this.outline(slice), this.legend(slice));
     const cell = this.selected ? cellIndex(slice).get(this.selected) : undefined;
+    if (!cell && this.selected) this.selected = null;
+    pane.append(...this.reviewBars(slice, cell));
     if (cell) pane.appendChild(this.detail.render(slice, cell, this.currentDoc()?.rev ?? ""));
-    else {
-      if (this.selected) this.selected = null;
-      pane.appendChild(this.overview(slice));
-    }
+    else pane.appendChild(this.overview(slice));
     this.bodyEl.replaceChildren(tree, pane);
   }
 
@@ -839,7 +963,7 @@ export class PlanView {
       b.appendChild(txt);
       b.addEventListener("click", (ev) => {
         ev.stopPropagation();
-        void writeClipboard(w.id).then(() => toast(copyText("plan.who.copied"), ""), (e: unknown) => failToast(copyText("detail.act.failed"), e, { level: "error" }));
+        void writeClipboard(w.id).then(() => toast(copyText("plan.who.copied"), "", { level: "success" }), (e: unknown) => failToast(copyText("detail.act.failed"), e, { level: "error" }));
       });
       return b;
     }

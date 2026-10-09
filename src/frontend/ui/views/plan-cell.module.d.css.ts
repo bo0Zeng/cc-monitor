@@ -10,6 +10,7 @@ declare const classes: {
   readonly cdFold: string;
   readonly cdFoldHead: string;
   readonly cdFoldHint: string;
+  readonly cdGap: string;
   readonly cdGroup: string;
   readonly cdGroupHead: string;
   readonly cdHead: string;

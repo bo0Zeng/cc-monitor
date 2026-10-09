@@ -57,3 +57,20 @@ fn a_shape_the_types_do_not_know_is_refused_not_passed_on() {
         serde_json::json!({"rc": 0, "said": "auto 开", "path": null})
     );
 }
+
+/// 认可与退回的回包也过类型：判据里拼出来的那几种结局一格不丢。
+#[test]
+fn ack_and_return_replies_pass_through_their_types_unchanged() {
+    lossless::<PlanAckReply>(
+        &serde_json::json!({"acked": true, "key": "red:悬空@B", "needCount": 1}),
+    );
+    for (result, why) in [
+        ("delivered", None),
+        ("copy", Some("ended")),
+        ("refused", Some("waiting")),
+    ] {
+        lossless::<PlanReturnReply>(&serde_json::json!({
+            "line": "人 · A1 甲功能：改", "to": null, "result": result, "why": why, "said": null, "screen": null
+        }));
+    }
+}

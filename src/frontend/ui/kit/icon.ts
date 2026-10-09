@@ -38,6 +38,7 @@ import arrowLeft from "@phosphor-icons/core/assets/regular/arrow-left.svg?raw";
 import funnel from "@phosphor-icons/core/assets/regular/funnel.svg?raw";
 import desktop from "@phosphor-icons/core/assets/regular/desktop.svg?raw";
 import star from "@phosphor-icons/core/assets/regular/star.svg?raw";
+import paperPlaneTilt from "@phosphor-icons/core/assets/regular/paper-plane-tilt.svg?raw";
 import chat from "@phosphor-icons/core/assets/regular/chat.svg?raw";
 import list from "@phosphor-icons/core/assets/regular/list.svg?raw";
 import plus from "@phosphor-icons/core/assets/regular/plus.svg?raw";
@@ -145,6 +146,7 @@ const SVG = {
   plan: treeStructure,
   prohibit: prohibit,
   person: user,
+  send: paperPlaneTilt,
 } as const;
 
 export type IconName = keyof typeof SVG;

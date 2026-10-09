@@ -340,6 +340,8 @@ pub(crate) struct PlanSlice {
 pub(crate) struct PlanSessionBlock {
     pub slice: String,
     pub block: String,
+    /// 块根格（编号；点会话头那一枚标选中它）。
+    pub cell: Option<String>,
     /// 块根格的标题；顶块 ⇒ `null`。
     pub title: Option<String>,
     pub top: bool,
@@ -434,6 +436,33 @@ pub(crate) struct PlanCmdReply {
     pub rc: i32,
     pub said: Option<String>,
     pub path: Option<String>,
+}
+
+/// `plan-ack` / `plan-unack` 的回包。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct PlanAckReply {
+    pub acked: bool,
+    pub key: String,
+    /// 这个工作区此刻要人过目的数。
+    pub need_count: u32,
+}
+
+/// `plan-return` 的回包：送出的那一行（后端拼）· 送给谁 · 结局。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct PlanReturnReply {
+    pub line: String,
+    pub to: Option<PlanWho>,
+    /// `delivered` · `unsure`（送达未知，别重发）· `refused` · `copy`（送不了，只给这一行去复制）。
+    #[cfg_attr(test, ts(type = "\"delivered\" | \"unsure\" | \"refused\" | \"copy\""))]
+    pub result: String,
+    pub why: Option<String>,
+    pub said: Option<String>,
+    pub screen: Option<String>,
 }
 
 /// 帧面出口：一份按 JSON 拼的回包过一遍 `T`（线上那一份就是 `T` 的序列化）。对不上 ⇒ 拼的那一侧有错（程序员错误），回 `failed`。

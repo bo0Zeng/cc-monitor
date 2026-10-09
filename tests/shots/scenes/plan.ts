@@ -1,11 +1,11 @@
 /**
- * 计划页（设计稿 planned-build 01 · 02）：大纲 ＋ 概览 · 一格详情 · 各种状态。
+ * 计划页（设计稿 planned-build 01 · 02 · 03）：大纲 ＋ 概览 · 一格详情 · 各种状态 · 需手动 · 退回框 · 会话头那一枚标。
  */
 import type { Scene } from "./index";
 import type { World } from "../fake/types";
 import { defaultWorld } from "../fake/world";
 import { planWorld, type PlanWorldOpts } from "../fake/plan";
-import { byText, click, mainReady, sleep, waitFor } from "./helpers";
+import { byText, click, mainReady, sleep, type, waitFor } from "./helpers";
 
 const TABS = 12;
 
@@ -124,5 +124,48 @@ export const PLAN_SCENES: Scene[] = [
   plan("plan-28-unknown-signer", "一格 · 签收人认不出", "点「打包配置」：签收人认不出 ⇒ 虚线框「认不出 · 前后几位」", async () => {
     await openPlan();
     await row("A4-2");
+  }),
+  plan("plan-31-needs-strip", "需手动 · 标签栏的数 ＋ 会话头那一枚标", "标签栏「需手动 N」含计划项（会话在前、计划项在后）；切到总负责：会话头多一枚「ledger · 顶块 · 执行」", async () => {
+    await mainReady(TABS);
+    await click(await byText("#tab-bar .tab", "总负责"));
+    await waitFor(".session-plan-mark", 10_000);
+    await sleep(400);
+  }),
+  plan("plan-32-top", "需手动 · 顶块走到看全局", "概览顶上一条「整片做完 · 待过目」：［认可］［退回…］· 需手动 1 / 3 · 下一条", async () => {
+    await openPlan();
+    await waitFor(".plan-view .plan-need");
+  }, { topDone: true }),
+  plan("plan-33-red", "需手动 · 判据红", "点「工程底座」：红条 · 规则 · 块 · pb 的话 ＋ 改法；［认可］［说给负责的…］", async () => {
+    await openPlan();
+    await row("A4");
+  }),
+  plan("plan-34-ask", "需手动 · agent 提问", "点「编码探测」：agent 在这一格提问 · 等回答；只有［去会话答］（计数算在会话上）", async () => {
+    await openPlan();
+    await row("A2-1-3");
+  }),
+  plan("plan-35-ended", "需手动 · 接手的会话停了", "点「导出实现」：接手的会话已结束 · 这一块没做完；［恢复会话］［认可］", async () => {
+    await openPlan();
+    await row("A3-1");
+  }),
+  plan("plan-36-return", "退回框", "「检查脚本」头右［退回…］：要改什么 · 送给（在长它的 / 签它的）· 送出的一行跟着输入变", async () => {
+    await openPlan();
+    await row("A4-1");
+    await click(await byText(".plan-view .plan-cell button", "退回…"));
+    await type(".plan-return-text", "收集 0 条时要退 5，现在退 0；补一条测试。");
+    await sleep(300);
+  }),
+  plan("plan-38-returned", "退回之后 · 等它改", "「检查脚本」顶上一条：已退回 · 送给工程底座 · 几点 · 等它在底下加一格或改正文", async () => {
+    await openPlan();
+    await row("A4-1");
+  }, { returned: "returned" }),
+  plan("plan-39-landed", "退回已落地", "「检查脚本」顶上一条：退回已落地 · 在底下加了「收集 0 条时退 5」", async () => {
+    await openPlan();
+    await row("A4-1");
+  }, { returned: "landed" }),
+  plan("plan-40-acked", "认可之后", "判据红那一条点［认可］：toast「已认可 · 工程底座」［撤销］，选到下一条", async () => {
+    await openPlan();
+    await row("A4");
+    await click(await byText(".plan-view .plan-need button", "认可"));
+    await sleep(900);
   }),
 ];

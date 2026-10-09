@@ -18,7 +18,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "plan-read",
         summary: "一个工作区的成品（几片的图 · 状态 · 签收 · 块 · 判据；接手与签收人对到会话；不带 agent_view）",
         codes: &["bad_args", "failed", "no_pb", "not_workspace", "pb_unsupported"],
-        fields: &[arg("workspace", "工作区根（`plan-list` 给的那个）"), out("rev", "这一份输出的摘要：变了才算计划变了"), out("readAt", "读到的时刻（epoch ms）"), out("needCount", "这个工作区要你看的数（没认可的，不含 agent 问人那一种）"), out("bySession", "会话 ⇒ 它接手的那一块 `{slice, block, title, top, phase, at, atTitle, via: session|subagent}`（子 agent 接的记在父会话名下；自己接的优先）"), out("slices", "每片一格：读不成 ⇒ `error`；这一刻读不成但读好过 ⇒ 上一次那一份 ＋ `stale {said, since}`；`needs: [{key, kind: top|red|ended|ask, block, cell, sid, acked}]` · `needCount`；每格 `returned`：退回过 ⇒ `{at, to, state: returned|unsure|landed, by: child|body, child}`，没有 ⇒ `null`"), out("stale", "整次读不成、给的是上一次那一份 ⇒ `{said, raw, since}`；否则 `null`")],
+        fields: &[arg("workspace", "工作区根（`plan-list` 给的那个）"), out("rev", "这一份输出的摘要：变了才算计划变了"), out("readAt", "读到的时刻（epoch ms）"), out("needCount", "这个工作区要你看的数（没认可的，不含 agent 问人那一种）"), out("bySession", "会话 ⇒ 它接手的那一块 `{slice, block, cell, title, top, phase, at, atTitle, via: session|subagent}`（子 agent 接的记在父会话名下；自己接的优先）"), out("slices", "每片一格：读不成 ⇒ `error`；这一刻读不成但读好过 ⇒ 上一次那一份 ＋ `stale {said, since}`；`needs: [{key, kind: top|red|ended|ask, block, cell, sid, acked}]` · `needCount`；每格 `returned`：退回过 ⇒ `{at, to, state: returned|unsure|landed, by: child|body, child}`，没有 ⇒ `null`"), out("stale", "整次读不成、给的是上一次那一份 ⇒ `{said, raw, since}`；否则 `null`")],
         takes_input: true,
         run: Run::BlockingData(|r| crate::faces::plan_face::answer(&r.cmd, &r.args).map(Some)),
     },

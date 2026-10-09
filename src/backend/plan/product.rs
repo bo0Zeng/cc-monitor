@@ -142,7 +142,7 @@ pub(crate) fn make(doc: &Value, who: WhoPort) -> Made {
 }
 
 /// 会话 ⇒ 它接手的那一块（会话头那一枚标 · 「这个会话是哪一片哪一块的接手」）：
-/// `{片, 块, 块根格标题（顶块 ⇒ null）, 顶块不顶块, 阶段, 站在哪一格（编号 ＋ 标题）, via: session|subagent}`。
+/// `{片, 块, 块根格（编号）, 块根格标题（顶块 ⇒ null）, 顶块不顶块, 阶段, 站在哪一格（编号 ＋ 标题）, via: session|subagent}`。
 /// 子 agent 接的块记在父会话名下；一个会话名下几块 ⇒ 自己接的压过子 agent 替它接的，同档取片与块的先后里第一块。
 /// 对不上会话的接手不进表。
 pub(crate) fn by_session(slices: &[Value]) -> Value {
@@ -179,6 +179,7 @@ pub(crate) fn by_session(slices: &[Value]) -> Value {
                     json!({
                         "slice": sl["name"],
                         "block": b["id"],
+                        "cell": root.map_or(Value::Null, |r| json!(r)),
                         "title": if top { Value::Null } else { root.map_or(Value::Null, title_of) },
                         "top": top,
                         "phase": b["phase"],

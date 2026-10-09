@@ -92,8 +92,12 @@ fn unack(args: &Value) -> Answer {
 /// 帧面入口：命令名从 `r.cmd` 来。
 pub(crate) fn answer(cmd: &str, args: &Value) -> Answer {
     match cmd {
-        "plan-ack" => ack(args),
-        "plan-unack" => unack(args),
+        "plan-ack" => {
+            ack(args).and_then(crate::faces::plan_face::wired::<crate::plan::wire::PlanAckReply>)
+        }
+        "plan-unack" => {
+            unack(args).and_then(crate::faces::plan_face::wired::<crate::plan::wire::PlanAckReply>)
+        }
         other => Err(bad(&format!("unknown command `{other}`"))),
     }
 }
