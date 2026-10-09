@@ -10,6 +10,7 @@
  */
 // 计划与渲染问本机后端（`launch-local`），monitor 只开终端窗口（`open_local_terminal`）。
 import { launchLocal } from "./launch-render";
+import { NoTerminalWindow, sayNoTerminal } from "./terminal-open";
 import { LOCAL_ORIGIN } from "./ipc/origin";
 import { accountUnavailableOf, refuseUnavailableAccount, type AccountAsk } from "./launch-account";
 import { resumeCommandFor } from "./remote-config";
@@ -80,6 +81,10 @@ async function resumeLocalCore(req: LocalResumeRequest): Promise<"unsent" | "sen
         u,
         choose: (account) => resumeLocalCore({ ...req, account }),
       });
+      return "unsent";
+    }
+    if (err instanceof NoTerminalWindow) {
+      sayNoTerminal(err);
       return "unsent";
     }
     failToast(copyText("localResume.launch.failed"), err, { level: "error" });

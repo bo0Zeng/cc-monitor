@@ -123,6 +123,8 @@ tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
 # Batch14-F42：turn-end 系统通知（Windows toast / Linux notify）
 tauri-plugin-notification = "2"
+# 单实例：第二次启动把第一个的主窗拉到前台、自己退出。Windows 用 user 级互斥量，Linux 用会话总线上的名字（zbus）。
+tauri-plugin-single-instance = "2"
 
 serde = { version = "1", features = ["derive"] }
 # `raw_value`：会话行的成品（后端给的记录）原样转交、monitor 不解析它（`ui_contract::JsonlLinePayload::message`）。
@@ -245,9 +247,6 @@ windows = { version = "0.56", features = [
 # K-H2a `KS5`：`Win32_Security_Authorization` **不加在这里** —— 设 / 读凭据文件 DACL 的 Win32 调用住 `crates/creds-core`
 # （「一个安全性质只许有一个实现」）。monitor 今天既不读也不写那份文件、不开 `harden`；`Win32_Security` 上面那一条是
 # Job Object 的签名要的，与凭据文件无关。
-# issue #9：single-instance lock。第二个 cc-monitor 实例启动时立即退出，
-# 第一个窗口拉到前台。Tauri 官方 plugin，user-scoped mutex，跨 user session 不冲突。
-tauri-plugin-single-instance = "2"
 # F12 nudge 加固：resize 稳定后直接调 WebView2 controller COM 接口
 # （SetBounds / NotifyParentWindowPositionChanged / SetIsVisible）修合成层错位。
 # RECT/BOOL 参数类型必须来自 wry 依赖树里 webview2-com 0.38 配对的 windows 0.61

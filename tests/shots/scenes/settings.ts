@@ -238,6 +238,26 @@ export const SETTINGS_SCENES: Scene[] = [
     document.querySelector<HTMLButtonElement>('.settings-page:not([hidden]) [data-role="resume-select"]')?.click();
     await sleep(400);
   }),
+  settings("settings-general-terminal-open", "设置 · 通用 · 终端下拉", "Linux 上「终端」那一行点开：自动（灰字：会挑谁）· 探到的各个 · 自定义…", async () => {
+    await go("general");
+    await sleep(500);
+    document.querySelector<HTMLButtonElement>('.settings-page:not([hidden]) [data-role="terminal-select"]')?.click();
+    await sleep(400);
+  }),
+  settings(
+    "settings-general-terminal-none",
+    "设置 · 通用 · 终端 · 一个都没探到",
+    "这台一个终端都没探到：自动那一项灰字「未找到」",
+    async () => {
+      await go("general");
+      await sleep(600);
+    },
+    () => {
+      const w = defaultWorld();
+      w.commands = { ...w.commands, terminal_choices: () => ({ applies: true, auto: null, found: [], setting: "" }) };
+      return w;
+    },
+  ),
   page("settings-machines", "设置 · 机器", "机器列表：本机 ＋ 三台远端，每台的连接 / 后端 / ccm / 账号四格", "machines"),
   page("settings-machine-local", "设置 · 本机", "本机那一页", "machine:（本机）"),
   page("settings-machine-remote", "设置 · 远端机器", "devbox 那一页（落在第一个子页）", "machine:devbox"),

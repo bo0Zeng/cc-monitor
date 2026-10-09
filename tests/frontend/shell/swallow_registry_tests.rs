@@ -210,9 +210,12 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/frontend/shell/src/lib.rs", "let _ = w.show();", Why::WindowBestEffort, ""),
     ("src/frontend/shell/src/lib.rs", "let _ = w.unminimize();", Why::WindowBestEffort, ""),
     ("src/frontend/shell/src/lib.rs", "let _ = w.request_user_attention(Some(tauri::UserAttentionType::Informational));", Why::WindowBestEffort, ""),
-    ("src/frontend/shell/src/platform/window.rs", "let _ = win.set_focus();", Why::WindowBestEffort, ""),
     ("src/frontend/shell/src/platform/window.rs", "let _ = win.show();", Why::WindowBestEffort, ""),
     ("src/frontend/shell/src/platform/window.rs", "let _ = win.unminimize();", Why::WindowBestEffort, ""),
+    // 单实例回调那三行搬回 `lib.rs`：单实例各平台都注册，不再是平台差异。
+    ("src/frontend/shell/src/lib.rs", "let _ = win.set_focus();", Why::WindowBestEffort, ""),
+    ("src/frontend/shell/src/lib.rs", "let _ = win.show();", Why::WindowBestEffort, ""),
+    ("src/frontend/shell/src/lib.rs", "let _ = win.unminimize();", Why::WindowBestEffort, ""),
     ("src/frontend/shell/src/lib.rs", "let _ = window.set_focus();", Why::WindowBestEffort, ""),
     ("src/frontend/shell/src/link_mux.rs", "let _ = slot.tx.send(Piece::End(Some(copy_text(\"rsLinkMux.data.noCredit\", &[]))));", Why::PeerGone, ""),
     ("src/frontend/shell/src/link_mux.rs", "let _ = slot.tx.send(Piece::End(Some(why.to_string())));", Why::PeerGone, ""),

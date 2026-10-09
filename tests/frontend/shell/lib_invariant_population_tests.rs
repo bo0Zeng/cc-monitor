@@ -473,9 +473,10 @@ const QUOTE_SITES: &[QuoteRow] = &[
     //   `dial/terminal.rs::command_for_cwd`（两道放行判定跟着过去）。
     // `src/frontend/shell/src/launch.rs` 那一行出表：远端那条 ssh 外壳（包一层 `bash -lic`）随渲染进了本机后端。
     // 文件窗口「在此打开终端」的当前目录（自由文本路径）在这里拼进 `cd`：拼之前过 `posix_free_path_ok`（POSIX 绝对 · 无 `..` 段 · 不含 NUL / CR / LF）；非 UTF-8 的走字节形 `posix_quote_bytes`，过 `posix_free_path_bytes_ok`。
+    // 开终端那一行多一种方言（本机是 POSIX 时整串按 POSIX 单引号嵌，`literal`），拼进去的东西不变。
     (
         "src/backend/dial/terminal.rs",
-        &["command_for_cwd", "render"],
+        &["command_for_cwd", "literal", "render"],
         &[
             (
                 "src/common/shell-quote-core/src/lib.rs",
@@ -488,6 +489,15 @@ const QUOTE_SITES: &[QuoteRow] = &[
         ],
         "",
         "开终端那一行里要在远端跑的整条命令（拼它的那几处各自判过；这里只包一层 `bash -lic`，本侧再判控制符 · 双引号 · 长度）",
+    ),
+    // 收一整串的终端（Tilix）：开窗那一跳把 `bash -lic <留窗脚本> bash <命令>` 拼成一个参数交给它（它按 shell 词法切回去）。
+    //   命令是本机后端渲好的成品，开窗之前过 `validate_launch_cmd`（控制符 · 长度 · 空）；留窗脚本是常量。
+    (
+        "src/frontend/shell/src/platform/terminal.rs",
+        &["build_local_posix_spawn"],
+        &[("src/frontend/shell/src/launch.rs", "validate_launch_cmd")],
+        "",
+        "留窗脚本（常量）",
     ),
     // 那条命令随部署判定搬进共享的 `deploy-core`（本机常驻后端出计划时拼、在那台上跑）：`sftp.rs` 出列、这一行换住址。
     // `deploy-core` 拆开：扫戳命令是戳格式（契约），随契约那一半住 `deploy-contract`。

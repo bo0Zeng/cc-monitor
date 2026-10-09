@@ -527,13 +527,8 @@ pub struct FileWindow {
     pub(super) props: Option<super::props::Props>,
     /// 🔴〔补齐五项〕「在此打开终端」那一下**说了什么**（`None` = 没点过 / 上一下没话说）。
     ///
-    /// # 为什么这一格非有不可
-    ///
-    /// 那条命令在 **POSIX 上恒定开不了窗**（壳回「不开窗」那个结局 `TerminalOpen::NoWindow`，对这一跳回拒绝
-    /// `no_window` ＋ `rsLaunch.posix.noTerminalWindow` 那一句），在 Windows 上也可能失败
-    /// （那台远端的配置没存全）。一次失败与一次成功在屏幕上长得一样
-    /// ⇒ 用户点了按钮、什么都没发生、也没有一句话 —— 那正是本仓的头号病形。
-    /// ⇒ 结果落在这一格，界面上画出来，判据读同一个值。
+    /// 那一下可能失败（那台远端的配置没存全 · 本机找不到终端 · 本机没有 ssh 客户端），而一次失败与一次成功
+    /// 在屏幕上长得一样 ⇒ 结果落在这一格，界面上画出来，判据读同一个值。
     term_notice: Arc<Mutex<Option<String>>>,
     /// 🔴**「就是这个文件」** —— 要高亮的那一行的名字 ＋ 滚过去了没有。
     ///
@@ -1024,16 +1019,8 @@ impl FileWindow {
     /// `src/backend/dial/terminal.rs::command_for_cwd`）→ `launch::open_terminal_window` 开窗 —— 与主界面开终端同一条路。
     /// 窗口不拼命令、不认识 monitor 的配置、不起进程；那一问不成 ⇒ 对端那句原话画在窗口上（`D11`，不退回自己拼）。
     ///
-    /// # ⚠ 它在 Linux 上**恒定「失败」，而那不是缺陷**
-    ///
-    /// POSIX 上壳回「不开窗」那个结局（这一跳收到拒绝 `no_window` ＋ `rsLaunch.posix.noTerminalWindow` 那一句）
-    /// —— 那是一条**既定设计**，不是没做完。
-    /// ⇒ 本窗口把那句话摆在工具栏下面（[`Self::term_notice`]），**不假装成功**。
-    ///
-    /// ⚠ **买不到什么，两条**：① 真有一个终端窗口弹出来 —— 那要 Windows
-    /// ＋ 一个图形会话，本机两样都没有；② 那句话里「命令已复制」的**复制**那一半
-    /// 是前端剪贴板兜底干的活（`remote-launch-run.ts`），**这个窗口没有它**
-    /// ⇒ 那半句在这儿是假的。如实登记为**没做**（旧面板那颗按钮同样没有）。
+    /// 那一问不成 ⇒ 那句原话摆在工具栏下面（[`Self::term_notice`]），**不假装成功**。
+    /// 窗口里没有剪贴板兜底（旧面板那颗按钮同样没有）。
     pub fn open_terminal_here(&mut self, ctx: Option<egui::Context>) -> bool {
         let Some(h) = self.rt.clone() else {
             *self.term_notice.lock().unwrap() =

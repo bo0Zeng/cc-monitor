@@ -100,6 +100,7 @@ import type { Origin } from "../generated/Origin";
 import type { FrontOutcome } from "../generated/FrontOutcome";
 // `K-R69`：本机那条 `ccm` 入口这一格（我们那一份 · PATH 上那一份 · 判词 · 那句话）。
 import type { LocalCcmEntry } from "../generated/LocalCcmEntry";
+import type { TerminalChoices } from "../generated/TerminalChoices";
 import type { ConfigEdit } from "../generated/ConfigEdit";
 import type { MachineFault } from "../generated/MachineFault";
 import type { DriftLedgerReport } from "../generated/DriftLedgerReport";
@@ -247,9 +248,10 @@ export const commands = {
   // 本机起会话三条（resume · 新起 · 接回那一句）退役：计划与渲染问本机后端 `launch-local`
   //   （`src/frontend/ui/launch-render.ts::planLocalLaunch`），monitor 只剩开终端窗口（下一条）。
 
-  /** 在本机开一个终端窗口跑 `cmd`（工作目录 `cwd`）：POSIX 上交用户自己的终端 / Windows 上 PowerShell。桶①。 */
+  /** 在本机开一个终端窗口跑 `cmd`（工作目录 `cwd`）：POSIX 上按设置 / 探到的终端 / Windows 上 PowerShell。
+   *  结局同 `open_terminal_window`（`"noWindow"` ＝ 这台找不到终端）。只经 `src/frontend/ui/terminal-open.ts` 调。桶①。 */
   open_local_terminal: (args: { cmd: string; cwd: string | null }) =>
-    invoke<void>("open_local_terminal", args),
+    invoke<"opened" | "noWindow">("open_local_terminal", args),
 
   // 「resume 之前问记录还在不在」那一条退役：界面经通道直接问后端 `history-record`
   //   （`src/frontend/ui/session-reads.ts::probeSessionRecord`，成品 `{present, root}`）。
@@ -268,10 +270,14 @@ export const commands = {
   //   （后端出成品，`tasks-panel.ts::fetchSessionTasks` / `decodeTasks`）。
 
   /** 开一个终端窗口跑 `command`（**成品**：远端那一行由本机后端 `terminal-ssh` 渲好、本机那一串由本机后端起会话那一问交回 —— monitor 只开窗）。
-   *  Rust 返回 `Result<(), String>` ⇒ **桶①**。`ssh`：这一行要跑本机的 ssh（Windows 上先查 ssh.exe 在不在）。
+   *  Rust 返回 `Result<TerminalOpen, String>`（`"opened"` / `"noWindow"`）⇒ **桶①**。`ssh`：这一行要跑本机的 ssh（先查本机 ssh 客户端在不在）。
    *  只经 `src/frontend/ui/terminal-open.ts::openTerminal` 调（开终端只有一个家）。 */
   open_terminal_window: (args: { command: string; ssh: boolean }) =>
     invoke<"opened" | "noWindow">("open_terminal_window", args),
+
+  /** 设置页「终端」那一行要的事实：自动会挑谁 · 本机探到哪些 · 现在设的是什么（挑终端的判定在壳的平台层）。
+   *  `TerminalChoices` 是生成物 ⇒ **桶③**。 */
+  terminal_choices: () => invoke<TerminalChoices>("terminal_choices"),
 
   /** 开终端那一问要的机器事实 `{machine, saved, jump, prefer}`（monitor 的机器表 ＋ 上次赢的那条）。
    *  **桶②**：TS 不读它的字段，原样转交本机后端 `terminal-ssh`（组请求与渲染都在那里）。 */

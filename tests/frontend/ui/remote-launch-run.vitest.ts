@@ -17,6 +17,8 @@ vi.mock("../../../src/frontend/ui/terminal-open", async (orig) => ({
   openTerminal: term.openTerminal,
 }));
 const mint = vi.hoisted(() => ({ mintFreshTmuxName: vi.fn() }));
+const settingsWin = vi.hoisted(() => ({ openSettingsWindow: vi.fn() }));
+vi.mock("../../../src/frontend/ui/settings/open-settings", () => settingsWin);
 vi.mock("../../../src/frontend/ui/terminal-name-mint", () => mint);
 vi.mock("../../../src/frontend/ui/resync", () => ({
   offerResyncRetry: vi.fn(),
@@ -220,27 +222,31 @@ describe("失败怎么说", () => {
     expect(String(toastMock.mock.calls[0][1])).toContain(line);
   });
 
-  it("壳回「不开窗」那个结局（POSIX 既定设计）⇒ 标题是「已复制 · 本机不开终端窗口」那一句，不叫失败", async () => {
-    term.openTerminal.mockRejectedValue(new NoTerminalWindow());
-    stubClipboard(vi.fn().mockResolvedValue(undefined));
+  it("壳回「找不到终端」那个结局 ⇒ 照实说 ＋［设置］直达那一格 ＋［复制命令］；不自动写剪贴板，点了才复制那一行", async () => {
+    term.openTerminal.mockRejectedValue(new NoTerminalWindow("ssh -t devbox -- 'ccm --resume sid-1'"));
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    stubClipboard(writeText);
     await runRemoteResume("<local>", "claude", "sid-1", "/p", "claude");
-    expect(String(toastMock.mock.calls[0][0])).toBe(
-      copyText("remoteLaunchRun.copyFallback.noWindowCopied"),
-    );
+    expect(writeText, "不许自动写剪贴板").not.toHaveBeenCalled();
+    const [title, , opts] = toastMock.mock.calls[0] as [string, string, { action?: { label: string; run: () => void }[] }];
+    expect(title).toBe(copyText("terminalOpen.noTerminal.title"));
+    const acts = opts.action ?? [];
+    expect(acts.map((a) => a.label)).toEqual([copyText("terminalOpen.noTerminal.settings"), copyText("terminalOpen.noTerminal.copy")]);
+    acts[0].run();
+    expect(settingsWin.openSettingsWindow).toHaveBeenCalledWith(null, { page: "general", anchor: "terminal" });
+    acts[1].run();
+    await Promise.resolve();
+    expect(writeText).toHaveBeenCalledWith("ssh -t devbox -- 'ccm --resume sid-1'");
   });
 
-  it("按结局判、不按字判：真失败的话里就算带着「不开窗」那一句的原文，也照样叫失败", async () => {
+  it("按结局判、不按字判：真失败的话里就算带着「找不到终端」那一句的原文，也照样叫失败、照样复制命令", async () => {
     term.openTerminal.mockRejectedValue(
       new Error(copyText("rsLaunch.posix.noTerminalWindow")),
     );
-    stubClipboard(vi.fn().mockResolvedValue(undefined));
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    stubClipboard(writeText);
     await runRemoteResume("<local>", "claude", "sid-1", "/p", "claude");
-    const head = String(toastMock.mock.calls[0][0]);
-    expect(head).not.toBe(
-      copyText("remoteLaunchRun.copyFallback.noWindowCopied"),
-    );
-    expect(head).not.toBe(
-      copyText("remoteLaunchRun.copyFallback.noWindowManual"),
-    );
+    expect(String(toastMock.mock.calls[0][0])).not.toBe(copyText("terminalOpen.noTerminal.title"));
+    expect(writeText).toHaveBeenCalled();
   });
 });

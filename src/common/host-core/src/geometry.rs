@@ -10,6 +10,12 @@ pub struct WorkArea {
     pub h: u32,
 }
 
+/// 外框不会比内框小：报出来比内框小 ⇒ 是窗口还没映射时问到的占位尺寸（Linux GTK 上开窗那一刻实测外框 149×35、内框 1100×800），
+/// 当外框 ＝ 内框（边框未知按 0）。不这么收，主窗会被「夹」成那个占位尺寸。
+fn outer_at_least_inner(outer: (u32, u32), inner: (u32, u32)) -> (u32, u32) {
+    (outer.0.max(inner.0), outer.1.max(inner.1))
+}
+
 /// **一扇窗夹进工作区**（纯函数；物理像素）：外框放不下 ⇒ 内框缩到「工作区 − 边框与标题栏」；
 /// 再把外框挪进工作区。回 `(新内框, 新外框左上)`；本来就在里面 ⇒ `None`。
 /// 真机读数：屏 1280×760、工作区 712 高，主窗初始外框 780 高、设置窗 780 高 ⇒ 底边压在任务栏下（toast、测试连接最后一行看不见）。
@@ -19,6 +25,7 @@ pub fn fit_into_work_area(
     inner: (u32, u32),
     work: WorkArea,
 ) -> Option<((u32, u32), (i32, i32))> {
+    let outer = outer_at_least_inner(outer, inner);
     let chrome = (
         outer.0.saturating_sub(inner.0),
         outer.1.saturating_sub(inner.1),
@@ -47,6 +54,7 @@ pub fn center_in_work_area(
     inner: (u32, u32),
     work: WorkArea,
 ) -> ((u32, u32), (i32, i32)) {
+    let outer = outer_at_least_inner(outer, inner);
     let chrome = (
         outer.0.saturating_sub(inner.0),
         outer.1.saturating_sub(inner.1),

@@ -453,8 +453,7 @@ fn the_two_verdicts_hand_the_user_two_different_sentences() {
 /// `.partial` + `rename` 存在的全部理由是「**半截文件不许被当成可执行的后端起起来**」。
 /// 而临时名原来是**固定的** ⇒ 两个同版本 monitor 同时释放会写同一个文件：
 /// 一个写到一半、另一个 `rename` 走 —— 出来的正是这道防线要防的东西。
-/// ⚠ 不是理论：`tauri_plugin_single_instance` **只在 `#[cfg(windows)]` 注册**
-/// ⇒ Linux/macOS 上两个 monitor 天然并存。
+/// ⚠ 不是理论：Linux 上单实例靠会话总线，没有会话总线（或两个登录会话）时两个 monitor 照样并存。
 ///
 /// # 🔴 `K-R69` 09-12：**人群从「恰好一处」改成「每一处」**，理由写清楚
 ///
@@ -487,8 +486,7 @@ fn two_processes_do_not_share_one_partial_file() {
                 .contains("std::process::id()"),
             "有一处 `.partial` 临时名里没有本进程 id —— 固定名会让两个 monitor 写同一个文件：\n\
                  一个写到一半、另一个 `rename` 走，出来的正是这道防线要防的**半截可执行文件**。\n\
-                 ⚠ 不是理论：`tauri_plugin_single_instance` 只在 `#[cfg(windows)]` 注册 ⇒ \n\
-                 Linux/macOS 上两个 monitor 天然并存。实参逐字：{}",
+                 ⚠ 不是理论：Linux 上单实例靠会话总线，没有会话总线时两个 monitor 照样并存。实参逐字：{}",
             args.chars().take(160).collect::<String>()
         );
     }

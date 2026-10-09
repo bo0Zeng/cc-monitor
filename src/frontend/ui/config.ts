@@ -58,6 +58,8 @@ export const CONFIG_KEY_OWNERS = {
   notifyNeeds: "src/frontend/ui/behavior.ts",
   // src/frontend/ui/local-machine-prefs.ts：本机那一格恢复命令覆盖（本机不在机器表里）
   localResumeCommand: "src/frontend/ui/local-machine-prefs.ts",
+  // src/frontend/ui/settings/terminal-row.ts 写（设置 → 通用 → 终端）；壳的平台层 `platform/terminal.rs` 开终端时读（只读）。
+  terminal: "src/frontend/ui/settings/terminal-row.ts",
   // src/frontend/shell/src/logging.rs —— **Rust 写的**顶层键（设置页「诊断」经 `set_diagnostics_config`）。
   // 漏登记的话，用户存过一次诊断设置，「认不出的键」提示条就会把 `diagnostics` 点名（假警报）。
   diagnostics: "src/frontend/shell/src/logging.rs",
