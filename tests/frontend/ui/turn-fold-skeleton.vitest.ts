@@ -197,7 +197,7 @@ describe("冷切停住那一帧：骨架后到", () => {
       const el = document.createElement("div");
       el.dataset.h = "60";
       el.dataset.seq = String(s);
-      el.setAttribute("data-uuid", `u${s}`);
+      el.setAttribute("data-id", `u${s}`);
       timeline.insert({ seq: s, element: el, kind: "card", toolGroup: null });
     };
     for (let s = floor; s < total; s++) card(s);
