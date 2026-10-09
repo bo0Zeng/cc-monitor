@@ -62,7 +62,7 @@ fn an_unreadable_file_is_never_overwritten() {
     std::fs::create_dir_all(f.parent().unwrap()).unwrap();
     std::fs::write(&f, "{not json").unwrap();
     let e = ack_at(&f, "/w", "alpha", "top:r1", &["top:r1".to_string()]).unwrap_err();
-    assert_eq!(e.0, "review_unreadable");
+    assert_eq!(e.code, "review_unreadable");
     assert_eq!(std::fs::read_to_string(&f).unwrap(), "{not json");
     // 读的那一侧照什么都没记算。
     assert!(!current(Some(&f)).acked("/w", "alpha", "top:r1"));

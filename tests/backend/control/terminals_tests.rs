@@ -823,11 +823,11 @@ fn terminal_input_refuses_fields_it_does_not_use() {
         let mut args = json!({ "terminal": "tmux-1", "text": "x" });
         args[extra] = json!(true);
         let e = input_on(on, &args).expect_err("多送的一格该被拒");
-        assert_eq!(e.0, "bad_args", "{extra}：码不对：{e:?}");
+        assert_eq!(e.code, "bad_args", "{extra}：码不对：{e:?}");
         assert!(
-            e.1.contains(extra),
+            e.message.contains(extra),
             "{extra}：那句话没点名多出来的那一格：{}",
-            e.1
+            e.message
         );
     }
 }

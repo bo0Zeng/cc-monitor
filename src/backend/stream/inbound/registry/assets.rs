@@ -357,7 +357,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         codes: &["bad_args", "catalog_unreadable", "io_failed"],
         fields: &[out("machines", "恒一列（这台自己）`{key: null, here: true, reachable: true, name, projects}`：裁掉了别的台，于是没有一格要问可达表"), out("problems", "同 `ext-list`：这台扫的时候读不出来的那几份"), out("rows", "同 `ext-list` 每个条目一行，`cells` 与 `machines` 同序 ⇒ 恒一格"), arg("visit", "同 `ext-list`：`true` = 这一问算「来看了一次」")],
         takes_input: true,
-        run: Run::Blocking(|r| {
+        run: Run::BlockingData(|r| {
             // 裁到这台那一格再交给同一个本体。`answer_current` 仍是那扇门（现扫 ＋ 记下整份目录，别的台那几格一个字节不动）。
             let here = |visit: bool| {
                 let (mut cat, problems) = crate::assets::asset_catalog::answer_current(visit)?;
@@ -365,9 +365,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
                 cat.machines.retain(|id, _| *id == me);
                 Ok((cat, problems))
             };
-            crate::assets::ext::answer_list(&r.args, &here, &[])
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
+            crate::assets::ext::answer_list(&r.args, &here, &[]).map(Some)
         }),
     },
     // 用户写 / 改 / 清一个条目的备注：资产目录的写口从这扇门递进去（记进本机自己那一格，随目录同步）。

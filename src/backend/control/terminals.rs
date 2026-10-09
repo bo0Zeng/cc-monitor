@@ -919,13 +919,13 @@ pub(crate) fn input_on(on: On<'_>, args: &Value) -> Result<Value, CmdErr> {
         .as_object()
         .and_then(|m| m.keys().find(|k| !INPUT_FIELDS.contains(&k.as_str())))
     {
-        return Err((
+        return Err(CmdErr::from((
             "bad_args",
             crate::common::contract::malformed(&format!(
                 "unknown field `{extra}` (terminal-input takes {})",
                 INPUT_FIELDS.join(", ")
             )),
-        ));
+        )));
     }
     let target = target_of(args)?;
     let input = input_of(args)?;
