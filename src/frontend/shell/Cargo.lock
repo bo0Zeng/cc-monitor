@@ -3342,6 +3342,7 @@ dependencies = [
  "dirs 5.0.1",
  "filewin-contract",
  "futures",
+ "gtk",
  "guard-core",
  "host-core",
  "notify",
@@ -3367,6 +3368,7 @@ dependencies = [
  "walkdir",
  "windows 0.56.0",
  "windows 0.61.3",
+ "zbus",
 ]
 
 [[package]]

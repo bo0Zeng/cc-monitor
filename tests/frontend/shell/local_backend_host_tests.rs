@@ -2924,28 +2924,28 @@ fn the_auto_start_refusal_is_not_only_a_log_line() {
         .collect::<Vec<_>>()
         .join("\n");
     assert!(
-        without_logs.contains(".notification()") && without_logs.contains(".show()"),
+        without_logs.contains("crate::platform::notify::show("),
         "把 `tracing::` 那些行拿掉之后，这一臂里**只剩日志** ——\n\
              ★ 这正是 `重-2` 那条病：日志不是「说给用户听」，是「说给下一个来查日志的人听」。\n\
-             ⇒ 拒绝这一格必须有一个用户看得见的出口（今天是 `tauri_plugin_notification`）。\n\
+             ⇒ 拒绝这一格必须有一个用户看得见的出口（今天是系统通知 `platform/notify.rs::show`）。\n\
              换出口可以，回来改本条并写明新出口是什么；**别退回只写日志**。"
     );
 
     // ⑤ ★★ 那句话**真的进了那个出口** —— ③ 只买到「有出口」，中间隔着一个参数。
     //    〔`D2` 实打：`.body(&next_step)` → `.body("")` ⇒ 1194/0，五条判据全绿。〕
-    //    ⚠ 认的是「`.body(` 那一行的实参里有 `next_step`」，不是那一行的逐字长相 ——
-    //    `.body(next_step.clone())` 这种等价写法照样过，`.body("")` 过不去。
+    //    出口换成 `platform::notify::show(app, 标题, 正文)` 之后，正文是那一调用的第三个实参（单独一行，`&next_step,`）。
+    //    ⚠ 认的是「正文那一行的实参里有 `next_step`」，不是那一行的逐字长相。
     //    ⚠⚠ **先断言它唯一再取**〔收工前自查逮到的：`重-D2-3` 那一形长在我自己刚写的这一行上〕：
     //    `.lines().find(…)` 又是一次「**取第一处**」。`.body(` 出现两次时（builder 被调两遍）
     //    生效的是**后一个**，而这里读的是**前一个** ⇒ 本条会对着一个不生效的参数说「进了」。
     let body_lines: Vec<&str> = refusal_branch
         .lines()
-        .filter(|l| l.contains(".body("))
+        .filter(|l| l.trim_start().starts_with("&next_step") || l.contains(".body("))
         .collect();
     assert_eq!(
         body_lines.len(),
         1,
-        "拒绝那一支里 `.body(` 有 {} 行（该恰好 1 行）：{body_lines:?}\n\
+        "拒绝那一支里通知正文那一行有 {} 行（该恰好 1 行）：{body_lines:?}\n\
              ★ 0 行 = 用户可见出口换了形状 ⇒ **回来把本条改成新出口那一格**：\n\
                ③ 只钉「有出口」、不钉「那句话进没进出口」，光靠 ③ 会留下一个正文空白的通知。\n\
              ★ ≥2 行 = 生效的是**后一个**，而下面读的是**前一个** —— 本条会对着一个\n\

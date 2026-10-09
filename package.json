@@ -61,7 +61,6 @@
     "@phosphor-icons/core": "2.1.1",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2",
-    "@tauri-apps/plugin-notification": "^2.3.3",
     "@tauri-apps/plugin-opener": "^2",
     "dompurify": "^3.4.5",
     "highlight.js": "^11.11.1",

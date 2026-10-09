@@ -146,6 +146,9 @@ export interface UserPathStatus {
   error: string | null;
 }
 
+/** 两条开窗命令的结局（壳 `platform/terminal.rs::TerminalOpen`）：开了 · 一个终端都没探到 · 设置里指定的那个不在。 */
+export type TerminalOpened = "opened" | "noWindow" | "setMissing";
+
 export const commands = {
   /** 读 `cc_get_auto_launch`。返回值字段被真消费 ⇒ 生成物（桶③）。 */
   cc_get_auto_launch: () => invoke<AutoLaunchConfig>("cc_get_auto_launch"),
@@ -251,7 +254,7 @@ export const commands = {
   /** 在本机开一个终端窗口跑 `cmd`（工作目录 `cwd`）：POSIX 上按设置 / 探到的终端 / Windows 上 PowerShell。
    *  结局同 `open_terminal_window`（`"noWindow"` ＝ 这台找不到终端）。只经 `src/frontend/ui/terminal-open.ts` 调。桶①。 */
   open_local_terminal: (args: { cmd: string; cwd: string | null }) =>
-    invoke<"opened" | "noWindow">("open_local_terminal", args),
+    invoke<TerminalOpened>("open_local_terminal", args),
 
   // 「resume 之前问记录还在不在」那一条退役：界面经通道直接问后端 `history-record`
   //   （`src/frontend/ui/session-reads.ts::probeSessionRecord`，成品 `{present, root}`）。
@@ -273,7 +276,10 @@ export const commands = {
    *  Rust 返回 `Result<TerminalOpen, String>`（`"opened"` / `"noWindow"`）⇒ **桶①**。`ssh`：这一行要跑本机的 ssh（先查本机 ssh 客户端在不在）。
    *  只经 `src/frontend/ui/terminal-open.ts::openTerminal` 调（开终端只有一个家）。 */
   open_terminal_window: (args: { command: string; ssh: boolean }) =>
-    invoke<"opened" | "noWindow">("open_terminal_window", args),
+    invoke<TerminalOpened>("open_terminal_window", args),
+
+  /** 发一条系统通知（「一轮完成」「需要你」）。界面判要不要发，壳只发（`platform/notify.rs`）。桶①。 */
+  notify_desktop: (args: { title: string; body: string }) => invoke<void>("notify_desktop", args),
 
   /** 设置页「终端」那一行要的事实：自动会挑谁 · 本机探到哪些 · 现在设的是什么（挑终端的判定在壳的平台层）。
    *  `TerminalChoices` 是生成物 ⇒ **桶③**。 */

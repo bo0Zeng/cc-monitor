@@ -140,6 +140,11 @@ const MONITOR_OWN: &[(&str, Own, &str)] = &[
     ),
     ("open_log_file", Own::Log, "日志"),
     (
+        "notify_desktop",
+        Own::Window,
+        "系统通知（「一轮完成」「需要你」）：通知出在 monitor 面前这台的桌面上，界面判要不要发，壳只发（`platform/notify.rs`）",
+    ),
+    (
         "restart_app",
         Own::Lifecycle,
         "设置窗「现在重启」：重起 cc-monitor 自己（走退出臂，本机后端照它自己那份退出行为去留）",

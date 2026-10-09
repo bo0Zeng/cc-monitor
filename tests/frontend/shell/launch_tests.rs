@@ -276,13 +276,10 @@ fn the_terminal_is_picked_by_setting_then_system_exits_then_common_ones() {
         pick_terminal_from(Some(" tilix  -e "), "", &only(&["tilix"])),
         v(&["tilix", "-e"])
     );
-    // 指定的那个不在 ⇒ 照实说是哪个，不退成自动挑到的别的终端。
+    // 指定的那个不在 ⇒ 说是哪个（结局 `setMissing`，前端给［设置］），不退成自动挑到的别的终端。
     assert_eq!(
         pick_terminal_from(Some("kitty"), "", &only(&["xdg-terminal-exec"])),
-        Err(copy_text(
-            "rsLaunch.posix.setTerminalMissing",
-            &[("name", &"kitty".to_string())]
-        ))
+        Err(SetMissing("kitty".to_string()))
     );
 }
 
@@ -297,6 +294,10 @@ fn the_no_window_outcome_is_a_code_not_a_phrase_the_frontend_greps_for() {
     assert_eq!(
         serde_json::to_value(TerminalOpen::Opened).unwrap(),
         serde_json::json!("opened")
+    );
+    assert_eq!(
+        serde_json::to_value(TerminalOpen::SetMissing).unwrap(),
+        serde_json::json!("setMissing")
     );
     const RUNNER: &str = include_str!("../../../src/frontend/ui/remote-launch-run.ts");
     const LOCAL: &str = include_str!("../../../src/frontend/ui/local-resume.ts");
@@ -1152,7 +1153,15 @@ fn the_thin_wrapper_hands_the_command_straight_through_to_the_via_form() {
         .collect();
     assert_eq!(
         stmts,
-        vec!["open_window_via(cmd, cwd, pick_terminal()?.as_deref())"],
+        vec![
+            "match pick_terminal() {",
+            "Ok(term) => open_window_via(cmd, cwd, term.as_deref()),",
+            "Err(SetMissing(name)) => {",
+            "tracing::info!(\"launch: 设置里指定的终端 {name} 不在\");",
+            "Ok(TerminalOpen::SetMissing)",
+            "}",
+            "}",
+        ],
         "\n★★ **这条链上最后那一行包装长胖了。**\n\
              实打过的第十一层就长在这里：在这一行**之前**把 `export ANTHROPIC_BASE_URL=…; ` 剥掉，\n\
              ⇒ `cargo test -p monitor --lib` **1232 全绿** —— 上面那两条判据都直调 `_via`，看不见它；\n\
@@ -1189,4 +1198,22 @@ fn without_a_terminal_exit_the_window_open_says_so_instead_of_running_headless()
         "找不到终端时该回「找不到终端」那个结局"
     );
     assert!(!ran_headless, "找不到终端时那一行被无窗口直起了");
+}
+
+/// Linux 上的系统通知：全进程一条会话总线长连接（`platform/notify.rs::linux::POOL`），不按条新开 ——
+/// GNOME 见发信人的总线名没了、又认得出是哪个有窗口的程序，就当场把通知收掉（L2 · 10-08 真窗口现打）；
+/// 「发 N 条只连一次」的行为由 `platform/notify_tests.rs` 拿假总线钉。发通知只有一个家，壳里别处不许再经插件发。
+#[test]
+fn linux_notifications_share_one_long_lived_bus_connection() {
+    const NOTIFY: &str = include_str!("../../../src/frontend/shell/src/platform/notify.rs");
+    let prod = guard_core::production_code(NOTIFY);
+    assert!(
+        guard_core::find_pinned(&prod, "linux::POOL.send(app, title, body)").is_ok(),
+        "Linux 那一臂不再经全进程那一条连接发"
+    );
+    const LIB: &str = include_str!("../../../src/frontend/shell/src/lib.rs");
+    assert!(
+        !guard_core::contains_word(&guard_core::production_code(LIB), "NotificationExt"),
+        "lib.rs 还在直接经插件发通知"
+    );
 }
