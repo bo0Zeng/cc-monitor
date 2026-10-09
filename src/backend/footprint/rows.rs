@@ -926,7 +926,7 @@ pub struct ConfigSurfaceReport {
     pub rows: Vec<SurfaceRow>,
     pub settings_scopes: Vec<SettingsScope>,
     /// 解析基准，展示用（让用户知道 `~/.claude` 被解释成了哪里）。
-    pub claude_config_dir: String,
+    pub agent_home: String,
     pub home: String,
     // `origin` 那一格不上线了：界面经通道问哪台自己知道，回声校验那一格由读者挂上。
 }

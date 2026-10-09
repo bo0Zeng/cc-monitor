@@ -126,7 +126,7 @@ fn the_remote_column_really_probes_this_machine_and_drops_the_monitor_rows() {
         "undetermined",
         "「本机或远端」那一行在这台上没找到，被说成了「缺」"
     );
-    assert_eq!(got["claude_config_dir"], agent.display().to_string());
+    assert_eq!(got["agent_home"], agent.display().to_string());
     assert_eq!(got["settings_scopes"][0]["has_cc_bus_hooks"], true);
     assert_eq!(
         got["settings_scopes"][1]["has_cc_bus_hooks"],

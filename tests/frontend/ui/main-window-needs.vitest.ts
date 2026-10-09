@@ -249,6 +249,12 @@ describe("「需要你」钉条 · 窗口标题 · 系统通知", () => {
     expect(needsHeadline({ kind: "answer", tool: "AskUserQuestion", call: null, what: "要不要也重试？", sinceMs: null })).toEqual({ label: copyText("needs.bar.answer"), code: "要不要也重试？" });
     expect(needsHeadline({ kind: "plan", tool: "ExitPlanMode", call: null, what: null, sinceMs: null }).label).toBe(copyText("needs.bar.plan"));
     expect(needsHeadline({ kind: "unknown", tool: null, call: null, what: null, sinceMs: null })).toEqual({ label: copyText("needs.bar.unknown"), code: null });
+    // 后端多判出的四种：放行联网带那条命令；协作请求 · 会话目标 · 对话框不挂哪一步。
+    expect(needsHeadline({ kind: "network", tool: "Bash", call: "b", what: "curl x", sinceMs: null })).toEqual({ label: copyText("needs.bar.network"), code: "curl x" });
+    const bare = (kind: "worker" | "goal" | "choose") => needsHeadline({ kind, tool: null, call: null, what: null, sinceMs: null });
+    expect(bare("worker")).toEqual({ label: copyText("needs.bar.worker"), code: null });
+    expect(bare("goal")).toEqual({ label: copyText("needs.bar.goal"), code: null });
+    expect(bare("choose")).toEqual({ label: copyText("needs.bar.choose"), code: null });
   });
 
   it("★ 去哪答：Windows 有 ↗ ⇒ 切到终端；远端在 tmux 里 ⇒ 在终端里打开；本机 Linux 不在 ↗ 上 ⇒ 不给按钮", () => {

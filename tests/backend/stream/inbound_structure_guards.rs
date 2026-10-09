@@ -1134,7 +1134,8 @@ fn no_handler_validates_an_arg_and_then_throws_it_away() {
 #[test]
 fn every_command_declares_exactly_the_fields_it_puts_out() {
     const FOOTPRINT_REPORT: &str = include_str!("../../__fixtures__/footprint-report.golden.json");
-    const ROTATION_SWITCH_RESTART: &str = include_str!("../../__fixtures__/rotation-switch-restart.golden.json");
+    const ROTATION_SWITCH_RESTART: &str =
+        include_str!("../../__fixtures__/rotation-switch-restart.golden.json");
     const ACCOUNTS: &str = include_str!("../../__fixtures__/accounts.golden.json");
     const ALIASES: &str = include_str!("../../__fixtures__/aliases.golden.json");
     const APIKEY: &str = include_str!("../../__fixtures__/apikey.golden.json");
@@ -1167,13 +1168,47 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
         ("accounts-trust", ACCOUNTS, "/accounts-trust", &[], &[]),
         ("apikey-read", APIKEY, "/apikey-read", &[], &[]),
         ("apikey-routing", APIKEY, "/apikey-routing", &[], &[]),
-        ("bus-list", CC_BUS_CONTROL, "/bus-list/reply", &["ccm_sid", "id", "live", "target", "unread"], &[]),
+        (
+            "bus-list",
+            CC_BUS_CONTROL,
+            "/bus-list/reply",
+            &["ccm_sid", "id", "live", "target", "unread"],
+            &[],
+        ),
         ("bus-send", CC_BUS_CONTROL, "/bus-send/reply", &[], &[]),
         ("bus-kill", CC_BUS_CONTROL, "/bus-kill/reply", &[], &[]),
         ("bus-spawn", CC_BUS_CONTROL, "/bus-spawn/reply", &[], &[]),
-        ("bus-broadcast", CC_BUS_CONTROL, "/bus-broadcast/reply", &["detail", "error", "id"], &[]),
-        ("bus-state", CC_BUS_READ, "/state/reply", &["ccm_sid", "dir", "id", "live", "registered_at", "spawned_at", "target", "task", "unread"], &[]),
-        ("bus-inbox", CC_BUS_READ, "/inbox/reply", &["class", "from", "text", "ts"], &[]),
+        (
+            "bus-broadcast",
+            CC_BUS_CONTROL,
+            "/bus-broadcast/reply",
+            &["detail", "error", "id"],
+            &[],
+        ),
+        (
+            "bus-state",
+            CC_BUS_READ,
+            "/state/reply",
+            &[
+                "ccm_sid",
+                "dir",
+                "id",
+                "live",
+                "registered_at",
+                "spawned_at",
+                "target",
+                "task",
+                "unread",
+            ],
+            &[],
+        ),
+        (
+            "bus-inbox",
+            CC_BUS_READ,
+            "/inbox/reply",
+            &["class", "from", "text", "ts"],
+            &[],
+        ),
         ("history-lines", RECORD_READS, "/history-lines", &[], &[]),
         ("history-page", RECORD_READS, "/history-page", &[], &[]),
         ("history-read", RECORD_READS, "/history-read", &[], &[]),
@@ -1182,18 +1217,107 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
         ("history-find", SESSION_READS, "/history-find", &[], &[]),
         ("history-index", SESSION_READS, "/history-index", &[], &[]),
         ("history-turns", SESSION_READS, "/history-turns", &[], &[]),
-        ("history-user-inputs", SESSION_READS, "/history-user-inputs", &[], &[]),
-        ("ssh-config-aliases", SSH_CONFIG, "/ssh-config-aliases", &[], &[]),
-        ("ssh-config-resolve", SSH_CONFIG, "/ssh-config-resolve", &[], &[]),
-        ("ssh-config-import", SSH_CONFIG, "/ssh-config-import", &["addresses", "alias", "host", "inList", "jump", "keyPath", "label", "members", "port", "proxyJump", "user"], &[]),
-        ("terminals-list", TERMINALS, "/terminals-list/reply", &["agent", "can", "client", "clients", "cwd", "end", "host", "input", "kind", "last_activity", "mine", "no", "program", "purpose", "session", "sid", "since", "started_by", "state", "terminal", "title", "tmux_name"], &[]),
-        ("terminal-preview", TERMINALS, "/terminal-preview/reply", &["spans", "text"], &[]),
-        ("terminal-input", TERMINALS, "/terminal-input/replies", &[], &[]),
+        (
+            "history-user-inputs",
+            SESSION_READS,
+            "/history-user-inputs",
+            &[],
+            &[],
+        ),
+        (
+            "ssh-config-aliases",
+            SSH_CONFIG,
+            "/ssh-config-aliases",
+            &[],
+            &[],
+        ),
+        (
+            "ssh-config-resolve",
+            SSH_CONFIG,
+            "/ssh-config-resolve",
+            &[],
+            &[],
+        ),
+        (
+            "ssh-config-import",
+            SSH_CONFIG,
+            "/ssh-config-import",
+            &[
+                "addresses",
+                "alias",
+                "host",
+                "inList",
+                "jump",
+                "keyPath",
+                "label",
+                "members",
+                "port",
+                "proxyJump",
+                "user",
+            ],
+            &[],
+        ),
+        (
+            "terminals-list",
+            TERMINALS,
+            "/terminals-list/reply",
+            &[
+                "agent",
+                "can",
+                "client",
+                "clients",
+                "cwd",
+                "end",
+                "host",
+                "input",
+                "kind",
+                "last_activity",
+                "mine",
+                "no",
+                "program",
+                "purpose",
+                "session",
+                "sid",
+                "since",
+                "started_by",
+                "state",
+                "terminal",
+                "title",
+                "tmux_name",
+            ],
+            &[],
+        ),
+        (
+            "terminal-preview",
+            TERMINALS,
+            "/terminal-preview/reply",
+            &["spans", "text"],
+            &[],
+        ),
+        (
+            "terminal-input",
+            TERMINALS,
+            "/terminal-input/replies",
+            &[],
+            &[],
+        ),
         ("kill", TMUX_CONTROL, "/kill/reply", &[], &[]),
         ("launch", TMUX_CONTROL, "/launch/reply", &[], &[]),
-        ("mcp-read", MCP_READ, "/reply", &["name", "scope", "server", "sourcePath"], &[]),
+        (
+            "mcp-read",
+            MCP_READ,
+            "/reply",
+            &["name", "scope", "server", "sourcePath"],
+            &[],
+        ),
         ("mcp-server-put", MCP_EDIT, "/putReply", &[], &[]),
-        ("mcp-server-remove", MCP_EDIT, "/removeAbsentReply", &[], &[]),
+        (
+            "mcp-server-remove",
+            MCP_EDIT,
+            "/removeAbsentReply",
+            &[],
+            &[],
+        ),
         ("profiles-read", PROFILES, "/readReply", &[], &[]),
         ("profiles-resolve", PROFILES, "/resolveReply", &[], &[]),
         ("profiles-impact", PROFILES, "/impactReply", &[], &[]),
@@ -1203,17 +1327,62 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
         ("assets-sync", ASSETS_SYNC, "/reply", &[], &[]),
         ("resync", RESYNC, "/reply", &[], &[]),
         ("history-list", HISTORY_LIST, "", &[], &[]),
-        ("forward-list", FORWARD_LIST, "", &["connCount", "id", "localPort", "origin", "remoteHost", "remotePort", "state"], &[]),
+        (
+            "forward-list",
+            FORWARD_LIST,
+            "",
+            &[
+                "connCount",
+                "id",
+                "localPort",
+                "origin",
+                "remoteHost",
+                "remotePort",
+                "state",
+            ],
+            &[],
+        ),
         ("files-grep", FILES_GREP, "", &[], &[]),
-        ("hooks-diag", HOOKS_DIAG, "", &["command", "kind", "note", "path", "session_start", "stop"], &[]),
+        (
+            "hooks-diag",
+            HOOKS_DIAG,
+            "",
+            &["command", "kind", "note", "path", "session_start", "stop"],
+            &[],
+        ),
         ("relay-optin", RELAY_OPTIN, "", &[], &[]),
-        ("tasks-list", TASKS_LIST, "/product", &["activeForm", "blockedBy", "blocks", "description", "id", "status", "subject"], &[]),
+        (
+            "tasks-list",
+            TASKS_LIST,
+            "/product",
+            &[
+                "activeForm",
+                "blockedBy",
+                "blocks",
+                "description",
+                "id",
+                "status",
+                "subject",
+            ],
+            &[],
+        ),
         ("pubkey-push", PUBKEY_PUSH, "/product", &[], &[]),
         ("deploy-plan", DEPLOY_PLAN, "/product", &[], &[]),
         ("ccm-probe", CCM_PROBE, "/product", &[], &[]),
         ("footprint-report", FOOTPRINT_REPORT, "", &[], &[]),
         ("rotation-switch", ROTATION_SWITCH_RESTART, "", &[], &[]),
-        ("session-fork", SESSION_FORK, "/product", &["account", "cwd", "from", "host", "kind", "terminal", "value"], &[("why", "`launch.kind` 是 `unknown` 那一支才有；金样走的是 `known` 那一支")]),
+        (
+            "session-fork",
+            SESSION_FORK,
+            "/product",
+            &[
+                "account", "cwd", "from", "host", "kind", "terminal", "value",
+            ],
+            &[(
+                "why",
+                "`launch.kind` 是 `unknown` 那一支才有；金样走的是 `known` 那一支",
+            )],
+        ),
     ];
     /// 零出参的命令（头注 ③）：应答只有 `ok` / `code`，结果走别处（帧 · 链路 · 进度）。逐条写为什么。
     const ZERO_OUT: &[(&str, &str)] = &[
@@ -1391,7 +1560,10 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
             .pointer(ptr)
             .unwrap_or_else(|| panic!("{cmd}：金样里没有 `{ptr}`"));
         let top = top_keys(sample);
-        assert!(!top.is_empty(), "{cmd}：样本没有键 —— 指针指错了，本条在空转");
+        assert!(
+            !top.is_empty(),
+            "{cmd}：样本没有键 —— 指针指错了，本条在空转"
+        );
         let mut deep = std::collections::BTreeSet::new();
         keys_at_any_depth(sample, &mut deep);
         for b in *below {
@@ -1401,7 +1573,10 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
             );
         }
         for (e, why) in *elsewhere {
-            assert!(!deep.contains(*e) && !why.is_empty(), "{cmd}：`elsewhere` 的 `{e}` 样本里见得到 ⇒ 挪进 `below`");
+            assert!(
+                !deep.contains(*e) && !why.is_empty(),
+                "{cmd}：`elsewhere` 的 `{e}` 样本里见得到 ⇒ 挪进 `below`"
+            );
         }
         let mut real = top.clone();
         real.extend(below.iter().map(|s| s.to_string()));
@@ -1436,8 +1611,14 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
     }
     let both: Vec<_> = shaped.intersection(&unshaped).collect();
     assert!(both.is_empty(), "既对过又列在没对的里：{both:?}");
-    let in_zero: Vec<_> = shaped.union(&unshaped).filter(|c| zero_out.contains(**c)).collect();
-    assert!(in_zero.is_empty(), "这几条零出参，不该在两张表里：{in_zero:?}");
+    let in_zero: Vec<_> = shaped
+        .union(&unshaped)
+        .filter(|c| zero_out.contains(**c))
+        .collect();
+    assert!(
+        in_zero.is_empty(),
+        "这几条零出参，不该在两张表里：{in_zero:?}"
+    );
     let zero_listed: std::collections::BTreeSet<&str> = ZERO_OUT.iter().map(|(c, _)| *c).collect();
     assert_eq!(
         zero_listed, zero_out,
