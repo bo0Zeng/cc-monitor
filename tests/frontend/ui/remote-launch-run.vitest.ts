@@ -16,6 +16,8 @@ vi.mock("../../../src/frontend/ui/terminal-open", async (orig) => ({
   ...(await orig<typeof import("../../../src/frontend/ui/terminal-open")>()),
   openTerminal: term.openTerminal,
 }));
+const clip = vi.hoisted(() => ({ writeClipboard: vi.fn() }));
+vi.mock("../../../src/frontend/ui/clipboard", () => clip);
 const mint = vi.hoisted(() => ({ mintFreshTmuxName: vi.fn() }));
 const settingsWin = vi.hoisted(() => ({ openSettingsWindow: vi.fn() }));
 vi.mock("../../../src/frontend/ui/settings/open-settings", () => settingsWin);
@@ -49,11 +51,9 @@ const arrivalMock = expectArrival as unknown as ReturnType<typeof vi.fn>;
 const lineFor = (req: CliRenderRequest): string =>
   `ccm <rendered:${JSON.stringify(req)}>`;
 
+/** 写剪贴板那一口（`clipboard.ts`，经壳）换成 `writeText`。 */
 function stubClipboard(writeText: (t: string) => Promise<void>): void {
-  Object.defineProperty(globalThis.navigator, "clipboard", {
-    value: { writeText },
-    configurable: true,
-  });
+  clip.writeClipboard.mockImplementation(writeText);
 }
 
 function requests(): CliRenderRequest[] {

@@ -37,6 +37,7 @@
 // 是用户明确定过调的红线，有测试守着。
 import { toast } from "./kit/toast";
 import { copyText } from "./copy-table";
+import { writeClipboard } from "./clipboard";
 
 export interface PasteSpec {
   /** 待贴文本。**实时求值**——别名随表单变、钩子随形态选择变、wrapper 恒定。 */
@@ -139,14 +140,7 @@ export function buildPasteBlock(spec: PasteSpec): PasteBlock {
       });
       return;
     }
-    const clip = navigator.clipboard;
-    if (!clip) {
-      toast(copyText("pasteBlock.buildPasteBlock.copyFailed"), copyText("pasteBlock.buildPasteBlock.noClipboard"), {
-        level: "error",
-      });
-      return;
-    }
-    void clip.writeText(v).then(
+    void writeClipboard(v).then(
       () =>
         toast(
           copyText("pasteBlock.buildPasteBlock.copied"),

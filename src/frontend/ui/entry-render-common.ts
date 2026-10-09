@@ -8,6 +8,7 @@
  */
 import { installExternalLinkDelegation } from "./entry-common";
 import { copyText } from "./copy-table";
+import { writeClipboard } from "./clipboard";
 
 /**
  * 外链 + 代码块复制的全局 click 代理。主窗口与独立 viewer 窗口共用。
@@ -24,7 +25,7 @@ export function installGlobalClickDelegation(): void {
     const pre = block?.querySelector("pre");
     const text = pre?.textContent ?? "";
     if (!text) return;
-    void navigator.clipboard.writeText(text).then(
+    void writeClipboard(text).then(
       () => {
         btn.classList.add("copied");
         btn.textContent = copyText("render.codeBlock.copied");
@@ -35,6 +36,8 @@ export function installGlobalClickDelegation(): void {
         }, 1200);
       },
       () => {
+        // 写不进：把那段代码选中（就地全选，按一下复制键就有），按钮说「复制失败」。
+        if (pre) window.getSelection()?.selectAllChildren(pre);
         btn.textContent = copyText("render.codeBlock.failed");
         // 调度：一次性 —— 1.2s 后把「失败」还原成「复制」
         window.setTimeout(() => (btn.textContent = copyText("render.codeBlock.copy")), 1200);

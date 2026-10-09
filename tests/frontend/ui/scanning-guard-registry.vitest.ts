@@ -103,7 +103,6 @@ const BARE_INCLUDES: readonly string[] = [
   'tests/frontend/ui/generated-boundary-guard.vitest.ts :: own.includes("skip_serializing_if"',
   'tests/frontend/ui/gray-light-wiring.vitest.ts :: viewer.includes("markTmuxIdle"',
   'tests/frontend/ui/gray-light-wiring.vitest.ts :: viewer.includes("follow: {"',
-  'tests/frontend/ui/paste-block-guard.vitest.ts :: code.includes("writeText"',
   'tests/frontend/ui/paste-block.vitest.ts :: block.includes("**"',
   'tests/frontend/ui/settings/accounts-section.vitest.ts :: code.includes("api_key"',
 ];

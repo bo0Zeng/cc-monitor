@@ -9,6 +9,7 @@
 
 import { fullTitle } from "../../../src/frontend/ui/session-face";
 import { type Mock, describe, it, expect, vi, beforeEach, afterEach, onTestFinished } from "vitest";
+import { clipboardWrites } from "../../test-support/clipboard-fake";
 
 // ★ audit-0805 F15 第 1 步：**先让「每行调了几次」变得可测**。
 //
@@ -2373,11 +2374,9 @@ describe("：↗ 远端那一格按顺序问三方", () => {
     expect(pop()!.dataset.shade).toBe("red");
     expect(popText()).toContain("上传失败");
     expect(popButtons()).toEqual([copyText("front.act.retry"), copyText("detail.act.copy")]);
-    const copied = vi.fn(() => Promise.resolve());
-    Object.defineProperty(navigator, "clipboard", { value: { writeText: copied }, configurable: true });
     [...pop()!.querySelectorAll("button")].find((b) => b.textContent === copyText("detail.act.copy"))!.click();
     await new Promise((r) => setTimeout(r, 0));
-    expect(copied.mock.calls.map((c) => (c as unknown[])[0])).toEqual([`${copyText("front.title.updateFailed", { machine: "devbox" })}\n码：refused`]);
+    expect(clipboardWrites(vi.mocked(invoke))).toEqual([`${copyText("front.title.updateFailed", { machine: "devbox" })}\n码：refused`]);
     [...pop()!.querySelectorAll("button")].find((b) => b.textContent === copyText("front.act.retry"))!.click();
     for (let i = 0; i < 4; i++) await new Promise((r) => setTimeout(r, 0));
     expect(vi.mocked(updateBackendOf), "失败态的［重试］是再更新一次").toHaveBeenCalledTimes(2);

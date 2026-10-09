@@ -7,6 +7,7 @@
  * - `kit-detail`：［复制详情］各态（默认 · 已复制 · 复制失败就地展开 · 窄 · 没有详情）＋ 错误条 · 行内 · 表单对话框里的那一颗。
  * - `kit-detail-toast`：带详情的出错 toast（动作第二行）· 合流 ×N · 后端 ERROR 那条 · 一整行命令比 toast 宽（行内折、不截）· 没有详情的 toast 版式不变。
  */
+import { mockIPC } from "@tauri-apps/api/mocks";
 import { button, setBusy, setDisabled, buttonRow } from "../../src/frontend/ui/kit/button";
 import { field } from "../../src/frontend/ui/kit/field";
 import { toggleSwitch, checkbox } from "../../src/frontend/ui/kit/switch";
@@ -286,12 +287,15 @@ const BUS_DETAIL = (at: string): string =>
     "原话：cc-list did not exit within 8s; process group killed",
   ].join("\n");
 
-/** 剪贴板换成写得进 / 写不进的那一份（各态要真点出来）。 */
+/** 剪贴板换成写得进 / 写不进的那一份（各态要真点出来）：写剪贴板经壳（`clipboard_write`），这里替壳答。 */
 function clipboard(ok: boolean): void {
-  Object.defineProperty(navigator, "clipboard", {
-    configurable: true,
-    value: { writeText: () => (ok ? Promise.resolve() : Promise.reject(new Error("denied"))) },
-  });
+  mockIPC((cmd) =>
+    cmd === "clipboard_write"
+      ? ok
+        ? null
+        : Promise.reject({ said: copyText("rsShellCmd.clipboard.failed"), detail: "原话：Clipboard is occupied" })
+      : Promise.reject(`kit: 没有这条命令 ${cmd}`),
+  );
 }
 
 async function details(): Promise<void> {

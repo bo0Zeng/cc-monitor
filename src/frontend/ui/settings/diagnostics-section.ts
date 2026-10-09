@@ -19,6 +19,7 @@ import { clearRestartNeeded, markRestartNeeded } from "./restart-notice";
 import { restartNowButton } from "./restart-now";
 import { unknownConfigKeys } from "../config";
 import { copyText } from "../copy-table";
+import { writeClipboard } from "../clipboard";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { homeDir } from "@tauri-apps/api/path";
 import type { DiagnosticsConfig } from "../generated/DiagnosticsConfig";
@@ -252,7 +253,7 @@ export class DiagnosticsSection {
     if (!r) return;
     this.fallback.hidden = true;
     try {
-      await navigator.clipboard.writeText(r.text);
+      await writeClipboard(r.text);
       toast(copyText("diagnostics.copy.done"), "", { level: "info" });
     } catch {
       const box = document.createElement("textarea");

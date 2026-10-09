@@ -3,6 +3,7 @@
  * 原文框尽量露全；不让焦点把条滚出视野。
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { fakeClipboard } from "../../../test-support/clipboard-fake";
 import { copyDetailButton } from "../../../../src/frontend/ui/kit/detail";
 
 type Box = { top: number; bottom: number };
@@ -42,15 +43,17 @@ async function expandIn(hostTop: number, scrolled: number, boxH = 160): Promise<
 }
 
 describe("复制详情就地展开：出错那一块留在视野里", () => {
+  let clip: ReturnType<typeof fakeClipboard>;
   beforeEach(() => {
     vi.useFakeTimers();
     document.body.innerHTML = "";
-    Object.defineProperty(navigator, "clipboard", {
-      configurable: true,
-      value: { writeText: () => Promise.reject(new Error("denied")) },
-    });
+    clip = fakeClipboard();
+    clip.refuse();
   });
-  afterEach(() => vi.useRealTimers());
+  afterEach(() => {
+    clip.restore();
+    vi.useRealTimers();
+  });
 
   it("★ 框落到下沿外 ⇒ 往下滚到露全，但条顶不出上沿；焦点不自己滚", async () => {
     const r = await expandIn(150, 0);

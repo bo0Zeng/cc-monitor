@@ -20,6 +20,8 @@ import {
 } from "./ipc/chan-caller";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { toast } from "./kit/toast";
+import { writeClipboard } from "./clipboard";
+import { detailOf, failSaid } from "./kit/detail";
 import { openSettingsWindow } from "./settings/open-settings";
 
 /** 期限：`terminal-ssh` 是本机后端里的纯计算（不拨号），给足本机那条流的往返即可。 */
@@ -83,8 +85,8 @@ export function sayNoTerminal(err: NoTerminalWindow): void {
       {
         label: copyText("terminalOpen.noTerminal.copy"),
         run: () =>
-          void navigator.clipboard.writeText(err.command).catch((e: unknown) => {
-            toast(copyText("terminalOpen.noTerminal.copyFailed"), err.command, { level: "error", detail: String(e) });
+          void writeClipboard(err.command).catch((e: unknown) => {
+            toast(failSaid(copyText("terminalOpen.noTerminal.copyFailed"), e), err.command, { level: "error", detail: detailOf(e) });
           }),
       },
     ],
