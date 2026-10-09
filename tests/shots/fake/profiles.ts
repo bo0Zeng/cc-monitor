@@ -47,6 +47,9 @@ const item = (key: string, vals: string[], line: number): Item => ({
   line,
 });
 
+/** 那台账号库里的号（表单账号那一格的分段按钮照这张排）。场景按这张取字，不抄字面。 */
+export const PROFILE_ACCOUNTS = ["a", "lab", "team", "work"];
+
 function book(): P[] {
   let line = 3;
   const p = (name: string, from: string | null, ...own: [string, string[]][]): P => {
@@ -195,7 +198,7 @@ export function profilesOps(): Record<string, OpHandler> {
         migrated: st === "migrated" ? { count: 11, path: PATH, skipped: [copyText("beProfile.migrate.restToCcm", { name: "cca" })] } : null,
         binDir: `${HOME}/.cc-monitor/bin`,
         tmux: true,
-        accounts: ["a", "lab", "team", "work"],
+        accounts: PROFILE_ACCOUNTS,
       };
     },
     "profiles-resolve": (_o, req, w) => {
