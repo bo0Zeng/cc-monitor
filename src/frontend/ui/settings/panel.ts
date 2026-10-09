@@ -842,6 +842,8 @@ export class SettingsPanel {
       connection: parts?.connection,
       ccMonitor: cc,
       menu: () => this.remoteSection?.menuFor(pageId) ?? [],
+      // 卡头问题行的修法：远端那几颗与机器列表那一行同一个口子；本机只有重试 / 更新（宿主做）。
+      onFix: (fix) => (local ? void this.runFix(pageId, fix) : this.remoteSection?.runFix(pageId, fix)),
     });
     if (parts) page.slots.config.appendChild(parts.terminal);
     this.machinePages.set(pageId, page);
