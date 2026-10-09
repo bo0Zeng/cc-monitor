@@ -306,9 +306,11 @@ function nowBlock(o: Open, entry: SessionRotationEntry | undefined, quota: Quota
 
 const START: RotationSlot = { start: true };
 
+type Row = { account: string; start: boolean; on: boolean };
+
 /** 这一份轮换画成哪几行：顺序里的（占位换成起始号）＋ 这台账号库里其余的号（不勾，排后面）。 */
-function rowsOf(r: Rotation, start: string, quota: QuotaRead | null, agent: string): { account: string; start: boolean; on: boolean }[] {
-  const out: { account: string; start: boolean; on: boolean }[] = [];
+function rowsOf(r: Rotation, start: string, quota: QuotaRead | null, agent: string): Row[] {
+  const out: Row[] = [];
   const seen = new Set<string>();
   for (const slot of r.order) {
     const a = typeof slot === "string" ? slot : start;
@@ -325,21 +327,24 @@ function rowsOf(r: Rotation, start: string, quota: QuotaRead | null, agent: stri
   return out;
 }
 
-/** 行的勾 / 序改了 ⇒ 一份新的轮换（占位留在原位；序里没有的号勾上时排到末尾）。 */
-function withRows(r: Rotation, rows: { account: string; start: boolean; on: boolean }[]): Rotation {
-  const order: RotationSlot[] = [];
-  const enabled: string[] = [];
-  for (const row of rows) {
-    if (row.start) {
-      order.push(START);
-      continue;
-    }
-    if (!row.on && !r.order.includes(row.account)) continue;
-    order.push(row.account);
-    if (row.on) enabled.push(row.account);
-  }
-  if (!order.some((x) => typeof x !== "string")) order.unshift(START);
+/** 勾 / 不勾一个号 ⇒ 只改 `enabled`；`order` 逐字不动（序里没有的号勾上时排到末尾），不添占位。 */
+function toggled(r: Rotation, account: string, on: boolean): Rotation {
+  const enabled = on ? (r.enabled.includes(account) ? r.enabled : [...r.enabled, account]) : r.enabled.filter((a) => a !== account);
+  const order = on && !r.order.includes(account) ? [...r.order, account] : r.order;
   return { ...r, order, enabled };
+}
+
+/**
+ * 把第 `from` 行挪到 `to` ⇒ 新的 `order`：按行的新次序写回原来就有的那几格（占位只在原来有时才有；起始号若另外具名在序里，
+ * 那一格跟在占位后面，不丢）；序外的行只有被挪的那一行才进序。`enabled` 不动。
+ */
+function moved(r: Rotation, rows: Row[], from: number, to: number): Rotation {
+  const order: RotationSlot[] = [];
+  move(rows, from, to).forEach((row) => {
+    if (row.start) order.push(START);
+    if (r.order.includes(row.account) || (row === rows[from] && !row.start)) order.push(row.account);
+  });
+  return { ...r, order };
 }
 
 function quotaOf(quota: QuotaRead | null, agent: string, account: string): QuotaShow | null {
@@ -564,8 +569,7 @@ function rotationList(o: Open, host: AcctPanelHost, read: Present, r: Rotation, 
     box.disabled = !editable || locked || q?.login === "needsLogin" || q?.login === "needsKey";
     if (row.account === cur && editable) attachTooltip(line, copyText("acct.rot.lockHint"));
     box.addEventListener("change", () => {
-      const next = rows.map((x, k) => (k === i ? { ...x, on: box.checked } : x));
-      void save(o, host, { custom: withRows(r, next) });
+      void save(o, host, { custom: toggled(r, row.account, box.checked) });
     });
     if (editable) line.appendChild(handle);
     line.append(box, acctAvatar(row.account), el("span", s.acctRowName, accountLabel(row.account)));
@@ -585,9 +589,9 @@ function rotationList(o: Open, host: AcctPanelHost, read: Present, r: Rotation, 
         ev.preventDefault();
         const to = ev.key === "ArrowUp" ? i - 1 : i + 1;
         if (to < 0 || to >= rows.length) return;
-        void save(o, host, { custom: withRows(r, move(rows, i, to)) });
+        void save(o, host, { custom: moved(r, rows, i, to) });
       });
-      handle.addEventListener("pointerdown", (ev) => startDrag(ev, o, host, list, elems, i, (to) => void save(o, host, { custom: withRows(r, move(rows, i, to)) })));
+      handle.addEventListener("pointerdown", (ev) => startDrag(ev, o, host, list, elems, i, (to) => void save(o, host, { custom: moved(r, rows, i, to) })));
     }
     elems.push(line);
     list.appendChild(line);

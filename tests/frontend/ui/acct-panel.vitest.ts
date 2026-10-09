@@ -121,6 +121,46 @@ describe("账号面板", () => {
     expect(writeSessionRotation).toHaveBeenCalledWith("<local>", ["s1"], { custom: { order: [{ start: true }, "team", "api"], enabled: ["team", "api"], when: "full", atLimit: "continue" } });
   });
 
+  describe("勾 / 不勾只改 enabled，order 逐字不变（不凭空插「起始账号」那一格）", () => {
+    const boxOf = (name: string): HTMLInputElement => panel().querySelector<HTMLInputElement>(`input[aria-label="${copyText("acct.row.checkAria", { name })}"]`)!;
+    const lastWrite = (): Rotation => (writeSessionRotation.mock.calls.at(-1)![2] as { custom: Rotation }).custom;
+
+    it("没有占位的那份：勾上序外的号 ⇒ 只排到末尾、不插占位", async () => {
+      seed({}, { order: ["team", "work"], enabled: ["team", "work"], when: "full", atLimit: "continue" });
+      openAccountPanel("s1", "<local>", host);
+      boxOf("api").click();
+      await flush();
+      expect(lastWrite().order).toEqual(["team", "work", "api"]);
+      expect(lastWrite().enabled).toEqual(["team", "work", "api"]);
+    });
+
+    it("没有占位的那份：取消勾 ⇒ order 原样", async () => {
+      seed({}, { order: ["team", "work"], enabled: ["team", "work"], when: "full", atLimit: "continue" });
+      openAccountPanel("s1", "<local>", host);
+      boxOf("team").click();
+      await flush();
+      expect(lastWrite().order).toEqual(["team", "work"]);
+      expect(lastWrite().enabled).toEqual(["work"]);
+    });
+
+    it("占位 ＋ 起始号也具名在序里：取消勾别的号 ⇒ 具名那格不丢", async () => {
+      seed({}, { order: [{ start: true }, "team", "work"], enabled: ["team", "work"], when: "full", atLimit: "continue" });
+      openAccountPanel("s1", "<local>", host);
+      boxOf("team").click();
+      await flush();
+      expect(lastWrite().order).toEqual([{ start: true }, "team", "work"]);
+      expect(lastWrite().enabled).toEqual(["work"]);
+    });
+
+    it("没有占位的那份：Alt+↓ 移位 ⇒ 只换这两格，不插占位", async () => {
+      seed({}, { order: ["team", "work"], enabled: ["team", "work"], when: "full", atLimit: "continue" });
+      openAccountPanel("s1", "<local>", host);
+      panel().querySelector<HTMLElement>('[data-acct-row="team"]')!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", altKey: true, bubbles: true }));
+      await flush();
+      expect(lastWrite().order).toEqual(["work", "team"]);
+    });
+  });
+
   it("无号可换：「满」触发时两态灰着；≥N% 时点「停」⇒ 写 atLimit stop", async () => {
     seed({}, { order: [{ start: true }], enabled: [], when: "full", atLimit: "continue" });
     openAccountPanel("s1", "<local>", host);
