@@ -678,17 +678,21 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     parse_px: NONE,
     parse_shadow: NONE,
   },
-  // 前端宿主原语（两个前端共用、后端不链）：自有状态文件的原子写（含交给 Win32 的长路径形）· 窗口夹进工作区；TS 侧零孪生。
+  // 前端宿主原语（两个前端共用、后端不链）：自有状态文件的原子写 · 窗口夹进工作区；TS 侧零孪生。
   "host-core": {
     atomic_write_json: NONE,
     fit_into_work_area: NONE,
     // 主窗 / 设置窗摆进工作区正中（宿主那一侧用；TS 侧没有孪生）。
     center_in_work_area: NONE,
-    win32_long_path: NONE,
     // 本机时区偏移 · 这一份编给的系统与架构（文件窗口画修改时间 · monitor 写「复制详情」的时刻与「本机」那一行）；TS 侧零孪生。
     local_offset_at: NONE,
     OS: NONE,
     ARCH: NONE,
+  },
+  // 交给 Win32 的路径（长路径前缀）：后端 · monitor · 文件窗口 · creds-core 共用那一份；TS 侧不碰 Win32。
+  "win-path-core": {
+    win32_long_path: NONE,
+    win32_path: NONE,
   },
   "relay-route-core": {
     // 后端住在 `~/.cc-monitor` 里的那几样的相对路径（后端各写者引它、monitor 数据位置页按它列）；TS 侧没有孪生。
@@ -818,8 +822,8 @@ const CARGO_TOMLS_TOP = [
   "src/frontend/filewin/Cargo.toml",
   "src/backend/Cargo.toml",
 ];
-/** 那几份里 `guard-core = …` 依赖行的总数（恒等计数：今天 monitor · 文件窗口 · 后端 · creds-core 各一；4 → 5 多的是文件窗口包；5 → 4 少的是全景小程序那一份，随它整棵删了）。 */
-const GUARD_CORE_DEP_LINES = 4;
+/** 那几份里 `guard-core = …` 依赖行的总数（恒等计数：monitor · 文件窗口 · 后端 · creds-core · win-path-core 各一）。 */
+const GUARD_CORE_DEP_LINES = 5;
 
 const CRATES_ROOT = "src/common";
 

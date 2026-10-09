@@ -210,17 +210,14 @@ impl Drop for DirLock {
 /// 所以这里走 MoveFileExW(MOVEFILE_REPLACE_EXISTING)；非 Windows 走 std::fs::rename。
 #[cfg(windows)]
 pub(crate) fn atomic_replace(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
-    use std::os::windows::ffi::OsStrExt;
     use windows::core::PCWSTR;
     use windows::Win32::Storage::FileSystem::{MoveFileExW, MOVEFILE_REPLACE_EXISTING};
 
-    // 带长路径前缀（`host_core::win32_long_path`）：过 260 字符的路径照样换得上。
-    let wide = |p: &std::path::Path| -> std::io::Result<Vec<u16>> {
-        let mut w = host_core::win32_long_path(std::path::absolute(p)?.as_os_str().encode_wide());
-        w.push(0);
-        Ok(w)
-    };
-    let (src_w, dst_w) = (wide(src)?, wide(dst)?);
+    // 带长路径前缀：过 260 字符的路径照样换得上。
+    let (src_w, dst_w) = (
+        win_path_core::win32_path(src)?,
+        win_path_core::win32_path(dst)?,
+    );
     unsafe {
         MoveFileExW(
             PCWSTR(src_w.as_ptr()),

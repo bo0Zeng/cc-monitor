@@ -167,7 +167,6 @@ pub fn create_private(p: &std::path::Path) -> std::io::Result<std::fs::File> {
 
 #[cfg(all(windows, feature = "harden"))]
 fn windows_create_owner_only(p: &std::path::Path) -> std::io::Result<std::fs::File> {
-    use std::os::windows::ffi::OsStrExt;
     use std::os::windows::io::FromRawHandle;
     use windows::core::PCWSTR;
     use windows::Win32::Foundation::{LocalFree, BOOL, HLOCAL};
@@ -184,11 +183,7 @@ fn windows_create_owner_only(p: &std::path::Path) -> std::io::Result<std::fs::Fi
         .encode_utf16()
         .chain(std::iter::once(0))
         .collect();
-    let path_w: Vec<u16> = p
-        .as_os_str()
-        .encode_wide()
-        .chain(std::iter::once(0))
-        .collect();
+    let path_w = win_path_core::win32_path(p)?;
     unsafe {
         let mut psd = PSECURITY_DESCRIPTOR::default();
         ConvertStringSecurityDescriptorToSecurityDescriptorW(
@@ -277,7 +272,6 @@ fn current_user_sid() -> Result<String, String> {
 
 #[cfg(all(windows, feature = "harden"))]
 fn windows_probe(p: &std::path::Path) -> Protection {
-    use std::os::windows::ffi::OsStrExt;
     use windows::core::{PCWSTR, PWSTR};
     use windows::Win32::Foundation::{LocalFree, HLOCAL};
     use windows::Win32::Security::Authorization::{
@@ -286,11 +280,17 @@ fn windows_probe(p: &std::path::Path) -> Protection {
     };
     use windows::Win32::Security::{DACL_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR};
 
-    let path_w: Vec<u16> = p
-        .as_os_str()
-        .encode_wide()
-        .chain(std::iter::once(0))
-        .collect();
+    let path_w = match win_path_core::win32_path(p) {
+        Ok(w) => w,
+        Err(e) => {
+            return Protection::Undetermined {
+                why: copy_text(
+                    "credsPerm.windowsProbe.unreadable",
+                    &[("rc", &e.raw_os_error().unwrap_or(0).to_string())],
+                ),
+            }
+        }
+    };
     unsafe {
         let mut psd = PSECURITY_DESCRIPTOR::default();
         let rc = GetNamedSecurityInfoW(

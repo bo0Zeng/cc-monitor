@@ -112,6 +112,8 @@ acct-core = { path = "../common/acct-core" }
 #   （`readonly_guard::g6_dependency_signoff` 那条边界判据 ＋ `relay::creds_guard` 那条 feature 判据）。
 # 顺带：开了之后 Windows 上 `perm::probe` 也读得了 DACL（先前那条「查不出来」的代价没了）。
 creds-core = { path = "../common/creds-core", features = ["harden"] }
+# 交给 Win32 的路径（长路径前缀）只从它来：不覆盖改名那一处用；仓内 crate、零依赖。
+win-path-core = { path = "../common/win-path-core" }
 # U8c-2b-0：POSIX 单引号 quote 的唯一实现（账本 S5 收口）。
 # 本 crate 只用它一处（`control/tmux_hook::sq`）；U8c-2c 起载荷渲染也走它。
 shell-quote-core = { path = "../common/shell-quote-core" }
