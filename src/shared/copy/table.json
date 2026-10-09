@@ -12507,7 +12507,7 @@
     "rsDataPaths.backend.relayPassKey": {
       "kind": "body",
       "role": "说明",
-      "zh": "中转只许直通的钥匙 · 地址进命令行参数的 agent 用 · 删后要重启后端",
+      "zh": "中转直通专用钥匙 · 地址写进命令行的 agent 用 · 删后要重启后端",
       "args": []
     },
     "rsDataPaths.backend.listenToken": {
@@ -16001,7 +16001,7 @@
     "beUpstreamEndpoint.optin.noAgent": {
       "kind": "error",
       "role": "报错",
-      "zh": "这一家 agent 不能这样接中转",
+      "zh": "该 agent 不支持这样接中转",
       "args": []
     },
     "beUpstreamEndpoint.optin.notFile": {
