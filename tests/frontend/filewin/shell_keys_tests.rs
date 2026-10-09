@@ -1352,3 +1352,130 @@ fn no_runtime(e: &str) -> bool {
     .iter()
     .any(|k| copy_core::copy_matches(&format!("rsFilewinShell.{k}.noRuntime"), e))
 }
+
+// ════════════════════════════════════════════════════════════════════════
+// 就地改名那一格：失焦什么时候算「提交」—— 在途 · 刚失败 · 点红字那块
+// ════════════════════════════════════════════════════════════════════════
+
+/// 那一趟回来的失败（带后端写好的复制详情，所以红字那块里有［复制详情］）。
+const DENIED: &str = "rename refused by the peer";
+
+/// 「a.bin」摆成就地改名（红字块盖在下一行 b.bin 上，「点别处」点的是再往下的 f.bin）、改成 `typed`，然后让那一趟带着 [`DENIED`] 回来（经生产那个 `settle_inline`）。
+fn failed_rename(d: &mut Drive, typed: &str) -> FileWindow {
+    let mut w = window(vec![
+        file("a.bin"),
+        file("b.bin"),
+        file("e.bin"),
+        file("f.bin"),
+    ]);
+    d.pick(&mut w, "a.bin", NONE);
+    d.key(&mut w, egui::Key::F2, NONE);
+    d.frame(&mut w, Vec::new());
+    w.write_prompt.as_mut().expect("F2 没摆出改名那一格").text = typed.to_string();
+    w.land_inline_failure(crate::source::Failed {
+        code: Some("denied".into()),
+        said: DENIED.into(),
+        detail: "code: denied".into(),
+    });
+    d.frame(&mut w, Vec::new());
+    d.frame(&mut w, Vec::new());
+    assert_eq!(
+        w.prompt_error().as_deref(),
+        Some(DENIED),
+        "失败没挂到那一格下面"
+    );
+    w
+}
+
+/// 窗口里没有运行时 ⇒ 再提交一次那一格下面就换成「没有运行时」那句：看它换没换，就知道提交了没有。
+fn resubmitted(w: &FileWindow) -> bool {
+    w.prompt_error().as_deref() != Some(DENIED)
+}
+
+/// 在途（那一趟还没回）：点别处不提交、那一格留着。
+#[test]
+fn an_inline_rename_in_flight_does_not_resubmit_on_blur() {
+    let mut w = window(vec![
+        file("a.bin"),
+        file("b.bin"),
+        file("e.bin"),
+        file("f.bin"),
+    ]);
+    let mut d = Drive::new();
+    d.pick(&mut w, "a.bin", NONE);
+    d.key(&mut w, egui::Key::F2, NONE);
+    d.frame(&mut w, Vec::new());
+    w.inline_busy = true;
+    d.pick(&mut w, "f.bin", NONE);
+    assert!(w.write_prompt().is_some(), "在途时点别处把那一格收掉了");
+    assert!(
+        w.inline_busy && w.prompt_error().is_none(),
+        "在途时点别处又提交了一次"
+    );
+}
+
+/// 刚失败、名字没动过：点别处不再发一趟，那一格与红字留着；回车照样重试。
+#[test]
+fn after_a_failure_blur_with_the_same_name_does_not_resubmit_but_enter_does() {
+    let mut d = Drive::new();
+    let mut w = failed_rename(&mut d, "x.bin");
+    d.pick(&mut w, "f.bin", NONE);
+    assert!(
+        !resubmitted(&w),
+        "失败之后名字没改，点别处又把同一个名字发了一趟"
+    );
+    assert!(
+        w.write_prompt().is_some(),
+        "点别处把那一格收掉了（红字跟着没了）"
+    );
+    let mut w = failed_rename(&mut d, "x.bin");
+    d.key(&mut w, egui::Key::Enter, NONE);
+    assert!(resubmitted(&w), "回车是明说要再试，却没提交");
+}
+
+/// 刚失败、改了一个字：点别处照旧 ＝ 提交。
+#[test]
+fn after_a_failure_an_edited_name_submits_on_blur_again() {
+    let mut d = Drive::new();
+    let mut w = failed_rename(&mut d, "x.bin");
+    w.write_prompt.as_mut().unwrap().text = "y.bin".into();
+    d.frame(&mut w, Vec::new());
+    d.pick(&mut w, "f.bin", NONE);
+    assert!(resubmitted(&w), "改过名字之后点别处没提交");
+}
+
+/// 红字那块不算「别处」：点里面的［复制详情］复制得到、不提交，焦点回输入框。
+#[test]
+fn clicking_copy_detail_under_the_inline_cell_neither_resubmits_nor_drops_focus() {
+    let mut d = Drive::new();
+    // 名字改过一个字 ⇒ 失焦本来算提交：这一格判的是「点在红字块里」那一条，不靠「刚失败没改字」那条。
+    let mut w = failed_rename(&mut d, "x.bin");
+    w.write_prompt.as_mut().unwrap().text = "y.bin".into();
+    d.frame(&mut w, Vec::new());
+    let label = format!(
+        "{} {}",
+        egui_phosphor::regular::COPY,
+        copy_text("detail.act.copy", &[])
+    );
+    d.click_name(&mut w, &label, egui::PointerButton::Primary, NONE);
+    assert!(
+        !resubmitted(&w),
+        "点［复制详情］被当成了点别处，又提交了一次"
+    );
+    assert!(w.write_prompt().is_some(), "点［复制详情］把那一格收掉了");
+    let painted = d.frame(&mut w, Vec::new());
+    assert!(
+        !rects_of(
+            &painted,
+            &format!(
+                "{} {}",
+                egui_phosphor::regular::CHECK,
+                copy_text("detail.act.copied", &[])
+            )
+        )
+        .is_empty(),
+        "点了［复制详情］没出「已复制」"
+    );
+    let id = d.ctx.memory(|m| m.focused());
+    assert!(id.is_some(), "点完［复制详情］焦点没回输入框");
+}

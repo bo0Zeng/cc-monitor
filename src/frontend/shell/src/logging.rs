@@ -51,6 +51,7 @@
 //! - WorkerGuard drop 才会 flush 缓冲 → 必须挂在 state 上（与 app 同生命周期）
 
 use crate::copy_table::copy_text;
+use crate::detail::Said;
 use parking_lot::{Mutex, RwLock};
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
@@ -211,7 +212,7 @@ impl LoggingState {
 
     /// 更新配置：reload level + 切 error_toast 开关 + 持久化到 config.json。
     /// log_enabled / max_files 改变需要重启（layer 启动时定型）→ 返回 RestartHint。
-    pub fn update_config(&self, new_cfg: DiagnosticsConfig) -> Result<RestartHint, String> {
+    pub fn update_config(&self, new_cfg: DiagnosticsConfig) -> Result<RestartHint, Said> {
         let old = self.cfg.read().clone();
         let mut hint = RestartHint::None;
 
@@ -242,8 +243,7 @@ impl LoggingState {
         }
 
         // 4. 写回 config.json
-        write_diagnostics_to_config(&self.monitor_data_dir, &new_cfg)
-            .map_err(|e| format!("save diagnostics config failed: {e}"))?;
+        write_diagnostics_to_config(&self.monitor_data_dir, &new_cfg)?;
         *self.cfg.write() = new_cfg;
         Ok(hint)
     }
@@ -503,11 +503,12 @@ fn read_diagnostics_from_config(monitor_data_dir: &Path) -> DiagnosticsConfig {
 fn write_diagnostics_to_config(
     monitor_data_dir: &Path,
     cfg: &DiagnosticsConfig,
-) -> Result<(), String> {
+) -> Result<(), Said> {
     // 不再自己读-改-写整份：`config.json` 只有一个写函数（`config::patch_config_at`，
     //   进程级锁 ＋ 只动 `diagnostics` 这一个键）。从前这里与前端的 `save_config` 各读各写， 〔散文墓碑〕
     //   设置窗存诊断的同一拍主窗存 tab 栏 ⇒ 后写的整份盖掉先写的键。本文件那份 `atomic_replace` 副本随之删了。
-    let value = serde_json::to_value(cfg).map_err(|e| e.to_string())?;
+    let value = serde_json::to_value(cfg)
+        .map_err(|e| Said::with_raw(copy_text("rsConfig.write.encodeFailed", &[]), &e))?;
     let edit = crate::config::ConfigEdit::Set {
         path: vec!["diagnostics".to_string()],
         value,
@@ -518,11 +519,14 @@ fn write_diagnostics_to_config(
             match e {
                 // 〔D4 / D7〕读不懂 ⇒ **不写**，说清为什么。从前这里退成 `{}` 再整份写回 ——
                 //   用户手填的那份（哪怕只是少了一个逗号）连同里面别的设置被静默盖成只剩 `diagnostics` 一格。
-                crate::config::ConfigWriteError::Unreadable { path, detail } => copy_text(
-                    "rsLogging.diagnostics.badConfig",
-                    &[("path", &path.display().to_string()), ("e", &detail)],
+                crate::config::ConfigWriteError::Unreadable { path, detail } => Said::with_raw(
+                    copy_text(
+                        "rsLogging.diagnostics.badConfig",
+                        &[("path", &path.display().to_string())],
+                    ),
+                    detail,
                 ),
-                other => other.to_string(),
+                other => other.into_said(),
             }
         })
 }
