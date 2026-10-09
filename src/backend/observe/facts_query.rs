@@ -948,13 +948,13 @@ fn short_tokens(n: u64) -> String {
 fn dress_spend(s: &mut Spend) {
     let usd = format!("{:.2}", s.cost_micros as f64 / 1e6);
     s.cost_text = match (s.cost_micros, s.unpriced.is_empty()) {
-        (0, false) => copy_core::copy_text("beSpend.noPrice", &[]),
-        (1..=4_999, true) => copy_core::copy_text("beSpend.tiny", &[]),
-        (_, true) => copy_core::copy_text("beSpend.cost", &[("usd", &usd)]),
-        (_, false) => copy_core::copy_text("beSpend.costPartial", &[("usd", &usd)]),
+        (0, false) => copy_core::copy_text("beSpend.cost.none", &[]),
+        (1..=4_999, true) => copy_core::copy_text("beSpend.cost.tiny", &[]),
+        (_, true) => copy_core::copy_text("beSpend.cost.priced", &[("usd", &usd)]),
+        (_, false) => copy_core::copy_text("beSpend.cost.partial", &[("usd", &usd)]),
     };
     s.tokens_text = copy_core::copy_text(
-        "beSpend.tokens",
+        "beSpend.tokens.line",
         &[
             ("input", &short_tokens(s.input)),
             ("output", &short_tokens(s.output)),

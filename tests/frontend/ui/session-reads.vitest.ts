@@ -226,8 +226,8 @@ describe("〔STC〕第五问：会话事实", () => {
         requests: 1,
         costMicros: 0,
         unpriced: ["m-g"],
-        costText: "没有定价",
-        tokensText: "输入 1 · 输出 0 · 读缓存 3 · 写缓存 2",
+        costText: copyText("beSpend.cost.none"),
+        tokensText: copyText("beSpend.tokens.line", { input: "1", output: "0", read: "3", write: "2" }),
         last: { id: "", tokens: [1, 0, 3, 2, 0], costMicros: 0 },
       },
     });

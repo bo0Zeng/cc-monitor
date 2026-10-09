@@ -482,7 +482,7 @@ export function defaultOps(): Record<string, OpHandler> {
           if (!(Array.isArray(c) && (c as { type: string }[]).some((b) => b.type === "tool_result"))) retries.at(-1)!.outcome = "interrupted";
         }
       }
-      return { agent: s?.agent ?? "claude", end: layout(recs).end, forkedFrom: null, projectDir: s?.cwd ?? null, touchedFiles: [...touched], usage, writers: live ? [4242] : [], pending: steps, lastSay, needs, handedBack, retries };
+      return { agent: s?.agent ?? "claude", end: layout(recs).end, forkedFrom: null, projectDir: s?.cwd ?? null, touchedFiles: [...touched], usage, writers: live ? [4242] : [], pending: steps, lastSay, needs, handedBack, retries, permissionMode: null, spend: null };
     },
     "history-run": (_o, req, w) => {
       const s = sessionByPath(w, req.parent);

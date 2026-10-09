@@ -472,6 +472,8 @@ describe("上下文占用：状态栏与监控板读同一个上限（后端定�
     needs: null,
     handedBack: [],
     retries: [],
+    permissionMode: null,
+    spend: null,
     usage: { promptTokens: 350_000, model: "claude-opus-5-5", peakPromptTokens: 350_000, limit, limitFrom },
   });
   it("中转说是 1M：35%（不是 175%）；状态栏与监控板同一个数", () => {

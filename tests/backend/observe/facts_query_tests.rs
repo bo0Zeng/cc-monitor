@@ -869,3 +869,21 @@ fn the_permission_mode_is_the_last_one_written() {
         None
     );
 }
+
+/// 许可档照原值交、不翻译不收窄：六个真值与别名 `manual` 各走一遍。
+#[test]
+fn every_permission_mode_value_passes_through_as_written() {
+    for m in [
+        "default",
+        "plan",
+        "acceptEdits",
+        "bypassPermissions",
+        "dontAsk",
+        "auto",
+        "manual",
+    ] {
+        let text =
+            jsonl(&[json!({"type": "permission-mode", "permissionMode": m, "sessionId": "s"})]);
+        assert_eq!(scan_all(&text).permission_mode.as_deref(), Some(m));
+    }
+}
