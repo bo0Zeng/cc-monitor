@@ -2840,12 +2840,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         //   （`remote-launch-run.vitest.ts`），不算死名 ⇒ 挂在它上面的墓碑不进本表。
         // 公钥推送那条 Tauri 命令退役（本机后端 `pubkey-push`）：点它旧名讲来历的散文挂墓碑。
         ("src/backend/assets/pubkey.rs", "push_public_key", 1),
-        ("src/frontend/ui/pubkey-push.ts", "push_public_key", 1),
-        (
-            "tests/frontend/ui/pubkey-push.vitest.ts",
-            "push_public_key",
-            1,
-        ),
         (
             "tests/frontend/shell/parity_ledger_tests.rs",
             "push_public_key",
@@ -4457,7 +4451,7 @@ fn every_prose_tombstone_mark_is_registered() {
         // 新行：hello 的「换不换」进了本机常驻后端，原判定函数那一处（`hello_decision`）挂墓碑。
         ("src/frontend/shell/src/remote_resident.rs", 1),
         // 新行四条：界面按工具名 / 命令名判的四个谓词删了（卡型随记录成品、tmux 那一格随 `tmux-list` 带来），原处各一块。
-        ("src/frontend/ui/cards/interactive.ts", 1),
+        // `src/frontend/ui/cards/interactive.ts` 那一行摘了：点旧谓词名的那句删了（卡型随记录成品带来，头注已说）。
         // `src/frontend/ui/cards/subagent.ts` 那一行摘了：那张卡整份重写成按运行读的通用卡，点旧判定名（按工具名认 agent 工具）的散文随之没了。
         // `src/frontend/ui/tmux-sessions.ts` 那一行摘了：那份改名 `sessions-where.ts`，点旧过滤名的散文随之没了。
         // 全景「那台要哪一格」那两块墓碑（`byte_table.rs` · `deploy_plan.rs` 各一）随那一问整个删了（代码全景整条摘掉）。
@@ -4809,8 +4803,6 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/scripts/gate.sh", 1), // 2 → 1：shellcheck 那一格「立项理由已不成立、原话照留」那段随人群搬进门禁一起删了（那段讲的是 CI 独有、人群住 ci.yml）· 3 → 2：e2e 那段逐套条数的沿革注释删了，local-backend 那块墓碑随之没了
         // 公钥推送进本机后端：新文件头注点旧命令名挂墓碑。
         ("src/backend/assets/pubkey.rs", 1),
-        ("src/frontend/ui/pubkey-push.ts", 1),
-        ("tests/frontend/ui/pubkey-push.vitest.ts", 1),
         ("src/frontend/shell/src/dial_host.rs", 1), // `stream` 用法那一个开链路口删了，原地一块
         ("src/backend/agents/claudecode/schema.rs", 1), // 新行：记录解释进后端 / 会话正文四条退役，点旧名的散文挂墓碑
         ("src/backend/agents/codex/parse.rs", 1), // 新行：记录解释进后端 / 会话正文四条退役，点旧名的散文挂墓碑

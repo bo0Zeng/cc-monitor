@@ -1,5 +1,5 @@
 /**
- * 要求：「`push_public_key`〔散文墓碑〕：本机后端帧命令 `pubkey-push {machine}`，与 `remote-probe` 同形」（「monitor 零 SSH」）。
+ * 要求：推送公钥是本机后端帧命令 `pubkey-push {machine}`，与 `remote-probe` 同形（「monitor 零 SSH」）。
  *
  * F50「一键推送公钥」**走通道，本机常驻后端办**：`chan.call(<local>, "pubkey-push", {machine, saved, jump, pubKeyPath})`。
  * 读本机那份 `.pub` · 校验 · 那台后端在就经它写 / 不在就一次 exec，全在后端（`src/backend/assets/pubkey.rs`）；界面只交设置页表单里那台
