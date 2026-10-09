@@ -134,9 +134,8 @@ fn edit_at(path: &Path, f: impl FnOnce(&mut Review)) -> Result<(), Err> {
             ),
         ))
     })?;
-    let _g = crate::platform::lock::hold(dir).map_err(|e| {
-        Err::from(("io_failed", crate::common::said::Said::from(e)))
-    })?;
+    let _g = crate::platform::lock::hold(dir)
+        .map_err(|e| Err::from(("io_failed", crate::common::said::Said::from(e))))?;
     let mut r = match read_at(path) {
         crate::common::own_state::Read::Absent => Review::default(),
         crate::common::own_state::Read::Present(r) => r,
