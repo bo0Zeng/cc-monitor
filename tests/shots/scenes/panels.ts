@@ -214,7 +214,7 @@ export const PANEL_SCENES: Scene[] = [
     item.closest<HTMLElement>("[role=none]")?.dispatchEvent(new MouseEvent("mouseenter"));
     await sleep(500);
   }, rotRulesWorld),
-  panel("panel-cmdk-rot", "命令面板 · 轮换", "命令面板里输入「轮换」：轮换：套用规则… · 设置：本机轮换规则", async () => {
+  panel("panel-cmdk-rot", "命令面板 · 轮换", "命令面板里输入「轮换」：套用规则… · 本机 轮换规则", async () => {
     await openCommandBar();
     await type("[data-role=command-input]", "轮换");
     await sleep(300);

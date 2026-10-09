@@ -151,7 +151,7 @@ export function toggleAccountPanel(
   openAccountPanel(sid, origin, host);
 }
 
-/** 命令面板「轮换：套用规则…」：开（或留着）这个会话的面板，直接摊开来源下拉（与面板里同一份项、同一套写法）。 */
+/** 命令面板「套用规则…」：开（或留着）这个会话的面板，直接摊开来源下拉（与面板里同一份项、同一套写法）。 */
 export function openSourcePicker(
   sid: string,
   origin: Origin,
