@@ -21258,8 +21258,8 @@
       "args": []
     },
     "rot.src.filter": {
-      "kind": "aria",
-      "role": "输入框",
+      "kind": "control",
+      "role": "占位",
       "zh": "筛选规则",
       "args": []
     },
@@ -21506,7 +21506,7 @@
     "rot.cap.rest": {
       "kind": "body",
       "role": "说明",
-      "zh": "其余时段 ＝ {what}",
+      "zh": "其余时段 · {what}",
       "args": ["what"]
     },
     "rot.cap.restAll": {
@@ -21665,7 +21665,7 @@
       "zh": "—",
       "args": []
     },
-    "rot.list.ended": {
+    "sessionState.rotUsers.ended": {
       "kind": "action",
       "role": "按钮",
       "zh": "已结束 {n}",
@@ -21696,10 +21696,7 @@
       "kind": "aria",
       "role": "读屏",
       "zh": "选中 · {name}",
-      "args": ["name"],
-      "waive": {
-        "C-W15": "图标按钮的读屏名，带规则名区分各行（带用户名字的那一类）"
-      }
+      "args": ["name"]
     },
     "rot.list.pickAll": {
       "kind": "aria",
@@ -21729,6 +21726,12 @@
       "kind": "action",
       "role": "菜单项",
       "zh": "复制",
+      "args": []
+    },
+    "rot.act.edit": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "编辑",
       "args": []
     },
     "rot.act.rename": {
@@ -21801,7 +21804,10 @@
       "kind": "action",
       "role": "按钮",
       "zh": "全部转为本会话",
-      "args": []
+      "args": [],
+      "waive": {
+        "C-W15": "批量脚上与「转为本会话」同一个动作，前缀「全部」说作用于名单里全部会话（稿 §5.5 定的字）"
+      }
     },
     "rot.batch.delete": {
       "kind": "action",
@@ -21920,7 +21926,7 @@
     "rot.del.toCustom": {
       "kind": "control",
       "role": "标签",
-      "zh": "转为本会话（照原样）",
+      "zh": "转为本会话 · 行为不变",
       "args": []
     },
     "rot.del.toFollow": {
@@ -21935,7 +21941,7 @@
       "zh": "之后",
       "args": []
     },
-    "rot.del.ended": {
+    "sessionState.rotDelete.ended": {
       "kind": "body",
       "role": "确认框",
       "zh": "已结束的 {n} 会话同样处理",
@@ -21970,6 +21976,288 @@
       "role": "按钮",
       "zh": "建",
       "args": []
+    },
+    "rot.ed.back": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "轮换",
+      "args": []
+    },
+    "rot.ed.rename": {
+      "kind": "aria",
+      "role": "读屏",
+      "zh": "规则名称",
+      "args": []
+    },
+    "rot.ed.impact": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "改动即生效 · 影响 {n} 会话",
+      "args": ["n"]
+    },
+    "rot.ed.impactDefault": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "默认规则 · 跟随默认的 {n} 会话 · 新会话",
+      "args": ["n"]
+    },
+    "rot.ed.saved": {
+      "kind": "body",
+      "role": "状态",
+      "zh": "已存 {at}",
+      "args": ["at"]
+    },
+    "rot.ed.undoLast": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "撤销上一处",
+      "args": []
+    },
+    "rot.ed.reload": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "载入最新",
+      "args": []
+    },
+    "rot.ed.gone": {
+      "kind": "body",
+      "role": "空态",
+      "zh": "规则 {name} 已删除",
+      "args": ["name"]
+    },
+    "rot.ed.backToList": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "回到列表",
+      "args": []
+    },
+    "rot.ed.missing": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "本机无此账号 {n} · 轮到时跳过",
+      "args": ["n"]
+    },
+    "rot.ed.missingTag": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "本机无此账号",
+      "args": []
+    },
+    "rot.ed.order": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "顺序",
+      "args": []
+    },
+    "rot.ed.start": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "起始账号",
+      "args": []
+    },
+    "rot.ed.pctErr": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "1–99",
+      "args": []
+    },
+    "rot.how.orderHint": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "到触发才换 · 不能用时从头取首个可用 · 不主动换回",
+      "args": []
+    },
+    "rot.how.preemptHint": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "前面的号恢复即切回",
+      "args": []
+    },
+    "rot.how.stintHint": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "每个号换进来后再用 {n} 点即让位 · 没人接就留着",
+      "args": ["n"]
+    },
+    "rot.lim.noCap": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "无上限 · 只在被拒时换",
+      "args": []
+    },
+    "rot.capT.head": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "按号封顶",
+      "args": []
+    },
+    "rot.capT.colAcct": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "号",
+      "args": []
+    },
+    "rot.capT.colStint": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "单段",
+      "args": []
+    },
+    "rot.capT.unchecked": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "未勾 {n}",
+      "args": ["n"]
+    },
+    "rot.capT.layers": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "这号这窗口 → 这号全部窗口 → 触发 · 时段外落到下一层",
+      "args": []
+    },
+    "rot.capT.effective": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "此刻 {v} · 来自 {layer}",
+      "args": ["v", "layer"]
+    },
+    "rot.capT.noCap": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "此刻 不封顶",
+      "args": []
+    },
+    "rot.capT.layerWindow": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "本窗口",
+      "args": []
+    },
+    "rot.capT.layerAll": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "全部窗口",
+      "args": []
+    },
+    "rot.capT.layerTrigger": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "触发",
+      "args": []
+    },
+    "rot.capT.stintTitle": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "{acct} · 单段",
+      "args": ["acct"]
+    },
+    "rot.pv.label": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "预览",
+      "args": []
+    },
+    "rot.pv.span": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "接下来 {span}",
+      "args": ["span"]
+    },
+    "rot.pv.rule": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "这条规则",
+      "args": []
+    },
+    "rot.pv.hint": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "用量按此刻的算 · 只在重置与时段起止时变",
+      "args": []
+    },
+    "rot.pv.held": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "停发",
+      "args": []
+    },
+    "rot.pv.lgUse": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "将用",
+      "args": []
+    },
+    "rot.pv.lgRefused": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "被拒",
+      "args": []
+    },
+    "rot.pv.lgCapped": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "过封顶",
+      "args": []
+    },
+    "rot.pv.lgOff": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "时段停用",
+      "args": []
+    },
+    "rot.pv.lgReset": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "重置",
+      "args": []
+    },
+    "rot.pv.seg": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "{from}–{to} · {acct}",
+      "args": ["from", "to", "acct"]
+    },
+    "rot.why.full": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "✕",
+      "args": []
+    },
+    "rot.why.trig": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "≥{n}%",
+      "args": ["n"]
+    },
+    "rot.why.off": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "时段停用",
+      "args": []
+    },
+    "rot.why.preempt": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "抢回",
+      "args": []
+    },
+    "rot.why.stint": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "单段 {n}",
+      "args": ["n"]
+    },
+    "rot.why.held": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "停发",
+      "args": []
+    },
+    "rot.why.wait": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "等 {acct}",
+      "args": ["acct"]
     },
     "acct.rot.title": {
       "kind": "title",

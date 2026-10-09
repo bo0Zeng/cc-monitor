@@ -1,0 +1,414 @@
+/* 设置「轮换」栏里一条规则的编辑器：头 · 顺序 · 触发 · 换法三卡（示意小轴）· 无号可换 · 按号封顶表 · 预览（轴 ＋ 泳道 ＋ 图例）。 */
+@layer components {
+  .ed {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    min-width: 0;
+  }
+
+  .edHead {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .edCrumbs,
+  .edLine,
+  .edRow,
+  .edCapWho,
+  .edLaneName,
+  .edLegend,
+  .edLegendItem,
+  .edCardTitle,
+  .edCardExtra,
+  .edSaved {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    min-width: 0;
+  }
+
+  .edLine,
+  .edLegend {
+    flex-wrap: wrap;
+  }
+
+  .edSlash,
+  .edUnit,
+  .edHint,
+  .edExplain,
+  .edSaved,
+  .edUsage,
+  .edCardHint {
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+  }
+
+  .edName {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--text);
+    font: inherit;
+    font-size: var(--font-size-base);
+    font-weight: 600;
+    cursor: text;
+  }
+
+  .edNameInput,
+  .edNum {
+    padding: 0 var(--space-2);
+    border: 1px solid var(--field-border);
+    border-radius: var(--radius-s);
+    background: var(--field-bg);
+    color: inherit;
+    font: inherit;
+  }
+
+  .edNameInput {
+    width: 200px;
+    height: 26px;
+  }
+
+  .edNum {
+    width: 44px;
+    height: 24px;
+    text-align: center;
+  }
+
+  .edNameInput[data-error="true"],
+  .edNum[data-error="true"] {
+    border-color: var(--error);
+  }
+
+  .edErr {
+    color: var(--error-text);
+    font-size: var(--font-size-small);
+  }
+
+  .edSp {
+    flex: 1;
+  }
+
+  .edImpact {
+    padding: var(--space-2) var(--space-3);
+    border-left: 2px solid var(--accent);
+    background: var(--bg-2);
+    font-size: var(--font-size-small);
+  }
+
+  .edBlock {
+    display: grid;
+    grid-template-columns: 96px minmax(0, 1fr);
+    gap: var(--space-3);
+    align-items: start;
+  }
+
+  .edLabel {
+    padding-top: var(--space-1);
+    font-weight: var(--font-weight-strong);
+  }
+
+  /* 顺序：与面板同一套行（拖把手 · 勾 · 头像 · 名 · 封顶 · 兜底 · 用量）。 */
+  .edList,
+  .edCaps {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: var(--space-2);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-m);
+    background: var(--bg-2);
+  }
+
+  .edRow {
+    height: 30px;
+    padding: 0 var(--space-2);
+    border-radius: var(--radius-s);
+  }
+
+  .edRow:hover,
+  .edRow:focus-within {
+    background: var(--overlay-hover);
+  }
+
+  .edRow[data-lifted="true"] {
+    opacity: 0.5;
+  }
+
+  .edHandle {
+    display: inline-flex;
+    color: var(--text-faint);
+    cursor: grab;
+  }
+
+  .edRowName,
+  .edStartName {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .edStartName {
+    color: var(--text-2);
+    font-style: italic;
+  }
+
+  .edStartAvatar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    border: 1px dashed var(--border-medium);
+    border-radius: var(--radius-s);
+    color: var(--text-2);
+    font-size: var(--font-size-xs);
+  }
+
+  .edRadio {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    cursor: pointer;
+  }
+
+  /* 换法三张单选卡。 */
+  .edCards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: var(--space-3);
+  }
+
+  .edCard {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-3);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-m);
+    cursor: pointer;
+  }
+
+  .edCard[data-on="true"] {
+    border-color: var(--accent);
+    background: var(--bg-2);
+  }
+
+  .edCardTitle {
+    font-weight: 600;
+  }
+
+  .edCardDot {
+    width: 10px;
+    height: 10px;
+    border: 1px solid var(--border-medium);
+    border-radius: 50%;
+  }
+
+  .edCard[data-on="true"] .edCardDot {
+    border: 3px solid var(--accent);
+  }
+
+  .edAxis {
+    display: flex;
+    gap: 2px;
+    height: 12px;
+  }
+
+  .edAxisSeg {
+    flex-basis: 0;
+    border-radius: var(--radius-s);
+    color: var(--text);
+    font-size: var(--font-size-xs);
+    line-height: 12px;
+    text-align: center;
+  }
+
+  .edAxisSeg[data-c="0"] {
+    background: var(--acct-c0);
+  }
+
+  .edAxisSeg[data-c="1"] {
+    background: var(--acct-c2);
+  }
+
+  .edAxisSeg[data-c="2"] {
+    background: var(--acct-c4);
+  }
+
+  /* 按号封顶表。 */
+  .edCapRow {
+    display: grid;
+    grid-template-columns: minmax(96px, 1.4fr) repeat(auto-fit, minmax(64px, 1fr));
+    gap: var(--space-2);
+    align-items: center;
+    min-height: 30px;
+  }
+
+  .edCapHead {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+  }
+
+  .edInfo {
+    display: inline-flex;
+    color: var(--text-faint);
+  }
+
+  .edPop {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding: var(--space-3);
+  }
+
+  .edPopTitle {
+    font-weight: 600;
+  }
+
+  .edPopFoot {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--space-2);
+  }
+
+  /* 预览：一条「这条规则」＋ 每号一条泳道（不能用的段打底纹 · 重置点）。 */
+  .edPreview {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  .edAxisGrid {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-3);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-m);
+    background: var(--bg-2);
+  }
+
+  .edLane {
+    display: grid;
+    grid-template-columns: 96px minmax(0, 1fr);
+    gap: var(--space-3);
+    align-items: center;
+  }
+
+  .edTrack {
+    position: relative;
+    height: 14px;
+    border-bottom: 1px solid var(--border-soft);
+  }
+
+  .edPlanSeg,
+  .edLaneSpan {
+    position: absolute;
+    top: 2px;
+    bottom: 2px;
+    border-radius: var(--radius-s);
+  }
+
+  .edPlanSeg {
+    box-shadow: inset -2px 0 0 var(--bg-2);
+  }
+
+  .edLane[data-ed-lane="rule"] {
+    margin-top: var(--space-4);
+  }
+
+  .edSpanSel {
+    width: 140px;
+  }
+
+  .edPlanSeg[data-held="true"] {
+    background: repeating-linear-gradient(135deg, var(--border-medium) 0 3px, transparent 3px 6px);
+  }
+
+  .edWhy {
+    position: absolute;
+    top: -13px;
+    left: 0;
+    color: var(--text-2);
+    font-size: var(--font-size-xs);
+    white-space: nowrap;
+  }
+
+  .edLaneSpan[data-state="refused"],
+  .edSwatch[data-state="refused"] {
+    background: repeating-linear-gradient(135deg, var(--error) 0 3px, transparent 3px 6px);
+  }
+
+  .edLaneSpan[data-state="capped"],
+  .edLaneSpan[data-state="overage"],
+  .edSwatch[data-state="capped"] {
+    background: repeating-linear-gradient(135deg, var(--warn) 0 3px, transparent 3px 6px);
+  }
+
+  .edLaneSpan[data-state="off"],
+  .edSwatch[data-state="off"] {
+    background: repeating-linear-gradient(135deg, var(--text-faint) 0 3px, transparent 3px 6px);
+  }
+
+  .edReset {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: var(--text-2);
+  }
+
+  .edTicks {
+    display: flex;
+    justify-content: space-between;
+    margin-left: calc(96px + var(--space-3));
+    color: var(--text-2);
+    font-size: var(--font-size-xs);
+  }
+
+  .edSwatch {
+    width: 14px;
+    height: 8px;
+    border-radius: var(--radius-s);
+    background: var(--text-2);
+  }
+
+  .edSwatch[data-state="reset"] {
+    width: 1px;
+    height: 10px;
+    background: var(--text-2);
+  }
+
+  .edLegend {
+    color: var(--text-2);
+    font-size: var(--font-size-xs);
+  }
+
+  .edGone {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    color: var(--text-2);
+  }
+
+  /* 窄（设置窗 <640）：标签列折到上面一行。 */
+  @media (width < 640px) {
+    .edBlock {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .edLane {
+      grid-template-columns: 72px minmax(0, 1fr);
+    }
+
+    .edTicks {
+      margin-left: calc(72px + var(--space-3));
+    }
+  }
+}

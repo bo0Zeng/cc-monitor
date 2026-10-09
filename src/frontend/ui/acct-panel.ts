@@ -13,7 +13,15 @@ import { displayNameOf, lookupAgentProfile } from "./agent-profile";
 import { appStore, type SessionRotationEntry } from "./app-store";
 import { refreshQuota, refreshSessions } from "./acct-center";
 import { acctAvatar } from "./acct-dom";
-import { ledgerOf, machineLabel, reasonLabel, swappedFrom, usageOf, usageText, whyOf } from "./acct-view";
+import {
+  ledgerOf,
+  machineLabel,
+  reasonLabel,
+  swappedFrom,
+  usageOf,
+  usageText,
+  whyOf,
+} from "./acct-view";
 import { copyText } from "./copy-table";
 import { askSessionInterrupts } from "./interrupt-reads";
 import { commands } from "./ipc/commands";
@@ -28,19 +36,43 @@ import { closeMenu, openMenu, type MenuItem } from "./kit/menu";
 import { meter, type MeterState } from "./kit/meter";
 import { segmented } from "./kit/tabs";
 import { select } from "./kit/select";
-import { capButton, capTags, fallbackMark, fallbackToggle, howControl, openSaveAsRule, rulePeek, waitControl } from "./rot-editor";
+import {
+  capButton,
+  capTags,
+  fallbackMark,
+  fallbackToggle,
+  howControl,
+  moved,
+  openSaveAsRule,
+  rowsOf,
+  rulePeek,
+  toggled,
+  waitControl,
+} from "./rot-editor";
 import { toast } from "./kit/toast";
 import { attachTooltip } from "./kit/tooltip";
 import { ARRIVAL_BUDGET_MS } from "./launch-arrival";
-import { accountLabel, fmtRel, slotLabel, slotValue, type QuotaRead, type QuotaReadAccount } from "./quota-lines";
-import { defaultRuleOf, switchHot, switchRestart, writeSessionRotation, type SessionRotationWrite } from "./quota-reads";
+import {
+  accountLabel,
+  fmtRel,
+  slotLabel,
+  slotValue,
+  type QuotaRead,
+  type QuotaReadAccount,
+} from "./quota-lines";
+import {
+  defaultRuleOf,
+  switchHot,
+  switchRestart,
+  writeSessionRotation,
+  type SessionRotationWrite,
+} from "./quota-reads";
 import { runRemoteAttach } from "./remote-launch-run";
 import { standingOf } from "./sessions-where";
 import { startSettings } from "./tab-batch-run";
 import type { AtLimit } from "./generated/AtLimit";
 import type { QuotaShow } from "./generated/QuotaShow";
 import type { Rotation } from "./generated/Rotation";
-import type { RotationSlot } from "./generated/RotationSlot";
 import type { RotationSource } from "./generated/RotationSource";
 import type { SessionRotationState } from "./generated/SessionRotationState";
 import s from "./acct.module.css";
@@ -102,7 +134,11 @@ function routeOf(host: AcctPanelHost, o: Open): string | null {
 }
 
 /** 开 / 关这个会话的面板（再点同一个入口 ＝ 关）。 */
-export function toggleAccountPanel(sid: string, origin: Origin, host: AcctPanelHost): void {
+export function toggleAccountPanel(
+  sid: string,
+  origin: Origin,
+  host: AcctPanelHost,
+): void {
   if (open?.sid === sid) {
     void open.drawer.close();
     return;
@@ -111,12 +147,19 @@ export function toggleAccountPanel(sid: string, origin: Origin, host: AcctPanelH
 }
 
 /** 当前 tab 换了：面板开着就跟着换成那个会话（不关）。 */
-export function followActive(a: { sid: string; origin: Origin } | null, host: AcctPanelHost): void {
+export function followActive(
+  a: { sid: string; origin: Origin } | null,
+  host: AcctPanelHost,
+): void {
   if (!open || a === null || open.sid === a.sid) return;
   openAccountPanel(a.sid, a.origin, host);
 }
 
-export function openAccountPanel(sid: string, origin: Origin, host: AcctPanelHost): void {
+export function openAccountPanel(
+  sid: string,
+  origin: Origin,
+  host: AcctPanelHost,
+): void {
   if (open) {
     const was = open;
     open = null;
@@ -128,10 +171,15 @@ export function openAccountPanel(sid: string, origin: Origin, host: AcctPanelHos
   const statusBar = document.getElementById("status-bar");
   const drawer = openDrawer({
     title: copyText("acct.panel.title"),
-    sub: copyText("acct.panel.sub", { session: host.sessionTitle(sid), machine: machineLabel(origin) }),
+    sub: copyText("acct.panel.sub", {
+      session: host.sessionTitle(sid),
+      machine: machineLabel(origin),
+    }),
     body,
     width: 440,
-    bottom: statusBar ? Math.round(statusBar.getBoundingClientRect().height) : undefined,
+    bottom: statusBar
+      ? Math.round(statusBar.getBoundingClientRect().height)
+      : undefined,
     onClose: () => {
       if (open?.drawer !== drawer) return;
       for (const u of open.unsub) u();
@@ -161,7 +209,12 @@ export function openAccountPanel(sid: string, origin: Origin, host: AcctPanelHos
     }
     render(o, host);
   };
-  o.unsub.push(appStore.quota.subscribe(repaint), appStore.sessionRotation.subscribe(repaint), appStore.rotationRules.subscribe(repaint), appStore.accounts.subscribe(repaint));
+  o.unsub.push(
+    appStore.quota.subscribe(repaint),
+    appStore.sessionRotation.subscribe(repaint),
+    appStore.rotationRules.subscribe(repaint),
+    appStore.accounts.subscribe(repaint),
+  );
   render(o, host);
   // 焦点落在来源下拉（合着时不写任何东西）；没有那一块（中转没见过）⇒ 留在关闭钮上。
   body.querySelector<HTMLElement>("[data-acct-src]")?.focus();
@@ -179,14 +232,21 @@ function release(o: Open, host: AcctPanelHost): void {
   }
 }
 
-function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, text?: string): HTMLElementTagNameMap[K] {
+function el<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  cls: string,
+  text?: string,
+): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
   e.className = cls;
   if (text !== undefined) e.textContent = text;
   return e;
 }
 
-function section(title: string, right?: HTMLElement): { root: HTMLElement; content: HTMLElement } {
+function section(
+  title: string,
+  right?: HTMLElement,
+): { root: HTMLElement; content: HTMLElement } {
   const root = el("section", s.acctBlock);
   const head = el("div", s.acctBlockHead);
   head.appendChild(el("h3", s.acctBlockTitle, title));
@@ -204,7 +264,11 @@ function render(o: Open, host: AcctPanelHost): void {
   const read = entry?.read;
   o.body.append(nowBlock(o, entry, quota, host));
   if (read?.state === "present" && entry) {
-    o.body.append(rotationBlock(o, entry, read, quota, host), switchBlock(o, entry, read, quota, host), historyBlock(read));
+    o.body.append(
+      rotationBlock(o, entry, read, quota, host),
+      switchBlock(o, entry, read, quota, host),
+      historyBlock(read),
+    );
   } else {
     o.body.append(switchBlock(o, entry, undefined, quota, host));
   }
@@ -221,14 +285,28 @@ function slotMeter(q: QuotaShow, slot: string, now: number): HTMLElement {
   if (!x || x.pct === undefined) state = "none";
   else if (q.stale) state = "stale";
   else if (x.full || (here && q.state === "refused")) state = "refused";
-  else if (here && (q.state === "near" || q.state === "overageInUse")) state = "near";
+  else if (here && (q.state === "near" || q.state === "overageInUse"))
+    state = "near";
   const value = slotValue(q, slot);
   const at = x?.resetsAt;
   const rel = at === undefined ? null : fmtRel(at, now);
   const said = x?.resetsAtText ?? "";
-  const reset = at === undefined ? undefined : rel === null ? copyText("acct.reset.past", { at: said }) : copyText("acct.reset.at", { at: said });
+  const reset =
+    at === undefined
+      ? undefined
+      : rel === null
+        ? copyText("acct.reset.past", { at: said })
+        : copyText("acct.reset.at", { at: said });
   const row = el("div", s.acctMeterRow);
-  row.appendChild(meter({ label: slotLabel(slot), ratio: (x?.pct ?? 0) / 100, state, value, reset }));
+  row.appendChild(
+    meter({
+      label: slotLabel(slot),
+      ratio: (x?.pct ?? 0) / 100,
+      state,
+      value,
+      reset,
+    }),
+  );
   row.appendChild(el("span", s.acctMeterRel, rel ?? ""));
   return row;
 }
@@ -241,20 +319,41 @@ function tagEl(text: string, tone?: "cur" | "warn" | "error"): HTMLElement {
   return t;
 }
 
-function kindTags(q: Pick<QuotaShow, "kind" | "login" | "state">): HTMLElement[] {
-  const tags = [tagEl(q.kind === "api" ? copyText("acct.kind.api") : copyText("acct.kind.sub"))];
-  if (q.login === "needsLogin") tags.push(tagEl(copyText("acct.tag.login"), "error"));
-  if (q.login === "needsKey") tags.push(tagEl(copyText("acct.tag.key"), "error"));
-  if (q.state === "overageInUse") tags.push(tagEl(copyText("acct.val.over"), "warn"));
+function kindTags(
+  q: Pick<QuotaShow, "kind" | "login" | "state">,
+): HTMLElement[] {
+  const tags = [
+    tagEl(
+      q.kind === "api" ? copyText("acct.kind.api") : copyText("acct.kind.sub"),
+    ),
+  ];
+  if (q.login === "needsLogin")
+    tags.push(tagEl(copyText("acct.tag.login"), "error"));
+  if (q.login === "needsKey")
+    tags.push(tagEl(copyText("acct.tag.key"), "error"));
+  if (q.state === "overageInUse")
+    tags.push(tagEl(copyText("acct.val.over"), "warn"));
   return tags;
 }
 
-function nowBlock(o: Open, entry: SessionRotationEntry | undefined, quota: QuotaRead | null, host: AcctPanelHost): HTMLElement {
+function nowBlock(
+  o: Open,
+  entry: SessionRotationEntry | undefined,
+  quota: QuotaRead | null,
+  host: AcctPanelHost,
+): HTMLElement {
   const read = entry?.read;
   if (!entry || !read || read.state === "absent") {
     const sec = section(copyText("acct.now.title"));
-    const connect = button({ label: copyText("acct.now.connect"), kind: "ghost", size: "compact", onClick: () => host.openSettings(o.origin) });
-    sec.content.appendChild(banner("warn", copyText("acct.now.noRelay"), [connect]));
+    const connect = button({
+      label: copyText("acct.now.connect"),
+      kind: "ghost",
+      size: "compact",
+      onClick: () => host.openSettings(o.origin),
+    });
+    sec.content.appendChild(
+      banner("warn", copyText("acct.now.noRelay"), [connect]),
+    );
     return sec.root;
   }
   const now = entry.now;
@@ -263,91 +362,98 @@ function nowBlock(o: Open, entry: SessionRotationEntry | undefined, quota: Quota
   const right =
     seen === null
       ? undefined
-      : el("span", s.acctBlockNote, isLocalOrigin(o.origin) ? copyText("acct.now.seen", { at: seen }) : copyText("acct.now.seenOther", { machine: o.origin, at: seen }));
+      : el(
+          "span",
+          s.acctBlockNote,
+          isLocalOrigin(o.origin)
+            ? copyText("acct.now.seen", { at: seen })
+            : copyText("acct.now.seenOther", { machine: o.origin, at: seen }),
+        );
   const sec = section(copyText("acct.now.title"), right);
   if (quota === null) {
-    const retry = button({ label: copyText("acct.now.retry"), kind: "ghost", size: "compact", onClick: () => void refreshQuota(o.origin) });
-    sec.content.appendChild(banner("error", copyText("acct.now.readFail"), [retry]));
+    const retry = button({
+      label: copyText("acct.now.retry"),
+      kind: "ghost",
+      size: "compact",
+      onClick: () => void refreshQuota(o.origin),
+    });
+    sec.content.appendChild(
+      banner("error", copyText("acct.now.readFail"), [retry]),
+    );
   }
   const who = el("div", s.acctWho);
   who.appendChild(acctAvatar(read.account.current, 20));
-  who.appendChild(el("span", s.acctWhoName, accountLabel(read.account.current)));
+  who.appendChild(
+    el("span", s.acctWhoName, accountLabel(read.account.current)),
+  );
   who.append(...kindTags(read.quota));
   const from = swappedFrom(read);
-  if (from) who.appendChild(el("span", s.acctWhoFrom, copyText("acct.hover.from", { at: from.at, name: accountLabel(from.from) })));
+  if (from)
+    who.appendChild(
+      el(
+        "span",
+        s.acctWhoFrom,
+        copyText("acct.hover.from", {
+          at: from.at,
+          name: accountLabel(from.from),
+        }),
+      ),
+    );
   sec.content.appendChild(who);
   if (read.quota.kind === "api") {
     const u = usageOf(read.quota, led?.reading);
-    const line = el("div", s.acctApiLine, read.quota.state === "refused" ? u.value : copyText("acct.val.noLimit"));
+    const line = el(
+      "div",
+      s.acctApiLine,
+      read.quota.state === "refused" ? u.value : copyText("acct.val.noLimit"),
+    );
     if (read.quota.state === "refused") line.dataset.shade = "refused";
     if (u.reset) line.appendChild(el("span", s.acctMeterRel, u.reset));
     sec.content.appendChild(line);
   } else {
-    sec.content.append(slotMeter(read.quota, "5h", now), slotMeter(read.quota, "7d", now));
+    sec.content.append(
+      slotMeter(read.quota, "5h", now),
+      slotMeter(read.quota, "7d", now),
+    );
   }
   return sec.root;
 }
 
 // ─────────────────────────────── 轮换
 
-const START: RotationSlot = { start: true };
-
-type Row = { account: string; start: boolean; on: boolean };
-
-/** 这一份轮换画成哪几行：顺序里的（占位换成起始号）＋ 这台账号库里其余的号（不勾，排后面）。 */
-function rowsOf(r: Rotation, start: string, quota: QuotaRead | null, agent: string): Row[] {
-  const out: Row[] = [];
-  const seen = new Set<string>();
-  for (const slot of r.order) {
-    const a = typeof slot === "string" ? slot : start;
-    if (seen.has(a)) continue;
-    seen.add(a);
-    out.push({ account: a, start: typeof slot !== "string", on: typeof slot !== "string" || r.enabled.includes(a) });
-  }
-  const others = [...(quota?.accounts ?? []), ...(quota?.unseen ?? [])].filter((x) => x.agent === agent && x.account !== "_").map((x) => x.account);
-  for (const a of others) {
-    if (seen.has(a)) continue;
-    seen.add(a);
-    out.push({ account: a, start: false, on: false });
-  }
-  return out;
-}
-
-/** 勾 / 不勾一个号 ⇒ 只改 `enabled`；`order` 逐字不动（序里没有的号勾上时排到末尾），不添占位。 */
-function toggled(r: Rotation, account: string, on: boolean): Rotation {
-  const enabled = on ? (r.enabled.includes(account) ? r.enabled : [...r.enabled, account]) : r.enabled.filter((a) => a !== account);
-  const order = on && !r.order.includes(account) ? [...r.order, account] : r.order;
-  return { ...r, order, enabled };
-}
-
-/**
- * 把第 `from` 行挪到 `to` ⇒ 新的 `order`：按行的新次序写回原来就有的那几格（占位只在原来有时才有；起始号若另外具名在序里，
- * 那一格跟在占位后面，不丢）；序外的行只有被挪的那一行才进序。`enabled` 不动。
- */
-function moved(r: Rotation, rows: Row[], from: number, to: number): Rotation {
-  const order: RotationSlot[] = [];
-  move(rows, from, to).forEach((row) => {
-    if (row.start) order.push(START);
-    if (r.order.includes(row.account) || (row === rows[from] && !row.start)) order.push(row.account);
-  });
-  return { ...r, order };
-}
-
-function quotaOf(quota: QuotaRead | null, agent: string, account: string): QuotaShow | null {
+function quotaOf(
+  quota: QuotaRead | null,
+  agent: string,
+  account: string,
+): QuotaShow | null {
   const led = ledgerOf(quota, agent, account);
   if (led) return led;
-  const u = quota?.unseen.find((x) => x.agent === agent && x.account === account);
-  return u ? { kind: u.kind, state: "unseen", stale: false, slots: [], login: u.login } : null;
+  const u = quota?.unseen.find(
+    (x) => x.agent === agent && x.account === account,
+  );
+  return u
+    ? { kind: u.kind, state: "unseen", stale: false, slots: [], login: u.login }
+    : null;
 }
 
 /** 一行右侧的用量：`5h ▮ 63% ↻18:30`（按量号 `无 5h / 7d`；被拒 `✕ ↻19:00`）。 */
 /** 只画卡着它的那一个窗口（轮换列表行尾有兜底 · 封顶，照稿只留一格用量；另一格在悬停卡与时间轴里）。 */
-function rowUsage(q: QuotaShow | null, now: number, reading: QuotaReadAccount["reading"]): HTMLElement {
+function rowUsage(
+  q: QuotaShow | null,
+  now: number,
+  reading: QuotaReadAccount["reading"],
+): HTMLElement {
   const box = el("span", s.acctRowUsage);
   if (!q) return box;
   if (q.kind === "api") {
     const u = usageOf(q, reading);
-    box.appendChild(el("span", s.acctRowSlotVal, q.state === "refused" ? u.value : copyText("acct.val.noLimit")));
+    box.appendChild(
+      el(
+        "span",
+        s.acctRowSlotVal,
+        q.state === "refused" ? u.value : copyText("acct.val.noLimit"),
+      ),
+    );
     if (u.reset) box.appendChild(el("span", s.acctRowSlotReset, u.reset));
     if (q.state === "refused") box.dataset.shade = "refused";
     return box;
@@ -365,10 +471,20 @@ function rowUsage(q: QuotaShow | null, now: number, reading: QuotaReadAccount["r
     cell.appendChild(el("span", s.acctRowSlotVal, slotValue(q, slot)));
     if (here && x?.resetsAt !== undefined && slot === "5h") {
       const rel = fmtRel(x.resetsAt, now);
-      cell.appendChild(el("span", s.acctRowSlotReset, rel === null ? copyText("acct.reset.past", { at: x.resetsAtText ?? "" }) : copyText("acct.reset.at", { at: x.resetsAtText ?? "" })));
+      cell.appendChild(
+        el(
+          "span",
+          s.acctRowSlotReset,
+          rel === null
+            ? copyText("acct.reset.past", { at: x.resetsAtText ?? "" })
+            : copyText("acct.reset.at", { at: x.resetsAtText ?? "" }),
+        ),
+      );
     }
-    if (x?.full || (here && q.state === "refused")) cell.dataset.shade = "refused";
-    else if (here && (q.state === "near" || q.state === "overageInUse")) cell.dataset.shade = "warn";
+    if (x?.full || (here && q.state === "refused"))
+      cell.dataset.shade = "refused";
+    else if (here && (q.state === "near" || q.state === "overageInUse"))
+      cell.dataset.shade = "warn";
     if (q.stale) cell.dataset.stale = "true";
     box.appendChild(cell);
   }
@@ -389,32 +505,64 @@ function srcKeyOf(src: RotationSource): SrcKey {
 }
 
 function srcWrite(k: SrcKey): SessionRotationWrite {
-  return k === "follow" || k === "custom" ? k : { rule: k.slice("rule:".length) };
+  return k === "follow" || k === "custom"
+    ? k
+    : { rule: k.slice("rule:".length) };
 }
 
-function rotationBlock(o: Open, entry: SessionRotationEntry, read: Present, quota: QuotaRead | null, host: AcctPanelHost): HTMLElement {
+function rotationBlock(
+  o: Open,
+  entry: SessionRotationEntry,
+  read: Present,
+  quota: QuotaRead | null,
+  host: AcctPanelHost,
+): HTMLElement {
   const rules = appStore.rotationRules.get().get(o.origin) ?? null;
   const def = defaultRuleOf(rules);
   const own = read.source === "custom";
   const follow = !own;
   const src = read.source;
-  const ruleRow = typeof src === "object" ? (rules?.rules.find((x) => x.id === src.rule) ?? def) : src === "follow" ? def : null;
-  const r: Rotation | null = own ? (read.custom ?? def?.rotation ?? null) : (ruleRow?.rotation ?? null);
+  const ruleRow =
+    typeof src === "object"
+      ? (rules?.rules.find((x) => x.id === src.rule) ?? def)
+      : src === "follow"
+        ? def
+        : null;
+  const r: Rotation | null = own
+    ? (read.custom ?? def?.rotation ?? null)
+    : (ruleRow?.rotation ?? null);
   const sec = section(copyText("acct.rot.title"));
   const now = entry.now;
 
   const bar = el("div", s.acctRotBar);
   const was = srcKeyOf(read.source);
-  const nameOf = (k: SrcKey): string => rules?.rules.find((x) => `rule:${x.id}` === k)?.name ?? "";
-  const label = (k: SrcKey): string => (k === "follow" ? copyText("rot.src.follow") : k === "custom" ? copyText("rot.src.custom") : copyText("rot.src.rule", { name: nameOf(k) }));
+  const nameOf = (k: SrcKey): string =>
+    rules?.rules.find((x) => `rule:${x.id}` === k)?.name ?? "";
+  const label = (k: SrcKey): string =>
+    k === "follow"
+      ? copyText("rot.src.follow")
+      : k === "custom"
+        ? copyText("rot.src.custom")
+        : copyText("rot.src.rule", { name: nameOf(k) });
   // 来源：下拉，只有在面板里明确点一项才写（合着时方向键一概不做）；写成了 toast 带撤销。
   // 项：跟随默认（灰字默认那条的名字）· 组名「规则」下每条一项（默认那条带「默认」、右侧摘要）· 本会话 · 分隔 · 存为规则… · 管理规则…
   const srcSel = select({
     label: copyText("rot.src.label"),
     options: [
       { value: "follow", label: copyText("rot.src.follow"), note: def?.name },
-      ...(rules?.rules ?? []).map((x) => ({ value: `rule:${x.id}`, label: x.name, note: x.isDefault ? copyText("rot.src.tagDefault") : undefined, detail: x.summary, shown: copyText("rot.src.rule", { name: x.name }), peek: () => rulePeek(x) })),
-      { value: "custom", label: copyText("rot.src.custom"), detail: copyText("rot.src.customNote") },
+      ...(rules?.rules ?? []).map((x) => ({
+        value: `rule:${x.id}`,
+        label: x.name,
+        note: x.isDefault ? copyText("rot.src.tagDefault") : undefined,
+        detail: x.summary,
+        shown: copyText("rot.src.rule", { name: x.name }),
+        peek: () => rulePeek(x),
+      })),
+      {
+        value: "custom",
+        label: copyText("rot.src.custom"),
+        detail: copyText("rot.src.customNote"),
+      },
     ],
     value: was,
     closedKeys: "open",
@@ -430,12 +578,21 @@ function rotationBlock(o: Open, entry: SessionRotationEntry, read: Present, quot
           out.push({ label: copyText("rot.src.rules"), heading: true });
           headed = true;
         }
-        if (it.id === "custom" && !headed) out.push({ label: copyText("rot.src.noRules"), enabled: false });
+        if (it.id === "custom" && !headed)
+          out.push({ label: copyText("rot.src.noRules"), enabled: false });
         out.push(it);
       }
       out.push({ label: "", divider: true });
-      out.push({ id: "saveAs", label: copyText("rot.src.saveAs"), onClick: () => saveAs() });
-      out.push({ id: "manage", label: copyText("rot.src.manage"), onClick: () => host.openRules(o.origin) });
+      out.push({
+        id: "saveAs",
+        label: copyText("rot.src.saveAs"),
+        onClick: () => saveAs(),
+      });
+      out.push({
+        id: "manage",
+        label: copyText("rot.src.manage"),
+        onClick: () => host.openRules(o.origin),
+      });
       return out;
     },
     onChange: (k) => void setSource(o, host, k as SrcKey, was, label),
@@ -443,7 +600,10 @@ function rotationBlock(o: Open, entry: SessionRotationEntry, read: Present, quot
   const srcEl = srcSel.el;
   srcEl.dataset.acctSrc = "true";
   const srcRow = el("div", s.acctSrcRow);
-  srcRow.append(el("span", s.acctTriggerLabel, copyText("rot.src.label")), srcEl);
+  srcRow.append(
+    el("span", s.acctTriggerLabel, copyText("rot.src.label")),
+    srcEl,
+  );
   const info = el("span", s.acctInfo);
   info.tabIndex = 0;
   info.setAttribute("aria-label", copyText("acct.rot.infoAria"));
@@ -454,11 +614,18 @@ function rotationBlock(o: Open, entry: SessionRotationEntry, read: Present, quot
   const saveAs = (): void => {
     if (!r) return;
     openSaveAsRule(saveBtn, o.origin, r, (rule, link) => {
-      toast(copyText("rot.done.saved", { name: rule.name }), "", { level: "success" });
+      toast(copyText("rot.done.saved", { name: rule.name }), "", {
+        level: "success",
+      });
       if (link) void save(o, host, { rule: rule.id });
     });
   };
-  const saveBtn = button({ label: copyText("rot.src.saveAs"), kind: "ghost", size: "compact", onClick: saveAs });
+  const saveBtn = button({
+    label: copyText("rot.src.saveAs"),
+    kind: "ghost",
+    size: "compact",
+    onClick: saveAs,
+  });
   saveBtn.dataset.acctSaveAs = "true";
   srcRow.append(el("span", s.acctSpacer), saveBtn);
   sec.content.appendChild(srcRow);
@@ -474,37 +641,73 @@ function rotationBlock(o: Open, entry: SessionRotationEntry, read: Present, quot
   }
 
   if (o.saveFailed) {
-    const retry = button({ label: copyText("acct.now.retry"), kind: "ghost", size: "compact", onClick: () => void save(o, host, { custom: o.saveFailed as Rotation }) });
-    sec.content.appendChild(banner("error", copyText("acct.rot.saveFail"), [retry]));
+    const retry = button({
+      label: copyText("acct.now.retry"),
+      kind: "ghost",
+      size: "compact",
+      onClick: () => void save(o, host, { custom: o.saveFailed as Rotation }),
+    });
+    sec.content.appendChild(
+      banner("error", copyText("acct.rot.saveFail"), [retry]),
+    );
   }
   if (follow && ruleRow) {
     // `规则 日常 · 默认 · 在用 4 会话`（跟随时 `跟随默认 · 规则 日常`）＋［编辑规则…］［转为本会话］。列表只读：共享的规则去设置里改。
-    const parts = [src === "follow" ? copyText("rot.src.leadFollow", { name: ruleRow.name }) : copyText("rot.src.leadRule", { name: ruleRow.name })];
-    if (src !== "follow" && ruleRow.isDefault) parts.push(copyText("rot.src.tagDefault"));
-    if (ruleRow.users.live > 0) parts.push(copyText("rot.src.inUse", { n: ruleRow.users.live }));
+    const parts = [
+      src === "follow"
+        ? copyText("rot.src.leadFollow", { name: ruleRow.name })
+        : copyText("rot.src.leadRule", { name: ruleRow.name }),
+    ];
+    if (src !== "follow" && ruleRow.isDefault)
+      parts.push(copyText("rot.src.tagDefault"));
+    if (ruleRow.users.live > 0)
+      parts.push(copyText("rot.src.inUse", { n: ruleRow.users.live }));
     const lead = el("div", s.acctLead);
     lead.dataset.acctLead = "true";
     lead.append(el("span", s.acctSpacer, parts.join(copyText("kit.text.sep"))));
     lead.append(
-      button({ label: copyText("rot.src.edit"), kind: "secondary", size: "compact", onClick: () => host.openRules(o.origin, ruleRow.id) }),
-      button({ label: copyText("rot.src.detach"), kind: "secondary", size: "compact", onClick: () => void detach(o, host, ruleRow.name, was) }),
+      button({
+        label: copyText("rot.src.edit"),
+        kind: "secondary",
+        size: "compact",
+        onClick: () => host.openRules(o.origin, ruleRow.id),
+      }),
+      button({
+        label: copyText("rot.src.detach"),
+        kind: "secondary",
+        size: "compact",
+        onClick: () => void detach(o, host, ruleRow.name, was),
+      }),
     );
     sec.content.appendChild(lead);
   }
-  if (r) sec.content.appendChild(rotationList(o, host, read, r, quota, now, !follow));
+  if (r)
+    sec.content.appendChild(
+      rotationList(o, host, read, r, quota, now, !follow),
+    );
   const tl = timelineFold(o, read, r, quota, now);
   sec.content.appendChild(tl);
   return sec.root;
 }
 
 /** `触发 (•)满 ( )≥[90]%` ＋ `无号可换 [继续跑 | 停]`（后者只在 `≥N%` 时有效）。 */
-function triggerControls(o: Open, host: AcctPanelHost, r: Rotation, readonly: boolean, actual: AtLimit): HTMLElement {
+function triggerControls(
+  o: Open,
+  host: AcctPanelHost,
+  r: Rotation,
+  readonly: boolean,
+  actual: AtLimit,
+): HTMLElement {
   const box = el("span", s.acctTrigger);
   box.appendChild(el("span", s.acctTriggerLabel, copyText("acct.rot.trigger")));
   const name = `acct-trigger-${o.sid}`;
   const pctMode = r.when !== "full";
   const n = r.when === "full" ? 90 : r.when.threshold.n;
-  const radio = (on: boolean, label: string, pick: () => void): HTMLLabelElement => {
+  const radio = (
+    on: boolean,
+    label: string,
+    pick: () => void,
+  ): HTMLLabelElement => {
     const l = el("label", s.acctRadio);
     const i = document.createElement("input");
     i.type = "radio";
@@ -544,15 +747,28 @@ function triggerControls(o: Open, host: AcctPanelHost, r: Rotation, readonly: bo
     if (ev.key === "Enter" && !ev.isComposing) num.blur();
   });
   box.append(
-    radio(!pctMode, copyText("acct.rot.trigFull"), () => void save(o, host, { custom: { ...r, when: "full" } })),
-    radio(pctMode, copyText("acct.rot.trigPct"), () => void save(o, host, { custom: { ...r, when: { threshold: { n } } } })),
+    radio(
+      !pctMode,
+      copyText("acct.rot.trigFull"),
+      () => void save(o, host, { custom: { ...r, when: "full" } }),
+    ),
+    radio(
+      pctMode,
+      copyText("acct.rot.trigPct"),
+      () =>
+        void save(o, host, { custom: { ...r, when: { threshold: { n } } } }),
+    ),
     num,
     el("span", s.acctTriggerUnit, copyText("acct.rot.pctUnit")),
   );
   // 无号可换时怎么办（稿里没画的那一格）：两态分段；「满」触发时没有 N%，灰着。
   const lim = el("span", s.acctLimit);
   const label = el("span", s.acctTriggerLabel, copyText("acct.lim.label"));
-  attachTooltip(label, () => (pctMode ? copyText("acct.lim.labelHint", { n }) : copyText("acct.lim.fullOnly")));
+  attachTooltip(label, () =>
+    pctMode
+      ? copyText("acct.lim.labelHint", { n })
+      : copyText("acct.lim.fullOnly"),
+  );
   const seg = segmented<AtLimit>({
     items: [
       { key: "continue", label: copyText("acct.lim.go") },
@@ -570,13 +786,28 @@ function triggerControls(o: Open, host: AcctPanelHost, r: Rotation, readonly: bo
     for (const b of [go, stop]) if (b) b.disabled = true;
   }
   lim.append(label, seg);
-  if (r.atLimit === "stop" && actual === "continue" && pctMode) lim.appendChild(el("span", s.acctBlockNote, copyText("acct.lim.downgraded", { agent: agentName(host, o) })));
+  if (r.atLimit === "stop" && actual === "continue" && pctMode)
+    lim.appendChild(
+      el(
+        "span",
+        s.acctBlockNote,
+        copyText("acct.lim.downgraded", { agent: agentName(host, o) }),
+      ),
+    );
   const wrap = el("span", s.acctTriggerWrap);
   wrap.append(box, lim);
   return wrap;
 }
 
-function rotationList(o: Open, host: AcctPanelHost, read: Present, r: Rotation, quota: QuotaRead | null, now: number, editable: boolean): HTMLElement {
+function rotationList(
+  o: Open,
+  host: AcctPanelHost,
+  read: Present,
+  r: Rotation,
+  quota: QuotaRead | null,
+  now: number,
+  editable: boolean,
+): HTMLElement {
   const rows = rowsOf(r, read.account.start, quota, read.agent);
   const list = el("div", s.acctList);
   list.setAttribute("role", "list");
@@ -589,53 +820,107 @@ function rotationList(o: Open, host: AcctPanelHost, read: Present, r: Rotation, 
     line.dataset.acctRow = row.account;
     line.tabIndex = editable ? 0 : -1;
     if (row.account === cur) line.dataset.inuse = "true";
-    if (q && (q.state === "refused" || q.login !== "ok")) line.dataset.dim = "true";
+    if (q && (q.state === "refused" || q.login !== "ok"))
+      line.dataset.dim = "true";
     const handle = el("span", s.acctHandle);
     handle.appendChild(icon("drag", "compact"));
-    handle.setAttribute("aria-label", copyText("acct.row.dragAria", { name: accountLabel(row.account) }));
+    handle.setAttribute(
+      "aria-label",
+      copyText("acct.row.dragAria", { name: accountLabel(row.account) }),
+    );
     const box = document.createElement("input");
     box.type = "checkbox";
     box.checked = row.on;
-    box.setAttribute("aria-label", copyText("acct.row.checkAria", { name: accountLabel(row.account) }));
+    box.setAttribute(
+      "aria-label",
+      copyText("acct.row.checkAria", { name: accountLabel(row.account) }),
+    );
     const locked = row.start || row.account === cur;
-    box.disabled = !editable || locked || q?.login === "needsLogin" || q?.login === "needsKey";
-    if (row.account === cur && editable) attachTooltip(line, copyText("acct.rot.lockHint"));
+    box.disabled =
+      !editable ||
+      locked ||
+      q?.login === "needsLogin" ||
+      q?.login === "needsKey";
+    if (row.account === cur && editable)
+      attachTooltip(line, copyText("acct.rot.lockHint"));
     box.addEventListener("change", () => {
       void save(o, host, { custom: toggled(r, row.account, box.checked) });
     });
     if (editable) line.appendChild(handle);
-    line.append(box, acctAvatar(row.account), el("span", s.acctRowName, accountLabel(row.account)));
+    line.append(
+      box,
+      acctAvatar(row.account),
+      el("span", s.acctRowName, accountLabel(row.account)),
+    );
     if (row.start) line.appendChild(tagEl(copyText("acct.tag.start")));
-    if (row.account === cur) line.appendChild(tagEl(copyText("acct.tag.cur"), "cur"));
+    if (row.account === cur)
+      line.appendChild(tagEl(copyText("acct.tag.cur"), "cur"));
     if (q) {
       if (q.kind === "api") line.appendChild(tagEl(copyText("acct.kind.api")));
-      if (q.login === "needsLogin") line.appendChild(tagEl(copyText("acct.tag.login"), "error"));
-      if (q.login === "needsKey") line.appendChild(tagEl(copyText("acct.tag.key"), "error"));
-      if (q.state === "overageInUse") line.appendChild(tagEl(copyText("acct.val.over"), "warn"));
+      if (q.login === "needsLogin")
+        line.appendChild(tagEl(copyText("acct.tag.login"), "error"));
+      if (q.login === "needsKey")
+        line.appendChild(tagEl(copyText("acct.tag.key"), "error"));
+      if (q.state === "overageInUse")
+        line.appendChild(tagEl(copyText("acct.val.over"), "warn"));
     }
     // 封顶：本会话那份可改（行尾一个小按钮开浮层，编的是这号全部窗口那一格）；只读的写成小标签。
     // 兜底（排在封顶之后）：本会话那份顺序里具名的号上一个开关（开 ⇒ 实心标；关 ⇒ 悬停 / 行内有焦点才出）；只读的只画开着的那个实心标。
     const named = r.order.includes(row.account);
-    if (editable && !row.start) line.appendChild(capButton(o.origin, r, row.account, (next) => void save(o, host, { custom: next })));
+    if (editable && !row.start)
+      line.appendChild(
+        capButton(
+          o.origin,
+          r,
+          row.account,
+          (next) => void save(o, host, { custom: next }),
+        ),
+      );
     else
       for (const t of capTags(r, row.account)) {
         const tag = tagEl(t);
         tag.dataset.cap = "";
         line.appendChild(tag);
       }
-    if (editable && named) line.appendChild(fallbackToggle(r, row.account, accountLabel(row.account), (next) => void save(o, host, { custom: next })));
-    else if ((r.fallback ?? []).includes(row.account)) line.appendChild(fallbackMark());
-    line.appendChild(rowUsage(q, now, ledgerOf(quota, read.agent, row.account)?.reading));
+    if (editable && named)
+      line.appendChild(
+        fallbackToggle(
+          r,
+          row.account,
+          accountLabel(row.account),
+          (next) => void save(o, host, { custom: next }),
+        ),
+      );
+    else if ((r.fallback ?? []).includes(row.account))
+      line.appendChild(fallbackMark());
+    line.appendChild(
+      rowUsage(q, now, ledgerOf(quota, read.agent, row.account)?.reading),
+    );
     if (editable) {
       // 键盘：Alt+↑ / Alt+↓ 移位、空格勾（复选框自己管）。
       line.addEventListener("keydown", (ev) => {
-        if (ev.isComposing || !ev.altKey || (ev.key !== "ArrowUp" && ev.key !== "ArrowDown")) return;
+        if (
+          ev.isComposing ||
+          !ev.altKey ||
+          (ev.key !== "ArrowUp" && ev.key !== "ArrowDown")
+        )
+          return;
         ev.preventDefault();
         const to = ev.key === "ArrowUp" ? i - 1 : i + 1;
         if (to < 0 || to >= rows.length) return;
         void save(o, host, { custom: moved(r, rows, i, to) });
       });
-      handle.addEventListener("pointerdown", (ev) => startDrag(ev, o, host, list, elems, i, (to) => void save(o, host, { custom: moved(r, rows, i, to) })));
+      handle.addEventListener("pointerdown", (ev) =>
+        startDrag(
+          ev,
+          o,
+          host,
+          list,
+          elems,
+          i,
+          (to) => void save(o, host, { custom: moved(r, rows, i, to) }),
+        ),
+      );
     }
     elems.push(line);
     list.appendChild(line);
@@ -643,15 +928,16 @@ function rotationList(o: Open, host: AcctPanelHost, read: Present, r: Rotation, 
   return list;
 }
 
-function move<T>(xs: T[], from: number, to: number): T[] {
-  const out = [...xs];
-  const [x] = out.splice(from, 1);
-  out.splice(to, 0, x);
-  return out;
-}
-
 /** 只从把手拖：拖起的行浮起、落点顶边一条插入线、原位留影子；松手即存；拖出列表 ＝ 不动；Esc 取消。 */
-function startDrag(ev: PointerEvent, o: Open, host: AcctPanelHost, list: HTMLElement, rows: HTMLElement[], from: number, done: (to: number) => void): void {
+function startDrag(
+  ev: PointerEvent,
+  o: Open,
+  host: AcctPanelHost,
+  list: HTMLElement,
+  rows: HTMLElement[],
+  from: number,
+  done: (to: number) => void,
+): void {
   ev.preventDefault();
   const row = rows[from];
   o.hold = true;
@@ -665,7 +951,11 @@ function startDrag(ev: PointerEvent, o: Open, host: AcctPanelHost, list: HTMLEle
       line.remove();
       return;
     }
-    let k = rows.findIndex((r) => y < r.getBoundingClientRect().top + r.getBoundingClientRect().height / 2);
+    let k = rows.findIndex(
+      (r) =>
+        y <
+        r.getBoundingClientRect().top + r.getBoundingClientRect().height / 2,
+    );
     if (k < 0) k = rows.length;
     to = k > from ? k - 1 : k;
     const anchor = rows[k] ?? null;
@@ -694,7 +984,11 @@ function startDrag(ev: PointerEvent, o: Open, host: AcctPanelHost, list: HTMLEle
 }
 
 /** 写这个会话的轮换：成 ⇒ 重问这个会话；败 ⇒ 列表退回原样、块顶一条错误条（重试写同一份）。回成没成。 */
-async function save(o: Open, host: AcctPanelHost, w: SessionRotationWrite): Promise<boolean> {
+async function save(
+  o: Open,
+  host: AcctPanelHost,
+  w: SessionRotationWrite,
+): Promise<boolean> {
   let ok = true;
   try {
     const got = await writeSessionRotation(o.origin, [o.sid], w);
@@ -714,40 +1008,93 @@ async function save(o: Open, host: AcctPanelHost, w: SessionRotationWrite): Prom
 }
 
 /** 转为本会话：照此刻生效的那条拷成本会话的（之后脱钩）；toast `orders · 本会话（从 日常 转来）[撤销]`，撤销 ＝ 写回原来源。 */
-async function detach(o: Open, host: AcctPanelHost, name: string, was: SrcKey): Promise<void> {
+async function detach(
+  o: Open,
+  host: AcctPanelHost,
+  name: string,
+  was: SrcKey,
+): Promise<void> {
   if (!(await save(o, host, "detach"))) return;
-  toast(copyText("rot.done.detach", { session: host.sessionTitle(o.sid), name }), "", {
-    level: "success",
-    action: { label: copyText("kit.toast.undo"), run: () => void save(o, host, srcWrite(was)) },
-  });
+  toast(
+    copyText("rot.done.detach", { session: host.sessionTitle(o.sid), name }),
+    "",
+    {
+      level: "success",
+      action: {
+        label: copyText("kit.toast.undo"),
+        run: () => void save(o, host, srcWrite(was)),
+      },
+    },
+  );
 }
 
 /** 换来源：写一次；成了 toast `orders · 跟随默认 [撤销]`，撤销 ＝ 写回原来源（本会话那份后端一直留着）。 */
-async function setSource(o: Open, host: AcctPanelHost, to: SrcKey, was: SrcKey, label: (k: SrcKey) => string): Promise<void> {
+async function setSource(
+  o: Open,
+  host: AcctPanelHost,
+  to: SrcKey,
+  was: SrcKey,
+  label: (k: SrcKey) => string,
+): Promise<void> {
   if (!(await save(o, host, srcWrite(to)))) return;
-  toast(copyText("rot.done.src", { session: host.sessionTitle(o.sid), src: label(to) }), "", {
-    level: "success",
-    action: { label: copyText("kit.toast.undo"), run: () => void save(o, host, srcWrite(was)) },
-  });
+  toast(
+    copyText("rot.done.src", {
+      session: host.sessionTitle(o.sid),
+      src: label(to),
+    }),
+    "",
+    {
+      level: "success",
+      action: {
+        label: copyText("kit.toast.undo"),
+        run: () => void save(o, host, srcWrite(was)),
+      },
+    },
+  );
 }
 
 // ─────────────────────────────── 时间轴（折在轮换下）
 
-function timelineFold(o: Open, read: Present, r: Rotation | null, quota: QuotaRead | null, now: number): HTMLElement {
-  const pool = r ? rowsOf(r, read.account.start, quota, read.agent).filter((x) => x.on) : [{ account: read.account.current, start: true, on: true }];
-  const usable = (quota?.usableNow ?? []).filter((a) => pool.some((p) => p.account === a));
+function timelineFold(
+  o: Open,
+  read: Present,
+  r: Rotation | null,
+  quota: QuotaRead | null,
+  now: number,
+): HTMLElement {
+  const pool = r
+    ? rowsOf(r, read.account.start, quota, read.agent).filter((x) => x.on)
+    : [{ account: read.account.current, start: true, on: true }];
+  const usable = (quota?.usableNow ?? []).filter((a) =>
+    pool.some((p) => p.account === a),
+  );
   const back = quota?.earliestReturn ?? null;
   const parts: string[] = [];
-  if (usable.length > 0) parts.push(copyText("acct.tl.usable", { list: usable.map(accountLabel).join(", ") }));
-  if (back && pool.some((p) => p.account === back.account)) parts.push(copyText("acct.tl.nextBack", { name: accountLabel(back.account), at: back.atText ?? "" }));
-  const summary = parts.length > 0 ? parts.join(copyText("kit.text.sep")) : copyText("acct.tl.allOk");
+  if (usable.length > 0)
+    parts.push(
+      copyText("acct.tl.usable", { list: usable.map(accountLabel).join(", ") }),
+    );
+  if (back && pool.some((p) => p.account === back.account))
+    parts.push(
+      copyText("acct.tl.nextBack", {
+        name: accountLabel(back.account),
+        at: back.atText ?? "",
+      }),
+    );
+  const summary =
+    parts.length > 0
+      ? parts.join(copyText("kit.text.sep"))
+      : copyText("acct.tl.allOk");
   const body = el("div", s.acctTimeline);
   const span = 24 * 3600;
   for (const p of pool) {
     const q = quotaOf(quota, read.agent, p.account);
     const line = el("div", s.acctTlRow);
     if (p.account === read.account.current) line.dataset.inuse = "true";
-    line.append(acctAvatar(p.account), el("span", s.acctTlName, accountLabel(p.account)));
+    line.append(
+      acctAvatar(p.account),
+      el("span", s.acctTlName, accountLabel(p.account)),
+    );
     const track = el("span", s.acctTlTrack);
     const marks: string[] = [];
     for (const x of q?.slots ?? []) {
@@ -762,9 +1109,17 @@ function timelineFold(o: Open, read: Present, r: Rotation | null, quota: QuotaRe
         track.appendChild(seg);
       }
       track.appendChild(m);
-      marks.push(copyText("acct.tl.marks", { w: slotLabel(x.slot), at: x.resetsAtText ?? "" }));
+      marks.push(
+        copyText("acct.tl.marks", {
+          w: slotLabel(x.slot),
+          at: x.resetsAtText ?? "",
+        }),
+      );
     }
-    line.append(track, el("span", s.acctTlLabel, marks.join(copyText("kit.text.sep"))));
+    line.append(
+      track,
+      el("span", s.acctTlLabel, marks.join(copyText("kit.text.sep"))),
+    );
     body.appendChild(line);
   }
   body.appendChild(el("div", s.acctBlockNote, copyText("acct.tl.legend")));
@@ -782,41 +1137,77 @@ function timelineFold(o: Open, read: Present, r: Rotation | null, quota: QuotaRe
 
 // ─────────────────────────────── 切换
 
-function switchBlock(o: Open, entry: SessionRotationEntry | undefined, read: Present | undefined, quota: QuotaRead | null, host: AcctPanelHost): HTMLElement {
+function switchBlock(
+  o: Open,
+  entry: SessionRotationEntry | undefined,
+  read: Present | undefined,
+  quota: QuotaRead | null,
+  host: AcctPanelHost,
+): HTMLElement {
   const sec = section(copyText("acct.sw.title"));
   // 中转没见过这个会话 ⇒ 不知道它的路由名，取这台额度账里那一家（今天只有一家）。
-  const agent = read?.agent ?? routeOf(host, o) ?? quota?.accounts[0]?.agent ?? quota?.unseen[0]?.agent ?? "";
+  const agent =
+    read?.agent ??
+    routeOf(host, o) ??
+    quota?.accounts[0]?.agent ??
+    quota?.unseen[0]?.agent ??
+    "";
   const cur = read?.account.current ?? null;
-  const inPlace = read ? read.account.inPlace : entry?.read.state === "absent" ? entry.read.inPlace : "noRelay";
-  const candidates = [...(quota?.accounts ?? []), ...(quota?.unseen ?? [])].filter((x) => x.agent === agent && x.account !== "_").map((x) => x.account);
+  const inPlace = read
+    ? read.account.inPlace
+    : entry?.read.state === "absent"
+      ? entry.read.inPlace
+      : "noRelay";
+  const candidates = [...(quota?.accounts ?? []), ...(quota?.unseen ?? [])]
+    .filter((x) => x.agent === agent && x.account !== "_")
+    .map((x) => x.account);
   // 缺省选后端给的下一个；没给（中转没见过）⇒ 此刻发得出去的头一个（`usableNow`，后端判的）。
-  const pick = o.pick ?? read?.next ?? candidates.find((a) => a !== cur && (quota?.usableNow ?? []).includes(a)) ?? candidates.find((a) => a !== cur) ?? null;
+  const pick =
+    o.pick ??
+    read?.next ??
+    candidates.find((a) => a !== cur && (quota?.usableNow ?? []).includes(a)) ??
+    candidates.find((a) => a !== cur) ??
+    null;
   const pickBtn = el("button", s.acctPick);
   pickBtn.type = "button";
   pickBtn.setAttribute("aria-label", copyText("acct.sw.pickAria"));
   if (pick) {
-    pickBtn.append(acctAvatar(pick), el("span", s.acctPickName, accountLabel(pick)));
+    pickBtn.append(
+      acctAvatar(pick),
+      el("span", s.acctPickName, accountLabel(pick)),
+    );
     const q = quotaOf(quota, agent, pick);
     if (q) {
       const u = usageOf(q, ledgerOf(quota, agent, pick)?.reading);
       pickBtn.appendChild(el("span", s.acctPickUsage, usageText(u)));
     }
   } else {
-    pickBtn.appendChild(el("span", s.acctPickName, copyText("acct.sw.optNone")));
+    pickBtn.appendChild(
+      el("span", s.acctPickName, copyText("acct.sw.optNone")),
+    );
   }
   pickBtn.appendChild(icon("caretDown", "compact"));
   pickBtn.addEventListener("click", () => {
     const items: MenuItem[] = candidates.map((a) => {
       const q = quotaOf(quota, agent, a);
       const u = q ? usageOf(q, ledgerOf(quota, agent, a)?.reading) : null;
-      const usage = u ? (usageText(u)) : undefined;
-      const blocked = a === cur || q?.login === "needsLogin" || q?.login === "needsKey";
+      const usage = u ? usageText(u) : undefined;
+      const blocked =
+        a === cur || q?.login === "needsLogin" || q?.login === "needsKey";
       return {
         label: accountLabel(a),
         avatar: acctAvatar(a),
         checked: a === pick,
-        detail: a === cur ? copyText("acct.tag.cur") : q?.login === "needsLogin" ? copyText("acct.tag.login") : q?.login === "needsKey" ? copyText("acct.tag.key") : usage,
-        detailTone: u?.tone === "refused" || u?.tone === "near" ? "warn" : undefined,
+        detail:
+          a === cur
+            ? copyText("acct.tag.cur")
+            : q?.login === "needsLogin"
+              ? copyText("acct.tag.login")
+              : q?.login === "needsKey"
+                ? copyText("acct.tag.key")
+                : usage,
+        detailTone:
+          u?.tone === "refused" || u?.tone === "near" ? "warn" : undefined,
         enabled: !blocked,
         onClick: () => {
           o.pick = a;
@@ -825,12 +1216,15 @@ function switchBlock(o: Open, entry: SessionRotationEntry | undefined, read: Pre
         },
       };
     });
-    openMenu({ el: pickBtn, align: "start" }, items, { label: copyText("acct.sw.pickAria") });
+    openMenu({ el: pickBtn, align: "start" }, items, {
+      label: copyText("acct.sw.pickAria"),
+    });
   });
   const hotOk = inPlace === "ok";
   const mode = hotOk ? o.mode : "restart";
   const go = button({
-    label: mode === "restart" ? copyText("acct.sw.restart") : copyText("acct.sw.go"),
+    label:
+      mode === "restart" ? copyText("acct.sw.restart") : copyText("acct.sw.go"),
     kind: "primary",
     onClick: () => void doSwitch(o, host, pick, cur, read, go),
   });
@@ -840,7 +1234,11 @@ function switchBlock(o: Open, entry: SessionRotationEntry | undefined, read: Pre
 
   const name = `acct-mode-${o.sid}`;
   const modes = el("div", s.acctModes);
-  const radio = (m: "hot" | "restart", label: string, disabled: boolean): HTMLLabelElement => {
+  const radio = (
+    m: "hot" | "restart",
+    label: string,
+    disabled: boolean,
+  ): HTMLLabelElement => {
     const l = el("label", s.acctRadio);
     const i = document.createElement("input");
     i.type = "radio";
@@ -855,17 +1253,40 @@ function switchBlock(o: Open, entry: SessionRotationEntry | undefined, read: Pre
     return l;
   };
   modes.append(radio("hot", copyText("acct.sw.hot"), !hotOk));
-  if (!hotOk) modes.appendChild(el("span", s.acctReason, reasonLabel(inPlace, { agent, target: pick ?? "" })));
+  if (!hotOk)
+    modes.appendChild(
+      el(
+        "span",
+        s.acctReason,
+        reasonLabel(inPlace, { agent, target: pick ?? "" }),
+      ),
+    );
   modes.append(radio("restart", copyText("acct.sw.restart"), false));
   sec.content.appendChild(modes);
-  if (read) sec.content.appendChild(el("div", s.acctHint, copyText("acct.sw.hotHint", { name: accountLabel(read.account.start) })));
-  sec.content.appendChild(el("div", s.acctHint, copyText("acct.sw.restartHint")));
+  if (read)
+    sec.content.appendChild(
+      el(
+        "div",
+        s.acctHint,
+        copyText("acct.sw.hotHint", { name: accountLabel(read.account.start) }),
+      ),
+    );
+  sec.content.appendChild(
+    el("div", s.acctHint, copyText("acct.sw.restartHint")),
+  );
   if (!pick || pick === cur) setDisabled(go, copyText("acct.sw.optNone"));
   if (o.switchError) sec.content.appendChild(banner("error", o.switchError));
   return sec.root;
 }
 
-async function doSwitch(o: Open, host: AcctPanelHost, target: string | null, cur: string | null, read: Present | undefined, go: HTMLButtonElement): Promise<void> {
+async function doSwitch(
+  o: Open,
+  host: AcctPanelHost,
+  target: string | null,
+  cur: string | null,
+  read: Present | undefined,
+  go: HTMLButtonElement,
+): Promise<void> {
   if (!target) return;
   const agent = read?.agent ?? routeOf(host, o) ?? "";
   const hot = (read?.account.inPlace ?? "noRelay") === "ok" && o.mode === "hot";
@@ -874,11 +1295,16 @@ async function doSwitch(o: Open, host: AcctPanelHost, target: string | null, cur
     if (hot) {
       const got = (await switchHot(o.origin, [o.sid], target))[o.sid];
       if (!got || got.state !== "done") {
-        o.switchError = copyText("acct.sw.failHot", { cur: accountLabel(cur ?? "_"), reason: reasonLabel(got ? got.code : "", { agent, target }) });
+        o.switchError = copyText("acct.sw.failHot", {
+          cur: accountLabel(cur ?? "_"),
+          reason: reasonLabel(got ? got.code : "", { agent, target }),
+        });
       } else {
         o.switchError = null;
         o.pick = null;
-        toast(copyText("acct.sw.doneHot", { name: accountLabel(target) }), "", { level: "info" });
+        toast(copyText("acct.sw.doneHot", { name: accountLabel(target) }), "", {
+          level: "info",
+        });
       }
       return;
     }
@@ -886,7 +1312,9 @@ async function doSwitch(o: Open, host: AcctPanelHost, target: string | null, cur
   } catch (e) {
     console.warn("[acct] rotation-switch 失败：", e);
     const reason = copyText("acct.reason.unknown");
-    o.switchError = hot ? copyText("acct.sw.failHot", { cur: accountLabel(cur ?? "_"), reason }) : copyText("acct.sw.failRestart", { reason });
+    o.switchError = hot
+      ? copyText("acct.sw.failHot", { cur: accountLabel(cur ?? "_"), reason })
+      : copyText("acct.sw.failRestart", { reason });
   } finally {
     setDisabled(go, null);
     await refreshSessions(o.origin, [o.sid]);
@@ -898,7 +1326,11 @@ async function doSwitch(o: Open, host: AcctPanelHost, target: string | null, cur
 const RESTART_BASE_MS = 60_000;
 
 /** 重启切换：先问那台会打断什么（有才问）、再交那台 `rotation-switch`（重启那一形，逐个交给 `session-restart`）、成了开终端接上。 */
-async function restartSwitch(o: Open, host: AcctPanelHost, target: string): Promise<void> {
+async function restartSwitch(
+  o: Open,
+  host: AcctPanelHost,
+  target: string,
+): Promise<void> {
   // 用新号重起要知道是哪一家（会话事实给的）；还不知道 ⇒ 不起、说清，不落哪一家。
   const kind = host.agentOf(o.sid);
   if (kind === null) {
@@ -907,7 +1339,12 @@ async function restartSwitch(o: Open, host: AcctPanelHost, target: string): Prom
   }
   const standing = await standingOf(o.origin, o.sid);
   if (standing?.kind !== "running") {
-    o.switchError = copyText("acct.sw.failRestart", { reason: reasonLabel("not_in_terminal", { agent: agentName(host, o), target }) });
+    o.switchError = copyText("acct.sw.failRestart", {
+      reason: reasonLabel("not_in_terminal", {
+        agent: agentName(host, o),
+        target,
+      }),
+    });
     return;
   }
   const go = await confirmInterrupts({
@@ -926,23 +1363,62 @@ async function restartSwitch(o: Open, host: AcctPanelHost, target: string): Prom
     local: isLocalOrigin(o.origin),
     ...(await startSettings(o.origin, kind)),
   };
-  const got = (await switchRestart(o.origin, [args], target, ARRIVAL_BUDGET_MS + RESTART_BASE_MS))[o.sid];
+  const got = (
+    await switchRestart(
+      o.origin,
+      [args],
+      target,
+      ARRIVAL_BUDGET_MS + RESTART_BASE_MS,
+    )
+  )[o.sid];
   o.switchError = null;
   if (!got || got.state !== "done") {
-    const reason = reasonLabel(got ? got.code : "", { agent: agentName(host, o), target });
-    const log = { label: copyText("acct.sw.log"), run: () => void commands.open_log_file().catch((e) => console.warn("open_log_file failed:", e)) };
+    const reason = reasonLabel(got ? got.code : "", {
+      agent: agentName(host, o),
+      target,
+    });
+    const log = {
+      label: copyText("acct.sw.log"),
+      run: () =>
+        void commands
+          .open_log_file()
+          .catch((e) => console.warn("open_log_file failed:", e)),
+    };
     if (got?.old === "ended") {
-      toast(copyText("acct.sw.failRestartEnded", { ended: copyText("sessionState.ended.name"), reason }), "", {
-        level: "error",
-        action: [{ label: copyText("acct.sw.resume"), run: () => host.openResume(o.sid) }, log],
-      });
+      toast(
+        copyText("acct.sw.failRestartEnded", {
+          ended: copyText("sessionState.ended.name"),
+          reason,
+        }),
+        "",
+        {
+          level: "error",
+          action: [
+            {
+              label: copyText("acct.sw.resume"),
+              run: () => host.openResume(o.sid),
+            },
+            log,
+          ],
+        },
+      );
     } else {
-      toast(copyText("acct.sw.failRestart", { reason }), "", { level: "error", action: [log] });
+      toast(copyText("acct.sw.failRestart", { reason }), "", {
+        level: "error",
+        action: [log],
+      });
     }
     return;
   }
   o.pick = null;
-  toast(copyText("acct.sw.doneRestart", { name: accountLabel(target), session: host.sessionTitle(o.sid) }), "", { level: "info" });
+  toast(
+    copyText("acct.sw.doneRestart", {
+      name: accountLabel(target),
+      session: host.sessionTitle(o.sid),
+    }),
+    "",
+    { level: "info" },
+  );
   await runRemoteAttach(o.origin, kind, got.terminal, { quiet: true });
 }
 
@@ -960,19 +1436,42 @@ function historyBlock(read: Present): HTMLElement {
   const rows = [...read.account.history].reverse().map((h) => {
     const w = whyOf(h);
     const move = el("span", s.acctHistMove);
-    move.append(acctAvatar(h.from), document.createTextNode(accountLabel(h.from)));
-    if (h.to !== h.from) move.append(el("span", s.acctHistArrow, copyText("acct.strip.arrow")), acctAvatar(h.to), document.createTextNode(accountLabel(h.to)));
+    move.append(
+      acctAvatar(h.from),
+      document.createTextNode(accountLabel(h.from)),
+    );
+    if (h.to !== h.from)
+      move.append(
+        el("span", s.acctHistArrow, copyText("acct.strip.arrow")),
+        acctAvatar(h.to),
+        document.createTextNode(accountLabel(h.to)),
+      );
     const why = el("span", s.acctHistWhy, w.why);
     if (w.reset) why.appendChild(el("span", s.acctHistReset, w.reset));
     return line(h.atText ?? "", [move, why]);
   });
-  const startRow = el("span", s.acctHistMove, copyText("acct.hist.start", { name: accountLabel(read.account.start) }));
-  rows.push(line(read.account.history.length === 0 ? (read.account.sinceText ?? "") : "", [startRow]));
+  const startRow = el(
+    "span",
+    s.acctHistMove,
+    copyText("acct.hist.start", { name: accountLabel(read.account.start) }),
+  );
+  rows.push(
+    line(
+      read.account.history.length === 0 ? (read.account.sinceText ?? "") : "",
+      [startRow],
+    ),
+  );
   sec.content.append(...rows.slice(0, HISTORY_SHOWN));
   if (rows.length > HISTORY_SHOWN) {
     const more = el("div", s.acctHistMore);
     more.append(...rows.slice(HISTORY_SHOWN));
-    sec.content.appendChild(fold({ title: copyText("acct.hist.more", { n: rows.length - HISTORY_SHOWN }), open: false, body: more }));
+    sec.content.appendChild(
+      fold({
+        title: copyText("acct.hist.more", { n: rows.length - HISTORY_SHOWN }),
+        open: false,
+        body: more,
+      }),
+    );
   }
   return sec.root;
 }
@@ -983,12 +1482,22 @@ function footer(o: Open, host: AcctPanelHost): HTMLElement {
   const def = host.defaultOf(o.origin);
   const b = el("button", s.acctPick);
   b.type = "button";
-  if (def) b.append(acctAvatar(def), el("span", s.acctPickName, accountLabel(def)));
+  if (def)
+    b.append(acctAvatar(def), el("span", s.acctPickName, accountLabel(def)));
   b.appendChild(icon("caretDown", "compact"));
   b.addEventListener("click", () => {
     closeMenu();
     host.openDefaultMenu(b, o.origin);
   });
-  f.append(b, el("span", s.acctSpacer), button({ label: copyText("acct.foot.manage"), kind: "ghost", size: "compact", onClick: () => host.openSettings(o.origin) }));
+  f.append(
+    b,
+    el("span", s.acctSpacer),
+    button({
+      label: copyText("acct.foot.manage"),
+      kind: "ghost",
+      size: "compact",
+      onClick: () => host.openSettings(o.origin),
+    }),
+  );
   return f;
 }

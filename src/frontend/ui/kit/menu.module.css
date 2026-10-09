@@ -19,11 +19,6 @@
     overflow-y: auto;
   }
 
-  .menuFilter:focus {
-    border-color: var(--field-border-focus);
-    outline: none;
-  }
-
   .menuFilter {
     box-sizing: border-box;
     width: 100%;
@@ -35,6 +30,16 @@
     background: var(--field-bg);
     color: inherit;
     font: inherit;
+  }
+
+  .menuFilter:focus {
+    border-color: var(--field-border-focus);
+    outline: none;
+  }
+
+  /* 筛选框筛掉的项（`hidden`）：`.menuItem` 写了 display，要收住。 */
+  .menuItem[hidden] {
+    display: none;
   }
 
   .menuEmpty {

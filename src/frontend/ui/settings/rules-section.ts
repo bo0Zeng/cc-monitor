@@ -10,13 +10,25 @@
  * `history-list`（那台的会话清单）。这里只排版、只认最后一趟回答；那台规则一变推 `quota-changed {rules}`，这一栏自己重读。
  */
 import { getCurrentMachine, subscribeMachine } from "./machine-context";
-import { deleteRules, readRules, renameRule, saveRule, setDefaultRule, writeSessionRotation, type RuleRow, type RuleUserDoing, type RulesRead, type SessionRotationWrite } from "../quota-reads";
+import {
+  deleteRules,
+  readRules,
+  renameRule,
+  saveRule,
+  setDefaultRule,
+  writeSessionRotation,
+  type RuleRow,
+  type RuleUserDoing,
+  type RulesRead,
+  type SessionRotationWrite,
+} from "../quota-reads";
 import { fetchList } from "../history-list-reads";
 import { readRemoteConfig } from "../remote-config";
 import { bindEvents } from "../events";
 import { confirmDialog, type ConfirmFn, type ConfirmSpec } from "../kit/dialog";
 import { button, setDisabled } from "../kit/button";
 import { banner } from "../kit/banner";
+import { foldCaret } from "../kit/fold";
 import { skeletonRows } from "../kit/skeleton";
 import { field } from "../kit/field";
 import { openMenu, type MenuItem } from "../kit/menu";
@@ -31,6 +43,7 @@ import { copyText } from "../copy-table";
 import { machineName } from "../ipc/chan-caller";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
 import type { CellError } from "../generated/CellError";
+import { RuleEditor } from "./rule-editor";
 import s from "./rules-section.module.css";
 
 /** 推来的帧合并成一次重读的间隔。 */
@@ -45,8 +58,29 @@ interface Who {
 
 /** 名单里一个会话的点与那一句（与主窗口标签页同一套：点 ＝ `dotLabel`，在等你 ⇒ 等的是什么）。 */
 function userFace(d: RuleUserDoing): { dot: DotState; word: string } {
-  const dot: DotState = d.state === "working" ? "running" : d.state === "idle" ? "idle" : d.state === "needsYou" ? "needs-you" : "ended";
-  return { dot, word: d.state === "needsYou" ? needsWord(d.needs ?? "unknown") : dotLabel(dot) };
+  const dot: DotState =
+    d.state === "working"
+      ? "running"
+      : d.state === "idle"
+        ? "idle"
+        : d.state === "needsYou"
+          ? "needs-you"
+          : "ended";
+  return {
+    dot,
+    word:
+      d.state === "needsYou" ? needsWord(d.needs ?? "unknown") : dotLabel(dot),
+  };
+}
+
+/** 别处要这一栏开某条规则的编辑器（面板「编辑规则…」带目的地落过来）：按机器记一条，这一栏读到那台的表时开。 */
+const wanted = new Map<Origin, string>();
+const wantListeners = new Set<() => void>();
+
+/** 开 `origin` 那台规则 `id` 的编辑器（这一栏还没读到表 ⇒ 读到时开）。 */
+export function openRuleEditor(origin: Origin, id: string): void {
+  wanted.set(origin, id);
+  for (const f of wantListeners) f();
 }
 
 export interface RulesSectionOptions {
@@ -82,6 +116,8 @@ export class RulesSection {
   private pushTimer: ReturnType<typeof setTimeout> | null = null;
   private subscribed = false;
   private loaded = false;
+  /** 开着的那条规则的编辑器（同一栏里的子页）。 */
+  private editor: RuleEditor | null = null;
 
   constructor(opts: RulesSectionOptions = {}) {
     this.confirm = opts.confirm ?? confirmDialog;
@@ -94,7 +130,12 @@ export class RulesSection {
     this.titleEl.className = s.rulesTitle;
     this.subEl = document.createElement("span");
     this.subEl.className = s.rulesSub;
-    this.newBtn = button({ label: copyText("rot.list.new"), icon: "plus", size: "compact", onClick: () => this.openNew(this.newBtn) });
+    this.newBtn = button({
+      label: copyText("rot.list.new"),
+      icon: "plus",
+      size: "compact",
+      onClick: () => this.openNew(this.newBtn),
+    });
     this.newBtn.dataset.rulesNew = "true";
     const right = document.createElement("div");
     right.className = s.rulesActions;
@@ -105,13 +146,20 @@ export class RulesSection {
     this.body.className = s.rulesBody;
     root.append(head, this.filterSlot, this.body);
     root.addEventListener("keydown", (ev) => {
-      if (ev.key === "Escape" && this.renaming && (ev.target as HTMLElement).dataset.rulesRename) {
+      if (
+        ev.key === "Escape" &&
+        this.renaming &&
+        (ev.target as HTMLElement).dataset.rulesRename
+      ) {
         ev.stopPropagation();
         this.renaming = null;
         this.paint();
       }
     });
     this.element = root;
+    wantListeners.add(() => {
+      if (this.element.isConnected) this.takeWanted();
+    });
     subscribeMachine((origin) => {
       if (!this.loaded || origin === this.origin) return;
       this.origin = origin;
@@ -130,6 +178,7 @@ export class RulesSection {
   }
 
   private reset(): void {
+    this.closeEditor();
     this.picked.clear();
     this.open.clear();
     this.pickedSids.clear();
@@ -149,8 +198,15 @@ export class RulesSection {
       () => [] as string[],
     );
     const origins: Origin[] = [LOCAL_ORIGIN, ...hosts];
-    const pushed = (origin: Origin, change: { rules: boolean; sids: readonly string[]; all: boolean }): void => {
-      if (origin !== this.origin || !(change.rules || change.all || change.sids.length > 0)) return;
+    const pushed = (
+      origin: Origin,
+      change: { rules: boolean; sids: readonly string[]; all: boolean },
+    ): void => {
+      if (
+        origin !== this.origin ||
+        !(change.rules || change.all || change.sids.length > 0)
+      )
+        return;
       if (this.pushTimer !== null) clearTimeout(this.pushTimer);
       // 调度：合批 —— 那台推来的规则 / 会话来源变更：300ms 内几帧合成一次重读
       this.pushTimer = setTimeout(() => {
@@ -159,7 +215,10 @@ export class RulesSection {
       }, PUSH_COALESCE_MS);
     };
     try {
-      await bindEvents({ onLine: () => {}, onSessionEnded: () => {}, onQuotaChanged: pushed }, { quota: origins });
+      await bindEvents(
+        { onLine: () => {}, onSessionEnded: () => {}, onQuotaChanged: pushed },
+        { quota: origins },
+      );
     } catch (e) {
       console.warn("[rules] 订不上规则推送：", e);
     }
@@ -169,7 +228,9 @@ export class RulesSection {
   private async reload(quiet = false): Promise<void> {
     const my = ++this.seq;
     const origin = this.origin;
-    this.titleEl.textContent = copyText("rot.list.title", { machine: machineName(origin) });
+    this.titleEl.textContent = copyText("rot.list.title", {
+      machine: machineName(origin),
+    });
     if (!quiet || this.read === null) {
       this.read = null;
       this.subEl.textContent = "";
@@ -188,19 +249,46 @@ export class RulesSection {
     if (got === null) {
       this.read = null;
       this.subEl.textContent = "";
-      setDisabled(this.newBtn, copyText("rot.list.unreadable", { machine: machineName(origin) }));
-      const retry = button({ label: copyText("rot.list.retry"), size: "compact", onClick: () => void this.reload() });
+      setDisabled(
+        this.newBtn,
+        copyText("rot.list.unreadable", { machine: machineName(origin) }),
+      );
+      const retry = button({
+        label: copyText("rot.list.retry"),
+        size: "compact",
+        onClick: () => void this.reload(),
+      });
       console.warn(`[rules] rotation-rules-read [${origin}] 失败：`, failed);
-      this.body.replaceChildren(banner("warn", copyText("rot.list.unreadable", { machine: machineName(origin) }), [retry]));
+      this.body.replaceChildren(
+        banner(
+          "warn",
+          copyText("rot.list.unreadable", { machine: machineName(origin) }),
+          [retry],
+        ),
+      );
       return;
     }
     this.read = got;
+    if (this.editor) {
+      const id = this.editor.id;
+      this.editor.update(got.rules.find((x) => x.id === id) ?? null);
+    }
+    this.takeWanted();
     // 不在了的规则 / 会话不留勾。
     const ids = new Set(got.rules.map((r) => r.id));
-    for (const set of [this.picked, this.open, this.endedOpen]) for (const id of [...set]) if (!ids.has(id)) set.delete(id);
+    for (const set of [this.picked, this.open, this.endedOpen])
+      for (const id of [...set]) if (!ids.has(id)) set.delete(id);
     if (this.renaming && !ids.has(this.renaming.id)) this.renaming = null;
     // 名单里有没见过的会话 ⇒ 标题重取一次。
-    if (this.whoGot && got.rules.some((r) => [...r.users.sids, ...r.users.endedSids].some((sid) => !this.whoGot!.has(sid)))) this.who = null;
+    if (
+      this.whoGot &&
+      got.rules.some((r) =>
+        [...r.users.sids, ...r.users.endedSids].some(
+          (sid) => !this.whoGot!.has(sid),
+        ),
+      )
+    )
+      this.who = null;
     this.paint();
     if (this.open.size > 0) void this.ensureWho();
   }
@@ -229,19 +317,87 @@ export class RulesSection {
     return this.whoGot?.get(sid) ?? { label: sid.slice(0, 8) };
   }
 
+  // ───────────────────────────── 编辑器 ─────────────────────────────
+
+  /** 别处要开的那条（这一台、表里有）⇒ 开它的编辑器。 */
+  private takeWanted(): void {
+    const id = wanted.get(this.origin);
+    if (id === undefined || !this.read) return;
+    wanted.delete(this.origin);
+    if (this.read.rules.some((x) => x.id === id)) this.edit(id);
+  }
+
+  /** 进一条规则的编辑器（点行 · ⋯「编辑」· 带目的地）。 */
+  private edit(id: string): void {
+    const rule = this.read?.rules.find((x) => x.id === id);
+    if (!rule) return;
+    this.closeEditor();
+    this.editor = new RuleEditor(
+      {
+        back: () => {
+          this.closeEditor();
+          this.paint();
+          this.body.querySelector<HTMLElement>(`[data-rule="${id}"]`)?.focus();
+        },
+        reload: () => void this.reload(true),
+        more: (rule, anchor) => {
+          const r = this.read;
+          if (r)
+            openMenu(
+              { el: anchor, align: "end" },
+              this.menu(r, rule, anchor).filter((it) => it.id !== "edit"),
+            );
+        },
+        users: (rule) =>
+          this.read
+            ? this.users(this.read, rule)
+            : document.createElement("div"),
+      },
+      this.origin,
+      rule,
+    );
+    this.paint();
+  }
+
+  private closeEditor(): void {
+    this.editor?.dispose();
+    this.editor = null;
+  }
+
   // ───────────────────────────── 画 ─────────────────────────────
 
   private paint(): void {
     const r = this.read;
     if (!r) return;
+    this.element.dataset.editing = String(this.editor !== null);
+    if (this.editor) {
+      // 编辑器是同一栏里的子页：段头 · 筛选框收起，主区只放它（名单勾选之类重画它自己）。
+      this.filterSlot.replaceChildren();
+      this.editor.refresh();
+      if (this.body.firstElementChild !== this.editor.element)
+        this.body.replaceChildren(this.editor.element);
+      return;
+    }
     setDisabled(this.newBtn, null);
     const def = r.rules.find((x) => x.id === r.defaultRule) ?? null;
-    this.subEl.textContent = def ? copyText("rot.list.defaultIs", { name: def.name }) : "";
+    this.subEl.textContent = def
+      ? copyText("rot.list.defaultIs", { name: def.name })
+      : "";
     const out: HTMLElement[] = [];
-    if (r.state === "unreadable") out.push(banner("warn", copyText("rot.list.unreadable", { machine: machineName(this.origin) })));
+    if (r.state === "unreadable")
+      out.push(
+        banner(
+          "warn",
+          copyText("rot.list.unreadable", {
+            machine: machineName(this.origin),
+          }),
+        ),
+      );
     this.paintFilter(r);
     const q = this.filter.trim().toLowerCase();
-    const shown = q ? r.rules.filter((x) => x.name.toLowerCase().includes(q)) : r.rules;
+    const shown = q
+      ? r.rules.filter((x) => x.name.toLowerCase().includes(q))
+      : r.rules;
     out.push(this.table(r, shown));
     if (r.rules.length <= 1) {
       const hint = document.createElement("div");
@@ -249,14 +405,21 @@ export class RulesSection {
       hint.dataset.rulesEmpty = "true";
       const t = document.createElement("span");
       t.textContent = copyText("rot.list.emptyHint");
-      const add = button({ label: copyText("rot.list.new"), icon: "plus", size: "compact", onClick: () => this.openNew(add) });
+      const add = button({
+        label: copyText("rot.list.new"),
+        icon: "plus",
+        size: "compact",
+        onClick: () => this.openNew(add),
+      });
       hint.append(t, add);
       out.push(hint);
     }
     const focusRename = this.renaming !== null;
     this.body.replaceChildren(...out);
     if (focusRename) {
-      const inp = this.body.querySelector<HTMLInputElement>("[data-rules-rename]");
+      const inp = this.body.querySelector<HTMLInputElement>(
+        "[data-rules-rename]",
+      );
       if (inp && document.activeElement !== inp) {
         inp.focus();
         inp.select();
@@ -287,7 +450,9 @@ export class RulesSection {
     const t = document.createElement("div");
     t.className = s.rulesTable;
     t.setAttribute("role", "table");
-    t.appendChild(this.picked.size > 0 ? this.batchBar(r) : this.headRow(shown));
+    t.appendChild(
+      this.picked.size > 0 ? this.batchBar(r) : this.headRow(shown),
+    );
     for (const rule of shown) {
       t.appendChild(this.row(r, rule));
       if (this.open.has(rule.id)) t.appendChild(this.users(r, rule));
@@ -312,7 +477,13 @@ export class RulesSection {
       c.textContent = text;
       return c;
     };
-    h.append(all, cell(copyText("rot.list.colName")), cell(copyText("rot.list.colSum")), cell(copyText("rot.list.colUse")), document.createElement("span"));
+    h.append(
+      all,
+      cell(copyText("rot.list.colName")),
+      cell(copyText("rot.list.colSum")),
+      cell(copyText("rot.list.colUse")),
+      document.createElement("span"),
+    );
     return h;
   }
 
@@ -333,10 +504,20 @@ export class RulesSection {
     n.className = s.rulesBatchN;
     n.textContent = copyText("rot.batch.sel", { n: this.picked.size });
     const rules = r.rules.filter((x) => this.picked.has(x.id));
-    const copyTo = button({ label: copyText("rot.batch.copyTo"), icon: "caretRight", iconAfter: true, size: "compact" });
+    const copyTo = button({
+      label: copyText("rot.batch.copyTo"),
+      icon: "caretRight",
+      iconAfter: true,
+      size: "compact",
+    });
     copyTo.addEventListener("click", () => void this.copyToMenu(copyTo, rules));
-    const del = button({ label: copyText("rot.batch.delete"), size: "compact", onClick: () => void this.remove(r, rules) });
-    if (rules.some((x) => x.isDefault)) setDisabled(del, copyText("rot.batch.hasDefault"));
+    const del = button({
+      label: copyText("rot.batch.delete"),
+      size: "compact",
+      onClick: () => void this.remove(r, rules),
+    });
+    if (rules.some((x) => x.isDefault))
+      setDisabled(del, copyText("rot.batch.hasDefault"));
     const sp = document.createElement("span");
     sp.className = s.rulesSp;
     bar.append(all, n, sp, copyTo, del);
@@ -352,7 +533,10 @@ export class RulesSection {
     const pick = document.createElement("input");
     pick.type = "checkbox";
     pick.checked = this.picked.has(rule.id);
-    pick.setAttribute("aria-label", copyText("rot.list.pick", { name: rule.name }));
+    pick.setAttribute(
+      "aria-label",
+      copyText("rot.list.pick", { name: rule.name }),
+    );
     pick.addEventListener("change", () => {
       if (pick.checked) this.picked.add(rule.id);
       else this.picked.delete(rule.id);
@@ -384,7 +568,10 @@ export class RulesSection {
       b.className = s.rulesUseBtn;
       b.dataset.rulesUse = rule.id;
       b.setAttribute("aria-expanded", String(this.open.has(rule.id)));
-      b.textContent = rule.users.live > 0 ? copyText("rot.list.useN", { n: rule.users.live }) : copyText("rot.list.useNone");
+      b.textContent =
+        rule.users.live > 0
+          ? copyText("rot.list.useN", { n: rule.users.live })
+          : copyText("rot.list.useNone");
       b.addEventListener("click", () => {
         if (this.open.has(rule.id)) this.open.delete(rule.id);
         else {
@@ -395,26 +582,82 @@ export class RulesSection {
       });
       use.appendChild(b);
     } else use.textContent = copyText("rot.list.useNone");
-    const more = button({ label: copyText("rot.list.more", { name: rule.name }), kind: "icon", icon: "more", size: "compact", hint: copyText("rot.list.more", { name: rule.name }) });
+    const more = button({
+      label: copyText("rot.list.more", { name: rule.name }),
+      kind: "icon",
+      icon: "more",
+      size: "compact",
+      hint: copyText("rot.list.more", { name: rule.name }),
+    });
     more.dataset.rulesMore = rule.id;
-    more.addEventListener("click", () => openMenu({ el: more, align: "end" }, this.menu(r, rule, more)));
+    more.addEventListener("click", () =>
+      openMenu({ el: more, align: "end" }, this.menu(r, rule, more)),
+    );
     row.append(pick, name, sum, use, more);
+    // 点行 ＝ 进编辑器（勾 · 改名框 · 在用 · ⋯ 各管各的）；Enter 同。
+    row.tabIndex = 0;
+    row.addEventListener("click", (ev) => {
+      if ((ev.target as HTMLElement).closest("input, button")) return;
+      this.edit(rule.id);
+    });
+    row.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter" && ev.target === row && !ev.isComposing) {
+        ev.preventDefault();
+        this.edit(rule.id);
+      }
+    });
     return row;
   }
 
   /** ⋯：复制 · 改名 · 设为默认 · 复制到 ▸ · 分隔 · 删除（默认那条灰，第二行说为什么）。 */
   private menu(r: RulesRead, rule: RuleRow, anchor: HTMLElement): MenuItem[] {
     const items: MenuItem[] = [
-      { id: "copy", label: copyText("rot.act.copy"), onClick: () => void this.copy(rule) },
-      { id: "rename", label: copyText("rot.act.rename"), onClick: () => this.startRename(rule) },
+      {
+        id: "edit",
+        label: copyText("rot.act.edit"),
+        onClick: () => this.edit(rule.id),
+      },
+      {
+        id: "copy",
+        label: copyText("rot.act.copy"),
+        onClick: () => void this.copy(rule),
+      },
+      {
+        id: "rename",
+        label: copyText("rot.act.rename"),
+        onClick: () => this.startRename(rule),
+      },
       rule.isDefault
-        ? { id: "setDefault", label: copyText("rot.act.setDefault"), checked: true, enabled: false }
-        : { id: "setDefault", label: copyText("rot.act.setDefault"), onClick: () => void this.makeDefault(r, rule) },
-      { id: "copyTo", label: copyText("rot.act.copyTo"), onClick: () => void this.copyToMenu(anchor, [rule]) },
+        ? {
+            id: "setDefault",
+            label: copyText("rot.act.setDefault"),
+            checked: true,
+            enabled: false,
+          }
+        : {
+            id: "setDefault",
+            label: copyText("rot.act.setDefault"),
+            onClick: () => void this.makeDefault(r, rule),
+          },
+      {
+        id: "copyTo",
+        label: copyText("rot.act.copyTo"),
+        onClick: () => void this.copyToMenu(anchor, [rule]),
+      },
       { label: "", divider: true },
       rule.isDefault
-        ? { id: "delete", label: copyText("rot.act.delete"), enabled: false, why: copyText("rot.act.defaultNoDelete") }
-        : { id: "delete", label: copyText("rot.act.delete"), danger: true, onClick: () => void this.remove(r, [rule]) },
+        ? {
+            id: "delete",
+            label: copyText("rot.act.delete"),
+            enabled: false,
+            why: copyText("rot.act.defaultNoDelete"),
+          }
+        : {
+            id: "delete",
+            label: copyText("rot.act.delete"),
+            danger: true,
+            onClick: () => void this.remove(r, [rule]),
+          },
     ];
     return items;
   }
@@ -444,7 +687,12 @@ export class RulesSection {
         else picked.delete(sid);
         this.paint();
       });
-      const { dot, word } = userFace(rule.users.doing[sid] ?? { state: ended ? "ended" : "working", needs: null });
+      const { dot, word } = userFace(
+        rule.users.doing[sid] ?? {
+          state: ended ? "ended" : "working",
+          needs: null,
+        },
+      );
       const t = document.createElement("span");
       t.className = s.rulesUserName;
       t.textContent = w.label;
@@ -457,7 +705,14 @@ export class RulesSection {
     for (const sid of rule.users.sids) box.appendChild(line(sid, false));
     if (rule.users.endedSids.length > 0) {
       const opened = this.endedOpen.has(rule.id);
-      const fold = button({ label: copyText("rot.list.ended", { n: rule.users.endedSids.length }), kind: "ghost", size: "compact", icon: opened ? "caretDown" : "caretRight" });
+      const fold = button({
+        label: copyText("sessionState.rotUsers.ended", {
+          n: rule.users.endedSids.length,
+        }),
+        kind: "ghost",
+        size: "compact",
+      });
+      fold.prepend(foldCaret());
       fold.setAttribute("aria-expanded", String(opened));
       fold.dataset.rulesEnded = rule.id;
       fold.addEventListener("click", () => {
@@ -466,7 +721,9 @@ export class RulesSection {
         this.paint();
       });
       box.appendChild(fold);
-      if (opened) for (const sid of rule.users.endedSids) box.appendChild(line(sid, true));
+      if (opened)
+        for (const sid of rule.users.endedSids)
+          box.appendChild(line(sid, true));
     }
     const foot = document.createElement("div");
     foot.className = s.rulesUsersFoot;
@@ -477,25 +734,56 @@ export class RulesSection {
       n.textContent = copyText("rot.list.picked", { n: picked.size });
       foot.appendChild(n);
     }
-    const move = button({ label: some ? copyText("rot.batch.moveTo") : copyText("rot.batch.moveAll"), icon: "caretDown", iconAfter: true, size: "compact" });
+    const move = button({
+      label: some
+        ? copyText("rot.batch.moveTo")
+        : copyText("rot.batch.moveAll"),
+      icon: "caretDown",
+      iconAfter: true,
+      size: "compact",
+    });
     move.dataset.rulesMove = rule.id;
     move.addEventListener("click", () => {
       const def = r.rules.find((x) => x.id === r.defaultRule);
       const items: MenuItem[] = [];
-      if (!(rule.isDefault && rule.users.follow === rule.users.live && rule.users.ended === 0)) {
-        items.push({ id: "follow", label: copyText("rot.src.follow"), detail: def?.name, onClick: () => void this.apply(target, "follow", copyText("rot.src.follow")) });
+      if (!(
+        rule.isDefault &&
+        rule.users.follow === rule.users.live &&
+        rule.users.ended === 0
+      )) {
+        items.push({
+          id: "follow",
+          label: copyText("rot.src.follow"),
+          detail: def?.name,
+          onClick: () =>
+            void this.apply(target, "follow", copyText("rot.src.follow")),
+        });
       }
       for (const x of r.rules) {
         if (x.id === rule.id) continue;
-        items.push({ id: `rule:${x.id}`, label: x.name, detail: x.summary, onClick: () => void this.apply(target, { rule: x.id }, copyText("rot.src.rule", { name: x.name })) });
+        items.push({
+          id: `rule:${x.id}`,
+          label: x.name,
+          detail: x.summary,
+          onClick: () =>
+            void this.apply(
+              target,
+              { rule: x.id },
+              copyText("rot.src.rule", { name: x.name }),
+            ),
+        });
       }
-      if (items.length === 0) items.push({ label: copyText("rot.src.noRules"), enabled: false });
+      if (items.length === 0)
+        items.push({ label: copyText("rot.src.noRules"), enabled: false });
       openMenu({ el: move, align: "start" }, items);
     });
     const detach = button({
-      label: some ? copyText("rot.batch.detach") : copyText("rot.batch.detachAll"),
+      label: some
+        ? copyText("rot.batch.detach")
+        : copyText("rot.batch.detachAll"),
       size: "compact",
-      onClick: () => void this.apply(target, "detach", copyText("rot.src.custom")),
+      onClick: () =>
+        void this.apply(target, "detach", copyText("rot.src.custom")),
     });
     detach.dataset.rulesDetach = rule.id;
     foot.append(move, detach);
@@ -506,12 +794,18 @@ export class RulesSection {
   // ───────────────────────────── 做 ─────────────────────────────
 
   /** 一批会话改来源：回逐会话结局，成了几个照实说。 */
-  private async apply(sids: string[], to: SessionRotationWrite, src: string): Promise<void> {
+  private async apply(
+    sids: string[],
+    to: SessionRotationWrite,
+    src: string,
+  ): Promise<void> {
     const origin = this.origin;
     try {
       const got = await writeSessionRotation(origin, sids, to);
       const done = Object.values(got).filter((o) => o.state === "done").length;
-      toast(copyText("rot.done.batch", { src, n: done }), "", { level: "success" });
+      toast(copyText("rot.done.batch", { src, n: done }), "", {
+        level: "success",
+      });
       this.pickedSids.clear();
     } catch (e) {
       failToast(copyText("rot.fail.apply", { src }), e, { level: "error" });
@@ -530,13 +824,20 @@ export class RulesSection {
     const title = document.createElement("div");
     title.className = s.rulesNewTitle;
     title.textContent = copyText("rot.new.title");
-    const name = field({ label: copyText("rot.save.name"), noteOnDemand: true });
+    const name = field({
+      label: copyText("rot.save.name"),
+      noteOnDemand: true,
+    });
     const def = r.rules.find((x) => x.id === r.defaultRule);
     let from = def?.id ?? "blank";
     const fromSel = select({
       label: copyText("rot.new.from"),
       options: [
-        ...r.rules.map((x) => ({ value: x.id, label: x.name, note: x.isDefault ? copyText("rot.src.tagDefault") : undefined })),
+        ...r.rules.map((x) => ({
+          value: x.id,
+          label: x.name,
+          note: x.isDefault ? copyText("rot.src.tagDefault") : undefined,
+        })),
         { value: "blank", label: copyText("rot.new.blank") },
       ],
       value: from,
@@ -564,7 +865,11 @@ export class RulesSection {
         await this.reload(true);
         return;
       }
-      name.setError(got.state === "refused" ? nameError(got.errors) : copyText("rot.fail.conflict"));
+      name.setError(
+        got.state === "refused"
+          ? nameError(got.errors)
+          : copyText("rot.fail.conflict"),
+      );
     };
     name.input.addEventListener("keydown", (e) => {
       const ev = e as KeyboardEvent;
@@ -575,22 +880,49 @@ export class RulesSection {
     });
     const foot = document.createElement("div");
     foot.className = s.rulesNewFoot;
-    const ok = button({ label: copyText("rot.new.ok"), kind: "primary", size: "compact", onClick: () => void go() });
+    const ok = button({
+      label: copyText("rot.new.ok"),
+      kind: "primary",
+      size: "compact",
+      onClick: () => void go(),
+    });
     ok.dataset.rulesNewOk = "true";
-    foot.append(button({ label: copyText("rot.cap.cancel"), kind: "ghost", size: "compact", onClick: () => closePopover() }), ok);
+    foot.append(
+      button({
+        label: copyText("rot.cap.cancel"),
+        kind: "ghost",
+        size: "compact",
+        onClick: () => closePopover(),
+      }),
+      ok,
+    );
     root.append(title, name.root, fromRow, foot);
-    openPopover(anchor, root, { label: copyText("rot.new.title"), align: "end" });
+    openPopover(anchor, root, {
+      label: copyText("rot.new.title"),
+      align: "end",
+    });
     name.input.focus();
   }
 
   /** 复制：直接出一条 `日常 副本`（重名后端加号），名称进入就地编辑态。 */
   private async copy(rule: RuleRow): Promise<void> {
     try {
-      const got = await saveRule(this.origin, { name: copyText("rot.act.copySuffix", { name: rule.name }), from: rule.id, dedupe: true });
-      if (got.state !== "saved") throw new Error(got.state === "refused" ? nameError(got.errors) : copyText("rot.fail.conflict"));
+      const got = await saveRule(this.origin, {
+        name: copyText("rot.act.copySuffix", { name: rule.name }),
+        from: rule.id,
+        dedupe: true,
+      });
+      if (got.state !== "saved")
+        throw new Error(
+          got.state === "refused"
+            ? nameError(got.errors)
+            : copyText("rot.fail.conflict"),
+        );
       this.renaming = { id: got.rule.id, error: null };
     } catch (e) {
-      failToast(copyText("rot.fail.copy", { name: rule.name }), e, { level: "error" });
+      failToast(copyText("rot.fail.copy", { name: rule.name }), e, {
+        level: "error",
+      });
     }
     await this.reload(true);
   }
@@ -625,9 +957,20 @@ export class RulesSection {
         return;
       }
       try {
-        const got = await renameRule(this.origin, { id: rule.id, name: inp.value, ifRev: rule.rev });
+        const got = await renameRule(this.origin, {
+          id: rule.id,
+          name: inp.value,
+          ifRev: rule.rev,
+        });
         if (got.state === "saved") this.renaming = null;
-        else this.renaming = { id: rule.id, error: got.state === "refused" ? nameError(got.errors) : copyText("rot.fail.conflict") };
+        else
+          this.renaming = {
+            id: rule.id,
+            error:
+              got.state === "refused"
+                ? nameError(got.errors)
+                : copyText("rot.fail.conflict"),
+          };
       } catch (e) {
         console.warn("[rules] rotation-rule-rename 失败：", e);
         this.renaming = { id: rule.id, error: copyText("rot.save.failed") };
@@ -659,24 +1002,39 @@ export class RulesSection {
     const origin = this.origin;
     try {
       const got = await setDefaultRule(origin, rule.id);
-      toast(copyText("rot.done.setDefault", { name: rule.name, n: got.followers }), "", {
-        level: "success",
-        action: {
-          label: copyText("kit.toast.undo"),
-          run: () =>
-            void setDefaultRule(origin, was)
-              .catch((e: unknown) => failToast(copyText("rot.fail.setDefault", { name: rule.name }), e, { level: "error" }))
-              .then(() => this.reload(true)),
+      toast(
+        copyText("rot.done.setDefault", { name: rule.name, n: got.followers }),
+        "",
+        {
+          level: "success",
+          action: {
+            label: copyText("kit.toast.undo"),
+            run: () =>
+              void setDefaultRule(origin, was)
+                .catch((e: unknown) =>
+                  failToast(
+                    copyText("rot.fail.setDefault", { name: rule.name }),
+                    e,
+                    { level: "error" },
+                  ),
+                )
+                .then(() => this.reload(true)),
+          },
         },
-      });
+      );
     } catch (e) {
-      failToast(copyText("rot.fail.setDefault", { name: rule.name }), e, { level: "error" });
+      failToast(copyText("rot.fail.setDefault", { name: rule.name }), e, {
+        level: "error",
+      });
     }
     await this.reload(true);
   }
 
   /** 复制到 ▸ 别的机器：那台后端存一条同名（重名它加号），回它没有的号。 */
-  private async copyToMenu(anchor: HTMLElement, rules: RuleRow[]): Promise<void> {
+  private async copyToMenu(
+    anchor: HTMLElement,
+    rules: RuleRow[],
+  ): Promise<void> {
     const hosts = await readRemoteConfig().then(
       (c) => c.hosts.map((h) => h.label),
       () => [] as string[],
@@ -686,7 +1044,11 @@ export class RulesSection {
     const items: MenuItem[] =
       others.length === 0
         ? [{ label: copyText("rot.act.noMachines"), enabled: false }]
-        : others.map((o) => ({ id: `to:${o}`, label: machineName(o), onClick: () => void this.copyTo(o, rules) }));
+        : others.map((o) => ({
+            id: `to:${o}`,
+            label: machineName(o),
+            onClick: () => void this.copyTo(o, rules),
+          }));
     openMenu({ el: anchor, align: "end" }, items);
   }
 
@@ -694,18 +1056,36 @@ export class RulesSection {
     const machine = machineName(to);
     for (const rule of rules) {
       try {
-        const got = await saveRule(to, { name: rule.name, rotation: rule.rotation, dedupe: true });
-        if (got.state !== "saved") throw new Error(got.state === "refused" ? cellsText(got.errors) : copyText("rot.fail.conflict"));
+        const got = await saveRule(to, {
+          name: rule.name,
+          rotation: rule.rotation,
+          dedupe: true,
+        });
+        if (got.state !== "saved")
+          throw new Error(
+            got.state === "refused"
+              ? cellsText(got.errors)
+              : copyText("rot.fail.conflict"),
+          );
         const miss = got.rule.missing;
         toast(
           miss.length > 0
-            ? copyText("rot.done.copiedToMissing", { machine, name: got.rule.name, n: miss.length, list: miss.join(copyText("kit.text.sep")) })
+            ? copyText("rot.done.copiedToMissing", {
+                machine,
+                name: got.rule.name,
+                n: miss.length,
+                list: miss.join(copyText("kit.text.sep")),
+              })
             : copyText("rot.done.copiedTo", { machine, name: got.rule.name }),
           "",
           { level: "success" },
         );
       } catch (e) {
-        failToast(copyText("rot.fail.copyTo", { machine, name: rule.name }), e, { level: "error" });
+        failToast(
+          copyText("rot.fail.copyTo", { machine, name: rule.name }),
+          e,
+          { level: "error" },
+        );
       }
     }
   }
@@ -727,13 +1107,21 @@ export class RulesSection {
       const rows: ConfirmSpec["rows"] = [
         {
           label: copyText("rot.del.change"),
-          items: [copyText("rot.del.inUse", { n: live.length, list: names.join(copyText("kit.text.sep")) })],
+          items: [
+            copyText("rot.del.inUse", {
+              n: live.length,
+              list: names.join(copyText("kit.text.sep")),
+            }),
+          ],
           choice: {
             name: "rules-delete-then",
             value: then,
             options: [
               { value: "custom", label: copyText("rot.del.toCustom") },
-              { value: "follow", label: copyText("rot.del.toFollow", { name: def?.name ?? "" }) },
+              {
+                value: "follow",
+                label: copyText("rot.del.toFollow", { name: def?.name ?? "" }),
+              },
             ],
             onPick: (v) => {
               then = v === "follow" ? "follow" : "custom";
@@ -741,9 +1129,16 @@ export class RulesSection {
           },
         },
       ];
-      if (ended > 0) rows.push({ label: copyText("rot.del.after"), items: [copyText("rot.del.ended", { n: ended })] });
+      if (ended > 0)
+        rows.push({
+          label: copyText("rot.del.after"),
+          items: [copyText("sessionState.rotDelete.ended", { n: ended })],
+        });
       const yes = await this.confirm({
-        title: rules.length === 1 ? copyText("rot.del.title", { name: rules[0].name }) : copyText("rot.del.titleN", { n: rules.length }),
+        title:
+          rules.length === 1
+            ? copyText("rot.del.title", { name: rules[0].name })
+            : copyText("rot.del.titleN", { n: rules.length }),
         action: copyText("rot.del.ok"),
         danger: true,
         rows,
@@ -758,24 +1153,49 @@ export class RulesSection {
       );
       for (const x of rules) this.picked.delete(x.id);
       const quiet = live.length + ended === 0;
-      toast(rules.length === 1 ? copyText("rot.done.deleted", { name: rules[0].name }) : copyText("rot.done.deletedN", { n: rules.length }), "", {
-        level: "success",
-        // 没人在用的才能原样撤回（在用的那些会话已经挪了）。
-        ...(quiet
-          ? {
-              action: {
-                label: copyText("kit.toast.undo"),
-                run: () => {
-                  void Promise.all(rules.map((x) => saveRule(origin, { name: x.name, rotation: x.rotation })))
-                    .catch((e: unknown) => failToast(copyText("rot.fail.delete", { name: rules[0].name }), e, { level: "error" }))
-                    .then(() => this.reload(true));
+      toast(
+        rules.length === 1
+          ? copyText("rot.done.deleted", { name: rules[0].name })
+          : copyText("rot.done.deletedN", { n: rules.length }),
+        "",
+        {
+          level: "success",
+          // 没人在用的才能原样撤回（在用的那些会话已经挪了）。
+          ...(quiet
+            ? {
+                action: {
+                  label: copyText("kit.toast.undo"),
+                  run: () => {
+                    void Promise.all(
+                      rules.map((x) =>
+                        saveRule(origin, {
+                          name: x.name,
+                          rotation: x.rotation,
+                        }),
+                      ),
+                    )
+                      .catch((e: unknown) =>
+                        failToast(
+                          copyText("rot.fail.delete", { name: rules[0].name }),
+                          e,
+                          { level: "error" },
+                        ),
+                      )
+                      .then(() => this.reload(true));
+                  },
                 },
-              },
-            }
-          : {}),
-      });
+              }
+            : {}),
+        },
+      );
     } catch (e) {
-      failToast(copyText("rot.fail.delete", { name: rules.map((x) => x.name).join(copyText("kit.text.sep")) }), e, { level: "error" });
+      failToast(
+        copyText("rot.fail.delete", {
+          name: rules.map((x) => x.name).join(copyText("kit.text.sep")),
+        }),
+        e,
+        { level: "error" },
+      );
     }
     await this.reload(true);
   }
@@ -784,10 +1204,18 @@ export class RulesSection {
 /** 名称那一格的错照后端短码写（空 · 重名 · 超长）。 */
 function nameError(errors: CellError[]): string {
   const e = errors.find((x) => x.cell === "name");
-  return e?.code === "dup" ? copyText("rot.save.dup") : e?.code === "tooLong" ? copyText("rot.save.tooLong") : e?.code === "empty" ? copyText("rot.save.empty") : copyText("rot.save.failed");
+  return e?.code === "dup"
+    ? copyText("rot.save.dup")
+    : e?.code === "tooLong"
+      ? copyText("rot.save.tooLong")
+      : e?.code === "empty"
+        ? copyText("rot.save.empty")
+        : copyText("rot.save.failed");
 }
 
 /** 那台拒了整条（它的账号库不认某格之类）：照名称那格说，别的格写「未保存」。 */
 function cellsText(errors: CellError[]): string {
-  return errors.some((x) => x.cell === "name") ? nameError(errors) : copyText("rot.save.failed");
+  return errors.some((x) => x.cell === "name")
+    ? nameError(errors)
+    : copyText("rot.save.failed");
 }

@@ -1,0 +1,459 @@
+/**
+ * 规则编辑器（设置「轮换」栏里的子页）的判据：怎么进（点行 · ⋯「编辑」· 别处带目的地）与怎么回（面包屑 · Esc）· 每格改完即存一次（带版本）·
+ * 撤销上一处 · 冲突条［载入最新］· 触发范围照后端红字 · 「无号可换」按后端 atLimitApplies 灰 · 封顶表一格开那一格的浮层、悬停写此刻取的值 ·
+ * 预览照后端 rotation-plan 排（换号点写原因短码、泳道底纹）· 改了视窗重问 · 改名 · 在别处被删了。
+ *
+ * 读口 / 写口整块换成假的（`vi.mock`）：这里只量「拿到这些事实，画成什么样、交出去什么」。
+ */
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import type {
+  PlanRead,
+  RuleRow,
+  RulesRead,
+} from "../../../../src/frontend/ui/quota-reads";
+import type { Rotation } from "../../../../src/frontend/ui/generated/Rotation";
+
+const readRules = vi.fn();
+const saveRule = vi.fn();
+const renameRule = vi.fn();
+const readPlan = vi.fn();
+const readQuota = vi.fn();
+const fetchList = vi.fn();
+
+vi.mock("../../../../src/frontend/ui/kit/toast", () => ({
+  toast: vi.fn(),
+  failToast: vi.fn(),
+}));
+vi.mock("../../../../src/frontend/ui/quota-reads", async (orig) => ({
+  ...(await orig<typeof import("../../../../src/frontend/ui/quota-reads")>()),
+  readRules: (...a: unknown[]) => readRules(...a),
+  saveRule: (...a: unknown[]) => saveRule(...a),
+  renameRule: (...a: unknown[]) => renameRule(...a),
+  readPlan: (...a: unknown[]) => readPlan(...a),
+  readQuota: (...a: unknown[]) => readQuota(...a),
+  checkRotation: vi.fn(async () => []),
+  deleteRules: vi.fn(),
+  setDefaultRule: vi.fn(),
+  writeSessionRotation: vi.fn(),
+}));
+vi.mock("../../../../src/frontend/ui/history-list-reads", () => ({
+  fetchList: (...a: unknown[]) => fetchList(...a),
+}));
+vi.mock("../../../../src/frontend/ui/remote-config", () => ({
+  readRemoteConfig: () => Promise.resolve({ hosts: [] }),
+}));
+vi.mock("../../../../src/frontend/ui/events", () => ({
+  bindEvents: () => Promise.resolve(),
+}));
+
+import {
+  openRuleEditor,
+  RulesSection,
+} from "../../../../src/frontend/ui/settings/rules-section";
+import {
+  __resetMachineContextForTests,
+  setCurrentMachine,
+} from "../../../../src/frontend/ui/settings/machine-context";
+import { copyText } from "../../../../src/frontend/ui/copy-table";
+
+const ROT: Rotation = {
+  order: [{ start: true }, "team", "lab"],
+  enabled: ["team", "lab"],
+  when: "full",
+  atLimit: "continue",
+  wait: 40,
+};
+
+function rule(id: string, name: string, p: Partial<RuleRow> = {}): RuleRow {
+  return {
+    id,
+    name,
+    rotation: ROT,
+    rev: 3,
+    updatedAt: 0,
+    isDefault: false,
+    users: {
+      live: 2,
+      ended: 0,
+      follow: 0,
+      doing: {},
+      sids: ["s-a", "s-b"],
+      endedSids: [],
+    },
+    summary: `${name} · team · 满`,
+    explain: "起始账号先用 · 被拒才换",
+    missing: [],
+    atLimitApplies: false,
+    ...p,
+  };
+}
+
+const DAILY = rule("r_daily", "日常", {
+  isDefault: true,
+  users: { live: 0, ended: 0, follow: 0, doing: {}, sids: [], endedSids: [] },
+});
+const NIGHT = rule("r_night", "夜间");
+
+function rules(list: RuleRow[] = [DAILY, NIGHT]): RulesRead {
+  return { state: "present", defaultRule: "r_daily", rules: list };
+}
+
+const PLAN: PlanRead = {
+  errors: [],
+  now: 1000,
+  nowText: "21:00",
+  until: 1000 + 12 * 3600,
+  plan: [
+    {
+      from: 1000,
+      fromText: "21:00",
+      to: 4600,
+      toText: "22:00",
+      account: "team",
+      why: null,
+    },
+    {
+      from: 4600,
+      fromText: "22:00",
+      to: 8200,
+      toText: "23:00",
+      account: "lab",
+      why: { threshold: { n: 0 } },
+    },
+    {
+      from: 8200,
+      fromText: "23:00",
+      to: 1000 + 12 * 3600,
+      toText: "09:00",
+      account: null,
+      why: { held: { n: 90 } },
+    },
+  ],
+  lanes: [
+    {
+      account: "team",
+      spans: [
+        {
+          from: 4600,
+          fromText: "22:00",
+          to: 8200,
+          toText: "23:00",
+          state: "off",
+          n: null,
+        },
+      ],
+      resets: [{ w: "5h", at: 9000, atText: "23:13" }],
+    },
+    { account: "lab", spans: [], resets: [] },
+  ],
+  effective: {
+    team: {
+      "5h": { v: 99, layer: "all", below: { v: null, layer: "none" } },
+      "7d": { v: 99, layer: "all", below: { v: null, layer: "none" } },
+      "*": { v: 99, layer: "all", below: { v: null, layer: "none" } },
+    },
+  },
+};
+
+const settle = async (n = 8): Promise<void> => {
+  for (let i = 0; i < n; i++) await new Promise((r) => setTimeout(r, 0));
+};
+/** 预览防抖 300ms：等它过去再收一拍。 */
+const settlePlan = async (): Promise<void> => {
+  await new Promise((r) => setTimeout(r, 320));
+  await settle();
+};
+async function mount(): Promise<HTMLElement> {
+  const s = new RulesSection();
+  document.body.replaceChildren(s.element);
+  s.loadNow();
+  await settle();
+  return s.element;
+}
+const editor = (): HTMLElement | null =>
+  document.querySelector<HTMLElement>("[data-rule-editor]");
+const menuItem = (label: string): HTMLButtonElement =>
+  [
+    ...document.querySelectorAll<HTMLButtonElement>(
+      '[role="menu"] [role^="menuitem"]',
+    ),
+  ].find((b) => b.querySelector('[data-part="label"]')?.textContent === label)!;
+async function openNight(el: HTMLElement): Promise<HTMLElement> {
+  el.querySelector<HTMLElement>('[data-rule="r_night"] [role="cell"]')!.click();
+  await settle();
+  return editor()!;
+}
+const saved = (rot: Rotation, p: Partial<RuleRow> = {}) => ({
+  state: "saved",
+  rule: { ...NIGHT, rotation: rot, rev: NIGHT.rev + 1, ...p },
+});
+
+beforeEach(() => {
+  for (const f of [
+    readRules,
+    saveRule,
+    renameRule,
+    readPlan,
+    readQuota,
+    fetchList,
+  ])
+    f.mockReset();
+  readRules.mockResolvedValue(rules());
+  readPlan.mockResolvedValue(PLAN);
+  readQuota.mockResolvedValue({
+    state: "present",
+    now: 0,
+    accounts: [],
+    unseen: [],
+    usableNow: [],
+  });
+  fetchList.mockResolvedValue({
+    rows: [],
+    groups: [],
+    total: 0,
+    truncated: false,
+    notice: null,
+  });
+  __resetMachineContextForTests();
+  setCurrentMachine("devbox");
+  document.body.replaceChildren();
+});
+
+describe("规则编辑器 · 进与回", () => {
+  it("点行 ⇒ 同一栏里的子页（段头收起）：面包屑 `轮换 / 夜间`、后端那句说明、在用 2 会话；面包屑 / Esc ⇒ 回列表", async () => {
+    const el = await mount();
+    const ed = await openNight(el);
+    expect(ed.dataset.ruleEditor).toBe("r_night");
+    expect(el.dataset.editing).toBe("true");
+    expect(el.querySelector("[data-rule]"), "列表收起").toBeNull();
+    expect(ed.querySelector("[data-ed-name]")!.textContent).toBe("夜间");
+    expect(ed.querySelector("[data-ed-explain]")!.textContent).toBe(
+      "起始账号先用 · 被拒才换",
+    );
+    expect(ed.querySelector("[data-ed-users]")!.textContent).toBe(
+      copyText("rot.src.inUse", { n: 2 }),
+    );
+    ed.querySelector<HTMLButtonElement>("[data-ed-back]")!.click();
+    await settle();
+    expect(editor()).toBeNull();
+    expect(el.querySelector('[data-rule="r_night"]')).not.toBeNull();
+    await openNight(el);
+    editor()!.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+    );
+    await settle();
+    expect(editor(), "Esc 回列表").toBeNull();
+  });
+
+  it("⋯「编辑」⇒ 同一个编辑器；别处带目的地（面板「编辑规则…」）⇒ 这一栏读到那台的表时开那一条", async () => {
+    const el = await mount();
+    el.querySelector<HTMLButtonElement>('[data-rules-more="r_night"]')!.click();
+    await settle();
+    menuItem(copyText("rot.act.edit")).click();
+    await settle();
+    expect(editor()!.dataset.ruleEditor).toBe("r_night");
+    editor()!.querySelector<HTMLButtonElement>("[data-ed-back]")!.click();
+    openRuleEditor("devbox", "r_daily");
+    await settle();
+    expect(editor()!.dataset.ruleEditor).toBe("r_daily");
+  });
+});
+
+describe("规则编辑器 · 每格改完即存", () => {
+  it("换法点「抢回」⇒ 存一次（整份 ＋ 读到的版本）；顶上 `已存 HH:MM ·［撤销上一处］`，撤销 ⇒ 把上一份存回去；头一次改动出影响条", async () => {
+    const el = await mount();
+    const ed = await openNight(el);
+    saveRule.mockResolvedValueOnce(saved({ ...ROT, preempt: true }));
+    ed.querySelector<HTMLElement>('[data-ed-how="preempt"]')!.click();
+    await settle();
+    expect(saveRule.mock.calls).toEqual([
+      [
+        "devbox",
+        {
+          id: "r_night",
+          name: "夜间",
+          rotation: { ...ROT, preempt: true },
+          ifRev: 3,
+        },
+      ],
+    ]);
+    expect(editor()!.querySelector("[data-ed-saved]")!.textContent).toMatch(
+      /^已存 \d\d:\d\d/,
+    );
+    expect(editor()!.querySelector("[data-ed-impact]")!.textContent).toBe(
+      copyText("rot.ed.impact", { n: 2 }),
+    );
+    expect(
+      editor()!
+        .querySelector('[data-ed-how="preempt"]')!
+        .getAttribute("aria-checked"),
+    ).toBe("true");
+    saveRule.mockResolvedValueOnce(saved(ROT, { rev: 5 }));
+    editor()!.querySelector<HTMLButtonElement>("[data-ed-undo]")!.click();
+    await settle();
+    expect(saveRule.mock.calls[1]).toEqual([
+      "devbox",
+      { id: "r_night", name: "夜间", rotation: ROT, ifRev: 4 },
+    ]);
+    expect(
+      editor()!.querySelector("[data-ed-undo]"),
+      "撤销之后不再有撤销",
+    ).toBeNull();
+  });
+
+  it("别处先改过了（conflict）⇒ 顶上错误条 `规则已在别处改动 · 未保存 ［载入最新］`，点了重读规则表", async () => {
+    const el = await mount();
+    const ed = await openNight(el);
+    saveRule.mockResolvedValueOnce({ state: "conflict", rev: 9 });
+    ed.querySelector<HTMLElement>('[data-ed-how="preempt"]')!.click();
+    await settle();
+    const bar = editor()!.querySelector<HTMLElement>("[data-ed-conflict]")!;
+    expect(bar.textContent).toContain(copyText("rot.fail.conflict"));
+    const before = readRules.mock.calls.length;
+    [...bar.querySelectorAll("button")]
+      .find((b) => b.textContent === copyText("rot.ed.reload"))!
+      .click();
+    await settle();
+    expect(readRules.mock.calls.length).toBe(before + 1);
+  });
+
+  it("触发 ≥N%：写错的数也交后端，它拒（when 那一格）⇒ 框红 ＋ 红字 1–99；界面不另判范围", async () => {
+    const el = await mount();
+    const ed = await openNight(el);
+    saveRule.mockResolvedValueOnce({
+      state: "refused",
+      errors: [{ cell: "when.threshold.n", code: "range" }],
+    });
+    const pct = ed.querySelector<HTMLInputElement>("[data-ed-pct]")!;
+    pct.value = "120";
+    pct.dispatchEvent(new Event("change"));
+    await settle();
+    expect(saveRule.mock.calls[0][1].rotation.when).toEqual({
+      threshold: { n: 120 },
+    });
+    expect(
+      editor()!.querySelector<HTMLInputElement>("[data-ed-pct]")!.dataset.error,
+    ).toBe("true");
+    expect(editor()!.querySelector("[data-ed-pct-err]")!.textContent).toBe(
+      copyText("rot.ed.pctErr"),
+    );
+  });
+
+  it("无号可换：后端说这条规则没有上限（atLimitApplies false）⇒ 两态灰；有上限 ⇒ 可点、点「停」写 atLimit stop", async () => {
+    const el = await mount();
+    let ed = await openNight(el);
+    expect(
+      [
+        ...ed.querySelectorAll<HTMLButtonElement>("[data-ed-at-limit] button"),
+      ].every((b) => b.disabled),
+    ).toBe(true);
+    ed.querySelector<HTMLButtonElement>("[data-ed-back]")!.click();
+    readRules.mockResolvedValue(
+      rules([DAILY, { ...NIGHT, atLimitApplies: true }]),
+    );
+    const el2 = await mount();
+    ed = await openNight(el2);
+    saveRule.mockResolvedValueOnce(saved({ ...ROT, atLimit: "stop" }));
+    [...ed.querySelectorAll<HTMLButtonElement>("[data-ed-at-limit] button")]
+      .find((b) => b.textContent === copyText("acct.lim.stop"))!
+      .click();
+    await settle();
+    expect(saveRule.mock.calls[0][1].rotation.atLimit).toBe("stop");
+  });
+
+  it("名称点即就地改：Enter ⇒ 改名（带版本）；重名 ⇒ 框红 ＋ 红字、不退出", async () => {
+    const el = await mount();
+    const ed = await openNight(el);
+    ed.querySelector<HTMLButtonElement>("[data-ed-name]")!.click();
+    renameRule.mockResolvedValueOnce({
+      state: "refused",
+      errors: [{ cell: "name", code: "dup" }],
+    });
+    const inp = editor()!.querySelector<HTMLInputElement>("[data-ed-rename]")!;
+    inp.value = "日常";
+    inp.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+    );
+    await settle();
+    expect(renameRule).toHaveBeenCalledWith("devbox", {
+      id: "r_night",
+      name: "日常",
+      ifRev: 3,
+    });
+    expect(
+      editor()!.querySelector<HTMLInputElement>("[data-ed-rename]")!.dataset
+        .error,
+    ).toBe("true");
+    expect(editor()!.textContent).toContain(copyText("rot.save.dup"));
+  });
+
+  it("这条规则在别处被删了（重读表里没它）⇒ 整块换成 `规则 夜间 已删除［回到列表］`", async () => {
+    const el = await mount();
+    const ed = await openNight(el);
+    saveRule.mockResolvedValueOnce(saved({ ...ROT, preempt: true }));
+    readRules.mockResolvedValue(rules([DAILY]));
+    ed.querySelector<HTMLElement>('[data-ed-how="preempt"]')!.click();
+    await settle(16);
+    expect(editor()!.querySelector("[data-ed-gone]")!.textContent).toContain(
+      copyText("rot.ed.gone", { name: "夜间" }),
+    );
+  });
+});
+
+describe("规则编辑器 · 封顶表与预览", () => {
+  it("封顶表：行 ＝ 勾上的号，列 5h · 7d · 全部窗口；点一格开那一格的浮层", async () => {
+    const el = await mount();
+    await openNight(el);
+    await settlePlan();
+    const rows = [
+      ...editor()!.querySelectorAll<HTMLElement>("[data-ed-cap-row]"),
+    ].map((r) => r.dataset.edCapRow);
+    expect(rows).toEqual(["team", "lab"]);
+    const cell = editor()!.querySelector<HTMLButtonElement>(
+      '[data-ed-cap="team.5h"]',
+    )!;
+    cell.click();
+    await settle();
+    expect(
+      document.querySelector('[data-rot-cap="team"]'),
+      "开那一格的封顶浮层",
+    ).not.toBeNull();
+  });
+
+  it("预览：问 `{rule, span: 12h}`；「这条规则」按段排、换号点写原因短码（时段停用 · 停发）；泳道里不能用的段带它的样子；换视窗 ⇒ 重问", async () => {
+    const el = await mount();
+    await openNight(el);
+    await settlePlan();
+    expect(readPlan).toHaveBeenLastCalledWith("devbox", {
+      rule: "r_night",
+      span: "12h",
+    });
+    const pv = editor()!.querySelector<HTMLElement>(
+      '[data-ed-preview="r_night"]',
+    )!;
+    const segs = [
+      ...pv.querySelectorAll<HTMLElement>(
+        '[data-ed-lane="rule"] [data-ed-seg]',
+      ),
+    ];
+    expect(segs.map((x) => x.dataset.edSeg)).toEqual(["team", "lab", ""]);
+    expect(
+      segs.map((x) => x.querySelector("[data-ed-why]")?.textContent ?? ""),
+    ).toEqual(["", copyText("rot.why.off"), copyText("rot.why.held")]);
+    expect(segs[2].dataset.held).toBe("true");
+    expect(segs[1].style.left).toBe(
+      `${((3600 / (12 * 3600)) * 100).toFixed(3)}%`,
+    );
+    const off = pv.querySelector<HTMLElement>(
+      '[data-ed-lane="team"] [data-state]',
+    )!;
+    expect(off.dataset.state).toBe("off");
+    pv.querySelector<HTMLButtonElement>("[data-ed-span]")!.click();
+    menuItem(copyText("rot.pv.span", { span: "6h" })).click();
+    await settlePlan();
+    expect(readPlan).toHaveBeenLastCalledWith("devbox", {
+      rule: "r_night",
+      span: "6h",
+    });
+  });
+});

@@ -58,7 +58,8 @@ export interface MenuItem {
   radio?: string;
 }
 
-export type MenuAnchor = { x: number; y: number } | { el: HTMLElement; align?: "start" | "end" };
+export type MenuAnchor =
+  { x: number; y: number } | { el: HTMLElement; align?: "start" | "end" };
 
 interface Open {
   root: HTMLElement;
@@ -101,17 +102,31 @@ export function menuAnchoredOn(el: HTMLElement): boolean {
 
 function place(o: Open): void {
   if ("el" in o.anchor) {
-    o.anchorBox = placeBeside(o.root, o.anchor.el, { side: "below", align: o.anchor.align ?? "start", gap: 4 }, o.anchorBox);
+    o.anchorBox = placeBeside(
+      o.root,
+      o.anchor.el,
+      { side: "below", align: o.anchor.align ?? "start", gap: 4 },
+      o.anchorBox,
+    );
     return;
   }
   const { width, height } = o.root.getBoundingClientRect();
-  putAt(o.root, placeFloat(o.anchor, { width, height }, { width: window.innerWidth, height: window.innerHeight }));
+  putAt(
+    o.root,
+    placeFloat(
+      o.anchor,
+      { width, height },
+      { width: window.innerWidth, height: window.innerHeight },
+    ),
+  );
 }
 
 function focusables(panel: HTMLElement): HTMLButtonElement[] {
-  return [...panel.querySelectorAll<HTMLButtonElement>(':scope > [role^="menuitem"], :scope > [role="none"] > [role^="menuitem"]')].filter(
-    (b) => !b.disabled && !b.hidden,
-  );
+  return [
+    ...panel.querySelectorAll<HTMLButtonElement>(
+      ':scope > [role^="menuitem"], :scope > [role="none"] > [role^="menuitem"]',
+    ),
+  ].filter((b) => !b.disabled && !b.hidden);
 }
 
 /** 收掉小卡（与它的定时）。 */
@@ -123,7 +138,11 @@ function hidePeek(o: Open): void {
 }
 
 /** 停 300ms 后在 `btn` 右侧浮出 `make()` 画的那张只读小卡（右边放不下翻左）。 */
-function schedulePeek(o: Open, btn: HTMLElement, make: () => HTMLElement): void {
+function schedulePeek(
+  o: Open,
+  btn: HTMLElement,
+  make: () => HTMLElement,
+): void {
   hidePeek(o);
   // 调度：一次性 —— 悬停 / 焦点停 300ms 才出小卡，移开 / 关菜单时清
   o.peekT = setTimeout(() => {
@@ -137,7 +156,19 @@ function schedulePeek(o: Open, btn: HTMLElement, make: () => HTMLElement): void 
     document.body.appendChild(card);
     const r = btn.getBoundingClientRect();
     const size = card.getBoundingClientRect();
-    putAt(card, placeFloat({ rect: { left: r.left, right: r.right, top: r.top, bottom: r.bottom }, side: "right", align: "start", gap: 8 }, { width: size.width, height: size.height }, { width: window.innerWidth, height: window.innerHeight }));
+    putAt(
+      card,
+      placeFloat(
+        {
+          rect: { left: r.left, right: r.right, top: r.top, bottom: r.bottom },
+          side: "right",
+          align: "start",
+          gap: 8,
+        },
+        { width: size.width, height: size.height },
+        { width: window.innerWidth, height: window.innerHeight },
+      ),
+    );
     o.peek = card;
   }, PEEK_MS);
   o.timers.push(o.peekT);
@@ -161,8 +192,12 @@ function makeItem(o: Open, it: MenuItem): HTMLElement {
   btn.type = "button";
   btn.className = s.menuItem;
   const radio = it.radio !== undefined;
-  btn.setAttribute("role", it.checked !== undefined || radio ? "menuitemradio" : "menuitem");
-  if (it.checked !== undefined || radio) btn.setAttribute("aria-checked", String(it.checked === true));
+  btn.setAttribute(
+    "role",
+    it.checked !== undefined || radio ? "menuitemradio" : "menuitem",
+  );
+  if (it.checked !== undefined || radio)
+    btn.setAttribute("aria-checked", String(it.checked === true));
   if (radio) btn.dataset.radio = it.radio;
   if (it.danger) btn.dataset.variant = "danger";
   const lead = document.createElement("span");
@@ -288,7 +323,9 @@ function makeItem(o: Open, it: MenuItem): HTMLElement {
       ev.stopPropagation();
       checkRadio(btn);
       it.onClick?.();
-      for (const d of o.root.querySelectorAll<HTMLElement>(`[data-part="detail"]`)) {
+      for (const d of o.root.querySelectorAll<HTMLElement>(
+        `[data-part="detail"]`,
+      )) {
         const f = liveDetails.get(d);
         if (f) d.textContent = f();
       }
@@ -310,7 +347,21 @@ function placeSub(wrap: HTMLElement, fly: HTMLElement): void {
   const r = wrap.getBoundingClientRect();
   const size = fly.getBoundingClientRect();
   const pad = parseFloat(getComputedStyle(fly).paddingTop) || 0;
-  const at = placeFloat({ rect: { left: r.left, right: r.right, top: r.top - pad, bottom: r.bottom }, side: "right", align: "start", gap: 0 }, { width: size.width || 160, height: size.height }, { width: window.innerWidth, height: window.innerHeight });
+  const at = placeFloat(
+    {
+      rect: {
+        left: r.left,
+        right: r.right,
+        top: r.top - pad,
+        bottom: r.bottom,
+      },
+      side: "right",
+      align: "start",
+      gap: 0,
+    },
+    { width: size.width || 160, height: size.height },
+    { width: window.innerWidth, height: window.innerHeight },
+  );
   putAt(fly, { left: at.left - r.left, top: at.top - r.top });
 }
 
@@ -318,7 +369,9 @@ function placeSub(wrap: HTMLElement, fly: HTMLElement): void {
 function checkRadio(btn: HTMLButtonElement): void {
   const panel = btn.parentElement;
   if (!panel) return;
-  for (const b of panel.querySelectorAll<HTMLButtonElement>(":scope > [data-radio]")) {
+  for (const b of panel.querySelectorAll<HTMLButtonElement>(
+    ":scope > [data-radio]",
+  )) {
     if (b.dataset.radio !== btn.dataset.radio) continue;
     const on = b === btn;
     b.setAttribute("aria-checked", String(on));
@@ -339,15 +392,20 @@ function onPointer(ev: PointerEvent): void {
 function onKey(ev: KeyboardEvent): void {
   const o = current;
   if (!o || ev.isComposing || ev.keyCode === 229) return;
-  const panel = (document.activeElement?.closest('[role="menu"]') as HTMLElement | null) ?? o.root;
+  const panel =
+    (document.activeElement?.closest('[role="menu"]') as HTMLElement | null) ??
+    o.root;
   const f = focusables(panel);
   if (f.length === 0) return;
   const i = f.indexOf(document.activeElement as HTMLButtonElement);
   let to = -1;
   if (ev.key === "ArrowDown") to = i < 0 ? 0 : (i + 1) % f.length;
-  else if (ev.key === "ArrowUp") to = i < 0 ? f.length - 1 : (i - 1 + f.length) % f.length;
-  else if (ev.key === "Home" && !(ev.target instanceof HTMLInputElement)) to = 0;
-  else if (ev.key === "End" && !(ev.target instanceof HTMLInputElement)) to = f.length - 1;
+  else if (ev.key === "ArrowUp")
+    to = i < 0 ? f.length - 1 : (i - 1 + f.length) % f.length;
+  else if (ev.key === "Home" && !(ev.target instanceof HTMLInputElement))
+    to = 0;
+  else if (ev.key === "End" && !(ev.target instanceof HTMLInputElement))
+    to = f.length - 1;
   if (to < 0) return;
   ev.preventDefault();
   f[to].focus();
@@ -374,8 +432,14 @@ function filterBox(root: HTMLElement, f: MenuFilter): HTMLInputElement {
   box.addEventListener("input", () => {
     const q = box.value.trim().toLowerCase();
     let any = false;
-    for (const b of root.querySelectorAll<HTMLButtonElement>(':scope > [data-filterable="true"]')) {
-      const hit = q === "" || (b.querySelector('[data-part="label"]')?.textContent ?? "").toLowerCase().includes(q);
+    for (const b of root.querySelectorAll<HTMLButtonElement>(
+      ':scope > [data-filterable="true"]',
+    )) {
+      const hit =
+        q === "" ||
+        (b.querySelector('[data-part="label"]')?.textContent ?? "")
+          .toLowerCase()
+          .includes(q);
       b.hidden = !hit;
       any ||= hit;
     }
@@ -391,7 +455,16 @@ function filterBox(root: HTMLElement, f: MenuFilter): HTMLInputElement {
   return box;
 }
 
-export function openMenu(anchor: MenuAnchor, items: MenuItem[], opts: { onClose?: () => void; label?: string; width?: number; filter?: MenuFilter } = {}): boolean {
+export function openMenu(
+  anchor: MenuAnchor,
+  items: MenuItem[],
+  opts: {
+    onClose?: () => void;
+    label?: string;
+    width?: number;
+    filter?: MenuFilter;
+  } = {},
+): boolean {
   if ("el" in anchor && menuAnchoredOn(anchor.el)) {
     closeMenu();
     return false;
@@ -403,7 +476,8 @@ export function openMenu(anchor: MenuAnchor, items: MenuItem[], opts: { onClose?
   root.className = s.menu;
   root.setAttribute("role", "menu");
   if (opts.label) root.setAttribute("aria-label", opts.label);
-  if ("el" in anchor && anchor.el.closest('[aria-modal="true"]')) root.dataset.overModal = "true";
+  if ("el" in anchor && anchor.el.closest('[aria-modal="true"]'))
+    root.dataset.overModal = "true";
   if (opts.width !== undefined) {
     root.style.width = `${opts.width}px`;
     root.style.maxWidth = `min(${opts.width}px, calc(100vw - ${2 * EDGE}px))`;
@@ -414,7 +488,17 @@ export function openMenu(anchor: MenuAnchor, items: MenuItem[], opts: { onClose?
       return true;
     },
   };
-  const o: Open = { root, anchor, items: new Map(), layer, timers: [], onClose: opts.onClose, anchorBox: null, peek: null, peekT: null };
+  const o: Open = {
+    root,
+    anchor,
+    items: new Map(),
+    layer,
+    timers: [],
+    onClose: opts.onClose,
+    anchorBox: null,
+    peek: null,
+    peekT: null,
+  };
   current = o;
   const filter = opts.filter ? filterBox(root, opts.filter) : null;
   if (filter) {
@@ -481,4 +565,3 @@ export function removeMenuItem(id: string): void {
   old.remove();
   o.items.delete(id);
 }
-

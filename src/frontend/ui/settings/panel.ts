@@ -18,7 +18,7 @@ import {
 import { claudeDirIn, setClaudeDirOverride } from "../paths";
 import { loadConfig } from "../config";
 import { AccountsSection } from "./accounts-section";
-import { RulesSection } from "./rules-section";
+import { openRuleEditor, RulesSection } from "./rules-section";
 import { ExtSection } from "./ext-section"; // 顶层「扩展」：跨机器的 skill / MCP，一张表 ＋ 一个抽屉
 import { DiagnosticsSection } from "./diagnostics-section";
 import { makeSkeleton } from "./skeleton";
@@ -607,6 +607,8 @@ export class SettingsPanel {
       this.dataPage?.focus(t.anchor);
       return;
     }
+    // 面板「编辑规则…」带 `rule:<id>`：「轮换」栏开那条的编辑器（那一栏读到那台的表时开）。
+    if (t.machine && t.anchor?.startsWith("rule:")) openRuleEditor(isLocalOrigin(t.machine) ? LOCAL_ORIGIN : t.machine, t.anchor.slice("rule:".length));
     const tabs = this.machinePages.get(pageId)?.tabs;
     const tabId = t.tab ? MACHINE_TAB_OF_TARGET[t.tab] : undefined;
     if (tabs && tabId) tabs.navigate(`${pageId}#${tabId}`);

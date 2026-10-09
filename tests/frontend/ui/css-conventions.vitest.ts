@@ -270,6 +270,8 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
     "填值框的错误句 `err`（`s.error`）—— 开时收起",
   "src/frontend/ui/kit/dialog.ts::failLine":
     "表单框提交没成那一行 `failLine`（`s.dlgFail`，自己不写 display）—— 没出错 / 改了一格时收起",
+  "src/frontend/ui/kit/menu.ts::b":
+    "筛选框按名字筛掉的菜单项 `b`（`s.menuItem`）—— 它写了 display:flex，CSS 里另有 `.menuItem[hidden]` 收住",
   "src/frontend/ui/kit/dock.ts::this.el":
     "底部抽屉网格那一格 `this.el`（`s.dockSlot`，自己不写 display；竖排的 flex 在里层 `s.dock`）—— 收着时 hidden",
   "src/frontend/ui/kit/fold.ts::body":

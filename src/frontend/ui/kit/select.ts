@@ -59,7 +59,8 @@ export interface SelectHandle {
 
 export function select(spec: SelectSpec): SelectHandle {
   let options = spec.options;
-  let value = spec.value ?? options.find((o) => o.enabled !== false)?.value ?? "";
+  let value =
+    spec.value ?? options.find((o) => o.enabled !== false)?.value ?? "";
   const el = document.createElement("button");
   el.type = "button";
   el.className = s.select;
@@ -73,7 +74,8 @@ export function select(spec: SelectSpec): SelectHandle {
   note.className = s.selectNote;
   el.append(lead, text, note, icon("caretDown", "compact"));
 
-  const current = (): SelectOption | undefined => options.find((o) => o.value === value);
+  const current = (): SelectOption | undefined =>
+    options.find((o) => o.value === value);
   const paint = (): void => {
     const o = current();
     lead.replaceChildren(...(o?.lead ? [o.lead()] : []));
@@ -100,14 +102,30 @@ export function select(spec: SelectSpec): SelectHandle {
       filterable: true,
       onClick: () => pick(o.value),
     }));
-    const filter = spec.filterOver !== undefined && options.length > spec.filterOver ? { label: spec.filterLabel ?? spec.label, empty: (q: string) => copyText("kit.menu.noMatch", { q }) } : undefined;
-    openMenu({ el }, spec.decorate ? spec.decorate(items) : items, { label: spec.label, width: Math.max(el.getBoundingClientRect().width, spec.menuWidth ?? 0), onClose: () => el.focus(), filter });
+    const filter =
+      spec.filterOver !== undefined && options.length > spec.filterOver
+        ? {
+            label: spec.filterLabel ?? spec.label,
+            empty: (q: string) => copyText("kit.menu.noMatch", { q }),
+          }
+        : undefined;
+    openMenu({ el }, spec.decorate ? spec.decorate(items) : items, {
+      label: spec.label,
+      width: Math.max(el.getBoundingClientRect().width, spec.menuWidth ?? 0),
+      onClose: () => el.focus(),
+      filter,
+    });
   };
   const step = (dir: 1 | -1): void => {
     const live = options.filter((o) => o.enabled !== false);
     if (live.length === 0) return;
     const i = live.findIndex((o) => o.value === value);
-    const to = i < 0 ? (dir > 0 ? 0 : live.length - 1) : Math.min(live.length - 1, Math.max(0, i + dir));
+    const to =
+      i < 0
+        ? dir > 0
+          ? 0
+          : live.length - 1
+        : Math.min(live.length - 1, Math.max(0, i + dir));
     pick(live[to].value);
   };
   el.addEventListener("click", open);
@@ -139,7 +157,11 @@ export function select(spec: SelectSpec): SelectHandle {
     setOptions: (next, v) => {
       if (menuAnchoredOn(el)) closeMenu();
       options = next;
-      value = v ?? (next.some((o) => o.value === value) ? value : (next.find((o) => o.enabled !== false)?.value ?? ""));
+      value =
+        v ??
+        (next.some((o) => o.value === value)
+          ? value
+          : (next.find((o) => o.enabled !== false)?.value ?? ""));
       paint();
     },
     setDisabled: (d) => {

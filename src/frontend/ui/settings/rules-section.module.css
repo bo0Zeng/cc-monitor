@@ -12,6 +12,11 @@
     margin-bottom: var(--space-4);
   }
 
+  /* 开着编辑器（同一栏里的子页）：段头收起。 */
+  .rules[data-editing="true"] > .rulesHead {
+    display: none;
+  }
+
   .rulesTitle {
     margin: 0;
     font-size: var(--font-size-base);
