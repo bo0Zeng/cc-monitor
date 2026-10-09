@@ -10,6 +10,7 @@
 //! - 很久没流量的号照实只有「最后一次看到是几点」，不编。
 
 use crate::agents::QuotaReading;
+use crate::common::said::Said;
 use copy_core::copy_text;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -319,7 +320,7 @@ pub(crate) fn record_seen(
         if let Some(p) = ledger.path.as_deref() {
             match write_merged(p, &entry, true) {
                 Ok((written, at)) => ledger.landed(written, at),
-                Err(e) => tracing::warn!("[quota] {e}"),
+                Err(e) => tracing::warn!("[quota] {e}: {}", e.raw.as_deref().unwrap_or("")),
             }
         }
     }
@@ -336,11 +337,11 @@ pub(crate) fn record_probe(
     account: &str,
     windows: Vec<crate::agents::QuotaWindow>,
     now: u64,
-) -> Result<Observed, String> {
+) -> Result<Observed, Said> {
     let path = ledger
         .path
         .as_deref()
-        .ok_or_else(|| copy_text("beQuotaLedger.read.noHome", &[]))?;
+        .ok_or_else(|| Said::from(copy_text("beQuotaLedger.read.noHome", &[])))?;
     let windows_seen = windows
         .iter()
         .map(|w| {
@@ -393,28 +394,34 @@ fn write_merged(
     path: &Path,
     add: &Observed,
     headers: bool,
-) -> Result<(Observed, Option<Stamp>), String> {
+) -> Result<(Observed, Option<Stamp>), Said> {
     let dir = path.parent().ok_or_else(|| {
-        copy_text(
+        Said::from(copy_text(
             "beQuotaLedger.write.noParent",
             &[("path", &path.display().to_string())],
-        )
+        ))
     })?;
     crate::common::own_dir::ensure_private_dir(dir).map_err(|e| {
-        copy_text(
-            "beQuotaLedger.write.failed",
-            &[("path", &path.display().to_string()), ("e", &e.to_string())],
+        Said::with_raw(
+            copy_text(
+                "beQuotaLedger.write.failed",
+                &[
+                    ("path", &path.display().to_string()),
+                    ("why", &copy_core::io_reason(e.kind())),
+                ],
+            ),
+            &e,
         )
     })?;
     let _lock = crate::platform::lock::hold(dir)?;
     let mut book = match read_at(path) {
         Read::Absent => Book::default(),
         Read::Present(b) => b,
+        // 读不懂的那份不覆盖：那一句说清是哪份、没覆盖，读不懂的原因（已带原因词）与原话照它的。
         Read::Unreadable(e) => {
-            return Err(copy_text(
-                "beQuotaLedger.write.unreadable",
-                &[("path", &path.display().to_string()), ("e", &e)],
-            ))
+            return Err(
+                e.wrap(|said| copy_text("beQuotaLedger.write.unreadable", &[("said", said)]))
+            )
         }
     };
     let entry = match book
@@ -438,19 +445,21 @@ fn write_merged(
 
 /// 帧命令 `quota-read` 的底子：现读这台的额度账（不读内存 —— 一次性 CLI 那一形里内存是空的）；显示态由帧面宿主补上。
 pub(crate) fn answer_of(path: Option<&Path>, now: u64) -> serde_json::Value {
-    let (state, reason, accounts) = match path.map(read_at) {
+    let (state, why, accounts) = match path.map(read_at) {
         None => (
             "unreadable",
-            Some(copy_text("beQuotaLedger.read.noHome", &[])),
+            Some(Said::from(copy_text("beQuotaLedger.read.noHome", &[]))),
             vec![],
         ),
         Some(Read::Absent) => ("absent", None, vec![]),
         Some(Read::Present(b)) => ("present", None, b.accounts),
         Some(Read::Unreadable(e)) => ("unreadable", Some(e), vec![]),
     };
+    let (reason, detail) = crate::stream::detail::unreadable("quota-read", why.as_ref());
     serde_json::json!({
         "state": state,
         "reason": reason,
+        "detail": detail,
         "path": path.map(|p| p.display().to_string()),
         "now": now,
         "accounts": accounts,

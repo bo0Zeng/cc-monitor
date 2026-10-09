@@ -129,7 +129,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "exit-policy-read",
         summary: "读「退出行为」那个值（值住后端所在那台）",
         codes: &[],
-        fields: &[out("killOnExit", "monitor 退出时结束本机常驻后端"), out("path", "那份文件的路径（在 `~/.cc-monitor/` 下）"), out("reason", "`unreadable` 时的原因"), out("said", "这个值意味着什么的一句话"), out("state", "`absent`（没设过）· `chosen` · `unreadable`（读不出：也是 `ok:true`）")],
+        fields: &[out("detail", "`unreadable` 时的复制详情（时刻 · 机器 · 命令 · 码 · 原话；排法同失败应答），`reason` 那一句不带原话"), out("killOnExit", "monitor 退出时结束本机常驻后端"), out("path", "那份文件的路径（在 `~/.cc-monitor/` 下）"), out("reason", "`unreadable` 时的原因"), out("said", "这个值意味着什么的一句话"), out("state", "`absent`（没设过）· `chosen` · `unreadable`（读不出：也是 `ok:true`）")],
         takes_input: false,
         run: Run::Blocking(|_r| Ok(Some(crate::control::exit_policy::answer_read()))),
     },
@@ -137,13 +137,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "exit-policy-set",
         summary: "写「退出行为」那个值，写完读回",
         codes: &["bad_args", "io_failed"],
-        fields: &[both("killOnExit", "要写的值（布尔）"), out("path", "同 `exit-policy-read`"), out("reason", "同 `exit-policy-read`"), out("said", "同 `exit-policy-read`"), out("state", "写完再读一遍的状态")],
+        fields: &[out("detail", "同 `exit-policy-read`"), both("killOnExit", "要写的值（布尔）"), out("path", "同 `exit-policy-read`"), out("reason", "同 `exit-policy-read`"), out("said", "同 `exit-policy-read`"), out("state", "写完再读一遍的状态")],
         takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::control::exit_policy::answer_set(&r.args)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
+        run: Run::BlockingData(|r| crate::control::exit_policy::answer_set(&r.args).map(Some)),
     },
     // 直接敲的那一家也走中转（可选、用户自己贴）：读这台那份用户级设置文件（同步文件 I/O ⇒ 阻塞档），出状态 ＋ 要贴的那一段。
     CommandSpec {

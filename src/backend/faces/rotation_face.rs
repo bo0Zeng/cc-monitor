@@ -51,7 +51,8 @@ use copy_core::copy_text;
 use serde_json::{json, Map, Value};
 use std::sync::Arc;
 
-type Answer = Result<Value, (&'static str, String)>;
+/// 失败带码 ＋ 那一句 ＋ 原话（写盘那几形的原话进复制详情，[`Fail`]）。
+type Answer = Result<Value, crate::stream::inbound::spec::Fail>;
 
 /// 一条命令要的几样：轮换的账本（经它判、经它写）· 这台 key 表里有哪几行（按量号接不接得上）。
 /// `(agent, 号)` → 这台 key 表里那一行：没有 ⇒ `None`；有 ⇒ 接不接得上。
@@ -106,8 +107,8 @@ impl Ctx {
     }
 }
 
-fn bad(detail: &str) -> (&'static str, String) {
-    ("bad_args", crate::common::contract::malformed(detail))
+fn bad(detail: &str) -> crate::stream::inbound::spec::Fail {
+    crate::stream::inbound::spec::Fail::new("bad_args", crate::common::contract::malformed(detail))
 }
 
 fn store_path(ctx: &Ctx) -> Result<&Path, (&'static str, String)> {
@@ -118,11 +119,11 @@ fn store_path(ctx: &Ctx) -> Result<&Path, (&'static str, String)> {
 }
 
 /// 盘上那一份（三态，同额度账）。
-fn read_book(ctx: &Ctx) -> (&'static str, Option<String>, Book) {
+fn read_book(ctx: &Ctx) -> (&'static str, Option<crate::common::said::Said>, Book) {
     match ctx.hop.store.path().map(rotation::read_at) {
         None => (
             "unreadable",
-            Some(copy_text("beRotation.read.noHome", &[])),
+            Some(copy_text("beRotation.read.noHome", &[]).into()),
             Book::default(),
         ),
         Some(rotation::Read::Absent) => ("absent", None, Book::default()),
@@ -132,8 +133,9 @@ fn read_book(ctx: &Ctx) -> (&'static str, Option<String>, Book) {
 }
 
 /// 默认轮换的线上形状（读与写回同一形）。`followers` ＝ 跟随它的活会话有几个。
-fn default_wire(ctx: &Ctx) -> Value {
-    let (state, reason, book) = read_book(ctx);
+fn default_wire(ctx: &Ctx, cmd: &str) -> Value {
+    let (state, why, book) = read_book(ctx);
+    let (reason, detail) = crate::stream::detail::unreadable(cmd, why.as_ref());
     let live = (ctx.live)();
     let followers = book
         .sessions
@@ -143,6 +145,7 @@ fn default_wire(ctx: &Ctx) -> Value {
     json!({
         "state": state,
         "reason": reason,
+        "detail": detail,
         "path": ctx.hop.store.path().map(|p| p.display().to_string()),
         "rotation": book.default_rotation(),
         "followers": followers,
@@ -238,7 +241,7 @@ pub(crate) fn answer_read() -> Answer {
 }
 
 pub(crate) fn answer_read_with(ctx: &Ctx) -> Value {
-    default_wire(ctx)
+    default_wire(ctx, "rotation-read")
 }
 
 /// `rotation-set`：整份写回这台的默认轮换（`{rotation}`）；不合法整份拒、说哪一格。
@@ -261,10 +264,10 @@ pub(crate) fn answer_set_with(ctx: &Ctx, args: &Value) -> Answer {
     )
     .map_err(|e| bad(&e))?;
     rotation::face_change(&ctx.hop.store, |b| b.default = Some(r)).map_err(|e| ("io_failed", e))?;
-    Ok(default_wire(ctx))
+    Ok(default_wire(ctx, "rotation-set"))
 }
 
-fn sids_of(args: &Value, key: &str) -> Result<Vec<String>, (&'static str, String)> {
+fn sids_of(args: &Value, key: &str) -> Result<Vec<String>, crate::stream::inbound::spec::Fail> {
     let arr = args
         .get(key)
         .and_then(Value::as_array)
@@ -291,7 +294,8 @@ pub(crate) fn answer_session_read(args: &Value) -> Answer {
 
 pub(crate) fn answer_session_read_with(ctx: &Ctx, args: &Value, now: u64) -> Answer {
     let sids = sids_of(args, "sids")?;
-    let (state, reason, book) = read_book(ctx);
+    let (state, why, book) = read_book(ctx);
+    let (reason, detail) = crate::stream::detail::unreadable("rotation-session-read", why.as_ref());
     let live = (ctx.live)();
     let mut sessions = Map::new();
     for sid in sids {
@@ -303,7 +307,9 @@ pub(crate) fn answer_session_read_with(ctx: &Ctx, args: &Value, now: u64) -> Ans
             serde_json::to_value(one).map_err(|e| ("failed", e.to_string()))?,
         );
     }
-    Ok(json!({"state": state, "reason": reason, "now": now, "sessions": sessions}))
+    Ok(
+        json!({"state": state, "reason": reason, "detail": detail, "now": now, "sessions": sessions}),
+    )
 }
 
 /// `rotation-session-set`：一批会话的轮换（`{sids, rotation}`；`rotation` ＝ `"follow"` · `"custom"`（恢复上一份自己的，
@@ -484,7 +490,7 @@ pub(crate) fn record(
     }) {
         Ok(()) => SwitchOutcome::Switched,
         Err(e) => {
-            tracing::warn!("[rotate] {e}");
+            tracing::warn!("[rotate] {}", e.logged());
             SwitchOutcome::NotSwitched {
                 code: "ioFailed".into(),
             }

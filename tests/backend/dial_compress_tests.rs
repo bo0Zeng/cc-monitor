@@ -940,3 +940,48 @@ fn vis2_the_target_run_and_only_it_feeds_the_linked_book() {
         "量具正控"
     );
 }
+
+/// 竞速全输了：那一句只带原因词（拨不通 ⇒「端口不通」）与试过的地址，各地址的系统原话进详情、不上句子。
+#[tokio::test]
+async fn a_lost_race_says_the_reason_word_and_keeps_the_os_words_for_the_detail() {
+    let ls = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = ls.local_addr().unwrap().port();
+    drop(ls);
+    let ep = Endpoint {
+        host: "127.0.0.1".to_string(),
+        port,
+    };
+    let stages = StageSink::new(false);
+    let reported: Arc<Mutex<BTreeMap<String, String>>> = Arc::default();
+    let Err((said, _)) = race(true, true, None, vec![ep.clone()], &stages, &reported).await else {
+        panic!("关着的口居然拨通了");
+    };
+    let addr = format!("127.0.0.1:{port}");
+    assert_eq!(
+        said.said,
+        copy_text(
+            "beConnect.race.allFailed",
+            &[
+                ("why", &copy_text("reason.dial.refused", &[])),
+                ("addrs", &addr)
+            ]
+        ),
+        "那一句换了事实或带了原话：{said:?}"
+    );
+    let raw = said.raw.expect("各地址的原话没进详情");
+    assert!(
+        raw.starts_with(&addr) && raw.len() > addr.len() + 1,
+        "详情里没有那条地址的系统原话：{raw:?}"
+    );
+}
+
+/// 竞速原因词：解析不出 · 拨不通 · 超时各一个词；别的（握手 · 指纹）说不清 ⇒ 原因不明。
+#[test]
+fn the_race_reason_word_follows_the_worst_stage() {
+    let w = |k: &str| copy_text(k, &[]);
+    assert_eq!(race_reason(Some("resolve")), w("reason.dial.resolve"));
+    assert_eq!(race_reason(Some("tcp")), w("reason.dial.refused"));
+    assert_eq!(race_reason(Some("timeout")), w("reason.dial.timeout"));
+    assert_eq!(race_reason(Some("hostkey")), w("reason.io.unknown"));
+    assert_eq!(race_reason(None), w("reason.io.unknown"));
+}

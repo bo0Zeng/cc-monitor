@@ -27,6 +27,21 @@ pub(crate) fn of_run(cmd: &str, raw: Option<&str>) -> String {
         .render()
 }
 
+/// 读不出来那一形在成功应答里的两格：`reason` 是那一句（不带原话）· `detail` 是复制详情（排法同失败应答，码 `unreadable`）。
+/// 读得到 / 不在 ⇒ 两格都是 `null`。各读答（额度账 · 轮换 · 退出策略 · 额度探针）都经这里，不各拼一份。
+pub(crate) fn unreadable(
+    cmd: &str,
+    why: Option<&crate::common::said::Said>,
+) -> (serde_json::Value, serde_json::Value) {
+    match why {
+        None => (serde_json::Value::Null, serde_json::Value::Null),
+        Some(s) => (
+            serde_json::Value::String(s.said.clone()),
+            serde_json::Value::String(of(Some(cmd), "unreadable", s.raw.as_deref())),
+        ),
+    }
+}
+
 fn now() -> String {
     let t = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

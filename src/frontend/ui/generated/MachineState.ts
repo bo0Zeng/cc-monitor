@@ -39,4 +39,9 @@ fixes: Array<MachineFix>,
 /**
  * 指纹不对时那台这一次出示的主机指纹（`host_key_changed` 才有；与记下的那枚比对用）。
  */
-seenHostKey: string | null, };
+seenHostKey: string | null, 
+/**
+ * 这一轮没连上 / 做不了时的复制详情（`down` · `host_key_changed` · `unsupported` 才可能有）：时刻 · 机器 · 本机 · 命令 ·
+ * 断在（哪一步没成的那一句）· 码 · 原话。界面照原样跟在问题行那句后面（［复制详情］），自己不拼。说不出 ⇒ 空。
+ */
+detail: string | null, };

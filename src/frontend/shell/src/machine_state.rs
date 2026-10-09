@@ -80,6 +80,9 @@ pub struct MachineState {
     pub fixes: Vec<MachineFix>,
     /// 指纹不对时那台这一次出示的主机指纹（`host_key_changed` 才有；与记下的那枚比对用）。
     pub seen_host_key: Option<String>,
+    /// 这一轮没连上 / 做不了时的复制详情（`down` · `host_key_changed` · `unsupported` 才可能有）：时刻 · 机器 · 本机 · 命令 ·
+    /// 断在（哪一步没成的那一句）· 码 · 原话。界面照原样跟在问题行那句后面（［复制详情］），自己不拼。说不出 ⇒ 空。
+    pub detail: Option<String>,
 }
 
 /// 「做不了」的两个原因码。
@@ -100,6 +103,12 @@ struct Entry {
     seen_key: Option<String>,
     /// 那台握手报的构建标识（只进日志与诊断信息）。
     build: Option<String>,
+    /// 拨号那一层最近一次没拨成的那一句 ＋ 详情（这一轮收尾时用）。
+    dial_said: Option<crate::detail::Said>,
+    /// 这一轮没成的那一句 ＋ 详情（接常驻后端那一步记；比拨号那一层的更完整，收尾时先用它）。
+    round_said: Option<crate::detail::Said>,
+    /// 收尾时定下的那份详情（读点原样交出）。
+    detail: Option<String>,
 }
 
 static TABLE: Mutex<BTreeMap<String, Entry>> = Mutex::new(BTreeMap::new());
@@ -137,6 +146,12 @@ pub(crate) fn connecting(origin: &str, stage: &str) {
         e.state = Some(MachineStateKind::Connecting);
         e.reason = None;
         e.stage = Some(stage.to_string());
+        e.detail = None;
+        if stage == "deploy" {
+            // 新一轮从头起：上一轮记下的那几句不跟进来。
+            e.round_said = None;
+            e.dial_said = None;
+        }
     });
 }
 
@@ -158,6 +173,7 @@ pub(crate) fn deploying(origin: &str, first: bool) {
         });
         e.reason = None;
         e.stage = None;
+        e.detail = None;
     });
 }
 
@@ -187,6 +203,9 @@ pub(crate) fn up(origin: &str, build: &str, relation: VersionRelation) {
         e.dial_why = None;
         e.seen_key = None;
         e.build = Some(build.to_string());
+        e.dial_said = None;
+        e.round_said = None;
+        e.detail = None;
     });
 }
 
@@ -199,14 +218,39 @@ pub(crate) fn build_of(origin: &str) -> Option<String> {
         .and_then(|e| e.build.clone())
 }
 
-/// 拨号那一层没拨成（后端 ack 带回的原因码与那台出示的指纹；老后端没给码 ⇒ 不记）。
-pub(crate) fn dial_failed(origin: &str, why: Option<&str>, fingerprint: Option<&str>) {
-    if let Some(w) = why {
-        with(origin, |e| {
+/// 拨号那一层没拨成（后端 ack 带回的原因码 · 那台出示的指纹 · 那一句与详情；老后端没给码 ⇒ 码与指纹不记，那一句照记）。
+pub(crate) fn dial_failed(
+    origin: &str,
+    why: Option<&str>,
+    fingerprint: Option<&str>,
+    said: &crate::detail::Said,
+) {
+    with(origin, |e| {
+        if let Some(w) = why {
             e.dial_why = Some(w.to_string());
             e.seen_key = fingerprint.map(str::to_string);
-        });
-    }
+        }
+        e.dial_said = Some(said.clone());
+    });
+}
+
+/// 这一轮没成的那一句 ＋ 详情（接常驻后端那一步没成时记；收尾时 [`down`] / [`unsupported`] 交给读点）。
+pub(crate) fn round_failed(origin: &crate::origin::Origin, said: &crate::detail::Said) {
+    with(&origin.0, |e| e.round_said = Some(said.clone()));
+}
+
+/// 收尾那一份详情：这一轮记下的（没有 ⇒ 拨号那一层的）那一句进「断在」，其余照它的详情（拨号那一层是本机后端写的：
+/// 「机器」是本机那一份后端）；连的是哪一台进「对象」，码是这一轮的原因码。
+fn round_detail(target: &str, e: &mut Entry) -> Option<String> {
+    let said = e.round_said.take().or_else(|| e.dial_said.take())?;
+    use copy_core::detail::Label;
+    let step = said.said.clone();
+    Some(
+        said.with_item(Label::Target, target)
+            .with_item(Label::Hop, &step)
+            .with_item(Label::Code, e.reason.as_deref().unwrap_or(""))
+            .detail,
+    )
 }
 
 /// 这一轮没连上：原因取拨号那一层记下的码（没有 ⇒ `other`）；指纹不对单列一态。
@@ -221,6 +265,7 @@ pub(crate) fn down(origin: &str) {
         });
         e.reason = Some(why);
         e.stage = None;
+        e.detail = round_detail(origin, e);
     });
 }
 
@@ -230,6 +275,7 @@ pub(crate) fn unsupported(origin: &str, why: &str) {
         e.state = Some(MachineStateKind::Unsupported);
         e.reason = Some(why.to_string());
         e.stage = None;
+        e.detail = round_detail(origin, e);
     });
 }
 
@@ -295,6 +341,7 @@ pub(crate) fn product(origin: &str, enabled: bool) -> MachineState {
         } else {
             None
         },
+        detail: if enabled { e.detail } else { None },
     }
 }
 
@@ -347,6 +394,7 @@ pub(crate) fn local_product(channel: bool, mine: Option<&str>) -> MachineState {
         version_relation: Some(relation),
         os: None,
         seen_host_key: None,
+        detail: None,
     }
 }
 

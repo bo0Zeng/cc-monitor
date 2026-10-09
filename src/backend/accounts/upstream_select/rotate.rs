@@ -390,7 +390,7 @@ impl Hop {
             }) {
                 Ok(b) => book = b,
                 Err(e) => {
-                    tracing::warn!("[rotate] {e}");
+                    tracing::warn!("[rotate] {}", e.logged());
                     return None;
                 }
             }
@@ -447,13 +447,13 @@ impl Hop {
             b.rebase(sid, &base);
             b.block_above(sid, above);
         }) {
-            tracing::warn!("[rotate] {e}");
+            tracing::warn!("[rotate] {}", e.logged());
         }
     }
 
     fn stuck(&self, sid: &str, rec: SwitchRecord, skipped: &[(String, Unready)]) {
         if let Err(e) = rotation::relay_change(&self.store, |b| b.note_stuck(sid, rec, skipped)) {
-            tracing::warn!("[rotate] {e}");
+            tracing::warn!("[rotate] {}", e.logged());
         }
     }
 
@@ -535,7 +535,7 @@ impl Hop {
         let base = self.baseline_of(a.agent, &s.current, a.now);
         if base.keys().any(|k| !s.baseline.contains_key(k)) {
             if let Err(e) = rotation::relay_change(&self.store, |b| b.rebase(a.sid, &base)) {
-                tracing::warn!("[rotate] {e}");
+                tracing::warn!("[rotate] {}", e.logged());
             }
         }
         if s.current == s.start {

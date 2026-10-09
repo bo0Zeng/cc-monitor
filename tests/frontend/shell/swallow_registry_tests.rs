@@ -88,7 +88,7 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/backend/dial/sftp.rs", "let _ = s.sftp().remove_file(b).await;", Why::CleanupAfterFailure, "部署换名成功后删自己挪走的旧备份件 / 换名失败而落点已被别的部署者占上时删它；删不掉只剩一份 `.bak`"),
     ("src/backend/dial/sftp.rs", "let _ = s.sftp().rename(b, rel.clone()).await;", Why::CleanupAfterFailure, "换名失败、落点还空着 ⇒ 把自己挪走的旧文件挪回去（主错误已在回）"),
     ("src/backend/dial/sftp.rs", "let _ = tokio::io::copy(&mut (&mut *input).take(size), &mut tokio::io::sink()).await;", Why::Drain, ""),
-    ("src/backend/dial/sftp.rs", "let _ = write_line(out, &refused(\"bad_request\", &e)).await;", Why::DeadLink, ""),
+    ("src/backend/dial/sftp.rs", "let _ = write_line(out, &refused(\"-\", \"bad_request\", &e.said, e.raw.as_deref())).await;", Why::DeadLink, ""),
     ("src/backend/dial/uses.rs", "let _ = out.flush().await;", Why::DeadLink, ""),
     ("src/backend/dial/uses.rs", "let _ = self.close().await;", Why::Reap, "放弃 / 提前收工时向远端发关通道：对端撤活只是尽力"),
     ("src/backend/dial/uses.rs", "let _ = write_line(out, &got).await;", Why::DeadLink, ""),
@@ -100,10 +100,9 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &ack).await;", Why::DeadLink, ""),
     ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(e, fp)).await;", Why::DeadLink, ""),
     // 开 sftp 子系统没成那一条（同上：写不进去说明界面已经走了；SFTP 那一下的原话先进了日志）。
-    ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(e.said, fp)).await;", Why::DeadLink, ""),
     ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(e, fp).because(stages.why())).await;", Why::DeadLink, ""),
-    ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(copy_text(\"beUses.exec.failed\", &[(\"e\", &e.to_string())]), f", Why::DeadLink, ""),
-    ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(copy_text(\"beUses.forward.bindFailed\", &[ (\"port\", &spec.loc", Why::DeadLink, ""),
+    ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(Said::with_raw(copy_text(\"beUses.exec.failed\", &[]), &e), fp", Why::DeadLink, ""),
+    ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(Said::with_raw(copy_text(\"beUses.forward.bindFailed\", &[ (\"p", Why::DeadLink, ""),
     ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &fail(e)).await;", Why::DeadLink, ""),
     ("src/backend/files/browse_watch.rs", "let _ = self.inner.unwatch(&super::raw::to_path_buf(d));", Why::Reap, "撤不再看的目录的 watch：目录已删时 unwatch 本来就会失败"),
     ("src/backend/files/mod.rs", "let _ = write!(out, \"{b:02x}\");", Why::InfallibleWrite, "`out` 是 `String`（十六进制摘要）"),
@@ -233,7 +232,7 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/frontend/shell/src/stream_source/run.rs", "let _ = frame_tx.send(Err(format!(\"ssh backend stdout read error: {e}\"))).await;", Why::PeerGone, ""),
     ("src/common/host-core/src/atomic.rs", "let _ = std::fs::remove_file(&tmp);", Why::CleanupAfterFailure, "原子写的临时件：换名失败之后删它；主错误已在回，删不掉只剩一份临时件"),
     // capture 带 stdin 那一形：写那一行失败时回一行失败的 ack；ack 本身写不出去 ⇒ 链路已死，同上面那几条。
-    ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(copy_text(\"beUses.exec.stdinLost\", &[(\"e\", &e.to_string())])", Why::DeadLink, ""),
+    ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(Said::with_raw(copy_text(\"beUses.exec.stdinLost\", &[]), &e),", Why::DeadLink, ""),
     // `agent_home` 的可重入挂法（`rewatch_agent_home`）：同上面三个目录那一族。
     ("src/backend/observe/watcher.rs", "let _ = debouncer.watcher().unwatch(agent_home);", Why::Reap, "撤旧 inode 上的 watch：目录被删 / 换过 inode 时 unwatch 本来就会失败"),
     ("src/backend/control/resident.rs", "let _ = std::fs::remove_file(&path);", Why::Reap, "停完之后收掉还指着它的那份 pid 记录：结局（graceful / killed）已经定了；删不掉只剩一份陈记录，下次认身份时 ESRCH / exe 对不上照样答对；一次性子命令，stderr 只许一行 JSON 信封"),

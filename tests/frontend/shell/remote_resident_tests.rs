@@ -73,7 +73,8 @@ fn the_ensure_answer_names_a_non_unix_remote_as_unsupported_and_never_falls_back
             copy_text(
                 "rsRemoteResident.ensure.unsupported",
                 &[("why", "不是 unix")]
-            ),
+            )
+            .into(),
             crate::machine_state::NOT_UNIX
         ))
     );
@@ -83,14 +84,13 @@ fn the_ensure_answer_names_a_non_unix_remote_as_unsupported_and_never_falls_back
             r#"{"code":"spawn_failed","message":"x"}"#,
             Some(2)
         )),
-        Err(AttachErr::Failed("x".to_string()))
+        Err(AttachErr::Failed("x".into()))
     );
     assert_eq!(
         parse_answer(&exec(&hello("p1a-old"), "", None)),
-        Err(AttachErr::Failed(copy_text(
-            "rsRemoteResident.ensure.tooOld",
-            &[]
-        )))
+        Err(AttachErr::Failed(
+            copy_text("rsRemoteResident.ensure.tooOld", &[]).into()
+        ))
     );
     // 刚起了一个 ⇒ 钥匙是它绑上口之后自己写的，答里没有（读到 hello 之后再问一次）；缺端口才算答不全。
     let fresh = parse_ensured(&serde_json::json!({"port":51000,"token":null,"pid":7})).unwrap();
@@ -152,7 +152,7 @@ fn the_stop_answer_is_one_of_three_words_or_an_error() {
         Some(2),
     ))
     .unwrap_err();
-    assert_eq!(err, "强杀之后还在");
+    assert_eq!(err.said, "强杀之后还在");
     // 交给机器页的线上形：三个词原样（snake_case），不是 Rust 的变体名。
     let wire: Vec<String> = [StopWord::Graceful, StopWord::Killed, StopWord::NotRunning]
         .iter()
@@ -209,7 +209,7 @@ async fn a_tunnel_refused_for_forwarding_stops_at_the_first_try() {
             tries.fetch_add(1, Ordering::SeqCst);
             async {
                 Err::<(), _>((
-                    "远端 127.0.0.1:4 连不上".to_string(),
+                    crate::detail::Said::from("远端 127.0.0.1:4 连不上"),
                     Some(FORWARDING_PROHIBITED.to_string()),
                 ))
             }
@@ -222,7 +222,7 @@ async fn a_tunnel_refused_for_forwarding_stops_at_the_first_try() {
     assert_eq!(
         got,
         Err(AttachErr::Unsupported(
-            said.clone(),
+            said.clone().into(),
             crate::machine_state::NO_FORWARDING
         ))
     );
@@ -238,7 +238,10 @@ async fn a_tunnel_refused_for_forwarding_stops_at_the_first_try() {
             let n = tries.fetch_add(1, Ordering::SeqCst);
             async move {
                 if n < 2 {
-                    Err(("没人在听".to_string(), Some("connect_failed".to_string())))
+                    Err((
+                        crate::detail::Said::from("没人在听"),
+                        Some("connect_failed".to_string()),
+                    ))
                 } else {
                     Ok(n)
                 }

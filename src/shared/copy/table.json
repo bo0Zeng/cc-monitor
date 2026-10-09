@@ -67,20 +67,20 @@
     "beOwnState.read.failed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "读取失败 · {path} · {e}",
-      "args": ["path", "e"]
+      "zh": "读取失败 · {path} · {why}",
+      "args": ["path", "why"]
     },
     "beOwnState.read.notJson": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取 {path} 失败 · 内容无法解析 · {e}",
-      "args": ["path", "e"]
+      "zh": "读取 {path} 失败 · 内容无法解析",
+      "args": ["path"]
     },
     "beOwnState.write.encodeFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "写入失败 · {path} · {e}",
-      "args": ["path", "e"]
+      "zh": "写入失败 · {path} · 程序出错",
+      "args": ["path"]
     },
     "beOwnState.write.noParent": {
       "kind": "error",
@@ -91,20 +91,20 @@
     "beOwnState.write.renameFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "写入失败 · {path} · 临时文件 {tmp} 换名出错 · {e}",
-      "args": ["tmp", "path", "e"]
+      "zh": "写入失败 · {path} · 临时文件 {tmp} 换名出错 · {why}",
+      "args": ["path", "tmp", "why"]
     },
     "beOwnState.write.tmpCreateFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "写入失败 · {tmp} · {e}",
-      "args": ["tmp", "e"]
+      "zh": "写入失败 · {tmp} · {why}",
+      "args": ["tmp", "why"]
     },
     "beOwnState.write.tmpWriteFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "写入失败 · {tmp} · {e}",
-      "args": ["tmp", "e"]
+      "zh": "写入失败 · {tmp} · {why}",
+      "args": ["tmp", "why"]
     },
     "beUpstreamFileFace.restore.notSaved": {
       "kind": "error",
@@ -571,8 +571,8 @@
     "beAcctScan.manifest.unreadable": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取账号清单失败 · {path} · {e}",
-      "args": ["path", "e"]
+      "zh": "读取账号清单失败 · {path} · {why}",
+      "args": ["path", "why"]
     },
     "beAcctScan.roots.nested": {
       "kind": "error",
@@ -1018,8 +1018,8 @@
     "beSkillLedger.read.unknown": {
       "kind": "error",
       "role": "报错",
-      "zh": "{path} 格式不对 · {e}",
-      "args": ["path", "e"]
+      "zh": "{path} 格式不对",
+      "args": ["path"]
     },
     "beSkillLedger.write.noParent": {
       "kind": "error",
@@ -1120,26 +1120,26 @@
     "beClaudeAssets.skill.docFailed": {
       "kind": "body",
       "role": "说明",
-      "zh": "读取失败 · {path} · skill 无简介 · {e}",
-      "args": ["path", "e"]
+      "zh": "读取失败 · {path} · {why} · skill 无简介",
+      "args": ["path", "why"]
     },
     "beClaudeAssets.mcp.configFailed": {
       "kind": "body",
       "role": "说明",
-      "zh": "读取失败 · {path} · MCP 未列出 · {e}",
-      "args": ["path", "e"]
+      "zh": "读取失败 · {path} · {why} · MCP 未列出",
+      "args": ["path", "why"]
     },
     "beClaudeAssets.mcp.statFailed": {
       "kind": "body",
       "role": "说明",
-      "zh": "读取失败 · {path} · {e}",
-      "args": ["path", "e"]
+      "zh": "读取失败 · {path} · {why}",
+      "args": ["path", "why"]
     },
     "beClaudeAssets.mcp.readFailed": {
       "kind": "body",
       "role": "说明",
-      "zh": "读取失败 · {path} · {e}",
-      "args": ["path", "e"]
+      "zh": "读取失败 · {path} · {why}",
+      "args": ["path", "why"]
     },
     "beClaudeAssets.mcp.notObject": {
       "kind": "body",
@@ -1579,8 +1579,8 @@
     "rsRemoteResident.stop.unknownAnswer": {
       "kind": "error",
       "role": "报错",
-      "zh": "停止后端的结果无法识别 · {line}",
-      "args": ["line"]
+      "zh": "停止后端的结果无法识别",
+      "args": []
     },
     "rsRemoteResident.ensure.tooOld": {
       "kind": "error",
@@ -1597,8 +1597,8 @@
     "rsRemoteResident.ensure.answerUnreadable": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取远端启动常驻后端的回答失败 · 内容无法解析 · {e}",
-      "args": ["e"]
+      "zh": "读取远端启动常驻后端的回答失败 · 内容无法解析",
+      "args": []
     },
     "rsRemoteResident.ensure.noReason": {
       "kind": "error",
@@ -1621,8 +1621,8 @@
     "rsRemoteResident.verdict.unreadable": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取本机后端的回复失败 · 内容无法解析 · {e}；无法决定是否替换远端后端",
-      "args": ["e"]
+      "zh": "本机后端回复内容无法解析 · 未定是否替换远端后端",
+      "args": []
     },
     "rsRemoteResident.handshake.helloCut": {
       "kind": "error",
@@ -1639,14 +1639,14 @@
     "rsRemoteResident.handshake.readFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取远端常驻后端的回话失败 · {e}",
-      "args": ["e"]
+      "zh": "读取远端常驻后端的回话失败",
+      "args": []
     },
     "rsRemoteResident.tunnel.unreachable": {
       "kind": "error",
       "role": "报错",
-      "zh": "远端常驻后端端口 127.0.0.1:{port} 一直连接失败 · {e}",
-      "args": ["port", "e"]
+      "zh": "远端常驻后端端口 127.0.0.1:{port} 一直连接失败",
+      "args": ["port"]
     },
     "rsRemoteResident.tunnel.forwardingProhibited": {
       "kind": "error",
@@ -1657,8 +1657,8 @@
     "rsRemoteResident.handshake.attachNotSent": {
       "kind": "error",
       "role": "报错",
-      "zh": "接入请求未送到远端常驻后端 · {e}",
-      "args": ["e"]
+      "zh": "接入请求未送到远端常驻后端 · {why}",
+      "args": ["why"]
     },
     "rsRemoteResident.handshake.notAttachReply": {
       "kind": "error",
@@ -1675,8 +1675,8 @@
     "rsBackendControl.remote.stopFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "停止 {origin} 后端失败 · {e} · 连接已断开",
-      "args": ["origin", "e"]
+      "zh": "停止 {origin} 后端失败\n与它的连接已断开",
+      "args": ["origin"]
     },
     "beResident.home.missing": {
       "kind": "error",
@@ -9601,8 +9601,8 @@
     "rsSftp.upload.badKept": {
       "kind": "error",
       "role": "报错",
-      "zh": "{bad} · 传坏的文件未删掉 · {e}",
-      "args": ["bad", "e"]
+      "zh": "{bad} · 传坏的文件未删掉",
+      "args": ["bad"]
     },
     "rsSftp.upload.badRemoved": {
       "kind": "error",
@@ -11693,14 +11693,14 @@
     "beMcp.read.statFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "读取失败 · {path} · {e}",
-      "args": ["path", "e"]
+      "zh": "读取失败 · {path} · {why}",
+      "args": ["path", "why"]
     },
     "beMcp.read.readFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "读取失败 · {path} · {e}",
-      "args": ["path", "e"]
+      "zh": "读取失败 · {path} · {why}",
+      "args": ["path", "why"]
     },
     "rsHooksDiag.diagnose.notObject": {
       "kind": "body",
@@ -12201,35 +12201,17 @@
       "zh": "程序出错",
       "args": []
     },
-    "rsSshLink.parse.withLine": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "{e} · 原文 {line}",
-      "args": ["e", "line"]
-    },
     "rsSshLink.dial.noReason": {
       "kind": "error",
       "role": "原因格",
       "zh": "原因不明",
       "args": []
     },
-    "rsSshLink.parse.ackLine": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "应答 {e} · 原文 {line}",
-      "args": ["e", "line"]
-    },
-    "rsSshLink.parse.stageLine": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "阶段行 {e} · 原文 {line}",
-      "args": ["e", "line"]
-    },
     "rsSshLink.dial.readFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "与本机后端的连接断开 · {e}",
-      "args": ["e"]
+      "zh": "与本机后端的连接断开",
+      "args": []
     },
     "rsSshLink.dial.tooLong": {
       "kind": "error",
@@ -12276,14 +12258,14 @@
     "rsDialHost.ask.sendBytesFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "向本机后端送字节失败 · {e}",
-      "args": ["e"]
+      "zh": "向本机后端送字节失败 · {why}",
+      "args": ["why"]
     },
     "rsDialHost.open.noHome": {
       "kind": "error",
       "role": "报错",
-      "zh": "本机后端未答出远端起始目录 · {v}",
-      "args": ["v"]
+      "zh": "本机后端未答出远端起始目录",
+      "args": []
     },
     "rsDialHost.open.timeout": {
       "kind": "error",
@@ -15396,8 +15378,8 @@
     "beExitPolicy.writeAt.mkdirFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "写入失败 · {dir} · {e}",
-      "args": ["dir", "e"]
+      "zh": "写入失败 · {dir} · {why}",
+      "args": ["dir", "why"]
     },
     "beExitPolicy.writeAt.noParent": {
       "kind": "error",
@@ -15426,14 +15408,14 @@
     "bePlatformLock.hold.openFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "加锁失败 · {dir} · {e}",
-      "args": ["dir", "e"]
+      "zh": "加锁失败 · {dir} · {why}",
+      "args": ["dir", "why"]
     },
     "bePlatformLock.hold.lockFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "加锁 {dir} 失败 · {e}",
-      "args": ["dir", "e"]
+      "zh": "加锁 {dir} 失败 · {why}",
+      "args": ["dir", "why"]
     },
     "bePlatformLock.hold.waitFailed": {
       "kind": "error",
@@ -17675,8 +17657,8 @@
     "beConnect.race.taskFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "连接中断 · {e}",
-      "args": ["e"]
+      "zh": "连接失败 · 程序出错",
+      "args": []
     },
     "beConnect.race.noAddress": {
       "kind": "error",
@@ -17687,32 +17669,26 @@
     "beConnect.race.allFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "所有地址均连接失败 · {errors}",
-      "args": ["errors"]
-    },
-    "beConnect.race.tried": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{e} · 已试 {addrs}",
-      "args": ["e", "addrs"]
+      "zh": "所有地址均连接失败 · {why} · 已试 {addrs}",
+      "args": ["why", "addrs"]
     },
     "beConnect.auth.rsaHash": {
       "kind": "error",
       "role": "报错",
-      "zh": "和远端商定 RSA 签名算法失败 · {e}",
-      "args": ["e"]
+      "zh": "和远端商定 RSA 签名算法失败",
+      "args": []
     },
     "beConnect.auth.keyLoad": {
       "kind": "error",
       "role": "原因格",
-      "zh": "读取私钥失败 · {path} · {e}",
-      "args": ["path", "e"]
+      "zh": "读取私钥失败 · {path}",
+      "args": ["path"]
     },
     "beConnect.auth.keyFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "私钥登录失败 · {e}",
-      "args": ["e"]
+      "zh": "私钥登录失败",
+      "args": []
     },
     "beConnect.auth.keyRejected": {
       "kind": "error",
@@ -17723,15 +17699,15 @@
     "beConnect.agent.unreachable": {
       "kind": "error",
       "role": "报错",
-      "zh": "未配密钥文件 · ssh-agent 也失败 · {e}",
-      "args": ["e"],
+      "zh": "未配密钥文件 · 连接 ssh-agent 失败",
+      "args": [],
       "limited": ["SSH"]
     },
     "beConnect.agent.listFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取 ssh-agent 失败 · {e}",
-      "args": ["e"],
+      "zh": "读取 ssh-agent 失败",
+      "args": [],
       "limited": ["SSH"]
     },
     "beConnect.agent.empty": {
@@ -17751,8 +17727,8 @@
     "beConnect.agent.signFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "ssh-agent 签名登录出错 · {e}",
-      "args": ["e"],
+      "zh": "ssh-agent 签名登录失败",
+      "args": [],
       "limited": ["SSH"]
     },
     "beConnect.agent.allFailed": {
@@ -17771,20 +17747,20 @@
     "beConnect.jump.dialFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "跳板机 {hop} 连接失败 · {e}",
-      "args": ["hop", "e"]
+      "zh": "跳板机 {hop} 连接失败",
+      "args": ["hop"]
     },
     "beConnect.jump.authFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "跳板机 {hop} 登录失败 · {e}",
-      "args": ["hop", "e"]
+      "zh": "跳板机 {hop} 登录失败",
+      "args": ["hop"]
     },
     "beConnect.jump.tunnelFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "经跳板机连 {host}:{port} 失败 · {e}",
-      "args": ["host", "port", "e"]
+      "zh": "经跳板机连 {host}:{port} 失败",
+      "args": ["host", "port"]
     },
     "beConnect.jump.target": {
       "kind": "body",
@@ -17795,8 +17771,8 @@
     "beConnect.jump.targetFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "经跳板机连上目标后 SSH 连接建立失败 · {e}",
-      "args": ["e"],
+      "zh": "经跳板机连上目标后 SSH 连接建立失败",
+      "args": [],
       "limited": ["SSH"]
     },
     "beUses.session.noSlot": {
@@ -17809,15 +17785,15 @@
     "beUses.session.openFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "新开 SSH 会话失败 · {e}",
-      "args": ["e"],
+      "zh": "新开 SSH 会话失败",
+      "args": [],
       "limited": ["SSH"]
     },
     "beUses.session.refusedAll": {
       "kind": "error",
       "role": "报错",
-      "zh": "远端拒绝新开 SSH 会话 · {e} · 可能远端 sshd MaxSessions 为 0",
-      "args": ["e"],
+      "zh": "远端拒绝新开 SSH 会话 · 可能远端 sshd MaxSessions 为 0",
+      "args": [],
       "limited": ["SSH"]
     },
     "beUses.session.exhausted": {
@@ -17830,20 +17806,20 @@
     "beUses.exec.failed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "远端命令启动失败 · {e}",
-      "args": ["e"]
+      "zh": "远端命令启动失败",
+      "args": []
     },
     "beUses.exec.stdinLost": {
       "kind": "error",
       "role": "报错",
-      "zh": "远端命令已启动 · 输入未送达 · {e}",
-      "args": ["e"]
+      "zh": "远端命令已启动 · 输入未送达",
+      "args": []
     },
     "beUses.forward.bindFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "绑定本地端口 127.0.0.1:{port} 失败 · {e}",
-      "args": ["port", "e"]
+      "zh": "绑定本地端口 127.0.0.1:{port} 失败 · {why}",
+      "args": ["port", "why"]
     },
     "beHistory.dir.denied": {
       "kind": "error",
@@ -17866,8 +17842,8 @@
     "beUses.tunnel.unreachable": {
       "kind": "error",
       "role": "报错",
-      "zh": "连接远端 127.0.0.1:{port} 失败 · {e}",
-      "args": ["port", "e"]
+      "zh": "连接远端 127.0.0.1:{port} 失败",
+      "args": ["port"]
     },
     "beLink.install.tooMany": {
       "kind": "error",
@@ -19190,8 +19166,8 @@
     "beAcctMcpShare.store.unreadable": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取各账号共用的 MCP 文件失败 · {path} · {e}",
-      "args": ["path", "e"]
+      "zh": "读取各账号共用的 MCP 文件失败 · {path} · {why}",
+      "args": ["path", "why"]
     },
     "beAcctMcpShare.store.cannotUse": {
       "kind": "error",
@@ -19250,8 +19226,8 @@
     "beAcctMcpShare.note.unreadable": {
       "kind": "body",
       "role": "说明",
-      "zh": "{account} 的配置 {path} 无法读取 · {e} · 本次不同步它",
-      "args": ["account", "path", "e"]
+      "zh": "{account} 的配置 {path} 无法读取 · {why} · 本次不同步它",
+      "args": ["account", "path", "why"]
     },
     "beAcctMcpShare.note.backupFailed": {
       "kind": "error",
@@ -20244,14 +20220,14 @@
     "beQuotaLedger.write.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "写入失败 · {path} · {e}",
-      "args": ["path", "e"]
+      "zh": "写入失败 · {path} · {why}",
+      "args": ["path", "why"]
     },
     "beQuotaLedger.write.unreadable": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取 {path} 失败 · {e} · 未覆盖",
-      "args": ["path", "e"]
+      "zh": "{said} · 未覆盖",
+      "args": ["said"]
     },
     "beQuotaLedger.read.noHome": {
       "kind": "error",
@@ -20268,14 +20244,14 @@
     "beRotation.write.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "写入失败 · {path} · {e}",
-      "args": ["path", "e"]
+      "zh": "写入失败 · {path} · {why}",
+      "args": ["path", "why"]
     },
     "beRotation.write.unreadable": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取 {path} 失败 · {e} · 未覆盖",
-      "args": ["path", "e"]
+      "zh": "{said} · 未覆盖",
+      "args": ["said"]
     },
     "beRotation.read.noHome": {
       "kind": "error",
@@ -20352,14 +20328,14 @@
     "beOauthStore.lock.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "加锁失败 · {e} · 续期锁 {path}",
-      "args": ["path", "e"]
+      "zh": "加锁失败 · {why} · 续期锁 {path}",
+      "args": ["why", "path"]
     },
     "beOauthStore.write.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "写入失败 · {path} · {e}",
-      "args": ["path", "e"]
+      "zh": "写入失败 · {path} · 程序出错",
+      "args": ["path"]
     },
     "beOauth.unusable.notLoggedIn": {
       "kind": "error",
@@ -27225,6 +27201,42 @@
       "role": "报错",
       "zh": "写入失败 · {path} · {why}",
       "args": ["path", "why"]
+    },
+    "reason.dial.resolve": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "地址无法解析",
+      "args": []
+    },
+    "reason.dial.refused": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "端口不通",
+      "args": []
+    },
+    "reason.dial.timeout": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "无应答",
+      "args": []
+    },
+    "beQuotaProbe.workDir.failed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "准备工作目录失败 · {why}",
+      "args": ["why"]
+    },
+    "beAcctScan.manifest.notUtf8": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "内容无法解析",
+      "args": []
+    },
+    "reason.content.unparsable": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "内容无法解析",
+      "args": []
     }
   }
 }

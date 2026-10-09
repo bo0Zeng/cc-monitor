@@ -860,7 +860,7 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
         .await
         .unwrap_err();
     assert!(
-        e.contains("~/.cc-monitor/bin/"),
+        e.said.contains("~/.cc-monitor/bin/"),
         "拒绝的话没说只许哪两处：{e}"
     );
     assert!(!std::path::Path::new(&outside).exists());
@@ -990,7 +990,11 @@ fn a_failed_auto_deploy_reaches_the_screen_through_remote_health() {
         .unwrap_or_else(|e| panic!("Err 那一支没有恰好一条 `kind: \"deploy\"`（{e}）：\n{arm}"));
     guard_core::find_pinned(arm, "health(payload)")
         .unwrap_or_else(|e| panic!("Err 那一支没有恰好一次发到远端健康通道（{e}）：\n{arm}"));
-    assert!(arm.contains("e.say()"), "发出去的不是那句话本身：\n{arm}");
+    assert!(arm.contains("e.said()"), "发出去的不是那句话本身：\n{arm}");
+    assert!(
+        arm.contains("detail: said.detail"),
+        "发出去的没带复制详情：\n{arm}"
+    );
     assert!(
         arm.contains("None"),
         "Err 那一支不再「不阻断、按没确认处理」：\n{arm}"

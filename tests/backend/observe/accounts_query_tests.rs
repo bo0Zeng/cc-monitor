@@ -1805,7 +1805,7 @@ fn read_regular_capped_keeps_its_three_failures_distinguishable() {
     let e_missing = read_regular_capped(&missing, 1024).expect_err("不存在的文件必须是 Err");
     let e_dir = read_regular_capped(&dir, 1024).expect_err("目录必须是 Err");
     let e_big = read_regular_capped(&big, 4).expect_err("超限必须是 Err");
-    assert!(e_big.contains("10"), "过大那句没带实际字节数：{e_big}");
+    assert!(e_big.said.contains("10"), "过大那句没带实际字节数：{e_big}");
     assert!(
         e_missing != e_dir && e_dir != e_big && e_missing != e_big,
         "三种失败给了相同的理由串：不存在={e_missing} / 目录={e_dir} / 过大={e_big}"
