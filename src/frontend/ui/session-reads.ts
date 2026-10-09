@@ -269,18 +269,44 @@ export interface TurnSummary {
   endText: string;
   /** 你那句的第一行（≤ 50 字）。 */
   said: string;
+  /** 工具调用（派 agent 不算）· 思考 · 派出 agent · 后台任务通知 · API 重试 · 来话 · 失败合计（后端 `turns.rs` 数）。 */
   tools: number;
   thinking: number;
+  agents: number;
+  background: number;
+  retries: number;
+  peers: number;
   fails: number;
-  /** 结论那几条 assistant 记录的 uuid（这一轮最后一次工具调用之后带正文的）；其余都是过程。 */
-  conclusion: string[];
+  /** 结尾：留在过程折叠外面的那几条记录的 uuid（结论正文；没有 ⇒ 停下这一轮的中断标记 / 报错卡）。 */
+  ending: string[];
   /** 回复头三行（≤ 120 字）。 */
   reply: string;
-  /** 这一轮收尾了（后面又有你的一句，或 Claude 说完了）。 */
+  /** 这一轮收尾了（后面又有你的一句，或 Claude 说完了，或你中断了它）。 */
   done: boolean;
+  /** 此刻：没在跑 · 在跑 · 在等你（后端按这台的会话事实判）。 */
+  phase: TurnPhase;
+  /** 过程行的字（后端写好；空 ⇒ 这一轮不出过程行、不折）。 */
+  parts: TurnPart[];
+  /** 过程行右端那一截：字里的 `{dur}` 由界面填 `to − from`（`to` 缺 ⇒ 到现在）。 */
+  span: TurnSpan;
 }
 
-const TURN_KEYS = ["at", "conclusion", "done", "end", "endText", "fails", "reply", "said", "start", "startText", "thinking", "tools", "uuid"] as const;
+export type TurnPhase = "idle" | "running" | "awaiting";
+export type TurnTone = "plain" | "fail" | "now" | "need";
+export interface TurnPart {
+  text: string;
+  tone: TurnTone;
+}
+export interface TurnSpan {
+  text: string;
+  from: number | null;
+  to: number | null;
+}
+
+const TURN_KEYS = ["agents", "at", "background", "done", "end", "endText", "ending", "fails", "parts", "peers", "phase", "reply", "retries", "said", "span", "start", "startText", "thinking", "tools", "uuid"] as const;
+const PHASES: readonly string[] = ["idle", "running", "awaiting"];
+const TONES: readonly string[] = ["plain", "fail", "now", "need"];
+const numOrNull = (v: unknown): v is number | null => v === null || isNum(v);
 
 /** `history-turns` 的成品 ⇒ `(from, end, turns)`。键集合恰好、类型逐格对；不对 ⇒ 抛。 */
 export function decodeTurns(v: unknown): { from: number; end: number; turns: TurnSummary[] } {
@@ -292,14 +318,24 @@ export function decodeTurns(v: unknown): { from: number; end: number; turns: Tur
     if (
       !isObj(t) ||
       !exactKeys(t, TURN_KEYS) ||
-      ![t.at, t.tools, t.thinking, t.fails].every(isNum) ||
+      ![t.at, t.tools, t.thinking, t.agents, t.background, t.retries, t.peers, t.fails].every(isNum) ||
       ![t.uuid, t.start, t.end, t.startText, t.endText, t.said, t.reply].every(isStr) ||
       typeof t.done !== "boolean" ||
-      !Array.isArray(t.conclusion) ||
-      !t.conclusion.every(isStr)
+      !isStr(t.phase) ||
+      !PHASES.includes(t.phase) ||
+      !Array.isArray(t.ending) ||
+      !t.ending.every(isStr) ||
+      !Array.isArray(t.parts) ||
+      !t.parts.every((p) => isObj(p) && exactKeys(p, ["text", "tone"]) && isStr(p.text) && isStr(p.tone) && TONES.includes(p.tone)) ||
+      !isObj(t.span) ||
+      !exactKeys(t.span, ["from", "text", "to"]) ||
+      !isStr(t.span.text) ||
+      !numOrNull(t.span.from) ||
+      !numOrNull(t.span.to)
     ) {
       return bad();
     }
+    const span = t.span as { text: string; from: number | null; to: number | null };
     return {
       at: t.at as number,
       uuid: t.uuid as string,
@@ -310,10 +346,17 @@ export function decodeTurns(v: unknown): { from: number; end: number; turns: Tur
       said: t.said as string,
       tools: t.tools as number,
       thinking: t.thinking as number,
+      agents: t.agents as number,
+      background: t.background as number,
+      retries: t.retries as number,
+      peers: t.peers as number,
       fails: t.fails as number,
-      conclusion: [...(t.conclusion as string[])],
+      ending: [...(t.ending as string[])],
       reply: t.reply as string,
       done: t.done,
+      phase: t.phase as TurnPhase,
+      parts: (t.parts as TurnPart[]).map((p) => ({ text: p.text, tone: p.tone })),
+      span: { text: span.text, from: span.from, to: span.to },
     };
   });
   return { from: v.from, end: v.end, turns };

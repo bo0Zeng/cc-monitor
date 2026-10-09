@@ -69,13 +69,12 @@ function foldConvo(): { c: Convo; t1: string; t2: string } {
   return { c, t1, t2 };
 }
 
-function foldWorld(): World {
+function foldWorld(activity: "needs_you" | "working" = "needs_you"): World {
   const w = defaultWorld();
   const { c, t1, t2 } = foldConvo();
   w.sessions[0] = session(1, LOCAL, CWD, c, {
-    activity: "needs_you",
-    waitingFor: "permission prompt",
-    waitingSinceMs: Date.now() - 60_000,
+    activity,
+    ...(activity === "needs_you" ? { waitingFor: "permission prompt", waitingSinceMs: Date.now() - 60_000 } : {}),
     runs: [
       { run: "agent-r1", label: "查文档里的旧写法", kind: "Explore", tool: t1, state: "done", last: { t: "say" } },
       { run: "agent-r2", label: "查示例里的旧写法", kind: "Explore", tool: t2, state: "done", last: { t: "say" } },
@@ -121,6 +120,19 @@ export const FOLDALL_SCENES: Scene[] = [
     await mainReady(7);
     await sleep(800);
   }),
+  { ...live("foldall-live-running", "大折叠 · 实时窗口 · 正在跑", "最后一轮在跑（不在等批准）：也折着，行上转圈 ＋「现在：那一步」", async () => {
+    await mainReady(7);
+    await sleep(800);
+  }), world: () => foldWorld("working") },
+  live("foldall-live-tail", "大折叠 · 实时窗口 · 长过程末尾", "点开第一轮（过程比一屏长）：左边一道竖线，末尾一行「收起这段过程」", async () => {
+    await mainReady(7);
+    await scrollStream("top");
+    document.querySelector<HTMLElement>(".stream.active .proc-line")?.click();
+    await sleep(400);
+    const tail = document.querySelector<HTMLElement>(".stream.active .proc-tail");
+    tail?.scrollIntoView({ block: "center" });
+    await sleep(600);
+  }, 700),
   {
     id: "foldall-viewer-whole",
     page: "viewer",

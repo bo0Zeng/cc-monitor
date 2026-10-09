@@ -34,7 +34,7 @@ import { OutlineSource } from "./outline-source";
 // 「你说过的话」清单界面与实时 tab 同一个类（`UserInputPanel`），这里只换开法：工具行一颗按钮 ＋ kit 浮层。
 import { UserInputPanel } from "./user-input-panel";
 // 按轮折叠与主窗口同一个（`turn-fold.ts`）。
-import { TurnFold } from "../turn-fold";
+import { TurnFold, revealProcessOf } from "../turn-fold";
 import { button } from "../kit/button";
 import { icon } from "../kit/icon";
 import { banner } from "../kit/banner";
@@ -47,7 +47,7 @@ import sv from "./session-viewer.module.css";
 import { copyText } from "../copy-table";
 
 /**
- * 在一条消息流里按 uuid 找到那张卡、展开挡着它的折叠、滚过去并闪一下；找不到 ⇒ `null`、什么都不做（兜底归调用方）。
+ * 在一条消息流里按 uuid 找到那张卡、展开挡着它的折叠（过程折叠 · `<details>` · ESC 回退段）、滚过去并闪一下；找不到 ⇒ `null`、什么都不做（兜底归调用方）。
  * 导出给 `tabs.ts` 的实时窗口共用：两条路的卡由同一个 `renderStreamRecord` 建、`data-uuid` 由同一处写。
  */
 export function revealCard(container: HTMLElement, uuid: string): HTMLElement | null {
@@ -58,6 +58,8 @@ export function revealCard(container: HTMLElement, uuid: string): HTMLElement | 
     container.querySelector<HTMLElement>(`[data-uuid="${key}"]`) ??
     container.querySelector<HTMLElement>(`[data-member-uuid="${key}"]`);
   if (!el) return null;
+  // 落在某一轮折着的过程里 ⇒ 先让那一轮展开（记成手动开；`turn-fold.ts`）。
+  revealProcessOf(el, container);
   // 展开所有折叠祖先：ESC 回退段是 `div.branch-fold-wrap` ＋ `.expanded`（不是 `<details>`），不展开的话卡被 0fr 裁掉、闪了也看不见。
   let p: HTMLElement | null = el.parentElement;
   while (p && p !== container) {

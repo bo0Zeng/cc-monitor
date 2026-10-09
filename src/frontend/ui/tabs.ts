@@ -1224,6 +1224,8 @@ export class TabManager {
       this.refreshTabBar();
     } else if (ch.writers || ch.needs || ch.peek) this.refreshTabBar();
     if (ch.needs) tab.turnRail.render(); // 在等你的那一轮琥珀
+    // 过程行上的「现在：… / 等你批准：…」跟着这台此刻的会话事实（后端在 `history-turns` 里拼）。
+    if (ch.needs || ch.writers || ch.peek) void tab.turnFold.refresh();
     this.paintStepWaits(tab);
     if ((ch.usage || ch.projectDir) && sid === this.store.activeId) this.publishActive();
     if (ch.agent) {

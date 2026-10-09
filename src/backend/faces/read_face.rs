@@ -357,18 +357,36 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
         "history-turns" => {
             let path = str_arg(args, "path")?;
             let from = u64_arg(args, "from")?.unwrap_or(0);
-            let mut rows = CappedRows::default();
-            let end = if from == 0 {
+            let (mut turns, end) = if from == 0 {
                 let map = history_query::cold_scan(home, path).map_err(|e| ("failed", e))?;
-                let pushed = rows.push_all(&map.turns);
-                rows.finish(pushed)?;
-                map.end
+                (map.turns.clone(), map.end)
             } else {
                 let r = history_query::open_user_inputs_at(home, path, from)
                     .map_err(|e| ("failed", e))?;
-                let scanned = crate::observe::turns::scan_turns(r, from, |row| rows.push(row));
-                rows.finish(scanned)?.1
+                let mut out = Vec::new();
+                let (_, end) = crate::observe::turns::scan_turns(r, from, |row| {
+                    out.push(row.clone());
+                    Ok(())
+                })
+                .map_err(|e| ("failed", format!("stream failed: {e}")))?;
+                (out, end)
             };
+            // 还没收尾的最后一轮：「现在在做哪一步 / 在等你什么」按这台此刻的会话事实拼进过程行（判定同 `history-facts`）。
+            if let Some(last) = turns.last_mut().filter(|t| !t.done) {
+                let sid = std::path::Path::new(path)
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("");
+                let needs = crate::observe::facts_query::needs_of(
+                    &last.pending,
+                    accounts_query::session_wait(home, sid).as_ref(),
+                );
+                let live = !accounts_query::session_writers(home, sid).is_empty();
+                crate::observe::turns::dress_live(last, needs.as_ref(), live);
+            }
+            let mut rows = CappedRows::default();
+            let pushed = rows.push_all(&turns);
+            rows.finish(pushed)?;
             Ok(json!({ "from": from, "end": end, "turns": rows.rows }))
         }
         // 会话内查找（Ctrl+F，SE2 的 `--find-in-session`）随骨架索引与大纲一起上帧面。

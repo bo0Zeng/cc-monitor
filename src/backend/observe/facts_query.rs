@@ -107,7 +107,7 @@ fn one_line(s: &str) -> Option<String> {
 }
 
 /// 一个工具调用的主参数一行（[`WHAT_KEYS`]；提问工具取第一问）。
-fn what_of(name: &str, input: Option<&Value>) -> Option<String> {
+pub(crate) fn what_of(name: &str, input: Option<&Value>) -> Option<String> {
     let input = input?;
     if ANSWER_TOOLS.contains(&name) {
         return input

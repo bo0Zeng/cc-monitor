@@ -1491,7 +1491,7 @@
   border-left: 2px solid var(--border-medium);
 }
 
-/* === 按轮折叠：完成的轮过程折成一行，28 高 === */
+/* === 大折叠（按轮）：两句人话之间的过程折成一行，28 高；正在跑的也折着 === */
 .proc-line {
   display: flex;
   align-items: center;
@@ -1524,6 +1524,60 @@
 
 .proc-line .proc-fails {
   color: var(--error);
+}
+
+.proc-line .proc-now {
+  color: var(--text);
+}
+
+.proc-line .proc-need {
+  color: var(--warn);
+}
+
+.proc-line[data-phase="awaiting"] {
+  border-color: color-mix(in srgb, var(--warn) 55%, transparent);
+}
+
+/* 展开的过程：只多一层，缩进一格；左边一道细竖线（挂在过程行上、高度由 turn-fold.ts 按这一轮过程的跨度写）标出「这一段是过程」。 */
+.stream-content > [data-proc-of]:not(.proc-hidden) {
+  margin-left: 24px;
+}
+
+.stream-content > .proc-line {
+  position: relative;
+  content-visibility: visible;
+}
+
+.proc-rule {
+  position: absolute;
+  top: 100%;
+  left: 10px;
+  width: 2px;
+  background: var(--border-soft);
+  pointer-events: none;
+}
+
+/* 过程高过一屏时末尾那一行「‹ 收起这段过程」。 */
+.proc-tail {
+  display: block;
+  margin: 6px 0 12px 22px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-size: var(--font-size-small);
+  cursor: pointer;
+}
+
+.proc-tail:hover {
+  color: var(--text);
+}
+
+.proc-tail > svg {
+  margin-right: 4px;
+  vertical-align: -2px;
+  transform: rotate(180deg);
 }
 
 .proc-line .proc-span {
