@@ -290,7 +290,7 @@ fn rule_wire(
     })
 }
 
-/// 一个活会话的状态（主窗口标签页同一套）：`working` · `idle` · `needsYou`（带 `needs`：approve · answer · plan · unknown）。
+/// 一个活会话的状态（主窗口标签页同一套）：`working` · `idle` · `needsYou`（带 `needs`：approve · answer · plan · network · worker · goal · choose · unknown）。
 /// 说不清在干什么 ⇒ `working`（主窗口那颗点同样画成在跑）。
 fn doing_wire(d: Option<&Doing>) -> Value {
     use crate::agents::SessionActivity as A;
@@ -301,7 +301,8 @@ fn doing_wire(d: Option<&Doing>) -> Value {
             "needs": d.and_then(|d| d.needs).unwrap_or(NeedsKind::Unknown),
         }),
         Some(A::Idle) => json!({"state": "idle", "needs": null}),
-        Some(A::Working) | None => json!({"state": "working", "needs": null}),
+        // 后台命令还在跑：重启会把它掐掉 ⇒ 按「在跑」报（与说不清同一侧，不当空闲）。
+        Some(A::Working | A::BackgroundWork) | None => json!({"state": "working", "needs": null}),
     }
 }
 

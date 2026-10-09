@@ -169,6 +169,7 @@ pub(crate) const LOCAL: super::LocalFace = super::LocalFace {
     tasks_dir: Some(paths::tasks_root),
     background_of: pidfile::background_of,
     activity_of: pidfile::activity_of,
+    wait_of: pidfile::wait_of,
 };
 
 pub(crate) const MCP: super::McpFace = super::McpFace { read: mcp::read };

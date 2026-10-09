@@ -12,7 +12,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "footprint-report",
         summary: "「足迹」由这台后端出整份成品",
         codes: &["bad_args", "failed"],
-        fields: &[arg("client", "可选")],
+        fields: &[out("claude_config_dir", "解析基准：这台那一家的家目录（展示用）"), arg("client", "可选"), out("home", "这台的家目录"), out("rows", "每个足迹一行（落在哪 · 是谁写的 · 怎么收）"), out("settings_scopes", "各层设置文件（用户 · 项目 · 本地）的读法与先后")],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::footprint::answer(&r.args)

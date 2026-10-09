@@ -419,6 +419,8 @@ pub(crate) struct LocalFace {
     pub(crate) background_of: fn(&serde_json::Value) -> bool,
     /// 进程状态文件 ⇒ 此刻在干什么；说不清 ⇒ `None`。
     pub(crate) activity_of: fn(&serde_json::Value) -> Option<SessionActivity>,
+    /// 进程状态文件 ⇒ 在等人时等的是什么框；没说 / 说不清 ⇒ `None`。
+    pub(crate) wait_of: fn(&serde_json::Value) -> Option<WaitOn>,
 }
 
 /// 一条活会话此刻在干什么（与哪一家无关的几态；适配层从那一家的进程状态翻过来，翻不出 ⇒ 不给）。
@@ -432,6 +434,26 @@ pub enum SessionActivity {
     NeedsYou,
     /// 闲着，等下一句输入。
     Idle,
+    /// 一轮停了，它在后台起的命令还在跑（跑完多半会接着干）。
+    BackgroundWork,
+}
+
+/// 一条会话在等人时，**等的是什么框**（与哪一家无关；适配层从那一家的词翻过来，翻不出 ⇒ 不给）。
+/// 「要人做哪种事」由它配上记录里没结果的那一步判（`observe::facts_query::needs_of`），不在这里判。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum WaitOn {
+    /// 批准框（工具调用 · 提问 · 计划都弹在这一类里，分哪种看那一步是什么工具）。
+    Permission,
+    /// 沙箱里的命令要联网，等放行。
+    Network,
+    /// 协作的另一个运行（worker）发来的批准请求。
+    Worker,
+    /// 它提了一个会话目标，等确认。
+    Goal,
+    /// 要填 / 要答（提问 · MCP 那一侧要的输入）。
+    Input,
+    /// 别的对话框开着（选项 · 提示 · 设置），等选。
+    Dialog,
 }
 
 /// 一条子运行记录说了什么：属于哪个运行 · 是不是它的终局 · 它做的那件事（行上「最近：…」）·
@@ -1118,6 +1140,11 @@ pub(crate) fn pidfile_background(v: &serde_json::Value) -> bool {
 /// 后端盯着的那一家的进程状态文件 `v` 说此刻在干什么（[`LocalFace::activity_of`]）。没有那一家 / 说不清 ⇒ `None`。
 pub(crate) fn pidfile_activity(v: &serde_json::Value) -> Option<SessionActivity> {
     tree_local_face().and_then(|f| (f.activity_of)(v))
+}
+
+/// 后端盯着的那一家的进程状态文件 `v` 说在等什么框（[`LocalFace::wait_of`]）。没有那一家 / 没说 / 说不清 ⇒ `None`。
+pub(crate) fn pidfile_wait(v: &serde_json::Value) -> Option<WaitOn> {
+    tree_local_face().and_then(|f| (f.wait_of)(v))
 }
 
 /// 注册表里没有判活那一家时 [`pidfile_dir`] 指的那个名字（不建、不写，只读出零份）。

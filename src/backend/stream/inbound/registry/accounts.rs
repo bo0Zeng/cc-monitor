@@ -108,7 +108,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "rotation-switch",
         summary: "现在就换",
         codes: &["bad_args", "failed"],
-        fields: &[arg("mode", "`hot`（不重启，下一发起就走它）· `restart`（换号重启）"), arg("sessions", "`hot`：会话 id；`restart`：每项是 `session-restart` 的入参（不带 `account`）；应答里是逐个结果"), arg("target", "换到哪个号")],
+        fields: &[arg("mode", "`hot`（不重启，下一发起就走它）· `restart`（换号重启）"), both("sessions", "`hot`：会话 id；`restart`：每项是 `session-restart` 的入参（不带 `account`）；应答里是逐个结果"), arg("target", "换到哪个号")],
         takes_input: true,
         run: Run::Async(|r| {
             Box::pin(async move {
