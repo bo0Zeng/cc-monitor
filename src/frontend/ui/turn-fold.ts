@@ -130,6 +130,8 @@ export class TurnFold {
    * 流尺寸变了（字号 / 缩放 / 列宽 —— `ro`）才作废重量。还没量到（一条都没建出来）⇒ `null`，用稿上的值、不记。
    */
   private linePxSeen: number | null = null;
+  /** 默认开关换了、还没按新的排（`isStale`）。 */
+  private staleDefault = false;
 
   constructor(
     private readonly content: HTMLElement,
@@ -203,11 +205,24 @@ export class TurnFold {
   }
 
   /** `Ctrl+O` / 会话头开关：默认展开与否；各轮单独记的作废。 */
-  setDefault(expanded: boolean): void {
+  setDefault(expanded: boolean, later = false): void {
     this.expandedDefault = expanded;
     this.overrides.clear();
     this.held.clear();
-    this.apply();
+    if (later) this.staleDefault = true;
+    else this.apply();
+  }
+
+  /**
+   * 默认开关换了、这一份还没按新的排（后台 tab：`setDefault(…, true)` 只记一笔）。看不见的 tab 二十几个一起排，
+   * WebKitGTK 上 `Ctrl+O` 那一下要好几秒；宿主空闲时一个一个排掉（`flushStale`），切进来时还没排到就当场排。
+   */
+  get isStale(): boolean {
+    return this.staleDefault;
+  }
+
+  flushStale(): void {
+    if (this.staleDefault) this.apply();
   }
 
   /** scroll 监听（宿主挂 / 摘同一个引用）。 */
@@ -222,6 +237,7 @@ export class TurnFold {
 
   /** 按手上的那份成品给流里的卡排版（O(顶层卡数)）。 */
   apply(): void {
+    this.staleDefault = false;
     const seen = new Set<string>();
     const ending = new Set<string>();
     /** 每一轮过程里的最后一张卡（收起行接在它后面）。 */

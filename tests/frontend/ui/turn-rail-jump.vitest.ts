@@ -39,3 +39,45 @@ describe("刻度跳不过去", () => {
     expect(seen).toEqual([]);
   });
 });
+
+describe("Ctrl+O 只当场排当前 tab", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it("后台 tab 记一笔不排（看不见；二十几个一起排 WebKit 上一下几秒）；切进来时还没排到 ⇒ 当场排；空闲时一个一个排掉", async () => {
+    vi.stubGlobal("ResizeObserver", class { observe(): void {} unobserve(): void {} disconnect(): void {} });
+    const store = new TabStore();
+    const tsv = new TabStreamView(store, document.createElement("div"), {} as never);
+    const mk = (sid: string) => {
+      const dom = tsv.mountTabDom(sid);
+      store.tabs.set(sid, { sessionId: sid, skeleton: null, window: { pendingCount: 0, peek: () => [] }, ...dom, stream: { ...dom.stream, park: () => {} } } as never);
+      return dom;
+    };
+    const a = mk("a");
+    const b = mk("b");
+    const c = mk("c");
+    store.activeId = "a";
+    const applied = { a: vi.spyOn(a.turnFold, "apply"), b: vi.spyOn(b.turnFold, "apply"), c: vi.spyOn(c.turnFold, "apply") };
+    let idle: (() => void)[] = [];
+    vi.stubGlobal("requestIdleCallback", (f: () => void) => idle.push(f));
+    tsv.toggleProcessExpanded();
+    expect([applied.a.mock.calls.length, applied.b.mock.calls.length, applied.c.mock.calls.length]).toEqual([1, 0, 0]);
+    // 切到 b：还没排到 ⇒ 当场排
+    store.activeId = "b";
+    tsv.showOnly("b");
+    expect(applied.b.mock.calls.length).toBe(1);
+    // 空闲：剩下的 c 排掉；排过的不再排
+    for (let k = 0; k < 5 && idle.length > 0; k++) {
+      const due = idle;
+      idle = [];
+      due.forEach((f) => f());
+    }
+    expect([applied.a.mock.calls.length, applied.b.mock.calls.length, applied.c.mock.calls.length]).toEqual([1, 1, 1]);
+    // 再切回来：已经排过 ⇒ 不再排
+    store.activeId = "c";
+    tsv.showOnly("c");
+    expect(applied.c.mock.calls.length).toBe(1);
+  });
+});
