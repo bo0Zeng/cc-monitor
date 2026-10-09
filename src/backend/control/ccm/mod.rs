@@ -85,7 +85,7 @@ pub(crate) fn agents() -> Vec<&'static str> {
 ///
 /// # `base-url-across-tmux` 是怎么来的
 ///
-/// 它声明的是「**我会把 `ANTHROPIC_BASE_URL` 带过 tmux 的进程边界**」——
+/// 它声明的是「**我会把那一家的地址变量（`ANTHROPIC_BASE_URL` 那一类）带过 tmux 的进程边界**」——
 /// tmux server 的 `update-environment` 默认列表不含它，外层那句 `export`
 /// 在边界上会被整个吃掉（`plan.rs` 那段注释逐字「账号注入 100% 失效，**实测过**」）。
 /// 带过去的只有用户自己的端点；我们的中转地址属于某个号，pane 里那一趟按目标账号自己问。
@@ -806,16 +806,28 @@ fn exec_direct(d: &plan::Direct) -> i32 {
     if d.unset_config_dir && !cfg_env.is_empty() {
         std::env::remove_var(cfg_env);
     }
-    if let Some(url) = &d.relay {
-        // 钥匙从这台的钥匙文件读进 agent 进程环境（不进 argv、不进打印出来的命令）。读不到 ⇒ 不起（注进去每一发都被中转拒）。
-        match crate::accounts::upstream_select::endpoint::keyed_for_exec(url, &|k| {
-            std::env::var(k).ok()
-        }) {
-            Some(keyed) => std::env::set_var(&d.base_url_env, keyed),
+    // 钥匙从这台的钥匙文件读进来、exec 那一刻才插（不进打印出来的命令）。读不到 ⇒ 不起（注进去每一发都被中转拒）。
+    //   认地址环境变量的那一家：全权那一把插进那个变量；地址拼进参数的那一家：只许直通那一把插进参数里那个词。
+    use crate::accounts::upstream_select::endpoint::{keyed_for_args, keyed_for_env};
+    let get = |k: &str| std::env::var(k).ok();
+    let mut argv = d.argv.clone();
+    match (&d.relay, &d.relay_via) {
+        (Some(url), plan::RelayVia::Env(var)) => match keyed_for_env(url, &get) {
+            Some(keyed) => std::env::set_var(var, keyed),
             None => return die(&copy_text("beCcm.relay.noKey", &[])),
+        },
+        (Some(url), plan::RelayVia::Args) => {
+            let Some(keyed) = keyed_for_args(url, &get) else {
+                return die(&copy_text("beCcm.relay.noKey", &[]));
+            };
+            for a in argv.iter_mut() {
+                if plan::split_at_key(a, url).is_some() {
+                    *a = a.replacen(url.as_str(), &keyed, 1);
+                }
+            }
         }
-    } else if d.clears_inherited_relay {
-        std::env::remove_var(&d.base_url_env);
+        (None, plan::RelayVia::Env(var)) if d.clears_inherited_relay => std::env::remove_var(var),
+        _ => {}
     }
     if !d.cwd.is_empty() && std::env::set_current_dir(&d.cwd).is_err() {
         return die(&copy_text(
@@ -823,7 +835,7 @@ fn exec_direct(d: &plan::Direct) -> i32 {
             &[("cwd", &d.cwd.to_string())],
         ));
     }
-    let Some((prog, rest)) = d.argv.split_first() else {
+    let Some((prog, rest)) = argv.split_first() else {
         return die(&copy_text("beCcm.execDirect.noLauncher", &[]));
     };
     exec_or_spawn(Child::new(prog).args(rest), &format!("'{prog}'"), account)

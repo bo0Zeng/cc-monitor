@@ -649,7 +649,7 @@ fn a_tap_that_cannot_keep_up_loses_positions_visibly_and_never_touches_the_forwa
         "没人连着也不许动下游字节"
     );
 
-    // ③ 容量够但中途丢一件（第 2 号超单件上限）⇒ 收到的号 == 0..k 去掉 2，`End.n == k`。
+    // ③ 容量够、第 2 号超单件上限 ⇒ 号连着（0..k，`End.n == k`），第 2 号交的是截断形：开头那一截 ＋ 原长。
     let mut fat: Vec<String> = TAP_EVENTS.iter().map(|s| s.to_string()).collect();
     fat[2] = format!(
         r#"{{"type":"ping","pad":"{}"}}"#,
@@ -673,12 +673,21 @@ fn a_tap_that_cannot_keep_up_loses_positions_visibly_and_never_touches_the_forwa
     );
     let got = drain(&mut rx);
     let ns: Vec<u64> = got.iter().map(|e| e.n).collect();
-    let mut want: Vec<u64> = (0..k).filter(|&i| i != 2).collect();
+    let mut want: Vec<u64> = (0..k).collect();
     want.push(k);
-    assert_eq!(
-        ns, want,
-        "超上限那一件的号要空着（缺口原位可见），收尾那件带总数"
-    );
+    assert_eq!(ns, want, "超上限那一件也占着它的号，收尾那件带总数");
+    let cap = comms_outward::test_support::tee::TAP_DATA_CAP;
+    match &got[2].body {
+        comms_outward::TapBody::Clipped { head, len } => {
+            assert_eq!(head.len(), cap, "截断形交的不是开头那 {cap} 字节");
+            assert!(
+                fat[2].starts_with(head.as_str()),
+                "截断形交的不是开头那一截"
+            );
+            assert_eq!(*len, fat[2].len() as u64, "原长不对");
+        }
+        other => panic!("超上限那一件没标截断：{other:?}"),
+    }
     assert_eq!(
         got.last().map(|e| e.body.clone()),
         Some(comms_outward::TapBody::End { broken: false })

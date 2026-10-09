@@ -12,9 +12,17 @@
 //!
 //! 1. 带 `Origin` ⇒ [`Verdict::Browser`]（**403**）—— 浏览器发的请求一律带它；claude CLI 现打不带（`RK1.md §5.1`）；
 //! 2. `Host` 不是回环字面量（或没有、或不止一个）⇒ [`Verdict::NotLoopbackHost`]（**421**，防 DNS rebinding）；
-//! 3. 路径第一段不是钥匙 ⇒ [`Verdict::BadKey`]（**403**）；比对定长时间（[`tokens_match`]，与后端控制口同一份）。
+//! 3. 钥匙不对 ⇒ [`Verdict::BadKey`]（**403**）；比对定长时间（[`tokens_match`]，与后端控制口同一份）。
+//!    钥匙只在路径第一段。门上有两把（[`Keys`]）：全权那一把（[`Scope::All`]）与只许直通那一把（[`Scope::Passthrough`]）。
 //!
 //! 过了才剥掉 `/<钥匙>`，余下的交给 `route::parse`（一字不改）⇒ 表里没这一行仍是 **404**，与 403 可分。
+//! 路由认出来之后再问一句 [`scope_refusal`]：直通那一把打 `/s/`（代入凭据）⇒ **403** `key-scope`。
+//!
+//! # 为什么要第二把（只许直通）
+//!
+//! 有的家的上游地址只能经命令行参数交给它（argv 同机别的用户读得到），也会被它原样写进自己的日志。
+//! 那一家只拿直通那一把：`/t/` 永不代入凭据、请求得自己带登录头 ⇒ 这把漏了，别人顶多拿我们的中转转发**他自己**的请求、
+//! 往活卡里塞几段假流；碰不到 `/s/` 那几行 API key。
 //!
 //! # ⚠ 诚实边界
 //!
@@ -51,11 +59,39 @@ impl std::fmt::Debug for Key {
     }
 }
 
+/// 门上的两把钥匙。
+#[derive(Clone, Debug)]
+pub struct Keys {
+    /// 全权：`/s/` 与 `/t/` 都过。
+    pub full: Key,
+    /// 只许直通：只过 `/t/`（[`scope_refusal`]）。
+    pub pass: Key,
+}
+
+/// 过门的是哪一把。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Scope {
+    All,
+    Passthrough,
+}
+
+/// 钥匙管不管得到这一条路由：直通那一把打 `/s/` ⇒ 拒绝的说法（状态行 · 原因头 · 一句为什么）；其余 ⇒ `None`。
+pub fn scope_refusal(
+    scope: Scope,
+    mode: super::Mode,
+) -> Option<(&'static str, &'static str, &'static str)> {
+    (scope == Scope::Passthrough && mode == super::Mode::Substitute).then_some((
+        FORBIDDEN,
+        "key-scope",
+        "relay: this relay key only opens passthrough routes (/t/); substitute routes (/s/) need the full key",
+    ))
+}
+
 /// 进门三问的结局。
 #[derive(Debug, PartialEq, Eq)]
 pub enum Verdict {
-    /// 过了：剥掉 `/<钥匙>` 之后的目标（交给 `route::parse`）。
-    Pass(String),
+    /// 过了：剥掉 `/<钥匙>` 之后的目标（交给 `route::parse`）＋ 过门的是哪一把。
+    Pass(String, Scope),
     /// 带 `Origin` —— 浏览器发的。
     Browser,
     /// `Host` 不是回环字面量（或没有 / 不止一个）。
@@ -68,7 +104,7 @@ impl Verdict {
     /// 拒绝那几格回什么：状态行 ＋ 原因头的值（`server::REASON_HEADER`）＋ 一句为什么。`Pass` ⇒ `None`。
     pub fn refusal(&self) -> Option<(&'static str, &'static str, &'static str)> {
         match self {
-            Verdict::Pass(_) => None,
+            Verdict::Pass(..) => None,
             Verdict::Browser => Some((
                 FORBIDDEN,
                 "browser-origin",
@@ -89,7 +125,7 @@ impl Verdict {
 }
 
 /// 进门三问。纯函数：只看请求头与钥匙，不读网络、不读盘。
-pub fn admit(head: &RequestHead, key: &Key) -> Verdict {
+pub fn admit(head: &RequestHead, keys: &Keys) -> Verdict {
     if head
         .headers
         .iter()
@@ -110,12 +146,19 @@ pub fn admit(head: &RequestHead, key: &Key) -> Verdict {
     };
     let (seg, rest) = match after.find('/') {
         Some(i) => (&after[..i], &after[i..]),
-        None => return Verdict::BadKey,
+        None => (after, ""),
     };
-    if !tokens_match(seg, key.expose()) {
+    if rest.is_empty() {
         return Verdict::BadKey;
     }
-    Verdict::Pass(rest.to_string())
+    // 两把都比（各自定长时间），不按先比中哪把提前收工。
+    let full = tokens_match(seg, keys.full.expose());
+    let pass = tokens_match(seg, keys.pass.expose());
+    match (full, pass) {
+        (true, _) => Verdict::Pass(rest.to_string(), Scope::All),
+        (false, true) => Verdict::Pass(rest.to_string(), Scope::Passthrough),
+        (false, false) => Verdict::BadKey,
+    }
 }
 
 /// `Host` 那一格是不是回环字面量：`127.0.0.1` · `localhost` · `[::1]`，可带 `:<十进制口>`。大小写不敏感。

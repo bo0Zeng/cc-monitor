@@ -809,22 +809,23 @@ pub(crate) fn dispatch_go(
     upstreams: &super::Upstreams,
     mode: Mode,
     key: &RouteKey,
+    names: &[&str],
     go: Go,
     act: &mut dyn FnMut(Destination<'_>),
 ) {
     let agent = key.seg1.as_str();
     match go {
-        Go::Start => super::decide(table, upstreams, mode, key, act),
+        Go::Start => super::decide(table, upstreams, mode, key, names, act),
         Go::Api { account, body } => match table.lookup(agent, &account) {
             Some(row) => super::dispatch_auth(row, &account, body.as_deref(), act),
-            None => super::decide(table, upstreams, mode, key, act),
+            None => super::decide(table, upstreams, mode, key, names, act),
         },
         Go::Sub {
             account,
             token,
             body,
         } => match (
-            upstreams.of(agent),
+            upstreams.of(agent, names),
             super::auth_header_of(creds_core::store::AuthStyle::Bearer),
         ) {
             (Some(upstream), Some((name, prefix))) => {
@@ -839,7 +840,7 @@ pub(crate) fn dispatch_go(
                     tag: &account,
                 });
             }
-            _ => super::decide(table, upstreams, mode, key, act),
+            _ => super::decide(table, upstreams, mode, key, names, act),
         },
         Go::Hold { reply } => act(Destination::Reply {
             status: reply.status,

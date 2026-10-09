@@ -83,6 +83,9 @@ const BAD_REQUEST: &str = "400 Bad Request";
 const LENGTH_REQUIRED: &str = "411 Length Required";
 /// 下游请求体超 `BODY_CAP`。
 const PAYLOAD_TOO_LARGE: &str = "413 Payload Too Large";
+/// 下游要协议升级（`Upgrade` 头，WebSocket 那一形）：本中转只搬普通 HTTP，不转上游、当场明说。
+/// 转出去的话上游回什么码都有（400 之类会让客户端这一轮直接报错）；426 是「改用普通请求」的通行码。
+const UPGRADE_REQUIRED: &str = "426 Upgrade Required";
 /// 路径**根本不是路由的形状**。与上游选择那个 404（表里没这一行）同属「路由不成立」一组，原因头不同。
 const NOT_A_ROUTE: &str = "404 Not Found";
 /// 在飞连接顶满（`listen.rs::INFLIGHT_CONNECTIONS`）或起不了连接线程。**「我们这侧现在吃不下」**。
@@ -186,7 +189,7 @@ pub struct Relay {
     dest: Arc<dyn Destinations>,
     /// 这扇门的钥匙（`door.rs`）。**由监听面交下来**（`listen::prepare` 绑上口之后读回或铸）。
     /// ⚠ 字段名刻意不叫那个会被 `table_guard` 当成「进程级凭据」的字面：它不是上游的凭据，是**下游进门**的钥匙。
-    door: door::Key,
+    door: door::Keys,
     tee: TeeSink,
     /// 给流打标签的请求头名单（构造时向上游选择要一次，[`Destinations::stream_label_headers`]）。
     stream_headers: Vec<&'static str>,
@@ -226,7 +229,7 @@ impl Relay {
     /// —— 中转从此不认识「表」这个东西。
     pub fn new(
         dest: Arc<dyn Destinations>,
-        door: door::Key,
+        door: door::Keys,
         tee: TeeSink,
         downstream_deadline: std::time::Duration,
         upstream_deadline: std::time::Duration,
@@ -618,8 +621,8 @@ pub fn serve_one(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     // 🔴 〔`INVARIANTS §48.1a`〕**进门三问排在一切之前**（读请求体之前、问上游选择之前）：
     //   Origin ⇒ 403 · Host 非回环 ⇒ 421 · 钥匙不对 ⇒ 403。过了才剥掉 `/<钥匙>`，余下的交给 `route::parse`
     //   ⇒ 「钥匙对、表里没这一行」仍是 404，与 403 可分。钥匙不进上游（转上去的是剥之后的路径）、不进 tee、不进日志。
-    let target = match door::admit(&head, &relay.door) {
-        door::Verdict::Pass(rest) => rest,
+    let (target, scope) = match door::admit(&head, &relay.door) {
+        door::Verdict::Pass(rest, scope) => (rest, scope),
         refused => {
             let (status, reason, why) = refused.refusal().expect("非 Pass 那几格都有拒绝的说法");
             // ⚠ 只印是哪一问拒的，**永不印请求头 / 路径**（`K9` 裁定四第 1 条；路径里可能正是一把错钥匙）。
@@ -632,12 +635,20 @@ pub fn serve_one(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
             );
         }
     };
+    if head.header("upgrade").is_some_and(|v| !v.trim().is_empty()) {
+        return respond_and_drain(&mut down_w, UPGRADE_REQUIRED, "no-upgrade");
+    }
     if head.is_chunked_body() {
         return respond_and_drain(&mut down_w, LENGTH_REQUIRED, "length-required");
     }
     let Some(r) = route::parse(&target) else {
         return respond_and_drain(&mut down_w, NOT_A_ROUTE, "not-a-route");
     };
+    // 直通那一把管不到 `/s/`（代入凭据那一形）：路由认出来就问，排在读请求体与问上游选择之前。
+    if let Some((status, reason, why)) = door::scope_refusal(scope, r.mode) {
+        eprintln!("[relay] refused by key scope: {status}");
+        return respond_body_and_drain(&mut down_w, status, reason, format!("{status}\n{why}\n"));
+    }
     // ★ `阻-1(D3)` + `重要-2(D3)`：请求体这一格先前有**两个**洞，两个都在这几行上。
     //   ① 长度**无上界** ⇒ `Content-Length: 1e12` 把整个进程 abort 掉（SIGABRT，不走 unwind）；
     //   ② 长度**读不懂**（`7abc`）与「没有这个头」挤在同一个 `None` 里 ⇒ 请求体被静默丢掉、
@@ -673,7 +684,12 @@ pub fn serve_one(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     //    **最长那条在飞流**后面。⚠ 挂起时长**没实测**，这是读源码得出的形状。
     //    钉这一条的判据：`table_guard::the_upstream_selection_lock_does_not_outlive_the_streaming_pump`。
     let label = stream_label(&head, &relay.stream_headers);
-    let ask = Ask { label, body: &body };
+    let names: Vec<&str> = head.headers.iter().map(|(k, _)| k.as_str()).collect();
+    let ask = Ask {
+        label,
+        body: &body,
+        names: &names,
+    };
     // 答的那个去处贴的标签（不透明，回包头到了原样交回 `observe`）。
     let mut tag = String::new();
     let mut answered: Option<Answered> = None;
@@ -723,8 +739,8 @@ pub fn serve_one(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     //
     // 今天：1xx 一律**读掉丢弃**再读下一条，直到拿到非 1xx 的那条；
     // 超过 `INTERIM_RESPONSES_ALLOWED` 条就回 [`UPSTREAM_UNREACHABLE`]（那已经不是一个正常的上游）。
-    // ⚠ `101 Switching Protocols` 也是 1xx：本中转**不支持**协议升级
-    //   （`Upgrade` / `Connection` 都在逐跳表里、根本转不到上游），真收到 101 就会
+    // ⚠ `101 Switching Protocols` 也是 1xx：本中转**不支持**协议升级（带 `Upgrade` 的请求进门后当场回 426，
+    //   转出去的请求里 `Upgrade` / `Connection` 也都在逐跳表里），真收到 101 就会
     //   继续往下读，而其后是隧道字节不是 HTTP 头 ⇒ `parse_response` 失败 ⇒ **502**。
     //   那是个**定义好的**结局，不是「当成最终响应发下去」。
     //

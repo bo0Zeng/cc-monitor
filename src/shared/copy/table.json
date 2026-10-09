@@ -12504,6 +12504,12 @@
       "zh": "中转用的钥匙 · 后端运行时用 · 删后要重启后端",
       "args": []
     },
+    "rsDataPaths.backend.relayPassKey": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "中转只许直通的钥匙 · 地址进命令行参数的 agent 用 · 删后要重启后端",
+      "args": []
+    },
     "rsDataPaths.backend.listenToken": {
       "kind": "body",
       "role": "说明",
@@ -15995,7 +16001,7 @@
     "beUpstreamEndpoint.optin.noAgent": {
       "kind": "error",
       "role": "报错",
-      "zh": "没有 agent 能这样接中转",
+      "zh": "这一家 agent 不能这样接中转",
       "args": []
     },
     "beUpstreamEndpoint.optin.notFile": {
@@ -26501,14 +26507,14 @@
     "beChore.relay.name": {
       "kind": "title",
       "role": "标题",
-      "zh": "直接敲的 claude 也实时显示",
-      "args": []
+      "zh": "直接敲的 {agent} 也实时显示",
+      "args": ["agent"]
     },
     "beChore.relay.loc": {
       "kind": "body",
       "role": "片段",
-      "zh": "{path} · env",
-      "args": ["path"]
+      "zh": "{path} · {slot}",
+      "args": ["path", "slot"]
     },
     "beChore.relay.why": {
       "kind": "body",
@@ -26581,6 +26587,12 @@
       "role": "片段",
       "zh": "在行 {line} 后面加入下面 {n} 行",
       "args": ["line", "n"]
+    },
+    "beChore.step.insertTop": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "在最前面加入下面 {n} 行",
+      "args": ["n"]
     },
     "beChore.step.replace": {
       "kind": "body",

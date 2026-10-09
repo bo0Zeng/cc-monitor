@@ -150,7 +150,7 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/backend/relay/listen.rs", "let _ = comms_outward::refuse_busy(&mut stream);", Why::DeadLink, "回一句「忙」给被拒的那条连接"),
     ("src/comms/outward/server.rs", "let _ = down.set_nonblocking(false);", Why::DeadLink, "已经答完的那条连接上排掉已到的字节，排不掉就算了"),
     ("src/comms/outward/server.rs", "let _ = down.set_nonblocking(true);", Why::DeadLink, "已经答完的那条连接上排掉已到的字节，排不掉就算了"),
-    ("src/comms/outward/tee.rs", "let _ = self.port.offer(TapEvent { stream: id.stream.to_string(), owner: id.owner.to_string(), resp: at.resp, n, body: T", Why::Backpressure, "投不进就丢：号照占，缺口在接收侧按号算得出（「SSE 保快、jsonl 保对」）"),
+    ("src/comms/outward/tee.rs", "let _ = self.port.offer(TapEvent { stream: id.stream.to_string(), owner: id.owner.to_string(), resp: at.resp, n, body, }", Why::Backpressure, "投不进就丢：号照占，缺口在接收侧按号算得出（「SSE 保快、jsonl 保对」）"),
     ("src/comms/outward/tee.rs", "let _ = self.port.offer(TapEvent { stream: id.stream.to_string(), owner: id.owner.to_string(), resp: at.resp, n: at.n, b", Why::Backpressure, "同上（收尾那一件）"),
     // NDJSON 那一形的四行（写线程 · 两处 `write_all` · `flush`）随独立 `--relay` 删了。
     ("src/backend/stderr_log.rs", "let _ = f.write_all(roll_note(&self.old).as_bytes());", Why::Diag, "「写不进去不拖垮后端」（脱离载体那一格）"),
