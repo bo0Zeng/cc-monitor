@@ -424,7 +424,7 @@ export function defaultOps(): Record<string, OpHandler> {
         const limit = relay === "std" && peak <= 200_000 ? 200_000 : 1_000_000;
         usage = { promptTokens: sum(last.message.usage), model: last.message.model, peakPromptTokens: peak, limit, limitFrom: from };
       }
-      // 没结果的调用 · 最后一句 · 需要你：照后端 `facts_query` 那几条口径（结果按 id 摘、你发一句全摘；在等 ⇒ 配上没结果的那一步）。
+      // 没结果的调用 · 最后一句 · 需手动：照后端 `facts_query` 那几条口径（结果按 id 摘、你发一句全摘；在等 ⇒ 配上没结果的那一步）。
       const what = (name: string, input: Record<string, unknown> | undefined): string | null => {
         if (!input) return null;
         if (name === "AskUserQuestion") return ((input.questions as { question?: string }[] | undefined)?.[0]?.question ?? null) || null;

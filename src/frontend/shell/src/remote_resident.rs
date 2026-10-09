@@ -118,13 +118,22 @@ pub(crate) fn parse_answer(
                     );
                     copy_text("rsRemoteResident.ensure.noReason", &[])
                 });
+            // 那台带了下层原话（`raw`）⇒ 进复制详情，不上句子。
+            let raw = err["raw"].as_str().filter(|r| !r.trim().is_empty());
             if err["code"] == "unsupported" {
+                // 那台的 `message` 这一格就是它的原话（脱离不了的系统报错）：句子由这边说，原话进详情。
                 Err(AttachErr::Unsupported(
-                    copy_text("rsRemoteResident.ensure.unsupported", &[("why", &msg)]).into(),
+                    Said::with_raw(
+                        copy_text("rsRemoteResident.ensure.unsupported", &[]),
+                        raw.unwrap_or(&msg),
+                    ),
                     crate::machine_state::NOT_UNIX,
                 ))
             } else {
-                Err(AttachErr::Failed(msg.into()))
+                Err(AttachErr::Failed(match raw {
+                    Some(r) => Said::with_raw(msg, r),
+                    None => msg.into(),
+                }))
             }
         }
     }

@@ -298,7 +298,7 @@ export const MAIN_SCENES: Scene[] = [
     await mainReady(ALL_TABS);
     await openTab(1);
   }),
-  main("main-needs-answer", "主窗口 · 需要你：等回答", "gpu-01 上的会话在等你回答：栏顶「需要你 2」、行尾「等回答」、钉条是那一问（远端在 tmux 里 ⇒ 在终端里打开）", async () => {
+  main("main-needs-answer", "主窗口 · 需手动：等回答", "gpu-01 上的会话在等你回答：栏顶「需手动 2」、行尾「等回答」、钉条是那一问（远端在 tmux 里 ⇒ 在终端里打开）", async () => {
     await mainReady(ALL_TABS);
     await openTab(5);
     await sleep(600);
@@ -338,7 +338,7 @@ export const MAIN_SCENES: Scene[] = [
     document.querySelector(".step-line[data-state=awaiting]")?.scrollIntoView({ block: "center" });
     await sleep(500);
   }),
-  main("main-needs-list", "主窗口 · 「需要你」菜单", "悬停栏顶「需要你 2」500ms：菜单列出每个在等你的会话与它等的那一句（等得最久的在前；标题一行省略、那一句至多两行；点一行切过去）", async () => {
+  main("main-needs-list", "主窗口 · 「需手动」菜单", "悬停栏顶「需手动 2」500ms：菜单列出每个在等你的会话与它等的那一句（等得最久的在前；标题一行省略、那一句至多两行；点一行切过去）", async () => {
     await mainReady(ALL_TABS);
     await sleep(600);
     document.querySelector<HTMLElement>(".tab-needs")!.dispatchEvent(new Event("mouseenter"));

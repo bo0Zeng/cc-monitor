@@ -789,7 +789,7 @@ impl FakeTmux {
 fn said(ok: bool, s: &str) -> Result<Ran, CmdErr> {
     Ok(Ran {
         ok,
-        said: s.to_string(),
+        stderr: s.to_string(),
     })
 }
 
@@ -901,7 +901,7 @@ fn w5vis_s4_ran_keeps_what_the_real_process_said_on_stderr() {
         r,
         Ran {
             ok: false,
-            said: "duplicate session: w5vis".into()
+            stderr: "duplicate session: w5vis".into()
         }
     );
     let r = ran(sh(), &["has-session"]).expect("起得来");
@@ -1005,7 +1005,7 @@ fn a_created_session_is_declared_by_whoever_created_it() {
             seen.borrow_mut().push(a.join(" "));
             Ok(Ran {
                 ok: true,
-                said: String::new(),
+                stderr: String::new(),
             })
         };
         run_with(&req, &fake).expect("该建成");

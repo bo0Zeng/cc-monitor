@@ -491,7 +491,7 @@ fn last_say_is_the_first_line_of_the_last_text() {
     assert!(t.ends_with('…'));
 }
 
-/// ★ 需要你：那台说在等才有；种类配记录里没结果的那一步判，判不出不猜。
+/// ★ 需手动：那台说在等才有；种类配记录里没结果的那一步判，判不出不猜。
 #[test]
 fn needs_is_decided_from_the_wait_and_the_pending_call() {
     let call = |id: &str, name: &str, what: Option<&str>| PendingCall {

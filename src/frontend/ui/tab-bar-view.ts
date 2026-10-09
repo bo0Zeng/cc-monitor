@@ -1,9 +1,9 @@
 /**
- * 标签页栏视图：栏顶一排（全局入口 · 刷新）· 「需要你 N」· 机器离线条 · 列表（分组 ＋ 每个会话一行）。
+ * 标签页栏视图：栏顶一排（全局入口 · 刷新）· 「需手动 N」· 机器离线条 · 列表（分组 ＋ 每个会话一行）。
  *
  * 一行：状态点 · 窄窗两字母 · 机器徽标（远端）· 项目名 ＋ 标题（后台多一个齿轮）· 行尾（等批准 / 未读数 · 额度 `✕` ·
  * 与默认不同的账号头像 · 图钉）· 悬停时盖在行尾的动作（目录 · ↗ · 更多 / 关闭）。悬停卡（kit 悬停提示的卡式）锚在行右侧。
- * 一句话怎么写全从 `session-face.ts` 取（状态点 · 状态句 · peek · 需要你）；这里只排。
+ * 一句话怎么写全从 `session-face.ts` 取（状态点 · 状态句 · peek · 需手动）；这里只排。
  *
  * 只画、只把用户手势转交出去：点按钮切 tab、按下起拖、右键开菜单、子动作按钮 —— 做事的都经
  * `TabBarViewHost` 交给宿主（路由 / 拖拽 / 菜单 / 会话动作），本文件不 import 它们。
@@ -50,7 +50,7 @@ export interface TabButtonRefs {
   bg: HTMLSpanElement;
   /** 标题正文那一格。 */
   label: HTMLSpanElement;
-  /** 行尾「等批准 / 等回答 / 需要你」（琥珀字，换掉未读数）。 */
+  /** 行尾「等批准 / 等回答 / 需手动」（琥珀字，换掉未读数）。 */
   needs: HTMLSpanElement;
   badge: HTMLSpanElement;
   /** 额度：被卡住的会话标题后那一格红字 `✕ 5h`（能发时藏着）。 */
@@ -140,7 +140,7 @@ function isTyping(t: EventTarget | null): boolean {
   return t instanceof HTMLElement && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable);
 }
 
-/** 「需要你」悬停菜单的宽：标题放得下约 28 个汉字（≈ 420px），至少 360、至多 480 与视口减 32 的小者；可以盖过标签页栏伸进消息流。 */
+/** 「需手动」悬停菜单的宽：标题放得下约 28 个汉字（≈ 420px），至少 360、至多 480 与视口减 32 的小者；可以盖过标签页栏伸进消息流。 */
 const NEEDS_MENU = { min: 360, ideal: 420, max: 480, viewportGutter: 32 } as const;
 
 /** 栏收成 44px 时（`tab-bar-fold.ts`）悬停卡宽 260。 */
@@ -168,10 +168,10 @@ export class TabBarView {
   private readonly headActs: HTMLSpanElement;
   /** 栏顶右端「刷新」：点击走下面那个委托的 click；在飞时 `disabled`，不重入。 */
   private readonly rereadBtn: HTMLButtonElement;
-  /** 「需要你 N」：有人在等你才出。 */
+  /** 「需手动 N」：有人在等你才出。 */
   private readonly needsEl: HTMLButtonElement;
   private readonly needsCount: HTMLSpanElement;
-  /** 「需要你」那一条右端的键帽（按当前键位现拼，出现时才拼）。 */
+  /** 「需手动」那一条右端的键帽（按当前键位现拼，出现时才拼）。 */
   private readonly needsKbd: HTMLSpanElement;
   /** 机器离线条（一台一条）。 */
   private readonly downEl: HTMLDivElement;
@@ -232,7 +232,7 @@ export class TabBarView {
     let needsHover: ReturnType<typeof setTimeout> | null = null;
     this.needsEl.addEventListener("mouseenter", () => {
       if (needsHover !== null) clearTimeout(needsHover);
-      // 调度：一次性 —— 「需要你」悬停 500ms 才开菜单，移开就清
+      // 调度：一次性 —— 「需手动」悬停 500ms 才开菜单，移开就清
       needsHover = setTimeout(() => {
         needsHover = null;
         if (!menuAnchoredOn(this.needsEl)) this.openNeedsMenu();
@@ -271,13 +271,13 @@ export class TabBarView {
     } else this.downSince.delete(origin);
   }
 
-  /** 跳到下一个需要你的会话（`Ctrl+J` · 点「需要你」那一条）。没有 ⇒ 什么都不做。 */
+  /** 跳到下一个需手动的会话（`Ctrl+J` · 点「需手动」那一条）。没有 ⇒ 什么都不做。 */
   nextNeedsSid(): string | null {
     const order = needsOrder(this.visibleOrder().map((sid) => this.store.tabs.get(sid)).filter((t): t is Tab => t !== undefined));
     return nextNeeds(order, this.store.activeId);
   }
 
-  /** 此刻需要你的会话数（窗口标题用）。 */
+  /** 此刻需手动的会话数（窗口标题用）。 */
   needsCountNow(): number {
     let n = 0;
     for (const t of this.store.tabs.values()) if (needsOf(t)) n++;
@@ -333,7 +333,7 @@ export class TabBarView {
         return;
       }
     }
-    // 栏顶那一排、需要你、离线条之外的才算「条上」：点在列表外不清多选。
+    // 栏顶那一排、需手动、离线条之外的才算「条上」：点在列表外不清多选。
     if (!(e.target instanceof Node && this.listEl.contains(e.target))) return;
     const hit = this.hitOf(e);
     if (!hit) {
@@ -643,7 +643,7 @@ export class TabBarView {
     this.store.notify();
   }
 
-  /** 「需要你 N」：N ≥ 1 才出。 */
+  /** 「需手动 N」：N ≥ 1 才出。 */
   private updateNeedsStrip(): void {
     const n = this.needsCountNow();
     this.needsEl.style.display = n === 0 ? "none" : "";
@@ -661,7 +661,7 @@ export class TabBarView {
     this.needsEl.setAttribute("aria-label", copyText("tabBar.needs.aria", { n }));
   }
 
-  /** 「需要你」菜单：每个在等你的会话（等得最久的在前）· 状态 · 等的那一句；点一行切过去。 */
+  /** 「需手动」菜单：每个在等你的会话（等得最久的在前）· 状态 · 等的那一句；点一行切过去。 */
   private openNeedsMenu(): void {
     const tabs = needsOrder(this.visibleOrder().map((sid) => this.store.tabs.get(sid)).filter((t): t is Tab => t !== undefined));
     if (tabs.length === 0) return;

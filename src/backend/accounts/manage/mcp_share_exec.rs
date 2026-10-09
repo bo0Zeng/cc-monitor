@@ -137,7 +137,7 @@ fn load(home: &str, list: Vec<(String, String)>) -> Result<Here, Refusal> {
                 "refused",
                 copy_text(
                     "beAcctMcpShare.store.cannotUse",
-                    &[("path", &spath), ("e", &e)],
+                    &[("path", &spath), ("why", &e)],
                 ),
             )
         })?,

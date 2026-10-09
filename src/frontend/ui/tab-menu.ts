@@ -238,7 +238,7 @@ export class TabMenu {
   }
 
   /**
-   * 会话头 / 「需要你」钉条的［恢复 ▾］：只开恢复那几项（与右键「恢复 ▸」同一份：恢复 · 账号 · 运行于 · 在此目录新建会话；号到了再开）。
+   * 会话头 / 「需手动」钉条的［恢复 ▾］：只开恢复那几项（与右键「恢复 ▸」同一份：恢复 · 账号 · 运行于 · 在此目录新建会话；号到了再开）。
    */
   openResumeMenu(anchor: HTMLElement, sid: string): void {
     const t = this.host.tab(sid);

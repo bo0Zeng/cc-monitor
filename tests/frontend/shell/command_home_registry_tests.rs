@@ -142,7 +142,7 @@ const MONITOR_OWN: &[(&str, Own, &str)] = &[
     (
         "notify_desktop",
         Own::Window,
-        "系统通知（「一轮完成」「需要你」）：通知出在 monitor 面前这台的桌面上，界面判要不要发，壳只发（`platform/notify.rs`）",
+        "系统通知（「一轮完成」「需手动」）：通知出在 monitor 面前这台的桌面上，界面判要不要发，壳只发（`platform/notify.rs`）",
     ),
     (
         "clipboard_write",

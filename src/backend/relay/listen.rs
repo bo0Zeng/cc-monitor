@@ -124,10 +124,18 @@ fn prepare(
         Ok(l) => l,
         Err(e) => {
             eprintln!("[relay] cannot bind loopback port {port}: {e}");
-            return Err(copy_text(
-                "beRelayListen.prepare.bindFailed",
-                &[("port", &port.to_string()), ("e", &e.to_string())],
-            ));
+            // 这一句只进日志（`Hosted::Failed`）：原因词 ＋ 原话一起记。
+            return Err(crate::common::said::Said::with_raw(
+                copy_text(
+                    "beRelayListen.prepare.bindFailed",
+                    &[
+                        ("port", &port.to_string()),
+                        ("why", &copy_core::io_reason(e.kind())),
+                    ],
+                ),
+                &e,
+            )
+            .logged());
         }
     };
     // 绑上口之后、说「在听」之前拿钥匙（读回，或铸一把落盘；`INVARIANTS §48.1a`）：

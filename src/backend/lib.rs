@@ -848,7 +848,7 @@ pub const PROTO_VERSION: u32 = 1;
 ///
 /// p8z-window-label：session-terminals 每个终端多回 window（接入块 v8 设的 LC_CCM_WINDOW，只认 <数字>-<数字>）。
 ///
-/// p9a-chores：data-report 换形（todo ＝ 要你动手各件成品 · chores 角标）；新命令 chores-mark（chores.json）与 agent-home-check（Claude 目录像不像由后端判）。
+/// p9a-chores：data-report 换形（todo ＝ 待办各件成品 · chores 角标）；新命令 chores-mark（chores.json）与 agent-home-check（Claude 目录像不像由后端判）。
 ///
 /// p9b-background-activity：session_added / session_status 多 background / activity（适配层翻）；invalid_args 收进 bad_args；删帧命令 deploy-retired 与旧装法清理链。
 ///
@@ -1049,7 +1049,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--data-report",
     // 换 agent 家目录存之前那一问（`agent-home-check`）派生的 CLI 面。只读。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     "--agent-home-check",
-    // 「要你动手」记下一个选择（`chores-mark`，写后端自己的 `~/.cc-monitor/chores.json`）派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    // 「待办」记下一个选择（`chores-mark`，写后端自己的 `~/.cc-monitor/chores.json`）派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     "--chores-mark",
     // 离线那台的上次值（`last-seen-read` / `last-seen-write`，读写后端自己的 `~/.cc-monitor/last-seen.json`）派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     "--last-seen-read",

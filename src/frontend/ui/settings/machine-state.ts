@@ -22,7 +22,7 @@ export interface MachineFace {
   /** 名字旁那个词（连着时不说）。 */
   word: string;
   problem: string;
-  /** 问题行的样子：出错 · 要你动手 · 正在做（转圈；`bar` ＝ 装 / 更新那一段带进度条）。 */
+  /** 问题行的样子：出错 · 待办 · 正在做（转圈；`bar` ＝ 装 / 更新那一段带进度条）。 */
   tone: "error" | "warn" | "busy";
   bar: boolean;
   fixes: MachineFix[];

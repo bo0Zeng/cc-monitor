@@ -26,6 +26,7 @@
 //! （对可达表里每一台各一趟）。一趟的期限归调用方。
 //! 「问远端」那一跳（`DialRemote`）与可达表住 `crate::dial::remote_ask`；本模块只管资产目录拉什么、并什么、推什么、扇不扇出。
 
+use crate::common::said::IntoNote as _;
 use copy_core::copy_text;
 use std::collections::BTreeMap;
 
@@ -146,10 +147,11 @@ async fn fold_blocking(fold: &Fold, args: Value) -> Result<Value, String> {
     tokio::task::spawn_blocking(move || f(&args))
         .await
         .map_err(|e| {
-            copy_text(
-                "beAssetSync.foldBlocking.unfinished",
-                &[("e", &e.to_string())],
+            crate::common::said::Said::with_raw(
+                copy_text("beAssetSync.foldBlocking.unfinished", &[]),
+                &e,
             )
+            .into_note()
         })?
         .map_err(|f| {
             let c = f.code.clone();
@@ -182,10 +184,11 @@ async fn sync_one(
                         None,
                         false,
                         0,
-                        &[copy_text(
-                            "beAssetSync.syncOne.unparsable",
-                            &[("e", &e.to_string())],
-                        )],
+                        &[crate::common::said::Said::with_raw(
+                            copy_text("beAssetSync.syncOne.unparsable", &[]),
+                            &e,
+                        )
+                        .into_note()],
                     ),
                 )
             }

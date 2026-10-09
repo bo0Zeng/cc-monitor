@@ -1,7 +1,7 @@
 /**
- * 设置窗「文件与数据」页：两栏 —— 要你动手（角标）· cc-monitor 放了什么。
+ * 设置窗「文件与数据」页：两栏 —— 待办（角标）· cc-monitor 放了什么。
  *
- * - 要你动手：顶上一行总数 ＋［全部重查］；按机器分段（有事的在前），段头 机器名 · 那台的数 ·［打开该机器］；
+ * - 待办：顶上一行总数 ＋［全部重查］；按机器分段（有事的在前），段头 机器名 · 那台的数 ·［打开该机器］；
  *   每件一行：状态点 · 名字 · 类的小标签 · 下一行 文件位置小标签 ＋ 一句现状 · 主按钮。连不上的那台：「{machine} 离线 · 未检查」。
  *   今天的件来自那台后端的 `data-report`（要装 / 要装 · 可选）；单件里每一格都照那份成品画，界面不判。
  * - cc-monitor 放了什么：机器 chip 切换；本机先「Claude 目录」（宿主交进来那一块），再「改过你的文件」（每处 改了什么 · 撤回在哪 ［前往］），
@@ -95,7 +95,7 @@ export class DataPage {
     this.tabStrip.className = "data-tabs";
     root.appendChild(this.tabStrip);
 
-    // ── 要你动手 ──
+    // ── 待办 ──
     this.choresPane = document.createElement("div");
     this.choresPane.className = "data-pane";
     this.choresPane.dataset.pane = "chores";
@@ -149,7 +149,7 @@ export class DataPage {
   }
 
   /**
-   * 带目的地进来：`chores:<origin>` ⇒ 要你动手那一栏、滚到那台那一段、段头高亮 1.5 秒；`placed:<origin>` ⇒ 放了什么那一栏、选中那台。
+   * 带目的地进来：`chores:<origin>` ⇒ 待办那一栏、滚到那台那一段、段头高亮 1.5 秒；`placed:<origin>` ⇒ 放了什么那一栏、选中那台。
    * 那台那一段还没画出来（机器表 / 那台还没读回）⇒ 记着，读回来再落。
    */
   focus(anchor: string): void {
@@ -241,7 +241,7 @@ export class DataPage {
     this.placedPane.hidden = this.tab !== "placed";
   }
 
-  // ── 要你动手 ──────────────────────────────────────────────────────────────
+  // ── 待办 ──────────────────────────────────────────────────────────────
 
   private key(origin: Origin, id: string): string {
     return `${origin}\u0000${id}`;

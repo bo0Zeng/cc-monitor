@@ -17,6 +17,7 @@
 //!
 //! FNV-1a 64（[`Fnv`]）—— 稳定、零新依赖。只答「相同 / 不同」，不防篡改。
 
+use crate::common::said::IntoNote as _;
 use copy_core::copy_text;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -263,10 +264,19 @@ pub fn skill_asset(
         let ent = match ent {
             Ok(e) => e,
             Err(e) => {
-                notice.push(copy_text(
-                    "beAssetCatalog.digest.walkFailed",
-                    &[("e", &e.to_string())],
-                ));
+                let kind = e
+                    .io_error()
+                    .map_or(std::io::ErrorKind::Other, std::io::Error::kind);
+                notice.push(
+                    crate::common::said::Said::with_raw(
+                        copy_text(
+                            "beAssetCatalog.digest.walkFailed",
+                            &[("why", &copy_core::io_reason(kind))],
+                        ),
+                        &e,
+                    )
+                    .into_note(),
+                );
                 continue;
             }
         };
@@ -309,10 +319,17 @@ pub fn skill_asset(
                 f.part(&body);
             }
             Err(error) => {
-                notice.push(copy_text(
-                    "beAssetCatalog.digest.lenOnly",
-                    &[("rel", &rel.to_string()), ("e", &error.to_string())],
-                ));
+                // 那一句只带原因词；系统原话进日志（摘要提示那一格没有详情位）。
+                notice.push(
+                    error
+                        .wrap(|why| {
+                            copy_text(
+                                "beAssetCatalog.digest.lenOnly",
+                                &[("rel", &rel), ("why", why)],
+                            )
+                        })
+                        .into_note(),
+                );
                 f.part(b"len").part(&len.to_le_bytes());
             }
         }

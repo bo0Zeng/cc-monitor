@@ -109,14 +109,22 @@ pub fn handles(flag: &str) -> bool {
 }
 
 /// `control/resident.rs` 那两条子命令也走这一份（不另立第 N 份信封，`readonly_guard::error_envelope_registry`）。
-pub fn emit_err(code: &str, message: impl Into<String>) -> i32 {
+pub fn emit_err(code: &str, message: impl Into<copy_core::said::Said>) -> i32 {
     emit_err_to(&mut std::io::stderr(), code, message)
 }
 
-fn emit_err_to(err: &mut dyn Write, code: &str, message: impl Into<String>) -> i32 {
-    let body = serde_json::json!({ "code": code, "message": message.into() });
-    let _ = writeln!(err, "{body}");
+fn emit_err_to(err: &mut dyn Write, code: &str, message: impl Into<copy_core::said::Said>) -> i32 {
+    let _ = writeln!(err, "{}", err_body(code, &message.into()));
     2
+}
+
+/// 失败信封 `{code, message, raw?}`：`message` 是给人看的那一句；`raw` 是下层原话（有才带），读的那一方放进复制详情、不上句子。
+pub(crate) fn err_body(code: &str, s: &copy_core::said::Said) -> serde_json::Value {
+    let mut body = serde_json::json!({ "code": code, "message": s.said });
+    if let Some(r) = &s.raw {
+        body["raw"] = serde_json::Value::String(r.clone());
+    }
+    body
 }
 
 /// 能力探测：`{proto, buildId, commands}`。`commands` 必须派生：手抄一份，探测口就会说谎，而 skill 按它的话决定走不走新路。

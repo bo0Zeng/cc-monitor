@@ -71,7 +71,7 @@ fn token_path(data_home: &Path) -> PathBuf {
 }
 
 /// 一次性子命令的错误出口：stderr 一行 `{code,message}`、退出 2（协议 v1 §3）—— 与 CLI 控制面同一份信封。
-fn fail(code: &str, message: String) -> i32 {
+fn fail(code: &str, message: impl Into<copy_core::said::Said>) -> i32 {
     super::cli_control::emit_err(code, message)
 }
 
@@ -106,7 +106,7 @@ pub fn run_ensure(args: &[String], hosted: &[(&str, String)]) -> i32 {
         Err(e) => {
             return fail(
                 "spawn_failed",
-                copy_text("beResident.spawn.noSelf", &[("e", &e.to_string())]),
+                copy_core::said::Said::with_raw(copy_text("beResident.spawn.noSelf", &[]), &e),
             )
         }
     };
@@ -294,7 +294,10 @@ pub(crate) fn child_env(
 
 /// 起一个脱离的自己（常驻载体）：stdio 全空（SSH 断了它不跟着收 SIGPIPE）、自成进程组、不继承 `TMUX`。
 /// 自有那几格（口 · 钥匙文件 · 诊断文件）是**交给它自己用的**，经 `pass_own` 交；别的经 `env`。
-fn spawn_detached(exe: &Path, env: &[(String, String)]) -> Result<u32, (&'static str, String)> {
+fn spawn_detached(
+    exe: &Path,
+    env: &[(String, String)],
+) -> Result<u32, (&'static str, copy_core::said::Said)> {
     let mut cmd = Child::new(exe).args(DEFAULT_STREAM_ARGS).env_remove("TMUX");
     for (k, v) in env {
         cmd = if OWN_ENVS.contains(&k.as_str()) {
@@ -304,16 +307,16 @@ fn spawn_detached(exe: &Path, env: &[(String, String)]) -> Result<u32, (&'static
         };
     }
     cmd.detach().map_err(|e| match e {
+        // 不支持：那一句由读的那一方说（「远端只支持 Unix」），`message` 这一格交的就是原话（读的那一方放进复制详情）。
         ChildFail::Io(io) if io.kind() == std::io::ErrorKind::Unsupported => {
-            ("unsupported", io.to_string())
+            ("unsupported", io.to_string().into())
         }
-        e => (
-            "spawn_failed",
+        e => e.into_cmd_said("spawn_failed", |why| {
             copy_text(
                 "beResident.spawn.failed",
-                &[("exe", &exe.display().to_string()), ("e", &e.to_string())],
-            ),
-        ),
+                &[("exe", &exe.display().to_string()), ("why", why)],
+            )
+        }),
     })
 }
 

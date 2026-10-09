@@ -108,7 +108,7 @@ fn settings_env_snippet(url: &str) -> String {
     serde_json::to_string_pretty(&v).unwrap_or_default()
 }
 
-/// 那份设置文件现在的内容 ＋ 地址 ⇒ 合好的整份：`env.ANTHROPIC_BASE_URL` 就地设上，别的原样（JSON 就地改法住「要你动手」那一层）。
+/// 那份设置文件现在的内容 ＋ 地址 ⇒ 合好的整份：`env.ANTHROPIC_BASE_URL` 就地设上，别的原样（JSON 就地改法住「待办」那一层）。
 fn settings_env_merge(now: &str, url: &str) -> Option<String> {
     crate::footprint::chores::patch::set_member(
         now,

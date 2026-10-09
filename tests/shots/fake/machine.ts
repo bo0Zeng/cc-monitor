@@ -438,7 +438,7 @@ function tryMachineTable(edits: Record<string, unknown>[], w: World): Record<str
   return null;
 }
 
-/** 「要你动手」一件（假后端照 `footprint/chores` 的成品形状）。 */
+/** 「待办」一件（假后端照 `footprint/chores` 的成品形状）。 */
 function chore(over: Record<string, unknown>): Record<string, unknown> & { kind: string; state: string } {
   return { id: "", kind: "optional", state: "todo", name: "", loc: "", said: "", why: "", steps: [], diff: [], copy: null, whole: null, wholeCovers: [], file: null, go: null, howUrl: null, mask: null, action: "copySnippet", ...over } as Record<string, unknown> & { kind: string; state: string };
 }
@@ -447,8 +447,8 @@ const SETTINGS = `${HOME}/.claude/settings.json`;
 const WHOLE = '{\n  "env": {\n    "ANTHROPIC_BASE_URL": "http://127.0.0.1:8788/k/9f3c2a71/claude",\n    "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "32000"\n  }\n}\n';
 const DEVBOX_CHORES = [
   chore({ id: "stale-ccm", kind: "must", name: copyText("beChore.staleCcm.name"), loc: "/usr/local/bin/ccm", said: copyText("beChore.staleCcm.said"), why: "敲 ccm 和别名先找到的是 /usr/local/bin/ccm：不是 cc-monitor 放的，起的会话 cc-monitor 管不到", steps: [copyText("beChore.staleCcm.step")], copy: "sudo rm '/usr/local/bin/ccm'", action: "copyCommand" }),
-  chore({ id: "clash:cc", kind: "decide", name: "「cc」重名 · 你写的 / 清单", loc: "~/.bashrc 第 125 行", said: copyText("beChore.clash.winsYours"), why: "现在敲 cc 起的是后定义的那一个；没生效的那一条白放着", copy: `${HOME}/.bashrc:125`, file: `${HOME}/.bashrc`, go: { page: "machine", tab: "config", anchor: "clash" }, action: "decide" }),
-  chore({ id: "clash:cct", kind: "decide", name: "「cct」重名 · 你写的 / 清单", loc: "~/.bashrc 第 129 行", said: copyText("beChore.clash.winsYours"), why: "现在敲 cct 起的是后定义的那一个；没生效的那一条白放着", copy: `${HOME}/.bashrc:129`, file: `${HOME}/.bashrc`, go: { page: "machine", tab: "config", anchor: "clash" }, action: "decide" }),
+  chore({ id: "clash:cc", kind: "decide", name: copyText("beChore.clash.name", { name: "cc" }), loc: "~/.bashrc 第 125 行", said: copyText("beChore.clash.winsYours"), why: "现在敲 cc 起的是后定义的那一个；没生效的那一条白放着", copy: `${HOME}/.bashrc:125`, file: `${HOME}/.bashrc`, go: { page: "machine", tab: "config", anchor: "clash" }, action: "decide" }),
+  chore({ id: "clash:cct", kind: "decide", name: copyText("beChore.clash.name", { name: "cct" }), loc: "~/.bashrc 第 129 行", said: copyText("beChore.clash.winsYours"), why: "现在敲 cct 起的是后定义的那一个；没生效的那一条白放着", copy: `${HOME}/.bashrc:129`, file: `${HOME}/.bashrc`, go: { page: "machine", tab: "config", anchor: "clash" }, action: "decide" }),
   chore({ id: `dead:${HOME}/.bashrc`, name: ".bashrc · 2 行失效", loc: "~/.bashrc 第 118, 119 行", said: copyText("beChore.dead.said"), why: copyText("beChore.dead.why"), steps: ["第 118 行：source ~/.old-ccm.sh", "第 119 行：. ~/bin/ccm-env"], copy: `${HOME}/.bashrc:118`, file: `${HOME}/.bashrc`, action: "locate" }),
   chore({
     id: "relay:claude-code",

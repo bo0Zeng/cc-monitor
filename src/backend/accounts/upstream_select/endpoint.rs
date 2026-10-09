@@ -376,7 +376,7 @@ pub(crate) fn answer_optin(args: &Value) -> EndpointAnswer {
     ))
 }
 
-/// 一家「直接敲的也走中转」此刻的样子（帧命令 `relay-optin` 与「要你动手」那一件同读这一份）。
+/// 一家「直接敲的也走中转」此刻的样子（帧命令 `relay-optin` 与「待办」那一件同读这一份）。
 pub(crate) struct OptinReport {
     pub(crate) state: OptinState,
     /// 那份文件为什么读不了（`unreadable` 才有，其余空串）。

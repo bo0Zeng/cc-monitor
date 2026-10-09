@@ -598,7 +598,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "data-report",
         // 换 Claude 目录前那一问：stat 两次。
         "agent-home-check",
-        // 「要你动手」记下的选择：读—改—写后端自己那份小文件。
+        // 「待办」记下的选择：读—改—写后端自己那份小文件。
         "chores-mark",
         // 离线那台的上次值：读 / 读—改—写后端自己那份小文件。
         "last-seen-read",

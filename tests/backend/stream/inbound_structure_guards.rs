@@ -331,7 +331,7 @@ fn every_registered_command_declares_its_run_kind() {
                 | "data-report"
                 // 换 Claude 目录前那一问：stat 两次。
                 | "agent-home-check"
-                // 「要你动手」记下的选择：读—改—写后端自己那份小文件（同步文件 I/O）。
+                // 「待办」记下的选择：读—改—写后端自己那份小文件（同步文件 I/O）。
                 | "chores-mark"
                 // 离线那台的上次值：读 / 读—改—写后端自己那份小文件（同步文件 I/O）。
                 | "last-seen-read"

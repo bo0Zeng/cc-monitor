@@ -374,11 +374,11 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "本机后端读—改—写自己那份小文件；前端 `src/frontend/ui/last-seen.ts::rememberSeen` 交（账号清单 · 「文件与数据」读成了那一份），\
          monitor 这一侧零发送点",
     ),
-    // 「要你动手」记下的一个选择：后端写它自己的 `~/.cc-monitor/chores.json`。
+    // 「待办」记下的一个选择：后端写它自己的 `~/.cc-monitor/chores.json`。
     (
         "chores-mark",
         "后端读—改—写自己那份小文件（`src/backend/footprint/chores/marks.rs`）；前端 `src/frontend/ui/settings/data-reads.ts::markChore` 问\
-         （「要你动手」里［不用了］［还是要做］· 别名页［我自己贴］［改由 cc-monitor 接上］），monitor 这一侧零发送点",
+         （「待办」里［不用了］［还是要做］· 别名页［我自己贴］［改由 cc-monitor 接上］），monitor 这一侧零发送点",
     ),
     // 换 Claude 目录前那一问：后端 stat 两次回码。
     (

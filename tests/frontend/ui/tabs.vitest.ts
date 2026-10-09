@@ -581,7 +581,7 @@ describe("TabManager 生命周期", () => {
       return c.querySelector(".tab-hover-state")?.textContent;
     };
     tm.updateActivity("tt1", "needs_you", "permission prompt");
-    expect(said(), "活着、在等：种类还没到 ⇒ 只说需要你（不猜，也不印英文原样）").toBe(copyText("tabBar.needsKind.unknown"));
+    expect(said(), "活着、在等：种类还没到 ⇒ 只说需手动（不猜，也不印英文原样）").toBe(copyText("tabBar.needsKind.unknown"));
     tm.markTmuxIdle("tt1"); // 活动信号还留着（可重连不清它），但 claude 已经没了
     expect(said()).toBe(copyText("sessionState.reconnectable.tooltip"));
     tm.archiveTab("tt1");

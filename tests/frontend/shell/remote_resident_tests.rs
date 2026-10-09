@@ -77,14 +77,32 @@ fn the_ensure_answer_names_a_non_unix_remote_as_unsupported_and_never_falls_back
             "devbox"
         ),
         Err(AttachErr::Unsupported(
-            copy_text(
-                "rsRemoteResident.ensure.unsupported",
-                &[("why", "不是 unix")]
-            )
-            .into(),
+            Said::with_raw(
+                copy_text("rsRemoteResident.ensure.unsupported", &[]),
+                "不是 unix"
+            ),
             crate::machine_state::NOT_UNIX
         ))
     );
+    // 那台带了原话（`raw`）⇒ 句子照那台那一句，原话进复制详情、不上句子。
+    match parse_answer(
+        &exec(
+            "",
+            r#"{"code":"spawn_failed","message":"x","raw":"Permission denied (os error 13)"}"#,
+            Some(2),
+        ),
+        "devbox",
+    ) {
+        Err(AttachErr::Failed(s)) => {
+            assert_eq!(s.said, "x");
+            assert!(
+                s.detail.contains("Permission denied (os error 13)"),
+                "{}",
+                s.detail
+            );
+        }
+        other => panic!("{other:?}"),
+    }
     assert_eq!(
         parse_answer(
             &exec("", r#"{"code":"spawn_failed","message":"x"}"#, Some(2)),

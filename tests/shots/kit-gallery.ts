@@ -153,7 +153,7 @@ function overview(): void {
     ]),
   );
   const bar = document.querySelector<HTMLElement>(".g-bar")!;
-  bar.append(chip({ text: "需要你 2", tone: "warn", onClick: () => {} }), openChip, chip({ text: "恢复失败 ×3", tone: "error", onClick: () => {} }), chip({ text: "work 5h 63%" }));
+  bar.append(chip({ text: "需手动 2", tone: "warn", onClick: () => {} }), openChip, chip({ text: "恢复失败 ×3", tone: "error", onClick: () => {} }), chip({ text: "work 5h 63%" }));
 
   const foldBody = h("div", "g-fake", "Bash · ls -la · 0.4s");
   document.body.append(
@@ -164,7 +164,7 @@ function overview(): void {
 
   const dots: [DotState, string][] = [
     ["running", "运行中"],
-    ["needs-you", "需要你"],
+    ["needs-you", "需手动"],
     ["idle", "空闲"],
     ["exited", "Claude 已退出"],
     ["ended", "已结束"],

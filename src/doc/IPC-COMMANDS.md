@@ -2018,11 +2018,11 @@ sid → 上次用哪个号起。
 |---|---|---|
 | `client` | → | 同 `footprint-report`（本机那一栏才带） |
 | `changedFiles` | ← | cc-monitor 写进你的文件的那几处 `{path, what, undo}`（`undo` ＝ 撤回在哪：设置窗的页 · 栏 · 锚点） |
-| `chores` | ← | 「要你动手」里进角标的件数：要做 ＋ 要装 ＋ 要你定，还没做完的 |
+| `chores` | ← | 「待办」里进角标的件数：要做 ＋ 要装 ＋ 待定，还没做完的 |
 | `home` | ← | 这台家目录（显示时 `~` 缩写按它） |
 | `own` | ← | cc-monitor 在这台自己家里放的每一样 `{id, path, dir, class, exists, size}`：`id` 闭集同 `~/.cc-monitor/` 下的契约常量；`class` ＝ `truth`（删了会丢）· `cache`（能重建）；目录 `size` 为 `null` |
 | `tmux` | ← | 这台有没有 tmux（查不动 ⇒ `null`） |
-| `todo` | ← | 「要你动手」各件 `{id, kind, state, name, loc, said, why, steps, diff, copy, whole, wholeCovers, file, go, howUrl, mask, action}`：`kind` 闭集 `must` · `install` · `decide` · `installOptional` · `optional`；`state` 闭集 `todo` · `done` · `expired` · `blocked` · `declined`；`action` 闭集 `copyCommand` · `copySnippet` · `decide` · `locate` · `how` · `installFirst`；`diff` 每行 `{n, op, text}`（`op` ＝ `same` · `del` · `add`，加的那几行 `n` 为 `null`）；`mask` ＝ 显示时要遮住的那把钥匙 |
+| `todo` | ← | 「待办」各件 `{id, kind, state, name, loc, said, why, steps, diff, copy, whole, wholeCovers, file, go, howUrl, mask, action}`：`kind` 闭集 `must` · `install` · `decide` · `installOptional` · `optional`；`state` 闭集 `todo` · `done` · `expired` · `blocked` · `declined`；`action` 闭集 `copyCommand` · `copySnippet` · `decide` · `locate` · `how` · `installFirst`；`diff` 每行 `{n, op, text}`（`op` ＝ `same` · `del` · `add`，加的那几行 `n` 为 `null`）；`mask` ＝ 显示时要遮住的那把钥匙 |
 
 码：`bad_args` · `failed`
 
@@ -2073,7 +2073,7 @@ sid → 上次用哪个号起。
 
 #### `chores-mark`
 
-记下「要你动手」里的一个选择。
+记下「待办」里的一个选择。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --chores-mark`
 
@@ -3758,7 +3758,7 @@ cc-bus 钩子诊断。
 | `--bus-state` | ＝ 帧命令 `bus-state`：总线名单 ＋ spawn 台账一次回全 |
 | `--cc-bus-install` | ＝ 帧命令 `cc-bus-install`：把这台二进制带着的 cc-bus 装到这台 |
 | `--cc-bus-install-state` | ＝ 帧命令 `cc-bus-install-state`：装 cc-bus 到这台之前看一眼 |
-| `--chores-mark` | ＝ 帧命令 `chores-mark`：记下「要你动手」里的一个选择 |
+| `--chores-mark` | ＝ 帧命令 `chores-mark`：记下「待办」里的一个选择 |
 | `--data-report` | ＝ 帧命令 `data-report`：「文件与数据」那一份成品 |
 | `--deploy-plan` | ＝ 帧命令 `deploy-plan`：那台的后端要不要换、换成哪一格 |
 | `--drift-report` | ＝ 帧命令 `drift-report`：这台后端的漂移账 |

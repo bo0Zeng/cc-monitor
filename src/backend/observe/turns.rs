@@ -81,7 +81,7 @@ pub(crate) struct Part {
     pub(crate) tone: Tone,
 }
 
-/// 一段字的语气：常规 · 失败 · 现在在做的那一步 · 需要你。
+/// 一段字的语气：常规 · 失败 · 现在在做的那一步 · 需手动。
 #[derive(Debug, Clone, Copy, serde::Serialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum Tone {

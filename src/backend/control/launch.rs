@@ -377,8 +377,8 @@ fn check_typed_payload(v: &str) -> Result<(), CmdErr> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Ran {
     pub(crate) ok: bool,
-    /// tmux 的 stderr（[`said_of`]：去首尾空白、有上限；一个字都没说 ⇒ 「（tmux 没说原因）」）。
-    pub(crate) said: String,
+    /// tmux 的 stderr（[`said_of`]：去首尾空白、有上限；一个字都没说 ⇒ 「（tmux 没说原因）」）。是原话，不是成品句。
+    pub(crate) stderr: String,
 }
 
 /// tmux 自己说的那句话（stderr）：去首尾空白、截到 [`SAID_CAP`] 字节（截在字符边界上，截了标 `…`）；
@@ -413,7 +413,7 @@ pub(crate) fn ran(cmd: Child, args: &[&str]) -> Result<Ran, CmdErr> {
     match cmd.args(args).run(LAUNCH_TMUX_WITHIN) {
         Ok(out) => Ok(Ran {
             ok: out.status.success(),
-            said: said_of(&out.stderr),
+            stderr: said_of(&out.stderr),
         }),
         Err(e) => Err(e.into_cmd_err("no_tmux", |e| {
             copy_text("beLaunch.run.noTmux", &[("e", &e.to_string())])
@@ -469,7 +469,7 @@ pub(crate) fn secondary_note(
 ) -> Option<String> {
     let why = match r {
         Ok(Ran { ok: true, .. }) => return None,
-        Ok(Ran { ok: false, said }) => said.clone(),
+        Ok(Ran { ok: false, stderr }) => stderr.clone(),
         Err((_, msg)) => msg.clone(),
     };
     Some(format!(
@@ -590,7 +590,7 @@ fn run_with(
                     "create_failed",
                     copy_text(
                         "beLaunch.create.failed",
-                        &[("name", &format!("{:?}", req.name)), ("said", &made.said)],
+                        &[("name", &format!("{:?}", req.name)), ("said", &made.stderr)],
                     ),
                 ));
             }
@@ -681,7 +681,7 @@ fn type_payload(
         "typed_unconfirmed",
         copy_text(
             "beLaunch.type.failed",
-            &[("target", &format!("{target:?}")), ("said", &r.said)],
+            &[("target", &format!("{target:?}")), ("said", &r.stderr)],
         ),
     ))
 }

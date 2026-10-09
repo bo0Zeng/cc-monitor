@@ -928,7 +928,7 @@ mod tests {
         ),
         (
             "footprint/chores/marks.rs",
-            "**「要你动手」记下的选择** `~/.cc-monitor/chores.json`：点过「不用了」的那几件 · 选了「我自己贴」的那份启动文件。\
+            "**「待办」记下的选择** `~/.cc-monitor/chores.json`：点过「不用了」的那几件 · 选了「我自己贴」的那份启动文件。\
              文件名 / 格式 / 落点都是本仓定的、只有后端读它 ⇒ 后端**自己的**状态，不是用户数据。在跨进程锁里读盘 → 改 → \
              经 `own_state` 原子写（`O_EXCL` 临时文件 · 0600 · 写满 → 挪过去）；只建 `~/.cc-monitor` 那一层；读不懂的那份不覆盖。\
              线上入口只有命令表资产那一族的 `chores-mark`（＋ 派生的 CLI 面）",
@@ -1172,7 +1172,7 @@ mod tests {
             "skill_ledger::answer_",
             "stream/inbound/registry/assets.rs",
         ),
-        // 「要你动手」记下的选择：一条写口 `answer_mark`（`mark_at` 是它的本体，判据直接喂临时目录）。
+        // 「待办」记下的选择：一条写口 `answer_mark`（`mark_at` 是它的本体，判据直接喂临时目录）。
         (
             "footprint/chores/marks.rs",
             "marks::answer_mark",
@@ -4487,7 +4487,7 @@ mod g6_scope_pins {
 ///    把 4 份收成 1 份之后，「一处改、全体跟」这句话**仍然是假的**
 ///    〔`split-by-defect-not-size`：拆/合由具体缺陷证成，不由份数证成〕。
 /// 3. **「4 份同形」这个说法按逐字比就不成立。** 规范化函数体之后：`control/capture_pane.rs`
-///    与 `control/oneshot_session.rs` **逐字同形**；`control/cli_control.rs` 差一个 `.into()`；
+///    与 `control/oneshot_session.rs` **逐字同形**；`control/cli_control.rs` 多一格可缺的 `raw`（下层原话）；
 ///    `control/resolve_query.rs` **结构性不同**（走 typed `ResolveError` ＋ 一条序列化失败的兜底）。
 ///    强行收成一份，要么砍掉那条兜底，要么把它摊给另三份 —— 净增复杂度。
 ///
@@ -4554,10 +4554,10 @@ mod error_envelope_registry {
         ),
         (
             "control/cli_control.rs",
-            "message.into()",
-            "一次性 CLI 入口的 `emit_err`",
-            "签名收 `impl Into<String>`（调用点既传 `&str` 也传 `format!` 出来的 `String`）\
-             ⇒ 与另两份差一个 `.into()`。它是**入口层**的出口：命令本体回什么，由它翻成信封。",
+            "let mut body = serde_json::json!",
+            "一次性 CLI 入口的 `emit_err`（信封拼在 `err_body`）",
+            "签名收 `impl Into<Said>`（调用点既传 `&str` / `String`，也传带下层原话的 `Said`）\
+             ⇒ 比另几份多一格可缺的 `raw`（下层原话，读的那一方放进复制详情）。它是**入口层**的出口：命令本体回什么，由它翻成信封。",
         ),
         (
             "control/fork_write.rs",
