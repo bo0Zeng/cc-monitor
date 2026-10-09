@@ -778,3 +778,94 @@ fn a_retry_run_is_settled_by_what_follows_it_and_keyed_by_its_first_record() {
         "超了丢最早的"
     );
 }
+
+fn priced(req: &str, model: &str, usage: Value) -> Value {
+    json!({"type": "assistant", "requestId": req, "timestamp": "t-a",
+        "message": {"model": model, "usage": usage, "content": [{"type": "text", "text": "x"}]}})
+}
+
+/// 用量与花费成品：同一次请求写出的几条只算一次（取最后一条）· 写缓存分 5m / 1h 两档（没分档的整份算 5m）·
+/// 花费按定价算好 · 定不了价的型号单列、不算进花费 · 成品串由后端写好。
+#[test]
+fn spend_counts_each_request_once_and_prices_it() {
+    let text = jsonl(&[
+        priced(
+            "r1",
+            "claude-opus-4-6",
+            json!({"input_tokens": 10, "output_tokens": 5,
+            "cache_read_input_tokens": 1000, "cache_creation_input_tokens": 300,
+            "cache_creation": {"ephemeral_5m_input_tokens": 100, "ephemeral_1h_input_tokens": 200}}),
+        ),
+        // 同一次请求的后一条：数照它（不叠加）。
+        priced(
+            "r1",
+            "claude-opus-4-6",
+            json!({"input_tokens": 10, "output_tokens": 50,
+            "cache_read_input_tokens": 1000, "cache_creation_input_tokens": 300,
+            "cache_creation": {"ephemeral_5m_input_tokens": 100, "ephemeral_1h_input_tokens": 200}}),
+        ),
+        // 没分档 ⇒ 整份算 5m。
+        priced(
+            "r2",
+            "claude-opus-4-6",
+            json!({"input_tokens": 0, "output_tokens": 0,
+            "cache_read_input_tokens": 0, "cache_creation_input_tokens": 1000}),
+        ),
+        priced(
+            "r3",
+            "some-unknown-model",
+            json!({"input_tokens": 7, "output_tokens": 7}),
+        ),
+    ]);
+    let f = scan_all(&text);
+    let s = f.spend.clone().expect("spend");
+    assert_eq!(
+        (
+            s.input,
+            s.output,
+            s.cache_read,
+            s.cache_write5m,
+            s.cache_write1h,
+            s.requests
+        ),
+        (17, 57, 1000, 1100, 200, 3)
+    );
+    // opus 4.6：$5 / $25 / 读 0.1× / 写 1.25× · 2×（每百万）⇒ 微美元。
+    // 10×5 + 50×25 + 1000×0.5 + 100×6.25 + 200×10 + 1000×6.25 = 50+1250+500+625+2000+6250
+    assert_eq!(s.cost_micros, 10675);
+    assert_eq!(s.unpriced, ["some-unknown-model"]);
+    assert!(!s.cost_text.is_empty() && !s.tokens_text.is_empty());
+    // 续传接力：从任一行边界接着扫 == 一次扫完。
+    let cut = text.find('\n').unwrap() + 1;
+    let first = scan_facts(
+        &text.as_bytes()[..cut],
+        SessionFacts::default(),
+        &Vec::new(),
+        None,
+    )
+    .unwrap();
+    let prior = prior_from(&serde_json::to_value(&first).unwrap()).unwrap();
+    let resumed = scan_facts(&text.as_bytes()[cut..], prior, &Vec::new(), None).unwrap();
+    assert_eq!(resumed.spend, f.spend);
+}
+
+/// 许可档：最后一条许可档记录说的那一档（会话事实；记录流里不显示）。
+#[test]
+fn the_permission_mode_is_the_last_one_written() {
+    let text = jsonl(&[
+        json!({"type": "permission-mode", "permissionMode": "default", "sessionId": "s"}),
+        json!({"type": "user", "message": {"content": "q"}}),
+        json!({"type": "permission-mode", "permissionMode": "acceptEdits", "sessionId": "s"}),
+    ]);
+    assert_eq!(
+        scan_all(&text).permission_mode.as_deref(),
+        Some("acceptEdits")
+    );
+    assert_eq!(
+        scan_all(&jsonl(&[
+            json!({"type": "user", "message": {"content": "q"}})
+        ]))
+        .permission_mode,
+        None
+    );
+}

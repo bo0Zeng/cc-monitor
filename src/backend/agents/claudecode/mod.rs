@@ -40,10 +40,12 @@ pub(crate) mod drift;
 // 「足迹」里的 Claude 布局（`~/.claude/…` 的基准 · settings 两个作用域）。
 pub(crate) mod footprint;
 pub(crate) mod liveness;
+// 各型号定价（会话花费成品）。
 pub(crate) mod mcp;
 pub(crate) mod parse;
 pub mod paths;
 pub(crate) mod pidfile;
+pub(crate) mod price;
 // 回包头里的额度那一族 → 通用的额度快照。
 pub(crate) mod quota;
 pub(crate) mod records;
@@ -182,6 +184,7 @@ pub(crate) const RECORDS: super::RecordFace = super::RecordFace {
     }),
     turn_end: Some(turn::turn_end_uuid_of),
     chain: Some(chain::chain_fact),
+    price: Some(price::rates),
     find_session: Some(branch::find_session_file),
     branch: Some(branch::build_branch_records),
     drift: Some(drift::report),

@@ -34,6 +34,7 @@ pub(crate) const RECORDS: crate::agents::RecordFace = crate::agents::RecordFace 
     tree: None,
     turn_end: None,
     chain: None,
+    price: None,
     // Codex 的会话不在按项目分的记录树里、今天也不分叉 ⇒ 这两格没有。
     find_session: None,
     branch: None,

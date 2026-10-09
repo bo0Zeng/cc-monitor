@@ -17257,6 +17257,34 @@
       "zh": "{path} 非会话记录 · 未删除",
       "args": ["path"]
     },
+    "beSpend.cost": {
+      "kind": "body",
+      "role": "会话花费（按定价算好）",
+      "zh": "约 ${usd}",
+      "args": ["usd"]
+    },
+    "beSpend.costPartial": {
+      "kind": "body",
+      "role": "会话花费，有型号没有定价",
+      "zh": "约 ${usd} · 部分型号没有定价",
+      "args": ["usd"]
+    },
+    "beSpend.tiny": {
+      "kind": "body",
+      "role": "会话花费不到一分钱",
+      "zh": "不到 $0.01"
+    },
+    "beSpend.noPrice": {
+      "kind": "body",
+      "role": "会话用到的型号都没有定价",
+      "zh": "没有定价"
+    },
+    "beSpend.tokens": {
+      "kind": "body",
+      "role": "会话用量",
+      "zh": "输入 {input} · 输出 {output} · 读缓存 {read} · 写缓存 {write}",
+      "args": ["input", "output", "read", "write"]
+    },
     "beFilesWrite.session.noReader": {
       "kind": "error",
       "role": "报错",

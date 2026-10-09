@@ -1,7 +1,7 @@
 {
   "history-facts": {
     "agent": "claude",
-    "end": 1241,
+    "end": 1469,
     "forkedFrom": "src-0",
     "handedBack": [
       "ag-7"
@@ -29,6 +29,7 @@
         "why": "noWriter"
       }
     ],
+    "permissionMode": null,
     "projectDir": "/g/proj",
     "retries": [
       {
@@ -40,6 +41,31 @@
         "outcome": "retrying"
       }
     ],
+    "spend": {
+      "cacheRead": 3,
+      "cacheWrite1h": 0,
+      "cacheWrite5m": 2,
+      "costMicros": 0,
+      "costText": "没有定价",
+      "input": 1,
+      "last": {
+        "costMicros": 0,
+        "id": "",
+        "tokens": [
+          1,
+          0,
+          3,
+          2,
+          0
+        ]
+      },
+      "output": 0,
+      "requests": 1,
+      "tokensText": "输入 1 · 输出 0 · 读缓存 3 · 写缓存 2",
+      "unpriced": [
+        "m-g"
+      ]
+    },
     "touchedFiles": [
       "/w/a.ts"
     ],
@@ -78,7 +104,7 @@
     "total": 2
   },
   "history-index": {
-    "end": 376,
+    "end": 476,
     "from": 0,
     "rows": [
       {
@@ -94,7 +120,7 @@
       {
         "ch": 9,
         "fd": 1,
-        "n": 137,
+        "n": 175,
         "o": 86,
         "pl": 1,
         "t": "assistant",
@@ -102,8 +128,8 @@
       },
       {
         "ch": 4,
-        "n": 75,
-        "o": 224,
+        "n": 115,
+        "o": 262,
         "pl": 1,
         "sp": "system",
         "t": "user",
@@ -111,8 +137,8 @@
       },
       {
         "ch": 5,
-        "n": 77,
-        "o": 299,
+        "n": 99,
+        "o": 377,
         "pl": 1,
         "t": "user",
         "ts": "t2",
@@ -122,7 +148,7 @@
     ]
   },
   "history-turns": {
-    "end": 1315,
+    "end": 1486,
     "from": 0,
     "turns": [
       {
@@ -172,7 +198,7 @@
       },
       {
         "agents": 0,
-        "at": 1089,
+        "at": 1222,
         "background": 0,
         "done": false,
         "end": "t10",
@@ -208,7 +234,7 @@
     ]
   },
   "history-user-inputs": {
-    "end": 376,
+    "end": 476,
     "entries": [
       {
         "excerpt": "alpha zqx beta",

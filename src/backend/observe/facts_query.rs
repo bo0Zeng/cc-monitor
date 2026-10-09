@@ -159,6 +159,46 @@ pub(crate) struct SessionFacts {
     pub(crate) handed_back: Vec<String>,
     /// 一串一串的 API 重试与结局（按首条的 `uuid`，文件序）；最后一串可能还没有下文（`retrying`）。
     pub(crate) retries: Vec<RetryRun>,
+    /// 此刻的许可档（最后一条许可档记录写的那一档，原样）；没有 ⇒ `null`。
+    pub(crate) permission_mode: Option<String>,
+    /// 全会话用量与花费（按请求去重）；一条带用量的回复都没有 ⇒ `null`。
+    pub(crate) spend: Option<Spend>,
+}
+
+/// 全会话用量与花费：同一次请求写出的几条回复只算一次（取最后一条的数）；写缓存分 5 分钟 / 1 小时两档（原文没分档 ⇒ 整份算 5 分钟档）。
+/// 花费按记录树那一家的定价算好（[`crate::agents::price_of`]）；定不了价的型号单列在 `unpriced`、不算进花费。
+/// `costText` / `tokensText` 是写好的成品串（随数一起更新）。
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct Spend {
+    pub(crate) input: u64,
+    pub(crate) output: u64,
+    pub(crate) cache_read: u64,
+    #[serde(rename = "cacheWrite5m")]
+    pub(crate) cache_write5m: u64,
+    #[serde(rename = "cacheWrite1h")]
+    pub(crate) cache_write1h: u64,
+    /// 算进来的请求数。
+    pub(crate) requests: u64,
+    /// 花费（微美元；只含定得了价的）。
+    pub(crate) cost_micros: u64,
+    /// 定不了价的型号（去重、文件序）。
+    pub(crate) unpriced: Vec<String>,
+    /// 花费写好的串（如「约 $1.23」）。
+    pub(crate) cost_text: String,
+    /// 用量写好的串（输入 · 输出 · 读缓存 · 写缓存）。
+    pub(crate) tokens_text: String,
+    /// 上一次请求（续传时同一次请求的后一条要替掉它）：键 · 那一次的五个数 · 那一次算进花费的微美元。
+    pub(crate) last: Option<LastRequest>,
+}
+
+/// [`Spend::last`]。
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct LastRequest {
+    pub(crate) id: String,
+    pub(crate) tokens: [u64; 5],
+    pub(crate) cost_micros: u64,
 }
 
 /// 一串相邻的 API 重试。
@@ -417,8 +457,10 @@ pub(crate) fn prior_from(v: &Value) -> Result<SessionFacts, String> {
         "lastSay",
         "needs",
         "pending",
+        "permissionMode",
         "projectDir",
         "retries",
+        "spend",
         "touchedFiles",
         "usage",
         "writers",
@@ -431,6 +473,32 @@ pub(crate) fn prior_from(v: &Value) -> Result<SessionFacts, String> {
         "promptTokens",
     ];
     exact_keys(v, TOP, "prior")?;
+    if !v["spend"].is_null() {
+        exact_keys(
+            &v["spend"],
+            &[
+                "cacheRead",
+                "cacheWrite1h",
+                "cacheWrite5m",
+                "costMicros",
+                "costText",
+                "input",
+                "last",
+                "output",
+                "requests",
+                "tokensText",
+                "unpriced",
+            ],
+            "prior.spend",
+        )?;
+        if !v["spend"]["last"].is_null() {
+            exact_keys(
+                &v["spend"]["last"],
+                &["costMicros", "id", "tokens"],
+                "prior.spend.last",
+            )?;
+        }
+    }
     if !v["usage"].is_null() {
         exact_keys(&v["usage"], USAGE, "prior.usage")?;
     }
@@ -508,6 +576,7 @@ pub(crate) fn settle_limit(facts: &mut SessionFacts, limits: &ContextLimits, rel
 /// 这一行有没有可能改动事实（快路，见头注）。**只许放过、不许误拦**：凡是 [`note_record`] 会动的记录，这里必为真。
 pub(crate) fn could_matter(line: &[u8], facts: &SessionFacts) -> bool {
     (facts.forked_from.is_none() && contains(line, b"\"forkedFrom\""))
+        || contains(line, b"\"permission-mode\"")
         || contains(line, b"\"usage\"")
         || contains(line, b"\"tool_use\"")
         || (contains(line, b"\"assistant\"") && contains(line, b"\"text\""))
@@ -692,6 +761,12 @@ pub(crate) fn note_record(f: &mut SessionFacts, v: &Value) {
                 }
             }
             note_usage(f, v);
+            note_spend(f, v);
+        }
+        Some("permission-mode") => {
+            if let Some(m) = v.get("permissionMode").and_then(Value::as_str) {
+                f.permission_mode = Some(m.to_string());
+            }
         }
         _ => {}
     }
@@ -765,6 +840,128 @@ fn note_usage(f: &mut SessionFacts, v: &Value) {
         limit,
         limit_from,
     });
+}
+
+/// 一条回复的用量记进花费：同一次请求（`requestId`）紧跟着的后一条替掉前一条的数。
+fn note_spend(f: &mut SessionFacts, v: &Value) {
+    let msg = v.get("message");
+    let Some(u) = msg.and_then(|m| m.get("usage")).filter(|u| u.is_object()) else {
+        return;
+    };
+    let num = |k: &str| u.get(k).and_then(Value::as_u64).unwrap_or(0);
+    let write = num("cache_creation_input_tokens");
+    let tier = |k: &str| {
+        u.get("cache_creation")
+            .and_then(|c| c.get(k))
+            .and_then(Value::as_u64)
+    };
+    let (w5, w1) = match (
+        tier("ephemeral_5m_input_tokens"),
+        tier("ephemeral_1h_input_tokens"),
+    ) {
+        (None, None) => (write, 0),
+        (a, b) => (a.unwrap_or(0), b.unwrap_or(0)),
+    };
+    let tokens = [
+        num("input_tokens"),
+        num("output_tokens"),
+        num("cache_read_input_tokens"),
+        w5,
+        w1,
+    ];
+    if tokens.iter().all(|&n| n == 0) {
+        return;
+    }
+    let model = msg
+        .and_then(|m| m.get("model"))
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    let rates = crate::agents::price_of(model);
+    let cost = rates.map_or(0, |r| {
+        let rate = [
+            r.input,
+            r.output,
+            r.cache_read,
+            r.cache_write5m,
+            r.cache_write1h,
+        ];
+        let sum: u128 = tokens
+            .iter()
+            .zip(rate)
+            .map(|(&t, r)| u128::from(t) * u128::from(r))
+            .sum();
+        u64::try_from((sum + 500_000) / 1_000_000).unwrap_or(u64::MAX)
+    });
+    let id = v
+        .get("requestId")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    let s = f.spend.get_or_insert_with(Spend::default);
+    let mut add = |sign: bool, t: &[u64; 5], c: u64| {
+        let fields = [
+            &mut s.input,
+            &mut s.output,
+            &mut s.cache_read,
+            &mut s.cache_write5m,
+            &mut s.cache_write1h,
+        ];
+        for (x, &n) in fields.into_iter().zip(t) {
+            *x = if sign {
+                x.saturating_add(n)
+            } else {
+                x.saturating_sub(n)
+            };
+        }
+        s.cost_micros = if sign {
+            s.cost_micros.saturating_add(c)
+        } else {
+            s.cost_micros.saturating_sub(c)
+        };
+    };
+    match s.last.take() {
+        Some(prev) if !id.is_empty() && prev.id == id => add(false, &prev.tokens, prev.cost_micros),
+        _ => s.requests += 1,
+    }
+    add(true, &tokens, cost);
+    if rates.is_none() && !model.is_empty() && !s.unpriced.iter().any(|m| m == model) {
+        s.unpriced.push(model.to_string());
+    }
+    s.last = Some(LastRequest {
+        id,
+        tokens,
+        cost_micros: cost,
+    });
+    dress_spend(s);
+}
+
+/// 用量 token 数写成短串（1234 ⇒ 1.2k · 1234567 ⇒ 1.2M）。
+fn short_tokens(n: u64) -> String {
+    match n {
+        0..=999 => n.to_string(),
+        1_000..=999_999 => format!("{:.1}k", n as f64 / 1e3),
+        _ => format!("{:.1}M", n as f64 / 1e6),
+    }
+}
+
+/// 花费 / 用量写成成品串（走文案表）。
+fn dress_spend(s: &mut Spend) {
+    let usd = format!("{:.2}", s.cost_micros as f64 / 1e6);
+    s.cost_text = match (s.cost_micros, s.unpriced.is_empty()) {
+        (0, false) => copy_core::copy_text("beSpend.noPrice", &[]),
+        (1..=4_999, true) => copy_core::copy_text("beSpend.tiny", &[]),
+        (_, true) => copy_core::copy_text("beSpend.cost", &[("usd", &usd)]),
+        (_, false) => copy_core::copy_text("beSpend.costPartial", &[("usd", &usd)]),
+    };
+    s.tokens_text = copy_core::copy_text(
+        "beSpend.tokens",
+        &[
+            ("input", &short_tokens(s.input)),
+            ("output", &short_tokens(s.output)),
+            ("read", &short_tokens(s.cache_read)),
+            ("write", &short_tokens(s.cache_write5m + s.cache_write1h)),
+        ],
+    );
 }
 
 #[cfg(test)]
