@@ -31,7 +31,7 @@ static ALSO_INTERNAL: std::sync::OnceLock<Vec<&'static str>> = std::sync::OnceLo
 
 /// 登记那几个名字（只认第一次）。
 pub(crate) fn also_internal(names: Vec<&'static str>) {
-    let _ = ALSO_INTERNAL.set(names);
+    ALSO_INTERNAL.get_or_init(|| names);
 }
 
 /// 这个名字是不是不往下传的（[`OWN_ENVS`] ∪ [`INTERNAL_PREFIXES`] 那几族 ∪ 上层登记的会话号变量）。
