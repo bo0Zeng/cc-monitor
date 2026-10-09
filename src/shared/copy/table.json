@@ -20439,7 +20439,7 @@
     "beRotation.explain.preempt": {
       "kind": "body",
       "role": "说明",
-      "zh": "前面的号恢复即切回",
+      "zh": "前面的号有额度就换回它",
       "args": []
     },
     "beRotation.explain.noPreempt": {
@@ -20457,20 +20457,20 @@
     "beRotation.explain.fallback": {
       "kind": "body",
       "role": "说明",
-      "zh": "{list} 兜底",
+      "zh": "{list} 只兜底",
       "args": ["list"]
     },
     "beRotation.explain.wait": {
       "kind": "body",
       "role": "说明",
-      "zh": "{dur} 内恢复则不切兜底",
+      "zh": "{dur} 内有号恢复就先等",
       "args": ["dur"]
     },
     "beRotation.explain.leave": {
       "kind": "body",
       "role": "说明",
-      "zh": "其余号恢复即切回",
-      "args": []
+      "zh": "别的号有额度就不用 {list}",
+      "args": ["list"]
     },
     "beRotation.explain.off": {
       "kind": "body",
@@ -21778,7 +21778,7 @@
     "rot.fallback.hint": {
       "kind": "body",
       "role": "悬停",
-      "zh": "其余号均不可用且等不到恢复时才切兜底",
+      "zh": "别的号都没额度时才用它 · 有号恢复就换走",
       "args": []
     },
     "rot.fallback.aria": {
@@ -22252,7 +22252,7 @@
     "rot.how.preemptHint": {
       "kind": "body",
       "role": "说明",
-      "zh": "前面的号恢复即切回",
+      "zh": "前面的号有额度就换回它",
       "args": []
     },
     "rot.how.stintHint": {
@@ -22408,7 +22408,7 @@
     "rot.why.leave": {
       "kind": "body",
       "role": "片段",
-      "zh": "离兜底",
+      "zh": "换下兜底",
       "args": []
     },
     "rot.why.stint": {
@@ -22426,7 +22426,7 @@
     "rot.why.wait": {
       "kind": "body",
       "role": "片段",
-      "zh": "等 {acct}",
+      "zh": "先等 {acct}",
       "args": ["acct"]
     },
     "acct.rot.title": {
@@ -22794,7 +22794,7 @@
     "acct.hist.wait": {
       "kind": "body",
       "role": "片段",
-      "zh": "等 {name} 恢复 · 不换到 {instead}",
+      "zh": "先等 {name} · 不用兜底 {instead}",
       "args": ["name", "instead"]
     },
     "acct.hist.held": {
@@ -22842,7 +22842,7 @@
     "acct.hist.leaveFallback": {
       "kind": "body",
       "role": "片段",
-      "zh": "兜底 · {name} 已恢复",
+      "zh": "换下兜底 · {name} 已恢复",
       "args": ["name"]
     },
     "acct.hist.more": {
