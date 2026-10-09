@@ -114,7 +114,8 @@ pub fn emit_err(code: &str, message: impl Into<copy_core::said::Said>) -> i32 {
 }
 
 fn emit_err_to(err: &mut dyn Write, code: &str, message: impl Into<copy_core::said::Said>) -> i32 {
-    let _ = writeln!(err, "{}", err_body(code, &message.into()));
+    let body = err_body(code, &message.into());
+    let _ = writeln!(err, "{body}");
     2
 }
 

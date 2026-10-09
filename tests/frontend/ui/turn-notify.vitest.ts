@@ -254,24 +254,27 @@ describe("turn-end 判定的跨语言对拍（audit-0805 F12）", () => {
     ];
     const used = new Set<string>();
     for (const c of conjuncts) {
-      const row = REGISTERED.find((r) => c.includes(r.rust));
+      // 一个合取项可以带几条判别（`ends_turn(stop_reason(p), is_api_error(p))` 一项里两条）⇒ 认出的每条都算、都核 TS 侧。
+      const rows = REGISTERED.filter((r) => c.includes(r.rust));
       expect(
-        row,
+        rows.length > 0,
         `★ backend 的 is_turn_end 长出了一个**没登记**的判别条件：\`${c}\`\n` +
           `两份实现里只有后端那份排除了这类记录 ⇒ TS 侧会为它照发「完成」通知。\n` +
           `处置二选一：① 在 turn-notify.ts 的 observe() 里补上对应判别，并在本表登记；\n` +
           `② 若 TS 侧确实不需要（例如那是后端独有的传输层顾虑），也在本表登记并写明为什么。\n` +
           `⚠ 别改本条去迁就它 —— F12 那次漂移就是这么长出来的。`,
-      ).toBeTruthy();
-      used.add(row!.rust);
-      expect(
-        impl,
-        `★ TS 侧缺「${row!.what}」（实现区里找不到 \`${row!.ts}\`）。\n` +
-          `backend 的 turn.rs 有这一条，TS 这份没有 ⇒ 同一件事两个口径。\n` +
-          `报告 §4.1 记的正是这个：turn-end 判定两份、TS 少 !isApiError。\n` +
-          `⚠ 后果是潜伏的而不是在响的（本机 107 条 API 错误记录里 end_turn 0 条），\n` +
-          `但哪天某个 CC 版本在错误记录上写 end_turn，用户就会为一次失败收到「完成」通知。`,
-      ).toContain(row!.ts);
+      ).toBe(true);
+      for (const row of rows) {
+        used.add(row.rust);
+        expect(
+          impl,
+          `★ TS 侧缺「${row.what}」（实现区里找不到 \`${row.ts}\`）。\n` +
+            `backend 的 turn.rs 有这一条，TS 这份没有 ⇒ 同一件事两个口径。\n` +
+            `报告 §4.1 记的正是这个：turn-end 判定两份、TS 少 !isApiError。\n` +
+            `⚠ 后果是潜伏的而不是在响的（本机 107 条 API 错误记录里 end_turn 0 条），\n` +
+            `但哪天某个 CC 版本在错误记录上写 end_turn，用户就会为一次失败收到「完成」通知。`,
+        ).toContain(row.ts);
+      }
     }
     // 反向锚点：登记表里不许留死行 —— backend 删掉一条判别而本表照旧，
     // 会让「登记过」看起来仍然成立，实则那一条已经没人在守。
