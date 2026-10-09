@@ -201,6 +201,50 @@ describe("账号面板", () => {
   });
 });
 
+describe("账号面板 · 来源下拉（19:52 那件：分段一按方向键就写回跟随默认）", () => {
+  const src = (): HTMLButtonElement => panel().querySelector<HTMLButtonElement>("[data-acct-src]")!;
+  const items = (): HTMLButtonElement[] => [...document.querySelectorAll<HTMLButtonElement>('body > [role="menu"] [role^="menuitem"]')];
+  const toasts = (): string[] => [...document.querySelectorAll<HTMLElement>('[role="status"], [role="alert"]')].map((t) => t.textContent ?? "");
+
+  it("★ 面板打开焦点落在来源下拉上；合着时按任何方向键 / Home / End 都不发 rotation-session-set", async () => {
+    seed({}, { order: [{ start: true }, "team"], enabled: ["team"], when: "full", atLimit: "continue" });
+    openAccountPanel("s1", "<local>", host);
+    expect(document.activeElement, "焦点在来源下拉").toBe(src());
+    for (const key of ["ArrowLeft", "ArrowRight", "ArrowUp", "Home", "End"]) {
+      for (const mods of [{}, { altKey: true }, { ctrlKey: true }, { shiftKey: true }]) src().dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, ...mods }));
+    }
+    await flush();
+    expect(writeSessionRotation).not.toHaveBeenCalled();
+    expect(src().dataset.value).toBe("custom");
+  });
+
+  it("★ 选一项只写一次，toast「orders · 跟随默认」带撤销；撤销 ⇒ 写回原来源", async () => {
+    seed({}, { order: [{ start: true }, "team"], enabled: ["team"], when: "full", atLimit: "continue" });
+    openAccountPanel("s1", "<local>", host);
+    src().click();
+    expect(items().map((i) => i.textContent)).toEqual([copyText("rot.src.follow"), copyText("rot.src.custom")]);
+    items()[0].click();
+    await flush();
+    expect(writeSessionRotation.mock.calls).toEqual([["<local>", ["s1"], "follow"]]);
+    const said = copyText("rot.done.src", { session: "orders", src: copyText("rot.src.follow") });
+    expect(toasts().some((t) => t.includes(said))).toBe(true);
+    const undo = [...document.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("kit.toast.undo"))!;
+    undo.click();
+    await flush();
+    expect(writeSessionRotation.mock.calls.at(-1)).toEqual(["<local>", ["s1"], "custom"]);
+    expect(writeSessionRotation).toHaveBeenCalledTimes(2);
+  });
+
+  it("选当前那一项 ⇒ 不写、不弹", async () => {
+    seed({}, undefined);
+    openAccountPanel("s1", "<local>", host);
+    src().click();
+    items()[0].click();
+    await flush();
+    expect(writeSessionRotation).not.toHaveBeenCalled();
+  });
+});
+
 describe("账号面板 · 额度格照后端显示态画", () => {
   const refused = (full: boolean) => ({ ...LEDGER.accounts[0], state: "refused" as const, slots: [{ slot: "5h", pct: full ? 100 : 58, resetsAt: NOW + 3600, ...(full ? { full: true } : {}) }] });
   it("★ 被拒而没用满 ⇒「58% · 被拒」（不画 ✕）；用满 ⇒ ✕", () => {
@@ -297,8 +341,8 @@ describe("账号面板 · 重启切换", () => {
       seedDefault();
       openAccountPanelAt("s1", "<local>", host, "default-rotation");
       await flush();
-      const seg = panel().querySelector('[role="radiogroup"] [aria-checked="true"]');
-      expect(seg?.textContent, "开关照实显示本会话的档").toBe(copyText("acct.rot.custom"));
+      const src = panel().querySelector<HTMLButtonElement>("[data-acct-src]");
+      expect(src?.dataset.value, "来源照实显示本会话").toBe("custom");
       const box = anchored("default-rotation");
       expect(box, "默认轮换那一块摊开了").not.toBeNull();
       expect(scrolled, "滚到那一块").toHaveBeenLastCalledWith(box);

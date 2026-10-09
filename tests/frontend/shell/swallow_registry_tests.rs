@@ -60,6 +60,7 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/backend/accounts/upstream_select/creds.rs", "let _ = writeln!(out, \"[apikey] how to fix: {fix}\");", Why::Diag, "`announce` 往它的诊断出口（stderr）印上游选择的状态行"),
     ("src/backend/accounts/manage/mcp_share_watch.rs", "let _ = live.kick.send(());", Why::PeerGone, "踢一下各号 MCP 的同步线程：线程不在了就没人要这一下（起不来那一次已经出声）"),
     ("src/backend/accounts/manage/mcp_share_watch.rs", "let _ = to_worker.send(());", Why::PeerGone, "文件事件转给同步线程：线程不在了就没人要这一下"),
+    ("src/backend/accounts/quota/rotation.rs", "let _ = tx.send(());", Why::PeerGone, "盯 rotation.json 的文件事件转给重扫线程：线程不在了就没人要这一下"),
     ("src/backend/accounts/manage/mcp_share_watch.rs", "let _ = live.watcher.unwatch(gone);", Why::CleanupAfterFailure, "名单里离开的目录卸掉 watch：多半那个号的目录已经删了，卸不掉不改名单"),
     ("src/backend/accounts/manage/exec.rs", "let _ = door::link(d, &home, &self.rel(at)?, target);", Why::CleanupAfterFailure, "私有化自检没过：删掉落位的那一份之后把原来那条链接建回去；主错误已在回、备份里有原件"),
     ("src/backend/accounts/manage/exec.rs", "let _ = door::remove(d, &home, &self.rel(&tmp)?, false);", Why::CleanupAfterFailure, "导入凭据的临时件：改权限 / 换名失败之后删它；主错误已在回，删不掉只剩一份 0600 的临时件"),
