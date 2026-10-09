@@ -170,6 +170,7 @@ for (let r = 0; r < runs; r++) {
   if (only.has("keys")) result.keys.push(...(await watchdog("按住切", benchKeys(r))));
   if (only.has("long")) result.long.push(await watchdog("长会话", benchLong(r)));
   if (only.has("viewer")) result.viewer.push(await watchdog("查看窗", benchViewer(r)));
+  if (only.has("boot")) await watchdog("开窗", openPage().then((p) => p.close())); // 只量开窗（读数在 boot 里）
 }
 result.load.end = os.loadavg();
 writeFileSync(path.join(out, "perf.json"), JSON.stringify(result, null, 1));
@@ -210,7 +211,8 @@ async function openPage() {
   // 只数 DOMContentLoaded 之后的：之前那一段是假后端在页里造合成世界（几万条记录），不是产品
   const bootLt = await page.eval("(() => { const dcl = performance.getEntriesByType('navigation')[0]?.domContentLoadedEventStart ?? 0; const lt = __perf.lt.filter((x) => x.s >= dcl); return { n: lt.length, ms: lt.reduce((a, x) => a + x.d, 0), max: lt.reduce((a, x) => Math.max(a, x.d), 0), list: __perf.lt.slice(0, 40).map((x) => [Math.round(x.s), Math.round(x.d)]), dcl: Math.round(dcl) }; })()");
   if (args.shot) console.log(`开页长任务（起点 ms, 时长 ms；DOMContentLoaded ${bootLt.dcl}）：${bootLt.list.map(([a, b]) => `${a}+${b}`).join(" ")}`);
-  result.boot.push({ ms: Date.now() - b0, quietWait: quiet, idleCpu, virgin, bootLtN: bootLt.n, bootLtMs: bootLt.ms, bootLtMax: bootLt.max, ...(await metrics(page)) });
+  const bootFrames = await page.eval("__perf.bootFrames.slice(1)");
+  result.boot.push({ ms: Date.now() - b0, quietWait: quiet, idleCpu, virgin, bootJankN: bootFrames.filter((d) => d > 50).length, bootFrameMax: Math.max(0, ...bootFrames), bootLtN: bootLt.n, bootLtMs: bootLt.ms, bootLtMax: bootLt.max, ...(await metrics(page)) });
   return page;
 }
 
@@ -609,7 +611,7 @@ function summarize(r) {
   L.push(`# 性能读数（${r.when} · ${r.mode === "build" ? "生产构建" : "开发服务器"} · ${r.runs} 趟 · loadavg 开头 ${r.load.start.map((x) => x.toFixed(1)).join("/")} 结尾 ${r.load.end.map((x) => x.toFixed(1)).join("/")}）`);
   L.push("");
   if (r.boot.length) {
-    L.push(`开页到安静：p50 ${f0(pct(r.boot.map((b) => b.ms), 0.5))} ms · 这一段长任务 p50 ${f0(pct(r.boot.map((b) => b.bootLtN ?? 0), 0.5))} 个 / 合计 ${f0(pct(r.boot.map((b) => b.bootLtMs ?? 0), 0.5))} ms / 最长 ${f0(pct(r.boot.map((b) => b.bootLtMax ?? 0), 0.5))} ms · 安静时 1.5 s 的 CPU p50 ${f0(pct(r.boot.map((b) => b.idleCpu ?? 0), 0.5))} ms`);
+    L.push(`开页到安静：p50 ${f0(pct(r.boot.map((b) => b.ms), 0.5))} ms · 这一段长任务 p50 ${f0(pct(r.boot.map((b) => b.bootLtN ?? 0), 0.5))} 个 / 合计 ${f0(pct(r.boot.map((b) => b.bootLtMs ?? 0), 0.5))} ms / 最长 ${f0(pct(r.boot.map((b) => b.bootLtMax ?? 0), 0.5))} ms · 开窗 15 s 里 >50ms 的帧 p50 ${f0(pct(r.boot.map((b) => b.bootJankN ?? 0), 0.5))} 个 / 最长 ${f0(pct(r.boot.map((b) => b.bootFrameMax ?? 0), 0.5))} ms · 安静时 1.5 s 的 CPU p50 ${f0(pct(r.boot.map((b) => b.idleCpu ?? 0), 0.5))} ms`);
     L.push(`开页安静后还没建卡的 tab p50 ${f0(pct(r.boot.map((b) => b.virgin ?? 0), 0.5))} 个 · DOM 节点 p50 ${f0(pct(r.boot.map((b) => b.Nodes), 0.5))} · JS 堆 p50 ${mb(pct(r.boot.map((b) => b.JSHeapUsedSize), 0.5))} MB`);
     L.push("");
   }

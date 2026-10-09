@@ -81,6 +81,21 @@
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", watch);
   else watch();
 
+  // 开窗那一段的帧间隔：DOMContentLoaded 起记 15 s（人一开窗就去点 —— 这一段一帧卡多久，就是点下去要等多久）
+  P.bootFrames = [];
+  const bootRec = () => {
+    const t0 = performance.now();
+    let last = t0;
+    const step = (t) => {
+      P.bootFrames.push(t - last);
+      last = t;
+      if (t - t0 < 15000) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  };
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", bootRec);
+  else bootRec();
+
   /** 某一时刻之后的那一截读数。 */
   P.since = (t) => ({
     lt: P.lt.filter((x) => x.s + x.d >= t),

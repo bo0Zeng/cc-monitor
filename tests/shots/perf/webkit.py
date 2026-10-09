@@ -209,7 +209,8 @@ def boot(v, url, result):
     idle = cpu_ms() - c0
     if args.profile:
         v.js(open(args.profile, encoding="utf8").read())
-    result["boot"].append({"ms": (time.monotonic() - b0) * 1000, "idleCpu": idle, "rss": rss_mb(), "nodes": v.js("return document.getElementsByTagName('*').length")})
+    boot_frames = v.js("return __perf.bootFrames.slice(1)")
+    result["boot"].append({"ms": (time.monotonic() - b0) * 1000, "idleCpu": idle, "rss": rss_mb(), "bootJankN": len([d for d in boot_frames if d > 50]), "bootJankMs": sum(d - 16.7 for d in boot_frames if d > 50), "bootFrameMax": max(boot_frames or [0]), "nodes": v.js("return document.getElementsByTagName('*').length")})
 
 
 def measured_click(v, i, watch_ms=1500):
@@ -389,6 +390,7 @@ def summarize(r):
     L = [f"# WebKitGTK 读数（{r['when']} · WebKitGTK {r['webkit']} · {r['runs']} 趟 · loadavg 开头 {'/'.join('%.1f' % x for x in r['load']['start'])} 结尾 {'/'.join('%.1f' % x for x in r['load']['end'])}）", ""]
     if r["boot"]:
         L.append(f"开页到安静：p50 {pct([b['ms'] for b in r['boot']], 0.5):.0f} ms · 安静时 1.5 s 的 CPU p50 {pct([b.get('idleCpu', 0) for b in r['boot']], 0.5):.0f} ms · DOM 节点 p50 {pct([b['nodes'] for b in r['boot']], 0.5)} · 常驻内存 p50 {pct([b.get('rss', 0) for b in r['boot']], 0.5):.0f} MB")
+        L.append(f"开窗 15 s 里 >50ms 的帧 p50 {pct([b.get('bootJankN', 0) for b in r['boot']], 0.5):.0f} 个 · 超出合计 p50 {pct([b.get('bootJankMs', 0) for b in r['boot']], 0.5):.0f} ms · 最长一帧 p50 {pct([b.get('bootFrameMax', 0) for b in r['boot']], 0.5):.0f} ms")
         L.append("")
     if r["switch"]:
         L.append("## 切一下（p50 / p95，ms）")
@@ -482,7 +484,7 @@ def main():
             finally:
                 v.close()
         for run in range(args.runs):
-            for name, fn in (("switch", bench_switch), ("rapid", bench_rapid), ("keys", bench_keys), ("long", bench_long)):
+            for name, fn in (("switch", bench_switch), ("rapid", bench_rapid), ("keys", bench_keys), ("long", bench_long), ("boot", lambda v, url, run, result: boot(v, url, result) or [])):
                 if name not in only:
                     continue
                 v = View()
