@@ -10,7 +10,7 @@ import { resumeLocalSession } from "./local-resume";
 import { toast, failToast } from "./kit/toast";
 import { runRemoteResume } from "./remote-launch-run";
 import { isLocalOrigin, isRemoteOrigin, type Origin } from "./ipc/origin";
-import { planRemoteFront } from "./remote-terminal-front";
+import { frontByLocalLabel, planRemoteFront } from "./remote-terminal-front";
 import type { FrontResult } from "./front-result";
 import type { FrontOutcome } from "./generated/FrontOutcome";
 import { commands } from "./ipc/commands";
@@ -390,9 +390,22 @@ async function shellFront(ask: () => Promise<FrontOutcome>): Promise<FrontResult
   }
 }
 
-/** 拉本机会话的终端到前台：壳按 sid → 窗口缓存找、三重指纹校验、拉前；回结局族（界面照族排版，`front-result.ts`）。 */
-export function bringTerminalToFront(sessionId: string): Promise<FrontResult> {
-  return shellFront(() => commands.bring_terminal_to_front({ sessionId }));
+/** 按窗口标签找那一问（monitor 没回话 / 抛了 ⇒ 当没对上）。 */
+function frontByLabel(terminals: unknown[]): Promise<FrontResult | null> {
+  return commands.bring_remote_terminal_to_front({ terminals }).catch((e: unknown) => {
+    console.warn("terminal front by label failed:", e);
+    return null;
+  });
+}
+
+/**
+ * 拉本机会话的终端到前台：壳按 sid → 窗口缓存找、三重指纹校验、拉前；壳说「没登记」⇒ 再按窗口标签找一次（本机后端答谁在显示它，
+ * `remote-terminal-front.ts::frontByLocalLabel`），对上了用那一次的结局，否则照旧「没登记」。回结局族（界面照族排版，`front-result.ts`）。
+ */
+export async function bringTerminalToFront(sessionId: string): Promise<FrontResult> {
+  const r = await shellFront(() => commands.bring_terminal_to_front({ sessionId }));
+  if (r.kind !== "unbound") return r;
+  return (await frontByLocalLabel(sessionId, frontByLabel)) ?? r;
 }
 
 /**
@@ -401,12 +414,7 @@ export function bringTerminalToFront(sessionId: string): Promise<FrontResult> {
  */
 export async function bringRemoteTerminalToFront(origin: Origin, sessionId: string): Promise<FrontResult> {
   // 按窗口标签那一问出了事（monitor 没回话 / 抛了）⇒ 当没对上，接着按连接对。
-  const byLabel = (terminals: unknown[]): Promise<FrontResult | null> =>
-    commands.bring_remote_terminal_to_front({ terminals }).catch((e: unknown) => {
-      console.warn("terminal front by label failed:", e);
-      return null;
-    });
-  const plan = await planRemoteFront(origin, sessionId, byLabel);
+  const plan = await planRemoteFront(origin, sessionId, frontByLabel);
   if ("result" in plan) return plan.result;
   return shellFront(async () => {
     const o = await commands.bring_remote_terminal_to_front({ chain: plan.chain });

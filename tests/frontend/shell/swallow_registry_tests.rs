@@ -175,6 +175,7 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/frontend/shell/src/platform/hwnd.rs", "let _ = GetWindowThreadProcessId(hwnd, Some(&mut cur_owner));", Why::NotAnError, "要的是出参里的属主 pid，返回值（线程 id）用不上"),
     ("src/frontend/shell/src/platform/hwnd.rs", "let _ = ShowWindow(h, SW_RESTORE);", Why::WindowBestEffort, ""),
     ("src/frontend/shell/src/bind.rs", "let _ = std::fs::remove_file(&p);", Why::CleanupAfterFailure, "撤死进程留下的登记文件；删不掉下次重扫再撤"),
+    ("src/frontend/shell/src/bind.rs", "let _ = std::fs::remove_file(file);", Why::CleanupAfterFailure, "bash / zsh 那一份记录用完 / 认不出 / 作废就删；删不掉下一个 monitor 起来按身份再核、再删"),
     ("src/frontend/shell/src/bind.rs", "let _ = std::fs::remove_file(await_file);", Why::CleanupAfterFailure, "等待文件用完就删；删不掉只剩一份无主的等待文件，下次按身份再核"),
     ("src/frontend/shell/src/platform/hwnd.rs", "let _ = unsafe { GetWindowThreadProcessId(hwnd, Some(&mut owner_pid)) };", Why::NotAnError, "要的是出参里的属主 pid，返回值（线程 id）用不上"),
     ("src/frontend/shell/src/platform/hwnd.rs", "let _ = unsafe { GetWindowThreadProcessId(hwnd, Some(&mut owner)) };", Why::NotAnError, "按属主筛的那一遍：同上，要的是出参里的属主 pid"),
@@ -214,10 +215,7 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/frontend/shell/src/lib.rs", "let _ = w.request_user_attention(Some(tauri::UserAttentionType::Informational));", Why::WindowBestEffort, ""),
     ("src/frontend/shell/src/platform/window.rs", "let _ = win.show();", Why::WindowBestEffort, ""),
     ("src/frontend/shell/src/platform/window.rs", "let _ = win.unminimize();", Why::WindowBestEffort, ""),
-    // 单实例回调那三行搬回 `lib.rs`：单实例各平台都注册，不再是平台差异。
-    ("src/frontend/shell/src/lib.rs", "let _ = win.set_focus();", Why::WindowBestEffort, ""),
-    ("src/frontend/shell/src/lib.rs", "let _ = win.show();", Why::WindowBestEffort, ""),
-    ("src/frontend/shell/src/lib.rs", "let _ = win.unminimize();", Why::WindowBestEffort, ""),
+    // 单实例回调那三行收进 `platform::window::raise_main`（与点通知共用，失败各留一行日志），这里不再有。
     ("src/frontend/shell/src/lib.rs", "let _ = window.set_focus();", Why::WindowBestEffort, ""),
     ("src/frontend/shell/src/link_mux.rs", "let _ = slot.tx.send(Piece::End(Some(copy_text(\"rsLinkMux.data.noCredit\", &[]))));", Why::PeerGone, ""),
     ("src/frontend/shell/src/link_mux.rs", "let _ = slot.tx.send(Piece::End(Some(why.to_string())));", Why::PeerGone, ""),
