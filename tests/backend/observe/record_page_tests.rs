@@ -7,12 +7,21 @@ fn claude() -> RecordFace {
 const USER: &str = r#"{"type":"user","uuid":"u1","timestamp":"t","cwd":"/w","message":{"role":"user","content":"q"}}"#;
 const MODE: &str = r#"{"type":"mode","mode":"normal"}"#;
 
+const FOLD_PAGE: &[&str] = &[
+    r#"{"type":"user","uuid":"u1","timestamp":"2026-01-02T03:04:05.000Z","cwd":"/w","message":{"role":"user","content":[{"type":"text","text":"ZQKEEP-user"}]}}"#,
+    r#"{"type":"assistant","uuid":"a1","parentUuid":"u1","timestamp":"2026-01-02T03:04:06.000Z","message":{"role":"assistant","model":"m","content":[{"type":"thinking","thinking":"ZQBODY-think"},{"type":"text","text":"ZQBODY-say"},{"type":"tool_use","id":"t1","name":"Read","input":{"file_path":"/w/f.txt","zq_extra":"ZQBODY-input"}}],"usage":{"input_tokens":11,"output_tokens":22}}}"#,
+    r#"{"type":"user","uuid":"u2","parentUuid":"a1","timestamp":"2026-01-02T03:04:07.000Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"ZQBODY-result"}]},"toolUseResult":{"type":"text","file":{"numLines":7}}}"#,
+    r#"{"type":"queue-operation","operation":"remove","timestamp":"2026-01-02T03:04:08.000Z","content":"ZQKEEP-queued"}"#,
+    r#"{"type":"zq-no-such-kind","uuid":"x1","timestamp":"2026-01-02T03:04:09.000Z","payload":"ZQBODY-raw"}"#,
+];
+
+
 /// 行摘要：每个可计行一条；末端是含 `\n` 之后那个字节（CRLF 的 `\r` 计在内）· 残尾 `null` · 空白行不占 ·
 /// 不进界面的只有 `{end, hash}`。
 #[test]
 fn rows_carry_exact_ends_and_only_displayable_messages() {
     let page = format!("{USER}\r\n\n  \n{MODE}\n{{torn");
-    let rows = rows_of(&claude(), 100, page.as_bytes());
+    let rows = rows_of(&claude(), 100, page.as_bytes(), false);
     assert_eq!(rows.len(), 3, "{rows:?}");
     let u = USER.len() as u64 + 2;
     assert_eq!(rows[0]["end"], 100 + u);
@@ -37,6 +46,7 @@ fn record_lines_number_countable_lines_and_keep_only_displayable() {
         std::path::Path::new("/p/abc.jsonl"),
         7,
         page.as_bytes(),
+        false,
     );
     assert_eq!(next, 9);
     assert_eq!(lines.len(), 1);
@@ -120,4 +130,208 @@ fn the_record_face_follows_the_root_the_file_lives_under() {
         .unwrap()
         .is_none());
     assert!((claude().parse)("").unwrap().is_none());
+}
+
+
+/// 夹具里只住**正文**那几格的标记（开关开 ⇒ 一个都不许剩）。
+/// 每个标记只有一个出处：思考 · 说的话 · 工具入参里主参数之外的那一格 · 工具结果正文 · 抢救下来的整行原文。
+const GONE: &[&str] = &[
+    "ZQBODY-think",
+    "ZQBODY-say",
+    "ZQBODY-input",
+    "ZQBODY-result",
+    "ZQBODY-raw",
+];
+
+/// **折起那一行自己要用的**那几格里的标记（开关开 ⇒ 一个都不许少）。
+/// 它们在原文里也住 `message.content` / `content`，但后端判好的成品（`userText.text`）里**另有一份**
+/// ⇒ 剥正文是**去重**，不是把人说的话弄丢。这一半不立，「不许有正文」那一半把投影整个弄坏也能恒绿。
+const KEPT: &[&str] = &["ZQKEEP-user", "ZQKEEP-queued"];
+
+/// 折起那一行要用的键名（开关开 ⇒ 逐个还在；它们正是界面画那一行读的那几格）。
+const FOLDED_CELLS: &[(&str, &str)] = &[
+    ("u1", "userText"),
+    ("a1", "toolCards"),
+    ("a1", "toolSteps"),
+    ("u2", "toolResults"),
+];
+
+/// ★ **两头都断**：`summary_only` 开 ⇒ 正文那几格一个不剩、折起那一行要用的一格不少；关 ⇒ 正文**必须**在。
+///
+/// 两头各自都不够：只断「开 ⇒ 不许有正文」的话，把投影整个弄坏（`message` 恒空、一条都不出成品）也能让它绿；
+/// 只断「关 ⇒ 有正文」的话，开关根本没接上也能绿。⇒ 本条逐标记两向都判，再加上**条数 · 行号 · 身份一格不变**
+/// （剥的是内容，不是「这一行在不在、是第几行」）。
+#[test]
+fn the_summary_only_product_drops_every_body_cell_and_keeps_every_folded_cell() {
+    let page = FOLD_PAGE.join("\n") + "\n";
+    let at = std::path::Path::new("/p/zq.jsonl");
+    let shape = |summary_only: bool| {
+        let (lines, next) = record_lines_of_page(&claude(), at, 5, page.as_bytes(), summary_only);
+        let (rows, text) = (
+            rows_of(&claude(), 0, page.as_bytes(), summary_only),
+            serde_json::to_string(&lines).unwrap(),
+        );
+        (lines, next, rows, text)
+    };
+    let (full_lines, full_next, full_rows, full_text) = shape(false);
+    let (fold_lines, fold_next, fold_rows, fold_text) = shape(true);
+
+    // ── 关（默认那一形）：正文**必须**在，一个标记都不许缺 ──
+    for m in GONE.iter().chain(KEPT) {
+        assert!(
+            full_text.contains(m),
+            "不给开关时 `{m}` 不在成品里 —— 夹具或投影坏了，下面那一半会恒绿"
+        );
+    }
+    // ── 开：正文那几格一个不剩 ──
+    for m in GONE {
+        assert!(
+            !fold_text.contains(m),
+            "`summary_only` 置真，正文标记 `{m}` 还在成品里：{fold_text}"
+        );
+    }
+    // ── 开：折起那一行自己要用的一格不少 ──
+    for m in KEPT {
+        assert!(
+            fold_text.contains(m),
+            "`summary_only` 置真把折起那一行要显示的 `{m}` 也剥掉了"
+        );
+    }
+    let cell = |lines: &[serde_json::Value], uuid: &str, key: &str| {
+        lines
+            .iter()
+            .find(|l| l["message"]["uuid"] == uuid)
+            .unwrap_or_else(|| panic!("夹具里没有 uuid={uuid} 那一条"))["message"][key]
+            .clone()
+    };
+    for (uuid, key) in FOLDED_CELLS {
+        assert_eq!(
+            cell(&fold_lines, uuid, key),
+            cell(&full_lines, uuid, key),
+            "`{key}`（uuid={uuid}）在折起那一形里变了 —— 它是界面画那一行读的那一格"
+        );
+    }
+    // ── 开：`message` 那个对象留着（折起那一行按 `usage` 报字数），只是没了 `content` ──
+    let msg = cell(&fold_lines, "a1", "message");
+    assert_eq!(msg["role"], "assistant");
+    assert_eq!(msg["usage"]["output_tokens"], 22);
+    assert!(
+        msg.get("content").is_none(),
+        "`content` 该是**删掉**而不是给空值（给空值等于说这一条没有正文，那是假话）：{msg}"
+    );
+
+    // ── 两形之间：条数 · 行号 · 身份 · 行摘要那几格一格不变 ──
+    assert_eq!(fold_next, full_next, "剥正文不许动行号");
+    assert_eq!(fold_lines.len(), full_lines.len(), "剥正文不许少出一条");
+    assert_eq!(fold_lines.len(), FOLD_PAGE.len(), "夹具每一行都该出成品");
+    let ident = |lines: &[serde_json::Value]| -> Vec<serde_json::Value> {
+        lines
+            .iter()
+            .map(|l| {
+                serde_json::json!([
+                    l["seq"].clone(),
+                    l["session_id"].clone(),
+                    l["path"].clone(),
+                    l["cwd"].clone(),
+                    l["message"]["uuid"].clone(),
+                    l["message"]["type"].clone(),
+                    l["message"]["timeText"].clone(),
+                ])
+            })
+            .collect()
+    };
+    assert_eq!(ident(&fold_lines), ident(&full_lines), "行标识 / 时刻字格变了");
+    let ends = |rows: &[serde_json::Value]| -> Vec<serde_json::Value> {
+        rows.iter()
+            .map(|r| serde_json::json!([r["end"].clone(), r["hash"].clone(), r["cwd"].clone()]))
+            .collect()
+    };
+    assert_eq!(
+        ends(&fold_rows),
+        ends(&full_rows),
+        "行摘要的 `end` / `hash` / `cwd` 变了（续传要靠它们核「还是不是那一行」）"
+    );
+    // 剩不下**一个** `content` 键：三处剥（`message.content` · `queue-operation` 的 `content`）漏一处就红。
+    // 比「小了多少」强：省多少是夹具的函数（真数据上的读数住 `zq1_summary_only_saving_reading`），
+    // 而「这个键名一个都不剩」是形状上的话，跟夹具大小无关。
+    assert!(
+        !fold_text.contains("\"content\""),
+        "折起那一形里还剩 `content` 这个键：{fold_text}"
+    );
+    assert!(
+        full_text.contains("\"content\""),
+        "不给开关时连 `content` 键都没有 —— 上面那一条会恒绿"
+    );
+    assert!(
+        fold_text.len() < full_text.len(),
+        "折起那一形没比全文小（{} vs {}）",
+        fold_text.len(),
+        full_text.len()
+    );
+}
+
+/// 秤（读数不是判据，故 `#[ignore]`）：**真规模本机历史**（只读）上「开 / 不开 `summaryOnly`」的字节差。
+/// 量的是三条读记录命令真正交出去的那一形（`record_lines` 的成品 JSON），按会话抽样、不打印任何正文。
+/// 跑法（`src/backend` 下）：
+/// `cargo test --offline --lib zq1_summary_only_saving_reading -- --ignored --nocapture`
+/// 抽样份数由 `ZQ1_FILES` 调（缺省 120；`0` ＝ 全量）。
+#[test]
+#[ignore = "ZQ1 读数：真规模本机历史（只读）只量字节差；跑法住本条头注"]
+fn zq1_summary_only_saving_reading() {
+    let Ok(home) = std::env::var("HOME") else {
+        println!("无 HOME，跳过");
+        return;
+    };
+    let want: usize = std::env::var("ZQ1_FILES")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(120);
+    let root = std::path::PathBuf::from(&home).join(".claude/projects");
+    let mut files = Vec::new();
+    let mut stack = vec![root];
+    while let Some(d) = stack.pop() {
+        let Ok(rd) = std::fs::read_dir(&d) else {
+            continue;
+        };
+        for e in rd.flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                stack.push(p);
+            } else if p.extension().and_then(|s| s.to_str()) == Some("jsonl") {
+                files.push(p);
+            }
+        }
+    }
+    files.sort();
+    let total_files = files.len();
+    // 等距抽样（不借随机数：同一台机器上两次读数可比）。
+    if want > 0 && files.len() > want {
+        let step = files.len() / want;
+        files = files.into_iter().step_by(step).take(want).collect();
+    }
+    let (mut raw, mut full, mut fold, mut rows, mut n) = (0u64, 0u64, 0u64, 0u64, 0u64);
+    for p in &files {
+        let Ok(bytes) = std::fs::read(p) else { continue };
+        raw += bytes.len() as u64;
+        for summary_only in [false, true] {
+            let (lines, _) = record_lines_of_page(&claude(), p, 0, &bytes, summary_only);
+            let n_bytes = serde_json::to_string(&lines).unwrap().len() as u64;
+            if summary_only {
+                fold += n_bytes;
+            } else {
+                full += n_bytes;
+                rows += lines.len() as u64;
+            }
+        }
+        n += 1;
+    }
+    let pct = |a: u64, b: u64| 100.0 * a as f64 / b.max(1) as f64;
+    println!("ZQ1 build={} files={n}/{total_files} rows={rows}", crate::BUILD_ID);
+    println!("ZQ1 raw_jsonl={raw} full_product={full} ({:.2}% of raw)", pct(full, raw));
+    println!(
+        "ZQ1 summary_only={fold} ({:.2}% of full_product) ⇒ 省 {} 字节 / {:.2}%",
+        pct(fold, full),
+        full - fold,
+        100.0 - pct(fold, full)
+    );
 }

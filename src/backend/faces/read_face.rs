@@ -228,6 +228,7 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
             let path = str_arg(args, "path")?;
             let offset = u64_arg(args, "offset")?.unwrap_or(0);
             let until = u64_arg(args, "until")?;
+            let summary_only = summary_only(args);
             let (_, face) = record_face(home, path)?;
             let page = history_query::read_page(
                 home,
@@ -238,7 +239,7 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
                 LINE_CAP_BYTES,
             )?;
             Ok(json!({
-                "rows": crate::observe::record_page::rows_of(&face, offset, &page.bytes),
+                "rows": crate::observe::record_page::rows_of(&face, offset, &page.bytes, summary_only),
                 "next": page.next,
                 "eof": page.eof,
             }))
@@ -252,6 +253,7 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
             let until = u64_arg(args, "until")?;
             let seq = u64_arg(args, "seq")?.unwrap_or(0);
             let whole = args.get("whole").and_then(Value::as_bool).unwrap_or(false);
+            let summary_only = summary_only(args);
             let (target, face) = record_face(home, path)?;
             let page = history_query::read_page(
                 home,
@@ -274,8 +276,13 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
                     ),
                 ));
             }
-            let (lines, next_seq) =
-                crate::observe::record_page::record_lines_of_page(&face, &target, seq, &page.bytes);
+            let (lines, next_seq) = crate::observe::record_page::record_lines_of_page(
+                &face,
+                &target,
+                seq,
+                &page.bytes,
+                summary_only,
+            );
             Ok(json!({
                 "lines": lines,
                 "next": page.next,
@@ -289,6 +296,7 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
             let path = str_arg(args, "path")?;
             let from = u64_arg(args, "from")?.unwrap_or(0);
             let until = u64_arg(args, "until")?;
+            let summary_only = summary_only(args);
             let (target, face) = record_face(home, path)?;
             let page = history_query::read_lines(
                 home,
@@ -303,6 +311,7 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
                 &target,
                 page.from,
                 page.lines.iter().map(|l| l.as_bytes()),
+                summary_only,
             );
             Ok(json!({
                 "from": page.from,
@@ -652,6 +661,32 @@ fn opt_str_arg<'a>(args: &'a Value, key: &str) -> Result<Option<&'a str>, (&'sta
             crate::common::contract::malformed(&format!("{key} must be a string")),
         )),
     }
+}
+
+/// `summaryOnly`：客户端**显式只要折起那一行的成品** —— 读记录那三条（`history-read` · `history-page` ·
+/// `history-lines`）每条的 `message` 剥掉正文那几格（哪几格、为什么留 `message` 这个对象见
+/// `observe/record_page.rs::fold_body`）。缺 / 不是 `true` ⇒ 默认 `false` ＝ 今天的行为，一切照旧。
+///
+/// # 为什么是**一次一问的入参**，不是 `ReaderState` 的一位
+///
+/// `watcher.rs` 的 `with_raw` / `with_pid` 住连接上，是因为它们管的是**推**出去的帧
+/// （`line` / `session_added` 没有「这一问」可以带标志，只有连接可带）。这三条是**拉**的
+/// 一问一答，`args` 本来就在手上 ⇒ 入参是它唯一自然的家；而且更有表达力：同一条连接
+/// 可以「列表问折起的、查看器问全文的」，连接级的一位做不到这件事。
+///
+/// # 「反向开关」这个不对称
+///
+/// `with_*` 那两位是「客户端显式**索要**一格」（加数据），这一位看着像「客户端显式**不要**一坨」（减数据）。
+/// 名字按**它给什么**起而不按它拿掉什么起（`summaryOnly`，不是 `withoutContent`），不对称就落回原处：
+/// 它是**选成品的形状**（折起那一形 ‖ 全文那一形），与 `with_*` 同样是 additive 的一位 ——
+/// 默认那一形一个字节都不动，老客户端不受影响。真正残留的不对称只有一处、且是性质决定的：
+/// 索要型拿到的是超集，选形型拿到的是**另一形**（要正文得再问一次全文那一形）。
+/// ⇒ 它只属于「知道自己在折」的客户端；**不许**变成默认，也不许由后端替谁猜。
+///
+/// 宽松收（不是 `true` 就当 `false`，不回 `bad_args`）：与同族的 `whole` / `titles` / `appExit` 同一个口径；
+/// 这一位上「收宽了」的后果是**多给了正文**（对但费流量），不是少给。
+fn summary_only(args: &Value) -> bool {
+    args.get("summaryOnly").and_then(Value::as_bool) == Some(true)
 }
 
 fn u64_arg(args: &Value, key: &str) -> Result<Option<u64>, (&'static str, String)> {
