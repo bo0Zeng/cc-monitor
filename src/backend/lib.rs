@@ -1003,6 +1003,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--place-verdict",
     // 这台后端的漂移账（帧面 `drift-report` 的 CLI 面，自动派生）。⇒ `build_id_guard` 红是预期的（本路不 bump）。
     "--drift-report",
+    // 格目录（帧面 `cells-catalog` 的 CLI 面，自动派生）。⇒ `build_id_guard` 红是预期的（本路不 bump）。
+    "--cells-catalog",
     // 公钥推送两条（帧面 `pubkey-push` / `authorized-keys-add` 的 CLI 面，自动派生；远端那台被 `remote_ask::ask_json` 走的就是后一条）。
     "--authorized-keys-add",
     "--pubkey-push",

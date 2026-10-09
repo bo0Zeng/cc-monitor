@@ -825,7 +825,7 @@ fn tokens_count_each_request_once_with_two_cache_write_tiers() {
         (17, 57, 1000, 1100, 200, 3)
     );
     assert_eq!(
-        t.text,
+        t.text.0,
         copy_core::copy_text(
             "beSpend.tokens.line",
             &[
@@ -860,12 +860,15 @@ fn cost_is_the_last_cost_record_as_written() {
         Some(Cost {
             micros: 1_234_000,
             partial: false,
-            text: copy_core::copy_text("beSpend.cost.exact", &[("usd", "1.23")])
+            text: crate::common::cells::Words(copy_core::copy_text(
+                "beSpend.cost.exact",
+                &[("usd", "1.23")]
+            ))
         })
     );
     let f = scan_all(&jsonl(&[cost(2.0, true)]));
     assert_eq!(
-        f.cost.as_ref().map(|c| c.text.clone()),
+        f.cost.as_ref().map(|c| c.text.0.clone()),
         Some(copy_core::copy_text(
             "beSpend.cost.about",
             &[("usd", "2.00")]
@@ -873,7 +876,7 @@ fn cost_is_the_last_cost_record_as_written() {
     );
     let f = scan_all(&jsonl(&[cost(0.001, false)]));
     assert_eq!(
-        f.cost.map(|c| c.text),
+        f.cost.map(|c| c.text.0),
         Some(copy_core::copy_text("beSpend.cost.tiny", &[]))
     );
 }
