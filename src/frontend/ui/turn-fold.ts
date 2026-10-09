@@ -123,6 +123,10 @@ export class TurnFold {
   /** 上一次排版时每一轮过程里的最后一张卡（竖线画到它底下、收起行接在它后面）。 */
   private lastOf = new Map<string, HTMLElement>();
   private expandedDefault: boolean;
+  /** 量到过的过程行高（`linePx`；0 ＝ 还没量到）。 */
+  private measuredLinePx = 0;
+  /** 每条过程行上次画的是什么（同样的就不重画：重排一次就把每条行拆了重建 ＝ 长会话滚动时一次物化几千个节点）。 */
+  private readonly painted = new WeakMap<HTMLElement, string>();
 
   constructor(
     private readonly content: HTMLElement,
@@ -138,8 +142,7 @@ export class TurnFold {
     });
     this.mo.observe(content, { childList: true });
     this.ro = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => {
-      this.placeTails(this.lastOf);
-      this.sizeRules();
+      this.placeTailsAndRules(this.lastOf);
     });
     this.ro?.observe(content);
     content.addEventListener(PROC_REVEAL_EVENT, this.onReveal);
@@ -271,8 +274,7 @@ export class TurnFold {
     }
     this.lastOf = lastOf;
     this.foldSkeleton(spans);
-    this.placeTails(lastOf);
-    this.sizeRules();
+    this.placeTailsAndRules(lastOf);
     this.mo.takeRecords();
   }
 
@@ -325,12 +327,17 @@ export class TurnFold {
     sk.setFolds({ folded, lines, linePx: this.linePx() });
   }
 
-  /** 一条过程行在流里占多高（量第一条建出来的：盒高 ＋ 下边距；还没有 ⇒ 稿上的 28 ＋ 12）。 */
+  /**
+   * 一条过程行在流里占多高（量第一条建出来的：盒高 ＋ 下边距；还没有 ⇒ 稿上的 28 ＋ 12）。
+   * 量到一次就记住：行高是样式表里写死的（不随内容、不随网页缩放变 —— 量的是 CSS 像素），每次重排都量 ＝ 每次都逼整页同步布局
+   * （长会话滚动时一次物化一次重排，量这一下占了主线程的一大块）。
+   */
   private linePx(): number {
+    if (this.measuredLinePx > 0) return this.measuredLinePx;
     const line = this.lines.values().next().value;
     if (line?.isConnected) {
       const h = line.getBoundingClientRect().height;
-      if (h > 0) return h + parseFloat(getComputedStyle(line).marginBottom || "0");
+      if (h > 0) return (this.measuredLinePx = h + parseFloat(getComputedStyle(line).marginBottom || "0"));
     }
     return LINE_PX_FALLBACK;
   }
@@ -384,16 +391,68 @@ export class TurnFold {
       this.lines.set(turn.uuid, line);
     }
     if (head.nextElementSibling !== line) head.after(line);
-    paintLine(line, turn, this.expanded(turn), Date.now());
+    const open = this.expanded(turn);
+    const now = Date.now();
+    const sig = `${open}\u0000${turn.phase}\u0000${fillDur(turn.span, now)}\u0000${turn.parts.map((p) => `${p.tone}\u0001${p.text}`).join("\u0000")}`;
+    if (this.painted.get(line) === sig) return;
+    this.painted.set(line, sig);
+    paintLine(line, turn, open, now);
   }
 
-  /** 展开的那几轮：过程行下面那道竖线画到这一轮过程（含收起行）的底。 */
-  private sizeRules(): void {
+  /**
+   * 展开的那几轮：过程高过一屏 ⇒ 末尾一行「‹ 收起这段过程」（别的轮的收起行摘掉）；过程行下面那道竖线画到这一轮过程（含收起行）的底。
+   * 先量后写、成块：量一下写一下 ＝ 每一轮都逼一次整页重排（`Ctrl+O` 全展开时几百轮，一下几百毫秒）。
+   * 新插进去 / 挪了位置的收起行要插完才量得到 ⇒ 再量一块；没动的沿用头一块的读数（它前面插 / 摘别的轮的收起行，
+   * 过程行与它一起挪，差不变；竖线是绝对定位的，插它不动排版）。
+   */
+  private placeTailsAndRules(lastOf: Map<string, HTMLElement>): void {
+    const open: Array<{ uuid: string; line: HTMLElement; last: HTMLElement; span: number; tailSpan: number | null }> = [];
     for (const [uuid, line] of this.lines) {
       const turn = this.byUuid.get(uuid);
-      const last = this.tails.get(uuid) ?? this.lastOf.get(uuid);
+      const last = lastOf.get(uuid);
+      if (turn && last && this.expanded(turn)) open.push({ uuid, line, last, span: 0, tailSpan: null });
+    }
+    // 头一块：量（视口高 · 每一轮过程的跨度 · 已在原位的收起行底）
+    const view = open.length > 0 ? this.scroller.clientHeight : 0;
+    for (const o of open) {
+      const lineBottom = o.line.getBoundingClientRect().bottom;
+      o.span = o.last.getBoundingClientRect().bottom - lineBottom;
+      const tail = this.tails.get(o.uuid);
+      if (tail && o.last.nextElementSibling === tail) o.tailSpan = tail.getBoundingClientRect().bottom - lineBottom;
+    }
+    // 写：收起行进出
+    const keep = new Set<string>();
+    const fresh: typeof open = [];
+    for (const o of open) {
+      if (view === 0 || o.span <= view) continue;
+      keep.add(o.uuid);
+      let tail = this.tails.get(o.uuid);
+      if (!tail) {
+        const uuid = o.uuid;
+        tail = document.createElement("button");
+        tail.type = "button";
+        tail.className = PROC_TAIL_CLASS;
+        tail.append(foldCaret(), copyText("stream.proc.collapseTail"));
+        tail.addEventListener("click", () => this.collapseFromTail(uuid));
+        this.tails.set(uuid, tail);
+      }
+      if (o.last.nextElementSibling !== tail) {
+        o.last.after(tail);
+        fresh.push(o);
+      }
+    }
+    for (const [uuid, tail] of this.tails) {
+      if (keep.has(uuid)) continue;
+      tail.remove();
+      this.tails.delete(uuid);
+    }
+    // 写：竖线进出
+    const ruled: Array<[HTMLElement, (typeof open)[number]]> = [];
+    const byUuid = new Map(open.map((o) => [o.uuid, o]));
+    for (const [uuid, line] of this.lines) {
       let rule = line.querySelector<HTMLElement>(":scope > .proc-rule");
-      if (!turn || !last || !this.expanded(turn)) {
+      const o = byUuid.get(uuid);
+      if (!o) {
         rule?.remove();
         continue;
       }
@@ -402,37 +461,11 @@ export class TurnFold {
         rule.className = "proc-rule";
         line.appendChild(rule);
       }
-      const h = Math.max(0, last.getBoundingClientRect().bottom - line.getBoundingClientRect().bottom);
-      rule.style.height = `${h}px`;
+      ruled.push([rule, o]);
     }
-  }
-
-  /** 展开的过程高过一屏 ⇒ 末尾一行「‹ 收起这段过程」；别的轮的收起行摘掉。 */
-  private placeTails(lastOf: Map<string, HTMLElement>): void {
-    const keep = new Set<string>();
-    const view = this.scroller.clientHeight;
-    for (const [uuid, last] of lastOf) {
-      const turn = this.byUuid.get(uuid);
-      const line = this.lines.get(uuid);
-      if (!turn || !line || view === 0 || !this.expanded(turn)) continue;
-      if (last.getBoundingClientRect().bottom - line.getBoundingClientRect().bottom <= view) continue;
-      keep.add(uuid);
-      let tail = this.tails.get(uuid);
-      if (!tail) {
-        tail = document.createElement("button");
-        tail.type = "button";
-        tail.className = PROC_TAIL_CLASS;
-        tail.append(foldCaret(), copyText("stream.proc.collapseTail"));
-        tail.addEventListener("click", () => this.collapseFromTail(uuid));
-        this.tails.set(uuid, tail);
-      }
-      if (last.nextElementSibling !== tail) last.after(tail);
-    }
-    for (const [uuid, tail] of this.tails) {
-      if (keep.has(uuid)) continue;
-      tail.remove();
-      this.tails.delete(uuid);
-    }
+    // 第二块：只量刚插进去的收起行
+    for (const o of fresh) o.tailSpan = this.tails.get(o.uuid)!.getBoundingClientRect().bottom - o.line.getBoundingClientRect().bottom;
+    for (const [rule, o] of ruled) rule.style.height = `${Math.max(0, keep.has(o.uuid) ? (o.tailSpan ?? o.span) : o.span)}px`;
   }
 
   /** 末尾那一行收起：收完把折叠行放到收起行原来的屏幕位置（视口不跳）。 */

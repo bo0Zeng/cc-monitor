@@ -277,7 +277,9 @@ export class TabStreamView {
       turns: () => turnFold.all,
       waiting: () => this.store.tabs.get(sessionId)?.needs != null,
       speaker: () => speakerNameOf(this.store.tabs.get(sessionId)?.agent ?? null),
-      jump: (uuid) => void this.jumpInTab(sessionId, streamEl, uuid),
+      // 刻度跳不过去（那一段还取不回来：骨架没接上、`jumpInTab` 已经踢了一次要骨架）⇒ 这一下就算了，再点多半已接上。
+      // 不能让它成一条没人接的 rejection：全局兜底会把整条状态栏换成一行「REJ: …」。
+      jump: (uuid) => void Promise.resolve(this.jumpInTab(sessionId, streamEl, uuid)).catch(() => undefined),
       inFront: () => this.store.activeId === sessionId,
     });
     turnFold.onTurns = () => turnRail.render();

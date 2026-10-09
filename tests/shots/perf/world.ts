@@ -45,7 +45,7 @@ function numbered(body: string): string {
 }
 
 /** 一轮：你说一句 → 思考 → 一串工具 → 过程中说一两句 → 收尾的回答（带代码块）。 */
-function turn(c: Convo, cwd: string, i: number, heavy: boolean): void {
+export function turn(c: Convo, cwd: string, i: number, heavy: boolean): void {
   const mod = `packages/mod-${i % 23}`;
   c.user(`第 ${i} 轮：把 ${mod} 里的分页逻辑改成游标分页，顺带补测试。`);
   c.think(`先看 ${mod} 现在的分页实现与调用点，再决定游标放在哪一层。第 ${i} 轮。`, `我先看一下 ${mod} 的现状。`);
@@ -146,5 +146,34 @@ export function perfWorld(): World {
   w.opDelayMs = { "history-index": 150, "history-turns": 150, "history-user-inputs": 120, "history-facts": 120, "history-page": 60 };
   // 真壳的重放缓冲每会话只留尾部 600 条（`event_replay.rs::REPLAY_TAIL_KEEP`）；更早的由骨架索引按偏移取。
   w.replayTail = 600;
+  return w;
+}
+
+/**
+ * 主窗口其余那几项（perfA：滚动 · 实时来消息 · 查找 · 大纲 · 「需要你」· 面板 · 抽屉）的世界：同一屋子 tab，
+ * 另加几条在等你的（「需要你」清单有东西）、最长那条带一串子 agent 与任务（agent / 任务抽屉有东西）。
+ */
+export function perfMainWorld(): World {
+  const w = perfWorld();
+  const now = Date.now();
+  [2, 5, 9, 14, 19].forEach((k, j) => {
+    const s = w.sessions[k];
+    s.activity = "needs_you";
+    s.waitingFor = j % 2 ? "question" : "permission prompt";
+    s.waitingSinceMs = now - (j + 1) * 90_000;
+  });
+  const longest = w.sessions[0];
+  longest.runs = Array.from({ length: 12 }, (_, k) => ({
+    run: `agent-p${k}`,
+    label: `检查 packages/mod-${k} 的同类调用`,
+    kind: "Explore",
+    state: k < 3 ? "running" : "done",
+    last: { t: "tool", name: "Grep" },
+    started_ms: now - (40 - k) * 60_000,
+    active_ms: now - (20 - k) * 60_000,
+    calls: 10 + k,
+  }));
+  longest.runRecords = Object.fromEntries(longest.runs.map((r, k) => [r.run, convo(0x100, longest.cwd, k === 0 ? 300 : 20, false).records]));
+  longest.tasks = Array.from({ length: 30 }, (_, k) => ({ id: String(k + 1), subject: `改 packages/mod-${k} 的分页`, status: k < 20 ? "completed" : k < 22 ? "in_progress" : "pending", blocks: [], blockedBy: [] }));
   return w;
 }
