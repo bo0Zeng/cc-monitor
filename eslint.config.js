@@ -144,4 +144,11 @@ export default tseslint.config(
       globals: { ...globals.node },
     },
   },
+  {
+    // 性能台架注进页面里跑的那两段（probe.js · profile.js）：浏览器那一半。
+    files: ["tests/shots/perf/**/*.js"],
+    languageOptions: {
+      globals: { ...globals.browser },
+    },
+  },
 );

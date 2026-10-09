@@ -4966,7 +4966,7 @@
     "accountCommands.rotApply.title": {
       "kind": "action",
       "role": "按钮",
-      "zh": "轮换：套用规则…",
+      "zh": "套用规则…",
       "args": []
     },
     "accountCommands.rotRules.keywords": {
@@ -4978,8 +4978,11 @@
     "accountCommands.rotRules.title": {
       "kind": "action",
       "role": "按钮",
-      "zh": "设置：{machine}轮换规则",
-      "args": ["machine"]
+      "zh": "{machine} 轮换规则",
+      "args": ["machine"],
+      "waive": {
+        "C-W15": "带机器名（用户起的名字）"
+      }
     },
     "accountCommands.manage.keywords": {
       "kind": "body",
