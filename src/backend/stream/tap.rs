@@ -130,6 +130,8 @@ pub struct TapRx {
     rotation: Option<tokio::sync::broadcast::Receiver<String>>,
     /// 这台的规则表 / 默认指向变了的通道（变了推一帧 `rotation_rules_changed`）；`None` ＝ 不订。
     rules: Option<tokio::sync::broadcast::Receiver<()>>,
+    /// 某个 pb 工作区的计划变了的通道（变了推一帧 `plan_changed`）；`None` ＝ 不订。
+    plan: Option<tokio::sync::broadcast::Receiver<(String, String)>>,
     book: std::sync::Arc<crate::observe::runs::RunBook>,
     router: super::run_route::RunRouter,
     out: std::collections::VecDeque<Frame>,
@@ -171,6 +173,12 @@ impl TapSource for TapRx {
                     // 落后丢了几件也照推一帧（客户端反正整份重问）。
                     Some(()) => self.out.push_back(Frame::RotationRulesChanged),
                     None => self.rules = None,
+                },
+                moved = plan_moved(&mut self.plan) => match moved {
+                    Some(Some((workspace, rev))) => self.out.push_back(Frame::PlanChanged { workspace, rev }),
+                    // 落后丢了几件：可丢的通道，下一次变化或重问就补上。
+                    Some(None) => {}
+                    None => self.plan = None,
                 }
             }
         }
@@ -184,7 +192,23 @@ pub fn attach(book: std::sync::Arc<crate::observe::runs::RunBook>) -> TapRx {
     rx.quota = Some(crate::accounts::quota::ledger::bell().subscribe());
     rx.rotation = Some(crate::accounts::quota::rotation::changes().subscribe());
     rx.rules = Some(crate::accounts::quota::rotation::rules_changes().subscribe());
+    rx.plan = Some(crate::plan::watch::changes().subscribe());
     rx
+}
+
+/// 某个工作区的计划变了 ⇒ `Some(Some((工作区, 摘要)))`；落后丢了几件 ⇒ `Some(None)`；通道没了 ⇒ `None`；没订 ⇒ 永远不醒。
+async fn plan_moved(
+    r: &mut Option<tokio::sync::broadcast::Receiver<(String, String)>>,
+) -> Option<Option<(String, String)>> {
+    use tokio::sync::broadcast::error::RecvError;
+    match r {
+        Some(r) => match r.recv().await {
+            Ok(x) => Some(Some(x)),
+            Err(RecvError::Lagged(_)) => Some(None),
+            Err(RecvError::Closed) => None,
+        },
+        None => std::future::pending().await,
+    }
 }
 
 /// 规则表变了（含落后丢了几件）⇒ `Some(())`；通道没了 ⇒ `None`；没订 ⇒ 永远不醒。
@@ -235,6 +259,7 @@ pub(crate) fn attach_rx(
         quota: None,
         rotation: None,
         rules: None,
+        plan: None,
     }
 }
 

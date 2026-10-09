@@ -25,10 +25,16 @@ fn rc3_is_not_a_workspace_and_carries_pbs_sentence() {
 
 #[test]
 fn rc4_or_an_unknown_shape_means_this_pb_cannot_dump_for_us() {
-    assert!(matches!(classify(Some(4), b"", b"usage"), Ran::Unsupported(_)));
+    assert!(matches!(
+        classify(Some(4), b"", b"usage"),
+        Ran::Unsupported(_)
+    ));
     let mut doc = fixture_dump("/w");
     doc["shape"] = serde_json::json!(2);
-    assert!(matches!(classify(Some(0), doc.to_string().as_bytes(), b""), Ran::Unsupported(_)));
+    assert!(matches!(
+        classify(Some(0), doc.to_string().as_bytes(), b""),
+        Ran::Unsupported(_)
+    ));
     assert!(matches!(classify(Some(0), b"{}", b""), Ran::Unsupported(_)));
 }
 
@@ -38,7 +44,10 @@ fn other_codes_and_garbage_are_failures_with_the_raw_sentence() {
         Ran::Failed { raw, .. } => assert_eq!(raw.as_deref(), Some("refused here")),
         other => panic!("{other:?}"),
     }
-    assert!(matches!(classify(Some(0), b"not json", b""), Ran::Failed { .. }));
+    assert!(matches!(
+        classify(Some(0), b"not json", b""),
+        Ran::Failed { .. }
+    ));
     assert!(matches!(classify(None, b"", b""), Ran::Failed { .. }));
 }
 
@@ -70,5 +79,8 @@ fn a_real_run_outside_any_workspace_is_not_a_workspace() {
     let d = scratch("dump-outside");
     let entry = fake_pb(&d.join("pb"), crate::plan::locate::PLUGIN_NAME, None);
     std::fs::create_dir_all(d.join("plain")).unwrap();
-    assert!(matches!(run(&entry, &d.join("plain")), Ran::NotWorkspace(_)));
+    assert!(matches!(
+        run(&entry, &d.join("plain")),
+        Ran::NotWorkspace(_)
+    ));
 }

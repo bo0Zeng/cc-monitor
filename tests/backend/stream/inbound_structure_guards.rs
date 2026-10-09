@@ -412,6 +412,10 @@ fn every_registered_command_declares_its_run_kind() {
                 | "session-new"
                 | "session-new-facts"
                 | "session-new-dir"
+                // 计划读面三条：起一次 pb 子进程（研究盘约 1 秒）· 读记录树对会话（同步 I/O）。
+                | "plan-list"
+                | "plan-read"
+                | "plan-cell-view"
         );
         let is_blocking = matches!(spec.run, Run::Blocking(_) | Run::BlockingData(_));
         assert_eq!(
@@ -642,6 +646,10 @@ fn every_registered_command_declares_its_run_kind() {
         "session-new",
         "session-new-facts",
         "session-new-dir",
+        // 计划读面三条：阻塞（起 pb 子进程）。
+        "plan-list",
+        "plan-read",
+        "plan-cell-view",
         // 换号重启：可撤档（步与步之间 await，起 tmux 的几步自己挪到阻塞线程池）。
         "session-restart",
         // 现在就换：异步（重启换那一半等 `session-restart`；不重启换那一半自己挪到阻塞线程池）。

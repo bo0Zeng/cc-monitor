@@ -166,6 +166,15 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 （无字段）
 
+### `plan_changed`
+
+**这台某个 pb 工作区的计划变了**（计划仓 `.planned-build/` 或工作区 `.env` 有动静，重跑 `pb dump` 后输出摘要变了）。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `workspace` | string | 工作区根 |
+| `rev` | string | 新的输出摘要（同 `plan-read` 的 `rev`） |
+
 ### `tasks_changed`
 
 **这台机器上某个会话的任务清单变了**（`<agent 家>/tasks/<sid>/` 里有动静）。
@@ -3576,6 +3585,54 @@ cc-bus 钩子诊断。
 
 码：`bad_args`
 
+### 4.10 计划读面
+
+#### `plan-list`
+
+这台的 pb 工作区与片（目录 ＝ 活会话的工作目录 ∪ `dirs`，pb 自己往上找工作区）。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --plan-list`
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `dirs` | → | 可选：另要问的目录（串的数组） |
+| `fresh` | → | 可选布尔：`true` ⇒ 认过的目录也重问 |
+| `pb` | ← | `{state: ok\|missing\|unsupported, said, version}`：pb 装没装、认不认得它的输出 |
+| `workspaces` | ← | 每个工作区一格 `{workspace, repo, auto, rev, stale, slices: [{name, domain, current, progress, error, stale}]}` |
+
+码：`bad_args`
+
+#### `plan-read`
+
+一个工作区的成品（几片的图 · 状态 · 签收 · 块 · 判据；接手与签收人对到会话；不带 agent_view）。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --plan-read`
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `workspace` | → | 工作区根（`plan-list` 给的那个） |
+| `rev` | ← | 这一份输出的摘要：变了才算计划变了 |
+| `readAt` | ← | 读到的时刻（epoch ms） |
+| `slices` | ← | 每片一格：读不成 ⇒ `error`；这一刻读不成但读好过 ⇒ 上一次那一份 ＋ `stale {said, since}` |
+| `stale` | ← | 整次读不成、给的是上一次那一份 ⇒ `{said, raw, since}`；否则 `null` |
+
+码：`bad_args` · `failed` · `no_pb` · `not_workspace` · `pb_unsupported`
+
+#### `plan-cell-view`
+
+一格的 agent 视角（agent 站在这一格时 pb 印给它的那一段，原样）。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --plan-cell-view`
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `id` | → | 格的编号 |
+| `slice` | → | 片名 |
+| `view` | ← | 原样那一段 |
+| `workspace` | → | 工作区根 |
+
+码：`bad_args` · `no_view`
+
 ## 5. CLI 子命令
 
 一次性调用：`ccm -- --子命令 …`（打头的 `--` 之后才归后端）；收 `args` 的从 stdin 读一段 JSON，回一行 JSON 到 stdout。
@@ -3698,6 +3755,9 @@ cc-bus 钩子诊断。
 | `--mcp-sync-source` | ＝ 帧命令 `mcp-sync-source`：装到别的机器时来源那一条 |
 | `--ping` | ＝ 帧命令 `ping`：问活：零载荷，回 `ok` |
 | `--place-verdict` | ＝ 帧命令 `place-verdict`：本机那一份放不放 |
+| `--plan-cell-view` | ＝ 帧命令 `plan-cell-view`：一格的 agent 视角（agent 站在这一格时 pb 印给它的那一段，原样） |
+| `--plan-list` | ＝ 帧命令 `plan-list`：这台的 pb 工作区与片（目录 ＝ 活会话的工作目录 ∪ `dirs`，pb 自己往上找工作区） |
+| `--plan-read` | ＝ 帧命令 `plan-read`：一个工作区的成品（几片的图 · 状态 · 签收 · 块 · 判据；接手与签收人对到会话；不带 agent_view） |
 | `--powershell-policy-set` | ＝ 帧命令 `powershell-policy-set`：那一代 PowerShell 的执行策略设成当前用户 `RemoteSigned` |
 | `--profiles-bases` | ＝ 帧命令 `profiles-bases`：「基于」下拉能选的几段（选了不成圈） |
 | `--profiles-impact` | ＝ 帧命令 `profiles-impact`：这几处改动会让哪几段合下来变（改前改后） |

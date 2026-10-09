@@ -42,9 +42,12 @@ pub(crate) struct Book {
     dirs: Mutex<BTreeMap<PathBuf, Option<String>>>,
 }
 
-/// 原始输出的摘要（16 位十六进制就够分辨「变没变」）。
+/// 原始输出的摘要：只用来分辨「变没变」（不防人故意撞），64 位、16 位十六进制。
 pub(crate) fn rev_of(raw: &[u8]) -> String {
-    crate::files::content_sha256(raw)[..16].to_string()
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    raw.hash(&mut h);
+    format!("{:016x}", h.finish())
 }
 
 fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -53,16 +56,33 @@ fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 
 impl Book {
     /// 在 `dir` 里跑一次 dump、并进本子，回成品（顶上带 `rev` · `readAt` · `stale`）。
-    pub(crate) fn read(&self, entry: &Path, dir: &Path, who: WhoPort, now_ms: u64) -> Result<Value, Miss> {
+    pub(crate) fn read(
+        &self,
+        entry: &Path,
+        dir: &Path,
+        who: WhoPort,
+        now_ms: u64,
+    ) -> Result<Value, Miss> {
         self.take(dump::run(entry, dir), dir, who, now_ms)
     }
 
     /// [`Self::read`] 的后一半：一次 dump 的结局进本子（判据直接喂结局）。
-    pub(crate) fn take(&self, ran: Ran, dir: &Path, who: WhoPort, now_ms: u64) -> Result<Value, Miss> {
+    pub(crate) fn take(
+        &self,
+        ran: Ran,
+        dir: &Path,
+        who: WhoPort,
+        now_ms: u64,
+    ) -> Result<Value, Miss> {
         match ran {
             Ran::Dump { doc, raw } => {
                 let made = product::make(&doc, who);
-                let ws = made.doc.get("workspace").and_then(Value::as_str).unwrap_or_default().to_string();
+                let ws = made
+                    .doc
+                    .get("workspace")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string();
                 lock(&self.dirs).insert(dir.to_path_buf(), Some(ws.clone()));
                 let rev = rev_of(&raw);
                 let mut seen = lock(&self.seen);
@@ -71,7 +91,11 @@ impl Book {
                 let mut out = made.doc;
                 if let Some(slices) = out.get_mut("slices").and_then(Value::as_array_mut) {
                     for sl in slices.iter_mut() {
-                        let name = sl.get("name").and_then(Value::as_str).unwrap_or_default().to_string();
+                        let name = sl
+                            .get("name")
+                            .and_then(Value::as_str)
+                            .unwrap_or_default()
+                            .to_string();
                         let error = sl.get("error").cloned().unwrap_or(Value::Null);
                         if error.is_null() {
                             good.insert(name, (sl.clone(), now_ms));
@@ -89,11 +113,14 @@ impl Book {
                 let mut views = made.views;
                 {
                     for ((sl, id), v) in &prev_views {
-                        let kept = out["slices"]
-                            .as_array()
-                            .is_some_and(|a| a.iter().any(|s| s["name"] == json!(sl) && !s["stale"].is_null()));
+                        let kept = out["slices"].as_array().is_some_and(|a| {
+                            a.iter()
+                                .any(|s| s["name"] == json!(sl) && !s["stale"].is_null())
+                        });
                         if kept {
-                            views.entry((sl.clone(), id.clone())).or_insert_with(|| v.clone());
+                            views
+                                .entry((sl.clone(), id.clone()))
+                                .or_insert_with(|| v.clone());
                         }
                     }
                 }
@@ -139,7 +166,9 @@ impl Book {
             return Some(w.clone());
         }
         let d = dir.to_string_lossy();
-        lock(&self.seen).contains_key(d.as_ref()).then(|| d.to_string())
+        lock(&self.seen)
+            .contains_key(d.as_ref())
+            .then(|| d.to_string())
     }
 
     /// 这个工作区上一次读好的成品。

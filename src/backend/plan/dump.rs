@@ -49,11 +49,15 @@ pub(crate) fn run(entry: &Path, dir: &Path) -> Ran {
         Err(said) => return Ran::Failed { said, raw: None },
     };
     let entry_s = entry.to_string_lossy().to_string();
-    let child = crate::plugin::invoke::child_for(&py, &[entry_s.as_str(), "dump"], &[]).current_dir(dir);
+    let child =
+        crate::plugin::invoke::child_for(&py, &[entry_s.as_str(), "dump"], &[]).current_dir(dir);
     match child.run(Deadline::secs(DEADLINE_SECS)) {
         Ok(out) => classify(out.status.code(), &out.stdout, &out.stderr),
         Err(e) if e.is_timed_out() => Ran::Failed {
-            said: copy_text("bePlan.dump.timedOut", &[("secs", &DEADLINE_SECS.to_string())]),
+            said: copy_text(
+                "bePlan.dump.timedOut",
+                &[("dur", &copy_core::format_duration(DEADLINE_SECS * 1000))],
+            ),
             raw: None,
         },
         Err(e) => Ran::Failed {
@@ -79,7 +83,10 @@ pub(crate) fn classify(code: Option<i32>, stdout: &[u8], stderr: &[u8]) -> Ran {
             return Ran::Failed {
                 said: copy_text(
                     "bePlan.dump.exited",
-                    &[("code", &other.map_or_else(|| "?".to_string(), |c| c.to_string()))],
+                    &[(
+                        "rc",
+                        &other.map_or_else(|| "?".to_string(), |c| c.to_string()),
+                    )],
                 ),
                 raw: diag(),
             }
@@ -98,7 +105,10 @@ pub(crate) fn classify(code: Option<i32>, stdout: &[u8], stderr: &[u8]) -> Ran {
     if shape != Some(SHAPE) {
         return Ran::Unsupported(copy_text(
             "bePlan.dump.shape",
-            &[("shape", &shape.map_or_else(|| "?".to_string(), |s| s.to_string()))],
+            &[(
+                "shape",
+                &shape.map_or_else(|| "?".to_string(), |s| s.to_string()),
+            )],
         ));
     }
     Ran::Dump {

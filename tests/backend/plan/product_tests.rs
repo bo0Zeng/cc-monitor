@@ -8,7 +8,12 @@ fn made() -> Made {
 }
 
 fn cell<'a>(doc: &'a Value, id: &str) -> &'a Value {
-    doc["slices"][0]["cells"].as_array().unwrap().iter().find(|c| c["id"] == id).unwrap()
+    doc["slices"][0]["cells"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["id"] == id)
+        .unwrap()
 }
 
 #[test]
@@ -17,7 +22,12 @@ fn agent_view_is_taken_off_every_cell_and_kept_aside() {
     let text = m.doc.to_string();
     assert!(!text.contains("agent_view"), "成品里不许有 agent_view");
     assert!(!text.contains("── A1-1"), "agent_view 的原文不许跟着成品走");
-    assert_eq!(m.views.get(&("alpha".into(), "A1-1".into())).map(String::as_str), Some("── A1-1 甲的读入"));
+    assert_eq!(
+        m.views
+            .get(&("alpha".into(), "A1-1".into()))
+            .map(String::as_str),
+        Some("── A1-1 甲的读入")
+    );
     assert_eq!(m.views.len(), 4);
     assert_eq!(cell(&m.doc, "A1")["hasView"], true);
 }
@@ -25,10 +35,22 @@ fn agent_view_is_taken_off_every_cell_and_kept_aside() {
 #[test]
 fn edges_pointing_at_a_cell_are_indexed_backwards() {
     let m = made();
-    assert_eq!(cell(&m.doc, "A1-1")["pointedBy"]["with"], serde_json::json!(["A1-2"]));
-    assert_eq!(cell(&m.doc, "A1-1")["pointedBy"]["after"], serde_json::json!(["A1-2"]));
-    assert_eq!(cell(&m.doc, "A1-2")["pointedBy"]["with"], serde_json::json!([]));
-    assert_eq!(cell(&m.doc, "A1-2")["edges"]["with"], serde_json::json!(["A1-1"]));
+    assert_eq!(
+        cell(&m.doc, "A1-1")["pointedBy"]["with"],
+        serde_json::json!(["A1-2"])
+    );
+    assert_eq!(
+        cell(&m.doc, "A1-1")["pointedBy"]["after"],
+        serde_json::json!(["A1-2"])
+    );
+    assert_eq!(
+        cell(&m.doc, "A1-2")["pointedBy"]["with"],
+        serde_json::json!([])
+    );
+    assert_eq!(
+        cell(&m.doc, "A1-2")["edges"]["with"],
+        serde_json::json!(["A1-1"])
+    );
 }
 
 #[test]
@@ -67,7 +89,10 @@ fn owners_and_signers_are_resolved_to_sessions() {
 fn top_level_progress_counts_pbs_statuses() {
     let m = made();
     let sl = &m.doc["slices"][0];
-    assert_eq!(sl["progress"], serde_json::json!({"done": 0, "open": 1, "dropped": 1}));
+    assert_eq!(
+        sl["progress"],
+        serde_json::json!({"done": 0, "open": 1, "dropped": 1})
+    );
     assert_eq!(sl["current"], true);
     assert_eq!(m.doc["auto"], true);
 }

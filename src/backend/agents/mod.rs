@@ -750,6 +750,8 @@ pub(crate) struct ChildFace {
     /// 一个路径**若是**某份父记录的子运行记录（形状对得上 `sources` 会收的那种）⇒ 那份父记录的路径；否则 `None`。
     /// 文件事件来了只对它答得出的才去找，且只在那一份父记录底下找。
     pub(crate) owner: fn(&Path) -> Option<PathBuf>,
+    /// 记录树根底下，id 为这个的子运行的记录（[`Self::owner`] 再对到它的父记录）；没有 ⇒ `None`。计划读面把接手 id 对到会话时用。
+    pub(crate) find: fn(&Path, &str) -> Option<PathBuf>,
     /// 父记录的一行原文可能说到子运行（[`RecordFace::child_link`] 会答出东西）—— 便宜的预筛：漏判不许，多判无妨。
     /// 只读尾巴的那条流接上会话时，靠它从父记录已有的那一截里只挑这几行解析。
     pub(crate) hint: fn(&str) -> bool,
@@ -1008,6 +1010,24 @@ pub(crate) fn record_tree_among(registry: &[Adapter], kind: &str) -> Option<Reco
 /// `kind` 那一家家目录 `home` 下记录树的根。那一家没有记录树 ⇒ `None`。
 pub(crate) fn records_root_among(registry: &[Adapter], kind: &str, home: &Path) -> Option<PathBuf> {
     record_tree_among(registry, kind).map(|t| (t.root)(home))
+}
+
+/// 记录树根底下 id 为 `child_id` 的子运行挂在哪个会话底下（父记录的会话 id）；对不上 ⇒ `None`。问的是记录树那一家（[`record_tree_kind`]）。
+pub(crate) fn child_parent_sid(records_root: &Path, child_id: &str) -> Option<String> {
+    child_parent_sid_among(REGISTRY, record_tree_kind()?, records_root, child_id)
+}
+
+/// [`child_parent_sid`] 的可喂夹具那一半：问 `kind` 那一家。
+pub(crate) fn child_parent_sid_among(
+    registry: &[Adapter],
+    kind: &str,
+    records_root: &Path,
+    child_id: &str,
+) -> Option<String> {
+    let r = adapter_among(registry, kind)?.records?;
+    let ch = r.children?;
+    let parent = (ch.owner)(&(ch.find)(records_root, child_id)?)?;
+    (r.sid)(&parent)
 }
 
 /// [`records_root_among`] 在生产注册表上、记录树那一家（[`record_tree_kind`]）。
@@ -1805,6 +1825,8 @@ pub(crate) struct AssetFace {
     pub(crate) project_mcp_file: &'static str,
     /// MCP 配置文件里装 server 表的那个顶层键。
     pub(crate) servers_key: &'static str,
+    /// 一个配置根底下装着的插件：插件根 ＋ 它清单里的名字（用户级 skill 目录里放进来的 · 插件缓存里每个版本一个）。
+    pub(crate) plugins: fn(config_root: &Path) -> Vec<(PathBuf, String)>,
 }
 
 /// 看到的一个 skill：`project` = `None` 是用户级，`Some(项目目录)` 是那个项目里的。
@@ -1834,6 +1856,15 @@ pub(crate) struct Sightings {
     pub mcp: Vec<McpSeen>,
     /// 读不出来的那几份（一句话一份）—— 「这台没有」与「这台那份读不出来」不许合成一句。
     pub problems: Vec<String>,
+}
+
+/// 这几个配置根底下装着的插件（插件根 ＋ 名字）：逐家问（注册序）、配置根的次序。
+pub(crate) fn plugins(config_roots: &[PathBuf]) -> Vec<(PathBuf, String)> {
+    REGISTRY
+        .iter()
+        .filter_map(|a| a.assets)
+        .flat_map(|f| config_roots.iter().flat_map(move |r| (f.plugins)(r)))
+        .collect()
 }
 
 /// 注册表里每一家有资产面的，各扫一遍（注册序）。

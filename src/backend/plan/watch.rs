@@ -41,17 +41,27 @@ pub(crate) fn arm(ws: &Path, last: Option<String>, reread: Reread) {
         return;
     }
     if g.len() >= MAX_WATCHED {
-        tracing::warn!("[plan] 盯着的工作区已满 {MAX_WATCHED} 个，{} 的变化要重开计划页才看得见", ws.display());
+        tracing::warn!(
+            "[plan] 盯着的工作区已满 {MAX_WATCHED} 个，{} 的变化要重开计划页才看得见",
+            ws.display()
+        );
         return;
     }
     match watch(ws, last, reread) {
         Ok(w) => g.push((ws.to_path_buf(), w)),
-        Err(e) => tracing::warn!("[plan] 盯不上 {}：{e}（计划变了要重开计划页才看得见）", ws.display()),
+        Err(e) => tracing::warn!(
+            "[plan] 盯不上 {}：{e}（计划变了要重开计划页才看得见）",
+            ws.display()
+        ),
     }
 }
 
 /// 挂监听、起那条重读线程。返回的那一份活着就一直盯。
-pub(crate) fn watch(ws: &Path, last: Option<String>, reread: Reread) -> Result<notify::RecommendedWatcher, String> {
+pub(crate) fn watch(
+    ws: &Path,
+    last: Option<String>,
+    reread: Reread,
+) -> Result<notify::RecommendedWatcher, String> {
     use notify::Watcher;
     let (tx, rx) = std::sync::mpsc::channel::<()>();
     let root = ws.to_path_buf();
@@ -65,10 +75,12 @@ pub(crate) fn watch(ws: &Path, last: Option<String>, reread: Reread) -> Result<n
         }
     })
     .map_err(|e| e.to_string())?;
-    w.watch(ws, notify::RecursiveMode::NonRecursive).map_err(|e| e.to_string())?;
+    w.watch(ws, notify::RecursiveMode::NonRecursive)
+        .map_err(|e| e.to_string())?;
     let plan = ws.join(PLAN_DIR);
     if plan.is_dir() {
-        w.watch(&plan, notify::RecursiveMode::Recursive).map_err(|e| e.to_string())?;
+        w.watch(&plan, notify::RecursiveMode::Recursive)
+            .map_err(|e| e.to_string())?;
     }
     let target = ws.to_path_buf();
     std::thread::Builder::new()

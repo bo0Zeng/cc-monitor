@@ -15389,6 +15389,66 @@
       "zh": "{bin} 启动失败 · {e}",
       "args": ["bin", "e"]
     },
+    "bePlan.dump.noPythonHint": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "planned-build 要 python3",
+      "args": []
+    },
+    "bePlan.dump.timedOut": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "读计划超时 · {dur}",
+      "args": ["dur"]
+    },
+    "bePlan.dump.notRun": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "planned-build 启动失败",
+      "args": []
+    },
+    "bePlan.dump.noDump": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "要更新 · 计划不可用\nplanned-build 缺 dump",
+      "args": []
+    },
+    "bePlan.dump.exited": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "读计划失败 · 退出码 {rc}",
+      "args": ["rc"]
+    },
+    "bePlan.dump.unparsable": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "planned-build 输出内容无法解析",
+      "args": []
+    },
+    "bePlan.dump.shape": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "要更新 · 计划不可用\nplanned-build 输出形状 {shape}",
+      "args": ["shape"]
+    },
+    "bePlan.face.noPb": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "未装 planned-build",
+      "args": []
+    },
+    "bePlan.face.notWorkspace": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "不在 planned-build 工作区里",
+      "args": []
+    },
+    "bePlan.face.noView": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "无 agent 视角 · 重读计划后再看",
+      "args": []
+    },
     "beProbe.parse.emptyOutput": {
       "kind": "error",
       "role": "原因格",

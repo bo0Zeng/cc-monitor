@@ -866,6 +866,12 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "硬报错",
     ),
     (
+        "src/backend/agents/claudecode/assets.rs",
+        "PLUGIN_MANIFEST_MAX_BYTES",
+        "找插件时读一个插件根的 `.claude-plugin/plugin.json`（只为取 `name`）—— 读不出来那个目录就不算插件",
+        "跳过+说清",
+    ),
+    (
         "src/backend/assets/asset_catalog.rs",
         "CATALOG_MAX_BYTES",
         "后端自有的资产目录文件 `~/.cc-monitor/assets-catalog.json`（读不出来就不覆盖）",

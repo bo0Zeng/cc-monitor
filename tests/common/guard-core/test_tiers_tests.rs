@@ -62,6 +62,7 @@ use std::path::{Path, PathBuf};
 const SUPPORT: &[&str] = &[
     "tests/backend/observe/runs_testing.rs", // 往运行簿里直接记一个在跑的子运行
     "tests/backend/files/index_testing.rs",
+    "tests/backend/plan/fixture.rs", // 计划读面的夹具：合成 dump · 假 pb 插件
     "tests/backend/control/identity_tag_door.rs", // `identity_tag` 起 tmux 那个口的测试构建那一份（假 tmux 注入，§48.3）
     "tests/backend/platform/child_tmux_fence.rs", // 子进程起前那一道的测试构建那一份（裸名 tmux 落到本进程的空 socket 目录）
     "tests/backend/sftp_rig.rs",

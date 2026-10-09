@@ -37,7 +37,11 @@ fn s(v: &Value, k: &str) -> Value {
 
 fn strs(v: Option<&Value>) -> Vec<String> {
     v.and_then(Value::as_array)
-        .map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_string)).collect())
+        .map(|a| {
+            a.iter()
+                .filter_map(|x| x.as_str().map(str::to_string))
+                .collect()
+        })
         .unwrap_or_default()
 }
 
@@ -76,7 +80,11 @@ pub(crate) fn make(doc: &Value, who: WhoPort) -> Made {
     let slices: Vec<Value> = doc
         .get("slices")
         .and_then(Value::as_array)
-        .map(|a| a.iter().map(|sl| slice(sl, repo, who, &mut views)).collect())
+        .map(|a| {
+            a.iter()
+                .map(|sl| slice(sl, repo, who, &mut views))
+                .collect()
+        })
         .unwrap_or_default();
     Made {
         doc: json!({
@@ -92,7 +100,11 @@ pub(crate) fn make(doc: &Value, who: WhoPort) -> Made {
 
 /// 一片。带 `error` 的片只出名字、领域与那一句（pb 那时给不出别的）。
 pub(crate) fn slice(sl: &Value, repo: Option<&str>, who: WhoPort, views: &mut Views) -> Value {
-    let name = sl.get("name").and_then(Value::as_str).unwrap_or_default().to_string();
+    let name = sl
+        .get("name")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
     let head = |error: Value| -> Map<String, Value> {
         let mut m = Map::new();
         m.insert("name".into(), json!(name));
@@ -118,12 +130,25 @@ pub(crate) fn slice(sl: &Value, repo: Option<&str>, who: WhoPort, views: &mut Vi
         let id = c.get("id").and_then(Value::as_str).unwrap_or_default();
         for k in EDGES {
             for t in strs(c.get("edges").and_then(|e| e.get(k))) {
-                pointed.entry(t).or_default().entry(k).or_default().push(id.to_string());
+                pointed
+                    .entry(t)
+                    .or_default()
+                    .entry(k)
+                    .or_default()
+                    .push(id.to_string());
             }
         }
-        for f in c.get("files").and_then(Value::as_array).into_iter().flatten() {
+        for f in c
+            .get("files")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+        {
             if let Some(p) = f.get("path").and_then(Value::as_str) {
-                by_path.entry(p.to_string()).or_default().push(id.to_string());
+                by_path
+                    .entry(p.to_string())
+                    .or_default()
+                    .push(id.to_string());
             }
         }
     }
@@ -281,9 +306,15 @@ pub(crate) fn slice(sl: &Value, repo: Option<&str>, who: WhoPort, views: &mut Vi
     let mut m = head(Value::Null);
     m.insert("kinds".into(), json!(kinds));
     m.insert("phases".into(), json!(phases));
-    m.insert("done".into(), json!(sl.get("done").and_then(Value::as_bool).unwrap_or(false)));
+    m.insert(
+        "done".into(),
+        json!(sl.get("done").and_then(Value::as_bool).unwrap_or(false)),
+    );
     m.insert("top".into(), json!(top));
-    m.insert("progress".into(), json!({"done": done, "open": open, "dropped": dropped}));
+    m.insert(
+        "progress".into(),
+        json!({"done": done, "open": open, "dropped": dropped}),
+    );
     m.insert("blocks".into(), json!(blocks));
     m.insert(
         "check".into(),

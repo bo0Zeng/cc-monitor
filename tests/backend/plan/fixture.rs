@@ -76,8 +76,14 @@ pub(crate) fn who(id: &str) -> crate::plan::Whose {
         needs: Some(crate::observe::facts_query::NeedsKind::Approve),
     });
     match id {
-        MAIN => Whose::Session { sid: MAIN.into(), live },
-        SUB => Whose::Subagent { parent: MAIN.into(), live },
+        MAIN => Whose::Session {
+            sid: MAIN.into(),
+            live,
+        },
+        SUB => Whose::Subagent {
+            parent: MAIN.into(),
+            live,
+        },
         _ => Whose::Unknown,
     }
 }

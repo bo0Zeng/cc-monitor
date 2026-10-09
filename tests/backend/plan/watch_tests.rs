@@ -23,7 +23,11 @@ fn a_change_pushes_only_when_the_rev_moves() {
     let reread: Reread = Arc::new(move |_p: &Path| {
         c.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         let mut g = r.lock().unwrap();
-        Some(if g.len() > 1 { g.remove(0) } else { g[0].clone() })
+        Some(if g.len() > 1 {
+            g.remove(0)
+        } else {
+            g[0].clone()
+        })
     });
     let mut rx = changes().subscribe();
     let _w = watch(&d, Some("r1".into()), reread).unwrap();
