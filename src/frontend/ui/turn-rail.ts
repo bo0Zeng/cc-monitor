@@ -40,6 +40,10 @@ export class TurnRail {
   private ticks: HTMLElement[] = [];
   private groups: [number, number][] = [];
   private current = -1;
+  /** 这一帧已经排过量刻度了（滚动一帧来好几个 `scroll`，合成一次）。 */
+  private scheduled = false;
+  /** 「uuid → 第几轮」：轮那一份换了（`turns()` 换了一个数组）才重建。 */
+  private indexOf: { turns: readonly TurnSummary[]; map: Map<string, number> } | null = null;
 
   constructor(
     private readonly scroller: HTMLElement,
@@ -80,17 +84,31 @@ export class TurnRail {
     });
     this.el.hidden = turns.length === 0 || this.scroller.clientWidth <= RAIL_MIN_COLUMN;
     this.current = -1;
-    this.onScroll();
+    this.mark();
   }
 
-  /** 视口所在的那一轮：开头已在视口上沿之上（或就在视口里）的最后一轮。 */
+  /**
+   * 宿主转来的 `scroll`：只排一帧，帧里量一次（`mark`）。滚动一帧来好几个 `scroll`；骨架接上 / 补批时的程序化滚动
+   * 还夹在增删卡之间 —— 每个都当场量，就是每一下逼浏览器当场排版。
+   */
   readonly onScroll = (): void => {
+    if (this.el.hidden || this.scheduled) return;
+    this.scheduled = true;
+    // 调度：合批 —— 一帧里的几个 scroll 合成一次量
+    requestAnimationFrame(() => {
+      this.scheduled = false;
+      if (this.el.isConnected) this.mark();
+    });
+  };
+
+  /** 视口所在的那一轮：开头已在视口上沿之上（或就在视口里）的最后一轮 —— 标到它那一格上。 */
+  private mark(): void {
     if (this.el.hidden) return;
     const at = this.viewportTurn();
     if (at === this.current) return;
     this.current = at;
     this.groups.forEach(([from, to], i) => (this.ticks[i].dataset.viewport = String(at >= from && at <= to)));
-  };
+  }
 
   /** `Alt+↑` / `Alt+↓`：上 / 下一轮。 */
   step(dir: -1 | 1): void {
@@ -101,27 +119,36 @@ export class TurnRail {
     this.host.jump(turns[next].uuid);
   }
 
+  /**
+   * 开头已过视口上沿（＋8）的最后一轮；一个都没过 ⇒ 第一个已建出来的那一轮。
+   * 轮的开头按文档顺序上下排着 ⇒ 二分（量对数个位置；逐个量到视口上沿，贴底看长会话时是几百次）。
+   */
   private viewportTurn(): number {
     const turns = this.host.turns();
     if (turns.length === 0) return -1;
-    const top = this.scroller.getBoundingClientRect().top + 8;
-    const index = new Map(turns.map((t, i) => [t.uuid, i]));
-    let at = -1;
+    if (this.indexOf?.turns !== turns) this.indexOf = { turns, map: new Map(turns.map((t, i) => [t.uuid, i])) };
+    const index = this.indexOf.map;
+    const heads: Array<[Element, number]> = [];
     for (const el of Array.from(this.content.children)) {
       const i = index.get(el.getAttribute("data-uuid") ?? "");
-      if (i === undefined) continue;
-      if (el.getBoundingClientRect().top > top) break;
-      at = i;
+      if (i !== undefined) heads.push([el, i]);
     }
-    // 视口上沿之上一个开头都没有（最前面一轮还没到顶）⇒ 第一个已建出来的那一轮。
-    if (at < 0) {
-      for (const el of Array.from(this.content.children)) {
-        const i = index.get(el.getAttribute("data-uuid") ?? "");
-        if (i !== undefined) return i;
+    if (heads.length === 0) return -1;
+    const top = this.scroller.getBoundingClientRect().top + 8;
+    let lo = 0;
+    let hi = heads.length - 1;
+    let at = -1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (heads[mid][0].getBoundingClientRect().top > top) hi = mid - 1;
+      else {
+        at = heads[mid][1];
+        lo = mid + 1;
       }
     }
-    return at;
+    return at < 0 ? heads[0][1] : at;
   }
+
 
   private tip(tick: HTMLElement): HTMLElement | null {
     const turns = this.host.turns();

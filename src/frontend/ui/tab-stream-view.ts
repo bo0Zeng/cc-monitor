@@ -127,6 +127,11 @@ export class TabStreamView {
    * `ensure` 只是把取正文的请求发出去，同步那一下去找卡必然落空。
    */
   private readonly rangeFetches = new WeakMap<Tab, Set<Promise<void>>>();
+  /**
+   * 索引回来时 tab 已经切走了 ⇒ 不在后台接骨架，账本停在这里，切回来的下一帧再接（`activate`）。
+   * 接骨架要插占位、量几何、补可见区 —— 在收起的 tab 里做是白干还逼排版；快速连切时一串旧切换的活全堆在后面。
+   */
+  private readonly parkedSkeletons = new WeakMap<Tab, SkeletonLedger>();
 
   constructor(
     private readonly store: TabStore,
@@ -455,16 +460,33 @@ export class TabStreamView {
     if (virginFill) this.materializeUntilFilled(next);
     // 切入即刷新哨兵（非 virgin 但账本非空的 tab 也要见到「还有 N 条」）
     if (next) this.updateSentinel(next);
-    // 〔骨架〕切进来的 tab 要索引（上面刚物化过尾段 ⇒ floor 已钉）
+    // 〔骨架〕切进来的 tab 要索引（上面刚物化过尾段 ⇒ floor 已钉）；上次要回来时人已切走、停着的那一份 ⇒ 下一帧接上
+    // （接要量几何 —— 不放进同步段；期间又切走 ⇒ 接着停着）。
+    const parked = next ? this.parkedSkeletons.get(next) : undefined;
+    if (next && parked) {
+      this.parkedSkeletons.delete(next);
+      // 调度：一次性 —— 切进来的下一帧接上停着的骨架（期间又切走 ⇒ 放回去接着停）
+      requestAnimationFrame(() => {
+        if (this.store.tabs.get(next.sessionId) !== next) return;
+        if (this.store.activeId !== next.sessionId) this.parkedSkeletons.set(next, parked);
+        else this.attachSkeleton(next, parked);
+      });
+    }
     if (next) this.requestSkeleton(next);
     if (next?.outline.needsFetch) this.refreshOutline(next); // 大纲：有新行才要
     // 账本有余却没满一屏的 tab 没有补批入口（不可滚的元素不产生 scroll 事件）⇒ 切入时踢一次，rAF 自链接管到满或账尽。
     // 账本空了但下面可能还有（`wantsBelow`）同样踢。「满没满」问真实布局（`contentReachesBottom`），不只看 `scrollHeight`（掺着估值）。
     // 刚为 virgin tab 跑过 `materializeUntilFilled`、账本还有余的不再踢：它补不满时自己排了下一帧的接续（一次同步调用要有界）。
+    // 「满没满」要读几何 ⇒ 挪到下一帧再问：同步段里一读，浏览器就得当场把刚翻出来的整个 tab 样式与布局算完（点击处理被拖长、这一帧更晚画出来）；
+    // 下一帧的回调里读，排的就是那一帧本来要排的那一份。期间又切走（`activeId` 守卫）⇒ 不补。
     const continuing = virginFill && next.window.pendingCount > 0;
     if (next && !continuing && (next.window.pendingCount > 0 || next.window.wantsBelow)) {
-      const el = next.streamEl;
-      if (el.scrollHeight - el.clientHeight <= 1 || !this.contentReachesBottom(next)) this.fillAbove(next);
+      // 调度：一次性 —— 切进来的下一帧问一次满没满，没满踢一脚补批（之后由补批自己的 rAF 自链接管）
+      requestAnimationFrame(() => {
+        if (this.store.activeId !== next.sessionId || this.store.tabs.get(next.sessionId) !== next) return;
+        const el = next.streamEl;
+        if (el.scrollHeight - el.clientHeight <= 1 || !this.contentReachesBottom(next)) this.fillAbove(next);
+      });
     }
   }
 
@@ -830,6 +852,10 @@ export class TabStreamView {
           if (more.available) got.ledger.append(more.rows);
         }
         if (this.store.tabs.get(tab.sessionId) !== tab) return;
+        if (this.store.activeId !== tab.sessionId) {
+          this.parkedSkeletons.set(tab, got.ledger); // 已经切走：停着，切回来再接
+          return;
+        }
         this.attachSkeleton(tab, got.ledger);
       })
       .catch((e: unknown) => {

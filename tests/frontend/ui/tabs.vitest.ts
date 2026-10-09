@@ -941,6 +941,39 @@ describe("TabManager 生命周期", () => {
     selSpy.mockRestore();
   });
 
+  /**
+   * 切 tab 的同步段（点下去到处理函数返回）不读排版几何：热 tab 账本有余时「够不够一屏」那一问挪到下一帧。
+   * 同步段里一读 `scrollHeight` / `getBoundingClientRect`，浏览器就得当场把刚翻出来的那个 tab 整棵样式与布局算完
+   * —— 点击处理被拖长、这一帧画出来更晚（性能台架 WebKitGTK 热切同步段的大头就是这一读）。挪到下一帧：先画出来，再补。
+   */
+  it("热切：同步段一次排版读都没有；账本有余的那一脚补批在下一帧", async () => {
+    await spyRender();
+    tm.onLine(mkContent("geoA", 1, "geo-1")); // active
+    tm.onBatchStart();
+    for (let s = 1000; s < 1300; s++) tm.onLine(mkContent("geoB", s, `geo-${s}`));
+    tm.onBatchEnd();
+    const t = home(tm).store.tabs.get("geoB")!;
+    tm.switchTo("geoB"); // virgin 全物化，floor 钉住
+    tm.switchTo("geoA");
+    tm.onBatchStart();
+    for (let s = 100; s < 400; s++) tm.onLine(mkContent("geoB", s, `geo-old-${s}`)); // < floor ⇒ 收纳 300
+    tm.onBatchEnd();
+    expect(t.window.pendingCount).toBe(300);
+
+    const rect = vi.spyOn(Element.prototype, "getBoundingClientRect");
+    const sh = vi.spyOn(Element.prototype, "scrollHeight", "get");
+    const ch = vi.spyOn(Element.prototype, "clientHeight", "get");
+    tm.switchTo("geoB"); // 热切
+    const reads = rect.mock.calls.length + sh.mock.calls.length + ch.mock.calls.length;
+    rect.mockRestore();
+    sh.mockRestore();
+    ch.mockRestore();
+    expect(reads, "同步段读几何 ⇒ 浏览器当场排刚翻出来的整个 tab").toBe(0);
+    expect(t.window.pendingCount, "同步段里不补（补要量够不够一屏）").toBe(300);
+    await new Promise((r) => requestAnimationFrame(() => r(null)));
+    expect(t.window.pendingCount, "下一帧那一脚照补（jsdom 无布局 ⇒ 判成没满一屏）").toBeLessThan(300);
+  });
+
   it("F40b：物化/补批 sink 不接 onRealUserInput(历史 user 卡不自动切 tab)", async () => {
     const spy = await spyRender();
     tm.onLine(mkContent("uaA", 1, "ua-1")); // active
@@ -979,8 +1012,10 @@ describe("TabManager 生命周期", () => {
     tm.switchTo("sentB"); // 物化(4 轮×150 上限 → 200 全弹尽)
     const t = home(tm).store.tabs.get("sentB")!;
     expect(t.window.pendingCount).toBe(0);
-    // 渲染窗口最老那一条是第 100 行（> 0）⇒ 下面可能还有：jsdom 恒不可滚 ⇒ 切入的 R-2 踢链当场问 [0, 100)
-    expect(recordReadCalls(vi.mocked(invoke).mock.calls, "read_session_lines")).toEqual([
+    await new Promise((r) => requestAnimationFrame(() => r(null))); // 切进来那一脚补批在下一帧（同步段不读几何）
+    // 渲染窗口最老那一条是第 100 行（> 0）⇒ 下面可能还有：jsdom 恒不可滚 ⇒ 切入的 R-2 踢链（下一帧）问 [0, 100)
+    // 只数这个 tab 的（等那一帧时，前面几格留下的切入那一脚也会在同一帧里跑，问的是它们自己的 tab）
+    expect(recordReadCalls(vi.mocked(invoke).mock.calls, "read_session_lines").filter((a) => (a as { jsonlPath: string }).jsonlPath === "/p/sentB.jsonl")).toEqual([
       // `leftMs`：往上翻是一件一问，交这一问的整份期限（`TabStreamView.BELOW_BUDGET_MS`）
       { origin: "<local>", jsonlPath: "/p/sentB.jsonl", from: 0, until: 100, leftMs: 60_000 },
     ]);
@@ -1001,6 +1036,7 @@ describe("TabManager 生命周期", () => {
     expect(sentinel?.textContent).toBe(copyText("tabStreamView.sentinel.moreCount", { n: 5 }));
     // 切入:R-2 踢链(不可滚+账本有余)→ 补批到账尽 → 哨兵消失
     tm.switchTo("sentB");
+    await new Promise((r) => requestAnimationFrame(() => r(null))); // 切进来那一脚补批在下一帧（同步段不读几何）
     expect(t.window.pendingCount).toBe(0);
     expect(t.stream.contentElement.querySelector(".stream-more-above")).toBeNull();
   });
@@ -4046,6 +4082,25 @@ describe("骨架接入：索引 → 占位 → 门控 → 跳转", () => {
     expect(indexCalls().length).toBe(1);
   });
 
+  // 切换可打断：索引是切进来那一下要的，回来时人已经切走了 ⇒ 不在后台接（接骨架要插占位、量几何、补可见区 ——
+  // 收起的 tab 里做这些是白干还逼排版，快速连切时一串旧切换的活全堆在后面）。停着，切回来的下一帧再接。
+  it("★ 索引回来时 tab 已经切走 ⇒ 不在后台接；切回来的下一帧接上，不重问", async () => {
+    vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads((cmd: string) =>
+      Promise.resolve(cmd === "read_session_index" ? idx(300) : undefined),
+    ) as never));
+    const t = replay("pk"); // pk 是当前的，批结束要了索引（还没回来）
+    tm.onLine(mk("pkOther", 5, "po5"));
+    tm.switchTo("pkOther"); // 索引回来之前切走
+    await settle();
+    expect(t.skeleton, "切走了还在后台接骨架 ⇒ 旧切换的活还在干").toBeNull();
+    tm.switchTo("pk");
+    expect(t.skeleton, "同步段里不接（接要量几何）").toBeNull();
+    await new Promise((r) => requestAnimationFrame(() => r(null)));
+    expect(t.skeleton, "切回来那一帧该接上").not.toBeNull();
+    expect(t.skeleton!.pendingRows).toBe(200);
+    expect(indexCalls().filter(([, a]) => (a as { jsonlPath: string }).jsonlPath === "/p/pk.jsonl").length, "停着的那一份直接用，不重问").toBe(1);
+  });
+
   // 「列宽变了」的入口：消息流尺寸变了 ⇒ 现量 `.stream-content` 宽交骨架重估；量不到宽不动。
   it("〔P3〕消息流尺寸变了 ⇒ 现量的列宽交骨架 relayout（后台 tab 也跟上）；量不到宽 ⇒ 不动", async () => {
     vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads((cmd: string) =>
@@ -4679,6 +4734,7 @@ describe("〔CF2〕没接骨架的 tab：按行号往下取", () => {
     const spy = renderContentRecord as unknown as ReturnType<typeof vi.fn>;
     spy.mockClear();
     tm.switchTo("lb"); // jsdom 恒不可滚 ⇒ R-2 踢一脚
+    await new Promise((r) => requestAnimationFrame(() => r(null))); // 切进来那一脚补批在下一帧（同步段不读几何）
     expect(asks()).toEqual([{ origin: "<local>", jsonlPath: "/p/lb.jsonl", from: 100, until: 300, leftMs: 60_000 }]);
     await settle();
     // 回来的 200 条补上了屏（渲染窗口向下扩到 100）；之后接着问 [0, 100)，到第 0 行为止
@@ -4758,6 +4814,7 @@ describe("〔CF2〕没接骨架的 tab：按行号往下取", () => {
     (home(tm).view as unknown as { fillAbove(t: unknown): void }).fillAbove(t);
     expect(asks().length, "连续两次失败之后的上翻不许自己重问（否则是一个无界的重试环）").toBe(2);
     home(tm).view.activate(t);
+    await new Promise((r) => requestAnimationFrame(() => r(null))); // 切进来那一脚补批在下一帧（同步段不读几何）
     expect(asks().length, "activate 自己就是「切进来」—— 这一脚允许重问").toBe(3);
   });
 
