@@ -365,3 +365,283 @@ fn a_machine_without_a_projects_dir_lists_nothing_and_an_unreadable_one_says_so_
     }
     std::fs::remove_dir_all(&tmp).ok();
 }
+
+/// 〔perfC #1/#2〕**扫清单那一行不复制用不上的大块**：一条记录里一段近 4 MiB 的工具输出，
+/// 扫这一份时本线程未释放字节的高水位，不许比「只是逐行读一遍这份文件」高出一截 ——
+/// 逐行解成完整 `Value` 的样子是行缓冲之外再复制一份那 4 MiB。
+/// 第一行带 `cwd`：项目目录只读开头、读到第一个 `cwd` 就停（真记录第一行就有），不让它去读那一大行。
+#[test]
+fn listing_scan_does_not_copy_records_it_does_not_need() {
+    use std::io::BufRead;
+    let tmp = std::env::temp_dir().join(format!("ccm-hq-alloc-{}", std::process::id()));
+    let dir = fixture_project(&tmp, "proj-alloc");
+    let pad = "x".repeat(4 << 20);
+    let big = format!(
+        r#"{{"type":"user","timestamp":"2026-10-01T08:00:00Z","message":{{"role":"user","content":[{{"type":"tool_result","tool_use_id":"t1","content":"{pad}"}}]}}}}"#
+    );
+    let lines = [
+        r#"{"type":"user","cwd":"/w/alloc","timestamp":"2026-10-01T07:59:00Z","message":{"role":"user","content":"第一句"}}"#,
+        big.as_str(),
+        r#"{"type":"ai-title","aiTitle":"标题"}"#,
+    ];
+    let p = write_jsonl(&dir, "s-alloc.jsonl", &lines);
+    // 地板：只逐行读一遍（行缓冲按倍数长，长多少由读法定，不由解析定）。
+    let base = crate::alloc_probe::reset_peak();
+    for l in std::io::BufReader::new(std::fs::File::open(&p).unwrap())
+        .lines()
+        .map_while(Result::ok)
+    {
+        std::hint::black_box(l);
+    }
+    let floor = crate::alloc_probe::peak_since(base);
+    let base = crate::alloc_probe::reset_peak();
+    let v = analyze_session(&p);
+    let grew = crate::alloc_probe::peak_since(base);
+    // 反空真：真扫到了这一份（三行都数到、标题与第一句都取到），地板真读到了那一大行。
+    assert_eq!(v["messageCountApprox"], 3);
+    assert_eq!(v["aiTitle"], "标题");
+    assert_eq!(v["firstUserExcerpt"], "第一句");
+    assert!(floor >= big.len(), "地板 {floor} 字节没读到那一大行");
+    assert!(
+        grew < floor + (256 << 10),
+        "扫一份带 {} 字节记录的会话，高水位 {grew} 字节，比只逐行读一遍（{floor}）高出一截 —— 用不上的那一大段被复制了一份",
+        big.len()
+    );
+    std::fs::remove_dir_all(&tmp).ok();
+}
+
+/// 〔perfC #1/#2〕扫清单的口径在怪形状上不变：每一格照「整行解成 JSON、按字段取串」那一套取。
+/// 非串的 `type` / 标题 / 时刻当没有 · 同名键取最后一个 · 顶层不是对象只数行 · 坏行只数行 · 分叉来源两格都得是串。
+#[test]
+fn listing_scan_reads_odd_shapes_the_same_way() {
+    let tmp = std::env::temp_dir().join(format!("ccm-hq-odd-{}", std::process::id()));
+    let dir = fixture_project(&tmp, "proj-odd");
+    let p = write_jsonl(
+        &dir,
+        "s-odd.jsonl",
+        &[
+            r#"[1,2,3]"#,
+            r#""just a string""#,
+            r#"{not json"#,
+            r#"{"type":7,"aiTitle":"类型不是串，不算标题"}"#,
+            r#"{"type":"ai-title","aiTitle":{"x":1}}"#,
+            r#"{"type":"user","timestamp":12345,"message":{"role":"user","content":"时刻不是串"}}"#,
+            r#"{"type":"assistant","forkedFrom":{"sessionId":"src","messageUuid":9},"timestamp":"2026-10-01T08:00:00Z"}"#,
+            r#"{"type":"assistant","forkedFrom":"bad","sessionKind":["bg"]}"#,
+            r#"{"type":"user","type":"ai-title","aiTitle":"同名键取最后一个"}"#,
+            "\u{feff}{\"type\":\"user\",\"forkedFrom\":{\"sessionId\":\"src2\",\"messageUuid\":\"m2\"},\"sessionKind\":\"bg\"}",
+        ],
+    );
+    let v = analyze_session(&p);
+    assert_eq!(v["messageCountApprox"], 10);
+    assert_eq!(v["aiTitle"], "同名键取最后一个");
+    assert_eq!(v["firstUserExcerpt"], "时刻不是串");
+    // 第一条 user/assistant 的时刻不是串 ⇒ 取下一条带串的那一条。
+    assert_eq!(
+        v["startedAtMs"],
+        crate::common::time::parse_iso8601_ms("2026-10-01T08:00:00Z").unwrap()
+    );
+    assert_eq!(v["forkedFromSessionId"], "src2");
+    assert_eq!(v["forkedFromMessageUuid"], "m2");
+    assert_eq!(v["isBg"], true);
+    std::fs::remove_dir_all(&tmp).ok();
+}
+
+/// 〔perfC #3〕**正在写的会话变长，清单那一行只扫新增的那一段**，答案与整份重扫逐字相同；
+/// 被截短 · 同长被改写 · 变长但前面被改写（见证对不上）· 半行写完 ⇒ 照样与整份重扫相同（退回整份扫）。
+#[test]
+fn a_growing_session_is_rescanned_only_for_what_was_appended() {
+    use std::io::Write as _;
+    let tmp = std::env::temp_dir().join(format!("ccm-hq-grow-{}", std::process::id()));
+    let dir = fixture_project(&tmp, "proj-grow");
+    let p = dir.join("s-grow.jsonl");
+    let rec = |i: usize| {
+        format!(
+            "{{\"type\":\"user\",\"cwd\":\"/w/grow\",\"timestamp\":\"2026-10-01T08:{:02}:00Z\",\"message\":{{\"role\":\"user\",\"content\":\"第 {i} 句 {}\"}}}}\n",
+            i % 60,
+            "填".repeat(2000)
+        )
+    };
+    let body: String = (0..200).map(rec).collect();
+    std::fs::write(&p, &body).unwrap();
+    let bump = |secs: u64| {
+        let f = std::fs::File::options().write(true).open(&p).unwrap();
+        f.set_modified(
+            std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_900_000_000 + secs),
+        )
+        .unwrap();
+    };
+    bump(0);
+    let last_bytes = || {
+        SESSION_META
+            .lock()
+            .unwrap()
+            .get(&p)
+            .map(|e| e.last_bytes)
+            .expect("清单缓存里有这一份")
+    };
+    let same = |what: &str| {
+        let got = analyze_session_cached(&p);
+        assert_eq!(
+            got,
+            analyze_session(&p),
+            "{what}：缓存那一行与整份重扫不一样"
+        );
+        got
+    };
+    same("第一次");
+    assert!(last_bytes() >= body.len() as u64, "第一次就该整份扫");
+    // 追加一条：只读尾巴（见证 ＋ 新的那一行）。
+    let one = rec(200);
+    std::fs::OpenOptions::new()
+        .append(true)
+        .open(&p)
+        .unwrap()
+        .write_all(one.as_bytes())
+        .unwrap();
+    bump(1);
+    let v = same("追加一条之后");
+    assert_eq!(v["messageCountApprox"], 201);
+    assert!(
+        last_bytes() < (one.len() + 1024) as u64,
+        "追加一条之后读了 {} 字节（整份 {}）—— 整份重扫了",
+        last_bytes(),
+        body.len() + one.len()
+    );
+    // 半行：先写一半（没有换行），再写完。
+    let half = rec(201);
+    let (a, b) = half.as_bytes().split_at(40); // 切在 ASCII 那一段：半行本身是合法 UTF-8（数作一行，与整份逐行读同）
+    std::fs::OpenOptions::new()
+        .append(true)
+        .open(&p)
+        .unwrap()
+        .write_all(a)
+        .unwrap();
+    bump(2);
+    assert_eq!(same("写了半行")["messageCountApprox"], 202);
+    std::fs::OpenOptions::new()
+        .append(true)
+        .open(&p)
+        .unwrap()
+        .write_all(b)
+        .unwrap();
+    bump(3);
+    assert_eq!(same("半行写完")["messageCountApprox"], 202);
+    // 截短：退回整份。
+    std::fs::write(&p, (0..50).map(rec).collect::<String>()).unwrap();
+    bump(4);
+    assert_eq!(same("截短之后")["messageCountApprox"], 50);
+    // 同长改写：标题换了。
+    let mut text: String = (0..49).map(rec).collect();
+    let bare = "{\"type\":\"ai-title\",\"aiTitle\":\"新标题\"}\n".len();
+    let title = format!(
+        "{{\"type\":\"ai-title\",\"aiTitle\":\"新标题\"{}}}\n",
+        " ".repeat(rec(49).len() - bare)
+    );
+    assert_eq!(
+        text.len() + title.len(),
+        (0..50).map(rec).collect::<String>().len()
+    );
+    text.push_str(&title);
+    std::fs::write(&p, &text).unwrap();
+    bump(5);
+    assert_eq!(same("同长改写之后")["aiTitle"], "新标题");
+    // 变长、但前面被改写（见证对不上）：第一句换了。
+    let mut text2 = rec(0).replace("第 0 句", "改过的第一句");
+    text2.push_str(&(1..80).map(rec).collect::<String>());
+    std::fs::write(&p, &text2).unwrap();
+    bump(6);
+    let v = same("变长但前面被改写");
+    assert!(v["firstUserExcerpt"]
+        .as_str()
+        .unwrap()
+        .starts_with("改过的第一句"));
+    std::fs::remove_dir_all(&tmp).ok();
+}
+
+/// 〔perfC #4〕后台热缓存：热完之后整台清单一个字节都不再读（每份都是「没变」那一形），答案与现扫相同。
+#[test]
+fn warming_the_listing_leaves_nothing_to_rescan() {
+    let tmp = std::env::temp_dir().join(format!("ccm-hq-warm-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    let mut paths = Vec::new();
+    for d in 0..6 {
+        let dir = fixture_project(&tmp, &format!("proj-warm-{d}"));
+        for k in 0..4 {
+            let line = format!(
+                r#"{{"type":"user","cwd":"/w/warm{d}","message":{{"role":"user","content":"第 {k} 份"}}}}"#
+            );
+            paths.push(write_jsonl(
+                &dir,
+                &format!("s-warm-{d}-{k}.jsonl"),
+                &[line.as_str()],
+            ));
+        }
+    }
+    let n = warm_listing(&tmp);
+    assert!(n >= paths.len(), "热完缓存里只有 {n} 份");
+    let tree = sessions_by_dir(&tmp).unwrap().unwrap();
+    assert_eq!(
+        tree.iter()
+            .map(|(_, r)| r.as_ref().map_or(0, Vec::len))
+            .sum::<usize>(),
+        paths.len()
+    );
+    for p in &paths {
+        let read = SESSION_META.lock().unwrap().get(p).map(|e| e.last_bytes);
+        assert_eq!(read, Some(0), "热过之后再问清单，{} 又读了", p.display());
+        assert_eq!(analyze_session_cached(p), analyze_session(p));
+    }
+    std::fs::remove_dir_all(&tmp).ok();
+}
+
+/// 〔perfC #4〕接线：`main.rs` 起来就热清单缓存，恰好一处（按行为量要起真二进制再从外面看缓存）。
+#[test]
+fn main_warms_the_listing_once() {
+    let main = crate::guard_support::production_code(include_str!("../../../src/backend/main.rs"));
+    guard_core::find_pinned(
+        &main,
+        "observe::history_query::warm_listing_in_background(agent_home.clone());",
+    )
+    .unwrap_or_else(|e| panic!("`main.rs` 里热清单缓存不是恰好一处：{e}"));
+}
+
+/// 〔perfC #4〕后台那两条热缓存的线程真降了优先级（Linux：这条线程的 nice 值），而且只降它自己。
+#[cfg(target_os = "linux")]
+#[test]
+fn background_warmers_run_at_low_priority() {
+    let nice_of_this_thread = || {
+        let s = std::fs::read_to_string("/proc/thread-self/stat").unwrap();
+        let rest: Vec<&str> = s[s.rfind(')').unwrap() + 2..].split(' ').collect();
+        rest[16].parse::<i64>().unwrap()
+    };
+    let before = nice_of_this_thread();
+    let (ok, after) = std::thread::spawn(move || {
+        let ok = crate::platform::proc::lower_this_thread();
+        (ok, nice_of_this_thread())
+    })
+    .join()
+    .unwrap();
+    assert!(ok, "降不了优先级");
+    assert_eq!(
+        after,
+        i64::from(crate::platform::proc::BACKGROUND_NICE).max(before)
+    );
+    assert_eq!(nice_of_this_thread(), before, "降到了别的线程身上");
+    for (file, src) in [
+        (
+            "observe/history_query.rs",
+            include_str!("../../../src/backend/observe/history_query.rs"),
+        ),
+        (
+            "observe/search_query.rs",
+            include_str!("../../../src/backend/observe/search_query.rs"),
+        ),
+    ] {
+        let src = crate::guard_support::production_code(src);
+        assert!(
+            src.contains("crate::platform::proc::lower_this_thread();"),
+            "{file} 的后台热缓存线程没降优先级"
+        );
+    }
+}

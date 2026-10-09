@@ -300,3 +300,40 @@ pub(crate) fn session_alive(pid: u32, expected_start: Option<u64>) -> bool {
     let current_start = if exists { proc_starttime(pid) } else { None };
     super::liveness::is_same_live_process(exists, expected_start, current_start)
 }
+
+/// 把**调用它的这条线程**降到低优先级（后台一次性热缓存用：不跟前台的帧命令抢 CPU）。
+/// 回真 ＝ 降成了；降不了 / 这一平台不支持 ⇒ 假（照常跑，只是不让）。它之后由这条线程起的线程随它（Linux 按线程记 nice）。
+pub(crate) fn lower_this_thread() -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        // Linux 上 nice 值按线程记：`setpriority(PRIO_PROCESS, 线程号)` 只动这一条。
+        // 已经比这还低（整个进程被 `nice` 起来的）⇒ 不动（往高调要特权，也不该）。
+        // SAFETY: 纯系统调用，参数是本线程号与一个常数，不碰内存。
+        unsafe {
+            let tid = libc::gettid() as libc::id_t;
+            if libc::getpriority(libc::PRIO_PROCESS, tid) >= BACKGROUND_NICE {
+                return true;
+            }
+            libc::setpriority(libc::PRIO_PROCESS, tid, BACKGROUND_NICE) == 0
+        }
+    }
+    #[cfg(windows)]
+    {
+        extern "system" {
+            fn GetCurrentThread() -> isize;
+            fn SetThreadPriority(thread: isize, priority: i32) -> i32;
+        }
+        /// `THREAD_PRIORITY_BELOW_NORMAL`。
+        const BELOW_NORMAL: i32 = -1;
+        // SAFETY: 伪句柄（当前线程，不用关）＋ 一个常数。
+        unsafe { SetThreadPriority(GetCurrentThread(), BELOW_NORMAL) != 0 }
+    }
+    #[cfg(not(any(target_os = "linux", windows)))]
+    {
+        false
+    }
+}
+
+/// [`lower_this_thread`] 在 Linux 上给的 nice 值。
+#[cfg(target_os = "linux")]
+pub(crate) const BACKGROUND_NICE: libc::c_int = 10;

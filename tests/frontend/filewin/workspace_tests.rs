@@ -2224,3 +2224,122 @@ fn a_stale_side_or_tab_index_falls_back_instead_of_panicking() {
         "同一处多撞几帧，报过警告的调用处不该变多"
     );
 }
+
+/// **性能台架的工作面**（`tests/shots/perf/filewin-perf.sh` 在私有 Xvfb 里点起来；平时 `ignored`）：
+/// 走生产开窗那一条（`open_detached_seeded` ＋ 生产的 `Workspace` 应用 ＋ 帧日志），合成后端答一个几千项的目录，
+/// 每一段量这一进程的 CPU（`/proc/self/stat`）与帧日志里多出来的帧数，印 `perf.<段>.<量>=<值>`。
+/// 不判对错 —— 判据另写；这一格只出读数。
+#[cfg(not(windows))]
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "性能台架工作面：由 tests/shots/perf/filewin-perf.sh 在私有 Xvfb 里点起来"]
+async fn perf_rig_worker() {
+    let need =
+        |k: &str| std::env::var(k).unwrap_or_else(|_| panic!("性能台架工作面：缺环境变量 {k}"));
+    let display = need("DISPLAY");
+    let base = std::path::PathBuf::from(need("CCM_PERF_FILEWIN_DIR"));
+    let log = std::path::PathBuf::from(need("CCM_FILEWIN_FRAME_LOG"));
+    let big = base.join("big");
+    let bigd = big.to_string_lossy().to_string();
+    let mut offered = vec!["files-ls", "files-read-text", "files-stat", "files-home"];
+    offered.extend_from_slice(crate::find::COMMANDS);
+    let be = FakeBackend::new(&offered, Declared::default()).homed(&base);
+    // 预览那一份大文本：合成后端按路径从内存答。
+    let text: String = (0..20_000)
+        .map(|i| {
+            format!(
+                "fn step_{i}(x: u64) -> u64 {{ x.wrapping_mul({i}) ^ 0x5bd1e995 }} // 第 {i} 行\n"
+            )
+        })
+        .collect();
+    be.disk
+        .lock()
+        .unwrap()
+        .insert(big.join("f00000.rs").to_string_lossy().to_string(), text);
+    let wired = wire_up("devbox", be).await;
+    let mut w = window_on(&wired, &base.to_string_lossy());
+    let t_ls = std::time::Instant::now();
+    w.navigate_to(bigd.clone());
+    while w.listing.is_loading() {
+        tokio::time::sleep(std::time::Duration::from_millis(2)).await;
+    }
+    let rows = w.listing.rows.lock().unwrap().clone();
+    println!("perf.list.rows={}", rows.len());
+    println!("perf.list.ms={}", t_ls.elapsed().as_millis());
+    let line = wired.line.clone();
+    let h = crate::shell::open_detached_seeded(
+        Source::remote("devbox".into()),
+        bigd.clone(),
+        tokio::runtime::Handle::try_current().ok(),
+        Some(line),
+        rows,
+        None,
+        None,
+        None,
+        Vec::new(),
+        None,
+        Some(crate::theme::testing::default_theme()),
+    );
+    let cpu = || -> u64 {
+        let s = std::fs::read_to_string("/proc/self/stat").unwrap();
+        let rest: Vec<&str> = s[s.rfind(')').unwrap() + 2..].split(' ').collect();
+        rest[11].parse::<u64>().unwrap() + rest[12].parse::<u64>().unwrap()
+    };
+    let frames = || {
+        std::fs::read_to_string(&log)
+            .map(|s| s.lines().count())
+            .unwrap_or(0)
+    };
+    let x = |args: &[&str]| {
+        let _ = crate::rows::testing::xvfb::xdotool_on(&display, args);
+    };
+    let phase = |name: &str, secs: f64, act: &dyn Fn()| {
+        let (c0, f0, t0) = (cpu(), frames(), std::time::Instant::now());
+        act();
+        let left = secs - t0.elapsed().as_secs_f64();
+        if left > 0.0 {
+            std::thread::sleep(std::time::Duration::from_secs_f64(left));
+        }
+        let dt = t0.elapsed().as_secs_f64();
+        println!("perf.{name}.secs={dt:.1}");
+        println!("perf.{name}.cpu_ms={}", (cpu() - c0) * 10);
+        println!("perf.{name}.frames={}", frames() - f0);
+    };
+    let ids = crate::rows::testing::xvfb::wait_for_windows(&display, "big", 20_000);
+    let Some(id) = ids.first().cloned() else {
+        panic!("窗口没起来");
+    };
+    let t_open = std::time::Instant::now();
+    while frames() == 0 && t_open.elapsed().as_secs() < 20 {
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    println!("perf.open.first_frame_ms={}", t_open.elapsed().as_millis());
+    phase("settle", 3.0, &|| {});
+    // 指针不在窗口上、什么都不动。
+    phase("idle", 10.0, &|| {});
+    // 指针停在列表上（悬停高亮那一行），之后不动。
+    phase("hover_idle", 10.0, &|| {
+        x(&["windowfocus", "--sync", &id]);
+        x(&["mousemove", "--window", &id, "500", "300"]);
+    });
+    // 滚轮往下滚 60 格（一格一下），再静 2 秒。
+    phase("wheel", 6.0, &|| {
+        for _ in 0..60 {
+            x(&["click", "5"]);
+        }
+    });
+    // 键盘：↓ 走 200 行。
+    phase("keys", 6.0, &|| {
+        x(&["key", "--delay", "5", "--repeat", "200", "Down"]);
+    });
+    // 回到顶、选中第一行（大文件）、空格「看一眼」，之后静着。
+    phase("peek", 8.0, &|| {
+        x(&["key", "Home"]);
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        x(&["key", "space"]);
+    });
+    phase("peek_idle", 10.0, &|| {});
+    x(&["key", "Escape"]);
+    phase("after_idle", 10.0, &|| {});
+    let _ = crate::rows::testing::xvfb::close_like_a_wm(&display, &id);
+    let _ = tokio::task::spawn_blocking(move || h.join()).await;
+}

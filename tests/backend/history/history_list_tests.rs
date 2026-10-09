@@ -616,3 +616,65 @@ fn a_real_record_tree_becomes_the_machine_listing() {
         ]
     );
 }
+
+/// 〔perfC #1〕**按 sid 问清单只整份扫那一份，答案与整台扫逐字相同。**
+/// 夹具挑会让「只扫一份」答错的形状：同一记录目录里一份读不出目录（分组取最近那份的目录）· 分叉子会话（父会话在别的目录）·
+/// 两个目录里各有一份同名会话 · 一个读不了的目录（分组里那一格 `failed`）。逐个 sid 比两份答案；
+/// 再看只扫一份那一形里别的会话真没被整份扫（行里没有记录路径 —— 那一格只有整份扫出来的行才带）。
+#[cfg(unix)]
+#[test]
+fn asking_by_sid_scans_one_session_and_answers_the_same() {
+    use std::os::unix::fs::PermissionsExt;
+    let home = std::env::temp_dir().join(format!("ccm-hlist-sid-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&home);
+    let put = |dir: &str, name: &str, body: &str| {
+        let d = home.join("projects").join(dir);
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(d.join(format!("{name}.jsonl")), body).unwrap();
+    };
+    put("-w-alpha", S1, "{\"cwd\":\"/w/alpha\",\"type\":\"user\",\"timestamp\":\"2026-10-01T08:00:00Z\",\"message\":{\"role\":\"user\",\"content\":\"甲\"}}\n{\"type\":\"ai-title\",\"aiTitle\":\"甲的标题\"}\n");
+    // 读不出目录的那份：归同目录里最近修改的那份的目录。
+    put("-w-alpha", S2, "{\"type\":\"user\",\"timestamp\":\"2026-10-01T09:00:00Z\",\"message\":{\"role\":\"user\",\"content\":\"乙\"}}\n");
+    put("-w-beta", S4, &format!("{{\"cwd\":\"/w/beta\",\"type\":\"user\",\"forkedFrom\":{{\"sessionId\":\"{S1}\",\"messageUuid\":\"m1\"}},\"message\":{{\"role\":\"user\",\"content\":\"丁\"}}}}\n"));
+    put("-w-gamma", S1, "{\"cwd\":\"/w/gamma\",\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"同名的另一份\"}}\n");
+    let locked = home.join("projects").join("-w-locked");
+    std::fs::create_dir_all(&locked).unwrap();
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+    let live = LiveSet([S4.to_string()].into_iter().collect());
+    let listing = |only: Option<&str>| {
+        let tree = crate::observe::history_query::sessions_by_dir_for(&home, only)
+            .expect("读得了")
+            .expect("记录树在");
+        listing_from(tree, &[], &live, &json!({ S1: "work" }))
+    };
+    let whole = listing(None);
+    for sid in [S1, S2, S4, "no-such-session"] {
+        let a = ask(json!({ "sid": sid }));
+        let narrow = listing(Some(sid));
+        let want = answer_from(&whole, None, Ok(&ann()), &a, 1_000, &|t| t);
+        let got = answer_from(&narrow, None, Ok(&ann()), &a, 1_000, &|t| t);
+        assert_eq!(got, want, "按 sid {sid} 问：只扫一份与整台扫答得不一样");
+        // 反空真：真有行可比（不在的那个除外），只扫一份那一形里别的会话没被整份扫。
+        if sid != "no-such-session" {
+            assert!(
+                !want["rows"].as_array().unwrap().is_empty(),
+                "{sid} 一行都没有，比了个空"
+            );
+        }
+        for r in narrow["rows"].as_array().unwrap() {
+            let scanned = r["jsonlPath"].as_str().is_some_and(|p| !p.is_empty());
+            assert_eq!(
+                scanned,
+                r["sessionId"] == sid,
+                "只扫一份那一形扫了别的会话：{r}"
+            );
+        }
+    }
+    // 读不了的目录照样进分组（`failed` 那一格）。
+    assert!(
+        whole["failed"].as_array().is_some_and(|f| !f.is_empty()),
+        "夹具没造出读不了的目录"
+    );
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let _ = std::fs::remove_dir_all(&home);
+}

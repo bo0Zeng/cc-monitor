@@ -275,6 +275,16 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         Trigger::Filter { by: "tests/shots/filewin.mjs", needle: "workspace::tests::screenshot_for_the_shots_tool" },
     ),
     (
+        "tests/frontend/filewin/workspace_tests.rs",
+        "perf_rig_worker",
+        Trigger::Filter { by: "tests/shots/perf/filewin-perf.sh", needle: "workspace::tests::perf_rig_worker" },
+    ),
+    (
+        "tests/backend/relay/server_tests.rs",
+        "relay_overhead_bench",
+        Trigger::Manual("读数不是判据：中转每发多出来的那一跳（直连与经中转各发 N 发比 p50）；跑法住它自己的头注"),
+    ),
+    (
         "tests/frontend/filewin/rows_tests.rs",
         "xvfb_worker_real_pointer_events_on_a_row",
         Trigger::Filter { by: "tests/frontend/filewin/rows_tests.rs", needle: "rows::tests::xvfb_worker_real_pointer_events_on_a_row" },

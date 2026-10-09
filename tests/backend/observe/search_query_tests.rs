@@ -28,7 +28,7 @@ fn search_end_to_end_and_rejects_traversal() {
         titles: false,
     };
     // 会话那一格来自索引：整份读进一格 `FileEntry`，查询对它跑。
-    let mut entry = FileEntry::empty(None, true);
+    let mut entry = FileEntry::empty(true);
     entry.take(None, &std::fs::read(&jsonl).expect("读夹具"));
     let mut budget = SnippetBudget::new(opts.limit);
     let hit = session_hits_in(
@@ -82,7 +82,7 @@ fn agent_reports_are_searchable_as_their_own_kind() {
         r#"{"type":"user","uuid":"p1","timestamp":"2026-01-01T00:00:02Z","message":{"role":"user","content":"<cross-session-message from=\"s9\">那边的部署脚本也要改</cross-session-message>"}}"#,
     ]
     .join("\n");
-    let mut entry = FileEntry::empty(None, true);
+    let mut entry = FileEntry::empty(true);
     entry.take(None, lines.as_bytes());
     let path = std::path::Path::new("/x/projects/p/s1.jsonl");
     let ask = |scope: Option<&str>| {
@@ -119,7 +119,7 @@ fn system_injections_are_never_searched() {
         r#"{"type":"user","uuid":"m2","timestamp":"2026-01-01T00:00:02Z","message":{"role":"user","content":"<system-reminder>注入词丙只在这里</system-reminder>"}}"#,
     ]
     .join("\n");
-    let mut entry = FileEntry::empty(None, true);
+    let mut entry = FileEntry::empty(true);
     entry.take(None, lines.as_bytes());
     let path = std::path::Path::new("/x/projects/p/s1.jsonl");
     let ask = |q: &str, include_tools: bool| {
