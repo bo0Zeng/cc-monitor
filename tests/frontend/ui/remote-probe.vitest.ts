@@ -62,6 +62,7 @@ const ok = {
   backendHello: "版本 p5o · 能用 40 项、这台做不到 0 项 · 往返 3 毫秒",
   backendGaps: [],
   message: copyText("beProbe.test.ok"),
+  detail: null,
 };
 const dialing = { kind: "dialing", endpoint: "192.0.2.2:22" };
 let seq = 0;

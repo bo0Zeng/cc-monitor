@@ -33,7 +33,7 @@ import { icon } from "../kit/icon";
 import { ccRow } from "./cc-row";
 import { toggleSwitch } from "../kit/switch";
 import { unavailableReason } from "../control-said";
-import { failSaid } from "../kit/detail";
+import { detailOf, failSaid, sayWithDetail } from "../kit/detail";
 
 /**
  * 连接设置的一格：标签（上）· 框（中，右侧可挂一颗按钮）· 下面一行说明（出错时错误句换在同一行）。
@@ -830,7 +830,7 @@ export class MachineCard {
           ? copyText("machineCard.test.stalled", { said: e.message, where: describeStop(e.stop) })
           : failSaid(copyText("machineCard.test.failed"), e);
       segs.stop();
-      this.renderTestResult(null, said, segs.el);
+      this.renderTestResult(null, said, segs.el, e instanceof ProbeStalled ? "" : detailOf(e));
     } finally {
       this.testButton.disabled = false;
       setButtonLabel(this.testButton, copyText("machineCard.build.test"));
@@ -1005,6 +1005,7 @@ export class MachineCard {
     res: ConnTestResult | null,
     hardError: string | null,
     keep?: HTMLElement,
+    hardDetail = "",
   ): void {
     for (const child of Array.from(this.testResult.children)) {
       if (child !== keep) child.remove();
@@ -1014,7 +1015,7 @@ export class MachineCard {
     if (hardError !== null) {
       const line = document.createElement("div");
       line.className = "remote-test-line remote-test-err";
-      line.textContent = hardError;
+      sayWithDetail(line, hardError, hardDetail);
       this.testResult.appendChild(line);
       return;
     }
@@ -1023,7 +1024,7 @@ export class MachineCard {
     if (!res.sshOk || !res.backendOk) {
       const msg = document.createElement("div");
       msg.className = "remote-test-line remote-test-msg";
-      msg.textContent = res.message;
+      sayWithDetail(msg, res.message, res.detail ?? "");
       this.testResult.appendChild(msg);
     }
 
@@ -1075,7 +1076,7 @@ export class MachineCard {
       return;
     }
     const segs = this.segLine();
-    segs.end({ sshOk: true, backendOk: true, backendHello: "", fingerprint: null, endpoint: null, backendGaps: [], message: "" });
+    segs.end({ sshOk: true, backendOk: true, backendHello: "", fingerprint: null, endpoint: null, backendGaps: [], message: "", detail: null });
     this.testResult.replaceChildren(segs.el);
     this.testResult.style.display = "block";
   }
