@@ -59,6 +59,9 @@ pub(crate) struct NewRequest {
     pub(crate) models: BTreeMap<String, String>,
     /// 发请求的界面就在这台上（开窗那一形本机与远端渲法不同）。
     pub(crate) local: bool,
+    /// 这一趟的票（界面每次点［新建］一张；期限到了再问一次带同一张 ⇒ 认出同一趟，不起第二个：[`super::session_new_ticket`]）。缺 ⇒ 不认。
+    #[serde(default)]
+    pub(crate) ticket: Option<String>,
 }
 
 /// 哪一格不行（`data.field`）。
@@ -155,6 +158,37 @@ pub(crate) fn answer(
             None,
         )
     })?;
+    let ticket = req.ticket.clone();
+    if ticket
+        .as_deref()
+        .is_some_and(|t| !super::session_new_ticket::ticket_ok(t))
+    {
+        return Err((
+            "bad_args",
+            crate::common::contract::malformed("`ticket` must be 1..=64 chars of [A-Za-z0-9-]"),
+            None,
+        ));
+    }
+    super::session_new_ticket::TICKETS.with(
+        ticket.as_deref(),
+        || {
+            fail(
+                "launch_pending",
+                copy_core::copy_text("beSessionNew.ticket.pending", &[]),
+                None,
+            )
+        },
+        || start(req, deps, fork, home),
+    )
+}
+
+/// 起（票那一层之后）。
+fn start(
+    req: NewRequest,
+    deps: &Deps,
+    fork: ForkWrite,
+    home: Option<&std::path::Path>,
+) -> Result<Value, Failed> {
     // 没说是哪一家就不起（不落默认那一家：默认是界面读画像时的事）。
     if req.agent.trim().is_empty() {
         return Err(fail(

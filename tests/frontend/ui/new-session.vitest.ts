@@ -6,8 +6,9 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const sent: { op: string; body: Record<string, unknown> }[] = [];
 const replies = new Map<string, unknown>();
-let refusal: { op: string; code: string; message: string; data: unknown } | null = null;
-let hang = false;
+let refusal: { op: string; code: string; message: string; data: unknown; detail?: string } | null = null;
+/** 接下来几次 `session-new` 没等到回话（期限到）。 */
+let hang = 0;
 let boom: Error | null = null;
 
 vi.mock("../../../src/comms/inward/chan", async (importOriginal) => {
@@ -17,15 +18,16 @@ vi.mock("../../../src/comms/inward/chan", async (importOriginal) => {
     chan: {
       call: async (_origin: string, op: string, body: Uint8Array) => {
         sent.push({ op, body: JSON.parse(new TextDecoder().decode(body)) });
+        if (hang > 0 && op === "session-new") {
+          hang--;
+          throw new real.ChanError({ layer: "hop", at: { idx: 0, tag: "wait" }, reach: "Sent", why: "Overrun" }, "码：Overrun");
+        }
         if (refusal && refusal.op === op) {
           const r = refusal;
           refusal = null;
-          throw new real.ChanError({ layer: "peer", why: "refused", body: new TextEncoder().encode(JSON.stringify({ code: r.code, message: r.message, data: r.data })) });
+          throw new real.ChanError({ layer: "peer", why: "refused", body: new TextEncoder().encode(JSON.stringify({ code: r.code, message: r.message, data: r.data })) }, r.detail ?? "");
         }
         if (boom && op === "session-new") throw boom;
-        if (hang && op === "session-new") {
-          throw new real.ChanError({ layer: "hop", at: { idx: 0, tag: "wait" }, reach: "Sent", why: "Overrun" });
-        }
         return new TextEncoder().encode(JSON.stringify(replies.get(op)));
       },
     },
@@ -96,7 +98,7 @@ beforeEach(() => {
   sent.length = 0;
   replies.clear();
   refusal = null;
-  hang = false;
+  hang = 0;
   boom = null;
   vi.mocked(commands.backend_status).mockImplementation(async () => ({ channel: true }) as never);
   vi.mocked(commands.backend_start).mockClear();
@@ -153,7 +155,7 @@ describe("点［新建］：交那台的那一份", () => {
     await flush();
     await done;
     expect(newRequests()).toEqual([
-      { agent: "claude", cwd: "/home/u/srv/orders", place: "tmux", local: false, models: {}, account: { kind: "named", name: "work" } },
+      { agent: "claude", cwd: "/home/u/srv/orders", place: "tmux", local: false, models: {}, account: { kind: "named", name: "work" }, ticket: expect.any(String) },
     ]);
     expect(document.querySelector('[role="dialog"]'), "起了框就关").toBeNull();
     await flush();
@@ -218,14 +220,52 @@ describe("点［新建］：交那台的那一份", () => {
     expect(newRequests()[1].account).toEqual({ kind: "named", name: "personal" });
   });
 
-  it("期限到 ⇒ 框顶「启动无应答 · {机器}」＋［重试］，不说失败", async () => {
-    hang = true;
+  it("★ 期限到 ⇒ 带同一张票自己再核一次；那台说起好了 ⇒ 落到那个会话、框关上（不起第二个）", async () => {
+    hang = 1;
     void openNewSession({ origin: "devbox" });
     await flush();
     createBtn().click();
     await flush();
-    expect(dialog().textContent).toContain(copyText("launch.timeout.noAnswer", { machine: "devbox" }));
-    expect([...dialog().querySelectorAll("button")].some((b) => b.textContent === copyText("newSession.retry.action"))).toBe(true);
+    const [a, b] = newRequests();
+    expect(typeof a.ticket).toBe("string");
+    expect(b.ticket, "再核那一次带的是同一张票").toBe(a.ticket);
+    expect(newRequests()).toHaveLength(2);
+    expect(document.querySelector('[role="dialog"]'), "起好了 ⇒ 框关上").toBeNull();
+    expect(arrival.awaitArrival).toHaveBeenCalledWith(expect.objectContaining({ origin: "devbox", tmuxName: "orders-cc" }));
+  });
+
+  it("★ 再核也无应答 ⇒ 框顶「起没起未知」＋［再核一次］＋［复制详情］、没有［重试］；［再核一次］带同一张票，那台说起好了就落过去", async () => {
+    hang = 2;
+    void openNewSession({ origin: "devbox" });
+    await flush();
+    createBtn().click();
+    await flush();
+    const top = dialog().querySelector<HTMLElement>("[class*=nsTop]")!;
+    expect(top.textContent).toContain(copyText("newSession.timeout.unknown", { machine: "devbox" }));
+    const labels = [...top.querySelectorAll("button")].map((x) => x.textContent);
+    expect(labels, "无应答只给［再核一次］（同一张票，不会起第二个），不给［重试］").toEqual([copyText("newSession.recheck.action"), copyText("detail.act.copy")]);
+    [...top.querySelectorAll<HTMLButtonElement>("button")].find((x) => x.textContent === copyText("newSession.recheck.action"))!.click();
+    await flush();
+    const tickets = newRequests().map((r) => r.ticket);
+    expect(tickets).toHaveLength(3);
+    expect(new Set(tickets).size, "三次都是同一张票").toBe(1);
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(arrival.awaitArrival).toHaveBeenCalled();
+  });
+
+  it("那台说这一趟还在起 ⇒ 框顶那一句 ＋［再核一次］＋［复制详情］，不重起", async () => {
+    hang = 1;
+    refusal = { op: "session-new", code: "launch_pending", message: "还在起-甲", data: { field: null, unavailable: null }, detail: "码：launch_pending" };
+    void openNewSession({ origin: "devbox" });
+    await flush();
+    createBtn().click();
+    await flush();
+    const top = dialog().querySelector<HTMLElement>("[class*=nsTop]")!;
+    expect(top.textContent).toContain("还在起-甲");
+    const labels = [...top.querySelectorAll("button")].map((x) => x.textContent);
+    expect(labels).toContain(copyText("newSession.recheck.action"));
+    expect(labels).toContain(copyText("detail.act.copy"));
+    expect(newRequests()).toHaveLength(2);
   });
 });
 
@@ -392,19 +432,23 @@ describe("那台说不行的其余几形", () => {
     await flush();
     expect(rowOf(input(copyText("newSession.label.command"))).textContent).toContain("命令不行");
     expect(rowOf(input(copyText("newSession.label.tmuxName"))).textContent, "再交一次先清掉上一次的话").not.toContain(copyText("launch.tmux.taken"));
-    refusal = { op: "session-new", code: "bad_agent", message: "这一家不行", data: { field: "agent", unavailable: null } };
+    refusal = { op: "session-new", code: "bad_agent", message: "这一家不行", data: { field: "agent", unavailable: null }, detail: "码：bad_agent" };
     createBtn().click();
     await flush();
-    expect(dialog().querySelector<HTMLElement>("[class*=nsTop]")!.textContent).toContain("这一家不行");
+    // 那一格收着 ⇒ 整体那一形：按钮行上方一行红字 ＋［复制详情］（表单框的那一形）。
+    const fail = dialog().querySelector<HTMLElement>("[class*=dlgFail]")!;
+    expect(fail.hidden).toBe(false);
+    expect(fail.textContent).toContain("这一家不行");
+    expect([...fail.querySelectorAll("button")].map((x) => x.textContent)).toContain(copyText("detail.act.copy"));
   });
 
-  it("通道不通 ⇒ 框顶说原话；号被钉住 ⇒ 那一格下说钉住、只给［登录…］", async () => {
+  it("通道不通 ⇒ 按钮行上方说那一句；号被钉住 ⇒ 那一格下说钉住、只给［登录…］", async () => {
     boom = new Error("线断了");
     void openNewSession({ origin: "devbox" });
     await flush();
     createBtn().click();
     await flush();
-    expect(dialog().querySelector<HTMLElement>("[class*=nsTop]")!.textContent).toContain("线断了");
+    expect(dialog().querySelector<HTMLElement>("[class*=dlgFail]")!.textContent).toContain("线断了");
     boom = null;
     refusal = {
       op: "session-new",

@@ -69,6 +69,28 @@ function noDirWorld(): World {
   return w;
 }
 
+/** 起新会话框：点［新建］那一问两次都没等到回话（那台卡住）：「起没起未知」＋［再核一次］（同一张票，不会起第二个）＋［复制详情］。 */
+function noAnswerWorld(): World {
+  const w = defaultWorld();
+  w.ops["session-new"] = () => {
+    throw {
+      err: { Hop: { idx: 1, tag: "wait", reach: "Sent", why: "Overrun" } },
+      body: [],
+      detail: "机器：devbox\n命令：session-new\n断在：第 1 跳 · 等回话\n码：Overrun",
+    };
+  };
+  return w;
+}
+
+/** 起新会话框：那台说整体不行（不落在哪一格）：按钮行上方一行红字 ＋［复制详情］。 */
+function startFailedWorld(): World {
+  const w = defaultWorld();
+  w.ops["session-new"] = () => {
+    throw new Refuse("start_failed", "启动失败 · ccm 退出码 1", { field: null, unavailable: null }, "ccm: launcher exited 1");
+  };
+  return w;
+}
+
 /** 点了［新建］、那台起好了（tmux 里）但会话一直没报到：那个 tmux 会话还在，画面末几行是启动器的报错。 */
 function unarrivedWorld(): World {
   const w = defaultWorld();
@@ -190,6 +212,24 @@ export const PANEL_SCENES: Scene[] = [
     await click(await byText('[role="dialog"] button', "新建"));
     await sleep(600);
   }, noDirWorld),
+  panel("panel-new-session-noanswer", "起新会话 · 无应答", "点［新建］、那台两次都没回话（期限到 ⇒ 带同一张票自己再核一次）：框顶「起没起未知」＋［再核一次］（同一张票，起好了就落过去、不起第二个）＋［复制详情］，不给［重试］", async () => {
+    await openCommandBar();
+    await type("[data-role=command-input]", "新建会话");
+    await key("Enter");
+    await waitFor('[role="dialog"] button[aria-label="账号"]:not([data-value=""])');
+    await sleep(300);
+    await click(await byText('[role="dialog"] button', "新建"));
+    await sleep(800);
+  }, noAnswerWorld),
+  panel("panel-new-session-failed", "起新会话 · 整体不行", "那台说起不来、不落在哪一格：按钮行上方一行红字 ＋［复制详情］（表单框那一形），框不关、填的都在", async () => {
+    await openCommandBar();
+    await type("[data-role=command-input]", "新建会话");
+    await key("Enter");
+    await waitFor('[role="dialog"] button[aria-label="账号"]:not([data-value=""])');
+    await sleep(300);
+    await click(await byText('[role="dialog"] button', "新建"));
+    await sleep(600);
+  }, startFailedWorld),
   panel("panel-new-slot-starting", "起新会话 · 正在启动", "点［新建］、那台回「起好了」：框关掉，标签页栏末尾长出占位标签页「正在启动」（转圈 · 项目名），主区换成它那一页；报到了原位换成真的", async () => {
     await startNewSession();
     await waitFor("#tab-bar [data-slot]");

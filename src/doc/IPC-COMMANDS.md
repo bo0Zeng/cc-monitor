@@ -3040,11 +3040,12 @@ cc-bus 钩子诊断。
 | `place` | → | `tmux`（在这台 tmux 里后台起，关终端不断）· `window`（开一个新终端窗口直接跑） |
 | `session` | ← | `started` 时的 tmux 会话名 |
 | `sid` | ← | 分叉出来的新会话 sid；新起的 ⇒ `null`（报到之前说不出） |
+| `ticket` | → | 可缺：这一趟的票（界面每次点［新建］一张）；同一张票再问 ⇒ 起好了回原样那一份 · 还在起 ⇒ `launch_pending` · 没见过 / 没起成 ⇒ 照常起 |
 | `tmuxName` | → | 可缺 ⇒ 这台铸 |
 | `unavailable` | ← | `account_unavailable` 时那一形，带替代号 |
 | `uuid` | → | `forkFrom` 里：从哪条消息处分叉 |
 
-码：`bad_args` · `unknown_agent` · `bad_command` · `no_dir` · `account_unavailable` · `place_unavailable` · `bad_tmux_name` · `tmux_taken` · `unobservable` · `fork_failed` · `refused` · `start_failed` · `child_timed_out`
+码：`bad_args` · `unknown_agent` · `bad_command` · `no_dir` · `account_unavailable` · `place_unavailable` · `bad_tmux_name` · `tmux_taken` · `unobservable` · `fork_failed` · `refused` · `start_failed` · `child_timed_out` · `launch_pending`
 
 #### `session-new-facts`
 
