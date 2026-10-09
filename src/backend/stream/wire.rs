@@ -311,8 +311,10 @@ pub enum Frame {
     /// 缺 ＝ 不进界面、照占号）与它自己的 `cwd`。解释住后端适配层，monitor 只原样转交。
     /// 原文 `raw` 只给发了 `--with-raw` 的客户端（逐字节等于记录里那一行，去掉行尾换行）。
     ///
-    /// **两个前端共同的契约面**：`session_id` · `path` · `seq` · `byte_offset` · `raw` 五格与 `record` 的形状都在冻结表里
-    /// （`wire_tests::the_shapes_the_second_frontend_reads_stay_put` · `the_record_shape_both_frontends_read_stays_put`），只增不改。
+    /// **两个前端共同的契约面**：`session_id` · `path` · `seq` · `byte_offset` · `raw` 五格与 `record` 的形状都在冻结表里，只增不改
+    /// （`wire_tests::the_shapes_the_second_frontend_reads_stay_put` · `the_record_shape_both_frontends_read_stays_put`；
+    /// 新加的格也得先登记，`every_product_field_is_in_the_frozen_table`）。`raw` 逐字节等于那一行
+    /// （`watcher_tests::line_raw_is_the_record_line_byte_for_byte`）。
     Line {
         /// 会话 id。
         session_id: String,

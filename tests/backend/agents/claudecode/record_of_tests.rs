@@ -9,7 +9,7 @@ fn one(raw: &str) -> Option<Record> {
     let rec = crate::agents::claudecode::parse::parse_line(raw)
         .unwrap()
         .unwrap();
-    record_of(rec, "L7").map(|mut r| {
+    record_of(rec, &crate::agents::line_id(4096)).map(|mut r| {
         // 钟面随这台的时区变；金样里写成固定的样子（形状是「HH:MM」）。
         if r.time_text.is_some() {
             r.time_text = Some("09:30".into());

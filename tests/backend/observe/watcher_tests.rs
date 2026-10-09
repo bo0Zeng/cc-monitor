@@ -3901,6 +3901,36 @@ fn line_frames_carry_the_raw_text_only_when_the_stream_asked() {
     }
 }
 
+/// 冻结格 `line.raw`（两个前端的契约面）：真从文件读出来的那一行，`raw` 逐字节等于记录里那一行去掉行尾（`\n` / `\r\n`）——
+/// 不重排键、不改转义、不动空白与非 ASCII；成品 `record` 换形不碰它。
+#[test]
+fn line_raw_is_the_record_line_byte_for_byte() {
+    let dir = std::env::temp_dir().join(format!("ccm-rawbytes-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(64);
+    let mut sink = FrameSink::new(tx);
+    let mut state = ReaderState::new(dir.join("projects"), false, false);
+    state.with_raw = true;
+    let path = dir.join("sess-raw.jsonl");
+    state.active_sids.insert("sess-raw".to_string());
+    let rows = [
+        r#"{"type":"user","uuid":"u1","message":{"role":"user","content":"a \"q\" \u00e9 文  x"},"z":1,  "a":2}"#,
+        r#"{ "type" : "assistant" ,"uuid":"a1","message":{"content":[{"type":"text","text":"tab\there"}]}}"#,
+        "not json at all",
+    ];
+    let content = format!("{}\n{}\r\n{}\n", rows[0], rows[1], rows[2]);
+    std::fs::write(&path, &content).unwrap();
+    process_jsonl(&path, &mut state, &mut sink);
+    let mut got = Vec::new();
+    while let Ok(f) = rx.try_recv() {
+        if let Frame::Line { raw, .. } = f {
+            got.push(raw.expect("索要了 raw 却没带"));
+        }
+    }
+    assert_eq!(got, rows.iter().map(|r| r.to_string()).collect::<Vec<_>>());
+    std::fs::remove_dir_all(&dir).ok();
+}
+
 /// 宣告会话找它的记录文件：先查「sid → 记录文件」那张表（起步一遍、之后跟着记录文件的事件改），查不到才整棵走一遍。
 /// 表与整棵走得出的同一份（同 sid 两份 ⇒ 都在、按修改时刻新的在前）；删掉的不交；新长出来的经事件进表。
 #[test]
