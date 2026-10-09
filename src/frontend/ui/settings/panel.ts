@@ -1,17 +1,8 @@
 /**
- * 设置面板：外观（主题 / 字体）+ 数据目录（Claude 数据位置）+ 行为 / 快捷键 / 远端 / 集成 / 诊断。
- *
- * 解耦：
- *  - 外观：只调 theme.ts 的 applyTheme / themeIn / saveTheme
- *  - 数据目录：只调 paths.ts 的 claudeDirIn / setClaudeDirOverride
- *  - 打开时只 `loadConfig()` 一次，三格各经自己那一家的 `*In(cfg)` 派生
- *
- * F82a（#56+#47）两种承载模式（`windowMode`）：
- *  - **主窗口浮层**（`windowMode:false`，F82a 后当前无调用方，保留供回退 / 未来复用）：抽屉式，
- *    close 隐藏 `.open`、行为改动经 `onBehaviorChange` 同窗直连 TabManager。
- *  - **独立设置窗口**（`windowMode:true`，SS-3 终态）：面板即窗口全部内容；close/cancel 关**窗口**；
- *    保存 / 行为 toggle / resetAll 后 `emit(SETTINGS_APPLIED_EVENT)`，主窗口 listen 后重读并应用
- *    theme+behavior+keybindings（跨 OS 窗口回调够不到）。此模式下会 `import` 并调用 tauri window/event。
+ * 设置窗：机器（＋ 各台）· 文件与数据 · 扩展 · 外观 · 通用（＋ 日志）。
+ * 外观只调 `theme.ts`、数据目录只调 `paths.ts`；打开时只 `loadConfig()` 一次，几格各经自己那一家的 `*In(cfg)` 派生。
+ * 两种承载（`windowMode`）：独立设置窗口（今天唯一的用法：关 ＝ 藏窗口，保存 / 行为开关 / 重置后
+ * `emit(SETTINGS_APPLIED_EVENT)` 让主窗口重读）；主窗口内浮层（`windowMode:false`，行为改动经 `onBehaviorChange` 同窗直连）。
  */
 
 import { onMachineState } from "../machine-feed";
@@ -33,7 +24,7 @@ import { makeSkeleton } from "./skeleton";
 import { SettingsRouter } from "./router";
 import { buildMachinePage, localMeta, type MachinePage } from "./machine-page";
 import { icon, type IconName } from "../kit/icon";
-// E62：`markRestartNeeded` —— 本文件两处「重启才生效」的改动此前不给常驻条供货。
+// 「重启才生效」的改动给常驻条供货（`markRestartNeeded`）。
 import { createRestartBar, markRestartNeeded } from "./restart-notice";
 import { restartNowButton } from "./restart-now";
 import { ResumeSelect } from "./resume-select";
@@ -69,8 +60,7 @@ import { buildConfigPage } from "./config-page";
 import { localResumeRow } from "./local-resume-row"; // 机器页「别名与配置文件」那一栏
 import { dispatcher } from "../keybindings/registry";
 import { KeybindingsEditor } from "../keybindings/editor";
-// F82a：独立设置窗口——保存后广播 `settings-applied`，主窗口 listen 后重读并应用主题/行为
-// （跨 OS 窗口无法直接回调）；close/cancel 关闭本窗口。事件名在中立模块 events.ts。
+// 跨 OS 窗口回调够不到 ⇒ 保存后广播 `settings-applied`，主窗口 listen 后重读（事件名在中立模块 events.ts）。
 import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { BEHAVIOR_TOGGLED_EVENT, SETTINGS_APPLIED_EVENT, SETTINGS_GO_EVENT, type BehaviorToggled } from "./events";
@@ -98,8 +88,7 @@ interface FieldSpec {
  * 字体预设。value 是完整 CSS font-family 字符串；label 是给用户看的名字。
  * 第一个永远是"默认"（value 留空 → 删除覆盖，回到 styles.css :root）。
  */
-// 下面这几张表与几段说明都做成函数、用到时才取文：模块顶层一句取文口调用都不留。顶层有调用时，
-//   Rollup 把整个设置面板挪进主窗也加载的共享 chunk（entry-graphs「主窗挂得上却没链样式」现打 302 条）。
+// 下面这几张表与说明都做成函数、用到时才取文：模块顶层留一句取文调用，Rollup 就会把整个设置面板挪进主窗也加载的共享 chunk。
 const BASE_FONT_PRESETS = (): ReadonlyArray<{ label: string; value: string }> => [
   { label: copyText("settingsPanel.font.default"), value: "" },
   { label: "Inter", value: "Inter, 'Segoe UI', system-ui, sans-serif" },
@@ -139,31 +128,20 @@ const FIELDS = (): ReadonlyArray<FieldSpec> => [
   { key: "card", label: copyText("settingsPanel.field.card"), type: "color", group: "color" },
   { key: "text", label: copyText("settingsPanel.field.text"), type: "color", group: "color" },
   { key: "text-2", label: copyText("settingsPanel.field.text2"), type: "color", group: "color" },
-  // 🔴 这里原先有「用户色」「Claude 色」两个取色器。
-  //    它们**拖了界面不会有任何变化** —— 链子是通的（一路走到 `theme.ts` 真的把值
-  //    写进 DOM 的那一步），但**全仓没有一条 CSS 读这两个变量**
-  //    ⚠ 这句话**刻意不写出那个调用的字面形状**：`css-conventions` 的扫描器
-  //      按字面认「TS 侧设了哪些自定义属性」，注释里写全了会被它当成一处真调用点
-  //      （我第一版就这么写的，当场被那条恒等断言逮住）。
-  //    （剥注释后 `var(--user)`/`var(--assistant)` 合计 0 处，`main` 上同样 0，一直如此）。
-  //    两条路：接上（让哪些元素跟着走）／撤掉。用户逐字「取色器撤掉」。
-  //    ⚠ 撤的是**旋钮**，不是「配色可调」这件事 —— 另外七格（主背景/卡片/主文本/
-  //      成功/警告/错误/次文本）都有真消费者，一个没动。
+  // 「用户色」「Claude 色」不设取色器：没有 CSS 读那两个变量，拖了界面不会变。
   { key: "success", label: copyText("settingsPanel.field.success"), type: "color", group: "color" },
   { key: "warn", label: copyText("settingsPanel.field.warn"), type: "color", group: "color" },
   { key: "error", label: copyText("settingsPanel.field.error"), type: "color", group: "color" },
 ];
 
-/** v2.4 issue #2：设置面板回调，行为类 toggle 改变时通知外部（TabManager 同步） */
+/** 行为类开关改了通知外部（TabManager 同步）。 */
 export interface SettingsPanelOptions {
   onBehaviorChange?: (cfg: BehaviorConfig) => void;
-  /** F82a：窗口模式——面板作为**独立设置窗口**的全部内容挂载（非主窗口内浮层）。影响：
-   *  不 push overlay 栈（窗口本身就是全部）；close/cancel 关**窗口**而非移除 `.open`；
-   *  保存 / 行为 toggle 后 `emit(SETTINGS_APPLIED_EVENT)` 让主窗口重读同步（跨窗回调够不到）。 */
+  /** 窗口模式：面板是独立设置窗口的全部内容（不压弹层栈；关 ＝ 关窗口；保存后 `emit(SETTINGS_APPLIED_EVENT)`）。 */
   windowMode?: boolean;
 }
 
-// 各模块的 ? 图标 tooltip 文案（原来散在表单里的 .settings-hint 长文本收纳到这里）
+// 各模块 ? 图标的悬停说明
 
 /** 顶层页的图标。 */
 const NAV_ICON: Record<"machines" | "data" | "ext" | "appearance" | "general", IconName> = {
@@ -201,53 +179,33 @@ const REVEAL_EVENT = "settings-reveal";
 
 export class SettingsPanel {
   private el: HTMLElement;
-  /** S2：页面路由器。`open()` 每次回落地页（计划指定不记忆上次停在哪一页）。 */
+  /** 页面路由器。 */
   private router!: SettingsRouter;
-  /** S4b-2：跟着当前机器页走的那几块分节（整块搬 DOM，不每台各起一份）。 */
+  /** 跟着当前机器页走的那几块分节（整块搬 DOM，不每台各起一份）。 */
   private perMachineSlot!: HTMLElement;
-  /** 步 3：机器列表页上那块**加载态**（不是兜底态）。机器页注册上来就撤掉。 */
+  /** 机器列表页上的加载态（不是兜底态）；机器页注册上来就撤掉。 */
   private perMachineFallbackHint!: HTMLElement;
-  /** 步 3：机器页到底注册上来过没有 —— 兜底态的**判别式**，不是猜的。 */
+  /** 机器页注册上来过没有：兜底态的判别式。 */
   private machinePageRegistered = false;
   private perMachineBlocks: {
     appliesTo: "local" | "remote" | "both";
-    /** S4b-3b-2：这块归详情页的哪一栏。`footprint` 是新增的第五栏。 */
+    /** 这块归详情页的哪一栏。 */
     tab: "acct" | "term" | "data";
     el: HTMLElement;
-    /**
-     * ST1「延后加载」：这一块的第一发 I/O。**某台机器的子页第一次可见时**才调。
-     * 构造失败（`safeBlock` 收住）的块没有它。
-     */
+    /** 这一块的第一发 I/O：某台机器的子页第一次可见时才调。构造失败（`safeBlock` 收住）的块没有它。 */
     load?: () => void;
   }[] = [];
-  /** ST1：本次打开以来 per-machine 那几块放过 I/O 没有。`open()` 清零（重开要看新读数）。 */
+  /** 本次打开以来按机器那几块放过 I/O 没有。`open()` 清零（重开要看新读数）。 */
   private perMachineLoaded = false;
   /**
-   * 🔴 第一刀 · 步 2：**「这一页首次可见」才发 I/O。**
-   *
-   * # 为什么门开在这里，而不是各块自己判
-   *
-   * 成因链第 ③ 层：14 个块**全部在 `buildBody()` 里即时构造**，
-   * 而其中 9 个文件 / 24 处在构造期就 `void this.loadX()`。落地页只有一页
-   *（`machines`），于是另外两页的 IPC 是**白发的**，并且正好落在那 3 秒重排窗口里。
-   *
-   * `router.ts` 头注拒绝过「懒加载」，理由是两条：会引入「某页第一次打开才炸」这类新
-   * 失效模式，且 `panel.ts` 那几个 build 时赋值、`open()` 时使用的字段会行为漂移。
-   * 🔴 **本机制绕开了那两条**：**不改构造时机**（块照常在 `buildBody` 里 `new` 出来、
-   * 字段照常赋值），只把**那一发网络往返**推后。构造仍然在一个地方、仍然被 `safeBlock`
-   * 包着；漂不了。
-   *
-   * # 为什么钩子要在 `buildBody` 跑完之后才挂
-   *
-   * `SettingsRouter.addRoute` 里有一句「第一页注册完就得有东西可看」——
-   * 于是**「应用」在注册的那一瞬间是 active 的**（它排在「机器」前面注册），
-   * 等落地页「机器」注册上来才切过去。挂早了，「应用」会被当成「可见过」而当场放行，
-   * 这条门就白开了。⇒ 钩子挂在所有 `addRoute` 之后，然后只 flush **此刻真正 active 的那一页**。
+   * 页 → 它首次可见时才发的 I/O。块照常在 `buildBody` 里构造（构造时机不变、仍被 `safeBlock` 包着），
+   * 只把那一发往返推到用户真看见那一页时；落地页之外的页打开设置时零 I/O。
+   * 钩子在所有 `addRoute` 之后才挂：第一页注册的那一瞬它是 active 的，挂早了会被当成可见过而当场放行。
    */
   private readonly pageLoaders = new Map<string, Array<() => void>>();
   /** 本次打开以来，哪几页已经放过 I/O 了。`open()` 会清空它（重开要看新读数）。 */
   private readonly pagesLoaded = new Set<string>();
-  /** S4b-3b-2：pageId → 该页「账号 / 终端 / 足迹」三栏的容器。 */
+  /** pageId → 该页「账号 / 终端 / 足迹」三栏的容器。 */
   private machineTabSlots = new Map<string, { acct: HTMLElement; term: HTMLElement }>();
   /** 机器页 id → 它的卡头与两栏。 */
   private readonly machinePages = new Map<string, MachinePage>();
@@ -258,7 +216,7 @@ export class SettingsPanel {
   private readonly channelOf = new Map<string, boolean | null>();
   /** 机器表那一趟读完了（成或败）：还没注册的机器页不会再来了。 */
   private machinePagesSettled = false;
-  /** 当前编辑中的 theme（实时预览用） */
+  /** 当前编辑中的 theme（实时预览用）。 */
   private current: ThemeConfig = {};
   /** 盘上那一份（打开时读的，之后每次落盘跟着更新）—— 判「还有没落的那一格」用。 */
   private original: ThemeConfig = {};
@@ -270,30 +228,30 @@ export class SettingsPanel {
   private fieldErrors = new Map<HTMLInputElement | HTMLSelectElement, HTMLElement>();
   private isOpen = false;
 
-  /** Claude 数据目录输入框 —— 改动后保存会提示需要重启 */
+  /** Claude 数据目录输入框（改了要重启才生效）。 */
   private claudeDirInput!: HTMLInputElement;
   /** 机器页顶上「开始用」那一块。 */
   private firstRun?: FirstRun;
   /** Claude 目录那一行下：「重启 cc-monitor 后生效 ［现在重启］」（存了一个新的目录之后出现）。 */
   private claudeDirRestart!: HTMLElement;
-  /** 打开时 claudeDir 的快照，用于判断是否变化（变了就提示重启） */
+  /** 打开时 claudeDir 的快照（变了才提示重启）。 */
   private claudeDirOriginal: string = "";
-  /** E62：打开设置时 `showBgSessions` 的值——用来判断「真的改了没」。 */
+  /** 打开设置时 `showBgSessions` 的值（真改了才供货「重启后生效」）。 */
   private showBgOriginal = true;
 
-  /** 顶部状态提示行（保存成功 / 需重启 等） */
+  /** 顶部状态提示行（保存成功 / 需重启 等）。 */
   private banner!: HTMLElement;
-  /** issue #3 (A): 「数据位置」展示区（改名）。打开面板时 refresh 一次拉最新 stat */
+  /** 「数据位置」展示区。 */
   private dataSection?: DataSection;
   /** 「文件与数据」两栏那一页。 */
   private dataPage?: DataPage;
-  /** 改名后的「日志」块。步 2 要在「应用」页首次可见时叫醒它。 */
+  /** 「日志」块（「应用」页首次可见时叫醒它）。 */
   private logsSection?: DiagnosticsSection;
   /** 顶层「扩展」页那一块（构造失败 ⇒ 留 `undefined`，同 `remoteSection` 那一格的约定）。 */
   private extSection?: ExtSection;
-  /** issue #15 (S6): 远端 (SSH) 配置区。打开面板时 refresh 一次拉最新 config */
+  /** 远端（SSH）配置区。 */
   private remoteSection?: RemoteSection;
-  /** P2s（C8）：backend 开关区。打开面板时 refresh 一次，重拉每台机的状态。 */
+  /** 后端开关区（并进机器列表各行）。 */
   private backendSection?: BackendSection;
   /** 后端报来的各台状态成品（按后端那套名字）。 */
   private readonly machineOf = new Map<string, MachineState>();
@@ -315,19 +273,13 @@ export class SettingsPanel {
   private readonly terminalSlot = document.createElement("div");
   private remoteLauncherWarning!: HTMLElement; // F08：越层启动器诊断提示（只诊断，不代改）
   private onBehaviorChange?: (cfg: BehaviorConfig) => void;
-  /** F82a：见 SettingsPanelOptions.windowMode。 */
+  /** 见 `SettingsPanelOptions.windowMode`。 */
   private readonly windowMode: boolean;
 
-  /**
-   * ST1「关窗改隐藏」（关窗 ＝ 隐藏，不销毁）：本面板亲手把窗口藏起来了。
-   * 藏起来之后窗口再拿到焦点 ＝ 被 `open_settings_window` 重新 show 出来 ⇒ 重跑一遍 `open()`
-   * （那个「重新打开」事件，这里用窗口自己的 focus 事件代替，不动后端那条命令）。
-   */
+  /** 窗口模式下关 ＝ 藏（不销毁）：本面板藏起来之后窗口再拿到焦点 ＝ 被重新 show 出来 ⇒ 重跑一遍 `open()`。 */
   private hiddenByUs = false;
-  // 原来这里有一格 `closeGuard`（ST1「未保存关窗拦截」那一条）。全即时之后没有「未保存」
-  //   这回事了，那一条随混合保存模型一起退场（关窗前还没落的那一格由 `requestClose` 顺手落掉）。
 
-  // issue #5: 快捷键编辑器（lazy 构造，首次打开时建 DOM）
+  // 快捷键编辑器（首次打开时才建）
   private kbEditor?: KeybindingsEditor;
   private kbOverrideChip?: HTMLElement;
 
@@ -343,31 +295,21 @@ export class SettingsPanel {
     onMachineState((origin, m) => this.paintMachine(origin, m));
     // 新建的窗：壳把目的地放在初始化脚本里。
     this.goTo(parseSettingsTarget((window as { __CCM_SETTINGS_TARGET__?: unknown }).__CCM_SETTINGS_TARGET__));
-    // issue #5: Esc 由 KeybindingDispatcher 统一调度。本面板 open 时
-    // pushOverlay 自己，close 时 pop —— 多弹层共存按 LIFO 顺序关。
+    // Esc 由 KeybindingDispatcher 统一调度：open 时压栈、close 时弹出，多弹层按 LIFO 关。
   }
 
   /** 弹层栈底：设置窗是窗口不是浮层，Esc 不关它（只关压在它上面的那一层）；关窗用 × 或 Ctrl+W。 */
   handleEsc(): void {}
 
   /**
-   * **T07 审计⑤：`safeBlock` 的隔离原先只覆盖生命周期前半。**
-   *
-   * 这个方法直接解引用 8 个由 `safeBlock` **内部**赋值的 `!` 字段
-   * （`autoFollowCheckbox` … `kbOverrideChip`）。某块构造失败时 `safeBlock` 把异常收住了、
-   * 面板照常渲染 —— **但那些字段仍是 undefined**，于是 `open()` 在解引用时 reject。
-   * 审计实测：让「快捷键」块失败 → 构造被收住，可 `await panel.open()` **reject**、
-   * `.settings-panel` 拿不到 `.open` class。也就是说"一块坏、别的还能用"只成立到构造结束。
-   *
-   * 今天没有活的 throw 源（`registry.ts` 的 `exportOverrides` 不会抛），所以这是
-   * **结构性不完整**而非活缺陷 —— 但隔离要么覆盖整个生命周期，要么就不算隔离。
-   * 这里包一层：任何一步失败都把面板**照常打开**并在 banner 里说明，而不是让 `open()` reject。
+   * 打开。好几个字段由 `safeBlock` 内部赋值，某块构造失败时它们仍是 undefined ⇒ 这里包一层：
+   * 任何一步失败都照常打开并在 banner 里说明，不让 `open()` reject（隔离要覆盖整个生命周期，不只构造）。
    */
   async open(): Promise<void> {
     try {
       await this.openInner();
     } catch (e) {
-      // 面板必须能打开——它是用户唯一的逃生口（里面有"打开 profile"之类的按钮）
+      // 面板必须能打开：它是用户唯一的逃生口
       sayWithDetail(this.banner, copyText("settingsPanel.open.partialFailed", { e: String(e) }), detailOf(e));
       this.banner.classList.add("settings-banner-show");
       this.el.classList.add("open");
@@ -377,43 +319,31 @@ export class SettingsPanel {
   }
 
   private async openInner(): Promise<void> {
-    // 〔骨架优先〕先开窗，再读**一次**配置派生外观 · 数据目录 · 行为三格。
-    //   原来是三次串行 `await loadConfig()` 挡在 `open` 之前（成因 ③）。
+    // 先开窗，再读一次配置派生外观 · 数据目录 · 行为三格。
     this.banner.textContent = "";
     this.banner.classList.remove("settings-banner-show");
-    // 🔴 步 2：**重开设置 = 每一页的「首次可见」重新算一遍**，但仍然只拉
-    // **用户真看得见的那一页**。原来这里是无条件 `this.dataSection?.refresh()`
-    // 与「日志」那两发 —— 那三发在落地页是「机器」的情况下**每次打开都是白发的**，
-    // 正是 `§8` 判据 #3（非落地页零 I/O）今天被打破的那一处。
+    // 重开设置 ＝ 每一页的「首次可见」重新算，但仍只拉用户此刻看得见的那一页。
     this.pagesLoaded.clear();
     this.perMachineLoaded = false;
-    // issue #15 (S6): 每次打开重拉 config.json 的 remote 子对象，跟外部改动对齐
-    // 步 4：`refresh()` 失败时会把原因画到那一块自己的 banner 上；
-    // 这里 `catch` 掉是为了不再多产一条走状态栏的未捕获 rejection（同一件事说两遍，
-    // 而其中一遍说在了离现场十万八千里的地方）。
+    // 每次打开重拉远端配置，跟外部改动对齐。`refresh()` 失败会画在那一块自己的 banner 上；这里 catch 掉，免得同一件事在状态栏再说一遍。
     // 「开始用」那一块：机器表读回来之后问一次（台数随问带上，不另读一遍配置）。
     void this.remoteSection
       ?.refresh()
       .then(() => this.firstRun?.loadNow(this.remoteSection?.machineCount()))
       .catch(() => {});
-    // P2s：状态是**运行期**的东西，每次打开都要重拉 —— 缓存住等于给用户看一张旧照片。
-    // ⚠ 它住**落地页**（「机器」），所以它不在延后那一档里：打开就该是新的。
+    // 后端状态是运行期的东西，每次打开都重拉；它住落地页（「机器」），不在延后那一档。
     void this.backendSection?.refresh();
-    // issue #5: 同步快捷键覆盖数 chip（编辑器关闭时也可能改了）
+    // 同步快捷键覆盖数（编辑器关闭时也可能改了）
     this.refreshKbChip();
     // 同一次运行里再打开：停在上次离开的那一页；带目的地的直达那里。
     this.applyPendingTarget();
-    // ⚠ `navigate()` 在「已经在这一页」时会**提前返回、不通知订阅者**（同页不重复通知，
-    //   那条是对的：订阅者会做搬 DOM 这类有代价的事）。⇒ 第二次打开时落地页的 flush
-    //   必须在这里补一刀，否则它只在**第一次**打开时发生过。
+    // `navigate()` 在「已经在这一页」时提前返回、不通知订阅者 ⇒ 第二次打开时落地页的首次可见必须在这里补一刀。
     this.flushPage(this.router.activeId);
     // 读回之前三格的控件是 pending（禁用）：勾选框此刻显示的是上一次的值，点上去就点在旧值上。
     this.setConfigCellsPending(true);
     this.el.classList.add("open");
     this.isOpen = true;
-    // 面板始终作为 overlay 栈**底**（窗口模式也是）：这样设置窗内的快捷键编辑器 / SFTP 面板
-    // 压栈其上时 Esc 走 dispatcher 的 LIFO 逐层关（先关它们、再 Esc 关面板→关窗），
-    // 与主窗口抽屉行为一致。窗口模式下面板 handleEsc→cancel→close()→关窗（见 close()）。
+    // 面板始终是弹层栈底（窗口模式也是）：设置窗里的快捷键编辑器等压在上面时 Esc 逐层关，最后才关面板 → 关窗。
     dispatcher.pushOverlay(this);
     try {
       const cfg = await loadConfig();
@@ -421,7 +351,7 @@ export class SettingsPanel {
       // 「config.json 里有认不出的项」那条跟着这一份重算（窗口是藏起来再开，那条不会自己重建）。
       rerenderUnknownKeys(cfg);
     } catch (e) {
-      // 读不回来 ⇒ 三格照旧各回落到缺省（与原来三个读者各自的降级同形），外观不重刷。
+      // 读不回来 ⇒ 三格各回落到缺省，外观不重刷。
       console.warn("设置窗读配置失败，外观 / 数据目录 / 行为按缺省显示：", e);
       this.fillConfigCells({}, false);
     } finally {
@@ -448,13 +378,13 @@ export class SettingsPanel {
     this.current = { ...this.original };
     this.claudeDirOriginal = claudeDirIn(cfg) ?? "";
     this.claudeDirInput.value = this.claudeDirOriginal;
-    // v2.4 issue #2: 每次打开拉最新 behavior，避免跟外部其他改动脱节
+    // 每次打开拉最新的行为设置
     const behavior = behaviorIn(cfg);
     this.behaviorNow = behavior;
     this.autoFollowSw.set(behavior.autoFollowUserActive);
     this.bringFrontSw.set(behavior.bringMonitorToFrontOnUserActive);
     this.showBgSw.set(behavior.showBgSessions);
-    // E62：记下打开设置时的值，只有**真的改了**才供货（每次 toggle 都标会把噪音变回来）。
+    // 记下打开设置时的值：真改了才供货（每次拨动都标会变成噪音）。
     this.showBgOriginal = behavior.showBgSessions;
     this.notifyTurnEndSw.set(behavior.notifyTurnEnd);
     this.notifyNeedsSw.set(behavior.notifyNeeds);
@@ -464,7 +394,7 @@ export class SettingsPanel {
     this.syncInputs();
   }
 
-  /** v2.4 issue #2: autoFollow 关 → bringFront 灰显（依赖前者，无意义） */
+  /** 自动跟随关 ⇒ 「同时提到前台」灰显（依赖前者）。 */
   private updateBringFrontEnabled(): void {
     const on = this.behaviorNow?.autoFollowUserActive ?? true;
     this.bringFrontSw.input.setAttribute("aria-disabled", String(!on));
@@ -475,8 +405,7 @@ export class SettingsPanel {
     return [this.autoFollowSw, this.bringFrontSw, this.showBgSw, this.notifyTurnEndSw, this.notifyNeedsSw, this.resumeInTmuxSw];
   }
 
-  /** F08：越层启动器诊断——只读提示，不碰恢复命令那一格本身（设计
-   *  原则#7：只诊断+引导迁移，不自动降级、不偷改配置）。 */
+  /** 越层启动器诊断：只读提示 ＋ 引导，不自动降级、不改恢复命令那一格。 */
   private updateRemoteLauncherWarning(): void {
     const msg = diagnoseRemoteLauncher(this.resumeSelect.value);
     this.remoteLauncherWarning.textContent = msg ?? "";
@@ -518,7 +447,7 @@ export class SettingsPanel {
     this.behaviorNow = next;
     this.resumeSelect.set(next.resumeCommand, next.resumeCommandPresets);
     this.updateBringFrontEnabled();
-    // E62：`showBgSessions` 是重启生效的（后端启动时读一次）⇒ 真改了才供货「重启后生效」。
+    // `showBgSessions` 重启才生效（后端启动时读一次）⇒ 真改了才供货「重启后生效」。
     if (next.showBgSessions !== this.showBgOriginal) {
       markRestartNeeded(copyText("settingsPanel.behavior.hiddenTasks"));
       this.showBgOriginal = next.showBgSessions;
@@ -529,15 +458,10 @@ export class SettingsPanel {
   }
 
   /**
-   * ST1：窗口模式下接管两件事 —— 系统标题栏的 X（`onCloseRequested`，一律 `preventDefault`，
-   * 交给 [`requestClose`]）与「藏起来之后又被 show 出来」（focus ⇒ 重跑 `open()`）。
-   *
-   * ⚠ 一旦挂上 close-requested 的监听，Tauri 就不再替我们关窗（它看到 JS 侧有这个监听，就把系统那次关窗拦下来），
-   *   放行的动作只剩 `hide()`（`core:window:allow-hide`，`capabilities/default.json`）。
-   *   **本面板从不调 destroy / close**：主窗销毁时由后端把本窗一起 destroy
-   *   （`lib.rs::windows_to_destroy_after`），否则一个藏着的窗口会把进程吊住。
-   * ⚠ 挂监听失败（运行时 / ACL 拒）不许把面板炸穿 —— 与 `safeBlock` 同一个隔离思路；
-   *   那时系统 X 退回 Tauri 的默认行为（销毁），只是少了拦截。
+   * 窗口模式下接管两件事：系统标题栏的 X（`onCloseRequested` 一律 `preventDefault`，交给 [`requestClose`]）
+   * 与藏起来之后又被 show 出来（focus ⇒ 重跑 `open()`）。挂了监听 Tauri 就不替我们关窗，放行的只剩 `hide()`；
+   * 本面板从不 destroy / close（主窗销毁时后端把本窗一起 destroy，否则藏着的窗口会吊住进程）。
+   * 挂监听失败不许把面板炸穿：那时系统 X 退回默认行为（销毁），只是少了拦截。
    */
   private installWindowLifecycle(): void {
     window.addEventListener("keydown", (ev) => {
@@ -698,12 +622,7 @@ export class SettingsPanel {
     window.setTimeout(() => spot.classList.remove("settings-highlight"), SETTINGS_HIGHLIGHT_MS);
   }
 
-  /**
-   * **还有没落盘的那一格没有。**
-   *
-   * 全即时之后每一格改了就落（外观：`change`；Claude 数据目录：`change`）。剩下的只有一个窗口：
-   * 输入框里改了、焦点还没离开（`change` 还没触发）就关窗 —— 那一格由 `requestClose` 顺手落掉。
-   */
+  /** 还有没落盘的那一格没有：输入框里改了、焦点还没离开（`change` 还没触发）就关窗 —— 由 `requestClose` 顺手落掉。 */
   isDirty(): boolean {
     const norm = (t: ThemeConfig): string =>
       JSON.stringify(
@@ -717,13 +636,7 @@ export class SettingsPanel {
     );
   }
 
-  /**
-   * 系统 X、页头 ×、Esc 都走这里。
-   *
-   * 🔴 原来有改动时亮一条「保存并关闭 / 丢弃改动 / 继续编辑」（ST1 · `§6` #1）——
-   *   那一条存在的前提是「外观要点保存」的混合模型（`§6` #2 逐字：「预览了没保存」就是 #1 的温床）。
-   *   全即时之后那个温床没了 ⇒ 拦截条退场；**不静默丢**这一格由「关之前顺手落掉」兑现。
-   */
+  /** 系统 X、页头 ×、Esc 都走这里：关之前把还没落的那一格落掉，落不下就不关。 */
   requestClose(): void {
     if (!this.isDirty()) {
       this.close();
@@ -747,15 +660,11 @@ export class SettingsPanel {
   }
 
   close(): void {
-    // 关闭前 blur 掉面板内仍聚焦的输入框。本面板是 hide（移除 .open class）而非从 DOM
-    // 移除，元素留着、焦点不会自动释放。若不 blur，document.activeElement 仍是这个隐藏
-    // 输入，单键快捷键守卫（registry.ts::isEditableTarget）会把它当"正在打字"，从而吞掉
-    // 所有单键快捷键（h/w/数字… 全部失效）—— 用户配置完远端/外观关掉设置后最典型。
+    // 关之前 blur 掉面板里仍聚焦的输入框：面板只是藏起来、焦点不会自己释放，单键快捷键守卫会以为还在打字、把单键全吞掉。
     const active = document.activeElement;
     if (active instanceof HTMLElement && this.el.contains(active))
       active.blur();
-    // 窗口模式：ST1「关窗改隐藏」—— 关闭 ＝ 把窗口藏起来，面板状态照非窗口模式那样收好，
-    // 下一次 show 出来由 focus 那一路重跑 `open()`（见 `installWindowLifecycle`）。
+    // 窗口模式：关 ＝ 藏窗口，面板状态照样收好；下一次 show 出来由 focus 那一路重跑 `open()`。
     if (this.windowMode) {
       this.el.classList.remove("open");
       this.isOpen = false;
@@ -778,8 +687,7 @@ export class SettingsPanel {
     dispatcher.popOverlay(this);
   }
 
-  /** F82a：窗口模式下广播「设置已应用」，主窗口 listen 后重读并 applyTheme/applyBehavior。
-   *  非窗口模式（主窗口内浮层）走 applyTheme/onBehaviorChange 同窗直接生效，无需广播。 */
+  /** 窗口模式下广播「设置已应用」，主窗口重读并应用；浮层模式同窗直接生效，不广播。 */
   private broadcastApplied(): void {
     if (this.windowMode) void emit(SETTINGS_APPLIED_EVENT);
   }
@@ -795,10 +703,7 @@ export class SettingsPanel {
     this.broadcastApplied(); // 主窗口重读主题并应用
   }
 
-  /**
-   * Claude 数据目录改了就落（输入框 `change` / 浏览… / 重置）。
-   * 它要重启才生效 ⇒ 照旧给常驻条供货（E62）＋ 当场一条 banner。
-   */
+  /** Claude 数据目录改了就落（`change` / 浏览… / 重置）。要重启才生效 ⇒ 给常驻条供货 ＋ 当场一条 banner。 */
   private async persistClaudeDir(): Promise<void> {
     const nextDir = this.claudeDirInput.value.trim();
     if (nextDir === this.claudeDirOriginal) return;
@@ -807,8 +712,7 @@ export class SettingsPanel {
     if (problem !== null) throw new Error(problem);
     await setClaudeDirOverride(nextDir === "" ? null : nextDir);
     this.claudeDirOriginal = nextDir;
-    // E62：给 S7 那条常驻条**供货**。这里的 banner 是一次性的（关窗即没），
-    // 而「还没生效」是个会一直为真到重启为止的状态 —— 两者不是一回事，都要有。
+    // 当场的 banner 关窗即没，而「还没生效」一直为真到重启为止 ⇒ 两样都要。
     markRestartNeeded(copyText("settingsPanel.save.claudeDir"));
     this.claudeDirRestart.hidden = false;
     this.banner.textContent =
@@ -885,12 +789,7 @@ export class SettingsPanel {
     return root;
   }
 
-  /**
-   * S4b-2：把那几块 per-machine 分节搬到某一页上，并按「这块对本机/远端有没有意义」显隐。
-   *
-   * `appendChild` 会把节点从原父节点上摘下来 —— 正是想要的「搬过去」，
-   * 所以同一时刻它们只存在于一个页面上，不会有两份。
-   */
+  /** 把按机器的那几块分节搬到某一页上（`appendChild` 即搬，同一时刻只在一页上），并按对本机 / 远端有没有意义显隐。 */
   private movePerMachineTo(
     page: HTMLElement,
     isLocal: boolean,
@@ -903,11 +802,11 @@ export class SettingsPanel {
     }
     const slots = pageId ? this.machineTabSlots.get(pageId) : undefined;
     if (slots) {
-      // S4b-3b-2：分栏页 —— 每块按 `tab` 归到「账号 / 终端 / 足迹」栏里。
+      // 分栏页：每块按 `tab` 归到「账号 / 终端 / 足迹」栏里。
       for (const b of movable) slots[b.tab as "acct" | "term"].appendChild(b.el);
       return;
     }
-    // 没有分栏（本机页、以及 RemoteSection 挂掉时的兜底落点）→ 整块搬，形态同 S4b-2。
+    // 没有分栏（本机页 · 兜底落点）⇒ 整块搬。
     for (const b of movable) this.perMachineSlot.appendChild(b.el);
     page.appendChild(this.perMachineSlot);
   }
@@ -1028,18 +927,10 @@ export class SettingsPanel {
       ),
     );
 
-    // ---- 机器：改**某一台机器**的状态 ----
-    //
-    // 下面四块（账号 / 别名（含从前的终端集成）/ MCP / cc-bus 钩子）之所以归这里：**它们各自都维护着
-    // 一份自己的 origin 选择器**（点名 `accounts`/`mcp`/`cc-bus`/`cc-bus-hooks`
-    // 四份互不同步）。有 origin 选择器 = 它改的是某台机器的状态。
-    // S4 会把这四份选择器换成「当前在哪台机器页」这个上下文。
+    // ---- 机器：改某一台机器的状态 ----
     const machinesPage = document.createElement("div");
-    // 🔴 **「backend 开关」不再单独占一块**：
-    //   它本来就是每台一行，并进机器列表那一行上（状态 / 操作 / 退出行为 / 健康 四格，
-    //   `BackendSection.cellsFor`）。列表页从此只剩「列表 ＋ 添加 ＋ 全局开关 ＋ 诊断」四样（`§8` #10）。
-    // ⚠ 隔离照旧（T07）：它构造失败不许把机器列表带走 —— 失败时列表行上不挂那四格，
-    //   这里亮一块「此区块加载失败」，与 `safeBlock` 同一个样子。
+    // 后端开关并进机器列表那一行上（`BackendSection.cellsFor`）。它构造失败不许把机器列表带走：
+    // 失败时行上不挂那几格，这里亮一块「此区块加载失败」。
     let backend: BackendSection | undefined;
     try {
       backend = new BackendSection({
@@ -1056,17 +947,14 @@ export class SettingsPanel {
         }),
       );
     }
-    // 「开始用」那一块（稿 03）：列表上方；三步由后端事实打勾，全做完 / 点过「跳过」不出现。机器页可见时才问。
+    // 「开始用」那一块：列表上方；三步由后端事实打勾，全做完 / 点过「跳过」不出现。机器页可见时才问。
     this.firstRun = new FirstRun({ go: (t) => this.goTo(t), addMachine: () => void this.remoteSection?.addMachine() });
     machinesPage.appendChild(this.firstRun.element);
-    // **T07 审计阻塞 1**：这里必须在 `safeBlock` 里——`RemoteSection` 正是唯一活的同步
-    // throw 宿主（构造路径含 `remote-section.ts` 那个三句话必填的 `throw`）。审计真造它抛过：
-    // 裸构造会让 `new SettingsPanel` 直接炸穿、**什么都没上屏**。
-    // `this.remoteSection` 失败时留 `undefined`——`open()` 那边是 `?.refresh()`，天然容错。
+    // 必须在 `safeBlock` 里：`RemoteSection` 构造会同步抛（远端分节里三句话必填的那个 `throw`），裸构造会让整个设置窗什么都上不了屏。
+    // 失败时 `this.remoteSection` 留 `undefined`（`open()` 那边是 `?.refresh()`）。
     machinesPage.appendChild(
       this.safeBlock(copyText("settingsPanel.group.remote"), () => {
-        // S4b：把路由器包成 `MachinePagesHost` 交给它 —— 每台机器的编辑表单去它自己那一页，
-        // 列表里只留一行。分节不需要知道路由器长什么样，只要「开页 / 收页 / 跳过去」。
+        // 每台机器的编辑表单去它自己那一页，列表里只留一行；分节只要「开页 / 收页 / 跳过去」。
         const sec = new RemoteSection({
           headless: true,
           rowExtras: backend && {
@@ -1076,31 +964,17 @@ export class SettingsPanel {
           pages: {
             machinePagesSettled: () => this.onMachinePagesSettled(),
             addMachinePage: (id, title, element, parts) => {
-              // 步 3：**判别式**——机器页真注册上来了，兜底态就不该出现。
-              // ⚠ 那两句 `.hidden =` 刻意住在 `onMachinePageRegistered()` 里而不是这里：
-              //   `css-conventions.vitest.ts` 的 S30 ⑦ 那把尺子只往**上游**找类名赋值，
-              //   而 `perMachineSlot.className = …` 在本文件里排在这一行**之后** ⇒
-              //   写在这儿会让那处变成「静态推不出它挂的是哪个类」，判据就看不见它了。
+              // 机器页真注册上来了 ⇒ 兜底态不该出现。（那两句 `.hidden =` 住在 `onMachinePageRegistered()` 里：
+              // `css-conventions.vitest.ts` 那把尺子只往上游找类名赋值，写在这儿它就看不见了。）
               this.onMachinePageRegistered();
-              // 步 2 + 步 14a：机器子页是**动态注册**的，登记表只能在这一刻填。
-              // ⚠ 用 `set` 不是 `push`：`rebuildCards` 每次 refresh 都会重注册一遍同一批
-              //   页 id，push 会让同一发 I/O 排队攒到 N 份。
-              // ST1「延后加载」：per-machine 那几块是**单例**、跟着机器子页搬 ⇒ 任意一台机器的
-              //   子页第一次可见时放一次（`loadPerMachineOnce` 自己去重）；之后切机器由各块
-              //   自己的 `subscribeMachine` 重读。
-              // 「足迹」也并进那一批单例：它今天按机器去问（远端也有真栏），
-              //   切机器由它自己的订阅重读 —— 与账号 / MCP 同一个形状，不再每台机器页各放一发。
+              // 登记表只能在这一刻填，用 `set` 不用 `push`（每次 refresh 都会重注册同一批页）。按机器那几块是单例、跟着子页搬 ⇒
+              // 任意一台子页第一次可见时放一次（`loadPerMachineOnce` 自己去重）；之后切机器由各块自己的订阅重读。
               this.pageLoaders.set(id, [() => this.loadPerMachineOnce()]);
-              // ★ S4b-3b-2：远端机器页拆成横向四栏。
-              // 复用 `SettingsRouter`（横向 + 无页头）而不是另造 tab 原语 ——
-              // 「同一时刻只有一栏可见 + aria + 方向键 + 不重复注册」与左侧导航
-              // 逐条相同，另造等于把这套逻辑抄第二遍、然后各自漂。
+              // 机器页拆成横向几栏：复用 `SettingsRouter`（横向 ＋ 无页头），不另造一套 tab 原语。
               void element;
               const pageEl = this.buildMachinePage(id, title, parts).element;
               router.addRoute({ id, title, element: pageEl, parentId: PAGE.machines, hideHead: true });
-              // S4b-2：本机页一出现就让那几块 per-machine 分节先落在它上面。
-              // 这与 `machine-context` 的初始值（本机 = `LOCAL_ORIGIN`）对齐 —— 否则 slot 在
-              // 用户第一次点进某台机器之前是**游离的**（不在文档里，谁也找不到它）。
+              // 本机页一出现就让那几块分节落在它上面（与 `machine-context` 的初始值本机对齐），否则用户点进某台之前它们不在文档里。
               if (id === LOCAL_MACHINE_PAGE_ID) this.movePerMachineTo(pageEl, true, id);
               const origin = id === LOCAL_MACHINE_PAGE_ID ? LOCAL_ORIGIN : this.remoteSection?.originOfPage(id);
               if (origin) this.paintNavDot(origin, this.channelOf.get(origin) ?? null);
@@ -1110,8 +984,7 @@ export class SettingsPanel {
               router.removeRoute(id);
               this.machinePages.delete(id);
               this.machineTabSlots.delete(id);
-              // 机器没了，它那一页的登记与「放过了没有」一起清 —— 留着就是死条目，
-              // 而且同名机器再出现时会被当成「这一页已经放过了」。
+              // 机器没了 ⇒ 它那一页的登记与「放过了没有」一起清（同名机器再出现时不会被当成已放过）。
               this.pageLoaders.delete(id);
               this.pagesLoaded.delete(id);
             },
@@ -1138,43 +1011,19 @@ export class SettingsPanel {
         return sec.element;
       }, { untitled: true }),
     );
-    // ★ S4b-2：这四块**不再挂在列表页上**，而是跟着「当前在看哪台机器」走 ——
-    // 它们讲的本来就是某一台机器的事（S4a 已把四份各自为政的 origin 选择器收口）。
-    //
-    // 单例 + 按页搬 DOM，不给每台机器各起一份：起 N 份意味着 N 倍的构造开销与
-    // N 份互不相干的缓存，而同一时刻只有一台机器的页面是可见的。
-    //
-    // `appliesTo` 决定它在本机页/远端页出不出现。这就是 S4a 登记的那个半截状态的解药：
-    // 那时三块的下拉只列远端、表示不了本机，收到 `null` 只能原地不动；
-    // 现在**本机页上它们压根不出现**，「表示不了」这件事也就不存在了。
+    // 这几块讲的是某一台机器的事 ⇒ 单例、跟着「当前在看哪台机器」搬 DOM（不每台各起一份：同一时刻只有一页可见）。
+    // `appliesTo` 决定它在本机页 / 远端页出不出现。
     this.perMachineSlot = document.createElement("div");
     this.perMachineSlot.className = "machine-page-sections";
     this.perMachineBlocks = [
       {
-        // 账号这一节**两页都有意义** —— 每台机器的账号归那台机器（用户 09-05 拍的板）。
-        //
-        // ⚠ 这里原先逐字写着「账号列表是 per-origin 的**远端**概念（本机的多账号入口是
-        // L3a 的欠账，见 BACKLOG）」并登记成 `appliesTo: "remote"`。那句话**已经不成立**：
-        // 本机那条读口（`accounts.ts` 的 `fetchLocalAccounts` → `list_local_accounts`）
-        // 自 `a354c83` 起就在盘上，状态栏那个账号 chip 一直在用它；`N-F1b` 之后
-        // `AccountsSection.reload()` 在 `origin` 为空时也走本机那一支了。
-        //
-        // 🔴 而 `appliesTo: "remote"` 是**第二道锁**：`movePerMachineTo` 会把不匹配的整块
-        // `hidden` 掉 ⇒ 本机页上这一节是黑的，而**一台没有配任何远端的机器只有本机页**
-        // ⇒ 那一节渲染得再对，新用户也看不见它（定框 `G1` 成功标准第 1 条卡在这一行上）。
-        // 两条判据分工：那一节**渲染成什么样**归 `accounts-section.vitest.ts`；
-        // 它在**哪一页上看得见**归 `panel-machine-page-visibility.vitest.ts`
-        // —— 后者从 `SettingsPanel` 这一头进，断的是渲染之后的 `el.hidden`，
-        // 因为前者在 jsdom 里直接 `new AccountsSection()`，结构性地绕过了这一层。
+        // 账号两页都有意义（每台机器的账号归那台）：一台没配远端的机器只有本机页，写成只远端的话新用户就看不见它。
+        // 渲染成什么样归 `accounts-section.vitest.ts`；在哪一页看得见归 `panel-machine-page-visibility.vitest.ts`。
         appliesTo: "both",
         tab: "acct",
         ...this.loadableBlock(copyText("settingsPanel.group.accounts"), () => new AccountsSection()),
       },
-      // 这里原来是本机页上单独一块「终端集成」（PowerShell `$PROFILE` 注入，S9 只在 Windows 上构造）。
-      // 它并进了下面「别名」那一块（界面合成一份，平台是它的一个输入）——
-      // Windows 上是 PowerShell 那一侧的「别名块」，第一次展开才构造（构造即发 Windows 专用 IPC 那条纪律跟着过去了）。
-      // 机器页 ②「别名」。本机那一格在这里；远端那一格在
-      // `MachineCard` 的「组件」栏里（它只给得出待贴文本 ＋ 装 / 卸别名块，理由见那边）。
+      // 本机那一格「别名」（Windows 上是 PowerShell 那一侧的别名块）；远端那一格在 `MachineCard` 的「组件」栏里。
       // 构造零 I/O：它是个 `<details>`，第一次展开才读盘。
       {
         appliesTo: "local",
@@ -1194,38 +1043,12 @@ export class SettingsPanel {
           },
         ),
       },
-      // 「让直接敲的 claude 也走中转」搬进「文件与数据 → 要你动手」（那台后端出改法，`footprint/chores`）。
-      // 〔资产目录 · 插件〕三块搬走了：skill / MCP 是跨机器的一类对象，住顶层「扩展」页（一张表 ＋ 一个抽屉）；
-      //   插件只读列表没有可做的事，先拿掉。
-      // cc-bus 钩子那一块拿掉了：cc-bus 是扩展页里的一行，它的内置备注下面每台一行钩子状态与要加的内容。
     ];
     for (const b of this.perMachineBlocks) this.perMachineSlot.appendChild(b.el);
-    // ★ 兜底落点：先挂在列表页上。
-    //
-    // 这不是"顺手"—— 它是 `safeBlock` 隔离的一部分。`RemoteSection` 是唯一活的同步
-    // throw 宿主（T07 审计阻塞 1）；它挂掉就没有任何机器页被注册，slot 便无处安放，
-    // **这五块会一起从界面上消失**。那等于「一块坏，六块没」，把 T07 好不容易建立的
-    // 隔离又打破了。有兜底落点的话，最坏情况只是它们留在列表页上 —— 位置不理想，
-    // 但都还在、都能用。（审计时真造 RemoteSection 抛才发现的。）
-    //
-    // 🔴 步 3：**但它今天是每次打开的前 3 秒的默认视图。**
-    //
-    // 安全网本身没错（它防的是真问题）。错的是**没有第三态**：
-    //   今天：  兜底态（= 失败态）→ 正常态
-    //   该有：  骨架/加载态        → 正常态
-    //                              └→ 兜底态（**只在真失败时**）
-    // 机器列表是异步加载的（`RemoteSection.refresh()` 里才 `addMachinePage`），
-    // 于是那个「RemoteSection 抛异常时的最坏情况」变成了**每次打开都先看一眼**的样子
-    // —— 用户截图 1 里那个「账号（只有一个刷新按钮）」「POWERSHELL 集成」就是它。
-    //
-    // ⇒ slot 默认**藏起来**，屏幕上先给一块骨架；机器页注册上来的那一刻骨架撤掉、
-    //   slot 被 `movePerMachineTo` 搬走。**只有在 `RemoteSection` 真的挂了**
-    //   （构造同步抛 ⇒ `this.remoteSection` 留 `undefined`）才当场把 slot 亮出来。
-    //
-    // ⚠ 还有一条**异步**的失败路：`RemoteSection` 构造成功、但它那趟 `refresh()`
-    //   reject（`readRemoteConfig()` 失败）⇒ 一个机器页都不会注册。那一档由
-    //   `machinePagesSettled()` 回调兜（`remote-section.ts` 那侧在 `refresh()` 的
-    //   `finally` 里叫它），**不是靠定时器猜**。
+    // 兜底落点：`RemoteSection` 挂掉就没有机器页被注册，这几块会一起从界面上消失 ⇒ 那时把它们留在列表页上（位置不理想，但都能用）。
+    // 平时机器列表是异步加载的 ⇒ slot 默认藏起来、先给一块骨架；机器页注册上来骨架撤掉、slot 被搬走。
+    // 只在真失败时亮兜底：构造同步抛（`this.remoteSection` 留 `undefined`），或 `refresh()` reject 一个页都没来
+    // （`machinePagesSettled()` 回调兜，不靠定时器猜）。
     this.perMachineSlot.hidden = true;
     this.perMachineFallbackHint = makeSkeleton(
       "backend",
@@ -1233,11 +1056,7 @@ export class SettingsPanel {
     );
     machinesPage.appendChild(this.perMachineFallbackHint);
     machinesPage.appendChild(this.perMachineSlot);
-    // 步 3：`safeBlock` 收住了同步抛 ⇒ `this.remoteSection` 留 `undefined`。
-    // **那正是「机器页注册失败」的判别式**（`RemoteSection` 是唯一活的同步 throw 宿主，
-    // 也是唯一会注册机器页的人）。这一档就是设计意图里的「最坏情况」，当场亮兜底。
-    // ⚠ 这一句必须排在 slot 与那块提示**建出来之后** —— 排在 `safeBlock` 紧后面的话，
-    //   它会去读两个还没赋值的字段，把「RemoteSection 挂了」变成「整个面板挂了」。
+    // 构造同步抛 ⇒ 当场亮兜底。必须排在 slot 与提示建出来之后，否则它读两个还没赋值的字段，把一块挂了变成整个面板挂了。
     if (!this.remoteSection) this.revealPerMachineFallback(copyText("settingsPanel.machines.buildFailed"));
     router.addRoute({
       id: "machines",
@@ -1260,8 +1079,8 @@ export class SettingsPanel {
       this.dataPage?.loadNow();
     });
 
-    // ---- 扩展：改**跨机器的 skill / MCP**（一类被设置的对象，不挂在某台机器下面）----
-    //   每次变可见都重读一趟（第一问算「来看了一次」，「新」按上一次来看算）；构造零 I/O。
+    // ---- 扩展：跨机器的 skill / MCP ----
+    //   每次变可见都重读一趟（「新」按上一次来看算）；构造零 I/O。
     const extPage = document.createElement("div");
     extPage.appendChild(
       this.safeBlock(
@@ -1295,18 +1114,9 @@ export class SettingsPanel {
       if (id === PAGE.ext) this.extSection?.loadNow();
     });
 
-    // 🔴 **顶层「改动足迹」页没了。**
-    //   它剩下的那一块（漂移记账）在**每台机器子页的「足迹」栏**里（per-machine 那一批，见上面
-    //   `perMachineBlocks` 最后一格）。按机器分那一半的设计在（写区外）。
-
-    // S6：cc-bus 驾驶舱**已搬出设置**，成为顶层运营视图（入口 = 命令面板）。
-    // S2 当初把它临时单列成一页，正是为了这一刻只删这一段注册 —— 兑现了。
-    // 视图本体见 `views/cc-bus-view.ts`；驾驶舱组件 `CcBusSection` 原样复用，未重写。
 
 
-    // ★ S4b-2：切到某台机器页时，把那几块 per-machine 分节搬进那一页，并同步
-    // 「当前在看哪台机器」。挂在**路由器**这一层而不是列表行上，是因为切页有两个入口
-    // （点导航项 / 点列表行），只有这里两条都覆盖得到。
+    // 切到某台机器页 ⇒ 把那几块分节搬进来、同步「当前在看哪台」。挂在路由器这一层：切页有两个入口（导航项 · 列表行），这里两条都覆盖。
     router.onNavigate((id) => {
       if (!id.startsWith(MACHINE_PAGE_PREFIX)) return;
       const isLocal = id === LOCAL_MACHINE_PAGE_ID;
@@ -1323,9 +1133,7 @@ export class SettingsPanel {
       if (page) this.movePerMachineTo(page, isLocal, id);
     });
 
-    // 🔴 步 2 的门闩：**所有 `addRoute` 都跑完之后**才挂 flush 钩子，然后只放行
-    // 此刻真正 active 的那一页。挂早了，「应用」会因为 `addRoute` 里那句
-    // 「第一页注册完就得有东西可看」而被当成可见过 —— 这条门就白开了。
+    // 所有 `addRoute` 跑完之后才挂首次可见的钩子，只放行此刻真正 active 的那一页（见 `pageLoaders`）。
     router.onNavigate((id) => this.flushPage(id));
     this.flushPage(router.activeId);
 
@@ -1333,23 +1141,14 @@ export class SettingsPanel {
     return body;
   }
 
-  /**
-   * 步 2：登记「这一页首次可见时要做的事」。
-   *
-   * ⚠ 登记表**不删条目**（`flushPage` 用一个单独的 `pagesLoaded` 记「放过了没有」）：
-   * `open()` 要能把「放过了没有」整体清零，让重开一次设置真的重拉一遍读数。
-   * 删条目的话第二次打开就永远拉不到新数了 —— 而界面上看不出来，它只是显示旧值。
-   */
+  /** 登记「这一页首次可见时要做的事」。不删条目（放过没有另记在 `pagesLoaded`）：`open()` 要能整体清零，重开时真的重拉。 */
   private loadOnFirstVisit(pageId: string, load: () => void): void {
     const list = this.pageLoaders.get(pageId);
     if (list) list.push(load);
     else this.pageLoaders.set(pageId, [load]);
   }
 
-  /**
-   * ST1「延后加载」：构造一块 per-machine 分节（照常在 `safeBlock` 里），并把它的 `loadNow`
-   * 挂出来留给「机器子页第一次可见」那一刻。构造失败 ⇒ 没有 `load`（与 `remoteSection` 那格同一约定）。
-   */
+  /** 构造一块按机器的分节（照常在 `safeBlock` 里），把它的 `loadNow` 留给「机器子页第一次可见」。构造失败 ⇒ 没有 `load`。 */
   private loadableBlock(
     title: string,
     make: () => { element: HTMLElement; loadNow(): void },
@@ -1363,7 +1162,7 @@ export class SettingsPanel {
     return { el, load: sec ? () => sec!.loadNow() : undefined };
   }
 
-  /** ST1：per-machine 那几块的第一发。一次打开里只放一次（它们是单例，不按机器各起一份）。 */
+  /** 按机器那几块的第一发：一次打开里只放一次（单例）。 */
   private loadPerMachineOnce(): void {
     if (this.perMachineLoaded) return;
     this.perMachineLoaded = true;
@@ -1376,7 +1175,7 @@ export class SettingsPanel {
     }
   }
 
-  /** 步 2：某一页可见了 —— 把它那几块的第一发 I/O 放出去。重复调用是 no-op。 */
+  /** 某一页可见了 ⇒ 放出它那几块的第一发 I/O。重复调用不做事。 */
   private flushPage(id: string | null): void {
     if (id === null || this.pagesLoaded.has(id)) return;
     this.pagesLoaded.add(id);
@@ -1391,15 +1190,8 @@ export class SettingsPanel {
   }
 
   /**
-   * 步 3：机器页一个都没注册上来 ⇒ 这是**真失败**，把兜底态亮出来。
-   *
-   * 两个调用点，对应两条失败路：
-   * ① `RemoteSection` 构造同步抛（`safeBlock` 收住 ⇒ 字段留 `undefined`）；
-   * ② 构造成功、但 `refresh()` 那趟 reject（`readRemoteConfig()` 失败）——
-   *    由 `machinePagesSettled()` 从 `remote-section.ts` 那侧回调过来。
-   *
-   * ⚠ **不是定时器**。「等 N 毫秒还没来就算失败」会在慢机器上把正常加载判成失败，
-   * 而它出错的方向正好是本件要治的那一个（让兜底态提前露脸）。
+   * 机器页一个都没注册上来 ⇒ 真失败，亮兜底态。两个调用点：构造同步抛；`refresh()` reject（`machinePagesSettled()` 回调）。
+   * 不用定时器：「等 N 毫秒没来算失败」会在慢机器上把正常加载判成失败。
    */
   private onMachinePageRegistered(): void {
     this.machinePageRegistered = true;
@@ -1409,11 +1201,10 @@ export class SettingsPanel {
 
   private revealPerMachineFallback(why: string): void {
     if (this.machinePageRegistered) return;
-    // 后端那几行本该挂在机器列表的行上（列表的尾巴）。列表没建起来 ⇒ 它们无处安放，
-    //   **退回列表页上**（与下面那几块同一个兜底思路：位置不理想，但都还在、都能用）。
+    // 后端那几行本该挂在机器列表的行上；列表没建起来 ⇒ 退回列表页（同一个兜底思路）。
     const backendRows = this.backendSection?.element;
     if (backendRows && !backendRows.isConnected) this.perMachineFallbackHint.before(backendRows);
-    // ST1「延后加载」：兜底态下这几块就摆在（落地的）列表页上、用户看得见 ⇒ 这时才放它们的第一发。
+    // 兜底态下这几块就摆在落地的列表页上、用户看得见 ⇒ 这时才放它们的第一发。
     this.loadPerMachineOnce();
     this.perMachineSlot.hidden = false;
     this.perMachineFallbackHint.hidden = false;
@@ -1423,7 +1214,7 @@ export class SettingsPanel {
       copyText("settingsPanel.fallback.body", { why });
   }
 
-  /** 步 3：`RemoteSection` 那趟 `refresh()` 收尾了（成或败）。一个页都没来 ⇒ 兜底。 */
+  /** `RemoteSection` 那趟 `refresh()` 收尾了（成或败）：一个页都没来 ⇒ 兜底。 */
   private onMachinePagesSettled(): void {
     this.machinePagesSettled = true;
     this.applyPendingTarget();
@@ -1450,7 +1241,7 @@ export class SettingsPanel {
     return sw;
   }
 
-  /** 通用页「行为」：五个开关，拨了马上生效、马上存（C4）。「同时提到前台」挂在上一项下，上一项关着时禁用。 */
+  /** 通用页「行为」：五个开关，拨了马上生效、马上存。「同时提到前台」挂在上一项下，上一项关着时禁用。 */
   private buildBehaviorGroup(): HTMLElement {
     const group = document.createElement("div");
     group.className = "settings-group settings-headless";
@@ -1496,7 +1287,7 @@ export class SettingsPanel {
     this.resumeSelect = new ResumeSelect({ inherit: false, onChange: (v) => void this.saveResumeCommand(v) });
     row.appendChild(this.resumeSelect.element);
     group.appendChild(row);
-    // F08：越层启动器诊断——只诊断 ＋ 引导，不自动改这一格（设计原则 #7）。
+    // 越层启动器诊断：只诊断 ＋ 引导，不自动改这一格。
     this.remoteLauncherWarning = document.createElement("div");
     this.remoteLauncherWarning.className = "settings-launcher-warning";
     this.remoteLauncherWarning.style.display = "none";
@@ -1513,12 +1304,7 @@ export class SettingsPanel {
     return group;
   }
 
-  /**
-   * issue #5: 「快捷键」分组——只放一行说明 + [打开快捷键编辑器] 按钮 + 当前覆盖数 chip。
-   *
-   * 编辑器是 modal overlay (kb-editor-overlay)，点开后浮在设置面板之上。
-   * lazy 实例化：首次点开时建 DOM，后续 reuse 单例避免重复构建。
-   */
+  /** 「快捷键」一节：［快捷键…］开编辑器（浮在设置之上，首次点开才建）＋ 当前覆盖数。 */
   private buildKeybindingsGroup(): HTMLElement {
     const group = document.createElement("div");
     group.className = "settings-group settings-headless";
@@ -1548,14 +1334,13 @@ export class SettingsPanel {
     return group;
   }
 
-  /** 更新覆盖数 chip。open() 时 / 编辑器关闭时（如果需要）调 */
+  /** 更新覆盖数（open() 时 / 编辑器改过之后）。 */
   private refreshKbChip(): void {
     if (!this.kbOverrideChip) return;
     const n = Object.keys(dispatcher.exportOverrides()).length;
     this.kbOverrideChip.textContent = n > 0 ? copyText("settingsPanel.keybindings.customized", { n }) : copyText("settingsPanel.keybindings.allDefault");
   }
 
-  /** "Claude 数据目录" 子表单（F82b 起嵌在「集成」组里） */
   /** 「文件与数据 → cc-monitor 放了什么」本机那一块「Claude 目录」：一行路径（留空 ＝ 默认）＋［更换…］［用回默认］；存前问在不在、像不像。 */
   private buildDataGroup(): HTMLElement {
     const group = document.createElement("div");
@@ -1613,38 +1398,9 @@ export class SettingsPanel {
   }
 
   /**
-   * F82b：把一个既有的「表单本体」`body` 包一层子分节小标题（`.settings-group-title`），供
-   * 合并后的 4 组内部导航（如「外观」里的 行为 / 快捷键，「集成」里的 诊断 / 数据存储）。
-   */
-  /**
-   * **分区块隔离**（T07）。构造 `build()` 时抛出 → 就地渲染「此区块加载失败」，
-   * **其余区块照常出**，而不是整个设置窗白屏。
-   *
-   * 为什么必须收 thunk 而不是收 `HTMLElement`：`titledSection(t, new Foo().element)`
-   * 的**实参在进入函数前就求值**，`new Foo()` 抛的话根本走不到函数体里的 try。
-   *
-   * 爆炸半径实测（T07 §0/§1）：**9 个文件 / 24 处在构造期发起 I/O**
-   * （`void this.loadX()`），而整条构造链
-   * `panel.buildBody → panel 构造器 → main.ts:859 new SettingsPanel → main.ts:122
-   * bootstrapSettings → main.ts:102 DOMContentLoaded` **没有一个 try/catch**。
-   * 两者相乘：任一 section 构造期抛 → 整页白、零提示。
-   *
-   * 每块一个 catch，**不是整个 `buildBody` 一个** —— 那样一块坏还是全没。
-   *
-   * ## 它挡什么、不挡什么（如实写明，别让人以为白屏问题全解了）
-   *
-   * **挡住的**：构造期**同步**抛。`buildPasteBlock` 的三句话必填 `throw` 就是这一类
-   * ——那也是当初发现这条链没有 try/catch 的起因。
-   *
-   * **挡不住的**：那 24 处构造期 I/O 全是 `void this.someAsyncMethod()` 形态
-   * （实测：`cc-bus-section.ts:72` 的 `void this.loadOrigins()` 对应
-   *  `:192 private async loadOrigins()`）。**`void` 掉的 Promise 其 reject 是
-   * 未捕获 rejection，同步 try/catch 抓不到。**
-   *
-   * 为什么今天不炸：那些 section 各自内部有 catch（实测 7 个文件共 39 处）。
-   * **但我没有逐一核实那 39 处是否覆盖了全部 24 条路** —— 所以这里只声明
-   * `safeBlock` 覆盖同步路径，**不声明白屏问题已全解**。异步那半边留给 T07 的
-   * 对抗性审计去核；覆盖不到就如实说没守，这是本工作区的纪律。
+   * 分区块隔离：构造时抛出 ⇒ 就地渲染「此区块加载失败」，其余区块照常出，不让整个设置窗白屏。每块一个 catch。
+   * 收 thunk 而不是 `HTMLElement`：`new Foo()` 作实参在进函数之前就求值，抛了走不到这里的 try。
+   * 只挡构造期同步抛；构造期 `void this.loadX()` 的 reject 是未捕获 rejection，靠各块自己的 catch。
    */
   private safeBlock(
     title: string,
@@ -1652,8 +1408,7 @@ export class SettingsPanel {
     opts: { untitled?: boolean } = {},
   ): HTMLElement {
     try {
-      // `untitled`：这一块独占一个子页，页头已经是它的名字 ⇒ 块不再自带标题
-      //   （同名标题叠两层是 `§8` #11 那种重名）。失败时照旧带标题 —— 那一刻得说清是哪一块坏了。
+      // `untitled`：这一块独占一个子页、页头已是它的名字 ⇒ 不再自带标题。失败时照旧带标题（得说清是哪一块坏了）。
       const body = build();
       if (!opts.untitled) return this.titledSection(title, body);
       const wrap = document.createElement("div");
@@ -1672,7 +1427,7 @@ export class SettingsPanel {
       msg.className = "settings-block-failed-msg";
       sayWithDetail(msg, copyText("settingsPanel.safeBlock.failed", { e: String(e) }), detailOf(e));
       wrap.appendChild(msg);
-      // 可复制——用户报障时要的是原文，不是转述
+      // 可复制：报障要的是原文，不是转述
       const out = document.createElement("textarea");
       out.readOnly = true;
       out.rows = 3;
@@ -1706,7 +1461,7 @@ export class SettingsPanel {
     const control = this.buildControl(f);
     row.appendChild(control);
 
-    // 单项"恢复默认"按钮：清掉该字段的覆盖，CSS var 回到 styles.css :root 默认
+    // 单项「恢复默认」：清掉该字段的覆盖，CSS 变量回到 :root 默认
     const resetBtn = document.createElement("button");
     resetBtn.type = "button";
     resetBtn.className = "settings-field-reset";
@@ -1714,7 +1469,7 @@ export class SettingsPanel {
     resetBtn.title = copyText("settingsPanel.field.resetHint", { label: f.label });
     resetBtn.setAttribute("aria-label", resetBtn.title);
     resetBtn.addEventListener("click", (e) => {
-      // row 是 <label>，点击会冒泡到关联的 input；阻止默认 + 阻止冒泡
+      // row 是 <label>，点击会冒泡到关联的 input ⇒ 阻止默认与冒泡
       e.preventDefault();
       e.stopPropagation();
       this.resetField(f);
@@ -1725,7 +1480,7 @@ export class SettingsPanel {
     return row;
   }
 
-  /** 单项重置：清掉 this.current[key]，单 token 应用，重画该 input 的占位值 */
+  /** 单项重置：清掉覆盖，单 token 应用，重画该 input 的占位值。 */
   private resetField(f: FieldSpec): void {
     delete this.current[f.key];
     applyThemeToken(f.key, undefined);
@@ -1734,7 +1489,7 @@ export class SettingsPanel {
     void this.persistTheme().catch((e: unknown) => this.reportSaveFailure(copyText("settingsPanel.save.appearance"), e));
   }
 
-  /** 把单个 token 当前值（如果覆盖了）或 :root 计算值写到对应 input */
+  /** 把单个 token 的当前值（覆盖了的）或 :root 计算值写到对应 input。 */
   private syncOneInput(f: FieldSpec): void {
     const input = this.inputs.get(f.key);
     if (!input) return;
@@ -1775,7 +1530,7 @@ export class SettingsPanel {
         const opt = document.createElement("option");
         opt.value = p.value;
         opt.textContent = p.label;
-        // 控件预览：option 文字本身用对应字体显示
+        // option 文字本身用对应字体显示
         if (p.value) opt.style.fontFamily = p.value;
         sel.appendChild(opt);
       }
@@ -1808,7 +1563,6 @@ export class SettingsPanel {
   ): HTMLElement {
     const btn = document.createElement("button");
     btn.type = "button";
-    // `secondary` 就是默认那一种：原先拼出来的 `settings-btn-secondary` 从没有过规则，已摘。
     btn.className = variant === "primary" ? "settings-btn settings-btn-primary" : "settings-btn";
     btn.textContent = label;
     btn.addEventListener("click", onClick);
@@ -1840,8 +1594,7 @@ export class SettingsPanel {
       nextValue = v;
     }
     this.showFieldError(input, null);
-    // 性能关键：拖 color picker 时 `input` 事件 ~60Hz 高频；只更新这一个 token，
-    // 避免每帧调 14 次 setProperty 触发整棵 :root 子树重算
+    // 拖取色器时 `input` 约 60Hz：只更新这一个 token，不每帧把整组都设一遍（整棵 :root 子树重算）。
     applyThemeToken(f.key, nextValue);
   }
 
@@ -1864,7 +1617,7 @@ export class SettingsPanel {
     input.setAttribute("aria-invalid", "true");
   }
 
-  /** 把 this.current 的值写回所有 input；无覆盖的字段读 :root 计算值作为占位 */
+  /** 把 this.current 写回所有 input；无覆盖的字段读 :root 计算值作占位。 */
   private syncInputs(): void {
     for (const f of FIELDS()) {
       this.syncOneInput(f);
@@ -1872,7 +1625,7 @@ export class SettingsPanel {
   }
 }
 
-/** input[type=color] 只接受 #rrggbb；过滤掉 #rgb / rgb()/font 串 */
+/** input[type=color] 只接受 #rrggbb；过滤掉 #rgb / rgb() / 字体串。 */
 function isShortHex(s: string): boolean {
   return /^#[0-9a-fA-F]{6}$/.test(s);
 }

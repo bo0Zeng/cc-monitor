@@ -664,7 +664,6 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
   };
 }
 
-// 这里原来是远端卡那一半「把本机的别名清单复制过去贴」—— 远端卡换成上面同一个 `buildAliasManager`（`origin` = 那台）⇒ 删。
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 「Windows 终端」那一行（只本机 PowerShell）：能切回几个窗口 · 没开时自动打开 · cmd / Git Bash 也认 ccm
@@ -674,9 +673,8 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
 // 这一行是不随启动文件走的那三格：
 // - 已完成拉前握手的终端数（住 monitor 进程里，另问 monitor）；
 // - 用别名起 claude 时 cc-monitor 没开就先打开它（开关，立刻生效）；
-// - **用户级 PATH**（`K-R135`：用户逐字「应该让用户手动点击加，也能管理删除」⇒ 开关就是那一下点击，拨回就是删；
-//   **现算不缓存**：每次读都真问一趟；**探不动 ≠ 不在 PATH 上**：读不出时开关不给拨、那句原话上屏，不静默成「没加」）。
-//   那两条命令的逐字文本给不想拨开关的人看（与开关跑的是同一份字节）。
+// - 用户级 PATH：开关就是手动加的那一下，拨回就是删；每次读都真问一趟（不缓存），探不动 ≠ 不在 PATH 上 ——
+//   读不出时开关不给拨、那句原话上屏。那两条命令的逐字文本给不想拨开关的人看（与开关跑的是同一份字节）。
 
 interface PsExtras {
   setBound(n: number): void;
@@ -813,9 +811,8 @@ function buildPsExtras(row: CfgRow): PsExtras {
 }
 
 /**
- * 问一次本机 `ccm` 那一格（K-R117 S2 本机半钉在本文件；判定与那句话在 monitor `ccm_probe::local_ccm_cell`）。
- * 调用方：别名管理器读回 · 本机那一行「重新对齐」（`fresh`：先作废 PATH 探针那份 5 分钟缓存，手动兜底）。
- * Windows 本机同样问（新开的 PowerShell 里敲 `ccm` 走到哪）。
+ * 问一次本机 `ccm` 那一格（判定与那句话在 monitor `ccm_probe::local_ccm_cell`）。调用方：别名管理器读回 ·
+ * 本机那一行「重新对齐」（`fresh`：先作废 PATH 探针那份 5 分钟缓存）。Windows 本机问新开的 PowerShell 里敲 `ccm` 走到哪。
  */
 export function askLocalCcm(fresh = false): Promise<LocalCcmEntry> {
   return commands.local_ccm_entry_status(fresh);

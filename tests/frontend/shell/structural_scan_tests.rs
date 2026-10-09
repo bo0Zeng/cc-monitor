@@ -4725,7 +4725,6 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/frontend/shell/frame_query_tests.rs", 16), // 19 → 16：界面不再问的那几行（`ssh-config-aliases` / `-resolve` · `footprint-report` · `apikey-read` · `launch` · `files-ls`）删了，挂着的墓碑随之没了 // 20 → 19：抓屏那一行改成 `terminal-preview`，点旧发送端的墓碑随之没了 // 21 → 20：全景那三条命令的行删了，挂着的墓碑随之没了 // 17 → 21 // 16 → 17：足迹那一行点旧发送点 // 15 → 16：全景那两行点旧发送点 // 14 → 15：点 `deploy_remote_acct_iso` 旧名那几处挂墓碑 // // 两边各自贴的墓碑相加，按盘上现数（跑出来核过） 13 → 14 // 主线 12 ＋ MIG-3b +1（点分叉旧判据文件那一句） // +1：skill 装卸 ＋ 同步那一块点删掉的四条命令 // // +1：`CHANNELED_ELSEWHERE` 的 MCP 那一块点删掉的两份文件 // // +1：本机 shellinit 那一个期限发起点并掉 // +3：`apikey-read` 那一行说核路径那一问删了 · `apikey-key-set` 新行点删掉的命令 · `ASKED_BY_MONITOR_ITSELF` 退役那一行 // +1：`CHANNELED_ELSEWHERE` 的 cc-bus 那一块点删掉的五条命令 // +1：`kill` / `launch` 两行点删掉的三条命令 // +1：`CHANNELED_ELSEWHERE` 的 `capture-pane` 那一行点删掉的发送端 // 逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑 // 11 → 12
         // 「退出行为」问 / 交写改走通道：monitor 那两条命令与它们的期限删了，原处各一块；设置页头注点它们旧名。
         ("src/frontend/shell/src/backend_policy.rs", 2),
-        ("src/frontend/ui/settings/backend-section.ts", 2), // 1 → 2
         // 改名「上游选择」、模块 `apikey` → `upstream`：两处讲旧叫法来历的注释各挂一块
         //   （旧叫法本身不是 snake_case 死名，不进 `TOMBSTONED`；命名判据 `account-vs-relay-naming` 的「上游选择」改名那张表按这块标记放行这两行）。
         // +1：上游选择自己那张每 agent 默认上游表（`AGENT_UPSTREAMS`）搬回适配层，原处留一块说去向。
