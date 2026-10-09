@@ -91,7 +91,9 @@ export class FakeBackend {
     const req = raw.length > 0 ? (JSON.parse(dec.decode(Uint8Array.from(raw))) as Record<string, unknown>) : {};
     try {
       const v = handler(origin, req, this.world);
-      return Promise.resolve(v).then(
+      const delay = this.world.opDelayMs?.[op] ?? 0;
+      const later = delay > 0 ? new Promise((r) => setTimeout(() => r(v), delay)) : Promise.resolve(v);
+      return later.then(
         (value) => Array.from(enc.encode(JSON.stringify(TIMED_OPS.has(op) ? withTexts(value) : value))),
         (e: unknown) => Promise.reject(refusal(e, op)),
       );

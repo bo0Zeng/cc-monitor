@@ -123,6 +123,9 @@ export function perfWorld(): World {
       return memo.get(key);
     };
   }
+  // 读整份会话的那几问要时间（真后端读几 MB 的记录文件、远端还隔一跳）：照本机常见的量级给一个延迟 ——
+  // 快速连切时「切走之后才回来」的那几问才演得出来（不给延迟，假后端当场答，旧切换的活全在切走之前干完了）。
+  w.opDelayMs = { "history-index": 150, "history-turns": 150, "history-user-inputs": 120, "history-facts": 120, "history-page": 60 };
   // 真壳的重放缓冲每会话只留尾部 600 条（`event_replay.rs::REPLAY_TAIL_KEEP`）；更早的由骨架索引按偏移取。
   w.replayTail = 600;
   return w;

@@ -35,6 +35,7 @@ ap.add_argument("--port", type=int, default=None)
 ap.add_argument("--only", default="switch,rapid,long")
 ap.add_argument("--merge", default=None, help="几次分开跑的读数合成一张：目录1,目录2,…")
 ap.add_argument("--dev", action="store_true", help="开发服务器（模块按源码路径可 import ⇒ 能给方法挂计时）")
+ap.add_argument("--profile-pass", default="warm", help="计时记哪一遍：cold（第一次进每个 tab）/ warm")
 ap.add_argument("--profile", default=None, help="开页安静后在页里跑的一段函数体（挂计时）；切一下那一项末尾把 window.__prof 存进 prof.json")
 args = ap.parse_args()
 only = set(args.only.split(","))
@@ -215,7 +216,10 @@ def bench_switch(v, url, run, result):
     n = v.js("return document.querySelectorAll('#tab-bar .tab').length")
     rows = []
     for ps in ("cold", "warm"):
-        if args.profile and ps == "warm":
+        if args.profile and ps == "warm" and args.profile_pass == "cold":
+            with open(os.path.join(args.out, "prof.json"), "w") as f:
+                json.dump(v.js("return window.__prof ? window.__prof.dump() : null"), f, indent=1, ensure_ascii=False)
+        if args.profile and ps == args.profile_pass:
             v.js("window.__prof && window.__prof.reset(); return 0")
         for i in range(n):
             if v.js(TAB_AT % i)["active"]:
@@ -223,7 +227,7 @@ def bench_switch(v, url, run, result):
             rows.append({"run": run, "pass": ps, **measured_click(v, i)})
         if v.js(TAB_AT % 0)["active"]:
             rows.append({"run": run, "pass": "warm", **measured_click(v, 1)})
-    if args.profile:
+    if args.profile and args.profile_pass == "warm":
         with open(os.path.join(args.out, "prof.json"), "w") as f:
             json.dump(v.js("return window.__prof ? window.__prof.dump() : null"), f, indent=1, ensure_ascii=False)
     print(f"  WebKit 切一下 第 {run + 1} 趟：{len(rows)} 次", flush=True)

@@ -487,8 +487,8 @@ function groupBy(xs, key) {
  * 一棵进程树（浏览器连同它起的渲染 / GPU 进程）到此刻一共用了多少 CPU 毫秒：每个线程 `/proc/<pid>/task/<tid>/schedstat`
  * 第一格（纳秒，在 CPU 上跑的时长）相加。机器忙时墙钟会被别的活拉长，CPU 时长基本不受影响 ⇒ 两样都记。
  */
-const cpuSeen = new Map();
 function cpuMs(root) {
+  const cpuSeen = (globalThis.__cpuSeen ??= new Map());
   const kids = new Map();
   for (const d of readdirSync("/proc")) {
     if (!/^\d+$/.test(d)) continue;
