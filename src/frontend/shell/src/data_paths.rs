@@ -333,6 +333,11 @@ fn backend_entries(home: &Path, monitor_data_dir: &Path) -> Vec<DataPathInfo> {
             DataClass::Truth,
         ),
         file(
+            rr::LINEAGE_REL,
+            copy_text("rsDataPaths.backend.lineage", &[]),
+            DataClass::Truth,
+        ),
+        file(
             rr::LAUNCH_ACCOUNTS_REL,
             copy_text("rsDataPaths.backend.launchAccounts", &[]),
             DataClass::Truth,

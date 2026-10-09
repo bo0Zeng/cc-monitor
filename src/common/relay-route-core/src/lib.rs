@@ -148,6 +148,9 @@ pub const QUOTA_LEDGER_REL: &str = ".cc-monitor/quota.json";
 /// 〔同上〕**账号轮换**（后端账号域写）：默认池与换号时机 · 每个会话的覆盖与此刻钉在哪个号 · 换号记录。
 pub const ROTATION_REL: &str = ".cc-monitor/rotation.json";
 
+/// 〔同上〕**会话血缘**（后端 `lineage.rs` 写，唯一写者是中转那一路）：谁起的谁 ＋ 起会话地址里每个来处绑给了哪个会话。
+pub const LINEAGE_REL: &str = ".cc-monitor/lineage.json";
+
 /// 〔同上〕**起会话用的号**（后端观测侧写）：每条会话上次用哪个号起的（`sid → 号`），跟随选号读它。
 pub const LAUNCH_ACCOUNTS_REL: &str = ".cc-monitor/launch-accounts.json";
 
@@ -277,8 +280,8 @@ pub fn base_url(port: u16, mode: RouteMode, seg1: &str, seg2: &str) -> Option<St
     route_path(mode, seg1, seg2).map(|p| format!("http://127.0.0.1:{port}{p}"))
 }
 
-/// [`base_url`] 的**逆**：`http://127.0.0.1:<1–65535>` ＋ 一个前缀 ＋ 恰好两段、每段过闸。别的一律 `false`
-/// （`localhost` · `https` · 查询串 · 尾斜杠 · 少段多段 · 端口前导空）。
+/// [`base_url`] 的**逆**：`http://127.0.0.1:<1–65535>` ＋ 一个前缀 ＋ 恰好两段、每段过闸，后面可以再跟一段来处
+/// （[`with_origin`] 的产物）。别的一律 `false`（`localhost` · `https` · 查询串 · 尾斜杠 · 少段多段 · 端口前导空）。
 pub fn base_url_shape_ok(url: &str) -> bool {
     let Some(rest) = url.strip_prefix("http://127.0.0.1:") else {
         return false;
@@ -297,7 +300,60 @@ pub fn base_url_shape_ok(url: &str) -> bool {
         return false;
     };
     let parts: Vec<&str> = segs.split('/').collect();
-    port_ok && parts.len() == 2 && parts.iter().all(|p| segment_is_safe(p))
+    let route_ok = match parts.as_slice() {
+        [a, b] => segment_is_safe(a) && segment_is_safe(b),
+        [a, b, o] => segment_is_safe(a) && segment_is_safe(b) && parse_origin(o).is_some(),
+        _ => false,
+    };
+    port_ok && route_ok
+}
+
+/// 〔会话血缘〕来处段打头的那个字符。不在段闸字符里 ⇒ 来处段与路由段、与 agent 自己拼上的真路径（`v1/…`）都分得开。
+pub const ORIGIN_MARK: char = '~';
+
+/// 来处段 `~<来处>[~<父>]` 切出来的样子。
+///
+/// - `token`：起会话那一趟（`ccm`）现铸的一个号，一次起会话一个。中转第一次看见它就把它绑给发这一发的那个会话；
+///   之后别的会话拿着同一条地址来（在那个会话里直接起的进程原样继承这条地址）⇒ 它们的父就是绑的那一个。
+/// - `parent`：起会话那一趟被一个会话的 shell 调用时，那个会话的编号。
+///
+/// 两格都只是形状，谁绑谁、记在哪由后端那一处管（`lineage.rs`）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Origin<'a> {
+    pub token: &'a str,
+    pub parent: Option<&'a str>,
+}
+
+/// 一段是不是来处段、是的话切开。`~` 打头，后面一截或两截（`~` 隔开），每截过段闸。
+pub fn parse_origin(seg: &str) -> Option<Origin<'_>> {
+    let body = seg.strip_prefix(ORIGIN_MARK)?;
+    let mut it = body.split(ORIGIN_MARK);
+    let token = it.next().filter(|t| segment_is_safe(t))?;
+    let parent = match it.next() {
+        None => None,
+        Some(p) if segment_is_safe(p) => Some(p),
+        Some(_) => return None,
+    };
+    it.next().is_none().then_some(Origin { token, parent })
+}
+
+/// 给一条构造口产物（[`base_url`]，还没带来处）拼上来处段：`<地址>/~<来处>[~<父>]`。
+/// 地址不是那一形 / 已经带了来处 / 任一截过不了段闸 ⇒ `None`。读者：`ccm` 起会话最终那一跳。
+pub fn with_origin(url: &str, token: &str, parent: Option<&str>) -> Option<String> {
+    if !base_url_shape_ok(url)
+        || url
+            .rsplit('/')
+            .next()
+            .is_some_and(|l| l.starts_with(ORIGIN_MARK))
+    {
+        return None;
+    }
+    let seg = match parent {
+        Some(p) => format!("{ORIGIN_MARK}{token}{ORIGIN_MARK}{p}"),
+        None => format!("{ORIGIN_MARK}{token}"),
+    };
+    parse_origin(&seg)?;
+    Some(format!("{url}/{seg}"))
 }
 
 /// 请求目标 `/<前缀>/<seg1>/<seg2>/<rest>` 切出来的样子（中转那一侧用）。
@@ -306,21 +362,33 @@ pub struct Parsed<'a> {
     pub mode: RouteMode,
     pub seg1: &'a str,
     pub seg2: &'a str,
-    /// 第 2 段之后的全部（**不带**开头那个 `/`），原样交上游。
+    /// 紧跟第 2 段的来处段（[`parse_origin`]）；没有 ⇒ `None`。
+    pub origin: Option<Origin<'a>>,
+    /// 第 2 段（有来处段时是来处段）之后的全部（**不带**开头那个 `/`），原样交上游。
     pub rest: &'a str,
 }
 
-/// 切请求目标。不是这个形状（前缀不认得 · 少段 · 某段过不了闸）⇒ `None`。
+/// 切请求目标。不是这个形状（前缀不认得 · 少段 · 某段过不了闸 · 第 2 段之后是 `~` 打头却不是合法来处段）⇒ `None`。
 pub fn parse_target(target: &str) -> Option<Parsed<'_>> {
     let (mode, after) = RouteMode::ALL
         .iter()
         .find_map(|m| target.strip_prefix(m.prefix()).map(|r| (*m, r)))?;
     let (seg1, after) = after.split_once('/')?;
     let (seg2, rest) = after.split_once('/')?;
-    (segment_is_safe(seg1) && segment_is_safe(seg2)).then_some(Parsed {
+    if !(segment_is_safe(seg1) && segment_is_safe(seg2)) {
+        return None;
+    }
+    let (origin, rest) = if rest.starts_with(ORIGIN_MARK) {
+        let (seg, rest) = rest.split_once('/')?;
+        (Some(parse_origin(seg)?), rest)
+    } else {
+        (None, rest)
+    };
+    Some(Parsed {
         mode,
         seg1,
         seg2,
+        origin,
         rest,
     })
 }
@@ -350,6 +418,7 @@ pub const OWN_HOME_ENTRIES: &[(&str, &str, bool, bool)] = &[
     ("assetCatalog", ASSET_CATALOG_REL, false, false),
     ("quota", QUOTA_LEDGER_REL, false, true),
     ("rotation", ROTATION_REL, false, true),
+    ("lineage", LINEAGE_REL, false, true),
     ("launchAccounts", LAUNCH_ACCOUNTS_REL, false, true),
     ("launchNotes", LAUNCH_NOTES_DIR_REL, true, false),
     ("knownHosts", KNOWN_HOSTS_REL, false, false),

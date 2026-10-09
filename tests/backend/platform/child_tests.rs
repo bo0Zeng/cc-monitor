@@ -297,7 +297,7 @@ fn a_reused_thread_carries_no_budget_into_the_next_command() {
     .expect("线程");
 }
 
-/// 〔环境里没有后端内部变量〕会话环境里混进来的后端内部变量（monitor 给终端窗口导的后端二进制路径 · 旧版常驻后端留在长寿 tmux server
+/// 〔环境里没有后端内部变量，也没有会话号变量〕会话环境里混进来的后端内部变量（monitor 给终端窗口导的后端二进制路径 · 旧版常驻后端留在长寿 tmux server
 /// 全局环境里的监听口与钥匙文件 · 常驻开关 · 诊断文件）—— 起出来的每个子进程（agent 会话就在里面）一个都看不见；
 /// 真要往下传的那几格（中转口 · 家）照旧到得了。外层带着这些变量把本测试二进制当子进程起、跑内层（进程环境不能在多线程测试里改）。
 #[test]
@@ -327,6 +327,11 @@ fn a_child_never_inherits_the_backend_internal_families() {
         .env("CCM_RESIDENT", "1")
         .env("CCM_RELAY_PORT", "8788")
         .env("CCM_DATA_DIR", "/iso/home")
+        .envs(
+            crate::agents::self_sid_envs()
+                .into_iter()
+                .map(|k| (k, "parent-sid")),
+        )
         .output()
         .expect("起内层");
     let text = format!(
@@ -348,6 +353,8 @@ fn internal_families_inner() {
     if std::env::var(INTERNAL_MARK).is_err() {
         return;
     }
+    // 与 `main.rs` 同一个入口：登记会话号变量。
+    crate::agents::install_child_env_filter();
     let out = Child::new("env").run(Deadline::secs(10)).expect("起 env");
     let text = String::from_utf8_lossy(&out.stdout);
     let names: std::collections::BTreeMap<&str, &str> =
@@ -358,6 +365,17 @@ fn internal_families_inner() {
         .filter(|k| crate::platform::child_env::is_internal(k))
         .collect();
     assert_eq!(leaked, Vec::<&str>::new(), "后端内部变量漏给了子进程");
+    let sids = crate::agents::self_sid_envs();
+    assert!(
+        !sids.is_empty(),
+        "适配层一个「我是哪个会话」的变量都没登记 —— 下面那一格空转"
+    );
+    let leaked_sid: Vec<&str> = names.keys().copied().filter(|k| sids.contains(k)).collect();
+    assert_eq!(
+        leaked_sid,
+        Vec::<&str>::new(),
+        "会话号变量漏给了子进程（它起的会话会把那个会话错当成父）"
+    );
     assert_eq!(
         names.get("CCM_RELAY_PORT"),
         Some(&"8788"),

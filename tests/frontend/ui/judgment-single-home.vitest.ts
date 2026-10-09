@@ -767,6 +767,12 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     // 额度账 · 账号轮换（后端账号域写；数据位置页按它列）。
     QUOTA_LEDGER_REL: NONE,
     ROTATION_REL: NONE,
+    // 会话血缘（后端 `lineage.rs` 写；数据位置页按它列）。
+    LINEAGE_REL: NONE,
+    // 起会话地址尾上的来处段（会话血缘：ccm 拼 · 中转切 · 门牌那几个函数认）；TS 侧没有孪生。
+    ORIGIN_MARK: NONE,
+    parse_origin: NONE,
+    with_origin: NONE,
     // 起会话用的号 · 起会话便条（后端写；数据位置页按它列）。
     LAUNCH_ACCOUNTS_REL: NONE,
     LAUNCH_NOTES_DIR_REL: NONE,

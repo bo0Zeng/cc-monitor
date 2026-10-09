@@ -201,7 +201,7 @@ data dir 里两类东西**语义上一刀两断**，别搅混到「迁移/重建
 | `ps-registry/` `ps-await/` | **缓存/IPC** | `bind.rs` | 跨进程握手，启动重扫 |
 | `logs/` | **缓存/派生** | `logging.rs` · 本机常驻后端 | 诊断日志：`monitor/` 是本进程按天滚动、保留 3 天（§15）；`backend/` 是脱离运行的本机后端 stderr |
 | `bin/` `staging/` `logs/backend/` `assets-catalog.json` `last-seen.json` `launch-pending/` `known_hosts` `profiles-written.json` | **缓存** | 本机后端（`bin/` 里的后端由宿主放；`launch-pending/` 由 `ccm` 最终那一跳写、观测侧清；`known_hosts` 由拨号侧写） | 一台机器一个家：后端住在同一个家里、能重建的：程序（缺了重放）· 上传暂存区 · 错误输出 · 资产目录（重新扫出来、各台之间再对上）· 离线那台的上次值（再连上一次就有）· 起会话便条（进程退出即清）· 主机钥匙（下次拨号按固化的指纹再认下）· 配置文件上次经 cc-monitor 写出时的指纹（删了只是下次不说「手改过」） |
-| `relay-key` `relay-pass-key` `run/` `backend.json` `profiles.toml` `profiles-migrated.json` `aliases.sh` `aliases.ps1` `skill-installs.json` `chores.json` `backups/` `accounts/` `accounts-mcp.json` `apikey-credentials.json` `quota.json` `rotation.json` `launch-accounts.json` | **真相** | 本机后端（`run/` 里的套接字与进程记录由常驻后端自己写；`launch-accounts.json` 只有观测侧写） | 删了会丢的：后端跑着时要用的中转两把钥匙与常驻后端的套接字和进程记录（删了要重起后端）· 退出行为设置 · 你建的别名（配置文件 `profiles.toml`；`aliases.sh` / `aliases.ps1` 照它生成）· skill / MCP 装记录 · 「要你动手」里点过「不用了」的几件与选了自己贴的那份启动文件 · 从「扩展」卸掉不是 cc-monitor 装的东西之前放的那一份 · 账号库（清单与每个号的登录凭据）· 你填的 API key · 各号最近一次看到的用量（没流量的号补不回来）与账号轮换的设置和换号记录 · 每条会话上次用哪个号起的（删了 ⇒ 下次跟随落到默认号）。名字各取契约常量（`relay_route_core` · `creds_core::store`）与宿主那一处（`logging::backend_stderr_log_path`），`data_paths.rs::backend_entries` 列它们 |
+| `relay-key` `relay-pass-key` `run/` `backend.json` `profiles.toml` `profiles-migrated.json` `aliases.sh` `aliases.ps1` `skill-installs.json` `chores.json` `backups/` `accounts/` `accounts-mcp.json` `apikey-credentials.json` `quota.json` `rotation.json` `lineage.json` `launch-accounts.json` | **真相** | 本机后端（`run/` 里的套接字与进程记录由常驻后端自己写；`launch-accounts.json` 只有观测侧写） | 删了会丢的：后端跑着时要用的中转两把钥匙与常驻后端的套接字和进程记录（删了要重起后端）· 退出行为设置 · 你建的别名（配置文件 `profiles.toml`；`aliases.sh` / `aliases.ps1` 照它生成）· skill / MCP 装记录 · 「要你动手」里点过「不用了」的几件与选了自己贴的那份启动文件 · 从「扩展」卸掉不是 cc-monitor 装的东西之前放的那一份 · 账号库（清单与每个号的登录凭据）· 你填的 API key · 各号最近一次看到的用量（没流量的号补不回来）与账号轮换的设置和换号记录 · 各会话由谁起的（删了 ⇒ 之后新起的子会话认不出父，不再默认跟随父会话）· 每条会话上次用哪个号起的（删了 ⇒ 下次跟随落到默认号）。名字各取契约常量（`relay_route_core` · `creds_core::store`）与宿主那一处（`logging::backend_stderr_log_path`），`data_paths.rs::backend_entries` 列它们 |
 
 - **真相** = 用户手写/意图，**删了丢东西、要备份、要迁移友好**。
 - **缓存/派生** = 能从别处重建，**随便删**。
@@ -2013,7 +2013,8 @@ CSP 兜底源是 `'self'` · 脚本执行面的几种放开形逐个禁 ＋ 那�
 绝不换个地方再起一个；锁随进程死由内核放，留下的陈旧套接字文件由下一个拿到锁的删掉重绑。没有钥匙、没有钥匙文件：
 attach 行只是「我要流」（`{"attach":true}`，可带 `flags`），形状不对 ⇒ 出声拒（`malformed-attach`）。远端经 ssh 跑 `ccm -- --resident-attach`
 小中继连那台的套接字：ssh 证明了是本人，中继在那台以本人身份连。起它的那一方只交常驻开关（`CCM_RESIDENT=1`）；常驻后端起子进程时把它和诊断文件那一格清掉
-（起子进程原语 `platform/child.rs` 无条件做，名单住 `platform/child_env.rs`）—— 它起的 tmux server 会把调用者的环境拷成全局环境、传给每个窗格。
+（起子进程原语 `platform/child.rs` 无条件做，名单住 `platform/child_env.rs`：常驻开关 · 诊断文件 · `CCM_BACKEND_*` / `CCM_LISTEN_*` 两族 · 各家「我是哪个会话」的变量）—— 它起的 tmux server 会把调用者的环境拷成全局环境、传给每个窗格；会话号变量漏下去，它起的会话会把起它的那个会话错当成父。
+判据 `child_tests.rs::a_child_never_inherits_the_backend_internal_families`。
 不判身份的只有 hello 那一档（连得上就是本人，读完即关）。
 **台架防真家**：沙箱跑（带 `CCM_SANDBOX=1`，或 `$HOME` 与账号数据库里的家目录不一样）却要占本账号真家目录里 `.cc-monitor` 下的门牌（家 · 诊断文件）⇒ 拒绝起。
 

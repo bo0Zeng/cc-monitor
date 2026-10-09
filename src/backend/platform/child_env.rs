@@ -24,7 +24,19 @@ pub(crate) const OWN_ENVS: [&str; 2] = [RESIDENT, STDERR_LOG];
 /// 它们一路继承到 agent 起的每个工具进程（跑测试的那一个也在里面），台架漏进真环境就是从这里来的。往下传的只有头注那几格。
 pub(crate) const INTERNAL_PREFIXES: [&str; 2] = ["CCM_BACKEND_", "CCM_LISTEN_"];
 
-/// 这个名字是不是后端内部的（[`OWN_ENVS`] ∪ [`INTERNAL_PREFIXES`] 那几族）。纯函数。
+/// 上层登记进来、同样一律不往下传的那几个名字：各家 agent「我是哪个会话」的变量（适配层 `agents::self_sid_envs`）——
+/// 常驻后端若是在某个会话里起的，它起的会话不许把那个会话错当成父。本层不认识 agent（最下层只朝下引），
+/// 由入口在起第一个子进程之前登记一次（`agents::install_child_env_filter`）。
+static ALSO_INTERNAL: std::sync::OnceLock<Vec<&'static str>> = std::sync::OnceLock::new();
+
+/// 登记那几个名字（只认第一次）。
+pub(crate) fn also_internal(names: Vec<&'static str>) {
+    let _ = ALSO_INTERNAL.set(names);
+}
+
+/// 这个名字是不是不往下传的（[`OWN_ENVS`] ∪ [`INTERNAL_PREFIXES`] 那几族 ∪ 上层登记的会话号变量）。
 pub(crate) fn is_internal(name: &str) -> bool {
-    OWN_ENVS.contains(&name) || INTERNAL_PREFIXES.iter().any(|p| name.starts_with(p))
+    OWN_ENVS.contains(&name)
+        || INTERNAL_PREFIXES.iter().any(|p| name.starts_with(p))
+        || ALSO_INTERNAL.get().is_some_and(|v| v.contains(&name))
 }

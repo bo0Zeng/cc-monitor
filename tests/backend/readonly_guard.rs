@@ -278,6 +278,11 @@ mod tests {
              它归 backend-core 是因为中转住本机常驻后端这个进程，帧从这个进程的 wire 出去。\
              **零写盘**：只在内存里递事件",
         ),
+        (
+            "lineage",
+            "会话血缘（谁起的谁）：中转那一路每一发先认一次。它归 backend-core 是因为中转住本机常驻后端这个进程；\
+             写的只有 `~/.cc-monitor/lineage.json`（后端**自己的**状态，第四层登记，见 `OWN_STATE_MODULES`）—— 一个用户文件都不写",
+        ),
         ("observe", "观测面 —— 读，不改变世界"),
         ("platform", "唯一允许平台原语与平台 cfg 的层"),
         ("plugin", "插件通用调用口：找它 / 起它 / 问它会什么"),
@@ -915,6 +920,12 @@ mod tests {
              读不懂的那份不覆盖。入口两扇：中转换号那一路（上游选择）· 帧面改轮换 / 现在就换那一路",
         ),
         (
+            "lineage.rs",
+            "**会话血缘** `~/.cc-monitor/lineage.json`：起会话地址里每个来处绑给了哪个会话 · 每个会话的父。\
+             文件名 / 格式 / 落点都是本仓定的、只有后端读它 ⇒ 后端**自己的**状态，不是用户数据。在跨进程锁里读盘 → 改 → \
+             经 `own_state` 原子写；只建 `~/.cc-monitor` 那一层；读不懂的那份不覆盖。入口只有中转那一路（上游选择对中转的那个口）—— 不是帧面命令",
+        ),
+        (
             "footprint/chores/marks.rs",
             "**「要你动手」记下的选择** `~/.cc-monitor/chores.json`：点过「不用了」的那几件 · 选了「我自己贴」的那份启动文件。\
              文件名 / 格式 / 落点都是本仓定的、只有后端读它 ⇒ 后端**自己的**状态，不是用户数据。在跨进程锁里读盘 → 改 → \
@@ -1124,6 +1135,12 @@ mod tests {
             "accounts/quota/rotation.rs",
             "rotation::face_change",
             "faces/rotation_face.rs",
+        ),
+        // 会话血缘：写口只有中转那一路认「谁起的谁」那一个函数，门是上游选择对中转的那个口。
+        (
+            "lineage.rs",
+            "lineage::relay_saw",
+            "accounts/upstream_select/mod.rs",
         ),
         // 中转钥匙：门是中转起监听那一处，不是命令注册。
         ("relay/key.rs", "key::ensure_key", "relay/listen.rs"),

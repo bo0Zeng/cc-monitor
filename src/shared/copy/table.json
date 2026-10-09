@@ -20556,6 +20556,24 @@
       "zh": "默认规则 · 先设别的为默认",
       "args": []
     },
+    "beLineage.write.noParent": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "写入失败 · {path} · 无上一级目录",
+      "args": ["path"]
+    },
+    "beLineage.write.failed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "写入失败 · {path} · {why}",
+      "args": ["path", "why"]
+    },
+    "beLineage.write.unreadable": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "{said} · 未覆盖",
+      "args": ["said"]
+    },
     "beRotation.write.noParent": {
       "kind": "error",
       "role": "原因格",
@@ -20620,6 +20638,12 @@
       "kind": "body",
       "role": "说明",
       "zh": "账号轮换 · 默认顺序 · 换号时机 · 各会话账号与换号记录",
+      "args": []
+    },
+    "rsDataPaths.backend.lineage": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "会话血缘 · 各会话由谁起的",
       "args": []
     },
     "rsToolRegistry.tools.quotaNote": {
