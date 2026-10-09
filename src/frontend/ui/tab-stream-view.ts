@@ -1269,21 +1269,42 @@ export class TabStreamView {
   materializeQueue: string[] = [];
   private materializeScheduled = false;
 
+  /** 后台空闲物化一截建几条（建完一截看一眼空闲期限还剩没剩）。 */
+  private static readonly IDLE_CHUNK = 20;
+  /** 没有 requestIdleCallback 的引擎（WebKitGTK）走 setTimeout 兜底：一次最多连着建这么久（ms）就让出来。 */
+  private static readonly IDLE_SLICE_MS = 8;
+  /** virgin 后台 tab 的尾段这一轮已经建了几条（分截建，凑满 `MATERIALIZE_TAIL_K` 为止）。 */
+  private readonly idleTaken = new WeakMap<Tab, number>();
+
   private scheduleIdleMaterialize(): void {
     if (this.materializeScheduled) return;
     const sid = this.materializeQueue.shift();
     if (sid === undefined) return;
     this.materializeScheduled = true;
-    const run = (): void => {
+    const run = (deadline?: IdleDeadline): void => {
       this.materializeScheduled = false;
       const tab = this.store.tabs.get(sid);
       // virgin 的物化尾段(switchTo 可能已同步物化过);二次 batch 开始则原样跳过,
       // 账本继续收纳,批结束会重新排队。
       // 钉过水位、账本有余、真实布局没满一屏的 ⇒ 补一批（`fillAbove`：带选区守卫与滚动补偿，
       // 后台 tab 不自链 —— 它的 rAF 复检有 `activeId` 守卫；切进来时 `activate` 那一脚接着补）。
+      // virgin 的尾段**分截建**：一截 `IDLE_CHUNK` 条，空闲期限用完（兜底那一路按 `IDLE_SLICE_MS`）就停、这个 tab 排回队首 ——
+      // 一口气建满 150 条就是开窗那几秒里的一串长任务（人一开窗就去点，点下去要等它跑完）。
       if (tab && !this.store.inBatch && tab.window.pendingCount > 0) {
-        if (tab.window.floorSeq === null) this.materializeTail(tab);
-        else if (!this.contentReachesBottom(tab)) this.fillAbove(tab);
+        const virgin = tab.window.floorSeq === null || this.idleTaken.has(tab);
+        if (virgin) {
+          const until = performance.now() + (deadline ? deadline.timeRemaining() : TabStreamView.IDLE_SLICE_MS);
+          let taken = this.idleTaken.get(tab) ?? 0;
+          do {
+            const before = tab.window.pendingCount;
+            this.materializeTail(tab, Math.min(TabStreamView.IDLE_CHUNK, TabStreamView.MATERIALIZE_TAIL_K - taken));
+            taken += before - tab.window.pendingCount;
+          } while (taken < TabStreamView.MATERIALIZE_TAIL_K && tab.window.pendingCount > 0 && performance.now() < until);
+          if (taken < TabStreamView.MATERIALIZE_TAIL_K && tab.window.pendingCount > 0) {
+            this.idleTaken.set(tab, taken);
+            this.materializeQueue.unshift(sid); // 没建完：下一个空闲期接着建它
+          } else this.idleTaken.delete(tab);
+        } else if (!this.contentReachesBottom(tab)) this.fillAbove(tab);
       }
       this.scheduleIdleMaterialize();
     };
@@ -1291,8 +1312,8 @@ export class TabStreamView {
       // 调度：自链 —— 后台标签页空闲物化队列：处理一个再排自己，队列空即停
       window.requestIdleCallback(run, { timeout: 2000 });
     } else {
-      // 调度：自链 —— 上面那条队列在没有 rIC 时的兜底，同一条链
-      window.setTimeout(run, 200);
+      // 调度：自链 —— 上面那条队列在没有 rIC 时的兜底，同一条链（接着建同一个 tab 的下一截只隔一帧，换下一个 tab 隔 200 ms）
+      window.setTimeout(() => run(), this.idleTaken.has(this.store.tabs.get(sid) as Tab) ? 16 : 200);
     }
   }
 

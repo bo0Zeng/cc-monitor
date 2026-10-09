@@ -825,6 +825,36 @@ describe("TabManager 生命周期", () => {
     vi.mocked(reconcilePendingToolResults).mockImplementation(() => []);
   });
 
+  /**
+   * 后台空闲物化一次只建一小截、看着空闲期限走：开窗那几秒里人就会去点 —— 一次空闲回调建满 150 条（Chromium 一下 50 ms 级，
+   * WebKitGTK 没有 requestIdleCallback、走 setTimeout 兜底，一下一两百 ms）就是开窗时一串长任务，点下去要等它跑完。
+   * 期限用完 ⇒ 这个 tab 排回队首，下一个空闲期接着建；总量照旧（virgin 的尾段一共 150 条）。
+   */
+  it("后台空闲物化按空闲期限分截建：期限用完就停、下一个空闲期接着，总量照旧", async () => {
+    const spy = await spyRender();
+    const idle: IdleRequestCallback[] = [];
+    const had = window.requestIdleCallback;
+    window.requestIdleCallback = ((cb: IdleRequestCallback) => idle.push(cb)) as typeof window.requestIdleCallback;
+    try {
+      tm.onLine(mkContent("chunkA", 1, "ch-1")); // active
+      tm.onBatchStart();
+      for (let s = 0; s < 150; s++) tm.onLine(mkContent("chunkB", 1000 + s, `chb-${s}`)); // 后台 virgin 150 条
+      tm.onBatchEnd();
+      const t = home(tm).store.tabs.get("chunkB")!;
+      expect(t.window.pendingCount).toBe(150);
+      spy.mockClear();
+      expect(idle.length, "前提：排了一个空闲回调").toBe(1);
+      idle.shift()!({ didTimeout: false, timeRemaining: () => 0 }); // 期限已经用完
+      const first = spy.mock.calls.length;
+      expect(first, "期限用完还一口气建满 150 条 ⇒ 开窗时一串长任务").toBeLessThan(150);
+      expect(first, "至少建一截（不然永远建不完）").toBeGreaterThan(0);
+      for (let i = 0; i < 40 && idle.length > 0; i++) idle.shift()!({ didTimeout: false, timeRemaining: () => 0 });
+      expect(t.window.pendingCount, "分截之后总量照旧：virgin 的尾段 150 条全建").toBe(0);
+    } finally {
+      window.requestIdleCallback = had;
+    }
+  });
+
   it("F40a S-5：archived tab 不进后台物化队列", () => {
     tm.onLine(mkContent("act4", 1, "z-1")); // active
     tm.onBatchStart();

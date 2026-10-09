@@ -184,12 +184,16 @@ async function openPage() {
   await page.send("Page.addScriptToEvaluateOnNewDocument", { source: probe });
   await page.send("Performance.enable", { timeDomain: "timeTicks" });
   const b0 = Date.now();
-  // 开页最多等 2 分钟（load 事件不来时 `goto` 自己不会超时）
-  await Promise.race([page.goto(`${base}/index.html?scene=perf-tabs`), sleep(120_000).then(() => Promise.reject(new Error("开页 2 分钟没等到 load")))]);
-  await page.waitFor("window.__shots && window.__shots.state !== 'booting'", 120_000);
-  const st = await page.eval("window.__shots.state");
-  if (st !== "done") throw new Error(`场景没起来：${await page.eval("window.__shots.error")}`);
-  const quiet = await page.eval("__perf.quiet(1000, 60000)");
+  const boot = async () => {
+    // 开页最多等 2 分钟（load 事件不来时 `goto` 自己不会超时）
+    await Promise.race([page.goto(`${base}/index.html?scene=perf-tabs`), sleep(120_000).then(() => Promise.reject(new Error("开页 2 分钟没等到 load")))]);
+    await page.waitFor("window.__shots && window.__shots.state !== 'booting'", 120_000);
+    const st = await page.eval("window.__shots.state");
+    if (st !== "done") throw new Error(`场景没起来：${await page.eval("window.__shots.error")}`);
+    return page.eval("__perf.quiet(1000, 60000)");
+  };
+  // `--trace boot`：开页到安静这一段录一份轨迹（只录第一次开页）
+  const quiet = args.trace === "boot" && !globalThis.__bootTraced ? ((globalThis.__bootTraced = true), await traced(page, "trace-boot.json", boot)) : await boot();
   if (args.profile) {
     // `--dev --profile tests/shots/perf/profile.js`：给切换路上的方法挂计时（开发服务器下模块按源码路径 import 到的就是界面那一份）
     await page.eval(`(async () => { ${readFileSync(path.resolve(String(args.profile)), "utf8")} })()`);
