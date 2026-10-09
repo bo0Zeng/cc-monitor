@@ -3,7 +3,7 @@
  *
  *   node tests/shots/perf/settings-bench.mjs [--runs 2] [--out <目录>] [--only open,pages,scroll,filter,reopen,soak] [--cycles 20]
  *   node tests/shots/perf/settings-bench.mjs --eval <表达式> [--page <导航项 id>]   # 调试：点那一页（缺省扩展）之后在页里求值
- *   node tests/shots/perf/settings-bench.mjs --dev --cpuprofile <导航项 id> [--out <目录>]   # 点那一页（首次可见）录一份 CPU 画像，打印自身耗时前 25 的函数
+ *   node tests/shots/perf/settings-bench.mjs --dev --cpuprofile <导航项 id> [--out <目录>]   # 点那一页（首次可见；`--again` ＝ 回来那一下）录一份 CPU 画像，打印自身耗时前 25 的函数
  *
  * 环境与 `bench.mjs` 同一套（生产构建 ＋ 页里假后端 ＋ 无头 Chromium，HOME 隔离进 `.build/perf-sandbox/`；不起后端、不起 claude、不碰 tmux）。
  * 世界：设置窗 `settings-world.ts`（十几台机器 · 二十几个账号 · 三十条规则 · 几百个扩展）；长开那一项用主窗口 `world.ts`。
@@ -113,6 +113,11 @@ if (args.eval) {
 if (args.cpuprofile) {
   // 开发服务器下函数名是源码里的名字：看清那一下的时间花在谁身上
   const { page } = await openWin("settings", "perf-settings");
+  if (args.again) {
+    // `--again`：先去过一次、回到机器列表，录的是「回来」那一下
+    await measuredClick(page, navSel(String(args.cpuprofile)), 2500);
+    await measuredClick(page, navSel("machines"), 1000);
+  }
   await page.send("Profiler.enable");
   await page.send("Profiler.setSamplingInterval", { interval: 200 });
   await page.send("Profiler.start");
