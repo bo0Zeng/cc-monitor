@@ -143,7 +143,13 @@ if (args.eval) {
   // 调试：开页、按一下「下一个 tab」，在那之后的第一个 rAF 里求一段表达式（看切进来那一帧的几何）
   const page = await openPage();
   for (let k = 0; k < Number(args.presses ?? 3); k++) {
-    await page.eval(`new Promise((res) => { window.__dbg = []; const ex = ${JSON.stringify(String(args.eval))}; requestAnimationFrame(() => {}); document.addEventListener('keydown', () => requestAnimationFrame(() => { try { window.__dbg.push(eval(ex)); } catch (e) { window.__dbg.push(String(e)); } }), { once: true }); res(0); })`);
+    await page.eval(`new Promise((res) => { window.__dbg = []; const ex = ${JSON.stringify(String(args.eval))}; const when = ${JSON.stringify(String(args.when ?? "raf"))};
+      if (when === "mut") {
+        // 记切这一下之后 400 ms 里 DOM 动了哪儿（按区域数变更记录与新建节点）
+        const areas = {}; const mo = new MutationObserver((rs) => { for (const r of rs) { const t = r.target.nodeType === 1 ? r.target : r.target.parentElement; const a = t?.closest?.('#tab-bar, #session-head, #status-bar, #message-stream, .tasks-panel, .agents-panel, body > *')?.id || t?.closest?.('body > *')?.className || '?'; areas[a] = (areas[a] ?? 0) + 1; } });
+        document.addEventListener('keydown', () => { mo.observe(document.body, { subtree: true, childList: true, attributes: true, characterData: true }); setTimeout(() => { mo.disconnect(); window.__dbg.push(areas); }, 400); }, { once: true });
+      } else document.addEventListener('keydown', () => requestAnimationFrame(() => { try { window.__dbg.push(eval(ex)); } catch (e) { window.__dbg.push(String(e)); } }), { once: true });
+      res(0); })`);
     await page.send("Input.dispatchKeyEvent", { type: "keyDown", key: "]", code: "BracketRight", windowsVirtualKeyCode: 221, nativeVirtualKeyCode: 221 });
     await page.send("Input.dispatchKeyEvent", { type: "keyUp", key: "]", code: "BracketRight", windowsVirtualKeyCode: 221, nativeVirtualKeyCode: 221 });
     await sleep(600);
@@ -151,11 +157,14 @@ if (args.eval) {
   }
   await page.close();
 }
+/** 一项最多跑这么久：浏览器在机器很忙时偶尔卡住不回话，台架不能跟着一直等（到点整趟作废、报出来）。 */
+const watchdog = (what, p) =>
+  Promise.race([p, new Promise((_, reject) => setTimeout(() => reject(new Error(`${what} 超过 8 分钟没跑完`)), 8 * 60_000))]);
 for (let r = 0; r < runs; r++) {
-  if (only.has("switch")) result.switch.push(...(await benchSwitch(r)));
-  if (only.has("rapid")) result.rapid.push(...(await benchRapid(r)));
-  if (only.has("keys")) result.keys.push(...(await benchKeys(r)));
-  if (only.has("long")) result.long.push(await benchLong(r));
+  if (only.has("switch")) result.switch.push(...(await watchdog("切一下", benchSwitch(r))));
+  if (only.has("rapid")) result.rapid.push(...(await watchdog("连续快速切", benchRapid(r))));
+  if (only.has("keys")) result.keys.push(...(await watchdog("按住切", benchKeys(r))));
+  if (only.has("long")) result.long.push(await watchdog("长会话", benchLong(r)));
 }
 result.load.end = os.loadavg();
 writeFileSync(path.join(out, "perf.json"), JSON.stringify(result, null, 1));
@@ -227,7 +236,8 @@ async function clickAt(page, x, y) {
 async function measuredClick(page, i, watchMs = 1500) {
   const t = await tabAt(page, i);
   if (!t) throw new Error(`没有第 ${i} 个 tab`);
-  await page.eval("__perf.quiet(300, 5000)");
+  // 点之前等安静：前一下的活（补批 · 骨架 · 取正文）还没停就一直等到 5 s 上限 —— 等了多久记下来（老是顶到上限 ＝ 后台一直在干活）
+  const waited = await page.eval("__perf.quiet(300, 5000)");
   const m0 = await metrics(page);
   const since = await page.eval("performance.now()");
   const c0 = cpuMs(browser.pid);
@@ -245,6 +255,7 @@ async function measuredClick(page, i, watchMs = 1500) {
     tab: i,
     turns: t.turns,
     cpu,
+    waited,
     inp: ev ? ev.d : 16,
     inputDelay: ev ? ev.ps - ev.s : 0,
     sync: click?.sync ?? null,
@@ -681,7 +692,7 @@ function parseArgs(argv) {
     const a = argv[i];
     if (!a.startsWith("--")) continue;
     const k = a.slice(2);
-    if (["runs", "out", "only", "css", "merge", "profile", "eval", "presses"].includes(k)) o[k] = argv[++i];
+    if (["runs", "out", "only", "css", "merge", "profile", "eval", "presses", "when"].includes(k)) o[k] = argv[++i];
     else if (k === "trace" && argv[i + 1] && !argv[i + 1].startsWith("--")) o[k] = argv[++i]; // `--trace`（热切那几下）/ `--trace keys`（按住切那一串）
     else o[k] = true;
   }
