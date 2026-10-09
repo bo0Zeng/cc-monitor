@@ -82,9 +82,11 @@
     white-space: pre-wrap;
   }
 
-  /* 一句按「 · 」分段：段内不拆行，只在段与段之间换行。 */
+  /* 一句按「 · 」分段：段内不拆行，只在段与段之间换行；一段比一整行还长（一行命令）才在段内折，不截尾。 */
   .toastSeg {
-    white-space: nowrap;
+    display: inline-block;
+    max-width: 100%;
+    overflow-wrap: anywhere;
   }
 
   .toastDetail:empty {

@@ -957,7 +957,7 @@ pub const UNMANAGED_ENV: &[UnmanagedEnv] = &[
         named: "ssh",
         host: HostScope::Client,
         why: Text(|| copy_text("rsToolRegistry.env.sshWhy", &[])),
-        site: "platform/terminal.rs::ssh_client_available",
+        site: "platform/ssh_client.rs::locate",
     },
     // `pgrep` 那一行摘了：它唯一的 Rust 住址是驾驶舱 shell 读那条「超时不留孤儿」判据的数进程助手，随那条读一起退役。
     UnmanagedEnv {

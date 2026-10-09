@@ -106,11 +106,6 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
           ★ 三条策略为什么是这三格：`Hidden` 那格**先前没人回答过**（裸 `.output()`）—— `-NonInteractive` 只保证不等人回车，挡不住新开一个控制台。`Captured`：stderr 是下面那句报错的一部分。",
      "Hidden · JobKillOnClose · Captured"),
     // `dialect.rs::ask_get_alias` 那一行（从前住 monitor 的方言模块）随方言进了那台后端（`platform/shell/mod.rs::powershell_command`，目录模块，后端 `readonly_guard::spawn_registry` 登记）。
-    ("terminal.rs", "ssh_client_available", // 原 `launch.rs`：开窗的两个平台臂搬进 `platform/terminal.rs`
-     "探测用的 `ssh`",
-     "只探测「本机有没有 ssh」，不带用户参数
-          ★ 三条策略为什么是这三格：同上：先前是裸 `.output()`，Windows 上闪一个 `where.exe` 的黑框。`Captured`：输出就是返回值（`status.success()`）。",
-     "Hidden · JobKillOnClose · Captured"),
     ("lib.rs", "open_with_os", "`cmd` / `open` / `xdg-open`",
      "按平台打开日志目录：三个名字都是常量，路径是 monitor 自己的目录
           ★ 三条策略为什么是这三格：`Detached` 是承重的：fire-and-forget，**绝不能是 `JobKillOnClose`** —— 那会在本函数返回、句柄一丢的瞬间把刚打开的文件管理器杀掉。",

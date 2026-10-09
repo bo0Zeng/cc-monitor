@@ -160,9 +160,9 @@ export const commands = {
     invoke<LocalCcmEntry>("local_ccm_entry_status", { fresh: fresh ?? null }),
 
   /** 开一个终端窗口跑 `command`（**成品**：远端那一行由本机后端 `terminal-ssh` 渲好、本机那一串由本机后端起会话那一问交回 —— monitor 只开窗）。
-   *  Rust 返回 `Result<TerminalOpen, String>`（`"opened"` / `"noWindow"`）⇒ **桶①**。`ssh`：这一行要跑本机的 ssh（先查本机 ssh 客户端在不在）。
+   *  Rust 返回 `Result<TerminalOpen, String>`（`"opened"` / `"noWindow"`）⇒ **桶①**。
    *  只经 `src/frontend/ui/terminal-open.ts::openTerminal` 调（开终端只有一个家）。 */
-  open_terminal_window: (args: { command: string; ssh: boolean }) =>
+  open_terminal_window: (args: { command: string }) =>
     invoke<TerminalOpened>("open_terminal_window", args),
 
   /** 发一条系统通知（「一轮完成」「需要你」）。界面判要不要发，壳只发（`platform/notify.rs`）。桶①。 */

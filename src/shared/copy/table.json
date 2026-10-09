@@ -12602,23 +12602,6 @@
       "zh": "打开终端失败 · {e}",
       "args": ["e"]
     },
-    "rsLaunch.remote.noOpenSsh": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "本机未装 OpenSSH 客户端（ssh.exe） · 装 Windows 可选功能「OpenSSH 客户端」",
-      "args": [],
-      "limited": ["SSH"],
-      "waive": {
-        "C-W13": "「」里是 Windows 可选功能的名字（系统设置里的叫法），不是本程序界面上的名字"
-      }
-    },
-    "rsLaunch.remote.noSsh": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "本机未装 ssh 客户端 · 装 openssh-client",
-      "args": [],
-      "limited": ["SSH"]
-    },
     "rsLaunch.terminalDial.local": {
       "kind": "error",
       "role": "报错",
@@ -12733,6 +12716,30 @@
       "role": "报错",
       "zh": "拒绝启动 · 跳板 host 含非法字符 · {jumpHost}",
       "args": ["jumpHost"]
+    },
+    "beTerminal.ssh.missingWindows": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "本机未装 OpenSSH 客户端（ssh.exe） · 装 Windows 可选功能「OpenSSH 客户端」",
+      "args": [],
+      "limited": ["SSH"],
+      "waive": {
+        "C-W13": "「」里是 Windows 可选功能的名字（系统设置里的叫法），不是本程序界面上的名字"
+      }
+    },
+    "beTerminal.ssh.missingPosix": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "本机未装 ssh 客户端 · 装 openssh-client",
+      "args": [],
+      "limited": ["SSH"]
+    },
+    "beTerminal.ssh.unknown": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "无法判断本机是否装有 ssh 客户端 · 不代表没装 · {why}",
+      "args": ["why"],
+      "limited": ["SSH"]
     },
     "rsLaunch.local.spawnFailed": {
       "kind": "error",

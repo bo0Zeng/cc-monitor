@@ -75,14 +75,14 @@ pub fn build_local_posix_argv(cmd: &str) -> Result<Vec<String>, String> {
     Ok(vec!["bash".into(), "-lic".into(), cmd.into()])
 }
 
-// 开窗的两个平台臂（POSIX 规范化终端出口 · Windows `wt.exe` / `powershell.exe` · `ssh.exe` 预检）搬进 `platform/terminal.rs`，
+// 开窗的两个平台臂（POSIX 规范化终端出口 · Windows `wt.exe` / `powershell.exe`）搬进 `platform/terminal.rs`，
 //   头注逐字随之；本文件只剩「跑什么」的校验与两条 Tauri 命令。
 
 /// 〔「待迁」最后一行〕**开一个终端窗口跑 `command`** —— monitor 在「开终端」这件事上只剩这一下。
 ///
 /// `command` 是**成品**：远端那一行由本机后端 `terminal-ssh` 按本机终端方言渲好（`ssh -t …` 外壳），本机那一串由本机后端交回 ——
 /// 这次拉起带启动期令牌时，两条都已在前面接好令牌握手前奏（本地半，后端渲）。这里不判、不拼。
-/// `ssh = true` ⇒ 先查本机有没有 ssh 客户端（缺了窗口里只会报「找不到命令」，而 spawn 本身成功 ⇒ 前端误报成功）。
+/// 本机有没有 ssh 客户端由本机后端渲那一行时查（`terminal-ssh`，用找到的全路径；没有 / 判不了 ⇒ 不出那一行）。
 ///
 /// 能不能开、用哪个只问 [`open_local`](crate::platform::terminal::open_local)（与本机起会话同一处）：开了回 `"opened"`；
 /// 这台找不到终端回 `"noWindow"`（[`TerminalOpen::NoWindow`](crate::platform::terminal::TerminalOpen)），前端照实说并给设置入口
@@ -90,19 +90,13 @@ pub fn build_local_posix_argv(cmd: &str) -> Result<Vec<String>, String> {
 #[tauri::command]
 pub async fn open_terminal_window(
     command: String,
-    ssh: bool,
 ) -> Result<crate::platform::terminal::TerminalOpen, Said> {
     let r: Result<crate::platform::terminal::TerminalOpen, Said> = async move {
-        // 预检（阻塞）＋ 进程 spawn 挪到阻塞线程池，不堵 IPC 派发线程。
+        // 进程 spawn 挪到阻塞线程池，不堵 IPC 派发线程。
         Ok(tokio::task::spawn_blocking(move || {
-            if ssh {
-                if let Some(why) = crate::platform::terminal::ssh_client_missing() {
-                    return Err(why);
-                }
-            }
             let opened = crate::platform::terminal::open_local(&command, None)?;
             tracing::info!("launch: terminal window {opened:?}");
-            Ok(opened)
+            Ok::<_, String>(opened)
         })
         .await
         .map_err(|e| copy_text("rsLaunch.remote.taskFailed", &[("e", &e.to_string())]))??)

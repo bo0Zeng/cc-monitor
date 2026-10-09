@@ -890,10 +890,10 @@ export function tmuxMintCalls(calls: ReadonlyArray<readonly unknown[]>): [string
 // ════════════════════════════════════════════════════════════════════════════
 //
 // 今天开终端（`src/frontend/ui/terminal-open.ts`）：远端三步 monitor `terminal_dial {origin}`（机器事实）→ 本机后端 `terminal-ssh`
-// （渲 `ssh -t …` 那一行）→ monitor `open_terminal_window {command, ssh}`；本机只有开窗那一步。
+// （渲 `ssh -t …` 那一行）→ monitor `open_terminal_window {command}`；本机只有开窗那一步。
 // 判据手里的替身按**旧的那一条**答话、断言（`launch_remote_terminal {origin, remoteCmd}`）⇒ 本节把这几步译回那一条：
 // - `terminal-ssh` **原样回**交进来的那串（ssh 外壳的字节归 Rust：`tests/backend/dial_terminal_tests.rs`，这里不重抄渲染）；
-// - 开窗那一步凭「上一次 `terminal_dial` 问的是哪台」补回 origin；`ssh: false` ⇒ 本机串 `<local>`。
+// - 开窗那一步凭「上一次 `terminal_dial` 问的是哪台」补回 origin；没问过 ⇒ 本机串 `<local>`。
 /** 这一发是不是开终端那几步之一。 */
 export function isTerminalStep(cmd: string, args: unknown): boolean {
   return cmd === "terminal_dial" || cmd === "open_terminal_window" || isChanCall(cmd, args, "terminal-ssh");
@@ -914,8 +914,8 @@ export function terminalShim(
       return chanReply({ command: a.command });
     }
     if (cmd === "open_terminal_window") {
-      const a = args as { command: string; ssh: boolean };
-      const origin = a.ssh ? (asked ?? "<没问过 terminal_dial>") : "<local>";
+      const a = args as { command: string };
+      const origin = asked ?? "<local>";
       asked = null;
       return inner("launch_remote_terminal", { origin, remoteCmd: a.command });
     }

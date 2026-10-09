@@ -222,6 +222,18 @@ describe("失败怎么说", () => {
     expect(String(toastMock.mock.calls[0][1])).toContain(line);
   });
 
+  it("接回开不了终端 ⇒ 剪贴板与提示里是那一整行，长 tmux 名不截（超过 15 个字也是全名）", async () => {
+    term.openTerminal.mockRejectedValue(new Error("没开成"));
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    stubClipboard(writeText);
+    const name = "android-terminal-session";
+    await runRemoteAttach("devbox", "claude", name);
+    const line = lineFor(requests()[0]);
+    expect(line).toContain(name);
+    expect(writeText).toHaveBeenCalledWith(line);
+    expect(String(toastMock.mock.calls[0][1]).split("\n")).toContain(line);
+  });
+
   it("壳回「找不到终端」那个结局 ⇒ 照实说 ＋［设置］直达那一格 ＋［复制命令］；不自动写剪贴板，点了才复制那一行", async () => {
     term.openTerminal.mockRejectedValue(new NoTerminalWindow("ssh -t devbox -- 'ccm --resume sid-1'"));
     const writeText = vi.fn().mockResolvedValue(undefined);
