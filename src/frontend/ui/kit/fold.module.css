@@ -35,12 +35,17 @@
     transform: rotate(90deg);
   }
 
+  /* 窄了摘要先省略（悬停看全文），标题不缩、不折行 —— 不然标题被挤成一字一行的竖排。 */
   .foldTitle {
-    flex: 1;
-    min-width: 0;
+    flex: 1 0 auto;
+    white-space: nowrap;
   }
 
   .foldSummary {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     color: var(--text-2);
     font-size: var(--font-size-small);
   }
