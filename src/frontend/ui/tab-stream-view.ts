@@ -915,6 +915,8 @@ export class TabStreamView {
         this.fetchMissingRows(tab, ledger, lo, hi, new Set(taken.map((p) => p.seq)));
       },
     });
+    // 折叠先交给账本：占位插进去就是折后的高、补可见区不建折着的过程行（不先交 ⇒ 插完排版时再改高、再钉视口，这一帧多排两次版）
+    tab.turnFold.seedFolds(ledger);
     // 在视口上方插一块高占位：同 `fillAbove` 的纪律 —— 关原生锚定、同一个同步任务里按 ΔscrollHeight 补偿
     const el = tab.streamEl;
     const beforeH = el.scrollHeight;

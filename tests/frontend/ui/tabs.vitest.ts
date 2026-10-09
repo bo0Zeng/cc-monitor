@@ -246,6 +246,8 @@ TabManager.prototype.ensureTab = function (this: TabManager, ...args: Parameters
 };
 import { ENDED, GONE, LIVE, LIVE_ATTACHABLE, LIVE_RESUMABLE, LIVE_UNKNOWN_HOST, RECONNECTABLE, UNSEEN } from "../../../src/frontend/ui/tab-session-state";
 import { readFileSync } from "node:fs";
+import { SkeletonLedger } from "../../../src/frontend/ui/live-window";
+import { SkeletonView } from "../../../src/frontend/ui/skeleton-view";
 import { buildStepLine, settleStepLine } from "../../../src/frontend/ui/cards/step-line";
 import { resolve } from "node:path";
 import { REPO_ROOT } from "../../test-support/repo-root.ts";
@@ -4246,6 +4248,32 @@ describe("骨架接入：索引 → 占位 → 门控 → 跳转", () => {
     width = 640;
     t.stream.onViewportResize?.();
     expect(spy.mock.calls).toEqual([[640]]);
+  });
+
+  // 冷切停住那一帧：占位先按「没折」的高插进去、DOM 变动回调排版之后账本才拿到折叠 ⇒ 占位改高、按视口钉，同一帧多排两次版。
+  // 接之前先把这个 tab 的折叠交给账本（`TurnFold.seedFolds`）⇒ 占位插进去就是折后的高，补可见区也不会去建折着的过程行。
+  it("★ 接骨架：账本先拿到折叠、再插占位（不是插完再改高）", async () => {
+    vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads((cmd: string) =>
+      Promise.resolve(cmd === "read_session_index" ? idx(300) : undefined),
+    ) as never));
+    const order: string[] = [];
+    const folds = vi.spyOn(SkeletonLedger.prototype, "setFolds").mockImplementation(function (this: SkeletonLedger) {
+      order.push("折叠");
+      return false;
+    });
+    const attach = vi.spyOn(SkeletonView.prototype, "attach").mockImplementation(function (this: SkeletonView) {
+      order.push("插占位");
+      return 0;
+    });
+    onTestFinished(() => {
+      folds.mockRestore();
+      attach.mockRestore();
+    });
+    const t = replay("sf");
+    await settle();
+    expect(t.skeleton, "前置：骨架要接上").not.toBeNull();
+    expect(order[0], `接骨架的顺序是 ${order.join(" → ")}：占位插进去的时候账本还没拿到折叠`).toBe("折叠");
+    expect(order).toContain("插占位");
   });
 
   it("老后端（available:false · oldBackend）⇒ 不接、不再问，尾部窗口照旧（账本还在、哨兵还在）", async () => {

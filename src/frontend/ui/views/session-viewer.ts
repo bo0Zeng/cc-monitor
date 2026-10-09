@@ -516,6 +516,8 @@ export class SessionViewer {
         this.rebuildFold();
       },
     });
+    // 折叠先交给账本：占位插进去就是折后的高（同主窗口 `TabStreamView.attachSkeleton`）
+    this.turnFold?.seedFolds(ledger);
     view.attachGaps(gaps);
     this.skeleton = view;
     view.fillVisible();
