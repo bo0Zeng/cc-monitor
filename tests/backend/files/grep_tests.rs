@@ -219,7 +219,7 @@ fn the_command_face_answers_exactly_the_declared_fields() {
         (v["truncated"].clone(), v["stopped"].clone()),
         (serde_json::json!(false), serde_json::Value::Null)
     );
-    let code = |a: serde_json::Value| crate::files::answer("files.grep", &a).unwrap_err().0;
+    let code = |a: serde_json::Value| crate::files::answer("files.grep", &a).unwrap_err().code;
     assert_eq!(
         code(serde_json::json!({ "path": p, "needle": "" })),
         "bad_args"

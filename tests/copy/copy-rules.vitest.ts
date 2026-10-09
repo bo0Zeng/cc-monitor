@@ -30,6 +30,7 @@ import { describe, expect, it } from "vitest";
 import { REPO_ROOT } from "../test-support/repo-root.ts";
 import { censusList, loadTable, loadTerms, r1Hits, speech, type Entry, type Table, type Term } from "./copy-support.ts";
 import { TIGHTENED, W_CHECKS, type WRule } from "./copy-rules-w.ts";
+import { rawFedArgs, rustRefsIn, rustRefsOfTree } from "./rust-refs.ts";
 
 const RULES_PATH = resolve(REPO_ROOT, "src", "shared", "copy", "rules.json");
 const TABLE_TESTS = resolve(REPO_ROOT, "tests", "copy", "copy-table.vitest.ts");
@@ -85,6 +86,15 @@ interface Ctx {
   byId: Map<string, WRule>;
   /** 全表（C-W13 指路核对拿「」里的字对表里的名字）。 */
   table: Table;
+  /** C-W18：生产 Rust 里值是下层原话的那几个占位（按值认，`rust-refs.ts::isRawValue`）：key → 占位名。 */
+  rawFed: Map<string, Set<string>>;
+}
+
+/** 生产 Rust 里「哪条的哪几个占位喂的是原话」（扫一遍全树，本文件只扫一次）。 */
+let rawFedByKey: Map<string, Set<string>> | null = null;
+function rawFedOf(): Map<string, Set<string>> {
+  rawFedByKey ??= rawFedArgs(rustRefsOfTree().refs);
+  return rawFedByKey;
 }
 
 /** 从规范里取 C-Y3 的三张表 —— 本文件三处共用这一个入口，不各抄一份。 */
@@ -98,6 +108,7 @@ export function y3Ctx(rules: Rule[], terms: Term[], table: Table = loadTable()):
     imperative: y3?.imperative ?? [],
     labelKinds: y3?.kinds ?? [],
     imperativeKinds: y3?.imperativeKinds ?? [],
+    rawFed: rawFedOf(),
   };
 }
 
@@ -107,8 +118,8 @@ const PAREN = /（([^（）]*)）|\(([^()]*)\)/g;
 const HAN = /[一-鿿]/g;
 const hanCount = (s: string): number => (s.match(HAN) ?? []).length;
 
-/** 一条机检规矩 = 对一条文案给出「违反了什么」（`null` = 没违反）。 */
-type Check = (e: Entry, ctx: Ctx) => string | null;
+/** 一条机检规矩 = 对一条文案给出「违反了什么」（`null` = 没违反）。`key` 给了 ⇒ 按生产代码怎么用它判的那几条（C-W18）也判。 */
+type Check = (e: Entry, ctx: Ctx, key?: string) => string | null;
 
 export const CHECKS: Record<string, Check> = {
   "C-Y2": (e) => (/\*\*|`|⇒|🔴/.test(e.zh) ? "有 markdown / 论证符号" : null),
@@ -186,7 +197,7 @@ export function tableViolations(table: Record<string, Entry>, rules: Rule[], ctx
       if (owed.get(id)?.has(key)) out.push(`${key}：${id} 既在欠账名单又登记了豁免 —— 二选一`);
     }
     for (const [id, check] of Object.entries(CHECKS)) {
-      const v = check(e, ctx);
+      const v = check(e, ctx, key);
       const inDebt = owed.get(id)?.has(key) ?? false;
       if (v && !(id in waive) && !inDebt) out.push(`${key}：违反 ${id}（${v}）`);
       if (!v && id in waive) out.push(`${key}：${id} 的豁免是死的 —— 它没违反这一条，删掉豁免`);
@@ -376,6 +387,16 @@ describe("CP2a · 文案规范判据自己会不会死（正控）", () => {
     expect(run({ kind: "body", zh: "后端报 {message}", args: ["message"] })).toMatch(/\{message\}/);
     expect(run({ kind: "error", zh: "结束 {target} 失败 · {why}", args: ["target", "why"] })).toBeNull();
     expect(run({ kind: "error", zh: "{e}", args: ["e"], role: "命令行" })).toBeNull();
+    // 按值认：占位名不在原话型名单里（`{kind}`），生产代码喂的却是 `e.to_string()` ⇒ 一样红（审计二第 2 条那一族）。
+    const fedRaw: Entry = { kind: "error", zh: "目录打不开 · {kind}", args: ["kind"] };
+    const fed = (e: Entry, phs: string[]): string | null => CHECKS["C-W18"](e, { ...ctx, rawFed: new Map([["a.b.c", new Set(phs)]]) }, "a.b.c");
+    expect(fed(fedRaw, ["kind"])).toMatch(/\{kind\}/);
+    expect(fed(fedRaw, [])).toBeNull();
+    expect(run(fedRaw), "没喂原话的同形那一条不红").toBeNull();
+    // 值的认法：错误值直接变成字串的才算（e / err / error 的 to_string · format!），别的值不算。
+    const raw = (v: string): string[] => rustRefsIn("x.rs", `copy_text("a.b.c", &[("x", ${v})]);`).refs.flatMap((r) => r.raw ?? []);
+    for (const v of ["&e.to_string()", "&err.to_string()", "&error.to_string()", '&format!("{e}")', '&format!("{e:?}")']) expect(raw(v), v).toEqual(["x"]);
+    for (const v of ["&o.to_string()", "&io_reason(e.kind())", "n", '&format!("{n}")', "&e.kind().to_string()"]) expect(raw(v), v).toEqual([]);
   });
 
   it("占位符名不算文字：{origin} 不会被术语表的 origin 禁词扫红", () => {

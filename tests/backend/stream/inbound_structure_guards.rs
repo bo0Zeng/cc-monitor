@@ -981,7 +981,10 @@ fn the_files_read_family_is_online_exactly_as_it_is_declared() {
         //    喂空 `args` ⇒ 要么成功，要么落在这条能力自己声明的 code 上；
         //    落到 `unknown_capability` 就说明翻译或名字接错了。
         let out = crate::files::answer_wire(&online, &serde_json::json!({}));
-        if let Err((code, msg)) = out {
+        if let Err(crate::files::Refused {
+            code, said: msg, ..
+        }) = out
+        {
             assert_ne!(
                 code, "unknown_capability",
                 "`{online}` 经 `answer_wire` 够不到任何能力（{msg}）—— 线上那一跳是断的"

@@ -10598,18 +10598,6 @@
       "zh": "路径不可读 · {kind}",
       "args": ["kind"]
     },
-    "beFilesRead.ioKind.denied": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "无权限",
-      "args": []
-    },
-    "beFilesRead.ioKind.notFound": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "不存在",
-      "args": []
-    },
     "rsFilewinWorkspace.drag.hint": {
       "kind": "body",
       "role": "说明",
