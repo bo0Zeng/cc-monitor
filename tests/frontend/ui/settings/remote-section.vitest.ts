@@ -871,6 +871,28 @@ describe("S1 RemoteSection：保存走局部合并", () => {
   });
 
 
+  // 测试连接没过：那一句是人话（原因词），那台写的复制详情挂在［复制详情］上；原话不进句子。
+  it("★ 测试连接没过 ⇒ 那一行是人话那一句 ＋［复制详情］，复制的是那句 ＋ 详情", async () => {
+    localStorage.clear();
+    ipcReplies.set("remote-probe", {
+      sshOk: false,
+      backendOk: false,
+      fingerprint: null,
+      endpoint: null,
+      backendHello: null,
+      message: "连不上-甲",
+      detail: "命令：dial\n原话：夹具原话-乙",
+    });
+    const sec = await mount([mkH("a", "1.1.1.1")]);
+    [...sec.element.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent?.includes(copyText("machineCard.build.test")))!.click();
+    for (let i = 0; i < 10; i++) await new Promise((r) => setTimeout(r, 0));
+    const box = sec.element.querySelector<HTMLElement>(".remote-test-result")!;
+    expect(box.textContent).toContain("连不上-甲");
+    expect(box.textContent).not.toContain("夹具原话-乙");
+    expect([...box.querySelectorAll("button")].map((b) => b.textContent)).toContain(copyText("detail.act.copy"));
+    ipcReplies.clear();
+  });
+
   // ── 机器表的几条写盘缺陷：回填漏一格、重名、空白卡、端口越界、卸载失败照记成功 ──
   const tick = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
   const diskHosts = async (): Promise<RemoteHostConfig[]> =>

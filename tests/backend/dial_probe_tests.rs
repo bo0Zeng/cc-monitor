@@ -42,7 +42,7 @@ async fn a_refused_handshake_reports_ssh_down_with_its_stages_and_no_fingerprint
         assert!(req.probe && req.stages, "测试连接是短命探活、要阶段行");
         let _ = down.write_all(b"{\"stage\":{\"kind\":\"dialing\",\"endpoint\":\"192.0.2.2:22\"}}\n").await;
         let _ = down
-            .write_all(b"{\"v\":2,\"ok\":false,\"error\":\"host key mismatch\",\"fingerprint\":\"SHA256:x\",\"uses\":[]}\n")
+            .write_all(b"{\"v\":2,\"ok\":false,\"error\":\"host key mismatch\",\"detail\":\"cmd: dial\\nraw: fixture-raw-1\",\"fingerprint\":\"SHA256:x\",\"uses\":[]}\n")
             .await;
     })
     .await;
@@ -53,6 +53,10 @@ async fn a_refused_handshake_reports_ssh_down_with_its_stages_and_no_fingerprint
         "失败时不回指纹（免得被固化）"
     );
     assert!(r["message"].as_str().unwrap().contains("host key mismatch"));
+    assert_eq!(
+        r["detail"], "cmd: dial\nraw: fixture-raw-1",
+        "拨号 ack 带的复制详情原样进结局（句子里不接原话，原话在这里）"
+    );
     assert_eq!(
         cells,
         vec![json!({"stage": {"kind": "dialing", "endpoint": "192.0.2.2:22"}})],
@@ -189,4 +193,72 @@ async fn a_probe_without_a_valid_ticket_is_refused_before_dialling() {
     }
     drop(tx);
     assert!(rx.recv().await.is_none(), "拒了就一格都不推");
+}
+
+/// 通了、hello 也到了，ping 那一问回了「不行」：那台的原话进复制详情，不进那一句（`backendHello` 只留版本与「无应答」）。
+#[tokio::test]
+async fn a_ping_refusal_keeps_its_raw_words_out_of_the_sentence() {
+    let (r, _) = cells_of(&args(), |_req, up, mut down| async move {
+        let _ = down
+            .write_all(b"{\"v\":2,\"ok\":true,\"uses\":[\"stream\"]}\n")
+            .await;
+        let _ = down
+            .write_all(
+                b"{\"kind\":\"hello\",\"v\":1,\"build_id\":\"b1\",\"commands\":[\"ping\"]}\n",
+            )
+            .await;
+        let mut lines = tokio::io::BufReader::new(up).lines();
+        let asked: Value =
+            serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+        let reply =
+            json!({"kind": "reply", "id": asked["id"], "ok": false, "message": "fixture-raw-2"});
+        let _ = down.write_all(format!("{reply}\n").as_bytes()).await;
+    })
+    .await;
+    assert_eq!(r["message"], copy_text("beProbe.test.controlDown", &[]));
+    let hello = r["backendHello"].as_str().unwrap();
+    assert!(!hello.contains("fixture-raw-2"), "原话进了那一句：{hello}");
+    assert!(
+        r["detail"].as_str().unwrap().contains("fixture-raw-2"),
+        "{r}"
+    );
+}
+
+/// 通了，读那台后端的首行就出错（一行超长）：那一句只说「后端探测失败」，读错的原话进复制详情。
+#[tokio::test]
+async fn a_broken_first_line_keeps_its_raw_words_out_of_the_sentence() {
+    let (r, _) = cells_of(&args(), |_req, _up, mut down| async move {
+        let _ = down
+            .write_all(b"{\"v\":2,\"ok\":true,\"uses\":[\"stream\"]}\n")
+            .await;
+        let _ = down.write_all(&vec![b'x'; 1024 * 1024 + 16]).await;
+        let _ = down.write_all(b"\n").await;
+    })
+    .await;
+    assert_eq!(r["message"], copy_text("beProbe.test.probeFailed", &[]));
+    let detail = r["detail"].as_str().unwrap();
+    assert!(!detail.is_empty(), "{r}");
+}
+
+/// 都过了 ⇒ 没有复制详情（成功不出那一格的值）。
+#[tokio::test]
+async fn an_all_green_probe_has_no_detail() {
+    let (r, _) = cells_of(&args(), |_req, up, mut down| async move {
+        let _ = down
+            .write_all(b"{\"v\":2,\"ok\":true,\"uses\":[\"stream\"]}\n")
+            .await;
+        let _ = down
+            .write_all(
+                b"{\"kind\":\"hello\",\"v\":1,\"build_id\":\"b1\",\"commands\":[\"ping\"]}\n",
+            )
+            .await;
+        let mut lines = tokio::io::BufReader::new(up).lines();
+        let asked: Value =
+            serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+        let reply = json!({"kind": "reply", "id": asked["id"], "ok": true});
+        let _ = down.write_all(format!("{reply}\n").as_bytes()).await;
+    })
+    .await;
+    assert_eq!(r["message"], copy_text("beProbe.test.ok", &[]));
+    assert_eq!(r["detail"], Value::Null);
 }

@@ -15523,15 +15523,15 @@
     "beProbe.test.sshFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "SSH 连接或鉴权失败 · {e}",
-      "args": ["e"],
+      "zh": "SSH 连接或鉴权失败 · {why}",
+      "args": ["why"],
       "limited": ["SSH"]
     },
     "beProbe.test.probeFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "SSH 已连上 · 后端探测失败 · {e}",
-      "args": ["e"],
+      "zh": "SSH 已连上 · 后端探测失败",
+      "args": [],
       "limited": ["SSH"]
     },
     "beProbe.test.noHello": {
@@ -18196,8 +18196,8 @@
     "beProbe.hello.noAnswer": {
       "kind": "body",
       "role": "说明",
-      "zh": "{build} · {e} · 无应答",
-      "args": ["build", "e"]
+      "zh": "{build} · 无应答",
+      "args": ["build"]
     },
     "beProbe.hello.tooOld": {
       "kind": "body",

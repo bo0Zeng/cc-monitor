@@ -31,8 +31,10 @@ export interface ConnTestResult {
   backendHello: string | null;
   /** 这台说做不到的那几类：码 ＋ 这一类几项（后端按 hello 的 `unavailable` 分好；空 = 没有 / 没回 hello）。人话在界面说（`control-said.ts::unavailableReason`）。 */
   backendGaps: { code: string; count: number }[];
-  /** 人读的总体状态 / 失败原因。 */
+  /** 人读的总体状态 / 失败原因（一句，不接下层原话）。 */
   message: string;
+  /** 没过时那台写的复制详情（时刻 · 机器 · 命令 · 原话）；都过了 ⇒ `null`。 */
+  detail: string | null;
 }
 
 /** 那条进度流（与 Rust `event_replay.rs::PROBE_PROGRESS_KIND` 同一个串；后面跟 `/<ticket>`）。流名刻意不叫命令名（命令是 `remote-probe`）。 */
@@ -69,7 +71,7 @@ function bad(): never {
 export function decodeProbe(v: unknown): ConnTestResult {
   if (
     !isObj(v) ||
-    !exactKeys(v, ["sshOk", "fingerprint", "endpoint", "backendOk", "backendHello", "backendGaps", "message"]) ||
+    !exactKeys(v, ["sshOk", "fingerprint", "endpoint", "backendOk", "backendHello", "backendGaps", "message", "detail"]) ||
     typeof v.sshOk !== "boolean" ||
     !nullableStr(v.fingerprint) ||
     !nullableStr(v.endpoint) ||
@@ -79,7 +81,8 @@ export function decodeProbe(v: unknown): ConnTestResult {
     !v.backendGaps.every(
       (g) => isObj(g) && exactKeys(g, ["code", "count"]) && typeof g.code === "string" && Number.isInteger(g.count),
     ) ||
-    typeof v.message !== "string"
+    typeof v.message !== "string" ||
+    !nullableStr(v.detail)
   ) {
     bad();
   }
@@ -91,6 +94,7 @@ export function decodeProbe(v: unknown): ConnTestResult {
     backendHello: v.backendHello,
     backendGaps: v.backendGaps as { code: string; count: number }[],
     message: v.message,
+    detail: v.detail,
   };
 }
 

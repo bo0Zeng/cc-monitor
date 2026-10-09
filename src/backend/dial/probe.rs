@@ -33,6 +33,7 @@ fn outcome(
     hello: Option<String>,
     gaps: Vec<GapCount>,
     message: String,
+    detail: Option<String>,
 ) -> Value {
     json!({
         "sshOk": ssh_ok,
@@ -42,7 +43,13 @@ fn outcome(
         "backendHello": hello,
         "backendGaps": gaps,
         "message": message,
+        "detail": detail,
     })
+}
+
+/// 没过的那几形的复制详情：时刻 · 机器 · 命令 · 下层原话（那一句里不接原话，原话在这里）。
+fn failed_detail(raw: Option<&str>) -> Option<String> {
+    Some(crate::stream::detail::of_run("remote-probe", raw))
 }
 
 /// 测试连接那一行给人看的几格要的事实：后端版本（BUILD_ID）· 这台说做不到几项；
@@ -199,8 +206,9 @@ where
                 Vec::new(),
                 copy_text(
                     "beProbe.test.sshFailed",
-                    &[("e", &copy_text("beProbe.link.droppedBeforeAck", &[]))],
+                    &[("why", &copy_text("beProbe.link.droppedBeforeAck", &[]))],
                 ),
+                failed_detail(None),
             ));
         };
         let v: Value = serde_json::from_str(&line).map_err(|e| {
@@ -217,18 +225,25 @@ where
     if ack.get("ok").and_then(Value::as_bool) != Some(true) {
         // 握手失败（含 host key 不匹配被拒）：看到过的指纹**刻意不回**（失败时给一个指纹，界面那条「固化指纹」的路
         // 就可能把一把失配的 key 固化进去）。
+        // 那一句（原因词，拨号那一侧写好的）进句子；那一侧的复制详情原样带上（原话在那里）。
         let why = ack
             .get("error")
             .and_then(Value::as_str)
             .unwrap_or_default()
             .to_string();
+        let detail = ack
+            .get("detail")
+            .and_then(Value::as_str)
+            .map(str::to_string)
+            .or_else(|| failed_detail(None));
         return Ok(outcome(
             false,
             None,
             None,
             None,
             Vec::new(),
-            copy_text("beProbe.test.sshFailed", &[("e", &why)]),
+            copy_text("beProbe.test.sshFailed", &[("why", &why)]),
+            detail,
         ));
     }
     let fingerprint = ack
@@ -252,7 +267,8 @@ where
                 endpoint,
                 None,
                 Vec::new(),
-                copy_text("beProbe.test.probeFailed", &[("e", &e)]),
+                copy_text("beProbe.test.probeFailed", &[]),
+                failed_detail(Some(&e)),
             ))
         }
         Ok(Some(l)) => serde_json::from_str::<Value>(&l)
@@ -267,6 +283,7 @@ where
             None,
             Vec::new(),
             copy_text("beProbe.test.noHello", &[]),
+            failed_detail(None),
         ));
     };
     // 键值对那一形只进日志（`wire::hello_summary`）；界面那一行由下面三格拼（文案表）。
@@ -280,10 +297,11 @@ where
         .get("commands")
         .and_then(Value::as_array)
         .is_some_and(|a| a.iter().any(|c| c.as_str() == Some("ping")));
-    let (line, message) = if !accepts_ping {
+    let (line, message, detail) = if !accepts_ping {
         (
             copy_text("beProbe.hello.tooOld", &[("build", &build)]),
             copy_text("beProbe.test.noControl", &[]),
+            failed_detail(None),
         )
     } else {
         // 量一次往返经过的墙钟（不是节拍：只读两次钟、算个差）。
@@ -336,11 +354,12 @@ where
                         &[("build", &build), ("gaps", &gaps), ("ms", &ms)],
                     )
                 };
-                (line, copy_text("beProbe.test.ok", &[]))
+                (line, copy_text("beProbe.test.ok", &[]), None)
             }
             Err(e) => (
-                copy_text("beProbe.hello.noAnswer", &[("build", &build), ("e", &e)]),
+                copy_text("beProbe.hello.noAnswer", &[("build", &build)]),
                 copy_text("beProbe.test.controlDown", &[]),
+                failed_detail(Some(&e)),
             ),
         }
     };
@@ -352,6 +371,7 @@ where
         Some(line),
         facts.by_code,
         message,
+        detail,
     ))
 }
 
