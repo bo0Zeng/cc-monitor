@@ -88,6 +88,7 @@ pub(crate) fn cli_exposed(spec: &CommandSpec) -> bool {
 /// `apikey-routing` 同理：「中转在不在」读的是本进程的监听状态，一次性进程里没有中转 ⇒ 恒答「不在」。
 /// `launch-local` 只给界面用（它回的身份 token 要交回界面去回填 sid）。
 /// `forward-*` 同理：转发账住本进程（常驻那一个）；一次性进程开出来的转发随进程退出就没了、列出来恒空。
+/// `session-restart` 不是「答假话」那一类：它要的是**进程活得比发起方久**（退出排空的票 ＋ 两次几分钟的等待），一次性 exec 给不了。
 pub(crate) const STREAM_ONLY: &[&str] = &[
     "resync",
     "apikey-routing",
@@ -111,16 +112,10 @@ pub(crate) const STREAM_ONLY: &[&str] = &[
     "ext-list",
     "ext-hub-preview",
     "ext-hub-apply",
-    // tab 栏多选的批量停 / 起：一批会话一次问，只给界面用（命令行那一侧逐个 `--kill` / 直接敲 `ccm` 就是它们）。
-    "sessions-stop",
-    "sessions-start",
-    "sessions-where",
-    // 换号重启：要等压缩、等会话报出（几分钟），界面关了那台照样做完 —— 那是常驻流上的事；命令行那一侧逐个 `--kill` 再敲 `ccm --resume` 就是它。
+    // 换号重启：停旧 ＋ 起新那一步拿**退出排空的票**（`inbound::DRAIN`），等压缩摘要、等新进程报出各一次有界等待（各 ≤ 1 h）——
+    //   「发起方走了那台照样做完」靠的就是那张票钉住常驻进程不退；一次性 exec 里那张票钉的是**命令自己那个进程**，钉不住任何东西，
+    //   而调用方得把一个 exec 挂在那儿几分钟。⇒ 这一条真依赖流语义，不是「历史上没人从 CLI 调」。
     "session-restart",
-    // 起新会话框那三问：只有界面那个框用得着（命令行那一侧直接敲 `ccm` 就是它）。
-    "session-new",
-    "session-new-facts",
-    "session-new-dir",
 ];
 
 /// 命令名 → CLI 子命令（`launch` → `--launch`）。

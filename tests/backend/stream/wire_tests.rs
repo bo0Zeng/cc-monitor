@@ -1663,6 +1663,11 @@ const SECOND_FRONTEND_READS: &[(&str, &str, &str)] = &[
     ("line", "seq", "number"),
     ("line", "byte_offset", "number"),
     ("line", "raw", "string"),
+    // 〔第二个前端 2026-10-08〕**成品那一格**。上面那五格是「裸字节 ＋ 定位」那条路（`raw` 要索要才带）；
+    // 这一格是「吃成品」那条路的入口 —— 它在不在、是不是对象，决定第二个前端的渲染栈有没有原料。
+    // ⚠ 它是条件填、不是恒填（`watcher::send_line`：解不出 / 不 displayable ⇒ 缺席，帧照发照占 `seq`）
+    //   ⇒ 本表钉的是「**填的时候**是个对象」；里面哪几格由 [`SECOND_FRONTEND_MESSAGE_READS`] 另钉。
+    ("line", "message", "object"),
     ("session_added", "sid", "string"),
     ("session_added", "path", "string"),
     ("session_added", "session_kind", "string"),
@@ -1685,6 +1690,23 @@ const SECOND_FRONTEND_READS: &[(&str, &str, &str)] = &[
     ("overflow", "lost_truncated", "bool"),
     ("turn_end", "session_id", "string"),
     ("turn_end", "uuid", "string"),
+    // 〔第二个前端 2026-10-08〕**逐字流**（聊天屏的打字机）。`tap_frames_have_exactly_these_bytes` 钉的是字节，
+    // 本表钉的是**有人在读它** —— 少了这几行，整条 `tap` 被清理掉时没有任何判据说得出「有个前端靠它」。
+    // ⚠ `ev` 与 `end` 恰有一个 ⇒ 一份样本只带得动 `ev`（打字机读的那一支）；`end` 两个取值的字节由那条逐字节判据钉。
+    ("tap", "stream", "string"),
+    ("tap", "run", "string"),
+    ("tap", "resp", "number"),
+    ("tap", "n", "number"),
+    ("tap", "ev", "object"),
+    // 〔第二个前端 2026-10-08〕**一切帧命令的应答与撤销**。失败那三格（`code` / `message` / `detail`）是
+    // 失败卡与「复制详情」的全部原料：`detail` 跟着帧回，而最常见的那条错正好是「联系不上」—— 那时再去取就取不到。
+    ("reply", "id", "string"),
+    ("reply", "ok", "bool"),
+    ("reply", "code", "string"),
+    ("reply", "message", "string"),
+    ("reply", "detail", "string"),
+    ("reply", "data", "object"),
+    ("cancelled", "id", "string"),
     ("request", "id", "string"),
     ("request", "cmd", "string"),
     ("request", "args", "object"),
@@ -1700,7 +1722,8 @@ fn every_frame_the_second_frontend_reads() -> Vec<Value> {
             session_id: "s".into(),
             path: "/p".into(),
             seq: 1,
-            message: None,
+            // 可选格全给值（本族的体例）：成品那一格也要看得见在不在、是什么类型。
+            message: Some(serde_json::json!({ "type": "attachment" })),
             cwd: None,
             byte_offset: 9,
             rid: None,
@@ -1747,6 +1770,23 @@ fn every_frame_the_second_frontend_reads() -> Vec<Value> {
             session_id: "s".into(),
             uuid: "u".into(),
         },
+        Frame::Tap {
+            stream: "s".into(),
+            run: s.clone(),
+            resp: 1,
+            n: 0,
+            ev: Some(crate::agents::StreamEv::Start { rid: "r-1".into() }),
+            end: None,
+        },
+        Frame::Reply {
+            id: "1".into(),
+            ok: false,
+            code: s.clone(),
+            message: s.clone(),
+            detail: s.clone(),
+            data: Some(serde_json::json!({})),
+        },
+        Frame::Cancelled { id: "1".into() },
     ];
     frames
         .iter()
@@ -1833,6 +1873,147 @@ fn line_raw_is_only_there_when_asked() {
     );
 }
 
+// ═══ `line.message` 里第二个前端读的那几格：冻结（只许加字段）════════════════════════════
+//
+// 上面那张表只到**帧的顶层**（`f.get(field)`），而「吃成品」那条路读的是 `line.message` **里面**的格子。
+// `message` ＝ 那一家记录面的成品（claude 这一家 ＝ `JsonlRecord` 原样序列化，`agents/claudecode/parse.rs::parsed_line`）。
+//
+// 🔴 **刻意不把 `JsonlRecord` 的全部字段塞进来。** 它很大（十种变体、几十格），而且里面有整类是
+// 「后端自己判完给界面画」的成品（`toolCards` / `toolSteps` / `toolResults` / `childRuns` / `apiReason` / `timeText`）——
+// 那些**第二个前端今天一格都不读**（它自己按工具名判）。把它们冻起来 = 替别人许诺，而且会挡住后端重排成品的自由。
+// ⇒ 本表只收**它真读的**：每一行后面那句是它那一侧的读者住址（`android-terminal` 的 `doc/前端设计/30-G4-message够不够.md §3.2`）。
+//
+// 两格第二个前端**真在读、而今天供给里没有**，刻意**不**登记 —— 登记一个不存在的字段不会把它变出来，只会让这张表当场假红
+// （本族的规矩是「钉住在的东西」，不是「许愿单」）。两格都是真缺口，各自记在这里，**有了供给就来这儿加两行**：
+// · `message.usage.cache_creation.ephemeral_{5m,1h}_input_tokens` —— `Usage`（`schema.rs`）今天只有四格扁平，
+//   写缓存那一格是 5m / 1h 两档之和、分不出档。少了它，底栏那行 `≈$X` 只能假定全是便宜那一档（1.25× 而不是 2.0×）
+//   ⇒ 它那一侧实测聚合少报 8.6%、单会话中位 14.8%、最坏 37.5%。
+//   ⚠ 本条是**现打的**（判据先红才查清）：读源码时手上那份 `schema.rs` 带着一格 `cache_creation`，而本分支的基线上**没有** ——
+//   先按基线写，有了再加。
+// · `toolUseResult.structuredPatch[]` ＋ `toolUseResult.filePath` —— `toolUseResult` 本体 `skip_serializing`，
+//   `steps.rs` 只把 hunk 数成 `added` / `removed` 两个整数 ⇒ 真行号 · 上下文行 · 文件名都不过线，保真 diff 没有原料。
+
+/// （记录的 `type`, `message` 里的点路径, JSON 类型）。
+/// 类型 `"any"` ＝ **只钉「这一格在」，不钉类型** —— 给原样透传的那一格用（`ApiMessage.content` 是 `serde_json::Value`，
+/// 真样本里既有块数组也有裸字符串 7042 条；后端不解释、不裁剪 ⇒ 钉类型是钉错了东西）。
+const SECOND_FRONTEND_MESSAGE_READS: &[(&str, &str, &str)] = &[
+    // ── user ───────────────────────────────────────────────────────────────
+    ("user", "type", "string"),              // JsonlParser 的分派键
+    ("user", "uuid", "string"),              // MainBranch：ESC-fork 主线重建
+    ("user", "parentUuid", "string"),        // 同上（断链 ⇒ 整棵误折叠）
+    ("user", "timestamp", "string"),         // 同上
+    ("user", "sessionId", "string"),         // 记录归属
+    ("user", "cwd", "string"),               // resume 目标目录 ＋ 目录标题回退
+    ("user", "forkedFrom.sessionId", "string"), // 分叉血统
+    ("user", "forkedFrom.messageUuid", "string"),
+    ("user", "message.content", "any"),      // 正文 · 思考块 · 工具调用 / 结果的全部原料
+    ("user", "userText.speaker", "object"),  // 「谁说的」：替掉我们自己那 136 行噪声剥除 ＋ 原来读 `isMeta` 那一判
+    ("user", "userText.text", "string"),     // 要显示的正文
+    // ── assistant ──────────────────────────────────────────────────────────
+    ("assistant", "type", "string"),
+    ("assistant", "uuid", "string"),
+    ("assistant", "parentUuid", "string"),
+    ("assistant", "timestamp", "string"),
+    ("assistant", "sessionId", "string"),
+    ("assistant", "requestId", "string"),         // usage 按 request 去重，防三倍多计
+    ("assistant", "isApiErrorMessage", "bool"),   // 排除「报错那条合成 assistant」被当成真轮次结束
+    ("assistant", "message.content", "any"),
+    ("assistant", "message.model", "string"),     // 底栏定价 ＋ 上下文窗档位
+    ("assistant", "message.stop_reason", "string"), // 轮次结束（通知 · resume baseline）
+    ("assistant", "message.usage.input_tokens", "number"),
+    ("assistant", "message.usage.output_tokens", "number"),
+    ("assistant", "message.usage.cache_creation_input_tokens", "number"),
+    ("assistant", "message.usage.cache_read_input_tokens", "number"),
+    // ── 标题 ───────────────────────────────────────────────────────────────
+    ("ai-title", "type", "string"),
+    ("ai-title", "aiTitle", "string"),
+    ("ai-title", "sessionId", "string"),
+    // ── 逃生舱：看不懂的行照样过线（schema 漂移时不静默丢、不孤儿化后续对话）────────────
+    ("cc-monitor-unrecognized", "type", "string"),
+    ("cc-monitor-unrecognized", "uuid", "string"),
+    ("cc-monitor-unrecognized", "parentUuid", "string"),
+    ("cc-monitor-unrecognized", "originalType", "string"),
+    ("cc-monitor-unrecognized", "raw", "string"),
+    ("cc-monitor-unrecognized", "reason", "string"),
+];
+
+/// 每种记录一行真 jsonl（可选格全给值）。**走生产那条路**：注册表上那一家的 `RecordFace::parse`
+/// —— 与 `watcher::send_line` 填 `line.message` 用的是同一个函数指针，不是测试里另拼一份。
+fn message_products_the_second_frontend_reads() -> Vec<(&'static str, Value)> {
+    let face = crate::agents::record_face(crate::agents::claudecode::AGENT_KIND)
+        .expect("注册表上没有 claude 这一家的记录面");
+    const SID: &str = "11111111-2222-3333-4444-555555555555";
+    let lines: &[(&str, String)] = &[
+        (
+            "user",
+            format!(r#"{{"type":"user","uuid":"aaaaaaaa-0000-0000-0000-000000000001","parentUuid":"aaaaaaaa-0000-0000-0000-000000000000","sessionId":"{SID}","timestamp":"2026-01-01T00:00:00Z","cwd":"/p","forkedFrom":{{"sessionId":"{SID}","messageUuid":"aaaaaaaa-0000-0000-0000-00000000000f"}},"message":{{"role":"user","content":"x"}}}}"#),
+        ),
+        (
+            "assistant",
+            format!(r#"{{"type":"assistant","uuid":"aaaaaaaa-0000-0000-0000-000000000002","parentUuid":"aaaaaaaa-0000-0000-0000-000000000001","sessionId":"{SID}","requestId":"req-1","timestamp":"2026-01-01T00:00:01Z","isApiErrorMessage":false,"message":{{"id":"m1","role":"assistant","model":"claude-x","stop_reason":"end_turn","content":[{{"type":"text","text":"y"}}],"usage":{{"input_tokens":1,"output_tokens":2,"cache_creation_input_tokens":3,"cache_read_input_tokens":4}}}}}}"#),
+        ),
+        (
+            "ai-title",
+            format!(r#"{{"type":"ai-title","aiTitle":"t","sessionId":"{SID}"}}"#),
+        ),
+        (
+            "cc-monitor-unrecognized",
+            // 未知 `type` ＋ 有链身份 ⇒ 抢救成逃生舱那一形（整行原文带着过线）。
+            r#"{"type":"ccm-no-such-record-type","uuid":"aaaaaaaa-0000-0000-0000-000000000003","parentUuid":"aaaaaaaa-0000-0000-0000-000000000002","timestamp":"2026-01-01T00:00:02Z"}"#
+                .to_string(),
+        ),
+    ];
+    lines
+        .iter()
+        .map(|(kind, raw)| {
+            let p = (face.parse)(raw)
+                .unwrap_or_else(|e| panic!("{kind} 这一行生产解析器不认了：{e}"))
+                .unwrap_or_else(|| panic!("{kind} 这一行被判成「没有记录」"));
+            assert!(p.displayable, "{kind} 不 displayable ⇒ `line.message` 会缺席");
+            (*kind, p.message)
+        })
+        .collect()
+}
+
+/// 点路径取值（`message.usage.input_tokens` 这种）。缺一截 ⇒ `None`。
+fn at_path<'v>(v: &'v Value, path: &str) -> Option<&'v Value> {
+    path.split('.').try_fold(v, |cur, key| cur.get(key))
+}
+
+/// 冻结表里的每一格，在**生产解析器**出来的那份 `message` 里都在、类型对。
+#[test]
+fn the_message_fields_the_second_frontend_reads_stay_put() {
+    let products = message_products_the_second_frontend_reads();
+    // 反空真地板：表被掏瘪 / 样本没出来 ⇒ 下面那个循环跑零圈而照常报绿。
+    assert!(
+        SECOND_FRONTEND_MESSAGE_READS.len() >= 20,
+        "冻结表只剩 {} 格 —— 本条此刻在空转",
+        SECOND_FRONTEND_MESSAGE_READS.len()
+    );
+    let mut kinds_seen = std::collections::BTreeSet::new();
+    for (kind, path, ty) in SECOND_FRONTEND_MESSAGE_READS {
+        let (_, product) = products
+            .iter()
+            .find(|(k, _)| k == kind)
+            .unwrap_or_else(|| panic!("冻结表里的记录种类 {kind} 不在样本里"));
+        kinds_seen.insert(*kind);
+        let got = at_path(product, path).unwrap_or_else(|| {
+            panic!("`line.message` 里 {kind}.{path} 没了（第二个前端在读它）：{product}")
+        });
+        // `any` ＝ 原样透传那一格：钉「在」，不钉类型；但**不许是 `null`**（那等于没给）。
+        if *ty == "any" {
+            assert!(!got.is_null(), "{kind}.{path} 过线成了 null：{product}");
+        } else {
+            assert_eq!(json_type(got), *ty, "{kind}.{path} 换了类型：{product}");
+        }
+    }
+    assert_eq!(
+        kinds_seen.len(),
+        products.len(),
+        "样本里有冻结表没登记的记录种类"
+    );
+}
+
 // ═══ 第二个前端调的一次性子命令：冻结（叫法 · 位置参数 · 输出里它读的那几格）══════════════
 //
 // `--resolve` 的入出形状另有冻结金样（`tests/__fixtures__/resolve-contract.golden.json`）；会话 id 的校验规则钉在
@@ -1848,6 +2029,35 @@ const SECOND_FRONTEND_SUBCOMMANDS: &[(&str, usize)] = &[
     ("--resolve", 0),
     ("--search", 1),
     ("--fork-session", 2),
+    // 〔第二个前端 2026-10-08〕它**今天在调 / 这一拍要接**的另外九条。上面那八条之外，这九条一条都没有判据保护
+    //   —— 上一次清理命令名（`invalid_args` 并进 `bad_args` · `--history-projects` / `--history-sessions` 从
+    //   `SUBCOMMANDS` 消失）在它那一侧**不会红，会在用户手里坏**。
+    // 两类，各有各的真检验（见本族那条测试，membership 之外不许空转）：
+    //   ① CLI 独有、有位置参数的三条 ⇒ 下面 `runs` 里照原来的叫法真跑一趟；
+    //   ② 帧面派生的六条 ⇒ 入参走 stdin 一段 JSON，argv 上一个位置参数都没有（0 由 `cli_control::spec_for` 验）。
+    ("--backend-probe", 0),
+    ("--find-in-session", 1),
+    ("--list-user-inputs", 1),
+    ("--ping", 0),
+    ("--terminals-list", 0),
+    ("--terminal-preview", 0),
+    ("--terminal-input", 0),
+    ("--history-page", 0),
+    ("--history-facts", 0),
+];
+
+/// 上面那张表里**帧面派生**的那几条（CLI 口由 `cli_control::cli_exposed` 自动给，没有分派臂）。
+///
+/// 🔴 **单列一张不是冗余，是上面那张表对它们恒绿** —— 现打出来的：把帧面 `history-page` 改个名，
+/// CLI 口当场消失，而 `SUBCOMMANDS` 里 `"--history-page"` 那个串还在（两者都是源码字面量、互不相干）
+/// ⇒ `the_subcommands_the_second_frontend_calls_stay_put` **照样报绿**。本表让那一形当场红。
+const SECOND_FRONTEND_DERIVED_SUBCOMMANDS: &[&str] = &[
+    "--ping",
+    "--terminals-list",
+    "--terminal-preview",
+    "--terminal-input",
+    "--history-page",
+    "--history-facts",
 ];
 
 /// （子命令, 输出一行里第二个前端读的字段, JSON 类型）。
@@ -1893,6 +2103,32 @@ fn the_subcommands_the_second_frontend_calls_stay_put() {
     for (flag, _) in SECOND_FRONTEND_SUBCOMMANDS {
         assert!(crate::SUBCOMMANDS.contains(flag), "{flag} 不在子命令表里了");
     }
+    // ⚠ **上面那一圈对帧面派生的那几条是「串对串」** —— 本表与 `SUBCOMMANDS` 都是源码里的字面量，
+    //   帧面那条命令改名 / 删掉 / 进了 `STREAM_ONLY`，CLI 口当场消失而那个串还在 ⇒ 它照样绿（实测过）。
+    //   ⇒ 派生那几条逐条验**真能派发**（[`SECOND_FRONTEND_DERIVED_SUBCOMMANDS`]），顺便验登记的 0 不是凑的。
+    for flag in SECOND_FRONTEND_DERIVED_SUBCOMMANDS {
+        let spec = crate::control::cli_control::spec_for(flag).unwrap_or_else(|| {
+            panic!(
+                "{flag} 是帧面派生的 CLI 口，而 `spec_for` 今天查不到它 —— 帧面那条命令改名 / 删了 / 进了
+                 `cli_control::STREAM_ONLY`，CLI 面当场消失，而 `SUBCOMMANDS` 里那个串还在
+                 ⇒ 第二个前端调它只会拿到一堆 jsonl 行（`is_query_mode` 把它当未知 flag ⇒ 照常进流模式）。"
+            )
+        });
+        let (_, pos) = SECOND_FRONTEND_SUBCOMMANDS
+            .iter()
+            .find(|(f, _)| f == flag)
+            .unwrap_or_else(|| panic!("{flag} 列在派生表里，却不在冻结表里"));
+        assert_eq!(
+            *pos, 0,
+            "{flag} 是帧面 `{}` 派生的 CLI 口（入参走 stdin），位置参数该登记成 0",
+            spec.name
+        );
+    }
+    // 探测口不在 `REGISTRY` 上（它是 `cli_control` 自己那一口）⇒ 单独验分派臂认得它。
+    assert!(
+        crate::control::cli_control::handles("--backend-probe"),
+        "`--backend-probe` 的分派臂不认它了 —— 第二个前端靠它判这台支持哪几条"
+    );
     let (home, sid, path) = second_frontend_home("sub");
     let p = path.to_string_lossy().to_string();
     let argv = |xs: &[&str]| xs.iter().map(|s| s.to_string()).collect::<Vec<_>>();
@@ -1910,6 +2146,11 @@ fn the_subcommands_the_second_frontend_calls_stay_put() {
         ),
         ("--search", argv(&["--search", "x"])),
         (
+            "--find-in-session",
+            argv(&["--find-in-session", "--query", "x", &p]),
+        ),
+        ("--list-user-inputs", argv(&["--list-user-inputs", &p])),
+        (
             "--fork-session",
             argv(&[
                 "--fork-session",
@@ -1924,7 +2165,18 @@ fn the_subcommands_the_second_frontend_calls_stay_put() {
             .find(|(f, _)| f == flag)
             .unwrap()
             .1;
-        assert_eq!(args.len() - 1, want, "{flag} 的位置参数个数");
+        // 位置参数 ＝ 去掉子命令本身、去掉 `--opt` 与紧跟它的那个值之后剩下的。
+        // （原来写的是 `args.len() - 1`，那只对「不带选项」那几条成立；`--find-in-session` 必带 `--query <q>`。）
+        let mut positional = 0usize;
+        let mut it = args[1..].iter();
+        while let Some(a) = it.next() {
+            if a.starts_with("--") {
+                let _ = it.next();
+            } else {
+                positional += 1;
+            }
+        }
+        assert_eq!(positional, want, "{flag} 的位置参数个数");
         assert!(crate::is_query_mode(args), "{flag} 不进一次性查询了");
         let code = match *flag {
             "--search" => crate::observe::search_query::run(&home, args),
