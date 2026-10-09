@@ -448,7 +448,7 @@ pub enum JsonlRecord {
     // issue #8: attachment 不渲染卡片，但有 uuid+parentUuid 并夹在 user→assistant
     // 之间（实测 5% 的 user/assistant 直接 parent 是 attachment）。如果不把它
     // emit 给前端，前端的 parent 链就断在 attachment 处 → 主线检测全部失败 →
-    // 整段消息被错误折叠到"已被 ESC 回退"。所以本变体含完整字段且进 is_displayable()。
+    // 整段消息被错误折叠到"已被 ESC 回退"。所以本变体含完整字段、出链事实（`chain.rs`）。
     #[serde(rename = "attachment")]
     Attachment {
         uuid: String,
@@ -533,7 +533,7 @@ pub enum JsonlRecord {
     /// parentUuid 全为 0** —— 即此刻并没有在误折叠，本变体是**保险 + 诚实**：
     /// ①不再静默丢 5.6% 的行；②Claude 哪天发一个带链身份的新类型时自动扛住。
     ///
-    /// **带链身份的**进 `is_displayable()`（照 `Attachment` 先例：**不渲染卡片但进链**）；
+    /// **带链身份的**出链事实（照 `Attachment` 先例：**不进界面但进链**，`chain.rs`）；
     /// 前端 `cards/index.ts::renderMessage` 的 `default => skip` 已能优雅跳过，无需建卡。
     /// **没有链身份的**（uuid 与 parentUuid 都缺 —— 上面实测的那 7 种今天全是）
     /// 在这里就滤掉、不出 payload：它们不建卡、不进链，前端没有任何读者，却要付每条的固定开销（去重入集合 · sink · 门控），
@@ -616,46 +616,12 @@ pub struct Usage {
 }
 
 impl JsonlRecord {
-    /// 是否应该被 emit 到前端。
-    ///
-    /// 两类记录都返回 true：
-    /// 1. 渲染目标：User / Assistant / AiTitle / System —— 前端会建卡 / 改标题等
-    /// 2. 仅链路用：Attachment / **带链身份的** Unrecognized —— 不渲染，但 issue #8 ESC 回退主线检测
-    ///    需要完整 uuid+parentUuid 链，attachment 夹在 user/assistant 之间，
-    ///    不 emit 会让前端 parent 链断成碎片 → 主线全错 → 全部消息被错折叠
-    ///
-    /// 〔「纯元数据记录在解析阶段滤掉，不进管线」〕**没有链身份的** Unrecognized
-    /// （`mode` / `atis-latch` / `pr-link` / … 一族，真机普查 9.8% 行 / 0.4% 字节）返回 false：前端零读者。
-    /// 仍进前端的元数据都有读者：`ai-title` / `custom-title`（标题）· `queue-operation`（`enqueue` 喂折叠豁免、`remove` 建卡）。
-    ///
-    /// **返回 false 的两类要分清**（F63/#49「零信息损失」的口径）：
-    /// - `PermissionMode` / `LastPrompt` / `FileHistorySnapshot` = **已知类型的明示
-    ///   决定**（我们认识它、判断它不该显示）→ 不算「丢」。实测 16,121 条。
-    /// - `Unknown` = **不认识**，曾经从这里被静默丢弃（实测 8,774 条 / 5.6%）。
-    ///   F63 起它不再出 `parse_line`（被抢救成 `Unrecognized`），此处 false 只是
-    ///   兜底——真走到说明 `parse_line` 的后处理漏了，属 bug。
     /// 这条记录自己的 `cwd`（只有 user 记录带）—— 行成品里那一格（原 monitor `lib·rs` 那个 `extract_cwd`〔散文墓碑〕）。
     pub fn cwd(&self) -> Option<&str> {
         match self {
             Self::User { cwd, .. } => cwd.as_deref(),
             _ => None,
         }
-    }
-
-    pub fn is_displayable(&self) -> bool {
-        matches!(
-            self,
-            Self::User { .. }
-                | Self::Assistant { .. }
-                | Self::AiTitle { .. }
-                | Self::CustomTitle { .. }
-                | Self::System { .. }
-                | Self::Attachment { .. }
-                | Self::QueueOperation { .. }
-        ) || matches!(
-            self,
-            Self::Unrecognized { uuid, parent_uuid, .. } if uuid.is_some() || parent_uuid.is_some()
-        )
     }
 }
 

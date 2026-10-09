@@ -307,9 +307,12 @@ pub enum Frame {
         #[serde(skip_serializing_if = "Vec::is_empty")]
         uncancellable: Vec<String>,
     },
-    /// One JSONL line tailed from a session file —— 带的是**成品**：
-    /// 这一行在渲染模型里是什么（`message`，缺 ＝ 不进界面、照占号）与它自己的 `cwd`。解释住后端适配层，
-    /// monitor 只原样转交。原文 `raw` 只给发了 `--with-raw` 的客户端（第二个前端自己解析记录）。
+    /// 会话记录里的一行 —— 带的是**成品**：这一行在界面里是什么（`record`，通用记录 `agents::record::Record`；
+    /// 缺 ＝ 不进界面、照占号）与它自己的 `cwd`。解释住后端适配层，monitor 只原样转交。
+    /// 原文 `raw` 只给发了 `--with-raw` 的客户端（逐字节等于记录里那一行，去掉行尾换行）。
+    ///
+    /// **两个前端共同的契约面**：`session_id` · `path` · `seq` · `byte_offset` · `raw` 五格与 `record` 的形状都在冻结表里
+    /// （`wire_tests::the_shapes_the_second_frontend_reads_stay_put` · `the_record_shape_both_frontends_read_stays_put`），只增不改。
     Line {
         /// 会话 id。
         session_id: String,
@@ -317,9 +320,9 @@ pub enum Frame {
         path: String,
         /// 这一行在本条流里的序号（按文件单调递增）；不是续传键，续传用 `byte_offset`。
         seq: u64,
-        /// 这一行在渲染模型里的成品；缺 ＝ 不进界面、照占号。
+        /// 这一行的通用记录；缺 ＝ 不进界面、照占号。
         #[serde(skip_serializing_if = "Option::is_none")]
-        message: Option<serde_json::Value>,
+        record: Option<crate::agents::record::Record>,
         /// 这条记录自己的工作目录。
         #[serde(skip_serializing_if = "Option::is_none")]
         cwd: Option<String>,

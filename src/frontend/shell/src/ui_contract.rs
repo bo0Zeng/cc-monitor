@@ -75,10 +75,10 @@ pub struct JsonlLinePayload {
     #[cfg_attr(test, ts(optional))]
     #[serde(rename = "origin", skip_serializing_if = "Option::is_none")]
     pub origin: Option<String>,
-    /// 这一行在渲染模型里的样子 —— 那台后端的成品（`agents/claudecode/schema.rs::JsonlRecord`，
-    /// ts-rs 从后端导出），monitor **原样转交、一个字段都不读**。
-    #[cfg_attr(test, ts(type = "import(\"./JsonlRecord\").JsonlRecord"))]
-    pub message: RecordBody,
+    /// 这一行的通用记录 —— 那台后端的成品（`agents/record.rs::Record`，ts-rs 从后端导出），
+    /// monitor **原样转交、一个字段都不读**。
+    #[cfg_attr(test, ts(type = "import(\"./Record\").Record"))]
+    pub record: RecordBody,
     /// `[skipped_from, seq)` 这些行号 monitor **连着见过、都不可显示**（照占号、不出 payload）⇒
     /// 前端可以把它们记成见过，去重集合成区间、段数不再随会话长度涨。缺 = 没有这一段或不确知（不猜）。
     #[cfg_attr(test, ts(optional, type = "number"))]

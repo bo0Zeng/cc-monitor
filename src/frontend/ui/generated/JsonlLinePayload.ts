@@ -20,10 +20,10 @@ export type JsonlLinePayload = { session_id: string, cwd: string | null, path: s
  */
 origin?: string, 
 /**
- * 这一行在渲染模型里的样子 —— 那台后端的成品（`agents/claudecode/schema.rs::JsonlRecord`，
- * ts-rs 从后端导出），monitor **原样转交、一个字段都不读**。
+ * 这一行的通用记录 —— 那台后端的成品（`agents/record.rs::Record`，ts-rs 从后端导出），
+ * monitor **原样转交、一个字段都不读**。
  */
-message: import("./JsonlRecord").JsonlRecord, 
+record: import("./Record").Record, 
 /**
  * `[skipped_from, seq)` 这些行号 monitor **连着见过、都不可显示**（照占号、不出 payload）⇒
  * 前端可以把它们记成见过，去重集合成区间、段数不再随会话长度涨。缺 = 没有这一段或不确知（不猜）。

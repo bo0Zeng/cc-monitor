@@ -291,7 +291,11 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 session_id: s("s1"),
                 path: s("/p/s1.jsonl"),
                 seq: 3,
-                message: Some(serde_json::json!({"role": "user"})),
+                record: Some(crate::agents::record::Record {
+                    at: Some(s("2026-10-09T01:30:00.000Z")),
+                    time_text: Some(s("09:30")),
+                    ..said_record("u1", "q")
+                }),
                 cwd: Some(s("/w")),
                 byte_offset: 120,
                 rid: Some(s("r1")),
@@ -301,7 +305,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 session_id: s("s1"),
                 path: s("/p/s1.jsonl"),
                 seq: 3,
-                message: None,
+                record: None,
                 cwd: None,
                 byte_offset: 120,
                 rid: None,
@@ -1025,6 +1029,27 @@ fn seq_counter_is_monotonic_per_path_and_independent_across_paths() {
     assert_eq!(d.next("/x"), 1);
 }
 
+/// 一条最少格的 `said` 通用记录（结构占位）。
+fn said_record(id: &str, text: &str) -> crate::agents::record::Record {
+    use crate::agents::record::{Block, Body, Record};
+    Record {
+        agent: "claude".into(),
+        id: id.into(),
+        at: None,
+        time_text: None,
+        body: Body::Said {
+            who: crate::agents::UserText {
+                speaker: crate::agents::Speaker::Human,
+                text: text.into(),
+                pasted: Vec::new(),
+            },
+            blocks: vec![Block::Text { text: text.into() }],
+            results: Default::default(),
+            cwd: None,
+        },
+    }
+}
+
 #[test]
 fn line_with_quotes_backslashes_and_newline_roundtrips() {
     let raw = "before\"quote\\backslash\nafter-newline";
@@ -1032,7 +1057,7 @@ fn line_with_quotes_backslashes_and_newline_roundtrips() {
         session_id: "sid".into(),
         path: "/some/path.jsonl".into(),
         seq: 42,
-        message: Some(serde_json::json!({ "text": raw })),
+        record: Some(said_record("u1", raw)),
         cwd: None,
         byte_offset: 99,
         rid: None,
@@ -1053,7 +1078,7 @@ fn line_with_quotes_backslashes_and_newline_roundtrips() {
     // Parses back and the raw field is recovered byte-for-byte.
     let v: Value = serde_json::from_str(body).expect("parse");
     assert_eq!(v["kind"], "line");
-    assert_eq!(v["message"]["text"], raw);
+    assert_eq!(v["record"]["blocks"][0]["text"], raw);
     assert_eq!(v["seq"], 42);
 }
 
@@ -1717,7 +1742,7 @@ fn every_frame_the_second_frontend_reads() -> Vec<Value> {
             session_id: "s".into(),
             path: "/p".into(),
             seq: 1,
-            message: None,
+            record: None,
             cwd: None,
             byte_offset: 9,
             rid: None,
@@ -1846,7 +1871,7 @@ fn line_raw_is_only_there_when_asked() {
             session_id: "s".into(),
             path: "/p".into(),
             seq: 0,
-            message: None,
+            record: None,
             cwd: None,
             byte_offset: 5,
             rid: None,

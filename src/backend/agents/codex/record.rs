@@ -1,4 +1,4 @@
-//! Phase 2 · F2a：Codex rollout 记录的**防御式分类器** ＋ 映射进渲染模型（`JsonlRecord`）。
+//! Codex rollout 记录的**防御式分类器** ＋ 翻成通用记录（[`Record`]，不借别家的记录类型）。
 //!
 //! 从 monitor 的 `codex_record.rs` 搬进后端：记录解释只住后端，界面只收成品。
 //! 信封助手（解包 · 子型 · alias 归一 · 那几个字段）只用 [`super::parse`] 那一份 —— 搬进来之前两侧各写一份、
@@ -12,9 +12,9 @@
 //! session_meta/turn_context/world_state/response_item/event_msg；后两者的 `payload.type` 再细分。
 
 use super::parse::{normalize_event, payload_type, unwrap_envelope};
-use crate::agents::claudecode::schema::{ApiMessage, JsonlRecord};
-use crate::agents::{Speaker, UserText};
-use serde_json::{json, Value};
+use crate::agents::record::{Block, Body, Record};
+use crate::agents::{Speaker, Translated, UserText};
+use serde_json::Value;
 
 /// Codex 记录的**语义种类**（防御分类；未知/未来 → `Other*`，不崩）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -83,7 +83,7 @@ pub fn classify(v: &Value) -> CodexRecordKind {
     }
 }
 
-// ─── F2b：Codex→JsonlRecord 映射的文本抽取助手（trap-critical，口径对齐 aterm CodexRecordParser.kt c03e46f）───
+// ─── 文本抽取助手（trap-critical，口径对齐 aterm CodexRecordParser.kt c03e46f）───
 
 /// **数组文本拍平**——Codex 的 `message.content` 与 `custom_tool_call_output.output` **真机恒数组**
 /// `[{type:input_text|output_text, text}]`（aterm Phase D 审计 9/9 坐实）。当 String 处理会静默丢**全部**
@@ -432,179 +432,119 @@ fn agent_mail_said(payload: &Value) -> UserText {
     mail_said(&text, s("author"), s("recipient"))
 }
 
-// ─── F2b-2：Codex 记录 → 现有 `JsonlRecord`（第三条路组装。口径对齐 aterm CodexRecordParser.kt c03e46f）───
+// ─── Codex 记录 ⇒ 通用记录（[`Record`]）───
 
-/// 一行 rollout 原文 ⇒ 交给通用层的那一形（注册表 `RecordFace.parse`；契约同 Claude 那一家：
-/// 空行 `Ok(None)` · 连 JSON 都不是 `Err`）。
-pub(crate) fn parsed_line(raw: &str) -> Result<Option<crate::agents::ParsedLine>, String> {
+/// 这一家在线上的 `agent` 值。
+const AGENT: &str = super::AGENT_KIND;
+
+/// 一行 rollout 原文（与它的起点字节偏移）⇒ 交给通用层的那一形（注册表 `RecordFace.parse`；契约同 Claude 那一家：
+/// 空行 `Ok(None)` · 连 JSON 都不是 `Err`）。这一家没有排队那一对、记录上也不带 `cwd`。
+pub(crate) fn translated(raw: &str, start: u64) -> Result<Option<Translated>, String> {
     let trimmed = raw.trim_start_matches('\u{feff}').trim();
     if trimmed.is_empty() {
         return Ok(None);
     }
     let v: Value = serde_json::from_str(trimmed).map_err(|e| e.to_string())?;
-    let rec = to_jsonl_record(&v, trimmed).with_time_text();
-    Ok(Some(crate::agents::ParsedLine {
-        displayable: rec.is_displayable(),
-        cwd: rec.cwd().map(str::to_string),
-        message: serde_json::to_value(&rec).map_err(|e| e.to_string())?,
+    Ok(Some(Translated {
+        record: record_of(&v, start),
+        cwd: None,
+        queue: None,
     }))
 }
 
-/// Codex rollout 记录（已解析 `v` + 原始行 `raw`）→ 现有 `JsonlRecord`（复用渲染模型）。
-/// - message/reasoning/tool → User/Assistant + content（`[{type,text/…}]` Value，喂现有 `renderMessage`）。
-/// - event_msg/token_count/session_meta/turn_context/world_state/未知 → `Unrecognized`（保 `raw`；
-///   轮次键从 raw 读，见 `turn_id`）。
+/// Codex rollout 记录 ⇒ 通用记录：
 ///
-/// **cc-monitor 适配 vs aterm**：`JsonlRecord::User/Assistant.uuid` 是必填 `String` → 无 `payload.id`
-/// 时给 `""`（Codex 无 parentUuid 链、`parent_uuid=None`；F7 渲染按文件序+timestamp、不套 Claude 链）。
-pub fn to_jsonl_record(v: &Value, raw: &str) -> JsonlRecord {
+/// | rollout | 通用记录 |
+/// |---|---|
+/// | `response_item.message`（user / developer 角色，或别家来信）· `agent_message` · `inter_agent_communication` | `said`（谁说的本家判，[`message_said`]） |
+/// | `response_item.message`（assistant 角色）· `reasoning` · 工具调用 | `reply`（`autoReply` 恒假：没考据到等价物；`endsTurn` 恒假：一轮的结束是另一条事件） |
+/// | 工具调用的输出 | `said`（工具结果） |
+/// | 事件 · 元记录 · 认不出的 | 无记录 |
+///
+/// `id`：`payload.id`；没有（user / developer / 工具输出常没有）⇒ 按这一行的起点字节偏移合成（[`crate::agents::line_id`]）。
+pub fn record_of(v: &Value, start: u64) -> Option<Record> {
     use CodexRecordKind as K;
-    let ts = super::parse::envelope_ts(v).map(String::from);
-    let id = payload_id(v);
-    match classify(v) {
+    let payload = unwrap_envelope(v).map_or(&Value::Null, |(_, p)| p);
+    let body = match classify(v) {
         K::Message => {
-            let payload = unwrap_envelope(v).map_or(&Value::Null, |(_, p)| p);
             let text = flatten_text(payload.get("content").unwrap_or(&Value::Null));
-            let content = text_blocks(&text);
             match message_said(payload) {
-                Some(said) => user_rec(id, ts, content, said),
-                None => assistant_rec(id, ts, "assistant", content),
+                Some(who) => said(who, text_blocks(text)),
+                None => reply(text_blocks(text)),
             }
         }
         K::AgentMail => {
-            let payload = unwrap_envelope(v).map_or(&Value::Null, |(_, p)| p);
             let text = flatten_text(payload.get("content").unwrap_or(&Value::Null));
-            user_rec(id, ts, text_blocks(&text), agent_mail_said(payload))
+            said(agent_mail_said(payload), text_blocks(text))
         }
-        K::Reasoning => {
-            // 真机 summary 恒 [] → 空文本给空 blocks（免 Thinking("") 噪音）。
-            let t = reasoning_text(v);
-            let content = if t.is_empty() {
-                json!([])
-            } else {
-                json!([{"type": "thinking", "thinking": t}])
-            };
-            assistant_rec(id, ts, "assistant", content)
-        }
-        K::ToolCall => {
-            let name = payload_field(v, "name")
+        // 真机 summary 恒 [] ⇒ 空文本给空 blocks（免一个空的推理块）。
+        K::Reasoning => reply(match reasoning_text(v) {
+            t if t.is_empty() => Vec::new(),
+            text => vec![Block::Thinking { text }],
+        }),
+        K::ToolCall => reply(vec![Block::ToolUse {
+            id: call_id(v).unwrap_or("").to_string(),
+            name: payload
+                .get("name")
                 .and_then(Value::as_str)
-                .unwrap_or("");
-            let content = json!([{
-                "type": "tool_use",
-                "id": call_id(v).unwrap_or(""),
-                "name": name,
-                "input": tool_input(v),
-            }]);
-            assistant_rec(id, ts, "assistant", content)
-        }
-        K::ToolResult => {
-            // output 真机恒数组 → flatten（守丢文本坑）。tool_result.content = 文本串。
-            let out = flatten_text(payload_field(v, "output").unwrap_or(&Value::Null));
-            let content = json!([{
-                "type": "tool_result",
-                "tool_use_id": call_id(v).unwrap_or(""),
-                "content": out,
-            }]);
-            user_rec(id, ts, content, UserText::of(Speaker::ToolResult))
-        }
-        // 事件/元记录 → Unrecognized（保 raw；turn-end/用量 per-kind 从 raw 读）。
-        _ => unrecognized(v, ts, raw),
-    }
+                .unwrap_or("")
+                .to_string(),
+            input: tool_input(v),
+        }]),
+        // output 真机恒数组 ⇒ 拍平（守丢文本坑）。
+        K::ToolResult => said(
+            UserText::of(Speaker::ToolResult),
+            vec![Block::ToolResult {
+                of: call_id(v).unwrap_or("").to_string(),
+                content: text_blocks(flatten_text(payload.get("output").unwrap_or(&Value::Null))),
+                is_error: false,
+            }],
+        ),
+        _ => return None,
+    };
+    let at = super::parse::envelope_ts(v).map(String::from);
+    Some(Record {
+        agent: AGENT.to_string(),
+        id: payload
+            .get("id")
+            .and_then(Value::as_str)
+            .filter(|id| !id.is_empty())
+            .map_or_else(|| crate::agents::line_id(start), str::to_string),
+        time_text: at.as_deref().and_then(crate::common::time::iso_hm_here),
+        at,
+        body,
+    })
 }
 
-/// `payload.id`（记录 uuid；user/developer/tool_output 常无 → ""）。
-fn payload_id(v: &Value) -> String {
-    unwrap_envelope(v)
-        .and_then(|(_, p)| p.get("id").and_then(Value::as_str))
-        .unwrap_or("")
-        .to_string()
-}
-
-/// `payload.<field>`（信封解包后取字段）。
-fn payload_field<'a>(v: &'a Value, field: &str) -> Option<&'a Value> {
-    unwrap_envelope(v)?.1.get(field)
-}
-
-/// 文本 → content 块 Value：空→`[]`（免空气泡）、非空→`[{"type":"text","text":t}]`。
-fn text_blocks(t: &str) -> Value {
-    if t.is_empty() {
-        json!([])
+/// 文本 ⇒ 内容块：空 ⇒ 没有块（免空气泡）。
+fn text_blocks(text: String) -> Vec<Block> {
+    if text.is_empty() {
+        Vec::new()
     } else {
-        json!([{"type": "text", "text": t}])
+        vec![Block::Text { text }]
     }
 }
 
-fn api_msg(role: &str, content: Value) -> ApiMessage {
-    ApiMessage {
-        role: role.to_string(),
-        content,
-        model: None,
-        usage: None,
-        stop_reason: None,
-    }
-}
-
-fn assistant_rec(uuid: String, ts: Option<String>, role: &str, content: Value) -> JsonlRecord {
-    JsonlRecord::Assistant {
-        uuid,
-        timestamp: ts.unwrap_or_default(),
-        time_text: None,
-        message: api_msg(role, content),
-        session_id: None,
-        is_sidechain: false,
-        request_id: None,
-        parent_uuid: None,
-        forked_from: None,
-        is_api_error_message: false,
-        error: None,
-        api_error_status: None,
-        // Codex 的工具名今天没人考据过⇒ 不带卡型；它不声明子运行 ⇒ 不带派出标签。
-        tool_cards: Default::default(),
-        child_runs: Default::default(),
-        tool_steps: Default::default(),
-        api_reason: None,
-    }
-}
-
-/// 用户角色的一条：谁说的由本家判好（[`message_said`] · [`agent_mail_said`]），不走 Claude 那一份。
-fn user_rec(uuid: String, ts: Option<String>, content: Value, said: UserText) -> JsonlRecord {
-    JsonlRecord::User {
-        uuid,
-        timestamp: ts.unwrap_or_default(),
-        time_text: None,
-        message: api_msg("user", content),
+fn said(who: UserText, blocks: Vec<Block>) -> Body {
+    Body::Said {
+        who,
+        blocks,
+        results: Default::default(),
         cwd: None,
-        session_id: None,
-        is_sidechain: false,
-        is_meta: false,
-        is_compact_summary: false,
-        origin: None,
-        parent_uuid: None,
-        forked_from: None,
-        user_text: said,
-        tool_use_result: None,
-        tool_results: Default::default(),
     }
 }
 
-/// 非消息记录 → `Unrecognized`（保 raw；`original_type`=`顶层/payload.type` 便于诊断/per-kind 读）。
-fn unrecognized(v: &Value, ts: Option<String>, raw: &str) -> JsonlRecord {
-    let top = v.get("type").and_then(Value::as_str).unwrap_or("");
-    let original = unwrap_envelope(v)
-        .and_then(|(_, p)| payload_type(p))
-        .map(|pt| format!("{top}/{pt}"))
-        .unwrap_or_else(|| top.to_string());
-    JsonlRecord::Unrecognized {
-        uuid: unwrap_envelope(v)
-            .and_then(|(_, p)| p.get("id").and_then(Value::as_str))
-            .map(String::from),
-        parent_uuid: None,
-        timestamp: ts,
-        time_text: None,
-        original_type: Some(original),
-        raw: raw.to_string(),
-        reason: "codex-event".to_string(),
+/// Codex 的工具名今天没人考据过 ⇒ 不带卡型；它不声明子运行 ⇒ 不带派出标签。
+fn reply(blocks: Vec<Block>) -> Body {
+    Body::Reply {
+        blocks,
+        model: None,
+        auto_reply: false,
+        ends_turn: false,
+        cards: Default::default(),
+        steps: Default::default(),
+        runs: Default::default(),
+        error: None,
     }
 }
 

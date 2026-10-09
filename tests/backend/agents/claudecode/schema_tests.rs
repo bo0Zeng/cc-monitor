@@ -8,7 +8,7 @@ fn parse(line: &str) -> JsonlRecord {
 
 /// Batch10-F31 (issue #36)：queue-operation 解析（真实样本行）+ displayable。
 #[test]
-fn queue_operation_parses_and_is_displayable() {
+fn queue_operation_parses() {
     let r = parse(
         r#"{"type": "queue-operation", "operation": "enqueue", "timestamp": "2026-07-05T06:12:29.248Z", "sessionId": "0cbbdbae", "content": "这是登录门户"}"#,
     );
@@ -26,7 +26,6 @@ fn queue_operation_parses_and_is_displayable() {
         }
         other => panic!("expected QueueOperation, got {other:?}"),
     }
-    assert!(r.is_displayable(), "要 emit 给前端做折叠豁免");
     // dequeue（无 content）也能安全解析
     let r = parse(
         r#"{"type": "queue-operation", "operation": "dequeue", "timestamp": "t", "sessionId": "s"}"#,
@@ -79,7 +78,6 @@ fn user_minimal_golden_sample_parses() {
             "message":{"role":"user","content":"hi"}
         }"#;
     let r = parse(line);
-    assert!(r.is_displayable());
     match r {
         JsonlRecord::User {
             uuid,
@@ -112,7 +110,6 @@ fn assistant_api_error_message_fields_parse() {
             "message":{"role":"assistant","model":"<synthetic>","content":[{"type":"text","text":"Please run /login · API Error: 403 Request not allowed"}]}
         }"#;
     let r = parse(line);
-    assert!(r.is_displayable());
     match r {
         JsonlRecord::Assistant {
             is_api_error_message,
@@ -179,7 +176,6 @@ fn system_api_error_retry_fields_parse() {
             "error":{"formatted":"529 Overloaded","status":529}
         }"#;
     let r = parse(line);
-    assert!(r.is_displayable());
     match r {
         JsonlRecord::System {
             subtype,
@@ -201,7 +197,7 @@ fn system_api_error_retry_fields_parse() {
 }
 
 #[test]
-fn user_is_meta_flag_parses_and_stays_displayable() {
+fn user_is_meta_flag_parses() {
     // Claude Code 注入的 meta user 消息（skill/command 展开 prompt、system-reminder、
     // caveat 等）带 isMeta:true —— 不是用户真输入。必须解析出 is_meta，前端据此跳过
     // 建卡（否则 /code-review 等 skill 的整段 prompt 会当用户气泡渲染）。仍 displayable：
@@ -215,7 +211,6 @@ fn user_is_meta_flag_parses_and_stays_displayable() {
             "message":{"role":"user","content":[{"type":"text","text":"You are reviewing for recall..."}]}
         }"#;
     let r = parse(line);
-    assert!(r.is_displayable(), "meta user 仍须 emit 保 parent 链完整");
     match r {
         JsonlRecord::User {
             is_meta,
@@ -238,7 +233,6 @@ fn custom_title_v21_schema_hits_custom_title_variant() {
     // 不 emit → 前端拿不到标题（Tab 永远只显示项目名）。
     let line = r#"{"type":"custom-title","customTitle":"我的会话","sessionId":"s-42"}"#;
     let r = parse(line);
-    assert!(r.is_displayable());
     match r {
         JsonlRecord::CustomTitle {
             custom_title,
@@ -257,11 +251,10 @@ fn ai_title_legacy_schema_still_works() {
     let line = r#"{"type":"ai-title","aiTitle":"old","sessionId":"s-1"}"#;
     let r = parse(line);
     assert!(matches!(r, JsonlRecord::AiTitle { .. }));
-    assert!(r.is_displayable());
 }
 
 #[test]
-fn attachment_preserves_uuid_chain_and_is_displayable() {
+fn attachment_preserves_uuid_chain() {
     // issue #8: attachment 不渲染但**必须 emit**——前端 BranchFolder 需要
     // attachment 的 uuid+parentUuid 才能完整跟 parent 链。漏 emit → ESC 回退
     // 误判 → 整段消息被错误折叠到"已被回退"。
@@ -273,7 +266,6 @@ fn attachment_preserves_uuid_chain_and_is_displayable() {
         }"#;
     let r = parse(line);
     // 先校验 displayable（不 move r），再 destructure 取字段
-    assert!(r.is_displayable(), "attachment 必须 emit 保 parent 链完整");
     match r {
         JsonlRecord::Attachment {
             uuid, parent_uuid, ..
@@ -286,13 +278,12 @@ fn attachment_preserves_uuid_chain_and_is_displayable() {
 }
 
 #[test]
-fn unknown_type_does_not_panic_and_not_displayable() {
+fn unknown_type_does_not_panic() {
     // 注意：`parse` = 裸 `serde_json::from_str`，测的是 **serde 层**（Unknown 是
     // serde 落点，此层它确实非 displayable）。**生产走 `parse::parse_line`**，
     // 那里 Unknown 会被抢救成 `Unrecognized`（F63）—— 见 parse.rs 的护栏测试。
     let r = parse(r#"{"type":"future-unknown-type","x":1}"#);
     assert!(matches!(r, JsonlRecord::Unknown));
-    assert!(!r.is_displayable());
 }
 
 /// F63 wire 契约：`Unrecognized` 序列化出的 `type` 必须是 `"cc-monitor-unrecognized"`，
@@ -356,11 +347,11 @@ fn system_record_keeps_uuid_for_branch_detection() {
 }
 
 /// 「19% 的记录是纯元数据，字节只占 0.7% ⇒ **在解析阶段就滤掉**」「该在解析阶段滤掉，不进管线」。
-/// 判据（两向相等）：每一类记录（按变体 ＋ 链身份分）⇒ 进不进前端，与手写的期望表逐格相等。
+/// 判据（两向相等）：每一类记录（按变体 ＋ 链身份分）⇒ 出不出通用记录（[`record_of`](super::super::record_of::record_of)），与手写的期望表逐格相等。
 /// 期望表的异源：仍进前端的每一格都写得出前端读者（下面每行的注）；没读者的一格也不许进。
 /// `class_of` 是穷尽 `match`、不带 `_` ⇒ 以后加变体编译期就得在这里表态。
 #[test]
-fn displayable_classes_equal_the_table_with_a_reader_for_each() {
+fn record_classes_equal_the_table_with_a_reader_for_each() {
     fn class_of(r: &JsonlRecord) -> &'static str {
         match r {
             JsonlRecord::User { .. } => "user",
@@ -402,21 +393,22 @@ fn displayable_classes_equal_the_table_with_a_reader_for_each() {
     let mut got = std::collections::BTreeMap::new();
     for l in lines {
         let r = super::super::parse::parse_line(l).unwrap().unwrap();
-        got.insert(class_of(&r), r.is_displayable());
+        let c = class_of(&r);
+        got.insert(c, super::super::record_of::record_of(r, "@0").is_some());
     }
     let want: std::collections::BTreeMap<&str, bool> = [
         ("user", true),                   // 建卡
         ("assistant", true),              // 建卡
         ("ai-title", true),               // 标题（`routeMetaAndBranch` → onTitleUpdate）
         ("custom-title", true),           // 同上
-        ("system", true),                 // api_error 细条卡 ＋ 进链
-        ("attachment", true),             // 进链（issue #8）
-        ("queue-operation", true),        // enqueue 喂折叠豁免 · remove 建卡（P0c）
-        ("permission-mode", false),       // 无读者
-        ("last-prompt", false),           // 无读者
+        ("system", false), // 只有 api_error 那一种出 `retry`（这一行不是）；进链由链事实管
+        ("attachment", false), // 只进链（链事实，`chain.rs`），不进界面
+        ("queue-operation", false), // enqueue 只配打字时刻；remove 出 `queued`（`record_of_tests`）
+        ("permission-mode", false), // 无读者
+        ("last-prompt", false), // 无读者
         ("file-history-snapshot", false), // 无读者
-        ("unrecognized+identity", true),  // 进链（F63 保险那一半）
-        ("unrecognized-bare", false),     // 无读者、不进链
+        ("unrecognized+identity", false), // 只进链（F63 保险那一半在链事实里）
+        ("unrecognized-bare", false), // 无读者、不进链
     ]
     .into_iter()
     .collect();

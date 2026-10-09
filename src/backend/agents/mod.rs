@@ -361,8 +361,9 @@ pub(crate) fn is_agent_process(command: &str) -> bool {
 /// 一家的记录解释面：函数指针（同 [`Adapter::home`]，不立 trait）。
 #[derive(Clone, Copy)]
 pub(crate) struct RecordFace {
-    /// 一行原文 ⇒ 渲染模型那一条（空行 / 纯 BOM ⇒ `Ok(None)`；连 JSON 都不是 ⇒ `Err`，调用方照占号、不出成品）。
-    pub(crate) parse: fn(&str) -> Result<Option<ParsedLine>, String>,
+    /// 一行原文（与它在文件里的起点字节偏移，没有自己身份的记录拿它合成 id，[`line_id`]）⇒ 通用记录那一形
+    /// （空行 / 纯 BOM ⇒ `Ok(None)`；连 JSON 都不是 ⇒ `Err`，调用方照占号、不出成品）。
+    pub(crate) parse: fn(&str, u64) -> Result<Option<Translated>, String>,
     /// 会话文件 ⇒ 它的 sid（这一家的文件命名）。
     pub(crate) sid: fn(&Path) -> Option<String>,
     /// 这个路径是不是这一家的一份会话记录（按文件形态判：后缀 / 命名）。
@@ -991,15 +992,29 @@ pub(crate) fn is_session_record(p: &Path) -> bool {
         .is_some_and(|d| (d.is_record)(p))
 }
 
-/// 一行原文在渲染模型里的样子 —— 适配层给，通用层只搬（`message` 的字段通用层一个都不读）。
+/// 一行原文翻成的那一形 —— 适配层给，通用层只搬（[`record::Record`] 的格通用层一个都不读，只按 [`QueueMark`] 配打字时刻）。
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct ParsedLine {
-    /// 渲染模型那一条（界面收到的就是它）。
-    pub(crate) message: serde_json::Value,
-    /// 进不进界面：`false` ＝ 照占号、不出成品（没有读者的元数据记录）。
-    pub(crate) displayable: bool,
+pub(crate) struct Translated {
+    /// 这一行在界面里是什么；缺 ＝ 不进界面（照占号、不出成品）。
+    pub(crate) record: Option<record::Record>,
     /// 这条记录自己的 `cwd`（带它的那一类才有）。
     pub(crate) cwd: Option<String>,
+    /// 排队那一对：打字那一刻（不出记录）· 被插进那一轮的那一条（它的 `at` 要换成打字时刻）。
+    pub(crate) queue: Option<QueueMark>,
+}
+
+/// 排队消息的两头。配对按 `text`（人打的那句原文）：同一句重打 ⇒ 取最近一次。
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum QueueMark {
+    /// 人在一轮跑着时打了这一句（`at` ＝ 打字时刻）。
+    Typed { text: String, at: String },
+    /// 这一条 `queued` 记录插的是这一句。
+    Taken { text: String },
+}
+
+/// 一行在文件里的起点字节偏移 ⇒ 没有自己身份的记录用的那个 id（会话内唯一、各条读路给出的都一样）。
+pub(crate) fn line_id(start: u64) -> String {
+    format!("@{start}")
 }
 
 /// 注册表里 `kind` 那一家。认不出 ⇒ `None`。

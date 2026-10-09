@@ -1405,13 +1405,13 @@ fn the_snapshot_rows_of_the_golden_decode_through_row_of() {
         rows.iter().map(|r| r.end).collect::<Vec<_>>(),
         vec![Some(54), Some(152), Some(273)]
     );
-    assert!(rows[0].message.is_none(), "不进界面的元数据记录不该带成品");
+    assert!(rows[0].record.is_none(), "不进界面的元数据记录不该带成品");
     assert_eq!(rows[1].cwd.as_deref(), Some("/w"));
-    let m: Value = serde_json::from_str(rows[1].message.as_ref().unwrap().0.get()).unwrap();
+    let m: Value = serde_json::from_str(rows[1].record.as_ref().unwrap().0.get()).unwrap();
     assert_eq!(
-        m, golden["history-read"]["rows"][1]["message"],
+        m, golden["history-read"]["rows"][1]["record"],
         "成品没原样转交"
     );
     // 反向：多一格类型不对的 ⇒ 认不出（不猜）。
-    assert!(row_of(&serde_json::json!({"end": 1, "hash": 1, "message": "x"})).is_none());
+    assert!(row_of(&serde_json::json!({"end": 1, "hash": 1, "record": "x"})).is_none());
 }

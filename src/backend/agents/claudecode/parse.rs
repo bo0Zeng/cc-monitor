@@ -67,16 +67,38 @@ pub fn parse_line(raw: &str) -> Result<Option<JsonlRecord>, serde_json::Error> {
     }
 }
 
-/// [`parse_line`] 交给通用层的那一形（注册表 `RecordFace.parse`）：渲染模型那一条 ＋ 进不进界面 ＋ 它自己的 `cwd`。
-pub(crate) fn parsed_line(raw: &str) -> Result<Option<crate::agents::ParsedLine>, String> {
+/// [`parse_line`] 交给通用层的那一形（注册表 `RecordFace.parse`）：通用记录（[`super::record_of`]）＋ 它自己的 `cwd`
+/// ＋ 排队那一对（`enqueue` ＝ 打字那一刻 · 出了 `queued` 记录的那条 `remove` ＝ 插进去的那一句；按原句配）。
+/// 没有自己身份的记录（标题 · 排队）`id` 按起点偏移合成（[`crate::agents::line_id`]）。
+pub(crate) fn translated(
+    raw: &str,
+    start: u64,
+) -> Result<Option<crate::agents::Translated>, String> {
+    use crate::agents::QueueMark;
     let Some(rec) = parse_line(raw).map_err(|e| e.to_string())? else {
         return Ok(None);
     };
-    Ok(Some(crate::agents::ParsedLine {
-        displayable: rec.is_displayable(),
-        cwd: rec.cwd().map(str::to_string),
-        message: serde_json::to_value(&rec).map_err(|e| e.to_string())?,
-    }))
+    let cwd = rec.cwd().map(str::to_string);
+    let queue = match &rec {
+        JsonlRecord::QueueOperation {
+            operation,
+            content: Some(text),
+            timestamp,
+            ..
+        } => match (operation.as_deref(), timestamp) {
+            (Some("enqueue"), Some(at)) => Some(QueueMark::Typed {
+                text: text.clone(),
+                at: at.clone(),
+            }),
+            (Some("remove"), _) => Some(QueueMark::Taken { text: text.clone() }),
+            _ => None,
+        },
+        _ => None,
+    };
+    let record = super::record_of::record_of(rec, &crate::agents::line_id(start));
+    // 「插进去的那一句」只对出了记录的那条成立（别人说的那几类排队不建卡、不配时刻）。
+    let queue = queue.filter(|q| matches!(q, QueueMark::Typed { .. }) || record.is_some());
+    Ok(Some(crate::agents::Translated { record, cwd, queue }))
 }
 
 /// 会话的项目目录 ＝ 记录开头第一条带 `cwd` 的那一条的 `cwd`：会话起在哪。之后 shell 进了子目录，后面的记录写的就是子目录。

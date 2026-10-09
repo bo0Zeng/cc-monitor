@@ -5,57 +5,46 @@
     "lines": [
       {
         "cwd": "/w",
-        "message": {
+        "path": "<home>/projects/-golden/r.jsonl",
+        "record": {
+          "agent": "claude",
+          "at": "t1",
+          "blocks": [
+            {
+              "text": "q",
+              "type": "text"
+            }
+          ],
           "cwd": "/w",
-          "forkedFrom": null,
-          "message": {
-            "content": "q",
-            "model": null,
-            "role": "user",
-            "usage": null
-          },
-          "parentUuid": null,
-          "sessionId": null,
-          "timestamp": "t1",
-          "type": "user",
-          "userText": {
+          "id": "r-1",
+          "t": "said",
+          "who": {
             "speaker": {
               "kind": "human"
             },
             "text": "q"
-          },
-          "uuid": "r-1"
+          }
         },
-        "path": "<home>/projects/-golden/r.jsonl",
         "seq": 1,
         "session_id": "r"
       },
       {
         "cwd": null,
-        "message": {
-          "apiErrorStatus": null,
-          "error": null,
-          "forkedFrom": null,
-          "isApiErrorMessage": false,
-          "message": {
-            "content": [
-              {
-                "text": "a",
-                "type": "text"
-              }
-            ],
-            "model": null,
-            "role": "assistant",
-            "usage": null
-          },
-          "parentUuid": null,
-          "requestId": null,
-          "sessionId": null,
-          "timestamp": "t2",
-          "type": "assistant",
-          "uuid": "r-2"
-        },
         "path": "<home>/projects/-golden/r.jsonl",
+        "record": {
+          "agent": "claude",
+          "at": "t2",
+          "autoReply": false,
+          "blocks": [
+            {
+              "text": "a",
+              "type": "text"
+            }
+          ],
+          "endsTurn": false,
+          "id": "r-2",
+          "t": "reply"
+        },
         "seq": 2,
         "session_id": "r"
       }
@@ -67,57 +56,46 @@
     "lines": [
       {
         "cwd": "/w",
-        "message": {
+        "path": "<home>/projects/-golden/r.jsonl",
+        "record": {
+          "agent": "claude",
+          "at": "t1",
+          "blocks": [
+            {
+              "text": "q",
+              "type": "text"
+            }
+          ],
           "cwd": "/w",
-          "forkedFrom": null,
-          "message": {
-            "content": "q",
-            "model": null,
-            "role": "user",
-            "usage": null
-          },
-          "parentUuid": null,
-          "sessionId": null,
-          "timestamp": "t1",
-          "type": "user",
-          "userText": {
+          "id": "r-1",
+          "t": "said",
+          "who": {
             "speaker": {
               "kind": "human"
             },
             "text": "q"
-          },
-          "uuid": "r-1"
+          }
         },
-        "path": "<home>/projects/-golden/r.jsonl",
         "seq": 1,
         "session_id": "r"
       },
       {
         "cwd": null,
-        "message": {
-          "apiErrorStatus": null,
-          "error": null,
-          "forkedFrom": null,
-          "isApiErrorMessage": false,
-          "message": {
-            "content": [
-              {
-                "text": "a",
-                "type": "text"
-              }
-            ],
-            "model": null,
-            "role": "assistant",
-            "usage": null
-          },
-          "parentUuid": null,
-          "requestId": null,
-          "sessionId": null,
-          "timestamp": "t2",
-          "type": "assistant",
-          "uuid": "r-2"
-        },
         "path": "<home>/projects/-golden/r.jsonl",
+        "record": {
+          "agent": "claude",
+          "at": "t2",
+          "autoReply": false,
+          "blocks": [
+            {
+              "text": "a",
+              "type": "text"
+            }
+          ],
+          "endsTurn": false,
+          "id": "r-2",
+          "t": "reply"
+        },
         "seq": 2,
         "session_id": "r"
       }
@@ -137,53 +115,42 @@
         "cwd": "/w",
         "end": 152,
         "hash": 12521928789128290262,
-        "message": {
+        "record": {
+          "agent": "claude",
+          "at": "t1",
+          "blocks": [
+            {
+              "text": "q",
+              "type": "text"
+            }
+          ],
           "cwd": "/w",
-          "forkedFrom": null,
-          "message": {
-            "content": "q",
-            "model": null,
-            "role": "user",
-            "usage": null
-          },
-          "parentUuid": null,
-          "sessionId": null,
-          "timestamp": "t1",
-          "type": "user",
-          "userText": {
+          "id": "r-1",
+          "t": "said",
+          "who": {
             "speaker": {
               "kind": "human"
             },
             "text": "q"
-          },
-          "uuid": "r-1"
+          }
         }
       },
       {
         "end": 273,
         "hash": 11353788305326452798,
-        "message": {
-          "apiErrorStatus": null,
-          "error": null,
-          "forkedFrom": null,
-          "isApiErrorMessage": false,
-          "message": {
-            "content": [
-              {
-                "text": "a",
-                "type": "text"
-              }
-            ],
-            "model": null,
-            "role": "assistant",
-            "usage": null
-          },
-          "parentUuid": null,
-          "requestId": null,
-          "sessionId": null,
-          "timestamp": "t2",
-          "type": "assistant",
-          "uuid": "r-2"
+        "record": {
+          "agent": "claude",
+          "at": "t2",
+          "autoReply": false,
+          "blocks": [
+            {
+              "text": "a",
+              "type": "text"
+            }
+          ],
+          "endsTurn": false,
+          "id": "r-2",
+          "t": "reply"
         }
       }
     ]
@@ -194,51 +161,39 @@
     "path": "<home>/projects/-golden/r/subagents/agent-a1.jsonl",
     "rows": [
       {
-        "message": {
-          "cwd": null,
-          "forkedFrom": null,
-          "message": {
-            "content": "go",
-            "model": null,
-            "role": "user",
-            "usage": null
-          },
-          "parentUuid": null,
-          "sessionId": null,
-          "timestamp": "t3",
-          "type": "user",
-          "userText": {
+        "record": {
+          "agent": "claude",
+          "at": "t3",
+          "blocks": [
+            {
+              "text": "go",
+              "type": "text"
+            }
+          ],
+          "id": "s-1",
+          "t": "said",
+          "who": {
             "speaker": {
               "kind": "agentTask"
             },
             "text": "go"
-          },
-          "uuid": "s-1"
+          }
         }
       },
       {
-        "message": {
-          "apiErrorStatus": null,
-          "error": null,
-          "forkedFrom": null,
-          "isApiErrorMessage": false,
-          "message": {
-            "content": [
-              {
-                "text": "ok",
-                "type": "text"
-              }
-            ],
-            "model": null,
-            "role": "assistant",
-            "usage": null
-          },
-          "parentUuid": null,
-          "requestId": null,
-          "sessionId": null,
-          "timestamp": "t4",
-          "type": "assistant",
-          "uuid": "s-2"
+        "record": {
+          "agent": "claude",
+          "at": "t4",
+          "autoReply": false,
+          "blocks": [
+            {
+              "text": "ok",
+              "type": "text"
+            }
+          ],
+          "endsTurn": false,
+          "id": "s-2",
+          "t": "reply"
         },
         "rid": "m-s2"
       }

@@ -259,7 +259,7 @@ fn frame(line: &str) -> LocalItem {
 
 #[test]
 fn the_local_dispatch_core_matches_the_hand_written_table() {
-    const LINE_A: &str = r#"{"kind":"line","session_id":"a","path":"/p/a.jsonl","seq":4,"message":{"x":1},"byte_offset":50}"#;
+    const LINE_A: &str = r#"{"kind":"line","session_id":"a","path":"/p/a.jsonl","seq":4,"record":{"x":1},"byte_offset":50}"#;
     const LINE_B: &str =
         r#"{"kind":"line","session_id":"b","path":"/p/b.jsonl","seq":0,"byte_offset":10}"#;
     const ADD_A: &str = r#"{"kind":"session_added","sid":"a","session_kind":"interactive","path":"/p/a.jsonl","lines":4}"#;
@@ -273,7 +273,7 @@ fn the_local_dispatch_core_matches_the_hand_written_table() {
         session_id: "a".into(),
         path: "/p/a.jsonl".into(),
         seq: 4,
-        message: crate::ui_contract::RecordBody::from_json(r#"{"x":1}"#.into()),
+        record: crate::ui_contract::RecordBody::from_json(r#"{"x":1}"#.into()),
         cwd: None,
         end: Some(50),
         rid: None,
@@ -282,7 +282,7 @@ fn the_local_dispatch_core_matches_the_hand_written_table() {
         session_id: "b".into(),
         path: "/p/b.jsonl".into(),
         seq: 0,
-        message: None,
+        record: None,
         cwd: None,
         end: Some(10),
         rid: None,
@@ -662,9 +662,9 @@ fn a_real_backend_feeds_local_lines_through_the_production_read_loop() {
             Some(LocalItem::Frame(InboundFrame::Line {
                 session_id,
                 seq,
-                message,
+                record,
                 ..
-            })) if session_id == sid => break (seq, message),
+            })) if session_id == sid => break (seq, record),
             Some(_) => continue,
             None => {
                 nudges += 1;
