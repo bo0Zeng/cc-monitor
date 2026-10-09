@@ -4475,7 +4475,6 @@ fn every_prose_tombstone_mark_is_registered() {
         // 新行：hello 的「换不换」进了本机常驻后端，原判定函数那一处（`hello_decision`）挂墓碑。
         ("src/frontend/shell/src/remote_resident.rs", 1),
         // 新行四条：界面按工具名 / 命令名判的四个谓词删了（卡型随记录成品、tmux 那一格随 `tmux-list` 带来），原处各一块。
-        ("src/frontend/ui/cards/diff.ts", 1),
         ("src/frontend/ui/cards/interactive.ts", 1),
         // `src/frontend/ui/cards/subagent.ts` 那一行摘了：那张卡整份重写成按运行读的通用卡，点旧判定名（按工具名认 agent 工具）的散文随之没了。
         // `src/frontend/ui/tmux-sessions.ts` 那一行摘了：那份改名 `sessions-where.ts`，点旧过滤名的散文随之没了。
@@ -4528,7 +4527,6 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/backend/observe/search_query.rs", 1), // 合并那一份（`K-R100` 病史）
         // 本机搜索改问本机后端（monitor 内存索引删了）⇒ 界面那两份点旧命令 / 旧函数名的散文各挂墓碑；
         //   冷读本机远端合成一条 ⇒ 漂移账登记表那一行旁注挂一块。
-        ("src/frontend/ui/views/history-search.ts", 2), // +1：前端合并那一份（`mergeSearchResults`）删了，头注挂墓碑
         ("tests/frontend/shell/drift_ledger_tests.rs", 2), // 1 → 2：`parse_for_kind` 那一句挂一块（它最后的活提名随 monitor 适配表的判据删了）
         // `src/frontend/shell/src/remote_history.rs` 出表：那份文件随记录解释进后端删了（或墓碑随被守的东西整轴退役）
         (
@@ -4711,10 +4709,7 @@ fn every_prose_tombstone_mark_is_registered() {
         // `main.rs` 里等停机信号的函数下沉 `platform/signal.rs::shutdown_listener`，原处留一块。
         ("src/backend/main.rs", 1),
         ("src/frontend/filewin/src/select.rs", 1),
-        // 快捷键预留位 `app.search-history` 删了（历史全文搜索从没独立快捷键、预留位不留）：
-        //   清单那一处 ＋ 清单头注一处 ＋ 编辑器那枚「未上线」标签的遗址一处，逐处挂了墓碑。
-        ("src/frontend/ui/keybindings/actions.ts", 1),
-        ("src/frontend/ui/keybindings/editor.ts", 1),
+        // 快捷键预留位 `app.search-history` 删了：判据里点它旧名的那一处挂墓碑。
         ("tests/frontend/ui/keybindings/actions.vitest.ts", 1),
         // 账号清单与信任预检改走通道（后端出成品）：monitor 那几件函数与它们的判据删了，
         //   逐处挂了墓碑（模块头注 · 退役那几节的旁注 · 后端出成品那一臂点名它替掉了谁）。

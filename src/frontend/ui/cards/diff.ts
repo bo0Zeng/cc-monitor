@@ -271,9 +271,9 @@ export function normalizeMultiEditInput(input: unknown): OldNew[] | null {
 // === DOM 层：仅 createElement + textContent（绕开 DOMPurify） ===
 //
 // 这一段是唯一碰 DOM 的代码。纯函数层（上方）import 不到这里，故 diff.test.ts
-// 能在无 DOM 的 node 下独立单测纯逻辑。buildDiffBody 用 document，只能手测（step 6）。
+// 能在无 DOM 的 node 下独立单测纯逻辑。buildDiffBody 用 document，只能手测。
 
-// `isDiffTool`〔散文墓碑〕删：哪些工具走 diff 渲染由那台后端判（卡型 `diff`，随记录成品带来；NotebookEdit 照旧不在内）。
+// 哪些工具走 diff 渲染由那台后端判（卡型 `diff`，随记录成品带来；NotebookEdit 不在内）。
 
 /**
  * 纯（无 DOM）：按工具名把 `unknown` input 归一化成 diff 段（old/new 对数组）。

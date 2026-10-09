@@ -1,13 +1,6 @@
 /**
- * **大纲的数据源：问后端要，不在前端攒。**
- *
- * # 它顶掉了什么
- *
- * 实时 tab 从前在 `onLine` 的旁路里一条一条攒「我说过的每一句」（`Tab.userInputs`，
- * 喂它的是 `toUserInputEntry`）—— **到达序不是对话序**（重放是尾块先到），monitor 起得晚
- * 清单就不全，每个 tab 各攒一份。历史查看器那边再拿同一份 TS 判定扫全量 payloads。
- * 两样都删了：「什么算一条用户输入」只住后端（`observe/user_inputs.rs`），
- * 两个宿主都经同一处来要（`session-reads.ts::listUserInputs` 经通道直接说帧命令 `history-user-inputs`，`IPC-PROTOCOL.md §10.4`）。
+ * 大纲的数据源：问后端要，不在前端攒。「什么算一条用户输入」只住后端（`observe/user_inputs.rs`），
+ * 实时 tab 与历史查看器都经同一处要（`session-reads.ts::listUserInputs`，帧命令 `history-user-inputs`，`IPC-PROTOCOL.md §10.4`）。
  *
  * # 形状
  *
@@ -58,8 +51,7 @@ export interface OutlineSeed {
 }
 
 /**
- * 〔那条欠账〕**首屏的「索引」与「大纲清单」合成一趟读**：从一次**从 0 起**的骨架索引里
- * 把大纲搬出来。
+  * 首屏的「索引」与「大纲清单」合成一趟读：从一次从 0 起的骨架索引里把大纲搬出来。
  *
  * 推断是**单向可靠**的（理由逐字在后端 `IndexRow::x` 的头注）：
  * - 有**至少一个** `x` ⇒ 对面是会出它的后端 ⇒ 每一条用户输入都带着（同一个判定逐行跑）⇒ 这就是全量清单；

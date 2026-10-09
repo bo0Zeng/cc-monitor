@@ -10,7 +10,7 @@
  * - `default`：默认 chord（规范化串，详 `registry.ts::normalizeChord`）；`null` = 默认未绑
  * - `available`：false 表示功能未上线（editor.ts 灰显那一行），用户既不能
  *   触发它（因为代码没 bind）也不能改它的绑定。今天清单里没有未上线的：
- *   用不上的预留位不留（最后一条 `app.search-history`〔散文墓碑〕删了），真要做时再加
+ *   用不上的预留位不留，真要做时再加
  * - `category`：UI 表格分组用，纯展示
  *
  * ## chord 字符串规范

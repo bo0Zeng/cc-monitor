@@ -1,25 +1,13 @@
 /**
- * 历史全文搜索：**本机与各台远端同一条路** —— 逐台经通道问那台后端的 `history-search`，合成一份结果。
+ * 历史全文搜索：本机与各台远端同一条路 —— 逐台经通道问那台后端的 `history-search`，合成一份结果。
+ * 本机也问本机后端（没有进程内索引，每次现扫）。
  *
- * # 从哪来
- *
- * 远端 fan-out ＋ 补 `origin` ＋ 合并从 Rust `search.rs` 搬到这里（每一件只有这一个家）。
- * **本机那一半也改问本机后端**（`chan.call(LOCAL_ORIGIN, "history-search", …)`）：
- * monitor 进程内那份内存索引（`search.rs::SearchIndex`〔散文墓碑〕与它的三条 Tauri 命令：搜索 · 查索引状态 · 重建索引）删了。要求：「历史 / 账号 / tmux / MCP 四个面，
- * 本机与远端走同一条代码路径」· 「不存在本机一条、远端一条的同义双份」· 「搜索收口到 search-core ＋ 后端」。
- * ⚠ 偏离行（「进程内索引 ⇒ 不迁」），按目标形办。
- * 代价如实写：本机从此没有索引、每次现扫（读数在）；「索引中」那一态与它的 1 秒重跑一起没了。
- *
- * # 行为
- *
- * - 逐台并发。**本机那一台失败 ⇒ 整次失败**（与迁前「本机索引那一问抛了 ⇒ 搜索失败」同形：本机是必答的那一台）；
- *   远端逐台失败只 `console.warn` 并跳过（不拖垮其余台）。
+ * - 逐台并发。本机那一台失败 ⇒ 整次失败（本机是必答的那一台）；远端逐台失败只 `console.warn` 并跳过。
  * - 选项只下发后端认的：`include_tools` 只在真时给、`scope` 只给 `user` / `assistant`、`after_ms` 只给正数；`limit` 原样。
- * - 合并：各台的会话行一次交给**本机**后端 `history-search-merge`
- *   （`updatedAt` 倒序、稳定 —— `search_rules::sort_by_recency`；命中数相加；任一会话 `hitsTruncated` ⇒ 整体 `truncated`，`K-R100`）。
- *   扇出照旧在这里（各台常驻后端的内存索引保热）；前端那份 `mergeSearchResults`〔散文墓碑〕删了 —— 规则只住 Rust。
- * - 本机的行不带 `origin`（界面按「没有 origin ＝ 本机」画，与迁前逐字相同）；远端的行补上那台的名字。
- * - 「哪几台远端」问的是 `list_remote_mcp_origins`（名字里的 `mcp` 是它第一个用户留下的，不是限定）。
+ * - 合并：各台的会话行一次交给本机后端 `history-search-merge`（`updatedAt` 倒序、稳定；命中数相加；
+ *   任一会话 `hitsTruncated` ⇒ 整体 `truncated`）—— 规则只住 Rust，扇出在这里（各台常驻后端的内存索引保热）。
+ * - 本机的行不带 `origin`（界面按「没有 origin ＝ 本机」画）；远端的行补上那台的名字。
+ * - 「哪几台远端」问 `list_remote_mcp_origins`（名字里的 `mcp` 是历史，不是限定）。
  */
 import { commands } from "../ipc/commands";
 import { chan } from "../../../comms/inward/chan";
@@ -29,8 +17,7 @@ import { canOk, type HistoryCan } from "../history-list-reads";
 import { exactKeys, isObj } from "../ipc/decode";
 
 /**
- * 一条命中（后端 `--search` 行里 `hits` 的一格；形状由 [`parseHit`] 严格收）。
- * 这三个类型原是 Rust `search.rs` 的 ts-rs 生成物；那份文件删了，线上形状的家是后端 `observe/search_query.rs`，
+ * 一条命中（`hits` 的一格，[`parseHit`] 严格收）。线上形状的家是后端 `observe/search_query.rs`，
  * TS 这一侧只有解码器认它（多一格 / 缺一格 / 类型不对 ⇒ 那一行坏，跳过）。
  */
 export interface Hit {
@@ -61,7 +48,7 @@ export interface SessionHits {
   /** 本会话命中总数（可能 > 返回的 hits 长度） */
   hitCount: number;
   hits: Hit[];
-  /** 本会话有命中被「全局 snippet 预算用完」挡下了（`K-R100`；老后端缺 ⇒ false）。 */
+  /** 本会话有命中被「全局 snippet 预算用完」挡下了（老后端缺 ⇒ false）。 */
   hitsTruncated: boolean;
   /** 后台分身会话。 */
   isBg: boolean;
@@ -147,7 +134,7 @@ export function searchArgs(q: FullTextQuery): Record<string, unknown> {
 async function askOne(origin: string, payload: Uint8Array): Promise<OneMachine> {
   const budget = budgetWithin(SEARCH_BUDGET_MS);
   const reply = await chan.call(origin, "history-search", payload, budget);
-  // 〔🔴-5〕「是不是本机」经 origin.ts 判（合并主线时 `tests/frontend/ui/origin-single-home.vitest.ts` 逮到的直比）。
+  // 「是不是本机」经 origin.ts 判。
   const sessions = parseSessionHitsLines(linesOf(reply), isLocalOrigin(origin) ? undefined : origin);
   // 读不动几份 · 不覆盖的那几家（老后端不带 ⇒ 0 / 空）。
   const v = readJson(reply) as { unreadable?: unknown; skipped?: unknown } | null;

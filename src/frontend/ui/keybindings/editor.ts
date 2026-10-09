@@ -193,7 +193,6 @@ export class KeybindingsEditor implements OverlayHandle {
     const nameCell = document.createElement("td");
     nameCell.className = "kb-editor-name";
     nameCell.textContent = action.label;
-    // 「未上线（…）」那枚标签随唯一一条预留位（`app.search-history`〔散文墓碑〕）一起删了。
     tr.appendChild(nameCell);
 
     // chord 显示单元
