@@ -8,6 +8,9 @@
 pub mod console_text;
 // 借别的进程的控制台挂一次记号标题（↗ 默认终端交接那一档）。
 pub mod console_title;
+// X11 上找 / 验 / 拉前窗口的 EWMH 读法（`hwnd` 的 Linux 那一臂）。
+#[cfg(target_os = "linux")]
+pub mod ewmh;
 // `utils::FileTime` 的 Win32 那两件。
 pub mod filetime;
 pub mod fs;

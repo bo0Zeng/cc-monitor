@@ -1588,6 +1588,9 @@ async fn bring_terminal_to_front(
     let r: Result<bind::FrontOutcome, Said> = async move {
         let cache = cache.inner().clone();
         Ok(tokio::task::spawn_blocking(move || {
+            if let Some(o) = bind::front_refusal() {
+                return o;
+            }
             let Some(binding) = cache.lookup(&session_id) else {
                 return bind::FrontOutcome::Unbound;
             };

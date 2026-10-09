@@ -221,6 +221,8 @@ comms-inward = { path = "../../comms/inward", features = ["ts"] }
 zbus = "5"
 # 点了通知把主窗口拉前那一下要带激活令牌（`set_startup_id` ＋ `present`）：tauri 在 Linux 上本来就链着它，这里直接用。
 gtk = "0.18"
+# ↗ 在 X11 上找 / 拉前终端窗口（EWMH，`platform/ewmh.rs`）：文件窗口那边（arboard · winit）早已链着它，这里直接用。
+x11rb = "0.13"
 
 [target.'cfg(windows)'.dependencies]
 # v1.7.0：cc 注入式绑定恢复 ToolHelp（从 claude.exe 往上的进程链反查 PS） +

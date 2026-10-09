@@ -359,8 +359,27 @@ pub enum FrontOutcome {
     BackgroundTab { program: String },
     /// 整条链连个 shell 都没有：真在后台。
     NoWindow { program: String },
+    /// Wayland 会话：别的程序的窗口 cc-monitor 看不见、也切不过去（`desktop` 是桌面名，可能空）。界面给［在 cc-monitor 里打开］。
+    DesktopWontSwitch { desktop: String },
     /// 这台系统没有「按句柄找 / 验 / 拉前窗口」这一族。
     Unsupported,
+}
+
+/// 这一种桌面会话上 ↗ 走不走得通：Windows · X11 ⇒ 走（`None`）；Wayland ⇒ 照实说切不了；别的 ⇒ 不支持。
+pub(crate) fn refusal_of(session: &crate::platform::hwnd::DisplaySession) -> Option<FrontOutcome> {
+    use crate::platform::hwnd::DisplaySession as S;
+    match session {
+        S::Win32 | S::X11 => None,
+        S::Wayland { desktop } => Some(FrontOutcome::DesktopWontSwitch {
+            desktop: desktop.clone(),
+        }),
+        S::Unsupported => Some(FrontOutcome::Unsupported),
+    }
+}
+
+/// 此刻这台的那一句（走得通 ⇒ `None`）。
+pub fn front_refusal() -> Option<FrontOutcome> {
+    refusal_of(&crate::platform::hwnd::display_session())
 }
 
 /// 校验不过的两种：窗口没了 · 句柄 / 进程号被别人复用（细节只进日志）。
@@ -385,10 +404,10 @@ impl VerifyMiss {
 /// 验证 hwnd 仍合法 + 当前 owner_pid 跟绑定时一致 + 该进程 procStart 一致。
 ///
 /// 三样事实（窗口还在 · 属主 · 属主起始时刻）由 `platform::{hwnd, pid}` 读，三格比对留在这里；
-/// 这台没有桌面窗口那一族 ⇒ `Unsupported`。
+/// 这台此刻读不到桌面窗口那一族 ⇒ 那一句（[`refusal_of`]）。
 pub fn verify_binding(binding: &SidHwndBinding) -> Result<(), FrontOutcome> {
-    if !crate::platform::hwnd::SUPPORTED {
-        return Err(FrontOutcome::Unsupported);
+    if let Some(o) = front_refusal() {
+        return Err(o);
     }
     verify_window(binding.hwnd, binding.owner_pid, binding.owner_proc_start)
         .map_err(VerifyMiss::outcome)
@@ -423,8 +442,8 @@ fn verify_window(hwnd_v: isize, owner_pid: u32, owner_proc_start: u64) -> Result
 /// 把窗口拉到前台：系统答应 ⇒ `Switched`；不答应（OS 会让窗口在任务栏闪烁）⇒ `Refused`。
 /// 拉法住 `platform::hwnd::bring_to_front`。
 pub fn activate(hwnd: isize) -> FrontOutcome {
-    if !crate::platform::hwnd::SUPPORTED {
-        return FrontOutcome::Unsupported;
+    if let Some(o) = front_refusal() {
+        return o;
     }
     if crate::platform::hwnd::bring_to_front(hwnd) {
         FrontOutcome::Switched
@@ -712,7 +731,7 @@ pub fn bring_labeled_window(
     terminals: &[serde_json::Value],
     bind: &BindRegistry,
 ) -> Option<FrontOutcome> {
-    if !crate::platform::hwnd::SUPPORTED {
+    if !crate::platform::hwnd::supported() {
         return None;
     }
     labeled_registration(terminals, |pid| holding_registration(bind, pid))
@@ -738,8 +757,8 @@ fn holding_registration(bind: &BindRegistry, pid: u32) -> Option<HwndEntry> {
 
 /// ↗ 远端那一格：进程链 ⇒ 握手表里登记的窗口（或终端窗口的属主那一个）⇒ 校验 ＋ 拉前。
 pub fn bring_chain_window(chain: &[ChainLink], bind: &BindRegistry) -> FrontOutcome {
-    if !crate::platform::hwnd::SUPPORTED {
-        return FrontOutcome::Unsupported;
+    if let Some(o) = front_refusal() {
+        return o;
     }
     let picked = pick_chain_window(
         chain,

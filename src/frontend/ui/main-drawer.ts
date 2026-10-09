@@ -89,6 +89,11 @@ export class MainDrawer {
     this.dock.toggle(page);
   }
 
+  /** 开到这一页（开着就留着，不收起）：↗ 浮层的［在 cc-monitor 里打开］。 */
+  open(page: DrawerPage): void {
+    this.dock.show(page);
+  }
+
   /** 各页知道自己此刻看不看得见（chip 的「开着」· 远端任务现问一次）。 */
   private sync(): void {
     this.tasks.setVisible(this.dock.current === "tasks");
