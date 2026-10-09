@@ -71,6 +71,7 @@ import { TasksPanel } from "./tasks-panel";
 import { AgentsPanel } from "./agents-panel";
 import { MainDrawer } from "./main-drawer";
 import { TerminalPage } from "./terminal-page";
+import { onMachineState } from "./machine-feed";
 import type { Tab } from "./tab-model";
 import { REVEAL_RUN_EVENT } from "./cards/speaker-bar";
 import { getBehavior } from "./behavior";
@@ -208,6 +209,10 @@ window.addEventListener("DOMContentLoaded", async () => {
       if (el.tabIndex < 0) el.tabIndex = -1;
       el.focus({ preventScroll: true });
     },
+  });
+  // 那台重连回来（壳推「已连上」）⇒ 终端页停在「那台断开」的实时自己重新订上。
+  onMachineState((origin, m) => {
+    if (m?.state === "up") terminalPage.machineUp(origin);
   });
   const mainDrawer = new MainDrawer(tasksPanel, agentsPanel, terminalPage, () => (document.getElementById("app")?.clientHeight ?? window.innerHeight) - status.getBoundingClientRect().height);
   mainDrawer.dock.el.id = "bottom-drawer";

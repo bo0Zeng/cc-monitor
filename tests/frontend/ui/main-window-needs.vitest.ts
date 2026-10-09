@@ -648,6 +648,28 @@ describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键�
     expect(r.follows).toHaveLength(2);
   });
 
+  it("★★ 实时停在「那台断开」、那台自己重连回来（机器状态推「已连上」）⇒ 自动重新订上、输入框恢复；别的机器回来不动", async () => {
+    const r = rig([row("a")], { t: tab("a", { origin: "devbox" }) }, "live");
+    r.page.setVisible(true);
+    await flush();
+    r.follows[0].events.screen(liveShot("ok live"));
+    r.follows[0].events.stop({ kind: "stopped", said: "devbox 断开", offline: true });
+    expect(box(r.page).disabled).toBe(true);
+    r.page.machineUp("gpu-01");
+    await flush();
+    expect(r.follows, "别的机器回来不该重订").toHaveLength(1);
+    r.page.machineUp("devbox");
+    await flush();
+    expect(r.follows.map((f) => f.terminal), "那台回来 ⇒ 重新订上").toEqual(["tmux-a", "tmux-a"]);
+    expect(box(r.page).disabled, "输入框恢复").toBe(false);
+    expect(r.page.el.textContent).not.toContain(copyText("terminal.bar.liveStopped", { why: "devbox 断开" }));
+    r.follows[1].events.screen(liveShot("back"));
+    expect(visibleText(r.page.el)).toContain(copyText("terminal.head.live"));
+    r.page.machineUp("devbox");
+    await flush();
+    expect(r.follows, "实时中再来一帧「已连上」不重订").toHaveLength(2);
+  });
+
   it("★ 抓屏失败 ⇒ 只出那一条错误条、不去订实时；点［刷新］抓到了 ⇒ 照常订上", async () => {
     const r = rig([row("a")], { t: tab("a") }, "live");
     r.failShots(new Error("no tmux server"));
