@@ -9,6 +9,7 @@ import { SETTINGS_SCENES } from "./settings";
 import { HISTORY_SCENES } from "./history";
 import { KIT_SCENES } from "./kit";
 import { ACCT_SCENES } from "./acct";
+import { RULES_SCENES } from "./rules";
 import { DRAWER_SCENES } from "./drawer";
 import { AGENT_SCENES } from "./agent";
 import { FOLDALL_SCENES } from "./foldall";
@@ -33,6 +34,8 @@ export interface Scene {
   hostOs?: "windows" | "linux";
   /** 开页之前写进 localStorage 的（tab 栏宽、提示看过没有 …）；不给 ⇒ 用 [`DEFAULT_STORAGE`]。 */
   storage?: Record<string, string>;
+  /** 截之前把真鼠标停在这个元素中央（CSS `:hover` 只有真鼠标才触发，页里派事件不算）；量排版也在停好之后。 */
+  pointer?: string;
   /** 开页之后：等界面画好、点开要截的那一块。返回即可截。 */
   act: (ctx: SceneCtx) => Promise<void>;
 }
@@ -43,7 +46,7 @@ export const DEFAULT_STORAGE: Record<string, string> = {
   "cc-monitor.cmdk-hint.seen": "1",
 };
 
-export const SCENES: Scene[] = [...MAIN_SCENES, ...PANEL_SCENES, ...FRONT_SCENES, ...DPI_SCENES, ...HISTORY_SCENES, ...SETTINGS_SCENES, ...KIT_SCENES, ...ACCT_SCENES, ...DRAWER_SCENES, ...AGENT_SCENES, ...FOLDALL_SCENES];
+export const SCENES: Scene[] = [...MAIN_SCENES, ...PANEL_SCENES, ...FRONT_SCENES, ...DPI_SCENES, ...HISTORY_SCENES, ...SETTINGS_SCENES, ...KIT_SCENES, ...ACCT_SCENES, ...RULES_SCENES, ...DRAWER_SCENES, ...AGENT_SCENES, ...FOLDALL_SCENES];
 
 export function sceneById(id: string): Scene {
   return (

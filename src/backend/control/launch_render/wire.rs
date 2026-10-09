@@ -27,6 +27,9 @@ pub struct CliRenderRequest {
     pub models: BTreeMap<String, String>,
     pub launcher: String,
     pub default_launcher: String,
+    /// 不上线（后端自己起会话时填）：垫在交给那一家的那一串里的参数（起新会话先定 sid：`--session-id <uuid>`）。
+    #[serde(skip)]
+    pub preset_args: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -129,6 +132,7 @@ fn with_spec<T>(
             a.model.as_deref(),
         ),
     };
+    let args: Vec<&str> = req.preset_args.iter().map(String::as_str).collect();
     let spec = CliSpec {
         agent: &req.agent,
         action,
@@ -139,7 +143,7 @@ fn with_spec<T>(
         model: req.model.as_deref().or(picked_model),
         launcher: &req.launcher,
         default_launcher: &req.default_launcher,
-        args: &[],
+        args: &args,
         ccm_path,
         detach,
     };

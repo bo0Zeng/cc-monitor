@@ -1,0 +1,381 @@
+/* 轮换时间轴（面板 · 设置「轮换」栏 · 规则编辑器预览共用）：刻度 · 本会话轨（换号点一层 ＋ 段一层）· 泳道 · 现在竖线 · 悬停列 · 图例。 */
+@layer components {
+  .tl {
+    --tl-label: 132px;
+
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    min-width: 0;
+    border-radius: var(--radius-m);
+  }
+
+  .tl[data-compact="true"] {
+    --tl-label: 104px;
+  }
+
+  /* 设置里行头多一枚「在用 N 会话」：行头宽一档。 */
+  .tl[data-used-by="true"] {
+    --tl-label: 216px;
+  }
+
+  .tl:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  .tlGrid {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-m);
+    background: var(--bg-2);
+  }
+
+  .tlRow {
+    display: grid;
+    grid-template-columns: var(--tl-label) minmax(0, 1fr);
+    gap: var(--space-3);
+    align-items: center;
+  }
+
+  .tlTrack {
+    position: relative;
+    min-width: 0;
+  }
+
+  .tlTicks,
+  .tlTrackSession,
+  .tlLaneTrack {
+    position: relative;
+    min-width: 0;
+  }
+
+  .tlTicks {
+    height: 14px;
+    color: var(--text-2);
+    font-size: var(--font-size-xs);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .tlTick[data-fit="no"] {
+    visibility: hidden;
+  }
+
+  .tlTick {
+    position: absolute;
+    top: 0;
+    white-space: nowrap;
+    transform: translateX(-50%);
+  }
+
+  /* 本会话轨：上一层换号点（菱形 ＋ 原因短码，高 14），下面空 4px，再一层段（高 18，段里写号名）。两层不叠。 */
+  .tlTrackSession {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+
+  .tlWhyLayer {
+    position: relative;
+    height: 14px;
+  }
+
+  .tlSegLayer {
+    position: relative;
+    height: 18px;
+  }
+
+  .tlWhy {
+    position: absolute;
+    top: 0;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    color: var(--text-2);
+    font-size: var(--font-size-xs);
+    line-height: 14px;
+    white-space: nowrap;
+    transform: translateX(-4px);
+  }
+
+  .tlWhy[data-fit="no"] .tlWhyText {
+    display: none;
+  }
+
+  .tlDiamond {
+    flex: none;
+    width: 7px;
+    height: 7px;
+    background: var(--text-2);
+    transform: rotate(45deg);
+  }
+
+  .tlSeg {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    border-radius: var(--radius-s);
+    box-shadow: inset -2px 0 0 var(--bg-2);
+  }
+
+  /* 已用：实心号色、号色自带的字色（≥4.5:1）；将用：号色淡底 ＋ 虚线框、正文字色（在深底上照样够对比）。 */
+  .tlSeg[data-when="past"] {
+    background: var(--tl-c);
+  }
+
+  .tlSeg[data-when="future"] {
+    color: var(--text);
+    background: color-mix(in srgb, var(--tl-c) 30%, transparent);
+    outline: 1px dashed var(--tl-c);
+    outline-offset: -1px;
+  }
+
+  .tlSeg[data-held="true"] {
+    color: var(--text-2);
+    background: repeating-linear-gradient(135deg, var(--border-medium) 0 3px, transparent 3px 6px);
+    outline: none;
+  }
+
+  .tlSegName {
+    max-width: 100%;
+    padding: 0 var(--space-1);
+    overflow: hidden;
+    font-size: var(--font-size-small);
+    font-weight: 600;
+    line-height: 1;
+    white-space: nowrap;
+  }
+
+  .tlSegName[data-fit="no"] {
+    display: none;
+  }
+
+  .tlNoPlan {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    padding-left: var(--space-2);
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+    line-height: 18px;
+  }
+
+  .tlLaneName {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+    font-size: var(--font-size-small);
+  }
+
+  .tlLaneAcct {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .tlPct {
+    flex: none;
+    color: var(--text-2);
+    font-size: var(--font-size-xs);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .tlUsedBy {
+    flex: none;
+    padding: 0 var(--space-1);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-s);
+    color: var(--text-2);
+    font-size: var(--font-size-xs);
+    white-space: nowrap;
+  }
+
+  .tlUsedBy[data-warn="true"] {
+    border-color: var(--warn);
+    color: var(--warn);
+  }
+
+  .tlLaneTrack {
+    height: 14px;
+    border-bottom: 1px solid var(--border-soft);
+  }
+
+  .tlSpan {
+    position: absolute;
+    top: 2px;
+    bottom: 2px;
+    border-radius: var(--radius-s);
+  }
+
+  .tlSpan[data-state="refused"],
+  .tlSwatch[data-kind="refused"] {
+    background: repeating-linear-gradient(135deg, var(--error) 0 3px, transparent 3px 6px);
+  }
+
+  .tlSpan[data-state="capped"],
+  .tlSwatch[data-kind="capped"] {
+    background: repeating-linear-gradient(135deg, var(--warn) 0 3px, transparent 3px 6px);
+  }
+
+  .tlSpan[data-state="overage"] {
+    background: radial-gradient(var(--warn) 1px, transparent 1.5px) 0 0 / 4px 4px;
+  }
+
+  .tlSpan[data-state="off"],
+  .tlSwatch[data-kind="off"] {
+    background: repeating-linear-gradient(135deg, var(--text-faint) 0 3px, transparent 3px 6px);
+  }
+
+  .tlReset5 {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: var(--text-2);
+  }
+
+  .tlReset7 {
+    position: absolute;
+    top: 3px;
+    width: 7px;
+    height: 7px;
+    background: var(--text-2);
+    transform: translateX(-3px) rotate(45deg);
+  }
+
+  .tlWarm {
+    position: absolute;
+    top: 2px;
+    width: 9px;
+    height: 9px;
+    border: 1px solid var(--success);
+    border-radius: 50%;
+    transform: translateX(-4px);
+  }
+
+  /* 叠在轨那一列上：现在竖线 · 悬停列 · 卡。左边让出行头那一列。 */
+  .tlOverlay {
+    position: absolute;
+    top: var(--space-2);
+    right: var(--space-3);
+    bottom: var(--space-2);
+    left: calc(var(--space-3) + var(--tl-label) + var(--space-3));
+  }
+
+  .tlNow {
+    position: absolute;
+    top: 14px;
+    bottom: 0;
+    width: 1px;
+    background: var(--error);
+    pointer-events: none;
+  }
+
+  .tlNowText {
+    position: absolute;
+    top: -14px;
+    left: 0;
+    padding: 0 2px;
+    color: var(--text);
+    font-size: var(--font-size-xs);
+    background: var(--bg-2);
+    transform: translateX(-50%);
+  }
+
+  .tlCursor {
+    position: absolute;
+    top: 14px;
+    bottom: 0;
+    width: 1px;
+    background: var(--text-2);
+    pointer-events: none;
+  }
+
+  .tlCard {
+    position: absolute;
+    top: 16px;
+    z-index: var(--z-float);
+    max-width: 280px;
+    padding: var(--space-1) var(--space-2);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-s);
+    color: var(--text);
+    font-size: var(--font-size-small);
+    background: var(--card);
+    box-shadow: var(--shadow-float);
+    pointer-events: none;
+    transform: translateX(8px);
+  }
+
+  .tlCard[data-side="left"] {
+    transform: translateX(calc(-100% - 8px));
+  }
+
+  .tlCursor:not([data-shown="true"]),
+  .tlCard:not([data-shown="true"]) {
+    display: none;
+  }
+
+  .tlLegend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1) var(--space-3);
+    color: var(--text-2);
+    font-size: var(--font-size-xs);
+  }
+
+  .tlLegendItem {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+  }
+
+  .tlSwatch {
+    width: 14px;
+    height: 8px;
+    border-radius: var(--radius-s);
+  }
+
+  .tlSwatch[data-kind="past"] {
+    background: var(--text-2);
+  }
+
+  .tlSwatch[data-kind="future"] {
+    outline: 1px dashed var(--text-2);
+    outline-offset: -1px;
+  }
+
+  .tlSwatch[data-kind="r5"] {
+    width: 1px;
+    height: 10px;
+    background: var(--text-2);
+  }
+
+  .tlSwatch[data-kind="r7"] {
+    width: 7px;
+    height: 7px;
+    background: var(--text-2);
+    transform: rotate(45deg);
+  }
+
+  .tlSwatch[data-kind="warm"] {
+    width: 9px;
+    height: 9px;
+    border: 1px solid var(--success);
+    border-radius: 50%;
+  }
+
+  @media (width < 640px) {
+    .tl {
+      --tl-label: 96px;
+    }
+  }
+}

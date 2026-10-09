@@ -107,6 +107,11 @@ impl ScanMap {
         f
     }
 
+    /// 还没结果的工具调用（文件序；种类判「需要你」用）。
+    pub(crate) fn pending(&self) -> &[super::facts_query::PendingCall] {
+        &self.facts.pending
+    }
+
     /// 粗估常驻字节：每行一份定长 ＋ 里面的串长。
     fn estimate(&self) -> usize {
         let opt = |s: &Option<String>| s.as_ref().map_or(0, String::len);

@@ -286,8 +286,12 @@ fn every_registered_command_declares_its_run_kind() {
                 // 用某个号查一次额度：起官方客户端并等它退出（期限 30 秒）＋ 锁里写额度账。
                 | "quota-probe"
                 // 轮换：读 / 锁里原子写 `rotation.json`（同步文件 I/O）。
-                | "rotation-read"
-                | "rotation-set"
+                | "rotation-rules-read"
+                | "rotation-rule-save"
+                | "rotation-rule-rename"
+                | "rotation-rule-delete"
+                | "rotation-default-set"
+                | "rotation-plan"
                 | "rotation-session-read"
                 | "rotation-session-set"
                 // 功能侧只读查询：读一个目录 ＋ 每个文件各一次（同步文件 I/O）。
@@ -534,8 +538,12 @@ fn every_registered_command_declares_its_run_kind() {
         "exit-policy-set",
         "quota-read",
         "quota-probe",
-        "rotation-read",
-        "rotation-set",
+        "rotation-rules-read",
+        "rotation-rule-save",
+        "rotation-rule-rename",
+        "rotation-rule-delete",
+        "rotation-default-set",
+        "rotation-plan",
         "rotation-session-read",
         "rotation-session-set",
         "tasks-list",

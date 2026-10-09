@@ -1,0 +1,180 @@
+/* 轮换的编辑件：换法 · 最多等 · 封顶浮层（不设 · 固定 · 按时段 ＋ 24h 色带）· 存为规则浮层。面板与规则编辑器同一份。 */
+@layer components {
+  .rotHow,
+  .rotCapRow,
+  .rotCheck {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-3);
+  }
+
+  .rotLabel,
+  .rotUnit {
+    color: var(--text-2);
+  }
+
+  .rotHint {
+    color: var(--text-2);
+    font-size: var(--font-size-xs);
+  }
+
+  .rotCheck {
+    flex-wrap: nowrap;
+    cursor: pointer;
+  }
+
+  .rotNum,
+  .rotTime {
+    padding: 0 var(--space-2);
+    border: 1px solid var(--field-border);
+    border-radius: var(--radius-s);
+    background: var(--field-bg);
+    color: var(--text);
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .rotNum {
+    width: 4ch;
+  }
+
+  .rotTime {
+    width: 6ch;
+  }
+
+  .rotNum[data-error="true"],
+  .rotTime[data-error="true"] {
+    border-color: var(--error);
+  }
+
+  .rotNum:disabled {
+    opacity: var(--state-disabled-opacity);
+  }
+
+  .rotErr {
+    color: var(--error-text);
+    font-size: var(--font-size-xs);
+  }
+
+  .rotCap,
+  .rotSave {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    width: 340px;
+    padding: var(--space-5);
+  }
+
+  .rotSave {
+    width: 300px;
+  }
+
+  .rotCapHead,
+  .rotCapFoot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+  }
+
+  .rotCapFoot {
+    justify-content: flex-end;
+  }
+
+  .rotCapTitle {
+    font-weight: var(--font-weight-strong);
+  }
+
+  /* 24h 色带：段内按上限着色，0 斜纹 ＝ 停用。 */
+  .rotBandBox {
+    padding-top: var(--space-2);
+  }
+
+  .rotBand {
+    position: relative;
+    height: 8px;
+    border-radius: var(--radius-s);
+    background: var(--bg-2);
+  }
+
+  .rotBandPiece {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    background: var(--text-faint);
+  }
+
+  .rotBandPiece[data-zero="true"] {
+    background: repeating-linear-gradient(135deg, var(--text-faint) 0 3px, transparent 3px 6px);
+  }
+
+  /*
+   * 兜底：开 ⇒ 实心标（开关与只读标同一个样子）；关 ⇒ 平时不显示（仍在 Tab 序里，键盘能到），
+   * 它所在的那一行悬停或行内有焦点时才出（描边、淡字，像一枚可点的标签）。排在封顶之后、用量之前，出来时只占中间空出的地方，左边不跳。
+   */
+  button.rotFallback[data-kind],
+  .rotFallbackMark {
+    flex: none;
+    height: auto;
+    padding: 0 var(--space-2);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-s);
+    color: var(--text-2);
+    font-size: var(--font-size-xs);
+    font-weight: normal;
+    line-height: inherit;
+    white-space: nowrap;
+  }
+
+  button.rotFallback[aria-pressed="true"],
+  .rotFallbackMark {
+    border-color: transparent;
+    background: var(--text-2);
+    color: var(--bg);
+  }
+
+  /* 关着且没悬停：收成 0 宽（不白占一行里本来就紧的地方），但不是 display:none —— 仍可聚焦，聚焦了所在行 focus-within 它就出来。 */
+  button.rotFallback[aria-pressed="false"] {
+    max-width: 0;
+    padding: 0;
+    overflow: hidden;
+    border-width: 0;
+    opacity: 0;
+  }
+
+  :hover > button.rotFallback[aria-pressed="false"],
+  :focus-within > button.rotFallback[aria-pressed="false"] {
+    max-width: none;
+    padding: 0 var(--space-2);
+    border-width: 1px;
+    opacity: 1;
+  }
+
+  /* 来源下拉里规则的只读小卡。 */
+  .rotPeek {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    min-width: 200px;
+  }
+
+  .rotPeekRow {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .rotPeekStart {
+    color: var(--text-2);
+    font-style: italic;
+  }
+
+  .rotPeekTag {
+    padding: 0 var(--space-2);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-s);
+    color: var(--text-2);
+    font-size: var(--font-size-xs);
+  }
+}

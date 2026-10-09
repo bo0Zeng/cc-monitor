@@ -6,6 +6,7 @@
 pub(crate) mod decide;
 pub(crate) mod ledger;
 pub(crate) mod rotation;
+pub(crate) mod rule_text;
 pub(crate) mod show;
 
 /// ★ 派生事实「已重置、未计时」的唯一判法：这个窗口（或卡着的那一处）说的重置时刻已经过了 ⇒ 之后没再看到它，

@@ -210,6 +210,7 @@ fn the_launch_faces_agree_with_the_golden_table() {
             "resume_kind" => resume_kind_of(f.resume_token).to_string(),
             "nested_env" => f.nested_env.join(" "),
             "launch_args" => f.launch_args.join(" "),
+            "preset_sid" => f.preset_sid.unwrap_or_default().to_string(),
             other => panic!("夹具里出现了未知 key `{other}` —— 加一项要来这里表态"),
         };
         if &got != want {

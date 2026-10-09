@@ -50,7 +50,12 @@ window.addEventListener("DOMContentLoaded", () => {
       await scene.act({ backend });
       // 让过渡动画落定再量（浮层出现 160ms 上移 4px）。
       await new Promise((r) => setTimeout(r, 250));
-      handle.layout = layoutProblems();
+      if (scene.pointer) {
+        const r = document.querySelector(scene.pointer)?.getBoundingClientRect();
+        if (!r) throw new Error(`要停鼠标的 ${scene.pointer} 不在页里`);
+        handle.pointer = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+        handle.remeasure = layoutProblems;
+      } else handle.layout = layoutProblems();
       handle.state = "done";
     } catch (e) {
       handle.error = e instanceof Error ? `${e.message}\n${e.stack ?? ""}` : String(e);

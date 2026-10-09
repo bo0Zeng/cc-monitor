@@ -182,6 +182,7 @@ export function whyOf(h: SwitchRecord): { why: string; reset: string | null } {
   if ("threshold" in w) return { why: copyText("acct.hist.pct", { name: from, n: w.threshold.n }), reset };
   if ("held" in w) return { why: copyText("acct.hist.held", { name: from, n: w.held.n }), reset };
   if ("stint" in w) return { why: copyText("acct.hist.stint", { w: slotLabel(w.stint.w), n: w.stint.n }), reset: null };
+  if ("wait" in w) return { why: copyText("acct.hist.wait", { name: accountLabel(w.wait.account), instead: accountLabel(w.wait.instead) }), reset };
   if ("skipped" in w) return { why: copyText("acct.hist.skipped", { name: accountLabel(w.skipped.account), reason: unreadyLabel(w.skipped.reason, w.skipped.account) }), reset: null };
   const left: never = w;
   return left;

@@ -574,6 +574,12 @@ pub enum Frame {
         sid: String,
     },
 
+    /// **这台的轮换规则表或默认指向变了**（新建 · 改 · 改名 · 删 · 设为默认；本进程或别的进程写的都推）。
+    ///
+    /// 无载荷：客户端收到就重问一次 `rotation-rules-read`。用着改到的规则的会话另各推一帧 `rotation_changed`。
+    /// 走 tap 那条可丢的通道（规则在盘上，丢了重问就补上）。旧 monitor / 仓外 aterm 不认这个 kind ⇒ 忽略（additive）。
+    RotationRulesChanged,
+
     /// **这台机器上某个会话的任务清单变了**（`<agent 家>/tasks/<sid>/` 里有动静）。
     ///
     /// 只带 sid：客户端收到就重问一次 `tasks-list`（清单的唯一出口仍是那条查询，同 `accounts_changed`）。
@@ -1039,6 +1045,8 @@ impl Frame {
             Frame::QuotaChanged => true,
             // 同上：轮换在盘上（`rotation-session-read` 随时重问得到）；也不走出方向那条通道。
             Frame::RotationChanged { .. } => true,
+            // 同上：规则表在盘上（`rotation-rules-read` 随时重问得到）；也不走出方向那条通道。
+            Frame::RotationRulesChanged => true,
             // 同上一行：一次变化的通知，丢了那个会话的任务面板就停在旧的（带身份 subject = sid，客户端可重问）。
             Frame::TasksChanged { .. } => false,
             // 一次性的标记，没有「下一次必然重发」⇒ 丢了客户端就一直停在「说不清」
@@ -1085,6 +1093,7 @@ impl Frame {
             Frame::ProfilesChanged => ("profiles_changed", None),
             Frame::QuotaChanged => ("quota_changed", None),
             Frame::RotationChanged { sid } => ("rotation_changed", Some(sid.clone())),
+            Frame::RotationRulesChanged => ("rotation_rules_changed", None),
             Frame::TasksChanged { sid } => ("tasks_changed", Some(sid.clone())),
             Frame::SessionsReplayed => ("sessions_replayed", None),
             Frame::SessionFileGone { session_id, .. } => {

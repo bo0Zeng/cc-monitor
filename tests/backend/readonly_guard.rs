@@ -1028,8 +1028,8 @@ mod tests {
         ),
         (
             "faces/rotation_face.rs",
-            "换号那一族的帧面宿主（`rotation-set` · `rotation-session-set` · `rotation-switch`）：前端改默认轮换、改会话轮换、\
-             现在就换，只有这一族命令（帧面与派生的 CLI 面共用）",
+            "换号那一族的帧面宿主（`rotation-rule-save` · `-rename` · `-delete` · `rotation-default-set` · `rotation-session-set` · `rotation-switch`）：\
+             前端存 / 改 / 删规则、设默认、改会话轮换、现在就换，只有这一族命令（帧面与派生的 CLI 面共用）",
         ),
         (
             "faces/quota_probe_face.rs",

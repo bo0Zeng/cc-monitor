@@ -76,6 +76,7 @@ impl Home {
             ),
             rows: Box::new(|_, a| (a == "api").then_some(true)),
             live: Box::new(std::collections::BTreeSet::new),
+            doing: Box::new(std::collections::BTreeMap::new),
         }
     }
 

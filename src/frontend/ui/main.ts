@@ -28,7 +28,7 @@ import { terminalFrontCommand } from "./terminal-front-command";
 import { loadTheme } from "./theme";
 import { SETTINGS_APPLIED_EVENT } from "./settings";
 import { setResumeInTmux } from "./resume-defaults";
-import { OPEN_ACCOUNT_PANEL_EVENT, RESYNC_DONE_EVENT, type OpenAccountPanel } from "./settings/events";
+import { RESYNC_DONE_EVENT } from "./settings/events";
 import {
   AGENT_WINDOW_EVENT,
   AGENT_WINDOWS_ASK_EVENT,
@@ -79,12 +79,11 @@ import { dispatcher, KeybindingDispatcher } from "./keybindings/registry";
 import { getKeybindings } from "./keybindings/store";
 import { installGlobalClickDelegation } from "./entry-render-common";
 import { AccountChip } from "./account-chip";
-import { onQuotaChanged, syncSessions } from "./acct-center";
-import { followActive, openAccountPanelAt, toggleAccountPanel, type AcctPanelHost } from "./acct-panel";
-import { jumpToAccountPanel } from "./acct-jump";
-import { fullTitle } from "./session-face";
+import { onQuotaChanged, refreshRules, syncSessions } from "./acct-center";
+import { followActive, openSourcePicker, toggleAccountPanel, type AcctPanelHost } from "./acct-panel";
 import { acctSessionWiring } from "./acct-session";
 import { buildAccountCommands } from "./account-commands";
+import { machineName } from "./control-said";
 import { sessionCommands } from "./session-commands";
 import type { FrontendReadyPayload } from "./generated/FrontendReadyPayload";
 import { currentAccountForBadge } from "./accounts";
@@ -306,6 +305,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     cwdOf: (sid) => tabs.snapshotSessions().find((x) => x.sessionId === sid)?.cwd ?? "",
     agentOf: (sid) => tabs.agentOf(sid),
     openSettings: (origin) => void openSettingsWindow(undefined, dest.accountsOf(origin)),
+    openRules: (origin, rule) => void openSettingsWindow(undefined, dest.rulesOf(origin, rule)),
     openDefaultMenu: (anchor, origin) => void accountChip.openDefaultMenu(anchor, origin),
     defaultOf: (origin) => accountChip.defaultOf(origin),
     // 恢复菜单挂在状态栏上（抽屉的底边）：toast 的按钮点了就收起，没有自己的锚。
@@ -316,6 +316,15 @@ window.addEventListener("DOMContentLoaded", async () => {
   };
   const openAcctPanel = (sid: string, origin: string): void => toggleAccountPanel(sid, origin, panelHost);
   tabs.onOpenAccountPanel = openAcctPanel;
+  // 多选右键「轮换规则 ▸」：那台的规则表（还没读过 ⇒ 去读，这一回先转圈）· 管理 ⇒ 设置窗那台的「轮换」栏。
+  tabs.onRotationRules = {
+    rulesOf: (origin) => {
+      const got = appStore.rotationRules.get().get(origin);
+      if (got === undefined) void refreshRules(origin);
+      return got ?? null;
+    },
+    openRules: (origin) => void openSettingsWindow(undefined, dest.rulesOf(origin)),
+  };
   // ↗ 浮层的［接上终端］直达设置那一节（［更新］就地做，住 `tabs.ts`）。
   tabs.onConnectTerminal = () => void openSettingsWindow(undefined, dest.connectTerminalOf(LOCAL_ORIGIN));
   tabs.onOpenHere = (sid) => {
@@ -336,26 +345,6 @@ window.addEventListener("DOMContentLoaded", async () => {
     void w.unminimize().then(() => w.setFocus()).catch(() => {});
     tabs.switchTo(e.payload.sid);
   });
-  // 设置窗账号页「时间轴 · 默认轮换」⇒ 主窗口拉到前面、开账号面板滚到那一节（只开不写）。
-  void listen<OpenAccountPanel>(OPEN_ACCOUNT_PANEL_EVENT, (e) =>
-    jumpToAccountPanel(e.payload, {
-      raise: () => {
-        const w = getCurrentWindow();
-        void w.unminimize().then(() => w.setFocus()).catch(() => {});
-      },
-      active: () => {
-        const sid = tabs.activeSessionId();
-        const origin = sid === null ? null : tabs.originOf(sid);
-        return sid !== null && origin !== null ? { sid, origin } : null;
-      },
-      firstOn: (origin) => {
-        const t = tabs.tabsInOrder().find((x) => x.origin === origin);
-        return t ? { sid: t.sessionId, title: fullTitle(t) } : null;
-      },
-      switchTo: (sid) => tabs.switchTo(sid),
-      openAt: (sid, origin, anchor) => openAccountPanelAt(sid, origin, panelHost, anchor),
-    }),
-  );
   tabs.onViewTerminal = () => mainDrawer.dock.show("terminal");
   const activeOrigin = (): Origin | null => {
     const sid = tabs.activeSessionId();
@@ -638,6 +627,14 @@ window.addEventListener("DOMContentLoaded", async () => {
         chordHint: (id) => chordHint(id as Parameters<typeof chordHint>[0]),
         setCurrent: (name) => void accountChip.applyDefaultByName(name),
         openSettings: () => void openSettingsWindow(undefined, dest.accountsOf(curOrigin ?? LOCAL_ORIGIN)),
+        rotation:
+          cur !== null && curOrigin !== null
+            ? {
+                machine: machineName(curOrigin),
+                apply: () => openSourcePicker(cur, curOrigin, panelHost),
+                openRules: () => void openSettingsWindow(undefined, dest.rulesOf(curOrigin)),
+              }
+            : null,
       }).map((c) => ({ ...c, group: "account" as const, icon: "account" as const })),
       {
         id: "acct-default-menu",

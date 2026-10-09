@@ -26,7 +26,8 @@ function entry(p: Partial<SessionRotation> = {}, q: Partial<QuotaShow> = {}): Se
     read: {
       state: "present",
       agent: "claude-code",
-      follow: true,
+      source: "follow",
+      explain: "",
       account: { start: "personal", current: "personal", since: NOW - 600, sinceText: "11:50", history: [], inPlace: "ok" },
       atLimit: "continue",
       quota: quota(q),

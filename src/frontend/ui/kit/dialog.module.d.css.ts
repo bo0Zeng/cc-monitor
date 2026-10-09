@@ -2,6 +2,7 @@
 declare const classes: {
   readonly dialogBackdrop: string;
   readonly dialogBody: string;
+  readonly dialogChoice: string;
   readonly dialogError: string;
   readonly dialogFieldWrap: string;
   readonly dialogInput: string;

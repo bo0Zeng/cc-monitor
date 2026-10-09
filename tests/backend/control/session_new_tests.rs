@@ -9,6 +9,8 @@ const SRC: &str = "aaaaaaaa-1111-2222-3333-444444444444";
 const MSG: &str = "bbbbbbbb-1111-2222-3333-444444444444";
 const NEW: &str = "cccccccc-1111-2222-3333-444444444444";
 const ENTRY: &str = "/h/.cc-monitor/bin/ccm";
+/// 选了规则起时这台先定好的 sid（替身铸的）。
+const PRESET: &str = "dddddddd-1111-4222-8333-444444444444";
 
 fn row(name: &str, sid: Option<&str>, agent: bool) -> TmuxEntry {
     TmuxEntry {
@@ -29,6 +31,8 @@ struct Rig {
     last: Option<&'static str>,
     /// 预标信任那几下：`<号目录> <工作目录> @<此前已交的 ccm 数>`。
     marks: RefCell<Vec<String>>,
+    /// 起之前写的轮换来源：`<sid> <哪一家> <规则> @<此前已交的 ccm 数>`；撤掉的：`forget <sid>`。
+    rot: RefCell<Vec<String>>,
 }
 
 impl Rig {
@@ -41,6 +45,7 @@ impl Rig {
             forks: RefCell::new(vec![]),
             last: None,
             marks: RefCell::new(vec![]),
+            rot: RefCell::new(vec![]),
         }
     }
 
@@ -114,7 +119,24 @@ impl Rig {
             writers: &writers,
             pretrust: &pretrust,
         };
-        answer(&args, &deps, &fork, Some(std::path::Path::new("/h")))
+        let sid = || PRESET.to_string();
+        let write = |sid: &str, kind: &str, rule: &str| -> Result<(), (&'static str, String)> {
+            if rule == "r_gone" {
+                return Err(("no_such_rule", "规则不在".into()));
+            }
+            let at = self.ccm.borrow().len();
+            self.rot
+                .borrow_mut()
+                .push(format!("{sid} {kind} {rule} @{at}"));
+            Ok(())
+        };
+        let forget = |sid: &str| self.rot.borrow_mut().push(format!("forget {sid}"));
+        let pre = PreRotation {
+            sid: &sid,
+            write: &write,
+            forget: &forget,
+        };
+        answer(&args, &deps, &fork, &pre, Some(std::path::Path::new("/h")))
     }
 }
 
@@ -447,4 +469,82 @@ fn a_new_session_marks_its_cwd_trusted_in_its_account_before_it_starts() {
         ))
         .is_err());
     assert!(rig.marks.borrow().is_empty(), "目录不在 ⇒ 什么都不起、不标");
+}
+
+/// ★ 选了规则起（`rotation: {rule}`）：起之前这台先定好 sid（那一家起新会话时认的 `--session-id`）、把那个会话的来源写成那条规则，再起；
+/// 回包带这个 sid（报到按 sid 认），tmux 那一形身份标记也是它。界面不再补写。
+#[test]
+fn a_rule_at_launch_is_written_under_a_preset_sid_before_starting() {
+    let rig = Rig::new(Some(vec![]));
+    let got = rig
+        .call(req(json!({"rotation": {"rule": "r_night"}})))
+        .expect("ok");
+    assert_eq!(got["sid"], PRESET, "{got}");
+    assert_eq!(
+        *rig.rot.borrow(),
+        vec![format!("{PRESET} claude r_night @0")],
+        "起之前写好"
+    );
+    let argv = rig.ccm.borrow()[0].clone();
+    let sep = argv.iter().position(|a| a == "--").expect("--");
+    assert!(
+        argv[..sep]
+            .windows(2)
+            .any(|w| w[0] == "--session-id" && w[1] == PRESET),
+        "交给那一家的那一串里带 --session-id：{argv:?}"
+    );
+    assert!(
+        argv[sep..].iter().any(|a| a.contains(PRESET)),
+        "身份标记：{argv:?}"
+    );
+}
+
+/// 跟随默认（或不给）⇒ 不定 sid、不写（新会话本来就跟随默认）；开窗那一形同样带 --session-id。
+#[test]
+fn follow_at_launch_writes_nothing_and_a_window_launch_carries_the_sid_too() {
+    let rig = Rig::new(Some(vec![]));
+    let got = rig.call(req(json!({"rotation": "follow"}))).expect("ok");
+    assert_eq!(got["sid"], Value::Null);
+    assert!(rig.rot.borrow().is_empty());
+    assert!(!rig.ccm.borrow()[0].iter().any(|a| a == "--session-id"));
+    let rig = Rig::new(Some(vec![]));
+    let got = rig
+        .call(req(
+            json!({"place": "window", "rotation": {"rule": "r_night"}}),
+        ))
+        .expect("ok");
+    assert_eq!(got["sid"], PRESET);
+    assert!(
+        got["cmd"]
+            .as_str()
+            .expect("cmd")
+            .contains(&format!("--session-id {PRESET}")),
+        "{got}"
+    );
+}
+
+/// 规则不在 ⇒ `no_such_rule`，什么都不起；起不成（ccm 非 0）⇒ 撤掉起之前写的那一条；形状不对 ⇒ `bad_args`。
+#[test]
+fn a_rule_at_launch_that_fails_leaves_nothing_behind() {
+    let rig = Rig::new(Some(vec![]));
+    let e = rig
+        .call(req(json!({"rotation": {"rule": "r_gone"}})))
+        .expect_err("不在");
+    assert_eq!(e.0, "no_such_rule");
+    assert!(rig.ccm.borrow().is_empty(), "规则不在就不起");
+    let mut rig = Rig::new(Some(vec![]));
+    rig.ccm_rc = 1;
+    let e = rig
+        .call(req(json!({"rotation": {"rule": "r_night"}})))
+        .expect_err("起不成");
+    assert_eq!(e.0, "start_failed");
+    assert_eq!(
+        rig.rot.borrow().last().map(String::as_str),
+        Some(format!("forget {PRESET}").as_str())
+    );
+    let rig = Rig::new(Some(vec![]));
+    assert_eq!(
+        rig.call(req(json!({"rotation": 3}))).expect_err("形状").0,
+        "bad_args"
+    );
 }

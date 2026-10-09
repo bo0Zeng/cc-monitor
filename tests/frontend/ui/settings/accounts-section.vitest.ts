@@ -1,7 +1,7 @@
 /**
  * 机器页「账号」栏的判据：表（一号一行 · 默认 · 5h / 7d · 按量）· 切机器只认最后一趟 · 删号确认框（删默认号时「之后新会话默认 X」
  * 是那台答的、带 force）· 各态（没连上过 · 离线画上次的 · 这台不支持多账号 · 没启用）· 打开时核一次（有对不上才出警告条）·
- * 指路框发出的事件形状 · 开不了终端窗口 ⇒「在 tmux 里登录」· 命令名取自别名清单的分组 · key 的纪律（源码扫描）。
+ * 表下没有指路框 · 开不了终端窗口 ⇒「在 tmux 里登录」· 命令名取自别名清单的分组 · key 的纪律（源码扫描）。
  *
  * 那几条读口 / 写口整块换成假的（`vi.mock`）：这里只量「拿到这些事实，画成什么样、交出去什么」。
  */
@@ -65,7 +65,7 @@ vi.mock("../../../../src/frontend/ui/account-ops", async (orig) => ({
 vi.mock("../../../../src/frontend/ui/apikey-reads", () => ({ writeApikeyKey: (...a: unknown[]) => writeApikeyKey(...a) }));
 
 import { AccountsSection } from "../../../../src/frontend/ui/settings/accounts-section";
-import { OPEN_ACCOUNT_PANEL_EVENT, SETTINGS_GO_EVENT } from "../../../../src/frontend/ui/settings/events";
+import { SETTINGS_GO_EVENT } from "../../../../src/frontend/ui/settings/events";
 import { __resetMachineContextForTests, setCurrentMachine } from "../../../../src/frontend/ui/settings/machine-context";
 import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
 import type { ConfirmSpec } from "../../../../src/frontend/ui/kit/dialog";
@@ -408,14 +408,11 @@ describe("登录与指路", () => {
     expect(buttonNamed(rowOf(el, "team"), copyText("acctPage.login.reopen"))).toBeDefined();
   });
 
-  it("指路框只有「时间轴 · 默认轮换」两项（没有自动起算），点了发 open-account-panel {machine, anchor}", async () => {
+  it("表下没有指路框（默认轮换与规则在同一台的「轮换」栏里管），只剩「共用 MCP」那一行", async () => {
     const el = await mount();
-    const links = [...el.querySelectorAll<HTMLButtonElement>(".acct-pointer .acct-pointer-link")];
-    expect(links.map((b) => b.textContent)).toEqual([copyText("acctPage.pointer.timeline"), copyText("acctPage.pointer.rotation")]);
-    expect(el.querySelector(".acct-pointer")!.textContent).not.toContain("自动起算");
-    links[1].click();
-    expect(emit).toHaveBeenCalledWith(OPEN_ACCOUNT_PANEL_EVENT, { machine: "devbox", anchor: "default-rotation" });
-    expect(OPEN_ACCOUNT_PANEL_EVENT).toBe("open-account-panel");
+    expect(el.querySelector(".acct-pointer")).toBeNull();
+    expect([...el.querySelectorAll(".acct-pointer-link")].map((b) => b.textContent)).toEqual([copyText("machinePage.tab.config")]);
+    expect(emit).not.toHaveBeenCalledWith("open-account-panel", expect.anything());
   });
 
   it("本机那一页：标题「本机 上的账号」，读的是本机", async () => {

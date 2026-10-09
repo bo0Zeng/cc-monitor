@@ -1182,6 +1182,15 @@ impl EventReplay {
         self.fan_out(SubKind::Quota, origin, None, Body(body));
     }
 
+    /// 那台机器的后端说「轮换规则表 / 默认指向变了」（`rotation_rules_changed`）⇒ 订了那台 `quota-changed` 的每条订阅收一格
+    /// `{"rules":true}`（同上一条那一套）。界面收到就重问 `rotation-rules-read`。
+    pub fn rotation_rules_changed(&self, origin: &crate::origin::Origin) {
+        let body = serde_json::json!({ "rules": true })
+            .to_string()
+            .into_bytes();
+        self.fan_out(SubKind::Quota, origin, None, Body(body));
+    }
+
     /// 本机后端里那一趟测试连接推来一格（`probe_relay::deliver` 经 `lib.rs` 装的出口调）：**不进留存**，
     /// 交给订了 `<local>` 上 `probe-progress/<那张票>` 的订阅（credit 与 `Gap` 与 `accounts-changed` 同一套；界面给的窗口远大于一趟的格数）。
     pub fn on_probe(&self, ticket: &str, cell: String) {

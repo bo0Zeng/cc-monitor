@@ -12,28 +12,30 @@ export const QUOTA_CHANGED_WINDOW = 32;
 
 /**
  * 一批格 ⇒ 额度账要不要重读、哪几个会话的轮换要重问、要不要整台重问、还多少 credit（纯函数）。
- * 体 `{"quota":true}` ⇒ 额度账；`{"sid": …}` ⇒ 那个会话；读不出 ⇒ 当整台重问。`seen`（又接上了）· `gap`（丢了几格）⇒ 整台重问。
+ * 体 `{"quota":true}` ⇒ 额度账；`{"sid": …}` ⇒ 那个会话；`{"rules":true}` ⇒ 那台的规则表；读不出 ⇒ 当整台重问。`seen`（又接上了）· `gap`（丢了几格）⇒ 整台重问。
  */
-export function quotaChangedItems(items: readonly Item[]): { quota: boolean; sids: string[]; all: boolean; frames: number } {
+export function quotaChangedItems(items: readonly Item[]): { quota: boolean; sids: string[]; all: boolean; rules: boolean; frames: number } {
   const sids = new Set<string>();
   let quota = false;
   let all = false;
+  let rules = false;
   let frames = 0;
   for (const it of items) {
     if (it.t === "frame") {
       frames += 1;
-      let body: { quota?: unknown; sid?: unknown } | null = null;
+      let body: { quota?: unknown; sid?: unknown; rules?: unknown } | null = null;
       try {
-        body = JSON.parse(it.body) as { quota?: unknown; sid?: unknown };
+        body = JSON.parse(it.body) as { quota?: unknown; sid?: unknown; rules?: unknown };
       } catch {
         body = null;
       }
       if (body?.quota === true) quota = true;
+      else if (body?.rules === true) rules = true;
       else if (typeof body?.sid === "string" && body.sid !== "") sids.add(body.sid);
       else all = true;
     } else if (it.t === "seen" || it.t === "gap") {
       all = true;
     }
   }
-  return { quota: quota || all, sids: [...sids], all, frames };
+  return { quota: quota || all, sids: [...sids], all, rules: rules || all, frames };
 }

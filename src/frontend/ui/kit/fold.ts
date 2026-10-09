@@ -21,7 +21,10 @@ const summaries = new WeakMap<HTMLElement, HTMLElement>();
 /** 换折叠块标题行右侧那一句（现值随数据变时）。 */
 export function setFoldSummary(root: HTMLElement, text: string): void {
   const sum = summaries.get(root);
-  if (sum && sum.textContent !== text) sum.textContent = text;
+  if (sum && sum.textContent !== text) {
+    sum.textContent = text;
+    sum.title = text;
+  }
 }
 
 /** 折叠号：同一颗右指箭头，所在元素 `aria-expanded="true"` 时转 90° 下指（能展开的行都用它，不换图）。 */
@@ -38,6 +41,7 @@ export function fold(spec: FoldSpec): HTMLDivElement {
   const head = document.createElement("button");
   head.type = "button";
   head.className = s.foldHead;
+  head.dataset.foldHead = "";
   head.appendChild(foldCaret());
   const t = document.createElement("span");
   t.className = s.foldTitle;
@@ -46,6 +50,7 @@ export function fold(spec: FoldSpec): HTMLDivElement {
   const sum = document.createElement("span");
   sum.className = s.foldSummary;
   sum.textContent = spec.summary ?? "";
+  sum.title = sum.textContent;
   summaries.set(root, sum);
   head.appendChild(sum);
   const body = document.createElement("div");

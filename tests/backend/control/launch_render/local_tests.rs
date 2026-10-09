@@ -15,6 +15,7 @@ fn req(action: LocalAction) -> LocalLaunchRequest {
         account: None,
         tmux_name: None,
         default_launcher: "claude".into(),
+        preset_args: Vec::new(),
     }
 }
 

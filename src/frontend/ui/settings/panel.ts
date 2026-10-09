@@ -18,6 +18,7 @@ import {
 import { claudeDirIn, setClaudeDirOverride } from "../paths";
 import { loadConfig } from "../config";
 import { AccountsSection } from "./accounts-section";
+import { openRuleEditor, RulesSection } from "./rules-section";
 import { ExtSection } from "./ext-section"; // 顶层「扩展」：跨机器的 skill / MCP，一张表 ＋ 一个抽屉
 import { DiagnosticsSection } from "./diagnostics-section";
 import { makeSkeleton } from "./skeleton";
@@ -172,7 +173,7 @@ export const SETTINGS_HIGHLIGHT_MS = 1500;
 const SETTINGS_TARGET_EVENT = "settings-target";
 
 /** 目的地 `tab` → 机器页里的栏。 */
-const MACHINE_TAB_OF_TARGET: Record<string, string> = { acct: "acct", config: "config" };
+const MACHINE_TAB_OF_TARGET: Record<string, string> = { acct: "acct", rot: "rot", config: "config" };
 /** 顶层「扩展」页的路由 id。 */
 
 /** 带目的地跳到一节时发给那一节的事件：折着的那一节据此展开。 */
@@ -191,7 +192,7 @@ export class SettingsPanel {
   private perMachineBlocks: {
     appliesTo: "local" | "remote" | "both";
     /** 这块归详情页的哪一栏。 */
-    tab: "acct" | "term" | "data";
+    tab: "acct" | "rot" | "term" | "data";
     el: HTMLElement;
     /** 这一块的第一发 I/O：某台机器的子页第一次可见时才调。构造失败（`safeBlock` 收住）的块没有它。 */
     load?: () => void;
@@ -207,7 +208,7 @@ export class SettingsPanel {
   /** 本次打开以来，哪几页已经放过 I/O 了。`open()` 会清空它（重开要看新读数）。 */
   private readonly pagesLoaded = new Set<string>();
   /** pageId → 该页「账号 / 终端 / 足迹」三栏的容器。 */
-  private machineTabSlots = new Map<string, { acct: HTMLElement; term: HTMLElement }>();
+  private machineTabSlots = new Map<string, { acct: HTMLElement; rot: HTMLElement; term: HTMLElement }>();
   /** 机器页 id → 它的卡头与两栏。 */
   private readonly machinePages = new Map<string, MachinePage>();
   /** 机器页 id → 它的分栏。 */
@@ -606,6 +607,8 @@ export class SettingsPanel {
       this.dataPage?.focus(t.anchor);
       return;
     }
+    // 面板「编辑规则…」带 `rule:<id>`：「轮换」栏开那条的编辑器（那一栏读到那台的表时开）。
+    if (t.machine && t.anchor?.startsWith("rule:")) openRuleEditor(isLocalOrigin(t.machine) ? LOCAL_ORIGIN : t.machine, t.anchor.slice("rule:".length));
     const tabs = this.machinePages.get(pageId)?.tabs;
     const tabId = t.tab ? MACHINE_TAB_OF_TARGET[t.tab] : undefined;
     if (tabs && tabId) tabs.navigate(`${pageId}#${tabId}`);
@@ -807,7 +810,7 @@ export class SettingsPanel {
     const slots = pageId ? this.machineTabSlots.get(pageId) : undefined;
     if (slots) {
       // 分栏页：每块按 `tab` 归到「账号 / 终端 / 足迹」栏里。
-      for (const b of movable) slots[b.tab as "acct" | "term"].appendChild(b.el);
+      for (const b of movable) slots[b.tab as "acct" | "rot" | "term"].appendChild(b.el);
       return;
     }
     // 没有分栏（本机页 · 兜底落点）⇒ 整块搬。
@@ -842,7 +845,7 @@ export class SettingsPanel {
     });
     if (parts) page.slots.config.appendChild(parts.terminal);
     this.machinePages.set(pageId, page);
-    this.machineTabSlots.set(pageId, { acct: page.slots.acct, term: page.slots.config });
+    this.machineTabSlots.set(pageId, { acct: page.slots.acct, rot: page.slots.rot, term: page.slots.config });
     if (origin) page.setConnected(this.channelOf.get(origin) ?? null);
     return page;
   }
@@ -1026,6 +1029,12 @@ export class SettingsPanel {
         appliesTo: "both",
         tab: "acct",
         ...this.loadableBlock(copyText("settingsPanel.group.accounts"), () => new AccountsSection()),
+      },
+      {
+        // 规则按机器存（那台的 rotation.json）：两页都有。渲染归 `rules-section.vitest.ts`。
+        appliesTo: "both",
+        tab: "rot",
+        ...this.loadableBlock(copyText("machinePage.tab.rot"), () => new RulesSection()),
       },
       // 本机那一格「别名」（Windows 上是 PowerShell 那一侧的别名块）；远端那一格在 `MachineCard` 的「组件」栏里。
       // 构造零 I/O：它是个 `<details>`，第一次展开才读盘。

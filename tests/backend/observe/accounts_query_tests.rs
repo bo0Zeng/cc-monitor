@@ -2129,3 +2129,65 @@ fn app_exit_interrupts_follow_this_backends_own_exit_choice() {
         serde_json::json!({"relayedSessions":1,"relayedMaybe":0,"liveStreams":2,"forwards":3})
     );
 }
+
+/// ★ **活会话此刻在干什么**（轮换规则在用名单的状态，与主窗口标签页同一判）：pidfile 的活动态；在等你 ⇒ 配上记录里没结果的那一步判种类
+/// （同 `history-facts` 的 `needs`）；记录找不到 ⇒ 判不出（`unknown`），不猜；进程死了 ⇒ 不在表里。pidfile 照真 claude 的形状写。
+#[cfg(target_os = "linux")]
+#[test]
+fn live_doing_reads_activity_and_what_it_waits_for() {
+    use crate::agents::SessionActivity as A;
+    use crate::observe::facts_query::NeedsKind as K;
+    let home = tmpdir("doing");
+    let dir = home.join("projects").join("-n");
+    fs::create_dir_all(&dir).unwrap();
+    let ask = "dddddddd-1111-2222-3333-444444444444";
+    fs::write(
+        dir.join(format!("{ask}.jsonl")),
+        "{\"type\":\"assistant\",\"timestamp\":\"t1\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"id\":\"b1\",\"name\":\"Bash\",\"input\":{\"command\":\"ls\"}}]}}\n",
+    )
+    .unwrap();
+    let pids = crate::observe::watcher::pidfile_dir(&home);
+    fs::create_dir_all(&pids).unwrap();
+    let mut kids = Vec::new();
+    let mut put = |sid: &str, status: &str| {
+        let c = std::process::Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .unwrap();
+        let ticks = crate::platform::proc::proc_starttime(c.id()).expect("起始时刻");
+        fs::write(
+            pids.join(format!("{}.json", c.id())),
+            format!(r#"{{"pid":{},"sessionId":"{sid}","kind":"interactive","procStart":"{ticks}","status":"{status}","waitingFor":"permission prompt","statusUpdatedAt":1700000000000}}"#, c.id()),
+        )
+        .unwrap();
+        kids.push(c);
+    };
+    put("s-busy", "busy");
+    put("s-idle", "idle");
+    put(ask, "waiting");
+    put("s-norecord", "waiting");
+    put("s-dead", "busy");
+    let dead = kids.pop().unwrap();
+    let mut dead = dead;
+    let _ = dead.kill();
+    let _ = dead.wait();
+    let got = live_doing(&home);
+    for mut c in kids {
+        let _ = c.kill();
+        let _ = c.wait();
+    }
+    let _ = fs::remove_dir_all(&home);
+    let d = |activity, needs| Doing {
+        activity: Some(activity),
+        needs,
+    };
+    let want: std::collections::BTreeMap<String, Doing> = [
+        ("s-busy".to_string(), d(A::Working, None)),
+        ("s-idle".to_string(), d(A::Idle, None)),
+        (ask.to_string(), d(A::NeedsYou, Some(K::Approve))),
+        ("s-norecord".to_string(), d(A::NeedsYou, Some(K::Unknown))),
+    ]
+    .into_iter()
+    .collect();
+    assert_eq!(got, want);
+}

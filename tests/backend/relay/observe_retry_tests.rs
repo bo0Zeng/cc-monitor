@@ -446,7 +446,10 @@ impl Home {
         )
         .expect("rotation");
         rotation::face_change(&RotationStore::at(Some(self.rotation_path())), |b| {
-            b.default = Some(r)
+            let id = b.default_rule.clone();
+            if let Some(rule) = b.rules.get_mut(&id) {
+                rule.rotation = r;
+            }
         })
         .expect("write");
     }

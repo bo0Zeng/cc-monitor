@@ -103,6 +103,23 @@ pub(crate) fn at_limit_in_effect(agent: &str, said: AtLimit) -> AtLimit {
     }
 }
 
+/// [`Hop::plan_view`] 的结果。
+pub(crate) struct PlanView {
+    pub(crate) steps: Vec<decide::PlanStep>,
+    pub(crate) lanes: Vec<PlanLane>,
+    /// 号 → 窗口键（`*` ＝ 全部窗口）→ （此刻取的, 这一格不算时往下一层取到的）。
+    pub(crate) effective: BTreeMap<String, BTreeMap<String, (decide::CapAt, decide::CapAt)>>,
+}
+
+/// 预览里一个号的泳道：不能用的那几段 · 重置时刻（`(语义位或窗口键, 时刻)`）。
+pub(crate) struct PlanLane {
+    pub(crate) account: String,
+    pub(crate) spans: Vec<decide::LaneSpan>,
+    pub(crate) resets: Vec<(String, u64)>,
+    /// 此刻卡人的那个窗口（语义位或窗口键）与用了多少（%）；没出过数 ⇒ `None`。
+    pub(crate) pinch: Option<(String, u32)>,
+}
+
 /// 一发请求在上游选择这一侧的事实（判的时候要的；按量号那几格由调用方从 key 表答）。
 pub(crate) struct Turn<'a> {
     pub(crate) agent: &'a str,
@@ -240,6 +257,9 @@ impl Hop {
             stint: &rot.stint,
             preempt: rot.preempt,
             at_limit: at_limit_in_effect(&s.agent, rot.at_limit),
+            fallback: &rot.fallback,
+            wait: rot.wait,
+            can_hold: crate::agents::limit_reply_of(&s.agent).is_some(),
             current,
             base: &s.baseline,
             above: &s.blocked_above,
@@ -394,6 +414,19 @@ impl Hop {
                     return None;
                 }
             }
+        } else if book
+            .sessions
+            .get(a.sid)
+            .is_some_and(|s| a.now.saturating_sub(s.last_seen()) >= rotation::SEEN_REFRESH)
+        {
+            // 已知的会话每天头一发刷新「看见」的时刻（清旧会话按它；只动这一格，钉号 · 基线 · 挡在前面的都不碰）。写不成只出声。
+            match rotation::relay_change(&self.store, |b| {
+                b.saw(a.sid, a.agent, a.start, a.now);
+                b.clone()
+            }) {
+                Ok(b) => book = b,
+                Err(e) => tracing::warn!("[rotate] {e}"),
+            }
         }
         let s = book.sessions.get(a.sid)?.clone();
         Some((book, s))
@@ -509,6 +542,29 @@ impl Hop {
                     from: current.to_string(),
                     to: current.to_string(),
                     why: SwitchWhy::Held { n },
+                    from_resets_at: Some(back.at),
+                };
+                self.stuck(a.sid, rec, &skipped);
+                let reply = crate::agents::limit_reply_of(a.agent)?;
+                Some(Go::Hold {
+                    reply: reply(back.at, a.now, back.slot.as_deref()),
+                })
+            }
+            Verdict::Wait {
+                instead,
+                back,
+                skipped,
+            } => {
+                let rec = SwitchRecord {
+                    at_text: None,
+                    from_resets_at_text: None,
+                    at: a.now,
+                    from: current.to_string(),
+                    to: current.to_string(),
+                    why: SwitchWhy::Wait {
+                        account: back.account.clone(),
+                        instead,
+                    },
                     from_resets_at: Some(back.at),
                 };
                 self.stuck(a.sid, rec, &skipped);
@@ -649,6 +705,126 @@ impl Hop {
         self.prepare(&a, &self.library(), target).map(|_| ())
     }
 
+    /// 一个号此刻卡人的窗口与用了多少（%）：额度账说卡在哪个窗口就取它，没说 ⇒ 用得最多的那个；没出过数 ⇒ `None`。
+    /// 窗口按语义位写（`5h` · `7d`），没有语义位的照这一家的窗口键。
+    pub(crate) fn pinch(&self, agent: &str, account: &str, now: u64) -> Option<(String, u32)> {
+        let o = self.quota.entry(agent, account)?;
+        let (slot, key) = (slot_fn(agent), key_fn(agent));
+        let ws = &o.reading.windows;
+        let w = o
+            .reading
+            .limiting
+            .as_deref()
+            .and_then(|l| ws.iter().find(|w| w.name == l && w.used.is_some()))
+            .or_else(|| {
+                ws.iter()
+                    .filter(|w| w.used.is_some())
+                    .max_by(|a, b| decide::used_now(a, now).total_cmp(&decide::used_now(b, now)))
+            })?;
+        let name = slot(&w.name).map_or_else(|| key(&w.name), |s| Some(s.to_string()))?;
+        let pct = (decide::used_now(w, now) * 100.0).round().max(0.0) as u32;
+        Some((name, pct))
+    }
+
+    /// 帧面「这份轮换接下来会怎么走」（`rotation-plan`）：从 `now` 到 `until` 的预览 · 池里各号不能用的那几段与重置时刻 ·
+    /// 各号各窗口此刻取的上限。`current` / `above` ＝ 此刻的号与挡在它前面的（规则 / 草稿没有会话 ⇒ 起始账号 · 空）。只读。
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn plan_view(
+        &self,
+        rot: &Rotation,
+        agent: &str,
+        start: &str,
+        current: &str,
+        above: &[String],
+        row: &dyn Fn(&str) -> Option<bool>,
+        now: u64,
+        until: u64,
+    ) -> PlanView {
+        let lib = self.library();
+        let a = Turn {
+            agent,
+            start,
+            sid: "",
+            body: b"",
+            row,
+            now,
+        };
+        let pool = rot.pool(start);
+        let seen = |x: &str| self.quota.entry(agent, x).map(|o| o.reading);
+        let kind = |x: &str| kind_of(&a, &lib, x);
+        let (slot, key) = (slot_fn(agent), key_fn(agent));
+        let f = Facts {
+            pool: &pool,
+            when: rot.when,
+            cap: &rot.cap,
+            stint: &rot.stint,
+            preempt: rot.preempt,
+            at_limit: at_limit_in_effect(agent, rot.at_limit),
+            fallback: &rot.fallback,
+            wait: rot.wait,
+            can_hold: crate::agents::limit_reply_of(agent).is_some(),
+            current,
+            base: &BTreeMap::new(),
+            above,
+            now,
+            offset: local_offset(now),
+            heard: None,
+            seen: &seen,
+            kind: &kind,
+            slot: &slot,
+            key: &key,
+            tried: &[],
+        };
+        let mut ready = |x: &str| self.reach(&a, &lib, x).map(|_| ());
+        let steps = decide::plan(&f, until, &mut ready);
+        let lanes = pool
+            .iter()
+            .map(|x| {
+                let resets = seen(x)
+                    .map(|r| {
+                        r.windows
+                            .iter()
+                            .filter_map(|w| {
+                                let at = w.resets_at.filter(|t| *t > now && *t < until)?;
+                                Some((
+                                    slot(&w.name)
+                                        .map_or_else(|| key(&w.name), |s| Some(s.to_string()))?,
+                                    at,
+                                ))
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                PlanLane {
+                    account: x.clone(),
+                    spans: decide::lane(&f, x, until),
+                    resets,
+                    pinch: self.pinch(agent, x, now),
+                }
+            })
+            .collect();
+        let effective = pool
+            .iter()
+            .map(|x| {
+                let mut keys: Vec<String> = ["5h", "7d"].iter().map(|k| k.to_string()).collect();
+                keys.extend(rot.cap.get(x).into_iter().flat_map(|m| m.keys().cloned()));
+                keys.push(crate::accounts::quota::rotation::ALL_WINDOWS.to_string());
+                keys.dedup();
+                let cells = keys.into_iter().fold(BTreeMap::new(), |mut m, k| {
+                    m.entry(k.clone())
+                        .or_insert_with(|| decide::effective_cap(&f, x, &k));
+                    m
+                });
+                (x.clone(), cells)
+            })
+            .collect();
+        PlanView {
+            steps,
+            lanes,
+            effective,
+        }
+    }
+
     /// 帧面：一个会话的那一份（「账号」格 ＋ 下一个 · 卡住 · 可用按量号 · 此刻那个号的显示态）。只读：不记、不续令牌。
     /// `live(sid)` ＝ 这个会话的进程此刻还活着。
     pub(crate) fn view(
@@ -703,7 +879,7 @@ impl Hop {
         let mut ready = |x: &str| self.reach(&a, &lib, x).map(|_| ());
         let next = decide::next_of(&f, &mut ready);
         let held = match decide::decide(&f, &mut ready) {
-            Verdict::Hold { back, .. } => Some(back),
+            Verdict::Hold { back, .. } | Verdict::Wait { back, .. } => Some(back),
             _ => None,
         };
         let blocked = if let Some(back) = held {
@@ -762,7 +938,12 @@ impl Hop {
             .collect();
         SessionRotationState::Present(Box::new(SessionRotation {
             agent: s.agent.clone(),
-            follow: s.follow,
+            source: s.source.clone(),
+            rule_name: book
+                .rule_of(s)
+                .and_then(|id| book.rules.get(id))
+                .map(|r| r.name.clone()),
+            explain: crate::accounts::quota::rule_text::explain(&rot),
             custom: s.custom.clone(),
             account: AccountCell {
                 since_text: None,

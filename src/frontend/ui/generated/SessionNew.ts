@@ -11,7 +11,7 @@ export type SessionNew = { outcome: SessionNewOutcome,
  */
 session: string | null, 
 /**
- * 分叉出来的新会话 sid（新起的 ⇒ `null`：报到之前说不出）。
+ * 分叉出来的新会话 sid · 带规则新起时这台先定好的 sid；别的新起 ⇒ `null`（报到之前说不出）。
  */
 sid: string | null, 
 /**

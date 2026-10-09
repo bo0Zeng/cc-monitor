@@ -1,0 +1,279 @@
+/* 机器页「轮换」栏：段头 · 筛选框（多于 12 条才有）· 一张表（一条规则一行 44 高；勾了几条表头换批量条）· 行下展开的在用名单 · 空态一行。 */
+@layer components {
+  .rules {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .rulesHead {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-4);
+    margin-bottom: var(--space-4);
+  }
+
+  /* 开着编辑器（同一栏里的子页）：段头收起。 */
+  .rules[data-editing="true"] > .rulesHead {
+    display: none;
+  }
+
+  .rulesTitle {
+    margin: 0;
+    font-size: var(--font-size-base);
+    font-weight: 600;
+  }
+
+  .rulesSub {
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+  }
+
+  .rulesActions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin-left: auto;
+  }
+
+  .rulesFilter {
+    width: 240px;
+    margin-bottom: var(--space-4);
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-s);
+    background: var(--bg);
+    color: var(--text);
+    font: inherit;
+  }
+
+  .rulesTimeline {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    margin-top: var(--space-5);
+  }
+
+  .rulesTlTop {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-3);
+  }
+
+  .rulesTlTitle {
+    font-weight: 600;
+  }
+
+  .rulesTlHead {
+    flex: 1;
+    min-width: 0;
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+  }
+
+  .rulesBody {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+  }
+
+  .rulesTable {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-m);
+    background: var(--bg-2);
+  }
+
+  .rulesHeadRow,
+  .rulesRow,
+  .rulesBatch {
+    display: grid;
+    grid-template-columns: 24px minmax(120px, 1fr) minmax(0, 2fr) 90px 28px;
+    align-items: center;
+    column-gap: var(--space-4);
+    padding: 0 var(--space-4);
+  }
+
+  .rulesHeadRow {
+    min-height: 32px;
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+  }
+
+  .rulesBatch {
+    display: flex;
+    gap: var(--space-3);
+    min-height: 32px;
+  }
+
+  .rulesBatchN {
+    font-weight: 600;
+  }
+
+  .rulesSp {
+    flex: 1;
+  }
+
+  .rulesRow {
+    min-height: 44px;
+    border-top: 1px solid var(--border);
+  }
+
+  .rulesRow:hover,
+  .rulesRow:focus-within {
+    background: var(--overlay-hover);
+  }
+
+  .rulesName {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    min-width: 0;
+    font-weight: 600;
+  }
+
+  .rulesNameText {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .rulesSum {
+    overflow: hidden;
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .rulesUse {
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+    white-space: nowrap;
+  }
+
+  .rulesUseBtn {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--color-link);
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .rulesUseBtn:hover,
+  .rulesUseBtn:focus-visible {
+    text-decoration: underline;
+  }
+
+  .rulesRename {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    padding: var(--space-2) 0;
+  }
+
+  .rulesRenameInput {
+    width: 100%;
+    padding: 2px var(--space-3);
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-s);
+    background: var(--bg);
+    color: var(--text);
+    font: inherit;
+  }
+
+  .rulesRenameInput[data-error="true"] {
+    border-color: var(--error);
+  }
+
+  .rulesRenameErr {
+    color: var(--error);
+    font-size: var(--font-size-small);
+    font-weight: 400;
+  }
+
+  .rulesUsers {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-4) var(--space-4) calc(var(--space-4) * 2 + 24px);
+    background: var(--bg);
+  }
+
+  .rulesUser {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    min-height: 24px;
+    cursor: pointer;
+  }
+
+  .rulesUserName {
+    font-weight: 600;
+  }
+
+  .rulesUserState {
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+  }
+
+  .rulesUsersFoot {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin-top: var(--space-2);
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+  }
+
+  .rulesEmpty {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+  }
+
+  .rulesNew {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    width: 260px;
+  }
+
+  .rulesNewTitle {
+    font-weight: 600;
+  }
+
+  .rulesNewRow {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+  }
+
+  .rulesNewFoot {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--space-3);
+  }
+
+  /* 窄窗：摘要折到名称下一行（在用 · ⋯ 仍在行尾）。 */
+  @media (width < 640px) {
+    .rulesHeadRow,
+    .rulesRow {
+      grid-template-columns: 24px minmax(0, 1fr) auto 28px;
+    }
+
+    .rulesHeadRow > :nth-child(3) {
+      display: none;
+    }
+
+    .rulesSum {
+      grid-row: 2;
+      grid-column: 2 / 5;
+      padding-bottom: var(--space-2);
+    }
+  }
+}

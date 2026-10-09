@@ -94,6 +94,7 @@ pub(super) mod tests {
         "quota/mod.rs",
         // 轮换配置（rotation.json）与换号的唯一判定（纯）：上游选择换号时问它们；它们不认识上游选择与账号库管理。
         "quota/rotation.rs",
+        "quota/rule_text.rs",
         // 额度显示态（纯）：帧面宿主与上游选择出显示态时问它；它不认识上游选择与账号库管理。
         "quota/show.rs",
     ];

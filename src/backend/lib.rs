@@ -1009,9 +1009,14 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--quota-read",
     // 用某个号查一次额度（`inbound::REGISTRY` 的 `quota-probe`）派生的 CLI 面，入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     "--quota-probe",
-    // 换号那一族（`inbound::REGISTRY` 的 `rotation-*`）自动派生的 CLI 面；除 `--rotation-read` 外入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
-    "--rotation-read",
-    "--rotation-set",
+    // 换号那一族（`inbound::REGISTRY` 的 `rotation-*`）自动派生的 CLI 面；除 `--rotation-rules-read` 外入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    // `--rotation-read` / `--rotation-set` 随规则表删了（默认轮换 ＝ 默认规则，经 `--rotation-rules-read` · `--rotation-rule-save` · `--rotation-default-set`）。
+    "--rotation-rules-read",
+    "--rotation-rule-save",
+    "--rotation-rule-rename",
+    "--rotation-rule-delete",
+    "--rotation-default-set",
+    "--rotation-plan",
     "--rotation-session-read",
     "--rotation-session-set",
     "--rotation-switch",
@@ -2055,6 +2060,8 @@ pub const EMITS: &[&str] = &[
     "quota_changed",
     // 某个会话的轮换 / 「账号」格变了（换号那一路与帧面改轮换那一路真发，走 tap 那条可丢的通道；登记 = 承诺真发）。
     "rotation_changed",
+    // 这台的轮换规则表 / 默认指向变了（帧面写规则那一路与盯盘那一路真发，走 tap 那条可丢的通道；登记 = 承诺真发）。
+    "rotation_rules_changed",
     // 某个会话的任务清单变了（watcher 盯 `<agent 家>/tasks/`，登记 = 承诺真发，已接线）。
     "tasks_changed",
     // 活会话清单报完了（watch_loop Phase 1 走完那一刻发一次，登记 = 承诺真发，已接线）。

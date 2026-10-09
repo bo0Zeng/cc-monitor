@@ -95,7 +95,7 @@ const LOCAL_PAGE_IPC = [
   // 这里原来还有终端集成那两发（终端集成的状态那一发〔今天并进 `aliases_read`〕/ `cc_get_auto_launch`）：那块并进了「别名」
   // （一个 `<details>`，**第一次展开**才建它、才发那两发）⇒ 子页可见时不再发，往后又延了一层。
   // MCP · 资产目录 · 插件三块搬去了顶层「扩展」页（它自己那一页可见时才问），不在这一批里。
-  "chan_call", // 账号本机那一支（`accounts-list` 发给 `<local>`）
+  "chan_call", // 账号本机那一支（`accounts-list` 发给 `<local>`）；轮换那一栏（`rotation-rules-read` 发给 `<local>`）同名
   // cc-bus 钩子那一块拿掉了（钩子状态在扩展页 cc-bus 那一行，抽屉打开才问），它那两发随之没了。
 ] as const;
 
@@ -108,6 +108,7 @@ const LOCAL_PAGE_IPC = [
 const SWITCH_TO_AYA_IPC: readonly string[] = [
   "chan_call", // 账号：devbox 那一台（经通道说 `accounts-list`）
   "chan_call", // 那台这里问不到 ⇒ 问本机后端它记着的上次那一份（`last-seen-read`，跨重启的离线值）
+  "chan_call", // 轮换：devbox 那一台的规则表（`rotation-rules-read`）
 ];
 /**
  * 第一次可见就是 devbox：per-machine 那一批放一次，**每一发恰好一次**。
@@ -119,6 +120,8 @@ const FIRST_VISIT_AYA_IPC: readonly string[] = [
   "load_config", // 账号：读远端清单
   "chan_call", // 账号：devbox 那一台（经通道说 `accounts-list`）
   "chan_call", // 那台这里问不到 ⇒ 问本机后端它记着的上次那一份（`last-seen-read`）
+  "chan_call", // 轮换：devbox 那一台的规则表（`rotation-rules-read`）
+  "load_config", // 轮换：读远端清单（订那几台的规则推送）
 ];
 
 const tick = () => new Promise((r) => setTimeout(r, 0));

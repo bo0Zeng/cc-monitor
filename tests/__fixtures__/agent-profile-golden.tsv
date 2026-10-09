@@ -27,8 +27,10 @@ claude	resume_kind	flag
 claude	resume_token	--resume
 claude	nested_env	CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION
 claude	launch_args	<empty>
+claude	preset_sid	--session-id
 codex	default_launcher	codex
 codex	resume_kind	subcommand
 codex	resume_token	resume
 codex	nested_env	<empty>
 codex	launch_args	--no-daemon
+codex	preset_sid	<empty>

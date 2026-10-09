@@ -4,4 +4,4 @@ import type { Unready } from "./Unready";
 /**
  * 为什么换（或为什么没换成）。
  */
-export type SwitchWhy = { "full": { w?: string, } } | { "threshold": { n: number, } } | "manualHot" | "manualRestart" | { "skipped": { account: string, reason: Unready, } } | "toOverage" | { "held": { n: number, } } | { "stint": { w: string, n: number, } } | "preempt";
+export type SwitchWhy = { "full": { w?: string, } } | { "threshold": { n: number, } } | "manualHot" | "manualRestart" | { "skipped": { account: string, reason: Unready, } } | "toOverage" | { "held": { n: number, } } | { "stint": { w: string, n: number, } } | "preempt" | { "wait": { account: string, instead: string, } };

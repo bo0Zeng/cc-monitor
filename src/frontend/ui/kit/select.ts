@@ -7,6 +7,7 @@
  * - 换值（点选或 ↑↓）⇒ `onChange(value)`；`setValue` 不回调。
  * 判据：`tests/frontend/ui/kit/select.vitest.ts`。
  */
+import { copyText } from "../copy-table";
 import { icon } from "./icon";
 import { closeMenu, menuAnchoredOn, openMenu, type MenuItem } from "./menu";
 import s from "./select.module.css";
@@ -21,6 +22,12 @@ export interface SelectOption {
   /** `false` ＝ 灰着不可选；为什么写进 `why`（面板右侧灰字）。 */
   enabled?: boolean;
   why?: string;
+  /** 框上画的字（缺 ⇒ `label`）：面板里只写名字、框上要带上它是哪一类时用（`夜间` ⇒ `规则 夜间`）。 */
+  shown?: string;
+  /** 面板里这一项右侧的灰字（摘要之类）。 */
+  detail?: string;
+  /** 面板里悬停 / 焦点停 300ms ⇒ 项右侧的只读小卡（`menu.ts` 的 `peek`）。 */
+  peek?: () => HTMLElement;
 }
 
 export interface SelectSpec {
@@ -31,6 +38,14 @@ export interface SelectSpec {
   onChange?: (value: string) => void;
   /** 合着时方向键做什么：`step`（缺省）↑↓ 直接换值 · `open` 只有 ↓ 展开、别的一概不做。 */
   closedKeys?: "step" | "open";
+  /** 面板至少多宽（缺 ⇒ 同框宽）：项右侧带摘要的那种框比面板窄。 */
+  menuWidth?: number;
+  /** 开面板前再排一遍项（插组名 · 分隔 · 末尾几个动作）；缺 ⇒ 原样。 */
+  decorate?: (items: MenuItem[]) => MenuItem[];
+  /** 选项多过这么多 ⇒ 面板顶上出筛选框（自动聚焦，按名字筛选项；`decorate` 加的不筛）。缺 ⇒ 不出。 */
+  filterOver?: number;
+  /** 筛选框的读屏名 / 占位字。 */
+  filterLabel?: string;
 }
 
 export interface SelectHandle {
@@ -44,7 +59,8 @@ export interface SelectHandle {
 
 export function select(spec: SelectSpec): SelectHandle {
   let options = spec.options;
-  let value = spec.value ?? options.find((o) => o.enabled !== false)?.value ?? "";
+  let value =
+    spec.value ?? options.find((o) => o.enabled !== false)?.value ?? "";
   const el = document.createElement("button");
   el.type = "button";
   el.className = s.select;
@@ -58,11 +74,12 @@ export function select(spec: SelectSpec): SelectHandle {
   note.className = s.selectNote;
   el.append(lead, text, note, icon("caretDown", "compact"));
 
-  const current = (): SelectOption | undefined => options.find((o) => o.value === value);
+  const current = (): SelectOption | undefined =>
+    options.find((o) => o.value === value);
   const paint = (): void => {
     const o = current();
     lead.replaceChildren(...(o?.lead ? [o.lead()] : []));
-    text.textContent = o?.label ?? "";
+    text.textContent = o?.shown ?? o?.label ?? "";
     note.textContent = o?.note ?? "";
     el.dataset.value = value;
   };
@@ -80,16 +97,35 @@ export function select(spec: SelectSpec): SelectHandle {
       avatar: o.lead?.(),
       checked: o.value === value,
       enabled: o.enabled !== false,
-      detail: o.enabled === false ? o.why : undefined,
+      detail: o.enabled === false ? o.why : o.detail,
+      peek: o.peek,
+      filterable: true,
       onClick: () => pick(o.value),
     }));
-    openMenu({ el }, items, { label: spec.label, width: el.getBoundingClientRect().width, onClose: () => el.focus() });
+    const filter =
+      spec.filterOver !== undefined && options.length > spec.filterOver
+        ? {
+            label: spec.filterLabel ?? spec.label,
+            empty: (q: string) => copyText("kit.menu.noMatch", { q }),
+          }
+        : undefined;
+    openMenu({ el }, spec.decorate ? spec.decorate(items) : items, {
+      label: spec.label,
+      width: Math.max(el.getBoundingClientRect().width, spec.menuWidth ?? 0),
+      onClose: () => el.focus(),
+      filter,
+    });
   };
   const step = (dir: 1 | -1): void => {
     const live = options.filter((o) => o.enabled !== false);
     if (live.length === 0) return;
     const i = live.findIndex((o) => o.value === value);
-    const to = i < 0 ? (dir > 0 ? 0 : live.length - 1) : Math.min(live.length - 1, Math.max(0, i + dir));
+    const to =
+      i < 0
+        ? dir > 0
+          ? 0
+          : live.length - 1
+        : Math.min(live.length - 1, Math.max(0, i + dir));
     pick(live[to].value);
   };
   el.addEventListener("click", open);
@@ -121,7 +157,11 @@ export function select(spec: SelectSpec): SelectHandle {
     setOptions: (next, v) => {
       if (menuAnchoredOn(el)) closeMenu();
       options = next;
-      value = v ?? (next.some((o) => o.value === value) ? value : (next.find((o) => o.enabled !== false)?.value ?? ""));
+      value =
+        v ??
+        (next.some((o) => o.value === value)
+          ? value
+          : (next.find((o) => o.enabled !== false)?.value ?? ""));
       paint();
     },
     setDisabled: (d) => {

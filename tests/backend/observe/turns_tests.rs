@@ -298,7 +298,7 @@ fn ending_falls_back_to_the_interrupt_or_error_card() {
 #[test]
 fn no_line_for_an_empty_process_or_a_lone_compact_summary() {
     let t = "2026-10-07T08:00:00Z";
-    let compact = serde_json::json!({"type":"user","uuid":"c1","timestamp":t,"isCompactSummary":true,"message":{"content":"摘要"}});
+    let compact = serde_json::json!({"type":"user","uuid":"c1","timestamp":t,"isCompactSummary":true,"message":{"content":"compact summary"}});
     let rows = scan(
         &body_of(&[
             user("u1", t, "q"),
