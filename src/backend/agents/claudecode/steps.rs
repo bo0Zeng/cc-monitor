@@ -140,7 +140,13 @@ pub(crate) fn result_of(block: &Value, tur: Option<&Value>) -> StepResult {
             num(t.get("file").and_then(|f| f.get("numLines"))).or_else(|| num(t.get("numLines")));
         r.files = num(t.get("numFiles"));
         // 改文件：`structuredPatch` 里每段的 `lines` 以 `+` / `-` 起头的行数。
-        if let Some(hunks) = t.get("structuredPatch").and_then(Value::as_array) {
+        // 空表当没有：新建整份文件时原文写的是 `"structuredPatch": []`，照「有这一格」走就报成 `+0 −0`，
+        // 下面「整份都是加的」那一支永远走不到。
+        let hunks = t
+            .get("structuredPatch")
+            .and_then(Value::as_array)
+            .filter(|h| !h.is_empty());
+        if let Some(hunks) = hunks {
             let (mut add, mut del) = (0u32, 0u32);
             for l in hunks
                 .iter()
