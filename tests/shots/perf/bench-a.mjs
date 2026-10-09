@@ -28,8 +28,8 @@ const extraCss = args.css ? readFileSync(path.resolve(args.css), "utf8") : "";
 const probe = extraCss
   ? `${probeSrc}\n;document.addEventListener("DOMContentLoaded", () => { const s = document.createElement("style"); s.textContent = ${JSON.stringify(extraCss)}; document.head.appendChild(s); });`
   : probeSrc;
-export const MAIN = ["idle", "scroll-up", "scroll-down", "stream-active", "stream-background", "expand", "find", "outline", "needs", "palette", "acct", "new-session", "menu", "drawer", "agents", "jump", "idle"];
-export const VIEWER = ["viewer-idle", "viewer-scroll", "viewer-find"];
+export const MAIN = ["idle", "away-idle", "scroll-up", "scroll-down", "stream-active", "stream-background", "expand", "find", "outline", "needs", "palette", "acct", "new-session", "menu", "drawer", "agents", "jump", "idle"];
+export const VIEWER = ["viewer-idle", "viewer-away-idle", "viewer-scroll", "viewer-find"];
 const only = args.only ? new Set(String(args.only).split(",")) : null;
 const LONGEST = "5e550100-0000-4000-8000-000000000100";
 
@@ -237,7 +237,7 @@ export function summarize(r) {
   if (idles.length) {
     L.push("");
     L.push("空闲 5 s：");
-    for (const x of idles) L.push(`- ${x.where} 第 ${x.run + 1} 趟：CPU ${f0(x.cpu)} ms · 在跑的动画 ${x.running}（${x.who.map(([a, b]) => `${a}×${b}`).join("，")}）· DOM 变更 ${x.mutations} · 回调 ${JSON.stringify(x.callbacks)} · DOM ${x.dom}`);
+    for (const x of idles) L.push(`- ${x.where} 第 ${x.run + 1} 趟：CPU ${f0(x.cpu)} ms · 在跑的动画 ${x.running}（${x.who.map(([a, b]) => `${a}×${b}`).join("，")}）· DOM 变更 ${x.mutations} · 回调 ${JSON.stringify(x.callbacks)} · DOM ${x.dom}${x.awayMs !== undefined ? ` · 失焦那一下 ${f0(x.awayMs)} ms · 得焦那一下 ${f0(x.backMs)} ms` : ""}`);
   }
   return L.join("\n");
 }

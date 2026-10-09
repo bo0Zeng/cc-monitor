@@ -202,6 +202,19 @@ async function idle(ms = 5000): Promise<Record<string, unknown>> {
   return { name: "idle", wall: performance.now() - t0, running: anims.length, who: [...who.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12), mutations: timers, callbacks: cnt, dom: document.getElementsByTagName("*").length };
 }
 
+async function awayIdle(): Promise<Record<string, unknown>> {
+  await window.__perf.quiet(500, 10_000);
+  const t0 = performance.now();
+  window.dispatchEvent(new FocusEvent("blur"));
+  await raf2();
+  const awayMs = performance.now() - t0;
+  const r = await idle();
+  const t1 = performance.now();
+  window.dispatchEvent(new FocusEvent("focus"));
+  await raf2();
+  return { ...r, name: "away-idle", awayMs, backMs: performance.now() - t1 };
+}
+
 /** 长会话往上滚 60 下（每下 600 px、50 ms），再往下滚回去。 */
 async function scroll(dir: "up" | "down"): Promise<Record<string, unknown>> {
   await toLongest();
@@ -647,6 +660,9 @@ const ACTIONS: Record<string, () => Promise<Record<string, unknown>>> = {
   drawer,
   agents,
   "viewer-idle": () => idle(),
+  // 窗口不在前台时空闲（呼吸点该停）：派一个窗口失焦、量空闲，再派得焦；记失焦 / 得焦那一下画完要多久
+  "away-idle": awayIdle,
+  "viewer-away-idle": awayIdle,
   "viewer-scroll": viewerScroll,
   "viewer-find": viewerFind,
   // 浮层开关慢在哪：几样最小动作各自逼一次样式 ＋ 布局要多久（同步段）
@@ -732,6 +748,8 @@ window.__pa = {
   async run(name: string): Promise<Record<string, unknown>> {
     const f = ACTIONS[name];
     if (!f) throw new Error(`没有这一项：${name}`);
+    // 无头 / 私有 Xvfb 下窗口未必算「在前台」：除了专量「不在前台」那一项，每项开头都派一个窗口得焦（呼吸点照常）
+    if (!name.endsWith("away-idle")) window.dispatchEvent(new FocusEvent("focus"));
     try {
       return await f();
     } finally {

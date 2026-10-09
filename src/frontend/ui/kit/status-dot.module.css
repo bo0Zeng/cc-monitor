@@ -22,6 +22,11 @@
     animation: breathe var(--dur-breathe) ease-in-out infinite;
   }
 
+  /* 窗口不在前台（失焦 / 看不见）：不呼吸，颜色照旧（`status-dot.ts::installDotRest` 标根元素）。 */
+  :root[data-window-away] .dot[data-state="running"] {
+    animation: none;
+  }
+
   @keyframes breathe {
     50% {
       opacity: 0.6;

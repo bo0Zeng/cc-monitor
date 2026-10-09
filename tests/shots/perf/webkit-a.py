@@ -24,8 +24,8 @@ from gi.repository import GLib, Gtk, WebKit2  # noqa: E402
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(HERE, "../../.."))
 LONGEST = "5e550100-0000-4000-8000-000000000100"
-MAIN = ["idle", "scroll-up", "scroll-down", "stream-active", "stream-background", "expand", "find", "outline", "needs", "palette", "acct", "new-session", "menu", "drawer", "agents", "jump", "idle"]
-VIEWER = ["viewer-idle", "viewer-scroll", "viewer-find"]
+MAIN = ["idle", "away-idle", "scroll-up", "scroll-down", "stream-active", "stream-background", "expand", "find", "outline", "needs", "palette", "acct", "new-session", "menu", "drawer", "agents", "jump", "idle"]
+VIEWER = ["viewer-idle", "viewer-away-idle", "viewer-scroll", "viewer-find"]
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--runs", type=int, default=2)
