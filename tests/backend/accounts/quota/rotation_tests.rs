@@ -675,3 +675,61 @@ fn fallback_names_accounts_in_order_and_reads_back() {
         assert!(e.contains("fallback"), "{e}");
     }
 }
+
+const DAY: u64 = 86_400;
+
+/// ★ 清旧会话（稿第 12 题）：一个新会话被看见时顺手清掉「跟随默认 · 没换过号 · 没有自己那一份 · 超过 7 天没被看见」的条目；
+/// 用规则的 · 本会话的（留着自己那一份的）· 换过号的 · 7 天内看见过的都不动。清掉的那种会话再来一发 ⇒ 照新会话记回来（一样的一条，不丢东西）。
+#[test]
+fn stale_follow_sessions_without_history_are_dropped_when_a_new_one_shows_up() {
+    let t0 = 1_000 * DAY;
+    let mut b = Book::default();
+    for sid in [
+        "old",
+        "old-hist",
+        "old-custom",
+        "old-rule",
+        "recent",
+        "old-but-seen",
+    ] {
+        b.saw(sid, "claude-code", "a", t0);
+    }
+    b.sessions.get_mut("old-hist").unwrap().history.push(rec(
+        t0 + 1,
+        "a",
+        "b",
+        SwitchWhy::Full { w: None },
+    ));
+    {
+        let s = b.sessions.get_mut("old-custom").unwrap();
+        s.source = Source::Custom;
+        s.custom = Some(Rotation::default());
+    }
+    b.sessions.get_mut("old-rule").unwrap().source = Source::Rule("r_x".into());
+    b.sessions.get_mut("recent").unwrap().since = t0 + 6 * DAY;
+    // 每天头一发会把「看见」刷新（至多一天一次写盘）。
+    assert!(
+        b.saw("old-but-seen", "claude-code", "a", t0 + 2 * DAY),
+        "隔了一天 ⇒ 刷新看见的时刻"
+    );
+    assert!(
+        !b.saw("old-but-seen", "claude-code", "a", t0 + 2 * DAY + 60),
+        "一天之内不再写"
+    );
+    assert!(b.saw("new", "claude-code", "a", t0 + 8 * DAY + 1));
+    let left: Vec<&str> = b.sessions.keys().map(String::as_str).collect();
+    assert_eq!(
+        left,
+        [
+            "new",
+            "old-but-seen",
+            "old-custom",
+            "old-hist",
+            "old-rule",
+            "recent"
+        ]
+    );
+    // 清掉的那个再来 ⇒ 照新会话记回来。
+    assert!(b.saw("old", "claude-code", "a", t0 + 9 * DAY));
+    assert_eq!(b.sessions["old"].source, Source::Follow);
+}

@@ -414,6 +414,19 @@ impl Hop {
                     return None;
                 }
             }
+        } else if book
+            .sessions
+            .get(a.sid)
+            .is_some_and(|s| a.now.saturating_sub(s.last_seen()) >= rotation::SEEN_REFRESH)
+        {
+            // 已知的会话每天头一发刷新「看见」的时刻（清旧会话按它；只动这一格，钉号 · 基线 · 挡在前面的都不碰）。写不成只出声。
+            match rotation::relay_change(&self.store, |b| {
+                b.saw(a.sid, a.agent, a.start, a.now);
+                b.clone()
+            }) {
+                Ok(b) => book = b,
+                Err(e) => tracing::warn!("[rotate] {e}"),
+            }
         }
         let s = book.sessions.get(a.sid)?.clone();
         Some((book, s))

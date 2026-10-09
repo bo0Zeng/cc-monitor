@@ -481,7 +481,19 @@ pub(crate) struct SessionEntry {
     /// 换进 `current` 那一刻池里排在它前面、当时不能用的号（`preempt` 只等它们回来）；换号 / 换了起它的号就清掉重记。
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) blocked_above: Vec<String>,
+    /// 中转最后一次看见它的时刻（至多一天刷新一次，免得每发都写盘）；`0` ＝ 没记过（按 `since` 算）。清旧会话按它。
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub(crate) seen: u64,
 }
+
+fn is_zero(v: &u64) -> bool {
+    *v == 0
+}
+
+/// 「看见」的时刻隔多久才刷新一次（秒）。
+pub(crate) const SEEN_REFRESH: u64 = 86_400;
+/// 跟随默认 · 没换过号 · 没有自己那一份的会话，多久没被看见就从账本里清掉（秒）。
+pub(crate) const DROP_AFTER: u64 = 7 * 86_400;
 
 impl SessionEntry {
     pub(crate) fn fresh(agent: &str, start: &str, now: u64) -> Self {
@@ -495,7 +507,13 @@ impl SessionEntry {
             history: Vec::new(),
             baseline: Baseline::new(),
             blocked_above: Vec::new(),
+            seen: now,
         }
+    }
+
+    /// 最后一次看见它的时刻（没记过 ⇒ 按 `since`）。
+    pub(crate) fn last_seen(&self) -> u64 {
+        self.seen.max(self.since)
     }
 }
 
@@ -581,6 +599,8 @@ struct SessionEntryLoose {
     baseline: Baseline,
     #[serde(default)]
     blocked_above: Vec<String>,
+    #[serde(default)]
+    seen: u64,
 }
 
 impl<'de> Deserialize<'de> for Book {
@@ -605,6 +625,7 @@ impl<'de> Deserialize<'de> for Book {
                     history: e.history,
                     baseline: e.baseline,
                     blocked_above: e.blocked_above,
+                    seen: e.seen,
                 };
                 (sid, entry)
             })
@@ -742,9 +763,11 @@ impl Book {
     }
 
     /// 中转第一次看见这个会话 / 会话换了起它的号 ⇒ 记下（换了起它的号 ⇒ 钉号清掉，从新号起算）。改了 ⇒ `true`。
+    /// 每天头一次看见已知的会话 ⇒ 刷新「看见」的时刻（`true`，写一次盘）；新会话被看见时顺手清旧会话（[`Book::drop_stale`]）。
     pub(crate) fn saw(&mut self, sid: &str, agent: &str, start: &str, now: u64) -> bool {
         match self.sessions.get_mut(sid) {
             None => {
+                self.drop_stale(now);
                 self.sessions
                     .insert(sid.to_string(), SessionEntry::fresh(agent, start, now));
                 true
@@ -756,10 +779,28 @@ impl Book {
                 s.since = now;
                 s.baseline.clear();
                 s.blocked_above.clear();
+                s.seen = now;
+                true
+            }
+            Some(s) if now.saturating_sub(s.last_seen()) >= SEEN_REFRESH => {
+                s.seen = now;
                 true
             }
             Some(_) => false,
         }
+    }
+
+    /// 清旧会话（稿第 12 题）：跟随默认 · 没换过号 · 没有自己那一份 · 超过 [`DROP_AFTER`] 没被看见 ⇒ 从账本里删。
+    /// 用规则的 · 本会话的 · 换过号的都不动；删掉的那种再来一发会照新会话记回来（一样的一条，不丢东西）。回删了几条。
+    pub(crate) fn drop_stale(&mut self, now: u64) -> usize {
+        let before = self.sessions.len();
+        self.sessions.retain(|_, s| {
+            !(s.source == Source::Follow
+                && s.custom.is_none()
+                && s.history.is_empty()
+                && now.saturating_sub(s.last_seen()) > DROP_AFTER)
+        });
+        before - self.sessions.len()
     }
 
     /// 记下换进此刻的号那一刻挡在它前面的号（换号 · 换了起它的号时已清空）。改了 ⇒ `true`。
