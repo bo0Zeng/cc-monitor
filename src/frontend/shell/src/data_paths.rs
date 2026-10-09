@@ -349,6 +349,11 @@ fn backend_entries(
             DataClass::Truth,
         ),
         file(
+            rr::LINEAGE_REL,
+            copy_text("rsDataPaths.backend.lineage", &[]),
+            DataClass::Truth,
+        ),
+        file(
             rr::LAUNCH_ACCOUNTS_REL,
             copy_text("rsDataPaths.backend.launchAccounts", &[]),
             DataClass::Truth,

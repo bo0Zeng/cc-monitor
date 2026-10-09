@@ -44,6 +44,8 @@ function whatOf(id: string): string {
       return copyText("rsDataPaths.backend.quota");
     case "rotation":
       return copyText("rsDataPaths.backend.rotation");
+    case "lineage":
+      return copyText("rsDataPaths.backend.lineage");
     case "launchAccounts":
       return copyText("rsDataPaths.backend.launchAccounts");
     case "launchNotes":

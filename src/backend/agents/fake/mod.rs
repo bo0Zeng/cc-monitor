@@ -122,6 +122,7 @@ pub(crate) const LAUNCH: crate::agents::LaunchFace = crate::agents::LaunchFace {
     launcher_alias: None,
     resume_token: RESUME_TOKEN,
     preset_sid: None,
+    self_sid_env: None,
     launch_args: &[],
     nested_env: &["FAKEAGENT_PARENT"],
     is_default: false,
