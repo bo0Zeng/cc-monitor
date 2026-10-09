@@ -67,6 +67,12 @@ export class BranchFolder {
   private ledgerMissSinceCompute = 0;
   /** 上次真算之后队列豁免集合变过（档 1 快路不认这种帧）。 */
   private queuedDirty = false;
+  /**
+   * 上次算出的主线（`lastMainBranch`）之后，records 与队列豁免都没变过 ⇒ 主线照用上次的。
+   * 骨架往下物化一段 / 上翻补一批之后的重折（`rebuildNow`）不来新记录（卡是早就登记过的那些记录建出来的），
+   * 每次都整份重算主线 ＝ 长会话里往下翻一下就 O(全会话) 一次。
+   */
+  private mainFresh = false;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -86,6 +92,7 @@ export class BranchFolder {
     this.noteFastPathShadow(rec);
     this.seenUuids.add(rec.uuid);
     this.records.push(rec);
+    this.mainFresh = false;
     if (rec.parentUuid) this.ledgerParentSeen.add(rec.parentUuid); // 秤 4 仪表
     if (this.batchMode) return; // batch 模式：延后到 flush
     this.scheduleLiveRecompute();
@@ -152,6 +159,7 @@ export class BranchFolder {
         if (this.disposed || this.batchMode || !this.pendingLive) return;
         this.pendingLive = false;
         const next = this.fastMain() ?? this.computeMain("live-frame");
+        this.mainFresh = true; // 这一刻的 records 算出来的就是 next（等不等于上次都一样）
         if (setsEqual(next, this.lastMainBranch)) return;
         this.lastMainBranch = next;
         this.rebuild();
@@ -215,6 +223,7 @@ export class BranchFolder {
     const led = branchLedger();
     if (led) led.recordsBulkSet += this.records.length;
     this.lastMainBranch = this.computeMain("set-records");
+    this.mainFresh = true;
     this.rebuild();
   }
 
@@ -224,6 +233,7 @@ export class BranchFolder {
     if (!t || this.queuedContents.has(t)) return;
     this.queuedContents.add(t);
     this.queuedDirty = true; // 豁免变了 ⇒ 下一次不走档 1 快路
+    this.mainFresh = false;
     // 已渲染状态下追加豁免可能改变折叠结果（queue-operation 行可能晚于 user 行到达）。
     // 每条 enqueue 都喂一次 ⇒ 排进同一个帧末合批（`scheduleLiveRecompute`），一帧内来多少条都只算一次；
     // 豁免在本帧末生效。要立刻看到最终态走 `rebuildNow()` / `flushPending()`，问还欠不欠走 `hasPendingLiveRecompute()`。
@@ -291,7 +301,8 @@ export class BranchFolder {
    */
   flushPending(): void {
     this.pendingLive = false; // 已同步刷过 ⇒ 帧末那次别再白算一遍 O(N)
-    const next = this.computeMain("flush");
+    const next = this.mainFresh ? this.lastMainBranch : this.computeMain("flush");
+    this.mainFresh = true;
     if (setsEqual(next, this.lastMainBranch)) return;
     this.lastMainBranch = next;
     this.rebuild();
@@ -303,7 +314,8 @@ export class BranchFolder {
    */
   rebuildNow(): void {
     this.pendingLive = false; // 已同步刷过 ⇒ 帧末那次别再白算一遍 O(N)
-    this.lastMainBranch = this.computeMain("rebuild-now");
+    if (!this.mainFresh) this.lastMainBranch = this.computeMain("rebuild-now");
+    this.mainFresh = true;
     this.rebuild();
   }
 
@@ -314,6 +326,7 @@ export class BranchFolder {
     // 而一个「醒来发现自己该闭嘴」的回调比一个可能取消错对象的 handle 安全。
     this.disposed = true;
     this.pendingLive = false;
+    this.mainFresh = false;
     this.records = [];
     this.seenUuids.clear();
     this.lastMainBranch = new Set();

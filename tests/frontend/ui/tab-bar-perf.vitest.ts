@@ -563,7 +563,7 @@ describe("P5：切 tab 只写 4 次 class，与 tab 数无关（代码不改，�
       streamEl.className = "stream";
       const inputsEl = document.createElement("div");
       root.append(streamEl, inputsEl);
-      store.tabs.set(`s${i}`, { sessionId: `s${i}`, streamEl, inputsEl, turnFold: { release: () => {} }, turnRail: { el: document.createElement("div"), shown: () => {} }, stream: { park: () => {} } } as unknown as Tab);
+      store.tabs.set(`s${i}`, { sessionId: `s${i}`, streamEl, inputsEl, turnFold: { release: () => {}, flushStale: () => {} }, turnRail: { el: document.createElement("div"), shown: () => {} }, stream: { park: () => {} } } as unknown as Tab);
     }
     const view = new TabStreamView(store, root, {} as TabStreamHost);
     const mo = new MutationObserver(() => {});

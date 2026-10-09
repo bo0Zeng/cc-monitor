@@ -130,6 +130,8 @@ export class TurnFold {
    * 流尺寸变了（字号 / 缩放 / 列宽 —— `ro`）才作废重量。还没量到（一条都没建出来）⇒ `null`，用稿上的值、不记。
    */
   private linePxSeen: number | null = null;
+  /** 默认开关换了、还没按新的排（`isStale`）。 */
+  private staleDefault = false;
 
   constructor(
     private readonly content: HTMLElement,
@@ -146,8 +148,7 @@ export class TurnFold {
     this.mo.observe(content, { childList: true });
     this.ro = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => {
       this.linePxSeen = null;
-      this.placeTails(this.lastOf);
-      this.sizeRules();
+      this.placeTailsAndRules(this.lastOf);
     });
     this.ro?.observe(content);
     content.addEventListener(PROC_REVEAL_EVENT, this.onReveal);
@@ -204,11 +205,24 @@ export class TurnFold {
   }
 
   /** `Ctrl+O` / 会话头开关：默认展开与否；各轮单独记的作废。 */
-  setDefault(expanded: boolean): void {
+  setDefault(expanded: boolean, later = false): void {
     this.expandedDefault = expanded;
     this.overrides.clear();
     this.held.clear();
-    this.apply();
+    if (later) this.staleDefault = true;
+    else this.apply();
+  }
+
+  /**
+   * 默认开关换了、这一份还没按新的排（后台 tab：`setDefault(…, true)` 只记一笔）。看不见的 tab 二十几个一起排，
+   * WebKitGTK 上 `Ctrl+O` 那一下要好几秒；宿主空闲时一个一个排掉（`flushStale`），切进来时还没排到就当场排。
+   */
+  get isStale(): boolean {
+    return this.staleDefault;
+  }
+
+  flushStale(): void {
+    if (this.staleDefault) this.apply();
   }
 
   /** scroll 监听（宿主挂 / 摘同一个引用）。 */
@@ -223,6 +237,7 @@ export class TurnFold {
 
   /** 按手上的那份成品给流里的卡排版（O(顶层卡数)）。 */
   apply(): void {
+    this.staleDefault = false;
     const seen = new Set<string>();
     const ending = new Set<string>();
     /** 每一轮过程里的最后一张卡（收起行接在它后面）。 */
@@ -279,8 +294,7 @@ export class TurnFold {
     }
     this.lastOf = lastOf;
     this.foldSkeleton(spans);
-    this.placeTails(lastOf);
-    this.sizeRules();
+    this.placeTailsAndRules(lastOf);
     this.mo.takeRecords();
   }
 
@@ -374,8 +388,9 @@ export class TurnFold {
     return this.overrides.get(turn.uuid) ?? this.expandedDefault;
   }
 
+  /** 归属没变的卡一个属性都不写：`data-proc-of` / 工具组的 `open` 都有样式挂着，照写一遍同样的值也让那张卡重算样式（每次卡进出流全部过程卡一起算）。 */
   private mark(el: HTMLElement, turn: TurnSummary): void {
-    el.dataset.procOf = turn.uuid;
+    if (el.dataset.procOf !== turn.uuid) el.dataset.procOf = turn.uuid;
     const uuid = el.getAttribute("data-uuid");
     let open = this.expanded(turn);
     // 暂定结论被降级：此刻视口正落在它上面 ⇒ 先不收。
@@ -385,7 +400,7 @@ export class TurnFold {
     }
     el.classList.toggle("proc-hidden", !open);
     // 过程里的工具组不再另起一层「工具 ×N」：展开的过程里它整组摊开（收着那一行由 CSS 藏掉）。
-    if (open && el instanceof HTMLDetailsElement && el.classList.contains("card-tool-group")) el.open = true;
+    if (open && el instanceof HTMLDetailsElement && el.classList.contains("card-tool-group") && !el.open) el.open = true;
   }
 
   private unmark(el: HTMLElement): void {
@@ -409,13 +424,60 @@ export class TurnFold {
     paintLine(line, turn, this.expanded(turn), Date.now());
   }
 
-  /** 展开的那几轮：过程行下面那道竖线画到这一轮过程（含收起行）的底。 */
-  private sizeRules(): void {
+  /**
+   * 展开的那几轮：过程高过一屏 ⇒ 末尾一行「‹ 收起这段过程」（别的轮的收起行摘掉）；过程行下面那道竖线画到这一轮过程（含收起行）的底。
+   * 先量后写、成块：量一下写一下 ＝ 每一轮都逼一次整页重排（`Ctrl+O` 全展开时几百轮，一下几百毫秒）。
+   * 新插进去 / 挪了位置的收起行要插完才量得到 ⇒ 再量一块；没动的沿用头一块的读数（它前面插 / 摘别的轮的收起行，
+   * 过程行与它一起挪，差不变；竖线是绝对定位的，插它不动排版）。
+   */
+  private placeTailsAndRules(lastOf: Map<string, HTMLElement>): void {
+    const open: Array<{ uuid: string; line: HTMLElement; last: HTMLElement; span: number; tailSpan: number | null }> = [];
     for (const [uuid, line] of this.lines) {
       const turn = this.byUuid.get(uuid);
-      const last = this.tails.get(uuid) ?? this.lastOf.get(uuid);
+      const last = lastOf.get(uuid);
+      if (turn && last && this.expanded(turn)) open.push({ uuid, line, last, span: 0, tailSpan: null });
+    }
+    // 头一块：量（视口高 · 每一轮过程的跨度 · 已在原位的收起行底）
+    const view = open.length > 0 ? this.scroller.clientHeight : 0;
+    for (const o of open) {
+      const lineBottom = o.line.getBoundingClientRect().bottom;
+      o.span = o.last.getBoundingClientRect().bottom - lineBottom;
+      const tail = this.tails.get(o.uuid);
+      if (tail && o.last.nextElementSibling === tail) o.tailSpan = tail.getBoundingClientRect().bottom - lineBottom;
+    }
+    // 写：收起行进出
+    const keep = new Set<string>();
+    const fresh: typeof open = [];
+    for (const o of open) {
+      if (view === 0 || o.span <= view) continue;
+      keep.add(o.uuid);
+      let tail = this.tails.get(o.uuid);
+      if (!tail) {
+        const uuid = o.uuid;
+        tail = document.createElement("button");
+        tail.type = "button";
+        tail.className = PROC_TAIL_CLASS;
+        tail.append(foldCaret(), copyText("stream.proc.collapseTail"));
+        tail.addEventListener("click", () => this.collapseFromTail(uuid));
+        this.tails.set(uuid, tail);
+      }
+      if (o.last.nextElementSibling !== tail) {
+        o.last.after(tail);
+        fresh.push(o);
+      }
+    }
+    for (const [uuid, tail] of this.tails) {
+      if (keep.has(uuid)) continue;
+      tail.remove();
+      this.tails.delete(uuid);
+    }
+    // 写：竖线进出
+    const ruled: Array<[HTMLElement, (typeof open)[number]]> = [];
+    const byUuid = new Map(open.map((o) => [o.uuid, o]));
+    for (const [uuid, line] of this.lines) {
       let rule = line.querySelector<HTMLElement>(":scope > .proc-rule");
-      if (!turn || !last || !this.expanded(turn)) {
+      const o = byUuid.get(uuid);
+      if (!o) {
         rule?.remove();
         continue;
       }
@@ -424,40 +486,11 @@ export class TurnFold {
         rule.className = "proc-rule";
         line.appendChild(rule);
       }
-      const h = Math.max(0, last.getBoundingClientRect().bottom - line.getBoundingClientRect().bottom);
-      rule.style.height = `${h}px`;
+      ruled.push([rule, o]);
     }
-  }
-
-  /** 展开的过程高过一屏 ⇒ 末尾一行「‹ 收起这段过程」；别的轮的收起行摘掉。 */
-  private placeTails(lastOf: Map<string, HTMLElement>): void {
-    const keep = new Set<string>();
-    // 视口高等真有展开的轮才量：一轮都没展开（默认）⇒ 一下几何都不读（刚改过 DOM，读一下就是一次强制排版）
-    let view: number | null = null;
-    for (const [uuid, last] of lastOf) {
-      const turn = this.byUuid.get(uuid);
-      const line = this.lines.get(uuid);
-      if (!turn || !line || !this.expanded(turn)) continue;
-      view ??= this.scroller.clientHeight;
-      if (view === 0) continue;
-      if (last.getBoundingClientRect().bottom - line.getBoundingClientRect().bottom <= view) continue;
-      keep.add(uuid);
-      let tail = this.tails.get(uuid);
-      if (!tail) {
-        tail = document.createElement("button");
-        tail.type = "button";
-        tail.className = PROC_TAIL_CLASS;
-        tail.append(foldCaret(), copyText("stream.proc.collapseTail"));
-        tail.addEventListener("click", () => this.collapseFromTail(uuid));
-        this.tails.set(uuid, tail);
-      }
-      if (last.nextElementSibling !== tail) last.after(tail);
-    }
-    for (const [uuid, tail] of this.tails) {
-      if (keep.has(uuid)) continue;
-      tail.remove();
-      this.tails.delete(uuid);
-    }
+    // 第二块：只量刚插进去的收起行
+    for (const o of fresh) o.tailSpan = this.tails.get(o.uuid)!.getBoundingClientRect().bottom - o.line.getBoundingClientRect().bottom;
+    for (const [rule, o] of ruled) rule.style.height = `${Math.max(0, keep.has(o.uuid) ? (o.tailSpan ?? o.span) : o.span)}px`;
   }
 
   /** 末尾那一行收起：收完把折叠行放到收起行原来的屏幕位置（视口不跳）。 */

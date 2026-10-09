@@ -817,18 +817,41 @@ export class SessionViewer {
     cur?.scrollIntoView({ block: "nearest" });
   }
 
-  /** 视口顶上那一句之前最近的一句「你说的」（没有渲染出来的不算）。 */
+  /**
+   * 视口顶上那一句之前最近的一句「你说的」（没有渲染出来的不算）。
+   * 清单行按 uuid 记一张表，流里的卡按文档顺序扫一遍对上（不逐行到流里找卡：几百句 × 整条流的查找，每帧几百毫秒）；
+   * 对上的那几张按上沿二分（卡按文档顺序上下排着）。
+   */
   private currentSaid(): HTMLElement | null {
-    const top = this.streamEl.getBoundingClientRect().top + 8;
-    let cur: HTMLElement | null = null;
+    const rows = new Map<string, HTMLElement>();
     for (const row of this.said.panel.querySelectorAll<HTMLElement>(".user-input-row")) {
       const uuid = row.dataset.inputUuid;
-      const card = uuid ? this.streamEl.querySelector<HTMLElement>(`[data-uuid="${CSS.escape(uuid)}"]`) : null;
-      if (!card) continue;
-      if (card.getBoundingClientRect().top <= top || cur === null) cur = row;
-      else break;
+      if (uuid && !rows.has(uuid)) rows.set(uuid, row);
     }
-    return cur;
+    if (rows.size === 0) return null;
+    const pairs: Array<[HTMLElement, HTMLElement]> = [];
+    const taken = new Set<string>();
+    for (const card of this.streamEl.querySelectorAll<HTMLElement>("[data-uuid]")) {
+      const uuid = card.getAttribute("data-uuid") ?? "";
+      const row = rows.get(uuid);
+      if (row && !taken.has(uuid)) {
+        taken.add(uuid);
+        pairs.push([card, row]);
+      }
+    }
+    if (pairs.length === 0) return null;
+    const top = this.streamEl.getBoundingClientRect().top + 8;
+    let lo = 0;
+    let hi = pairs.length - 1;
+    let at = 0;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (pairs[mid][0].getBoundingClientRect().top <= top) {
+        at = mid;
+        lo = mid + 1;
+      } else hi = mid - 1;
+    }
+    return pairs[at][1];
   }
 
   /** Ctrl+F（动作 `session.find`）落在查看器上：焦点进查找框、全选（窗口那一形平时不露工具行，这时露出来）。 */
@@ -1043,15 +1066,22 @@ export class SessionViewer {
     this.sideBody = body;
     this.sideHead = sideHead;
     this.syncSaid();
-    // 读到哪一句：滚动时把视口顶上那一句之前最近的一句标成当前。
+    // 读到哪一句：滚动时把视口顶上那一句之前最近的一句标成当前。一帧里来好几个 scroll ⇒ 帧里量一趟。
+    let queued = false;
     this.streamEl.addEventListener(
       "scroll",
       () => {
-        const cur = this.currentSaid();
-        for (const row of this.said.panel.querySelectorAll<HTMLElement>(".user-input-row")) {
-          if (row === cur) row.setAttribute("aria-current", "true");
-          else row.removeAttribute("aria-current");
-        }
+        if (queued) return;
+        queued = true;
+        // 调度：合批 —— 一帧里的几个 scroll 合成一次量
+        requestAnimationFrame(() => {
+          queued = false;
+          const cur = this.currentSaid();
+          for (const row of this.said.panel.querySelectorAll<HTMLElement>(".user-input-row")) {
+            if (row === cur) row.setAttribute("aria-current", "true");
+            else row.removeAttribute("aria-current");
+          }
+        });
       },
       { passive: true },
     );

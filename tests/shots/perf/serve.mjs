@@ -34,7 +34,7 @@ if (dev) {
   server = await createServer({ ...base, server: { port, strictPort: true, host: "127.0.0.1", hmr: false } });
   await server.listen();
 } else {
-  await build({ ...base, build: { outDir, emptyOutDir: true, sourcemap: false, rollupOptions: { input: { main: path.join(repo, "index.html"), viewer: path.join(repo, "viewer.html"), settings: path.join(repo, "settings.html") } } } });
+  await build({ ...base, build: { outDir, emptyOutDir: true, sourcemap: process.env.CCM_SHOTS_SOURCEMAP === "1", rollupOptions: { input: { main: path.join(repo, "index.html"), viewer: path.join(repo, "viewer.html"), settings: path.join(repo, "settings.html") } } } });
   server = await preview({ ...base, build: { outDir }, preview: { port, strictPort: true, host: "127.0.0.1" } });
 }
 console.log(`READY ${port}`);
