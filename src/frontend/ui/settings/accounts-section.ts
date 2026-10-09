@@ -40,6 +40,7 @@ import { tag } from "../kit/badge";
 import { toast, failToast } from "../kit/toast";
 import { homeShort } from "../kit/path";
 import { copyText } from "../copy-table";
+import { writeClipboard } from "../clipboard";
 import { machineName, saidOfControl } from "../control-said";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
 
@@ -548,7 +549,7 @@ export class AccountsSection {
     if (accountRowKind(a) === "apikey") items.push({ label: copyText("acctPage.menu.changeKey"), onClick: () => this.openDetail(a.name), ...off });
     else if (a.configDir !== null) items.push({ label: copyText("acctPage.menu.relogin"), onClick: () => void this.login(origin, a), ...off });
     const cmds = f.commands.get(a.name) ?? [];
-    if (cmds.length > 0) items.push({ label: copyText("acctPage.menu.copyCommands"), onClick: () => void navigator.clipboard?.writeText(cmds.join(" ")) });
+    if (cmds.length > 0) items.push({ label: copyText("acctPage.menu.copyCommands"), onClick: () => copyCmds(cmds) });
     if (a.configDir !== null) {
       const dir = a.configDir;
       items.push({ label: revealLabel(origin), onClick: () => void this.reveal(origin, dir) });
@@ -579,7 +580,7 @@ export class AccountsSection {
     };
     const cmds = f.commands.get(a.name) ?? [];
     if (cmds.length > 0) {
-      const copy = button({ label: copyText("acctPage.detail.copy"), kind: "icon", icon: "copy", size: "compact", onClick: () => void navigator.clipboard?.writeText(cmds.join(" ")) });
+      const copy = button({ label: copyText("acctPage.detail.copy"), kind: "icon", icon: "copy", size: "compact", onClick: () => copyCmds(cmds) });
       line(copyText("acctPage.detail.commands"), mono(cmds.join(copyText("kit.text.sep"))), copy);
     }
     if (accountRowKind(a) === "apikey") line(copyText("acctPage.detail.apikey"), this.keyEditor(origin, a, readonly));
@@ -833,6 +834,11 @@ export class AccountsSection {
 }
 
 // ───────────────────────────── 纯排版 ─────────────────────────────
+
+/** 复制这个号的命令名（空格隔开）：写不进 ⇒ 报一条（不装作复制了）。 */
+function copyCmds(cmds: readonly string[]): void {
+  void writeClipboard(cmds.join(" ")).catch((e: unknown) => failToast(copyText("detail.act.failed"), e, { level: "error" }));
+}
 
 function safeAgent(): string {
   try {

@@ -27071,6 +27071,12 @@
       "zh": "cc-monitor 程序出错",
       "args": []
     },
+    "rsShellCmd.clipboard.failed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "写不进剪贴板",
+      "args": []
+    },
     "rsShellCmd.autoLaunch.readNoDir": {
       "kind": "error",
       "role": "报错",

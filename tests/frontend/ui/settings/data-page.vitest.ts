@@ -2,22 +2,23 @@
  * 设置窗「文件与数据」：那台后端的 `data-report` 严格收 · 两栏照那份成品画 · 角标 ＝ 各台 `chores` 相加（读不到的不算）·
  * 那台说了没有 tmux ⇒ 恢复默认的「运行于」回落 · 改过你的文件［前往］带上那台去撤回那一处。
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { fakeClipboard } from "../../../test-support/clipboard-fake";
 
-const { disk, answers, opened, marks, clip, seen, fileWin } = vi.hoisted(() => ({
+const { disk, answers, opened, marks, seen, fileWin } = vi.hoisted(() => ({
   seen: new Map<string, Record<string, { atMs: number; value: unknown }>>(),
   fileWin: [] as Array<{ host: unknown; at: unknown }>,
   disk: { cfg: {} as Record<string, unknown> },
   answers: new Map<string, unknown>(),
   opened: vi.fn(),
   marks: [] as Array<{ origin: string; args: unknown }>,
-  clip: [] as string[],
 }));
 
 vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
   commands: {
     load_config: () => Promise.resolve(structuredClone(disk.cfg)),
     footprint_client_facts: () => Promise.resolve({ home: "/h", path: null }),
+    clipboard_write: async (a: { text: string }) => (await import("../../../test-support/clipboard-fake")).viaFake(a),
   },
 }));
 vi.mock("../../../../src/comms/inward/chan", () => ({
@@ -111,6 +112,9 @@ function mount(): { page: DataPage; badge: number[]; went: unknown[] } {
   return { page, badge, went };
 }
 
+let clipFake: ReturnType<typeof fakeClipboard>;
+afterEach(() => clipFake.restore());
+
 beforeEach(() => {
   document.body.replaceChildren();
   answers.clear();
@@ -119,8 +123,7 @@ beforeEach(() => {
   __resetLastSeenForTests();
   opened.mockClear();
   marks.length = 0;
-  clip.length = 0;
-  Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: (t: string) => (clip.push(t), Promise.resolve()) } });
+  clipFake = fakeClipboard();
   disk.cfg = { remote: { hosts: [{ label: "devbox", host: "d.lan", user: "u", port: 22 }, { label: "gpu", host: "g.lan", user: "u", port: 22 }] } };
   setResumeInTmux(true);
 });
@@ -183,7 +186,7 @@ describe("要你动手", () => {
     expect(row("relay").querySelector(".chore-diff")!.textContent, "显示时钥匙要遮住").not.toContain("SECRET");
     [...row("relay").querySelectorAll("button")].find((b) => b.textContent === copyText("dataPage.chore.copyWholeN", { n: 2 }))!.click();
     await settle();
-    expect(clip).toEqual(["{SECRET}"]);
+    expect(clipFake.written).toEqual(["{SECRET}"]);
     expect(row("relay").textContent).toContain(copyText("dataPage.state.copied"));
     expect(row("cc-bus-hooks").textContent).toContain(copyText("dataPage.state.copied"));
     answers.set(LOCAL_ORIGIN, report({ todo: [{ ...relay, state: "done" }, hooks], chores: 0 }));

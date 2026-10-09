@@ -125,6 +125,8 @@ tauri-plugin-dialog = "2"
 tauri-plugin-notification = "2"
 # 单实例：第二次启动把第一个的主窗拉到前台、自己退出。Windows 用 user 级互斥量，Linux 用会话总线上的名字（zbus）。
 tauri-plugin-single-instance = "2"
+# 写系统剪贴板（`clipboard.rs`）：回真成败。锁里本就有（egui-winit 带进来的）；Linux 多开 Wayland data-control 那一档。
+arboard = { version = "3.6", default-features = false }
 
 serde = { version = "1", features = ["derive"] }
 # `raw_value`：会话行的成品（后端给的记录）原样转交、monitor 不解析它（`ui_contract::JsonlLinePayload::message`）。
@@ -221,6 +223,8 @@ comms-inward = { path = "../../comms/inward", features = ["ts"] }
 zbus = "5"
 # 点了通知把主窗口拉前那一下要带激活令牌（`set_startup_id` ＋ `present`）：tauri 在 Linux 上本来就链着它，这里直接用。
 gtk = "0.18"
+# 剪贴板（`clipboard.rs`）：Wayland 合成器支持 data-control 那一档时经它写，回真成败；不支持就回落 X11 / XWayland。
+arboard = { version = "3.6", default-features = false, features = ["wayland-data-control"] }
 
 [target.'cfg(windows)'.dependencies]
 # v1.7.0：cc 注入式绑定恢复 ToolHelp（从 claude.exe 往上的进程链反查 PS） +

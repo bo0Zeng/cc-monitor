@@ -145,6 +145,11 @@ const MONITOR_OWN: &[(&str, Own, &str)] = &[
         "系统通知（「一轮完成」「需要你」）：通知出在 monitor 面前这台的桌面上，界面判要不要发，壳只发（`platform/notify.rs`）",
     ),
     (
+        "clipboard_write",
+        Own::Window,
+        "写系统剪贴板（全产品的复制）：剪贴板是 monitor 面前这台桌面的，经系统接口写、回真成败（`clipboard.rs`）",
+    ),
+    (
         "restart_app",
         Own::Lifecycle,
         "设置窗「现在重启」：重起 cc-monitor 自己（走退出臂，本机后端照它自己那份退出行为去留）",

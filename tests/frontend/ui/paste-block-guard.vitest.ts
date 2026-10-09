@@ -1,6 +1,7 @@
 // T03 的结构性守卫：「待贴配置文本」这件事**只有一个实现**。
 //
-// 守法是**白名单**（本会话已九次栽在黑名单上）：枚举全仓每一处 `writeText`，
+// 守法是**白名单**（本会话已九次栽在黑名单上）：枚举全仓每一处写剪贴板（`writeClipboard`：界面写剪贴板只这一口，
+// 经壳拿真成败 —— `clipboard.ts`；网页自己的 `writeText` 全仓零处，由 `clipboard-single-home-guard.vitest.ts` 钉），
 // 要求它落在两张已知名单之一——族 A（待贴配置文本，必须走 `buildPasteBlock`）
 // 或族 B（复制点东西给人看，契约不同，已登记不收）。新增一处两边都不在 → 红。
 import { describe, it, expect } from "vitest";
@@ -29,6 +30,7 @@ const FAMILY_B = [
   // 原先这里还有 `src/frontend/ui/views/usage-view.ts`（用量视图里「复制这一屏」）——
   // 用量 ② 轴整轴退役，那份文件整删。
   "src/frontend/ui/paste-block.ts", // 组件自己
+  "src/frontend/ui/clipboard.ts", // 写剪贴板那一口自己（经壳）
   // 账号分节：复制账号目录路径 · 本机不开终端窗口时把登录那一行复制给人自己跑。〔账号库收进后端〕rc 片段那两处待贴块
   //   随功能删了（账号别名由后端自动写进别名文件），它从族 AB 回到族 B。
   "src/frontend/ui/settings/accounts-section.ts",
@@ -75,12 +77,15 @@ function walk(dir: string, out: string[] = []): string[] {
   return out;
 }
 
+/** 写剪贴板那一口的名字（`src/frontend/ui/clipboard.ts`）。 */
+const WRITE = "writeClipboard";
+
 describe("待贴配置文本只有一个实现", () => {
   const files = walk("src");
 
-  it("枚举全仓 writeText，每一处都必须在两张名单之一（白名单，新增即红）", () => {
+  it("枚举全仓写剪贴板（writeClipboard），每一处都必须在两张名单之一（白名单，新增即红）", () => {
     const hits = files.filter((f) =>
-      readFileSync(f, "utf8").includes("writeText"),
+      readFileSync(f, "utf8").includes(WRITE),
     );
     // 反向自检：一处都没扫到 = 守卫失效了，不是代码变干净了。
     // 阈值 5 = 组件自己 + 族 B 的四个文件。**迁移前是 7 个文件 / 9 处**
@@ -100,14 +105,14 @@ describe("待贴配置文本只有一个实现", () => {
     }
   });
 
-  it("族 A 里不得再出现裸 writeText（那意味着又有一处绕开了组件）", () => {
+  it("族 A 里不得再出现裸写剪贴板（那意味着又有一处绕开了组件）", () => {
     for (const f of FAMILY_A) {
       // 剥掉行注释，免得注释里提到 writeText 被当成代码（本会话踩过"把注释当代码"）
       const code = readFileSync(f, "utf8")
         .split("\n")
         .filter((l) => !l.trimStart().startsWith("//"))
         .join("\n");
-      expect(code.includes("writeText"), `${f} 里仍有裸 writeText`).toBe(false);
+      expect(code.includes(WRITE), `${f} 里仍有裸 writeText`).toBe(false);
     }
   });
 
@@ -149,7 +154,7 @@ describe("待贴配置文本只有一个实现", () => {
       // 族 A 侧的约束：待贴块必须来自组件，不许手搓。
       expect(code, `${file} 是族 AB，待贴那半必须走组件（${why}）`).toContain("buildPasteBlock");
       // 族 B 侧的约束换成**计数上下界**：这才是「没有人手搓第 N+1 个复制按钮」的可判据。
-      const uses = code.split("writeText").length - 1;
+      const uses = code.split(WRITE).length - 1;
       expect(
         uses,
         `${file} 的 writeText 处数从 ${writeTextUses} 变成了 ${uses}：` +
@@ -158,16 +163,16 @@ describe("待贴配置文本只有一个实现", () => {
     }
   });
 
-  it("组件本身是唯一持有 writeText 的地方（族 A 侧），且不吞错误", () => {
+  it("组件本身是唯一持有写剪贴板的地方（族 A 侧），且不吞错误", () => {
     const raw = readFileSync("src/frontend/ui/paste-block.ts", "utf8");
-    expect(raw).toContain("writeText");
+    expect(raw).toContain(WRITE);
     // **剥注释再查**——第一版没剥，被本文件自己的注释「不许吞进 console」判成违规。
     // 「把注释当代码」这条本会话已栽过一次，这次栽在断言侧：守卫要剥，断言也要剥。
     const code = raw
       .split("\n")
       .filter((l) => !l.trimStart().startsWith("//"))
       .join("\n");
-    expect(code).toContain("writeText"); // 反向自检：别剥过头
+    expect(code).toContain(WRITE); // 反向自检：别剥过头
     expect(code).not.toContain("console.warn"); // 迁移前 A3 的缺陷不许回来
   });
 });
