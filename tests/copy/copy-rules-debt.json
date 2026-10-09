@@ -16,15 +16,7 @@
     "C-W6": [],
     "C-W7": [],
     "C-W8": [
-      "credsPerm.windowsProbe.unreadable",
-      "diagnostics.copy.fallback",
-      "front.body.redialFailed",
-      "rsFilewinEntry.open.noHost",
-      "terminalReads.preview.ambiguous",
-      "terminalReads.preview.badTarget",
-      "terminalReads.preview.notKnown",
-      "terminalReads.preview.unobservable",
-      "tmuxControl.kill.badName"
+
     ],
     "C-Y4": [],
     "C-W10": [
@@ -35,7 +27,6 @@
     "C-W13": [],
     "C-W14": [
       "ccBus.spawn.timedOut",
-      "rsCcBusDeploy.win.noOwnBytes",
       "terminal.input.unsure"
     ],
     "C-W15": [],
@@ -92,7 +83,6 @@
       "beTasksQuery.sessionTaskLines.unreadable",
       "beUpstreamCreds.load.unreadable",
       "credsPerm.currentUserSid.noToken",
-      "credsPerm.probe.noMetadata",
       "credsStore.error.notJson",
       "extPage.status.syncFailed",
       "extPage.status.syncRow",
