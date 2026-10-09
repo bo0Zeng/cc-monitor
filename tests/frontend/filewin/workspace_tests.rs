@@ -1140,6 +1140,30 @@ async fn screenshot_for_the_shots_tool() {
         w.write_prompt_mut().unwrap().text = "Cargo.toml".into();
         w.confirm_write(None);
     }
+    // 就地改名被那台拒（带后端写好的复制详情）：红字后面跟［复制详情］。拒的那一趟直接落在到货格里（合成后端不造权限错）。
+    if scene == "rename-denied" {
+        let i = row_of(&w, "main.rs");
+        w.begin_rename(i);
+        w.write_prompt_mut().unwrap().text = "retry.rs".into();
+        let e = copy_core::copy_text("beFilesRead.ioKind.denied", &[]);
+        let said = copy_core::copy_text(
+            "beFilesWrite.rename.failed",
+            &[("e", &e), ("src", "main.rs"), ("dst", "retry.rs")],
+        );
+        let l = |k: &str| copy_core::copy_text(k, &[]);
+        let detail = [
+            format!("{}：2026-10-08 14:35:50 +08:00", l("detail.label.at")),
+            format!("{}：files-rename", l("detail.label.command")),
+            format!("{}：io", l("detail.label.code")),
+            format!("{}：Permission denied (os error 13)", l("detail.label.raw")),
+        ]
+        .join("\n");
+        w.land_inline_failure(crate::source::Failed {
+            code: Some("io".into()),
+            said,
+            detail,
+        });
+    }
     // 就地新建文件夹 ＋ 上一次改名的回执（稿 08）。
     if scene == "new-folder" {
         w.begin_mkdir();
