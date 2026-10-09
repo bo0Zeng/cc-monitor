@@ -335,9 +335,9 @@ export const SETTINGS_SCENES: Scene[] = [
   page("settings-machine-win", "设置 · Windows 机器", "win-laptop 那一页", "machine:win-laptop"),
   page("settings-ext", "设置 · 扩展", "扩展：skill 与插件", "ext"),
 
-  settings("settings-keybindings", "设置 · 快捷键编辑器", "外观页点「打开快捷键编辑器」", async () => {
+  settings("settings-keybindings", "设置 · 快捷键编辑器", "外观页「快捷键」那一节点开编辑器", async () => {
     await go("appearance");
-    await click(await byText("button", "快捷键编辑器"));
+    await click(await byText('.settings-page:not([hidden]) [data-anchor="keybindings"] button', copyText("settingsPanel.keybindings.open")));
     await sleep(900);
   }),
   settings("settings-general-advanced", "设置 · 通用 · 高级", "通用页展开「高级：上下文上限」", async () => {

@@ -23,6 +23,13 @@ export function setFoldSummary(root: HTMLElement, text: string): void {
   if (sum && sum.textContent !== text) sum.textContent = text;
 }
 
+/** 折叠号：同一颗右指箭头，所在元素 `aria-expanded="true"` 时转 90° 下指（能展开的行都用它，不换图）。 */
+export function foldCaret(): SVGSVGElement {
+  const c = icon("caretRight", "compact");
+  c.classList.add(s.foldCaret);
+  return c;
+}
+
 export function fold(spec: FoldSpec): HTMLDivElement {
   const root = document.createElement("div");
   root.className = s.fold;
@@ -30,7 +37,7 @@ export function fold(spec: FoldSpec): HTMLDivElement {
   const head = document.createElement("button");
   head.type = "button";
   head.className = s.foldHead;
-  head.appendChild(icon("caretRight", "compact"));
+  head.appendChild(foldCaret());
   const t = document.createElement("span");
   t.className = s.foldTitle;
   t.textContent = spec.title;

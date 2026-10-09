@@ -4091,7 +4091,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ("src/frontend/shell/src/lib.rs", "list_active_sessions", 1), // ⑬ 会话生命周期并进会话流后退役
         ("src/frontend/shell/src/lib.rs", "list_session_activity", 1), // ⑬ 会话生命周期并进会话流后退役
         ("src/doc/ARCHITECTURE.md", "list_active_sessions", 1), // ⑬ 会话生命周期并进会话流后退役
-        ("src/frontend/ui/tabs.ts", "list_active_sessions", 1), // ⑬ 会话生命周期并进会话流后退役
         (
             "tests/frontend/shell/event_replay_tests.rs",
             "buffered_local_session_ids",
@@ -4476,7 +4475,6 @@ fn every_prose_tombstone_mark_is_registered() {
         // 新行：hello 的「换不换」进了本机常驻后端，原判定函数那一处（`hello_decision`）挂墓碑。
         ("src/frontend/shell/src/remote_resident.rs", 1),
         // 新行四条：界面按工具名 / 命令名判的四个谓词删了（卡型随记录成品、tmux 那一格随 `tmux-list` 带来），原处各一块。
-        ("src/frontend/ui/cards/diff.ts", 1),
         ("src/frontend/ui/cards/interactive.ts", 1),
         // `src/frontend/ui/cards/subagent.ts` 那一行摘了：那张卡整份重写成按运行读的通用卡，点旧判定名（按工具名认 agent 工具）的散文随之没了。
         // `src/frontend/ui/tmux-sessions.ts` 那一行摘了：那份改名 `sessions-where.ts`，点旧过滤名的散文随之没了。
@@ -4529,7 +4527,6 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/backend/observe/search_query.rs", 1), // 合并那一份（`K-R100` 病史）
         // 本机搜索改问本机后端（monitor 内存索引删了）⇒ 界面那两份点旧命令 / 旧函数名的散文各挂墓碑；
         //   冷读本机远端合成一条 ⇒ 漂移账登记表那一行旁注挂一块。
-        ("src/frontend/ui/views/history-search.ts", 2), // +1：前端合并那一份（`mergeSearchResults`）删了，头注挂墓碑
         ("tests/frontend/shell/drift_ledger_tests.rs", 2), // 1 → 2：`parse_for_kind` 那一句挂一块（它最后的活提名随 monitor 适配表的判据删了）
         // `src/frontend/shell/src/remote_history.rs` 出表：那份文件随记录解释进后端删了（或墓碑随被守的东西整轴退役）
         (
@@ -4712,10 +4709,7 @@ fn every_prose_tombstone_mark_is_registered() {
         // `main.rs` 里等停机信号的函数下沉 `platform/signal.rs::shutdown_listener`，原处留一块。
         ("src/backend/main.rs", 1),
         ("src/frontend/filewin/src/select.rs", 1),
-        // 快捷键预留位 `app.search-history` 删了（历史全文搜索从没独立快捷键、预留位不留）：
-        //   清单那一处 ＋ 清单头注一处 ＋ 编辑器那枚「未上线」标签的遗址一处，逐处挂了墓碑。
-        ("src/frontend/ui/keybindings/actions.ts", 1),
-        ("src/frontend/ui/keybindings/editor.ts", 1),
+        // 快捷键预留位 `app.search-history` 删了：判据里点它旧名的那一处挂墓碑。
         ("tests/frontend/ui/keybindings/actions.vitest.ts", 1),
         // 账号清单与信任预检改走通道（后端出成品）：monitor 那几件函数与它们的判据删了，
         //   逐处挂了墓碑（模块头注 · 退役那几节的旁注 · 后端出成品那一臂点名它替掉了谁）。
@@ -4726,7 +4720,6 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/frontend/shell/frame_query_tests.rs", 16), // 19 → 16：界面不再问的那几行（`ssh-config-aliases` / `-resolve` · `footprint-report` · `apikey-read` · `launch` · `files-ls`）删了，挂着的墓碑随之没了 // 20 → 19：抓屏那一行改成 `terminal-preview`，点旧发送端的墓碑随之没了 // 21 → 20：全景那三条命令的行删了，挂着的墓碑随之没了 // 17 → 21 // 16 → 17：足迹那一行点旧发送点 // 15 → 16：全景那两行点旧发送点 // 14 → 15：点 `deploy_remote_acct_iso` 旧名那几处挂墓碑 // // 两边各自贴的墓碑相加，按盘上现数（跑出来核过） 13 → 14 // 主线 12 ＋ MIG-3b +1（点分叉旧判据文件那一句） // +1：skill 装卸 ＋ 同步那一块点删掉的四条命令 // // +1：`CHANNELED_ELSEWHERE` 的 MCP 那一块点删掉的两份文件 // // +1：本机 shellinit 那一个期限发起点并掉 // +3：`apikey-read` 那一行说核路径那一问删了 · `apikey-key-set` 新行点删掉的命令 · `ASKED_BY_MONITOR_ITSELF` 退役那一行 // +1：`CHANNELED_ELSEWHERE` 的 cc-bus 那一块点删掉的五条命令 // +1：`kill` / `launch` 两行点删掉的三条命令 // +1：`CHANNELED_ELSEWHERE` 的 `capture-pane` 那一行点删掉的发送端 // 逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑 // 11 → 12
         // 「退出行为」问 / 交写改走通道：monitor 那两条命令与它们的期限删了，原处各一块；设置页头注点它们旧名。
         ("src/frontend/shell/src/backend_policy.rs", 2),
-        ("src/frontend/ui/settings/backend-section.ts", 2), // 1 → 2
         // 改名「上游选择」、模块 `apikey` → `upstream`：两处讲旧叫法来历的注释各挂一块
         //   （旧叫法本身不是 snake_case 死名，不进 `TOMBSTONED`；命名判据 `account-vs-relay-naming` 的「上游选择」改名那张表按这块标记放行这两行）。
         // +1：上游选择自己那张每 agent 默认上游表（`AGENT_UPSTREAMS`）搬回适配层，原处留一块说去向。
@@ -4814,7 +4807,6 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/backend/control/ccm_tests.rs", 1), // 那条路由判据并进 claude_flags_tests，原地一块
         // 人读表解析器删了，一处点它旧名的散文挂墓碑。
         ("tests/backend/plugin_walk_fixture.rs", 1),
-        ("src/frontend/ui/tabs.ts", 1), // 新贴：⑬ 会话生命周期并进会话流，退役的 list_active_sessions / list_session_activity / buffered_* 旧名挂墓碑
         ("tests/frontend/shell/event_replay_tests.rs", 1), // 新贴：⑬ 会话生命周期并进会话流，退役的 list_active_sessions / list_session_activity / buffered_* 旧名挂墓碑
         // `history.rs` 的 `up_to_message_id` · `read_jsonl_values` · `write_branch_file` 三行摘了：点它们的那段（分叉转交的来历）随命令删了。
         ("src/frontend/shell/src/parity_ledger.rs", 1), // 新贴：点远端 `ccm` 探针旧命令名

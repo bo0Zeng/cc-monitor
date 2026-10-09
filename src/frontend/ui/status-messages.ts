@@ -5,6 +5,7 @@
 import { chip, setChipOpen } from "./kit/chip";
 import { icon, type IconName } from "./kit/icon";
 import { button } from "./kit/button";
+import { foldCaret } from "./kit/fold";
 import { openPopover } from "./kit/popover";
 import { markRecordsSeen, onToastRecords, recentToasts, recordDetail, runRecordAction, unseenErrors, TOAST_RECORD_MAX, type ToastLevel, type ToastRecord } from "./kit/toast";
 import { copyDetailButton } from "./kit/detail";
@@ -132,7 +133,7 @@ export class StatusMessages {
             flip();
           }
         });
-        text.prepend(icon(open ? "caretDown" : "caretRight", "compact"));
+        text.prepend(foldCaret());
       }
       if (r.count > 1) {
         const n = document.createElement("span");

@@ -4,6 +4,7 @@
  */
 import { button, setDisabled } from "../kit/button";
 import { icon } from "../kit/icon";
+import { foldCaret } from "../kit/fold";
 import { tag } from "../kit/badge";
 import { statusDot } from "../kit/status-dot";
 import { banner } from "../kit/banner";
@@ -45,7 +46,7 @@ function badge(text: string, tone?: "live" | "need"): HTMLElement {
   return b;
 }
 
-/** 状态点：只画在跑与需要你（`V10`）。 */
+/** 状态点：只画在跑与需要你。 */
 function dotOf(r: HistoryRow, needs: string | null): HTMLElement | null {
   if (needs) return statusDot("needs-you", needs, "compact");
   if (r.status === "live") return statusDot("running", copyText("history.row.live"), "compact");
@@ -53,7 +54,7 @@ function dotOf(r: HistoryRow, needs: string | null): HTMLElement | null {
 }
 
 /**
- * 徽标（`C17` 文字徽标）：那一家（Codex …）· 分身 · 已隐藏 · 需要你（等批准 …）／ 在跑。
+ * 文字徽标：那一家（Codex …）· 分身 · 已隐藏 · 需要你（等批准 …）／ 在跑。
  * `live` ＝ 在跑也画成徽标（按项目那一形与内容头；按时间那一形的在跑由状态点说）。
  */
 export function rowBadges(r: HistoryRow, needs: string | null, live = true): HTMLElement[] {
@@ -208,7 +209,7 @@ export function groupHead(
   el.setAttribute("role", "treeitem");
   el.setAttribute("aria-expanded", String(o.open));
   el.tabIndex = -1;
-  el.appendChild(icon(o.open ? "caretDown" : "caretRight", "compact"));
+  el.appendChild(foldCaret());
   const n = document.createElement("span");
   n.className = s.hvGroupName;
   n.textContent = g.projectName || copyText("history.row.noDir");

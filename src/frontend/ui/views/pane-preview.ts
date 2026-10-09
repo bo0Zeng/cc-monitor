@@ -1,11 +1,7 @@
 /**
- * F60：远端 tmux 画面预览（只读快照）。轻量 overlay（照 pf 范式，body-level fixed，
- * 点外关 + Esc + ✕，z-index 200）——经 `src/frontend/ui/terminal-reads.ts::previewShot` 问那台机器的后端抓挂着这个会话的那个终端
- * 的那一屏（`terminal-preview`，带颜色段），等宽 `<pre>` 带颜色展示（`terminal-screen.ts` 同一个画法）；失败弹 toast。此前经 monitor 的一条 Tauri 命令。**非 attach、不接管终端；只读快照非实时**
- * （「重新抓取」按钮手动刷新，要动态看去 attach）。一次只开一个。
- *
- * 本文件是抽表的**样板区**：它的对外文案全部住 `src/shared/copy/table.json` 的
- * `panePreview.*`，经 `copyText` 取；这里不再写任何中文字面量。
+ * 远端 tmux 画面预览（只读快照）：轻量浮层（body 级 fixed，点外关 ＋ Esc ＋ ✕），经 `terminal-reads.ts::previewShot`
+ * 问那台后端抓挂着这个会话的那个终端那一屏（`terminal-preview`，带颜色段），按 `terminal-screen.ts` 的画法展示；失败弹 toast。
+ * 不 attach、不接管终端、不实时（「重新抓取」手动刷新）。一次只开一个。对外文案全在文案表 `panePreview.*`。
  */
 import { copyText } from "../copy-table";
 import { toast } from "../kit/toast";

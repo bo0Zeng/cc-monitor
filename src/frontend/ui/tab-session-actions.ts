@@ -1,22 +1,7 @@
 /**
- * 〔拆 `tabs.ts` ⑤〕**对一个会话做的动作**。
- *
- * resume（直连 / tmux / 就地）· 换号重启（交那台一条命令做完）· 杀 tmux 会话 · 打开工作目录 ·
- * 在新窗口打开 · 切到终端窗口；外加 tab 层那几条零散的后端调用（忘掉会话 · 把 monitor 拉到前面 ·
- * 红绿灯快照 · DEV 探针日志）。
- *
- * # 本文件不再直呼 `invoke`
- *
- * U2 拆 `tabs.ts` 时把 tab 层的每一条 `invoke` 收进本文件（「直接 `import { invoke }` 的生产文件」是
- * `generated-boundary-guard.vitest.ts` 的恒等计数，拆开不许涨）。C4a 把这 11 处连同 `accounts.ts` 那 5 处
- * 一起收进包装层 `ipc/commands.ts`（缺的十条命令补进去）⇒ 那个计数 3 → 1，只剩包装层自己；
- * 本文件与 tab 层其余几份一样，只经 `commands.x(…)` 说话。
- *
- * # 它要宿主给什么
- *
- * 只要四样只读 / 回调（`TabSessionHost`）：按 sid 取 tab · 能不能 attach · 会话账号行 · 重刷一个账号徽章。
- * 不碰 tab 栏、不碰流 DOM。方法体逐字从 `tabs.ts` 搬来，唯一的改写是 `this.tabs.get(` 等四处宿主读数
- * 换成 `this.host.…`（同一个值，换了个取法）。
+ * 对一个会话做的动作：resume（直连 / tmux / 就地）· 换号重启 · 杀 tmux 会话 · 打开工作目录 · 在新窗口打开 · 切到终端窗口；
+ * 外加 tab 层零散的后端调用（忘掉会话 · 把 monitor 拉到前面 · DEV 探针日志）。
+ * 只经 `commands.x(…)` 说话（不直呼 `invoke`）；宿主只给四样只读 / 回调（`TabSessionHost`），不碰 tab 栏、不碰流 DOM。
  */
 import { confirmDialog, type ConfirmFn } from "./kit/dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
@@ -24,15 +9,12 @@ import { askOf, FOLLOW, type AccountAsk } from "./launch-account";
 import { resumeLocalSession } from "./local-resume";
 import { toast, failToast } from "./kit/toast";
 import { runRemoteResume } from "./remote-launch-run";
-// 本机 = `LOCAL_ORIGIN`（`"<local>"`，与 Rust `origin.rs::LOCAL` 跨语言对拍）；
-// 「是不是本机」只经 `ipc/origin.ts` 判。`accounts.ts` 那个同名的 `"__local__"` 已退役 —— 全仓只剩一个本机表示。
 import { isLocalOrigin, isRemoteOrigin, type Origin } from "./ipc/origin";
 import { planRemoteFront } from "./remote-terminal-front";
 import type { FrontResult } from "./front-result";
 import type { FrontOutcome } from "./generated/FrontOutcome";
 import { commands } from "./ipc/commands";
 import { probeSessionRecord, reasonOf, type RecordProbe } from "./session-reads";
-// F78：远端会话「打开工作目录」→ 用该机配置开文件窗口进入远端 cwd（而非只提示打不开）。老 SFTP 面板删了。
 import { openFileWindow } from "./file-window";
 import {
   readRemoteConfig,
@@ -47,11 +29,7 @@ import { copyText } from "./copy-table";
 import { decodeKilled, type KillNote } from "./tmux-control";
 import { offerResyncRetry, resyncMachines, resyncMachinesSaid } from "./resync";
 
-/**
- * auto-e2e F-E0:DEV-only 断言出口。同 e2e-probe.ts 的 `log()`——把状态转移写成可 grep 的
- * `[e2e]` 行(console.info + frontend_perf_log → monitor 日志)。**`import.meta.env.DEV` 门控**:
- * 生产构建 DEV 恒 false,整支被 vite 静态消除(zero prod 包含,同 e2e-probe 范式)。
- */
+/** DEV 断言出口：把状态转移写成可 grep 的 `[e2e]` 行。`import.meta.env.DEV` 门控，生产构建整支消除。 */
 export function e2eLog(line: string): void {
   if (import.meta.env.DEV) {
     console.info(line);
@@ -63,27 +41,18 @@ export function e2eLog(line: string): void {
 export interface TabSessionHost {
   /** 按 sid 取 tab（`TabManager` 那张表；没有 ⇒ `undefined`）。 */
   tab(sid: string): Tab | undefined;
-  /** E73：attach / 「杀死空 tmux」这几个动作对这个会话有没有意义。 */
+  /** attach / 「杀死空 tmux」对这个会话有没有意义。 */
   isAttachable(sid: string): boolean;
   /** resume 一跳问过那台后端之后，把「记录在不在」落进这条 tab 的状态（`TabManager.markRecord`）。 */
   markRecord(sid: string, present: boolean): void;
 }
 
 export class TabSessionActions {
-  /** F04：正在 resumeTabTmux 中的 sid——双击"Resume（tmux）"之间没有
-   *  互斥时，两次并发调用各自查一次陈旧的 `list_remote_tmux` 快照、各自算出"该建哪个名字"，
-   *  可能算出两个不同名字、真建出两个都声称同一 sid 的 tmux 容器（R10 的一个具体、可关闭的成因，
-   *  见 F04 计划 §2 综合来源方案 A §7.4）。 */
+  /** 正在 tmux 版 resume 的 sid：双击之间不互斥的话，两次并发各自算出该建的名字，可能真建出两个声称同一 sid 的 tmux 容器。 */
   private resumingSids = new Set<string>();
   constructor(private readonly host: TabSessionHost) {}
 
-  /**
-   * issue #10：在独立只读窗口打开指定 session（Tab 右键 / 快捷键 / 拖拽撕离）。
-   *
-   * `screenX` / `screenY`（可选）= 拖拽撕离的落点屏幕坐标（来自 mouseup 的
-   * `e.screenX/screenY`）。两者都给出时透传给后端在该处摆放新窗口；右键 / 快捷键
-   * 不传则后端走默认居中。
-   */
+  /** 在独立只读窗口打开（右键 / 快捷键 / 拖拽撕离）。拖拽撕离给落点屏幕坐标，后端在那里摆窗口；不给就居中。 */
   async openInNewWindow(
     sid: string,
     screenX?: number,
@@ -106,20 +75,11 @@ export class TabSessionActions {
   }
 
   /**
-   * **resume 一跳先问那台后端：这条会话的记录还在不在**（最后一条
-   * 「对方那份记录也没了 ⇒ 重开必失败，要诚实报错，不许静默变成『起了个新会话』」）。
-   *
-   * - 不在 ⇒ 说清查的是哪台、哪棵记录树，tab 落「记录已不在」，返回 `false`（调用方**不开终端**）；
-   * - 在 ⇒ 「记录已不在」翻回已结束（记录回来了），返回 `true`；
-   * - 问不到（通道没起 / 后端太旧不认 `history-record` / 超时）⇒ 当「不知道」、返回 `true`：照今天的路走，
-   *   **不许把「问不到」当成「不在」**（那会把一条其实接得上的 resume 拦掉）。
-   * 照起，但说一句「查不到记录还在不在」；形状不对按说「两端契约对不上」
-   *   （`session-reads.ts::reasonOf` 那一份，不另写）—— 出声不静默。
-   *
-   * 判定住那台的后端（只收 sid），这里只读答案 —— 前端不做文件存在性探测。
-   *
-   * `configDir` = **这次 resume 要用的那个账号配置目录**（那台后端判完号、开窗之前交回来的那一个）。
-   * 那台后端就在那棵树里找；不带（账号 0 / 不指定）⇒ 查它自己的家目录。
+   * resume 之前先问那台后端：这条会话的记录还在不在（对方记录没了 ⇒ 重开必失败，要报错，不许静默变成起了个新会话）。
+   * - 不在 ⇒ 说清查的是哪台、哪棵记录树，tab 落「记录已不在」，回 `false`（调用方不开终端）；
+   * - 在 ⇒ 「记录已不在」翻回已结束，回 `true`；
+   * - 问不到 / 形状不对 ⇒ 当「不知道」、回 `true` 照起，但说一句（不许把问不到当成不在）。
+   * 判定住那台后端，前端不探文件。`configDir` ＝ 这次 resume 用的账号配置目录（那台判完号交回的），不带 ⇒ 查它的家目录。
    */
   private async recordStillThere(tab: Tab, configDir?: string): Promise<boolean> {
     let probe: RecordProbe;
@@ -147,10 +107,6 @@ export class TabSessionActions {
     return false;
   }
 
-  /**
-   * tab 栏「重新读取」：`origins` 里每台一次整机对齐 ＋ 补读，做完按台说一句。补出来的行照常经流到达。
-   * 回成功的那几台（调用方对它们做「对齐做完」那一步）。
-   */
   /** 离线条的［重新连接］：那台断着在退避里等 ⇒ 立刻重拨一次（壳那一侧 `backend_start`：流在跑就是「别等了」）。 */
   reconnect(origin: string): void {
     void this.redial(origin).catch((e: unknown) => console.warn("reconnect failed:", e));
@@ -199,12 +155,6 @@ export class TabSessionActions {
     );
   }
 
-  /**
-   * F37：手动 resume 一个已结束（灰）的 Tab。与历史浏览器 ↺ 同一套语义：
-   * 本地 → 新终端窗口跑 resume（尊重 F34 自定义命令，缺省 cc 检测→claude）；
-   * 远端 → F41 一键拉起 wt.exe/PowerShell 跑 `ssh -t …`，失败回退复制命令。
-   * resume 成功后 CC 续写同一 jsonl，既有「会话复活」路径会自动把灰 Tab 点亮。
-   */
   /** 说不清（那台暂时看不见）⇒ 不恢复、说一句：会话也许还在跑，再起一份就是同一会话两个 claude。 */
   private refuseUnseen(tab: Tab): boolean {
     if (tab.state.liveness !== "unseen") return false;
@@ -253,18 +203,8 @@ export class TabSessionActions {
   }
 
   /**
-   * F52：tmux 版 resume（远端专用）——在远端 tmux 会话 `cc-<sid8>` 里幂等 resume Claude。
-   * 与 resumeTab 的直连版并列;本地 tab（origin===null）无 tmux 用例,直接 return。
-   *
-   * F04：`resumingSids` 互斥——双击之间没有互斥时，两次并发调用各自
-   * 查一次陈旧快照、各自可能算出不同的 fresh tmux 名，真建出两个都声称同一 sid 的容器（R10 的
-   * 一个具体、可关闭的成因）。
-   *
-   * F09：`accountName` 与 `resumeTab`（直连版）的参数顺序/语义对齐——此前本方法完全没有显式选号
-   * 能力（账号恒是跟随），是 account×container 没做到真正正交的一个实现缺口
-   * （旧扁平菜单从未提供"把此归档会话切到账号 X（tmux）"这一项，反映的正是这个缺口）；flyout
-   * 把 account 组与 container 组做成正交修饰后，这个缺口必须补上，否则"账号=X + 容器=tmux"
-   * 这个组合在 UI 上可选却在实现上是假的。
+   * tmux 版 resume（远端）：在那台 tmux 会话里幂等 resume；本机 tab 不走这里。`resumingSids` 挡并发双击。
+   * `accountName` 与直连版同参同义（账号与容器是正交的两组选项，不能只有直连版能选号）。
    */
   async resumeTabTmux(sid: string, accountName?: string, useBase = false): Promise<void> {
     if (this.resumingSids.has(sid)) return;
@@ -365,19 +305,18 @@ export class TabSessionActions {
     })();
   }
 
-  /** 打开指定 Tab 的 cwd。本地 → 系统文件管理器；远端 → 文件窗口进入该远端目录（F78）。无 cwd 忽略。 */
+  /** 打开 Tab 的工作目录：本机 ⇒ 系统文件管理器；远端 ⇒ 文件窗口进那台的那个目录。没有目录 ⇒ 不做。 */
   async openTabCwd(sid: string): Promise<void> {
     const tab = this.host.tab(sid);
     if (!tab?.projectDir) return;
-    // F78：远端 Tab 的 cwd 是远端路径，本地 openPath 打不开——改成用该机配置开 SFTP 进入该目录
-    // （Batch9-F29 曾从静默 no-op 改成 info 提示；现进一步真能浏览）。找不到该机配置才回退提示。
+    // 远端路径本机 openPath 打不开 ⇒ 用那台的配置开文件窗口进该目录；找不到那台的配置才回退成提示。
     if (isRemoteOrigin(tab.origin)) {
       const host = findHostByOrigin((await readRemoteConfig()).hosts, tab.origin);
       if (host && host.host.trim() !== "" && host.user.trim() !== "") {
         void openFileWindow(host, { dir: tab.projectDir });
         return;
       }
-      // 找到但缺 host/user = 配置不完整；没找到 = 未配置——分开措辞（审计建议）。
+      // 找到但缺 host / user ＝ 配置不完整；没找到 ＝ 未配置：分开措辞。
       const why = host
         ? copyText("tabSessionActions.openCwd.incomplete")
         : copyText("tabSessionActions.openCwd.noConfig");
@@ -476,14 +415,14 @@ export async function bringRemoteTerminalToFront(origin: Origin, sessionId: stri
   });
 }
 
-/** 关 tab 时让后端 event_replay 把这个 session 的历史也丢掉（失败只记日志）。 */
+/** 关 tab 时让后端把这个会话的重放历史丢掉（失败只记日志）。 */
 export function forgetSession(sessionId: string): void {
   void commands.forget_session({ sessionId }).catch((e) => {
     console.warn(`forget_session ${sessionId} failed:`, e);
   });
 }
 
-/** v2.4 issue #2：自动跟随时把 monitor 窗口拉到前台（失败只记日志）。 */
+/** 自动跟随时把 monitor 窗口拉到前台（失败只记日志）。 */
 export function bringMonitorToFront(): void {
   void commands.bring_monitor_to_front().catch((e) => {
     console.warn("bring_monitor_to_front failed:", e);

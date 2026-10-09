@@ -481,6 +481,8 @@ const CARRIERS: StateCarriers = stateCarriers(REPO_ROOT, stripCodeComments);
 const STATE_CLASS_UNRESOLVED: Readonly<Record<string, string>> = {
   "src/frontend/ui/cards/brief.ts · classList.add(s.briefMore)":
     "CSS Modules：给 kit 按钮挂派活框里［展开全部］的版位类；哈希过的类名，不是状态名",
+  "src/frontend/ui/kit/fold.ts · classList.add(s.foldCaret)":
+    "折叠号：svg 元素只能走 classList；`s.foldCaret` 是 CSS Modules 哈希名，开合靠所在元素的 `aria-expanded`，不是状态名",
   "src/frontend/ui/kit/icon.ts · classList.add(s.icon)":
     "图标件：svg 元素的 `className` 不是串、只能走 classList；`s.icon` 是 CSS Modules 哈希名，与 `data-*` 撞不了名",
   "src/frontend/ui/tab-bar-drag.ts · classList.toggle(cls, on)":

@@ -6,7 +6,7 @@
  * - 一个搜索框：敲字 ⇒ 后端按标题 / 第一句 / 项目名过滤全部会话；回车 ⇒ 内容搜索（各台 `history-search`），结果按会话分块。
  * - 「筛选」浮层：机器 · 时间 · 排序 · 显示已隐藏 · 搜内容时谁说的 · 含工具输出与思考。选项记在本机（界面偏好）。
  * - 右边：点一行就地看（只读查看器），列表不动。
- * - 实时：鼠标在列表上或焦点在列表里时不重排，移开再排（`I6`）；选中的那一行按会话认，不因上面插行而移动。
+ * - 实时：鼠标在列表上或焦点在列表里时不重排，移开再排；选中的那一行按会话认，不因上面插行而移动。
  */
 import { button, setBusy, setDisabled } from "../kit/button";
 import { splitButton } from "../kit/split-button";
@@ -76,7 +76,7 @@ const keyOf = (origin: string | undefined): string => origin ?? "";
 
 /** 敲字之后停多久才问（乙5：150 ms）。 */
 const QUERY_DEBOUNCE_MS = 150;
-/** 列表可拖的宽（乙4-①：默认 420，320–640）；键盘一步 16。 */
+/** 列表可拖的宽（默认 420，320–640）；键盘一步 16。 */
 const LIST_MIN = 320;
 const LIST_MAX = 640;
 const LIST_STEP = 16;
@@ -147,7 +147,7 @@ export class HistoryView {
     this.searchInput.value = "";
     this.content = null;
     dispatcher.pushOverlay(this.layer);
-    // 开页即给焦点（不等远端，R5W-H08）。
+    // 开页即给焦点（不等远端）。
     this.searchInput.focus();
     this.machines = ["", ...(await commands.list_remote_mcp_origins().catch(() => [] as string[]))];
     // 开页那一问带 `fresh`：远端那台的清单后端记着、不按时间过期，开页与「刷新」才再问那台。
@@ -254,7 +254,7 @@ export class HistoryView {
     this.renderNow();
   }
 
-  /** 回车 ⇒ 在全部会话内容里搜。失败 ⇒ 清掉旧结果、换成错误条（R5W-H06）。 */
+  /** 回车 ⇒ 在全部会话内容里搜。失败 ⇒ 清掉旧结果、换成错误条。 */
   private async runContentSearch(): Promise<void> {
     const q = this.searchInput.value.trim();
     if (!q) return;
@@ -369,7 +369,7 @@ export class HistoryView {
     this.listEl.addEventListener("focus", (ev) => {
       if (ev.target === this.listEl && !this.quietFocus) this.moveSelection(this.selected ?? this.order[0] ?? null, true);
     });
-    // 实时更新不拽人：鼠标在列表上 / 焦点在列表里 ⇒ 先不重排，移开再排（`I6`）。
+    // 实时更新不拽人：鼠标在列表上 / 焦点在列表里 ⇒ 先不重排，移开再排。
     const hold = (on: boolean): void => {
       this.holding = on || this.listEl.matches(":hover") || this.listEl.contains(document.activeElement);
       if (!this.holding && this.dirty) this.renderNow();
@@ -1065,7 +1065,7 @@ export class HistoryView {
     }
   }
 
-  /** 删除只问一次（R2-2-2）；在跑的不让删（后端判的 `can.delete`，主窗口此刻的状态再核一次）。 */
+  /** 删除只问一次；在跑的不让删（后端判的 `can.delete`，主窗口此刻的状态再核一次）。 */
   private async remove(r: HistoryRow): Promise<void> {
     if (r.can.delete === "live" || (!r.origin && this.liveInTabs(r.sessionId))) {
       toast(copyText("history.delete.liveHint"), "");

@@ -1,20 +1,10 @@
 /**
- * **界面直接说的 tmux 控制类帧命令** —— 结束会话（`kill`）。（抓一屏走终端管理那一条 `terminal-preview`，在 `terminal-reads.ts`。）
- *
- * # 本文件做的只有三件（都是调用方那一侧的事）
- *
- * 1. **不判目标名**（`§34` Gate 1 在后端 `control/gate_rules.rs` 的 tmux 名那一族，TS 零）：会话名原样交给后端；
- *    空目标由后端入口拒（`bad_args`，`=:` 会被 tmux 读成「当前会话」那一格），本文件照那句「后端不接受这个会话名」
- *    带上后端原话说出来。**Gate 2 / 3（身份门 · 窗口门）只在后端 `control/gate.rs`**，本文件不写第二份。
- * 2. **按形状收**：成品恰好是那几格、类型对 ⇒ 收；多一格 / 缺一格 / 类型不对 ⇒ 当成「两边版本对不上」抛，不猜。
- *    结束是破坏性的，还要成品**明说做成了**（`killed` 为真）—— 形状不对或没说做成 ⇒ 当成「不知道做了没有」，**不当成功、也不换条路重做**。
- *    线上形状由跨语言金样 `tests/__fixtures__/tmux-control.golden.json` 钉着（后端产出 == 金样 · 本文件读同一份）。
- * 3. **失败怎么说**（`§3.3.2`「说法归调用方」）：拒绝码 → 一句话（逐码分开，认不出的码原样带出去，不猜）；
- *    通道的三层错误 → 一句话（本机与远端的下一步不同，话就不一样）。句子住文案表 `tmuxControl.*`。
- *
- * # 期限（`X6`：调用点显式给）
- *
- * 结束 10 秒。
+ * 界面直接说的 tmux 控制帧命令：结束会话（`kill`）。抓一屏走终端管理那一条 `terminal-preview`（`terminal-reads.ts`）。
+ * 1. 不判目标名：会话名原样交后端，空目标由后端入口拒（`bad_args`），这里带上后端原话说出来；身份门 · 窗口门只在后端 `control/gate.rs`。
+ * 2. 按形状收：多一格 / 缺一格 / 类型不对 ⇒ 当「两边版本对不上」抛，不猜。结束是破坏性的，还要成品明说做成了（`killed` 为真），
+ *    否则当「不知道做了没有」——不当成功、也不换条路重做。线上形状由金样 `tests/__fixtures__/tmux-control.golden.json` 钉着。
+ * 3. 失败怎么说：拒绝码逐码一句（认不出的原样带出去）；通道三层错误各一句（本机与远端的下一步不同）。句子住文案表 `tmuxControl.*`。
+ * 期限：结束 10 秒。
  */
 import { copyText } from "./copy-table";
 import { asSaid, ControlError, machineName, saidOfControl, settle, unreadable, type Refusals } from "./control-said";
@@ -23,8 +13,7 @@ import { chan } from "../../comms/inward/chan";
 import { budgetWithin, jsonBody } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
 
-// 这一层与 `src/frontend/ui/cc-bus-control.ts` 说的是同一件事的那几样（`ControlError` · 通道三层的说法 · 成品形状核验 ·
-//   `settle`）搬进了 `src/frontend/ui/control-said.ts`；本文件的调用方照旧从这里取那两样。
+// 与 `cc-bus-control.ts` 共用的那几样（`ControlError` · 通道三层的说法 · 成品形状核验 · `settle`）住 `control-said.ts`。
 export { ControlError, saidOfControl };
 
 /** 结束成了之后顺手注销 cc-bus 那几行（后端写好的句子 ＋ 复制详情；没什么可说 ⇒ `said` 是 `null`）。 */

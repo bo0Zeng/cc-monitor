@@ -1,15 +1,12 @@
 /**
- * 要求：「待迁」最后一行 ——「远端拉起那串的 ssh 外壳（`ssh -t -J … host '<串>'` · PowerShell 窗口载荷）
- * 由本机后端渲（组请求用 `dial/machine.rs::resolve`），monitor 只开终端」。
- *
- * **在用户面前这台机器上开一个终端，跑 `command`** —— 全仓开终端只有这一个家；命令都是后端出的成品，monitor 只开窗。
+ * 在用户面前这台机器上开一个终端，跑 `command` —— 全仓开终端只有这一个家；命令都是后端出的成品，monitor 只开窗。
  * - 本机：`command` 已是本机后端渲好的那一串 ⇒ monitor 直接开窗（`open_terminal_window`，`ssh: false`；要起始目录的走
  *   {@link openLocalTerminal} → `open_local_terminal`）；
- * - 远端：① monitor 交那台的机器事实（`terminal_dial`：它的机器表 ＋ 上次赢的那条）→ ② 本机后端 `terminal-ssh` 渲出那一行
- *   这台终端方言的那一行（Windows 上 PowerShell `& ssh -t[ -J …] … -- '<bash -lic ''…''>'`，别处 POSIX 一行）→ ③ monitor 开窗（`ssh: true`）。
+ * - 远端：① monitor 交那台的机器事实（`terminal_dial`）→ ② 本机后端 `terminal-ssh` 渲出这台终端方言的那一行
+ *   （Windows 上 PowerShell `& ssh -t[ -J …] … -- '<bash -lic ''…''>'`，别处 POSIX 一行）→ ③ monitor 开窗（`ssh: true`）。
  *
- * 哪一步不成 ⇒ 抛一句人话（调用方出声）。这台找不到终端（设置里没指定、自动也没探到）时壳回 `"noWindow"` 这个结局
- * ⇒ 抛 {@link NoTerminalWindow}；调用方按类型判（照实说 ＋ 设置入口，不把命令塞进剪贴板），不按哪句话里的字判、也不按 OS 猜。
+ * 哪一步不成 ⇒ 抛一句人话（调用方出声）。这台找不到终端时壳回 `"noWindow"` ⇒ 抛 {@link NoTerminalWindow}；
+ * 调用方按类型判（照实说 ＋ 设置入口，不把命令塞进剪贴板），不按哪句话里的字判、也不按 OS 猜。
  */
 import { commands, type TerminalOpened } from "./ipc/commands";
 import { copyText } from "./copy-table";
