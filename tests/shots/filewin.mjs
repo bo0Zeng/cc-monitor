@@ -28,6 +28,7 @@ export const FILEWIN_SCENES = [
   { id: "filewin-edit-close", scene: "edit-close", title: "文件窗口 · 关编辑页 · 没保存", desc: "改了没存点 ×：「关闭 main.rs · 未保存」「不保存 = 丢弃改动」［取消］［不保存］［保存］（焦点在保存）" },
   { id: "filewin-close-window", scene: "close-window", title: "文件窗口 · 关窗那一问", desc: "有没保存的编辑页与一趟在下的：「关闭文件窗口 · devbox」按族列出（未保存 · 传输中）；［取消］［全部保存后关闭］［仍然关闭］" },
   { id: "filewin-delete-ask", scene: "delete-ask", title: "文件窗口 · 删除那一问", desc: "选中一个文件夹 ＋ 两个文件按 Delete（稿 09）：「删除 3 项」· 一块清单（图标 ＋ 名字 ｜ 右端「文件夹」/ 大小）· 不可恢复 · 取消（焦点）· 删除 3 项（危险）" },
+  { id: "filewin-rename-denied", scene: "rename-denied", title: "文件窗口 · 就地改名 · 被那台拒", desc: "main.rs 改成 retry.rs ⇒ 那台回「改名失败 · 无权限」（带复制详情）：红字后面跟［复制详情］，点它不算点别处、不再提交" },
   { id: "filewin-rename-error", scene: "rename-error", title: "文件窗口 · 就地改名 · 填错", desc: "main.rs 上 F2：名字那一格成了输入框，改成 Cargo.toml 回车 ⇒ 后端回「已存在」：红边 ＋ 格子下面挂一句「Cargo.toml 已存在」，那一格留着（稿 07）" },
   { id: "filewin-new-folder", scene: "new-folder", title: "文件窗口 · 就地新建文件夹 ＋ 改名回执", desc: "「新建 ▾ → 文件夹」：文件夹那一段之后冒出一行「新建文件夹」、名字整个选中；右下角是上一次改名的回执「已改名为 retry.rs［撤销］」（稿 08）" },
   { id: "filewin-chmod", scene: "chmod", title: "文件窗口 · 改权限", desc: "「⋯ → 权限」：「改权限 · main.rs」·「当前 644」· 3 × 3 勾（勾了所有者 / 同组 / 其他人的执行）·「数字写法 755」两边联动 ·［取消］［改权限］（稿 10）" },

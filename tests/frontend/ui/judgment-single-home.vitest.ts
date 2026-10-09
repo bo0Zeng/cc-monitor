@@ -590,6 +590,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     truncate_raw: NONE,
     // 下层 IO 错 → 原因词（`reason` 模块）：后端 · 壳写句子时取词，TS 侧不碰 IO 错，没有孪生。
     io_reason: NONE,
+    // SFTP 状态码 → 原因词（同一模块）：只有后端的 SFTP 那一层用，TS 侧没有孪生。
+    sftp_status_reason: NONE,
   },
   "creds-core": {
     // monitor 数据目录的规则搬进这里（远端常驻后端按同一份推默认路径）；TS 侧没有孪生。
