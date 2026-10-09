@@ -207,6 +207,8 @@ async fn main() {
     );
     // 全文搜索的常驻索引起来就后台建（两条载体都要；一次性线程，建完就退）。
     observe::search_query::warm_in_background(agent_home.clone());
+    // 历史清单的缓存同样起来就后台热（低优先级的一次性线程）：第一次打开历史页 / 按 sid 开查看窗不再现扫整台。
+    observe::history_query::warm_listing_in_background(agent_home.clone());
     // 别名清单换了存法（配置文件 `profiles.toml`）：这台的配置文件还不在、旧形状的别名文件在 ⇒ 起来时一次性转过去（迁完就不再看旧文件）。
     assets::aliases::migrate_here();
 

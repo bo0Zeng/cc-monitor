@@ -18,7 +18,8 @@
 //! 只读铁律（cc-monitor 不写远端）在此同样成立：本模块只 read_dir / read。
 
 use crate::observe::fence::Fence;
-use crate::observe::fs::mtime_ms;
+use crate::observe::fs::{mtime_ms, split_whole_lines, Step, Tailed};
+use crate::observe::listing_scan::SessionScan;
 use copy_core::copy_text;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -298,6 +299,17 @@ pub(crate) fn list_sessions_into(
     project_dir: &str,
     out: &mut dyn Write,
 ) -> Result<(), String> {
+    list_sessions_for(agent_home, project_dir, None, out)
+}
+
+/// [`list_sessions_into`] 的本体。`only` ＝ 只要这一个会话的整行（按 sid 问清单那一条）：别的会话只出分组要的那几格
+/// （sid · 读出的目录 · 修改时刻 —— 都不用扫整份），整行只扫叫这个名字的那一份。
+fn list_sessions_for(
+    agent_home: &Path,
+    project_dir: &str,
+    only: Option<&str>,
+    out: &mut dyn Write,
+) -> Result<(), String> {
     // project_dir 是目录名而非路径：拒绝任何分隔符 / 上跳
     if project_dir.contains('/') || project_dir.contains('\\') || project_dir.contains("..") {
         return Err(format!("invalid project dir name: {project_dir}"));
@@ -314,7 +326,14 @@ pub(crate) fn list_sessions_into(
         if !p.is_file() || !crate::agents::is_tree_session_file(&p) {
             continue;
         }
-        let meta = analyze_session_cached(&p);
+        let meta = match only {
+            Some(sid) if p.file_stem().is_none_or(|s| s != sid) => serde_json::json!({
+                "sessionId": p.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default(),
+                "cwd": crate::agents::project_dir_of(&p),
+                "updatedAtMs": mtime_ms(&p),
+            }),
+            _ => analyze_session_cached(&p),
+        };
         writeln!(out, "{meta}").map_err(|e| format!("stdout write failed: {e}"))?;
     }
     Ok(())
@@ -327,6 +346,14 @@ pub(crate) fn list_sessions_into(
 pub(crate) fn sessions_by_dir(
     agent_home: &Path,
 ) -> Result<Option<Vec<(String, Result<Vec<serde_json::Value>, String>)>>, String> {
+    sessions_by_dir_for(agent_home, None)
+}
+
+/// [`sessions_by_dir`] 的本体；`only` 见 [`list_sessions_for`]（别的会话那几行只够分组用，调用方按 sid 滤掉）。
+pub(crate) fn sessions_by_dir_for(
+    agent_home: &Path,
+    only: Option<&str>,
+) -> Result<Option<Vec<(String, Result<Vec<serde_json::Value>, String>)>>, String> {
     let Some(root) = records_root(agent_home) else {
         return Ok(None);
     };
@@ -335,71 +362,207 @@ pub(crate) fn sessions_by_dir(
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(e) => return Err(unreadable_dir(&root, &e)),
     };
-    let mut out = Vec::new();
-    for entry in entries.flatten() {
-        if !entry.path().is_dir() {
-            continue;
-        }
-        let dir_name = entry.file_name().to_string_lossy().into_owned();
-        let mut buf = Vec::new();
-        let rows = list_sessions_into(agent_home, &dir_name, &mut buf).map(|()| {
-            let mut rows: Vec<serde_json::Value> = String::from_utf8_lossy(&buf)
-                .lines()
-                .filter_map(|l| serde_json::from_str(l).ok())
-                .collect();
-            let keys: Vec<(Option<String>, i64)> = rows
-                .iter()
-                .map(|v| {
-                    (
-                        v["cwd"].as_str().map(str::to_string),
-                        v["updatedAtMs"].as_i64().unwrap_or(0),
-                    )
+    let dirs: Vec<String> = entries
+        .flatten()
+        .filter(|e| e.path().is_dir())
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect();
+    // 〔perfC〕按目录分给几条线程扫（冷的时候是整台每份会话从头扫一遍，单线程要几秒）。
+    // 每条线程从同一个计数器领下一个目录；结果最后按目录名排，与单线程逐字相同。
+    let next = std::sync::atomic::AtomicUsize::new(0);
+    let workers = std::thread::available_parallelism()
+        .map_or(1, std::num::NonZeroUsize::get)
+        .clamp(1, LISTING_WORKERS)
+        .min(dirs.len().max(1));
+    let mut out: Vec<_> = std::thread::scope(|scope| {
+        let handles: Vec<_> = (0..workers)
+            .map(|_| {
+                scope.spawn(|| {
+                    let mut mine = Vec::new();
+                    loop {
+                        let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        let Some(dir_name) = dirs.get(i) else {
+                            break;
+                        };
+                        if let Some(got) = rows_of_dir(agent_home, dir_name, only) {
+                            mine.push((dir_name.clone(), got));
+                        }
+                    }
+                    mine
                 })
-                .collect();
-            for (v, cwd) in rows.iter_mut().zip(group_by_cwd(&keys)) {
-                v["cwd"] = serde_json::json!(cwd);
-            }
-            rows.retain(|v| !hidden_cwd(v["cwd"].as_str().unwrap_or_default()));
-            rows
-        });
-        if matches!(&rows, Ok(r) if r.is_empty()) {
-            continue;
-        }
-        out.push((dir_name, rows));
-    }
+            })
+            .collect();
+        handles
+            .into_iter()
+            .flat_map(|h| h.join().unwrap_or_default())
+            .collect()
+    });
     out.sort_by(|a, b| a.0.cmp(&b.0));
     Ok(Some(out))
 }
 
-/// 一份记录扫一遍出的那一行，按（长度 · 修改时刻）记着：没变就不再整份扫。
-/// 常驻进程里平铺清单（`history-list`）每次都要过这台**全部**会话，[`analyze_session`] 是整份流式扫；
-/// 一次性进程里这张表只活一趟（等于没有）。`updatedAtMs` 就是修改时刻 ⇒ 键没变、那一行就没变。
-static SESSION_META: std::sync::Mutex<
-    std::collections::BTreeMap<PathBuf, (u64, Option<std::time::SystemTime>, serde_json::Value)>,
-> = std::sync::Mutex::new(std::collections::BTreeMap::new());
+/// 扫清单时最多几条线程（[`sessions_by_dir`]）。
+const LISTING_WORKERS: usize = 8;
+
+/// 一个记录目录的会话行（`None` ＝ 这一目录一行都没有，不出）。
+fn rows_of_dir(
+    agent_home: &Path,
+    dir_name: &str,
+    only: Option<&str>,
+) -> Option<Result<Vec<serde_json::Value>, String>> {
+    let mut buf = Vec::new();
+    let rows = list_sessions_for(agent_home, dir_name, only, &mut buf).map(|()| {
+        let mut rows: Vec<serde_json::Value> = String::from_utf8_lossy(&buf)
+            .lines()
+            .filter_map(|l| serde_json::from_str(l).ok())
+            .collect();
+        let keys: Vec<(Option<String>, i64)> = rows
+            .iter()
+            .map(|v| {
+                (
+                    v["cwd"].as_str().map(str::to_string),
+                    v["updatedAtMs"].as_i64().unwrap_or(0),
+                )
+            })
+            .collect();
+        for (v, cwd) in rows.iter_mut().zip(group_by_cwd(&keys)) {
+            v["cwd"] = serde_json::json!(cwd);
+        }
+        rows.retain(|v| !hidden_cwd(v["cwd"].as_str().unwrap_or_default()));
+        rows
+    });
+    if matches!(&rows, Ok(r) if r.is_empty()) {
+        return None;
+    }
+    Some(rows)
+}
+
+/// 一份记录扫出的那一行，连同扫到哪了（[`ListingEntry`]）：没变不再扫，变长只扫新增的那一段。
+/// 常驻进程里平铺清单（`history-list`）每次都要过这台**全部**会话；一次性进程里这张表只活一趟（等于没有）。
+static SESSION_META: std::sync::Mutex<std::collections::BTreeMap<PathBuf, ListingEntry>> =
+    std::sync::Mutex::new(std::collections::BTreeMap::new());
 
 /// [`SESSION_META`] 的上限（条）：超了整张清掉重来（不做淘汰次序 —— 一台上会话数到这个量级之前它都不会触发）。
 const SESSION_META_CAP: usize = 50_000;
 
-/// [`analyze_session`] 过一层 [`SESSION_META`]。
+/// 清单缓存里的一份：读到哪了（与全文搜索索引共用的 [`Tailed`]）· 完整行累计的那几格 · 末尾半行的那几格 · 成品行。
+struct ListingEntry {
+    read: Tailed,
+    done: SessionScan,
+    tail: SessionScan,
+    row: serde_json::Value,
+    /// 上一次带到这一问时真读了多少字节（判据看它：变长只读尾巴）。
+    last_bytes: u64,
+}
+
+impl ListingEntry {
+    /// 从头逐行流式扫一份（不整份进内存）：完整行进 `done`、交给账本；末尾没写完的那截进 `tail`。
+    fn scan(p: &Path, mtime: Option<std::time::SystemTime>) -> Self {
+        use std::io::BufRead;
+        let mut e = Self {
+            read: Tailed::default(),
+            done: SessionScan::default(),
+            tail: SessionScan::default(),
+            row: serde_json::Value::Null,
+            last_bytes: 0,
+        };
+        let mut end = 0u64;
+        if let Ok(file) = std::fs::File::open(p) {
+            let mut r = std::io::BufReader::new(file);
+            let mut line = Vec::new();
+            loop {
+                line.clear();
+                match r.read_until(b'\n', &mut line) {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => end += n as u64,
+                }
+                if line.ends_with(b"\n") {
+                    e.done.absorb_bytes(&line);
+                    e.read.took(&line);
+                } else {
+                    e.tail.absorb_bytes(&line);
+                }
+            }
+        }
+        e.read.saw((mtime, end));
+        e.last_bytes = end;
+        e.row = e.done.joined(&e.tail).row(p);
+        e
+    }
+
+    /// 尾巴上新读到的那一段并进来（`new` 从上次的完整行之后起，可能以半行结尾）。
+    fn extend(&mut self, p: &Path, mtime: Option<std::time::SystemTime>, new: &[u8]) {
+        let end = self.read.consumed() + new.len() as u64;
+        let (whole, rest) = split_whole_lines(new);
+        for line in whole.split_inclusive(|&b| b == b'\n') {
+            self.done.absorb_bytes(line);
+        }
+        self.read.took(whole);
+        self.read.saw((mtime, end));
+        self.tail = SessionScan::default();
+        self.tail.absorb_bytes(rest);
+        self.last_bytes = new.len() as u64;
+        self.row = self.done.joined(&self.tail).row(p);
+    }
+}
+
+/// 后端一起来就后台把清单缓存热好（一条一次性线程，降到低优先级；不是定时器，扫完就退）：
+/// 第一次打开历史页 / 按 sid 打开查看窗时不必再等整台从头扫一遍。远端流后端与本机常驻后端同一个调用点（`main.rs`）。
+pub fn warm_listing_in_background(agent_home: PathBuf) {
+    let spawned = std::thread::Builder::new()
+        .name("listing-warm".into())
+        .spawn(move || {
+            let lowered = crate::platform::proc::lower_this_thread();
+            let n = warm_listing(&agent_home);
+            tracing::info!("历史清单缓存：后台热好 {n} 份（低优先级：{lowered}）");
+        });
+    if let Err(e) = spawned {
+        tracing::warn!("历史清单缓存：后台热缓存的线程起不来（{e}），第一次问清单会现扫");
+    }
+}
+
+/// [`warm_listing_in_background`] 的本体（判据直接调它）：整台扫一遍清单，回缓存里有几份。
+pub(crate) fn warm_listing(agent_home: &Path) -> usize {
+    // 读不了记录树 ⇒ 这一趟热不了，说一句；第一次问清单时照样现扫、照样把那一句交给界面。
+    if let Err(e) = sessions_by_dir(agent_home) {
+        tracing::warn!("历史清单缓存：后台热缓存读不了记录树（{e}）");
+    }
+    SESSION_META.lock().unwrap_or_else(|e| e.into_inner()).len()
+}
+
+/// [`analyze_session`] 过一层 [`SESSION_META`]：没变 ⇒ 上次那一行；变长且前面没被改写 ⇒ 只扫新增的；其余整份重扫。
 fn analyze_session_cached(p: &Path) -> serde_json::Value {
-    let Ok(md) = std::fs::metadata(p) else {
+    let lock = || SESSION_META.lock().unwrap_or_else(|e| e.into_inner());
+    let prev = lock().remove(p);
+    // 读到过读不动的一行（之后的都不算）⇒ 不追加读：那一行之后的内容要整份重扫才对得上。
+    let may_append = prev.as_ref().is_some_and(|e| !e.done.stopped);
+    let mut bytes = 0u64;
+    let Ok((step, seen)) = Tailed::step(prev.as_ref().map(|e| &e.read), p, may_append, &mut bytes)
+    else {
         return analyze_session(p);
     };
-    let key = (md.len(), md.modified().ok());
-    let lock = || SESSION_META.lock().unwrap_or_else(|e| e.into_inner());
-    if let Some((len, at, v)) = lock().get(p) {
-        if (*len, *at) == key && key.1.is_some() {
-            return v.clone();
+    let entry = match (step, prev) {
+        (Step::Same, Some(mut e)) => {
+            e.last_bytes = 0;
+            e
         }
+        (Step::Appended(new), Some(mut e)) => {
+            e.extend(p, seen.0, &new);
+            e.last_bytes = bytes;
+            e
+        }
+        _ => ListingEntry::scan(p, seen.0),
+    };
+    let row = entry.row.clone();
+    // 拿不到修改时刻 ⇒ 不留（下次认不出它变没变）。
+    if seen.0.is_some() {
+        let mut t = lock();
+        if t.len() >= SESSION_META_CAP {
+            t.clear();
+        }
+        t.insert(p.to_path_buf(), entry);
     }
-    let v = analyze_session(p);
-    let mut t = lock();
-    if t.len() >= SESSION_META_CAP {
-        t.clear();
-    }
-    t.insert(p.to_path_buf(), (key.0, key.1, v.clone()));
-    v
+    row
 }
 
 // **围栏住 `observe/fence.rs`**〔审计 F 🔴-6〕：这里原来是具名围栏
@@ -1678,7 +1841,7 @@ fn split_tail(bytes: &[u8], n: usize) -> (String, &[u8], &[u8]) {
     (meta, &complete[split_at..], &complete[..split_at])
 }
 
-fn created_ms_or_mtime(p: &Path) -> i64 {
+pub(super) fn created_ms_or_mtime(p: &Path) -> i64 {
     let meta = match std::fs::metadata(p) {
         Ok(m) => m,
         Err(_) => return 0,
@@ -1704,90 +1867,11 @@ fn created_ms_or_mtime(p: &Path) -> i64 {
 /// 四格两边不一样。历史跨机 join 进了本机后端之后本机也读这一行 ⇒ 把 monitor 那份有、这里没有的三格（fork 关系 ·
 /// `custom-title` · 首条时间戳）补进来，摘录取人说的话（经注册表 `agents::human_speech`，与全文搜索同一个家）、截断用 `observe/search_rules.rs`。条数仍是「非空行数」。
 fn analyze_session(p: &Path) -> serde_json::Value {
-    let session_id = p
-        .file_stem()
-        .map(|s| s.to_string_lossy().into_owned())
-        .unwrap_or_default();
-    let mut count = 0u32;
-    let mut excerpt = String::new();
-    let mut ai_title: Option<String> = None;
-    let mut started_at: Option<i64> = None;
-    let mut forked: Option<(String, String)> = None;
-    // Batch11-F32：CC 2.1.x 后台分身会话（←/bg/退出转后台 fork 出的 worker）——
-    // 记录级 sessionKind:"bg" 是官方 resume 选择器同款识别信号（内部字段无兼容
-    // 承诺，缺失=false 安全降级）。历史列表标 ⚙ 徽标防 resume 选错克隆。
-    let mut is_bg = false;
-    // 〔audit-0805 F07 / 报告 B-6 第 5 环〕**流式**。原来是 `read_to_string(p)` 整读：
+    // 〔audit-0805 F07 / 报告 B-6 第 5 环〕**流式**（[`ListingEntry::scan`] 逐行读）。原来是 `read_to_string(p)` 整读：
     // `--list-sessions` 对该项目**每个** jsonl 都调它一次，43 个项目 / 2.4 GB 的机器上
-    // 一次列表就是把 2.4 GB 读进内存再逐行解析。头注自己也写着「整文件扫描，跑在远端 CPU 上」——
-    // 扫描是必须的（要数行、要判 bg），**但不必先整份进内存**。
-    if let Ok(file) = std::fs::File::open(p) {
-        use std::io::BufRead;
-        let reader = std::io::BufReader::new(file);
-        for line in reader.lines().map_while(Result::ok) {
-            let trimmed = line.trim_start_matches('\u{feff}').trim();
-            if trimmed.is_empty() {
-                continue;
-            }
-            count += 1;
-            let v: serde_json::Value = match serde_json::from_str(trimmed) {
-                Ok(v) => v,
-                Err(_) => continue,
-            };
-            if !is_bg && v.get("sessionKind").and_then(|k| k.as_str()) == Some("bg") {
-                is_bg = true;
-            }
-            let kind = v.get("type").and_then(|t| t.as_str());
-            if matches!(kind, Some("user") | Some("assistant")) {
-                if started_at.is_none() {
-                    started_at = v
-                        .get("timestamp")
-                        .and_then(|t| t.as_str())
-                        .and_then(crate::common::time::parse_iso8601_ms);
-                }
-                if forked.is_none() {
-                    forked = fork_origin(&v);
-                }
-            }
-            match kind {
-                Some("ai-title") => {
-                    if let Some(t) = v.get("aiTitle").and_then(|t| t.as_str()) {
-                        ai_title = Some(t.to_string()); // 取最新（持续覆盖）
-                    }
-                }
-                // CC v2.1.x 起标题记录改名 `custom-title` / `customTitle`（旧的 `ai-title` 在历史记录里仍会出现，两个都认）。
-                Some("custom-title") => {
-                    if let Some(t) = v.get("customTitle").and_then(|t| t.as_str()) {
-                        ai_title = Some(t.to_string());
-                    }
-                }
-                Some("user") if excerpt.is_empty() => {
-                    let kind = crate::agents::record_tree_kind().unwrap_or_default();
-                    if let Some(said) = crate::agents::human_speech(kind, &v) {
-                        excerpt = super::search_rules::truncate_excerpt(&said, 120);
-                    }
-                }
-                _ => {}
-            }
-        }
-    }
-    let (forked_sid, forked_uuid) = match forked {
-        Some((s, u)) => (Some(s), Some(u)),
-        None => (None, None),
-    };
-    serde_json::json!({
-        "sessionId": session_id,
-        "jsonlPath": p.to_string_lossy(),
-        "startedAtMs": started_at.unwrap_or_else(|| created_ms_or_mtime(p)),
-        "updatedAtMs": mtime_ms(p),
-        "messageCountApprox": count,
-        "firstUserExcerpt": excerpt,
-        "aiTitle": ai_title,
-        "cwd": crate::agents::project_dir_of(p),
-        "isBg": is_bg,
-        "forkedFromSessionId": forked_sid,
-        "forkedFromMessageUuid": forked_uuid,
-    })
+    // 一次列表就是把 2.4 GB 读进内存再逐行解析。扫描是必须的（要数行、要判 bg），**但不必先整份进内存**。
+    let mtime = std::fs::metadata(p).and_then(|m| m.modified()).ok();
+    ListingEntry::scan(p, mtime).row
 }
 
 /// **「这条记录说明本会话是从哪个会话分叉来的」的唯一住址**：
@@ -1805,7 +1889,11 @@ pub(crate) fn fork_origin(v: &serde_json::Value) -> Option<(String, String)> {
 
 /// 一条记录的 `forkedFrom`（`/branch` 分叉出来的会话，每条复制过来的记录都带着）→ (源会话 id, 分叉处的消息 uuid)。
 fn forked_from(v: &serde_json::Value) -> Option<(String, String)> {
-    let f = v.get("forkedFrom")?;
+    forked_pair(v.get("forkedFrom")?)
+}
+
+/// `forkedFrom` 那一格本身 → (源会话 id, 分叉处的消息 uuid)（两格都得是串）。
+pub(super) fn forked_pair(f: &serde_json::Value) -> Option<(String, String)> {
     Some((
         f.get("sessionId")?.as_str()?.to_string(),
         f.get("messageUuid")?.as_str()?.to_string(),

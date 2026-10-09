@@ -177,7 +177,7 @@ fn find_and_global_search_agree_on_the_same_file() {
         let mut budget = SnippetBudget::new(opts.limit);
         let q = Q.trim().to_lowercase();
         // 会话那一格来自索引：整份读进一格 `FileEntry`。
-        let mut entry = FileEntry::empty(None, true);
+        let mut entry = FileEntry::empty(true);
         entry.take(None, &std::fs::read(&p).expect("读夹具"));
         let s = session_hits_in(&p, &entry, &q, &opts, &mut budget, 0).expect("有命中");
         // 两者刻意的差别只有一处：`--search` 也列没有 uuid 的记录（uuid 记成空串）、本命令不列。

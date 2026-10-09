@@ -220,3 +220,69 @@ fn the_search_kou_jing_has_exactly_one_home() {
         );
     }
 }
+
+/// 〔perfC #5〕大小写不敏感的「包含」：答案与「整段转小写再找」逐个相同（Unicode 多字符展开 · 希腊词尾 Σ · CJK · 空串），
+/// 而且每问不分配（每问要对常驻索引里每一条跑一遍，每条转小写那一份分配就是每问的大头）：
+/// 先各跑一趟让本线程那块复用的缓冲长到够大，之后再跑一个字节都不分配。
+#[test]
+fn contains_lc_agrees_with_lowercasing_and_allocates_nothing() {
+    let hays = [
+        "",
+        "Hello World",
+        "游标分页 Cursor 改造",
+        "ΟΔΟΣ ΟΔΟΣ.",
+        "ΣΑΣ",
+        "İstanbul İ",
+        "ẞtraße STRASSE",
+        "abcabcabd",
+        "ﬁle ﬃ",
+        "Ǆ ǅ ǆ",
+        "mixed CASE with 中文 and ÀÉÎ",
+    ];
+    let needles = [
+        "",
+        "a",
+        "hello",
+        "world",
+        "o w",
+        "cursor",
+        "游标",
+        "改造",
+        "οδος",
+        "οδοσ",
+        "σας",
+        "ας",
+        "ς",
+        "i̇stanbul",
+        "istanbul",
+        "i̇",
+        "ß",
+        "straße",
+        "strasse",
+        "abd",
+        "abcabd",
+        "ﬁ",
+        "ǆ",
+        "àéî",
+        "中文 and",
+    ];
+    for h in hays {
+        for n in needles {
+            assert_eq!(
+                contains_lc(h, n),
+                h.to_lowercase().contains(n),
+                "{h:?} 里找 {n:?}：与整段转小写再找不一样"
+            );
+        }
+    }
+    let long_ascii = "Some Long ASCII text with Cursor pagination ".repeat(2000);
+    let long_cjk = "把分页逻辑改成游标分页，顺带补测试。Cursor ".repeat(2000);
+    contains_lc(&long_cjk, "热身");
+    let base = crate::alloc_probe::reset_peak();
+    let a = contains_lc(&long_ascii, "cursor pagination");
+    let b = contains_lc(&long_cjk, "游标分页，顺带");
+    let c = contains_lc(&long_cjk, "没有这一句");
+    let grew = crate::alloc_probe::peak_since(base);
+    assert!(a && b && !c);
+    assert_eq!(grew, 0, "大小写不敏感的包含分配了 {grew} 字节");
+}

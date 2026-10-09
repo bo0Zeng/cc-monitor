@@ -20,6 +20,7 @@ pub(crate) mod fence;
 pub(crate) mod fs;
 // 一次性等待（记录里长出某一条 · 会话由新进程报出）：换号重启那条命令用，期限由发起方给。
 pub mod history_query;
+pub(crate) mod listing_scan; // 历史清单那一行的逐行扫描（累计的那几格 · 读每一行的窄探针）
 pub(crate) mod one_wait;
 pub mod search_query;
 // 搜索的通用口径（原共享 crate `search-core` 通用那一半：常量 · snippet 预算 · 最近优先 · 片段 / 截断 · 标题）。
