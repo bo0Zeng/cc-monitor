@@ -350,8 +350,8 @@ const enhanceObservers = new WeakMap<HTMLElement, IntersectionObserver>();
 
 /**
  * 让一个卡片接受 lazy enhance 调度（`root` = 它所在的滚动容器）。实时 tab 与查看器在 lazy 渲染期间挂卡片时调。
- * 里面没有等着补的占位（惰路只在建卡那一刻留占位）⇒ 不交给 IO：大多数卡没有代码块 / 公式，而 WebKitGTK 上
- * 每个藏着的目标（折着的过程卡 · 后台 tab）都让页面空闲时也一帧一帧地算（查看窗空闲 CPU 3.2 → 0.7 s / 5 s）。
+ * 里面没有等着补的占位（惰路只在建卡那一刻留占位）⇒ 不交给 IO：大多数卡没有代码块 / 公式，个个挂着 ＝ 滚动时每一帧
+ * 都要替它们算一遍交叉（300 轮的子运行 2495 个目标 → 299 个）。
  */
 export function observeForEnhance(el: HTMLElement, root: HTMLElement): void {
   if (el.dataset.enhanced === "1" || el.querySelector(PENDING) === null) return;

@@ -702,6 +702,8 @@ const ACTIONS: Record<string, () => Promise<Record<string, unknown>>> = {
   drawer,
   agents,
   "viewer-idle": () => idle(),
+  // 对照：什么都不摘、再量一遍空闲（第一趟空闲在开窗之后，第二趟往往低 —— 试验项都排在第二趟，得跟这一项比）
+  "viewer-again-idle": async () => ({ ...(await idle()), name: "again-idle" }),
   // 试一刀：页里所有 IntersectionObserver 都摘掉再量空闲（看 WebKit 上几百个等着滚进视口的目标是不是每帧都在算）
   "viewer-noio-idle": async () => {
     for (const io of (window.__perf as unknown as { ios: IntersectionObserver[] }).ios) io.disconnect();

@@ -468,7 +468,7 @@ describe("D2 · 每个滚动容器一个 IO", () => {
     }
   });
 
-  it("里面没有等着补的代码块 / 公式的卡不交给 IO（WebKitGTK 上每个藏着的目标都让页面空闲时也一帧一帧地算：查看窗空闲 CPU 3.2 → 0.7 s / 5 s）", async () => {
+  it("里面没有等着补的代码块 / 公式的卡不交给 IO（个个挂着 ＝ 滚动时每一帧都替它们算一遍交叉：300 轮的子运行 2495 个目标 → 299 个）", async () => {
     FakeIO.all = [];
     vi.stubGlobal("IntersectionObserver", FakeIO);
     try {
