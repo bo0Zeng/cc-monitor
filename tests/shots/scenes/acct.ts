@@ -49,6 +49,9 @@ interface Sess {
   blocked?: Record<string, unknown>;
   fallbackApi?: string;
   absent?: boolean;
+  /** 会话血缘里的父（tab 序号）；`followParent` ⇒ 来源 ＝ 跟随父会话。 */
+  parent?: number;
+  followParent?: boolean;
 }
 interface AcctWorld {
   accounts: Acct[];
@@ -296,14 +299,23 @@ function acctOps(aw: AcctWorld, w: () => World): Record<string, OpHandler> {
           continue;
         }
         const cur = byAcct(s.current);
+        const parentSid = s.parent === undefined ? undefined : sidAt(s.parent);
+        const decider = s.followParent && s.parent !== undefined ? aw.sessions[s.parent] : s;
         sessions[sid] = {
           state: "present",
           agent: "claude-code",
-          source: s.rule ? { rule: s.rule } : s.follow ? "follow" : "custom",
-          ...(s.rule || s.follow
+          source: s.followParent && parentSid
+            ? { parent: parentSid }
+            : s.rule
+              ? { rule: s.rule }
+              : s.follow
+                ? "follow"
+                : "custom",
+          ...(parentSid ? { parent: parentSid } : {}),
+          ...(decider && (decider.rule || decider.follow)
             ? {
                 ruleName:
-                  (aw.rules ?? []).find((r) => r.id === s.rule)?.name ?? "日常",
+                  (aw.rules ?? []).find((r) => r.id === decider.rule)?.name ?? "日常",
               }
             : {}),
           explain:
@@ -357,7 +369,9 @@ function acctOps(aw: AcctWorld, w: () => World): Record<string, OpHandler> {
         if (!s) continue;
         const r = req.rotation as unknown;
         s.rule = undefined;
+        s.followParent = false;
         if (r === "follow") s.follow = true;
+        else if (r === "parent") s.followParent = true;
         else if (r === "custom" || r === "detach") {
           s.follow = false;
           s.custom ??= structuredClone(aw.default ?? ROT_CUSTOM);
@@ -853,6 +867,61 @@ export const ACCT_SCENES: Scene[] = [
         rule: "r_night",
         custom: undefined,
       };
+    }),
+  ),
+  scene(
+    "acct-src-parent",
+    "面板 · 来源下拉有「跟随父会话」",
+    "这个会话是在 tab 2 那个会话里起的：下拉紧跟 跟随默认 出 跟随父会话（灰字 父标题 · 夜间）；当前项打勾",
+    async () => {
+      await openPanel();
+      await click('aside[role="dialog"] [data-acct-src]');
+      await waitFor("[role=menu]");
+      await sleep(400);
+    },
+    world((aw) => {
+      aw.rules = [
+        {
+          id: "r_night",
+          name: "夜间",
+          rotation: {
+            order: [{ start: true }, "team", "personal"],
+            enabled: ["team", "personal"],
+            when: "full",
+            atLimit: "continue",
+            wait: 40,
+            preempt: true,
+          },
+          users: 2,
+        },
+      ];
+      aw.sessions[1] = { ...swappedSess(), follow: false, rule: "r_night", custom: undefined };
+      aw.sessions[0] = { ...swappedSess(), custom: undefined, parent: 1, followParent: true };
+    }),
+  ),
+  scene(
+    "acct-parent-readonly",
+    "面板 · 来源 ＝ 跟随父会话（只读）",
+    "上方一行 跟随父会话 {父标题} · 规则 夜间 ［打开父会话］［转为本会话］；触发灰、列表只读",
+    openPanel,
+    world((aw) => {
+      aw.rules = [
+        {
+          id: "r_night",
+          name: "夜间",
+          rotation: {
+            order: [{ start: true }, "team", "personal"],
+            enabled: ["team", "personal"],
+            when: "full",
+            atLimit: "continue",
+            wait: 40,
+            preempt: true,
+          },
+          users: 2,
+        },
+      ];
+      aw.sessions[1] = { ...swappedSess(), follow: false, rule: "r_night", custom: undefined };
+      aw.sessions[0] = { ...swappedSess(), custom: undefined, parent: 1, followParent: true };
     }),
   ),
   scene(

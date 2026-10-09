@@ -358,6 +358,10 @@ impl Accounts {
             agent: key.seg1.as_str(),
             start: key.seg2.as_str(),
             sid: ask.label,
+            parent: self
+                .lineage
+                .as_ref()
+                .and_then(|l| l.now().parent_of(ask.label).map(str::to_string)),
             body: ask.body,
             row,
             now: (self.clock)(),

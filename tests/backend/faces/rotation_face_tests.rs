@@ -81,6 +81,9 @@ impl Home {
                 library,
                 Some(dead_token_endpoint()),
             ),
+            lineage: Arc::new(crate::lineage::LineageStore::at(Some(
+                self.root.join(crate::lineage::FILE_NAME),
+            ))),
             rows: Box::new(|_, a| (a == "api").then_some(true)),
             live: {
                 let live = Arc::clone(&self.live);
@@ -1590,5 +1593,81 @@ fn the_timeline_head_estimates_when_the_account_reaches_its_limit_only_with_grou
             .get("est")
             .is_none(),
         "涨在 30 分钟以前还给估"
+    );
+}
+
+fn seed_parent(ctx: &Ctx, kid: &str, parent: &str) {
+    crate::lineage::relay_saw(
+        &ctx.lineage,
+        Some(crate::lineage::Origin {
+            token: "0a1b2c3d4e5f6071",
+            parent: Some(parent),
+        }),
+        kid,
+        "claude-code",
+        now(),
+    );
+}
+
+/// ★ 跟随父会话：`"parent"` 按血缘填父、生效那份 ＝ 父的；没有父 ⇒ `no_parent`、一个字节不写；`detach` 照父此刻那份拷。
+#[test]
+fn following_the_parent_is_set_from_lineage_and_refused_without_one() {
+    let home = Home::new("parent-set");
+    let ctx = home.ctx();
+    let id = new_rule(&ctx, "夜间", &["b"]);
+    home.saw(&ctx, "p-1");
+    home.saw(&ctx, "k-1");
+    answer_session_set_with(
+        &ctx,
+        &json!({"sids": ["p-1"], "rotation": {"rule": id}}),
+        now(),
+    )
+    .expect("ok");
+    let before = ctx.hop.store.now();
+    let e = answer_session_set_with(&ctx, &json!({"sids": ["k-1"], "rotation": "parent"}), now())
+        .expect_err("没有父却收了");
+    assert_eq!(e.code, "no_parent");
+    assert_eq!(ctx.hop.store.now(), before, "拒了还写了");
+    seed_parent(&ctx, "k-1", "p-1");
+    answer_session_set_with(&ctx, &json!({"sids": ["k-1"], "rotation": "parent"}), now())
+        .expect("ok");
+    let b = ctx.hop.store.now();
+    assert_eq!(b.sessions["k-1"].source, Source::Parent("p-1".into()));
+    assert_eq!(b.rule_of(&b.sessions["k-1"]), Some(id.as_str()));
+    answer_session_set_with(&ctx, &json!({"sids": ["k-1"], "rotation": "detach"}), now())
+        .expect("ok");
+    let s = ctx.hop.store.now().sessions["k-1"].clone();
+    assert_eq!(
+        (s.source, s.custom.expect("own").enabled),
+        (Source::Custom, vec!["b".to_string()]),
+        "转为本会话没照父此刻那份拷"
+    );
+}
+
+/// ★ 读：血缘里有父就给 `parent`（不管来源是不是跟随它）；跟随父会话而父不在账本里 ⇒ `parentMissing`、规则名是默认那条。
+#[test]
+fn reading_a_session_says_its_parent_and_whether_the_parent_is_missing() {
+    let home = Home::new("parent-read");
+    let ctx = home.ctx();
+    home.saw(&ctx, "k-1");
+    seed_parent(&ctx, "k-1", "p-gone");
+    let got = answer_session_read_with(&ctx, &json!({"sids": ["k-1"]}), now()).expect("ok");
+    let k = &got["sessions"]["k-1"];
+    assert_eq!(k["parent"], "p-gone");
+    assert!(
+        k.get("parentMissing").is_none(),
+        "来源不是跟随父会话也说父不在"
+    );
+    rotation::face_change(&ctx.hop.store, |b| {
+        b.sessions.get_mut("k-1").expect("k").source = Source::Parent("p-gone".into());
+    })
+    .expect("write");
+    let got = answer_session_read_with(&ctx, &json!({"sids": ["k-1"]}), now()).expect("ok");
+    let k = &got["sessions"]["k-1"];
+    assert_eq!(k["source"], json!({"parent": "p-gone"}));
+    assert_eq!(k["parentMissing"], true);
+    assert_eq!(
+        k["ruleName"],
+        json!(ctx.hop.store.now().rules[&ctx.hop.store.now().default_rule].name)
     );
 }
