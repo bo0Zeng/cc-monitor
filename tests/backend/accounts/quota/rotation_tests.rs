@@ -566,3 +566,73 @@ fn editing_a_rule_rings_its_sessions_and_the_rules_bell() {
     assert_eq!(drain(&mut rx, "rr-"), vec!["rr-follow".to_string()]);
     let _ = std::fs::remove_dir_all(path.parent().expect("dir"));
 }
+
+/// ★ 用户今天那份的形状（脱敏、号名中性）：没有顶层 `default`、会话带 `follow` · 自己那份（顺序 · 勾 · 触发 · 到上限 ·
+/// 每号封顶：写死的数与按时段的几段）· 换号记录 · 基线 · 挡在前面的号。升级之后逐格不丢，只多出一条缺省的「默认」规则。
+#[test]
+fn todays_shape_upgrades_without_losing_a_cell() {
+    let custom = json!({
+        "order": [{"start": true}, "beta", "gamma", "delta"],
+        "enabled": ["beta", "gamma"],
+        "when": {"threshold": {"n": 95}},
+        "atLimit": "stop",
+        "cap": {
+            "beta": {"*": 99},
+            "gamma": {"*": [{"at": "17:00-02:00", "n": 0}, {"at": "02:00-17:00", "n": 99}]}
+        }
+    });
+    let session = json!({
+        "agent": "claude-code", "start": "alpha", "current": "beta", "since": 1_791_500_000u64,
+        "follow": false,
+        "custom": custom,
+        "history": [{"at": 1_791_499_000u64, "from": "alpha", "to": "beta", "why": {"threshold": {"n": 95}}, "fromResetsAt": 1_791_510_000u64}],
+        "baseline": {"5h": {"used": 0.42, "resetsAt": 1_791_510_000u64}},
+        "blockedAbove": ["alpha"]
+    });
+    let old = json!({"sessions": {
+        "s-own": session,
+        "s-plain": {"agent": "claude-code", "start": "alpha", "current": "alpha", "since": 1, "follow": true}
+    }});
+    let b: Book = serde_json::from_value(old).expect("读得进");
+    let s = &b.sessions["s-own"];
+    assert_eq!(s.source, Source::Custom);
+    let mut want = custom.clone();
+    want["wait"] = json!(WAIT_DEFAULT);
+    assert_eq!(
+        serde_json::to_value(s.custom.as_ref().expect("自己那份")).expect("json"),
+        want,
+        "自己那份逐格不丢"
+    );
+    assert_eq!(
+        b.rotation_of(s).cap["gamma"]["*"],
+        CapValue::Slots(vec![
+            CapSlot {
+                at: "17:00-02:00".into(),
+                n: 0
+            },
+            CapSlot {
+                at: "02:00-17:00".into(),
+                n: 99
+            },
+        ])
+    );
+    let out = serde_json::to_value(&b).expect("json");
+    for k in [
+        "agent",
+        "start",
+        "current",
+        "since",
+        "history",
+        "baseline",
+        "blockedAbove",
+    ] {
+        assert_eq!(out["sessions"]["s-own"][k], session[k], "{k} 不丢");
+    }
+    assert_eq!(b.sessions["s-plain"].source, Source::Follow);
+    assert_eq!(b.rules.len(), 1);
+    assert_eq!(
+        b.rules[&b.default_rule].rotation,
+        Rotation::default(),
+        "没有顶层 default ⇒ 缺省那一份"
+    );
+}
