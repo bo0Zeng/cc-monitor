@@ -5,6 +5,7 @@ import type { Scene } from "../scenes/index";
 import { sleep, waitCount, waitFor } from "../scenes/helpers";
 import { PERF_TURNS, perfWorld } from "./world";
 import { sidOf } from "../fake/world";
+import { SETTINGS_SCALE, settingsPerfWorld } from "./settings-world";
 
 /** 最长那条会话（`PERF_TURNS[0]`，420 轮）的 sid：查看窗那一项开它。 */
 export const LONGEST_SID = sidOf(0x100);
@@ -37,6 +38,21 @@ export const PERF_SCENES: Scene[] = [
     world: perfWorld,
     act: async () => {
       await waitFor(".session-viewer [data-uuid]", 180_000);
+    },
+  },
+  {
+    id: "perf-settings",
+    page: "settings",
+    dir: "性能",
+    title: "设置窗 · 真实规模",
+    desc: "十几台机器、二十几个账号、三十条规则、几百个扩展，给性能台架量开窗 · 切页 · 滚动 · 筛选",
+    width: 960,
+    height: 740,
+    world: settingsPerfWorld,
+    act: async () => {
+      // 机器子页（每台一项）都注册上来才算开好
+      await waitCount('.settings-nav .settings-nav-item[data-route-id^="machine:"]', SETTINGS_SCALE.remotes + 1, 180_000);
+      await sleep(600);
     },
   },
 ];

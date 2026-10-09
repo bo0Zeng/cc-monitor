@@ -62,7 +62,10 @@
     true,
   );
   const watch = () => {
-    const root = document.getElementById("message-stream");
+    // 主窗口数消息流（按可见 / 后台流分开）；别的窗（设置窗 · 查看窗）没有消息流 ⇒ 整个 body 都算「可见」。
+    // 主窗口的消息流晚于 DOMContentLoaded 才建 ⇒ 只有主窗口才等它（别的窗不留一条 20 ms 的空转）。
+    const main = !/^\/(settings|viewer)\.html$/.test(location.pathname);
+    const root = main ? document.getElementById("message-stream") : document.body;
     if (!root) return void setTimeout(watch, 20);
     new MutationObserver((recs) => {
       const t = performance.now();
