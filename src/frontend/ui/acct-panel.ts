@@ -357,7 +357,8 @@ function quotaOf(quota: QuotaRead | null, agent: string, account: string): Quota
   return u ? { kind: u.kind, state: "unseen", stale: false, slots: [], login: u.login } : null;
 }
 
-/** 一行右侧的用量：`5h ▮ 63% ↻18:30 · 7d ▮ 41%`（按量号 `无 5h / 7d`；被拒 `✕ ↻19:00`）。 */
+/** 一行右侧的用量：`5h ▮ 63% ↻18:30`（按量号 `无 5h / 7d`；被拒 `✕ ↻19:00`）。 */
+/** 只画卡着它的那一个窗口（轮换列表行尾有兜底 · 封顶，照稿只留一格用量；另一格在悬停卡与时间轴里）。 */
 function rowUsage(q: QuotaShow | null, now: number, reading: QuotaReadAccount["reading"]): HTMLElement {
   const box = el("span", s.acctRowUsage);
   if (!q) return box;
@@ -368,7 +369,7 @@ function rowUsage(q: QuotaShow | null, now: number, reading: QuotaReadAccount["r
     if (q.state === "refused") box.dataset.shade = "refused";
     return box;
   }
-  for (const slot of ["5h", "7d"]) {
+  for (const slot of [q.limiting ?? "5h"]) {
     const x = q.slots.find((v) => v.slot === slot);
     const here = q.limiting === slot;
     const cell = el("span", s.acctRowSlot);
@@ -390,6 +391,9 @@ function rowUsage(q: QuotaShow | null, now: number, reading: QuotaReadAccount["r
   }
   return box;
 }
+
+/** 来源下拉面板的宽（项右侧带规则摘要，比框宽）。 */
+const SRC_MENU_W = 340;
 
 /** 会话的来源在下拉里那一项的值：`follow` · `custom` · `rule:<id>`。 */
 type SrcKey = "follow" | "custom" | `rule:${string}`;
@@ -428,6 +432,7 @@ function rotationBlock(o: Open, entry: SessionRotationEntry, read: Present, quot
     ],
     value: was,
     closedKeys: "open",
+    menuWidth: SRC_MENU_W,
     decorate: (items) => {
       const out: MenuItem[] = [];
       let headed = false;

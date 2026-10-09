@@ -35,6 +35,8 @@ export interface SelectSpec {
   onChange?: (value: string) => void;
   /** 合着时方向键做什么：`step`（缺省）↑↓ 直接换值 · `open` 只有 ↓ 展开、别的一概不做。 */
   closedKeys?: "step" | "open";
+  /** 面板至少多宽（缺 ⇒ 同框宽）：项右侧带摘要的那种框比面板窄。 */
+  menuWidth?: number;
   /** 开面板前再排一遍项（插组名 · 分隔 · 末尾几个动作）；缺 ⇒ 原样。 */
   decorate?: (items: MenuItem[]) => MenuItem[];
 }
@@ -89,7 +91,7 @@ export function select(spec: SelectSpec): SelectHandle {
       detail: o.enabled === false ? o.why : o.detail,
       onClick: () => pick(o.value),
     }));
-    openMenu({ el }, spec.decorate ? spec.decorate(items) : items, { label: spec.label, width: el.getBoundingClientRect().width, onClose: () => el.focus() });
+    openMenu({ el }, spec.decorate ? spec.decorate(items) : items, { label: spec.label, width: Math.max(el.getBoundingClientRect().width, spec.menuWidth ?? 0), onClose: () => el.focus() });
   };
   const step = (dir: 1 | -1): void => {
     const live = options.filter((o) => o.enabled !== false);
