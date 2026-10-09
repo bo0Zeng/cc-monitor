@@ -572,6 +572,7 @@ export class RemoteSection {
     // 重建前先把上一批机器页收掉，否则改完配置会留下一串指向已不存在机器的导航项。
     for (const id of this.machinePageIds) this.pages?.removeMachinePage(id);
     this.machinePageIds = [];
+    for (const c of this.cards) c.dispose();
     this.cards = [];
     // Phase G：这批卡整个作废，页 id 表跟着清 —— 不清的话 `#n` 去重会把上一批的
     // id 也算进冲突，重建几次之后每台机器的 id 会一路往后飘（`devbox#2`、`devbox#3`…）。
@@ -797,6 +798,7 @@ export class RemoteSection {
       },
       () => {
         if (undone) return;
+        card.dispose();
         if (card.persistedKey) void forgetSeen(card.persistedKey);
         this.pageIdOf.delete(card);
         void this.save();
