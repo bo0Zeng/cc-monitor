@@ -37,6 +37,8 @@ extern "system" {
     ) -> i32;
     fn WaitForSingleObject(handle: RawHandle, milliseconds: u32) -> u32;
     fn TerminateProcess(process: RawHandle, exit_code: u32) -> i32;
+    fn GetCurrentThread() -> RawHandle;
+    fn SetThreadPriority(thread: RawHandle, priority: i32) -> i32;
 }
 
 /// 只读查询（退出码 · 时间）。跨完整性级别也开得出来 —— monitor 侧用的正是这一个。
@@ -193,4 +195,12 @@ pub(crate) fn start_filetime(pid: u32) -> Option<u64> {
         Opened::Handle(h) => creation_filetime(&h),
         Opened::Denied | Opened::Gone(_) => None,
     }
+}
+
+/// 把调用它的这条线程降到 `THREAD_PRIORITY_BELOW_NORMAL`（`proc.rs::lower_this_thread` 的 Windows 臂）。回真 ＝ 降成了。
+pub(crate) fn lower_this_thread() -> bool {
+    /// `THREAD_PRIORITY_BELOW_NORMAL`。
+    const BELOW_NORMAL: i32 = -1;
+    // SAFETY: `GetCurrentThread` 回伪句柄（当前线程，不用关）＋ 一个常数。
+    unsafe { SetThreadPriority(GetCurrentThread(), BELOW_NORMAL) != 0 }
 }

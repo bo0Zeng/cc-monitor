@@ -755,7 +755,7 @@ fn total_families(names: &[&str], name: &str) -> usize {
 }
 
 fn cli(out: &mut String) {
-    out.push_str("## 5. CLI 子命令\n\n一次性调用：`ccm -- --子命令 …`（打头的 `--` 之后才归后端）；收 `args` 的从 stdin 读一段 JSON，回一行 JSON 到 stdout。\n\
+    out.push_str("## 5. CLI 子命令\n\n一次性调用：`ccm -- --子命令 …`（打头的 `--` 之后才归后端）；收 `args` 的那一段 JSON 从 stdin 读，或经 `--args-b64 <base64>` 走 argv（二选一，上限与码见 `IPC-PROTOCOL.md` §8），回一行 JSON 到 stdout。\n\
 「＝ 帧命令」的那几条与流上同名命令是同一个处理器。\n\n| 子命令 | 说明 |\n|---|---|\n");
     let mut flags: Vec<&str> = crate::SUBCOMMANDS.to_vec();
     flags.sort_unstable();

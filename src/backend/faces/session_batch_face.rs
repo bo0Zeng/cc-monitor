@@ -92,7 +92,7 @@ pub(crate) fn with_deps_as<T>(
 
 /// 这台的 tmux 名单（挂着 sid 的窗格各一行）；`Ok(None)` ＝ 这台没装 tmux；`Err` ＝ 看不见。分叉那一格也读它。
 pub(crate) fn tmux_rows() -> Result<Option<Vec<TmuxEntry>>, String> {
-    let rows = crate::control::terminals::rows_here().map_err(|(_, m)| m)?;
+    let rows = crate::control::terminals::rows_here().map_err(|f| f.into_note())?;
     Ok(rows.map(|rows| {
         rows.into_iter()
             .map(|r| TmuxEntry {

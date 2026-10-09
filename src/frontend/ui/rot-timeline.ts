@@ -37,6 +37,7 @@ function el<K extends keyof HTMLElementTagNameMap>(
 export function whyShort(w: SwitchWhy | null): string {
   if (w === null) return "";
   if (w === "preempt") return copyText("rot.why.preempt");
+  if (w === "leaveFallback") return copyText("rot.why.leave");
   if (typeof w === "string") return "";
   if ("threshold" in w)
     return w.threshold.n === 0

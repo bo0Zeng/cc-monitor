@@ -116,7 +116,7 @@ fn machine_name(m: Option<&str>) -> String {
 /// 枢纽按自己这台的写法判会把别台的路径错拒（Windows 上的枢纽不认 `/home/…`）。
 fn scope_of(args: &Value) -> Result<(ExtLoc, ExtLoc), (String, String)> {
     let s = args.get("scope");
-    let own = |e: (&'static str, String)| (e.0.to_string(), e.1);
+    let own = |e: crate::stream::inbound::spec::Fail| (e.code, e.message);
     Ok((
         ExtLoc::shape_of(s.and_then(|s| s.get("from")), "scope.from").map_err(own)?,
         ExtLoc::shape_of(s.and_then(|s| s.get("to")), "scope.to").map_err(own)?,
@@ -147,7 +147,7 @@ struct Ask<'a> {
 }
 
 fn ask_of(args: &Value) -> Result<Ask<'_>, (String, String)> {
-    let own = |e: (&'static str, String)| (e.0.to_string(), e.1);
+    let own = |e: crate::stream::inbound::spec::Fail| (e.code, e.message);
     let kind = ExtKind::from_arg(args).map_err(own)?;
     let (from, to) = (machine_of(args, "from")?, machine_of(args, "to")?);
     let name = str_arg(args, "name")?;
@@ -718,7 +718,7 @@ fn ask_for(kind: ExtKind, name: &str, p: &Pick, b: &ExtBring, place: &ExtLoc) ->
 fn many_args(
     args: &Value,
 ) -> Result<(ExtKind, &str, Vec<Option<String>>, Option<ExtLoc>), (String, String)> {
-    let kind = ExtKind::from_arg(args).map_err(|e| (e.0.to_string(), e.1))?;
+    let kind = ExtKind::from_arg(args).map_err(|e| (e.code, e.message))?;
     let name = str_arg(args, "name")?;
     let to = args
         .get("to")
@@ -743,11 +743,14 @@ fn many_args(
 
 /// 目录那一份的读口（生产 = `asset_catalog::answer_current`，由命令表那扇门递进来）；函数指针 ⇒ 跨线程送得出去。
 pub(crate) type CurrentFn =
-    fn(bool) -> Result<(super::asset_catalog::Catalog, Vec<String>), (&'static str, String)>;
+    fn(
+        bool,
+    )
+        -> Result<(super::asset_catalog::Catalog, Vec<String>), crate::stream::inbound::spec::Fail>;
 
 /// 那张表现拼一次（`ext-list` 同一份目录 ＋ 可达表）；目录那一份由命令表那扇门递进来（同 `ext-list`）。
 fn current_list(table: &Table, current: CurrentFn) -> Result<ExtList, (String, String)> {
-    let (cat, _) = current(false).map_err(|(c, m)| (c.to_string(), m))?;
+    let (cat, _) = current(false).map_err(|f| (f.code.clone(), f.into_note()))?;
     Ok(super::ext::table(&cat, &super::ext::reach_of(table)))
 }
 

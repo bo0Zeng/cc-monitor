@@ -18,7 +18,6 @@
 把 `src/backend` 整棵复制到 scratch、`../bridge` 用软链补同深度、加那一行依赖、跑 `cargo fetch`，
 cargo 第一行逐字印：**`Locking 26 packages to latest compatible versions`**，随后 26 行
 `Adding` / `Updating` 就是下表。**没有动仓库，没有动 `Cargo.lock`。**
-复算命令住 `S27-readings.md §复算`。
 
 ⚠ **文档那格的「26」是对的，但它的拆法是错的**：60 那份写「新增包 **9** 个（列了 **10** 个名字）
 ＋ 被顶版 **16** 个」；现打是 **新增 11 · 顶版 15**（`syn 3.0.6` 是第 11 个新增包，

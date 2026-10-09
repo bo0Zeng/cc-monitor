@@ -27,8 +27,8 @@ pub(crate) const TERMINALS_LIST_CAP: Deadline = Deadline::secs(13);
 /// `terminal-preview` 与 `terminal-input` 整条命令总期限的上限（名单两发 ＋ 抓屏 ＋ 问尺寸；名单 · 过门 · 比画面 · 送字 · 送不成再探）。
 pub(crate) const TERMINAL_PREVIEW_CAP: Deadline = Deadline::secs(18);
 
-/// 命令级错误：`(code, message)`。与 [`super::launch`] / [`super::gate`] 同型。
-pub(crate) type CmdErr = (&'static str, String);
+/// 命令级错误：码 ＋ 那一句 ＋ 下层原话（抓屏那一处的 tmux stderr 进复制详情）。
+pub(crate) type CmdErr = crate::stream::inbound::spec::Fail;
 
 /// 句柄前缀（不透明：前端不拼、不解析；后端只按名单对）。
 const HANDLE_PREFIX: &str = "tmux-";
@@ -243,13 +243,11 @@ fn rows_found_on(on: On<'_>) -> Result<Option<Listed>, CmdErr> {
         if no_server {
             return Ok(Some((vec![], vec![], true)));
         }
-        return Err((
+        return Err(CmdErr::new(
             "unobservable",
-            crate::common::contract::malformed(&format!(
-                "tmux list-panes failed: {}",
-                String::from_utf8_lossy(&out.stderr).trim()
-            )),
-        ));
+            crate::common::contract::malformed("tmux list-panes failed"),
+        )
+        .with_raw(Some(&String::from_utf8_lossy(&out.stderr))));
     }
     let (rows, odd) = parse_rows(&String::from_utf8_lossy(&out.stdout));
     let clients = match on.read(&[UTF8_CLIENT_FLAG, "list-clients", "-F", CLIENTS_FMT]) {
@@ -362,7 +360,8 @@ pub(crate) fn terminal_json(
     t.insert("last_activity".into(), row.activity.into());
     t.insert(
         "can".into(),
-        json!({ "preview": true, "input": input, "end": end }),
+        // 抓屏不过身份门、恒可用 ⇒ 不在这里占一格（`can` 只放会随调用方 / 此刻变的能力）。
+        json!({ "input": input, "end": end }),
     );
     Value::Object(t)
 }
@@ -411,7 +410,7 @@ pub(crate) fn target_of(args: &Value) -> Result<Target, CmdErr> {
 }
 
 fn bad_target() -> CmdErr {
-    (
+    CmdErr::new(
         "bad_target",
         crate::common::contract::malformed(
             "give exactly one of `terminal` (a handle from terminals-list) / `sid` (a non-empty string)",
@@ -462,7 +461,7 @@ pub(crate) struct View {
 fn view_on(on: On<'_>, id: &str, color: bool, back: u32) -> Result<View, CmdErr> {
     let text = super::capture_pane::capture_with_on(on.socket, id, color, back)?;
     let gone = || {
-        (
+        CmdErr::new(
             "no_such_session",
             crate::common::contract::malformed("the terminal went away while it was being read"),
         )
@@ -729,10 +728,10 @@ fn bool_arg(args: &Value, k: &str, default: bool) -> Result<bool, CmdErr> {
     match args.get(k) {
         None => Ok(default),
         Some(Value::Bool(b)) => Ok(*b),
-        Some(_) => Err((
+        Some(_) => Err(CmdErr::from((
             "bad_args",
             crate::common::contract::malformed(&format!("`{k}` must be a boolean")),
-        )),
+        ))),
     }
 }
 
@@ -744,7 +743,7 @@ fn now_secs() -> u64 {
 }
 
 fn not_known(why: &str) -> CmdErr {
-    (
+    CmdErr::new(
         "not_known",
         crate::common::contract::malformed(&format!(
             "no such terminal in the list right now ({why})"
@@ -758,10 +757,12 @@ pub(crate) fn preview_on(on: On<'_>, args: &Value) -> Result<Value, CmdErr> {
     let color = bool_arg(args, "color", true)?;
     let asked = match args.get("scrollback") {
         None => 0,
-        Some(v) => v.as_u64().ok_or((
-            "bad_args",
-            crate::common::contract::malformed("`scrollback` must be a non-negative integer"),
-        ))?,
+        Some(v) => v.as_u64().ok_or_else(|| {
+            CmdErr::new(
+                "bad_args",
+                crate::common::contract::malformed("`scrollback` must be a non-negative integer"),
+            )
+        })?,
     };
     let back = asked.min(u64::from(MAX_SCROLLBACK)) as u32;
     let (rows, _, _) = rows_on(on)?;
@@ -769,12 +770,12 @@ pub(crate) fn preview_on(on: On<'_>, args: &Value) -> Result<Value, CmdErr> {
         Found::One(r) => r,
         Found::NotKnown => return Err(not_known("not_known")),
         Found::Ambiguous => {
-            return Err((
+            return Err(CmdErr::from((
                 "ambiguous",
                 crate::common::contract::malformed(
                     "more than one terminal carries this sid; point at one by `terminal`",
                 ),
-            ))
+            )))
         }
     };
     let view = view_on(on, row.target(), color, back)?;
@@ -799,10 +800,10 @@ pub(crate) struct FollowTarget {
 pub(crate) fn follow_target_on(on: On<'_>, args: &Value) -> Result<FollowTarget, CmdErr> {
     let target = target_of(args)?;
     let Some((rows, _, _)) = rows_found_on(on)? else {
-        return Err((
+        return Err(CmdErr::from((
             "no_tmux",
             crate::common::contract::malformed("tmux is not installed on this machine"),
-        ));
+        )));
     };
     match find(&rows, &target) {
         Found::One(r) => Ok(FollowTarget {
@@ -811,12 +812,12 @@ pub(crate) fn follow_target_on(on: On<'_>, args: &Value) -> Result<FollowTarget,
             pane: r.pane.clone(),
         }),
         Found::NotKnown => Err(not_known("not_known")),
-        Found::Ambiguous => Err((
+        Found::Ambiguous => Err(CmdErr::from((
             "ambiguous",
             crate::common::contract::malformed(
                 "more than one terminal carries this sid; point at one by `terminal`",
             ),
-        )),
+        ))),
     }
 }
 
@@ -860,7 +861,7 @@ pub(crate) enum Input {
 }
 
 pub(crate) fn input_of(args: &Value) -> Result<Input, CmdErr> {
-    let bad = |m: &str| ("bad_args", crate::common::contract::malformed(m));
+    let bad = |m: &str| CmdErr::new("bad_args", crate::common::contract::malformed(m));
     match (args.get("text"), args.get("key")) {
         (Some(Value::String(t)), None) => {
             super::launch::check_input_text(t)?;
@@ -898,22 +899,45 @@ pub(crate) fn input_reply(result: &str, why: Option<&str>, screen: Option<&str>)
     Value::Object(m)
 }
 
-/// 帧面 / CLI 面入口：`terminal-input`。入 `{terminal | sid, text, enter?: true | key, seen_screen?, take?, client?}`。
+/// `terminal-input` 收的那几格；别的一律拒（多送一格 ⇒ `bad_args`，不静默吞 —— 同 `deny_unknown_fields`）。
+/// 原先还收一格 `take`（「先接管输入」）：tmux 上各端本来都能打字，它只被校验、从没被读 ⇒ 删了。
+const INPUT_FIELDS: &[&str] = &[
+    "terminal",
+    "sid",
+    "text",
+    "enter",
+    "key",
+    "seen_screen",
+    "client",
+];
+
+/// 帧面 / CLI 面入口：`terminal-input`。入 `{terminal | sid, text, enter?: true | key, seen_screen?, client?}`（别的格 ⇒ `bad_args`）。
 /// 送不了的（不在名单 · 别的前端的 · 不归我们管 · 画面变了 · 已经没了）回 `result: "refused"` ＋ `why`，不是错；
-/// 形状不对才是错（`bad_target` · `bad_args`）。`take` 在 tmux 上无所谓（各端都能打字）。
+/// 形状不对才是错（`bad_target` · `bad_args`）。
 pub(crate) fn input_on(on: On<'_>, args: &Value) -> Result<Value, CmdErr> {
+    if let Some(extra) = args
+        .as_object()
+        .and_then(|m| m.keys().find(|k| !INPUT_FIELDS.contains(&k.as_str())))
+    {
+        return Err(CmdErr::from((
+            "bad_args",
+            crate::common::contract::malformed(&format!(
+                "unknown field `{extra}` (terminal-input takes {})",
+                INPUT_FIELDS.join(", ")
+            )),
+        )));
+    }
     let target = target_of(args)?;
     let input = input_of(args)?;
-    bool_arg(args, "take", false)?;
     let requester = gate::requester_of(args)?;
     let seen = match args.get("seen_screen") {
         None => None,
         Some(Value::String(s)) => Some(s.clone()),
         Some(_) => {
-            return Err((
+            return Err(CmdErr::from((
                 "bad_args",
                 crate::common::contract::malformed("`seen_screen` must be a string"),
-            ))
+            )))
         }
     };
     let (rows, _, _) = rows_on(on)?;
@@ -959,16 +983,16 @@ pub(crate) fn input_on(on: On<'_>, args: &Value) -> Result<Value, CmdErr> {
 }
 
 /// 帧面入口（生产：默认 socket）。
-pub(crate) fn list_for_inbound(args: &Value) -> Result<Value, (String, String)> {
-    list_on(On::default(), args).map_err(|(c, m)| (c.to_string(), m))
+pub(crate) fn list_for_inbound(args: &Value) -> Result<Value, CmdErr> {
+    list_on(On::default(), args)
 }
 
-pub(crate) fn preview_for_inbound(args: &Value) -> Result<Value, (String, String)> {
-    preview_on(On::default(), args).map_err(|(c, m)| (c.to_string(), m))
+pub(crate) fn preview_for_inbound(args: &Value) -> Result<Value, CmdErr> {
+    preview_on(On::default(), args)
 }
 
-pub(crate) fn input_for_inbound(args: &Value) -> Result<Value, (String, String)> {
-    input_on(On::default(), args).map_err(|(c, m)| (c.to_string(), m))
+pub(crate) fn input_for_inbound(args: &Value) -> Result<Value, CmdErr> {
+    input_on(On::default(), args)
 }
 
 #[cfg(test)]

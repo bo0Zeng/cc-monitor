@@ -52,31 +52,35 @@ pub(crate) fn merged(existing: &str, pattern: &str, key: &str) -> Option<String>
 pub(crate) fn remember(file: &std::path::Path, host: &str, port: u16, key: &str) {
     if let Err(e) = remember_locked(file, host, port, key) {
         tracing::warn!(
-            "known_hosts：{} 没记进 {}：{e}",
+            "known_hosts：{} 没记进 {}：{}",
             host_pattern(host, port),
-            file.display()
+            file.display(),
+            e.logged()
         );
     }
 }
 
 /// 读 → 改那一行 → 写，整段在那个目录的跨进程锁里（两个后端同时认下钥匙时，后写的不盖掉先写的那一台）。
-fn remember_locked(file: &std::path::Path, host: &str, port: u16, key: &str) -> Result<(), String> {
+fn remember_locked(
+    file: &std::path::Path,
+    host: &str,
+    port: u16,
+    key: &str,
+) -> Result<(), crate::common::said::Said> {
     let dir = file.parent().ok_or_else(|| file.display().to_string())?;
     crate::common::own_dir::ensure_private_dir(dir).map_err(|e| e.to_string())?;
-    let _lock = crate::platform::lock::hold(dir)
-        .map_err(|e| crate::common::said::Said::from(e).said_logging_raw())?;
+    let _lock = crate::platform::lock::hold(dir).map_err(crate::common::said::Said::from)?;
     use crate::common::own_state::{read_bytes, Read};
     // 读不出来的那份不覆盖（当成空的写回会把别的几台认下的钥匙一起抹掉）。
     let existing = match read_bytes(file, MAX_BYTES) {
         Read::Absent => String::new(),
         Read::Present(b) => String::from_utf8(b).map_err(|e| e.to_string())?,
-        Read::Unreadable(why) => return Err(why.said_logging_raw()),
+        Read::Unreadable(why) => return Err(why),
     };
     let Some(body) = merged(&existing, &host_pattern(host, port), key) else {
         return Ok(());
     };
     crate::common::own_state::write(file, body.as_bytes())
-        .map_err(crate::common::said::Said::said_logging_raw)
 }
 
 /// 读盘的上限（一台一行，远到不了）。

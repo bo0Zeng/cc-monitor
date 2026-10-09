@@ -17,13 +17,15 @@ use crate::assets::mcp_sync::{candidates, judge, servers_of, Facts, There};
 use copy_core::copy_text;
 use serde_json::{json, Map, Value};
 
-type Answer = Result<Value, (&'static str, String)>;
+type Answer = Result<Value, crate::stream::inbound::spec::Fail>;
 
-fn str_arg<'a>(args: &'a Value, k: &str) -> Result<&'a str, (&'static str, String)> {
-    args.get(k).and_then(Value::as_str).ok_or((
-        "bad_args",
-        crate::common::contract::malformed(&format!("missing `{k}` (a string)")),
-    ))
+fn str_arg<'a>(args: &'a Value, k: &str) -> Result<&'a str, crate::stream::inbound::spec::Fail> {
+    args.get(k).and_then(Value::as_str).ok_or_else(|| {
+        crate::stream::inbound::spec::Fail::from((
+            "bad_args",
+            crate::common::contract::malformed(&format!("missing `{k}` (a string)")),
+        ))
+    })
 }
 
 /// 一条定义里装密钥的那几格换成空位：交回（换好的那一条, [(字段, 键)]）。**纯**；不是对象的原样交回、没有空位。
@@ -47,13 +49,21 @@ pub(crate) fn redact(def: &Value) -> (Value, Vec<(String, String)>) {
 fn file_of(
     at: &ExtLoc,
     user_mcp: Option<&std::path::Path>,
-) -> Result<(String, String), (&'static str, String)> {
+) -> Result<(String, String), crate::stream::inbound::spec::Fail> {
     match at {
         ExtLoc::Project { dir } => Ok((dir.clone(), mcp_json().to_string())),
         ExtLoc::User => {
-            let f = user_mcp.ok_or(("io_failed", copy_text("beExt.uninstall.noHome", &[])))?;
+            let f = user_mcp.ok_or_else(|| {
+                crate::stream::inbound::spec::Fail::from((
+                    "io_failed",
+                    copy_text("beExt.uninstall.noHome", &[]),
+                ))
+            })?;
             let (Some(dir), Some(name)) = (f.parent(), f.file_name()) else {
-                return Err(("io_failed", copy_text("beExt.uninstall.noHome", &[])));
+                return Err(crate::stream::inbound::spec::Fail::from((
+                    "io_failed",
+                    copy_text("beExt.uninstall.noHome", &[]),
+                )));
             };
             Ok((
                 dir.display().to_string(),
@@ -74,21 +84,25 @@ pub(crate) fn answer_source(
     let at = ExtLoc::from_arg(args.get("at"), "at")?;
     let (root, rel) = file_of(&at, user_mcp)?;
     let got = door::peek(d, &root, &rel).map_err(|m| ("refused", m))?;
-    let text = got.text.ok_or((
-        "missing",
-        copy_text("beMcpSyncFlow.source.missing", &[("path", &got.path)]),
-    ))?;
+    let text = got.text.ok_or_else(|| {
+        crate::stream::inbound::spec::Fail::from((
+            "missing",
+            copy_text("beMcpSyncFlow.source.missing", &[("path", &got.path)]),
+        ))
+    })?;
     let servers = servers_of(
         Some(&text),
         &copy_text("beMcpSync.answerWith.sourceSide", &[]),
     )?;
-    let def = servers.get(name).ok_or((
-        "missing",
-        copy_text(
-            "beExt.uninstall.noEntry",
-            &[("name", name), ("path", &got.path)],
-        ),
-    ))?;
+    let def = servers.get(name).ok_or_else(|| {
+        crate::stream::inbound::spec::Fail::from((
+            "missing",
+            copy_text(
+                "beExt.uninstall.noEntry",
+                &[("name", name), ("path", &got.path)],
+            ),
+        ))
+    })?;
     let (open, slots) = redact(def);
     let slots: Vec<Value> = slots
         .into_iter()
@@ -103,23 +117,29 @@ pub(crate) fn answer_source(
 }
 
 /// 被写那台：`args.def` 必须是一条对象、且装密钥的那几格一个值都没有（来源交出来就该是空位）。
-fn def_arg(args: &Value) -> Result<Value, (&'static str, String)> {
-    let def = args.get("def").cloned().filter(Value::is_object).ok_or((
-        "bad_args",
-        crate::common::contract::malformed("missing `def` (an object)"),
-    ))?;
+fn def_arg(args: &Value) -> Result<Value, crate::stream::inbound::spec::Fail> {
+    let def = args
+        .get("def")
+        .cloned()
+        .filter(Value::is_object)
+        .ok_or_else(|| {
+            crate::stream::inbound::spec::Fail::from((
+                "bad_args",
+                crate::common::contract::malformed("missing `def` (an object)"),
+            ))
+        })?;
     if redact(&def).0 != def {
-        return Err((
+        return Err(crate::stream::inbound::spec::Fail::from((
             "bad_args",
             crate::common::contract::malformed("`def` carries values in env / headers"),
-        ));
+        )));
     }
     Ok(def)
 }
 
 type Target = (String, door::Peeked, Map<String, Value>);
 
-fn target_of(d: &dyn Door, at: &ExtLoc) -> Result<Target, (&'static str, String)> {
+fn target_of(d: &dyn Door, at: &ExtLoc) -> Result<Target, crate::stream::inbound::spec::Fail> {
     let (root, rel) = crate::assets::ext::mcp_file(d, at)?;
     let tgt = door::peek(d, &root, &rel).map_err(|m| ("refused", m))?;
     let servers = servers_of(
@@ -178,10 +198,10 @@ pub(crate) fn answer_apply(d: &dyn Door, record: Record, args: &Value) -> Answer
         Some(Value::String(s)) => Some(s.as_str()),
         Some(Value::Null) | None => None,
         _ => {
-            return Err((
+            return Err(crate::stream::inbound::spec::Fail::from((
                 "bad_args",
                 crate::common::contract::malformed("`target` must be a string or `null`"),
-            ))
+            )))
         }
     };
     let now = tgt
@@ -189,7 +209,10 @@ pub(crate) fn answer_apply(d: &dyn Door, record: Record, args: &Value) -> Answer
         .as_deref()
         .map(crate::assets::skill_ledger::digest_of);
     if now.as_deref() != seen {
-        return Err(("stale", copy_text("beMcpSyncFlow.apply.stale", &[])));
+        return Err(crate::stream::inbound::spec::Fail::from((
+            "stale",
+            copy_text("beMcpSyncFlow.apply.stale", &[]),
+        )));
     }
     let existing = servers.get(name);
     let fill = args.get("fill").cloned().unwrap_or(Value::Null);
@@ -201,13 +224,17 @@ pub(crate) fn answer_apply(d: &dyn Door, record: Record, args: &Value) -> Answer
             .and_then(Value::as_str)
             .filter(|v| !v.is_empty())
             .map(str::to_string);
-        let value = typed.or_else(|| has_value(existing, &field, &key)).ok_or((
-            "needs_input",
-            copy_text(
-                "beExt.apply.needsValue",
-                &[("field", &field), ("key", &key)],
-            ),
-        ))?;
+        let value = typed
+            .or_else(|| has_value(existing, &field, &key))
+            .ok_or_else(|| {
+                crate::stream::inbound::spec::Fail::from((
+                    "needs_input",
+                    copy_text(
+                        "beExt.apply.needsValue",
+                        &[("field", &field), ("key", &key)],
+                    ),
+                ))
+            })?;
         full[field.as_str()][key.as_str()] = Value::String(value);
     }
     let at_path = match at {
@@ -240,9 +267,17 @@ pub(crate) fn answer_apply(d: &dyn Door, record: Record, args: &Value) -> Answer
     ) {
         Ok(l) => l,
         Err(Refused::Stale(_)) => {
-            return Err(("stale", copy_text("beMcpSyncFlow.apply.stale", &[])))
+            return Err(crate::stream::inbound::spec::Fail::from((
+                "stale",
+                copy_text("beMcpSyncFlow.apply.stale", &[]),
+            )))
         }
-        Err(e) => return Err(("refused", e.said())),
+        Err(e) => {
+            return Err(crate::stream::inbound::spec::Fail::from((
+                "refused",
+                e.said(),
+            )))
+        }
     };
     let record_failed = record(&json!({
         "op": "mcp-add",
@@ -251,7 +286,7 @@ pub(crate) fn answer_apply(d: &dyn Door, record: Record, args: &Value) -> Answer
         "digest": crate::assets::skill_ledger::mcp_digest(&full),
     }))
     .err()
-    .map(|(_, e)| copy_text("beExt.apply.recordFailed", &[("e", &e)]));
+    .map(|f| copy_text("beExt.apply.recordFailed", &[("why", &f.into_note())]));
     Ok(json!({ "path": landed.path, "written": landed.changed, "recordFailed": record_failed }))
 }
 

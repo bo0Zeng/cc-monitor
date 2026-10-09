@@ -573,6 +573,21 @@ pub enum Frame {
     /// 走 tap 那条可丢的通道（规则在盘上，丢了重问就补上）。旧 monitor / 仓外 aterm 不认这个 kind ⇒ 忽略（additive）。
     RotationRulesChanged,
 
+    /// **这台某个 pb 工作区的计划变了**（计划仓 `.planned-build/` 或工作区 `.env` 有动静，重跑 `pb dump` 后输出摘要或要你看的数变了；
+    /// 认可 / 撤销认可也推一帧新的数）。
+    ///
+    /// 只带工作区 · 新摘要 · 要你看的数：客户端收到就重问一次 `plan-read`（那一份的唯一出口仍是那条查询）；摘要与手上那一份相同 ⇒ 不用问。
+    /// 只盯这条后端读过的工作区（`plan-list` / `plan-read` 认过的）。走 tap 那条可丢的通道（计划在盘上，丢了重问就补上）。
+    /// 旧 monitor / 仓外 aterm 不认这个 kind ⇒ 忽略（additive）。
+    PlanChanged {
+        /// 工作区根。
+        workspace: String,
+        /// 新的输出摘要（同 `plan-read` 的 `rev`）。
+        rev: String,
+        /// 这个工作区此刻要你看的数（没认可的，不含 agent 问人那一种 —— 那一条由会话那一侧数；同 `plan-read` 的 `needCount`）。
+        needs: u64,
+    },
+
     /// **这台机器上某个会话的任务清单变了**（`<agent 家>/tasks/<sid>/` 里有动静）。
     ///
     /// 只带 sid：客户端收到就重问一次 `tasks-list`（清单的唯一出口仍是那条查询，同 `accounts_changed`）。
@@ -1050,6 +1065,8 @@ impl Frame {
             Frame::RotationChanged { .. } => true,
             // 同上：规则表在盘上（`rotation-rules-read` 随时重问得到）；也不走出方向那条通道。
             Frame::RotationRulesChanged => true,
+            // 同上：计划在盘上（`plan-read` 随时重问得到）；也不走出方向那条通道。
+            Frame::PlanChanged { .. } => true,
             // 同上一行：一次变化的通知，丢了那个会话的任务面板就停在旧的（带身份 subject = sid，客户端可重问）。
             Frame::TasksChanged { .. } => false,
             // 一次性的标记，没有「下一次必然重发」⇒ 丢了客户端就一直停在「说不清」
@@ -1099,6 +1116,7 @@ impl Frame {
             Frame::QuotaChanged => ("quota_changed", None),
             Frame::RotationChanged { sid } => ("rotation_changed", Some(sid.clone())),
             Frame::RotationRulesChanged => ("rotation_rules_changed", None),
+            Frame::PlanChanged { workspace, .. } => ("plan_changed", Some(workspace.clone())),
             Frame::TasksChanged { sid } => ("tasks_changed", Some(sid.clone())),
             Frame::SessionsReplayed => ("sessions_replayed", None),
             Frame::SessionFileGone { session_id, .. } => {

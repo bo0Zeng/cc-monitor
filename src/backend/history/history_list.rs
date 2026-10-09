@@ -151,9 +151,16 @@ fn group_key(agent: &str, project_path: &str) -> String {
 /// 这台的平铺清单（不并注解）：记录树每个目录 ＋ 合成历史各家；判活 ＝ 这台 pidfile；上次的号 ＝ 这台的起会话账号记录。
 /// `last` 读不懂 ⇒ 那一格都不带（界面不说「上次用的」，照样能恢复）。
 pub(crate) fn machine_listing() -> Result<Value, (&'static str, String)> {
+    machine_listing_for(None)
+}
+
+/// [`machine_listing`]；`only` ＝ 按 sid 问的那一条：记录树里只整份扫叫这个名字的那一份（别的会话只出分组要的几格，
+/// [`answer_from`] 按 sid 滤掉）⇒ 答案与整台扫逐字相同，不必把整台每份会话从头扫一遍。
+fn machine_listing_for(only: Option<&str>) -> Result<Value, (&'static str, String)> {
     let home = crate::observe::history_query::agent_home();
     let live = LiveSet(crate::observe::accounts_query::live_session_ids(&home));
-    let tree = crate::observe::history_query::sessions_by_dir(&home).map_err(|e| ("failed", e))?;
+    let tree = crate::observe::history_query::sessions_by_dir_for(&home, only)
+        .map_err(|e| ("failed", e))?;
     let synth: Vec<(
         &'static str,
         Vec<crate::agents::SynthSession>,
@@ -563,7 +570,10 @@ pub async fn answer_with(
     };
     let fresh = args.get("fresh").and_then(Value::as_bool) == Some(true);
     let listing = match &origin {
-        None => blocking(machine_listing).await?,
+        None => {
+            let only = ask.sid.clone();
+            blocking(move || machine_listing_for(only.as_deref())).await?
+        }
         Some(o) => remote_listing(o, fresh, table, remote).await?,
     };
     blocking(move || {

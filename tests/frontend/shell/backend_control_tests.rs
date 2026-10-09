@@ -179,23 +179,37 @@ fn the_shared_stripper_keeps_the_registration_this_guard_must_scan() {
 }
 
 /// 机器表热加载：新来的那台起流、拿掉 / 停用的那台断流、连接参数变了的重起，其余一台不碰。
+///
+/// 断流是异步落地的（`abort()` 只把任务记成取消、由运行时的线程去丢 future）⇒ 「断了」**等事件**：
+/// 每条流的 future 被丢时往通道里报一声名字，这边收齐该断的那几声再判。原先是固定睡 50 ms 再看旗子，
+/// 而且旗子挂在 future **第一次被轮到时**才建的守卫上 —— 机器负载 20 以上时起完 50 ms 内任务可能一次都没轮到，
+/// 那时 abort 丢掉的是没开跑的 future、守卫根本没建，旗子永远不立（「停用的那台流没断」）。
+/// 现在守卫在起流时就建好、随 future 一起被捕获：future 一被丢（开没开跑都一样）守卫就落。
 #[test]
 fn reconcile_starts_new_stops_gone_restarts_changed_and_leaves_the_rest() {
     use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::mpsc;
     use std::sync::Arc;
 
-    /// 流被断（任务被 abort ⇒ future 被丢）时把旗子立起来。
-    struct Dropped(Arc<AtomicBool>);
+    /// 流被断（任务被 abort ⇒ future 被丢）时把旗子立起来、往通道里报一声是哪台。
+    struct Dropped(Arc<AtomicBool>, mpsc::Sender<String>, String);
     impl Drop for Dropped {
         fn drop(&mut self) {
             self.0.store(true, Ordering::SeqCst);
+            let _ = self.1.send(self.2.clone());
         }
     }
+    let (drop_tx, drop_rx) = mpsc::channel::<String>();
     let starts: Arc<Mutex<HashMap<String, usize>>> = Arc::new(Mutex::new(HashMap::new()));
     let dropped: Arc<Mutex<HashMap<String, Arc<AtomicBool>>>> =
         Arc::new(Mutex::new(HashMap::new()));
     let want = |origin: &str, key: &str| {
-        let (o, s, d) = (origin.to_string(), starts.clone(), dropped.clone());
+        let (o, s, d, tx) = (
+            origin.to_string(),
+            starts.clone(),
+            dropped.clone(),
+            drop_tx.clone(),
+        );
         WantedRemote {
             origin: origin.to_string(),
             cfg_key: key.to_string(),
@@ -203,17 +217,26 @@ fn reconcile_starts_new_stops_gone_restarts_changed_and_leaves_the_rest() {
                 *s.lock().unwrap().entry(o.clone()).or_insert(0) += 1;
                 let flag = Arc::new(AtomicBool::new(false));
                 d.lock().unwrap().insert(o.clone(), flag.clone());
+                let guard = Dropped(flag, tx.clone(), o.clone());
                 tauri::async_runtime::spawn(async move {
-                    let _guard = Dropped(flag);
+                    let _guard = guard;
                     std::future::pending::<()>().await;
                 })
             }),
         }
     };
-    let settle = || {
-        tauri::async_runtime::block_on(async {
-            tokio::time::sleep(std::time::Duration::from_millis(50)).await
-        })
+    // 等这几台的流各断一次（收到它们的那几声）；别的台报来的也记下 —— 「不该断的断了」由调用处判。
+    let mut heard: Vec<String> = Vec::new();
+    let mut await_drops = |which: &[&str]| {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+        while !which.iter().all(|w| heard.iter().any(|h| h == w)) {
+            let left = deadline.saturating_duration_since(std::time::Instant::now());
+            match drop_rx.recv_timeout(left) {
+                Ok(o) => heard.push(o),
+                Err(_) => panic!("等了 60 s，{which:?} 里还有没断的流（收到的：{heard:?}）"),
+            }
+        }
+        heard.clone()
     };
     let count = |o: &str| starts.lock().unwrap().get(o).copied().unwrap_or(0);
     let was_dropped = |o: &str| dropped.lock().unwrap()[o].load(Ordering::SeqCst);
@@ -224,11 +247,11 @@ fn reconcile_starts_new_stops_gone_restarts_changed_and_leaves_the_rest() {
         want("rc-c", "1"),
     ]);
     assert_eq!(r.started, ["rc-a", "rc-b", "rc-c"]);
-    settle();
 
     // 停用 b（不在要连的里了）· c 改了连接参数 · a 原样。
     let r = reconcile_remotes(vec![want("rc-a", "1"), want("rc-c", "2")]);
-    settle();
+    // b 被停、c 的旧流被换掉 ⇒ 恰好这两声（a 那一声若在这之前到了，下面「没动的那台流被断了」照样红）。
+    let heard_now = await_drops(&["rc-b", "rc-c"]);
     assert_eq!(
         r,
         Reconciled {
@@ -238,6 +261,10 @@ fn reconcile_starts_new_stops_gone_restarts_changed_and_leaves_the_rest() {
         }
     );
     assert!(was_dropped("rc-b"), "停用的那台流没断");
+    assert!(
+        !heard_now.iter().any(|h| h == "rc-a"),
+        "没动的那台流被断了：{heard_now:?}"
+    );
     assert!(
         !backend_machines().unwrap().contains(&"rc-b".to_string()),
         "停用的那台还在注册表里"

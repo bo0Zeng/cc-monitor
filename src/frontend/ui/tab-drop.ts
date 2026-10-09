@@ -2,144 +2,379 @@
  * 〔拆 `tabs.ts` ④〕**拖动排序 / 拖动成组的落点算术** —— 全是纯函数，判据直接打在它们身上。
  *
  * 零 DOM、零 IPC：量尺寸（`getBoundingClientRect`）与挂监听是 `tab-bar-drag.ts` 的事，
- * 这里只回答「这几个矩形 ＋ 这个指针位置 ⇒ 落在哪」「这次落点对被拖那个 tab 的组意味着什么」。
- * 原住 `tabs.ts`，逐字搬出；`tabs.ts` 原样 re-export，既有 import 面（`tabs.vitest.ts`）零改动。
+ * 这里只回答「栏里这几行 ＋ 这个指针位置 ⇒ 落在哪」「这次落点对顺序与组意味着什么」。
+ *
+ * 模型：一个顺序（`orderedIds`），组与散的标签页混排在里面；**每个组的组员永远挨着**，
+ * 组在栏里的位置 ＝ 它第一个组员的位置（组自己不另存位置）。读回来的顺序组员不挨着 ⇒ 按 [`contiguous`] 聚到第一个组员那一格。
  */
 import { copyText } from "./copy-table";
 
+/** 停留多久才算「压住」（建组 / 进组）。只在一行的中间一半攒。 */
+export const DWELL_MS = 400;
+/** 停留期间允许的抖动；超过就清零重计。 */
+export const DWELL_MOVE_PX = 4;
+/** 指针移动超过这么多才算「拖」，否则是点击。 */
+export const DRAG_THRESHOLD_PX = 4;
+
 /**
- * 把被拖的那个 `sid` 挪到 `beforeSid` 之前。
- * `beforeSid === null` = 挪到末尾。**纯函数** —— 判据直接打在落位上，不必先造一次真拖拽。
- *
- * 落点就是它自己 ⇒ 原样返回（拖到自己身上不是重排）。一次只拖一个。
+ * 把每个组的组员聚到它第一个组员那一格（组员之间、组外的相对次序都不变）。
+ * `known` 之外的组 id（组表里已没有）⇒ 当散的。
  */
-export function moveTab(
+export function contiguous(
   order: readonly string[],
-  sid: string,
-  beforeSid: string | null,
+  groupOf: (sid: string) => string | null,
+  known: ReadonlySet<string>,
 ): string[] {
-  if (beforeSid === sid) return [...order];
-  const rest = order.filter((x) => x !== sid);
-  if (beforeSid === null) return [...rest, sid];
-  const at = rest.indexOf(beforeSid);
-  if (at < 0) return [...rest, sid];
-  return [...rest.slice(0, at), sid, ...rest.slice(at)];
+  const members = new Map<string, string[]>();
+  for (const sid of order) {
+    const g = groupOf(sid);
+    if (g === null || !known.has(g)) continue;
+    const list = members.get(g);
+    if (list) list.push(sid);
+    else members.set(g, [sid]);
+  }
+  const out: string[] = [];
+  const done = new Set<string>();
+  for (const sid of order) {
+    const g = groupOf(sid);
+    if (g === null || !known.has(g)) out.push(sid);
+    else if (!done.has(g)) {
+      done.add(g);
+      out.push(...members.get(g)!);
+    }
+  }
+  return out;
 }
 
-// ===== Edge 式拖动合并成组 =====
+/** 栏里的一行：组头（`collapsed` ＝ 收着）或标签页（`hidden` ＝ 在收着的组里，不显示）。 */
+export type BarRow =
+  | { kind: "head"; gid: string; collapsed?: true }
+  | { kind: "tab"; sid: string; gid: string | null; hidden?: true };
 
 /**
- * 落点语义。**从 1 种扩到 3 种**（`§D.3` 逐字）—— 在这之前只有 `before`（与 `null`＝末尾）。
- *
- * ⚠ `onto` 与 `before` 的区别不只是「插哪儿」：`onto` 会**建组 / 入组**，
- *   而落点所在的容器还顺带决定「拖出组」（`§D.7`）。两件事在 [`groupMoveForDrop`] 里合一。
+ * 栏里从上到下的行：组头紧在它第一个组员之前；一个组员都还没到的组（重启后等组员）⇒ 组头排在最后。
+ * 数字键 · `]` `[` · 关掉当前标签页后落到哪 · Shift 连选读的「看到的顺序」就是这里的标签页那几行。
+ */
+export function barRows(
+  order: readonly string[],
+  groupOf: (sid: string) => string | null,
+  groups: readonly string[],
+  collapsed: ReadonlySet<string> = new Set(),
+): BarRow[] {
+  const known = new Set(groups);
+  const rows: BarRow[] = [];
+  const seen = new Set<string>();
+  const head = (gid: string): BarRow => (collapsed.has(gid) ? { kind: "head", gid, collapsed: true } : { kind: "head", gid });
+  for (const sid of contiguous(order, groupOf, known)) {
+    const g = groupOf(sid);
+    const gid = g !== null && known.has(g) ? g : null;
+    if (gid !== null && !seen.has(gid)) {
+      seen.add(gid);
+      rows.push(head(gid));
+    }
+    rows.push(gid !== null && collapsed.has(gid) ? { kind: "tab", sid, gid, hidden: true } : { kind: "tab", sid, gid });
+  }
+  for (const gid of groups) if (!seen.has(gid)) rows.push(head(gid));
+  return rows;
+}
+
+/** 一行在纵轴上占的那一段（标签页：`id` ＝ sid；组头：`id` ＝ 组 id）。判据直接喂这个，不必先造真布局。 */
+export interface RowRect {
+  kind: "tab" | "head";
+  id: string;
+  /** 这一行属于哪个组（散的 ⇒ `null`；组头 ⇒ 它自己）。 */
+  gid: string | null;
+  top: number;
+  /** 在收着的组里的标签页量出来是 0 ⇒ 不参与落点。 */
+  height: number;
+  /** 组头：收着。 */
+  collapsed?: boolean;
+}
+
+/** 插到某个标签页前 / 后；`null` ＝ 末尾。 */
+export type InsertAt = { sid: string; side: "before" | "after" } | null;
+
+/**
+ * 落点。
+ * - `insert`：插到 `at`，落下后属于 `gid`（`null` ＝ 散的）。`head` ＝ 指针在那个组头上（组头整块高亮、不画线）。
+ * - `onto`：中间停够了 ⇒ 和它建组（它是散的）/ 进它的组（它在组里）。
  */
 export type DropTarget =
-  | { kind: "before"; sid: string } // 插到它前面（今天的行为）
-  | { kind: "onto"; sid: string } // 🆕 与它成组
-  | { kind: "end" }; // 落到末尾（今天的 `null`）
+  | { kind: "insert"; at: InsertAt; gid: string | null; head?: string }
+  | { kind: "onto"; sid: string };
 
-/**
- * `onto` 的触发：**停留**，不是三等分（`§D.4` 已推荐，理由三条）。
- *
- * 🔴 **为什么不三等分**：竖栏里 tab 高约 28px，切成上/中/下三档 = 每档 9px。
- * 9px 的判定区在实际拖动里误触率极高 —— 用户想插到两个 tab 之间，结果建了个组。
- * 而插入排序是**快动作**、成组是**慢动作**，两个手势在**时间**上天然分开，
- * 不用去抢那 9px 的空间。
- */
-export const DWELL_MS = 250;
-/** 停留期间允许的抖动。超过就不算「压住」，退回 `before`/`end`（`§D.4` 逐字）。 */
-export const DWELL_MOVE_PX = 4;
+const inRow = (r: RowRect, y: number): boolean => y >= r.top && y < r.top + r.height;
+const visible = (rows: readonly RowRect[]): RowRect[] => rows.filter((r) => r.height > 0).sort((a, b) => a.top - b.top);
 
-/** 一个 tab 按钮在纵轴上占的那一段。判据直接喂这个，不必先造一次真 DOM 布局。 */
-export interface TabRect {
-  sid: string;
-  top: number;
-  height: number;
-}
-
-/**
- * 指针**正压在**哪个 tab 上（`null` = 没压在任何一个上）。停留计时器靠它决定「还在不在同一个」。
- *
- * ⚠ 被拖的那一个（`dragged`）要排除：压在自己身上不是一次合并。
- */
-export function tabUnderY(
-  rects: readonly TabRect[],
-  clientY: number,
-  dragged: string,
-): string | null {
-  for (const r of rects) {
-    if (r.sid === dragged) continue;
-    if (clientY >= r.top && clientY < r.top + r.height) return r.sid;
+/** 停留能攒在谁身上：指针在某个（没被拖的）标签页中间一半里 ⇒ 它；别处 ⇒ `null`。 */
+export function dwellCandidate(rows: readonly RowRect[], y: number, dragged: ReadonlySet<string>): string | null {
+  for (const r of visible(rows)) {
+    if (r.kind !== "tab" || !inRow(r, y)) continue;
+    const q = (y - r.top) / r.height;
+    return q >= 0.25 && q < 0.75 && !dragged.has(r.id) ? r.id : null;
   }
   return null;
 }
 
 /**
- * 算落点。三种语义的**唯一判定处**。
+ * 算落点：上 1/4 插前 · 中 1/2 停够才建组 / 进组 · 下 1/4 插后；组头上 1/3 插到组前（组外）、下 2/3 进组排第一；
+ * 行间的空 ＝ 上一行之后、组外；最后一行以下 ＝ 末尾。三段的唯一判定处。
  *
- * @param dwellSid 停留已经攒满的那个 sid（`null` = 还没攒满）。攒满这件事由计时器判，
- *                 不在这里判 —— 但「攒满之后指针有没有还在那个矩形里」在这里**再判一次**：
- *                 计时器与指针是两个来源，只信计时器的话，指针早已划走还会合并成组。
- *
- * 按视觉序（`top` 升序）扫，不按 `orderedIds`：组容器整块排在散 tab 前面（见 `refreshTabBar`），两个次序不一致，
- *   按 `orderedIds` 扫会停在一个屏幕上离指针很远的元素上。
+ * @param dwellArmed 停留已经攒满的那一行（`null` ＝ 还没满）。攒满由计时器判；「指针还在它中段」在这里再判一次，
+ *   两个来源都同意才给 `onto`。
  */
 export function pickDropTarget(
-  rects: readonly TabRect[],
-  clientY: number,
-  dragged: string,
-  dwellSid: string | null,
+  rows: readonly RowRect[],
+  y: number,
+  dragged: ReadonlySet<string>,
+  dwellArmed: string | null,
 ): DropTarget {
-  const sorted = rects.filter((r) => r.sid !== dragged).sort((a, b) => a.top - b.top);
-  if (dwellSid !== null && dwellSid !== dragged) {
-    const r = sorted.find((x) => x.sid === dwellSid);
-    if (r && clientY >= r.top && clientY < r.top + r.height) {
-      return { kind: "onto", sid: dwellSid };
-    }
+  const sorted = visible(rows);
+  const end: DropTarget = { kind: "insert", at: null, gid: null };
+  if (sorted.length === 0) return end;
+  // 组员按全部行找（收着的组员藏着、量出来高 0，但顺序里有它们）。
+  const members = (gid: string): string[] => rows.filter((r) => r.kind === "tab" && r.gid === gid).map((r) => r.id);
+  const onHead = (r: RowRect, q: number): DropTarget => {
+    const m = members(r.id);
+    if (r.collapsed) return { kind: "insert", at: m.length === 0 ? null : { sid: m[m.length - 1], side: "after" }, gid: r.id, head: r.id };
+    if (q < 1 / 3) return m.length === 0 ? end : { kind: "insert", at: { sid: m[0], side: "before" }, gid: null };
+    return { kind: "insert", at: m.length === 0 ? null : { sid: m[0], side: "before" }, gid: r.id, head: r.id };
+  };
+  const row = sorted.find((r) => inRow(r, y)) ?? (y < sorted[0].top ? sorted[0] : null);
+  if (row === null) {
+    // 行与行之间的空（组下沿那 6px）⇒ 上一行之后、组外；最后一行以下 ⇒ 末尾。
+    const prev = [...sorted].reverse().find((r) => r.top + r.height <= y);
+    const last = sorted[sorted.length - 1];
+    if (!prev || prev === last) return end;
+    if (prev.kind === "tab") return { kind: "insert", at: { sid: prev.id, side: "after" }, gid: null };
+    const m = members(prev.id); // 收着的组头（或还没有组员的组头）下面 ⇒ 这个组后面
+    return m.length === 0 ? end : { kind: "insert", at: { sid: m[m.length - 1], side: "after" }, gid: null };
   }
-  for (const r of sorted) {
-    if (clientY < r.top + r.height / 2) return { kind: "before", sid: r.sid };
-  }
-  return { kind: "end" };
+  const q = Math.max(0, (y - row.top) / row.height);
+  if (row.kind === "head") return onHead(row, q);
+  if (dwellArmed === row.id && !dragged.has(row.id) && q >= 0.25 && q < 0.75) return { kind: "onto", sid: row.id };
+  return { kind: "insert", at: { sid: row.id, side: q < 0.5 ? "before" : "after" }, gid: row.gid };
 }
 
 /**
- * 两个 cwd 的**共同前缀的目录名**（`§D.6` 默认名规则第 1 条）——
- * 最常见情况：同项目的两个会话。算不出来回 `null`。
- *
- * ⚠ 两种分隔符都认：这个 app 的客户端常在 Windows 上，而会话可能来自 Linux 远端。
- * ⚠ 盘符（`C:`）不算目录名 —— 「C:」当组名是噪声，退回 `组 N` 更诚实。
+ * 一次落点对**被拖的那几个的组**意味着什么（它们落下后都在同一个组里，或都散着）。
  */
-export function commonDirName(a: string | null, b: string | null): string | null {
+export type GroupMove =
+  | { kind: "stay" } // 归属不变（零写盘：拖动是高频动作）
+  | { kind: "join"; gid: string } // 进一个已有的组
+  | { kind: "found"; with: string } // 与落点那个散的现建一个组
+  | { kind: "leave" }; // 移出所在的组，变成散的
+
+export function groupMoveForDrop(
+  groupOf: (sid: string) => string | null,
+  dragged: readonly string[],
+  target: DropTarget,
+): GroupMove {
+  let dest: string | null;
+  if (target.kind === "onto") {
+    if (dragged.includes(target.sid)) return { kind: "stay" };
+    dest = groupOf(target.sid);
+    if (dest === null) return { kind: "found", with: target.sid };
+  } else dest = target.gid;
+  if (dragged.every((s) => groupOf(s) === dest)) return { kind: "stay" };
+  return dest === null ? { kind: "leave" } : { kind: "join", gid: dest };
+}
+
+/** 现建的那个组在算顺序时的占位 id（只活在 [`planDrop`] 里）。 */
+const FOUNDING = "\u0000found";
+
+/**
+ * 一次落下的全部后果：新顺序（组员挨着）＋ 归属怎么变。
+ * 先按看到的样子（[`contiguous`]）把被拖的几个拿出来、按原先后放到落点，再按落下后的归属聚一次。
+ * 建组 / 进组（`onto`）⇒ 放在目标后面。
+ */
+export function planDrop(
+  order: readonly string[],
+  groupOf: (sid: string) => string | null,
+  known: ReadonlySet<string>,
+  dragged: readonly string[],
+  target: DropTarget,
+): { order: string[]; move: GroupMove } {
+  const base = contiguous(order, groupOf, known);
+  if (target.kind === "onto" && dragged.includes(target.sid)) return { order: base, move: { kind: "stay" } };
+  const move = groupMoveForDrop(groupOf, dragged, target);
+  const at: InsertAt = target.kind === "onto" ? { sid: target.sid, side: "after" } : target.at;
+  const set = new Set(dragged);
+  const anchor = at === null ? -1 : base.indexOf(at.sid);
+  const idx = at === null || anchor < 0 ? base.length : anchor + (at.side === "after" ? 1 : 0);
+  const rest = base.filter((s) => !set.has(s));
+  const cut = idx - base.slice(0, idx).filter((s) => set.has(s)).length;
+  const next = [...rest.slice(0, cut), ...base.filter((s) => set.has(s)), ...rest.slice(cut)];
+  const dest =
+    move.kind === "found" ? FOUNDING : move.kind === "join" ? move.gid : move.kind === "leave" ? null : undefined;
+  const after = (s: string): string | null =>
+    set.has(s) && dest !== undefined ? dest : move.kind === "found" && s === move.with ? FOUNDING : groupOf(s);
+  return { order: contiguous(next, after, new Set([...known, FOUNDING])), move };
+}
+
+/**
+ * 拖整个组的落点：只认组外（散的之间 · 两组之间 · 末尾）。压在散的上 ⇒ 上半插前、下半插后；
+ * 压在别的组里（组头或组员）⇒ 那个组的前面或后面（按离哪头近），不合并、不嵌套；压在自己组上 ⇒ 原位。`null` ＝ 末尾。
+ */
+export function pickGroupDropTarget(rows: readonly RowRect[], y: number, gid: string): InsertAt {
+  // 一行一段：散的标签页各是一段；一个组（组头 ＋ 看得见的组员）合成一段。
+  const units: { top: number; bottom: number; first: string | null; last: string | null; own: boolean }[] = [];
+  for (const r of visible(rows)) {
+    if (r.kind === "tab" && r.gid === null) {
+      units.push({ top: r.top, bottom: r.top + r.height, first: r.id, last: r.id, own: false });
+      continue;
+    }
+    const g = r.gid!;
+    const members = rows.filter((x) => x.kind === "tab" && x.gid === g).map((x) => x.id);
+    const u = units.find((x) => x.first === (members[0] ?? null) && x.own === (g === gid) && members.length > 0);
+    if (u) u.bottom = Math.max(u.bottom, r.top + r.height);
+    else units.push({ top: r.top, bottom: r.top + r.height, first: members[0] ?? null, last: members[members.length - 1] ?? null, own: g === gid });
+  }
+  for (const u of units) {
+    if (y >= u.bottom) continue;
+    const upper = y < (u.top + u.bottom) / 2 || y < u.top;
+    if (u.own || u.first === null) return u.first === null ? null : { sid: u.first, side: "before" };
+    return upper ? { sid: u.first, side: "before" } : { sid: u.last!, side: "after" };
+  }
+  return null;
+}
+
+/** 整个组挪到 `at`（组外）：组员按原次序整块搬过去，组还是那个组。 */
+export function planGroupDrop(
+  order: readonly string[],
+  groupOf: (sid: string) => string | null,
+  known: ReadonlySet<string>,
+  gid: string,
+  at: InsertAt,
+): string[] {
+  const base = contiguous(order, groupOf, known);
+  const block = base.filter((s) => groupOf(s) === gid);
+  if (block.length === 0 || (at !== null && block.includes(at.sid))) return base;
+  const rest = base.filter((s) => groupOf(s) !== gid);
+  const anchor = at === null ? -1 : rest.indexOf(at.sid);
+  const cut = at === null || anchor < 0 ? rest.length : anchor + (at.side === "after" ? 1 : 0);
+  return contiguous([...rest.slice(0, cut), ...block, ...rest.slice(cut)], groupOf, known);
+}
+
+/**
+ * 键盘挪位（焦点在栏里：`Alt+↑↓` · `Alt+←` · `Alt+→`）：按**看到的**行（[`barRows`]，收着的组里的不算）上下各一格算落点，
+ * 再交给拖放那一套（[`planDrop`] · `applyDrop`：顺序 ＋ 归属 ＋ 撤销一次落实）。`null` ＝ 不动。
+ *
+ * - 组里换位；组里第一个再往上 ＝ 出组放到组前面，最后一个再往下 ＝ 出组放到组后面；
+ * - 从组上面往下碰到组头 ＝ 进组排第一，从组下面往上 ＝ 进组排最后；收着的组整段跳过去（不进组）；
+ * - 选了几个一起挪：往上按最上面那个算、往下按最下面那个算（被挪的那几行自己不算一格）。
+ */
+export function keyMoveTarget(rows: readonly BarRow[], dragged: readonly string[], dir: -1 | 1): DropTarget | null {
+  const k = keyContext(rows, dragged, dir);
+  if (k === null) return null;
+  const { anchor, near, members } = k;
+  const g = anchor.gid;
+  if (dir === -1) {
+    if (near === undefined) return null;
+    if (near.kind === "head") {
+      if (near.gid === g) return { kind: "insert", at: { sid: anchor.sid, side: "before" }, gid: null };
+      const m = members(near.gid);
+      return m.length === 0 ? null : { kind: "insert", at: { sid: m[0], side: "before" }, gid: null };
+    }
+    if (near.gid === g) return { kind: "insert", at: { sid: near.sid, side: "before" }, gid: g };
+    return { kind: "insert", at: { sid: near.sid, side: "after" }, gid: near.gid };
+  }
+  if (g !== null && (near === undefined || near.kind === "head" || near.gid !== g)) return { kind: "insert", at: { sid: anchor.sid, side: "after" }, gid: null };
+  if (near === undefined) return null;
+  if (near.kind === "tab") return { kind: "insert", at: { sid: near.sid, side: "after" }, gid: g };
+  const m = members(near.gid);
+  if (m.length === 0) return null;
+  return near.collapsed ? { kind: "insert", at: { sid: m[m.length - 1], side: "after" }, gid: null } : { kind: "insert", at: { sid: m[0], side: "before" }, gid: near.gid };
+}
+
+/** `Alt+←`：出组，放到组后面（被挪的那几个里头一个在组里的那个组）；都散着 ⇒ `null`。 */
+export function keyLeaveTarget(rows: readonly BarRow[], dragged: readonly string[]): DropTarget | null {
+  const set = new Set(dragged);
+  const first = rows.find((r): r is Extract<BarRow, { kind: "tab" }> => r.kind === "tab" && set.has(r.sid) && r.gid !== null);
+  if (!first) return null;
+  const m = groupMembers(rows, first.gid!);
+  return { kind: "insert", at: { sid: m[m.length - 1], side: "after" }, gid: null };
+}
+
+/** `Alt+→`：和上一行建组（它散着）/ 进上一行的组（它在组里 · 它是收着的组头 ⇒ 排最后）；已在那个组里 ⇒ `null`。 */
+export function keyJoinPrevTarget(rows: readonly BarRow[], dragged: readonly string[]): DropTarget | null {
+  const k = keyContext(rows, dragged, -1);
+  if (k === null || k.near === undefined) return null;
+  const { anchor, near, members } = k;
+  if (near.kind === "head") {
+    const m = members(near.gid);
+    return near.gid === anchor.gid || !near.collapsed || m.length === 0 ? null : { kind: "insert", at: { sid: m[m.length - 1], side: "after" }, gid: near.gid };
+  }
+  return near.gid !== null && near.gid === anchor.gid ? null : { kind: "onto", sid: near.sid };
+}
+
+/** 组头上 `Alt+↑↓`：整组挪一格（散的算一格，别的组整段算一格）。`undefined` ＝ 不动。 */
+export function keyGroupMoveTarget(rows: readonly BarRow[], gid: string, dir: -1 | 1): InsertAt | undefined {
+  const units: { gid: string | null; first: string; last: string }[] = [];
+  for (const r of rows) {
+    if (r.kind === "head") {
+      const m = groupMembers(rows, r.gid);
+      if (m.length > 0) units.push({ gid: r.gid, first: m[0], last: m[m.length - 1] });
+    } else if (r.gid === null) units.push({ gid: null, first: r.sid, last: r.sid });
+  }
+  const i = units.findIndex((u) => u.gid === gid);
+  const n = i < 0 ? undefined : units[i + dir];
+  if (n === undefined) return undefined;
+  return dir === -1 ? { sid: n.first, side: "before" } : { sid: n.last, side: "after" };
+}
+
+/** 组 `gid` 的组员（含收着藏起来的），按栏里的先后。 */
+function groupMembers(rows: readonly BarRow[], gid: string): string[] {
+  return rows.filter((r): r is Extract<BarRow, { kind: "tab" }> => r.kind === "tab" && r.gid === gid).map((r) => r.sid);
+}
+
+/** 键盘挪位那几条共用的：看得见的行里，被挪的最上（往上）/ 最下（往下）那一个，与它那个方向上紧挨着的、不是被挪的那一行。 */
+function keyContext(rows: readonly BarRow[], dragged: readonly string[], dir: -1 | 1) {
+  const vis = rows.filter((r) => !(r.kind === "tab" && r.hidden));
+  const set = new Set(dragged);
+  const idx = vis.flatMap((r, i) => (r.kind === "tab" && set.has(r.sid) ? [i] : []));
+  if (idx.length === 0) return null;
+  const at = dir === -1 ? idx[0] : idx[idx.length - 1];
+  const anchor = vis[at] as Extract<BarRow, { kind: "tab" }>;
+  let j = at + dir;
+  while (j >= 0 && j < vis.length && vis[j].kind === "tab" && set.has((vis[j] as { sid: string }).sid)) j += dir;
+  return { anchor, near: vis[j] as BarRow | undefined, members: (g: string) => groupMembers(rows, g) };
+}
+
+/** 拖的时候栏自己滚：指针进列表上 / 下沿 24px 内 ⇒ 每帧滚多少（负 ＝ 往上），离边越近越快、贴边 12px。 */
+export const AUTO_SCROLL_EDGE_PX = 24;
+export const AUTO_SCROLL_MAX_PX = 12;
+export function autoScrollStep(y: number, top: number, bottom: number): number {
+  const speed = (d: number): number => Math.round((AUTO_SCROLL_MAX_PX * (AUTO_SCROLL_EDGE_PX - Math.max(0, d))) / AUTO_SCROLL_EDGE_PX);
+  if (y < top + AUTO_SCROLL_EDGE_PX) return -speed(y - top);
+  if (y > bottom - AUTO_SCROLL_EDGE_PX) return speed(bottom - y);
+  return 0;
+}
+
+/**
+ * 两个 cwd **完全相同** ⇒ 那个目录名；否则 `null`（只共前缀不算：`/work/docs` 与 `/work/cli` 得出「work」没意义）。
+ * 两种分隔符都认（客户端常在 Windows 上、会话可能来自 Linux 远端）；盘符（`C:`）不当名字。
+ */
+export function sameDirName(a: string | null, b: string | null): string | null {
   if (!a || !b) return null;
   const seg = (p: string): string[] => p.split(/[/\\]+/).filter((s) => s !== "");
   const sa = seg(a);
   const sb = seg(b);
-  const n = Math.min(sa.length, sb.length);
-  let i = 0;
-  while (i < n && sa[i] === sb[i]) i++;
-  if (i === 0) return null;
-  const last = sa[i - 1];
-  if (/^[A-Za-z]:$/.test(last)) return null;
-  return last;
+  if (sa.length === 0 || sa.length !== sb.length || sa.some((s, i) => s !== sb[i])) return null;
+  const last = sa[sa.length - 1];
+  return /^[A-Za-z]:$/.test(last) ? null : last;
 }
 
 /**
- * 拖动合并出来的那个组**叫什么**（`§D.6`）。
- *
- * 🔴 **这条路上不能弹 `window.prompt`**（原生阻塞弹窗、风格不一致，
- * 且仓里另一套 dialog 插件正在被 ACL 拒）⇒ 必须能算出一个默认名。
- *
- * 优先级：① 两个 cwd 的共同前缀目录名 ② `组 N`（取当前最大编号 +1）。
- * 事后点组头改名（那条路已有，`groupElFor`）。
+ * 新组叫什么：两个 cwd 相同 ⇒ 目录名；否则「分组 N」（N ＝ 现有默认名的最大号 ＋1）。
+ * 建完组头名字框立刻打开（`TabBarView.renameGroupNow`），打字即改。
  */
 export function defaultGroupName(
   cwdA: string | null,
   cwdB: string | null,
   existingNames: readonly string[],
 ): string {
-  const dir = commonDirName(cwdA, cwdB);
+  const dir = sameDirName(cwdA, cwdB);
   if (dir) return dir;
   let max = 0;
   for (const name of existingNames) {
@@ -149,52 +384,11 @@ export function defaultGroupName(
   return copyText("tabDrop.group.defaultName", { n: max + 1 });
 }
 
-/** 一个组名是不是默认名、编号几：照「组 {n}」那一条文案现取模板认（改了文案照样认得），不在代码里写那个字。 */
+/** 一个组名是不是默认名、编号几：照「分组 {n}」那一条文案现取模板认（改了文案照样认得），不在代码里写那个字。 */
 function defaultNameNumber(name: string): number | null {
   const mark = "\u0000";
   const [pre, post = ""] = copyText("tabDrop.group.defaultName", { n: mark }).split(mark);
   const esc = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const m = new RegExp(`^${esc(pre.trim())}\\s*(\\d+)\\s*${esc(post.trim())}$`).exec(name.trim());
   return m ? Number(m[1]) : null;
-}
-
-/**
- * 一次落点对**被拖那个 tab 的组**意味着什么。
- * 组员关系是 tab 自己的属性（`Tab.group`）⇒ 只回「这个 tab 怎么动」。
- */
-export type GroupMove =
-  | { kind: "stay" } // 归属不变（零写盘：拖动是高频动作，没改归属就不许每拖一下写一次 `config.json`）
-  | { kind: "join"; gid: string } // 进一个已有的组
-  | { kind: "found"; with: string } // 与落点那个散 tab 现建一个组（两个都进去）
-  | { kind: "leave" }; // 移出所在的组，回到散 tab
-
-/**
- * 一次落点对组的全部后果：归属跟着落点宿主走（落点宿主 ≠ 当前所属组的容器 ⇒ 移出）。
- * | 落点 | 宿主 | 后果 |
- * |---|---|---|
- * | `onto X` | X 所在的组；X 还没组 ⇒ 现建一个 | **入组** / **现建** |
- * | `before X` | X 所在的组（X 是散 tab ⇒ 无宿主）| 入组 / **拖出组** |
- * | `end` | 无宿主（末尾就是散 tab 区）| **拖出组** |
- * 宿主就是它现在那个组 ⇒ `stay`（`before` 同组的另一个 · 散 tab 拖到散 tab 之间 · 压在自己身上）。
- *
- * 归属只跟着被拖的那一个走。现建到上界（32 个组）不归这里：`TabBarPrefs.foundGroup` 回拒绝原因，调用方出声。
- *
- * @param groupOf 此刻某个 tab 的组 id（`null` = 散 tab）—— 读 `Tab.group`，由调用方给（本文件零 DOM、零 store）。
- */
-export function groupMoveForDrop(
-  groupOf: (sid: string) => string | null,
-  sid: string,
-  target: DropTarget,
-): GroupMove {
-  if (target.kind === "onto" && target.sid === sid) return { kind: "stay" }; // 压在自己身上不是一次合并
-  const cur = groupOf(sid);
-  let host: string | null = null;
-  if (target.kind === "onto") {
-    host = groupOf(target.sid);
-    if (host === null) return { kind: "found", with: target.sid };
-  } else if (target.kind === "before") {
-    host = groupOf(target.sid);
-  }
-  if (host === cur) return { kind: "stay" };
-  return host === null ? { kind: "leave" } : { kind: "join", gid: host };
 }

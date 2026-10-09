@@ -375,7 +375,7 @@ fn an_unreadable_or_newer_catalog_is_never_overwritten() {
     ] {
         std::fs::write(&f, &body).unwrap();
         let e = update_at(&f, scan_of(&["a"]), "u@h", None).expect_err("读不懂也写了");
-        assert_eq!(e.0, "catalog_unreadable");
+        assert_eq!(e.code, "catalog_unreadable");
         assert_eq!(
             std::fs::read_to_string(&f).unwrap(),
             body,

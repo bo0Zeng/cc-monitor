@@ -236,34 +236,35 @@ describe("有分组时数字键 / ] [ / 关掉当前 tab 后的落点都按条�
     const tm = makeTabs(["a", "b", "c", "d", "e"]);
     const { store, prefs } = inside(tm);
     prefs.collections = [{ id: "g", name: "G" }];
-    (store.tabs.get("c") as Tab).group = "g";
-    (store.tabs.get("d") as Tab).group = "g";
+    // 组员聚在第一个组员那一格 ⇒ 条上是 a e（组）b c d，不是到达的 a b c d e。
+    (store.tabs.get("a") as Tab).group = "g";
+    (store.tabs.get("e") as Tab).group = "g";
     return tm;
   }
 
-  it("条上 c d a b e：1 ⇒ c；b 上 ] ⇒ e；d 上 ] ⇒ a；a 上 [ ⇒ d", () => {
+  it("条上 a e b c d：2 ⇒ e；e 上 ] ⇒ b；d 上 ] ⇒ a；b 上 [ ⇒ e", () => {
     const tm = grouped();
     const st = inside(tm).store;
-    tm.switchTo("e");
-    tm.jumpToIndex(1);
-    expect(st.activeId).toBe("c");
-    tm.switchTo("b");
-    tm.cycleActive(1);
+    tm.switchTo("c");
+    tm.jumpToIndex(2);
     expect(st.activeId).toBe("e");
+    tm.cycleActive(1);
+    expect(st.activeId).toBe("b");
     tm.switchTo("d");
     tm.cycleActive(1);
     expect(st.activeId).toBe("a");
+    tm.switchTo("b");
     tm.cycleActive(-1);
-    expect(st.activeId).toBe("d");
+    expect(st.activeId).toBe("e");
   });
 
-  it("关掉当前的 d ⇒ 落到条上它后面的 a", () => {
+  it("关掉当前的 a ⇒ 落到条上它后面的 e", () => {
     const tm = grouped();
     const st = inside(tm).store;
-    tm.switchTo("d");
-    (st.tabs.get("d") as Tab).state = ENDED;
-    tm.closeTab("d");
-    expect(st.activeId).toBe("a");
+    tm.switchTo("a");
+    (st.tabs.get("a") as Tab).state = ENDED;
+    tm.closeTab("a");
+    expect(st.activeId).toBe("e");
   });
 });
 

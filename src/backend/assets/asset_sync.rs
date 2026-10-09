@@ -44,8 +44,9 @@ pub const PULL_FLAG: &str = "--assets-catalog";
 pub const PUSH_FLAG: &str = "--assets-catalog-merge";
 
 /// 本机写口（`asset_catalog::answer_merge`）—— **由门（`stream/inbound/`）递进来**，本模块不直呼它（第四层判据 ④）。
-pub type Fold =
-    std::sync::Arc<dyn Fn(&Value) -> Result<Value, (&'static str, String)> + Send + Sync>;
+pub type Fold = std::sync::Arc<
+    dyn Fn(&Value) -> Result<Value, crate::stream::inbound::spec::Fail> + Send + Sync,
+>;
 
 /// 远端上那两条命令的完整字面（**只此一处拼**）。
 pub fn pull_command() -> String {
@@ -150,10 +151,11 @@ async fn fold_blocking(fold: &Fold, args: Value) -> Result<Value, String> {
                 &[("e", &e.to_string())],
             )
         })?
-        .map_err(|(c, m)| {
+        .map_err(|f| {
+            let c = f.code.clone();
             copy_text(
                 "beAssetSync.foldBlocking.failed",
-                &[("c", &c.to_string()), ("m", &m.to_string())],
+                &[("c", &c), ("m", &f.into_note())],
             )
         })
 }

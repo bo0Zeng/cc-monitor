@@ -221,7 +221,7 @@ fn a_refused_refresh_says_log_in_again_and_leaves_the_file_as_it_was() {
     let r = access_token(&acct, &FACE, &endpoint_at(addr), NOW_MS, "q").map(|s| expose(&s));
     assert_eq!(r, Err(Unusable::Refused(400)));
     assert_eq!(on_disk(&acct), before);
-    let said = Unusable::Refused(400).said("q");
+    let said = Unusable::Refused(400).said("q").said;
     assert!(said.contains('q') && !said.contains("ref-old"), "{said}");
     let _ = std::fs::remove_dir_all(&d);
 }
@@ -524,4 +524,22 @@ fn a_fresh_lock_directory_still_says_busy() {
     assert!(posted.lock().expect("lock").is_empty());
     assert!(inside.is_dir(), "活着的锁不许动");
     let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn the_said_line_keeps_the_raw_beside_it_not_in_it() {
+    // 读不出来 / 续不上 / 写不回那三形：句子只带原因词，下层原话跟在旁边（换号那一路记日志时拼上），不进句子。
+    let raw = || crate::common::said::Said::with_raw("x".to_string(), "os error 13: RAW-TEXT");
+    for u in [
+        Unusable::Unreadable(raw()),
+        Unusable::NotRenewed(raw()),
+        Unusable::WriteFailed(raw()),
+    ] {
+        let s = u.said("q");
+        assert!(
+            s.said.contains('q') && !s.said.contains("RAW-TEXT"),
+            "{s:?}"
+        );
+        assert_eq!(s.raw.as_deref(), Some("os error 13: RAW-TEXT"), "{u:?}");
+    }
 }

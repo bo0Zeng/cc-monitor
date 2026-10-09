@@ -645,6 +645,14 @@ mod tests {
         "起子进程不再需要期限（或期限改由别处执行）的那天。",
     ),
         (
+        "control/cli_control.rs",
+        "Duration::from_millis(1000)",
+        "CLI 面读入参的静默窗（`cli_control::STDIN_QUIET`）：只交给那一次有界等待（登记在 `REGISTERED_DEADLINE_WAKES` 的 control/cli_control.rs 那一行），\
+         一次性进程里等一次、不驱动循环、不产生节拍。",
+        "缩性质",
+        "CLI 面不再从 stdin 收入参（只留 argv 那一口）的那天 —— 与那一行登记一起摘。",
+    ),
+        (
         "observe/one_wait.rs",
         "Duration::from_millis(ms)",
         "一次性等待（`observe::one_wait::Armed::within`）的期限：值由发起方给（换号重启的界面把等压缩 / 等会话报出的期限交下来），\
@@ -708,6 +716,14 @@ mod tests {
             "超时杀组之后，等读输出的线程收尾的宽限：过了仍没收尾 ⇒ 输出管道被逃出组的进程攥着，放手并记一行日志。\
              只在超时那一回、在等待线程里等一次。",
             "`DRAIN_AFTER_KILL`（1 秒）；读线程先收尾就立刻醒。",
+        ),
+        (
+            "control/cli_control.rs",
+            "rx.recv_timeout(quiet)",
+            "CLI 面读入参的**静默窗**（`cli_control::read_stdin_within`）：stdin 开着、却一直不写（关不掉 stdin 的调用方 —— capture 那一跳 · \
+             只有 stdout 的执行通道）时，读到 EOF 就是永远挂住；到点回 `no_input`、进程随即退出。一次性进程里只等这一次，不循环；\
+             第一个字节（或 EOF）到了就立刻醒、之后不再计时。",
+            "`STDIN_QUIET`（1 秒）；第一个字节或 EOF 先到就立刻醒。",
         ),
         (
             "observe/one_wait.rs",
@@ -1446,9 +1462,11 @@ mod g6_reach {
         // 8 → **9**：多的那一条是 `observe/one_wait.rs` 的一次性等待期限（换号重启等压缩 / 等会话报出，值由发起方给）。
         // 9 → **10**：多的那一条是 `accounts/upstream_select/rotate.rs` 的 `TOKEN_DEADLINE`（换号续令牌那一发的 socket 读写上限）。
         // 10 → **11**：多的那一条是 `accounts/oauth/store.rs` 的续期锁过期门限（拿锁时比一次锁目录的修改时刻）。
+        // 11 → **12**：多的那一条是 `control/cli_control.rs` 的 `STDIN_QUIET`（CLI 面读入参的静默窗，一次性进程里等一次；
+        //   调用那一处另住 `REGISTERED_DEADLINE_WAKES`，cell `缩性质`）。
         assert_eq!(
-            registered, 11,
-            "登记表从 11 条变成 {registered} 条了 —— 这个数就是那条相等断言的分母，\
+            registered, 12,
+            "登记表从 12 条变成 {registered} 条了 —— 这个数就是那条相等断言的分母，\
              改它等于改判据的射程"
         );
     }

@@ -8,7 +8,7 @@ use crate::assets::mcp_sync::Facts;
 use copy_core::copy_text;
 use serde_json::{json, Map, Value};
 
-type Answer = Result<Value, (&'static str, String)>;
+type Answer = Result<Value, crate::stream::inbound::spec::Fail>;
 
 /// 装记录的写口（生产 = `skill_ledger::answer_record`，由 `stream/inbound/` 递进来）。
 pub(crate) type Record<'a> = &'a dyn Fn(&Value) -> Answer;
@@ -16,7 +16,7 @@ pub(crate) type Record<'a> = &'a dyn Fn(&Value) -> Answer;
 fn texts_by_path(
     v: Option<&Value>,
     key: &str,
-) -> Result<Map<String, Value>, (&'static str, String)> {
+) -> Result<Map<String, Value>, crate::stream::inbound::spec::Fail> {
     let arr = v.and_then(Value::as_array).ok_or((
         "bad_args",
         crate::common::contract::malformed(&format!(
@@ -166,16 +166,19 @@ pub(crate) fn answer_install(
         if let Some(p) = args.get("project").filter(|p| p.is_string()) {
             rec["project"] = p.clone();
         }
-        record(&rec)
-            .err()
-            .map(|(_, e)| copy_text("beSkillFlow.install.recordFailed", &[("e", &e)]))
+        record(&rec).err().map(|f| {
+            copy_text(
+                "beSkillFlow.install.recordFailed",
+                &[("why", &f.into_note())],
+            )
+        })
     };
     if let Some(why) = stopped {
         let why = match record_failed {
             None => why,
             Some(r) => format!("{why}{r}"),
         };
-        return Err(("stale", why));
+        return Err(crate::stream::inbound::spec::Fail::from(("stale", why)));
     }
     Ok(
         json!({ "dir": dir, "written": written, "chmodFailed": chmod_failed, "recordFailed": record_failed }),
@@ -229,14 +232,19 @@ pub(crate) fn answer_uninstall(
     } else {
         record(&json!({ "op": "drop", "dir": dir, "paths": drop }))
             .err()
-            .map(|(_, e)| copy_text("beSkillFlow.uninstall.dropFailed", &[("e", &e)]))
+            .map(|f| {
+                copy_text(
+                    "beSkillFlow.uninstall.dropFailed",
+                    &[("why", &f.into_note())],
+                )
+            })
     };
     if let Some(why) = stopped {
         let why = match record_failed {
             None => why,
             Some(r) => format!("{why}{r}"),
         };
-        return Err(("stale", why));
+        return Err(crate::stream::inbound::spec::Fail::from(("stale", why)));
     }
     let (dir_removed, dir_failed) = remove_emptied_dirs(d, dir, &recorded);
     Ok(
@@ -259,7 +267,7 @@ fn remove_emptied_dirs(d: &dyn Door, dir: &str, files: &[String]) -> (bool, Opti
     let failed = |at: &str, e: Refused| {
         copy_text(
             "beSkillFlow.uninstall.dirFailed",
-            &[("path", at), ("e", &e.said())],
+            &[("path", at), ("why", &e.said())],
         )
     };
     for sub in &order {

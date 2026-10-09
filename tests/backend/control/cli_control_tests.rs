@@ -37,71 +37,12 @@ fn every_cli_exposed_command_is_in_the_query_mode_gate() {
 }
 use super::*;
 
-/// 帧面有、CLI 面没有的命令，**逐条登记理由**。
+/// 帧面有、CLI 面没有的命令，**逐条登记理由**（不在这里的另两张在生产里：`STREAM_ONLY` 「结构上答不了」·
+/// `UI_ONLY` 「只有界面用得着」，理由同样是数据；这张只收 `Run::Builtin` 与占了 ccm 的词那几条）。
 ///
 /// 形状抄 `readonly_guard::spawn_registry::ALLOWED`：把「为什么这条不上」写成**数据**，
 /// 好让机检对着它比 —— 散文里说一遍，下一个人加命令时看不见。
 const NOT_ON_CLI: &[(&str, &str)] = &[
-    // 〔第二个前端 2026-10-08〕`session-new` / `session-new-facts` / `session-new-dir` / `sessions-stop` /
-    //   `sessions-where` / `sessions-start` **从本表摘掉了**（它们今天上 CLI 面）。原来那六条理由逐条都是
-    //   「界面那个框 / 那张 tab 栏才用得着，命令行那一侧直接敲 `ccm` 就是它」—— 那是**第二个入口**这一维的话，
-    //   不是「一次性进程里答的是假话」。摘的凭据是逐条核过的数据流：六条的事实全在这台（tmux 名单经
-    //   `control::terminals::rows_here` 现探 · 记录在不在经 `observe::history_query::record_for` ·
-    //   铸名经 `common::session_snapshot::global()`，而 `SessionSnapshot::query` 刻意没有「只读缓存」那条路、
-    //   问一次就重探一次 ⇒ 一次性进程铸出来的名字与常驻那一个同样避得开占用），
-    //   一格都不读可达表 / 监听状态 / 在飞表 / 应答通道。⇒ 「第二个入口」这个理由挡不住**第二个前端**：
-    //   手机端今天只有一次性 CLI 与流两条路进后端，帧面双向命令通道还没接，`ccm` 那条路它也走不到。
-    (
-        "session-restart",
-        "停旧 ＋ 起新那一步拿的是**退出排空的票**（`inbound::DRAIN`），等压缩摘要与等新进程报出各一次有界等待（各 ≤ 1 h）——\
-         「发起方走了那台照样做完」靠的就是那张票钉住**常驻进程**不退；一次性 exec 里那张票钉的是命令自己那个进程，\
-         钉不住任何东西，而调用方还得把一个 exec 挂在那儿几分钟 ⇒ 真依赖流语义，只上帧面（`STREAM_ONLY`）。\
-         命令行那一侧要同一件事：`--sessions-stop` 再 `--sessions-start`（两条都上了 CLI 面），自己掌期限。",
-    ),
-    // 扩展页那张表与「装」的枢纽。
-    (
-        "ext-list",
-        "它按本进程的可达表认出每台叫什么、连没连上；一次性进程里那张表是空的 ⇒ 只剩本机、别的台全画成「没连上」，是假话 ⇒ 只上帧面（`STREAM_ONLY`）。\
-         本机那一半另有 `ext-list-here`（同一份 `ext::answer_list`，目录先裁到这台一格 ⇒ 可达表无从参与），它上 CLI 面。",
-    ),
-    (
-        "ext-hub-preview",
-        "枢纽要经本进程的可达表够到来源那台与被写那台；一次性进程里那张表是空的 ⇒ 除了本机对本机什么都问不到 ⇒ 只上帧面（`STREAM_ONLY`）。",
-    ),
-    (
-        "ext-hub-apply",
-        "同 `ext-hub-preview`：两头都要经本进程的可达表够到 ⇒ 只上帧面（`STREAM_ONLY`）。",
-    ),
-    // 起会话要的 tmux 名。
-    (
-        "terminal-name-mint",
-        "它只给界面起会话前问一个名字用；命令行那一侧 `ccm` 不给名时自己就铸（同一份 `plan::mint_tmux_name`，同一张会话快照），\
-         第三方 skill 要起会话直接敲 `ccm` ⇒ 再开一个 CLI 口只是第二个入口 ⇒ 只上帧面（`STREAM_ONLY`）。",
-    ),
-    // 各台搜索结果合成一份。
-    (
-        "history-search-merge",
-        "它合的是界面逐台问回来的那几份（每台常驻后端各答各的 `history-search`）；命令行那一侧 `--search` 只问这一台、没有第二份可合 \
-         ⇒ 只上帧面（`STREAM_ONLY`）。",
-    ),
-    // 开终端那一串。
-    (
-        "terminal-ssh",
-        "它渲的是「在用户面前这台机器上开一个 PowerShell 窗口、里面 ssh 过去」那一行，只有开窗的那一方（界面 · 文件窗口）用得着；\
-         命令行本身就在终端里，要连那台直接敲 ssh ⇒ 只上帧面（`STREAM_ONLY`）。",
-    ),
-    // ↗ 那一问。
-    (
-        "session-terminals",
-        "它答的是「此刻哪个终端在显示这个会话」，只给界面点 ↗ 那一刻用（接着交本机后端对窗口、再拉前）；\
-         命令行那一侧本身就在那个终端里 ⇒ 只上帧面（`STREAM_ONLY`）。",
-    ),
-    // ↗ 那一问的本机一半。
-    (
-        "terminal-processes",
-        "它答的是「那台报来的终端连接是这台电脑上哪个进程开的、往上是谁」，只给界面点 ↗ 时接着找窗口、拉前用；\
-         命令行那一侧用不着 ⇒ 只上帧面（`STREAM_ONLY`）。",
-    ),
     // 测试连接边拨边推进度：那几格走**本连接的应答通道**（`probe` 帧，界面订 `probe-progress/<票>`）。
     (
         "remote-probe",
@@ -116,19 +57,12 @@ const NOT_ON_CLI: &[(&str, &str)] = &[
     ),
     ("terminal-follow-ack", "回执的是某条流连接上的那张票；一次性进程里没有票 ⇒ 同 `terminal-follow` 只上帧面。"),
     ("terminal-unfollow", "退订的是某条流连接上的那张票；一次性进程里没有票 ⇒ 同 `terminal-follow` 只上帧面。"),
-    // 本机起会话：计划里要读本进程的中转状态（`launch_relay`），一次性进程里没有中转 ⇒ 同 `launch-endpoint` 只上流面。
-    (
-        "launch-local",
-        "它经 `accounts::upstream_select::endpoint::launch_relay` 读本进程的中转监听状态（中转住常驻后端进程里）；\
-         一次性进程里没有中转 ⇒ 「非它不可」的号会被误拒、「有它更好」的会被说成直连 —— 同 `launch-endpoint` 那一格（`STREAM_ONLY`）。",
-    ),
     (
         "cancel",
         "它取消的是**同一条连接上在飞的另一条命令**。一次性 exec 是「1 请求 1 响应 1 退出、\
          无 request-id」（`resolve_query` 头注逐字）⇒ 本进程里没有第二条命令可取消，\
          给它开 CLI 口只会回一条永远找不到目标的应答。要停一条 CLI 命令：杀那个进程。",
     ),
-    // 链路四条：一条链路**活在一条流连接上**（每连接一张链路表，连接没了链路一条不留），
     // 一次性进程「1 请求 1 响应 1 退出」—— 开出来的链路在应答回去的那一刻就随进程一起没了。
     (
         "link-open",
@@ -151,7 +85,6 @@ const NOT_ON_CLI: &[(&str, &str)] = &[
         "它关**同一条连接上**某条开着的链路。一次性进程里没有开着的链路（见 `link-open`），\
          进程一退它开过的一切本来就没了 ⇒ CLI 口没有意义。",
     ),
-    // 传输四条：票表**活在一条流连接上**（每连接一张，连接没了在册的一律撤），
     // 进度走那条连接的出方向帧 —— 一次性进程两样都没有。
     (
         "transfer-upload",
@@ -176,36 +109,80 @@ const NOT_ON_CLI: &[(&str, &str)] = &[
         "派生名 `--ccm-print` 是 ccm 自己的诊断口；二进制叫 `ccm` 时后端按 `SUBCOMMANDS` 分流，占了它就把 `ccm --ccm-print` 抢进后端。",
     ),
     (
-        "apikey-routing",
-        "「中转在不在」读本进程的监听状态；一次性进程里没有中转，只能答 `running: false` —— 那是假话（`cli_control::STREAM_ONLY`）。",
-    ),
-    (
-        "relay-optin",
-        "同上：成品里「中转在不在」读本进程的监听状态，一次性进程里恒答「不在」（`cli_control::STREAM_ONLY`）。",
-    ),
-    (
         "launch-endpoint",
         "同 `apikey-routing`：一次性进程里只能答 `listening: false`（`cli_control::STREAM_ONLY`）。",
     ),
     (
+        "transfer-stop",
+        "它撤的是**同一条连接上**在册的一趟传输；一次性进程里没有在册的票，只会回一条什么也没撤的 `ok`。",
+    ),
+
+];
+
+/// [`STREAM_ONLY`] 每一条的理由（一次性进程里结构上答不了）。与生产那张表两向相等（`the_withheld_tables_…`）。
+const STREAM_ONLY_WHY: &[(&str, &str)] = &[
+    (
         "resync",
-        "它对齐的是本进程里在跑的 watcher；一次性进程里一份都没有，只能答 `watchers: 0` —— 那是假话（`cli_control::STREAM_ONLY`）。",
+        "它对齐的是本进程里在跑的 watcher；一次性进程里一份都没有，只能答 `watchers: 0` —— 那是假话。",
+    ),
+    (
+        "apikey-routing",
+        "「中转在不在」读本进程的监听状态；一次性进程里没有中转（中转住常驻后端进程里），只能答 `running: false` —— 那是假话。",
+    ),
+    (
+        "relay-optin",
+        "「直接敲的也走中转」那一段的成品里「中转在不在」同样读本进程的监听状态，一次性进程里恒答「不在」—— 假话。",
+    ),
+    (
+        "launch-local",
+        "它经 `accounts::upstream_select::endpoint::launch_relay` 读本进程的中转监听状态；一次性进程里没有中转 ⇒ \
+         「非它不可」的号会被误拒、「有它更好」的会被说成直连。",
     ),
     (
         "forward-start",
-        "转发账住常驻那一个进程（`cli_control::STREAM_ONLY`）：一次性进程开出来的转发随进程退出就没了 —— 口放掉、账也没了，回的 `id` 是个死号。",
+        "转发账住常驻那一个进程：一次性进程开出来的转发随进程退出就没了 —— 口放掉、账也没了，回的 `id` 是个死号。",
     ),
     (
         "forward-stop",
-        "同 `forward-start`：一次性进程里的账恒空，只会回 `not_found`。",
+        "同 `forward-start`：转发账住常驻进程，一次性进程里的账恒空，只会回 `not_found`。",
     ),
     (
         "forward-list",
-        "同 `forward-start`：一次性进程里的账恒空，只能答 `forwards: []` —— 那是假话。",
+        "同 `forward-start`：转发账住常驻进程，一次性进程里的账恒空，只能答 `forwards: []` —— 那是假话。",
     ),
     (
-        "transfer-stop",
-        "它撤的是**同一条连接上**在册的一趟传输；一次性进程里没有在册的票，只会回一条什么也没撤的 `ok`。",
+        "ext-list",
+        "它按本进程的可达表认出每台叫什么、连没连上；一次性进程里那张表是空的 ⇒ 只剩本机、别的台全画成「没连上」，是假话。\
+         本机那一半另有 `ext-list-here`（同一份 `ext::answer_list`，目录先裁到这台一格 ⇒ 可达表无从参与），它上 CLI 面。",
+    ),
+    (
+        "ext-hub-preview",
+        "枢纽要经本进程的可达表够到来源那台与被写那台；一次性进程里那张表是空的 ⇒ 除了本机对本机什么都问不到。",
+    ),
+    (
+        "ext-hub-apply",
+        "同 `ext-hub-preview`：两头都要经本进程的可达表够到；一次性进程里那张表是空的。",
+    ),
+    (
+        "session-restart",
+        "停旧 ＋ 起新那一步拿的是**退出排空的票**（`inbound::DRAIN`），等压缩摘要与等新进程报出各一次有界等待（各 ≤ 1 h）——\
+         「发起方走了那台照样做完」靠的就是那张票钉住**常驻进程**不退；一次性进程里那张票钉的是命令自己那个进程，\
+         钉不住任何东西，而调用方还得把一次调用挂在那儿几分钟 ⇒ 真依赖流语义。命令行那一侧要同一件事：\
+         `--sessions-stop` 再 `--sessions-start`，自己掌期限。",
+    ),
+];
+
+/// [`UI_ONLY`] 每一条的理由（答得了，只是除了界面没人用得着）。与生产那张表两向相等。
+const UI_ONLY_WHY: &[(&str, &str)] = &[
+    (
+        "session-terminals",
+        "它答「此刻哪个终端在显示这个会话」，唯一的用处是界面点 ↗ 那一刻接着交本机后端对窗口、再把那个窗口拉到前面；\
+         只有能拉前桌面窗口的那一方用得着，第二个前端也不用。",
+    ),
+    (
+        "terminal-processes",
+        "它答「那台报来的终端连接是这台电脑上哪个进程开的、往上是谁」，是 ↗ 那一问的本机一半，只给界面接着找窗口、拉前用；\
+         同 `session-terminals`，只有能拉前桌面窗口的那一方用得着。",
     ),
 ];
 
@@ -238,7 +215,12 @@ fn every_wire_command_is_either_on_the_cli_or_has_a_written_reason() {
         );
     }
     // ② 没上的，必须逐条有理由；且理由表里不许有**已经上了**的命令（那种是过期的理由）。
-    let reasons: Vec<&str> = NOT_ON_CLI.iter().map(|(n, _)| *n).collect();
+    let reasons: Vec<&str> = NOT_ON_CLI
+        .iter()
+        .chain(STREAM_ONLY_WHY)
+        .chain(UI_ONLY_WHY)
+        .map(|(n, _)| *n)
+        .collect();
     let mut missing: Vec<&&str> = withheld.iter().filter(|n| !reasons.contains(n)).collect();
     missing.sort();
     assert!(
@@ -251,7 +233,7 @@ fn every_wire_command_is_either_on_the_cli_or_has_a_written_reason() {
         stale.is_empty(),
         "`NOT_ON_CLI` 里这些命令**今天已经上了** CLI 面：{stale:?} —— 理由过期了，删掉它。"
     );
-    for (name, why) in NOT_ON_CLI {
+    for (name, why) in NOT_ON_CLI.iter().chain(STREAM_ONLY_WHY).chain(UI_ONLY_WHY) {
         assert!(
             why.chars().count() >= 40,
             "`NOT_ON_CLI` 里 {name} 的理由只有 {} 字 —— 那是占位不是理由",
@@ -490,4 +472,379 @@ fn the_one_line_entry_stops_at_the_newline_and_never_asks_for_another_byte() {
             shell_quote_core::posix_quote(STDIN_LINE_FLAG)
         ))
     );
+}
+
+// ── 第二个前端够得着 CLI 面：入参不再隐含「调用方写得了 stdin」 ─────────────
+//
+// 第二个前端的执行通道只有 stdout、写不了 stdin，而 CLI 面上要入参的命令占了绝大多数（出成品的 `history-read` 一族全在里面）。
+// ⇒ 入参另有一个 argv 形的口（[`crate::ARGS_B64_FLAG`]），与 stdin 二选一；stdin 开着却一直不写，也得立即回码。
+
+/// 读端：一直不给字节、也不关（真管道上「对面开着 stdin 不写」）。手里那个 `Sender` 一放，它就当 EOF 收尾 ——
+/// 测试结束时放掉，免得线程一直挂着。
+struct Silent(std::sync::mpsc::Receiver<()>);
+impl std::io::Read for Silent {
+    fn read(&mut self, _buf: &mut [u8]) -> std::io::Result<usize> {
+        let _ = self.0.recv();
+        Ok(0)
+    }
+}
+fn silent() -> (std::sync::mpsc::Sender<()>, Silent) {
+    let (tx, rx) = std::sync::mpsc::channel();
+    (tx, Silent(rx))
+}
+
+fn strs(xs: &[&str]) -> Vec<String> {
+    xs.iter().map(|s| s.to_string()).collect()
+}
+
+/// 跑一遍 CLI 入口，收 (退出码, stdout, stderr)。
+fn run_cli<R: std::io::Read + Send + 'static>(args: &[String], stdin: R) -> (i32, String, String) {
+    let mut out: Vec<u8> = Vec::new();
+    let mut err: Vec<u8> = Vec::new();
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let rc = rt.block_on(run_io(
+        args,
+        stdin,
+        std::time::Duration::from_millis(300),
+        &mut out,
+        &mut err,
+    ));
+    (
+        rc,
+        String::from_utf8(out).unwrap(),
+        String::from_utf8(err).unwrap(),
+    )
+}
+
+fn err_code(stderr: &str) -> String {
+    serde_json::from_str::<serde_json::Value>(stderr.trim())
+        .ok()
+        .and_then(|v| v["code"].as_str().map(str::to_string))
+        .unwrap_or_else(|| format!("<stderr 不是信封：{stderr:?}>"))
+}
+
+/// ★ argv 载荷口与 stdin **答得逐字一样**（退出码 · stdout · stderr 三样都比）。挑的是出成品的那几条与几条别族的。
+/// 真记录文件上的那一趟（`history-read` 出成品行）在真二进制的 e2e 里（`tests/e2e/backend-cc-bus.sh` 的 [CLI2]）——
+/// 进程内拿不到一棵沙箱里的会话记录树。
+#[test]
+fn the_argv_payload_answers_byte_for_byte_like_stdin() {
+    let cases: &[(&str, serde_json::Value)] = &[
+        (
+            "history-read",
+            serde_json::json!({"path": "/nonexistent/cli2nd/a.jsonl"}),
+        ),
+        ("history-read", serde_json::json!({})),
+        (
+            "history-facts",
+            serde_json::json!({"path": "/nonexistent/cli2nd/a.jsonl"}),
+        ),
+        (
+            "history-page",
+            serde_json::json!({"path": "/nonexistent/cli2nd/a.jsonl", "from": 0}),
+        ),
+        (
+            "launch-render-cli",
+            serde_json::json!({
+                "action": {"kind": "new"},
+                "account": {"kind": "base"},
+                "container": {"kind": "none"},
+                "cwd": "/w",
+                "launcher": "claude",
+            }),
+        ),
+        ("files-stat", serde_json::json!({"path": "/"})),
+    ];
+    let mut saw_ok = false;
+    for (cmd, payload) in cases {
+        let flag = flag_of(cmd);
+        assert!(
+            spec_for(&flag).is_some(),
+            "{flag} 不在 CLI 面上 —— 本条挑错了命令"
+        );
+        let text = payload.to_string();
+        let by_stdin = run_cli(
+            &strs(&[&flag]),
+            std::io::Cursor::new(text.clone().into_bytes()),
+        );
+        let b64 = crate::stream::wire::b64_encode(text.as_bytes());
+        let (_hold, quiet) = silent();
+        // stdin 开着不写：argv 那一形**不该去碰 stdin**（碰了就是挂住或 no_input）。
+        let by_argv = run_cli(&strs(&[&flag, crate::ARGS_B64_FLAG, &b64]), quiet);
+        assert_eq!(
+            by_argv, by_stdin,
+            "{flag} {text}：argv 载荷口与 stdin 答得不一样"
+        );
+        saw_ok |= by_stdin.0 == 0;
+    }
+    assert!(
+        saw_ok,
+        "一条成功的都没有 —— 只比了错误信封，证明不了成品那条路逐字一样"
+    );
+}
+
+/// ★ stdin 开着、一直不写：**立即回码**，不挂住（缺入参就说缺入参）；EOF 那一形照旧当 `{}` 交给命令自己判。
+#[test]
+fn a_silent_open_stdin_answers_at_once_instead_of_hanging() {
+    for extra in [&[][..], &[crate::STDIN_LINE_FLAG][..]] {
+        let (_hold, quiet) = silent();
+        let mut args = strs(&["--history-read"]);
+        args.extend(strs(extra));
+        // 在另一条线程里跑、本线程掐表：挂住时这条红在 10 s，不是把整趟测试拖死。
+        let (tx, rx) = std::sync::mpsc::channel();
+        let a = args.clone();
+        std::thread::spawn(move || {
+            let _ = tx.send(run_cli(&a, quiet));
+        });
+        let (rc, out, err) = rx
+            .recv_timeout(std::time::Duration::from_secs(10))
+            .unwrap_or_else(|_| panic!("{args:?}：stdin 开着不写，10 s 还没回 —— 那是挂住"));
+        assert_eq!((rc, out.as_str()), (2, ""), "{args:?}：该回失败信封");
+        assert_eq!(err_code(&err), "no_input", "{args:?}：码不对：{err}");
+    }
+    // EOF：照旧当空入参，由命令自己说缺什么（不是 no_input）。
+    let (rc, _, err) = run_cli(&strs(&["--history-read"]), std::io::empty());
+    assert_eq!((rc, err_code(&err).as_str()), (2, "bad_args"));
+}
+
+/// ★ `--stdin-line` 与 `--text` 一样**认任意位置**（原先只认紧跟子命令那一格，别处 ⇒ 静默退回「读到 EOF」、挂住）。
+#[test]
+fn the_one_line_flag_counts_wherever_it_sits() {
+    let line = b"{\"path\":\"/nonexistent/cli2nd/a.jsonl\"}\n".to_vec();
+    let at_one = run_cli(
+        &strs(&["--history-read", crate::STDIN_LINE_FLAG]),
+        ThenPanic(Some(line.clone())),
+    );
+    let at_end = run_cli(
+        &strs(&[
+            "--history-read",
+            "--some-later-option",
+            crate::STDIN_LINE_FLAG,
+        ]),
+        ThenPanic(Some(line)),
+    );
+    assert_eq!(at_end, at_one, "`--stdin-line` 不在第二格时答得不一样");
+    assert_ne!(err_code(&at_one.2), "no_input");
+}
+
+/// ★ 两个口二选一；用法错一律 `bad_args`，坏载荷 `bad_request`，超大 `args_too_large` —— 都是立即回、不截断。
+#[test]
+fn the_argv_payload_refuses_clearly() {
+    let ok = crate::stream::wire::b64_encode(b"{}");
+    let refuse = |args: &[&str]| {
+        let (_hold, quiet) = silent();
+        let (rc, out, err) = run_cli(&strs(args), quiet);
+        assert_eq!((rc, out.as_str()), (2, ""), "{args:?} 该被拒");
+        err_code(&err)
+    };
+    // 两个都给。
+    assert_eq!(
+        refuse(&[
+            "--history-read",
+            crate::ARGS_B64_FLAG,
+            &ok,
+            crate::STDIN_LINE_FLAG
+        ]),
+        "bad_args"
+    );
+    assert_eq!(
+        refuse(&[
+            "--history-read",
+            crate::STDIN_LINE_FLAG,
+            crate::ARGS_B64_FLAG,
+            &ok
+        ]),
+        "bad_args"
+    );
+    // 给了两次 · 缺值。
+    assert_eq!(
+        refuse(&[
+            "--history-read",
+            crate::ARGS_B64_FLAG,
+            &ok,
+            crate::ARGS_B64_FLAG,
+            &ok
+        ]),
+        "bad_args"
+    );
+    assert_eq!(
+        refuse(&["--history-read", crate::ARGS_B64_FLAG]),
+        "bad_args"
+    );
+    // 不收入参的命令带它：用法错，不悄悄忽略（同 `--text`）。
+    assert_eq!(refuse(&["--ping", crate::ARGS_B64_FLAG, &ok]), "bad_args");
+    // 坏 base64 · 解出来不是 UTF-8 · 不是 JSON。
+    assert_eq!(
+        refuse(&["--history-read", crate::ARGS_B64_FLAG, "e30"]),
+        "bad_request"
+    );
+    let not_utf8 = crate::stream::wire::b64_encode(&[0xff, 0xfe]);
+    assert_eq!(
+        refuse(&["--history-read", crate::ARGS_B64_FLAG, &not_utf8]),
+        "bad_request"
+    );
+    let not_json = crate::stream::wire::b64_encode(b"{nope");
+    assert_eq!(
+        refuse(&["--history-read", crate::ARGS_B64_FLAG, &not_json]),
+        "bad_request"
+    );
+    // 超大：argv 那一形自己的上限（比系统单个参数的上限小一点，系统放得进来的才轮得到它说）。
+    let big = "A".repeat(MAX_ARGS_B64_LEN + 4);
+    assert_eq!(
+        refuse(&["--history-read", crate::ARGS_B64_FLAG, &big]),
+        "args_too_large"
+    );
+    let just = crate::stream::wire::b64_encode(&vec![b' '; MAX_ARGS_B64_LEN / 4 * 3]);
+    assert!(just.len() <= MAX_ARGS_B64_LEN);
+    assert_ne!(
+        refuse(&["--history-read", crate::ARGS_B64_FLAG, &just]),
+        "args_too_large",
+        "刚好到上限的不该被拒成太大"
+    );
+    // stdin 那一形超大：同一个码。
+    let (rc, _, err) = run_cli(
+        &strs(&["--history-read"]),
+        std::io::Cursor::new(vec![b' '; MAX_CLI_STDIN as usize + 1]),
+    );
+    assert_eq!((rc, err_code(&err).as_str()), (2, "args_too_large"));
+}
+
+/// argv 那一形的上限**留在系统单个参数的上限之内**：Linux `MAX_ARG_STRLEN` ＝ 32 页 ＝ 131072 字节（含结尾 NUL），
+/// 经 ssh 时整行命令是登录 shell `-c` 的**一个**参数 ⇒ 同一个上限管整行。比它大，本后端根本起不来、轮不到它回码。
+#[test]
+fn the_argv_cap_sits_inside_the_systems_single_argument_cap() {
+    const LINUX_MAX_ARG_STRLEN: usize = 32 * 4096;
+    assert!(
+        MAX_ARGS_B64_LEN < LINUX_MAX_ARG_STRLEN,
+        "argv 载荷口的上限超过了系统单个参数的上限 —— 那一段永远轮不到本后端回码"
+    );
+    assert_eq!(
+        MAX_ARGS_B64_LEN % 4,
+        0,
+        "上限不是 4 的倍数 —— 刚好到上限的合法 base64 也会被拒"
+    );
+    assert!(
+        (MAX_ARGS_B64_LEN as u64) / 4 * 3 <= MAX_CLI_STDIN,
+        "argv 口解出来的上限比 stdin 那一形还大"
+    );
+}
+
+/// ★ 协议文档写的数与代码里的常量是同一个（上限 · 静默窗 · 两个旗标 · 码）。改了常量不改文档，这里红。
+#[test]
+fn the_protocol_doc_states_the_input_limits_the_code_enforces() {
+    let doc = include_str!("../../../src/doc/IPC-PROTOCOL.md");
+    let sec = doc
+        .split("## 8. CLI 一次性调用")
+        .nth(1)
+        .and_then(|s| s.split("\n## ").next())
+        .expect("IPC-PROTOCOL.md 没有「8. CLI 一次性调用」那一节");
+    let mib = MAX_CLI_STDIN / (1024 * 1024);
+    assert_eq!(
+        MAX_CLI_STDIN,
+        mib * 1024 * 1024,
+        "MAX_CLI_STDIN 不是整 MiB，下面这条比法要改"
+    );
+    for want in [
+        crate::ARGS_B64_FLAG.to_string(),
+        crate::STDIN_LINE_FLAG.to_string(),
+        format!("{mib} MiB（{MAX_CLI_STDIN} 字节）"),
+        format!("{MAX_ARGS_B64_LEN} 字节"),
+        format!("{} ms", STDIN_QUIET.as_millis()),
+        "`args_too_large`".to_string(),
+        "`no_input`".to_string(),
+        "任意位置".to_string(),
+    ] {
+        assert!(
+            sec.contains(&want),
+            "协议文档 §8 没写 {want:?}（代码里是这个数 / 这个词）"
+        );
+    }
+}
+
+/// ★ 不上 CLI 面的理由分三种、各住一张表，**互不重叠**：`STREAM_ONLY`（一次性进程里结构上答不了：答出来是假话 / 活不过进程）·
+/// `UI_ONLY`（答得了，只是除了界面没人用得着 —— 这是关于调用方是谁的产品判断，第二个前端来了就该重看）· 测试里的 `NOT_ON_CLI`
+/// （`Run::Builtin` 与占了 ccm 的词）。混成一张表时，后一种理由被读成前一种，第二个前端就够不着（审计 §4）。
+#[test]
+fn the_withheld_tables_do_not_overlap_and_each_holds_its_own_kind() {
+    fn names(t: &[(&'static str, &'static str)]) -> Vec<&'static str> {
+        t.iter().map(|(n, _)| *n).collect()
+    }
+    let (s, u, n) = (
+        names(STREAM_ONLY_WHY),
+        names(UI_ONLY_WHY),
+        names(NOT_ON_CLI),
+    );
+    // 理由表与生产那两张表两向相等（一条都不多、一条都不少）。
+    let sorted = |mut v: Vec<&'static str>| {
+        v.sort_unstable();
+        v
+    };
+    assert_eq!(
+        sorted(s.clone()),
+        sorted(STREAM_ONLY.to_vec()),
+        "`STREAM_ONLY_WHY` 与生产的 `STREAM_ONLY` 对不上"
+    );
+    assert_eq!(
+        sorted(u.clone()),
+        sorted(UI_ONLY.to_vec()),
+        "`UI_ONLY_WHY` 与生产的 `UI_ONLY` 对不上"
+    );
+    for (a, an, b, bn) in [
+        (&s, "STREAM_ONLY", &u, "UI_ONLY"),
+        (&s, "STREAM_ONLY", &n, "NOT_ON_CLI"),
+        (&u, "UI_ONLY", &n, "NOT_ON_CLI"),
+    ] {
+        let both: Vec<_> = a.iter().filter(|x| b.contains(x)).collect();
+        assert!(
+            both.is_empty(),
+            "{an} 与 {bn} 都登记了 {both:?} —— 一条命令只有一种理由"
+        );
+    }
+    // 两张生产表收的都是**跑得起来**的命令（`Builtin` 那一种本来就跑不了，理由住 `NOT_ON_CLI`）。
+    for name in s.iter().chain(u.iter()) {
+        let spec = REGISTRY
+            .iter()
+            .find(|x| x.name == *name)
+            .unwrap_or_else(|| panic!("{name} 不在 REGISTRY 里 —— 过期的登记"));
+        assert!(
+            !matches!(spec.run, Run::Builtin),
+            "{name} 是 `Run::Builtin`，理由该住 `NOT_ON_CLI`"
+        );
+    }
+    // `NOT_ON_CLI` 只收那两种。
+    for name in &n {
+        if let Some(spec) = REGISTRY.iter().find(|x| x.name == *name) {
+            assert!(
+                matches!(spec.run, Run::Builtin) || crate::control::ccm::argv::is_ccm_word(&flag_of(name)),
+                "`NOT_ON_CLI` 里的 {name} 跑得起来、也不是 ccm 的词 —— 它的理由该住 `STREAM_ONLY` 或 `UI_ONLY`"
+            );
+        }
+    }
+    // 「只有界面用得着」那一张里，理由**不许**是「命令行那一侧直接敲 `ccm` 就是它」—— 那挡的是第二个入口，挡不住第二个前端。
+    for (name, why) in UI_ONLY_WHY {
+        assert!(
+            !why.contains("直接敲"),
+            "UI_ONLY 里 {name} 的理由是「直接敲 ccm」那一种 —— 那不是理由"
+        );
+    }
+}
+
+/// ★ 审计 §4 复核后放出的那几条（理由原是「只有界面用得着」，一次性进程里答得出真话）今天在 CLI 面上。
+#[test]
+fn the_commands_released_from_ui_only_are_on_the_cli() {
+    for name in [
+        "session-new",
+        "session-new-facts",
+        "session-new-dir",
+        "sessions-stop",
+        "sessions-start",
+        "sessions-where",
+        "terminal-name-mint",
+        "terminal-ssh",
+        "history-search-merge",
+    ] {
+        assert!(spec_for(&flag_of(name)).is_some(), "{name} 没上 CLI 面");
+    }
 }

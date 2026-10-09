@@ -111,7 +111,11 @@ fn a_target_is_one_handle_or_one_sid_from_the_list_and_nothing_else() {
         json!({ "terminal": 1 }),
         json!({ "sid": "x".repeat(300) }),
     ] {
-        assert_eq!(target_of(&bad).map_err(|e| e.0), Err("bad_target"), "{bad}");
+        assert_eq!(
+            target_of(&bad).map_err(|e| e.code),
+            Err("bad_target".to_string()),
+            "{bad}"
+        );
     }
     let rows = vec![
         row("$1", "a-cc", "s1", "", "claude"),
@@ -187,7 +191,11 @@ fn text_and_keys_are_separate_and_keys_come_from_a_closed_table() {
         json!({ "text": "a\u{1b}b" }),
         json!({ "text": "a", "enter": "yes" }),
     ] {
-        assert_eq!(input_of(&bad).map_err(|e| e.0), Err("bad_args"), "{bad}");
+        assert_eq!(
+            input_of(&bad).map_err(|e| e.code),
+            Err("bad_args".to_string()),
+            "{bad}"
+        );
     }
 }
 
@@ -550,8 +558,8 @@ fn on_a_real_tmux_the_three_commands_do_what_they_say() {
             json!({ "result": "refused", "why": "not_known", "said": no_said("not_known") })
         );
         assert_eq!(
-            preview_on(iso.on(), &json!({ "terminal": raw })).map_err(|e| e.0),
-            Err("not_known")
+            preview_on(iso.on(), &json!({ "terminal": raw })).map_err(|e| e.code),
+            Err("not_known".to_string())
         );
     }
 }
@@ -801,5 +809,45 @@ fn terminal_reason_codes_use_underscores_like_command_codes() {
         .chain(codes_of("terminals-list").iter())
     {
         assert!(!code.contains('-'), "命令级码 `{code}` 带短横");
+    }
+}
+
+/// ★ `terminal-input` 只收它真用得上的那几格；`take`（「先接管输入」）删了 —— 原先收了、校验了、然后丢掉，
+/// 第二个前端照字段表画了一颗按钮、按下去什么都不变。再送它 ⇒ 照「多送一格就拒」回 `bad_args`，在碰 tmux 之前。
+#[test]
+fn terminal_input_refuses_fields_it_does_not_use() {
+    let on = On {
+        socket: Some("/nonexistent/cli2nd/tmux.sock"),
+    };
+    for extra in ["take", "nonsense"] {
+        let mut args = json!({ "terminal": "tmux-1", "text": "x" });
+        args[extra] = json!(true);
+        let e = input_on(on, &args).expect_err("多送的一格该被拒");
+        assert_eq!(e.code, "bad_args", "{extra}：码不对：{e:?}");
+        assert!(
+            e.message.contains(extra),
+            "{extra}：那句话没点名多出来的那一格：{}",
+            e.message
+        );
+    }
+}
+
+/// ★ 抓屏不过身份门、恒可用 ⇒ 不在「这个调用方能做什么」（`can`）里占一格：放在那里读起来像会变的能力，实际恒真。
+#[test]
+fn can_holds_only_what_can_vary() {
+    for r in [
+        row("$1", "a-cc", "", "", "bash"),
+        row("$2", "b-cc", "sid-b", "mobile", "claude"),
+    ]
+    .iter()
+    {
+        let can = &terminal_json(r, &[], None)["can"];
+        let keys: Vec<&str> = can
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        assert_eq!(keys, ["end", "input"], "`can` 里多了 / 少了格：{can}");
     }
 }

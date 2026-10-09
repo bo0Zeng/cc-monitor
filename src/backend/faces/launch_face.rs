@@ -22,7 +22,10 @@ pub(crate) fn pretrust_with(files: Option<Files>, agent: &str, dir: &str, cwd: &
     match pretrust(d, dir, cwd) {
         Ok(Marked::Wrote | Marked::Already | Marked::Nothing) => {}
         Ok(m) => tracing::warn!("起会话前预标信任：{dir} 没写（{m:?}），会话里会问一次"),
-        Err(e) => tracing::warn!("起会话前预标信任：{dir} 没写上，会话里会问一次：{e}"),
+        Err(e) => tracing::warn!(
+            "起会话前预标信任：{dir} 没写上，会话里会问一次：{}",
+            e.logged()
+        ),
     }
 }
 

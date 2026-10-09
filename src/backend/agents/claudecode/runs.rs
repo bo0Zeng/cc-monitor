@@ -306,6 +306,34 @@ pub(crate) fn owner(p: &Path) -> Option<PathBuf> {
     Some(PathBuf::from(parent))
 }
 
+/// 记录树根底下 id 为 `child_id` 的子 agent 记录：`<根>/<项目>/<父 sid>/subagents/[至多 CHILD_DEPTH 层]/agent-<id>.jsonl`。
+/// 只在每份父记录的子目录里找名字对得上的那一份（不读内容）；没有 ⇒ `None`。
+pub(crate) fn find(records_root: &Path, child_id: &str) -> Option<PathBuf> {
+    if child_id.is_empty() || child_id.contains(['/', '\\', '.']) {
+        return None;
+    }
+    let want = format!("{CHILD_PREFIX}{child_id}.jsonl");
+    for proj in std::fs::read_dir(records_root).ok()?.flatten() {
+        let Ok(stems) = std::fs::read_dir(proj.path()) else {
+            continue;
+        };
+        for stem in stems.flatten() {
+            if !stem.file_type().is_ok_and(|t| t.is_dir()) {
+                continue;
+            }
+            let mut out = Vec::new();
+            walk(&stem.path().join(CHILD_DIR), CHILD_DEPTH, &mut out);
+            if let Some(p) = out
+                .into_iter()
+                .find(|p| p.file_name().and_then(|n| n.to_str()) == Some(want.as_str()))
+            {
+                return Some(p);
+            }
+        }
+    }
+    None
+}
+
 fn walk(dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
     let Ok(rd) = std::fs::read_dir(dir) else {
         return;

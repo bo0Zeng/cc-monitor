@@ -428,3 +428,122 @@ fn the_unblocked_net_catches_its_three_shapes_and_spares_the_rest() {
         );
     }
 }
+
+/// 量具目录（仓根相对）。
+const EVIDENCE_DIR: &str = "tests/evidence/";
+
+/// 第四张网：点名量具的地方。两形，网眼拆两段、运行期拼。
+/// - 带目录：`tests/evidence/<文件>`，全仓都扫；
+/// - 不带目录：量具目录里的文件互相点名用的短名（大写打头、带连字符、带后缀；前面带半截目录也算），只在量具目录里扫。
+fn evidence_pointer_eyes() -> (Regex, Regex) {
+    let full = format!(r"{}{}(?P<name>[A-Za-z0-9_.-]+)", "tests/evi", "dence/");
+    let bare = format!(
+        r"(?:^|[^A-Za-z0-9_.-])(?P<name>[A-Z][A-Za-z0-9]*(?:-[\p{{Han}}A-Za-z0-9]+)+\.(?:py|sh|ps1|mjs|ts|rs|json|tsv|{}))\b",
+        "md"
+    );
+    (
+        Regex::new(&full).expect("带目录网眼"),
+        Regex::new(&bare).expect("短名网眼"),
+    )
+}
+
+/// 一行里点名、却不在仓里的量具（名字列表）。`evidence` = 量具目录里跟踪着的文件名；
+/// `basenames` = 全仓跟踪着的文件名（短名点到仓里别处的文档也算在）；`in_evidence` = 这一行是否住量具目录。
+fn dangling_evidence_names(
+    eyes: &(Regex, Regex),
+    evidence: &BTreeSet<String>,
+    basenames: &BTreeSet<String>,
+    in_evidence: bool,
+    line: &str,
+) -> Vec<String> {
+    let mut out = Vec::new();
+    for c in eyes.0.captures_iter(line) {
+        let name = c["name"].trim_end_matches('.');
+        if !name.is_empty() && !evidence.contains(name) {
+            out.push(format!("{}{name}", EVIDENCE_DIR));
+        }
+    }
+    if in_evidence {
+        for c in eyes.1.captures_iter(line) {
+            let name = &c["name"];
+            let full = format!("{}{name}", EVIDENCE_DIR);
+            if !basenames.contains(name) && !out.contains(&full) {
+                out.push(name.to_string());
+            }
+        }
+    }
+    out
+}
+
+/// 量具挪出仓之后，仓里不许还指着已经不在的量具：点名的都得在（命中集 == ∅）。
+#[test]
+fn every_named_evidence_file_is_in_the_repo() {
+    let texts = tracked_texts(&repo());
+    let evidence: BTreeSet<String> = texts
+        .iter()
+        .filter_map(|(rel, _)| rel.strip_prefix(EVIDENCE_DIR))
+        .map(str::to_string)
+        .collect();
+    assert!(
+        texts.len() > 500 && evidence.len() > 10,
+        "人群 {} 份、量具 {} 份 —— `git ls-files` 口径坏了，零命中不作数",
+        texts.len(),
+        evidence.len()
+    );
+    let basenames: BTreeSet<String> = texts
+        .iter()
+        .map(|(rel, _)| rel.rsplit('/').next().unwrap_or(rel).to_string())
+        .collect();
+    let eyes = evidence_pointer_eyes();
+    let mut hits = Vec::new();
+    for (rel, text) in &texts {
+        let in_evidence = rel.starts_with(EVIDENCE_DIR);
+        for (i, line) in text.lines().enumerate() {
+            for name in dangling_evidence_names(&eyes, &evidence, &basenames, in_evidence, line) {
+                hits.push(format!("{rel}:{}: {name}", i + 1));
+            }
+        }
+    }
+    assert!(
+        hits.is_empty(),
+        "仓里有 {} 处点名了不在仓里的量具：只是出处的删掉，承载理由的换成就地一句话。\n{}",
+        hits.len(),
+        hits.join("\n")
+    );
+}
+
+/// 合成夹具：点到不在的量具必须抓到，点到在的、目录本身、通配、别处的文档必须放过（行号集相等）。
+#[test]
+fn the_evidence_net_catches_missing_files_and_spares_present_ones() {
+    let eyes = evidence_pointer_eyes();
+    let evidence: BTreeSet<String> = ["CP-copy-judges.py", "README.md"].map(String::from).into();
+    let basenames: BTreeSet<String> = ["CP-copy-judges.py", "README.md", "IPC-COMMANDS.md"]
+        .map(String::from)
+        .into();
+    let dir = format!("tests/evi{}", "dence/");
+    let cases: [(bool, String); 10] = [
+        (false, format!("// 量具 `{dir}K-R1-gone.py`")), // 1 ✔ 不在
+        (false, format!("// 量具 `{dir}CP-copy-judges.py`。")), // 2 ✘ 在（句末标点不算名字）
+        (false, format!("// 本目录 `{dir}` 被排除")),    // 3 ✘ 目录本身
+        (false, format!("// `{dir}*.sh` 纳进 shellcheck")), // 4 ✘ 通配
+        (true, format!("口径同 `{}-ruler.py`", "K-R9")), // 5 ✔ 量具目录里的短名，不在
+        (true, format!("命令住 `{}-readings.md §1`", "S9")), // 6 ✔ 短名点 .md，仓里没有
+        (true, format!("见 `{}-COMMANDS.md`", "IPC")),   // 7 ✘ 仓里别处有
+        (false, format!("口径同 `{}-ruler.py`", "K-R9")), // 8 ✘ 量具目录外不扫短名
+        (true, format!("口径同 `evidence/{}-ruler.py`", "K-R9")), // 9 ✔ 带半截目录的短名
+        (true, format!("读数在 `{}-发版读数.md § 1`", "K-R9")), // 10 ✔ 名字里带汉字
+    ];
+    let got: BTreeSet<usize> = cases
+        .iter()
+        .enumerate()
+        .filter(|(_, (inside, l))| {
+            !dangling_evidence_names(&eyes, &evidence, &basenames, *inside, l).is_empty()
+        })
+        .map(|(i, _)| i + 1)
+        .collect();
+    assert_eq!(
+        got,
+        BTreeSet::from([1, 5, 6, 9, 10]),
+        "量具网在合成夹具上抓到的行 ≠ 标定（该抓 1、5、6、9、10）—— 网坏了，全仓那条零命中不作数"
+    );
+}

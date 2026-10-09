@@ -309,6 +309,8 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
     "`this.perMachineFallbackHint` —— 类名由 `skeleton.ts::makeSkeleton` 挂，跨文件",
   "src/frontend/ui/status-messages.ts::this.dot":
     "「消息」那一枚右上的琥珀点 `this.dot`（`s.smDot`）—— 建时收起；CSS 里另有 `.smDot[hidden]` 收住",
+  "src/frontend/ui/tab-bar-drag.ts::line":
+    "拖放的插入线 `line`（`s.dropLine`：fixed 定位、不写 display）—— 起拖时先收着，落点不画线（armed / 出栏 / 落在组头 / 压住）时收起",
   "src/frontend/ui/terminal-page.ts::this.followBox":
     "终端页「回到最新」外面那一格 `this.followBox`（`s.termFollow`：只定位、不写 display）—— 贴着底时收起",
   "src/frontend/ui/terminal-page.ts::this.liveTag":
@@ -488,8 +490,18 @@ const STATE_CLASS_UNRESOLVED: Readonly<Record<string, string>> = {
     "折叠号：svg 元素只能走 classList；`s.foldCaret` 是 CSS Modules 哈希名，开合靠所在元素的 `aria-expanded`，不是状态名",
   "src/frontend/ui/kit/icon.ts · classList.add(s.icon)":
     "图标件：svg 元素的 `className` 不是串、只能走 classList；`s.icon` 是 CSS Modules 哈希名，与 `data-*` 撞不了名",
-  "src/frontend/ui/tab-bar-drag.ts · classList.toggle(cls, on)":
-    "拖拽落点标记只动新旧两个（P3）：`cls` 是 `drop-before` / `drop-onto` 之一（同文件的常量），不是一个状态名的载体选择",
+  "src/frontend/ui/tab-bar-drag.ts · classList.add(s.ghostStack)":
+    "CSS Modules（`tab-group.module.css`）：几个一起拖时影子叠一层；哈希过的类名，只活在一次拖拽的影子上，不是状态名",
+  "src/frontend/ui/tab-bar-drag.ts · classList.add(s.hot)":
+    "CSS Modules（`tab-group.module.css`）：拖放时点亮落点所在组的引导线；哈希过的类名，只活在一次拖拽里，不是状态名",
+  "src/frontend/ui/tab-bar-drag.ts · classList.remove(s.hot)":
+    "同上那一格的摘掉（换落点 / 收尾）",
+  "src/frontend/ui/tab-bar-drag.ts · classList.add(s.landed)":
+    "CSS Modules（`tab-group.module.css`）：落下那几行的底色淡出一次（600ms 后摘）；哈希过的类名，是一段动效，不是状态名",
+  "src/frontend/ui/tab-bar-drag.ts · classList.remove(s.landed)":
+    "同上那一格放完摘掉",
+  "src/frontend/ui/tab-bar-drag.ts · classList.toggle(s.ghostCancel, d.cancel)":
+    "CSS Modules（`tab-group.module.css`）：拖出栏时影子变灰；哈希过的类名，只活在一次拖拽的影子上，没有 `data-*` 那一种载体",
   "src/frontend/ui/usage-hud.ts · classList.add(s.hudChip)":
     "CSS Modules（`usage-hud.module.css`）：`s.hudChip` 是构建时哈希过的类名（数字等宽那一条），不是状态名；预警态走 kit chip 的 `data-intent`",
   "src/frontend/ui/views/agent-window.ts · classList.add(s.awMark)":

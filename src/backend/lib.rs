@@ -50,6 +50,7 @@ mod layering_guard; // U3：§1.1 第二条解耦线的机器判据（observe↔
 #[path = "../../tests/backend/no_timer_guard.rs"]
 mod no_timer_guard; // P6：零定时器护栏（内部整体 #[cfg(test)]，生产构建为空）
 pub mod observe; // U3：观测面 —— 读，不改变世界
+pub mod plan; // 计划（planned-build）的读面：找 pb、跑 `pb dump`、加工成界面排版的成品、盯计划仓推 `plan_changed`（只读，一个字节都不写）
 pub mod platform; // U2：唯一允许平台原语与平台 cfg 的层（§1.1 第一条解耦线）
 pub mod plugin; // K-W1A：插件通用调用口 —— 找它 / 传 argv 起它 / 问它会什么（方向由 layering_guard 钉）
 #[cfg(test)]
@@ -878,7 +879,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// p9o-detail-everywhere：拨号应答 · files 链路失败应答 · backend_status.machine · 六条读答（unreadable）各多可缺 detail · 自有状态文件失败带原话 · 「那台不认这条命令」统一按码取一句、remote_ask 遇老后端回 unknown_command · Codex 中转（relay-optin 入参 agent · 426 / 403 key-scope · 直通钥匙 relay-pass-key）· Linux 单实例令牌转交 · 找 ssh 进后端。
 ///
 /// p9p-rotation-rules：轮换规则（存规则 · 默认 · 一键套用 · 批量管理）与 rotation-plan 预览 / 时间轴；兜底等待（往兜底号切前等非兜底号 wait 分钟）；session-new 带 rotation（先定 sid）；终端订阅先占位、壳替界面退订；remote-probe 结局带 detail；复制详情拼法收进 copy_core。
-pub const BUILD_ID: &str = "p9p-rotation-rules";
+///
+/// p9q-plan-cli-faces：planned-build 读写（plan-list / plan-read / plan-cell-view / plan-ack / plan-unack / plan-return ＋ plan_changed）；CLI 面放出起会话等 9 条与 ext-list-here、--args-b64 载荷口、无输入回 no_input、超大回 args_too_large；记录帧换形的加法（history-branch ＋ session_branch、history-facts 许可档 / 用量 / 花费成品、删 accounts-isolate 与 session_kind / status）；终端原因码统一下划线、terminal-input 删 take、terminals-list 的 can 删 preview；session-new 带 ticket。
+pub const BUILD_ID: &str = "p9q-plan-cli-faces";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
@@ -1008,6 +1011,14 @@ pub const SUBCOMMANDS: &[&str] = &[
     // ⚠ 加这两行会逼出一次 `BUILD_ID` bump（`build_id_guard`）—— 本路**不 bump**，合并那一拍统一做。
     "--exit-policy-read",
     "--quota-read",
+    // 计划读面三条（`inbound::REGISTRY` 的 `plan-*`）自动派生的 CLI 面，入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    "--plan-list",
+    "--plan-read",
+    "--plan-cell-view",
+    // 计划审面三条（`plan-ack` · `plan-unack` · `plan-return`）派生的 CLI 面，入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    "--plan-ack",
+    "--plan-unack",
+    "--plan-return",
     // 用某个号查一次额度（`inbound::REGISTRY` 的 `quota-probe`）派生的 CLI 面，入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     "--quota-probe",
     // 换号那一族（`inbound::REGISTRY` 的 `rotation-*`）自动派生的 CLI 面；除 `--rotation-rules-read` 外入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
@@ -1192,6 +1203,9 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 按运行读一个子运行的记录（替掉按目录与描述挑的那一条）。**子命令换了** ⇒ `build_id_guard` 红是预期的（本路不 bump）。
     "--history-run",
     "--history-search",
+    // 各台搜索结果合成一份（`history-search-merge`，纯计算）派生的 CLI 面：原先「只有界面逐台问完才有得合」，第二个前端同样逐台问 ⇒ 放出。
+    // ⚠ 新子命令 ⇒ BUILD_ID 合并那一拍统一 bump（本路不 bump）。
+    "--history-search-merge",
     "--history-tail",
     // `history-turns`（一轮的摘要，主窗口第 2 批）的 CLI 面。**是新子命令** ⇒ `build_id_guard` 红是预期的（本路不 bump）。
     "--history-turns",
@@ -1242,7 +1256,11 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--tasks-list",
     // 终端管理 L1 三条帧命令自动派生的 CLI 面（stdin 一段 JSON 当 `args`）。⚠ 新子命令 ⇒ `BUILD_ID` 合并那一拍统一 bump。
     "--terminal-input",
+    // 铸终端名 · 开终端那一串（`terminal-name-mint` / `terminal-ssh`）派生的 CLI 面：原先在 `cli_control` 那张「只有界面用得着」的表里，
+    //   复核后放出（铸名经会话快照现探；那一串由入参与这台的 ssh 客户端算出）。⚠ 新子命令 ⇒ BUILD_ID 合并那一拍统一 bump（本路不 bump）。
+    "--terminal-name-mint",
     "--terminal-preview",
+    "--terminal-ssh",
     "--terminals-list",
     "--tmux-notify",
 ];
@@ -1734,6 +1752,21 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         rationale: "与帧面 `terminal-preview` 那一行是同一条实现（CLI 面派生）⇒ 同一个理由（Windows 后台机制未定），同拍还，**暂时不做**。",
     },
     TargetGap {
+        family: "wire-commands",
+        capability: "plan-return",
+        target: Target::Windows,
+        kind: GapKind::Owed,
+        rationale: "计划退回送字走的就是 `terminal-input` 的本体（tmux `send-keys`，声明了 `no_tmux`）⇒ 同那一行的理由，\
+              Windows 后台机制定了、`terminal-input` 还上那一拍一起还，**暂时不做**。",
+    },
+    TargetGap {
+        family: "cli-subcommands",
+        capability: "--plan-return",
+        target: Target::Windows,
+        kind: GapKind::Owed,
+        rationale: "与帧面 `plan-return` 那一行是同一条实现（CLI 面派生）⇒ 同一个理由（Windows 后台机制未定），同拍还，**暂时不做**。",
+    },
+    TargetGap {
         family: "cli-subcommands",
         capability: "--terminal-input",
         target: Target::Windows,
@@ -2081,6 +2114,8 @@ pub const EMITS: &[&str] = &[
     "rotation_changed",
     // 这台的轮换规则表 / 默认指向变了（帧面写规则那一路与盯盘那一路真发，走 tap 那条可丢的通道；登记 = 承诺真发）。
     "rotation_rules_changed",
+    // 某个 pb 工作区的计划变了（plan 读面盯它读过的工作区，重读后输出摘要变了才发，走 tap 那条可丢的通道；登记 = 承诺真发）。
+    "plan_changed",
     // 某个会话的任务清单变了（watcher 盯 `<agent 家>/tasks/`，登记 = 承诺真发，已接线）。
     "tasks_changed",
     // 活会话清单报完了（watch_loop Phase 1 走完那一刻发一次，登记 = 承诺真发，已接线）。
@@ -2157,6 +2192,14 @@ pub struct StreamWants {
 /// 只该认得这个字面量，不该因此在引用图上连到 CLI 面的分派口（`target_parity_guard` 那条「够不够得着 tmux」按文件级引用图走）。
 pub const STDIN_LINE_FLAG: &str = "--stdin-line";
 
+/// **argv 形载荷口**：跟在子命令后面、位置不限（`--history-read --args-b64 <base64 的 JSON>`）⇒ 入参从这里取，不碰 stdin。
+///
+/// 为什么要它：第二个前端的执行通道**只有 stdout、写不了 stdin**，而 CLI 面上收入参的命令占了绝大多数。base64 而不是裸 JSON：
+/// 一个参数里只剩 `[A-Za-z0-9+/=]`，过哪一家登录 shell 的引号都不变形（fish 吃反斜杠那一类，见 [`STDIN_LINE_FLAG`] 的头注）。
+/// 与 [`STDIN_LINE_FLAG`] 二选一；上限与系统单个参数的上限见 `control/cli_control.rs::MAX_ARGS_B64_LEN`。
+/// 住这里同 [`STDIN_LINE_FLAG`]：它是 [`SUBCOMMAND_OPTIONS`] 的一员。
+pub const ARGS_B64_FLAG: &str = "--args-b64";
+
 /// **「给人看」那一形**：跟在 `--quota-read` 后面（`--quota-read --text`）⇒ 同一份回包排成每号一段的字（`control/quota_text.rs`）。
 /// 只给这一条；别的子命令带它 ⇒ `bad_args`。缺省仍是 JSON 进 JSON 出。住这里同 [`STDIN_LINE_FLAG`]：它是 [`SUBCOMMAND_OPTIONS`] 的一员。
 pub const TEXT_FLAG: &str = "--text";
@@ -2171,6 +2214,8 @@ pub fn cli_flag(name: &str) -> String {
 /// ③ 子命令自己的选项：只在某条 [`SUBCOMMANDS`] 之后才有意义，backend 顶层不解释它们。
 pub const SUBCOMMAND_OPTIONS: &[&str] = &[
     "--after-ms",
+    // CLI 控制面那一族（`--<帧命令>`）的 argv 形载荷口（与 `--stdin-line` 二选一）。⚠ 进指纹的 `#options` 段 ⇒ 逼出 `BUILD_ID` bump，本路不 bump。
+    ARGS_B64_FLAG,
     // `--list-user-inputs` 的增量起点（字节偏移，传上次尾行的 `end`）。
     "--from",
     // `--resident-stop` 的宽限期（秒；必须大于退出排空上限）。
@@ -2258,6 +2303,11 @@ mod fourth_face_tests;
 #[cfg(test)]
 #[path = "../../tests/backend/main_window_raise_guard.rs"]
 mod window_raise_guard;
+
+#[allow(clippy::items_after_test_module)]
+#[cfg(test)]
+#[path = "../../tests/backend/raw_said_guard.rs"]
+mod raw_said_guard;
 
 #[allow(clippy::items_after_test_module)]
 #[cfg(test)]

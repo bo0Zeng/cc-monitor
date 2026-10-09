@@ -567,6 +567,50 @@ chk "★ 它的收件箱也清了（cc-bus「收掉成员」的全套）" "$([ -
 chk "★ 别的会话上登记的 dgother_cc 原样在" "$(awk -F'\t' '$1=="dgother_cc"' "$BUS/agents.tsv" | wc -l | tr -d ' ')" "1"
 tmux kill-session -t '=dgother-cc' 2>/dev/null || true
 
+echo "[CLI2] ★ CLI 面的入参不再隐含「调用方写得了 stdin」：argv 载荷口 · 开着不写不挂 · --stdin-line 任意位置 · 超大回码"
+# 一份沙箱里的会话记录（夹具文字，不是真正文）。
+mkdir -p "$CLA/projects/-cli2"
+J="$CLA/projects/-cli2/c2000000-0000-4000-8000-000000000001.jsonl"
+printf '%s\n' \
+  '{"type":"user","uuid":"u1","parentUuid":null,"sessionId":"c2000000-0000-4000-8000-000000000001","timestamp":"2026-10-09T00:00:00Z","cwd":"/w","message":{"role":"user","content":"夹具一句"}}' \
+  '{"type":"assistant","uuid":"a1","parentUuid":"u1","sessionId":"c2000000-0000-4000-8000-000000000001","timestamp":"2026-10-09T00:00:01Z","message":{"role":"assistant","model":"m","content":[{"type":"text","text":"夹具回话"}]}}' > "$J"
+c2ms() { local t=${EPOCHREALTIME/./}; echo $(( t / 1000 )); }
+for _cmd in history-read history-facts; do
+  _j="$(jq -cn --arg p "$J" '{path:$p}')"
+  printf '%s' "$_j" | d "--$_cmd" >"$SANDBOX/c2-in.txt"; _rc_in=$?; cp "$SANDBOX/err.txt" "$SANDBOX/c2-in.err"
+  _b="$(printf '%s' "$_j" | base64 -w0)"
+  d "--$_cmd" --args-b64 "$_b" < <(sleep 30) >"$SANDBOX/c2-av.txt"; _rc_av=$?
+  chk "★ $_cmd：stdin 那一形答出来了（退出 0）" "$_rc_in" "0"
+  chk "★ $_cmd：argv 载荷口与 stdin 逐字一样（stdout）" "$(cmp -s "$SANDBOX/c2-in.txt" "$SANDBOX/c2-av.txt" && echo 同 || echo 不同)" "同"
+  chk "  $_cmd：退出码 · stderr 也一样" "$_rc_av|$(cat "$SANDBOX/err.txt")" "$_rc_in|$(cat "$SANDBOX/c2-in.err")"
+  cp "$SANDBOX/c2-in.txt" "$SANDBOX/c2-$_cmd.txt"
+done
+chk "  history-read 出的是成品行（不是空包）" "$(jq -r '[.rows[].message.type] | join(",")' < "$SANDBOX/c2-history-read.txt")" "user,assistant"
+# stdin 开着、一直不写：两种读法都立即回 no_input，不挂到被掐。
+for _extra in "" --stdin-line; do
+  _t0=$(c2ms); d --history-read $_extra < <(sleep 30) >/dev/null; _rc=$?; _dt=$(( $(c2ms) - _t0 ))
+  chk "★ 开着不写（${_extra:-默认}）：立即回码（不是挂到被掐）" "$([ "$_rc" -eq 2 ] && [ "$_dt" -lt 5000 ] && echo 是 || echo "否 rc=$_rc ${_dt}ms")" "是"
+  chk "  码是 no_input" "$(jq -r .code < "$SANDBOX/err.txt" 2>/dev/null)" "no_input"
+done
+# stdin 是 EOF：照旧当 {}，由命令自己说缺什么。
+d --history-read </dev/null >/dev/null
+chk "★ stdin 是 EOF：命令自己回缺入参（bad_args）" "$(jq -r .code < "$SANDBOX/err.txt" 2>/dev/null)" "bad_args"
+# --stdin-line 不在第二格也认：读到换行就动手，stdin 后面不关也不挂。
+_t0=$(c2ms); { printf '%s\n' "$(jq -cn --arg p "$J" '{path:$p}')"; sleep 30; } | d --history-read --summaryOnly-ignored --stdin-line >"$SANDBOX/c2-sl.txt" &
+_pid=$!; _ok=否; for _ in $(seq 1 50); do [ -s "$SANDBOX/c2-sl.txt" ] && { _ok=是; break; }; sleep 0.1; done; kill "$_pid" 2>/dev/null; wait "$_pid" 2>/dev/null
+chk "★ --stdin-line 在后面也认（5 s 内答出、不等 EOF）" "$_ok" "是"
+# 两个口都给 ⇒ bad_args。
+d --history-read --args-b64 e30= --stdin-line < <(sleep 30) >/dev/null
+chk "★ 两个口都给：bad_args" "$(jq -r .code < "$SANDBOX/err.txt" 2>/dev/null)" "bad_args"
+# 超大：stdin 一形（1 MiB ＋ 1）· argv 一形（系统放得进来、本后端嫌大的那一段）。
+head -c 1048577 /dev/zero | tr '\0' ' ' | d --history-read >/dev/null
+chk "★ stdin 超 1 MiB：args_too_large（不截断、不挂）" "$(jq -r .code < "$SANDBOX/err.txt" 2>/dev/null)" "args_too_large"
+d --history-read --args-b64 "$(head -c 131070 /dev/zero | tr '\0' A)" < <(sleep 30) >/dev/null
+chk "★ argv 值超本后端的上限：args_too_large" "$(jq -r .code < "$SANDBOX/err.txt" 2>/dev/null)" "args_too_large"
+# 超过系统单个参数的上限（Linux 131072 含 NUL）：起不来，错在 exec 那一层 —— 也是立即失败、不挂。
+_t0=$(c2ms); d --history-read --args-b64 "$(head -c 140000 /dev/zero | tr '\0' A)" < <(sleep 30) >/dev/null 2>&1; _rc=$?; _dt=$(( $(c2ms) - _t0 ))
+chk "★ argv 超系统上限：exec 那一层立即失败（非 0、不挂）" "$([ "$_rc" -ne 0 ] && [ "$_rc" -ne 124 ] && [ "$_dt" -lt 5000 ] && echo 是 || echo "否 rc=$_rc ${_dt}ms")" "是"
+
 "$REALTMUX" -L "$_SOCK" kill-server 2>/dev/null || true
 
 echo

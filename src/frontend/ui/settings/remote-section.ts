@@ -430,8 +430,8 @@ export class RemoteSection {
     [...this.pageIdOf.entries()].find(([, id]) => id === pageId)?.[0].showLive(up);
   }
 
-  /** 问题行的修法：连接这台 / 连接设置在这里就做得了，其余交宿主。 */
-  private runFix(pageId: string, fix: MachineFix): void {
+  /** 问题行的修法（列表那一行与机器单页卡头同一个口子）：连接这台 / 连接设置 / 比对指纹 / 推送公钥在这里就做得了，其余交宿主。 */
+  runFix(pageId: string, fix: MachineFix): void {
     if (fix === "connect") this.setConnect(pageId, true);
     else if (fix === "conn_settings") this.pages?.openMachineSection?.(pageId, "conn");
     else if (fix === "compare_fingerprint") void this.compareFingerprint(pageId);
@@ -572,6 +572,7 @@ export class RemoteSection {
     // 重建前先把上一批机器页收掉，否则改完配置会留下一串指向已不存在机器的导航项。
     for (const id of this.machinePageIds) this.pages?.removeMachinePage(id);
     this.machinePageIds = [];
+    for (const c of this.cards) c.dispose();
     this.cards = [];
     // Phase G：这批卡整个作废，页 id 表跟着清 —— 不清的话 `#n` 去重会把上一批的
     // id 也算进冲突，重建几次之后每台机器的 id 会一路往后飘（`devbox#2`、`devbox#3`…）。
@@ -797,6 +798,7 @@ export class RemoteSection {
       },
       () => {
         if (undone) return;
+        card.dispose();
         if (card.persistedKey) void forgetSeen(card.persistedKey);
         this.pageIdOf.delete(card);
         void this.save();

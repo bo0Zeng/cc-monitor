@@ -307,7 +307,7 @@ function acctOps(aw: AcctWorld, w: () => World): Record<string, OpHandler> {
               }
             : {}),
           explain:
-            "起始账号先用 · 到 90% 从头取首个可用 · 不主动换回 · 其余号 40m 内恢复则不切兜底 · 都到上限仍发",
+            "起始账号先用 · 到 90% 从头取首个可用 · 不主动换回 · 都到上限仍发",
           ...(s.custom ? { custom: s.custom } : {}),
           account: {
             start: s.start,

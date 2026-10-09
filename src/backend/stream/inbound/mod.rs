@@ -368,10 +368,9 @@ fn dispatch(
                         desk.follow_off_worker(r.args)
                             .await
                             .map(|()| None)
-                            .map_err(|(c, m)| {
-                                let mut f = Fail::new(c, m);
+                            .map_err(|mut f| {
                                 f.data = Some(serde_json::json!({
-                                    "live": crate::control::terminal_follow::live_after_refusal(c),
+                                    "live": crate::control::terminal_follow::live_after_refusal(&f.code),
                                 }));
                                 f
                             })
@@ -487,6 +486,7 @@ pub(crate) mod registry {
     pub(super) mod history;
     pub(super) mod link;
     pub(super) mod machine;
+    pub(super) mod plan;
     pub(super) mod terminals;
 
     /// 族的全集：`registry/` 下每一份文件恰好一行（`inbound_structure_guards` 两向钉住）。次序就是 [`super::REGISTRY`] 里的次序。
@@ -500,6 +500,7 @@ pub(crate) mod registry {
         bus::SPECS,
         terminals::SPECS,
         machine::SPECS,
+        plan::SPECS,
     ];
 }
 

@@ -48,45 +48,56 @@ const ANSWER_CAP: usize = 64 * 1024;
 pub(crate) enum Unusable {
     /// 那个号没登录（凭据文件不在 / 里面没有令牌）。
     NotLoggedIn,
-    /// 凭据文件读不出来（只有原因，不带内容）。
-    Unreadable(String),
+    /// 凭据文件读不出来（一句原因词 ＋ 下层原话；不带内容）。
+    Unreadable(crate::common::said::Said),
     /// 访问令牌过期了，又没有刷新令牌。
     Expired,
     /// 别的进程正在续这个号（锁有人持着）。
     Busy,
     /// 令牌端点不收这个刷新令牌（状态码）—— 要重新登录。
     Refused(u16),
-    /// 续期那一发没成（连不上 / 回包读不懂），一句原因。
-    NotRenewed(String),
-    /// 续好了，写不回那份文件。
-    WriteFailed(String),
+    /// 续期那一发没成（连不上 / 回包读不懂），一句原因 ＋ 可缺的原话。
+    NotRenewed(crate::common::said::Said),
+    /// 续好了，写不回那份文件（一句原因词 ＋ 原话）。
+    WriteFailed(crate::common::said::Said),
 }
 
 impl Unusable {
-    /// 对外那一句（点名是哪个号）。
-    pub(crate) fn said(&self, account: &str) -> String {
+    /// 对外那一句（点名是哪个号）＋ 下层原话（只进日志：换号那一路 `rotate.rs` 记 `logged()`）。
+    pub(crate) fn said(&self, account: &str) -> crate::common::said::Said {
+        let plain = |s: String| crate::common::said::Said::from(s);
         match self {
-            Unusable::NotLoggedIn => {
-                copy_text("beOauth.unusable.notLoggedIn", &[("account", account)])
-            }
-            Unusable::Unreadable(why) => copy_text(
-                "beOauth.unusable.unreadable",
-                &[("account", account), ("why", why)],
-            ),
-            Unusable::Expired => copy_text("beOauth.unusable.expired", &[("account", account)]),
-            Unusable::Busy => copy_text("beOauth.unusable.busy", &[("account", account)]),
-            Unusable::Refused(status) => copy_text(
+            Unusable::NotLoggedIn => plain(copy_text(
+                "beOauth.unusable.notLoggedIn",
+                &[("account", account)],
+            )),
+            Unusable::Unreadable(why) => why.clone().wrap(|w| {
+                copy_text(
+                    "beOauth.unusable.unreadable",
+                    &[("account", account), ("why", w)],
+                )
+            }),
+            Unusable::Expired => plain(copy_text(
+                "beOauth.unusable.expired",
+                &[("account", account)],
+            )),
+            Unusable::Busy => plain(copy_text("beOauth.unusable.busy", &[("account", account)])),
+            Unusable::Refused(status) => plain(copy_text(
                 "beOauth.unusable.rejected",
                 &[("account", account), ("status", &status.to_string())],
-            ),
-            Unusable::NotRenewed(why) => copy_text(
-                "beOauth.unusable.failed",
-                &[("account", account), ("why", why)],
-            ),
-            Unusable::WriteFailed(why) => copy_text(
-                "beOauth.unusable.writeFailed",
-                &[("account", account), ("why", why)],
-            ),
+            )),
+            Unusable::NotRenewed(why) => why.clone().wrap(|w| {
+                copy_text(
+                    "beOauth.unusable.failed",
+                    &[("account", account), ("why", w)],
+                )
+            }),
+            Unusable::WriteFailed(why) => why.clone().wrap(|w| {
+                copy_text(
+                    "beOauth.unusable.writeFailed",
+                    &[("account", account), ("why", w)],
+                )
+            }),
         }
     }
 }
@@ -102,8 +113,8 @@ struct Now {
 fn look(dir: &Path, face: &LoginFace) -> Result<Now, Unusable> {
     let doc = match store::read(dir, face) {
         store::Read::Absent => return Err(Unusable::NotLoggedIn),
-        // `Unusable` 那几句只进日志（换号那一路 `rotate.rs`）⇒ 原话跟着那一句一起记。
-        store::Read::Unreadable(why) => return Err(Unusable::Unreadable(why.logged())),
+        // `Unusable` 那几句只进日志（换号那一路 `rotate.rs`）⇒ 原话跟着走，记日志时拼在那一句后面。
+        store::Read::Unreadable(why) => return Err(Unusable::Unreadable(why)),
         store::Read::Present(d) => d,
     };
     let expires_ms = doc
@@ -146,7 +157,7 @@ pub(crate) fn access_token(
     }) {
         Ok(store::Locked::Held(r)) => r,
         Ok(store::Locked::Busy) => Err(Unusable::Busy),
-        Err(why) => Err(Unusable::NotRenewed(why.logged())),
+        Err(why) => Err(Unusable::NotRenewed(why)),
     }
 }
 
@@ -242,10 +253,13 @@ fn renew_line(account: &str, t: &Trail, r: &Result<SecretKey, Unusable>) -> Stri
     )
 }
 
-/// 令牌端点那一发没连上 / 没读完：原因只记 `io::ErrorKind` 那一个词。
+/// 令牌端点那一发没连上 / 没读完：句子只带原因词，原话跟着（只进日志）。
 fn unreached(trail: &mut Trail, e: &std::io::Error) -> Unusable {
     trail.why = Some(format!("transport({})", e.kind()));
-    Unusable::NotRenewed(e.kind().to_string())
+    Unusable::NotRenewed(crate::common::said::Said::with_raw(
+        copy_core::io_reason(e.kind()),
+        e,
+    ))
 }
 
 /// 发续期 → 读回包 → 写前比对 → 整份写回；一路把能进日志的几格记进 `trail`。
@@ -299,19 +313,18 @@ fn renew(
         return Err(if matches!(answer.status, 400 | 401) {
             Unusable::Refused(answer.status)
         } else {
-            Unusable::NotRenewed(copy_text(
+            Unusable::NotRenewed(crate::common::said::Said::from(copy_text(
                 "beOauth.refresh.status",
                 &[("status", &answer.status.to_string())],
-            ))
+            )))
         });
     }
     let got: Map<String, Value> = match serde_json::from_slice(&answer.body) {
         Ok(Value::Object(m)) => m,
         _ => {
             trail.why = Some("not-json".to_string());
-            return Err(Unusable::NotRenewed(copy_text(
-                "beOauth.refresh.notJson",
-                &[],
+            return Err(Unusable::NotRenewed(crate::common::said::Said::from(
+                copy_text("beOauth.refresh.notJson", &[]),
             )));
         }
     };
@@ -321,9 +334,8 @@ fn renew(
         got.get("expires_in").and_then(Value::as_u64),
     ) else {
         trail.why = Some("missing".to_string());
-        return Err(Unusable::NotRenewed(copy_text(
-            "beOauth.refresh.missing",
-            &[],
+        return Err(Unusable::NotRenewed(crate::common::said::Said::from(
+            copy_text("beOauth.refresh.missing", &[]),
         )));
     };
     let refresh = secret_in(&wrapped, "t", "refresh_token");
@@ -348,7 +360,7 @@ fn renew(
         secrets.push((face.refresh, r));
     }
     let doc = merge_tokens(&disk.doc, face.section, &secrets, &plain);
-    store::write_tokens(dir, face, &doc).map_err(|e| Unusable::WriteFailed(e.logged()))?;
+    store::write_tokens(dir, face, &doc).map_err(Unusable::WriteFailed)?;
     Ok(access)
 }
 

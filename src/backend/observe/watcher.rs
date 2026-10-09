@@ -2380,7 +2380,7 @@ fn adopt_launch_note(state: &ReaderState, pid: u32, sid: &str) {
     };
     let alive = |p: u32| crate::platform::proc::pid_alive(p).then(|| started_at(p));
     if let Err(e) = crate::control::launch_account::adopt(home, pid, sid, started_at(pid), &alive) {
-        tracing::warn!("起会话账号没记上（pid {pid} · sid {sid}）：{e}");
+        tracing::warn!("起会话账号没记上（pid {pid} · sid {sid}）：{}", e.logged());
     }
 }
 

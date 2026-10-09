@@ -48,6 +48,8 @@ pub mod resident;
 pub mod resolve_query;
 pub(crate) mod session_batch;
 pub(crate) mod session_new;
+// 起新会话那一趟的票（期限到了再问一次 ⇒ 认出同一趟，不起第二个）。
+pub(crate) mod session_new_ticket;
 // 换号重启：查号 → 先压缩（可选）→ 停旧 → 同一终端名用新号起 → 等报出（帧面宿主 `faces/session_restart_face.rs`）。
 pub(crate) mod session_restart;
 // 终端管理 L1：名单 · 抓一屏 · 送字送键（两个前端共用，形状与宿主无关；这一版宿主是 tmux）。

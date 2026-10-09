@@ -672,6 +672,12 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "拒收+回错",
     ),
     (
+        "src/backend/control/cli_control.rs",
+        "MAX_ARGS_B64_LEN",
+        "控制面 CLI 子命令 argv 形载荷口（`--args-b64`）的值（base64 编码后；留在系统单个参数的上限之内）",
+        "拒收+回错",
+    ),
+    (
         "src/backend/stream/inbound/mod.rs",
         "MAX_LINE_BYTES",
         "入方向单行",
@@ -880,6 +886,12 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "硬报错",
     ),
     (
+        "src/backend/agents/claudecode/assets.rs",
+        "PLUGIN_MANIFEST_MAX_BYTES",
+        "找插件时读一个插件根的 `.claude-plugin/plugin.json`（只为取 `name`）—— 读不出来那个目录就不算插件",
+        "跳过+说清",
+    ),
+    (
         "src/backend/assets/asset_catalog.rs",
         "CATALOG_MAX_BYTES",
         "后端自有的资产目录文件 `~/.cc-monitor/assets-catalog.json`（读不出来就不覆盖）",
@@ -941,6 +953,12 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "src/backend/footprint/chores/marks.rs",
         "MAX_BYTES",
         "后端自有的「要你动手」选择 `~/.cc-monitor/chores.json`（读不出来就不覆盖）",
+        "拒收+回错",
+    ),
+    (
+        "src/backend/plan/review.rs",
+        "MAX_BYTES",
+        "后端自有的计划认可与退回记录 `~/.cc-monitor/plan-review.json`（读不出来就不覆盖）",
         "拒收+回错",
     ),
     // 离线那台的上次值：一份超了拒收回错（`too_large`，不落一个字节）；整份超了当读不懂、照没记过算，写的那一下整份重来（它只是缓存）。

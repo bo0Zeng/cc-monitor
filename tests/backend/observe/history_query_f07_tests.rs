@@ -28,7 +28,18 @@ fn the_history_readers_stream_instead_of_slurping() {
         "../../../src/backend/observe/history_query.rs"
     ));
     // 项目目录那一格只读记录开头（适配层，`agents::first_in_head`），上界由那边的行为判据钉。
-    for (name, sig) in [("analyze_session", "fn analyze_session(")] {
+    // 〔perfC〕逐行扫那一段住清单缓存那一格（`ListingEntry::scan`，变长只扫尾巴也在那里）；`analyze_session` 只转调它。
+    let begin = src
+        .find("fn analyze_session(")
+        .expect("找不到 analyze_session —— 抽取器坏了");
+    let end = src[begin..]
+        .find("\n}\n")
+        .expect("找不到 analyze_session 的结尾");
+    assert!(
+        src[begin..begin + end].contains("ListingEntry::scan("),
+        "analyze_session 不再转调 `ListingEntry::scan` —— 下面那条钉的就不是它读文件的那一段了"
+    );
+    for (name, sig) in [("ListingEntry", "impl ListingEntry {")] {
         let begin = src
             .find(sig)
             .unwrap_or_else(|| panic!("找不到 {name} —— 抽取器坏了，本条会零命中地绿"));

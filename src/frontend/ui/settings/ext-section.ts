@@ -197,6 +197,10 @@ export class ExtSection {
   private readonly table: HTMLElement;
   private readonly drawer: HTMLElement;
   private list: ExtList | null = null;
+  /** `list` 的那一串（重读回来一字不差 ⇒ 不重画）。 */
+  private listWire = "";
+  /** 这一份表里各行建好的那一行（按 `list.rows` 里那一项认）：筛选只挑行往表里放，不重建；换了一份表才清。 */
+  private readonly rowEls = new Map<ExtRow, HTMLElement>();
   private query = "";
   private kind: KindFilter = "all";
   private openKey: string | null = null;
@@ -261,11 +265,20 @@ export class ExtSection {
       const synced = sync === null ? "" : await this.syncOnce(sync);
       const list = await extList(visit);
       if (my !== this.seq) return;
-      this.list = list;
+      // 进页先画手上那份、同步完再读一遍：两份常常一样 ⇒ 一样就不重画（几百行 × 十几台，整张表建一遍上百毫秒）。
+      const wire = JSON.stringify(list);
+      const changed = wire !== this.listWire;
+      if (changed) {
+        this.list = list;
+        this.listWire = wire;
+        this.rowEls.clear();
+      }
       const problems = list.problems.length > 0 ? copyText("extPage.status.problems", { n: String(list.problems.length), list: list.problems.join(copyText("extPage.list.sep")) }) : "";
       this.status.textContent = [problems, synced].filter((x) => x !== "").join(" ");
-      this.renderTable();
-      this.renderDrawer();
+      if (changed) {
+        this.renderTable();
+        this.renderDrawer();
+      }
       if (visit) void this.reload(false, LOCAL_ORIGIN);
     } catch (e) {
       if (my !== this.seq) return;
@@ -308,32 +321,11 @@ export class ExtSection {
     for (const m of list.machines) if (!m.reachable) this.table.appendChild(el("div", "ext-offline", copyText("extPage.offline.bar", { machine: machineName(m) })));
     this.table.appendChild(head);
     for (const r of rows) {
-      const line = el("button", "ext-row");
-      line.type = "button";
-      line.dataset.key = `${r.kind}/${r.name}`;
-      const name = el("span", "ext-name", r.name);
-      if (r.new) name.appendChild(el("span", "ext-new", copyText("extPage.row.new")));
-      if (r.builtin !== null || r.note !== null) {
-        const mark = el("span", "ext-note-mark");
-        mark.appendChild(icon("note", "compact"));
-        mark.title = copyText("extPage.row.noteMarkTitle");
-        mark.setAttribute("role", "img");
-        mark.setAttribute("aria-label", mark.title);
-        name.appendChild(mark);
+      let line = this.rowEls.get(r);
+      if (!line) {
+        line = this.rowEl(r, list);
+        this.rowEls.set(r, line);
       }
-      line.appendChild(name);
-      line.appendChild(el("span", "ext-kind", kindText(r)));
-      line.appendChild(el("span", "ext-about", r.about ?? ""));
-      const dots = el("span", "ext-dots");
-      r.cells.forEach((c, i) => {
-        const m = list.machines[i];
-        const d = dotOf(c.state);
-        if (!m.reachable) d.classList.add("is-offline");
-        d.title = copyText("extPage.dot.title", { machine: machineName(m), state: stateText(c.state, c.places) });
-        dots.appendChild(d);
-      });
-      line.appendChild(dots);
-      line.addEventListener("click", () => this.openRow(r));
       this.table.appendChild(line);
     }
     const legend = el("div", "ext-legend");
@@ -343,6 +335,37 @@ export class ExtSection {
       legend.appendChild(item);
     }
     this.table.appendChild(legend);
+  }
+
+  /** 表里的一行（名字 · 种类 · 做什么 · 每台一个点）。 */
+  private rowEl(r: ExtRow, list: ExtList): HTMLElement {
+    const line = el("button", "ext-row");
+    line.type = "button";
+    line.dataset.key = `${r.kind}/${r.name}`;
+    const name = el("span", "ext-name", r.name);
+    if (r.new) name.appendChild(el("span", "ext-new", copyText("extPage.row.new")));
+    if (r.builtin !== null || r.note !== null) {
+      const mark = el("span", "ext-note-mark");
+      mark.appendChild(icon("note", "compact"));
+      mark.title = copyText("extPage.row.noteMarkTitle");
+      mark.setAttribute("role", "img");
+      mark.setAttribute("aria-label", mark.title);
+      name.appendChild(mark);
+    }
+    line.appendChild(name);
+    line.appendChild(el("span", "ext-kind", kindText(r)));
+    line.appendChild(el("span", "ext-about", r.about ?? ""));
+    const dots = el("span", "ext-dots");
+    r.cells.forEach((c, i) => {
+      const m = list.machines[i];
+      const d = dotOf(c.state);
+      if (!m.reachable) d.classList.add("is-offline");
+      d.title = copyText("extPage.dot.title", { machine: machineName(m), state: stateText(c.state, c.places) });
+      dots.appendChild(d);
+    });
+    line.appendChild(dots);
+    line.addEventListener("click", () => this.openRow(r));
+    return line;
   }
 
   /** 点开一行：抽屉换成它；要加钩子的那一个顺手问各台一次钩子状态。 */

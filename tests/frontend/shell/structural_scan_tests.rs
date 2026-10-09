@@ -2833,12 +2833,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ), // 它最后一处活着的提名（`agent_dispatch_registry_tests.rs` 里的串）随那份文件删了
         // 远端 `ccm` 探针那几行摘了：主线里 `probe_ccm_cli` 这个名字还活在一份测试替身的字符串里
         //   （`remote-launch-run.vitest.ts`），不算死名 ⇒ 挂在它上面的墓碑不进本表。
-        // 公钥推送那条 Tauri 命令退役（本机后端 `pubkey-push`）：点它旧名讲来历的散文挂墓碑。
-        (
-            "tests/frontend/shell/parity_ledger_tests.rs",
-            "push_public_key",
-            2,
-        ),
         // 删会话 · 分叉 · 钩子诊断三件转交退役（界面经通道直说那台后端）：散文里点那几个旧名讲来历的，逐处挂墓碑。
         ("src/README.md", "create_branch_session", 1),
         (
@@ -2869,11 +2863,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "tests/comms/inward/origin_tests.rs",
             "delete_remote_history_session",
             1,
-        ),
-        (
-            "tests/frontend/shell/parity_ledger_tests.rs",
-            "diagnose_remote_cc_bus_hooks",
-            2,
         ),
         (
             "tests/frontend/shell/remote_write_registry_tests.rs",
@@ -3261,7 +3250,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         (
             "tests/frontend/shell/parity_ledger_tests.rs",
             "deploy_remote_acct_iso",
-            4,
+            3,
         ),
         (
             "tests/frontend/shell/sftp_tests.rs",
@@ -3683,11 +3672,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ),
         (
             "tests/frontend/shell/parity_ledger_tests.rs",
-            "aggregate_remote_usage_all",
-            1,
-        ),
-        (
-            "tests/frontend/shell/parity_ledger_tests.rs",
             "aggregate_usage_all",
             1,
         ),
@@ -3829,7 +3813,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         (
             "tests/frontend/shell/parity_ledger_tests.rs",
             "sftp_cancel_transfer",
-            2,
+            1,
         ),
         (
             "tests/frontend/shell/parity_ledger_tests.rs",
@@ -4185,7 +4169,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         (
             "tests/frontend/shell/parity_ledger_tests.rs",
             "probe_ccm_cli",
-            7,
+            4,
         ),
         (
             "tests/frontend/shell/parity_ledger_tests.rs",
@@ -4628,7 +4612,7 @@ fn every_prose_tombstone_mark_is_registered() {
         //   三个计数旁的增量注（`EXPECTED_LOCAL_OR_BOTH` · `LEDGER.len()` · 增量账）。
         ("src/frontend/shell/src/asset_sync.rs", 2), // +2：`AssetsSynced` 那几个形状 ＋ 界面那条 Tauri 命令随同步那一问走通道删了
         ("tests/frontend/shell/asset_sync_tests.rs", 1), // +1：「应答缺格就报错不猜」那一条挪到界面（`parse_reply` 删了）
-        ("tests/frontend/shell/parity_ledger_tests.rs", 63),
+        ("tests/frontend/shell/parity_ledger_tests.rs", 60),
         ("tests/frontend/shell/plugin_class_registry_tests.rs", 2), // 3 → 2：`code-picture` 那一格整行删了，挂着的旧测试名墓碑随之没了 // 2 → 3：`code-picture` 那一格对上之后，旧测试名挂墓碑
         ("tests/frontend/shell/polling_registry_tests.rs", 1),
         // +1：`rollback_note_matches_what_actually_happened` 搬走的那块墓碑。

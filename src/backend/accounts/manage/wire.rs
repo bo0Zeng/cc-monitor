@@ -3,7 +3,11 @@
 
 pub(crate) use super::exec::KeyTable;
 use super::exec::{self, Applied};
-use super::layout::{self, AddIntent, Plan, Refusal};
+use super::layout::{self, AddIntent, Plan};
+use crate::stream::inbound::spec::Fail;
+
+/// 这一层的拒绝：码 ＋ 那一句 ＋ 下层原话（原话进复制详情）。计划那一层（`layout`）只交 `(码, 句)`，`?` 换过来。
+type Refusal = Fail;
 use super::scan::{self, is_under, join, KeyRows, Snapshot};
 use crate::assets::door::{self, Door};
 use acct_core::wire::{
@@ -28,7 +32,7 @@ pub(crate) enum Request {
 }
 
 fn bad(detail: &str) -> Refusal {
-    ("bad_args", crate::common::contract::malformed(detail))
+    Fail::new("bad_args", crate::common::contract::malformed(detail))
 }
 
 fn take<T: serde::de::DeserializeOwned>(args: &Value) -> Result<T, Refusal> {
@@ -99,22 +103,22 @@ pub(crate) fn run_mcp(d: &dyn Door, req: &McpRequest) -> Result<AccountMcpView, 
 /// 这台做不做得了多账号（不做 ⇒ `unsupported`）。
 fn supported() -> Result<(), Refusal> {
     if let Some(said) = crate::platform::acct_view::unsupported_said() {
-        return Err(("unsupported", said));
+        return Err(Refusal::from(("unsupported", said)));
     }
     match layout::face() {
         Some(_) => Ok(()),
-        None => Err((
+        None => Err(Refusal::from((
             "unsupported",
             copy_text(
                 "beAcctWire.platform.unsupported",
                 &[("os", std::env::consts::OS)],
             ),
-        )),
+        ))),
     }
 }
 
 fn home_of(d: &dyn Door) -> Result<String, Refusal> {
-    door::home(d).map_err(|e| ("io_failed", e))
+    door::home(d).map_err(|e| Fail::new("io_failed", e))
 }
 
 /// 账号库在就拿它那把锁（读 → 改 → 写这一整趟里别的后端进程进不来）；还没建 ⇒ 没东西可锁（写清单那一下的比对兜底）。
@@ -123,12 +127,7 @@ fn lock(home: &str) -> Result<Option<crate::platform::lock::DirLock>, Refusal> {
     if scan::item_at(&accts).exists() {
         crate::platform::lock::hold(std::path::Path::new(&accts))
             .map(Some)
-            .map_err(|e| {
-                (
-                    "io_failed",
-                    crate::common::said::Said::from(e).said_logging_raw(),
-                )
-            })
+            .map_err(|e| Fail::from(("io_failed", crate::common::said::Said::from(e))))
     } else {
         Ok(None)
     }
@@ -184,13 +183,13 @@ fn cred_path(home: &str, raw: &str) -> Result<String, Refusal> {
     if ok {
         Ok(abs.trim_end_matches('/').to_string())
     } else {
-        Err((
+        Err(Refusal::from((
             "refused",
             copy_text(
                 "beAcctWire.cred.outsideHome",
                 &[("path", raw), ("home", home)],
             ),
-        ))
+        )))
     }
 }
 
@@ -355,10 +354,10 @@ fn rollback(
     let pick = match &a.backup {
         Some(id) => {
             if !exec::backup_id_ok(id) {
-                return Err((
+                return Err(Refusal::from((
                     "refused",
                     copy_text("beAcctWire.rollback.badId", &[("id", id)]),
-                ));
+                )));
             }
             snap.backups.iter().find(|b| b.id == *id)
         }
@@ -369,19 +368,19 @@ fn rollback(
             .max_by(|x, y| x.id.cmp(&y.id)),
     };
     let Some(b) = pick else {
-        return Err((
+        return Err(Refusal::from((
             "refused",
             copy_text(
                 "beAcctWire.rollback.none",
                 &[("accts", &snap.roots().accts)],
             ),
-        ));
+        )));
     };
     let Some(undo) = &b.undo else {
-        return Err((
+        return Err(Refusal::from((
             "refused",
             copy_text("beAcctWire.rollback.noUndo", &[("path", &b.path)]),
-        ));
+        )));
     };
     let (steps, bad_lines) = exec::undo_steps(undo);
     let mut change = AccountChange {
@@ -401,7 +400,7 @@ fn rollback(
     }
     let (done, failed) = exec::rollback(d, snap.roots(), &b.path, &steps, keys);
     if !failed.is_empty() {
-        return Err((
+        return Err(Refusal::from((
             "io_failed",
             copy_text(
                 "beAcctWire.rollback.partial",
@@ -411,7 +410,7 @@ fn rollback(
                     ("path", &b.path),
                 ],
             ),
-        ));
+        )));
     }
     change.applied = true;
     change.steps = done;
@@ -438,10 +437,10 @@ pub(crate) fn run_login_cmd(d: &dyn Door, a: &AccountNameArgs) -> Result<Account
     let snap = scan::scan(&home, &[], &[]);
     let known = snap.manifest().is_some_and(|m| m.find(&a.name).is_some());
     if !known {
-        return Err((
+        return Err(Refusal::from((
             "refused",
             copy_text("beAcctPlan.account.unknown", &[("name", &a.name)]),
-        ));
+        )));
     }
     Ok(AccountLoginCmd {
         cmd: login_line(&home, &a.name),

@@ -2,6 +2,7 @@
 //! 算计划、核对都只吃这份快照，不再碰盘 —— 判据拿临时家目录真建一套、读成快照再喂给它们。
 
 use super::model::Manifest;
+use crate::common::said::IntoNote as _;
 use crate::platform::acct_view::{self, Item};
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -178,7 +179,7 @@ pub(crate) fn scan(home: &str, extra_dirs: &[String], extra_files: &[String]) ->
                             &[("path", &mpath), ("why", why)],
                         )
                     })
-                    .said_logging_raw())),
+                    .into_note())),
             ),
         },
     };

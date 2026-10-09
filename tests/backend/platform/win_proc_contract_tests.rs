@@ -120,13 +120,13 @@ fn each_liveness_fact_has_exactly_one_windows_arm_that_delegates() {
             "`{line}` 不是挂在 `#[cfg(windows)]` 门后的那一臂（它上面是 `{above}`）"
         );
     }
-    // 剩下的平台仍是诚实空壳那一臂 —— 三处各一条，且不再写 `not(target_os = "linux")`
+    // 剩下的平台仍是诚实空壳那一臂 —— 三处各一条（另加 `lower_this_thread` 那一条：降不了就照常跑），且不再写 `not(target_os = "linux")`
     // （那样 Windows 会同时落进两条臂，编不过；这一格是写给改 cfg 的人看的）。
     assert_eq!(
         prod.matches("#[cfg(not(any(target_os = \"linux\", windows)))]")
             .count(),
-        3,
-        "`pid_alive` / `proc_starttime` / `start_epoch_from_ticks` 的兜底臂不是恰好三条"
+        4,
+        "`pid_alive` / `proc_starttime` / `start_epoch_from_ticks` / `lower_this_thread` 的兜底臂不是恰好四条"
     );
 }
 

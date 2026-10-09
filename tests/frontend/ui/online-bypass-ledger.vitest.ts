@@ -206,8 +206,18 @@ function ownerOf(n: ts.Node, sf: ts.SourceFile): string {
   return top;
 }
 
+/**
+ * 这份源码**可能**写事实字段吗：字段名是标识符，`x.<名>` 的 `<名>` 在源码里要么照字面出现，要么带 `\u` 转义
+ * （`touched\u0046iles`）⇒ 两样都没有的文件不建树。判的是同一个谓词，只是先用正文排掉肯定零命中的文件
+ * （原先全仓三百多份 TS 每份都挂父指针建一遍树：带覆盖率插桩、机器负载 20 以上时撞过 30 s）。
+ */
+export function mayWriteFacts(source: string): boolean {
+  return source.includes("\\u") || FACT_FIELDS.some((f) => source.includes(f));
+}
+
 /** 一份源码里对事实字段的写者：`所在声明` 的集合。 */
 export function factWriters(source: string): string[] {
+  if (!mayWriteFacts(source)) return [];
   const sf = ts.createSourceFile("x.ts", source, ts.ScriptTarget.Latest, true);
   const fields = new Set<string>(FACT_FIELDS);
   const out = new Set<string>();
@@ -242,6 +252,9 @@ describe("〔STC〕L2 · 会话事实字段只有登记的写者（记账员换�
       function feed(tab: T, x: string): void { tab.touchedFiles.add(x); }
       class H { bump(t: T, m: string): void { t.latestModel = m; } read(t: T): number { return t.agents.size; } }`;
     expect(factWriters(sample).sort()).toEqual(["H.bump", "feed"]);
+    // 先筛的那一道：字段名带 `\u` 转义也得过筛、照样抽得出；正文里没有字段名的文件一个都不出。
+    expect(factWriters("function f(t: T): void { t.latest\\u004dodel = 'm'; }")).toEqual(["f"]);
+    expect(factWriters("function f(t: T): void { t.other = 1; }")).toEqual([]);
   });
 
   it("★ 人群 == 登记表（两向，按文件 ＋ 所在声明）", () => {

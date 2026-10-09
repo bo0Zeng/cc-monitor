@@ -185,11 +185,15 @@ export interface Tab {
   inputsEl: HTMLElement;
 }
 
-/** Tab 数量摘要，发给宿主用于状态栏 / empty-state 等外部 UI。按活性轴分：活 / 死（死里含可重连）。 */
+/**
+ * Tab 摘要，发给宿主用于状态栏 / empty-state / 会话头 / 终端页 / 需要你那几处。按活性轴分：活 / 死（死里含可重连）；
+ * `faces` 是每个 tab 此刻的点 · 在等什么 · 在跑哪一步（只拿来比「变没变」：运行中 → 空闲数量不变，会话头也得重画）。
+ */
 export interface TabsSummary {
   total: number;
   live: number;
   dead: number;
+  faces: string;
 }
 
 export function projectNameFromCwd(dir: string): string | null {

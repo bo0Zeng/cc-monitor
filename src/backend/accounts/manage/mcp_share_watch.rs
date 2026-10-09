@@ -87,14 +87,20 @@ fn work(rx: Receiver<()>, d: &'static (dyn Door + Sync)) {
                     tracing::warn!("账号之间同步 MCP：{} 两边都改了，等你在账号页里挑", c.name);
                 }
             }
-            Err((_, why)) => tracing::warn!("账号之间同步 MCP：这一趟没做成：{why}"),
+            Err(f) => tracing::warn!(
+                "账号之间同步 MCP：这一趟没做成：{}",
+                crate::common::said::Said::from(f).logged()
+            ),
         }
         match super::trust_share_exec::sync(d) {
             Ok(changed) if !changed.is_empty() => {
                 tracing::info!("账号之间同步信任：改写了 {}", changed.join(" · "))
             }
             Ok(_) => {}
-            Err((_, why)) => tracing::warn!("账号之间同步信任：这一趟没做成：{why}"),
+            Err(f) => tracing::warn!(
+                "账号之间同步信任：这一趟没做成：{}",
+                crate::common::said::Said::from(f).logged()
+            ),
         }
     }
 }

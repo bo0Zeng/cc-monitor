@@ -15,7 +15,7 @@ export interface WRule {
   /** C-W3：可连同主语 / 宾语嵌进句里的闭集格（该远端未启用多账号 · 未连接远端）。 */
   embeddable?: string[];
   limits?: Record<string, number>;
-  /** C-W8：带码的原因形状（整格匹配，如「退出码 {status}」）。 */
+  /** C-W8：原因格的形状（整格匹配，如「不支持仅密码登录」）。 */
   shapes?: string[];
   /** roleTemplates：该角色的条目匹配它也算（如原因格「<对象> 无法解析」）。 */
   /** lead：族句前可接一格事实（结果未知 · 无应答 · 后生效）—— 那一格不再触发别的族。 */

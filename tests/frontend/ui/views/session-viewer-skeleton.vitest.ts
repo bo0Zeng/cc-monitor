@@ -27,7 +27,8 @@ import {
   type RigPayload,
 } from "../../../test-support/session-viewer-rig";
 import { SessionViewer } from "../../../../src/frontend/ui/views/session-viewer";
-import { SKELETON_GAP_CLASS } from "../../../../src/frontend/ui/skeleton-view";
+import { SKELETON_GAP_CLASS, SkeletonView } from "../../../../src/frontend/ui/skeleton-view";
+import { SkeletonLedger } from "../../../../src/frontend/ui/live-window";
 import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
 
 const ROWS = 1000;
@@ -90,6 +91,29 @@ describe("〔U3b〕查看器接骨架", () => {
     });
     // 尾巴 = 第 350..499 条可显示记录 = seq 700..998
     expect(gaps(v.element)).toEqual([[0, 700]]);
+  });
+
+  // 同主窗口接骨架那一刀（`tabs.vitest.ts`「接骨架：账本先拿到折叠」）：占位插进去的时候账本就该按折叠算好高，
+  // 不是插完、DOM 变动回调排完版再改高再钉视口（那一帧多排两次版）。
+  it("★ 接骨架：账本先拿到折叠、再插占位", async () => {
+    viewerRig.index = index();
+    const order: string[] = [];
+    const folds = vi.spyOn(SkeletonLedger.prototype, "setFolds").mockImplementation(() => {
+      order.push("折叠");
+      return false;
+    });
+    const attach = vi.spyOn(SkeletonView.prototype, "attachGaps").mockImplementation(() => {
+      order.push("插占位");
+      return 0;
+    });
+    try {
+      await mount();
+    } finally {
+      folds.mockRestore();
+      attach.mockRestore();
+    }
+    expect(order).toContain("插占位");
+    expect(order[0], `接骨架的顺序是 ${order.join(" → ")}：占位插进去的时候账本还没拿到折叠`).toBe("折叠");
   });
 
   it("深链岛：顶上没洞（岛从 0 起），岛与尾巴之间那条缝按 seq 画 —— 含夹在中间的不可显示行", async () => {

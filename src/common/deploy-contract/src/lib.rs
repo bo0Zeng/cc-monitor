@@ -21,6 +21,7 @@
 //! - 任何 IO（问那台、读盘、写）。
 
 use copy_core::copy_text;
+use copy_core::said::Said;
 
 // ═══ 表 A：键与行（表 B 的承诺是判定，住后端 `control/deploy_plan.rs::promised`）═══════════════
 
@@ -58,10 +59,10 @@ pub enum Route {
 pub enum Refusal {
     /// 答得出是什么机器，但表 A 里那一格没有产线（或根本不在 6 行里）。
     UnsupportedMachine { os: String, arch: String },
-    /// 问不出 OS。`why` 是原因词（无应答 · 应答报错 · 应答无法解析），`raw` 是那台答的原话（进复制详情，不上句子）。
-    OsUnknown { why: String, raw: Option<String> },
-    /// 问不出 arch（`why` · `raw` 同 [`Refusal::OsUnknown`]）。
-    ArchUnknown { why: String, raw: Option<String> },
+    /// 问不出 OS。那一句是原因词（无应答 · 应答报错 · 应答无法解析），原话是那台答的（进复制详情，不上句子）。
+    OsUnknown(Said),
+    /// 问不出 arch（同 [`Refusal::OsUnknown`]）。
+    ArchUnknown(Said),
     /// 那一格有产线，但这个 origin 今天不承诺那种机器（表 B；例：远端 Windows · 本机 (Linux, aarch64)）。
     /// 带着 `route`：同一形对「推到远端」与「本机自己」要说两句话（远端那句「只在本机用得上」对本机是假话，`D7`）。
     NotPromisedHere {
@@ -84,13 +85,13 @@ impl Refusal {
                 "deploy.refused.unsupportedMachine",
                 &[("machine", machine), ("os", os), ("arch", arch)],
             ),
-            Refusal::OsUnknown { why, .. } => copy_text(
+            Refusal::OsUnknown(why) => copy_text(
                 "deploy.refused.osUnknown",
-                &[("machine", machine), ("why", why)],
+                &[("machine", machine), ("why", &why.said)],
             ),
-            Refusal::ArchUnknown { why, .. } => copy_text(
+            Refusal::ArchUnknown(why) => copy_text(
                 "deploy.refused.archUnknown",
-                &[("machine", machine), ("why", why)],
+                &[("machine", machine), ("why", &why.said)],
             ),
             Refusal::NotPromisedHere {
                 os,
@@ -120,7 +121,7 @@ impl Refusal {
     /// 那台答的原话（问不出 OS / arch 那两形才有）：交给出错那一端写进复制详情，不上句子。
     pub fn raw(&self) -> Option<&str> {
         match self {
-            Refusal::OsUnknown { raw, .. } | Refusal::ArchUnknown { raw, .. } => raw.as_deref(),
+            Refusal::OsUnknown(why) | Refusal::ArchUnknown(why) => why.raw.as_deref(),
             _ => None,
         }
     }
@@ -181,16 +182,16 @@ fn arch_of(s: &str) -> Option<Arch> {
 pub fn key_of(os: &str, arch: &str) -> Result<Key, Refusal> {
     let (os, arch) = (os.trim(), arch.trim());
     if os.is_empty() {
-        return Err(Refusal::OsUnknown {
-            why: copy_text("rsByteTable.key.noAnswer", &[]),
-            raw: None,
-        });
+        return Err(Refusal::OsUnknown(Said::from(copy_text(
+            "rsByteTable.key.noAnswer",
+            &[],
+        ))));
     }
     if arch.is_empty() {
-        return Err(Refusal::ArchUnknown {
-            why: copy_text("rsByteTable.key.noAnswer", &[]),
-            raw: Some(os.to_string()),
-        });
+        return Err(Refusal::ArchUnknown(Said::with_raw(
+            copy_text("rsByteTable.key.noAnswer", &[]),
+            os,
+        )));
     }
     match (os_of(os), arch_of(arch)) {
         (Some(os), Some(arch)) => Ok(Key { os, arch }),
@@ -241,26 +242,24 @@ pub const UNAME_CMD: &str = "uname -s -m";
 pub fn key_from_uname(exit: Option<u32>, stdout: &str, stderr: &str) -> Result<Key, Refusal> {
     if exit != Some(0) {
         let said = stderr.trim();
-        return Err(Refusal::OsUnknown {
-            why: if said.is_empty() {
-                copy_text("rsByteTable.key.noAnswer", &[])
-            } else if said.contains('\u{FFFD}') {
-                copy_text("rsByteTable.key.unreadable", &[])
-            } else {
-                copy_text("rsByteTable.key.said", &[])
-            },
-            raw: (!said.is_empty()).then(|| said.to_string()),
-        });
+        let why = if said.is_empty() {
+            copy_text("rsByteTable.key.noAnswer", &[])
+        } else if said.contains('\u{FFFD}') {
+            copy_text("rsByteTable.key.unreadable", &[])
+        } else {
+            copy_text("rsByteTable.key.said", &[])
+        };
+        return Err(Refusal::OsUnknown(Said::with_raw(why, said)));
     }
     let parts: Vec<&str> = stdout.split_whitespace().collect();
     match parts.as_slice() {
         [] => key_of("", ""),
         [os] => key_of(os, ""),
         [os, arch] => key_of(os, arch),
-        _ => Err(Refusal::OsUnknown {
-            why: copy_text("rsByteTable.key.unreadable", &[]),
-            raw: Some(stdout.trim().to_string()),
-        }),
+        _ => Err(Refusal::OsUnknown(Said::with_raw(
+            copy_text("rsByteTable.key.unreadable", &[]),
+            stdout.trim(),
+        ))),
     }
 }
 

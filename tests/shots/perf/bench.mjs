@@ -11,6 +11,8 @@
  *   第二遍 ＝ 热切（建过、DOM 留着）。每次点前等安静（300 ms 无长任务 / 无新建节点，最多 5 s），点后看 1.5 s：
  *   · 按下到画出：Event Timing 里那次 click 的 duration（输入 → 处理 → 下一帧画出；< 16 ms 的不报，记 16）；
  *   · 同步段：点击处理同步跑了多久；稳定：点下去到窗口里最后一个长任务结束（没有长任务 ＝ 那一帧）；
+ *   · 接骨架那一帧：这一下接了骨架（流里插进占位）⇒ 插占位那一刻所在那一帧的帧间隔（接骨架 · 补可见区 · 排版都在这一个任务里）；
+ *   · 停住之后最长一帧：点下去 150 ms（宿主的停留判定）之后、切换那一帧画完之后结束的帧里最长的那一帧 —— 冷切时就是接骨架、补可见区那一帧（rAF 链量帧间隔）；
  *   · 长任务个数 / 合计；新建节点（可见流 / 后台流）；布局次数 · 样式重算次数 · 布局 / 样式 / 脚本毫秒（CDP Performance 计数差）。
  * - **连续快速切**（rapid）：同一串 20 下、每 200 ms 一下（长短会话混着），共 3 串；每串后等 2 s。
  *   · 每下的输入延迟（Event Timing 的 processingStart − startTime：前一下的活还没干完、这一下在排队）；
@@ -22,12 +24,12 @@
  * 每项跑 `--runs` 趟（缺省 3），表里给的是全部趟合在一起的分位数；机器负载（loadavg）开头结尾各记一次。
  */
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
-import net from "node:net";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Cdp, Page, sleep } from "../cdp.mjs";
+import { cpuMs, devtoolsUrl, findChrome, freePort, pct } from "./harness.mjs";
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const args = parseArgs(process.argv.slice(2));
@@ -37,6 +39,8 @@ const sandbox = path.join(repo, ".build/perf-sandbox");
 const only = new Set(String(args.only ?? "switch,rapid,keys,long,viewer").split(","));
 /** 查看窗那一项开的会话：世界里最长那一条（`world.ts` 的 `PERF_TURNS[0]`，`scene.ts::LONGEST_SID`）。 */
 const VIEWER_SID = "5e550100-0000-4000-8000-000000000100";
+/** 宿主的停留判定（`tab-stream-view.ts::STAY_MS`）：切进来停住这么久才接骨架 ⇒ 「停住之后最长一帧」从这里起算。 */
+const STAY_MS = 150;
 const probeSrc = readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "probe.js"), "utf8");
 // `--css <文件>`：开页时多插一段样式（试一刀之前先量它值不值）
 const extraCss = args.css ? readFileSync(path.resolve(args.css), "utf8") : "";
@@ -256,6 +260,7 @@ async function measuredClick(page, i, watchMs = 1500) {
   const waited = await page.eval("__perf.quiet(300, 5000)");
   const m0 = await metrics(page);
   const since = await page.eval("performance.now()");
+  await page.eval("__perf.frameStart()");
   const c0 = cpuMs(browser.pid);
   await clickAt(page, t.x, t.y);
   await sleep(watchMs);
@@ -263,6 +268,11 @@ async function measuredClick(page, i, watchMs = 1500) {
   const m1 = await metrics(page);
   const w = await page.eval(`__perf.since(${since})`);
   const click = w.clicks[0] ?? null;
+  // 停住之后最长一帧：点下去 150 ms（宿主的停留判定 `STAY_MS`）之后、且切换那一帧画完（第二个 rAF）之后结束的帧里最长的那一帧
+  // （机器忙时切换那一帧本身就能拖过 150 ms —— 不能把它算成停住那一帧）
+  const stayFrame = await page.eval(`__perf.frameAfter(${click ? click.t0 : since}, ${Math.max(STAY_MS, click?.frame2 ?? 0)})`);
+  const attachFrame = await page.eval(`__perf.attachFrame(${click ? click.t0 : since})`);
+  await page.eval("__perf.frameStop()");
   const ev = w.ev.find((e) => e.name === "click");
   const t0c = click ? click.t0 : since;
   const lts = w.lt.filter((x) => x.s + x.d >= t0c);
@@ -277,6 +287,8 @@ async function measuredClick(page, i, watchMs = 1500) {
     sync: click?.sync ?? null,
     frame: click?.frame ?? null,
     settle: Math.max(lastLt, click?.frame ?? 0),
+    stayFrame,
+    attachFrame,
     ltN: lts.length,
     ltMs: lts.reduce((a, x) => a + x.d, 0),
     ltMax: lts.reduce((a, x) => Math.max(a, x.d), 0),
@@ -296,10 +308,16 @@ async function benchSwitch(run) {
   const n = await page.eval("document.querySelectorAll('#tab-bar .tab').length");
   const rows = [];
   for (const pass of ["cold", "warm"]) {
+    if (args.profile && pass === "cold") await page.eval("window.__prof && window.__prof.reset()");
+    if (args.profile && pass === "warm") writeFileSync(path.join(out, "prof-cold.json"), JSON.stringify(await page.eval("window.__prof ? window.__prof.dump() : null"), null, 1));
     for (let i = 0; i < n; i++) {
       const t = await tabAt(page, i);
       if (t.active) continue; // 已经是当前的那个点了不切
+      // `--profile`：冷切进长会话那几下各存一份方法计时（含调用顺序 —— 停住之后那一帧里谁先谁后）
+      const deep = args.profile && pass === "cold" && (t.turns ?? 0) >= 200;
+      if (deep) await page.eval("window.__prof && window.__prof.reset()");
       const row = { run, pass, ...(await measuredClick(page, i)) };
+      if (deep) writeFileSync(path.join(out, `prof-cold-long-${i}.json`), JSON.stringify(await page.eval("window.__prof ? { top: window.__prof.dump(), seq: window.__prof.seq ? window.__prof.seq() : null } : null"), null, 1));
       rows.push(row);
       if (args.verbose) console.log(`    ${pass} #${i} 等安静 ${Math.round(row.waited)} ms · 按下到画出 ${Math.round(row.inp)} · ${new Date().toISOString().slice(11, 19)}`);
     }
@@ -551,7 +569,9 @@ async function benchLong(run) {
       longest = i;
     }
   }
+  if (args.profile) await page.eval("window.__prof && window.__prof.reset()");
   const first = await measuredClick(page, longest, 2500);
+  if (args.profile) writeFileSync(path.join(out, "prof-long.json"), JSON.stringify(await page.eval("window.__prof ? { top: window.__prof.dump(), seq: window.__prof.seq ? window.__prof.seq() : null } : null"), null, 1));
   await page.eval("__perf.quiet(500, 10000)");
   // 滚轮打在消息流中部
   const at = await page.eval(`(() => { const s = document.querySelector('.stream.active'); const b = s.getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; })()`);
@@ -594,11 +614,6 @@ async function benchLong(run) {
 
 // ─────────────────────────────────────────── 汇总 ───────────────────────────────────────────
 
-function pct(xs, q, floor = 0) {
-  if (xs.length === 0) return floor;
-  const s = [...xs].sort((a, b) => a - b);
-  return Math.max(floor, s[Math.min(s.length - 1, Math.floor(q * s.length))]);
-}
 function f0(x) {
   return x === null || x === undefined || Number.isNaN(x) ? "—" : Math.round(x).toString();
 }
@@ -624,12 +639,17 @@ function summarize(r) {
   if (r.switch.length) {
     L.push("## 切一下（p50 / p95，ms；次数）");
     L.push("");
-    L.push("| 组 | 次 | CPU（浏览器全部进程） | 按下到画出 | 同步段 | 稳定 | 长任务个 | 长任务合计 | 新建节点 | 布局次 | 样式次 | 布局ms | 样式ms | 脚本ms |");
-    L.push("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|");
+    L.push("| 组 | 次 | CPU（浏览器全部进程） | 按下到画出 | 同步段 | 稳定 | 停住之后最长一帧 | 接骨架那一帧（次） | 长任务个 | 长任务合计 | 新建节点 | 布局次 | 样式次 | 布局ms | 样式ms | 脚本ms |");
+    L.push("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|");
     for (const [name, xs] of groups) {
       if (!xs.length) continue;
       const pp = (k) => `${f0(pct(xs.map((x) => x[k] ?? 0), 0.5))} / ${f0(pct(xs.map((x) => x[k] ?? 0), 0.95))}`;
-      L.push(`| ${name} | ${xs.length} | ${pp("cpu")} | ${pp("inp")} | ${pp("sync")} | ${pp("settle")} | ${pp("ltN")} | ${pp("ltMs")} | ${pp("nodesOn")} | ${pp("layouts")} | ${pp("styles")} | ${pp("layoutMs")} | ${pp("styleMs")} | ${pp("scriptMs")} |`);
+      // 只在一部分下里有的读数（接骨架那一帧：只有接了骨架的那几下）：有的那几下的 p50 / p95 ＋ 几下
+      const ppHit = (k) => {
+        const v = xs.map((x) => x[k]).filter((y) => y !== null && y !== undefined);
+        return v.length ? `${f0(pct(v, 0.5))} / ${f0(pct(v, 0.95))}（${v.length}）` : "—";
+      };
+      L.push(`| ${name} | ${xs.length} | ${pp("cpu")} | ${pp("inp")} | ${pp("sync")} | ${pp("settle")} | ${pp("stayFrame")} | ${ppHit("attachFrame")} | ${pp("ltN")} | ${pp("ltMs")} | ${pp("nodesOn")} | ${pp("layouts")} | ${pp("styles")} | ${pp("layoutMs")} | ${pp("styleMs")} | ${pp("scriptMs")} |`);
     }
     L.push("");
   }
@@ -687,87 +707,6 @@ function groupBy(xs, key) {
 }
 
 // ─────────────────────────────────────────── 杂项 ───────────────────────────────────────────
-
-/**
- * 一棵进程树（浏览器连同它起的渲染 / GPU 进程）到此刻一共用了多少 CPU 毫秒：每个线程 `/proc/<pid>/task/<tid>/schedstat`
- * 第一格（纳秒，在 CPU 上跑的时长）相加。机器忙时墙钟会被别的活拉长，CPU 时长基本不受影响 ⇒ 两样都记。
- */
-function cpuMs(root) {
-  const cpuSeen = (globalThis.__cpuSeen ??= new Map());
-  const kids = new Map();
-  for (const d of readdirSync("/proc")) {
-    if (!/^\d+$/.test(d)) continue;
-    try {
-      const st = readFileSync(`/proc/${d}/stat`, "utf8");
-      const ppid = Number(st.slice(st.lastIndexOf(")") + 2).split(" ")[1]);
-      if (!kids.has(ppid)) kids.set(ppid, []);
-      kids.get(ppid).push(Number(d));
-    } catch {
-      // 进程刚退
-    }
-  }
-  const stack = [root];
-  while (stack.length) {
-    const pid = stack.pop();
-    stack.push(...(kids.get(pid) ?? []));
-    try {
-      for (const t of readdirSync(`/proc/${pid}/task`)) {
-        try {
-          // 按线程记最后一次读数、只往上加：中途退掉的进程（关页时它的渲染进程）留着最后的读数，合计不倒着走
-          const v = Number(readFileSync(`/proc/${pid}/task/${t}/schedstat`, "utf8").split(" ")[0]);
-          const key = `${pid}/${t}`;
-          cpuSeen.set(key, Math.max(cpuSeen.get(key) ?? 0, v));
-        } catch {
-          // 线程刚退
-        }
-      }
-    } catch {
-      // 进程刚退
-    }
-  }
-  let ns = 0;
-  for (const v of cpuSeen.values()) ns += v;
-  return ns / 1e6;
-}
-
-function findChrome() {
-  const own = process.env.CCM_SHOTS_CHROME;
-  if (own) return own;
-  const cache = path.join(os.homedir(), ".cache/ms-playwright");
-  const found = existsSync(cache)
-    ? readdirSync(cache)
-        .filter((d) => /^chromium-\d+$/.test(d))
-        .map((d) => path.join(cache, d, "chrome-linux64/chrome"))
-        .filter((p) => existsSync(p))
-        .sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs)
-    : [];
-  if (found.length === 0) throw new Error("找不到 Chromium：设 CCM_SHOTS_CHROME");
-  return found[0];
-}
-
-async function devtoolsUrl(dir) {
-  const file = path.join(dir, "DevToolsActivePort");
-  // 机器忙时浏览器起来要好一阵 ⇒ 最多等 60 s
-  for (let i = 0; i < 600; i++) {
-    if (existsSync(file)) {
-      const [p, q] = readFileSync(file, "utf8").split("\n");
-      if (p && q) return `ws://127.0.0.1:${p}${q}`;
-    }
-    await sleep(100);
-  }
-  throw new Error("浏览器没报出调试口");
-}
-
-function freePort() {
-  return new Promise((resolve, reject) => {
-    const s = net.createServer();
-    s.listen(0, "127.0.0.1", () => {
-      const { port: p } = s.address();
-      s.close(() => resolve(p));
-    });
-    s.on("error", reject);
-  });
-}
 
 function parseArgs(argv) {
   const o = {};

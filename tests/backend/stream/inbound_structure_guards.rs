@@ -414,6 +414,14 @@ fn every_registered_command_declares_its_run_kind() {
                 | "session-new"
                 | "session-new-facts"
                 | "session-new-dir"
+                // 计划读面三条：起一次 pb 子进程（研究盘约 1 秒）· 读记录树对会话（同步 I/O）。
+                | "plan-list"
+                | "plan-read"
+                | "plan-cell-view"
+                // 计划审面三条：读—改—写后端自己的小文件（跨进程锁）· 退回现读一次计划（起 pb）再送字（起 tmux）。
+                | "plan-ack"
+                | "plan-unack"
+                | "plan-return"
         );
         let is_blocking = matches!(spec.run, Run::Blocking(_) | Run::BlockingData(_));
         assert_eq!(
@@ -645,6 +653,14 @@ fn every_registered_command_declares_its_run_kind() {
         "session-new",
         "session-new-facts",
         "session-new-dir",
+        // 计划读面三条：阻塞（起 pb 子进程）。
+        "plan-list",
+        "plan-read",
+        "plan-cell-view",
+        // 计划审面三条：阻塞（小文件 I/O · 起 pb · 起 tmux）。
+        "plan-ack",
+        "plan-unack",
+        "plan-return",
         // 换号重启：可撤档（步与步之间 await，起 tmux 的几步自己挪到阻塞线程池）。
         "session-restart",
         // 现在就换：异步（重启换那一半等 `session-restart`；不重启换那一半自己挪到阻塞线程池）。
@@ -1045,5 +1061,60 @@ fn no_frame_command_or_derived_cli_flag_names_the_tmux_host() {
     assert!(
         crate::SUBCOMMANDS.iter().any(|f| names_tmux(f)),
         "正控失败：同一个找法在 `SUBCOMMANDS` 里认不出 `--tmux-notify` —— 上面的零命中不可信"
+    );
+}
+
+/// ★ **收了、校验了、然后丢掉** 的入参：`xxx_arg(args, "名", …)?;` 整句丢弃返回值（或 `let _ = xxx_arg(…)`）。
+///
+/// 那一格在注册表的字段表里写着、在协议文档里写着，调用方照着它画按钮 —— 而处理函数只验了它的形状、从不读它的值。
+/// `terminal-input` 的 `take` 就是这样活了几个月（第二个前端画了一颗「接管输入」，按下去什么都不变）。
+/// 要它真不起作用就删掉它（字段表 · 校验 · 调用方 · 文档一起），别留一个只校验不用的格。
+#[test]
+fn no_handler_validates_an_arg_and_then_throws_it_away() {
+    // 扫 `src/backend`（本条住 `tests/backend/`，不在自己的语料里 —— 靠住址，见 `scan_tree!` 头注）。
+    let root = crate::guard_support::src_root();
+    let files = guard_core::scan_tree!(&root, &["rs"]);
+    assert!(
+        files.len() > 50,
+        "只扫到 {} 份 .rs —— 走错树了，本条在空转",
+        files.len()
+    );
+    // 一句话的形状：可选的 `let _ =`，然后 `<名字>_arg(`，以 `)?;` 收尾（单行）。
+    let discarded = |line: &str| -> bool {
+        let t = line.trim();
+        let t = t.strip_prefix("let _ =").map(str::trim_start).unwrap_or(t);
+        let Some(open) = t.find('(') else {
+            return false;
+        };
+        let head = &t[..open];
+        // 整句就是这一次调用：调用者是一条路径（`a::b_arg`），前面没有 `let x =` 之类接住它。
+        let callee = head.rsplit("::").next().unwrap_or(head);
+        !callee.is_empty()
+            && callee.ends_with("_arg")
+            && head
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == ':')
+            && t[open..].contains('"')
+            && (t.ends_with(")?;") || (line.trim().starts_with("let _ =") && t.ends_with(");")))
+    };
+    let mut hits = Vec::new();
+    let mut seen_calls = 0usize;
+    for (f, raw) in &files {
+        let prod = crate::guard_support::production_side_of(f, raw);
+        for line in prod.lines() {
+            seen_calls += line.matches("_arg(").count();
+            if discarded(line) {
+                hits.push(format!("{}: {}", f.display(), line.trim()));
+            }
+        }
+    }
+    assert!(
+        seen_calls > 10,
+        "生产段里 `_arg(` 一共才 {seen_calls} 处 —— 量具坏了，本条在空转"
+    );
+    assert!(
+        hits.is_empty(),
+        "这些入参验完就丢了（返回值没人用）：\n{}\n要么真用它，要么把这一格从字段表 · 校验 · 调用方 · 协议文档里一起删掉。",
+        hits.join("\n")
     );
 }
