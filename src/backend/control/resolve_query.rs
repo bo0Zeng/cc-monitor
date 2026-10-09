@@ -1,9 +1,10 @@
-//! resolve RPC：一次性 exec `--resolve`，读 stdin 的 ResumeSpec JSON，出 stdout 的 CommandPlan JSON
+//! resolve RPC：一次性 exec `--resolve`，读 ResumeSpec JSON，出 stdout 的 CommandPlan JSON
 //! （camelCase，字段名与仓外 aterm 严格一致）。
 //!
 //! 契约（与 aterm 冻结对齐）：
-//! - 入：stdin `ResumeSpec{sessionId, launchCandidates:[String?], claudeDir, fallbackCwd, alreadyInTmux}`
-//!   （走 stdin 不走 argv：`launchCandidates` 可多条、避 argv 长度限）。
+//! - 入：`ResumeSpec{sessionId, launchCandidates:[String?], claudeDir, fallbackCwd, alreadyInTmux, agentKind?}`，
+//!   stdin（可带 `--stdin-line`）或 argv `--args-b64 <base64 的 JSON>`，二选一 —— 与别的 CLI 子命令同一处读（`cli_args::read_args`），
+//!   同一套上限与码（`args_too_large` · `no_input` · `bad_args`）。
 //! - 出：stdout `CommandPlan{command, mode:"PtyInject"|"ExecOnce",
 //!   capabilities{supportsSendKeys,supportsCapture,supportsMultiClient,supportsMultiWindow},
 //!   sessionName?, launchLabel?, substitutedFrom?}`，exit 0。caps 四个名字复用 aterm 的 `SessionCapabilities`，两端免映射。
@@ -15,7 +16,7 @@
 
 use copy_core::copy_text;
 use serde::{Deserialize, Serialize};
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::Path;
 
 /// stdin 入参（camelCase 对齐 aterm `ResumeSpec`）。
@@ -55,7 +56,7 @@ struct Capabilities {
 
 /// stdout 出参（camelCase 对齐 aterm `ResumePlan`，另加 mode/capabilities）。
 ///
-/// 三个字段的可信度不一样，而字段名读起来一模一样（跨项目的说明正本在 `src/doc/IPC-PROTOCOL.md` §10.1）：
+/// 三个字段的可信度不一样，而字段名读起来一模一样（跨项目的说明正本在 `src/doc/IPC-PROTOCOL.md` §8「`--resolve`」那一条）：
 ///
 /// | 字段 | 可信度 |
 /// |---|---|
@@ -91,26 +92,39 @@ struct ResolveError<'a> {
     message: String,
 }
 
-/// stdin 上限（审计 security-重要②）：ResumeSpec 极小，无界 `read_to_string` 遇超大 stdin →
-/// 无界堆分配（Pi 级设备 OOM 风险）。`.take()` 兜底；超限 → 截断 → 后续 parse 失败 → bad_request。
-const MAX_RESOLVE_STDIN: u64 = 1 << 20; // 1 MiB
-
-/// `--resolve` 入口。stdin 读 ResumeSpec、stdout 写 CommandPlan、exit 0；出错 exit 2 + stderr JSON。
+/// `--resolve` 入口。读 ResumeSpec、stdout 写 CommandPlan、exit 0；出错 exit 2 + stderr JSON。
 /// `_agent_home` 现未用（MVP 不做 pidfile 消解）；留参数与其余 query::run 一致、后续联调用。
-pub fn run(_agent_home: &Path, _args: &[String]) -> i32 {
-    let mut input = String::new();
-    if let Err(e) = std::io::stdin()
-        .take(MAX_RESOLVE_STDIN)
-        .read_to_string(&mut input)
-    {
-        return emit_err("stdin_read_failed", format!("read stdin failed: {e}"));
-    }
-    match resolve_from_json(crate::agents::REGISTRY, &input) {
+pub fn run(_agent_home: &Path, args: &[String]) -> i32 {
+    run_io(
+        args.get(1..).unwrap_or_default(),
+        std::io::stdin(),
+        crate::control::cli_args::STDIN_QUIET,
+        &mut std::io::stdout(),
+        &mut std::io::stderr(),
+    )
+}
+
+/// [`run`] 的本体（stdin / stdout / stderr 是入参，测试喂替身）。`opts` 是 `--resolve` 之后的那些词。
+///
+/// 入参交给 CLI 面读入参的那一处读（`cli_args::read_args`）：与别的子命令同一套口 —— stdin（可带 `--stdin-line`）
+/// 或 argv `--args-b64 <base64 的 JSON>`（第二个前端写不了 stdin）· 同一个上限（超了 `args_too_large`，不截断）·
+/// stdin 开着不写 ⇒ `no_input` · 用法错 ⇒ `bad_args`。这几个码都算进与 aterm 的冻结码全集（金样 `oneshot_only_codes`）。
+pub(crate) fn run_io<R: Read + Send + 'static>(
+    opts: &[String],
+    stdin: R,
+    quiet: std::time::Duration,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> i32 {
+    let got = crate::control::cli_args::read_args(opts, stdin, quiet)
+        .and_then(|input| resolve_from_json(crate::agents::REGISTRY, &input));
+    match got {
         Ok(json) => {
-            println!("{json}"); // stdout 一行 JSON（紧凑、无内嵌裸换行）
+            // stdout 一行 JSON（紧凑、无内嵌裸换行）。写不进去 ⇒ 调用方已经走了，没有第二个地方可以说。
+            let _ = writeln!(out, "{json}");
             0
         }
-        Err((code, message)) => emit_err(code, message),
+        Err((code, message)) => emit_err(err, code, message),
     }
 }
 
@@ -261,7 +275,7 @@ fn session_name_for(sid: &str, prefix: &str) -> String {
 }
 
 /// 错误信封：`{code, message}` 一行紧凑 JSON。**纯**，抽出来是为了判得到
-/// —— 它是给 aterm 的跨仓承诺的一部分（`IPC-PROTOCOL §10`「`resolve`」跨仓承诺小节），
+/// —— 它是给 aterm 的跨仓承诺的一部分（`IPC-PROTOCOL §8`「`--resolve`」那一条），
 /// 由 `resolve_query_tests.rs` 里带 `` 的那一族钉着。序列化失败兜底纯文本（同形）。
 fn error_envelope(code: &str, message: String) -> String {
     let err = ResolveError { code, message };
@@ -275,8 +289,9 @@ fn error_envelope(code: &str, message: String) -> String {
 const ERROR_EXIT: i32 = 2;
 
 /// 错误统一出口：stderr 写 `{code,message}` JSON（不污染 stdout wire）、返 [`ERROR_EXIT`]。
-fn emit_err(code: &'static str, message: String) -> i32 {
-    eprintln!("{}", error_envelope(code, message));
+fn emit_err(err: &mut dyn Write, code: &'static str, message: String) -> i32 {
+    // 写不进 stderr ⇒ 没有第二个地方可以说（退出码 2 照样回）。
+    let _ = writeln!(err, "{}", error_envelope(code, message));
     ERROR_EXIT
 }
 

@@ -660,21 +660,15 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "截断+说清",
     ),
     (
-        "src/backend/control/resolve_query.rs",
-        "MAX_RESOLVE_STDIN",
-        "`--resolve` 的 stdin",
-        "截断+说清",
-    ),
-    (
-        "src/backend/control/cli_control.rs",
+        "src/backend/control/cli_args.rs",
         "MAX_CLI_STDIN",
-        "控制面 CLI 子命令（`--launch`/`--kill`/…）的 stdin args JSON",
+        "一次性 CLI 子命令（派生的那些与 `--resolve`）的 stdin args JSON",
         "拒收+回错",
     ),
     (
-        "src/backend/control/cli_control.rs",
+        "src/backend/control/cli_args.rs",
         "MAX_ARGS_B64_LEN",
-        "控制面 CLI 子命令 argv 形载荷口（`--args-b64`）的值（base64 编码后；留在系统单个参数的上限之内）",
+        "一次性 CLI 子命令 argv 形载荷口（`--args-b64`）的值（base64 编码后；留在系统单个参数的上限之内）",
         "拒收+回错",
     ),
     (

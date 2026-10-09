@@ -2887,7 +2887,6 @@ cc-bus 钩子诊断。
 | `mine` | ← | `started_by` 里：这个调用方过不过身份门（与 `can.input` 是不是 `true` 同一个判定；结束还要看 `can.end`） |
 | `no` | ← | 做不了的原因 |
 | `program` | ← | 前台程序名 |
-| `purpose` | ← | 这一版恒为 `normal`（只有这一种） |
 | `session` | ← | 里面跑着会话（`@ccm_sid`）时才有：`{sid, agent?}` |
 | `sid` | ← | `session` 里：会话 id |
 | `since` | ← | `clients` 一项：连上的时刻（秒） |
