@@ -283,6 +283,18 @@ describe("CP2a · 文案规范", () => {
     expect(p).toEqual([]);
   });
 
+  it("★ 正例不和「原话进详情」打架：每条规矩的正例都过 C-W18，规矩正文说到原话的都说它进详情", () => {
+    const w18 = CHECKS["C-W18"];
+    expect(w18, "C-W18 没有机检").toBeTruthy();
+    const p: string[] = [];
+    for (const r of rules) {
+      for (const zh of r.good)
+        if (w18({ kind: r.probeKind ?? "body", role: r.probeRole, zh, args: [] }, ctx)) p.push(`${r.id} 的正例「${zh}」句子里接了原话`);
+      if (r.id !== "C-W18" && /原话/.test(r.rule) && !/详情/.test(r.rule)) p.push(`${r.id} 的正文说到原话却没说它进详情`);
+    }
+    expect(p).toEqual([]);
+  });
+
   it("★ 新写法那几条（C-W*）每条都带正控：至少一条反例、一条正例", () => {
     const w = rules.filter((r) => r.id.startsWith("C-W"));
     expect(w.length, "rules.json 里一条 C-W 都没有").toBe(Object.keys(W_CHECKS).length);

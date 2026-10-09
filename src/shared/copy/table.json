@@ -6033,7 +6033,7 @@
     "cfgPage.mcp.removeTitle": {
       "kind": "title",
       "role": "标题",
-      "zh": "从所有账号删除 {name}",
+      "zh": "从所有账号删除「{name}」",
       "args": ["name"]
     },
     "cfgPage.mcp.removeAction": {
@@ -6974,7 +6974,7 @@
     "profilesPage.remove.reparent": {
       "kind": "title",
       "role": "标题",
-      "zh": "改成基于 {parent} · 推荐",
+      "zh": "改成基于「{parent}」 · 推荐",
       "args": ["parent"]
     },
     "profilesPage.remove.reparentRoot": {
@@ -27780,7 +27780,7 @@
     "beChore.clash.name": {
       "kind": "title",
       "role": "标题",
-      "zh": "{name} 重名 · 你写的 / 清单",
+      "zh": "「{name}」重名 · 你写的 / 清单",
       "args": ["name"]
     },
     "beChore.clash.loc": {
@@ -28625,6 +28625,12 @@
       "role": "原因格",
       "zh": "内容无法解析",
       "args": []
+    },
+    "detail.target.session": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{machine} · {sid}",
+      "args": ["machine", "sid"]
     }
   }
 }

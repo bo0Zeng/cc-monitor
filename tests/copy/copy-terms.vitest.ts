@@ -26,7 +26,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { REPO_ROOT } from "../test-support/repo-root.ts";
-import { censusList, limitedHits, limitedMismatches, loadTable, loadTerms, scannerOf, type Term } from "./copy-support.ts";
+import { censusList, limitedHits, limitedMismatches, loadTable, loadTerms, r1Hits, scannerOf, type Term } from "./copy-support.ts";
 
 const CENSUS = resolve(REPO_ROOT, "tests", "evidence", "K-T68-A1-outward-copy-census.py");
 const LEDGER = resolve(REPO_ROOT, "tests", "evidence", "CP1-copy-verdicts.tsv");
@@ -101,6 +101,17 @@ describe("CP2a · 术语对照表", () => {
   it("表的形状：三档 · 禁词有换法且换法指向登记过的词 · 扫描正则不死、不误中反例", () => {
     expect(terms.length, "术语表一条都没读出来 —— 下面的对拍会零命中地绿").toBeGreaterThan(0);
     expect(shapeProblems(terms)).toEqual([]);
+  });
+
+  it("★ 换法里不夹禁词：每条的 say 照它自己说的去写，就不能又写出别的禁档词", () => {
+    const terms = loadTerms();
+    const p: string[] = [];
+    for (const t of terms) {
+      const said = (t.say ?? "").replace(/\{[^}]*\}/g, "");
+      const hits = r1Hits(said, terms).filter((w) => w !== t.word);
+      if (hits.length) p.push(`${t.word} 的换法里夹着禁词 ${hits.join(" · ")}`);
+    }
+    expect(p).toEqual([]);
   });
 
   it("三档都有人（任何一档被清空，R1 / R1b 那一侧就空转）", () => {

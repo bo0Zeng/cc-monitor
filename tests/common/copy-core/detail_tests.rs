@@ -178,3 +178,35 @@ fn a_written_detail_parses_back_into_items() {
     );
     assert!(Detail::parse("random words\n码：x").has_block());
 }
+
+#[test]
+fn a_session_target_is_the_machine_and_a_short_sid_never_the_title() {
+    // 会话标题常常就是用户的第一句话，详情不含会话内容 ⇒ 对象那一项只写机器 ＋ sid 前 8 位。
+    let sid = "0000aaaa-0000-4000-8000-000000000001";
+    let d = Detail::new().target(Target::Session {
+        machine: "devbox",
+        sid,
+    });
+    assert_eq!(d.render(), "对象：devbox · 0000aaaa");
+    assert_eq!(
+        Detail::new().target(Target::Account("work")).render(),
+        "对象：work"
+    );
+}
+
+#[test]
+fn the_target_item_takes_no_free_text() {
+    // 自由文本进不了「对象」：item / insert 拿 Label::Target 当场拒，只能经 Detail::target（只收标识）。
+    let title = "帮我把登录页的报错改一下";
+    let puts: [fn(&'static str) -> Detail; 3] = [
+        |t| Detail::new().item(Label::Target, t),
+        |t| Detail::new().insert(Label::Target, t),
+        |t| Detail::new().maybe(Label::Target, Some(t)),
+    ];
+    for put in puts {
+        assert!(
+            std::panic::catch_unwind(|| put(title)).is_err(),
+            "对象那一项收了自由文本"
+        );
+    }
+}
