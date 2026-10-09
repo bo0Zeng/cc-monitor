@@ -57,6 +57,29 @@ export interface CopyDetailOptions {
   iconOnly?: boolean;
 }
 
+/** 离 `el` 最近的那个能竖着滚的祖先。 */
+function scrollerOf(el: HTMLElement): HTMLElement | null {
+  for (let e = el.parentElement; e; e = e.parentElement) {
+    const y = getComputedStyle(e).overflowY;
+    if (y === "auto" || y === "scroll") return e;
+  }
+  return null;
+}
+
+/**
+ * 就地展开之后滚那一块所在的滚动区：出错那一块（条 / 行）的顶留在上沿之内，展开的原文框在此前提下尽量露全。
+ * 只动最近那一个滚动区，不连带外层。
+ */
+function keepInView(host: HTMLElement, box: HTMLElement): void {
+  const sc = scrollerOf(host);
+  if (!sc) return;
+  const view = sc.getBoundingClientRect();
+  const top = host.getBoundingClientRect().top;
+  const bottom = box.getBoundingClientRect().bottom;
+  if (top < view.top) sc.scrollTop -= view.top - top;
+  else if (bottom > view.bottom) sc.scrollTop += Math.min(bottom - view.bottom, top - view.top);
+}
+
 /**
  * ［复制详情］。`detail` 空 ⇒ `null`（调用方不放）。`said` 是屏上那一句；也可以给一个函数（合流 ×N 那种，点的那一刻才定）。
  * 返回的是一个外壳（按钮 ＋ 读屏那一格 ＋ 复制不了时的那块原文）。
@@ -134,10 +157,12 @@ export function copyDetailButton(said: string | (() => string), detail: string, 
     const host = wrap.closest<HTMLElement>("[data-detail-host]") ?? wrap.parentElement ?? wrap;
     host.appendChild(box);
     fallback = box;
-    area.focus();
+    // 焦点不自己滚（浏览器会把框底对齐、把出错那一块滚出视野）：由 `keepInView` 对准那一块。
+    area.focus({ preventScroll: true });
     area.select();
     // 全选会把框滚到底：滚回顶，首行看得全。
     area.scrollTop = 0;
+    keepInView(host, box);
   };
 
   const copy = async (): Promise<void> => {
