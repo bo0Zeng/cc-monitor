@@ -9,6 +9,11 @@
 //! | 退订 ⇒ 那个客户端没了、不再推；连接走了（票表丢了）⇒ 同样全收 | `unfollow_and_drop_reap_the_client` |
 //! | 窗格没了 ⇒ 推一帧结束（`gone`） | `a_closed_pane_ends_the_follow` |
 //! | 形状：票重复 / 不认的票 / 超过上限 / 目标不在名单 ⇒ 各自的码 | `shape_and_limits` |
+//! | 退订先到（订阅那一问还没进来）⇒ 之后那一问不起客户端、不占票 | `an_unfollow_that_comes_first_is_final` |
+//! | 退订落在起客户端那几下中间 ⇒ 起好的客户端当场收掉、不推、不占票 | `an_unfollow_while_starting_reaps_what_was_started` |
+//! | 正在起的票也占名额、也算重复；满了回 `too_many_follows` | `a_seat_being_started_counts` |
+//! | 快速订 / 退几十轮（切标签页 · 重载）之后照样订得满 | `rapid_follow_unfollow_never_fills_the_desk` |
+//! | 停了的帧带后端写好的那一句；拒绝分「只能快照 / 停了」两类 | `a_closed_pane_ends_the_follow` · `refusals_say_which_way_live_went` |
 //! | tmux 版本：3.2 起才有只读不改尺寸的客户端 | `tmux_version_gate` |
 use super::*;
 use serde_json::json;
@@ -401,9 +406,10 @@ fn a_closed_pane_ends_the_follow() {
     iso.tmux(&["kill-session", "-t", "=g-cc"]);
     let f = next_frame(&mut rx, Duration::from_secs(5)).expect("窗格没了却没说");
     match f {
-        Frame::TerminalFollowEnd { ticket, why } => {
+        Frame::TerminalFollowEnd { ticket, why, said } => {
             assert_eq!(ticket, "t1");
             assert_eq!(why, FollowEnd::Gone);
+            assert_eq!(said, copy_text("beTermFollow.end.gone", &[]));
         }
         other => panic!("等的是结束帧，来的是 {other:?}"),
     }
@@ -468,4 +474,182 @@ fn shape_and_limits() {
         Some("too_many_follows")
     );
     while next_frame(&mut rx, Duration::from_millis(50)).is_some() {}
+}
+
+/// 订得上的那几张票（排干推来的帧）。
+fn fill(d: &Desk, h: &str, rx: &mut tokio::sync::mpsc::Receiver<Frame>, prefix: &str) {
+    for i in 0..MAX_FOLLOWS_PER_CONNECTION {
+        let r = d.answer_wire(
+            FOLLOW,
+            "f",
+            &json!({ "terminal": h, "ticket": format!("{prefix}{i}") }),
+        );
+        assert!(reply_ok(&r), "第 {i} 张订不上：{r:?}");
+    }
+    while next_frame(rx, Duration::from_millis(50)).is_some() {}
+}
+
+#[test]
+fn an_unfollow_that_comes_first_is_final() {
+    let iso = Iso::new("first-unf");
+    iso.session("u-cc");
+    let h = iso.handle_of("u-cc");
+    let (d, mut rx) = desk(&iso);
+    // 壳替界面退订那一问可能先于订阅那一问到（两问各走各的）。
+    assert!(reply_ok(&d.answer_wire(
+        UNFOLLOW,
+        "r1",
+        &json!({ "ticket": "t1" })
+    )));
+    assert!(
+        reply_ok(&d.answer_wire(FOLLOW, "r2", &json!({ "terminal": h, "ticket": "t1" }))),
+        "退过的票再来订：照实回 ok（看的那一方早已不在）"
+    );
+    assert!(
+        next_frame(&mut rx, Duration::from_millis(500)).is_none(),
+        "退订先到，却还是订上了、推了帧"
+    );
+    assert_eq!(iso.control_clients(), 0, "退订先到，却还是起了客户端");
+    // 不占票：照样订得满。
+    fill(&d, &h, &mut rx, "n");
+}
+
+#[test]
+fn an_unfollow_while_starting_reaps_what_was_started() {
+    let iso = Iso::new("mid-unf");
+    iso.session("m-cc");
+    let h = iso.handle_of("m-cc");
+    let (d, mut rx) = desk(&iso);
+    let args = json!({ "terminal": h, "ticket": "t1" });
+    let seat = d.reserve(&args).expect("占位").expect("没退过的票该占得上");
+    // 起 tmux 那几下当中退订到了（就地做完、不等）。
+    assert!(reply_ok(&d.answer_wire(
+        UNFOLLOW,
+        "r1",
+        &json!({ "ticket": "t1" })
+    )));
+    assert!(d.take_seat(&seat, &args).is_ok(), "起好了才发现退过：回 ok");
+    assert!(
+        next_frame(&mut rx, Duration::from_millis(500)).is_none(),
+        "退过的票还推了帧"
+    );
+    assert!(
+        eventually(|| iso.control_clients() == 0),
+        "退过的票起好的客户端没收"
+    );
+    fill(&d, &h, &mut rx, "n");
+}
+
+#[test]
+fn a_seat_being_started_counts() {
+    let iso = Iso::new("seat");
+    iso.session("p-cc");
+    let h = iso.handle_of("p-cc");
+    let (d, _rx) = desk(&iso);
+    let seats: Vec<_> = (0..MAX_FOLLOWS_PER_CONNECTION)
+        .map(|i| {
+            d.reserve(&json!({ "terminal": h, "ticket": format!("s{i}") }))
+                .expect("占位")
+                .expect("没退过")
+        })
+        .collect();
+    assert_eq!(
+        reply_code(&d.answer_wire(FOLLOW, "r1", &json!({ "terminal": h, "ticket": "over" })))
+            .as_deref(),
+        Some("too_many_follows"),
+        "正在起的也占名额"
+    );
+    assert_eq!(
+        d.reserve(&json!({ "terminal": h, "ticket": "s0" }))
+            .err()
+            .map(|e| e.0),
+        Some("bad_args"),
+        "正在起的票再订一次 ⇒ 重复"
+    );
+    // 起不成的那一张让出名额。
+    let bad = json!({ "terminal": "tmux-999", "ticket": "s0" });
+    assert!(d.reserve(&bad).is_err());
+    assert_eq!(
+        d.follow(&bad).err().map(|e| e.0),
+        Some("bad_args"),
+        "s0 还占着（重复）"
+    );
+    d.release(&seats[0]);
+    assert_eq!(
+        d.follow(&json!({ "terminal": "tmux-999", "ticket": "x" }))
+            .err()
+            .map(|e| e.0),
+        Some("not_known"),
+        "让出名额之后、目标不在名单 ⇒ not_known"
+    );
+    assert!(
+        d.reserve(&json!({ "terminal": h, "ticket": "y" }))
+            .expect("占位")
+            .is_some(),
+        "起不成的那一张没让出名额"
+    );
+}
+
+#[test]
+fn rapid_follow_unfollow_never_fills_the_desk() {
+    let iso = Iso::new("rapid");
+    iso.session("q-cc");
+    let h = iso.handle_of("q-cc");
+    let (d, mut rx) = desk(&iso);
+    // 连按 Ctrl+Tab · 重载：一轮订一轮退，有时退订先到。
+    for i in 0..(3 * MAX_FOLLOWS_PER_CONNECTION) {
+        let t = format!("r{i}");
+        if i % 2 == 0 {
+            assert!(reply_ok(&d.answer_wire(
+                FOLLOW,
+                "f",
+                &json!({ "terminal": h, "ticket": t })
+            )));
+            assert!(reply_ok(&d.answer_wire(
+                UNFOLLOW,
+                "u",
+                &json!({ "ticket": t })
+            )));
+        } else {
+            assert!(reply_ok(&d.answer_wire(
+                UNFOLLOW,
+                "u",
+                &json!({ "ticket": t })
+            )));
+            assert!(reply_ok(&d.answer_wire(
+                FOLLOW,
+                "f",
+                &json!({ "terminal": h, "ticket": t })
+            )));
+        }
+    }
+    assert!(
+        eventually(|| iso.control_clients() == 0),
+        "订 / 退几十轮之后还挂着客户端"
+    );
+    while next_frame(&mut rx, Duration::from_millis(50)).is_some() {}
+    fill(&d, &h, &mut rx, "n");
+}
+
+#[test]
+fn refusals_say_which_way_live_went() {
+    for (code, live) in [
+        ("tmux_too_old", "snapshot_only"),
+        ("no_tmux", "snapshot_only"),
+        ("not_known", "stopped"),
+        ("ambiguous", "stopped"),
+        ("too_many_follows", "stopped"),
+        ("bad_args", "stopped"),
+        ("unobservable", "stopped"),
+    ] {
+        assert_eq!(live_after_refusal(code), live, "{code}");
+    }
+    // 三种停因各有一句，彼此不同、都不空。
+    let said: Vec<String> = [FollowEnd::Gone, FollowEnd::Lost, FollowEnd::TooBig]
+        .into_iter()
+        .map(end_said)
+        .collect();
+    assert!(said.iter().all(|s| !s.trim().is_empty()));
+    assert_ne!(said[0], said[1]);
+    assert_ne!(said[1], said[2]);
 }

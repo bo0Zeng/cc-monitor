@@ -261,10 +261,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "terminal-follow-ack",
         "第几帧画完了（两次至少隔 100 ms）：后端收到才推下一帧；前端 `terminal-follow.ts` 发",
     ),
-    (
-        "terminal-unfollow",
-        "退订（幂等）：后端摘票、收那个客户端；前端 `terminal-follow.ts` 在离开终端页 / 切标签页时发",
-    ),
+    // `terminal-unfollow` 不在这里：界面不发它（撤流即可），由 monitor 替界面发 —— 见 [`SENT_BY_MONITOR_ONLY`]。
     // 各台搜索结果合成一份：合并排序进本机后端（`search_rules::sort_by_recency`），界面逐台扇出。
     (
         "history-search-merge",
@@ -675,6 +672,15 @@ const ASKED_BY_MONITOR_ITSELF: &[(&str, usize, &str)] = &[
     ),
 ];
 
+/// **只由 monitor 发、界面不发**的帧命令 —— `(帧命令, 生产段里几处, 为什么)`。两向相等：monitor 生产段的字面量 == 登记的处数，
+/// 界面 `chan.call` 的操作名里没有它（界面又长出一处发送点 = 两条路并存）。
+const SENT_BY_MONITOR_ONLY: &[(&str, usize, &str)] = &[(
+    "terminal-unfollow",
+    1,
+    "〔退订挂在订阅上〕界面那条 `terminal-screen/<票>` 撤掉（撤单 · 被重订 · 页面重载 · 窗口没了）时，\
+     壳替界面向那台退订（`terminal_screen_relay.rs::unfollow`）；重载时界面没人能发，所以只住壳这一处",
+)];
+
 /// 后端 `stream/inbound/` 生产段里登记的全部帧命令名（异源：从后端源码数，不读本文件的表）。
 fn backend_registered_commands() -> std::collections::BTreeSet<String> {
     backend_command_blocks()
@@ -868,6 +874,26 @@ fn the_channeled_ops_are_sent_only_through_the_channel() {
             monitor_literal_count(op),
             on_frame + itself + homonyms,
             "`{op}` 已迁到通道，monitor 生产段却还有它的字面量（又长出了一个发送点）"
+        );
+    }
+    for (op, n, why) in SENT_BY_MONITOR_ONLY {
+        assert!(!why.trim().is_empty(), "`{op}` 没写理由");
+        assert!(registered.contains(*op), "`{op}` 不是后端登记的帧命令");
+        assert!(
+            !ops.contains(*op),
+            "`{op}` 登记成「只由 monitor 发」，界面却也经通道发它（两条路并存）"
+        );
+        assert!(
+            !CHANNELED
+                .iter()
+                .chain(CHANNELED_ELSEWHERE)
+                .any(|(c, _)| c == op),
+            "`{op}` 同时登记在「界面经通道发」的表里"
+        );
+        assert_eq!(
+            monitor_literal_count(op),
+            *n,
+            "`{op}` 在 monitor 生产段里的发送点处数 != 登记的 {n}"
         );
     }
     let mut still_sent_by_monitor: Vec<String> = Vec::new();

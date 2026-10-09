@@ -8,8 +8,17 @@
 //! | `terminal-follow-ack` | `{ticket, seq}` | — | 第 `seq` 帧画完了：画面有变化就推下一帧 |
 //! | `terminal-unfollow` | `{ticket}` | — | 退订（幂等）；不发收尾帧 |
 //!
-//! 订阅停了（终端没了 · 看着它的那条路断了 · 一屏太大）⇒ 推 `terminal_follow_end {ticket, why}`，忘掉这张票。
+//! 订阅停了（终端没了 · 看着它的那条路断了 · 一屏太大）⇒ 推 `terminal_follow_end {ticket, why, said}`（`said` 是给人看的那一句），忘掉这张票。
+//! 订不上 ⇒ 失败应答带 `data: {live}`：`snapshot_only`（这台只能快照：没装 tmux · tmux 太老）· `stopped`（别的）。
 //!
+//! # 票的一生（退订早到也收得干净）
+//!
+//! 票是客户端铸的、**只用一次**。订阅那一问要起几个 tmux（在阻塞线程池里），退订那一问就地做完 —— 两问可能交错，甚至退订先到
+//! （壳在界面那条画面流撤掉时替它退订，与界面发的订阅各走各的）。所以：
+//! - 订阅进来**先占位**（查重 · 查上限 · 占上，一把锁里做完），起好 tmux 再把占位换成真的；起不成 ⇒ 让出占位。
+//! - 退订碰到占位 ⇒ 摘掉；起好的那一下发现占位没了 ⇒ 当场收掉刚起的客户端、回 `ok`。
+//! - 退订碰到不在册的票 ⇒ 记进「退过」（有界，最近 [`DROPPED_KEPT`] 张）；之后这张票的订阅那一问不起客户端、回 `ok`。
+
 //! # 怎么知道画面变了（零定时器）
 //!
 //! 每张票起一个 tmux **控制模式**客户端（`attach -f read-only,ignore-size`：只读、不改窗格尺寸，tmux 3.2 起才有），
@@ -56,6 +65,9 @@ pub const MAX_FOLLOWS_PER_CONNECTION: usize = 8;
 /// 依据：200 列 × 60 行、每格都着色的满屏约 150 KiB；512 KiB 留三倍多余量，又远小于客户端一行的上限（64 MiB）。
 pub const SCREEN_FRAME_CAP: usize = 512 * 1024;
 
+/// 「退过、却还没订过」的票记几张（退订先于订阅到的那一刻用；票只用一次，记最近的就够）。
+const DROPPED_KEPT: usize = 64;
+
 /// 票的长度上限（客户端给的不透明串）。
 const MAX_TICKET_BYTES: usize = 128;
 
@@ -93,10 +105,30 @@ struct Follow {
     tx: smpsc::Sender<Ev>,
 }
 
-type Tickets = Arc<Mutex<HashMap<String, Follow>>>;
+/// 票表里的一格：正在起（占位，带一个号认是哪一次占的）· 订着。
+enum Slot {
+    Starting(u64),
+    On(Follow),
+}
 
-fn lock(t: &Tickets) -> std::sync::MutexGuard<'_, HashMap<String, Follow>> {
+/// 本连接的票表：在册的票 ＋ 「退过、还没订过」的票。
+#[derive(Default)]
+struct Book {
+    slots: HashMap<String, Slot>,
+    dropped: std::collections::VecDeque<String>,
+    seats: u64,
+}
+
+type Tickets = Arc<Mutex<Book>>;
+
+fn lock(t: &Tickets) -> std::sync::MutexGuard<'_, Book> {
     t.lock().unwrap_or_else(|p| p.into_inner())
+}
+
+/// 订阅那一问占上的位（起好 tmux 之后凭它登记；起不成凭它让出）。
+pub(crate) struct Seat {
+    ticket: String,
+    n: u64,
 }
 
 /// 本连接的订阅票表。随连接的读循环一起死（最后一份放手 ⇒ 全部退订）。可以 `clone`（起订阅那一下在阻塞线程池里做，带一份过去）。
@@ -123,6 +155,31 @@ fn ticket_of(args: &Value) -> Option<String> {
     }
 }
 
+/// 订不上（码）之后实时那一格落在哪：`snapshot_only`（这台只能快照）· `stopped`（别的）。进失败应答的 `data.live`。
+pub(crate) fn live_after_refusal(code: &str) -> &'static str {
+    match code {
+        "tmux_too_old" | "no_tmux" => "snapshot_only",
+        _ => "stopped",
+    }
+}
+
+/// 停因 ⇒ 给人看的那一句（进 `terminal_follow_end` 的 `said`）。
+pub(crate) fn end_said(why: FollowEnd) -> String {
+    match why {
+        FollowEnd::Gone => copy_text("beTermFollow.end.gone", &[]),
+        FollowEnd::Lost => copy_text("beTermFollow.end.lost", &[]),
+        FollowEnd::TooBig => copy_text("beTermFollow.end.tooBig", &[]),
+    }
+}
+
+/// 抓那个终端的一屏失败了（或控制模式客户端退了之后再看一眼）⇒ 停因：终端 / tmux 都没了 ⇒ `gone`；还在 ⇒ `lost`。
+fn end_of<T>(seen: &Result<T, CmdErr>) -> FollowEnd {
+    match seen {
+        Err(("no_such_session" | "no_server", _)) => FollowEnd::Gone,
+        _ => FollowEnd::Lost,
+    }
+}
+
 impl Desk {
     pub(crate) fn new(replies: mpsc::Sender<Frame>) -> Desk {
         Desk::on_socket(replies, None)
@@ -132,7 +189,7 @@ impl Desk {
         Desk(Arc::new(Inner {
             replies,
             socket,
-            tickets: Arc::new(Mutex::new(HashMap::new())),
+            tickets: Arc::new(Mutex::new(Book::default())),
         }))
     }
 
@@ -153,26 +210,57 @@ impl Desk {
         }
     }
 
-    /// 订上：认终端（问一次名单）· 看 tmux 版本 · 起控制模式客户端 · 起订阅线程（它当场推第一帧）。会起几个 tmux ⇒ 帧面放进阻塞线程池。
+    /// 订上：占位 · 认终端（问一次名单）· 看 tmux 版本 · 起控制模式客户端 · 登记 · 起订阅线程（它当场推第一帧）。
+    /// 会起几个 tmux ⇒ 帧面放进阻塞线程池。这张票退过 ⇒ 什么都不起、回 `Ok`。
     pub(crate) fn follow(&self, args: &Value) -> Result<(), CmdErr> {
-        let me = &self.0;
+        let Some(seat) = self.reserve(args)? else {
+            return Ok(());
+        };
+        let r = self.take_seat(&seat, args);
+        if r.is_err() {
+            self.release(&seat);
+        }
+        r
+    }
+
+    /// 占位：查重 · 查上限 · 占上（一把锁里）。这张票退过 ⇒ `None`（订阅那一问到得比退订晚，不必再起）。
+    fn reserve(&self, args: &Value) -> Result<Option<Seat>, CmdErr> {
         let ticket = ticket_of(args)
             .ok_or_else(|| bad_args("`ticket` must be a non-empty string (at most 128 bytes)"))?;
-        {
-            let g = lock(&me.tickets);
-            if g.contains_key(&ticket) {
-                return Err(bad_args("this `ticket` is already following"));
-            }
-            if g.len() >= MAX_FOLLOWS_PER_CONNECTION {
-                return Err((
-                    "too_many_follows",
-                    copy_text(
-                        "beTermFollow.register.tooMany",
-                        &[("max", &MAX_FOLLOWS_PER_CONNECTION.to_string())],
-                    ),
-                ));
-            }
+        let mut g = lock(&self.0.tickets);
+        if let Some(at) = g.dropped.iter().position(|t| *t == ticket) {
+            g.dropped.remove(at);
+            return Ok(None);
         }
+        if g.slots.contains_key(&ticket) {
+            return Err(bad_args("this `ticket` is already following"));
+        }
+        if g.slots.len() >= MAX_FOLLOWS_PER_CONNECTION {
+            return Err((
+                "too_many_follows",
+                copy_text(
+                    "beTermFollow.register.tooMany",
+                    &[("max", &MAX_FOLLOWS_PER_CONNECTION.to_string())],
+                ),
+            ));
+        }
+        g.seats += 1;
+        let n = g.seats;
+        g.slots.insert(ticket.clone(), Slot::Starting(n));
+        Ok(Some(Seat { ticket, n }))
+    }
+
+    /// 让出占位（起不成）：还是这一次占的那一格才摘。
+    fn release(&self, seat: &Seat) {
+        let mut g = lock(&self.0.tickets);
+        if matches!(g.slots.get(&seat.ticket), Some(Slot::Starting(n)) if *n == seat.n) {
+            g.slots.remove(&seat.ticket);
+        }
+    }
+
+    /// 凭占位起：认终端 · 看版本 · 起控制模式客户端，再把占位换成真的；占位已经被退订摘掉 ⇒ 收掉刚起的客户端、回 `Ok`。
+    fn take_seat(&self, seat: &Seat, args: &Value) -> Result<(), CmdErr> {
+        let me = &self.0;
         let on = On {
             socket: me.socket.as_deref(),
         };
@@ -220,15 +308,18 @@ impl Desk {
         let pending = Arc::new(AtomicBool::new(false));
         {
             let mut g = lock(&me.tickets);
-            // 两次同票的 follow 并发进来：后到的那一个不登记（它起的客户端随 `proc` 一起收）。
-            if g.contains_key(&ticket) || g.len() >= MAX_FOLLOWS_PER_CONNECTION {
-                return Err(bad_args("this `ticket` is already following"));
+            match g.slots.get(&seat.ticket) {
+                Some(Slot::Starting(n)) if *n == seat.n => {
+                    g.slots
+                        .insert(seat.ticket.clone(), Slot::On(Follow { tx: tx.clone() }));
+                }
+                // 起的这几下当中退订到了 ⇒ 刚起的客户端随 `proc` 一起收。
+                _ => return Ok(()),
             }
-            g.insert(ticket.clone(), Follow { tx: tx.clone() });
         }
         spawn_reader(out, t.pane.clone(), tx, Arc::clone(&pending));
         let worker = Worker {
-            ticket,
+            ticket: seat.ticket.clone(),
             target: t.target,
             socket: me.socket.clone(),
             replies: me.replies.clone(),
@@ -259,8 +350,8 @@ impl Desk {
             .get("seq")
             .and_then(Value::as_u64)
             .ok_or_else(|| bad_args("`seq` must be a positive integer"))?;
-        match lock(&self.0.tickets).get(&ticket) {
-            Some(f) if f.tx.send(Ev::Ack(seq)).is_ok() => Ok(()),
+        match lock(&self.0.tickets).slots.get(&ticket) {
+            Some(Slot::On(f)) if f.tx.send(Ev::Ack(seq)).is_ok() => Ok(()),
             _ => Err((
                 "not_known",
                 crate::common::contract::malformed(
@@ -270,12 +361,24 @@ impl Desk {
         }
     }
 
-    /// 退订（幂等）。
+    /// 退订（幂等）。正在起的 ⇒ 摘掉占位（起好的那一下自己收）；不在册的 ⇒ 记进「退过」（订阅那一问也许还在路上）。
     pub(crate) fn unfollow(&self, args: &Value) -> Result<(), CmdErr> {
         let ticket =
             ticket_of(args).ok_or_else(|| bad_args("`ticket` must be a non-empty string"))?;
-        if let Some(f) = lock(&self.0.tickets).remove(&ticket) {
-            let _ = f.tx.send(Ev::Stop);
+        let mut g = lock(&self.0.tickets);
+        match g.slots.remove(&ticket) {
+            Some(Slot::On(f)) => {
+                let _ = f.tx.send(Ev::Stop);
+            }
+            Some(Slot::Starting(_)) => {}
+            None => {
+                if !g.dropped.contains(&ticket) {
+                    if g.dropped.len() >= DROPPED_KEPT {
+                        g.dropped.pop_front();
+                    }
+                    g.dropped.push_back(ticket);
+                }
+            }
         }
         Ok(())
     }
@@ -283,8 +386,10 @@ impl Desk {
 
 impl Drop for Inner {
     fn drop(&mut self) {
-        for (_, f) in lock(&self.tickets).drain() {
-            let _ = f.tx.send(Ev::Stop);
+        for (_, s) in lock(&self.tickets).slots.drain() {
+            if let Slot::On(f) = s {
+                let _ = f.tx.send(Ev::Stop);
+            }
         }
     }
 }
@@ -374,20 +479,18 @@ impl Worker {
                     let on = On {
                         socket: self.socket.as_deref(),
                     };
-                    match terminals::screen_view_on(on, &self.target) {
-                        Ok(_) => Step::End(FollowEnd::Lost),
-                        Err(_) => Step::End(FollowEnd::Gone),
-                    }
+                    Step::End(end_of(&terminals::screen_view_on(on, &self.target)))
                 }
                 Ok(Ev::Stop) | Err(_) => Step::Quit,
             };
         }
         drop(proc); // 杀控制模式客户端、收尸
         if let Step::End(why) = step {
-            lock(&self.tickets).remove(&self.ticket);
+            lock(&self.tickets).slots.remove(&self.ticket);
             let _ = self.replies.blocking_send(Frame::TerminalFollowEnd {
                 ticket: self.ticket.clone(),
                 why,
+                said: end_said(why),
             });
         }
     }
@@ -406,8 +509,7 @@ impl Worker {
         };
         let view = match terminals::screen_view_on(on, &self.target) {
             Ok(v) => v,
-            Err(("no_such_session", _)) => return Step::End(FollowEnd::Gone),
-            Err(_) => return Step::End(FollowEnd::Lost),
+            seen @ Err(_) => return Step::End(end_of(&seen)),
         };
         let fp = view
             .get("screen")

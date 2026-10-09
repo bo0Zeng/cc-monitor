@@ -1293,7 +1293,7 @@ async fn the_terminal_screen_stream_carries_the_cell_to_that_origins_ticket_only
     assert!(refused, "空票那一形该当场说没有这条流");
     rec.clear();
     r.on_terminal_screen(&box_a, "t-1", r#"{"seq":1,"view":{}}"#.to_string());
-    r.on_terminal_screen(&local, "t-1", r#"{"end":"gone"}"#.to_string());
+    r.on_terminal_screen(&local, "t-1", r#"{"why":"gone","said":"x"}"#.to_string());
     let got: Vec<(u64, serde_json::Value)> = rec
         .0
         .lock()
@@ -1310,9 +1310,58 @@ async fn the_terminal_screen_stream_carries_the_cell_to_that_origins_ticket_only
         got,
         vec![
             (1, serde_json::json!({"seq": 1, "view": {}})),
-            (3, serde_json::json!({"end": "gone"}))
+            (3, serde_json::json!({"why": "gone", "said": "x"}))
         ]
     );
+}
+
+/// 终端画面流撤掉 ⇒ 壳替界面向那台退订那张票（界面 `stop` · 同一编号被重订 · 页面重载 / 窗口没了整窗清掉都算）；
+/// 别的流撤掉不退订；只退一次。期望手写。
+#[tokio::test]
+async fn dropping_a_terminal_screen_subscription_unfollows_that_ticket_on_that_origin() {
+    let (r, _rec) = hub();
+    let dropped: Arc<std::sync::Mutex<Vec<(String, String)>>> = Default::default();
+    let d = Arc::clone(&dropped);
+    r.on_screen_dropped(move |origin, ticket| {
+        d.lock()
+            .unwrap()
+            .push((origin.to_string(), ticket.to_string()));
+    });
+    let local = crate::origin::Origin::local();
+    let box_a = crate::origin::Origin("box-a".into());
+    let take = || std::mem::take(&mut *dropped.lock().unwrap());
+    // ① 界面撤单。
+    r.subscribe("w", 1, &box_a, "terminal-screen/t-1", None, 2);
+    r.subscribe("w", 2, &box_a, "accounts-changed", None, 2);
+    r.stop("w", 1);
+    r.stop("w", 2);
+    r.stop("w", 1);
+    assert_eq!(take(), vec![("box-a".to_string(), "t-1".to_string())]);
+    // ② 同一个 (webview, 编号) 被重订（页面重载后编号从头来）。
+    r.subscribe("w", 3, &local, "terminal-screen/t-2", None, 2);
+    r.subscribe("w", 3, &local, "session-lines", None, 2);
+    assert_eq!(
+        take(),
+        vec![(local.as_wire_str().to_string(), "t-2".to_string())]
+    );
+    // ③ 页面重载 / 窗口没了：那个 webview 的订阅整份清掉，别的 webview 不动。
+    r.subscribe("w", 4, &box_a, "terminal-screen/t-3", None, 2);
+    r.subscribe("w", 5, &box_a, "terminal-screen/t-4", None, 2);
+    r.subscribe("v", 1, &box_a, "terminal-screen/t-5", None, 2);
+    r.drop_webview("w");
+    let mut got = take();
+    got.sort();
+    assert_eq!(
+        got,
+        vec![
+            ("box-a".to_string(), "t-3".to_string()),
+            ("box-a".to_string(), "t-4".to_string())
+        ]
+    );
+    r.drop_webview("w");
+    assert_eq!(take(), vec![], "清过的不再退");
+    r.stop("v", 1);
+    assert_eq!(take(), vec![("box-a".to_string(), "t-5".to_string())]);
 }
 
 /// 配置文件那一种流（`profiles-changed`）：「配置文件变了」只进订了那台这一种流的订阅，账号那一种不收；体是约定那一串。

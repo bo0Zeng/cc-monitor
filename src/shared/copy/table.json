@@ -12685,6 +12685,48 @@
       "zh": "在设置里改指定的终端或改回自动",
       "args": []
     },
+    "beTerminal.no.notYours": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "手机端内部会话",
+      "args": []
+    },
+    "beTerminal.no.notManaged": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "非 cc-monitor 启动",
+      "args": []
+    },
+    "beTerminal.no.otherWindows": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "另有终端窗口连着",
+      "args": []
+    },
+    "beTerminal.no.gone": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "终端已不在",
+      "args": []
+    },
+    "beTerminal.no.ambiguous": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "多个终端匹配",
+      "args": []
+    },
+    "beTerminal.no.screenChanged": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "画面已变",
+      "args": []
+    },
+    "beTerminal.no.other": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "被拒",
+      "args": []
+    },
     "beTerminal.refuse.empty": {
       "kind": "error",
       "role": "原因格",
@@ -17270,6 +17312,51 @@
       "args": [
         "max"
       ]
+    },
+    "beTermFollow.end.gone": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "终端已不在",
+      "args": []
+    },
+    "beTermFollow.end.lost": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "画面中断",
+      "args": []
+    },
+    "beTermFollow.end.tooBig": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "画面过大",
+      "args": []
+    },
+    "beTermFollow.refuse.noTmux": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "未装 tmux · 仅快照",
+      "args": [],
+      "limited": [
+        "tmux"
+      ]
+    },
+    "beTermFollow.refuse.gone": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "终端已不在",
+      "args": []
+    },
+    "beTermFollow.refuse.ambiguous": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "多个终端匹配",
+      "args": []
+    },
+    "beTermFollow.refuse.other": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "实时画面接不上",
+      "args": []
     },
     "beTermFollow.tmux.tooOld": {
       "kind": "error",
@@ -23146,28 +23233,6 @@
         "machine"
       ]
     },
-    "terminal.head.snapshotOnlyTmux": {
-      "kind": "body",
-      "role": "悬停",
-      "zh": "{machine} 的 tmux 低于 3.2 · 不支持实时",
-      "args": [
-        "machine"
-      ],
-      "limited": [
-        "tmux"
-      ]
-    },
-    "terminal.head.snapshotOnlyNoTmux": {
-      "kind": "body",
-      "role": "悬停",
-      "zh": "{machine} 无 tmux",
-      "args": [
-        "machine"
-      ],
-      "limited": [
-        "tmux"
-      ]
-    },
     "terminal.bar.liveStopped": {
       "kind": "body",
       "role": "说明",
@@ -23195,12 +23260,6 @@
       "args": [
         "machine"
       ]
-    },
-    "terminal.liveWhy.tooBig": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "画面过大",
-      "args": []
     },
     "terminal.screen.follow": {
       "kind": "action",
@@ -23324,24 +23383,6 @@
       "kind": "action",
       "role": "按钮",
       "zh": "重试",
-      "args": []
-    },
-    "terminal.why.notYours": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "手机端内部会话",
-      "args": []
-    },
-    "terminal.why.notManaged": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "非 cc-monitor 启动",
-      "args": []
-    },
-    "terminal.why.gone": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "终端已不在",
       "args": []
     },
     "terminal.why.ambiguous": {

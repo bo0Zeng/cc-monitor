@@ -370,7 +370,7 @@ describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键�
       follow: vi.fn((_o, terminal, events) => {
         const f: FollowRig = { terminal, events, stopped: false };
         follows.push(f);
-        if (mode === "snapOnly") events.stop({ kind: "snapshotOnly", why: "tmux" });
+        if (mode === "snapOnly") events.stop({ kind: "snapshotOnly", said: "tmux 3.1 不支持实时画面 · 需要 3.2 以上" });
         return { stop: () => void (f.stopped = true) };
       }),
       list: vi.fn(async () => rows),
@@ -496,7 +496,7 @@ describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键�
     await flush();
     const b = box(r.page);
     b.value = "1";
-    r.setReply(async () => ({ result: "refused", why: "screen-changed", screen: "fp9" }));
+    r.setReply(async () => ({ result: "refused", why: "screen_changed", said: "那台写的一句 · 画面", screen: "fp9" }));
     key(b, "Enter");
     await flush();
     expect([b.value, r.shotCount()]).toEqual(["1", 2]);
@@ -516,12 +516,27 @@ describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键�
     expect(retry).toBeDefined();
   });
 
+  it("★ 送字被拒 ⇒ 那一句（后端写好）排进「未送达 · … · 内容保留」；终端已不在 ⇒ 重找", async () => {
+    const r = rig([row("a")], { t: tab("a") });
+    r.page.setVisible(true);
+    await flush();
+    const b = box(r.page);
+    b.value = "1";
+    r.setReply(async () => ({ result: "refused", why: "not_known", said: "那台写的一句 · 不在", screen: null }));
+    const lists = vi.mocked(r.reads.list).mock.calls.length;
+    key(b, "Enter");
+    await flush();
+    expect(r.page.el.textContent).toContain(copyText("terminal.input.failed", { why: "那台写的一句 · 不在" }));
+    expect(b.value).toBe("1");
+    expect(vi.mocked(r.reads.list).mock.calls.length, "终端已不在 ⇒ 重问名单").toBe(lists + 1);
+  });
+
   it("★ 后端说送不了（别的前端的会话）⇒ 框与键都灰、写为什么，点了也不送", async () => {
-    const r = rig([row("a", { inputNo: "not-yours" })], { t: tab("a") });
+    const r = rig([row("a", { inputNo: "那台写的一句 · 不归这边" })], { t: tab("a") });
     r.page.setVisible(true);
     await flush();
     expect(box(r.page).disabled).toBe(true);
-    expect(box(r.page).placeholder).toBe(copyText("terminal.input.readOnly", { why: copyText("terminal.why.notYours") }));
+    expect(box(r.page).placeholder, "后端那一句原样排进去").toBe(copyText("terminal.input.readOnly", { why: "那台写的一句 · 不归这边" }));
     const esc = [...r.page.el.querySelectorAll("button")].find((x) => x.textContent === "Esc")!;
     expect(esc.getAttribute("aria-disabled")).toBe("true");
     expect(await r.page.send({ key: "esc" })).toBe(false);
@@ -603,8 +618,8 @@ describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键�
     r.page.setVisible(true);
     await flush();
     r.follows[0].events.screen(liveShot("ok live", "22:15:07"));
-    r.follows[0].events.stop({ kind: "stopped", why: "offline" });
-    const said = copyText("terminal.bar.liveStopped", { why: copyText("terminal.liveWhy.offline", { machine: "devbox" }) });
+    r.follows[0].events.stop({ kind: "stopped", said: "devbox 断开", offline: true });
+    const said = copyText("terminal.bar.liveStopped", { why: "devbox 断开" });
     expect(r.page.el.textContent).toContain(said);
     expect(visibleText(r.page.el)).toContain(copyText("terminal.head.snapAt", { time: "22:15:07" }));
     expect(r.page.el.querySelector("[data-stale]")?.getAttribute("data-stale")).toBe("true");
@@ -638,7 +653,7 @@ describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键�
       expect(shown).toContain(copyText("terminal.head.recapture"));
       expect(shown).not.toContain(copyText("terminal.head.live"));
       const tag = [...r.page.el.querySelectorAll<HTMLElement>("span")].find((e) => e.textContent === copyText("terminal.head.snapshotOnly"))!;
-      expect(tag.title).toBe(copyText("terminal.head.snapshotOnlyTmux", { machine: "devbox" }));
+      expect(tag.title, "悬停是那一句原样").toBe("tmux 3.1 不支持实时画面 · 需要 3.2 以上");
       const before = r.shotCount();
       box(r.page).value = "1";
       key(box(r.page), "Enter");

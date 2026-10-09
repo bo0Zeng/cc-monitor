@@ -746,8 +746,10 @@ pub enum Frame {
     TerminalFollowEnd {
         /// 订阅票。
         ticket: String,
-        /// 为什么停了。
+        /// 为什么停了（给程序认）。
         why: FollowEnd,
+        /// 给人看的那一句（后端写好，界面原样上屏）。
+        said: String,
     },
 }
 

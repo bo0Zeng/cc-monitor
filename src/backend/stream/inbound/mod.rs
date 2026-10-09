@@ -56,7 +56,7 @@ use drain::{exit_after_drain_within, Drain};
 pub(crate) use drain::{DRAIN, DRAIN_DEADLINE};
 use sniff::sniff_id;
 pub use sniff::ID_SNIFF_BYTES;
-use spec::{BlockingHandler, BoxFut, DataHandler, Fail, Handler, Outcome};
+use spec::{BlockingHandler, BoxFut, DataFut, DataHandler, Fail, Handler, Outcome};
 pub(crate) use spec::{CommandSpec, Run};
 // 字段的向只有协议文档生成器读（测试档）。
 #[cfg(test)]
@@ -358,16 +358,23 @@ fn dispatch(
         // 终端实时预览三条：要碰**本连接的订阅票表**与应答通道（画面帧走应答通道）⇒ 同一档硬臂。
         //   订上那一下要起几个 tmux（名单 · 版本 · 控制模式客户端）⇒ 异步档里挪进阻塞线程池、带一份票表过去；
         //   回执与退订是就地做完的记账。
+        //   订不上 ⇒ 失败应答带 `data: {live}`（实时那一格落在「只能快照」还是「停了」，判在 `terminal_follow::live_after_refusal`）。
         crate::control::terminal_follow::FOLLOW => {
             let desk = follows.clone();
-            Disposition::Spawn(
+            Disposition::SpawnData(
                 req,
-                Box::new(move |r: Request| -> BoxFut {
+                Box::new(move |r: Request| -> DataFut {
                     Box::pin(async move {
                         desk.follow_off_worker(r.args)
                             .await
                             .map(|()| None)
-                            .map_err(|(c, m)| (c.to_string(), m))
+                            .map_err(|(c, m)| {
+                                let mut f = Fail::new(c, m);
+                                f.data = Some(serde_json::json!({
+                                    "live": crate::control::terminal_follow::live_after_refusal(c),
+                                }));
+                                f
+                            })
                     })
                 }),
             )

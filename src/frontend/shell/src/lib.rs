@@ -526,6 +526,10 @@ pub fn run() {
         }
         use tauri::Manager;
         let app = window.app_handle();
+        // 窗口没了 ⇒ 它的订阅整份作废（终端画面流顺手替它向那台退订）。
+        if let Some(replay) = app.try_state::<Arc<event_replay::EventReplay>>() {
+            replay.drop_webview(window.label());
+        }
         let alive: Vec<String> = app.webview_windows().keys().cloned().collect();
         let alive: Vec<&str> = alive.iter().map(String::as_str).collect();
         for label in windows_to_destroy_after(window.label(), &alive) {
@@ -534,6 +538,18 @@ pub fn run() {
                     tracing::warn!("跟着主窗收掉 {label} 窗口失败：{e}");
                 }
             }
+        }
+    });
+
+    // 页面重载（开发者工具刷新 · 窗口重建同一个 webview）：旧页面的订阅整份作废 —— 重载后编号从头来，
+    //   没被重订到的旧订阅（尤其终端画面流：后端那张票占着一个 tmux 客户端）不留成孤儿。
+    builder = builder.on_page_load(|webview, payload| {
+        if payload.event() != tauri::webview::PageLoadEvent::Started {
+            return;
+        }
+        use tauri::Manager;
+        if let Some(replay) = webview.try_state::<Arc<event_replay::EventReplay>>() {
+            replay.drop_webview(webview.label());
         }
     });
 
@@ -715,6 +731,8 @@ pub fn run() {
                 });
             }
             {
+                // 画面流撤掉 ⇒ 替界面向那台退订（后端那张票的寿命跟着这条流走，重载时界面没人能发）。
+                replay.on_screen_dropped(crate::terminal_screen_relay::unfollow);
                 let replay = replay.clone();
                 crate::terminal_screen_relay::install_sink(move |origin, ticket, cell| {
                     replay.on_terminal_screen(origin, ticket, cell)
