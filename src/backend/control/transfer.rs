@@ -730,8 +730,9 @@ fn ok(id: &str, data: Option<serde_json::Value>) -> Frame {
     }
 }
 
-fn err(id: &str, code: &str, message: &str) -> Frame {
-    Frame::err(id, code, message)
+/// 这几条命令就地被拒的那一帧（详情里带命令名）。
+fn err(id: &str, cmd: &str, code: &str, message: &str) -> Frame {
+    Frame::refused(id, cmd, code, message)
 }
 
 /// 下载的本机落点：字符串或 `{"b16": …}`（与文件管理面同一个字节形）。
@@ -783,6 +784,7 @@ impl Desk {
             TRANSFER_STOP => self.stop(id, args),
             other => err(
                 id,
+                other,
                 "unknown_command",
                 &crate::common::contract::malformed(&format!("unknown transfer command `{other}`")),
             ),
@@ -794,11 +796,12 @@ impl Desk {
         lock(&self.tickets).len()
     }
 
-    fn register(&self, id: &str, t: Ticket) -> Result<String, Frame> {
+    fn register(&self, id: &str, cmd: &str, t: Ticket) -> Result<String, Frame> {
         let mut g = lock(&self.tickets);
         if g.len() >= MAX_TICKETS_PER_CONNECTION {
             return Err(err(
                 id,
+                cmd,
                 "too_many_transfers",
                 &copy_text(
                     "beTransfer.register.tooMany",
@@ -810,6 +813,7 @@ impl Desk {
             if g.values().any(|o| o.key.as_ref() == Some(k)) {
                 return Err(err(
                     id,
+                    cmd,
                     "busy",
                     &copy_text("beTransfer.register.sameFile", &[]),
                 ));
@@ -824,7 +828,7 @@ impl Desk {
     fn upload(&self, id: &str, args: &serde_json::Value) -> Frame {
         let (dial, local) = match dial_of(args).and_then(|d| Ok((d, text(args, "local_path")?))) {
             Ok(v) => v,
-            Err(m) => return err(id, "bad_args", &m),
+            Err(m) => return err(id, TRANSFER_UPLOAD, "bad_args", &m),
         };
         let meta = match std::fs::metadata(local) {
             Ok(m) => m,
@@ -840,6 +844,7 @@ impl Desk {
         if !meta.is_file() {
             return err(
                 id,
+                TRANSFER_UPLOAD,
                 "bad_args",
                 &copy_text("beTransfer.local.notRegular", &[("path", local)]),
             );
@@ -864,7 +869,7 @@ impl Desk {
             key: Some(key.clone()),
             cancel: Arc::new(Cancel::default()),
         };
-        match self.register(id, t) {
+        match self.register(id, TRANSFER_UPLOAD, t) {
             Ok(tid) => ok(id, Some(serde_json::json!({ "id": tid, "key": key }))),
             Err(f) => f,
         }
@@ -882,10 +887,10 @@ impl Desk {
         });
         let (dial, remote, local) = match parsed {
             Ok(v) => v,
-            Err(m) => return err(id, "bad_args", &m),
+            Err(m) => return err(id, TRANSFER_DOWNLOAD, "bad_args", &m),
         };
         if let Err(e) = land_check(&local) {
-            return err(id, "refused", &e);
+            return err(id, TRANSFER_DOWNLOAD, "refused", &e);
         }
         let t = Ticket {
             dial,
@@ -893,7 +898,7 @@ impl Desk {
             key: None,
             cancel: Arc::new(Cancel::default()),
         };
-        match self.register(id, t) {
+        match self.register(id, TRANSFER_DOWNLOAD, t) {
             Ok(tid) => ok(id, Some(serde_json::json!({ "id": tid }))),
             Err(f) => f,
         }
@@ -903,7 +908,7 @@ impl Desk {
     fn stop(&self, id: &str, args: &serde_json::Value) -> Frame {
         let tid = match text(args, "id") {
             Ok(t) => t.to_string(),
-            Err(m) => return err(id, "bad_args", &m),
+            Err(m) => return err(id, TRANSFER_STOP, "bad_args", &m),
         };
         let mut g = lock(&self.tickets);
         if let Some(t) = g.get(&tid) {
@@ -919,13 +924,14 @@ impl Desk {
     fn start(&self, id: &str, args: &serde_json::Value) -> Frame {
         let tid = match text(args, "id") {
             Ok(t) => t.to_string(),
-            Err(m) => return err(id, "bad_args", &m),
+            Err(m) => return err(id, TRANSFER_START, "bad_args", &m),
         };
         let (dial, job, cancel) = {
             let mut g = lock(&self.tickets);
             let Some(t) = g.get_mut(&tid) else {
                 return err(
                     id,
+                    TRANSFER_START,
                     "no_such_transfer",
                     &copy_text("beTransfer.start.unknown", &[("tid", &tid.to_string())]),
                 );
@@ -933,6 +939,7 @@ impl Desk {
             let Some(job) = t.job.take() else {
                 return err(
                     id,
+                    TRANSFER_START,
                     "already_started",
                     &copy_text("beTransfer.start.already", &[("tid", &tid.to_string())]),
                 );

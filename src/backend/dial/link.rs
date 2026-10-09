@@ -63,7 +63,7 @@ const PIPE_BUFFER: usize = 64 * 1024;
 /// 一条在开着的链路。
 struct Entry {
     credit: Arc<Semaphore>,
-    up: mpsc::Sender<(Vec<u8>, String)>,
+    up: mpsc::Sender<(Vec<u8>, String, String)>,
     serve: tokio::task::AbortHandle,
     down: tokio::task::AbortHandle,
     upstream: tokio::task::AbortHandle,
@@ -130,14 +130,15 @@ impl Table {
     }
 
     /// `link-open`：登记、起三个任务。返回应答帧（**不等拨通** —— 拨通与否在链路字节里那一行 ack）。
-    pub fn open(&self, id: &str, args: &serde_json::Value) -> Frame {
+    pub fn open(&self, cmd: &str, id: &str, args: &serde_json::Value) -> Frame {
         let link = match link_arg(args) {
             Ok(l) => l,
-            Err(m) => return Frame::err(id, "bad_args", &m),
+            Err(m) => return Frame::refused(id, cmd, "bad_args", &m),
         };
         let Some(dial) = args.get("dial") else {
-            return Frame::err(
+            return Frame::refused(
                 id,
+                cmd,
                 "bad_args",
                 &crate::common::contract::malformed("missing `dial` (a dial request)"),
             );
@@ -145,21 +146,22 @@ impl Table {
         // 原始子系统字节流不交给界面：SFTP 住本机常驻后端（`dial/sftp.rs`），界面只有部署 `use:"files"` 与传输 `transfer-*` 两条路；
         // 把协议字节交出去，界面进程就又碰 SSH 了。协议上认得这个词，说得出为什么不做。
         if dial.get("use").and_then(serde_json::Value::as_str) == Some("subsystem") {
-            return Frame::err(
+            return Frame::refused(
                 id,
+                cmd,
                 "unsupported_use",
                 &crate::common::contract::malformed("use `subsystem` is not served here"),
             );
         }
         let req = match super::parse_request_value(dial) {
             Ok(r) => r,
-            Err((code, m)) => return Frame::err(id, code, &m),
+            Err((code, m)) => return Frame::refused(id, cmd, code, &m),
         };
         let window = match args.get("window").and_then(serde_json::Value::as_u64) {
             Some(w) if (LINK_CHUNK_BYTES as u64..=MAX_WINDOW).contains(&w) => w,
             _ => {
-                return Frame::err(
-                    id,
+                return Frame::refused(
+                    id, cmd,
                     "bad_args",
                     &crate::common::contract::malformed(&format!("`window` (initial credit, bytes) must be within [{LINK_CHUNK_BYTES}, {MAX_WINDOW}]")),
                 )
@@ -167,6 +169,7 @@ impl Table {
         };
 
         let reply = self.install(
+            cmd,
             id,
             link.clone(),
             window,
@@ -185,22 +188,24 @@ impl Table {
     /// 登记一条链路、起三个任务。`serve` 拿上行读端与下行写端，干完就返回（返回 ⇒ 下行写端被丢 ⇒
     /// 下行泵读到 EOF ⇒ `link_end`）。**抽出来是为了判据**：链路的记账（流控 / 顺序 / 收尾）
     /// 不需要真 SSH 就验得动（`dial_link_tests` 拿回声 / 造字节的 `serve` 喂它）。
-    fn install<F, Fut>(&self, id: &str, link: String, window: u64, serve: F) -> Frame
+    fn install<F, Fut>(&self, cmd: &str, id: &str, link: String, window: u64, serve: F) -> Frame
     where
         F: FnOnce(tokio::io::DuplexStream, tokio::io::DuplexStream) -> Fut + Send + 'static,
         Fut: std::future::Future<Output = ()> + Send + 'static,
     {
         let mut g = lock(&self.links);
         if g.contains_key(&link) {
-            return Frame::err(
+            return Frame::refused(
                 id,
+                cmd,
                 "duplicate_link",
                 &crate::common::contract::malformed("this link id is still open"),
             );
         }
         if g.len() >= MAX_LINKS_PER_CONNECTION {
-            return Frame::err(
+            return Frame::refused(
                 id,
+                cmd,
                 "too_many_links",
                 &copy_text(
                     "beLink.install.tooMany",
@@ -212,7 +217,7 @@ impl Table {
         let (down_w, down_r) = tokio::io::duplex(PIPE_BUFFER);
         let (up_w, up_r) = tokio::io::duplex(PIPE_BUFFER);
         let credit = Arc::new(Semaphore::new(window as usize));
-        let (up_tx, up_rx) = mpsc::channel::<(Vec<u8>, String)>(UPSTREAM_QUEUE);
+        let (up_tx, up_rx) = mpsc::channel::<(Vec<u8>, String, String)>(UPSTREAM_QUEUE);
 
         // ① 拨号与服务：返回时丢掉下行写端 ⇒ 下行泵读到 EOF ⇒ `link_end`。
         let serve = tokio::spawn(serve(up_r, down_w)).abort_handle();
@@ -242,25 +247,27 @@ impl Table {
     }
 
     /// `link-data`：解码、进那条链路的上行队列。`None` = 应答由上行泵在写进管子之后发。
-    pub fn data(&self, id: &str, args: &serde_json::Value) -> Option<Frame> {
+    pub fn data(&self, cmd: &str, id: &str, args: &serde_json::Value) -> Option<Frame> {
         let link = match link_arg(args) {
             Ok(l) => l,
-            Err(m) => return Some(Frame::err(id, "bad_args", &m)),
+            Err(m) => return Some(Frame::refused(id, cmd, "bad_args", &m)),
         };
         let Some(text) = args.get("data").and_then(serde_json::Value::as_str) else {
-            return Some(Frame::err(
+            return Some(Frame::refused(
                 id,
+                cmd,
                 "bad_args",
                 &crate::common::contract::malformed("missing `data` (base64)"),
             ));
         };
         let bytes = match b64_decode(text) {
             Ok(b) => b,
-            Err(e) => return Some(Frame::err(id, "bad_args", &e)),
+            Err(e) => return Some(Frame::refused(id, cmd, "bad_args", &e)),
         };
         if bytes.len() > LINK_CHUNK_BYTES {
-            return Some(Frame::err(
+            return Some(Frame::refused(
                 id,
+                cmd,
                 "bad_args",
                 &crate::common::contract::malformed(&format!(
                     "a chunk of {} bytes exceeds {LINK_CHUNK_BYTES}",
@@ -270,23 +277,26 @@ impl Table {
         }
         let g = lock(&self.links);
         let Some(e) = g.get(&link) else {
-            return Some(Frame::err(
+            return Some(Frame::refused(
                 id,
+                cmd,
                 "no_such_link",
                 &copy_text("beLink.gone.say", &[]),
             ));
         };
-        match e.up.try_send((bytes, id.to_string())) {
+        match e.up.try_send((bytes, id.to_string(), cmd.to_string())) {
             Ok(()) => None,
-            Err(mpsc::error::TrySendError::Full(_)) => Some(Frame::err(
+            Err(mpsc::error::TrySendError::Full(_)) => Some(Frame::refused(
                 id,
+                cmd,
                 "link_busy",
                 &crate::common::contract::malformed(
                     "the previous chunk on this link is not acknowledged yet",
                 ),
             )),
-            Err(mpsc::error::TrySendError::Closed(_)) => Some(Frame::err(
+            Err(mpsc::error::TrySendError::Closed(_)) => Some(Frame::refused(
                 id,
+                cmd,
                 "link_closed",
                 &copy_text("beLink.gone.say", &[]),
             )),
@@ -294,25 +304,32 @@ impl Table {
     }
 
     /// `link-credit`：monitor 读走了这么多，还回来。
-    pub fn credit(&self, id: &str, args: &serde_json::Value) -> Frame {
+    pub fn credit(&self, cmd: &str, id: &str, args: &serde_json::Value) -> Frame {
         let link = match link_arg(args) {
             Ok(l) => l,
-            Err(m) => return Frame::err(id, "bad_args", &m),
+            Err(m) => return Frame::refused(id, cmd, "bad_args", &m),
         };
         let Some(bytes) = args.get("bytes").and_then(serde_json::Value::as_u64) else {
-            return Frame::err(id, "bad_args", "缺 `bytes`（非负整数）");
+            return Frame::refused(
+                id,
+                cmd,
+                "bad_args",
+                &crate::common::contract::malformed("missing `bytes` (a non-negative integer)"),
+            );
         };
         let g = lock(&self.links);
         let Some(e) = g.get(&link) else {
-            return Frame::err(id, "no_such_link", &copy_text("beLink.gone.say", &[]));
+            return Frame::refused(id, cmd, "no_such_link", &copy_text("beLink.gone.say", &[]));
         };
         // 累计信用不许超过上限：对端还的比它读走的多 = 不守约 ⇒ 拒收＋回错（不替它夹）。
         let have = e.credit.available_permits() as u64;
         if have.saturating_add(bytes) > MAX_WINDOW {
-            return Frame::err(
-                id,
+            return Frame::refused(
+                id, cmd,
                 "bad_args",
-                &format!("还了 {bytes} 字节信用，累计会超过上限 {MAX_WINDOW}（手里已有 {have}）"),
+                &crate::common::contract::malformed(&format!(
+                    "returning {bytes} bytes of credit would exceed the cap {MAX_WINDOW} (holding {have})"
+                )),
             );
         }
         e.credit.add_permits(bytes as usize);
@@ -320,10 +337,10 @@ impl Table {
     }
 
     /// `link-close`：界面走了。三个任务一起收；关一条不存在的链路是幂等的（同 `cancel`）。
-    pub fn close(&self, id: &str, args: &serde_json::Value) -> Frame {
+    pub fn close(&self, cmd: &str, id: &str, args: &serde_json::Value) -> Frame {
         let link = match link_arg(args) {
             Ok(l) => l,
-            Err(m) => return Frame::err(id, "bad_args", &m),
+            Err(m) => return Frame::refused(id, cmd, "bad_args", &m),
         };
         if let Some(e) = lock(&self.links).remove(&link) {
             e.abort_all();
@@ -392,14 +409,15 @@ async fn pump_down(
 /// 上行泵：一块一块写进上行管子，**写进去之后**才回那一块的应答。
 async fn pump_up(
     mut to: tokio::io::DuplexStream,
-    mut rx: mpsc::Receiver<(Vec<u8>, String)>,
+    mut rx: mpsc::Receiver<(Vec<u8>, String, String)>,
     replies: mpsc::Sender<Frame>,
 ) {
-    while let Some((bytes, id)) = rx.recv().await {
+    while let Some((bytes, id, cmd)) = rx.recv().await {
         let frame = match to.write_all(&bytes).await {
             Ok(()) => Frame::ok(&id),
-            Err(e) => Frame::err(
+            Err(e) => Frame::refused(
                 &id,
+                &cmd,
                 "link_closed",
                 &copy_text("beLink.gone.withError", &[("e", &e.to_string())]),
             ),

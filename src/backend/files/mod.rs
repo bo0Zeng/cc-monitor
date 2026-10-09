@@ -387,8 +387,39 @@ pub const FRESHNESS: &[Freshness] = &[
 
 // ══════════════════════ 命令面（形状照 `inbound::CommandSpec` 的处理器）══════════════════════
 
-/// 一条能力的答案：成功交 JSON，失败交 `(code, message)`（与 `inbound` 的 `CmdResult` 同形）。
-pub type Answer = Result<serde_json::Value, (&'static str, String)>;
+/// 一条能力的答案：成功交 JSON，失败交 [`Refused`]（码 ＋ 那一句 ＋ 下层原话）。
+pub type Answer = Result<serde_json::Value, Refused>;
+
+/// 一条能力的失败：码 ＋ 给人看的那一句 ＋ 下层原话（可缺：系统报错原文不进句子，由命令表交进复制详情）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Refused {
+    pub code: &'static str,
+    pub said: String,
+    pub raw: Option<String>,
+}
+
+impl From<(&'static str, String)> for Refused {
+    /// 没有下层原话的那几形（参数 · 路径 · 上限）。
+    fn from((code, said): (&'static str, String)) -> Refused {
+        Refused {
+            code,
+            said,
+            raw: None,
+        }
+    }
+}
+
+impl Refused {
+    /// 码 ＋ 那一句 ＋ 下层原话（空 ⇒ 不带）。
+    fn with_raw(code: &'static str, said: String, raw: impl std::fmt::Display) -> Refused {
+        let raw = raw.to_string();
+        Refused {
+            code,
+            said,
+            raw: (!raw.trim().is_empty()).then_some(raw),
+        }
+    }
+}
 
 /// 每次回送的条数上限的默认值（调用方给 `limit` 就用它的；给 0 或不给 ⇒ 用这个）。
 /// 理由是「一次往返」：一次查询可以命中五万多条，一次全推过去就不再是零流量搜索。截断时 `truncated` 与 `total_hits` 会说出来。
@@ -491,17 +522,6 @@ fn kind_name(is_dir: bool, is_file: bool, is_symlink: bool) -> &'static str {
     }
 }
 
-/// 读不了时那一截原因：常见的两种说成人话，其余用系统原话（`ErrorKind` 的调试名 `PermissionDenied` 不上屏）。
-fn io_kind_said(e: &std::io::Error) -> String {
-    match e.kind() {
-        std::io::ErrorKind::PermissionDenied => {
-            copy_core::copy_text("beFilesRead.ioKind.denied", &[])
-        }
-        std::io::ErrorKind::NotFound => copy_core::copy_text("beFilesRead.ioKind.notFound", &[]),
-        _ => e.to_string(),
-    }
-}
-
 /// 这一族认得的类型名 —— **闭集，唯一住址**。判据按它对拍 [`kind_name`] 的出口。
 pub const KINDS: &[&str] = &["dir", "file", "other", "symlink"];
 
@@ -520,9 +540,13 @@ fn answer_ls(args: &serde_json::Value) -> Answer {
             std::io::ErrorKind::NotADirectory => "not_dir",
             _ => "unreadable",
         };
-        (
+        Refused::with_raw(
             code,
-            copy_core::copy_text("beFilesRead.ls.unreadable", &[("kind", &io_kind_said(&e))]),
+            copy_core::copy_text(
+                "beFilesRead.ls.unreadable",
+                &[("kind", &copy_core::io_reason(e.kind()))],
+            ),
+            &e,
         )
     })?;
     let mut entries: Vec<serde_json::Value> = Vec::new();
@@ -596,12 +620,13 @@ where
 fn answer_stat(args: &serde_json::Value) -> Answer {
     let path = path_arg(args)?;
     let md = std::fs::metadata(&path).map_err(|e| {
-        (
+        Refused::with_raw(
             "unreadable",
             copy_core::copy_text(
                 "beFilesRead.size.unreadable",
-                &[("kind", &io_kind_said(&e))],
+                &[("kind", &copy_core::io_reason(e.kind()))],
             ),
+            &e,
         )
     })?;
     let mut out = serde_json::Map::new();
@@ -721,10 +746,10 @@ fn answer_find(args: &serde_json::Value) -> Answer {
             Some("under") => false,
             Some("machine") => true,
             _ => {
-                return Err((
+                return Err(Refused::from((
                     "bad_args",
                     crate::common::contract::malformed("`scope` must be \"under\" or \"machine\""),
-                ));
+                )));
             }
         },
     };
@@ -855,12 +880,13 @@ fn answer_index_rebuild(args: &serde_json::Value) -> Answer {
     };
     // 只要「打不打得开」这一个答案 —— 句柄拿到就丢，一条目录项都不读。
     std::fs::read_dir(&root).map_err(|e| {
-        (
+        Refused::with_raw(
             "unreadable",
             copy_core::copy_text(
                 "beFilesRead.rebuild.rootUnreadable",
-                &[("kind", &io_kind_said(&e))],
+                &[("kind", &copy_core::io_reason(e.kind()))],
             ),
+            &e,
         )
     })?;
     // 「有一趟已经在跑」（`rebuild_once` 非阻塞互斥、抢不到回 `None`）走错误码 `already_rebuilding`，不走带 `skipped` 的成功回参：
@@ -1005,36 +1031,47 @@ fn answer_read_chunk(args: &serde_json::Value) -> Answer {
     let offset = num(args.get("offset"), "offset")?;
     let len = num(args.get("len"), "len")?;
     if len == 0 || len > READ_CHUNK_MAX_BYTES {
-        return Err((
+        return Err(Refused::from((
             "bad_args",
             crate::common::contract::malformed(&format!(
                 "`len` is {len}; accepted range 1..={READ_CHUNK_MAX_BYTES}, not clamped"
             )),
-        ));
+        )));
     }
-    let kind = |e: std::io::Error| io_kind_said(&e);
     let md = std::fs::metadata(&path).map_err(|e| {
-        (
+        Refused::with_raw(
             "unreadable",
-            copy_core::copy_text("beFilesRead.size.unreadable", &[("kind", &kind(e))]),
+            copy_core::copy_text(
+                "beFilesRead.size.unreadable",
+                &[("kind", &copy_core::io_reason(e.kind()))],
+            ),
+            &e,
         )
     })?;
     if !md.is_file() {
-        return Err((
+        return Err(Refused::from((
             "not_text",
             copy_core::copy_text("beFilesRead.text.notRegular", &[]),
-        ));
+        )));
     }
     let broke = |e: std::io::Error| {
-        (
+        Refused::with_raw(
             "unreadable",
-            copy_core::copy_text("beFilesRead.text.readBroke", &[("kind", &kind(e))]),
+            copy_core::copy_text(
+                "beFilesRead.text.readBroke",
+                &[("kind", &copy_core::io_reason(e.kind()))],
+            ),
+            &e,
         )
     };
     let mut f = std::fs::File::open(&path).map_err(|e| {
-        (
+        Refused::with_raw(
             "unreadable",
-            copy_core::copy_text("beFilesRead.text.openFailed", &[("kind", &kind(e))]),
+            copy_core::copy_text(
+                "beFilesRead.text.openFailed",
+                &[("kind", &copy_core::io_reason(e.kind()))],
+            ),
+            &e,
         )
     })?;
     f.seek(std::io::SeekFrom::Start(offset)).map_err(broke)?;
@@ -1071,30 +1108,31 @@ fn answer_read_text(args: &serde_json::Value) -> Answer {
             ),
         ))?;
     if max == 0 || max > READ_TEXT_MAX_BYTES as u64 {
-        return Err((
+        return Err(Refused::from((
             "bad_args",
             crate::common::contract::malformed(&format!(
                 "`max_bytes` is {max}; accepted range 1..={READ_TEXT_MAX_BYTES}, not clamped"
             )),
-        ));
+        )));
     }
     let md = std::fs::metadata(&path).map_err(|e| {
-        (
+        Refused::with_raw(
             "unreadable",
             copy_core::copy_text(
                 "beFilesRead.size.unreadable",
-                &[("kind", &io_kind_said(&e))],
+                &[("kind", &copy_core::io_reason(e.kind()))],
             ),
+            &e,
         )
     })?;
     if !md.is_file() {
-        return Err((
+        return Err(Refused::from((
             "not_text",
             copy_core::copy_text("beFilesRead.text.notRegular", &[]),
-        ));
+        )));
     }
     if md.len() > max {
-        return Err((
+        return Err(Refused::from((
             "too_large",
             copy_core::copy_text(
                 "beFilesRead.text.tooLarge",
@@ -1104,35 +1142,40 @@ fn answer_read_text(args: &serde_json::Value) -> Answer {
                     ("over", &(md.len() - max).to_string()),
                 ],
             ),
-        ));
+        )));
     }
     let f = std::fs::File::open(&path).map_err(|e| {
-        (
+        Refused::with_raw(
             "unreadable",
             copy_core::copy_text(
                 "beFilesRead.text.openFailed",
-                &[("kind", &io_kind_said(&e))],
+                &[("kind", &copy_core::io_reason(e.kind()))],
             ),
+            &e,
         )
     })?;
     let mut buf: Vec<u8> = Vec::new();
     std::io::Read::read_to_end(&mut std::io::Read::take(f, max + 1), &mut buf).map_err(|e| {
-        (
+        Refused::with_raw(
             "unreadable",
-            copy_core::copy_text("beFilesRead.text.readBroke", &[("kind", &io_kind_said(&e))]),
+            copy_core::copy_text(
+                "beFilesRead.text.readBroke",
+                &[("kind", &copy_core::io_reason(e.kind()))],
+            ),
+            &e,
         )
     })?;
     if buf.len() as u64 > max {
-        return Err((
+        return Err(Refused::from((
             "too_large",
             copy_core::copy_text("beFilesRead.text.grew", &[("max", &max.to_string())]),
-        ));
+        )));
     }
     if buf.contains(&0) {
-        return Err((
+        return Err(Refused::from((
             "not_text",
             copy_core::copy_text("beFilesRead.text.hasNul", &[]),
-        ));
+        )));
     }
     let n = buf.len();
     // 交出去的那份字节的摘要：编辑器存回去时原样交回当 CAS 的 `expect`（算法住写面那一处）。
@@ -1158,12 +1201,13 @@ fn answer_read_text(args: &serde_json::Value) -> Answer {
 fn answer_size(args: &serde_json::Value) -> Answer {
     let path = path_arg(args)?;
     let m = size::measure(&path).map_err(|e| {
-        (
+        Refused::with_raw(
             "unreadable",
             copy_core::copy_text(
                 "beFilesRead.size.unreadable",
-                &[("kind", &io_kind_said(&e))],
+                &[("kind", &copy_core::io_reason(e.kind()))],
             ),
+            &e,
         )
     })?;
     Ok(serde_json::json!({
@@ -1254,13 +1298,14 @@ fn grep_reply(top: &std::path::Path, limit: usize, g: &grep::Grepped) -> serde_j
     })
 }
 
-fn grep_unreadable(e: &std::io::Error) -> (&'static str, String) {
-    (
+fn grep_unreadable(e: &std::io::Error) -> Refused {
+    Refused::with_raw(
         "unreadable",
         copy_core::copy_text(
             "beFilesRead.grep.unreadable",
-            &[("kind", &io_kind_said(&e))],
+            &[("kind", &copy_core::io_reason(e.kind()))],
         ),
+        e,
     )
 }
 
@@ -1285,9 +1330,14 @@ pub async fn answer_grep_cancellable(args: serde_json::Value) -> Answer {
     tokio::task::spawn_blocking(move || answer_grep(&args, &flag))
         .await
         .unwrap_or_else(|e| {
-            Err((
+            // 那一趟的线程没回来（崩了 / 被撤）：说不清是哪种 IO 错 ⇒ 原因不明，线程报的那句进详情。
+            Err(Refused::with_raw(
                 "unreadable",
-                copy_core::copy_text("beFilesRead.grep.unreadable", &[("kind", &e.to_string())]),
+                copy_core::copy_text(
+                    "beFilesRead.grep.unreadable",
+                    &[("kind", &copy_core::io_reason(std::io::ErrorKind::Other))],
+                ),
+                &e,
             ))
         })
 }
@@ -1312,10 +1362,10 @@ fn home_from(h: Option<std::ffi::OsString>) -> Answer {
     ))?;
     let p = std::path::PathBuf::from(h);
     if !p.is_absolute() {
-        return Err((
+        return Err(Refused::from((
             "no_home",
             copy_core::copy_text("beFilesRead.home.relative", &[]),
-        ));
+        )));
     }
     Ok(serde_json::json!({ "path": raw::to_json(raw::path_bytes(&p)) }))
 }
@@ -1341,10 +1391,10 @@ pub fn answer(name: &str, args: &serde_json::Value) -> Answer {
         "files.size" => answer_size(args),
         "files.read.chunk" => answer_read_chunk(args),
         "files.grep" => answer_grep(args, &std::sync::atomic::AtomicBool::new(false)),
-        other => Err((
+        other => Err(Refused::from((
             "unknown_capability",
             crate::common::contract::malformed(&format!("unknown capability `{other}`")),
-        )),
+        ))),
     }
 }
 

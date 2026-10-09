@@ -58,7 +58,7 @@ export default defineConfig({
     ...(GATE_WORKERS === undefined ? {} : { maxWorkers: Number(GATE_WORKERS) }),
     environment: "jsdom",
     include: ["tests/**/*.vitest.ts"],
-    setupFiles: ["tests/test-support/pin-locale.ts"], // 默认 locale 钉在上面那行 `LANG` 上（Windows 那一半，见顶上）
+    setupFiles: ["tests/test-support/pin-locale.ts", "tests/test-support/host-facts-default.ts"], // 默认 locale 钉在上面那行 `LANG` 上（Windows 那一半，见顶上）
     // F08b：覆盖率**设地板阈值（下方 thresholds）**——`npm run coverage` 与 CI 的 `coverage floor`
     // 步骤（ci.yml，**无 `|| true`=真·阻断门禁**）都吃它，低于地板即红。**不是** advisory、不是只报告。
     // 只设「地板」不追「85% 全局」：覆盖只统计本 vitest(jsdom) 套件，`*.test.ts`(tsx node) 不计入，

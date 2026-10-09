@@ -583,7 +583,7 @@ async fn claim_then_log(
     let listen::Mode::Listen { port, token_file } = mode else {
         return Ok((None, install()));
     };
-    let addr = std::net::SocketAddr::new(listen::LOOPBACK, port);
+    let addr = std::net::SocketAddr::new(common::net::LOOPBACK, port);
     let listener = match tokio::net::TcpListener::bind(addr).await {
         Ok(l) => l,
         Err(e) => {
@@ -648,7 +648,7 @@ async fn serve_listening(
     agent_home: PathBuf,
     defaults: StreamWants,
 ) {
-    let addr = std::net::SocketAddr::new(listen::LOOPBACK, port);
+    let addr = std::net::SocketAddr::new(common::net::LOOPBACK, port);
     tracing::info!("常驻监听口已就位：{addr}（多条流 + 不限次「只读 hello 就走」）");
 
     // 「谁在听」由常驻后端自己记（本机远端同一个写者；起它的那一方不写）。

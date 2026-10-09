@@ -4,10 +4,7 @@ use super::*;
 
 /// 拨号那一层带回的那一句 ＋ 一份固定的详情（金样要逐字比，不用带时刻的那几形）。
 fn said(s: &str) -> crate::detail::Said {
-    crate::detail::Said {
-        said: s.to_string(),
-        detail: "命令：dial\n原话：raw words".to_string(),
-    }
+    crate::detail::Said::with_written(s.to_string(), "命令：dial\n原话：raw words")
 }
 
 /// 每条判据一台自己的机器（表是进程内共享的）。

@@ -103,3 +103,25 @@ fn every_golden_code_has_its_own_sentence_without_raw_words() {
     assert!(reword("accounts-add", &serde_json::json!({}), "bad_args").is_none());
     assert!(reword("accounts-add", &serde_json::json!({}), "name_taken").is_none());
 }
+
+/// 订实时画面被拒：带版本 / 带上限的那两码处理器那句就是成品（照原样）；别的码各一句、没有原话。
+#[test]
+fn terminal_follow_refusals_are_said_by_the_backend() {
+    let args = serde_json::json!({});
+    for code in ["tmux_too_old", "too_many_follows"] {
+        assert_eq!(reword("terminal-follow", &args, code), None, "{code}");
+    }
+    let said: Vec<String> = ["no_tmux", "not_known", "ambiguous", "unobservable"]
+        .iter()
+        .map(|c| reword("terminal-follow", &args, c).unwrap_or_else(|| panic!("{c} 没有句子")))
+        .collect();
+    let mut uniq = said.clone();
+    uniq.sort();
+    uniq.dedup();
+    assert_eq!(uniq.len(), said.len(), "两码同句：{said:?}");
+    assert_eq!(
+        reword("terminal-follow", &args, "bad_args"),
+        reword("terminal-follow", &args, "unobservable"),
+        "认不出的码落「接不上」那一句"
+    );
+}

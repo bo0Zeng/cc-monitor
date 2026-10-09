@@ -537,10 +537,12 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
             Frame::TerminalFollowEnd {
                 ticket: s("t1"),
                 why: crate::stream::wire::FollowEnd::TooBig,
+                said: s("that-sentence-1"),
             },
             Frame::TerminalFollowEnd {
                 ticket: s("t1"),
                 why: crate::stream::wire::FollowEnd::Gone,
+                said: s("that-sentence-2"),
             },
         ],
     ]

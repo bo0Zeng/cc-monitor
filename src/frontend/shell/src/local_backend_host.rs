@@ -365,13 +365,13 @@ fn probe_listen_port(port: u16, want_env: &[(String, String)]) -> Probe {
     let line = match read_handshake_line(&sock) {
         Ok(l) => l,
         Err(e) => {
-            return Probe::Stranger(Said {
-                said: copy_text(
+            return Probe::Stranger(Said::restate(
+                copy_text(
                     "rsLocalBackendHost.probe.noAnswer",
                     &[("port", &port.to_string()), ("why", &e.said)],
                 ),
-                ..e
-            })
+                e,
+            ))
         }
     };
     let mine = crate::byte_table::my_backend_id();
@@ -1038,13 +1038,13 @@ fn start_detached(
                 ],
             ));
             return DetachOutcome::Done(StartOutcome::Failed {
-                reason: Said {
-                    said: copy_text(
+                reason: Said::restate(
+                    copy_text(
                         "rsLocalBackendHost.start.refused",
                         &[("port", &port.to_string()), ("why", &why.said)],
                     ),
-                    ..why
-                },
+                    why,
+                ),
                 looked_at: vec![pid_path(&dir, port), token_path(&dir)],
             });
         }
@@ -1085,13 +1085,13 @@ fn start_detached(
             // 起来了但连不上 ⇒ 这不是「起了」。把它收掉，别留一个谁都够不着的进程。
             stop_detached();
             DetachOutcome::Done(StartOutcome::Failed {
-                reason: Said {
-                    said: copy_text(
+                reason: Said::restate(
+                    copy_text(
                         "rsLocalBackendHost.start.unreachableKilled",
                         &[("why", &e.said)],
                     ),
-                    ..e
-                },
+                    e,
+                ),
                 looked_at: vec![bin],
             })
         }
@@ -1199,8 +1199,8 @@ fn adopt_with(
         }
         std::thread::sleep(std::time::Duration::from_millis(LISTEN_WAIT_INTERVAL_MS));
     }
-    Adopt::Refused(Said {
-        said: copy_text(
+    Adopt::Refused(Said::restate(
+        copy_text(
             "rsLocalBackendHost.adopt.waited",
             &[
                 ("last", &last.said),
@@ -1208,8 +1208,8 @@ fn adopt_with(
                 ("interval", &LISTEN_WAIT_INTERVAL_MS.to_string()),
             ],
         ),
-        ..last
-    })
+        last,
+    ))
 }
 
 /// 找那个二进制 —— **这一层只做适配，答案取自那一份共用的解析**

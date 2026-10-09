@@ -23,7 +23,7 @@ describe("「消息」里的复制详情", () => {
     expect(box.textContent).toBe(`d-2${copyText("messages.record.moreSegments", { n: 1 })}`);
     document.querySelector<HTMLButtonElement>('[data-part="copy-detail"] button')!.click();
     await vi.waitFor(() => expect(written).toHaveLength(1));
-    expect(written[0]).toBe(`t-9 ${copyText("kit.toast.count", { n: 2 })}\n\nd-1\n\nd-2`);
+    expect(written[0]).toBe(`t-9 ${copyText("kit.toast.count", { n: 2 })}\n\nt-9\nd-1\n\nt-9\nd-2`);
     [...document.querySelectorAll("button")].find((b) => b.textContent === copyText("messages.record.expand"))!.click();
     expect(document.querySelector('[data-role="message-detail"]')).toBeNull();
     clip.restore();

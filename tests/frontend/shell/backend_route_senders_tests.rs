@@ -117,6 +117,12 @@ const SENDERS: &[(&str, Verdict)] = &[
     // 远端常驻后端 hello 的新旧改问本机常驻后端（`resident-verdict`，判定只在后端）：一问一答，照样走分流器，
     //   理由与 `sftp.rs` 问部署计划那条逐字相同（长连接不在时明说，没有第二条路可回落）。
     ("remote_resident.rs", Verdict::UsesRouter),
+    // 终端画面流撤掉时壳替界面向那台退订（`terminal_screen_relay.rs::unfollow`）：发出去就不管，没成只记一行日志 ——
+    //   连接走时那台整张票表本来就收；没有第二条路，也不把成败交给任何人。
+    (
+        "terminal_screen_relay.rs",
+        Verdict::ProbeOnlyNoFallbackDecision,
+    ),
 ];
 
 /// 分流器的**两个出口**：分层结果（`05` 形状）与从它收拢出来的旧三态。
@@ -138,8 +144,7 @@ enum Verdict {
     /// ⚠ 与上面那一档**刻意分开**：`ExemptPendingF14` 说的是「本该走分流器、
     /// 但今天还差一步」，这一档说的是「**根本没有回落这回事**」。
     /// 合成一档会让「欠着」与「不适用」长得一样。
-    /// 今天没有住户（唯一那个 `stream_source/` 的探测随测试连接搬进本机后端）；档位留着，下一个探测型发送端来了照样得表态。
-    #[allow(dead_code)]
+    /// 住户：壳替界面退订终端画面票那一口（发了就不管，没成只记日志）。
     ProbeOnlyNoFallbackDecision,
     /// **纯路由器**：它的 `.call(` 调的是**别人注入的句柄**，自己够不着任何后端发送端，
     /// 因此既没有「该不该回落」这个问题，也没有资格去分流。

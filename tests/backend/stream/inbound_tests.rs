@@ -440,7 +440,6 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "ext-hub-preview",
         "ext-hub-apply",
         "pubkey-push",      // 等远端（问那台后端 / 一次 exec），真异步
-        "files-grep",       // 可撤：走那一趟在阻塞线程池上、看取消位，future 被丢即收手
         "resident-verdict", // 纯判定，普通 spawn
         "remote-reach",
         "history-list",
@@ -460,6 +459,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
     assert!(matches!(d("session-restart"), Disposition::SpawnData(..)));
     // 部署计划：真异步（拨号 / 等远端 capture · SFTP），在 await 点可取消；失败带那台答 `uname` 的原话（进复制详情）。
     assert!(matches!(d("deploy-plan"), Disposition::SpawnData(..)));
+    // 按内容搜：可撤（走那一趟在阻塞线程池上、看取消位，future 被丢即收手）；读不了时带系统原话（进复制详情）。
+    assert!(matches!(d("files-grep"), Disposition::SpawnData(..)));
     assert!(matches!(d("cancel"), Disposition::Done));
     assert!(matches!(d("nope"), Disposition::Reply(..)));
     // 链路四条是硬臂、**就地**做完（不进任何 spawn 档）：`link-data` 要保序，
@@ -1200,6 +1201,88 @@ async fn a_failed_reply_carries_a_detail_with_the_facts_below_the_sentence() {
             copy_core::copy_text("detail.label.command", &[])
         )),
         "{b}"
+    );
+}
+
+/// 硬臂那几条（链路 · 传输 · 终端订阅：`Run::Builtin`，就地回应答）被拒：复制详情里也有「命令」那一项（同处理器回的失败）。
+#[tokio::test]
+async fn a_builtin_refusal_names_its_command_in_the_detail() {
+    let cmds = [
+        "link-open",
+        "link-credit",
+        "link-close",
+        "transfer-start",
+        "terminal-follow-ack",
+        "terminal-unfollow",
+    ];
+    let input: String = cmds
+        .iter()
+        .enumerate()
+        .map(|(i, c)| {
+            format!(
+                "{}\n",
+                serde_json::json!({"id": format!("b{i}"), "cmd": c, "args": {}})
+            )
+        })
+        .collect();
+    let out = one_line(&input).await;
+    let label = copy_core::copy_text("detail.label.command", &[]);
+    for (i, c) in cmds.iter().enumerate() {
+        let r: serde_json::Value = serde_json::from_str(
+            out.iter()
+                .find(|l| l.contains(&format!("\"id\":\"b{i}\"")))
+                .unwrap_or_else(|| panic!("{c} 没回：{out:?}")),
+        )
+        .unwrap();
+        assert_eq!(r["ok"], false, "{c}：{r}");
+        let detail = r["detail"].as_str().unwrap_or_default();
+        assert!(
+            detail.contains(&format!("{label}：{c}")),
+            "{c} 的详情里没有命令：{detail}"
+        );
+    }
+}
+
+/// 文件读那一族读不了：句子只带原因词，系统原话进复制详情的「原话」那一行（不进句子）。
+#[tokio::test]
+async fn a_files_read_failure_puts_the_system_words_into_the_detail() {
+    let base = std::env::temp_dir().join(format!("ccm-inb-files-raw-{}", std::process::id()));
+    std::fs::create_dir_all(&base).unwrap();
+    let f = base.join("f.txt");
+    std::fs::write(&f, b"x").unwrap();
+    let line = format!(
+        "{}\n",
+        serde_json::json!({"id": "l", "cmd": "files-ls", "args": {"path": f.to_str().unwrap()}})
+    );
+    let out = one_line(&line).await;
+    std::fs::remove_dir_all(&base).ok();
+    let r: serde_json::Value = serde_json::from_str(
+        out.iter()
+            .find(|l| l.contains("\"id\":\"l\""))
+            .unwrap_or_else(|| panic!("没回：{out:?}")),
+    )
+    .unwrap();
+    assert_eq!(r["code"], "not_dir", "{r}");
+    let message = r["message"].as_str().unwrap();
+    let detail = r["detail"].as_str().unwrap();
+    assert_eq!(
+        message,
+        copy_core::copy_text(
+            "beFilesRead.ls.unreadable",
+            &[(
+                "kind",
+                &copy_core::io_reason(std::io::ErrorKind::NotADirectory)
+            )]
+        )
+    );
+    let raw_label = format!("{}：", copy_core::copy_text("detail.label.raw", &[]));
+    let raw = detail
+        .lines()
+        .find_map(|l| l.strip_prefix(raw_label.as_str()))
+        .unwrap_or_else(|| panic!("详情里没有原话那一行：{detail}"));
+    assert!(
+        !raw.trim().is_empty() && !message.contains(raw.trim()),
+        "{r}"
     );
 }
 

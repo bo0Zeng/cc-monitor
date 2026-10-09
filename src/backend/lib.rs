@@ -75,7 +75,7 @@ mod runs_guard; // 子运行：通用层只认「运行」（扫描 ＋ 假适�
 #[path = "../../tests/backend/single_stream_guard.rs"]
 mod single_stream_guard; // K-P1 KPY8：多客户按连接各一份 —— 「源码里恰好一份、按连接实例化」那几处的触发器（整体 #[cfg(test)]）
 pub mod stderr_log; // 脱离常驻那条载体的 stderr 落进一份有上限、滚动的文件（宿主交 `CCM_BACKEND_STDERR_LOG` 才接；第四层自有状态，写口只从 main.rs 进）
-pub mod stream; // 进后端的口 ① 帧面 ＋ 跨机问答原语：wire · inbound · listen · remote_ask · tap
+pub mod stream; // 进后端的口 ① 帧面：wire · inbound · listen · tap
 
 /// Streaming wire-protocol major version, reported as `v` in the `Hello` frame.
 /// Bump ONLY on a breaking wire change; additive forward-compatible frame kinds
@@ -681,7 +681,7 @@ pub const PROTO_VERSION: u32 = 1;
 ///
 /// ★★★ **p5u-one-data-home**（2026-09-29，DATA-HOME 合并那一拍）：行为 —— monitor 数据目录默认 `~/.cc-monitor/`（与后端的 `bin/` 等并排；API 号凭据 `apikey-credentials.json` 在它根上，两侧经同一个 `monitor_data_dir` 推，认 `CCM_DATA_DIR`）· monitor 日志在 `logs/monitor/` · 数据目录建出来只给本人 · PowerShell 别名块模板 v5（旧块判旧、提示重装）。子命令没变。
 ///
-/// ★★★ **p5v-plain-copy**（2026-09-29，COPY-R 合并那一拍）：文案 —— 用户看得到的文字只说现在是什么、能做什么：去掉演进叙事、内部名挪进句末括号或换成人话、删重复解释（文案表改 282 条；写进用户文件的别名块头注去掉版本沿革）· 后端 IO 错误按种类说人话（`files::io_kind_said`）。子命令没变。
+/// ★★★ **p5v-plain-copy**（2026-09-29，COPY-R 合并那一拍）：文案 —— 用户看得到的文字只说现在是什么、能做什么：去掉演进叙事、内部名挪进句末括号或换成人话、删重复解释（文案表改 282 条；写进用户文件的别名块头注去掉版本沿革）· 后端 IO 错误按种类说人话（今天全仓那一张表住 `copy_core::io_reason`）。子命令没变。
 ///
 /// ★★★ **p5w-readme-shots**（2026-09-29，SHOTS 合并那一拍）：行为 / 协议 —— 足迹行的现状多一档 `expected_absent`（旧版遗留认出就删的那一类不在 ＝ 该有的样子，由后端足迹那一处给结论；这一档后来随「认出旧装法并清掉」那条链删了）· 设置 → 机器那张表补样式 · README 配图 `docs/screenshots/`（合成数据渲染）。子命令没变。
 ///

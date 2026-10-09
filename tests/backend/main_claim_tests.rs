@@ -8,7 +8,7 @@ use super::*;
 /// 正控：口空出来 ⇒ 抢到、接了；不走监听口的那条载体不用抢 ⇒ 接。
 #[tokio::test]
 async fn a_late_starter_that_cannot_claim_the_port_never_touches_the_log() {
-    let held = std::net::TcpListener::bind((listen::LOOPBACK, 0)).expect("占一个口");
+    let held = std::net::TcpListener::bind((crate::common::net::LOOPBACK, 0)).expect("占一个口");
     let port = held.local_addr().expect("口号").port().to_string();
     // 钥匙只经文件交：夹具目录里放一把。
     let dir = std::env::temp_dir().join(format!("claim-then-log-{}", std::process::id()));

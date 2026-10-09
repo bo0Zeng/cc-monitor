@@ -131,16 +131,20 @@ fn the_command_face_answers_exactly_the_declared_fields() {
         &serde_json::json!({ "path": base.join("没有").to_string_lossy() }),
     )
     .expect_err("不存在的路径算出了大小");
-    assert_eq!(e.0, "unreadable");
-    // 原因说成人话，不把 `ErrorKind` 的调试名（`NotFound`）原样上屏。
-    let not_found = copy_core::copy_text("beFilesRead.ioKind.notFound", &[]);
+    assert_eq!(e.code, "unreadable");
+    // 原因说成原因词（全仓那一张表），系统原话不上句子、跟着进复制详情。
+    let not_found = copy_core::io_reason(std::io::ErrorKind::NotFound);
     assert_eq!(
-        e.1,
+        e.said,
         copy_core::copy_text("beFilesRead.size.unreadable", &[("kind", &not_found)])
+    );
+    assert!(
+        e.raw.as_deref().is_some_and(|r| !r.is_empty()),
+        "系统原话丢了：{e:?}"
     );
     let e = crate::files::answer_wire("files-size", &serde_json::json!({}))
         .expect_err("没给 path 竟然收了");
-    assert_eq!(e.0, "bad_path");
+    assert_eq!(e.code, "bad_path");
     std::fs::remove_dir_all(&base).ok();
 }
 

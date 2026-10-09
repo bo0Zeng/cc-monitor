@@ -12,14 +12,15 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { __setHostOsForTests, type HostOs } from "../../../src/frontend/ui/settings/host-os";
+import { __setHostFactsForTests, type HostOs } from "../../../src/frontend/ui/settings/host-os";
 import { terminalFrontCommand } from "../../../src/frontend/ui/terminal-front-command";
 import { REPO_ROOT } from "../../test-support/repo-root";
 import { stripComments } from "../../test-support/strip-comments";
 import { copyText } from "../../../src/frontend/ui/copy-table";
+import { factsOn } from "../../test-support/host-facts";
 
 describe("命令面板的 ↗：Windows · Linux 以外灰着、第二行写哪几种能用", () => {
-  afterEach(() => __setHostOsForTests(null));
+  afterEach(() => __setHostFactsForTests(null));
 
   const cases: ReadonlyArray<readonly [HostOs, boolean]> = [
     ["windows", true],
@@ -29,7 +30,7 @@ describe("命令面板的 ↗：Windows · Linux 以外灰着、第二行写哪�
   ];
   for (const [os, ok] of cases) {
     it(`${os} ⇒ ${ok ? "能用" : "灰着"}`, () => {
-      __setHostOsForTests(os);
+      __setHostFactsForTests(factsOn(os));
       const item = { id: "term-front" };
       const got = terminalFrontCommand(item);
       expect(got.length).toBe(1);

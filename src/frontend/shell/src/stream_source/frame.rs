@@ -198,7 +198,7 @@ pub enum InboundFrame {
     /// 终端实时预览的一整屏（后端 `wire::Frame::TerminalScreen`）。本机远端两条流上都会有（订了哪台就是哪台推的），
     /// 交 `terminal_screen_relay::deliver`。`cell` ＝ `{"seq": n, "view": {…}}` 的文本（`view` 必须是对象；内容由界面严格收）。
     TerminalScreen { ticket: String, cell: String },
-    /// 一条终端订阅停了（后端 `wire::Frame::TerminalFollowEnd`）。`cell` ＝ `{"end": "gone" | "lost" | "too_big"}`；认不出的原因 ⇒ 坏帧（不猜）。
+    /// 一条终端订阅停了（后端 `wire::Frame::TerminalFollowEnd`）。`cell` ＝ `{"why": 停因, "said": 那一句}`（同名原样，两格都得是串）。
     TerminalFollowEnd { ticket: String, cell: String },
     /// 一轮对话收尾（`turn_end`）。认识但不消费：轮次边界由 `line` 帧自己推（它是发给仓外消费方的）。
     TurnEnd,
@@ -603,13 +603,12 @@ pub fn parse_frame(line: &str) -> Result<InboundFrame, Unread> {
             })
             .to_string(),
         },
-        // 终端订阅停了：原因只认后端那三种（不猜一个结局）。
+        // 终端订阅停了：停因（给程序认）与那一句（后端写好）原样转交，不认闭集、不改名 —— 停因有几种归后端说。
         "terminal_follow_end" => InboundFrame::TerminalFollowEnd {
             ticket: req_str(obj, k, "ticket")?,
             cell: serde_json::json!({
-                "end": Some(req_str(obj, k, "why")?)
-                    .filter(|w| ["gone", "lost", "too_big"].contains(&w.as_str()))
-                    .ok_or_else(|| bad(k, "`why` is not a known reason"))?,
+                "why": req_str(obj, k, "why")?,
+                "said": req_str(obj, k, "said")?,
             })
             .to_string(),
         },

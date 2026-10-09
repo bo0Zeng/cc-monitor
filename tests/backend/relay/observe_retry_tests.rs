@@ -3,7 +3,7 @@
 use super::listen::{listen, serve, DOWNSTREAM_DEADLINE, UPSTREAM_DEADLINE};
 use crate::accounts::quota::ledger::{self, Ledger};
 use crate::accounts::upstream_select::{table::RoutingTable, Accounts, Upstreams};
-use crate::stream::listen::LOOPBACK;
+use crate::common::net::LOOPBACK;
 use comms_outward::{Relay, TapEvent, TapPort, TeeSink};
 use std::io::BufRead;
 use std::io::{Read, Write};

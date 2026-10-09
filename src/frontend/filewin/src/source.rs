@@ -999,38 +999,38 @@ impl Failed {
         }
     }
 
-    /// 这一侧的错（问之前拼不出参数 · 回来的读不懂）：窗口进程写详情（时刻 · 机器 · 命令 · 原话）。
+    /// 这一侧的错（问之前拼不出参数 · 回来的读不懂）：窗口进程写详情（时刻 · 机器 · 本机 · 命令 · 原话）。
     pub(crate) fn here(said: String, origin: &Origin, cmd: &str, raw: Option<&str>) -> Self {
+        use copy_core::detail::{Detail, Label};
         Self {
             code: None,
             said,
-            detail: copy_core::detail::Detail::new()
-                .item(copy_core::detail::Label::At, now_stamp())
-                .item(copy_core::detail::Label::Machine, &origin.0)
-                .item(copy_core::detail::Label::Command, cmd)
-                .maybe(copy_core::detail::Label::Raw, raw)
+            detail: Detail::new()
+                .item(Label::At, now_stamp())
+                .item(Label::Machine, &origin.0)
+                .maybe(Label::Local, local_line_for(origin))
+                .item(Label::Command, cmd)
+                .maybe(Label::Raw, raw)
                 .render(),
         }
     }
 
-    /// 一行汇总（「上传失败 · n 项」）底下几件各自的失败 ⇒ 复制出去的整段：首行是那一行，每件一段（名字 · 那一句 ＋ 它的详情），
-    /// 段间空一行（与主界面合流 ×N 同一排法）；没有一件带详情 ⇒ `None`（不出按钮）。
+    /// 一行汇总（「上传失败 · n 项」）底下几件各自的失败 ⇒ 复制出去的整段：首行是那一行，每件一段（「名字：那一句」＋ 它的详情），
+    /// 段间空一行；没有一件带详情 ⇒ `None`（不出按钮）。排法住 `copy_core::detail::many`（主界面合流 ×N 同一排法，跨语言金样对拍）。
     pub fn copy_many(head: &str, items: &[(String, Failed)]) -> Option<String> {
-        let segs: Vec<String> = items
+        let segs: Vec<(String, String)> = items
             .iter()
-            .filter(|(_, f)| !f.detail.trim().is_empty())
             .map(|(name, f)| {
-                format!(
-                    "{}\n{}",
+                (
                     copy_text(
                         "rsFilewinProgress.detail.failedOne",
-                        &[("name", name), ("why", &f.said)]
+                        &[("name", name), ("why", &f.said)],
                     ),
-                    f.detail
+                    f.detail.clone(),
                 )
             })
             .collect();
-        (!segs.is_empty()).then(|| format!("{head}\n\n{}", segs.join("\n\n")))
+        copy_core::detail::many(head, &segs)
     }
 
     /// 屏上那一句 `shown`（可能套了别的字）＋ 详情 ⇒ 复制出去的整段；没详情 ⇒ `None`（不出按钮）。
@@ -1059,6 +1059,22 @@ impl std::fmt::Display for Failed {
     }
 }
 
+/// 复制详情「本机」那一项的值（开窗种子交来的，monitor 算好；`proc::child_main` 起来时记一次）。
+static LOCAL_LINE: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
+/// 记下「本机」那一项的值（开窗种子里那一格；只记一次）。
+pub(crate) fn set_local_line(line: &str) {
+    LOCAL_LINE.get_or_init(|| line.to_string());
+}
+
+/// 看 `origin` 那台时窗口自己写的详情要不要带「本机」那一行：远端 ⇒ 带（值是种子交来的）；本机 ⇒ 不带（出错的就是本机）。
+fn local_line_for(origin: &Origin) -> Option<String> {
+    (origin.0 != super::cross_copy::LOCAL_ORIGIN)
+        .then(|| LOCAL_LINE.get().cloned())
+        .flatten()
+        .filter(|l| !l.trim().is_empty())
+}
+
 /// 此刻（本机本地时间 ＋ 偏移）。
 fn now_stamp() -> String {
     let t = std::time::SystemTime::now()
@@ -1067,12 +1083,12 @@ fn now_stamp() -> String {
     copy_core::detail::stamp(t, local_offset_at(t))
 }
 
-/// 一趟 `call` 没成的复制详情：对端拒了、那台写了详情 ⇒ 原样；别的（通道没走通 · 对端不认 · 本侧）⇒ 窗口进程写
-/// 时刻 · 机器（没发出去标「未连上」）· 命令 · 断在 · 码（那几项的取法住通信层 `HopFacts`，与 monitor 壳同一份）。
-pub fn detail_of(origin: &Origin, cmd: &str, e: &comms_inward::chan::wire::CallError) -> String {
-    let origin = origin.0.as_str();
+/// 一趟 `call` 没成的复制详情：对端拒了、那台写了详情 ⇒ 原样（远端时「本机」那一行 monitor 的通道宿主已补）；
+/// 别的（通道没走通 · 对端不认 · 本侧）⇒ 窗口进程写时刻 · 机器（没发出去标「未连上」）· 本机 · 命令 · 断在 · 码
+/// （取法住通信层 `HopFacts`，排法住 `copy_core::detail::channel`，与 monitor 壳同一份）。
+pub fn detail_of(at: &Origin, cmd: &str, e: &comms_inward::chan::wire::CallError) -> String {
+    let origin = at.0.as_str();
     use comms_inward::chan::wire::{CallError, PeerFault};
-    use copy_core::detail::{Detail, Label};
     if let CallError::Peer {
         why: PeerFault::Refused { body },
     } = e
@@ -1086,21 +1102,16 @@ pub fn detail_of(origin: &Origin, cmd: &str, e: &comms_inward::chan::wire::CallE
         }
     }
     let f = e.hop_facts();
-    let machine = if f.not_sent {
-        format!(
-            "{origin}（{}）",
-            copy_text("detail.value.notConnected", &[])
-        )
-    } else {
-        origin.to_string()
-    };
-    Detail::new()
-        .item(Label::At, now_stamp())
-        .item(Label::Machine, machine)
-        .item(Label::Command, cmd)
-        .maybe(Label::Hop, f.hop)
-        .item(Label::Code, f.code)
-        .render()
+    copy_core::detail::channel(
+        &now_stamp(),
+        origin,
+        f.not_sent,
+        local_line_for(at).as_deref(),
+        cmd,
+        f.hop.as_deref(),
+        &f.code,
+    )
+    .render()
 }
 
 /// 与 [`ask`] 同一件事，失败时**把对端的码一起交出来**（[`Failed`]）。

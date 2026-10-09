@@ -113,10 +113,10 @@ pub(crate) async fn upload_verified(
         // 删也没删成：那一句说清两件事，删那一步的详情（本机后端写的原话）跟着走。
         Err(e) => {
             let step = e.said.clone();
-            Said {
-                said: copy_text("rsSftp.upload.badKept", &[("bad", &bad.to_string())]),
-                detail: e.detail,
-            }
+            Said::restate(
+                copy_text("rsSftp.upload.badKept", &[("bad", &bad.to_string())]),
+                e,
+            )
             .with_item(copy_core::detail::Label::Hop, &step)
         }
     })

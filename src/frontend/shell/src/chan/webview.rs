@@ -38,7 +38,7 @@ use serde::Serialize;
 use std::time::Duration;
 
 /// 失败时交回 webview 的那一格：线上形状 ＋ `Refused` 的不透明体 ＋ 「复制详情」那几行（[`crate::detail`]：
-/// 对端说「不行」⇒ 那台写的那份，远端时补「本机」一行；别的层 ⇒ 壳写）。
+/// 对端说「不行」⇒ 那台写的那份（远端时「本机」那一行通道宿主已经补上，`InboundBackends::call`）；别的层 ⇒ 壳写）。
 #[derive(Debug, Serialize)]
 pub struct Fail {
     err: WireErr,
@@ -50,7 +50,7 @@ fn fail(origin: &crate::origin::Origin, op: &str, e: CallError) -> Fail {
     let detail = match &e {
         CallError::Peer {
             why: super::wire::PeerFault::Refused { body },
-        } => crate::detail::relayed(origin, &crate::detail::of_refusal_body(&body.0)),
+        } => crate::detail::of_refusal_body(&body.0),
         other => crate::detail::of_channel(origin, op, other),
     };
     let (err, body) = err_to_wire(e);

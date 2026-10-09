@@ -212,16 +212,16 @@ pub async fn backend_start(origin: String) -> Result<String, Said> {
                     StartOutcome::AlreadyRunning => {
                         Ok("本机后端已经在跑（C8①：每台机只许一个）".into())
                     }
-                    StartOutcome::Failed { reason, looked_at } => Err(Said {
-                        said: copy_text(
+                    StartOutcome::Failed { reason, looked_at } => Err(Said::restate(
+                        copy_text(
                             "rsBackendControl.start.notFound",
                             &[
                                 ("reason", &reason.said),
                                 ("looked", &format!("{:?}", looked_at)),
                             ],
                         ),
-                        ..reason
-                    }),
+                        reason,
+                    )),
                 }
             })
             .await
@@ -297,13 +297,13 @@ async fn stop_remote_resident(origin: &str) -> Result<crate::remote_resident::St
     // 那一句只说哪台没停成；没停成的那一步（那台答的 · 链路断在哪）进「断在」，原话照它的详情。
     crate::remote_resident::stop(&cfg).await.map_err(|e| {
         let step = e.said.clone();
-        Said {
-            said: copy_text(
+        Said::restate(
+            copy_text(
                 "rsBackendControl.remote.stopFailed",
                 &[("origin", &origin.to_string())],
             ),
-            detail: e.detail,
-        }
+            e,
+        )
         .with_item(copy_core::detail::Label::Hop, &step)
     })
 }

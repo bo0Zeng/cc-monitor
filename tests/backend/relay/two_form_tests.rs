@@ -3,7 +3,7 @@
 
 use super::listen::{listen, serve, DOWNSTREAM_DEADLINE, UPSTREAM_DEADLINE};
 use crate::accounts::upstream_select::{table::RoutingTable, Accounts, Upstreams};
-use crate::stream::listen::LOOPBACK;
+use crate::common::net::LOOPBACK;
 use comms_outward::{Relay, TapEvent, TapPort, TeeSink};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};

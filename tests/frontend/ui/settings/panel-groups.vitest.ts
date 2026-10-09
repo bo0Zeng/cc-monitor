@@ -153,18 +153,19 @@ vi.mock("@tauri-apps/api/event", () => ({ emit: vi.fn() }));
 vi.mock("@tauri-apps/api/window", () => ({ getCurrentWindow: () => ({ close: vi.fn() }) }));
 
 import { SettingsPanel } from "../../../../src/frontend/ui/settings/panel";
-import { __setHostOsForTests } from "../../../../src/frontend/ui/settings/host-os";
+import { __setHostFactsForTests } from "../../../../src/frontend/ui/settings/host-os";
 import { SETTINGS_GO_EVENT } from "../../../../src/frontend/ui/settings/events";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { beforeEach, afterEach } from "vitest";
+import { factsOn } from "../../../test-support/host-facts";
 
 // S9：jsdom 的 UA 含 `linux` ⇒ 不置覆盖值，本文件整套跑的就是「非 Windows」那条分支，
 // 而下面这些断言本来是照 Windows 形态写的。
 // **显式钉成 windows**，Linux 那条形态由本文件末尾专门的一节覆盖。
 beforeEach(() => {
-  __setHostOsForTests("windows");
+  __setHostFactsForTests(factsOn("windows"));
 });
-afterEach(() => __setHostOsForTests(null));
+afterEach(() => __setHostFactsForTests(null));
 
 /** 某一页里的分节标题清单（含页内折叠组的标题）。 */
 function pageTitles(routeId: string): string[] {
@@ -548,7 +549,7 @@ describe("S9 本机 OS 门（〔AL1c〕别名那一块的平台）", () => {
     ["unknown", "unknown"],
   ] as const) {
     it(`★ ${os} ⇒ 别名那一块是 ${shell}；单独的「终端集成」一块不再有`, async () => {
-      __setHostOsForTests(os);
+      __setHostFactsForTests(factsOn(os));
       document.body.replaceChildren();
       new SettingsPanel({ windowMode: true });
       await tick();
@@ -558,7 +559,7 @@ describe("S9 本机 OS 门（〔AL1c〕别名那一块的平台）", () => {
   }
 
   it("门只管这一块 —— 文件与数据页在 Linux 上照常在（两栏都在）", async () => {
-    __setHostOsForTests("linux");
+    __setHostFactsForTests(factsOn("linux"));
     document.body.replaceChildren();
     new SettingsPanel({ windowMode: true });
     await tick();

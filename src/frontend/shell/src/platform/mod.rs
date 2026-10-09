@@ -14,6 +14,8 @@ pub mod ewmh;
 // `utils::FileTime` 的 Win32 那两件。
 pub mod filetime;
 pub mod fs;
+// 界面要按系统分的那几件事（↗ · shell 方言 · ccm 缓存），起页时注入给界面。
+pub mod host_facts;
 pub mod hwnd;
 pub mod login_shell;
 // 系统通知（Linux 直调 notify-rust、连接留到通知关掉；别处经插件）。

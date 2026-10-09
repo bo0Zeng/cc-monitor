@@ -37,7 +37,7 @@ use super::ext::{
     builtin_refused, is_builtin, same_place, token_of, ExtBring, ExtCard, ExtDone, ExtKind,
     ExtList, ExtLoc, ExtSlot, ExtTarget, ExtTokens,
 };
-use crate::stream::remote_ask::{Remote, Table};
+use crate::dial::remote_ask::{Remote, Table};
 
 type Answer = Result<Value, (String, String)>;
 
@@ -87,14 +87,14 @@ async fn ask_one(
                 .map_err(|e| ("io_failed".to_string(), e.to_string()))?
         }
         Some(m) => {
-            if !crate::stream::remote_ask::lock(table).contains_key(m) {
+            if !crate::dial::remote_ask::lock(table).contains_key(m) {
                 return Err((
                     "unreachable".to_string(),
-                    crate::stream::remote_ask::unreachable_message(m),
+                    crate::dial::remote_ask::unreachable_message(m),
                 ));
             }
             // 码随原话一起交回（`stale` / `refused` / …照那台的原码）；读不出码（拨号 / 链路坏了）⇒ `unreachable`。
-            crate::stream::remote_ask::ask_json(m, cmd, &args, table, remote)
+            crate::dial::remote_ask::ask_json(m, cmd, &args, table, remote)
                 .await
                 .map_err(|s| {
                     (

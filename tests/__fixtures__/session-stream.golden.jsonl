@@ -48,5 +48,5 @@
 {"kind":"session_runs","sid":"s1","runs":[{"run":"a1","state":"running"}],"ended":[]}
 {"kind":"terminal_screen","ticket":"t1","seq":2,"view":{"capped":false,"captured_at":1,"captured_at_text":"00:00:01","cols":80,"cursor":{"visible":true,"x":0,"y":0},"lines":[{"spans":[{"fg":"green","from":0,"to":2}],"text":"ok"}],"rows":1,"screen":"00000000000000a1","scrollback_lines":0}}
 {"kind":"terminal_screen","ticket":"t1","seq":1,"view":{}}
-{"kind":"terminal_follow_end","ticket":"t1","why":"too_big"}
-{"kind":"terminal_follow_end","ticket":"t1","why":"gone"}
+{"kind":"terminal_follow_end","ticket":"t1","why":"too_big","said":"that-sentence-1"}
+{"kind":"terminal_follow_end","ticket":"t1","why":"gone","said":"that-sentence-2"}

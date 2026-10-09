@@ -1,7 +1,8 @@
 //! Linux 系统通知那一条长连接（`platform/notify.rs::linux::Pool`）：发 N 条只连一次；一条线程按通知 id 分发关掉 / 点了；
-//! 连接坏了扔掉、下一条重连。假总线代替会话总线（判据不碰真桌面）。
+//! 连接真断了才扔掉、下一条重连，扔掉时收掉旧连接（旧那条收信线程随之退）；通知服务只是回了一个错 ⇒ 照旧用这条。
+//! 假总线代替会话总线（判据不碰真桌面）。
 
-use super::linux::{Bus, OnAction, Pool, Signal};
+use super::linux::{Bus, NotifyFail, OnAction, Pool, Signal};
 use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -9,30 +10,59 @@ use std::time::{Duration, Instant};
 
 static OPENS: AtomicUsize = AtomicUsize::new(0);
 static NEXT_ID: AtomicU32 = AtomicU32::new(1);
+/// 下一条发送怎么坏：0 不坏 · 1 连接断了 · 2 通知服务回了一个错（连接还好）。
 static FAIL_NEXT: AtomicUsize = AtomicUsize::new(0);
+/// 此刻还阻塞在收信上的线程数（每条连接一条；连接收掉 ⇒ 它退出）。
+static READERS: AtomicUsize = AtomicUsize::new(0);
 /// 往「总线」里塞信号的那一头（每次连上换一条）。
 static FEED: OnceLock<Mutex<Option<Sender<Signal>>>> = OnceLock::new();
 
 struct FakeBus {
     rx: Mutex<Receiver<Signal>>,
+    /// 收掉这条连接（丢掉它那一头的发信端 ⇒ 收信那条线程读到头）。
+    me: Mutex<Option<Sender<Signal>>>,
+    reading: std::sync::atomic::AtomicBool,
 }
 
 fn open_fake() -> Result<FakeBus, String> {
     OPENS.fetch_add(1, Ordering::SeqCst);
     let (tx, rx) = channel();
-    *FEED.get_or_init(|| Mutex::new(None)).lock().unwrap() = Some(tx);
-    Ok(FakeBus { rx: Mutex::new(rx) })
+    *FEED.get_or_init(|| Mutex::new(None)).lock().unwrap() = Some(tx.clone());
+    Ok(FakeBus {
+        rx: Mutex::new(rx),
+        me: Mutex::new(Some(tx)),
+        reading: Default::default(),
+    })
 }
 
 impl Bus for FakeBus {
-    fn notify(&self, _title: &str, _body: &str) -> Result<u32, String> {
-        if FAIL_NEXT.swap(0, Ordering::SeqCst) == 1 {
-            return Err("bus gone".into());
+    fn notify(&self, _title: &str, _body: &str) -> Result<u32, NotifyFail> {
+        match FAIL_NEXT.swap(0, Ordering::SeqCst) {
+            1 => Err(NotifyFail {
+                said: "bus gone".into(),
+                dead: true,
+            }),
+            2 => Err(NotifyFail {
+                said: "org.freedesktop.DBus.Error.Failed".into(),
+                dead: false,
+            }),
+            _ => Ok(NEXT_ID.fetch_add(1, Ordering::SeqCst)),
         }
-        Ok(NEXT_ID.fetch_add(1, Ordering::SeqCst))
     }
     fn next_signal(&self) -> Option<Signal> {
-        self.rx.lock().unwrap().recv().ok()
+        if !self.reading.swap(true, Ordering::SeqCst) {
+            READERS.fetch_add(1, Ordering::SeqCst);
+        }
+        let got = self.rx.lock().unwrap().recv().ok();
+        if got.is_none() {
+            READERS.fetch_sub(1, Ordering::SeqCst);
+        }
+        got
+    }
+    fn close(&self) {
+        self.me.lock().unwrap().take();
+        // 喂信号那一头也是这条连接的发信端：一起丢掉。
+        FEED.get().unwrap().lock().unwrap().take();
     }
 }
 
@@ -98,9 +128,23 @@ fn n_notifications_share_one_connection_and_signals_are_dispatched_by_id() {
         ]
     );
 
-    // 连接坏了 ⇒ 这一条报错、扔掉连接，下一条重连一次。
+    wait_until("那一条收信线程在读", || {
+        READERS.load(Ordering::SeqCst) == 1
+    });
+    // 通知服务回了一个错（连接还好）⇒ 这一条报错，连接照旧用，不重连、不多起线程。
+    FAIL_NEXT.store(2, Ordering::SeqCst);
+    assert!(POOL.send_with(on_action.clone(), "x", "y").is_err());
+    POOL.send_with(on_action.clone(), "x", "y").unwrap();
+    assert_eq!(OPENS.load(Ordering::SeqCst), 1, "服务回个错就重连了");
+    // 连接断了 ⇒ 这一条报错、收掉旧连接（旧那条线程退出），下一条重连一次；收信线程始终只有一条。
     FAIL_NEXT.store(1, Ordering::SeqCst);
     assert!(POOL.send_with(on_action.clone(), "x", "y").is_err());
+    wait_until("旧连接那条收信线程退出", || {
+        READERS.load(Ordering::SeqCst) == 0
+    });
     POOL.send_with(on_action, "x", "y").unwrap();
     assert_eq!(OPENS.load(Ordering::SeqCst), 2, "坏了之后该重连恰好一次");
+    wait_until("新连接那条收信线程在读", || {
+        READERS.load(Ordering::SeqCst) == 1
+    });
 }

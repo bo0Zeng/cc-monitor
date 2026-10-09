@@ -1215,6 +1215,8 @@ fn only_this_machines_own_moments_go_through_the_local_clock() {
 #[test]
 fn a_failure_carries_the_detail_the_peer_wrote_or_the_window_writes_its_own() {
     use comms_inward::chan::wire::{Body, CallError, HopFault, HopId, PeerFault, Reach};
+    // 开窗种子交来的「本机」那一项（本进程只记一次；本文件只有这一条记它）。
+    set_local_line("cc-monitor 9.9.9 (t) · Linux x86_64");
     let label = |k: &str| copy_text(k, &[]);
     let wrote = format!("{}：io_failed", label("detail.label.code"));
     let refused = CallError::Peer {
@@ -1249,10 +1251,39 @@ fn a_failure_carries_the_detail_the_peer_wrote_or_the_window_writes_its_own() {
         format!("{}：files-ls", label("detail.label.command")),
         format!("{}：1:open NotSent", label("detail.label.hop")),
         format!("{}：Unreachable", label("detail.label.code")),
+        // 远端那台：窗口自己写的那份也带「本机」那一行（值是开窗种子交来的，同主界面）。
+        format!(
+            "{}：cc-monitor 9.9.9 (t) · Linux x86_64",
+            label("detail.label.local")
+        ),
     ] {
         assert!(d.contains(&want), "缺「{want}」：\n{d}");
     }
     assert!(d.starts_with(&label("detail.label.at")), "{d}");
+    // 看本机时不带（出错的就是本机）。
+    let here = detail_of(
+        &Origin(comms_inward::origin::LOCAL.into()),
+        "files-ls",
+        &hop,
+    );
+    assert!(
+        !here.contains(&format!("{}：", label("detail.label.local"))),
+        "{here}"
+    );
+    let own = Failed::here(
+        "x".into(),
+        &Origin("devbox".into()),
+        "files-ls",
+        Some("boom"),
+    );
+    assert!(
+        own.detail.contains(&format!(
+            "{}：cc-monitor 9.9.9",
+            label("detail.label.local")
+        )),
+        "{}",
+        own.detail
+    );
 }
 
 /// ［复制详情］只在有详情时出：复制出去的首行是屏上那一句；一行汇总底下几件各一段，没一件带详情 ⇒ 不出。
@@ -1275,6 +1306,15 @@ fn the_copy_body_exists_only_when_there_is_a_detail() {
         None
     );
     let body = Failed::copy_many("头", &[("a".into(), with), ("b".into(), without)]).unwrap();
-    assert!(body.starts_with("头\n\n"), "{body}");
-    assert!(body.contains("码：a") && !body.contains("句 B"), "{body}");
+    assert_eq!(
+        body,
+        format!(
+            "头\n\n{}\n码：a",
+            copy_text(
+                "rsFilewinProgress.detail.failedOne",
+                &[("name", "a"), ("why", "句 A")]
+            )
+        ),
+        "排法同 `copy_core::detail::many`（跨语言金样）"
+    );
 }

@@ -1,7 +1,7 @@
 //! 要求：两台之间「装」那一件不经前端中继 —— 界面只问本机一次，本机常驻后端当枢纽向来源那台取、交被写那台判与写；
 //! skill 与 MCP 同一对命令（`ext-hub-preview` / `ext-hub-apply`），看过之后任一头变了 ⇒ `stale`、一个字节不写。
 use super::*;
-use crate::stream::remote_ask::{register, Remote, Table};
+use crate::dial::remote_ask::{register, Remote, Table};
 use std::collections::BTreeMap;
 use std::future::Future;
 use std::pin::Pin;
@@ -236,10 +236,10 @@ impl Remote for CodedRemote {
         _dial: &'a Value,
         _command: String,
         _stdin: Option<String>,
-    ) -> Pin<Box<dyn Future<Output = Result<String, crate::stream::remote_ask::Said>> + Send + 'a>>
+    ) -> Pin<Box<dyn Future<Output = Result<String, crate::dial::remote_ask::Said>> + Send + 'a>>
     {
         Box::pin(async {
-            Err(crate::stream::remote_ask::Said {
+            Err(crate::dial::remote_ask::Said {
                 code: Some("stale".to_string()),
                 message: "盘上那份在看过之后被改过".to_string(),
             })
@@ -304,7 +304,7 @@ impl Remote for PosixRemote {
         _dial: &'a Value,
         _command: String,
         stdin: Option<String>,
-    ) -> Pin<Box<dyn Future<Output = Result<String, crate::stream::remote_ask::Said>> + Send + 'a>>
+    ) -> Pin<Box<dyn Future<Output = Result<String, crate::dial::remote_ask::Said>> + Send + 'a>>
     {
         let args: Value = serde_json::from_str(stdin.unwrap_or_default().trim()).unwrap();
         self.asked.lock().unwrap().push(args.clone());
@@ -314,7 +314,7 @@ impl Remote for PosixRemote {
         );
         let out = match judged {
             Ok(_) => Ok(format!("{}\n", self.plan)),
-            Err((code, message)) => Err(crate::stream::remote_ask::Said {
+            Err((code, message)) => Err(crate::dial::remote_ask::Said {
                 code: Some(code.to_string()),
                 message,
             }),

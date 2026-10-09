@@ -14,7 +14,7 @@ use copy_core::copy_text;
 use serde_json::{json, Value};
 use tokio::io::{AsyncWriteExt, BufReader};
 
-use crate::stream::remote_ask::{self, AbortOnDrop};
+use crate::dial::remote_ask::{self, AbortOnDrop};
 use crate::stream::wire::Frame;
 
 /// 链路上一行的上限（阶段行 · ack · hello · 应答；hello 行是后端出方向单行，同一个量级）。

@@ -469,7 +469,7 @@ async fn serve<R, W>(
                 .await;
                 return;
             };
-            // 只到远端自己的回环（`listen::LOOPBACK` 那一格在远端）：连不上 = 那台上没人在听，落在 ack 里。
+            // 只到远端自己的回环（`common::net::LOOPBACK` 那一格在远端）：连不上 = 那台上没人在听，落在 ack 里。
             let opened = lease
                 .linked
                 .session

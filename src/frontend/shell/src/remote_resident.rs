@@ -368,10 +368,7 @@ where
         &[("port", &port.to_string())],
     );
     Err(AttachErr::Failed(match last {
-        Some(l) => Said {
-            said,
-            detail: l.detail,
-        },
+        Some(l) => Said::restate(said, l),
         None => said.into(),
     }))
 }

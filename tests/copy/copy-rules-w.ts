@@ -29,6 +29,8 @@ export interface WCtx {
   byId: Map<string, WRule>;
   /** 全表：C-W13（指路核对）要拿「」里的字对表里的名字。 */
   table: Record<string, Entry>;
+  /** C-W18：生产代码里值是下层原话的那几个占位（按值认）：key → 占位名。 */
+  rawFed?: Map<string, Set<string>>;
 }
 
 const words = (ctx: WCtx, id: string): string[] => ctx.byId.get(id)?.words ?? [];
@@ -48,7 +50,7 @@ const HAN = /[㐀-䶿一-鿿]/;
 /** 常规全角标点（不算符号）。 */
 const CJK_PUNCT = "，。、；：？！“”‘’（）《》「」【】『』［］～";
 
-type Check = (e: Entry, ctx: WCtx) => string | null;
+type Check = (e: Entry, ctx: WCtx, key?: string) => string | null;
 
 /** 表里能被「」点名的名字（title / action / control）与标题 —— 每张表只算一次。 */
 const NAMES = new WeakMap<object, { names: Set<string>; titles: Set<string> }>();
@@ -211,10 +213,12 @@ export const W_CHECKS: Record<string, Check> = {
     return h.length ? `口语词「${h.join("」「")}」` : null;
   },
   // 条带 §5.2：原话 · 退出码 · 错误码不上句子，进「复制详情」。按占位符的语义判（名字在 rawArgs 闭集里的就是原话型），不按名单。
-  "C-W18": (e, ctx) => {
+  //   另按值认：生产代码喂进去的是 `e.to_string()` 一类（`rust-refs.ts::isRawValue`）⇒ 占位叫什么都算原话型。
+  "C-W18": (e, ctx, key) => {
     if (e.role === "命令行") return null;
     const raw = new Set(words(ctx, "C-W18"));
-    const h = [...new Set([...e.zh.matchAll(/\{([A-Za-z][A-Za-z0-9]*)\}/g)].map((m) => m[1]))].filter((a) => raw.has(a));
+    const fed = (key !== undefined ? ctx.rawFed?.get(key) : undefined) ?? new Set<string>();
+    const h = [...new Set([...e.zh.matchAll(/\{([A-Za-z][A-Za-z0-9]*)\}/g)].map((m) => m[1]))].filter((a) => raw.has(a) || fed.has(a));
     return h.length ? `句子里接了原话 {${h.join("} {")}}` : null;
   },
 };

@@ -432,10 +432,7 @@ async fn open(
 /// 老后端没写详情 ⇒ 壳写时刻与本机。
 pub(crate) fn refused_said(why: String, detail: Option<&str>) -> Said {
     match detail.filter(|d| !d.trim().is_empty()) {
-        Some(d) => Said {
-            said: why,
-            detail: d.to_string(),
-        },
+        Some(d) => Said::with_written(why, d),
         None => Said::from(why),
     }
 }

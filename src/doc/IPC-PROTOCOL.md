@@ -47,7 +47,7 @@ monitor 只对 hello 里**声明了对应能力**（`capabilities`）的后端�
 ```text
 → {"id":"<不透明串>","cmd":"<命令名>","args":{…},"within_ms":10000}          一行一个；args 缺 ＝ null；within_ms 可缺
 ← {"kind":"reply","id":"…","ok":true,"data":{…}}                              无返回值时没有 data
-← {"kind":"reply","id":"…","ok":false,"code":"…","message":"…"}                少数码另带 data（形状见各命令）
+← {"kind":"reply","id":"…","ok":false,"code":"…","message":"…","detail":"…"}  少数码另带 data（形状见各命令）
 → {"id":"…","cmd":"cancel","args":{"target":"<要撤的 id>"}}
 ← {"kind":"cancelled","id":"<被撤的 id>"}
 ```
@@ -57,9 +57,12 @@ monitor 只对 hello 里**声明了对应能力**（`capabilities`）的后端�
 - **超时归客户端**：后端零定时器，不替客户端掐表；客户端的期限覆盖「写入 ＋ 等应答」两段，到点就撤单（`cancel`）。
 - **取消是一条普通命令**。撤一个不存在的 `id` 也回 `ok`。阻塞档的命令开跑之后打不断，`cancel` 回 `not_cancellable`（去等它自己的应答），不会回一条假的 `cancelled`。
 - **应答走独立的小通道**（256 条），与出方向的实时帧（10 000 条）分开：丢一条内容帧可恢复，丢一条应答客户端会永远等下去。writer 有界地优先应答。
+  同走这条通道的还有几种「丢了就停住」的帧：链路字节（`link_data` / `link_end`）· 传输进度（`transfer`）· 测试连接进度（`probe`）· 终端实时预览的画面与收尾（`terminal_screen` / `terminal_follow_end`）。
+  终端画面每条订阅至多一帧在途（客户端回执才推下一帧）、每条连接至多 8 条订阅，单帧至多 512 KiB，所以占不满这条通道。
 - **信任边界**：单行上限 1 MiB（超了整行丢、回 `line_too_long`，`id` 从行首至多 4 KiB 里尽力抠）· 坏 JSON 回 `bad_request` 并继续读 · 任何失败都不结束读循环、不结束进程。
 - **码分两层**：协议级码（闭集，见 IPC-COMMANDS.md 第 3 节）与命令无关、只有入方向那一层发得出；命令自己的码列在各命令下面。客户端拿到协议级码 ＝ 客户端代码写错了，别重试。
-- **文案归前端**：后端只回状态枚举、码与事实，句子由各前端照码说。
+- **失败应答三格**：`code` 给程序认（分支 · 重试判断）；`message` 是给人看的那一句（后端按共享文案表 `src/shared/copy/table.json` 写好，前端原样上屏）；
+  `detail` 是「复制详情」那几行（时刻 · 机器 · 命令 · 码 · 原话，排法只住 `copy_core::detail`），下层原话只进这里、不进 `message`。
 
 ## 5. 会话流：帧的先后与续传
 

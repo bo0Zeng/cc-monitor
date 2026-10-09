@@ -173,7 +173,7 @@ const FRAMES: &[(&str, &str)] = &[
     ),
     (
         "terminal_follow_end",
-        r#"{"kind":"terminal_follow_end","ticket":"no-such-ticket","why":"gone"}"#,
+        r#"{"kind":"terminal_follow_end","ticket":"no-such-ticket","why":"gone","said":"x"}"#,
     ),
     // 中转抄出来的 SSE 事件 —— 不是会话内容（jsonl 才是），就地转给前端，不进内容通道。
     (

@@ -16,6 +16,7 @@
 use crate::common::tmux_utf8::UTF8_CLIENT_FLAG;
 use crate::control::gate::{self, Who};
 use crate::platform::child::{Child, ChildFail, Deadline};
+use copy_core::copy_text;
 use serde_json::{json, Map, Value};
 
 /// 列名单 · 问尺寸那几发只读 tmux 的期限：tmux 一发 5 s（同 watcher 探测 tmux 的期限）。
@@ -278,14 +279,28 @@ pub(crate) fn parse_clients(text: &str) -> Vec<(String, u64, u64)> {
         .collect()
 }
 
-/// 一个终端在名单里的样子（成品；句子由前端按自己的文案说）。
+/// 送不了 / 结束不了的原因码 ⇒ 给人看的那一句（`terminal-input` 被拒的 `said` · 名单 `can.*` 里 `{no, said}` 的 `said`）。
+/// 码照线上那一形（短横：手机端也吃这两格，只加不改）；认不出的 ⇒ 「被拒」。
+pub(crate) fn no_said(why: &str) -> String {
+    match why {
+        "not-yours" => copy_text("beTerminal.no.notYours", &[]),
+        "not-managed" => copy_text("beTerminal.no.notManaged", &[]),
+        "other-windows" => copy_text("beTerminal.no.otherWindows", &[]),
+        "not-known" | "ended" => copy_text("beTerminal.no.gone", &[]),
+        "ambiguous" => copy_text("beTerminal.no.ambiguous", &[]),
+        "screen-changed" => copy_text("beTerminal.no.screenChanged", &[]),
+        _ => copy_text("beTerminal.no.other", &[]),
+    }
+}
+
+/// 一个终端在名单里的样子（成品）。做不了的写成 `{no: 码, said: 那一句}`。
 pub(crate) fn terminal_json(
     row: &TermRow,
     clients: &[(String, u64, u64)],
     requester: Option<&str>,
 ) -> Value {
     let who = gate::identity(&row.name, &row.probed(), requester);
-    let not = |why: &str| json!({ "no": why });
+    let not = |why: &str| json!({ "no": why, "said": no_said(why) });
     let input = match who {
         Who::Pass => json!(true),
         Who::OtherClient => not("not-yours"),
@@ -869,12 +884,13 @@ pub(crate) fn input_of(args: &Value) -> Result<Input, CmdErr> {
     }
 }
 
-/// `terminal-input` 的回话构造器（纯）。
+/// `terminal-input` 的回话构造器（纯）。被拒的带原因码 `why` 与给人看的 `said`。
 pub(crate) fn input_reply(result: &str, why: Option<&str>, screen: Option<&str>) -> Value {
     let mut m = Map::new();
     m.insert("result".into(), result.into());
     if let Some(w) = why {
         m.insert("why".into(), w.into());
+        m.insert("said".into(), no_said(w).into());
     }
     if let Some(s) = screen {
         m.insert("screen".into(), s.into());

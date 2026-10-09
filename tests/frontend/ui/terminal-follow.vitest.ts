@@ -5,8 +5,8 @@
  * |---|---|
  * | 先订流 `terminal-screen/<票>`、再发 `terminal-follow {terminal, ticket}`（同一张票），流名与壳那一侧同一个串 | 「订上」 |
  * | 收一屏 ⇒ 交给页面（与抓一屏同一份成品），再回执那一帧的序号；两次回执至少隔 100 ms，回执时补一格 credit | 「回执」 |
- * | 退订：撤流、发 `terminal-unfollow`；之后来的帧不交、排着的回执不发 | 「退订」 |
- * | 停了的几种：后端说停（gone · lost · too_big）· 流断了 · 订不上（tmux 旧 · 后端旧 · 没 tmux ⇒ 只能快照；别的 ⇒ 停了带原话） | 「停」 |
+ * | 退订：撤流（后端那张票由壳替界面退订，界面不发 `terminal-unfollow`）；之后来的帧不交、排着的回执不发 | 「退订」 |
+ * | 停了的几种：后端说停（那一句原样交）· 流断了（那台断开）· 订不上（后端说「只能快照 / 停了」＋ 那一句；后端旧 ⇒ 只能快照；通道不通 ⇒ 那台断开） | 「停」 |
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { readFileSync } from "node:fs";
@@ -14,13 +14,15 @@ import { resolve } from "node:path";
 import { ChanError, type Item } from "../../../src/comms/inward/chan";
 import { startFollow, TERMINAL_SCREEN_KIND, ACK_GAP_MS, type FollowPort, type FollowEvents, type FollowStop } from "../../../src/frontend/ui/terminal-follow";
 import type { TerminalShot } from "../../../src/frontend/ui/terminal-reads";
+import { copyText } from "../../../src/frontend/ui/copy-table";
 import { REPO_ROOT } from "../../test-support/repo-root";
 
 const golden = JSON.parse(readFileSync(resolve(REPO_ROOT, "tests/__fixtures__/terminals.golden.json"), "utf8")) as Record<string, { reply: Record<string, unknown> }>;
 const VIEW = golden["terminal-preview"].reply;
 
 const enc = (v: unknown): Uint8Array => new TextEncoder().encode(JSON.stringify(v));
-const refused = (code: string): ChanError => new ChanError({ layer: "peer", why: "refused", body: enc({ code, message: `said ${code}` }) });
+const refused = (code: string, live?: string): ChanError =>
+  new ChanError({ layer: "peer", why: "refused", body: enc({ code, message: `said ${code}`, ...(live !== undefined ? { data: { live } } : {}) }) });
 
 interface Rig {
   port: FollowPort;
@@ -48,7 +50,6 @@ function rig(): Rig {
       return enc({});
     },
     ack: async (origin, body) => void calls.push([origin, "terminal-follow-ack", body]),
-    unfollow: async (origin, body) => void calls.push([origin, "terminal-unfollow", body]),
   };
   const screens: TerminalShot[] = [];
   const stops: FollowStop[] = [];
@@ -118,7 +119,7 @@ describe("回执", () => {
 });
 
 describe("退订", () => {
-  it("★ 撤流、发退订；之后来的帧不交、排着的回执不发", async () => {
+  it("★ 撤流（不发退订命令：壳替界面退）；之后来的帧不交、排着的回执不发", async () => {
     const r = rig();
     const f = startFollow("devbox", "tmux-1", r.events, r.port);
     await flush();
@@ -129,7 +130,7 @@ describe("退订", () => {
     f.stop();
     await flush();
     expect(r.subs[0].stopped).toBe(true);
-    expect(r.calls.filter(([, op]) => op === "terminal-unfollow")).toEqual([["devbox", "terminal-unfollow", { ticket }]]);
+    expect(r.calls.map(([, op]) => op)).toEqual(["terminal-follow", "terminal-follow-ack"]);
     vi.advanceTimersByTime(1000);
     await flush();
     expect(acks(r)).toEqual([{ ticket, seq: 1 }]);
@@ -137,44 +138,52 @@ describe("退订", () => {
     expect(r.screens).toHaveLength(2);
     expect(r.stops, "自己退订不算「停了」").toEqual([]);
     f.stop(); // 幂等
-    expect(r.calls.filter(([, op]) => op === "terminal-unfollow")).toHaveLength(1);
+    expect(r.subs[0].stopped).toBe(true);
   });
 
-  it("订阅命令还在路上就退订 ⇒ 照样撤流、发退订，回来的成功不再交任何东西", async () => {
+  it("订阅命令还在路上就退订 ⇒ 照样撤流，回来的成功不再交任何东西", async () => {
     const r = rig();
     const f = startFollow("devbox", "tmux-1", r.events, r.port);
     f.stop();
     await flush();
     expect(r.subs.every((s) => s.stopped)).toBe(true);
-    expect(r.calls.some(([, op]) => op === "terminal-unfollow")).toBe(true);
     expect(r.stops).toEqual([]);
+  });
+
+  it("★ 界面这一侧不再有退订命令（只住壳：`terminal_screen_relay.rs`）", () => {
+    const ts = readFileSync(resolve(REPO_ROOT, "src/frontend/ui/terminal-follow.ts"), "utf8");
+    expect(ts).not.toContain('"terminal-unfollow"');
+    const rs = readFileSync(resolve(REPO_ROOT, "src/frontend/shell/src/terminal_screen_relay.rs"), "utf8");
+    expect(rs).toContain('const UNFOLLOW: &str = "terminal-unfollow";');
   });
 });
 
 describe("停", () => {
-  it("★★ 后端说停：gone · lost · too_big 各成一种；流随之撤、不再发退订", async () => {
-    for (const [why, want] of [
-      ["gone", { kind: "stopped", why: "gone" }],
-      ["lost", { kind: "stopped", why: "lost" }],
-      ["too_big", { kind: "stopped", why: "tooBig" }],
+  it("★★ 后端说停：那一句原样交（停因只给程序认，界面不按它挑词）；流随之撤", async () => {
+    for (const [why, said] of [
+      ["gone", "那台写的一句 甲"],
+      ["too_big", "那台写的一句 乙"],
+      ["later_kind", "以后才有的那一种"],
     ] as const) {
       const r = rig();
       startFollow("devbox", "tmux-1", r.events, r.port);
       await flush();
-      r.subs[0].sink([frame(0, { end: why })]);
+      r.subs[0].sink([frame(0, { why, said })]);
       await flush();
-      expect(r.stops).toEqual([want]);
+      expect(r.stops).toEqual([{ kind: "stopped", said, offline: false }]);
       expect(r.subs[0].stopped).toBe(true);
-      expect(r.calls.some(([, op]) => op === "terminal-unfollow"), "后端已经忘了这张票").toBe(false);
     }
   });
 
   it("★ 流断了（gap · closed · 那台看不见了）⇒ 停了（那台断开）；读不懂的一格 ⇒ 停了（画面中断）", async () => {
+    const offline = { kind: "stopped", said: copyText("terminal.liveWhy.offline", { machine: "devbox" }), offline: true };
+    const lost = { kind: "stopped", said: copyText("terminal.liveWhy.lost"), offline: false };
     for (const [item, want] of [
-      [{ t: "closed", by: { ours: "Broken" } }, { kind: "stopped", why: "offline" }],
-      [{ t: "gap", fromSeq: 0, toSeq: 1 }, { kind: "stopped", why: "offline" }],
-      [{ t: "unseen", at: { idx: 1, tag: "read" }, why: "Dropped" }, { kind: "stopped", why: "offline" }],
-      [frame(0, { seq: 1, view: { lines: "x" } }), { kind: "stopped", why: "lost" }],
+      [{ t: "closed", by: { ours: "Broken" } }, offline],
+      [{ t: "gap", fromSeq: 0, toSeq: 1 }, offline],
+      [{ t: "unseen", at: { idx: 1, tag: "read" }, why: "Dropped" }, offline],
+      [frame(0, { seq: 1, view: { lines: "x" } }), lost],
+      [frame(0, { why: "gone" }), lost],
     ] as const) {
       const r = rig();
       startFollow("devbox", "tmux-1", r.events, r.port);
@@ -186,14 +195,18 @@ describe("停", () => {
     }
   });
 
-  it("★★ 订不上：tmux 旧 · 后端旧 · 没 tmux ⇒ 只能快照（带原因）；终端不在 ⇒ 停了（不在）；通道不通 ⇒ 停了（那台断开）", async () => {
+  it("★★ 订不上：后端说「只能快照 / 停了」＋ 那一句，原样交；后端旧 ⇒ 只能快照；通道不通 ⇒ 停了（那台断开）", async () => {
     const cases: [unknown, FollowStop][] = [
-      [refused("tmux_too_old"), { kind: "snapshotOnly", why: "tmux" }],
-      [new ChanError({ layer: "peer", why: "unsupported" }), { kind: "snapshotOnly", why: "old" }],
-      [refused("no_tmux"), { kind: "snapshotOnly", why: "noTmux" }],
-      [refused("not_known"), { kind: "stopped", why: "gone" }],
-      [new ChanError({ layer: "hop", at: { idx: 1, tag: "open" }, reach: "NotSent", why: "Unreachable" }), { kind: "stopped", why: "offline" }],
-      [refused("too_many_follows"), { kind: "stopped", why: "lost" }],
+      [refused("tmux_too_old", "snapshot_only"), { kind: "snapshotOnly", said: "said tmux_too_old" }],
+      [refused("no_tmux", "snapshot_only"), { kind: "snapshotOnly", said: "said no_tmux" }],
+      [refused("not_known", "stopped"), { kind: "stopped", said: "said not_known", offline: false }],
+      [refused("too_many_follows", "stopped"), { kind: "stopped", said: "said too_many_follows", offline: false }],
+      [refused("bad_args"), { kind: "stopped", said: "said bad_args", offline: false }],
+      [new ChanError({ layer: "peer", why: "unsupported" }), { kind: "snapshotOnly", said: copyText("terminal.head.snapshotOnlyOld", { machine: "devbox" }) }],
+      [
+        new ChanError({ layer: "hop", at: { idx: 1, tag: "open" }, reach: "NotSent", why: "Unreachable" }),
+        { kind: "stopped", said: copyText("terminal.liveWhy.offline", { machine: "devbox" }), offline: true },
+      ],
     ];
     for (const [err, want] of cases) {
       const r = rig();

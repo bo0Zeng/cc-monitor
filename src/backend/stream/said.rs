@@ -19,6 +19,7 @@ pub(crate) fn reword(cmd: &str, args: &serde_json::Value, code: &str) -> Option<
         "kill" => kill(&arg("name"), code),
         "terminal-preview" => preview(code),
         "terminal-input" => copy_text("terminalReads.input.refused", &[]),
+        "terminal-follow" => return follow(code),
         "bus-list" => match code {
             "not_installed" => copy_text("ccBus.online.notInstalled", &[]),
             "timed_out" => copy_text("ccBus.online.timedOut", &[]),
@@ -85,6 +86,17 @@ fn preview(code: &str) -> String {
         "child_timed_out" => copy_text("terminalReads.preview.childTimedOut", &[]),
         _ => copy_text("terminalReads.preview.otherCode", &[]),
     }
+}
+
+/// 订实时画面被拒：太老的 tmux（带版本）与满了（带上限）处理器那句就是成品，照原样。
+fn follow(code: &str) -> Option<String> {
+    Some(match code {
+        "tmux_too_old" | "too_many_follows" => return None,
+        "no_tmux" => copy_text("beTermFollow.refuse.noTmux", &[]),
+        "not_known" => copy_text("beTermFollow.refuse.gone", &[]),
+        "ambiguous" => copy_text("beTermFollow.refuse.ambiguous", &[]),
+        _ => copy_text("beTermFollow.refuse.other", &[]),
+    })
 }
 
 fn bus_send(id: &str, code: &str) -> String {

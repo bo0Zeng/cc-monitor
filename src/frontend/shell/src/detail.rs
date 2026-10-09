@@ -5,7 +5,7 @@
 
 use crate::chan::wire as w;
 use crate::copy_table::copy_text;
-use copy_core::detail::{append, os_word, stamp, Detail, Label};
+use copy_core::detail::{os_word, stamp, Detail, Label};
 use serde::Serialize;
 
 /// 此刻（本机本地时间 ＋ 偏移）。
@@ -27,13 +27,44 @@ pub(crate) fn local_line() -> String {
     )
 }
 
-/// 对端那份详情转交给界面：远端 ⇒ 补「本机」一行。
+/// 对端那份详情转交出去：远端 ⇒ 补「本机」一行。
 pub(crate) fn relayed(origin: &crate::origin::Origin, remote: &str) -> String {
     if origin.is_local() {
         remote.to_string()
     } else {
-        append(remote, Label::Local, &local_line())
+        Detail::new()
+            .block(remote)
+            .item(Label::Local, local_line())
+            .render()
     }
+}
+
+/// 通道上对端说「不行」的那一格（拒绝体 `{code, message, detail?, …}`）交出去之前：远端 ⇒ 体里那份详情补「本机」一行
+/// （主界面与文件窗口都经通道宿主这一口，补一次、只在这里）；别的层原样。
+pub(crate) fn relay_refusal(origin: &crate::origin::Origin, e: w::CallError) -> w::CallError {
+    let w::CallError::Peer {
+        why: w::PeerFault::Refused { body },
+    } = &e
+    else {
+        return e;
+    };
+    if origin.is_local() {
+        return e;
+    }
+    let Ok(serde_json::Value::Object(mut v)) = serde_json::from_slice::<serde_json::Value>(&body.0)
+    else {
+        return e;
+    };
+    let wrote = v
+        .get("detail")
+        .and_then(|d| d.as_str())
+        .unwrap_or_default()
+        .to_string();
+    v.insert("detail".into(), relayed(origin, &wrote).into());
+    w::err_from_wire(
+        w::WireErr::Refused,
+        serde_json::to_vec(&v).unwrap_or_default(),
+    )
 }
 
 /// 拒绝体（`{code, message, data?, detail?}`）里那份详情；没有 ⇒ 空串。
@@ -45,7 +76,7 @@ pub(crate) fn of_refusal_body(body: &[u8]) -> String {
 }
 
 /// 通道这一跳（壳自己知道的那几样）的一份详情。`Refused` 不走这里（那份由对端写，见 [`relayed`]）。
-/// 那几项的取法住通信层（`HopFacts`，文件窗口进程同一份）。
+/// 那几项的取法住通信层（`HopFacts`），排法住 `copy_core::detail::channel`（文件窗口进程同一份）。
 pub(crate) fn of_channel(origin: &crate::origin::Origin, op: &str, e: &w::CallError) -> String {
     let f = e.hop_facts();
     let name = if origin.is_local() {
@@ -53,19 +84,17 @@ pub(crate) fn of_channel(origin: &crate::origin::Origin, op: &str, e: &w::CallEr
     } else {
         origin.0.clone()
     };
-    let machine = if f.not_sent {
-        format!("{name}（{}）", copy_text("detail.value.notConnected", &[]))
-    } else {
-        name
-    };
-    Detail::new()
-        .item(Label::At, now())
-        .item(Label::Machine, machine)
-        .maybe(Label::Local, (!origin.is_local()).then(local_line))
-        .item(Label::Command, op)
-        .maybe(Label::Hop, f.hop)
-        .item(Label::Code, f.code)
-        .render()
+    let local = (!origin.is_local()).then(local_line);
+    copy_core::detail::channel(
+        &now(),
+        &name,
+        f.not_sent,
+        local.as_deref(),
+        op,
+        f.hop.as_deref(),
+        &f.code,
+    )
+    .render()
 }
 
 /// 一条 ERROR 级日志事件（`monitor-error` 那条 toast）的详情：时刻 · 本机 · 对象（来源模块）· 原话（那条日志）。
@@ -84,7 +113,22 @@ pub(crate) fn of_log_event(target: &str, message: &str) -> String {
 #[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
 pub struct Said {
     pub said: String,
+    /// 复制详情那几行（[`Said::parts`] 排出来的；线上只有这一格）。
     pub detail: String,
+    /// 那几行本身（结构化：补「命令」按项名次序插，不拆渲染好的字）。
+    #[serde(skip)]
+    #[cfg_attr(test, ts(skip))]
+    parts: Detail,
+}
+
+impl Said {
+    fn of_parts(said: String, parts: Detail) -> Said {
+        Said {
+            said,
+            detail: parts.render(),
+            parts,
+        }
+    }
 }
 
 impl Said {
@@ -100,16 +144,15 @@ impl Said {
         code: Option<&str>,
         raw: Option<&str>,
     ) -> Said {
-        Said {
-            said: said.into(),
-            detail: Detail::new()
+        Said::of_parts(
+            said.into(),
+            Detail::new()
                 .item(Label::At, now())
                 .item(Label::Local, local_line())
                 .item(Label::Command, command)
                 .maybe(Label::Code, code)
-                .maybe(Label::Raw, raw)
-                .render(),
-        }
+                .maybe(Label::Raw, raw),
+        )
     }
 }
 
@@ -123,9 +166,14 @@ impl Said {
         e: &crate::inbound_client::CallError,
     ) -> Said {
         use crate::inbound_client::CallError;
-        let detail = match e {
+        let parts = match e {
             CallError::Remote { detail, .. } if !detail.trim().is_empty() => {
-                relayed(origin, detail)
+                let wrote = Detail::parse(detail);
+                if origin.is_local() {
+                    wrote
+                } else {
+                    wrote.item(Label::Local, local_line())
+                }
             }
             other => {
                 let code = match other {
@@ -143,10 +191,9 @@ impl Said {
                     .item(Label::Local, local_line())
                     .item(Label::Command, command)
                     .item(Label::Code, code)
-                    .render()
             }
         };
-        Said { said, detail }
+        Said::of_parts(said, parts)
     }
 }
 
@@ -158,37 +205,32 @@ impl Said {
 
     /// 一句话 ＋ 下层原话（命令名由最外层 [`Said::named`] 补）。
     pub(crate) fn with_raw(said: String, raw: impl std::fmt::Display) -> Said {
-        Said {
+        Said::of_parts(
             said,
-            detail: Detail::new()
+            Detail::new()
                 .item(Label::At, now())
                 .item(Label::Local, local_line())
-                .item(Label::Raw, raw.to_string())
-                .render(),
-        }
+                .item(Label::Raw, raw.to_string()),
+        )
     }
 
-    /// 详情里「原话」那一项的值（到下一个项名为止；没有 ⇒ `None`）。
+    /// 一句话 ＋ 别处按同一排法写好的那一份详情（本机后端写的 · 上一步留下的），读回成一项一项（之后补项照次序插）。
+    pub(crate) fn with_written(said: String, detail: &str) -> Said {
+        Said::of_parts(said, Detail::parse(detail))
+    }
+
+    /// 换一句给人看的话，复制详情照旧（外层接手下层那一形失败时说得更具体）。
+    pub(crate) fn restate(said: String, from: Said) -> Said {
+        Said::of_parts(said, from.parts)
+    }
+
+    /// 详情里「原话」那一项的值（自己写的那一行）；没有、而那份是对端写好的 ⇒ 那一整份（日志里照样看得到下层说了什么）；都没有 ⇒ 空串。
     pub(crate) fn raw(&self) -> String {
-        let label = format!("{}：", Label::Raw.said());
-        let others: Vec<String> = Label::ALL
-            .iter()
-            .filter(|l| **l != Label::Raw)
-            .map(|l| format!("{}：", l.said()))
-            .collect();
-        let mut out: Vec<&str> = Vec::new();
-        let mut inside = false;
-        for line in self.detail.lines() {
-            if let Some(v) = line.strip_prefix(&label) {
-                inside = true;
-                out.push(v);
-            } else if inside && others.iter().any(|p| line.starts_with(p)) {
-                break;
-            } else if inside {
-                out.push(line);
-            }
-        }
-        out.join("\n")
+        self.parts
+            .value(Label::Raw)
+            .map(str::to_string)
+            .or_else(|| self.parts.written().map(str::to_string))
+            .unwrap_or_default()
     }
 
     /// 交给只收 `io::Error` 的那一口（放程序那条路）：那一句 ＋ 原话合成一条，原话不丢。
@@ -201,39 +243,18 @@ impl Said {
         }
     }
 
-    /// 壳命令的失败补上命令名（复制详情的「命令」那一项）：详情里已经有一项「命令」（自己写的 · 后端写的）⇒ 原样。
-    /// 每条壳命令的最外层经这里一次（`#[tauri::command]` 那几十条，判据扫着）。
+    /// 壳命令的失败补上命令名（复制详情的「命令」那一项）：已经有一项「命令」⇒ 原样。
+    /// 「命令」按项名次序插（[`Label::ALL`]：本机之后、其余几项之前）。每条壳命令的最外层经这里一次（`#[tauri::command]` 那几十条，判据扫着）。
     pub(crate) fn named(self, command: &str) -> Said {
         self.with_item(Label::Command, command)
     }
 
-    /// 详情里补一项（已有这一项 ⇒ 原样）：按 [`Label::ALL`] 的次序插在第一条后排项名的前面；没有后排项 ⇒ 接在末尾。
+    /// 详情里补一项，按 [`Label::ALL`] 的次序插（结构化）。已有这一项 · 值空 · 那份里有读不出项名的一块（不知道它写了什么）⇒ 原样。
     pub(crate) fn with_item(self, label: Label, value: &str) -> Said {
-        let name = format!("{}：", label.said());
-        if self.detail.lines().any(|l| l.starts_with(&name)) || value.trim().is_empty() {
+        if self.parts.has_block() || self.parts.has(label) || value.trim().is_empty() {
             return self;
         }
-        let at = Label::ALL.iter().position(|l| *l == label).unwrap_or(0);
-        let later: Vec<String> = Label::ALL[at + 1..]
-            .iter()
-            .map(|l| format!("{}：", l.said()))
-            .collect();
-        let lines: Vec<&str> = self.detail.lines().collect();
-        let detail = match lines
-            .iter()
-            .position(|l| later.iter().any(|p| l.starts_with(p)))
-        {
-            Some(at) => {
-                let mut v: Vec<String> = lines.iter().map(|l| l.to_string()).collect();
-                v.insert(at, format!("{name}{}", value.trim()));
-                v.join("\n")
-            }
-            None => append(&self.detail, label, value),
-        };
-        Said {
-            detail,
-            said: self.said,
-        }
+        Said::of_parts(self.said, self.parts.insert(label, value))
     }
 }
 
@@ -247,13 +268,12 @@ impl std::fmt::Display for Said {
 /// 壳命令里那句话（`?` 与 `.into()` 经这里）：详情带时刻与本机。
 impl From<String> for Said {
     fn from(said: String) -> Said {
-        Said {
+        Said::of_parts(
             said,
-            detail: Detail::new()
+            Detail::new()
                 .item(Label::At, now())
-                .item(Label::Local, local_line())
-                .render(),
-        }
+                .item(Label::Local, local_line()),
+        )
     }
 }
 

@@ -64,6 +64,7 @@ fn synthetic_request() -> OpenRequest {
             h: 1040,
         }),
         theme: theme_testing::default_theme(),
+        local_line: String::new(),
     }
 }
 
@@ -443,6 +444,7 @@ fn opening_a_window_three_times_really_starts_three_independent_processes() {
         machines: Vec::new(),
         work_area: None,
         theme: theme_testing::default_theme(),
+        local_line: String::new(),
     };
     let mut pids: Vec<u32> = Vec::new();
     let mut codes: Vec<String> = Vec::new();
@@ -558,6 +560,7 @@ fn the_window_process_lists_first_and_the_parent_carries_its_words() {
         machines: Vec::new(),
         work_area: None,
         theme: theme_testing::default_theme(),
+        local_line: String::new(),
     };
     let run = |tag: &str, say: &str, linger: u32| {
         std::env::set_var(BIN_ENV, scripted_stand_in(&dir, tag, say, linger));
@@ -617,6 +620,7 @@ fn a_window_that_dies_after_being_judged_open_is_still_reported() {
         machines: Vec::new(),
         work_area: None,
         theme: theme_testing::default_theme(),
+        local_line: String::new(),
     };
     let listed = encode_ready(&Ready::Listed(3)).trim().to_string();
     let run = |code: u32| {
@@ -749,6 +753,7 @@ fn a_window_process_that_dies_at_once_comes_back_as_a_reason() {
             machines: Vec::new(),
             work_area: None,
             theme: theme_testing::default_theme(),
+            local_line: String::new(),
         },
         Box::new(|_| {}),
     )

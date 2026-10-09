@@ -29,8 +29,8 @@ use copy_core::copy_text;
 use serde_json::{json, Value};
 use tokio::io::{BufReader, DuplexStream};
 
+use crate::dial::remote_ask::{self, AbortOnDrop};
 use crate::dial::DialRequest;
-use crate::stream::remote_ask::{self, AbortOnDrop};
 
 /// 账上最多几条（有界资源；每条占一个本机口，一个人开不出这么多）。
 pub const MAX_FORWARDS: usize = 64;

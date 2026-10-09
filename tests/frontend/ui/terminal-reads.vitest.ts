@@ -92,10 +92,14 @@ describe("抓一屏：金样与形状", () => {
     expect(() => decodeTerminals("devbox", { terminals: [{ terminal: "t" }] })).toThrow(copyPattern("peerVersion.said.unreadable"));
   });
 
-  it("★ 名单（终端页要的几格）：会话 ID · 连着几个终端窗口 · 输入在谁手里 · 能不能送（原因码原样）", () => {
+  it("★ 名单（终端页要的几格）：会话 ID · 连着几个终端窗口 · 输入在谁手里 · 能不能送（后端写好的那一句原样）", () => {
     const rows = decodeTerminals("devbox", LIST.reply);
     expect(rows[0]).toMatchObject({ terminal: "tmux-1-1", sid: "sid-a", clients: 1, input: "shared", programExited: false, inputNo: null });
-    expect(rows[1]).toMatchObject({ terminal: "tmux-3", sid: null, clients: 0, inputNo: "not-yours" });
+    expect(rows[1]).toMatchObject({ terminal: "tmux-3", sid: null, clients: 0, inputNo: (LIST.reply.terminals as { can: { input: { said: string } } }[])[1].can.input.said });
+    expect(rows[1].inputNo).not.toBe("");
+    // 那一句缺（契约外）⇒ 落「被拒」，不按码猜。
+    const bare = decodeTerminals("devbox", { terminals: [{ terminal: "t", tmux_name: "n", can: { input: { no: "not-yours" } } }] });
+    expect(bare[0].inputNo).toBe(copyText("terminal.why.other"));
   });
 
   it("★ 抓一屏连指纹与时刻；送字送键的三种回话（取自金样）都读得出、认不出的 ⇒ 抛", () => {
@@ -105,10 +109,11 @@ describe("抓一屏：金样与形状", () => {
     const INPUT = golden["terminal-input"] as unknown as { replies: unknown[] };
     expect(INPUT.replies.map((r) => decodeSent("devbox", r))).toEqual([
       { result: "delivered" },
-      { result: "refused", why: "screen-changed", screen: "0000000000000000" },
+      { result: "refused", why: "screen-changed", said: (INPUT.replies[1] as { said: string }).said, screen: "0000000000000000" },
       { result: "unsure" },
     ]);
     expect(() => decodeSent("devbox", { result: "maybe" })).toThrow(copyPattern("peerVersion.said.unreadable"));
+    expect(decodeSent("devbox", { result: "refused", why: "x" }), "那一句缺 ⇒ 落「被拒」").toEqual({ result: "refused", why: "x", said: copyText("terminal.why.other"), screen: null });
   });
 
   it("★ 送字带句柄 · 字 · 回车 · 看到的那一屏的指纹；送键只带键", async () => {

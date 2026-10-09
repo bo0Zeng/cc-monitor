@@ -6,7 +6,7 @@ use crate::assets::aliases::tests::HomeDoor;
 use crate::assets::asset_catalog::{Scanned, Snapshot, Visits};
 use crate::assets::hub::{ext_apply, ext_preview, Here};
 use crate::assets::mcp_sync::{Facts, There};
-use crate::stream::remote_ask::{register, Remote, Said, Table};
+use crate::dial::remote_ask::{register, Remote, Said, Table};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
@@ -502,7 +502,7 @@ impl Two {
     fn list(&self) -> ExtList {
         let cb = self.b.refresh(None);
         let ca = self.a.refresh(Some(cb.machines.clone()));
-        crate::stream::remote_ask::lock(&self.reach)
+        crate::dial::remote_ask::lock(&self.reach)
             .get_mut("laptop")
             .unwrap()
             .peer = Some(cb.self_id.clone());

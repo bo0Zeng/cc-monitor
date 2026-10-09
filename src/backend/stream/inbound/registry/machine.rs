@@ -243,7 +243,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         // 纯内存（一把锁、插一行）⇒ 不进阻塞档，同 `ping` / `resolve`。
         run: Run::Async(|r| {
             Box::pin(async move {
-                crate::stream::remote_ask::answer_reach(&r.args)
+                crate::dial::remote_ask::answer_reach(&r.args)
                     .map(Some)
                     .map_err(|(c, m)| (c.to_string(), m))
             })

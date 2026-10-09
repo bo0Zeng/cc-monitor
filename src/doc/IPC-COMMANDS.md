@@ -271,7 +271,8 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | `ticket` | string | 订阅票 |
-| `why` | FollowEnd | 为什么停了 |
+| `why` | FollowEnd | 为什么停了（给程序认） |
+| `said` | string | 给人看的那一句（后端写好，界面原样上屏） |
 
 ## 2. 信封与帧里用到的类型
 
@@ -2794,7 +2795,7 @@ cc-bus 钩子诊断。
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `agent` | ← | `session` 里：哪一家（没标就缺） |
-| `can` | ← | 这个调用方能做什么：`preview` · `input` · `end`，做不了的写成 `{no: 原因}` |
+| `can` | ← | 这个调用方能做什么：`preview` · `input` · `end`，做不了的写成 `{no: 原因, said: 给人看的那一句}` |
 | `client` | → ← | 请求里可选：自报的前端，决定每行的 `mine` / `can`；`started_by` 里：会话上的 `@ccm_client`（没声明 ⇒ `null`） |
 | `clients` | ← | 此刻连着它的终端客户端，每项 `{kind, since, last_activity}`；空 ＝ 后台 |
 | `complete` | ← | `false` ＝ 名单里有读不懂的行（画「部分」） |
@@ -2859,6 +2860,7 @@ cc-bus 钩子诊断。
 | `enter` | → | `text` 之后补一个回车；缺省 `true` |
 | `key` | → | 送键：`esc` · `ctrl-c` · `ctrl-d` · `up` · `down` · `left` · `right` · `tab` · `shift-tab` · `enter` · `backspace` · `page-up` · `page-down` |
 | `result` | ← | `delivered` · `unsure`（不知道送没送到，别重发）· `refused` |
+| `said` | ← | `refused` 时给人看的那一句（后端写好） |
 | `screen` | ← | `screen-changed` 时带的新指纹 |
 | `seen_screen` | → | 送之前看到的那一屏的指纹；画面已经变了 ⇒ 不送、回 `refused` ＋ `screen-changed` |
 | `sid` | → | 目标：会话 id（与 `terminal` 恰给一个） |
@@ -2877,9 +2879,10 @@ cc-bus 钩子诊断。
 
 | 字段 | 向 | 说明 |
 |---|---|---|
+| `live` | ← | 失败时：实时那一格落在哪 —— `snapshot_only`（这台只能快照：没装 tmux · tmux 低于 3.2）· `stopped`（别的） |
 | `sid` | → | 目标：会话 id（与 `terminal` 恰给一个） |
 | `terminal` | → | 目标：名单里的句柄（与 `sid` 恰给一个） |
-| `ticket` | → | 订阅票（客户端铸的不透明串，至多 128 字节）；之后的 `terminal_screen` / `terminal_follow_end` 帧带它 |
+| `ticket` | → | 订阅票（客户端铸的不透明串，至多 128 字节，只用一次）；之后的 `terminal_screen` / `terminal_follow_end` 帧带它 |
 
 码：`bad_target` · `bad_args` · `not_known` · `ambiguous` · `no_tmux` · `tmux_too_old` · `too_many_follows` · `unobservable` · `child_timed_out`
 
@@ -2904,7 +2907,7 @@ cc-bus 钩子诊断。
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `ticket` | → | 订阅票；退不在册的也回 `ok` |
+| `ticket` | → | 订阅票；退不在册的也回 `ok`（记下它：订阅那一问若还在路上，到了也不起） |
 
 码：`bad_args`
 
