@@ -1702,7 +1702,7 @@ sid → 上次用哪个号起。
 
 把各台的搜索结果合成一份。
 
-收 `args` · 可撤 · 只在流上
+收 `args` · 可撤 · CLI：`ccm -- --history-search-merge`
 
 | 字段 | 向 | 说明 |
 |---|---|---|
@@ -2821,7 +2821,7 @@ cc-bus 钩子诊断。
 
 给一台远端开终端要跑的那一串。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --terminal-ssh`
 
 | 字段 | 向 | 说明 |
 |---|---|---|
@@ -2874,8 +2874,8 @@ cc-bus 钩子诊断。
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `agent` | ← | `session` 里：哪一家（没标就缺） |
-| `can` | ← | 这个调用方能做什么：`preview` · `input` · `end`，做不了的写成 `{no: 原因, said: 给人看的那一句}` |
-| `client` | → ← | 请求里可选：自报的前端，决定每行的 `mine` / `can`；`started_by` 里：会话上的 `@ccm_client`（没声明 ⇒ `null`） |
+| `can` | ← | 这个调用方能做什么：`input` · `end`，做不了的写成 `{no: 原因, said: 给人看的那一句}`（抓屏不过身份门、恒可用，不在这里） |
+| `client` | → ← | 请求里可选：自报的前端，决定每行的 `can` 与 `started_by.mine`；`started_by` 里：会话上的 `@ccm_client`（没声明 ⇒ `null`） |
 | `clients` | ← | 此刻连着它的终端客户端，每项 `{kind, since, last_activity}`；空 ＝ 后台 |
 | `complete` | ← | `false` ＝ 名单里有读不懂的行（画「部分」） |
 | `cwd` | ← | 当前目录 |
@@ -2884,11 +2884,10 @@ cc-bus 钩子诊断。
 | `input` | ← | 输入方式：`shared`（tmux：各端都能打字） |
 | `kind` | ← | `clients` 一项：客户端种类（`terminal-window` …） |
 | `last_activity` | ← | 最近动静（秒） |
-| `mine` | ← | 这个调用方能不能送字 / 结束 |
+| `mine` | ← | `started_by` 里：这个调用方过不过身份门（与 `can.input` 是不是 `true` 同一个判定；结束还要看 `can.end`） |
 | `no` | ← | 做不了的原因 |
-| `preview` | ← | 能不能抓屏 |
 | `program` | ← | 前台程序名 |
-| `purpose` | ← | `normal` … |
+| `purpose` | ← | 这一版恒为 `normal`（只有这一种） |
 | `session` | ← | 里面跑着会话（`@ccm_sid`）时才有：`{sid, agent?}` |
 | `sid` | ← | `session` 里：会话 id |
 | `since` | ← | `clients` 一项：连上的时刻（秒） |
@@ -2896,7 +2895,7 @@ cc-bus 钩子诊断。
 | `state` | ← | `running` · `idle`（没会话、前台是 shell）· `program-exited`（有会话、前台是 shell） |
 | `terminal` | ← | 名单里那一行的不透明句柄（前端不拼、不解析；送字 / 抓屏时交回） |
 | `terminals` | ← | 终端名单（每行一个终端） |
-| `title` | ← | 窗格标题 |
+| `title` | ← | 里面跑着会话、前台不是 shell 时是窗格标题；否则是前台程序名 |
 | `tmux_name` | ← | tmux 会话名 |
 
 码：`bad_args` · `unobservable` · `child_timed_out`
@@ -2943,7 +2942,6 @@ cc-bus 钩子诊断。
 | `screen` | ← | `screen-changed` 时带的新指纹 |
 | `seen_screen` | → | 送之前看到的那一屏的指纹；画面已经变了 ⇒ 不送、回 `refused` ＋ `screen-changed` |
 | `sid` | → | 目标：会话 id（与 `terminal` 恰给一个） |
-| `take` | → | 要不要先接管输入（tmux 上无所谓，各端都能打字） |
 | `terminal` | → | 目标：名单里的不透明句柄（前端不拼、不解析） |
 | `text` | → | 送字：字面字，原样送、不解释成键名；多行按粘贴送（与 `key` 恰给一个） |
 | `why` | ← | `refused` 的原因：`not-known` · `ambiguous` · `ended` · `not-yours` · `not-managed` · `screen-changed` |
@@ -2994,7 +2992,7 @@ cc-bus 钩子诊断。
 
 起会话要的终端名。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --terminal-name-mint`
 
 | 字段 | 向 | 说明 |
 |---|---|---|
@@ -3023,7 +3021,7 @@ cc-bus 钩子诊断。
 
 停一批会话（逐个答，一个不成不挡下一个）。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --sessions-stop`
 
 | 字段 | 向 | 说明 |
 |---|---|---|
@@ -3046,7 +3044,7 @@ cc-bus 钩子诊断。
 
 一批会话各在这台哪个终端里。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --sessions-where`
 
 | 字段 | 向 | 说明 |
 |---|---|---|
@@ -3066,7 +3064,7 @@ cc-bus 钩子诊断。
 
 起 / 接回一批会话（逐个答）。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --sessions-start`
 
 | 字段 | 向 | 说明 |
 |---|---|---|
@@ -3101,7 +3099,7 @@ cc-bus 钩子诊断。
 
 起一个新会话（全产品一个框、一个请求）。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --session-new`
 
 | 字段 | 向 | 说明 |
 |---|---|---|
@@ -3133,7 +3131,7 @@ cc-bus 钩子诊断。
 
 起新会话那个框要的事实：最近目录 · 有没有 tmux · 有哪几家 agent · 分叉时原会话的起法。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --session-new-facts`
 
 | 字段 | 向 | 说明 |
 |---|---|---|
@@ -3156,7 +3154,7 @@ cc-bus 钩子诊断。
 
 起新会话前核一个目录：在不在 · 会用哪个终端名。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --session-new-dir`
 
 | 字段 | 向 | 说明 |
 |---|---|---|
@@ -3578,7 +3576,7 @@ cc-bus 钩子诊断。
 
 ## 5. CLI 子命令
 
-一次性调用：`ccm -- --子命令 …`（打头的 `--` 之后才归后端）；收 `args` 的从 stdin 读一段 JSON，回一行 JSON 到 stdout。
+一次性调用：`ccm -- --子命令 …`（打头的 `--` 之后才归后端）；收 `args` 的那一段 JSON 从 stdin 读，或经 `--args-b64 <base64>` 走 argv（二选一，上限与码见 `IPC-PROTOCOL.md` §8），回一行 JSON 到 stdout。
 「＝ 帧命令」的那几条与流上同名命令是同一个处理器。
 
 | 子命令 | 说明 |
@@ -3675,6 +3673,7 @@ cc-bus 钩子诊断。
 | `--history-record` | ＝ 帧命令 `history-record`：这条会话的记录还在不在 |
 | `--history-run` | ＝ 帧命令 `history-run`：一个子运行的记录 |
 | `--history-search` | ＝ 帧命令 `history-search`：全文搜索 |
+| `--history-search-merge` | ＝ 帧命令 `history-search-merge`：把各台的搜索结果合成一份 |
 | `--history-tail` | ＝ 帧命令 `history-tail`：一份会话的尾段从哪个字节起 |
 | `--history-turns` | ＝ 帧命令 `history-turns`：一轮的摘要 |
 | `--history-user-inputs` | ＝ 帧命令 `history-user-inputs`：「你说过的话」清单 |
@@ -3728,6 +3727,12 @@ cc-bus 钩子诊断。
 | `--session-accounts` | 正在跑的会话各属哪个号：每条 `{pid, sessionId, cwd, configDir, account, bare, alive, viaRelay}`；`account:null` ＝ 查不到（不猜） |
 | `--session-fork` | ＝ 帧命令 `session-fork`：从某条消息处分叉出一个新会话 |
 | `--session-interrupts` | ＝ 帧命令 `session-interrupts`：动一个会话之前，会打断什么 |
+| `--session-new` | ＝ 帧命令 `session-new`：起一个新会话（全产品一个框、一个请求） |
+| `--session-new-dir` | ＝ 帧命令 `session-new-dir`：起新会话前核一个目录：在不在 · 会用哪个终端名 |
+| `--session-new-facts` | ＝ 帧命令 `session-new-facts`：起新会话那个框要的事实：最近目录 · 有没有 tmux · 有哪几家 agent · 分叉时原会话的起法 |
+| `--sessions-start` | ＝ 帧命令 `sessions-start`：起 / 接回一批会话（逐个答） |
+| `--sessions-stop` | ＝ 帧命令 `sessions-stop`：停一批会话（逐个答，一个不成不挡下一个） |
+| `--sessions-where` | ＝ 帧命令 `sessions-where`：一批会话各在这台哪个终端里 |
 | `--skill-install-apply` | ＝ 帧命令 `skill-install-apply`：在要被写的那一台把勾的那几个 skill 文件写进去 |
 | `--skill-install-plan` | ＝ 帧命令 `skill-install-plan`：在要被写的那一台判 skill 装不装得过来 |
 | `--skill-install-record` | ＝ 帧命令 `skill-install-record`：skill 装记录的写口 |
@@ -3737,7 +3742,9 @@ cc-bus 钩子诊断。
 | `--ssh-config-resolve` | ＝ 帧命令 `ssh-config-resolve`：一个别名的有效连接参数 |
 | `--tasks-list` | ＝ 帧命令 `tasks-list`：一个会话的任务列表 |
 | `--terminal-input` | ＝ 帧命令 `terminal-input`：往一个终端送字或送键（过身份门） |
+| `--terminal-name-mint` | ＝ 帧命令 `terminal-name-mint`：起会话要的终端名 |
 | `--terminal-preview` | ＝ 帧命令 `terminal-preview`：抓一个终端的一屏（只抓一次，轮询归调用方） |
+| `--terminal-ssh` | ＝ 帧命令 `terminal-ssh`：给一台远端开终端要跑的那一串 |
 | `--terminals-list` | ＝ 帧命令 `terminals-list`：这台的终端名单（形状与宿主无关；这一版宿主是 tmux） |
 | `--tmux-notify` `<backend_pid> <backend_starttime>` | tmux 钩子用：核对身份后叫正在跑的后端立刻重扫 tmux；身份对不上静默退出 0；不碰文件系统 |
 

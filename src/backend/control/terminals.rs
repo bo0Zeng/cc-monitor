@@ -362,7 +362,8 @@ pub(crate) fn terminal_json(
     t.insert("last_activity".into(), row.activity.into());
     t.insert(
         "can".into(),
-        json!({ "preview": true, "input": input, "end": end }),
+        // 抓屏不过身份门、恒可用 ⇒ 不在这里占一格（`can` 只放会随调用方 / 此刻变的能力）。
+        json!({ "input": input, "end": end }),
     );
     Value::Object(t)
 }
@@ -898,13 +899,36 @@ pub(crate) fn input_reply(result: &str, why: Option<&str>, screen: Option<&str>)
     Value::Object(m)
 }
 
-/// 帧面 / CLI 面入口：`terminal-input`。入 `{terminal | sid, text, enter?: true | key, seen_screen?, take?, client?}`。
+/// `terminal-input` 收的那几格；别的一律拒（多送一格 ⇒ `bad_args`，不静默吞 —— 同 `deny_unknown_fields`）。
+/// 原先还收一格 `take`（「先接管输入」）：tmux 上各端本来都能打字，它只被校验、从没被读 ⇒ 删了。
+const INPUT_FIELDS: &[&str] = &[
+    "terminal",
+    "sid",
+    "text",
+    "enter",
+    "key",
+    "seen_screen",
+    "client",
+];
+
+/// 帧面 / CLI 面入口：`terminal-input`。入 `{terminal | sid, text, enter?: true | key, seen_screen?, client?}`（别的格 ⇒ `bad_args`）。
 /// 送不了的（不在名单 · 别的前端的 · 不归我们管 · 画面变了 · 已经没了）回 `result: "refused"` ＋ `why`，不是错；
-/// 形状不对才是错（`bad_target` · `bad_args`）。`take` 在 tmux 上无所谓（各端都能打字）。
+/// 形状不对才是错（`bad_target` · `bad_args`）。
 pub(crate) fn input_on(on: On<'_>, args: &Value) -> Result<Value, CmdErr> {
+    if let Some(extra) = args
+        .as_object()
+        .and_then(|m| m.keys().find(|k| !INPUT_FIELDS.contains(&k.as_str())))
+    {
+        return Err((
+            "bad_args",
+            crate::common::contract::malformed(&format!(
+                "unknown field `{extra}` (terminal-input takes {})",
+                INPUT_FIELDS.join(", ")
+            )),
+        ));
+    }
     let target = target_of(args)?;
     let input = input_of(args)?;
-    bool_arg(args, "take", false)?;
     let requester = gate::requester_of(args)?;
     let seen = match args.get("seen_screen") {
         None => None,

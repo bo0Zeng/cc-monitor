@@ -532,7 +532,8 @@ fn validate_session_path_among(
 }
 
 /// `--read-session <jsonl_path>`：路径校验后原样透传文件内容（这两行原先挂在围栏头上，随围栏搬家挪回它说的那个函数）。
-/// 透传而非逐行解析：monitor 侧本就有完整的 parse_line 管线，backend 不重复造。
+/// 透传原字节：这是冻结给第二个前端的那一面（`IPC-PROTOCOL.md` §7），按原样留着。要**成品**（逐行解析好的记录）走
+/// `history-read`（后端自己的 `agents/claudecode/parse.rs::parse_line`；monitor 侧早已没有自己的解析）。
 fn read_session(agent_home: &Path, jsonl_path: &str) -> Result<(), String> {
     let target = validate_session_path(agent_home, jsonl_path)?;
     let mut f = std::fs::File::open(&target).map_err(|e| format!("open failed: {e}"))?;
@@ -548,7 +549,7 @@ fn read_session(agent_home: &Path, jsonl_path: &str) -> Result<(), String> {
 /// `offset` = 客户端从 Line 帧 `byte_offset` 持久化的续点（重连/断线后带上）。
 /// 截断/重写（远端 size < offset）**不在此判**——同 aterm 由客户端另经 size 查检测后
 /// 决策 reset（`offsetByPath`），此处 seek 过 EOF → 读空 → 透传空，安全无副作用。
-/// 透传而非逐行：monitor 侧 parse_line 管线已全，backend 不重复造（同 `read_session`）。
+/// 透传原字节，理由同 `read_session`（冻结的那一面；成品走 `history-read`）。
 ///
 /// 〔骨架〕加了两个**选项**（不是新子命令 —— 见 [`FromOffsetOpts`] 的头注）：
 /// `--until <end>` 把透传收成半开区间 `[offset, end)`；`--index` 不透传字节，改出

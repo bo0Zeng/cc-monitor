@@ -672,6 +672,12 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "拒收+回错",
     ),
     (
+        "src/backend/control/cli_control.rs",
+        "MAX_ARGS_B64_LEN",
+        "控制面 CLI 子命令 argv 形载荷口（`--args-b64`）的值（base64 编码后；留在系统单个参数的上限之内）",
+        "拒收+回错",
+    ),
+    (
         "src/backend/stream/inbound/mod.rs",
         "MAX_LINE_BYTES",
         "入方向单行",
