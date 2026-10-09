@@ -151,14 +151,16 @@ fn the_default_rotation_is_written_whole_and_refused_whole() {
     );
     assert_eq!(got["isDefault"], true);
     let before = std::fs::read(home.root.join(rotation::FILE_NAME)).expect("read");
-    let (code, msg) = answer_set_with(
+    let crate::stream::inbound::spec::Fail {
+        code, message: msg, ..
+    } = answer_set_with(
         &ctx,
         &json!({"rotation": {"order": [{"start": true}, "b"], "enabled": ["x"], "when": "full"}}),
     )
     .expect_err("应拒");
     assert_eq!(code, "bad_args");
     assert!(msg.contains("enabled[0]"), "{msg}");
-    let (code, msg) = answer_set_with(
+    let crate::stream::inbound::spec::Fail { code, message: msg, .. } = answer_set_with(
         &ctx,
         &json!({"rotation": {"order": [{"start": true}, "b"], "enabled": ["b"], "when": "full", "atLimit": "halt"}}),
     )
@@ -279,7 +281,7 @@ fn a_session_can_go_custom_and_back_keeping_its_own() {
     assert_eq!(
         answer_session_set_with(&ctx, &bad, now())
             .expect_err("应拒")
-            .0,
+            .code,
         "bad_args"
     );
     assert_eq!(ctx.hop.store.now(), before);
@@ -840,7 +842,7 @@ fn rules_round_trip_and_a_stale_rev_is_refused() {
             now()
         )
         .expect_err("不在")
-        .0,
+        .code,
         "no_such_rule"
     );
 }
@@ -965,7 +967,7 @@ fn cap_slots_are_checked_cell_by_cell_including_overlap_across_midnight() {
             now()
         )
         .expect_err("重叠应拒")
-        .0,
+        .code,
         "bad_args"
     );
 }
@@ -1015,7 +1017,7 @@ fn a_session_on_a_rule_follows_its_edits() {
             now()
         )
         .expect_err("不在")
-        .0,
+        .code,
         "no_such_rule"
     );
 }
@@ -1092,7 +1094,7 @@ fn deleting_a_rule_moves_its_sessions_as_told() {
     assert_eq!(
         answer_rule_delete_with(&ctx, &json!({"ids": [def], "then": "custom"}))
             .expect_err("默认")
-            .0,
+            .code,
         "is_default"
     );
     let got = answer_rule_delete_with(&ctx, &json!({"ids": [a], "then": "custom"})).expect("ok");
@@ -1127,7 +1129,7 @@ fn setting_the_default_moves_the_followers() {
     assert_eq!(
         answer_default_set_with(&ctx, &json!({"rule": "r_gone"}))
             .expect_err("不在")
-            .0,
+            .code,
         "no_such_rule"
     );
 }
@@ -1153,7 +1155,7 @@ fn a_draft_is_checked_cell_by_cell_without_writing() {
     assert_eq!(
         answer_plan_with(&ctx, &json!({"rotation": {"order": 3}}), now())
             .expect_err("形状")
-            .0,
+            .code,
         "bad_args"
     );
     assert_eq!(ctx.hop.store.now(), before, "一个字节不写");
@@ -1215,13 +1217,13 @@ fn the_plan_says_who_runs_next_and_what_each_cell_takes() {
     assert_eq!(
         answer_plan_with(&ctx, &json!({"rule": id, "span": "3h"}), t)
             .expect_err("视窗")
-            .0,
+            .code,
         "bad_args"
     );
     assert_eq!(
         answer_plan_with(&ctx, &json!({"rule": "r_gone"}), t)
             .expect_err("不在")
-            .0,
+            .code,
         "no_such_rule"
     );
 }
@@ -1351,7 +1353,7 @@ fn the_timeline_view_looks_back_and_says_who_runs_now() {
     assert_eq!(
         answer_plan_with(&ctx, &json!({"sid": "s-1", "view": "12h"}), t)
             .expect_err("视窗")
-            .0,
+            .code,
         "bad_args"
     );
 }
@@ -1463,4 +1465,57 @@ fn a_preset_session_keeps_its_rule_when_the_relay_first_sees_it() {
     );
     forget_preset_with(&ctx, &sid);
     assert!(!ctx.hop.store.now().sessions.contains_key(&sid));
+}
+
+/// 读不懂的 rotation.json 在各读答里是成功应答的一格：`reason` 只是那一句（不带解析器原话），原话进 `detail`（复制详情，命令名 · 码 `unreadable`）；
+/// 往读不懂的那份写（存规则）不覆盖，失败带原话（进应答详情）。
+#[test]
+fn an_unreadable_rotation_file_answers_a_sentence_and_a_detail() {
+    let home = Home::new("unreadable");
+    let ctx = home.ctx();
+    std::fs::write(home.root.join(rotation::FILE_NAME), b"{not json").expect("write");
+    let raw = "key must be a string";
+    let reads = [
+        ("rotation-rules-read", answer_rules_read_with(&ctx)),
+        (
+            "rotation-session-read",
+            answer_session_read_with(&ctx, &json!({"sids": ["s-1"]}), now()).expect("read"),
+        ),
+        (
+            "rotation-plan",
+            answer_plan_with(&ctx, &json!({"machine": true}), now()).expect("plan"),
+        ),
+    ];
+    for (cmd, v) in &reads {
+        assert_eq!(v["state"], "unreadable", "{cmd}: {v}");
+        let reason = v["reason"]
+            .as_str()
+            .unwrap_or_else(|| panic!("{cmd} 没有 reason：{v}"));
+        assert!(!reason.contains(raw), "{cmd}: 原话进了那一句：{reason}");
+        let detail = v["detail"]
+            .as_str()
+            .unwrap_or_else(|| panic!("{cmd} 没有 detail：{v}"));
+        assert!(
+            detail.contains(cmd) && detail.contains("unreadable") && detail.contains(raw),
+            "{cmd}: {detail}"
+        );
+    }
+    let fail = answer_rule_save_with(&ctx, &json!({"name": "night", "from": "blank"}), now())
+        .expect_err("读不懂的那份不覆盖");
+    assert_eq!(fail.code, "io_failed");
+    assert!(!fail.message.contains(raw), "{}", fail.message);
+    assert!(
+        fail.raw.as_deref().is_some_and(|r| r.contains(raw)),
+        "{:?}",
+        fail.raw
+    );
+    assert_eq!(
+        std::fs::read(home.root.join(rotation::FILE_NAME)).expect("read"),
+        b"{not json"
+    );
+    let fresh = Home::new("readable");
+    let ok = answer_rules_read_with(&fresh.ctx());
+    assert!(ok["detail"].is_null(), "不在那一形多出了详情：{ok}");
+    let _ = std::fs::remove_dir_all(&home.root);
+    let _ = std::fs::remove_dir_all(&fresh.root);
 }

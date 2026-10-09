@@ -3,13 +3,14 @@
  *
  * - 详情（`detail`）由出错的那一端写好随帧回（后端 · 壳 · 文件窗口进程），这里只排版：复制出去的首行是屏上那一句，下面原样接详情。
  * - 详情是空的 ⇒ 不出按钮（本地校验这类）。
- * - 点了：写剪贴板 ⇒「已复制」＋ 对勾 1.5 s 回默认（连点重计，不叠）；读屏念「已复制详情」；不收起所在的 toast / 浮层 / 对话框。
+ * - 点了：写剪贴板（经壳，真成败：`../clipboard.ts`）⇒「已复制」＋ 对勾 1.5 s 回默认（连点重计，不叠）；读屏念「已复制详情」；不收起所在的 toast / 浮层 / 对话框。
  * - 写不进：「复制失败」，就地展开一块只读原文、全选、焦点进去；Esc 或点别处收起（与日志页「复制诊断信息」同一做法）。
  * - 窄：只剩图标，悬停与读屏名仍是「复制详情」。
  */
 import { button } from "./button";
 import { icon } from "./icon";
 import { copyText } from "../copy-table";
+import { writeClipboard } from "../clipboard";
 import s from "./detail.module.css";
 
 /** 「已复制」停多久。 */
@@ -191,8 +192,7 @@ export function copyDetailButton(said: string | (() => string), detail: string, 
     const body = text();
     if (timer !== null) clearTimeout(timer);
     try {
-      if (!navigator.clipboard) throw new Error("no clipboard");
-      await navigator.clipboard.writeText(body);
+      await writeClipboard(body);
       closeFallback();
       paint("copied");
       live.textContent = copyText("detail.aria.copied");

@@ -124,10 +124,16 @@ fn locked_edit(
     path: &Path,
     edit: impl FnOnce(&mut Map<String, Value>) -> bool,
 ) -> Result<(), (&'static str, String)> {
-    let _g = crate::platform::lock::hold(dir).map_err(|e| ("io_failed", e))?;
+    let _g = crate::platform::lock::hold(dir).map_err(|e| {
+        (
+            "io_failed",
+            crate::common::said::Said::from(e).said_logging_raw(),
+        )
+    })?;
     let mut all = load(path);
     if edit(&mut all) {
-        crate::common::own_state::write_json(path, &all).map_err(|e| ("io_failed", e))?;
+        crate::common::own_state::write_json(path, &all)
+            .map_err(|e| ("io_failed", e.said_logging_raw()))?;
     }
     Ok(())
 }

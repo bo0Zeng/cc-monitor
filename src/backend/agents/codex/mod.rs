@@ -15,6 +15,8 @@ pub(crate) mod history;
 pub(crate) mod parse;
 // 记录分类 ＋ 映射进渲染模型。
 pub(crate) mod record;
+// 经中转那一份（默认上游 · 会话头 · 怎么指到中转 · 直接敲的那份配置里的地址）。
+pub(crate) mod relay;
 pub(crate) mod resume;
 
 /// 这一家的历史清单面（注册表 `Adapter.history` 那一格；通用层经注册表够到它，不直呼本模块）。
@@ -38,8 +40,7 @@ pub(crate) const RECORDS: crate::agents::RecordFace = crate::agents::RecordFace 
     // Codex 的记录不进全局搜索 / 摘录那几条通用路（它们只走记录树那一家）⇒ 不给文本面。
     text: None,
     delete: None,
-    // Codex 的记录里今天没有委派出去的运行 ⇒ 不声明子运行（通用层把它的一切都归主运行）。它的流也不经中转（未登记默认上游），
-    // 对账键因此也没有读者。
+    // Codex 的记录里今天没有委派出去的运行 ⇒ 不声明子运行。它的流经中转时按请求自带的 `thread-id` 当场归位（不靠对账键）。
     response_id: None,
     run_of: None,
     child_link: None,
@@ -58,7 +59,7 @@ pub(crate) const RECORDS: crate::agents::RecordFace = crate::agents::RecordFace 
 /// 根本不在做派发）。
 pub(crate) const AGENT_KIND: &str = "codex";
 
-/// 本家的起会话事实（注册表 `Adapter.launch` 那一格）。适配器 id 就是 wire 上的 kind（这一家没有登记默认上游）；没有 shell wrapper。
+/// 本家的起会话事实（注册表 `Adapter.launch` 那一格）。适配器 id 就是 wire 上的 kind（也是中转路由里它的名字）；没有 shell wrapper。
 pub(crate) const LAUNCH: crate::agents::LaunchFace = crate::agents::LaunchFace {
     adapter_id: AGENT_KIND,
     display_name: "Codex",

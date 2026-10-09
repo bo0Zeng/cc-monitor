@@ -168,24 +168,56 @@ impl Said {
         }
     }
 
+    /// 详情里「原话」那一项的值（到下一个项名为止；没有 ⇒ `None`）。
+    pub(crate) fn raw(&self) -> String {
+        let label = format!("{}：", Label::Raw.said());
+        let others: Vec<String> = Label::ALL
+            .iter()
+            .filter(|l| **l != Label::Raw)
+            .map(|l| format!("{}：", l.said()))
+            .collect();
+        let mut out: Vec<&str> = Vec::new();
+        let mut inside = false;
+        for line in self.detail.lines() {
+            if let Some(v) = line.strip_prefix(&label) {
+                inside = true;
+                out.push(v);
+            } else if inside && others.iter().any(|p| line.starts_with(p)) {
+                break;
+            } else if inside {
+                out.push(line);
+            }
+        }
+        out.join("\n")
+    }
+
+    /// 交给只收 `io::Error` 的那一口（放程序那条路）：那一句 ＋ 原话合成一条，原话不丢。
+    pub(crate) fn into_io(self) -> std::io::Error {
+        let raw = self.raw();
+        if raw.is_empty() {
+            std::io::Error::other(self.said)
+        } else {
+            std::io::Error::other(format!("{}: {raw}", self.said))
+        }
+    }
+
     /// 壳命令的失败补上命令名（复制详情的「命令」那一项）：详情里已经有一项「命令」（自己写的 · 后端写的）⇒ 原样。
     /// 每条壳命令的最外层经这里一次（`#[tauri::command]` 那几十条，判据扫着）。
     pub(crate) fn named(self, command: &str) -> Said {
-        let label = format!("{}：", Label::Command.said());
-        if self.detail.lines().any(|l| l.starts_with(&label)) {
+        self.with_item(Label::Command, command)
+    }
+
+    /// 详情里补一项（已有这一项 ⇒ 原样）：按 [`Label::ALL`] 的次序插在第一条后排项名的前面；没有后排项 ⇒ 接在末尾。
+    pub(crate) fn with_item(self, label: Label, value: &str) -> Said {
+        let name = format!("{}：", label.said());
+        if self.detail.lines().any(|l| l.starts_with(&name)) || value.trim().is_empty() {
             return self;
         }
-        // 「命令」排在本机之后、其余几项之前（[`Label::ALL`] 的次序）：插在第一条后排项名的前面；没有后排项 ⇒ 接在末尾。
-        let later: Vec<String> = [
-            Label::Path,
-            Label::Target,
-            Label::Hop,
-            Label::Code,
-            Label::Raw,
-        ]
-        .iter()
-        .map(|l| format!("{}：", l.said()))
-        .collect();
+        let at = Label::ALL.iter().position(|l| *l == label).unwrap_or(0);
+        let later: Vec<String> = Label::ALL[at + 1..]
+            .iter()
+            .map(|l| format!("{}：", l.said()))
+            .collect();
         let lines: Vec<&str> = self.detail.lines().collect();
         let detail = match lines
             .iter()
@@ -193,15 +225,22 @@ impl Said {
         {
             Some(at) => {
                 let mut v: Vec<String> = lines.iter().map(|l| l.to_string()).collect();
-                v.insert(at, format!("{label}{command}"));
+                v.insert(at, format!("{name}{}", value.trim()));
                 v.join("\n")
             }
-            None => append(&self.detail, Label::Command, command),
+            None => append(&self.detail, label, value),
         };
         Said {
             detail,
             said: self.said,
         }
+    }
+}
+
+impl std::fmt::Display for Said {
+    /// 只出那一句（详情不跟着进任何拼出来的句子 · 日志里要原话的另取 [`Said::raw`]）。
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.said)
     }
 }
 

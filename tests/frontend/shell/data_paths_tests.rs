@@ -192,6 +192,7 @@ fn backend_rows_point_where_the_backend_itself_writes() {
         row("bin/", h.join(".cc-monitor/bin"), "dir"),
         row("staging/", h.join(rr::STAGING_DIR_REL), "dir"),
         row("relay-key", h.join(rr::KEY_FILE_REL), "file"),
+        row("relay-pass-key", h.join(rr::PASS_KEY_FILE_REL), "file"),
         row("listen-token", h.join(rr::LISTEN_TOKEN_FILE_REL), "file"),
         row(
             "listen-51234.pid",

@@ -89,8 +89,7 @@ const REVERSE: &[&str] = &["assert_eq!(", "已经不在了", "已经没有"];
 /// （`tmux.rs` 那个折行的 `#[cfg_attr(` 是这一形），以及 `pub fn` / `async fn`。
 /// ⚠ **单行**的 `#[ignore = "…"]` / `#[cfg(…)]` **不是**漏判面 —— 块首的属性行会被跳过。
 /// 09-06 现打：人群那几份文件里，本函数认不出的块 **0 块**
-/// ⇒ 今天一条都没漏。分母与逐处住址在 `tests/evidence/K-R36-per-guard-census.py` 的输出里
-/// （分母只取人群那几份就够：块里真有登记表声明 ⇒ 那份文件必定在人群里）。
+/// ⇒ 今天一条都没漏（分母只取人群那几份就够：块里真有登记表声明 ⇒ 那份文件必定在人群里）。
 ///
 /// 收尾靠**缩进配对**（`rustfmt` 的产物上成立），**不是花括号配平**：配平要解析字符串与
 /// 字符字面量，而本仓的判据语料里满是**合成 Rust 源码串**（还有 raw string），
@@ -507,8 +506,7 @@ fn the_registry_table_recogniser_does_not_say_yes_to_every_const_slice() {
         );
     }
     // 负：needle 表 / skip 表 / 扫描面表**都不是登记表**，不许被采进人群。
-    // 三种都是本仓真实存在的形态 —— `K-R33` `D1②` 09-06 逐条判过（分母与逐条判词住件文件，
-    // 量具 `tests/evidence/K-R33-table-decl-census.py`）：那 138 条里三者合计比登记表还多。
+    // 三种都是本仓真实存在的形态 —— `K-R33` `D1②` 09-06 逐条判过：那 138 条里三者合计比登记表还多。
     const NOT_A_REGISTRY_TABLE: &[(&str, &str)] = &[
         (
             "    const NEEDLES: &[&str] = &[\"read_dir(\", \"WalkDir\"];",

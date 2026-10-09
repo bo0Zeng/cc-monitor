@@ -4,8 +4,8 @@
  *
  * | 性质 | 判据 |
  * |---|---|
- * | 远端三步：monitor 交机器事实 → 本机后端 `terminal-ssh` 渲 → monitor 开窗（交的是后端渲的那一行，`ssh: true`） | 「远端」 |
- * | 本机：交来的已是后端渲好的成品 ⇒ monitor 直接开窗（`ssh: false`），不问机器事实、不问后端 | 「本机」 |
+ * | 远端三步：monitor 交机器事实 → 本机后端 `terminal-ssh` 渲 → monitor 开窗（交的是后端渲的那一行） | 「远端」 |
+ * | 本机：交来的已是后端渲好的成品 ⇒ monitor 直接开窗，不问机器事实、不问后端 | 「本机」 |
  * | 后端回的形状不认 / 问不到 ⇒ 抛，一个窗口都不开（不拿原串顶上） | 「问不到」 |
  * | 开窗只有一个家：生产段调 `commands.open_terminal_window(` / `commands.terminal_dial(` 的文件 == {terminal-open.ts} | 「一个家」 |
  * | 壳回 `"noWindow"`（POSIX 既定设计）⇒ 抛 `NoTerminalWindow`；回 `"opened"` ⇒ 不抛 | 「不开窗」 |
@@ -69,7 +69,7 @@ const asked = (frame: string): ChanCallArgs[] =>
 beforeEach(() => invokeMock.mockReset());
 
 describe("远端", () => {
-  it("★ 三步：交机器事实 ＋ 命令给本机后端，开窗交的是后端渲的那一行（`ssh: true`）", async () => {
+  it("★ 三步：交机器事实 ＋ 命令给本机后端，开窗交的是后端渲的那一行", async () => {
     serve(() => ({ command: LINE }));
     await openTerminal("devbox", "claude --resume s1");
     expect(calls("terminal_dial")).toEqual([{ origin: "devbox" }]);
@@ -81,19 +81,19 @@ describe("远端", () => {
       command: "claude --resume s1",
     });
     expect(calls("open_terminal_window")).toEqual([
-      { command: LINE, ssh: true },
+      { command: LINE },
     ]);
   });
 });
 
 describe("本机", () => {
-  it("★ 交来的就是成品：直接开窗（`ssh: false`），不问机器事实、不问后端", async () => {
+  it("★ 交来的就是成品：直接开窗，不问机器事实、不问后端", async () => {
     serve(() => ({ command: "不该被问到" }));
     await openTerminal(LOCAL_ORIGIN, "claude --resume s1");
     expect(calls("terminal_dial")).toEqual([]);
     expect(asked("terminal-ssh")).toEqual([]);
     expect(calls("open_terminal_window")).toEqual([
-      { command: "claude --resume s1", ssh: false },
+      { command: "claude --resume s1" },
     ]);
   });
 });

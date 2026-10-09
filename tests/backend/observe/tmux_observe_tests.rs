@@ -333,7 +333,7 @@ fn tmux_probe_classifies_four_states() {
 /// # 死值从哪来（不是我编的）
 ///
 /// `DIRTY` 是 09-04 在**零挂载容器**里对真 tmux 3.4 私有 socket 打出来的字节
-/// （`tests/evidence/K-R12-deathvalue.md` ①/S5，`od -c` 逐字节复核）：POSIX 客户端下
+/// （`od -c` 逐字节复核）：POSIX 客户端下
 /// 六个真 TAB 全变 `_`，连 `文档`（3 字节/字）都按**显示宽度**变成了 `____`。
 /// `CLEAN` 是同一台 server、同一条命令、只加了本拍那条口径之后的输出（同文件 ②/S5）。
 ///
@@ -455,7 +455,7 @@ fn the_underflow_predicate_only_fires_downward() {
 /// 那一处的 env 归那一处自己管，本条**看不见它** —— 如实登记，别读宽。
 ///
 /// 🔴 **本条守的是「别漏」，不是「它真的生效了」**（「盘上有 ≠ 被走到」）。
-/// 行为那一半的死值在 `tests/evidence/K-R12-deathvalue.md`：同样这两条脚本对真 tmux 3.4
+/// 行为那一半只有对真 tmux 打才看得见：同样这两条脚本对真 tmux 3.4
 /// 私有 socket 打过，改前段数 1、改后各回各的 N。
 ///
 /// 要求住址：`INVARIANTS §49`（tmux 打印通道必须是 UTF-8，段数下溢出声）。

@@ -69,11 +69,18 @@ pub(crate) fn mark_at(path: &Path, args: &Value) -> Result<Value, (&'static str,
             ),
         )
     })?;
-    let _g = crate::platform::lock::hold(dir).map_err(|e| ("io_failed", e))?;
+    let _g = crate::platform::lock::hold(dir).map_err(|e| {
+        (
+            "io_failed",
+            crate::common::said::Said::from(e).said_logging_raw(),
+        )
+    })?;
     let mut m = match read_at(path) {
         crate::common::own_state::Read::Absent => Marks::default(),
         crate::common::own_state::Read::Present(m) => m,
-        crate::common::own_state::Read::Unreadable(why) => return Err(("marks_unreadable", why)),
+        crate::common::own_state::Read::Unreadable(why) => {
+            return Err(("marks_unreadable", why.said_logging_raw()))
+        }
     };
     match op {
         "decline" => {
@@ -96,7 +103,8 @@ pub(crate) fn mark_at(path: &Path, args: &Value) -> Result<Value, (&'static str,
             ))
         }
     }
-    crate::common::own_state::write_json(path, &m).map_err(|e| ("io_failed", e))?;
+    crate::common::own_state::write_json(path, &m)
+        .map_err(|e| ("io_failed", e.said_logging_raw()))?;
     Ok(json!({"declined": m.declined, "selfPaste": m.self_paste, "startSkipped": m.start_skipped}))
 }
 

@@ -400,8 +400,7 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
         "ssh-config-aliases",
         // 这台的 cc-bus 钩子诊断：无入参（问的就是「这台」）。
         "hooks-diag",
-        // 这台「直接敲的也走中转」装没装 ＋ 要贴的那一段：无入参（问的就是「这台」）。
-        "relay-optin",
+        // `relay-optin` 出列：入参带 `agent`（那一家的那一份）。
     ];
     let declared: Vec<&str> = REGISTRY
         .iter()

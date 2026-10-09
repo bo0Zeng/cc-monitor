@@ -43,15 +43,13 @@
  * 5. **时间是这台机器这一次的，而且随负载抖。** 绝对毫秒不可跨机比较，段占比与桶倍率在门禁并发时也会飘
  *    ⇒ 10-07 起**没有一条闸看墙钟**：复杂度那几条（随字节单调 · 长比短多一个量级 · 长尾桶里的折叠卡便宜一个量级）
  *    数的是**物化进 DOM 的字符数**（`domChars`，确定量），理由与等价性写在那一组的头注；
- *    墙钟读数（四段 p50 · 占比 · 残余）照旧印进报表，只当读数。原来量什么、现在量什么见 `tests/evidence/S1-render-cost.md`「判据换轴」。
+ *    墙钟读数（四段 p50 · 占比 · 残余）照旧印进报表，只当读数。
  * 6. **探针自己要钱。** 分桶轴要「记录字节」，而 payload 上没有该字段 ⇒
  *    只能 `JSON.stringify(message)` 现算（它自己就是 §2.4 那一形）。
  *    ⇒ 探针默认关；开着时字节数在总时刻取完之后才算，**不进任何一段读数**，
  *    但整体 wall time 确实被抬高了。生产常开会付这份钱。
  *
- * 复算：`bash tests/evidence/S1-run.sh`（等价于 `npx vitest run tests/frontend/ui/scale1-render-cost.vitest.ts`）
- * 死值验：`bash tests/evidence/S1-mutation.sh`
- * 读数：`tests/evidence/S1-render-cost.md`
+ * 复算：`npx vitest run tests/frontend/ui/scale1-render-cost.vitest.ts`
  */
 import { describe, it, expect, beforeAll } from "vitest";
 import { withUserText } from "../../test-support/user-text";
@@ -105,7 +103,7 @@ function bucketOf(n: number): string {
 }
 
 // ── 🔴 显式登记表（反空真的地基）─────────────────────────────────────────────
-// 这几个数是**现打出来的**（见 `tests/evidence/S1-render-cost.md` 的语料段），
+// 这几个数是**现打出来的**，
 // 写成字面量是故意的：语料一换、桶边界一挪、驱动少跑一轮，下面的相等断言就红。
 // **不许改成"从语料现算再跟自己比"** —— 那样它就成了恒真。
 /** 语料总条数 */
@@ -127,7 +125,7 @@ const PASSES = 8;
  * 🔴 **这张表是死值验逼出来的，别把它合并回上面那张。**
  * 第一版只有 `EXPECTED_PER_PASS`，判据写成 `got === EXPECTED_PER_PASS[b] * PASSES`
  * —— 两边都含 `PASSES` ⇒ **`PASSES` 怎么改都恒等**。死值验 M8（8 → 4）当场
- * **全绿**（原文在 `tests/evidence/S1-mutation-log.txt`）：少跑一半样本，秤照样说没问题。
+ * **全绿**：少跑一半样本，秤照样说没问题。
  * 这正是「判据在自己的登记表里找到自己」那一族。⇒ 绝对数必须独立出现一次。
  */
 const EXPECTED_SAMPLES_PER_BUCKET: Readonly<Record<string, number>> = {

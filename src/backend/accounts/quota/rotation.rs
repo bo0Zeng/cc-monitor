@@ -7,6 +7,7 @@
 //! - 每个会话此刻钉在哪个号、从什么时候起、换号记录；会话换了起它的号（重启换号 / 换号恢复）⇒ 钉号随之清掉。
 //! - 判「换不换、换谁」只在 [`super::decide`]；这里只有存取。
 
+use crate::common::said::Said;
 use copy_core::copy_text;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -989,7 +990,7 @@ impl RotationStore {
 
     /// 在跨进程锁里读盘 → 改 → 原子写回 → 缓存跟上；改到的会话各响一下（[`changes`]）。读不懂的那一份不覆盖。
     /// 外面只经两扇门进来：中转那一路（[`relay_change`]）与帧面那一路（[`face_change`]）。
-    fn change<R>(&self, f: impl FnOnce(&mut Book) -> R) -> Result<R, String> {
+    fn change<R>(&self, f: impl FnOnce(&mut Book) -> R) -> Result<R, Said> {
         let mut g = self.cache.lock().unwrap_or_else(|e| e.into_inner());
         let (r, before, after) = match self.path.as_deref() {
             None => {
@@ -1115,7 +1116,7 @@ pub(crate) fn watch_here() {
 pub(crate) fn relay_change<R>(
     store: &RotationStore,
     f: impl FnOnce(&mut Book) -> R,
-) -> Result<R, String> {
+) -> Result<R, Said> {
     store.change(f)
 }
 
@@ -1123,7 +1124,7 @@ pub(crate) fn relay_change<R>(
 pub(crate) fn face_change<R>(
     store: &RotationStore,
     f: impl FnOnce(&mut Book) -> R,
-) -> Result<R, String> {
+) -> Result<R, Said> {
     store.change(f)
 }
 
@@ -1158,27 +1159,27 @@ pub(crate) fn changes() -> &'static tokio::sync::broadcast::Sender<String> {
     TX.get_or_init(|| tokio::sync::broadcast::channel::<String>(256).0)
 }
 
-fn write_locked<R>(path: &Path, f: impl FnOnce(&mut Book) -> R) -> Result<(R, Book, Book), String> {
+fn write_locked<R>(path: &Path, f: impl FnOnce(&mut Book) -> R) -> Result<(R, Book, Book), Said> {
     let shown = path.display().to_string();
-    let failed = |e: &dyn std::fmt::Display| {
-        copy_text(
-            "beRotation.write.failed",
-            &[("path", &shown), ("e", &e.to_string())],
-        )
-    };
     let dir = path
         .parent()
-        .ok_or_else(|| copy_text("beRotation.write.noParent", &[("path", &shown)]))?;
-    crate::common::own_dir::ensure_private_dir(dir).map_err(|e| failed(&e))?;
+        .ok_or_else(|| Said::from(copy_text("beRotation.write.noParent", &[("path", &shown)])))?;
+    crate::common::own_dir::ensure_private_dir(dir).map_err(|e| {
+        Said::with_raw(
+            copy_text(
+                "beRotation.write.failed",
+                &[("path", &shown), ("why", &copy_core::io_reason(e.kind()))],
+            ),
+            &e,
+        )
+    })?;
     let _lock = crate::platform::lock::hold(dir)?;
     let before = match read_at(path) {
         Read::Absent => Book::default(),
         Read::Present(b) => b,
+        // 读不懂的那份不覆盖：读不懂那一句（带路径与原因词）后面接「未覆盖」，原话照它的。
         Read::Unreadable(e) => {
-            return Err(copy_text(
-                "beRotation.write.unreadable",
-                &[("path", &shown), ("e", &e)],
-            ))
+            return Err(e.wrap(|said| copy_text("beRotation.write.unreadable", &[("said", said)])))
         }
     };
     let mut after = before.clone();

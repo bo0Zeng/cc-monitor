@@ -173,7 +173,9 @@ fn unreadable_output_is_said_and_not_booked_and_a_failed_run_is_failed() {
         ctx.hop.quota.entry("claude-code", "bad").is_none(),
         "不写账"
     );
-    let (code, msg) = home
+    let crate::stream::inbound::spec::Fail {
+        code, message: msg, ..
+    } = home
         .probe(&ctx, json!({"agent": "claude-code", "account": "c"}))
         .expect_err("没登录");
     assert_eq!(code, "failed");
@@ -186,7 +188,7 @@ fn unreadable_output_is_said_and_not_booked_and_a_failed_run_is_failed() {
 fn bad_args_unknown_accounts_and_api_keys_never_start_anything() {
     let home = Home::new("args");
     let ctx = home.ctx();
-    let code = |args: Value| home.probe(&ctx, args).expect_err("应拒").0;
+    let code = |args: Value| home.probe(&ctx, args).expect_err("应拒").code;
     assert_eq!(code(json!({"account": "b"})), "bad_args");
     assert_eq!(
         code(json!({"agent": "claude-code", "account": "_"})),

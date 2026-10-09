@@ -9,6 +9,7 @@
 
 import { fullTitle } from "../../../src/frontend/ui/session-face";
 import { type Mock, describe, it, expect, vi, beforeEach, afterEach, onTestFinished } from "vitest";
+import { clipboardWrites } from "../../test-support/clipboard-fake";
 
 // ★ audit-0805 F15 第 1 步：**先让「每行调了几次」变得可测**。
 //
@@ -2251,6 +2252,22 @@ describe("：↗ 远端那一格按顺序问三方", () => {
     expect(calls.filter(([c]) => c === "bring_remote_terminal_to_front").map(([, a]) => a)).toEqual([{ terminals: TERMINALS }, { chain: CHAIN }]);
   });
 
+  it("★ Wayland 桌面上切不了（壳回 desktop-wont-switch）⇒ 照实说 ＋［在 cc-monitor 里打开］；点了收起浮层、交 main 开这个会话的终端页", async () => {
+    answer({ terminals: TERMINALS }, { chain: CHAIN }, () => Promise.resolve({ kind: "desktop-wont-switch", desktop: "GNOME" }));
+    const tm = makeTM();
+    const opened: string[] = [];
+    tm.onOpenHere = (sid) => opened.push(sid);
+    tm.createSkeletonTab("r5", "/p", "devbox", false, null);
+    await clickFront(tm, "r5");
+    expect(pop()!.firstElementChild!.textContent).toBe(copyText("front.title.desktopWontSwitch"));
+    expect(popText()).toContain(copyText("front.body.desktopWontSwitch", { desktop: "GNOME" }));
+    expect(popButtons()).toEqual([copyText("front.act.openHere")]);
+    [...pop()!.closest("[role=dialog]")!.querySelectorAll("button")].find((b) => b.textContent === copyText("front.act.openHere"))!.click();
+    for (let i = 0; i < 4; i++) await new Promise((r) => setTimeout(r, 0));
+    expect(opened).toEqual(["r5"]);
+    expect(pop(), "点了就收起").toBeNull();
+  });
+
   it("★ 切过去了：什么都不出、↗ 换成对勾 1 秒；开着的结局浮层一起收起", async () => {
     answer({ terminals: [], why: "no-terminal" }, null, () => Promise.resolve({ kind: "switched" }));
     const tm = makeTM();
@@ -2357,11 +2374,9 @@ describe("：↗ 远端那一格按顺序问三方", () => {
     expect(pop()!.dataset.shade).toBe("red");
     expect(popText()).toContain("上传失败");
     expect(popButtons()).toEqual([copyText("front.act.retry"), copyText("detail.act.copy")]);
-    const copied = vi.fn(() => Promise.resolve());
-    Object.defineProperty(navigator, "clipboard", { value: { writeText: copied }, configurable: true });
     [...pop()!.querySelectorAll("button")].find((b) => b.textContent === copyText("detail.act.copy"))!.click();
     await new Promise((r) => setTimeout(r, 0));
-    expect(copied.mock.calls.map((c) => (c as unknown[])[0])).toEqual([`${copyText("front.title.updateFailed", { machine: "devbox" })}\n码：refused`]);
+    expect(clipboardWrites(vi.mocked(invoke))).toEqual([`${copyText("front.title.updateFailed", { machine: "devbox" })}\n码：refused`]);
     [...pop()!.querySelectorAll("button")].find((b) => b.textContent === copyText("front.act.retry"))!.click();
     for (let i = 0; i < 4; i++) await new Promise((r) => setTimeout(r, 0));
     expect(vi.mocked(updateBackendOf), "失败态的［重试］是再更新一次").toHaveBeenCalledTimes(2);
@@ -2375,10 +2390,9 @@ describe("：↗ 远端那一格按顺序问三方", () => {
 });
 
 /**
- * ★★ ↗ 在非 Windows 上**别装得能用**。
+ * ★★ ↗ 在 Windows · Linux 以外**别装得能用**。
  *
- * 非 Windows 上 ↗ 的最后一跳（`EnumWindows` / `SetForegroundWindow`）在 Rust 侧是恒失败的桩
- * ⇒ 那颗按钮每点必败。门住 `terminal-front.ts`；`unknown` 照常显示（与 `hostOsAllows` 同一条理由）。
+ * macOS 上 ↗ 的最后一跳在 Rust 侧是恒失败的桩 ⇒ 那颗按钮每点必败。门住 `terminal-front.ts`；`unknown` 照常显示（与 `hostOsAllows` 同一条理由）。
  */
 describe("过程里还没结果的那几步照会话事实画（后端 pending[].state · needs.call）", () => {
   it("★ 事实说 b1 在等批准 ⇒ 等你批准；b2 在跑 ⇒ 在跑；换过来照换；事实里已经没有的那一步 ⇒ 状态不明；结果到了的那一步不动", () => {
@@ -2438,7 +2452,7 @@ describe("新出现的一行淡入（起步那一批不算）", () => {
   });
 });
 
-describe("LF1：↗ 只在 Windows 上出现", () => {
+describe("LF1：↗ 只在 Windows · Linux 上出现", () => {
   const mockInvoke = invoke as unknown as ReturnType<typeof vi.fn>;
   beforeEach(() => {
     vi.clearAllMocks();
@@ -2450,11 +2464,11 @@ describe("LF1：↗ 只在 Windows 上出现", () => {
   const focusBtnOf = (tm: TabManager, sid: string) =>
     home(tm).bar.tabButtons.get(sid)?.root.querySelector(".tab-focus") ?? null;
 
-  it("★★ 两向：linux / macos 不渲 ↗，windows / unknown 渲（本地 tab 与远端 tab 同一道门）", () => {
+  it("★★ 两向：macos 不渲 ↗，windows / linux / unknown 渲（本地 tab 与远端 tab 同一道门）", () => {
     const want: [HostOs, boolean][] = [
       ["windows", true],
       ["unknown", true],
-      ["linux", false],
+      ["linux", true],
       ["macos", false],
     ];
     for (const [os, shown] of want) {
@@ -2468,8 +2482,8 @@ describe("LF1：↗ 只在 Windows 上出现", () => {
     }
   });
 
-  it("★ 快捷键 / 命令面板在 linux 上走到 ↗ ⇒ 说实话、**不发 IPC**", async () => {
-    __setHostOsForTests("linux");
+  it("★ 快捷键 / 命令面板在 macos 上走到 ↗ ⇒ 说实话、**不发 IPC**", async () => {
+    __setHostOsForTests("macos");
     const tm = makeTM();
     tm.createSkeletonTab("r1", "/p", "devbox", false, null);
     tm.switchTo("r1");
@@ -2481,7 +2495,7 @@ describe("LF1：↗ 只在 Windows 上出现", () => {
           c === "bring_remote_terminal_to_front" || c === "bring_terminal_to_front" || isChanCall(c, a, "session-terminals"),
       )
       .map(([c]) => c);
-    expect(sent, "linux 上照样发了 ↗ 的 IPC —— 那是装作试过").toEqual([]);
+    expect(sent, "macos 上照样发了 ↗ 的 IPC —— 那是装作试过").toEqual([]);
     expect(showActionFailureToast).toHaveBeenCalledWith(
       copyText("terminalFront.unavailable.title"),
       expect.stringContaining("Windows"),
@@ -2489,14 +2503,17 @@ describe("LF1：↗ 只在 Windows 上出现", () => {
     );
   });
 
-  it("★ 对照：windows 上快捷键照常发 IPC（上一条不是因为别的原因没发）", async () => {
-    __setHostOsForTests("windows");
-    const tm = makeTM();
-    tm.createSkeletonTab("r1", "/p", "devbox", false, null);
-    tm.switchTo("r1");
-    tm.bringActiveTerminalToFront();
-    for (let i = 0; i < 4; i++) await new Promise((r) => setTimeout(r, 0));
-    expect((mockInvoke.mock.calls as [string, unknown][]).some(([c, a]) => isChanCall(c, a, "session-terminals"))).toBe(true);
+  it("★ 对照：windows / linux 上快捷键照常发 IPC（上一条不是因为别的原因没发）", async () => {
+    for (const os of ["windows", "linux"] as const) {
+      mockInvoke.mockClear();
+      __setHostOsForTests(os);
+      const tm = makeTM();
+      tm.createSkeletonTab("r1", "/p", "devbox", false, null);
+      tm.switchTo("r1");
+      tm.bringActiveTerminalToFront();
+      for (let i = 0; i < 4; i++) await new Promise((r) => setTimeout(r, 0));
+      expect((mockInvoke.mock.calls as [string, unknown][]).some(([c, a]) => isChanCall(c, a, "session-terminals")), os).toBe(true);
+    }
   });
 });
 

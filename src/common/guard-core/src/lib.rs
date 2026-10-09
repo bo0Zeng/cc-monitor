@@ -557,8 +557,7 @@ fn raw_string_open(sb: &[u8], i: usize) -> Option<(usize, usize)> {
 /// ⇒ **两条纪律**（`K-R25`）：
 /// ① 调用方**先剥整份、再切块**，别反（次序的理由写在 [`test_attr_chunks`] 头注里）；
 /// ② 看门判据把「块」也当一个单位去量（现在它两个单位各判一遍）。
-/// ⚠ 它量的是**那两个单位**，不是「所有单位」—— 别的单位逐处登记在
-/// `tests/evidence/K-R25-D2-unit-alignment.md`。
+/// ⚠ 它量的是**那两个单位**，不是「所有单位」。
 fn try_strip_block_comments(src: &str) -> Option<String> {
     scan_and_blank(src, false)
 }
@@ -822,8 +821,7 @@ pub fn test_attr_chunks(src: &str) -> Vec<String> {
 ///
 /// ⚠ **射程，写清（别读成全称）**：它看着的是**这两个单位**。
 /// 别的单位 —— 函数体窗口（`body_of(..)` / `brace_block(..)`）· 任意切片 `&src[a..b]` ·
-/// `.lines().take(n)` 行窗口 —— **它一个都看不见**。今天全仓这样的调用点逐处点了名，
-/// 数与住址在 `tests/evidence/K-R25-D2-unit-alignment.md`（量具 `tests/evidence/K-R25-D1-strip-input-unit-census.py`）。
+/// `.lines().take(n)` 行窗口 —— **它一个都看不见**。
 /// **别把「两个单位」读成「所有单位」。**
 ///
 /// `min_files` / `min_blocks` 与 [`assert_tree_strips_clean`] 的 `min_files` 同职：
@@ -1228,7 +1226,7 @@ pub fn assert_test_module_ranges_are_brace_balanced(who: &str, src: &str) {
 ///
 /// # ⚠ 它的**射程**就是 `root` 那棵树 —— 树外的文件今天没有任何人在看它的生产段
 ///
-/// 09-12 现打（`KR75D3`，量法与逐份清单住 `tests/evidence/K-R75-剥法认形状与真静默读数.md`）：
+/// 09-12 现打（`KR75D3`）：
 /// 全仓 git 跟踪的 `.rs` **230** 份，落在本函数三个调用点的根之下的 **198** 份，
 /// **32 份在射程之外**（其中 vendored 的第三方引擎 23 份（今天已删）、
 /// `src/common/*-core` 八份、`src/frontend/shell/build.rs` 一份）。

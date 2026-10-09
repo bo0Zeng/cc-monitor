@@ -296,3 +296,45 @@ pub async fn bring_to_front(app: tauri::AppHandle) -> Result<(), String> {
     let _ = win.show();
     win.set_focus().map_err(|e| format!("set_focus: {e}"))
 }
+
+/// 把主窗口拉回来（第二次启动 · 点了通知）：最小化着就还原、藏着就显示；`focus` ⇒ 再拉到前面。
+/// Linux 带上启动方给的激活令牌（GTK `set_startup_id` ＋ `present`）：Wayland 上没有令牌桌面不让抢前台，只弹「已就绪」。
+pub fn raise_main(app: &tauri::AppHandle, token: Option<String>, focus: bool) {
+    use tauri::Manager;
+    let handle = app.clone();
+    let run = app.run_on_main_thread(move || {
+        let Some(win) = handle.get_webview_window(crate::MAIN_WINDOW_LABEL) else {
+            return;
+        };
+        if let Err(e) = win.unminimize() {
+            tracing::info!("主窗口没还原：{e}");
+        }
+        if let Err(e) = win.show() {
+            tracing::info!("主窗口没显示：{e}");
+        }
+        if !focus {
+            return;
+        }
+        #[cfg(target_os = "linux")]
+        match win.gtk_window() {
+            Ok(gw) => {
+                use gtk::prelude::GtkWindowExt;
+                if let Some(t) = token.as_deref() {
+                    gw.set_startup_id(t);
+                }
+                gw.present();
+            }
+            Err(e) => tracing::info!("拿不到主窗口：{e}"),
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = &token;
+            if let Err(e) = win.set_focus() {
+                tracing::info!("主窗口没拿到焦点：{e}");
+            }
+        }
+    });
+    if let Err(e) = run {
+        tracing::info!("主窗口没拉到前面：{e}");
+    }
+}

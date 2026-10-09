@@ -69,6 +69,9 @@ pub const PORT: u16 = 8788;
 /// 注入的 URL 不带钥匙本身，渲染成 `$(cat ~/<本常量>)` 在那台机器的 pane shell 里展开（RK1）。
 pub const KEY_FILE_REL: &str = ".cc-monitor/relay-key";
 
+/// 只许直通（`/t/`）的那把钥匙的文件（同机同权限、同一个铸法）。地址只能经命令行参数交给的那一家只拿它（`INVARIANTS §48.1a`）。
+pub const PASS_KEY_FILE_REL: &str = ".cc-monitor/relay-pass-key";
+
 /// 〔「一台机器一个家」〕后端的**上传暂存区**（相对家目录）：SFTP 传输台只往这里写 `<key>.part`，
 /// 传完由那台后端提交、挪进目标。后端按它落盘（`control/files_commit.rs::STAGING_DIR`），monitor 的数据位置页按它列出。
 pub const STAGING_DIR_REL: &str = ".cc-monitor/staging";
@@ -309,6 +312,7 @@ pub const OWN_HOME_ENTRIES: &[(&str, &str, bool, bool)] = &[
     ("bin", ".cc-monitor/bin", true, false),
     ("staging", STAGING_DIR_REL, true, false),
     ("relayKey", KEY_FILE_REL, false, true),
+    ("relayPassKey", PASS_KEY_FILE_REL, false, true),
     ("listenToken", LISTEN_TOKEN_FILE_REL, false, true),
     ("policy", BACKEND_POLICY_REL, false, true),
     ("profiles", PROFILES_REL, false, true),

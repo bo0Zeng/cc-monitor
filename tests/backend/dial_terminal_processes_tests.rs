@@ -130,3 +130,32 @@ fn a_reused_parent_ends_the_chain_and_a_failed_query_is_said() {
         assert_eq!(e.0, "bad_args", "{bad}");
     }
 }
+
+/// ★ Linux 那一形（`/proc` 读出来的表）：ssh · bash · 终端程序往上到 systemd 之前为止；这台的 ssh 叫 `ssh`，跳板那一条照样认得出。
+#[test]
+fn a_linux_shaped_table_reads_the_same_way() {
+    let raw = json!({
+        "tcp": [
+            { "la": "192.0.2.5", "lp": 40100, "ra": "192.0.2.9", "rp": 22, "pid": 1300 },
+            { "la": "192.0.2.5", "lp": 40200, "ra": "203.0.113.7", "rp": 22, "pid": 1310 }
+        ],
+        "proc": [
+            { "pid": 1, "ppid": 0, "name": "systemd", "start": 1 },
+            { "pid": 1000, "ppid": 1, "name": "systemd", "start": 500 },
+            { "pid": 1100, "ppid": 1000, "name": "alacritty", "start": 600 },
+            { "pid": 1200, "ppid": 1100, "name": "bash", "start": 700 },
+            { "pid": 1300, "ppid": 1200, "name": "ssh", "start": 800 },
+            { "pid": 1310, "ppid": 1200, "name": "ssh", "start": 810 }
+        ]
+    })
+    .to_string();
+    let ask = |t: Value| answer_with(&json!({ "terminals": [t] }), || Ok(raw.clone())).unwrap();
+    assert_eq!(
+        ask(term("192.0.2.5", 40100, "192.0.2.9", 22)),
+        json!({ "chain": [link(1300, "ssh", 800), link(1200, "bash", 700), link(1100, "alacritty", 600)] })
+    );
+    assert_eq!(
+        ask(term("203.0.113.7", 41000, "192.0.2.9", 22)),
+        json!({ "chain": [], "why": "mismatch" })
+    );
+}

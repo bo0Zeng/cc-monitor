@@ -275,31 +275,28 @@ pub(crate) enum Intent {
 /// 一次改动被拒的两档：围栏拦的（换条路径才有意义）· 盘上没成（重试才有意义）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Refusal {
-    Fenced(String),
+    /// `raw`：解链接那一问的下层原话（只有解不开那两形带）。
+    Fenced { said: String, raw: Option<String> },
     /// `raw`：下层原话（进复制详情，不上句子；没有 ⇒ `None`）。
-    Io {
-        said: String,
-        raw: Option<String>,
-    },
+    Io { said: String, raw: Option<String> },
 }
 
 impl Refusal {
     pub(crate) fn code(&self) -> &'static str {
         match self {
-            Refusal::Fenced(_) => "fenced",
+            Refusal::Fenced { .. } => "fenced",
             Refusal::Io { .. } => "io",
         }
     }
     pub(crate) fn message(&self) -> &str {
         match self {
-            Refusal::Fenced(m) | Refusal::Io { said: m, .. } => m,
+            Refusal::Fenced { said: m, .. } | Refusal::Io { said: m, .. } => m,
         }
     }
-    /// 下层原话（只有盘上没成那一档带）。
+    /// 下层原话（盘上没成 · 围栏解链接解不开那几形带）。
     pub(crate) fn raw(&self) -> Option<&str> {
         match self {
-            Refusal::Io { raw, .. } => raw.as_deref(),
-            Refusal::Fenced(_) => None,
+            Refusal::Io { raw, .. } | Refusal::Fenced { raw, .. } => raw.as_deref(),
         }
     }
 }
@@ -311,7 +308,19 @@ impl std::fmt::Display for Refusal {
 }
 
 fn fenced(msg: String) -> Refusal {
-    Refusal::Fenced(msg)
+    Refusal::Fenced {
+        said: msg,
+        raw: None,
+    }
+}
+
+/// 围栏那一问（解链接）没答出来：句子（已带原因词）＋ 下层原话。
+fn fenced_raw(said: String, raw: impl std::fmt::Display) -> Refusal {
+    let r = Said::with_raw(said, raw);
+    Refusal::Fenced {
+        said: r.said,
+        raw: r.raw,
+    }
 }
 
 /// 盘上没成：句子（已带原因词）＋ 下层原话。
@@ -332,25 +341,65 @@ impl From<Refusal> for Said {
     }
 }
 
-/// 下层错 ⇒ 句子里那一格原因词：IO 错按种类（`copy_core::io_reason`）；SFTP 状态码认得的两种（不在 · 无权限）同那张表；其余「原因不明」。
+/// 下层错 ⇒ 句子里那一格原因词：SFTP 那一层的按状态（[`why_of_sftp`]），IO 错按种类（[`why_of_io`]）；其余「原因不明」。
 /// 原话不在这里丢：调用方把它交给 [`Said`] / [`Refusal::Io`] 进复制详情。
 fn why_of(e: &(dyn std::error::Error + 'static)) -> String {
-    use russh_sftp::client::error::Error as E;
-    use russh_sftp::protocol::StatusCode as C;
+    if let Some(io) = e.downcast_ref::<std::io::Error>() {
+        return why_of_io(io);
+    }
+    match e.downcast_ref::<russh_sftp::client::error::Error>() {
+        Some(se) => why_of_sftp(se),
+        None => copy_core::io_reason(std::io::ErrorKind::Other),
+    }
+}
+
+/// SFTP 文件句柄读写那一形的原因词。`russh_sftp` 把失败包进 `io::Error` 有两种包法，种类多是 Other：
+/// ① 整个 SFTP 错包在里面（取出来按 [`why_of_sftp`]）；② 只剩服务端那句话（状态码丢了 —— 认 SFTP v3 标准码的那几句标准话）。
+/// 都不是 ⇒ 按 IO 种类（`copy_core::io_reason`）。传输台写 / 读 / 挪远端那份时经这里。
+pub(crate) fn why_of_io(e: &std::io::Error) -> String {
     use std::io::ErrorKind as K;
-    let kind = if let Some(io) = e.downcast_ref::<std::io::Error>() {
-        io.kind()
-    } else {
-        match e.downcast_ref::<E>() {
-            Some(E::Status(st)) => match st.status_code {
-                C::NoSuchFile => K::NotFound,
-                C::PermissionDenied => K::PermissionDenied,
-                _ => K::Other,
-            },
-            _ => K::Other,
+    match e.kind() {
+        K::TimedOut => return copy_text("reason.sftp.noAnswer", &[]),
+        K::BrokenPipe | K::ConnectionReset => {
+            // 传输中对端断了 ＝ SFTP 标准码 7（连接断）那一件。
+            return copy_core::sftp_status_reason(7);
         }
+        _ => {}
+    }
+    if e.kind() != K::Other {
+        return copy_core::io_reason(e.kind());
+    }
+    let Some(inner) = e.get_ref() else {
+        return copy_core::io_reason(K::Other);
     };
-    copy_core::io_reason(kind)
+    if let Some(se) = inner.downcast_ref::<russh_sftp::client::error::Error>() {
+        return why_of_sftp(se);
+    }
+    // 服务端那句标准话（OpenSSH sftp-server 按码给的那几句；大小写不论）。
+    let code = match inner.to_string().trim().to_ascii_lowercase().as_str() {
+        "no such file" => 2,
+        "permission denied" => 3,
+        "failure" => 4,
+        "bad message" => 5,
+        "no connection" => 6,
+        "connection lost" => 7,
+        "operation unsupported" => 8,
+        _ => 0,
+    };
+    copy_core::sftp_status_reason(code)
+}
+
+/// `russh_sftp` 的错 ⇒ 原因词：状态按码（`copy_core::sftp_status_reason`）· 等不到回包 ⇒ 无应答 · 超出那台的限额 ⇒ 超出上限 ·
+/// 回了不该回的包 ⇒ 程序出错（两端协议对不上）；其余（底层 IO 已成字串 · 通道收发断了）⇒ 原因不明。
+fn why_of_sftp(e: &russh_sftp::client::error::Error) -> String {
+    use russh_sftp::client::error::Error as E;
+    match e {
+        E::Status(st) => copy_core::sftp_status_reason(st.status_code as u32),
+        E::Timeout => copy_text("reason.sftp.noAnswer", &[]),
+        E::Limited(_) => copy_text("reason.sftp.overLimit", &[]),
+        E::UnexpectedPacket => copy_text("reason.sftp.badMessage", &[]),
+        E::IO(_) | E::UnexpectedBehavior(_) => copy_core::io_reason(std::io::ErrorKind::Other),
+    }
 }
 
 /// **纯词法那一道**：把 `path` 归一成 home 相对，判它落不落在两个根里。
@@ -435,17 +484,23 @@ pub(crate) async fn fenced_remote(
         return Ok(rel);
     }
     let real_root = s.sftp().canonicalize(root).await.map_err(|e| {
-        fenced(copy_text(
-            "beSftp.fence.rootUnresolved",
-            &[("root", root), ("why", &why_of(&e))],
-        ))
+        fenced_raw(
+            copy_text(
+                "beSftp.fence.rootUnresolved",
+                &[("root", root), ("why", &why_of(&e))],
+            ),
+            &e,
+        )
     })?;
     let parent = parent_of(&rel);
     let real_parent = s.sftp().canonicalize(parent).await.map_err(|e| {
-        fenced(copy_text(
-            "beSftp.fence.parentUnresolved",
-            &[("parent", parent), ("why", &why_of(&e))],
-        ))
+        fenced_raw(
+            copy_text(
+                "beSftp.fence.parentUnresolved",
+                &[("parent", parent), ("why", &why_of(&e))],
+            ),
+            &e,
+        )
     })?;
     let inside = real_parent == real_root
         || real_parent
@@ -790,16 +845,17 @@ pub(crate) async fn read_all(s: &Session, path: &str) -> Option<Vec<u8>> {
 async fn read_line_capped<R: AsyncBufRead + Unpin>(
     r: &mut R,
     cap: u64,
-) -> Result<Option<String>, String> {
+) -> Result<Option<String>, Said> {
     let mut line = String::new();
     let n = (&mut *r)
         .take(cap + 1)
         .read_line(&mut line)
         .await
         .map_err(|e| {
-            // 这条链路（`serve_files` 的应答行）没有复制详情那一格：原话进后端日志。
-            tracing::warn!("sftp files link: reading the request failed: {e}");
-            copy_text("beSftp.request.readFailed", &[("why", &why_of(&e))])
+            Said::with_raw(
+                copy_text("beSftp.request.readFailed", &[("why", &why_of(&e))]),
+                &e,
+            )
         })?;
     if n == 0 {
         return Ok(None);
@@ -807,7 +863,8 @@ async fn read_line_capped<R: AsyncBufRead + Unpin>(
     if n as u64 > cap && !line.ends_with('\n') {
         return Err(crate::common::contract::malformed(&format!(
             "request line longer than {cap} bytes"
-        )));
+        ))
+        .into());
     }
     Ok(Some(line.trim_end_matches(['\n', '\r']).to_string()))
 }
@@ -824,13 +881,15 @@ fn arg_u64(v: &serde_json::Value, k: &str) -> Result<u64, String> {
     })
 }
 
-/// 失败那一形：与后端 CLI 错误信封同一对键（`code` ＋ `message`，`readonly_guard::error_envelope_registry` 签字）。
-fn refused(code: &str, message: &str) -> serde_json::Value {
-    serde_json::json!({ "code": code, "message": message })
+/// 失败那一形：与后端 CLI 错误信封同一对键（`code` ＋ `message`，`readonly_guard::error_envelope_registry` 签字），
+/// 多一格 `detail`（复制详情：时刻 · 机器 · 命令 `files <op>` · 码 · 下层原话；排法同失败应答那一格）。
+fn refused(op: &str, code: &str, message: &str, raw: Option<&str>) -> serde_json::Value {
+    let detail = crate::stream::detail::of(Some(&format!("files {op}")), code, raw);
+    serde_json::json!({ "code": code, "message": message, "detail": detail })
 }
 
-fn refusal(r: &Refusal) -> serde_json::Value {
-    refused(r.code(), r.message())
+fn refusal(op: &str, r: &Refusal) -> serde_json::Value {
+    refused(op, r.code(), r.message(), r.raw())
 }
 
 /// 读回来的那一份与期望的比对结论：`None` = 读不回来；`Some((读回长度, 首个差异))`，`差异 == None` ⇒ 逐字节相同。
@@ -865,7 +924,7 @@ async fn answer<R: AsyncRead + Unpin>(
         .and_then(serde_json::Value::as_str)
         .unwrap_or("");
     let res: Result<serde_json::Value, serde_json::Value> = async {
-        let bad = |m: String| refused("bad_request", &m);
+        let bad = |m: String| refused(op, "bad_request", &m, None);
         match op {
             "home" => Ok(serde_json::json!({ "home": s.home() })),
             // `stat` 那一问删了：它唯一的问者（monitor 部署时问落点在不在）随部署判定进了本机后端
@@ -877,6 +936,7 @@ async fn answer<R: AsyncRead + Unpin>(
                 if let Some(d) = &data {
                     if d.len() as u64 > max {
                         return Err(refused(
+                            op,
                             "too_big",
                             &copy_text(
                                 "beSftp.read.tooBig",
@@ -886,6 +946,7 @@ async fn answer<R: AsyncRead + Unpin>(
                                     ("max", &max.to_string()),
                                 ],
                             ),
+                            None,
                         ));
                     }
                 }
@@ -914,10 +975,12 @@ async fn answer<R: AsyncRead + Unpin>(
                     let _ = tokio::io::copy(&mut (&mut *input).take(size), &mut tokio::io::sink())
                         .await;
                     return Err(refused(
+                        op,
                         "too_big",
                         &crate::common::contract::malformed(&format!(
                             "put of {size} bytes exceeds {MAX_PUT_BYTES}"
                         )),
+                        None,
                     ));
                 }
                 let mut bytes = Vec::with_capacity(size as usize);
@@ -926,15 +989,16 @@ async fn answer<R: AsyncRead + Unpin>(
                     .read_to_end(&mut bytes)
                     .await
                     .map_err(|e| {
-                        // 应答行没有复制详情那一格：原话进后端日志。
-                        tracing::warn!("sftp files link: receiving the upload failed: {e}");
                         refused(
+                            op,
                             "io",
                             &copy_text("beSftp.put.receiveFailed", &[("why", &why_of(&e))]),
+                            Some(&e.to_string()),
                         )
                     })?;
                 if bytes.len() as u64 != size {
                     return Err(refused(
+                        op,
                         "bad_request",
                         &copy_text(
                             "beSftp.put.short",
@@ -943,11 +1007,12 @@ async fn answer<R: AsyncRead + Unpin>(
                                 ("got", &bytes.len().to_string()),
                             ],
                         ),
+                        None,
                     ));
                 }
                 put_atomic(s, path, &bytes, mode)
                     .await
-                    .map_err(|r| refusal(&r))?;
+                    .map_err(|r| refusal(op, &r))?;
                 let readback = if verify {
                     let back = read_all(s, path).await;
                     readback_facts(&bytes, back.as_deref())
@@ -958,19 +1023,21 @@ async fn answer<R: AsyncRead + Unpin>(
             }
             "remove" => {
                 let path = arg_str(req, "path").map_err(bad)?;
-                let removed = remove(s, path).await.map_err(|r| refusal(&r))?;
+                let removed = remove(s, path).await.map_err(|r| refusal(op, &r))?;
                 Ok(serde_json::json!({ "removed": removed }))
             }
             "mkdirs" => {
                 let path = arg_str(req, "path").map_err(bad)?;
-                make_dirs(s, path).await.map_err(|r| refusal(&r))?;
+                make_dirs(s, path).await.map_err(|r| refusal(op, &r))?;
                 Ok(serde_json::json!({}))
             }
             other => Err(refused(
+                op,
                 "unknown_op",
                 &crate::common::contract::malformed(&format!(
                     "unknown op `{other}` (known: home / read / put / remove / mkdirs)"
                 )),
+                None,
             )),
         }
     }
@@ -990,13 +1057,19 @@ where
             Ok(Some(l)) => l,
             Ok(None) => return,
             Err(e) => {
-                let _ = write_line(out, &refused("bad_request", &e)).await;
+                let _ =
+                    write_line(out, &refused("-", "bad_request", &e.said, e.raw.as_deref())).await;
                 return;
             }
         };
         let reply = match serde_json::from_str::<serde_json::Value>(&line) {
             Ok(req) => answer(s, &req, &mut rd).await,
-            Err(e) => refused("bad_request", &format!("请求行不是 JSON：{e}")),
+            Err(e) => refused(
+                "-",
+                "bad_request",
+                &crate::common::contract::malformed("request line is not JSON"),
+                Some(&e.to_string()),
+            ),
         };
         if write_line(out, &reply).await.is_err() {
             return;

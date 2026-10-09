@@ -162,9 +162,16 @@ fn a_config_we_cannot_parse_is_left_alone_not_overwritten() {
         "临时文件都写出来了 —— 「不写」要在写之前就停"
     );
     assert!(
-        err.contains("config.json")
-            && copy_core::copy_matches("rsLogging.diagnostics.badConfig", &err),
+        err.said.contains("config.json")
+            && copy_core::copy_matches("rsLogging.diagnostics.badConfig", &err.said),
         "那句话没说清是哪份文件、为什么没存：{err}"
+    );
+    // 解析器那句原话（少的那个逗号在哪）进复制详情，不上句子。
+    let raw = err.raw();
+    assert!(
+        !raw.is_empty() && !err.said.contains(&raw),
+        "解析错没进详情 / 还在句子里：{err} · 详情 {}",
+        err.detail
     );
     let _ = std::fs::remove_dir_all(&tmp);
 }

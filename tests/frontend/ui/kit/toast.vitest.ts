@@ -1,7 +1,8 @@
 /**
  * toast 与撤销提示条：停留时长 · 出错不自己走 · 悬停停表 · 最多 3 条 ＋ 记录 · 同类合流 ×N 明细不丢 · 撤销 / 到点提交。
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, onTestFinished, beforeEach, afterEach } from "vitest";
+import { fakeClipboard } from "../../../test-support/clipboard-fake";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 
 type Kit = typeof import("../../../../src/frontend/ui/kit/toast");
@@ -144,7 +145,8 @@ describe("撤销提示条", () => {
   });
 
   it("带复制详情的出错：动作排到句子下面那一行（修法在前、复制详情在后）、× 留右上；合流 ×N 复制出全部段；点了算看过", async () => {
-    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: vi.fn(() => Promise.resolve()) } });
+    const clip = fakeClipboard();
+    onTestFinished(() => clip.restore());
     kit.toast("t-1", "devbox", { detail: "码：a", action: { label: "act-1", run: () => {} } });
     const [el] = toasts();
     expect(el.dataset.layout).toBe("two");
@@ -158,7 +160,7 @@ describe("撤销提示条", () => {
     expect(kit.unseenErrors()).toBe(true);
     merged.querySelector<HTMLButtonElement>('[data-part="copy-detail"] button')!.click();
     await vi.advanceTimersByTimeAsync(0);
-    expect(navigator.clipboard.writeText).toHaveBeenLastCalledWith(`t-2 ${copyText("kit.toast.count", { n: 2 })}\n\n码：b\n\n码：c`);
+    expect(clip.written.at(-1)).toBe(`t-2 ${copyText("kit.toast.count", { n: 2 })}\n\n码：b\n\n码：c`);
     expect(toasts()).toHaveLength(2);
     expect(kit.recentToasts()[0].seen).toBe(true);
   });
@@ -172,7 +174,8 @@ describe("撤销提示条", () => {
   });
 
   it("合流与不合流：每段复制详情只跟它那一条走（别的句子的详情不进来，同句合流段段按先后接）", async () => {
-    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: vi.fn(() => Promise.resolve()) } });
+    const clip = fakeClipboard();
+    onTestFinished(() => clip.restore());
     kit.toast("t-a", "", { detail: "da-1" });
     kit.toast("t-b", "", { detail: "db-1" });
     kit.toast("t-a", "", { detail: "da-2" });

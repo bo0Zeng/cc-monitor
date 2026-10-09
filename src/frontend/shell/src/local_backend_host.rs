@@ -24,6 +24,7 @@
 //! ⇒ 代码里引 charter **一律带工作区名**，裸编号在几个月后没人分得清指哪一条。
 
 use crate::copy_table::copy_text;
+use crate::detail::Said;
 use crate::local_backend::{self, Resolved, SuperviseHandle};
 
 /// F05a：本机后端监护句柄。存起来是为了退出前按策略 `stop()`（`C8`）。
@@ -68,8 +69,9 @@ pub enum StartOutcome {
     /// 已经在跑（`C8`①）—— **不是失败**。
     AlreadyRunning,
     /// 起不来：没内嵌 / 释放失败 / exe 旁边也没有。
+    /// `reason` 是给人看的那一句 ＋ 复制详情（下层原话在详情里，不在句子里）。
     Failed {
-        reason: String,
+        reason: Said,
         looked_at: Vec<std::path::PathBuf>,
     },
 }
@@ -88,7 +90,9 @@ impl StartOutcome {
     /// ⇒ 这一处写 `Self::`：同一件事，而那把尺子的分母仍然只装构造点。
     fn failure(&self) -> Option<(&str, &[std::path::PathBuf])> {
         match self {
-            Self::Failed { reason, looked_at } => Some((reason.as_str(), looked_at.as_slice())),
+            Self::Failed { reason, looked_at } => {
+                Some((reason.said.as_str(), looked_at.as_slice()))
+            }
             Self::Started(_) | Self::AlreadyRunning => None,
         }
     }
@@ -166,11 +170,17 @@ fn pid_path(dir: &std::path::Path, port: u16) -> std::path::PathBuf {
 
 /// 读钥匙（每次连都现读：常驻后端每次起都换一把，读到的就是此刻在听的那一位认的那一把）。
 /// 读不动 / 空 ⇒ `Err`，那句话说得出是哪个文件、下一步怎么办（接不上就不接，出声）。
-fn read_listen_token(p: &std::path::Path) -> Result<String, String> {
+fn read_listen_token(p: &std::path::Path) -> Result<String, Said> {
     let s = std::fs::read_to_string(p).map_err(|e| {
-        copy_text(
-            "rsLocalBackendHost.fs.readFailed",
-            &[("path", &(p.display()).to_string()), ("e", &e.to_string())],
+        Said::with_raw(
+            copy_text(
+                "rsLocalBackendHost.fs.readFailed",
+                &[
+                    ("path", &(p.display()).to_string()),
+                    ("why", &copy_core::io_reason(e.kind())),
+                ],
+            ),
+            &e,
         )
     })?;
     let t = s.trim();
@@ -178,7 +188,8 @@ fn read_listen_token(p: &std::path::Path) -> Result<String, String> {
         return Err(copy_text(
             "rsLocalBackendHost.token.empty",
             &[("path", &(p.display()).to_string())],
-        ));
+        )
+        .into());
     }
     Ok(t.to_string())
 }
@@ -320,7 +331,7 @@ pub(crate) enum Probe {
     /// 第二次连的可能已经是另一个进程了）。
     Ours(std::net::TcpStream, String),
     /// 有人占着，但不是我们的。**出声**。
-    Stranger(String),
+    Stranger(Said),
 }
 
 /// 一次握手的读写期限。
@@ -343,18 +354,24 @@ fn probe_listen_port(port: u16, want_env: &[(String, String)]) -> Probe {
         .set_read_timeout(Some(HANDSHAKE_DEADLINE))
         .and_then(|()| sock.set_write_timeout(Some(HANDSHAKE_DEADLINE)))
     {
-        return Probe::Stranger(copy_text(
-            "rsLocalBackendHost.probe.noDeadline",
-            &[("e", &e.to_string())],
+        return Probe::Stranger(Said::with_raw(
+            copy_text(
+                "rsLocalBackendHost.probe.noDeadline",
+                &[("why", &copy_core::io_reason(e.kind()))],
+            ),
+            &e,
         ));
     }
     let line = match read_handshake_line(&sock) {
         Ok(l) => l,
         Err(e) => {
-            return Probe::Stranger(copy_text(
-                "rsLocalBackendHost.probe.noAnswer",
-                &[("port", &port.to_string()), ("e", &e.to_string())],
-            ))
+            return Probe::Stranger(Said {
+                said: copy_text(
+                    "rsLocalBackendHost.probe.noAnswer",
+                    &[("port", &port.to_string()), ("why", &e.said)],
+                ),
+                ..e
+            })
         }
     };
     let mine = crate::byte_table::my_backend_id();
@@ -372,7 +389,7 @@ fn probe_listen_port(port: u16, want_env: &[(String, String)]) -> Probe {
                     crate::machine_state::note_local_foreign(Some(&build_id));
                 }
             }
-            Probe::Stranger(why)
+            Probe::Stranger(why.into())
         }
     }
 }
@@ -383,7 +400,7 @@ fn probe_listen_port(port: u16, want_env: &[(String, String)]) -> Probe {
 /// 读过头的那些字节留在 `BufReader` 里，而这条 socket 之后要原样交给流那一档，
 /// 那几个字节就凭空丢了（第一版就是这么写的）。
 /// 形状抄 `relay/http1::read_head` 的 `r.read(&mut one)?`。
-fn read_handshake_line(mut sock: &std::net::TcpStream) -> Result<String, String> {
+fn read_handshake_line(mut sock: &std::net::TcpStream) -> Result<String, Said> {
     use std::io::Read;
     let mut out: Vec<u8> = Vec::new();
     let mut one = [0u8; 1];
@@ -393,10 +410,7 @@ fn read_handshake_line(mut sock: &std::net::TcpStream) -> Result<String, String>
             Ok(_) => {
                 if one[0] == b'\n' {
                     return String::from_utf8(out).map_err(|e| {
-                        copy_text(
-                            "rsLocalBackendHost.handshake.notUtf8",
-                            &[("e", &e.to_string())],
-                        )
+                        Said::with_raw(copy_text("rsLocalBackendHost.handshake.notUtf8", &[]), &e)
                     });
                 }
                 out.push(one[0]);
@@ -405,14 +419,18 @@ fn read_handshake_line(mut sock: &std::net::TcpStream) -> Result<String, String>
                     return Err(copy_text(
                         "rsLocalBackendHost.handshake.tooLong",
                         &[("cap", &LISTEN_HANDSHAKE_LINE_CAP.to_string())],
-                    ));
+                    )
+                    .into());
                 }
             }
             Err(ref e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
             Err(e) => {
-                return Err(copy_text(
-                    "rsLocalBackendHost.handshake.readFailed",
-                    &[("e", &e.to_string())],
+                return Err(Said::with_raw(
+                    copy_text(
+                        "rsLocalBackendHost.handshake.readFailed",
+                        &[("why", &copy_core::io_reason(e.kind()))],
+                    ),
+                    &e,
                 ))
             }
         }
@@ -431,9 +449,9 @@ pub(crate) const REFUSE_BUSY_REASON: &str = "stream-busy";
 /// 「占着」会自己好（上一个宿主的那条流正在断），别的不会。
 enum AttachErr {
     /// 那一条流此刻被占着 —— **可重试**。
-    Busy(String),
+    Busy(Said),
     /// 别的（token 不对 / 协议对不上 / 写不出去）—— **不重试**，重试只是把坏消息拖晚。
-    Fatal(String),
+    Fatal(Said),
 }
 
 /// 把 token 递过去，换一句「可以」。
@@ -444,16 +462,19 @@ fn send_attach(sock: &std::net::TcpStream, token: &str) -> Result<(), AttachErr>
     w.write_all(req.as_bytes())
         .and_then(|()| w.flush())
         .map_err(|e| {
-            AttachErr::Fatal(copy_text(
-                "rsLocalBackendHost.attach.sendFailed",
-                &[("e", &e.to_string())],
+            AttachErr::Fatal(Said::with_raw(
+                copy_text(
+                    "rsLocalBackendHost.attach.sendFailed",
+                    &[("why", &copy_core::io_reason(e.kind()))],
+                ),
+                &e,
             ))
         })?;
     let line = read_handshake_line(sock).map_err(AttachErr::Fatal)?;
     let v: serde_json::Value = serde_json::from_str(line.trim()).map_err(|e| {
-        AttachErr::Fatal(copy_text(
-            "rsLocalBackendHost.attach.notJson",
-            &[("e", &e.to_string()), ("line", &line.to_string())],
+        AttachErr::Fatal(Said::with_raw(
+            copy_text("rsLocalBackendHost.attach.notJson", &[]),
+            format!("{e}\n{line}"),
         ))
     })?;
     match v.get("attach").and_then(|x| x.as_str()) {
@@ -461,10 +482,11 @@ fn send_attach(sock: &std::net::TcpStream, token: &str) -> Result<(), AttachErr>
         // 对面**出声地**拒了 —— 把它的理由原样带上来，别翻译成一句更含糊的话。
         Some("refused") => {
             let reason = v.get("reason").and_then(|x| x.as_str()).unwrap_or("?");
-            let msg = copy_text(
+            let msg: Said = copy_text(
                 "rsLocalBackendHost.attach.refused",
                 &[("reason", &reason.to_string())],
-            );
+            )
+            .into();
             if reason == REFUSE_BUSY_REASON {
                 AttachErr::Busy(msg)
             } else {
@@ -472,10 +494,13 @@ fn send_attach(sock: &std::net::TcpStream, token: &str) -> Result<(), AttachErr>
             }
             .into_err()
         }
-        _ => Err(AttachErr::Fatal(copy_text(
-            "rsLocalBackendHost.attach.unreadable",
-            &[("line", &line.to_string())],
-        ))),
+        _ => Err(AttachErr::Fatal(
+            copy_text(
+                "rsLocalBackendHost.attach.unreadable",
+                &[("line", &line.to_string())],
+            )
+            .into(),
+        )),
     }
 }
 
@@ -484,7 +509,7 @@ impl AttachErr {
         Err(self)
     }
 
-    fn message(&self) -> &str {
+    fn into_said(self) -> Said {
         match self {
             AttachErr::Busy(m) | AttachErr::Fatal(m) => m,
         }
@@ -510,13 +535,14 @@ fn spawn_detached(
     port: u16,
     token_file: &std::path::Path,
     extra_env: &[(String, String)],
-) -> Result<crate::spawn_managed::ManagedChild, String> {
+) -> Result<crate::spawn_managed::ManagedChild, Said> {
     use crate::spawn_managed::{managed_spawner, ConsolePolicy, Lifetime, StderrSink};
     if !crate::platform::proc::CAN_DETACH {
         return Err(copy_text(
             "rsLocalBackendHost.spawn.unsupported",
             &[("bin", &(bin.display()).to_string())],
-        ));
+        )
+        .into());
     }
     let mut cmd = std::process::Command::new(bin);
     for (k, v) in extra_env {
@@ -564,12 +590,15 @@ fn spawn_detached(
     local_backend::spawn_with_etxtbsy_retry(&mut cmd, &*spawn).map_err(|f| match f {
         // 这一刻恰好撞上了会自己过去的竞态 —— 那句话也是共用的那一份。
         local_backend::SpawnFailure::TransientBusy { tries, last } => {
-            local_backend::etxtbsy_gave_up_reason(bin, tries, &last)
+            local_backend::etxtbsy_gave_up_reason(bin, tries, &last).into()
         }
         // 别的错 ⇒ **今天那句照旧，一个字不改**。
-        local_backend::SpawnFailure::Broken(e) => copy_text(
-            "rsLocalBackendHost.spawn.failed",
-            &[("bin", &(bin.display()).to_string()), ("e", &e.to_string())],
+        local_backend::SpawnFailure::Broken(e) => Said::with_raw(
+            copy_text(
+                "rsLocalBackendHost.spawn.failed",
+                &[("bin", &(bin.display()).to_string())],
+            ),
+            &e,
         ),
     })
 }
@@ -844,18 +873,18 @@ fn shout_if_the_ledger_refused(rec: Option<crate::backend_policy::Recorded>) {
 /// **复用的是纯零件**（`parse_frame` · `BackendHello::from_hello_frame` ·
 /// `park_owned_writer` · `read_capped_line`），没有把一个绑传输的循环硬掰成泛型 ——
 /// 那是 `local_stdio_consumer` 头注自己给的分寸。
-fn attach_stream(sock: std::net::TcpStream, hello_line: &str) -> Result<(), String> {
+fn attach_stream(sock: std::net::TcpStream, hello_line: &str) -> Result<(), Said> {
     let frame = crate::stream_source::parse_frame(hello_line)
-        .map_err(|_| copy_text("rsLocalBackendHost.stream.badFirstLine", &[]))?;
+        .map_err(|_| Said::from(copy_text("rsLocalBackendHost.stream.badFirstLine", &[])))?;
     let witness = crate::inbound_client::BackendHello::from_hello_frame(&frame)
-        .ok_or_else(|| copy_text("rsLocalBackendHost.stream.notHello", &[]))?;
+        .ok_or_else(|| Said::from(copy_text("rsLocalBackendHost.stream.notHello", &[])))?;
     // ★ `K-P3b`：**「它说过话没有」这一维就在这一行变真的** —— 上面那道门给出见证的那一刻。
     //   下面把它一路带到收尸那一拍，而不是在那边写一个 `Handshake::Spoke` 字面量。
     let handshake = handshake_from_hello(&witness);
     sock.set_nonblocking(true).map_err(|e| {
-        copy_text(
-            "rsLocalBackendHost.stream.nonblockingFailed",
-            &[("e", &e.to_string())],
+        Said::with_raw(
+            copy_text("rsLocalBackendHost.stream.nonblockingFailed", &[]),
+            &e,
         )
     })?;
     // 期限只属于**握手**那一段；进了流之后这条连接是长连接，装着期限反而会把它掐断。
@@ -864,12 +893,7 @@ fn attach_stream(sock: std::net::TcpStream, hello_line: &str) -> Result<(), Stri
     let (rd, wr) = tauri::async_runtime::block_on(async move {
         tokio::net::TcpStream::from_std(sock).map(tokio::net::TcpStream::into_split)
     })
-    .map_err(|e| {
-        copy_text(
-            "rsLocalBackendHost.stream.asyncFailed",
-            &[("e", &e.to_string())],
-        )
-    })?;
+    .map_err(|e| Said::with_raw(copy_text("rsLocalBackendHost.stream.asyncFailed", &[]), &e))?;
     let client = crate::inbound_client::park_owned_writer(wr).into_client(witness);
     crate::inbound_client::register(crate::inbound_client::LOCAL_ORIGIN, client.clone());
     tracing::info!(
@@ -964,7 +988,7 @@ enum DetachOutcome {
 ///   装三条全局 hook、固定槽位 `[50]`、**没有关掉它的开关**。不隔离就是去改用户真实
 ///   tmux server 的状态（08-11 那次事故打没了用户 9 个真实会话）。
 fn start_detached(
-    resolve_bin: &dyn Fn() -> Result<std::path::PathBuf, (String, Vec<std::path::PathBuf>)>,
+    resolve_bin: &dyn Fn() -> Result<std::path::PathBuf, (Said, Vec<std::path::PathBuf>)>,
     extra_env: &[(String, String)],
 ) -> DetachOutcome {
     if !detach_wanted(
@@ -1009,15 +1033,18 @@ fn start_detached(
                 "rsLocalBackendHost.start.refusedNotice",
                 &[
                     ("port", &port.to_string()),
-                    ("why", &why.to_string()),
+                    ("why", &why.said),
                     ("pidPath", &(pid_path(&dir, port).display()).to_string()),
                 ],
             ));
             return DetachOutcome::Done(StartOutcome::Failed {
-                reason: copy_text(
-                    "rsLocalBackendHost.start.refused",
-                    &[("port", &port.to_string()), ("why", &why.to_string())],
-                ),
+                reason: Said {
+                    said: copy_text(
+                        "rsLocalBackendHost.start.refused",
+                        &[("port", &port.to_string()), ("why", &why.said)],
+                    ),
+                    ..why
+                },
                 looked_at: vec![pid_path(&dir, port), token_path(&dir)],
             });
         }
@@ -1058,10 +1085,13 @@ fn start_detached(
             // 起来了但连不上 ⇒ 这不是「起了」。把它收掉，别留一个谁都够不着的进程。
             stop_detached();
             DetachOutcome::Done(StartOutcome::Failed {
-                reason: copy_text(
-                    "rsLocalBackendHost.start.unreachableKilled",
-                    &[("e", &e.to_string())],
-                ),
+                reason: Said {
+                    said: copy_text(
+                        "rsLocalBackendHost.start.unreachableKilled",
+                        &[("why", &e.said)],
+                    ),
+                    ..e
+                },
                 looked_at: vec![bin],
             })
         }
@@ -1095,7 +1125,7 @@ enum Adopt {
     /// 接上了。
     Attached,
     /// 有东西，但接不上。**出声**，绝不静默复用、也绝不换个口再起一个。
-    Refused(String),
+    Refused(Said),
 }
 
 /// 认已有实例并接上它。
@@ -1119,14 +1149,15 @@ fn probe_and_attach_after_spawn(
     port: u16,
     token_file: &std::path::Path,
     env: &[(String, String)],
-) -> Result<(), String> {
+) -> Result<(), Said> {
     match adopt_with(port, token_file, env, true) {
         Adopt::Attached => Ok(()),
         Adopt::Refused(why) => Err(why),
         Adopt::None => Err(copy_text(
             "rsLocalBackendHost.afterSpawn.neverListened",
             &[("port", &port.to_string())],
-        )),
+        )
+        .into()),
     }
 }
 
@@ -1138,7 +1169,7 @@ fn adopt_with(
     env: &[(String, String)],
     wait_for_bind: bool,
 ) -> Adopt {
-    let mut last = copy_text("rsLocalBackendHost.adopt.nobody", &[]);
+    let mut last: Said = copy_text("rsLocalBackendHost.adopt.nobody", &[]).into();
     for _ in 0..LISTEN_WAIT_TRIES {
         match probe_listen_port(port, env) {
             Probe::Stranger(why) => return Adopt::Refused(why),
@@ -1149,7 +1180,8 @@ fn adopt_with(
                 last = copy_text(
                     "rsLocalBackendHost.adopt.notYet",
                     &[("port", &port.to_string())],
-                );
+                )
+                .into();
             }
             Probe::Ours(sock, hello) => match read_listen_token(token_file)
                 .map_err(AttachErr::Fatal)
@@ -1162,19 +1194,22 @@ fn adopt_with(
                     }
                 }
                 Err(AttachErr::Busy(m)) => last = m,
-                Err(e) => return Adopt::Refused(e.message().to_string()),
+                Err(e) => return Adopt::Refused(e.into_said()),
             },
         }
         std::thread::sleep(std::time::Duration::from_millis(LISTEN_WAIT_INTERVAL_MS));
     }
-    Adopt::Refused(copy_text(
-        "rsLocalBackendHost.adopt.waited",
-        &[
-            ("last", &last.to_string()),
-            ("tries", &LISTEN_WAIT_TRIES.to_string()),
-            ("interval", &LISTEN_WAIT_INTERVAL_MS.to_string()),
-        ],
-    ))
+    Adopt::Refused(Said {
+        said: copy_text(
+            "rsLocalBackendHost.adopt.waited",
+            &[
+                ("last", &last.said),
+                ("tries", &LISTEN_WAIT_TRIES.to_string()),
+                ("interval", &LISTEN_WAIT_INTERVAL_MS.to_string()),
+            ],
+        ),
+        ..last
+    })
 }
 
 /// 找那个二进制 —— **这一层只做适配，答案取自那一份共用的解析**
@@ -1196,7 +1231,7 @@ fn adopt_with(
 fn resolve_backend_bin(
     extract_dir: &std::path::Path,
     embedded: Result<(&str, &[u8]), String>,
-) -> Result<std::path::PathBuf, (String, Vec<std::path::PathBuf>)> {
+) -> Result<std::path::PathBuf, (Said, Vec<std::path::PathBuf>)> {
     match local_backend::resolve_or_extract(
         env!("CCM_TARGET_TRIPLE"),
         extract_dir,
@@ -1219,7 +1254,7 @@ fn resolve_backend_bin(
 /// 住后端 `control/resident.rs::stop_pid`），这里只拿回结局。monitor 这一侧不再自己发信号、自己等、自己强杀（HX1 那套 `stop_grace` 删了）。
 /// 句柄**先取出来、出锁再等**：那一趟可能几十秒，句柄表的锁不跨这段等（查状态不被挡住）；停不掉再放回去。
 /// 自己起的那个随后在这里 `wait` 收尸（`process_group` 不改父子关系，`INVARIANTS §48.2`）。
-fn stop_detached() -> Option<Result<crate::remote_resident::StopAnswer, String>> {
+fn stop_detached() -> Option<Result<crate::remote_resident::StopAnswer, Said>> {
     let mut h = DETACHED.lock().unwrap_or_else(|e| e.into_inner()).take()?;
     let answer = run_resident_stop(&h.bin);
     let put_back = |h: DetachedHandle| {
@@ -1249,7 +1284,8 @@ fn stop_detached() -> Option<Result<crate::remote_resident::StopAnswer, String>>
                 return Some(Err(copy_text(
                     "rsLocalBackendHost.stop.noRecord",
                     &[("pid", &pid.to_string())],
-                )));
+                )
+                .into()));
             }
             Err(e) => tracing::warn!("收不了自己起的那个后端的尸（{e}）"),
         }
@@ -1263,7 +1299,7 @@ pub(crate) const RESIDENT_STOP_DEADLINE: std::time::Duration = std::time::Durati
 
 /// 起一次 `<后端> --resident-stop`（不经 shell）、读它那一行结局（与远端同一个读法 `remote_resident::read_stop`）。
 /// 交的环境与起它时同一份（[`backend_env`]）⇒ 它在同一个家里按同一个函数算出同一个口、找到同一份 `listen-<口>.pid`。
-fn run_resident_stop(bin: &std::path::Path) -> Result<crate::remote_resident::StopAnswer, String> {
+fn run_resident_stop(bin: &std::path::Path) -> Result<crate::remote_resident::StopAnswer, Said> {
     run_resident_stop_within(bin, RESIDENT_STOP_DEADLINE)
 }
 
@@ -1271,10 +1307,10 @@ fn run_resident_stop(bin: &std::path::Path) -> Result<crate::remote_resident::St
 fn run_resident_stop_within(
     bin: &std::path::Path,
     deadline: std::time::Duration,
-) -> Result<crate::remote_resident::StopAnswer, String> {
+) -> Result<crate::remote_resident::StopAnswer, Said> {
     use crate::spawn_managed::{spawn_managed_cmd, ConsolePolicy, Lifetime, StderrSink};
     if bin.as_os_str().is_empty() {
-        return Err(copy_text("rsLocalBackendHost.stop.noBin", &[]));
+        return Err(copy_text("rsLocalBackendHost.stop.noBin", &[]).into());
     }
     let handed = backend_env();
     // 三条策略：`Hidden`（一次性子命令不该闪窗）· `JobKillOnClose`（就地等它退，别留后代）·
@@ -1302,29 +1338,37 @@ fn run_resident_stop_within(
     let out = match got {
         Ok(c) => c,
         Err(crate::ccm_probe::CaptureFail::Spawn(e)) => {
-            return Err(copy_text(
-                "rsLocalBackendHost.stop.spawnFailed",
-                &[("bin", &bin.display().to_string()), ("e", &e)],
+            return Err(Said::with_raw(
+                copy_text(
+                    "rsLocalBackendHost.stop.spawnFailed",
+                    &[("bin", &bin.display().to_string())],
+                ),
+                &e,
             ))
         }
         Err(crate::ccm_probe::CaptureFail::TimedOut) => {
             return Err(copy_text(
                 "rsLocalBackendHost.stop.timedOut",
                 &[("dur", &copy_core::format_elapsed(deadline))],
-            ))
+            )
+            .into())
         }
         Err(crate::ccm_probe::CaptureFail::Read(e)) => {
-            return Err(copy_text(
-                "rsLocalBackendHost.stop.readFailed",
-                &[("e", &e)],
+            return Err(Said::with_raw(
+                copy_text("rsLocalBackendHost.stop.readFailed", &[]),
+                &e,
             ))
         }
     };
-    crate::remote_resident::read_stop(&crate::stream_source::RemoteExec {
-        stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
-        stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
-        exit_status: out.code.and_then(|c| u32::try_from(c).ok()),
-    })
+    crate::remote_resident::read_stop(
+        &crate::stream_source::RemoteExec {
+            stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
+            stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
+            exit_status: out.code.and_then(|c| u32::try_from(c).ok()),
+        },
+        &copy_core::local_machine(),
+    )
+    .map_err(Said::from)
 }
 
 /// backend 那条监护路的 `on_event` —— ★ **判与记都在这个闭包里**。
@@ -1479,7 +1523,7 @@ pub fn start_local_backend() -> StartOutcome {
     //   `bin/` 那一层由释放那一步照旧建。建不了不挡起后端（释放那一步会出声说它自己的失败）。
     if let Some(home_dir) = extract_dir.parent() {
         if let Err(e) = crate::platform::fs::ensure_private_dir(home_dir) {
-            tracing::warn!("{e}");
+            tracing::warn!("{}（{}）", e.said, e.raw());
         }
     }
     // **本机的字节也按 (OS, arch) 从那一张表里取**（规矩 4：本机只是「目标机器恰好是自己」）。
@@ -1546,10 +1590,10 @@ pub fn start_local_backend() -> StartOutcome {
 }
 
 /// 本机独有的两个读数（远端没有对应物：那个进程在别人机器上）。
-pub fn local_pid_and_attempts() -> Result<(Option<u32>, Option<u32>), String> {
+pub fn local_pid_and_attempts() -> Result<(Option<u32>, Option<u32>), Said> {
     let g = LOCAL_BACKEND
         .lock()
-        .map_err(|e| copy_text("rsLocalBackendHost.lock.poisoned", &[("e", &e.to_string())]))?;
+        .map_err(|e| Said::with_raw(copy_text("rsLocalBackendHost.lock.poisoned", &[]), &e))?;
     if let Some(h) = g.as_ref() {
         return Ok((h.current_pid(), Some(h.attempts())));
     }
@@ -1558,7 +1602,7 @@ pub fn local_pid_and_attempts() -> Result<(Option<u32>, Option<u32>), String> {
     // 报 0 会让 UI 显示一个看起来正常的数，而它背后没有任何东西在数。**空值 ≠ 0。**
     let d = DETACHED
         .lock()
-        .map_err(|e| copy_text("rsLocalBackendHost.lock.poisoned", &[("e", &e.to_string())]))?;
+        .map_err(|e| Said::with_raw(copy_text("rsLocalBackendHost.lock.poisoned", &[]), &e))?;
     Ok(match d.as_ref() {
         Some(h) if h.pid != 0 => (Some(h.pid), None),
         Some(_) => (None, None),
@@ -1620,12 +1664,12 @@ pub(crate) fn backend_env_from(
 /// P2s（`C8`②）：停本机后端。**句柄取走**（`take`）而不是留着 ——
 /// `stop()` 之后那个句柄就是死的（`stopping` 永久置位），留着只会让下一次「起」
 /// 误以为还在跑。
-pub fn stop_local_backend() -> Result<crate::remote_resident::StopAnswer, String> {
+pub fn stop_local_backend() -> Result<crate::remote_resident::StopAnswer, Said> {
     use crate::remote_resident::{StopAnswer, StopWord};
     // 起停串行：一趟停从头到尾攥着它（句柄表只在读写那一下拿）。
     let _life = LIFECYCLE
         .lock()
-        .map_err(|e| copy_text("rsLocalBackendHost.lock.poisoned", &[("e", &e.to_string())]))?;
+        .map_err(|e| Said::with_raw(copy_text("rsLocalBackendHost.lock.poisoned", &[]), &e))?;
     // 中转住本机后端进程里 ⇒ 停后端就是停中转，这里不再另收一个。
     // ★ `K-P1`：常驻那条路的「停」。
     if let Some(r) = stop_detached() {
@@ -1633,7 +1677,7 @@ pub fn stop_local_backend() -> Result<crate::remote_resident::StopAnswer, String
     }
     let taken = LOCAL_BACKEND
         .lock()
-        .map_err(|e| copy_text("rsLocalBackendHost.lock.poisoned", &[("e", &e.to_string())]))?
+        .map_err(|e| Said::with_raw(copy_text("rsLocalBackendHost.lock.poisoned", &[]), &e))?
         .take();
     match taken {
         // 被监护那条（Windows / `CCM_NO_DETACH`）：`SuperviseHandle::stop()` 直接杀子进程 —— 如实报「强杀」。

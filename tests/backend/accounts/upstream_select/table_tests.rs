@@ -374,12 +374,24 @@ enum Said {
 }
 
 fn ask(t: &RoutingTable, u: &Upstreams, mode: Mode, seg1: &str, seg2: &str) -> Said {
+    ask_naming(t, u, mode, seg1, seg2, &[])
+}
+
+/// 同上，这一发带着 `names` 这几个头（只有名字）。
+fn ask_naming(
+    t: &RoutingTable,
+    u: &Upstreams,
+    mode: Mode,
+    seg1: &str,
+    seg2: &str,
+    names: &[&str],
+) -> Said {
     let key = RouteKey {
         seg1: seg1.to_string(),
         seg2: seg2.to_string(),
     };
     let mut out = None;
-    decide(t, u, mode, &key, &mut |d| {
+    decide(t, u, mode, &key, names, &mut |d| {
         out = Some(match d {
             Destination::Refuse { status, reason, .. } => Said::Refuse(status, reason),
             Destination::Reply { status, .. } => panic!("决策表不该答现成回包：{status}"),
@@ -392,6 +404,9 @@ fn ask(t: &RoutingTable, u: &Upstreams, mode: Mode, seg1: &str, seg2: &str) -> S
     });
     out.expect("上游选择一次都没答")
 }
+
+/// 注册表里没有的一家（手写，不随哪家登没登记变）。
+const UNREGISTERED: &str = "agent-unregistered";
 
 /// 没有任何环境变量时那一份（每家取内置默认）。
 fn upstreams_without_env() -> Upstreams {
@@ -481,12 +496,12 @@ fn passthrough_without_a_row_goes_to_that_agents_own_upstream_and_an_unregistere
         "登记过的那家在 `/t/` 无行时没有发到它自己的默认上游"
     );
     assert_eq!(
-        ask(&t, &u, Mode::Passthrough, "codex", "acct-anything"),
+        ask(&t, &u, Mode::Passthrough, UNREGISTERED, "acct-anything"),
         Said::Refuse("404 Not Found", "agent-not-registered"),
         "🔴 未登记的 agent 没被拒 ⇒ 它的请求被发到了某一家的上游"
     );
     // `/s/` 无行仍是 404（`§3.1` 第 2 行，一字不改），与 agent 登没登记无关。
-    for agent in ["claude-code", "codex"] {
+    for agent in ["claude-code", UNREGISTERED] {
         assert_eq!(
             ask(&t, &u, Mode::Substitute, agent, "acct-anything"),
             Said::Refuse("404 Not Found", "no-account-row"),
@@ -504,20 +519,20 @@ fn each_agents_env_knob_overrides_only_that_agents_default() {
         (k == "CCM_AGENT_UPSTREAM_CLAUDE_CODE").then(|| "http://127.0.0.1:1/pfx".to_string())
     })
     .expect("回环明文是合法上游");
-    let cc = got.of("claude-code").expect("claude-code 该登记着");
+    let cc = got.of("claude-code", &[]).expect("claude-code 该登记着");
     assert_eq!(cc.host_header(), "127.0.0.1:1");
     assert_eq!(cc.path, "/pfx", "旋钮里那段路径前缀被丢掉了");
     // 非空对照：不设旋钮时是内置默认 —— 证明上面那格不是「恒等于取值器的值」。
     let dflt = upstreams_without_env();
     assert_eq!(
-        dflt.of("claude-code").expect("登记着").host_header(),
+        dflt.of("claude-code", &[]).expect("登记着").host_header(),
         "api.anthropic.com"
     );
     assert_ne!(got, dflt);
     // 认不出 ⇒ `None`（调用方出声退 2），不跳过、不回落。
     assert!(Upstreams::from_env(&|_| Some("ftp://x".to_string())).is_none());
     // 未登记的那家：查不到，不是拿别家的顶上。
-    assert!(got.of("codex").is_none());
+    assert!(!got.has(UNREGISTERED));
 }
 
 /// ★ 每家一行的默认上游**自己的形状**：家名不重 · 旋钮不重 · 凭据文件那一家登记了。
@@ -572,18 +587,83 @@ fn the_default_upstreams_come_from_the_adapter_cell_and_nowhere_else() {
     for a in crate::agents::REGISTRY {
         if let Some(u) = a.upstream.as_ref() {
             assert_eq!(
-                got.of(u.route_id).map(|b| b.host_header()),
-                crate::relay::Base::parse(u.fallback)
-                    .ok()
-                    .map(|b| b.host_header()),
+                got.by_agent.get(u.route_id),
+                crate::accounts::upstream_select::UpstreamPick::parse(u.fallback, None).as_ref(),
                 "`{}` 的默认上游不是适配层那一格写的那个",
                 u.route_id
             );
         }
     }
-    // 手写的那一格（异源于上面的逐家读）：codex 没填 ⇒ 查不到。
+    // 手写的那一格（异源于上面的逐家读）：没登记的那家 ⇒ 查不到。
     assert!(
-        got.of("codex").is_none(),
-        "codex 没在适配层登记，上游选择却查得到"
+        !got.has(UNREGISTERED),
+        "没在适配层登记的一家，上游选择却查得到"
+    );
+}
+
+/// ★ 按头二选一的默认上游：这一发带那个头（名字不分大小写）⇒ `present`，不带 ⇒ `absent`；配了旋钮 ⇒ 一律旋钮那个。
+/// 决策表 `/t/` 无行那一格按这一发的头名取，同一家两种请求落到两个上游。
+#[test]
+fn a_by_header_default_upstream_picks_by_the_request_s_own_header_names() {
+    use crate::agents::Fallback;
+    let f = Fallback::ByHeader {
+        header: "X-Login-Form",
+        present: "https://present.invalid/p",
+        absent: "https://absent.invalid/a",
+    };
+    let pick =
+        crate::accounts::upstream_select::UpstreamPick::parse(f, None).expect("两个都解析得了");
+    assert_eq!(
+        pick.for_names(&["host", "x-login-form"]).host_header(),
+        "present.invalid"
+    );
+    assert_eq!(
+        pick.for_names(&["host", "authorization"]).host_header(),
+        "absent.invalid"
+    );
+    assert_eq!(pick.for_names(&[]).path, "/a");
+    let knob =
+        crate::accounts::upstream_select::UpstreamPick::parse(f, Some("http://127.0.0.1:9/k"))
+            .expect("回环明文");
+    assert_eq!(
+        knob.for_names(&["X-Login-Form"]).host_header(),
+        "127.0.0.1:9"
+    );
+    assert_eq!(knob.for_names(&[]).host_header(), "127.0.0.1:9");
+    assert!(crate::accounts::upstream_select::UpstreamPick::parse(
+        Fallback::ByHeader {
+            header: "h",
+            present: "ftp://x",
+            absent: "https://a.invalid"
+        },
+        None
+    )
+    .is_none());
+
+    // 决策表那一格：同一家 `/t/` 无行，带不带那个头各落一边。
+    let mut u = upstreams_without_env();
+    u.by_agent.insert("agent-two-forms", pick);
+    let t = RoutingTable::build(std::iter::empty());
+    assert_eq!(
+        ask_naming(
+            &t,
+            &u,
+            Mode::Passthrough,
+            "agent-two-forms",
+            "0",
+            &["X-LOGIN-FORM"]
+        ),
+        Said::Passthrough("present.invalid".into())
+    );
+    assert_eq!(
+        ask_naming(
+            &t,
+            &u,
+            Mode::Passthrough,
+            "agent-two-forms",
+            "0",
+            &["authorization"]
+        ),
+        Said::Passthrough("absent.invalid".into())
     );
 }

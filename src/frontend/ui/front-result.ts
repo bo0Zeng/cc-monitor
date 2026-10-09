@@ -5,7 +5,7 @@
  *
  * 结局族的来处（这里不判，只排版）：
  * - 壳 `bring_terminal_to_front` / `bring_remote_terminal_to_front`（`FrontOutcome`）：切过去了 · 分不清（带候选窗口）· 没登记 · 窗口已关 ·
- *   认不准 · 系统不许抢前台 · 窗口归 Windows Terminal 托管 · 真在后台；
+ *   认不准 · 系统不许抢前台 · 窗口归 Windows Terminal 托管 · 真在后台 · Wayland 桌面上切不了；
  * - 那台后端 `session-terminals` 的 `why`：tmux 里没终端连着 · 没有终端 · 读不了；
  * - 本机后端 `terminal-processes` 的 `why`：那台本地屏幕 · 在另一台电脑 · 经跳板机对不上 · 这一次没查成；
  * - 通道那一跳的归因（`ipc/chan-caller.ts`）：那台旧 · 期限到 · 连不上。
@@ -32,6 +32,7 @@ export type FrontResult =
 export type FrontAct =
   | { kind: "connect" }
   | { kind: "open-in-terminal" }
+  | { kind: "open-here" }
   | { kind: "copy"; detail: string }
   | { kind: "update" }
   | { kind: "retry-update" }
@@ -94,6 +95,13 @@ export function frontView(r: FrontResult, machine: string, inTmux: boolean): Fro
       return v(copyText("front.title.unknown"), "", "red", [{ kind: "retry" }, { kind: "copy", detail: r.detail }]);
     case "bad-shape":
       return v(copyText("front.title.badShape"), "", "red", [{ kind: "copy", detail: r.detail }]);
+    case "desktop-wont-switch":
+      return v(
+        copyText("front.title.desktopWontSwitch"),
+        r.desktop === "" ? copyText("front.body.desktopWontSwitchBare") : copyText("front.body.desktopWontSwitch", { desktop: r.desktop }),
+        "grey",
+        [{ kind: "open-here" }],
+      );
     case "unsupported":
       return v(copyText("front.title.failed"), copyText("terminalFront.unavailable.short"), "grey");
     case "unknown":
@@ -108,6 +116,8 @@ export function frontActLabel(a: FrontAct): string {
       return copyText("front.act.connect");
     case "open-in-terminal":
       return copyText("front.act.openInTerminal");
+    case "open-here":
+      return copyText("front.act.openHere");
     case "copy":
       return copyText("detail.act.copy");
     case "update":

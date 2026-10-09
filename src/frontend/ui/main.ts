@@ -327,6 +327,10 @@ window.addEventListener("DOMContentLoaded", async () => {
   };
   // ↗ 浮层的［接上终端］直达设置那一节（［更新］就地做，住 `tabs.ts`）。
   tabs.onConnectTerminal = () => void openSettingsWindow(undefined, dest.connectTerminalOf(LOCAL_ORIGIN));
+  tabs.onOpenHere = (sid) => {
+    tabs.switchTo(sid);
+    mainDrawer.open("terminal");
+  };
   // 起新会话：在主窗口里起的先长出占位标签页、报到了换成真的；在设置 / 查看窗里起的点了［切过去］再切，先把主窗口拉到前面。
   setNewSessionPlaceholder((spec) => tabs.addLaunchSlot(spec));
   // 别的起会话路（恢复 · cc-bus 派生 · 开窗 resume）在主窗口里发起的也走同一件占位标签页。

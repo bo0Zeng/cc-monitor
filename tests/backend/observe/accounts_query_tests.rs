@@ -765,17 +765,15 @@ fn bare_session_is_attributed_to_account_zero() {
 /// **当中**读回 **0 字节**（`platform/proc.rs` 那一支逐字记着它）。
 /// 也就是说：**窗口没关就读 ⇒ `c_ok` 为假 ⇒ 本条红在夹具上，不是红在产品上。**
 ///
-/// 发生率**现打**〔09-11，沙箱 `ccmon-devbox:latest`；量具
-/// `tests/evidence/K-R55-fixture-shape-probe.py` —— 照本条的夹具形状复刻一遍、
+/// 发生率**现打**〔09-11，沙箱 `ccmon-devbox:latest`；照本条的夹具形状复刻一遍、
 /// 只量丙那一格，不跑 Rust〕：**空载 200 趟 0 次 · 加载（`nproc`×4 条忙循环）200 趟 2 次**。
 /// ⇒ 这个窗口**确实开着**，且确实只在有负载时开。
 ///
 /// ## ② 而「它就是那 1/16」—— **没复现出来，所以判不了**
 ///
 /// 把下面那段屏障**整段摘掉**（`K-R55` 刀 D），在同一个沙箱里现打：
-/// · 点名单跑 + 满载忙循环，**400 趟红 0 趟**（`tests/evidence/K-R55-flaky-loop.py`）；
-/// · 照门禁的真实条件（全量并行的那个测试二进制）**连跑 32 趟，红 0 趟**
-///   （`tests/evidence/K-R55-fullsuite-loop.py`）。
+/// · 点名单跑 + 满载忙循环，**400 趟红 0 趟**；
+/// · 照门禁的真实条件（全量并行的那个测试二进制）**连跑 32 趟，红 0 趟**。
 /// ⇒ 缺口补上了，**但我没有把那条 flaky 复现出来一次** ⇒ 不许写成「根因找到了」。
 ///
 /// 🔴 **差什么才判得了**：那一趟红的 **panic 原文**（哪一格断言先红）。
@@ -1807,7 +1805,7 @@ fn read_regular_capped_keeps_its_three_failures_distinguishable() {
     let e_missing = read_regular_capped(&missing, 1024).expect_err("不存在的文件必须是 Err");
     let e_dir = read_regular_capped(&dir, 1024).expect_err("目录必须是 Err");
     let e_big = read_regular_capped(&big, 4).expect_err("超限必须是 Err");
-    assert!(e_big.contains("10"), "过大那句没带实际字节数：{e_big}");
+    assert!(e_big.said.contains("10"), "过大那句没带实际字节数：{e_big}");
     assert!(
         e_missing != e_dir && e_dir != e_big && e_missing != e_big,
         "三种失败给了相同的理由串：不存在={e_missing} / 目录={e_dir} / 过大={e_big}"

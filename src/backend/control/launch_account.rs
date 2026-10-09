@@ -277,7 +277,7 @@ pub(crate) fn read_book(home: &Path) -> Result<Book, String> {
     match read_json(&home.join(FILE_NAME), MAX_BYTES) {
         Read::Absent => Ok(Book::default()),
         Read::Present(b) => Ok(b),
-        Read::Unreadable(why) => Err(why),
+        Read::Unreadable(why) => Err(why.said_logging_raw()),
     }
 }
 
@@ -302,6 +302,7 @@ pub(crate) fn leave_note(home: &Path, pid: u32, account: &str, now: u64) -> Resu
             at: now,
         },
     )
+    .map_err(crate::common::said::Said::said_logging_raw)
 }
 
 /// 观测侧看见 `pid` 的会话 `sid`：有它的便条、且便条不早于这个进程 ⇒ 记 `sid → 号`；顺手清掉进程已不在的便条。
@@ -361,10 +362,12 @@ fn fresh(n: &Note, started: Option<u64>) -> bool {
 /// 在跨进程锁里：读盘 → 换掉那一条 → 原子写回。读不懂的那份不覆盖。
 fn record(home: &Path, sid: &str, account: &str) -> Result<(), String> {
     crate::common::own_dir::ensure_private_dir(home).map_err(|e| failed(home, &e))?;
-    let _lock = crate::platform::lock::hold(home)?;
+    let _lock = crate::platform::lock::hold(home)
+        .map_err(|e| crate::common::said::Said::from(e).said_logging_raw())?;
     let mut book = read_book(home)?;
     book.sessions.insert(sid.to_string(), account.to_string());
     crate::common::own_state::write_json(&home.join(FILE_NAME), &book)
+        .map_err(crate::common::said::Said::said_logging_raw)
 }
 
 fn failed(path: &Path, e: &dyn std::fmt::Display) -> String {

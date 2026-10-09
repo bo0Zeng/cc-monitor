@@ -42,24 +42,22 @@ pub(super) const SPECS: &[CommandSpec] = &[
         }),
     },
     // 〔「待迁」最后一行〕**开终端那一串**：`{machine, saved?, jump?, prefer?, command}` ⇒ `{command}`（按本机终端方言的一行：
-    //   Windows `& ssh -t[ -J …] -p … [-i …] user@host -- '<bash -lic …>'`，别处同一组参数的 POSIX shell 一行）。组请求走 `dial/machine.rs::resolve`，本体 `dial/terminal.rs`。
-    //   纯函数：校验 ＋ quote，不拨号、不起进程、不碰盘 ⇒ 不进阻塞档（同 `ping` 那一形）。
+    //   Windows `& '<ssh 全路径>' -t[ -J …] -p … [-i …] user@host -- '<bash -lic …>'`，别处同一组参数的 POSIX shell 一行）。组请求走 `dial/machine.rs::resolve`，本体 `dial/terminal.rs`。
+    //   查几个文件找 ssh 客户端（`platform/ssh_client.rs`）⇒ 阻塞档；不拨号、不起进程。
     CommandSpec {
         name: "terminal-ssh",
         summary: "给一台远端开终端要跑的那一串",
-        codes: &["bad_args", "bad_jump", "refused"],
-        fields: &[both("command", "要在那台跑的命令；应答里是那一整行 PowerShell `& ssh -t … -- 'bash -lic …'`")],
+        codes: &["bad_args", "bad_jump", "refused", "no_ssh_client", "unobservable"],
+        fields: &[both("command", "要在那台跑的命令；应答里是那一整行 PowerShell `& '<ssh 全路径>' -t … -- 'bash -lic …'`")],
         takes_input: true,
-        run: Run::Async(|r| {
-            Box::pin(async move {
-                crate::dial::terminal::answer(&r.args)
-                    .map(Some)
-                    .map_err(|(c, m)| (c.to_string(), m))
-            })
+        run: Run::Blocking(|r| {
+            crate::dial::terminal::answer(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
     // 那台报来的终端 ⇒ 这台电脑上开着那条连接的进程链：`{terminals}` ⇒ `{chain:[{pid, name, start}…], why?, addr?}`
-    //   （`dial/terminal_processes.rs`）。阻塞档：直调系统接口读连接表 ＋ 进程表四格（每个进程开一次句柄问启动时刻）。只在被问时答。
+    //   （`dial/terminal_processes.rs`）。阻塞档：读连接表 ＋ 进程表四格（Windows 直调系统接口、每个进程开一次句柄问启动时刻 · Linux 读 `/proc`）。只在被问时答。
     CommandSpec {
         name: "terminal-processes",
         summary: "那台报来的终端连接是这台电脑上哪个进程开的",

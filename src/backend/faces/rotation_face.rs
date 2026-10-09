@@ -51,7 +51,9 @@ use copy_core::copy_text;
 use serde_json::{json, Map, Value};
 use std::sync::Arc;
 
-type Answer = Result<Value, (&'static str, String)>;
+/// 失败带码 ＋ 那一句 ＋ 原话（写盘那几形的原话进复制详情，[`Fail`]）。
+type Answer = Result<Value, Fail>;
+use crate::stream::inbound::spec::Fail;
 
 /// 一条命令要的几样：轮换的账本（经它判、经它写）· 这台 key 表里有哪几行（按量号接不接得上）。
 /// `(agent, 号)` → 这台 key 表里那一行：没有 ⇒ `None`；有 ⇒ 接不接得上。
@@ -117,8 +119,8 @@ impl Ctx {
     }
 }
 
-fn bad(detail: &str) -> (&'static str, String) {
-    ("bad_args", crate::common::contract::malformed(detail))
+fn bad(detail: &str) -> Fail {
+    Fail::new("bad_args", crate::common::contract::malformed(detail))
 }
 
 fn store_path(ctx: &Ctx) -> Result<&Path, (&'static str, String)> {
@@ -129,11 +131,11 @@ fn store_path(ctx: &Ctx) -> Result<&Path, (&'static str, String)> {
 }
 
 /// 盘上那一份（三态，同额度账）。
-fn read_book(ctx: &Ctx) -> (&'static str, Option<String>, Book) {
+fn read_book(ctx: &Ctx) -> (&'static str, Option<crate::common::said::Said>, Book) {
     match ctx.hop.store.path().map(rotation::read_at) {
         None => (
             "unreadable",
-            Some(copy_text("beRotation.read.noHome", &[])),
+            Some(copy_text("beRotation.read.noHome", &[]).into()),
             Book::default(),
         ),
         Some(rotation::Read::Absent) => ("absent", None, Book::default()),
@@ -304,7 +306,8 @@ fn doing_wire(d: Option<&Doing>) -> Value {
 }
 
 fn rules_wire(ctx: &Ctx) -> Value {
-    let (state, reason, book) = read_book(ctx);
+    let (state, why, book) = read_book(ctx);
+    let (reason, detail) = crate::stream::detail::unreadable("rotation-rules-read", why.as_ref());
     let live = (ctx.live)();
     let doing = (ctx.doing)();
     let mut rules: Vec<(&String, &Rule)> = book.rules.iter().collect();
@@ -317,6 +320,7 @@ fn rules_wire(ctx: &Ctx) -> Value {
     json!({
         "state": state,
         "reason": reason,
+        "detail": detail,
         "path": ctx.hop.store.path().map(|p| p.display().to_string()),
         "defaultRule": book.default_rule,
         "rules": rules.iter().map(|(id, r)| rule_wire(ctx, &book, id, r, &live, &doing)).collect::<Vec<_>>(),
@@ -379,7 +383,7 @@ fn conflict(rev: u64) -> Answer {
     Ok(json!({"state": "conflict", "rev": rev}))
 }
 
-fn if_rev(args: &Value) -> Result<Option<u64>, (&'static str, String)> {
+fn if_rev(args: &Value) -> Result<Option<u64>, Fail> {
     match args.get("ifRev") {
         None | Some(Value::Null) => Ok(None),
         Some(v) => v
@@ -389,7 +393,7 @@ fn if_rev(args: &Value) -> Result<Option<u64>, (&'static str, String)> {
     }
 }
 
-fn rule_id_arg(args: &Value, key: &str) -> Result<Option<String>, (&'static str, String)> {
+fn rule_id_arg(args: &Value, key: &str) -> Result<Option<String>, Fail> {
     match args.get(key) {
         None | Some(Value::Null) => Ok(None),
         Some(Value::String(s))
@@ -444,7 +448,7 @@ pub(crate) fn answer_rule_save_with(ctx: &Ctx, args: &Value, now: u64) -> Answer
     }
     let prior = id.as_deref().and_then(|i| book.rules.get(i));
     if id.is_some() && prior.is_none() {
-        return Err(("no_such_rule", copy_text("beRotation.rule.gone", &[])));
+        return Err(("no_such_rule", copy_text("beRotation.rule.gone", &[])).into());
     }
     let mut errors = name_errors(&book, id.as_deref(), &name);
     let rot = match (args.get("rotation"), rule_id_arg(args, "from")?) {
@@ -512,7 +516,7 @@ pub(crate) fn answer_rule_save_with(ctx: &Ctx, args: &Value, now: u64) -> Answer
     .map_err(|e| ("io_failed", e))?;
     match wrote {
         Ok(id) => saved(ctx, &id),
-        Err(0) => Err(("no_such_rule", copy_text("beRotation.rule.gone", &[]))),
+        Err(0) => Err(("no_such_rule", copy_text("beRotation.rule.gone", &[])).into()),
         Err(rev) => conflict(rev),
     }
 }
@@ -560,13 +564,14 @@ pub(crate) fn answer_rule_delete_with(ctx: &Ctx, args: &Value) -> Answer {
     store_path(ctx)?;
     let book = ctx.hop.store.now();
     if ids.iter().any(|i| *i == book.default_rule) {
-        return Err(("is_default", copy_text("beRotation.rule.isDefault", &[])));
+        return Err(("is_default", copy_text("beRotation.rule.isDefault", &[])).into());
     }
     if let Some(i) = ids.iter().find(|i| !book.rules.contains_key(*i)) {
         return Err((
             "no_such_rule",
             copy_text("beRotation.rule.gone", &[]) + " " + i,
-        ));
+        )
+            .into());
     }
     let moved = rotation::face_change(&ctx.hop.store, |b| {
         let mut moved = Map::new();
@@ -610,7 +615,7 @@ pub(crate) fn answer_default_set_with(ctx: &Ctx, args: &Value) -> Answer {
     let id = rule_id_arg(args, "rule")?.ok_or_else(|| bad("missing `rule`"))?;
     store_path(ctx)?;
     if !ctx.hop.store.now().rules.contains_key(&id) {
-        return Err(("no_such_rule", copy_text("beRotation.rule.gone", &[])));
+        return Err(("no_such_rule", copy_text("beRotation.rule.gone", &[])).into());
     }
     rotation::face_change(&ctx.hop.store, |b| b.default_rule = id.clone())
         .map_err(|e| ("io_failed", e))?;
@@ -648,7 +653,7 @@ pub(crate) fn preset_with(
         e.source = Source::Rule(rule.to_string());
         b.sessions.insert(sid.to_string(), e);
     })
-    .map_err(|e| ("io_failed", e))
+    .map_err(|e| ("io_failed", e.said_logging_raw()))
 }
 
 /// 起不成：撤掉 [`preset_with`] 记的那一条（只撤还没换过号、来源还是规则的；写不成只出声）。
@@ -661,7 +666,7 @@ pub(crate) fn forget_preset_with(ctx: &Ctx, sid: &str) {
             b.sessions.remove(sid);
         }
     }) {
-        tracing::warn!("[rotation] 撤不掉起之前记的那一条 {sid}：{e}");
+        tracing::warn!("[rotation] 撤不掉起之前记的那一条 {sid}：{}", e.logged());
     }
 }
 
@@ -674,7 +679,7 @@ pub(crate) fn answer_plan(args: &Value) -> Answer {
 }
 
 /// 预览的视窗（秒）。
-fn span_secs(args: &Value) -> Result<u64, (&'static str, String)> {
+fn span_secs(args: &Value) -> Result<u64, Fail> {
     match args.get("span") {
         None | Some(Value::Null) => Ok(12 * 3600),
         Some(v) => match v.as_str() {
@@ -700,7 +705,7 @@ fn cap_at_wire(c: &crate::accounts::quota::decide::CapAt) -> Value {
 }
 
 /// 时间轴的视窗（此刻之前, 之后，秒）：`6h` ＝ 前 2h · 后 4h；`24h` ＝ 前 6h · 后 18h；`7d` ＝ 前 1d · 后 6d。不给 ⇒ `None`（编辑器那一问：从此刻起）。
-fn view_secs(args: &Value) -> Result<Option<(u64, u64)>, (&'static str, String)> {
+fn view_secs(args: &Value) -> Result<Option<(u64, u64)>, Fail> {
     match args.get("view") {
         None | Some(Value::Null) => Ok(None),
         Some(v) => match v.as_str() {
@@ -804,7 +809,8 @@ pub(crate) fn answer_plan_with(ctx: &Ctx, args: &Value, now: u64) -> Answer {
         Some((before, after)) => (now.saturating_sub(before), now + after),
         None => (now, now + span_secs(args)?),
     };
-    let (_, _, book) = read_book(ctx);
+    let (state, why, book) = read_book(ctx);
+    let (reason, detail) = crate::stream::detail::unreadable("rotation-plan", why.as_ref());
     let zero = crate::accounts::manage::model::ACCOUNT_ZERO.to_string();
     let (rot, agent, start, current, above, asked) = if let Some(v) = args.get("rotation") {
         let errors = rotation::cell_errors(v);
@@ -830,7 +836,7 @@ pub(crate) fn answer_plan_with(ctx: &Ctx, args: &Value, now: u64) -> Answer {
         )
     } else if let Some(id) = rule_id_arg(args, "rule")? {
         let Some(r) = book.rules.get(&id) else {
-            return Err(("no_such_rule", copy_text("beRotation.rule.gone", &[])));
+            return Err(("no_such_rule", copy_text("beRotation.rule.gone", &[])).into());
         };
         let first = first_of(&r.rotation, &zero);
         (
@@ -967,6 +973,9 @@ pub(crate) fn answer_plan_with(ctx: &Ctx, args: &Value, now: u64) -> Answer {
         .collect();
     let mut out = json!({
         "errors": [],
+        "state": state,
+        "reason": reason,
+        "detail": detail,
         "now": now,
         "nowText": text(now),
         "from": from,
@@ -1081,7 +1090,7 @@ fn head_of(
     h
 }
 
-fn sids_of(args: &Value, key: &str) -> Result<Vec<String>, (&'static str, String)> {
+fn sids_of(args: &Value, key: &str) -> Result<Vec<String>, Fail> {
     let arr = args
         .get(key)
         .and_then(Value::as_array)
@@ -1108,7 +1117,8 @@ pub(crate) fn answer_session_read(args: &Value) -> Answer {
 
 pub(crate) fn answer_session_read_with(ctx: &Ctx, args: &Value, now: u64) -> Answer {
     let sids = sids_of(args, "sids")?;
-    let (state, reason, book) = read_book(ctx);
+    let (state, why, book) = read_book(ctx);
+    let (reason, detail) = crate::stream::detail::unreadable("rotation-session-read", why.as_ref());
     let live = (ctx.live)();
     let mut sessions = Map::new();
     for sid in sids {
@@ -1120,7 +1130,9 @@ pub(crate) fn answer_session_read_with(ctx: &Ctx, args: &Value, now: u64) -> Ans
             serde_json::to_value(one).map_err(|e| ("failed", e.to_string()))?,
         );
     }
-    Ok(json!({"state": state, "reason": reason, "now": now, "sessions": sessions}))
+    Ok(
+        json!({"state": state, "reason": reason, "detail": detail, "now": now, "sessions": sessions}),
+    )
 }
 
 /// `rotation-session-set`：一批会话的轮换来源（`{sids, rotation}`；`rotation` ＝ `"follow"` · `{"rule": id}` ·
@@ -1171,7 +1183,7 @@ pub(crate) fn answer_session_set_with(ctx: &Ctx, args: &Value, now: u64) -> Answ
     let book = ctx.hop.store.now();
     if let Want::Rule(id) = &want {
         if !book.rules.contains_key(id) {
-            return Err(("no_such_rule", copy_text("beRotation.rule.gone", &[])));
+            return Err(("no_such_rule", copy_text("beRotation.rule.gone", &[])).into());
         }
     }
     // 先把要写的每一份都判完（不合法整批拒、一个字节不写），再一次写进去。
@@ -1321,7 +1333,7 @@ pub(crate) fn record(
     }) {
         Ok(()) => SwitchOutcome::Switched,
         Err(e) => {
-            tracing::warn!("[rotate] {e}");
+            tracing::warn!("[rotate] {}", e.logged());
             SwitchOutcome::NotSwitched {
                 code: "ioFailed".into(),
             }

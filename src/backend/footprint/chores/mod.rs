@@ -46,18 +46,39 @@ pub(crate) struct DeadLines {
     pub lines: Vec<(usize, String)>,
 }
 
-/// 直接敲的 agent 也走中转（实时显示）。
+/// 直接敲的 agent 也走中转（实时显示）：一家一件。
 pub(crate) struct Relay {
+    /// 那一家的路由名（这一件的 id 按它分）。
+    pub agent: String,
+    /// 那一家给人看的名字。
+    pub name: String,
+    /// 地址住那份文件里哪一格（位置行）。
+    pub slot: &'static str,
+    /// （现在的内容, 地址）→ 合好的整份（那一家的格式，注册表 `SettingsEnvFace.merge`）。
+    pub merge: fn(&str, &str) -> Option<String>,
     /// `installed` · `stale` · `absent`（同 `relay-optin`）。
     pub state: String,
     pub path: String,
     /// 那份设置文件现在的内容（不在 ⇒ `None`）。
     pub text: Option<String>,
-    pub key: String,
     /// 要写进去的地址（带钥匙）；生成不了 ⇒ `None`。
     pub url: Option<String>,
     /// 地址里那把钥匙（界面显示时遮住）。
     pub secret: Option<String>,
+}
+
+impl Relay {
+    /// 按现在的内容合上地址的那一份改法（合不出 ⇒ `None`）。
+    fn plan(&self, url: &str) -> Option<Plan> {
+        let now = self.text.as_deref().unwrap_or("");
+        let whole = (self.merge)(now, url)?;
+        let (diff, at_line) = patch::line_diff_of(now, &whole);
+        Some(Plan {
+            whole,
+            diff,
+            at_line,
+        })
+    }
 }
 
 /// cc-bus 自动收信的两条钩子。
@@ -81,7 +102,7 @@ pub(crate) struct Facts {
     pub self_paste: Option<SelfPaste>,
     pub clashes: Vec<Clash>,
     pub dead: Vec<DeadLines>,
-    pub relay: Option<Relay>,
+    pub relay: Vec<Relay>,
     pub hooks: Option<Hooks>,
     /// 点过「不用了」的那几件（`marks.rs`）。
     pub declined: Vec<String>,
@@ -274,10 +295,10 @@ pub(crate) fn chores(f: &Facts) -> Vec<Value> {
         out.push(c);
     }
     let mut same_file: Vec<(usize, Plan)> = Vec::new();
-    if let Some(r) = &f.relay {
-        let mut c = Chore::new("relay", "optional", "copySnippet");
-        c.name = copy_text("beChore.relay.name", &[]);
-        c.loc = copy_text("beChore.relay.loc", &[("path", &r.path)]);
+    for r in &f.relay {
+        let mut c = Chore::new(&format!("relay:{}", r.agent), "optional", "copySnippet");
+        c.name = copy_text("beChore.relay.name", &[("agent", &r.name)]);
+        c.loc = copy_text("beChore.relay.loc", &[("path", &r.path), ("slot", r.slot)]);
         c.why = copy_text("beChore.relay.why", &[]);
         c.file = Some(r.path.clone());
         c.mask = r.secret.clone();
@@ -298,11 +319,7 @@ pub(crate) fn chores(f: &Facts) -> Vec<Value> {
                 } else {
                     c.said = copy_text("beChore.relay.saidTodo", &[]);
                 }
-                if let Some(p) = patch::set_member(
-                    r.text.as_deref().unwrap_or(""),
-                    &["env", &r.key],
-                    &json!(url),
-                ) {
+                if let Some(p) = r.plan(url) {
                     fill_plan(&mut c, &r.path, &p);
                     same_file.push((out.len(), p));
                 }
@@ -353,9 +370,14 @@ pub(crate) fn chores(f: &Facts) -> Vec<Value> {
         out.push(c);
     }
     // 同一份文件里有两件都没做 ⇒ 各自的「整份」都给含两件的那一份（按现在的内容先合一件、再合另一件）。
-    if let [(a, _), (b, _)] = same_file.as_slice() {
-        let (a, b) = (*a, *b);
-        if out[a].file == out[b].file {
+    //   能落在同一份文件里的只有「实时显示」某一家 ＋ 收信那两件（收信那一件排在最后）。
+    if let Some(((b, _), rest)) = same_file.split_last() {
+        let b = *b;
+        if let Some(a) = rest
+            .iter()
+            .map(|(a, _)| *a)
+            .find(|a| out[*a].file == out[b].file)
+        {
             let both = merge_both(f);
             if let Some(both) = both {
                 let covers = vec![out[a].id.clone(), out[b].id.clone()];
@@ -383,14 +405,9 @@ pub(crate) fn chores(f: &Facts) -> Vec<Value> {
 
 /// 实时显示与收信落在同一份文件：先合实时显示、再在合好的那份上加两条钩子。
 fn merge_both(f: &Facts) -> Option<String> {
-    let r = f.relay.as_ref()?;
     let h = f.hooks.as_ref()?;
-    let mut text = patch::set_member(
-        r.text.as_deref().unwrap_or(""),
-        &["env", &r.key],
-        &json!(r.url.as_ref()?),
-    )?
-    .whole;
+    let r = f.relay.iter().find(|r| r.path == h.path)?;
+    let mut text = r.plan(r.url.as_ref()?)?.whole;
     for (event, item) in &h.items {
         text = patch::push_item(&text, &["hooks", event], item)?.whole;
     }
@@ -424,6 +441,7 @@ fn fill_plan(c: &mut Chore, path: &str, p: &Plan) {
         copy_text("beChore.step.open", &[("path", path)]),
         match first_del {
             Some(d) if replaces => copy_text("beChore.step.replace", &[("line", &d), ("n", &n)]),
+            _ if p.at_line == 0 => copy_text("beChore.step.insertTop", &[("n", &n)]),
             _ => copy_text("beChore.step.insert", &[("line", &line), ("n", &n)]),
         },
         copy_text("beChore.step.save", &[]),

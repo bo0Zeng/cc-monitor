@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from "vitest";
 import golden from "../../../__fixtures__/machine-state.golden.json";
-import { decodeMachineState, fixLabel, machineFace } from "../../../../src/frontend/ui/settings/machine-state";
+import { decodeMachineState, fixLabel, machineFace, paintProblem } from "../../../../src/frontend/ui/settings/machine-state";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 
 type Case = { name: string; machine: Record<string, unknown> };
@@ -58,6 +58,28 @@ describe("机器状态成品", () => {
     ] as const) {
       expect(decodeMachineState(bad), what).toBeNull();
     }
+  });
+
+  it("★ 没连上那一行：壳写了详情 ⇒ 问题行那句后面跟［复制详情］，复制出去首行是那句；没详情 / 正在连 ⇒ 不出", () => {
+    const decoded = (name: string) => decodeMachineState(cases.find((c) => c.name === name)!.machine)!;
+    const down = decoded("密钥被拒");
+    expect(down.detail, "金样里没连上那一形没带详情").toContain("断在：拨号没成");
+    const row = document.createElement("div");
+    paintProblem(row, machineFace(down, "gpu-01"), () => {});
+    const copy = row.querySelector("button[aria-label], button");
+    const labels = [...row.querySelectorAll("button")].map((b) => b.textContent ?? "");
+    expect(labels.some((l) => l.includes(copyText("detail.act.copy"))), labels.join(" | ")).toBe(true);
+    expect(copy).not.toBeNull();
+    for (const name of ["正在连", "要更新"]) {
+      const el = document.createElement("div");
+      paintProblem(el, machineFace({ ...decoded(name), detail: "命令：dial" }, "gpu-01"), () => {});
+      const names = [...el.querySelectorAll("button")].map((b) => b.textContent ?? "");
+      expect(names.some((l) => l.includes(copyText("detail.act.copy"))), name).toBe(name === "要更新");
+    }
+    const bare = document.createElement("div");
+    paintProblem(bare, machineFace({ ...down, detail: null }, "gpu-01"), () => {});
+    expect([...bare.querySelectorAll("button")].some((b) => (b.textContent ?? "").includes(copyText("detail.act.copy")))).toBe(false);
+    expect(decodeMachineState({ ...cases[0]!.machine, detail: "" }), "详情是空串").toBeNull();
   });
 
   it("★ 指纹变了那一形带着那台出示的那一枚（比对框用），别的形没有", () => {

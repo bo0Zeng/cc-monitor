@@ -53,6 +53,7 @@ mod data_paths;
 mod footprint_client; // 「足迹」里 monitor 自己那台那几行（`HostScope::Client`）只有 monitor 知道的事实：它自己进程的家目录 · agent 家 · PATH（stat 在本机后端）
                       // U-CC1：数据面漂移记账 —— 把「CC 变了」从不可观测变成看一眼就知道。只记账，零行为变化。
 mod app_restart; // 设置窗「现在重启」：重起 cc-monitor 自己
+mod clipboard; // 写系统剪贴板那一条命令（回真成败）：全产品的复制只这一口
 mod desktop_notify; // 系统通知那一条命令（平台那一半在 platform/notify.rs）
 mod diagnostics_report; // 日志页「复制诊断信息」：一个命令出整段诊断文本
 mod drift_ledger;
@@ -475,7 +476,7 @@ pub fn run() {
     let born_private = platform::fs::ensure_private_dir(&monitor_data_dir);
     let logging_state = logging::init(&monitor_data_dir);
     if let Err(e) = born_private {
-        tracing::warn!("{e}");
+        tracing::warn!("{}（{}）", e.said, e.raw());
     }
     tracing::info!(
         "[perf] T+{}ms cc-monitor starting (data_dir={}, log_dir={})",
@@ -496,21 +497,18 @@ pub fn run() {
     // 闭包内同时 install_error_emitter（&self 借用）+ app.manage(clone)
     let logging_state = logging_state;
 
-    // issue #9：single-instance lock。**必须是第一个 plugin**（Tauri 官方 plugin 要求）。各平台都注册
-    // （Windows：user 级互斥量；Linux：会话总线上的名字）。第二个 cc-monitor 实例启动 → 触发本回调（在第一个实例里跑）
-    // → 把主窗口 unminimize + show + set_focus → 第二个实例立即退出（plugin 内部处理）。详 src/doc/INVARIANTS.md § 16。
+    // issue #9：single-instance lock。**必须是第一个 plugin**（第二个实例在别的插件起来之前就退）。各平台都注册
+    // （Windows / macOS：`tauri-plugin-single-instance`；Linux：自己占会话总线上的名字，连同激活令牌一起交 —— `platform/single_instance.rs`）。
+    // 第二个 cc-monitor 实例启动 → 本回调在第一个实例里跑 → 主窗口还原 · 显示 · 拉前（带令牌）→ 第二个实例立即退出。详 src/doc/INVARIANTS.md § 16。
     let mut builder = tauri::Builder::default();
-    builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+    builder = builder.plugin(crate::platform::single_instance::plugin(|app, second| {
         // 第二个实例若带 --background（开机自启竞态下偶发）→ 只 show 不抢焦点；普通双击照常置前。
-        let background = args.iter().any(|a| a == "--background");
-        tracing::info!("second cc-monitor instance detected (background={background})");
-        if let Some(win) = app.get_webview_window(MAIN_WINDOW_LABEL) {
-            let _ = win.unminimize();
-            let _ = win.show();
-            if !background {
-                let _ = win.set_focus();
-            }
-        }
+        let background = second.args.iter().any(|a| a == "--background");
+        tracing::info!(
+            "second cc-monitor instance detected (background={background}, token={})",
+            second.token.is_some()
+        );
+        crate::platform::window::raise_main(app, second.token, !background);
     }));
     // Windows 那一件（WebView2 最大化 / 全屏后内容错位的修复）住壳的平台层：别处原样返回。
     builder = crate::platform::window::desktop_fixes(builder);
@@ -620,7 +618,11 @@ pub fn run() {
                         //   **不是**去 `reason` 串里认字（那是 `KPY5` 治的那种假信号）。
                         match local_backend_host::take_start_refusal() {
                             Some(next_step) => {
-                                tracing::warn!("本机后端未启动: {reason}；找过 {looked_at:?}");
+                                tracing::warn!(
+                                    "本机后端未启动: {}（{}）；找过 {looked_at:?}",
+                                    reason.said,
+                                    reason.raw()
+                                );
                                 if let Err(e) = crate::platform::notify::show(
                                     app.handle(),
                                     &copy_text("rsLib.run.localBackendDown", &[]),
@@ -633,7 +635,11 @@ pub fn run() {
                                 }
                             }
                             None => {
-                                tracing::info!("本机后端未启动: {reason}；找过 {looked_at:?}")
+                                tracing::info!(
+                                    "本机后端未启动: {}（{}）；找过 {looked_at:?}",
+                                    reason.said,
+                                    reason.raw()
+                                )
                             }
                         }
                     }
@@ -868,6 +874,7 @@ pub fn run() {
             diagnostics_report::diagnostics_report,
             app_restart::restart_app,
             desktop_notify::notify_desktop,
+            clipboard::clipboard_write,
             // `ccm …` 调用行 · 载荷渲染两条退役：那台后端的帧命令 `launch-render-cli` / `launch-render-payload`。
             // MCP 读写（`mcp::*` 六条）与推 / 拉两条退役：界面经通道问那台后端
             //   （`mcp-read` · `mcp-server-put` / `-remove` · `mcp-sync-source` / `-preview` / `-apply`，`src/frontend/ui/mcp-reads.ts` · `src/frontend/ui/mcp-sync-reads.ts`）。
@@ -937,7 +944,6 @@ pub fn run() {
             //    ⚠ 界面上点得到它的地方是旧 SFTP 面板的表头 —— 那块面板按 `§6.6 C`
             //    要退役，而在这个窗口真能替代它之前删掉旧的等于把功能拿走 ⇒ 这一刀不删。
             filewin::entry::open_file_window,
-            // `push_public_key`〔散文墓碑〕退役：界面经通道问本机后端 `pubkey-push`。
             // 远端 `ccm` 探针那条命令退役：渲染进了那台后端，能力问它自己。
             // 🔴 `K-R69` / `KR69D2`：本机 `ccm` 这一格（我们那一份 · PATH 上那一份 · 判词）。
             ccm_probe::local_ccm_entry_status,
@@ -1588,6 +1594,9 @@ async fn bring_terminal_to_front(
     let r: Result<bind::FrontOutcome, Said> = async move {
         let cache = cache.inner().clone();
         Ok(tokio::task::spawn_blocking(move || {
+            if let Some(o) = bind::front_refusal() {
+                return o;
+            }
             let Some(binding) = cache.lookup(&session_id) else {
                 return bind::FrontOutcome::Unbound;
             };

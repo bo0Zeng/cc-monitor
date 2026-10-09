@@ -694,6 +694,7 @@ mod tests {
     /// 多开一个口 ⇒ 加在这里并写清为什么；收掉一个 ⇒ 同拍摘掉。
     const RELAY_EXPORTS: &[(&str, &str)] = &[
         ("door::Key", "中转口的钥匙：后端读好 / 铸好交进来（`Relay::new`），中转只拿它比对"),
+        ("door::Keys", "门上那两把（全权 · 只许直通）：后端读好 / 铸好一起交进来"),
         ("door::tokens_match", "定长比对的唯一住址：中转口的门与后端控制口（`stream::listen`）比令牌都用它"),
         ("server::Relay", "一个中转的全部入参（上游选择那只手 · 钥匙 · tee 落点 · 两个期限值），由后端的监听面造"),
         ("server::serve_one", "后端的接受循环接下一条连接就交给它一次：解析 → 问上游选择 → 连上游 → 逐块透传 ＋ tee"),
@@ -701,7 +702,7 @@ mod tests {
         ("server::apply_downstream_deadline", "接下连接先装下游期限（值由后端给），拒绝那一支也不会被一个不读的对端钉住"),
         ("tee::TapPort", "tee 的第二个落点的口：宿主（`stream::tap`）实现它，经 `TeeSink::to_port` 交进中转"),
         ("tee::TapEvent", "tee 交给 tap 口的一件事（`stream` · `resp` · `n` · 事件原文 / 收尾），宿主转成 `tap` 帧"),
-        ("tee::TapBody", "`TapEvent` 的两形：一个 SSE 事件原文 · 这个响应收尾了（`broken`）"),
+        ("tee::TapBody", "`TapEvent` 的三形：一个 SSE 事件原文 · 超上限那一件的开头（标截断）· 这个响应收尾了（`broken`）"),
         ("tee::TeeSink", "中转手里那个 tee 落点：后端起中转时用 `TeeSink::to_port` 把 tap 口包进来"),
         ("route::segment_is_safe", "上游选择装表判账号 id 与中转切键是**同一个谓词**（`route.rs` 头注）"),
         ("upstream::Base", "中转的传输原语：一行的上游是什么，上游选择解析它、焊进行里、原样交回"),
@@ -870,7 +871,7 @@ mod tests {
     ///
     /// # 先报摸底读数（`brief` 第 12 条：分母怎么数的一起写）
     ///
-    /// 09-02 现打，量具住 `tests/evidence/K-G4-C-relay-layer-census.py`（被测对象写死指向
+    /// 09-02 现打（被测对象写死指向
     /// `worktrees/k-g4/src/backend`）：
     ///
     /// | 方向 | 违规处数 | 分母 |

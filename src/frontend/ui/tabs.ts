@@ -1232,6 +1232,8 @@ export class TabManager {
       this.refreshTabBar();
     } else if (ch.writers || ch.needs || ch.peek) this.refreshTabBar();
     if (ch.needs) tab.turnRail.render(); // 在等你的那一轮琥珀
+    // 过程行上的「现在：… / 等你批准：…」跟着这台此刻的会话事实（后端在 `history-turns` 里拼）。
+    if (ch.needs || ch.writers || ch.peek) void tab.turnFold.refresh();
     this.paintStepWaits(tab);
     if ((ch.usage || ch.projectDir) && sid === this.store.activeId) this.publishActive();
     if (ch.agent) {
@@ -1446,6 +1448,8 @@ export class TabManager {
 
   /** ↗ 浮层的［接上终端］（主窗口接到设置窗那一节）。 */
   onConnectTerminal: (() => void) | null = null;
+  /** ↗ 浮层的［在 cc-monitor 里打开］：切到这个会话的标签页、开底部抽屉的「终端」页（main.ts 接）。 */
+  onOpenHere: ((sid: string) => void) | null = null;
 
   /** ↗ 的锚：行尾那颗（从行上点的）或会话头那颗（别的入口；会话头没在画它 ⇒ 退到行尾那颗）。 */
   private frontAnchor(sid: string, from: "row" | "head"): HTMLElement | null {
@@ -1489,6 +1493,10 @@ export class TabManager {
         return;
       case "open-in-terminal":
         await this.menu.attachRemote(sid);
+        return;
+      case "open-here":
+        closeFrontResult(sid);
+        this.onOpenHere?.(sid);
         return;
       case "copy":
         // 浮层里那颗自己复制（`kit/detail.ts`），不经这里。

@@ -195,7 +195,7 @@ function crumbsOf(r: HistoryRow, live: boolean): Node[] {
   return out;
 }
 
-/** 顶栏 ↗：切过去了换对勾；其余结局一个浮层锚在它下面（这扇窗做得了的那几颗按钮；更新 · 重新连接在主窗口做）。 */
+/** 顶栏 ↗：切过去了换对勾；其余结局一个浮层锚在它下面（这扇窗做得了的那几颗按钮；更新 · 重新连接 · 在 cc-monitor 里打开在主窗口做）。 */
 async function viewerFront(b: HTMLElement, r: HistoryRow, origin: Origin): Promise<void> {
   const res = r.origin ? await bringRemoteTerminalToFront(origin, r.sessionId) : await bringTerminalToFront(r.sessionId);
   const view = frontView(res, machineName(origin), false);
@@ -203,7 +203,7 @@ async function viewerFront(b: HTMLElement, r: HistoryRow, origin: Origin): Promi
     flashFrontDone(b);
     return;
   }
-  const acts = view.acts.filter((a) => a.kind !== "update" && a.kind !== "reconnect");
+  const acts = view.acts.filter((a) => a.kind !== "update" && a.kind !== "reconnect" && a.kind !== "open-here");
   showFrontResult(b, r.sessionId, { ...view, acts }, async (a) => {
     if (a.kind === "retry") await viewerFront(b, r, origin);
     else if (a.kind === "connect") await openSettingsWindow(undefined, connectTerminalOf(LOCAL_ORIGIN));

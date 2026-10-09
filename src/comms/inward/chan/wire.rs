@@ -277,7 +277,8 @@ impl std::fmt::Display for CallError {
                 HopFault::Overrun => copy_text("rsChanWire.hop.overrun", &[]),
             }),
             CallError::Peer { why } => f.write_str(&match why {
-                PeerFault::Unsupported => copy_text("rsChanWire.peer.unsupported", &[]),
+                // 这一层不知道那台叫什么：知道的调用方按码自己取（`copy_core::backend_old(名字)`）。
+                PeerFault::Unsupported => copy_core::backend_old(&copy_core::peer_machine()),
                 PeerFault::Refused { .. } => copy_text("rsChanWire.peer.refused", &[]),
             }),
             CallError::Ours { why, runs_on } => f.write_str(&match why {

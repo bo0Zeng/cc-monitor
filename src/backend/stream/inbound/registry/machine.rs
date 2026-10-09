@@ -129,7 +129,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "exit-policy-read",
         summary: "读「退出行为」那个值（值住后端所在那台）",
         codes: &[],
-        fields: &[out("killOnExit", "monitor 退出时结束本机常驻后端"), out("path", "那份文件的路径（在 `~/.cc-monitor/` 下）"), out("reason", "`unreadable` 时的原因"), out("said", "这个值意味着什么的一句话"), out("state", "`absent`（没设过）· `chosen` · `unreadable`（读不出：也是 `ok:true`）")],
+        fields: &[out("detail", "`unreadable` 时的复制详情（时刻 · 机器 · 命令 · 码 · 原话；排法同失败应答），`reason` 那一句不带原话"), out("killOnExit", "monitor 退出时结束本机常驻后端"), out("path", "那份文件的路径（在 `~/.cc-monitor/` 下）"), out("reason", "`unreadable` 时的原因"), out("said", "这个值意味着什么的一句话"), out("state", "`absent`（没设过）· `chosen` · `unreadable`（读不出：也是 `ok:true`）")],
         takes_input: false,
         run: Run::Blocking(|_r| Ok(Some(crate::control::exit_policy::answer_read()))),
     },
@@ -137,21 +137,17 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "exit-policy-set",
         summary: "写「退出行为」那个值，写完读回",
         codes: &["bad_args", "io_failed"],
-        fields: &[both("killOnExit", "要写的值（布尔）"), out("path", "同 `exit-policy-read`"), out("reason", "同 `exit-policy-read`"), out("said", "同 `exit-policy-read`"), out("state", "写完再读一遍的状态")],
+        fields: &[out("detail", "同 `exit-policy-read`"), both("killOnExit", "要写的值（布尔）"), out("path", "同 `exit-policy-read`"), out("reason", "同 `exit-policy-read`"), out("said", "同 `exit-policy-read`"), out("state", "写完再读一遍的状态")],
         takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::control::exit_policy::answer_set(&r.args)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
+        run: Run::BlockingData(|r| crate::control::exit_policy::answer_set(&r.args).map(Some)),
     },
     // 直接敲的那一家也走中转（可选、用户自己贴）：读这台那份用户级设置文件（同步文件 I/O ⇒ 阻塞档），出状态 ＋ 要贴的那一段。
     CommandSpec {
         name: "relay-optin",
         summary: "直接敲的 agent 也走中转",
-        codes: &["failed"],
-        fields: &[out("listening", "这台我们的中转此刻在不在听（与 `apikey-routing.running` 同一个判准）"), out("missing", "那一段为什么生成不了（这台的中转还没起来过、没有钥匙 · 决策表不给这一条）；已装 / 生成得了 ⇒ 空串"), out("note", "那份文件为什么读不了（`unreadable` 才有，其余空串）"), out("snippet", "要合并进 `env` 的那一段（**带钥匙**：设置文件里写不了 `$(cat …)`）；`installed` 或生成不了 ⇒ `null`"), out("source", "读的是哪份文件（这台后端看到的路径）"), out("state", "`installed`（写着的就是现在那一条）· `stale`（是我们那一形")],
-        takes_input: false,
+        codes: &["bad_args", "failed"],
+        fields: &[arg("agent", "哪一家的那一份（适配器 id）。空串 ⇒ 默认那一家；注册表里没有 ⇒ `bad_args`，那句话列出认得的几家"), out("listening", "这台我们的中转此刻在不在听（与 `apikey-routing.running` 同一个判准）"), out("missing", "那一段为什么生成不了（这台的中转还没起来过、没有钥匙 · 决策表不给这一条）；已装 / 生成得了 ⇒ 空串"), out("note", "那份文件为什么读不了（`unreadable` 才有，其余空串）"), out("snippet", "要合并进那份文件的那一段（**带钥匙**：设置文件里写不了 `$(cat …)`）；`installed` 或生成不了 ⇒ `null`"), out("source", "读的是哪份文件（这台后端看到的路径）"), out("state", "`installed`（写着的就是现在那一条）· `stale`（是我们那一形")],
+        takes_input: true,
         run: Run::Blocking(|r| {
             crate::accounts::upstream_select::endpoint::answer_optin(&r.args)
                 .map(Some)

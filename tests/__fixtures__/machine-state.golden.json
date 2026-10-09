@@ -17,7 +17,8 @@
         "versionRelation": "same",
         "os": null,
         "fixes": [],
-        "seenHostKey": null
+        "seenHostKey": null,
+        "detail": null
       }
     },
     {
@@ -30,7 +31,8 @@
         "versionRelation": null,
         "os": null,
         "fixes": [],
-        "seenHostKey": null
+        "seenHostKey": null,
+        "detail": null
       }
     },
     {
@@ -43,7 +45,8 @@
         "versionRelation": null,
         "os": null,
         "fixes": [],
-        "seenHostKey": null
+        "seenHostKey": null,
+        "detail": null
       }
     },
     {
@@ -56,7 +59,8 @@
         "versionRelation": null,
         "os": null,
         "fixes": [],
-        "seenHostKey": null
+        "seenHostKey": null,
+        "detail": null
       }
     },
     {
@@ -72,7 +76,8 @@
           "push_key",
           "conn_settings"
         ],
-        "seenHostKey": null
+        "seenHostKey": null,
+        "detail": "命令：dial\n对象：ms-金样-密钥被拒\n断在：拨号没成\n码：auth\n原话：raw words"
       }
     },
     {
@@ -88,7 +93,8 @@
           "retry",
           "conn_settings"
         ],
-        "seenHostKey": null
+        "seenHostKey": null,
+        "detail": "命令：dial\n对象：ms-金样-无应答\n断在：拨号没成\n码：timeout\n原话：raw words"
       }
     },
     {
@@ -103,7 +109,8 @@
         "fixes": [
           "push_key"
         ],
-        "seenHostKey": null
+        "seenHostKey": null,
+        "detail": "命令：dial\n对象：ms-金样-要密码\n断在：拨号没成\n码：password\n原话：raw words"
       }
     },
     {
@@ -118,7 +125,8 @@
         "fixes": [
           "compare_fingerprint"
         ],
-        "seenHostKey": "SHA256:new"
+        "seenHostKey": "SHA256:new",
+        "detail": "命令：dial\n对象：ms-金样-指纹变了\n断在：拨号没成\n码：host_key\n原话：raw words"
       }
     },
     {
@@ -133,7 +141,8 @@
         "fixes": [
           "update"
         ],
-        "seenHostKey": null
+        "seenHostKey": null,
+        "detail": null
       }
     },
     {
@@ -146,7 +155,8 @@
         "versionRelation": "newer",
         "os": null,
         "fixes": [],
-        "seenHostKey": null
+        "seenHostKey": null,
+        "detail": null
       }
     },
     {
@@ -159,7 +169,8 @@
         "versionRelation": "incomparable",
         "os": null,
         "fixes": [],
-        "seenHostKey": null
+        "seenHostKey": null,
+        "detail": null
       }
     },
     {
@@ -172,7 +183,8 @@
         "versionRelation": null,
         "os": null,
         "fixes": [],
-        "seenHostKey": null
+        "seenHostKey": null,
+        "detail": null
       }
     },
     {
@@ -187,7 +199,8 @@
         "fixes": [
           "connect"
         ],
-        "seenHostKey": null
+        "seenHostKey": null,
+        "detail": null
       }
     },
     {
@@ -202,7 +215,8 @@
         "fixes": [
           "retry"
         ],
-        "seenHostKey": null
+        "seenHostKey": null,
+        "detail": null
       }
     }
   ]

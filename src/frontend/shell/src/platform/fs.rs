@@ -14,6 +14,7 @@
 //! 纯逻辑（路径拼接、命名规则）不许进来：那些在 backend 里就能测，搬进来反而丢了可测性。
 
 use crate::copy_table::copy_text;
+use crate::detail::Said;
 use std::path::Path;
 
 /// 置可执行位。
@@ -27,12 +28,19 @@ use std::path::Path;
 // 唯一的调用方是 monitor 那侧的凭据写口，那个写口随「本机那一份也交本机常驻后端写」删了 ⇒ 它零调用、删掉。
 // 收窄那条原语照旧只住 `creds_core::perm`，今天只有后端账号域那一份写口在用。
 
-pub fn make_executable(p: &Path) -> Result<(), String> {
+pub fn make_executable(p: &Path) -> Result<(), Said> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(p, std::fs::Permissions::from_mode(0o700))
-            .map_err(|e| copy_text("rsPlatformFs.chmod.failed", &[("e", &e.to_string())]))?;
+        std::fs::set_permissions(p, std::fs::Permissions::from_mode(0o700)).map_err(|e| {
+            Said::with_raw(
+                copy_text(
+                    "rsPlatformFs.chmod.failed",
+                    &[("why", &copy_core::io_reason(e.kind()))],
+                ),
+                &e,
+            )
+        })?;
     }
     #[cfg(not(unix))]
     {
@@ -48,7 +56,7 @@ pub fn make_executable(p: &Path) -> Result<(), String> {
 /// 与后端那一份（`src/backend/common/own_dir.rs::ensure_private_dir`）是两个 crate 各一份：两个 crate 没有能放平台原语的共享落点
 /// （`creds-core` 的平台那半是 `harden` feature，monitor 不开）—— 权限位同一个值（0700），各自的判据各钉一半。
 /// 这是 `local_backend.rs` 那几处释放的注入参数（`C10`：那一半不认识平台），宿主自己也直接调。
-pub fn ensure_private_dir(dir: &Path) -> Result<(), String> {
+pub fn ensure_private_dir(dir: &Path) -> Result<(), Said> {
     if dir.is_dir() {
         return Ok(());
     }
@@ -60,9 +68,15 @@ pub fn ensure_private_dir(dir: &Path) -> Result<(), String> {
         b.mode(0o700);
     }
     b.create(dir).map_err(|e| {
-        copy_text(
-            "rsPlatformFs.mkdir.failed",
-            &[("dir", &(dir.display()).to_string()), ("e", &e.to_string())],
+        Said::with_raw(
+            copy_text(
+                "rsPlatformFs.mkdir.failed",
+                &[
+                    ("dir", &(dir.display()).to_string()),
+                    ("why", &copy_core::io_reason(e.kind())),
+                ],
+            ),
+            &e,
         )
     })
 }
@@ -99,17 +113,26 @@ pub struct DirLock {
 }
 
 #[cfg(unix)]
-pub fn hold_dir_lock(dir: &Path) -> Result<DirLock, String> {
+pub fn hold_dir_lock(dir: &Path) -> Result<DirLock, Said> {
     let f = std::fs::File::open(dir).map_err(|e| {
-        copy_text(
-            "rsPlatformFs.lock.openFailed",
-            &[("dir", &dir.display().to_string()), ("e", &e.to_string())],
+        Said::with_raw(
+            copy_text(
+                "rsPlatformFs.lock.openFailed",
+                &[
+                    ("dir", &dir.display().to_string()),
+                    ("why", &copy_core::io_reason(e.kind())),
+                ],
+            ),
+            &e,
         )
     })?;
     f.lock().map_err(|e| {
-        copy_text(
-            "rsPlatformFs.lock.failed",
-            &[("dir", &dir.display().to_string()), ("e", &e.to_string())],
+        Said::with_raw(
+            copy_text(
+                "rsPlatformFs.lock.failed",
+                &[("dir", &dir.display().to_string())],
+            ),
+            &e,
         )
     })?;
     Ok(DirLock { _dir: f })
@@ -144,7 +167,7 @@ fn dir_lock_name(namespace: &str, dir: &Path) -> Vec<u16> {
 }
 
 #[cfg(windows)]
-pub fn hold_dir_lock(dir: &Path) -> Result<DirLock, String> {
+pub fn hold_dir_lock(dir: &Path) -> Result<DirLock, Said> {
     const WAIT_FOREVER: u32 = 0xFFFF_FFFF;
     const WAIT_OBJECT_0: u32 = 0;
     const WAIT_ABANDONED: u32 = 0x80;
@@ -158,12 +181,12 @@ pub fn hold_dir_lock(dir: &Path) -> Result<DirLock, String> {
         }
     }
     if handle.is_null() {
-        return Err(copy_text(
-            "rsPlatformFs.lock.failed",
-            &[
-                ("dir", &dir.display().to_string()),
-                ("e", &std::io::Error::last_os_error().to_string()),
-            ],
+        return Err(Said::with_raw(
+            copy_text(
+                "rsPlatformFs.lock.failed",
+                &[("dir", &dir.display().to_string())],
+            ),
+            std::io::Error::last_os_error(),
         ));
     }
     // SAFETY: `handle` 是刚拿到的互斥量句柄。
@@ -172,12 +195,12 @@ pub fn hold_dir_lock(dir: &Path) -> Result<DirLock, String> {
         other => {
             // SAFETY: 同上；没拿到就只关句柄。
             unsafe { CloseHandle(handle) };
-            Err(copy_text(
-                "rsPlatformFs.lock.failed",
-                &[
-                    ("dir", &dir.display().to_string()),
-                    ("e", &format!("{other:#x}")),
-                ],
+            Err(Said::with_raw(
+                copy_text(
+                    "rsPlatformFs.lock.failed",
+                    &[("dir", &dir.display().to_string())],
+                ),
+                format!("{other:#x}"),
             ))
         }
     }
@@ -210,17 +233,14 @@ impl Drop for DirLock {
 /// 所以这里走 MoveFileExW(MOVEFILE_REPLACE_EXISTING)；非 Windows 走 std::fs::rename。
 #[cfg(windows)]
 pub(crate) fn atomic_replace(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
-    use std::os::windows::ffi::OsStrExt;
     use windows::core::PCWSTR;
     use windows::Win32::Storage::FileSystem::{MoveFileExW, MOVEFILE_REPLACE_EXISTING};
 
-    // 带长路径前缀（`host_core::win32_long_path`）：过 260 字符的路径照样换得上。
-    let wide = |p: &std::path::Path| -> std::io::Result<Vec<u16>> {
-        let mut w = host_core::win32_long_path(std::path::absolute(p)?.as_os_str().encode_wide());
-        w.push(0);
-        Ok(w)
-    };
-    let (src_w, dst_w) = (wide(src)?, wide(dst)?);
+    // 带长路径前缀：过 260 字符的路径照样换得上。
+    let (src_w, dst_w) = (
+        win_path_core::win32_path(src)?,
+        win_path_core::win32_path(dst)?,
+    );
     unsafe {
         MoveFileExW(
             PCWSTR(src_w.as_ptr()),

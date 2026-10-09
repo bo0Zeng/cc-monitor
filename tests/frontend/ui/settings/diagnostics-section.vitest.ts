@@ -7,7 +7,8 @@
  * - 复制诊断信息：读到那一份之前置灰（悬停说为什么）；读到 ⇒ 复制的是壳出的那一整段；剪贴板不可用 ⇒ 只读文本框全选好。
  * - 「未识别数据」那一行读同一份答复里的数（读不到的那台照实说读不到）。
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, onTestFinished } from "vitest";
+import { fakeClipboard } from "../../../test-support/clipboard-fake";
 
 const { setDiag, getDiag, logInfo, opened, report } = vi.hoisted(() => ({
   setDiag: { fail: null as Error | null, calls: [] as unknown[] },
@@ -49,6 +50,7 @@ vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
     get_log_file_info: () => Promise.resolve(logInfo.value),
     diagnostics_report: () => (report.fail ? Promise.reject(report.fail) : Promise.resolve(report.value)),
     open_log_dir: () => Promise.resolve(),
+    clipboard_write: async (a: { text: string }) => (await import("../../../test-support/clipboard-fake")).viaFake(a),
   },
 }));
 vi.mock("../../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn() }));
@@ -169,8 +171,8 @@ describe("文件：本机 cc-monitor 输出", () => {
 
 describe("复制诊断信息 · 未识别数据那一行", () => {
   it("★ 读到之前置灰（悬停说为什么）；读到 ⇒ 亮起，复制的是壳出的那一整段", async () => {
-    const write = vi.fn().mockResolvedValue(undefined);
-    Object.assign(navigator, { clipboard: { writeText: write } });
+    const clip = fakeClipboard();
+    onTestFinished(() => clip.restore());
     const sec = new DiagnosticsSection();
     const head = sec.headButton();
     const btns = [head, ...sec.element.querySelectorAll<HTMLButtonElement>("[data-role=copy-diagnostics]")];
@@ -183,7 +185,7 @@ describe("复制诊断信息 · 未识别数据那一行", () => {
     expect(btns.every((b) => b.getAttribute("aria-disabled") === null)).toBe(true);
     head.click();
     await settle();
-    expect(write).toHaveBeenCalledWith(report.value.text);
+    expect(clip.written).toEqual([report.value.text]);
   });
 
   it("★ 读不到 ⇒ 复制一直灰着、那一行说读不到（不拿空段冒充「都认得」）", async () => {
@@ -207,7 +209,9 @@ describe("复制诊断信息 · 未识别数据那一行", () => {
   });
 
   it("★ 剪贴板不可用 ⇒ 页内一个只读文本框、全选好，说按 Ctrl+C", async () => {
-    Object.assign(navigator, { clipboard: { writeText: vi.fn().mockRejectedValue(new Error("no clipboard")) } });
+    const clip = fakeClipboard();
+    clip.refuse();
+    onTestFinished(() => clip.restore());
     const sec = await loaded();
     const head = sec.headButton();
     head.click();

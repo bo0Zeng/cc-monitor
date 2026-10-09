@@ -2,8 +2,7 @@
 //!
 //! 买到：阶段行按到达顺序交出、ack 读得出 · 拨不通带着指纹回来 · 老代理（不认所请求的用法）出声 ·
 //! 没回应答 / 形状不对 / 行太长各落各的错 · 收全结果与转发计数读得出。
-//! **异源**：下面那几行「代理的输出」逐字抄自对真回环 sshd 跑出来的读数（`tests/evidence/C2-dial-loopback.py`
-//! 那一趟的 stdout），不是本侧序列化出来再读回去。阶段 `kind` 的六个字面量另由后端那侧
+//! **异源**：下面那几行「代理的输出」逐字抄自对真回环 sshd 跑出来的读数（那一趟的 stdout），不是本侧序列化出来再读回去。阶段 `kind` 的六个字面量另由后端那侧
 //! （`tests/backend/dial_tests.rs::the_ack_and_the_stage_lines_have_the_shape_the_monitor_reads`）从它的类型序列化出来核一遍。
 //! **买不到**：真代理进程（那一圈归宿主 `dial_host` 与读数脚本）。
 
@@ -95,6 +94,7 @@ async fn a_refusal_comes_back_with_the_fingerprint_it_saw() {
             fingerprint: Some("SHA256:t3uliopxPzh9UPGAywEklG+BprfkJP07toWVhzBCwB4".into()),
             open_refused: None,
             reason: None,
+            detail: None,
         }
     );
     // 开通道被回拒的原因码原样带出来（界面据它分「不许端口转发」与「口上还没人」）。
@@ -123,6 +123,19 @@ async fn a_refusal_comes_back_with_the_fingerprint_it_saw() {
         matches!(&e, LinkError::Refused { reason: Some(w), .. } if w == "auth"),
         "{e:?}"
     );
+    // 后端写好的复制详情原样带出来（那一句里不带原话，原话在这里）。
+    let out = concat!(
+        r#"{"ok":false,"error":"step-said","detail":"命令：dial\n原话：raw words","reason":"auth","v":2,"uses":["stream"]}"#,
+        "\n"
+    );
+    let mut r = tokio::io::BufReader::new(out.as_bytes());
+    let e = handshake(&mut r, "stream", CAP, &mut |_| {})
+        .await
+        .expect_err("拨不通被读成了通");
+    assert!(
+        matches!(&e, LinkError::Refused { detail: Some(d), why, .. } if d == "命令：dial\n原话：raw words" && why == "step-said"),
+        "{e:?}"
+    );
 }
 
 /// 🔴 老代理（`K-P6b` 那一版的 ack：没有 `v`、没有 `uses`）对 `capture` 请求 ⇒ `TooOld`，**不去解后面那些字节**。
@@ -143,7 +156,7 @@ async fn an_old_proxy_is_named_not_misread() {
     );
     assert!(e
         .to_string()
-        .contains(copy_core::copy_static!("rsSshLink.dial.tooOld")));
+        .contains(&copy_core::backend_old(&copy_core::local_machine())));
     // 同一个 ack，请求的是长流 ⇒ **照样出声**（见下面那句为什么）
     let mut r = tokio::io::BufReader::new(out.as_bytes());
     let e = handshake(&mut r, "stream", CAP, &mut |_| {}).await;

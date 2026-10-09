@@ -127,7 +127,7 @@ pub async fn connect_and_exec_capture(
     cfg: &RemoteConfig,
     cmd: &str,
     abort_marker: Option<&str>,
-) -> Result<RemoteExec, String> {
+) -> Result<RemoteExec, crate::detail::Said> {
     // 收全三样的活在本机常驻后端里（`use: capture`）；stdout / stderr 各自的上限由这里给。
     crate::dial_host::capture(cfg, cmd, abort_marker, EXEC_CAPTURE_MAX_BYTES).await
 }

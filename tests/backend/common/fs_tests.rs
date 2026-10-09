@@ -16,14 +16,14 @@ fn an_oversized_file_is_rejected_before_it_is_read() {
 
     let err = read_regular_capped(&path, 10).expect_err("100 字节 > cap 10，必须拒");
     assert!(
-        err.contains(&copy_core::copy_text(
+        err.said.contains(&copy_core::copy_text(
             "beFs.readRegularCapped.tooBig",
             &[("cap", "10")]
         )),
         "拒绝信息要说清上限，实得：{err}"
     );
     assert!(
-        err.contains("100"),
+        err.said.contains("100"),
         "★ 要报出**实际大小** —— 只说「超限」，用户不知道差多少、也不知道该不该清理。实得：{err}"
     );
 
@@ -71,7 +71,7 @@ fn the_early_return_happens_before_any_read_not_just_somewhere() {
 
     // 抽取器自检：拒的是**这条路**（早退那条带实际大小），不是别的错。
     assert!(
-        err.contains(&FILE.to_string()),
+        err.said.contains(&FILE.to_string()),
         "拒绝信息里没有实际大小 —— 走的不是早退那条，本条量的不是它：{err}"
     );
     assert!(
@@ -84,4 +84,18 @@ fn the_early_return_happens_before_any_read_not_just_somewhere() {
     );
 
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// 读不了那一句只是原因（不是普通文件 · 超出上限 · IO 原因词），系统原话进 `raw`。
+#[test]
+fn a_refused_read_says_the_reason_and_keeps_the_os_words_apart() {
+    let dir = std::env::temp_dir().join(format!("ccm-fs-said-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let e = read_regular_capped(&dir, 8).expect_err("目录也读成了");
+    assert_eq!(e.said, copy_text("beFs.readRegularCapped.notRegular", &[]));
+    let gone = dir.join("gone");
+    let e = read_regular_capped(&gone, 8).expect_err("不在的也读成了");
+    assert_eq!(e.said, copy_core::io_reason(std::io::ErrorKind::NotFound));
+    assert!(e.raw.is_some(), "系统原话没进详情：{e:?}");
+    std::fs::remove_dir_all(&dir).ok();
 }

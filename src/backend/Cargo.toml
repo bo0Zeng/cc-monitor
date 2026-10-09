@@ -112,6 +112,8 @@ acct-core = { path = "../common/acct-core" }
 #   （`readonly_guard::g6_dependency_signoff` 那条边界判据 ＋ `relay::creds_guard` 那条 feature 判据）。
 # 顺带：开了之后 Windows 上 `perm::probe` 也读得了 DACL（先前那条「查不出来」的代价没了）。
 creds-core = { path = "../common/creds-core", features = ["harden"] }
+# 交给 Win32 的路径（长路径前缀）只从它来：不覆盖改名那一处用；仓内 crate、零依赖。
+win-path-core = { path = "../common/win-path-core" }
 # U8c-2b-0：POSIX 单引号 quote 的唯一实现（账本 S5 收口）。
 # 本 crate 只用它一处（`control/tmux_hook::sq`）；U8c-2c 起载荷渲染也走它。
 shell-quote-core = { path = "../common/shell-quote-core" }
@@ -194,7 +196,7 @@ ring = "0.17"
 # `primefield` 那条钉（搬自 `../frontend/shell/Cargo.toml`，那一行随三行一起删了）：russh 的 ECDSA 走 p256/p521 0.14.0-rc.9，
 # 它们要 primefield 0.14.0-rc.9；cargo 默认会在 0.14.0-rc.* 里取最新的 rc.10（改了 ff trait 拆分，与 rc.9 的
 # p256/p521 不兼容 ⇒ `E0277 FieldElement: elliptic_curve::Field`）。本 crate **没有**声明它，靠的是 lock 里锁着的
-# `0.14.0-rc.9`（`K-P6b-r3-lock-prime.py` 播的种）—— 与下面 `crypto-bigint` 那段同一个处境：**重解析就会撞上**。
+# `0.14.0-rc.9`（从 monitor 那份 lock 播的种）—— 与下面 `crypto-bigint` 那段同一个处境：**重解析就会撞上**。
 #
 # ⚠⚠ **两条如实登记的代价，别读成「没问题」**：
 #   ① **`C18`「依赖树零 C」这条本 crate 早就不成立**（`rustls`/`ring` 08-25 就进来了，
@@ -218,7 +220,7 @@ ring = "0.17"
 # ⇒ **`cargo` 在解析这一步拒绝选它**（`=0.7.3` 硬钉也照拒），实打退 101。
 # `cargo` 只在**解析**时拒 yanked，不在「lock 里已经写着」时拒 ——
 # `../frontend/shell/Cargo.lock` 今天就锁着 `crypto-bigint 0.7.3`（在 yank 之前锁进去的），
-# monitor 侧因此断网构建得动。⇒ 本 crate 的 lock 由 `tests/evidence/K-P6b-r3-lock-prime.py`
+# monitor 侧因此断网构建得动。⇒ 本 crate 的 lock 是
 # 把 monitor 那份里 `russh` 可达的包块搬过来，处境与 monitor 侧对齐。
 # 🔴 **代价写明**：本 crate 从此也钉在一个 **yanked** 的 `crypto-bigint 0.7.3` 上
 # （与 monitor 侧同一份）。哪天 `russh` 升到能用 `0.7.5` 的版本，两侧一起挪。

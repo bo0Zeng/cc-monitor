@@ -254,7 +254,7 @@ fn the_retry_budget_number_has_a_measured_origin_pinned_to_it() {
 /// ⚠ **形态表是枚举，不是全称**：表外的写法（自己 `clone(2)` · 换一个装 fd 的 crate ·
 /// 走 `nix`）**本条一个都看不见**。这条边界也写进失败文案，别读成「这一族已经封死」。
 /// 立本条时逐条现打过一趟：除 `pre_exec` 那 3 行注释外，表里其余六种**全树零命中**
-/// （分母 216 份 `.rs`，量具 `tests/evidence/K-R31-fork-exec-forms.py`）。
+/// （分母 216 份 `.rs`）。
 ///
 /// # 反向那半（没有它，本条会在空串上恒真地绿）
 ///
@@ -1013,7 +1013,8 @@ fn place() -> Result<serde_json::Value, crate::ccm_probe::OnceErr> {
 fn the_local_landing_is_placed_exactly_as_the_bytes_in_hand_say() {
     let d = tmpdir_e2("place");
     let mark = |_: &Path| Ok(());
-    let dirs = |p: &Path| std::fs::create_dir_all(p).map_err(|e| e.to_string());
+    let dirs =
+        |p: &Path| std::fs::create_dir_all(p).map_err(|e| crate::detail::Said::from(e.to_string()));
     let dest = d.join(local_ccm_entry_name());
     let disk = || std::fs::read(&dest).unwrap_or_default();
     let partial = d.join(format!(
@@ -1079,7 +1080,7 @@ fn the_local_landing_is_placed_exactly_as_the_bytes_in_hand_say() {
         let fake = FakeAsk::new(answer.clone(), &mine);
         match put(&fake) {
             Err(Unplaced::Said(s)) => assert!(
-                copy_core::copy_matches("rsLocalBackend.place.unasked", &s),
+                copy_core::copy_matches("rsLocalBackend.place.unasked", &s.said),
                 "{answer:?}：{s}"
             ),
             other => panic!("{answer:?}：该是「问不成、没放」，实得 {other:?}"),
@@ -1292,12 +1293,12 @@ fn the_missing_local_backend_diagnosis_hands_the_user_a_next_step() {
         panic!("应当是 Missing");
     };
     assert!(
-        copy_core::copy_matches("rsLocalBackend.resolve.notBeside", &reason),
+        copy_core::copy_matches("rsLocalBackend.resolve.notBeside", &reason.said),
         "诊断没给读它的人任何一条做得到的下一步（找过 {A_STEP_THE_USER_CAN_TAKE:?}）。\n\
              「本机后端没有」本身**不是**下一步 —— 用户要的是「那我该干嘛」。\n\
              逐字：{reason}"
     );
-    let id = internal_item_id_in(&reason);
+    let id = internal_item_id_in(&reason.said);
     assert!(
         id.is_none(),
         "诊断里出现了内部件号 `{}` —— 用户拿它什么也做不了，而且件号会过期\n\
@@ -1333,7 +1334,11 @@ fn the_extraction_refusal_is_a_different_sentence_from_having_no_backend_at_all(
     // 中性名：不含下面任何一个断言用的子串（`6g`）。
     let dir = Path::new("/tmp/ccm-fixture-7/bin");
     let os_err = "Permission denied (os error 13)";
-    let refused = extraction_failure_reason(dir, os_err);
+    let denied = copy_core::io_reason(std::io::ErrorKind::PermissionDenied);
+    let refused = extraction_failure_reason(
+        dir,
+        crate::detail::Said::with_raw(format!("{dir:?} · {denied}"), os_err),
+    );
 
     // ── 反向锚点：标记串不许来自夹具的名字 ───────────────────────────
     assert!(
@@ -1352,32 +1357,38 @@ fn the_extraction_refusal_is_a_different_sentence_from_having_no_backend_at_all(
         panic!("应当是 Missing");
     };
     assert!(
-        refused.contains(EXTRACTION_REFUSED_MARKER.as_str()),
+        refused.said.contains(EXTRACTION_REFUSED_MARKER.as_str()),
         "「放不下来」那一句丢了它的标记 ⇒ 调用方与判据都再也分不出它和「没带后端」。\n逐字：{refused}"
     );
     assert!(
-        !absent.contains(EXTRACTION_REFUSED_MARKER.as_str()),
+        !absent.said.contains(EXTRACTION_REFUSED_MARKER.as_str()),
         "「压根没带」那一句也带上了标记 ⇒ 标记不再区分任何东西，两句话又合成一句。\n逐字：{absent}"
     );
 
     // ── ② 说得出「在哪儿」与「为什么」——否则「响亮」只是嗓门大 ────────
     assert!(
-        refused.contains("/tmp/ccm-fixture-7/bin"),
+        refused.said.contains("/tmp/ccm-fixture-7/bin"),
         "没说清写不进去的是**哪个目录** —— 用户拿它没法去改权限。\n逐字：{refused}"
     );
+    // 原因词进句子（「无权限」与磁盘满是不同的下一步），底层错误串原样进复制详情、不上句子。
     assert!(
-        refused.contains(os_err),
-        "底层错误串没被原样带出来 —— `os error 13`（权限）与磁盘满是完全不同的下一步。\n逐字：{refused}"
+        refused.said.contains(&denied) && !refused.said.contains(os_err),
+        "句子里该是原因词、不该是底层错误串。\n逐字：{refused}"
+    );
+    assert!(
+        refused.raw().contains(os_err),
+        "底层错误串没被原样带进复制详情。\n详情：{}",
+        refused.detail
     );
 
     // ── ③ 与兄弟那条同职：给得出下一步 · 不许甩件号 ──────────────────
     //    〔铁律 15「我治的是这一处，还是所有同职的地方」：这两格是那一条判据
     //      已经买过的性质，而它的射程逐字写着**盖不到本函数** ⇒ 在这里补齐。〕
     assert!(
-        copy_core::copy_matches("rsLocalBackend.extraction.failed", &refused),
+        copy_core::copy_matches("rsLocalBackend.extraction.failed", &refused.said),
         "「放不下来」那一句没给读它的人任何一条做得到的下一步（找过 {A_STEP_THE_USER_CAN_TAKE:?}）。\n逐字：{refused}"
     );
-    let id = internal_item_id_in(&refused);
+    let id = internal_item_id_in(&refused.said);
     assert!(
         id.is_none(),
         "诊断里出现了内部件号 `{}` —— 用户拿它什么也做不了，而且件号会过期。\n逐字：{refused}",
@@ -1421,15 +1432,17 @@ fn a_directory_it_cannot_create_really_takes_the_loud_path() {
     ) else {
         panic!("目标目录的父路径是个普通文件，它居然没走「写不进去」那一形");
     };
-    let reason = extraction_failure_reason(&dir, &err);
+    let reason = extraction_failure_reason(&dir, err.clone());
     assert!(
-        reason.contains(EXTRACTION_REFUSED_MARKER.as_str()),
+        reason.said.contains(EXTRACTION_REFUSED_MARKER.as_str()),
         "真失败走出来的那句话没有标记 ⇒ 它与「这份产物没带后端」又分不开了。\n逐字：{reason}"
     );
     assert!(
-        reason.contains(&err),
-        "底层失败原文没被原样带出来 —— 「建不出目录」与「盘满」是不同的下一步。\n\
-             实得 err：{err}\n逐字：{reason}"
+        reason.said.contains(&err.said) && !err.raw().is_empty() && reason.raw() == err.raw(),
+        "底层失败原文没被原样带进复制详情 —— 「建不出目录」与「盘满」是不同的下一步。\n\
+             实得 err：{err}（{}）\n逐字：{reason}（{}）",
+        err.raw(),
+        reason.raw()
     );
     let _ = std::fs::remove_dir_all(&base);
     println!("KR42-OK 真写不进去时走的是 Err，逐字：{err}");
@@ -2523,7 +2536,7 @@ fn e2e_a_binary_that_always_dies_is_given_up_on_within_the_cap() {
     );
     let gave_up = spin(|| {
         events.lock().expect("ev").iter().find_map(|e| match e {
-            SuperviseEvent::GaveUp { reason } => Some(reason.clone()),
+            SuperviseEvent::GaveUp { reason, .. } => Some(reason.clone()),
             _ => None,
         })
     })
@@ -2990,9 +3003,12 @@ fn a_refusal_from_the_byte_table_reaches_the_missing_reason_and_writes_nothing()
     let Resolved::Missing { reason, .. } = r else {
         panic!("取不到字节竟然 Found 了：{r:?}");
     };
-    assert!(reason.contains(said), "拒绝的话没到 reason 里：{reason}");
     assert!(
-        copy_core::copy_matches("rsLocalBackend.resolve.notBeside", &reason),
+        reason.said.contains(said),
+        "拒绝的话没到 reason 里：{reason}"
+    );
+    assert!(
+        copy_core::copy_matches("rsLocalBackend.resolve.notBeside", &reason.said),
         "「旁边没有」那一句被换掉了（两件事都要说）：{reason}"
     );
     // 「一个字节都不写」：空目录才删得掉（`remove_dir` 对非空目录报错）—— 不遍历目录。

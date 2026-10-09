@@ -25,9 +25,11 @@ pub const TABLE_JSON: &str = include_str!("../../../shared/copy/table.json");
 
 mod civil;
 mod duration;
+mod peer;
 pub use civil::civil_from_days;
 pub use duration::{format_duration, format_elapsed};
-pub use reason::io_reason;
+pub use peer::{backend_old, local_machine, peer_machine, reply_unreadable};
+pub use reason::{io_reason, sftp_status_reason};
 pub mod detail;
 pub mod reason;
 
@@ -257,22 +259,3 @@ pub fn copy_matches_with(key: &str, known: &[(&str, &str)], text: &str) -> bool 
 #[cfg(test)]
 #[path = "../../../../tests/common/copy-core/lib_tests.rs"]
 mod tests;
-
-/// 一句话里称呼本机的那个词（与界面 `chan-caller.ts::machineName` 同一条）。
-pub fn local_machine() -> String {
-    copy_text("control.machine.local", &[])
-}
-
-/// 因对方版本说不成的两个码，全产品各一句（与界面 `chan-caller.ts::peerVersionSaid` 同两条键）。
-/// `machine` 是给人看的称呼（本机 ⇒ [`local_machine`]）。
-///
-/// - 那台后端不认这条命令 ⇒ [`backend_old`]；
-/// - 那台回了、回的东西认不出 ⇒ [`reply_unreadable`]（只说认不出，不猜版本；细目进日志）。
-pub fn backend_old(machine: &str) -> String {
-    copy_text("peerVersion.said.old", &[("machine", machine)])
-}
-
-/// 见 [`backend_old`]。
-pub fn reply_unreadable(machine: &str) -> String {
-    copy_text("peerVersion.said.unreadable", &[("machine", machine)])
-}

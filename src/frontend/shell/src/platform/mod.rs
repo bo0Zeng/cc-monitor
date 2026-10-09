@@ -8,6 +8,9 @@
 pub mod console_text;
 // 借别的进程的控制台挂一次记号标题（↗ 默认终端交接那一档）。
 pub mod console_title;
+// X11 上找 / 验 / 拉前窗口的 EWMH 读法（`hwnd` 的 Linux 那一臂）。
+#[cfg(target_os = "linux")]
+pub mod ewmh;
 // `utils::FileTime` 的 Win32 那两件。
 pub mod filetime;
 pub mod fs;
@@ -17,6 +20,8 @@ pub mod login_shell;
 pub mod notify;
 pub mod pid;
 pub mod proc;
+// 只开一个 cc-monitor（Linux 自己占会话总线上的名字、转交激活令牌；别处经插件）。
+pub mod single_instance;
 pub mod spawn;
 pub mod ssh_agent;
 // 开终端窗口的平台那一半，原住 `launch.rs`。

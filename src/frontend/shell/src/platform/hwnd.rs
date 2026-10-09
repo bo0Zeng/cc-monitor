@@ -1,10 +1,87 @@
 //! 桌面窗口这一族的平台读法〔阶段 H：；原住 `bind.rs`〕：可见窗口枚举（按标题 / 按属主进程）· 句柄还在不在 · 属主 pid · 拉到前台。
 //!
-//! 只有 Windows 有这一族（Win32 `HWND`）；别处每一问都答「没有」。
+//! Windows 走 Win32（`HWND`）；Linux 的 X11 会话走 EWMH（[`super::ewmh`]，「句柄」是 X 窗口号）；
+//! Wayland 会话里别的程序的窗口这一族一个都看不见 —— 每一问都答「没有」，由 `bind.rs` 按 [`display_session`] 照实说。
 //! 判定不在这里（「翻译官只翻译事实的读法」）：哪个标题算我们的窗口 · 一条绑定还作不作数 · 拉不动说哪句，都在 `bind.rs`。
 
-/// 这台系统有没有「按句柄找 / 验 / 拉前一个桌面窗口」这一族（今天只有 Windows）。
-pub const SUPPORTED: bool = cfg!(windows);
+/// 这台此刻是哪一种桌面会话（↗ 走哪条路由 `bind.rs` 据此定）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DisplaySession {
+    /// Windows 桌面（只有 Windows 那一臂造它）。
+    #[cfg_attr(not(windows), allow(dead_code))]
+    Win32,
+    /// X11 会话（窗口管理器挂 EWMH 那几张表）。
+    X11,
+    /// Wayland 会话；`desktop` 是 `XDG_CURRENT_DESKTOP` 里的桌面名（`ubuntu:GNOME` ⇒ `GNOME`；没有 ⇒ 空串）。
+    Wayland { desktop: String },
+    /// 没有图形会话（没有 `$DISPLAY` 也没有 `$WAYLAND_DISPLAY`），或这个平台不做这一族。
+    Unsupported,
+}
+
+/// 由那几格环境认会话：说了是 Wayland（`XDG_SESSION_TYPE=wayland`）或挂着 `$WAYLAND_DISPLAY` ⇒ Wayland
+/// （哪怕也有 `$DISPLAY`：那是 Xwayland，只看得见 X 程序的窗口，按它找会把 Wayland 终端认成「没有窗口」）；
+/// 否则有 `$DISPLAY` ⇒ X11；都没有 ⇒ 不支持。空串当没有。
+pub fn session_from(
+    session_type: Option<&str>,
+    wayland_display: Option<&str>,
+    display: Option<&str>,
+    desktop: Option<&str>,
+) -> DisplaySession {
+    let set = |v: Option<&str>| v.is_some_and(|s| !s.is_empty());
+    if session_type == Some("wayland") || set(wayland_display) {
+        // `ubuntu:GNOME` 这种由近到远排的列表 ⇒ 取最后那个（桌面本身）。
+        DisplaySession::Wayland {
+            desktop: desktop
+                .and_then(|d| d.rsplit(':').find(|p| !p.is_empty()))
+                .unwrap_or("")
+                .to_string(),
+        }
+    } else if set(display) {
+        DisplaySession::X11
+    } else {
+        DisplaySession::Unsupported
+    }
+}
+
+/// 这台此刻的桌面会话。
+pub fn display_session() -> DisplaySession {
+    #[cfg(windows)]
+    {
+        DisplaySession::Win32
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let v = |k: &str| std::env::var(k).ok();
+        session_from(
+            v("XDG_SESSION_TYPE").as_deref(),
+            v("WAYLAND_DISPLAY").as_deref(),
+            v("DISPLAY").as_deref(),
+            v("XDG_CURRENT_DESKTOP").as_deref(),
+        )
+    }
+    #[cfg(not(any(windows, target_os = "linux")))]
+    {
+        DisplaySession::Unsupported
+    }
+}
+
+/// 这一族此刻读得到窗口（Windows · X11 会话）。
+pub fn supported() -> bool {
+    matches!(
+        display_session(),
+        DisplaySession::Win32 | DisplaySession::X11
+    )
+}
+
+/// X11 会话里窗口管理器管着的顶层窗口（别的会话 ⇒ 空：Xwayland 那一半不算数）。
+#[cfg(target_os = "linux")]
+fn x11_clients() -> Vec<super::ewmh::Client> {
+    if display_session() == DisplaySession::X11 {
+        super::ewmh::clients()
+    } else {
+        Vec::new()
+    }
+}
 
 /// 枚举命中的那个窗口的快照（`find_window_by_marker_substr` 的输出）。
 pub struct MarkerHit {
@@ -89,7 +166,19 @@ pub fn first_visible_window(needle: &str, matches: fn(&str, &str) -> bool) -> Op
     FOUND.with(|f| f.borrow_mut().take())
 }
 
-#[cfg(not(windows))]
+#[cfg(target_os = "linux")]
+pub fn first_visible_window(needle: &str, matches: fn(&str, &str) -> bool) -> Option<MarkerHit> {
+    x11_clients()
+        .into_iter()
+        .find(|c| matches(&c.title, needle))
+        .map(|c| MarkerHit {
+            hwnd: c.window as isize,
+            owner_pid: c.pid,
+            title: c.title,
+        })
+}
+
+#[cfg(not(any(windows, target_os = "linux")))]
 pub fn first_visible_window(_needle: &str, _matches: fn(&str, &str) -> bool) -> Option<MarkerHit> {
     None
 }
@@ -130,7 +219,17 @@ pub fn visible_top_windows_of(pid: u32) -> Vec<isize> {
     HITS.with(|h| std::mem::take(&mut *h.borrow_mut()))
 }
 
-#[cfg(not(windows))]
+/// X11：`_NET_WM_PID` 是 `pid`、没有 `WM_TRANSIENT_FOR` 的那几个（同 Windows「无主的顶层窗口」）。
+#[cfg(target_os = "linux")]
+pub fn visible_top_windows_of(pid: u32) -> Vec<isize> {
+    x11_clients()
+        .into_iter()
+        .filter(|c| c.pid == pid && pid != 0 && !c.transient)
+        .map(|c| c.window as isize)
+        .collect()
+}
+
+#[cfg(not(any(windows, target_os = "linux")))]
 pub fn visible_top_windows_of(_pid: u32) -> Vec<isize> {
     Vec::new()
 }
@@ -143,7 +242,13 @@ pub fn exists(hwnd: isize) -> bool {
     unsafe { IsWindow(HWND(hwnd)).as_bool() }
 }
 
-#[cfg(not(windows))]
+/// X11：还在窗口管理器那张表里。
+#[cfg(target_os = "linux")]
+pub fn exists(hwnd: isize) -> bool {
+    x11_clients().iter().any(|c| c.window as isize == hwnd)
+}
+
+#[cfg(not(any(windows, target_os = "linux")))]
 pub fn exists(_hwnd: isize) -> bool {
     false
 }
@@ -161,7 +266,16 @@ pub fn owner_pid(hwnd: isize) -> u32 {
     cur_owner
 }
 
-#[cfg(not(windows))]
+/// X11：那个窗口此刻挂的 `_NET_WM_PID`。
+#[cfg(target_os = "linux")]
+pub fn owner_pid(hwnd: isize) -> u32 {
+    x11_clients()
+        .into_iter()
+        .find(|c| c.window as isize == hwnd)
+        .map_or(0, |c| c.pid)
+}
+
+#[cfg(not(any(windows, target_os = "linux")))]
 pub fn owner_pid(_hwnd: isize) -> u32 {
     0
 }
@@ -182,7 +296,15 @@ pub fn bring_to_front(hwnd: isize) -> bool {
     }
 }
 
-#[cfg(not(windows))]
+/// X11：请窗口管理器切过去（`_NET_ACTIVE_WINDOW`），等它最多 600 ms 答应（同握手那条的重试长度）。
+#[cfg(target_os = "linux")]
+pub fn bring_to_front(hwnd: isize) -> bool {
+    display_session() == DisplaySession::X11
+        && u32::try_from(hwnd)
+            .is_ok_and(|w| super::ewmh::activate(w, std::time::Duration::from_millis(600)))
+}
+
+#[cfg(not(any(windows, target_os = "linux")))]
 pub fn bring_to_front(_hwnd: isize) -> bool {
     false
 }

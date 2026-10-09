@@ -71,7 +71,7 @@ pub(super) fn upstreams_at(up: SocketAddr) -> Upstreams {
 pub(super) fn spawn_relay_over(accounts: Accounts) -> SocketAddr {
     let relay = Arc::new(Relay::new(
         Arc::new(accounts),
-        super::key::key_tests::test_key(),
+        super::key::key_tests::test_keys(),
         TeeSink::to_port(Arc::new(Mute)),
         DOWNSTREAM_DEADLINE,
         UPSTREAM_DEADLINE,
@@ -231,7 +231,7 @@ fn refused_429() -> String {
 fn relay_over(d: Arc<dyn comms_outward::Destinations>) -> SocketAddr {
     let relay = Arc::new(Relay::new(
         d,
-        super::key::key_tests::test_key(),
+        super::key::key_tests::test_keys(),
         TeeSink::to_port(Arc::new(Mute)),
         DOWNSTREAM_DEADLINE,
         UPSTREAM_DEADLINE,

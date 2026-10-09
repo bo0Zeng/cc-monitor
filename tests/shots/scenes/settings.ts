@@ -133,6 +133,7 @@ const pushed = (state: string, extra: Record<string, unknown> = {}): Record<stri
   os: "Linux",
   fixes: [],
   seenHostKey: null,
+  detail: null,
   ...extra,
 });
 
@@ -191,10 +192,19 @@ export const SETTINGS_SCENES: Scene[] = [
   settings("settings-data-chore-open", "设置 · 要你动手 · 实时显示点开", "点开一件：为什么 · 怎么做 · diff（钥匙遮住）· 复制这几行 / 复制改好的整份文件（含 2 件）· 不用了 · 存盘后自己认出", async () => {
     await go("data");
     await sleep(500);
-    const row = document.querySelector<HTMLElement>('.settings-page:not([hidden]) [data-machine="devbox"] [data-chore="relay"]');
+    const row = document.querySelector<HTMLElement>('.settings-page:not([hidden]) [data-machine="devbox"] [data-chore="relay:claude-code"]');
     row?.querySelector<HTMLButtonElement>("[aria-expanded]")?.click();
     await sleep(300);
-    document.querySelector<HTMLElement>('.settings-page:not([hidden]) [data-machine="devbox"] [data-chore="relay"]')?.scrollIntoView({ block: "start" });
+    document.querySelector<HTMLElement>('.settings-page:not([hidden]) [data-machine="devbox"] [data-chore="relay:claude-code"]')?.scrollIntoView({ block: "start" });
+    await sleep(400);
+  }),
+  settings("settings-data-chore-codex", "设置 · 要你动手 · Codex 实时显示点开", "Codex 那一件：位置 config.toml · openai_base_url · 在最前面加一行 · diff（钥匙遮住）· 复制这一行 / 复制改好的整份文件", async () => {
+    await go("data");
+    await sleep(500);
+    const sel = '.settings-page:not([hidden]) [data-machine="devbox"] [data-chore="relay:codex"]';
+    document.querySelector<HTMLElement>(sel)?.querySelector<HTMLButtonElement>("[aria-expanded]")?.click();
+    await sleep(300);
+    document.querySelector<HTMLElement>(sel)?.scrollIntoView({ block: "start" });
     await sleep(400);
   }),
   settings("settings-data-placed", "设置 · 文件与数据 · 放了什么", "第二栏：机器 chip · Claude 目录 · 改过你的文件（撤回在哪 ［前往］）· cc-monitor 的文件", async () => {

@@ -341,7 +341,7 @@
   .tlSwatch {
     width: 14px;
     height: 8px;
-    border-radius: 2px;
+    border-radius: var(--radius-s);
   }
 
   .tlSwatch[data-kind="past"] {

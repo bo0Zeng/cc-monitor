@@ -2219,3 +2219,96 @@ fn on_windows_the_printed_line_speaks_powershell() {
         "{line}"
     );
 }
+
+/// ★ 怎么指到中转只看那一家的注入格：认地址环境变量的那一家 ⇒ 插钥匙的地址进**它那个**变量；
+/// 地址只能拼进参数的那一家 ⇒ 地址垫在透传之前，那个词里的钥匙段写成读**只许直通那一把**钥匙文件的命令替换
+/// （计划里的 argv 不带钥匙，exec 那一刻才插），两家都不出对方那一形。合成注册表里两家只差注入格。
+#[test]
+fn the_relay_is_injected_the_way_that_family_declares() {
+    use crate::agents::{Adapter, DefaultUpstream, Inject};
+    fn words(url: &str) -> Vec<String> {
+        vec!["--relay-at".into(), url.into()]
+    }
+    fn home() -> Option<std::path::PathBuf> {
+        None
+    }
+    fn inject(
+        _: &str,
+        _: &crate::accounts::upstream_select::endpoint::LaunchAccount,
+    ) -> Result<Option<String>, String> {
+        Ok(Some("http://127.0.0.1:8788/t/x/w".into()))
+    }
+    let row = |kind: &'static str, how: Inject| Adapter {
+        kind,
+        home,
+        account_env: None,
+        assets: None,
+        history: None,
+        upstream: Some(DefaultUpstream {
+            inject: how,
+            ..crate::agents::claudecode::UPSTREAM
+        }),
+        mcp: None,
+        footprint: None,
+        accounts: None,
+        records: None,
+        processes: None,
+        launch: Some(crate::agents::fake::LAUNCH),
+        compact_request: None,
+        local: None,
+    };
+    let reg = [
+        row("via-env", Inject::Env("FAKE_URL_VAR")),
+        row("via-args", Inject::Args(words)),
+    ];
+    let mut e = env();
+    e.relay = Some(inject);
+    let plan_for = |kind: &str| {
+        let a: Vec<String> = ["--resume", "s1"].iter().map(|s| s.to_string()).collect();
+        let Parsed::Opts(mut o) = parse(&a).expect("解析得动") else {
+            panic!()
+        };
+        o.agent = kind.to_string();
+        let Plan::Direct(d) = build_among(&reg, &o, &e, &AccountTable::default(), None).unwrap()
+        else {
+            panic!("{kind} 该是直路")
+        };
+        d
+    };
+    let full_key = "$(cat ~/.cc-monitor/relay-key)";
+    let pass_word = "'http://127.0.0.1:8788/'$(cat ~/.cc-monitor/relay-pass-key)'/t/x/w'";
+
+    let d = plan_for("via-env");
+    assert_eq!(d.relay_via, RelayVia::Env("FAKE_URL_VAR".into()));
+    assert_eq!(
+        d.argv,
+        vec!["fakeagent", "--resume", "s1"],
+        "认环境变量那一家的 argv 里多了东西"
+    );
+    let line = render(&Plan::Direct(d));
+    assert!(
+        line.contains(
+            "export FAKE_URL_VAR='http://127.0.0.1:8788/'$(cat ~/.cc-monitor/relay-key)'/t/x/w'; "
+        ),
+        "{line}"
+    );
+    assert!(!line.contains("relay-pass-key"), "{line}");
+
+    let d = plan_for("via-args");
+    assert_eq!(d.relay_via, RelayVia::Args);
+    assert_eq!(
+        d.argv,
+        vec![
+            "fakeagent",
+            "--relay-at",
+            "http://127.0.0.1:8788/t/x/w",
+            "--resume",
+            "s1"
+        ],
+        "地址没垫在透传之前"
+    );
+    let line = render(&Plan::Direct(d));
+    assert!(line.contains(&format!("--relay-at {pass_word}")), "{line}");
+    assert!(!line.contains(full_key), "全权那一把进了参数：{line}");
+    assert!(!line.contains("FAKE_URL_VAR"), "{line}");
+}

@@ -552,8 +552,7 @@ async fn copying_goes_through_the_channel_with_the_overwrite_policy_on_the_wire(
     .await
     .expect_err("旧后端不认这条命令，竟然复制成了");
     assert!(
-        e.said
-            .contains(copy_core::copy_static!("rsFilewinSource.said.unknownCmd")),
+        e.said.contains(&copy_core::backend_old(&old.origin)),
         "旧后端那一形没说清：{e}"
     );
     assert_eq!(old.count(CMD_COPY), 0);

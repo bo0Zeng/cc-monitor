@@ -20,6 +20,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { clipboardWrites } from "../../../test-support/clipboard-fake";
 import { readFileSync } from "node:fs";
 
 // ⚠ 必须是**异步动态 import** 的工厂（理由见 rig 里 `tauriCoreMock` 的头注：`vi.mock` 提升 + TDZ）。
@@ -425,16 +426,16 @@ describe("乙4-④ 查看器的头 · 底一行 · 各态", () => {
   });
 
   it("某一条显示不了 ⇒ 卡的位置上「这一条显示不了」［复制详情］（复制的是那一条原文 ＋ 原因），其余照画、状态行不报数", async () => {
-    const write = vi.fn().mockResolvedValue(undefined);
-    vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText: write } });
     const v = await mount([userLine(1, "u1", "第一句"), userLine(2, "boom", "坏的"), assistantLine(3, "a1", "回复")]);
     const kids = [...streamOf(v).querySelectorAll<HTMLElement>("[data-uuid], [data-role=\"broken\"]")];
     expect(kids.map((k) => k.dataset.uuid ?? `broken:${k.dataset.seq}`)).toEqual(["u1", "broken:2", "a1"]);
     const broken = streamOf(v).querySelector<HTMLElement>('[data-role="broken"]')!;
     expect(broken.textContent).toContain(copyText("sessionViewer.card.broken"));
     [...broken.querySelectorAll("button")].find((b) => b.textContent === copyText("detail.act.copy"))!.click();
-    expect(write.mock.calls[0][0]).toContain("这一条坏了");
-    expect(write.mock.calls[0][0]).toContain('"uuid": "boom"');
+    await vi.waitFor(() => expect(clipboardWrites(vi.mocked(invoke))).toHaveLength(1));
+    const [written] = clipboardWrites(vi.mocked(invoke));
+    expect(written).toContain("这一条坏了");
+    expect(written).toContain('"uuid": "boom"');
     expect(status(v)).toBe(copyText("sessionViewer.status.all", { n: "3" }));
   });
 

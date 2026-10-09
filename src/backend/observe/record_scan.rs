@@ -134,7 +134,15 @@ impl ScanMap {
                     + t.end.len()
                     + t.said.len()
                     + t.reply.len()
-                    + t.conclusion.iter().map(|c| 24 + c.len()).sum::<usize>()
+                    + t.ending.iter().map(|c| 24 + c.len()).sum::<usize>()
+                    + t.parts.iter().map(|p| 24 + p.text.len()).sum::<usize>()
+                    + t.span.text.len()
+                    + t.pending
+                        .iter()
+                        .map(|p| {
+                            64 + p.id.len() + p.name.len() + p.what.as_ref().map_or(0, String::len)
+                        })
+                        .sum::<usize>()
             })
             .sum();
         self.starts.len() * 8 + index + inputs + turns + 1024

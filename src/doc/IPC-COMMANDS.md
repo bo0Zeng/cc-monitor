@@ -1068,6 +1068,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `accounts` | ← | 每个号一条，按 `(agent, account)` 排：`agent` 路由第 1 段（哪一家）· `account` 路由第 2 段（哪个号 |
+| `detail` | ← | 只在 `unreadable` 时有：复制详情（时刻 · 机器 · 命令 · 码 · 原话；排法同失败应答），`reason` 那一句不带原话 |
 | `earliestReturn` | ← | 被拒 / 超额在兜的号里最早回来的那个 `{account, at}`；没有、或都说不出时刻 ⇒ `null` |
 | `now` | ← | 这台此刻的 unix 秒（界面算「几分钟前看到的」「还有多久重置」都按这台的钟）；回包里每个时刻（`at` · `seenAt` · `resetsAt` · `fromResetsAt` · `since`）旁边有一格 `…Text`：出口按这台本地钟写好的字（当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年带年），界面照抄、不换算 |
 | `path` | ← | 那份文件的绝对路径（家推不出来时 `null`） |
@@ -1104,6 +1105,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `defaultRule` | ← | 默认规则的 id |
+| `detail` | ← | 只在 `unreadable` 时有：复制详情（时刻 · 机器 · 命令 · 码 · 原话；排法同失败应答），`reason` 那一句不带原话 |
 | `path` | ← | 那份文件的绝对路径（家推不出 ⇒ `null`） |
 | `reason` | ← | 只在 `unreadable` 时有 |
 | `rules` | ← | 每条一项（默认那条在最前、其余按名字）：`{id, name, rotation, rev, updatedAt, isDefault, users: {live, ended, follow, doing, sids, endedSids}, summary, explain, missing, atLimitApplies}`；`users` 只数此刻生效的是这条的会话（跟随默认的算在默认那条，`follow` 是其中几个；`sids` 活着的、`endedSids` 已结束的；`doing` ＝ 每个 sid 此刻的状态 `{state, needs}`，与主窗口标签页同一判：`state` 是 `working` · `idle` · `needsYou` · `ended`，`needs` 只在 `needsYou` 时有：`approve` · `answer` · `plan` · `unknown`），`missing` ＝ 顺序里这台账号库没有的号，`summary` / `explain` 是后端写好的两句 |
@@ -1178,6 +1180,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 | 字段 | 向 | 说明 |
 |---|---|---|
+| `detail` | ← | 同 `rotation-rules-read` |
 | `effective` | ← | 号 → 窗口键（`5h` · `7d` · `*` ＝ 全部窗口 · 封顶里写过的别的键）→ `{v, layer, below: {v, layer}}`：此刻实际取的上限（`v` 为 `null` ＝ 不封顶）与来自哪一层（`window` 这号这窗口 · `all` 这号全部窗口 · `trigger` 触发 · `none`），`below` ＝ 这一格不算时往下一层取到的（封顶浮层「其余时段 ＝ …」） |
 | `errors` | ← | 逐格错 `[{cell, code, with?}]`（形状同 `rotation-rule-save` 的 `refused`）；空 ＝ 没错；草稿有错 ⇒ 只回这一格 |
 | `from` | ← | 视窗起（另有 `fromText`）：带 `view` ⇒ 此刻之前那一截的起点；不带 ⇒ ＝ `now` |
@@ -1187,6 +1190,8 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | `now` | ← | 这台此刻的 unix 秒（另有 `nowText`）；`until` ＝ 视窗止 |
 | `past` | ← | 只在 `sid` ＋ `view` 时有：`[{from, to, account, why}]`，这个会话在视窗起到此刻走过哪几个号（照换号记录切段，`why` ＝ 换进那一段的原因，头一段 `null`） |
 | `plan` | ← | `[{from, to, account, why}]`：`[from, to)` 用 `account`（`null` ＝ 那一段不发上游：硬上限停着 · 切兜底前等着）；`why` ＝ 那一段开头为什么换（形状同换号记录的 `why`；头一段 · 没换 ⇒ `null`）。用量只按此刻的算（以后涨多快没根据，不预测；单段预算不预测），结论只在重置 · 时段起止时变；`view` 是 `7d` 时只到此刻 +1d；每个时刻旁有 `…Text` |
+| `reason` | ← | 同 `rotation-rules-read` |
+| `state` | ← | 那份文件的三态（同 `rotation-rules-read`）；`unreadable` 时照缺省那一份算 |
 | `machine` | → | `true`：这台全部号（设置里的时间轴），按默认规则判封顶 |
 | `rotation` | → | 草稿 `{order, enabled, when, atLimit?, cap?, stint?, preempt?, fallback?, wait?}`（从池里排第一的号起）；与 `rule` · `sid` · `machine` 四选一 |
 | `rule` | → | 这台的一条规则 id（从池里排第一的号起） |
@@ -1204,6 +1209,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 | 字段 | 向 | 说明 |
 |---|---|---|
+| `detail` | ← | 同 `rotation-rules-read` |
 | `now` | ← | 那份文件的三态（同 `rotation-rules-read`）· 这台此刻的 unix 秒；回包里每个时刻（`at` · `seenAt` · `resetsAt` · `fromResetsAt` · `since`）旁边有一格 `…Text`：出口按这台本地钟写好的字（当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年带年），界面照抄、不换算 |
 | `reason` | ← | 那份文件的三态（同 `rotation-rules-read`）· 这台此刻的 unix 秒 |
 | `sessions` | ← | 每个 sid 一份 |
@@ -2814,13 +2820,13 @@ cc-bus 钩子诊断。
 
 给一台远端开终端要跑的那一串。
 
-收 `args` · 可撤 · 只在流上
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `command` | → ← | 要在那台跑的命令；应答里是那一整行 PowerShell `& ssh -t … -- 'bash -lic …'` |
+| `command` | → ← | 要在那台跑的命令；应答里是那一整行 PowerShell `& '<ssh 全路径>' -t … -- 'bash -lic …'` |
 
-码：`bad_args` · `bad_jump` · `refused`
+码：`bad_args` · `bad_jump` · `refused` · `no_ssh_client` · `unobservable`
 
 #### `terminal-processes`
 
@@ -3346,6 +3352,7 @@ cc-bus 钩子诊断。
 
 | 字段 | 向 | 说明 |
 |---|---|---|
+| `detail` | ← | `unreadable` 时的复制详情（时刻 · 机器 · 命令 · 码 · 原话；排法同失败应答），`reason` 那一句不带原话 |
 | `killOnExit` | ← | monitor 退出时结束本机常驻后端 |
 | `path` | ← | 那份文件的路径（在 `~/.cc-monitor/` 下） |
 | `reason` | ← | `unreadable` 时的原因 |
@@ -3360,6 +3367,7 @@ cc-bus 钩子诊断。
 
 | 字段 | 向 | 说明 |
 |---|---|---|
+| `detail` | ← | 同 `exit-policy-read` |
 | `killOnExit` | → ← | 要写的值（布尔） |
 | `path` | ← | 同 `exit-policy-read` |
 | `reason` | ← | 同 `exit-policy-read` |
@@ -3372,18 +3380,19 @@ cc-bus 钩子诊断。
 
 直接敲的 agent 也走中转。
 
-不收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
 
 | 字段 | 向 | 说明 |
 |---|---|---|
+| `agent` | → | 哪一家的那一份（适配器 id）。空串 ⇒ 默认那一家；注册表里没有 ⇒ `bad_args`，那句话列出认得的几家 |
 | `listening` | ← | 这台我们的中转此刻在不在听（与 `apikey-routing.running` 同一个判准） |
 | `missing` | ← | 那一段为什么生成不了（这台的中转还没起来过、没有钥匙 · 决策表不给这一条）；已装 / 生成得了 ⇒ 空串 |
 | `note` | ← | 那份文件为什么读不了（`unreadable` 才有，其余空串） |
-| `snippet` | ← | 要合并进 `env` 的那一段（**带钥匙**：设置文件里写不了 `$(cat …)`）；`installed` 或生成不了 ⇒ `null` |
+| `snippet` | ← | 要合并进那份文件的那一段（**带钥匙**：设置文件里写不了 `$(cat …)`）；`installed` 或生成不了 ⇒ `null` |
 | `source` | ← | 读的是哪份文件（这台后端看到的路径） |
 | `state` | ← | `installed`（写着的就是现在那一条）· `stale`（是我们那一形 |
 
-码：`failed`
+码：`bad_args` · `failed`
 
 #### `drift-report`
 

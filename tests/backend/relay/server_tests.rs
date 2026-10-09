@@ -60,7 +60,7 @@ fn render_via_upstream_selection(
     };
     let mut out = None;
     let upstreams = upstreams_without_env();
-    accounts::decide(t, &upstreams, Mode::Substitute, &key, &mut |d| {
+    accounts::decide(t, &upstreams, Mode::Substitute, &key, &[], &mut |d| {
         out = Some(match d {
             Destination::Refuse { status, .. } => {
                 panic!("{account} 那一行该在表里，上游选择却答了 Refuse {status}")
@@ -270,8 +270,7 @@ const PEER_LEFT_KINDS: [std::io::ErrorKind; 3] = [
 ///
 /// 注入把「错**什么时候**来」这一维整个拿掉：判据要钉的本来就不是内核的时序，
 /// 而是**收场那一档的策略**（对端走了 ⇒ 只丢这条连接；别的错 ⇒ 照旧大声炸）。
-/// 有机那一半没有丢，它住在 `tests/evidence/K-R126-deathvalue.md` 的复现台面上：
-/// 修前收场 ＋ 复现刀 ⇒ CI 上红的那两条**逐趟必红 5/5**。
+/// 有机那一半当时在复现台面上打过：修前收场 ＋ 复现刀 ⇒ CI 上红的那两条**逐趟必红 5/5**。
 #[derive(Clone, Copy)]
 struct StubFault {
     nth: u64,
@@ -507,9 +506,7 @@ fn one_whole_shot(addr: SocketAddr, what: &str) -> String {
 ///
 /// 有机那一版**自己就是一个 flake 源**，实测：`--test-threads=1` 跑 200 趟 0 红，
 /// 而整族 16 线程跑 10 趟**红 5 趟** —— 「对端已经走了」要等 `RST` 投递到桩这一侧
-/// 才看得见，机器一忙桩的四次写全都先写完了。见 [`StubFault`] 头注与
-/// `tests/evidence/K-R126-deathvalue.md`。有机那一半没有丢：它是那份文档里的**复现台面**
-/// （修前收场 ＋ 复现刀 ⇒ CI 上红的那两条 5/5 必红）。
+/// 才看得见，机器一忙桩的四次写全都先写完了。见 [`StubFault`] 头注。
 #[test]
 fn a_peer_that_left_costs_the_stub_one_connection_not_its_listener() {
     // 判据自己那份输入表。**刻意是第二处写下这三个名字**，理由就在下面那条地板断言：
@@ -718,7 +715,7 @@ fn spawn_relay_counted(up: SocketAddr) -> (SocketAddr, Arc<Relay>, TeeTap, Arc<A
     let base = Base::parse(&format!("http://127.0.0.1:{}", up.port())).expect("base");
     let relay = Arc::new(Relay::new(
         dest_of(two_accounts_no_key(&base)),
-        super::key::key_tests::test_key(),
+        super::key::key_tests::test_keys(),
         TeeSink::to_port(port),
         DOWNSTREAM_DEADLINE,
         UPSTREAM_DEADLINE,
@@ -1054,6 +1051,44 @@ fn an_unparsable_content_length_is_refused_with_400_instead_of_dropping_the_body
         up.seen.lock().expect("lock").len(),
         1,
         "读不懂的那一发不该带着一个**空请求体**打到上游（计数必须还是 1）"
+    );
+}
+
+/// ★ 协议升级（`Upgrade: websocket` 的 `GET`）进门之后当场 426 ＋ 原因头，一个字节都不发上游；
+/// 同一个中转上普通那一发照样到上游（非空对照）。
+#[test]
+fn an_upgrade_request_is_answered_426_and_never_reaches_upstream() {
+    let up = spawn_fake_upstream(None);
+    let (relay_addr, _relay, _tee) = spawn_relay(up.addr);
+    let mut warm = send_request(relay_addr, "/s/agentA/acctA/v1/messages", "");
+    let mut sink0 = Vec::new();
+    warm.read_to_end(&mut sink0).expect("read warmup");
+    assert_eq!(
+        up.seen.lock().expect("lock").len(),
+        1,
+        "非空对照：真打到上游"
+    );
+
+    let (got, clean) = send_raw(
+        relay_addr,
+        &format!(
+            "GET /{}/t/agentA/acctA/v1/responses HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n",
+            super::key::key_tests::TEST_KEY
+        ),
+    );
+    assert!(
+        got.starts_with("HTTP/1.1 426 "),
+        "升级请求该回 426（拿到的是：{got:?}）"
+    );
+    assert!(
+        got.contains(&format!("{REASON_HEADER}: no-upgrade")),
+        "426 要带原因头（拿到的是：{got:?}）"
+    );
+    assert!(clean, "426 要送得到（拿到的是：{got:?}）");
+    assert_eq!(
+        up.seen.lock().expect("lock").len(),
+        1,
+        "升级请求被转到了上游"
     );
 }
 
@@ -1815,7 +1850,7 @@ fn the_substituted_key_never_shows_up_in_any_of_the_four_exits() {
 fn spawn_relay_with_table(table: RoutingTable) -> SocketAddr {
     let relay = Arc::new(Relay::new(
         dest_of(table),
-        super::key::key_tests::test_key(),
+        super::key::key_tests::test_keys(),
         no_tap(),
         DOWNSTREAM_DEADLINE,
         UPSTREAM_DEADLINE,
@@ -2722,7 +2757,7 @@ fn both_directions_really_disable_nagle_on_the_socket() {
     let base = Base::parse(&format!("http://127.0.0.1:{}", up.addr.port())).expect("base");
     let relay = Relay::new(
         dest_of(two_accounts_no_key(&base)),
-        super::key::key_tests::test_key(),
+        super::key::key_tests::test_keys(),
         no_tap(),
         DOWNSTREAM_DEADLINE,
         UPSTREAM_DEADLINE,
@@ -2819,7 +2854,7 @@ fn both_peers_really_carry_their_read_and_write_deadline_on_the_socket() {
     let base = Base::parse(&format!("http://127.0.0.1:{}", up.addr.port())).expect("base");
     let relay = Relay::new(
         dest_of(two_accounts_no_key(&base)),
-        super::key::key_tests::test_key(),
+        super::key::key_tests::test_keys(),
         no_tap(),
         DOWNSTREAM_DEADLINE,
         UPSTREAM_DEADLINE,
@@ -2961,8 +2996,11 @@ fn the_upstream_selection_asks_exactly_its_registered_upstream_knob() {
     });
     assert_eq!(
         asked.lock().expect("lock").clone(),
-        vec!["CCM_AGENT_UPSTREAM_CLAUDE_CODE".to_string()],
-        "上游选择该问的上游旋钮（今天只登记了 claude-code 一家）不是这一个"
+        vec![
+            "CCM_AGENT_UPSTREAM_CLAUDE_CODE".to_string(),
+            "CCM_AGENT_UPSTREAM_CODEX".to_string()
+        ],
+        "上游选择该问的上游旋钮（登记了 claude-code · codex 两家）不是这两个"
     );
 }
 
@@ -3520,7 +3558,7 @@ fn spawn_relay_with_upstream_deadline(
     let base = Base::parse(&format!("http://127.0.0.1:{}", up.port())).expect("base");
     let relay = Arc::new(Relay::new(
         dest_of(two_accounts_no_key(&base)),
-        super::key::key_tests::test_key(),
+        super::key::key_tests::test_keys(),
         no_tap(),
         DOWNSTREAM_DEADLINE,
         upstream_deadline,
@@ -3726,6 +3764,11 @@ const STATUS_HOMES: &[(&str, &str, StatusGroup)] = &[
         "504 Gateway Timeout",
         StatusGroup::UpstreamFailed,
     ),
+    (
+        "comms-outward/server.rs",
+        "426 Upgrade Required",
+        StatusGroup::NoUpgrade,
+    ),
     // 门拒绝那两个码：它们住门那一份文件（`door.rs::FORBIDDEN` / `MISDIRECTED`）。
     // 轮换硬上限回的那一份：那一家自己认得的「用满」回包，住适配层（状态码照它真被拒时的那一个）。
     (
@@ -3754,6 +3797,8 @@ enum StatusGroup {
     UpstreamFailed,
     /// 轮换硬上限：照那一家真被拒时的样子回（下游据它停下这一轮；原因头分得出是我们回的）。
     AgentLimit,
+    /// 下游要协议升级（中转不做 ⇒ 426，客户端据它改走普通请求）。
+    NoUpgrade,
     /// 门拒绝（没钥匙 / 错钥匙 / 带 Origin ⇒ 403 · Host 非回环 ⇒ 421）。**与 404 不相交** ——
     /// 「钥匙不对」与「钥匙对、表里没这一行」必须可分（`INVARIANTS §48.1a`）。
     Door,
@@ -3872,6 +3917,11 @@ fn every_status_we_make_has_one_home_and_the_three_groups_are_disjoint() {
         set(&[429]),
         "轮换硬上限那一组"
     );
+    assert_eq!(
+        codes_of(StatusGroup::NoUpgrade),
+        set(&[426]),
+        "协议升级那一组"
+    );
     // ① 两两不相交（`D7`：同码 ⇒ 分不清是我们配错了还是上游挂了）。
     let groups = [
         StatusGroup::Unreadable,
@@ -3880,6 +3930,7 @@ fn every_status_we_make_has_one_home_and_the_three_groups_are_disjoint() {
         StatusGroup::UpstreamFailed,
         StatusGroup::AgentLimit,
         StatusGroup::Door,
+        StatusGroup::NoUpgrade,
     ];
     for (i, a) in groups.iter().enumerate() {
         for b in &groups[i + 1..] {
@@ -4185,6 +4236,7 @@ fn tee_line(ev: &TapEvent) -> String {
     }
     let (data, end) = match &ev.body {
         TapBody::Data(d) => (Some(d.as_str()), None),
+        TapBody::Clipped { head, .. } => (Some(head.as_str()), Some("clipped")),
         TapBody::End { broken } => (None, Some(if *broken { "broken" } else { "done" })),
     };
     serde_json::to_string(&TeeLine {

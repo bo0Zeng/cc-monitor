@@ -81,15 +81,19 @@ async fn exit_policy_call(
         )));
     }
     let data = client.call(cmd, args, budget).await.map_err(|e| {
-        said(route_call_error(&e, |_code, message| {
-            copy_text(
-                "rsBackendPolicy.call.failed",
-                &[
-                    ("machine", &origin.to_string()),
-                    ("message", &message.to_string()),
-                ],
-            )
-        }))
+        said(route_call_error(
+            &e,
+            &crate::cc_bus::machine_label(origin),
+            |_code, message| {
+                copy_text(
+                    "rsBackendPolicy.call.failed",
+                    &[
+                        ("machine", &origin.to_string()),
+                        ("message", &message.to_string()),
+                    ],
+                )
+            },
+        ))
     })?;
     data.ok_or_else(|| copy_core::reply_unreadable(&crate::cc_bus::machine_label(origin)))
 }

@@ -1616,7 +1616,7 @@ pub(crate) fn agent_home() -> std::path::PathBuf {
 /// 🔴 **全仓只有这一个住址** —— 扫描循环数 `total`、`split_tail` 数 `starts`，
 /// 两边判得必须**一模一样**；口径一分家，计数就对不上，而那种错**不会报错**。
 ///
-/// # 为什么先看字节（秤 7，`tests/evidence/S7-rust-side.md`）
+/// # 为什么先看字节（秤 7）
 ///
 /// 原来这一跳对**每一行**做 `String::from_utf8_lossy(整行)` 再 `trim()`，
 /// **只为回答「这行是不是空的」** —— 那是一次**整文件 UTF-8 校验**。
@@ -1636,7 +1636,7 @@ pub(crate) fn agent_home() -> std::path::PathBuf {
 /// ⚠⚠ **谓词必须是 `char::from(b).is_whitespace()`，不能写成 `b.is_ascii_whitespace()`**
 /// —— 后者**不含 `U+000B`**（垂直制表），而 `str::trim` 含它。
 /// 秤 7 的第一版变体就是这么写错的，**靠穷举才逮出来**（全部 1/2/3 字节共
-/// 16 843 008 个 ＋ 300 万随机串，分歧 0；证据 `tests/evidence/S7-blank-line-equivalence.rs`）——
+/// 16 843 008 个 ＋ 300 万随机串，分歧 0）——
 /// **单测没逮住，因为没有那个样本。**
 pub(crate) fn line_counts(line: &[u8]) -> bool {
     // 快路：有 ASCII 非空白 ⇒ 必非空，不必解码

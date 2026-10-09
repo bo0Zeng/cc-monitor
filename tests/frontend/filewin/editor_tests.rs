@@ -233,8 +233,7 @@ async fn reading_goes_through_the_channel_and_each_refusal_lands_on_its_own_shap
     .await
     .expect_err("旧后端不认这条命令，竟然读到了");
     assert!(
-        e.said
-            .contains(copy_core::copy_static!("rsFilewinSource.said.unknownCmd")),
+        e.said.contains(&copy_core::backend_old(&old.origin)),
         "旧后端那一形没说清：{e}"
     );
     assert_eq!(old.count(CMD_READ_TEXT), 0);
@@ -651,23 +650,28 @@ fn a_save_reply_splits_into_saved_stale_and_failed_by_the_peers_code() {
 #[test]
 fn a_read_without_a_digest_does_not_open_an_editor_that_could_never_save() {
     let sha = crate::find::testing::fake_sha256("hi\n");
+    let o = crate::source::Origin("devbox".into());
     assert_eq!(
-        opened_from_reply(Ok(
-            serde_json::json!({ "text": "hi\n", "sha256": sha.clone() })
-        )),
+        opened_from_reply(
+            &o,
+            Ok(serde_json::json!({ "text": "hi\n", "sha256": sha.clone() }))
+        ),
         Ok(Some(Opened {
             text: "hi\n".into(),
             sha256: sha
         }))
     );
-    let e =
-        opened_from_reply(Ok(serde_json::json!({ "text": "hi\n" }))).expect_err("没摘要竟然打开了");
+    let e = opened_from_reply(&o, Ok(serde_json::json!({ "text": "hi\n" })))
+        .expect_err("没摘要竟然打开了");
     assert!(
-        e.said
-            .contains(copy_core::copy_static!("rsFilewinEditor.reply.noDigest")),
+        e.said.contains(&copy_core::backend_old("devbox")),
         "那句话没说是后端太旧：{e}"
     );
-    assert!(opened_from_reply(Ok(serde_json::json!({ "text": "hi\n", "sha256": "abc" }))).is_err());
+    assert!(opened_from_reply(
+        &o,
+        Ok(serde_json::json!({ "text": "hi\n", "sha256": "abc" }))
+    )
+    .is_err());
 }
 
 /// 存成之后基准是**发出去的那一份**：存在路上时又敲的字仍算没存（`dirty`）；摘要换成应答交的那一个。

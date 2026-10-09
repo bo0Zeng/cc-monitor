@@ -2,7 +2,6 @@
  * `S30` —— **CSS 三条约定接进判据**（件 7 · 件 9）。
  *
  * 量具住 `tests/evidence/S30-css-conventions.ts`，**本文件只登记与判**（分家的理由写在那边）。
- * 读数住 `tests/evidence/S30-readings.md`。
  *
  * ## 与 `tests/frontend/ui/css-ledger.vitest.ts`（`S25`）的分工 —— 不是第二本账
  *

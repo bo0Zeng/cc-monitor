@@ -357,10 +357,10 @@ async fn an_error_end_and_an_over_window_flood_both_surface_as_read_errors() {
     }
     let mut sink = Vec::new();
     let e = b.read_to_end(&mut sink).await.expect_err("超窗该判坏");
-    // 照 CP1 台账改：流控细节（信用 / 窗口 / 协议对不上）不上屏，说成「版本不对，连接断了」。
+    // 流控细节（信用 / 窗口 / 协议对不上）不上屏：本机后端不守约 ⇒ 说成「本机后端要更新」（全产品同一句）。
     assert!(
         e.to_string()
-            .contains(copy_core::copy_static!("rsLinkMux.data.noCredit")),
+            .contains(&copy_core::backend_old(&copy_core::local_machine())),
         "超窗的说法不对：{e}"
     );
     assert!(

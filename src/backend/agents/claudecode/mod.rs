@@ -74,8 +74,7 @@ pub(crate) const AGENT_KIND: &str = "claude";
 pub(crate) const UPSTREAM: super::DefaultUpstream = super::DefaultUpstream {
     route_id: "claude-code",
     env: "CCM_AGENT_UPSTREAM_CLAUDE_CODE",
-    fallback: "https://api.anthropic.com",
-    base_url_env: paths::BASE_URL_ENV,
+    fallback: super::Fallback::One("https://api.anthropic.com"),
     // 真 claude（2.1.283）每条 `POST /v1/messages` 都带它：UUID 形，== 它落盘的 jsonl 文件名。
     session_header: Some("x-claude-code-session-id"),
     stream: Some(super::sse_anthropic::FACE),
@@ -92,6 +91,8 @@ pub(crate) const UPSTREAM: super::DefaultUpstream = super::DefaultUpstream {
     usage: Some(usage::FACE),
     login: Some(LOGIN),
     limit_reply: Some(quota::limit_reply),
+    // 认 `ANTHROPIC_BASE_URL`：插上钥匙的整条地址进这个变量。
+    inject: super::Inject::Env(paths::BASE_URL_ENV),
 };
 
 /// 订阅号登录：`<配置目录>/.credentials.json` 的 `claudeAiOauth` 那一节；续期照 claude 自己的做法

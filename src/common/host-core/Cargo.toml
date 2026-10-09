@@ -12,6 +12,8 @@ description = "前端宿主原语：两个前端（monitor 主界面 · 文件�
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# 交给 Win32 的路径（长路径前缀）只从它来；仓内 crate、零依赖。
+win-path-core = { path = "../win-path-core" }
 
 [target.'cfg(windows)'.dependencies]
 # 与 `src/frontend/shell/Cargo.toml` 那条 `windows` 同版本（0.56）：`ReplaceFileW` 住 `Win32_Storage_FileSystem`。
