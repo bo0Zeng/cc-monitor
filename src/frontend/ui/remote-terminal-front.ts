@@ -103,3 +103,21 @@ export async function planRemoteFront(
     return { result: failedAsk(e) };
   }
 }
+
+/**
+ * 本机会话按窗口标签找：问本机后端 `session-terminals {sid}`（谁在显示它 · 带不带窗口标签），回话里的 `terminals` 原样交 `byLabel`
+ * ⇒ 对上了那一次的结局；没有终端 / 后端说了原因 / 问不到 / 没对上 ⇒ `null`（调用方照旧用壳按缓存的那一句）。
+ * Linux 上本机会话在 tmux 里，claude 的进程链到不了终端窗口；tmux 客户端带着 bash / zsh 接入块设的 `LC_CCM_WINDOW`。
+ */
+export async function frontByLocalLabel(sid: string, byLabel: (terminals: unknown[]) => Promise<FrontResult | null>): Promise<FrontResult | null> {
+  try {
+    const body = jsonBody({ sid });
+    const budget = budgetWithin(ASK_BUDGET_MS);
+    const shown = await answered("session-terminals", chan.call(LOCAL_ORIGIN, "session-terminals", body, budget));
+    if (shown.why !== undefined || !Array.isArray(shown.terminals) || shown.terminals.length === 0) return null;
+    return await byLabel(shown.terminals);
+  } catch (e) {
+    console.warn("local terminal front by label failed:", e);
+    return null;
+  }
+}

@@ -27,6 +27,12 @@
 //! 每 10s 扫一遍内存中的 ps-registry，对每个 PS_PID 调 `is_process_alive`〔散文墓碑〕，
 //! 死 PS 的条目从内存 + 磁盘移除。避免长期累积。
 //!
+//! ## bash / zsh 那一份（Linux 本机）
+//!
+//! 接入块（`src/shared/ccm-aliases.sh`）在本机桌面上开的 shell 里只留一份 `ps-await/<进程号>.tty`（进程号 · 起始时刻 · 终端设备），
+//! 不起后台、不等。认窗口归这里：monitor 起来那一刻扫一遍、之后每落一份就认一份（[`process_tty_file`]）——
+//! 往那个终端写改标题的控制序列挂记号、按标题找窗口（X11 · EWMH）、写进同一张握手表，标题出栈还原。
+//!
 //! ## ↗ 远端那一格
 //!
 //! 点 ↗ 时现查（那台答「此刻谁在显示它」、本机后端按连接对到这台电脑上的进程链），本模块做最后两跳 ——
@@ -87,6 +93,9 @@ pub struct SidHwndBinding {
 pub struct BindRegistry {
     monitor_data_dir: PathBuf,
     by_ps_pid: Arc<RwLock<HashMap<u32, HwndEntry>>>,
+    /// 这一趟 monitor 里已经认过一回、没认上的 bash / zsh 记录（`ps-await/*.tty`）：不再每来一个文件事件就重认一遍
+    /// （那个标签页不在前面时每认一回都要在它标题上闪一下），留到下一个 monitor 起来再认。
+    tty_tried: parking_lot::Mutex<std::collections::HashSet<PathBuf>>,
 }
 
 impl BindRegistry {
@@ -111,6 +120,7 @@ impl BindRegistry {
         let me = Arc::new(Self {
             monitor_data_dir,
             by_ps_pid: Arc::new(RwLock::new(initial)),
+            tty_tried: parking_lot::Mutex::new(std::collections::HashSet::new()),
         });
 
         Self::spawn_await_watcher(me.clone(), await_dir);
@@ -213,17 +223,151 @@ fn run_await_watcher(this: Arc<BindRegistry>, await_dir: PathBuf) {
     }
 }
 
-/// 处理 await_dir 下所有 *.json：读 marker → 找窗口 → 写 registry → 删 await
+/// 处理 await_dir 下所有 *.json（PowerShell：读 marker → 找窗口 → 写 registry → 删 await）与 *.tty（bash / zsh：见 [`process_tty_file`]）
 fn drain_await_dir(this: &BindRegistry, await_dir: &Path) {
     let Ok(entries) = std::fs::read_dir(await_dir) else {
         return;
     };
     for entry in entries.flatten() {
         let p = entry.path();
-        if !p.extension().map_or(false, |e| e == "json") {
-            continue;
+        match p.extension().and_then(|e| e.to_str()) {
+            Some("json") => process_await_file(this, &p),
+            Some(TTY_RECORD_EXT) => process_tty_file(this, &p),
+            _ => {}
         }
-        process_await_file(this, &p);
+    }
+}
+
+/// 本机 bash / zsh 接入块留的那一份的后缀（`ps-await/<进程号>.tty`；写的一侧是 `src/shared/ccm-aliases.sh`）。
+const TTY_RECORD_EXT: &str = "tty";
+
+/// 本机 bash / zsh 接入块（`src/shared/ccm-aliases.sh`）在 `ps-await/<进程号>.tty` 留下的那一份：那个 shell 的进程号 ·
+/// 起始时刻（`/proc/<pid>/stat` 第 22 格，与它设的 `LC_CCM_WINDOW` 同一个键）· 它的终端设备。
+#[derive(Debug, Clone, Deserialize)]
+pub struct TtyRecord {
+    pub shell_pid: u32,
+    pub proc_start: String,
+    pub tty: String,
+}
+
+/// 认一份 bash / zsh 记录的结局。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum TtyClaim {
+    /// 找到了那个终端窗口 ⇒ 这一条登记（写进握手表）。
+    Registered(HwndEntry),
+    /// 这一回没找到（那个标签页不在前面 · 这台此刻找不了窗口）⇒ 留着，下一个 monitor 起来再认。
+    Keep,
+    /// shell 没了 / 进程号被复用 / 已经登记过 / 记录认不出 ⇒ 扔掉，不碰那个终端。
+    Drop,
+}
+
+/// 像不像一个终端设备（只认 `/dev/pts/*` · `/dev/tty*`，不许 `..`）：往别的文件里写控制序列不行。
+fn looks_like_a_terminal(tty: &str) -> bool {
+    (tty.starts_with("/dev/pts/") || tty.starts_with("/dev/tty")) && !tty.contains("..")
+}
+
+/// 认一份 bash / zsh 记录：那个 shell 还是它（`start_now` 与记下的起始时刻对得上）、还没登记（`holding`）⇒
+/// 交 `probe` 在它的终端上挂记号标题找窗口；属主的起始时刻由 `start_of` 读。读法都是参数（判据喂替身）。
+pub(crate) fn claim_tty(
+    rec: &TtyRecord,
+    start_now: Option<u64>,
+    holding: bool,
+    probe: impl FnOnce(&str, &str) -> Option<MarkerHit>,
+    start_of: impl Fn(u32) -> u64,
+) -> TtyClaim {
+    let Ok(start) = rec.proc_start.trim().parse::<u64>() else {
+        return TtyClaim::Drop;
+    };
+    if start_now != Some(start) || holding || !looks_like_a_terminal(&rec.tty) {
+        return TtyClaim::Drop;
+    }
+    let marker = format!(
+        "ccm-bind-{}-{}",
+        rec.shell_pid,
+        &uuid::Uuid::new_v4().simple().to_string()[..8]
+    );
+    match probe(&rec.tty, &marker) {
+        Some(hit) => TtyClaim::Registered(HwndEntry {
+            ps_pid: rec.shell_pid,
+            hwnd: hit.hwnd,
+            owner_pid: hit.owner_pid,
+            owner_proc_start: start_of(hit.owner_pid),
+            ps_proc_start: start.to_string(),
+            title_at_bind: hit.title,
+            registered_at: crate::utils::now_ms(),
+        }),
+        None => TtyClaim::Keep,
+    }
+}
+
+/// 生产那一份探针：这台此刻找得了窗口才去碰终端 —— 标题入栈，挂记号、等一步、按标题找，最多 12 步（≤600ms，同握手那条）；
+/// 每一步都重挂一次（shell 刚起来时提示符会把标题改回去），找到就停，最后出栈还原。
+fn probe_tty_title(tty: &str, marker: &str) -> Option<MarkerHit> {
+    use crate::platform::console_title::{tty_title, TtyTitle};
+    if !crate::platform::hwnd::supported() || !tty_title(tty, TtyTitle::Push) {
+        return None;
+    }
+    let mut hit = None;
+    for _ in 0..12 {
+        if !tty_title(tty, TtyTitle::Set(marker)) {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+        hit = find_window_by_marker_substr(marker);
+        if hit.is_some() {
+            break;
+        }
+    }
+    tty_title(tty, TtyTitle::Pop);
+    hit
+}
+
+fn process_tty_file(this: &BindRegistry, file: &Path) {
+    if this.tty_tried.lock().contains(file) {
+        return;
+    }
+    let rec = std::fs::read_to_string(file)
+        .ok()
+        .and_then(|raw| serde_json::from_str::<TtyRecord>(raw.trim()).ok());
+    let Some(rec) = rec else {
+        tracing::warn!("bind: 认不出 {}，扔掉", file.display());
+        let _ = std::fs::remove_file(file);
+        return;
+    };
+    let claim = claim_tty(
+        &rec,
+        crate::platform::pid::start_stamp(rec.shell_pid),
+        holding_registration(this, rec.shell_pid).is_some(),
+        probe_tty_title,
+        |pid| crate::platform::pid::start_stamp(pid).unwrap_or(0),
+    );
+    match claim {
+        TtyClaim::Registered(entry) => {
+            let registry_file = this.registry_dir().join(format!("{}.json", entry.ps_pid));
+            if let Err(e) = host_core::atomic_write_json(&registry_file, &entry) {
+                tracing::warn!(
+                    "bind: write registry {} failed: {e}",
+                    registry_file.display()
+                );
+                this.tty_tried.lock().insert(file.to_path_buf());
+                return;
+            }
+            tracing::info!(
+                "bind: registered shell_pid={} window={:#x} owner_pid={} (tty {})",
+                entry.ps_pid,
+                entry.hwnd,
+                entry.owner_pid,
+                rec.tty
+            );
+            this.by_ps_pid.write().insert(entry.ps_pid, entry);
+            let _ = std::fs::remove_file(file);
+        }
+        TtyClaim::Keep => {
+            this.tty_tried.lock().insert(file.to_path_buf());
+        }
+        TtyClaim::Drop => {
+            let _ = std::fs::remove_file(file);
+        }
     }
 }
 
@@ -326,9 +470,7 @@ fn find_window_by_marker_substr(marker: &str) -> Option<MarkerHit> {
 fn find_window_for_marker(req: &AwaitRequest) -> Option<HwndEntry> {
     let m = find_window_by_marker_substr(&req.marker)?;
     // FileTime → u64（HwndEntry.owner_proc_start 仍 wire u64 保兼容；0 表示拿不到）
-    let owner_proc_start = crate::platform::pid::creation_filetime(m.owner_pid)
-        .map(|ft| ft.0)
-        .unwrap_or(0);
+    let owner_proc_start = crate::platform::pid::start_stamp(m.owner_pid).unwrap_or(0);
 
     // 组装那一步是**平台无关**的（见 `entry_from_marker_hit` 头注：写在这里的话
     // 那一格在 Linux 门禁上一条判据都够不到）。
@@ -426,10 +568,8 @@ fn verify_window(hwnd_v: isize, owner_pid: u32, owner_proc_start: u64) -> Result
         )));
     }
     if owner_proc_start != 0 {
-        // 两边都是 FileTime UTC（u64 同零点）→ 直接比 .0 即可
-        let cur_proc_start = crate::platform::pid::creation_filetime(cur_owner)
-            .map(|ft| ft.0)
-            .unwrap_or(0);
+        // 两边都是这台的起始时刻戳（同一个口径，`platform::pid::start_stamp`）→ 直接比
+        let cur_proc_start = crate::platform::pid::start_stamp(cur_owner).unwrap_or(0);
         if cur_proc_start != 0 && cur_proc_start != owner_proc_start {
             return Err(VerifyMiss::Reused(
                 "owner pid reused: start time differs".into(),
@@ -539,7 +679,8 @@ impl SidHwndCache {
     /// # 今天的行为，逐字一句
     ///
     /// **离开活跃集的一律忘**（可重连 · 已结束 · 说不清三种去向都走这里，由 `lib.rs::session_side_effects` 调）：
-    /// 本机 ↗ 只在 Windows 上有，而 Windows 没有 tmux ⇒ 本机走不到「可重连」；被顶替的旧 sid 连 attach 都接不上。
+    /// 这份缓存只记「claude 往上的进程链里有登记过的 shell」那一形（Windows 本机 · Linux 不在 tmux 里的会话）；
+    /// Linux 上在 tmux 里的本机会话不靠它 —— 点 ↗ 那一刻按窗口标签现查（界面 `frontByLocalLabel`）；被顶替的旧 sid 连 attach 都接不上。
     pub fn apply_local_removal(&self, sid: &str) {
         self.forget(sid);
     }
@@ -704,9 +845,7 @@ fn probe_by_marker_title(pid: u32) -> TitleProbe {
         Some(Some(m)) => TitleProbe::Found(FoundWindow {
             hwnd: m.hwnd,
             owner_pid: m.owner_pid,
-            owner_proc_start: crate::platform::pid::creation_filetime(m.owner_pid)
-                .map(|ft| ft.0)
-                .unwrap_or(0),
+            owner_proc_start: crate::platform::pid::start_stamp(m.owner_pid).unwrap_or(0),
         }),
     }
 }
@@ -748,7 +887,7 @@ fn is_console_shell(name: &str) -> bool {
 /// 生产那一份「握手表里作数的那一条」：查表 ＋ 此刻的起始时刻 ＋ 窗口三重校验。
 fn holding_registration(bind: &BindRegistry, pid: u32) -> Option<HwndEntry> {
     let entry = bind.lookup_hwnd_for_ps(pid)?;
-    let start_now = crate::platform::pid::creation_filetime(pid).map(|ft| ft.0);
+    let start_now = crate::platform::pid::start_stamp(pid);
     registration_holds(&entry, start_now, |w| {
         verify_window(w.hwnd, w.owner_pid, w.owner_proc_start).is_ok()
     })
@@ -764,11 +903,7 @@ pub fn bring_chain_window(chain: &[ChainLink], bind: &BindRegistry) -> FrontOutc
         chain,
         |pid| holding_registration(bind, pid),
         crate::platform::hwnd::visible_top_windows_of,
-        |pid| {
-            crate::platform::pid::creation_filetime(pid)
-                .map(|ft| ft.0)
-                .unwrap_or(0)
-        },
+        |pid| crate::platform::pid::start_stamp(pid).unwrap_or(0),
         probe_by_marker_title,
     );
     match picked {

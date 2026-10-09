@@ -2369,6 +2369,34 @@ describe("：↗ 远端那一格按顺序问三方", () => {
     expect(pop(), "点了就收起").toBeNull();
   });
 
+  it("★ 本机会话：壳按缓存答「没登记」⇒ 再问本机后端谁在显示它、按窗口标签找（Linux 上会话在 tmux 里、终端由 bash / zsh 接入块登记）：对上 ⇒ 切过去；没对上 ⇒ 照旧「没登记」", async () => {
+    const LABELED = [{ ssh: null, activity: 9, window: "4242-987654" }];
+    const local = (label: () => Promise<unknown>): void => {
+      mockInvoke.mockImplementation((cmd: string, args: unknown) => {
+        if (isChanCall(cmd, args, "session-terminals")) return Promise.resolve(chanReply({ terminals: LABELED }));
+        if (cmd === "bring_terminal_to_front") return Promise.resolve({ kind: "unbound" });
+        if (cmd === "bring_remote_terminal_to_front") return label();
+        return Promise.resolve([]);
+      });
+    };
+    local(() => Promise.resolve({ kind: "switched" }));
+    const tm = makeTM();
+    tm.ensureTab("l7", "/w", "p", LOCAL_ORIGIN);
+    await clickFront(tm, "l7");
+    const calls = mockInvoke.mock.calls as [string, unknown][];
+    expect(calls.filter(([c, a]) => isChanCall(c, a, "session-terminals")).map(([, a]) => [(a as { origin: string }).origin, chanArgsJson(a as never)])).toEqual([
+      [LOCAL_ORIGIN, { sid: "l7" }],
+    ]);
+    expect(calls.filter(([c]) => c === "bring_remote_terminal_to_front").map(([, a]) => a)).toEqual([{ terminals: LABELED }]);
+    expect(calls.some(([c, a]) => isChanCall(c, a, "terminal-processes")), "本机会话不按连接对").toBe(false);
+    expect(pop(), "切过去了：不出浮层").toBeNull();
+
+    mockInvoke.mockReset();
+    local(() => Promise.resolve(null));
+    await clickFront(tm, "l7");
+    expect(pop()!.firstElementChild!.textContent).toBe(copyText("front.title.unbound"));
+  });
+
   it("★ 切过去了：什么都不出、↗ 换成对勾 1 秒；开着的结局浮层一起收起", async () => {
     answer({ terminals: [], why: "no-terminal" }, null, () => Promise.resolve({ kind: "switched" }));
     const tm = makeTM();

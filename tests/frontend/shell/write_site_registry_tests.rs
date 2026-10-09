@@ -104,6 +104,8 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
     // ── 不是安装动作：写的是 monitor 自己的东西
     ("bind.rs", "spawn", None, "monitor 自己的运行时目录/落地文件"),
     ("bind.rs", "process_await_file", None, "monitor 自己的等待文件"),
+    ("bind.rs", "process_tty_file", None, "monitor 自己的握手表（bash / zsh 那一份认上了写一条登记）· 删用完的那份等待记录"),
+    ("console_title.rs", "tty_title", None, "不是盘上的文件：往本机 bash / zsh 接入块记下的那个终端设备写改标题的控制序列（终端程序据此改窗口标题）"),
     ("bind.rs", "cleanup_dead", None, "清理 monitor 自己留下的死文件"),
     ("config.rs", "patch_config_at", None, "monitor 自己的配置文件（唯一写口：进程级锁内现读 ＋ 按键补丁；整份替换的 `save_config` 删了）"), // 〔散文墓碑〕
     // ── 这里原来有一行 `creds_store.rs` 的凭据写口（K-H2a：账号的第三方 API key 那份文件）。
@@ -391,6 +393,8 @@ enum Lands {
     OwnDeployment,
     /// cargo 的构建目录。
     BuildOutput,
+    /// 不是盘上的文件：终端设备（`/dev/pts/*`），写的是改标题的控制序列。
+    TerminalDevice,
     /// **是**用户文件，但有主、在别的路收：`(谁来收, 为什么不在本路)`。
     /// 今天**零成员**（唯一那一格 —— 下载落到用户选的本机路径 —— 被 SR1b 收了，落地搬进后端 `control/transfer.rs`）；
     /// 这一档留着：它是「一时搬不走、指名谁来收」这个形态本身，下一格要落时有地方落（同 `backend_route` 那条
@@ -431,6 +435,8 @@ const SITE_CLASS: &[(&str, &str, Lands)] = &[
     ("build.rs", "embed_backends", Lands::BuildOutput),
     ("bind.rs", "spawn", Lands::OwnState),
     ("bind.rs", "process_await_file", Lands::OwnState),
+    ("bind.rs", "process_tty_file", Lands::OwnState),
+    ("console_title.rs", "tty_title", Lands::TerminalDevice),
     ("bind.rs", "cleanup_dead", Lands::OwnState),
     ("config.rs", "patch_config_at", Lands::OwnState),
     // `creds_store.rs` 的凭据写口那一行摘了（理由同上一张表）。

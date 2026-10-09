@@ -767,7 +767,8 @@ fn strip_block(existing: &str, what: &str) -> Result<String, String> {
 /// 不带版本串的那一行（从前的 `… BEGIN ===`，块里还定义着 cc / cct / cca）照样认得、判成旧版。
 pub(crate) const CCM_PROFILE_BEGIN: &str = "# === cc-monitor remote ccm BEGIN";
 /// POSIX 别名块这一版的版本串（唯一住址）。v2：块只让 `ccm` 进 PATH ＋ 接上别名文件，不再定义 cc / cct / cca。
-pub(crate) const POSIX_BLOCK_VERSION: &str = "v2";
+/// v3：本机桌面上开的 shell 多留一份终端记录（`ps-await/<进程号>.tty`）＋ 设 `LC_CCM_WINDOW`，cc-monitor 据它认终端窗口（↗）—— 装着 v2 的人重装一次。
+pub(crate) const POSIX_BLOCK_VERSION: &str = "v3";
 pub(crate) const CCM_PROFILE_END: &str = "# === cc-monitor remote ccm END ===";
 
 /// 远端 ↗ 拉前用的 `ccm` wrapper（**后端拥有**，install 写它而非前端传入——见审计 S-1：

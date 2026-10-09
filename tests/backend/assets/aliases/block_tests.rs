@@ -1955,3 +1955,104 @@ if ($mode -eq 'interfere') { Stop-FakeMonitor; Start-FakeMonitor 'hit'; Settle; 
     let t = run("cc-down");
     assert!(t.contains("cc-said=cc-monitor: 绑定超时"), "{t}");
 }
+
+/// ★ POSIX 别名块（`src/shared/ccm-aliases.sh`）真跑一遍（bash · dash，私有伪终端里、HOME 是临时目录）：
+/// 本机图形会话里开的 shell ⇒ 在 `ps-await/` 留一份 `<进程号>.tty`（进程号 · 起始时刻 · 终端设备），`LC_CCM_WINDOW` 是同一个键；
+/// 经 ssh 登进来的 · 没有图形会话的 ⇒ 什么都不留；`CCM_DATA_DIR` 设了就写那里。不起后台、不等。
+#[cfg(target_os = "linux")]
+#[test]
+fn the_posix_block_leaves_a_terminal_record_only_in_a_local_graphical_shell() {
+    let snippet = tmpdir("posix-bind");
+    let file = snippet.0.join("ccm-aliases.sh");
+    std::fs::write(&file, CCM_WRAPPER_SNIPPET).unwrap();
+    // 一趟：在 `script` 给的伪终端里起 `sh`，source 那份片段，打出 $$ · 自己的起始时刻 · LC_CCM_WINDOW · tty。
+    let go = |sh: &str, home: &std::path::Path, extra: &[(&str, &str)]| -> String {
+        let inner = format!(
+            "{sh} -c '. {f}; s=$(sed \"s/.*) //\" /proc/$$/stat | cut -d\" \" -f20); echo \"pid=$$ start=$s lc=${{LC_CCM_WINDOW:-}} tty=$(tty)\"'",
+            f = file.display()
+        );
+        let mut c = std::process::Command::new("script");
+        c.args(["-qec", &inner, "/dev/null"])
+            .env_clear()
+            .env("PATH", std::env::var("PATH").unwrap_or_default())
+            .env("HOME", home);
+        for (k, v) in extra {
+            c.env(k, v);
+        }
+        let out = c.output().expect("script 起得来");
+        String::from_utf8_lossy(&out.stdout).replace('\r', "")
+    };
+    let field = |line: &str, k: &str| -> String {
+        line.split_whitespace()
+            .find_map(|w| w.strip_prefix(&format!("{k}=")).map(str::to_string))
+            .unwrap_or_default()
+    };
+    for sh in ["bash", "dash"] {
+        let home = tmpdir(&format!("posix-home-{sh}"));
+        let line = go(sh, &home.0, &[("DISPLAY", ":7")]);
+        let (pid, start, tty) = (
+            field(&line, "pid"),
+            field(&line, "start"),
+            field(&line, "tty"),
+        );
+        assert!(
+            !pid.is_empty() && start.parse::<u64>().is_ok(),
+            "{sh}: {line}"
+        );
+        assert_eq!(
+            field(&line, "lc"),
+            format!("{pid}-{start}"),
+            "{sh}: 窗口标签就是进程号-起始时刻"
+        );
+        let rec = home.0.join(format!(".cc-monitor/ps-await/{pid}.tty"));
+        let v: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(&rec).unwrap_or_else(|e| panic!("{sh}: 没留记录 {e}: {line}")),
+        )
+        .unwrap();
+        assert_eq!(
+            v,
+            serde_json::json!({ "shell_pid": pid.parse::<u64>().unwrap(), "proc_start": start, "tty": tty }),
+            "{sh}"
+        );
+        let leftovers: Vec<_> = std::fs::read_dir(home.0.join(".cc-monitor/ps-await"))
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name())
+            .collect();
+        assert_eq!(leftovers.len(), 1, "{sh}: 半截文件没留下：{leftovers:?}");
+
+        for (why, env) in [
+            (
+                "经 ssh 登进来",
+                vec![
+                    ("DISPLAY", ":7"),
+                    ("SSH_CONNECTION", "192.0.2.5 40000 192.0.2.9 22"),
+                ],
+            ),
+            ("没有图形会话", vec![]),
+        ] {
+            let h = tmpdir(&format!("posix-none-{sh}"));
+            let line = go(sh, &h.0, &env);
+            assert!(
+                !h.0.join(".cc-monitor/ps-await").exists(),
+                "{sh} · {why}：不该留记录：{line}"
+            );
+            assert_eq!(field(&line, "lc"), "", "{sh} · {why}：不设窗口标签");
+        }
+        let h = tmpdir(&format!("posix-dd-{sh}"));
+        let dd = h.0.join("data");
+        let line = go(
+            sh,
+            &h.0,
+            &[
+                ("WAYLAND_DISPLAY", "wayland-0"),
+                ("CCM_DATA_DIR", dd.to_str().unwrap()),
+            ],
+        );
+        assert!(
+            dd.join(format!("ps-await/{}.tty", field(&line, "pid")))
+                .exists(),
+            "{sh}: CCM_DATA_DIR 设了就写那里：{line}"
+        );
+    }
+}
