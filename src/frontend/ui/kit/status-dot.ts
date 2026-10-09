@@ -51,7 +51,11 @@ export function installDotRest(): () => void {
   const mark = (next: boolean): void => {
     if (next === away) return;
     away = next;
-    for (const a of document.getAnimations?.() ?? []) if (isBreath(a)) next ? rest(a) : a.play();
+    for (const a of document.getAnimations?.() ?? []) {
+      if (!isBreath(a)) continue;
+      if (next) rest(a);
+      else a.play();
+    }
   };
   const hidden = (): boolean => document.visibilityState === "hidden";
   // 失焦 / 得焦按事件本身认（事件到的那一刻 `hasFocus()` 各引擎未必已经翻过来）；
