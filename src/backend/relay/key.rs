@@ -14,10 +14,11 @@
 //! # 钥匙怎么到 agent 手里（不在本文件，但本文件的住址是它的另一半）
 //!
 //! `ccm` 在最终 exec 那一处照那一家的注入格（`agents::Inject`）做：认地址环境变量的那一家，直路在自己进程里读这个文件、
-//! 把钥匙拼进那个变量（经本文件 [`keyed_with_key_on_disk`]）；地址只能拼进参数的那一家，地址不带钥匙、钥匙本身进
-//! `relay_route_core::KEY_ENV`（经 [`key_on_disk`]）。非得经 shell 那一趟写成**读这个文件的命令替换** `$(cat ~/<KEY_FILE_REL>)`
+//! 把钥匙拼进那个变量（经本文件 [`keyed_with_key_on_disk`]）；地址只能拼进参数的那一家，拼进参数的是插了**只许直通那一把**
+//! （[`KeyKind::Pass`]，`relay_route_core::PASS_KEY_FILE_REL`）的地址。非得经 shell 那一趟写成**读这个文件的命令替换** `$(cat ~/<KEY_FILE_REL>)`
 //! （`control/ccm/plan.rs::relay_export`，shell 写法出自 `platform/shell/posix.rs::home_file_between`）。
-//! ⇒ 钥匙只从这个文件进 agent 进程自己的 env；交给终端的那一行、`tmux send-keys` 的 argv、shell 历史、webview 里都没有它。
+//! ⇒ 全权那一把只从这个文件进 agent 进程自己的 env；交给终端的那一行、`tmux send-keys` 的 argv、shell 历史、webview 里都没有它。
+//! 只许直通那一把会进那一家的 argv 与它自己的日志 —— 它只开得了 `/t/`（永不代入凭据），见 `comms_outward::door`。
 //! 两半的相对路径是同一个 const（共享 crate `relay_route_core::KEY_FILE_REL`），不再各写一份再对拍。
 
 use comms_outward::Key;
@@ -28,14 +29,33 @@ use std::path::{Path, PathBuf};
 /// `ccm` 读钥匙 / 渲 `$(cat ~/…)` 用的也是同一个 const。
 pub(crate) const KEY_FILE_REL: &str = relay_route_core::KEY_FILE_REL;
 
+/// 盘上两把钥匙里的哪一把。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum KeyKind {
+    /// 全权（`/s/` 与 `/t/`）。
+    Full,
+    /// 只许直通（`/t/`）。
+    Pass,
+}
+
+impl KeyKind {
+    /// 这一把住家目录底下哪儿。
+    pub(crate) fn file_rel(self) -> &'static str {
+        match self {
+            KeyKind::Full => KEY_FILE_REL,
+            KeyKind::Pass => relay_route_core::PASS_KEY_FILE_REL,
+        }
+    }
+}
+
 /// 钥匙的熵：32 字节 = 256 位（要求 ≥128 位）。落盘是 64 个小写十六进制字符。
 const KEY_BYTES: usize = 32;
 
-/// 这台机器上钥匙文件的路径：家目录（`platform::paths::home_dir_from`）底下那一份。
+/// 这台机器上那一把钥匙文件的路径：家目录（`platform::paths::home_dir_from`）底下那一份。
 /// 取值器是注入的 ⇒ 判据喂夹具家目录，不碰进程环境。
-pub(crate) fn key_path(get: &dyn Fn(&str) -> Option<String>) -> Option<PathBuf> {
+pub(crate) fn key_path(get: &dyn Fn(&str) -> Option<String>, kind: KeyKind) -> Option<PathBuf> {
     let home = crate::platform::paths::home_dir_from(&|k| get(k).map(Into::into))?;
-    Some(home.join(KEY_FILE_REL))
+    Some(home.join(kind.file_rel()))
 }
 
 /// 读回盘上那一把。不在 / 读不动 / 形状不对 ⇒ `None`（**只读**：探针与门都走这里）。
@@ -45,18 +65,12 @@ pub(crate) fn read_key(path: &Path) -> Option<Key> {
         .and_then(|s| Key::from_text(&s))
 }
 
-/// 给一条中转地址（构造口产物）插上这台盘上那把钥匙（家目录底下 [`KEY_FILE_REL`]，**只读**）⇒
-/// 用户自己贴进 agent 设置文件的那一段要的展开形（那里写不了 `$(cat …)`）。钥匙在这里插、不以裸值出本模块；
+/// 给一条中转地址（构造口产物）插上这台盘上 `kind` 那一把钥匙（**只读**）⇒ agent 进程要的展开形
+/// （环境变量里的、参数里的、用户自己贴进设置文件的那一段 —— 那里写不了 `$(cat …)`）。钥匙在这里插、不以裸值出本模块；
 /// 钥匙文件不在 / 形状不对 / 地址不是构造口产物 ⇒ `None`。
-pub(crate) fn keyed_with_key_on_disk(home: &Path, url: &str) -> Option<String> {
-    let key = read_key(&home.join(KEY_FILE_REL))?;
+pub(crate) fn keyed_with_key_on_disk(home: &Path, url: &str, kind: KeyKind) -> Option<String> {
+    let key = read_key(&home.join(kind.file_rel()))?;
     relay_route_core::keyed_base_url(url, key.expose())
-}
-
-/// 这台盘上那把钥匙本身（**只读**）：起会话时放进 agent 进程环境 `relay_route_core::KEY_ENV` 那一形用
-/// （那一家的地址只能写进它自己的配置、地址里不带钥匙段，钥匙由它带在钥匙头里）。不在 / 形状不对 ⇒ `None`。
-pub(crate) fn key_on_disk(home: &Path) -> Option<String> {
-    read_key(&home.join(KEY_FILE_REL)).map(|k| k.expose().to_string())
 }
 
 /// 中转起来时拿钥匙：读回；没有或坏了就铸一把新的落盘。**本模块唯一的写口**

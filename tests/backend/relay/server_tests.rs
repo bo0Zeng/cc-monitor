@@ -718,7 +718,7 @@ fn spawn_relay_counted(up: SocketAddr) -> (SocketAddr, Arc<Relay>, TeeTap, Arc<A
     let base = Base::parse(&format!("http://127.0.0.1:{}", up.port())).expect("base");
     let relay = Arc::new(Relay::new(
         dest_of(two_accounts_no_key(&base)),
-        super::key::key_tests::test_key(),
+        super::key::key_tests::test_keys(),
         TeeSink::to_port(port),
         DOWNSTREAM_DEADLINE,
         UPSTREAM_DEADLINE,
@@ -1853,7 +1853,7 @@ fn the_substituted_key_never_shows_up_in_any_of_the_four_exits() {
 fn spawn_relay_with_table(table: RoutingTable) -> SocketAddr {
     let relay = Arc::new(Relay::new(
         dest_of(table),
-        super::key::key_tests::test_key(),
+        super::key::key_tests::test_keys(),
         no_tap(),
         DOWNSTREAM_DEADLINE,
         UPSTREAM_DEADLINE,
@@ -2760,7 +2760,7 @@ fn both_directions_really_disable_nagle_on_the_socket() {
     let base = Base::parse(&format!("http://127.0.0.1:{}", up.addr.port())).expect("base");
     let relay = Relay::new(
         dest_of(two_accounts_no_key(&base)),
-        super::key::key_tests::test_key(),
+        super::key::key_tests::test_keys(),
         no_tap(),
         DOWNSTREAM_DEADLINE,
         UPSTREAM_DEADLINE,
@@ -2857,7 +2857,7 @@ fn both_peers_really_carry_their_read_and_write_deadline_on_the_socket() {
     let base = Base::parse(&format!("http://127.0.0.1:{}", up.addr.port())).expect("base");
     let relay = Relay::new(
         dest_of(two_accounts_no_key(&base)),
-        super::key::key_tests::test_key(),
+        super::key::key_tests::test_keys(),
         no_tap(),
         DOWNSTREAM_DEADLINE,
         UPSTREAM_DEADLINE,
@@ -3561,7 +3561,7 @@ fn spawn_relay_with_upstream_deadline(
     let base = Base::parse(&format!("http://127.0.0.1:{}", up.port())).expect("base");
     let relay = Arc::new(Relay::new(
         dest_of(two_accounts_no_key(&base)),
-        super::key::key_tests::test_key(),
+        super::key::key_tests::test_keys(),
         no_tap(),
         DOWNSTREAM_DEADLINE,
         upstream_deadline,

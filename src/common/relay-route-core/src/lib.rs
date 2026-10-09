@@ -69,12 +69,8 @@ pub const PORT: u16 = 8788;
 /// 注入的 URL 不带钥匙本身，渲染成 `$(cat ~/<本常量>)` 在那台机器的 pane shell 里展开（RK1）。
 pub const KEY_FILE_REL: &str = ".cc-monitor/relay-key";
 
-/// 钥匙的另一种交法：这个请求头（那一家的上游地址只能写进它自己的配置、钥匙不许进 argv 时）。
-/// 路径里没有钥匙段时门才看它；中转转上游前把它剥掉。
-pub const KEY_HEADER: &str = "X-Cc-Monitor-Key";
-
-/// 起会话时钥匙放进 agent 进程环境的那个变量（那一家把它的值带在 [`KEY_HEADER`] 里；环境只有本用户读得到）。
-pub const KEY_ENV: &str = "CCM_RELAY_KEY";
+/// 只许直通（`/t/`）的那把钥匙的文件（同机同权限、同一个铸法）。地址只能经命令行参数交给的那一家只拿它（`INVARIANTS §48.1a`）。
+pub const PASS_KEY_FILE_REL: &str = ".cc-monitor/relay-pass-key";
 
 /// 〔「一台机器一个家」〕后端的**上传暂存区**（相对家目录）：SFTP 传输台只往这里写 `<key>.part`，
 /// 传完由那台后端提交、挪进目标。后端按它落盘（`control/files_commit.rs::STAGING_DIR`），monitor 的数据位置页按它列出。

@@ -134,8 +134,10 @@ pub(super) mod tests {
         "host",
         // 出「直接敲的也走中转」那一段（`relay-optin`）时把这台的钥匙插进地址（只交插好的地址）。
         "keyed_with_key_on_disk",
-        // `ccm` 起地址里不带钥匙段的那一家时，把钥匙本身放进 agent 进程环境（`key_for_exec`）。
-        "key_on_disk",
+        // 插哪一把：全权 / 只许直通（`ccm` 起会话 · 直接敲的也走中转按那一家的注入格选）。
+        "KeyKind",
+        "KeyKind::Full",
+        "KeyKind::Pass",
         // 出成品时问「这台机器上我们的中转在不在听」（`apikey-routing` 的 `running` · 别名预览那一面）。
         "our_relay_listening",
         // `run`（`--relay` 进程的中转入口）随那一形删了。

@@ -1,4 +1,4 @@
-//! 中转对「地址写在 agent 自己配置里、钥匙另经环境交」那一形与「先试协议升级、被拒再发普通请求」那一形的组合判据：
+//! 中转对「只许直通的那把钥匙」与「先试协议升级、被拒再发普通请求」那一形的组合判据：
 //! 真中转 ＋ 生产段的上游选择 ＋ 记头名的假上游（只记请求行与头名，不记值）。
 
 use super::listen::{listen, serve, DOWNSTREAM_DEADLINE, UPSTREAM_DEADLINE};
@@ -87,7 +87,7 @@ pub(super) fn spawn_relay_with(upstreams: Upstreams, taps: Arc<Taps>) -> SocketA
             RoutingTable::build(std::iter::empty()),
             upstreams,
         )),
-        super::key::key_tests::test_key(),
+        super::key::key_tests::test_keys(),
         TeeSink::to_port(taps),
         DOWNSTREAM_DEADLINE,
         UPSTREAM_DEADLINE,
@@ -116,36 +116,41 @@ pub(super) fn all_to(up: SocketAddr) -> Upstreams {
         .expect("回环明文是合法上游")
 }
 
-/// ★ 钥匙在钥匙头里（路径没有钥匙段）的那一发：过门、到上游，而上游收到的请求里**没有**那个头（钥匙不出中转）。
+/// ★ 只许直通的那把钥匙：打 `/t/` 过门、到上游（钥匙段剥掉）；打 `/s/` ⇒ 403 `key-scope`、一个字节不到上游。
+/// 全权那一把打 `/s/` 过得了门（表里没这一行 ⇒ 404，与 403 可分）。
 #[test]
-fn a_key_carried_in_the_key_header_gets_in_and_is_not_forwarded() {
+fn the_pass_key_reaches_passthrough_but_is_refused_on_substitute_routes() {
     let up = spawn_name_upstream(SSE_OK);
     let relay = spawn_relay_with(all_to(up.addr), Arc::new(Taps::default()));
-    let h = relay_route_core::KEY_HEADER;
-    let key = super::key::key_tests::TEST_KEY;
-    let got = send_raw(
-        relay,
-        &format!(
-            "POST /t/claude-code/0/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\n{h}: {key}\r\nX-Probe: 1\r\nContent-Length: 2\r\n\r\n{{}}"
-        ),
-    );
+    let pass = super::key::key_tests::TEST_PASS_KEY;
+    let full = super::key::key_tests::TEST_KEY;
+    let post = |key: &str, route: &str| {
+        send_raw(
+            relay,
+            &format!("POST /{key}/{route}/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 2\r\n\r\n{{}}"),
+        )
+    };
+    let got = post(pass, "t/claude-code/0");
     assert!(
         got.starts_with("HTTP/1.1 200"),
-        "钥匙头那一形没过门：{got:?}"
+        "直通钥匙打 /t/ 没过：{got:?}"
+    );
+    let got = post(pass, "s/claude-code/acct");
+    assert!(
+        got.starts_with("HTTP/1.1 403 ")
+            && got
+                .to_ascii_lowercase()
+                .contains("x-cc-monitor-reason: key-scope"),
+        "直通钥匙打 /s/ 没按「钥匙管不到」拒：{got:?}"
+    );
+    let got = post(full, "s/claude-code/acct");
+    assert!(
+        got.starts_with("HTTP/1.1 404 "),
+        "全权钥匙打 /s/ 该过门、落到没这一行：{got:?}"
     );
     let seen = up.seen.lock().expect("lock").clone();
-    assert_eq!(seen.len(), 1, "该恰好到上游一发：{seen:?}");
+    assert_eq!(seen.len(), 1, "只有 /t/ 那一发该到上游：{seen:?}");
     assert_eq!(seen[0].line, "POST /v1/messages HTTP/1.1");
-    assert!(
-        seen[0].names.iter().any(|n| n == "x-probe"),
-        "量具坏了：别的头也没记下：{:?}",
-        seen[0].names
-    );
-    assert!(
-        !seen[0].names.iter().any(|n| n.eq_ignore_ascii_case(h)),
-        "钥匙头被转到了上游：{:?}",
-        seen[0].names
-    );
 }
 
 /// 一条 Responses 流（一轮：开始 · 一块正文 · 一段字 · 说完）。开头与收尾那两件照真流的形带整份应答对象
@@ -161,7 +166,7 @@ data: {{\"type\":\"response.completed\",\"sequence_number\":4,\"response\":{{\"i
     ).into_boxed_str())
 }
 
-/// ★★ Codex 那一家照真请求的形发（钥匙在钥匙头里、地址里没有钥匙段）：
+/// ★★ Codex 那一家照真请求的形发（地址里带的是只许直通的那把钥匙）：
 /// ① 先一发 WebSocket 升级 ⇒ 426、一个字节不到上游；② 改发 `POST …/responses` ⇒ 带 `ChatGPT-Account-ID` 的落 ChatGPT 那一支、
 /// 不带的落 API 那一支（反向：API 形的那一发不许落到 ChatGPT 那一支）；③ tee 出的流标签 ＝ `session-id` 的值，
 /// 主运行（`thread-id` ＝ `session-id`）归主运行、子 agent（`thread-id` 是它自己的）归它，流折得出开始 · 字 · 收尾（活卡要的那几件）——
@@ -188,17 +193,13 @@ fn a_codex_shaped_round_gets_426_then_picks_its_upstream_by_login_form_and_route
     );
     let taps = Arc::new(Taps::default());
     let relay = spawn_relay_with(ups, Arc::clone(&taps));
-    let key = format!(
-        "{}: {}\r\n",
-        relay_route_core::KEY_HEADER,
-        super::key::key_tests::TEST_KEY
-    );
+    let key = super::key::key_tests::TEST_PASS_KEY;
     const SID: &str = "019a0000-0000-7000-8000-00000000c0de";
     const CHILD: &str = "019a0000-0000-7000-8000-0000000c41d0";
 
     let ws = send_raw(
         relay,
-        &format!("GET /t/codex/_/responses HTTP/1.1\r\nHost: 127.0.0.1\r\n{key}Connection: Upgrade\r\nUpgrade: websocket\r\nsession-id: {SID}\r\nthread-id: {SID}\r\n\r\n"),
+        &format!("GET /{key}/t/codex/_/responses HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nsession-id: {SID}\r\nthread-id: {SID}\r\n\r\n"),
     );
     assert!(
         ws.starts_with("HTTP/1.1 426 "),
@@ -217,7 +218,7 @@ fn a_codex_shaped_round_gets_426_then_picks_its_upstream_by_login_form_and_route
         };
         send_raw(
             relay,
-            &format!("POST /t/codex/_/responses HTTP/1.1\r\nHost: 127.0.0.1\r\n{key}Authorization: Bearer x\r\n{account}session-id: {SID}\r\nthread-id: {thread}\r\nContent-Length: 2\r\n\r\n{{}}"),
+            &format!("POST /{key}/t/codex/_/responses HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer x\r\n{account}session-id: {SID}\r\nthread-id: {thread}\r\nContent-Length: 2\r\n\r\n{{}}"),
         )
     };
     assert!(post(SID, true).starts_with("HTTP/1.1 200"));

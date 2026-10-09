@@ -806,19 +806,24 @@ fn exec_direct(d: &plan::Direct) -> i32 {
     if d.unset_config_dir && !cfg_env.is_empty() {
         std::env::remove_var(cfg_env);
     }
-    // 钥匙从这台的钥匙文件读进 agent 进程环境（不进 argv、不进打印出来的命令）。读不到 ⇒ 不起（注进去每一发都被中转拒）。
+    // 钥匙从这台的钥匙文件读进来、exec 那一刻才插（不进打印出来的命令）。读不到 ⇒ 不起（注进去每一发都被中转拒）。
+    //   认地址环境变量的那一家：全权那一把插进那个变量；地址拼进参数的那一家：只许直通那一把插进参数里那个词。
+    use crate::accounts::upstream_select::endpoint::{keyed_for_args, keyed_for_env};
     let get = |k: &str| std::env::var(k).ok();
+    let mut argv = d.argv.clone();
     match (&d.relay, &d.relay_via) {
-        (Some(url), plan::RelayVia::Env(var)) => {
-            match crate::accounts::upstream_select::endpoint::keyed_for_exec(url, &get) {
-                Some(keyed) => std::env::set_var(var, keyed),
-                None => return die(&copy_text("beCcm.relay.noKey", &[])),
-            }
-        }
-        (Some(_), plan::RelayVia::Args) => {
-            match crate::accounts::upstream_select::endpoint::key_for_exec(&get) {
-                Some(key) => std::env::set_var(relay_route_core::KEY_ENV, key),
-                None => return die(&copy_text("beCcm.relay.noKey", &[])),
+        (Some(url), plan::RelayVia::Env(var)) => match keyed_for_env(url, &get) {
+            Some(keyed) => std::env::set_var(var, keyed),
+            None => return die(&copy_text("beCcm.relay.noKey", &[])),
+        },
+        (Some(url), plan::RelayVia::Args) => {
+            let Some(keyed) = keyed_for_args(url, &get) else {
+                return die(&copy_text("beCcm.relay.noKey", &[]));
+            };
+            for a in argv.iter_mut() {
+                if plan::split_at_key(a, url).is_some() {
+                    *a = a.replacen(url.as_str(), &keyed, 1);
+                }
             }
         }
         (None, plan::RelayVia::Env(var)) if d.clears_inherited_relay => std::env::remove_var(var),
@@ -830,7 +835,7 @@ fn exec_direct(d: &plan::Direct) -> i32 {
             &[("cwd", &d.cwd.to_string())],
         ));
     }
-    let Some((prog, rest)) = d.argv.split_first() else {
+    let Some((prog, rest)) = argv.split_first() else {
         return die(&copy_text("beCcm.execDirect.noLauncher", &[]));
     };
     exec_or_spawn(Child::new(prog).args(rest), &format!("'{prog}'"), account)

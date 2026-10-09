@@ -10,10 +10,23 @@ use crate::http1;
 /// 判据用的那一把（形状合法、一眼认得出是测试值；与后端 `key_tests::TEST_KEY` 同值）。
 const TEST_KEY: &str = "7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57";
 
+/// 判据用的那把只许直通的钥匙（与后端 `key_tests::TEST_PASS_KEY` 同值）。
+const TEST_PASS_KEY: &str = "7a557a557a557a557a557a557a557a557a557a557a557a557a557a557a557a55";
+
 impl Key {
     /// 判据用：[`TEST_KEY`] 那一把。
     fn for_tests() -> Key {
         Key(TEST_KEY.to_string())
+    }
+}
+
+impl Keys {
+    /// 判据用：[`TEST_KEY`] ＋ [`TEST_PASS_KEY`]。
+    fn for_tests() -> Keys {
+        Keys {
+            full: Key::for_tests(),
+            pass: Key(TEST_PASS_KEY.to_string()),
+        }
     }
 }
 
@@ -32,11 +45,14 @@ const LOOP: &str = "Host: 127.0.0.1:8788\r\n";
 /// （绝对形式 `POST http://…` 到不了门：`http1::parse_request` 先拒，下游拿 400。）
 #[test]
 fn only_the_exact_key_as_the_first_segment_gets_in() {
-    let k = Key::for_tests();
+    let k = Keys::for_tests();
     let good = format!("/{TEST_KEY}/s/claude-code/acctA/sid/v1/messages?beta=true");
     assert_eq!(
         admit(&req(&good, LOOP), &k),
-        Verdict::Pass("/s/claude-code/acctA/sid/v1/messages?beta=true".into()),
+        Verdict::Pass(
+            "/s/claude-code/acctA/sid/v1/messages?beta=true".into(),
+            Scope::All
+        ),
         "对的钥匙必须过，且只剥掉钥匙那一段"
     );
     assert_eq!(
@@ -47,7 +63,7 @@ fn only_the_exact_key_as_the_first_segment_gets_in() {
             ),
             &k
         ),
-        Verdict::Pass("/t/claude-code/0/sid/v1/messages".into()),
+        Verdict::Pass("/t/claude-code/0/sid/v1/messages".into(), Scope::All),
         "`/t/` 同样先过门"
     );
     let upper = TEST_KEY.to_ascii_uppercase();
@@ -70,55 +86,45 @@ fn only_the_exact_key_as_the_first_segment_gets_in() {
     }
 }
 
-/// ①′ 钥匙在钥匙头里：对的过、路径原样；错 / 两个头 / 路径里也有钥匙段 ⇒ `BadKey`；
-/// 带了钥匙头就不再认路径里那一把（两处都有 ⇒ 拒，不猜以哪一把为准）。
+/// ①′ 两把钥匙：全权那一把过门是 `All`、直通那一把过门是 `Passthrough`（剥法一样）；
+/// 直通那一把打 `/s/`（代入凭据）⇒ 403 `key-scope`，打 `/t/` 照过；全权那一把两种都过。
+/// 钥匙只认路径第一段：带在请求头里的不认（那一形随「自家 provider」退场）。
 #[test]
-fn the_key_may_ride_in_the_key_header_instead_of_the_path() {
-    let k = Key::for_tests();
-    let h = relay_route_core::KEY_HEADER;
-    let target = "/t/codex/0/responses";
+fn the_pass_key_gets_in_but_only_for_passthrough_routes() {
+    use crate::Mode as RouteMode;
+    let k = Keys::for_tests();
+    let t = "/t/codex/_/responses";
     assert_eq!(
-        admit(&req(target, &format!("{LOOP}{h}: {TEST_KEY}\r\n")), &k),
-        Verdict::Pass(target.into()),
-        "钥匙头里那一把对 ⇒ 过，路径原样交给路由"
+        admit(&req(&format!("/{TEST_PASS_KEY}{t}"), LOOP), &k),
+        Verdict::Pass(t.into(), Scope::Passthrough)
+    );
+    assert_eq!(
+        admit(&req(&format!("/{TEST_KEY}{t}"), LOOP), &k),
+        Verdict::Pass(t.into(), Scope::All)
     );
     assert_eq!(
         admit(
-            &req(target, &format!("{LOOP}x-cc-monitor-key: {TEST_KEY}\r\n")),
+            &req(t, &format!("{LOOP}X-Cc-Monitor-Key: {TEST_KEY}\r\n")),
             &k
         ),
-        Verdict::Pass(target.into()),
-        "头名不分大小写"
+        Verdict::BadKey,
+        "请求头里的钥匙不认"
     );
-    let wrong = format!("{}0", &TEST_KEY[..TEST_KEY.len() - 1]);
-    for (path, headers) in [
-        (target.to_string(), format!("{LOOP}{h}: {wrong}\r\n")),
-        (
-            target.to_string(),
-            format!("{LOOP}{h}: {TEST_KEY}\r\n{h}: {TEST_KEY}\r\n"),
-        ),
-        (
-            format!("/{TEST_KEY}{target}"),
-            format!("{LOOP}{h}: {TEST_KEY}\r\n"),
-        ),
-        (
-            format!("/{TEST_KEY}{target}"),
-            format!("{LOOP}{h}: {wrong}\r\n"),
-        ),
-        (target.to_string(), format!("{LOOP}{h}: \r\n")),
-    ] {
-        assert_eq!(
-            admit(&req(&path, &headers), &k),
-            Verdict::BadKey,
-            "{path:?} ＋ {headers:?} 不该过门"
-        );
-    }
+    let refused =
+        scope_refusal(Scope::Passthrough, RouteMode::Substitute).expect("直通钥匙打 /s/ 要拒");
+    assert_eq!((refused.0, refused.1), (FORBIDDEN, "key-scope"));
+    assert_eq!(
+        scope_refusal(Scope::Passthrough, RouteMode::Passthrough),
+        None
+    );
+    assert_eq!(scope_refusal(Scope::All, RouteMode::Substitute), None);
+    assert_eq!(scope_refusal(Scope::All, RouteMode::Passthrough), None);
 }
 
 /// ③ `Origin` 那一问：带了就拒，**不管值是什么**、不管钥匙对不对（排在钥匙之前）。
 #[test]
 fn any_origin_header_is_refused_before_the_key_is_looked_at() {
-    let k = Key::for_tests();
+    let k = Keys::for_tests();
     let good = format!("/{TEST_KEY}/s/claude-code/acctA/sid/v1/messages");
     for o in [
         "Origin: https://evil.example\r\n",
@@ -136,7 +142,7 @@ fn any_origin_header_is_refused_before_the_key_is_looked_at() {
 /// ③ `Host` 那一问：回环三形（可带口、大小写不敏感）放行；别的、缺、重复 ⇒ `NotLoopbackHost`。
 #[test]
 fn only_a_loopback_literal_host_gets_in() {
-    let k = Key::for_tests();
+    let k = Keys::for_tests();
     let good = format!("/{TEST_KEY}/s/claude-code/acctA/sid/v1/messages");
     for h in [
         "127.0.0.1",
@@ -150,7 +156,7 @@ fn only_a_loopback_literal_host_gets_in() {
         assert!(
             matches!(
                 admit(&req(&good, &format!("Host: {h}\r\n")), &k),
-                Verdict::Pass(_)
+                Verdict::Pass(..)
             ),
             "{h:?}"
         );
@@ -202,7 +208,7 @@ fn the_three_refusals_are_distinct_faces() {
     assert_eq!(reasons, ["browser-origin", "host-not-loopback", "bad-key"]);
     let whys: std::collections::BTreeSet<_> = faces.iter().map(|f| f.2).collect();
     assert_eq!(whys.len(), 3, "三句为什么必须两两不同：{faces:?}");
-    assert_eq!(Verdict::Pass("/".into()).refusal(), None);
+    assert_eq!(Verdict::Pass("/".into(), Scope::All).refusal(), None);
 }
 
 /// `Key` 不许被 `{:?}` 打出值（谁把它塞进日志，打出来的也只有 `Key(…)`）。

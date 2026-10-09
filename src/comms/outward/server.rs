@@ -189,7 +189,7 @@ pub struct Relay {
     dest: Arc<dyn Destinations>,
     /// 这扇门的钥匙（`door.rs`）。**由监听面交下来**（`listen::prepare` 绑上口之后读回或铸）。
     /// ⚠ 字段名刻意不叫那个会被 `table_guard` 当成「进程级凭据」的字面：它不是上游的凭据，是**下游进门**的钥匙。
-    door: door::Key,
+    door: door::Keys,
     tee: TeeSink,
     /// 给流打标签的请求头名单（构造时向上游选择要一次，[`Destinations::stream_label_headers`]）。
     stream_headers: Vec<&'static str>,
@@ -229,7 +229,7 @@ impl Relay {
     /// —— 中转从此不认识「表」这个东西。
     pub fn new(
         dest: Arc<dyn Destinations>,
-        door: door::Key,
+        door: door::Keys,
         tee: TeeSink,
         downstream_deadline: std::time::Duration,
         upstream_deadline: std::time::Duration,
@@ -621,8 +621,8 @@ pub fn serve_one(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     // 🔴 〔`INVARIANTS §48.1a`〕**进门三问排在一切之前**（读请求体之前、问上游选择之前）：
     //   Origin ⇒ 403 · Host 非回环 ⇒ 421 · 钥匙不对 ⇒ 403。过了才剥掉 `/<钥匙>`，余下的交给 `route::parse`
     //   ⇒ 「钥匙对、表里没这一行」仍是 404，与 403 可分。钥匙不进上游（转上去的是剥之后的路径）、不进 tee、不进日志。
-    let target = match door::admit(&head, &relay.door) {
-        door::Verdict::Pass(rest) => rest,
+    let (target, scope) = match door::admit(&head, &relay.door) {
+        door::Verdict::Pass(rest, scope) => (rest, scope),
         refused => {
             let (status, reason, why) = refused.refusal().expect("非 Pass 那几格都有拒绝的说法");
             // ⚠ 只印是哪一问拒的，**永不印请求头 / 路径**（`K9` 裁定四第 1 条；路径里可能正是一把错钥匙）。
@@ -644,6 +644,11 @@ pub fn serve_one(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     let Some(r) = route::parse(&target) else {
         return respond_and_drain(&mut down_w, NOT_A_ROUTE, "not-a-route");
     };
+    // 直通那一把管不到 `/s/`（代入凭据那一形）：路由认出来就问，排在读请求体与问上游选择之前。
+    if let Some((status, reason, why)) = door::scope_refusal(scope, r.mode) {
+        eprintln!("[relay] refused by key scope: {status}");
+        return respond_body_and_drain(&mut down_w, status, reason, format!("{status}\n{why}\n"));
+    }
     // ★ `阻-1(D3)` + `重要-2(D3)`：请求体这一格先前有**两个**洞，两个都在这几行上。
     //   ① 长度**无上界** ⇒ `Content-Length: 1e12` 把整个进程 abort 掉（SIGABRT，不走 unwind）；
     //   ② 长度**读不懂**（`7abc`）与「没有这个头」挤在同一个 `None` 里 ⇒ 请求体被静默丢掉、
@@ -1090,7 +1095,6 @@ pub fn render_upstream_request(
     //      连那份名单都没有 ⇒ 它也不可能自己凑一份缩水的。
     for (k, v) in &head.headers {
         if http1::is_hop_by_hop(k)
-            || k.eq_ignore_ascii_case(relay_route_core::KEY_HEADER)
             || k.eq_ignore_ascii_case("host")
             || k.eq_ignore_ascii_case("accept-encoding")
             || k.eq_ignore_ascii_case("content-length")

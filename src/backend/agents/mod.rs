@@ -1408,8 +1408,8 @@ pub(crate) fn limit_reply_of(route_id: &str) -> Option<LimitReplyOf> {
 pub(crate) enum Inject {
     /// 插上钥匙的地址放进这个环境变量。
     Env(&'static str),
-    /// 不带钥匙的地址拼成这几个参数（垫在透传之前）；钥匙放进环境变量 `relay_route_core::KEY_ENV`，
-    /// 由这一家自己带在钥匙头 `relay_route_core::KEY_HEADER` 里（地址只能经它自己的配置改的那一家）。
+    /// 地址拼成这几个参数（垫在透传之前）：地址只能经命令行参数交给它的那一家。计划里是不带钥匙的地址，
+    /// `ccm` exec 那一刻插上**只许直通那一把**钥匙（argv 同机别的用户读得到 ⇒ 不给全权那一把）。
     Args(fn(&str) -> Vec<String>),
 }
 
@@ -1419,6 +1419,15 @@ pub(crate) fn inject_among(registry: &[Adapter], kind: &str) -> Option<Inject> {
         .iter()
         .find(|a| a.kind == kind)
         .and_then(|a| a.upstream.as_ref())
+        .map(|u| u.inject)
+}
+
+/// 路由名（适配器 id）那一家怎么指到中转。没登记默认上游 ⇒ `None`。
+pub(crate) fn inject_of_route(route_id: &str) -> Option<Inject> {
+    REGISTRY
+        .iter()
+        .filter_map(|a| a.upstream.as_ref())
+        .find(|u| u.route_id == route_id)
         .map(|u| u.inject)
 }
 

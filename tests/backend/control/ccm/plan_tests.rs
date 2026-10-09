@@ -2221,8 +2221,8 @@ fn on_windows_the_printed_line_speaks_powershell() {
 }
 
 /// ★ 怎么指到中转只看那一家的注入格：认地址环境变量的那一家 ⇒ 插钥匙的地址进**它那个**变量；
-/// 地址只能拼进参数的那一家 ⇒ 不带钥匙的地址垫在透传之前、钥匙进 `CCM_RELAY_KEY`（读钥匙文件的命令替换），
-/// 两家都不出对方那一形。合成注册表里两家只差注入格。
+/// 地址只能拼进参数的那一家 ⇒ 地址垫在透传之前，那个词里的钥匙段写成读**只许直通那一把**钥匙文件的命令替换
+/// （计划里的 argv 不带钥匙，exec 那一刻才插），两家都不出对方那一形。合成注册表里两家只差注入格。
 #[test]
 fn the_relay_is_injected_the_way_that_family_declares() {
     use crate::agents::{Adapter, DefaultUpstream, Inject};
@@ -2275,7 +2275,8 @@ fn the_relay_is_injected_the_way_that_family_declares() {
         };
         d
     };
-    let key_word = "export CCM_RELAY_KEY=\"$(cat ~/.cc-monitor/relay-key)\"; ";
+    let full_key = "$(cat ~/.cc-monitor/relay-key)";
+    let pass_word = "'http://127.0.0.1:8788/'$(cat ~/.cc-monitor/relay-pass-key)'/t/x/w'";
 
     let d = plan_for("via-env");
     assert_eq!(d.relay_via, RelayVia::Env("FAKE_URL_VAR".into()));
@@ -2291,7 +2292,7 @@ fn the_relay_is_injected_the_way_that_family_declares() {
         ),
         "{line}"
     );
-    assert!(!line.contains(key_word), "{line}");
+    assert!(!line.contains("relay-pass-key"), "{line}");
 
     let d = plan_for("via-args");
     assert_eq!(d.relay_via, RelayVia::Args);
@@ -2307,6 +2308,7 @@ fn the_relay_is_injected_the_way_that_family_declares() {
         "地址没垫在透传之前"
     );
     let line = render(&Plan::Direct(d));
-    assert!(line.contains(key_word), "{line}");
+    assert!(line.contains(&format!("--relay-at {pass_word}")), "{line}");
+    assert!(!line.contains(full_key), "全权那一把进了参数：{line}");
     assert!(!line.contains("FAKE_URL_VAR"), "{line}");
 }

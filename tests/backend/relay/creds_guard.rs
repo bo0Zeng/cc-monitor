@@ -166,6 +166,11 @@ mod tests {
             "进门三问拒了一条（Origin / Host 非回环 / 钥匙不对）。只印状态行，**不印请求头与路径**（路径里可能正是一把错钥匙）",
         ),
         (
+            "comms-outward/server.rs",
+            "[relay] refused by key scope",
+            "只许直通那一把打了 `/s/`。只印状态行，不印请求头与路径",
+        ),
+        (
             "relay/listen.rs",
             "[relay] listening on",
             "起来了，监听在哪",

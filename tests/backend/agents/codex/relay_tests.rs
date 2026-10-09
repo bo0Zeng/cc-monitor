@@ -1,30 +1,20 @@
-//! Codex 经中转那一份：起会话垫的参数里只有不带钥匙的地址、钥匙走钥匙头的环境变量；直接敲的 Codex 那份配置的顶层地址读得出、读不懂的说读不懂。
+//! Codex 经中转那一份：起会话垫的参数改内置 provider 的地址；直接敲的 Codex 那份配置的顶层地址读得出、读不懂的说读不懂、合得进去。
 //! 期望值手写（地址形状照中转构造口的产物）。
 
 use super::*;
 
+/// 起会话垫的参数：内置 provider 的 `openai_base_url` 指中转（与直接敲的贴进配置那一行同一个键、同一条地址），
+/// 不另定义 provider（会话记录里的 provider 仍是内置那一个 ⇒ 列表 / `--last` 不分家）。
 #[test]
-fn launch_args_point_a_provider_at_the_relay_and_carry_no_key() {
+fn launch_args_point_the_built_in_provider_at_the_relay() {
     let url = "http://127.0.0.1:8788/t/codex/_";
-    let got = launch_args(url);
-    let want: Vec<String> = [
-        "-c",
-        "model_provider=\"ccm\"",
-        "-c",
-        "model_providers.ccm.name=\"cc-monitor\"",
-        "-c",
-        "model_providers.ccm.base_url=\"http://127.0.0.1:8788/t/codex/_\"",
-        "-c",
-        "model_providers.ccm.wire_api=\"responses\"",
-        "-c",
-        "model_providers.ccm.requires_openai_auth=true",
-        "-c",
-        "model_providers.ccm.env_http_headers.X-Cc-Monitor-Key=\"CCM_RELAY_KEY\"",
-    ]
-    .iter()
-    .map(|s| s.to_string())
-    .collect();
-    assert_eq!(got, want);
+    assert_eq!(
+        launch_args(url),
+        vec![
+            "-c".to_string(),
+            "openai_base_url=\"http://127.0.0.1:8788/t/codex/_\"".to_string()
+        ]
+    );
 }
 
 #[test]

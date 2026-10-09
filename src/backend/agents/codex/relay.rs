@@ -1,11 +1,12 @@
 //! Codex 经中转那一份：默认上游 · 会话头 · 怎么把它指到中转 · 直接敲的 Codex 那份配置里的地址。
 //!
-//! - Codex（0.159）改上游地址只认配置键（`openai_base_url` · 自定义 provider 的 `base_url`），不认环境变量 ⇒
-//!   ccm 起它时用 `-c` 定义一个自家 provider：`base_url` 指中转（**不带**钥匙段）、照旧用 ChatGPT / API key 登录、
-//!   钥匙经 `env_http_headers` 从环境变量 `relay_route_core::KEY_ENV` 带进钥匙头（钥匙不进 argv）。
-//!   自家 provider 直接发 HTTP SSE（不先试 WebSocket）。
+//! - Codex（0.159）改上游地址只认配置键 `openai_base_url`，不认环境变量 ⇒ ccm 起它时垫 `-c openai_base_url="<地址>"`，
+//!   与直接敲的贴进 `config.toml` 顶层那一行同一个键、同一条地址。地址里插的是**只许直通那一把**钥匙
+//!   （进 argv、也会被 Codex 写进它自己的日志；那一把开不了 `/s/`，见 `comms_outward::door`）。
+//! - 不另定义 provider：自家 provider 会让会话记录里的 provider 换成它，而 Codex 的选会话列表 · `--last` ·
+//!   app-server 的会话清单都按「当前 provider」过滤（真 codex 实测：经不经中转起的会话分成两拨）。
+//! - 内置 provider 先试 WebSocket，中转回 426 后同一轮改发 HTTP SSE。
 //! - 同一个地址两种登录都用 ⇒ 真上游按这一发带没带 `ChatGPT-Account-ID`（只有 ChatGPT 登录带）二选一。
-//! - 直接敲的 Codex（用户自己往配置里贴 `openai_base_url`）走内置 provider：先试 WebSocket，中转回 426 后改发 HTTP SSE。
 
 use crate::agents::{SettingsBaseUrl, SettingsEnvFace, SettingsUnreadable};
 use std::path::{Path, PathBuf};
@@ -39,27 +40,9 @@ pub(crate) const UPSTREAM: crate::agents::DefaultUpstream = crate::agents::Defau
     inject: crate::agents::Inject::Args(launch_args),
 };
 
-/// ccm 起 Codex 时定义的那个自家 provider 的 id（会话记录的 `model_provider` 会记成它）。
-const PROVIDER: &str = "ccm";
-
-/// 不带钥匙的中转地址 ⇒ 垫在透传之前的 `-c` 那几组（值是 TOML：串带引号、布尔不带）。
+/// 中转地址 ⇒ 垫在透传之前的那一组 `-c`（值是 TOML 串）。计划里拿到的是不带钥匙的地址，`ccm` exec 那一刻插上钥匙。
 pub(crate) fn launch_args(url: &str) -> Vec<String> {
-    let p = format!("model_providers.{PROVIDER}");
-    [
-        format!("model_provider=\"{PROVIDER}\""),
-        format!("{p}.name=\"cc-monitor\""),
-        format!("{p}.base_url=\"{url}\""),
-        format!("{p}.wire_api=\"responses\""),
-        format!("{p}.requires_openai_auth=true"),
-        format!(
-            "{p}.env_http_headers.{}=\"{}\"",
-            relay_route_core::KEY_HEADER,
-            relay_route_core::KEY_ENV
-        ),
-    ]
-    .into_iter()
-    .flat_map(|kv| ["-c".to_string(), kv])
-    .collect()
+    vec!["-c".to_string(), format!("{KEY}=\"{url}\"")]
 }
 
 /// 直接敲的 Codex 也走中转：`~/.codex/config.toml` 顶层的 `openai_base_url`（只读）。

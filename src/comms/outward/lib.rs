@@ -142,7 +142,7 @@ mod upstream;
 
 /// 后端起中转那一侧用的：钥匙由后端读好交进来（[`Key`]）· 一条连接交给 [`serve_one`] ·
 /// 在途满了由后端回一声 [`refuse_busy`] · 接下连接先装下游期限（[`apply_downstream_deadline`]，值由后端给）。
-pub use door::{tokens_match, Key};
+pub use door::{tokens_match, Key, Keys};
 pub use server::{apply_downstream_deadline, refuse_busy, serve_one, Relay};
 
 /// tee 的第二个落点的口与它交出去的那件事（宿主 `stream::tap` 实现口、把事件转成 `tap` 帧）；
