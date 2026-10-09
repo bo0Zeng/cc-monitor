@@ -313,7 +313,7 @@ PS 模板 `src/shared/cc.ps1.tpl` 用 `UTF8Encoding($false)` 写无 BOM；Rust �
 
 ### 日志：tracing 在 Builder 之前初始化
 
-`logging::init` 必须在 `tauri::Builder::default()` 之前调用（全局 dispatcher 只能装一次）：文件层按天滚动、非阻塞写；`EnvFilter` 可热改级别，不重启就生效；ERROR 级经 `logging.rs::install_error_emitter` 注入的回调发 `monitor-error`，前端弹提示（限流防风暴）。日志目录建不出来就退化成只写 stdout，monitor 照样起。后端子进程的 stderr 接进 monitor 的滚动日志，脱离起的后端写自己那份日志。
+`logging::init` 必须在 `tauri::Builder::default()` 之前调用（全局 dispatcher 只能装一次）：文件层按天滚动、非阻塞写；`EnvFilter` 可热改级别，不重启就生效；日志行不上屏：要让用户知道的出错只走 `ui_error::tell`（码 ＋ 文案键 ＋ 那句话 ＋ 复制详情，事件 `monitor-error`，出口由 `logging.rs::install_error_emitter` 装上，限流防风暴），前端照那一句弹提示；其余 ERROR 只进日志。日志目录建不出来就退化成只写 stdout，monitor 照样起。后端子进程的 stderr 接进 monitor 的滚动日志，脱离起的后端写自己那份日志。
 
 **为什么**：release 版是 GUI 子系统，没有 stderr；日志不落盘，一条解析失败的 warn 就没人看见。
 

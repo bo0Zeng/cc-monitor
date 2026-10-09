@@ -42,6 +42,8 @@ mod origin_tests; // P2s（C8）：每台机一份后端策略（生效值住内
                   //    而 `record_death` 的唯一定义就在本模块里。⇒ 这是**解耦**的活，不是改名一刀能搬的。
 mod bind;
 mod ui_contract;
+// 要让用户知道的出错：壳推给界面只这一种（码 ＋ 文案键 ＋ 那句话 ＋ 复制详情），日志行不上屏。
+mod ui_error;
 // 通信层面 A 的第一个进程外客户端那条路（末尾「面 A 的第一个外部客户端：通道」）。
 // `pub` 同 `filewin`：它的客户端那一半给另一个二进制（外部前端）经 `monitor_lib::chan` 用。
 mod cc_bus_deploy; // PS1：把内嵌的 cc-bus 装到 <claude_dir>/skills/（U10b 裁「开」后落地；只读铁律第 7 条例外）
@@ -1172,6 +1174,10 @@ pub(crate) fn load_all_remote_configs() -> Vec<(stream_source::RemoteConfig, boo
         Ok(cfgs) => cfgs,
         Err(why) => {
             tracing::error!("{} 的 remote 段：{why}", cfg_path.display());
+            ui_error::tell(ui_error::UiError::MachinesUnreadable {
+                path: cfg_path.display().to_string(),
+                why: why.to_string(),
+            });
             Vec::new()
         }
     }

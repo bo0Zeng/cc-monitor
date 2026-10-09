@@ -4613,6 +4613,24 @@ fn hx1_every_monitor_dir_creation_is_registered_and_only_one_builds_the_backend_
     );
 }
 
+/// 推给界面的出错事件不许是日志行：本机后端说过话之后以退出码 1 退出（崩溃那一格），
+/// 界面收到的每一条都要带文案键、那句话 = 照键与参数从文案表取出来的那一句，句子里没有日志行的形状
+/// （模块路径 `a::b` · `key=value` · 方括号账名）。原话只许待在复制详情里。
+#[cfg(unix)]
+#[test]
+fn a_local_backend_crash_reaches_the_ui_as_a_copy_keyed_sentence_not_a_log_line() {
+    use std::os::unix::process::ExitStatusExt;
+    let got = crate::ui_error::tests::during(|| {
+        note_detached_death(
+            std::process::ExitStatus::from_raw(1 << 8),
+            crate::backend_policy::Handshake::Spoke,
+            crate::backend_policy::ReaderEnd::CleanEof,
+        );
+    });
+    assert_eq!(got.len(), 1, "本机后端崩了，界面该恰好收到一条：{got:?}");
+    crate::ui_error::tests::assert_is_copy_not_log(&got[0]);
+}
+
 /// 叫停不是死亡：被监护的本机后端说过话之后由 `stop()` 结束（设置里停 / 重启 / 更新本机都走这一下），
 /// 账上不许多一笔「崩溃」。Windows 上 `kill()` 是 `TerminateProcess(…, 1)`，从前这一下被记成「崩溃 · 退出码 1」
 /// 并弹到界面上；这里在 Linux 上是信号 9，同一条路。

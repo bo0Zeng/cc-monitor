@@ -385,7 +385,7 @@ jsonl watcher 与它的第二套游标 / seq 已删，本机会话的行也是�
 
 ## 15. logging 子系统失败不能阻塞 monitor 启动
 
-`logging::init()` 在 `tauri::Builder` 之前调用（tracing 全局 dispatcher 必须在 Builder 之前 init）。它内部做的所有事情——创建 logs 目录、构造 rolling appender、注册 ErrorEmitterLayer——**任一失败都必须 fallback 到 stdout-only，让 monitor 仍能起来**。
+`logging::init()` 在 `tauri::Builder` 之前调用（tracing 全局 dispatcher 必须在 Builder 之前 init）。它内部做的所有事情——创建 logs 目录、构造 rolling appender——**任一失败都必须 fallback 到 stdout-only，让 monitor 仍能起来**。
 
 - log 目录创建失败 → `eprintln!` 报错，file layer = None，subscriber 仍 init 但只发到 stdout
 - rolling appender 构造失败（罕见——磁盘满 / NTFS quota）→ 同上
