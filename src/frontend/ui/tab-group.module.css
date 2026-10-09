@@ -1,0 +1,74 @@
+/**
+ * 标签页分组的拖放反馈（`tab-bar-drag.ts`）：插入线 · 点亮的引导线 · 目标小标签 ·
+ * 出栏取消的影子 · 落下那几行的底色淡出。目标框本身走全局 `.drop-onto`（组头与标签页共用）。
+ */
+@layer components {
+  /* 插入线：2px accent，左端一个空心圆；落在组里从组员缩进处起（left 由脚本按落点写）。 */
+  .dropLine {
+    position: fixed;
+    z-index: var(--z-drag);
+    height: 2px;
+    background: var(--accent);
+    pointer-events: none;
+  }
+
+  .dropLine::before {
+    content: "";
+    position: absolute;
+    left: -4px;
+    top: -3px;
+    width: 8px;
+    height: 8px;
+    box-sizing: border-box;
+    border: 2px solid var(--accent);
+    border-radius: 50%;
+    background: var(--bg-2);
+  }
+
+  /* 落在这个组里：引导线变 2px accent（左移 1px 不挤内容）。 */
+  .hot {
+    border-left: 2px solid var(--accent);
+    margin-left: 11px;
+  }
+
+  /* 目标那一行右侧的小标签：松手会发生什么（建分组 / 进「名字」）。 */
+  .pill {
+    position: absolute;
+    right: 6px;
+    top: 50%;
+    transform: translateY(-50%);
+    height: 18px;
+    padding: 0 6px;
+    border-radius: var(--radius-xl);
+    background: var(--accent);
+    color: var(--bg-2);
+    font-size: var(--font-size-xs);
+    font-weight: 600;
+    line-height: 18px;
+    white-space: nowrap;
+    pointer-events: none;
+  }
+
+  /* 出栏：影子变灰，写「松开取消」。 */
+  .ghostCancel {
+    color: var(--text-2);
+    border-color: var(--border-medium);
+  }
+
+  /* 落下那几行：底色 18% accent，600ms 淡出（只过渡底色）。 */
+  .landed {
+    animation: landed 600ms ease-out;
+  }
+
+  @keyframes landed {
+    from {
+      background: color-mix(in srgb, var(--accent) 18%, transparent);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .landed {
+      animation: none;
+    }
+  }
+}

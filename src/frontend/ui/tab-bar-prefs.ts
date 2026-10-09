@@ -34,7 +34,7 @@ import { patchConfig, type ConfigEdit } from "./config";
 import type { Tab } from "./tab-model";
 import { ENDED, UNSEEN, isLive } from "./tab-session-state";
 import { copyText } from "./copy-table";
-import { toast, failToast } from "./kit/toast";
+import { toast, failToast, silentUndo, undoToast } from "./kit/toast";
 import type { TabStore } from "./tab-store";
 import type { Origin } from "./ipc/origin";
 
@@ -57,6 +57,13 @@ export interface TabBarPrefsHost {
   ): void;
   /** 复活出来的固定 tab 空态里那颗「Resume 这个会话」（与右键菜单的 Resume 同一个动作）。 */
   resumeTab(sessionId: string): Promise<void>;
+}
+
+/** 撤销用的那一刻：顺序 · 组表 · 每个 tab 的组。 */
+export interface GroupSnapshot {
+  order: string[];
+  groups: TabCollection[];
+  groupOf: Map<string, string | null>;
 }
 
 export class TabBarPrefs {
@@ -147,26 +154,47 @@ export class TabBarPrefs {
     return null;
   }
 
+  /** 此刻的分组与顺序（撤销用）：顺序 · 组表 · 栏里每个 tab 的组。 */
+  snapshot(): GroupSnapshot {
+    const groupOf = new Map<string, string | null>();
+    for (const t of this.store.tabs.values()) groupOf.set(t.sessionId, t.group);
+    return { order: [...this.store.orderedIds], groups: this.collections.map((c) => ({ ...c })), groupOf };
+  }
+
   /**
-   * 撤销「移出分组」「解散分组」：组还在 ⇒ 把这几个放回去；组已经随最后一个人走没了 ⇒ 照原来的 id 与名字建回来再放回去。
-   * 放回去时已不在栏里的那几个不管（撤销只还原还在的）。
+   * 撤销（拖着建组 / 进出组 / 排序 · 右键移出 · 解散）：顺序、组、组员原样退回（组的位置由组员位置决定，跟着回去）。
+   * 期间改过的组名留着；期间新建、此刻还有组员的组留着；已不在栏里的 tab 不管；期间新到的 tab 排在后面。
    */
-  restoreGroup(col: TabCollection, sids: readonly string[]): Promise<void> {
+  restore(snap: GroupSnapshot): void {
     const edits: ConfigEdit[] = [];
-    if (!this.collections.some((c) => c.id === col.id)) {
-      this.collections = [...this.collections, col];
-      edits.push(collectionsEdit(this.collections));
-    }
-    const left = new Set<string | null>();
-    for (const sid of sids) {
+    for (const [sid, gid] of snap.groupOf) {
       const t = this.store.tabs.get(sid);
-      if (!t || t.group === col.id) continue;
-      left.add(t.group);
-      t.group = col.id;
-      edits.push(groupOfEdit(sid, col.id));
+      if (!t || t.group === gid) continue;
+      t.group = gid;
+      edits.push(groupOfEdit(sid, gid));
     }
-    for (const old of left) edits.push(...this.dropIfEmpty(old));
-    return this.writeGroups(edits);
+    const now = new Map(this.collections.map((c) => [c.id, c]));
+    const had = new Set(snap.groups.map((c) => c.id));
+    const used = new Set([...this.store.tabs.values()].map((t) => t.group));
+    const next = [...snap.groups.map((c) => now.get(c.id) ?? c), ...this.collections.filter((c) => !had.has(c.id) && used.has(c.id))];
+    if (next.length !== this.collections.length || next.some((c, i) => c !== this.collections[i])) {
+      this.collections = next;
+      edits.push(collectionsEdit(next));
+    }
+    const back = new Set(snap.order);
+    const order = [...snap.order.filter((s) => this.store.tabs.has(s)), ...this.store.orderedIds.filter((s) => !back.has(s))];
+    const moved = order.some((s, i) => s !== this.store.orderedIds[i]);
+    this.store.orderedIds = order;
+    void this.writeGroups(edits);
+    if (moved) void this.persistOrder();
+    this.host.refreshTabBar();
+  }
+
+  /** 做完一步分组 / 顺序改动之后：改了分组 ⇒ 可撤的 toast（`title`）；只排了顺序（`null`）⇒ 不出条，`Ctrl+Z` 照样撤。 */
+  offerUndo(title: string | null, before: GroupSnapshot): void {
+    const undo = (): void => this.restore(before);
+    if (title === null) silentUndo(undo);
+    else undoToast(title, undo, () => {});
   }
 
   /** 右键「加入集合 › X」/ 拖放进组：`sid` 进组 `gid`（原来在别的组 ⇒ 就不在了：`group` 是单值）。 */

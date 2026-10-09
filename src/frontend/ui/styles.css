@@ -588,9 +588,9 @@
 
 /* === Tab 撕离拖拽（tear-off） === */
 
-/* 拖拽中的源 Tab 变暗，提示"正在被拖出"。 */
+/* 拖拽中的源行变暗到 35%。 */
 .tab.dragging {
-  opacity: 0.4;
+  opacity: 0.35;
 }
 
 /* 跟随光标的浮动 ghost：小号悬浮 Tab 芯片。position/left/top 由 JS 写内联。 */
@@ -599,6 +599,9 @@
   left: 0;
   top: 0;
   z-index: var(--z-drag);
+  display: flex;
+  align-items: center;
+  gap: 6px;
   pointer-events: none;
   max-width: 240px;
   overflow: hidden;
@@ -2573,23 +2576,14 @@
 抬头本来就写着「已定：删归档抽屉」，这一刀是步 17 的 A。
    `css-conventions.vitest.ts` 的 `HIDDEN_KNOWN_BAD` 里那条登记同拍摘了（那张表今天是空的）。 */
 
-/* P7a-2 D 补审：拖动排序的落点指示。被拖的那块会插到这个 tab **之前**。
-   只搬不指示的话，「拖动排序」是一次盲操作 —— 松手前不知道会落在哪。 */
-.tab.drop-before {
-  box-shadow: inset 0 2px 0 0 var(--accent);
-}
-
-/* `onto` 落点：**与这个 tab 成组**。
-   🔴 **必须用 `outline` 而不是 `border`**（§D.5 逐字）：`border` 改盒模型 ⇒ 拖动时目标
-      tab 尺寸变化 ⇒ 连锁 reflow，而且会让 §D.4 那个基于矩形的停留判定**自己失效**
-      （矩形一变，指针就"移出"了，停留永远攒不满 250ms）。
-   ⚠ `transform: scale` 只 repaint 不 reflow，同理由。**不给它加 transition** ——
-      拖动里 250ms 的动画会让「满了没有」这件事看不清，而且 transition 属性白名单
-      （css-conventions ⑥）本来就不该为一个瞬时反馈开口子。 */
-.tab.drop-onto {
+/* 压住（建组 / 进组）或落在组头：目标那一行 2px 外框 ＋ 12% accent 底，右侧小标签（`tab-group.module.css` 的 `.pill`）。
+   用 `outline` 不用 `border`、不缩放：不改盒模型 ⇒ 不连锁 reflow，也不改到停留判定量的那块矩形；不加 transition（瞬时反馈）。 */
+.tab.drop-onto,
+.tab-group-head.drop-onto {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
-  transform: scale(1.03);
+  border-radius: var(--radius-s);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
 /* P7a-3（#61）：标签页集合。**纯手动**建、手动命名 —— 组头点一下改名、× 解散。
@@ -2597,15 +2591,16 @@
 .tab-group {
   display: flex;
   flex-direction: column;
+  margin: 4px 0 6px;
 }
 
 /* 分组头：「⌄ 名字 计数」（26 高、`--text-2` 小字）；悬停出「解散分组」。 */
 .tab-group-head {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 4px;
   height: 26px;
-  margin-top: 6px;
   padding: 0 8px 0 6px;
   color: var(--text-2);
   font-size: var(--font-size-small);
@@ -2618,8 +2613,9 @@
   padding: 0;
   border: 0;
   background: transparent;
-  color: var(--text-2);
+  color: var(--text);
   font: inherit;
+  font-weight: 600;
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2640,9 +2636,16 @@
   visibility: visible;
 }
 
+/* 组员：整体缩进 12px，左侧 1px 引导线 —— 组在哪结束一眼看得出（最后一个组与下面散的之间不再混）。 */
 .tab-group-list {
   display: flex;
   flex-direction: column;
+  margin-left: 12px;
+  border-left: 1px solid var(--border-medium);
+}
+
+.tab-group-list > .tab {
+  padding-left: 9px;
 }
 
 /* 复活出来的固定 tab 的**空态**。
@@ -2721,6 +2724,9 @@ body[data-tab-bar="folded"]:not(.viewer-mode) .tab {
 }
 body[data-tab-bar="folded"]:not(.viewer-mode) .tab .tab-abbr {
   display: block;
+}
+body[data-tab-bar="folded"]:not(.viewer-mode) .tab-group-list {
+  margin-left: 4px;
 }
 body[data-tab-bar="folded"]:not(.viewer-mode) .tab-group-head {
   height: 10px;

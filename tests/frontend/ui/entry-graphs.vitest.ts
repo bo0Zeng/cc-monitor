@@ -762,6 +762,7 @@ const MODULE_STACKING: Record<string, { stacked: boolean; why: string }> = {
   "src/frontend/ui/kit/dock.module.css": { stacked: false, why: "底部抽屉件：只挂自己的哈希类（网格那一格的 id 由主窗口挂，不是类）" },
   "src/frontend/ui/record-file-notice.module.css": { stacked: false, why: "tab 顶上「记录文件不见了 / 已从头重读」那一句：只挂自己的哈希类 `.notice`（不叠全局类）" },
   "src/frontend/ui/tab-group-rename.module.css": { stacked: false, why: "组头就地改名的输入框只挂自己的哈希类" },
+  "src/frontend/ui/tab-group.module.css": { stacked: true, why: "拖放反馈：引导线点亮叠在全局 `.tab-group-list` 上、出栏取消叠在 `.tab-drag-ghost` 上、落下淡出叠在 `.tab` 上；插入线与小标签只挂自己的哈希类" },
   "src/frontend/ui/kit/icon.module.css": { stacked: false, why: "图标件：svg 只挂自己的哈希类" },
   "src/frontend/ui/kit/badge.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
   "src/frontend/ui/kit/banner.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },

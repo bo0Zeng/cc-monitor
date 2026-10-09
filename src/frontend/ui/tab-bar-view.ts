@@ -12,6 +12,7 @@
 import { sessionBadge, shouldShowAccountBadge, detectAccountMismatch } from "./accounts";
 import { accountAvatarEl } from "./account-color";
 import type { TabCollection } from "./tab-collections";
+import { barRows, type BarRow, type RowRect } from "./tab-drop";
 import { activityFace } from "./session-status";
 import { terminalFrontAvailable } from "./terminal-front";
 import { isRemoteOrigin } from "./ipc/origin";
@@ -25,7 +26,6 @@ import qs from "./tab-quota.module.css";
 import { appStore } from "./app-store";
 import { tabBlockedOf } from "./acct-view";
 import { copyText } from "./copy-table";
-import { undoToast } from "./kit/toast";
 import { icon } from "./kit/icon";
 import { statusDot } from "./kit/status-dot";
 import { countBadge, tag, kbd } from "./kit/badge";
@@ -343,9 +343,41 @@ export class TabBarView {
     this.host.switchTo(sid);
   }
 
-  /** 条上看得到的顺序（组在前、组内按条上位置、散 tab 在后；整刷就按它摆）。 */
+  /** 条上看得到的顺序（组与散的混排、组员聚在第一个组员那一格；整刷就按它摆）。 */
   visibleOrder(): string[] {
     return this.store.visibleOrder(this.prefs.collections.map((c) => c.id));
+  }
+
+  /** 栏里从上到下的行（组头 · 标签页）。 */
+  private rows(): BarRow[] {
+    return barRows(this.store.orderedIds, (sid) => this.store.tabs.get(sid)?.group ?? null, this.prefs.collections.map((c) => c.id));
+  }
+
+  /** 量一遍栏里每一行（组头 · 标签页）在纵轴上占的那一段：拖拽判落点用（判定在 `tab-drop.ts::pickDropTarget`）。 */
+  measureRows(): RowRect[] {
+    const out: RowRect[] = [];
+    for (const [gid, g] of this.groupEls) {
+      const r = g.head.getBoundingClientRect();
+      out.push({ kind: "head", id: gid, gid, top: r.top, height: r.height });
+    }
+    for (const [sid, refs] of this.tabButtons) {
+      if (!this.listEl.contains(refs.root)) continue;
+      const r = refs.root.getBoundingClientRect();
+      const gid = this.store.tabs.get(sid)?.group ?? null;
+      out.push({ kind: "tab", id: sid, gid: gid !== null && this.groupEls.has(gid) ? gid : null, top: r.top, height: r.height });
+    }
+    return out;
+  }
+
+  /** 组 `gid` 的组头与组员列表（拖拽画目标框 · 点亮引导线用）；没有 ⇒ `undefined`。 */
+  groupParts(gid: string): { head: HTMLElement; list: HTMLElement } | undefined {
+    return this.groupEls.get(gid);
+  }
+
+  /** 刚建的组：组头名字框立刻打开、全选（打字即改；Esc 留默认名）。 */
+  renameGroupNow(gid: string): void {
+    const g = this.groupEls.get(gid);
+    if (g) this.beginGroupRename(gid, g.head.querySelector<HTMLElement>(".tab-group-name")!);
   }
 
   private onBarMouseDown(e: MouseEvent): void {
@@ -404,26 +436,32 @@ export class TabBarView {
       }
     }
 
-    // 2 + 3 + 4. 创建 / 更新 / 排序
-    // 抽屉没了 ⇒ 只剩主栏 ＋ 按集合分的若干组
-    // ⇒ 推广成「**每容器一个游标**」。
-    // 组容器按集合顺序先摆好（空集合也留着 —— 用户刚建的集合不该看不见）。
-    // 「空」今天只剩一种来路：重启后组员还没到（意图在 `TabBarPrefs.savedGroupOf`）。
-    //   在栏里的最后一个离开（× · 拖出 · 移出 · 挪组）⇒ 组已从组表里摘掉，画不出来。
+    // 2 + 3 + 4. 创建 / 更新 / 排序：照 `barRows` 一趟摆 —— 组（组头 ＋ 组员）与散的混排在同一个顺序里，
+    // 组在它第一个组员那一格（`tab-drop.ts`）。每容器一个游标：列表一个、当前这个组一个。
+    // 组表里没了的组 ⇒ 摘掉它的容器（在栏里的最后一个离开 · 解散）。
     for (const [id, g] of this.groupEls) {
       if (!this.prefs.collections.some((x) => x.id === id)) {
         g.wrap.remove();
         this.groupEls.delete(id);
       }
     }
-    for (const col of this.prefs.collections) this.groupElFor(col);
-    const cursors = new Map<HTMLElement, ChildNode | null>();
-    // 未归组的排在所有组之后：`barEl` 的游标从最后一个组容器起（没有组则从栏顶那颗「重新读取」之后起）。
-    // 组容器只在建的那一刻 appendChild 到末尾、之后不挪，删时同时出 `groupEls` ⇒ `groupEls` 的插入序就是 DOM 序，最后一个就是它。
-    let lastGroup: HTMLElement | null = null;
-    for (const g of this.groupEls.values()) lastGroup = g.wrap;
-    cursors.set(this.listEl, lastGroup);
-    for (const sid of this.store.orderedIds) {
+    const place = (host: HTMLElement, el: HTMLElement, prev: ChildNode | null): void => {
+      const next = prev ? prev.nextSibling : host.firstChild;
+      if (el !== next || el.parentElement !== host) host.insertBefore(el, next);
+    };
+    let cursor: ChildNode | null = null;
+    let inGroup: ChildNode | null = null;
+    const cols = new Map(this.prefs.collections.map((c) => [c.id, c]));
+    for (const row of this.rows()) {
+      if (row.kind === "head") {
+        this.groupElFor(cols.get(row.gid)!);
+        const wrap = this.groupEls.get(row.gid)!.wrap;
+        place(this.listEl, wrap, cursor);
+        cursor = wrap;
+        inGroup = null;
+        continue;
+      }
+      const sid = row.sid;
       const tab = this.store.tabs.get(sid);
       if (!tab) continue;
       let refs = this.tabButtons.get(sid);
@@ -438,17 +476,13 @@ export class TabBarView {
         }
       }
       this.updateTabButton(refs, sid, tab);
-      // 两路：组 / 主栏（灰 tab 也能在组里）。在哪个组读 tab 自己的 `group`（组表只有 `{id, name}`）。
-      const col =
-        tab.group === null ? undefined : this.prefs.collections.find((c) => c.id === tab.group);
-      const host = col ? this.groupElFor(col) : this.listEl;
-      // 排序：希望此 button 出现在**同容器内**前一个之后。
-      const prev = cursors.get(host) ?? null;
-      const targetNext: ChildNode | null = prev ? prev.nextSibling : host.firstChild;
-      if (refs.root !== targetNext || refs.root.parentElement !== host) {
-        host.insertBefore(refs.root, targetNext);
+      if (row.gid === null) {
+        place(this.listEl, refs.root, cursor);
+        cursor = refs.root;
+      } else {
+        place(this.groupEls.get(row.gid)!.list, refs.root, inGroup);
+        inGroup = refs.root;
       }
-      cursors.set(host, refs.root);
     }
     if (this.listEl.lastChild !== this.slotTail) this.listEl.appendChild(this.slotTail);
     this.updateNeedsStrip();
@@ -584,15 +618,11 @@ export class TabBarView {
       del.textContent = copyText("tabBarView.group.dissolve");
       del.title = copyText("tabBarView.group.dissolveHint");
       del.addEventListener("click", () => {
-        // 撤得回 ⇒ 不确认：直接解散 ＋ 8 秒撤销。
-        const members = [...this.store.tabs.values()].filter((t) => t.group === col.id).map((t) => t.sessionId);
-        const before = { ...col };
+        // 撤得回 ⇒ 不确认：直接解散 ＋ 8 秒撤销（组员留在原位）。
+        const before = this.prefs.snapshot();
         void this.prefs.dissolveGroup(col.id);
         this.host.refreshTabBar();
-        undoToast(copyText("tabBar.group.dissolved", { name: col.name }), () => {
-          void this.prefs.restoreGroup(before, members);
-          this.host.refreshTabBar();
-        }, () => {});
+        this.prefs.offerUndo(copyText("tabBar.group.dissolved", { name: col.name }), before);
       });
       head.append(name, del);
       const list = document.createElement("div");

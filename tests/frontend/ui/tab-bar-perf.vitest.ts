@@ -259,7 +259,7 @@ describe("P6：整刷不把 `barEl.children` 物化成数组", () => {
     void r.bar.children;
     expect(c.n).toBe(1);
   });
-  it("散 tab 仍排在**最后一个**组容器之后（`P7a3-Y2`「未归组的照常在后面」；两个组，第二个是后建的）", () => {
+  it("组与散的混排：组在它第一个组员那一格（两个组，第二个是后建的、组员在前面那些之后）", () => {
     const r = make(6, 2);
     r.prefs.collections.push({ id: "c2", name: "组二" });
     r.store.tabs.get("s2")!.group = "c2";
@@ -289,10 +289,12 @@ describe("P3：拖拽时矩形只量一次、落点标记只动变了的那两�
         collections: [],
         collectionsLoaded: false,
         persistOrder: vi.fn().mockResolvedValue(undefined),
+        snapshot: () => ({ order: [], groups: [], groupOf: new Map() }),
+        offerUndo: vi.fn(),
       } as unknown as TabBarPrefs,
       r.bar,
-      r.view.tabButtons,
-      { refreshTabBar: vi.fn(), openInNewWindow: vi.fn().mockResolvedValue(undefined) },
+      r.view,
+      { refreshTabBar: vi.fn(), openInNewWindow: vi.fn().mockResolvedValue(undefined), renameGroupNow: vi.fn() },
     );
     return { r, drag, reads };
   };
@@ -344,21 +346,30 @@ describe("P3：拖拽时矩形只量一次、落点标记只动变了的那两�
     expect(reads.n).toBe(2 * n);
   });
 
-  it("落点没变的 mousemove ⇒ `classList.toggle` 0 次；换一个落点 ⇒ 恰好 2 次（清旧 ＋ 标新）", () => {
+  it("落点没变的 mousemove ⇒ 落点标记 0 次 DOM 写；换一个落点 ⇒ 插入线挪一次", () => {
     const { r, drag } = dragRig(20);
     down(r, drag, "s0");
-    move(130); // 起拖 ＋ 第一次标（落在 s3 之前）
-    const spy = vi.spyOn(DOMTokenList.prototype, "toggle");
+    move(130); // 起拖 ＋ 第一次画（落在 s3 之前）
+    const line = [...document.body.children].find((e) => e instanceof HTMLElement && e.style.top !== "" && !e.classList.contains("tab-drag-ghost")) as HTMLElement;
+    expect(line, "插入线画出来了（量具自检）").toBeDefined();
+    const writes: MutationRecord[] = [];
+    const mo = new MutationObserver((m) => writes.push(...m));
+    mo.observe(document.body, { attributes: true, subtree: true, attributeFilter: ["class", "style", "hidden"] });
+    const flush = (): number => {
+      writes.push(...mo.takeRecords());
+      return writes.filter((w) => w.target !== document.querySelector(".tab-drag-ghost")).length;
+    };
     try {
       move(131);
       move(132);
-      expect(spy).toHaveBeenCalledTimes(0);
+      expect(flush(), "同一个落点").toBe(0);
       move(250); // 换到另一格
-      expect(spy).toHaveBeenCalledTimes(2);
+      expect(flush()).toBeGreaterThan(0);
+      expect(line.style.top, "线挪到了新那一格的上沿").toBe(`${6 * 40 - 1}px`);
     } finally {
-      spy.mockRestore();
+      mo.disconnect();
     }
-    expect(r.bar.querySelectorAll(".drop-before").length, "任何时刻只有一个落点标记").toBe(1);
+    void r;
   });
 });
 

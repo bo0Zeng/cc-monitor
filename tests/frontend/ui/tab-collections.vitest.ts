@@ -157,14 +157,14 @@ describe("〔GRP1〕拖放：归属跟着落点宿主走（`§D.7`），只回�
     ["压在别组的上 ⇒ 换组", "a", { kind: "onto", sid: "x" }, { kind: "join", gid: "g2" }],
     ["压在同组的上 ⇒ 不变", "a", { kind: "onto", sid: "b" }, { kind: "stay" }],
     ["压在自己身上 ⇒ 不变", "s", { kind: "onto", sid: "s" }, { kind: "stay" }],
-    ["插到组里的前面 ⇒ 进那个组", "s", { kind: "before", sid: "a" }, { kind: "join", gid: "g1" }],
-    ["插到散 tab 前面 ⇒ 拖出组", "a", { kind: "before", sid: "s" }, { kind: "leave" }],
-    ["散 tab 插到散 tab 前面 ⇒ 不变", "s", { kind: "before", sid: "t" }, { kind: "stay" }],
-    ["同组里挪位置 ⇒ 不变", "a", { kind: "before", sid: "b" }, { kind: "stay" }],
-    ["落到末尾 ⇒ 拖出组", "a", { kind: "end" }, { kind: "leave" }],
-    ["散 tab 落到末尾 ⇒ 不变", "s", { kind: "end" }, { kind: "stay" }],
+    ["插到组里的前面 ⇒ 进那个组", "s", { kind: "insert", at: { sid: "a", side: "before" }, gid: "g1" }, { kind: "join", gid: "g1" }],
+    ["插到散 tab 前面 ⇒ 拖出组", "a", { kind: "insert", at: { sid: "s", side: "before" }, gid: null }, { kind: "leave" }],
+    ["散 tab 插到散 tab 前面 ⇒ 不变", "s", { kind: "insert", at: { sid: "t", side: "before" }, gid: null }, { kind: "stay" }],
+    ["同组里挪位置 ⇒ 不变", "a", { kind: "insert", at: { sid: "b", side: "before" }, gid: "g1" }, { kind: "stay" }],
+    ["落到末尾 ⇒ 拖出组", "a", { kind: "insert", at: null, gid: null }, { kind: "leave" }],
+    ["散 tab 落到末尾 ⇒ 不变", "s", { kind: "insert", at: null, gid: null }, { kind: "stay" }],
   ];
   it.each(cases)("%s", (_label, sid, target, want) => {
-    expect(groupMoveForDrop(groupOf, sid, target)).toEqual(want);
+    expect(groupMoveForDrop(groupOf, [sid], target)).toEqual(want);
   });
 });

@@ -5600,6 +5600,24 @@
       "zh": "分组 {n}",
       "args": ["n"]
     },
+    "tabDrop.pill.found": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "建分组",
+      "args": []
+    },
+    "tabDrop.pill.join": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "进「{name}」",
+      "args": ["name"]
+    },
+    "tabDrop.ghost.cancel": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "松开取消",
+      "args": []
+    },
     "tabStreamView.sentinel.moreCount": {
       "kind": "body",
       "role": "说明",
@@ -27344,6 +27362,18 @@
       "kind": "body",
       "role": "说明",
       "zh": "已移出分组「{name}」",
+      "args": ["name"]
+    },
+    "tabBar.group.founded": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已建分组「{name}」",
+      "args": ["name"]
+    },
+    "tabBar.group.joined": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已移到「{name}」",
       "args": ["name"]
     },
     "tabBar.unpinned.toast": {

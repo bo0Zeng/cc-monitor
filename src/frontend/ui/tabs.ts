@@ -40,19 +40,8 @@ import { ENDED, LIVE, RECONNECTABLE, closesWithoutMenu, containerEvent, isLive, 
 import type { SessionContainer } from "./generated/SessionContainer";
 import { isLocalOrigin, isRemoteOrigin, LOCAL_ORIGIN, originFromWire, type Origin } from "./ipc/origin";
 import type { RulesRead } from "./quota-reads";
-// `Tab` 的形状与标题函数在 `tab-model.ts`、落点算术在 `tab-drop.ts`；这里 re-export，调用方只 import 本文件。
+// `Tab` 的形状与标题函数在 `tab-model.ts`；这里 re-export，调用方只 import 本文件（落点算术直接从 `tab-drop.ts` 取）。
 export type { Tab, TabsSummary } from "./tab-model";
-export {
-  moveTab,
-  pickDropTarget,
-  tabUnderY,
-  commonDirName,
-  defaultGroupName,
-  groupMoveForDrop,
-  DWELL_MS,
-  DWELL_MOVE_PX,
-} from "./tab-drop";
-export type { DropTarget, GroupMove, TabRect } from "./tab-drop";
 import { TabMenu } from "./tab-menu";
 import { TabSelection } from "./tab-selection";
 import { openBatchMenu, type TabBatchHost } from "./tab-batch-menu";
@@ -155,9 +144,10 @@ export class TabManager {
       },
       CHANNEL_ACTS,
     );
-    this.dragger = new TabBarDrag(this.store, this.prefs, barEl, this.bar.tabButtons, {
+    this.dragger = new TabBarDrag(this.store, this.prefs, barEl, this.bar, {
       refreshTabBar: () => this.refreshTabBar(),
       openInNewWindow: (sid, screenX, screenY) => this.openInNewWindow(sid, screenX, screenY),
+      renameGroupNow: (gid) => this.bar.renameGroupNow(gid),
     });
     this.view = new TabStreamView(this.store, streamRootEl, {
       onLine: (payload) => this.onLine(payload),
@@ -214,17 +204,13 @@ export class TabManager {
     if (t && wasPinned) undoToast(copyText("tabBar.unpinned.toast", { title: fullTitle(t) }), () => this.prefs.togglePin(sid), () => {});
   }
 
-  /** 移出分组：撤得回 ⇒ 不确认：直接做 ＋ 8 秒撤销（组随最后一个人走没了也建得回来）。 */
+  /** 移出分组：撤得回 ⇒ 不确认：直接做 ＋ 8 秒撤销（组随最后一个人走没了也建得回来，原位）。 */
   private leaveGroupUndoable(sid: string): void {
     const col = this.prefs.groupOf(sid);
+    const before = this.prefs.snapshot();
     void this.prefs.leaveGroup(sid);
     this.refreshTabBar();
-    if (!col) return;
-    const before = { ...col };
-    undoToast(copyText("tabBar.group.left", { name: col.name }), () => {
-      void this.prefs.restoreGroup(before, [sid]);
-      this.refreshTabBar();
-    }, () => {});
+    if (col) this.prefs.offerUndo(copyText("tabBar.group.left", { name: col.name }), before);
   }
 
   /** 拖动排序 / 成组 / 撕窗口的状态机（`tab-bar-drag.ts`）。在构造体里建：它要 `barEl`。 */
