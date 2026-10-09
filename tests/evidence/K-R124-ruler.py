@@ -53,8 +53,7 @@
 `K-R114`（`d1a0552`）把整段判据写进 `ci.yml` 的 `run: |` 里，而 **runner 会把 `run:` 块里的
 `${{ … }}` 先求值再交给 shell** ⇒ 上面第 1 条要比的那个字面 `CANON_ENV` 在渲染之后变成
 `"false"`（`push` / tag 上是 `"true"`），**与盘上那串模板在三个触发器上都必不相等**
-⇒ **这条守卫从加进去那天起就不可能过**。云端实打读数住
-`evidence/K-R123-发版读数.md § 1.3`（run `34928839471`，日志里逐字 `CANON_ENV = "false"`）。
+⇒ **这条守卫从加进去那天起就不可能过**（云端 run `34928839471` 日志里逐字 `CANON_ENV = "false"`）。
 
 ⇒ 修法选的是单子给的第一条路 —— **把字面从 `run:` 块里挪出去**，而且挪得比「经 `env:` 传」更远：
 **整段判据搬进这份 `.py`**。`.py` 不经 GitHub 的表达式渲染器，`${{` 在这里就是四个字符。
@@ -69,8 +68,7 @@
 `docker run --rm ccmon-devbox:latest python3 -c 'import yaml'`）。
 原版判据用 `yaml.safe_load` 写 ⇒ 它**在本地从来跑不起来** ⇒ 只能在云端切刀，
 而云端每切一刀要一趟 CI。下面那个 `parse_workflow()` 是本文件自带的 **YAML 子集切块器**，
-口径与 `evidence/K-R122-ruler.py` 的 `ci_steps()` 同源（那一份只切 `steps:`，这一份要
-`on:` / `env:` / `jobs:` / 每一步的 `with:`，所以写全了）。
+它切 `on:` / `env:` / `jobs:` / 每一步的 `with:`。
 
 # ⚠ 它买不到什么（逐条，别读宽）
 

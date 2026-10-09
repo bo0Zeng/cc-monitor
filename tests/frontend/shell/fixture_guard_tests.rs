@@ -279,7 +279,7 @@ fn the_fixture_scanner_can_tell_an_orphan_from_none() {
         "夹具目录自己被算成了活引用来源 —— 夹具互相点名会让整族恒绿"
     );
     assert!(
-        !counts_as_live_reference_site("tests/evidence/some-tool.py"),
+        !counts_as_live_reference_site("tests/evidence/CP-copy-judges.py"),
         "`tests/evidence/` 被算成了活引用来源 —— 09-21 那份孤儿夹具就是只被它点着的"
     );
     for e in PROSE_EXTENSIONS {

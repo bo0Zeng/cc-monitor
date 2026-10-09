@@ -85,10 +85,6 @@ def prime() -> bool:
     # russh 补丁副本 `../vendor/russh` 同理。
     (WORK / "src" / "common").symlink_to(ROOT / "src" / "common")
     (WORK / "src" / "vendor").symlink_to(ROOT / "src" / "vendor")
-    (WORK / "tests" / "evidence").mkdir(parents=True)
-    bench = ROOT / "tests" / "evidence" / "S7-history-read.rs"
-    if bench.is_file():
-        shutil.copy(bench, WORK / "tests" / "evidence" / bench.name)
 
     manifest = WORK / "src" / "backend" / "Cargo.toml"
     text = manifest.read_text(encoding="utf-8")
