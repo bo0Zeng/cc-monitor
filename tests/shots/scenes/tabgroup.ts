@@ -96,6 +96,17 @@ function keepMoving(x: number, y: number): void {
   }, 60);
 }
 
+/**
+ * 焦点环：截图工具发的是合成键盘事件，Chromium 不因它们把焦点算成「键盘来的」（`:focus-visible` 不亮）；
+ * 真按键时样式表里那一条会亮。截图里照那一条的样子给焦点那一行描上，看得出焦点停在哪。
+ */
+function ring(): void {
+  const el = document.activeElement as HTMLElement | null;
+  if (!el) return;
+  el.style.outline = "var(--focus-ring) solid var(--accent)";
+  el.style.outlineOffset = "calc(-1 * var(--focus-ring))";
+}
+
 async function drop(x: number, y: number): Promise<void> {
   document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0, buttons: 0 }));
   await sleep(400);
@@ -284,6 +295,94 @@ export const TABGROUP_SCENES: Scene[] = [
     keepMoving(r.left + 60, r.top + r.height / 2);
     await sleep(300);
   }, () => tabWorld(true, ["g2", "g3"])),
+  // ── 第四批：键盘 · 右键「分组 ▸」· 命令 ──
+  tg("tg-28-key-walk", "键盘走行（焦点在栏里）", "F6 进栏（落在当前标签页「部署文档」），↑ 七下：停在「订单」组头上（组头也是一行）；焦点环照样式表那一条描出", async () => {
+    await mainReady(N);
+    await click(tabOf("部署文档"));
+    (document.activeElement as HTMLElement | null)?.blur();
+    await key("F6");
+    for (let i = 0; i < 7; i++) await key("ArrowUp");
+    ring();
+    await sleep(200);
+  }),
+  tg("tg-29-key-move-in", "Alt+↑ 从组下面挪进组", "焦点在「周报草稿」（「订单」组下面第一个散的）按 Alt+↑：进「订单」排最后，焦点跟着它；toast「已移到「订单」」", async () => {
+    await mainReady(N);
+    tabOf("周报草稿").focus();
+    await key("ArrowUp", { alt: true });
+    ring();
+    await sleep(300);
+  }),
+  tg("tg-30-key-move-out", "Alt+↑ 组里第一个再往上", "焦点在「排序模型训练」（「训练」组第一个）按 Alt+↑：出组放到组前面；toast「已移出分组」", async () => {
+    await mainReady(N);
+    tabOf("排序模型训练").focus();
+    await key("ArrowUp", { alt: true });
+    await sleep(300);
+  }),
+  tg("tg-31-key-head", "组头上 Alt+↑（整组挪一格）", "焦点在「训练」组头按 Alt+↑：整组挪过上面那一格（散的「搜索索引重建」）；toast「已移动分组」", async () => {
+    await mainReady(N);
+    [...document.querySelectorAll<HTMLElement>(".tab-group-head")].find((h) => h.textContent?.includes("训练"))!.focus();
+    await key("ArrowUp", { alt: true });
+    ring();
+    await sleep(300);
+  }),
+  tg("tg-32-key-join", "Alt+→ 与上一个成组", "焦点在「暗色主题」按 Alt+→：和「表格虚拟滚动」（同目录）建组，名字框已打开", async () => {
+    await mainReady(N);
+    tabOf("暗色主题").focus();
+    await key("ArrowRight", { alt: true });
+    await sleep(300);
+  }),
+  tg("tg-33-key-head-menu", "组头上 Shift+F10", "焦点在「训练」组头按 Shift+F10：开组的菜单（不是当前标签页的）", async () => {
+    await mainReady(N);
+    [...document.querySelectorAll<HTMLElement>(".tab-group-head")].find((h) => h.textContent?.includes("训练"))!.focus();
+    await key("F10", { shift: true, code: "F10" });
+    await sleep(300);
+  }),
+  tg("tg-34-menu-member-sub", "组员右键「分组 ▸」", "右键「订单接口补测试」→「分组 ▸」：所在的「订单」打勾，移出分组可点", async () => {
+    await mainReady(N);
+    await rightClick(tabOf("订单接口补测试"));
+    (await byText("[aria-haspopup='menu']", "分组")).click();
+    await sleep(400);
+  }),
+  tg("tg-35-menu-batch", "多选右键「分组 ▸」", "当前在「订单服务加重试」，Ctrl 点「部署文档」「命令行补全」（首次 Ctrl 点带上当前那个 ⇒ 选了三个，一个在「订单」里），右键 →「分组 ▸」：每项带个数", async () => {
+    await mainReady(N);
+    for (const t of ["部署文档", "命令行补全"]) {
+      const el = tabOf(t);
+      const p = mid(el);
+      el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, clientX: p.x, clientY: p.y, ctrlKey: true }));
+      await sleep(80);
+    }
+    await rightClick(tabOf("命令行补全"));
+    (await byText("[role=menu] [aria-haspopup='menu']", /^分组/)).click();
+    await sleep(400);
+  }),
+  tg("tg-36-menu-new", "右键「新建分组」之后", "右键「部署文档」→「分组 ▸ 新建分组」：不弹框，建「分组 1」、名字框已打开；toast 可撤", async () => {
+    await mainReady(N);
+    await rightClick(tabOf("部署文档"));
+    (await byText("[aria-haspopup='menu']", "分组")).click();
+    await sleep(300);
+    await click(await byText("[role=menu] [role^=menuitem]", "新建分组"));
+    await sleep(400);
+  }),
+  tg("tg-37-cmd", "命令面板里的分组三条", "当前在「订单接口补测试」，Ctrl+K 输入「分组」", async () => {
+    await mainReady(N);
+    await click(tabOf("订单接口补测试"));
+    await key("k", { ctrl: true });
+    await sleep(300);
+    const input = document.querySelector<HTMLInputElement>("[role=dialog] input, [aria-modal=true] input")!;
+    input.value = "分组";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    await sleep(300);
+  }),
+  tg("tg-38-keys", "快捷键一览里的「标签页栏」", "按 ?：多了「标签页栏」一组（F6 · Alt+↑↓ · Alt+← · Alt+→ · F2，何时生效写「标签页栏」）", async () => {
+    await mainReady(N);
+    (document.activeElement as HTMLElement | null)?.blur();
+    await key("?", { shift: true, code: "Slash" });
+    await sleep(300);
+    // 滚到「标签页栏」那一组。
+    const title = await byText("[aria-modal=true] *", /^标签页栏$/);
+    title.scrollIntoView({ block: "start" });
+    await sleep(200);
+  }),
 ];
 
 void waitFor;

@@ -10,6 +10,10 @@ import {
   autoScrollStep,
   defaultGroupName,
   dwellCandidate,
+  keyGroupMoveTarget,
+  keyJoinPrevTarget,
+  keyLeaveTarget,
+  keyMoveTarget,
   pickDropTarget,
   pickGroupDropTarget,
   planDrop,
@@ -17,6 +21,7 @@ import {
   DRAG_THRESHOLD_PX,
   DWELL_MS,
   DWELL_MOVE_PX,
+  type BarRow,
   type DropTarget,
   type RowRect,
 } from "./tab-drop";
@@ -46,6 +51,8 @@ export interface TabBarDragView {
   readonly tabButtons: ReadonlyMap<string, { root: HTMLElement }>;
   readonly listEl: HTMLElement;
   measureRows(): RowRect[];
+  /** 栏里从上到下的行（键盘挪位按看到的顺序算）。 */
+  rows(): BarRow[];
   groupParts(gid: string): { wrap: HTMLElement; head: HTMLElement; list: HTMLElement } | undefined;
 }
 
@@ -556,6 +563,60 @@ export class TabBarDrag {
     const col = this.prefs.collections.find((c) => c.id === gid);
     this.prefs.offerUndo(copyText("tabBar.group.moved", { name: col?.name ?? "" }), before);
     this.flashLanded(this.store.orderedIds.filter((x) => this.store.tabs.get(x)?.group === gid));
+  }
+
+  /**
+   * 键盘挪位（焦点在栏里 `Alt+↑↓`）：标签页（选了几个 ⇒ 一起）上 / 下一格；组头 ⇒ 整组一格。
+   * 落点按看到的行算（`tab-drop.ts::keyMoveTarget` · `keyGroupMoveTarget`），落实与撤销同拖放。
+   */
+  keyMove(row: { kind: "tab"; sids: readonly string[] } | { kind: "head"; gid: string }, dir: -1 | 1): void {
+    if (row.kind === "head") {
+      const at = keyGroupMoveTarget(this.view.rows(), row.gid, dir);
+      if (at !== undefined) this.applyGroupDrop(row.gid, { kind: "insert", at, gid: null });
+      return;
+    }
+    const t = keyMoveTarget(this.view.rows(), row.sids, dir);
+    if (t !== null) this.applyDrop(row.sids, t);
+  }
+
+  /** `Alt+←`：出组，放到组后面。 */
+  keyLeave(sids: readonly string[]): void {
+    const t = keyLeaveTarget(this.view.rows(), sids);
+    if (t !== null) this.applyDrop(sids, t);
+  }
+
+  /** `Alt+→`：和上一行建组 / 进上一行的组。 */
+  keyJoinPrev(sids: readonly string[]): void {
+    const t = keyJoinPrevTarget(this.view.rows(), sids);
+    if (t !== null) this.applyDrop(sids, t);
+  }
+
+  /** 右键 / 命令「新建分组」：建「分组 N」把这几个放进去（不问名字），名字框立刻打开；可撤。 */
+  foundNow(sids: readonly string[]): void {
+    if (!this.prefs.collectionsLoaded || sids.length === 0) return;
+    const before = this.prefs.snapshot();
+    const name = defaultGroupName(null, null, this.prefs.collections.map((c) => c.name));
+    const id = newCollectionId();
+    const why = this.prefs.foundGroup(sids, name, id);
+    if (why) {
+      sayCollectionRefusal(why);
+      return;
+    }
+    this.host.refreshTabBar();
+    this.prefs.offerUndo(copyText("tabBar.group.founded", { name }), before);
+    this.host.renameGroupNow(id);
+  }
+
+  /** 右键 / 命令「分组 ▸ 某组」：这几个挪进那个组、排最后；可撤（同拖进组）。 */
+  joinNow(sids: readonly string[], gid: string): void {
+    const m = this.view.rows().filter((r): r is Extract<BarRow, { kind: "tab" }> => r.kind === "tab" && r.gid === gid);
+    const last = m.filter((r) => !sids.includes(r.sid)).pop();
+    this.applyDrop(sids, { kind: "insert", at: last ? { sid: last.sid, side: "after" } : null, gid });
+  }
+
+  /** 右键 / 命令「移出分组」：这几个出组、留在原处（组后面）；可撤。 */
+  leaveNow(sids: readonly string[]): void {
+    this.keyLeave(sids);
   }
 
   /** 落下的那几行底色淡出一次（只过渡底色；减少动效时不画，见 `tab-group.module.css`）。 */

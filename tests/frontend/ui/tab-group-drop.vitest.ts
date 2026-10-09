@@ -14,6 +14,10 @@ import {
   planGroupDrop,
   pickGroupDropTarget,
   autoScrollStep,
+  keyMoveTarget,
+  keyGroupMoveTarget,
+  keyLeaveTarget,
+  keyJoinPrevTarget,
   sameDirName,
   DRAG_THRESHOLD_PX,
   DWELL_MS,
@@ -285,5 +289,81 @@ describe("拖的时候栏自己滚", () => {
     expect(autoScrollStep(100, 100, 600)).toBe(-12);
     expect(autoScrollStep(90, 100, 600), "越过上沿也按最快").toBe(-12);
     expect(autoScrollStep(594, 100, 600)).toBe(9);
+  });
+});
+
+describe("键盘挪位：按看到的顺序上下各一格算落点，再走拖放那一套", () => {
+  // 栏：x · 组 ga（a1 a2）· y · 组 gb（b1 b2）· z
+  const order = ["x", "a1", "a2", "y", "b1", "b2", "z"];
+  const g = of({ a1: "ga", a2: "ga", b1: "gb", b2: "gb" });
+  const known = new Set(["ga", "gb"]);
+  const rows = (folded: string[] = []) => barRows(order, g, ["ga", "gb"], new Set(folded));
+  /** 挪一格之后：新顺序 ＋ 归属怎么变；`null` ＝ 不动。 */
+  const step = (dragged: string[], dir: -1 | 1, folded: string[] = []) => {
+    const t = keyMoveTarget(rows(folded), dragged, dir);
+    return t === null ? null : planDrop(order, g, known, dragged, t);
+  };
+
+  it("组里往上 / 往下 ⇒ 组里换位", () => {
+    expect(step(["a2"], -1)).toEqual({ order: ["x", "a2", "a1", "y", "b1", "b2", "z"], move: { kind: "stay" } });
+    expect(step(["a1"], 1)).toEqual({ order: ["x", "a2", "a1", "y", "b1", "b2", "z"], move: { kind: "stay" } });
+  });
+
+  it("组里第一个再往上 ⇒ 出组放到组前面；最后一个再往下 ⇒ 出组放到组后面", () => {
+    expect(step(["a1"], -1)).toEqual({ order, move: { kind: "leave" } });
+    expect(keyMoveTarget(rows(), ["a1"], -1)).toEqual({ kind: "insert", at: { sid: "a1", side: "before" }, gid: null });
+    expect(step(["a2"], 1)).toEqual({ order, move: { kind: "leave" } });
+    expect(keyMoveTarget(rows(), ["a2"], 1)).toEqual({ kind: "insert", at: { sid: "a2", side: "after" }, gid: null });
+  });
+
+  it("从组上面往下碰到组头 ⇒ 进组排第一；从组下面往上 ⇒ 进组排最后", () => {
+    expect(step(["x"], 1)).toEqual({ order, move: { kind: "join", gid: "ga" } });
+    expect(keyMoveTarget(rows(), ["x"], 1)).toEqual({ kind: "insert", at: { sid: "a1", side: "before" }, gid: "ga" });
+    expect(step(["y"], -1)).toEqual({ order, move: { kind: "join", gid: "ga" } });
+    expect(keyMoveTarget(rows(), ["y"], -1)).toEqual({ kind: "insert", at: { sid: "a2", side: "after" }, gid: "ga" });
+  });
+
+  it("收着的组：整段跳过去，不进组", () => {
+    expect(step(["x"], 1, ["ga"])).toEqual({ order: ["a1", "a2", "x", "y", "b1", "b2", "z"], move: { kind: "stay" } });
+    expect(step(["y"], -1, ["ga"])).toEqual({ order: ["x", "y", "a1", "a2", "b1", "b2", "z"], move: { kind: "stay" } });
+  });
+
+  it("顶上再往上 · 底下再往下（散的）⇒ 不动", () => {
+    expect(step(["x"], -1)).toBeNull();
+    expect(step(["z"], 1)).toBeNull();
+  });
+
+  it("选了几个一起挪：按最上面那个往上算，落下后挨在一起", () => {
+    expect(step(["y", "z"], -1)).toEqual({ order: ["x", "a1", "a2", "y", "z", "b1", "b2"], move: { kind: "join", gid: "ga" } });
+  });
+
+  it("组头上 ⇒ 整组挪一格，跳过别的组整段", () => {
+    const gstep = (gid: string, dir: -1 | 1) => {
+      const at = keyGroupMoveTarget(rows(), gid, dir);
+      return at === undefined ? null : planGroupDrop(order, g, known, gid, at);
+    };
+    expect(gstep("gb", -1)).toEqual(["x", "a1", "a2", "b1", "b2", "y", "z"]);
+    expect(gstep("ga", -1)).toEqual(["a1", "a2", "x", "y", "b1", "b2", "z"]);
+    expect(gstep("ga", 1)).toEqual(["x", "y", "a1", "a2", "b1", "b2", "z"]);
+    expect(keyGroupMoveTarget(barRows(["x", "b1", "b2", "a1", "a2"], g, ["ga", "gb"]), "ga", -1), "上面是别的组 ⇒ 跳过它整段").toEqual({ sid: "b1", side: "before" });
+    expect(gstep("gb", 1)).toEqual(["x", "a1", "a2", "y", "z", "b1", "b2"]);
+    expect(keyGroupMoveTarget(barRows(["a1", "a2", "x"], g, ["ga"]), "ga", -1), "已在顶上").toBeUndefined();
+  });
+
+  it("出组（Alt+←）⇒ 放到组后面；散的 ⇒ 不动", () => {
+    const t = keyLeaveTarget(rows(), ["a1"]);
+    expect(t).toEqual({ kind: "insert", at: { sid: "a2", side: "after" }, gid: null });
+    expect(planDrop(order, g, known, ["a1"], t!)).toEqual({ order: ["x", "a2", "a1", "y", "b1", "b2", "z"], move: { kind: "leave" } });
+    expect(keyLeaveTarget(rows(), ["x"])).toBeNull();
+  });
+
+  it("与上一行成组（Alt+→）：上一行散的 ⇒ 建组；上一行在组里 ⇒ 进那个组；收着的组头 ⇒ 进组排最后；已同组 ⇒ 不动", () => {
+    expect(keyJoinPrevTarget(barRows(["p", "q"], of({}), []), ["q"])).toEqual({ kind: "onto", sid: "p" });
+    expect(keyJoinPrevTarget(rows(), ["y"])).toEqual({ kind: "onto", sid: "a2" });
+    expect(planDrop(order, g, known, ["y"], keyJoinPrevTarget(rows(), ["y"])!).move).toEqual({ kind: "join", gid: "ga" });
+    expect(keyJoinPrevTarget(rows(["ga"]), ["y"])).toEqual({ kind: "insert", at: { sid: "a2", side: "after" }, gid: "ga" });
+    expect(keyJoinPrevTarget(rows(), ["a2"])).toBeNull();
+    expect(keyJoinPrevTarget(rows(), ["a1"])).toBeNull();
+    expect(keyJoinPrevTarget(rows(), ["x"])).toBeNull();
   });
 });

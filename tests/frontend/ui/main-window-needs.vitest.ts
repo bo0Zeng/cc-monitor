@@ -162,6 +162,7 @@ function bar(tabs: Tab[]): { view: TabBarView; host: TabBarViewHost; store: TabS
     beginGroupDrag: vi.fn(),
     takeSuppressedHeadClick: vi.fn().mockReturnValue(false),
     openMenu: vi.fn(),
+    toggleSelect: vi.fn(),
     openMenuAt: vi.fn(),
     rereadAll: vi.fn().mockResolvedValue(undefined),
     reconnect: vi.fn(),

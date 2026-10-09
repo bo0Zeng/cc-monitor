@@ -11,13 +11,7 @@ import { toast } from "./kit/toast";
 import type { Tab } from "./tab-model";
 import { canResume, hasTerminal, isResumeOnly, type SessionState } from "./tab-session-state";
 import { copyText } from "./copy-table";
-import {
-  createRefusal,
-  newCollectionId,
-  type CollectionRefusal,
-  type TabCollection,
-} from "./tab-collections";
-import { sayCollectionRefusal } from "./tab-bar-prefs";
+import type { TabCollection } from "./tab-collections";
 import { defaultPick, resumeAccounts, resumeMenuItems, type ResumeAccounts, type ResumePick } from "./resume-menu";
 import { openNewSession } from "./new-session";
 import { askOf } from "./launch-account";
@@ -69,7 +63,51 @@ export function tidyDividers(items: MenuItem[]): MenuItem[] {
   while (out.length > 0 && out[out.length - 1].divider) out.pop();
   return out;
 }
-import { askText } from "./kit/dialog";
+
+/**
+ * 「分组 ▸」那一层（单个右键与多选右键同一份）：新建分组 · 各组（所在的打勾，点别的 ＝ 挪过去）· 移出分组（不在组里灰着）。
+ * 多选（`many`）⇒ 每项带能做的个数（今天批量菜单的写法）。新建不问名字：建「分组 N」、组头名字框立刻打开（同拖着建组）。
+ */
+export function groupSubmenu(o: {
+  collections: readonly TabCollection[];
+  /** 这一批里能挪进组 `gid` 的个数（不在它里面的）。 */
+  movable(gid: string): number;
+  /** 这一批里在组里的个数（能移出的）。 */
+  grouped: number;
+  /** 多选：这一批几个（给了 ⇒ 每项带个数）。 */
+  many?: number;
+  found(): void;
+  join(gid: string): void;
+  leave(): void;
+  /** 多选时灰着的那几项为什么（单个的不写）。 */
+  why?: { inThatGroup: string; notInGroup: string };
+}): MenuItem[] {
+  const n = o.many;
+  const items: MenuItem[] = [
+    { label: n === undefined ? copyText("tabMenu.collection.new") : copyText("tabBatch.menu.found", { n }), onClick: o.found },
+  ];
+  if (o.collections.length > 0) items.push({ label: "", divider: true });
+  for (const col of o.collections) {
+    const k = o.movable(col.id);
+    items.push({
+      label: n === undefined ? col.name : copyText("tabBatch.menu.joinOne", { name: col.name, n: k }),
+      checked: k === 0,
+      enabled: n === undefined || k > 0,
+      why: n !== undefined && k === 0 ? o.why?.inThatGroup : undefined,
+      onClick: () => {
+        if (k > 0) o.join(col.id);
+      },
+    });
+  }
+  items.push({ label: "", divider: true });
+  items.push({
+    label: n === undefined ? copyText("tabMenu.collection.remove") : copyText("tabBatch.menu.leave", { n: o.grouped }),
+    enabled: o.grouped > 0,
+    why: n !== undefined && o.grouped === 0 ? o.why?.notInGroup : undefined,
+    onClick: o.leave,
+  });
+  return items;
+}
 
 /** 菜单要宿主给的读数 / 回调。全是**现读**：菜单项的 `onClick` 在点下去那一刻才调它们。 */
 export interface TabMenuHost {
@@ -78,12 +116,12 @@ export interface TabMenuHost {
   /** 这个实例拉过集合没有（撕离出来的 viewer 窗口从不拉 ⇒ 不给集合入口）。 */
   collectionsLoaded(): boolean;
   collections(): TabCollection[];
-  /** 这个 tab 在哪个组（读 `Tab.group`）。下面三个动作改完内存就重画、落盘由落盘偏好那一份做。 */
+  /** 这个 tab 在哪个组（读 `Tab.group`）。下面三个动作改完就重画、给可撤的提示（与拖放同一口）。 */
   groupOf(sid: string): TabCollection | null;
-  joinGroup(sid: string, gid: string): void;
-  /** 建组并把这几个 tab 放进去；组数到上界 ⇒ 回拒绝原因、什么都不做。 */
-  foundGroup(sids: string[], name: string, id: string): CollectionRefusal | null;
-  leaveGroup(sid: string): void;
+  joinGroup(sids: readonly string[], gid: string): void;
+  /** 建「分组 N」把这几个放进去、名字框立刻打开；组数到上界 ⇒ 说一句、什么都不做。 */
+  foundGroup(sids: readonly string[]): void;
+  leaveGroup(sids: readonly string[]): void;
   /** 同上一条理由：没 `loadPinned` 过就不给固定入口。 */
   pinnedLoaded(): boolean;
   togglePin(sid: string): void;
@@ -133,9 +171,7 @@ export class TabMenu {
         onClick: () => this.host.togglePin(sid),
       });
     }
-    const here = this.host.collectionsLoaded() ? this.host.groupOf(sid) : null;
-    if (this.host.collectionsLoaded()) items.push({ icon: "list", label: copyText("tabMenu.collection.add"), submenu: this.joinItems(sid, here) });
-    if (here) items.push({ label: copyText("tabMenu.collection.remove", { name: here.name }), onClick: () => this.host.leaveGroup(sid) });
+    if (this.host.collectionsLoaded()) items.push({ icon: "list", label: copyText("tabMenu.collection.add"), submenu: this.groupItems([sid]) });
 
     // ③ 恢复 · 在终端里打开 · 账号
     items.push({ label: "", divider: true });
@@ -179,26 +215,26 @@ export class TabMenu {
     if (t) void this.appendAccountMenuItems(t.origin, sid, t.state);
   }
 
-  /** 「加入分组 ▸」那一层：现有分组各一条（它已在的那组不列）＋「新建分组…」。 */
-  private joinItems(sid: string, here: TabCollection | null): MenuItem[] {
-    const items: MenuItem[] = this.host
-      .collections()
-      .filter((col) => col.id !== here?.id)
-      .map((col) => ({ label: col.name, onClick: () => this.host.joinGroup(sid, col.id) }));
-    items.push({
-      label: copyText("tabMenu.collection.new"),
-      onClick: () =>
-        void (async () => {
-          // 到上界先说，再问名字（不让用户白填一次）。
-          const full = createRefusal(this.host.collections());
-          if (full) return sayCollectionRefusal(full);
-          const name = await askText({ title: copyText("tabMenu.collection.title"), label: copyText("tabMenu.collection.namePrompt"), action: copyText("tabMenu.collection.action") });
-          if (!name?.trim()) return;
-          const why = this.host.foundGroup([sid], name, newCollectionId());
-          if (why) sayCollectionRefusal(why);
-        })(),
+  /** 「分组 ▸」那一层，作用于这几个（命令面板「加入分组…」开的也是它；多选 ⇒ 每项带个数）。 */
+  private groupItems(sids: readonly string[]): MenuItem[] {
+    const tabs = sids.map((x) => this.host.tab(x)).filter((t): t is Tab => t !== undefined);
+    const ids = tabs.map((t) => t.sessionId);
+    return groupSubmenu({
+      collections: this.host.collections(),
+      movable: (gid) => tabs.filter((t) => t.group !== gid).length,
+      grouped: tabs.filter((t) => t.group !== null).length,
+      many: ids.length > 1 ? ids.length : undefined,
+      found: () => this.host.foundGroup(ids),
+      join: (gid) => this.host.joinGroup(tabs.filter((t) => t.group !== gid).map((t) => t.sessionId), gid),
+      leave: () => this.host.leaveGroup(tabs.filter((t) => t.group !== null).map((t) => t.sessionId)),
+      why: { inThatGroup: copyText("tabBatch.why.inThatGroup"), notInGroup: copyText("tabBatch.why.notInGroup") },
     });
-    return items;
+  }
+
+  /** 命令面板「加入分组…」：只开「分组 ▸」那一层，锚在一颗按钮 / 一行上。没拉过组表 ⇒ 不开。 */
+  openGroupMenu(anchor: HTMLElement, sids: readonly string[]): void {
+    if (!this.host.collectionsLoaded() || sids.length === 0) return;
+    openMenu({ el: anchor, align: "end" }, this.groupItems(sids), { label: copyText("tabMenu.collection.add") });
   }
 
   /**

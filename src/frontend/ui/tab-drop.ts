@@ -256,6 +256,91 @@ export function planGroupDrop(
   return contiguous([...rest.slice(0, cut), ...block, ...rest.slice(cut)], groupOf, known);
 }
 
+/**
+ * 键盘挪位（焦点在栏里：`Alt+↑↓` · `Alt+←` · `Alt+→`）：按**看到的**行（[`barRows`]，收着的组里的不算）上下各一格算落点，
+ * 再交给拖放那一套（[`planDrop`] · `applyDrop`：顺序 ＋ 归属 ＋ 撤销一次落实）。`null` ＝ 不动。
+ *
+ * - 组里换位；组里第一个再往上 ＝ 出组放到组前面，最后一个再往下 ＝ 出组放到组后面；
+ * - 从组上面往下碰到组头 ＝ 进组排第一，从组下面往上 ＝ 进组排最后；收着的组整段跳过去（不进组）；
+ * - 选了几个一起挪：往上按最上面那个算、往下按最下面那个算（被挪的那几行自己不算一格）。
+ */
+export function keyMoveTarget(rows: readonly BarRow[], dragged: readonly string[], dir: -1 | 1): DropTarget | null {
+  const k = keyContext(rows, dragged, dir);
+  if (k === null) return null;
+  const { anchor, near, members } = k;
+  const g = anchor.gid;
+  if (dir === -1) {
+    if (near === undefined) return null;
+    if (near.kind === "head") {
+      if (near.gid === g) return { kind: "insert", at: { sid: anchor.sid, side: "before" }, gid: null };
+      const m = members(near.gid);
+      return m.length === 0 ? null : { kind: "insert", at: { sid: m[0], side: "before" }, gid: null };
+    }
+    if (near.gid === g) return { kind: "insert", at: { sid: near.sid, side: "before" }, gid: g };
+    return { kind: "insert", at: { sid: near.sid, side: "after" }, gid: near.gid };
+  }
+  if (g !== null && (near === undefined || near.kind === "head" || near.gid !== g)) return { kind: "insert", at: { sid: anchor.sid, side: "after" }, gid: null };
+  if (near === undefined) return null;
+  if (near.kind === "tab") return { kind: "insert", at: { sid: near.sid, side: "after" }, gid: g };
+  const m = members(near.gid);
+  if (m.length === 0) return null;
+  return near.collapsed ? { kind: "insert", at: { sid: m[m.length - 1], side: "after" }, gid: null } : { kind: "insert", at: { sid: m[0], side: "before" }, gid: near.gid };
+}
+
+/** `Alt+←`：出组，放到组后面（被挪的那几个里头一个在组里的那个组）；都散着 ⇒ `null`。 */
+export function keyLeaveTarget(rows: readonly BarRow[], dragged: readonly string[]): DropTarget | null {
+  const set = new Set(dragged);
+  const first = rows.find((r): r is Extract<BarRow, { kind: "tab" }> => r.kind === "tab" && set.has(r.sid) && r.gid !== null);
+  if (!first) return null;
+  const m = groupMembers(rows, first.gid!);
+  return { kind: "insert", at: { sid: m[m.length - 1], side: "after" }, gid: null };
+}
+
+/** `Alt+→`：和上一行建组（它散着）/ 进上一行的组（它在组里 · 它是收着的组头 ⇒ 排最后）；已在那个组里 ⇒ `null`。 */
+export function keyJoinPrevTarget(rows: readonly BarRow[], dragged: readonly string[]): DropTarget | null {
+  const k = keyContext(rows, dragged, -1);
+  if (k === null || k.near === undefined) return null;
+  const { anchor, near, members } = k;
+  if (near.kind === "head") {
+    const m = members(near.gid);
+    return near.gid === anchor.gid || !near.collapsed || m.length === 0 ? null : { kind: "insert", at: { sid: m[m.length - 1], side: "after" }, gid: near.gid };
+  }
+  return near.gid !== null && near.gid === anchor.gid ? null : { kind: "onto", sid: near.sid };
+}
+
+/** 组头上 `Alt+↑↓`：整组挪一格（散的算一格，别的组整段算一格）。`undefined` ＝ 不动。 */
+export function keyGroupMoveTarget(rows: readonly BarRow[], gid: string, dir: -1 | 1): InsertAt | undefined {
+  const units: { gid: string | null; first: string; last: string }[] = [];
+  for (const r of rows) {
+    if (r.kind === "head") {
+      const m = groupMembers(rows, r.gid);
+      if (m.length > 0) units.push({ gid: r.gid, first: m[0], last: m[m.length - 1] });
+    } else if (r.gid === null) units.push({ gid: null, first: r.sid, last: r.sid });
+  }
+  const i = units.findIndex((u) => u.gid === gid);
+  const n = i < 0 ? undefined : units[i + dir];
+  if (n === undefined) return undefined;
+  return dir === -1 ? { sid: n.first, side: "before" } : { sid: n.last, side: "after" };
+}
+
+/** 组 `gid` 的组员（含收着藏起来的），按栏里的先后。 */
+function groupMembers(rows: readonly BarRow[], gid: string): string[] {
+  return rows.filter((r): r is Extract<BarRow, { kind: "tab" }> => r.kind === "tab" && r.gid === gid).map((r) => r.sid);
+}
+
+/** 键盘挪位那几条共用的：看得见的行里，被挪的最上（往上）/ 最下（往下）那一个，与它那个方向上紧挨着的、不是被挪的那一行。 */
+function keyContext(rows: readonly BarRow[], dragged: readonly string[], dir: -1 | 1) {
+  const vis = rows.filter((r) => !(r.kind === "tab" && r.hidden));
+  const set = new Set(dragged);
+  const idx = vis.flatMap((r, i) => (r.kind === "tab" && set.has(r.sid) ? [i] : []));
+  if (idx.length === 0) return null;
+  const at = dir === -1 ? idx[0] : idx[idx.length - 1];
+  const anchor = vis[at] as Extract<BarRow, { kind: "tab" }>;
+  let j = at + dir;
+  while (j >= 0 && j < vis.length && vis[j].kind === "tab" && set.has((vis[j] as { sid: string }).sid)) j += dir;
+  return { anchor, near: vis[j] as BarRow | undefined, members: (g: string) => groupMembers(rows, g) };
+}
+
 /** 拖的时候栏自己滚：指针进列表上 / 下沿 24px 内 ⇒ 每帧滚多少（负 ＝ 往上），离边越近越快、贴边 12px。 */
 export const AUTO_SCROLL_EDGE_PX = 24;
 export const AUTO_SCROLL_MAX_PX = 12;

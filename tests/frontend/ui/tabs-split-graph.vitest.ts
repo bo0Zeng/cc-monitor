@@ -232,7 +232,6 @@ const DEPS: Record<string, readonly string[]> = {
   // ⑤ 菜单放哪几项：账号 flyout · tmux 判据 · attach / 预览 · 菜单控件 · 会话动作。
   "src/frontend/ui/tab-menu.ts": [
     "src/frontend/ui/agent-profile.ts", // 恢复 ▸ 的账号组：这一家有没有账号这一维 · 叫什么（会话是哪一家由会话事实给）
-    "src/frontend/ui/kit/dialog.ts", // 「新建集合…」问名字（原 `window.prompt`）
     "src/frontend/ui/control-said.ts", // 那台握手时说过做不到的几项置灰：`unavailableSaid`（事实住 monitor 那份 Offer）
     "src/frontend/ui/copy-table.ts", // 固定那一项的两句提示（说到会话状态）住文案表
     "src/frontend/ui/kit/toast.ts",
@@ -241,8 +240,6 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/resume-menu.ts", // 「恢复 ▸」那一组选项怎么摆（历史页「恢复 ▾」同一个组件）
     "src/frontend/ui/launch-account.ts", // 勾着的号 ⇒ 交那台判的那一问（`askOf`：本机在 tmux 里那一条要它）
     "src/frontend/ui/new-session.ts", // 「恢复 ▸」最底下「在此目录新建会话」：开起新会话框（历史页同一个）
-    "src/frontend/ui/tab-bar-prefs.ts", // 「加入集合 / 新建集合」到上界 ⇒ `sayCollectionRefusal`
-    "src/frontend/ui/tab-collections.ts",
     "src/frontend/ui/kit/menu.ts",
     "src/frontend/ui/tab-session-state.ts", // 给 Resume 还是给换号重启 · 本机「杀死会话」占位
     "src/frontend/ui/sessions-where.ts", // 在 tmux 里那几项亮不亮、写哪个名字：问那台（`sessions-where`）

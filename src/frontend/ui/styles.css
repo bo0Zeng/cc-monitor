@@ -63,8 +63,7 @@
 }
 
 .tab-bar-icon:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: -2px;
+  outline-offset: calc(-1 * var(--focus-ring));
 }
 
 .tab-bar-icon:disabled {
@@ -180,8 +179,7 @@
 }
 
 .tab:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: -2px;
+  outline-offset: calc(-1 * var(--focus-ring));
 }
 
 .tab.active {
@@ -2610,6 +2608,11 @@
 
 .tab-group-head:hover {
   background: var(--state-hover);
+}
+
+/* 键盘走行停在组头上（↑↓ · F6）：焦点环同标签页那一行（环本身照全局那一条，只收进行内）。 */
+.tab-group-head:focus-visible {
+  outline-offset: calc(-1 * var(--focus-ring));
 }
 
 /* 当前标签页在收着的组里：组头左边一道 accent（同当前行）。 */

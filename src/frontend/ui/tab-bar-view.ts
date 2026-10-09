@@ -109,6 +109,8 @@ export interface TabBarViewHost {
   takeSuppressedHeadClick(gid: string): boolean;
   /** 右键：开这个 tab 的菜单。 */
   openMenu(e: MouseEvent, sid: string): void;
+  /** 栏里键盘 Space：选中 / 取消（同 Ctrl 点）。 */
+  toggleSelect(sid: string): void;
   /** 栏顶「刷新」：有打开 tab 的每台对齐 ＋ 补读一次；做完才 resolve。 */
   rereadAll(): Promise<void>;
   /** 行尾「更多」：开这个 tab 的菜单（锚在那颗按钮上）。 */
@@ -128,6 +130,14 @@ interface GroupEls {
   sum: HTMLElement;
   mini: HTMLElement;
   drawn: string;
+}
+
+/** 栏里的一行（键盘焦点落在哪）：标签页 · 组头。 */
+export type FocusRow = { kind: "tab"; sid: string } | { kind: "head"; gid: string };
+
+/** 这个事件落在会打字的框里（组头改名的输入框）⇒ 列表键不管。 */
+function isTyping(t: EventTarget | null): boolean {
+  return t instanceof HTMLElement && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable);
 }
 
 /** 「需要你」悬停菜单的宽：标题放得下约 28 个汉字（≈ 420px），至少 360、至多 480 与视口减 32 的小者；可以盖过标签页栏伸进消息流。 */
@@ -184,6 +194,11 @@ export class TabBarView {
     barEl.addEventListener("click", (e) => this.onBarClick(e));
     barEl.addEventListener("mousedown", (e) => this.onBarMouseDown(e));
     barEl.addEventListener("contextmenu", (e) => this.onBarContextMenu(e));
+    barEl.addEventListener("keydown", (e) => this.onBarKeyDown(e));
+    // 按钮上的 Space 在松开时点它（会切过去）：栏里 Space 是「选中」，松开那一下也吞掉。
+    barEl.addEventListener("keyup", (e) => {
+      if (e.key === " " && this.rowOf(e.target) !== null && !isTyping(e.target)) e.preventDefault();
+    });
     this.headEl = document.createElement("div");
     this.headEl.className = "tab-bar-head";
     this.headActs = document.createElement("span");
@@ -376,14 +391,109 @@ export class TabBarView {
     return this.store.visibleOrder(this.prefs.collections.map((c) => c.id), folded);
   }
 
-  /** 栏里从上到下的行（组头 · 标签页）。 */
-  private rows(): BarRow[] {
+  /** 栏里从上到下的行（组头 · 标签页；收着的组里的标 hidden）。键盘挪位按它算（`tab-drop.ts::keyMoveTarget`）。 */
+  rows(): BarRow[] {
     return barRows(
       this.store.orderedIds,
       (sid) => this.store.tabs.get(sid)?.group ?? null,
       this.prefs.collections.map((c) => c.id),
       new Set(this.prefs.collections.filter((c) => c.collapsed).map((c) => c.id)),
     );
+  }
+
+  /** 事件落在栏里哪一行上（标签页 · 组头）；别处 ⇒ `null`。 */
+  private rowOf(target: EventTarget | null): FocusRow | null {
+    const t = target as Element | null;
+    if (!t || typeof t.closest !== "function" || !this.listEl.contains(t)) return null;
+    const tab = t.closest(".tab");
+    const sid = tab ? this.sidOf.get(tab) : undefined;
+    if (sid !== undefined) return { kind: "tab", sid };
+    const head = t.closest(".tab-group-head");
+    const gid = head ? this.headGid.get(head) : undefined;
+    return gid !== undefined ? { kind: "head", gid } : null;
+  }
+
+  /** 焦点此刻在栏里哪一行上；不在栏里 ⇒ `null`。 */
+  focusedRow(): FocusRow | null {
+    return this.rowOf(document.activeElement);
+  }
+
+  /** 把焦点放到这一行上（标签页那颗按钮 · 组头）；那一行不在栏里 / 看不见 ⇒ `false`。 */
+  focusRow(row: FocusRow): boolean {
+    const el = row.kind === "tab" ? this.tabButtons.get(row.sid)?.root : this.groupEls.get(row.gid)?.head;
+    if (!el || !this.listEl.contains(el) || (row.kind === "tab" && this.isHiddenTab(row.sid))) return false;
+    el.focus();
+    return document.activeElement === el;
+  }
+
+  /** 焦点进栏（F6）：落在当前标签页那一行；它在收着的组里 ⇒ 组头；都没有 ⇒ 第一行。 */
+  focusBar(): boolean {
+    const rows = this.rows();
+    const sid = this.store.activeId;
+    const cur = rows.find((r) => r.kind === "tab" && r.sid === sid);
+    if (cur?.kind === "tab") {
+      if (!cur.hidden && this.focusRow({ kind: "tab", sid: cur.sid })) return true;
+      if (cur.gid !== null && this.focusRow({ kind: "head", gid: cur.gid })) return true;
+    }
+    const first = rows.find((r) => !(r.kind === "tab" && r.hidden));
+    return first !== undefined && this.focusRow(first.kind === "tab" ? { kind: "tab", sid: first.sid } : { kind: "head", gid: first.gid });
+  }
+
+  private isHiddenTab(sid: string): boolean {
+    const gid = this.store.tabs.get(sid)?.group ?? null;
+    return gid !== null && this.prefs.collections.some((c) => c.id === gid && c.collapsed === true);
+  }
+
+  /**
+   * 栏里的列表键（焦点在某一行上；改名的输入框里不管）：↑↓ 走行（组头也是一行；收着的组只走组头）·
+   * Enter 切过去 / 收展 · ← → 收展（组员上 ← 跳到组头）· Space 选中。挪位 · 改名 · 菜单键走快捷键表（`tabBar.*` · `tab.context-menu`）。
+   */
+  private onBarKeyDown(e: KeyboardEvent): void {
+    if (e.ctrlKey || e.altKey || e.metaKey || isTyping(e.target) || e.isComposing) return;
+    const row = this.rowOf(e.target);
+    if (row === null) return;
+    const vis = this.rows().filter((r) => !(r.kind === "tab" && r.hidden));
+    const at = vis.findIndex((r) => (r.kind === "tab" ? row.kind === "tab" && r.sid === row.sid : row.kind === "head" && r.gid === row.gid));
+    const to = (r: BarRow | undefined): void => {
+      if (r) this.focusRow(r.kind === "tab" ? { kind: "tab", sid: r.sid } : { kind: "head", gid: r.gid });
+    };
+    const head = row.kind === "head" ? this.prefs.collections.find((c) => c.id === row.gid) : undefined;
+    switch (e.key) {
+      case "ArrowUp":
+      case "ArrowDown":
+        if (e.shiftKey) return;
+        to(vis[at + (e.key === "ArrowUp" ? -1 : 1)]);
+        break;
+      case "Enter":
+        // 组头里的那几颗按钮（⌄ · 名字 · ⋯）上的 Enter 归按钮自己（收展 · 改名 · 开菜单）。
+        if (row.kind === "head" && e.target !== this.groupEls.get(row.gid)?.head) return;
+        if (row.kind === "tab") {
+          this.host.pick(row.sid, "plain");
+          this.host.switchTo(row.sid);
+        } else this.toggleGroup(row.gid);
+        break;
+      case "ArrowLeft":
+        if (row.kind === "head") {
+          if (head && head.collapsed !== true) this.toggleGroup(row.gid);
+        } else {
+          const gid = this.store.tabs.get(row.sid)?.group ?? null;
+          if (gid !== null) this.focusRow({ kind: "head", gid });
+          else return;
+        }
+        break;
+      case "ArrowRight":
+        if (row.kind !== "head") return;
+        if (head?.collapsed === true) this.toggleGroup(row.gid);
+        break;
+      case " ":
+        if (row.kind !== "tab") return;
+        this.host.toggleSelect(row.sid);
+        break;
+      default:
+        return;
+    }
+    e.preventDefault();
+    e.stopPropagation();
   }
 
   /** 量一遍栏里每一行（组头 · 标签页）在纵轴上占的那一段：拖拽判落点用（判定在 `tab-drop.ts::pickDropTarget`）。 */
@@ -648,6 +758,8 @@ export class TabBarView {
       wrap.className = "tab-group";
       const head = document.createElement("div");
       head.className = "tab-group-head";
+      // 键盘走行时组头也是一行（↑↓ 能停在它上面）；不进 Tab 顺序。
+      head.tabIndex = -1;
       this.headGid.set(head, gid);
       // 拖整组刚松手的那次 click：不收展、不改名（捕获阶段先吞掉）。
       head.addEventListener(
@@ -740,8 +852,19 @@ export class TabBarView {
   private toggleGroup(gid: string): void {
     const col = this.prefs.collections.find((c) => c.id === gid);
     if (!col) return;
+    // 收起时焦点若在组员上 ⇒ 落到组头（组员藏起来了）。
+    const was = this.focusedRow();
     void this.prefs.setCollapsed([gid], col.collapsed !== true);
     this.host.refreshTabBar();
+    if (was !== null && (was.kind === "head" ? was.gid === gid : this.store.tabs.get(was.sid)?.group === gid)) {
+      if (was.kind === "head" || !this.focusRow(was)) this.focusRow({ kind: "head", gid });
+    }
+  }
+
+  /** 组的菜单开在组头上（键盘：焦点在组头上按 Shift+F10 / 菜单键）。 */
+  openGroupMenuAt(gid: string): void {
+    const head = this.groupEls.get(gid)?.head;
+    if (head) this.openGroupMenu(gid, { el: head, align: "end" });
   }
 
   /** 组的菜单（「⋯」/ 组头右键）：改名 · 收起或展开 · 全部收起 · 全部展开 · 关闭组里已结束的（n）· 解散分组。 */
@@ -803,17 +926,20 @@ export class TabBarView {
     let done = false;
     const overlay: OverlayHandle = {
       handleEsc: () => {
-        finish(false);
+        finish(false, true);
         return true;
       },
     };
-    const finish = (commit: boolean): void => {
+    const finish = (commit: boolean, viaKey = false): void => {
       if (done) return;
       done = true;
       dispatcher.popOverlay(overlay);
       const next = input.value.trim();
+      // 按 Enter / Esc 收的框：焦点回到组头（键盘接着走）；失焦收的不抢焦点。
+      const refocus = viaKey && document.activeElement === input;
       input.remove();
       name.hidden = false;
+      if (refocus) this.groupEls.get(id)?.head.focus();
       if (!commit || !next) return;
       const now = this.prefs.collections.find((x) => x.id === id);
       if (!now || now.name === next) return;
@@ -823,10 +949,10 @@ export class TabBarView {
     input.addEventListener("keydown", (ev) => {
       if (ev.key === "Enter" && !ev.isComposing) {
         ev.preventDefault();
-        finish(true);
+        finish(true, true);
       } else if (ev.key === "Escape") {
         ev.preventDefault();
-        finish(false);
+        finish(false, true);
       }
     });
     input.addEventListener("blur", () => finish(true));

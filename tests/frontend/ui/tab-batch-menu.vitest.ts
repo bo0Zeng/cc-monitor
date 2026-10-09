@@ -153,7 +153,7 @@ describe("批量菜单", () => {
     expect(toastBody().split("\n")).toEqual([copyText("tabBatch.result.failedLine", { title: "billing 账单导出改成流式", why: "门拦下了" })]);
   });
 
-  it("B3 · 固定 / 集合：一次交出能做的那几个；新建集合整批进同一个新组", async () => {
+  it("B3 · 固定 / 分组：一次交出能做的那几个；新建分组整批进同一个新组，不问名字", async () => {
     open();
     await press(copyText("tabBatch.menu.pin", { n: 2 }));
     expect(calls(host.setPinned)).toEqual([[["a", "c"], true]]);
@@ -161,11 +161,10 @@ describe("批量菜单", () => {
     open();
     await press(copyText("tabBatch.menu.leave", { n: 1 }));
     expect(calls(host.leaveGroup)).toEqual([[["c"]]]);
-    vi.mocked(askText).mockResolvedValue("新组");
     open();
     await press(copyText("tabBatch.menu.found", { n: 3 }));
-    expect(calls(host.foundGroup).length).toBe(1);
-    expect(calls(host.foundGroup)[0].slice(0, 2)).toEqual([["a", "b", "c"], "新组"]);
+    expect(askText, "不弹框问名字").not.toHaveBeenCalled();
+    expect(calls(host.foundGroup)).toEqual([[["a", "b", "c"]]]);
   });
 });
 

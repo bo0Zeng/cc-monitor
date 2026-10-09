@@ -4218,7 +4218,7 @@
     "tabBatch.menu.found": {
       "kind": "action",
       "role": "菜单项",
-      "zh": "新建分组…（{n}）",
+      "zh": "新建分组（{n}）",
       "args": ["n"]
     },
     "tabBatch.menu.leave": {
@@ -4280,24 +4280,6 @@
       "kind": "body",
       "role": "片段",
       "zh": "已取消固定",
-      "args": []
-    },
-    "tabBatch.action.join": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "已加入分组「{name}」",
-      "args": ["name"]
-    },
-    "tabBatch.action.found": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "已新建分组「{name}」",
-      "args": ["name"]
-    },
-    "tabBatch.action.leave": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "已移出分组",
       "args": []
     },
     "tabBatch.action.rot": {
@@ -4466,8 +4448,8 @@
     "tabMenu.collection.remove": {
       "kind": "action",
       "role": "菜单项",
-      "zh": "移出分组「{name}」",
-      "args": ["name"]
+      "zh": "移出分组",
+      "args": []
     },
     "tabMenu.group.rename": {
       "kind": "action",
@@ -4520,31 +4502,13 @@
     "tabMenu.collection.add": {
       "kind": "action",
       "role": "菜单项",
-      "zh": "加入分组",
-      "args": []
-    },
-    "tabMenu.collection.namePrompt": {
-      "kind": "control",
-      "role": "占位",
-      "zh": "分组名",
+      "zh": "分组",
       "args": []
     },
     "tabMenu.collection.new": {
       "kind": "action",
       "role": "菜单项",
-      "zh": "新建分组…",
-      "args": []
-    },
-    "tabMenu.collection.title": {
-      "kind": "title",
-      "role": "标题",
       "zh": "新建分组",
-      "args": []
-    },
-    "tabMenu.collection.action": {
-      "kind": "action",
-      "role": "菜单项",
-      "zh": "新建",
       "args": []
     },
     "tabMenu.open.openInWindow": {
@@ -26689,6 +26653,42 @@
       "zh": "回到底部",
       "args": []
     },
+    "keybindingActions.tabBar.moveUp": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "往上挪",
+      "args": []
+    },
+    "keybindingActions.tabBar.moveDown": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "往下挪",
+      "args": []
+    },
+    "keybindingActions.tabBar.leaveGroup": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "移出分组",
+      "args": []
+    },
+    "keybindingActions.tabBar.joinPrev": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "与上一个成组",
+      "args": []
+    },
+    "keybindingActions.tabBar.renameGroup": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "改分组名",
+      "args": []
+    },
+    "keybindingActions.tabBar.focusCycle": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "在主区与标签页栏之间切焦点",
+      "args": []
+    },
     "keybindingActions.app.keys": {
       "kind": "action",
       "role": "按钮",
@@ -26872,6 +26872,30 @@
       "zh": "pin 固定",
       "args": []
     },
+    "main.cmd.groupNew": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "新建分组",
+      "args": []
+    },
+    "main.cmd.groupJoin": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "加入分组…",
+      "args": []
+    },
+    "main.cmd.groupLeave": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "移出分组",
+      "args": []
+    },
+    "main.cmd.groupKeywords": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "group 分组 标签页",
+      "args": []
+    },
     "main.cmd.procExpand": {
       "kind": "action",
       "role": "按钮",
@@ -26986,6 +27010,12 @@
       "zh": "窗口与应用",
       "args": []
     },
+    "keys.group.bar": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "标签页栏",
+      "args": []
+    },
     "keys.group.unbound": {
       "kind": "title",
       "role": "标题",
@@ -27008,6 +27038,12 @@
       "kind": "body",
       "role": "片段",
       "zh": "上一轮 / 下一轮",
+      "args": []
+    },
+    "keys.row.move": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "往上 / 往下挪",
       "args": []
     },
     "keys.row.panels": {
@@ -27068,6 +27104,12 @@
       "kind": "body",
       "role": "片段",
       "zh": "主区 / 标签页栏",
+      "args": []
+    },
+    "keys.scope.bar": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "标签页栏",
       "args": []
     },
     "keys.scope.bare": {

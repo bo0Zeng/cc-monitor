@@ -102,6 +102,7 @@
       { "text": "被拒", "use": "用例名" }
     ],
     "tests/frontend/ui/config-persist-failure.vitest.ts": [
+      { "text": "分组", "use": "用例名" },
       { "text": "固定", "use": "用例名" },
       { "text": "快捷键", "use": "用例名" },
       { "text": "顺序", "use": "用例名" }
