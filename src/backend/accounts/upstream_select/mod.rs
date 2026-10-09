@@ -293,7 +293,12 @@ pub(crate) struct Accounts {
     quota: std::sync::Arc<Ledger>,
     /// 换号（不装 ⇒ 永远走起会话的号）。
     hop: Option<rotate::Hop>,
+    /// 换号与额度账那一侧这一发的「此刻」（unix 秒）。产品恒是真钟；只有判据经 [`Accounts::clocked`] 换（判「隔没隔一天」）。
+    clock: Clock,
 }
+
+/// 换号与额度账那一侧读的钟。
+type Clock = std::sync::Arc<dyn Fn() -> u64 + Send + Sync>;
 
 impl Accounts {
     /// 从一张已经装好的表 ＋ 那张每 agent 一行的默认上游起一层上游选择。
@@ -304,12 +309,20 @@ impl Accounts {
             reload: None,
             quota: std::sync::Arc::new(Ledger::at(None)),
             hop: None,
+            clock: std::sync::Arc::new(crate::accounts::quota::now_unix),
         }
     }
 
     /// 装上换号（额度满了换到轮换里下一个号）。
     pub(crate) fn rotating_with(mut self, hop: rotate::Hop) -> Self {
         self.hop = Some(hop);
+        self
+    }
+
+    /// 判据换钟的那一口（产品不走：恒是真钟）。读者只有中转整趟的判据（`observe_retry_tests.rs`，测试档）。
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) fn clocked(mut self, clock: Clock) -> Self {
+        self.clock = clock;
         self
     }
 
@@ -331,7 +344,7 @@ impl Accounts {
             sid: ask.label,
             body: ask.body,
             row,
-            now: crate::accounts::quota::now_unix(),
+            now: (self.clock)(),
         }
     }
 
@@ -482,7 +495,7 @@ impl Destinations for Accounts {
         let Some(read) = crate::agents::quota_read_of(&key.seg1) else {
             return;
         };
-        let now = crate::accounts::quota::now_unix();
+        let now = (self.clock)();
         let Some(reading) = read(seen.status, seen.headers, now).filter(|r| r.refused) else {
             return;
         };
@@ -504,7 +517,7 @@ impl Destinations for Accounts {
         let Some(read) = crate::agents::quota_read_of(agent) else {
             return;
         };
-        let now = crate::accounts::quota::now_unix();
+        let now = (self.clock)();
         if let Some(reading) = read(seen.status, seen.headers, now) {
             if reading.refused {
                 let retry_after = seen

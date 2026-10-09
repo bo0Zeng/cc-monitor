@@ -470,6 +470,29 @@ impl Home {
         spawn_relay_over(accounts)
     }
 
+    /// 同 [`Home::relay`]，只是中转的钟换成 `clock`（判「隔没隔一天」那一格用）。
+    fn relay_clocked(
+        &self,
+        up: SocketAddr,
+        clock: Arc<std::sync::atomic::AtomicU64>,
+    ) -> SocketAddr {
+        let quota = Arc::new(Ledger::at(Some(self.root.join(ledger::FILE_NAME))));
+        let hop = Hop::new(
+            Arc::new(RotationStore::at(Some(self.rotation_path()))),
+            Arc::clone(&quota),
+            Some(self.root.clone()),
+            self.library(),
+            Some(dead_token_endpoint()),
+        );
+        let accounts = Accounts::new(RoutingTable::build(std::iter::empty()), upstreams_at(up))
+            .recording_to(quota)
+            .rotating_with(hop)
+            .clocked(Arc::new(move || {
+                clock.load(std::sync::atomic::Ordering::SeqCst)
+            }));
+        spawn_relay_over(accounts)
+    }
+
     fn session(&self, sid: &str) -> rotation::SessionEntry {
         RotationStore::at(Some(self.rotation_path())).now().sessions[sid].clone()
     }
@@ -854,4 +877,50 @@ fn a_refusal_logs_one_line_of_who_and_how() {
         refusal_line("z", 429, &full, Some("3600")),
         "[quota] 被拒：号 z · 状态码 429 · 限额头 有 · 代表窗 five_hour · retry-after 3600"
     );
+}
+
+/// ★ 中转整趟：会话头一发记下「看见」的时刻；同一天再来一发不写盘（rotation.json 一个字节不动）；
+/// 隔满一天的头一发只把「看见」刷新成那一刻（钉号 · 起点 · 记录都不动）。
+#[test]
+fn the_relay_refreshes_when_it_last_saw_a_session_once_a_day() {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    let home = Home::new("seen");
+    let (up, got) = spawn_judging_upstream(|_| sse_200(""));
+    let t0 = crate::accounts::quota::now_unix();
+    let clock = Arc::new(AtomicU64::new(t0));
+    let relay = home.relay_clocked(up, Arc::clone(&clock));
+    assert!(send_as_a(relay).starts_with("HTTP/1.1 200"));
+    let first = home.session("s-1");
+    assert_eq!((first.since, first.last_seen()), (t0, t0));
+    let bytes = std::fs::read_to_string(home.rotation_path()).expect("read");
+
+    clock.store(t0 + rotation::SEEN_REFRESH - 60, Ordering::SeqCst);
+    assert!(send_as_a(relay).starts_with("HTTP/1.1 200"));
+    assert_eq!(
+        std::fs::read_to_string(home.rotation_path()).expect("read"),
+        bytes,
+        "同一天的第二发写了盘"
+    );
+
+    let day2 = t0 + rotation::SEEN_REFRESH + 5;
+    clock.store(day2, Ordering::SeqCst);
+    assert!(send_as_a(relay).starts_with("HTTP/1.1 200"));
+    let later = home.session("s-1");
+    assert_eq!(later.last_seen(), day2, "隔一天的头一发没刷新「看见」");
+    assert_eq!(
+        rotation::SessionEntry {
+            seen: first.seen,
+            ..later.clone()
+        },
+        first,
+        "刷新「看见」动了别的格"
+    );
+    let bytes = std::fs::read_to_string(home.rotation_path()).expect("read");
+    clock.store(day2 + 3600, Ordering::SeqCst);
+    assert!(send_as_a(relay).starts_with("HTTP/1.1 200"));
+    assert_eq!(
+        std::fs::read_to_string(home.rotation_path()).expect("read"),
+        bytes
+    );
+    assert_eq!(got.lock().expect("lock").len(), 4);
 }
