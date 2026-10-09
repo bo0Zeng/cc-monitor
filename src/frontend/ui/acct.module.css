@@ -457,6 +457,12 @@
     font-size: var(--font-size-small);
   }
 
+  /* 顶行一段整段换行；一段比整行还宽才在段内折。 */
+  .acctTlHeadPart {
+    display: inline-block;
+    max-width: 100%;
+  }
+
   /* 卡住：琥珀条（需要你留意几点能接着干）。 */
   .acctTlHead[data-tl-head="blocked"] {
     padding: var(--space-1) var(--space-2);

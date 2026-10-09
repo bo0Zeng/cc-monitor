@@ -87,7 +87,7 @@ describe("account-ux U8：Ctrl+K 账号命令", () => {
 });
 
 describe("命令面板 · 轮换（稿 §5.4）", () => {
-  it("有当前会话 ⇒「套用规则…」（开与来源下拉同项的选择器）＋「<机器> 轮换规则」；没有 ⇒ 两条都不出", () => {
+  it("有当前会话 ⇒「套用轮换规则…」（开与来源下拉同项的选择器）＋「管理<机器>轮换规则…」；没有 ⇒ 两条都不出", () => {
     const apply = vi.fn();
     const rules = vi.fn();
     const cmds = buildAccountCommands(input({ rotation: { machine: "devbox", apply, openRules: rules } }));

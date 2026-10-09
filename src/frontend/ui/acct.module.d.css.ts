@@ -64,6 +64,7 @@ declare const classes: {
   readonly acctTag: string;
   readonly acctTimeline: string;
   readonly acctTlHead: string;
+  readonly acctTlHeadPart: string;
   readonly acctTlTop: string;
   readonly acctTrigger: string;
   readonly acctTriggerLabel: string;

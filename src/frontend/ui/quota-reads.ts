@@ -385,9 +385,16 @@ export interface PlanLane {
   warm?: { at: number; atText: string }[];
 }
 
-/** 时间轴顶行（后端判）：此刻用谁 · 卡人窗口与用量 · 距触发；或卡住时最早回来的号。 */
+/** 时间轴顶行（后端判）：此刻用谁 · 卡人窗口与用量 · 距触发 · 估几点到上限；或卡住时最早回来的号。 */
 export type PlanHead =
-  | { account?: string; w?: string; pct?: number; toTrigger?: number }
+  | {
+      account?: string;
+      w?: string;
+      pct?: number;
+      toTrigger?: number;
+      /** 按目前涨法几点用到这号这窗口此刻的上限（后端有根据才给）。 */
+      est?: { at: number; atText: string; pct: number; w: string };
+    }
   | { blocked: { account?: string; at?: number; atText?: string; w?: string } };
 
 export interface PlanRead {

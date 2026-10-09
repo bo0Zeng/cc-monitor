@@ -4966,8 +4966,11 @@
     "accountCommands.rotApply.title": {
       "kind": "action",
       "role": "按钮",
-      "zh": "套用规则…",
-      "args": []
+      "zh": "套用轮换规则…",
+      "args": [],
+      "waive": {
+        "C-W15": "命令面板项（不是按钮）：动宾说全才搜得到、认得出"
+      }
     },
     "accountCommands.rotRules.keywords": {
       "kind": "body",
@@ -4978,10 +4981,10 @@
     "accountCommands.rotRules.title": {
       "kind": "action",
       "role": "按钮",
-      "zh": "{machine} 轮换规则",
+      "zh": "管理{machine}轮换规则…",
       "args": ["machine"],
       "waive": {
-        "C-W15": "带机器名（用户起的名字）"
+        "C-W15": "命令面板项（不是按钮）：带机器名"
       }
     },
     "accountCommands.manage.keywords": {
@@ -22961,6 +22964,12 @@
       "role": "片段",
       "zh": "距触发 {n} 点",
       "args": ["n"]
+    },
+    "rot.tl.est": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "估 {at} 到 {pct}%",
+      "args": ["at", "pct"]
     },
     "rot.tl.blocked": {
       "kind": "body",

@@ -19,23 +19,22 @@ const RUN = read("src/frontend/ui/remote-launch-run.ts");
 
 describe("ccm 调用行的 wire 形状（U8c-2c-2）", () => {
   // Rust 侧 `CliRenderRequest` 用 `rename_all = "camelCase"`，所以字段名要转过来比。
+  // 标了 `#[serde(skip)]` 的格不上线（后端自己填的），不算进线上字段集。
   const rustReqFields = (() => {
     const body = RUST.slice(
       RUST.indexOf("pub struct CliRenderRequest {"),
       RUST.indexOf("}", RUST.indexOf("pub struct CliRenderRequest {")),
     );
-    // `#[serde(skip)]` 的字段不上线（后端自己起会话时填），不算进线上字段集。
-    const lines = body.split("\n");
-    return lines
-      .map((l, i) => {
-        const name = /^\s{4}pub ([a-z_0-9]+):/.exec(l)?.[1];
-        if (!name) return undefined;
-        let j = i - 1;
-        while (j >= 0 && /^\s{4}(\/\/\/|#\[)/.test(lines[j])) {
-          if (/^\s{4}#\[serde\(skip\)\]/.test(lines[j])) return undefined;
-          j--;
-        }
-        return name;
+    let skip = false;
+    return body
+      .split("\n")
+      .map((l) => {
+        if (/^\s{4}#\[serde\(skip\)\]/.test(l)) skip = true;
+        const f = /^\s{4}pub ([a-z_0-9]+):/.exec(l)?.[1];
+        if (f === undefined) return undefined;
+        const off = skip;
+        skip = false;
+        return off ? undefined : f;
       })
       .filter((x): x is string => !!x)
       .map((snake) => snake.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase()))

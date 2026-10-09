@@ -1157,4 +1157,23 @@ describe("账号面板 · 时间轴", () => {
     expect(line.textContent).toContain(copyText("rot.tl.blocked", { acct: "team", at: "02:10", rel: "+10m" }));
     expect(panel().querySelector("[data-tl]"), "轴画出来了").not.toBeNull();
   });
+
+  it("摊开时顶行按段排（窄了在段与段之间换行）：估那一段整段在一个框里", async () => {
+    seed({}, { order: [{ start: true }, "team"], enabled: ["team"], when: "full", atLimit: "continue", wait: 40 });
+    const est = { at: T + 2400, atText: "02:40", pct: 90, w: "5h" };
+    readPlan.mockReset().mockResolvedValue(tlPlan({ account: "team", w: "5h", pct: 63, toTrigger: 27, est }));
+    openAccountPanel("s1", "<local>", host);
+    await settle();
+    foldHead().click();
+    await settle();
+    const line = panel().querySelector<HTMLElement>("[data-tl-head]")!;
+    expect([...line.children].map((c) => c.textContent)).toEqual([
+      copyText("rot.tl.now", { acct: "team", w: "5h", pct: 63 }),
+      copyText("rot.tl.toTrig", { n: 27 }),
+      copyText("rot.tl.est", { at: "02:40", pct: 90 }),
+    ]);
+    expect(line.textContent).toBe(
+      [...line.children].map((c) => c.textContent).join(copyText("kit.text.sep")),
+    );
+  });
 });
