@@ -139,43 +139,34 @@ pub(crate) fn stale_ccm(
     })
 }
 
-/// 直接敲的 agent 也走中转：`relay-optin` 那一份（默认那一家）＋ 那份设置文件现在的内容。
-fn relay() -> Option<Relay> {
-    let v = crate::accounts::upstream_select::endpoint::answer_optin(
-        &serde_json::json!({ "agent": "" }),
-    )
-    .ok()?;
-    let state = v.get("state")?.as_str()?.to_string();
-    let path = v.get("source")?.as_str()?.to_string();
-    let snippet: Option<Value> = v
-        .get("snippet")
-        .and_then(Value::as_str)
-        .and_then(|s| serde_json::from_str(s).ok());
-    let (key, url) = snippet
-        .as_ref()
-        .and_then(|s| {
-            s.get("env")?
-                .as_object()?
-                .iter()
-                .next()
-                .map(|(k, u)| (k.clone(), u.as_str().map(str::to_string)))
+/// 直接敲的 agent 也走中转：声明了这一形的每一家各一件（`relay-optin` 那一份 ＋ 那份设置文件现在的内容）。
+fn relay() -> Vec<Relay> {
+    crate::agents::settings_env_families()
+        .into_iter()
+        .filter_map(|(agent, name, face)| {
+            let r = crate::accounts::upstream_select::endpoint::optin_report(agent).ok()?;
+            let path = r.source.display().to_string();
+            let secret = r.url.as_deref().and_then(key_segment);
+            Some(Relay {
+                agent: agent.to_string(),
+                name: name.to_string(),
+                slot: face.slot,
+                merge: face.merge,
+                state: r.state.name().to_string(),
+                text: read_small(&r.source),
+                path,
+                url: r.url,
+                secret,
+            })
         })
-        .unwrap_or_else(|| (String::new(), None));
-    let secret = url
-        .as_deref()
-        .and_then(|u| u.split("/k/").nth(1))
-        .and_then(|r| r.split('/').next())
-        .filter(|s| !s.is_empty())
-        .map(str::to_string);
-    let text = read_small(Path::new(&path));
-    Some(Relay {
-        state,
-        path,
-        text,
-        key,
-        url,
-        secret,
-    })
+        .collect()
+}
+
+/// 插好钥匙的中转地址里那把钥匙（口之后、路由之前那一截；界面显示时遮住它）。不是那一形 ⇒ `None`。
+pub(crate) fn key_segment(url: &str) -> Option<String> {
+    let (head, tail) = relay_route_core::split_keyed_base_url(url)?;
+    url.get(head.len()..url.len() - tail.len())
+        .map(str::to_string)
 }
 
 /// cc-bus 自动收信：`hooks-diag` 那一份 ＋ 那份设置文件现在的内容。这台跑不了 cc-bus ⇒ 不出这一件。

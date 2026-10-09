@@ -65,3 +65,34 @@ fn the_top_level_base_url_is_read_and_odd_shapes_are_unreadable() {
         "openai_base_url = \"http://127.0.0.1:8788/k/t/codex/_\""
     );
 }
+
+/// 「要你动手」那一件的合法：顶层那一行在 ⇒ 就地换那一行；不在 ⇒ 放到文件最前面（表头之前才是顶层）；
+/// 合好的那份再读一遍就是那条地址，别的行一个字不动；现在的内容读不懂 ⇒ 不给改法。
+#[test]
+fn merging_the_base_url_line_keeps_everything_else_and_reads_back() {
+    let url = "http://127.0.0.1:8788/k/t/codex/_";
+    let line = format!("openai_base_url = \"{url}\"");
+    for (now, want) in [
+        (String::new(), format!("{line}\n")),
+        (
+            "model = \"m\"\n".to_string(),
+            format!("{line}\nmodel = \"m\"\n"),
+        ),
+        (
+            "model = \"m\"\nopenai_base_url = \"http://old\" # 注\n[tui]\nx = 1\n".to_string(),
+            format!("model = \"m\"\n{line}\n[tui]\nx = 1\n"),
+        ),
+        (
+            "[profiles.p]\nopenai_base_url = \"http://p\"\n".to_string(),
+            format!("{line}\n[profiles.p]\nopenai_base_url = \"http://p\"\n"),
+        ),
+    ] {
+        let got = config_merge(&now, url).expect("合得出");
+        assert_eq!(got, want, "{now:?}");
+        assert_eq!(
+            config_base_url(&got),
+            crate::agents::SettingsBaseUrl::Set(url.into())
+        );
+    }
+    assert_eq!(config_merge("openai_base_url = 3\n", url), None);
+}

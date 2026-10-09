@@ -66,6 +66,8 @@ pub(crate) fn launch_args(url: &str) -> Vec<String> {
 pub(crate) const SETTINGS_ENV: SettingsEnvFace = SettingsEnvFace {
     read: read_config_base_url,
     snippet: config_snippet,
+    merge: config_merge,
+    slot: KEY,
 };
 
 /// 读那份配置的上限（几 KB；超了按「读不了」说，不当没写）。
@@ -169,6 +171,36 @@ fn toml_line_string(v: &str) -> Option<String> {
 /// 要合并进那份配置**顶层**（第一个表头之前）的那一行。
 fn config_snippet(url: &str) -> String {
     format!("{KEY} = \"{url}\"")
+}
+
+/// 那份配置现在的内容 ＋ 地址 ⇒ 合好的整份（只算不写）：顶层已有那一行 ⇒ 就地换掉那一行；没有 ⇒ 放到最前面
+/// （表头之前才是顶层）。别的行原样。现在的内容读不懂 ⇒ `None`；合好的那份再读一遍不是这条地址 ⇒ `None`。
+pub(crate) fn config_merge(now: &str, url: &str) -> Option<String> {
+    if matches!(config_base_url(now), SettingsBaseUrl::Unreadable(_)) {
+        return None;
+    }
+    let line = config_snippet(url);
+    let mut hit = false;
+    let mut out: Vec<String> = Vec::new();
+    let mut top = true;
+    for l in now.lines() {
+        let t = l.trim().trim_start_matches('\u{feff}');
+        top &= !t.starts_with('[');
+        let key = t
+            .split_once('=')
+            .map(|(k, _)| k.trim().trim_matches(['"', SQ]));
+        if top && key == Some(KEY) {
+            out.push(line.clone());
+            hit = true;
+        } else {
+            out.push(l.to_string());
+        }
+    }
+    if !hit {
+        out.insert(0, line);
+    }
+    let whole = out.join("\n") + "\n";
+    (config_base_url(&whole) == SettingsBaseUrl::Set(url.to_string())).then_some(whole)
 }
 
 #[cfg(test)]

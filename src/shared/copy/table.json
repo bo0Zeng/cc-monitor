@@ -26471,14 +26471,14 @@
     "beChore.relay.name": {
       "kind": "title",
       "role": "标题",
-      "zh": "直接敲的 claude 也实时显示",
-      "args": []
+      "zh": "直接敲的 {agent} 也实时显示",
+      "args": ["agent"]
     },
     "beChore.relay.loc": {
       "kind": "body",
       "role": "片段",
-      "zh": "{path} · env",
-      "args": ["path"]
+      "zh": "{path} · {slot}",
+      "args": ["path", "slot"]
     },
     "beChore.relay.why": {
       "kind": "body",
@@ -26551,6 +26551,12 @@
       "role": "片段",
       "zh": "在行 {line} 后面加入下面 {n} 行",
       "args": ["line", "n"]
+    },
+    "beChore.step.insertTop": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "在最前面加入下面 {n} 行",
+      "args": ["n"]
     },
     "beChore.step.replace": {
       "kind": "body",

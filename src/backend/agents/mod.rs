@@ -1591,6 +1591,10 @@ pub(crate) struct SettingsEnvFace {
     pub(crate) read: fn(&Path) -> (PathBuf, SettingsBaseUrl),
     /// 地址 → 要合并进那份文件的那一段。
     pub(crate) snippet: fn(&str) -> String,
+    /// （那份文件现在的内容, 地址）→ 合好的整份（只算不写；「要你动手」按它算 diff）。现在的内容读不懂 ⇒ `None`。
+    pub(crate) merge: fn(&str, &str) -> Option<String>,
+    /// 地址住那份文件里哪一格（「要你动手」那一件的位置行）。
+    pub(crate) slot: &'static str,
 }
 
 /// 设置文件里上游地址那一格读出来的样子。
@@ -1634,6 +1638,18 @@ pub(crate) const fn credentials_file_agent() -> &'static str {
 /// 登记了默认上游的每一家：`(路由名, 那一格)`。**上游选择读默认上游的唯一入口**。
 pub(crate) fn default_upstreams() -> impl Iterator<Item = &'static DefaultUpstream> {
     REGISTRY.iter().filter_map(|a| a.upstream.as_ref())
+}
+
+/// 声明了「直接敲的也走中转」那一格的各家（注册表序）：（路由名, 给人看的名字, 那一格）。
+pub(crate) fn settings_env_families() -> Vec<(&'static str, &'static str, SettingsEnvFace)> {
+    REGISTRY
+        .iter()
+        .filter_map(|a| {
+            let u = a.upstream.as_ref()?;
+            let name = a.launch.map_or(u.route_id, |l| l.display_name);
+            Some((u.route_id, name, u.settings_env?))
+        })
+        .collect()
 }
 
 /// 路由名那一家「直接敲的也走中转」那一格。没登记 / 没有这一形 ⇒ `None`。

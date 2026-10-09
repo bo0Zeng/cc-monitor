@@ -308,7 +308,7 @@ pub(crate) enum OptinState {
 }
 
 impl OptinState {
-    fn name(self) -> &'static str {
+    pub(crate) fn name(self) -> &'static str {
         match self {
             OptinState::Installed => "installed",
             OptinState::Stale => "stale",
@@ -358,15 +358,43 @@ pub(crate) fn answer_optin(args: &Value) -> EndpointAnswer {
     ))
 }
 
-/// [`answer_optin`] 的本体（家目录 · 那一家 · 表 · 已登记 · 中转在不在都是参数，判据喂夹具）。
-pub(crate) fn optin_at(
+/// 一家「直接敲的也走中转」此刻的样子（帧命令 `relay-optin` 与「要你动手」那一件同读这一份）。
+pub(crate) struct OptinReport {
+    pub(crate) state: OptinState,
+    /// 那份文件为什么读不了（`unreadable` 才有，其余空串）。
+    pub(crate) note: String,
+    /// 那一段为什么生成不了；已装 / 生成得了 ⇒ 空串。
+    pub(crate) missing: String,
+    pub(crate) source: std::path::PathBuf,
+    /// 要贴的那条地址（带钥匙）；已装或生成不了 ⇒ `None`。
+    pub(crate) url: Option<String>,
+}
+
+/// 这台、这一家的 [`OptinReport`]（家目录 · 表 · 已登记都按这台现取）。没有家目录 / 那一家没有这一形 ⇒ 拒的那一句。
+pub(crate) fn optin_report(agent: &str) -> Result<OptinReport, (&'static str, String)> {
+    let home = crate::platform::paths::home_dir()
+        .ok_or(("failed", copy_text("beUpstreamEndpoint.optin.noHome", &[])))?;
+    let face = crate::agents::settings_env_face(agent)
+        .ok_or(("failed", copy_text("beUpstreamEndpoint.optin.noAgent", &[])))?;
+    let registered =
+        super::Upstreams::from_env(&|k| std::env::var(k).ok()).is_some_and(|u| u.has(agent));
+    Ok(optin_report_at(
+        &home,
+        agent,
+        &face,
+        &super::file_face::machine_rows(),
+        registered,
+    ))
+}
+
+/// [`optin_report`] 的本体（家目录 · 那一家 · 表 · 已登记都是参数，判据喂夹具）。
+pub(crate) fn optin_report_at(
     home: &std::path::Path,
     agent: &str,
     face: &SettingsEnvFace,
     routed: &[String],
     registered: bool,
-    listening: &dyn Fn(u16) -> bool,
-) -> Value {
+) -> OptinReport {
     let (file, found) = (face.read)(home);
     let expected = match decide_launch(
         agent,
@@ -387,10 +415,10 @@ pub(crate) fn optin_at(
         .and_then(|e| e.as_ref().ok())
         .map(String::as_str);
     let state = optin_state(&found, current);
-    let snippet = (state != OptinState::Installed)
+    let url = (state != OptinState::Installed)
         .then_some(current)
         .flatten()
-        .map(|u| (face.snippet)(u));
+        .map(str::to_string);
     // 两句各说各的：`note` 说那份文件为什么读不了；`missing` 说那一段为什么生成不了（已装 / 生成得了 ⇒ 空）。
     let note = match &found {
         SettingsBaseUrl::Unreadable(SettingsUnreadable::BadShape) => {
@@ -416,12 +444,31 @@ pub(crate) fn optin_at(
         Some(Err(why)) => why,
         None => copy_text("beUpstreamEndpoint.optin.noRoute", &[]),
     };
+    OptinReport {
+        state,
+        note,
+        missing,
+        source: file,
+        url,
+    }
+}
+
+/// [`OptinReport`] ⇒ `relay-optin` 的成品（要贴的那一段按那一家的格式拼）。
+pub(crate) fn optin_at(
+    home: &std::path::Path,
+    agent: &str,
+    face: &SettingsEnvFace,
+    routed: &[String],
+    registered: bool,
+    listening: &dyn Fn(u16) -> bool,
+) -> Value {
+    let r = optin_report_at(home, agent, face, routed, registered);
     json!({
-        "state": state.name(),
-        "note": note,
-        "missing": missing,
-        "source": file.display().to_string(),
-        "snippet": snippet,
+        "state": r.state.name(),
+        "note": r.note,
+        "missing": r.missing,
+        "source": r.source.display().to_string(),
+        "snippet": r.url.as_deref().map(face.snippet),
         "listening": listening(PORT),
     })
 }
