@@ -7,6 +7,7 @@
  * - 换值（点选或 ↑↓）⇒ `onChange(value)`；`setValue` 不回调。
  * 判据：`tests/frontend/ui/kit/select.vitest.ts`。
  */
+import { copyText } from "../copy-table";
 import { icon } from "./icon";
 import { closeMenu, menuAnchoredOn, openMenu, type MenuItem } from "./menu";
 import s from "./select.module.css";
@@ -25,6 +26,8 @@ export interface SelectOption {
   shown?: string;
   /** 面板里这一项右侧的灰字（摘要之类）。 */
   detail?: string;
+  /** 面板里悬停 / 焦点停 300ms ⇒ 项右侧的只读小卡（`menu.ts` 的 `peek`）。 */
+  peek?: () => HTMLElement;
 }
 
 export interface SelectSpec {
@@ -39,6 +42,10 @@ export interface SelectSpec {
   menuWidth?: number;
   /** 开面板前再排一遍项（插组名 · 分隔 · 末尾几个动作）；缺 ⇒ 原样。 */
   decorate?: (items: MenuItem[]) => MenuItem[];
+  /** 选项多过这么多 ⇒ 面板顶上出筛选框（自动聚焦，按名字筛选项；`decorate` 加的不筛）。缺 ⇒ 不出。 */
+  filterOver?: number;
+  /** 筛选框的读屏名 / 占位字。 */
+  filterLabel?: string;
 }
 
 export interface SelectHandle {
@@ -89,9 +96,12 @@ export function select(spec: SelectSpec): SelectHandle {
       checked: o.value === value,
       enabled: o.enabled !== false,
       detail: o.enabled === false ? o.why : o.detail,
+      peek: o.peek,
+      filterable: true,
       onClick: () => pick(o.value),
     }));
-    openMenu({ el }, spec.decorate ? spec.decorate(items) : items, { label: spec.label, width: Math.max(el.getBoundingClientRect().width, spec.menuWidth ?? 0), onClose: () => el.focus() });
+    const filter = spec.filterOver !== undefined && options.length > spec.filterOver ? { label: spec.filterLabel ?? spec.label, empty: (q: string) => copyText("kit.menu.noMatch", { q }) } : undefined;
+    openMenu({ el }, spec.decorate ? spec.decorate(items) : items, { label: spec.label, width: Math.max(el.getBoundingClientRect().width, spec.menuWidth ?? 0), onClose: () => el.focus(), filter });
   };
   const step = (dir: 1 | -1): void => {
     const live = options.filter((o) => o.enabled !== false);

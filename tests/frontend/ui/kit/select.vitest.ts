@@ -105,3 +105,25 @@ describe("下拉", () => {
     expect(menu()?.dataset.overModal).toBeUndefined();
   });
 });
+
+describe("下拉 · 悬停小卡 · 多了出筛选框", () => {
+  it("选项带 peek ⇒ 面板里那一项悬停出小卡；选项多过 filterOver ⇒ 面板顶上出筛选框，少于等于不出", async () => {
+    const { select } = await import("../../../../src/frontend/ui/kit/select");
+    const opts = (n: number) => Array.from({ length: n }, (_, i) => ({ value: `v${i}`, label: `规则 ${i}`, peek: () => Object.assign(document.createElement("div"), { textContent: `卡 ${i}` }) }));
+    const few = select({ label: "来源", options: opts(3), filterOver: 3, filterLabel: "筛选规则" });
+    document.body.appendChild(few.el);
+    few.el.click();
+    expect(document.querySelector("input[data-menu-filter]")).toBeNull();
+    const item = document.querySelector<HTMLElement>('[role="menu"] [role^="menuitem"]')!;
+    vi.useFakeTimers();
+    item.dispatchEvent(new MouseEvent("mouseenter"));
+    vi.advanceTimersByTime(300);
+    expect(document.querySelector("[data-menu-peek]")!.textContent).toBe("卡 0");
+    vi.useRealTimers();
+    few.el.click();
+    const many = select({ label: "来源", options: opts(4), filterOver: 3, filterLabel: "筛选规则" });
+    document.body.appendChild(many.el);
+    many.el.click();
+    expect(document.querySelector("input[data-menu-filter]")!.getAttribute("aria-label")).toBe("筛选规则");
+  });
+});

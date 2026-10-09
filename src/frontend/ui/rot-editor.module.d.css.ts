@@ -16,6 +16,10 @@ declare const classes: {
   readonly rotHow: string;
   readonly rotLabel: string;
   readonly rotNum: string;
+  readonly rotPeek: string;
+  readonly rotPeekRow: string;
+  readonly rotPeekStart: string;
+  readonly rotPeekTag: string;
   readonly rotSave: string;
   readonly rotTime: string;
   readonly rotUnit: string;

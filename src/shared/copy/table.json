@@ -130,6 +130,12 @@
       "zh": "关闭",
       "args": []
     },
+    "kit.menu.noMatch": {
+      "kind": "body",
+      "role": "空态",
+      "zh": "无匹配「{q}」",
+      "args": ["q"]
+    },
     "kit.drawer.discard": {
       "kind": "action",
       "role": "按钮",
@@ -21251,6 +21257,12 @@
       "zh": "无其他规则",
       "args": []
     },
+    "rot.src.filter": {
+      "kind": "aria",
+      "role": "输入框",
+      "zh": "筛选规则",
+      "args": []
+    },
     "rot.src.customNote": {
       "kind": "body",
       "role": "片段",
@@ -21489,6 +21501,30 @@
       "kind": "body",
       "role": "片段",
       "zh": "–",
+      "args": []
+    },
+    "rot.cap.rest": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "其余时段 ＝ {what}",
+      "args": ["what"]
+    },
+    "rot.cap.restAll": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "全部窗口 ≤{n}",
+      "args": ["n"]
+    },
+    "rot.cap.restTrig": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "触发 ≥{n}%",
+      "args": ["n"]
+    },
+    "rot.cap.restNone": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "不封顶",
       "args": []
     },
     "rot.cap.ok": {

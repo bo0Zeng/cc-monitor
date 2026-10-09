@@ -12,6 +12,7 @@ import type { SessionRotationState } from "./generated/SessionRotationState";
 import type { RestartOutcome } from "./generated/RestartOutcome";
 import type { SwitchOutcome } from "./generated/SwitchOutcome";
 import type { CellError } from "./generated/CellError";
+import type { SwitchWhy } from "./generated/SwitchWhy";
 import { exactKeys } from "./ipc/decode";
 import type { NeedsKind } from "./session-reads";
 
@@ -240,6 +241,44 @@ export async function checkRotation(origin: Origin, rotation: Rotation): Promise
   const body = jsonBody({ rotation });
   const budget = budgetWithin(READ_BUDGET_MS);
   return arr(obj(readJson(await chan.call(origin, "rotation-plan", body, budget)), "reply").errors, "errors") as CellError[];
+}
+
+/** 上限取自哪一层（`rotation-plan` 的 `effective`）：这号这窗口 · 这号全部窗口 · 触发 · 不封顶。 */
+export interface CapAt {
+  v: number | null;
+  layer: "window" | "all" | "trigger" | "none";
+}
+
+/** `rotation-plan` 的预览（后端照 `decide` 算好；界面只排版）。时刻都带写好的 `…Text`。 */
+export interface PlanRead {
+  errors: CellError[];
+  now: number;
+  nowText: string;
+  until: number;
+  plan: { from: number; fromText: string; to: number; toText: string; account: string | null; why: SwitchWhy | null }[];
+  lanes: { account: string; spans: { from: number; fromText: string; to: number; toText: string; state: "refused" | "capped" | "off" | "overage"; n: number | null }[]; resets: { w: string; at: number; atText: string }[] }[];
+  effective: Record<string, Record<string, CapAt & { below: CapAt }>>;
+}
+
+/** 问哪一份：草稿 · 这台的一条规则 · 一个会话此刻那一份；视窗缺省 12h。 */
+export type PlanAsk = ({ rotation: Rotation } | { rule: string } | { sid: string }) & { span?: "6h" | "12h" | "24h" | "7d" };
+
+/** 草稿有错 ⇒ 只有 `errors`（其余几格空）。 */
+export function decodePlan(v: unknown): PlanRead {
+  const o = obj(v, "reply");
+  const errors = arr(o.errors, "errors") as CellError[];
+  if (errors.length > 0) return { errors, now: 0, nowText: "", until: 0, plan: [], lanes: [], effective: {} };
+  if (typeof o.now !== "number" || typeof o.until !== "number") bad("now");
+  arr(o.plan, "plan");
+  arr(o.lanes, "lanes");
+  obj(o.effective, "effective");
+  return o as unknown as PlanRead;
+}
+
+export async function readPlan(origin: Origin, ask: PlanAsk): Promise<PlanRead> {
+  const body = jsonBody(ask);
+  const budget = budgetWithin(READ_BUDGET_MS);
+  return decodePlan(readJson(await chan.call(origin, "rotation-plan", body, budget)));
 }
 
 /** 现在就换：热切换 `sessions` 是会话 id；重启切换每项是 `session-restart` 的入参（不带 `account`），`ms` 是这一趟的总期限（要等压缩 · 等报出）。 */

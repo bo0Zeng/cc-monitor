@@ -150,4 +150,31 @@
     border-width: 1px;
     opacity: 1;
   }
+
+  /* 来源下拉里规则的只读小卡。 */
+  .rotPeek {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    min-width: 200px;
+  }
+
+  .rotPeekRow {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .rotPeekStart {
+    color: var(--text-2);
+    font-style: italic;
+  }
+
+  .rotPeekTag {
+    padding: 0 var(--space-2);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-s);
+    color: var(--text-2);
+    font-size: var(--font-size-xs);
+  }
 }

@@ -43,6 +43,10 @@ export interface MenuItem {
   onClick?: () => void;
   /** 有子菜单时 `onClick` 不用：这一级只负责展开。 */
   submenu?: MenuItem[];
+  /** 悬停（或键盘焦点）停 300ms ⇒ 项右侧浮出一张只读小卡（每次现画）；看完不用选。 */
+  peek?: () => HTMLElement;
+  /** 开着筛选框时按名字筛这一项（组名 · 分隔 · 末尾的动作项不筛）。 */
+  filterable?: boolean;
   /** 分隔线（其余字段不看）。 */
   divider?: boolean;
   /** 组名那一行（只读的小字，`label` 是组名；其余字段不看）。 */
@@ -65,9 +69,14 @@ interface Open {
   onClose?: () => void;
   /** 上次量到的触发物外接框（开着时触发物被重画掉 ⇒ 重排用它）。 */
   anchorBox: Box | null;
+  /** 此刻浮着的那张小卡（`peek`）。 */
+  peek: HTMLElement | null;
+  peekT: ReturnType<typeof setTimeout> | null;
 }
 
 const OPEN_SUB_MS = 150;
+/** 悬停 / 焦点停多久出小卡。 */
+const PEEK_MS = 300;
 const CLOSE_SUB_MS = 250;
 
 let current: Open | null = null;
@@ -101,8 +110,37 @@ function place(o: Open): void {
 
 function focusables(panel: HTMLElement): HTMLButtonElement[] {
   return [...panel.querySelectorAll<HTMLButtonElement>(':scope > [role^="menuitem"], :scope > [role="none"] > [role^="menuitem"]')].filter(
-    (b) => !b.disabled,
+    (b) => !b.disabled && !b.hidden,
   );
+}
+
+/** 收掉小卡（与它的定时）。 */
+function hidePeek(o: Open): void {
+  if (o.peekT !== null) clearTimeout(o.peekT);
+  o.peekT = null;
+  o.peek?.remove();
+  o.peek = null;
+}
+
+/** 停 300ms 后在 `btn` 右侧浮出 `make()` 画的那张只读小卡（右边放不下翻左）。 */
+function schedulePeek(o: Open, btn: HTMLElement, make: () => HTMLElement): void {
+  hidePeek(o);
+  // 调度：一次性 —— 悬停 / 焦点停 300ms 才出小卡，移开 / 关菜单时清
+  o.peekT = setTimeout(() => {
+    o.peekT = null;
+    if (current !== o) return;
+    const card = document.createElement("div");
+    card.className = s.menuPeek;
+    card.setAttribute("role", "tooltip");
+    card.dataset.menuPeek = "";
+    card.appendChild(make());
+    document.body.appendChild(card);
+    const r = btn.getBoundingClientRect();
+    const size = card.getBoundingClientRect();
+    putAt(card, placeFloat({ rect: { left: r.left, right: r.right, top: r.top, bottom: r.bottom }, side: "right", align: "start", gap: 8 }, { width: size.width, height: size.height }, { width: window.innerWidth, height: window.innerHeight }));
+    o.peek = card;
+  }, PEEK_MS);
+  o.timers.push(o.peekT);
 }
 
 function makeItem(o: Open, it: MenuItem): HTMLElement {
@@ -235,6 +273,16 @@ function makeItem(o: Open, it: MenuItem): HTMLElement {
     });
     return wrap;
   }
+  if (it.filterable) btn.dataset.filterable = "true";
+  const peek = it.peek;
+  if (peek) {
+    btn.addEventListener("mouseenter", () => schedulePeek(o, btn, peek));
+    btn.addEventListener("focus", () => schedulePeek(o, btn, peek));
+  } else {
+    btn.addEventListener("mouseenter", () => hidePeek(o));
+    btn.addEventListener("focus", () => hidePeek(o));
+  }
+  btn.addEventListener("mouseleave", () => hidePeek(o));
   if (enabled && radio) {
     btn.addEventListener("click", (ev) => {
       ev.stopPropagation();
@@ -298,8 +346,8 @@ function onKey(ev: KeyboardEvent): void {
   let to = -1;
   if (ev.key === "ArrowDown") to = i < 0 ? 0 : (i + 1) % f.length;
   else if (ev.key === "ArrowUp") to = i < 0 ? f.length - 1 : (i - 1 + f.length) % f.length;
-  else if (ev.key === "Home") to = 0;
-  else if (ev.key === "End") to = f.length - 1;
+  else if (ev.key === "Home" && !(ev.target instanceof HTMLInputElement)) to = 0;
+  else if (ev.key === "End" && !(ev.target instanceof HTMLInputElement)) to = f.length - 1;
   if (to < 0) return;
   ev.preventDefault();
   f[to].focus();
@@ -309,7 +357,41 @@ function onKey(ev: KeyboardEvent): void {
  * 开一个菜单（先关掉开着的那个）。锚在触发物上且它开着 ⇒ 当作「再点一次」：关掉、不再开。
  * @returns 开没开（`false` ＝ 这一下是关）。
  */
-export function openMenu(anchor: MenuAnchor, items: MenuItem[], opts: { onClose?: () => void; label?: string; width?: number } = {}): boolean {
+/** 菜单顶上的筛选框：读屏名 · 都不中时那一行怎么写。 */
+export interface MenuFilter {
+  label: string;
+  empty: (q: string) => string;
+}
+
+/** 顶上一个筛选框（自动聚焦）：输入即按名字筛 `filterable` 的项；都不中 ⇒ 框下一行「无匹配」。 */
+function filterBox(root: HTMLElement, f: MenuFilter): HTMLInputElement {
+  const box = document.createElement("input");
+  box.type = "text";
+  box.className = s.menuFilter;
+  box.dataset.menuFilter = "";
+  box.setAttribute("aria-label", f.label);
+  box.placeholder = f.label;
+  box.addEventListener("input", () => {
+    const q = box.value.trim().toLowerCase();
+    let any = false;
+    for (const b of root.querySelectorAll<HTMLButtonElement>(':scope > [data-filterable="true"]')) {
+      const hit = q === "" || (b.querySelector('[data-part="label"]')?.textContent ?? "").toLowerCase().includes(q);
+      b.hidden = !hit;
+      any ||= hit;
+    }
+    root.querySelector("[data-menu-empty]")?.remove();
+    if (!any && q !== "") {
+      const e = document.createElement("div");
+      e.className = s.menuEmpty;
+      e.dataset.menuEmpty = "";
+      e.textContent = f.empty(box.value.trim());
+      box.after(e);
+    }
+  });
+  return box;
+}
+
+export function openMenu(anchor: MenuAnchor, items: MenuItem[], opts: { onClose?: () => void; label?: string; width?: number; filter?: MenuFilter } = {}): boolean {
   if ("el" in anchor && menuAnchoredOn(anchor.el)) {
     closeMenu();
     return false;
@@ -332,8 +414,13 @@ export function openMenu(anchor: MenuAnchor, items: MenuItem[], opts: { onClose?
       return true;
     },
   };
-  const o: Open = { root, anchor, items: new Map(), layer, timers: [], onClose: opts.onClose, anchorBox: null };
+  const o: Open = { root, anchor, items: new Map(), layer, timers: [], onClose: opts.onClose, anchorBox: null, peek: null, peekT: null };
   current = o;
+  const filter = opts.filter ? filterBox(root, opts.filter) : null;
+  if (filter) {
+    root.dataset.filtered = "true";
+    root.appendChild(filter);
+  }
   for (const it of items) {
     const el = makeItem(o, it);
     if (it.id) o.items.set(it.id, el);
@@ -355,7 +442,8 @@ export function openMenu(anchor: MenuAnchor, items: MenuItem[], opts: { onClose?
       }, 0),
     );
   root.addEventListener("keydown", onKey);
-  if (!("x" in anchor)) focusables(root)[0]?.focus();
+  if (filter) filter.focus();
+  else if (!("x" in anchor)) focusables(root)[0]?.focus();
   return true;
 }
 
@@ -364,6 +452,7 @@ export function closeMenu(): void {
   if (!o) return;
   current = null;
   for (const t of o.timers) clearTimeout(t);
+  hidePeek(o);
   o.root.remove();
   generation++;
   dispatcher.popOverlay(o.layer);

@@ -12,8 +12,9 @@ import { button } from "./kit/button";
 import { field } from "./kit/field";
 import { closePopover, openPopover } from "./kit/popover";
 import { segmented } from "./kit/tabs";
-import { slotLabel } from "./quota-lines";
-import { checkRotation, saveRule, type RuleRow } from "./quota-reads";
+import { accountLabel, slotLabel } from "./quota-lines";
+import { acctAvatar } from "./acct-dom";
+import { checkRotation, readPlan, saveRule, type CapAt, type RuleRow } from "./quota-reads";
 import type { CapValue } from "./generated/CapValue";
 import type { CellError } from "./generated/CellError";
 import type { Rotation } from "./generated/Rotation";
@@ -222,6 +223,13 @@ function band(slots: Slot[]): HTMLElement {
   return b;
 }
 
+/** 「其余时段 ＝ …」那一层（后端 `effective` 的 `below`）写成的字。 */
+export function restText(c: CapAt): string {
+  const what =
+    c.v === null ? copyText("rot.cap.restNone") : c.layer === "all" ? copyText("rot.cap.restAll", { n: c.v }) : c.layer === "trigger" ? copyText("rot.cap.restTrig", { n: c.v }) : copyText("rot.cap.fixedShort", { n: c.v });
+  return copyText("rot.cap.rest", { what });
+}
+
 /** 后端那一格的短码 ⇒ 红字。 */
 function errText(e: CellError): string {
   switch (e.code) {
@@ -246,8 +254,19 @@ export function openCapEditor(anchor: HTMLElement, origin: Origin, r: Rotation, 
   let fixed = typeof cur === "number" ? String(cur) : "99";
   let slots: Slot[] = Array.isArray(cur) ? cur.map((x) => ({ from: x.at.slice(0, 5), to: x.at.slice(6), n: String(x.n) })) : [{ from: "17:00", to: "02:00", n: "0" }];
   let errors: CellError[] = [];
+  // 按时段时色带下那一行「其余时段 ＝ …」：开浮层时问后端一次（这一格的下一层取到什么，`rotation-plan` 的 `effective`）。
+  let rest: string | null = null;
   const root = el("div", s.rotCap);
   root.dataset.rotCap = account;
+  void readPlan(origin, { rotation: r }).then(
+    (p) => {
+      const c = p.effective[account]?.[w];
+      if (!c) return;
+      rest = restText(c.below);
+      if (mode === "slots" && root.isConnected) paint();
+    },
+    (e: unknown) => console.warn("[rot] rotation-plan 失败：", e),
+  );
   const draft = (): CapValue | undefined | null => {
     const num = (t: string): number | null => (/^\d{1,3}$/.test(t.trim()) ? Number(t.trim()) : null);
     if (mode === "none") return undefined;
@@ -351,6 +370,11 @@ export function openCapEditor(anchor: HTMLElement, origin: Origin, r: Rotation, 
       const bandBox = el("div", s.rotBandBox);
       bandBox.appendChild(band(slots));
       root.appendChild(bandBox);
+      if (rest !== null) {
+        const line = el("div", s.rotHint, rest);
+        line.dataset.rotRest = "";
+        root.appendChild(line);
+      }
     }
     const foot = el("div", s.rotCapFoot);
     const ok = button({ label: copyText("rot.cap.ok"), kind: "primary", size: "compact", onClick: () => void commit() });
@@ -395,6 +419,34 @@ export function capButton(origin: Origin, r: Rotation, account: string, write: (
   b.dataset.rotCapBtn = account;
   if (v !== undefined) b.dataset.set = "true";
   return b;
+}
+
+// ─────────────────────────────── 来源下拉里的只读小卡
+
+/**
+ * 来源下拉里一条规则悬停 300ms 浮出的只读小卡：名字 · 顺序（起始账号占位 ＋ 勾上的号，行尾封顶标签与兜底，与面板列表同排法）·
+ * 后端写好的那句说明（触发 · 换法 · 无号可换都在里面）。看完不用切。
+ */
+export function rulePeek(rule: RuleRow): HTMLElement {
+  const box = el("div", s.rotPeek);
+  box.appendChild(el("div", s.rotCapTitle, rule.name));
+  const r = rule.rotation;
+  for (const slot of r.order) {
+    const row = el("div", s.rotPeekRow);
+    if (typeof slot !== "string") {
+      row.dataset.peekRow = "start";
+      row.appendChild(el("span", s.rotPeekStart, copyText("acct.tag.start")));
+    } else {
+      if (!r.enabled.includes(slot)) continue;
+      row.dataset.peekRow = slot;
+      row.append(acctAvatar(slot), el("span", "", accountLabel(slot)));
+      for (const t of capTags(r, slot)) row.appendChild(el("span", s.rotPeekTag, t));
+      if ((r.fallback ?? []).includes(slot)) row.appendChild(fallbackMark());
+    }
+    box.appendChild(row);
+  }
+  if (rule.explain) box.appendChild(el("div", s.rotHint, rule.explain));
+  return box;
 }
 
 // ─────────────────────────────── 存为规则…

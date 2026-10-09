@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const writeSessionRotation = vi.fn();
 const checkRotation = vi.fn();
+const readPlan = vi.fn();
 const saveRule = vi.fn();
 const switchHot = vi.fn();
 const switchRestart = vi.fn();
@@ -19,6 +20,7 @@ vi.mock("../../../src/frontend/ui/quota-reads", async (orig) => ({
   readQuota: vi.fn(() => new Promise(() => {})),
   readRules: vi.fn(() => new Promise(() => {})),
   checkRotation: (...a: unknown[]) => checkRotation(...a),
+  readPlan: (...a: unknown[]) => readPlan(...a),
   saveRule: (...a: unknown[]) => saveRule(...a),
   readSessionRotation: vi.fn(() => new Promise(() => {})),
 }));
@@ -127,6 +129,7 @@ const flush = async (): Promise<void> => {
 beforeEach(() => {
   writeSessionRotation.mockReset().mockResolvedValue({ s1: { state: "done" } });
   checkRotation.mockReset().mockResolvedValue([]);
+  readPlan.mockReset().mockReturnValue(new Promise(() => {}));
   saveRule.mockReset();
   switchHot.mockReset().mockResolvedValue({ s1: { state: "done" } });
   switchRestart.mockReset();
@@ -299,6 +302,44 @@ describe("账号面板 · 规则（来源下拉 · 用规则时只读 · 本会�
     expect(writeSessionRotation.mock.calls).toEqual([["<local>", ["s1"], { rule: "r_night" }]]);
   });
 
+  it("★ 下拉里规则那一项悬停 300ms ⇒ 右侧只读小卡：顺序（勾上的号 · 封顶标签 · 兜底）＋ 后端那句说明；看完不用切、不写", async () => {
+    seed({}, undefined);
+    withNight({ ...NIGHT, fallback: ["team"] });
+    const night = appStore.rotationRules.get().get("<local>")!.rules.find((r) => r.id === "r_night")!;
+    night.explain = "起始账号先用 · 被拒才换";
+    openAccountPanel("s1", "<local>", host);
+    src().click();
+    const item = items().find((i) => i.textContent?.startsWith("夜间"))!;
+    vi.useFakeTimers();
+    item.dispatchEvent(new MouseEvent("mouseenter"));
+    vi.advanceTimersByTime(300);
+    vi.useRealTimers();
+    const card = document.querySelector<HTMLElement>("[data-menu-peek]")!;
+    expect(card, "悬停出小卡").not.toBeNull();
+    expect([...card.querySelectorAll<HTMLElement>("[data-peek-row]")].map((r) => r.dataset.peekRow)).toEqual(["start", "team"]);
+    expect(card.querySelector('[data-peek-row="team"]')!.textContent).toContain(copyText("rot.capTag.off", { at: "17:00-02:00" }));
+    expect(card.querySelector('[data-peek-row="team"] [data-rot-fallback-mark]'), "兜底照只读那一形").not.toBeNull();
+    expect(card.textContent).toContain("起始账号先用 · 被拒才换");
+    expect(writeSessionRotation).not.toHaveBeenCalled();
+  });
+
+  it("规则多过 10 条 ⇒ 下拉顶上出筛选框（自动聚焦）；10 条以内不出", async () => {
+    seed({}, undefined);
+    const base = appStore.rotationRules.get().get("<local>")!;
+    const many = (n: number) => Array.from({ length: n }, (_, i) => ({ ...base.rules[0], id: `r_${i}`, name: `规则${i}`, isDefault: i === 0 }));
+    appStore.rotationRules.set(new Map([["<local>", { ...base, rules: many(10) }]]));
+    openAccountPanel("s1", "<local>", host);
+    src().click();
+    expect(document.querySelector("input[data-menu-filter]")).toBeNull();
+    src().click();
+    appStore.rotationRules.set(new Map([["<local>", { ...base, rules: many(11) }]]));
+    openAccountPanel("s1", "<local>", host);
+    src().click();
+    const box = document.querySelector<HTMLInputElement>("input[data-menu-filter]")!;
+    expect(box.getAttribute("aria-label")).toBe(copyText("rot.src.filter"));
+    expect(document.activeElement).toBe(box);
+  });
+
   it("［编辑规则…］⇒ 设置窗那台的「轮换」栏、带这条规则；下拉「管理规则…」⇒ 同一栏、不带规则（不再开账号栏）", async () => {
     seed({ source: { rule: "r_night" } }, undefined);
     withNight();
@@ -359,6 +400,26 @@ describe("账号面板 · 规则（来源下拉 · 用规则时只读 · 本会�
     [...cap().querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("rot.cap.ok"))!.click();
     await flush();
     expect((writeSessionRotation.mock.calls.at(-1)![2] as { custom: Rotation }).custom.cap).toEqual({ team: { "*": [{ at: "17:00-02:00", n: 0 }] } });
+  });
+
+  it("★ 封顶浮层「按时段」：色带下一行「其余时段 ＝ …」照后端 effective 那一格的下一层写（全部窗口 ≤N · 触发 ≥N% · 不封顶）；问的是这一份草稿", async () => {
+    const r: Rotation = { order: [{ start: true }, "team"], enabled: ["team"], when: { threshold: { n: 90 } }, atLimit: "continue", wait: 40 };
+    seed({}, r);
+    const below = (b: { v: number | null; layer: string }) => ({ errors: [], now: 0, nowText: "", until: 0, plan: [], lanes: [], effective: { team: { "*": { v: 90, layer: "trigger", below: b } } } });
+    readPlan.mockResolvedValue(below({ v: 90, layer: "trigger" }));
+    openAccountPanel("s1", "<local>", host);
+    panel().querySelector<HTMLButtonElement>('[data-rot-cap-btn="team"]')!.click();
+    const cap = (): HTMLElement => document.querySelector<HTMLElement>('[data-rot-cap="team"]')!;
+    [...cap().querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("rot.cap.slots"))!.click();
+    await flush();
+    expect(readPlan).toHaveBeenCalledWith("<local>", { rotation: r });
+    expect(cap().querySelector("[data-rot-rest]")!.textContent).toBe(copyText("rot.cap.rest", { what: copyText("rot.cap.restTrig", { n: 90 }) }));
+    readPlan.mockResolvedValue(below({ v: null, layer: "none" }));
+    [...cap().querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("rot.cap.fixed"))!.click();
+    expect(cap().querySelector("[data-rot-rest]"), "固定那一形没有「其余时段」").toBeNull();
+    [...cap().querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("rot.cap.slots"))!.click();
+    await flush();
+    expect(cap().querySelector("[data-rot-rest]")!.textContent, "开浮层时问一次（下一层不归这一格管，切分段不重问）").toBe(copyText("rot.cap.rest", { what: copyText("rot.cap.restTrig", { n: 90 }) }));
   });
 
   it("★ 本会话：顺序里具名的号上有「兜底」开关（开 ⇒ 实心标 · 关 ⇒ 平时藏着、悬停 / 行内有焦点才出），名字带号名、aria-pressed 对；点 ⇒ 写 fallback；来源是规则时只画开着的那个", async () => {

@@ -13,6 +13,48 @@
     animation: float-in var(--dur-float-in) ease-out;
   }
 
+  /* 带筛选框的（项多）：列表限高（约 12 项）内滚。 */
+  .menu[data-filtered="true"] {
+    max-height: min(440px, calc(100vh - 16px));
+    overflow-y: auto;
+  }
+
+  .menuFilter:focus {
+    border-color: var(--field-border-focus);
+    outline: none;
+  }
+
+  .menuFilter {
+    box-sizing: border-box;
+    width: 100%;
+    height: 28px;
+    margin-bottom: var(--space-2);
+    padding: 0 var(--space-3);
+    border: 1px solid var(--field-border);
+    border-radius: var(--radius-m);
+    background: var(--field-bg);
+    color: inherit;
+    font: inherit;
+  }
+
+  .menuEmpty {
+    padding: var(--space-2) var(--space-3);
+    color: var(--text-faint);
+  }
+
+  /* 悬停小卡：项右侧一张只读卡（与菜单同一层）。 */
+  .menuPeek {
+    position: fixed;
+    z-index: var(--z-menu);
+    max-width: 320px;
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-l);
+    background: var(--card);
+    box-shadow: var(--shadow-float);
+    pointer-events: none;
+  }
+
   /* 锚在模态框里的触发物上：压过那个框。 */
   .menu[data-over-modal="true"] {
     z-index: var(--z-modal-menu);

@@ -28,7 +28,7 @@ import { closeMenu, openMenu, type MenuItem } from "./kit/menu";
 import { meter, type MeterState } from "./kit/meter";
 import { segmented } from "./kit/tabs";
 import { select } from "./kit/select";
-import { capButton, capTags, fallbackMark, fallbackToggle, howControl, openSaveAsRule, waitControl } from "./rot-editor";
+import { capButton, capTags, fallbackMark, fallbackToggle, howControl, openSaveAsRule, rulePeek, waitControl } from "./rot-editor";
 import { toast } from "./kit/toast";
 import { attachTooltip } from "./kit/tooltip";
 import { ARRIVAL_BUDGET_MS } from "./launch-arrival";
@@ -375,6 +375,9 @@ function rowUsage(q: QuotaShow | null, now: number, reading: QuotaReadAccount["r
   return box;
 }
 
+/** 规则多过这么多条 ⇒ 来源下拉顶上出筛选框（选项里另有「跟随默认」「本会话」两项）。 */
+const SRC_FILTER_OVER = 10;
+
 /** 来源下拉面板的宽（项右侧带规则摘要，比框宽）。 */
 const SRC_MENU_W = 340;
 
@@ -410,12 +413,15 @@ function rotationBlock(o: Open, entry: SessionRotationEntry, read: Present, quot
     label: copyText("rot.src.label"),
     options: [
       { value: "follow", label: copyText("rot.src.follow"), note: def?.name },
-      ...(rules?.rules ?? []).map((x) => ({ value: `rule:${x.id}`, label: x.name, note: x.isDefault ? copyText("rot.src.tagDefault") : undefined, detail: x.summary, shown: copyText("rot.src.rule", { name: x.name }) })),
+      ...(rules?.rules ?? []).map((x) => ({ value: `rule:${x.id}`, label: x.name, note: x.isDefault ? copyText("rot.src.tagDefault") : undefined, detail: x.summary, shown: copyText("rot.src.rule", { name: x.name }), peek: () => rulePeek(x) })),
       { value: "custom", label: copyText("rot.src.custom"), detail: copyText("rot.src.customNote") },
     ],
     value: was,
     closedKeys: "open",
     menuWidth: SRC_MENU_W,
+    // 规则多过 10 条 ⇒ 面板顶上筛选框（只筛规则那几项）。
+    filterOver: SRC_FILTER_OVER + 2,
+    filterLabel: copyText("rot.src.filter"),
     decorate: (items) => {
       const out: MenuItem[] = [];
       let headed = false;

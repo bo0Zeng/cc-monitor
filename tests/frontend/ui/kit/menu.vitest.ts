@@ -166,3 +166,74 @@ describe("弹出菜单", () => {
     expect(menus().length).toBe(0);
   });
 });
+
+describe("弹出菜单 · 悬停小卡 · 筛选框", () => {
+  const anchor = (): HTMLButtonElement => {
+    const b = document.createElement("button");
+    document.body.appendChild(b);
+    return b;
+  };
+  const peeks = (): HTMLElement[] => [...document.querySelectorAll<HTMLElement>("[data-menu-peek]")];
+
+  it("带 peek 的项：悬停 300ms 才出只读小卡（不早一拍）；移开 / 关菜单即收；键盘焦点停 300ms 同样出", () => {
+    const card = (t: string) => (): HTMLElement => Object.assign(document.createElement("div"), { textContent: t });
+    openMenu({ el: anchor() }, [
+      { id: "a", label: "日常", peek: card("卡 日常") },
+      { id: "b", label: "夜间", peek: card("卡 夜间") },
+      { id: "c", label: "本会话" },
+    ]);
+    const [a, b, c] = items();
+    a.dispatchEvent(new MouseEvent("mouseenter"));
+    vi.advanceTimersByTime(299);
+    expect(peeks()).toEqual([]);
+    vi.advanceTimersByTime(1);
+    expect(peeks().map((p) => p.textContent)).toEqual(["卡 日常"]);
+    expect(peeks()[0].getAttribute("role"), "只读：不进 Tab 序、读屏当说明").toBe("tooltip");
+    a.dispatchEvent(new MouseEvent("mouseleave"));
+    expect(peeks()).toEqual([]);
+    b.dispatchEvent(new FocusEvent("focus"));
+    vi.advanceTimersByTime(300);
+    expect(peeks().map((p) => p.textContent)).toEqual(["卡 夜间"]);
+    c.dispatchEvent(new FocusEvent("focus"));
+    vi.advanceTimersByTime(300);
+    expect(peeks(), "没有 peek 的项不出卡、上一张收掉").toEqual([]);
+    b.dispatchEvent(new MouseEvent("mouseenter"));
+    vi.advanceTimersByTime(300);
+    closeMenu();
+    expect(peeks()).toEqual([]);
+  });
+
+  it("filter：顶上一个筛选框（自动聚焦），输入即按名字筛（不分大小写）；组名 / 分隔 / 动作项不筛；都不中 ⇒ 一行「无匹配」", () => {
+    openMenu(
+      { el: anchor() },
+      [
+        { label: "规则", heading: true },
+        { id: "r1", label: "Daily", filterable: true },
+        { id: "r2", label: "夜间", filterable: true },
+        { label: "", divider: true },
+        { id: "manage", label: "管理规则…" },
+      ],
+      { filter: { label: "筛选规则", empty: (q) => `none ${q}` } },
+    );
+    const box = menus()[0].querySelector<HTMLInputElement>("input[data-menu-filter]")!;
+    expect(box.getAttribute("aria-label")).toBe("筛选规则");
+    expect(document.activeElement).toBe(box);
+    const shown = (): string[] => items().filter((b) => !b.hidden).map((b) => b.textContent!);
+    box.value = "dai";
+    box.dispatchEvent(new Event("input"));
+    expect(shown()).toEqual(["Daily", "管理规则…"]);
+    box.value = "zzz";
+    box.dispatchEvent(new Event("input"));
+    expect(shown()).toEqual(["管理规则…"]);
+    expect(menus()[0].querySelector("[data-menu-empty]")!.textContent).toBe("none zzz");
+    box.value = "";
+    box.dispatchEvent(new Event("input"));
+    expect(shown()).toEqual(["Daily", "夜间", "管理规则…"]);
+    expect(menus()[0].querySelector("[data-menu-empty]")).toBeNull();
+    // 筛选框里 ↓ ⇒ 落到第一个看得见的项。
+    box.value = "夜";
+    box.dispatchEvent(new Event("input"));
+    box.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+    expect(document.activeElement?.textContent).toBe("夜间");
+  });
+});
