@@ -1,16 +1,12 @@
 /**
- * **活会话的记录文件被删 / 改名 / 截短 / 原地改写之后，那个 tab 说一句话。**
- *
- * 要求：「活会话的 jsonl 被改 / 删 / 改名：观察侧当它是
- * 『看的、不是管的』—— 删了 / 改名 ⇒ 出声（该 tab 说一句『记录文件不见了』），不崩、不误判结束；被截短 ⇒ 按截断重读」＋
- * 09-25 补「原地整份改写且变长 …… 从 0 重读并出声（与截短同一句话族）」。
+ * 活会话的记录文件被删 / 改名 / 截短 / 原地改写之后，那个 tab 说一句话（观察侧只看不管：不崩、不误判结束；截短与整份改写从 0 重读）。
  *
  * 来路：后端 `session_file_gone` / `session_file_reread` 帧 → monitor 会话内容流一格 `{"file_notice": …}`（与行同序）
  * → `events.ts` → `main.ts` 装的 `recordFileWiring`（查法是 `TabManager.streamElOf`）。这里只管那一句话画在哪、什么时候收：
  * - 画在流容器的第一个孩子（贴顶），不进记录那一层；同一个 tab 只有一句，新的盖旧的。
  * - 「不见了」那句：之后这个会话又来了一行（文件回来了）⇒ 收掉。「已从头重读」那句留着（它说的是已经发生的事）。
- * - ⚠ 不进留存：那句话没了（已知缺口）。
- * 字全住文案表 `sessionState.recordFile.*`（说到会话状态的字只住 `sessionState.*`，U4 判据 S5）。
+ * - 不进留存：那句话没了（已知缺口）。
+ * 字全住文案表 `sessionState.recordFile.*`（说到会话状态的字只住 `sessionState.*`）。
  */
 import { copyText } from "./copy-table";
 import s from "./record-file-notice.module.css";
@@ -63,8 +59,7 @@ export function showRecordFileNotice(streamEl: HTMLElement, change: RecordFileCh
  * 主窗口的接线（`main.ts` 装进 `EventHandlers`）：只要一个「会话 → 它的流容器」的查法。
  * - `onSessionFileNotice`：认得的取值 ∧ 有这个 tab ⇒ 画；否则不画、不抛。
  * - `afterLine`：这个会话又来了一行（`TabManager.onLine` 之后调）⇒ 「不见了」那一句收掉。
- * ⚠ 只在主窗口接：本模块带一份 CSS Module，从 `tabs.ts`（主窗口与独立查看窗共用）引进来，样式会落进共用块、
- *   排到全局样式前面（`entry-graphs` 次序判据当场红过一次）。
+ * 只在主窗口接：本模块带一份 CSS Module，从主窗口与独立查看窗共用的 `tabs.ts` 引进来的话，样式会落进共用块、排到全局样式前面。
  */
 export function recordFileWiring(streamElOf: (sessionId: string) => HTMLElement | null): {
   onSessionFileNotice: (sessionId: string, change: string) => void;

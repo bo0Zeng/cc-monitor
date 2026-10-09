@@ -1608,6 +1608,7 @@ export class TabManager {
     // 回到离开时的位置：切走时贴着底的才贴底（往上翻着看的不拽到底 —— 后台 tab 只是 `visibility:hidden`，滚动位置一直在）。
     // 贴底（读 scrollHeight，强制同步 reflow）与面板整表 re-render 推到下一帧：让 `.active` 的切换先画出来；期间又切走则跳过。
     const stuck = next?.stream.stuckToBottom ?? true;
+    // 调度：合批 —— 切 Tab 后贴底与面板整表重画推到下一帧，期间切走则跳过
     requestAnimationFrame(() => {
       if (this.store.activeId !== sessionId) return;
       if (stuck) next?.stream.scrollToBottom();

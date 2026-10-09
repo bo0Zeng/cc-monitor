@@ -95,7 +95,7 @@ export class UserInputPanel {
   /**
    * 换一份清单：清空再建表。
    *
-      * 整表只在冷启动 / 文件被重写时换；新来的几条走 [`appendEntries`]。
+   * 整表只在冷启动 / 文件被重写时换；新来的几条走 [`appendEntries`]。
    */
   setEntries(entries: readonly UserInputEntry[]): void {
     this.panel.replaceChildren();
