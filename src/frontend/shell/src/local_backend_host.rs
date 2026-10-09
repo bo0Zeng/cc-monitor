@@ -1389,19 +1389,24 @@ fn run_resident_stop_within(
 fn backend_supervise_events() -> std::sync::Arc<dyn Fn(local_backend::SuperviseEvent) + Send + Sync>
 {
     std::sync::Arc::new(|e| {
-        let (code, attempt, status, witness) = match e {
+        let (code, attempt, status, witness, next) = match e {
             local_backend::SuperviseEvent::Exited {
                 code,
                 attempt,
                 status,
                 witness,
-            } => (code, attempt, status, witness),
+                next,
+            } => (code, attempt, status, witness, next),
             other => {
                 tracing::info!("本机后端: {other:?}");
                 return;
             }
         };
-        tracing::info!("本机后端: 第 {attempt} 次那一命结束（code={code:?}）");
+        tracing::info!("本机后端: 第 {attempt} 次那一命结束（code={code:?}，之后 {next:?}）");
+        // 叫停的（停 / 重启 / 更新本机那一下）：不是死亡，不上账。
+        if next == local_backend::AfterExit::Stopped {
+            return;
+        }
         // ① 两维证据：只认**观测到的**那一档。
         let (handshake, reader) = match witness {
             local_backend::StreamWitness::Observed { handshake, reader } => (handshake, reader),
