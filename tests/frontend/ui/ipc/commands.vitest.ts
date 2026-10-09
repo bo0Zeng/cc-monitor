@@ -774,7 +774,14 @@ function hostAfter(node: ts.Node, host: string): string {
 
 /** 一份 TS 源码里「名字带 origin、带类型标注」的全部声明。 */
 function originDecls(rel: string, src: string): Decl[] {
-  const sf = ts.createSourceFile(rel, src, ts.ScriptTarget.Latest, false, ts.ScriptKind.TS);
+  // 不解析 JSDoc：下面只经 `forEachChild` 往下走，它本来就不进 JSDoc 节点 ⇒ 读数不变；这个仓注释很重，跳过它建树省两三成。
+  const sf = ts.createSourceFile(
+    rel,
+    src,
+    { languageVersion: ts.ScriptTarget.Latest, jsDocParsingMode: ts.JSDocParsingMode.ParseNone },
+    false,
+    ts.ScriptKind.TS,
+  );
   const out: Decl[] = [];
   let host = "<top>";
   const push = (name: string, type: ts.Node): void => {
@@ -843,6 +850,11 @@ function originCorpus(): Decl[] {
 }
 
 describe("〔C4a〕TS 侧 origin 去 null（全 TS ＋ 生成物）", { timeout: SCAN_TIMEOUT_MS }, () => {
+  // 全前端 TS 建一遍树是本组唯一的重活：在这里做一次（原先落在第一条用例里，负载 70 带覆盖率时那一条读过 27 s）。
+  beforeAll(() => {
+    originCorpus();
+  }, SCAN_TIMEOUT_MS);
+
   it("★★ 装得下 `null` 的 origin 声明 == 登记的待办（两向；〔C4b〕待办表今天为空）", () => {
     const found = originCorpus()
       .filter((d) => d.nullable)

@@ -59,7 +59,14 @@ function mayCompareLocal(text: string): boolean {
 /** 一份源码里「自己比本机那个值」的全部命中：`[所在函数, 行号]`。 */
 export function localComparesOf(fileName: string, text: string): Array<[string, number]> {
   if (!mayCompareLocal(text)) return [];
-  const sf = ts.createSourceFile(fileName, text, ts.ScriptTarget.Latest, false, ts.ScriptKind.TS);
+  // 不解析 JSDoc：下面只经 `forEachChild` 往下走、行号取 `getStart`（默认不含 JSDoc）⇒ 读数不变，建树省两三成。
+  const sf = ts.createSourceFile(
+    fileName,
+    text,
+    { languageVersion: ts.ScriptTarget.Latest, jsDocParsingMode: ts.JSDocParsingMode.ParseNone },
+    false,
+    ts.ScriptKind.TS,
+  );
   const aliases = new Set<string>(["LOCAL_ORIGIN"]);
   for (const st of sf.statements) {
     if (!ts.isImportDeclaration(st)) continue;
