@@ -156,37 +156,10 @@ pub(crate) mod linux {
             let app = app.clone();
             let on_action: OnAction = Arc::new(move |_id, action, token| {
                 if action == DEFAULT_ACTION {
-                    raise_main(&app, token.map(str::to_string));
+                    crate::platform::window::raise_main(&app, token.map(str::to_string), true);
                 }
             });
             self.send_with(on_action, title, body)
-        }
-    }
-
-    /// 点了通知 ⇒ 主窗口拉到前面：带着桌面给的激活令牌（GTK `set_startup_id` ＋ `present`），Wayland 上桌面才放行。
-    fn raise_main(app: &tauri::AppHandle, token: Option<String>) {
-        use gtk::prelude::GtkWindowExt;
-        use tauri::Manager;
-        let handle = app.clone();
-        let run = app.run_on_main_thread(move || {
-            let Some(win) = handle.get_webview_window(crate::MAIN_WINDOW_LABEL) else {
-                return;
-            };
-            if let Err(e) = win.unminimize() {
-                tracing::info!("点了通知，主窗口没还原：{e}");
-            }
-            match win.gtk_window() {
-                Ok(gw) => {
-                    if let Some(t) = token.as_deref() {
-                        gw.set_startup_id(t);
-                    }
-                    gw.present();
-                }
-                Err(e) => tracing::info!("点了通知，拿不到主窗口：{e}"),
-            }
-        });
-        if let Err(e) = run {
-            tracing::info!("点了通知，主窗口没拉到前面：{e}");
         }
     }
 
