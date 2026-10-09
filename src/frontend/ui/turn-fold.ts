@@ -65,10 +65,12 @@ type Read = (origin: Origin, path: string, from: number) => Promise<TurnsResult>
  * 展开一轮后叫它物化露出来的那段。
  */
 export type TurnsSkeleton = () => {
-  ledger: { uuidToSeq: ReadonlyMap<string, number>; endSeq: number };
+  ledger: TurnsLedger;
   fillVisible(): number;
   setFolds(f: TurnFolds): void;
 } | null;
+/** 骨架账本里本模块要的那几样：uuid→seq（认开头 / 结尾）、账本尾（最后一轮到哪）。 */
+type TurnsLedger = { uuidToSeq: ReadonlyMap<string, number>; endSeq: number };
 
 /** 「显示系统注入」这扇窗的开关（缺省不露）。 */
 export function injectedShownDefault(): boolean {
@@ -123,6 +125,11 @@ export class TurnFold {
   /** 上一次排版时每一轮过程里的最后一张卡（竖线画到它底下、收起行接在它后面）。 */
   private lastOf = new Map<string, HTMLElement>();
   private expandedDefault: boolean;
+  /**
+   * 量过的过程行高（`linePx`）。每趟排版都会改过程行上的字（DOM 刚动过），这时再量就是一次强制排版 ⇒ 量出来就记着，
+   * 流尺寸变了（字号 / 缩放 / 列宽 —— `ro`）才作废重量。还没量到（一条都没建出来）⇒ `null`，用稿上的值、不记。
+   */
+  private linePxSeen: number | null = null;
 
   constructor(
     private readonly content: HTMLElement,
@@ -138,6 +145,7 @@ export class TurnFold {
     });
     this.mo.observe(content, { childList: true });
     this.ro = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => {
+      this.linePxSeen = null;
       this.placeTails(this.lastOf);
       this.sizeRules();
     });
@@ -291,10 +299,9 @@ export class TurnFold {
    * 「哪几行是过程」只住这里：开头之后、下一轮开头之前、结尾以外的行。账本按 0 高的那几段（`foldSkeleton`）与占位藏不藏（`apply`）
    * 都从它推出来 ⇒ 两边说法不会分家。
    */
-  private turnSpans(): TurnSpanRow[] | null {
-    const sk = this.skeleton();
-    if (!sk) return null;
-    const seq = sk.ledger.uuidToSeq;
+  private turnSpans(ledger: TurnsLedger | null = this.skeleton()?.ledger ?? null): TurnSpanRow[] | null {
+    if (!ledger) return null;
+    const seq = ledger.uuidToSeq;
     const rows: TurnSpanRow[] = [];
     for (const turn of this.turns) {
       const head = seq.get(turn.uuid);
@@ -302,7 +309,7 @@ export class TurnFold {
     }
     rows.sort((a, b) => a.head - b.head);
     rows.forEach((r, i) => {
-      r.next = rows[i + 1]?.head ?? sk.ledger.endSeq;
+      r.next = rows[i + 1]?.head ?? ledger.endSeq;
       r.endings = r.turn.ending
         .map((u) => seq.get(u))
         .filter((e): e is number => e !== undefined && e > r.head && e < r.next)
@@ -315,6 +322,20 @@ export class TurnFold {
   private foldSkeleton(spans: readonly TurnSpanRow[] | null): void {
     const sk = this.skeleton();
     if (!sk || !spans) return;
+    sk.setFolds(this.foldsOf(spans));
+  }
+
+  /**
+   * **骨架接上之前**先把折叠交给它的账本（宿主 `attachSkeleton` 在插占位之前调）：占位插进去就是折后的高。
+   * 不先交 ⇒ 占位按「没折」的高插进去、补可见区去建折着的过程行，DOM 变动回调排完版账本才拿到折叠 ⇒ 占位改高、按视口钉，
+   * 冷切停住那一帧多排两次版。之后那一趟排版交的是同一份 ⇒ 账本说没变、什么都不动。
+   */
+  seedFolds(ledger: TurnsLedger & { setFolds(f: TurnFolds): boolean }): void {
+    const spans = this.turnSpans(ledger);
+    if (spans) ledger.setFolds(this.foldsOf(spans));
+  }
+
+  private foldsOf(spans: readonly TurnSpanRow[]): TurnFolds {
     const folded: Array<[number, number]> = [];
     const lines: number[] = [];
     for (const r of spans) {
@@ -322,15 +343,16 @@ export class TurnFold {
       lines.push(r.head);
       if (!this.expanded(r.turn)) folded.push(...processRanges(r));
     }
-    sk.setFolds({ folded, lines, linePx: this.linePx() });
+    return { folded, lines, linePx: this.linePx() };
   }
 
-  /** 一条过程行在流里占多高（量第一条建出来的：盒高 ＋ 下边距；还没有 ⇒ 稿上的 28 ＋ 12）。 */
+  /** 一条过程行在流里占多高（量第一条建出来的：盒高 ＋ 下边距；还没有 ⇒ 稿上的 28 ＋ 12）。量过就记着（`linePxSeen`）。 */
   private linePx(): number {
+    if (this.linePxSeen !== null) return this.linePxSeen;
     const line = this.lines.values().next().value;
     if (line?.isConnected) {
       const h = line.getBoundingClientRect().height;
-      if (h > 0) return h + parseFloat(getComputedStyle(line).marginBottom || "0");
+      if (h > 0) return (this.linePxSeen = h + parseFloat(getComputedStyle(line).marginBottom || "0"));
     }
     return LINE_PX_FALLBACK;
   }
@@ -410,11 +432,14 @@ export class TurnFold {
   /** 展开的过程高过一屏 ⇒ 末尾一行「‹ 收起这段过程」；别的轮的收起行摘掉。 */
   private placeTails(lastOf: Map<string, HTMLElement>): void {
     const keep = new Set<string>();
-    const view = this.scroller.clientHeight;
+    // 视口高等真有展开的轮才量：一轮都没展开（默认）⇒ 一下几何都不读（刚改过 DOM，读一下就是一次强制排版）
+    let view: number | null = null;
     for (const [uuid, last] of lastOf) {
       const turn = this.byUuid.get(uuid);
       const line = this.lines.get(uuid);
-      if (!turn || !line || view === 0 || !this.expanded(turn)) continue;
+      if (!turn || !line || !this.expanded(turn)) continue;
+      view ??= this.scroller.clientHeight;
+      if (view === 0) continue;
       if (last.getBoundingClientRect().bottom - line.getBoundingClientRect().bottom <= view) continue;
       keep.add(uuid);
       let tail = this.tails.get(uuid);
@@ -556,8 +581,19 @@ export function fillDur(span: TurnSpan, now: number): string {
   return span.text.replace("{dur}", fmtStepDur((span.to ?? now) - span.from));
 }
 
-/** 过程行：`›`（＋ 在跑转圈 / 在等你琥珀点）＋ 后端写好的各段（按语气上色、段间分隔）＋ 靠右那一截。 */
+/** 每条过程行上一次画的是什么（`paintLine` 据此跳过没变的）。 */
+const painted = new WeakMap<HTMLElement, string>();
+
+/**
+ * 过程行：`›`（＋ 在跑转圈 / 在等你琥珀点）＋ 后端写好的各段（按语气上色、段间分隔）＋ 靠右那一截。
+ * 要画的跟上一次一字不差 ⇒ 不动（每趟排版都会走到这里；整行拆了重建会作废这几行的样式与排版，在跑的转圈也从头转）。
+ */
 export function paintLine(line: HTMLElement, turn: TurnSummary, open: boolean, now: number): void {
+  const dur = fillDur(turn.span, now);
+  const sep = copyText("kit.text.sep");
+  const key = JSON.stringify([open, turn.phase, turn.parts, dur, sep]);
+  if (painted.get(line) === key) return;
+  painted.set(line, key);
   line.setAttribute("aria-expanded", String(open));
   line.dataset.phase = turn.phase;
   line.replaceChildren();
@@ -574,7 +610,7 @@ export function paintLine(line: HTMLElement, turn: TurnSummary, open: boolean, n
   text.className = "proc-text";
   line.appendChild(text);
   for (const p of turn.parts) {
-    if (text.childNodes.length > 0) text.append(copyText("kit.text.sep"));
+    if (text.childNodes.length > 0) text.append(sep);
     const s = document.createElement("span");
     if (p.tone === "fail") s.className = "proc-fails";
     if (p.tone === "now") s.className = "proc-now";
@@ -585,6 +621,6 @@ export function paintLine(line: HTMLElement, turn: TurnSummary, open: boolean, n
   text.title = text.textContent ?? "";
   const span = document.createElement("span");
   span.className = "proc-span";
-  span.textContent = fillDur(turn.span, now);
+  span.textContent = dur;
   line.appendChild(span);
 }

@@ -7,7 +7,8 @@
 - 私有 Xvfb（`tests/scripts/xvfb-free.sh` 挑号），一扇 1280×800 的 GTK 窗口里放一个 WebKitWebView；
   伺服用 `serve.mjs`（生产构建 ＋ 假后端），HOME 隔离进 `.build/perf-sandbox/`。不起后端、不起 claude、不碰 tmux。
 - WebKit 没有 CDP、没有长任务 / Event Timing：点击用页里派发的鼠标事件（tab 栏的处理照常跑），
-  「画出来」取点击之后第二个 rAF（切换之后第一帧整帧画完）；卡顿取窗口里的帧间隔（rAF 链）：> 50 ms 的帧数与合计超出。
+  「画出来」取点击之后第二个 rAF（切换之后第一帧整帧画完）；卡顿取窗口里的帧间隔（rAF 链）：> 50 ms 的帧数与合计超出；
+  「接骨架那一帧」＝ 插骨架占位那一刻所在那一帧的帧间隔；「停住之后最长一帧」＝ 点下去 150 ms（宿主的停留判定）之后、切换那一帧画完之后结束的帧里最长那一帧（冷切时就是接骨架、补可见区那一帧）。
 - 量法与 `bench.mjs` 同名的三项对齐：切一下（冷 / 热）· 连续快速切（20 下 / 每 200 ms，3 串）· 长会话（冷切进去 ＋ 往上滚 60 下）。
 """
 import argparse
@@ -48,6 +49,8 @@ if args.css:
     probe += '\n;document.addEventListener("DOMContentLoaded", () => { const s = document.createElement("style"); s.textContent = %s; document.head.appendChild(s); });' % json.dumps(css)
 
 ctx = GLib.MainContext.default()
+# 宿主的停留判定（`tab-stream-view.ts::STAY_MS`）：切进来停住这么久才接骨架 ⇒ 「停住之后最长一帧」从这里起算
+STAY_MS = 150
 
 
 def pump(ms):
@@ -221,9 +224,13 @@ def measured_click(v, i, watch_ms=1500):
     v.js(CLICK % i)
     pump(watch_ms)
     cpu = cpu_ms() - c0
-    frames = v.js("return __perf.frameStop()")
     w = v.js("return __perf.since(%f)" % since)
     c = w["clicks"][0] if w["clicks"] else {}
+    # 停住之后最长一帧：点下去 STAY_MS（宿主的停留判定）之后、且切换那一帧画完（第二个 rAF）之后结束的帧里最长的那一帧
+    # （机器忙时切换那一帧本身就能拖过 150 ms —— 不能把它算成停住那一帧）
+    stay = v.js("return __perf.frameAfter(%f, %f)" % (c.get("t0", since), max(STAY_MS, c.get("frame2") or 0)))
+    attach = v.js("return __perf.attachFrame(%f)" % c.get("t0", since))
+    frames = v.js("return __perf.frameStop()")
     over = [d for d in frames if d > 50]
     return {
         "tab": i,
@@ -234,6 +241,8 @@ def measured_click(v, i, watch_ms=1500):
         "jankN": len(over),
         "jankMs": sum(d - 16.7 for d in over),
         "frameMax": max(frames) if frames else 0,
+        "stayFrame": stay,
+        "attachFrame": attach,
         "nodesOn": sum(x["on"] for x in w["mut"]),
         "nodesOff": sum(x["off"] for x in w["mut"]),
     }
@@ -252,7 +261,14 @@ def bench_switch(v, url, run, result):
         for i in range(n):
             if v.js(TAB_AT % i)["active"]:
                 continue
+            # `--profile`：冷切进长会话那几下各存一份方法计时（含调用顺序 —— 停住之后那一帧里谁先谁后）
+            deep = args.profile and ps == "cold" and (v.js(TAB_AT % i)["turns"] or 0) >= 200
+            if deep:
+                v.js("window.__prof && window.__prof.reset(); return 0")
             rows.append({"run": run, "pass": ps, **measured_click(v, i)})
+            if deep:
+                with open(os.path.join(args.out, f"prof-cold-long-{i}.json"), "w") as f:
+                    json.dump(v.js("return window.__prof ? { top: window.__prof.dump(), seq: window.__prof.seq ? window.__prof.seq() : null } : null"), f, indent=1, ensure_ascii=False)
         if v.js(TAB_AT % 0)["active"]:
             rows.append({"run": run, "pass": "warm", **measured_click(v, 1)})
     if args.profile and args.profile_pass == "warm":
@@ -400,8 +416,8 @@ def summarize(r):
     if r["switch"]:
         L.append("## 切一下（p50 / p95，ms）")
         L.append("")
-        L.append("| 组 | 次 | CPU（WebKit 全部进程） | 同步段 | 画出来（第二帧） | 卡帧个（>50ms） | 卡帧超出合计 | 最长帧 | 新建节点 |")
-        L.append("|---|---|---|---|---|---|---|---|---|")
+        L.append("| 组 | 次 | CPU（WebKit 全部进程） | 同步段 | 画出来（第二帧） | 卡帧个（>50ms） | 卡帧超出合计 | 最长帧 | 停住之后最长一帧 | 接骨架那一帧（次） | 新建节点 |")
+        L.append("|---|---|---|---|---|---|---|---|---|---|---|")
         groups = [
             ("冷切（没建过卡）", [x for x in r["switch"] if x["pass"] == "cold"]),
             ("热切（建过）", [x for x in r["switch"] if x["pass"] == "warm"]),
@@ -413,10 +429,15 @@ def summarize(r):
                 continue
 
             def pp(k):
-                vals = [x[k] or 0 for x in xs]
+                vals = [x.get(k) or 0 for x in xs]
                 return f"{pct(vals, 0.5):.0f} / {pct(vals, 0.95):.0f}"
 
-            L.append(f"| {name} | {len(xs)} | {pp('cpu')} | {pp('sync')} | {pp('frame2')} | {pp('jankN')} | {pp('jankMs')} | {pp('frameMax')} | {pp('nodesOn')} |")
+            def hit(k):
+                # 只在一部分下里有的读数（接骨架那一帧：只有接了骨架的那几下）
+                vals = [x[k] for x in xs if x.get(k) is not None]
+                return f"{pct(vals, 0.5):.0f} / {pct(vals, 0.95):.0f}（{len(vals)}）" if vals else "—"
+
+            L.append(f"| {name} | {len(xs)} | {pp('cpu')} | {pp('sync')} | {pp('frame2')} | {pp('jankN')} | {pp('jankMs')} | {pp('frameMax')} | {pp('stayFrame')} | {hit('attachFrame')} | {pp('nodesOn')} |")
         L.append("")
     if r["rapid"]:
         xs = r["rapid"]
