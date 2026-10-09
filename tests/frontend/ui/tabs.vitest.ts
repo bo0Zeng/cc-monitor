@@ -162,7 +162,7 @@ vi.mock("../../../src/frontend/ui/cards", () => ({
 }));
 vi.mock("../../../src/frontend/ui/cards/subagent", () => ({ isAgentTool: () => false }));
 vi.mock("../../../src/frontend/ui/tasks-panel", () => ({ fetchSessionTasks: vi.fn().mockResolvedValue([]) }));
-vi.mock("../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn(), undoToast: vi.fn(), failToast: vi.fn() }));
+vi.mock("../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn(), undoToast: vi.fn(), failToast: vi.fn(), silentUndo: vi.fn() }));
 // Batch14-F41：resumeTab 远端分支改走一键拉起 runner；behavior 提供 launcher 配置。
 vi.mock("../../../src/frontend/ui/remote-launch-run", () => ({
   runRemoteResume: vi.fn().mockResolvedValue(undefined),
@@ -204,26 +204,20 @@ import {
 } from "../../test-support/chan-fake";
 import type { SessionFacts } from "../../../src/frontend/ui/session-reads";
 import { invalidateAccountsCache } from "../../../src/frontend/ui/account-reads";
-import { failToast, toast as showActionFailureToast } from "../../../src/frontend/ui/kit/toast";
+import { failToast, silentUndo, toast as showActionFailureToast, undoToast } from "../../../src/frontend/ui/kit/toast";
 import { __setHostFactsForTests, type HostOs } from "../../../src/frontend/ui/settings/host-os";
 import {
   runRemoteResume,
   runRemoteAttach,
 } from "../../../src/frontend/ui/remote-launch-run";
 import { callStart, callStop } from "../../../src/frontend/ui/tab-batch-run";
-import {
-  TabManager,
-  moveTab,
-  groupMoveForDrop,
-  commonDirName,
-  defaultGroupName,
-  pickDropTarget,
-  tabUnderY,
-  DWELL_MS,
-  DWELL_MOVE_PX,
-  type Tab,
-  type TabRect,
-} from "../../../src/frontend/ui/tabs";
+import { TabManager, type Tab } from "../../../src/frontend/ui/tabs";
+import { DWELL_MS, DWELL_MOVE_PX, type DropTarget } from "../../../src/frontend/ui/tab-drop";
+import tg from "../../../src/frontend/ui/tab-group.module.css";
+
+/** 落点：插到 `sid` 之前（落下后属于 `gid`）· 末尾（组外）。 */
+const before = (sid: string, gid: string | null = null): DropTarget => ({ kind: "insert", at: { sid, side: "before" }, gid });
+const END: DropTarget = { kind: "insert", at: null, gid: null };
 import { COLLECTION_CAP, type TabCollection } from "../../../src/frontend/ui/tab-collections";
 
 /**
@@ -252,7 +246,7 @@ import { buildStepLine, settleStepLine } from "../../../src/frontend/ui/cards/st
 import { resolve } from "node:path";
 import { REPO_ROOT } from "../../test-support/repo-root.ts";
 import { closeMenu } from "../../../src/frontend/ui/kit/menu";
-import { answerAskDialog, answerAskText, askDialogText, noAskDialog } from "../../test-support/ask-dialog-driver.ts";
+import { answerAskDialog, askDialogText, noAskDialog } from "../../test-support/ask-dialog-driver.ts";
 import type { TabStore } from "../../../src/frontend/ui/tab-store";
 import type { TabBarView } from "../../../src/frontend/ui/tab-bar-view";
 import type { TabBarDrag } from "../../../src/frontend/ui/tab-bar-drag";
@@ -300,6 +294,12 @@ function setGroups(tm: TabManager, groups: { id: string; name: string; tabs?: st
   home(tm).prefs.collections = groups.map(({ id, name }) => ({ id, name }));
   for (const t of home(tm).store.tabs.values()) t.group = null;
   for (const g of groups) for (const sid of g.tabs ?? []) home(tm).store.tabs.get(sid)!.group = g.id;
+}
+/** 开着的菜单里写着 `label` 的那一项。 */
+function groupMenuItem(label: string): HTMLElement {
+  const it = [...document.body.querySelectorAll<HTMLElement>("[role=menu] [role^=menuitem]")].find((b) => b.textContent?.startsWith(label));
+  if (!it) throw new Error(`菜单里没有「${label}」`);
+  return it;
 }
 /** 组 `gid` 里此刻有谁（按栏里的顺序）。 */
 function membersOf(tm: TabManager, gid: string): string[] {
@@ -2818,25 +2818,6 @@ describe("已结束的 tab 留在原位灰着（原「P7a-1 独立归档区」�
 // 而那是一条**竖栏** ⇒ 空闲的不是「横向」，是 **`clientY` 从没被用过**。
 // 重排走纵向，与撕离天然不争同一根轴。
 
-describe("P7a-2 moveTab（纯）", () => {
-  it("★ P7a2-Y1：搬到某个 sid 之前 / 末尾，落位逐项对得上", () => {
-    const o = ["a", "b", "c", "d"];
-    expect(moveTab(o, "c", "a")).toEqual(["c", "a", "b", "d"]);
-    expect(moveTab(o, "a", "d")).toEqual(["b", "c", "a", "d"]);
-    expect(moveTab(o, "a", null)).toEqual(["b", "c", "d", "a"]);
-    // 原先这里还有一格「多元素的块保持内部相对序」—— 块随 bg 树一起删了。
-    // 不改原数组。
-    expect(o).toEqual(["a", "b", "c", "d"]);
-  });
-
-  it("★ P7a2-Y1b：落点就是它自己 ⇒ **原样返回**（拖到自己身上不是一次重排）", () => {
-    const o = ["a", "b", "c"];
-    expect(moveTab(o, "b", "b")).toEqual(o);
-    // 把它算成「挪到末尾」是错的 —— 那会让一次误触把 tab 甩到最后。
-    expect(moveTab(o, "b", "b")).not.toEqual(["a", "c", "b"]);
-  });
-});
-
 describe("P7a-2 栏内拖动排序（真拖拽）", () => {
   let tm: TabManager;
   let bar: HTMLElement;
@@ -2889,42 +2870,42 @@ describe("P7a-2 栏内拖动排序（真拖拽）", () => {
   // 〔「删掉树」〕原「★ P7a2-Y3：拖交互 tab 时它的 bg 子串跟着走」一格删了 ——
   //   现在反过来钉：拖同 cwd 的宿主**只有它自己动**（本文件末尾「〔BG1〕」那组的 ②，两种 tab 各跑）。
 
-  it("★ P7a2-D：拖动时**落点看得见**，撕离那一路不指示，拖完必须清掉", () => {
+  it("★ P7a2-D：拖动时**落点看得见**（插入线），撕离那一路不指示，拖完必须清掉", () => {
     tm.ensureTab("a", "/c1", "p", LOCAL_ORIGIN);
     tm.ensureTab("b", "/c2", "p", LOCAL_ORIGIN);
     tm.ensureTab("c", "/c3", "p", LOCAL_ORIGIN);
     flushBar();
     stubRects();
     const roots = [...(bar.querySelector(".tab-list") ?? bar).children].filter((e) => e.classList.contains("tab")) as HTMLElement[];
-    const marked = (): number => bar.querySelectorAll(".tab.drop-before").length;
+    const line = (): HTMLElement | null => document.body.querySelector<HTMLElement>(`.${tg.dropLine}`);
+    const shown = (): boolean => line() !== null && !line()!.hidden;
 
     roots[2].dispatchEvent(
       new MouseEvent("mousedown", { button: 0, clientX: 10, clientY: 0, bubbles: true }),
     );
     document.dispatchEvent(
-      new MouseEvent("mousemove", { buttons: 1, clientX: 10, clientY: 10, bubbles: true }),
+      new MouseEvent("mousemove", { buttons: 1, clientX: 10, clientY: 5, bubbles: true }),
     );
-    // 落点 = 第一条（a）之前。
-    expect(marked()).toBe(1);
-    expect(roots[0].classList.contains("drop-before")).toBe(true);
+    // 落点 = 第一条（a）之前：线画在 a 的上沿。
+    expect(shown()).toBe(true);
+    expect(line()!.style.top).toBe("-1px");
 
     // 拖出右缘 ⇒ armed，那一路根本不重排 ⇒ 不许再指一条不会发生的落点。
     document.dispatchEvent(
-      new MouseEvent("mousemove", { buttons: 1, clientX: 9999, clientY: 10, bubbles: true }),
+      new MouseEvent("mousemove", { buttons: 1, clientX: 9999, clientY: 5, bubbles: true }),
     );
-    expect(marked(), "撕离那一路不指示落点").toBe(0);
+    expect(shown(), "撕离那一路不指示落点").toBe(false);
 
-    // ⚠ **必须先拖回非 armed 让标记重新挂上**，否则松手时本来就没标记，
-    // 「拖完清干净」那句是恒真的（实测：拿掉 teardown 里的清理，判据照样绿）。
+    // 先拖回非 armed 让线重新出来，否则松手时本来就没线，「拖完清干净」那句恒真。
     document.dispatchEvent(
-      new MouseEvent("mousemove", { buttons: 1, clientX: 10, clientY: 10, bubbles: true }),
+      new MouseEvent("mousemove", { buttons: 1, clientX: 10, clientY: 5, bubbles: true }),
     );
-    expect(marked(), "拖回栏内应重新指示").toBe(1);
+    expect(shown(), "拖回栏内应重新指示").toBe(true);
 
     document.dispatchEvent(
-      new MouseEvent("mouseup", { clientX: 10, clientY: 10, bubbles: true }),
+      new MouseEvent("mouseup", { clientX: 10, clientY: 5, bubbles: true }),
     );
-    expect(marked(), "拖完必须清干净，标记不许挂在那儿").toBe(0);
+    expect(line(), "拖完必须清干净，线不许挂在那儿").toBeNull();
   });
 
   it("★ P7a2-Y2：armed（拖出右缘）时**顺序一个字不动**", () => {
@@ -3219,7 +3200,7 @@ describe("P7a-3 集合分组渲染", () => {
   });
 
   // 要求：「一条都不许静默忽略」。右键菜单那两条入口到上界要出声（正反各一格）。
-  it("〔TL2 · E13〕右键「新建集合…」集合数到上界 ⇒ 不弹输入框、说一句；差一个 ⇒ 照常弹", async () => {
+  it("〔TL2 · E13〕右键「新建分组」集合数到上界 ⇒ 说一句、不建；差一个 ⇒ 不问名字直接建「分组 N」", async () => {
     tm.ensureTab("a", "/c1", "p", LOCAL_ORIGIN);
     await tm.loadCollections();
     const clickNew = async (): Promise<void> => {
@@ -3229,7 +3210,7 @@ describe("P7a-3 集合分组渲染", () => {
       const btn = [...document.querySelectorAll("[role=menu] button")].find(
         (e) => e.querySelector("[data-part=label]")?.textContent === copyText("tabMenu.collection.new"),
       ) as HTMLButtonElement | undefined;
-      expect(btn, "菜单里要有「新建集合…」（否则本判据在空转）").toBeTruthy();
+      expect(btn, "菜单里要有「新建分组」（否则本判据在空转）").toBeTruthy();
       btn!.click();
       document.body.querySelectorAll("[role=menu]").forEach((n) => n.remove());
       for (let i = 0; i < 5; i++) await Promise.resolve();
@@ -3238,15 +3219,17 @@ describe("P7a-3 集合分组渲染", () => {
       Array.from({ length: n }, (_, i) => ({ id: `c${i}`, name: `组${i}` }));
     setCols(many(COLLECTION_CAP));
     await clickNew();
-    expect(noAskDialog(), "满了还让用户白填一次名字").toBe(true);
+    expect(noAskDialog(), "不问名字").toBe(true);
     expect(vi.mocked(showActionFailureToast).mock.calls.map((c) => String(c[0]))).toEqual([copyText("tabCollections.full.collectionsTitle")]);
+    expect(home(tm).store.tabs.get("a")!.group, "满了 ⇒ 不建").toBeNull();
 
     vi.mocked(showActionFailureToast).mockClear();
     setCols(many(COLLECTION_CAP - 1));
     await clickNew();
-    expect(noAskDialog(), "没满就该照常问名字（正控）").toBe(false);
-    await answerAskText(null);
+    expect(noAskDialog(), "没满也不问名字").toBe(true);
     expect(showActionFailureToast).not.toHaveBeenCalled();
+    const gid = home(tm).store.tabs.get("a")!.group;
+    expect(home(tm).prefs.collections.find((c) => c.id === gid)?.name, "建了「分组 N」").toBe(copyText("tabDrop.group.defaultName", { n: 1 }));
   });
 
   // 成员上界随成员名单一起作废 ⇒ 原「那一组满了 ⇒ 说一句」一格删了（被测的东西不在了）；
@@ -3269,23 +3252,22 @@ describe("P7a-3 集合分组渲染", () => {
     setCols([{ id: "g", name: "白天", tabs: ["b"] }]);
     click("a", "白天");
     expect(showActionFailureToast).not.toHaveBeenCalled();
-    expect(membersOf(tm, "g"), "a 该进组（b 原本就在）").toEqual(["a", "b"]);
-    click("a", copyText("tabMenu.collection.remove", { name: "白天" }));
+    expect(membersOf(tm, "g"), "a 该进组、排最后（b 原本就在）").toEqual(["b", "a"]);
+    click("a", copyText("tabMenu.collection.remove"));
     expect(membersOf(tm, "g"), "移出只动 a").toEqual(["b"]);
     expect(home(tm).store.tabs.get("a")!.group).toBeNull();
   });
 
-  it("★ P7a3-D：组在前、未归组的在后（DoD 逐字如此，实现不许自己反过来）", () => {
+  it("★ 组与散的混排：组在它第一个组员那一格（不再整块排在散的前面）", () => {
+    tm.ensureTab("b", "/c2", "p", LOCAL_ORIGIN); // 散的，先到
     tm.ensureTab("a", "/c1", "p", LOCAL_ORIGIN); // 归组
-    tm.ensureTab("b", "/c2", "p", LOCAL_ORIGIN); // 散的
+    tm.ensureTab("c", "/c3", "p", LOCAL_ORIGIN); // 散的，后到
     setCols([{ id: "g1", name: "白天", tabs: ["a"] }]);
     flushBar();
     const kids = [...(bar.querySelector(".tab-list") ?? bar).children];
-    const gi = kids.findIndex((e) => e.classList.contains("tab-group"));
-    const ti = kids.findIndex((e) => e.classList.contains("tab"));
-    expect(gi, "组容器要在").toBeGreaterThanOrEqual(0);
-    expect(ti, "散 tab 要在").toBeGreaterThanOrEqual(0);
-    expect(gi, "组排在未归组的之前").toBeLessThan(ti);
+    const kind = (e: Element): string => (e.classList.contains("tab-group") ? "G" : e.classList.contains("tab") ? "t" : "");
+    expect(kids.map(kind).join(""), "散的 b · 组（a）· 散的 c").toBe("tGt");
+    expect(home(tm).bar.visibleOrder()).toEqual(["b", "a", "c"]);
   });
 
 
@@ -3297,7 +3279,8 @@ describe("P7a-3 集合分组渲染", () => {
     const before = [...order()];
     expect(bar.querySelector(".tab-group")).toBeTruthy();
 
-    (bar.querySelector(".tab-group-del") as HTMLButtonElement).click();
+    (bar.querySelector(".tab-group-more") as HTMLButtonElement).click();
+    groupMenuItem(copyText("tabMenu.group.dissolve")).click();
     flushBar();
     // 「没删掉会话」是**没有发生的事** ⇒ 钉逐项相等，不是钉「没崩」。
     expect(order(), "集合是个视图，不是容器").toEqual(before);
@@ -3564,169 +3547,7 @@ describe("步 17·B 固定：落盘 · 复活 · 正交", () => {
   });
 });
 
-// ==========================================================================
-// Edge 式拖动合并成组 —— **纯判定那一半**
-//
-// `§D.1` 现打：数据层全都在（`TabCollection` 与它那五个操作、落盘、上界、组容器渲染）
-// ⇒ **缺的只有那个手势**。所以这一组打的是手势拆出来的那几个纯函数：
-// 落点（3 种语义）· 停留（时间维）· 默认组名 · 归属跟着落点宿主走。
-//
-// 🔴 反空真：每一格都是**相等断言**。三种落点语义各有正例，而且每一条正例旁边
-//    都有一条「它不该给出这个答案」的反例 —— 一个「永远回 `end`」的实现
-//    必须在这一组里红掉，否则这组就是空转。
-// ==========================================================================
-describe("步 17·D ⓪ 量具自检：落点函数真的在分三种，不是恒回一种", () => {
-  // 三个 tab，每个高 28（`§D.4` 里那个实测值），首个 top=0。
-  const rects: TabRect[] = [
-    { sid: "a", top: 0, height: 28 },
-    { sid: "b", top: 28, height: 28 },
-    { sid: "c", top: 56, height: 28 },
-  ];
-  /** 被拖的那一个不在这组矩形里（原先这里是「被拖的那一块」空集）。 */
-  const none = `（${copyText("extPage.state.missing")}）`;
-
-  it("🔴 三种语义**都出得来**，而且各自出在该出的地方", () => {
-    // 一格里三条分开断言：合成一条的话，只要有一种出不来，另两种也能让它看起来对。
-    expect(pickDropTarget(rects, 5, none, null), "指针在 a 的上半 ⇒ 插到 a 之前").toEqual({
-      kind: "before",
-      sid: "a",
-    });
-    expect(pickDropTarget(rects, 200, none, null), "指针在所有 tab 下面 ⇒ 末尾").toEqual({
-      kind: "end",
-    });
-    expect(pickDropTarget(rects, 40, none, "b"), "停留攒满了 ⇒ 与 b 成组").toEqual({
-      kind: "onto",
-      sid: "b",
-    });
-  });
-
-  it("中线是分界：过了中线就轮到下一个（差一错在这里露）", () => {
-    expect(pickDropTarget(rects, 13, none, null)).toEqual({ kind: "before", sid: "a" });
-    expect(pickDropTarget(rects, 14, none, null), "恰好在 a 的中线上 ⇒ 已经不是 a 了").toEqual({
-      kind: "before",
-      sid: "b",
-    });
-  });
-
-  it("🔴 **按视觉序扫，不按 `orderedIds` 扫**（`§D.2` 拆掉组过滤之后的必要条件）", () => {
-    // 组容器整块排在散 tab 前面 ⇒ 数组次序与屏幕次序不再一致。
-    // 喂一份「数组里 c 在最前、屏幕上 c 在最后」的读数：按数组扫会答 c。
-    const shuffled: TabRect[] = [
-      { sid: "c", top: 56, height: 28 },
-      { sid: "a", top: 0, height: 28 },
-      { sid: "b", top: 28, height: 28 },
-    ];
-    expect(
-      pickDropTarget(shuffled, 5, none, null),
-      "按数组次序扫的话这里会答 `c` —— 而 c 在屏幕最下面，指针在最上面",
-    ).toEqual({ kind: "before", sid: "a" });
-  });
-
-  it("被拖的那一个不参与落点（落到自己身上不是一次重排）", () => {
-    expect(pickDropTarget(rects, 5, "a", null), "a 被拖着，落点该轮到 b").toEqual({
-      kind: "before",
-      sid: "b",
-    });
-    expect(
-      pickDropTarget(rects, 40, "b", "b"),
-      "🔴 停留攒在自己身上也不许成组（不然拖一下自己就多一个组）",
-    ).toEqual({ kind: "before", sid: "c" });
-  });
-
-  it("🔴 停留攒满了、但指针已经划出那个矩形 ⇒ **不给 `onto`**（两个来源都得同意）", () => {
-    // 只信计时器的话，指针早已划走还会合并成组 —— 那正是 `§D.4` 要避的误触。
-    expect(pickDropTarget(rects, 5, none, "c"), "计时器说 c，可指针在 a 头上").toEqual({
-      kind: "before",
-      sid: "a",
-    });
-  });
-
-  it("`tabUnderY` 正反两控：压在矩形里才算，边界按左闭右开", () => {
-    expect(tabUnderY(rects, 28, none), "28 是 b 的上沿 ⇒ 算 b").toBe("b");
-    expect(tabUnderY(rects, 27.9, none), "27.9 还在 a 里").toBe("a");
-    expect(tabUnderY(rects, 999, none), "谁都没压着要能说「没有」").toBeNull();
-    expect(tabUnderY(rects, 5, "a"), "被拖的那个要排除").toBeNull();
-  });
-
-  it("两个常数就是 `§D.4` 写的那两个数（改了要有人知道）", () => {
-    expect(DWELL_MS, "停留门槛不是 250ms ⇒ 与 Edge 的手感、与 `§D.4` 的推理都脱钩").toBe(250);
-    expect(DWELL_MOVE_PX).toBe(4);
-  });
-});
-
-describe("步 17·D ① 默认组名（`§D.6`）—— 这条路上不能弹 `window.prompt`", () => {
-  it("① 共同前缀的目录名（最常见：同项目的两个会话）", () => {
-    expect(commonDirName("/home/u/proj/a", "/home/u/proj/b")).toBe("proj");
-    expect(commonDirName("/home/u/proj", "/home/u/proj"), "两条同 cwd ⇒ 就是它自己").toBe("proj");
-    expect(commonDirName("C:\\work\\proj\\a", "C:/work/proj/b"), "两种分隔符都要认").toBe("proj");
-  });
-
-  it("算不出来要**说算不出来**（反面控：不许随便回一个）", () => {
-    expect(commonDirName("/home/a", "/var/b"), "没有共同前缀").toBeNull();
-    expect(commonDirName(null, "/var/b"), "一边没有 cwd").toBeNull();
-    expect(commonDirName("C:\\a", "C:\\b"), "只共到盘符 ⇒ 「C:」当组名是噪声").toBeNull();
-  });
-
-  it("② 没有共同 cwd ⇒ `组 N`，取当前最大编号 +1", () => {
-    expect(defaultGroupName(null, null, []), "一个组都没有 ⇒ 从 1 起").toBe(copyText("tabDrop.group.defaultName", { n: "1" }));
-    expect(defaultGroupName(null, null, [copyText("tabDrop.group.defaultName", { n: "1" }), "白天", copyText("tabDrop.group.defaultName", { n: "3" })]), "最大编号是 3 ⇒ 下一个是 4").toBe(
-      copyText("tabDrop.group.defaultName", { n: "4" }),
-    );
-    expect(defaultGroupName("/a/x", "/b/y", [copyText("tabDrop.group.defaultName", { n: "2" })]), "共同前缀算不出来才轮到编号").toBe(copyText("tabDrop.group.defaultName", { n: "3" }));
-  });
-
-  it("有共同目录名时**优先用它**（反面控：别退回编号）", () => {
-    expect(defaultGroupName("/home/u/proj/a", "/home/u/proj/b", [copyText("tabDrop.group.defaultName", { n: "1" })])).toBe("proj");
-  });
-});
-
-describe("步 17·D ② 归属跟着落点宿主走（`§D.7` 的「拖出组」与「拖进组」是同一条规则）", () => {
-  // 组员关系是 tab 自己的属性 ⇒ 这里不再重算整张组表（原 `applyDropToCollections` /
-  //   `collectionsEqual` 随成员名单一起删），纯函数 `groupMoveForDrop` 只回「被拖那个 tab 怎么动」。
-  //   每一格对应原来的一格；「建组到上界」那一格挪到了 ④（上界现在由 `TabBarPrefs.foundGroup` 判）。
-  const groupOf =
-    (m: Record<string, string>) =>
-    (sid: string): string | null =>
-      m[sid] ?? null;
-
-  it("🆕 `onto` 到一个**没有组**的 tab ⇒ 与它现建一个组", () => {
-    expect(groupMoveForDrop(groupOf({}), "a", { kind: "onto", sid: "b" })).toEqual({ kind: "found", with: "b" });
-  });
-
-  it("`onto` 到一个**已经在组里**的 tab ⇒ 进那个组，不新建", () => {
-    expect(groupMoveForDrop(groupOf({ b: "g1" }), "a", { kind: "onto", sid: "b" })).toEqual({ kind: "join", gid: "g1" });
-  });
-
-  // 〔「删掉树」〕原「整块一起走（交互 tab 连同它的 bg 子串）」一格删了 —— 归属只跟着被拖的
-  //   那一个走（本文件末尾「〔BG1〕」那组的 ③ ④，两种 tab 各跑）。
-
-  it("🔴 `before` 一个**散 tab** ⇒ 从原来的组里**移出**（`§D.7` 的拖出组）", () => {
-    expect(
-      groupMoveForDrop(groupOf({ a: "g1", b: "g1" }), "a", { kind: "before", sid: "z" }),
-      "落点宿主是散 tab 区 ⇒ a 不再属于 g1",
-    ).toEqual({ kind: "leave" });
-  });
-
-  it("`before` 一个**组里的 tab** ⇒ 进那个组（同一条规则的另一侧）", () => {
-    expect(groupMoveForDrop(groupOf({ b: "g1" }), "a", { kind: "before", sid: "b" })).toEqual({ kind: "join", gid: "g1" });
-  });
-
-  it("`end` ⇒ 移出（末尾就是散 tab 区）", () => {
-    expect(groupMoveForDrop(groupOf({ a: "g1" }), "a", { kind: "end" })).toEqual({ kind: "leave" });
-  });
-
-  it("🔴 反面控：什么都不该变的两种情形 ⇒ `stay`（零写盘：拖动是高频动作）", () => {
-    expect(
-      groupMoveForDrop(groupOf({ a: "g1" }), "a", { kind: "onto", sid: "a" }),
-      "压在自己身上不是一次合并",
-    ).toEqual({ kind: "stay" });
-    expect(
-      groupMoveForDrop(groupOf({ z: "g1" }), "a", { kind: "before", sid: "b" }),
-      "两个都是散 tab ⇒ 归属这一维没有任何事发生",
-    ).toEqual({ kind: "stay" });
-  });
-});
-
+// 拖动合并成组的纯判定（落点 · 停留 · 默认组名 · 归属）住 `tab-group-drop.vitest.ts`；这里只打接到真 DOM 上那一半。
 // ==========================================================================
 // 手势接到真 DOM 上那一半：`§D.2` 的两个缺口是不是真的堵上了
 // ==========================================================================
@@ -3740,7 +3561,7 @@ describe("步 17·D ③ 组里的 tab 真的参与落点（`§D.2` 缺口一）"
     bar = document.body.firstElementChild as HTMLElement;
   });
 
-  it("🔴 量具自检 ＋ 正题：`tabRects()` 量到的集合 == 栏里所有 tab（**含组里的**）", () => {
+  it("🔴 量具自检 ＋ 正题：`measureRows()` 量到的标签页 == 栏里所有 tab（**含组里的**），组头也量", () => {
     tm.ensureTab("a", "/c1", "p", LOCAL_ORIGIN);
     tm.ensureTab("b", "/c1", "p", LOCAL_ORIGIN);
     setGroups(tm, [{ id: "g1", name: "白天", tabs: ["b"] }]);
@@ -3756,9 +3577,11 @@ describe("步 17·D ③ 组里的 tab 真的参与落点（`§D.2` 缺口一）"
     stub("b", 0); // 组容器排在前面
     stub("a", 28);
 
-    const rects = home(tm).dragger.tabRects();
+    const all = home(tm).bar.measureRows();
+    expect(all.filter((r) => r.kind === "head").map((r) => r.id), "组头也是一行（落在组头 ＝ 进组）").toEqual(["g1"]);
+    const rects = all.filter((r) => r.kind === "tab");
     expect(
-      rects.map((r) => r.sid).sort(),
+      rects.map((r) => r.id).sort(),
       "🔴 `parentElement !== barEl` 那道过滤还在 ⇒ 组里的 b 量不到 ⇒ 拖不进也拖不出组",
     ).toEqual(["a", "b"]);
     expect(rects.every((r) => r.height === 28), "量具自检：高度得是真读数，不是 jsdom 的 0").toBe(
@@ -3781,14 +3604,60 @@ describe("步 17·D ④ 一次落点把顺序与归属**一起**落实（`applyD
     home(tm).prefs.collectionsLoaded = true;
   });
 
-  it("`onto` ⇒ 建组 + 入组 + 落到目标之前，三件事一次做完", () => {
-    tm.ensureTab("a", "/home/u/proj/x", "p", LOCAL_ORIGIN);
-    tm.ensureTab("b", "/home/u/proj/y", "p", LOCAL_ORIGIN);
+  it("`onto` ⇒ 建组 ＋ 入组 ＋ 组就在目标那一格（目标在前、被拖的在后），名字框立刻打开、给可撤的 toast", () => {
+    tm.ensureTab("x", "/home/u/other", "p", LOCAL_ORIGIN);
+    tm.ensureTab("b", "/home/u/web", "p", LOCAL_ORIGIN);
+    tm.ensureTab("a", "/home/u/web", "p", LOCAL_ORIGIN);
     home(tm).dragger.applyDrop("a", { kind: "onto", sid: "b" });
     expect(colsOf().length, "没建组").toBe(1);
-    expect(membersOf(tm, colsOf()[0].id), "成员不对（按栏里的顺序：a 已插到 b 之前）").toEqual(["a", "b"]);
-    expect(colsOf()[0].name, "默认名该走「共同前缀目录名」那一条（`§D.6` ①）").toBe("proj");
-    expect(order(), "顺序也要落实：a 插到 b 之前").toEqual(["a", "b"]);
+    expect(membersOf(tm, colsOf()[0].id)).toEqual(["b", "a"]);
+    expect(colsOf()[0].name, "两个 cwd 相同 ⇒ 目录名").toBe("web");
+    expect(order(), "组在目标那一格，没跳到最上面").toEqual(["x", "b", "a"]);
+    expect(home(tm).bar.visibleOrder()).toEqual(["x", "b", "a"]);
+    const input = document.body.querySelector<HTMLInputElement>(".tab-group-head input");
+    expect(input, "建完组头名字框立刻打开").not.toBeNull();
+    expect(document.activeElement, "打字即改").toBe(input);
+    expect(vi.mocked(undoToast).mock.calls.map((c) => c[0])).toEqual([copyText("tabBar.group.founded", { name: "web" })]);
+    expect(silentUndo).not.toHaveBeenCalled();
+  });
+
+  it("撤销建组 ⇒ 组没了、两个回原位（顺序与组员一起退回）", () => {
+    tm.ensureTab("b", "/w/b", "p", LOCAL_ORIGIN);
+    tm.ensureTab("x", "/w/x", "p", LOCAL_ORIGIN);
+    tm.ensureTab("a", "/w/a", "p", LOCAL_ORIGIN);
+    home(tm).dragger.applyDrop("a", { kind: "onto", sid: "b" });
+    expect(order()).toEqual(["b", "a", "x"]);
+    const undo = vi.mocked(undoToast).mock.calls[0][1];
+    undo();
+    expect(colsOf()).toEqual([]);
+    expect(order()).toEqual(["b", "x", "a"]);
+    expect([...home(tm).store.tabs.values()].map((t) => t.group)).toEqual([null, null, null]);
+  });
+
+  it("只排了顺序 ⇒ 不出 toast，`Ctrl+Z` 那一步照样记上；进组 ⇒ 「已移到「组名」」可撤", () => {
+    tm.ensureTab("a", "/c1", "p", LOCAL_ORIGIN);
+    tm.ensureTab("b", "/c2", "p", LOCAL_ORIGIN);
+    tm.ensureTab("c", "/c3", "p", LOCAL_ORIGIN);
+    home(tm).dragger.applyDrop("c", before("a"));
+    expect(order()).toEqual(["c", "a", "b"]);
+    expect(undoToast).not.toHaveBeenCalled();
+    expect(silentUndo).toHaveBeenCalledTimes(1);
+    vi.mocked(silentUndo).mock.calls[0][0]();
+    expect(order(), "Ctrl+Z 撤回原位").toEqual(["a", "b", "c"]);
+
+    setGroups(tm, [{ id: "g1", name: "白天", tabs: ["a"] }]);
+    home(tm).dragger.applyDrop("b", before("a", "g1"));
+    expect(membersOf(tm, "g1")).toEqual(["b", "a"]);
+    expect(vi.mocked(undoToast).mock.calls.map((c) => c[0])).toEqual([copyText("tabBar.group.joined", { name: "白天" })]);
+  });
+
+  it("拖回原位（顺序与组都没变）⇒ 零写、不给撤销", () => {
+    tm.ensureTab("a", "/c1", "p", LOCAL_ORIGIN);
+    tm.ensureTab("b", "/c2", "p", LOCAL_ORIGIN);
+    home(tm).dragger.applyDrop("a", before("b"));
+    expect(order()).toEqual(["a", "b"]);
+    expect(undoToast).not.toHaveBeenCalled();
+    expect(silentUndo).not.toHaveBeenCalled();
   });
 
   it("🔴 顺序没变、只有归属变了的那一拍**不许被吞掉**", () => {
@@ -3797,7 +3666,7 @@ describe("步 17·D ④ 一次落点把顺序与归属**一起**落实（`applyD
     tm.ensureTab("a", "/c1", "p", LOCAL_ORIGIN);
     tm.ensureTab("b", "/c2", "p", LOCAL_ORIGIN);
     setGroups(tm, [{ id: "g1", name: "白天", tabs: ["a"] }]);
-    home(tm).dragger.applyDrop("a", { kind: "before", sid: "b" }); // a 本来就在 b 前面 ⇒ 顺序不变
+    home(tm).dragger.applyDrop("a", before("b")); // a 本来就在 b 前面 ⇒ 顺序不变
     expect(order(), "顺序确实没变（前提成立，这一格才有意义）").toEqual(["a", "b"]);
     expect(membersOf(tm, "g1"), "🔴 归属那一半被「没变化就 return」吞了").toEqual([]);
   });
@@ -3806,7 +3675,7 @@ describe("步 17·D ④ 一次落点把顺序与归属**一起**落实（`applyD
     tm.ensureTab("a", "/c1", "p", LOCAL_ORIGIN);
     tm.ensureTab("b", "/c2", "p", LOCAL_ORIGIN);
     setGroups(tm, [{ id: "g1", name: "白天", tabs: ["a"] }]);
-    home(tm).dragger.applyDrop("a", { kind: "end" });
+    home(tm).dragger.applyDrop("a", END);
     expect(order()).toEqual(["b", "a"]);
     expect(membersOf(tm, "g1")).toEqual([]);
     expect(colsOf(), "拖出的是在栏里的最后一个 ⇒ 组消失").toEqual([]);
@@ -3832,7 +3701,7 @@ describe("步 17·D ④ 一次落点把顺序与归属**一起**落实（`applyD
     home(tm).prefs.collections = many(COLLECTION_CAP - 1);
     home(tm).dragger.applyDrop("a", { kind: "onto", sid: "b" });
     expect(colsOf().length, "差一个没满 ⇒ 该建出来").toBe(COLLECTION_CAP);
-    expect(membersOf(tm, colsOf()[COLLECTION_CAP - 1].id), "建出来的组里恰是这两个").toEqual(["a", "b"]);
+    expect(membersOf(tm, colsOf()[COLLECTION_CAP - 1].id), "建出来的组里恰是这两个").toEqual(["b", "a"]);
     expect(showActionFailureToast).not.toHaveBeenCalled();
   });
 
@@ -3841,9 +3710,9 @@ describe("步 17·D ④ 一次落点把顺序与归属**一起**落实（`applyD
     home(tm).prefs.collectionsLoaded = false;
     tm.ensureTab("a", "/c1", "p", LOCAL_ORIGIN);
     tm.ensureTab("b", "/c2", "p", LOCAL_ORIGIN);
-    home(tm).dragger.applyDrop("b", { kind: "onto", sid: "a" });
+    home(tm).dragger.applyDrop("a", { kind: "onto", sid: "b" });
     expect(colsOf(), "没读过盘还敢建组 ⇒ 下一次落盘会把用户的集合全冲掉").toEqual([]);
-    expect(home(tm).store.tabs.get("b")!.group, "组 id 也一个字不动").toBeNull();
+    expect(home(tm).store.tabs.get("a")!.group, "组 id 也一个字不动").toBeNull();
     expect(order(), "顺序这一半照常").toEqual(["b", "a"]);
   });
 });
@@ -3855,7 +3724,7 @@ describe("步 17·D ④ 一次落点把顺序与归属**一起**落实（`applyD
 //    「**指针停住之后 `mousemove` 就不再来了**」这件事上 ⇒ 必须有计时器。
 //    一个只在 `mousemove` 里数时间的实现，纯函数那几格**全绿**，而手势根本不存在。
 // ==========================================================================
-describe("步 17·D ⑤ 停留 250ms 才成组（假手势打真事件链）", () => {
+describe("步 17·D ⑤ 中间一半停 400ms 才成组（假手势打真事件链）", () => {
   let tm: TabManager;
   const rootOf = (sid: string): HTMLElement => home(tm).bar.tabButtons.get(sid)!.root;
   /** jsdom 的 `getBoundingClientRect` 恒回全 0 ⇒ 不钉读数的话「压在谁身上」永远答第一个。 */
@@ -3891,11 +3760,14 @@ describe("步 17·D ⑤ 停留 250ms 才成组（假手势打真事件链）", (
     document.body.querySelectorAll(".tab-drag-ghost").forEach((n) => n.remove());
   });
 
-  it("🔴 不到 250ms 是 `before`，满了才翻成 `onto`（时间这一维真的在承重）", () => {
-    move(40); // 落在 b 的上半 ⇒ before b
-    expect(rootOf("b").classList.contains("drop-before"), "落点指示没出来 ⇒ 这一格在空转").toBe(
-      true,
-    );
+  const lineShown = (): boolean => {
+    const l = document.body.querySelector<HTMLElement>(`.${tg.dropLine}`);
+    return l !== null && !l.hidden;
+  };
+
+  it("🔴 不到 400ms 是插入，满了才翻成 `onto`（时间这一维真的在承重）", () => {
+    move(40); // 落在 b 的中间一半、偏上 ⇒ 先当插入（b 之前）
+    expect(lineShown(), "落点指示没出来 ⇒ 这一格在空转").toBe(true);
     expect(rootOf("b").classList.contains("drop-onto"), "还没压够就成组 = `§D.4` 要避的误触").toBe(
       false,
     );
@@ -3906,12 +3778,13 @@ describe("步 17·D ⑤ 停留 250ms 才成组（假手势打真事件链）", (
     vi.advanceTimersByTime(1);
     expect(
       rootOf("b").classList.contains("drop-onto"),
-      "🔴 压满 250ms 还不成组 —— 指针停住之后没有 `mousemove` 了，没有计时器这件事就永远不发生",
+      "🔴 压满 400ms 还不成组 —— 指针停住之后没有 `mousemove` 了，没有计时器这件事就永远不发生",
     ).toBe(true);
-    expect(rootOf("b").classList.contains("drop-before"), "两个标不许同时挂着").toBe(false);
+    expect(lineShown(), "插入线与目标框不许同时挂着").toBe(false);
+    expect(rootOf("b").textContent, "右侧小标签写松手会发生什么").toContain(copyText("tabDrop.pill.found"));
   });
 
-  it("攒满之后抖一下（>4px）⇒ 退回 `before`（可逆）", () => {
+  it("攒满之后抖一下（>4px）⇒ 退回插入（可逆）", () => {
     move(40);
     vi.advanceTimersByTime(DWELL_MS);
     expect(rootOf("b").classList.contains("drop-onto")).toBe(true);
@@ -3927,11 +3800,11 @@ describe("步 17·D ⑤ 停留 250ms 才成组（假手势打真事件链）", (
     document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
     const cols = home(tm).prefs.collections;
     expect(cols.length, "松手了却没建组 ⇒ 视觉反馈与真实后果脱钩（比没做更坏）").toBe(1);
-    expect(membersOf(tm, cols[0].id), "组员 = 带这个组 id 的 tab（a 已插到 b 之前）").toEqual(["a", "b"]);
-    expect(cols[0].name, "默认名走 `§D.6` ①：两个 cwd 的共同前缀目录名").toBe("proj");
+    expect(membersOf(tm, cols[0].id), "组在 b 那一格：b 在前、被拖的 a 在后").toEqual(["b", "a"]);
+    expect(cols[0].name, "两个 cwd 不同 ⇒ 分组 N（不取共同前缀）").toBe(copyText("tabDrop.group.defaultName", { n: 1 }));
   });
 
-  it("🔴 松手早于 250ms ⇒ 计时器必须**已经被清掉**（数在飞的定时器，不是只看后果）", () => {
+  it("🔴 松手早于 400ms ⇒ 计时器必须**已经被清掉**（数在飞的定时器，不是只看后果）", () => {
     // ⚠ 这一格最初写成「松手后再快进，`.drop-onto` 不许出现」—— 死值验刀 21 实测**杀不掉**：
     //   计时器回调里那道 `if (!cur) return` 已经把后果挡住了，于是「清没清」看不出来。
     //   ⇒ 改成直接数在飞的定时器：那才是「悬空引线」这条性质本身。
@@ -3948,6 +3821,41 @@ describe("步 17·D ⑤ 停留 250ms 才成组（假手势打真事件链）", (
     vi.advanceTimersByTime(DWELL_MS * 4);
     expect(rootOf("b").classList.contains("drop-onto"), "更不该事后翻成组").toBe(false);
     expect(home(tm).prefs.collections, "更不该无中生有地建组").toEqual([]);
+  });
+  it("🔴 停在一行的上 / 下 1/4 永远只插入：不攒停留、停多久都不建组", () => {
+    const base = vi.getTimerCount();
+    move(30); // b 的上 1/4
+    expect(vi.getTimerCount(), "上 1/4 不排停留计时器").toBe(base);
+    vi.advanceTimersByTime(DWELL_MS * 3);
+    expect(rootOf("b").classList.contains("drop-onto")).toBe(false);
+    expect(lineShown()).toBe(true);
+  });
+
+  it("拖的时候按 Esc ＝ 取消：什么都不变、线与影子都收掉", () => {
+    dispatcher.applyOverrides({});
+    dispatcher.start();
+    move(40);
+    vi.advanceTimersByTime(DWELL_MS);
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", code: "Escape", bubbles: true }));
+    expect(document.body.querySelector(".tab-drag-ghost"), "影子收掉").toBeNull();
+    expect(rootOf("b").classList.contains("drop-onto")).toBe(false);
+    document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    expect(home(tm).prefs.collections, "取消之后松手不建组").toEqual([]);
+    expect(home(tm).store.orderedIds).toEqual(["a", "b"]);
+  });
+
+  it("往上 / 下 / 左拖出栏 ＝ 取消：影子写「松开取消」，松手什么都不变", () => {
+    const bar = document.body.firstElementChild as HTMLElement;
+    bar.getBoundingClientRect = (): DOMRect => ({ left: 0, right: 260, top: 0, bottom: 600, width: 260, height: 600 }) as DOMRect;
+    document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true })); // 收掉 beforeEach 起的那一次（它量的是没钉过的栏）
+    rootOf("b").dispatchEvent(new MouseEvent("mousedown", { button: 0, buttons: 1, clientX: 10, clientY: 40, bubbles: true }));
+    document.dispatchEvent(new MouseEvent("mousemove", { buttons: 1, clientX: 10, clientY: 2, bubbles: true }));
+    expect(lineShown(), "栏内照常指示").toBe(true);
+    document.dispatchEvent(new MouseEvent("mousemove", { buttons: 1, clientX: 10, clientY: 900, bubbles: true }));
+    expect(document.body.querySelector(".tab-drag-ghost")!.textContent).toBe(copyText("tabDrop.ghost.cancel"));
+    expect(lineShown(), "出栏不画插入线").toBe(false);
+    document.dispatchEvent(new MouseEvent("mouseup", { clientX: 10, clientY: 900, bubbles: true }));
+    expect(home(tm).store.orderedIds, "松手什么都不变").toEqual(["a", "b"]);
   });
 });
 
@@ -4123,7 +4031,7 @@ describe("步 17·C 顺序落盘：读回来那一半", () => {
     expect(home(tm).store.orderedIds).toEqual(["c", "b", "a"]);
 
     // 用户把 a 拖到最前面。
-    home(tm).dragger.applyDrop("a", { kind: "before", sid: "c" });
+    home(tm).dragger.applyDrop("a", before("c"));
     expect(home(tm).store.orderedIds, "拖动本身没生效，这一格后面就没意义了").toEqual(["a", "c", "b"]);
     await flushDisk();
     expect(orderOnDisk(), "拖完要落盘（`§C.3`：applyReorder 之后提交）").toEqual(["a", "c", "b"]);
@@ -5209,14 +5117,14 @@ describe.each([
   it("③ 拖 host `onto` other 成组 ⇒ 组里只有这两颗", () => {
     arrive(["host", "sub", "other"]);
     home(tm).dragger.applyDrop("host", { kind: "onto", sid: "other" });
-    expect(colsOf().map((c) => membersOf(tm, c.id))).toEqual([["host", "other"]]);
-    expect(order()).toEqual(["sub", "host", "other"]);
+    expect(colsOf().map((c) => membersOf(tm, c.id)), "组在目标那一格：目标在前、被拖的在后").toEqual([["other", "host"]]);
+    expect(order()).toEqual(["sub", "other", "host"]);
   });
 
   it("④ host 与 sub 同组，把 host 拖出组 ⇒ sub 留在组里", () => {
     arrive(["host", "sub", "other"]);
     setGroups(tm, [{ id: "g1", name: "白天", tabs: ["host", "sub"] }]);
-    home(tm).dragger.applyDrop("host", { kind: "end" });
+    home(tm).dragger.applyDrop("host", END);
     expect(colsOf()).toEqual([{ id: "g1", name: "白天" }]);
     expect(membersOf(tm, "g1")).toEqual(["sub"]);
     expect(order()).toEqual(["sub", "other", "host"]);
@@ -5589,9 +5497,9 @@ describe("组员关系是 tab 自己的属性", () => {
     home(tm).dragger.applyDrop("a", { kind: "onto", sid: "b" }); // 拖放现建
     await check("拖放现建");
     const g = home(tm).store.tabs.get("a")!.group!;
-    home(tm).dragger.applyDrop("c", { kind: "before", sid: "a" }); // 拖放进组
+    home(tm).dragger.applyDrop("c", before("a", g)); // 拖放进组
     await check("拖放进组");
-    home(tm).dragger.applyDrop("c", { kind: "end" }); // 拖出
+    home(tm).dragger.applyDrop("c", END); // 拖出
     await check("拖出");
     void home(tm).prefs.joinGroup("d", g);
     void home(tm).prefs.renameGroup(g, "改");
@@ -5652,7 +5560,7 @@ describe("组员关系是 tab 自己的属性", () => {
     await tm.loadCollections();
     add("a", "b", "c");
     const ids = (): string[] => (disk.tabCollections as { id: string }[]).map((g) => g.id);
-    home(tm).dragger.applyDrop("a", { kind: "end" }); // 拖出，b 还在
+    home(tm).dragger.applyDrop("a", END); // 拖出，b 还在
     await flushDisk();
     expect(ids(), "还有 b ⇒ g 在").toEqual(["g", "h"]);
     void home(tm).prefs.leaveGroup("b"); // 右键移出最后一个
@@ -5828,14 +5736,14 @@ describe("tab 多选与批量菜单", () => {
     document.body.querySelectorAll("[role=menu]").forEach((n) => n.remove());
     tm = makeTM();
     for (const sid of ["a", "b", "c", "d", "e"]) tm.ensureTab(sid, `/w/${sid}`, "p", LOCAL_ORIGIN);
-    // c、d 在组里 ⇒ 条上看得到的顺序是 c d（组）· a b e（散），不是到达的顺序。
-    setGroups(tm, [{ id: "g", name: "组", tabs: ["c", "d"] }]);
+    // a、e 在组里 ⇒ 组员聚在第一个组员那一格：条上看得到的顺序是 a e（组）· b c d（散），不是到达的顺序。
+    setGroups(tm, [{ id: "g", name: "组", tabs: ["a", "e"] }]);
     tm.switchTo("a");
     home(tm).bar.refresh();
   });
 
   it("S1 · Ctrl 加减（第一次把当前 tab 带上、不切 tab）· Shift 按条上的顺序连选 · 单击 / 空白 / Esc 清掉", () => {
-    expect(home(tm).bar.visibleOrder(), "正控：组在前、散 tab 在后").toEqual(["c", "d", "a", "b", "e"]);
+    expect(home(tm).bar.visibleOrder(), "正控：组员聚在第一个组员那一格").toEqual(["a", "e", "b", "c", "d"]);
     click("b", { ctrlKey: true });
     expect(drawnSelected()).toEqual(["a", "b"]);
     expect(home(tm).store.activeId, "Ctrl 单击不切 tab").toBe("a");
@@ -5843,11 +5751,11 @@ describe("tab 多选与批量菜单", () => {
     expect(drawnSelected()).toEqual(["b"]);
     click("a");
     expect(drawnSelected(), "单击清掉多选").toEqual([]);
-    click("d", { shiftKey: true });
-    // 锚点 a（上一次单击）到 d：条上是 d · a 相邻 —— 按到达顺序会是 a b c d。
-    expect(drawnSelected()).toEqual(["a", "d"]);
+    click("c", { shiftKey: true });
+    // 锚点 a（上一次单击）到 c：条上是 a e b c —— 按到达顺序会是 a b c。
+    expect(drawnSelected()).toEqual(["a", "b", "c", "e"]);
     click("e", { shiftKey: true });
-    expect(drawnSelected(), "锚点不动，换一头").toEqual(["a", "b", "e"]);
+    expect(drawnSelected(), "锚点不动，换一头（条上 a · e 相邻）").toEqual(["a", "e"]);
     const bar = document.body.firstElementChild as HTMLElement;
     // 空白 ＝ 列表里没有 tab 的地方（列表撑满栏顶那几条之下的整格）。
     (bar.querySelector(".tab-list") as HTMLElement).dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -5940,5 +5848,447 @@ describe("起新会话的占位标签页接在标签页栏里", () => {
     expect(tm.shadowedBySlot("needs.next")).toBe(false);
     tm.switchTo("a");
     expect(tm.shadowedBySlot("session.find"), "切回真标签页 ⇒ 照常").toBe(false);
+  });
+});
+
+// ==========================================================================
+// 组头：收起 / 展开（落盘）· 组员数 · 收着时汇总 · 「⋯」菜单 · 跳到收着的组里自动展开 · 数字键跳过收着的
+// ==========================================================================
+describe("组头", () => {
+  let tm: TabManager;
+  let bar: HTMLElement;
+  const flushBar = (): void => (tm as unknown as { refreshTabBar: () => void }).refreshTabBar();
+  const head = (): HTMLElement => bar.querySelector<HTMLElement>(".tab-group-head")!;
+  const collapsed = (): boolean => bar.querySelector<HTMLElement>(".tab-group")!.classList.contains("is-collapsed");
+  beforeEach(() => {
+    vi.clearAllMocks();
+    closeMenu();
+    tm = makeTM();
+    bar = document.body.firstElementChild as HTMLElement;
+    home(tm).prefs.collectionsLoaded = true;
+    for (const sid of ["x", "a", "b", "c", "y"]) tm.ensureTab(sid, `/w/${sid}`, "p", LOCAL_ORIGIN);
+    setGroups(tm, [{ id: "g", name: "订单", tabs: ["a", "b", "c"] }]);
+    home(tm).store.tabs.get("a")!.activity = { doing: "needs_you", waitingFor: "permission prompt" };
+    home(tm).store.tabs.get("b")!.activity = { doing: "working", waitingFor: null };
+    home(tm).store.tabs.get("c")!.activity = { doing: "idle", waitingFor: null };
+    tm.switchTo("x");
+    flushBar();
+  });
+  afterEach(() => closeMenu());
+
+  it("组头：名字 · 组员数；点 ⌄ 收起（落盘）⇒ 组员藏起、汇总出「等你 1 · 在跑 1」；再点展开、汇总收掉", () => {
+    expect(head().querySelector(".tab-group-name")!.textContent).toBe("订单");
+    expect(head().querySelector(".tab-group-count")!.textContent).toBe("3");
+    expect(head().querySelector(".tab-group-sum")!.textContent, "展开时不汇总").toBe("");
+    head().querySelector<HTMLElement>(".tab-group-caret")!.click();
+    expect(collapsed()).toBe(true);
+    expect(home(tm).prefs.collections[0].collapsed, "收着记在组上（落盘那一格）").toBe(true);
+    expect(head().querySelector(".tab-group-sum")!.textContent).toBe(
+      copyText("tabBar.group.sumNeeds", { n: 1 }) + copyText("tabBar.group.sumRunning", { n: 1 }),
+    );
+    expect(head().querySelector(".tab-group-caret")!.getAttribute("aria-expanded")).toBe("false");
+    head().querySelector<HTMLElement>(".tab-group-caret")!.click();
+    expect(collapsed()).toBe(false);
+    expect(home(tm).prefs.collections[0].collapsed).toBeUndefined();
+    expect(head().querySelector(".tab-group-sum")!.textContent).toBe("");
+  });
+
+  it("点组头空白处 ＝ 收起 / 展开；点名字 ＝ 改名（不收起）", () => {
+    head().querySelector<HTMLElement>(".tab-group-sp")!.click();
+    expect(collapsed()).toBe(true);
+    head().querySelector<HTMLElement>(".tab-group-name")!.click();
+    expect(collapsed(), "点名字不切收展").toBe(true);
+    expect(head().querySelector("input"), "名字框打开").not.toBeNull();
+  });
+
+  it("数字键 · ] [ 跳过收着的组里的；关掉邻居不落进收着的组", () => {
+    head().querySelector<HTMLElement>(".tab-group-caret")!.click();
+    expect(home(tm).bar.navOrder()).toEqual(["x", "y"]);
+    tm.jumpToIndex(2);
+    expect(home(tm).store.activeId, "第 2 个是 y（a b c 收着）").toBe("y");
+    tm.cycleActive(-1);
+    expect(home(tm).store.activeId).toBe("x");
+  });
+
+  it("切到收着的组里的那一个（Ctrl+J · 命令面板 · 通知都走这里）⇒ 那个组展开；当前在收着的组里 ⇒ 组头左边一道 accent", () => {
+    head().querySelector<HTMLElement>(".tab-group-caret")!.click();
+    tm.switchTo("a");
+    expect(collapsed(), "跳进去 ⇒ 展开").toBe(false);
+    head().querySelector<HTMLElement>(".tab-group-caret")!.click();
+    expect(head().classList.contains("is-current"), "当前标签页在收着的组里").toBe(true);
+    tm.switchTo("x");
+    expect(head().classList.contains("is-current")).toBe(false);
+  });
+
+  it("「⋯」菜单：改名 · 收起 · 全部收起 · 全部展开 · 关闭组里已结束的（n，0 时灰）· 解散分组", () => {
+    head().querySelector<HTMLElement>(".tab-group-more")!.click();
+    const labels = [...document.body.querySelectorAll("[role=menu] [role^=menuitem]")].map((b) => b.textContent ?? "");
+    expect(labels.map((l) => l.split("\n")[0])).toEqual([
+      copyText("tabMenu.group.rename"),
+      copyText("tabMenu.group.collapse"),
+      copyText("tabMenu.group.collapseAll"),
+      copyText("tabMenu.group.expandAll"),
+      copyText("sessionState.closeEnded.inGroup", { n: 0 }),
+      copyText("tabMenu.group.dissolve"),
+    ]);
+    expect((groupMenuItem(copyText("sessionState.closeEnded.inGroup", { n: 0 })) as HTMLButtonElement).disabled, "一个已结束的都没有 ⇒ 灰").toBe(true);
+    groupMenuItem(copyText("tabMenu.group.collapseAll")).click();
+    expect(collapsed()).toBe(true);
+  });
+
+  it("关闭组里已结束的：一次关掉、一条「已关闭 N 个［撤销］」；撤销 ⇒ 原位放回", () => {
+    tm.archiveTab("a");
+    tm.archiveTab("c");
+    flushBar();
+    head().querySelector<HTMLElement>(".tab-group-more")!.click();
+    groupMenuItem(copyText("sessionState.closeEnded.inGroup", { n: 2 })).click();
+    expect(home(tm).store.orderedIds).toEqual(["x", "b", "y"]);
+    expect(vi.mocked(undoToast).mock.calls.map((c) => c[0])).toEqual([copyText("tabBar.close.doneMany", { n: 2 })]);
+    vi.mocked(undoToast).mock.calls[0][1]();
+    expect(home(tm).store.orderedIds).toEqual(["x", "a", "b", "c", "y"]);
+    expect(membersOf(tm, "g")).toEqual(["a", "b", "c"]);
+  });
+
+  it("组头右键 ＝ 同一份组的菜单", () => {
+    head().dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 5, clientY: 5 }));
+    expect(groupMenuItem(copyText("tabMenu.group.dissolve"))).toBeTruthy();
+  });
+
+  it("拖到收着的组头上 ⇒ 进组排最后，组保持收着", () => {
+    head().querySelector<HTMLElement>(".tab-group-caret")!.click();
+    home(tm).dragger.applyDrop("y", { kind: "insert", at: { sid: "c", side: "after" }, gid: "g", head: "g" });
+    expect(membersOf(tm, "g")).toEqual(["a", "b", "c", "y"]);
+    expect(collapsed()).toBe(true);
+    expect(head().querySelector(".tab-group-count")!.textContent).toBe("4");
+  });
+});
+
+// ==========================================================================
+// 拖整个组 · 多选一起拖 · 拖的时候栏自己滚（假手势打真事件链）
+// ==========================================================================
+describe("拖整组 · 多选拖 · 自动滚", () => {
+  let tm: TabManager;
+  let bar: HTMLElement;
+  const flushBar = (): void => (tm as unknown as { refreshTabBar: () => void }).refreshTabBar();
+  const rootOf = (sid: string): HTMLElement => home(tm).bar.tabButtons.get(sid)!.root;
+  const headEl = (): HTMLElement => bar.querySelector<HTMLElement>(".tab-group-head")!;
+  const rect = (el: HTMLElement, top: number, height: number): void => {
+    el.getBoundingClientRect = (): DOMRect => ({ top, height, bottom: top + height, left: 0, right: 260, width: 260 }) as DOMRect;
+  };
+  const move = (y: number): void => {
+    document.dispatchEvent(new MouseEvent("mousemove", { buttons: 1, clientX: 10, clientY: y, bubbles: true }));
+  };
+  const up = (y: number): void => {
+    document.dispatchEvent(new MouseEvent("mouseup", { clientX: 10, clientY: y, bubbles: true }));
+  };
+  const down = (el: HTMLElement, y: number): void => {
+    el.dispatchEvent(new MouseEvent("mousedown", { button: 0, buttons: 1, clientX: 10, clientY: y, bubbles: true }));
+  };
+  beforeEach(() => {
+    vi.clearAllMocks();
+    tm = makeTM();
+    bar = document.body.firstElementChild as HTMLElement;
+    home(tm).prefs.collectionsLoaded = true;
+    for (const sid of ["x", "a", "b", "y", "z"]) tm.ensureTab(sid, `/w/${sid}`, "p", LOCAL_ORIGIN);
+    setGroups(tm, [{ id: "g", name: "订单", tabs: ["a", "b"] }]);
+    flushBar();
+    // 栏：x 0–30 · 组头 34–60 · a 60–90 · b 90–120 · y 126–156 · z 156–186
+    rect(rootOf("x"), 0, 30);
+    rect(headEl(), 34, 26);
+    rect(rootOf("a"), 60, 30);
+    rect(rootOf("b"), 90, 30);
+    rect(rootOf("y"), 126, 30);
+    rect(rootOf("z"), 156, 30);
+  });
+  afterEach(() => up(0));
+
+  it("按住组头拖到最后 ⇒ 整个组挪过去、组员次序不变、组还是那个组；给「已移动分组」可撤；松手那次 click 不收展", () => {
+    down(headEl(), 40);
+    move(50);
+    expect(document.body.querySelector(".tab-drag-ghost")!.textContent).toBe(copyText("tabDrop.ghost.group", { name: "订单", n: 2 }));
+    expect(bar.querySelector(".tab-group")!.classList.contains("dragging"), "整个组变暗").toBe(true);
+    move(180); // z 的下半 ⇒ z 后面
+    up(180);
+    expect(home(tm).store.orderedIds).toEqual(["x", "y", "z", "a", "b"]);
+    expect(membersOf(tm, "g")).toEqual(["a", "b"]);
+    expect(vi.mocked(undoToast).mock.calls.map((c) => c[0])).toEqual([copyText("tabBar.group.moved", { name: "订单" })]);
+    headEl().click();
+    expect(bar.querySelector(".tab-group")!.classList.contains("is-collapsed"), "拖完那次 click 被吞掉").toBe(false);
+  });
+
+  it("拖组压在别的标签页中间停多久都不合并（不攒停留）", () => {
+    vi.useFakeTimers();
+    try {
+      down(headEl(), 40);
+      move(50);
+      move(141); // y 的正中
+      expect(document.body.querySelector(".tab-drag-ghost"), "前置：真在拖整组").not.toBeNull();
+      vi.advanceTimersByTime(DWELL_MS * 3);
+      expect(rootOf("y").classList.contains("drop-onto")).toBe(false);
+      up(141);
+      expect(membersOf(tm, "g")).toEqual(["a", "b"]);
+      expect(home(tm).store.tabs.get("y")!.group).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("多选后拖其中一个 ⇒ 选中的一起走，按原先后挨在一起、仍选着；影子写「+N」", () => {
+    tm.switchTo("y");
+    home(tm).bar["host"].pick("z", "toggle"); // 第一次 Ctrl 点把当前那个（y）带上
+    down(rootOf("z"), 170);
+    move(160);
+    move(5); // x 的上 1/4 ⇒ x 前面
+    expect(document.body.querySelector(".tab-drag-ghost")!.textContent).toContain(copyText("tabDrop.ghost.many", { title: "z", n: 1 }).slice(-2));
+    up(5);
+    expect(home(tm).store.orderedIds).toEqual(["y", "z", "x", "a", "b"]);
+    expect([...bar.querySelectorAll(".tab.selected")].length, "仍选着").toBeGreaterThanOrEqual(2);
+  });
+
+  it("多选一起压在组员中间停住 ⇒ 一起进组，「已移到「订单」 ×2」", () => {
+    vi.useFakeTimers();
+    try {
+      tm.switchTo("y");
+      home(tm).bar["host"].pick("z", "toggle");
+      down(rootOf("y"), 140);
+      move(130);
+      move(75); // a 的正中
+      vi.advanceTimersByTime(DWELL_MS);
+      up(75);
+      expect(membersOf(tm, "g")).toEqual(["a", "y", "z", "b"]);
+      expect(vi.mocked(undoToast).mock.calls.map((c) => c[0])).toEqual([copyText("tabBar.group.joinedMany", { name: "订单", n: 2 })]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("拖到栏底边 24px 内 ⇒ 栏每帧往下滚（离边越近越快），离开那一段就停", () => {
+    const list = bar.querySelector<HTMLElement>(".tab-list")!;
+    rect(list, 0, 200);
+    let top = 0;
+    Object.defineProperty(list, "scrollTop", { configurable: true, get: () => top, set: (v: number) => (top = v) });
+    const frames: FrameRequestCallback[] = [];
+    const raf = vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation((cb) => (frames.push(cb), frames.length));
+    try {
+      down(rootOf("x"), 10);
+      move(100); // 中间：不滚
+      expect(frames.length, "中间那一段不排帧").toBe(0);
+      move(198); // 离栏底 2px
+      expect(frames.length, "排上了一帧").toBe(1);
+      frames.shift()!(0);
+      expect(top, "贴边那一段一帧滚 11px").toBe(11);
+      expect(frames.length, "还在那一段 ⇒ 接着排下一帧").toBe(1);
+      move(100); // 回到中间
+      frames.shift()!(0);
+      expect(top, "离开那一段 ⇒ 不再滚").toBe(11);
+    } finally {
+      raf.mockRestore();
+    }
+  });
+});
+
+// ==========================================================================
+// 键盘（焦点在栏里）· 右键「分组 ▸」· 命令（分组第四批）
+// ==========================================================================
+describe("栏里的键盘 · 右键「分组 ▸」", () => {
+  let tm: TabManager;
+  let bar: HTMLElement;
+  const flushBar = (): void => (tm as unknown as { refreshTabBar: () => void }).refreshTabBar();
+  const rootOf = (sid: string): HTMLElement => home(tm).bar.tabButtons.get(sid)!.root;
+  const headEl = (): HTMLElement => bar.querySelector<HTMLElement>(".tab-group-head")!;
+  const press = (key: string, init: KeyboardEventInit = {}): void => {
+    (document.activeElement as HTMLElement).dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...init }));
+  };
+  const focused = (): string => {
+    const r = home(tm).bar.focusedRow();
+    return r === null ? "-" : r.kind === "tab" ? r.sid : `H:${r.gid}`;
+  };
+  const toasts = (): string[] => vi.mocked(undoToast).mock.calls.map((c) => String(c[0]));
+  const menuLabels = (): string[] =>
+    [...document.body.querySelectorAll<HTMLElement>("[role=menu] [role^=menuitem]")].map((b) => b.querySelector("[data-part=label]")?.textContent ?? b.textContent ?? "");
+  const closeMenus = (): void => document.body.querySelectorAll("[role=menu]").forEach((n) => n.remove());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    tm = makeTM();
+    bar = document.body.firstElementChild as HTMLElement;
+    home(tm).prefs.collectionsLoaded = true;
+    for (const sid of ["x", "a", "b", "y", "z"]) tm.ensureTab(sid, `/w/${sid}`, "p", LOCAL_ORIGIN);
+    setGroups(tm, [{ id: "g", name: "订单", tabs: ["a", "b"] }]);
+    flushBar();
+  });
+  afterEach(closeMenus);
+
+  it("↑↓ 走行：组头也是一行；收着的组只走组头", () => {
+    rootOf("x").focus();
+    const walk: string[] = [focused()];
+    for (let i = 0; i < 5; i++) {
+      press("ArrowDown");
+      walk.push(focused());
+    }
+    expect(walk).toEqual(["x", "H:g", "a", "b", "y", "z"]);
+    press("ArrowUp");
+    expect(focused()).toBe("y");
+    home(tm).prefs.collections[0].collapsed = true;
+    flushBar();
+    rootOf("x").focus();
+    press("ArrowDown");
+    press("ArrowDown");
+    expect(focused(), "收着的组员跳过").toBe("y");
+  });
+
+  it("Enter：标签页切过去；组头收起 / 展开。← 组员上跳到组头、组头上收起；→ 展开", () => {
+    rootOf("y").focus();
+    press("Enter");
+    expect(tm.activeSessionId()).toBe("y");
+    rootOf("b").focus();
+    press("ArrowLeft");
+    expect(focused()).toBe("H:g");
+    press("ArrowLeft");
+    expect(home(tm).prefs.collections[0].collapsed).toBe(true);
+    expect(focused(), "收起之后焦点还在组头").toBe("H:g");
+    press("ArrowRight");
+    expect(home(tm).prefs.collections[0].collapsed ?? false).toBe(false);
+    press("Enter");
+    expect(home(tm).prefs.collections[0].collapsed).toBe(true);
+  });
+
+  it("Space：选中 / 取消（同 Ctrl 点），不切过去", () => {
+    tm.switchTo("x");
+    rootOf("z").focus();
+    press(" ");
+    expect(tm.activeSessionId()).toBe("x");
+    expect(rootOf("z").classList.contains("selected")).toBe(true);
+  });
+
+  it("Alt+↓ / Alt+↑：挪一格，跨过组边界就进 / 出组；焦点跟着那一行；改了分组的给可撤 toast", () => {
+    rootOf("x").focus();
+    tm.moveFocused(1);
+    expect(membersOf(tm, "g"), "从组上面往下碰到组头 ⇒ 进组排第一").toEqual(["x", "a", "b"]);
+    expect(focused()).toBe("x");
+    expect(toasts()).toEqual([copyText("tabBar.group.joined", { name: "订单" })]);
+    tm.moveFocused(-1);
+    expect(home(tm).store.tabs.get("x")!.group, "组里第一个再往上 ⇒ 出组").toBeNull();
+    expect(home(tm).bar.visibleOrder()).toEqual(["x", "a", "b", "y", "z"]);
+    expect(toasts()[1]).toBe(copyText("tabBar.group.left", { name: "订单" }));
+    rootOf("z").focus();
+    tm.moveFocused(-1);
+    expect(home(tm).bar.visibleOrder(), "散的之间只排序").toEqual(["x", "a", "b", "z", "y"]);
+    expect(toasts(), "只排了顺序不出条").toHaveLength(2);
+  });
+
+  it("组头上 Alt+↓ ⇒ 整组挪一格；给「已移动分组」", () => {
+    headEl().focus();
+    tm.moveFocused(1);
+    expect(home(tm).bar.visibleOrder()).toEqual(["x", "y", "a", "b", "z"]);
+    expect(focused()).toBe("H:g");
+    expect(toasts()).toEqual([copyText("tabBar.group.moved", { name: "订单" })]);
+  });
+
+  it("Alt+← 出组（放到组后面）；Alt+→ 与上一行成组（进它的组 / 和散的建组 ＋ 名字框打开）", () => {
+    rootOf("a").focus();
+    tm.leaveFocused();
+    expect(home(tm).bar.visibleOrder()).toEqual(["x", "b", "a", "y", "z"]);
+    expect(home(tm).store.tabs.get("a")!.group).toBeNull();
+    rootOf("a").focus();
+    tm.joinPrevFocused();
+    expect(membersOf(tm, "g")).toEqual(["b", "a"]);
+    rootOf("z").focus();
+    tm.joinPrevFocused();
+    const gz = home(tm).store.tabs.get("z")!.group;
+    expect(gz, "和 y 建了组").not.toBeNull();
+    expect(home(tm).store.tabs.get("y")!.group).toBe(gz);
+    expect(document.activeElement?.tagName, "名字框打开").toBe("INPUT");
+  });
+
+  it("F2：组员或组头上 ⇒ 改这个组的名字；散的上 ⇒ 不做事", () => {
+    rootOf("b").focus();
+    tm.renameFocusedGroup();
+    expect(document.activeElement?.tagName).toBe("INPUT");
+    expect((document.activeElement as HTMLInputElement).value).toBe("订单");
+    press("Escape");
+    expect(focused(), "Esc 收框 ⇒ 焦点回组头").toBe("H:g");
+    rootOf("y").focus();
+    tm.renameFocusedGroup();
+    expect(document.activeElement).toBe(rootOf("y"));
+  });
+
+  it("Shift+F10 / 菜单键：开焦点那一行的菜单（组头 ⇒ 组的菜单）；焦点不在栏里 ⇒ 照旧当前标签页", () => {
+    tm.switchTo("x");
+    headEl().focus();
+    tm.openActiveMenu();
+    expect(menuLabels()).toContain(copyText("tabMenu.group.dissolve"));
+    closeMenus();
+    rootOf("y").getClientRects = () => [new DOMRect(0, 0, 10, 10)] as unknown as DOMRectList;
+    rootOf("y").focus();
+    tm.openActiveMenu();
+    expect(menuLabels()).toContain(copyText("tabMenu.collection.add"));
+    expect(menuLabels()).not.toContain(copyText("tabMenu.group.dissolve"));
+  });
+
+  it("F6：栏 ↔ 主区轮", () => {
+    tm.switchTo("y");
+    (document.activeElement as HTMLElement | null)?.blur();
+    tm.cycleFocus();
+    expect(focused(), "进栏落在当前标签页上").toBe("y");
+    tm.cycleFocus();
+    expect(home(tm).bar.focusedRow(), "回主区").toBeNull();
+  });
+
+  it("右键「分组 ▸」：新建分组 · 各组（所在的打勾）· 移出分组（不在组里灰）；顶层没有单独的「移出分组「x」」", () => {
+    rootOf("a").dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
+    const labels = menuLabels();
+    expect(labels).toContain(copyText("tabMenu.collection.add"));
+    expect(labels.filter((l) => l === copyText("tabMenu.collection.remove")), "只在子菜单里出一次").toHaveLength(1);
+    const items = [...document.body.querySelectorAll<HTMLElement>("[role=menu] [role^=menuitem]")];
+    const of = (l: string): HTMLElement => items.find((b) => (b.querySelector("[data-part=label]")?.textContent ?? b.textContent) === l)!;
+    expect(of("订单").getAttribute("aria-checked") ?? of("订单").getAttribute("role"), "所在的打勾").toMatch(/true|checkbox|radio/);
+    closeMenus();
+    rootOf("y").dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
+    const leave = [...document.body.querySelectorAll<HTMLElement>("[role=menu] [role^=menuitem]")].find(
+      (b) => (b.querySelector("[data-part=label]")?.textContent ?? "") === copyText("tabMenu.collection.remove"),
+    )!;
+    expect(leave.getAttribute("aria-disabled") === "true" || (leave as HTMLButtonElement).disabled, "散的 ⇒ 移出分组灰着").toBe(true);
+  });
+
+  it("右键「新建分组」：不弹框，建「分组 N」、名字框打开；可撤", () => {
+    rootOf("y").dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
+    groupMenuItem(copyText("tabMenu.collection.new")).click();
+    expect(document.body.querySelector('[aria-modal="true"]'), "不弹对话框").toBeNull();
+    const gid = home(tm).store.tabs.get("y")!.group!;
+    expect(home(tm).prefs.collections.find((c) => c.id === gid)?.name).toBe(copyText("tabDrop.group.defaultName", { n: 1 }));
+    expect(document.activeElement?.tagName, "名字框打开").toBe("INPUT");
+    expect(toasts()).toEqual([copyText("tabBar.group.founded", { name: copyText("tabDrop.group.defaultName", { n: 1 }) })]);
+  });
+
+  it("右键点别的组 ⇒ 挪过去（排最后），给「已移到」可撤", () => {
+    rootOf("y").dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
+    groupMenuItem("订单").click();
+    expect(membersOf(tm, "g")).toEqual(["a", "b", "y"]);
+    expect(toasts()).toEqual([copyText("tabBar.group.joined", { name: "订单" })]);
+  });
+
+  it("命令面板三条：列不列看组数与作用对象；新建 / 移出作用于当前（选了几个 ⇒ 选中的）；加入分组…开「分组 ▸」那一层", () => {
+    tm.switchTo("y");
+    expect(tm.groupCommandState(), "一个组、当前散着").toEqual({ groups: 1, grouped: 0 });
+    tm.foundGroupFromCommand();
+    const gy = home(tm).store.tabs.get("y")!.group!;
+    expect(gy).not.toBeNull();
+    expect(document.activeElement?.tagName, "名字框打开").toBe("INPUT");
+    (document.activeElement as HTMLElement).blur();
+    expect(toasts()).toEqual([copyText("tabBar.group.founded", { name: copyText("tabDrop.group.defaultName", { n: 1 }) })]);
+    expect(tm.groupCommandState()).toEqual({ groups: 2, grouped: 1 });
+    tm.leaveGroupFromCommand();
+    expect(home(tm).store.tabs.get("y")!.group).toBeNull();
+    // 选了几个 ⇒ 作用于选中的。
+    tm.switchTo("a");
+    for (const sid of ["a", "z"]) rootOf(sid).dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, ctrlKey: true }));
+    expect(tm.groupCommandState()).toEqual({ groups: 1, grouped: 1 });
+    tm.leaveGroupFromCommand();
+    expect(home(tm).store.tabs.get("a")!.group).toBeNull();
+    expect(home(tm).store.tabs.get("z")!.group).toBeNull();
+    rootOf("a").getClientRects = () => [new DOMRect(0, 0, 10, 10)] as unknown as DOMRectList;
+    tm.openGroupMenuFromCommand();
+    expect(menuLabels()).toContain(copyText("tabBatch.menu.found", { n: 2 }));
+    expect(menuLabels()).toContain(copyText("tabBatch.menu.joinOne", { name: "订单", n: 2 }));
   });
 });

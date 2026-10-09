@@ -12,6 +12,7 @@
 import { sessionBadge, shouldShowAccountBadge, detectAccountMismatch } from "./accounts";
 import { accountAvatarEl } from "./account-color";
 import type { TabCollection } from "./tab-collections";
+import { barRows, type BarRow, type RowRect } from "./tab-drop";
 import { activityFace } from "./session-status";
 import { terminalFrontAvailable } from "./terminal-front";
 import { isRemoteOrigin } from "./ipc/origin";
@@ -25,13 +26,13 @@ import qs from "./tab-quota.module.css";
 import { appStore } from "./app-store";
 import { tabBlockedOf } from "./acct-view";
 import { copyText } from "./copy-table";
-import { undoToast } from "./kit/toast";
 import { icon } from "./kit/icon";
 import { statusDot } from "./kit/status-dot";
 import { countBadge, tag, kbd } from "./kit/badge";
 import { attachTooltip, delegateTooltip, TOOLTIP_DELAY_MS } from "./kit/tooltip";
-import { closeMenu, menuAnchoredOn, openMenu, type MenuItem } from "./kit/menu";
-import { abbrOf, dotOf, fullTitle, machineOf, needsOf, needsOrder, nextNeeds, peekLine, stateLine, titleParts, sinceText } from "./session-face";
+import { closeMenu, menuAnchoredOn, openMenu, type MenuAnchor, type MenuItem } from "./kit/menu";
+import { foldCaret } from "./kit/fold";
+import { abbrOf, dotOf, fullTitle, groupSummary, machineOf, needsOf, needsOrder, nextNeeds, peekLine, stateLine, titleParts, sinceText } from "./session-face";
 import { dotLabel, needsWord } from "./session-words";
 
 /** TabButton 的 DOM 引用：refreshTabBar 局部更新依赖这些 ref 避免重新创建 button */
@@ -79,6 +80,8 @@ export interface TabButtonRefs {
 export interface TabBarViewHost {
   /** 整刷 tab 栏的入口（`TabManager.refreshTabBar`：先过拖拽守卫再调本类 `refresh`）。 */
   refreshTabBar(): void;
+  /** 组的菜单「关闭组里已结束的」：一次关掉、给一条可撤的 toast。 */
+  closeEndedIn(gid: string): void;
   /** 📂：打开工作目录。 */
   openTabCwd(sid: string): Promise<void>;
   /** ↗：本机 tab 切到终端窗口。 */
@@ -100,14 +103,41 @@ export interface TabBarViewHost {
   beginDrag(e: MouseEvent, sid: string, root: HTMLElement): void;
   /** 拖完那一下的 click 不切 tab（一次性消费）。 */
   takeSuppressedClick(sid: string): boolean;
+  /** 按住组头：候选拖整个组。 */
+  beginGroupDrag(e: MouseEvent, gid: string, head: HTMLElement): void;
+  /** 拖整组完那一下的 click 不收展、不改名（一次性消费）。 */
+  takeSuppressedHeadClick(gid: string): boolean;
   /** 右键：开这个 tab 的菜单。 */
   openMenu(e: MouseEvent, sid: string): void;
+  /** 栏里键盘 Space：选中 / 取消（同 Ctrl 点）。 */
+  toggleSelect(sid: string): void;
   /** 栏顶「刷新」：有打开 tab 的每台对齐 ＋ 补读一次；做完才 resolve。 */
   rereadAll(): Promise<void>;
   /** 行尾「更多」：开这个 tab 的菜单（锚在那颗按钮上）。 */
   openMenuAt(anchor: HTMLElement, sid: string): void;
   /** 离线条的［重新连接］：那台断着在退避里等 ⇒ 立刻重拨。 */
   reconnect(origin: string): void;
+}
+
+/** 一个组在栏里的那几块（组头各格 ＋ 组员列表）；`drawn` ＝ 组头上次画的样子（没变就不写）。 */
+interface GroupEls {
+  wrap: HTMLElement;
+  head: HTMLElement;
+  list: HTMLElement;
+  caret: HTMLElement;
+  name: HTMLElement;
+  count: HTMLElement;
+  sum: HTMLElement;
+  mini: HTMLElement;
+  drawn: string;
+}
+
+/** 栏里的一行（键盘焦点落在哪）：标签页 · 组头。 */
+export type FocusRow = { kind: "tab"; sid: string } | { kind: "head"; gid: string };
+
+/** 这个事件落在会打字的框里（组头改名的输入框）⇒ 列表键不管。 */
+function isTyping(t: EventTarget | null): boolean {
+  return t instanceof HTMLElement && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable);
 }
 
 /** 「需要你」悬停菜单的宽：标题放得下约 28 个汉字（≈ 420px），至少 360、至多 480 与视口减 32 的小者；可以盖过标签页栏伸进消息流。 */
@@ -122,7 +152,9 @@ export class TabBarView {
   /** sessionId → button DOM refs，避免 refreshTabBar 每次重建整个 bar */
   readonly tabButtons = new Map<string, TabButtonRefs>();
   /** 每个集合在主栏里的容器（组头 + 成员列表）。 */
-  private readonly groupEls = new Map<string, { wrap: HTMLElement; head: HTMLElement; list: HTMLElement }>();
+  private readonly groupEls = new Map<string, GroupEls>();
+  /** 组头 → 组 id（按下组头起拖时从事件找回是哪个组）。 */
+  private readonly headGid = new WeakMap<Element, string>();
   // 没有归档抽屉：已结束的 tab（`isResumeOnly(tab.state)`）留在原位变淡（`.tab.ended`）。
 
   /**
@@ -162,6 +194,11 @@ export class TabBarView {
     barEl.addEventListener("click", (e) => this.onBarClick(e));
     barEl.addEventListener("mousedown", (e) => this.onBarMouseDown(e));
     barEl.addEventListener("contextmenu", (e) => this.onBarContextMenu(e));
+    barEl.addEventListener("keydown", (e) => this.onBarKeyDown(e));
+    // 按钮上的 Space 在松开时点它（会切过去）：栏里 Space 是「选中」，松开那一下也吞掉。
+    barEl.addEventListener("keyup", (e) => {
+      if (e.key === " " && this.rowOf(e.target) !== null && !isTyping(e.target)) e.preventDefault();
+    });
     this.headEl = document.createElement("div");
     this.headEl.className = "tab-bar-head";
     this.headActs = document.createElement("span");
@@ -343,14 +380,159 @@ export class TabBarView {
     this.host.switchTo(sid);
   }
 
-  /** 条上看得到的顺序（组在前、组内按条上位置、散 tab 在后；整刷就按它摆）。 */
+  /** 条上的顺序（组与散的混排、组员聚在第一个组员那一格；整刷就按它摆）。含收着的组里的。 */
   visibleOrder(): string[] {
     return this.store.visibleOrder(this.prefs.collections.map((c) => c.id));
   }
 
+  /** 数字键 · `]` `[` 走的顺序：同上，但跳过收着的组里的（看不见的不走）。 */
+  navOrder(): string[] {
+    const folded = new Set(this.prefs.collections.filter((c) => c.collapsed).map((c) => c.id));
+    return this.store.visibleOrder(this.prefs.collections.map((c) => c.id), folded);
+  }
+
+  /** 栏里从上到下的行（组头 · 标签页；收着的组里的标 hidden）。键盘挪位按它算（`tab-drop.ts::keyMoveTarget`）。 */
+  rows(): BarRow[] {
+    return barRows(
+      this.store.orderedIds,
+      (sid) => this.store.tabs.get(sid)?.group ?? null,
+      this.prefs.collections.map((c) => c.id),
+      new Set(this.prefs.collections.filter((c) => c.collapsed).map((c) => c.id)),
+    );
+  }
+
+  /** 事件落在栏里哪一行上（标签页 · 组头）；别处 ⇒ `null`。 */
+  private rowOf(target: EventTarget | null): FocusRow | null {
+    const t = target as Element | null;
+    if (!t || typeof t.closest !== "function" || !this.listEl.contains(t)) return null;
+    const tab = t.closest(".tab");
+    const sid = tab ? this.sidOf.get(tab) : undefined;
+    if (sid !== undefined) return { kind: "tab", sid };
+    const head = t.closest(".tab-group-head");
+    const gid = head ? this.headGid.get(head) : undefined;
+    return gid !== undefined ? { kind: "head", gid } : null;
+  }
+
+  /** 焦点此刻在栏里哪一行上；不在栏里 ⇒ `null`。 */
+  focusedRow(): FocusRow | null {
+    return this.rowOf(document.activeElement);
+  }
+
+  /** 把焦点放到这一行上（标签页那颗按钮 · 组头）；那一行不在栏里 / 看不见 ⇒ `false`。 */
+  focusRow(row: FocusRow): boolean {
+    const el = row.kind === "tab" ? this.tabButtons.get(row.sid)?.root : this.groupEls.get(row.gid)?.head;
+    if (!el || !this.listEl.contains(el) || (row.kind === "tab" && this.isHiddenTab(row.sid))) return false;
+    el.focus();
+    return document.activeElement === el;
+  }
+
+  /** 焦点进栏（F6）：落在当前标签页那一行；它在收着的组里 ⇒ 组头；都没有 ⇒ 第一行。 */
+  focusBar(): boolean {
+    const rows = this.rows();
+    const sid = this.store.activeId;
+    const cur = rows.find((r) => r.kind === "tab" && r.sid === sid);
+    if (cur?.kind === "tab") {
+      if (!cur.hidden && this.focusRow({ kind: "tab", sid: cur.sid })) return true;
+      if (cur.gid !== null && this.focusRow({ kind: "head", gid: cur.gid })) return true;
+    }
+    const first = rows.find((r) => !(r.kind === "tab" && r.hidden));
+    return first !== undefined && this.focusRow(first.kind === "tab" ? { kind: "tab", sid: first.sid } : { kind: "head", gid: first.gid });
+  }
+
+  private isHiddenTab(sid: string): boolean {
+    const gid = this.store.tabs.get(sid)?.group ?? null;
+    return gid !== null && this.prefs.collections.some((c) => c.id === gid && c.collapsed === true);
+  }
+
+  /**
+   * 栏里的列表键（焦点在某一行上；改名的输入框里不管）：↑↓ 走行（组头也是一行；收着的组只走组头）·
+   * Enter 切过去 / 收展 · ← → 收展（组员上 ← 跳到组头）· Space 选中。挪位 · 改名 · 菜单键走快捷键表（`tabBar.*` · `tab.context-menu`）。
+   */
+  private onBarKeyDown(e: KeyboardEvent): void {
+    if (e.ctrlKey || e.altKey || e.metaKey || isTyping(e.target) || e.isComposing) return;
+    const row = this.rowOf(e.target);
+    if (row === null) return;
+    const vis = this.rows().filter((r) => !(r.kind === "tab" && r.hidden));
+    const at = vis.findIndex((r) => (r.kind === "tab" ? row.kind === "tab" && r.sid === row.sid : row.kind === "head" && r.gid === row.gid));
+    const to = (r: BarRow | undefined): void => {
+      if (r) this.focusRow(r.kind === "tab" ? { kind: "tab", sid: r.sid } : { kind: "head", gid: r.gid });
+    };
+    const head = row.kind === "head" ? this.prefs.collections.find((c) => c.id === row.gid) : undefined;
+    switch (e.key) {
+      case "ArrowUp":
+      case "ArrowDown":
+        if (e.shiftKey) return;
+        to(vis[at + (e.key === "ArrowUp" ? -1 : 1)]);
+        break;
+      case "Enter":
+        // 组头里的那几颗按钮（⌄ · 名字 · ⋯）上的 Enter 归按钮自己（收展 · 改名 · 开菜单）。
+        if (row.kind === "head" && e.target !== this.groupEls.get(row.gid)?.head) return;
+        if (row.kind === "tab") {
+          this.host.pick(row.sid, "plain");
+          this.host.switchTo(row.sid);
+        } else this.toggleGroup(row.gid);
+        break;
+      case "ArrowLeft":
+        if (row.kind === "head") {
+          if (head && head.collapsed !== true) this.toggleGroup(row.gid);
+        } else {
+          const gid = this.store.tabs.get(row.sid)?.group ?? null;
+          if (gid !== null) this.focusRow({ kind: "head", gid });
+          else return;
+        }
+        break;
+      case "ArrowRight":
+        if (row.kind !== "head") return;
+        if (head?.collapsed === true) this.toggleGroup(row.gid);
+        break;
+      case " ":
+        if (row.kind !== "tab") return;
+        this.host.toggleSelect(row.sid);
+        break;
+      default:
+        return;
+    }
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  /** 量一遍栏里每一行（组头 · 标签页）在纵轴上占的那一段：拖拽判落点用（判定在 `tab-drop.ts::pickDropTarget`）。 */
+  measureRows(): RowRect[] {
+    const out: RowRect[] = [];
+    for (const [gid, g] of this.groupEls) {
+      const r = g.head.getBoundingClientRect();
+      out.push({ kind: "head", id: gid, gid, top: r.top, height: r.height, collapsed: g.wrap.classList.contains("is-collapsed") });
+    }
+    for (const [sid, refs] of this.tabButtons) {
+      if (!this.listEl.contains(refs.root)) continue;
+      const r = refs.root.getBoundingClientRect();
+      const gid = this.store.tabs.get(sid)?.group ?? null;
+      out.push({ kind: "tab", id: sid, gid: gid !== null && this.groupEls.has(gid) ? gid : null, top: r.top, height: r.height });
+    }
+    return out;
+  }
+
+  /** 组 `gid` 的整块 · 组头 · 组员列表（拖拽画目标框 · 点亮引导线 · 拖整组时变暗用）；没有 ⇒ `undefined`。 */
+  groupParts(gid: string): { wrap: HTMLElement; head: HTMLElement; list: HTMLElement } | undefined {
+    return this.groupEls.get(gid);
+  }
+
+  /** 刚建的组：组头名字框立刻打开、全选（打字即改；Esc 留默认名）。 */
+  renameGroupNow(gid: string): void {
+    const g = this.groupEls.get(gid);
+    if (g) this.beginGroupRename(gid, g.head.querySelector<HTMLElement>(".tab-group-name")!);
+  }
+
   private onBarMouseDown(e: MouseEvent): void {
     const hit = this.hitOf(e);
-    if (!hit) return;
+    if (!hit) {
+      // 按住组头（「⋯」除外）⇒ 候选拖整个组。
+      const t = e.target as Element | null;
+      const head = t && typeof t.closest === "function" ? t.closest<HTMLElement>(".tab-group-head") : null;
+      const gid = head ? this.headGid.get(head) : undefined;
+      if (e.button === 0 && head && gid !== undefined && !t!.closest(".tab-group-more")) this.host.beginGroupDrag(e, gid, head);
+      return;
+    }
     // 子动作按钮自己处理点击：吞掉 mousedown 避免在它们身上起 Tab 拖拽（也不触发下面的中键关）。
     if (hit.sub) {
       e.stopPropagation();
@@ -404,26 +586,32 @@ export class TabBarView {
       }
     }
 
-    // 2 + 3 + 4. 创建 / 更新 / 排序
-    // 抽屉没了 ⇒ 只剩主栏 ＋ 按集合分的若干组
-    // ⇒ 推广成「**每容器一个游标**」。
-    // 组容器按集合顺序先摆好（空集合也留着 —— 用户刚建的集合不该看不见）。
-    // 「空」今天只剩一种来路：重启后组员还没到（意图在 `TabBarPrefs.savedGroupOf`）。
-    //   在栏里的最后一个离开（× · 拖出 · 移出 · 挪组）⇒ 组已从组表里摘掉，画不出来。
+    // 2 + 3 + 4. 创建 / 更新 / 排序：照 `barRows` 一趟摆 —— 组（组头 ＋ 组员）与散的混排在同一个顺序里，
+    // 组在它第一个组员那一格（`tab-drop.ts`）。每容器一个游标：列表一个、当前这个组一个。
+    // 组表里没了的组 ⇒ 摘掉它的容器（在栏里的最后一个离开 · 解散）。
     for (const [id, g] of this.groupEls) {
       if (!this.prefs.collections.some((x) => x.id === id)) {
         g.wrap.remove();
         this.groupEls.delete(id);
       }
     }
-    for (const col of this.prefs.collections) this.groupElFor(col);
-    const cursors = new Map<HTMLElement, ChildNode | null>();
-    // 未归组的排在所有组之后：`barEl` 的游标从最后一个组容器起（没有组则从栏顶那颗「重新读取」之后起）。
-    // 组容器只在建的那一刻 appendChild 到末尾、之后不挪，删时同时出 `groupEls` ⇒ `groupEls` 的插入序就是 DOM 序，最后一个就是它。
-    let lastGroup: HTMLElement | null = null;
-    for (const g of this.groupEls.values()) lastGroup = g.wrap;
-    cursors.set(this.listEl, lastGroup);
-    for (const sid of this.store.orderedIds) {
+    const place = (host: HTMLElement, el: HTMLElement, prev: ChildNode | null): void => {
+      const next = prev ? prev.nextSibling : host.firstChild;
+      if (el !== next || el.parentElement !== host) host.insertBefore(el, next);
+    };
+    let cursor: ChildNode | null = null;
+    let inGroup: ChildNode | null = null;
+    const cols = new Map(this.prefs.collections.map((c) => [c.id, c]));
+    for (const row of this.rows()) {
+      if (row.kind === "head") {
+        this.groupElFor(cols.get(row.gid)!);
+        const wrap = this.groupEls.get(row.gid)!.wrap;
+        place(this.listEl, wrap, cursor);
+        cursor = wrap;
+        inGroup = null;
+        continue;
+      }
+      const sid = row.sid;
       const tab = this.store.tabs.get(sid);
       if (!tab) continue;
       let refs = this.tabButtons.get(sid);
@@ -438,17 +626,13 @@ export class TabBarView {
         }
       }
       this.updateTabButton(refs, sid, tab);
-      // 两路：组 / 主栏（灰 tab 也能在组里）。在哪个组读 tab 自己的 `group`（组表只有 `{id, name}`）。
-      const col =
-        tab.group === null ? undefined : this.prefs.collections.find((c) => c.id === tab.group);
-      const host = col ? this.groupElFor(col) : this.listEl;
-      // 排序：希望此 button 出现在**同容器内**前一个之后。
-      const prev = cursors.get(host) ?? null;
-      const targetNext: ChildNode | null = prev ? prev.nextSibling : host.firstChild;
-      if (refs.root !== targetNext || refs.root.parentElement !== host) {
-        host.insertBefore(refs.root, targetNext);
+      if (row.gid === null) {
+        place(this.listEl, refs.root, cursor);
+        cursor = refs.root;
+      } else {
+        place(this.groupEls.get(row.gid)!.list, refs.root, inGroup);
+        inGroup = refs.root;
       }
-      cursors.set(host, refs.root);
     }
     if (this.listEl.lastChild !== this.slotTail) this.listEl.appendChild(this.slotTail);
     this.updateNeedsStrip();
@@ -562,50 +746,166 @@ export class TabBarView {
   }
 
   /**
-   * 拿到某集合在主栏里的容器（没有就建）。
-   *
-   * 组头点一下改名、右侧 `×` 解散。**解散只去掉分组，一个 tab 都不动** ——
-   * 集合是个视图，不是容器。
+   * 拿到某个组在栏里的容器（没有就建）。组头：⌄（收起 / 展开）· 名字（点一下改名）· 组员数 · 收着时汇总（等你 · 在跑）·
+   * 悬停 / 焦点时右侧「⋯」（组的菜单；组头右键同一份）。点 ⌄ 或组头空白 ＝ 收起 / 展开。
+   * **解散只去掉分组，一个 tab 都不动**（在「⋯」菜单里，撤得回）。
    */
   private groupElFor(col: TabCollection): HTMLElement {
     let g = this.groupEls.get(col.id);
     if (!g) {
+      const gid = col.id;
       const wrap = document.createElement("div");
       wrap.className = "tab-group";
       const head = document.createElement("div");
       head.className = "tab-group-head";
+      // 键盘走行时组头也是一行（↑↓ 能停在它上面）；不进 Tab 顺序。
+      head.tabIndex = -1;
+      this.headGid.set(head, gid);
+      // 拖整组刚松手的那次 click：不收展、不改名（捕获阶段先吞掉）。
+      head.addEventListener(
+        "click",
+        (e) => {
+          if (this.host.takeSuppressedHeadClick(gid)) e.stopPropagation();
+        },
+        true,
+      );
+      const caret = document.createElement("button");
+      caret.type = "button";
+      caret.className = "tab-group-caret";
+      caret.appendChild(foldCaret());
       const name = document.createElement("button");
       name.type = "button";
       name.className = "tab-group-name";
-      name.addEventListener("click", () => this.beginGroupRename(col.id, name));
-      const del = document.createElement("button");
-      del.type = "button";
-      del.className = "tab-group-del";
-      del.textContent = copyText("tabBarView.group.dissolve");
-      del.title = copyText("tabBarView.group.dissolveHint");
-      del.addEventListener("click", () => {
-        // 撤得回 ⇒ 不确认：直接解散 ＋ 8 秒撤销。
-        const members = [...this.store.tabs.values()].filter((t) => t.group === col.id).map((t) => t.sessionId);
-        const before = { ...col };
-        void this.prefs.dissolveGroup(col.id);
-        this.host.refreshTabBar();
-        undoToast(copyText("tabBar.group.dissolved", { name: col.name }), () => {
-          void this.prefs.restoreGroup(before, members);
-          this.host.refreshTabBar();
-        }, () => {});
+      name.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.beginGroupRename(gid, name);
       });
-      head.append(name, del);
+      const count = document.createElement("span");
+      count.className = "tab-group-count";
+      const sum = document.createElement("span");
+      sum.className = "tab-group-sum";
+      const mini = document.createElement("span");
+      mini.className = "tab-group-mini";
+      const sp = document.createElement("span");
+      sp.className = "tab-group-sp";
+      const more = document.createElement("button");
+      more.type = "button";
+      more.className = "tab-group-more";
+      more.setAttribute("aria-label", copyText("tabBar.group.more"));
+      more.appendChild(icon("more", "compact"));
+      more.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.openGroupMenu(gid, { el: more, align: "end" });
+      });
+      head.append(caret, name, count, sum, mini, sp, more);
+      // 点 ⌄ 或组头空白（名字与「⋯」自己吞了 click）⇒ 收起 / 展开。
+      head.addEventListener("click", () => this.toggleGroup(gid));
+      head.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.openGroupMenu(gid, { x: e.clientX, y: e.clientY });
+      });
       const list = document.createElement("div");
       list.className = "tab-group-list";
       wrap.append(head, list);
       this.listEl.appendChild(wrap);
-      g = { wrap, head, list };
-      this.groupEls.set(col.id, g);
+      g = { wrap, head, list, caret, name, count, sum, mini, drawn: "" };
+      this.groupEls.set(gid, g);
     }
-    // 名字没变就不写 —— 这里每次整刷都走一遍，无条件写就是每个组每次一条 DOM 写。
-    const nameEl = g.head.firstElementChild as HTMLElement;
-    if (nameEl.textContent !== col.name) nameEl.textContent = col.name;
+    this.paintGroupHead(g, col);
     return g.list;
+  }
+
+  /** 组头那几格照此刻的组员现画：名字 · 组员数 · 收着 · 汇总 · 当前标签页在收着的组里。没变就不写。 */
+  private paintGroupHead(g: GroupEls, col: TabCollection): void {
+    const members = [...this.store.tabs.values()].filter((t) => t.group === col.id);
+    const collapsed = col.collapsed === true;
+    const sum = collapsed ? groupSummary(members) : { needs: 0, running: 0 };
+    const current = collapsed && members.some((t) => t.sessionId === this.store.activeId);
+    const drawn = `${col.name}\u0000${members.length}\u0000${collapsed ? 1 : 0}\u0000${sum.needs}\u0000${sum.running}\u0000${current ? 1 : 0}`;
+    if (g.drawn === drawn) return;
+    g.drawn = drawn;
+    if (g.name.textContent !== col.name) g.name.textContent = col.name;
+    g.name.title = col.name;
+    g.count.textContent = String(members.length);
+    g.caret.setAttribute("aria-expanded", String(!collapsed));
+    g.caret.setAttribute("aria-label", collapsed ? copyText("tabMenu.group.expand") : copyText("tabMenu.group.collapse"));
+    g.wrap.classList.toggle("is-collapsed", collapsed);
+    g.head.classList.toggle("is-current", current);
+    const chips: HTMLElement[] = [];
+    const chip = (dot: "needs-you" | "running", text: string): HTMLElement => {
+      const c = document.createElement("span");
+      c.className = "tab-group-chip";
+      c.dataset.dot = dot;
+      c.append(statusDot(dot, dotLabel(dot), "compact"), document.createTextNode(text));
+      return c;
+    };
+    if (sum.needs > 0) chips.push(chip("needs-you", copyText("tabBar.group.sumNeeds", { n: sum.needs })));
+    if (sum.running > 0) chips.push(chip("running", copyText("tabBar.group.sumRunning", { n: sum.running })));
+    g.sum.replaceChildren(...chips);
+    // 窄栏只放得下一个点：有等你的画琥珀，否则有在跑的画绿。
+    const urgent = sum.needs > 0 ? "needs-you" : sum.running > 0 ? "running" : null;
+    g.mini.replaceChildren(...(urgent ? [statusDot(urgent, dotLabel(urgent), "compact")] : []));
+  }
+
+  /** 收起 / 展开一个组（落盘）。 */
+  private toggleGroup(gid: string): void {
+    const col = this.prefs.collections.find((c) => c.id === gid);
+    if (!col) return;
+    // 收起时焦点若在组员上 ⇒ 落到组头（组员藏起来了）。
+    const was = this.focusedRow();
+    void this.prefs.setCollapsed([gid], col.collapsed !== true);
+    this.host.refreshTabBar();
+    if (was !== null && (was.kind === "head" ? was.gid === gid : this.store.tabs.get(was.sid)?.group === gid)) {
+      if (was.kind === "head" || !this.focusRow(was)) this.focusRow({ kind: "head", gid });
+    }
+  }
+
+  /** 组的菜单开在组头上（键盘：焦点在组头上按 Shift+F10 / 菜单键）。 */
+  openGroupMenuAt(gid: string): void {
+    const head = this.groupEls.get(gid)?.head;
+    if (head) this.openGroupMenu(gid, { el: head, align: "end" });
+  }
+
+  /** 组的菜单（「⋯」/ 组头右键）：改名 · 收起或展开 · 全部收起 · 全部展开 · 关闭组里已结束的（n）· 解散分组。 */
+  private openGroupMenu(gid: string, anchor: MenuAnchor): void {
+    const col = this.prefs.collections.find((c) => c.id === gid);
+    if (!col) return;
+    const all = this.prefs.collections.map((c) => c.id);
+    const ended = [...this.store.tabs.values()].filter((t) => t.group === gid && closesWithoutMenu(t.state)).length;
+    const nameEl = this.groupEls.get(gid)?.name;
+    const items: MenuItem[] = [
+      { label: copyText("tabMenu.group.rename"), onClick: () => nameEl && this.beginGroupRename(gid, nameEl) },
+      { label: col.collapsed ? copyText("tabMenu.group.expand") : copyText("tabMenu.group.collapse"), onClick: () => this.toggleGroup(gid) },
+      {
+        label: copyText("tabMenu.group.collapseAll"),
+        onClick: () => {
+          void this.prefs.setCollapsed(all, true);
+          this.host.refreshTabBar();
+        },
+      },
+      {
+        label: copyText("tabMenu.group.expandAll"),
+        onClick: () => {
+          void this.prefs.setCollapsed(all, false);
+          this.host.refreshTabBar();
+        },
+      },
+      { divider: true, label: "" },
+      { label: copyText("sessionState.closeEnded.inGroup", { n: ended }), enabled: ended > 0, onClick: () => this.host.closeEndedIn(gid) },
+      { divider: true, label: "" },
+      {
+        label: copyText("tabMenu.group.dissolve"),
+        onClick: () => {
+          // 撤得回 ⇒ 不确认：直接解散 ＋ 8 秒撤销（组员留在原位）。
+          const before = this.prefs.snapshot();
+          void this.prefs.dissolveGroup(gid);
+          this.host.refreshTabBar();
+          this.prefs.offerUndo(copyText("tabBar.group.dissolved", { name: col.name }), before);
+        },
+      },
+    ];
+    openMenu(anchor, items, { label: col.name });
   }
 
   /**
@@ -626,17 +926,20 @@ export class TabBarView {
     let done = false;
     const overlay: OverlayHandle = {
       handleEsc: () => {
-        finish(false);
+        finish(false, true);
         return true;
       },
     };
-    const finish = (commit: boolean): void => {
+    const finish = (commit: boolean, viaKey = false): void => {
       if (done) return;
       done = true;
       dispatcher.popOverlay(overlay);
       const next = input.value.trim();
+      // 按 Enter / Esc 收的框：焦点回到组头（键盘接着走）；失焦收的不抢焦点。
+      const refocus = viaKey && document.activeElement === input;
       input.remove();
       name.hidden = false;
+      if (refocus) this.groupEls.get(id)?.head.focus();
       if (!commit || !next) return;
       const now = this.prefs.collections.find((x) => x.id === id);
       if (!now || now.name === next) return;
@@ -646,10 +949,10 @@ export class TabBarView {
     input.addEventListener("keydown", (ev) => {
       if (ev.key === "Enter" && !ev.isComposing) {
         ev.preventDefault();
-        finish(true);
+        finish(true, true);
       } else if (ev.key === "Escape") {
         ev.preventDefault();
-        finish(false);
+        finish(false, true);
       }
     });
     input.addEventListener("blur", () => finish(true));

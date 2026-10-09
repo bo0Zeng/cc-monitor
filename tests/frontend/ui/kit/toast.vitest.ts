@@ -137,6 +137,20 @@ describe("撤销提示条", () => {
     expect(log).toEqual(["undo", "commit2"]);
   });
 
+  it("不出条的那一步（只排了顺序）：Ctrl+Z 谁新撤谁；8 秒后不再能撤；不出 toast", () => {
+    const log: string[] = [];
+    kit.undoToast("已移到「订单」", () => log.push("toast"), () => {});
+    kit.silentUndo(() => log.push("quiet"));
+    expect(toasts(), "不出条").toHaveLength(1);
+    expect(kit.undoLatest()).toBe(true);
+    expect(log, "不出条的那一步更新 ⇒ 先撤它").toEqual(["quiet"]);
+    expect(kit.undoLatest()).toBe(true);
+    expect(log).toEqual(["quiet", "toast"]);
+    kit.silentUndo(() => log.push("late"));
+    vi.advanceTimersByTime(kit.TOAST_ACTION_MS + 1);
+    expect(kit.undoLatest(), "过了 8 秒").toBe(false);
+  });
+
   it("点 × ⇒ 当作不撤：提交", () => {
     const log: string[] = [];
     kit.undoToast(copyText("machineList.remove.done", { machine: "devbox" }), () => log.push("undo"), () => log.push("commit"));

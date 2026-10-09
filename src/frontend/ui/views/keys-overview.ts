@@ -49,6 +49,16 @@ function groups(): { title: string; rows: Row[] }[] {
       ],
     },
     {
+      title: copyText("keys.group.bar"),
+      rows: [
+        { ids: ["tabBar.focus-cycle"] },
+        { label: copyText("keys.row.move"), ids: ["tabBar.move-up", "tabBar.move-down"] },
+        { ids: ["tabBar.leave-group"] },
+        { ids: ["tabBar.join-prev"] },
+        { ids: ["tabBar.rename-group"] },
+      ],
+    },
+    {
       title: copyText("keys.group.app"),
       rows: [
         { label: copyText("keys.row.historySettings"), ids: ["app.toggle-history", "app.open-settings"] },
@@ -86,6 +96,8 @@ function scopeText(scope: Scope, chord: string | null): string {
       return copyText("keys.scope.nav");
     case "bare":
       return copyText("keys.scope.bare");
+    case "bar":
+      return copyText("keys.scope.bar");
   }
 }
 

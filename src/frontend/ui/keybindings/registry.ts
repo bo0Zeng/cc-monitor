@@ -44,13 +44,14 @@ export class KeybindingDispatcher {
   /** ActionId → callback。bind() 注册时填，未 bind 的 action 视为不存在 */
   private callbacks = new Map<string, Callback>();
   /**
-   * chord 规范化串 → ActionId。两个来源 merge：
+   * chord 规范化串 → 绑在它上面的动作（按 ACTIONS 的先后）。两个来源 merge：
    *  - ACTIONS 表里的 default
    *  - 用户在编辑器里改的覆盖
    *
-   * 覆盖优先：同 chord 用户改了就用用户的。
+   * 覆盖优先：同 chord 用户改了就用用户的。一个键可以有几个动作 —— 作用范围不相交时（主区 · 栏）各管各的，
+   * 按下时取第一个放行的（编辑器保存前按作用范围判撞键，相交的不会同时绑在一个键上）。
    */
-  private chordToAction = new Map<string, ActionId>();
+  private chordToAction = new Map<string, ActionId[]>();
   /**
    * ActionId → 用户覆盖的 chord。`null` = 用户显式解绑（覆盖 default 为不绑）。
    * 不在 map 里 = 用 default。
@@ -163,9 +164,18 @@ export class KeybindingDispatcher {
     return out;
   }
 
-  /** 查找某 chord 当前绑了谁；用于冲突检测 */
-  whoOwns(chord: string): ActionId | null {
-    return this.chordToAction.get(chord) ?? null;
+  /** 这个键此刻绑着的、作用范围与 `scope` 相交的那个动作（编辑器撞键确认用）；没有 ⇒ `null`。 */
+  whoOwns(chord: string, scope: Scope): ActionId | null {
+    for (const id of this.chordToAction.get(chord) ?? []) {
+      const a = findAction(id);
+      if (a && KeybindingDispatcher.scopesOverlap(a.scope, scope, chord)) return id;
+    }
+    return null;
+  }
+
+  /** 两个作用范围放在同一个键上会不会同时放行（焦点在某一处时两边都放行 ⇒ 相交 ⇒ 撞键）。 */
+  static scopesOverlap(a: Scope, b: Scope, chord: string): boolean {
+    return FOCUS_WHERES.some((w) => KeybindingDispatcher.scopeAllows(a, chord, w) && KeybindingDispatcher.scopeAllows(b, chord, w));
   }
 
   /** 弹层 push：模块 open 时调。栈顶时按 Esc 会先关到它 */
@@ -228,11 +238,12 @@ export class KeybindingDispatcher {
         ? this.overrides.get(a.id)!
         : a.default;
       if (chord == null) continue;
-      // 冲突时后定义的赢；编辑器保存前会先做冲突检测，正常情况不会冲突到这里
-      this.chordToAction.set(chord, a.id);
+      const on = this.chordToAction.get(chord);
+      if (on) on.push(a.id);
+      else this.chordToAction.set(chord, [a.id]);
     }
     // 固定的另一个键（菜单键）：不压过任何人自己绑的键。
-    for (const a of ACTIONS) if (a.also && !this.chordToAction.has(a.also)) this.chordToAction.set(a.also, a.id);
+    for (const a of ACTIONS) if (a.also && !this.chordToAction.has(a.also)) this.chordToAction.set(a.also, [a.id]);
   }
 
   /** 此刻焦点在哪儿、这一键的作用范围放不放行（带修饰键的单键动作按「随时」算）。 */
@@ -249,6 +260,8 @@ export class KeybindingDispatcher {
       case "nav":
       case "bare":
         return where === "main" || where === "tabs";
+      case "bar":
+        return where === "tabs";
     }
   }
 
@@ -277,34 +290,36 @@ export class KeybindingDispatcher {
     const chord = KeybindingDispatcher.normalizeChord(e);
     if (!chord) return;
 
-    const id = this.chordToAction.get(chord);
-    if (!id) return;
+    const ids = this.chordToAction.get(chord);
+    if (!ids) return;
+    const where = focusWhere();
+    for (const id of ids) {
+      // 作用范围：焦点在哪儿放行哪一档（单键在输入框 / 抽屉 / 状态栏里不触发；带修饰键的随时）。
+      const action = findAction(id);
+      if (!action?.available) continue;
+      if (!KeybindingDispatcher.scopeAllows(action.scope, chord, where)) continue;
 
-    // 作用范围：焦点在哪儿放行哪一档（单键在输入框 / 抽屉 / 状态栏里不触发；带修饰键的随时）。
-    const action = findAction(id);
-    if (!action?.available) return;
-    if (!KeybindingDispatcher.scopeAllows(action.scope, chord, focusWhere())) return;
+      // overlay.close 特殊：交给栈顶 overlay 处理
+      if (id === "overlay.close") {
+        if (this.overlayStack.length === 0) return;
+        e.preventDefault();
+        const top = this.overlayStack[this.overlayStack.length - 1];
+        // overlay 自己 close 时会调 popOverlay；这里不主动 pop（避免双弹）
+        // 返回 false 时让事件继续传播（少见，目前没人用）
+        top.handleEsc();
+        return;
+      }
 
-    // overlay.close 特殊：交给栈顶 overlay 处理
-    if (id === "overlay.close") {
-      if (this.overlayStack.length === 0) return;
+      // 上面有浮层 / 对话框 / 全屏视图：单键不落到底下看不见的 tab 上（模态连带修饰键的也挡）。
+      if (!this.layersPass(id, chord)) return;
+
+      const cb = this.callbacks.get(id);
+      if (!cb) continue; // 注册了 chord 但宿主没 bind callback（这扇窗不管这一条）
+
       e.preventDefault();
-      const top = this.overlayStack[this.overlayStack.length - 1];
-      const handled = top.handleEsc();
-      // overlay 自己 close 时会调 popOverlay；这里不主动 pop（避免双弹）
-      // handled = false 时让事件继续传播（少见，目前没人用）
-      if (handled === false) return;
+      cb();
       return;
     }
-
-    // 上面有浮层 / 对话框 / 全屏视图：单键不落到底下看不见的 tab 上（模态连带修饰键的也挡）。
-    if (!this.layersPass(id, chord)) return;
-
-    const cb = this.callbacks.get(id);
-    if (!cb) return; // 注册了 chord 但 main.ts 没 bind callback（不该发生）
-
-    e.preventDefault();
-    cb();
   };
 }
 
@@ -346,6 +361,7 @@ function typesText(el: HTMLElement): boolean {
 
 /** 焦点在哪一块：输入框 · 标签页栏 · 主区（消息流 · 会话头 · 没焦点）· 别处（抽屉 · 状态栏 · 浮层里的按钮 …）。 */
 export type FocusWhere = "input" | "tabs" | "main" | "other";
+const FOCUS_WHERES: readonly FocusWhere[] = ["input", "tabs", "main", "other"];
 
 export function focusWhere(): FocusWhere {
   if (isEditableTarget()) return "input";

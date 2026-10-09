@@ -14,6 +14,7 @@ import type { Tab, TabsSummary } from "./tab-model";
 import { isLive, type ContainerEvent } from "./tab-session-state";
 import { Slice } from "./app-store";
 import { dotOf, needsOf } from "./session-face";
+import { barRows } from "./tab-drop";
 import type { UsageFact } from "./session-reads";
 
 /** 当前 tab 那一格对外的样子：HUD 要的 usage 与「会话事实要不到」的原因。 */
@@ -138,19 +139,15 @@ export class TabStore {
   }
 
   /**
-   * **条上看到的顺序**：分组按 `groupIds` 的先后排在前、组内按 `orderedIds`；不在任何（现存）组里的排在后面。
-   * 数字键 · `]` `[` · 关掉当前 tab 后落到哪 · Shift 连选都读这一个顺序（`orderedIds` 是到达 / 拖动的底序）。
+   * **条上看到的顺序**：组与散的混排在 `orderedIds` 里，每个组的组员聚到它第一个组员那一格（`tab-drop.ts::barRows`）。
+   * Shift 连选 · 「需要你」读这一个顺序；给了 `skipCollapsed` ⇒ 跳过那些收着的组里的（数字键 · `]` `[` · 关掉后落到哪）。
    */
-  visibleOrder(groupIds: readonly string[]): string[] {
-    const known = new Set(groupIds);
-    const byGroup = new Map<string, string[]>(groupIds.map((g) => [g, []]));
-    const loose: string[] = [];
-    for (const sid of this.orderedIds) {
-      const g = this.tabs.get(sid)?.group ?? null;
-      if (g !== null && known.has(g)) byGroup.get(g)!.push(sid);
-      else loose.push(sid);
+  visibleOrder(groupIds: readonly string[], skipCollapsed?: ReadonlySet<string>): string[] {
+    const out: string[] = [];
+    for (const r of barRows(this.orderedIds, (sid) => this.tabs.get(sid)?.group ?? null, groupIds, skipCollapsed)) {
+      if (r.kind === "tab" && !r.hidden) out.push(r.sid);
     }
-    return [...[...byGroup.values()].flat(), ...loose];
+    return out;
   }
 
   /**

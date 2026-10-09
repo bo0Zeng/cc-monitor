@@ -3888,6 +3888,12 @@
         "C-W15": "键位表 / 命令面板里的动作名"
       }
     },
+    "sessionState.closeEnded.inGroup": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "关闭组里已结束的（{n}）",
+      "args": ["n"]
+    },
     "remoteLaunchRun.copyFallback.failedManual": {
       "kind": "error",
       "role": "报错",
@@ -4194,7 +4200,7 @@
     "tabBatch.menu.found": {
       "kind": "action",
       "role": "菜单项",
-      "zh": "新建分组…（{n}）",
+      "zh": "新建分组（{n}）",
       "args": ["n"]
     },
     "tabBatch.menu.leave": {
@@ -4256,24 +4262,6 @@
       "kind": "body",
       "role": "片段",
       "zh": "已取消固定",
-      "args": []
-    },
-    "tabBatch.action.join": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "已加入分组「{name}」",
-      "args": ["name"]
-    },
-    "tabBatch.action.found": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "已新建分组「{name}」",
-      "args": ["name"]
-    },
-    "tabBatch.action.leave": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "已移出分组",
       "args": []
     },
     "tabBatch.action.rot": {
@@ -4442,8 +4430,44 @@
     "tabMenu.collection.remove": {
       "kind": "action",
       "role": "菜单项",
-      "zh": "移出分组「{name}」",
-      "args": ["name"]
+      "zh": "移出分组",
+      "args": []
+    },
+    "tabMenu.group.rename": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "改名",
+      "args": []
+    },
+    "tabMenu.group.collapse": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "收起",
+      "args": []
+    },
+    "tabMenu.group.expand": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "展开",
+      "args": []
+    },
+    "tabMenu.group.collapseAll": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "全部收起",
+      "args": []
+    },
+    "tabMenu.group.expandAll": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "全部展开",
+      "args": []
+    },
+    "tabMenu.group.dissolve": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "解散分组",
+      "args": []
     },
     "tabMenu.pin.pin": {
       "kind": "action",
@@ -4460,31 +4484,13 @@
     "tabMenu.collection.add": {
       "kind": "action",
       "role": "菜单项",
-      "zh": "加入分组",
-      "args": []
-    },
-    "tabMenu.collection.namePrompt": {
-      "kind": "control",
-      "role": "占位",
-      "zh": "分组名",
+      "zh": "分组",
       "args": []
     },
     "tabMenu.collection.new": {
       "kind": "action",
       "role": "菜单项",
-      "zh": "新建分组…",
-      "args": []
-    },
-    "tabMenu.collection.title": {
-      "kind": "title",
-      "role": "标题",
       "zh": "新建分组",
-      "args": []
-    },
-    "tabMenu.collection.action": {
-      "kind": "action",
-      "role": "菜单项",
-      "zh": "新建",
       "args": []
     },
     "tabMenu.open.openInWindow": {
@@ -5564,23 +5570,41 @@
       "zh": "已固定",
       "args": []
     },
-    "tabBarView.group.dissolveHint": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "解散分组 · 标签页不关闭",
-      "args": []
-    },
-    "tabBarView.group.dissolve": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "×",
-      "args": []
-    },
     "tabDrop.group.defaultName": {
       "kind": "body",
       "role": "片段",
       "zh": "分组 {n}",
       "args": ["n"]
+    },
+    "tabDrop.pill.found": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "建分组",
+      "args": []
+    },
+    "tabDrop.pill.join": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "进「{name}」",
+      "args": ["name"]
+    },
+    "tabDrop.ghost.cancel": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "松开取消",
+      "args": []
+    },
+    "tabDrop.ghost.many": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{title} +{n}",
+      "args": ["title", "n"]
+    },
+    "tabDrop.ghost.group": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{name} · {n}",
+      "args": ["name", "n"]
     },
     "tabStreamView.sentinel.moreCount": {
       "kind": "body",
@@ -16580,6 +16604,12 @@
       "zh": "已关闭「{title}」 · 已取消固定",
       "args": ["title"]
     },
+    "tabBar.close.doneMany": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已关闭标签页 ×{n}",
+      "args": ["n"]
+    },
     "tabBar.persist.collectionsFailed": {
       "kind": "error",
       "role": "报错",
@@ -26785,6 +26815,42 @@
       "zh": "回到底部",
       "args": []
     },
+    "keybindingActions.tabBar.moveUp": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "往上挪",
+      "args": []
+    },
+    "keybindingActions.tabBar.moveDown": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "往下挪",
+      "args": []
+    },
+    "keybindingActions.tabBar.leaveGroup": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "移出分组",
+      "args": []
+    },
+    "keybindingActions.tabBar.joinPrev": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "与上一个成组",
+      "args": []
+    },
+    "keybindingActions.tabBar.renameGroup": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "改分组名",
+      "args": []
+    },
+    "keybindingActions.tabBar.focusCycle": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "在主区与标签页栏之间切焦点",
+      "args": []
+    },
     "keybindingActions.app.keys": {
       "kind": "action",
       "role": "按钮",
@@ -26968,6 +27034,30 @@
       "zh": "pin 固定",
       "args": []
     },
+    "main.cmd.groupNew": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "新建分组",
+      "args": []
+    },
+    "main.cmd.groupJoin": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "加入分组…",
+      "args": []
+    },
+    "main.cmd.groupLeave": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "移出分组",
+      "args": []
+    },
+    "main.cmd.groupKeywords": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "group 分组 标签页",
+      "args": []
+    },
     "main.cmd.procExpand": {
       "kind": "action",
       "role": "按钮",
@@ -27082,6 +27172,12 @@
       "zh": "窗口与应用",
       "args": []
     },
+    "keys.group.bar": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "标签页栏",
+      "args": []
+    },
     "keys.group.unbound": {
       "kind": "title",
       "role": "标题",
@@ -27104,6 +27200,12 @@
       "kind": "body",
       "role": "片段",
       "zh": "上一轮 / 下一轮",
+      "args": []
+    },
+    "keys.row.move": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "往上 / 往下挪",
       "args": []
     },
     "keys.row.panels": {
@@ -27164,6 +27266,12 @@
       "kind": "body",
       "role": "片段",
       "zh": "主区 / 标签页栏",
+      "args": []
+    },
+    "keys.scope.bar": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "标签页栏",
       "args": []
     },
     "keys.scope.bare": {
@@ -27507,6 +27615,54 @@
       "role": "说明",
       "zh": "已移出分组「{name}」",
       "args": ["name"]
+    },
+    "tabBar.group.founded": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已建分组「{name}」",
+      "args": ["name"]
+    },
+    "tabBar.group.joined": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已移到「{name}」",
+      "args": ["name"]
+    },
+    "tabBar.group.joinedMany": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已移到「{name}」 ×{n}",
+      "args": ["name", "n"]
+    },
+    "tabBar.group.leftMany": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已移出分组 ×{n}",
+      "args": ["n"]
+    },
+    "tabBar.group.moved": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已移动分组「{name}」",
+      "args": ["name"]
+    },
+    "tabBar.group.sumNeeds": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "需要你 {n}",
+      "args": ["n"]
+    },
+    "tabBar.group.sumRunning": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "在跑 {n}",
+      "args": ["n"]
+    },
+    "tabBar.group.more": {
+      "kind": "aria",
+      "role": "读屏",
+      "zh": "分组操作",
+      "args": []
     },
     "tabBar.unpinned.toast": {
       "kind": "body",

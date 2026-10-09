@@ -18,10 +18,12 @@ export const COLLECTION_CAP = 32;
 /** 名字长度上界（超了截断 —— 名字是展示用的，截断不丢别的东西）。 */
 export const NAME_MAX = 40;
 
-/** 一个组**只有**这两格 —— 没有成员名单（组员是「`Tab.group` 等于 `id` 的那些 tab」）。 */
+/** 一个组只有这几格 —— 没有成员名单（组员是「`Tab.group` 等于 `id` 的那些 tab」）；收着是组自己的属性。 */
 export interface TabCollection {
   id: string;
   name: string;
+  /** 收着（组员不显示，组头汇总等你 / 在跑）；展开 ⇒ 不写这一格。 */
+  collapsed?: true;
 }
 
 /** 新集合的 id。用时间戳 + 随机后缀：它只需在本机唯一，不进任何协议。 */
@@ -33,7 +35,7 @@ export function newCollectionId(): string {
  * 盘上读回来的集合 —— **盘上可能是任何东西**（用户手改 / 旧版本 / 半截写入）。
  *
  * 逐项筛，照 `behavior.ts` 那套宽容读法：认不出就丢，不抛。
- * 只取 `id` / `name` 两格；别的字段不带出去 —— 于是也写不回盘。
+ * 只取 `id` / `name` 与 `collapsed: true`；别的字段不带出去 —— 于是也写不回盘。
  */
 export function sanitizeCollections(raw: unknown): TabCollection[] {
   if (!Array.isArray(raw)) return [];
@@ -47,7 +49,7 @@ export function sanitizeCollections(raw: unknown): TabCollection[] {
     const name = typeof o.name === "string" ? o.name.trim().slice(0, NAME_MAX) : "";
     if (!id || !name || seenId.has(id)) continue;
     seenId.add(id);
-    out.push({ id, name });
+    out.push(o.collapsed === true ? { id, name, collapsed: true } : { id, name });
     if (out.length >= COLLECTION_CAP) break;
   }
   return out;

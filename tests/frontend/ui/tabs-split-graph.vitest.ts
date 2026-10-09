@@ -88,7 +88,7 @@ export function runtimeImports(rel: string, src: string = read(rel)): string[] {
  * 改一份文件的依赖 ⇒ 回来改这里，并写清为什么这一份需要它。
  */
 const DEPS: Record<string, readonly string[]> = {
-  // 组装根：把下面每一份接起来 ＋ 原样 re-export 旧的 import 面（tab-drop / tab-model / tmux-sessions）。
+  // 组装根：把下面每一份接起来 ＋ re-export `Tab` 的形状（tab-model）。
   "src/frontend/ui/tabs.ts": [
     "src/frontend/ui/agent-profile.ts", // 会话事实说是哪一家 ⇒ 卡头那一格补上那一家的短名（画像 `speakerName`）
     "src/frontend/ui/agent-window-open.ts", // 面板那一行 / 派出卡的卡头：开那个子运行自己的窗口
@@ -116,7 +116,6 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/tab-bar-prefs.ts",
     "src/frontend/ui/tab-bar-view.ts",
     "src/frontend/ui/tab-batch-menu.ts", // 多选之后右键：批量菜单
-    "src/frontend/ui/tab-drop.ts", // re-export
     "src/frontend/ui/tab-menu.ts",
     "src/frontend/ui/tab-model.ts", // computeTitleFor
     "src/frontend/ui/tab-router.ts",
@@ -143,7 +142,8 @@ const DEPS: Record<string, readonly string[]> = {
   // ① store：只存东西、只做顺序运算、只有一份订阅。摘要按活性分 ⇒ 要 `isLive` 那一个谓词。
   // 「只有一份订阅」建在唯一的 pub-sub 原语上（`app-store.ts::Slice`）。
   // 摘要也比每个 tab 的点 · 在等什么（运行中 → 空闲数量不变，会话头也得重画）⇒ 要 `session-face` 的 `dotOf` · `needsOf`。
-  "src/frontend/ui/tab-store.ts": ["src/frontend/ui/app-store.ts", "src/frontend/ui/session-face.ts", "src/frontend/ui/tab-session-state.ts"],
+  // 「看到的顺序」＝ 组员聚到第一个组员那一格（`tab-drop.ts::barRows`，与栏里的排版同一份）。
+  "src/frontend/ui/tab-store.ts": ["src/frontend/ui/app-store.ts", "src/frontend/ui/session-face.ts", "src/frontend/ui/tab-drop.ts", "src/frontend/ui/tab-session-state.ts"],
   // ① 会话状态的两个轴：形状 ＋ 转移 ＋ 谓词 ＋ 呈现。呈现的字只经文案表取（`sessionState.*`）。
   "src/frontend/ui/tab-session-state.ts": ["src/frontend/ui/copy-table.ts"],
   // ② 路由：只写「上次的 tab」那一格 localStorage。已结束的不自动跟随 ⇒ `isResumeOnly`。
@@ -182,7 +182,6 @@ const DEPS: Record<string, readonly string[]> = {
   ],
   // ④ tab 栏视图：画按钮（账号徽章 · 状态灯 · 分组 · ↗ 的 OS 门），手势全交宿主。
   "src/frontend/ui/tab-bar-view.ts": [
-    "src/frontend/ui/kit/toast.ts", // 组头 × 解散分组：撤得回 ⇒ 直接做 ＋ 8 秒撤销
     "src/frontend/ui/account-color.ts",
     "src/frontend/ui/accounts.ts",
     "src/frontend/ui/acct-view.ts", // 被卡住的会话标题后 `✕ 5h`：排版模型（判定是后端给的 `blocked`）
@@ -192,11 +191,13 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/keybindings/registry.ts", // 组头就地改名：改名时 Esc 走 overlay 栈；悬停提示里现拼键位
     "src/frontend/ui/kit/badge.ts", // 机器徽标 · 「需要你」计数 · 键帽
     "src/frontend/ui/kit/icon.ts", // 行尾动作 · 刷新 · 图钉 · 齿轮（Phosphor）
-    "src/frontend/ui/kit/menu.ts", // 「需要你」悬停菜单（点一行切过去）
+    "src/frontend/ui/kit/fold.ts", // 组头 ⌄（同一颗折叠号：开合转 90°）
+    "src/frontend/ui/kit/menu.ts", // 「需要你」悬停菜单（点一行切过去）· 组的菜单（「⋯」/ 组头右键）
     "src/frontend/ui/kit/status-dot.ts", // 状态点
     "src/frontend/ui/kit/tooltip.ts", // 悬停卡（锚在行右侧）· 行尾动作的悬停提示
     "src/frontend/ui/session-face.ts", // 一个会话读成什么：状态点 · 状态句 · peek · 需要你（标签页行 · 会话头 · 悬停卡同一份）
     "src/frontend/ui/session-words.ts", // 状态点的读屏名 · 等的是什么（`dotLabel` · `needsWord`，与设置里轮换规则的在用名单同一份）
+    "src/frontend/ui/tab-drop.ts", // 照 `barRows` 一趟摆组与散的（组员聚在第一个组员那一格）
     "src/frontend/ui/tab-group-rename.module.css", // 组头就地改名那个输入框的样式（UC2：新样式一律 module）
     "src/frontend/ui/tab-quota.module.css", // `✕ 5h` 那一格的样式
     "src/frontend/ui/session-status.ts",
@@ -208,9 +209,14 @@ const DEPS: Record<string, readonly string[]> = {
   // 拖进满了的组 / 建不出组 ⇒ 经落盘偏好那一份的 `sayCollectionRefusal` 说一句。
   "src/frontend/ui/tab-bar-drag.ts": [
     "src/frontend/ui/copy-table.ts",
+    "src/frontend/ui/keybindings/registry.ts", // 拖拽中 Esc ＝ 取消：走弹层栈
+    "src/frontend/ui/kit/status-dot.ts", // 影子：状态点 ＋ 标题（同行上的写法）
+    "src/frontend/ui/session-face.ts", // 影子那一行读成什么（`dotOf` · `titleParts`）
+    "src/frontend/ui/session-words.ts", // 影子状态点的读屏名
     "src/frontend/ui/tab-bar-prefs.ts",
     "src/frontend/ui/tab-collections.ts",
     "src/frontend/ui/tab-drop.ts",
+    "src/frontend/ui/tab-group.module.css", // 插入线 · 引导线点亮 · 小标签 · 出栏影子 · 落下淡出
   ],
   // ④ 落盘偏好：集合 / 固定 / 顺序的盘上那一层。
   // 固定复活出来的是「已结束」· 落盘的「最后活动时刻」按活性判。
@@ -227,7 +233,6 @@ const DEPS: Record<string, readonly string[]> = {
   // ⑤ 菜单放哪几项：账号 flyout · tmux 判据 · attach / 预览 · 菜单控件 · 会话动作。
   "src/frontend/ui/tab-menu.ts": [
     "src/frontend/ui/agent-profile.ts", // 恢复 ▸ 的账号组：这一家有没有账号这一维 · 叫什么（会话是哪一家由会话事实给）
-    "src/frontend/ui/kit/dialog.ts", // 「新建集合…」问名字（原 `window.prompt`）
     "src/frontend/ui/control-said.ts", // 那台握手时说过做不到的几项置灰：`unavailableSaid`（事实住 monitor 那份 Offer）
     "src/frontend/ui/copy-table.ts", // 固定那一项的两句提示（说到会话状态）住文案表
     "src/frontend/ui/kit/toast.ts",
@@ -236,8 +241,6 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/resume-menu.ts", // 「恢复 ▸」那一组选项怎么摆（历史页「恢复 ▾」同一个组件）
     "src/frontend/ui/launch-account.ts", // 勾着的号 ⇒ 交那台判的那一问（`askOf`：本机在 tmux 里那一条要它）
     "src/frontend/ui/new-session.ts", // 「恢复 ▸」最底下「在此目录新建会话」：开起新会话框（历史页同一个）
-    "src/frontend/ui/tab-bar-prefs.ts", // 「加入集合 / 新建集合」到上界 ⇒ `sayCollectionRefusal`
-    "src/frontend/ui/tab-collections.ts",
     "src/frontend/ui/kit/menu.ts",
     "src/frontend/ui/tab-session-state.ts", // 给 Resume 还是给换号重启 · 本机「杀死会话」占位
     "src/frontend/ui/sessions-where.ts", // 在 tmux 里那几项亮不亮、写哪个名字：问那台（`sessions-where`）
@@ -394,18 +397,7 @@ describe("〔U2〕tabs.ts 只剩组装根", () => {
         // `TabStatus` 退役：会话状态换成两轴（`tab-session-state.ts::SessionState`），唯一的外部使用者
         //   `tab-menu.ts` 改从新家拿 ⇒ 旧 import 面少这一个名字。
         "TabsSummary",
-        // tab-drop.ts
-        "moveTab",
-        "pickDropTarget",
-        "tabUnderY",
-        "commonDirName",
-        "defaultGroupName",
-        "groupMoveForDrop", // 替 applyDropToCollections / collectionsEqual
-        "GroupMove",
-        "DWELL_MS",
-        "DWELL_MOVE_PX",
-        "DropTarget",
-        "TabRect",
+        // tab-drop.ts 那几个落点算术不再经这里转：分组重做换了整套落点，判据直接从 `tab-drop.ts` 取。
         // sessions-where.ts 那几个过滤〔散文墓碑〕的 re-export 删了：「在哪个 tmux 会话里」问那台后端。
       ].sort(),
     );
