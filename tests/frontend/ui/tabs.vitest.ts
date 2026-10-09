@@ -1244,7 +1244,7 @@ describe("TabManager 生命周期", () => {
   });
 });
 
-describe("「tab 集合变了」那一格也跟着状态变（会话头 · 终端页 · 需要你订它）", () => {
+describe("「tab 集合变了」那一格也跟着状态变（会话头 · 终端页 · 需手动订它）", () => {
   it("★ 当前会话 运行中 → 空闲（数量没变、用量没变）⇒ 订阅者照样收到一次；同一状态再来不收", () => {
     document.body.innerHTML = "";
     const barEl = document.createElement("div");

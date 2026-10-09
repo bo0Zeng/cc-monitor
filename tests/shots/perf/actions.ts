@@ -1,5 +1,5 @@
 /**
- * 性能台架 perfA 那几项的页内动作：主窗口其余（长会话滚动 · 跳轮 · 实时来消息 · 展开过程 · 查找 · 大纲 · 「需要你」·
+ * 性能台架 perfA 那几项的页内动作：主窗口其余（长会话滚动 · 跳轮 · 实时来消息 · 展开过程 · 查找 · 大纲 · 「需手动」·
  * 命令面板 · 账号面板 · 新建会话框 · 右键菜单 · 终端抽屉 · agent / 任务抽屉）、独立查看窗、agent 窗口。
  *
  * 动作全在页里跑（派发真 DOM 事件，产品照常处理），两个引擎（Chromium · WebKitGTK）同一套；页外驱动
@@ -366,7 +366,7 @@ async function outline(): Promise<Record<string, unknown>> {
   });
 }
 
-/** 「需要你」：Ctrl+J 跳下一个在等你的 6 下（每 400 ms）。 */
+/** 「需手动」：Ctrl+J 跳下一个在等你的 6 下（每 400 ms）。 */
 async function needs(): Promise<Record<string, unknown>> {
   return measure("needs", async (steps) => {
     for (let k = 0; k < 6; k++) {

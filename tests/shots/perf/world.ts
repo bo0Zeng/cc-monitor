@@ -150,8 +150,8 @@ export function perfWorld(): World {
 }
 
 /**
- * 主窗口其余那几项（perfA：滚动 · 实时来消息 · 查找 · 大纲 · 「需要你」· 面板 · 抽屉）的世界：同一屋子 tab，
- * 另加几条在等你的（「需要你」清单有东西）、最长那条带一串子 agent 与任务（agent / 任务抽屉有东西）。
+ * 主窗口其余那几项（perfA：滚动 · 实时来消息 · 查找 · 大纲 · 「需手动」· 面板 · 抽屉）的世界：同一屋子 tab，
+ * 另加几条在等你的（「需手动」清单有东西）、最长那条带一串子 agent 与任务（agent / 任务抽屉有东西）。
  */
 export function perfMainWorld(): World {
   const w = perfWorld();

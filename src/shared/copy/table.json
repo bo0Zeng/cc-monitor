@@ -15523,7 +15523,7 @@
     "bePlan.review.noSuchNeed": {
       "kind": "error",
       "role": "报错",
-      "zh": "该条已不在要你看里 · 重读计划后再看",
+      "zh": "该条已不在需手动里 · 重读计划后再看",
       "args": []
     },
     "bePlan.review.notAckable": {
@@ -15547,7 +15547,7 @@
     "bePlan.return.waiting": {
       "kind": "error",
       "role": "原因格",
-      "zh": "会话在等你批准或回答 · 先去会话里答",
+      "zh": "会话在等批准或回答 · 先去会话里答",
       "args": []
     },
     "bePlan.return.ended": {
@@ -27738,7 +27738,7 @@
     "tabBar.group.sumNeeds": {
       "kind": "body",
       "role": "说明",
-      "zh": "需要你 {n}",
+      "zh": "需手动 {n}",
       "args": ["n"]
     },
     "tabBar.group.sumRunning": {
@@ -28427,7 +28427,7 @@
     "rsDataPaths.backend.planReview": {
       "kind": "body",
       "role": "说明",
-      "zh": "计划要你看里认可过的几条 · 退回过的格",
+      "zh": "计划需手动里认可过的几条 · 退回过的格",
       "args": []
     },
     "rsDataPaths.backend.lastSeen": {
@@ -29056,7 +29056,8 @@
       "kind": "action",
       "role": "按钮",
       "zh": "重新连接",
-      "args": []
+      "args": [],
+      "limited": ["连接"]
     },
     "rsUiError.localExited.restarted": {
       "kind": "error",
