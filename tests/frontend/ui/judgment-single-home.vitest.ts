@@ -600,6 +600,9 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     insert: NONE,
     item: NONE,
     many: "J26",
+    // 自己写的那一行里某一项的值 · 对端写好的那一整份（壳的日志与「放程序」那一口要原话；界面不取）。
+    value: NONE,
+    written: NONE,
     maybe: NONE,
     new: NONE,
     os_word: NONE,

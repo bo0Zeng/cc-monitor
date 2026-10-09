@@ -1008,7 +1008,7 @@ impl Failed {
             detail: Detail::new()
                 .item(Label::At, now_stamp())
                 .item(Label::Machine, &origin.0)
-                .maybe(Label::Local, local_line_for(&origin.0))
+                .maybe(Label::Local, local_line_for(origin))
                 .item(Label::Command, cmd)
                 .maybe(Label::Raw, raw)
                 .render(),
@@ -1068,8 +1068,8 @@ pub(crate) fn set_local_line(line: &str) {
 }
 
 /// 看 `origin` 那台时窗口自己写的详情要不要带「本机」那一行：远端 ⇒ 带（值是种子交来的）；本机 ⇒ 不带（出错的就是本机）。
-fn local_line_for(origin: &str) -> Option<String> {
-    (origin != super::cross_copy::LOCAL_ORIGIN)
+fn local_line_for(origin: &Origin) -> Option<String> {
+    (origin.0 != super::cross_copy::LOCAL_ORIGIN)
         .then(|| LOCAL_LINE.get().cloned())
         .flatten()
         .filter(|l| !l.trim().is_empty())
@@ -1086,8 +1086,8 @@ fn now_stamp() -> String {
 /// 一趟 `call` 没成的复制详情：对端拒了、那台写了详情 ⇒ 原样（远端时「本机」那一行 monitor 的通道宿主已补）；
 /// 别的（通道没走通 · 对端不认 · 本侧）⇒ 窗口进程写时刻 · 机器（没发出去标「未连上」）· 本机 · 命令 · 断在 · 码
 /// （取法住通信层 `HopFacts`，排法住 `copy_core::detail::channel`，与 monitor 壳同一份）。
-pub fn detail_of(origin: &Origin, cmd: &str, e: &comms_inward::chan::wire::CallError) -> String {
-    let origin = origin.0.as_str();
+pub fn detail_of(at: &Origin, cmd: &str, e: &comms_inward::chan::wire::CallError) -> String {
+    let origin = at.0.as_str();
     use comms_inward::chan::wire::{CallError, PeerFault};
     if let CallError::Peer {
         why: PeerFault::Refused { body },
@@ -1106,7 +1106,7 @@ pub fn detail_of(origin: &Origin, cmd: &str, e: &comms_inward::chan::wire::CallE
         &now_stamp(),
         origin,
         f.not_sent,
-        local_line_for(origin).as_deref(),
+        local_line_for(at).as_deref(),
         cmd,
         f.hop.as_deref(),
         &f.code,

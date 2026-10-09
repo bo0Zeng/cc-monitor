@@ -1325,7 +1325,7 @@ async fn dropping_a_terminal_screen_subscription_unfollows_that_ticket_on_that_o
     r.on_screen_dropped(move |origin, ticket| {
         d.lock()
             .unwrap()
-            .push((origin.to_string(), ticket.to_string()));
+            .push((origin.as_wire_str().to_string(), ticket.to_string()));
     });
     let local = crate::origin::Origin::local();
     let box_a = crate::origin::Origin("box-a".into());

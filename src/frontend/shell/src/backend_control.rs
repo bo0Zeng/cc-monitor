@@ -212,16 +212,16 @@ pub async fn backend_start(origin: String) -> Result<String, Said> {
                     StartOutcome::AlreadyRunning => {
                         Ok("本机后端已经在跑（C8①：每台机只许一个）".into())
                     }
-                    StartOutcome::Failed { reason, looked_at } => Err(Said {
-                        said: copy_text(
+                    StartOutcome::Failed { reason, looked_at } => Err(Said::restate(
+                        copy_text(
                             "rsBackendControl.start.notFound",
                             &[
                                 ("reason", &reason.said),
                                 ("looked", &format!("{:?}", looked_at)),
                             ],
                         ),
-                        ..reason
-                    }),
+                        reason,
+                    )),
                 }
             })
             .await

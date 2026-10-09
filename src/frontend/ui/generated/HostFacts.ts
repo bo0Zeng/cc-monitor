@@ -9,7 +9,9 @@ export type HostFacts = {
  */
 os: string, 
 /**
- * ↗「切到对应终端窗口」在这台上是不是真的：Windows 走 Win32（`EnumWindows` · `SetForegroundWindow`）；别的平台上那几跳今天是桩 ⇒ 不显示。
+ * ↗「切到对应终端窗口」在这台上是不是真的：Windows 走 Win32（`EnumWindows` · `SetForegroundWindow`）；Linux 的 X11 会话走 EWMH，
+ * Wayland 会话照常显示、点了由壳照实说「这个桌面上切不了」并给［在 cc-monitor 里打开］（结局族 `desktop-wont-switch`）；
+ * macOS 上那几跳是桩 ⇒ 不显示。
  */
 terminalFront: boolean, 
 /**

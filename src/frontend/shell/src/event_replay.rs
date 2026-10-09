@@ -156,8 +156,8 @@ struct Inner {
     screen_dropped: Option<ScreenDropped>,
 }
 
-/// 终端画面流撤掉了：`(哪台的线上串, 票)`。
-type ScreenDropped = Arc<dyn Fn(&str, &str) + Send + Sync>;
+/// 终端画面流撤掉了：`(哪台, 票)`。
+type ScreenDropped = Arc<dyn Fn(&crate::origin::Origin, &str) + Send + Sync>;
 
 /// 一条订阅。
 struct Sub {
@@ -559,7 +559,10 @@ impl EventReplay {
     /// 装「终端画面流撤掉了」那一口（`lib.rs` 起步时一次）。〔「退订挂在订阅上」〕后端那张票的寿命跟着这条流走：
     /// 界面撤单 · 同一编号被重订 · 页面重载 / 窗口没了（[`EventReplay::drop_webview`]）都替界面向那台退订一次 ——
     /// 界面那一侧不发退订，重载时也没人能发。本文件只交 `(哪台, 票)`，不知道退订是哪条命令。
-    pub fn on_screen_dropped(&self, f: impl Fn(&str, &str) + Send + Sync + 'static) {
+    pub fn on_screen_dropped(
+        &self,
+        f: impl Fn(&crate::origin::Origin, &str) + Send + Sync + 'static,
+    ) {
         self.inner.lock().screen_dropped = Some(Arc::new(f));
     }
 
@@ -577,7 +580,7 @@ impl EventReplay {
             return;
         };
         for (origin, ticket) in gone {
-            f(&origin, &ticket);
+            f(&crate::origin::Origin(origin), &ticket);
         }
     }
 

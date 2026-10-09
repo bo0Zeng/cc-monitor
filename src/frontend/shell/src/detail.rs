@@ -214,6 +214,11 @@ impl Said {
         )
     }
 
+    /// 换一句给人看的话，复制详情照旧（外层接手下层那一形失败时说得更具体）。
+    pub(crate) fn restate(said: String, from: Said) -> Said {
+        Said::of_parts(said, from.parts)
+    }
+
     /// 详情里「原话」那一项的值（自己写的那一行）；没有、而那份是对端写好的 ⇒ 那一整份（日志里照样看得到下层说了什么）；都没有 ⇒ 空串。
     pub(crate) fn raw(&self) -> String {
         self.parts

@@ -1086,10 +1086,10 @@ fn unasked(e: crate::ccm_probe::OnceErr) -> Said {
             copy_text("rsLocalBackend.place.askUnreadable", &[("said", &said)]).into()
         }
     };
-    Said {
-        said: copy_text("rsLocalBackend.place.unasked", &[("why", &why.said)]),
-        ..why
-    }
+    Said::restate(
+        copy_text("rsLocalBackend.place.unasked", &[("why", &why.said)]),
+        why,
+    )
 }
 
 /// `place-verdict` 的答 → 放（`true`）/ 不动（`false`）。**严格收**：恰 `{action, why}`、`action` 两个词之一；别的都是没问成（不猜）。
@@ -1319,8 +1319,8 @@ static EXTRACTION_REFUSED_MARKER: std::sync::LazyLock<String> =
 ///
 /// 不碰文件系统、不碰时钟 ⇒ 两种输入的两句话都测得到（同本模块 [`decide`] 的理由）。
 pub fn extraction_failure_reason(dir: &Path, err: Said) -> Said {
-    Said {
-        said: copy_text(
+    Said::restate(
+        copy_text(
             "rsLocalBackend.extraction.failed",
             &[
                 ("marker", &EXTRACTION_REFUSED_MARKER.to_string()),
@@ -1328,8 +1328,8 @@ pub fn extraction_failure_reason(dir: &Path, err: Said) -> Said {
                 ("why", &err.said),
             ],
         ),
-        ..err
-    }
+        err,
+    )
 }
 
 /// [`local_stdio_consumer`] 用的**同步有界读行** —— 远端 `stream_source::read_capped_line` 的孪生。
@@ -1879,10 +1879,7 @@ pub fn resolve_or_extract(
                 Err(why) => {
                     break 'resolve match beside {
                         Resolved::Missing { reason, looked_at } => Resolved::Missing {
-                            reason: Said {
-                                said: format!("{}\n{why}", reason.said),
-                                ..reason
-                            },
+                            reason: Said::restate(format!("{}\n{why}", reason.said), reason),
                             looked_at,
                         },
                         found @ Resolved::Found(_) => found,
