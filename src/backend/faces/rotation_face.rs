@@ -660,11 +660,114 @@ fn cap_at_wire(c: &crate::accounts::quota::decide::CapAt) -> Value {
     json!({"v": c.v, "layer": c.layer})
 }
 
+/// 时间轴的视窗（此刻之前, 之后，秒）：`6h` ＝ 前 2h · 后 4h；`24h` ＝ 前 6h · 后 18h；`7d` ＝ 前 1d · 后 6d。不给 ⇒ `None`（编辑器那一问：从此刻起）。
+fn view_secs(args: &Value) -> Result<Option<(u64, u64)>, (&'static str, String)> {
+    match args.get("view") {
+        None | Some(Value::Null) => Ok(None),
+        Some(v) => match v.as_str() {
+            Some("6h") => Ok(Some((2 * 3600, 4 * 3600))),
+            Some("24h") => Ok(Some((6 * 3600, 18 * 3600))),
+            Some("7d") => Ok(Some((86_400, 6 * 86_400))),
+            _ => Err(bad("`view` must be 6h / 24h / 7d")),
+        },
+    }
+}
+
+/// 问的是哪一份。
+enum Asked<'a> {
+    /// 草稿 · 一条规则：没有会话。
+    Rotation,
+    /// 一个会话此刻那一份。
+    Session(&'a str),
+    /// 这台全部号（设置里的时间轴）：按默认规则判封顶。
+    Machine,
+}
+
+/// 一个会话在 `[from, now]` 里走过哪几个号（照换号记录切段；换进那一段的原因带上，头一段没有）。
+/// 没换成的那几种（`from == to`）不切；没有记录 ⇒ 从 `since`（不早于 `from`）起一整段此刻的号。
+fn past_of(s: &SessionEntry, from: u64, now: u64) -> Vec<(u64, u64, String, Option<SwitchWhy>)> {
+    let mut recs: Vec<&SwitchRecord> = s
+        .history
+        .iter()
+        .filter(|h| h.from != h.to && h.at > from && h.at <= now)
+        .collect();
+    recs.sort_by_key(|h| h.at);
+    let mut t = if recs.is_empty() {
+        s.since.clamp(from, now)
+    } else {
+        from
+    };
+    let mut acct = recs
+        .first()
+        .map_or_else(|| s.current.clone(), |h| h.from.clone());
+    let mut why: Option<SwitchWhy> = None;
+    let mut out = Vec::new();
+    for h in recs {
+        if h.at > t {
+            out.push((t, h.at, acct, why));
+        }
+        t = h.at;
+        acct = h.to.clone();
+        why = Some(h.why.clone());
+    }
+    if now > t {
+        out.push((t, now, acct, why));
+    }
+    out
+}
+
+/// quota-warm 留下的状态文件（`quota-warm.json`，与 `rotation.json` 同一目录）：写它的进程还活着 ⇒ 号 → 下一次开窗的时刻；
+/// 读不到 · 形状不对 · 进程没了 ⇒ 空（整类不画）。
+fn warm_of(ctx: &Ctx) -> std::collections::BTreeMap<String, Vec<u64>> {
+    let mut out = std::collections::BTreeMap::new();
+    let Some(path) = ctx
+        .hop
+        .store
+        .path()
+        .and_then(Path::parent)
+        .map(|d| d.join("quota-warm.json"))
+    else {
+        return out;
+    };
+    let Some(v) = std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|t| serde_json::from_str::<Value>(&t).ok())
+    else {
+        return out;
+    };
+    let alive = v
+        .get("pid")
+        .and_then(Value::as_u64)
+        .and_then(|p| u32::try_from(p).ok())
+        .is_some_and(crate::platform::proc::pid_alive);
+    if !alive {
+        return out;
+    }
+    for n in v
+        .get("next")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        if let (Some(a), Some(at)) = (
+            n.get("account").and_then(Value::as_str),
+            n.get("at").and_then(Value::as_u64),
+        ) {
+            out.entry(a.to_string()).or_insert_with(Vec::new).push(at);
+        }
+    }
+    out
+}
+
 pub(crate) fn answer_plan_with(ctx: &Ctx, args: &Value, now: u64) -> Answer {
-    let until = now + span_secs(args)?;
+    let view = view_secs(args)?;
+    let (from, until) = match view {
+        Some((before, after)) => (now.saturating_sub(before), now + after),
+        None => (now, now + span_secs(args)?),
+    };
     let (_, _, book) = read_book(ctx);
     let zero = crate::accounts::manage::model::ACCOUNT_ZERO.to_string();
-    let (rot, agent, start, current, above) = if let Some(v) = args.get("rotation") {
+    let (rot, agent, start, current, above, asked) = if let Some(v) = args.get("rotation") {
         let errors = rotation::cell_errors(v);
         if !errors.is_empty() {
             return Ok(json!({ "errors": errors }));
@@ -678,7 +781,14 @@ pub(crate) fn answer_plan_with(ctx: &Ctx, args: &Value, now: u64) -> Answer {
         )
         .map_err(|e| bad(&e))?;
         let first = first_of(&rot, &zero);
-        (rot, LIBRARY_AGENT.to_string(), zero, first, Vec::new())
+        (
+            rot,
+            LIBRARY_AGENT.to_string(),
+            zero,
+            first,
+            Vec::new(),
+            Asked::Rotation,
+        )
     } else if let Some(id) = rule_id_arg(args, "rule")? {
         let Some(r) = book.rules.get(&id) else {
             return Err(("no_such_rule", copy_text("beRotation.rule.gone", &[])));
@@ -690,6 +800,7 @@ pub(crate) fn answer_plan_with(ctx: &Ctx, args: &Value, now: u64) -> Answer {
             zero,
             first,
             Vec::new(),
+            Asked::Rotation,
         )
     } else if let Some(sid) = args.get("sid").and_then(Value::as_str) {
         let Some(s) = book.sessions.get(sid) else {
@@ -701,11 +812,35 @@ pub(crate) fn answer_plan_with(ctx: &Ctx, args: &Value, now: u64) -> Answer {
             s.start.clone(),
             s.current.clone(),
             s.blocked_above.clone(),
+            Asked::Session(sid),
+        )
+    } else if args.get("machine").and_then(Value::as_bool) == Some(true) {
+        let lib = ctx.hop.library();
+        let ids: Vec<String> = if lib.enabled {
+            lib.accounts.iter().map(|a| a.id.clone()).collect()
+        } else {
+            vec![zero.clone()]
+        };
+        let mut rot = book.default_rotation();
+        rot.order = ids
+            .iter()
+            .cloned()
+            .map(rotation::RotationSlot::Named)
+            .collect();
+        rot.enabled = ids.clone();
+        let first = ids.first().cloned().unwrap_or_else(|| zero.clone());
+        (
+            rot,
+            LIBRARY_AGENT.to_string(),
+            zero,
+            first,
+            Vec::new(),
+            Asked::Machine,
         )
     } else {
-        return Err(bad("missing `rotation` / `rule` / `sid`"));
+        return Err(bad("missing `rotation` / `rule` / `sid` / `machine`"));
     };
-    let view = ctx.hop.plan_view(
+    let view_obj = ctx.hop.plan_view(
         &rot,
         &agent,
         &start,
@@ -723,23 +858,54 @@ pub(crate) fn answer_plan_with(ctx: &Ctx, args: &Value, now: u64) -> Answer {
             tz_min,
         )
     };
-    let plan: Vec<Value> = view
+    let seg = |from: u64, to: u64, account: &Option<String>, why: &Option<SwitchWhy>| json!({"from": from, "fromText": text(from), "to": to, "toText": text(to), "account": account, "why": why});
+    let plan: Vec<Value> = view_obj
         .steps
         .iter()
-        .map(|p| json!({"from": p.from, "fromText": text(p.from), "to": p.to, "toText": text(p.to), "account": p.account, "why": p.why}))
+        .map(|p| seg(p.from, p.to, &p.account, &p.why))
         .collect();
-    let lanes: Vec<Value> = view
+    let machine = matches!(asked, Asked::Machine);
+    let live = if machine {
+        (ctx.live)()
+    } else {
+        Default::default()
+    };
+    let warm = if view.is_some() {
+        warm_of(ctx)
+    } else {
+        Default::default()
+    };
+    let lanes: Vec<Value> = view_obj
         .lanes
         .iter()
         .map(|l| {
-            json!({
+            let mut v = json!({
                 "account": l.account,
                 "spans": l.spans.iter().map(|x| json!({"from": x.from, "fromText": text(x.from), "to": x.to, "toText": text(x.to), "state": x.state, "n": x.n})).collect::<Vec<_>>(),
                 "resets": l.resets.iter().map(|(w, at)| json!({"w": w, "at": at, "atText": text(*at)})).collect::<Vec<_>>(),
-            })
+                "pct": l.pinch.as_ref().map(|p| p.1),
+            });
+            if machine {
+                v["usedBy"] = json!(book
+                    .sessions
+                    .iter()
+                    .filter(|(sid, s)| s.current == l.account && live.contains(*sid))
+                    .count());
+            }
+            let ats: Vec<Value> = warm
+                .get(&l.account)
+                .into_iter()
+                .flatten()
+                .filter(|t| **t > now && **t < until)
+                .map(|t| json!({"at": t, "atText": text(*t)}))
+                .collect();
+            if !ats.is_empty() {
+                v["warm"] = Value::Array(ats);
+            }
+            v
         })
         .collect();
-    let effective: Map<String, Value> = view
+    let effective: Map<String, Value> = view_obj
         .effective
         .iter()
         .map(|(a, cells)| {
@@ -754,15 +920,82 @@ pub(crate) fn answer_plan_with(ctx: &Ctx, args: &Value, now: u64) -> Answer {
             (a.clone(), Value::Object(m))
         })
         .collect();
-    Ok(json!({
+    let mut out = json!({
         "errors": [],
         "now": now,
         "nowText": text(now),
+        "from": from,
+        "fromText": text(from),
         "until": until,
         "plan": plan,
         "lanes": lanes,
         "effective": effective,
-    }))
+    });
+    if view.is_some() && !machine {
+        out["head"] = head_of(ctx, &rot, &agent, &view_obj, now, &text);
+    }
+    if let (Some(_), Asked::Session(sid)) = (view, &asked) {
+        out["past"] = past_of(&book.sessions[*sid], from, now)
+            .into_iter()
+            .map(|(a, b, acct, why)| seg(a, b, &Some(acct), &why))
+            .collect();
+    }
+    Ok(out)
+}
+
+/// 时间轴顶行：池里此刻都不能用（被拒 · 过封顶 · 时段停用）或预览说停发 ⇒ `{blocked: {account, at, w?}}`（最早回来的那个号、几点、哪个窗口重置）；
+/// 否则 `{account, w, pct, toTrigger?}`（此刻用的号 · 卡人的窗口与用量 · 触发是 ≥N% 时还差几点）。
+fn head_of(
+    ctx: &Ctx,
+    rot: &Rotation,
+    agent: &str,
+    v: &crate::accounts::upstream_select::rotate::PlanView,
+    now: u64,
+    text: &dyn Fn(u64) -> String,
+) -> Value {
+    use crate::accounts::quota::decide::LaneState;
+    let stuck = |l: &crate::accounts::upstream_select::rotate::PlanLane| {
+        l.spans
+            .iter()
+            .find(|x| {
+                x.from <= now
+                    && now < x.to
+                    && matches!(
+                        x.state,
+                        LaneState::Refused | LaneState::Capped | LaneState::Off
+                    )
+            })
+            .map(|x| x.to)
+    };
+    let held = v.steps.first().is_some_and(|p| p.account.is_none());
+    let all_stuck = !v.lanes.is_empty() && v.lanes.iter().all(|l| stuck(l).is_some());
+    if held || all_stuck {
+        let back = v
+            .lanes
+            .iter()
+            .filter_map(|l| stuck(l).map(|t| (t, l)))
+            .min_by_key(|(t, _)| *t);
+        let Some((at, l)) = back else {
+            return json!({"blocked": {}});
+        };
+        let mut b = json!({"account": l.account, "at": at, "atText": text(at)});
+        if let Some((w, _)) = l.resets.iter().find(|(_, t)| *t == at) {
+            b["w"] = json!(w);
+        }
+        return json!({ "blocked": b });
+    }
+    let Some(account) = v.steps.first().and_then(|p| p.account.clone()) else {
+        return json!({});
+    };
+    let mut h = json!({ "account": account });
+    if let Some((w, pct)) = ctx.hop.pinch(agent, &account, now) {
+        h["w"] = json!(w);
+        h["pct"] = json!(pct);
+        if let rotation::RotationWhen::Threshold { n } = rot.when {
+            h["toTrigger"] = json!(u32::from(n).saturating_sub(pct));
+        }
+    }
+    h
 }
 
 fn sids_of(args: &Value, key: &str) -> Result<Vec<String>, (&'static str, String)> {

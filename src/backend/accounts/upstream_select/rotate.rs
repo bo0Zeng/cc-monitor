@@ -116,6 +116,8 @@ pub(crate) struct PlanLane {
     pub(crate) account: String,
     pub(crate) spans: Vec<decide::LaneSpan>,
     pub(crate) resets: Vec<(String, u64)>,
+    /// 此刻卡人的那个窗口（语义位或窗口键）与用了多少（%）；没出过数 ⇒ `None`。
+    pub(crate) pinch: Option<(String, u32)>,
 }
 
 /// 一发请求在上游选择这一侧的事实（判的时候要的；按量号那几格由调用方从 key 表答）。
@@ -690,6 +692,27 @@ impl Hop {
         self.prepare(&a, &self.library(), target).map(|_| ())
     }
 
+    /// 一个号此刻卡人的窗口与用了多少（%）：额度账说卡在哪个窗口就取它，没说 ⇒ 用得最多的那个；没出过数 ⇒ `None`。
+    /// 窗口按语义位写（`5h` · `7d`），没有语义位的照这一家的窗口键。
+    pub(crate) fn pinch(&self, agent: &str, account: &str, now: u64) -> Option<(String, u32)> {
+        let o = self.quota.entry(agent, account)?;
+        let (slot, key) = (slot_fn(agent), key_fn(agent));
+        let ws = &o.reading.windows;
+        let w = o
+            .reading
+            .limiting
+            .as_deref()
+            .and_then(|l| ws.iter().find(|w| w.name == l && w.used.is_some()))
+            .or_else(|| {
+                ws.iter()
+                    .filter(|w| w.used.is_some())
+                    .max_by(|a, b| decide::used_now(a, now).total_cmp(&decide::used_now(b, now)))
+            })?;
+        let name = slot(&w.name).map_or_else(|| key(&w.name), |s| Some(s.to_string()))?;
+        let pct = (decide::used_now(w, now) * 100.0).round().max(0.0) as u32;
+        Some((name, pct))
+    }
+
     /// 帧面「这份轮换接下来会怎么走」（`rotation-plan`）：从 `now` 到 `until` 的预览 · 池里各号不能用的那几段与重置时刻 ·
     /// 各号各窗口此刻取的上限。`current` / `above` ＝ 此刻的号与挡在它前面的（规则 / 草稿没有会话 ⇒ 起始账号 · 空）。只读。
     #[allow(clippy::too_many_arguments)]
@@ -763,6 +786,7 @@ impl Hop {
                     account: x.clone(),
                     spans: decide::lane(&f, x, until),
                     resets,
+                    pinch: self.pinch(agent, x, now),
                 }
             })
             .collect();

@@ -1180,13 +1180,18 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 |---|---|---|
 | `effective` | ← | 号 → 窗口键（`5h` · `7d` · `*` ＝ 全部窗口 · 封顶里写过的别的键）→ `{v, layer, below: {v, layer}}`：此刻实际取的上限（`v` 为 `null` ＝ 不封顶）与来自哪一层（`window` 这号这窗口 · `all` 这号全部窗口 · `trigger` 触发 · `none`），`below` ＝ 这一格不算时往下一层取到的（封顶浮层「其余时段 ＝ …」） |
 | `errors` | ← | 逐格错 `[{cell, code, with?}]`（形状同 `rotation-rule-save` 的 `refused`）；空 ＝ 没错；草稿有错 ⇒ 只回这一格 |
-| `lanes` | ← | 池里每个号一条（按池序）：`{account, spans: [{from, to, state, n}], resets: [{w, at}]}`；`state` 是不能用的样子 `refused` · `capped`（`n` ＝ 那个上限）· `off`（时段停用）· `overage`；`resets` ＝ 视窗里的重置时刻（`w` ＝ 语义位 `5h` / `7d`，没有 ⇒ 窗口键） |
+| `from` | ← | 视窗起（另有 `fromText`）：带 `view` ⇒ 此刻之前那一截的起点；不带 ⇒ ＝ `now` |
+| `head` | ← | 只在带 `view`、问的不是 `machine` 时有：时间轴顶行。`{account, w?, pct?, toTrigger?}`（此刻用的号 · 卡人的窗口与用了多少 % · 触发是 ≥N% 时还差几点）；池里此刻都不能用（被拒 · 过封顶 · 时段停用）或预览说停发 ⇒ `{blocked: {account, at, atText, w?}}`（最早回来的号 · 几点 · 哪个窗口重置） |
+| `lanes` | ← | 池里每个号一条（按池序；`machine` ⇒ 这台全部号）：`{account, spans: [{from, to, state, n}], resets: [{w, at}], pct, usedBy?, warm?}`；`pct` ＝ 此刻卡人的那个窗口用了多少 %（没出过数 ⇒ `null`）；`usedBy` 只在 `machine` 时有：此刻活着、走这个号的会话数；`warm` ＝ quota-warm 下一次开窗 `[{at, atText}]`（只在带 `view`、读得到它的状态文件且它还在跑时有）；`state` 是不能用的样子 `refused` · `capped`（`n` ＝ 那个上限）· `off`（时段停用）· `overage`；`resets` ＝ 视窗里的重置时刻（`w` ＝ 语义位 `5h` / `7d`，没有 ⇒ 窗口键） |
 | `now` | ← | 这台此刻的 unix 秒（另有 `nowText`）；`until` ＝ 视窗止 |
+| `past` | ← | 只在 `sid` ＋ `view` 时有：`[{from, to, account, why}]`，这个会话在视窗起到此刻走过哪几个号（照换号记录切段，`why` ＝ 换进那一段的原因，头一段 `null`） |
 | `plan` | ← | `[{from, to, account, why}]`：`[from, to)` 用 `account`（`null` ＝ 那一段不发上游：硬上限停着 · 切兜底前等着）；`why` ＝ 那一段开头为什么换（形状同换号记录的 `why`；头一段 · 没换 ⇒ `null`）。用量只按此刻的算（以后涨多快没根据，不预测；单段预算不预测），结论只在重置 · 时段起止时变；每个时刻旁有 `…Text` |
-| `rotation` | → | 草稿 `{order, enabled, when, atLimit?, cap?, stint?, preempt?, fallback?, wait?}`（从池里排第一的号起）；与 `rule` · `sid` 三选一 |
+| `machine` | → | `true`：这台全部号（设置里的时间轴），按默认规则判封顶 |
+| `rotation` | → | 草稿 `{order, enabled, when, atLimit?, cap?, stint?, preempt?, fallback?, wait?}`（从池里排第一的号起）；与 `rule` · `sid` · `machine` 四选一 |
 | `rule` | → | 这台的一条规则 id（从池里排第一的号起） |
 | `sid` | → | 一个会话：此刻生效的那一份，从它此刻的号起 |
-| `span` | → | 可缺：视窗 `6h` · `12h`（缺省）· `24h` · `7d` |
+| `span` | → | 可缺：视窗 `6h` · `12h`（缺省）· `24h` · `7d`（从此刻起；带 `view` 时不看） |
+| `view` | → | 可缺：时间轴视窗 `6h`（前 2h · 后 4h）· `24h`（前 6h · 后 18h）· `7d`（前 1d · 后 6d） |
 
 码：`bad_args` · `no_such_rule`
 

@@ -1225,3 +1225,183 @@ fn the_plan_says_who_runs_next_and_what_each_cell_takes() {
         "no_such_rule"
     );
 }
+
+/// 记一条换号（`from` → `to`，`at` 那一刻），会话此刻走 `to`。
+fn switched(ctx: &Ctx, sid: &str, from: &str, to: &str, at: u64, why: SwitchWhy) {
+    rotation::face_change(&ctx.hop.store, |b| {
+        let s = b.sessions.get_mut(sid).expect("session");
+        s.history.push(rotation::SwitchRecord {
+            at,
+            at_text: None,
+            from: from.into(),
+            to: to.into(),
+            why,
+            from_resets_at: None,
+            from_resets_at_text: None,
+        });
+        s.current = to.into();
+        s.since = at;
+    })
+    .expect("write");
+}
+
+/// ★ 时间轴那一问（`view`）：视窗前后各一截（24h ＝ 前 6h · 后 18h）· `past` 照这个会话的换号记录切段（换进那一段的原因带上）·
+/// 顶行 `head`（在用哪个号 · 卡人的窗口 · 用了多少 · 到 ≥N% 还差几点）· 每条泳道此刻的用量 `pct`。
+#[test]
+fn the_timeline_view_looks_back_and_says_who_runs_now() {
+    let home = Home::new("tl-session");
+    let ctx = home.ctx();
+    let t = now();
+    let mut r = rot_json(&["b"]);
+    r["when"] = json!({"threshold": {"n": 90}});
+    answer_set_with(&ctx, &json!({"rotation": r})).expect("set");
+    home.saw(&ctx, "s-1");
+    switched(
+        &ctx,
+        "s-1",
+        "a",
+        "b",
+        t - 3600,
+        SwitchWhy::Threshold { n: 90 },
+    );
+    seen(&ctx, "b", 0.63, None);
+    let got = answer_plan_with(&ctx, &json!({"sid": "s-1", "view": "24h"}), t).expect("ok");
+    assert_eq!(got["from"], json!(t - 6 * 3600), "{got}");
+    assert_eq!(got["until"], json!(t + 18 * 3600));
+    assert!(got["fromText"].is_string());
+    let past: Vec<_> = got["past"]
+        .as_array()
+        .expect("past")
+        .iter()
+        .map(|p| {
+            (
+                p["from"].clone(),
+                p["to"].clone(),
+                p["account"].clone(),
+                p["why"].clone(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        past,
+        vec![
+            (
+                json!(t - 6 * 3600),
+                json!(t - 3600),
+                json!("a"),
+                Value::Null
+            ),
+            (
+                json!(t - 3600),
+                json!(t),
+                json!("b"),
+                json!({"threshold": {"n": 90}})
+            ),
+        ],
+        "{got}"
+    );
+    assert_eq!(
+        got["head"],
+        json!({"account": "b", "w": "5h", "pct": 63, "toTrigger": 27}),
+        "{got}"
+    );
+    let lane_b = got["lanes"]
+        .as_array()
+        .expect("lanes")
+        .iter()
+        .find(|l| l["account"] == "b")
+        .expect("b");
+    assert_eq!(lane_b["pct"], json!(63));
+    // 不带 view ＝ 编辑器那一问：照旧从此刻起、没有 past。
+    let got = answer_plan_with(&ctx, &json!({"sid": "s-1"}), t).expect("ok");
+    assert_eq!(got["from"], json!(t));
+    assert!(got.get("past").is_none(), "{got}");
+    assert_eq!(
+        answer_plan_with(&ctx, &json!({"sid": "s-1", "view": "12h"}), t)
+            .expect_err("视窗")
+            .0,
+        "bad_args"
+    );
+}
+
+/// ★ 卡住：池里都被拒 ⇒ 顶行换成 `head.blocked`（最早回来的那个号 · 几点 · 哪个窗口重置）。
+#[test]
+fn the_timeline_head_says_when_the_earliest_one_comes_back() {
+    let home = Home::new("tl-blocked");
+    let ctx = home.ctx();
+    let t = now();
+    answer_set_with(&ctx, &json!({"rotation": rot_json(&["b"])})).expect("set");
+    home.saw(&ctx, "s-1");
+    seen(&ctx, "a", 0.0, Some(t + 7200));
+    seen(&ctx, "b", 0.0, Some(t + 3600));
+    let got = answer_plan_with(&ctx, &json!({"sid": "s-1", "view": "6h"}), t).expect("ok");
+    assert_eq!(got["from"], json!(t - 2 * 3600), "{got}");
+    assert_eq!(got["until"], json!(t + 4 * 3600));
+    assert_eq!(got["head"]["blocked"]["account"], "b", "{got}");
+    assert_eq!(got["head"]["blocked"]["at"], json!(t + 3600));
+    assert!(got["head"]["blocked"]["atText"].is_string());
+}
+
+/// ★ 设置里那一问（`{machine: true}`）：本机全部号各一条泳道（按默认规则判封顶）· 每号此刻有几个活着的会话在用（`usedBy`）· 没有本会话那几格。
+/// quota-warm 留了状态文件、进程还活着 ⇒ 泳道带下一次开窗的时刻（`warm`）；进程没了 ⇒ 整类不给。
+#[test]
+fn the_machine_timeline_lists_every_account_and_who_uses_it() {
+    let home = Home::new("tl-machine");
+    let ctx = home.ctx();
+    let t = now();
+    home.saw(&ctx, "s-1");
+    home.saw(&ctx, "s-2");
+    home.saw(&ctx, "s-3");
+    switched(&ctx, "s-3", "a", "b", t - 60, SwitchWhy::Preempt);
+    home.end("s-2");
+    let warm = home.root.join("quota-warm.json");
+    std::fs::write(
+        &warm,
+        json!({"pid": std::process::id(), "next": [{"account": "b", "at": t + 1800}]}).to_string(),
+    )
+    .expect("warm");
+    let got = answer_plan_with(&ctx, &json!({"machine": true, "view": "24h"}), t).expect("ok");
+    let lanes = got["lanes"].as_array().expect("lanes");
+    assert_eq!(
+        lanes
+            .iter()
+            .map(|l| l["account"].clone())
+            .collect::<Vec<_>>(),
+        vec![json!("a"), json!("b"), json!("c"), json!("api")],
+        "{got}"
+    );
+    let of = |a: &str| {
+        lanes
+            .iter()
+            .find(|l| l["account"] == a)
+            .expect("lane")
+            .clone()
+    };
+    assert_eq!(of("a")["usedBy"], json!(1), "s-2 已结束不算");
+    assert_eq!(of("b")["usedBy"], json!(1));
+    assert_eq!(of("c")["usedBy"], json!(0));
+    assert_eq!(
+        of("b")["warm"],
+        json!([{"at": t + 1800, "atText": of("b")["warm"][0]["atText"]}])
+    );
+    assert!(of("b")["warm"][0]["atText"].is_string());
+    assert!(of("a").get("warm").is_none(), "{got}");
+    assert!(
+        got.get("past").is_none() && got.get("head").is_none(),
+        "{got}"
+    );
+    std::fs::write(
+        &warm,
+        json!({"pid": u32::MAX - 7, "next": [{"account": "b", "at": t + 1800}]}).to_string(),
+    )
+    .expect("warm");
+    let got = answer_plan_with(&ctx, &json!({"machine": true, "view": "24h"}), t).expect("ok");
+    assert!(
+        got["lanes"]
+            .as_array()
+            .expect("lanes")
+            .iter()
+            .all(|l| l.get("warm").is_none()),
+        "{got}"
+    );
+}
