@@ -319,8 +319,7 @@ pub async fn pull_one_at(
         &stop,
         |got, total| sink.progress(got, total),
     )
-    .await
-    .map_err(super::source::Failed::from)?;
+    .await?;
     Ok(())
 }
 

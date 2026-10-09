@@ -401,15 +401,19 @@ fn snap_item(seq: u64, snap: &crate::sftp_pool::Snap) -> Item {
                 serde_json::json!({ "state": "done", "bytes": bytes, "sha256": sha256 }),
             )),
         },
-        Some(End::Failed(why)) => Item::Closed {
-            by: By::Peer(json(serde_json::json!({ "state": "failed", "why": why }))),
-        },
-        // 带码的失败：码原样交给窗口（它按码换路）。
-        Some(End::FailedCoded { why, code }) => Item::Closed {
-            by: By::Peer(json(
-                serde_json::json!({ "state": "failed", "why": why, "code": code }),
-            )),
-        },
+        // 码原样交给窗口（它按码换路）；复制详情原样交给窗口（空 ⇒ 窗口自己写）。缺的格不出。
+        Some(End::Failed { why, code, detail }) => {
+            let mut v = serde_json::json!({ "state": "failed", "why": why });
+            if let Some(c) = code {
+                v["code"] = serde_json::Value::from(c.as_str());
+            }
+            if !detail.is_empty() {
+                v["detail"] = serde_json::Value::from(detail.as_str());
+            }
+            Item::Closed {
+                by: By::Peer(json(v)),
+            }
+        }
         Some(End::Cancelled) => Item::Closed {
             by: By::Peer(json(serde_json::json!({ "state": "cancelled" }))),
         },

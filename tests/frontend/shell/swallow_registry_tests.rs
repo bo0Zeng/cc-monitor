@@ -98,6 +98,8 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     // 开 direct-tcpip 失败那一条改成先按回拒码组 ack（`open_refused`）再写；写不进去同上。
     ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &ack).await;", Why::DeadLink, ""),
     ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(e, fp)).await;", Why::DeadLink, ""),
+    // 开 sftp 子系统没成那一条（同上：写不进去说明界面已经走了；SFTP 那一下的原话先进了日志）。
+    ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(e.said, fp)).await;", Why::DeadLink, ""),
     ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(e, fp).because(stages.why())).await;", Why::DeadLink, ""),
     ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(copy_text(\"beUses.exec.failed\", &[(\"e\", &e.to_string())]), f", Why::DeadLink, ""),
     ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(copy_text(\"beUses.forward.bindFailed\", &[ (\"port\", &spec.loc", Why::DeadLink, ""),

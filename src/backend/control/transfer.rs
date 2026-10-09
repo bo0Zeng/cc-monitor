@@ -33,7 +33,7 @@
 //!
 //! 撤 = 一面旗 ＋ 一个 `Notify`（等拨号那一段可以被当场打断）；进度 = `watch`（转发任务按变更合并，堵住时只合并不堆积）。
 
-use copy_core::copy_text;
+use copy_core::{copy_text, io_reason};
 use std::collections::HashMap;
 use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
@@ -43,6 +43,7 @@ use std::sync::{Arc, Mutex};
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use tokio::sync::{mpsc, watch, Notify};
 
+use crate::common::said::Said;
 use crate::control::files_commit::{KEY_LEN, PART_SUFFIX};
 use crate::control::files_write::{opener, resolve_in_root};
 use crate::dial::sftp::{self, Dial, Session};
@@ -94,14 +95,11 @@ pub fn staging_part(key: &str) -> String {
 
 /// 本机落点拆成 `(父目录 = 路径解析的根, 文件名, 半成品名)`。必须是绝对路径、有文件名。
 /// 名字按 `OsString` 拿（Linux 上落点可以是非 UTF-8 的原始字节：有损名下载「字节原样当文件名」）。
-fn land_parts(local_path: &Path) -> Result<(PathBuf, OsString, OsString), String> {
+fn land_parts(local_path: &Path) -> Result<(PathBuf, OsString, OsString), Said> {
     let p = local_path;
     let shown = p.display().to_string();
     if !p.is_absolute() {
-        return Err(copy_text(
-            "beTransfer.land.notAbsolute",
-            &[("path", &shown)],
-        ));
+        return Err(copy_text("beTransfer.land.notAbsolute", &[("path", &shown)]).into());
     }
     let name = p
         .file_name()
@@ -118,20 +116,27 @@ fn land_parts(local_path: &Path) -> Result<(PathBuf, OsString, OsString), String
 
 /// 开单时的那一判（不动盘）：落点与它的半成品都过得了路径解析。
 pub fn land_check(local_path: impl AsRef<Path>) -> Result<(), String> {
-    let (root, name, part) = land_parts(local_path.as_ref())?;
+    // 只拆路径、只过路径解析：没有下层原话。
+    let (root, name, part) = land_parts(local_path.as_ref()).map_err(|s| s.said)?;
     resolve_in_root(&root, &name)?;
     resolve_in_root(&root, &part)?;
     Ok(())
 }
 
 /// 从 0 开一份半成品：旧的在就先删（它的尾块已经对不上了），再 `O_EXCL` 新建。
-fn land_open_fresh(root: &Path, part: &OsStr) -> Result<std::fs::File, String> {
+fn land_open_fresh(root: &Path, part: &OsStr) -> Result<std::fs::File, Said> {
     let at = resolve_in_root(root, part)?;
     if std::fs::symlink_metadata(&at).is_ok() {
         std::fs::remove_file(&at).map_err(|e| {
-            copy_text(
-                "beTransfer.land.dropPartFailed",
-                &[("path", &at.display().to_string()), ("e", &e.to_string())],
+            Said::with_raw(
+                copy_text(
+                    "beTransfer.land.dropPartFailed",
+                    &[
+                        ("path", &at.display().to_string()),
+                        ("why", &io_reason(e.kind())),
+                    ],
+                ),
+                &e,
             )
         })?;
     }
@@ -140,9 +145,15 @@ fn land_open_fresh(root: &Path, part: &OsStr) -> Result<std::fs::File, String> {
         .create_new(true)
         .open(&at)
         .map_err(|e| {
-            copy_text(
-                "beTransfer.land.createFailed",
-                &[("path", &at.display().to_string()), ("e", &e.to_string())],
+            Said::with_raw(
+                copy_text(
+                    "beTransfer.land.createFailed",
+                    &[
+                        ("path", &at.display().to_string()),
+                        ("why", &io_reason(e.kind())),
+                    ],
+                ),
+                &e,
             )
         })
 }
@@ -150,23 +161,35 @@ fn land_open_fresh(root: &Path, part: &OsStr) -> Result<std::fs::File, String> {
 /// 续传：**不原地接着写**（第三层禁「续写」那种开法：每一个写句柄都得是 `O_EXCL` 新建）⇒
 /// 旧半成品改名成 `<名>.old` → `O_EXCL` 新建 `<名>` → 把前 `keep` 字节从旧的抄过来 → 删旧的。
 /// 回来的句柄游标停在 `keep`。代价如实记：前缀在本机盘上多抄一遍（本机盘速，不走网）。
-fn land_carry_over(root: &Path, part: &OsStr, keep: u64) -> Result<std::fs::File, String> {
+fn land_carry_over(root: &Path, part: &OsStr, keep: u64) -> Result<std::fs::File, Said> {
     let at = resolve_in_root(root, part)?;
     let mut old_name = part.to_os_string();
     old_name.push(".old");
     let old = resolve_in_root(root, &old_name)?;
     if std::fs::symlink_metadata(&old).is_ok() {
         std::fs::remove_file(&old).map_err(|e| {
-            copy_text(
-                "beTransfer.land.dropLeftoverFailed",
-                &[("path", &old.display().to_string()), ("e", &e.to_string())],
+            Said::with_raw(
+                copy_text(
+                    "beTransfer.land.dropLeftoverFailed",
+                    &[
+                        ("path", &old.display().to_string()),
+                        ("why", &io_reason(e.kind())),
+                    ],
+                ),
+                &e,
             )
         })?;
     }
     std::fs::rename(&at, &old).map_err(|e| {
-        copy_text(
-            "beTransfer.land.moveAsideFailed",
-            &[("path", &at.display().to_string()), ("e", &e.to_string())],
+        Said::with_raw(
+            copy_text(
+                "beTransfer.land.moveAsideFailed",
+                &[
+                    ("path", &at.display().to_string()),
+                    ("why", &io_reason(e.kind())),
+                ],
+            ),
+            &e,
         )
     })?;
     let mut fresh = opener()
@@ -174,48 +197,76 @@ fn land_carry_over(root: &Path, part: &OsStr, keep: u64) -> Result<std::fs::File
         .create_new(true)
         .open(&at)
         .map_err(|e| {
-            copy_text(
-                "beTransfer.land.createFailed",
-                &[("path", &at.display().to_string()), ("e", &e.to_string())],
+            Said::with_raw(
+                copy_text(
+                    "beTransfer.land.createFailed",
+                    &[
+                        ("path", &at.display().to_string()),
+                        ("why", &io_reason(e.kind())),
+                    ],
+                ),
+                &e,
             )
         })?;
     let copied = {
         let src = opener().read(true).open(&old).map_err(|e| {
-            copy_text(
-                "beTransfer.land.readPartFailed",
-                &[("path", &old.display().to_string()), ("e", &e.to_string())],
+            Said::with_raw(
+                copy_text(
+                    "beTransfer.land.readPartFailed",
+                    &[
+                        ("path", &old.display().to_string()),
+                        ("why", &io_reason(e.kind())),
+                    ],
+                ),
+                &e,
             )
         })?;
         std::io::copy(&mut std::io::Read::take(src, keep), &mut fresh).map_err(|e| {
-            copy_text(
-                "beTransfer.land.copyPrefixFailed",
-                &[("n", &keep.to_string()), ("e", &e.to_string())],
+            Said::with_raw(
+                copy_text(
+                    "beTransfer.land.copyPrefixFailed",
+                    &[("n", &keep.to_string()), ("why", &io_reason(e.kind()))],
+                ),
+                &e,
             )
         })?
     };
     std::fs::remove_file(&old).map_err(|e| {
-        copy_text(
-            "beTransfer.land.dropPartFailed",
-            &[("path", &old.display().to_string()), ("e", &e.to_string())],
+        Said::with_raw(
+            copy_text(
+                "beTransfer.land.dropPartFailed",
+                &[
+                    ("path", &old.display().to_string()),
+                    ("why", &io_reason(e.kind())),
+                ],
+            ),
+            &e,
         )
     })?;
     if copied != keep {
         return Err(copy_text(
             "beTransfer.land.copyPrefixShort",
             &[("got", &copied.to_string()), ("n", &keep.to_string())],
-        ));
+        )
+        .into());
     }
     Ok(fresh)
 }
 
 /// 传完：半成品改名上位。
-fn land_commit(root: &Path, part: &OsStr, name: &OsStr) -> Result<(), String> {
+fn land_commit(root: &Path, part: &OsStr, name: &OsStr) -> Result<(), Said> {
     let from = resolve_in_root(root, part)?;
     let to = resolve_in_root(root, name)?;
     std::fs::rename(&from, &to).map_err(|e| {
-        copy_text(
-            "beTransfer.land.commitFailed",
-            &[("path", &to.display().to_string()), ("e", &e.to_string())],
+        Said::with_raw(
+            copy_text(
+                "beTransfer.land.commitFailed",
+                &[
+                    ("path", &to.display().to_string()),
+                    ("why", &io_reason(e.kind())),
+                ],
+            ),
+            &e,
         )
     })
 }
@@ -321,29 +372,35 @@ pub(crate) async fn upload_to_staging(
     key: &str,
     cancel: &Cancel,
     on_progress: &Sink<'_>,
-) -> Result<(u64, String), String> {
+) -> Result<(u64, String), Said> {
     let total = tokio::fs::metadata(local_path)
         .await
         .map(|m| m.len())
         .map_err(|e| {
-            copy_text(
-                "beTransfer.local.readFailed",
-                &[("path", local_path), ("e", &e.to_string())],
+            Said::with_raw(
+                copy_text(
+                    "beTransfer.local.readFailed",
+                    &[("path", local_path), ("why", &io_reason(e.kind()))],
+                ),
+                &e,
             )
         })?;
     let mut lf = tokio::fs::File::open(local_path).await.map_err(|e| {
-        copy_text(
-            "beTransfer.local.readFailed",
-            &[("path", local_path), ("e", &e.to_string())],
+        Said::with_raw(
+            copy_text(
+                "beTransfer.local.readFailed",
+                &[("path", local_path), ("why", &io_reason(e.kind()))],
+            ),
+            &e,
         )
     })?;
     if sftp::exists(s, sftp::STAGING_ROOT).await != Some(true) {
         if sftp::exists(s, ".cc-monitor").await != Some(true) {
-            return Err(copy_text("beTransfer.upload.notDeployed", &[]));
+            return Err(copy_text("beTransfer.upload.notDeployed", &[]).into());
         }
         sftp::make_dir(s, sftp::STAGING_ROOT)
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(Said::from)?;
     }
     let part = staging_part(key);
     let have = sftp::metadata_size(s, &part).await.flatten().unwrap_or(0);
@@ -357,23 +414,32 @@ pub(crate) async fn upload_to_staging(
     };
     let mut rf = sftp::open_for_write(s, &part, resume_from == 0)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(Said::from)?;
     // 两侧无条件 seek：尾块对拍动过 `lf` 的游标。
     rf.seek(std::io::SeekFrom::Start(resume_from))
         .await
         .map_err(|e| {
-            copy_text(
-                "beTransfer.upload.seekStagedFailed",
-                &[("n", &resume_from.to_string()), ("e", &e.to_string())],
+            Said::with_raw(
+                copy_text(
+                    "beTransfer.upload.seekStagedFailed",
+                    &[
+                        ("n", &resume_from.to_string()),
+                        ("why", &io_reason(e.kind())),
+                    ],
+                ),
+                &e,
             )
         })?;
     // 续传：接上的那一截前缀在本机读一遍算进摘要（与发出去的那一份逐字节同源：同一个本机文件）。
     let mut digest = crate::files::ContentDigest::new();
     if resume_from > 0 {
         lf.seek(std::io::SeekFrom::Start(0)).await.map_err(|e| {
-            copy_text(
-                "beTransfer.local.readFailed",
-                &[("path", local_path), ("e", &e.to_string())],
+            Said::with_raw(
+                copy_text(
+                    "beTransfer.local.readFailed",
+                    &[("path", local_path), ("why", &io_reason(e.kind()))],
+                ),
+                &e,
             )
         })?;
         let mut left = resume_from;
@@ -381,9 +447,12 @@ pub(crate) async fn upload_to_staging(
         while left > 0 {
             let want = left.min(CHUNK as u64) as usize;
             lf.read_exact(&mut buf[..want]).await.map_err(|e| {
-                copy_text(
-                    "beTransfer.local.readFailed",
-                    &[("path", local_path), ("e", &e.to_string())],
+                Said::with_raw(
+                    copy_text(
+                        "beTransfer.local.readFailed",
+                        &[("path", local_path), ("why", &io_reason(e.kind()))],
+                    ),
+                    &e,
                 )
             })?;
             digest.update(&buf[..want]);
@@ -393,13 +462,16 @@ pub(crate) async fn upload_to_staging(
     lf.seek(std::io::SeekFrom::Start(resume_from))
         .await
         .map_err(|e| {
-            copy_text(
-                "beTransfer.local.seekFailed",
-                &[
-                    ("path", local_path),
-                    ("n", &resume_from.to_string()),
-                    ("e", &e.to_string()),
-                ],
+            Said::with_raw(
+                copy_text(
+                    "beTransfer.local.seekFailed",
+                    &[
+                        ("path", local_path),
+                        ("n", &resume_from.to_string()),
+                        ("why", &io_reason(e.kind())),
+                    ],
+                ),
+                &e,
             )
         })?;
     let core = async {
@@ -409,21 +481,27 @@ pub(crate) async fn upload_to_staging(
         on_progress(done, total);
         loop {
             if cancel.is_set() {
-                return Err(copy_text("beTransfer.run.cancelled", &[]));
+                return Err(copy_text("beTransfer.run.cancelled", &[]).into());
             }
             let n = lf.read(&mut buf).await.map_err(|e| {
-                copy_text(
-                    "beTransfer.local.readFailed",
-                    &[("path", local_path), ("e", &e.to_string())],
+                Said::with_raw(
+                    copy_text(
+                        "beTransfer.local.readFailed",
+                        &[("path", local_path), ("why", &io_reason(e.kind()))],
+                    ),
+                    &e,
                 )
             })?;
             if n == 0 {
                 break;
             }
             rf.write_all(&buf[..n]).await.map_err(|e| {
-                copy_text(
-                    "beTransfer.upload.writeRemoteFailed",
-                    &[("e", &e.to_string())],
+                Said::with_raw(
+                    copy_text(
+                        "beTransfer.upload.writeRemoteFailed",
+                        &[("why", &io_reason(e.kind()))],
+                    ),
+                    &e,
                 )
             })?;
             digest.update(&buf[..n]);
@@ -434,9 +512,12 @@ pub(crate) async fn upload_to_staging(
             }
         }
         rf.flush().await.map_err(|e| {
-            copy_text(
-                "beTransfer.upload.writeRemoteFailed",
-                &[("e", &e.to_string())],
+            Said::with_raw(
+                copy_text(
+                    "beTransfer.upload.writeRemoteFailed",
+                    &[("why", &io_reason(e.kind()))],
+                ),
+                &e,
             )
         })?;
         Ok(done)
@@ -469,7 +550,7 @@ pub(crate) async fn download_to_local(
     local_path: impl AsRef<Path>,
     cancel: &Cancel,
     on_progress: &Sink<'_>,
-) -> Result<u64, String> {
+) -> Result<u64, Said> {
     let (root, name, part) = land_parts(local_path.as_ref())?;
     let total = sftp::metadata_size(s, remote_path)
         .await
@@ -512,13 +593,16 @@ pub(crate) async fn download_to_local(
         rf.seek(std::io::SeekFrom::Start(resume_from))
             .await
             .map_err(|e| {
-                copy_text(
-                    "beTransfer.download.seekFailed",
-                    &[
-                        ("path", remote_path),
-                        ("n", &resume_from.to_string()),
-                        ("e", &e.to_string()),
-                    ],
+                Said::with_raw(
+                    copy_text(
+                        "beTransfer.download.seekFailed",
+                        &[
+                            ("path", remote_path),
+                            ("n", &resume_from.to_string()),
+                            ("why", &io_reason(e.kind())),
+                        ],
+                    ),
+                    &e,
                 )
             })?;
     }
@@ -529,21 +613,27 @@ pub(crate) async fn download_to_local(
         on_progress(done, total);
         loop {
             if cancel.is_set() {
-                return Err(copy_text("beTransfer.run.cancelled", &[]));
+                return Err(copy_text("beTransfer.run.cancelled", &[]).into());
             }
             let n = rf.read(&mut buf).await.map_err(|e| {
-                copy_text(
-                    "beTransfer.download.readRemoteFailed",
-                    &[("e", &e.to_string())],
+                Said::with_raw(
+                    copy_text(
+                        "beTransfer.download.readRemoteFailed",
+                        &[("why", &io_reason(e.kind()))],
+                    ),
+                    &e,
                 )
             })?;
             if n == 0 {
                 break;
             }
             lf.write_all(&buf[..n]).await.map_err(|e| {
-                copy_text(
-                    "beTransfer.download.writeLocalFailed",
-                    &[("e", &e.to_string())],
+                Said::with_raw(
+                    copy_text(
+                        "beTransfer.download.writeLocalFailed",
+                        &[("why", &io_reason(e.kind()))],
+                    ),
+                    &e,
                 )
             })?;
             done += n as u64;
@@ -553,9 +643,12 @@ pub(crate) async fn download_to_local(
             }
         }
         lf.flush().await.map_err(|e| {
-            copy_text(
-                "beTransfer.download.writeLocalFailed",
-                &[("e", &e.to_string())],
+            Said::with_raw(
+                copy_text(
+                    "beTransfer.download.writeLocalFailed",
+                    &[("why", &io_reason(e.kind()))],
+                ),
+                &e,
             )
         })?;
         Ok(done)
@@ -736,14 +829,12 @@ impl Desk {
         let meta = match std::fs::metadata(local) {
             Ok(m) => m,
             Err(e) => {
-                return err(
-                    id,
-                    "io_failed",
-                    &copy_text(
-                        "beTransfer.local.readFailed",
-                        &[("path", local), ("e", &e.to_string())],
-                    ),
-                )
+                // 开单那一下就读不到本机那份：应答带复制详情（系统原话不上句子）。
+                let said = copy_text(
+                    "beTransfer.local.readFailed",
+                    &[("path", local), ("why", &io_reason(e.kind()))],
+                );
+                return Frame::err_raw(id, TRANSFER_UPLOAD, "io_failed", &said, &e.to_string());
             }
         };
         if !meta.is_file() {
@@ -868,10 +959,12 @@ impl Desk {
             let end = match r {
                 Ok((bytes, sha256)) => TransferEnd::Done { bytes, sha256 },
                 Err(_) if cancel.is_set() => TransferEnd::Cancelled,
-                Err((why, code)) => TransferEnd::Failed {
-                    why,
-                    code: code.map(str::to_string),
-                },
+                Err((stop, code)) => TransferEnd::failed(
+                    stop.said,
+                    code.map(str::to_string),
+                    TRANSFER_START,
+                    stop.raw.as_deref(),
+                ),
             };
             tx.send_modify(|p| p.end = Some(end));
             // 等转发把终局那一帧送出去再摘票（摘早了，一条同键的新上传可能抢在撤删之前开单）。
@@ -921,10 +1014,10 @@ async fn run(
     job: Job,
     cancel: &Cancel,
     sink: &Sink<'_>,
-) -> Result<(u64, Option<String>), (String, Option<&'static str>)> {
+) -> Result<(u64, Option<String>), (Said, Option<&'static str>)> {
     let session = tokio::select! {
         s = sftp::open_for_transfer(dial) => s.map_err(|e| (e, None))?,
-        _ = cancel.wait() => return Err((copy_text("beTransfer.run.cancelled", &[]), None)),
+        _ = cancel.wait() => return Err((Said::from(copy_text("beTransfer.run.cancelled", &[])), None)),
     };
     match job {
         Job::Upload { local, key, home } => {
@@ -934,7 +1027,7 @@ async fn run(
                 .as_deref()
                 .and_then(|h| start_dir_mismatch(session.home(), h))
             {
-                return Err((why, Some(SFTP_HOME_MISMATCH)));
+                return Err((Said::from(why), Some(SFTP_HOME_MISMATCH)));
             }
             upload_to_staging(&session, &local, &key, cancel, sink)
                 .await

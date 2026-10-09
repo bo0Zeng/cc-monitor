@@ -17,6 +17,16 @@ pub(crate) fn of(cmd: Option<&str>, code: &str, raw: Option<&str>) -> String {
         .render()
 }
 
+/// 一趟跑起来之后才停下的事（传输收场帧的 `failed` 那一格：没有命令级的码）：时刻 · 机器 · 命令 · 原话。
+pub(crate) fn of_run(cmd: &str, raw: Option<&str>) -> String {
+    Detail::new()
+        .item(Label::At, now())
+        .item(Label::Machine, machine())
+        .item(Label::Command, cmd)
+        .maybe(Label::Raw, raw)
+        .render()
+}
+
 fn now() -> String {
     let t = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

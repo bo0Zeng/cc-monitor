@@ -739,7 +739,7 @@ impl comms_inward::chan::router::Backends for XferHost {
                 .boxed(),
             Ends::Failed => head
                 .chain(futures::stream::iter([end(
-                    serde_json::json!({ "state": "failed", "why": "断网（合成）" }),
+                    serde_json::json!({ "state": "failed", "why": "断网（合成）", "detail": "原话：夹具原话" }),
                 )]))
                 .map(move |i| {
                     let _keep = &mark;
@@ -910,7 +910,10 @@ async fn a_failed_transfer_is_never_committed() {
     let e = upload_remote(&line, &origin, &p("a.bin"), &DropBoard::default())
         .await
         .expect_err("该失败");
-    assert!(e.said.contains("断网（合成）"), "失败原话没带回来：{e}");
+    assert!(e.said.contains("断网（合成）"), "失败那一句没带回来：{e}");
+    // 传输台写的复制详情原样带到窗口（进度行［复制详情］取它），不并进那一句。
+    assert_eq!(e.detail, "原话：夹具原话", "复制详情没带回来：{e:?}");
+    assert!(!e.said.contains("夹具原话"), "{e}");
     assert!(
         !steps(&log).iter().any(|s| s == "files-commit-upload"),
         "传输失败了还去提交：{:?}",

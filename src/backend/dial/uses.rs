@@ -512,7 +512,11 @@ async fn serve<R, W>(
             let session = match super::sftp::open(lease, req, stages).await {
                 Ok(s) => s,
                 Err(e) => {
-                    let _ = write_stages_then_ack(out, stages, &DialAck::failed(e, fp)).await;
+                    // 拨号应答那一行只带一句话：SFTP 那一下的原话进后端日志。
+                    if let Some(raw) = &e.raw {
+                        tracing::warn!("files link: opening sftp failed: {raw}");
+                    }
+                    let _ = write_stages_then_ack(out, stages, &DialAck::failed(e.said, fp)).await;
                     return;
                 }
             };

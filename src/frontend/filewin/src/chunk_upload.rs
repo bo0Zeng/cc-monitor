@@ -30,19 +30,28 @@ pub fn hex(b: &[u8]) -> String {
     s
 }
 
-/// 一件上传走块形：逐块送 → 提交（带 `chunks` / `bytes` / 整份摘要）。回原话（失败）或 `Ok`。
+/// 一件上传走块形：逐块送 → 提交（带 `chunks` / `bytes` / 整份摘要）。失败带复制详情（后端拒了取那台写的；本机读不到窗口自己写）。
 pub async fn upload_by_chunks(
     line: &super::source::Line,
     origin: &super::source::Origin,
     p: &super::transfer::Pending,
     board: &super::transfer::DropBoard,
-) -> Result<(), String> {
-    use super::source::ask;
+) -> Result<(), super::source::Failed> {
+    use super::source::{ask_coded as ask, Failed};
     let key = uuid::Uuid::new_v4().simple().to_string();
+    // 本机那份读不到：句子只说原因词，系统原话进复制详情。
     let local_err = |e: std::io::Error| {
-        copy_text(
-            "beTransfer.local.readFailed",
-            &[("path", &p.local_path), ("e", &e.to_string())],
+        Failed::here(
+            copy_text(
+                "beTransfer.local.readFailed",
+                &[
+                    ("path", &p.local_path),
+                    ("why", &copy_core::io_reason(e.kind())),
+                ],
+            ),
+            origin,
+            "files-stage-chunk",
+            Some(&e.to_string()),
         )
     };
     let mut f = std::fs::File::open(&p.local_path).map_err(local_err)?;
@@ -53,7 +62,7 @@ pub async fn upload_by_chunks(
     board.progress(&p.name, 0, total);
     loop {
         if board.cancels().is_cancelled() {
-            return Err(super::transfer::CANCELLED.to_string());
+            return Err(Failed::from(super::transfer::CANCELLED.as_str()));
         }
         let n = f.read(&mut buf).map_err(local_err)?;
         if n == 0 {

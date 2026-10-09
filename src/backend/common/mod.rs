@@ -20,6 +20,8 @@ pub(crate) mod own_state;
 /// 交来的当前目录）都读这一形 —— 两块之间零互相依赖，共用的只许在这一层。②（平台无关）只做 JSON ⇄ 字节。
 /// ③（无域知识）它只认「一串字节怎么上线」，不认那是哪个文件、拿去干什么。
 pub(crate) mod path_wire;
+/// 一次失败给人看的那一句 ＋ 下层原话（原话进复制详情，不上句子）。① control（传输台）与 dial（SFTP）都回它 · ② 纯数据 · ③ 只认「一句 ＋ 原话」。
+pub(crate) mod said;
 /// 「这台机器上现在有哪些 tmux 会话」那一张快照。① control（`gate::list_sessions` 判活、`ccm` 铸名避让）与 observe（`watcher` 焐热）都用 ——
 /// 住 `control/` 的话 watcher 要走一条 `observe → control` 的回边，住 `observe/` 的话 Gate 引用不到 · ② 起的是跨平台的 `tmux` · ③ 只认「会话名 + `@ccm_sid`」。
 pub(crate) mod session_snapshot;

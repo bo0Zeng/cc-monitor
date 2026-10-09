@@ -1000,7 +1000,7 @@ impl Failed {
     }
 
     /// 这一侧的错（问之前拼不出参数 · 回来的读不懂）：窗口进程写详情（时刻 · 机器 · 命令 · 原话）。
-    fn here(said: String, origin: &Origin, cmd: &str, raw: Option<&str>) -> Self {
+    pub(crate) fn here(said: String, origin: &Origin, cmd: &str, raw: Option<&str>) -> Self {
         Self {
             code: None,
             said,
@@ -1201,21 +1201,20 @@ pub async fn watch(
     kind: &str,
     stop: &comms_inward::chan::wire::CancelToken,
     on: impl FnMut(u64, u64),
-) -> Result<Watched, String> {
-    watch_coded(line, origin, kind, stop, on)
-        .await
-        .map_err(|(_, said)| said)
+) -> Result<Watched, Failed> {
+    watch_coded(line, origin, kind, stop, on).await
 }
 
-/// 同 [`watch`]，失败时把传输台说的码一起交回（`(码, 原话)`；没码 ⇒ `None`）—— 上传据 `sftp_home_mismatch` 换路。
+/// 同 [`watch`]（名字留着：上传据失败里的码 `sftp_home_mismatch` 换路）。失败带传输台说的码与复制详情
+/// （传输台写了 ⇒ 原样；没写 · 这一侧收场的 ⇒ 窗口进程自己写）。
 pub async fn watch_coded(
     line: &Line,
     origin: &Origin,
     kind: &str,
     stop: &comms_inward::chan::wire::CancelToken,
     mut on: impl FnMut(u64, u64),
-) -> Result<Watched, (Option<String>, String)> {
-    let plain = |s: String| (None, s);
+) -> Result<Watched, Failed> {
+    let plain = Failed::local;
     use comms_inward::chan::wire::{By, Comms, Item, Kind, Sub};
     use futures::StreamExt as _;
     let mut sub = line.subscribe(origin, &Kind(kind.to_string()), None, WATCH_CREDIT);
@@ -1265,10 +1264,21 @@ pub async fn watch_coded(
                             .unwrap_or(0),
                         sha256: v.get("sha256").and_then(|s| s.as_str()).map(str::to_string),
                     }),
-                    "failed" => Err((
-                        v.get("code").and_then(|c| c.as_str()).map(str::to_string),
-                        text("why").to_string(),
-                    )),
+                    "failed" => {
+                        let said = text("why").to_string();
+                        let detail = text("detail");
+                        let mut f = if detail.trim().is_empty() {
+                            Failed::here(said, origin, kind, None)
+                        } else {
+                            Failed {
+                                code: None,
+                                said,
+                                detail: detail.to_string(),
+                            }
+                        };
+                        f.code = v.get("code").and_then(|c| c.as_str()).map(str::to_string);
+                        Err(f)
+                    }
                     "cancelled" => Err(plain(super::transfer::CANCELLED.to_string())),
                     _ => Err(plain(super::find::refusal(
                         kind,

@@ -250,7 +250,7 @@ async fn a_dead_local_stream_ends_every_relay_it_opened() {
     let snaps = drain(s).await;
     assert_eq!(
         snaps.last().and_then(|x| x.end.clone()),
-        Some(End::Failed("本机后端的流断了（判据）".to_string()))
+        Some(End::failed("本机后端的流断了（判据）".to_string()))
     );
 }
 
@@ -352,11 +352,11 @@ async fn a_download_onto_a_session_file_is_forwarded_like_any_other() {
     assert_eq!(sent["args"]["local_path"], session, "落点没有原样转给后端");
 }
 
-/// 解帧：后端 `wire_tests::transfer_frames_have_exactly_these_bytes` 那四形**逐字节**的线上串（异源：后端金标准）
+/// 解帧：后端 `wire_tests::transfer_frames_have_exactly_these_bytes` 那几形**逐字节**的线上串（异源：后端金标准）
 /// 都认得出；`end` 认不出 ⇒ 整帧 `None`（不猜一个结局）。
 #[test]
 fn transfer_frames_parse_exactly_as_the_backend_writes_them() {
-    let cases: [(&str, Option<End>); 5] = [
+    let cases: [(&str, Option<End>); 6] = [
         (
             r#"{"kind":"transfer","id":"xfer-7","got":262144,"total":1000000}"#,
             None,
@@ -370,14 +370,24 @@ fn transfer_frames_parse_exactly_as_the_backend_writes_them() {
         ),
         (
             r#"{"kind":"transfer","id":"xfer-7","got":262144,"total":1000000,"end":{"state":"failed","why":"写暂存件失败"}}"#,
-            Some(End::Failed("写暂存件失败".into())),
+            Some(End::failed("写暂存件失败".into())),
         ),
         // 带码的那一形（后端 `wire_tests` 同一行逐字节）⇒ 单列一形，码原样带着。
         (
             r#"{"kind":"transfer","id":"xfer-7","got":262144,"total":1000000,"end":{"state":"failed","why":"w","code":"sftp_home_mismatch"}}"#,
-            Some(End::FailedCoded {
+            Some(End::Failed {
                 why: "w".into(),
-                code: "sftp_home_mismatch".into(),
+                code: Some("sftp_home_mismatch".into()),
+                detail: String::new(),
+            }),
+        ),
+        // 带复制详情的那一形（后端 `wire_tests` 同一行逐字节）⇒ 详情原样带着。
+        (
+            r#"{"kind":"transfer","id":"xfer-7","got":262144,"total":1000000,"end":{"state":"failed","why":"w","detail":"d"}}"#,
+            Some(End::Failed {
+                why: "w".into(),
+                code: None,
+                detail: "d".into(),
             }),
         ),
         (
