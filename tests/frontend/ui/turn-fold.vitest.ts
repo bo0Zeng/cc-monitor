@@ -239,7 +239,7 @@ describe("按轮折叠", () => {
     expect(fill).toHaveBeenCalled();
   });
 
-  it("折着的轮把它过程那一段（开头之后到第一条结尾之前，没有结尾 ⇒ 到下一轮开头 / 账本尾）告诉骨架：按 0 高、不物化；带行的开头多一条行高；展开 ⇒ 撤掉那一段", async () => {
+  it("折着的轮把它的过程行（开头之后到下一轮开头 / 账本尾，扣掉结尾那几行）告诉骨架：按 0 高、不物化；带行的开头多一条行高；展开 ⇒ 撤掉", async () => {
     const content = document.createElement("div");
     content.append(card("card-user", "u1"), card("card-assistant", "e1"), card("card-user", "u2"), card("card-user", "u3"));
     document.body.replaceChildren(content);
@@ -254,7 +254,7 @@ describe("按轮折叠", () => {
     const sk = { ledger: { uuidToSeq: seqs, endSeq: 40 }, fillVisible: vi.fn(() => 0), setFolds };
     const fold = new TurnFold(content, content, () => ({ origin: "local" as never, jsonlPath: "/p/s.jsonl" }), read, () => sk);
     await fold.refresh();
-    expect(setFolds).toHaveBeenLastCalledWith({ folded: [[2, 10], [13, 30]], lines: [12, 1], linePx: 40 });
+    expect(setFolds).toHaveBeenLastCalledWith({ folded: [[2, 10], [11, 12], [13, 30]], lines: [1, 12], linePx: 40 });
     lines(content)[0].click();
     expect(setFolds.mock.lastCall?.[0].folded).toEqual([[13, 30]]);
   });
