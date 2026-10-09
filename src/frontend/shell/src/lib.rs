@@ -341,7 +341,8 @@ fn session_side_effects(
         | Out::Unseen { .. }
         | Out::Status { .. }
         | Out::Listed { .. }
-        | Out::Runs { .. } => {}
+        | Out::Runs { .. }
+        | Out::Branch { .. } => {}
     }
 }
 

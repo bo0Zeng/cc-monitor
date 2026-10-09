@@ -160,6 +160,12 @@ pub(crate) fn local_product(
                 runs: runs.clone(),
                 ended: ended.clone(),
             }),
+        LocalItem::Frame(InboundFrame::SessionBranch { sid, off, .. }) => (!hidden.contains(sid))
+            .then(|| BookIn::Branch {
+                origin: origin(),
+                sid: sid.clone(),
+                off: off.clone(),
+            }),
         LocalItem::Frame(_) => None,
     }
 }

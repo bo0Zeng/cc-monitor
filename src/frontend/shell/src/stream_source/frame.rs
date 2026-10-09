@@ -148,6 +148,13 @@ pub enum InboundFrame {
         runs: crate::ui_contract::RecordBody,
         ended: crate::ui_contract::RecordBody,
     },
+    /// 一个会话的主线外清单（`session_branch`，整份、变了才发；`off` 是 JSON 数组原文，记录 `id` 串，不解释）。
+    SessionBranch {
+        sid: String,
+        /// 那份会话记录（必填格，形状校验用；会话账按 `sid` 记，不往下传）。
+        path: String,
+        off: crate::ui_contract::RecordBody,
+    },
     /// 远端后端发送通道拥塞、丢了 `dropped` 帧（慢 SSH 管道）；monitor 收到后经 remote-health 通道提示用户。
     /// `lost` / `lost_truncated`（additive）：那批丢帧里不可恢复的那些的身份 —— 决定了要对用户说哪句话：丢内容帧「重开会话可看完整历史」是真的，
     /// 丢状态增量帧不是（它是一次差分的结果、别处不存在）。旧后端不发这两个字段 ⇒ 空集 / false。
@@ -502,6 +509,11 @@ pub fn parse_frame(line: &str) -> Result<InboundFrame, Unread> {
             sid: req_str(obj, k, "sid")?,
             runs: req_array_text(obj, k, "runs")?,
             ended: req_array_text(obj, k, "ended")?,
+        },
+        "session_branch" => InboundFrame::SessionBranch {
+            sid: req_str(obj, k, "sid")?,
+            path: req_str(obj, k, "path")?,
+            off: req_array_text(obj, k, "off")?,
         },
         "session_removed" => InboundFrame::SessionRemoved {
             sid: req_str(obj, k, "sid")?,

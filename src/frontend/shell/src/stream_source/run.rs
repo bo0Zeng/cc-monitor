@@ -409,6 +409,13 @@ async fn stream_loop(
                     ended,
                 });
             }
+            Some(InboundFrame::SessionBranch { sid, off, .. }) => {
+                crate::session_book::feed(BookIn::Branch {
+                    origin: host_label.clone(),
+                    sid,
+                    off,
+                });
+            }
             Some(InboundFrame::SessionRemoved { sid }) => {
                 // 只剩内容流的边界：残批已在循环头冲掉；这里摘排队中的快照 ＋ 给在途的打取消标记（归档后迟到的快照行会经「见行复活」造出僵尸 tab）、续点作废。
                 // 它离开之后是什么由下一帧 `session_state` 说。

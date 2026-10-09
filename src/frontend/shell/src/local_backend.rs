@@ -1545,7 +1545,9 @@ pub(crate) fn absorb_local_frame(
         // 任务清单变了 ⇒ 交回读循环（`consume_local` 交重放缓冲那张订阅表，与远端同一个口）。
         | InboundFrame::TasksChanged { .. }
         // 一个会话的运行表 ⇒ 同一条有序通道（排在那个会话的宣告之后；`consume_local` 交会话账）。
-        | InboundFrame::SessionRuns { .. }) => return Some(f),
+        | InboundFrame::SessionRuns { .. }
+        // 主线外清单 ⇒ 同上（排在那个会话的宣告之后；交会话账）。
+        | InboundFrame::SessionBranch { .. }) => return Some(f),
         // 其余帧（hello · 溢出 …）本机这条流今天不消费。
         _ => {}
     }

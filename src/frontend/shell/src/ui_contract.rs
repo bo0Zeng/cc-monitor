@@ -151,6 +151,8 @@ pub enum SessionStreamFrame {
     SnapshotInflight(SnapshotInflightPayload),
     /// 一个会话的运行表（那台后端给，原样转）：列在 agent 面板里，状态标到派出它的那张工具卡上。
     Runs(SessionRunsPayload),
+    /// 一个会话的主线外清单（那台后端给，原样转）：清单里的那几条卡折成一段（ESC 回退掉的）。
+    Branch(SessionBranchPayload),
 }
 
 impl SessionStreamFrame {
@@ -170,7 +172,8 @@ impl SessionStreamFrame {
             | SessionStreamFrame::Unseen(_)
             | SessionStreamFrame::Listed(_)
             | SessionStreamFrame::SnapshotInflight(_)
-            | SessionStreamFrame::Runs(_) => false,
+            | SessionStreamFrame::Runs(_)
+            | SessionStreamFrame::Branch(_) => false,
         }
     }
 
@@ -195,6 +198,7 @@ impl SessionStreamFrame {
             SessionStreamFrame::Idle(p) => Some(&p.session_id),
             SessionStreamFrame::Ended(p) => Some(&p.session_id),
             SessionStreamFrame::Runs(p) => Some(&p.session_id),
+            SessionStreamFrame::Branch(p) => Some(&p.session_id),
             SessionStreamFrame::Batch(_)
             | SessionStreamFrame::Unseen(_)
             | SessionStreamFrame::Listed(_)
@@ -213,6 +217,16 @@ pub struct SessionRunsPayload {
     pub runs: RecordBody,
     #[cfg_attr(test, ts(type = "Array<import(\"./RunEnded\").RunEnded>"))]
     pub ended: RecordBody,
+}
+
+/// [`SessionStreamFrame::Branch`] 的体：那台后端 `session_branch` 帧的 `off`（整份，原样，不解释）。
+#[derive(Debug, Serialize, Clone, PartialEq, Eq)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
+pub struct SessionBranchPayload {
+    pub session_id: String,
+    #[cfg_attr(test, ts(type = "Array<string>"))]
+    pub off: RecordBody,
 }
 
 /// [`SessionStreamFrame::SnapshotInflight`] 的体。

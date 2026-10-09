@@ -168,6 +168,7 @@ export const CREDIT_EXEMPT_FRAMES = [
   "listed",
   "snapshot_inflight",
   "runs",
+  "branch",
 ] as const;
 
 /**

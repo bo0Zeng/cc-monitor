@@ -185,6 +185,11 @@ const FRAMES: &[(&str, &str)] = &[
         "session_runs",
         r#"{"kind":"session_runs","sid":"s1","runs":[],"ended":[]}"#,
     ),
+    // 一个会话的主线外清单 —— 会话成品，同上。
+    (
+        "session_branch",
+        r#"{"kind":"session_branch","sid":"s1","path":"/p/s1.jsonl","off":["u2"]}"#,
+    ),
 ];
 
 #[test]
@@ -217,6 +222,7 @@ fn the_absorb_point_hands_back_exactly_the_content_and_lifecycle_frames() {
                     | (&"sessions_replayed", InboundFrame::SessionsReplayed)
                     | (&"tasks_changed", InboundFrame::TasksChanged { .. })
                     | (&"session_runs", InboundFrame::SessionRuns { .. })
+                    | (&"session_branch", InboundFrame::SessionBranch { .. })
                     | (
                         &("session_file_gone" | "session_file_reread"),
                         InboundFrame::SessionFileNotice { .. }
@@ -240,8 +246,9 @@ fn the_absorb_point_hands_back_exactly_the_content_and_lifecycle_frames() {
             "session_file_reread",
             // 任务清单变了（本机消费者交重放缓冲那张订阅表）。
             "tasks_changed",
-            // 运行表（会话成品，交会话账）。
+            // 运行表 · 主线外清单（会话成品，交会话账）。
             "session_runs",
+            "session_branch",
         ]
         .iter()
         .map(|s| s.to_string())
