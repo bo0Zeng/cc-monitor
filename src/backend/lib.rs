@@ -874,7 +874,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// p9m-copy-detail：失败应答多一格 detail（时刻 · 机器 · 命令 · 码 · 原话，排版只在 copy-core::detail）· 结束会话 / 读画面 / 送字 / cc-bus / 账号库「契约对不上」的码 → 句搬进后端 stream/said.rs、处理器原句进详情 · 批量停 / 起每项带 said 与详情 · 句子里不许接原话（C-W18）。
 ///
 /// p9n-transfer-detail：transfer 收场帧 state=failed 多一格可缺的 detail（why 只剩原因词）· transfer-upload 开单读不到本机那份带原话 · 文件写面失败统一 WriteFail（码 · 句 · 原话）· 后端 common::said::Said；终端那一路之后 Linux 通知 / 开终端、复制详情续做、瘦身五一并进来。
-pub const BUILD_ID: &str = "p9n-transfer-detail";
+///
+/// p9o-detail-everywhere：拨号应答 · files 链路失败应答 · backend_status.machine · 六条读答（unreadable）各多可缺 detail · 自有状态文件失败带原话 · 「那台不认这条命令」统一按码取一句、remote_ask 遇老后端回 unknown_command · Codex 中转（relay-optin 入参 agent · 426 / 403 key-scope · 直通钥匙 relay-pass-key）· Linux 单实例令牌转交 · 找 ssh 进后端。
+pub const BUILD_ID: &str = "p9o-detail-everywhere";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
