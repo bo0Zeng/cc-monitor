@@ -16,6 +16,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { installDotRest, statusDot } from "../../../../src/frontend/ui/kit/status-dot";
 import { REPO_ROOT } from "../../../test-support/repo-root";
+import { copyText } from "../../../../src/frontend/ui/copy-table";
 
 let visibility: DocumentVisibilityState = "visible";
 let focused = true;
@@ -52,7 +53,7 @@ afterEach(() => {
 });
 
 function rig(): { dot: HTMLElement; other: HTMLElement; breath: FakeAnim; spin: FakeAnim; anims: FakeAnim[] } {
-  const dot = statusDot("running", "运行中");
+  const dot = statusDot("running", copyText("sessionFace.dot.running"));
   const other = document.createElement("span");
   document.body.append(dot, other);
   const breath = new FakeAnim({ target: dot });
@@ -100,7 +101,7 @@ describe("停与续", () => {
     const stop = installDotRest();
     focused = false;
     window.dispatchEvent(new FocusEvent("blur"));
-    const fresh = statusDot("running", "运行中");
+    const fresh = statusDot("running", copyText("sessionFace.dot.running"));
     const plain = document.createElement("div");
     document.body.append(fresh, plain);
     const a = new FakeAnim({ target: fresh });
