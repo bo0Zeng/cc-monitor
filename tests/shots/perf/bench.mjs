@@ -199,7 +199,10 @@ async function openPage() {
   const idleCpu = cpuMs(browser.pid) - c0;
   // 开页安静之后还一张卡都没建的 tab（后台空闲物化没轮到 / 没进队）
   const virgin = await page.eval("[...document.querySelectorAll('#message-stream > .stream')].filter((s) => !s.querySelector('.card')).length");
-  result.boot.push({ ms: Date.now() - b0, quietWait: quiet, idleCpu, virgin, ...(await metrics(page)) });
+  // 开页到安静这一段的长任务（探针在页面任何脚本之前就在记）：人一开窗就去点，碰上的就是它们
+  const bootLt = await page.eval("({ n: __perf.lt.length, ms: __perf.lt.reduce((a, x) => a + x.d, 0), max: __perf.lt.reduce((a, x) => Math.max(a, x.d), 0), list: __perf.lt.slice(0, 40).map((x) => [Math.round(x.s), Math.round(x.d)]), dcl: Math.round(performance.getEntriesByType('navigation')[0]?.domContentLoadedEventStart ?? 0) })");
+  if (args.shot) console.log(`开页长任务（起点 ms, 时长 ms；DOMContentLoaded ${bootLt.dcl}）：${bootLt.list.map(([a, b]) => `${a}+${b}`).join(" ")}`);
+  result.boot.push({ ms: Date.now() - b0, quietWait: quiet, idleCpu, virgin, bootLtN: bootLt.n, bootLtMs: bootLt.ms, bootLtMax: bootLt.max, ...(await metrics(page)) });
   return page;
 }
 
@@ -541,7 +544,7 @@ function summarize(r) {
   L.push(`# 性能读数（${r.when} · ${r.mode === "build" ? "生产构建" : "开发服务器"} · ${r.runs} 趟 · loadavg 开头 ${r.load.start.map((x) => x.toFixed(1)).join("/")} 结尾 ${r.load.end.map((x) => x.toFixed(1)).join("/")}）`);
   L.push("");
   if (r.boot.length) {
-    L.push(`开页到安静：p50 ${f0(pct(r.boot.map((b) => b.ms), 0.5))} ms · 安静时 1.5 s 的 CPU p50 ${f0(pct(r.boot.map((b) => b.idleCpu ?? 0), 0.5))} ms`);
+    L.push(`开页到安静：p50 ${f0(pct(r.boot.map((b) => b.ms), 0.5))} ms · 这一段长任务 p50 ${f0(pct(r.boot.map((b) => b.bootLtN ?? 0), 0.5))} 个 / 合计 ${f0(pct(r.boot.map((b) => b.bootLtMs ?? 0), 0.5))} ms / 最长 ${f0(pct(r.boot.map((b) => b.bootLtMax ?? 0), 0.5))} ms · 安静时 1.5 s 的 CPU p50 ${f0(pct(r.boot.map((b) => b.idleCpu ?? 0), 0.5))} ms`);
     L.push(`开页安静后还没建卡的 tab p50 ${f0(pct(r.boot.map((b) => b.virgin ?? 0), 0.5))} 个 · DOM 节点 p50 ${f0(pct(r.boot.map((b) => b.Nodes), 0.5))} · JS 堆 p50 ${mb(pct(r.boot.map((b) => b.JSHeapUsedSize), 0.5))} MB`);
     L.push("");
   }
