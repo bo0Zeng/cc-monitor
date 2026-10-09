@@ -42,7 +42,6 @@
  *    都带着这个前提；秤 2 落地后要拿真值回来重校。
  *
  * 复算：`npx vitest run tests/frontend/ui/scale3-one-screen-gate.vitest.ts`
- * 读数： `tests/evidence/A-scale3-one-screen-gate.md`
  */
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { readdirSync, readFileSync } from "node:fs";

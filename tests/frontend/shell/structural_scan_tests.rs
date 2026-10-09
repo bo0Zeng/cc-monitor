@@ -247,7 +247,7 @@ fn every_monitor_file_strips_clean() {
 ///  处置是**搬家**，不是去动那把尺子 —— 那把尺子同时守着后端本体两层判据。〕
 ///
 /// **死值验**：把 `guard_core::assert_tree_strips_clean` 里的 `strip_prefix(root)`
-/// 退回 `path.file_name()` ⇒ 本条必须红（读数落 `tests/evidence/K-R75-剥法认形状与真静默读数.md`）。
+/// 退回 `path.file_name()` ⇒ 本条必须红。
 #[test]
 fn the_tree_walk_names_the_file_by_path_not_by_basename() {
     let root = std::env::temp_dir().join(format!(
@@ -4540,7 +4540,6 @@ fn every_prose_tombstone_mark_is_registered() {
         // `--dial` 删了那一拍：守它的判据改名留的墓碑 · C2 那份读数脚本头上
         //   那句「界面侧判据随之改名」（它点名的判据 SR1a 改了名，脚本本身只对 C2 那一版有效）。
         ("tests/backend/main_argv_table_guard.rs", 1),
-        ("tests/evidence/C2-dial-loopback.py", 1),
         // +3：模块头注 ＋ 装 / 卸两条命令头注里各一块（`…_ccm_helper` 改名成 `…_alias_block`）。
         ("src/frontend/shell/src/sftp.rs", 11), // 8 → 11：标记读写 · 比标记 · 受管路径谓词三处随 cc-acct-iso 部署命令删了，各留一块 // // 7 → 8：`ccm` 入口那一段（`put_ccm_entry` · `CCM_CLI_REMOTE_PATH`）删了，原地一块（两个名同一块只算一处） // 〔删 `fenced_block::apply` 那一族〕8 → 7：`rollback_note` · `SftpFile` 两块随读取器 / 落点原语删了，`put_ccm_entry` 头注进一块 `fenced_block::apply` // 10 → 8：别名块两条命令的头注（两块墓碑）随命令搬去 `profile_installer.rs` // 9 → 10（进 3 出 2）：执行那一半（SFTP）搬进本机后端 —— 模块头注两块（开会话 · 原子上传）＋ `SftpFile` 改名一块进；原子上传那段头注的两块随函数搬去后端 `dial/sftp.rs`
         ("src/backend/assets/aliases/block.rs", 10), // 11 → 10：PowerShell 别名块不再带 `function cc`（`cc` 进了清单），讲它怎么生成、`cct` 为什么不生成的那段散文整段退役，`AccountAliasReport` 那一句随之走 // 13 → 11：远端装 / 卸别名块两条命令删了，头注两块墓碑随之走 // 11 → 13：从 `sftp.rs` 搬来别名块两条命令，头注里两块墓碑跟着来 // 5 → 11（`ProfileKind` / `ProfileScan` · `$PROFILE` 两份认法与遗留扫描 · 扫一份那两个 · 「终端集成」命令名 · 模块头表那一格，逐处挂墓碑） // +1：`AccountAliasReport` 那一句 · +3：本机原子写原语 `atomic_write_string` / `atomic_replace_path` 删了（原住址一块 ＋ BOM 那段两句）
@@ -4646,8 +4645,6 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/frontend/shell/tmux_backend_gate_guard_tests.rs", 8), // 6 → 8：`MONITOR_TMUX` 随 `tmux.rs` 删了 ＋ 从 `tmux_tests.rs` 挪来三条那一段的来历
         // +3：看住的两个命令与四条判据随命令迁到界面翻面，原处与两张表各一块
         ("tests/backend/footprint/registry_environment_tests.rs", 1),
-        ("tests/evidence/K-R20-C-deadname-census.py", 1),
-        ("tests/evidence/S29-legacy-compat-census.py", 11),
         ("tests/frontend/ui/ipc/commands.vitest.ts", 2), // 10 → 2：命令条数的三个手抄常量删了（改判两向集合相等），挂在它们增减账注释里的八块墓碑随之没了 // 11 → 10：origin 人群那一行合并时收成了只记这一拍的增量，旧的长注释（带墓碑那几处）随之没了 // +2：计数行里点收件箱两条旧名的那两行挂墓碑 // // +1：头注计数那段点的远端 shellinit 旧名 // +2：K-R49 增量账里 `write_account_aliases` 那两行 // +1：「刻意不同」那条判据合并后改名，本机只有一个表示那一节点它旧名 ·远端会话清单那个函数随历史清单搬进本机后端删了，点它的散文挂墓碑
         // `"__local__"` 合进 `LOCAL_ORIGIN`，「两个同名常量刻意不同」那条判据改成钉合了之后的形状，旧名挂一块。
         ("tests/frontend/shell/backend_policy_tests.rs", 2), // +1：「空 origin 必须拒」那条随命令退役，原处一块
@@ -4830,7 +4827,6 @@ fn every_prose_tombstone_mark_is_registered() {
         // `remote_write_registry_tests.rs` 那一行走了：它挂在 `NON_WRITING_COMMANDS` 里
         //   「`sftp_download` 从这张表搬走了」那段 09-21 的订正上，而那张表的全部五行连同它说的那条命令
         //   整轴删了（池子收到只剩 `sftp_copy`）⇒ 被守的那件事不在了，按第②条出路减掉。
-        ("tests/evidence/K-R112-deathvalue.md", 1),
         // `tests/scripts/gate.sh` 那一行走了：「立项理由已不成立」那段的标记去掉日期后成了标准形（上表 2 → 3）。
     ];
 

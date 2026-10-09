@@ -1011,7 +1011,7 @@ const SITES: &[(&str, Why, usize)] = &[
     // **今天还剩的 8 行，逐档说清为什么还在**：
     //   · `Why::OldId`（9 行）—— **本来就不该改**（那一档头注逐字「没有解锁条件」）：
     //     订正段 / 墓碑 / 病史里对旧闭集 id 的逐字引用。步 8 的机械替换把这个拼写
-    //     **明写进了保护名单**（`tests/evidence/w8-rename.py` 的 `PROTECTED`）。
+    //     **明写进了保护名单**。
     //   · `Why::SymbolName`（**0 行 · 这一档 2026-09-19 清零**）—— 上一版是 3 行共 12 处，
     //     全部是「远端那份后端的路径」那一族符号。它们跟着**用户盘上 `config.json` 里那个键**走
     //     （`RemoteConfig` 带 `#[serde(rename_all = "camelCase")]` ⇒ Rust 字段名就是线上键名），
@@ -1196,7 +1196,7 @@ fn the_old_backend_name_is_gone_from_the_closed_set_itself() {
 ///   ⇒ 它是**住址**，不是名字；名字改对了，住址跟着搬是另一件事。
 /// - **`src/backend/` 那棵树**（另一个 workspace）与**前端 `src/**.ts`**
 ///   不在本尺子的面里。⚠ 这是**判不了**，不是「那边干净」——
-///   现打：前端 30 余处、backend 树 26 处，逐条读数落在 `evidence/K-R81-….md`。
+///   现打：前端 30 余处、backend 树 26 处。
 ///
 /// # ⚠ 本文件自己在面里（`K-R31` 那一形，`scanning_guard_registry` 登记为「第五形」）
 ///

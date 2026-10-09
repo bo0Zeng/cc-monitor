@@ -772,10 +772,9 @@ const BREAKING_MARK: &str = "会改变已有行为";
 ///
 /// # 它从哪来 —— 一条**现打出来**的缺口，不是设想
 ///
-/// `K-R118` 的死值验第 ⑦ 刀（刀具住 `tests/evidence/K-R118-cut.py` 的 `d7`）：
+/// `K-R118` 的死值验第 ⑦ 刀：
 /// 把版本号那六处 ＋ `src/frontend/shell/Cargo.lock` **一起** bump，而 `CHANGELOG.md`
 /// 一个字不动 ⇒ 实测 `GATE: OK —— 16 格全绿，一条都没红`
-/// （逐字读数住 `tests/evidence/K-R118-deathvalue.md#§E3`，本条不抄那份快照）。
 /// ⇒ 「**版本号 bump 了而 CHANGELOG 没跟**」这一形当时**没有任何东西在守**。
 /// 它的后果正是本区最贵的那一族：一次**静默的行为改变** —— 用户拿到的包只涨了小版本号，
 /// 而里面有几条会让他原来的用法当场失效。
@@ -1023,7 +1022,7 @@ fn the_docs_self_reported_release_is_the_version_we_ship() {
 ///
 /// `K-R119` 在推 `v3.8.0` 之前逐处 grep 了一遍（不是「判据绿了」，是真去看那几行），
 /// 七处版本号 ＋ `R79` 那两处 README 自称全是 `3.8.0`，而 `package-lock.json`
-/// 的**顶层两处**仍是 `3.7.0`。读数住 `tests/evidence/K-R119-发版读数.md § 四`。
+/// 的**顶层两处**仍是 `3.7.0`。
 ///
 /// 🔴 **成因与 `K-R120` 那两处 README 同源，不是「有人改漏了」**：
 /// 那两处**不在任何判据的人群里** —— 现打 `grep -c 'package-lock' src/frontend/shell/src/` 在本条

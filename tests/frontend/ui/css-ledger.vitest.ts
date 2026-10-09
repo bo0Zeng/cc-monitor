@@ -423,8 +423,8 @@ describe("S25 ① z-index 只许写 var(--z-*)（件 4）", () => {
       bare,
       "这些 `z-index` 没走刻度：\n  " +
         bare.join("\n  ") +
-        "\n★ 十档刻度定义在 `src/frontend/ui/styles/tokens.css`（`--z-base` … `--z-drag`），逐条判语义的结果在\n" +
-        "  `tests/evidence/S21-css-readings.md §3`。**别机械按数值映射** —— 要求逐条判。\n" +
+        "\n★ 十档刻度定义在 `src/frontend/ui/styles/tokens.css`（`--z-base` … `--z-drag`），\n" +
+        "  **别机械按数值映射** —— 要求逐条判语义。\n" +
         "★ 这一格同时钉在 `.stylelintrc.json` 的 `declaration-property-value-allowed-list` 上，\n" +
         "  所以 `npm run lint:css` 也看得见它（那条是 advisory，本条才是会红的那个）。",
     ).toEqual([]);

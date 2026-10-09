@@ -50,7 +50,6 @@ REGISTERED	tests/frontend/shell/write_site_registry_tests.rs		8
 REGISTERED	tests/backend/control/files_write_tests.rs		2
 REGISTERED	tests/backend/assets/aliases/block_tests.rs		6
 REGISTERED	tests/backend/main_argv_table_guard.rs		1
-REGISTERED	tests/evidence/C2-dial-loopback.py		1
 REGISTERED	src/frontend/shell/src/sftp.rs		11
 REGISTERED	src/backend/assets/aliases/block.rs		10
 REGISTERED	tests/frontend/shell/remote_write_registry_tests.rs		18
@@ -111,8 +110,6 @@ REGISTERED	tests/frontend/shell/shared_crate_registry_tests.rs		1
 REGISTERED	tests/frontend/shell/structural_scan_tests.rs		1
 REGISTERED	tests/frontend/shell/tmux_backend_gate_guard_tests.rs		8
 REGISTERED	tests/backend/footprint/registry_environment_tests.rs		1
-REGISTERED	tests/evidence/K-R20-C-deadname-census.py		1
-REGISTERED	tests/evidence/S29-legacy-compat-census.py		11
 REGISTERED	tests/frontend/ui/ipc/commands.vitest.ts		10
 REGISTERED	tests/frontend/shell/backend_policy_tests.rs		2
 REGISTERED	src/frontend/shell/src/snapshot_resume.rs		1
