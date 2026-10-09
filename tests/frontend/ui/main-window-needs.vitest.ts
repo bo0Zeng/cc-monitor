@@ -516,6 +516,25 @@ describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键�
     expect(retry).toBeDefined();
   });
 
+  it("★ 没送到、那一端写了详情 ⇒ 红字是人话那一句（原话不进句子）＋［重试］＋［复制详情］，复制的是那句 ＋ 详情", async () => {
+    const r = rig([row("a")], { t: tab("a") });
+    r.page.setVisible(true);
+    await flush();
+    const b = box(r.page);
+    b.value = "1";
+    r.setReply(async () => {
+      throw Object.assign(new Error("送不出去-甲"), { detail: "码：timeout\n原话：夹具原话-乙" });
+    });
+    key(b, "Enter");
+    await flush();
+    const note = r.page.el.textContent ?? "";
+    expect(note).toContain("送不出去-甲");
+    expect(note).not.toContain("夹具原话-乙");
+    const labels = [...r.page.el.querySelectorAll("button")].map((x) => x.textContent);
+    expect(labels).toContain(copyText("terminal.input.retry"));
+    expect(labels).toContain(copyText("detail.act.copy"));
+  });
+
   it("★ 后端说送不了（别的前端的会话）⇒ 框与键都灰、写为什么，点了也不送", async () => {
     const r = rig([row("a", { inputNo: "not-yours" })], { t: tab("a") });
     r.page.setVisible(true);

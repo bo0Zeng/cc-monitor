@@ -25,7 +25,7 @@ import { listTerminals, previewShot, sendToTerminal, type TerminalRow, type Term
 import type { Origin } from "./ipc/origin";
 import { button, setBusy, setButtonLabel, setDisabled } from "./kit/button";
 import { banner } from "./kit/banner";
-import { detailOf } from "./kit/detail";
+import { copyDetailButton, detailOf } from "./kit/detail";
 import { emptyState } from "./kit/empty";
 import { statusDot, setDot } from "./kit/status-dot";
 import { spinner } from "./kit/progress";
@@ -124,7 +124,7 @@ function snapWhy(why: Extract<Live, { at: "snapOnly" }>["why"], machine: string)
 }
 
 /** 送字那一步的结局一句：送到了（一会儿就走）· 没送成（可带重试）。 */
-type Note = { text: string; tone: "ok" | "error"; retry?: TerminalSend };
+type Note = { text: string; tone: "ok" | "error"; retry?: TerminalSend; detail?: string };
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, text?: string): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
@@ -491,15 +491,17 @@ export class TerminalPage {
     this.paint();
     let sent: TerminalSent | null = null;
     let failed: string | null = null;
+    let detail = "";
     try {
       sent = await this.reads.send(this.origin, row.terminal, what, this.shot?.screen ?? null, fullTitle(tab));
     } catch (e) {
       failed = saidOfControl(e);
+      detail = detailOf(e);
     }
     if (sid !== this.sid) return false;
     this.sending = false;
     if (failed !== null) {
-      this.showNote({ text: failed, tone: "error", retry: what });
+      this.showNote({ text: failed, tone: "error", retry: what, detail });
       return false;
     }
     if (sent?.result === "delivered") {
@@ -649,6 +651,9 @@ export class TerminalPage {
       this.noteEl.appendChild(t);
       const retry = this.note.retry;
       if (retry) this.noteEl.appendChild(button({ label: copyText("terminal.input.retry"), kind: "ghost", size: "compact", onClick: () => void this.send(retry) }));
+      // 那一端写了详情 ⇒ 跟［复制详情］（与同一个原因的那条黄条同一颗）。
+      const copy = copyDetailButton(this.note.text, this.note.detail ?? "");
+      if (copy) this.noteEl.appendChild(copy);
     }
     if (this.body.firstChild !== this.head) this.body.replaceChildren(this.head, this.bar, this.screenWrap, this.inputArea);
   }
