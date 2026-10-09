@@ -388,8 +388,9 @@ export class TurnFold {
     return this.overrides.get(turn.uuid) ?? this.expandedDefault;
   }
 
+  /** 归属没变的卡一个属性都不写：`data-proc-of` / 工具组的 `open` 都有样式挂着，照写一遍同样的值也让那张卡重算样式（每次卡进出流全部过程卡一起算）。 */
   private mark(el: HTMLElement, turn: TurnSummary): void {
-    el.dataset.procOf = turn.uuid;
+    if (el.dataset.procOf !== turn.uuid) el.dataset.procOf = turn.uuid;
     const uuid = el.getAttribute("data-uuid");
     let open = this.expanded(turn);
     // 暂定结论被降级：此刻视口正落在它上面 ⇒ 先不收。
@@ -399,7 +400,7 @@ export class TurnFold {
     }
     el.classList.toggle("proc-hidden", !open);
     // 过程里的工具组不再另起一层「工具 ×N」：展开的过程里它整组摊开（收着那一行由 CSS 藏掉）。
-    if (open && el instanceof HTMLDetailsElement && el.classList.contains("card-tool-group")) el.open = true;
+    if (open && el instanceof HTMLDetailsElement && el.classList.contains("card-tool-group") && !el.open) el.open = true;
   }
 
   private unmark(el: HTMLElement): void {

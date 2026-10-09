@@ -287,6 +287,28 @@ describe("按轮折叠", () => {
     expect(line.textContent).toContain("工具 ×3");
   });
 
+  it("重排时归属没变的卡一个属性都不写（`data-proc-of` / 工具组的 open 有样式挂着：照写一遍 ＝ 每次卡进出流都让全部过程卡重算样式）", async () => {
+    setProcessExpandedDefault(true);
+    try {
+      const { content, fold } = rig(
+        [card("card-user", "u1"), card("card-assistant", "a1"), card("card-tool-group", "g1"), card("card-user", "u2"), card("card-assistant", "a2")],
+        [{ available: true, from: 0, end: 10, turns: [turn("u1", 0), turn("u2", 5)] }],
+      );
+      await fold.refresh();
+      const written: string[] = [];
+      const mo = new MutationObserver((rs) => {
+        for (const r of rs) if (r.type === "attributes" && !(r.target as HTMLElement).classList.contains(PROC_LINE_CLASS)) written.push(`${(r.target as HTMLElement).dataset.uuid}:${r.attributeName}`);
+      });
+      mo.observe(content, { attributes: true, subtree: true });
+      content.appendChild(card("card-assistant", "a3")); // 卡后到 ⇒ 重排
+      await new Promise((r) => setTimeout(r, 0));
+      mo.disconnect();
+      expect(written.filter((w) => !w.startsWith("a3:")), "别的卡归属没变：不写").toEqual([]);
+    } finally {
+      setProcessExpandedDefault(false);
+    }
+  });
+
   it("展开的那几轮量竖线高 / 收起行：先把要量的成块量完再写（量一下写一下 ＝ 每一轮都逼一次整页重排；Ctrl+O 全展开时几百轮）", async () => {
     setProcessExpandedDefault(true);
     const cards: HTMLElement[] = [];
