@@ -10,17 +10,22 @@
 //! | 找 pb、跑 `pb dump`、认退出码与形状版本 | [`locate`] · [`dump`] |
 //! | 摘掉 `agent_view`（点到那一格再给）· 把边与文件倒过来索引 · 把接手 / 签收人的 id 对到会话 | [`product`] |
 //! | 每个工作区留上一次读好的那一份（某片读不成 ⇒ 那一片给旧的 ＋ 原因 ＋ 时刻）· 输出摘要 | [`book`] |
-//! | 盯计划仓与工作区 `.env`，输出摘要变了才推一帧 `plan_changed` | [`watch`] |
+//! | 盯计划仓与工作区 `.env`，输出摘要或要你看的数变了才推一帧 `plan_changed` | [`watch`] |
+//! | 要你看的四种（顶块走到看全局 · 判据红 · 接手的会话停了 · 接手的会话在等你）· 退回落没落地 · 送进会话的那一行 | [`needs`] |
+//! | 认可与退回的记录（后端自己的 `~/.cc-monitor/plan-review.json`）· 照它给成品标认可与退回的状态 | [`review`] |
 //!
-//! # 一个字节都不写
+//! # 计划仓一个字节都不写
 //!
 //! 计划仓（`.planned-build/`）与工作区 `.env` 只有 pb 与人写；本族只起 `pb dump` 这一条只读子命令（不带 `PB_ID`，pb 认作人），
-//! 自己的状态全在进程内存里。判据 `tests/backend/plan/` 里那条「跑前跑后工作区逐字节不变」钉着。
+//! 读面的状态全在进程内存里。判据 `tests/backend/plan/` 里那条「跑前跑后工作区逐字节不变」钉着。
+//! 认可与退回只记在后端自己家里（[`review`]，第四层逐份登记），不回写 pb。
 
 pub(crate) mod book;
 pub(crate) mod dump;
 pub(crate) mod locate;
+pub(crate) mod needs;
 pub(crate) mod product;
+pub(crate) mod review;
 pub(crate) mod watch;
 
 /// 一个 id（块的接手 · 签收的「由」）对到的会话：主会话 ＝ 它自己那个标签页；子 agent ＝ 父会话那个标签页。

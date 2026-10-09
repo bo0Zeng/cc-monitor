@@ -94,10 +94,23 @@ fn who_port() -> impl Fn(&str) -> Whose {
     }
 }
 
-/// 读一个目录（并进本子）；读到了就开始盯它的工作区。
+/// 此刻的认可与退回记录（读不懂 ⇒ 当什么都没记）。
+fn review_now() -> crate::plan::review::Review {
+    crate::plan::review::current(crate::plan::review::review_path().as_deref())
+}
+
+/// 给本子出的成品标上认可 · 要你看的数 · 退回的状态（每次答之前现读那份记录，本子里存的是没标的）。
+pub(crate) fn annotated(mut doc: Value) -> Value {
+    review_now().annotate(&mut doc);
+    doc
+}
+
+/// 读一个目录（并进本子）；读到了就开始盯它的工作区。回的是**没标**认可的那一份（[`annotated`] 再标）。
 fn read_dir(entry: &Path, dir: &Path) -> Result<Value, book::Miss> {
     let who = who_port();
-    let mut out = book::book().read(entry, dir, &who, now_ms())?;
+    let review = review_now();
+    let prior = |ws: &str, slice: &str| review.prior(ws, slice);
+    let mut out = book::book().read(entry, dir, &who, now_ms(), &prior)?;
     if let Some(ws) = out
         .get("workspace")
         .and_then(Value::as_str)
@@ -106,7 +119,7 @@ fn read_dir(entry: &Path, dir: &Path) -> Result<Value, book::Miss> {
         // pb 的输出随当前目录变（agent_view 里的路径是相对当前目录的）⇒ 一律以工作区根为准再读一次，
         // 摘要才与盯盘那一路（当前目录 ＝ 工作区根）对得上，不会凭空推一帧。
         if ws.as_path() != dir {
-            out = book::book().read(entry, &ws, &who, now_ms())?;
+            out = book::book().read(entry, &ws, &who, now_ms(), &prior)?;
         }
         arm(entry, &ws);
     }
@@ -117,12 +130,32 @@ fn arm(entry: &Path, ws: &Path) {
     let e = entry.to_path_buf();
     let reread: watch::Reread = std::sync::Arc::new(move |p: &Path| {
         let who = who_port();
-        book::book()
-            .read(&e, p, &who, now_ms())
-            .ok()
-            .and_then(|v| v.get("rev").and_then(Value::as_str).map(str::to_string))
+        let review = review_now();
+        let prior = |ws: &str, slice: &str| review.prior(ws, slice);
+        let mut v = book::book().read(&e, p, &who, now_ms(), &prior).ok()?;
+        review.annotate(&mut v);
+        seen_of(&v)
     });
-    watch::arm(ws, book::book().rev(&ws.to_string_lossy()), reread);
+    let last = book::book()
+        .last(&ws.to_string_lossy())
+        .map(annotated)
+        .as_ref()
+        .and_then(seen_of);
+    watch::arm(ws, last, reread);
+}
+
+/// 一份标过的成品此刻的样子（`plan_changed` 比的那两样）。
+pub(crate) fn seen_of(v: &Value) -> Option<watch::Seen> {
+    Some((
+        v.get("rev")?.as_str()?.to_string(),
+        v.get("needCount").and_then(Value::as_u64).unwrap_or(0),
+    ))
+}
+
+/// 现读一个工作区（起 pb）并标好；计划审面送退回之前用它拿此刻的接手与状态。
+pub(crate) fn read_fresh(ws: &str) -> Result<Value, Fail> {
+    let entry = entry()?;
+    read_dir(&entry, Path::new(ws)).map(annotated).map_err(miss)
 }
 
 fn miss(m: book::Miss) -> Fail {
@@ -145,8 +178,7 @@ pub(crate) fn answer(cmd: &str, args: &Value) -> Answer {
                 .get("workspace")
                 .and_then(Value::as_str)
                 .ok_or_else(|| bad("missing `workspace` (a string)"))?;
-            let entry = entry()?;
-            read_dir(&entry, Path::new(ws)).map_err(miss)
+            read_fresh(ws)
         }
         "plan-cell-view" => {
             let get = |k: &str| {
@@ -210,7 +242,7 @@ fn list(args: &Value) -> Answer {
             Some(v) => Ok(v),
             None => read_dir(&entry, dir),
         };
-        match got {
+        match got.map(annotated) {
             Ok(v) => {
                 let ws = v
                     .get("workspace")
@@ -235,6 +267,7 @@ fn list(args: &Value) -> Answer {
                 "auto": v["auto"],
                 "rev": v["rev"],
                 "stale": v["stale"],
+                "needCount": v["needCount"],
                 "slices": v["slices"].as_array().map(|a| a.iter().map(crate::plan::product::slice_summary).collect::<Vec<_>>()).unwrap_or_default(),
             })
         })

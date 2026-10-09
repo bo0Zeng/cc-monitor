@@ -1014,6 +1014,10 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--plan-list",
     "--plan-read",
     "--plan-cell-view",
+    // 计划审面三条（`plan-ack` · `plan-unack` · `plan-return`）派生的 CLI 面，入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    "--plan-ack",
+    "--plan-unack",
+    "--plan-return",
     // 用某个号查一次额度（`inbound::REGISTRY` 的 `quota-probe`）派生的 CLI 面，入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     "--quota-probe",
     // 换号那一族（`inbound::REGISTRY` 的 `rotation-*`）自动派生的 CLI 面；除 `--rotation-rules-read` 外入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
@@ -1720,6 +1724,21 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         target: Target::Windows,
         kind: GapKind::Owed,
         rationale: "与帧面 `terminal-preview` 那一行是同一条实现（CLI 面派生）⇒ 同一个理由（Windows 后台机制未定），同拍还，**暂时不做**。",
+    },
+    TargetGap {
+        family: "wire-commands",
+        capability: "plan-return",
+        target: Target::Windows,
+        kind: GapKind::Owed,
+        rationale: "计划退回送字走的就是 `terminal-input` 的本体（tmux `send-keys`，声明了 `no_tmux`）⇒ 同那一行的理由，\
+              Windows 后台机制定了、`terminal-input` 还上那一拍一起还，**暂时不做**。",
+    },
+    TargetGap {
+        family: "cli-subcommands",
+        capability: "--plan-return",
+        target: Target::Windows,
+        kind: GapKind::Owed,
+        rationale: "与帧面 `plan-return` 那一行是同一条实现（CLI 面派生）⇒ 同一个理由（Windows 后台机制未定），同拍还，**暂时不做**。",
     },
     TargetGap {
         family: "cli-subcommands",

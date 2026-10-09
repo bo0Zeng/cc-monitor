@@ -131,7 +131,7 @@ pub struct TapRx {
     /// 这台的规则表 / 默认指向变了的通道（变了推一帧 `rotation_rules_changed`）；`None` ＝ 不订。
     rules: Option<tokio::sync::broadcast::Receiver<()>>,
     /// 某个 pb 工作区的计划变了的通道（变了推一帧 `plan_changed`）；`None` ＝ 不订。
-    plan: Option<tokio::sync::broadcast::Receiver<(String, String)>>,
+    plan: Option<tokio::sync::broadcast::Receiver<crate::plan::watch::Change>>,
     book: std::sync::Arc<crate::observe::runs::RunBook>,
     router: super::run_route::RunRouter,
     out: std::collections::VecDeque<Frame>,
@@ -175,7 +175,7 @@ impl TapSource for TapRx {
                     None => self.rules = None,
                 },
                 moved = plan_moved(&mut self.plan) => match moved {
-                    Some(Some((workspace, rev))) => self.out.push_back(Frame::PlanChanged { workspace, rev }),
+                    Some(Some((workspace, rev, needs))) => self.out.push_back(Frame::PlanChanged { workspace, rev, needs }),
                     // 落后丢了几件：可丢的通道，下一次变化或重问就补上。
                     Some(None) => {}
                     None => self.plan = None,
@@ -196,10 +196,10 @@ pub fn attach(book: std::sync::Arc<crate::observe::runs::RunBook>) -> TapRx {
     rx
 }
 
-/// 某个工作区的计划变了 ⇒ `Some(Some((工作区, 摘要)))`；落后丢了几件 ⇒ `Some(None)`；通道没了 ⇒ `None`；没订 ⇒ 永远不醒。
+/// 某个工作区的计划变了 ⇒ `Some(Some((工作区, 摘要, 要你看的数)))`；落后丢了几件 ⇒ `Some(None)`；通道没了 ⇒ `None`；没订 ⇒ 永远不醒。
 async fn plan_moved(
-    r: &mut Option<tokio::sync::broadcast::Receiver<(String, String)>>,
-) -> Option<Option<(String, String)>> {
+    r: &mut Option<tokio::sync::broadcast::Receiver<crate::plan::watch::Change>>,
+) -> Option<Option<crate::plan::watch::Change>> {
     use tokio::sync::broadcast::error::RecvError;
     match r {
         Some(r) => match r.recv().await {

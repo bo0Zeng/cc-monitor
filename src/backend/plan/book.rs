@@ -5,6 +5,7 @@
 //! 认过的目录下一次不再起 pb。
 
 use super::dump::{self, Ran};
+use super::needs;
 use super::product::{self, Views};
 use super::WhoPort;
 use serde_json::{json, Value};
@@ -19,7 +20,6 @@ struct Seen {
     views: Views,
     /// 每一片上一次读好的那一份 ＋ 读到的时刻（epoch ms）。
     good: BTreeMap<String, (Value, u64)>,
-    rev: String,
     read_at: u64,
 }
 
@@ -40,7 +40,12 @@ pub(crate) struct Book {
     seen: Mutex<BTreeMap<String, Seen>>,
     /// 目录 ⇒ 它所在的工作区（`None` ＝ pb 说它不在工作区里）。
     dirs: Mutex<BTreeMap<PathBuf, Option<String>>>,
+    /// `(工作区, 片)` ⇒ 顶块进「看全局」那一步那次的 rev（顶块离开那一步就删；「要你看」顶块那一条的键用它）。
+    entered: Mutex<BTreeMap<(String, String), String>>,
 }
+
+/// 本子里没记过「哪次进的那一步」时先问的口：`(工作区, 片)` ⇒ 认可里记着的那次 rev（进程刚起时用）。
+pub(crate) type Prior<'a> = &'a dyn Fn(&str, &str) -> Option<String>;
 
 /// 原始输出的摘要：只用来分辨「变没变」（不防人故意撞），64 位、16 位十六进制。
 pub(crate) fn rev_of(raw: &[u8]) -> String {
@@ -62,17 +67,19 @@ impl Book {
         dir: &Path,
         who: WhoPort,
         now_ms: u64,
+        prior: Prior,
     ) -> Result<Value, Miss> {
-        self.take(dump::run(entry, dir), dir, who, now_ms)
+        self.take_with(dump::run(entry, dir), dir, who, now_ms, prior)
     }
 
-    /// [`Self::read`] 的后一半：一次 dump 的结局进本子（判据直接喂结局）。
-    pub(crate) fn take(
+    /// [`Self::read`] 的后一半：一次 dump 的结局进本子（判据直接喂结局）；每片加 `needs`（[`needs::of_slice`]）。
+    pub(crate) fn take_with(
         &self,
         ran: Ran,
         dir: &Path,
         who: WhoPort,
         now_ms: u64,
+        prior: Prior,
     ) -> Result<Value, Miss> {
         match ran {
             Ran::Dump { doc, raw } => {
@@ -98,11 +105,21 @@ impl Book {
                             .to_string();
                         let error = sl.get("error").cloned().unwrap_or(Value::Null);
                         if error.is_null() {
+                            let at = self.entered_at(
+                                &ws,
+                                &name,
+                                needs::top_at_look_global(sl),
+                                &rev,
+                                prior,
+                            );
+                            sl["needs"] = json!(needs::of_slice(sl, at.as_deref()));
                             good.insert(name, (sl.clone(), now_ms));
                         } else if let Some((prev, at)) = good.get(&name) {
                             let mut kept = prev.clone();
                             kept["stale"] = json!({"said": error, "since": at});
                             *sl = kept;
+                        } else {
+                            sl["needs"] = json!([]);
                         }
                     }
                 }
@@ -130,7 +147,6 @@ impl Book {
                         doc: out.clone(),
                         views,
                         good,
-                        rev,
                         read_at: now_ms,
                     },
                 );
@@ -156,6 +172,28 @@ impl Book {
         }
     }
 
+    /// 顶块此刻在不在「看全局」那一步：在 ⇒ 记着的那次 rev（没记过 ⇒ 先问 `prior`，再没有就是这一次）；不在 ⇒ 忘掉、`None`。
+    fn entered_at(
+        &self,
+        ws: &str,
+        slice: &str,
+        at_step: bool,
+        rev: &str,
+        prior: Prior,
+    ) -> Option<String> {
+        let mut g = lock(&self.entered);
+        let k = (ws.to_string(), slice.to_string());
+        if !at_step {
+            g.remove(&k);
+            return None;
+        }
+        Some(
+            g.entry(k)
+                .or_insert_with(|| prior(ws, slice).unwrap_or_else(|| rev.to_string()))
+                .clone(),
+        )
+    }
+
     /// 这个目录认过、在哪个工作区里（没认过 ⇒ `None`；认过不在工作区里 ⇒ `Some(None)`）。
     pub(crate) fn known_dir(&self, dir: &Path) -> Option<Option<String>> {
         lock(&self.dirs).get(dir).cloned()
@@ -176,21 +214,11 @@ impl Book {
         lock(&self.seen).get(workspace).map(|s| s.doc.clone())
     }
 
-    /// 上一次读好的那一份的摘要。
-    pub(crate) fn rev(&self, workspace: &str) -> Option<String> {
-        lock(&self.seen).get(workspace).map(|s| s.rev.clone())
-    }
-
     /// 一格的 `agent_view`（上一次读好的那一份里的）。
     pub(crate) fn view(&self, workspace: &str, slice: &str, id: &str) -> Option<String> {
         lock(&self.seen)
             .get(workspace)
             .and_then(|s| s.views.get(&(slice.to_string(), id.to_string())).cloned())
-    }
-
-    /// 认过的工作区（`plan_changed` 盯的就是它们）。
-    pub(crate) fn workspaces(&self) -> Vec<String> {
-        lock(&self.seen).keys().cloned().collect()
     }
 }
 

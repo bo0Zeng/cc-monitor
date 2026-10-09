@@ -23,14 +23,15 @@ fn a_change_pushes_only_when_the_rev_moves() {
     let reread: Reread = Arc::new(move |_p: &Path| {
         c.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         let mut g = r.lock().unwrap();
-        Some(if g.len() > 1 {
+        let rev = if g.len() > 1 {
             g.remove(0)
         } else {
             g[0].clone()
-        })
+        };
+        Some((rev, 0))
     });
     let mut rx = changes().subscribe();
-    let _w = watch(&d, Some("r1".into()), reread).unwrap();
+    let _w = watch(&d, Some(("r1".into(), 0)), reread).unwrap();
     let ws = d.to_string_lossy().to_string();
 
     std::fs::write(d.join(".planned-build/alpha/图.md"), "x").unwrap();
@@ -44,7 +45,7 @@ fn a_change_pushes_only_when_the_rev_moves() {
     let t1 = std::time::Instant::now();
     let got = loop {
         match rx.try_recv() {
-            Ok((w, rev)) if w == ws => break rev,
+            Ok((w, rev, _)) if w == ws => break rev,
             Ok(_) => {}
             Err(_) => {
                 assert!(t1.elapsed().as_secs() < 10, "摘要变了却没推");
@@ -53,4 +54,28 @@ fn a_change_pushes_only_when_the_rev_moves() {
         }
     };
     assert_eq!(got, "r2", "第一次重读摘要没变，不许推");
+}
+
+/// 摘要没变、要你看的数变了（会话停了 · 认可了）⇒ 也推，带新的数。
+#[test]
+fn a_change_in_the_need_count_alone_also_pushes() {
+    let d = scratch("watch-needs");
+    std::fs::create_dir_all(d.join(".planned-build/alpha")).unwrap();
+    let reread: Reread = Arc::new(move |_p: &Path| Some(("r1".to_string(), 2)));
+    let mut rx = changes().subscribe();
+    let _w = watch(&d, Some(("r1".into(), 1)), reread).unwrap();
+    let ws = d.to_string_lossy().to_string();
+    std::fs::write(d.join(".planned-build/alpha/图.md"), "x").unwrap();
+    let t0 = std::time::Instant::now();
+    let got = loop {
+        match rx.try_recv() {
+            Ok((w, rev, n)) if w == ws => break (rev, n),
+            Ok(_) => {}
+            Err(_) => {
+                assert!(t0.elapsed().as_secs() < 10, "数变了却没推");
+                std::thread::yield_now();
+            }
+        }
+    };
+    assert_eq!(got, ("r1".to_string(), 2));
 }

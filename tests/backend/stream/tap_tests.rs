@@ -259,16 +259,18 @@ fn a_plan_change_becomes_one_plan_changed_frame() {
             ev_rx,
             std::sync::Arc::new(crate::observe::runs::RunBook::default()),
         );
-        let tx = tokio::sync::broadcast::channel::<(String, String)>(4).0;
+        let tx = tokio::sync::broadcast::channel::<crate::plan::watch::Change>(4).0;
         t.plan = Some(tx.subscribe());
-        tx.send(("/w".to_string(), "r2".to_string())).unwrap();
+        tx.send(("/w".to_string(), "r2".to_string(), 3)).unwrap();
         let f = tokio::time::timeout(std::time::Duration::from_secs(5), t.next())
             .await
             .expect("该推一帧");
         match f {
-            Some(Frame::PlanChanged { workspace, rev }) => {
-                assert_eq!((workspace.as_str(), rev.as_str()), ("/w", "r2"))
-            }
+            Some(Frame::PlanChanged {
+                workspace,
+                rev,
+                needs,
+            }) => assert_eq!((workspace.as_str(), rev.as_str(), needs), ("/w", "r2", 3)),
             other => panic!("{other:?}"),
         }
         assert!(
