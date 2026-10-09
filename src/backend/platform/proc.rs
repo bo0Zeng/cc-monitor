@@ -319,14 +319,7 @@ pub(crate) fn lower_this_thread() -> bool {
     }
     #[cfg(windows)]
     {
-        extern "system" {
-            fn GetCurrentThread() -> isize;
-            fn SetThreadPriority(thread: isize, priority: i32) -> i32;
-        }
-        /// `THREAD_PRIORITY_BELOW_NORMAL`。
-        const BELOW_NORMAL: i32 = -1;
-        // SAFETY: 伪句柄（当前线程，不用关）＋ 一个常数。
-        unsafe { SetThreadPriority(GetCurrentThread(), BELOW_NORMAL) != 0 }
+        super::win_proc::lower_this_thread()
     }
     #[cfg(not(any(target_os = "linux", windows)))]
     {
