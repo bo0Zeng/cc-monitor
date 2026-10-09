@@ -136,7 +136,9 @@ fn prepare(
     // 拿不到 ⇒ 不起（有口没钥匙 = 不设防的口；`listener` 在这里 drop，口当场放掉）。报错里只有路径与原因，没有钥匙值（`door::Key` 不派生 `Debug`）。
     let ensure = |kind| {
         key::key_path(get, kind)
-            .ok_or_else(|| copy_text("beRelayListen.key.noHome", &[]))
+            .ok_or_else(|| {
+                crate::common::said::Said::from(copy_text("beRelayListen.key.noHome", &[]))
+            })
             .and_then(|p| key::ensure_key(&p))
     };
     let door = match ensure(key::KeyKind::Full)
@@ -144,11 +146,10 @@ fn prepare(
     {
         Ok(k) => k,
         Err(e) => {
+            let said = e.said.clone();
+            let e = e.logged();
             eprintln!("[relay] refusing to listen without a relay key: {e}");
-            return Err(copy_text(
-                "beRelayListen.key.unavailable",
-                &[("e", &e.to_string())],
-            ));
+            return Err(copy_text("beRelayListen.key.unavailable", &[("e", &said)]));
         }
     };
     match listener.local_addr() {

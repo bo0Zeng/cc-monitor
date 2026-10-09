@@ -79,7 +79,7 @@ fn read_json(path: &Path, cap: u64, problems: &mut Vec<String>) -> Option<Value>
                     ),
                     &e,
                 )
-                .said_logging_raw(),
+                .into_note(),
             );
             return None;
         }
@@ -96,7 +96,7 @@ fn read_json(path: &Path, cap: u64, problems: &mut Vec<String>) -> Option<Value>
                         &[("path", &path.display().to_string()), ("why", why)],
                     )
                 })
-                .said_logging_raw(),
+                .into_note(),
             );
             None
         }

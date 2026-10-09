@@ -137,7 +137,7 @@ fn drop_removes_exactly_the_named_paths_and_the_whole_entry_at_zero() {
         &json!({"op": "drop", "dir": dir, "paths": ["b", "zzz"]}),
     )
     .expect_err("摘一个没记的");
-    assert_eq!(e.0, "bad_args");
+    assert_eq!(e.code, "bad_args");
     assert_eq!(std::fs::read(&file).unwrap(), before, "拒了还动了文件");
     let e = record_at(
         &file,
@@ -145,7 +145,7 @@ fn drop_removes_exactly_the_named_paths_and_the_whole_entry_at_zero() {
         &json!({"op": "drop", "dir": "/nowhere", "paths": ["b"]}),
     )
     .expect_err("没记着的目录");
-    assert_eq!(e.0, "not_found");
+    assert_eq!(e.code, "not_found");
     // 摘到零 ⇒ 整条走
     let v = record_at(
         &file,
@@ -184,7 +184,7 @@ fn bad_input_is_refused_and_the_file_is_untouched() {
         json!({"op": "drop", "dir": "x", "paths": "a"}),
     ] {
         let e = record_at(&file, Some(&root), &bad).expect_err("坏入参被收下");
-        assert_eq!(e.0, "bad_args", "{bad}");
+        assert_eq!(e.code, "bad_args", "{bad}");
         assert_eq!(
             std::fs::read(&file).unwrap(),
             before,
@@ -212,9 +212,9 @@ fn an_unreadable_or_other_version_ledger_is_never_overwritten() {
             &json!({"op": "add", "name": "demo", "files": {"a": rec(D1, true)}}),
         )
         .expect_err("读不懂的被当成空的覆盖了");
-        assert_eq!(e.0, "ledger_unreadable");
+        assert_eq!(e.code, "ledger_unreadable");
         assert_eq!(std::fs::read(&file).unwrap(), body, "读不懂的那份被动了");
-        assert!(matches!(load_at(&file), Err(("ledger_unreadable", _))));
+        assert!(matches!(load_at(&file), Err(crate::stream::inbound::spec::Fail { code, .. }) if code == "ledger_unreadable"));
     }
     std::fs::remove_file(&file).unwrap();
     assert_eq!(load_at(&file).unwrap(), Ledger::default(), "没有 ⇒ 空的");
@@ -402,7 +402,7 @@ fn an_install_under_home_is_keyed_by_the_home_the_ledger_lives_in() {
         .installs
         .contains_key(&h.display().to_string()));
     let before = std::fs::read(&path).unwrap();
-    let (code, _) = record_at(
+    let crate::stream::inbound::spec::Fail { code, .. } = record_at(
         &path,
         None,
         &json!({ "op": "add", "name": "x", "at": "/etc", "files": {} }),

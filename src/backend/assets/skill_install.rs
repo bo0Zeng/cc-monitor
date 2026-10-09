@@ -31,7 +31,7 @@ use crate::assets::asset_catalog::{
 const MAX_PATHS_PER_FILE: usize = 8;
 
 /// 这一族的应答。
-pub type Answer = Result<Value, (&'static str, String)>;
+pub type Answer = Result<Value, crate::stream::inbound::spec::Fail>;
 
 /// skill 名：一段目录名（不许带分隔符 / `..` / 点开头 / NUL）。装记录的写口也用它（`skill_ledger::record_at`）。
 pub(crate) fn valid_name(name: &str) -> bool {
@@ -51,30 +51,33 @@ pub fn valid_rel(p: &str) -> bool {
             .all(|seg| !seg.is_empty() && seg != "." && seg != "..")
 }
 
-fn name_arg(args: &Value) -> Result<String, (&'static str, String)> {
+fn name_arg(args: &Value) -> Result<String, crate::stream::inbound::spec::Fail> {
     let name = args.get("name").and_then(Value::as_str).ok_or((
         "bad_args",
         crate::common::contract::malformed("missing `name` (skill directory name)"),
     ))?;
     if !valid_name(name) {
-        return Err((
+        return Err(crate::stream::inbound::spec::Fail::from((
             "bad_args",
             copy_text("beSkillInstall.read.badName", &[("name", name)]),
-        ));
+        )));
     }
     Ok(name.to_string())
 }
 
 /// skill 的根与目录：`args.project` 给了 ⇒ 那个项目里的（项目目录须是这台上的绝对路径）；没给 ⇒ 用户级。
-fn skill_dir(args: &Value, name: &str) -> Result<(PathBuf, PathBuf), (&'static str, String)> {
+fn skill_dir(
+    args: &Value,
+    name: &str,
+) -> Result<(PathBuf, PathBuf), crate::stream::inbound::spec::Fail> {
     let project = match args.get("project") {
         None | Some(Value::Null) => None,
         Some(Value::String(p)) => Some(crate::assets::mcp_edit::project_root(p)?),
         Some(_) => {
-            return Err((
+            return Err(crate::stream::inbound::spec::Fail::from((
                 "bad_args",
                 crate::common::contract::malformed("`project` must be a string or null"),
-            ))
+            )))
         }
     };
     let root = super::asset_kind()
@@ -92,7 +95,7 @@ fn read_text(p: &Path) -> (Option<String>, Option<String>) {
             Ok(t) => (Some(t), None),
             Err(_) => (None, Some(copy_text("beSkillInstall.text.notUtf8", &[]))),
         },
-        Err(e) => (None, Some(e.said_logging_raw())),
+        Err(e) => (None, Some(e.into_note())),
     }
 }
 
@@ -101,7 +104,7 @@ fn read_text(p: &Path) -> (Option<String>, Option<String>) {
 /// 走一个目录的结果：`(每个普通文件的（相对路径, 绝对路径）, 没下去的那几处)`。
 type Walked = (Vec<(String, PathBuf)>, Vec<String>);
 
-fn walk(dir: &Path) -> Result<Walked, (&'static str, String)> {
+fn walk(dir: &Path) -> Result<Walked, crate::stream::inbound::spec::Fail> {
     let mut files = Vec::new();
     let mut skipped = Vec::new();
     for ent in walkdir::WalkDir::new(dir)
@@ -132,7 +135,7 @@ fn walk(dir: &Path) -> Result<Walked, (&'static str, String)> {
             continue;
         }
         if files.len() >= MAX_FILES {
-            return Err((
+            return Err(crate::stream::inbound::spec::Fail::from((
                 "too_large",
                 copy_text(
                     "beSkillInstall.read.tooMany",
@@ -141,7 +144,7 @@ fn walk(dir: &Path) -> Result<Walked, (&'static str, String)> {
                         ("max", &MAX_FILES.to_string()),
                     ],
                 ),
-            ));
+            )));
         }
         files.push((rel, ent.path().to_path_buf()));
     }
@@ -161,13 +164,13 @@ pub fn answer_read_at(root: Option<&Path>, args: &Value) -> Answer {
         None => skill_dir(args, &name)?,
     };
     if !std::fs::metadata(&dir).is_ok_and(|m| m.is_dir()) {
-        return Err((
+        return Err(crate::stream::inbound::spec::Fail::from((
             "not_found",
             copy_text(
                 "beSkillInstall.read.notFound",
                 &[("name", &name), ("dir", &dir.display().to_string())],
             ),
-        ));
+        )));
     }
     let (paths, skipped) = walk(&dir)?;
     let files: Vec<Value> = paths
@@ -286,19 +289,21 @@ struct SourceFile {
     exec: bool,
 }
 
-fn source_arg(args: &Value) -> Result<BTreeMap<String, SourceFile>, (&'static str, String)> {
+fn source_arg(
+    args: &Value,
+) -> Result<BTreeMap<String, SourceFile>, crate::stream::inbound::spec::Fail> {
     let arr = args.get("source").and_then(Value::as_array).ok_or((
         "bad_args",
         crate::common::contract::malformed("missing `source` or it is not an array"),
     ))?;
     if arr.len() > MAX_FILES {
-        return Err((
+        return Err(crate::stream::inbound::spec::Fail::from((
             "too_large",
             copy_text(
                 "beSkillInstall.install.tooMany",
                 &[("max", &MAX_FILES.to_string())],
             ),
-        ));
+        )));
     }
     let mut out = BTreeMap::new();
     for f in arr {
@@ -316,12 +321,12 @@ fn source_arg(args: &Value) -> Result<BTreeMap<String, SourceFile>, (&'static st
             Some(Value::String(t)) => Some(t.clone()),
             Some(Value::Null) => None,
             _ => {
-                return Err((
+                return Err(crate::stream::inbound::spec::Fail::from((
                     "bad_args",
                     crate::common::contract::malformed(&format!(
                         "`text` of {path:?} must be a string or null"
                     )),
-                ))
+                )))
             }
         };
         let exec = f.get("exec").and_then(Value::as_bool).unwrap_or(false);
@@ -329,10 +334,10 @@ fn source_arg(args: &Value) -> Result<BTreeMap<String, SourceFile>, (&'static st
             .insert(path.to_string(), SourceFile { text, exec })
             .is_some()
         {
-            return Err((
+            return Err(crate::stream::inbound::spec::Fail::from((
                 "bad_args",
                 crate::common::contract::malformed(&format!("{path:?} given twice")),
-            ));
+            )));
         }
     }
     Ok(out)
@@ -354,10 +359,10 @@ pub(crate) fn answer_plan_with(facts: &dyn Facts, root: Option<&Path>, args: &Va
     let take = mcp_sync::names_arg(args.get("take"), "take")?;
     let overwrite = mcp_sync::names_arg(args.get("overwrite"), "overwrite")?;
     if take.is_none() && overwrite.is_some() {
-        return Err((
+        return Err(crate::stream::inbound::spec::Fail::from((
             "bad_args",
             crate::common::contract::malformed("`overwrite` given without `take`"),
-        ));
+        )));
     }
     // 这台上现有的那一份（没有这个目录 ⇒ 空）。读不出原文的那几个记下来：它们盖不了（CAS 要原文）。
     let mut here: Map<String, Value> = Map::new();
@@ -421,16 +426,16 @@ pub(crate) fn answer_plan_with(facts: &dyn Facts, root: Option<&Path>, args: &Va
                 .iter()
                 .find(|p| source.get(*p).is_some_and(|f| f.text.is_none()))
             {
-                return Err((
+                return Err(crate::stream::inbound::spec::Fail::from((
                     "bad_args",
                     copy_text("beSkillInstall.install.sourceUnreadable", &[("p", p)]),
-                ));
+                )));
             }
             if let Some(p) = t.iter().find(|p| unwritable.contains_key(*p)) {
-                return Err((
+                return Err(crate::stream::inbound::spec::Fail::from((
                     "bad_file",
                     copy_text("beSkillInstall.install.targetNotText", &[("p", p)]),
-                ));
+                )));
             }
             Some(mcp_sync::plan(&rows, &t, &overwrite.unwrap_or_default())?)
         }
@@ -544,10 +549,10 @@ pub fn answer_uninstall_plan_at(ledger: &Path, args: &Value) -> Answer {
     let take = mcp_sync::names_arg(args.get("take"), "take")?;
     let confirm = mcp_sync::names_arg(args.get("confirm"), "confirm")?;
     if take.is_none() && confirm.is_some() {
-        return Err((
+        return Err(crate::stream::inbound::spec::Fail::from((
             "bad_args",
             crate::common::contract::malformed("`confirm` given without `take`"),
-        ));
+        )));
     }
     let l = crate::assets::skill_ledger::load_at(ledger)?;
     let install = l.installs.get(dir).ok_or((
@@ -584,35 +589,35 @@ pub fn answer_uninstall_plan_at(ledger: &Path, args: &Value) -> Answer {
         Some(take) => {
             let confirm = confirm.unwrap_or_default();
             if let Some(p) = confirm.iter().find(|p| !take.contains(*p)) {
-                return Err((
+                return Err(crate::stream::inbound::spec::Fail::from((
                     "bad_args",
                     crate::common::contract::malformed(&format!(
                         "{p:?} is in `confirm` but not in `take`"
                     )),
-                ));
+                )));
             }
             for p in &take {
                 match judged.get(p.as_str()) {
                     None => {
-                        return Err((
+                        return Err(crate::stream::inbound::spec::Fail::from((
                             "bad_args",
                             copy_text("beSkillInstall.uninstall.notInLedger", &[("p", p)]),
-                        ))
+                        )))
                     }
                     Some((state, false, _)) => {
-                        return Err((
+                        return Err(crate::stream::inbound::spec::Fail::from((
                             "bad_args",
                             copy_text(
                                 "beSkillInstall.uninstall.badState",
                                 &[("p", p), ("state", &state.to_string())],
                             ),
-                        ))
+                        )))
                     }
                     Some((_, true, true)) if !confirm.contains(p) => {
-                        return Err((
+                        return Err(crate::stream::inbound::spec::Fail::from((
                             "needs_consent",
                             copy_text("beSkillInstall.uninstall.needsConsent", &[("p", p)]),
-                        ))
+                        )))
                     }
                     Some(_) => {}
                 }

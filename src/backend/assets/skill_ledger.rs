@@ -48,7 +48,7 @@ pub const MAX_BYTES: u64 = 4 * 1024 * 1024;
 use crate::assets::asset_catalog::SKILL_MAX_FILES as MAX_FILES;
 
 /// 这一族的应答。
-pub type Answer = Result<Value, (&'static str, String)>;
+pub type Answer = Result<Value, crate::stream::inbound::spec::Fail>;
 
 /// 一个装时写进去的文件。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -149,11 +149,14 @@ pub fn read_at(path: &Path) -> Read {
 }
 
 /// 读成一份可用的记录：没有 ⇒ 空的；读不懂 ⇒ `ledger_unreadable`（读的人也不许把它说成「什么都没装过」）。
-pub fn load_at(path: &Path) -> Result<Ledger, (&'static str, String)> {
+pub fn load_at(path: &Path) -> Result<Ledger, crate::stream::inbound::spec::Fail> {
     match read_at(path) {
         Read::Absent => Ok(Ledger::default()),
         Read::Present(l) => Ok(l),
-        Read::Unreadable(why) => Err(("ledger_unreadable", why.said_logging_raw())),
+        Read::Unreadable(why) => Err(crate::stream::inbound::spec::Fail::from((
+            "ledger_unreadable",
+            why,
+        ))),
     }
 }
 
@@ -167,35 +170,37 @@ fn write_at(path: &Path, ledger: &Ledger) -> Result<(), crate::common::said::Sai
 // 后写的整份会盖掉先写的一条 ⇒ 那一趟装的文件从此卸不掉。
 
 /// `add` 的入参：`files: {path: {digest, created}}`。
-fn files_arg(args: &Value) -> Result<BTreeMap<String, Recorded>, (&'static str, String)> {
+fn files_arg(
+    args: &Value,
+) -> Result<BTreeMap<String, Recorded>, crate::stream::inbound::spec::Fail> {
     let obj = args.get("files").and_then(Value::as_object).ok_or((
         "bad_args",
         crate::common::contract::malformed("missing `files` or it is not an object").to_string(),
     ))?;
     if obj.is_empty() {
-        return Err((
+        return Err(crate::stream::inbound::spec::Fail::from((
             "bad_args",
             crate::common::contract::malformed("`files` is empty"),
-        ));
+        )));
     }
     if obj.len() > MAX_FILES {
-        return Err((
+        return Err(crate::stream::inbound::spec::Fail::from((
             "too_large",
             copy_text(
                 "beSkillLedger.add.tooMany",
                 &[("max", &MAX_FILES.to_string())],
             ),
-        ));
+        )));
     }
     let mut out = BTreeMap::new();
     for (path, rec) in obj {
         if !crate::assets::skill_install::valid_rel(path) {
-            return Err((
+            return Err(crate::stream::inbound::spec::Fail::from((
                 "bad_args",
                 crate::common::contract::malformed(&format!(
                     "{path:?} is not a relative path inside the skill"
                 )),
-            ));
+            )));
         }
         let rec: Recorded = serde_json::from_value(rec.clone()).map_err(|e| {
             (
@@ -206,12 +211,12 @@ fn files_arg(args: &Value) -> Result<BTreeMap<String, Recorded>, (&'static str, 
             )
         })?;
         if !valid_digest(&rec.digest) {
-            return Err((
+            return Err(crate::stream::inbound::spec::Fail::from((
                 "bad_args",
                 crate::common::contract::malformed(&format!(
                     "`digest` of {path:?} is not 16 lowercase hex digits"
                 )),
-            ));
+            )));
         }
         out.insert(path.clone(), rec);
     }
@@ -246,7 +251,7 @@ pub fn drop_paths(
     ledger: &mut Ledger,
     dir: &str,
     paths: &[String],
-) -> Result<usize, (&'static str, String)> {
+) -> Result<usize, crate::stream::inbound::spec::Fail> {
     let entry = ledger.installs.get_mut(dir).ok_or((
         "not_found",
         copy_text(
@@ -255,10 +260,10 @@ pub fn drop_paths(
         ),
     ))?;
     if let Some(p) = paths.iter().find(|p| !entry.files.contains_key(*p)) {
-        return Err((
+        return Err(crate::stream::inbound::spec::Fail::from((
             "bad_args",
             crate::common::contract::malformed(&format!("{p:?} is not recorded under {dir}")),
-        ));
+        )));
     }
     for p in paths {
         entry.files.remove(p);
@@ -298,10 +303,7 @@ pub fn record_at(path: &Path, skills_root: Option<&Path>, args: &Value) -> Answe
         )
     })?;
     let _g = crate::platform::lock::hold(lock_dir).map_err(|e| {
-        (
-            "io_failed",
-            crate::common::said::Said::from(e).said_logging_raw(),
-        )
+        crate::stream::inbound::spec::Fail::from(("io_failed", crate::common::said::Said::from(e)))
     })?;
     let mut ledger = load_at(path)?;
     let (dir, name, changed, left) = match op {
@@ -350,12 +352,12 @@ pub fn record_at(path: &Path, skills_root: Option<&Path>, args: &Value) -> Answe
                     .display()
                     .to_string(),
                 Some(other) => {
-                    return Err((
+                    return Err(crate::stream::inbound::spec::Fail::from((
                         "bad_args",
                         crate::common::contract::malformed(&format!(
                             "`at` must be absent or \"home\", got {other:?}"
                         )),
-                    ))
+                    )))
                 }
             };
             let changed = add(&mut ledger, &dir, &name, files);
@@ -441,16 +443,17 @@ pub fn record_at(path: &Path, skills_root: Option<&Path>, args: &Value) -> Answe
             (file, name, changed, left)
         }
         other => {
-            return Err((
+            return Err(crate::stream::inbound::spec::Fail::from((
                 "bad_args",
                 crate::common::contract::malformed(&format!(
                     "`op` must be add, drop, mcp-add or mcp-drop, got {other:?}"
                 )),
-            ))
+            )))
         }
     };
     if changed {
-        write_at(path, &ledger).map_err(|e| ("io_failed", e.said_logging_raw()))?;
+        write_at(path, &ledger)
+            .map_err(|e| crate::stream::inbound::spec::Fail::from(("io_failed", e)))?;
     }
     Ok(json!({ "dir": dir, "name": name, "changed": changed, "remaining": left }))
 }

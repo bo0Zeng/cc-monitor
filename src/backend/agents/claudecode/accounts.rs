@@ -224,7 +224,7 @@ pub(crate) fn trust_of_config(p: &Path, cwd: &str) -> Result<String, (String, St
         );
     }
     let bytes = read_regular_capped(p, MAX_CONFIG_BYTES)
-        .map_err(|e| ("claude_json_unreadable".to_string(), e.said_logging_raw()))?;
+        .map_err(|e| ("claude_json_unreadable".to_string(), e.into_note()))?;
     let v: serde_json::Value = serde_json::from_slice(&bytes)
         .map_err(|e| ("claude_json_invalid".to_string(), e.to_string()))?;
     let entry = v.get("projects").and_then(|p| p.get(cwd));

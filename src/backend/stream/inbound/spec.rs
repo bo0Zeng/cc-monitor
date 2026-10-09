@@ -44,6 +44,16 @@ impl From<(&'static str, crate::common::said::Said)> for Fail {
     }
 }
 
+impl From<Fail> for crate::common::said::Said {
+    /// 失败不成应答、往下交给只认「一句 ＋ 原话」的那一层（日志 · 拼进别的句子）：码不跟着走。
+    fn from(f: Fail) -> Self {
+        crate::common::said::Said {
+            said: f.message,
+            raw: f.raw,
+        }
+    }
+}
+
 impl Fail {
     /// 码 ＋ 那一句（没有原话、没有 `data`）。
     pub(crate) fn new(code: &str, message: String) -> Fail {
@@ -62,6 +72,11 @@ impl Fail {
             .filter(|r| !r.is_empty())
             .map(str::to_string);
         self
+    }
+
+    /// 这次失败**不成应答**、只成别处的一句（同 `Said::into_note`：原话记一行日志）。
+    pub(crate) fn into_note(self) -> String {
+        crate::common::said::Said::from(self).into_note()
     }
 
     /// 这次失败的应答帧（`cmd` 是命令名，进详情的「命令」那一项）。

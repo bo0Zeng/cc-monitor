@@ -805,7 +805,7 @@ pub fn update_at(
     scanned: Scanned,
     label: &str,
     incoming: Option<BTreeMap<String, Snapshot>>,
-) -> Result<Value, (&'static str, String)> {
+) -> Result<Value, crate::stream::inbound::spec::Fail> {
     let (cat, problems, changed) = update_with(path, scanned, label, incoming, false, now_secs())?;
     Ok(wire(&cat, &problems, changed, Some(path)))
 }
@@ -819,7 +819,7 @@ pub fn update_with(
     incoming: Option<BTreeMap<String, Snapshot>>,
     visit: bool,
     now: u64,
-) -> Result<(Catalog, Vec<String>, bool), (&'static str, String)> {
+) -> Result<(Catalog, Vec<String>, bool), crate::stream::inbound::spec::Fail> {
     update_core(path, scanned, label, incoming, visit, None, now)
 }
 
@@ -830,7 +830,7 @@ pub fn update_noting(
     label: &str,
     note: (&str, &str),
     now: u64,
-) -> Result<(Catalog, bool), (&'static str, String)> {
+) -> Result<(Catalog, bool), crate::stream::inbound::spec::Fail> {
     update_core(path, scanned, label, None, false, Some(note), now).map(|(c, _, ch)| (c, ch))
 }
 
@@ -842,7 +842,7 @@ fn update_core(
     visit: bool,
     note: Option<(&str, &str)>,
     now: u64,
-) -> Result<(Catalog, Vec<String>, bool), (&'static str, String)> {
+) -> Result<(Catalog, Vec<String>, bool), crate::stream::inbound::spec::Fail> {
     let dir = path.parent().ok_or((
         "io_failed",
         copy_text(
@@ -861,15 +861,17 @@ fn update_core(
         )
     })?;
     let _lock = crate::platform::lock::hold(dir).map_err(|e| {
-        (
-            "io_failed",
-            crate::common::said::Said::from(e).said_logging_raw(),
-        )
+        crate::stream::inbound::spec::Fail::from(("io_failed", crate::common::said::Said::from(e)))
     })?;
     let mut cat = match read_at(path) {
         Read::Present(c) => c,
         Read::Absent => fresh(new_machine_id()),
-        Read::Unreadable(why) => return Err(("catalog_unreadable", why.said_logging_raw())),
+        Read::Unreadable(why) => {
+            return Err(crate::stream::inbound::spec::Fail::from((
+                "catalog_unreadable",
+                why,
+            )))
+        }
     };
     let Scanned {
         assets,
@@ -894,14 +896,15 @@ fn update_core(
         dirty = true;
     }
     if dirty || !path.exists() {
-        write_at(path, &cat).map_err(|e| ("io_failed", e.said_logging_raw()))?;
+        write_at(path, &cat)
+            .map_err(|e| crate::stream::inbound::spec::Fail::from(("io_failed", e)))?;
     }
     Ok((cat, problems, changed))
 }
 
 fn update_now(
     incoming: Option<BTreeMap<String, Snapshot>>,
-) -> Result<Value, (&'static str, String)> {
+) -> Result<Value, crate::stream::inbound::spec::Fail> {
     let path =
         catalog_path().ok_or(("io_failed", copy_text("beAssetCatalog.write.noHome", &[])))?;
     update_at(&path, scan_here(), &machine_label(), incoming)
@@ -910,7 +913,7 @@ fn update_now(
 /// 扩展页那一问（**写口**，只从 `stream/inbound/` 递出去）：这台现扫一次、记下，交回并好的整份（`visit` 见 [`update_with`]）。
 pub(crate) fn answer_current(
     visit: bool,
-) -> Result<(Catalog, Vec<String>), (&'static str, String)> {
+) -> Result<(Catalog, Vec<String>), crate::stream::inbound::spec::Fail> {
     let path =
         catalog_path().ok_or(("io_failed", copy_text("beAssetCatalog.write.noHome", &[])))?;
     let (cat, problems, _) = update_with(
@@ -925,7 +928,10 @@ pub(crate) fn answer_current(
 }
 
 /// 扩展页写备注那一问（**写口**，只从 `stream/inbound/` 递出去）：这台现扫一次、把备注记进自己那一格，交回整份。
-pub(crate) fn answer_note(key: &str, text: &str) -> Result<Catalog, (&'static str, String)> {
+pub(crate) fn answer_note(
+    key: &str,
+    text: &str,
+) -> Result<Catalog, crate::stream::inbound::spec::Fail> {
     let path =
         catalog_path().ok_or(("io_failed", copy_text("beAssetCatalog.write.noHome", &[])))?;
     update_noting(
@@ -939,12 +945,12 @@ pub(crate) fn answer_note(key: &str, text: &str) -> Result<Catalog, (&'static st
 }
 
 /// `assets-catalog`：这台现扫一次、记下（变了才写），回整份目录 ＋「这台缺什么」。
-pub fn answer_catalog(_args: &Value) -> Result<Value, (&'static str, String)> {
+pub fn answer_catalog(_args: &Value) -> Result<Value, crate::stream::inbound::spec::Fail> {
     update_now(None)
 }
 
 /// `assets-catalog-merge`：同上，再把 `args.catalog`（别的后端的整份）并进来。
-pub fn answer_merge(args: &Value) -> Result<Value, (&'static str, String)> {
+pub fn answer_merge(args: &Value) -> Result<Value, crate::stream::inbound::spec::Fail> {
     let cat = args.get("catalog").ok_or((
         "bad_args",
         crate::common::contract::malformed("missing `catalog`"),

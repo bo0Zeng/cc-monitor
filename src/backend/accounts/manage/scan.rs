@@ -178,7 +178,7 @@ pub(crate) fn scan(home: &str, extra_dirs: &[String], extra_files: &[String]) ->
                             &[("path", &mpath), ("why", why)],
                         )
                     })
-                    .said_logging_raw())),
+                    .into_note())),
             ),
         },
     };

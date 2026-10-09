@@ -46,9 +46,9 @@ impl Said {
         }
     }
 
-    /// 还走 `(码, String)` 那几族的过渡口：那一句交出去，原话记一行日志（不上句子、也不丢）。
-    /// 那一族换成带原话的失败（`Fail`）之后，调用点改走 `Fail::from((码, Said))`。
-    pub(crate) fn said_logging_raw(self) -> String {
+    /// 这次失败**不成应答**、只成别处的一句（成功应答里的提示格 · 状态格 · 日志行里拼的一段，那一格没有详情位）：
+    /// 那一句交出去，原话记一行日志（不上句子、也不丢）。成应答的那几形走 `Fail::from((码, Said))`。
+    pub(crate) fn into_note(self) -> String {
         if let Some(r) = &self.raw {
             tracing::warn!("{}: {r}", self.said);
         }

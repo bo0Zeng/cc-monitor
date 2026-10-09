@@ -58,7 +58,7 @@ impl Tmp {
         let v: Value = serde_json::from_str(&self.read(&cfg(acct))).unwrap_or(Value::Null);
         v.get("mcpServers").cloned().unwrap_or(json!({}))
     }
-    fn call(&self, cmd: &str, args: Value) -> Result<Value, (&'static str, String)> {
+    fn call(&self, cmd: &str, args: Value) -> Result<Value, crate::stream::inbound::spec::Fail> {
         let table = self.0.join(".cc-monitor/apikey-credentials.json");
         let set = |v: &Value| file_face::answer_set_at(&table, v);
         let drop = |v: &Value| file_face::answer_drop_at(&table, v);
@@ -213,7 +213,7 @@ fn stopping_the_sync_leaves_each_account_alone_until_it_is_turned_back_on() {
     assert_eq!(
         t.call("accounts-mcp-remove", json!({ "name": "cclsp" }))
             .unwrap_err()
-            .0,
+            .code,
         "refused",
         "停着 ⇒ 从所有号删一条被拒（不然就成了同步）"
     );
@@ -289,7 +289,7 @@ fn removed_in_cc_monitor_leaves_both_accounts() {
     assert_eq!(
         t.call("accounts-mcp-remove", json!({ "name": "anysearch" }))
             .unwrap_err()
-            .0,
+            .code,
         "not_found"
     );
 }
@@ -330,7 +330,10 @@ fn put_from_cc_monitor_reaches_every_account() {
     for a in ["z", "b"] {
         assert_eq!(t.servers(a)["anysearch"], anysearch());
     }
-    assert_eq!(put(&t.door(), " ", &json!({})).unwrap_err().0, "bad_args");
+    assert_eq!(
+        put(&t.door(), " ", &json!({})).unwrap_err().code,
+        "bad_args"
+    );
 }
 
 #[test]
@@ -385,11 +388,11 @@ fn bad_arguments_are_refused() {
     assert_eq!(
         t.call("accounts-mcp-read", json!({ "x": 1 }))
             .unwrap_err()
-            .0,
+            .code,
         "bad_args"
     );
     assert_eq!(
-        t.call("accounts-mcp-remove", json!({})).unwrap_err().0,
+        t.call("accounts-mcp-remove", json!({})).unwrap_err().code,
         "bad_args"
     );
     assert_eq!(
@@ -398,7 +401,7 @@ fn bad_arguments_are_refused() {
             json!({ "name": "cclsp", "from": "nobody" })
         )
         .unwrap_err()
-        .0,
+        .code,
         "refused"
     );
 }

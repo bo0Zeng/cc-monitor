@@ -272,12 +272,12 @@ pub(crate) struct Note {
 }
 
 /// 读那份记录。没有 ⇒ 空；读不懂 ⇒ `Err`（不覆盖它）。
-pub(crate) fn read_book(home: &Path) -> Result<Book, String> {
+pub(crate) fn read_book(home: &Path) -> Result<Book, crate::common::said::Said> {
     use crate::common::own_state::{read_json, Read};
     match read_json(&home.join(FILE_NAME), MAX_BYTES) {
         Read::Absent => Ok(Book::default()),
         Read::Present(b) => Ok(b),
-        Read::Unreadable(why) => Err(why.said_logging_raw()),
+        Read::Unreadable(why) => Err(why),
     }
 }
 
@@ -290,7 +290,12 @@ pub(crate) fn last_of(home: Option<&Path>, sid: &str) -> Option<String> {
 }
 
 /// `ccm` 最终那一跳：给将要跑 agent 的那个进程（`pid`）留便条。失败只出声（不挡起会话）。
-pub(crate) fn leave_note(home: &Path, pid: u32, account: &str, now: u64) -> Result<(), String> {
+pub(crate) fn leave_note(
+    home: &Path,
+    pid: u32,
+    account: &str,
+    now: u64,
+) -> Result<(), crate::common::said::Said> {
     let dir = home.join(NOTES_DIR);
     for d in [home, dir.as_path()] {
         crate::common::own_dir::ensure_private_dir(d).map_err(|e| failed(d, &e))?;
@@ -302,7 +307,6 @@ pub(crate) fn leave_note(home: &Path, pid: u32, account: &str, now: u64) -> Resu
             at: now,
         },
     )
-    .map_err(crate::common::said::Said::said_logging_raw)
 }
 
 /// 观测侧看见 `pid` 的会话 `sid`：有它的便条、且便条不早于这个进程 ⇒ 记 `sid → 号`；顺手清掉进程已不在的便条。
@@ -313,7 +317,7 @@ pub(crate) fn adopt(
     sid: &str,
     started: Option<u64>,
     alive: &dyn Fn(u32) -> Option<Option<u64>>,
-) -> Result<bool, String> {
+) -> Result<bool, crate::common::said::Said> {
     let dir = home.join(NOTES_DIR);
     let Ok(rd) = std::fs::read_dir(&dir) else {
         return Ok(false);
@@ -360,14 +364,12 @@ fn fresh(n: &Note, started: Option<u64>) -> bool {
 }
 
 /// 在跨进程锁里：读盘 → 换掉那一条 → 原子写回。读不懂的那份不覆盖。
-fn record(home: &Path, sid: &str, account: &str) -> Result<(), String> {
+fn record(home: &Path, sid: &str, account: &str) -> Result<(), crate::common::said::Said> {
     crate::common::own_dir::ensure_private_dir(home).map_err(|e| failed(home, &e))?;
-    let _lock = crate::platform::lock::hold(home)
-        .map_err(|e| crate::common::said::Said::from(e).said_logging_raw())?;
+    let _lock = crate::platform::lock::hold(home).map_err(crate::common::said::Said::from)?;
     let mut book = read_book(home)?;
     book.sessions.insert(sid.to_string(), account.to_string());
     crate::common::own_state::write_json(&home.join(FILE_NAME), &book)
-        .map_err(crate::common::said::Said::said_logging_raw)
 }
 
 fn failed(path: &Path, e: &dyn std::fmt::Display) -> String {
@@ -378,9 +380,10 @@ fn failed(path: &Path, e: &dyn std::fmt::Display) -> String {
 }
 
 /// `history-last-accounts`：这台记着的 `{accounts: {sid: 号}}`。读不懂 ⇒ `unreadable`。
-pub(crate) fn answer_last_accounts() -> Result<Value, (&'static str, String)> {
+pub(crate) fn answer_last_accounts() -> Result<Value, crate::stream::inbound::spec::Fail> {
     let book = match crate::platform::paths::data_home() {
-        Some(h) => read_book(&h).map_err(|e| ("unreadable", e))?,
+        Some(h) => read_book(&h)
+            .map_err(|e| crate::stream::inbound::spec::Fail::from(("unreadable", e)))?,
         None => Book::default(),
     };
     Ok(serde_json::json!({ "accounts": book.sessions }))

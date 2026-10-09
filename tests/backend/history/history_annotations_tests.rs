@@ -131,14 +131,14 @@ fn an_unreadable_file_is_never_overwritten() {
         std::fs::write(&p, bad).unwrap();
         let e = answer_annotate_at(&p, &json!({"sid": "s2", "patch": {"hidden": true}}), 1)
             .expect_err("读不懂也写了");
-        assert_eq!(e.0, "annotations_unreadable", "{bad}：{e:?}");
+        assert_eq!(e.code, "annotations_unreadable", "{bad}：{e:?}");
         assert_eq!(
             std::fs::read_to_string(&p).unwrap(),
             bad,
             "读不懂那份被动了"
         );
         let e = answer_forget_at(&p, &json!({"sid": "s"})).expect_err("读不懂也删了");
-        assert_eq!(e.0, "annotations_unreadable");
+        assert_eq!(e.code, "annotations_unreadable");
         assert_eq!(std::fs::read_to_string(&p).unwrap(), bad);
         assert!(
             matches!(load_at(&p), Loaded::Unreadable(_)),
@@ -186,7 +186,7 @@ fn patch_semantics_match_what_the_monitor_did() {
         json!({"sid": "x", "patch": {"starred": "yes"}}),
     ] {
         assert_eq!(
-            answer_annotate_at(&p, &bad, 1).unwrap_err().0,
+            answer_annotate_at(&p, &bad, 1).unwrap_err().code,
             "bad_args",
             "{bad}"
         );
@@ -258,4 +258,20 @@ fn the_location_only_follows_the_home() {
         None
     );
     assert_eq!(path_from(&env(&[])), None);
+}
+
+#[cfg(unix)]
+#[test]
+fn an_unreadable_file_hands_its_raw_to_the_detail_not_the_sentence() {
+    // 那份文件谁都读不了（权限 000）⇒ 读不出来：码照旧，下层原话跟着失败走（进复制详情），不上句子。
+    use std::os::unix::fs::PermissionsExt;
+    let p = temp_copy("noread");
+    let d = p.parent().unwrap().to_path_buf();
+    std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o000)).unwrap();
+    let e = answer_annotate_at(&p, &json!({"sid": "s2", "patch": {"hidden": true}}), 1)
+        .expect_err("读不出来也写了");
+    assert_eq!(e.code, "annotations_unreadable", "{e:?}");
+    let raw = e.raw.as_deref().expect("原话丢了");
+    assert!(!e.message.contains(raw), "原话上了句子：{e:?}");
+    let _ = std::fs::remove_dir_all(&d);
 }

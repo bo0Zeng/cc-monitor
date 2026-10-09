@@ -82,12 +82,12 @@ pub fn path_from(get: &dyn Fn(&str) -> Option<String>) -> Option<PathBuf> {
 }
 
 /// 读原文（带上限）。`Ok(None)` = 文件不在。
-fn read_raw(path: &Path) -> Result<Option<Vec<u8>>, String> {
+fn read_raw(path: &Path) -> Result<Option<Vec<u8>>, crate::common::said::Said> {
     use crate::common::own_state::{read_bytes, Read};
     match read_bytes(path, MAX_BYTES) {
         Read::Absent => Ok(None),
         Read::Present(b) => Ok(Some(b)),
-        Read::Unreadable(why) => Err(why.said_logging_raw()),
+        Read::Unreadable(why) => Err(why),
     }
 }
 
@@ -112,7 +112,7 @@ pub fn load_at(path: &Path) -> Loaded {
             Ok(d) => Loaded::Read(d.entries),
             Err(e) => Loaded::Unreadable(e),
         },
-        Err(e) => Loaded::Unreadable(e),
+        Err(e) => Loaded::Unreadable(e.into_note()),
     }
 }
 
@@ -125,7 +125,9 @@ pub fn load() -> Loaded {
 }
 
 /// 读—改—写的锁：先建那一层目录，再拿它的跨进程锁（`platform/lock.rs`）。
-fn lock_for_write(path: &Path) -> Result<crate::platform::lock::DirLock, (&'static str, String)> {
+fn lock_for_write(
+    path: &Path,
+) -> Result<crate::platform::lock::DirLock, crate::stream::inbound::spec::Fail> {
     let dir = path.parent().ok_or_else(|| {
         (
             "io_failed",
@@ -137,19 +139,16 @@ fn lock_for_write(path: &Path) -> Result<crate::platform::lock::DirLock, (&'stat
     })?;
     // 这一层是数据目录，默认就是 `~/.cc-monitor`（后端的家）⇒ 建的那一下只给本人。
     if let Err(e) = crate::common::own_dir::ensure_private_dir(dir) {
-        return Err((
+        return Err(crate::stream::inbound::spec::Fail::from((
             "io_failed",
             copy_text(
                 "beHistoryAnnotations.writeAt.mkdirFailed",
                 &[("dir", &(dir.display()).to_string()), ("e", &e.to_string())],
             ),
-        ));
+        )));
     }
     crate::platform::lock::hold(dir).map_err(|e| {
-        (
-            "io_failed",
-            crate::common::said::Said::from(e).said_logging_raw(),
-        )
+        crate::stream::inbound::spec::Fail::from(("io_failed", crate::common::said::Said::from(e)))
     })
 }
 
@@ -168,18 +167,18 @@ struct Patch {
 /// 被改那一条身上要摘掉的蛇形别名（写回时一律驼峰）。
 const ALIASES: [&str; 2] = ["custom_title", "updated_at"];
 
-fn sid_arg(args: &Value) -> Result<&str, (&'static str, String)> {
+fn sid_arg(args: &Value) -> Result<&str, crate::stream::inbound::spec::Fail> {
     let sid = args.get("sid").and_then(Value::as_str).ok_or((
         "bad_args",
         crate::common::contract::malformed("missing `sid` (a string)"),
     ))?;
     if sid.is_empty() || sid.len() > 256 || sid.chars().any(char::is_control) {
-        return Err((
+        return Err(crate::stream::inbound::spec::Fail::from((
             "bad_args",
             crate::common::contract::malformed(&format!(
                 "`sid` does not look like a session id: {sid:?}"
             )),
-        ));
+        )));
     }
     Ok(sid)
 }
@@ -192,21 +191,23 @@ fn now_ms() -> i64 {
 }
 
 /// 读原文成「严格读过的结构 ＋ 原文 JSON」。文件不在 ⇒ 缺省形状。
-fn read_for_write(path: &Path) -> Result<(Doc, Value), (&'static str, String)> {
-    match read_raw(path).map_err(|e| ("annotations_unreadable", e))? {
+fn read_for_write(path: &Path) -> Result<(Doc, Value), crate::stream::inbound::spec::Fail> {
+    match read_raw(path)
+        .map_err(|e| crate::stream::inbound::spec::Fail::from(("annotations_unreadable", e)))?
+    {
         None => Ok((Doc::default(), json!({ "version": 0, "entries": {} }))),
         Some(b) => {
             let doc = parse(&b, path).map_err(|e| ("annotations_unreadable", e))?;
             let raw: Value = serde_json::from_slice(&b)
                 .map_err(|e| ("annotations_unreadable", format!("{e}")))?;
             if !raw.is_object() {
-                return Err((
+                return Err(crate::stream::inbound::spec::Fail::from((
                     "annotations_unreadable",
                     copy_text(
                         "beHistoryAnnotations.readForWrite.notObject",
                         &[("path", &(path.display()).to_string())],
                     ),
-                ));
+                )));
             }
             Ok((doc, raw))
         }
@@ -255,18 +256,20 @@ fn write_at(path: &Path, raw: &Value) -> Result<(), crate::common::said::Said> {
     crate::common::own_state::write(path, body.as_bytes())
 }
 
-fn need_path() -> Result<PathBuf, (&'static str, String)> {
-    path().ok_or((
-        "no_annotations",
-        copy_text(
-            "beHistoryAnnotations.needPath.unknown",
-            &[("env", creds_core::store::DATA_DIR_ENV)],
-        ),
-    ))
+fn need_path() -> Result<PathBuf, crate::stream::inbound::spec::Fail> {
+    path().ok_or_else(|| {
+        crate::stream::inbound::spec::Fail::from((
+            "no_annotations",
+            copy_text(
+                "beHistoryAnnotations.needPath.unknown",
+                &[("env", creds_core::store::DATA_DIR_ENV)],
+            ),
+        ))
+    })
 }
 
 /// `history-annotate {sid, patch}`：改一条，回改完的那一条（`{entry}`）。
-pub fn answer_annotate(args: &Value) -> Result<Value, (&'static str, String)> {
+pub fn answer_annotate(args: &Value) -> Result<Value, crate::stream::inbound::spec::Fail> {
     answer_annotate_at(&need_path()?, args, now_ms())
 }
 
@@ -275,7 +278,7 @@ pub fn answer_annotate_at(
     path: &Path,
     args: &Value,
     now: i64,
-) -> Result<Value, (&'static str, String)> {
+) -> Result<Value, crate::stream::inbound::spec::Fail> {
     let sid = sid_arg(args)?;
     let patch: Patch = match args.get("patch") {
         Some(p @ Value::Object(_)) => serde_json::from_value(p.clone()).map_err(|e| {
@@ -285,10 +288,10 @@ pub fn answer_annotate_at(
             )
         })?,
         _ => {
-            return Err((
+            return Err(crate::stream::inbound::spec::Fail::from((
                 "bad_args",
                 crate::common::contract::malformed("missing `patch` (an object)"),
-            ))
+            )))
         }
     };
     let _g = lock_for_write(path)?;
@@ -305,17 +308,20 @@ pub fn answer_annotate_at(
     }
     entry.updated_at = now;
     put_entry(&mut raw, sid, Some(&entry));
-    write_at(path, &raw).map_err(|e| ("io_failed", e.said_logging_raw()))?;
+    write_at(path, &raw).map_err(|e| crate::stream::inbound::spec::Fail::from(("io_failed", e)))?;
     Ok(json!({ "entry": entry }))
 }
 
 /// `history-forget {sid}`：删那一条（删会话时连带）。不在 ⇒ 不写。回 `{removed}`。
-pub fn answer_forget(args: &Value) -> Result<Value, (&'static str, String)> {
+pub fn answer_forget(args: &Value) -> Result<Value, crate::stream::inbound::spec::Fail> {
     answer_forget_at(&need_path()?, args)
 }
 
 /// [`answer_forget`] 的本体。
-pub fn answer_forget_at(path: &Path, args: &Value) -> Result<Value, (&'static str, String)> {
+pub fn answer_forget_at(
+    path: &Path,
+    args: &Value,
+) -> Result<Value, crate::stream::inbound::spec::Fail> {
     let sid = sid_arg(args)?;
     let _g = lock_for_write(path)?;
     let (doc, mut raw) = read_for_write(path)?;
@@ -323,7 +329,7 @@ pub fn answer_forget_at(path: &Path, args: &Value) -> Result<Value, (&'static st
         return Ok(json!({ "removed": false }));
     }
     put_entry(&mut raw, sid, None);
-    write_at(path, &raw).map_err(|e| ("io_failed", e.said_logging_raw()))?;
+    write_at(path, &raw).map_err(|e| crate::stream::inbound::spec::Fail::from(("io_failed", e)))?;
     Ok(json!({ "removed": true }))
 }
 

@@ -44,8 +44,13 @@ pub(crate) fn current(path: Option<&Path>) -> Marks {
 }
 
 /// 改一样：`{op: "decline" | "undecline", id}` · `{op: "selfPaste", rc}` · `{op: "unselfPaste"}` ⇒ 改完的那一份。
-pub(crate) fn mark_at(path: &Path, args: &Value) -> Result<Value, (&'static str, String)> {
-    let bad = |d: &str| ("bad_args", crate::common::contract::malformed(d));
+pub(crate) fn mark_at(
+    path: &Path,
+    args: &Value,
+) -> Result<Value, crate::stream::inbound::spec::Fail> {
+    let bad = |d: &str| {
+        crate::stream::inbound::spec::Fail::new("bad_args", crate::common::contract::malformed(d))
+    };
     let op = args
         .get("op")
         .and_then(Value::as_str)
@@ -70,16 +75,16 @@ pub(crate) fn mark_at(path: &Path, args: &Value) -> Result<Value, (&'static str,
         )
     })?;
     let _g = crate::platform::lock::hold(dir).map_err(|e| {
-        (
-            "io_failed",
-            crate::common::said::Said::from(e).said_logging_raw(),
-        )
+        crate::stream::inbound::spec::Fail::from(("io_failed", crate::common::said::Said::from(e)))
     })?;
     let mut m = match read_at(path) {
         crate::common::own_state::Read::Absent => Marks::default(),
         crate::common::own_state::Read::Present(m) => m,
         crate::common::own_state::Read::Unreadable(why) => {
-            return Err(("marks_unreadable", why.said_logging_raw()))
+            return Err(crate::stream::inbound::spec::Fail::from((
+                "marks_unreadable",
+                why,
+            )))
         }
     };
     match op {
@@ -104,12 +109,12 @@ pub(crate) fn mark_at(path: &Path, args: &Value) -> Result<Value, (&'static str,
         }
     }
     crate::common::own_state::write_json(path, &m)
-        .map_err(|e| ("io_failed", e.said_logging_raw()))?;
+        .map_err(|e| crate::stream::inbound::spec::Fail::from(("io_failed", e)))?;
     Ok(json!({"declined": m.declined, "selfPaste": m.self_paste, "startSkipped": m.start_skipped}))
 }
 
 /// `chores-mark`：帧面入口（**写口**，只从 `stream/inbound/` 进）。
-pub(crate) fn answer_mark(args: &Value) -> Result<Value, (&'static str, String)> {
+pub(crate) fn answer_mark(args: &Value) -> Result<Value, crate::stream::inbound::spec::Fail> {
     let path = marks_path().ok_or(("io_failed", copy_text("beChore.marks.noHome", &[])))?;
     mark_at(&path, args)
 }

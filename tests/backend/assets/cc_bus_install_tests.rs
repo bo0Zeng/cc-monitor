@@ -22,7 +22,7 @@ fn tmpdir(tag: &str) -> TmpDir {
     TmpDir(p)
 }
 /// 装到 `<p>/skills/cc-bus`（装记录的写口是个不记事的替身）。
-fn install(p: &Path) -> Result<Value, (&'static str, String)> {
+fn install(p: &Path) -> Result<Value, crate::stream::inbound::spec::Fail> {
     install_at(&LocalFiles, &p.join("skills"), &|_| Ok(json!({})))
 }
 
@@ -235,7 +235,8 @@ fn a_symlinked_skills_dir_is_refused() {
     let t = tmpdir("fence");
     let outside = tmpdir("outside");
     std::os::unix::fs::symlink(&outside.0, t.0.join("skills")).unwrap();
-    let (_, err) = install(&t.0).expect_err("软链出去必须拒收");
+    let crate::stream::inbound::spec::Fail { message: err, .. } =
+        install(&t.0).expect_err("软链出去必须拒收");
     assert!(
         copy_core::copy_matches("beCcBusInstall.fence.escapes", &err),
         "{err}"
@@ -323,7 +324,8 @@ fn an_unwritable_skills_dir_fails_loudly() {
     let r = install(&d.0);
     // 先恢复权限再断言 —— 否则失败时 `TmpDir::drop` 删不掉，留一地垃圾。
     std::fs::set_permissions(&skills, std::fs::Permissions::from_mode(0o755)).unwrap();
-    let (_, e) = r.expect_err("`skills/` 不可写时必须报错，不许返回「写了 0 个」的 Ok");
+    let crate::stream::inbound::spec::Fail { message: e, .. } =
+        r.expect_err("`skills/` 不可写时必须报错，不许返回「写了 0 个」的 Ok");
     assert!(
         e.contains("Permission denied")
             || e.contains("失败")

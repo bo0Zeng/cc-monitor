@@ -6690,7 +6690,7 @@
     "profilesPage.form.titleEdit": {
       "kind": "title",
       "role": "标题",
-      "zh": "改 {name}",
+      "zh": "改「{name}」",
       "args": ["name"]
     },
     "profilesPage.form.titleNew": {
@@ -6736,7 +6736,7 @@
     "profilesPage.function.title": {
       "kind": "title",
       "role": "标题",
-      "zh": "{name} · 终端函数",
+      "zh": "「{name}」 · 终端函数",
       "args": ["name"]
     },
     "profilesPage.head.line": {
@@ -6878,13 +6878,13 @@
     "profilesPage.merge.titleBare": {
       "kind": "title",
       "role": "标题",
-      "zh": "{name} 合下来",
+      "zh": "「{name}」合下来",
       "args": ["name"]
     },
     "profilesPage.merge.title": {
       "kind": "title",
       "role": "标题",
-      "zh": "{name} 合下来 · 继承链 {chain}",
+      "zh": "「{name}」合下来 · 继承链 {chain}",
       "args": ["name", "chain"]
     },
     "profilesPage.migrated.ack": {
@@ -27061,7 +27061,7 @@
     "sessionState.killIdle.title": {
       "kind": "title",
       "role": "标题",
-      "zh": "结束 tmux 会话 {name}",
+      "zh": "结束 tmux 会话「{name}」",
       "args": ["name"],
       "limited": ["tmux"]
     },

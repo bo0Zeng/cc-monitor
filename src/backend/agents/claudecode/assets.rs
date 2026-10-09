@@ -124,7 +124,7 @@ pub(crate) fn scan_skills_at(root: &Path, project: Option<&str>, out: &mut Sight
                             &[("path", &doc.display().to_string()), ("why", why)],
                         )
                     })
-                    .said_logging_raw(),
+                    .into_note(),
                 );
                 None
             }
@@ -181,7 +181,7 @@ pub(crate) fn scan_user_mcp_at(claude_json: &Path, out: &mut Sightings) {
                     &[("path", &claude_json.display().to_string()), ("why", why)],
                 )
             })
-            .said_logging_raw(),
+            .into_note(),
         ),
     }
 }
@@ -203,7 +203,7 @@ pub(crate) fn scan_project_mcp_at(dir: &Path, out: &mut Sightings) {
                     ),
                     &e,
                 )
-                .said_logging_raw(),
+                .into_note(),
             );
             return;
         }

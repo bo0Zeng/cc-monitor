@@ -858,7 +858,7 @@ fn exec_or_spawn(cmd: Child, subject: &str, account: Option<&str>) -> i32 {
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |d| d.as_secs());
         if let Err(e) = crate::control::launch_account::leave_note(&home, pid, name, now) {
-            eprintln!("ccm: {e}");
+            eprintln!("ccm: {}", e.logged());
         }
     };
     let e = match cmd.exec_replace(&note) {
