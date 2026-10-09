@@ -206,6 +206,12 @@
   --z-drag: 600; /* 拖拽幽灵、拖宽参考线 */
 }
 
+/* Linux（WebKitGTK）：字体栈第一个具名字体没装时，fontconfig 把它顶成一款非等宽中文字体、WebKit 照收、后面的不再看
+   ⇒ 缺省直接用通用名，交给 fontconfig 挑这台的等宽字体（用户在外观页选了具名字体照用）。根元素的标记由 `entry-common.ts` 打。 */
+:root[data-host-os="linux"] {
+  --font-mono: monospace;
+}
+
 @media (prefers-reduced-motion: reduce) {
   :root {
     --dur-press: 0ms;

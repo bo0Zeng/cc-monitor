@@ -192,3 +192,72 @@ export function delegateTooltip(root: HTMLElement, selector: string, content: (e
     if (hit(e.target) && hit(e.target) !== hit(e.relatedTarget)) c.hide();
   });
 }
+
+/**
+ * 全产品的 `title` 属性改走本模块的悬停提示（C20）：系统自己画的那种提示（WebKitGTK 黑底白字 · WebView2 各版本各样）不跟主题、
+ * 不按 500ms 节奏、也不摆在宿主上方。指针 / 焦点进一个带 `title` 的元素那一刻，把它挪进 `data-kit-title`（系统提示就不出了），
+ * 再按这里的节奏出提示；代码之后又写了 `title` ⇒ 下一次进来再挪。三个窗口的入口各装一次（`entry-common.ts`）。
+ */
+export function adoptNativeTitles(doc: Document = document): void {
+  const hostOf = (t: EventTarget | null): HTMLElement | null => {
+    if (!(t instanceof Element) || typeof t.closest !== "function") return null;
+    return t.closest<HTMLElement>("[title], [data-kit-title]");
+  };
+  const take = (el: HTMLElement): void => {
+    const t = el.getAttribute("title");
+    if (t === null) return;
+    if (t === "") delete el.dataset.kitTitle;
+    else {
+      el.dataset.kitTitle = t;
+      // title 也是读屏的名字（图标按钮多半只靠它）：名字不来自别处的，挪走之前写进 aria-label。
+      if (!nameFromElsewhere(el)) el.setAttribute("aria-label", t);
+    }
+    el.removeAttribute("title");
+  };
+  const c = controller((h) => {
+    const t = h.dataset.kitTitle ?? null;
+    return t !== null && shownInFull(h, t) ? null : t;
+  }, {});
+  const enter = (e: Event): void => {
+    const el = hostOf(e.target);
+    if (!el) return;
+    take(el);
+    c.arm(el);
+  };
+  const out = (e: Event & { relatedTarget?: EventTarget | null }): void => {
+    const from = hostOf(e.target);
+    if (from && from !== hostOf(e.relatedTarget ?? null)) c.leave();
+  };
+  doc.addEventListener("mouseover", enter, true);
+  doc.addEventListener("focusin", enter, true);
+  doc.addEventListener("mouseout", out, true);
+  doc.addEventListener("focusout", (e) => {
+    const from = hostOf(e.target);
+    if (from && from !== hostOf(e.relatedTarget)) c.hide();
+  }, true);
+  doc.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") c.hide();
+  }, true);
+}
+
+/** 名字来自内容的那几种（accname 1.2）：按钮 · 链接 · 菜单项 · 选项 · 标签页 · 格。 */
+const NAME_FROM_CONTENT_TAGS = new Set(["BUTTON", "A", "SUMMARY", "OPTION"]);
+const NAME_FROM_CONTENT_ROLES = new Set(["button", "link", "menuitem", "menuitemradio", "menuitemcheckbox", "option", "tab", "tooltip", "cell", "row"]);
+
+/** 这个元素的可访问名是不是来自 title 以外的地方（labelledby · aria-label · 名字来自内容的角色带着字）。 */
+function nameFromElsewhere(el: HTMLElement): boolean {
+  if (el.getAttribute("aria-labelledby")?.trim()) return true;
+  if (el.getAttribute("aria-label")?.trim()) return true;
+  const role = el.getAttribute("role");
+  const fromContent = NAME_FROM_CONTENT_TAGS.has(el.tagName) || (role !== null && NAME_FROM_CONTENT_ROLES.has(role));
+  return fromContent && (el.textContent ?? "").trim() !== "";
+}
+
+/** 提示要说的那句已经整句显示在宿主里、没被截断 ⇒ 不再弹一遍（历史页会话名那种）。 */
+function shownInFull(host: HTMLElement, text: string): boolean {
+  const want = text.trim();
+  // 最里层那个整句等于它的元素（截断看的是它自己的宽）；没有 ⇒ 宿主自己。
+  const leaf = [...host.querySelectorAll<HTMLElement>("*")].find((el) => el.children.length === 0 && (el.textContent ?? "").trim() === want);
+  const el = leaf ?? ((host.textContent ?? "").trim() === want ? host : null);
+  return el !== null && el.scrollWidth <= el.clientWidth + 1;
+}

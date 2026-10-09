@@ -11,7 +11,7 @@
  * 哪一步不成 ⇒ 抛一句人话（调用方出声）。这台找不到终端（设置里没指定、自动也没探到）时壳回 `"noWindow"` 这个结局
  * ⇒ 抛 {@link NoTerminalWindow}；调用方按类型判（照实说 ＋ 设置入口，不把命令塞进剪贴板），不按哪句话里的字判、也不按 OS 猜。
  */
-import { commands } from "./ipc/commands";
+import { commands, type TerminalOpened } from "./ipc/commands";
 import { copyText } from "./copy-table";
 import { chan } from "../../comms/inward/chan";
 import {
@@ -54,23 +54,32 @@ async function lineOf(ask: Promise<Uint8Array>): Promise<string> {
   }
 }
 
-/** 这台找不到终端（壳回 `"noWindow"`）。`message` 是给人看的那一句（说去设置里哪一格指定）；判只认类型。
+/** 为什么没开窗：一个终端都没探到（`none`）· 设置里指定的那个不在（`setMissing`）。 */
+export type NoTerminalWhy = "none" | "setMissing";
+
+/** 这台开不了终端窗口（壳回 `"noWindow"` / `"setMissing"`）。`message` 是给人看的那一句（说去设置里哪一格）；判只认类型。
  *  `command` 是本来要在窗口里跑的那一行（用户点［复制命令］时才进剪贴板）。 */
 export class NoTerminalWindow extends Error {
   readonly command: string;
-  constructor(command: string) {
-    super(copyText("rsLaunch.posix.noTerminalWindow"));
+  readonly why: NoTerminalWhy;
+  constructor(command: string, why: NoTerminalWhy = "none") {
+    super(why === "setMissing" ? copyText("rsLaunch.posix.setTerminalMissing") : copyText("rsLaunch.posix.noTerminalWindow"));
     this.name = "NoTerminalWindow";
     this.command = command;
+    this.why = why;
   }
 }
 
 /** 设置里指定终端的那一格（通用页 · 恢复组）。 */
 const TERMINAL_SETTING = { page: "general", anchor: "terminal" } as const;
 
-/** 找不到终端时说的那一条：照实说 ＋［设置］直达那一格 ＋［复制命令］（不自动写剪贴板，用户点了才复制那一行）。 */
+/** 开不了终端窗口时说的那一条（没探到 / 指定的不在）：照实说 ＋［设置］直达那一格 ＋［复制命令］（不自动写剪贴板，用户点了才复制那一行）。 */
 export function sayNoTerminal(err: NoTerminalWindow): void {
-  toast(copyText("terminalOpen.noTerminal.title"), copyText("terminalOpen.noTerminal.detail"), {
+  const [title, detail] =
+    err.why === "setMissing"
+      ? [copyText("terminalOpen.setMissing.title"), copyText("terminalOpen.setMissing.detail")]
+      : [copyText("terminalOpen.noTerminal.title"), copyText("terminalOpen.noTerminal.detail")];
+  toast(title, detail, {
     level: "error",
     action: [
       { label: copyText("terminalOpen.noTerminal.settings"), run: () => void openSettingsWindow(null, TERMINAL_SETTING) },
@@ -85,9 +94,11 @@ export function sayNoTerminal(err: NoTerminalWindow): void {
   });
 }
 
-/** 壳回的结局：`"noWindow"` ⇒ 抛 {@link NoTerminalWindow}；真失败壳那边抛一句人话，原样往上走。 */
-async function opened(command: string, got: Promise<"opened" | "noWindow">): Promise<void> {
-  if ((await got) === "noWindow") throw new NoTerminalWindow(command);
+/** 壳回的结局：`"noWindow"` / `"setMissing"` ⇒ 抛 {@link NoTerminalWindow}；真失败壳那边抛一句人话，原样往上走。 */
+async function opened(command: string, got: Promise<TerminalOpened>): Promise<void> {
+  const r = await got;
+  if (r === "noWindow") throw new NoTerminalWindow(command, "none");
+  if (r === "setMissing") throw new NoTerminalWindow(command, "setMissing");
 }
 
 async function openWindow(command: string, ssh: boolean): Promise<void> {

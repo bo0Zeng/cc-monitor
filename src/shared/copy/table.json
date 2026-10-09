@@ -7666,7 +7666,7 @@
     "settingsPanel.terminal.help": {
       "kind": "body",
       "role": "说明",
-      "zh": "开终端窗口用它 · 恢复 · 接回 · 登录 · 在此打开终端",
+      "zh": "开终端窗口都用它",
       "args": []
     },
     "settingsPanel.terminal.auto": {
@@ -12638,10 +12638,10 @@
       "args": []
     },
     "rsLaunch.posix.setTerminalMissing": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "未找到终端 {name} · 设置 → 通用 → 终端",
-      "args": ["name"]
+      "kind": "body",
+      "role": "说明",
+      "zh": "未找到设置里指定的终端 · 设置 → 通用 → 终端",
+      "args": []
     },
     "terminalOpen.noTerminal.title": {
       "kind": "title",
@@ -12671,6 +12671,18 @@
       "kind": "error",
       "role": "报错",
       "zh": "复制失败 · 原因不明",
+      "args": []
+    },
+    "terminalOpen.setMissing.title": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "未找到设置里指定的终端",
+      "args": []
+    },
+    "terminalOpen.setMissing.detail": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "在设置里改指定的终端或改回自动",
       "args": []
     },
     "beTerminal.refuse.empty": {

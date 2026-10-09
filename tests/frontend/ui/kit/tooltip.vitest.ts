@@ -13,7 +13,7 @@
  */
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import { makeInfoIcon } from "../../../../src/frontend/ui/settings/info-icon";
-import { attachTooltip, CARD_CLOSE_MS, delegateTooltip, hideTooltips, __liveTooltipCountForTests, TOOLTIP_DELAY_MS } from "../../../../src/frontend/ui/kit/tooltip";
+import { adoptNativeTitles, attachTooltip, CARD_CLOSE_MS, delegateTooltip, hideTooltips, __liveTooltipCountForTests, TOOLTIP_DELAY_MS } from "../../../../src/frontend/ui/kit/tooltip";
 import { closeMenu, openMenu } from "../../../../src/frontend/ui/kit/menu";
 import { placeFloat } from "../../../../src/frontend/ui/kit/place";
 
@@ -222,5 +222,112 @@ describe("C20：出现时机与摆法", () => {
     expect(tipsInBody()).toBe(0);
     closeMenu();
     hideTooltips(); // 空着时调也无事
+  });
+});
+
+describe("元素上的 title 改走 kit 的悬停提示（adoptNativeTitles）", () => {
+  beforeEach(() => {
+    document.body.replaceChildren();
+    hideTooltips();
+    vi.useFakeTimers();
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("指针一进来 title 就挪走（系统提示不出），500ms 出 kit 那一条；离开即收；之后代码再写 title ⇒ 下一次照样挪", () => {
+    adoptNativeTitles(document);
+    vi.advanceTimersByTime(1000); // 出了「同一组」那段宽限（上一条测试刚收过提示）
+    const row = document.createElement("div");
+    row.title = "整理这周的笔记";
+    const inner = document.createElement("span");
+    row.appendChild(inner);
+    document.body.appendChild(row);
+    inner.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+    expect(row.hasAttribute("title"), "title 还在 ⇒ 系统那种提示照样会出").toBe(false);
+    expect(tipsInBody()).toBe(0);
+    vi.advanceTimersByTime(TOOLTIP_DELAY_MS);
+    const tip = document.querySelector<HTMLElement>('[role="tooltip"]');
+    expect(tip?.textContent).toBe("整理这周的笔记");
+    inner.dispatchEvent(new MouseEvent("mouseout", { bubbles: true, relatedTarget: document.body }));
+    expect(tipsInBody()).toBe(0);
+    vi.advanceTimersByTime(1000);
+    row.title = "改了名";
+    row.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+    vi.advanceTimersByTime(TOOLTIP_DELAY_MS);
+    expect(document.querySelector('[role="tooltip"]')?.textContent).toBe("改了名");
+    expect(row.hasAttribute("title")).toBe(false);
+  });
+
+  it("三个窗口的入口都装它（entry-common 一处）", async () => {
+    const fs = await import("node:fs");
+    const src = fs.readFileSync("src/frontend/ui/entry-common.ts", "utf8");
+    expect(src).toMatch(/^adoptNativeTitles\(\);$/m);
+  });
+});
+
+describe("接管 title 不丢读屏名、全文已显示就不重复出", () => {
+  beforeEach(() => {
+    document.body.replaceChildren();
+    hideTooltips();
+    vi.useFakeTimers();
+    vi.advanceTimersByTime(1000);
+  });
+  afterEach(() => vi.useRealTimers());
+
+  /** 可访问名（accname 1.2 里与 title 相关的那几步）：labelledby → aria-label → 名字来自内容的角色取文字 → title。 */
+  const NAME_FROM_CONTENT = new Set(["BUTTON", "A", "SUMMARY", "OPTION"]);
+  const ROLES_FROM_CONTENT = new Set(["button", "link", "menuitem", "menuitemradio", "menuitemcheckbox", "option", "tab", "tooltip", "cell", "row"]);
+  function accName(el: HTMLElement): string {
+    const by = el.getAttribute("aria-labelledby");
+    if (by) return by.split(/\s+/).map((id) => document.getElementById(id)?.textContent?.trim() ?? "").join(" ");
+    const label = el.getAttribute("aria-label");
+    if (label?.trim()) return label.trim();
+    const role = el.getAttribute("role");
+    const text = (el.textContent ?? "").trim();
+    if ((NAME_FROM_CONTENT.has(el.tagName) || (role !== null && ROLES_FROM_CONTENT.has(role))) && text) return text;
+    return el.getAttribute("title")?.trim() ?? "";
+  }
+
+  it("★ 每个可聚焦元素：接管前后可访问名不变（图标按钮靠 title 当名字的，挪走前写进 aria-label）", () => {
+    adoptNativeTitles(document);
+    const mk = (html: string): HTMLElement => {
+      const w = document.createElement("div");
+      w.innerHTML = html;
+      document.body.appendChild(w);
+      return w.firstElementChild as HTMLElement;
+    };
+    const els = [
+      mk(`<button title="历史会话浏览器"><svg></svg></button>`),
+      mk(`<button title="恢复 · 不用 tmux">恢复</button>`),
+      mk(`<div tabindex="0" title="整理这周的笔记"><span>整理这周的笔记</span><span>notes</span></div>`),
+      mk(`<a href="#" aria-label="打开" title="在浏览器里打开">↗</a>`),
+      mk(`<span id="lbl">设置</span>`),
+      mk(`<button aria-labelledby="lbl" title="打开设置"></button>`),
+      mk(`<div role="tab" tabindex="0" title="终端">终端</div>`),
+    ];
+    const focusable = els.filter((e) => e.matches("button, a[href], [tabindex]"));
+    const before = focusable.map(accName);
+    for (const el of focusable) el.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+    expect(focusable.every((e) => !e.hasAttribute("title")), "title 没挪走").toBe(true);
+    expect(focusable.map(accName)).toEqual(before);
+  });
+
+  it("全文已经完整显示（没被截断）⇒ 不再弹一遍；截断了 ⇒ 照出", () => {
+    adoptNativeTitles(document);
+    const row = document.createElement("div");
+    row.title = "整理这周的笔记";
+    const name = document.createElement("span");
+    name.textContent = "整理这周的笔记";
+    row.appendChild(name);
+    document.body.appendChild(row);
+    name.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+    vi.advanceTimersByTime(TOOLTIP_DELAY_MS);
+    expect(tipsInBody(), "全文就在眼前，又弹一遍").toBe(0);
+    name.dispatchEvent(new MouseEvent("mouseout", { bubbles: true, relatedTarget: document.body }));
+    vi.advanceTimersByTime(1000);
+    Object.defineProperty(name, "scrollWidth", { configurable: true, value: 300 });
+    Object.defineProperty(name, "clientWidth", { configurable: true, value: 120 });
+    name.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+    vi.advanceTimersByTime(TOOLTIP_DELAY_MS);
+    expect(document.querySelector('[role="tooltip"]')?.textContent).toBe("整理这周的笔记");
   });
 });

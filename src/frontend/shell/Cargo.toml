@@ -215,6 +215,13 @@ guard-core = { path = "../../common/guard-core" }
 # `Origin` 编进 `comms-inward` 之后，本包测试档里别的生成类型（会话流那几帧）嵌着它 ⇒ dev 侧开它的 TS 派生（发布二进制不开）。
 comms-inward = { path = "../../comms/inward", features = ["ts"] }
 
+# 系统通知（`platform/notify.rs`）：Linux 上经会话总线直说通知协议，全进程一条长连接（插件那一份每条新开、发完就丢，GNOME 会当场收走）。
+# 已在依赖图里（notification 插件底下的 notify-rust 就用它），这里只是在 Linux 上直接用。
+[target.'cfg(target_os = "linux")'.dependencies]
+zbus = "5"
+# 点了通知把主窗口拉前那一下要带激活令牌（`set_startup_id` ＋ `present`）：tauri 在 Linux 上本来就链着它，这里直接用。
+gtk = "0.18"
+
 [target.'cfg(windows)'.dependencies]
 # v1.7.0：cc 注入式绑定恢复 ToolHelp（从 claude.exe 往上的进程链反查 PS） +
 # UI_WindowsAndMessaging（EnumWindows 找 title marker、SetForegroundWindow 拉前）。

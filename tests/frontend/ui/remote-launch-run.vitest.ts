@@ -239,6 +239,17 @@ describe("失败怎么说", () => {
     expect(writeText).toHaveBeenCalledWith("ssh -t devbox -- 'ccm --resume sid-1'");
   });
 
+  it("设置里指定的终端不在（setMissing）⇒ 同样给［设置］直达那一格 ＋［复制命令］，标题说是指定的那一个不在", async () => {
+    term.openTerminal.mockRejectedValue(new NoTerminalWindow("ccm --resume sid-1", "setMissing"));
+    stubClipboard(vi.fn().mockResolvedValue(undefined));
+    await runRemoteResume("<local>", "claude", "sid-1", "/p", "claude");
+    const [title, , opts] = toastMock.mock.calls[0] as [string, string, { action?: { label: string; run: () => void }[] }];
+    expect(title).toBe(copyText("terminalOpen.setMissing.title"));
+    expect((opts.action ?? []).map((a) => a.label)).toEqual([copyText("terminalOpen.noTerminal.settings"), copyText("terminalOpen.noTerminal.copy")]);
+    (opts.action ?? [])[0].run();
+    expect(settingsWin.openSettingsWindow).toHaveBeenCalledWith(null, { page: "general", anchor: "terminal" });
+  });
+
   it("按结局判、不按字判：真失败的话里就算带着「找不到终端」那一句的原文，也照样叫失败、照样复制命令", async () => {
     term.openTerminal.mockRejectedValue(
       new Error(copyText("rsLaunch.posix.noTerminalWindow")),
