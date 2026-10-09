@@ -9,8 +9,12 @@ pub async fn notify_desktop(
     title: String,
     body: String,
 ) -> Result<(), Said> {
-    tokio::task::spawn_blocking(move || crate::platform::notify::show(&app, &title, &body))
-        .await
-        .map_err(|e| e.to_string())??;
-    Ok(())
+    let r: Result<(), Said> = async move {
+        tokio::task::spawn_blocking(move || crate::platform::notify::show(&app, &title, &body))
+            .await
+            .map_err(Said::crashed)??;
+        Ok(())
+    }
+    .await;
+    r.map_err(|s| s.named("notify_desktop"))
 }
