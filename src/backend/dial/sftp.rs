@@ -314,13 +314,6 @@ fn fenced(msg: String) -> Refusal {
     Refusal::Fenced(msg)
 }
 
-fn io(msg: String) -> Refusal {
-    Refusal::Io {
-        said: msg,
-        raw: None,
-    }
-}
-
 /// 盘上没成：句子（已带原因词）＋ 下层原话。
 fn io_raw(said: String, raw: impl std::fmt::Display) -> Refusal {
     let r = Said::with_raw(said, raw);
