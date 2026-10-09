@@ -34,7 +34,9 @@ const args = parseArgs(process.argv.slice(2));
 const runs = Number(args.runs ?? 3);
 const out = path.resolve(args.out ?? path.join(repo, ".build/perf"));
 const sandbox = path.join(repo, ".build/perf-sandbox");
-const only = new Set(String(args.only ?? "switch,rapid,keys,long").split(","));
+const only = new Set(String(args.only ?? "switch,rapid,keys,long,viewer").split(","));
+/** 查看窗那一项开的会话：世界里最长那一条（`world.ts` 的 `PERF_TURNS[0]`，`scene.ts::LONGEST_SID`）。 */
+const VIEWER_SID = "5e550100-0000-4000-8000-000000000100";
 const probeSrc = readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "probe.js"), "utf8");
 // `--css <文件>`：开页时多插一段样式（试一刀之前先量它值不值）
 const extraCss = args.css ? readFileSync(path.resolve(args.css), "utf8") : "";
@@ -70,10 +72,10 @@ function isolatedEnv(extra = {}) {
 if (args.merge) {
   // 几次分开跑的读数合成一张（A/B 交替跑时用）：`--merge 目录1,目录2,… --out 目录`
   const parts = String(args.merge).split(",").map((d) => JSON.parse(readFileSync(path.join(path.resolve(d), "perf.json"), "utf8")));
-  const m = { ...parts[0], runs: 0, switch: [], rapid: [], keys: [], long: [], boot: [], load: { start: parts[0].load.start, end: parts[parts.length - 1].load.end } };
+  const m = { ...parts[0], runs: 0, switch: [], rapid: [], keys: [], long: [], viewer: [], boot: [], load: { start: parts[0].load.start, end: parts[parts.length - 1].load.end } };
   parts.forEach((p, k) => {
     m.runs += p.runs;
-    for (const key of ["switch", "rapid", "keys", "long", "boot"]) m[key].push(...(p[key] ?? []).map((x) => ({ ...x, part: k })));
+    for (const key of ["switch", "rapid", "keys", "long", "viewer", "boot"]) m[key].push(...(p[key] ?? []).map((x) => ({ ...x, part: k })));
   });
   writeFileSync(path.join(out, "perf.json"), JSON.stringify(m, null, 1));
   const t = summarize(m);
@@ -131,7 +133,7 @@ const browser = spawn(
 children.push(browser);
 const cdp = await Cdp.connect(await devtoolsUrl(profile));
 
-const result = { when: new Date().toISOString(), mode: args.dev ? "dev" : "build", runs, load: { start: load0 }, switch: [], rapid: [], keys: [], long: [], boot: [] };
+const result = { when: new Date().toISOString(), mode: args.dev ? "dev" : "build", runs, load: { start: load0 }, switch: [], rapid: [], keys: [], long: [], viewer: [], boot: [] };
 
 if (args.shot) {
   // 看一眼世界长什么样：开页、点最长那条、截一张
@@ -167,6 +169,7 @@ for (let r = 0; r < runs; r++) {
   if (only.has("rapid")) result.rapid.push(...(await watchdog("连续快速切", benchRapid(r))));
   if (only.has("keys")) result.keys.push(...(await watchdog("按住切", benchKeys(r))));
   if (only.has("long")) result.long.push(await watchdog("长会话", benchLong(r)));
+  if (only.has("viewer")) result.viewer.push(await watchdog("查看窗", benchViewer(r)));
 }
 result.load.end = os.loadavg();
 writeFileSync(path.join(out, "perf.json"), JSON.stringify(result, null, 1));
@@ -204,7 +207,8 @@ async function openPage() {
   // 开页安静之后还一张卡都没建的 tab（后台空闲物化没轮到 / 没进队）
   const virgin = await page.eval("[...document.querySelectorAll('#message-stream > .stream')].filter((s) => !s.querySelector('.card')).length");
   // 开页到安静这一段的长任务（探针在页面任何脚本之前就在记）：人一开窗就去点，碰上的就是它们
-  const bootLt = await page.eval("({ n: __perf.lt.length, ms: __perf.lt.reduce((a, x) => a + x.d, 0), max: __perf.lt.reduce((a, x) => Math.max(a, x.d), 0), list: __perf.lt.slice(0, 40).map((x) => [Math.round(x.s), Math.round(x.d)]), dcl: Math.round(performance.getEntriesByType('navigation')[0]?.domContentLoadedEventStart ?? 0) })");
+  // 只数 DOMContentLoaded 之后的：之前那一段是假后端在页里造合成世界（几万条记录），不是产品
+  const bootLt = await page.eval("(() => { const dcl = performance.getEntriesByType('navigation')[0]?.domContentLoadedEventStart ?? 0; const lt = __perf.lt.filter((x) => x.s >= dcl); return { n: lt.length, ms: lt.reduce((a, x) => a + x.d, 0), max: lt.reduce((a, x) => Math.max(a, x.d), 0), list: __perf.lt.slice(0, 40).map((x) => [Math.round(x.s), Math.round(x.d)]), dcl: Math.round(dcl) }; })()");
   if (args.shot) console.log(`开页长任务（起点 ms, 时长 ms；DOMContentLoaded ${bootLt.dcl}）：${bootLt.list.map(([a, b]) => `${a}+${b}`).join(" ")}`);
   result.boot.push({ ms: Date.now() - b0, quietWait: quiet, idleCpu, virgin, bootLtN: bootLt.n, bootLtMs: bootLt.ms, bootLtMax: bootLt.max, ...(await metrics(page)) });
   return page;
@@ -476,6 +480,63 @@ async function benchKeys(run) {
   return rows;
 }
 
+/**
+ * 独立查看窗开最长那条（几千条记录）：开页到第一张卡出来（页里 MutationObserver 记第一次见到卡的时刻）·
+ * 开页到安静那一段的长任务 · 然后滚轮往上 60 下的帧间隔（同「长会话」那一项）。
+ */
+async function benchViewer(run) {
+  const page = await Page.open(cdp, 1280, 800);
+  await page.send("Page.addScriptToEvaluateOnNewDocument", {
+    source: `${probe}\n;(() => { const mo = new MutationObserver(() => { if (document.querySelector('.session-viewer [data-uuid]')) { window.__firstCard = performance.now(); mo.disconnect(); } }); document.addEventListener('DOMContentLoaded', () => mo.observe(document.body, { childList: true, subtree: true })); })();`,
+  });
+  await page.send("Performance.enable", { timeDomain: "timeTicks" });
+  const c0 = cpuMs(browser.pid);
+  const openIt = async () => {
+    await Promise.race([page.goto(`${base}/viewer.html?scene=perf-viewer&viewer=${VIEWER_SID}`), sleep(120_000).then(() => Promise.reject(new Error("查看窗 2 分钟没等到 load")))]);
+    await page.waitFor("window.__shots && window.__shots.state !== 'booting'", 180_000);
+    const st = await page.eval("window.__shots.state");
+    if (st !== "done") throw new Error(`查看窗没起来：${await page.eval("window.__shots.error")}\n${page.consoleLines.slice(-8).join("\n")}`);
+    return page.eval("__perf.quiet(1000, 60000)");
+  };
+  // `--trace viewer`：开查看窗到安静这一段录一份轨迹
+  const quiet = args.trace === "viewer" && run === 0 ? await traced(page, "trace-viewer.json", openIt) : await openIt();
+  const openCpu = cpuMs(browser.pid) - c0;
+  // 长任务只数 DOMContentLoaded 之后的：之前那一段是假后端在页里造合成世界（几万条记录），不是产品
+  const open = await page.eval("(() => { const dcl = performance.getEntriesByType('navigation')[0]?.domContentLoadedEventStart ?? 0; const lt = __perf.lt.filter((x) => x.s >= dcl); return { first: window.__firstCard ?? null, dcl, ltN: lt.length, ltMs: lt.reduce((a, x) => a + x.d, 0), ltMax: lt.reduce((a, x) => Math.max(a, x.d), 0), cards: document.querySelectorAll('.session-viewer [data-uuid]').length, nodes: document.getElementsByTagName('*').length }; })()");
+  const at = await page.eval(`(() => { const s = document.querySelector('.session-viewer-stream'); const b = s.getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; })()`);
+  const since = await page.eval("performance.now()");
+  await page.eval("__perf.frameStart()");
+  const c1 = cpuMs(browser.pid);
+  for (let k = 0; k < 60; k++) {
+    await page.send("Input.dispatchMouseEvent", { type: "mouseWheel", x: at.x, y: at.y, deltaX: 0, deltaY: -600 });
+    await sleep(50);
+  }
+  await sleep(1000);
+  const cpu = cpuMs(browser.pid) - c1;
+  const frames = await page.eval("__perf.frameStop()");
+  const w = await page.eval(`__perf.since(${since})`);
+  await page.close();
+  console.log(`  查看窗 第 ${run + 1} 趟`);
+  return {
+    run,
+    firstCard: open.first,
+    dcl: open.dcl,
+    quiet,
+    openCpu,
+    openLtN: open.ltN,
+    openLtMs: open.ltMs,
+    openLtMax: open.ltMax,
+    cards: open.cards,
+    nodes: open.nodes,
+    cpu,
+    frameP50: pct(frames, 0.5),
+    frameP95: pct(frames, 0.95),
+    frameMax: Math.max(0, ...frames),
+    framesOver50: frames.filter((d) => d > 50).length,
+    ltMs: w.lt.reduce((a, x) => a + x.d, 0),
+  };
+}
+
 async function benchLong(run) {
   const page = await openPage();
   const n = await page.eval("document.querySelectorAll('#tab-bar .tab').length");
@@ -600,6 +661,14 @@ function summarize(r) {
     for (const x of r.long) {
       L.push(`| ${x.run + 1} | ${f0(x.first.cpu)} | ${f0(x.cpu)} | ${f0(x.first.inp)} | ${f0(x.first.settle)} | ${f0(x.first.ltMs)} | ${f0(x.frameP50)} | ${f0(x.frameP95)} | ${f0(x.frameMax)} | ${x.framesOver50} | ${f0(x.ltMs)} | ${f0(x.ltMax)} | ${x.nodes} | ${f0(x.layoutMs)} | ${f0(x.styleMs)} | ${f0(x.scriptMs)} |`);
     }
+    L.push("");
+  }
+  if (r.viewer?.length) {
+    L.push("## 独立查看窗开最长那条（开页到第一张卡 ＋ 往上滚 60 下）");
+    L.push("");
+    L.push("| 趟 | 第一张卡出来（开页起 ms） | 开页 CPU | 开页长任务个（DOMContentLoaded 之后） | 开页长任务合计 | 最长长任务 | 建了几张卡 | 帧 p50 | 帧 p95 | 最长帧 | >50ms 帧 | 滚动 CPU | 滚动中长任务合计 |");
+    L.push("|---|---|---|---|---|---|---|---|---|---|---|---|---|");
+    for (const x of r.viewer) L.push(`| ${x.run + 1} | ${f0(x.firstCard)} | ${f0(x.openCpu)} | ${x.openLtN} | ${f0(x.openLtMs)} | ${f0(x.openLtMax)} | ${x.cards} | ${f0(x.frameP50)} | ${f0(x.frameP95)} | ${f0(x.frameMax)} | ${x.framesOver50} | ${f0(x.cpu)} | ${f0(x.ltMs)} |`);
     L.push("");
   }
   return L.join("\n");

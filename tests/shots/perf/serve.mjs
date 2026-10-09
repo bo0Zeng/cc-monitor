@@ -21,7 +21,7 @@ const injectFake = {
   transformIndexHtml: {
     order: "pre",
     handler(html, ctx) {
-      if (!/^\/index\.html$/.test(ctx.path)) return html;
+      if (!/^\/(index|viewer)\.html$/.test(ctx.path)) return html;
       return html.replace("<head>", '<head>\n    <script type="module" src="/tests/shots/fake/install.ts"></script>');
     },
   },
@@ -34,7 +34,7 @@ if (dev) {
   server = await createServer({ ...base, server: { port, strictPort: true, host: "127.0.0.1", hmr: false } });
   await server.listen();
 } else {
-  await build({ ...base, build: { outDir, emptyOutDir: true, sourcemap: false, rollupOptions: { input: { main: path.join(repo, "index.html") } } } });
+  await build({ ...base, build: { outDir, emptyOutDir: true, sourcemap: false, rollupOptions: { input: { main: path.join(repo, "index.html"), viewer: path.join(repo, "viewer.html") } } } });
   server = await preview({ ...base, build: { outDir }, preview: { port, strictPort: true, host: "127.0.0.1" } });
 }
 console.log(`READY ${port}`);

@@ -94,7 +94,9 @@ export class FakeBackend {
       const delay = this.world.opDelayMs?.[op] ?? 0;
       const later = delay > 0 ? new Promise((r) => setTimeout(() => r(v), delay)) : Promise.resolve(v);
       return later.then(
-        (value) => Array.from(enc.encode(JSON.stringify(TIMED_OPS.has(op) ? withTexts(value) : value))),
+        // 照真壳交原始字节（`tauri::ipc::Response` ⇒ 页里拿到 ArrayBuffer），不交数字数组：
+        // 长会话整份读那一问有几 MB，数字数组那一形光假后端自己造就占掉页里几百 ms（性能台架量的是产品）
+        (value) => enc.encode(JSON.stringify(TIMED_OPS.has(op) ? withTexts(value) : value)).buffer,
         (e: unknown) => Promise.reject(refusal(e, op)),
       );
     } catch (e) {

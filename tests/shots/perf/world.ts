@@ -123,6 +123,18 @@ export function perfWorld(): World {
       return memo.get(key);
     };
   }
+  // 查看窗按 sid 问历史清单要那一条的记录路径：清单是 `fake/history.ts` 里写死的那几条 ⇒ 问到台架的会话时照第一条的形状补一条
+  const list = w.ops["history-list"];
+  if (list) {
+    w.ops["history-list"] = (origin, req, world) => {
+      const out = list(origin, req, world) as { rows: Record<string, unknown>[] };
+      const s = world.sessions.find((x) => x.sid === req.sid);
+      if (!s || out.rows.some((r) => r.sessionId === s.sid)) return out;
+      const tmpl = (list("<local>", {}, world) as { rows: Record<string, unknown>[] }).rows[0];
+      const name = s.cwd.slice(s.cwd.lastIndexOf("/") + 1);
+      return { ...out, rows: [{ ...tmpl, sessionId: s.sid, jsonlPath: `${s.cwd}/${s.sid}.jsonl`, projectPath: s.cwd, projectName: name, aiTitle: null, firstUserExcerpt: name, title: name, label: name, messageCountApprox: s.records.length }] };
+    };
+  }
   // 读整份会话的那几问要时间（真后端读几 MB 的记录文件、远端还隔一跳）：照本机常见的量级给一个延迟 ——
   // 快速连切时「切走之后才回来」的那几问才演得出来（不给延迟，假后端当场答，旧切换的活全在切走之前干完了）。
   w.opDelayMs = { "history-index": 150, "history-turns": 150, "history-user-inputs": 120, "history-facts": 120, "history-page": 60 };
