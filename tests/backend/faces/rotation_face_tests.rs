@@ -119,14 +119,16 @@ fn the_default_rotation_is_written_whole_and_refused_whole() {
     );
     assert_eq!(got["state"], "present");
     let before = std::fs::read(home.root.join(rotation::FILE_NAME)).expect("read");
-    let (code, msg) = answer_set_with(
+    let crate::stream::inbound::spec::Fail {
+        code, message: msg, ..
+    } = answer_set_with(
         &ctx,
         &json!({"rotation": {"order": [{"start": true}, "b"], "enabled": ["x"], "when": "full"}}),
     )
     .expect_err("应拒");
     assert_eq!(code, "bad_args");
     assert!(msg.contains("enabled[0]"), "{msg}");
-    let (code, msg) = answer_set_with(
+    let crate::stream::inbound::spec::Fail { code, message: msg, .. } = answer_set_with(
         &ctx,
         &json!({"rotation": {"order": [{"start": true}, "b"], "enabled": ["b"], "when": "full", "atLimit": "halt"}}),
     )
@@ -244,7 +246,7 @@ fn a_session_can_go_custom_and_back_keeping_its_own() {
     assert_eq!(
         answer_session_set_with(&ctx, &bad, now())
             .expect_err("应拒")
-            .0,
+            .code,
         "bad_args"
     );
     assert_eq!(ctx.hop.store.now(), before);

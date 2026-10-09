@@ -102,7 +102,8 @@ struct Now {
 fn look(dir: &Path, face: &LoginFace) -> Result<Now, Unusable> {
     let doc = match store::read(dir, face) {
         store::Read::Absent => return Err(Unusable::NotLoggedIn),
-        store::Read::Unreadable(why) => return Err(Unusable::Unreadable(why)),
+        // `Unusable` 那几句只进日志（换号那一路 `rotate.rs`）⇒ 原话跟着那一句一起记。
+        store::Read::Unreadable(why) => return Err(Unusable::Unreadable(why.logged())),
         store::Read::Present(d) => d,
     };
     let expires_ms = doc
@@ -145,7 +146,7 @@ pub(crate) fn access_token(
     }) {
         Ok(store::Locked::Held(r)) => r,
         Ok(store::Locked::Busy) => Err(Unusable::Busy),
-        Err(why) => Err(Unusable::NotRenewed(why)),
+        Err(why) => Err(Unusable::NotRenewed(why.logged())),
     }
 }
 
@@ -347,7 +348,7 @@ fn renew(
         secrets.push((face.refresh, r));
     }
     let doc = merge_tokens(&disk.doc, face.section, &secrets, &plain);
-    store::write_tokens(dir, face, &doc).map_err(Unusable::WriteFailed)?;
+    store::write_tokens(dir, face, &doc).map_err(|e| Unusable::WriteFailed(e.logged()))?;
     Ok(access)
 }
 

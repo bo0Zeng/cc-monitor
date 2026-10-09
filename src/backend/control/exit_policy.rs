@@ -38,8 +38,8 @@ pub enum Read {
     /// 文件不在 —— **没人选过**，按缺省办（今天每台没碰过这个开关的机器都是这一态）。
     Absent,
     /// 文件在但读不出来（权限 / 不是 JSON / 那一格缺了或不是布尔 / 家目录解析不出来）。
-    /// 按缺省办，**并带上读不出来的原因**。
-    Unreadable(String),
+    /// 按缺省办，**并带上读不出来的原因**（那一句 ＋ 原话）。
+    Unreadable(crate::common::said::Said),
 }
 
 impl Read {
@@ -84,14 +84,16 @@ pub fn read_at(path: &Path) -> Read {
     };
     match v.get(KEY_KILL_ON_EXIT) {
         Some(serde_json::Value::Bool(k)) => Read::Chosen(*k),
-        Some(other) => Read::Unreadable(format!(
-            "{} 里 `{KEY_KILL_ON_EXIT}` 不是布尔（实得 {other}）",
-            path.display()
-        )),
-        None => Read::Unreadable(format!(
-            "{} 里没有 `{KEY_KILL_ON_EXIT}` 这一格",
-            path.display()
-        )),
+        Some(other) => Read::Unreadable(
+            format!(
+                "{} 里 `{KEY_KILL_ON_EXIT}` 不是布尔（实得 {other}）",
+                path.display()
+            )
+            .into(),
+        ),
+        None => Read::Unreadable(
+            format!("{} 里没有 `{KEY_KILL_ON_EXIT}` 这一格", path.display()).into(),
+        ),
     }
 }
 
@@ -99,7 +101,11 @@ pub fn read_at(path: &Path) -> Read {
 pub fn read_now() -> Read {
     match policy_path() {
         Some(p) => read_at(&p),
-        None => Read::Unreadable("家目录解析不出来（HOME / USERPROFILE 都没有）".into()),
+        None => Read::Unreadable(
+            "家目录解析不出来（HOME / USERPROFILE 都没有）"
+                .to_string()
+                .into(),
+        ),
     }
 }
 
@@ -112,7 +118,8 @@ pub fn last_client_left() -> bool {
     let r = read_now();
     match &r {
         Read::Unreadable(why) => tracing::warn!(
-            "最后一个客户走了；退出策略读不出来（{why}）⇒ 按缺省（不结束）办 —— 这不等于有人这么选过"
+            "最后一个客户走了；退出策略读不出来（{}）⇒ 按缺省（不结束）办 —— 这不等于有人这么选过",
+            why.logged()
         ),
         other => tracing::info!(
             "最后一个客户走了；退出策略 state={} killOnExit={}",
@@ -130,18 +137,24 @@ fn render(kill: bool) -> String {
 
 /// 全仓唯一的写者（经 `own_state` 原子写）⇒ 读者（[`read_at`]）要么看到旧的整份、要么看到新的整份。
 /// 目录不在就建这一层（`~/.cc-monitor` 本身）。
-fn write_at(path: &Path, kill: bool) -> Result<(), String> {
+fn write_at(path: &Path, kill: bool) -> Result<(), crate::common::said::Said> {
     let dir = path.parent().ok_or_else(|| {
-        copy_text(
+        crate::common::said::Said::from(copy_text(
             "beExitPolicy.writeAt.noParent",
             &[("path", &(path.display()).to_string())],
-        )
+        ))
     })?;
     // 只建那一层、建的那一下就是 0700（`own_dir`：后端建自家目录的那一个函数）。
     crate::common::own_dir::ensure_private_dir(dir).map_err(|e| {
-        copy_text(
-            "beExitPolicy.writeAt.mkdirFailed",
-            &[("dir", &(dir.display()).to_string()), ("e", &e.to_string())],
+        crate::common::said::Said::with_raw(
+            copy_text(
+                "beExitPolicy.writeAt.mkdirFailed",
+                &[
+                    ("dir", &(dir.display()).to_string()),
+                    ("why", &copy_core::io_reason(e.kind())),
+                ],
+            ),
+            &e,
         )
     })?;
     // 第四层同一条规矩：写之前拿那个目录的跨进程锁（`platform/lock.rs`）。这一份没有读—改—写，锁只为这条规矩没有例外（`readonly_guard` 第四层 ⑥）。
@@ -175,10 +188,16 @@ fn wire(r: &Read, path: Option<&Path>) -> serde_json::Value {
 }
 
 fn wire_as(r: &Read, path: Option<&Path>, resident: bool) -> serde_json::Value {
+    let why = match r {
+        Read::Unreadable(why) => Some(why),
+        _ => None,
+    };
+    let (reason, detail) = crate::stream::detail::unreadable("exit-policy-read", why);
     serde_json::json!({
         "state": r.state(),
         "killOnExit": r.kill_on_exit(),
-        "reason": match r { Read::Unreadable(why) => Some(why.clone()), _ => None },
+        "reason": reason,
+        "detail": detail,
         "path": path.map(|p| p.display().to_string()),
         "said": said(r, resident),
     })
@@ -192,18 +211,26 @@ pub fn answer_read() -> serde_json::Value {
 
 /// `exit-policy-set`：写 `args.killOnExit`，**写完再读一遍**，回读到的那份
 /// （回的是盘上的事实，不是「我以为写进去了」）。
-pub fn answer_set(args: &serde_json::Value) -> Result<serde_json::Value, (&'static str, String)> {
+pub fn answer_set(
+    args: &serde_json::Value,
+) -> Result<serde_json::Value, crate::stream::inbound::spec::Fail> {
     let kill = args
         .get(KEY_KILL_ON_EXIT)
         .and_then(|v| v.as_bool())
-        .ok_or((
-            "bad_args",
-            crate::common::contract::malformed(&format!(
-                "missing `{KEY_KILL_ON_EXIT}`, or it is not a bool"
-            )),
-        ))?;
-    let path =
-        policy_path().ok_or(("io_failed", copy_text("beExitPolicy.answerSet.noHome", &[])))?;
+        .ok_or_else(|| {
+            crate::stream::inbound::spec::Fail::new(
+                "bad_args",
+                crate::common::contract::malformed(&format!(
+                    "missing `{KEY_KILL_ON_EXIT}`, or it is not a bool"
+                )),
+            )
+        })?;
+    let path = policy_path().ok_or_else(|| {
+        crate::stream::inbound::spec::Fail::new(
+            "io_failed",
+            copy_text("beExitPolicy.answerSet.noHome", &[]),
+        )
+    })?;
     write_at(&path, kill).map_err(|e| ("io_failed", e))?;
     Ok(wire(&read_at(&path), Some(&path)))
 }

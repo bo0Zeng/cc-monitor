@@ -92,7 +92,7 @@ fn read_text(p: &Path) -> (Option<String>, Option<String>) {
             Ok(t) => (Some(t), None),
             Err(_) => (None, Some(copy_text("beSkillInstall.text.notUtf8", &[]))),
         },
-        Err(e) => (None, Some(e)),
+        Err(e) => (None, Some(e.said_logging_raw())),
     }
 }
 

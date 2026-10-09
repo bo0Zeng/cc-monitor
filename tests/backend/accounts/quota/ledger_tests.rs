@@ -302,3 +302,34 @@ fn a_probe_on_a_fresh_account_and_without_a_home() {
     assert!(record_probe(&Ledger::at(None), "claude-code", "b", vec![], 50).is_err());
     let _ = std::fs::remove_dir_all(&d);
 }
+
+/// 读不懂的那份是成功应答里的一格：`reason` 只是那一句（路径 ＋ 原因词，不带解析器原话），原话进 `detail`（复制详情，命令 `quota-read` · 码 `unreadable`）。
+#[test]
+fn an_unreadable_book_answers_a_sentence_and_a_detail() {
+    let dir = std::env::temp_dir().join(format!("ccm-ledger-unreadable-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let p = dir.join("quota.json");
+    std::fs::write(&p, b"{not json").unwrap();
+    let v = answer_of(Some(&p), 1);
+    assert_eq!(v["state"], "unreadable");
+    let reason = v["reason"].as_str().expect("reason");
+    assert_eq!(
+        reason,
+        copy_text(
+            "beOwnState.read.notJson",
+            &[("path", &p.display().to_string())]
+        )
+    );
+    let detail = v["detail"].as_str().expect("没有 detail");
+    assert!(
+        detail.contains("quota-read") && detail.contains("unreadable"),
+        "{detail}"
+    );
+    assert!(
+        detail.contains("key must be a string"),
+        "解析器原话没进详情：{detail}"
+    );
+    let fine = answer_of(Some(&dir.join("absent.json")), 1);
+    assert!(fine["detail"].is_null(), "不在那一形多出了详情：{fine}");
+    std::fs::remove_dir_all(&dir).ok();
+}

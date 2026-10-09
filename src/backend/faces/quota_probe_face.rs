@@ -15,7 +15,8 @@ use copy_core::copy_text;
 use serde_json::{json, Value};
 use std::ffi::OsStr;
 
-type Answer = Result<Value, (&'static str, String)>;
+/// 失败带码 ＋ 那一句 ＋ 原话（落账写不进那一形的原话进复制详情，[`Fail`]）。
+type Answer = Result<Value, crate::stream::inbound::spec::Fail>;
 
 /// 起官方客户端报一次用量的期限（它要起进程、读登录、问一次上游）。
 const PROBE_WITHIN: Deadline = Deadline::secs(30);
@@ -26,8 +27,8 @@ pub(crate) const PROBE_CAP: Deadline = Deadline::secs(32);
 /// 报错原话里带官方客户端的输出至多这么多个字。
 const SAID_CHARS: usize = 200;
 
-fn bad(detail: &str) -> (&'static str, String) {
-    ("bad_args", crate::common::contract::malformed(detail))
+fn bad(detail: &str) -> crate::stream::inbound::spec::Fail {
+    crate::stream::inbound::spec::Fail::new("bad_args", crate::common::contract::malformed(detail))
 }
 
 /// `quota-probe`：`{agent, account}` ⇒ 读到的窗口（并已记进额度账）或「读不懂」。
@@ -74,14 +75,23 @@ pub(crate) fn answer_probe_with(ctx: &Ctx, args: &Value, now: u64, path: Option<
         return Err((
             "unsupported",
             copy_text("beQuotaProbe.account.apiKey", &[("account", account)]),
-        ));
+        )
+            .into());
     }
     let book = ctx.hop.quota.path();
     let home = book
         .and_then(std::path::Path::parent)
         .ok_or_else(|| ("io_failed", copy_text("beQuotaLedger.read.noHome", &[])))?;
-    let cwd = crate::common::own_dir::ensure_hidden_work_dir(home)
-        .map_err(|e| ("io_failed", e.to_string()))?;
+    let cwd = crate::common::own_dir::ensure_hidden_work_dir(home).map_err(|e| {
+        crate::stream::inbound::spec::Fail::new(
+            "io_failed",
+            copy_text(
+                "beQuotaProbe.workDir.failed",
+                &[("why", &copy_core::io_reason(e.kind()))],
+            ),
+        )
+        .with_raw(Some(&e.to_string()))
+    })?;
     let mut child = Child::new(face.program).args(face.args).current_dir(&cwd);
     child = match &found.dir {
         Some(d) => child.env(face.dir_env, d),
@@ -125,7 +135,8 @@ pub(crate) fn answer_probe_with(ctx: &Ctx, args: &Value, now: u64, path: Option<
                 "beQuotaProbe.run.exit",
                 &[("program", face.program), ("exit", &code), ("said", &said)],
             ),
-        ));
+        )
+            .into());
     }
     let shown = book.map(|p| p.display().to_string());
     match (face.read)(&text, now) {

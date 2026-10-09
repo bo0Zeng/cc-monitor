@@ -238,7 +238,8 @@ pub fn rotate_token(path: &Path) -> Result<String, String> {
         ensure_dir(dir)?;
     }
     let t = mint()?;
-    crate::common::own_state::write(path, t.as_bytes())?;
+    crate::common::own_state::write(path, t.as_bytes())
+        .map_err(crate::common::said::Said::said_logging_raw)?;
     Ok(t)
 }
 
@@ -322,6 +323,7 @@ pub fn record_owner(port: u16) -> Result<(), String> {
         &path,
         format!("{}\n{}\n", std::process::id(), exe.display()).as_bytes(),
     )
+    .map_err(crate::common::said::Said::said_logging_raw)
 }
 
 /// 解 pid 文件那两行（纯函数）。

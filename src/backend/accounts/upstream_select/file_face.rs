@@ -351,7 +351,7 @@ fn read_doc(path: &Path) -> Result<Option<Map<String, Value>>, (&'static str, St
     let raw = match read_bytes(path, KEY_FILE_READ_CAP) {
         Read::Present(b) => String::from_utf8_lossy(&b).into_owned(),
         Read::Absent => return Ok(None),
-        Read::Unreadable(why) => return Err(("io_failed", why)),
+        Read::Unreadable(why) => return Err(("io_failed", why.said_logging_raw())),
     };
     store::parse(&raw)
         .map(Some)
@@ -413,7 +413,12 @@ fn rewrite_at(path: &Path, change: Rewrite) -> Result<bool, (&'static str, Strin
     }
     // 读—改—写整段在那个目录的跨进程锁里（`platform/lock.rs`）：两个后端进程同时给两个号写 key，
     //   从前后写的那一份整份盖掉先写的那一格（这一份连进程内锁都没有）。
-    let _lock = crate::platform::lock::hold(dir).map_err(|e| ("io_failed", e))?;
+    let _lock = crate::platform::lock::hold(dir).map_err(|e| {
+        (
+            "io_failed",
+            crate::common::said::Said::from(e).said_logging_raw(),
+        )
+    })?;
     // ★ 写的这一刻读盘。解析不了 ⇒ `bad_file`，**不覆盖**。
     let current = read_doc(path)?.unwrap_or_default();
     let Some(merged) = change(&current) else {
@@ -421,7 +426,8 @@ fn rewrite_at(path: &Path, change: Rewrite) -> Result<bool, (&'static str, Strin
     };
     let text = store::to_pretty_json(&merged);
     // 出生即只给本人（`own_state`）：先按 umask 建出来再收窄，中间那一段里已经有明文了。
-    crate::common::own_state::write(path, text.as_bytes()).map_err(|e| ("io_failed", e))?;
+    crate::common::own_state::write(path, text.as_bytes())
+        .map_err(|e| ("io_failed", e.said_logging_raw()))?;
     Ok(true)
 }
 

@@ -2750,6 +2750,7 @@ mod tests {
             "read_to_string",
             "mtime_ms",
             "read_regular_capped",
+            "read_json_capped",
             // P4f：`PermissionsExt` 只用来**读** `mode()`（判可执行位，找 cc-bus 命令用）。
             // ⚠ 与它同族的 `set_permissions` **不在**表里，那条仍然是写、仍然会红。
             "PermissionsExt",

@@ -17,6 +17,19 @@ impl From<String> for Said {
     }
 }
 
+impl From<(String, Option<String>)> for Said {
+    /// 下面那一层（`platform/`，够不到本类型）交上来的一对：那一句 ＋ 原话。
+    fn from((said, raw): (String, Option<String>)) -> Said {
+        Said { said, raw }
+    }
+}
+
+impl From<&str> for Said {
+    fn from(said: &str) -> Said {
+        Said::from(said.to_string())
+    }
+}
+
 impl std::fmt::Display for Said {
     /// 只出那一句（原话不跟着进任何拼出来的句子）。
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -25,6 +38,31 @@ impl std::fmt::Display for Said {
 }
 
 impl Said {
+    /// 外层换一句（里层那一句给 `f` 当原因 / 对象用），原话原样跟着。
+    pub(crate) fn wrap(self, f: impl FnOnce(&str) -> String) -> Said {
+        Said {
+            said: f(&self.said),
+            raw: self.raw,
+        }
+    }
+
+    /// 还走 `(码, String)` 那几族的过渡口：那一句交出去，原话记一行日志（不上句子、也不丢）。
+    /// 那一族换成带原话的失败（`Fail`）之后，调用点改走 `Fail::from((码, Said))`。
+    pub(crate) fn said_logging_raw(self) -> String {
+        if let Some(r) = &self.raw {
+            tracing::warn!("{}: {r}", self.said);
+        }
+        self.said
+    }
+
+    /// 进日志的那一行：那一句 ＋ 原话（日志要原话；屏上的句子不走这里）。
+    pub(crate) fn logged(&self) -> String {
+        match &self.raw {
+            Some(r) => format!("{}: {r}", self.said),
+            None => self.said.clone(),
+        }
+    }
+
     /// 那一句（已带原因词）＋ 下层原话（空 ⇒ 不带）。
     pub(crate) fn with_raw(said: String, raw: impl std::fmt::Display) -> Said {
         let raw = raw.to_string();

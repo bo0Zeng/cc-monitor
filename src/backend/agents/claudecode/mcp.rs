@@ -9,7 +9,6 @@ use serde_json::Value;
 use super::accounts::MAX_CONFIG_BYTES;
 use super::assets::{MAX_PROJECT_MCP_BYTES, PROJECT_MCP_FILE};
 use crate::agents::{McpEntry, McpRead};
-use crate::common::fs::read_regular_capped;
 
 /// 注册表那一格的实现：按这台机器的环境现解 `.claude.json`。
 pub(crate) fn read(project_dir: Option<&Path>) -> McpRead {
@@ -69,25 +68,36 @@ fn read_json(path: &Path, cap: u64, problems: &mut Vec<String>) -> Option<Value>
     match std::fs::metadata(path) {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return None,
         Err(e) => {
-            problems.push(copy_core::copy_text(
-                "beMcp.read.statFailed",
-                &[("path", &path.display().to_string()), ("e", &e.to_string())],
-            ));
+            problems.push(
+                crate::common::said::Said::with_raw(
+                    copy_core::copy_text(
+                        "beMcp.read.statFailed",
+                        &[
+                            ("path", &path.display().to_string()),
+                            ("why", &copy_core::io_reason(e.kind())),
+                        ],
+                    ),
+                    &e,
+                )
+                .said_logging_raw(),
+            );
             return None;
         }
         Ok(_) => {}
     }
-    let parsed = read_regular_capped(path, cap).and_then(|b| {
-        serde_json::from_slice::<Value>(b.strip_prefix(&[0xEF, 0xBB, 0xBF][..]).unwrap_or(&b))
-            .map_err(|e| e.to_string())
-    });
-    match parsed {
+    match crate::common::fs::read_json_capped(path, cap) {
         Ok(v) => Some(v),
+        // 那一句只带原因词进说明；原话记日志（说明没有复制详情那一格）。
         Err(e) => {
-            problems.push(copy_core::copy_text(
-                "beMcp.read.readFailed",
-                &[("path", &path.display().to_string()), ("e", &e)],
-            ));
+            problems.push(
+                e.wrap(|why| {
+                    copy_core::copy_text(
+                        "beMcp.read.readFailed",
+                        &[("path", &path.display().to_string()), ("why", why)],
+                    )
+                })
+                .said_logging_raw(),
+            );
             None
         }
     }
