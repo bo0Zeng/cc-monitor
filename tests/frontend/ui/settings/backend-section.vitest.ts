@@ -633,8 +633,11 @@ describe("〔HX1 · D-f〕停后端之前问会打断什么", () => {
     const b = r ? [...r.querySelectorAll<HTMLButtonElement>("button")] : [];
     return b.find((x) => x.textContent === zh("backend.buildCells.stop"));
   };
-  const until = async (ok: () => boolean) => {
-    for (let i = 0; i < 100 && !ok(); i++) await new Promise((r) => setTimeout(r, 10));
+  // 等条件成立；等不到就**红**（原先等满一百轮就默默往下走：按钮还禁用着就点下一下，那一下什么都没发生，
+  // 后面「没问」那条空着绿 —— 而且每次都白等一秒多，负载高时整格撞 5 s 默认期限）。
+  const until = async (ok: () => boolean, what: string) => {
+    for (let i = 0; i < 200 && !ok(); i++) await new Promise((r) => setTimeout(r, 10));
+    expect(ok(), `等不到：${what}`).toBe(true);
   };
   const stops = () => calls.filter((c) => c.name === "backend_stop").length;
 
@@ -660,25 +663,28 @@ describe("〔HX1 · D-f〕停后端之前问会打断什么", () => {
     expect(localStop, "本机那一行的「停」找不到 —— 下面整段空转").toBeTruthy();
     // 答否 ⇒ 问了、说了几条、没停。
     localStop!.click();
-    await until(() => asked.length === 1);
+    await until(() => asked.length === 1, "本机的「停」弹出确认框");
     await flush();
     expect(asked).toEqual([said(interruptRows({ ...none, relayedSessions: 2 }, "本机", "stop"))]);
     expect(asked[0]![0]).toContain(zh("interrupts.item.relayed", { n: 2 }));
     expect(stops(), "答了否还是停了").toBe(0);
-    await until(() => !localStop!.disabled);
-    // 答是 ⇒ 停一次。
+    await until(() => !localStop!.disabled, "答否之后本机的按钮放开");
+    // 答是 ⇒ 停一次。停之后状态落到「没连上」⇒ 轮询当场落定、按钮放开（桩若一直说「已连上」，
+    // 产品照它的上限轮询满 30 × 100 ms 才放开 —— 下一下就点在禁用的按钮上；同〔STOP〕那格）。
+    status = { ...status, channel: false };
     answer = true;
     localStop!.click();
-    await until(() => stops() === 1);
+    await until(() => stops() === 1, "答是之后停了一次");
     expect(stops()).toBe(1);
-    await until(() => !localStop!.disabled);
+    await until(() => !localStop!.disabled, "停完、状态落定后本机的按钮放开");
     // 什么都不会断 ⇒ 不问、直接停。
     asked = [];
     got = none;
     localStop!.click();
-    await until(() => stops() === 2);
+    await until(() => stops() === 2, "什么都不会断时直接停了");
+    expect(stops()).toBe(2);
     expect(asked, "什么都不会断也问了").toEqual([]);
-    await until(() => !localStop!.disabled);
+    await until(() => !localStop!.disabled, "第二次停完本机的按钮放开");
     // 远端 ⇒ 数那台的会话、有走中转的就问；答否不停。
     interruptsAsked = [];
     asked = [];
@@ -688,7 +694,7 @@ describe("〔HX1 · D-f〕停后端之前问会打断什么", () => {
     const remoteStop = stopOf(s, "甲机");
     expect(remoteStop).toBeTruthy();
     remoteStop!.click();
-    await until(() => asked.length === 1);
+    await until(() => asked.length === 1, "远端的「停」弹出确认框");
     await flush();
     expect(interruptsAsked, "远端的「停」问的不是那台").toEqual(["甲机"]);
     expect(asked[0]![0]).toContain(zh("interrupts.item.forwards", { n: 1 }));
