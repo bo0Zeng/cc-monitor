@@ -19,6 +19,47 @@ pub(crate) const EDGES: [&str; 4] = ["to", "with", "after", "replaces"];
 const DONE: &str = "做完了";
 const DROPPED: &str = "不做了";
 
+/// pb 的三种状态 ⇒ 线上的码（`statusCode`）；pb 给了别的字 ⇒ `None`（界面照出原话、当没做完画）。
+pub(crate) fn status_code(s: Option<&str>) -> Option<&'static str> {
+    match s? {
+        DONE => Some("done"),
+        "没做完" => Some("open"),
+        DROPPED => Some("dropped"),
+        _ => None,
+    }
+}
+
+/// 没做完的原因 ⇒ `whyCode`：`没签` ⇒ `{kind: nosign}` · `等上一级收下` ⇒ `{kind: upper}` ·
+/// `里面 d/m 做完了` ⇒ `{kind: inside, done, of}`；认不出 ⇒ `null`（界面照出原话）。拆 pb 原话只在这一处。
+pub(crate) fn why_code(s: Option<&str>) -> Value {
+    let Some(s) = s else { return Value::Null };
+    match s {
+        "没签" => return json!({"kind": "nosign"}),
+        "等上一级收下" => return json!({"kind": "upper"}),
+        _ => {}
+    }
+    let inside = s
+        .strip_prefix("里面 ")
+        .and_then(|r| r.strip_suffix(" 做完了"))
+        .and_then(|r| r.split_once('/'))
+        .and_then(|(d, m)| Some((d.trim().parse::<u64>().ok()?, m.trim().parse::<u64>().ok()?)));
+    match inside {
+        Some((done, of)) => json!({"kind": "inside", "done": done, "of": of}),
+        None => Value::Null,
+    }
+}
+
+/// 对账的四种（在 · 缺 · 空 · 坏）⇒ `stateCode`；认不出 ⇒ `None`。
+pub(crate) fn file_code(s: Option<&str>) -> Option<&'static str> {
+    match s? {
+        "在" => Some("ok"),
+        "缺" => Some("missing"),
+        "空" => Some("empty"),
+        "坏" => Some("broken"),
+        _ => None,
+    }
+}
+
 /// 一片里每格的 `agent_view`：`(片, 格) ⇒ 原文`。
 pub(crate) type Views = BTreeMap<(String, String), String>;
 
@@ -189,7 +230,8 @@ pub(crate) fn slice(sl: &Value, repo: Option<&str>, who: WhoPort, views: &mut Vi
                         .flatten()
                         .filter(|o| **o != id)
                         .collect();
-                    json!({"path": path, "state": s(f, "state"), "note": s(f, "note"), "alsoBy": also})
+                    let state = f.get("state").and_then(Value::as_str);
+                    json!({"path": path, "state": s(f, "state"), "stateCode": file_code(state), "note": s(f, "note"), "alsoBy": also})
                 })
                 .collect();
             let signs: Vec<Value> = c
@@ -217,7 +259,9 @@ pub(crate) fn slice(sl: &Value, repo: Option<&str>, who: WhoPort, views: &mut Vi
                 "pointedBy": pointed_by,
                 "files": files,
                 "status": s(c, "status"),
+                "statusCode": status_code(c.get("status").and_then(Value::as_str)),
                 "why": s(c, "why"),
+                "whyCode": why_code(c.get("why").and_then(Value::as_str)),
                 "signs": signs,
                 "owner": who_json(c.get("owner").and_then(Value::as_str), who),
                 "refs": c.get("refs").cloned().unwrap_or_else(|| json!({"title": [], "body": []})),

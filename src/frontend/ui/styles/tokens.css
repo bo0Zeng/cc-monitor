@@ -72,6 +72,15 @@
   --acct-c7: #e34948;
   --acct-ink7: #141414;
 
+  /* === 计划大纲的类色 === 按领域表里类的先后取（第 i 类用第 i % 7 档）；一道色条 ＋ 类的词，主题无关 */
+  --plan-kind-0: #7aa2e3;
+  --plan-kind-1: #c792d8;
+  --plan-kind-2: #78b8c8;
+  --plan-kind-3: #d9b25f;
+  --plan-kind-4: #e07a72;
+  --plan-kind-5: #9ad495;
+  --plan-kind-6: #e87ba4;
+
   /* === 边线 === */
   --border-strong: #3d3a35; /* 实心分隔；不给按钮边（在 --card 上看不见） */
   --border-medium: #ffffff20; /* 次按钮边 · 浮层边 · 键帽边 */

@@ -208,6 +208,13 @@ pub enum InboundFrame {
     RotationChanged { sid: String },
     /// 那台的轮换规则表 / 默认指向变了（`rotation_rules_changed`，无载荷）⇒ 同上一格 `{"rules":true}`；界面要就发 `rotation-rules-read`。
     RotationRulesChanged,
+    /// 那台某个 pb 工作区的计划变了（`plan_changed`：工作区 · 新摘要 · 要你看的数，后端没给数 ⇒ `None`）⇒
+    /// 交订了那台 `plan-changed` 的订阅一格 `{workspace, rev, needs}`；界面要就发 `plan-read`。
+    PlanChanged {
+        workspace: String,
+        rev: String,
+        needs: Option<u64>,
+    },
 }
 
 /// 拥塞提示的措辞：有没有不可恢复的丢失，说法完全不同。抽成纯函数让措辞可判据（消费点要真 `AppHandle`、测不了）。
@@ -659,6 +666,12 @@ pub fn parse_frame(line: &str) -> Result<InboundFrame, Unread> {
         },
         // 同上一格 `{"rules":true}`：界面要就发 `rotation-rules-read`。
         "rotation_rules_changed" => InboundFrame::RotationRulesChanged,
+        // 交订了 `plan-changed` 的订阅：界面要就发 `plan-read`。`needs` 可缺（老后端不给）。
+        "plan_changed" => InboundFrame::PlanChanged {
+            workspace: req_str(obj, k, "workspace")?,
+            rev: req_str(obj, k, "rev")?,
+            needs: obj.get("needs").and_then(serde_json::Value::as_u64),
+        },
         _ => return Err(Unread::UnknownKind(kind.to_string())),
     })
 }

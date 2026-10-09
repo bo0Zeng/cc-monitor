@@ -40,6 +40,7 @@ import {
 } from "./window-events";
 import { listen } from "@tauri-apps/api/event";
 import { HistoryView } from "./views/history";
+import { PlanView } from "./views/plan";
 import { CcBusView } from "./views/cc-bus-view";
 import { GridMonitorView } from "./views/grid-monitor";
 import { CommandBarView, type Command } from "./views/command-bar";
@@ -541,6 +542,14 @@ window.addEventListener("DOMContentLoaded", async () => {
   historyView.switchTo = (sid) => tabs.switchTo(sid);
   const historyTrigger = headButton("history-trigger", "history", copyText("main.cmd.openHistory"), hintWithKey(copyText("main.topbar.historyHint"), "app.toggle-history"), () => overlays.toggle("history"));
 
+  // 计划页（planned-build 的工作区 · 片 · 格）：跟历史同形的顶层视图；接手 / 签收人的标签与「切到会话」看主窗口此刻的标签页。
+  const planView = new PlanView();
+  overlays.register("plan", planView);
+  planView.tabOf = (sid) => tabs.tabsInOrder().find((t) => t.sessionId === sid) ?? null;
+  planView.switchTo = (sid) => tabs.switchTo(sid);
+  planView.reconnect = (origin) => tabs.reconnect(origin);
+  const planTrigger = headButton("plan-trigger", "plan", copyText("main.cmd.openPlan"), hintWithKey(copyText("main.topbar.planHint"), "app.toggle-plan"), () => overlays.toggle("plan"));
+
   // 多 agent 并排监控入口：跨机器只读状态板（一屏看所有会话实时状态，点卡片跳会话；不派发、不驱动 agent）。
   const gridMonitorView = new GridMonitorView(tabs);
   overlays.register("grid", gridMonitorView);
@@ -548,7 +557,7 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   // 远端文件入口：按远端主机数分支 —— 0 台提示 / 1 台直开 / 多台选单（openSftpFromTopbar）；终点是原生文件窗口（`file-window.ts`）。
   const sftpTrigger = headButton("sftp-trigger", "files", copyText("main.cmd.openFiles"), hintWithKey(copyText("main.topbar.filesHint"), null), () => void toggleSftpFromTopbar(sftpTrigger));
-  tabs.mountHeadActions([gridTrigger, sftpTrigger, historyTrigger, settingsTrigger]);
+  tabs.mountHeadActions([gridTrigger, sftpTrigger, planTrigger, historyTrigger, settingsTrigger]);
 
   // cc-bus 驾驶舱是顶层运营视图，入口在命令面板里、不另占顶栏图标（低频视图；理由见 `views/cc-bus-view.ts` 头注）。
   const ccBusView = new CcBusView();
@@ -605,6 +614,7 @@ window.addEventListener("DOMContentLoaded", async () => {
         },
       },
       { id: "open-history", group: "open", icon: "history", title: copyText("main.cmd.openHistory"), keywords: copyText("main.cmd.historyKeywords"), hint: chordHint("app.toggle-history"), run: () => overlays.open("history") },
+      { id: "open-plan", group: "open", icon: "plan", title: copyText("main.cmd.openPlan"), keywords: copyText("main.cmd.planKeywords"), hint: chordHint("app.toggle-plan"), run: () => overlays.open("plan") },
       { id: "open-grid", group: "open", icon: "grid", title: copyText("main.cmd.openGrid"), keywords: copyText("main.cmd.gridKeywords"), run: () => overlays.open("grid") },
       { id: "open-cc-bus", group: "open", icon: "bus", title: copyText("main.cmd.openCcBus"), keywords: copyText("main.cmd.ccBusKeywords"), hint: chordHint("app.open-cc-bus"), run: () => overlays.open("cc-bus") },
       { id: "open-settings", group: "open", icon: "settings", title: copyText("main.cmd.openSettings"), keywords: copyText("main.cmd.settingsKeywords"), hint: chordHint("app.open-settings"), run: () => void openSettingsWindow() },
@@ -721,6 +731,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   onSession("terminal.bring-front", () => tabs.bringActiveTerminalToFront());
   dispatcher.bind("app.open-settings", () => void openSettingsWindow()); // 开独立设置窗口
   dispatcher.bind("app.toggle-history", () => overlays.toggle("history"));
+  dispatcher.bind("app.toggle-plan", () => overlays.toggle("plan"));
   dispatcher.bind("app.open-command-bar", () => commandBar.toggle()); // Ctrl+K 命令栏
   dispatcher.bind("app.minimize", () => void getCurrentWindow().minimize());
   dispatcher.bind("app.toggle-fullscreen", toggleFullscreen);
@@ -834,6 +845,8 @@ window.addEventListener("DOMContentLoaded", async () => {
     onTasksChanged: (origin, sids, all) => tabs.refreshTasks(origin, sids, all),
     // 那台的额度账 / 某个会话的轮换变了 ⇒ 重问（`acct-center.ts`；画的那几处订 store）。
     onQuotaChanged,
+    // 那台某个 pb 工作区的计划变了 ⇒ 计划页开着就重问（摘要没变不问）。
+    onPlanChanged: (origin, change) => planView.onChanged(origin, change),
     // 会话红绿灯（后端翻好的活动态）
     onSessionActivity: (e) =>
       tabs.updateActivity(e.session_id, e.activity, e.waiting_for),
@@ -865,6 +878,8 @@ window.addEventListener("DOMContentLoaded", async () => {
     tasks: machines,
     // 每台一条 `quota-changed`（额度账 · 会话轮换变了）。
     quota: machines,
+    // 每台一条 `plan-changed`（那台的 pb 工作区计划变了）。
+    plan: machines,
   });
   // 账号那一格经通道订（每台一条 `accounts-changed`，上面 `bindEvents` 的 `accounts`）。
   //   订阅登记之前那一窗里连上的不会有 `seen`（句柄只在状态变时说）⇒ `bindEvents` 返回（订阅都登记好了）之后补刷一次 ——

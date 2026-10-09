@@ -102,6 +102,10 @@ pub const SESSION_TASKS_KIND: &str = "session-tasks";
 /// 界面收到就重问 `quota-read` / `rotation-session-read`。TS 那一侧的同一个串住 `src/frontend/ui/quota-stream.ts::QUOTA_CHANGED_KIND`。
 pub const QUOTA_CHANGED_KIND: &str = "quota-changed";
 
+/// 又一种流：那台机器上「某个 pb 工作区的计划变了」（格体 `{"workspace", "rev", "needs"}`），没有留存。
+/// 界面收到就重问 `plan-read`。TS 那一侧的同一个串住 `src/frontend/ui/plan-stream.ts::PLAN_CHANGED_KIND`。
+pub const PLAN_CHANGED_KIND: &str = "plan-changed";
+
 /// 〔「测试连接的进度不许倒退」〕又一种流：本机后端里那一趟测试连接的进度（`probe-progress/<票>`，
 /// 格体是后端原样那一格 `{stage}` / `{reached}` / `{end}`，没有留存；只在 `<local>` 上有）。
 /// TS 那一侧的同一个串住 `src/frontend/ui/remote-probe.ts::PROBE_PROGRESS_KIND`（两侧对拍在 `tests/frontend/ui/remote-probe.vitest.ts`）。
@@ -197,6 +201,8 @@ enum SubKind {
     Tasks,
     /// `quota-changed`：只收看得见 / 看不见与「那台额度账 / 某个会话的轮换变了」那几格，没有留存。
     Quota,
+    /// `plan-changed`：只收看得见 / 看不见与「那台某个工作区的计划变了」那几格，没有留存。
+    Plan,
     /// `probe-progress/<票>`：一趟测试连接的进度格（`only` = 那张票），没有留存。
     Probe,
     /// `terminal-screen/<票>`：一条终端订阅的画面与收尾（`only` = 那张票），没有留存。
@@ -480,6 +486,8 @@ enum Stream {
     Tasks,
     /// `quota-changed`。
     Quota,
+    /// `plan-changed`。
+    Plan,
     /// `probe-progress/<票>`。
     Probe(String),
     /// `terminal-screen/<票>`。
@@ -505,6 +513,9 @@ fn parse_kind(kind: &str) -> Result<Stream, ()> {
     }
     if kind == QUOTA_CHANGED_KIND {
         return Ok(Stream::Quota);
+    }
+    if kind == PLAN_CHANGED_KIND {
+        return Ok(Stream::Plan);
     }
     if let Some(ticket) = kind
         .strip_prefix(PROBE_PROGRESS_KIND)
@@ -906,6 +917,7 @@ impl EventReplay {
             Ok(Stream::ProfilesChanged) => (None, SubKind::ProfilesChanged),
             Ok(Stream::Tasks) => (None, SubKind::Tasks),
             Ok(Stream::Quota) => (None, SubKind::Quota),
+            Ok(Stream::Plan) => (None, SubKind::Plan),
             Ok(Stream::Probe(ticket)) => (Some(ticket), SubKind::Probe),
             Ok(Stream::Screen(ticket)) => (Some(ticket), SubKind::Screen),
             Err(()) => {
@@ -1189,6 +1201,21 @@ impl EventReplay {
             .to_string()
             .into_bytes();
         self.fan_out(SubKind::Quota, origin, None, Body(body));
+    }
+
+    /// 那台机器的后端说「这个工作区的计划变了」（`plan_changed`）⇒ 订了那台 `plan-changed` 的每条订阅收一格
+    /// `{"workspace", "rev", "needs"}`（credit 与 `Gap` 与 `session-tasks` 同一套）。界面收到就重问 `plan-read`。
+    pub fn plan_changed(
+        &self,
+        origin: &crate::origin::Origin,
+        workspace: &str,
+        rev: &str,
+        needs: Option<u64>,
+    ) {
+        let body = serde_json::json!({ "workspace": workspace, "rev": rev, "needs": needs })
+            .to_string()
+            .into_bytes();
+        self.fan_out(SubKind::Plan, origin, None, Body(body));
     }
 
     /// 本机后端里那一趟测试连接推来一格（`probe_relay::deliver` 经 `lib.rs` 装的出口调）：**不进留存**，

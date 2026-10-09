@@ -28685,6 +28685,591 @@
       "role": "原因格",
       "zh": "内容无法解析",
       "args": []
+    },
+    "plan.page.title": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "计划",
+      "args": []
+    },
+    "plan.page.back": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "返回",
+      "args": []
+    },
+    "plan.page.search": {
+      "kind": "control",
+      "role": "占位",
+      "zh": "按标题找",
+      "args": []
+    },
+    "plan.page.whole": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "整张图",
+      "args": []
+    },
+    "plan.page.wholeHint": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "pb view · 在浏览器里开 pb 画的整张图",
+      "args": []
+    },
+    "plan.page.wholeRemote": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "只在本机",
+      "args": []
+    },
+    "plan.page.wholeOpened": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "整张图已在浏览器里打开",
+      "args": []
+    },
+    "plan.page.wholeFailed": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "整张图没打开",
+      "args": []
+    },
+    "plan.auto.label": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "自动接着做",
+      "args": []
+    },
+    "plan.auto.scope": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "管工作区 {ws} 的全部片：{list}",
+      "args": ["ws", "list"]
+    },
+    "plan.auto.cmds": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "开：pb continue · 关：pb pause",
+      "args": []
+    },
+    "plan.auto.what": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "开着时每一轮结束 agent 自己约下一次；要看着它就关",
+      "args": []
+    },
+    "plan.auto.failed": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "切换失败 · {reason}",
+      "args": ["reason"]
+    },
+    "plan.sub.top": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "顶块",
+      "args": []
+    },
+    "plan.sub.standing": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "站在 {title}",
+      "args": ["title"]
+    },
+        "plan.sub.red": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "判据 {n} 红",
+      "args": ["n"],
+      "waive": {
+        "C-T1": "pb 自己的叫法（planned-build 的检查叫判据、三种状态是「做完了 · 没做完 · 不做了」），用户在 pb 里也这么叫"
+      }
+    },
+    "plan.filter.all": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "全部",
+      "args": []
+    },
+    "plan.filter.open": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "没做完",
+      "args": []
+    },
+    "plan.filter.needs": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "要你看",
+      "args": []
+    },
+        "plan.strip.offline": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{machine} 离线 · 下面是 {time} 读到的",
+      "args": ["machine", "time"]
+    },
+    "plan.strip.reconnect": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "重新连接",
+      "args": []
+    },
+    "plan.strip.unreadable": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "读不成 · {reason}",
+      "args": ["reason"]
+    },
+        "plan.strip.sliceUnreadable": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "读取失败 · {reason}",
+      "args": ["reason"]
+    },
+    "plan.strip.stale": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "下面是 {time} 读到的",
+      "args": ["time"]
+    },
+    "plan.empty.text": {
+      "kind": "body",
+      "role": "空态",
+      "zh": "无计划",
+      "args": []
+    },
+        "plan.empty.hint": {
+      "kind": "body",
+      "role": "空态",
+      "zh": "会话的工作目录在 planned-build 工作区里时自动列出",
+      "args": []
+    },
+    "plan.empty.add": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "添加工作区…",
+      "args": []
+    },
+    "plan.addWs.title": {
+      "kind": "title",
+      "role": "确认框",
+      "zh": "添加工作区",
+      "args": []
+    },
+    "plan.addWs.label": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "目录",
+      "args": []
+    },
+    "plan.addWs.ok": {
+      "kind": "action",
+      "role": "确认框",
+      "zh": "添加",
+      "args": []
+    },
+    "plan.outline.label": {
+      "kind": "aria",
+      "role": "读屏",
+      "zh": "计划大纲",
+      "args": []
+    },
+    "plan.outline.rootProgress": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{done}/{of} 做完",
+      "args": ["done", "of"]
+    },
+    "plan.whyShort.nosign": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "没签",
+      "args": []
+    },
+    "plan.whyShort.upper": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "等收下",
+      "args": []
+    },
+    "plan.whyShort.inside": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{done}/{of}",
+      "args": ["done", "of"]
+    },
+        "plan.legend.dropped": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "不做了的",
+      "args": [],
+      "waive": {
+        "C-W17": "pb 自己的叫法（planned-build 的检查叫判据、三种状态是「做完了 · 没做完 · 不做了」），用户在 pb 里也这么叫"
+      }
+    },
+    "plan.legend.hide": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "藏起",
+      "args": []
+    },
+    "plan.legend.show": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "列出",
+      "args": []
+    },
+        "plan.overview.top": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "顶层 做完 {done} / {of} · 不做 {dropped}",
+      "args": ["done", "of", "dropped"]
+    },
+    "plan.overview.readAt": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "读于 {time}",
+      "args": ["time"]
+    },
+    "plan.overview.blocks": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "块",
+      "args": []
+    },
+    "plan.overview.progress": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "顶层进度",
+      "args": []
+    },
+    "plan.overview.recent": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "最近签收",
+      "args": []
+    },
+    "plan.overview.all": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "全部 {n}",
+      "args": ["n"]
+    },
+    "plan.blocks.block": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "块",
+      "args": []
+    },
+    "plan.blocks.owner": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "接手",
+      "args": []
+    },
+    "plan.blocks.phase": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "阶段",
+      "args": []
+    },
+    "plan.blocks.at": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "站在",
+      "args": []
+    },
+    "plan.blocks.inside": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "里面做完",
+      "args": []
+    },
+    "plan.progress.cell": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "格",
+      "args": []
+    },
+    "plan.progress.status": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "状态",
+      "args": []
+    },
+    "plan.progress.block": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "块",
+      "args": []
+    },
+        "plan.who.sub": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{session} 的 agent",
+      "args": ["session"]
+    },
+    "plan.who.unknown": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "认不出 · {id}",
+      "args": ["id"]
+    },
+    "plan.who.copied": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已复制完整 id",
+      "args": []
+    },
+    "plan.cell.blockRoot": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "块「{block}」的根格 · 接手",
+      "args": ["block"]
+    },
+    "plan.cell.grower": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "在长它的",
+      "args": []
+    },
+    "plan.cell.toSession": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "切到会话",
+      "args": []
+    },
+    "plan.cell.design": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "要做成什么样",
+      "args": []
+    },
+        "plan.cell.expand": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "展开全部",
+      "args": []
+    },
+    "plan.cell.inside": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "里面",
+      "args": []
+    },
+    "plan.cell.edges": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "连着的 · 连着它的",
+      "args": []
+    },
+    "plan.cell.files": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "管的文件",
+      "args": []
+    },
+    "plan.cell.signs": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "收下",
+      "args": []
+    },
+        "plan.cell.agentView": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "agent 站在此格看到的",
+      "args": []
+    },
+        "plan.cell.agentViewHint": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "pb 印给 agent 的一段",
+      "args": []
+    },
+    "plan.cell.idLine": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "跟 agent 说时用：",
+      "args": []
+    },
+    "plan.cell.copyId": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "复制编号",
+      "args": []
+    },
+    "plan.cell.copied": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已复制 {id}",
+      "args": ["id"]
+    },
+    "plan.edge.group": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{word} · {n}",
+      "args": ["word", "n"]
+    },
+    "plan.edge.out": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "它{word}",
+      "args": ["word"]
+    },
+    "plan.edge.in": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{word}它的",
+      "args": ["word"]
+    },
+    "plan.edge.afterOut": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "它排在后面",
+      "args": []
+    },
+    "plan.edge.afterIn": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "排在它后面的",
+      "args": []
+    },
+    "plan.edge.replacesOut": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "它顶掉",
+      "args": []
+    },
+    "plan.edge.replacesIn": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "顶掉它的",
+      "args": []
+    },
+    "plan.file.path": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "文件",
+      "args": []
+    },
+    "plan.file.state": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "对账",
+      "args": []
+    },
+    "plan.file.note": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "长度",
+      "args": []
+    },
+    "plan.file.also": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "也声明它的",
+      "args": []
+    },
+    "plan.sign.none": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "没签",
+      "args": []
+    },
+    "plan.sign.inner": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "有子的格不签，里面全做完它就做完",
+      "args": []
+    },
+    "plan.sign.count": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{n} 条 · 后签的作数",
+      "args": ["n"]
+    },
+    "plan.sign.counts": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "作数",
+      "args": []
+    },
+        "plan.bar.dropped": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "被「{title}」顶掉 · 文件声明转给它",
+      "args": ["title"]
+    },
+        "plan.bar.droppedBare": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "不做了",
+      "args": [],
+      "waive": {
+        "C-W17": "pb 自己的叫法（planned-build 的检查叫判据、三种状态是「做完了 · 没做完 · 不做了」），用户在 pb 里也这么叫"
+      }
+    },
+    "main.cmd.openPlan": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "计划",
+      "args": []
+    },
+    "main.cmd.planKeywords": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "plan pb planned-build 计划",
+      "args": []
+    },
+    "main.topbar.planHint": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "计划 · 各片的格、状态与签收",
+      "args": []
+    },
+    "keybindingActions.app.plan": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "计划",
+      "args": []
+    },
+    "plan.page.none": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "—",
+      "args": []
+    },
+    "plan.page.listSep": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "、",
+      "args": []
+    },
+    "plan.edge.withOut": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "它连着",
+      "args": []
+    },
+    "plan.edge.withIn": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "连着它的",
+      "args": []
+    },
+    "plan.edge.toOut": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "它指向",
+      "args": []
+    },
+    "plan.edge.toIn": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "指向它的",
+      "args": []
     }
   }
 }

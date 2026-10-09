@@ -1240,6 +1240,40 @@ async fn the_quota_stream_carries_ledger_and_rotation_changes_to_its_own_machine
     );
 }
 
+/// `plan-changed` 流：这台某个 pb 工作区的计划变了 ⇒ 体 `{"workspace", "rev", "needs"}`（`needs` 后端不给 ⇒ `null`）。
+/// 只有订了这台 `plan-changed` 的收；别台的 · 同台 `quota-changed` 的都不收。期望手写。
+#[tokio::test]
+async fn the_plan_stream_carries_the_workspace_and_rev_to_its_own_machine_only() {
+    let (r, rec) = hub();
+    let box_a = crate::origin::Origin("box-a".into());
+    let box_b = crate::origin::Origin("box-b".into());
+    r.subscribe("w", 1, &box_a, "plan-changed", None, 4);
+    r.subscribe("w", 2, &box_a, "quota-changed", None, 4);
+    r.subscribe("w", 3, &box_b, "plan-changed", None, 4);
+    rec.clear();
+    r.plan_changed(&box_a, "/work/ledger", "r1", Some(3));
+    r.plan_changed(&box_a, "/work/site", "r2", None);
+    let got: Vec<(u64, serde_json::Value)> = rec
+        .0
+        .lock()
+        .unwrap()
+        .iter()
+        .flat_map(|(_, id, items)| {
+            items.iter().filter_map(move |i| match i {
+                WItem::Frame { body, .. } => Some((*id, serde_json::from_slice(&body.0).unwrap())),
+                _ => None,
+            })
+        })
+        .collect();
+    assert_eq!(
+        got,
+        vec![
+            (1, serde_json::json!({"workspace": "/work/ledger", "rev": "r1", "needs": 3})),
+            (1, serde_json::json!({"workspace": "/work/site", "rev": "r2", "needs": null}))
+        ]
+    );
+}
+
 /// 〔「测试连接的进度不许倒退」〕`probe-progress/<票>` 流：本机后端推来一格 ⇒ 只有订了**那张票**的收、
 /// 体原样（monitor 不解释）；别的票 · 别台同名 · 空票都不收（空票那一形订不上：`no-such-stream`）。期望手写。
 #[tokio::test]

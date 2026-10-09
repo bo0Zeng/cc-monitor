@@ -1,0 +1,13 @@
+/* 计划页的小件：阶段 / 领域那一枚小框。 */
+@layer components {
+  .pbPhase {
+    flex: none;
+    padding: 0 var(--space-2);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-s);
+    color: var(--text);
+    font-size: var(--font-size-xs);
+    line-height: 16px;
+    white-space: nowrap;
+  }
+}

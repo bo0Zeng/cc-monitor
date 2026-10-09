@@ -180,6 +180,11 @@ const FRAMES: &[(&str, &str)] = &[
         "tap",
         r#"{"kind":"tap","stream":"s1","resp":0,"n":0,"ev":{"t":"stop","ok":true}}"#,
     ),
+    // 某个 pb 工作区的计划变了 —— 交回读循环（本机消费者交重放缓冲那张订阅表，与远端同一个口）。
+    (
+        "plan_changed",
+        r#"{"kind":"plan_changed","workspace":"/w","rev":"r1"}"#,
+    ),
     // 一个会话的运行表 —— 会话成品，与起停同一条有序通道。
     (
         "session_runs",
@@ -216,6 +221,7 @@ fn the_absorb_point_hands_back_exactly_the_content_and_lifecycle_frames() {
                     | (&"session_status", InboundFrame::SessionStatus { .. })
                     | (&"sessions_replayed", InboundFrame::SessionsReplayed)
                     | (&"tasks_changed", InboundFrame::TasksChanged { .. })
+                    | (&"plan_changed", InboundFrame::PlanChanged { .. })
                     | (&"session_runs", InboundFrame::SessionRuns { .. })
                     | (
                         &("session_file_gone" | "session_file_reread"),
@@ -240,6 +246,8 @@ fn the_absorb_point_hands_back_exactly_the_content_and_lifecycle_frames() {
             "session_file_reread",
             // 任务清单变了（本机消费者交重放缓冲那张订阅表）。
             "tasks_changed",
+            // 计划变了（同上，本机消费者交重放缓冲那张订阅表）。
+            "plan_changed",
             // 运行表（会话成品，交会话账）。
             "session_runs",
         ]

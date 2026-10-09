@@ -144,7 +144,7 @@ export class FakeBackend {
       setTimeout(() => this.send(sub, [{ t: "frame", seq: 0, body: JSON.stringify({ seq: 1, view }) }]), 200);
       if (mode === "lost") setTimeout(() => this.send(sub, [{ t: "frame", seq: 1, body: JSON.stringify({ end: "lost" }) }]), 500);
       if (mode === "offline") setTimeout(() => this.send(sub, [{ t: "unseen", idx: 1, tag: "read", why: "Dropped" }]), 500);
-    } else if (sub.kind === "session-tap" || sub.kind === "accounts-changed" || sub.kind === "profiles-changed" || sub.kind === "session-tasks" || sub.kind === "quota-changed") {
+    } else if (sub.kind === "session-tap" || sub.kind === "accounts-changed" || sub.kind === "profiles-changed" || sub.kind === "session-tasks" || sub.kind === "quota-changed" || sub.kind === "plan-changed") {
       this.send(sub, [{ t: "seen", from: null }]);
     } else {
       this.miss(`订阅 ${sub.kind}`);

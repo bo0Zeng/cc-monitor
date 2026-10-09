@@ -117,3 +117,39 @@ fn a_broken_slice_comes_out_as_name_domain_and_pbs_reason() {
     assert!(sl.get("cells").is_none());
     assert!(m.views.is_empty());
 }
+
+/// pb 的状态 · 原因 · 对账三样都是中文原话：成品另给一格码，界面按码画（认原话的那一处只住这里）。
+#[test]
+fn status_why_and_file_state_come_with_codes() {
+    let m = made();
+    assert_eq!(cell(&m.doc, "A1-1")["statusCode"], "done");
+    assert_eq!(cell(&m.doc, "A1-2")["statusCode"], "open");
+    assert_eq!(cell(&m.doc, "A2")["statusCode"], "dropped");
+    assert_eq!(
+        cell(&m.doc, "A1")["whyCode"],
+        serde_json::json!({"kind": "inside", "done": 1, "of": 2})
+    );
+    assert_eq!(
+        cell(&m.doc, "A1-2")["whyCode"],
+        serde_json::json!({"kind": "nosign"})
+    );
+    assert_eq!(cell(&m.doc, "A1-1")["whyCode"], Value::Null);
+    assert_eq!(cell(&m.doc, "A1-1")["files"][0]["stateCode"], "ok");
+    assert_eq!(cell(&m.doc, "A1-2")["files"][1]["stateCode"], "missing");
+}
+
+#[test]
+fn every_pb_word_maps_to_its_code_and_strangers_to_null() {
+    assert_eq!(status_code(Some("做完了")), Some("done"));
+    assert_eq!(status_code(Some("没做完")), Some("open"));
+    assert_eq!(status_code(Some("不做了")), Some("dropped"));
+    assert_eq!(status_code(Some("别的")), None);
+    assert_eq!(why_code(Some("等上一级收下")), serde_json::json!({"kind": "upper"}));
+    assert_eq!(why_code(Some("里面 0/3 做完了")), serde_json::json!({"kind": "inside", "done": 0, "of": 3}));
+    assert_eq!(why_code(Some("别的原因")), Value::Null);
+    assert_eq!(why_code(None), Value::Null);
+    for (w, c) in [("在", "ok"), ("缺", "missing"), ("空", "empty"), ("坏", "broken")] {
+        assert_eq!(file_code(Some(w)), Some(c));
+    }
+    assert_eq!(file_code(Some("?")), None);
+}

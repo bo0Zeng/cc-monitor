@@ -17,6 +17,18 @@
     "tests/backend/control/deploy_plan_tests.rs": [
       { "text": "本机", "use": "输入" }
     ],
+    "tests/backend/plan/book_tests.rs": [
+      { "text": "没做完", "use": "输入" }
+    ],
+    "tests/backend/plan/fixture.rs": [
+      { "text": "没做完", "use": "输入" },
+      { "text": "没签", "use": "输入" },
+      { "text": "不做了", "use": "输入" }
+    ],
+    "tests/backend/plan/product_tests.rs": [
+      { "text": "没做完", "use": "输入" },
+      { "text": "不做了", "use": "输入" }
+    ],
     "tests/backend/platform/cfgless_guard.rs": [
       { "text": "路径", "use": "非文案" }
     ],
@@ -168,7 +180,8 @@
       { "text": "刷新", "use": "输入" }
     ],
     "tests/frontend/ui/main-window-fixes.vitest.ts": [
-      { "text": "结束", "use": "输入" }
+      { "text": "结束", "use": "输入" },
+      { "text": "切到会话", "use": "输入" }
     ],
     "tests/frontend/ui/new-session.vitest.ts": [
       { "text": "原话", "use": "输入" }

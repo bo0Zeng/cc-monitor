@@ -44,6 +44,7 @@ fn kind_of(f: &InboundFrame) -> &'static str {
         InboundFrame::QuotaChanged => "quota_changed",
         InboundFrame::RotationChanged { .. } => "rotation_changed",
         InboundFrame::RotationRulesChanged => "rotation_rules_changed",
+        InboundFrame::PlanChanged { .. } => "plan_changed",
     }
 }
 

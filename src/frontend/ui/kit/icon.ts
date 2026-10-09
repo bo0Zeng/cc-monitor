@@ -72,6 +72,9 @@ import circleHalf from "@phosphor-icons/core/assets/regular/circle-half.svg?raw"
 import circle from "@phosphor-icons/core/assets/regular/circle.svg?raw";
 import note from "@phosphor-icons/core/assets/regular/note.svg?raw";
 import stop from "@phosphor-icons/core/assets/regular/stop.svg?raw";
+import treeStructure from "@phosphor-icons/core/assets/regular/tree-structure.svg?raw";
+import prohibit from "@phosphor-icons/core/assets/regular/prohibit.svg?raw";
+import user from "@phosphor-icons/core/assets/regular/user.svg?raw";
 import s from "./icon.module.css";
 
 const SVG = {
@@ -139,6 +142,9 @@ const SVG = {
   ring: circle,
   note: note,
   stop: stop,
+  plan: treeStructure,
+  prohibit: prohibit,
+  person: user,
 } as const;
 
 export type IconName = keyof typeof SVG;

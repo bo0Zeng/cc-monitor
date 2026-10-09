@@ -7,6 +7,7 @@ import { toast } from "./kit/toast";
 import { ACCOUNTS_CHANGED_KIND, ACCOUNTS_CHANGED_WINDOW, accountsChangedItems } from "./session-accounts-poll";
 import { SESSION_TASKS_KIND, SESSION_TASKS_WINDOW, tasksChangedItems } from "./tasks-stream";
 import { QUOTA_CHANGED_KIND, QUOTA_CHANGED_WINDOW, quotaChangedItems } from "./quota-stream";
+import { PLAN_CHANGED_KIND, PLAN_CHANGED_WINDOW, planChangedItems, type PlanMoved } from "./plan-stream";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 // 这几个 payload 类型从生成物 re-export（源：`src/frontend/shell/src/ui_contract.rs` 的 ts-rs 派生）。
 // 仍然 `export`：不缩小已经导出的表面（要用的话从这个枢纽拿）。
@@ -130,6 +131,11 @@ export interface EventHandlers {
    * 来自通道 `subscribe(origin, "quota-changed")`（`quota-stream.ts::quotaChangedItems` 读格）。
    */
   onQuotaChanged?: (origin: Origin, change: { quota: boolean; sids: readonly string[]; all: boolean; rules: boolean }) => void;
+  /**
+   * 某台的这几个 pb 工作区的计划变了（`moved`：工作区 · 新摘要 · 要你看几条）/ 期间可能漏了（`all`：那台整台重问）。
+   * 来自通道 `subscribe(origin, "plan-changed")`（`plan-stream.ts::planChangedItems` 读格）。
+   */
+  onPlanChanged?: (origin: Origin, change: { moved: readonly PlanMoved[]; all: boolean }) => void;
   /**
    * 会话红绿灯：后端只在 sessions/<PID>.json 的官方 status 变化时发（天然稀疏，当场派）。
    * "busy" = 运行中 / "idle"、"shell" = 等输入 / "waiting" = 等弹窗决定（waiting_for 细分原因）。
@@ -360,6 +366,11 @@ export interface BindEventsOptions {
    * 同一处 `chan.subscribe`；窗口是 `QUOTA_CHANGED_WINDOW`。
    */
   quota?: ReadonlyArray<Origin>;
+  /**
+   * 要订 `plan-changed` 的机器（那台某个 pb 工作区的计划变了 ⇒ {@link EventHandlers.onPlanChanged}）。
+   * 同一处 `chan.subscribe`；窗口是 `PLAN_CHANGED_WINDOW`。
+   */
+  plan?: ReadonlyArray<Origin>;
 }
 
 /**
@@ -789,6 +800,18 @@ export async function bindEvents(
     }
     if (quota || all || rules || sids.length > 0) handlers.onQuotaChanged?.(origin, { quota, sids, all, rules });
   };
+  const onPlanItems = (origin: Origin, hold: StreamHold, items: Item[]): void => {
+    const { moved, all, frames } = planChangedItems(items);
+    if (frames > 0) {
+      if (hold.sub) {
+        hold.sub.want(frames + hold.owed);
+        hold.owed = 0;
+      } else {
+        hold.owed += frames;
+      }
+    }
+    if (all || moved.length > 0) handlers.onPlanChanged?.(origin, { moved, all });
+  };
 
   // 会话流：起停那几个事件的监听都在了之后再订（订阅一登记，句柄就可能开始交格）。
   //   返回时 monitor 那一侧已经登记好 ⇒ 主界面接着发 `frontend-ready`（就绪点）不会落空。
@@ -814,6 +837,12 @@ export async function bindEvents(
       kind: QUOTA_CHANGED_KIND,
       window: QUOTA_CHANGED_WINDOW,
       feed: onQuotaItems,
+    })),
+    ...(opts.plan ?? []).map((origin) => ({
+      origin,
+      kind: PLAN_CHANGED_KIND,
+      window: PLAN_CHANGED_WINDOW,
+      feed: onPlanItems,
     })),
   ];
   await Promise.all(

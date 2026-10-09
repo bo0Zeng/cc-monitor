@@ -199,3 +199,12 @@ src/backend/accounts/oauth/store.rs:65	里面那把	保留	[不对外] 续期锁
 src/backend/accounts/oauth/store.rs:78	旁边那把	保留	[不对外] 续期锁收回过期锁时记下的锁名，只进 renew_line 那一行后端日志
 src/backend/plan/product.rs:19	做完了	保留	[不对外] pb dump 的 status 值（协议值，不是界面文案）：只拿来跟 pb 给的状态比、数顶层进度
 src/backend/plan/product.rs:20	不做了	保留	[不对外] pb dump 的 status 值（协议值，不是界面文案）：只拿来跟 pb 给的状态比、数顶层进度
+src/backend/plan/product.rs:26	没做完	保留	[不对外] pb dump 的 status 值（协议值，不是界面文案）：只拿来翻成 statusCode
+src/backend/plan/product.rs:37	没签	保留	[不对外] pb dump 的 why 原话（协议值，不是界面文案）：只拿来翻成 whyCode
+src/backend/plan/product.rs:38	等上一级收下	保留	[不对外] pb dump 的 why 原话（协议值，不是界面文案）：只拿来翻成 whyCode
+src/backend/plan/product.rs:42	里面 	保留	[不对外] pb dump 的 why 原话的两头（协议值，不是界面文案）：只拿来拆出 whyCode 的 d/m
+src/backend/plan/product.rs:43	 做完了	保留	[不对外] pb dump 的 why 原话的两头（协议值，不是界面文案）：只拿来拆出 whyCode 的 d/m
+src/backend/plan/product.rs:55	在	保留	[不对外] pb dump 的文件对账值（协议值，不是界面文案）：只拿来翻成 stateCode
+src/backend/plan/product.rs:56	缺	保留	[不对外] pb dump 的文件对账值（协议值，不是界面文案）：只拿来翻成 stateCode
+src/backend/plan/product.rs:57	空	保留	[不对外] pb dump 的文件对账值（协议值，不是界面文案）：只拿来翻成 stateCode
+src/backend/plan/product.rs:58	坏	保留	[不对外] pb dump 的文件对账值（协议值，不是界面文案）：只拿来翻成 stateCode

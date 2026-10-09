@@ -491,6 +491,19 @@ async fn stream_loop(
             Some(InboundFrame::RotationRulesChanged) => {
                 replay.rotation_rules_changed(&crate::origin::Origin(host_label.clone()));
             }
+            // 那台某个 pb 工作区的计划变了 ⇒ 订了这台 `plan-changed` 的订阅收一格 `{workspace, rev, needs}`。
+            Some(InboundFrame::PlanChanged {
+                workspace,
+                rev,
+                needs,
+            }) => {
+                replay.plan_changed(
+                    &crate::origin::Origin(host_label.clone()),
+                    &workspace,
+                    &rev,
+                    needs,
+                );
+            }
             // 终端实时预览：这台推来的一屏 / 收尾 ⇒ 交订了这台 `terminal-screen/<票>` 的那条订阅（从不阻塞）。
             Some(
                 InboundFrame::TerminalScreen { ticket, cell }
