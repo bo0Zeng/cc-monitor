@@ -85,8 +85,8 @@ export interface UserPathStatus {
   addCommand: string | null;
   /** 「撤」那条命令的逐字文本。 */
   removeCommand: string | null;
-  /** 探不动时的原话。🔴 **探不动 ≠ 不在 PATH 上**，界面必须把它显示出来。 */
-  error: string | null;
+  /** 探不动时的那一句 ＋ 复制详情（PowerShell 的原话 · 退出码在详情里）。🔴 **探不动 ≠ 不在 PATH 上**，界面必须把它显示出来。 */
+  error: Said | null;
 }
 
 /** 两条开窗命令的结局（壳 `platform/terminal.rs::TerminalOpen`）：开了 · 一个终端都没探到 · 设置里指定的那个不在。 */

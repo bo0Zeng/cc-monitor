@@ -6,12 +6,17 @@ import { productionRsFiles } from "../test-support/production-sources.ts";
 import type { Ref } from "./copy-support.ts";
 
 /**
- * 一个参数的值是不是下层原话：`&e.to_string()` · `&err.to_string()` · `&format!("{e}")` 一类（错误值直接变成字串）。
+ * 一个参数的值是不是下层原话：`&e.to_string()` · `&err.to_string()` · `&format!("{e}")` 一类（错误值直接变成字串），
+ * 以及子进程的 stderr / stdout 直接喂进来的（值里出现 `stderr` · `stdout` 这个名字，或 `stderr_…` 一类字段）。
  * 按值认、不按占位名认 —— 占位名叫 `kind` 也照样是原话（审计二第 2 条：C-W18 只看名字时这一族绿着放过）。
  */
 export function isRawValue(v: string): boolean {
   const t = v.trim();
-  return /^&\s*(?:e|err|error)\.to_string\(\)$/.test(t) || /^&\s*format!\(\s*"\{(?:e|err|error)(?::\?)?\}"\s*\)$/.test(t);
+  return (
+    /^&\s*(?:e|err|error)\.to_string\(\)$/.test(t) ||
+    /^&\s*format!\(\s*"\{(?:e|err|error)(?::\?)?\}"\s*\)$/.test(t) ||
+    /\b(?:stderr|stdout)(?:_\w+)?\b/.test(t)
+  );
 }
 
 /** Rust 取文口自己住的文件：它里头的 `copy_text` 是定义，不是引用。 */

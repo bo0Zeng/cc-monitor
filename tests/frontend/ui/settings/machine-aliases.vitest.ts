@@ -21,6 +21,7 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
   let oldAt: Set<string>;
   let clashes: NameClash[];
   let autoLaunchFail: string | null;
+  let userPathErr: { said: string; detail: string } | null;
   let policyA: ExecPolicy | null;
   let policyAfter: ExecPolicy | null;
 
@@ -46,6 +47,7 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
     oldAt = new Set();
     clashes = [];
     autoLaunchFail = null;
+    userPathErr = null;
     policyA = null;
     policyAfter = null;
     vi.resetModules();
@@ -143,7 +145,7 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
             supported: true,
             onUserPath: false,
             dir: "C:\\Users\\u\\.cc-monitor\\bin",
-            error: null,
+            error: userPathErr,
             addCommand: "（加的那段）",
             removeCommand: null,
           });
@@ -455,6 +457,23 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
     await flush();
     // 交给失败 toast：那次失败（带详情 ⇒ 换成那一句）＋ 灰字一格事实（那份的路径）。
     expect(toasted).toEqual([`${copyText("machineAliases.openRc.failed")}|Error: 没有关联程序|/h/rc-a`]);
+  });
+
+  it("用户 PATH 探不动（只 PowerShell 有这一格）：那一句上屏、开关不给拨；PowerShell 的原话不上屏，跟在［复制详情］里", async () => {
+    userPathErr = { said: copyText("rsProfileInstaller.ps.exitCode"), detail: "原话：Access is denied." };
+    const el = await mount();
+    await open(el);
+    const help = el.querySelector<HTMLElement>(".ccm-user-path-status");
+    if (plat === "posix") {
+      expect(help, "POSIX 没有用户级 PATH 那一格").toBeNull();
+      return;
+    }
+    expect(help).not.toBeNull();
+    if (help === null) return;
+    expect(help.textContent).toContain(copyText("rsProfileInstaller.ps.exitCode"));
+    expect(help.textContent, "原话不上屏").not.toContain("Access is denied");
+    expect(help.querySelector('[data-part="copy-detail"]'), "有详情 ⇒ 句子后面跟［复制详情］").not.toBeNull();
+    expect(el.querySelector('[data-role="win-path"] button')!.getAttribute("aria-disabled")).toBe("true");
   });
 
   it("远端卡是同一个组件：每一发都带那台的 origin，只本机的那几格不挂", async () => {

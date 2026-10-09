@@ -1319,14 +1319,14 @@
     "beCapturePane.classify.noServer": {
       "kind": "error",
       "role": "报错",
-      "zh": "tmux 读取画面失败 · tmux 报错 · 此机无运行中的 tmux",
+      "zh": "tmux 读取画面失败 · 无运行中的 tmux",
       "args": [],
       "limited": ["tmux"]
     },
     "beCapturePane.classify.noTarget": {
       "kind": "error",
       "role": "报错",
-      "zh": "tmux 读取画面失败 · tmux 报错 · tmux 会话不存在",
+      "zh": "tmux 读取画面失败 · 会话不存在",
       "args": [],
       "limited": ["tmux"]
     },
@@ -5735,8 +5735,8 @@
     "machineAliases.userPath.readFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取用户 PATH 失败 · {error}",
-      "args": ["error"]
+      "zh": "读取用户 PATH 失败",
+      "args": []
     },
     "machineAliases.userPath.on": {
       "kind": "body",
@@ -6491,8 +6491,8 @@
     "profilesPage.file.at": {
       "kind": "error",
       "role": "报错",
-      "zh": "行 {line} · {e}",
-      "args": ["line", "e"]
+      "zh": "行 {line} · {why}",
+      "args": ["line", "why"]
     },
     "profilesPage.file.broken": {
       "kind": "title",
@@ -12045,40 +12045,40 @@
     "rsProfileInstaller.ps.exitCode": {
       "kind": "error",
       "role": "报错",
-      "zh": "PowerShell 出错退出 · 退出码 {status} · {detail}",
-      "args": ["status", "detail"],
+      "zh": "运行 PowerShell 失败 · 原因不明",
+      "args": [],
       "limited": ["PowerShell"]
     },
     "rsProfileInstaller.ps.spawnFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "powershell.exe 启动失败 · {e}",
-      "args": ["e"],
+      "zh": "运行 PowerShell 失败 · {why}",
+      "args": ["why"],
       "limited": ["PowerShell"]
     },
     "rsProfileInstaller.fence.symlinkEscape": {
       "kind": "error",
       "role": "报错",
-      "zh": "拒绝写入 · 父目录经符号链接指向主目录外（{raw} → {realParent}）",
-      "args": ["raw", "realParent"]
+      "zh": "拒绝写入 · 父目录经符号链接指向主目录外（{path} → {realParent}）",
+      "args": ["path", "realParent"]
     },
     "rsProfileInstaller.fence.outsideHome": {
       "kind": "error",
       "role": "报错",
-      "zh": "拒绝写此配置文件 · 只能在主目录内 · 实得 {raw} · 主目录是 {home}",
-      "args": ["raw", "home"]
+      "zh": "拒绝写此配置文件 · 只能在主目录内 · 实得 {path} · 主目录是 {home}",
+      "args": ["path", "home"]
     },
     "rsProfileInstaller.fence.dotdot": {
       "kind": "error",
       "role": "报错",
-      "zh": "拒绝写入 · 路径不能含 ..（{raw}）",
-      "args": ["raw"]
+      "zh": "拒绝写入 · 路径不能含 ..（{path}）",
+      "args": ["path"]
     },
     "rsProfileInstaller.fence.notAbsolute": {
       "kind": "error",
       "role": "报错",
-      "zh": "拒绝写入 · 须为绝对路径（{raw}）",
-      "args": ["raw"]
+      "zh": "拒绝写入 · 须为绝对路径（{path}）",
+      "args": ["path"]
     },
     "rsProfileInstaller.hint.whereToEdit": {
       "kind": "body",
@@ -12089,8 +12089,8 @@
     "rsProfileInstaller.hint.head": {
       "kind": "body",
       "role": "说明",
-      "zh": "{what} 里有 {count} 行提到 ccm · 在 cc-monitor 管理段之外 · cc-monitor 不碰\n删不删、删哪几行由你定\n\n{body}",
-      "args": ["what", "count", "body"],
+      "zh": "{what} 里有 {count} 行提到 ccm · 在 cc-monitor 管理段之外 · cc-monitor 不碰\n删不删、删哪几行由你定\n\n{lines}",
+      "args": ["what", "count", "lines"],
       "limited": ["ccm"]
     },
     "rsProfileInstaller.hint.line": {
@@ -27380,8 +27380,8 @@
     "beProfile.value.parser": {
       "kind": "error",
       "role": "原因格",
-      "zh": "{key} · {e}",
-      "args": ["e", "key"]
+      "zh": "{key} · {why}",
+      "args": ["key", "why"]
     },
     "beProfile.value.notPinned": {
       "kind": "error",
@@ -27582,8 +27582,8 @@
     "beProfile.file.syntax": {
       "kind": "error",
       "role": "原因格",
-      "zh": "配置文件格式错误 · {e}",
-      "args": ["e"]
+      "zh": "配置文件格式错误",
+      "args": []
     },
     "beProfile.file.topLevel": {
       "kind": "error",
@@ -27594,14 +27594,14 @@
     "beProfile.file.unreadable": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取失败 · {path} · {e}",
-      "args": ["e", "path"]
+      "zh": "读取失败 · {path} · {why}",
+      "args": ["path", "why"]
     },
     "beProfile.at.line": {
       "kind": "error",
       "role": "原因格",
-      "zh": "行 {line} · {e}",
-      "args": ["e", "line"]
+      "zh": "行 {line} · {why}",
+      "args": ["line", "why"]
     },
     "beProfile.chain.unknown": {
       "kind": "error",
@@ -27618,8 +27618,8 @@
     "beProfile.chain.broken": {
       "kind": "error",
       "role": "报错",
-      "zh": "{name} 写错 · 当前不可用 · {e}",
-      "args": ["e", "name"]
+      "zh": "{name} 写错 · 当前不可用 · {why}",
+      "args": ["name", "why"]
     },
     "beProfile.chain.missingFrom": {
       "kind": "error",
@@ -27630,8 +27630,8 @@
     "beProfile.resolve.refused": {
       "kind": "error",
       "role": "报错",
-      "zh": "{name} 合并后不可用 · {e}",
-      "args": ["e", "name"]
+      "zh": "{name} 合并后不可用 · {why}",
+      "args": ["name", "why"]
     },
     "beProfile.file.header": {
       "kind": "body",
@@ -27693,8 +27693,8 @@
     "beProfile.migrate.failed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "迁入配置文件失败 · {e}",
-      "args": ["e"]
+      "zh": "迁入配置文件失败 · {why}",
+      "args": ["why"]
     },
     "beProfile.named.say": {
       "kind": "body",

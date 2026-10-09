@@ -40,7 +40,7 @@ import { homeShort } from "../kit/path";
 import { hostFacts } from "./host-os";
 import { copyText } from "../copy-table";
 import type { LocalCcmEntry } from "../generated/LocalCcmEntry";
-import { detailOf, sayFailure, sayWithDetail } from "../kit/detail";
+import { sayFailure, sayWithDetail } from "../kit/detail";
 
 /** 界面上怎么叫那一代 PowerShell（两代的执行策略分开存）。 */
 const psName = (h: PsHost): string =>
@@ -757,7 +757,7 @@ function buildPsExtras(row: CfgRow): PsExtras {
         // 🔴 探不动 ≠ 不在 PATH 上：原话上屏，开关不给拨。
         onPath = null;
         lock(true);
-        pathHelp.textContent = copyText("machineAliases.userPath.readFailed", { error: st.error });
+        sayWithDetail(pathHelp, st.error.said, st.error.detail);
       } else {
         onPath = st.onUserPath;
         lock(false);
@@ -772,7 +772,7 @@ function buildPsExtras(row: CfgRow): PsExtras {
     } catch (e) {
       onPath = null;
       lock(true);
-      sayWithDetail(pathHelp, copyText("machineAliases.userPath.readFailed", { error: String(e) }), detailOf(e));
+      sayFailure(pathHelp, copyText("machineAliases.userPath.readFailed"), e);
     }
     paintStatus();
   };

@@ -3,6 +3,8 @@
 //! 跑的是本机那一个 `powershell.exe`，属于 monitor 引导本机后端那一类（`MONITOR_OWN` 的「起停引导」）。
 
 use crate::copy_table::copy_text;
+use crate::detail::Said;
+use copy_core::detail::Label;
 
 //
 // ══════════════════════════════════════════════════════════════════
@@ -166,8 +168,8 @@ pub struct UserPathStatus {
     pub add_command: Option<String>,
     /// 「撤」那条命令的逐字文本。
     pub remove_command: Option<String>,
-    /// 探不动时的原话。探不动 ≠ 不在 PATH 上 —— 界面必须把这一格显示出来，不许静默成「未安装」。
-    pub error: Option<String>,
+    /// 探不动时的那一句 ＋ 复制详情（PowerShell 的原话 · 退出码在详情里）。探不动 ≠ 不在 PATH 上 —— 界面必须把这一格显示出来，不许静默成「未安装」。
+    pub error: Option<Said>,
 }
 
 /// 本模块唯一一处起进程：用户点按钮执行生成的那段字节（「点按钮」与「自己复制去跑」逐字同一份，实现只有一处）；「现在状态」那一格不可能靠用户去跑。
@@ -179,10 +181,10 @@ pub struct UserPathStatus {
 /// `-NoProfile` 是承重的（这一跳的行为不被用户配置左右）；`-NonInteractive`：绝不弹提示等人回车。
 /// `<脚本>` 只可能是本模块那几个 `render_*` 函数的输出，不吃任何用户输入（唯一的变量是 `tool_registry` 申报的那个目录）。
 /// 非 Windows 上不起进程，直接如实回错（有没有用户级 PATH 这一档由 `platform::login_shell` 答）。
-fn run_user_path_powershell(script: &str) -> Result<String, String> {
+fn run_user_path_powershell(script: &str) -> Result<String, Said> {
     use crate::spawn_managed::{spawn_managed_cmd, ConsolePolicy, Lifetime, StderrSink};
     if !crate::platform::login_shell::LOGIN_SHELL.has_user_level_path() {
-        return Err(copy_text("rsProfileInstaller.userPath.notWindows", &[]));
+        return Err(copy_text("rsProfileInstaller.userPath.notWindows", &[]).into());
     }
     let mut cmd = std::process::Command::new("powershell.exe");
     cmd.args(["-NoProfile", "-NonInteractive", "-Command", script])
@@ -193,7 +195,7 @@ fn run_user_path_powershell(script: &str) -> Result<String, String> {
     //   「加到 PATH」就闪一个黑框，而这一跳的全部意义是「点一下、悄悄改好」。
     // · `JobKillOnClose` —— 就地等它退；`SetEnvironmentVariable` 那段若起了别的东西，
     //   不许留在后面。
-    // · `Captured` —— stderr **是返回值的一部分**（下面那句 `退出码 …；stderr：…`
+    // · `Captured` —— stderr **是返回值的一部分**（下面那句的复制详情里「原话」那一项
     //   逐字要用它），不是被丢了。
     let out = spawn_managed_cmd(
         &mut cmd,
@@ -203,25 +205,22 @@ fn run_user_path_powershell(script: &str) -> Result<String, String> {
     )
     .and_then(|c| c.wait_with_output())
     .map_err(|e| {
-        copy_text(
-            "rsProfileInstaller.ps.spawnFailed",
-            &[("e", &e.to_string())],
+        Said::with_raw(
+            copy_text(
+                "rsProfileInstaller.ps.spawnFailed",
+                &[("why", &copy_core::io_reason(e.kind()))],
+            ),
+            &e,
         )
     })?;
     if !out.status.success() {
-        return Err(copy_text(
-            "rsProfileInstaller.ps.exitCode",
-            &[
-                ("status", &format!("{:?}", out.status.code())),
-                // stderr 是 PowerShell 按控制台代码页写的（stdout 那一路探针自己写 UTF-8，不走这里）。
-                (
-                    "detail",
-                    &crate::platform::console_text::console_text(&out.stderr)
-                        .trim()
-                        .to_string(),
-                ),
-            ],
-        ));
+        // 退出码进「码」、stderr 进「原话」（PowerShell 按控制台代码页写的；stdout 那一路探针自己写 UTF-8，不走这里）。
+        let code = out.status.code().map(|c| c.to_string()).unwrap_or_default();
+        return Err(Said::with_raw(
+            copy_text("rsProfileInstaller.ps.exitCode", &[]),
+            crate::platform::console_text::console_text(&out.stderr).trim(),
+        )
+        .with_item(Label::Code, &code));
     }
     Ok(String::from_utf8_lossy(&out.stdout).to_string())
 }
@@ -244,7 +243,10 @@ pub fn user_path_status() -> UserPathStatus {
                 on_user_path: false,
                 add_command,
                 remove_command,
-                error: Some(copy_text("rsProfileInstaller.userPath.noBinDir", &[])),
+                error: Some(Said::from(copy_text(
+                    "rsProfileInstaller.userPath.noBinDir",
+                    &[],
+                ))),
             };
         }
     };
@@ -282,17 +284,17 @@ pub fn user_path_status() -> UserPathStatus {
 }
 
 /// `KR135D1` ②：**一个按钮加**。跑的就是 [`render_user_path_setup_command`] 那段字节。
-pub fn user_path_add() -> Result<(), String> {
+pub fn user_path_add() -> Result<(), Said> {
     let script = render_user_path_setup_command()
-        .ok_or(&copy_text("rsProfileInstaller.userPath.addNoDir", &[]))?;
+        .ok_or_else(|| Said::from(copy_text("rsProfileInstaller.userPath.addNoDir", &[])))?;
     run_user_path_powershell(&script).map(|_| ())
 }
 
 /// `KR135D1` ③：**一个按钮撤**。跑的就是 [`render_user_path_removal_command`] 那段字节
 /// —— **只摘自己那一格**（整格比，不碰用户 PATH 里别的东西）。
-pub fn user_path_remove() -> Result<(), String> {
+pub fn user_path_remove() -> Result<(), Said> {
     let script = render_user_path_removal_command()
-        .ok_or(&copy_text("rsProfileInstaller.userPath.removeNoDir", &[]))?;
+        .ok_or_else(|| Said::from(copy_text("rsProfileInstaller.userPath.removeNoDir", &[])))?;
     run_user_path_powershell(&script).map(|_| ())
 }
 

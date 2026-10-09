@@ -408,7 +408,9 @@ describe("CP2a · 文案规范判据自己会不会死（正控）", () => {
     // 值的认法：错误值直接变成字串的才算（e / err / error 的 to_string · format!），别的值不算。
     const raw = (v: string): string[] => rustRefsIn("x.rs", `copy_text("a.b.c", &[("x", ${v})]);`).refs.flatMap((r) => r.raw ?? []);
     for (const v of ["&e.to_string()", "&err.to_string()", "&error.to_string()", '&format!("{e}")', '&format!("{e:?}")']) expect(raw(v), v).toEqual(["x"]);
-    for (const v of ["&o.to_string()", "&io_reason(e.kind())", "n", '&format!("{n}")', "&e.kind().to_string()"]) expect(raw(v), v).toEqual([]);
+    // 子进程的 stderr / stdout 直接喂进来的也算（漏网那几条：占位叫 {said}，喂的是 stderr）。
+    for (const v of ["got.stderr.trim()", "stderr.trim()", "&stderr", "&String::from_utf8_lossy(&out.stdout)", "&r.stderr_tail"]) expect(raw(v), v).toEqual(["x"]);
+    for (const v of ["&o.to_string()", "&io_reason(e.kind())", "n", '&format!("{n}")', "&e.kind().to_string()", "&said", "&stderred"]) expect(raw(v), v).toEqual([]);
   });
 
   it("占位符名不算文字：{origin} 不会被术语表的 origin 禁词扫红", () => {

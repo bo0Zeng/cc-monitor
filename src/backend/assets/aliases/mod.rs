@@ -406,10 +406,8 @@ fn read_profiles(d: &dyn Door, home: &str, path: &str) -> Result<Option<String>,
     match look(d, home, path)? {
         Look::Text(t) => Ok(Some(t)),
         Look::Absent => Ok(None),
-        Look::Unreadable(e) => Err(copy_text(
-            "beProfile.file.unreadable",
-            &[("path", path), ("e", &e)],
-        )),
+        // 那一句是 files-peek 的成品句（带路径 ＋ 原因词），原样交出去，不再套一层「读取失败」。
+        Look::Unreadable(said) => Err(said),
     }
 }
 
@@ -507,7 +505,7 @@ pub fn migrate_here() {
             )
         ),
         Ok(false) => {}
-        Err(e) => tracing::warn!("{}", copy_text("beProfile.migrate.failed", &[("e", &e)])),
+        Err(e) => tracing::warn!("{}", copy_text("beProfile.migrate.failed", &[("why", &e)])),
     }
 }
 

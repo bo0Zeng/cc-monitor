@@ -17,6 +17,7 @@ import { homeShort } from "../kit/path";
 import { select as kitSelect } from "../kit/select";
 import { toast, undoToast, failToast } from "../kit/toast";
 import { confirmDialog, type ConfirmFn } from "../kit/dialog";
+import { sayWithDetail } from "../kit/detail";
 import type { Origin } from "../generated/Origin";
 import type { ClashWins } from "../alias-reads";
 import { accountsChangedItems } from "../session-accounts-poll";
@@ -450,10 +451,11 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
     if (book.fileProblem) {
       const card = el("div", "prof-card prof-card-bad");
       card.dataset.role = "file-problem";
-      card.append(
-        el("div", "prof-card-title", copyText("profilesPage.file.broken")),
-        el("div", "prof-err", book.fileProblem.line !== null ? copyText("profilesPage.file.at", { line: String(book.fileProblem.line), e: book.fileProblem.message }) : book.fileProblem.message),
-      );
+      const fp = book.fileProblem;
+      const said = fp.line !== null ? copyText("profilesPage.file.at", { line: String(fp.line), why: fp.message }) : fp.message;
+      const err = el("div", "prof-err", said);
+      if (fp.detail !== null) sayWithDetail(err, said, fp.detail);
+      card.append(el("div", "prof-card-title", copyText("profilesPage.file.broken")), err);
       if (opts.local) card.appendChild(button(copyText("profilesPage.list.open"), "settings-btn", () => void onOpenFile()));
       left.appendChild(card);
       return;
