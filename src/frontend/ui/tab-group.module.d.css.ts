@@ -2,6 +2,7 @@
 declare const classes: {
   readonly dropLine: string;
   readonly ghostCancel: string;
+  readonly ghostStack: string;
   readonly hot: string;
   readonly landed: string;
   readonly pill: string;

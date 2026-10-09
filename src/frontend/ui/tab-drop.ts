@@ -213,6 +213,60 @@ export function planDrop(
 }
 
 /**
+ * 拖整个组的落点：只认组外（散的之间 · 两组之间 · 末尾）。压在散的上 ⇒ 上半插前、下半插后；
+ * 压在别的组里（组头或组员）⇒ 那个组的前面或后面（按离哪头近），不合并、不嵌套；压在自己组上 ⇒ 原位。`null` ＝ 末尾。
+ */
+export function pickGroupDropTarget(rows: readonly RowRect[], y: number, gid: string): InsertAt {
+  // 一行一段：散的标签页各是一段；一个组（组头 ＋ 看得见的组员）合成一段。
+  const units: { top: number; bottom: number; first: string | null; last: string | null; own: boolean }[] = [];
+  for (const r of visible(rows)) {
+    if (r.kind === "tab" && r.gid === null) {
+      units.push({ top: r.top, bottom: r.top + r.height, first: r.id, last: r.id, own: false });
+      continue;
+    }
+    const g = r.gid!;
+    const members = rows.filter((x) => x.kind === "tab" && x.gid === g).map((x) => x.id);
+    const u = units.find((x) => x.first === (members[0] ?? null) && x.own === (g === gid) && members.length > 0);
+    if (u) u.bottom = Math.max(u.bottom, r.top + r.height);
+    else units.push({ top: r.top, bottom: r.top + r.height, first: members[0] ?? null, last: members[members.length - 1] ?? null, own: g === gid });
+  }
+  for (const u of units) {
+    if (y >= u.bottom) continue;
+    const upper = y < (u.top + u.bottom) / 2 || y < u.top;
+    if (u.own || u.first === null) return u.first === null ? null : { sid: u.first, side: "before" };
+    return upper ? { sid: u.first, side: "before" } : { sid: u.last!, side: "after" };
+  }
+  return null;
+}
+
+/** 整个组挪到 `at`（组外）：组员按原次序整块搬过去，组还是那个组。 */
+export function planGroupDrop(
+  order: readonly string[],
+  groupOf: (sid: string) => string | null,
+  known: ReadonlySet<string>,
+  gid: string,
+  at: InsertAt,
+): string[] {
+  const base = contiguous(order, groupOf, known);
+  const block = base.filter((s) => groupOf(s) === gid);
+  if (block.length === 0 || (at !== null && block.includes(at.sid))) return base;
+  const rest = base.filter((s) => groupOf(s) !== gid);
+  const anchor = at === null ? -1 : rest.indexOf(at.sid);
+  const cut = at === null || anchor < 0 ? rest.length : anchor + (at.side === "after" ? 1 : 0);
+  return contiguous([...rest.slice(0, cut), ...block, ...rest.slice(cut)], groupOf, known);
+}
+
+/** 拖的时候栏自己滚：指针进列表上 / 下沿 24px 内 ⇒ 每帧滚多少（负 ＝ 往上），离边越近越快、贴边 12px。 */
+export const AUTO_SCROLL_EDGE_PX = 24;
+export const AUTO_SCROLL_MAX_PX = 12;
+export function autoScrollStep(y: number, top: number, bottom: number): number {
+  const speed = (d: number): number => Math.round((AUTO_SCROLL_MAX_PX * (AUTO_SCROLL_EDGE_PX - Math.max(0, d))) / AUTO_SCROLL_EDGE_PX);
+  if (y < top + AUTO_SCROLL_EDGE_PX) return -speed(y - top);
+  if (y > bottom - AUTO_SCROLL_EDGE_PX) return speed(bottom - y);
+  return 0;
+}
+
+/**
  * 两个 cwd **完全相同** ⇒ 那个目录名；否则 `null`（只共前缀不算：`/work/docs` 与 `/work/cli` 得出「work」没意义）。
  * 两种分隔符都认（客户端常在 Windows 上、会话可能来自 Linux 远端）；盘符（`C:`）不当名字。
  */

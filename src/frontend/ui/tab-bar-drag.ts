@@ -7,10 +7,13 @@
  * 与 tab 栏视图的约定：**拖拽进行中不重排 tab 栏**（`deferRefresh`），被挡下的刷新收尾时补一次。
  */
 import {
+  autoScrollStep,
   defaultGroupName,
   dwellCandidate,
   pickDropTarget,
+  pickGroupDropTarget,
   planDrop,
+  planGroupDrop,
   DRAG_THRESHOLD_PX,
   DWELL_MS,
   DWELL_MOVE_PX,
@@ -34,6 +37,8 @@ export interface TabBarDragHost {
   openInNewWindow(sid: string, screenX?: number, screenY?: number): Promise<void>;
   /** 刚建的组：组头名字框立刻打开。 */
   renameGroupNow(gid: string): void;
+  /** 按下的这一个在多选里（≥2）⇒ 选中的全部（按栏里的顺序）；否则只有它。 */
+  selectedFor(sid: string): string[];
 }
 
 /** 拖拽要读的栏（`TabBarView` 的那几格）。 */
@@ -41,7 +46,7 @@ export interface TabBarDragView {
   readonly tabButtons: ReadonlyMap<string, { root: HTMLElement }>;
   readonly listEl: HTMLElement;
   measureRows(): RowRect[];
-  groupParts(gid: string): { head: HTMLElement; list: HTMLElement } | undefined;
+  groupParts(gid: string): { wrap: HTMLElement; head: HTMLElement; list: HTMLElement } | undefined;
 }
 
 /** 拖出栏右缘多远算「松开在新窗口打开」。 */
@@ -54,11 +59,28 @@ const GHOST_ROOM_PX = 34;
 const LINE_INSET_PX = 6;
 /** 组下沿那段空的一半：「组后面、组外」那条线画在空里，不压在组的最后一行上。 */
 const AFTER_GROUP_PX = 3;
+/** 组头上沿那段空的一半：「组前面、组外」那条线画在空里。 */
+const BEFORE_GROUP_PX = 2;
 /** 落下那几行底色淡出的时长（与 `tab-group.module.css` 的 `landed` 同值）。 */
 const LANDED_MS = 600;
 
+/** 拖整组之后要吞掉的那次组头 click 的键（与 sid 分开：组 id 与 sid 不同源）。 */
+const groupClickKey = (gid: string): string => `\u0000group:${gid}`;
+
 type DragState = {
+  /** 按下的那一个（多选拖时是其中之一）；拖整组时是组 id。 */
   sid: string;
+  /** 一起拖的标签页（多选 ⇒ 选中的全部，按栏里的顺序；拖整组 ⇒ 组员）。 */
+  sids: string[];
+  /** 拖的是整个组（组 id）；拖标签页 ⇒ `null`。 */
+  group: string | null;
+  /** 变暗的那几块（源行 / 整个组）。 */
+  dim: HTMLElement[];
+  /** 最近一次指针位置（自动滚的那几帧里没有 mousemove，照它重算落点）。 */
+  lastX: number;
+  lastY: number;
+  /** 自动滚的那一帧（`null` ＝ 没在滚）。 */
+  scrollRaf: number | null;
   /** 松手时的落点（只在既没 armed 也没 cancel 时有意义）。 */
   dropTarget: DropTarget;
   /** 停留正攒在谁身上（`null` ＝ 指针不在任何一行的中间一半）。 */
@@ -130,6 +152,11 @@ export class TabBarDrag {
     return false;
   }
 
+  /** 拖整组刚结束的那次 click 不收展、不改名。一次性消费。 */
+  takeSuppressedHeadClick(gid: string): boolean {
+    return this.takeSuppressedClick(groupClickKey(gid));
+  }
+
   /** 拖拽刚结束的那次 click 不切 Tab（drag-then-release ≠ 选中）。一次性消费：命中返回 `true` 并清掉。 */
   takeSuppressedClick(sid: string): boolean {
     if (this.suppressClickSid === sid) {
@@ -141,6 +168,15 @@ export class TabBarDrag {
 
   /** 拖拽起点（左键 mousedown）。只是候选：记录起点 ＋ 挂 document 级 mousemove/mouseup，越过阈值才真拖。 */
   begin(e: MouseEvent, sid: string, root: HTMLElement): void {
+    this.start(e, sid, null, root);
+  }
+
+  /** 按住组头：候选拖整个组（越过阈值才真拖；没越 ⇒ 组头照常点）。 */
+  beginGroup(e: MouseEvent, gid: string, head: HTMLElement): void {
+    this.start(e, gid, gid, head);
+  }
+
+  private start(e: MouseEvent, sid: string, group: string | null, root: HTMLElement): void {
     if (this.drag) return;
     this.suppressClickSid = null;
     const onMove = (ev: MouseEvent): void => this.onDragMove(ev);
@@ -151,6 +187,12 @@ export class TabBarDrag {
     };
     this.drag = {
       sid,
+      sids: [],
+      group,
+      dim: [],
+      lastX: e.clientX,
+      lastY: e.clientY,
+      scrollRaf: null,
       startX: e.clientX,
       startY: e.clientY,
       bar: this.barEl.getBoundingClientRect(),
@@ -188,9 +230,9 @@ export class TabBarDrag {
     // 主键已松开（mouseup 在窗口外丢失）→ 收尾取消，不落实（落点不可信）。
     if ((e.buttons & 1) === 0) {
       const wasDragging = d.dragging;
-      const sid = d.sid;
+      const key = d.group !== null ? groupClickKey(d.group) : d.sid;
       this.teardownDrag();
-      if (wasDragging) this.suppressClickSid = sid;
+      if (wasDragging) this.suppressClickSid = key;
       return;
     }
 
@@ -205,10 +247,19 @@ export class TabBarDrag {
       d.ghost.style.left = `${e.clientX + 8}px`;
       d.ghost.style.top = `${Math.min(e.clientY + 8, window.innerHeight - GHOST_ROOM_PX)}px`;
     }
+    d.lastX = e.clientX;
+    d.lastY = e.clientY;
+    this.track(d);
+  }
 
-    const armed = e.clientX > d.bar.right + DETACH_PX;
+  /** 照指针此刻的位置判 armed / 出栏 / 落点并画；指针进栏顶 / 栏底那一段 ⇒ 栏自己滚（滚的那几帧里也走这里）。 */
+  private track(d: DragState): void {
+    const e = { clientX: d.lastX, clientY: d.lastY };
+
+    // 撕成独立窗口只认一个标签页（拖整组 / 几个一起拖出右缘 ＝ 出栏取消）。
+    const armed = d.group === null && d.sids.length <= 1 && e.clientX > d.bar.right + DETACH_PX;
     // 栏量不出尺寸（`width` 为 0：没布局的环境）⇒ 不判出栏。
-    const outside = d.bar.width > 0 && (e.clientX < d.bar.left || e.clientY < d.bar.top || e.clientY > d.bar.bottom);
+    const outside = d.bar.width > 0 && (e.clientX < d.bar.left || e.clientX > d.bar.right + DETACH_PX || e.clientY < d.bar.top || e.clientY > d.bar.bottom);
     const cancel = !armed && outside;
     if (armed !== d.armed || cancel !== d.cancel) {
       d.armed = armed;
@@ -218,20 +269,63 @@ export class TabBarDrag {
     if (armed || cancel) {
       this.clearDwell(d);
       this.mark(null);
+      this.autoScroll(d, 0);
       return;
     }
-    this.updateDwell(e.clientX, e.clientY);
-    d.dropTarget = pickDropTarget(this.dragRects(), e.clientY, new Set([d.sid]), d.dwellArmed);
+    const list = this.view.listEl.getBoundingClientRect();
+    this.autoScroll(d, list.height > 0 ? autoScrollStep(e.clientY, list.top, list.bottom) : 0);
+    if (d.group !== null) {
+      // 拖整个组：只认组外，不攒停留（不合并、不嵌套）。
+      d.dropTarget = { kind: "insert", at: pickGroupDropTarget(this.dragRects(), e.clientY, d.group), gid: null };
+    } else {
+      this.updateDwell(e.clientX, e.clientY);
+      d.dropTarget = pickDropTarget(this.dragRects(), e.clientY, new Set(d.sids), d.dwellArmed);
+    }
     this.mark(d.dropTarget);
+  }
+
+  /** 栏自己滚：每帧滚 `step`（0 ＝ 停）。滚了矩形作废，下一帧照最近的指针位置重算落点。 */
+  private autoScroll(d: DragState, step: number): void {
+    if (step === 0) {
+      if (d.scrollRaf !== null) cancelAnimationFrame(d.scrollRaf);
+      d.scrollRaf = null;
+      return;
+    }
+    if (d.scrollRaf !== null) return;
+    const frame = (): void => {
+      const cur = this.drag;
+      if (cur !== d) return;
+      d.scrollRaf = null;
+      const list = this.view.listEl;
+      const before = list.scrollTop;
+      const r = list.getBoundingClientRect();
+      list.scrollTop += autoScrollStep(d.lastY, r.top, r.bottom);
+      if (list.scrollTop === before) return; // 到头了：停（指针再动会再起）
+      d.rects = null;
+      this.markedKey = null;
+      this.track(d);
+    };
+    // 调度：自链 —— 拖到栏顶 / 栏底那一段时每帧滚一下再排下一帧；指针离开那一段、滚到头或收尾时停
+    d.scrollRaf = requestAnimationFrame(frame);
   }
 
   /** 越过阈值那一拍：源行变暗、建影子（状态点 ＋ 标题，同行上的写法）与插入线、接管 Esc。 */
   private startDragging(d: DragState): void {
     d.dragging = true;
-    d.root.classList.add("dragging");
+    if (d.group !== null) {
+      d.sids = this.store.orderedIds.filter((x) => this.store.tabs.get(x)?.group === d.group);
+      const wrap = this.view.groupParts(d.group)?.wrap;
+      d.dim = wrap ? [wrap] : [d.root];
+    } else {
+      d.sids = this.host.selectedFor(d.sid);
+      d.dim = d.sids.map((x) => this.view.tabButtons.get(x)?.root).filter((x): x is HTMLElement => x !== undefined);
+    }
+    for (const el of d.dim) el.classList.add("dragging");
     const ghost = document.createElement("div");
     ghost.className = "tab-drag-ghost";
-    const tab = this.store.tabs.get(d.sid);
+    // 几个一起拖：影子叠一层。
+    if (d.group === null && d.sids.length > 1) ghost.classList.add(s.ghostStack);
+    const tab = d.group === null ? this.store.tabs.get(d.sid) : undefined;
     if (tab) {
       const dot = dotOf(tab);
       ghost.appendChild(statusDot(dot, dotLabel(dot), "compact"));
@@ -262,14 +356,22 @@ export class TabBarDrag {
     if (!d.ghost || !d.ghostText) return;
     d.ghost.classList.toggle("armed", d.armed);
     d.ghost.classList.toggle(s.ghostCancel, d.cancel);
-    const tab = this.store.tabs.get(d.sid);
-    d.ghostText.textContent = d.armed
+    d.ghostText.textContent = d.armed && d.group === null
       ? copyText("tabBarDrag.onDragMove.detachHint")
       : d.cancel
         ? copyText("tabDrop.ghost.cancel")
-        : tab
-          ? titleParts(tab).title
-          : "";
+        : this.ghostLabel(d);
+  }
+
+  /** 影子照常写什么：标题（几个一起 ⇒ 后面「+N」）/ 整组 ⇒「名字 · 组员数」。 */
+  private ghostLabel(d: DragState): string {
+    if (d.group !== null) {
+      const col = this.prefs.collections.find((c) => c.id === d.group);
+      return copyText("tabDrop.ghost.group", { name: col?.name ?? "", n: d.sids.length });
+    }
+    const tab = this.store.tabs.get(d.sid);
+    const title = tab ? titleParts(tab).title : "";
+    return d.sids.length > 1 ? copyText("tabDrop.ghost.many", { title, n: d.sids.length - 1 }) : title;
   }
 
   /** 拖拽期间用的矩形：缓存里有就用缓存，没有（刚起拖 / 刚过期）才量一次。 */
@@ -348,9 +450,10 @@ export class TabBarDrag {
       } else {
         const at = target.at;
         const r = rows.find((x) => x.kind === "tab" && x.id === at.sid);
-        // 落点挨着的那一行藏在收着的组里 ⇒ 线画在那个组头下面。
-        const head = r && r.height === 0 ? rows.find((x) => x.kind === "head" && x.id === r.gid) : undefined;
-        if (head) lineY = head.top + head.height + AFTER_GROUP_PX;
+        const head = r && r.gid !== null ? rows.find((x) => x.kind === "head" && x.id === r.gid) : undefined;
+        const first = r && r.gid !== null ? rows.find((x) => x.kind === "tab" && x.gid === r.gid)?.id === r.id : false;
+        if (r && head && target.gid === null && at.side === "before" && first) lineY = head.top - BEFORE_GROUP_PX; // 组前面（组外）：线在组头上面
+        else if (r && head && r.height === 0) lineY = head.top + head.height + AFTER_GROUP_PX; // 挨着的那一行藏在收着的组里
         else if (r) lineY = at.side === "before" ? r.top : r.top + r.height + (r.gid !== null && target.gid === null ? AFTER_GROUP_PX : 0);
       }
       lineGid = target.gid;
@@ -392,8 +495,9 @@ export class TabBarDrag {
    * 把一次落点的全部后果落实：顺序 ＋ 组，一拍做完；给撤销（改了分组 ⇒ toast；只排了顺序 ⇒ 不出条，`Ctrl+Z` 能撤）。
    * 建组 ⇒ 组就在目标那一格、名字框立刻打开。没拉过组表的实例（撕离出来的查看窗）⇒ 组一个字不动，顺序照常。
    */
-  applyDrop(sid: string, target: DropTarget): void {
-    const sids = [sid];
+  applyDrop(dragged: string | readonly string[], target: DropTarget): void {
+    const sids = typeof dragged === "string" ? [dragged] : [...dragged];
+    const sid = sids[0];
     const before = this.prefs.snapshot();
     const groupOf = (x: string): string | null => this.store.tabs.get(x)?.group ?? null;
     const known = new Set(this.prefs.collections.map((c) => c.id));
@@ -421,11 +525,12 @@ export class TabBarDrag {
     } else if (move.kind === "join") {
       void this.prefs.joinGroupMany(sids, move.gid);
       const col = this.prefs.collections.find((c) => c.id === move.gid);
-      if (col) title = copyText("tabBar.group.joined", { name: col.name });
+      if (col) title = sids.length > 1 ? copyText("tabBar.group.joinedMany", { name: col.name, n: sids.length }) : copyText("tabBar.group.joined", { name: col.name });
     } else if (move.kind === "leave") {
       const old = before.groups.find((c) => c.id === before.groupOf.get(sid));
       void this.prefs.leaveGroupMany(sids);
-      if (old) title = copyText("tabBar.group.left", { name: old.name });
+      if (sids.length > 1) title = copyText("tabBar.group.leftMany", { n: sids.length });
+      else if (old) title = copyText("tabBar.group.left", { name: old.name });
     }
     const moved = plan.order.some((x, i) => x !== this.store.orderedIds[i]);
     if (moved) this.store.orderedIds = plan.order;
@@ -435,6 +540,22 @@ export class TabBarDrag {
     this.prefs.offerUndo(title, before);
     this.flashLanded(sids);
     if (founded !== null) this.host.renameGroupNow(founded);
+  }
+
+  /** 整个组挪到 `target` 的位置（组外）：组员次序不变；给「已移动分组」可撤的 toast。 */
+  applyGroupDrop(gid: string, target: DropTarget): void {
+    if (target.kind !== "insert") return;
+    const before = this.prefs.snapshot();
+    const known = new Set(this.prefs.collections.map((c) => c.id));
+    const next = planGroupDrop(this.store.orderedIds, (x) => this.store.tabs.get(x)?.group ?? null, known, gid, target.at);
+    const moved = next.length === this.store.orderedIds.length && next.some((x, i) => x !== this.store.orderedIds[i]);
+    if (moved) this.store.orderedIds = next;
+    this.host.refreshTabBar();
+    if (!moved) return;
+    void this.prefs.persistOrder();
+    const col = this.prefs.collections.find((c) => c.id === gid);
+    this.prefs.offerUndo(copyText("tabBar.group.moved", { name: col?.name ?? "" }), before);
+    this.flashLanded(this.store.orderedIds.filter((x) => this.store.tabs.get(x)?.group === gid));
   }
 
   /** 落下的那几行底色淡出一次（只过渡底色；减少动效时不画，见 `tab-group.module.css`）。 */
@@ -452,9 +573,9 @@ export class TabBarDrag {
   private cancelDrag(): void {
     const d = this.drag;
     if (!d) return;
-    const { sid, dragging } = d;
+    const { sid, dragging, group } = d;
     this.teardownDrag();
-    if (dragging) this.suppressClickSid = sid;
+    if (dragging) this.suppressClickSid = group !== null ? groupClickKey(group) : sid;
   }
 
   /** 收尾：拆 document listener、清影子 / 插入线 / 目标框 / 源行变暗 / 弹层、清空拖拽状态。 */
@@ -470,7 +591,9 @@ export class TabBarDrag {
     d.ghost?.remove();
     d.line?.remove();
     if (d.overlay) dispatcher.popOverlay(d.overlay);
+    if (d.scrollRaf !== null) cancelAnimationFrame(d.scrollRaf);
     d.root.classList.remove("dragging");
+    for (const el of d.dim) el.classList.remove("dragging");
     this.drag = null;
     // 拖拽期间被守卫挡下的那些刷新，在这里补一次（必须在 `this.drag = null` 之后，否则被自己的守卫挡回去）。
     if (this.tabBarDirtyDuringDrag) {
@@ -483,16 +606,20 @@ export class TabBarDrag {
   private onDragUp(e: MouseEvent): void {
     const d = this.drag;
     if (!d) return;
-    const { dragging, armed, cancel, sid, dropTarget } = d;
+    const { dragging, armed, cancel, sid, sids, group, dropTarget } = d;
     this.teardownDrag();
-    if (!dragging) return; // 没越阈值 = 纯点击，交给 click handler 正常切 Tab。
-    this.suppressClickSid = sid;
+    if (!dragging) return; // 没越阈值 = 纯点击，交给 click handler 正常切 Tab / 收展组。
+    this.suppressClickSid = group !== null ? groupClickKey(group) : sid;
+    if (cancel) return;
+    if (group !== null) {
+      this.applyGroupDrop(group, dropTarget);
+      return;
+    }
     if (armed) {
       // 撕窗口这一路顺序不动。
       void this.host.openInNewWindow(sid, e.screenX, e.screenY);
       return;
     }
-    if (cancel) return;
-    this.applyDrop(sid, dropTarget);
+    this.applyDrop(sids, dropTarget);
   }
 }

@@ -148,11 +148,20 @@ export const TABGROUP_SCENES: Scene[] = [
     await dragTo(tabOf("表格虚拟滚动"), r.left + 60, r.bottom - 3);
     await drop(r.left + 60, r.bottom - 3);
   }),
-  tg("tg-07-head-drag", "拖组头", "在「训练」组头上按下往下拖", async () => {
+  tg("tg-07-head-drag", "拖组头（整组拖）", "在「训练」组头上按下往上拖到「订单」组里：整组变暗、影子「训练 · 2」，只给组外的插入线，不合并", async () => {
     await mainReady(N);
     const head = [...document.querySelectorAll<HTMLElement>(".tab-group-head")].find((h) => h.textContent?.includes("训练"))!;
-    const r = head.getBoundingClientRect();
-    await dragTo(head, r.left + 40, r.top + 200);
+    const r = tabOf("订单接口补测试").getBoundingClientRect();
+    await dragTo(head, r.left + 60, r.top + r.height / 2);
+    keepMoving(r.left + 60, r.top + r.height / 2);
+    await sleep(700);
+  }),
+  tg("tg-27-head-drop", "整组挪过去之后", "上一张松手：「训练」整组到了「订单」前面，组员次序不变；toast「已移动分组」可撤", async () => {
+    await mainReady(N);
+    const head = [...document.querySelectorAll<HTMLElement>(".tab-group-head")].find((h) => h.textContent?.includes("训练"))!;
+    const r = tabOf("订单接口补测试").getBoundingClientRect();
+    await dragTo(head, r.left + 60, r.top + r.height / 2);
+    await drop(r.left + 60, r.top + r.height / 2);
   }),
   tg("tg-08-out-blank", "拖出组到栏底空白", "「订单接口补测试」拖到栏底空白处，没松手", async () => {
     await mainReady(N);
@@ -167,7 +176,7 @@ export const TABGROUP_SCENES: Scene[] = [
     keepMoving(640, 300);
     await sleep(300);
   }),
-  tg("tg-10-multi", "多选三个后拖", "Ctrl 选了三个散的，拖其中一个", async () => {
+  tg("tg-10-multi", "多选后拖", "Ctrl 选了几个，拖其中一个压在「订单接口补测试」上停住：一起走、影子叠一层「+N」", async () => {
     await mainReady(N);
     for (const t of ["部署文档", "命令行补全", "安装包签名"]) {
       const el = tabOf(t);
@@ -214,7 +223,7 @@ export const TABGROUP_SCENES: Scene[] = [
     await mainReady(N);
     await sleep(300);
   }, () => tabWorld(), [900, 700]),
-  tg("tg-17-short", "栏放不下（拖时滚动）", "窗高 520：14 行放不下，拖到栏底边上停住", async () => {
+  tg("tg-17-short", "栏放不下（拖时滚动）", "窗高 520：14 行放不下，拖到栏底边上停住：栏自己往下滚", async () => {
     await mainReady(N);
     const bar = document.querySelector("#tab-bar")!.getBoundingClientRect();
     await dragTo(tabOf("订单服务加重试"), bar.left + 80, bar.bottom - 4);

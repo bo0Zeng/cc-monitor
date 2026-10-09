@@ -103,6 +103,10 @@ export interface TabBarViewHost {
   beginDrag(e: MouseEvent, sid: string, root: HTMLElement): void;
   /** 拖完那一下的 click 不切 tab（一次性消费）。 */
   takeSuppressedClick(sid: string): boolean;
+  /** 按住组头：候选拖整个组。 */
+  beginGroupDrag(e: MouseEvent, gid: string, head: HTMLElement): void;
+  /** 拖整组完那一下的 click 不收展、不改名（一次性消费）。 */
+  takeSuppressedHeadClick(gid: string): boolean;
   /** 右键：开这个 tab 的菜单。 */
   openMenu(e: MouseEvent, sid: string): void;
   /** 栏顶「刷新」：有打开 tab 的每台对齐 ＋ 补读一次；做完才 resolve。 */
@@ -139,6 +143,8 @@ export class TabBarView {
   readonly tabButtons = new Map<string, TabButtonRefs>();
   /** 每个集合在主栏里的容器（组头 + 成员列表）。 */
   private readonly groupEls = new Map<string, GroupEls>();
+  /** 组头 → 组 id（按下组头起拖时从事件找回是哪个组）。 */
+  private readonly headGid = new WeakMap<Element, string>();
   // 没有归档抽屉：已结束的 tab（`isResumeOnly(tab.state)`）留在原位变淡（`.tab.ended`）。
 
   /**
@@ -396,8 +402,8 @@ export class TabBarView {
     return out;
   }
 
-  /** 组 `gid` 的组头与组员列表（拖拽画目标框 · 点亮引导线用）；没有 ⇒ `undefined`。 */
-  groupParts(gid: string): { head: HTMLElement; list: HTMLElement } | undefined {
+  /** 组 `gid` 的整块 · 组头 · 组员列表（拖拽画目标框 · 点亮引导线 · 拖整组时变暗用）；没有 ⇒ `undefined`。 */
+  groupParts(gid: string): { wrap: HTMLElement; head: HTMLElement; list: HTMLElement } | undefined {
     return this.groupEls.get(gid);
   }
 
@@ -409,7 +415,14 @@ export class TabBarView {
 
   private onBarMouseDown(e: MouseEvent): void {
     const hit = this.hitOf(e);
-    if (!hit) return;
+    if (!hit) {
+      // 按住组头（「⋯」除外）⇒ 候选拖整个组。
+      const t = e.target as Element | null;
+      const head = t && typeof t.closest === "function" ? t.closest<HTMLElement>(".tab-group-head") : null;
+      const gid = head ? this.headGid.get(head) : undefined;
+      if (e.button === 0 && head && gid !== undefined && !t!.closest(".tab-group-more")) this.host.beginGroupDrag(e, gid, head);
+      return;
+    }
     // 子动作按钮自己处理点击：吞掉 mousedown 避免在它们身上起 Tab 拖拽（也不触发下面的中键关）。
     if (hit.sub) {
       e.stopPropagation();
@@ -635,6 +648,15 @@ export class TabBarView {
       wrap.className = "tab-group";
       const head = document.createElement("div");
       head.className = "tab-group-head";
+      this.headGid.set(head, gid);
+      // 拖整组刚松手的那次 click：不收展、不改名（捕获阶段先吞掉）。
+      head.addEventListener(
+        "click",
+        (e) => {
+          if (this.host.takeSuppressedHeadClick(gid)) e.stopPropagation();
+        },
+        true,
+      );
       const caret = document.createElement("button");
       caret.type = "button";
       caret.className = "tab-group-caret";

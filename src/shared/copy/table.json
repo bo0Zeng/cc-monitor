@@ -5648,6 +5648,18 @@
       "zh": "松开取消",
       "args": []
     },
+    "tabDrop.ghost.many": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{title} +{n}",
+      "args": ["title", "n"]
+    },
+    "tabDrop.ghost.group": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{name} · {n}",
+      "args": ["name", "n"]
+    },
     "tabStreamView.sentinel.moreCount": {
       "kind": "body",
       "role": "说明",
@@ -27412,10 +27424,28 @@
       "zh": "已移到「{name}」",
       "args": ["name"]
     },
+    "tabBar.group.joinedMany": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已移到「{name}」 ×{n}",
+      "args": ["name", "n"]
+    },
+    "tabBar.group.leftMany": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已移出分组 ×{n}",
+      "args": ["n"]
+    },
+    "tabBar.group.moved": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已移动分组「{name}」",
+      "args": ["name"]
+    },
     "tabBar.group.sumNeeds": {
       "kind": "body",
       "role": "说明",
-      "zh": "等你 {n}",
+      "zh": "需要你 {n}",
       "args": ["n"]
     },
     "tabBar.group.sumRunning": {

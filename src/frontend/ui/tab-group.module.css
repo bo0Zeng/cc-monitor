@@ -55,6 +55,14 @@
     border-color: var(--border-medium);
   }
 
+  /* 几个一起拖：影子叠一层。 */
+  .ghostStack {
+    box-shadow:
+      3px 3px 0 -1px var(--card),
+      3px 3px 0 0 var(--border-medium),
+      var(--shadow-float);
+  }
+
   /* 落下那几行：底色 18% accent，600ms 淡出（只过渡底色）。 */
   .landed {
     animation: landed 600ms ease-out;

@@ -490,6 +490,8 @@ const STATE_CLASS_UNRESOLVED: Readonly<Record<string, string>> = {
     "折叠号：svg 元素只能走 classList；`s.foldCaret` 是 CSS Modules 哈希名，开合靠所在元素的 `aria-expanded`，不是状态名",
   "src/frontend/ui/kit/icon.ts · classList.add(s.icon)":
     "图标件：svg 元素的 `className` 不是串、只能走 classList；`s.icon` 是 CSS Modules 哈希名，与 `data-*` 撞不了名",
+  "src/frontend/ui/tab-bar-drag.ts · classList.add(s.ghostStack)":
+    "CSS Modules（`tab-group.module.css`）：几个一起拖时影子叠一层；哈希过的类名，只活在一次拖拽的影子上，不是状态名",
   "src/frontend/ui/tab-bar-drag.ts · classList.add(s.hot)":
     "CSS Modules（`tab-group.module.css`）：拖放时点亮落点所在组的引导线；哈希过的类名，只活在一次拖拽里，不是状态名",
   "src/frontend/ui/tab-bar-drag.ts · classList.remove(s.hot)":

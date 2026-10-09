@@ -588,8 +588,9 @@
 
 /* === Tab 撕离拖拽（tear-off） === */
 
-/* 拖拽中的源行变暗到 35%。 */
-.tab.dragging {
+/* 拖拽中的源行（拖整组 ⇒ 整个组）变暗到 35%。 */
+.tab.dragging,
+.tab-group.dragging {
   opacity: 0.35;
 }
 

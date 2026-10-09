@@ -11,6 +11,9 @@ import {
   groupMoveForDrop,
   pickDropTarget,
   planDrop,
+  planGroupDrop,
+  pickGroupDropTarget,
+  autoScrollStep,
   sameDirName,
   DRAG_THRESHOLD_PX,
   DWELL_MS,
@@ -222,5 +225,65 @@ describe("收着的组", () => {
       { kind: "tab", sid: "a", gid: "g1", hidden: true },
       { kind: "tab", sid: "y", gid: null },
     ]);
+  });
+});
+
+describe("拖整个组：只认组外的落点，不合并、不嵌套", () => {
+  /** 栏：x · 组 g1（a b）· 6px 空 · 组 g2（c）· y。 */
+  const R: RowRect[] = [
+    { kind: "tab", id: "x", gid: null, top: 0, height: 30 },
+    { kind: "head", id: "g1", gid: "g1", top: 30, height: 26 },
+    { kind: "tab", id: "a", gid: "g1", top: 56, height: 30 },
+    { kind: "tab", id: "b", gid: "g1", top: 86, height: 30 },
+    { kind: "head", id: "g2", gid: "g2", top: 122, height: 26 },
+    { kind: "tab", id: "c", gid: "g2", top: 148, height: 30 },
+    { kind: "tab", id: "y", gid: null, top: 184, height: 30 },
+  ];
+  const at = (sid: string | null, side: "before" | "after" = "before") => (sid === null ? null : { sid, side });
+
+  it("压在散的上 ⇒ 上半插前、下半插后", () => {
+    expect(pickGroupDropTarget(R, 5, "g2")).toEqual(at("x"));
+    expect(pickGroupDropTarget(R, 25, "g2")).toEqual(at("x", "after"));
+  });
+
+  it("压在别的组里（组头或组员）⇒ 那个组的前面或后面（按离哪头近），不进组", () => {
+    expect(pickGroupDropTarget(R, 40, "g2"), "g1 上半").toEqual(at("a"));
+    expect(pickGroupDropTarget(R, 100, "g2"), "g1 下半").toEqual(at("b", "after"));
+  });
+
+  it("压在自己组上 ⇒ 原位（顺序不变）；栏底 ⇒ 末尾", () => {
+    expect(planGroupDrop(["x", "a", "b", "c", "y"], of({ a: "g1", b: "g1", c: "g2" }), new Set(["g1", "g2"]), "g2", pickGroupDropTarget(R, 160, "g2"))).toEqual(["x", "a", "b", "c", "y"]);
+    expect(pickGroupDropTarget(R, 500, "g2")).toBeNull();
+  });
+
+  it("挪过去组员次序不变、组还是那个组", () => {
+    const g = of({ a: "g1", b: "g1", c: "g2" });
+    expect(planGroupDrop(["x", "a", "b", "c", "y"], g, new Set(["g1", "g2"]), "g1", at("y", "after"))).toEqual(["x", "c", "y", "a", "b"]);
+    expect(planGroupDrop(["x", "a", "b", "c", "y"], g, new Set(["g1", "g2"]), "g1", at("x"))).toEqual(["a", "b", "x", "c", "y"]);
+  });
+});
+
+describe("多选一起拖", () => {
+  const known = new Set(["g1"]);
+  const g = of({ a: "g1", b: "g1" });
+
+  it("落下后按原先后挨在一起", () => {
+    expect(planDrop(["p", "q", "r", "s", "t"], of({}), new Set(), ["t", "q"], ins("p", "before", null)).order).toEqual(["q", "t", "p", "r", "s"]);
+  });
+
+  it("一起进组 / 一起建组", () => {
+    expect(planDrop(["x", "a", "b", "y", "z"], g, known, ["y", "z"], ins("b", "after", "g1"))).toEqual({ order: ["x", "a", "b", "y", "z"], move: { kind: "join", gid: "g1" } });
+    expect(planDrop(["x", "a", "b", "y", "z"], g, known, ["a", "z"], { kind: "onto", sid: "x" })).toEqual({ order: ["x", "a", "z", "b", "y"], move: { kind: "found", with: "x" } });
+  });
+});
+
+describe("拖的时候栏自己滚", () => {
+  it("进栏顶 / 栏底 24px 内开始滚，离边越近越快，贴边每帧 12px；中间不滚", () => {
+    expect(autoScrollStep(300, 100, 600)).toBe(0);
+    expect(autoScrollStep(124, 100, 600)).toBe(0);
+    expect(autoScrollStep(112, 100, 600)).toBe(-6);
+    expect(autoScrollStep(100, 100, 600)).toBe(-12);
+    expect(autoScrollStep(90, 100, 600), "越过上沿也按最快").toBe(-12);
+    expect(autoScrollStep(594, 100, 600)).toBe(9);
   });
 });

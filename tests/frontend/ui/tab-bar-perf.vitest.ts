@@ -100,6 +100,8 @@ function rig(n: number, grouped = 0): Rig {
     isSelected: vi.fn().mockReturnValue(false),
     beginDrag: vi.fn(),
     takeSuppressedClick: vi.fn().mockReturnValue(false),
+    beginGroupDrag: vi.fn(),
+    takeSuppressedHeadClick: vi.fn().mockReturnValue(false),
     openMenu: vi.fn(),
     openMenuAt: vi.fn(),
     rereadAll: vi.fn().mockResolvedValue(undefined),
@@ -296,7 +298,7 @@ describe("P3：拖拽时矩形只量一次、落点标记只动变了的那两�
       } as unknown as TabBarPrefs,
       r.bar,
       r.view,
-      { refreshTabBar: vi.fn(), openInNewWindow: vi.fn().mockResolvedValue(undefined), renameGroupNow: vi.fn() },
+      { refreshTabBar: vi.fn(), openInNewWindow: vi.fn().mockResolvedValue(undefined), renameGroupNow: vi.fn(), selectedFor: (sid: string) => [sid] },
     );
     return { r, drag, reads };
   };

@@ -5910,3 +5910,127 @@ describe("组头", () => {
     expect(head().querySelector(".tab-group-count")!.textContent).toBe("4");
   });
 });
+
+// ==========================================================================
+// 拖整个组 · 多选一起拖 · 拖的时候栏自己滚（假手势打真事件链）
+// ==========================================================================
+describe("拖整组 · 多选拖 · 自动滚", () => {
+  let tm: TabManager;
+  let bar: HTMLElement;
+  const flushBar = (): void => (tm as unknown as { refreshTabBar: () => void }).refreshTabBar();
+  const rootOf = (sid: string): HTMLElement => home(tm).bar.tabButtons.get(sid)!.root;
+  const headEl = (): HTMLElement => bar.querySelector<HTMLElement>(".tab-group-head")!;
+  const rect = (el: HTMLElement, top: number, height: number): void => {
+    el.getBoundingClientRect = (): DOMRect => ({ top, height, bottom: top + height, left: 0, right: 260, width: 260 }) as DOMRect;
+  };
+  const move = (y: number): void => {
+    document.dispatchEvent(new MouseEvent("mousemove", { buttons: 1, clientX: 10, clientY: y, bubbles: true }));
+  };
+  const up = (y: number): void => {
+    document.dispatchEvent(new MouseEvent("mouseup", { clientX: 10, clientY: y, bubbles: true }));
+  };
+  const down = (el: HTMLElement, y: number): void => {
+    el.dispatchEvent(new MouseEvent("mousedown", { button: 0, buttons: 1, clientX: 10, clientY: y, bubbles: true }));
+  };
+  beforeEach(() => {
+    vi.clearAllMocks();
+    tm = makeTM();
+    bar = document.body.firstElementChild as HTMLElement;
+    home(tm).prefs.collectionsLoaded = true;
+    for (const sid of ["x", "a", "b", "y", "z"]) tm.ensureTab(sid, `/w/${sid}`, "p", LOCAL_ORIGIN);
+    setGroups(tm, [{ id: "g", name: "订单", tabs: ["a", "b"] }]);
+    flushBar();
+    // 栏：x 0–30 · 组头 34–60 · a 60–90 · b 90–120 · y 126–156 · z 156–186
+    rect(rootOf("x"), 0, 30);
+    rect(headEl(), 34, 26);
+    rect(rootOf("a"), 60, 30);
+    rect(rootOf("b"), 90, 30);
+    rect(rootOf("y"), 126, 30);
+    rect(rootOf("z"), 156, 30);
+  });
+  afterEach(() => up(0));
+
+  it("按住组头拖到最后 ⇒ 整个组挪过去、组员次序不变、组还是那个组；给「已移动分组」可撤；松手那次 click 不收展", () => {
+    down(headEl(), 40);
+    move(50);
+    expect(document.body.querySelector(".tab-drag-ghost")!.textContent).toBe(copyText("tabDrop.ghost.group", { name: "订单", n: 2 }));
+    expect(bar.querySelector(".tab-group")!.classList.contains("dragging"), "整个组变暗").toBe(true);
+    move(180); // z 的下半 ⇒ z 后面
+    up(180);
+    expect(home(tm).store.orderedIds).toEqual(["x", "y", "z", "a", "b"]);
+    expect(membersOf(tm, "g")).toEqual(["a", "b"]);
+    expect(vi.mocked(undoToast).mock.calls.map((c) => c[0])).toEqual([copyText("tabBar.group.moved", { name: "订单" })]);
+    headEl().click();
+    expect(bar.querySelector(".tab-group")!.classList.contains("is-collapsed"), "拖完那次 click 被吞掉").toBe(false);
+  });
+
+  it("拖组压在别的标签页中间停多久都不合并（不攒停留）", () => {
+    vi.useFakeTimers();
+    try {
+      down(headEl(), 40);
+      move(50);
+      move(141); // y 的正中
+      expect(document.body.querySelector(".tab-drag-ghost"), "前置：真在拖整组").not.toBeNull();
+      vi.advanceTimersByTime(DWELL_MS * 3);
+      expect(rootOf("y").classList.contains("drop-onto")).toBe(false);
+      up(141);
+      expect(membersOf(tm, "g")).toEqual(["a", "b"]);
+      expect(home(tm).store.tabs.get("y")!.group).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("多选后拖其中一个 ⇒ 选中的一起走，按原先后挨在一起、仍选着；影子写「+N」", () => {
+    tm.switchTo("y");
+    home(tm).bar["host"].pick("z", "toggle"); // 第一次 Ctrl 点把当前那个（y）带上
+    down(rootOf("z"), 170);
+    move(160);
+    move(5); // x 的上 1/4 ⇒ x 前面
+    expect(document.body.querySelector(".tab-drag-ghost")!.textContent).toContain(copyText("tabDrop.ghost.many", { title: "z", n: 1 }).slice(-2));
+    up(5);
+    expect(home(tm).store.orderedIds).toEqual(["y", "z", "x", "a", "b"]);
+    expect([...bar.querySelectorAll(".tab.selected")].length, "仍选着").toBeGreaterThanOrEqual(2);
+  });
+
+  it("多选一起压在组员中间停住 ⇒ 一起进组，「已移到「订单」 ×2」", () => {
+    vi.useFakeTimers();
+    try {
+      tm.switchTo("y");
+      home(tm).bar["host"].pick("z", "toggle");
+      down(rootOf("y"), 140);
+      move(130);
+      move(75); // a 的正中
+      vi.advanceTimersByTime(DWELL_MS);
+      up(75);
+      expect(membersOf(tm, "g")).toEqual(["a", "y", "z", "b"]);
+      expect(vi.mocked(undoToast).mock.calls.map((c) => c[0])).toEqual([copyText("tabBar.group.joinedMany", { name: "订单", n: 2 })]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("拖到栏底边 24px 内 ⇒ 栏每帧往下滚（离边越近越快），离开那一段就停", () => {
+    const list = bar.querySelector<HTMLElement>(".tab-list")!;
+    rect(list, 0, 200);
+    let top = 0;
+    Object.defineProperty(list, "scrollTop", { configurable: true, get: () => top, set: (v: number) => (top = v) });
+    const frames: FrameRequestCallback[] = [];
+    const raf = vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation((cb) => (frames.push(cb), frames.length));
+    try {
+      down(rootOf("x"), 10);
+      move(100); // 中间：不滚
+      expect(frames.length, "中间那一段不排帧").toBe(0);
+      move(198); // 离栏底 2px
+      expect(frames.length, "排上了一帧").toBe(1);
+      frames.shift()!(0);
+      expect(top, "贴边那一段一帧滚 11px").toBe(11);
+      expect(frames.length, "还在那一段 ⇒ 接着排下一帧").toBe(1);
+      move(100); // 回到中间
+      frames.shift()!(0);
+      expect(top, "离开那一段 ⇒ 不再滚").toBe(11);
+    } finally {
+      raf.mockRestore();
+    }
+  });
+});

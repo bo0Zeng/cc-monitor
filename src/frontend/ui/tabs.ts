@@ -127,6 +127,8 @@ export class TabManager {
       isSelected: (sid) => this.selection.has(sid),
       beginDrag: (e, sid, root) => this.dragger.begin(e, sid, root),
       takeSuppressedClick: (sid) => this.dragger.takeSuppressedClick(sid),
+      beginGroupDrag: (e, gid, head) => this.dragger.beginGroup(e, gid, head),
+      takeSuppressedHeadClick: (gid) => this.dragger.takeSuppressedHeadClick(gid),
       openMenu: (e, sid) => this.openMenu(e, sid),
       openMenuAt: (el, sid) => this.openMenu(el, sid),
       rereadAll: () => this.rereadAll(),
@@ -149,6 +151,7 @@ export class TabManager {
       refreshTabBar: () => this.refreshTabBar(),
       openInNewWindow: (sid, screenX, screenY) => this.openInNewWindow(sid, screenX, screenY),
       renameGroupNow: (gid) => this.bar.renameGroupNow(gid),
+      selectedFor: (sid) => (this.selection.has(sid) && this.selection.inOrder(this.bar.visibleOrder()).length > 1 ? this.selection.inOrder(this.bar.visibleOrder()) : [sid]),
     });
     this.view = new TabStreamView(this.store, streamRootEl, {
       onLine: (payload) => this.onLine(payload),
