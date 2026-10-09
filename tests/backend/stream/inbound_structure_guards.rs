@@ -351,7 +351,6 @@ fn every_registered_command_declares_its_run_kind() {
                 | "accounts-remove"
                 | "accounts-set-default"
                 | "accounts-repair"
-                | "accounts-isolate"
                 | "accounts-rollback"
                 | "accounts-verify"
                 | "accounts-login-cmd"
@@ -609,7 +608,6 @@ fn every_registered_command_declares_its_run_kind() {
         "accounts-remove",
         "accounts-set-default",
         "accounts-repair",
-        "accounts-isolate",
         "accounts-rollback",
         "accounts-verify",
         "accounts-login-cmd",

@@ -522,54 +522,6 @@ pub(crate) fn plan_repair(s: &Snapshot) -> Result<Plan, Refusal> {
     Ok(plan)
 }
 
-/// **隔离**一项：共享库里的 `item` 复制成每个号自己的一份（号那一格是链接或不在的才动；共享库那份留着当模板）。
-pub(crate) fn plan_isolate(s: &Snapshot, item: &str) -> Result<Plan, Refusal> {
-    if item.is_empty() || item.contains('/') || item == "." || item == ".." {
-        return Err(refused(copy_text(
-            "beAcctPlan.isolate.badItem",
-            &[("item", item)],
-        )));
-    }
-    if face().is_some_and(|f| f.watched.contains(&item)) {
-        return Err(refused(copy_text(
-            "beAcctPlan.isolate.watched",
-            &[("item", item)],
-        )));
-    }
-    let m = need_manifest(s)?;
-    let r = s.roots();
-    if !s.shared.get(item).exists() {
-        return Err(refused(copy_text(
-            "beAcctPlan.isolate.notShared",
-            &[("item", item), ("shared", &r.shared)],
-        )));
-    }
-    let mut plan = Plan::default();
-    if !is_identity(item) {
-        plan.notes.push(copy_text(
-            "beAcctPlan.isolate.notDeclared",
-            &[("item", item)],
-        ));
-    }
-    for a in m.managed() {
-        let c = &a.config_dir;
-        if !r.controls(c) || *c == r.shared || !s.dir(c).is_dir() {
-            continue;
-        }
-        match s.dir(c).get(item) {
-            Item::Link { .. } | Item::Absent => plan.ops.push(Op::Isolate {
-                from: join(&r.shared, item),
-                at: join(c, item),
-            }),
-            _ => plan.notes.push(copy_text(
-                "beAcctPlan.isolate.already",
-                &[("name", &a.name), ("item", item)],
-            )),
-        }
-    }
-    Ok(plan)
-}
-
 /// 一步给人看的那一句。
 pub(crate) fn describe(op: &Op, manifest_path: &str) -> String {
     match op {

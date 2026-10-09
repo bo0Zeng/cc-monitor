@@ -316,24 +316,6 @@ pub(super) const SPECS: &[CommandSpec] = &[
         }),
     },
     CommandSpec {
-        name: "accounts-isolate",
-        summary: "把一个共享项变成每个号各一份",
-        codes: &[
-            "bad_args",
-            "io_failed",
-            "not_enabled",
-            "refused",
-            "unsupported",
-        ],
-        fields: &[out("aliases", "同 `accounts-init`（`aliases` 恒 `[]`：这一条不动账号表）；它不在身份表里 ⇒ `notes` 提示之后「核对」会报它不是共享链接"), out("applied", "同 `accounts-init`（`aliases` 恒 `[]`：这一条不动账号表）；它不在身份表里 ⇒ `notes` 提示之后「核对」会报它不是共享链接"), out("backup", "同 `accounts-init`（`aliases` 恒 `[]`：这一条不动账号表）；它不在身份表里 ⇒ `notes` 提示之后「核对」会报它不是共享链接"), arg("dryRun", "可缺席的布尔：真 ⇒ 只算不做，`steps` 是将要做的那几步"), arg("item", "共享库顶层的一个名字（含 `/` · `.` · `..` · 共享库里没有 · 是后端看会话用的那几项（常驻后端只看共享库那一份）⇒ `refused`）"), out("notes", "同 `accounts-init`（`aliases` 恒 `[]`：这一条不动账号表）；它不在身份表里 ⇒ `notes` 提示之后「核对」会报它不是共享链接"), out("steps", "同 `accounts-init`（`aliases` 恒 `[]`：这一条不动账号表）；它不在身份表里 ⇒ `notes` 提示之后「核对」会报它不是共享链接")],
-        takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::faces::accounts_face::answer(&LocalFiles, &r.cmd, &r.args, &ACCOUNT_KEYS)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
-    CommandSpec {
         name: "accounts-rollback",
         summary: "按一份备份还原",
         codes: &[

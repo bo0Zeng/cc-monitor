@@ -944,7 +944,6 @@ pub const SUBCOMMANDS: &[&str] = &[
     // `--accounts-add` 的入参（API 号的 key 在内）**从 stdin 读**，不收 argv。⚠ 加这几行会逼出一次 `BUILD_ID` bump。
     "--accounts-add",
     "--accounts-init",
-    "--accounts-isolate",
     "--accounts-login-cmd",
     // 各号共用的用户级 MCP 那四条（`accounts-mcp-*`）派生的 CLI 面；`remove` / `pick` / `sync` 的入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     "--accounts-mcp-pick",
