@@ -311,6 +311,8 @@ return true;
 def bench_keys(v, url, run, result):
     """按住「下一个 tab」（缺省键 `]`）连切：30 下、每 40 ms 一下（键盘自动重复的量级），3 串。"""
     boot(v, url, result)
+    if args.profile and args.profile_pass == "keys":
+        v.js("window.__prof && window.__prof.reset(); return 0")
     rows = []
     for burst in range(3):
         v.js("return await __perf.quiet(500, 8000)")
@@ -327,6 +329,9 @@ def bench_keys(v, url, run, result):
         over = [d for d in frames if d > 50]
         rows.append({"run": run, "burst": burst, "cpu": cpu, "jankN": len(over), "jankMs": sum(d - 16.7 for d in over), "frameMax": max(frames or [0]),
                      "nodesOff": sum(x["off"] for x in w["mut"]), "afterLast": settled})
+    if args.profile and args.profile_pass == "keys":
+        with open(os.path.join(args.out, "prof-keys.json"), "w") as f:
+            json.dump(v.js("return window.__prof ? { top: window.__prof.dump(), hidden: window.__prof.hidden() } : null"), f, indent=1, ensure_ascii=False)
     print(f"  WebKit 按住切 第 {run + 1} 趟：3 串", flush=True)
     return rows
 

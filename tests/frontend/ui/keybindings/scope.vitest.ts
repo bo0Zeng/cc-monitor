@@ -94,3 +94,26 @@ describe("快捷键 · 作用范围", () => {
     expect(fired).toEqual(["tab.context-menu", "tab.context-menu"]);
   });
 });
+
+// 按住「下一个 tab」这一类单键：每一下都要先判「焦点在不在输入框里」。那一判以前一上来就对焦点元素读 getClientRects ——
+// 读几何会逼浏览器当场把上一下切出来的那个 tab 整个排版（还没画就要排；按住切时每一下都排一遍，台架 WebKitGTK 读数里这一项最大）。
+// 焦点根本不是会打字的元素（没焦点 · 标签页栏 · 消息流 · 状态栏的按钮）⇒ 不读几何；只有会打字的那几种才看它有没有渲染盒。
+describe("快捷键 · 判输入焦点不读几何", () => {
+  it("焦点不在会打字的元素上（没焦点 / 标签页栏 / 消息流 / 状态栏）⇒ 一次 getClientRects 都不调", () => {
+    let reads = 0;
+    const orig = Element.prototype.getClientRects;
+    Element.prototype.getClientRects = function (this: Element) {
+      reads++;
+      return orig.call(this);
+    };
+    try {
+      for (const w of ["body", "tabs", "stream", "status"] as const) {
+        at(w);
+        press("KeyT");
+      }
+    } finally {
+      Element.prototype.getClientRects = orig;
+    }
+    expect(reads, "判一下焦点就逼一次排版 ⇒ 按住单键切 tab 时每一下都把上一个 tab 排一遍").toBe(0);
+  });
+});
