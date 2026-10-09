@@ -41,11 +41,12 @@ function rig(n: number, offset: number, filler = 3) {
   const scroller = document.createElement("div");
   scroller.getBoundingClientRect = () => box(0, 400);
   Object.defineProperty(scroller, "clientWidth", { value: 1200 });
-  const rail = new TurnRail(scroller, content, { turns: () => turns, waiting: () => false, jump: vi.fn() });
+  const front = { on: true };
+  const rail = new TurnRail(scroller, content, { turns: () => turns, waiting: () => false, jump: vi.fn(), inFront: () => front.on });
   document.body.replaceChildren(content, rail.el);
   rail.render();
   const viewportTick = () => [...rail.el.querySelectorAll<HTMLElement>(".turn-tick")].findIndex((t) => t.dataset.viewport === "true");
-  return { rail, pos, reads: () => reads, resetReads: () => (reads = 0), viewportTick };
+  return { rail, pos, front, reads: () => reads, resetReads: () => (reads = 0), viewportTick };
 }
 
 /** 照定义线性数一遍：开头上沿 ≤ 视口上沿 + 8 的最后一轮；一个都没有 ⇒ 第一轮。 */
@@ -81,5 +82,22 @@ describe("轮次刻度跟滚动：一帧量一次、二分", () => {
       expect(r.viewportTick(), `offset ${offset}`).toBe(Math.floor(expected(n, offset) / Math.ceil(n / 60)));
       expect(r.reads(), `offset ${offset}：贴底看长会话时逐个量要几百次`).toBeLessThanOrEqual(2 * Math.ceil(Math.log2(n)) + 4);
     }
+  });
+
+  it("不在眼前的刻度（tab 切走了）不量；翻出来的下一帧量一次", async () => {
+    const r = rig(50, 2000);
+    await frame();
+    r.front.on = false; // 这个 tab 切走了
+    r.resetReads();
+    r.pos.offset = 3000;
+    r.rail.onScroll(); // 收起那一下滚动位置变了来的 scroll
+    r.rail.render(); // 轮那一份在后台到了
+    await frame();
+    expect(r.reads(), "收起的 tab 量刻度 ⇒ 逼浏览器排它那棵被跳过的子树").toBe(0);
+    r.front.on = true;
+    r.rail.shown();
+    expect(r.reads(), "翻出那一下同步段不量").toBe(0);
+    await frame();
+    expect(r.viewportTick()).toBe(expected(50, 3000));
   });
 });

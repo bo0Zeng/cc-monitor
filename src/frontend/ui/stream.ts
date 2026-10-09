@@ -38,6 +38,8 @@ export class MessageStream {
   private snapSuspended = false;
   /** 停放：这条流所在的 tab 切走了（`content-visibility: hidden` 收起）—— 收起期间几何不作数（见 `park`）。 */
   private parked = false;
+  /** 停放期间容器尺寸变过（漏报给宿主的那一次）：翻出来的下一帧补报。 */
+  private missedResize = false;
   private resizeObserver: ResizeObserver;
   private scrollHandler: () => void;
   private disposed = false;
@@ -64,7 +66,10 @@ export class MessageStream {
       // 视口自己变大也要有人管：拉高窗口、收起侧栏时变的是 `scrollEl` 自己，内容没动，
       // 而 `fillAbove` 挂在 scroll 事件上（不可滚的元素不产生 scroll）⇒ 观察 `scrollEl`，宿主自己决定补不补。
       if (this.onViewportResize && entries.some((e) => e.target === this.scrollEl)) {
-        this.onViewportResize();
+        // 停放期间不报：收起 / 翻出时滚动条没了又有了，容器宽就变一下 —— 每切一下新旧两个 tab 各来一次，
+        // 宿主去重估列宽、重排刻度就是逼浏览器排那棵被跳过的子树。记一笔，翻出来的下一帧补报。
+        if (this.parked) this.missedResize = true;
+        else this.onViewportResize();
       }
     });
     this.resizeObserver.observe(this.contentEl);
@@ -132,7 +137,15 @@ export class MessageStream {
    * 翻出时这里不贴底 —— 宿主切进来的下一帧按 `stuckToBottom` 决定（`tabs.ts::switchTo`）。
    */
   park(on: boolean): void {
+    if (this.parked === on) return;
     this.parked = on;
+    if (!on && this.missedResize) {
+      this.missedResize = false;
+      // 调度：一次性 —— 翻出来的下一帧补报停放期间漏掉的那次尺寸变化（同步段不读几何）
+      requestAnimationFrame(() => {
+        if (!this.parked && !this.disposed) this.onViewportResize?.();
+      });
+    }
   }
 
   /** 此刻是不是贴着底（用户往上翻过 ⇒ `false`）。切回一个 tab 时据它决定要不要贴底。 */

@@ -107,6 +107,12 @@ export class TabStreamView {
   };
   private static readonly TOP_TRIGGER_PX = 800;
   /**
+   * 切进来之后在眼前停多久才算「停下来看」（ms）：到点才要骨架索引 / 接骨架 / 刷大纲。
+   * 150：比键盘自动重复（30–40 ms 一下）与连点（台架 200 ms 一下的那一串也会停够）长、比人能察觉的延迟短 ——
+   * 首屏是已建好的尾巴，索引只管往上翻的占位，晚 150 ms 到看不出来。
+   */
+  private static readonly STAY_MS = 150;
+  /**
    * 往上翻那一问的期限：60 秒 —— 与它上一个住址（monitor `frame_query::PAGE_BUDGET`，
    * 一次 `read_session_lines` 各拿一份）同值。一件一问。
    */
@@ -266,6 +272,7 @@ export class TabStreamView {
       waiting: () => this.store.tabs.get(sessionId)?.needs != null,
       speaker: () => speakerNameOf(this.store.tabs.get(sessionId)?.agent ?? null),
       jump: (uuid) => void this.jumpInTab(sessionId, streamEl, uuid),
+      inFront: () => this.store.activeId === sessionId,
     });
     turnFold.onTurns = () => turnRail.render();
     this.streamRootEl.appendChild(turnRail.el);
@@ -397,6 +404,7 @@ export class TabStreamView {
       if (sid !== sessionId) this.finds.get(sid)?.close();
       if (sid !== sessionId) t.turnFold.release(true); // 先没收的那一轮：切走了就收
       t.turnRail.el.classList.toggle("active", sid === sessionId);
+      if (sid === sessionId) t.turnRail.shown(); // 收起期间没量过 ⇒ 下一帧量一次
 
     }
   }
@@ -450,6 +458,11 @@ export class TabStreamView {
     return Promise.reject(new Error(copyText("tabStreamView.search.notReady")));
   }
 
+  /** 这个 tab 此刻还在眼前：是当前的、还是表里那一个（没被关掉 / 重来过）、它的流还挂在页上。排到后面的活到点先问这一句。 */
+  private inFront(tab: Tab): boolean {
+    return this.store.activeId === tab.sessionId && this.store.tabs.get(tab.sessionId) === tab && tab.streamEl.isConnected;
+  }
+
   /** 切进来的 tab：物化 / 哨兵 / 骨架索引 / 大纲 / 不可滚时踢一次补批（原是 `switchTo` 中段，逐字）。 */
   activate(next: Tab): void {
     // 上次按行号往下问失败了的，切进来时允许再问一次（失败不自动重问，见 `BelowState` 头注）。
@@ -460,20 +473,21 @@ export class TabStreamView {
     if (virginFill) this.materializeUntilFilled(next);
     // 切入即刷新哨兵（非 virgin 但账本非空的 tab 也要见到「还有 N 条」）
     if (next) this.updateSentinel(next);
-    // 〔骨架〕切进来的 tab 要索引（上面刚物化过尾段 ⇒ floor 已钉）；上次要回来时人已切走、停着的那一份 ⇒ 下一帧接上
-    // （接要量几何 —— 不放进同步段；期间又切走 ⇒ 接着停着）。
-    const parked = next ? this.parkedSkeletons.get(next) : undefined;
-    if (next && parked) {
-      this.parkedSkeletons.delete(next);
-      // 调度：一次性 —— 切进来的下一帧接上停着的骨架（期间又切走 ⇒ 放回去接着停）
-      requestAnimationFrame(() => {
-        if (this.store.tabs.get(next.sessionId) !== next) return;
-        if (this.store.activeId !== next.sessionId) this.parkedSkeletons.set(next, parked);
-        else this.attachSkeleton(next, parked);
-      });
+    // 〔骨架〕要索引 / 接上次停着的那一份 / 刷大纲：都是给「停下来看」的人准备的（索引那一问是后端整份读那个会话的记录文件，
+    // 接骨架要插占位、量几何）—— 在眼前停住了（`STAY_MS`）才做；按住「下一个 tab」路过的一概不发、不接。
+    if (next) {
+      // 调度：一次性 —— 停留判定：到点时还是它在眼前（没被下一下切走）才要索引 / 接骨架 / 刷大纲
+      setTimeout(() => {
+        if (!this.inFront(next)) return;
+        const parked = this.parkedSkeletons.get(next);
+        if (parked) {
+          this.parkedSkeletons.delete(next);
+          this.attachSkeleton(next, parked);
+        }
+        this.requestSkeleton(next); // 上面刚物化过尾段 ⇒ floor 已钉；要过的不重要
+        if (next.outline.needsFetch) this.refreshOutline(next); // 大纲：有新行才要
+      }, TabStreamView.STAY_MS);
     }
-    if (next) this.requestSkeleton(next);
-    if (next?.outline.needsFetch) this.refreshOutline(next); // 大纲：有新行才要
     // 账本有余却没满一屏的 tab 没有补批入口（不可滚的元素不产生 scroll 事件）⇒ 切入时踢一次，rAF 自链接管到满或账尽。
     // 账本空了但下面可能还有（`wantsBelow`）同样踢。「满没满」问真实布局（`contentReachesBottom`），不只看 `scrollHeight`（掺着估值）。
     // 刚为 virgin tab 跑过 `materializeUntilFilled`、账本还有余的不再踢：它补不满时自己排了下一帧的接续（一次同步调用要有界）。
@@ -483,7 +497,7 @@ export class TabStreamView {
     if (next && !continuing && (next.window.pendingCount > 0 || next.window.wantsBelow)) {
       // 调度：一次性 —— 切进来的下一帧问一次满没满，没满踢一脚补批（之后由补批自己的 rAF 自链接管）
       requestAnimationFrame(() => {
-        if (this.store.activeId !== next.sessionId || this.store.tabs.get(next.sessionId) !== next) return;
+        if (!this.inFront(next)) return;
         const el = next.streamEl;
         if (el.scrollHeight - el.clientHeight <= 1 || !this.contentReachesBottom(next)) this.fillAbove(next);
       });

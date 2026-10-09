@@ -25,6 +25,8 @@ export interface RailHost {
   jump(uuid: string): void;
   /** 说话那一方叫什么（那一家的短名）；还不知道是哪一家 ⇒ `null`。 */
   speaker?(): string | null;
+  /** 这条刻度此刻在不在眼前（它那个 tab 是不是当前的）；不给 ⇒ 一直在。不在眼前不量（量就是逼浏览器排那棵收起的子树），翻出来时宿主调 `shown`。 */
+  inFront?(): boolean;
 }
 
 /** 轮 ⇒ 格：每格 `[from, to]`（轮的下标，含两头）。不超过上限一轮一格。 */
@@ -92,6 +94,12 @@ export class TurnRail {
    * 还夹在增删卡之间 —— 每个都当场量，就是每一下逼浏览器当场排版。
    */
   readonly onScroll = (): void => {
+    if (this.host.inFront?.() === false) return;
+    this.schedule();
+  };
+
+  /** 排一帧量一次（这一帧已排过就不再排）；帧里再看在不在眼前。 */
+  private schedule(): void {
     if (this.el.hidden || this.scheduled) return;
     this.scheduled = true;
     // 调度：合批 —— 一帧里的几个 scroll 合成一次量
@@ -99,11 +107,17 @@ export class TurnRail {
       this.scheduled = false;
       if (this.el.isConnected) this.mark();
     });
-  };
+  }
 
-  /** 视口所在的那一轮：开头已在视口上沿之上（或就在视口里）的最后一轮 —— 标到它那一格上。 */
+  /** 这条刻度翻到眼前了（它那个 tab 切进来）：下一帧量一次（收起期间的 scroll / 轮的更新都没量）。 */
+  shown(): void {
+    this.current = -1;
+    this.schedule(); // 宿主可能还没把「当前是谁」改过来（`switchTo` 先翻出、后改 activeId）⇒ 帧里再判
+  }
+
+  /** 视口所在的那一轮：开头已在视口上沿之上（或就在视口里）的最后一轮 —— 标到它那一格上。不在眼前不量。 */
   private mark(): void {
-    if (this.el.hidden) return;
+    if (this.el.hidden || this.host.inFront?.() === false) return;
     const at = this.viewportTurn();
     if (at === this.current) return;
     this.current = at;

@@ -15,9 +15,17 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { MessageStream } from "../../../src/frontend/ui/stream";
 
 class NoopResizeObserver {
+  static live: NoopResizeObserver[] = [];
+  constructor(readonly cb: (entries: { target: Element }[]) => void) {
+    NoopResizeObserver.live.push(this);
+  }
   observe(): void {}
   unobserve(): void {}
   disconnect(): void {}
+  /** 手动喂一次（jsdom 无布局 ⇒ 真 RO 不会自己响）。 */
+  fire(...targets: Element[]): void {
+    this.cb(targets.map((target) => ({ target })));
+  }
 }
 
 /** 给滚动容器定几何（jsdom 恒 0）；`scrollTop` 可写、写过记下来。 */
@@ -39,6 +47,7 @@ function geometry(el: HTMLElement, g: { sh: number; ch: number; top: number }): 
 
 beforeEach(() => {
   document.body.replaceChildren();
+  NoopResizeObserver.live = [];
   vi.stubGlobal("ResizeObserver", NoopResizeObserver);
 });
 afterEach(() => vi.unstubAllGlobals());
@@ -85,5 +94,24 @@ describe("切走的 tab 那条流停放：收起期间的几何不作数", () =>
     s.park(false);
     s.insertNode(document.createElement("div"), null);
     expect(rec.writes.length, "翻出来之后照常贴底").toBe(1);
+  });
+
+  it("收起期间容器尺寸变了（收起 / 翻出时滚动条没了又有了、或窗口被拉过）：不报给宿主；翻出来的下一帧补报一次", async () => {
+    const { root, s } = streamOf();
+    const seen = vi.fn();
+    s.onViewportResize = seen;
+    const ro = NoopResizeObserver.live[0];
+    s.park(true);
+    ro.fire(root);
+    ro.fire(root);
+    expect(seen, "收起的 tab 去重估列宽 / 重排刻度 ⇒ 强制排它那棵被跳过的子树（每切一下新旧两个 tab 各来一次）").not.toHaveBeenCalled();
+    s.park(false);
+    expect(seen, "翻出那一下不当场报（同步段不读几何）").not.toHaveBeenCalled();
+    await new Promise((r) => requestAnimationFrame(() => r(null)));
+    expect(seen, "收起期间漏掉的那次尺寸变化，翻出来补报一次").toHaveBeenCalledTimes(1);
+    s.park(true);
+    s.park(false);
+    await new Promise((r) => requestAnimationFrame(() => r(null)));
+    expect(seen, "收起期间没变过就不补报").toHaveBeenCalledTimes(1);
   });
 });

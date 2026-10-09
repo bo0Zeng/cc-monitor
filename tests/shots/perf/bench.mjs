@@ -16,6 +16,7 @@
  *   · 每下的输入延迟（Event Timing 的 processingStart − startTime：前一下的活还没干完、这一下在排队）；
  *   · 串里 ＋ 之后 2 s 的长任务合计、最长一个；后台流（已经切走的）上还在新建的节点数；
  *   · 最后一下点完到安静；每串前后强制 GC 后的 JS 堆。
+ * - **按住切**（keys）：按住「下一个 tab」（缺省键 `]`）30 下、每 40 ms 一下，3 串：每下按下到画出 / 输入排队 · > 50 ms 的帧 · 长任务 · 后台流新建节点 · 末下到安静。
  * - **长会话**（long）：新开页、第一下就点最长那条（冷），量首屏同上；然后在流上滚轮往上 60 下（每下 600 px、间隔 50 ms），
  *   量帧间隔 p50 / p95 / 最长、> 50 ms 的帧数、长任务。
  * 每项跑 `--runs` 趟（缺省 3），表里给的是全部趟合在一起的分位数；机器负载（loadavg）开头结尾各记一次。
@@ -33,7 +34,7 @@ const args = parseArgs(process.argv.slice(2));
 const runs = Number(args.runs ?? 3);
 const out = path.resolve(args.out ?? path.join(repo, ".build/perf"));
 const sandbox = path.join(repo, ".build/perf-sandbox");
-const only = new Set(String(args.only ?? "switch,rapid,long").split(","));
+const only = new Set(String(args.only ?? "switch,rapid,keys,long").split(","));
 const probeSrc = readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "probe.js"), "utf8");
 // `--css <文件>`：开页时多插一段样式（试一刀之前先量它值不值）
 const extraCss = args.css ? readFileSync(path.resolve(args.css), "utf8") : "";
@@ -69,10 +70,10 @@ function isolatedEnv(extra = {}) {
 if (args.merge) {
   // 几次分开跑的读数合成一张（A/B 交替跑时用）：`--merge 目录1,目录2,… --out 目录`
   const parts = String(args.merge).split(",").map((d) => JSON.parse(readFileSync(path.join(path.resolve(d), "perf.json"), "utf8")));
-  const m = { ...parts[0], runs: 0, switch: [], rapid: [], long: [], boot: [], load: { start: parts[0].load.start, end: parts[parts.length - 1].load.end } };
+  const m = { ...parts[0], runs: 0, switch: [], rapid: [], keys: [], long: [], boot: [], load: { start: parts[0].load.start, end: parts[parts.length - 1].load.end } };
   parts.forEach((p, k) => {
     m.runs += p.runs;
-    for (const key of ["switch", "rapid", "long", "boot"]) m[key].push(...p[key].map((x) => ({ ...x, part: k })));
+    for (const key of ["switch", "rapid", "keys", "long", "boot"]) m[key].push(...(p[key] ?? []).map((x) => ({ ...x, part: k })));
   });
   writeFileSync(path.join(out, "perf.json"), JSON.stringify(m, null, 1));
   const t = summarize(m);
@@ -128,7 +129,7 @@ const browser = spawn(
 children.push(browser);
 const cdp = await Cdp.connect(await devtoolsUrl(profile));
 
-const result = { when: new Date().toISOString(), mode: args.dev ? "dev" : "build", runs, load: { start: load0 }, switch: [], rapid: [], long: [], boot: [] };
+const result = { when: new Date().toISOString(), mode: args.dev ? "dev" : "build", runs, load: { start: load0 }, switch: [], rapid: [], keys: [], long: [], boot: [] };
 
 if (args.shot) {
   // 看一眼世界长什么样：开页、点最长那条、截一张
@@ -141,6 +142,7 @@ if (args.shot) {
 for (let r = 0; r < runs; r++) {
   if (only.has("switch")) result.switch.push(...(await benchSwitch(r)));
   if (only.has("rapid")) result.rapid.push(...(await benchRapid(r)));
+  if (only.has("keys")) result.keys.push(...(await benchKeys(r)));
   if (only.has("long")) result.long.push(await benchLong(r));
 }
 result.load.end = os.loadavg();
@@ -164,9 +166,16 @@ async function openPage() {
   const st = await page.eval("window.__shots.state");
   if (st !== "done") throw new Error(`场景没起来：${await page.eval("window.__shots.error")}`);
   const quiet = await page.eval("__perf.quiet(1000, 60000)");
+  if (args.profile) {
+    // `--dev --profile tests/shots/perf/profile.js`：给切换路上的方法挂计时（开发服务器下模块按源码路径 import 到的就是界面那一份）
+    await page.eval(`(async () => { ${readFileSync(path.resolve(String(args.profile)), "utf8")} })()`);
+  }
   const c0 = cpuMs(browser.pid);
   await sleep(1500);
-  result.boot.push({ ms: Date.now() - b0, quietWait: quiet, idleCpu: cpuMs(browser.pid) - c0, ...(await metrics(page)) });
+  const idleCpu = cpuMs(browser.pid) - c0;
+  // 开页安静之后还一张卡都没建的 tab（后台空闲物化没轮到 / 没进队）
+  const virgin = await page.eval("[...document.querySelectorAll('#message-stream > .stream')].filter((s) => !s.querySelector('.card')).length");
+  result.boot.push({ ms: Date.now() - b0, quietWait: quiet, idleCpu, virgin, ...(await metrics(page)) });
   return page;
 }
 
@@ -257,7 +266,7 @@ async function benchSwitch(run) {
     const first = await tabAt(page, 0);
     if (first.active) rows.push({ run, pass: "warm", ...(await measuredClick(page, 1)) });
   }
-  if (args.trace && run === 0) await traceSome(page, n);
+  if (args.trace === true && run === 0) await traceSome(page, n);
   const heap = await heapAfterGc(page);
   rows.forEach((r) => (r.heapEnd = heap));
   await page.close();
@@ -266,6 +275,32 @@ async function benchSwitch(run) {
 }
 
 /** `--trace`：热切六下录一份性能轨迹（`trace-warm.json`，DevTools 性能面板能直接打开）。 */
+/** 录一段性能轨迹（`fn` 跑的那一段），存成 `name`（DevTools 性能面板能直接打开）。 */
+async function traced(page, name, fn) {
+  const events = [];
+  const off = cdp.on((msg) => {
+    if (msg.sessionId === page.sessionId && msg.method === "Tracing.dataCollected") events.push(...msg.params.value);
+  });
+  const done = new Promise((resolve) => {
+    const off2 = cdp.on((msg) => {
+      if (msg.sessionId === page.sessionId && msg.method === "Tracing.tracingComplete") {
+        off2();
+        resolve();
+      }
+    });
+  });
+  await page.send("Tracing.start", {
+    categories: "devtools.timeline,disabled-by-default-devtools.timeline,blink,v8.execute,disabled-by-default-devtools.timeline.frame,toplevel,disabled-by-default-v8.cpu_profiler",
+    transferMode: "ReportEvents",
+  });
+  const r = await fn();
+  await page.send("Tracing.end");
+  await done;
+  off();
+  writeFileSync(path.join(out, name), JSON.stringify({ traceEvents: events }));
+  return r;
+}
+
 async function traceSome(page, n) {
   const events = [];
   const off = cdp.on((msg) => {
@@ -352,6 +387,59 @@ async function benchRapid(run) {
   return rows;
 }
 
+/**
+ * 按住「下一个 tab」（缺省键 `]`）连切：30 下、每 40 ms 一下（键盘自动重复的量级）。
+ * 量：每下 keydown 的「按下到画出」与输入排队（Event Timing）· 长任务 · 帧间隔（> 50 ms 的帧）· 后台流上新建的节点 · 末下到安静。
+ */
+async function benchKeys(run) {
+  const page = await openPage();
+  const rows = [];
+  for (let burst = 0; burst < 3; burst++) {
+    await page.eval("__perf.quiet(500, 8000)");
+    const m0 = await metrics(page);
+    const since = await page.eval("performance.now()");
+    const c0 = cpuMs(browser.pid);
+    await page.eval("__perf.frameStart()");
+    const press = async () => {
+      for (let k = 0; k < 30; k++) {
+        const t = Date.now();
+        await page.send("Input.dispatchKeyEvent", { type: "keyDown", key: "]", code: "BracketRight", windowsVirtualKeyCode: 221, nativeVirtualKeyCode: 221 });
+        await page.send("Input.dispatchKeyEvent", { type: "keyUp", key: "]", code: "BracketRight", windowsVirtualKeyCode: 221, nativeVirtualKeyCode: 221 });
+        await sleep(Math.max(0, 40 - (Date.now() - t)));
+      }
+      return page.eval("__perf.quiet(300, 15000)");
+    };
+    const settled = args.trace === "keys" && burst === 1 ? await traced(page, "trace-keys.json", press) : await press();
+    const frames = await page.eval("__perf.frameStop()");
+    const cpu = cpuMs(browser.pid) - c0;
+    const m1 = await metrics(page);
+    const w = await page.eval(`__perf.since(${since})`);
+    const evs = w.ev.filter((e) => e.name === "keydown");
+    rows.push({
+      run,
+      burst,
+      cpu,
+      keys: evs.length,
+      inpP50: pct(evs.map((e) => e.d), 0.5, 16),
+      inpMax: Math.max(16, ...evs.map((e) => e.d)),
+      delayMax: Math.max(0, ...evs.map((e) => e.ps - e.s)),
+      framesOver50: frames.filter((d) => d > 50).length,
+      frameMax: Math.max(0, ...frames),
+      ltN: w.lt.length,
+      ltMs: w.lt.reduce((a, x) => a + x.d, 0),
+      nodesOff: w.mut.reduce((a, x) => a + x.off, 0),
+      afterLast: settled,
+      layoutMs: (m1.LayoutDuration - m0.LayoutDuration) * 1000,
+      styleMs: (m1.RecalcStyleDuration - m0.RecalcStyleDuration) * 1000,
+      scriptMs: (m1.ScriptDuration - m0.ScriptDuration) * 1000,
+    });
+  }
+  if (args.profile) writeFileSync(path.join(out, "prof-keys.json"), JSON.stringify(await page.eval("window.__prof ? window.__prof.dump() : null"), null, 1));
+  await page.close();
+  console.log(`  按住切 第 ${run + 1} 趟：3 串`);
+  return rows;
+}
+
 async function benchLong(run) {
   const page = await openPage();
   const n = await page.eval("document.querySelectorAll('#tab-bar .tab').length");
@@ -425,7 +513,7 @@ function summarize(r) {
   L.push("");
   if (r.boot.length) {
     L.push(`开页到安静：p50 ${f0(pct(r.boot.map((b) => b.ms), 0.5))} ms · 安静时 1.5 s 的 CPU p50 ${f0(pct(r.boot.map((b) => b.idleCpu ?? 0), 0.5))} ms`);
-    L.push(`DOM 节点 p50 ${f0(pct(r.boot.map((b) => b.Nodes), 0.5))} · JS 堆 p50 ${mb(pct(r.boot.map((b) => b.JSHeapUsedSize), 0.5))} MB`);
+    L.push(`开页安静后还没建卡的 tab p50 ${f0(pct(r.boot.map((b) => b.virgin ?? 0), 0.5))} 个 · DOM 节点 p50 ${f0(pct(r.boot.map((b) => b.Nodes), 0.5))} · JS 堆 p50 ${mb(pct(r.boot.map((b) => b.JSHeapUsedSize), 0.5))} MB`);
     L.push("");
   }
   const groups = [
@@ -456,6 +544,16 @@ function summarize(r) {
     L.push(`| ${xs.length} | ${pm("cpu")} | ${pm("inpP50")} | ${pm("inpMax")} | ${pm("delayMax")} | ${pm("ltN")} | ${pm("ltMs")} | ${pm("ltMax")} | ${pm("nodesOff")} | ${pm("afterLast")} | ${pm("layoutMs")} | ${pm("styleMs")} | ${pm("scriptMs")} |`);
     L.push("");
     L.push("JS 堆（强制 GC 后，MB）每趟三串：" + groupBy(xs, (x) => x.run).map((g) => g.map((x) => `${mb(x.heap0)}→${mb(x.heap1)}`).join(" · ")).join("；"));
+    L.push("");
+  }
+  if (r.keys?.length) {
+    L.push("## 按住「下一个 tab」（30 下 / 每 40 ms；各串 p50 / 最大）");
+    L.push("");
+    const xs = r.keys;
+    const pm = (k) => `${f0(pct(xs.map((x) => x[k]), 0.5))} / ${f0(Math.max(...xs.map((x) => x[k])))}`;
+    L.push("| 串数 | CPU | 按下到画出 p50 | 按下到画出 最大 | 输入排队 最大 | >50ms 帧 | 最长帧 | 长任务个 | 长任务合计 | 后台流新建节点 | 末下到安静 | 布局ms | 样式ms | 脚本ms |");
+    L.push("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|");
+    L.push(`| ${xs.length} | ${pm("cpu")} | ${pm("inpP50")} | ${pm("inpMax")} | ${pm("delayMax")} | ${pm("framesOver50")} | ${pm("frameMax")} | ${pm("ltN")} | ${pm("ltMs")} | ${pm("nodesOff")} | ${pm("afterLast")} | ${pm("layoutMs")} | ${pm("styleMs")} | ${pm("scriptMs")} |`);
     L.push("");
   }
   if (r.long.length) {
@@ -570,7 +668,8 @@ function parseArgs(argv) {
     const a = argv[i];
     if (!a.startsWith("--")) continue;
     const k = a.slice(2);
-    if (["runs", "out", "only", "css", "merge"].includes(k)) o[k] = argv[++i];
+    if (["runs", "out", "only", "css", "merge", "profile"].includes(k)) o[k] = argv[++i];
+    else if (k === "trace" && argv[i + 1] && !argv[i + 1].startsWith("--")) o[k] = argv[++i]; // `--trace`（热切那几下）/ `--trace keys`（按住切那一串）
     else o[k] = true;
   }
   return o;

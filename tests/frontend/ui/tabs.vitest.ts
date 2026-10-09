@@ -4084,7 +4084,7 @@ describe("骨架接入：索引 → 占位 → 门控 → 跳转", () => {
 
   // 切换可打断：索引是切进来那一下要的，回来时人已经切走了 ⇒ 不在后台接（接骨架要插占位、量几何、补可见区 ——
   // 收起的 tab 里做这些是白干还逼排版，快速连切时一串旧切换的活全堆在后面）。停着，切回来的下一帧再接。
-  it("★ 索引回来时 tab 已经切走 ⇒ 不在后台接；切回来的下一帧接上，不重问", async () => {
+  it("★ 索引回来时 tab 已经切走 ⇒ 不在后台接；切回来停住了再接，不重问", async () => {
     vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads((cmd: string) =>
       Promise.resolve(cmd === "read_session_index" ? idx(300) : undefined),
     ) as never));
@@ -4095,10 +4095,29 @@ describe("骨架接入：索引 → 占位 → 门控 → 跳转", () => {
     expect(t.skeleton, "切走了还在后台接骨架 ⇒ 旧切换的活还在干").toBeNull();
     tm.switchTo("pk");
     expect(t.skeleton, "同步段里不接（接要量几何）").toBeNull();
-    await new Promise((r) => requestAnimationFrame(() => r(null)));
-    expect(t.skeleton, "切回来那一帧该接上").not.toBeNull();
+    await new Promise((r) => setTimeout(r, 250));
+    expect(t.skeleton, "切回来停住了该接上").not.toBeNull();
     expect(t.skeleton!.pendingRows).toBe(200);
     expect(indexCalls().filter(([, a]) => (a as { jsonlPath: string }).jsonlPath === "/p/pk.jsonl").length, "停着的那一份直接用，不重问").toBe(1);
+  });
+
+  // 按住「下一个 tab」连切：每个 tab 只在眼前几十毫秒。要骨架索引（后端整份读那个会话的记录文件）、接骨架、刷大纲
+  // 都是给「停下来看」的人准备的 —— 路过的 tab 一概不发、不接；在眼前停住了才做。
+  it("★ 路过的 tab（切进来又马上切走）不要骨架索引；停住了才要", async () => {
+    vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads((cmd: string) =>
+      Promise.resolve(cmd === "read_session_index" ? idx(300) : undefined),
+    ) as never));
+    tm.onLine(mk("dwA", 1, "dwa1")); // 首个 tab ⇒ 当前
+    tm.onLine(mk("dwB", 200, "u200")); // 后台 tab：直渲、钉 floor，还没要过索引
+    const ofB = () => indexCalls().filter(([, a]) => (a as { jsonlPath: string }).jsonlPath === "/p/dwB.jsonl").length;
+    tm.switchTo("dwB");
+    tm.switchTo("dwA"); // 路过
+    await new Promise((r) => setTimeout(r, 250));
+    expect(ofB(), "路过的 tab 也去要索引 ⇒ 按住切一圈就是一圈整份读").toBe(0);
+    tm.switchTo("dwB");
+    expect(ofB(), "同步段里不要").toBe(0);
+    await new Promise((r) => setTimeout(r, 250));
+    expect(ofB(), "停住了该要").toBe(1);
   });
 
   // 「列宽变了」的入口：消息流尺寸变了 ⇒ 现量 `.stream-content` 宽交骨架重估；量不到宽不动。

@@ -32,7 +32,8 @@ ap.add_argument("--runs", type=int, default=3)
 ap.add_argument("--out", default=os.path.join(REPO, ".build/perf-webkit"))
 ap.add_argument("--css", default=None)
 ap.add_argument("--port", type=int, default=None)
-ap.add_argument("--only", default="switch,rapid,long")
+ap.add_argument("--only", default="switch,rapid,keys,long")
+ap.add_argument("--shot", action="store_true", help="只截几张图看样子（开页 · 切到最长那条 · 往上滚一段 · 切到一条短的）")
 ap.add_argument("--merge", default=None, help="几次分开跑的读数合成一张：目录1,目录2,…")
 ap.add_argument("--dev", action="store_true", help="开发服务器（模块按源码路径可 import ⇒ 能给方法挂计时）")
 ap.add_argument("--profile-pass", default="warm", help="计时记哪一遍：cold（第一次进每个 tab）/ warm")
@@ -141,6 +142,32 @@ def cpu_ms(root=None):
     return sum(_seen.values()) / 1e6
 
 
+def rss_mb(root=None):
+    """这一棵进程树此刻的常驻内存合计（MB，各进程 VmRSS 相加；共享页会重复算，只拿来比前后）。"""
+    root = root or os.getpid()
+    kids = {}
+    for d in os.listdir("/proc"):
+        if not d.isdigit():
+            continue
+        try:
+            st = open(f"/proc/{d}/stat").read()
+            kids.setdefault(int(st[st.rindex(")") + 2:].split()[1]), []).append(int(d))
+        except OSError:
+            pass
+    kb = 0
+    stack = [root]
+    while stack:
+        pid = stack.pop()
+        stack.extend(kids.get(pid, []))
+        try:
+            for line in open(f"/proc/{pid}/status"):
+                if line.startswith("VmRSS:"):
+                    kb += int(line.split()[1])
+        except OSError:
+            pass
+    return kb / 1024
+
+
 def pct(xs, q, floor=0):
     if not xs:
         return floor
@@ -182,7 +209,7 @@ def boot(v, url, result):
     idle = cpu_ms() - c0
     if args.profile:
         v.js(open(args.profile, encoding="utf8").read())
-    result["boot"].append({"ms": (time.monotonic() - b0) * 1000, "idleCpu": idle, "nodes": v.js("return document.getElementsByTagName('*').length")})
+    result["boot"].append({"ms": (time.monotonic() - b0) * 1000, "idleCpu": idle, "rss": rss_mb(), "nodes": v.js("return document.getElementsByTagName('*').length")})
 
 
 def measured_click(v, i, watch_ms=1500):
@@ -271,6 +298,38 @@ def bench_rapid(v, url, run, result):
     return rows
 
 
+KEY = """
+const init = { key: ']', code: 'BracketRight', bubbles: true, cancelable: true };
+const t = document.activeElement || document.body;
+t.dispatchEvent(new KeyboardEvent('keydown', init));
+t.dispatchEvent(new KeyboardEvent('keyup', init));
+return true;
+"""
+
+
+def bench_keys(v, url, run, result):
+    """按住「下一个 tab」（缺省键 `]`）连切：30 下、每 40 ms 一下（键盘自动重复的量级），3 串。"""
+    boot(v, url, result)
+    rows = []
+    for burst in range(3):
+        v.js("return await __perf.quiet(500, 8000)")
+        since = v.js("__perf.frameStart(); return performance.now()")
+        c0 = cpu_ms()
+        for _ in range(30):
+            t0 = time.monotonic()
+            v.js(KEY)
+            pump(max(0, 40 - (time.monotonic() - t0) * 1000))
+        settled = v.js("return await __perf.quiet(300, 15000)")
+        cpu = cpu_ms() - c0
+        frames = v.js("return __perf.frameStop()")
+        w = v.js("return __perf.since(%f)" % since)
+        over = [d for d in frames if d > 50]
+        rows.append({"run": run, "burst": burst, "cpu": cpu, "jankN": len(over), "jankMs": sum(d - 16.7 for d in over), "frameMax": max(frames or [0]),
+                     "nodesOff": sum(x["off"] for x in w["mut"]), "afterLast": settled})
+    print(f"  WebKit 按住切 第 {run + 1} 趟：3 串", flush=True)
+    return rows
+
+
 def bench_long(v, url, run, result):
     boot(v, url, result)
     n = v.js("return document.querySelectorAll('#tab-bar .tab').length")
@@ -292,10 +351,44 @@ def bench_long(v, url, run, result):
             "jankN": len(over), "jankMs": sum(d - 16.7 for d in over), "scrollTop": v.js("return document.querySelector('.stream.active').scrollTop")}
 
 
+def snapshot(v, path):
+    """整窗截一张（从这扇 GTK 窗口取像素；这台机器的 gi 没有 cairo 那一格转换，WebKit 自己的截图接口用不了）。"""
+    from gi.repository import Gdk  # noqa: PLC0415
+
+    pump(300)
+    win = v.win.get_window()
+    pb = Gdk.pixbuf_get_from_window(win, 0, 0, win.get_width(), win.get_height())
+    pb.savev(path, "png", [], [])
+
+
+def shots(v, url, result):
+    boot(v, url, result)
+    snapshot(v, os.path.join(args.out, "wk-boot.png"))
+    n = v.js("return document.querySelectorAll('#tab-bar .tab').length")
+    turns = [v.js(TAB_AT % i)["turns"] or 0 for i in range(n)]
+    longest = turns.index(max(turns))
+    v.js(CLICK % longest)
+    v.js("return await __perf.quiet(500, 10000)")
+    snapshot(v, os.path.join(args.out, "wk-long.png"))
+    for _ in range(8):
+        v.js("document.querySelector('.stream.active').scrollBy(0, -700); return 0")
+        pump(120)
+    v.js("return await __perf.quiet(500, 10000)")
+    snapshot(v, os.path.join(args.out, "wk-long-up.png"))
+    short = turns.index(min(turns))
+    v.js(CLICK % short)
+    v.js("return await __perf.quiet(500, 10000)")
+    snapshot(v, os.path.join(args.out, "wk-short.png"))
+    v.js(CLICK % longest)
+    v.js("return await __perf.quiet(500, 10000)")
+    snapshot(v, os.path.join(args.out, "wk-long-back.png"))
+    print("截图：", args.out, flush=True)
+
+
 def summarize(r):
     L = [f"# WebKitGTK 读数（{r['when']} · WebKitGTK {r['webkit']} · {r['runs']} 趟 · loadavg 开头 {'/'.join('%.1f' % x for x in r['load']['start'])} 结尾 {'/'.join('%.1f' % x for x in r['load']['end'])}）", ""]
     if r["boot"]:
-        L.append(f"开页到安静：p50 {pct([b['ms'] for b in r['boot']], 0.5):.0f} ms · 安静时 1.5 s 的 CPU p50 {pct([b.get('idleCpu', 0) for b in r['boot']], 0.5):.0f} ms · DOM 节点 p50 {pct([b['nodes'] for b in r['boot']], 0.5)}")
+        L.append(f"开页到安静：p50 {pct([b['ms'] for b in r['boot']], 0.5):.0f} ms · 安静时 1.5 s 的 CPU p50 {pct([b.get('idleCpu', 0) for b in r['boot']], 0.5):.0f} ms · DOM 节点 p50 {pct([b['nodes'] for b in r['boot']], 0.5)} · 常驻内存 p50 {pct([b.get('rss', 0) for b in r['boot']], 0.5):.0f} MB")
         L.append("")
     if r["switch"]:
         L.append("## 切一下（p50 / p95，ms）")
@@ -330,6 +423,19 @@ def summarize(r):
             return f"{pct(vals, 0.5):.0f} / {max(vals):.0f}"
 
         L.append(f"| {len(xs)} | {pm('cpu')} | {pm('syncP50')} | {pm('syncMax')} | {pm('frame2P50')} | {pm('frame2Max')} | {pm('jankN')} | {pm('jankMs')} | {pm('frameMax')} | {pm('nodesOff')} | {pm('afterLast')} |")
+        L.append("")
+    if r.get("keys"):
+        xs = r["keys"]
+        L.append("## 按住「下一个 tab」（30 下 / 每 40 ms；各串 p50 / 最大）")
+        L.append("")
+        L.append("| 串数 | CPU | 卡帧个 | 卡帧超出合计 | 最长帧 | 后台流新建节点 | 末下到安静 |")
+        L.append("|---|---|---|---|---|---|---|")
+
+        def pk(k):
+            vals = [x[k] for x in xs]
+            return f"{pct(vals, 0.5):.0f} / {max(vals):.0f}"
+
+        L.append(f"| {len(xs)} | {pk('cpu')} | {pk('jankN')} | {pk('jankMs')} | {pk('frameMax')} | {pk('nodesOff')} | {pk('afterLast')} |")
         L.append("")
     if r["long"]:
         L.append("## 长会话（最长那条，冷切进去 ＋ 往上滚 60 下）")
@@ -367,9 +473,15 @@ def main():
                     break
         url = f"http://127.0.0.1:{port}/index.html?scene=perf-tabs"
         load0 = os.getloadavg()
-        result = {"when": time.strftime("%Y-%m-%dT%H:%M:%S"), "webkit": f"{WebKit2.get_major_version()}.{WebKit2.get_minor_version()}.{WebKit2.get_micro_version()}", "runs": args.runs, "load": {"start": load0}, "boot": [], "switch": [], "rapid": [], "long": []}
+        result = {"when": time.strftime("%Y-%m-%dT%H:%M:%S"), "webkit": f"{WebKit2.get_major_version()}.{WebKit2.get_minor_version()}.{WebKit2.get_micro_version()}", "runs": args.runs, "load": {"start": load0}, "boot": [], "switch": [], "rapid": [], "keys": [], "long": []}
+        if args.shot:
+            v = View()
+            try:
+                shots(v, url, result)
+            finally:
+                v.close()
         for run in range(args.runs):
-            for name, fn in (("switch", bench_switch), ("rapid", bench_rapid), ("long", bench_long)):
+            for name, fn in (("switch", bench_switch), ("rapid", bench_rapid), ("keys", bench_keys), ("long", bench_long)):
                 if name not in only:
                     continue
                 v = View()
@@ -396,8 +508,8 @@ def main():
 def merge():
     parts = [json.load(open(os.path.join(d, "perf-webkit.json"))) for d in args.merge.split(",")]
     m = {**parts[0], "runs": sum(p["runs"] for p in parts), "load": {"start": parts[0]["load"]["start"], "end": parts[-1]["load"]["end"]}}
-    for key in ("boot", "switch", "rapid", "long"):
-        m[key] = [{**x, "part": k} for k, p in enumerate(parts) for x in p[key]]
+    for key in ("boot", "switch", "rapid", "keys", "long"):
+        m[key] = [{**x, "part": k} for k, p in enumerate(parts) for x in p.get(key, [])]
     with open(os.path.join(args.out, "perf-webkit.json"), "w") as f:
         json.dump(m, f, indent=1)
     t = summarize(m)
