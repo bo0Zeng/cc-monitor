@@ -485,6 +485,12 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
             }
             Ok(v)
         }
+        // 主线外清单（回退掉的那几条）：冷读一次（实时那一路是帧 `session_branch`）。
+        "history-branch" => {
+            let path = str_arg(args, "path")?;
+            let map = history_query::cold_scan(home, path).map_err(|e| ("failed", e))?;
+            capped(json!({ "off": map.off, "end": map.end }))
+        }
         "history-tail" => {
             let path = str_arg(args, "path")?;
             let n = u64_arg(args, "n")?.ok_or((

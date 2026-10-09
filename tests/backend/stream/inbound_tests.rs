@@ -542,6 +542,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "backend-log",   //
         "history-turns", //
         "history-facts", //
+        "history-branch",
         "history-read",
         "history-lines",  //
         "history-record", //
@@ -744,6 +745,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "backend-log",   //
         "history-turns", //
         "history-facts", //
+        "history-branch",
         "history-read",
         "history-lines",  //
         "history-record", //

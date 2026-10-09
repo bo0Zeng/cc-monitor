@@ -265,6 +265,7 @@ fn every_registered_command_declares_its_run_kind() {
                 | "history-find"
                 | "backend-log" // 读一份诊断文件的尾部（同步文件 I/O），同档
                 | "history-turns" // 一轮的摘要：扫一段会话，同档
+                | "history-branch" // 主线外清单：扫一份会话（共用扫描图），同档
                 | "history-facts" // 会话事实：扫一份会话（首次整份，续传只读新写的一截），同档
                 | "history-read"
                 | "history-lines" // 按行号取回：从文件头数，同档
@@ -523,6 +524,7 @@ fn every_registered_command_declares_its_run_kind() {
         "backend-log",   //
         "history-turns", //
         "history-facts", //
+        "history-branch",
         "history-read",
         "history-lines",  //
         "history-record", //

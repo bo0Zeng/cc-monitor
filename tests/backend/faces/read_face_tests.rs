@@ -25,6 +25,8 @@ const FAMILY: &[&str] = &[
     "history-find",
     // 会话事实出成品（异源是手抄的要求「三样由后端出成品」，不是 `stream/inbound/`）。
     "history-facts",
+    // 主线外清单的冷读（共用扫描图）。
+    "history-branch",
     "history-turns",
     "history-read",
     // 记录还在不在（resume 一跳先问；异源是手抄的要求，不是 `stream/inbound/`）。
@@ -350,10 +352,10 @@ fn the_frame_products_carry_exactly_the_rows_the_cli_arm_prints() {
     // 结构占位：两条用户输入（带同一个查找词）、一条助手行、一个空行、一条 meta —— 不采任何真会话正文。
     let body = [
         r#"{"type":"user","uuid":"u-1","timestamp":"t1","message":{"content":"zqx one"}}"#,
-        r#"{"type":"assistant","uuid":"a-1","message":{"content":[{"type":"text","text":"zqx two"}]}}"#,
+        r#"{"type":"assistant","uuid":"a-1","timestamp":"t1a","parentUuid":"u-1","message":{"content":[{"type":"text","text":"zqx two"}]}}"#,
         "",
-        r#"{"type":"user","uuid":"m-1","isMeta":true,"message":{"content":"meta"}}"#,
-        r#"{"type":"user","uuid":"u-2","timestamp":"t2","message":{"content":"three zqx"}}"#,
+        r#"{"type":"user","uuid":"m-1","timestamp":"t1aa","parentUuid":"a-1","isMeta":true,"message":{"content":"meta"}}"#,
+        r#"{"type":"user","uuid":"u-2","parentUuid":"m-1","timestamp":"t2","message":{"content":"three zqx"}}"#,
     ]
     .iter()
     .map(|r| format!("{r}\n"))
@@ -475,10 +477,10 @@ fn golden_session(home: &Path) -> String {
     let p = dir.join("g.jsonl");
     let body = [
         r#"{"type":"user","uuid":"in-1","timestamp":"t1","message":{"content":"alpha zqx beta"}}"#,
-        r#"{"type":"assistant","uuid":"out-1","message":{"content":[{"type":"text","text":"gamma zqx"},{"type":"tool_use","name":"x","input":{}}]}}"#,
+        r#"{"type":"assistant","uuid":"out-1","timestamp":"t1a","parentUuid":"in-1","message":{"content":[{"type":"text","text":"gamma zqx"},{"type":"tool_use","name":"x","input":{}}]}}"#,
         "",
-        r#"{"type":"user","uuid":"meta-1","isMeta":true,"message":{"content":"meta"}}"#,
-        r#"{"type":"user","uuid":"in-2","timestamp":"t2","message":{"content":"delta"}}"#,
+        r#"{"type":"user","uuid":"meta-1","timestamp":"t1aa","parentUuid":"out-1","isMeta":true,"message":{"content":"meta"}}"#,
+        r#"{"type":"user","uuid":"in-2","parentUuid":"meta-1","timestamp":"t2","message":{"content":"delta"}}"#,
     ]
     .iter()
     .map(|r| format!("{r}\n"))
@@ -494,14 +496,14 @@ fn golden_facts_session(home: &Path) -> String {
     std::fs::create_dir_all(&dir).unwrap();
     let p = dir.join("f.jsonl");
     let body = [
-        r#"{"type":"user","uuid":"f-1","cwd":"/g/proj","forkedFrom":{"sessionId":"src-0","messageUuid":"m-0"},"message":{"content":"q"}}"#,
-        r#"{"type":"user","uuid":"f-1b","isMeta":true,"origin":{"kind":"peer","from":"ag-7","handback":true,"body":"report"},"message":{"content":"<agent-message from=\"ag-7\">report</agent-message>"}}"#,
-        r#"{"type":"system","subtype":"api_error","uuid":"rt-1","retryAttempt":1,"maxRetries":10}"#,
-        r#"{"type":"assistant","uuid":"f-2","timestamp":"t3","message":{"model":"m-g","usage":{"input_tokens":1,"cache_creation_input_tokens":2,"cache_read_input_tokens":3},"content":[{"type":"tool_use","id":"tu-1","name":"Edit","input":{"file_path":"/w/a.ts"}},{"type":"tool_use","id":"tu-2","name":"Task","input":{"description":"scan","subagent_type":"Explore"}}]}}"#,
-        r#"{"type":"user","uuid":"f-3","cwd":"/g/proj/sub","message":{"content":[{"type":"tool_result","tool_use_id":"tu-2","content":"ok"}]}}"#,
-        r#"{"type":"assistant","uuid":"f-4","timestamp":"t4","message":{"content":[{"type":"tool_use","id":"tu-3","name":"Agent","input":{"prompt":"p1\np2"}}]}}"#,
-        r#"{"type":"assistant","uuid":"f-5","timestamp":"t5","message":{"content":[{"type":"text","text":"done\nmore"}]}}"#,
-        r#"{"type":"system","subtype":"api_error","uuid":"rt-2","retryAttempt":1,"maxRetries":10}"#,
+        r#"{"type":"user","uuid":"f-1","timestamp":"t0a","cwd":"/g/proj","forkedFrom":{"sessionId":"src-0","messageUuid":"m-0"},"message":{"content":"q"}}"#,
+        r#"{"type":"user","uuid":"f-1b","timestamp":"t0aa","parentUuid":"f-1","isMeta":true,"origin":{"kind":"peer","from":"ag-7","handback":true,"body":"report"},"message":{"content":"<agent-message from=\"ag-7\">report</agent-message>"}}"#,
+        r#"{"type":"system","subtype":"api_error","uuid":"rt-1","timestamp":"t0aaa","parentUuid":"f-1b","retryAttempt":1,"maxRetries":10}"#,
+        r#"{"type":"assistant","uuid":"f-2","parentUuid":"rt-1","timestamp":"t3","message":{"model":"m-g","usage":{"input_tokens":1,"cache_creation_input_tokens":2,"cache_read_input_tokens":3},"content":[{"type":"tool_use","id":"tu-1","name":"Edit","input":{"file_path":"/w/a.ts"}},{"type":"tool_use","id":"tu-2","name":"Task","input":{"description":"scan","subagent_type":"Explore"}}]}}"#,
+        r#"{"type":"user","uuid":"f-3","timestamp":"t3a","parentUuid":"f-2","cwd":"/g/proj/sub","message":{"content":[{"type":"tool_result","tool_use_id":"tu-2","content":"ok"}]}}"#,
+        r#"{"type":"assistant","uuid":"f-4","parentUuid":"f-3","timestamp":"t4","message":{"content":[{"type":"tool_use","id":"tu-3","name":"Agent","input":{"prompt":"p1\np2"}}]}}"#,
+        r#"{"type":"assistant","uuid":"f-5","parentUuid":"f-4","timestamp":"t5","message":{"content":[{"type":"text","text":"done\nmore"}]}}"#,
+        r#"{"type":"system","subtype":"api_error","uuid":"rt-2","timestamp":"t5a","parentUuid":"f-5","retryAttempt":1,"maxRetries":10}"#,
     ]
     .iter()
     .map(|r| format!("{r}\n"))
@@ -518,15 +520,15 @@ fn golden_turns_session(home: &Path) -> String {
     let p = dir.join("t.jsonl");
     let body = [
         r#"{"type":"user","uuid":"t-1","timestamp":"t1","message":{"content":"first line\nsecond"}}"#,
-        r#"{"type":"assistant","uuid":"t-2","timestamp":"t2","message":{"content":[{"type":"thinking","thinking":"h"}]}}"#,
-        r#"{"type":"assistant","uuid":"t-3","timestamp":"t3","message":{"content":[{"type":"text","text":"between"}]}}"#,
-        r#"{"type":"assistant","uuid":"t-4","timestamp":"t4","message":{"content":[{"type":"tool_use","id":"u-1","name":"Bash","input":{"command":"c"}}]}}"#,
-        r#"{"type":"user","uuid":"t-5","timestamp":"t5","message":{"content":[{"type":"tool_result","tool_use_id":"u-1","content":"Exit code 1","is_error":true}]}}"#,
-        r#"{"type":"assistant","uuid":"t-6","timestamp":"t6","message":{"content":[{"type":"tool_use","id":"u-2","name":"Edit","input":{"file_path":"/w/a"}}]}}"#,
-        r#"{"type":"user","uuid":"t-7","timestamp":"t7","message":{"content":[{"type":"tool_result","tool_use_id":"u-2","content":"The user doesn't want to proceed with this tool use.","is_error":true}]}}"#,
-        r#"{"type":"assistant","uuid":"t-8","timestamp":"t8","message":{"stop_reason":"end_turn","content":[{"type":"text","text":"r1\n\nr2\nr3\nr4"}]}}"#,
-        r#"{"type":"user","uuid":"t-9","timestamp":"t9","message":{"content":"next"}}"#,
-        r#"{"type":"assistant","uuid":"t-10","timestamp":"t10","message":{"content":[{"type":"tool_use","id":"u-3","name":"Read","input":{"file_path":"/w/b"}}]}}"#,
+        r#"{"type":"assistant","uuid":"t-2","parentUuid":"t-1","timestamp":"t2","message":{"content":[{"type":"thinking","thinking":"h"}]}}"#,
+        r#"{"type":"assistant","uuid":"t-3","parentUuid":"t-2","timestamp":"t3","message":{"content":[{"type":"text","text":"between"}]}}"#,
+        r#"{"type":"assistant","uuid":"t-4","parentUuid":"t-3","timestamp":"t4","message":{"content":[{"type":"tool_use","id":"u-1","name":"Bash","input":{"command":"c"}}]}}"#,
+        r#"{"type":"user","uuid":"t-5","parentUuid":"t-4","timestamp":"t5","message":{"content":[{"type":"tool_result","tool_use_id":"u-1","content":"Exit code 1","is_error":true}]}}"#,
+        r#"{"type":"assistant","uuid":"t-6","parentUuid":"t-5","timestamp":"t6","message":{"content":[{"type":"tool_use","id":"u-2","name":"Edit","input":{"file_path":"/w/a"}}]}}"#,
+        r#"{"type":"user","uuid":"t-7","parentUuid":"t-6","timestamp":"t7","message":{"content":[{"type":"tool_result","tool_use_id":"u-2","content":"The user doesn't want to proceed with this tool use.","is_error":true}]}}"#,
+        r#"{"type":"assistant","uuid":"t-8","parentUuid":"t-7","timestamp":"t8","message":{"stop_reason":"end_turn","content":[{"type":"text","text":"r1\n\nr2\nr3\nr4"}]}}"#,
+        r#"{"type":"user","uuid":"t-9","parentUuid":"t-8","timestamp":"t9","message":{"content":"next"}}"#,
+        r#"{"type":"assistant","uuid":"t-10","parentUuid":"t-9","timestamp":"t10","message":{"content":[{"type":"tool_use","id":"u-3","name":"Read","input":{"file_path":"/w/b"}}]}}"#,
     ]
     .iter()
     .map(|r| format!("{r}\n"))

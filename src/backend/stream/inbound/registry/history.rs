@@ -224,6 +224,18 @@ pub(super) const SPECS: &[CommandSpec] = &[
         }),
     },
     CommandSpec {
+        name: "history-branch",
+        summary: "主线外清单",
+        codes: &["bad_args", "failed", "too_large"],
+        fields: &[out("end", "最后一个完整行的末字节（之后的由实时帧 `session_branch` 接着说）"), out("off", "回退掉的那几条记录的 `id`（只含进界面的；文件序）；这一家的记录没有链 ⇒ 恒空"), arg("path", "jsonl 路径（围栏同 `history-read`）")],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::faces::read_face::answer(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
         name: "history-find",
         summary: "会话内查找",
         codes: &["bad_args", "failed", "too_large"],

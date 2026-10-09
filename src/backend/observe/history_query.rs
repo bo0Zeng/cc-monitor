@@ -712,6 +712,12 @@ pub(crate) fn list_user_inputs_into(
     from: u64,
     mut out: &mut dyn Write,
 ) -> Result<(), String> {
+    // 从头要 ⇒ 共用扫描图那一份（回退掉的那几句已经不在里面，与帧面同一份）。
+    if from == 0 {
+        let map = cold_scan(agent_home, jsonl_path)?;
+        return crate::observe::user_inputs::write_rows(&map.inputs, map.end, &mut out)
+            .map_err(|e| format!("stream failed: {e}"));
+    }
     crate::observe::user_inputs::write_user_inputs(
         open_user_inputs_at(agent_home, jsonl_path, from)?,
         from,
