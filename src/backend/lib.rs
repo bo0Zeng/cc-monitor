@@ -52,6 +52,7 @@ mod no_timer_guard; // P6：零定时器护栏（内部整体 #[cfg(test)]，生
 pub mod observe; // U3：观测面 —— 读，不改变世界
 pub mod platform; // U2：唯一允许平台原语与平台 cfg 的层（§1.1 第一条解耦线）
 pub mod plugin; // K-W1A：插件通用调用口 —— 找它 / 传 argv 起它 / 问它会什么（方向由 layering_guard 钉）
+pub mod plan; // 计划（planned-build）的读面：找 pb、跑 `pb dump`、加工成界面排版的成品、盯计划仓推 `plan_changed`（只读，一个字节都不写）
 #[cfg(test)]
 #[path = "../../tests/backend/plugin_walk_fixture.rs"]
 mod plugin_walk_fixture; // K-W2E：最小假插件走通全流程（夹具 + 判据，整个文件级 cfg(test)，生产构建为空）
