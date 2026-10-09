@@ -806,31 +806,79 @@ const KIT_PARTIAL: Readonly<Record<string, readonly string[]>> = {
   // （进度条那一形产品里一直没人用，连同它的类删了 ⇒ progress 那一条摘了。）
 };
 
+/**
+ * 〔UC2〕第一格要的两份读数，在 `beforeAll` 里按窗口各算一次（产物在那之后不变）：
+ * - `hashed`：module 类名 `k` → 产物 CSS 里它的哈希名（谓词就是 [`hashedOf`]，只是每个 `(窗口, k)` 只算一遍）；
+ * - `inJs`：哈希名 → 那个窗口的 JS 里有没有它（`jsCode.includes` 的同义：哈希名全由 `[\w-]` 组成 ⇒ 它的每一次出现都落在
+ *   JS 里某一段极大的 `[\w-]` 连串之内；先把「以 `_` 起头、前面不接 `[\w-]` 的连串」一趟收成集合，命中整段的直接认，
+ *   没命中整段的才回落到 `includes` —— 读数与逐个 `includes` 逐位相同）。
+ * 原先这两样在用例体里逐类现算（九百多次 `hashedOf` ＋ 九百多次对一两 MB 的 JS 做 `includes`，再每类四条 `expect`）：
+ * 空机带覆盖率 ~0.3 s，机器负载 20 以上、两套 vitest 并跑时撞 5 s 默认期限。
+ */
+const UC2_READINGS = new Map<Win, { hashed: Map<string, string[]>; inJs: (h: string) => boolean }>();
+function uc2Readings(win: Win): { hashed: Map<string, string[]>; inJs: (h: string) => boolean } {
+  const had = UC2_READINGS.get(win);
+  if (had) return had;
+  const built = builtClasses(win);
+  const hashed = new Map<string, string[]>();
+  for (const ks of Object.values(MODULE_CLASSES)) for (const k of ks) if (!hashed.has(k)) hashed.set(k, hashedOf(built, k));
+  const code = CLOSURES[win].jsCode;
+  const runs = new Set<string>();
+  for (const m of code.matchAll(/(?<![\w-])_[\w-]*/g)) runs.add(m[0]);
+  const memo = new Map<string, boolean>();
+  const inJs = (h: string): boolean => {
+    let v = memo.get(h);
+    if (v === undefined) {
+      v = runs.has(h) || code.includes(h);
+      memo.set(h, v);
+    }
+    return v;
+  };
+  const r = { hashed, inJs };
+  UC2_READINGS.set(win, r);
+  return r;
+}
+
 describe("〔UC2〕CSS Modules 在构建产物里（件 10）", () => {
+  beforeAll(() => {
+    for (const w of Object.keys(WINDOWS) as Win[]) {
+      const r = uc2Readings(w);
+      for (const hs of r.hashed.values()) if (hs.length === 1) r.inJs(hs[0]);
+    }
+  }, TIMEOUT_MS);
+
   it("每份 .module.css 都进了某个窗口的模块图；每个类在产物 CSS 里恰有一个哈希名、原名不出现、哈希名在那个窗口的 JS 里真出现", () => {
     const mods = Object.keys(MODULE_CLASSES);
     expect(mods.length, "一份 `.module.css` 都没有 —— 本组零命中地绿（件 10 的示范被删了？）").toBeGreaterThan(0);
+    // 逐类的四件事各记成一行违例、末尾一条 `toEqual([])`（原先每类四条 `expect`，九百多类 × 4 的断言开销本身就是这格的大头）。
+    const bad: string[] = [];
     let judged = 0;
     for (const f of mods) {
       const wins = (Object.keys(WINDOWS) as Win[]).filter((w) => CLOSURES[w].modules.has(f));
       if (KIT_AWAITING_FACES.has(f)) {
-        expect(wins, `${f} 已经有窗口用上了 —— 把它从 KIT_AWAITING_FACES 里摘掉`).toEqual([]);
+        if (wins.length > 0) bad.push(`${f} 已经有窗口用上了（${wins.join(" ")}）—— 把它从 KIT_AWAITING_FACES 里摘掉`);
         continue;
       }
-      expect(wins, `${f} 不在任何窗口的模块图里 —— 没有代码导入它，它进不了产物`).not.toEqual([]);
-      expect(MODULE_CLASSES[f].length, `${f} 里一个类都没抽到 —— 下面零命中地绿`).toBeGreaterThan(0);
+      if (wins.length === 0) bad.push(`${f} 不在任何窗口的模块图里 —— 没有代码导入它，它进不了产物`);
+      if (MODULE_CLASSES[f].length === 0) bad.push(`${f} 里一个类都没抽到 —— 下面零命中地绿`);
       for (const w of wins) {
         const built = builtClasses(w);
+        const r = uc2Readings(w);
         for (const k of MODULE_CLASSES[f]) {
-          const hashed = hashedOf(built, k);
-          expect(hashed, `${w}：${f} 的 .${k} 在产物 CSS 里应恰有一个哈希名`).toHaveLength(1);
-          expect(built.has(k) && !GLOBAL_CLASSES.has(k), `${w}：产物 CSS 里出现了原名 .${k} —— CSS Modules 没生效`).toBe(false);
-          const partial = KIT_PARTIAL[f]?.includes(k) ?? false;
-          expect(CLOSURES[w].jsCode.includes(hashed[0]), partial ? `${w}：${f} 的 .${k} 已经用上了 —— 从 KIT_PARTIAL 摘掉` : `${w}：哈希名 ${hashed[0]} 不在 JS 里 —— 代码没用上它`).toBe(!partial);
+          const hashed = r.hashed.get(k) ?? hashedOf(built, k);
           judged++;
+          if (built.has(k) && !GLOBAL_CLASSES.has(k)) bad.push(`${w}：产物 CSS 里出现了原名 .${k} —— CSS Modules 没生效`);
+          if (hashed.length !== 1) {
+            bad.push(`${w}：${f} 的 .${k} 在产物 CSS 里应恰有一个哈希名，实有 ${hashed.length} 个（${hashed.join(" ")}）`);
+            continue;
+          }
+          const partial = KIT_PARTIAL[f]?.includes(k) ?? false;
+          if (r.inJs(hashed[0]) !== !partial)
+            bad.push(partial ? `${w}：${f} 的 .${k} 已经用上了 —— 从 KIT_PARTIAL 摘掉` : `${w}：哈希名 ${hashed[0]} 不在 JS 里 —— 代码没用上它`);
         }
       }
     }
+    expect(bad, "CSS Modules 在产物里不成立的那几处").toEqual([]);
     expect(judged).toBeGreaterThan(0);
   });
 
