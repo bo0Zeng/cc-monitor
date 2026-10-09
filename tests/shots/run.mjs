@@ -119,8 +119,6 @@ async function shootWeb() {
       "--no-default-browser-check",
       "--no-sandbox",
       "--disable-gpu",
-      // 不碰桌面钥匙环（D-Bus 上的 secret service）：它不应答时网络进程起不来，每个 http 页面都挂着
-      "--password-store=basic",
       "--hide-scrollbars",
       "--force-device-scale-factor=1",
       "--force-color-profile=srgb",
