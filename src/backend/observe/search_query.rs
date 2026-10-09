@@ -180,6 +180,10 @@ pub(crate) fn search_counting(
     let live = crate::observe::accounts_query::live_session_ids(agent_home);
     let unreadable = index.search(&fence, &q, opts, &live, out)?;
     let r = index.last;
+    // 〔perfC2〕这一问整份重读过（含工具时常驻装不下的那几份）⇒ 读完放掉的那些空洞还给系统，常驻不停在这一问的高水位。
+    if r.full > 0 {
+        crate::platform::proc::return_freed_memory();
+    }
     tracing::debug!(
         "history-search index: full={} appended={} reused={} bytes={}",
         r.full,
@@ -216,10 +220,12 @@ pub(crate) fn find_indexed(
 static RESIDENT: std::sync::Mutex<BTreeMap<PathBuf, SearchIndex>> =
     std::sync::Mutex::new(BTreeMap::new());
 
-/// 〔第二问〕常驻索引最多留这么多字节的可搜文本（[`FileEntry::weight`] 的和）。按最近优先留；
+/// 〔第二问〕常驻索引最多留这么多字节的可搜文本（[`FileEntry::weight`] 的和）。按最近优先留、正文层优先（[`SearchIndex::retain`]）；
 /// 留不下的那几份照样读、照样搜，只是不留（下一问再读）⇒ 答案与不设上界逐字相等，变的只是那几份的读盘。
-/// 本机正文约 11 MB、勾过「含工具」约 40 MB（`SX1.md §4`）⇒ 本机整份都留得下；历史大一个数量级的远端封在这里。
-pub(crate) const RESIDENT_MAX_BYTES: usize = 64 << 20;
+/// 〔perfC2〕读数（680 MB 合成世界，`tests/shots/perf/backend/drive.mjs --only search`）：正文一共约 79 MB ⇒ 128 MB 整份装得下
+/// （不含工具每问 0.2–0.4 s CPU，64 MB 时 0.5–0.8 s）；含工具的文本约 400 MB，128 / 256 都装不下、只差在常驻多少 ⇒
+/// 不为它再往上调（调大只多常驻、不变快）。
+pub(crate) const RESIDENT_MAX_BYTES: usize = 128 << 20;
 
 /// 中毒（某一问 panic 在半路）⇒ 整张表丢掉重建，不带着半截状态答。
 fn resident() -> std::sync::MutexGuard<'static, BTreeMap<PathBuf, SearchIndex>> {
@@ -264,10 +270,13 @@ pub(crate) fn warm(agent_home: &Path) -> (usize, usize) {
         let index = guard.entry(fence.root().to_path_buf()).or_default();
         let prev = index.files.remove(&path);
         let was_there = prev.is_some();
-        let Ok(entry) = index.bring_up(&path, prev, false) else {
+        let Ok(mut entry) = bring_up(&path, prev, false, &mut index.last) else {
             continue; // 读不动的留给那一问去说（它会逐份出声、计数）
         };
         let others = index.kept();
+        if others + entry.weight > index.budget {
+            entry.drop_tools(); // 先到的那一问抽过工具文本：先放工具层
+        }
         if others + entry.weight > index.budget {
             break;
         }
@@ -332,6 +341,8 @@ struct FileEntry {
     tools: bool,
     /// 这一格常驻的字节（估算：可搜文本 ＋ 每条记录的定长开销 ＋ 见证）；每次 [`FileEntry::take`] 之后重算。
     weight: usize,
+    /// 其中正文层的字节（放掉工具层之后还剩的；没抽工具文本时 ＝ `weight`）。
+    plain_weight: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -358,6 +369,13 @@ struct Rec {
     uuid: String,
     /// 这一条是你说的一句（一轮的开头；口径同大纲 `user_inputs::user_input_of`）。
     opens_turn: bool,
+}
+
+impl Rec {
+    /// 这一条只因工具文本才进索引（没正文、不开一轮）：不搜工具时它不在。
+    fn tools_only(r: &Rec) -> bool {
+        r.rt.main.is_empty() && !r.opens_turn
+    }
 }
 
 impl Facts {
@@ -439,18 +457,49 @@ impl Facts {
         }
     }
 
-    fn weight(&self) -> usize {
+    /// `(正文层, 整格)` 的常驻字节：正文层 ＝ 放掉工具层（[`Facts::drop_tools`]）之后还剩的那些。
+    fn weights(&self) -> (usize, usize) {
         let text = |o: &Option<String>| o.as_ref().map_or(0, String::len);
-        text(&self.cwd)
-            + text(&self.title)
-            + self.excerpt.len()
-            + self
-                .records
-                .iter()
-                .map(|r| {
-                    std::mem::size_of::<Rec>() + r.rt.main.len() + r.rt.tool.len() + r.uuid.len()
-                })
-                .sum::<usize>()
+        let head = text(&self.cwd) + text(&self.title) + self.excerpt.len();
+        let (mut plain, mut all) = (head, head);
+        for r in &self.records {
+            let rec = std::mem::size_of::<Rec>() + r.rt.main.len() + r.uuid.len();
+            all += rec + r.rt.tool.len();
+            if !Rec::tools_only(r) {
+                plain += rec;
+            }
+        }
+        (plain, all)
+    }
+
+    /// 放掉工具层：工具文本清空，只因工具文本才进来的记录（没正文、不开一轮）整条拿掉 ——
+    /// 剩下的与不抽工具文本整份读出来的那一格一模一样（[`Facts::absorb`] 的进不进同一条线）。
+    ///
+    /// 剩下的那些**另抄一份**、按正文层的大小分配，再放掉原来那一整格（原地清掉会留着整份记录表的容量与一片片空洞）。
+    fn drop_tools(&mut self) {
+        let records: Vec<Rec> = self
+            .records
+            .iter()
+            .filter(|r| !Rec::tools_only(r))
+            .map(|r| Rec {
+                rt: RecordText {
+                    is_assistant: r.rt.is_assistant,
+                    report: r.rt.report,
+                    main: r.rt.main.clone(),
+                    tool: String::new(),
+                },
+                ts_ms: r.ts_ms,
+                uuid: r.uuid.clone(),
+                opens_turn: r.opens_turn,
+            })
+            .collect();
+        *self = Facts {
+            cwd: self.cwd.clone(),
+            bg: self.bg,
+            title: self.title.clone(),
+            excerpt: self.excerpt.clone(),
+            records,
+        };
     }
 
     /// 把**后面**那一段并进来：按段序合并与整份顺扫相等。
@@ -477,6 +526,7 @@ impl FileEntry {
             bad: None,
             tools,
             weight: 0,
+            plain_weight: 0,
         }
     }
 
@@ -512,7 +562,20 @@ impl FileEntry {
                 Err(e) => self.bad = Some((BadAt::Tail, e.to_string())),
             }
         }
-        self.weight = self.read.witness_len() + self.done.weight() + self.tail.weight();
+        let ((dp, da), (tp, ta)) = (self.done.weights(), self.tail.weights());
+        self.weight = self.read.witness_len() + da + ta;
+        self.plain_weight = self.read.witness_len() + dp + tp;
+    }
+
+    /// 放掉工具层（〔perfC2〕常驻装不下时先放它）：之后这一格与不抽工具文本整份读出来的一样，
+    /// 不含工具的问法照旧不读盘；含工具的那一问见它没抽过就整份重读（[`bring_up`]）。
+    fn drop_tools(&mut self) {
+        if self.tools {
+            self.done.drop_tools();
+            self.tail.drop_tools();
+            self.tools = false;
+            self.weight = self.plain_weight;
+        }
     }
 }
 
@@ -530,53 +593,42 @@ impl SearchIndex {
         self.files.values().map(|e| e.weight).sum()
     }
 
-    /// 留得下就留（会话内查找那一臂；全局搜索那一臂按最近优先整趟重排）。
-    fn keep(&mut self, path: &Path, entry: FileEntry) {
+    /// 留得下就留（会话内查找那一臂；全局搜索那一臂按最近优先整趟重排）：整格装不下先放掉工具层再试。
+    fn keep(&mut self, path: &Path, mut entry: FileEntry) {
+        if self.kept() + entry.weight > self.budget {
+            entry.drop_tools();
+        }
         if self.kept() + entry.weight <= self.budget {
             self.files.insert(path.to_path_buf(), entry);
         }
     }
 
-    /// 这一份带到这一问：(mtime, 长度) 没变不读 · 变长且见证对得上只读尾巴 · 其余整份重读（[`Tailed::step`]）。打不开 / 读不了 ⇒ `Err(原因)`。
-    fn bring_up(
-        &mut self,
-        path: &Path,
-        prev: Option<FileEntry>,
-        tools: bool,
-    ) -> Result<FileEntry, String> {
-        // 这一问要工具文本而这一格没抽过 ⇒ 整份重读。
-        let prev = prev.filter(|e| e.tools || !tools);
-        // 坏在完整行里 ⇒ 不追加读（整份重读）；坏在残尾里 ⇒ 追加读会重看它。
-        let may_append = prev
-            .as_ref()
-            .is_some_and(|e| e.bad.as_ref().map_or(true, |(at, _)| *at == BadAt::Tail));
-        let (step, seen) = Tailed::step(
-            prev.as_ref().map(|e| &e.read),
-            path,
-            may_append,
-            &mut self.last.bytes,
-        )?;
-        // 「没变」与「只读尾巴」只在有上一次那本账时出（[`Tailed::step`]）。
-        match (step, prev) {
-            (Step::Same, Some(e)) => {
-                self.last.reused += 1;
-                Ok(e)
+    /// 全局搜索那一臂（按最近优先逐份交来）：〔perfC2〕正文层优先 —— 这一份的正文装不下时，先从最旧的那一层起放掉
+    /// 已留的工具层腾地方；工具层只用正文层剩下的地方、按最近优先连着留（有一份留不下，往后的工具层这一趟都不留）。
+    /// ⇒ 问过一次含工具，不含工具的那一问照旧整份在内存里（工具层先被挤掉，正文层不会）。
+    fn retain(&mut self, r: &mut Retained, path: PathBuf, mut e: FileEntry) {
+        if e.tools && (r.tools_closed || r.kept + e.weight > self.budget) {
+            e.drop_tools();
+            r.tools_closed = true;
+        }
+        while r.kept + e.weight > self.budget {
+            let Some(old) = r.tooled.pop() else {
+                break;
+            };
+            if let Some(o) = self.files.get_mut(&old) {
+                let before = o.weight;
+                o.drop_tools();
+                r.kept -= before - o.weight;
             }
-            (Step::Appended(new), Some(mut e)) => {
-                self.last.appended += 1;
-                e.take(seen.0, &new);
-                Ok(e)
+        }
+        if r.kept + e.weight <= self.budget {
+            if e.tools {
+                r.tooled.push(path.clone());
             }
-            (Step::Appended(_), None) | (Step::Whole, _) => {
-                let buf = Tailed::read_whole(path, &mut self.last.bytes)?;
-                self.last.full += 1;
-                let mut e = FileEntry::empty(tools);
-                e.take(seen.0, &buf);
-                Ok(e)
-            }
-            (Step::Same, None) => Err(crate::common::contract::malformed(
-                "Tailed::step answered Same without a previous entry",
-            )),
+            r.kept += e.weight;
+            self.files.insert(path, e);
+        } else {
+            r.tools_closed = true;
         }
     }
 
@@ -591,7 +643,7 @@ impl SearchIndex {
     ) -> Option<std::io::Result<(u64, u64)>> {
         self.last = Refresh::default();
         let prev = self.files.remove(path);
-        let entry = self.bring_up(path, prev, include_tools).ok()?;
+        let entry = bring_up(path, prev, include_tools, &mut self.last).ok()?;
         if entry.bad.is_some() {
             self.keep(path, entry);
             return None; // 读不动：现扫那一臂是 lossy 读，口径不许在这里变
@@ -635,16 +687,22 @@ impl SearchIndex {
         self.last = Refresh::default();
         let mut budget = SnippetBudget::new(opts.limit);
         let mut unreadable = 0usize;
-        // 按最近优先留到上界（`files` 已是这个序）；留不下的这一问照样搜，只是不留。
-        let mut kept = 0usize;
+        // 按最近优先留到上界（`files` 已是这个序；正文层优先，见 [`SearchIndex::retain`]）；留不下的这一问照样搜，只是不留。
+        let mut kept = Retained::default();
         for (path, updated_at) in files {
             // 防 symlink 逃逸：解开之后仍须在 projects/ 下；解不开 / 越界 ⇒ 跳过这一份（与先前同）。
             if fence.admit(&path).is_err() {
                 continue;
             }
+            let got = bring_up(
+                &path,
+                prev.remove(&path),
+                opts.include_tools,
+                &mut self.last,
+            );
             // 读不动 ⇒ 说出来、记一笔（原先 `.ok()?` 折成「无命中」静默消失）。
             // 打不开 / 读不了 ⇒ 这一格丢掉；不是合法 UTF-8 ⇒ 这一格留着（没变就不再读），照样说、照样数。
-            let (entry, bad) = match self.bring_up(&path, prev.remove(&path), opts.include_tools) {
+            let (entry, bad) = match got {
                 Ok(e) => {
                     let bad = e.bad.as_ref().map(|(_, why)| why.clone());
                     (Some(e), bad)
@@ -657,9 +715,8 @@ impl SearchIndex {
                 _ => None,
             };
             let bg = entry.as_ref().is_some_and(|e| e.done.bg || e.tail.bg);
-            if let Some(e) = entry.filter(|e| kept + e.weight <= self.budget) {
-                kept += e.weight;
-                self.files.insert(path.clone(), e);
+            if let Some(e) = entry {
+                self.retain(&mut kept, path.clone(), e);
             }
             if let Some(e) = bad {
                 unreadable += 1;
@@ -679,6 +736,60 @@ impl SearchIndex {
         }
         Ok(unreadable)
     }
+}
+
+/// 这一份带到这一问：(mtime, 长度) 没变不读 · 变长且见证对得上只读尾巴 · 其余整份重读（[`Tailed::step`]）。打不开 / 读不了 ⇒ `Err(原因)`。
+/// 读盘的账记进 `last`。
+fn bring_up(
+    path: &Path,
+    prev: Option<FileEntry>,
+    tools: bool,
+    last: &mut Refresh,
+) -> Result<FileEntry, String> {
+    // 这一问要工具文本而这一格没抽过 ⇒ 整份重读。
+    let prev = prev.filter(|e| e.tools || !tools);
+    // 坏在完整行里 ⇒ 不追加读（整份重读）；坏在残尾里 ⇒ 追加读会重看它。
+    let may_append = prev
+        .as_ref()
+        .is_some_and(|e| e.bad.as_ref().map_or(true, |(at, _)| *at == BadAt::Tail));
+    let (step, seen) = Tailed::step(
+        prev.as_ref().map(|e| &e.read),
+        path,
+        may_append,
+        &mut last.bytes,
+    )?;
+    // 「没变」与「只读尾巴」只在有上一次那本账时出（[`Tailed::step`]）。
+    match (step, prev) {
+        (Step::Same, Some(e)) => {
+            last.reused += 1;
+            Ok(e)
+        }
+        (Step::Appended(new), Some(mut e)) => {
+            last.appended += 1;
+            e.take(seen.0, &new);
+            Ok(e)
+        }
+        (Step::Appended(_), None) | (Step::Whole, _) => {
+            let buf = Tailed::read_whole(path, &mut last.bytes)?;
+            last.full += 1;
+            let mut e = FileEntry::empty(tools);
+            e.take(seen.0, &buf);
+            Ok(e)
+        }
+        (Step::Same, None) => Err(crate::common::contract::malformed(
+            "Tailed::step answered Same without a previous entry",
+        )),
+    }
+}
+
+/// 全局搜索这一趟留下来的账（[`SearchIndex::retain`]）。
+#[derive(Default)]
+struct Retained {
+    kept: usize,
+    /// 留着工具层的那几份，按最近优先（放的时候从尾巴放）。
+    tooled: Vec<PathBuf>,
+    /// 有一份的工具层 / 正文层留不下了 ⇒ 往后的工具层这一趟都不留。
+    tools_closed: bool,
 }
 
 /// 一个会话（索引里那一格）的命中 JSON（无命中 → None）。`budget` 跨会话累计已构造

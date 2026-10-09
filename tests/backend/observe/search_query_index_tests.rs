@@ -404,7 +404,7 @@ fn records_that_can_never_hit_take_no_room_in_the_index() {
     text.push_str(&(line("u-1", "结尾那一句 cursor") + "\n"));
     std::fs::write(&f, &text).unwrap();
     let mut index = SearchIndex::default();
-    let entry = index.bring_up(&f, None, false).expect("读得了");
+    let entry = bring_up(&f, None, false, &mut index.last).expect("读得了");
     assert!(
         entry.weight < 4096,
         "一千条命中不了的记录占了 {} 字节常驻",
@@ -424,4 +424,81 @@ fn records_that_can_never_hit_take_no_room_in_the_index() {
         .expect("找得了");
     assert_eq!(hits, vec!["u-0".to_string(), "u-1".to_string()]);
     std::fs::remove_dir_all(&home).ok();
+}
+
+/// 〔perfC2〕正文与工具文本分两层留：上界装得下每一份的正文、装不下全部工具文本时，问过一次「含工具」之后，
+/// 不含工具的那一问**一个字节都不读**（工具层先放掉，正文层不被挤出去）；两种问法的答案都与不设上界逐字相等，常驻不超上界。
+#[test]
+fn a_tools_question_does_not_push_plain_text_out_of_the_index() {
+    let home = std::env::temp_dir().join(format!("ccm-sx-tiers-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&home);
+    let bulk = "npm test --watch ".repeat(240);
+    for i in 0..6 {
+        let f = p(&home, &format!("-w-tiers/s{i}.jsonl"));
+        std::fs::create_dir_all(f.parent().unwrap()).unwrap();
+        let mut text = line(&format!("u-{i}"), &format!("第 {i} 份 cursor")) + "\n";
+        text.push_str(
+            &json!({"type":"assistant","uuid":format!("a-{i}"),"timestamp":"2026-04-01T00:00:01Z",
+                "message":{"role":"assistant","content":[{"type":"tool_use","id":format!("t{i}"),"name":"Bash","input":{"command":bulk}}]}})
+            .to_string(),
+        );
+        text.push('\n');
+        std::fs::write(&f, &text).unwrap();
+        touch(&f, 1_800_000_000_000 + i64::from(i) * 1_000);
+    }
+    let fence = Fence::at(&projects_root(&home)).expect("围栏");
+    let live = crate::observe::accounts_query::live_session_ids(&home);
+    let ask = |index: &mut SearchIndex, q: &str, tools: bool| {
+        let rest: Vec<String> = if tools {
+            vec!["--include-tools".into()]
+        } else {
+            vec![]
+        };
+        let mut buf = Vec::new();
+        index
+            .search(&fence, q, &parse_opts(&rest), &live, &mut buf)
+            .expect("search ok");
+        String::from_utf8(buf).expect("UTF-8")
+    };
+    let mut free_plain = SearchIndex::with_budget(usize::MAX);
+    let want_plain = ask(&mut free_plain, "cursor", false);
+    let mut free_tools = SearchIndex::with_budget(usize::MAX);
+    let want_tools = ask(&mut free_tools, "npm test", true);
+    let (plain, all) = (free_plain.kept(), free_tools.kept());
+    assert!(
+        all > plain * 3,
+        "工具文本不够大，判不出挤占（正文 {plain} · 全部 {all}）"
+    );
+    let budget = plain + (all - plain) / 3;
+    let mut bounded = SearchIndex::with_budget(budget);
+    for round in 0..2 {
+        assert_eq!(
+            ask(&mut bounded, "npm test", true),
+            want_tools,
+            "第 {round} 趟：含工具的答案变了"
+        );
+        assert!(
+            bounded.kept() <= budget,
+            "常驻 {} 超了上界 {budget}",
+            bounded.kept()
+        );
+        assert_eq!(
+            ask(&mut bounded, "cursor", false),
+            want_plain,
+            "第 {round} 趟：不含工具的答案变了"
+        );
+        assert_eq!(
+            (bounded.last.full, bounded.last.appended, bounded.last.bytes),
+            (0, 0, 0),
+            "第 {round} 趟：问过含工具之后，不含工具的那一问还在读盘（正文层被工具层挤出去了）"
+        );
+    }
+    std::fs::remove_dir_all(&home).ok();
+}
+
+/// 〔perfC2〕常驻上界钉在 128 MB：口径是「多常驻 ≤ 200 MB 换每问 ≤ 1 s」，按 `drive.mjs --only search` 在 680 MB 合成世界量
+/// （进程 CPU 毫秒，不按墙钟）—— 正文整份装得下的最小一档；含工具那一形 128 / 256 都装不下、调大只多常驻不变快。要改它先重量这一组读数。
+#[test]
+fn the_resident_bound_is_128_mb() {
+    assert_eq!(RESIDENT_MAX_BYTES, 128 << 20);
 }
