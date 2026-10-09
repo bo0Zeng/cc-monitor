@@ -93,7 +93,7 @@
 //!    把它接到命令面上要加子命令 ⇒ 要 bump `BUILD_ID` ⇒ 要同拍 re-embed（条 19c），
 //!    那几处全在本轮写区之外。**「能力在、还没接线」这件事不许被读成「已经能用了」。**
 
-use copy_core::copy_text;
+use copy_core::{copy_text, io_reason};
 use std::path::{Component, Path, PathBuf};
 
 /// 路径解析①（词法）：**纯路径算术，不碰盘**。过了就返回「打算写到哪」。
@@ -181,7 +181,10 @@ pub fn resolve_parent_in_root(root: &Path, target: &Path) -> Result<PathBuf, Str
     let real_root = std::fs::canonicalize(root).map_err(|e| {
         copy_text(
             "beFilesWrite.path.unresolved",
-            &[("path", &root.display().to_string()), ("e", &e.to_string())],
+            &[
+                ("path", &root.display().to_string()),
+                ("why", &io_reason(e.kind())),
+            ],
         )
     })?;
     let parent = target.parent().ok_or_else(|| {
@@ -201,7 +204,7 @@ pub fn resolve_parent_in_root(root: &Path, target: &Path) -> Result<PathBuf, Str
             "beFilesWrite.path.unresolved",
             &[
                 ("path", &parent.display().to_string()),
-                ("e", &e.to_string()),
+                ("why", &io_reason(e.kind())),
             ],
         )
     })?;
@@ -308,6 +311,27 @@ impl WriteRefusal {
         }
     }
 
+    /// 盘上这一步没成：句子（已带原因词）＋ 系统原话（进复制详情，不上句子）。线上码 `io_failed`。
+    pub fn io(said: String, e: &std::io::Error) -> WriteRefusal {
+        WriteRefusal::IoSaid {
+            said,
+            raw: e.to_string(),
+        }
+    }
+
+    /// 整棵那几条停在半路：换成外层那一句（`said` 里已经接着这一条的说法），拒绝仍是拒绝、
+    /// 其余都是 `io_failed`；这一条带着的原话跟过去（不在外层丢掉）。
+    pub fn restated(self, said: String) -> WriteRefusal {
+        match self {
+            WriteRefusal::Refused(_) => WriteRefusal::Refused(said),
+            WriteRefusal::IoSaid { raw, .. } => WriteRefusal::IoSaid { said, raw },
+            WriteRefusal::Io(_)
+            | WriteRefusal::Unsupported(_)
+            | WriteRefusal::Stale(_)
+            | WriteRefusal::Exists(_) => WriteRefusal::Io(said),
+        }
+    }
+
     /// 下层原话（只有 [`WriteRefusal::IoSaid`] 带；交给应答的复制详情）。
     pub fn raw(&self) -> Option<&str> {
         match self {
@@ -340,35 +364,41 @@ pub fn create_new_file(
                 "beFilesWrite.create.failed",
                 &[
                     ("path", &target.display().to_string()),
-                    ("e", &e.to_string()),
+                    ("why", &io_reason(e.kind())),
                 ],
             );
             if e.kind() == std::io::ErrorKind::AlreadyExists {
                 WriteRefusal::Exists(said)
             } else {
-                WriteRefusal::Io(said)
+                WriteRefusal::io(said, &e)
             }
         })?;
     if let Some(p) = own_mode(&target, false) {
         f.set_permissions(p).map_err(|e| {
-            WriteRefusal::Io(copy_text(
-                "beFilesWrite.chmod.failed",
-                &[
-                    ("path", &target.display().to_string()),
-                    ("e", &e.to_string()),
-                ],
-            ))
+            WriteRefusal::io(
+                copy_text(
+                    "beFilesWrite.chmod.failed",
+                    &[
+                        ("path", &target.display().to_string()),
+                        ("why", &io_reason(e.kind())),
+                    ],
+                ),
+                &e,
+            )
         })?;
     }
     // 写失败（盘满等）也要把原因带回去 —— 静默的半截文件比报错糟得多。
     f.write_all(bytes).map_err(|e| {
-        WriteRefusal::Io(copy_text(
-            "beFilesWrite.write.failed",
-            &[
-                ("path", &target.display().to_string()),
-                ("e", &e.to_string()),
-            ],
-        ))
+        WriteRefusal::io(
+            copy_text(
+                "beFilesWrite.write.failed",
+                &[
+                    ("path", &target.display().to_string()),
+                    ("why", &io_reason(e.kind())),
+                ],
+            ),
+            &e,
+        )
     })?;
     Ok(target)
 }
@@ -403,13 +433,19 @@ pub fn resolve_existing_in_root(root: &Path, rel: impl AsRef<Path>) -> Result<Pa
     let real = std::fs::canonicalize(&at).map_err(|e| {
         copy_text(
             "beFilesWrite.path.unresolved",
-            &[("path", &at.display().to_string()), ("e", &e.to_string())],
+            &[
+                ("path", &at.display().to_string()),
+                ("why", &io_reason(e.kind())),
+            ],
         )
     })?;
     let real_root = std::fs::canonicalize(root).map_err(|e| {
         copy_text(
             "beFilesWrite.path.unresolved",
-            &[("path", &root.display().to_string()), ("e", &e.to_string())],
+            &[
+                ("path", &root.display().to_string()),
+                ("why", &io_reason(e.kind())),
+            ],
         )
     })?;
     if !real.starts_with(&real_root) {
@@ -494,24 +530,27 @@ pub fn make_dir(root: &Path, rel: impl AsRef<Path>) -> Result<PathBuf, WriteRefu
             "beFilesWrite.write.failed",
             &[
                 ("path", &target.display().to_string()),
-                ("e", &e.to_string()),
+                ("why", &io_reason(e.kind())),
             ],
         );
         if e.kind() == std::io::ErrorKind::AlreadyExists {
             WriteRefusal::Exists(said)
         } else {
-            WriteRefusal::Io(said)
+            WriteRefusal::io(said, &e)
         }
     })?;
     if let Some(p) = own_mode(&target, true) {
         std::fs::set_permissions(&target, p).map_err(|e| {
-            WriteRefusal::Io(copy_text(
-                "beFilesWrite.chmod.failed",
-                &[
-                    ("path", &target.display().to_string()),
-                    ("e", &e.to_string()),
-                ],
-            ))
+            WriteRefusal::io(
+                copy_text(
+                    "beFilesWrite.chmod.failed",
+                    &[
+                        ("path", &target.display().to_string()),
+                        ("why", &io_reason(e.kind())),
+                    ],
+                ),
+                &e,
+            )
         })?;
     }
     Ok(target)
@@ -579,14 +618,17 @@ fn rename_entry_racing(
                 &[("path", &dst.display().to_string())],
             )))
         }
-        Err(e) => Err(WriteRefusal::Io(copy_text(
-            "beFilesWrite.rename.failed",
-            &[
-                ("src", &src.display().to_string()),
-                ("dst", &dst.display().to_string()),
-                ("e", &e.to_string()),
-            ],
-        ))),
+        Err(e) => Err(WriteRefusal::io(
+            copy_text(
+                "beFilesWrite.rename.failed",
+                &[
+                    ("src", &src.display().to_string()),
+                    ("dst", &dst.display().to_string()),
+                    ("why", &io_reason(e.kind())),
+                ],
+            ),
+            &e,
+        )),
     }
 }
 
@@ -601,13 +643,16 @@ pub fn delete_entry(root: &Path, rel: impl AsRef<Path>) -> Result<PathBuf, Write
     let is_dir = std::fs::symlink_metadata(&target)
         .map(|m| m.is_dir())
         .map_err(|e| {
-            WriteRefusal::Io(copy_text(
-                "beFilesWrite.read.failed",
-                &[
-                    ("path", &target.display().to_string()),
-                    ("e", &e.to_string()),
-                ],
-            ))
+            WriteRefusal::io(
+                copy_text(
+                    "beFilesWrite.read.failed",
+                    &[
+                        ("path", &target.display().to_string()),
+                        ("why", &io_reason(e.kind())),
+                    ],
+                ),
+                &e,
+            )
         })?;
     let done = if is_dir {
         std::fs::remove_dir(&target)
@@ -615,13 +660,16 @@ pub fn delete_entry(root: &Path, rel: impl AsRef<Path>) -> Result<PathBuf, Write
         std::fs::remove_file(&target)
     };
     done.map_err(|e| {
-        WriteRefusal::Io(copy_text(
-            "beFilesWrite.delete.failed",
-            &[
-                ("path", &target.display().to_string()),
-                ("e", &e.to_string()),
-            ],
-        ))
+        WriteRefusal::io(
+            copy_text(
+                "beFilesWrite.delete.failed",
+                &[
+                    ("path", &target.display().to_string()),
+                    ("why", &io_reason(e.kind())),
+                ],
+            ),
+            &e,
+        )
     })?;
     Ok(target)
 }
@@ -651,13 +699,16 @@ pub fn delete_file_expecting(
             )))
         }
         Err(e) => {
-            return Err(WriteRefusal::Io(copy_text(
-                "beFilesWrite.read.failed",
-                &[
-                    ("path", &target.display().to_string()),
-                    ("e", &e.to_string()),
-                ],
-            )))
+            return Err(WriteRefusal::io(
+                copy_text(
+                    "beFilesWrite.read.failed",
+                    &[
+                        ("path", &target.display().to_string()),
+                        ("why", &io_reason(e.kind())),
+                    ],
+                ),
+                &e,
+            ))
         }
     };
     if !md.is_file() {
@@ -667,13 +718,16 @@ pub fn delete_file_expecting(
         )));
     }
     let current = read_nofollow(&target).map_err(|e| {
-        WriteRefusal::Io(copy_text(
-            "beFilesWrite.read.failed",
-            &[
-                ("path", &target.display().to_string()),
-                ("e", &e.to_string()),
-            ],
-        ))
+        WriteRefusal::io(
+            copy_text(
+                "beFilesWrite.read.failed",
+                &[
+                    ("path", &target.display().to_string()),
+                    ("why", &io_reason(e.kind())),
+                ],
+            ),
+            &e,
+        )
     })?;
     if current.is_empty() && md.len() > 0 {
         return Err(WriteRefusal::Io(format!(
@@ -688,13 +742,16 @@ pub fn delete_file_expecting(
         )));
     }
     std::fs::remove_file(&target).map_err(|e| {
-        WriteRefusal::Io(copy_text(
-            "beFilesWrite.delete.failed",
-            &[
-                ("path", &target.display().to_string()),
-                ("e", &e.to_string()),
-            ],
-        ))
+        WriteRefusal::io(
+            copy_text(
+                "beFilesWrite.delete.failed",
+                &[
+                    ("path", &target.display().to_string()),
+                    ("why", &io_reason(e.kind())),
+                ],
+            ),
+            &e,
+        )
     })?;
     Ok(target)
 }
@@ -717,13 +774,16 @@ pub fn delete_empty_dir(root: &Path, rel: impl AsRef<Path>) -> Result<PathBuf, W
             )))
         }
         Err(e) => {
-            return Err(WriteRefusal::Io(copy_text(
-                "beFilesWrite.read.failed",
-                &[
-                    ("path", &target.display().to_string()),
-                    ("e", &e.to_string()),
-                ],
-            )))
+            return Err(WriteRefusal::io(
+                copy_text(
+                    "beFilesWrite.read.failed",
+                    &[
+                        ("path", &target.display().to_string()),
+                        ("why", &io_reason(e.kind())),
+                    ],
+                ),
+                &e,
+            ))
         }
     };
     if !md.is_dir() {
@@ -740,13 +800,16 @@ pub fn delete_empty_dir(root: &Path, rel: impl AsRef<Path>) -> Result<PathBuf, W
                 &[("path", &target.display().to_string())],
             )))
         }
-        Err(e) => Err(WriteRefusal::Io(copy_text(
-            "beFilesWrite.delete.failed",
-            &[
-                ("path", &target.display().to_string()),
-                ("e", &e.to_string()),
-            ],
-        ))),
+        Err(e) => Err(WriteRefusal::io(
+            copy_text(
+                "beFilesWrite.delete.failed",
+                &[
+                    ("path", &target.display().to_string()),
+                    ("why", &io_reason(e.kind())),
+                ],
+            ),
+            &e,
+        )),
     }
 }
 
@@ -783,10 +846,16 @@ pub fn change_mode_reporting(
             .ok()
             .map(|m| m.permissions().mode() & 0o7777);
         std::fs::set_permissions(&real, std::fs::Permissions::from_mode(mode)).map_err(|e| {
-            WriteRefusal::Io(copy_text(
-                "beFilesWrite.chmod.failed",
-                &[("path", &real.display().to_string()), ("e", &e.to_string())],
-            ))
+            WriteRefusal::io(
+                copy_text(
+                    "beFilesWrite.chmod.failed",
+                    &[
+                        ("path", &real.display().to_string()),
+                        ("why", &io_reason(e.kind())),
+                    ],
+                ),
+                &e,
+            )
         })?;
         Ok((real, before))
     }
@@ -824,10 +893,16 @@ pub fn overwrite_text(
     let rel = rel.as_ref();
     let real = resolve_existing_in_root(root, rel).map_err(WriteRefusal::Refused)?;
     let md = std::fs::metadata(&real).map_err(|e| {
-        WriteRefusal::Io(copy_text(
-            "beFilesWrite.read.failed",
-            &[("path", &real.display().to_string()), ("e", &e.to_string())],
-        ))
+        WriteRefusal::io(
+            copy_text(
+                "beFilesWrite.read.failed",
+                &[
+                    ("path", &real.display().to_string()),
+                    ("why", &io_reason(e.kind())),
+                ],
+            ),
+            &e,
+        )
     })?;
     if !md.is_file() {
         return Err(WriteRefusal::Refused(copy_text(
@@ -852,10 +927,16 @@ pub fn overwrite_text(
             .open(&real)
             .and_then(|mut f| f.write_all(bytes));
         wrote.map_err(|e| {
-            WriteRefusal::Io(copy_text(
-                "beFilesWrite.write.failed",
-                &[("path", &real.display().to_string()), ("e", &e.to_string())],
-            ))
+            WriteRefusal::io(
+                copy_text(
+                    "beFilesWrite.write.failed",
+                    &[
+                        ("path", &real.display().to_string()),
+                        ("why", &io_reason(e.kind())),
+                    ],
+                ),
+                &e,
+            )
         })?;
         return Ok(real);
     }
@@ -962,19 +1043,31 @@ pub fn overwrite_text_expecting(
             )))
         }
         Err(e) => {
-            return Err(WriteRefusal::Io(copy_text(
-                "beFilesWrite.read.failed",
-                &[("path", &at.display().to_string()), ("e", &e.to_string())],
-            )))
+            return Err(WriteRefusal::io(
+                copy_text(
+                    "beFilesWrite.read.failed",
+                    &[
+                        ("path", &at.display().to_string()),
+                        ("why", &io_reason(e.kind())),
+                    ],
+                ),
+                &e,
+            ))
         }
         Ok(_) => {}
     }
     let real = resolve_existing_in_root(root, rel).map_err(WriteRefusal::Refused)?;
     let md = std::fs::metadata(&real).map_err(|e| {
-        WriteRefusal::Io(copy_text(
-            "beFilesWrite.read.failed",
-            &[("path", &real.display().to_string()), ("e", &e.to_string())],
-        ))
+        WriteRefusal::io(
+            copy_text(
+                "beFilesWrite.read.failed",
+                &[
+                    ("path", &real.display().to_string()),
+                    ("why", &io_reason(e.kind())),
+                ],
+            ),
+            &e,
+        )
     })?;
     if !md.is_file() {
         return Err(WriteRefusal::Refused(copy_text(
@@ -983,10 +1076,16 @@ pub fn overwrite_text_expecting(
         )));
     }
     let current = read_nofollow(&real).map_err(|e| {
-        WriteRefusal::Io(copy_text(
-            "beFilesWrite.read.failed",
-            &[("path", &real.display().to_string()), ("e", &e.to_string())],
-        ))
+        WriteRefusal::io(
+            copy_text(
+                "beFilesWrite.read.failed",
+                &[
+                    ("path", &real.display().to_string()),
+                    ("why", &io_reason(e.kind())),
+                ],
+            ),
+            &e,
+        )
     })?;
     if current.is_empty() && md.len() > 0 {
         return Err(WriteRefusal::Io(format!(
@@ -1064,10 +1163,16 @@ pub fn plan_tree(root: &Path, rel: impl AsRef<Path>) -> Result<Vec<Planned>, Wri
 pub fn plan_tree_within(root: &Path, rel: &Path, cap: usize) -> Result<Vec<Planned>, WriteRefusal> {
     let top = resolve_in_root(root, rel).map_err(WriteRefusal::Refused)?;
     let (top_is_dir, top_dev) = kind_and_device(&top).map_err(|e| {
-        WriteRefusal::Io(copy_text(
-            "beFilesWrite.read.failed",
-            &[("path", &top.display().to_string()), ("e", &e.to_string())],
-        ))
+        WriteRefusal::io(
+            copy_text(
+                "beFilesWrite.read.failed",
+                &[
+                    ("path", &top.display().to_string()),
+                    ("why", &io_reason(e.kind())),
+                ],
+            ),
+            &e,
+        )
     })?;
     let mut plan = vec![Planned {
         rel: rel.to_path_buf(),
@@ -1081,23 +1186,29 @@ pub fn plan_tree_within(root: &Path, rel: &Path, cap: usize) -> Result<Vec<Plann
     while let Some(dir_rel) = pending.pop() {
         let dir_at = resolve_in_root(root, &dir_rel).map_err(WriteRefusal::Refused)?;
         let listing = std::fs::read_dir(&dir_at).map_err(|e| {
-            WriteRefusal::Io(copy_text(
-                "beFilesWrite.copyTree.unlistable",
-                &[
-                    ("path", &dir_at.display().to_string()),
-                    ("e", &e.to_string()),
-                ],
-            ))
-        })?;
-        for item in listing {
-            let item = item.map_err(|e| {
-                WriteRefusal::Io(copy_text(
+            WriteRefusal::io(
+                copy_text(
                     "beFilesWrite.copyTree.unlistable",
                     &[
                         ("path", &dir_at.display().to_string()),
-                        ("e", &e.to_string()),
+                        ("why", &io_reason(e.kind())),
                     ],
-                ))
+                ),
+                &e,
+            )
+        })?;
+        for item in listing {
+            let item = item.map_err(|e| {
+                WriteRefusal::io(
+                    copy_text(
+                        "beFilesWrite.copyTree.unlistable",
+                        &[
+                            ("path", &dir_at.display().to_string()),
+                            ("why", &io_reason(e.kind())),
+                        ],
+                    ),
+                    &e,
+                )
             })?;
             let child_rel = dir_rel.join(item.file_name());
             // ★ **逐条目过路径解析**：这一条就是本函数存在的理由。
@@ -1108,10 +1219,16 @@ pub fn plan_tree_within(root: &Path, rel: &Path, cap: usize) -> Result<Vec<Plann
                 ))
             })?;
             let (is_dir, dev) = kind_and_device(&at).map_err(|e| {
-                WriteRefusal::Io(copy_text(
-                    "beFilesWrite.read.failed",
-                    &[("path", &at.display().to_string()), ("e", &e.to_string())],
-                ))
+                WriteRefusal::io(
+                    copy_text(
+                        "beFilesWrite.read.failed",
+                        &[
+                            ("path", &at.display().to_string()),
+                            ("why", &io_reason(e.kind())),
+                        ],
+                    ),
+                    &e,
+                )
             })?;
             if dev != top_dev {
                 return Err(WriteRefusal::Refused(copy_text(
@@ -1148,10 +1265,16 @@ pub fn remove_planned(root: &Path, p: &Planned) -> Result<PathBuf, WriteRefusal>
     let is_dir = std::fs::symlink_metadata(&at)
         .map(|m| m.is_dir())
         .map_err(|e| {
-            WriteRefusal::Io(copy_text(
-                "beFilesWrite.read.failed",
-                &[("path", &at.display().to_string()), ("e", &e.to_string())],
-            ))
+            WriteRefusal::io(
+                copy_text(
+                    "beFilesWrite.read.failed",
+                    &[
+                        ("path", &at.display().to_string()),
+                        ("why", &io_reason(e.kind())),
+                    ],
+                ),
+                &e,
+            )
         })?;
     if is_dir != p.is_dir {
         return Err(WriteRefusal::Io(copy_text(
@@ -1165,10 +1288,16 @@ pub fn remove_planned(root: &Path, p: &Planned) -> Result<PathBuf, WriteRefusal>
         std::fs::remove_file(&at)
     };
     done.map_err(|e| {
-        WriteRefusal::Io(copy_text(
-            "beFilesWrite.delete.failed",
-            &[("path", &at.display().to_string()), ("e", &e.to_string())],
-        ))
+        WriteRefusal::io(
+            copy_text(
+                "beFilesWrite.delete.failed",
+                &[
+                    ("path", &at.display().to_string()),
+                    ("why", &io_reason(e.kind())),
+                ],
+            ),
+            &e,
+        )
     })?;
     Ok(at)
 }
@@ -1207,14 +1336,7 @@ pub fn delete_tree_upto(
                     ("total", &plan.len().to_string()),
                 ],
             );
-            match e {
-                WriteRefusal::Refused(_) => WriteRefusal::Refused(said),
-                WriteRefusal::Io(_)
-                | WriteRefusal::IoSaid { .. }
-                | WriteRefusal::Unsupported(_)
-                | WriteRefusal::Stale(_)
-                | WriteRefusal::Exists(_) => WriteRefusal::Io(said),
-            }
+            e.restated(said)
         })?;
         removed += 1;
     }
@@ -1280,10 +1402,16 @@ fn copy_entry_racing(
         )));
     }
     let src_md = std::fs::metadata(&src).map_err(|e| {
-        WriteRefusal::Io(copy_text(
-            "beFilesWrite.read.failed",
-            &[("path", &src.display().to_string()), ("e", &e.to_string())],
-        ))
+        WriteRefusal::io(
+            copy_text(
+                "beFilesWrite.read.failed",
+                &[
+                    ("path", &src.display().to_string()),
+                    ("why", &io_reason(e.kind())),
+                ],
+            ),
+            &e,
+        )
     })?;
     if !src_md.is_file() {
         return Err(WriteRefusal::Refused(copy_text(
@@ -1325,20 +1453,32 @@ fn land_copy(
     let side_rel = dst_rel.with_file_name(side_name);
     let side = resolve_in_root(root, &side_rel).map_err(WriteRefusal::Refused)?;
     let mut reader = opener().read(true).open(src).map_err(|e| {
-        WriteRefusal::Io(copy_text(
-            "beFilesWrite.read.failed",
-            &[("path", &src.display().to_string()), ("e", &e.to_string())],
-        ))
+        WriteRefusal::io(
+            copy_text(
+                "beFilesWrite.read.failed",
+                &[
+                    ("path", &src.display().to_string()),
+                    ("why", &io_reason(e.kind())),
+                ],
+            ),
+            &e,
+        )
     })?;
     let mut writer = opener()
         .write(true)
         .create_new(true)
         .open(&side)
         .map_err(|e| {
-            WriteRefusal::Io(copy_text(
-                "beFilesWrite.create.failed",
-                &[("path", &side.display().to_string()), ("e", &e.to_string())],
-            ))
+            WriteRefusal::io(
+                copy_text(
+                    "beFilesWrite.create.failed",
+                    &[
+                        ("path", &side.display().to_string()),
+                        ("why", &io_reason(e.kind())),
+                    ],
+                ),
+                &e,
+            )
         })?;
     let drop_side = |why: WriteRefusal| {
         // 只删**我们自己刚建的那一份**（`O_EXCL` 保证它此前不存在）。
@@ -1349,39 +1489,63 @@ fn land_copy(
         Ok(n) => n,
         Err(e) => {
             drop(writer);
-            return Err(drop_side(WriteRefusal::Io(copy_text(
-                "beFilesWrite.write.failed",
-                &[("path", &side.display().to_string()), ("e", &e.to_string())],
-            ))));
+            return Err(drop_side(WriteRefusal::io(
+                copy_text(
+                    "beFilesWrite.write.failed",
+                    &[
+                        ("path", &side.display().to_string()),
+                        ("why", &io_reason(e.kind())),
+                    ],
+                ),
+                &e,
+            )));
         }
     };
     let moded = writer.set_permissions(perms);
     drop(writer);
     if let Err(e) = moded {
-        return Err(drop_side(WriteRefusal::Io(copy_text(
-            "beFilesWrite.copy.modeFailed",
-            &[("path", &side.display().to_string()), ("e", &e.to_string())],
-        ))));
+        return Err(drop_side(WriteRefusal::io(
+            copy_text(
+                "beFilesWrite.copy.modeFailed",
+                &[
+                    ("path", &side.display().to_string()),
+                    ("why", &io_reason(e.kind())),
+                ],
+            ),
+            &e,
+        )));
     }
     if overwrite {
         let dst =
             resolve_in_root(root, dst_rel).map_err(|m| drop_side(WriteRefusal::Refused(m)))?;
         between();
         if let Err(e) = std::fs::rename(&side, &dst) {
-            return Err(drop_side(WriteRefusal::Io(copy_text(
-                "beFilesWrite.write.failed",
-                &[("path", &dst.display().to_string()), ("e", &e.to_string())],
-            ))));
+            return Err(drop_side(WriteRefusal::io(
+                copy_text(
+                    "beFilesWrite.write.failed",
+                    &[
+                        ("path", &dst.display().to_string()),
+                        ("why", &io_reason(e.kind())),
+                    ],
+                ),
+                &e,
+            )));
         }
         return Ok((dst, n));
     }
     let (_, dst, done) = rename_no_clobber(root, &side_rel, dst_rel, between, false)
         .map_err(|m| drop_side(WriteRefusal::Refused(m)))?;
     if let Err(e) = done {
-        return Err(drop_side(WriteRefusal::Io(copy_text(
-            "beFilesWrite.create.failed",
-            &[("path", &dst.display().to_string()), ("e", &e.to_string())],
-        ))));
+        return Err(drop_side(WriteRefusal::io(
+            copy_text(
+                "beFilesWrite.create.failed",
+                &[
+                    ("path", &dst.display().to_string()),
+                    ("why", &io_reason(e.kind())),
+                ],
+            ),
+            &e,
+        )));
     }
     Ok((dst, n))
 }
@@ -1466,7 +1630,7 @@ pub fn plan_copy_within(root: &Path, from: &Path, cap: usize) -> Result<CopyPlan
     let real_root = std::fs::canonicalize(root).map_err(|e| {
         WriteRefusal::Refused(copy_text(
             "beFilesWrite.copyTree.rootUnresolved",
-            &[("path", &shown(root)), ("e", &e.to_string())],
+            &[("path", &shown(root)), ("why", &io_reason(e.kind()))],
         ))
     })?;
     let src = real
@@ -1480,10 +1644,13 @@ pub fn plan_copy_within(root: &Path, from: &Path, cap: usize) -> Result<CopyPlan
         )));
     }
     let (top_kind, top_dev) = copy_kind(&real).map_err(|e| {
-        WriteRefusal::Io(copy_text(
-            "beFilesWrite.read.failed",
-            &[("path", &shown(&real)), ("e", &e.to_string())],
-        ))
+        WriteRefusal::io(
+            copy_text(
+                "beFilesWrite.read.failed",
+                &[("path", &shown(&real)), ("why", &io_reason(e.kind()))],
+            ),
+            &e,
+        )
     })?;
     let top_is_dir = top_kind.map_err(|what| {
         WriteRefusal::Refused(copy_text(
@@ -1505,17 +1672,23 @@ pub fn plan_copy_within(root: &Path, from: &Path, cap: usize) -> Result<CopyPlan
         let dir_at =
             resolve_in_root(&real_root, join_tail(&src, &tail)).map_err(WriteRefusal::Refused)?;
         let listing = std::fs::read_dir(&dir_at).map_err(|e| {
-            WriteRefusal::Io(copy_text(
-                "beFilesWrite.copyTree.unlistable",
-                &[("path", &shown(&dir_at)), ("e", &e.to_string())],
-            ))
+            WriteRefusal::io(
+                copy_text(
+                    "beFilesWrite.copyTree.unlistable",
+                    &[("path", &shown(&dir_at)), ("why", &io_reason(e.kind()))],
+                ),
+                &e,
+            )
         })?;
         for item in listing {
             let item = item.map_err(|e| {
-                WriteRefusal::Io(copy_text(
-                    "beFilesWrite.copyTree.unlistable",
-                    &[("path", &shown(&dir_at)), ("e", &e.to_string())],
-                ))
+                WriteRefusal::io(
+                    copy_text(
+                        "beFilesWrite.copyTree.unlistable",
+                        &[("path", &shown(&dir_at)), ("why", &io_reason(e.kind()))],
+                    ),
+                    &e,
+                )
             })?;
             let child_tail = tail.join(item.file_name());
             // ★ **逐条目过路径解析**。
@@ -1526,19 +1699,25 @@ pub fn plan_copy_within(root: &Path, from: &Path, cap: usize) -> Result<CopyPlan
                 ))
             })?;
             let (kind, dev) = copy_kind(&at).map_err(|e| {
-                WriteRefusal::Io(copy_text(
-                    "beFilesWrite.read.failed",
-                    &[("path", &shown(&at)), ("e", &e.to_string())],
-                ))
+                WriteRefusal::io(
+                    copy_text(
+                        "beFilesWrite.read.failed",
+                        &[("path", &shown(&at)), ("why", &io_reason(e.kind()))],
+                    ),
+                    &e,
+                )
             })?;
             // 链接 ⇒ 记下它的目标文本（原样，不跟进去）；平台建不了链接时照旧整趟拒。
             let link_to = match kind {
                 Err("link") if super::files_extract::LINKS_SUPPORTED => {
                     Some(std::fs::read_link(&at).map_err(|e| {
-                        WriteRefusal::Io(copy_text(
-                            "beFilesWrite.read.failed",
-                            &[("path", &shown(&at)), ("e", &e.to_string())],
-                        ))
+                        WriteRefusal::io(
+                            copy_text(
+                                "beFilesWrite.read.failed",
+                                &[("path", &shown(&at)), ("why", &io_reason(e.kind()))],
+                            ),
+                            &e,
+                        )
                     })?)
                 }
                 _ => None,
@@ -1588,10 +1767,13 @@ pub fn copy_planned(plan: &CopyPlan, p: &CopyPlanned, dst_rel: &Path) -> Result<
         .map_err(WriteRefusal::Refused)?;
     let dst = resolve_in_root(&plan.root, dst_rel).map_err(WriteRefusal::Refused)?;
     let unreadable = |e: std::io::Error| {
-        WriteRefusal::Io(copy_text(
-            "beFilesWrite.read.failed",
-            &[("path", &shown(&src)), ("e", &e.to_string())],
-        ))
+        WriteRefusal::io(
+            copy_text(
+                "beFilesWrite.read.failed",
+                &[("path", &shown(&src)), ("why", &io_reason(e.kind()))],
+            ),
+            &e,
+        )
     };
     let (kind, _) = copy_kind(&src).map_err(unreadable)?;
     // 链接：当场再核「仍是链接、目标文本没变」，再建一条同文本的链接（住 `files_extract::land_link`）。
@@ -1614,10 +1796,13 @@ pub fn copy_planned(plan: &CopyPlan, p: &CopyPlanned, dst_rel: &Path) -> Result<
     }
     if p.is_dir {
         std::fs::create_dir(&dst).map_err(|e| {
-            WriteRefusal::Io(copy_text(
-                "beFilesWrite.write.failed",
-                &[("path", &shown(&dst)), ("e", &e.to_string())],
-            ))
+            WriteRefusal::io(
+                copy_text(
+                    "beFilesWrite.write.failed",
+                    &[("path", &shown(&dst)), ("why", &io_reason(e.kind()))],
+                ),
+                &e,
+            )
         })?;
         return Ok(0);
     }
@@ -1632,17 +1817,23 @@ fn copy_dir_mode(plan: &CopyPlan, p: &CopyPlanned, dst_rel: &Path) -> Result<(),
     let dst = resolve_in_root(&plan.root, dst_rel).map_err(WriteRefusal::Refused)?;
     let perms = std::fs::metadata(&src)
         .map_err(|e| {
-            WriteRefusal::Io(copy_text(
-                "beFilesWrite.read.failed",
-                &[("path", &shown(&src)), ("e", &e.to_string())],
-            ))
+            WriteRefusal::io(
+                copy_text(
+                    "beFilesWrite.read.failed",
+                    &[("path", &shown(&src)), ("why", &io_reason(e.kind()))],
+                ),
+                &e,
+            )
         })?
         .permissions();
     std::fs::set_permissions(&dst, perms).map_err(|e| {
-        WriteRefusal::Io(copy_text(
-            "beFilesWrite.copy.modeFailed",
-            &[("path", &shown(&dst)), ("e", &e.to_string())],
-        ))
+        WriteRefusal::io(
+            copy_text(
+                "beFilesWrite.copy.modeFailed",
+                &[("path", &shown(&dst)), ("why", &io_reason(e.kind()))],
+            ),
+            &e,
+        )
     })
 }
 
@@ -1750,20 +1941,24 @@ pub fn copy_tree_with(
                         ("tail", &tail),
                     ],
                 );
-                return Err(match e {
-                    WriteRefusal::Refused(_) => WriteRefusal::Refused(said),
-                    _ => WriteRefusal::Io(said),
-                });
+                return Err(e.restated(said));
             }
         }
     }
     for p in plan.entries.iter().rev().filter(|p| p.is_dir) {
         let d = join_tail(&dst_rel, &p.tail);
         copy_dir_mode(&plan, p, &d).map_err(|e| {
-            WriteRefusal::Io(copy_text(
+            let said = copy_text(
                 "beFilesWrite.copyTree.modeNotCopied",
                 &[("why", e.message())],
-            ))
+            );
+            match e.raw() {
+                Some(raw) => WriteRefusal::IoSaid {
+                    said,
+                    raw: raw.to_string(),
+                },
+                None => WriteRefusal::Io(said),
+            }
         })?;
     }
     let dirs = plan.entries.iter().filter(|p| p.is_dir).count();
@@ -1822,9 +2017,9 @@ pub const PEEK_MAX_BYTES: usize = 256 * 1024;
 /// 于是「读的那一份」与「写的那一份」是同一个落点。
 ///
 /// 不在 ⇒ `Ok(text: None)`；在但不是普通文件 / 不是 UTF-8 / 超上限 ⇒ 拒（码见 [`answer_peek`]）。
-pub fn peek_text(root: &Path, rel: impl AsRef<Path>) -> Result<Peeked, (&'static str, String)> {
+pub fn peek_text(root: &Path, rel: impl AsRef<Path>) -> Result<Peeked, WriteFail> {
     let rel = rel.as_ref();
-    let at = resolve_in_root(root, rel).map_err(|m| ("refused", m))?;
+    let at = resolve_in_root(root, rel).map_err(|m| WriteFail::from(("refused", m)))?;
     match std::fs::symlink_metadata(&at) {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             return Ok(Peeked {
@@ -1833,37 +2028,43 @@ pub fn peek_text(root: &Path, rel: impl AsRef<Path>) -> Result<Peeked, (&'static
             })
         }
         Err(e) => {
-            return Err((
-                "io_failed",
+            return Err(WriteFail::io(
                 copy_text(
                     "beFilesWrite.read.failed",
-                    &[("path", &at.display().to_string()), ("e", &e.to_string())],
+                    &[
+                        ("path", &at.display().to_string()),
+                        ("why", &io_reason(e.kind())),
+                    ],
                 ),
+                &e,
             ))
         }
         Ok(_) => {}
     }
-    let real = resolve_existing_in_root(root, rel).map_err(|m| ("refused", m))?;
+    let real = resolve_existing_in_root(root, rel).map_err(|m| WriteFail::from(("refused", m)))?;
     let md = std::fs::metadata(&real).map_err(|e| {
-        (
-            "io_failed",
+        WriteFail::io(
             copy_text(
                 "beFilesWrite.read.failed",
-                &[("path", &real.display().to_string()), ("e", &e.to_string())],
+                &[
+                    ("path", &real.display().to_string()),
+                    ("why", &io_reason(e.kind())),
+                ],
             ),
+            &e,
         )
     })?;
     if !md.is_file() {
-        return Err((
+        return Err(WriteFail::from((
             "refused",
             copy_text(
                 "beFilesWrite.peek.notRegular",
                 &[("path", &real.display().to_string())],
             ),
-        ));
+        )));
     }
     if md.len() > PEEK_MAX_BYTES as u64 {
-        return Err((
+        return Err(WriteFail::from((
             "too_large",
             copy_text(
                 "beFilesWrite.peek.tooBig",
@@ -1873,19 +2074,22 @@ pub fn peek_text(root: &Path, rel: impl AsRef<Path>) -> Result<Peeked, (&'static
                     ("max", &PEEK_MAX_BYTES.to_string()),
                 ],
             ),
-        ));
+        )));
     }
     let bytes = read_nofollow(&real).map_err(|e| {
-        (
-            "io_failed",
+        WriteFail::io(
             copy_text(
                 "beFilesWrite.read.failed",
-                &[("path", &real.display().to_string()), ("e", &e.to_string())],
+                &[
+                    ("path", &real.display().to_string()),
+                    ("why", &io_reason(e.kind())),
+                ],
             ),
+            &e,
         )
     })?;
     if bytes.is_empty() && md.len() > 0 {
-        return Err(("io_failed", hollow_read(&real, md.len())));
+        return Err(WriteFail::from(("io_failed", hollow_read(&real, md.len()))));
     }
     let text = String::from_utf8(bytes).map_err(|_| {
         (
@@ -1979,19 +2183,31 @@ fn put_text_racing(
         Ok(_) => true,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => false,
         Err(e) => {
-            return Err(WriteRefusal::Io(copy_text(
-                "beFilesWrite.read.failed",
-                &[("path", &at.display().to_string()), ("e", &e.to_string())],
-            )))
+            return Err(WriteRefusal::io(
+                copy_text(
+                    "beFilesWrite.read.failed",
+                    &[
+                        ("path", &at.display().to_string()),
+                        ("why", &io_reason(e.kind())),
+                    ],
+                ),
+                &e,
+            ))
         }
     };
     let (dst, current, perms) = if existed {
         let real = resolve_existing_in_root(root, rel).map_err(WriteRefusal::Refused)?;
         let md = std::fs::metadata(&real).map_err(|e| {
-            WriteRefusal::Io(copy_text(
-                "beFilesWrite.read.failed",
-                &[("path", &real.display().to_string()), ("e", &e.to_string())],
-            ))
+            WriteRefusal::io(
+                copy_text(
+                    "beFilesWrite.read.failed",
+                    &[
+                        ("path", &real.display().to_string()),
+                        ("why", &io_reason(e.kind())),
+                    ],
+                ),
+                &e,
+            )
         })?;
         if !md.is_file() {
             return Err(WriteRefusal::Refused(copy_text(
@@ -2000,10 +2216,16 @@ fn put_text_racing(
             )));
         }
         let cur = read_nofollow(&real).map_err(|e| {
-            WriteRefusal::Io(copy_text(
-                "beFilesWrite.read.failed",
-                &[("path", &real.display().to_string()), ("e", &e.to_string())],
-            ))
+            WriteRefusal::io(
+                copy_text(
+                    "beFilesWrite.read.failed",
+                    &[
+                        ("path", &real.display().to_string()),
+                        ("why", &io_reason(e.kind())),
+                    ],
+                ),
+                &e,
+            )
         })?;
         if cur.is_empty() && md.len() > 0 {
             return Err(WriteRefusal::Io(format!(
@@ -2068,9 +2290,10 @@ fn put_text_racing(
             ),
             Err(e) => copy_text(
                 "beFilesWrite.put.verifyUnreadable",
-                &[("e", &e.to_string())],
+                &[("why", &io_reason(e.kind()))],
             ),
         };
+        let raw = back.as_ref().err().map(ToString::to_string);
         let undone = match current.as_deref() {
             Some(orig) => swap_in(root, rel, orig, perms, false, &mut || {}).is_ok(),
             None => remove_created(root, rel).is_ok(),
@@ -2085,14 +2308,18 @@ fn put_text_racing(
             (true, false, None) => copy_text("beFilesWrite.put.restoreFailed", &[]),
             (false, false, _) => copy_text("beFilesWrite.put.createdKept", &[]),
         };
-        return Err(WriteRefusal::Io(copy_text(
+        let said = copy_text(
             "beFilesWrite.put.verifyFailed",
             &[
                 ("path", &dst.display().to_string()),
                 ("why", &why),
                 ("note", &note),
             ],
-        )));
+        );
+        return Err(match raw {
+            Some(raw) => WriteRefusal::IoSaid { said, raw },
+            None => WriteRefusal::Io(said),
+        });
     }
     Ok(Put {
         path: dst,
@@ -2125,25 +2352,43 @@ fn make_parents(root: &Path, rel: &Path) -> Result<(), WriteRefusal> {
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 std::fs::create_dir(&at).map_err(|e| {
-                    WriteRefusal::Io(copy_text(
-                        "beFilesWrite.write.failed",
-                        &[("path", &at.display().to_string()), ("e", &e.to_string())],
-                    ))
+                    WriteRefusal::io(
+                        copy_text(
+                            "beFilesWrite.write.failed",
+                            &[
+                                ("path", &at.display().to_string()),
+                                ("why", &io_reason(e.kind())),
+                            ],
+                        ),
+                        &e,
+                    )
                 })?;
                 if let Some(p) = own_mode(&at, true) {
                     std::fs::set_permissions(&at, p).map_err(|e| {
-                        WriteRefusal::Io(copy_text(
-                            "beFilesWrite.chmod.failed",
-                            &[("path", &at.display().to_string()), ("e", &e.to_string())],
-                        ))
+                        WriteRefusal::io(
+                            copy_text(
+                                "beFilesWrite.chmod.failed",
+                                &[
+                                    ("path", &at.display().to_string()),
+                                    ("why", &io_reason(e.kind())),
+                                ],
+                            ),
+                            &e,
+                        )
                     })?;
                 }
             }
             Err(e) => {
-                return Err(WriteRefusal::Io(copy_text(
-                    "beFilesWrite.read.failed",
-                    &[("path", &at.display().to_string()), ("e", &e.to_string())],
-                )))
+                return Err(WriteRefusal::io(
+                    copy_text(
+                        "beFilesWrite.read.failed",
+                        &[
+                            ("path", &at.display().to_string()),
+                            ("why", &io_reason(e.kind())),
+                        ],
+                    ),
+                    &e,
+                ))
             }
         }
     }
@@ -2184,10 +2429,16 @@ fn swap_in(
     if std::fs::symlink_metadata(&dst).is_ok() {
         let _ = &perms;
         std::fs::write(&dst, bytes).map_err(|e| {
-            WriteRefusal::Io(copy_text(
-                "beFilesWrite.write.failed",
-                &[("path", &dst.display().to_string()), ("e", &e.to_string())],
-            ))
+            WriteRefusal::io(
+                copy_text(
+                    "beFilesWrite.write.failed",
+                    &[
+                        ("path", &dst.display().to_string()),
+                        ("why", &io_reason(e.kind())),
+                    ],
+                ),
+                &e,
+            )
         })?;
         return Ok(dst);
     }
@@ -2208,28 +2459,46 @@ fn swap_in(
         .create_new(true)
         .open(&side)
         .map_err(|e| {
-            WriteRefusal::Io(copy_text(
-                "beFilesWrite.write.failed",
-                &[("path", &side.display().to_string()), ("e", &e.to_string())],
-            ))
+            WriteRefusal::io(
+                copy_text(
+                    "beFilesWrite.write.failed",
+                    &[
+                        ("path", &side.display().to_string()),
+                        ("why", &io_reason(e.kind())),
+                    ],
+                ),
+                &e,
+            )
         })?;
     // 权限位在写进内容之前就定（新建在自家目录里的那一份出生就只给本人，旁名上也不留一刻宽的）。
     let perms = perms.or_else(|| own_mode(&dst, false));
     if let Err(e) = perms.map_or(Ok(()), |p| f.set_permissions(p)) {
         drop(f);
         std::fs::remove_file(&side).ok();
-        return Err(WriteRefusal::Io(copy_text(
-            "beFilesWrite.write.failed",
-            &[("path", &side.display().to_string()), ("e", &e.to_string())],
-        )));
+        return Err(WriteRefusal::io(
+            copy_text(
+                "beFilesWrite.write.failed",
+                &[
+                    ("path", &side.display().to_string()),
+                    ("why", &io_reason(e.kind())),
+                ],
+            ),
+            &e,
+        ));
     }
     if let Err(e) = f.write_all(bytes) {
         drop(f);
         std::fs::remove_file(&side).ok();
-        return Err(WriteRefusal::Io(copy_text(
-            "beFilesWrite.write.failed",
-            &[("path", &side.display().to_string()), ("e", &e.to_string())],
-        )));
+        return Err(WriteRefusal::io(
+            copy_text(
+                "beFilesWrite.write.failed",
+                &[
+                    ("path", &side.display().to_string()),
+                    ("why", &io_reason(e.kind())),
+                ],
+            ),
+            &e,
+        ));
     }
     drop(f);
     if create {
@@ -2243,10 +2512,16 @@ fn swap_in(
                         &[("path", &dst.display().to_string())],
                     ))
                 }
-                Ok((_, _, Err(e))) => WriteRefusal::Io(copy_text(
-                    "beFilesWrite.write.failed",
-                    &[("path", &dst.display().to_string()), ("e", &e.to_string())],
-                )),
+                Ok((_, _, Err(e))) => WriteRefusal::io(
+                    copy_text(
+                        "beFilesWrite.write.failed",
+                        &[
+                            ("path", &dst.display().to_string()),
+                            ("why", &io_reason(e.kind())),
+                        ],
+                    ),
+                    &e,
+                ),
             };
         std::fs::remove_file(&side).ok();
         return Err(why);
@@ -2254,10 +2529,16 @@ fn swap_in(
     between();
     if let Err(e) = std::fs::rename(&side, &dst) {
         std::fs::remove_file(&side).ok();
-        return Err(WriteRefusal::Io(copy_text(
-            "beFilesWrite.write.failed",
-            &[("path", &dst.display().to_string()), ("e", &e.to_string())],
-        )));
+        return Err(WriteRefusal::io(
+            copy_text(
+                "beFilesWrite.write.failed",
+                &[
+                    ("path", &dst.display().to_string()),
+                    ("why", &io_reason(e.kind())),
+                ],
+            ),
+            &e,
+        ));
     }
     Ok(dst)
 }
@@ -2290,18 +2571,30 @@ fn land_backup(
         .create_new(true)
         .open(&bak)
         .map_err(|e| {
-            WriteRefusal::Io(copy_text(
-                "beFilesWrite.backup.createFailed",
-                &[("path", &bak.display().to_string()), ("e", &e.to_string())],
-            ))
+            WriteRefusal::io(
+                copy_text(
+                    "beFilesWrite.backup.createFailed",
+                    &[
+                        ("path", &bak.display().to_string()),
+                        ("why", &io_reason(e.kind())),
+                    ],
+                ),
+                &e,
+            )
         })?;
     if let Err(e) = f.write_all(original) {
         drop(f);
         std::fs::remove_file(&bak).ok();
-        return Err(WriteRefusal::Io(copy_text(
-            "beFilesWrite.backup.createFailed",
-            &[("path", &bak.display().to_string()), ("e", &e.to_string())],
-        )));
+        return Err(WriteRefusal::io(
+            copy_text(
+                "beFilesWrite.backup.createFailed",
+                &[
+                    ("path", &bak.display().to_string()),
+                    ("why", &io_reason(e.kind())),
+                ],
+            ),
+            &e,
+        ));
     }
     if let Some(p) = perms {
         // 按句柄改（没有路径可被换成链接）；删那一下仍按路径（删的是链接本身，不跟）。
@@ -2330,28 +2623,44 @@ fn keep_mode(
     let Err(e) = chmod(bak, perms) else {
         return Ok(());
     };
-    let gone = match remove(bak) {
-        Ok(()) => copy_text("beFilesWrite.backup.removed", &[]),
-        Err(re) => copy_text("beFilesWrite.backup.notRemoved", &[("e", &re.to_string())]),
+    // 两句系统原话（沿用不上 · 删不掉）都进复制详情，各占一行。
+    let (gone, raw) = match remove(bak) {
+        Ok(()) => (copy_text("beFilesWrite.backup.removed", &[]), e.to_string()),
+        Err(re) => (
+            copy_text(
+                "beFilesWrite.backup.notRemoved",
+                &[("why", &io_reason(re.kind()))],
+            ),
+            format!("{e}\n{re}"),
+        ),
     };
-    Err(WriteRefusal::Io(copy_text(
-        "beFilesWrite.backup.modeFailed",
-        &[
-            ("path", &bak.display().to_string()),
-            ("e", &e.to_string()),
-            ("gone", &gone),
-        ],
-    )))
+    Err(WriteRefusal::IoSaid {
+        said: copy_text(
+            "beFilesWrite.backup.modeFailed",
+            &[
+                ("path", &bak.display().to_string()),
+                ("why", &io_reason(e.kind())),
+                ("gone", &gone),
+            ],
+        ),
+        raw,
+    })
 }
 
 /// 回滚那一支：删掉**这一趟自己刚建出来**的那一份（只在「原来不存在」时调）。
 fn remove_created(root: &Path, rel: &Path) -> Result<(), WriteRefusal> {
     let at = resolve_in_root(root, rel).map_err(WriteRefusal::Refused)?;
     std::fs::remove_file(&at).map_err(|e| {
-        WriteRefusal::Io(copy_text(
-            "beFilesWrite.delete.failed",
-            &[("path", &at.display().to_string()), ("e", &e.to_string())],
-        ))
+        WriteRefusal::io(
+            copy_text(
+                "beFilesWrite.delete.failed",
+                &[
+                    ("path", &at.display().to_string()),
+                    ("why", &io_reason(e.kind())),
+                ],
+            ),
+            &e,
+        )
     })
 }
 
@@ -2389,13 +2698,16 @@ pub fn delete_session_with(
     let target =
         fenced_session_file(sid, locate, is_record, file_name).map_err(WriteRefusal::Refused)?;
     std::fs::remove_file(&target).map_err(|e| {
-        WriteRefusal::Io(copy_text(
-            "beFilesWrite.session.deleteFailed",
-            &[
-                ("path", &target.display().to_string()),
-                ("e", &e.to_string()),
-            ],
-        ))
+        WriteRefusal::io(
+            copy_text(
+                "beFilesWrite.session.deleteFailed",
+                &[
+                    ("path", &target.display().to_string()),
+                    ("why", &io_reason(e.kind())),
+                ],
+            ),
+            &e,
+        )
     })?;
     Ok(target)
 }
@@ -2453,11 +2765,49 @@ fn fenced_session_file(
 //   「真远端那台机器上跑过」本轮**没有**（同本模块头注第 3 条），
 //   本机跑得到的是本机文件系统上的那一趟。
 
-/// 这一面回一条什么：成功交 JSON，失败交 `(code, message)`。
-///
-/// ⚠ 与 `inbound::CmdResult` / `files::Answer` **逐字同形**（一进一出、
-/// `(码, 话)` 的错误信封）——接线那一拍才不用改形状。
-pub type Answer = Result<serde_json::Value, (&'static str, String)>;
+/// 这一面回一条什么：成功交 JSON，失败交 [`WriteFail`]（码 ＋ 那一句 ＋ 下层原话）。
+pub type Answer = Result<serde_json::Value, WriteFail>;
+
+/// 写面一条命令没成：码 ＋ 给人看的那一句 ＋ 下层原话（可缺；不上句子，进应答的复制详情）。
+/// 参数那几道（`(码, 话)`）与盘上那几步（[`WriteRefusal`]）都经 `?` 换成它。
+#[derive(Debug, Clone, PartialEq)]
+pub struct WriteFail {
+    pub code: &'static str,
+    pub said: String,
+    pub raw: Option<String>,
+}
+
+impl From<(&'static str, String)> for WriteFail {
+    fn from((code, said): (&'static str, String)) -> Self {
+        WriteFail {
+            code,
+            said,
+            raw: None,
+        }
+    }
+}
+
+impl WriteFail {
+    /// 盘上这一步没成（`io_failed`）：句子已带原因词，系统原话进复制详情。
+    pub fn io(said: String, e: &std::io::Error) -> WriteFail {
+        WriteFail {
+            code: "io_failed",
+            said,
+            raw: Some(e.to_string()),
+        }
+    }
+}
+
+impl From<WriteRefusal> for WriteFail {
+    /// 码由那个枚举自己答（理由住 [`WriteRefusal`]）。
+    fn from(e: WriteRefusal) -> Self {
+        WriteFail {
+            code: e.code(),
+            said: e.message().to_string(),
+            raw: e.raw().map(str::to_string),
+        }
+    }
+}
 
 /// 文件管理**写**面的一条线上命令。
 ///
@@ -2616,10 +2966,8 @@ fn answer_create(args: &serde_json::Value) -> Answer {
             ),
         ))?,
     };
-    let landed = create_new_file(&root, &rel, &bytes).map_err(|e| {
-        // 🔴 码由那个枚举自己答，**不在这里猜字符串前缀** —— 理由住 [`WriteRefusal`]。
-        (e.code(), e.message().to_string())
-    })?;
+    // 🔴 码由那个枚举自己答，**不在这里猜字符串前缀** —— 理由住 [`WriteRefusal`]。
+    let landed = create_new_file(&root, &rel, &bytes).map_err(refusal)?;
     Ok(serde_json::json!({
         "path": crate::files::raw::to_json(crate::files::raw::path_bytes(&landed)),
         "bytes": bytes.len(),
@@ -2701,8 +3049,8 @@ fn path_json(p: &Path) -> serde_json::Value {
 }
 
 /// 一次拒绝交回线上：码由那个枚举自己答（理由住 [`WriteRefusal`]）。
-fn refusal(e: WriteRefusal) -> (&'static str, String) {
-    (e.code(), e.message().to_string())
+fn refusal(e: WriteRefusal) -> WriteFail {
+    WriteFail::from(e)
 }
 
 fn answer_mkdir(args: &serde_json::Value) -> Answer {
@@ -2738,10 +3086,10 @@ fn answer_delete(args: &serde_json::Value) -> Answer {
     let expect = match args.get("expect") {
         None => None,
         Some(serde_json::Value::Null) => {
-            return Err((
+            return Err(WriteFail::from((
                 "bad_args",
                 crate::common::contract::malformed("`expect` must not be null here"),
-            ))
+            )))
         }
         // 〔SU1 问 2〕恰好 `{"empty_dir": true}` ⇒ 只删空目录；别的对象形照旧按逐字节那一形取（`{"b16": …}`，认不出 ⇒ `bad_args`）。
         Some(serde_json::Value::Object(o))
@@ -2752,10 +3100,10 @@ fn answer_delete(args: &serde_json::Value) -> Answer {
         Some(v) => Some(DeleteExpect::Bytes(bytes_of(v, "expect")?)),
     };
     if recursive && expect.is_some() {
-        return Err((
+        return Err(WriteFail::from((
             "bad_args",
             crate::common::contract::malformed("`expect` and `recursive` are mutually exclusive"),
-        ));
+        )));
     }
     // 递归删可带 `limit`：这一趟至多删几条，停在两条之间、回 `remaining`（还剩几条），调用方再发一趟接着删。
     let limit = match args.get("limit") {
@@ -2816,10 +3164,10 @@ fn answer_copy(args: &serde_json::Value) -> Answer {
     // 复制目录**显式**：不给 ⇒ 射程与此前一个字节不差；与 `overwrite: true` 同给 ⇒ 拒（目录复制不合并、不覆盖）。
     if flag_of(args, "recursive")? {
         if overwrite {
-            return Err((
+            return Err(WriteFail::from((
                 "bad_args",
                 copy_text("beFilesWrite.copy.recursiveOverwrite", &[]),
-            ));
+            )));
         }
         let t = copy_tree(&root, &from, &to).map_err(refusal)?;
         return Ok(serde_json::json!({
@@ -2903,12 +3251,12 @@ fn answer_put(args: &serde_json::Value) -> Answer {
     //    缺席 ⇒ 拒 —— 没有「不问就盖」这一形（理由住本节头注）。
     let expect = match args.get("expect") {
         None => {
-            return Err((
+            return Err(WriteFail::from((
                 "bad_args",
                 crate::common::contract::malformed(
                     "missing `expect` (null means absent at read time)",
                 ),
-            ))
+            )))
         }
         Some(serde_json::Value::Null) => None,
         Some(v) => Some(bytes_of(v, "expect")?),
@@ -2931,12 +3279,12 @@ fn answer_delete_session(args: &serde_json::Value, sessions: &SessionPort) -> An
     //    「顺手也收一个路径」那一形连表达的机会都不给。
     if let Some(obj) = args.as_object() {
         if let Some(extra) = obj.keys().find(|k| k.as_str() != "sid") {
-            return Err((
+            return Err(WriteFail::from((
                 "bad_args",
                 crate::common::contract::malformed(&format!(
                     "`files-delete-session` takes only `sid`, got `{extra}`"
                 )),
-            ));
+            )));
         }
     }
     let sid = args.get("sid").and_then(serde_json::Value::as_str).ok_or((
@@ -2963,10 +3311,10 @@ pub fn answer_wire(wire_name: &str, args: &serde_json::Value, sessions: &Session
         "files-peek" => answer_peek(args),
         "files-put" => answer_put(args),
         "files-delete-session" => answer_delete_session(args, sessions),
-        other => Err((
+        other => Err(WriteFail::from((
             "bad_args",
             crate::common::contract::malformed(&format!("unknown write command `{other}`")),
-        )),
+        ))),
     }
 }
 

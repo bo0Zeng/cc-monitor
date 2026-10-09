@@ -896,7 +896,7 @@ fn the_files_read_family_is_online_exactly_as_it_is_declared() {
             )
         }),
         (crate::control::files_commit::COMMIT_COMMANDS, |c, a| {
-            crate::control::files_commit::answer_wire(c, a).map_err(|(code, said, _)| (code, said))
+            crate::control::files_commit::answer_wire(c, a)
         }),
     ];
     for (cap, answer) in tables
@@ -931,7 +931,10 @@ fn the_files_read_family_is_online_exactly_as_it_is_declared() {
         );
         // 真的调一次：分派必须够得到它（`unknown_command` / 不认的名字都算断线）。
         let out = answer(cap.name, &serde_json::json!({}));
-        if let Err((code, msg)) = out {
+        if let Err(crate::control::files_write::WriteFail {
+            code, said: msg, ..
+        }) = out
+        {
             assert!(
                 cap.codes.contains(&code),
                 "`{}` 回了一个它没登记的 code `{code}`（{msg}）",

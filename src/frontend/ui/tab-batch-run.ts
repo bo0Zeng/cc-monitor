@@ -21,6 +21,7 @@ import { resumeCommandFor } from "./remote-config";
 import { defaultLauncherOf } from "./agent-profile";
 import { openLocalTerminal, openTerminal } from "./terminal-open";
 import { configuredLauncherFor } from "./launch-requests";
+import { failSaid } from "./kit/detail";
 
 /** 一个 tab 的结局（`why` 是给人看的那一句；做成了 ⇒ 空串）。 */
 export interface BatchOutcome {
@@ -207,7 +208,7 @@ export async function openWindow(origin: Origin, cmd: string, cwd: string): Prom
     else await openTerminal(origin, cmd);
     return null;
   } catch (e) {
-    return copyText("tabBatch.why.windowFailed", { detail: String(e) });
+    return failSaid(copyText("tabBatch.why.windowFailed"), e);
   }
 }
 

@@ -40,7 +40,7 @@ import { homeShort } from "../kit/path";
 import { hostOs } from "./host-os";
 import { copyText } from "../copy-table";
 import type { LocalCcmEntry } from "../generated/LocalCcmEntry";
-import { detailOf, sayWithDetail } from "../kit/detail";
+import { detailOf, sayFailure, sayWithDetail } from "../kit/detail";
 
 /** 界面上怎么叫那一代 PowerShell（两代的执行策略分开存）。 */
 const psName = (h: PsHost): string =>
@@ -209,8 +209,6 @@ function accessLine(dot: CfgDot, text: string, ...tail: HTMLElement[]): HTMLElem
 const linkBtn = (label: string, onClick: () => void, danger = false): HTMLButtonElement =>
   button(label, danger ? "cfg-link cfg-link-danger" : "cfg-link", onClick);
 
-const errText = (e: unknown): string => String(e instanceof Error ? e.message : e);
-
 /** 执行策略那一行的话：不会挡（或没有这一项）⇒ 空串。 */
 function policyText(p: ExecPolicy | null): string {
   if (p === null || p.loads === true) return "";
@@ -227,9 +225,8 @@ function onLineText(c: StartupFile, p: string, shell: Shell): string {
   return shell === "powershell" ? copyText("machineAliases.access.onWindow", { path: p }) : copyText("machineAliases.access.on", { path: p });
 }
 
-/** 接上 / 卸载之后那一句：失败说原话；接上了再看执行策略挡不挡。 */
-function afterRcText(verb: "install" | "remove", failed: string | null, pol: ExecPolicy | null, shell: Shell): string {
-  if (failed !== null) return failed;
+/** 接上 / 卸载成了之后那一句：接上了再看执行策略挡不挡（失败那一句由调用方就地说）。 */
+function afterRcText(verb: "install" | "remove", pol: ExecPolicy | null, shell: Shell): string {
   if (verb !== "install") return "";
   if (pol !== null && pol.loads !== true) return copyText("machineAliases.policy.afterInstall");
   return shell === "powershell" ? copyText("machineAliases.powershell.blockAfterInstall") : copyText("machineAliases.posix.blockAfterInstall");
@@ -364,7 +361,7 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
     try {
       code.textContent = await renderAliasBlock(opts.origin(), t.path);
     } catch (e) {
-      sayWithDetail(code, copyText("machineAliases.preview.failedLine", { e: errText(e) }), detailOf(e));
+      sayFailure(code, copyText("machineAliases.preview.failedLine"), e);
     }
   };
 
@@ -510,7 +507,7 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
       cands = got.rcCandidates;
       refreshBound();
     } catch (e) {
-      sayWithDetail(accessWarn, copyText("machineAliases.readBack.failed", { e: errText(e) }), detailOf(e));
+      sayFailure(accessWarn, copyText("machineAliases.readBack.failed"), e);
       row.setStatus("warn", copyText("machineAliases.status.readFailed"));
     }
     renderAccess();
@@ -524,7 +521,7 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
       pathCcm.textContent = st.message;
     } catch (e) {
       pathCcm.hidden = false;
-      sayWithDetail(pathCcm, copyText("machineAliases.load.ccmFailed", { e: String(e) }), detailOf(e));
+      sayFailure(pathCcm, copyText("machineAliases.load.ccmFailed"), e);
     }
   };
 
@@ -546,7 +543,7 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
       if (got.otherRc) chosen = got.otherRc;
       refreshBound();
     } catch (e) {
-      sayWithDetail(otherErr, copyText("machineAliases.other.failed", { e: errText(e) }), detailOf(e));
+      sayFailure(otherErr, copyText("machineAliases.other.failed"), e);
     }
     renderAccess();
   };
@@ -555,16 +552,16 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
   const runRc = async (verb: "install" | "remove", path: string): Promise<void> => {
     panelOpen = null;
     accessNote.textContent = verb === "install" ? copyText("machineAliases.runRc.installing") : copyText("machineAliases.runRc.removing");
-    let failed: string | null = null;
+    let failed: { title: string; e: unknown } | null = null;
     try {
       if (verb === "install") await installAliasBlock(opts.origin(), path);
       else await removeAliasBlock(opts.origin(), path);
     } catch (e) {
-      const why = errText(e);
-      failed = verb === "install" ? copyText("machineAliases.runRc.installFailed", { e: why }) : copyText("machineAliases.runRc.removeFailed", { e: why });
+      failed = { title: verb === "install" ? copyText("machineAliases.runRc.installFailed") : copyText("machineAliases.runRc.removeFailed"), e };
     }
     await readBack();
-    accessNote.textContent = afterRcText(verb, failed, cands.find((c) => c.path === path)?.policy ?? null, shell);
+    if (failed !== null) sayFailure(accessNote, failed.title, failed.e);
+    else accessNote.textContent = afterRcText(verb, cands.find((c) => c.path === path)?.policy ?? null, shell);
   };
 
   /** 「我自己贴」：交那台记下，去「要你动手」里那一件（要贴的几行、贴在哪、存盘后自己认出都在那里）。 */
@@ -794,7 +791,7 @@ function buildPsExtras(row: CfgRow): PsExtras {
       console.warn("cc_get_auto_launch failed:", e);
       // 读不到时别把「不知道」画成「关着」：开关不给拨、路径那格说读不到。
       auto.input.setAttribute("aria-disabled", "true");
-      sayWithDetail(autoPath, copyText("machineAliases.autoLaunch.unreadable", { e: String(e) }), detailOf(e));
+      sayFailure(autoPath, copyText("machineAliases.autoLaunch.unreadable"), e);
     }
   };
 

@@ -48,7 +48,8 @@ describe("（步 4）：异步失败落在那一块上，不再只打到状态�
       );
       return {
         ...real,
-        readRemoteConfig: () => Promise.reject(new Error("READ_BOOM")),
+        // 壳命令失败带复制详情（`SaidError` 那一形）⇒ 那一句落在这一块上。
+        readRemoteConfig: () => Promise.reject(Object.assign(new Error("READ_BOOM"), { detail: "d-boom" })),
       };
     });
     const { RemoteSection } = await import("../../../../src/frontend/ui/settings/remote-section");

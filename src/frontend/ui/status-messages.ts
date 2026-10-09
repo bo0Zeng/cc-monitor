@@ -110,7 +110,7 @@ export class StatusMessages {
       time.textContent = toastClock(r.at);
       const text = document.createElement("span");
       text.className = s.smText;
-      text.textContent = r.detail ? copyText("statusBar.messages.line", { title: r.title, detail: r.detail.split("\n")[0] }) : r.title;
+      text.textContent = r.detail ? copyText("statusBar.messages.line", { title: r.title, fact: r.detail.split("\n")[0] }) : r.title;
       text.title = r.detail ? `${r.title}\n${r.detail}` : r.title;
       row.append(time, icon(LEVEL_ICON[r.level], "compact"), text);
       const open = r.more.length > 0 && this.expanded.has(r);

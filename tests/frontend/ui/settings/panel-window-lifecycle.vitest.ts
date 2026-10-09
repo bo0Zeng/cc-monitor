@@ -225,9 +225,8 @@ describe("ST1：设置窗关窗 ＝ 隐藏；〔ST2〕全即时：改了就落�
     dirCheck.problem = null;
     expect(setDir).not.toHaveBeenCalled();
     expect(document.querySelector(".settings-restart-bar")!.textContent).not.toContain(copyText("settingsPanel.save.claudeDir"));
-    expect(document.querySelector(".settings-panel .settings-banner")!.textContent).toBe(
-      copyText("settingsPanel.save.failed", { what: copyText("settingsPanel.save.claudeDir"), e: "/mnt/x 不在" }),
-    );
+    // 查目录那一句（「{path} 不存在 · 未保存」这一族）原样上屏。
+    expect(document.querySelector(".settings-panel .settings-banner")!.textContent).toBe("/mnt/x 不在");
     void p;
   });
 
@@ -306,7 +305,8 @@ describe("〔W5-UI〕选 Claude 数据目录的窗口打不开 ⇒ 说出来", (
     await pick();
     const text = document.body.textContent ?? "";
     expect(text, "打不开也不说").toMatch(copyPattern("settingsPanel.claudeDir.pickFailed"));
-    expect(text).toContain("dialog-refused-xyz");
+    // 插件抛的原文不上屏（进控制台）。
+    expect(text).not.toContain("dialog-refused-xyz");
   });
 });
 

@@ -40,7 +40,7 @@ import type { DataClass } from "../generated/DataClass";
 import type { DataPathInfo } from "../generated/DataPathInfo";
 import type { DataPathsResponse } from "../generated/DataPathsResponse";
 import { copyText } from "../copy-table";
-import { detailOf, sayWithDetail } from "../kit/detail";
+import { sayFailure } from "../kit/detail";
 import { icon } from "../kit/icon";
 
 /**
@@ -162,7 +162,7 @@ export class DataSection {
       this.mainBody.replaceChildren();
       const err = document.createElement("div");
       err.className = "settings-data-error";
-      sayWithDetail(err, copyText("data.load.failed", { e: String(e) }), detailOf(e));
+      sayFailure(err, copyText("data.load.failed"), e);
       this.mainBody.appendChild(err);
     }
   }

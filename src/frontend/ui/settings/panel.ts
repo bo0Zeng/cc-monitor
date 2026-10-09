@@ -77,7 +77,8 @@ import { BEHAVIOR_TOGGLED_EVENT, SETTINGS_APPLIED_EVENT, SETTINGS_GO_EVENT, type
 import { confirmDialog } from "../kit/dialog";
 import { copyText } from "../copy-table";
 import { parseSettingsTarget, type SettingsTarget } from "./open-settings";
-import { detailOf, sayWithDetail } from "../kit/detail";
+import { detailOf, sayFailure, sayWithDetail } from "../kit/detail";
+import { ControlError } from "../control-said";
 
 /**
  * 字段控件类型：
@@ -368,7 +369,7 @@ export class SettingsPanel {
       await this.openInner();
     } catch (e) {
       // 面板必须能打开——它是用户唯一的逃生口（里面有"打开 profile"之类的按钮）
-      sayWithDetail(this.banner, copyText("settingsPanel.open.partialFailed", { e: String(e) }), detailOf(e));
+      sayFailure(this.banner, copyText("settingsPanel.open.partialFailed"), e);
       this.banner.classList.add("settings-banner-show");
       this.el.classList.add("open");
       this.isOpen = true;
@@ -735,7 +736,7 @@ export class SettingsPanel {
       })
       .catch((e: unknown) => {
         // 落不下就不关：窗口留着、说出原因，用户的改动还在输入框里。
-        sayWithDetail(this.banner, copyText("settingsPanel.close.saveFailed", { e: e instanceof Error ? e.message : String(e) }), detailOf(e));
+        sayFailure(this.banner, copyText("settingsPanel.close.saveFailed"), e);
         this.banner.classList.add("settings-banner-show");
       });
   }
@@ -767,7 +768,7 @@ export class SettingsPanel {
           // 藏不掉就别假装藏了：窗口还在屏幕上，面板得回到能用的样子并说出原因。
           this.hiddenByUs = false;
           void this.open().then(() => {
-            sayWithDetail(this.banner, copyText("settingsPanel.close.failed", { e: String(e) }), detailOf(e));
+            sayFailure(this.banner, copyText("settingsPanel.close.failed"), e);
             this.banner.classList.add("settings-banner-show");
           });
         });
@@ -802,9 +803,9 @@ export class SettingsPanel {
   private async persistClaudeDir(): Promise<void> {
     const nextDir = this.claudeDirInput.value.trim();
     if (nextDir === this.claudeDirOriginal) return;
-    // 不在的目录不存：照收的话重启后会被悄悄忽略。抛出去由调用方说「没存下：…」。
+    // 不在的目录不存：照收的话重启后会被悄悄忽略。那一句（「{path} 不存在 · 未保存」这一族）抛出去由调用方原样上屏。
     const problem = nextDir === "" ? null : await claudeDirProblem(nextDir);
-    if (problem !== null) throw new Error(problem);
+    if (problem !== null) throw new ControlError(problem, "");
     await setClaudeDirOverride(nextDir === "" ? null : nextDir);
     this.claudeDirOriginal = nextDir;
     // E62：给 S7 那条常驻条**供货**。这里的 banner 是一次性的（关窗即没），
@@ -818,7 +819,7 @@ export class SettingsPanel {
 
   /** 落盘失败时说出来（全即时的每一格都走它，不许静默吞）。 */
   private reportSaveFailure(what: string, e: unknown): void {
-    sayWithDetail(this.banner, copyText("settingsPanel.save.failed", { what, e: e instanceof Error ? e.message : String(e) }), detailOf(e));
+    sayFailure(this.banner, copyText("settingsPanel.save.failed", { what }), e);
     this.banner.classList.add("settings-banner-show");
   }
 
@@ -857,7 +858,7 @@ export class SettingsPanel {
     } catch (e) {
       console.warn("dialog open failed:", e);
       // 点了「选择…」却什么都没发生 ⇒ 说出来（落在同一块 banner 上）。
-      sayWithDetail(this.banner, copyText("settingsPanel.claudeDir.pickFailed", { e: String(e) }), detailOf(e));
+      sayFailure(this.banner, copyText("settingsPanel.claudeDir.pickFailed"), e);
       this.banner.classList.add("settings-banner-show");
     }
   }
@@ -1670,7 +1671,7 @@ export class SettingsPanel {
       wrap.appendChild(heading);
       const msg = document.createElement("div");
       msg.className = "settings-block-failed-msg";
-      sayWithDetail(msg, copyText("settingsPanel.safeBlock.failed", { e: String(e) }), detailOf(e));
+      sayFailure(msg, copyText("settingsPanel.safeBlock.failed"), e);
       wrap.appendChild(msg);
       // 可复制——用户报障时要的是原文，不是转述
       const out = document.createElement("textarea");

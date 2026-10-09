@@ -27,6 +27,7 @@ mod civil;
 mod duration;
 pub use civil::civil_from_days;
 pub use duration::{format_duration, format_elapsed};
+pub use reason::io_reason;
 pub mod detail;
 pub mod reason;
 

@@ -7,7 +7,7 @@ import type { JsonlRecord } from "./generated/JsonlRecord";
 import type { Origin } from "./ipc/origin";
 import { loadRunPage, type RunPage, type RunWhich } from "./record-reads";
 import { copyText } from "./copy-table";
-import { detailOf, sayWithDetail } from "./kit/detail";
+import { sayFailure } from "./kit/detail";
 
 /** 渲染器给出来的那一形（`cards/index.ts::renderMessage` 的结果，只取要用的两种）。 */
 export type RunRender = (
@@ -96,7 +96,7 @@ export class RunTimeline {
       this.errorEl?.remove();
       const err = document.createElement("div");
       err.className = "block-agent-error";
-      sayWithDetail(err, copyText("runs.timeline.failed", { e: String(e) }), detailOf(e));
+      sayFailure(err, copyText("runs.timeline.failed"), e);
       this.body.appendChild(err);
       this.errorEl = err;
     }

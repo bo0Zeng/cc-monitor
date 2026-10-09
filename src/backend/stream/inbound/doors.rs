@@ -18,9 +18,6 @@ impl crate::assets::door::Door for LocalFiles {
             .iter()
             .find(|s| s.name == cmd && s.name.starts_with("files-"))
             .ok_or_else(|| ("unknown_command".to_string(), cmd.to_string()))?;
-        let Run::Blocking(run) = spec.run else {
-            return Err(("unknown_command".to_string(), cmd.to_string()));
-        };
         let req = Request {
             id: "in-process".to_string(),
             cmd: cmd.to_string(),
@@ -28,7 +25,13 @@ impl crate::assets::door::Door for LocalFiles {
             within_ms: None,
             until: None,
         };
-        run(req).map(|v| v.unwrap_or(serde_json::Value::Null))
+        // 写面那几条失败带下层原话（`BlockingData`）：门这一侧只交码与那一句（原话在命令自己的应答里才进复制详情）。
+        let out = match spec.run {
+            Run::Blocking(run) => run(req),
+            Run::BlockingData(run) => run(req).map_err(|f| (f.code, f.message)),
+            _ => return Err(("unknown_command".to_string(), cmd.to_string())),
+        };
+        out.map(|v| v.unwrap_or(serde_json::Value::Null))
     }
 }
 

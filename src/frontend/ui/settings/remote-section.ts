@@ -74,6 +74,7 @@ const REMOTE_INFO_TEXT = (): string =>
  */
 // 单一来源：src/shared/ccm-aliases.sh（后端 sftp.rs include_str! 同一文件，杜绝漂移）
 import { copyText } from "../copy-table";
+import { sayFailure } from "../kit/detail";
 
 /**
  * 「每台机器一页」的宿主。由 `panel.ts` 用 `SettingsRouter` 实现。
@@ -270,7 +271,7 @@ export class RemoteSection {
     } catch (e) {
       // 异步失败就地说在这一块上：两个调用点都是 `void this.refresh()`，不说的话只会变成状态栏上一行 `REJ: …`，
       //   用户看不出机器列表为什么是空的。说完照样往外抛（调用方要判成不成功）。
-      this.showBanner(copyText("remote.refresh.failed", { e: String(e) }));
+      this.showFailure(copyText("remote.refresh.failed"), e);
       throw e;
     } finally {
       this.pages?.machinePagesSettled?.();
@@ -940,7 +941,7 @@ export class RemoteSection {
       return true;
     } catch (e) {
       console.warn("save remote config failed:", e);
-      this.showBanner(copyText("remote.save.failed", { e: String(e) }));
+      this.showFailure(copyText("remote.save.failed"), e);
       return false;
     }
   }
@@ -950,7 +951,7 @@ export class RemoteSection {
     try {
       await commands.remote_reconcile();
     } catch (e) {
-      this.showBanner(copyText("machineList.reconcile.failed", { e: String(e) }));
+      this.showFailure(copyText("machineList.reconcile.failed"), e);
     }
     this.pages?.machinesReconciled?.();
   }
@@ -970,6 +971,12 @@ export class RemoteSection {
 
   private showBanner(text: string): void {
     this.banner.textContent = text;
+    this.banner.classList.add("settings-banner-show");
+  }
+
+  /** 一次失败出在横幅上：那一句（[`sayFailure`]）＋［复制详情］。 */
+  private showFailure(title: string, e: unknown): void {
+    sayFailure(this.banner, title, e);
     this.banner.classList.add("settings-banner-show");
   }
 
