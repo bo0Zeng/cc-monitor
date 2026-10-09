@@ -339,6 +339,7 @@ fn records_face(
         is_session_file,
         tree: Some(crate::agents::RecordTree { root, file_name }),
         turn_end: None,
+        chain: Some(chain_fact),
         find_session: None,
         branch: None,
         drift: None,
@@ -350,6 +351,32 @@ fn records_face(
         children: None,
         project_dir: None,
     }
+}
+
+/// 链事实（与 Claude 每一格都不同名）：`{"node", "up", "when", "role": human | bot | note, "cut": bool, "words"}`；
+/// 排队那句是 `{"queued": "…"}`。只有 `human` / `bot` 进界面。
+pub(crate) fn chain_fact(raw: &str) -> Option<crate::agents::mainline::ChainFact> {
+    use crate::agents::mainline::{ChainFact, Link};
+    let v: serde_json::Value = serde_json::from_str(raw).ok()?;
+    let s = |k: &str| {
+        v.get(k)
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_string)
+    };
+    if let Some(q) = s("queued") {
+        return Some(ChainFact::Queued(q));
+    }
+    let role = s("role")?;
+    Some(ChainFact::Node(Link {
+        id: s("node")?,
+        parent: s("up"),
+        at: s("when")?,
+        said: role == "human",
+        reply: role == "bot",
+        interrupt: v.get("cut").and_then(serde_json::Value::as_bool) == Some(true),
+        text: (role == "human").then(|| s("words").unwrap_or_default()),
+        shown: role != "note",
+    }))
 }
 
 /// `sess-<sid>.ndjson` ⇒ sid。

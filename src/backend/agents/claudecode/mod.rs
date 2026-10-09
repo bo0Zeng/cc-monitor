@@ -34,6 +34,8 @@ pub(crate) mod assets;
 pub(crate) mod branch;
 // 工具词表（卡型 · 判活进程名）：从 monitor `adapter.rs` 画像表与共享 crate `agent-tools-core` 收进来。
 pub(crate) mod cards;
+// 记录链（`uuid` / `parentUuid`）⇒ 通用层算主线外清单要的事实。
+pub(crate) mod chain;
 pub(crate) mod drift;
 // 「足迹」里的 Claude 布局（`~/.claude/…` 的基准 · settings 两个作用域）。
 pub(crate) mod footprint;
@@ -179,6 +181,7 @@ pub(crate) const RECORDS: super::RecordFace = super::RecordFace {
         file_name: records::session_file_name,
     }),
     turn_end: Some(turn::turn_end_uuid_of),
+    chain: Some(chain::chain_fact),
     find_session: Some(branch::find_session_file),
     branch: Some(branch::build_branch_records),
     drift: Some(drift::report),
