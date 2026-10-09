@@ -1242,6 +1242,25 @@ describe("TabManager 生命周期", () => {
   });
 });
 
+describe("「tab 集合变了」那一格也跟着状态变（会话头 · 终端页 · 需要你订它）", () => {
+  it("★ 当前会话 运行中 → 空闲（数量没变、用量没变）⇒ 订阅者照样收到一次；同一状态再来不收", () => {
+    document.body.innerHTML = "";
+    const barEl = document.createElement("div");
+    const streamRootEl = document.createElement("div");
+    document.body.append(barEl, streamRootEl);
+    const seen: number[] = [];
+    const tm = new TabManager(barEl, streamRootEl, (s) => seen.push(s.total));
+    tm.ensureTab("st1", "/home/u", "p", LOCAL_ORIGIN);
+    tm.ensureTab("st2", "/home/u", "p", LOCAL_ORIGIN);
+    tm.updateActivity("st1", "working", null);
+    const before = seen.length;
+    tm.updateActivity("st1", "idle", null);
+    expect(seen.length, "运行中 → 空闲，订阅者没收到（会话头停在「运行中」）").toBe(before + 1);
+    tm.updateActivity("st1", "idle", null);
+    expect(seen.length, "同一状态再来不该通知").toBe(before + 1);
+  });
+});
+
 describe("F41 resumeTab：远端一键拉起 / 本地不变", () => {
   let tm: TabManager;
   beforeEach(() => {

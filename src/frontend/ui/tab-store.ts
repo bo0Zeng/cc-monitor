@@ -13,6 +13,7 @@ import type { TaskEntry } from "./tasks-panel";
 import type { Tab, TabsSummary } from "./tab-model";
 import { isLive, type ContainerEvent } from "./tab-session-state";
 import { Slice } from "./app-store";
+import { dotOf, needsOf } from "./session-face";
 import type { UsageFact } from "./session-reads";
 
 /** 当前 tab 那一格对外的样子：HUD 要的 usage 与「会话事实要不到」的原因。 */
@@ -40,7 +41,7 @@ const sameActive = (a: ActiveView, b: ActiveView): boolean =>
   a.unavailable === b.unavailable &&
   a.projectDir === b.projectDir;
 const sameSummary = (a: TabsSummary, b: TabsSummary): boolean =>
-  a.total === b.total && a.live === b.live && a.dead === b.dead;
+  a.total === b.total && a.live === b.live && a.dead === b.dead && a.faces === b.faces;
 
 export class TabStore {
   readonly tabs = new Map<string, Tab>();
@@ -107,12 +108,12 @@ export class TabStore {
   readonly pendingActivity = new Map<string, NonNullable<Tab["activity"]>>();
 
   /** 「tab 集合变了」那一格。建在唯一的 pub-sub 原语上（`app-store.ts::Slice`），同值不通知。 */
-  private readonly tabsSlice = new Slice<TabsSummary>({ total: 0, live: 0, dead: 0 }, sameSummary);
+  private readonly tabsSlice = new Slice<TabsSummary>({ total: 0, live: 0, dead: 0, faces: "" }, sameSummary);
 
   /** 「当前 tab 变了」那一格（切 tab · 当前 tab 的 usage / 事实可用性变了都写这里；HUD 订阅它）。 */
   readonly active = new Slice<ActiveView>(NO_ACTIVE, sameActive);
 
-  /** 订阅「tab 增 / 减 / 状态变」。返回退订函数。 */
+  /** 订阅「tab 增 / 减 / 状态变」（状态变：活性 · 点 · 在等什么 · 在跑哪一步）。返回退订函数。 */
   subscribe(listener: (summary: TabsSummary) => void): () => void {
     return this.tabsSlice.subscribe(listener);
   }
@@ -123,10 +124,12 @@ export class TabStore {
    */
   summary(): TabsSummary {
     let live = 0;
+    const faces: string[] = [];
     for (const t of this.tabs.values()) {
       if (isLive(t.state)) live += 1;
+      faces.push(`${t.sessionId}\u0001${dotOf(t)}\u0001${needsOf(t)?.kind ?? ""}\u0001${t.pending[0]?.name ?? ""}`);
     }
-    return { total: this.tabs.size, live, dead: this.tabs.size - live };
+    return { total: this.tabs.size, live, dead: this.tabs.size - live, faces: faces.join("\u0000") };
   }
 
   /** 通知订阅者（摘要没变 ⇒ 不通知）。 */
