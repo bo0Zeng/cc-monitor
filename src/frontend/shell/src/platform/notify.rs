@@ -37,10 +37,19 @@ pub(crate) mod linux {
     /// 点通知本身那一下的动作名（freedesktop 约定）。
     pub(crate) const DEFAULT_ACTION: &str = "default";
 
-    /// 通知总线的那一点点能力：发一条（回通知 id）· 收一个信号（阻塞，连接断了回 `None`）。判据换成假的。
+    /// 通知总线的那一点点能力：发一条（回通知 id）· 收一个信号（阻塞，连接断了 / 收掉了回 `None`）· 收掉这条连接。判据换成假的。
     pub(crate) trait Bus: Send + Sync + 'static {
-        fn notify(&self, title: &str, body: &str) -> Result<u32, String>;
+        fn notify(&self, title: &str, body: &str) -> Result<u32, NotifyFail>;
         fn next_signal(&self) -> Option<Signal>;
+        /// 收掉这条连接：之后 [`Bus::next_signal`] 回 `None`（收信那条线程随之退出）。
+        fn close(&self);
+    }
+
+    /// 一条没发出去：原话 ＋ 连接是不是已经断了（断了才换连接；通知服务只是回了一个错 ⇒ 这条连接照旧用）。
+    #[derive(Debug)]
+    pub(crate) struct NotifyFail {
+        pub(crate) said: String,
+        pub(crate) dead: bool,
     }
 
     /// 这条连接上收到的、与通知有关的信号。
@@ -114,7 +123,7 @@ pub(crate) mod linux {
             Ok(b)
         }
 
-        /// 发一条；连接坏了 ⇒ 扔掉它，下一条重连。
+        /// 发一条；连接断了 ⇒ 收掉它（旧那条收信线程随之退出），下一条重连；通知服务只是回了一个错 ⇒ 照旧用这条。
         pub(crate) fn send_with(
             &self,
             on_action: OnAction,
@@ -130,9 +139,14 @@ pub(crate) mod linux {
                         .insert(id);
                     Ok(id)
                 }
-                Err(e) => {
-                    *self.bus.lock().unwrap_or_else(|e| e.into_inner()) = None;
-                    Err(e)
+                Err(f) => {
+                    if f.dead {
+                        let old = self.bus.lock().unwrap_or_else(|e| e.into_inner()).take();
+                        if let Some(old) = old {
+                            old.close();
+                        }
+                    }
+                    Err(f.said)
                 }
             }
         }
@@ -220,8 +234,20 @@ pub(crate) mod linux {
         }
     }
 
+    /// 这一种错说明连接还活着吗：通知服务回了一个 D-Bus 错 / 回的东西读不懂 ⇒ 活着；别的（读写断了 · 握手坏了…）⇒ 断了。
+    fn conn_dead(e: &zbus::Error) -> bool {
+        !matches!(
+            e,
+            zbus::Error::MethodError(..) | zbus::Error::FDO(_) | zbus::Error::Variant(_)
+        )
+    }
+
     impl Bus for Session {
-        fn notify(&self, title: &str, body: &str) -> Result<u32, String> {
+        fn notify(&self, title: &str, body: &str) -> Result<u32, NotifyFail> {
+            let fail = |e: zbus::Error| NotifyFail {
+                dead: conn_dead(&e),
+                said: e.to_string(),
+            };
             use std::collections::HashMap;
             use zbus::zvariant::Value;
             let hints: HashMap<&str, Value> =
@@ -245,8 +271,14 @@ pub(crate) mod linux {
                         -1i32,
                     ),
                 )
-                .map_err(|e| e.to_string())?;
-            reply.body().deserialize::<u32>().map_err(|e| e.to_string())
+                .map_err(fail)?;
+            reply.body().deserialize::<u32>().map_err(fail)
+        }
+
+        fn close(&self) {
+            if let Err(e) = self.conn.clone().close() {
+                tracing::debug!("收掉通知那条总线连接没成（{e}）—— 它多半已经断了");
+            }
         }
 
         fn next_signal(&self) -> Option<Signal> {
