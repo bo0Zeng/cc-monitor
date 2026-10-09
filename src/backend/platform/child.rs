@@ -310,7 +310,7 @@ impl Child {
         c.args(&self.args);
         if let Some(keys) = &self.inherit_only {
             c.env_clear();
-            for k in keys.iter().filter(|k| !OWN_ENVS.contains(k)) {
+            for k in keys.iter().filter(|k| !is_internal_name(k)) {
                 if let Some(v) = std::env::var_os(k) {
                     c.env(k, v);
                 }
@@ -318,6 +318,12 @@ impl Child {
         }
         for k in OWN_ENVS {
             c.env_remove(k);
+        }
+        // 后端内部那几族（不论谁交的、是不是本进程自己的）一律不往下传。
+        for (k, _) in std::env::vars_os() {
+            if is_internal_name(&k.to_string_lossy()) {
+                c.env_remove(&k);
+            }
         }
         for (k, v) in &self.envs {
             match v {
@@ -505,6 +511,10 @@ fn read_all(r: Option<impl Read>) -> Vec<u8> {
 
 fn is_own(k: &OsStr) -> bool {
     OWN_ENVS.iter().any(|o| OsStr::new(o) == k)
+}
+
+fn is_internal_name(k: &str) -> bool {
+    crate::platform::child_env::is_internal(k)
 }
 
 #[cfg(unix)]

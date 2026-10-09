@@ -131,7 +131,6 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
     // 文件窗口的帧日志：只在设了 `CCM_FILEWIN_FRAME_LOG=<文件>` 时开，往那份文件追加（收集「一闪一闪」的证据）。
     ("frame_log.rs", "to_file", None,
      "文件窗口自己的诊断日志：用户经环境变量点名的那一份文件，只追加；不设就不碰盘"),
-    // 钥匙文件那一行摘了：monitor 只交路径、只读，常驻后端绑上口之后自己换一把写进去（`control/resident.rs::rotate_token`）。
     // 「谁在听」那一行摘了：monitor 不再写那份记录，由常驻后端绑上口之后自己记（`control/resident.rs::record_owner`，本机远端同一个写者）。
     // ── 起脱离那条载体之前建好后端 stderr 诊断文件那一层目录。**不是安装动作**。
     ("local_backend_host.rs", "spawn_detached", None,

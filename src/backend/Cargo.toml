@@ -119,6 +119,8 @@ win-path-core = { path = "../common/win-path-core" }
 shell-quote-core = { path = "../common/shell-quote-core" }
 # 后端的门牌与家的契约（端口 · 钥匙 · 路由语法 · `~/.cc-monitor/` 下每一样的相对路径），与 monitor 同一份（目标）。
 relay-route-core = { path = "../common/relay-route-core" }
+# 本人通道（常驻后端听的那个 Unix 套接字 · 目录独占锁 · 核对端 uid · 一次性子命令连它）：monitor 链同一份。
+own-chan = { path = "../common/own-chan" }
 # `search-core` 这一行删了：它只剩本 crate 用，带 Claude 记录格式知识 ⇒ 通用口径收成 `observe/search_rules.rs`，
 #   记录文本那一半进适配层 `agents/claudecode/text.rs`（K-R100「口径只有一份」照旧，家换了）。
 # `gate-core` 这一行删了：monitor 那一侧的门删掉之后它只剩本 crate 用 ⇒ 收成模块 `control/gate_rules.rs`。

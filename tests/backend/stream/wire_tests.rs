@@ -1541,14 +1541,14 @@ fn loc1b_session_added_pid_is_additive() {
 // 要求：「常驻后端身份带数据目录（接错了拒并出声）」；`INVARIANTS §42` → `IPC-PROTOCOL.md §10` hello 那一行
 // （additive：空表省略、线上字节不变）。审计 `E-compat.md` §E10 · `GP1.md §7.6` 第 4 条。
 
-/// 🔴 I1a：回显恰是名单内被交了的那几格、原样（手写期望）；没交 / 空串的那一格不回显；token 与无关变量即使在环境里也不回显。
+/// 🔴 I1a：回显恰是名单内被交了的那几格、原样（手写期望）；没交 / 空串的那一格不回显；常驻开关与无关变量即使在环境里也不回显。
 #[test]
-fn hx2_host_env_echoes_exactly_the_handed_names_and_never_the_token() {
+fn hx2_host_env_echoes_exactly_the_handed_names_and_nothing_else() {
     let env: std::collections::HashMap<&str, &str> = [
         ("CCM_RELAY_PORT", "8788"),
         ("CCM_DATA_DIR", "/iso/home"),
         ("CCM_APIKEY_CREDENTIALS", "/d/apikey-credentials.json"),
-        (crate::stream::listen::ENV_TOKEN_FILE, "s3cret-token"),
+        (crate::stream::listen::ENV_RESIDENT, "1"),
         ("HOME", "/home/u"),
     ]
     .into_iter()
@@ -1564,18 +1564,15 @@ fn hx2_host_env_echoes_exactly_the_handed_names_and_never_the_token() {
     assert!(crate::stream::wire::host_env_from(|_| None).is_empty());
 }
 
-/// 🔴 I1b：钥匙那个变量名不在回显名单里（名单两格 == 手写；钥匙名不在其中）—— hello 谁都读得到。
+/// 🔴 I1b：回显名单恰两格（== 手写）；常驻开关不在其中。
 #[test]
-fn hx2_the_listen_token_is_never_echoed() {
+fn hx2_the_echo_list_is_exactly_the_two_handed_names() {
     let names: std::collections::BTreeSet<&str> =
         crate::stream::wire::HOST_ECHO_ENVS.into_iter().collect();
     let want: std::collections::BTreeSet<&str> =
         ["CCM_RELAY_PORT", "CCM_DATA_DIR"].into_iter().collect();
     assert_eq!(names, want);
-    assert!(
-        !names.contains(crate::stream::listen::ENV_TOKEN_FILE)
-            && !names.contains(crate::stream::listen::ENV_PORT)
-    );
+    assert!(!names.contains(crate::stream::listen::ENV_RESIDENT));
 }
 
 /// 🔴 I1c：空表 ⇒ 省略（线上字节与既有冻结串逐字节相同）；有值 ⇒ 落在最后、键按名排序。生产那一行恰好一处、读的是真环境。

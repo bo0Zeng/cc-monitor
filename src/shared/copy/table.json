@@ -1603,13 +1603,13 @@
     "rsRemoteResident.ensure.answerIncomplete": {
       "kind": "error",
       "role": "报错",
-      "zh": "远端启动常驻后端的回答缺端口或钥匙",
+      "zh": "远端启动常驻后端的回答无法识别",
       "args": []
     },
     "rsRemoteResident.hello.notOurs": {
       "kind": "error",
       "role": "报错",
-      "zh": "远端常驻后端的端口被别的程序占用",
+      "zh": "远端回的不是 cc-monitor 后端",
       "args": []
     },
     "rsRemoteResident.verdict.unreadable": {
@@ -1636,17 +1636,17 @@
       "zh": "读取远端常驻后端的回话失败",
       "args": []
     },
-    "rsRemoteResident.tunnel.unreachable": {
+    "rsRemoteResident.relay.absent": {
       "kind": "error",
       "role": "报错",
-      "zh": "远端常驻后端端口 127.0.0.1:{port} 一直连接失败",
-      "args": ["port"]
+      "zh": "{machine} 后端未在运行 · 启动后即退出",
+      "args": ["machine"]
     },
-    "rsRemoteResident.tunnel.forwardingProhibited": {
+    "rsRemoteResident.relay.unreachable": {
       "kind": "error",
       "role": "报错",
-      "zh": "接入失败 · 被拒 · 远端 sshd 禁止转发（AllowTcpForwarding no）\n把远端 sshd_config 里的 AllowTcpForwarding 改成 yes 或 local\n重启 sshd 后再接入",
-      "args": []
+      "zh": "{machine} 后端无法接入 · 需重启 {machine} 后端",
+      "args": ["machine"]
     },
     "rsRemoteResident.handshake.attachNotSent": {
       "kind": "error",
@@ -1733,11 +1733,35 @@
         "C-Y4": "「?」是 tmux 会话名里被禁的字符本身"
       }
     },
-    "beResident.token.noRandom": {
+    "beResident.claim.pathTooLong": {
       "kind": "error",
       "role": "报错",
-      "zh": "取不到系统随机数 · 无法生成常驻后端钥匙 · 未启动",
-      "args": []
+      "zh": "连接入口路径过长 · {len}/{max} 字节 · {path}",
+      "args": ["path", "len", "max"]
+    },
+    "beResident.claim.bindFailed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "后端无法打开连接入口 {path} · {why}",
+      "args": ["path", "why"]
+    },
+    "beResident.sandbox.realHome": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "测试环境里的后端要用真实主目录下的 {path} · 拒绝启动",
+      "args": ["path"]
+    },
+    "beResident.legacy.stopped": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "升级前的常驻后端已停止 · pid {pid} · {how}",
+      "args": ["pid", "how"]
+    },
+    "beResident.legacy.stuck": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "升级前的常驻后端无法停止 · pid {pid} · {why}",
+      "args": ["pid", "why"]
     },
     "beResident.spawn.failed": {
       "kind": "error",
@@ -12555,7 +12579,7 @@
     "rsDataPaths.backend.listenDir": {
       "kind": "body",
       "role": "说明",
-      "zh": "常驻后端的连接入口与进程记录 · 后端运行时用 · 删后要重启后端",
+      "zh": "常驻后端的连接入口 · 后端运行时用 · 删后要重启后端",
       "args": []
     },
     "rsDataPaths.backend.policy": {
@@ -14801,20 +14825,20 @@
     "rsLocalBackendHost.adopt.notYet": {
       "kind": "error",
       "role": "报错",
-      "zh": "端口 {port} 无程序监听",
-      "args": ["port"]
+      "zh": "{path} 上暂无后端在听",
+      "args": ["path"]
     },
     "rsLocalBackendHost.adopt.nobody": {
       "kind": "error",
       "role": "原因格",
-      "zh": "端口上无程序监听",
+      "zh": "没有后端在听",
       "args": []
     },
     "rsLocalBackendHost.afterSpawn.neverListened": {
       "kind": "error",
       "role": "报错",
-      "zh": "端口 {port} 一直无程序监听",
-      "args": ["port"]
+      "zh": "{path} 上一直没有后端在听",
+      "args": ["path"]
     },
     "rsLocalBackendHost.start.unreachableKilled": {
       "kind": "error",
@@ -14825,14 +14849,14 @@
     "rsLocalBackendHost.start.refused": {
       "kind": "error",
       "role": "报错",
-      "zh": "端口 {port} 上已有程序但接不上 · {why}\n不起第二个 · 不换端口 · 要重来先停掉占端口的进程",
-      "args": ["port", "why"]
+      "zh": "{path} 上已有后端但接不上 · {why}\n不起第二个 · 要重来先停掉它",
+      "args": ["path", "why"]
     },
     "rsLocalBackendHost.start.refusedNotice": {
       "kind": "error",
       "role": "报错",
-      "zh": "本机后端未启动 · 端口 {port} 上已有的后端接不上 · {why}\n结束该进程再重开 cc-monitor 即可 · 进程号记在 {pidPath}",
-      "args": ["port", "why", "pidPath"]
+      "zh": "本机后端未启动 · 已在运行的后端接不上 · {why}\n结束该进程再重开 cc-monitor 即可 · 进程号记在 {pidPath}",
+      "args": ["why", "pidPath"]
     },
     "rsLocalBackendHost.stream.lost": {
       "kind": "error",
@@ -14844,12 +14868,6 @@
       "kind": "error",
       "role": "原因格",
       "zh": "程序出错 · 连接接不进来",
-      "args": []
-    },
-    "rsLocalBackendHost.stream.nonblockingFailed": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "程序出错 · 连接设置失败",
       "args": []
     },
     "rsLocalBackendHost.stream.notHello": {
@@ -14903,38 +14921,44 @@
     "rsLocalBackendHost.handshake.readFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "端口上的程序应答不可读 · {why}",
+      "zh": "后端的应答不可读 · {why}",
       "args": ["why"]
     },
     "rsLocalBackendHost.handshake.tooLong": {
       "kind": "error",
       "role": "报错",
-      "zh": "端口上的程序回的一行超过 {cap} 字节未换行 · 停止读取",
+      "zh": "后端回的一行超过 {cap} 字节未换行 · 停止读取",
       "args": ["cap"]
     },
     "rsLocalBackendHost.handshake.notUtf8": {
       "kind": "error",
       "role": "报错",
-      "zh": "端口上的程序回的行非 UTF-8",
+      "zh": "后端回的行非 UTF-8",
       "args": []
     },
     "rsLocalBackendHost.handshake.closed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "端口上的程序已关闭连接",
+      "zh": "后端已关闭连接",
       "args": []
     },
     "rsLocalBackendHost.probe.noAnswer": {
       "kind": "error",
       "role": "报错",
-      "zh": "端口 {port} 已连 · {why} · 无应答",
-      "args": ["port", "why"]
+      "zh": "已连上 {path} · {why} · 无应答",
+      "args": ["path", "why"]
     },
     "rsLocalBackendHost.probe.noDeadline": {
       "kind": "error",
       "role": "原因格",
       "zh": "连接端口上的后端失败 · {why}",
       "args": ["why"]
+    },
+    "rsLocalBackendHost.probe.cannotConnect": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "连接失败 · {path} · {why}",
+      "args": ["path", "why"]
     },
     "rsLocalBackendHost.hello.buildMismatch": {
       "kind": "error",
@@ -14953,18 +14977,6 @@
       "role": "报错",
       "zh": "端口上的程序答的第一行不是后端的回答 · {bytes} 字节",
       "args": ["bytes"]
-    },
-    "rsLocalBackendHost.token.empty": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{path} 内容为空 · 本机后端无法启动也接不上\n删掉它再起（rm {path}） · 在跑的旧后端删后也接不上 · 一并停掉",
-      "args": ["path"]
-    },
-    "rsLocalBackendHost.fs.readFailed": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "读取失败 · {path} · {why}",
-      "args": ["path", "why"]
     },
     "rsToolRegistry.tools.skillInstallsLedgerNote": {
       "kind": "body",
@@ -18009,12 +18021,6 @@
       "role": "报错",
       "zh": "读取失败 · {path} · 原因不明",
       "args": ["path"]
-    },
-    "beUses.tunnel.unreachable": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "连接远端 127.0.0.1:{port} 失败",
-      "args": ["port"]
     },
     "beLink.install.tooMany": {
       "kind": "error",
@@ -25776,12 +25782,6 @@
       "role": "说明",
       "zh": "{machine} 版本较新 · 部分功能不可用",
       "args": ["machine"]
-    },
-    "machineState.problem.noForwarding": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "禁止端口转发 · 实时显示不可用",
-      "args": []
     },
     "machineState.problem.notUnix": {
       "kind": "body",

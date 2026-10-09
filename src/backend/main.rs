@@ -149,6 +149,7 @@ async fn main() {
             // 远端常驻后端的起 · 找 / 停（`control/resident.rs` 头注）。
             // 远端中转住进远端常驻后端 —— 起它时交中转口（与本机宿主交的同一个常量）。
             Some("--resident-ensure") => control::resident::ensure(&args[1..]),
+            Some("--resident-attach") => control::resident::attach().await,
             Some("--resident-stop") => control::resident::run_stop(&args[1..]),
             // `--dial` 那条拨号代理臂**删了**：拨号挪进本机那一个常驻后端，经流上的链路
             // （`link-*` 四条，`dial/link.rs`）做 —— 不再每条链路起一个进程。
@@ -187,7 +188,11 @@ async fn main() {
     //   每一句（中转那两句、host key 警告、panic）都落进那份文件。
     let env = |k: &str| std::env::var(k).ok();
     let (listening, installed) =
-        match claim_then_log(&env, || stderr_log::install_from_env(&env)).await {
+        match claim_then_log(&env, control::resident::account_home().as_deref(), || {
+            stderr_log::install_from_env(&env)
+        })
+        .await
+        {
             Ok(got) => got,
             Err(code) => std::process::exit(code),
         };
@@ -201,10 +206,27 @@ async fn main() {
     //   （monitor 起本机后端时交；远端由 `--resident-ensure` 起常驻子进程时交；测试连接探针那一趟没人交 ⇒ 不开）。
     //   放在起载体之前：两条载体（stdio / 常驻监听口）一样要。起不来只出声、不拖垮后端
     //   —— 理由与形状住 `relay::listen::host` 的头注。中转线程随本进程生、随本进程死。
-    tracing::info!(
-        "{}",
-        accounts::upstream_select::host_relay(faces::rotation_face::library())
-    );
+    // 〔升级那一跳，跨过 4.1.x 之后删〕常驻载体：先停掉还在跑的旧版（它占着中转口），再接中转。
+    //   停它要等（至多宽限期），那一趟放进一条线程，不挡套接字开门；没有旧版 ⇒ 当场接中转。
+    let legacy = listening
+        .as_ref()
+        .and_then(|_| control::resident::here())
+        .filter(|dh| relay_route_core::legacy_listen_pid_for(dh).exists());
+    let off_thread = legacy.is_some();
+    let start_relay = move || {
+        if let Some(said) = legacy.as_deref().and_then(control::resident::retire_legacy) {
+            tracing::info!("{said}");
+        }
+        tracing::info!(
+            "{}",
+            accounts::upstream_select::host_relay(faces::rotation_face::library())
+        );
+    };
+    if off_thread {
+        std::thread::spawn(start_relay);
+    } else {
+        start_relay();
+    }
     // 全文搜索的常驻索引起来就后台建（两条载体都要；一次性线程，建完就退）。
     observe::search_query::warm_in_background(agent_home.clone());
     // 别名清单换了存法（配置文件 `profiles.toml`）：这台的配置文件还不在、旧形状的别名文件在 ⇒ 起来时一次性转过去（迁完就不再看旧文件）。
@@ -230,7 +252,7 @@ async fn main() {
     inbound::watch_rotation();
     match listening {
         None => run_over_stdio(hello, agent_home, wants).await,
-        Some((listener, port, token)) => {
+        Some((listener, held)) => {
             // 这台账号库里各号共用的用户级 MCP：常驻那条载体上盯各号的配置文件，一有动静同步一趟（一次性的 stdio 那条不起）。
             inbound::watch_account_mcp();
             // 停机信号只挂**一次**（不在 accept 循环里每轮重装一个 SIGTERM 处理器）。
@@ -240,8 +262,7 @@ async fn main() {
             tokio::select! {
                 () = serve_listening(
                     listener,
-                    port,
-                    token,
+                    held,
                     hello,
                     agent_home,
                     wants,
@@ -476,8 +497,8 @@ fn spawn_sigusr1_task() -> tokio::task::JoinHandle<()> {
 /// 它只能由 `write_and_flush_hello` 产出，而握手那一步就发生在这条连接自己身上
 /// ⇒ 「hello 先于 reader」这条时序在换了载体之后**逐字保留**，仍然编译期不可表示。
 struct Attached {
-    reader: tokio::io::BufReader<tokio::net::tcp::OwnedReadHalf>,
-    writer: BufWriter<tokio::net::tcp::OwnedWriteHalf>,
+    reader: tokio::io::BufReader<tokio::io::ReadHalf<own_chan::Stream>>,
+    writer: BufWriter<tokio::io::WriteHalf<own_chan::Stream>>,
     hello_flushed: wire::HelloFlushed,
     /// 这条连接要的流模式旗标（attach 行里的 `flags`）；`None` = 用进程起参那一份。
     flags: Option<StreamWants>,
@@ -492,14 +513,13 @@ struct Attached {
 /// 写在前面之后，那一问的答案是**读一行**，协议一个字节都不用加
 /// （`shared/ccm:1182-1185` 自陈「后者今天没有便宜的问法」，说的就是这一格）。
 ///
-/// 多客户：钥匙对上就接成流，不再有「谁拿到那一张牌」（原 `busy.swap` 那一格）。
+/// 多客户：attach 行形状对就接成流，不再有「谁拿到那一张牌」（原 `busy.swap` 那一格）；门在 accept 那一下（对端 uid）。
 async fn handshake_one(
-    sock: tokio::net::TcpStream,
+    sock: own_chan::Stream,
     hello: Frame,
-    token: String,
     attached: tokio::sync::mpsc::Sender<Attached>,
 ) {
-    let (r, w) = sock.into_split();
+    let (r, w) = tokio::io::split(sock);
     let mut w = BufWriter::new(w);
     let hello_flushed = match wire::write_and_flush_hello(&mut w, &hello).await {
         Ok(x) => x,
@@ -509,7 +529,7 @@ async fn handshake_one(
         }
     };
     let mut r = tokio::io::BufReader::new(r);
-    // ⚠ **有上限地读** —— 对端是同机任何进程，它完全可以一直发字节不发换行，
+    // ⚠ **有上限地读** —— 对端完全可以一直发字节不发换行，
     // 而无界读就是无界堆分配（backend 侧为同一形栽过一次实测，见 `stream/inbound/` 头注）。
     let line = match listen::read_capped_line(&mut r, listen::ATTACH_LINE_CAP).await {
         Ok(listen::HandshakeLine::Line(l)) => l,
@@ -528,7 +548,7 @@ async fn handshake_one(
     };
     // flags 写坏了与整行坏了同一格拒（`malformed-attach`）。
     let flags = listen::attach_flags(&line);
-    let verdict = match (listen::attach_verdict(&line, &token), &flags) {
+    let verdict = match (listen::attach_verdict(&line), &flags) {
         (listen::Verdict::Attach, Err(())) => listen::Verdict::Malformed,
         (v, _) => v,
     };
@@ -558,16 +578,17 @@ async fn handshake_one(
     }
 }
 
-/// 选载体、抢口；抢到了（或这条载体不用抢）才接 stderr 落盘（`install`）。
+/// 选载体、抢门牌；抢到了（或这条载体不用抢）才接 stderr 落盘（`install`）。
 ///
-/// 那两份日志属于在听的那一个：口上已有常驻后端时，后起的这一个若先接，就把在跑那一个的日志滚走（再来一个就删掉）。
-/// ⇒ 配置不成立 / 抢不到口都不接，话只落自己原来的 stderr，退出码交回 `main` 退（一条命令都还没收，没有可排空的）。
+/// 那两份日志属于在听的那一个：已有常驻后端时，后起的这一个若先接，就把在跑那一个的日志滚走（再来一个就删掉）。
+/// ⇒ 配置不成立 / 沙箱跑却要占真家 / 抢不到锁都不接，话只落自己原来的 stderr，退出码交回 `main` 退（一条命令都还没收，没有可排空的）。
 async fn claim_then_log(
     env: &dyn Fn(&str) -> Option<String>,
+    account_home: Option<&std::path::Path>,
     install: impl FnOnce() -> stderr_log::Installed,
 ) -> Result<
     (
-        Option<(tokio::net::TcpListener, u16, String)>,
+        Option<(own_chan::Listener, own_chan::Held)>,
         stderr_log::Installed,
     ),
     i32,
@@ -575,44 +596,36 @@ async fn claim_then_log(
     let mode = match listen::mode_from(env) {
         Ok(m) => m,
         Err(e) => {
-            // **fail closed**：宁可不起，也不要起一个不设防的口 —— 回环 TCP 没有权限位。
-            tracing::error!("监听口配置不成立 ⇒ 拒绝起：{e}");
+            tracing::error!("常驻配置不成立 ⇒ 拒绝起：{e}");
             return Err(listen::EXIT_BAD_LISTEN_CONFIG);
         }
     };
-    let listen::Mode::Listen { port, token_file } = mode else {
+    if mode == listen::Mode::Stdio {
         return Ok((None, install()));
+    }
+    let Some(dh) = control::resident::data_home_from(env) else {
+        tracing::error!("找不到这台的家 ⇒ 拒绝起常驻");
+        return Err(listen::EXIT_BAD_LISTEN_CONFIG);
     };
-    let addr = std::net::SocketAddr::new(common::net::LOOPBACK, port);
-    let listener = match tokio::net::TcpListener::bind(addr).await {
-        Ok(l) => l,
-        Err(e) => {
-            let in_use = e.kind() == std::io::ErrorKind::AddrInUse;
-            // ★★ **绑不上就退出，绝不自己换端口。**
-            // 换端口 = 每台机 N 个后端（中转口与全部 SSH 各 N 份）⇒ 比今天更糟。
-            // 从前这里还写着「各自往 tmux server 装 `[50]` 槽位的全局 hook 互相盖」—— 今天 hook 按实例一格
-            // （`control/tmux_hook.rs::install_hooks`），那一条不成立了。
+    // 〔台架防真家〕沙箱跑却要占本账号真家目录里的门牌 ⇒ 不起（10-08 一路台架漏清环境，改写过真家里的门牌）。
+    if let Some(why) = control::resident::sandbox_refusal(env, &dh, account_home) {
+        tracing::error!("{why}");
+        return Err(listen::EXIT_BAD_LISTEN_CONFIG);
+    }
+    match control::resident::claim(&dh) {
+        control::resident::Claim::Listening(l, held) => Ok((Some((l, held)), install())),
+        control::resident::Claim::Held => {
+            // ★★ **抢不到锁就退出，绝不换个地方再起一个**（换地方 = 每台机 N 个后端，中转口与全部 SSH 各 N 份）。
             tracing::error!(
-                "绑不上 {addr}（{e}）⇒ 退出。\n\
-                 这个口上已经有东西了：宿主该**连上去读一行 hello 比对**，\n\
-                 对不上就出声并拒绝，**不许静默复用**，更不许换个口再起一个。"
+                "这台的家里已有一个常驻后端在听 ⇒ 退出。宿主该**连上去读一行 hello 比对**，对不上就出声并拒绝。"
             );
-            return Err(if in_use {
-                listen::EXIT_ADDR_IN_USE
-            } else {
-                listen::EXIT_BAD_LISTEN_CONFIG
-            });
+            Err(listen::EXIT_ADDR_IN_USE)
         }
-    };
-    // 抢到口了 ⇒ 换一把新钥匙写回钥匙文件（旧的随之作废）；写不下 ⇒ 不起（口随 `listener` 放掉）。
-    let token = match control::resident::rotate_token(std::path::Path::new(&token_file)) {
-        Ok(t) => t,
-        Err(e) => {
-            tracing::error!("钥匙写不下 ⇒ 拒绝起：{e}");
-            return Err(listen::EXIT_BAD_LISTEN_CONFIG);
+        control::resident::Claim::Failed(why) => {
+            tracing::error!("{why}");
+            Err(listen::EXIT_BAD_LISTEN_CONFIG)
         }
-    };
-    Ok((Some((listener, port, token)), install()))
+    }
 }
 
 /// `K-P1`：**常驻形态的接受循环** —— 一条流 + 不限次的「只读 hello 就走」。
@@ -641,19 +654,20 @@ async fn claim_then_log(
 /// **不重起自己**（`K14` 裁定：第一档，自愈单独立成 `K-P3`）。宿主不在时**没有监护**，
 /// 这是**如实登记的降级**，而且那句话要在 UI 上说出来（`KPY4` 钉它），不许只写在这条注释里。
 async fn serve_listening(
-    listener: tokio::net::TcpListener,
-    port: u16,
-    token: String,
+    listener: own_chan::Listener,
+    // 目录独占锁：随这个函数（＝ 常驻载体）活着。
+    _held: own_chan::Held,
     hello: Frame,
     agent_home: PathBuf,
     defaults: StreamWants,
 ) {
-    let addr = std::net::SocketAddr::new(common::net::LOOPBACK, port);
-    tracing::info!("常驻监听口已就位：{addr}（多条流 + 不限次「只读 hello 就走」）");
+    tracing::info!("常驻后端已在听这台家里的套接字（多条流 + 不限次「只读 hello 就走」）");
 
     // 「谁在听」由常驻后端自己记（本机远端同一个写者；起它的那一方不写）。
-    if let Err(e) = control::resident::record_owner(port) {
-        tracing::warn!("记不下「谁在听 {port}」（{e}）⇒ 「停」会停不了它");
+    if let Some(dh) = control::resident::here() {
+        if let Err(e) = control::resident::record_owner(&dh) {
+            tracing::warn!("记不下「谁在听」（{e}）⇒ 「停」会停不了它");
+        }
     }
 
     let _poke_task = spawn_sigusr1_task();
@@ -676,13 +690,16 @@ async fn serve_listening(
             //    否则一条只想读 hello 的连接会把整条监听线堵住。
             accepted = listener.accept() => {
                 match accepted {
-                    Ok((sock, _peer)) => {
+                    Ok(own_chan::Accepted::Ours(sock)) => {
                         tokio::spawn(handshake_one(
                             sock,
                             hello.clone(),
-                            token.clone(),
                             attached_tx.clone(),
                         ));
+                    }
+                    // 门在这里：别的 uid 连进来 ⇒ 关掉、出声，hello 都不给。
+                    Ok(own_chan::Accepted::Foreign(uid)) => {
+                        tracing::warn!("一条连接不是本账号的（对端 uid {uid:?}）⇒ 关掉");
                     }
                     Err(e) => tracing::warn!("accept 失败（{e}）；继续听"),
                 }
@@ -710,7 +727,7 @@ async fn serve_listening(
                 // 这条流连接的 tap 接收端（hub 扇出：每条连接一条）。
                 let tap_rx = tap::attach(book);
                 let done = done_tx.clone();
-                tracing::info!("一条流已接上（认证通过；此刻 {} 条）", clients.count());
+                tracing::info!("一条流已接上（此刻 {} 条）", clients.count());
                 tokio::spawn(async move {
                     // ★★ **两个事件都算「客户端走了」，缺一个就会把那一档永久占住。**
                     //

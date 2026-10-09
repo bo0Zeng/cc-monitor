@@ -269,16 +269,15 @@ fn every_home_path_in_the_contract_has_a_row() {
     );
     let home = TestDir::new("contract-home");
     let data = TestDir::new("contract-data");
-    let covered: std::collections::BTreeSet<String> =
-        backend_entries(home.path(), data.path())
-            .into_iter()
-            .filter_map(|e| {
-                Path::new(&e.path)
-                    .strip_prefix(home.path())
-                    .ok()
-                    .map(|p| p.to_string_lossy().replace('\\', "/"))
-            })
-            .collect();
+    let covered: std::collections::BTreeSet<String> = backend_entries(home.path(), data.path())
+        .into_iter()
+        .filter_map(|e| {
+            Path::new(&e.path)
+                .strip_prefix(home.path())
+                .ok()
+                .map(|p| p.to_string_lossy().replace('\\', "/"))
+        })
+        .collect();
     let mut want = declared.clone();
     // 后端落点（`bin/ccm`）由它所在目录那一行覆盖
     want.remove(relay_route_core::BACKEND_LANDING_REL);

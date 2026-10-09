@@ -4,7 +4,7 @@
 //! # 走 Unix 套接字，门由内核给
 //!
 //! 套接字住这台家里只给本人的目录（`relay_route_core::listen_socket_for`，目录 `0700`），收下的每条连接再核一次对端 uid
-//! （`platform/listen_sock.rs`）⇒ 连得上的只有本账号自己的进程，没有钥匙这一层（从前回环 TCP 没有权限位，才要钥匙补）。
+//! （共享 crate `own-chan`）⇒ 连得上的只有本账号自己的进程，没有钥匙这一层（从前回环 TCP 没有权限位，才要钥匙补）。
 //! 远端经 ssh 跑一次 `ccm -- --resident-attach`（`control/resident.rs` 那个小中继）连它：ssh 已经证明了「是本人」。
 //! 起它的：本机 `src/frontend/shell/src/local_backend_host.rs`，远端 `--resident-ensure`（`control/resident.rs`）—— 同一种交法：只交 [`ENV_RESIDENT`]。
 //!
@@ -102,9 +102,14 @@ where
     }
 }
 
-/// 拒绝的理由（闭集，今天只有一个）：`refusal_line` 只拼这里的常量，没有任何一段外来字节
+/// 拒绝的理由（闭集）：`refusal_line` 只拼这里的常量，没有任何一段外来字节
 /// 会进到那行 JSON 里（由 `refusal_reasons_are_a_closed_set` 钉住）。
+/// 常驻后端自己只发这一个：attach 行形状不对。
 pub const REFUSE_MALFORMED: &str = "malformed-attach";
+/// 小中继（`--resident-attach`）连不上：没人在听（刚起的还没绑上 / 起来就退了）。monitor 隔一会儿再接。
+pub const REFUSE_ABSENT: &str = "absent";
+/// 小中继连不上：别的原因（不归本人 · 路径坏了）。再接也一样。
+pub const REFUSE_UNREACHABLE: &str = "unreachable";
 
 /// backend 这次跑成什么形态。由环境决定，不由 argv 决定：换的是同一个流模式的载体，不是新增一条子命令。
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -2000,35 +2000,40 @@ CSP 兜底源是 `'self'` · 脚本执行面的几种放开形逐个禁 ＋ 那�
 
 ---
 
-## 48. 本机常驻后端的宿主三条：**监听口要钥匙 · 脱离后不留僵尸 · 测试里起真后端必须 fail-closed 地隔离用户 tmux**
+## 48. 本机常驻后端的宿主三条：**门由内核给 · 脱离后不留僵尸 · 测试里起真后端必须 fail-closed 地隔离用户 tmux**
 
 三条是同一件事的三个面：常驻后端（「前端不在也活着，前端起来能**接回去**」）一旦**脱离**了起它的那个 monitor，
 **它能做的事就不再有一个父进程看着** —— 谁能连上它、它死了谁收、测试里起的那一个会不会碰到用户的东西，必须各有一条硬规矩。
 
-### 48.1 监听口要钥匙
+### 48.1 门由内核给（本人通道，没有钥匙）
 
-**性质**：常驻后端对外开的**控制口**（回环 TCP；`listen.rs`）只有出示了钥匙的连接才能拿到**流**（能发 `launch` / `kill` 的那一档）。
-「有口没钥匙」⇒ **拒绝起**；空钥匙 ⇒ 按「没设」算；钥匙逐字节全等才算对（前缀 / 后缀 / 大小写都不算）；
-钥匙不对、形状不对、口被占着 —— 三种拒法**出声且彼此可分**。起它的那一方只交钥匙文件的路径（`CCM_LISTEN_TOKEN_FILE`，本机远端同一种）；
-常驻后端**绑上口之后**自己生成一把新的（128 位随机）、原子写进那份 `0600` 的文件（每次起都换 ⇒ 旧环境里漏出去的那把作废；抢不到口的不碰它），
-连上来的客户端每次读那份文件；钥匙本身不进任何进程的环境。常驻后端起子进程时还把起它的那一方交给它自己的那几格环境清掉（起子进程原语 `platform/child.rs` 无条件做，名单住 `platform/child_env.rs`：
-监听口 · 钥匙文件 · 诊断文件；只有起常驻后端那一处经 `pass_own` 显式交）—— 它起的 tmux server 会把调用者的环境拷成全局环境、传给每个窗格。
-不认证的只有 hello 那一档（只读、读完即关），它泄露 `claude_dir` / `build_id` / 能力集，这是有意的取舍（`listen.rs` 头注「诚实边界」第 1 条）。
+**性质**：常驻后端只听这台家里的一个 Unix 套接字（`<家>/run/backend.sock`，家 = `~/.cc-monitor`，隔离跑时 `CCM_DATA_DIR`；路径只由共享 crate
+`relay_route_core::listen_socket_for` 算，宿主与后端同一个函数）。门由内核给：`run/` 目录只给本人（`0700`）；收下的每条连接再核一次对端 uid 与本进程相同，
+不同 ⇒ 关掉、出声、hello 都不给（共享 crate `own-chan`）。独占：在听的那一个攥着 `run/` 目录的 `flock` 独占锁，抢不到 ⇒ 带「已有人在听」的退出码退，
+绝不换个地方再起一个；锁随进程死由内核放，留下的陈旧套接字文件由下一个拿到锁的删掉重绑。没有钥匙、没有钥匙文件：
+attach 行只是「我要流」（`{"attach":true}`，可带 `flags`），形状不对 ⇒ 出声拒（`malformed-attach`）。远端经 ssh 跑 `ccm -- --resident-attach`
+小中继连那台的套接字：ssh 证明了是本人，中继在那台以本人身份连。起它的那一方只交常驻开关（`CCM_RESIDENT=1`）；常驻后端起子进程时把它和诊断文件那一格清掉
+（起子进程原语 `platform/child.rs` 无条件做，名单住 `platform/child_env.rs`）—— 它起的 tmux server 会把调用者的环境拷成全局环境、传给每个窗格。
+不判身份的只有 hello 那一档（连得上就是本人，读完即关）。
+**台架防真家**：沙箱跑（带 `CCM_SANDBOX=1`，或 `$HOME` 与账号数据库里的家目录不一样）却要占本账号真家目录里 `.cc-monitor` 下的门牌（家 · 诊断文件）⇒ 拒绝起。
 
-**为什么不能松动**：回环 TCP **没有权限位** —— 同机任何本地进程（**含别的用户**）连得上那个口，
-没有钥匙就能以本账号的身份起会话、杀会话。Unix socket 的文件权限在这条路上没有，补回来的**只有这一把钥匙**。
+**为什么不能松动**：回环 TCP 没有权限位，同机任何本地进程（含别的用户）连得上，从前只能靠一把钥匙补，而那把钥匙的文件会被另一个后端实例改写
+（10-08 一路台架漏清环境起了一个后端，改写了共用的钥匙文件；真常驻后端内存里认的还是旧那把，远端经 ssh 每次都被拒、永远好不了）。
+套接字的门由内核给：能连上的只有本账号自己的进程 —— 能读你家目录的本来就能以你的身份跑东西。
 
-**谁在守**：后端 `listen_tests.rs::a_port_without_a_token_is_refused` · `listen_tests.rs::a_token_without_a_port_is_refused_loudly` ·
-`listen_tests.rs::empty_strings_count_as_unset` · `listen_tests.rs::an_empty_token_never_matches` · `listen_tests.rs::tokens_match_is_exact` ·
-`listen_tests.rs::attach_verdicts_are_three_distinct_faces` · `listen_tests.rs::the_two_tier_split_is_pinned_cell_by_cell`；
+**谁在守**：后端 `listen_tests.rs::the_resident_switch_is_empty_one_or_refused` · `listen_tests.rs::attach_verdicts_judge_the_shape_only` ·
+`listen_tests.rs::the_two_tier_split_is_pinned_cell_by_cell` · `listen_tests.rs::refusal_reasons_are_a_closed_set`；
+门：`own-chan` 的 `lib_tests.rs::the_dir_lock_is_exclusive_and_released_on_drop` · `lib_tests.rs::a_peer_with_my_uid_is_ours_and_nobody_means_nobody`；
+抢门牌：`main_claim_tests.rs::a_late_starter_that_cannot_claim_never_touches_the_log_or_the_socket`（抢不到锁的不碰日志与套接字、目录 `0700`）·
+`resident_tests.rs::a_socket_path_over_the_cap_is_refused_out_loud`；台架防真家：`main_claim_tests.rs::a_sandboxed_start_refuses_the_real_home` ·
+`resident_tests.rs::the_sandbox_refusal_truth_table`；升级那一跳：`resident_tests.rs::upgrading_retires_the_old_resident_so_the_relay_port_frees_up`；
 不进环境：`local_backend_host_tests.rs::e2e_the_door_follows_the_home_not_the_claude_dir`（读常驻后端的 `/proc/<pid>/environ`）·
 `local_backend_host_tests.rs::e2e_children_of_the_resident_backend_carry_none_of_its_own_env` · `child_tests.rs::a_real_child_sees_only_the_own_env_passed_on_purpose` · `readonly_guard.rs::spawn_registry`（生产段 `Command::new` 只住原语）；
-换钥匙 `main_claim_tests.rs::a_late_starter_that_cannot_claim_the_port_never_touches_the_log`（抢到口的换一把、`0600`、抢不到的不碰）·
-`resident_tests.rs::the_token_is_private_fresh_each_start_and_never_handed_through_the_environment`；
-宿主那一半 `local_backend_host_tests.rs::the_listen_token_file_is_read_fresh_and_never_written_by_the_host`（每次连现读 · 空文件支 · 宿主不写）·
-`local_backend_host_tests.rs::a_stranger_on_our_port_is_refused_out_loud_not_silently_reused`（口被别人占着 ⇒ 出声拒，不静默复用）。
+宿主那一半 `local_backend_host_tests.rs::the_host_never_writes_the_resident_dir_and_carries_no_key` ·
+`local_backend_host_tests.rs::a_stranger_on_our_port_is_refused_out_loud_not_silently_reused`（在听的不是我们这一版 / 这个家 ⇒ 出声拒，不静默复用）；
+远端：`remote_resident_tests.rs::the_relay_waits_only_while_nobody_listens` · e2e `local-backend-supervise.sh`（远端那一形：套接字 · 目录权限 · 中继接上 · 旧形状 attach 行不认 · 没人在听回 absent）。
 
-**射程**：上面几段说的是**控制口**。常驻后端今天还绑两类口，如实列：
+**射程**：上面几段说的是常驻后端的套接字。常驻后端今天还绑两类回环口，如实列：
 - **中转口**（`relay/listen.rs`，住常驻后端，本机远端同形）**也要钥匙**，见下面 48.1a。
 - **端口转发**（`dial/uses.rs`）是用户自己配的 `ssh -L` 语义，本就不设钥匙。
 - 文件管理器那条回环通道（`chan/host.rs`）有钥匙，但住 monitor，由管，是本条的同形邻居。
@@ -2110,12 +2115,11 @@ shell 套件那一侧 `e2e_gate_registry_tests.rs::no_e2e_suite_isolates_with_tm
 **违反过几次**（三条合计）：
 1. **tmux 隔离**：08-11 同族事故打没了用户 **9 个**真实会话（`TMUX_TMPDIR=… tmux kill-server`，被 `$TMUX` 压过）；08-13 `backend-cc-bus.sh` 照着过期注释省掉 shim，
    两个夹具会话落到用户默认 socket；08-26 实现常驻后端期间手工起真后端做冒烟，把用户那台 server 的 `[50]` 整个盖成了那个进程的 pid；08-27 / 08-29 各又盖过一次。
-2. **钥匙**：真放进来过的 0 次；「没人守」被量到过一次（`K-P1` 回修 `阻-4`）：钥匙文件的 `0600` · 竞态支 · 空文件支三格零覆盖，
-   空文件那一支两条路合成闭环、每次都交出空钥匙（后端按「有口没钥匙」拒起 —— 方向是 fail-closed，代价是常驻起不来且自己好不了）。
+2. **门**：从前那把钥匙（回环 TCP 时代）真放进来过的 0 次；被另一个实例改写过一次（10-08 台架漏清环境），远端从此一直被拒 —— 换成本人通道、钥匙删掉。
 3. **僵尸**：未见真违反的记录；这一条是 `KPY3` 立的 DoD。
 
 ⚠ **它买不到的**：
-- **中转口没有钥匙**（见 48.1 射程），本条对它不说话。
+- **中转口的钥匙**见 48.1a，本条对它不说话。
 - **只量了 Linux**：僵尸那条是 `#[cfg(target_os = "linux")]`；Windows 上脱离的形态与收尸没有真机判据（`RT1` 虚拟机那一路的射程）。
 - 48.3 的人群是「起**真后端二进制**的测试」＋「进程内走到 `identity_tag::tag` 的测试」。直接起 tmux server 而不起后端的测试（例：`watcher_tests.rs` 那条 pidfd 判据自带 `-L`）不在人群里，各自隔离、没有一条人群判据管。
 - 进程内那一族只守 `identity_tag` 这一个口：别的生产代码进程内直接起 `tmux`（例：`gate::probe` 的 `admit` 路、`watch_loop` 的探测与装 hook）不经它 —— 今天没有测试进程内走到那几处（`watch_loop` 整条不在单测里起）。

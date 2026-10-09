@@ -5036,6 +5036,13 @@ mod g6_dependency_signoff {
             "POSIX 单引号 quote 的唯一实现（纯字符串变换）；仓内 crate，现打 0 处写面",
         ),
         (
+            "own-chan",
+            DEPS,
+            MEASURED_CLEAN,
+            "本人通道：常驻后端听的那个 Unix 套接字（目录独占锁 `flock` · 绑 · 收连接核对端 uid · 连）；仓内 crate、只依赖 tokio 与 libc。\
+             现打 0 处写面：绑套接字会在那个目录里建一个套接字文件（内核做），删陈旧文件与建目录都在调用方 `control/resident.rs`（第四层）",
+        ),
+        (
             "relay-route-core",
             DEPS,
             MEASURED_CLEAN,

@@ -13,6 +13,8 @@ members = [
     "../../common/creds-core",
     "../../common/guard-core",
     "../../common/relay-route-core",
+    # 本人通道（Unix 套接字 ＋ 对端 uid）：后端 · monitor 同一份，不发钥匙。
+    "../../common/own-chan",
     "../../common/shell-quote-core",
     "../../common/copy-core",
     # `agent-tools-core` 出列：界面不再按工具名判卡型（卡型随记录成品带出），它只剩后端用，收进后端适配层。
@@ -157,6 +159,8 @@ creds-core = { path = "../../common/creds-core" }
 shell-quote-core = { path = "../../common/shell-quote-core" }
 # 后端的门牌与家的契约（端口 · 钥匙 · 路由语法 · `~/.cc-monitor/` 下每一样的相对路径），与后端同一份（目标）。
 relay-route-core = { path = "../../common/relay-route-core" }
+# 本人通道：连本机常驻后端（Unix 套接字 ＋ 对端 uid，不发钥匙）；后端那一侧链同一份。
+own-chan = { path = "../../common/own-chan" }
 # 部署那一族的契约（契约类）：取字节口的键与行 · 解计划答话 · 读字节里的身份戳；判定都问后端（自举那一刻问手上那份字节自己，`place-verdict`）。
 deploy-contract = { path = "../../common/deploy-contract" }
 # 通信层面 A（crate 住 `src/comms/inward/`；壳里 `chan/` 再导出，模块路径不变）。

@@ -18,3 +18,13 @@ pub(crate) const STDERR_LOG: &str = "CCM_BACKEND_STDERR_LOG";
 
 /// 常驻后端自有的那几格（起它的那一方只交给它自己用；中转口除外，见头注）。名字住这里（最下层），读它们的上层引这里。
 pub(crate) const OWN_ENVS: [&str; 2] = [RESIDENT, STDERR_LOG];
+
+/// 后端内部的变量族（前缀）：起子进程原语对**每个**子进程无条件摘掉名字以它们打头的变量 —— 不论是不是本进程交的。
+/// 会话环境里会混进来源别处的这几族（monitor 给终端窗口导的后端二进制路径 · 旧版常驻后端留在长寿 tmux server 全局环境里的监听口与钥匙文件），
+/// 它们一路继承到 agent 起的每个工具进程（跑测试的那一个也在里面），台架漏进真环境就是从这里来的。往下传的只有头注那几格。
+pub(crate) const INTERNAL_PREFIXES: [&str; 2] = ["CCM_BACKEND_", "CCM_LISTEN_"];
+
+/// 这个名字是不是后端内部的（[`OWN_ENVS`] ∪ [`INTERNAL_PREFIXES`] 那几族）。纯函数。
+pub(crate) fn is_internal(name: &str) -> bool {
+    OWN_ENVS.contains(&name) || INTERNAL_PREFIXES.iter().any(|p| name.starts_with(p))
+}

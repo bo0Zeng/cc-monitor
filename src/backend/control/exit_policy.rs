@@ -167,7 +167,7 @@ fn write_at(path: &Path, kill: bool) -> Result<(), crate::common::said::Said> {
 fn resident_now() -> bool {
     matches!(
         crate::stream::listen::mode_from(&|k| std::env::var(k).ok()),
-        Ok(crate::stream::listen::Mode::Listen { .. })
+        Ok(crate::stream::listen::Mode::Listen)
     )
 }
 

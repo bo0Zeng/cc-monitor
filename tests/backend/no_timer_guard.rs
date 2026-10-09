@@ -1254,7 +1254,9 @@ mod tests {
             vec!["platform/signal.rs".to_string()]
         );
         // 而 `control/resident.rs` 只由 `main.rs` 的一次性子命令臂进（`Some("--resident-…") =>`）；
-        // 常驻后端绑上口之后那两次写（换钥匙 · 记谁在听）不等任何东西，不算入口。
+        // 常驻载体起来那一刻走的那几样（算家 · 沙箱那一判 · 抢门牌 · 记谁在听）不等任何东西，不算入口。
+        // 唯一的例外：升级那一跳 `retire_legacy`（停还在跑的旧版，跨过 4.1.x 之后删）—— 它在常驻后端起来那一刻、
+        // 一条单独的线程里等至多一个宽限期，只走一次；不是节拍，也不在事件循环上。
         let main = files
             .iter()
             .find(|(n, _)| n == "main.rs")
@@ -1264,8 +1266,18 @@ mod tests {
             .lines()
             .filter(|l| {
                 l.contains("control::resident::")
-                    && !l.contains("record_owner")
-                    && !l.contains("rotate_token")
+                    && ![
+                        "record_owner",
+                        "control::resident::here()",
+                        "control::resident::account_home()",
+                        "control::resident::data_home_from(",
+                        "control::resident::sandbox_refusal(",
+                        "control::resident::claim(",
+                        "control::resident::Claim::",
+                        "control::resident::retire_legacy",
+                    ]
+                    .iter()
+                    .any(|n| l.contains(n))
             })
             .collect();
         assert!(
