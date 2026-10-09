@@ -32,12 +32,13 @@ vi.mock("../../../../src/frontend/ui/settings/remote-section", () => ({
     setFacts = (): void => {};
     originOfPage = (id: string): string | null => (id === REMOTE_PAGE ? "devbox" : null);
     isUnconfiguredPage = (): boolean => false;
+    isDisabledPage = (): boolean => false;
     runFix = (id: string, fix: string): void => void captured.runFix.push([id, fix]);
     element = document.createElement("div");
     refresh = vi.fn();
     constructor(opts?: { pages?: { addMachinePage: (id: string, title: string, el: HTMLElement, parts?: unknown) => void } }) {
       setTimeout(() => {
-        opts?.pages?.addMachinePage(LOCAL_PAGE, "本机", document.createElement("div"));
+        opts?.pages?.addMachinePage(LOCAL_PAGE, "local", document.createElement("div"));
         opts?.pages?.addMachinePage(REMOTE_PAGE, "devbox", document.createElement("div"), {
           connection: document.createElement("div"),
           components: document.createElement("div"),
