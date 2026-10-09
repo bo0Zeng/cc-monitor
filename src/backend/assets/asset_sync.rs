@@ -14,10 +14,10 @@
 //! # capture ＋「只读一行 stdin」，不是长流
 //!
 //! - 不起远端的流模式：流模式一起来就往 tmux server 装全局 hook（载荷里烤着那个进程的 pid），一个用完就退的流会把 monitor 那条真流的 hook 盖成一个死 pid。
-//! - capture 不关远端的 stdin ⇒ 推那一趟走 CLI 面的「只读一行」入口（`lib.rs::STDIN_LINE_FLAG`，`control/cli_control.rs::read_input` 收）：
+//! - capture 不关远端的 stdin ⇒ 推那一趟走 CLI 面的「只读一行」入口（`lib.rs::STDIN_LINE_FLAG`，`control/cli_args.rs::read_input` 收）：
 //!   命令行里只有后端路径与两个旗标，载荷不进命令行（不要求远端登录 shell 认 POSIX 单引号与管道）。
 //!   后端路径那一格仍过 POSIX 单引号（`remote_ask::command_line` · `shell_quote_core::posix_quote`）：路径里没有 `'` / `\` 时 fish 也认。
-//! - 一趟的大小有上限：远端 CLI 面 stdin 的上限（`cli_control::MAX_CLI_STDIN`，1 MiB，超了拒）⇒ 推的载荷按台切块，
+//! - 一趟的大小有上限：远端 CLI 面 stdin 的上限（`cli_args::MAX_CLI_STDIN`，1 MiB，超了拒）⇒ 推的载荷按台切块，
 //!   一块不超过 [`PUSH_MAX_BYTES`]；单独一台就超了 ⇒ 那一台不推、说出来。
 //!
 //! # 事件，不是定时（`no_timer_guard`）

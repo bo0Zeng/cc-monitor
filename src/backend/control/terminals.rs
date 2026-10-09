@@ -339,7 +339,6 @@ pub(crate) fn terminal_json(
         }
         t.insert("session".into(), Value::Object(s));
     }
-    t.insert("purpose".into(), "normal".into());
     t.insert(
         "started_by".into(),
         json!({

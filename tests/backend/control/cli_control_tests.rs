@@ -36,6 +36,9 @@ fn every_cli_exposed_command_is_in_the_query_mode_gate() {
     );
 }
 use super::*;
+use crate::control::cli_args::{
+    read_input, MAX_ARGS_B64_LEN, MAX_CLI_STDIN, STDIN_LINE_FLAG, STDIN_QUIET,
+};
 
 /// 帧面有、CLI 面没有的命令，**逐条登记理由**（不在这里的另两张在生产里：`STREAM_ONLY` 「结构上答不了」·
 /// `UI_ONLY` 「只有界面用得着」，理由同样是数据；这张只收 `Run::Builtin` 与占了 ccm 的词那几条）。
