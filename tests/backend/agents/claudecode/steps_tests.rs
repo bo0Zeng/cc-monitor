@@ -232,3 +232,32 @@ fn creating_a_whole_file_counts_every_line_even_though_the_patch_is_empty() {
         "空的 structuredPatch 不是「没改动」，是「没有改之前」"
     );
 }
+
+/// 改动结果带逐段 diff ＋ 哪个文件：数照整份算；diff 过 32 KiB 在段的边界停下、说「不全」（整段不劈，第一段放不下也不给）；
+/// 新建整份文件只说哪个文件、不给 diff。
+#[test]
+fn an_edit_result_carries_its_hunks_and_file_within_a_bound() {
+    let hunk = |n: usize| json!({"oldStart": 1, "oldLines": 1, "newStart": 1, "newLines": 1, "lines": [format!("-{}", "a".repeat(n)), "+b"]});
+    let block = json!({"type": "tool_result", "tool_use_id": "c", "content": "ok"});
+    let small = json!({"filePath": "/w/a.rs", "structuredPatch": [hunk(3), hunk(3)]});
+    let r = result_of(&block, Some(&small));
+    assert_eq!((r.added, r.removed), (Some(2), Some(2)));
+    assert_eq!(r.file.as_deref(), Some("/w/a.rs"));
+    assert_eq!(r.patch.as_ref().map(Vec::len), Some(2));
+    assert!(!r.patch_truncated);
+    let big = json!({"filePath": "/w/a.rs", "structuredPatch": [hunk(3), hunk(40_000), hunk(3)]});
+    let r = result_of(&block, Some(&big));
+    assert_eq!((r.added, r.removed), (Some(3), Some(3)), "数照整份");
+    assert_eq!(r.patch.as_ref().map(Vec::len), Some(1));
+    assert!(r.patch_truncated);
+    let huge_first = json!({"structuredPatch": [hunk(40_000)]});
+    let r = result_of(&block, Some(&huge_first));
+    assert!(r.patch.is_none() && r.patch_truncated);
+    let create = json!({"type": "create", "filePath": "/w/n.rs", "content": "x\ny\n", "structuredPatch": []});
+    let r = result_of(&block, Some(&create));
+    assert_eq!(
+        (r.added, r.removed, r.file.as_deref()),
+        (Some(2), Some(0), Some("/w/n.rs"))
+    );
+    assert!(r.patch.is_none());
+}

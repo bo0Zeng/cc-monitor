@@ -36,7 +36,9 @@ pub(crate) mod branch;
 pub(crate) mod cards;
 // 记录链（`uuid` / `parentUuid`）⇒ 通用层算主线外清单要的事实。
 pub(crate) mod chain;
+// 盘上一行 ⇒ 通用记录（翻译表只住这里）。
 pub(crate) mod drift;
+pub(crate) mod record_of;
 // 「足迹」里的 Claude 布局（`~/.claude/…` 的基准 · settings 两个作用域）。
 pub(crate) mod footprint;
 pub(crate) mod liveness;

@@ -6,7 +6,56 @@
 //! 解析时填进记录成品（`schema.rs`：assistant 的 `toolSteps` · user 的 `toolResults` · 报错的 `apiReason`），界面只排版。
 //! 读不出的格就缺，不猜。
 
-use crate::agents::{Answer, ApiReason, StepResult, ToolStep};
+use crate::agents::{Answer, ApiReason, PatchHunk, StepResult, ToolStep};
+
+/// 一次改动的 diff 至多带多少字（各段行正文的字数之和）：超了就只给前几段、立 `patchTruncated`，**整段不劈**；
+/// 放不下的段一律不给（连第一段也不例外 —— 不然它就不是上界）。本机 1,139 份记录实测：32 KiB 让 98.99% 的改动整份给全。
+const PATCH_MAX: usize = 32 * 1024;
+
+/// 原文的逐段改动 ⇒ 段 ＋ 全不全。形状读不出的段跳过，也算「不全」。
+fn patch_of(hunks: &[Value]) -> (Vec<PatchHunk>, bool) {
+    let num = |h: &Value, k: &str| {
+        h.get(k)
+            .and_then(Value::as_u64)
+            .and_then(|n| u32::try_from(n).ok())
+    };
+    let mut out = Vec::new();
+    let mut used = 0usize;
+    let mut skipped = false;
+    for h in hunks {
+        let Some(lines) = h.get("lines").and_then(Value::as_array) else {
+            skipped = true;
+            continue;
+        };
+        let lines: Vec<String> = lines
+            .iter()
+            .filter_map(Value::as_str)
+            .map(str::to_string)
+            .collect();
+        let cost = lines.iter().map(String::len).sum::<usize>();
+        if used + cost > PATCH_MAX {
+            return (out, true);
+        }
+        let (Some(old_start), Some(old_lines), Some(new_start), Some(new_lines)) = (
+            num(h, "oldStart"),
+            num(h, "oldLines"),
+            num(h, "newStart"),
+            num(h, "newLines"),
+        ) else {
+            skipped = true;
+            continue;
+        };
+        used += cost;
+        out.push(PatchHunk {
+            old_start,
+            old_lines,
+            new_start,
+            new_lines,
+            lines,
+        });
+    }
+    (out, skipped)
+}
 use serde_json::Value;
 
 /// 主参数是路径的工具（入参 `file_path` / `notebook_path`）。
@@ -162,11 +211,22 @@ pub(crate) fn result_of(block: &Value, tur: Option<&Value>) -> StepResult {
             }
             r.added = Some(add);
             r.removed = Some(del);
+            let (patch, truncated) = patch_of(hunks);
+            r.patch = (!patch.is_empty()).then_some(patch);
+            r.patch_truncated = truncated;
+            r.file = t
+                .get("filePath")
+                .and_then(Value::as_str)
+                .map(str::to_string);
         } else if t.get("type").and_then(Value::as_str) == Some("create") {
-            // 新建的文件：整份都是加的。
+            // 新建的文件：整份都是加的；没有「改之前」⇒ 不给 diff，只说哪个文件。
             if let Some(c) = t.get("content").and_then(Value::as_str) {
                 r.added = Some(c.lines().count() as u32);
                 r.removed = Some(0);
+                r.file = t
+                    .get("filePath")
+                    .and_then(Value::as_str)
+                    .map(str::to_string);
             }
         }
         // 命令：输出几行（stdout ＋ stderr）。
