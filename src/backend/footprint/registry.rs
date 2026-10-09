@@ -904,6 +904,8 @@ pub enum EnvProbe {
     /// 起会话那个 shell 的 `PATH` 上的一个裸命令（agent 命令行：会话在用户登录 shell 里起，按那里的 `PATH` 找它）。
     /// 同走 `rows.rs::resolves_on_path`，只是 `PATH` 换成那一份；问不出来 ⇒ 「查不动」，绝不说「缺」。
     InSessionShell,
+    /// ssh 客户端：走开远端终端用的同一个找法（`platform::ssh_client::locate_with`：Windows 先查 System32\OpenSSH，再按 PATH 找 `ssh.exe`；别处按 PATH 找 `ssh`）。
+    SshClient,
     /// 查不动，**理由必填**：值由别处决定（占位符 / 用户配置），本页不猜。
     ///
     /// ⚠ 填这一支之前先问一遍：是真的查不动，还是**懒得查**？后者写在这里就是
@@ -952,11 +954,11 @@ pub const UNMANAGED_ENV: &[UnmanagedEnv] = &[
         id: "ssh",
         display_name: Text(|| copy_text("rsToolRegistry.env.sshName", &[])),
         who: Provisioning::UserProvides,
-        probe: EnvProbe::OnPath,
+        probe: EnvProbe::SshClient,
         named: "ssh",
         host: HostScope::Client,
         why: Text(|| copy_text("rsToolRegistry.env.sshWhy", &[])),
-        site: "platform/terminal.rs::ssh_client_available",
+        site: "platform/ssh_client.rs::locate",
     },
     // `pgrep` 那一行摘了：它唯一的 Rust 住址是驾驶舱 shell 读那条「超时不留孤儿」判据的数进程助手，随那条读一起退役。
     UnmanagedEnv {

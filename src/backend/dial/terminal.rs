@@ -5,7 +5,7 @@
 //! 同 `remote-probe` / `pubkey-push` 那几格）＋ 要在那台跑的命令 `command`。组请求走唯一那一份 [`super::machine::resolve`]
 //! （地址排序 · 跳板查无 / 环都在那里），这里只把它渲成一行：
 //!
-//! - PowerShell：`& ssh -t[ -J <跳板用户>@<跳板>[:口]] -p <口>[ -i '<钥匙>'] -o 'UserKnownHostsFile=<cc-monitor 那份>' <用户>@<地址> -- '<bash -lic ''…''>'`
+//! - PowerShell：`& '<ssh 全路径>' -t[ -J <跳板用户>@<跳板>[:口]] -p <口>[ -i '<钥匙>'] -o 'UserKnownHostsFile=<cc-monitor 那份>' <用户>@<地址> -- '<bash -lic ''…''>'`
 //! - POSIX：同一组参数，不带 `& `，引号按 POSIX 单引号写（`'bash -lic '\''…'\'''`）。
 //!
 //! - 地址取竞速顺序的第一条（交了 `prefer` 且它仍在这台的地址里 ⇒ 就是上次赢的那条，F45：终端与数据源走同一条路）；
@@ -16,13 +16,17 @@
 //!
 //! 拒（`refused`，说清哪一格）：命令空 / 超长 / 含控制符 · PowerShell 那一形另拒双引号（PowerShell 5.1 向原生程序传参对内嵌 `"`
 //! 有历史畸变，那是**那条送法**的约束）· 用户名 / 地址 / 跳板用户 / 跳板地址出了白名单（它们是拼进命令体的裸词）。
-//! 只算不起：不拨号、不开窗（开窗是 monitor 的事，它只开窗）。
+//!
+//! ssh 客户端用这台上找到的那一份的全路径（[`crate::platform::ssh_client`]：只查文件、不起子进程）；
+//! 没装 ⇒ 不出那一行、说没装（`no_ssh_client`）；查的时候出了错 ⇒ 说判不了（`unobservable`），不说没装。
+//! 不拨号、不开窗（开窗是 monitor 的事，它只开窗）。
 
 use copy_core::copy_text;
 use serde_json::{json, Value};
 
 use crate::platform::shell::dialect::ps_literal;
 use crate::platform::shell::posix;
+use crate::platform::ssh_client::SshClient;
 
 /// 远端命令长度上限（防异常输入；正常 resume 命令 < 300 字节）。与 monitor 本机那条送法的上限同值。
 pub(crate) const MAX_COMMAND: usize = 4096;
@@ -129,8 +133,12 @@ fn literal(powershell: bool, s: &str) -> String {
     }
 }
 
-/// 一份拨号请求 ＋ 命令 ⇒ 这台电脑终端里跑的那一行（`powershell` ＝ 本机终端是不是 PowerShell，见模块头注）。
-pub(crate) fn render(req: &super::DialRequest, powershell: bool) -> Result<String, CmdErr> {
+/// 一份拨号请求 ＋ 命令 ⇒ 这台电脑终端里跑的那一行（`powershell` ＝ 本机终端是不是 PowerShell，见模块头注；`ssh` ＝ ssh 客户端全路径）。
+pub(crate) fn render(
+    req: &super::DialRequest,
+    powershell: bool,
+    ssh: &str,
+) -> Result<String, CmdErr> {
     check_command(&req.command, powershell)?;
     if !user_ok(&req.user) {
         return Err(refused(copy_text(
@@ -167,8 +175,9 @@ pub(crate) fn render(req: &super::DialRequest, powershell: bool) -> Result<Strin
     let wrapped = format!("bash -lic {}", shell_quote_core::posix_quote(&req.command));
     let known = known_hosts_arg(super::known_hosts::path().as_deref(), powershell);
     Ok(format!(
-        "{call}ssh -t{jump} -p {port}{key}{known} {user}@{host} -- {cmd}",
+        "{call}{ssh} -t{jump} -p {port}{key}{known} {user}@{host} -- {cmd}",
         call = if powershell { "& " } else { "" },
+        ssh = literal(powershell, ssh),
         port = first.port,
         user = req.user,
         host = first.host,
@@ -230,13 +239,34 @@ pub(crate) fn command_for_cwd(cwd: &Value) -> Result<String, CmdErr> {
 /// 帧命令 `terminal-ssh`：`{machine, saved?, jump?, prefer?, command | cwd}` ⇒ `{command: "<本机终端里跑的那一行>"}`。
 /// `command`（主界面交成品命令）与 `cwd`（文件窗口「在此打开终端」只交意图，命令由 [`command_for_cwd`] 拼）**恰好给一个**。
 pub(crate) fn answer(args: &Value) -> Result<Value, CmdErr> {
-    answer_in(args, crate::platform::shell::LOCAL_TERMINAL_IS_POWERSHELL)
+    answer_in(
+        args,
+        crate::platform::shell::LOCAL_TERMINAL_IS_POWERSHELL,
+        &crate::platform::ssh_client::locate(),
+    )
 }
 
-/// [`answer`] 按给定的本机终端方言渲（判据两种方言都量）。
-pub(crate) fn answer_in(args: &Value, powershell: bool) -> Result<Value, CmdErr> {
+/// [`answer`] 按给定的本机终端方言与找 ssh 客户端的结果渲（判据各种都量）。
+pub(crate) fn answer_in(args: &Value, powershell: bool, ssh: &SshClient) -> Result<Value, CmdErr> {
     let req = super::machine::resolve(&dial_args(args)?)?;
-    Ok(json!({ "command": render(&req, powershell)? }))
+    let ssh = match ssh {
+        SshClient::At(p) => p,
+        SshClient::Missing => {
+            let said = if powershell {
+                copy_text("beTerminal.ssh.missingWindows", &[])
+            } else {
+                copy_text("beTerminal.ssh.missingPosix", &[])
+            };
+            return Err(("no_ssh_client", said));
+        }
+        SshClient::Unknown(why) => {
+            return Err((
+                "unobservable",
+                copy_text("beTerminal.ssh.unknown", &[("why", why)]),
+            ));
+        }
+    };
+    Ok(json!({ "command": render(&req, powershell, ssh)? }))
 }
 
 /// `command` 与 `cwd` 恰好给一个；给的是 `cwd` ⇒ 由 [`command_for_cwd`] 拼好放进 `command`（拨号请求只认 `command`）。

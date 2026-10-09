@@ -653,6 +653,10 @@ pub struct SurfaceEnv<'a> {
     pub path_env: Option<&'a str>,
     /// 起会话那个 shell 的 `PATH`（[`EnvProbe::InSessionShell`] 那一族按它判）。`None` = 问不出来 ⇒ 「查不动」。
     pub session_path: Option<&'a str>,
+    /// `%SystemRoot%`（[`EnvProbe::SshClient`] 在 Windows 上先查它下面的 OpenSSH）。`None` = 取不到。
+    pub system_root: Option<&'a str>,
+    /// 这台是不是 Windows（[`EnvProbe::SshClient`] 按它找 `ssh.exe` 还是 `ssh`）。
+    pub windows: bool,
     /// 从哪台机器上看（见 [`Vantage`]）。探针与上面几样必须是**同一台**的。
     pub vantage: Vantage,
 }
@@ -764,6 +768,28 @@ fn observe_unmanaged(
                             "rsConfigSurface.onPath.present",
                             &[("named", &named.to_string())],
                         ),
+                    },
+                ),
+            }
+        }
+        // ssh 客户端：与开远端终端同一个找法，查文件那一下用本页注入的探针。
+        EnvProbe::SshClient => {
+            let probe = |p: &Path| Ok(matches!((env.fs.meta)(p), Some((false, _))));
+            match crate::platform::ssh_client::locate_with(
+                env.windows,
+                env.system_root.map(std::ffi::OsStr::new),
+                env.path_env.map(std::ffi::OsStr::new),
+                &probe,
+            ) {
+                crate::platform::ssh_client::SshClient::At(p) => {
+                    let detail = copy_text("rsConfigSurface.ssh.found", &[("path", &p)]);
+                    (Some(p), SurfaceState::Present { detail })
+                }
+                crate::platform::ssh_client::SshClient::Missing => (None, SurfaceState::Absent),
+                crate::platform::ssh_client::SshClient::Unknown(why) => (
+                    None,
+                    SurfaceState::Undetermined {
+                        why: copy_text("beTerminal.ssh.unknown", &[("why", &why)]),
                     },
                 ),
             }

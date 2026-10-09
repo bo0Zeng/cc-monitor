@@ -2741,13 +2741,13 @@ cc-bus 钩子诊断。
 
 给一台远端开终端要跑的那一串。
 
-收 `args` · 可撤 · 只在流上
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `command` | → ← | 要在那台跑的命令；应答里是那一整行 PowerShell `& ssh -t … -- 'bash -lic …'` |
+| `command` | → ← | 要在那台跑的命令；应答里是那一整行 PowerShell `& '<ssh 全路径>' -t … -- 'bash -lic …'` |
 
-码：`bad_args` · `bad_jump` · `refused`
+码：`bad_args` · `bad_jump` · `refused` · `no_ssh_client` · `unobservable`
 
 #### `terminal-processes`
 
