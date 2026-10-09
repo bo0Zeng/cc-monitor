@@ -1,7 +1,7 @@
 /**
  * 设计令牌两条：对比度实算 · 组件 CSS 里不写令牌该管的字面量。
  *
- * - 对比度：从 `tokens.css` 现读色值，按 WCAG 相对亮度算；表与规范 V3 那张逐格相等（取一位小数），
+ * - 对比度：从 `tokens.css` 现读色值，按 WCAG 相对亮度算；表与组件规范里那张对比度表逐格相等（取一位小数），
  *   外加几条底线（要读的字 ≥4.5:1、实心按钮上的白字 ≥4.5:1）。
  * - 字面量：令牌文件之外的 CSS 里，颜色（`#…` / `rgb()`）· 字号（`px`）· 圆角（`px`）· 投影里的颜色
  *   一律走令牌；例外逐条登记。
@@ -44,8 +44,8 @@ export function contrast(fg: string, bg: string): number {
 
 const ratio = (fg: string, bg: string): number => contrast(token(fg), token(bg));
 
-/** 规范 V3 那张表：前景 × 三层底（骨架 · 内容 · 凸起）。 */
-const V3: Record<string, [number, number, number]> = {
+/** 组件规范里那张对比度表：前景 × 三层底（骨架 · 内容 · 凸起）。 */
+const CONTRAST: Record<string, [number, number, number]> = {
   "--text": [13.4, 11.5, 9.3],
   "--text-2": [6.6, 5.7, 4.6],
   "--text-faint": [2.9, 2.5, 2.0],
@@ -57,9 +57,9 @@ const V3: Record<string, [number, number, number]> = {
 };
 const SURFACES = ["--bg-2", "--bg", "--card"] as const;
 
-describe("对比度实算（V3）", () => {
+describe("对比度实算", () => {
   it("前景 × 三层底逐格等于规范那张表（表里是一位小数，差不过 0.05）", () => {
-    const off = Object.entries(V3).flatMap(([fg, want]) =>
+    const off = Object.entries(CONTRAST).flatMap(([fg, want]) =>
       SURFACES.map((bg, i) => ({ fg, bg, got: ratio(fg, bg), want: want[i] })).filter((c) => Math.abs(c.got - c.want) > 0.051),
     );
     expect(off).toEqual([]);
