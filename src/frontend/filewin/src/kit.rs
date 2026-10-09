@@ -1135,12 +1135,18 @@ pub fn focus_ring(ctx: &egui::Context, keyboard: bool) {
 }
 
 /// 就地输入那一格下面挂的出错句（稿 07：浮层底 ＋ 错误图标 ＋ 一句；画在最上层，不挤动列表）。
-pub fn inline_error(ctx: &egui::Context, id: egui::Id, below: egui::Rect, text: &str) {
+/// 回值 ＝ 那块占的地方（就地那一格据它认「点在红字块里」⇒ 不算点别处）。
+pub fn inline_error(
+    ctx: &egui::Context,
+    id: egui::Id,
+    below: egui::Rect,
+    text: &str,
+    detail: &str,
+) -> egui::Rect {
     let p = palette(ctx);
     egui::Area::new(id)
         .order(egui::Order::Foreground)
         .fixed_pos(below.left_bottom() + egui::vec2(16.0, 2.0))
-        .interactable(false)
         .show(ctx, |ui| {
             egui::Frame::popup(&ctx.global_style())
                 .inner_margin(egui::Margin::symmetric(10, 4))
@@ -1150,9 +1156,14 @@ pub fn inline_error(ctx: &egui::Context, id: egui::Id, below: egui::Rect, text: 
                             egui::RichText::new(egui_phosphor::regular::X_CIRCLE).color(p.error),
                         );
                         ui.label(egui::RichText::new(text).size(12.0).color(p.text));
+                        if let Some(body) = super::source::Failed::copy_body(text, detail) {
+                            copy_detail_button(ui, id.with("copy"), &body);
+                        }
                     });
                 });
-        });
+        })
+        .response
+        .rect
 }
 
 #[cfg(test)]
