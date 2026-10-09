@@ -23,7 +23,9 @@ import {
   lastWords,
   noteLive,
   setArrivalSlots,
+  liveSince,
   watchArrival,
+  watchUntilArrived,
   type ArrivalSpec,
 } from "../../../src/frontend/ui/launch-arrival";
 import { copyText } from "../../../src/frontend/ui/copy-table";
@@ -217,5 +219,25 @@ describe("主窗口里发起的（恢复 · cc-bus 派生 · 开窗 resume）⇒
     expect(slot).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(ARRIVAL_BUDGET_MS + 1);
     expect(toast, "没接 ⇒ 到点照常说").toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("等它从哪一刻算「新起的」：请求发出去那一刻（不是回话到的那一刻）", () => {
+  beforeEach(() => __resetArrivalsForTests());
+
+  it("★ 那台回话晚（期限到了再核一次才拿到）、会话已经先报到了 ⇒ 交给它「从发请求那一刻算」就当场认出、不再干等；那一刻之前就在的同目录会话不算", async () => {
+    noteLive("devbox", "old", seen("/w"));
+    const since = liveSince("devbox");
+    noteLive("devbox", "fresh", seen("/w"));
+    noteLive("devbox", "other-dir", seen("/x"));
+    const got: string[] = [];
+    watchUntilArrived("devbox", { cwd: "/w" }, (sid) => got.push(sid), since);
+    await Promise.resolve();
+    expect(got).toEqual(["fresh"]);
+    // 不给那一刻 ⇒ 照旧从交的那一刻算（已经报过的都不算新的）。
+    const late: string[] = [];
+    watchUntilArrived("devbox", { cwd: "/w" }, (sid) => late.push(sid));
+    await Promise.resolve();
+    expect(late).toEqual([]);
   });
 });

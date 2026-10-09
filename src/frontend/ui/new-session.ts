@@ -36,7 +36,7 @@ import { resumeCommandFor } from "./remote-config";
 import { configuredLauncherFor } from "./launch-requests";
 import { chosenAccount, type AccountAsk } from "./launch-account";
 import { openWindow } from "./tab-batch-run";
-import { awaitArrival, type ArrivalMatch } from "./launch-arrival";
+import { awaitArrival, liveSince, type ArrivalMatch } from "./launch-arrival";
 import type { SlotSpec } from "./launch-slot";
 import { accountsOf } from "./settings-dest";
 import { askDir, askFacts, askNew, type NewFacts, type NewRequest, type NewResult } from "./new-session-reads";
@@ -341,6 +341,8 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   let ticket = crypto.randomUUID();
   /** 上一次交出去的那一份（不含票）：比它就知道表单改没改。 */
   let lastAsked: string | null = null;
+  /** 这张票头一次发出去那一刻（[`liveSince`]）；换票时清掉。 */
+  let since: ReadonlySet<string> | null = null;
 
   const form = el("div");
   form.className = s.nsForm;
@@ -608,8 +610,11 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     if (lastAsked !== null && asked !== lastAsked) {
       ticket = crypto.randomUUID();
       req.ticket = ticket;
+      since = null;
     }
     lastAsked = asked;
+    // 这张票头一次发出去那一刻这台已经报过的会话：回话晚到时，那之后先报到的那个才认得出是它。
+    since ??= liveSince(origin);
     let res = await askNew(origin, req);
     if (res.kind === "timeout") {
       // 结果未知：同一张票自己再核一次（那台认得出是不是同一趟 —— 起好了回原样那一份，落过去；不起第二个）。
@@ -617,7 +622,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
       res = await askNew(origin, req);
     }
     if (res.kind === "ok") {
-      void afterStart(origin, res);
+      void afterStart(origin, res, since ?? undefined);
       return null;
     }
     return showFailure(res);
@@ -766,7 +771,8 @@ async function openLogin(origin: Origin): Promise<void> {
 }
 
 /** 起了之后：开窗那一形先开窗；等那台报出这个会话 ⇒ 主窗口里切过去，别的窗口（设置 · 查看）说一句「已启动」＋［切过去］。 */
-async function afterStart(origin: Origin, res: Extract<NewResult, { kind: "ok" }>): Promise<void> {
+/** `before`：这张票头一次发出去那一刻这台已经报过的会话（主窗口里那一形交占位标签页；别的窗口没有这份）。 */
+async function afterStart(origin: Origin, res: Extract<NewResult, { kind: "ok" }>, before?: ReadonlySet<string>): Promise<void> {
   const r = res.reply;
   if (r.outcome === "open" && r.cmd !== null) {
     const failed = await openWindow(origin, r.cmd, r.cwd);
@@ -777,7 +783,7 @@ async function afterStart(origin: Origin, res: Extract<NewResult, { kind: "ok" }
   }
   const match: ArrivalMatch = r.sid !== null ? { sid: r.sid } : { cwd: r.cwd };
   if (placeholder) {
-    placeholder({ origin, cwd: r.cwd, tmuxName: r.session, agent: r.agent, match });
+    placeholder({ origin, cwd: r.cwd, tmuxName: r.session, agent: r.agent, match, ...(before ? { before } : {}) });
     return;
   }
   const sid = await awaitArrival({ origin, match, tmuxName: r.session, arrived: null });

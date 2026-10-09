@@ -53,7 +53,7 @@ vi.mock("../../../src/frontend/ui/acct-center", () => ({ refreshQuota: vi.fn(asy
 vi.mock("../../../src/frontend/ui/account-prefs", () => ({ machineModels: vi.fn(async () => ({})) }));
 vi.mock("../../../src/frontend/ui/behavior", () => ({ getBehavior: vi.fn(async () => ({ resumeCommand: "" })) }));
 vi.mock("../../../src/frontend/ui/remote-config", () => ({ resumeCommandFor: vi.fn(async () => "") }));
-const arrival = vi.hoisted(() => ({ awaitArrival: vi.fn(async () => "new-sid") }));
+const arrival = vi.hoisted(() => ({ awaitArrival: vi.fn(async () => "new-sid"), liveSince: vi.fn(() => new Set<string>(["seen-0"])) }));
 vi.mock("../../../src/frontend/ui/launch-arrival", () => arrival);
 const win = vi.hoisted(() => ({ openWindow: vi.fn(async () => null) }));
 vi.mock("../../../src/frontend/ui/tab-batch-run", () => win);
@@ -159,7 +159,7 @@ describe("点［新建］：交那台的那一份", () => {
     ]);
     expect(document.querySelector('[role="dialog"]'), "起了框就关").toBeNull();
     await flush();
-    expect(slot).toHaveBeenCalledWith({ origin: "devbox", cwd: "/home/u/srv/orders", tmuxName: "orders-cc", agent: "claude", match: { cwd: "/home/u/srv/orders" } });
+    expect(slot).toHaveBeenCalledWith({ origin: "devbox", cwd: "/home/u/srv/orders", tmuxName: "orders-cc", agent: "claude", match: { cwd: "/home/u/srv/orders" }, before: new Set(["seen-0"]) });
     expect(arrival.awaitArrival, "主窗口里起的不再等着说「已启动 / 没看到」").not.toHaveBeenCalled();
     setNewSessionPlaceholder(null);
     expect(sent.some((s) => s.op === "terminal-name-mint" || s.op.startsWith("launch-render")), "界面不再自己拼那一串").toBe(false);
@@ -273,6 +273,24 @@ describe("点［新建］：交那台的那一份", () => {
     const last = newRequests().at(-1)!;
     expect(last.cwd).toBe("/home/u/srv/billing");
     expect(last.ticket, "改过一格 ⇒ 新票").not.toBe(t[0]);
+  });
+
+  it("★ 起没起未知之后再点［新建］拿到了「起好了」⇒ 占位标签页从第一次发请求那一刻算新会话（那之间已经报到的那个当场认出，不显示未报到）", async () => {
+    const slot = vi.fn();
+    setNewSessionPlaceholder(slot);
+    arrival.liveSince.mockReturnValueOnce(new Set(["first-ask"])).mockReturnValue(new Set(["first-ask", "landed-meanwhile"]));
+    hang = 2;
+    void openNewSession({ origin: "devbox" });
+    await flush();
+    createBtn().click();
+    await flush();
+    createBtn().click();
+    await flush();
+    await flush();
+    expect(slot).toHaveBeenCalledTimes(1);
+    expect(slot.mock.calls[0][0].before).toEqual(new Set(["first-ask"]));
+    setNewSessionPlaceholder(null);
+    arrival.liveSince.mockReset().mockReturnValue(new Set(["seen-0"]));
   });
 
   it("那台说这一趟还在起 ⇒ 框顶那一句 ＋［再核一次］＋［复制详情］，不重起", async () => {
