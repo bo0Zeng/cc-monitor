@@ -1192,6 +1192,9 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 按运行读一个子运行的记录（替掉按目录与描述挑的那一条）。**子命令换了** ⇒ `build_id_guard` 红是预期的（本路不 bump）。
     "--history-run",
     "--history-search",
+    // 各台搜索结果合成一份（`history-search-merge`，纯计算）派生的 CLI 面：原先「只有界面逐台问完才有得合」，第二个前端同样逐台问 ⇒ 放出。
+    // ⚠ 新子命令 ⇒ BUILD_ID 合并那一拍统一 bump（本路不 bump）。
+    "--history-search-merge",
     "--history-tail",
     // `history-turns`（一轮的摘要，主窗口第 2 批）的 CLI 面。**是新子命令** ⇒ `build_id_guard` 红是预期的（本路不 bump）。
     "--history-turns",
@@ -1242,7 +1245,11 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--tasks-list",
     // 终端管理 L1 三条帧命令自动派生的 CLI 面（stdin 一段 JSON 当 `args`）。⚠ 新子命令 ⇒ `BUILD_ID` 合并那一拍统一 bump。
     "--terminal-input",
+    // 铸终端名 · 开终端那一串（`terminal-name-mint` / `terminal-ssh`）派生的 CLI 面：原先在 `cli_control` 那张「只有界面用得着」的表里，
+    //   复核后放出（铸名经会话快照现探；那一串由入参与这台的 ssh 客户端算出）。⚠ 新子命令 ⇒ BUILD_ID 合并那一拍统一 bump（本路不 bump）。
+    "--terminal-name-mint",
     "--terminal-preview",
+    "--terminal-ssh",
     "--terminals-list",
     "--tmux-notify",
 ];
@@ -2157,6 +2164,14 @@ pub struct StreamWants {
 /// 只该认得这个字面量，不该因此在引用图上连到 CLI 面的分派口（`target_parity_guard` 那条「够不够得着 tmux」按文件级引用图走）。
 pub const STDIN_LINE_FLAG: &str = "--stdin-line";
 
+/// **argv 形载荷口**：跟在子命令后面、位置不限（`--history-read --args-b64 <base64 的 JSON>`）⇒ 入参从这里取，不碰 stdin。
+///
+/// 为什么要它：第二个前端的执行通道**只有 stdout、写不了 stdin**，而 CLI 面上收入参的命令占了绝大多数。base64 而不是裸 JSON：
+/// 一个参数里只剩 `[A-Za-z0-9+/=]`，过哪一家登录 shell 的引号都不变形（fish 吃反斜杠那一类，见 [`STDIN_LINE_FLAG`] 的头注）。
+/// 与 [`STDIN_LINE_FLAG`] 二选一；上限与系统单个参数的上限见 `control/cli_control.rs::MAX_ARGS_B64_LEN`。
+/// 住这里同 [`STDIN_LINE_FLAG`]：它是 [`SUBCOMMAND_OPTIONS`] 的一员。
+pub const ARGS_B64_FLAG: &str = "--args-b64";
+
 /// **「给人看」那一形**：跟在 `--quota-read` 后面（`--quota-read --text`）⇒ 同一份回包排成每号一段的字（`control/quota_text.rs`）。
 /// 只给这一条；别的子命令带它 ⇒ `bad_args`。缺省仍是 JSON 进 JSON 出。住这里同 [`STDIN_LINE_FLAG`]：它是 [`SUBCOMMAND_OPTIONS`] 的一员。
 pub const TEXT_FLAG: &str = "--text";
@@ -2171,6 +2186,8 @@ pub fn cli_flag(name: &str) -> String {
 /// ③ 子命令自己的选项：只在某条 [`SUBCOMMANDS`] 之后才有意义，backend 顶层不解释它们。
 pub const SUBCOMMAND_OPTIONS: &[&str] = &[
     "--after-ms",
+    // CLI 控制面那一族（`--<帧命令>`）的 argv 形载荷口（与 `--stdin-line` 二选一）。⚠ 进指纹的 `#options` 段 ⇒ 逼出 `BUILD_ID` bump，本路不 bump。
+    ARGS_B64_FLAG,
     // `--list-user-inputs` 的增量起点（字节偏移，传上次尾行的 `end`）。
     "--from",
     // `--resident-stop` 的宽限期（秒；必须大于退出排空上限）。

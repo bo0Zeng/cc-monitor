@@ -83,6 +83,8 @@ monitor 只对 hello 里**声明了对应能力**（`capabilities`）的后端�
   请求可带 `args.client` 自报是哪个前端：没声明 / 声明成 `ccm` ⇒ 这一维不拦；声明的就是自报的 ⇒ 放；声明了别的 ⇒ `wrong_owner`（别的前端起的，这里只能看）。
   `kill` · `launch` 的 `send-into` · `sessions-*` · `terminal-input` · `session-restart` 共用这一维；它防误动，不是安全边界。
 - **破坏性动作三道门**：名字精确匹配（`=name:`，不许含 `:` / `=` / 控制字符）⇒ 名字像我们铸的（`cc-*` / `<X>-cc`）或已挂 `@ccm_sid` ⇒ 只有一个窗口（只给杀会话）。杀的是 `#{session_id}` 句柄，不是名字。
+- **抓屏不过身份门、恒可用**：`terminal-preview` 只读，谁问都给（身份门只管送字 / 结束）⇒ `terminals-list` 每行的 `can` 里只有会变的 `input` · `end`，没有 `preview` 那一格。
+  `terminal-input` 只收 `terminal` | `sid` · `text` · `enter` · `key` · `seen_screen` · `client`，多送一格 ⇒ `bad_args`。
 - **终端句柄**：`terminals-list` 每行的 `terminal` 是不透明句柄，前端不拼、不解析；后端不收任意 tmux 目标串，句柄 / sid 先在那一刻的名单里对上才动手。
 - **送字的回话不带画面**：`terminal-input` 回 `delivered` 时**不带** `screen`（`screen` 只跟 `refused` ＋ `screen_changed` 一起回，是那一刻的新指纹）。
   要连着按，要么订 `terminal-follow`（只在帧面），要么每按一下之前问一次 `terminal-preview` 拿新指纹。重抓的节拍归前端。
@@ -110,7 +112,15 @@ monitor 只对 hello 里**声明了对应能力**（`capabilities`）的后端�
 
 ## 8. CLI 一次性调用
 
-- `ccm -- --子命令 [位置参数…]`。从帧命令派生的那些（`--files-ls` 之类）与流上同名命令是同一个处理器：收 `args` 的从 stdin 读一段 JSON（上限 1 MiB，超了拒、不截断），stdout 一行应答 JSON。
+- `ccm -- --子命令 [位置参数…]`。从帧命令派生的那些（`--files-ls` 之类）与流上同名命令是同一个处理器，stdout 一行应答 JSON。
+- **入参**（收 `args` 的那些；一段 JSON，空 ＝ `{}`）有两个口，**二选一**，每条派生子命令都有，两个修饰词都认**任意位置**：
+  - **stdin**：默认读到 EOF；带 `--stdin-line` ⇒ 读到第一个换行就动手（给关不掉 stdin 的调用方）。上限 1 MiB（1048576 字节）。
+    stdin 开着、却 1000 ms 内一个字节都没来 ⇒ 立即回 `no_input`（不挂住）；第一个字节到了之后不再计时。stdin 是 EOF ⇒ 当 `{}`，缺哪格由命令自己回 `bad_args`。
+  - **argv**：`--args-b64 <base64 的 JSON>`（标准字母表、带补位）。给了它就不碰 stdin（写不了 stdin 的调用方用它，例如只有 stdout 的执行通道）。
+    值上限 131068 字节（编码后，约 96 KiB 的 JSON）。系统先卡一道：Linux 单个参数 ≤ 131072 字节（含结尾 NUL），经 ssh 时整行命令是登录 shell `-c` 的**一个**参数，
+    同一个上限管整行；Windows 整行 ≤ 32767 个字符。超过系统那一道，后端根本起不来，调用方看到的是 shell / sshd 那一层的错（如 `Argument list too long`），不是下面的信封 ⇒ 更大的载荷走 stdin。
+  - 两个都给（`--args-b64` 与 `--stdin-line`）· `--args-b64` 缺值 / 给两次 · 不收入参的命令带 `--args-b64` ⇒ `bad_args`；base64 坏 / 解出来不是 UTF-8 / 不是 JSON ⇒ `bad_request`；
+    超上限（哪一个口都一样）⇒ `args_too_large`，拒收、不截断。
 - 失败：stderr 一行 `{code, message}`、退出 2。
 - 出清单的那几条（骨架索引 · 你说过的话 · 会话内查找）是**三段**：首行头（认得出对面会出这份东西）· 每条一行 · 尾行带 `count` 与续点。**没有尾行 ⇒ 输出被截断**，调用方不许当全量。
   选项写在位置参数**前面**：老后端不认新选项时会快速失败（stdout 0 字节、退出 2），而不是把整份会话透传回来；客户端认「首行不是那个头」⇒ 诚实降级。
