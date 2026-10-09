@@ -158,22 +158,53 @@ fn w2_the_swap_keeps_mode_follows_the_link_and_leaves_no_side_file() {
 
 #[test]
 fn w3_a_placeholder_that_could_not_be_removed_is_named_in_the_refusal() {
+    use crate::control::files_commit::{move_failed, LandFail};
     let dest = Path::new("/x/y/a.bin");
-    // 撤掉了 ⇒ 只说写入失败那一句（没什么要用户做的）。
-    let plain = crate::control::files_commit::move_failed_text(dest, "e1", &Ok(()));
+    let failed = LandFail {
+        why: copy_core::reason::io_reason(std::io::ErrorKind::StorageFull),
+        raw: "No space left on device (os error 28)".into(),
+    };
+    // 撤掉了 ⇒ 只说写入失败那一句（没什么要用户做的）；系统原话进复制详情，不上句子。
+    let plain = move_failed(dest, &failed, &Ok(()));
     assert!(
-        copy_core::copy_matches("beFilesCommit.upload.moveFailedNote", &plain),
-        "{plain}"
+        copy_core::copy_matches("beFilesCommit.upload.moveFailedNote", plain.message()),
+        "{}",
+        plain.message()
     );
-    assert!(!plain.contains("0 字节"), "撤掉了还多说：{plain}");
-    // 撤不掉 ⇒ 整句换成另一条键：写入失败那一行 ＋ 删除失败那一行（同一个路径）＋ 提示。
-    let err = std::io::Error::from(std::io::ErrorKind::PermissionDenied);
-    let left = crate::control::files_commit::move_failed_text(dest, "e1", &Err(err));
     assert!(
-        left.contains("/x/y/a.bin")
-            && copy_core::copy_matches("beFilesCommit.upload.placeholderLeft", &left)
-            && left.lines().count() == plain.lines().count() + 2,
-        "{left}"
+        !plain.message().contains("0 字节"),
+        "撤掉了还多说：{}",
+        plain.message()
+    );
+    assert!(
+        !plain.message().contains("os error"),
+        "原话上了句子：{}",
+        plain.message()
+    );
+    assert_eq!(plain.code(), "io_failed");
+    assert_eq!(plain.raw(), Some("No space left on device (os error 28)"));
+    // 撤不掉 ⇒ 整句换成另一条键：写入失败那一行 ＋ 删除失败那一行（同一个路径、各自的原因词）＋ 提示；两句原话都进详情。
+    let err = std::io::Error::from(std::io::ErrorKind::PermissionDenied);
+    let shown_err = err.to_string();
+    let left = move_failed(dest, &failed, &Err(err));
+    let said = left.message();
+    assert!(
+        said.contains("/x/y/a.bin")
+            && copy_core::copy_matches("beFilesCommit.upload.placeholderLeft", said)
+            && said.lines().count() == plain.message().lines().count() + 2
+            && said.contains(&copy_core::reason::io_reason(
+                std::io::ErrorKind::PermissionDenied
+            )),
+        "{said}"
+    );
+    assert!(
+        !said.contains(&shown_err) && !said.contains("os error"),
+        "原话上了句子：{said}"
+    );
+    let raw = left.raw().unwrap_or_default();
+    assert!(
+        raw.contains("os error 28") && raw.contains(&shown_err),
+        "{raw}"
     );
     // 接线：提交那一支拿「撤占位」的真结局去问它（不是 `let _ =` 吞掉）。
     let prod = crate::guard_support::production_code(include_str!(
@@ -184,9 +215,9 @@ fn w3_a_placeholder_that_could_not_be_removed_is_named_in_the_refusal() {
         .expect("撤占位那一句");
     let tail = &prod[undo..];
     assert!(
-        tail.find("move_failed_text(&dest, &said, &undo)")
+        tail.find("move_failed(&dest, &fail, &undo)")
             .is_some_and(|i| i < 400),
-        "撤占位的结局没交给 move_failed_text"
+        "撤占位的结局没交给 move_failed"
     );
     assert!(
         !prod.contains("let _ = std::fs::remove_file(&dest)"),

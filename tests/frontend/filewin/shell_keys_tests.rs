@@ -324,7 +324,14 @@ fn enter_opens_a_directory_edits_a_file_and_refuses_a_bunch() {
     // 文件：落到 `begin_edit`（它出声：没有运行时）。
     d.pick(&mut w, "a.txt", NONE);
     d.key(&mut w, egui::Key::Enter, NONE);
-    let e = w.listing.error.lock().unwrap().clone().unwrap_or_default();
+    let e = w
+        .listing
+        .error
+        .lock()
+        .unwrap()
+        .clone()
+        .unwrap_or_default()
+        .said;
     assert!(no_runtime(&e), "回车没落到编辑那一支：{e:?}");
     assert_eq!(w.cwd, "/srv/data");
     // 多选：出声，不动。
@@ -800,7 +807,14 @@ fn every_menu_item_lands_on_the_row_it_was_opened_for() {
     type Check = fn(&FileWindow) -> Result<(), String>;
     let on_file: Vec<(&str, Check)> = vec![
         (copy_core::copy_static!("rsFilewinEditor.label.edit"), |w| {
-            let e = w.listing.error.lock().unwrap().clone().unwrap_or_default();
+            let e = w
+                .listing
+                .error
+                .lock()
+                .unwrap()
+                .clone()
+                .unwrap_or_default()
+                .said;
             no_runtime(&e).then_some(()).ok_or(e)
         }),
         (
@@ -835,7 +849,14 @@ fn every_menu_item_lands_on_the_row_it_was_opened_for() {
             copy_core::copy_static!("rsFilewinWriteops.label.delete"),
             |w| {
                 // 没有运行时 ⇒ 那一摞起不来，而它**出声**（不静默吞掉一次删除）。
-                let e = w.listing.error.lock().unwrap().clone().unwrap_or_default();
+                let e = w
+                    .listing
+                    .error
+                    .lock()
+                    .unwrap()
+                    .clone()
+                    .unwrap_or_default()
+                    .said;
                 no_runtime(&e).then_some(()).ok_or(e)
             },
         ),
@@ -952,7 +973,7 @@ impl eframe::App for KeyProbeApp {
         p.picked = self.w.selection().names();
         p.cwd = self.w.cwd.clone();
         p.prompt = self.w.write_prompt().map(|q| q.src_name.clone());
-        p.error = self.w.listing.error.lock().unwrap().clone();
+        p.error = self.w.listing.error.lock().unwrap().clone().map(|f| f.said);
         if p.cancel_prompt {
             p.cancel_prompt = false;
             self.w.cancel_write();

@@ -1172,7 +1172,8 @@ impl Workspace {
         for s in &mut self.sides {
             for t in &mut s.tabs {
                 if let Some(r) = t.pane.receipt.take() {
-                    self.toasts.push(r, None);
+                    let copy = t.pane.receipt_copy.take();
+                    self.toasts.push_copy(r, copy);
                 }
                 if let Some((r, undo)) = t.pane.receipt_undo.take() {
                     self.undo_tag += 1;

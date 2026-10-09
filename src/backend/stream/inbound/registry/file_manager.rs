@@ -1,6 +1,6 @@
 //! 命令表 · 文件管理：`files-*`（读 · 写 · 上传的提交 · 解压 · 删历史会话）。
 
-use crate::stream::inbound::spec::{arg, both, out, CommandSpec, Run};
+use crate::stream::inbound::spec::{arg, both, out, CommandSpec, Fail, Run};
 
 /// 删历史会话那一条要问的两件事，从原生那一侧（适配层注册表）的窄口取来，
 /// 由本门递给文件管理写面 —— 写面自己一家 agent 的布局都不认（`files/module_boundary_guard.rs` 围栏那一类为零）。
@@ -295,10 +295,10 @@ pub(super) const SPECS: &[CommandSpec] = &[
         codes: &["bad_args", "io_failed", "refused"],
         fields: &[out("bytes", "这一块写进去的字节数"), arg("content", "字符串或 `{\"b16\":…}`，**至少 1 字节**（空块 ⇒ `bad_args`）"), arg("key", "这一次存盘的键：**恰好 32 位小写十六进制**（调用方每次存盘现造一个）"), arg("seq", "块号，从 0 起的非负整数")],
         takes_input: true,
-        run: Run::Blocking(|r| {
+        run: Run::BlockingData(|r| {
             crate::control::files_commit::answer_wire(&r.cmd, &r.args)
                 .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
+                .map_err(|(code, said, raw)| Fail::new(code, said).with_raw(raw.as_deref()))
         }),
     },
     CommandSpec {
@@ -307,10 +307,10 @@ pub(super) const SPECS: &[CommandSpec] = &[
         codes: &["bad_args", "bad_path", "io_failed", "refused", "stale"],
         fields: &[arg("bytes", "拼起来**必须恰好**这么长；最多 8 MiB（`files-read-text` 一趟的天花板：存得回的要读得回来），超了 ⇒ `bad_args`"), arg("chunks", "块数：读回 `0..chunks` 这几块"), arg("expect", "🔴 **必须给**，与 `files-write-text` 的 `expect` 同形同义（摘要形 CAS）：盘上那份对不上 ⇒ `stale`，目标一个字节没动（块照样删掉）"), arg("key", "与 `files-stage-chunk` 同一个键"), out("path", "解到底的那个真路径"), arg("rel", "目标，语义与 `files-write-text` **完全相同**：必须已经在、是普通文件；跟链接（解到底再判一次）；原子地换（权限位沿用；属主 / 硬链接不再保留，见 `files-write-text`）"), arg("root", "目标，语义与 `files-write-text` **完全相同**：必须已经在、是普通文件；跟链接（解到底再判一次）；原子地换（权限位沿用；属主 / 硬链接不再保留，见 `files-write-text`）"), out("sha256", "写进去那份的摘要")],
         takes_input: true,
-        run: Run::Blocking(|r| {
+        run: Run::BlockingData(|r| {
             crate::control::files_commit::answer_wire(&r.cmd, &r.args)
                 .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
+                .map_err(|(code, said, raw)| Fail::new(code, said).with_raw(raw.as_deref()))
         }),
     },
     CommandSpec {
@@ -319,10 +319,10 @@ pub(super) const SPECS: &[CommandSpec] = &[
         codes: &["bad_args", "bad_path", "io_failed", "refused", "stale"],
         fields: &[arg("bytes", "可缺席（缺席 ＝ 此前那一形）"), arg("chunks", "可缺席（缺席 ＝ 此前那一形）"), arg("expect", "🔴 **必须给**，恰好 `{\"sha256\": \"<64 位小写十六进制>\"}`：传输台上传时对**本机那份整份**算的摘要（`transfer` 帧 `end.sha256`，窗口原样交来）"), arg("key", "暂存件的键：**恰好 32 位小写十六进制**"), arg("overwrite", "🔴 **必须给**（`true` / `false`），不给默认值"), out("path", "落点（父目录解过 symlink 的那一个）"), arg("rel", "目标根 ＋ 相对段，先过写面那两道路径解析（词法 ＋ 父目录解 symlink；「会话文件那一问」删了）；`rel` 也收 `{\"b16\": …}`"), arg("root", "目标根 ＋ 相对段，先过写面那两道路径解析（词法 ＋ 父目录解 symlink；「会话文件那一问」删了）；`rel` 也收 `{\"b16\": …}`")],
         takes_input: true,
-        run: Run::Blocking(|r| {
+        run: Run::BlockingData(|r| {
             crate::control::files_commit::answer_wire(&r.cmd, &r.args)
                 .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
+                .map_err(|(code, said, raw)| Fail::new(code, said).with_raw(raw.as_deref()))
         }),
     },
     CommandSpec {

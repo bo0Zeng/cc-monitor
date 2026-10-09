@@ -1207,3 +1207,68 @@ fn only_this_machines_own_moments_go_through_the_local_clock() {
         "按本机钟画时间的地方与登记表对不上（那台送来的时间要照抄后端写好的字）"
     );
 }
+
+/// 复制详情（条带 §5.2）：对端拒了 ⇒ 那台后端写好的那份原样；通道这一跳没走通 ⇒ 窗口进程自己写（机器 · 命令 · 断在 · 码）。
+#[test]
+fn a_failure_carries_the_detail_the_peer_wrote_or_the_window_writes_its_own() {
+    use comms_inward::chan::wire::{Body, CallError, HopFault, HopId, PeerFault, Reach};
+    let label = |k: &str| copy_text(k, &[]);
+    let wrote = format!("{}：io_failed", label("detail.label.code"));
+    let refused = CallError::Peer {
+        why: PeerFault::Refused {
+            body: Body(
+                serde_json::to_vec(
+                    &serde_json::json!({"code": "io_failed", "message": "m", "detail": wrote}),
+                )
+                .unwrap(),
+            ),
+        },
+    };
+    assert_eq!(detail_of("devbox", "files-commit-upload", &refused), wrote);
+    let hop = CallError::Hop {
+        at: HopId {
+            idx: 1,
+            tag: "open",
+        },
+        reach: Reach::NotSent,
+        why: HopFault::Unreachable,
+    };
+    let d = detail_of("devbox", "files-ls", &hop);
+    for want in [
+        format!(
+            "{}：devbox（{}）",
+            label("detail.label.machine"),
+            label("detail.value.notConnected")
+        ),
+        format!("{}：files-ls", label("detail.label.command")),
+        format!("{}：1:open NotSent", label("detail.label.hop")),
+        format!("{}：Unreachable", label("detail.label.code")),
+    ] {
+        assert!(d.contains(&want), "缺「{want}」：\n{d}");
+    }
+    assert!(d.starts_with(&label("detail.label.at")), "{d}");
+}
+
+/// ［复制详情］只在有详情时出：复制出去的首行是屏上那一句；一行汇总底下几件各一段，没一件带详情 ⇒ 不出。
+#[test]
+fn the_copy_body_exists_only_when_there_is_a_detail() {
+    assert_eq!(Failed::copy_body("那一句", ""), None);
+    assert_eq!(Failed::copy_body("那一句", "  \n"), None);
+    assert_eq!(
+        Failed::copy_body("那一句", "码：x"),
+        Some("那一句\n码：x".to_string())
+    );
+    let with = Failed {
+        code: None,
+        said: "句 A".into(),
+        detail: "码：a".into(),
+    };
+    let without: Failed = "句 B".to_string().into();
+    assert_eq!(
+        Failed::copy_many("头", &[("b".into(), without.clone())]),
+        None
+    );
+    let body = Failed::copy_many("头", &[("a".into(), with), ("b".into(), without)]).unwrap();
+    assert!(body.starts_with("头\n\n"), "{body}");
+    assert!(body.contains("码：a") && !body.contains("句 B"), "{body}");
+}

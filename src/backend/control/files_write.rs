@@ -258,6 +258,8 @@ pub enum WriteRefusal {
     /// 读改写的**写那一半**发现：盘上那份已经不是调用方读到的那一份了
     /// （`files-put` 的 `expect` 对不上）⇒ 一个字节没写。调用方该**重读重算**，不是重试同一份。
     Stale(String),
+    /// 同 [`WriteRefusal::Io`]，句子只说原因词、下层原话另带（进复制详情，不上句子）。线上码同 `io_failed`。
+    IoSaid { said: String, raw: String },
     /// 落点上**已经有一项**（新建 / 建目录 / 改名的目标名被占了），一个字节没动。线上码 [`EXISTS`]。
     /// 与 [`WriteRefusal::Io`] 分开：调用方的下一步是**换一个名字**，不是重试（重试一万次也一样）。
     /// 只有 `files-create` · `files-mkdir` · `files-rename` 回它，也只有它们声明。
@@ -287,7 +289,7 @@ impl WriteRefusal {
     pub fn code(&self) -> &'static str {
         match self {
             WriteRefusal::Refused(_) => "refused",
-            WriteRefusal::Io(_) => "io_failed",
+            WriteRefusal::Io(_) | WriteRefusal::IoSaid { .. } => "io_failed",
             WriteRefusal::Unsupported(_) => NO_UNIX_MODE,
             WriteRefusal::Stale(_) => "stale",
             WriteRefusal::Exists(_) => EXISTS,
@@ -301,7 +303,16 @@ impl WriteRefusal {
             | WriteRefusal::Io(m)
             | WriteRefusal::Unsupported(m)
             | WriteRefusal::Stale(m)
-            | WriteRefusal::Exists(m) => m.as_str(),
+            | WriteRefusal::Exists(m)
+            | WriteRefusal::IoSaid { said: m, .. } => m.as_str(),
+        }
+    }
+
+    /// 下层原话（只有 [`WriteRefusal::IoSaid`] 带；交给应答的复制详情）。
+    pub fn raw(&self) -> Option<&str> {
+        match self {
+            WriteRefusal::IoSaid { raw, .. } => Some(raw.as_str()),
+            _ => None,
         }
     }
 }
@@ -1199,6 +1210,7 @@ pub fn delete_tree_upto(
             match e {
                 WriteRefusal::Refused(_) => WriteRefusal::Refused(said),
                 WriteRefusal::Io(_)
+                | WriteRefusal::IoSaid { .. }
                 | WriteRefusal::Unsupported(_)
                 | WriteRefusal::Stale(_)
                 | WriteRefusal::Exists(_) => WriteRefusal::Io(said),

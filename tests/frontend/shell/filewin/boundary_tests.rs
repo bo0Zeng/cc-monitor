@@ -351,6 +351,13 @@ const WINDOW_SIDE: &[(&str, Kind)] = &[
     ("copy_core::detail::Detail::new", Kind::Copy),
     ("copy_core::detail::Label::Path", Kind::Copy),
     ("copy_core::detail::Label::Raw", Kind::Copy),
+    // 窗口进程自己写的那几份详情（通道没走通 · 这一侧的错）：时刻 · 机器 · 命令（`source::detail_of` · `Failed::here`）。
+    ("copy_core::detail::Detail", Kind::Copy),
+    ("copy_core::detail::Label", Kind::Copy),
+    ("copy_core::detail::Label::At", Kind::Copy),
+    ("copy_core::detail::Label::Command", Kind::Copy),
+    ("copy_core::detail::Label::Machine", Kind::Copy),
+    ("copy_core::detail::stamp", Kind::Copy),
     // ── 窗口几何（开窗第一拍夹进种子带来的工作区）──
     // `WorkArea` · `fit_into_work_area` 两行摘了：类型与判定搬进 `host_core`（Tauri 那几扇窗与文件窗口共用那一份）。
 ];

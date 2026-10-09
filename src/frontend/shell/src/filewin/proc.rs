@@ -67,9 +67,8 @@ pub fn window_bin_name() -> String {
 /// # Errors
 ///
 /// 三处都给不出一个存在的文件；或自带的那份放不下来。
-pub fn resolve_window_bin() -> Result<PathBuf, String> {
-    let exe = std::env::current_exe()
-        .map_err(|e| copy_text("rsFilewinProc.child.noRuntime", &[("e", &e.to_string())]))?;
+pub fn resolve_window_bin() -> Result<PathBuf, ProcFail> {
+    let exe = std::env::current_exe().map_err(|e| crashed(e.to_string()))?;
     resolve_window_bin_in(
         std::env::var_os(BIN_ENV).map(PathBuf::from),
         exe.parent().unwrap_or(Path::new(".")),
@@ -99,7 +98,7 @@ pub fn resolve_window_bin_in(
     landing: Option<&Path>,
     make_executable: &dyn Fn(&Path) -> Result<(), String>,
     ensure_dir: &dyn Fn(&Path) -> Result<(), String>,
-) -> Result<PathBuf, String> {
+) -> Result<PathBuf, ProcFail> {
     let mut looked: Vec<PathBuf> = Vec::new();
     if let Some(p) = env {
         if p.is_file() {
@@ -113,17 +112,15 @@ pub fn resolve_window_bin_in(
     }
     looked.push(beside);
     let Some(bytes) = embedded else {
-        return Err(copy_text(
-            "rsFilewinProc.bin.notFound",
-            &[
-                ("binStem", &BIN_STEM.to_string()),
-                ("looked", &format!("{:?}", looked)),
-                ("binEnv", &BIN_ENV.to_string()),
-            ],
-        ));
+        let looked: Vec<String> = looked.iter().map(|p| p.display().to_string()).collect();
+        return Err(ProcFail {
+            said: copy_text("rsFilewinProc.bin.notFound", &[("binEnv", BIN_ENV)]),
+            code: None,
+            raw: Some(looked.join("\n")),
+        });
     };
     let Some(dir) = landing else {
-        return Err(copy_text("rsFilewinProc.bin.noHome", &[]));
+        return Err(copy_text("rsFilewinProc.bin.noHome", &[]).into());
     };
     crate::local_backend::place_local_program(
         dir,
@@ -132,12 +129,20 @@ pub fn resolve_window_bin_in(
         make_executable,
         ensure_dir,
     )
-    .map_err(|e| {
-        copy_text(
-            "rsFilewinProc.bin.placeFailed",
-            &[("dir", &dir.display().to_string()), ("e", &e)],
-        )
+    .map_err(|e| ProcFail {
+        said: copy_text("rsFilewinProc.bin.placeFailed", &[]),
+        code: None,
+        raw: Some(format!("{}\n{e}", dir.display())),
     })
+}
+
+/// 进程这一层「程序出错」那一形：下层原话进复制详情。
+fn crashed(raw: String) -> ProcFail {
+    ProcFail {
+        said: copy_text("rsFilewinProc.open.exited", &[]),
+        code: None,
+        raw: Some(raw),
+    }
 }
 
 /// 起一个窗口进程并把种子交给它。回**那个句柄**（还没做早失败判断）。
@@ -162,10 +167,10 @@ pub fn resolve_window_bin_in(
 /// 二进制找不到 · `spawn` 失败 · 种子写不进去（含子进程当场死掉那一形的 `EPIPE`）。
 pub fn spawn_window(
     req: &OpenRequest,
-) -> Result<(crate::spawn_managed::ManagedChild, StderrTail), String> {
+) -> Result<(crate::spawn_managed::ManagedChild, StderrTail), ProcFail> {
     use crate::spawn_managed::{ConsolePolicy, Lifetime, StderrSink};
     let bin = resolve_window_bin()?;
-    let seed = encode_request(req)?;
+    let seed = encode_request(req).map_err(crashed)?;
     // argv 上一个字都没有（理由住头注）；接 stdin（种子）与 stdout（就绪那一行）两根。stdout 一直有人读：
     // [`open_in_new_process`] 读那一行，之后 [`reap_later`] 把它读到 EOF（没人读的管子写满就会卡住窗口）。
     let mut cmd = std::process::Command::new(&bin);
@@ -177,11 +182,10 @@ pub fn spawn_window(
         Lifetime::Detached,
         StderrSink::Captured,
     )
-    .map_err(|e| {
-        copy_text(
-            "rsFilewinProc.spawn.failed",
-            &[("bin", &(bin.display()).to_string()), ("e", &e.to_string())],
-        )
+    .map_err(|e| ProcFail {
+        said: copy_core::reason::io_reason(e.kind()),
+        code: None,
+        raw: Some(format!("{}\n{e}", bin.display())),
     })?;
     let tail = StderrTail::drain(child.stderr.take(), child.id());
     write_seed(&mut child, &seed)?;
@@ -275,15 +279,17 @@ pub fn exit_said(why: &str, code: Option<String>, tail: &[String]) -> ProcFail {
 }
 
 /// 把种子写进那条 stdin 并关掉它（关掉 = EOF = 「给完了」）。抽成具名函数让 `EPIPE` 那一形判得到：「种子送不进去」不是「窗口画不出来」。
-fn write_seed(child: &mut crate::spawn_managed::ManagedChild, seed: &str) -> Result<(), String> {
+fn write_seed(child: &mut crate::spawn_managed::ManagedChild, seed: &str) -> Result<(), ProcFail> {
     use std::io::Write;
-    let mut pipe = child
-        .stdin
-        .take()
-        .ok_or_else(|| copy_text("rsFilewinProc.spawn.noStdin", &[]))?;
+    let mut pipe = child.stdin.take().ok_or_else(|| ProcFail {
+        said: copy_text("rsFilewinProc.open.exited", &[]),
+        code: Some("no_stdin".to_string()),
+        raw: None,
+    })?;
+    // 送不进去多半是它一启动就退了（`EPIPE`）：原因见它自己的错误输出，不是窗口画不出。
     pipe.write_all(seed.as_bytes())
         .and_then(|()| pipe.flush())
-        .map_err(|e| copy_text("rsFilewinProc.seed.sendFailed", &[("e", &e.to_string())]))
+        .map_err(|e| crashed(e.to_string()))
 }
 
 /// 开窗没成的两种：前一种是窗口进程列不出来时说的原话，入口原样交出去；后一种是进程这一层的事（起不来 · 当场退了 · 一句话都没说），
@@ -311,7 +317,7 @@ pub enum Unopened {
 pub type LateExit = Box<dyn FnOnce(ProcFail) + Send + 'static>;
 
 pub fn open_in_new_process(req: &OpenRequest, late: LateExit) -> Result<(u32, usize), Unopened> {
-    let (mut child, tail) = spawn_window(req).map_err(|e| Unopened::Process(e.into()))?;
+    let (mut child, tail) = spawn_window(req).map_err(Unopened::Process)?;
     let pid = child.id();
     let Some(out) = child.stdout.take() else {
         if let Err(e) = child.kill() {
@@ -320,9 +326,11 @@ pub fn open_in_new_process(req: &OpenRequest, late: LateExit) -> Result<(u32, us
             );
         }
         reap_later(child, None, tail, None);
-        return Err(Unopened::Process(
-            copy_text("rsFilewinProc.spawn.noStdout", &[]).into(),
-        ));
+        return Err(Unopened::Process(ProcFail {
+            said: copy_text("rsFilewinProc.open.exited", &[]),
+            code: Some("no_stdout".to_string()),
+            raw: None,
+        }));
     };
     let mut out = std::io::BufReader::new(out);
     let n = match read_ready(&mut out) {
@@ -334,7 +342,7 @@ pub fn open_in_new_process(req: &OpenRequest, late: LateExit) -> Result<(u32, us
         Ok(None) => {
             let (why, code) = match child.wait_for_status() {
                 Ok(st) => (copy_text("rsFilewinProc.open.exited", &[]), st.to_string()),
-                Err(e) => (copy_text("rsFilewinProc.open.failed", &[]), e.to_string()),
+                Err(e) => (copy_text("rsFilewinProc.open.exited", &[]), e.to_string()),
             };
             return Err(Unopened::Process(exit_said(
                 &why,
@@ -350,7 +358,7 @@ pub fn open_in_new_process(req: &OpenRequest, late: LateExit) -> Result<(u32, us
                 );
             }
             reap_later(child, Some(out), tail, None);
-            return Err(Unopened::Process(garbled.into()));
+            return Err(Unopened::Process(crashed(garbled)));
         }
     };
     if early_failure(
@@ -362,9 +370,9 @@ pub fn open_in_new_process(req: &OpenRequest, late: LateExit) -> Result<(u32, us
                 copy_text("rsFilewinProc.open.exited", &[]),
                 Some(st.to_string()),
             ),
-            Ok(None) => (copy_text("rsFilewinProc.open.failed", &[]), None),
+            Ok(None) => (copy_text("rsFilewinProc.open.exited", &[]), None),
             Err(e) => (
-                copy_text("rsFilewinProc.open.failed", &[]),
+                copy_text("rsFilewinProc.open.exited", &[]),
                 Some(e.to_string()),
             ),
         };
@@ -410,9 +418,7 @@ pub const EARLY_FAILURE_BUDGET: std::time::Duration = std::time::Duration::from_
 /// 读失败 · 那一行解不出 [`Ready`]。
 pub fn read_ready(r: &mut impl std::io::BufRead) -> Result<Option<Ready>, String> {
     let mut line = String::new();
-    let n = r
-        .read_line(&mut line)
-        .map_err(|e| copy_text("rsFilewinProc.child.noRuntime", &[("e", &e.to_string())]))?;
+    let n = r.read_line(&mut line).map_err(|e| e.to_string())?;
     if n == 0 {
         return Ok(None);
     }

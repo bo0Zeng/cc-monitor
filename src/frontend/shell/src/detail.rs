@@ -45,51 +45,26 @@ pub(crate) fn of_refusal_body(body: &[u8]) -> String {
 }
 
 /// 通道这一跳（壳自己知道的那几样）的一份详情。`Refused` 不走这里（那份由对端写，见 [`relayed`]）。
+/// 那几项的取法住通信层（`HopFacts`，文件窗口进程同一份）。
 pub(crate) fn of_channel(origin: &crate::origin::Origin, op: &str, e: &w::CallError) -> String {
-    let machine = if origin.is_local() {
+    let f = e.hop_facts();
+    let name = if origin.is_local() {
         copy_text("detail.label.local", &[])
     } else {
         origin.0.clone()
     };
-    let (machine, hop, code) = match e {
-        w::CallError::Hop { at, reach, why } => {
-            let machine = if *reach == w::Reach::NotSent {
-                format!(
-                    "{machine}（{}）",
-                    copy_text("detail.value.notConnected", &[])
-                )
-            } else {
-                machine
-            };
-            (
-                machine,
-                Some(format!("{}:{} {reach:?}", at.idx, at.tag)),
-                format!("{why:?}"),
-            )
-        }
-        w::CallError::Peer {
-            why: w::PeerFault::Unsupported,
-        } => (machine, None, "unsupported".to_string()),
-        w::CallError::Peer {
-            why: w::PeerFault::Refused { .. },
-        } => (machine, None, "refused".to_string()),
-        w::CallError::Ours { why, runs_on } => (
-            machine,
-            None,
-            if *runs_on {
-                format!("{why:?} runs_on")
-            } else {
-                format!("{why:?}")
-            },
-        ),
+    let machine = if f.not_sent {
+        format!("{name}（{}）", copy_text("detail.value.notConnected", &[]))
+    } else {
+        name
     };
     Detail::new()
         .item(Label::At, now())
         .item(Label::Machine, machine)
         .maybe(Label::Local, (!origin.is_local()).then(local_line))
         .item(Label::Command, op)
-        .maybe(Label::Hop, hop)
-        .item(Label::Code, code)
+        .maybe(Label::Hop, f.hop)
+        .item(Label::Code, f.code)
         .render()
 }
 

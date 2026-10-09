@@ -154,6 +154,7 @@ fn the_reply_maps_to_text_not_text_or_failure_by_the_peers_code() {
     let failed = |code: Option<&str>, said: &str| Failed {
         code: code.map(str::to_string),
         said: said.to_string(),
+        detail: String::new(),
     };
     assert_eq!(
         text_from_reply(Ok(
@@ -559,7 +560,7 @@ async fn the_worst_case_full_cap_file_saves_back_through_the_staging_area() {
             ("over", "1"),
         ],
     );
-    assert!(why.contains(&want), "那句话不是「{want}」：{why}");
+    assert!(why.said.contains(&want), "那句话不是「{want}」：{why}");
 }
 
 /// 🔴 **送到一半断了 ⇒ 不发提交，那句话说第几段、共几段、原话**；编辑框的字一个不丢。
@@ -578,7 +579,8 @@ async fn a_chunk_that_fails_stops_the_save_before_the_commit() {
     else {
         panic!("断块落成了 stale")
     };
-    p.mark_failed(why.clone());
+    p.mark_failed_with(why.clone());
+    let why = why.said;
     assert_eq!(
         wired.cmds(),
         vec![CMD_STAGE_CHUNK; 3],
@@ -608,6 +610,7 @@ fn a_save_reply_splits_into_saved_stale_and_failed_by_the_peers_code() {
     let failed = |code: Option<&str>| Failed {
         code: code.map(str::to_string),
         said: "原话".to_string(),
+        detail: String::new(),
     };
     let sha = crate::find::testing::fake_sha256("x");
     assert_eq!(
@@ -624,7 +627,7 @@ fn a_save_reply_splits_into_saved_stale_and_failed_by_the_peers_code() {
     for code in [Some("refused"), Some("io_failed"), None] {
         assert_eq!(
             saved_from_reply("x", Err(failed(code))),
-            Err(SaveError::Failed("原话".into())),
+            Err(SaveError::Failed(failed(code))),
             "`{code:?}` 被当成了 stale —— 那会给人摆一颗对这件事没用的「仍然覆盖」"
         );
     }

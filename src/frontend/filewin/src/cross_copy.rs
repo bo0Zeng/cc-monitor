@@ -614,7 +614,9 @@ where
                 overwrite,
                 remote_dir_raw: None,
             };
-            super::transfer::upload_remote(line, &to, &p, &board.push).await
+            super::transfer::upload_remote(line, &to, &p, &board.push)
+                .await
+                .map_err(|f| f.said)
         }
         Err(e) => Err(e),
     };

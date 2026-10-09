@@ -290,6 +290,8 @@ pub struct GrepShown {
     pub needle: String,
     pub outcome: Option<GrepOutcome>,
     pub notice: Option<String>,
+    /// 那一条的复制详情（首行之外；空 ⇒ 不出按钮）。随 [`Self::notice`] 一起写。
+    pub notice_detail: String,
 }
 
 /// 按内容搜的**共享落点**（UI 线程读、tokio 那条写；形状同 `super::find::SearchBoard`）。
@@ -331,6 +333,7 @@ impl GrepBoard {
         s.needle = needle.to_string();
         s.outcome = None;
         s.notice = None;
+        s.notice_detail.clear();
         (mine, token)
     }
 
@@ -359,13 +362,20 @@ impl GrepBoard {
 
     /// 摆一句话（不经网络的那几档失败）。
     pub fn say(&self, notice: &str) {
-        self.inner.lock().unwrap().notice = Some(notice.to_string());
+        let mut s = self.inner.lock().unwrap();
+        s.notice = Some(notice.to_string());
+        s.notice_detail.clear();
+        drop(s);
         self.rounds.fetch_add(1, Ordering::SeqCst);
         self.poke();
     }
 
     /// 落一趟的结果 —— 号对不上就丢掉。回值 = 真的落了。
-    pub fn store_if_current(&self, mine: u64, r: Result<GrepOutcome, String>) -> bool {
+    pub fn store_if_current(
+        &self,
+        mine: u64,
+        r: Result<GrepOutcome, impl Into<super::source::Failed>>,
+    ) -> bool {
         self.inflight.fetch_sub(1, Ordering::SeqCst);
         if self.epoch.load(Ordering::SeqCst) != mine {
             return false;
@@ -374,7 +384,11 @@ impl GrepBoard {
             let mut s = self.inner.lock().unwrap();
             match r {
                 Ok(o) => s.outcome = Some(o),
-                Err(e) => s.notice = Some(e),
+                Err(e) => {
+                    let f: super::source::Failed = e.into();
+                    s.notice = Some(f.said);
+                    s.notice_detail = f.detail;
+                }
             }
         }
         *self.cancel.lock().unwrap() = None;
@@ -390,11 +404,14 @@ impl GrepBoard {
         let p = super::theme::palette(ui.ctx());
         if let (Some(n), None) = (&s.notice, &s.outcome) {
             if !self.is_running() {
-                return super::kit::banner(
+                let id = ui.id().with("grep-fail-detail");
+                return super::kit::failure_banner(
                     ui,
                     super::kit::Tone::Error,
                     n,
                     &[copy_text("rsFilewinFind.action.retry", &[])],
+                    &s.notice_detail,
+                    id,
                 )
                 .is_some();
             }
@@ -461,8 +478,8 @@ pub async fn run_grep(
     )
     .await
     {
-        Ok(v) => decode_grep(&v),
-        Err(f) => Err(f.said),
+        Ok(v) => decode_grep(&v).map_err(super::source::Failed::from),
+        Err(f) => Err(f),
     };
     board.store_if_current(mine, r);
 }

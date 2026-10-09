@@ -1086,8 +1086,15 @@ async fn screenshot_for_the_shots_tool() {
         failed.finish(crate::transfer::DropOutcome {
             ok: 1,
             failed: vec![
-                ("release-2.tar.gz".into(), "磁盘满".into()),
-                ("release-3.tar.gz".into(), "磁盘满".into()),
+                (
+                    "release-2.tar.gz".into(),
+                    crate::source::Failed {
+                        code: Some("io_failed".into()),
+                        said: copy_core::copy_text("reason.io.full", &[]),
+                        detail: "时刻：2026-10-08 15:40:02 +08:00\n机器：Linux x86_64 · 后端 p13-shots\n命令：files-commit-upload\n码：io_failed\n原话：No space left on device (os error 28)".into(),
+                    },
+                ),
+                ("release-3.tar.gz".into(), copy_core::copy_text("reason.io.full", &[]).into()),
             ],
             ..Default::default()
         });
@@ -1853,7 +1860,10 @@ fn the_progress_table_grows_to_show_an_expanded_failure_whole() {
     );
     failed.finish(crate::transfer::DropOutcome {
         failed: vec![
-            ("r-2.tar.gz".into(), "磁盘满".into()),
+            (
+                "r-2.tar.gz".into(),
+                copy_core::copy_text("reason.io.full", &[]).into(),
+            ),
             ("r-3.tar.gz".into(), "没有权限".into()),
         ],
         ..Default::default()

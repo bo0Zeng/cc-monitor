@@ -263,8 +263,8 @@ pub struct WriteOutcome {
     pub skipped: usize,
     /// 做成了的件数。
     pub ok: usize,
-    /// 失败的那几件（说明 ＋ 池子给的报错原文）。
-    pub failed: Vec<(String, String)>,
+    /// 失败的那几件（说明 ＋ 那一句与复制详情）。
+    pub failed: Vec<(String, super::source::Failed)>,
 }
 
 /// 🔴 **正题**：一摞写操作的全过程。两段的顺序就是这个函数的结构（原来是三段，围栏那一段删了）。
@@ -281,7 +281,7 @@ where
     C: FnOnce(Vec<WriteOp>) -> CFut,
     CFut: Future<Output = Vec<WriteOp>>,
     A: Fn(WriteOp) -> AFut,
-    AFut: Future<Output = Result<(), String>>,
+    AFut: Future<Output = Result<(), super::source::Failed>>,
 {
     let mut out = WriteOutcome::default();
     if ops.is_empty() {
@@ -426,6 +426,7 @@ async fn apply_named(
                         "rsFilewinWriteops.remote.renameSameDir",
                         &[("op", &(op.label()).to_string())],
                     ),
+                    detail: String::new(),
                 });
             }
             (
@@ -1070,7 +1071,7 @@ struct Board {
     undo: Vec<WriteOp>,
     quiet: bool,
     /// 上一趟落地之后还没交出去的回执（[`WriteBoard::take_receipt`]）。
-    receipt: Option<(String, Vec<WriteOp>)>,
+    receipt: Option<(String, Vec<WriteOp>, Option<String>)>,
 }
 
 /// 一趟写操作的回执（规范 `I1`：撤得回来就不问 ⇒ 做完给回执 ＋［撤销］）。纯函数：判据直接喂它。
@@ -1092,7 +1093,7 @@ pub fn receipt_of(
                 &[
                     ("n", &out.failed.len().to_string()),
                     ("what", what),
-                    ("why", why),
+                    ("why", &why.said),
                 ],
             ),
             Vec::new(),
@@ -1204,7 +1205,10 @@ impl WriteBoard {
             b.receipt = if quiet && outcome.failed.is_empty() {
                 None
             } else {
-                receipt_of(&outcome, &done, &undo)
+                receipt_of(&outcome, &done, &undo).map(|(text, undo)| {
+                    let copy = super::source::Failed::copy_many(&text, &outcome.failed);
+                    (text, undo, copy)
+                })
             };
             b.done = done;
             b.undo = undo;
@@ -1215,8 +1219,8 @@ impl WriteBoard {
         self.poke();
     }
 
-    /// 上一趟的回执（交一次就没了）。
-    pub fn take_receipt(&self) -> Option<(String, Vec<WriteOp>)> {
+    /// 上一趟的回执（交一次就没了）：那一句 ＋ 撤销要做的那几件 ＋ ［复制详情］复制出去的整段（没做成的那几件带详情才有）。
+    pub fn take_receipt(&self) -> Option<(String, Vec<WriteOp>, Option<String>)> {
         self.inner.lock().unwrap().receipt.take()
     }
 

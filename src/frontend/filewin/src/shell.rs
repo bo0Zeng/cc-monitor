@@ -201,7 +201,8 @@ pub static NO_LINE: std::sync::LazyLock<String> =
 #[derive(Clone)]
 pub struct Listing {
     pub rows: Arc<Mutex<Vec<Listed>>>,
-    pub error: Arc<Mutex<Option<String>>>,
+    /// 列不出来那一句 ＋ 复制详情（[`super::source::Failed`]：后端拒了 ⇒ 那台写的；通道没走通 ⇒ 窗口写的；这一侧的话 ⇒ 空）。
+    pub error: Arc<Mutex<Option<super::source::Failed>>>,
     /// 🔴 **换目录的序号。** 每次 [`FileWindow::navigate_to`] +1。
     ///
     /// 异步回来的那一份**带着它出发时的号**：号不对就整份丢掉。
@@ -260,7 +261,7 @@ impl Default for Listing {
 pub fn store_listed_if_current(
     l: &Listing,
     mine: u64,
-    r: Result<(Vec<Listed>, super::source::Cut), String>,
+    r: Result<(Vec<Listed>, super::source::Cut), super::source::Failed>,
     by: Sort,
 ) -> bool {
     match r {
@@ -290,7 +291,11 @@ pub fn store_listed_if_current(
 ///
 /// 回值 = 真的落盘了。**自由函数**（不吃 `FileWindow`）⇒ 不用开窗、不用网络就判得动，
 /// 而它正是生产那条路上唯一写 `rows` 的地方（见 [`Listing::start`]）。
-pub fn store_if_current(l: &Listing, mine: u64, r: Result<Vec<Listed>, String>) -> bool {
+pub fn store_if_current(
+    l: &Listing,
+    mine: u64,
+    r: Result<Vec<Listed>, super::source::Failed>,
+) -> bool {
     // ⚠ 先减在飞数，再判号 —— 不管这一份要不要，它都已经落地了。
     l.inflight.fetch_sub(1, Ordering::SeqCst);
     if l.epoch.load(Ordering::SeqCst) != mine {
@@ -315,7 +320,7 @@ pub fn store_if_current(l: &Listing, mine: u64, r: Result<Vec<Listed>, String>) 
         Err(e) => {
             *l.rows.lock().unwrap() = Vec::new();
             l.hidden.lock().unwrap().clear();
-            *l.error.lock().unwrap() = Some(e);
+            *l.error.lock().unwrap() = Some(e.into());
         }
     }
     true
@@ -507,6 +512,8 @@ pub struct FileWindow {
     pub link: super::chrome::LinkState,
     /// 一次性的回执（「路径已复制」…）：窗口那一级每帧收走、摆成右下角的回执（规范 `C13`）。
     pub(super) receipt: Option<String>,
+    /// 同 [`Self::receipt`] 那一句的［复制详情］整段（写操作没做成、带详情时才有；与那一句同一拍交走）。
+    pub(super) receipt_copy: Option<String>,
     /// 带［撤销］的回执（改名 · 改权限做完）：那句话 ＋ 撤销要做的那几件。窗口那一级收走，点了撤销交回 [`Self::start_undo`]。
     pub(super) receipt_undo: Option<(String, Vec<WriteOp>)>,
     /// 列表上按了空格（「看一眼」开 / 收）：窗口那一级每帧收走。
@@ -571,7 +578,7 @@ pub struct FileWindow {
     copies_started: u64,
     crosses_started: u64,
     /// 框里那一问做不成的原因（画在框里；框外列表上方那一行被暗底盖着）。框收掉就清。
-    pub(super) prompt_error: Arc<Mutex<Option<String>>>,
+    pub(super) prompt_error: Arc<Mutex<Option<super::source::Failed>>>,
     /// 搜索命中那一摞画好的行（按那一问的号与落地趟数缓存：没变就不重建）。
     hit_rows: (u64, u64, Arc<Vec<super::rows::HitRow>>),
     /// 这个标签页是一份文本的**编辑页**（稿 ⑤：标签上铅笔 ＋ 文件名，正文是编辑面、不是列表）。
@@ -761,6 +768,7 @@ impl FileWindow {
             progress: Default::default(),
             link: Default::default(),
             receipt: None,
+            receipt_copy: None,
             receipt_undo: None,
             want_peek: false,
             job_ids: Vec::new(),
@@ -814,7 +822,7 @@ impl FileWindow {
             Some(h) => {
                 // 🔴有运行时但没连上通道 ⇒ 出声（`D11`：不退回 SFTP）。
                 let Some(line) = self.line.clone() else {
-                    store_if_current(&l, mine, Err(NO_LINE.to_string()));
+                    store_if_current(&l, mine, Err(NO_LINE.to_string().into()));
                     return;
                 };
                 let origin = self.source.origin();
@@ -834,7 +842,7 @@ impl FileWindow {
                         super::source::OpenFail::of_code(f.code.as_deref())
                             .map(|k| (k, f.said.clone()))
                     });
-                    if store_listed_if_current(&l, mine, r.map_err(|f| f.said), by) {
+                    if store_listed_if_current(&l, mine, r, by) {
                         *l.open_fail.lock().unwrap() = fail;
                     }
                 });
@@ -1375,7 +1383,7 @@ impl FileWindow {
             return false;
         };
         let Some(line) = self.line.clone() else {
-            *self.say_slot() = Some(NO_LINE.to_string());
+            *self.say_slot() = Some(NO_LINE.to_string().into());
             return false;
         };
         let origin = self.source.origin();
@@ -1480,10 +1488,13 @@ impl FileWindow {
         }
         let items = self.pending_for(&dropped);
         if items.is_empty() {
-            *self.listing.error.lock().unwrap() = Some(copy_text(
-                "rsFilewinShell.drop.noNames",
-                &[("n", &(dropped.len()).to_string())],
-            ));
+            *self.listing.error.lock().unwrap() = Some(
+                copy_text(
+                    "rsFilewinShell.drop.noNames",
+                    &[("n", &(dropped.len()).to_string())],
+                )
+                .into(),
+            );
             return;
         }
         self.start_drop(items, Some(ctx.clone()));
@@ -1568,10 +1579,13 @@ impl FileWindow {
             return false;
         };
         let Some(job) = p.to_job() else {
-            *self.say_slot() = Some(copy_text(
-                "rsFilewinShell.copy.badName",
-                &[("name", &p.new_name.to_string())],
-            ));
+            *self.say_slot() = Some(
+                copy_text(
+                    "rsFilewinShell.copy.badName",
+                    &[("name", &p.new_name.to_string())],
+                )
+                .into(),
+            );
             return false;
         };
         if !self.start_copy(job, ctx) {
@@ -1593,7 +1607,7 @@ impl FileWindow {
             return false;
         };
         let Some(line) = self.line.clone() else {
-            *self.say_slot() = Some(NO_LINE.to_string());
+            *self.say_slot() = Some(NO_LINE.to_string().into());
             return false;
         };
         let origin = self.source.origin();
@@ -1635,11 +1649,11 @@ impl FileWindow {
     /// 〔FW34 那一版〕只收一件、只收文件；今天一件就是一摞里只有一件。
     pub fn start_copy_batch(&mut self, jobs: Vec<CopyJob>, ctx: Option<egui::Context>) -> bool {
         let Some(h) = self.rt.clone() else {
-            *self.say_slot() = Some(copy_text("rsFilewinShell.copy.noRuntime", &[]));
+            *self.say_slot() = Some(copy_text("rsFilewinShell.copy.noRuntime", &[]).into());
             return false;
         };
         let Some(line) = self.line.clone() else {
-            *self.say_slot() = Some(NO_LINE.to_string());
+            *self.say_slot() = Some(NO_LINE.to_string().into());
             return false;
         };
         let origin = self.source.origin();
@@ -1713,11 +1727,11 @@ impl FileWindow {
     pub fn start_extract(&mut self, i: usize, ctx: Option<egui::Context>) -> bool {
         let Some(h) = self.rt.clone() else {
             *self.listing.error.lock().unwrap() =
-                Some(copy_text("rsFilewinShell.size.noRuntime", &[]));
+                Some(copy_text("rsFilewinShell.size.noRuntime", &[]).into());
             return false;
         };
         let Some(line) = self.line.clone() else {
-            *self.listing.error.lock().unwrap() = Some(NO_LINE.to_string());
+            *self.listing.error.lock().unwrap() = Some(NO_LINE.to_string().into());
             return false;
         };
         let Some((rel, name)) = self
@@ -1804,7 +1818,7 @@ impl FileWindow {
             return false;
         };
         if p.machine.trim().is_empty() {
-            *self.say_slot() = Some(copy_text("rsFilewinCrossCopy.prompt.noMachine", &[]));
+            *self.say_slot() = Some(copy_text("rsFilewinCrossCopy.prompt.noMachine", &[]).into());
             return false;
         }
         // 落点 ＝ 选择器上选到的（还没读出来 ⇒ 空 ＝ 那台的主目录，`cross_copy::target_dir`）。
@@ -1820,11 +1834,11 @@ impl FileWindow {
             p
         };
         let Some(h) = self.rt.clone() else {
-            *self.say_slot() = Some(copy_text("rsFilewinShell.size.noRuntime", &[]));
+            *self.say_slot() = Some(copy_text("rsFilewinShell.size.noRuntime", &[]).into());
             return false;
         };
         let Some(line) = self.line.clone() else {
-            *self.say_slot() = Some(NO_LINE.to_string());
+            *self.say_slot() = Some(NO_LINE.to_string().into());
             return false;
         };
         self.cross_prompt = None;
@@ -1868,7 +1882,7 @@ impl FileWindow {
             .filter(|m| **m != here)
             .map(|m| super::cross_copy::shown_machine(m))
             .collect();
-        let err = self.prompt_error();
+        let err = self.prompt_failure();
         let mut go_to: Option<String> = None;
         let mut picked: Option<String> = None;
         let mut mkdir = false;
@@ -1923,8 +1937,9 @@ impl FileWindow {
                     )
                     .on_hover_text(target);
                 }
-                if let Some(e) = &err {
-                    ui.label(egui::RichText::new(e).size(12.0).color(pal.error_text));
+                if let Some(f) = &err {
+                    let id = ui.id().with("prompt-fail-detail");
+                    super::kit::failure_line(ui, &f.said, &f.detail, id);
                 }
             },
             &[
@@ -2194,7 +2209,7 @@ impl FileWindow {
         let ops = match p.to_ops() {
             Ok(ops) => ops,
             Err(why) => {
-                *self.say_slot() = Some(why);
+                *self.say_slot() = Some(why.into());
                 return false;
             }
         };
@@ -2222,18 +2237,18 @@ impl FileWindow {
                 return false;
             }
             Err(why) => {
-                *self.prompt_error.lock().unwrap() = Some(why);
+                *self.prompt_error.lock().unwrap() = Some(why.into());
                 self.inline_select = Some(p.select_chars());
                 return false;
             }
         };
         let Some(h) = self.rt.clone() else {
             *self.prompt_error.lock().unwrap() =
-                Some(copy_text("rsFilewinShell.writes.noRuntime", &[]));
+                Some(copy_text("rsFilewinShell.writes.noRuntime", &[]).into());
             return false;
         };
         let Some(line) = self.line.clone() else {
-            *self.prompt_error.lock().unwrap() = Some(NO_LINE.to_string());
+            *self.prompt_error.lock().unwrap() = Some(NO_LINE.to_string().into());
             return false;
         };
         *self.prompt_error.lock().unwrap() = None;
@@ -2302,9 +2317,9 @@ impl FileWindow {
                         .as_ref()
                         .map(|p| p.text.trim().to_string())
                         .unwrap_or_default();
-                    copy_text("rsFilewinWriteops.inline.exists", &[("name", &name)])
+                    copy_text("rsFilewinWriteops.inline.exists", &[("name", &name)]).into()
                 } else {
-                    f.said
+                    f
                 };
                 *self.prompt_error.lock().unwrap() = Some(why);
                 self.inline_select = self.write_prompt.as_ref().map(WritePrompt::select_chars);
@@ -2342,7 +2357,7 @@ impl FileWindow {
             return false;
         };
         let Some(line) = self.line.clone() else {
-            *self.say_slot() = Some(NO_LINE.to_string());
+            *self.say_slot() = Some(NO_LINE.to_string().into());
             return false;
         };
         let origin = self.source.origin();
@@ -2404,8 +2419,7 @@ impl FileWindow {
                             &op,
                             root_raw.as_deref(),
                         )
-                        .await
-                        .map_err(|f| f.said)?;
+                        .await?;
                         let mut k = sink.lock().unwrap();
                         if let Some(u) =
                             super::writeops::chmod_undo(&op, &reply).filter(|_| undoable)
@@ -2433,9 +2447,10 @@ impl FileWindow {
         }
         self.seen_write_rounds = now;
         // 做完的回执（删除 · 改权限 ＋［撤销］· 没做成的那一句）⇒ 窗口那一级摆成右下角回执。
-        if let Some((text, undo)) = self.write_board.take_receipt() {
+        if let Some((text, undo, copy)) = self.write_board.take_receipt() {
             if undo.is_empty() {
                 self.receipt = Some(text);
+                self.receipt_copy = copy;
             } else {
                 self.receipt_undo = Some((text, undo));
             }
@@ -2475,7 +2490,7 @@ impl FileWindow {
             },
         };
         let Some(h) = self.rt.clone() else {
-            *self.say_slot() = Some(copy_text("rsFilewinPicker.pick.noRuntime", &[]));
+            *self.say_slot() = Some(copy_text("rsFilewinPicker.pick.noRuntime", &[]).into());
             return false;
         };
         let board = self.pick_board.clone();
@@ -2572,7 +2587,7 @@ impl FileWindow {
         };
         // 下载经通道开单、订阅进度 —— 要那条线 ＋ 那台机器的地址。
         let Some(line) = self.line.clone() else {
-            *self.say_slot() = Some(NO_LINE.to_string());
+            *self.say_slot() = Some(NO_LINE.to_string().into());
             return false;
         };
         let origin = self.source.origin();
@@ -2701,10 +2716,8 @@ impl FileWindow {
     ) -> bool {
         // 读着一份时不起第二趟：后到的那一份会把正在改的那一份换掉。
         if let Some(p) = self.edits.open_pending() {
-            *self.listing.error.lock().unwrap() = Some(copy_text(
-                "rsFilewinShell.edit.stillOpening",
-                &[("path", &p)],
-            ));
+            *self.listing.error.lock().unwrap() =
+                Some(copy_text("rsFilewinShell.edit.stillOpening", &[("path", &p)]).into());
             return false;
         }
         self.edit_row = Some(listed.clone());
@@ -2718,7 +2731,7 @@ impl FileWindow {
             if self.edit_tab {
                 self.edit_refused = Some(said);
             } else {
-                *self.listing.error.lock().unwrap() = Some(said);
+                *self.listing.error.lock().unwrap() = Some(said.into());
             }
             return false;
         }
@@ -2728,7 +2741,7 @@ impl FileWindow {
             return false;
         };
         let Some(line) = self.line.clone() else {
-            *self.listing.error.lock().unwrap() = Some(NO_LINE.to_string());
+            *self.listing.error.lock().unwrap() = Some(NO_LINE.to_string().into());
             return false;
         };
         let origin = self.source.origin();
@@ -2787,7 +2800,7 @@ impl FileWindow {
                 if self.edit_tab {
                     self.edit_refused = Some(said);
                 } else {
-                    *self.listing.error.lock().unwrap() = Some(said);
+                    *self.listing.error.lock().unwrap() = Some(said.into());
                 }
             }
             Arrived::Failed { path, why } => {
@@ -2798,7 +2811,7 @@ impl FileWindow {
                 if self.edit_tab {
                     self.edit_refused = Some(said);
                 } else {
-                    *self.listing.error.lock().unwrap() = Some(said);
+                    *self.listing.error.lock().unwrap() = Some(said.into());
                 }
             }
         }
@@ -2816,17 +2829,20 @@ impl FileWindow {
         };
         // 🔴 敲超上限 ⇒ 屏幕上先说，不发那趟注定被池子拒的往返。
         if p.over_cap() {
-            *self.listing.error.lock().unwrap() = Some(copy_text(
-                "rsFilewinShell.edit.tooBig",
-                &[
-                    ("n", &(p.text.len()).to_string()),
-                    (
-                        "limit",
-                        &(super::rows::human_size(super::editor::MAX_EDIT_BYTES as u64))
-                            .to_string(),
-                    ),
-                ],
-            ));
+            *self.listing.error.lock().unwrap() = Some(
+                copy_text(
+                    "rsFilewinShell.edit.tooBig",
+                    &[
+                        ("n", &(p.text.len()).to_string()),
+                        (
+                            "limit",
+                            &(super::rows::human_size(super::editor::MAX_EDIT_BYTES as u64))
+                                .to_string(),
+                        ),
+                    ],
+                )
+                .into(),
+            );
             return false;
         }
         let Some(h) = self.rt.clone() else {
@@ -2835,7 +2851,7 @@ impl FileWindow {
             return false;
         };
         let Some(line) = self.line.clone() else {
-            *self.listing.error.lock().unwrap() = Some(NO_LINE.to_string());
+            *self.listing.error.lock().unwrap() = Some(NO_LINE.to_string().into());
             return false;
         };
         let origin = self.source.origin();
@@ -2865,7 +2881,7 @@ impl FileWindow {
             return self.save_edit(ctx);
         }
         let (Some(h), Some(line)) = (self.rt.clone(), self.line.clone()) else {
-            *self.listing.error.lock().unwrap() = Some(NO_LINE.to_string());
+            *self.listing.error.lock().unwrap() = Some(NO_LINE.to_string().into());
             return false;
         };
         let origin = self.source.origin();
@@ -2893,7 +2909,7 @@ impl FileWindow {
         let at = super::source::RemotePath::of(&path, p.raw_path.as_deref());
         self.edit_raw = at.raw.clone().map(|b| (path.clone(), b));
         let (Some(h), Some(line)) = (self.rt.clone(), self.line.clone()) else {
-            *self.listing.error.lock().unwrap() = Some(NO_LINE.to_string());
+            *self.listing.error.lock().unwrap() = Some(NO_LINE.to_string().into());
             return false;
         };
         self.discard_edit();
@@ -2938,7 +2954,7 @@ impl FileWindow {
                 }
             }
             Err(super::editor::SaveError::Stale(why)) => p.mark_stale(why),
-            Err(super::editor::SaveError::Failed(why)) => p.mark_failed(why),
+            Err(super::editor::SaveError::Failed(f)) => p.mark_failed_with(f),
         }
         self.close_after_save = false;
         true
@@ -3320,11 +3336,14 @@ impl FileWindow {
                     _ => {}
                 }
             } else if let Some(Err(why)) = &e.last_save {
-                if super::kit::banner(
+                let id = ui.id().with("save-fail-detail");
+                if super::kit::failure_banner(
                     ui,
                     super::kit::Tone::Error,
                     &copy_text("rsFilewinShell.editor.saveFailed", &[("why", why)]),
                     &[copy_text("rsFilewinEditPage.action.retry", &[])],
+                    &e.save_detail,
+                    id,
                 )
                 .is_some()
                     && idle
@@ -3597,7 +3616,7 @@ impl FileWindow {
             super::writeops::apply_prefill(&mut p, r);
         }
         let pal = super::theme::palette(ui.ctx());
-        let err = self.prompt_error();
+        let err = self.prompt_failure();
         let mut typed = false;
         let mut toggled: Option<usize> = None;
         let mut enter = false;
@@ -3663,8 +3682,9 @@ impl FileWindow {
                     typed = r.changed();
                     enter = r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
                 });
-                if let Some(e) = &err {
-                    ui.label(egui::RichText::new(e).size(12.0).color(pal.error_text));
+                if let Some(f) = &err {
+                    let id = ui.id().with("prompt-fail-detail");
+                    super::kit::failure_line(ui, &f.said, &f.detail, id);
                 }
             },
             &[
@@ -3854,7 +3874,7 @@ impl FileWindow {
     }
 
     /// 做不成的那一下说的话落在哪：有框摆着 ⇒ 框里（[`Self::prompt_error`]）；否则 ⇒ 列表上方那一行。
-    pub(super) fn say_slot(&self) -> std::sync::MutexGuard<'_, Option<String>> {
+    pub(super) fn say_slot(&self) -> std::sync::MutexGuard<'_, Option<super::source::Failed>> {
         if self.prompt_up() {
             self.prompt_error.lock().unwrap()
         } else {
@@ -3864,13 +3884,23 @@ impl FileWindow {
 
     /// 摆着的框里那一句「为什么没做成」（判据与界面看同一个值）。
     pub fn prompt_error(&self) -> Option<String> {
+        self.prompt_error
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map(|f| f.said.clone())
+    }
+
+    /// 同 [`Self::prompt_error`]，连复制详情一起（框里那一行的［复制详情］用）。
+    pub fn prompt_failure(&self) -> Option<super::source::Failed> {
         self.prompt_error.lock().unwrap().clone()
     }
 
     /// 框里那一句（红字，紧跟在输入框下面）。
     fn prompt_error_ui(&self, ui: &mut egui::Ui) {
-        if let Some(e) = self.prompt_error() {
-            ui.colored_label(ui.visuals().error_fg_color, e);
+        if let Some(f) = self.prompt_failure() {
+            let id = ui.id().with("prompt-fail-detail");
+            super::kit::failure_line(ui, &f.said, &f.detail, id);
         }
     }
 
@@ -4182,11 +4212,11 @@ impl FileWindow {
     pub fn start_sizes(&mut self, idx: &[usize], ctx: Option<egui::Context>) -> bool {
         let Some(h) = self.rt.clone() else {
             *self.listing.error.lock().unwrap() =
-                Some(copy_text("rsFilewinShell.size.noRuntime", &[]));
+                Some(copy_text("rsFilewinShell.size.noRuntime", &[]).into());
             return false;
         };
         let Some(line) = self.line.clone() else {
-            *self.listing.error.lock().unwrap() = Some(NO_LINE.to_string());
+            *self.listing.error.lock().unwrap() = Some(NO_LINE.to_string().into());
             return false;
         };
         let items: Vec<(serde_json::Value, String)> = {
@@ -4442,8 +4472,9 @@ impl FileWindow {
                 Some(1) => self.want_home = true,
                 _ => {}
             }
-        } else if let Some(e) = self.listing.error.lock().unwrap().clone() {
-            super::kit::banner(ui, super::kit::Tone::Error, &e, &[]);
+        } else if let Some(f) = self.listing.error.lock().unwrap().clone() {
+            let id = ui.id().with("list-fail-detail");
+            super::kit::failure_banner(ui, super::kit::Tone::Error, &f.said, &[], &f.detail, id);
         }
         // 🔴 截断也要出声 —— 「这个目录里就这么多」与「后端只给了前 N 条」在屏幕上长得一样。
         if self.listing.truncated.load(Ordering::SeqCst) && !self.showing_hits() {
@@ -4737,7 +4768,7 @@ impl FileWindow {
         let jump = match self.take_reveal_offset(pitch) {
             Some(Ok(y)) => Some(y),
             Some(Err(why)) => {
-                *self.listing.error.lock().unwrap() = Some(why);
+                *self.listing.error.lock().unwrap() = Some(why.into());
                 None
             }
             None => None,

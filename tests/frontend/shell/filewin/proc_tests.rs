@@ -197,11 +197,25 @@ fn the_window_binary_is_never_guessed() {
         &ensure,
     )
     .expect_err("指着一个不存在的文件居然解出来了");
-    assert!(
-        e.contains("根本没有这个文件"),
-        "报错里没有那条被看过的路径 —— `D7`：归因得说准是「二进制不在」而不是「窗口画不出来」：{e}"
+    // 句子只说原因词「未装」＋ 出路；看过的那几条路径进复制详情（原话）。
+    assert_eq!(
+        e.said,
+        copy_text("rsFilewinProc.bin.notFound", &[("binEnv", BIN_ENV)])
     );
-    assert!(e.contains(BIN_STEM), "报错里没点名要找的是哪个二进制：{e}");
+    let looked = e.raw.clone().unwrap_or_default();
+    assert!(
+        looked.contains("根本没有这个文件"),
+        "详情里没有那条被看过的路径 —— `D7`：归因得说准是「二进制不在」而不是「窗口画不出来」：{e:?}"
+    );
+    assert!(
+        looked.contains(BIN_STEM),
+        "详情里没点名要找的是哪个二进制：{e:?}"
+    );
+    assert!(
+        !e.said.contains("根本没有这个文件"),
+        "路径上了句子：{}",
+        e.said
+    );
     assert!(!landing.exists(), "没带那一份却往落点里建了东西");
     // ③ 阴性对照：指着一个**真存在**的文件 ⇒ 原样回它，不再往别处找。
     let real = dir.join("假装是那个二进制");
@@ -279,18 +293,19 @@ fn with_nothing_beside_the_exe_the_carried_window_binary_is_placed_and_returned(
     // ⑥ 家目录问不到 ⇒ 「不知道放哪」那一句；放不下来 ⇒ 带着原话的那一句 —— 都不是「没带」。
     assert_eq!(
         resolve_window_bin_in(None, &exe_dir, Some(b"x"), None, &mk, &ensure)
-            .expect_err("没有落点也解出来了"),
+            .expect_err("没有落点也解出来了")
+            .said,
         copy_text("rsFilewinProc.bin.noHome", &[])
     );
     let no_dir = |_: &Path| -> Result<(), String> { Err("不许建".to_string()) };
     let fresh = root.join("fresh");
-    assert_eq!(
-        resolve_window_bin_in(None, &exe_dir, Some(b"x"), Some(&fresh), &mk, &no_dir)
-            .expect_err("建不了目录也解出来了"),
-        copy_text(
-            "rsFilewinProc.bin.placeFailed",
-            &[("dir", &fresh.display().to_string()), ("e", "不许建")]
-        )
+    let e = resolve_window_bin_in(None, &exe_dir, Some(b"x"), Some(&fresh), &mk, &no_dir)
+        .expect_err("建不了目录也解出来了");
+    assert_eq!(e.said, copy_text("rsFilewinProc.bin.placeFailed", &[]));
+    let raw = e.raw.unwrap_or_default();
+    assert!(
+        raw.contains("不许建") && raw.contains(&fresh.display().to_string()),
+        "放不下来的原话与落点没进详情：{raw}"
     );
     std::fs::remove_dir_all(&root).ok();
 }
@@ -409,7 +424,7 @@ fn opening_a_window_three_times_really_starts_three_independent_processes() {
     let mut codes: Vec<String> = Vec::new();
     for trip in 1..=3 {
         let (child, _tail) = spawn_window(&req).unwrap_or_else(|e| {
-            panic!("第 {trip} 趟连进程都起不来：{e}\n⚠ 这一形是台架坏了，不是被测性质红了")
+            panic!("第 {trip} 趟连进程都起不来：{e:?}\n⚠ 这一形是台架坏了，不是被测性质红了")
         });
         pids.push(child.id());
         let st = child

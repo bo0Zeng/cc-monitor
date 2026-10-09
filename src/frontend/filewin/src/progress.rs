@@ -101,6 +101,8 @@ pub struct View {
     pub nums: String,
     /// 那颗按钮：字 ＋ 按下做什么；`Err(为什么)` ＝ 灰着、悬停说为什么。
     pub button: Option<(String, Result<Act, String>)>,
+    /// ［复制详情］复制出去的整段（首行是标题；没成的那几件各带出错那一端写的详情）；`None` ＝ 不出按钮。
+    pub copy: Option<String>,
 }
 
 /// 表里的一行。
@@ -560,18 +562,19 @@ impl Job {
             State::Stopped => ph::STOP_CIRCLE,
         };
         let sep = copy_text("rsFilewinProgress.detail.sep", &[]);
-        let fails = |failed: &[(String, String)]| -> String {
+        fn fails_of<W: std::fmt::Display>(failed: &[(String, W)], sep: &str) -> String {
             failed
                 .iter()
                 .map(|(n, why)| {
                     copy_text(
                         "rsFilewinProgress.detail.failedOne",
-                        &[("name", n), ("why", why)],
+                        &[("name", n), ("why", &why.to_string())],
                     )
                 })
                 .collect::<Vec<_>>()
-                .join(&sep)
-        };
+                .join(sep)
+        }
+        let fails = |failed: &[(String, String)]| fails_of(failed, &sep);
         match &self.trip {
             Trip::Upload { board, items, .. } => {
                 let o = board.last();
@@ -608,6 +611,7 @@ impl Job {
                             detail,
                             frac: frac_of(got, total),
                             nums: bytes_nums(got, total),
+                            copy: None,
                             button: stop_button(self),
                         }
                     }
@@ -641,6 +645,7 @@ impl Job {
                             detail,
                             frac: None,
                             nums: ended,
+                            copy: None,
                             button: None,
                         }
                     }
@@ -658,9 +663,16 @@ impl Job {
                                 "rsFilewinProgress.upload.failed",
                                 &[("n", &o.failed.len().to_string())],
                             ),
-                            detail: fails(&o.failed),
+                            detail: fails_of(&o.failed, &sep),
                             frac: None,
                             nums: ended,
+                            copy: super::source::Failed::copy_many(
+                                &copy_text(
+                                    "rsFilewinProgress.upload.failed",
+                                    &[("n", &o.failed.len().to_string())],
+                                ),
+                                &o.failed,
+                            ),
                             button: (!again.is_empty()).then(|| {
                                 (
                                     copy_text(
@@ -695,6 +707,7 @@ impl Job {
                             detail: String::new(),
                             frac: None,
                             nums: ended,
+                            copy: None,
                             button: (!rest.is_empty()).then(|| {
                                 (
                                     copy_text("rsFilewinProgress.action.resume", &[]),
@@ -720,6 +733,7 @@ impl Job {
                         detail: copy_text("rsFilewinProgress.download.detail", &[("dest", dest)]),
                         frac: frac_of(got, total),
                         nums: bytes_nums(got, total),
+                        copy: None,
                         button: stop_button(self),
                     },
                     (State::Done, Some(super::download::Outcome::Done { dest, .. })) => View {
@@ -729,6 +743,7 @@ impl Job {
                         detail: board.note().unwrap_or_default(),
                         frac: None,
                         nums: ended,
+                        copy: None,
                         button: None,
                     },
                     (State::Stopped, _) => View {
@@ -738,6 +753,7 @@ impl Job {
                         detail: String::new(),
                         frac: None,
                         nums: ended,
+                        copy: None,
                         button: Some((
                             copy_text("rsFilewinProgress.action.resume", &[]),
                             Ok(Act::RetryDownload {
@@ -756,6 +772,7 @@ impl Job {
                         },
                         frac: None,
                         nums: ended,
+                        copy: None,
                         button: Some((
                             copy_text("rsFilewinProgress.action.retry", &[]),
                             Ok(Act::RetryDownload {
@@ -774,6 +791,7 @@ impl Job {
                     detail: board.running().unwrap_or_default(),
                     frac: Some(None),
                     nums: String::new(),
+                    copy: None,
                     button: stop_button(self),
                 },
                 (_, o) => {
@@ -816,6 +834,7 @@ impl Job {
                         detail,
                         frac: None,
                         nums: ended,
+                        copy: None,
                         button: None,
                     }
                 }
@@ -834,6 +853,7 @@ impl Job {
                         detail: String::new(),
                         frac: frac_of(got, total),
                         nums: bytes_nums(got, total),
+                        copy: None,
                         button: stop_button(self),
                     }
                 }
@@ -850,6 +870,7 @@ impl Job {
                     detail: path,
                     frac: None,
                     nums: ended,
+                    copy: None,
                     button: None,
                 },
                 (_, Some(super::cross_copy::Outcome::Skipped { path, .. })) => View {
@@ -859,6 +880,7 @@ impl Job {
                     detail: path,
                     frac: None,
                     nums: ended,
+                    copy: None,
                     button: None,
                 },
                 (_, o) => View {
@@ -883,6 +905,7 @@ impl Job {
                     },
                     frac: None,
                     nums: ended,
+                    copy: None,
                     button: None,
                 },
             },
@@ -894,6 +917,7 @@ impl Job {
                     detail: board.running().unwrap_or_default(),
                     frac: Some(None),
                     nums: String::new(),
+                    copy: None,
                     button: stop_button(self),
                 },
                 (_, r) => View {
@@ -906,6 +930,7 @@ impl Job {
                     detail: String::new(),
                     frac: None,
                     nums: ended,
+                    copy: None,
                     button: None,
                 },
             },
@@ -917,6 +942,7 @@ impl Job {
                     detail: String::new(),
                     frac: Some(None),
                     nums: String::new(),
+                    copy: None,
                     button: stop_button(self),
                 },
                 (_, last) => View {
@@ -928,6 +954,7 @@ impl Job {
                     detail: String::new(),
                     frac: None,
                     nums: ended,
+                    copy: None,
                     button: None,
                 },
             },
@@ -939,6 +966,7 @@ impl Job {
                     detail: String::new(),
                     frac: Some(None),
                     nums: String::new(),
+                    copy: None,
                     button: stop_button(self),
                 },
                 (State::Failed, Some(o)) => View {
@@ -948,9 +976,16 @@ impl Job {
                         "rsFilewinProgress.delete.failed",
                         &[("n", &o.failed.len().to_string())],
                     ),
-                    detail: fails(&o.failed),
+                    detail: fails_of(&o.failed, &sep),
                     frac: None,
                     nums: ended,
+                    copy: super::source::Failed::copy_many(
+                        &copy_text(
+                            "rsFilewinProgress.delete.failed",
+                            &[("n", &o.failed.len().to_string())],
+                        ),
+                        &o.failed,
+                    ),
                     button: None,
                 },
                 (_, o) => View {
@@ -963,6 +998,7 @@ impl Job {
                     detail: String::new(),
                     frac: None,
                     nums: ended,
+                    copy: None,
                     button: None,
                 },
             },
