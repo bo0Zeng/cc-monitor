@@ -10,7 +10,7 @@
 import { agoText } from "./ago";
 import { emit } from "@tauri-apps/api/event";
 import { getCurrentMachine, subscribeMachine } from "./machine-context";
-import { SETTINGS_APPLIED_EVENT, OPEN_ACCOUNT_PANEL_EVENT, SETTINGS_GO_EVENT } from "./events";
+import { SETTINGS_APPLIED_EVENT, SETTINGS_GO_EVENT } from "./events";
 import { renderNewAccountForm, checkBaseUrl, type NewAccountForm, type NewAccountRequest } from "./account-new-form";
 import { openLoginWindow, loginInTmux } from "./account-login";
 import { machineHasTmux } from "../resume-defaults";
@@ -277,7 +277,7 @@ export class AccountsSection {
     const v = this.verifyBar(f);
     if (v) out.push(v);
     if (ui.notice) out.push(banner("warn", ui.notice));
-    out.push(this.table(f, false), this.pointer(f.origin), this.mcpLine(f.origin));
+    out.push(this.table(f, false), this.mcpLine(f.origin));
     this.body.replaceChildren(...out);
   }
 
@@ -394,29 +394,6 @@ export class AccountsSection {
       failToast(copyText("acctPage.verify.failed", { machine }), e, { level: "error" });
     }
     await this.reload(true, true);
-  }
-
-  /** 表下指路框：时间轴 · 默认轮换在主窗口的账号面板里（点了发一条事件，主窗口打开那台的账号面板并滚到那一节）。 */
-  private pointer(origin: Origin): HTMLElement {
-    const box = document.createElement("div");
-    box.className = "acct-pointer";
-    for (const [anchor, label] of [
-      ["timeline", copyText("acctPage.pointer.timeline")],
-      ["default-rotation", copyText("acctPage.pointer.rotation")],
-    ] as const) {
-      const b = document.createElement("button");
-      b.type = "button";
-      b.className = "acct-pointer-link";
-      b.dataset.anchor = anchor;
-      b.textContent = label;
-      b.addEventListener("click", () => void emit(OPEN_ACCOUNT_PANEL_EVENT, { machine: origin, anchor }));
-      box.appendChild(b);
-    }
-    const t = document.createElement("span");
-    t.className = "acct-pointer-text";
-    t.textContent = copyText("acctPage.pointer.where");
-    box.appendChild(t);
-    return box;
   }
 
   /** 表下一行「共用 MCP：别名与配置文件」：点了切到同一台的「别名与配置文件」栏。 */

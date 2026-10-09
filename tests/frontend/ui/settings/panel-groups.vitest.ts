@@ -198,7 +198,7 @@ describe("S2 设置面板分页结构", () => {
   /** 等 RemoteSection 那边异步注册完本机页（真实实现是在 `refresh()` 里注册的）。 */
   const tick = () => new Promise((r) => setTimeout(r, 0));
 
-  it("★ 逐页完整清单 —— 15 个叶子块一个不少、一个不错位", async () => { // P8a +1（插件（marketplace））；〔AL1〕+1（别名）；〔AL1c〕−1（终端集成并进别名）；扩展页 −3 ＋1（机器页里 MCP · 资产目录 · 插件三块搬走，顶层「扩展」一块）
+  it("★ 逐页完整清单 —— 16 个叶子块一个不少、一个不错位", async () => { // P8a +1（插件（marketplace））；〔AL1〕+1（别名）；〔AL1c〕−1（终端集成并进别名）；扩展页 −3 ＋1（机器页里 MCP · 资产目录 · 插件三块搬走，顶层「扩展」一块）；轮换规则 +1（机器页「轮换」栏）
     // 这是本轮最重要的一条：S2 只搬不改，**搬丢一块 = 一个功能凭空消失**，
     // 而它在 UI 上的表现只是「某个设置项找不到了」，不会报错。
     // 用**完整相等**而不是 `toContain`：后者对「多出一块」和「顺序乱了」都是瞎的。
@@ -232,6 +232,8 @@ describe("S2 设置面板分页结构", () => {
     // 它们跟着「当前在看哪台机器」走；初始落在本机页上（与 machine-context 的初始值对齐）。
     expect(pageTitles("machine:（本机）")).toEqual([
       copyText("machinePage.tab.accounts"),
+      // 规则按机器存：「轮换」栏那一块。
+      copyText("machinePage.tab.rot"),
       // 「终端集成」并进了下面「别名」那一块（Windows 上它是 PowerShell 那一侧的别名块）。
       // 别名并进机器页，从「应用 → 行为」搬来。
       copyText("settingsPanel.group.aliases"),
@@ -394,6 +396,7 @@ describe("S2 设置面板分页结构", () => {
     // 隔离没有因此被打破：那几块**都还在 DOM 里**，只是先藏着、等机器页来了就搬走。
     expect(pageTitles("machines")).toEqual([
       copyText("machinePage.tab.accounts"),
+      copyText("machinePage.tab.rot"),
       copyText("settingsPanel.group.aliases"), // 本机那一格的 ②，跟着 per-machine 那几块一起留在兜底落点（终端集成并进了它）
     ]);
   });
@@ -412,14 +415,14 @@ describe("S2 设置面板分页结构", () => {
     expect(sk?.hidden ?? true, "机器页来了，列表页上那块骨架就该收起来").toBe(true);
   });
 
-  it("★ 机器页本机远端同形：卡头 ＋「账号 · 别名与配置文件」两栏；只远端的卡头里有「连接设置」", async () => {
+  it("★ 机器页本机远端同形：卡头 ＋「账号 · 轮换 · 别名与配置文件」三栏；只远端的卡头里有「连接设置」", async () => {
     document.body.replaceChildren();
     new SettingsPanel({ windowMode: true });
     await tick();
     const tabsOf = (id: string) =>
       [...document.querySelectorAll(`.settings-page[data-route-id="${id}"] .settings-shell-h > .settings-nav .settings-nav-item`)].map((b) => b.textContent);
-    expect(tabsOf("machine:（本机）")).toEqual([copyText("machinePage.tab.accounts"), copyText("machinePage.tab.config")]);
-    expect(tabsOf("machine:devbox")).toEqual([copyText("machinePage.tab.accounts"), copyText("machinePage.tab.config")]);
+    expect(tabsOf("machine:（本机）")).toEqual([copyText("machinePage.tab.accounts"), copyText("machinePage.tab.rot"), copyText("machinePage.tab.config")]);
+    expect(tabsOf("machine:devbox")).toEqual([copyText("machinePage.tab.accounts"), copyText("machinePage.tab.rot"), copyText("machinePage.tab.config")]);
     const local = document.querySelector<HTMLElement>('.settings-page[data-route-id="machine:（本机）"]')!;
     const remote = document.querySelector<HTMLElement>('.settings-page[data-route-id="machine:devbox"]')!;
     expect(local.querySelector(".machine-conn"), "本机没有连接设置").toBeNull();
@@ -618,6 +621,20 @@ describe("带目的地打开（页 · 机器 · 栏 · 锚点）", () => {
     expect(spot.classList.contains("settings-highlight")).toBe(true);
     p.goTo({ page: "nope", tab: "zzz" });
     expect(visiblePages(panelRoot), "认不出的页不该把人带走").toEqual(["general"]);
+  });
+
+  it("账号面板「管理规则…」「编辑规则…」：{machine, tab: rot, anchor: rule:<id>} 落到那台的「轮换」栏、高亮那一行", async () => {
+    document.body.replaceChildren();
+    const p = new SettingsPanel({ windowMode: true });
+    await tick();
+    const strip = document.querySelector<HTMLElement>('.settings-page[data-route-id="machine:devbox"] .settings-shell-h')!;
+    const row = document.createElement("div");
+    row.dataset.anchor = "rule:r_night";
+    strip.querySelector<HTMLElement>('.settings-page[data-route-id="machine:devbox#rot"]')!.appendChild(row);
+    p.goTo({ machine: "devbox", tab: "rot", anchor: "rule:r_night" });
+    const tabVisible = [...strip.querySelectorAll<HTMLElement>(".settings-page")].filter((e) => !e.hidden).map((e) => e.dataset.routeId);
+    expect(tabVisible).toEqual(["machine:devbox#rot"]);
+    expect(row.classList.contains("settings-highlight")).toBe(true);
   });
 
   it("外观页快捷键那一节挂着锚点 keybindings：{page: appearance, anchor: keybindings} 落到它、高亮它", async () => {

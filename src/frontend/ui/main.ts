@@ -28,7 +28,7 @@ import { terminalFrontCommand } from "./terminal-front-command";
 import { loadTheme } from "./theme";
 import { SETTINGS_APPLIED_EVENT } from "./settings";
 import { setResumeInTmux } from "./resume-defaults";
-import { OPEN_ACCOUNT_PANEL_EVENT, RESYNC_DONE_EVENT, type OpenAccountPanel } from "./settings/events";
+import { RESYNC_DONE_EVENT } from "./settings/events";
 import {
   AGENT_WINDOW_EVENT,
   AGENT_WINDOWS_ASK_EVENT,
@@ -80,9 +80,7 @@ import { getKeybindings } from "./keybindings/store";
 import { installGlobalClickDelegation } from "./entry-render-common";
 import { AccountChip } from "./account-chip";
 import { onQuotaChanged, syncSessions } from "./acct-center";
-import { followActive, openAccountPanelAt, toggleAccountPanel, type AcctPanelHost } from "./acct-panel";
-import { jumpToAccountPanel } from "./acct-jump";
-import { fullTitle } from "./session-face";
+import { followActive, toggleAccountPanel, type AcctPanelHost } from "./acct-panel";
 import { acctSessionWiring } from "./acct-session";
 import { buildAccountCommands } from "./account-commands";
 import { sessionCommands } from "./session-commands";
@@ -306,6 +304,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     cwdOf: (sid) => tabs.snapshotSessions().find((x) => x.sessionId === sid)?.cwd ?? "",
     agentOf: (sid) => tabs.agentOf(sid),
     openSettings: (origin) => void openSettingsWindow(undefined, dest.accountsOf(origin)),
+    openRules: (origin, rule) => void openSettingsWindow(undefined, dest.rulesOf(origin, rule)),
     openDefaultMenu: (anchor, origin) => void accountChip.openDefaultMenu(anchor, origin),
     defaultOf: (origin) => accountChip.defaultOf(origin),
     // 恢复菜单挂在状态栏上（抽屉的底边）：toast 的按钮点了就收起，没有自己的锚。
@@ -332,26 +331,6 @@ window.addEventListener("DOMContentLoaded", async () => {
     void w.unminimize().then(() => w.setFocus()).catch(() => {});
     tabs.switchTo(e.payload.sid);
   });
-  // 设置窗账号页「时间轴 · 默认轮换」⇒ 主窗口拉到前面、开账号面板滚到那一节（只开不写）。
-  void listen<OpenAccountPanel>(OPEN_ACCOUNT_PANEL_EVENT, (e) =>
-    jumpToAccountPanel(e.payload, {
-      raise: () => {
-        const w = getCurrentWindow();
-        void w.unminimize().then(() => w.setFocus()).catch(() => {});
-      },
-      active: () => {
-        const sid = tabs.activeSessionId();
-        const origin = sid === null ? null : tabs.originOf(sid);
-        return sid !== null && origin !== null ? { sid, origin } : null;
-      },
-      firstOn: (origin) => {
-        const t = tabs.tabsInOrder().find((x) => x.origin === origin);
-        return t ? { sid: t.sessionId, title: fullTitle(t) } : null;
-      },
-      switchTo: (sid) => tabs.switchTo(sid),
-      openAt: (sid, origin, anchor) => openAccountPanelAt(sid, origin, panelHost, anchor),
-    }),
-  );
   tabs.onViewTerminal = () => mainDrawer.dock.show("terminal");
   const activeOrigin = (): Origin | null => {
     const sid = tabs.activeSessionId();

@@ -283,7 +283,7 @@ export const SETTINGS_SCENES: Scene[] = [
     sw?.querySelector<HTMLButtonElement>("[role=switch]")?.click();
     await sleep(800);
   }),
-  settings("settings-machine-acct", "设置 · 远端 · 账号", "devbox 的「账号」栏：表头 · 一号一行（默认 · 5h · 7d · 按量）· 表下指路框", async () => go("machine:devbox", "machine:devbox#acct"), acctWorld()),
+  settings("settings-machine-acct", "设置 · 远端 · 账号", "devbox 的「账号」栏：表头 · 一号一行（默认 · 5h · 7d · 按量）· 表下「共用 MCP」一行", async () => go("machine:devbox", "machine:devbox#acct"), acctWorld()),
   settings("settings-acct-detail", "设置 · 账号 · 一行展开", "点 api 那一行：命令 · API key · 默认模型（仅 devbox · api）· 账号目录 · 删除", async () => {
     await go("machine:devbox", "machine:devbox#acct");
     await click('[data-account="api"] .acct-row');

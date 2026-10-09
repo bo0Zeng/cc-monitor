@@ -19,18 +19,6 @@ export interface BehaviorToggled {
 }
 
 /**
- * 设置窗账号页的指路框 → 主窗口（载荷 {@link OpenAccountPanel}）：主窗口打开当前标签页的账号面板并滚到那一节
- * （时间轴 · 默认轮换都住在那里，设置窗里不重画）。形状写在壳那一侧 `ui_contract.rs::events` 的注释里（窗到窗，壳不经手）。
- */
-export const OPEN_ACCOUNT_PANEL_EVENT = "open-account-panel";
-
-export interface OpenAccountPanel {
-  /** 哪台（本机 = `LOCAL_ORIGIN`）。 */
-  machine: string;
-  anchor: "timeline" | "default-rotation";
-}
-
-/**
  * 设置窗里一节要带目的地跳到别处（同一窗口内，DOM 冒泡事件；`detail` 是 `SettingsTarget` 那一形）：设置窗外框收到就落过去。
  * 例：账号页表下「共用 MCP：别名与配置文件」⇒ 同一台的「别名与配置文件」栏。
  */

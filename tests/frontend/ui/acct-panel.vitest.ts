@@ -31,7 +31,7 @@ vi.mock("../../../src/frontend/ui/tab-batch-run", () => ({ startSettings: vi.fn(
 vi.mock("../../../src/frontend/ui/remote-launch-run", () => ({ runRemoteAttach: (...a: unknown[]) => runRemoteAttach(...a) }));
 vi.mock("../../../src/frontend/ui/ipc/commands", () => ({ commands: { open_log_file: () => openLog() } }));
 
-import { openAccountPanel, openAccountPanelAt, toggleAccountPanel, type AcctPanelHost } from "../../../src/frontend/ui/acct-panel.ts";
+import { openAccountPanel, toggleAccountPanel, type AcctPanelHost } from "../../../src/frontend/ui/acct-panel.ts";
 import { appStore } from "../../../src/frontend/ui/app-store.ts";
 import type { QuotaRead } from "../../../src/frontend/ui/quota-lines.ts";
 import type { Rotation } from "../../../src/frontend/ui/generated/Rotation.ts";
@@ -45,6 +45,7 @@ const host: AcctPanelHost = {
   cwdOf: () => "/w",
   agentOf: () => "claude",
   openSettings: vi.fn(),
+  openRules: vi.fn(),
   openDefaultMenu: vi.fn(),
   defaultOf: () => "work",
   openResume: vi.fn(),
@@ -81,7 +82,7 @@ function rulesOf(rotation: Rotation, more: RuleRow[] = []): RulesRead {
     rev: 1,
     updatedAt: NOW,
     isDefault,
-    users: { live: 1, ended: 0, follow: 1, sids: ["s1"] },
+    users: { live: 1, ended: 0, follow: 1, sids: ["s1"], endedSids: [] },
     summary: "",
     explain: "",
     missing: [],
@@ -280,7 +281,7 @@ describe("账号面板 · 规则（来源下拉 · 用规则时只读 · 本会�
   const NIGHT: Rotation = { order: [{ start: true }, "team"], enabled: ["team"], when: "full", atLimit: "continue", wait: 40, cap: { team: { "*": [{ at: "17:00-02:00", n: 0 }] } } };
   const withNight = (rotation: Rotation = NIGHT): void => {
     const base = appStore.rotationRules.get().get("<local>")!;
-    const night = { ...base.rules[0], id: "r_night", name: "夜间", rotation, isDefault: false, summary: "起始 → team · 满", users: { live: 2, ended: 0, follow: 0, sids: [] } };
+    const night = { ...base.rules[0], id: "r_night", name: "夜间", rotation, isDefault: false, summary: "起始 → team · 满", users: { live: 2, ended: 0, follow: 0, sids: [], endedSids: [] } };
     appStore.rotationRules.set(new Map([["<local>", { ...base, rules: [...base.rules, night] }]]));
   };
   const btn = (text: string): HTMLButtonElement => [...panel().querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === text)!;
@@ -296,6 +297,18 @@ describe("账号面板 · 规则（来源下拉 · 用规则时只读 · 本会�
     night.click();
     await flush();
     expect(writeSessionRotation.mock.calls).toEqual([["<local>", ["s1"], { rule: "r_night" }]]);
+  });
+
+  it("［编辑规则…］⇒ 设置窗那台的「轮换」栏、带这条规则；下拉「管理规则…」⇒ 同一栏、不带规则（不再开账号栏）", async () => {
+    seed({ source: { rule: "r_night" } }, undefined);
+    withNight();
+    openAccountPanel("s1", "<local>", host);
+    btn(copyText("rot.src.edit")).click();
+    expect(host.openRules).toHaveBeenLastCalledWith("<local>", "r_night");
+    src().click();
+    items().find((i) => i.textContent === copyText("rot.src.manage"))!.click();
+    expect(host.openRules).toHaveBeenLastCalledWith("<local>");
+    expect(host.openSettings).not.toHaveBeenCalled();
   });
 
   it("★ 来源是规则：列表只读、封顶写成标签；上方一行规则名 ＋ 在用；［转为本会话］⇒ 写 detach、toast 带撤销", async () => {
@@ -465,59 +478,5 @@ describe("账号面板 · 重启切换", () => {
       await restart({ state: "failed", code, old: "kept" });
       expect(toasts().at(-1)!.textContent, code).toContain(copyText("acct.sw.failRestart", { reason: words }));
     }
-  });
-
-  describe("从设置窗那一行点进来：滚到那一节，零写入", () => {
-    const DEF: Rotation = { order: [{ start: true }, "team", "api"], enabled: ["team", "api"], when: { threshold: { n: 80 } }, atLimit: "continue", wait: 40, cap: { team: { "5h": [{ at: "01:00-20:00", n: 99 }] } } };
-    const seedDefault = (): void => {
-      appStore.rotationRules.set(new Map([["<local>", rulesOf(DEF)]]));
-    };
-    const anchored = (a: string): HTMLElement | null => panel().querySelector<HTMLElement>(`[data-acct-anchor="${a}"]`);
-    // jsdom 没有布局：滚动的桩就是观测口（「请求滚到谁」）。
-    const scrolled = vi.fn();
-    beforeEach(() => {
-      scrolled.mockReset();
-      Element.prototype.scrollIntoView = function (this: Element) {
-        scrolled(this);
-      } as Element["scrollIntoView"];
-    });
-
-    it("本会话用自己的轮换：分段照实停在「本会话」，下面摊开只读的默认轮换（顺序 · 触发 · 封顶）", async () => {
-      seed({}, { order: [{ start: true }, "team"], enabled: ["team"], when: "full", atLimit: "continue", wait: 40 });
-      seedDefault();
-      openAccountPanelAt("s1", "<local>", host, "default-rotation");
-      await flush();
-      const src = panel().querySelector<HTMLButtonElement>("[data-acct-src]");
-      expect(src?.dataset.value, "来源照实显示本会话").toBe("custom");
-      const box = anchored("default-rotation");
-      expect(box, "默认轮换那一块摊开了").not.toBeNull();
-      expect(scrolled, "滚到那一块").toHaveBeenLastCalledWith(box);
-      expect(box!.textContent).toContain(copyText("acct.prev.lead"));
-      expect([...box!.querySelectorAll("[data-acct-row]")].map((r) => r.getAttribute("data-acct-row"))).toEqual(["work", "team", "api"]);
-      expect(box!.querySelector('[data-acct-row="team"]')?.textContent).toContain(copyText("rot.capTag.slot", { at: "01:00-20:00", n: "99" }));
-      const radios = [...box!.querySelectorAll<HTMLInputElement>('input[type="radio"]')];
-      expect(radios.map((r) => [r.checked, r.disabled]), "触发照默认那份（≥N%）、全灰").toEqual([[false, true], [true, true]]);
-      expect([...box!.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')].every((b) => b.disabled), "勾选全灰").toBe(true);
-      const own = [...panel().querySelectorAll<HTMLInputElement>(`input[type="radio"][name="acct-trigger-s1-own"]`)];
-      expect(own.map((r) => r.checked), "本会话那组触发没被默认那组顶掉").toEqual([true, false]);
-      expect(writeSessionRotation, "经这条打开不发任何写命令").not.toHaveBeenCalled();
-    });
-
-    it("本会话跟随默认：直接滚到轮换块，不另摊一块；时间轴那一节展开", async () => {
-      seed({}, undefined);
-      seedDefault();
-      openAccountPanelAt("s1", "<local>", host, "default-rotation");
-      await flush();
-      expect(panel().querySelectorAll('[data-acct-anchor="default-rotation"]').length).toBe(1);
-      expect(anchored("default-rotation")?.tagName, "就是轮换那一块").toBe("SECTION");
-      expect(scrolled).toHaveBeenLastCalledWith(anchored("default-rotation"));
-      openAccountPanelAt("s1", "<local>", host, "timeline");
-      await flush();
-      expect(anchored("timeline")?.querySelector("[aria-expanded]")?.getAttribute("aria-expanded"), "时间轴展开").toBe("true");
-      expect(scrolled).toHaveBeenLastCalledWith(anchored("timeline"));
-      expect(writeSessionRotation).not.toHaveBeenCalled();
-      expect(switchHot).not.toHaveBeenCalled();
-      expect(switchRestart).not.toHaveBeenCalled();
-    });
   });
 });

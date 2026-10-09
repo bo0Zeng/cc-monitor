@@ -9,7 +9,7 @@
  * 四格都可空，认不出的值一律忽略（照常打开、停在上次那页）：
  * - `page`：`machines` · `data`（文件与数据）· `ext` · `appearance` · `general` · `logs`；给了 `machine` 时可省。
  * - `machine`：机器的 origin（本机 `"<local>"`，远端是它在列表里的名字）⇒ 那台的页。
- * - `tab`：机器页里的栏，`acct`（账号）· `config`（别名与配置文件）。
+ * - `tab`：机器页里的栏，`acct`（账号）· `rot`（轮换）· `config`（别名与配置文件）。
  * - `anchor`：页里带 `data-anchor="<值>"` 的那一节；滚进视野并高亮 1.5 秒。没给 ⇒ 高亮页头。
  *
  * 壳把它原样交给设置窗（已开着的收 `settings-target` 事件，新建的从初始化脚本里读）；

@@ -849,8 +849,16 @@ fn a_copy_gets_the_first_free_numbered_name() {
     assert_eq!(a["rule"]["name"], "夜间 2", "{a}");
     assert_eq!(a["rule"]["rotation"]["enabled"], json!(["b"]), "从那条拷");
     assert_eq!(copy(" 夜间 ")["rule"]["name"], "夜间 3");
-    assert_eq!(copy("夜间 副本")["rule"]["name"], "夜间 副本", "不重名就照原名");
-    assert_eq!(copy(&"长".repeat(24))["state"], "saved", "不重名的 24 字照存");
+    assert_eq!(
+        copy("夜间 副本")["rule"]["name"],
+        "夜间 副本",
+        "不重名就照原名"
+    );
+    assert_eq!(
+        copy(&"长".repeat(24))["state"],
+        "saved",
+        "不重名的 24 字照存"
+    );
     assert_eq!(
         errors_of(&copy(&"长".repeat(24))),
         [("name".into(), "tooLong".into())],

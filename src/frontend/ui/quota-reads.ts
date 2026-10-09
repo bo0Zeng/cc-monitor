@@ -1,5 +1,6 @@
 /**
- * 额度与轮换那几条命令的界面口：`quota-read` · `rotation-rules-read` · `rotation-session-read/-set` · `rotation-switch`
+ * 额度与轮换那几条命令的界面口：`quota-read` · `rotation-rules-read` · `rotation-rule-save/-rename/-delete` · `rotation-default-set` ·
+ * `rotation-session-read/-set` · `rotation-switch`
  * （会话所在那台；本机远端同一条 `chan.call(origin, …)`）。判定全在后端：这里只按形状收、交给画的那几处。
  */
 import { chan } from "../../comms/inward/chan";
@@ -55,7 +56,8 @@ export interface RuleRow {
   rev: number;
   updatedAt: number;
   isDefault: boolean;
-  users: { live: number; ended: number; follow: number; sids: string[] };
+  /** 在用：活着的 `sids` · 已结束的 `endedSids`（`follow` ＝ 活着的里跟随默认的几个）。 */
+  users: { live: number; ended: number; follow: number; sids: string[]; endedSids: string[] };
   summary: string;
   explain: string;
   missing: string[];
@@ -84,7 +86,7 @@ export function decodeRuleRow(v: unknown, what: string): RuleRow {
   if (typeof x.summary !== "string" || typeof x.explain !== "string") bad(`${what}.summary`);
   decodeRotation(x.rotation, `${what}.rotation`);
   const u = obj(x.users, `${what}.users`);
-  if (typeof u.live !== "number" || typeof u.ended !== "number") bad(`${what}.users`);
+  if (typeof u.live !== "number" || typeof u.ended !== "number" || !Array.isArray(u.sids) || !Array.isArray(u.endedSids)) bad(`${what}.users`);
   arr(x.missing, `${what}.missing`);
   return x as unknown as RuleRow;
 }
@@ -189,11 +191,36 @@ export function decodeRuleSaved(v: unknown): RuleSaved {
   return bad(`state ${JSON.stringify(o.state)}`);
 }
 
-/** 新建（不给 `id`）或整份改一条规则。 */
-export async function saveRule(origin: Origin, args: { id?: string; name: string; rotation?: Rotation; ifRev?: number; from?: string }): Promise<RuleSaved> {
+/** 新建（不给 `id`）或整份改一条规则；`dedupe` ⇒ 重名时后端在名后加 ` 2` · ` 3`（复制 · 复制到别的机器）。 */
+export async function saveRule(origin: Origin, args: { id?: string; name: string; rotation?: Rotation; ifRev?: number; from?: string; dedupe?: boolean }): Promise<RuleSaved> {
   const body = jsonBody(args);
   const budget = budgetWithin(READ_BUDGET_MS);
   return decodeRuleSaved(readJson(await chan.call(origin, "rotation-rule-save", body, budget)));
+}
+
+/** 改名（只动名字，带读到的版本）：回同 `saveRule`。 */
+export async function renameRule(origin: Origin, args: { id: string; name: string; ifRev: number }): Promise<RuleSaved> {
+  const body = jsonBody(args);
+  const budget = budgetWithin(READ_BUDGET_MS);
+  return decodeRuleSaved(readJson(await chan.call(origin, "rotation-rule-rename", body, budget)));
+}
+
+/** 删规则：用着它们的会话按 `then` 落（`custom` ＝ 照原样转为本会话 · `follow` ＝ 改为跟随默认）；回每个挪了的会话落到哪。 */
+export async function deleteRules(origin: Origin, ids: string[], then: "custom" | "follow"): Promise<Record<string, "custom" | "follow">> {
+  const body = jsonBody({ ids, then });
+  const budget = budgetWithin(READ_BUDGET_MS);
+  const moved = obj(obj(readJson(await chan.call(origin, "rotation-rule-delete", body, budget)), "reply").moved, "moved");
+  for (const [sid, v] of Object.entries(moved)) if (v !== "custom" && v !== "follow") bad(`moved.${sid}`);
+  return moved as Record<string, "custom" | "follow">;
+}
+
+/** 设为这台的默认：回默认那条的 id 与跟随默认、活着的会话有几个。 */
+export async function setDefaultRule(origin: Origin, rule: string): Promise<{ defaultRule: string; followers: number }> {
+  const body = jsonBody({ rule });
+  const budget = budgetWithin(READ_BUDGET_MS);
+  const o = obj(readJson(await chan.call(origin, "rotation-default-set", body, budget)), "reply");
+  if (typeof o.defaultRule !== "string" || typeof o.followers !== "number") bad("default-set reply");
+  return { defaultRule: o.defaultRule, followers: o.followers };
 }
 
 /** 一份草稿逐格校验（不写）：回逐格错（空 ＝ 没错）。 */

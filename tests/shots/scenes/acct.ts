@@ -98,7 +98,7 @@ function ruleRow(id: string, name: string, rotation: Record<string, unknown>, is
     rev: 3,
     updatedAt: now() - 3600,
     isDefault,
-    users: { live, ended: 2, follow: isDefault ? live : 0, sids: [] },
+    users: { live, ended: 2, follow: isDefault ? live : 0, sids: [], endedSids: [] },
     summary: isDefault ? "起始 → personal · 满" : "team → personal · ≥90% · 抢回",
     explain: "起始账号先用 · 被拒才换 · 不主动换回",
     missing: [],
@@ -287,34 +287,7 @@ const scrollPanelTo = async (text: string): Promise<void> => {
   await sleep(300);
 };
 
-/** 设置窗账号页那一行「默认轮换 / 时间轴」点进来（设置窗发 `open-account-panel`）。 */
-async function jumpFromSettings(machine: string, anchor: "timeline" | "default-rotation"): Promise<void> {
-  const { emit } = await import("@tauri-apps/api/event");
-  await emit("open-account-panel", { machine, anchor });
-  await sleep(900);
-}
-
-const DEFAULT_WITH_CAP = { order: [{ start: true }, "personal", "team"], enabled: ["personal", "team"], when: { threshold: { n: 85 } }, atLimit: "stop", wait: 40, cap: { team: { "5h": [{ at: "01:00-20:00", n: 99 }] } } };
-
 export const ACCT_SCENES: Scene[] = [
-  scene("acct-jump-default-custom", "从设置窗点「默认轮换」· 本会话用自己的", "分段照实停在「本会话」；轮换块下摊开只读的「默认轮换」（顺序 · 触发 · 封顶），顶上一行灰字；全程不写", async () => {
-    await ready();
-    await jumpFromSettings(LOCAL, "default-rotation");
-  }, world((aw) => {
-    aw.default = DEFAULT_WITH_CAP;
-  })),
-  scene("acct-jump-timeline", "从设置窗点「时间轴」", "本会话跟随默认：面板打开、时间轴那一节展开并滚到", async () => {
-    await ready();
-    await jumpFromSettings(LOCAL, "timeline");
-  }, world((aw) => {
-    aw.sessions[0] = { ...swappedSess(), follow: true };
-  })),
-  scene("acct-jump-elsewhere", "从设置窗点「默认轮换」· 当前标签页在别的机器", "当前在 devbox 的会话上、点的是本机 ⇒ 不替人切：提示说在哪、第二行那台排最前的会话 ＋［切过去］", async () => {
-    await ready();
-    await openTab(3);
-    await sleep(400);
-    await jumpFromSettings(LOCAL, "default-rotation");
-  }, world(() => {})),
   // ── 状态栏按钮各态（每张都带悬停卡）
   scene("acct-chip-swapped", "按钮 · 换过号 ＋ 悬停卡", "本会话 work 满了自动换到 personal：⇄ personal 5h 63%；悬停卡多 ⇄ 14:20 ← work 与 下一个 team", async () => {
     await ready();

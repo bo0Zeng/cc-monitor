@@ -1,5 +1,5 @@
 /**
- * 一台机器的页（本机与远端同一个形状）：卡头 ＋「账号 · 别名与配置文件」两栏。
+ * 一台机器的页（本机与远端同一个形状）：卡头 ＋「账号 · 轮换 · 别名与配置文件」三栏。
  *
  * 卡头：名字 · 状态点与状态词 · 一行地址与系统 · 掉线时的问题行；右上「连接设置」（只远端）与 ⋯。
  * 「连接设置」在卡头里就地展开；「这台上的 cc-monitor」是卡头里的一折（起停 · 退出时 · 恢复命令 · 输出）。
@@ -64,8 +64,8 @@ export interface MachinePageSpec {
 
 export interface MachinePage {
   element: HTMLElement;
-  /** 两栏的落点：账号 · 别名与配置文件。 */
-  slots: { acct: HTMLElement; config: HTMLElement };
+  /** 三栏的落点：账号 · 轮换 · 别名与配置文件。 */
+  slots: { acct: HTMLElement; rot: HTMLElement; config: HTMLElement };
   tabs: SettingsRouter;
   setTitle(name: string): void;
   setMeta(meta: string): void;
@@ -152,8 +152,10 @@ export function buildMachinePage(spec: MachinePageSpec): MachinePage {
 
   const tabs = new SettingsRouter({ landingId: `${spec.pageId}#acct`, orientation: "horizontal", hidePageHeader: true });
   const acct = document.createElement("div");
+  const rot = document.createElement("div");
   const config = document.createElement("div");
   tabs.addRoute({ id: `${spec.pageId}#acct`, title: copyText("machinePage.tab.accounts"), element: acct });
+  tabs.addRoute({ id: `${spec.pageId}#rot`, title: copyText("machinePage.tab.rot"), element: rot });
   tabs.addRoute({ id: `${spec.pageId}#config`, title: copyText("machinePage.tab.config"), element: config });
   root.appendChild(tabs.element);
   // 切到「别名与配置文件」那一栏 ⇒ 告诉那一栏里的每一块（第一次露出来才问那台，之后每次露出来重读）。
@@ -203,7 +205,7 @@ export function buildMachinePage(spec: MachinePageSpec): MachinePage {
 
   return {
     element: root,
-    slots: { acct, config },
+    slots: { acct, rot, config },
     tabs,
     setTitle(n) {
       name = n;
