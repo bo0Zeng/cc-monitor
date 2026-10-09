@@ -97,22 +97,60 @@ function styled(text: string, s: ScreenSpan): HTMLSpanElement {
   return el;
 }
 
-/** 把整屏画进 `pre`（替换原有内容）。 */
+/** 一行画成的节点（第二行起头上带那个换行）。 */
+function lineNodes(line: ScreenLine, i: number): Node[] {
+  const out: Node[] = [];
+  if (i > 0) out.push(document.createTextNode("\n"));
+  const chars = Array.from(line.text);
+  let at = 0;
+  for (const s of [...line.spans].sort((a, b) => a.from - b.from)) {
+    const from = Math.max(s.from, at);
+    const to = Math.min(s.to, chars.length);
+    if (to <= from) continue;
+    if (from > at) out.push(document.createTextNode(chars.slice(at, from).join("")));
+    out.push(styled(chars.slice(from, to).join(""), s));
+    at = to;
+  }
+  if (at < chars.length) out.push(document.createTextNode(chars.slice(at).join("")));
+  return out;
+}
+
+const lineKey = (line: ScreenLine): string => JSON.stringify([line.text, line.spans]);
+
+/** 每块画面上一次画成什么样（每行的键 ＋ 那一行的节点）：下一帧只换变了的行。 */
+const lastPainted = new WeakMap<HTMLElement, { keys: string[]; nodes: Node[][] }>();
+
+/**
+ * 把整屏画进 `pre`（替换原有内容）。实时画面一帧一帧来、多半只变几行（底下那一行在动）：
+ * 上一帧是这里画的、`pre` 里还是那一份 ⇒ 只换变了的行（没变的行节点原样留着，不整屏拆了重建）；别处动过 ⇒ 整屏重画。
+ */
 export function renderScreen(pre: HTMLElement, lines: readonly ScreenLine[]): void {
-  const out = document.createDocumentFragment();
-  lines.forEach((line, i) => {
-    if (i > 0) out.append("\n");
-    const chars = Array.from(line.text);
-    let at = 0;
-    for (const s of [...line.spans].sort((a, b) => a.from - b.from)) {
-      const from = Math.max(s.from, at);
-      const to = Math.min(s.to, chars.length);
-      if (to <= from) continue;
-      if (from > at) out.append(chars.slice(at, from).join(""));
-      out.append(styled(chars.slice(from, to).join(""), s));
-      at = to;
+  const keys = lines.map(lineKey);
+  const prev = lastPainted.get(pre);
+  const flat = prev ? prev.nodes.flat() : null;
+  const intact = flat !== null && flat.length === pre.childNodes.length && flat.every((n, i) => pre.childNodes[i] === n);
+  if (!prev || !intact) {
+    const nodes = lines.map(lineNodes);
+    pre.replaceChildren(...nodes.flat());
+    lastPainted.set(pre, { keys, nodes });
+    return;
+  }
+  // 每一行之后第一个节点（插新行的锚）：从后往前记
+  const nextAfter: (Node | null)[] = new Array(prev.nodes.length + 1).fill(null);
+  for (let i = prev.nodes.length - 1; i >= 0; i--) nextAfter[i] = prev.nodes[i + 1]?.[0] ?? nextAfter[i + 1];
+  const nodes: Node[][] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const old = prev.nodes[i];
+    if (old !== undefined && prev.keys[i] === keys[i]) {
+      nodes.push(old);
+      continue;
     }
-    if (at < chars.length) out.append(chars.slice(at).join(""));
-  });
-  pre.replaceChildren(out);
+    const fresh = lineNodes(lines[i], i);
+    const anchor = old?.[0] ?? (old !== undefined ? nextAfter[i] : null);
+    for (const n of fresh) pre.insertBefore(n, anchor);
+    for (const n of old ?? []) n.parentNode?.removeChild(n);
+    nodes.push(fresh);
+  }
+  for (let i = lines.length; i < prev.nodes.length; i++) for (const n of prev.nodes[i]) n.parentNode?.removeChild(n);
+  lastPainted.set(pre, { keys, nodes });
 }
