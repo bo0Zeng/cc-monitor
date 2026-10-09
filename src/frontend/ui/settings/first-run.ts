@@ -8,8 +8,7 @@ import { icon } from "../kit/icon";
 import { LOCAL_ORIGIN } from "../ipc/origin";
 import type { SettingsTarget } from "./open-settings";
 import { readReadiness, skipStart, type Readiness, type ReadinessStep } from "./readiness-reads";
-import { toast } from "../kit/toast";
-import { detailOf } from "../kit/detail";
+import { failToast } from "../kit/toast";
 
 export interface FirstRunHost {
   go(t: SettingsTarget): void;
@@ -54,7 +53,7 @@ export class FirstRun {
       onClick: () => {
         void skipStart().then(
           () => this.loadNow(),
-          (e: unknown) => toast(copyText("firstRun.head.skipFailed"), e instanceof Error ? e.message : String(e), { detail: detailOf(e), level: "error" }),
+          (e: unknown) => failToast(copyText("firstRun.head.skipFailed"), e, { level: "error" }),
         );
       },
     });

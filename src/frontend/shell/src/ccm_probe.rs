@@ -760,11 +760,15 @@ pub(crate) fn ours_by_bytes(p: &std::path::Path) -> bool {
 /// 同步命令跑在 IPC 派发线程上，那几秒整个界面没反应。本体进 `spawn_blocking`（形状照 `backend_control::backend_start`）。
 #[tauri::command]
 pub async fn local_ccm_entry_status(fresh: Option<bool>) -> Result<LocalCcmEntry, Said> {
-    Ok(
-        tauri::async_runtime::spawn_blocking(move || local_ccm_entry_now(fresh))
-            .await
-            .map_err(|e| e.to_string())?,
-    )
+    let r: Result<LocalCcmEntry, Said> = async move {
+        Ok(
+            tauri::async_runtime::spawn_blocking(move || local_ccm_entry_now(fresh))
+                .await
+                .map_err(|e| e.to_string())?,
+        )
+    }
+    .await;
+    r.map_err(|s| s.named("local_ccm_entry_status"))
 }
 
 /// [`local_ccm_entry_status`] 的本体（阻塞：读字节 · 起探针 · 等它）。

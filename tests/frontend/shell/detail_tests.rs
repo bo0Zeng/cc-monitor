@@ -127,3 +127,81 @@ fn a_backend_call_failure_keeps_the_detail_the_backend_wrote() {
         s.detail
     );
 }
+
+/// 已有「命令」那一项（自己写的 · 那台后端写的）⇒ 不补第二项；只有时刻 · 本机那两项 ⇒ 补上命令名。
+#[test]
+fn naming_a_shell_command_failure_adds_the_command_once() {
+    let cmd = |d: &str| {
+        d.lines()
+            .filter(|l| l.starts_with(&format!("{}：", label("detail.label.command"))))
+            .count()
+    };
+    let bare = Said::from("读取失败".to_string()).named("load_config");
+    assert_eq!(cmd(&bare.detail), 1, "{}", bare.detail);
+    assert!(
+        bare.detail
+            .ends_with(&format!("{}：load_config", label("detail.label.command"))),
+        "{}",
+        bare.detail
+    );
+    let own = Said::new("x", "deploy-plan", Some("raw")).named("deploy_remote_backend");
+    assert_eq!(cmd(&own.detail), 1, "{}", own.detail);
+    assert!(own.detail.contains("deploy-plan"), "{}", own.detail);
+}
+
+/// 每条返回 `Said` 的壳命令，最外层都经 `.named("<它自己的名字>")` 一次（复制详情里有「命令」那一项）。人群：生产源码里全部 `#[tauri::command]`。
+#[test]
+fn every_shell_command_names_itself_in_its_failure_detail() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let (mut seen, mut bad) = (0usize, Vec::new());
+    for (p, text) in guard_core::scan_tree_excluding(&root, &["rs"], &[]) {
+        let prod = guard_core::production_code(&text);
+        let starts: Vec<usize> = prod
+            .match_indices("#[tauri::command]")
+            .map(|(i, _)| i)
+            .collect();
+        for (k, at) in starts.iter().enumerate() {
+            let end = starts.get(k + 1).copied().unwrap_or(prod.len());
+            let chunk = &prod[*at..end];
+            let Some(f) = chunk.find("fn ") else { continue };
+            let name: String = chunk[f + 3..]
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect();
+            let sig_end = chunk[f..].find('{').map_or(chunk.len(), |b| f + b);
+            if !chunk[..sig_end].contains("Said>") {
+                continue;
+            }
+            seen += 1;
+            if !chunk.contains(&format!(".named(\"{name}\")")) {
+                bad.push(format!(
+                    "{}::{name}",
+                    p.file_name().unwrap().to_string_lossy()
+                ));
+            }
+        }
+    }
+    assert!(seen >= 30, "人群只扫到 {seen} 条 —— 取法坏了");
+    assert!(
+        bad.is_empty(),
+        "这几条壳命令失败时复制详情里没有命令名：{bad:?}"
+    );
+}
+
+/// 补上的「命令」排在原话前面（项名次序照 `Label::ALL`）。
+#[test]
+fn the_named_command_goes_before_the_raw_words() {
+    let s = Said::with_raw("x".into(), "boom").named("open_log_dir");
+    let lines: Vec<&str> = s.detail.lines().collect();
+    let at = |k: &str| {
+        lines
+            .iter()
+            .position(|l| l.starts_with(&format!("{}：", label(k))))
+            .unwrap()
+    };
+    assert!(
+        at("detail.label.command") < at("detail.label.raw"),
+        "{}",
+        s.detail
+    );
+}

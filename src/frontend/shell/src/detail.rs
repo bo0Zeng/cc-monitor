@@ -150,6 +150,61 @@ impl Said {
     }
 }
 
+impl Said {
+    /// 壳自己那一下没成（后台那条线程没回来 · 窗口建不出来这一类，用户做不了什么）：那一句「cc-monitor 程序出错」，原话进详情。
+    pub(crate) fn crashed(raw: impl std::fmt::Display) -> Said {
+        Said::with_raw(copy_text("rsShellCmd.self.crashed", &[]), raw)
+    }
+
+    /// 一句话 ＋ 下层原话（命令名由最外层 [`Said::named`] 补）。
+    pub(crate) fn with_raw(said: String, raw: impl std::fmt::Display) -> Said {
+        Said {
+            said,
+            detail: Detail::new()
+                .item(Label::At, now())
+                .item(Label::Local, local_line())
+                .item(Label::Raw, raw.to_string())
+                .render(),
+        }
+    }
+
+    /// 壳命令的失败补上命令名（复制详情的「命令」那一项）：详情里已经有一项「命令」（自己写的 · 后端写的）⇒ 原样。
+    /// 每条壳命令的最外层经这里一次（`#[tauri::command]` 那几十条，判据扫着）。
+    pub(crate) fn named(self, command: &str) -> Said {
+        let label = format!("{}：", Label::Command.said());
+        if self.detail.lines().any(|l| l.starts_with(&label)) {
+            return self;
+        }
+        // 「命令」排在本机之后、其余几项之前（[`Label::ALL`] 的次序）：插在第一条后排项名的前面；没有后排项 ⇒ 接在末尾。
+        let later: Vec<String> = [
+            Label::Path,
+            Label::Target,
+            Label::Hop,
+            Label::Code,
+            Label::Raw,
+        ]
+        .iter()
+        .map(|l| format!("{}：", l.said()))
+        .collect();
+        let lines: Vec<&str> = self.detail.lines().collect();
+        let detail = match lines
+            .iter()
+            .position(|l| later.iter().any(|p| l.starts_with(p)))
+        {
+            Some(at) => {
+                let mut v: Vec<String> = lines.iter().map(|l| l.to_string()).collect();
+                v.insert(at, format!("{label}{command}"));
+                v.join("\n")
+            }
+            None => append(&self.detail, Label::Command, command),
+        };
+        Said {
+            detail,
+            said: self.said,
+        }
+    }
+}
+
 /// 壳命令里那句话（`?` 与 `.into()` 经这里）：详情带时刻与本机。
 impl From<String> for Said {
     fn from(said: String) -> Said {

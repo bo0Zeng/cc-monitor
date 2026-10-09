@@ -1069,7 +1069,8 @@ fn now_stamp() -> String {
 
 /// 一趟 `call` 没成的复制详情：对端拒了、那台写了详情 ⇒ 原样；别的（通道没走通 · 对端不认 · 本侧）⇒ 窗口进程写
 /// 时刻 · 机器（没发出去标「未连上」）· 命令 · 断在 · 码（那几项的取法住通信层 `HopFacts`，与 monitor 壳同一份）。
-pub fn detail_of(origin: &str, cmd: &str, e: &comms_inward::chan::wire::CallError) -> String {
+pub fn detail_of(origin: &Origin, cmd: &str, e: &comms_inward::chan::wire::CallError) -> String {
+    let origin = origin.0.as_str();
     use comms_inward::chan::wire::{CallError, PeerFault};
     use copy_core::detail::{Detail, Label};
     if let CallError::Peer {
@@ -1155,7 +1156,7 @@ pub async fn ask_coded_cancellable(
         .map_err(|e| Failed {
             code: refused_code(&e),
             said: said(cmd, &e),
-            detail: detail_of(&origin.0, cmd, &e),
+            detail: detail_of(origin, cmd, &e),
         })?;
     let v: serde_json::Value = serde_json::from_slice(&body.0).map_err(|e| {
         Failed::here(

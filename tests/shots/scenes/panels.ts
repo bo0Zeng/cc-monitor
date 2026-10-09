@@ -554,6 +554,26 @@ export const PANEL_SCENES: Scene[] = [
       return w;
     },
   ),
+  panel(
+    "panel-settings-open-failed",
+    "设置窗口没开起来",
+    "壳命令失败：toast 标题是壳写好的那一句（哪件事 ＋ 原因词），不再在界面那句后面接原文；［复制详情］里是时刻 · 本机 · 命令 · 原话",
+    async () => {
+      await mainReady(ALL_TABS);
+      await click(".settings-trigger");
+      await byText("[role=alert]", /打开设置窗口失败/);
+      await sleep(300);
+    },
+    () => {
+      const w = defaultWorld();
+      w.commands.open_settings_window = () =>
+        Promise.reject({
+          said: "打开设置窗口失败 · 程序出错",
+          detail: "时刻：2026-10-08 16:05:12 +08:00\n本机：cc-monitor 4.1.5 (p13-shots) · Linux x86_64\n命令：open_settings_window\n原话：a webview with label `settings` already exists",
+        });
+      return w;
+    },
+  ),
   panel("panel-first-run", "首次打开", "第一次开：命令面板入口高亮、tab 栏默认宽度", async () => {
     await mainReady(ALL_TABS);
   }),

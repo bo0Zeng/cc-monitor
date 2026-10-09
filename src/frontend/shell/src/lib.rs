@@ -1088,11 +1088,15 @@ fn reconcile_remote_streams() -> backend_control::Reconciled {
 /// 机器表改了（增删改 · 某台的「连接这台」）：当场对齐，不要重启 cc-monitor。回这一趟起了 / 停了 / 重起了哪几台。
 #[tauri::command]
 async fn remote_reconcile() -> Result<backend_control::Reconciled, Said> {
-    Ok(
-        tauri::async_runtime::spawn_blocking(reconcile_remote_streams)
-            .await
-            .map_err(|e| e.to_string())?,
-    )
+    let r: Result<backend_control::Reconciled, Said> = async move {
+        Ok(
+            tauri::async_runtime::spawn_blocking(reconcile_remote_streams)
+                .await
+                .map_err(|e| e.to_string())?,
+        )
+    }
+    .await;
+    r.map_err(|s| s.named("remote_reconcile"))
 }
 
 /// 机器表里**要连的**那几台（某台 `"connect": false` ⇒ 不在里面）。
@@ -1349,10 +1353,13 @@ fn forget_session(
     session_id: String,
     replay: tauri::State<'_, Arc<event_replay::EventReplay>>,
 ) -> Result<(), Said> {
-    replay.forget(&session_id);
-    // 它的会话成品也忘掉（F5 不再重放一个用户关掉了的已结束 tab）。
-    session_book::book().write().forget(&session_id);
-    Ok(())
+    let r: Result<(), Said> = (move || -> Result<(), Said> {
+        replay.forget(&session_id);
+        // 它的会话成品也忘掉（F5 不再重放一个用户关掉了的已结束 tab）。
+        session_book::book().write().forget(&session_id);
+        Ok(())
+    })();
+    r.map_err(|s| s.named("forget_session"))
 }
 
 /// issue #10：把某 session 在一个独立 WebviewWindow（`viewer-<sid>`）里打开，
@@ -1383,62 +1390,66 @@ async fn open_session_in_new_window(
     y: Option<f64>,
     run: Option<String>,
 ) -> Result<(), Said> {
-    use tauri::Manager;
-    // 独立窗口自己订 `session-lines/<sid>`（`subscribe(origin, kind)`：origin 是唯一寻址键）
-    //   ⇒ 窗口要知道这个会话在哪台机器上；随 URL 交过去（百分号编码：本机那个 `<local>` 有尖括号）。
-    origin.route("open_session_in_new_window")?;
-    let origin_q = pct_encode(origin.as_wire_str());
-    let run = run.filter(|r| !r.is_empty());
-    let label = match &run {
-        Some(r) => agent_window_label(&session_id, r),
-        None => format!("viewer-{session_id}"),
-    };
-    if let Some(w) = app.get_webview_window(&label) {
-        let _ = w.unminimize();
-        let _ = w.show();
-        let _ = w.set_focus();
-        let _ = w.request_user_attention(Some(tauri::UserAttentionType::Informational));
-        return Ok(());
-    }
-    let run_q = run
-        .as_deref()
-        .map(|r| format!("&run={}", pct_encode(r)))
-        .unwrap_or_default();
-    let url = tauri::WebviewUrl::App(
-        format!("viewer.html?viewer={session_id}&origin={origin_q}{run_q}").into(),
-    );
-    let mut builder = tauri::WebviewWindowBuilder::new(&app, &label, url)
-        .title(if title.is_empty() {
-            "cc-monitor"
-        } else {
-            &title
-        })
-        .inner_size(900.0, 720.0)
-        .min_inner_size(480.0, 360.0)
-        // Batch7-F23B：与主窗口 backgroundColor 一致——合成间隙露底为主题深色
-        // 而非 WebView2 默认白（tauri.conf.json 主窗口同款 #2b2a27）
-        .background_color(tauri::window::Color(0x2b, 0x2a, 0x27, 0xff));
-    // 落点定位：仅当 x/y 都给出时按逻辑坐标摆放（Tauri 2 builder 取 LogicalPosition）。
-    let at = match (x, y) {
-        (Some(x), Some(y)) => Some((x, y)),
-        _ if run.is_some() => {
-            let open = app
-                .webview_windows()
-                .keys()
-                .filter(|l| l.starts_with(AGENT_WINDOW_PREFIX))
-                .count();
-            agent_window_spot(&window, open)
+    let r: Result<(), Said> = async move {
+        use tauri::Manager;
+        // 独立窗口自己订 `session-lines/<sid>`（`subscribe(origin, kind)`：origin 是唯一寻址键）
+        //   ⇒ 窗口要知道这个会话在哪台机器上；随 URL 交过去（百分号编码：本机那个 `<local>` 有尖括号）。
+        origin.route("open_session_in_new_window")?;
+        let origin_q = pct_encode(origin.as_wire_str());
+        let run = run.filter(|r| !r.is_empty());
+        let label = match &run {
+            Some(r) => agent_window_label(&session_id, r),
+            None => format!("viewer-{session_id}"),
+        };
+        if let Some(w) = app.get_webview_window(&label) {
+            let _ = w.unminimize();
+            let _ = w.show();
+            let _ = w.set_focus();
+            let _ = w.request_user_attention(Some(tauri::UserAttentionType::Informational));
+            return Ok(());
         }
-        _ => None,
-    };
-    if let Some((x, y)) = at {
-        builder = builder.position(x, y);
+        let run_q = run
+            .as_deref()
+            .map(|r| format!("&run={}", pct_encode(r)))
+            .unwrap_or_default();
+        let url = tauri::WebviewUrl::App(
+            format!("viewer.html?viewer={session_id}&origin={origin_q}{run_q}").into(),
+        );
+        let mut builder = tauri::WebviewWindowBuilder::new(&app, &label, url)
+            .title(if title.is_empty() {
+                "cc-monitor"
+            } else {
+                &title
+            })
+            .inner_size(900.0, 720.0)
+            .min_inner_size(480.0, 360.0)
+            // Batch7-F23B：与主窗口 backgroundColor 一致——合成间隙露底为主题深色
+            // 而非 WebView2 默认白（tauri.conf.json 主窗口同款 #2b2a27）
+            .background_color(tauri::window::Color(0x2b, 0x2a, 0x27, 0xff));
+        // 落点定位：仅当 x/y 都给出时按逻辑坐标摆放（Tauri 2 builder 取 LogicalPosition）。
+        let at = match (x, y) {
+            (Some(x), Some(y)) => Some((x, y)),
+            _ if run.is_some() => {
+                let open = app
+                    .webview_windows()
+                    .keys()
+                    .filter(|l| l.starts_with(AGENT_WINDOW_PREFIX))
+                    .count();
+                agent_window_spot(&window, open)
+            }
+            _ => None,
+        };
+        if let Some((x, y)) = at {
+            builder = builder.position(x, y);
+        }
+        let w = builder
+            .build()
+            .map_err(|e| Said::with_raw(copy_text("rsShellCmd.viewer.openFailed", &[]), e))?;
+        fit_window_to_work_area(&w);
+        Ok(())
     }
-    let w = builder
-        .build()
-        .map_err(|e| format!("create viewer window failed: {e}"))?;
-    fit_window_to_work_area(&w);
-    Ok(())
+    .await;
+    r.map_err(|s| s.named("open_session_in_new_window"))
 }
 
 /// agent 窗口名的前缀（`viewer-agent-<sid>-<运行>`：落在查看窗那一组窗口名里，同一套权限）。
@@ -1487,35 +1498,40 @@ fn agent_window_spot(from: &tauri::WebviewWindow, open: usize) -> Option<(f64, f
 /// **必须 `async`**（同步命令建窗会死锁）。默认 960×740、最小 640×480，夹进工作区正中。
 #[tauri::command]
 async fn open_settings_window(app: tauri::AppHandle, target: Option<String>) -> Result<(), Said> {
-    use tauri::Manager;
-    let label = SETTINGS_WINDOW_LABEL;
-    if let Some(w) = app.get_webview_window(label) {
-        let _ = w.unminimize();
-        let _ = w.show();
-        let _ = w.set_focus();
-        if let Some(t) = target {
-            let to = tauri::EventTarget::webview_window(label);
-            if let Err(e) = app.emit_to(to, "settings-target", t) {
-                tracing::warn!("settings target not delivered: {e}");
+    let r: Result<(), Said> = async move {
+        use tauri::Manager;
+        let label = SETTINGS_WINDOW_LABEL;
+        if let Some(w) = app.get_webview_window(label) {
+            let _ = w.unminimize();
+            let _ = w.show();
+            let _ = w.set_focus();
+            if let Some(t) = target {
+                let to = tauri::EventTarget::webview_window(label);
+                if let Err(e) = app.emit_to(to, "settings-target", t) {
+                    tracing::warn!("settings target not delivered: {e}");
+                }
             }
+            return Ok(());
         }
-        return Ok(());
+        let url = tauri::WebviewUrl::App("settings.html".into());
+        let mut builder = tauri::WebviewWindowBuilder::new(&app, label, url)
+            .title(&copy_text("rsLib.settings.windowTitle", &[]))
+            .inner_size(960.0, 740.0)
+            .min_inner_size(640.0, 480.0)
+            .background_color(tauri::window::Color(0x2b, 0x2a, 0x27, 0xff));
+        if let Some(t) = target {
+            let lit = serde_json::to_string(&t).map_err(Said::crashed)?;
+            builder =
+                builder.initialization_script(format!("window.__CCM_SETTINGS_TARGET__ = {lit};"));
+        }
+        let w = builder
+            .build()
+            .map_err(|e| Said::with_raw(copy_text("rsShellCmd.settings.openFailed", &[]), e))?;
+        center_window_in_work_area(&w);
+        Ok(())
     }
-    let url = tauri::WebviewUrl::App("settings.html".into());
-    let mut builder = tauri::WebviewWindowBuilder::new(&app, label, url)
-        .title(&copy_text("rsLib.settings.windowTitle", &[]))
-        .inner_size(960.0, 740.0)
-        .min_inner_size(640.0, 480.0)
-        .background_color(tauri::window::Color(0x2b, 0x2a, 0x27, 0xff));
-    if let Some(t) = target {
-        let lit = serde_json::to_string(&t).map_err(|e| format!("settings target: {e}"))?;
-        builder = builder.initialization_script(format!("window.__CCM_SETTINGS_TARGET__ = {lit};"));
-    }
-    let w = builder
-        .build()
-        .map_err(|e| format!("create settings window failed: {e}"))?;
-    center_window_in_work_area(&w);
-    Ok(())
+    .await;
+    r.map_err(|s| s.named("open_settings_window"))
 }
 
 /// URL 查询串里的一格：非「字母数字 `-` `_` `.` `~`」一律 `%XX`（RFC 3986 unreserved 之外全编）。
@@ -1538,7 +1554,9 @@ fn pct_encode(s: &str) -> String {
 /// 两个平台臂（Windows 的 AttachThreadInput 那套 · 别处 Tauri 自己的 `set_focus`）住 `platform/window.rs::bring_to_front`，头注随之。
 #[tauri::command]
 async fn bring_monitor_to_front(app: tauri::AppHandle) -> Result<(), Said> {
-    Ok(crate::platform::window::bring_to_front(app).await?)
+    let r: Result<(), Said> =
+        async move { Ok(crate::platform::window::bring_to_front(app).await?) }.await;
+    r.map_err(|s| s.named("bring_monitor_to_front"))
 }
 
 // `list_session_activity`〔散文墓碑〕· `list_active_sessions`〔散文墓碑〕两条命令退役：本机活会话的骨架与初始灯
@@ -1555,18 +1573,22 @@ async fn bring_terminal_to_front(
     session_id: String,
     cache: tauri::State<'_, Arc<bind::SidHwndCache>>,
 ) -> Result<bind::FrontOutcome, Said> {
-    let cache = cache.inner().clone();
-    Ok(tokio::task::spawn_blocking(move || {
-        let Some(binding) = cache.lookup(&session_id) else {
-            return bind::FrontOutcome::Unbound;
-        };
-        match bind::verify_binding(&binding) {
-            Ok(()) => bind::activate(binding.hwnd),
-            Err(o) => o,
-        }
-    })
-    .await
-    .map_err(|e| format!("spawn_blocking join error: {e}"))?)
+    let r: Result<bind::FrontOutcome, Said> = async move {
+        let cache = cache.inner().clone();
+        Ok(tokio::task::spawn_blocking(move || {
+            let Some(binding) = cache.lookup(&session_id) else {
+                return bind::FrontOutcome::Unbound;
+            };
+            match bind::verify_binding(&binding) {
+                Ok(()) => bind::activate(binding.hwnd),
+                Err(o) => o,
+            }
+        })
+        .await
+        .map_err(Said::crashed)?)
+    }
+    .await;
+    r.map_err(|s| s.named("bring_terminal_to_front"))
 }
 
 /// 拉对应**远端** Tab 的本地终端窗口，两问各一次（界面按顺序调）：
@@ -1581,17 +1603,21 @@ async fn bring_remote_terminal_to_front(
     chain: Option<Vec<bind::ChainLink>>,
     bind_state: tauri::State<'_, Arc<bind::BindRegistry>>,
 ) -> Result<Option<bind::FrontOutcome>, Said> {
-    let bind = bind_state.inner().clone();
-    Ok(tokio::task::spawn_blocking(move || {
-        if let Some(t) = terminals.filter(|t| !t.is_empty()) {
-            return bind::bring_labeled_window(&t, &bind);
-        }
-        chain
-            .filter(|c| !c.is_empty())
-            .map(|c| bind::bring_chain_window(&c, &bind))
-    })
-    .await
-    .map_err(|e| format!("spawn_blocking join error: {e}"))?)
+    let r: Result<Option<bind::FrontOutcome>, Said> = async move {
+        let bind = bind_state.inner().clone();
+        Ok(tokio::task::spawn_blocking(move || {
+            if let Some(t) = terminals.filter(|t| !t.is_empty()) {
+                return bind::bring_labeled_window(&t, &bind);
+            }
+            chain
+                .filter(|c| !c.is_empty())
+                .map(|c| bind::bring_chain_window(&c, &bind))
+        })
+        .await
+        .map_err(Said::crashed)?)
+    }
+    .await;
+    r.map_err(|s| s.named("bring_remote_terminal_to_front"))
 }
 
 // === v1.7：PowerShell profile cc 集成 IPC ===
@@ -1615,15 +1641,24 @@ fn frontend_perf_log(lines: String) {
 /// 读 auto-launch.json：UI 显示当前 toggle 状态 + 记录的 exe 路径。
 #[tauri::command]
 fn cc_get_auto_launch() -> Result<auto_launch::AutoLaunchConfig, Said> {
-    let dir = auto_launch::data_dir().ok_or("no data dir")?;
-    Ok(auto_launch::get_config(&dir))
+    let r: Result<auto_launch::AutoLaunchConfig, Said> =
+        (move || -> Result<auto_launch::AutoLaunchConfig, Said> {
+            let dir = auto_launch::data_dir()
+                .ok_or_else(|| copy_text("rsShellCmd.autoLaunch.readNoDir", &[]))?;
+            Ok(auto_launch::get_config(&dir))
+        })();
+    r.map_err(|s| s.named("cc_get_auto_launch"))
 }
 
 /// UI toggle 改变时调：写 auto_launch_enabled。
 #[tauri::command]
 fn cc_set_auto_launch(enabled: bool) -> Result<(), Said> {
-    let dir = auto_launch::data_dir().ok_or("no data dir")?;
-    Ok(auto_launch::set_enabled(&dir, enabled)?)
+    let r: Result<(), Said> = (move || -> Result<(), Said> {
+        let dir = auto_launch::data_dir()
+            .ok_or_else(|| copy_text("rsShellCmd.autoLaunch.writeNoDir", &[]))?;
+        Ok(auto_launch::set_enabled(&dir, enabled)?)
+    })();
+    r.map_err(|s| s.named("cc_set_auto_launch"))
 }
 
 // ===== 🔴 `K-R135`（`R85` / `R87` / `R88`）：用户级 PATH 那一格 =====
@@ -1644,32 +1679,44 @@ fn cc_set_auto_launch(enabled: bool) -> Result<(), Said> {
 /// 不许把「问不出来」静默成「没装」。
 #[tauri::command]
 async fn ccm_user_path_status() -> Result<profile_installer::UserPathStatus, Said> {
-    Ok(
-        tokio::task::spawn_blocking(profile_installer::user_path_status)
-            .await
-            .map_err(|e| format!("spawn_blocking join error: {e}"))?,
-    )
+    let r: Result<profile_installer::UserPathStatus, Said> = async move {
+        Ok(
+            tokio::task::spawn_blocking(profile_installer::user_path_status)
+                .await
+                .map_err(Said::crashed)?,
+        )
+    }
+    .await;
+    r.map_err(|s| s.named("ccm_user_path_status"))
 }
 
 /// `KR135D1` ②：**一个按钮加**。跑的就是界面上显示给用户看的那段字节
 /// （`render_user_path_setup_command`）—— 点按钮与自己复制去跑**逐字同一份**。
 #[tauri::command]
 async fn ccm_user_path_add() -> Result<(), Said> {
-    Ok(
-        tokio::task::spawn_blocking(profile_installer::user_path_add)
-            .await
-            .map_err(|e| format!("spawn_blocking join error: {e}"))??,
-    )
+    let r: Result<(), Said> = async move {
+        Ok(
+            tokio::task::spawn_blocking(profile_installer::user_path_add)
+                .await
+                .map_err(Said::crashed)??,
+        )
+    }
+    .await;
+    r.map_err(|s| s.named("ccm_user_path_add"))
 }
 
 /// `KR135D1` ③：**一个按钮撤**。**只摘自己那一格**（整格比，不碰用户 PATH 里别的东西）。
 #[tauri::command]
 async fn ccm_user_path_remove() -> Result<(), Said> {
-    Ok(
-        tokio::task::spawn_blocking(profile_installer::user_path_remove)
-            .await
-            .map_err(|e| format!("spawn_blocking join error: {e}"))??,
-    )
+    let r: Result<(), Said> = async move {
+        Ok(
+            tokio::task::spawn_blocking(profile_installer::user_path_remove)
+                .await
+                .map_err(Said::crashed)??,
+        )
+    }
+    .await;
+    r.map_err(|s| s.named("ccm_user_path_remove"))
 }
 
 // ===== v2.0.0 (issue #4): 诊断 / log IPC =====
@@ -1679,7 +1726,9 @@ async fn ccm_user_path_remove() -> Result<(), Said> {
 fn get_diagnostics_config(
     state: tauri::State<'_, Arc<logging::LoggingState>>,
 ) -> Result<logging::DiagnosticsConfig, Said> {
-    Ok(state.config())
+    let r: Result<logging::DiagnosticsConfig, Said> =
+        (move || -> Result<logging::DiagnosticsConfig, Said> { Ok(state.config()) })();
+    r.map_err(|s| s.named("get_diagnostics_config"))
 }
 
 /// 应用新 diagnostics 配置。日志级别 + error_toast 立即生效；
@@ -1689,7 +1738,9 @@ fn set_diagnostics_config(
     cfg: logging::DiagnosticsConfig,
     state: tauri::State<'_, Arc<logging::LoggingState>>,
 ) -> Result<logging::RestartHint, Said> {
-    Ok(state.update_config(cfg)?)
+    let r: Result<logging::RestartHint, Said> =
+        (move || -> Result<logging::RestartHint, Said> { Ok(state.update_config(cfg)?) })();
+    r.map_err(|s| s.named("set_diagnostics_config"))
 }
 
 /// 返回 log 目录 + 当前 log 文件 + 全部 .log 文件列表（path / size / mtime）。
@@ -1698,34 +1749,52 @@ fn set_diagnostics_config(
 fn get_log_file_info(
     state: tauri::State<'_, Arc<logging::LoggingState>>,
 ) -> Result<logging::LogFileInfo, Said> {
-    Ok(state.log_file_info())
+    let r: Result<logging::LogFileInfo, Said> =
+        (move || -> Result<logging::LogFileInfo, Said> { Ok(state.log_file_info()) })();
+    r.map_err(|s| s.named("get_log_file_info"))
 }
 
 /// 用系统默认编辑器打开当前 log 文件（rolling::daily 写入的 mtime 最新那个）。
 /// 失败常见原因：log_enabled=false 还没生成过 log 文件 → Err 让前端 alert 提示。
 #[tauri::command]
 async fn open_log_file(state: tauri::State<'_, Arc<logging::LoggingState>>) -> Result<(), Said> {
-    let path = state
-        .current_log_file()
-        .ok_or_else(|| copy_text("rsLib.log.none", &[]))?;
-    let path_str = path.to_string_lossy().into_owned();
-    Ok(tokio::task::spawn_blocking(move || open_with_os(&path_str))
-        .await
-        .map_err(|e| format!("spawn_blocking join error: {e}"))??)
+    let r: Result<(), Said> = async move {
+        let path = state
+            .current_log_file()
+            .ok_or_else(|| copy_text("rsLib.log.none", &[]))?;
+        let path_str = path.to_string_lossy().into_owned();
+        Ok(tokio::task::spawn_blocking(move || open_with_os(&path_str))
+            .await
+            .map_err(Said::crashed)??)
+    }
+    .await;
+    r.map_err(|s| s.named("open_log_file"))
 }
 
 /// 用资源管理器打开 log 目录。
 #[tauri::command]
 async fn open_log_dir(state: tauri::State<'_, Arc<logging::LoggingState>>) -> Result<(), Said> {
-    let dir = state.log_dir();
-    // 目录可能还不存在（log_enabled=false 时不创建）
-    if !dir.exists() {
-        std::fs::create_dir_all(&dir).map_err(|e| format!("create log dir: {e}"))?;
+    let r: Result<(), Said> = async move {
+        let dir = state.log_dir();
+        // 目录可能还不存在（log_enabled=false 时不创建）
+        if !dir.exists() {
+            std::fs::create_dir_all(&dir).map_err(|e| {
+                Said::with_raw(
+                    copy_text(
+                        "rsShellCmd.logDir.createFailed",
+                        &[("why", &copy_core::reason::io_reason(e.kind()))],
+                    ),
+                    format!("{}\n{e}", dir.display()),
+                )
+            })?;
+        }
+        let dir_str = dir.to_string_lossy().into_owned();
+        Ok(tokio::task::spawn_blocking(move || open_with_os(&dir_str))
+            .await
+            .map_err(Said::crashed)??)
     }
-    let dir_str = dir.to_string_lossy().into_owned();
-    Ok(tokio::task::spawn_blocking(move || open_with_os(&dir_str))
-        .await
-        .map_err(|e| format!("spawn_blocking join error: {e}"))??)
+    .await;
+    r.map_err(|s| s.named("open_log_dir"))
 }
 
 /// 跨平台调系统默认 opener。Windows 用 `cmd /C start ""` 兜 path 中的空格。

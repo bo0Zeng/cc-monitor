@@ -184,3 +184,21 @@ describe("撤销提示条（I11）", () => {
     expect(kit.recordDetail(b)).toBe("t-b\ndb-1");
   });
 });
+
+describe("失败 toast 只有一口（条带 §5.3）", () => {
+  it("生产代码里 toast 的灰字不许是那次失败的原文（String(e) · e.message · saidOfControl(e)）—— 那一形走 failToast", async () => {
+    const { productionTsFiles } = await import("../../../test-support/production-sources");
+    const bad: string[] = [];
+    let fails = 0;
+    for (const { file, text } of productionTsFiles("src/frontend/ui")) {
+      if (file.endsWith("kit/toast.ts")) continue;
+      fails += (text.match(/\bfailToast\(/g) ?? []).length;
+      for (const m of text.matchAll(/(?<![\w$.])toast\(([^;]*?)\)\s*;/gs)) {
+        const second = m[1].split(/,(?![^(]*\))/)[1] ?? "";
+        if (/String\((e|err|error)\)|\b(e|err|error)\.message\b|saidOfControl\(/.test(second)) bad.push(`${file}: ${m[0].slice(0, 80)}`);
+      }
+    }
+    expect(fails, "人群是空的 —— 取法坏了").toBeGreaterThan(30);
+    expect(bad).toEqual([]);
+  });
+});

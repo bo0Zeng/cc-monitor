@@ -203,13 +203,17 @@ const CC_SPAWN_NEEDS: &[&str] = &["detach", "tmux-size", "tmux-base", "bus-regis
 /// ⚠ **只警告、不拦**：装本身在本机后端做完，这句话接在成功文案后面显示。
 #[tauri::command]
 pub async fn cc_bus_ccm_precheck() -> Result<Option<String>, Said> {
-    let warning = tokio::task::spawn_blocking(local_ccm_too_old_warning)
-        .await
-        .map_err(|e| format!("spawn_blocking join error: {e}"))?;
-    if let Some(w) = &warning {
-        tracing::warn!("{w}");
+    let r: Result<Option<String>, Said> = async move {
+        let warning = tokio::task::spawn_blocking(local_ccm_too_old_warning)
+            .await
+            .map_err(Said::crashed)?;
+        if let Some(w) = &warning {
+            tracing::warn!("{w}");
+        }
+        Ok(warning)
     }
-    Ok(warning)
+    .await;
+    r.map_err(|s| s.named("cc_bus_ccm_precheck"))
 }
 
 #[cfg(test)]

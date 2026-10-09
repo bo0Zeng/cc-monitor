@@ -1224,7 +1224,10 @@ fn a_failure_carries_the_detail_the_peer_wrote_or_the_window_writes_its_own() {
             ),
         },
     };
-    assert_eq!(detail_of("devbox", "files-commit-upload", &refused), wrote);
+    assert_eq!(
+        detail_of(&Origin("devbox".into()), "files-commit-upload", &refused),
+        wrote
+    );
     let hop = CallError::Hop {
         at: HopId {
             idx: 1,
@@ -1233,7 +1236,7 @@ fn a_failure_carries_the_detail_the_peer_wrote_or_the_window_writes_its_own() {
         reach: Reach::NotSent,
         why: HopFault::Unreachable,
     };
-    let d = detail_of("devbox", "files-ls", &hop);
+    let d = detail_of(&Origin("devbox".into()), "files-ls", &hop);
     for want in [
         format!(
             "{}：devbox（{}）",

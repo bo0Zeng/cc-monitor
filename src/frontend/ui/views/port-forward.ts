@@ -4,8 +4,7 @@
  * 转发账住本机常驻后端：起 / 停 / 列经通道直接问它（`../port-forward-reads.ts`），
  * 转发走本机后端池里到那台的 SSH 连接（复用连接大脑）。
  */
-import { toast } from "../kit/toast";
-import { detailOf } from "../kit/detail";
+import { toast, failToast } from "../kit/toast";
 import { hostKey, readRemoteConfig, type RemoteHostConfig } from "../remote-config";
 
 // `connCount`：累计连接数，按**累计连接数**量纲算 2^53-1 条（每秒 1000 连接要 28.5 万年）⇒ `number` 够用。
@@ -128,7 +127,7 @@ class PortForwardPanel {
     try {
       forwards = await listForwards();
     } catch (e) {
-      toast(copyText("portForward.reload.listFailed"), String(e), { detail: detailOf(e) });
+      failToast(copyText("portForward.reload.listFailed"), e);
     }
     this.listEl.innerHTML = "";
     if (forwards.length === 0) {
@@ -186,7 +185,7 @@ class PortForwardPanel {
       this.rportInput.value = "";
       await this.reload();
     } catch (e) {
-      toast(copyText("portForward.onStart.failed"), String(e), { detail: detailOf(e) });
+      failToast(copyText("portForward.onStart.failed"), e);
     }
   }
 
@@ -195,7 +194,7 @@ class PortForwardPanel {
       await stopForward(id);
       await this.reload();
     } catch (e) {
-      toast(copyText("portForward.onStop.failed"), String(e), { detail: detailOf(e) });
+      failToast(copyText("portForward.onStop.failed"), e);
     }
   }
 }

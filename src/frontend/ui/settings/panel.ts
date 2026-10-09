@@ -41,7 +41,7 @@ import { claudeDirProblem } from "./claude-dir-check";
 import { createUnknownKeysBar, rerenderUnknownKeys } from "./unknown-keys-notice"; // 🔴 P12：未知键要出声
 import { setCurrentMachine } from "./machine-context";
 import { LOCAL_ORIGIN, isLocalOrigin } from "../ipc/origin";
-import { toast } from "../kit/toast";
+import { failToast } from "../kit/toast";
 import { toggleSwitch } from "../kit/switch";
 
 type SwitchHandle = ReturnType<typeof toggleSwitch>;
@@ -631,7 +631,7 @@ export class SettingsPanel {
       if (fix === "update") await this.remoteSection?.updateMachine(pageId);
       await this.backendSection?.reconnect(origin);
     } catch (e) {
-      toast(copyText("machineState.fix.failed"), e instanceof Error ? e.message : String(e), { detail: detailOf(e) });
+      failToast(copyText("machineState.fix.failed"), e);
     }
   }
 

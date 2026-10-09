@@ -39,10 +39,9 @@ import { patchConfig, type ConfigEdit } from "./config";
 import type { Tab } from "./tab-model";
 import { ENDED, UNSEEN, isLive } from "./tab-session-state";
 import { copyText } from "./copy-table";
-import { toast } from "./kit/toast";
+import { toast, failToast } from "./kit/toast";
 import type { TabStore } from "./tab-store";
 import type { Origin } from "./ipc/origin";
-import { detailOf } from "./kit/detail";
 
 /**
  * 集合到上界、这一下没做成 ⇒ 说一句（「一条都不许静默忽略」）。
@@ -342,7 +341,7 @@ export class TabBarPrefs {
       await patchConfig(edits);
     } catch (e) {
       console.warn("[tab-collections] 落盘失败:", e);
-      toast(copyText("tabBar.persist.collectionsFailed"), String(e), { detail: detailOf(e) });
+      failToast(copyText("tabBar.persist.collectionsFailed"), e);
     }
   }
 
@@ -497,7 +496,7 @@ export class TabBarPrefs {
       await setPinned(next);
     } catch (e) {
       console.warn("[tab-bar] 固定落盘失败:", e);
-      toast(copyText("tabBar.persist.pinnedFailed"), String(e), { detail: detailOf(e) }); // 同 `persistCollections`
+      failToast(copyText("tabBar.persist.pinnedFailed"), e); // 同 `persistCollections`
     }
   }
 
@@ -555,7 +554,7 @@ export class TabBarPrefs {
       await setTabOrder(this.store.savedOrder);
     } catch (e) {
       console.warn("[tab-bar] 顺序落盘失败:", e);
-      toast(copyText("tabBar.persist.orderFailed"), String(e), { detail: detailOf(e) }); // 同 `persistCollections`
+      failToast(copyText("tabBar.persist.orderFailed"), e); // 同 `persistCollections`
     }
   }
 

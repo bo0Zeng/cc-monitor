@@ -450,9 +450,13 @@ fn detect_webview_data_dir(handle: &AppHandle) -> Option<DataPathInfo> {
 /// async + spawn_blocking：probe 涉及若干次 stat / read_dir，量小但仍是阻塞 IO。
 #[tauri::command]
 pub async fn get_data_paths(handle: AppHandle) -> Result<DataPathsResponse, Said> {
-    tokio::task::spawn_blocking(move || Ok(collect(&handle)))
-        .await
-        .map_err(|e| format!("spawn_blocking join error: {e}"))?
+    let r: Result<DataPathsResponse, Said> = async move {
+        tokio::task::spawn_blocking(move || Ok(collect(&handle)))
+            .await
+            .map_err(Said::crashed)?
+    }
+    .await;
+    r.map_err(|s| s.named("get_data_paths"))
 }
 
 #[cfg(test)]

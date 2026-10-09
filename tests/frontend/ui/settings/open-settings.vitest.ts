@@ -8,7 +8,7 @@ const { cmd, toast } = vi.hoisted(() => ({
 vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
   commands: { open_settings_window: (t: string | null) => cmd.open(t) },
 }));
-vi.mock("../../../../src/frontend/ui/kit/toast", () => ({ toast: toast }));
+vi.mock("../../../../src/frontend/ui/kit/toast", () => ({ toast: toast, failToast: toast }));
 
 import { openSettingsWindow, parseSettingsTarget } from "../../../../src/frontend/ui/settings/open-settings";
 import { readFileSync } from "node:fs";
@@ -80,7 +80,7 @@ describe("ST1 点设置有反馈", () => {
   it("本模块不 import 设置面板（主窗的模块图里不该有它）", () => {
     const src = readFileSync("src/frontend/ui/settings/open-settings.ts", "utf8");
     const imports = [...src.matchAll(/^import .* from "([^"]+)";/gm)].map((m) => m[1]).sort();
-    // + 取文口（失败 toast 那句进了文案表）· 那条 toast 的［复制详情］—— 都不是设置面板。
-    expect(imports).toEqual(["../copy-table", "../ipc/commands", "../kit/detail", "../kit/toast"]);
+    // + 取文口（失败 toast 那句进了文案表）· 失败 toast（复制详情由它取）—— 都不是设置面板。
+    expect(imports).toEqual(["../copy-table", "../ipc/commands", "../kit/toast"]);
   });
 });

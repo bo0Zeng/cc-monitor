@@ -14,7 +14,7 @@ import { openPath } from "@tauri-apps/plugin-opener";
 import { copyText } from "../copy-table";
 import { homeShort } from "../kit/path";
 import { select as kitSelect } from "../kit/select";
-import { toast, undoToast } from "../kit/toast";
+import { toast, undoToast, failToast } from "../kit/toast";
 import { confirmDialog, type ConfirmFn } from "../kit/dialog";
 import type { Origin } from "../generated/Origin";
 import type { ClashWins } from "../alias-reads";
@@ -731,7 +731,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
     try {
       await openPath(book.path);
     } catch (e) {
-      toast(copyText("profilesPage.open.failed"), copyText("profilesPage.open.failedBody", { e: String(e), path: book.path }), { detail: detailOf(e) });
+      failToast(copyText("profilesPage.open.failed"), e, { fact: book.path });
     }
   };
 

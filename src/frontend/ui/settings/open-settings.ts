@@ -18,9 +18,8 @@
  * ⚠ 本模块是给主窗用的：不许 import 设置面板。
  */
 import { commands } from "../ipc/commands";
-import { toast } from "../kit/toast";
+import { failToast } from "../kit/toast";
 import { copyText } from "../copy-table";
-import { detailOf } from "../kit/detail";
 
 export interface SettingsTarget {
   page?: string;
@@ -64,7 +63,7 @@ export function openSettingsWindow(trigger?: HTMLButtonElement | null, target?: 
   inFlight = commands
     .open_settings_window(target ? JSON.stringify(target) : null)
     .catch((e: unknown) => {
-      toast(copyText("openSettings.openSettingsWindow.failed"), String(e), { detail: detailOf(e), level: "error" });
+      failToast(copyText("openSettings.openSettingsWindow.failed"), e, { level: "error" });
     })
     .finally(() => {
       inFlight = null;

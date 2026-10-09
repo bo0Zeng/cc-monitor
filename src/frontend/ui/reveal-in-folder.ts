@@ -5,14 +5,13 @@
  * 只是打开文件管理器，不改盘；失败出声（原文进 toast）。
  */
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
-import { toast } from "./kit/toast";
+import { failToast } from "./kit/toast";
 import { copyText } from "./copy-table";
-import { detailOf } from "./kit/detail";
 
 export async function revealInFolder(path: string): Promise<void> {
   try {
     await revealItemInDir(path);
   } catch (e) {
-    toast(copyText("revealInFolder.reveal.failed"), String(e), { detail: detailOf(e) });
+    failToast(copyText("revealInFolder.reveal.failed"), e);
   }
 }

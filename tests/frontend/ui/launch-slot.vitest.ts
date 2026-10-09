@@ -6,9 +6,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@tauri-apps/api/event", () => ({ emit: vi.fn(() => Promise.resolve()), listen: vi.fn(() => Promise.resolve(() => {})) }));
-vi.mock("../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn() }));
+vi.mock("../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn(), failToast: vi.fn() }));
 
-import { toast } from "../../../src/frontend/ui/kit/toast";
+import { failToast, toast } from "../../../src/frontend/ui/kit/toast";
 import { __pendingCountForTests, __resetArrivalsForTests, noteLive } from "../../../src/frontend/ui/launch-arrival";
 import { LaunchSlots, SLOT_MISS_MS, type SlotActs, type SlotScreen, type SlotSpec } from "../../../src/frontend/ui/launch-slot";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
@@ -68,6 +68,7 @@ beforeEach(() => {
     confirm: vi.fn(async () => true),
   };
   vi.mocked(toast).mockClear();
+  vi.mocked(failToast).mockClear();
 });
 
 afterEach(() => {
@@ -246,8 +247,8 @@ describe("报错卡上的几颗", () => {
     acts.kill.mockRejectedValueOnce(new Error("不在名单"));
     click("kill");
     await vi.advanceTimersByTimeAsync(0);
-    // 那次失败没带复制详情（不是出错那一端写的）⇒ 详情是空的，toast 不出按钮。
-    expect(vi.mocked(toast)).toHaveBeenCalledWith(copyText("tabSessionActions.kill.failed", { title: "billing-2" }), "不在名单", { detail: "" });
+    // 那次失败交给失败 toast（带详情 ⇒ 换成那一句；这次没带 ⇒ 标题留界面那句、无按钮，原文进控制台）。
+    expect(vi.mocked(failToast).mock.calls.map((c) => [c[0], String(c[1])])).toEqual([[copyText("tabSessionActions.kill.failed", { title: "billing-2" }), "Error: 不在名单"]]);
     expect(rows()).toHaveLength(1);
   });
 

@@ -175,29 +175,33 @@ pub async fn open_file_window(
     reveal_file: Option<String>,
     theme: std::collections::BTreeMap<String, String>,
 ) -> Result<usize, Said> {
-    use tauri::{Emitter, Manager};
-    // 窗口的样子：主界面此刻 `:root` 上的那一套（含用户改过的）解成数。解不出来就不开（不替它补一套）。
-    let theme = filewin_contract::Theme::from_tokens(&theme)?;
-    // 主窗所在那台显示器的工作区（窗口进程开出来第一拍夹进它）。
-    let work_area = app
-        .get_webview_window(crate::MAIN_WINDOW_LABEL)
-        .as_ref()
-        .and_then(crate::work_area_of);
-    // 开出来之后又不体面地退了 ⇒ 经远端健康那条通道出声（同一个 toast 出口）。
-    let origin = cfg.origin_label();
-    let late: super::proc::LateExit = Box::new(move |f| {
-        let said = process_said(f);
-        let payload = crate::ui_contract::RemoteHealthPayload {
-            origin,
-            kind: FILEWIN_EXIT_KIND.to_string(),
-            message: said.said,
-            detail: said.detail,
-        };
-        if let Err(e) = app.emit(crate::ui_contract::events::REMOTE_HEALTH, payload) {
-            tracing::warn!("文件窗口没了那一条没有发出去：{e}");
-        }
-    });
-    Ok(open_with(cfg, path, reveal_file, work_area, theme, late).await?)
+    let r: Result<usize, Said> = async move {
+        use tauri::{Emitter, Manager};
+        // 窗口的样子：主界面此刻 `:root` 上的那一套（含用户改过的）解成数。解不出来就不开（不替它补一套）。
+        let theme = filewin_contract::Theme::from_tokens(&theme)?;
+        // 主窗所在那台显示器的工作区（窗口进程开出来第一拍夹进它）。
+        let work_area = app
+            .get_webview_window(crate::MAIN_WINDOW_LABEL)
+            .as_ref()
+            .and_then(crate::work_area_of);
+        // 开出来之后又不体面地退了 ⇒ 经远端健康那条通道出声（同一个 toast 出口）。
+        let origin = cfg.origin_label();
+        let late: super::proc::LateExit = Box::new(move |f| {
+            let said = process_said(f);
+            let payload = crate::ui_contract::RemoteHealthPayload {
+                origin,
+                kind: FILEWIN_EXIT_KIND.to_string(),
+                message: said.said,
+                detail: said.detail,
+            };
+            if let Err(e) = app.emit(crate::ui_contract::events::REMOTE_HEALTH, payload) {
+                tracing::warn!("文件窗口没了那一条没有发出去：{e}");
+            }
+        });
+        Ok(open_with(cfg, path, reveal_file, work_area, theme, late).await?)
+    }
+    .await;
+    r.map_err(|s| s.named("open_file_window"))
 }
 
 /// 文件窗口开出来之后又退了那一形在 `remote-health` 上的 `kind`（界面 `remote-health.ts` 按它选标题）。

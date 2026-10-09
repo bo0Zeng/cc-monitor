@@ -435,65 +435,75 @@ pub fn bytes_carry_build_stamp(bytes: &[u8], build_id: &str) -> bool {
 /// 落点就是 `~/.cc-monitor/bin/ccm`（后端本体，没有 shim）⇒ 部署后端就是放 `ccm`，没有第二样要放。
 #[tauri::command]
 pub async fn deploy_remote_backend(cfg: RemoteConfig) -> Result<String, Said> {
-    // 与自动部署同一份计划（本机常驻后端判）、同一个取字节口、同一句拒绝的话。
-    let plan = ask_plan(&cfg).await?;
-    let bin = planned_binary(&plan)?;
-    // 经本机常驻后端那条 `files` 链路。
-    let fs = RemoteFs::open(&cfg).await?;
-    let backend_msg = match plan.action {
-        // 手动点也不降级：出路与「它不说自己是谁」那一格同一句（先卸载再部署 = 明确授权覆盖）。
-        DeployAction::Keep { why, .. } => copy_text("rsSftp.deploy.keptNotOlder", &[("why", &why)]),
-        DeployAction::Skip => copy_text(
-            "rsSftp.deploy.upToDate",
-            &[
-                ("buildId", &bin.build_id.to_string()),
-                ("machine", &bin.machine.to_string()),
-                ("path", &LANDING_SHOWN.to_string()),
-            ],
-        ),
-        DeployAction::Deploy(reason) => {
-            crate::machine_state::deploying(&cfg.origin_label(), false);
-            fs.mkdirs(remote_parent(LANDING_REL)).await?;
-            upload_verified(&fs, LANDING_REL, bin.bytes, 0o700).await?;
-            tracing::info!(
-                "远端 [{}] 手动部署后端完成：{}",
-                cfg.origin_label(),
-                bin.build_id
-            );
-            copy_text(
-                "rsSftp.deploy.done",
+    let r: Result<String, Said> = async move {
+        // 与自动部署同一份计划（本机常驻后端判）、同一个取字节口、同一句拒绝的话。
+        let plan = ask_plan(&cfg).await?;
+        let bin = planned_binary(&plan)?;
+        // 经本机常驻后端那条 `files` 链路。
+        let fs = RemoteFs::open(&cfg).await?;
+        let backend_msg = match plan.action {
+            // 手动点也不降级：出路与「它不说自己是谁」那一格同一句（先卸载再部署 = 明确授权覆盖）。
+            DeployAction::Keep { why, .. } => {
+                copy_text("rsSftp.deploy.keptNotOlder", &[("why", &why)])
+            }
+            DeployAction::Skip => copy_text(
+                "rsSftp.deploy.upToDate",
                 &[
                     ("buildId", &bin.build_id.to_string()),
                     ("machine", &bin.machine.to_string()),
                     ("path", &LANDING_SHOWN.to_string()),
-                    ("reason", &reason.to_string()),
                 ],
-            )
-        }
-    };
-    // 上传残件（后端判的哪几份）。
-    sweep_leftovers(&plan.leftovers, &fs, &cfg.origin_label()).await;
-    Ok(backend_msg)
+            ),
+            DeployAction::Deploy(reason) => {
+                crate::machine_state::deploying(&cfg.origin_label(), false);
+                fs.mkdirs(remote_parent(LANDING_REL)).await?;
+                upload_verified(&fs, LANDING_REL, bin.bytes, 0o700).await?;
+                tracing::info!(
+                    "远端 [{}] 手动部署后端完成：{}",
+                    cfg.origin_label(),
+                    bin.build_id
+                );
+                copy_text(
+                    "rsSftp.deploy.done",
+                    &[
+                        ("buildId", &bin.build_id.to_string()),
+                        ("machine", &bin.machine.to_string()),
+                        ("path", &LANDING_SHOWN.to_string()),
+                        ("reason", &reason.to_string()),
+                    ],
+                )
+            }
+        };
+        // 上传残件（后端判的哪几份）。
+        sweep_leftovers(&plan.leftovers, &fs, &cfg.origin_label()).await;
+        Ok(backend_msg)
+    }
+    .await;
+    r.map_err(|s| s.named("deploy_remote_backend"))
 }
 
 /// 卸载远端后端（设置面板「卸载后端」按钮）：删落点那个文件（它就是 `ccm`，卸后端就是卸 `ccm`）。
 /// 只读铁律豁免（SS-G）：用户显式触发的删。注意：若该机器仍启用，自动部署会在下次连接重新装回——提示见返回消息。
 #[tauri::command]
 pub async fn uninstall_remote_backend(cfg: RemoteConfig) -> Result<String, Said> {
-    // 经本机常驻后端那条 `files` 链路删（写只许 `~/.cc-monitor/bin/` 与暂存区 —— 围栏拒 ⇒ 原话带回）。
-    let fs = RemoteFs::open(&cfg).await?;
-    let removed = fs.remove(LANDING_REL).await?;
-    tracing::info!(
-        "远端 [{}] 卸载后端：{LANDING_SHOWN} {}",
-        cfg.origin_label(),
-        if removed { "已删" } else { "本来就不在" }
-    );
-    let path = LANDING_SHOWN.to_string();
-    if removed {
-        Ok(copy_text("rsSftp.uninstall.done", &[("path", &path)]))
-    } else {
-        Ok(copy_text("rsSftp.uninstall.absent", &[("path", &path)]))
+    let r: Result<String, Said> = async move {
+        // 经本机常驻后端那条 `files` 链路删（写只许 `~/.cc-monitor/bin/` 与暂存区 —— 围栏拒 ⇒ 原话带回）。
+        let fs = RemoteFs::open(&cfg).await?;
+        let removed = fs.remove(LANDING_REL).await?;
+        tracing::info!(
+            "远端 [{}] 卸载后端：{LANDING_SHOWN} {}",
+            cfg.origin_label(),
+            if removed { "已删" } else { "本来就不在" }
+        );
+        let path = LANDING_SHOWN.to_string();
+        if removed {
+            Ok(copy_text("rsSftp.uninstall.done", &[("path", &path)]))
+        } else {
+            Ok(copy_text("rsSftp.uninstall.absent", &[("path", &path)]))
+        }
     }
+    .await;
+    r.map_err(|s| s.named("uninstall_remote_backend"))
 }
 
 // ============================================================================

@@ -5,15 +5,13 @@
  * 单个只多一步：起好之后（或本来就在跑）开一个终端接进去。能不能起、起到哪个 tmux 会话都是那台判的，这里只照它答的说。
  * 要的号选不了 ⇒ 不起、给显式选择（点了 ⇒ `again(那个号)`）。
  */
-import { toast } from "./kit/toast";
+import { toast, failToast } from "./kit/toast";
 import { copyText } from "./copy-table";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
 import { refuseUnavailableAccount, type AccountAsk } from "./launch-account";
 import { runRemoteAttach } from "./remote-launch-run";
-import { saidOfControl } from "./tmux-control";
 import { offerResyncRetry } from "./resync";
 import { callStart, sayReply, type Reply, type StartItem } from "./tab-batch-run";
-import { detailOf } from "./kit/detail";
 
 /** 起哪一个：哪台 · 哪一家 · 哪个会话 · 在哪个目录。 */
 export interface TmuxResumeTarget {
@@ -38,7 +36,7 @@ export async function startInTmuxThenAttach(t: TmuxResumeTarget, account: Accoun
   try {
     [r] = await callStart(origin, "tmux", [item], t.agent);
   } catch (e) {
-    toast(copyText("remoteLaunchRun.inPlace.notRun"), saidOfControl(e), { detail: detailOf(e) });
+    failToast(copyText("remoteLaunchRun.inPlace.notRun"), e);
     return false;
   }
   if (r.unavailable) {

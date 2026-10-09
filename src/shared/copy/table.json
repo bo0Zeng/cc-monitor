@@ -5723,12 +5723,6 @@
       "args": [],
       "limited": ["git", "ccm"]
     },
-    "machineAliases.openRc.failedBody": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{e}\n路径 · {path}",
-      "args": ["e", "path"]
-    },
     "machineAliases.openRc.failed": {
       "kind": "error",
       "role": "报错",
@@ -6863,12 +6857,6 @@
       "role": "报错",
       "zh": "打不开配置文件",
       "args": []
-    },
-    "profilesPage.open.failedBody": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{path} · {e}",
-      "args": ["e", "path"]
     },
     "profilesPage.read.failed": {
       "kind": "error",
@@ -13376,8 +13364,8 @@
     "history.delete.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "删除失败 · {label} · {why}",
-      "args": ["label", "why"]
+      "zh": "删除失败 · {label}",
+      "args": ["label"]
     },
     "history.delete.title": {
       "kind": "title",
@@ -16307,14 +16295,14 @@
     "history.star.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "标星失败 · {why}",
-      "args": ["why"]
+      "zh": "标星失败",
+      "args": []
     },
     "history.rename.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "改标题失败 · {why}",
-      "args": ["why"]
+      "zh": "改标题失败",
+      "args": []
     },
     "history.rename.title": {
       "kind": "title",
@@ -16331,8 +16319,8 @@
     "history.hide.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "隐藏失败 · {why}",
-      "args": ["why"]
+      "zh": "隐藏失败",
+      "args": []
     },
     "beCcBus.parse.badSender": {
       "kind": "error",
@@ -27009,6 +26997,60 @@
       "kind": "error",
       "role": "原因格",
       "zh": "路径不合规",
+      "args": []
+    },
+    "rsShellCmd.self.crashed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "cc-monitor 程序出错",
+      "args": []
+    },
+    "rsShellCmd.autoLaunch.readNoDir": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "读取开机启动设置失败 · 无数据目录",
+      "args": []
+    },
+    "rsShellCmd.autoLaunch.writeNoDir": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "保存开机启动设置失败 · 无数据目录",
+      "args": []
+    },
+    "rsShellCmd.viewer.openFailed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "打开会话窗口失败 · 程序出错",
+      "args": []
+    },
+    "rsShellCmd.settings.openFailed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "打开设置窗口失败 · 程序出错",
+      "args": []
+    },
+    "rsShellCmd.logDir.createFailed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "打开日志目录失败 · {why}",
+      "args": ["why"]
+    },
+    "rsShellCmd.config.readFailed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "读取设置失败 · {why}",
+      "args": ["why"]
+    },
+    "rsShellCmd.config.unparsable": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "读取设置失败 · 内容无法解析",
+      "args": []
+    },
+    "rsShellCmd.config.noHome": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "读取设置失败 · 无主目录",
       "args": []
     }
   }
