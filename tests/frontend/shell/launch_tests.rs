@@ -1200,20 +1200,16 @@ fn without_a_terminal_exit_the_window_open_says_so_instead_of_running_headless()
     assert!(!ran_headless, "找不到终端时那一行被无窗口直起了");
 }
 
-/// Linux 上的系统通知：发出去之后那条会话总线连接要一直留着，等这条通知被关掉（`on_close`）才放 ——
-/// GNOME 见发信人的总线名没了、又认得出是哪个有窗口的程序，就当场把通知关掉（L2 · 10-08 真窗口现打）。
-/// 发通知只有一个家（`platform/notify.rs::show`），壳里别处不许再经插件发。
+/// Linux 上的系统通知：全进程一条会话总线长连接（`platform/notify.rs::linux::POOL`），不按条新开 ——
+/// GNOME 见发信人的总线名没了、又认得出是哪个有窗口的程序，就当场把通知收掉（L2 · 10-08 真窗口现打）；
+/// 「发 N 条只连一次」的行为由 `platform/notify_tests.rs` 拿假总线钉。发通知只有一个家，壳里别处不许再经插件发。
 #[test]
-fn linux_notifications_keep_their_bus_connection_until_closed() {
+fn linux_notifications_share_one_long_lived_bus_connection() {
     const NOTIFY: &str = include_str!("../../../src/frontend/shell/src/platform/notify.rs");
     let prod = guard_core::production_code(NOTIFY);
     assert!(
-        guard_core::find_pinned(&prod, ".on_close(").is_ok(),
-        "Linux 那一臂没有等到通知关掉才放连接"
-    );
-    assert!(
-        guard_core::find_pinned(&prod, "let handle = notify_rust::Notification::new()").is_ok(),
-        "Linux 那一臂不再直调 notify-rust 拿 handle"
+        guard_core::find_pinned(&prod, "linux::POOL.send(app, title, body)").is_ok(),
+        "Linux 那一臂不再经全进程那一条连接发"
     );
     const LIB: &str = include_str!("../../../src/frontend/shell/src/lib.rs");
     assert!(

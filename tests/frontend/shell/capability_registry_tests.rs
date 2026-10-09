@@ -11,7 +11,11 @@ const ALLOWED: &[(&str, &str)] = &[
              ⚠ 它只能**打开**，不能读写内容",
     ),
     ("dialog:default", "文件选择框（SFTP 上传/下载选本地路径）"),
-    // `notification:default` 摘了：界面不再经插件的 JS 发通知，改走壳命令 `notify_desktop`（`platform/notify.rs`）。
+    (
+        "notification:default",
+        "notification 插件往每个页面里注入一层 `window.Notification`，加载时就问一次权限 —— 不给这一格每个窗口一开就是一条 \
+             「not allowed」。界面自己不经插件的 JS 发通知（走壳命令 `notify_desktop`，`platform/notify.rs`；Windows 那一臂在壳里用插件）",
+    ),
     ("core:window:allow-minimize", "最小化"),
     ("core:window:allow-set-title", "窗口标题写「cc-monitor · 需要你 N」（任务栏、Alt+Tab 里看得见谁在等你）"),
     ("core:window:allow-set-fullscreen", "全屏"),
