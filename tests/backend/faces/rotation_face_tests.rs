@@ -1305,6 +1305,30 @@ fn the_timeline_view_looks_back_and_says_who_runs_now() {
         json!({"account": "b", "w": "5h", "pct": 63, "toTrigger": 27}),
         "{got}"
     );
+    // 刻度：24h 一格 1h（按这台本地钟对齐），每 3h 一个轴上的字（`HH:MM`）；悬停 / 键盘按格走，每格带写好的字。
+    let grid = got["grid"].as_array().expect("grid");
+    assert!((24..=25).contains(&grid.len()), "{got}"); // 此刻正落在整点上 ⇒ 视窗两头都是格
+    assert!(grid
+        .windows(2)
+        .all(|w| w[1]["at"].as_u64().unwrap() - w[0]["at"].as_u64().unwrap() == 3600));
+    assert!(grid.iter().all(|g| g["atText"].is_string()));
+    let labels: Vec<&str> = grid.iter().filter_map(|g| g["label"].as_str()).collect();
+    assert!((8..=9).contains(&labels.len()), "{got}");
+    assert!(
+        labels.iter().all(|l| l.len() == 5 && l.ends_with(":00")),
+        "{labels:?}"
+    );
+    let week = answer_plan_with(&ctx, &json!({"sid": "s-1", "view": "7d"}), t).expect("ok");
+    let wl: Vec<&str> = week["grid"]
+        .as_array()
+        .expect("grid")
+        .iter()
+        .filter_map(|g| g["label"].as_str())
+        .collect();
+    assert!(
+        (6..=7).contains(&wl.len()) && wl.iter().all(|l| l.len() == 5 && l.as_bytes()[2] == b'-'),
+        "{wl:?}"
+    );
     let lane_b = got["lanes"]
         .as_array()
         .expect("lanes")

@@ -931,6 +931,9 @@ pub(crate) fn answer_plan_with(ctx: &Ctx, args: &Value, now: u64) -> Answer {
         "lanes": lanes,
         "effective": effective,
     });
+    if let Some((before, _)) = view {
+        out["grid"] = grid_of(before, from, until, tz_min * 60, &text);
+    }
     if view.is_some() && !machine {
         out["head"] = head_of(ctx, &rot, &agent, &view_obj, now, &text);
     }
@@ -941,6 +944,41 @@ pub(crate) fn answer_plan_with(ctx: &Ctx, args: &Value, now: u64) -> Answer {
             .collect();
     }
     Ok(out)
+}
+
+/// 时间轴的刻度：按这台本地钟对齐的格（6h 视窗一格 15m · 24h 1h · 7d 6h；悬停与键盘按格走，每格带写好的字），
+/// 轴上写字的那几格另带 `label`（6h 每小时 · 24h 每 3h：`HH:MM`；7d 每天零点：`MM-DD`）。
+fn grid_of(before: u64, from: u64, until: u64, off: i64, text: &dyn Fn(u64) -> String) -> Value {
+    let (step, major): (i64, i64) = match before {
+        b if b <= 2 * 3600 => (900, 3600),
+        b if b <= 6 * 3600 => (3600, 3 * 3600),
+        _ => (6 * 3600, 86_400),
+    };
+    let (from, until) = (
+        i64::try_from(from).unwrap_or(i64::MAX),
+        i64::try_from(until).unwrap_or(i64::MAX),
+    );
+    let mut t = (from + off).div_euclid(step) * step - off;
+    if t < from {
+        t += step;
+    }
+    let mut out = Vec::new();
+    while t <= until {
+        let at = u64::try_from(t).unwrap_or(0);
+        let mut g = json!({"at": at, "atText": text(at)});
+        if (t + off).rem_euclid(major) == 0 {
+            let local = (t + off).rem_euclid(86_400);
+            g["label"] = json!(if major == 86_400 {
+                let (_, m, d) = crate::common::time::civil_from_days((t + off).div_euclid(86_400));
+                format!("{m:02}-{d:02}")
+            } else {
+                format!("{:02}:{:02}", local / 3600, (local % 3600) / 60)
+            });
+        }
+        out.push(g);
+        t += step;
+    }
+    Value::Array(out)
 }
 
 /// 时间轴顶行：池里此刻都不能用（被拒 · 过封顶 · 时段停用）或预览说停发 ⇒ `{blocked: {account, at, w?}}`（最早回来的那个号、几点、哪个窗口重置）；
