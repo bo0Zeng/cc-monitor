@@ -10,7 +10,7 @@ use crate::http1;
 /// 判据用的那一把（形状合法、一眼认得出是测试值；与后端 `key_tests::TEST_KEY` 同值）。
 const TEST_KEY: &str = "7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57";
 
-/// 判据用的那把只许直通的钥匙（与后端 `key_tests::TEST_PASS_KEY` 同值）。
+/// 判据用的那把只许直通的钥匙（门只比对、不派生；派生在后端 `relay/key.rs::pass_of`）。
 const TEST_PASS_KEY: &str = "7a557a557a557a557a557a557a557a557a557a557a557a557a557a557a557a55";
 
 impl Key {

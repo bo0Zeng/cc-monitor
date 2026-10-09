@@ -201,7 +201,7 @@ data dir 里两类东西**语义上一刀两断**，别搅混到「迁移/重建
 | `ps-registry/` `ps-await/` | **缓存/IPC** | `bind.rs` | 跨进程握手，启动重扫 |
 | `logs/` | **缓存/派生** | `logging.rs` · 本机常驻后端 | 诊断日志：`monitor/` 是本进程按天滚动、保留 3 天（§15）；`backend/` 是脱离运行的本机后端 stderr |
 | `bin/` `staging/` `logs/backend/` `assets-catalog.json` `last-seen.json` `launch-pending/` `known_hosts` `profiles-written.json` | **缓存** | 本机后端（`bin/` 里的后端由宿主放；`launch-pending/` 由 `ccm` 最终那一跳写、观测侧清；`known_hosts` 由拨号侧写） | 一台机器一个家：后端住在同一个家里、能重建的：程序（缺了重放）· 上传暂存区 · 错误输出 · 资产目录（重新扫出来、各台之间再对上）· 离线那台的上次值（再连上一次就有）· 起会话便条（进程退出即清）· 主机钥匙（下次拨号按固化的指纹再认下）· 配置文件上次经 cc-monitor 写出时的指纹（删了只是下次不说「手改过」） |
-| `relay-key` `relay-pass-key` `run/` `backend.json` `profiles.toml` `profiles-migrated.json` `aliases.sh` `aliases.ps1` `skill-installs.json` `chores.json` `backups/` `accounts/` `accounts-mcp.json` `apikey-credentials.json` `quota.json` `rotation.json` `lineage.json` `launch-accounts.json` | **真相** | 本机后端（`run/` 里的套接字与进程记录由常驻后端自己写；`launch-accounts.json` 只有观测侧写） | 删了会丢的：后端跑着时要用的中转两把钥匙与常驻后端的套接字和进程记录（删了要重起后端）· 退出行为设置 · 你建的别名（配置文件 `profiles.toml`；`aliases.sh` / `aliases.ps1` 照它生成）· skill / MCP 装记录 · 「要你动手」里点过「不用了」的几件与选了自己贴的那份启动文件 · 从「扩展」卸掉不是 cc-monitor 装的东西之前放的那一份 · 账号库（清单与每个号的登录凭据）· 你填的 API key · 各号最近一次看到的用量（没流量的号补不回来）与账号轮换的设置和换号记录 · 各会话由谁起的（删了 ⇒ 之后新起的子会话认不出父，不再默认跟随父会话）· 每条会话上次用哪个号起的（删了 ⇒ 下次跟随落到默认号）。名字各取契约常量（`relay_route_core` · `creds_core::store`）与宿主那一处（`logging::backend_stderr_log_path`），`data_paths.rs::backend_entries` 列它们 |
+| `relay-key` `run/` `backend.json` `profiles.toml` `profiles-migrated.json` `aliases.sh` `aliases.ps1` `skill-installs.json` `chores.json` `backups/` `accounts/` `accounts-mcp.json` `apikey-credentials.json` `quota.json` `rotation.json` `lineage.json` `launch-accounts.json` | **真相** | 本机后端（`run/` 里的套接字与进程记录由常驻后端自己写；`launch-accounts.json` 只有观测侧写） | 删了会丢的：后端跑着时要用的中转钥匙与常驻后端的套接字和进程记录（删了要重起后端）· 退出行为设置 · 你建的别名（配置文件 `profiles.toml`；`aliases.sh` / `aliases.ps1` 照它生成）· skill / MCP 装记录 · 「要你动手」里点过「不用了」的几件与选了自己贴的那份启动文件 · 从「扩展」卸掉不是 cc-monitor 装的东西之前放的那一份 · 账号库（清单与每个号的登录凭据）· 你填的 API key · 各号最近一次看到的用量（没流量的号补不回来）与账号轮换的设置和换号记录 · 各会话由谁起的（删了 ⇒ 之后新起的子会话认不出父，不再默认跟随父会话）· 每条会话上次用哪个号起的（删了 ⇒ 下次跟随落到默认号）。名字各取契约常量（`relay_route_core` · `creds_core::store`）与宿主那一处（`logging::backend_stderr_log_path`），`data_paths.rs::backend_entries` 列它们 |
 
 - **真相** = 用户手写/意图，**删了丢东西、要备份、要迁移友好**。
 - **缓存/派生** = 能从别处重建，**随便删**。
@@ -2046,7 +2046,7 @@ attach 行只是「我要流」（`{"attach":true}`，可带 `flags`），形状
 路径第一段不是钥匙（没有 / 错 / 前缀 / 多一截 / 大小写不同 / 空段）⇒ **403**，比对定长时间（与控制口同一份 `listen::tokens_match`）。
 钥匙只认路径第一段（请求头里的不认）。
 过了才剥掉那一段交给路由（`/s/` 与 `/t/` 一样要过）⇒ 「钥匙对、表里没这一行」仍是 **404**，与 403 **可分**；三种拒法各带一句说得清是哪一问的话。
-**门上两把钥匙**：全权那一把（`~/.cc-monitor/relay-key`）`/s/` `/t/` 都开；**只许直通**那一把（`~/.cc-monitor/relay-pass-key`，同一个铸法、同样 `0600`）只开 `/t/`，
+**一把根钥匙，门上两个范围**：全权那一把（根钥匙，`~/.cc-monitor/relay-key`，盘上唯一一份）`/s/` `/t/` 都开；**只许直通**那一把不落盘，由根钥匙派生（`relay/key.rs::pass_of`：`HMAC-SHA256(根钥匙, "ccm-relay/t")`，门上与 `ccm` 插地址同一个函数）只开 `/t/`，
 打 `/s/` ⇒ **403**、原因头 `key-scope`（路由认出来就判，在读请求体与问上游选择之前）。
 只许直通那一把**能做的**：经 `/t/` 把请求原样转给那一家的默认上游 —— 中转在 `/t/` **永不代入凭据**，请求得自己带登录头；
 **不能做的**：碰 `/s/`（代入账号库那几行 API key 的那一形）。
@@ -2057,7 +2057,7 @@ argv 同机别的用户读得到、那一家还会把地址原样写进它自己
 拿不到钥匙 ⇒ **不起**（出声、后端照常）。钥匙**跨中转重起不变** —— 端口是固定常量，老会话手里的 URL 重起后本来就还有效，换钥匙会打断每一条活会话。
 **钥匙只从那份文件进 agent 进程自己的 env**：交给终端的那一行 `ccm …` 不带中转地址也不带钥匙；`ccm` 直路在自己进程里读那份文件、拼进 agent 进程的环境再 exec，
 地址只能拼进参数的那一家（`Inject::Args`）：参数里那条地址插的是只许直通那一把（`ccm` exec 那一刻插；直接敲的那一家贴进配置的那一行也是这一把，两处地址一模一样）；
-非得经 shell 那一趟（与 `--ccm-print` 预览同形）把钥匙段写成 `$(cat ~/.cc-monitor/relay-key)`（参数里那一形写 `relay-pass-key`）、在那台机器的 shell 里展开
+非得经 shell 那一趟（与 `--ccm-print` 同形）把全权那一把的钥匙段写成 `$(cat ~/.cc-monitor/relay-key)`、在那台机器的 shell 里展开（参数里那一形照字面插只许直通那一把：它本来就进 argv；设置窗那份预览不读钥匙、写成不带钥匙的地址）
 ⇒ 载荷、`tmux send-keys` 的 argv、shell 历史、终端回滚、webview 里都没有它；后端 / monitor 自己的 argv、env、日志、tee、上游、成品应答里也没有它。
 **唯一的例外**：用户自己选「让直接敲的 claude 也走中转」时（设置文件里写不了 `$(cat …)`），帧命令 `relay-optin` 的成品带着要贴的那一段 ——
 钥匙在里面、进界面、经用户的剪贴板由用户自己合并进 `~/.claude/settings.json`（界面上逐条写明的代价之一）。只这一条成品、只在没装 / 过期时带（已装不带）、

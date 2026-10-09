@@ -286,7 +286,6 @@ export function machineOps(): Record<string, OpHandler> {
         own: [
           { id: "bin", path: "~/.cc-monitor/bin", dir: true, class: "cache", exists: true, size: null },
           { id: "relayKey", path: "~/.cc-monitor/relay-key", dir: false, class: "truth", exists: true, size: 64 },
-          { id: "relayPassKey", path: "~/.cc-monitor/relay-pass-key", dir: false, class: "truth", exists: true, size: 64 },
           { id: "policy", path: "~/.cc-monitor/backend.json", dir: false, class: "truth", exists: false, size: null },
           { id: "profiles", path: "~/.cc-monitor/profiles.toml", dir: false, class: "truth", exists: true, size: 1840 },
           { id: "aliasesPosix", path: "~/.cc-monitor/aliases.sh", dir: false, class: "truth", exists: true, size: 512 },

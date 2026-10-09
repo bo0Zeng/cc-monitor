@@ -134,14 +134,14 @@ fn prepare(
     // ① 只有绑上了口的那一个会写 ⇒ 两个中转抢着铸构造上不存在；
     // ② 「在听」那句话说出去的时候钥匙文件已经在盘上。
     // 拿不到 ⇒ 不起（有口没钥匙 = 不设防的口；`listener` 在这里 drop，口当场放掉）。报错里只有路径与原因，没有钥匙值（`door::Key` 不派生 `Debug`）。
-    let ensure = |kind| {
-        key::key_path(get, kind)
-            .ok_or_else(|| copy_text("beRelayListen.key.noHome", &[]))
-            .and_then(|p| key::ensure_key(&p))
-    };
-    let door = match ensure(key::KeyKind::Full)
-        .and_then(|full| ensure(key::KeyKind::Pass).map(|pass| comms_outward::Keys { full, pass }))
-    {
+    // 盘上只有根钥匙一把；只许直通那一把从它派生（`key::pass_of`），门上同一处按「对上的是哪一把」判范围。
+    let door = match key::key_path(get)
+        .ok_or_else(|| copy_text("beRelayListen.key.noHome", &[]))
+        .and_then(|p| key::ensure_key(&p))
+        .map(|full| comms_outward::Keys {
+            pass: key::pass_of(&full),
+            full,
+        }) {
         Ok(k) => k,
         Err(e) => {
             eprintln!("[relay] refusing to listen without a relay key: {e}");

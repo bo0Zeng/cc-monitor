@@ -784,8 +784,6 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     base_url: NONE,
     base_url_shape_ok: NONE,
     KEY_FILE_REL: "J14",
-    // 只许直通的那把钥匙住哪（中转的门 · ccm 起地址拼进参数的那一家 · 直接敲的也走中转）；TS 侧没有孪生。
-    PASS_KEY_FILE_REL: NONE,
     key_shape_ok: NONE,
     // 把钥匙插进中转地址（`split_keyed_base_url` 的逆，给用户自己贴的那一段用）；TS 侧没有孪生。
     keyed_base_url: NONE,

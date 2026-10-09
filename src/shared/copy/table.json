@@ -12552,12 +12552,6 @@
       "zh": "中转用的钥匙 · 后端运行时用 · 删后要重启后端",
       "args": []
     },
-    "rsDataPaths.backend.relayPassKey": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "中转直通专用钥匙 · 地址写进命令行的 agent 用 · 删后要重启后端",
-      "args": []
-    },
     "rsDataPaths.backend.listenDir": {
       "kind": "body",
       "role": "说明",

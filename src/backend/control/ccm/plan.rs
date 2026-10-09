@@ -103,6 +103,9 @@ pub(crate) struct Env {
     pub(crate) inherited_parent: Option<(String, String)>,
     /// 〔会话血缘〕这一趟现铸的来处（拼进中转地址尾上，中转第一次看见就绑给这个新会话）。`None` ＝ 不铸（预览 / 判据）。
     pub(crate) origin_token: Option<String>,
+    /// 这台盘上根钥匙派生出来的只许直通那一把（地址只能拼进参数的那一家要它）：非得经 shell 那一趟照字面写进那个词
+    /// （它本来就进 argv）。读不到 ⇒ `None`（那个词写成不带钥匙的地址）。预览那一份不读（界面上不出现钥匙）。
+    pub(crate) relay_pass_key: Option<String>,
 }
 
 /// 环境里认出调用方那个会话（[`Env::inherited_parent`]）：各家登记的变量按注册序，头一个有值、值过段闸的。
@@ -168,6 +171,7 @@ impl Env {
             relay: Some(crate::accounts::upstream_select::endpoint::relay_for_exec),
             inherited_parent: parent_from(&|k| std::env::var(k).ok()),
             origin_token: Some(mint_origin()),
+            relay_pass_key: crate::relay::pass_key_on_disk(std::path::Path::new(&home)),
             home,
         }
     }
@@ -208,6 +212,8 @@ impl Env {
             // 预览是「从这台家目录里的一个新终端敲」：不在任何会话里，也不铸来处（每次预览都一样）。
             inherited_parent: None,
             origin_token: None,
+            // 预览不读钥匙：界面上不出现任何一把（参数里那个词写成不带钥匙的地址）。
+            relay_pass_key: None,
             home,
         }
     }
@@ -547,6 +553,8 @@ pub(crate) struct Direct {
     pub(crate) keeps_user_base_url: bool,
     /// 环境里继承来的是我们的中转那一形（别的号的），而这一发不注入 ⇒ exec 之前清掉它。
     pub(crate) clears_inherited_relay: bool,
+    /// 地址拼进参数的那一家：非得经 shell 那一趟照字面插进那个词的只许直通那一把（[`Env::relay_pass_key`]；别的形 ⇒ `None`）。
+    pub(crate) relay_pass_key: Option<String>,
 }
 
 /// 一家怎么指到中转，落到计划里的样子（[`crate::agents::Inject`] 的两形；没登记 ⇒ [`RelayVia::None`]）。
@@ -1281,6 +1289,9 @@ pub(crate) fn build_among(
         cwd,
         argv,
         has_identity: face.is_some_and(|f| f.has_identity),
+        relay_pass_key: (relay_via == RelayVia::Args)
+            .then(|| env.relay_pass_key.clone())
+            .flatten(),
         relay,
         relay_via,
         keeps_user_base_url,
@@ -1429,6 +1440,14 @@ pub(crate) fn render_container_tail(c: &Container) -> String {
     seq
 }
 
+/// 地址拼进参数的那一家：argv 里装着那条地址的那个词，照字面插上只许直通那一把（它本来就进 argv）。
+/// 不是那个词 / 没有那一把 ⇒ `None`（照原样写，地址不带钥匙）。
+fn args_word(d: &Direct, word: &str) -> Option<String> {
+    let (head, tail) = args_relay(d).and_then(|u| split_at_key(word, u))?;
+    let key = d.relay_pass_key.as_deref()?;
+    Some(format!("{head}{key}{tail}"))
+}
+
 /// 地址拼进参数的那一趟要注入的那条不带钥匙的地址（别的形 ⇒ `None`）。
 pub(crate) fn args_relay(d: &Direct) -> Option<&str> {
     match (&d.relay, &d.relay_via) {
@@ -1470,14 +1489,7 @@ fn render_direct(d: &Direct) -> String {
     let words: Vec<String> = d
         .argv
         .iter()
-        .map(|a| match args_relay(d).and_then(|u| split_at_key(a, u)) {
-            Some((head, tail)) => posix::home_file_between(
-                &sq(&head),
-                relay_route_core::PASS_KEY_FILE_REL,
-                &sq(&tail),
-            ),
-            None => qarg(a),
-        })
+        .map(|a| args_word(d, a).map_or_else(|| qarg(a), |w| qarg(&w)))
         .collect();
     line.push_str(&posix::exec(&words));
     line
@@ -1523,12 +1535,7 @@ fn render_direct_ps(d: &Direct) -> String {
     let words: Vec<String> = d
         .argv
         .iter()
-        .map(|a| match args_relay(d).and_then(|u| split_at_key(a, u)) {
-            Some((head, tail)) => {
-                ps::home_file_between(&pq(&head), relay_route_core::PASS_KEY_FILE_REL, &pq(&tail))
-            }
-            None => pq(a),
-        })
+        .map(|a| args_word(d, a).map_or_else(|| pq(a), |w| pq(&w)))
         .collect();
     line.push_str(&ps::call(&words));
     line

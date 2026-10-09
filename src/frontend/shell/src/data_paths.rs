@@ -218,7 +218,7 @@ fn home_rel_label(rel: &str, dir: bool) -> String {
 /// 名字各取唯一住址，这里不写字面量：`~/.cc-monitor/` 下相对家目录的那一族取契约常量（`relay_route_core`，后端按同一份落盘；
 /// 程序目录 = 后端落点的上一层；常驻后端的目录也在这一族）·
 /// API key 那份按数据目录（`creds_core::store::credentials_path`）· 后端错误输出 = 宿主交给它的那份文件所在的目录
-/// （`logging::backend_stderr_log_path`）。后端跑着时要用的（两把钥匙 · 常驻后端的目录）按真相记：删了要重起后端。
+/// （`logging::backend_stderr_log_path`）。后端跑着时要用的（中转钥匙 · 常驻后端的目录）按真相记：删了要重起后端。
 fn backend_entries(home: &Path, monitor_data_dir: &Path) -> Vec<DataPathInfo> {
     use relay_route_core as rr;
     let bin = rr::BACKEND_LANDING_REL
@@ -258,11 +258,6 @@ fn backend_entries(home: &Path, monitor_data_dir: &Path) -> Vec<DataPathInfo> {
         file(
             rr::KEY_FILE_REL,
             copy_text("rsDataPaths.backend.relayKey", &[]),
-            DataClass::Truth,
-        ),
-        file(
-            rr::PASS_KEY_FILE_REL,
-            copy_text("rsDataPaths.backend.relayPassKey", &[]),
             DataClass::Truth,
         ),
         dir(

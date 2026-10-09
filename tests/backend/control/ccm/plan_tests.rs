@@ -2263,6 +2263,9 @@ fn the_relay_is_injected_the_way_that_family_declares() {
     ];
     let mut e = env();
     e.relay = Some(inject);
+    // 只许直通那一把（这台根钥匙派生的那一个）由 `Env` 交来；参数里那个词照字面插上它。
+    let pass = "b".repeat(64);
+    e.relay_pass_key = Some(pass.clone());
     let plan_for = |kind: &str| {
         let a: Vec<String> = ["--resume", "s1"].iter().map(|s| s.to_string()).collect();
         let Parsed::Opts(mut o) = parse(&a).expect("解析得动") else {
@@ -2276,7 +2279,7 @@ fn the_relay_is_injected_the_way_that_family_declares() {
         d
     };
     let full_key = "$(cat ~/.cc-monitor/relay-key)";
-    let pass_word = "'http://127.0.0.1:8788/'$(cat ~/.cc-monitor/relay-pass-key)'/t/x/w'";
+    let pass_word = format!("http://127.0.0.1:8788/{pass}/t/x/w");
 
     let d = plan_for("via-env");
     assert_eq!(d.relay_via, RelayVia::Env("FAKE_URL_VAR".into()));
@@ -2292,7 +2295,10 @@ fn the_relay_is_injected_the_way_that_family_declares() {
         ),
         "{line}"
     );
-    assert!(!line.contains("relay-pass-key"), "{line}");
+    assert!(
+        !line.contains(&pass),
+        "认环境变量那一家的那一行里有只许直通那一把：{line}"
+    );
 
     let d = plan_for("via-args");
     assert_eq!(d.relay_via, RelayVia::Args);

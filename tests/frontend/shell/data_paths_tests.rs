@@ -183,7 +183,6 @@ fn backend_rows_point_where_the_backend_itself_writes() {
         row("bin/", h.join(".cc-monitor/bin"), "dir"),
         row("staging/", h.join(rr::STAGING_DIR_REL), "dir"),
         row("relay-key", h.join(rr::KEY_FILE_REL), "file"),
-        row("relay-pass-key", h.join(rr::PASS_KEY_FILE_REL), "file"),
         row("run/", h.join(rr::LISTEN_DIR_REL), "dir"),
         row("backend.json", h.join(rr::BACKEND_POLICY_REL), "file"),
         row("profiles.toml", h.join(rr::PROFILES_REL), "file"),
