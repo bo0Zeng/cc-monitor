@@ -459,7 +459,8 @@ def free_port():
 def main():
     sandbox = os.path.join(REPO, ".build/perf-sandbox")
     os.makedirs(os.path.join(sandbox, "home"), exist_ok=True)
-    env = {k: v for k, v in os.environ.items() if not k.startswith(("CCM_", "CLAUDE_", "ANTHROPIC_", "TMUX"))}
+    # 测试不碰用户的桌面会话：会话总线不带（同截图工具 `run.mjs::isolatedEnv`）
+    env = {k: v for k, v in os.environ.items() if not k.startswith(("CCM_", "CLAUDE_", "ANTHROPIC_", "TMUX")) and k != "DBUS_SESSION_BUS_ADDRESS"}
     env["HOME"] = os.path.join(sandbox, "home")
     procs = []
     port = args.port
@@ -529,6 +530,7 @@ if __name__ == "__main__":
         try:
             env = {**os.environ, "DISPLAY": f":{n}", "DISPLAY_READY": "1"}
             env.pop("WAYLAND_DISPLAY", None)
+            env.pop("DBUS_SESSION_BUS_ADDRESS", None)  # WebKit 窗口也不碰用户的桌面会话（钥匙环 · 无障碍总线）
             sys.exit(subprocess.call([sys.executable, *sys.argv], env=env))
         finally:
             xv.terminate()

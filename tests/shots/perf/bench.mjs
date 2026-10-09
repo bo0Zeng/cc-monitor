@@ -63,7 +63,7 @@ mkdirSync(out, { recursive: true });
 function isolatedEnv(extra = {}) {
   const env = { ...process.env, HOME: path.join(sandbox, "home"), ...extra };
   for (const k of Object.keys(env)) if (/^(CCM_|CLAUDE_|ANTHROPIC_|TMUX)/.test(k) && !k.startsWith("CCM_SHOTS_")) delete env[k];
-  for (const k of ["XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_DATA_HOME", "XDG_RUNTIME_DIR"]) delete env[k];
+  for (const k of ["XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_DATA_HOME", "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS"]) delete env[k];
   return env;
 }
 
@@ -117,7 +117,7 @@ const browser = spawn(
     "--no-default-browser-check",
     "--no-sandbox",
     "--disable-gpu",
-    // 不碰桌面钥匙环（D-Bus 上的 secret service）：它不应答时网络进程起不来，每个 http 页面都挂着
+    // 钥匙用浏览器自己的明文存储，不问桌面钥匙环（它的登录集合锁着时网络进程一直等，每个 http 页面都挂着）
     "--password-store=basic",
     "--force-device-scale-factor=1",
     "--lang=zh-CN",
