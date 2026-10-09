@@ -96,6 +96,9 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, text?: string): HTMLE
   return e;
 }
 
+/** 页内元素 id 的流水号（「送往 …」那一行给输入框当名字）。 */
+let pageSeq = 0;
+
 export class TerminalPage {
   readonly el: HTMLElement;
   private visible = false;
@@ -223,6 +226,9 @@ export class TerminalPage {
     this.box = el("textarea");
     this.box.className = s.termBox;
     this.box.rows = 1;
+    // 读屏名 ＝ 头上「送往 …」那一行；提示句只当占位（否则同一句既当名字又当说明，念两遍）。
+    this.to.id = `term-to-${++pageSeq}`;
+    this.box.setAttribute("aria-labelledby", this.to.id);
     this.box.addEventListener("keydown", (ev) => this.onBoxKey(ev));
     this.box.addEventListener("input", () => this.onBoxInput());
     this.sendBtn = button({ label: copyText("terminal.input.send"), size: "compact", onClick: () => this.sendBox(true) });

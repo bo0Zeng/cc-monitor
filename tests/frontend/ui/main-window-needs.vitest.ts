@@ -16,7 +16,7 @@ import type { Tab } from "../../../src/frontend/ui/tab-model";
 import type { Needs } from "../../../src/frontend/ui/session-reads";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { ENDED, GONE, LIVE, LIVE_ATTACHABLE, LIVE_RESUMABLE, RECONNECTABLE, UNSEEN } from "../../../src/frontend/ui/tab-session-state";
-import { abbrOf, dotOf, needsOf, needsOrder, nextNeeds, peekLine, stateLine, titleParts } from "../../../src/frontend/ui/session-face";
+import { abbrOf, dotOf, fullTitle, needsOf, needsOrder, nextNeeds, peekLine, stateLine, titleParts } from "../../../src/frontend/ui/session-face";
 import { NeedsBar, NeedsWatch, NOTIFY_WAIT_MS, answerWhere, needsHeadline } from "../../../src/frontend/ui/needs-bar";
 import { SessionHead, terminalActsOf } from "../../../src/frontend/ui/session-head";
 import { buildApiErrorCard } from "../../../src/frontend/ui/cards/api-error";
@@ -668,6 +668,16 @@ describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键�
     r.page.machineUp("devbox");
     await flush();
     expect(r.follows, "实时中再来一帧「已连上」不重订").toHaveLength(2);
+  });
+
+  it("★ 输入框的读屏名是头上「送往 …」那一行（提示句只当占位，读屏不把同一句念成名字又念成说明）", async () => {
+    const r = rig([row("a")], { t: tab("a", { origin: "devbox" }) });
+    r.page.setVisible(true);
+    await flush();
+    const by = box(r.page).getAttribute("aria-labelledby") ?? "";
+    const named = by.split(/\s+/).map((id) => r.page.el.querySelector(`[id="${id}"]`)?.textContent ?? "").join(" ").trim();
+    expect(named).toBe(copyText("terminal.input.to", { title: fullTitle(tab("a", { origin: "devbox" })), machine: "devbox" }));
+    expect(named).not.toBe(box(r.page).placeholder);
   });
 
   it("★ 抓屏失败 ⇒ 只出那一条错误条、不去订实时；点［刷新］抓到了 ⇒ 照常订上", async () => {
