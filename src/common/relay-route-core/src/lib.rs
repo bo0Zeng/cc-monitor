@@ -312,6 +312,7 @@ pub const OWN_HOME_ENTRIES: &[(&str, &str, bool, bool)] = &[
     ("bin", ".cc-monitor/bin", true, false),
     ("staging", STAGING_DIR_REL, true, false),
     ("relayKey", KEY_FILE_REL, false, true),
+    ("relayPassKey", PASS_KEY_FILE_REL, false, true),
     ("listenToken", LISTEN_TOKEN_FILE_REL, false, true),
     ("policy", BACKEND_POLICY_REL, false, true),
     ("profiles", PROFILES_REL, false, true),

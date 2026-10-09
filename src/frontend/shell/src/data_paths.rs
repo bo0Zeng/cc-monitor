@@ -268,6 +268,11 @@ fn backend_entries(
             DataClass::Truth,
         ),
         file(
+            rr::PASS_KEY_FILE_REL,
+            copy_text("rsDataPaths.backend.relayPassKey", &[]),
+            DataClass::Truth,
+        ),
+        file(
             rr::LISTEN_TOKEN_FILE_REL,
             copy_text("rsDataPaths.backend.listenToken", &[]),
             DataClass::Truth,

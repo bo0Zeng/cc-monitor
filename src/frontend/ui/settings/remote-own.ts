@@ -16,6 +16,8 @@ function whatOf(id: string): string {
       return copyText("rsDataPaths.backend.staging");
     case "relayKey":
       return copyText("rsDataPaths.backend.relayKey");
+    case "relayPassKey":
+      return copyText("rsDataPaths.backend.relayPassKey");
     case "listenToken":
       return copyText("rsDataPaths.backend.listenToken");
     case "policy":
