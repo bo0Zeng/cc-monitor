@@ -726,6 +726,9 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     base_url: NONE,
     base_url_shape_ok: NONE,
     KEY_FILE_REL: "J14",
+    // 钥匙的另一种交法：钥匙头 · 起会话时放钥匙的环境变量（中转的门 · ccm · Codex 适配层都经它）；TS 侧没有孪生。
+    KEY_HEADER: NONE,
+    KEY_ENV: NONE,
     key_shape_ok: NONE,
     // 把钥匙插进中转地址（`split_keyed_base_url` 的逆，给用户自己贴的那一段用）；TS 侧没有孪生。
     keyed_base_url: NONE,

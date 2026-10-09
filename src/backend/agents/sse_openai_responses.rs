@@ -82,36 +82,40 @@ fn head_fields(head: &str) -> (Option<String>, Option<String>) {
         i: 0,
     };
     let (mut ty, mut rid) = (None, None);
-    let _ = (|| -> Option<()> {
-        s.expect(b'{')?;
-        loop {
-            let key = s.string()?;
-            s.expect(b':')?;
-            match key.as_str() {
-                "type" => ty = Some(s.string()?),
-                "response" => {
-                    s.expect(b'{')?;
-                    loop {
-                        let k = s.string()?;
-                        s.expect(b':')?;
-                        if k == "id" {
-                            rid = Some(s.string()?);
-                            return Some(());
-                        }
-                        s.skip_value()?;
-                        if !s.comma()? {
-                            return Some(());
-                        }
+    // 读到截断处（或形状不对）就停：已经读到的那几格照用。
+    walk(&mut s, &mut ty, &mut rid);
+    (ty, rid)
+}
+
+/// 顶层对象：`type` 的值、`response` 里的 `id`；读到 `id` 就收工。答 `None` ＝ 读到截断处。
+fn walk(s: &mut Scan<'_>, ty: &mut Option<String>, rid: &mut Option<String>) -> Option<()> {
+    s.expect(b'{')?;
+    loop {
+        let key = s.string()?;
+        s.expect(b':')?;
+        match key.as_str() {
+            "type" => *ty = Some(s.string()?),
+            "response" => {
+                s.expect(b'{')?;
+                loop {
+                    let k = s.string()?;
+                    s.expect(b':')?;
+                    if k == "id" {
+                        *rid = Some(s.string()?);
+                        return Some(());
+                    }
+                    s.skip_value()?;
+                    if !s.comma()? {
+                        return Some(());
                     }
                 }
-                _ => s.skip_value()?,
             }
-            if !s.comma()? {
-                return Some(());
-            }
+            _ => s.skip_value()?,
         }
-    })();
-    (ty, rid)
+        if !s.comma()? {
+            return Some(());
+        }
+    }
 }
 
 /// 只够读开头几格的 JSON 扫描器：读到截断处（或形状不对）就答 `None`。

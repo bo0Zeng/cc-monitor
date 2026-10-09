@@ -62,6 +62,11 @@ pub(crate) mod table; // `K-H2`：路由表 —— 账号段 → **上游与 key
 
 pub(crate) use policy::Reload;
 
+// 判据用：把一家的默认上游换成假上游（读写 `Upstreams` 的私有格，所以挂在这一层底下）。
+#[cfg(test)]
+#[path = "../../../../tests/backend/accounts/upstream_select/upstreams_testing.rs"]
+pub(crate) mod upstreams_testing;
+
 use crate::accounts::quota::ledger::{self, Ledger};
 use crate::relay::{
     Ask, AuthSwap, Base, Destination, Destinations, Heard, Mode, Ready, RouteKey, Startup,
@@ -167,13 +172,6 @@ impl Upstreams {
         by_agent
             .contains_key(CREDENTIALS_FILE_AGENT)
             .then_some(Self { by_agent })
-    }
-
-    /// 判据用：把一家的默认上游换成给的那一份（真上游换成假上游）。
-    #[cfg(test)]
-    pub(crate) fn with_pick(mut self, agent: &'static str, pick: UpstreamPick) -> Self {
-        self.by_agent.insert(agent, pick);
-        self
     }
 
     /// 这一家登记了默认上游没有。

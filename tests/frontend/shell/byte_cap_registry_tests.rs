@@ -837,7 +837,6 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
     (
         "src/backend/agents/codex/relay.rs",
         "CONFIG_CAP_BYTES",
-        1 << 20,
         "`relay-optin` 读那台 `~/.codex/config.toml` 多大",
         "降级+说清",
     ),

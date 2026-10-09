@@ -177,7 +177,8 @@ fn a_codex_shaped_round_gets_426_then_picks_its_upstream_by_login_form_and_route
     let base = |up: &NameUpstream, path: &str| {
         comms_outward::Base::parse(&format!("http://127.0.0.1:{}{path}", up.addr.port())).unwrap()
     };
-    let ups = Upstreams::from_env(&|_| None).unwrap().with_pick(
+    let ups = crate::accounts::upstream_select::upstreams_testing::with_pick(
+        Upstreams::from_env(&|_| None).unwrap(),
         "codex",
         UpstreamPick::ByHeader {
             header: "ChatGPT-Account-ID",
