@@ -65,7 +65,7 @@ interface AcctWorld {
   /** 重启那一形 `rotation-switch` 每个会话答什么（形状照 `rotation-switch-restart` 金样）；不给 ⇒ 成了、开 `proj-cc`。 */
   restartReply?: Record<string, unknown>;
   /** 时间轴：卡住（池里都被拒）· quota-warm 在跑。 */
-  tl?: { blocked?: boolean; warm?: boolean };
+  tl?: { blocked?: boolean; warm?: boolean; fallback?: boolean };
 }
 
 const now = (): number => Math.floor(Date.now() / 1000);
@@ -379,6 +379,7 @@ function acctOps(aw: AcctWorld, w: () => World): Record<string, OpHandler> {
             session: true,
             blocked: aw.tl?.blocked,
             warm: aw.tl?.warm,
+            fallback: aw.tl?.fallback,
           })
         : { errors: [] },
     "rotation-rule-save": (_o, req) => ({
@@ -984,7 +985,7 @@ export const ACCT_SCENES: Scene[] = [
   scene(
     "acct-wait-record",
     "面板 · 记录 · 停着等前面的号",
-    "personal 被拒、work 2 分钟后恢复（最多等 10m）⇒ 不换到 team：记录一行 等 work 恢复 · 不换到 team ↻…",
+    "personal 被拒、work 2 分钟后恢复（最多等 10 分钟）⇒ 不用兜底 team：记录一行 先等 work · 不用兜底 team ↻…",
     async () => {
       await openPanel();
       await scrollPanelTo("记录");
@@ -1272,6 +1273,20 @@ export const ACCT_SCENES: Scene[] = [
     },
     world((aw) => {
       aw.tl = { blocked: true };
+    }),
+    [W, 1000],
+  ),
+  scene(
+    "acct-timeline-fallback",
+    "面板 · 时间轴 · 兜底（6h）",
+    "team 是兜底：过去 work 被拒、personal 快恢复 ⇒ 一段 先等 personal（不发上游）再接 personal；将来 ≥90% → team，personal 重置 ⇒ 换下兜底 → personal",
+    async () => {
+      await openTimeline();
+      await click(await byText("[data-tl-view] button", "6h"));
+      await sleep(900);
+    },
+    world((aw) => {
+      aw.tl = { fallback: true };
     }),
     [W, 1000],
   ),
