@@ -2090,6 +2090,8 @@ pub const EMITS: &[&str] = &[
     "tap",
     // 一个会话的运行表（watcher 读子运行记录、表变了真发，登记 = 承诺真发）。⚠ hello 字节变了 ⇒ 合并那一拍 bump `BUILD_ID`。
     "session_runs",
+    // 一份会话记录的主线外清单（watcher 逐行维护链索引、清单变了真发，登记 = 承诺真发）。⚠ hello 字节变了 ⇒ 合并那一拍 bump `BUILD_ID`。
+    "session_branch",
     // 终端实时预览的一屏与收尾（`control/terminal_follow.rs` 的订阅线程真发，登记 = 承诺真发）。
     // 只在客户端 `terminal-follow` 之后才出现；旧客户端不认 ⇒ 忽略（additive）。⚠ hello 字节变了 ⇒ 合并那一拍 bump `BUILD_ID`。
     "terminal_screen",

@@ -733,6 +733,16 @@ pub enum Frame {
         /// 被挤出表的已收场子运行。
         ended: Vec<RunEnded>,
     },
+    /// 一份会话记录的**主线外清单**（用户回退重发后留在文件里的旧那一支）：那几条记录的 `id`（与记录成品的 `id` 同值；只含进界面的，文件序）。
+    /// 整份、变了才发（宣告之后历史里已经有就发一次）；从没发过 ＝ 空。冷读那一路是读命令 `history-branch`。这一家的记录没有链 ⇒ 从不发。
+    SessionBranch {
+        /// 会话 id。
+        sid: String,
+        /// 这份会话记录在那台机器上的绝对路径。
+        path: String,
+        /// 主线外那几条的 `id`。
+        off: Vec<String>,
+    },
 
     /// **一个终端此刻的一整屏**（终端实时预览，`control/terminal_follow.rs`；`terminal-follow` 之后才出现）。
     ///
@@ -1068,6 +1078,8 @@ impl Frame {
             Frame::Tap { .. } => true,
             // 整份快照：下一次表一变就整份重发；丢了那个会话的子运行行停在旧的那一份，直到下一次变（带身份，客户端知道）。
             Frame::SessionRuns { .. } => false,
+            // 同上：整份快照，下一次变就整份重发。
+            Frame::SessionBranch { .. } => false,
             // 终端实时预览：丢了在途那一帧，客户端等不到它就不回执，订阅停住；也走应答通道。
             Frame::TerminalScreen { .. } => false,
             Frame::TerminalFollowEnd { .. } => false,
@@ -1108,6 +1120,7 @@ impl Frame {
             Frame::Probe { ticket, .. } => ("probe", Some(ticket.clone())),
             Frame::Tap { stream, .. } => ("tap", Some(stream.clone())),
             Frame::SessionRuns { sid, .. } => ("session_runs", Some(sid.clone())),
+            Frame::SessionBranch { sid, .. } => ("session_branch", Some(sid.clone())),
             Frame::TerminalScreen { ticket, .. } => ("terminal_screen", Some(ticket.clone())),
             Frame::TerminalFollowEnd { ticket, .. } => {
                 ("terminal_follow_end", Some(ticket.clone()))
