@@ -598,7 +598,7 @@ async fn open_round(
             }
             let said = e.said();
             // 这一轮没成的那一句与详情进那台的状态成品（收尾时机器那一行的［复制详情］跟它）。
-            crate::machine_state::round_failed(&host_label, &said);
+            crate::machine_state::round_failed(&crate::origin::Origin(host_label.clone()), &said);
             let e = format!("{said}: {}", said.raw());
             if skip_preflight {
                 tracing::warn!(

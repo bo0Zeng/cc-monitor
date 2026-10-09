@@ -235,18 +235,18 @@ pub(crate) fn dial_failed(
 }
 
 /// 这一轮没成的那一句 ＋ 详情（接常驻后端那一步没成时记；收尾时 [`down`] / [`unsupported`] 交给读点）。
-pub(crate) fn round_failed(origin: &str, said: &crate::detail::Said) {
-    with(origin, |e| e.round_said = Some(said.clone()));
+pub(crate) fn round_failed(origin: &crate::origin::Origin, said: &crate::detail::Said) {
+    with(&origin.0, |e| e.round_said = Some(said.clone()));
 }
 
 /// 收尾那一份详情：这一轮记下的（没有 ⇒ 拨号那一层的）那一句进「断在」，其余照它的详情（拨号那一层是本机后端写的：
 /// 「机器」是本机那一份后端）；连的是哪一台进「对象」，码是这一轮的原因码。
-fn round_detail(origin: &str, e: &mut Entry) -> Option<String> {
+fn round_detail(target: &str, e: &mut Entry) -> Option<String> {
     let said = e.round_said.take().or_else(|| e.dial_said.take())?;
     use copy_core::detail::Label;
     let step = said.said.clone();
     Some(
-        said.with_item(Label::Target, origin)
+        said.with_item(Label::Target, target)
             .with_item(Label::Hop, &step)
             .with_item(Label::Code, e.reason.as_deref().unwrap_or(""))
             .detail,

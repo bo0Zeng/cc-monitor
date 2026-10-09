@@ -578,9 +578,13 @@ async fn the_ack_and_the_stage_lines_have_the_shape_the_monitor_reads() {
     let mut quiet: Vec<u8> = Vec::new();
     let off = StageSink::new(false);
     off.emit(Stage::Established);
-    write_stages_then_ack(&mut quiet, &off, &DialAck::failed("x".to_string().into(), None))
-        .await
-        .unwrap();
+    write_stages_then_ack(
+        &mut quiet,
+        &off,
+        &DialAck::failed("x".to_string().into(), None),
+    )
+    .await
+    .unwrap();
     assert_eq!(String::from_utf8(quiet).unwrap().lines().count(), 1);
 }
 
@@ -765,12 +769,19 @@ fn a_password_only_server_is_its_own_reason() {
 #[tokio::test]
 async fn a_failed_ack_keeps_the_raw_words_in_the_detail_not_the_sentence() {
     let mut buf: Vec<u8> = Vec::new();
-    let said = crate::common::said::Said::with_raw("step-said".to_string(), "russh: raw-words-here");
-    write_ack(&mut buf, &DialAck::failed(said, None)).await.unwrap();
-    let v: serde_json::Value = serde_json::from_str(String::from_utf8(buf).unwrap().trim()).unwrap();
+    let said =
+        crate::common::said::Said::with_raw("step-said".to_string(), "russh: raw-words-here");
+    write_ack(&mut buf, &DialAck::failed(said, None))
+        .await
+        .unwrap();
+    let v: serde_json::Value =
+        serde_json::from_str(String::from_utf8(buf).unwrap().trim()).unwrap();
     assert_eq!(v["error"], "step-said");
     let detail = v["detail"].as_str().expect("没拨成的 ack 没有 detail");
-    assert!(detail.contains("russh: raw-words-here"), "原话没进详情：{detail}");
+    assert!(
+        detail.contains("russh: raw-words-here"),
+        "原话没进详情：{detail}"
+    );
     assert!(detail.contains("dial"), "详情里没有命令那一项：{detail}");
     let mut ok: Vec<u8> = Vec::new();
     let mut a = DialAck::failed("x".to_string().into(), None);

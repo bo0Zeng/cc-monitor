@@ -377,7 +377,9 @@ async fn a_garbled_request_line_is_answered_and_the_link_keeps_going() {
     .await;
     assert_eq!(v["code"], "fenced");
     assert!(
-        v["detail"].as_str().is_some_and(|d| d.contains("files remove")),
+        v["detail"]
+            .as_str()
+            .is_some_and(|d| d.contains("files remove")),
         "围栏拒绝的应答没有带命令的详情：{v}"
     );
     let v = ask(&mut w, &mut r, serde_json::json!({"op":"home"}), None).await;

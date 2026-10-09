@@ -1,9 +1,9 @@
 //! 开出 channel 之后的几种用法（[`super::Use`]）。握手已过：每一支先回 ack（失败就回失败的 ack），再干自己那件事。
 //! I/O 是调用方给的一对 `AsyncRead` / `AsyncWrite`（常驻后端里是那条链路的两根内存管子，`link.rs`）；连接是池里拿的（[`Lease`]，同身份复用）。
 
+use crate::common::said::Said;
 use copy_core::copy_text;
 use std::sync::Arc;
-use crate::common::said::Said;
 
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
@@ -377,10 +377,7 @@ async fn serve<R, W>(
                 let _ = write_stages_then_ack(
                     out,
                     stages,
-                    &DialAck::failed(
-                        Said::with_raw(copy_text("beUses.exec.failed", &[]), &e),
-                        fp,
-                    ),
+                    &DialAck::failed(Said::with_raw(copy_text("beUses.exec.failed", &[]), &e), fp),
                 )
                 .await;
                 return;

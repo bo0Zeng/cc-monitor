@@ -776,11 +776,19 @@ fn a_dial_refusal_keeps_the_backend_detail_and_link_faults_keep_raw_out_of_the_s
     assert_eq!(s.said, "step-said");
     assert_eq!(s.detail, "命令：dial\n原话：raw words");
     let old = refused_said("step-said".into(), None);
-    assert!(old.detail.contains(&crate::detail::local_line()), "{}", old.detail);
+    assert!(
+        old.detail.contains(&crate::detail::local_line()),
+        "{}",
+        old.detail
+    );
     let io = link_said(LinkError::Io("broken pipe here".into()));
     assert_eq!(io.said, copy_text("rsSshLink.dial.readFailed", &[]));
     assert!(io.detail.contains("broken pipe here"), "{}", io.detail);
     let garbled = link_said(LinkError::Garbled("expected value: \"zz\"".into()));
     assert!(!garbled.said.contains("expected"), "{}", garbled.said);
-    assert!(garbled.detail.contains("expected value"), "{}", garbled.detail);
+    assert!(
+        garbled.detail.contains("expected value"),
+        "{}",
+        garbled.detail
+    );
 }

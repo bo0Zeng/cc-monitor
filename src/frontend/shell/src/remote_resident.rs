@@ -56,7 +56,9 @@ pub(crate) enum AttachErr {
 impl PartialEq for AttachErr {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (AttachErr::Unsupported(a, x), AttachErr::Unsupported(b, y)) => a.said == b.said && x == y,
+            (AttachErr::Unsupported(a, x), AttachErr::Unsupported(b, y)) => {
+                a.said == b.said && x == y
+            }
             (AttachErr::Failed(a), AttachErr::Failed(b)) => a.said == b.said,
             _ => false,
         }
@@ -94,7 +96,11 @@ pub(crate) fn parse_answer(
     }
     match exec.exit_status {
         Some(0) => serde_json::from_str(exec.stdout.trim()).map_err(|e| {
-            Said::with_raw(copy_text("rsRemoteResident.ensure.answerUnreadable", &[]), &e).into()
+            Said::with_raw(
+                copy_text("rsRemoteResident.ensure.answerUnreadable", &[]),
+                &e,
+            )
+            .into()
         }),
         _ => {
             let err: serde_json::Value =
@@ -177,7 +183,8 @@ pub(crate) struct Verdict {
 
 /// 应答 → [`Verdict`]（**严格收**：恰 `{action, older}` 两格、`action` 只认两个词 —— 两侧漂了当场说出来）。
 pub(crate) fn decode_verdict(v: &serde_json::Value) -> Result<Verdict, Said> {
-    let bad = |what: &str| Said::with_raw(copy_text("rsRemoteResident.verdict.unreadable", &[]), what);
+    let bad =
+        |what: &str| Said::with_raw(copy_text("rsRemoteResident.verdict.unreadable", &[]), what);
     let obj = v.as_object().ok_or_else(|| bad("not an object"))?;
     if obj.len() != 2 {
         return Err(bad("expected exactly `action` and `older`"));
@@ -196,10 +203,7 @@ pub(crate) fn decode_verdict(v: &serde_json::Value) -> Result<Verdict, Said> {
 
 /// 换不换、旧不旧：「我这一版」（`mine`）有值才去问（`ask`，生产里是 [`ask_verdict`]）；手上没带后端字节（`None`）⇒
 /// **不问**、直接「接、不判旧」—— 没有可放的字节，换装无从发起，新旧也无从比（版本那句话说「不可比」）。
-pub(crate) async fn verdict_for<F, Fut>(
-    mine: Option<&'static str>,
-    ask: F,
-) -> Result<Verdict, Said>
+pub(crate) async fn verdict_for<F, Fut>(mine: Option<&'static str>, ask: F) -> Result<Verdict, Said>
 where
     F: FnOnce(&'static str) -> Fut,
     Fut: std::future::Future<Output = Result<Verdict, Said>>,
@@ -245,10 +249,7 @@ pub(crate) fn attach_line(token: &str, flags: (bool, bool)) -> String {
 }
 
 /// 读握手那一行（hello / attach 应答）；`hello` 选哪一句说「没答完」。
-async fn read_line(
-    r: &mut tokio::io::BufReader<DialStream>,
-    hello: bool,
-) -> Result<String, Said> {
+async fn read_line(r: &mut tokio::io::BufReader<DialStream>, hello: bool) -> Result<String, Said> {
     let mut buf = Vec::new();
     let got = crate::stream_source::read_capped_line(
         r,
@@ -398,10 +399,9 @@ pub(crate) async fn attach(cfg: &RemoteConfig, flags: (bool, bool)) -> Result<Re
         // 刚起的那一个：钥匙是它绑上口之后自己写的（每次起都换一把）⇒ 读到 hello 之后再问一次，读盘上那一份。
         let token = match ensured.token.take() {
             Some(t) => t,
-            None => ensure(cfg, false)
-                .await?
-                .token
-                .ok_or_else(|| Said::from(copy_text("rsRemoteResident.ensure.answerIncomplete", &[])))?,
+            None => ensure(cfg, false).await?.token.ok_or_else(|| {
+                Said::from(copy_text("rsRemoteResident.ensure.answerIncomplete", &[]))
+            })?,
         };
         let not_sent = |e: std::io::Error| {
             Said::with_raw(

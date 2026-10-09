@@ -193,19 +193,16 @@ pub async fn handshake<R: AsyncBufRead + Unpin>(
         let Some(line) = read_line_capped(r, cap).await? else {
             return Err(LinkError::Silent);
         };
-        let v: serde_json::Value = serde_json::from_str(&line).map_err(|e| {
-            LinkError::Garbled(format!("{e}: {line:?}"))
-        })?;
+        let v: serde_json::Value = serde_json::from_str(&line)
+            .map_err(|e| LinkError::Garbled(format!("{e}: {line:?}")))?;
         if let Some(stage) = v.get("stage") {
-            let stage: ConnectStage = serde_json::from_value(stage.clone()).map_err(|e| {
-                LinkError::Garbled(format!("stage line: {e}: {line:?}"))
-            })?;
+            let stage: ConnectStage = serde_json::from_value(stage.clone())
+                .map_err(|e| LinkError::Garbled(format!("stage line: {e}: {line:?}")))?;
             on_stage(stage);
             continue;
         }
-        let ack: Ack = serde_json::from_value(v).map_err(|e| {
-            LinkError::Garbled(format!("ack line: {e}: {line:?}"))
-        })?;
+        let ack: Ack = serde_json::from_value(v)
+            .map_err(|e| LinkError::Garbled(format!("ack line: {e}: {line:?}")))?;
         if !ack.ok {
             return Err(LinkError::Refused {
                 why: ack
@@ -232,9 +229,7 @@ pub async fn captured<R: AsyncBufRead + Unpin>(r: &mut R, cap: u64) -> Result<Ca
     let Some(line) = read_line_capped(r, cap).await? else {
         return Err(LinkError::Silent);
     };
-    serde_json::from_str(&line).map_err(|e| {
-        LinkError::Garbled(format!("{e}: {line:?}"))
-    })
+    serde_json::from_str(&line).map_err(|e| LinkError::Garbled(format!("{e}: {line:?}")))
 }
 
 /// `files` 用法：ack 之后一问一答，这里读**一行应答**（JSON 对象）。管子关了 ⇒ [`LinkError::Silent`]。
@@ -245,9 +240,7 @@ pub async fn reply_line<R: AsyncBufRead + Unpin>(
     let Some(line) = read_line_capped(r, cap).await? else {
         return Err(LinkError::Silent);
     };
-    serde_json::from_str(&line).map_err(|e| {
-        LinkError::Garbled(format!("{e}: {line:?}"))
-    })
+    serde_json::from_str(&line).map_err(|e| LinkError::Garbled(format!("{e}: {line:?}")))
 }
 
 #[cfg(test)]

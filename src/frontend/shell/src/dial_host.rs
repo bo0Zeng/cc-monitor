@@ -715,7 +715,9 @@ pub(crate) async fn capture(
         .map_err(|(e, _)| e)?;
     // 结果那一行最多是两份 `max_bytes` 加 JSON 转义的开销 —— 上限给四倍。
     let cap = (max_bytes as u64).saturating_mul(4).max(ack_line_cap());
-    let got = ssh_link::captured(&mut link.r, cap).await.map_err(link_said)?;
+    let got = ssh_link::captured(&mut link.r, cap)
+        .await
+        .map_err(link_said)?;
     Ok(RemoteExec {
         stdout: got.stdout,
         stderr: got.stderr,

@@ -276,15 +276,9 @@ pub(crate) enum Intent {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Refusal {
     /// `raw`：解链接那一问的下层原话（只有解不开那两形带）。
-    Fenced {
-        said: String,
-        raw: Option<String>,
-    },
+    Fenced { said: String, raw: Option<String> },
     /// `raw`：下层原话（进复制详情，不上句子；没有 ⇒ `None`）。
-    Io {
-        said: String,
-        raw: Option<String>,
-    },
+    Io { said: String, raw: Option<String> },
 }
 
 impl Refusal {
@@ -1063,11 +1057,8 @@ where
             Ok(Some(l)) => l,
             Ok(None) => return,
             Err(e) => {
-                let _ = write_line(
-                    out,
-                    &refused("-", "bad_request", &e.said, e.raw.as_deref()),
-                )
-                .await;
+                let _ =
+                    write_line(out, &refused("-", "bad_request", &e.said, e.raw.as_deref())).await;
                 return;
             }
         };

@@ -263,7 +263,7 @@ fn a_failed_round_carries_the_copy_detail() {
     // 接常驻后端那一步记下的优先（它比拨号那一层更完整）。
     connecting(&o, "deploy");
     dial_failed(&o, None, None, &said("拨号那一层"));
-    round_failed(&o, &said("round-said"));
+    round_failed(&crate::origin::Origin(o.clone()), &said("round-said"));
     down(&o);
     let d = product(&o, true).detail.unwrap();
     assert!(d.contains("断在：round-said"), "{d}");
