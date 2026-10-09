@@ -401,7 +401,7 @@ pub enum Claim {
 /// 套接字路径的字节上限（`sockaddr_un.sun_path` 108 字节含结尾的 0；留几格余量）。超了就不绑：内核会截断或拒，截断了就是另一个路径。
 pub(crate) const SOCKET_PATH_MAX: usize = 100;
 
-/// 常驻后端抢门牌：建 `<家>/run/`（只给本人）→ 抢它的独占锁 → 删陈旧的套接字文件 → 绑。不写钥匙，没有钥匙。
+/// 常驻后端抢门牌：建 `<家>/run/`（只给本人）→ 抢它的独占锁 → 记「谁在听」→ 删陈旧的套接字文件 → 绑。没有钥匙。
 /// 要在 tokio 运行时里调（绑的是异步套接字）。
 pub fn claim(data_home: &Path) -> Claim {
     let dir = relay_route_core::listen_dir_for(data_home);
@@ -414,6 +414,10 @@ pub fn claim(data_home: &Path) -> Claim {
         Ok(None) => return Claim::Held,
         Err(e) => return Claim::Failed(bind_failed(&dir, &e)),
     };
+    // 「谁在听」先记、再开门：套接字一出现，记录就已经在盘上（`--resident-ensure` 见到有人在听就读它）。
+    if let Err(e) = record_owner(data_home) {
+        tracing::warn!("记不下「谁在听」（{e}）⇒ 「停」会停不了它");
+    }
     let len = sock.as_os_str().len();
     if len > SOCKET_PATH_MAX {
         return Claim::Failed(copy_text(

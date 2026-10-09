@@ -665,12 +665,7 @@ async fn serve_listening(
 ) {
     tracing::info!("常驻后端已在听这台家里的套接字（多条流 + 不限次「只读 hello 就走」）");
 
-    // 「谁在听」由常驻后端自己记（本机远端同一个写者；起它的那一方不写）。
-    if let Some(dh) = control::resident::here() {
-        if let Err(e) = control::resident::record_owner(&dh) {
-            tracing::warn!("记不下「谁在听」（{e}）⇒ 「停」会停不了它");
-        }
-    }
+    // 「谁在听」由常驻后端自己记（本机远端同一个写者；起它的那一方不写）：抢到锁、开门之前那一刻记的（`control::resident::claim`）。
 
     let _poke_task = spawn_sigusr1_task();
 

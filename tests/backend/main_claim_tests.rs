@@ -64,14 +64,32 @@ async fn a_late_starter_that_cannot_claim_never_touches_the_log_or_the_socket() 
         .expect("锁放了却没抢到");
     assert!(listening.is_some(), "该在听");
     assert!(own_chan::someone_listening(&sock), "抢到了却没在听");
+    assert_eq!(installs.get(), 1);
+    drop(listening);
+    // 门牌目录由常驻后端建、建的那一下就只给本人（上面那个是夹具先建的，这里换一个空家看）。
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt as _;
-        let mode = std::fs::metadata(&dir).unwrap().permissions().mode() & 0o777;
+        let fresh = home.join("fresh");
+        let fresh_s = fresh.to_string_lossy().into_owned();
+        let env2 = |k: &str| match k {
+            listen::ENV_RESIDENT => Some("1".to_string()),
+            creds_core::store::DATA_DIR_ENV => Some(fresh_s.clone()),
+            "HOME" => Some(home_s.clone()),
+            _ => None,
+        };
+        let (l2, _) = claim_then_log(&env2, None, || stderr_log::Installed::NotAsked)
+            .await
+            .expect("空家里没抢到");
+        let run = relay_route_core::listen_dir_for(&fresh);
+        let mode = std::fs::metadata(&run).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, 0o700, "门牌目录不是只给本人");
+        assert!(
+            relay_route_core::listen_pid_for(&fresh).is_file(),
+            "开门之前没记「谁在听」"
+        );
+        drop(l2);
     }
-    assert_eq!(installs.get(), 1);
-    drop(listening);
     let (listening, _) = claim_then_log(&|_| None, None, install)
         .await
         .expect("stdio 那条");

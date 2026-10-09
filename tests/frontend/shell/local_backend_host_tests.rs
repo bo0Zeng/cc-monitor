@@ -3754,11 +3754,7 @@ fn e2e_children_of_the_resident_backend_carry_none_of_its_own_env() {
         expect_started(start_detached(&|| Ok(bin.clone()), &env), "本条");
         let pid = DETACHED.lock().expect("锁").as_ref().expect("句柄").pid;
         sb.remember(pid);
-        let own = [
-            "CCM_LISTEN_PORT",
-            "CCM_LISTEN_TOKEN_FILE",
-            "CCM_BACKEND_STDERR_LOG",
-        ];
+        let own = ["CCM_RESIDENT", "CCM_BACKEND_STDERR_LOG"];
         let mine: Vec<String> = environ_of(pid).into_iter().map(|(k, _)| k).collect();
         for k in own {
             assert!(
