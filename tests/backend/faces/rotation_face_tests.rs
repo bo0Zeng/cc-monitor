@@ -1140,20 +1140,88 @@ fn a_draft_is_checked_cell_by_cell_without_writing() {
     let before = ctx.hop.store.now();
     let mut r = rot_json(&["b"]);
     r["cap"] = json!({"b": {"*": [{"at": "22:00-03:00", "n": 0}, {"at": "02:00-04:00", "n": 50}]}});
-    let got = answer_plan_with(&ctx, &json!({"rotation": r})).expect("ok");
+    let got = answer_plan_with(&ctx, &json!({"rotation": r}), now()).expect("ok");
     assert_eq!(
         got["errors"],
         json!([{"cell": "cap.b.*[1]", "code": "overlap", "with": 0}])
     );
     assert_eq!(
-        answer_plan_with(&ctx, &json!({"rotation": rot_json(&["b"])})).expect("ok")["errors"],
+        answer_plan_with(&ctx, &json!({"rotation": rot_json(&["b"])}), now()).expect("ok")
+            ["errors"],
         json!([])
     );
     assert_eq!(
-        answer_plan_with(&ctx, &json!({"rotation": {"order": 3}}))
+        answer_plan_with(&ctx, &json!({"rotation": {"order": 3}}), now())
             .expect_err("形状")
             .0,
         "bad_args"
     );
     assert_eq!(ctx.hop.store.now(), before, "一个字节不写");
+}
+
+/// ★ 预览：一条规则 / 一份草稿 / 一个会话此刻那一份，接下来会怎么走（`plan`）· 各号不能用的段（`lanes`）· 各格此刻取的上限与下一层（`effective`）。
+/// b 全天封顶 0 ⇒ 从头就换到起始账号（`threshold{n:0}`），b 那条泳道整段 `off`；视窗写错 ⇒ `bad_args`；规则不在 ⇒ `no_such_rule`。
+#[test]
+fn the_plan_says_who_runs_next_and_what_each_cell_takes() {
+    let home = Home::new("plan-view");
+    let ctx = home.ctx();
+    let t = now();
+    let draft = json!({"order": ["b", {"start": true}], "enabled": ["b"], "when": "full", "atLimit": "continue", "cap": {"b": {"*": 0}}});
+    let got = answer_plan_with(&ctx, &json!({"rotation": draft, "span": "6h"}), t).expect("ok");
+    let end = t + 6 * 3600;
+    assert_eq!(got["errors"], json!([]));
+    assert_eq!(
+        got["plan"]
+            .as_array()
+            .expect("plan")
+            .iter()
+            .map(|p| (
+                p["from"].clone(),
+                p["to"].clone(),
+                p["account"].clone(),
+                p["why"].clone()
+            ))
+            .collect::<Vec<_>>(),
+        vec![(
+            json!(t),
+            json!(end),
+            json!("0"),
+            json!({"threshold": {"n": 0}})
+        )],
+        "{got}"
+    );
+    assert!(got["plan"][0]["fromText"].is_string(), "时刻带写好的字");
+    assert_eq!(got["lanes"][0]["account"], "b");
+    assert_eq!(got["lanes"][0]["spans"][0]["state"], "off", "{got}");
+    assert_eq!(got["lanes"][0]["spans"][0]["to"], json!(end));
+    assert_eq!(
+        got["effective"]["b"]["*"],
+        json!({"v": 0, "layer": "all", "below": {"v": null, "layer": "none"}})
+    );
+    assert_eq!(
+        got["effective"]["b"]["5h"],
+        json!({"v": 0, "layer": "all", "below": {"v": 0, "layer": "all"}})
+    );
+    // 规则：默认那条（只有起始账号）⇒ 一整段起始账号。
+    let rules = answer_rules_read_with(&ctx);
+    let id = rules["defaultRule"].as_str().expect("id");
+    let got = answer_plan_with(&ctx, &json!({"rule": id}), t).expect("ok");
+    assert_eq!(got["plan"].as_array().expect("plan").len(), 1);
+    assert_eq!(got["plan"][0]["to"], json!(t + 12 * 3600), "缺省 12h");
+    // 会话：从它此刻的号起。
+    home.saw(&ctx, "s-1");
+    let got = answer_plan_with(&ctx, &json!({"sid": "s-1"}), t).expect("ok");
+    assert_eq!(got["plan"][0]["account"], "a");
+    assert_eq!(
+        answer_plan_with(&ctx, &json!({"rule": id, "span": "3h"}), t)
+            .expect_err("视窗")
+            .0,
+        "bad_args"
+    );
+    assert_eq!(
+        answer_plan_with(&ctx, &json!({"rule": "r_gone"}), t)
+            .expect_err("不在")
+            .0,
+        "no_such_rule"
+    );
 }

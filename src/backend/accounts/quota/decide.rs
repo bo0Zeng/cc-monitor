@@ -630,6 +630,213 @@ pub(crate) fn back_at(account: &str, f: &Facts<'_>) -> Option<u64> {
     standing(account, f).back().and_then(|(t, _)| t)
 }
 
+// ── 预览：这份轮换接下来会怎么走（`rotation-plan`）─────────────────────────────────────────
+
+/// 预览里的一段：`[from, to)` 用 `account`（`None` ＝ 这一段不发上游：硬上限停着 · 切兜底前等着）；`why` ＝ 这一段开头为什么换（头一段 · 没换 ⇒ `None`）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct PlanStep {
+    pub(crate) from: u64,
+    pub(crate) to: u64,
+    pub(crate) account: Option<String>,
+    pub(crate) why: Option<SwitchWhy>,
+}
+
+/// 预览里一个号不能用的一段的样子。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum LaneState {
+    /// 被拒、还没到回来的时刻。
+    Refused,
+    /// 过了上限（`n` ＝ 那个上限）。
+    Capped,
+    /// 上限取到 `0`（时段停用）。
+    Off,
+    /// 订阅号在用付费超额。
+    Overage,
+}
+
+/// 一个号在预览里不能用的一段 `[from, to)`。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct LaneSpan {
+    pub(crate) from: u64,
+    pub(crate) to: u64,
+    pub(crate) state: LaneState,
+    pub(crate) n: Option<u8>,
+}
+
+/// 预览里结论会变的时刻（`(f.now, until)` 里，升序去重）：池里各号的重置时刻 · 被拒说的回来时刻 · 按时段写的上限的起止（本地钟）。
+/// 用量只按此刻的算（没有根据说以后涨多快）⇒ 结论只在这些时刻变。
+pub(crate) fn plan_events(f: &Facts<'_>, until: u64) -> Vec<u64> {
+    let mut out: Vec<u64> = Vec::new();
+    for a in f.pool {
+        if let Some(r) = (f.seen)(a) {
+            out.extend(r.resets_at);
+            out.extend(r.windows.iter().filter_map(|w| w.resets_at));
+        }
+        for v in f.cap.get(a).into_iter().flat_map(|m| m.values()) {
+            let CapValue::Slots(slots) = v else { continue };
+            for (from, to) in slots.iter().filter_map(|x| super::rotation::span_of(&x.at)) {
+                for m in [from, to] {
+                    // 本地钟一天里第 m 分钟，从 `f.now` 往后每天一次。
+                    let local = i128::from(f.now) + i128::from(f.offset);
+                    let left = (i128::from(m) * 60 - local.rem_euclid(86_400)).rem_euclid(86_400);
+                    let mut t = i128::from(f.now) + if left == 0 { 86_400 } else { left };
+                    while t < i128::from(until) {
+                        out.extend(u64::try_from(t).ok());
+                        t += 86_400;
+                    }
+                }
+            }
+        }
+    }
+    out.retain(|t| *t > f.now && *t < until);
+    out.sort_unstable();
+    out.dedup();
+    out
+}
+
+/// ★ 预览：从 `f.now` 到 `until`，这份轮换按 [`decide`] 会怎么走（每个结论会变的时刻判一次；单段预算要看以后的用量，不预测）。
+/// 此刻的号 ＝ `f.current`、挡在它前面的 ＝ `f.above`；换进一个号那一刻照上游选择记下挡在它前面的号。
+pub(crate) fn plan(
+    f: &Facts<'_>,
+    until: u64,
+    ready: &mut dyn FnMut(&str) -> Result<(), Unready>,
+) -> Vec<PlanStep> {
+    let mut times = vec![f.now];
+    times.extend(plan_events(f, until));
+    let mut cur = f.current.to_string();
+    let mut above: Vec<String> = f.above.to_vec();
+    let mut steps: Vec<PlanStep> = Vec::new();
+    for (i, &t) in times.iter().enumerate() {
+        let end = times.get(i + 1).copied().unwrap_or(until);
+        let tried = [cur.clone()];
+        let g = Facts {
+            now: t,
+            current: &cur,
+            above: &above,
+            heard: None,
+            tried: &tried,
+            ..*f
+        };
+        let (account, why, enter) = match decide(&g, ready) {
+            Verdict::Stay => (Some(cur.clone()), None, None),
+            Verdict::Switch { to, why, .. } => (Some(to.clone()), Some(why), Some(to)),
+            Verdict::Stuck { .. } => (Some(cur.clone()), None, None),
+            Verdict::Hold { n, .. } => (None, Some(SwitchWhy::Held { n }), None),
+            Verdict::Wait { instead, back, .. } => (
+                None,
+                Some(SwitchWhy::Wait {
+                    account: back.account,
+                    instead,
+                }),
+                None,
+            ),
+        };
+        if let Some(to) = enter {
+            above = blocked_above(&g, &to);
+            cur = to;
+        }
+        match steps.last_mut() {
+            Some(last) if last.account == account && (why.is_none() || last.why == why) => {
+                last.to = end
+            }
+            _ => steps.push(PlanStep {
+                from: t,
+                to: end,
+                account,
+                why,
+            }),
+        }
+    }
+    steps
+}
+
+/// 预览里一个号不能用的那几段（每个结论会变的时刻判一次 [`standing`]，相邻同样的并成一段）。
+pub(crate) fn lane(f: &Facts<'_>, account: &str, until: u64) -> Vec<LaneSpan> {
+    let mut times = vec![f.now];
+    times.extend(plan_events(f, until));
+    let mut out: Vec<LaneSpan> = Vec::new();
+    for (i, &t) in times.iter().enumerate() {
+        let end = times.get(i + 1).copied().unwrap_or(until);
+        let g = Facts { now: t, ..*f };
+        let (state, n) = match standing(account, &g) {
+            Standing::Usable => continue,
+            Standing::Refused { .. } => (LaneState::Refused, None),
+            Standing::Overage { .. } => (LaneState::Overage, None),
+            Standing::OverCap { n: 0, .. } => (LaneState::Off, None),
+            Standing::OverCap { n, .. } => (LaneState::Capped, Some(n)),
+        };
+        match out.last_mut() {
+            Some(last) if last.to == t && last.state == state && last.n == n => last.to = end,
+            _ => out.push(LaneSpan {
+                from: t,
+                to: end,
+                state,
+                n,
+            }),
+        }
+    }
+    out
+}
+
+/// 上限取自哪一层（界面悬停「此刻 ≤99 · 来自 全部窗口」）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum CapLayer {
+    /// 这号这窗口那一格。
+    Window,
+    /// 这号「全部窗口」那一格。
+    All,
+    /// 这份轮换的触发（到 N%）。
+    Trigger,
+    /// 哪层都没有：不封顶。
+    None,
+}
+
+/// 此刻取到的上限 ＋ 来自哪一层（`v = None` ＝ 不封顶）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct CapAt {
+    pub(crate) v: Option<u8>,
+    pub(crate) layer: CapLayer,
+}
+
+/// 这号这窗口（`key`；`*` ＝ 全部窗口那一格）此刻实际取的上限，与「这一格不算」时往下一层取到的（封顶浮层「其余时段 ＝ …」）。
+/// 层次同 [`cap_of`]：这号这窗口 → 这号全部窗口 → 触发；按时段的取此刻落在的那段，落不进 ⇒ 往下一层。
+pub(crate) fn effective_cap(f: &Facts<'_>, account: &str, key: &str) -> (CapAt, CapAt) {
+    let minute = minute_of(f);
+    let pick = |v: &CapValue| match v {
+        CapValue::N(n) => Some(*n),
+        CapValue::Slots(s) => s.iter().find(|x| x.holds(minute)).map(|x| x.n),
+    };
+    let per = f.cap.get(account);
+    let trigger = match f.when {
+        RotationWhen::Threshold { n } => CapAt {
+            v: Some(n),
+            layer: CapLayer::Trigger,
+        },
+        RotationWhen::Full => CapAt {
+            v: None,
+            layer: CapLayer::None,
+        },
+    };
+    let all = per
+        .and_then(|m| m.get(ALL_WINDOWS))
+        .and_then(pick)
+        .map(|n| CapAt {
+            v: Some(n),
+            layer: CapLayer::All,
+        });
+    if key == ALL_WINDOWS {
+        return (all.unwrap_or(trigger), trigger);
+    }
+    let below = all.unwrap_or(trigger);
+    let own = per.and_then(|m| m.get(key)).and_then(pick).map(|n| CapAt {
+        v: Some(n),
+        layer: CapLayer::Window,
+    });
+    (own.unwrap_or(below), below)
+}
+
 #[cfg(test)]
 #[path = "../../../../tests/backend/accounts/quota/decide_tests.rs"]
 mod tests;

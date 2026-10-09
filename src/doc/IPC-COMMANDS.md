@@ -1172,16 +1172,23 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 #### `rotation-plan`
 
-一份轮换草稿逐格校验（不写）。
+一份轮换接下来会怎么走 ＋ 草稿逐格校验（都不写）。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-plan`
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `errors` | ← | 逐格错 `[{cell, code, with?}]`（形状同 `rotation-rule-save` 的 `refused`）；空 ＝ 没错 |
-| `rotation` | → | 草稿 `{order, enabled, when, atLimit?, cap?, stint?, preempt?, fallback?, wait?}` |
+| `effective` | ← | 号 → 窗口键（`5h` · `7d` · `*` ＝ 全部窗口 · 封顶里写过的别的键）→ `{v, layer, below: {v, layer}}`：此刻实际取的上限（`v` 为 `null` ＝ 不封顶）与来自哪一层（`window` 这号这窗口 · `all` 这号全部窗口 · `trigger` 触发 · `none`），`below` ＝ 这一格不算时往下一层取到的（封顶浮层「其余时段 ＝ …」） |
+| `errors` | ← | 逐格错 `[{cell, code, with?}]`（形状同 `rotation-rule-save` 的 `refused`）；空 ＝ 没错；草稿有错 ⇒ 只回这一格 |
+| `lanes` | ← | 池里每个号一条（按池序）：`{account, spans: [{from, to, state, n}], resets: [{w, at}]}`；`state` 是不能用的样子 `refused` · `capped`（`n` ＝ 那个上限）· `off`（时段停用）· `overage`；`resets` ＝ 视窗里的重置时刻（`w` ＝ 语义位 `5h` / `7d`，没有 ⇒ 窗口键） |
+| `now` | ← | 这台此刻的 unix 秒（另有 `nowText`）；`until` ＝ 视窗止 |
+| `plan` | ← | `[{from, to, account, why}]`：`[from, to)` 用 `account`（`null` ＝ 那一段不发上游：硬上限停着 · 切兜底前等着）；`why` ＝ 那一段开头为什么换（形状同换号记录的 `why`；头一段 · 没换 ⇒ `null`）。用量只按此刻的算（以后涨多快没根据，不预测；单段预算不预测），结论只在重置 · 时段起止时变；每个时刻旁有 `…Text` |
+| `rotation` | → | 草稿 `{order, enabled, when, atLimit?, cap?, stint?, preempt?, fallback?, wait?}`（从池里排第一的号起）；与 `rule` · `sid` 三选一 |
+| `rule` | → | 这台的一条规则 id（从池里排第一的号起） |
+| `sid` | → | 一个会话：此刻生效的那一份，从它此刻的号起 |
+| `span` | → | 可缺：视窗 `6h` · `12h`（缺省）· `24h` · `7d` |
 
-码：`bad_args`
+码：`bad_args` · `no_such_rule`
 
 #### `rotation-session-read`
 
@@ -3690,7 +3697,7 @@ cc-bus 钩子诊断。
 | `--resident-verdict` | ＝ 帧命令 `resident-verdict`：远端常驻后端要不要换一次 |
 | `--resolve` | ＝ 帧命令 `resolve`：按 `ResumeSpec` 推出恢复命令 `CommandPlan`（与一次性 `--resolve` 同一个函数） |
 | `--rotation-default-set` | ＝ 帧命令 `rotation-default-set`：设这台的默认规则 |
-| `--rotation-plan` | ＝ 帧命令 `rotation-plan`：一份轮换草稿逐格校验（不写） |
+| `--rotation-plan` | ＝ 帧命令 `rotation-plan`：一份轮换接下来会怎么走 ＋ 草稿逐格校验（都不写） |
 | `--rotation-rule-delete` | ＝ 帧命令 `rotation-rule-delete`：删轮换规则 |
 | `--rotation-rule-rename` | ＝ 帧命令 `rotation-rule-rename`：给一条轮换规则改名 |
 | `--rotation-rule-save` | ＝ 帧命令 `rotation-rule-save`：新建或整份改一条轮换规则 |

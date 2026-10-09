@@ -1045,3 +1045,184 @@ fn a_stint_for_all_accounts_applies_to_whoever_is_current() {
         .insert("*".into(), 20);
     assert_eq!(w.judge("a", None, &[]).0, Verdict::Stay, "号自己那一行优先");
 }
+
+// ── 预览（`rotation-plan` 的 plan · lanes · effective）──────────────────────────────
+
+use super::{effective_cap, lane, plan, CapAt, CapLayer, LaneSpan, LaneState, PlanStep};
+
+impl World {
+    fn plan(&self, current: &str, until: u64) -> Vec<PlanStep> {
+        self.with(current, None, &[], |f| {
+            plan(f, until, &mut |a| {
+                self.unready.get(a).map_or(Ok(()), |u| Err(*u))
+            })
+        })
+    }
+}
+
+fn step(from: u64, to: u64, account: Option<&str>, why: Option<SwitchWhy>) -> PlanStep {
+    PlanStep {
+        from,
+        to,
+        account: account.map(str::to_string),
+        why,
+    }
+}
+
+/// ★ 预览照 `decide` 走：此刻 work 过 90% ⇒ 换到 b；抢回开着 ⇒ 前面的号一重置就切回（personal 先、work 后）；
+/// 用量只按此刻的算 ⇒ 只在重置时刻变。
+#[test]
+fn the_plan_follows_decide_through_resets_and_preempt() {
+    let mut w = World::new(&["work", "personal", "team", "b"]);
+    w.when = RotationWhen::Threshold { n: 90 };
+    w.preempt = true;
+    w.seen.insert("work".into(), at(0.91, NOW + 3000));
+    w.seen.insert("personal".into(), at(0.93, NOW + 1000));
+    w.seen.insert("team".into(), at(0.90, NOW + 2000));
+    w.seen.insert("b".into(), at(0.20, NOW + 9000));
+    let end = NOW + 4 * 3600;
+    assert_eq!(
+        w.plan("work", end),
+        vec![
+            step(
+                NOW,
+                NOW + 1000,
+                Some("b"),
+                Some(SwitchWhy::Threshold { n: 90 })
+            ),
+            step(
+                NOW + 1000,
+                NOW + 3000,
+                Some("personal"),
+                Some(SwitchWhy::Preempt)
+            ),
+            step(NOW + 3000, end, Some("work"), Some(SwitchWhy::Preempt)),
+        ]
+    );
+    // 抢回关着 ⇒ 换到 b 之后一直 b。
+    w.preempt = false;
+    assert_eq!(
+        w.plan("work", end),
+        vec![step(
+            NOW,
+            end,
+            Some("b"),
+            Some(SwitchWhy::Threshold { n: 90 })
+        )]
+    );
+}
+
+/// ★ 时段停用：work 17:00–02:00 上限 0（本地钟）⇒ 17:00 换到 personal，02:00 抢回；lanes 里 work 那一段是 `off`。
+#[test]
+fn a_slot_off_shows_in_the_plan_and_the_lane() {
+    let mut w = World::new(&["work", "personal"]);
+    w.preempt = true;
+    w.cap = caps(&[("work", "*", slots("17:00-02:00", 0))]);
+    local(&mut w, 16, 0);
+    let (five, two) = (w.now + 3600, w.now + 10 * 3600);
+    let end = w.now + 12 * 3600;
+    assert_eq!(
+        w.plan("work", end),
+        vec![
+            step(w.now, five, Some("work"), None),
+            step(
+                five,
+                two,
+                Some("personal"),
+                Some(SwitchWhy::Threshold { n: 0 })
+            ),
+            step(two, end, Some("work"), Some(SwitchWhy::Preempt)),
+        ]
+    );
+    let lanes = w.with("work", None, &[], |f| {
+        (lane(f, "work", end), lane(f, "personal", end))
+    });
+    assert_eq!(
+        lanes,
+        (
+            vec![LaneSpan {
+                from: five,
+                to: two,
+                state: LaneState::Off,
+                n: None
+            }],
+            vec![]
+        )
+    );
+}
+
+/// ★ 都不能用 ＋ 停 ⇒ 预览里那一段不发上游（`account: null` · `held`），到最早回来的号起接着走；被拒的号 lanes 里是 `refused`。
+#[test]
+fn a_hold_is_a_gap_in_the_plan_until_the_earliest_is_back() {
+    let mut w = World::new(&["work", "personal"]);
+    w.when = RotationWhen::Threshold { n: 90 };
+    w.at_limit = AtLimit::Stop;
+    w.seen
+        .insert("work".into(), reading(true, 1.0, Some(NOW + 1800)));
+    w.seen.insert("personal".into(), at(0.95, NOW + 600));
+    let end = NOW + 3600;
+    assert_eq!(
+        w.plan("work", end),
+        vec![
+            step(NOW, NOW + 600, None, Some(SwitchWhy::Held { n: 90 })),
+            step(NOW + 600, end, Some("personal"), Some(full5h())),
+        ]
+    );
+    let work = w.with("work", None, &[], |f| lane(f, "work", end));
+    assert_eq!(
+        work,
+        vec![LaneSpan {
+            from: NOW,
+            to: NOW + 1800,
+            state: LaneState::Refused,
+            n: None
+        }]
+    );
+}
+
+/// ★ 此刻实际取的上限与来自哪一层，和「这一格不算」时往下一层取到的（封顶浮层「其余时段 ＝ …」）。
+#[test]
+fn effective_caps_name_their_layer_and_the_one_below() {
+    let mut w = World::new(&["work", "personal"]);
+    w.when = RotationWhen::Threshold { n: 90 };
+    w.cap = caps(&[
+        ("work", "*", CapValue::N(99)),
+        ("work", "5h", slots("17:00-02:00", 0)),
+    ]);
+    local(&mut w, 20, 0);
+    let at = |v: Option<u8>, layer| CapAt { v, layer };
+    let got = w.with("work", None, &[], |f| {
+        (
+            effective_cap(f, "work", "5h"),
+            effective_cap(f, "work", "*"),
+            effective_cap(f, "personal", "5h"),
+        )
+    });
+    assert_eq!(
+        got,
+        (
+            (at(Some(0), CapLayer::Window), at(Some(99), CapLayer::All)),
+            (at(Some(99), CapLayer::All), at(Some(90), CapLayer::Trigger)),
+            (
+                at(Some(90), CapLayer::Trigger),
+                at(Some(90), CapLayer::Trigger)
+            ),
+        )
+    );
+    // 时段外（10:00）⇒ 5h 那一格落不进 ⇒ 取全部窗口；满了才换、没设 ⇒ 不封顶。
+    local(&mut w, 10, 0);
+    w.when = RotationWhen::Full;
+    let got = w.with("work", None, &[], |f| {
+        (
+            effective_cap(f, "work", "5h"),
+            effective_cap(f, "personal", "*"),
+        )
+    });
+    assert_eq!(
+        got,
+        (
+            (at(Some(99), CapLayer::All), at(Some(99), CapLayer::All)),
+            (at(None, CapLayer::None), at(None, CapLayer::None)),
+        )
+    );
+}

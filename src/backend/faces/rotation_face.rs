@@ -626,19 +626,50 @@ pub(crate) fn answer_default_set_with(ctx: &Ctx, args: &Value) -> Answer {
     Ok(json!({"defaultRule": id, "followers": followers}))
 }
 
-/// `rotation-plan`：这一份轮换（`{rotation}` 草稿，不写）逐格校验 —— 编辑器存之前问它，界面只照 `errors` 标红。
-/// 回 `{errors: [{cell, code, with?}]}`（空 ＝ 没错）。形状不对（`rotation_from` 整份拒）⇒ `bad_args`。
+/// `rotation-plan`：这份轮换接下来会怎么走 ＋ 草稿逐格校验（都不写）。问的是哪一份：`{rotation}`（草稿：先逐格校验，有错只回 `errors`）·
+/// `{rule}`（这台的一条规则）· `{sid}`（这个会话此刻生效的那一份，从它此刻的号起）；`span`：`6h` · `12h`（缺省）· `24h` · `7d`。
+/// 回 `{errors, now, plan, lanes, effective}`：用量只按此刻的算（以后涨多快没根据，不预测），结论只在重置 · 时段起止时变。
+/// 形状不对（`rotation_from` 整份拒）⇒ `bad_args`；规则 / 会话不在 ⇒ `no_such_rule` / `bad_args`。
 pub(crate) fn answer_plan(args: &Value) -> Answer {
-    answer_plan_with(&Ctx::here(), args)
+    answer_plan_with(&Ctx::here(), args, crate::accounts::quota::now_unix())
 }
 
-pub(crate) fn answer_plan_with(ctx: &Ctx, args: &Value) -> Answer {
-    let v = args
-        .get("rotation")
-        .ok_or_else(|| bad("missing `rotation`"))?;
-    let errors = rotation::cell_errors(v);
-    if errors.is_empty() {
-        rotation::rotation_from(
+/// 预览的视窗（秒）。
+fn span_secs(args: &Value) -> Result<u64, (&'static str, String)> {
+    match args.get("span") {
+        None | Some(Value::Null) => Ok(12 * 3600),
+        Some(v) => match v.as_str() {
+            Some("6h") => Ok(6 * 3600),
+            Some("12h") => Ok(12 * 3600),
+            Some("24h") => Ok(24 * 3600),
+            Some("7d") => Ok(7 * 86_400),
+            _ => Err(bad("`span` must be 6h / 12h / 24h / 7d")),
+        },
+    }
+}
+
+/// 规则 / 草稿没有会话：从池里排第一的号起（起始账号占位 ＝ 账号 0）。
+fn first_of(rot: &Rotation, start: &str) -> String {
+    rot.pool(start)
+        .first()
+        .cloned()
+        .unwrap_or_else(|| start.to_string())
+}
+
+fn cap_at_wire(c: &crate::accounts::quota::decide::CapAt) -> Value {
+    json!({"v": c.v, "layer": c.layer})
+}
+
+pub(crate) fn answer_plan_with(ctx: &Ctx, args: &Value, now: u64) -> Answer {
+    let until = now + span_secs(args)?;
+    let (_, _, book) = read_book(ctx);
+    let zero = crate::accounts::manage::model::ACCOUNT_ZERO.to_string();
+    let (rot, agent, start, current, above) = if let Some(v) = args.get("rotation") {
+        let errors = rotation::cell_errors(v);
+        if !errors.is_empty() {
+            return Ok(json!({ "errors": errors }));
+        }
+        let rot = rotation::rotation_from(
             v,
             0..=1,
             &account_ok,
@@ -646,8 +677,92 @@ pub(crate) fn answer_plan_with(ctx: &Ctx, args: &Value) -> Answer {
             None,
         )
         .map_err(|e| bad(&e))?;
-    }
-    Ok(json!({ "errors": errors }))
+        let first = first_of(&rot, &zero);
+        (rot, LIBRARY_AGENT.to_string(), zero, first, Vec::new())
+    } else if let Some(id) = rule_id_arg(args, "rule")? {
+        let Some(r) = book.rules.get(&id) else {
+            return Err(("no_such_rule", copy_text("beRotation.rule.gone", &[])));
+        };
+        let first = first_of(&r.rotation, &zero);
+        (
+            r.rotation.clone(),
+            LIBRARY_AGENT.to_string(),
+            zero,
+            first,
+            Vec::new(),
+        )
+    } else if let Some(sid) = args.get("sid").and_then(Value::as_str) {
+        let Some(s) = book.sessions.get(sid) else {
+            return Err(bad("no such session"));
+        };
+        (
+            book.rotation_of(s),
+            s.agent.clone(),
+            s.start.clone(),
+            s.current.clone(),
+            s.blocked_above.clone(),
+        )
+    } else {
+        return Err(bad("missing `rotation` / `rule` / `sid`"));
+    };
+    let view = ctx.hop.plan_view(
+        &rot,
+        &agent,
+        &start,
+        &current,
+        &above,
+        &|a| (ctx.rows)(&agent, a),
+        now,
+        until,
+    );
+    let tz_min = crate::platform::local_tz::offset_secs(now).unwrap_or(0) / 60;
+    let text = |t: u64| {
+        crate::common::time::fmt_at(
+            i64::try_from(t).unwrap_or(i64::MAX),
+            i64::try_from(now).unwrap_or(i64::MAX),
+            tz_min,
+        )
+    };
+    let plan: Vec<Value> = view
+        .steps
+        .iter()
+        .map(|p| json!({"from": p.from, "fromText": text(p.from), "to": p.to, "toText": text(p.to), "account": p.account, "why": p.why}))
+        .collect();
+    let lanes: Vec<Value> = view
+        .lanes
+        .iter()
+        .map(|l| {
+            json!({
+                "account": l.account,
+                "spans": l.spans.iter().map(|x| json!({"from": x.from, "fromText": text(x.from), "to": x.to, "toText": text(x.to), "state": x.state, "n": x.n})).collect::<Vec<_>>(),
+                "resets": l.resets.iter().map(|(w, at)| json!({"w": w, "at": at, "atText": text(*at)})).collect::<Vec<_>>(),
+            })
+        })
+        .collect();
+    let effective: Map<String, Value> = view
+        .effective
+        .iter()
+        .map(|(a, cells)| {
+            let m: Map<String, Value> = cells
+                .iter()
+                .map(|(k, (at, below))| {
+                    let mut v = cap_at_wire(at);
+                    v["below"] = cap_at_wire(below);
+                    (k.clone(), v)
+                })
+                .collect();
+            (a.clone(), Value::Object(m))
+        })
+        .collect();
+    Ok(json!({
+        "errors": [],
+        "now": now,
+        "nowText": text(now),
+        "until": until,
+        "plan": plan,
+        "lanes": lanes,
+        "effective": effective,
+    }))
 }
 
 fn sids_of(args: &Value, key: &str) -> Result<Vec<String>, (&'static str, String)> {

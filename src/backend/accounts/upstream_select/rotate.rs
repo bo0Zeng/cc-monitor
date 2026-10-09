@@ -103,6 +103,21 @@ pub(crate) fn at_limit_in_effect(agent: &str, said: AtLimit) -> AtLimit {
     }
 }
 
+/// [`Hop::plan_view`] 的结果。
+pub(crate) struct PlanView {
+    pub(crate) steps: Vec<decide::PlanStep>,
+    pub(crate) lanes: Vec<PlanLane>,
+    /// 号 → 窗口键（`*` ＝ 全部窗口）→ （此刻取的, 这一格不算时往下一层取到的）。
+    pub(crate) effective: BTreeMap<String, BTreeMap<String, (decide::CapAt, decide::CapAt)>>,
+}
+
+/// 预览里一个号的泳道：不能用的那几段 · 重置时刻（`(语义位或窗口键, 时刻)`）。
+pub(crate) struct PlanLane {
+    pub(crate) account: String,
+    pub(crate) spans: Vec<decide::LaneSpan>,
+    pub(crate) resets: Vec<(String, u64)>,
+}
+
 /// 一发请求在上游选择这一侧的事实（判的时候要的；按量号那几格由调用方从 key 表答）。
 pub(crate) struct Turn<'a> {
     pub(crate) agent: &'a str,
@@ -673,6 +688,104 @@ impl Hop {
             now,
         };
         self.prepare(&a, &self.library(), target).map(|_| ())
+    }
+
+    /// 帧面「这份轮换接下来会怎么走」（`rotation-plan`）：从 `now` 到 `until` 的预览 · 池里各号不能用的那几段与重置时刻 ·
+    /// 各号各窗口此刻取的上限。`current` / `above` ＝ 此刻的号与挡在它前面的（规则 / 草稿没有会话 ⇒ 起始账号 · 空）。只读。
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn plan_view(
+        &self,
+        rot: &Rotation,
+        agent: &str,
+        start: &str,
+        current: &str,
+        above: &[String],
+        row: &dyn Fn(&str) -> Option<bool>,
+        now: u64,
+        until: u64,
+    ) -> PlanView {
+        let lib = self.library();
+        let a = Turn {
+            agent,
+            start,
+            sid: "",
+            body: b"",
+            row,
+            now,
+        };
+        let pool = rot.pool(start);
+        let seen = |x: &str| self.quota.entry(agent, x).map(|o| o.reading);
+        let kind = |x: &str| kind_of(&a, &lib, x);
+        let (slot, key) = (slot_fn(agent), key_fn(agent));
+        let f = Facts {
+            pool: &pool,
+            when: rot.when,
+            cap: &rot.cap,
+            stint: &rot.stint,
+            preempt: rot.preempt,
+            at_limit: at_limit_in_effect(agent, rot.at_limit),
+            fallback: &rot.fallback,
+            wait: rot.wait,
+            can_hold: crate::agents::limit_reply_of(agent).is_some(),
+            current,
+            base: &BTreeMap::new(),
+            above,
+            now,
+            offset: local_offset(now),
+            heard: None,
+            seen: &seen,
+            kind: &kind,
+            slot: &slot,
+            key: &key,
+            tried: &[],
+        };
+        let mut ready = |x: &str| self.reach(&a, &lib, x).map(|_| ());
+        let steps = decide::plan(&f, until, &mut ready);
+        let lanes = pool
+            .iter()
+            .map(|x| {
+                let resets = seen(x)
+                    .map(|r| {
+                        r.windows
+                            .iter()
+                            .filter_map(|w| {
+                                let at = w.resets_at.filter(|t| *t > now && *t < until)?;
+                                Some((
+                                    slot(&w.name)
+                                        .map_or_else(|| key(&w.name), |s| Some(s.to_string()))?,
+                                    at,
+                                ))
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                PlanLane {
+                    account: x.clone(),
+                    spans: decide::lane(&f, x, until),
+                    resets,
+                }
+            })
+            .collect();
+        let effective = pool
+            .iter()
+            .map(|x| {
+                let mut keys: Vec<String> = ["5h", "7d"].iter().map(|k| k.to_string()).collect();
+                keys.extend(rot.cap.get(x).into_iter().flat_map(|m| m.keys().cloned()));
+                keys.push(crate::accounts::quota::rotation::ALL_WINDOWS.to_string());
+                keys.dedup();
+                let cells = keys.into_iter().fold(BTreeMap::new(), |mut m, k| {
+                    m.entry(k.clone())
+                        .or_insert_with(|| decide::effective_cap(&f, x, &k));
+                    m
+                });
+                (x.clone(), cells)
+            })
+            .collect();
+        PlanView {
+            steps,
+            lanes,
+            effective,
+        }
     }
 
     /// 帧面：一个会话的那一份（「账号」格 ＋ 下一个 · 卡住 · 可用按量号 · 此刻那个号的显示态）。只读：不记、不续令牌。
