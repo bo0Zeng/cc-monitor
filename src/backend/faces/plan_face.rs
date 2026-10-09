@@ -97,9 +97,18 @@ fn who_port() -> impl Fn(&str) -> Whose {
 /// 读一个目录（并进本子）；读到了就开始盯它的工作区。
 fn read_dir(entry: &Path, dir: &Path) -> Result<Value, book::Miss> {
     let who = who_port();
-    let out = book::book().read(entry, dir, &who, now_ms())?;
-    if let Some(ws) = out.get("workspace").and_then(Value::as_str) {
-        arm(entry, Path::new(ws));
+    let mut out = book::book().read(entry, dir, &who, now_ms())?;
+    if let Some(ws) = out
+        .get("workspace")
+        .and_then(Value::as_str)
+        .map(PathBuf::from)
+    {
+        // pb 的输出随当前目录变（agent_view 里的路径是相对当前目录的）⇒ 一律以工作区根为准再读一次，
+        // 摘要才与盯盘那一路（当前目录 ＝ 工作区根）对得上，不会凭空推一帧。
+        if ws.as_path() != dir {
+            out = book::book().read(entry, &ws, &who, now_ms())?;
+        }
+        arm(entry, &ws);
     }
     Ok(out)
 }
