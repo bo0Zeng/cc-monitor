@@ -36,6 +36,7 @@ ACCOUNTS_DIR = os.path.join(CCM_HOME, "accounts")
 WORK_DIR = os.path.join(CCM_HOME, "autostart")
 LOG = os.path.join(CCM_HOME, "logs", "quota-warm.log")
 LOCK = os.path.join(CCM_HOME, "quota-warm.lock")
+STATE = os.path.join(CCM_HOME, "quota-warm.json")  # cc-monitor 时间轴只读它画「开窗」：{pid, next: [{account, at}]}
 
 MARGIN_S = 60          # 重置时刻之后再等这么久才看（重置时刻按整点 / 十分对齐，留余量）
 RETRY_S = 15 * 60      # 发了没出新数 / 读不到额度账 ⇒ 过这么久再试
@@ -157,8 +158,28 @@ def library_accounts():
         return []
 
 
+def write_state(nexts):
+    """每趟写一份小状态文件（原子换名）：哪个号下一次几点再看。cc-monitor 只在写它的进程还活着时读。写不了就算了。"""
+    body = {"pid": os.getpid(), "next": [{"account": n, "at": int(at)} for n, at in nexts]}
+    tmp = STATE + ".tmp"
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(body, f)
+        os.replace(tmp, STATE)
+    except OSError:
+        pass
+
+
 def one_pass(accounts, system, text, model, dry_run):
-    """跑一趟，回下一次该醒的时刻。"""
+    """跑一趟，回下一次该醒的时刻；不是 --dry-run 时顺手写状态文件（每个号下一次几点再看）。"""
+    nexts = []
+    wake = _one_pass(accounts, system, text, model, dry_run, nexts)
+    if not dry_run:
+        write_state(nexts)
+    return wake
+
+
+def _one_pass(accounts, system, text, model, dry_run, nexts):
     try:
         q = quota_read()
     except Exception as e:  # noqa: BLE001 —— 读不到就过一阵再试，不让常驻那一形死掉
@@ -183,12 +204,15 @@ def one_pass(accounts, system, text, model, dry_run):
             if ok and heard and a2 == "wait":
                 log(f"{name}: {why} ⇒ 发了（{info}）⇒ {why2}")
                 wakes.append(at2)
+                nexts.append((name, at2))
             else:
                 log(f"{name}: {why} ⇒ 发了没成（{info}；额度账{'有' if heard else '没有'}新数）⇒ {stamp(time.time() + RETRY_S)} 再试")
                 wakes.append(time.time() + RETRY_S)
+                nexts.append((name, time.time() + RETRY_S))
         elif action == "wait":
             log(f"{name}: {why}")
             wakes.append(at)
+            nexts.append((name, at))
         else:
             log(f"{name}: {why}，跳过")
     return min(wakes) if wakes else None

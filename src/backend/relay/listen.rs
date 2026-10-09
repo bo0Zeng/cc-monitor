@@ -5,7 +5,7 @@
 //! 中转自己不绑口、不读盘、不读环境（边界判据 `C4` / `C5`）。
 
 use super::key;
-use crate::stream::listen::LOOPBACK;
+use crate::common::net::LOOPBACK;
 use comms_outward::{Relay, Startup, TeeSink};
 use copy_core::copy_text;
 use std::net::{SocketAddr, TcpListener};
@@ -134,9 +134,13 @@ fn prepare(
     // ① 只有绑上了口的那一个会写 ⇒ 两个中转抢着铸构造上不存在；
     // ② 「在听」那句话说出去的时候钥匙文件已经在盘上。
     // 拿不到 ⇒ 不起（有口没钥匙 = 不设防的口；`listener` 在这里 drop，口当场放掉）。报错里只有路径与原因，没有钥匙值（`door::Key` 不派生 `Debug`）。
-    let door = match key::key_path(get)
-        .ok_or_else(|| copy_text("beRelayListen.key.noHome", &[]))
-        .and_then(|p| key::ensure_key(&p))
+    let ensure = |kind| {
+        key::key_path(get, kind)
+            .ok_or_else(|| copy_text("beRelayListen.key.noHome", &[]))
+            .and_then(|p| key::ensure_key(&p))
+    };
+    let door = match ensure(key::KeyKind::Full)
+        .and_then(|full| ensure(key::KeyKind::Pass).map(|pass| comms_outward::Keys { full, pass }))
     {
         Ok(k) => k,
         Err(e) => {

@@ -22,7 +22,8 @@ import type { BehaviorConfig } from "./behavior";
 import { toast, undoToast } from "./kit/toast";
 import { detailOf } from "./kit/detail";
 import { copyText } from "./copy-table";
-import { fullTitle, needsOf, needsWord } from "./session-face";
+import { fullTitle, needsOf } from "./session-face";
+import { needsWord } from "./session-words";
 import { SeqSet, TailWindow } from "./live-window";
 import type { AgentsPanel } from "./agents-panel";
 import { turnEndNotifier } from "./turn-notify";
@@ -38,6 +39,7 @@ import type { SessionActivity } from "./generated/SessionActivity";
 import { ENDED, LIVE, RECONNECTABLE, closesWithoutMenu, containerEvent, isLive, isResumeOnly, hasTerminal, inTmux, nextState, type StateEvent } from "./tab-session-state";
 import type { SessionContainer } from "./generated/SessionContainer";
 import { isLocalOrigin, isRemoteOrigin, LOCAL_ORIGIN, originFromWire, type Origin } from "./ipc/origin";
+import type { RulesRead } from "./quota-reads";
 // `Tab` 的形状与标题函数在 `tab-model.ts`、落点算术在 `tab-drop.ts`；这里 re-export，调用方只 import 本文件。
 export type { Tab, TabsSummary } from "./tab-model";
 export {
@@ -351,7 +353,13 @@ export class TabManager {
     closeTabs: (sids) => {
       for (const sid of sids) this.closeTab(sid);
     },
+    // 「轮换规则 ▸」：宿主（main.ts）接上才有（那台的规则表 · 开设置那台的「轮换」栏）。
+    rulesOf: (origin) => this.onRotationRules?.rulesOf(origin),
+    openRules: (origin) => this.onRotationRules?.openRules(origin),
   };
+
+  /** 批量菜单「轮换规则 ▸」要的两样（main.ts 接）；不接 ⇒ 菜单里没有那一项。 */
+  onRotationRules: { rulesOf(origin: Origin): RulesRead | null; openRules(origin: Origin): void } | null = null;
 
   private openTabCwd(sid: string): Promise<void> {
     return this.actions.openTabCwd(sid);
@@ -1224,6 +1232,8 @@ export class TabManager {
       this.refreshTabBar();
     } else if (ch.writers || ch.needs || ch.peek) this.refreshTabBar();
     if (ch.needs) tab.turnRail.render(); // 在等你的那一轮琥珀
+    // 过程行上的「现在：… / 等你批准：…」跟着这台此刻的会话事实（后端在 `history-turns` 里拼）。
+    if (ch.needs || ch.writers || ch.peek) void tab.turnFold.refresh();
     this.paintStepWaits(tab);
     if ((ch.usage || ch.projectDir) && sid === this.store.activeId) this.publishActive();
     if (ch.agent) {
@@ -1438,6 +1448,8 @@ export class TabManager {
 
   /** ↗ 浮层的［接上终端］（主窗口接到设置窗那一节）。 */
   onConnectTerminal: (() => void) | null = null;
+  /** ↗ 浮层的［在 cc-monitor 里打开］：切到这个会话的标签页、开底部抽屉的「终端」页（main.ts 接）。 */
+  onOpenHere: ((sid: string) => void) | null = null;
 
   /** ↗ 的锚：行尾那颗（从行上点的）或会话头那颗（别的入口；会话头没在画它 ⇒ 退到行尾那颗）。 */
   private frontAnchor(sid: string, from: "row" | "head"): HTMLElement | null {
@@ -1481,6 +1493,10 @@ export class TabManager {
         return;
       case "open-in-terminal":
         await this.menu.attachRemote(sid);
+        return;
+      case "open-here":
+        closeFrontResult(sid);
+        this.onOpenHere?.(sid);
         return;
       case "copy":
         // 浮层里那颗自己复制（`kit/detail.ts`），不经这里。

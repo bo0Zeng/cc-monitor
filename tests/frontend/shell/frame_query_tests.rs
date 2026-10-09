@@ -172,7 +172,12 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     ("history-list", "新帧命令：一台的全部会话一次给（`history_list.rs`），界面问 `<local>`、远端带 `origin`；取代按项目逐个展开的那两问"),
     // 额度与轮换（`src/frontend/ui/quota-reads.ts`）：额度账 · 轮换都是那台后端账号域自己的状态，monitor 从没有过这几条命令。
     ("quota-read", "新帧命令：那台的额度账 ＋ 显示态（判在后端）；界面状态栏按钮 · 悬停卡 · 账号面板只排版"),
-    ("rotation-read", "新帧命令：那台的默认轮换（面板「默认」那一份只读显示）"),
+    ("rotation-rules-read", "新帧命令：那台的轮换规则表（默认指向哪条 · 每条谁在用 · 摘要与说明由后端写），面板来源下拉与设置里规则管理只排版"),
+    ("rotation-plan", "新帧命令：一份轮换草稿逐格校验（封顶时段重叠 · 起止相同 · 时刻写错 · 越界），浮层只照它标红"),
+    ("rotation-rule-save", "新帧命令：新建 / 整份改一条规则（逐格校验 · 版本冲突由后端判），存为规则浮层与规则编辑器只排版"),
+    ("rotation-rule-rename", "新帧命令：规则改名（重名 · 空 · 超长 · 版本冲突由后端判），设置「轮换」分栏行内改名只排版"),
+    ("rotation-rule-delete", "新帧命令：删规则（默认那条拒；在用的会话转为本会话或改跟随默认，由后端挪），删除框只排版"),
+    ("rotation-default-set", "新帧命令：设为这台的默认规则（回跟随默认的活会话数），设置「轮换」分栏只排版"),
     ("rotation-session-read", "新帧命令：一批会话的轮换与「账号」格（能不能热切换 · 下一个 · 卡住都由后端给）"),
     ("rotation-session-set", "新帧命令：改会话的轮换（勾号 · 拖序 · 触发 · 无号可换两态），新勾的按量号由后端挪末尾"),
     ("rotation-switch", "新帧命令：现在就换（热切换钉号 · 重启切换逐个交 `session-restart`）"),
@@ -261,10 +266,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "terminal-follow-ack",
         "第几帧画完了（两次至少隔 100 ms）：后端收到才推下一帧；前端 `terminal-follow.ts` 发",
     ),
-    (
-        "terminal-unfollow",
-        "退订（幂等）：后端摘票、收那个客户端；前端 `terminal-follow.ts` 在离开终端页 / 切标签页时发",
-    ),
+    // `terminal-unfollow` 不在这里：界面不发它（撤流即可），由 monitor 替界面发 —— 见 [`SENT_BY_MONITOR_ONLY`]。
     // 各台搜索结果合成一份：合并排序进本机后端（`search_rules::sort_by_recency`），界面逐台扇出。
     (
         "history-search-merge",
@@ -675,6 +677,15 @@ const ASKED_BY_MONITOR_ITSELF: &[(&str, usize, &str)] = &[
     ),
 ];
 
+/// **只由 monitor 发、界面不发**的帧命令 —— `(帧命令, 生产段里几处, 为什么)`。两向相等：monitor 生产段的字面量 == 登记的处数，
+/// 界面 `chan.call` 的操作名里没有它（界面又长出一处发送点 = 两条路并存）。
+const SENT_BY_MONITOR_ONLY: &[(&str, usize, &str)] = &[(
+    "terminal-unfollow",
+    1,
+    "〔退订挂在订阅上〕界面那条 `terminal-screen/<票>` 撤掉（撤单 · 被重订 · 页面重载 · 窗口没了）时，\
+     壳替界面向那台退订（`terminal_screen_relay.rs::unfollow`）；重载时界面没人能发，所以只住壳这一处",
+)];
+
 /// 后端 `stream/inbound/` 生产段里登记的全部帧命令名（异源：从后端源码数，不读本文件的表）。
 fn backend_registered_commands() -> std::collections::BTreeSet<String> {
     backend_command_blocks()
@@ -868,6 +879,26 @@ fn the_channeled_ops_are_sent_only_through_the_channel() {
             monitor_literal_count(op),
             on_frame + itself + homonyms,
             "`{op}` 已迁到通道，monitor 生产段却还有它的字面量（又长出了一个发送点）"
+        );
+    }
+    for (op, n, why) in SENT_BY_MONITOR_ONLY {
+        assert!(!why.trim().is_empty(), "`{op}` 没写理由");
+        assert!(registered.contains(*op), "`{op}` 不是后端登记的帧命令");
+        assert!(
+            !ops.contains(*op),
+            "`{op}` 登记成「只由 monitor 发」，界面却也经通道发它（两条路并存）"
+        );
+        assert!(
+            !CHANNELED
+                .iter()
+                .chain(CHANNELED_ELSEWHERE)
+                .any(|(c, _)| c == op),
+            "`{op}` 同时登记在「界面经通道发」的表里"
+        );
+        assert_eq!(
+            monitor_literal_count(op),
+            *n,
+            "`{op}` 在 monitor 生产段里的发送点处数 != 登记的 {n}"
         );
     }
     let mut still_sent_by_monitor: Vec<String> = Vec::new();

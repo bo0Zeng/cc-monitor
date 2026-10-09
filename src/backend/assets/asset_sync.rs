@@ -24,7 +24,7 @@
 //!
 //! 触发只有两种：monitor 在远端那条流握手成功那一刻交一次 `assets-sync {origin, dial}`；界面看机器页前交一次 `assets-sync {}`
 //! （对可达表里每一台各一趟）。一趟的期限归调用方。
-//! 「问远端」那一跳（`DialRemote`）与可达表住 `crate::stream::remote_ask`；本模块只管资产目录拉什么、并什么、推什么、扇不扇出。
+//! 「问远端」那一跳（`DialRemote`）与可达表住 `crate::dial::remote_ask`；本模块只管资产目录拉什么、并什么、推什么、扇不扇出。
 
 use copy_core::copy_text;
 use std::collections::BTreeMap;
@@ -32,7 +32,7 @@ use std::collections::BTreeMap;
 use serde_json::{json, Value};
 
 // 问远端那一跳与可达表住 `remote_ask`（原样搬过去的）；这里只取用，不再导出。
-use crate::stream::remote_ask::{lock, Reach, Remote, Table, REACH};
+use crate::dial::remote_ask::{lock, Reach, Remote, Table, REACH};
 
 /// 一块推的载荷（JSON 本身）的上限。
 /// 原理由是「`sh -c` 那一个参数 128 KiB，留出引号转义的余量」—— 载荷改走 stdin 之后那条上限不在了，
@@ -49,12 +49,12 @@ pub type Fold =
 
 /// 远端上那两条命令的完整字面（**只此一处拼**）。
 pub fn pull_command() -> String {
-    crate::stream::remote_ask::command_line(&[PULL_FLAG])
+    crate::dial::remote_ask::command_line(&[PULL_FLAG])
 }
 
 /// 推那一趟的命令行：**只有后端路径与两个旗标，不含载荷**；载荷由 [`push_stdin`] 经 capture 写进 stdin。
 pub fn push_command() -> String {
-    crate::stream::remote_ask::command_line(&[PUSH_FLAG, crate::STDIN_LINE_FLAG])
+    crate::dial::remote_ask::command_line(&[PUSH_FLAG, crate::STDIN_LINE_FLAG])
 }
 
 /// 推那一趟写进远端 stdin 的那一行（载荷本身是紧凑 JSON、没有换行 ⇒ 恰好一行）。
@@ -252,13 +252,13 @@ pub async fn answer_with(
         if !lock(table).contains_key(o) {
             return Err((
                 "unreachable",
-                crate::stream::remote_ask::unreachable_message(o),
+                crate::dial::remote_ask::unreachable_message(o),
             ));
         }
         first = Some(o.to_string());
     } else if origin.is_some() {
         // 登记走 `remote_ask::register`（可达表唯一的写口；`remote-reach` 也经它）。
-        first = Some(crate::stream::remote_ask::register(table, args)?);
+        first = Some(crate::dial::remote_ask::register(table, args)?);
     } else if args.get("dial").is_some() {
         return Err((
             "bad_args",
@@ -298,7 +298,7 @@ pub async fn answer_with(
             }
         }
     }
-    let reach_rows = crate::stream::remote_ask::reach_rows(table);
+    let reach_rows = crate::dial::remote_ask::reach_rows(table);
     Ok(json!({ "self": own_id, "synced": synced, "reach": reach_rows }))
 }
 

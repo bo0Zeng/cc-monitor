@@ -48,10 +48,12 @@
         {
           "can": {
             "end": {
-              "no": "not-yours"
+              "no": "not-yours",
+              "said": "手机端内部会话"
             },
             "input": {
-              "no": "not-yours"
+              "no": "not-yours",
+              "said": "手机端内部会话"
             },
             "preview": true
           },
@@ -186,6 +188,7 @@
       {
         "result": "refused",
         "why": "screen-changed",
+        "said": "画面已变",
         "screen": "0000000000000000"
       },
       {

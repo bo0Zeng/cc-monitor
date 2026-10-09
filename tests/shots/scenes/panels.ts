@@ -15,6 +15,32 @@ function panel(id: string, title: string, desc: string, act: Scene["act"], world
   return { id, page: "index", dir: "主窗口-面板", title, desc, width: 1280, height: 800, world, act };
 }
 
+/** 这几张要那台的规则表（多选右键「轮换规则 ▸」· 起新会话框「轮换」）：日常（默认）· 夜间 · 省额度。 */
+function rotRulesWorld(): World {
+  const w = defaultWorld();
+  const rot = { order: [{ start: true }, "personal", "work"], enabled: ["personal", "work"], when: "full", atLimit: "continue", wait: 40 };
+  const rule = (id: string, name: string, isDefault: boolean) => ({
+    id,
+    name,
+    isDefault,
+    rotation: rot,
+    rev: 1,
+    updatedAt: 0,
+    summary: "personal → work · 满",
+    explain: "起始账号先用 · 被拒才换",
+    missing: [],
+    atLimitApplies: false,
+    users: { live: 0, ended: 0, follow: 0, doing: {}, sids: [], endedSids: [] },
+  });
+  w.ops["rotation-rules-read"] = () => ({
+    state: "present",
+    reason: null,
+    defaultRule: "r_daily",
+    rules: [rule("r_daily", "日常", true), rule("r_night", "夜间", false), rule("r_save", "省额度", false)],
+  });
+  return w;
+}
+
 async function scrollStreamTop(): Promise<void> {
   const box = document.querySelector<HTMLElement>("#message-stream");
   for (const e of box ? [box, ...box.querySelectorAll<HTMLElement>("*")] : []) if (e.scrollHeight > e.clientHeight + 50) e.scrollTop = 0;
@@ -186,6 +212,34 @@ export const PANEL_SCENES: Scene[] = [
     await key("Enter");
     await waitFor('[role="dialog"] button[aria-label="账号"]:not([data-value=""])');
     await sleep(600);
+  }),
+  panel("panel-new-session-rot", "起新会话 · 轮换", "账号下一行「轮换」点开：跟随默认（日常）· 那台的各条规则（默认那条带「默认」）；没有「本会话」", async () => {
+    await openCommandBar();
+    await type("[data-role=command-input]", "新建会话");
+    await key("Enter");
+    await waitFor('[role="dialog"] button[aria-label="轮换"]');
+    await sleep(400);
+    await click('[role="dialog"] button[aria-label="轮换"]');
+    await sleep(500);
+  }, rotRulesWorld),
+  panel("panel-batch-rot", "多选右键 · 轮换规则 ▸", "本机三个标签页多选、右键「轮换规则」：跟随默认（日常）· 各条规则 · 管理规则…", async () => {
+    await mainReady(ALL_TABS);
+    const tabs = [...document.querySelectorAll<HTMLElement>("#tab-bar .tab")].slice(0, 3);
+    for (const t of tabs) {
+      const r = t.getBoundingClientRect();
+      t.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, ctrlKey: true, clientX: r.left + 10, clientY: r.top + 5 }));
+      await sleep(60);
+    }
+    await rightClick(tabs[0]);
+    await sleep(600);
+    const item = await byText("[role^=menuitem]", copyText("tabBatch.menu.rot", { n: 3 }));
+    item.closest<HTMLElement>("[role=none]")?.dispatchEvent(new MouseEvent("mouseenter"));
+    await sleep(500);
+  }, rotRulesWorld),
+  panel("panel-cmdk-rot", "命令面板 · 轮换", "命令面板里输入「轮换」：套用轮换规则… · 管理本机轮换规则…", async () => {
+    await openCommandBar();
+    await type("[data-role=command-input]", "轮换");
+    await sleep(300);
   }),
   panel("panel-new-session-account", "起新会话 · 挑账号", "账号那一格点开：头像在前 · 当前项打勾 · 默认 / 5h 用量灰字跟在名字后", async () => {
     await openCommandBar();
@@ -678,6 +732,23 @@ export const FRONT_SCENES: Scene[] = [
   }, (w) => {
     w.commands.bring_terminal_to_front = () => ({ kind: "several", program: "WindowsTerminal.exe", count: 3 });
   }),
+  { ...frontScene("panel-front-wayland", "↗ · Wayland 桌面上切不了", "Linux 的 Wayland 会话（GNOME）：别的程序的窗口 cc-monitor 看不见也切不了 ⇒ 照实说，给［在 cc-monitor 里打开］", async () => {
+    await mainReady(ALL_TABS);
+    await clickHeadFront();
+    await waitFor("[data-role=front-result]");
+    await sleep(400);
+  }, (w) => {
+    w.commands.bring_terminal_to_front = () => ({ kind: "desktop-wont-switch", desktop: "GNOME" });
+  }), hostOs: "linux" },
+  { ...frontScene("panel-front-wayland-open-here", "↗ · ［在 cc-monitor 里打开］", "上一张点了［在 cc-monitor 里打开］⇒ 浮层收起，底部抽屉开到这个会话的「终端」页", async () => {
+    await mainReady(ALL_TABS);
+    await clickHeadFront();
+    await waitFor("[data-role=front-result]");
+    await click(await byText("[data-role=front-result] button", "在 cc-monitor 里打开"));
+    await sleep(800);
+  }, (w) => {
+    w.commands.bring_terminal_to_front = () => ({ kind: "desktop-wont-switch", desktop: "GNOME" });
+  }), hostOs: "linux" },
   frontScene("panel-front-background-tab", "↗ · 终端在后台标签页", "单独起的 PowerShell 被 Win11 交给「终端」应用（进程链断）、借它的控制台挂了记号标题，却没有窗口带着它（那个标签页不在前台）：浮层照实说找不到窗口，灰字给改法", async () => {
     await mainReady(ALL_TABS);
     await clickHeadFront();

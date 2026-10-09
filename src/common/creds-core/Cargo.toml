@@ -41,6 +41,8 @@ description = "K-H2a：第三方 API key 的**唯一**住址——装它的类�
 # 够不着任何一个宿主的读口；只能各写一份译法）。仓内 crate，只依赖 serde_json。
 copy-core = { path = "../copy-core" }
 serde_json = "1"
+# 交给 Win32 的路径（长路径前缀）只从它来；只在 `harden` 那一半用。仓内 crate、零依赖。
+win-path-core = { path = "../win-path-core", optional = true }
 
 [dev-dependencies]
 # 源码扫描型判据的「只留生产段」剥法，与 monitor / backend 共用同一份。
@@ -68,4 +70,4 @@ windows = { version = "0.56", optional = true, features = [
 [features]
 default = []
 # 「把这份文件收窄到只给本人」的能力。**只给会写这份文件的那一侧开。**
-harden = ["dep:windows"]
+harden = ["dep:windows", "dep:win-path-core"]

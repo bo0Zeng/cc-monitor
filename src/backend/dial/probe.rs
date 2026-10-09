@@ -14,7 +14,7 @@ use copy_core::copy_text;
 use serde_json::{json, Value};
 use tokio::io::{AsyncWriteExt, BufReader};
 
-use crate::stream::remote_ask::{self, AbortOnDrop};
+use crate::dial::remote_ask::{self, AbortOnDrop};
 use crate::stream::wire::Frame;
 
 /// 链路上一行的上限（阶段行 · ack · hello · 应答；hello 行是后端出方向单行，同一个量级）。
@@ -298,9 +298,14 @@ where
         .and_then(Value::as_array)
         .is_some_and(|a| a.iter().any(|c| c.as_str() == Some("ping")));
     let (line, message, detail) = if !accepts_ping {
+        // 那台的后端不认控制命令：全产品同一句（按名字取）。
+        let said = copy_core::backend_old(machine.name());
         (
-            copy_text("beProbe.hello.tooOld", &[("build", &build)]),
-            copy_text("beProbe.test.noControl", &[]),
+            copy_text(
+                "beProbe.hello.tooOld",
+                &[("build", &build), ("said", &said)],
+            ),
+            said,
             failed_detail(None),
         )
     } else {

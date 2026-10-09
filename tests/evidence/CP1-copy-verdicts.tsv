@@ -81,8 +81,6 @@ src/backend/control/cc_bus.rs:782	已 spawn:	保留	[不对外] 在 cc-spawn 回
 src/backend/control/exit_policy.rs:114	{} 里 `{KEY_KILL_ON_EXIT}` 不是布尔（实得 {other}）	保留	[不对外] 「读不出来」的原因：只进线上 `reason` 一格与后端日志，界面不显示
 src/backend/control/exit_policy.rs:118	{} 里没有 `{KEY_KILL_ON_EXIT}` 这一格	保留	[不对外] 同上：`reason` 一格与日志，界面不显示
 src/backend/control/exit_policy.rs:128	家目录解析不出来（HOME / USERPROFILE 都没有）	保留	[不对外] 同上：`reason` 一格与日志，界面不显示；环境变量名是排障要的原样
-src/backend/dial/link.rs:301	缺 `bytes`（非负整数）	保留	[不对外] `link-credit` 的协议级回错：monitor 还信用失败只记一条 debug 日志，不说到用户眼前
-src/backend/dial/link.rs:313	还了 {bytes} 字节信用，累计会超过上限 {MAX_WINDOW}（手里已有 {have}）	保留	[不对外] `link-credit` 超上限（对端不守约）的回错；monitor 只记 debug 日志
 src/backend/relay/listen.rs:315	[relay] 没被交中转端口 ⇒ 本进程不开中转	保留	[不对外] 常驻后端进程内中转的日志 / `Hosted` 的说法，只进后端 stderr（stdio 载体上转进 monitor 滚动日志），不上界面
 src/backend/relay/listen.rs:316	[relay] 中转住本进程，听 {a}	保留	[不对外] 常驻后端进程内中转的日志 / `Hosted` 的说法，只进后端 stderr（stdio 载体上转进 monitor 滚动日志），不上界面
 src/backend/relay/listen.rs:319	[relay] 被交了中转端口却起不来（后端照常服务）：{reason}	保留	[不对外] 常驻后端进程内中转的日志 / `Hosted` 的说法，只进后端 stderr（stdio 载体上转进 monitor 滚动日志），不上界面

@@ -5,7 +5,7 @@
  * - `kit-dialog`：「会打断什么」那一问 ＋ 危险确认 ＋ 填值框报错（各开一次，截最后那个）。
  * - `kit-float`：弹出菜单（子菜单展开 · 危险项 · 不可选）· 悬停提示 · toast 四种 ＋ 撤销 · 抽屉。
  * - `kit-detail`：［复制详情］各态（默认 · 已复制 · 复制失败就地展开 · 窄 · 没有详情）＋ 错误条 · 行内 · 表单对话框里的那一颗。
- * - `kit-detail-toast`：带详情的出错 toast（动作第二行）· 合流 ×N · 后端 ERROR 那条 · 没有详情的 toast 版式不变。
+ * - `kit-detail-toast`：带详情的出错 toast（动作第二行）· 合流 ×N · 后端 ERROR 那条 · 一整行命令比 toast 宽（行内折、不截）· 没有详情的 toast 版式不变。
  */
 import { mockIPC } from "@tauri-apps/api/mocks";
 import { button, setBusy, setDisabled, buttonRow } from "../../src/frontend/ui/kit/button";
@@ -365,6 +365,11 @@ async function detailToasts(): Promise<void> {
   toast("结束 orders 失败 · tmux 报错", "devbox", { detail: DETAIL, action: { label: "重试", run: () => {} } });
   toast("读取 cc-bus 无应答", "devbox", { detail: BUS_DETAIL("14:50:01") });
   toast("读取 cc-bus 无应答", "devbox", { detail: BUS_DETAIL("14:50:31") });
+  // 开终端没成、命令已复制：一整行命令比 toast 宽 ⇒ 在行内折，不截尾。
+  toast("终端未打开 · 命令已复制", "在 devbox 的 ssh 终端里粘贴运行\n/home/u/.cc-monitor/bin/ccm -- --attach android-terminal-session", {
+    level: "info",
+    detail: DETAIL,
+  });
   undoToast("已删除 devbox", () => {}, () => {});
   await new Promise((r) => setTimeout(r, 300));
 }

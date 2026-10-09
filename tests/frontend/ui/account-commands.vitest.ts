@@ -85,3 +85,21 @@ describe("account-ux U8：Ctrl+K 账号命令", () => {
     expect(cmds.find((c) => c.id === "acct-default-amy")!.hint).toBe("Ctrl+Shift+K");
   });
 });
+
+describe("命令面板 · 轮换", () => {
+  it("有当前会话 ⇒「套用轮换规则…」（开与来源下拉同项的选择器）＋「管理<机器>轮换规则…」；没有 ⇒ 两条都不出", () => {
+    const apply = vi.fn();
+    const rules = vi.fn();
+    const cmds = buildAccountCommands(input({ rotation: { machine: "devbox", apply, openRules: rules } }));
+    const a = cmds.find((c) => c.id === "rot-apply")!;
+    const r = cmds.find((c) => c.id === "rot-rules")!;
+    expect(a.title).toBe(copyText("accountCommands.rotApply.title"));
+    expect(r.title).toBe(copyText("accountCommands.rotRules.title", { machine: "devbox" }));
+    a.run();
+    r.run();
+    expect(apply).toHaveBeenCalledTimes(1);
+    expect(rules).toHaveBeenCalledTimes(1);
+    expect(ids(input({ rotation: null }))).not.toContain("rot-apply");
+    expect(ids(input())).not.toContain("rot-rules");
+  });
+});

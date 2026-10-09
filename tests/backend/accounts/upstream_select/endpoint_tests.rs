@@ -238,16 +238,36 @@ fn the_exec_time_key_comes_from_the_home_key_file_and_goes_into_the_first_segmen
     let _ = std::fs::remove_dir_all(&home);
     let get = |k: &str| (k == "HOME").then(|| home.to_string_lossy().into_owned());
     let url = "http://127.0.0.1:8788/t/claude-code/_";
-    assert_eq!(keyed_for_exec(url, &get), None, "钥匙文件不在却插出来了");
+    use crate::relay::KeyKind;
+    assert_eq!(
+        keyed_for_exec(url, KeyKind::Full, &get),
+        None,
+        "钥匙文件不在却插出来了"
+    );
     let key = "a".repeat(64);
     let file = home.join(relay_route_core::KEY_FILE_REL);
     std::fs::create_dir_all(file.parent().unwrap()).unwrap();
     std::fs::write(&file, &key).unwrap();
     assert_eq!(
-        keyed_for_exec(url, &get).as_deref(),
+        keyed_for_exec(url, KeyKind::Full, &get).as_deref(),
         Some(format!("http://127.0.0.1:8788/{key}/t/claude-code/_").as_str())
     );
-    assert_eq!(keyed_for_exec("https://x/t/a/b", &get), None);
+    assert_eq!(
+        keyed_for_exec(url, KeyKind::Pass, &get),
+        None,
+        "只许直通那一把的文件不在，却插出了全权那一把"
+    );
+    let pass = "b".repeat(64);
+    let pfile = home.join(relay_route_core::PASS_KEY_FILE_REL);
+    std::fs::write(&pfile, &pass).unwrap();
+    assert_eq!(
+        keyed_for_exec(url, KeyKind::Pass, &get).as_deref(),
+        Some(format!("http://127.0.0.1:8788/{pass}/t/claude-code/_").as_str())
+    );
+    assert_eq!(keyed_for_exec("https://x/t/a/b", KeyKind::Full, &get), None);
+    // 插哪一把按那一家的注入格：地址拼进参数的那一家只拿直通那一把。
+    assert_eq!(key_kind_of("codex"), KeyKind::Pass);
+    assert_eq!(key_kind_of("claude-code"), KeyKind::Full);
     let _ = std::fs::remove_dir_all(&home);
 }
 
@@ -518,4 +538,26 @@ fn optin_product_is_the_golden_the_ui_decodes() {
         "成品形状变了 —— 界面解码器读的是同一份金样，两边要一起改"
     );
     let _ = std::fs::remove_dir_all(&home);
+}
+
+/// ★ `relay-optin` 按家取那一格：入参缺 `agent` ⇒ `bad_args`（不猜是哪一家）；登记了这一形的家取到它自己那一格，
+/// 没登记的名字 ⇒ `bad_args`（入参认不出）。
+#[test]
+fn relay_optin_takes_the_family_from_its_args() {
+    assert_eq!(
+        answer_optin(&serde_json::json!({})).unwrap_err().0,
+        "bad_args"
+    );
+    assert_eq!(
+        answer_optin(&serde_json::json!({"agent": "agent-unregistered"}))
+            .unwrap_err()
+            .0,
+        "bad_args"
+    );
+    let cc = crate::agents::settings_env_face("claude-code").expect("claude-code 有这一形");
+    assert_eq!(
+        (cc.snippet)("http://x"),
+        (crate::agents::claudecode::paths::SETTINGS_ENV.snippet)("http://x")
+    );
+    assert!(crate::agents::settings_env_face("agent-unregistered").is_none());
 }

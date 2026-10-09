@@ -32,7 +32,7 @@ use crate::inbound_client::{CallError, InboundClient};
 /// 一次链路命令失败 ⇒ 给人看的那句话。**走共用分流器**（`backend_route`）：链路没有第二条路可回落
 /// （`D11`），但分流规则只许有一份 —— 同 `frame_query` / `cc_bus` 那几个发送端的理由。
 fn said(e: &CallError) -> String {
-    match route_call_error(e, |_code, message| {
+    match route_call_error(e, &copy_core::local_machine(), |_code, message| {
         copy_text(
             "rsLinkMux.said.refused",
             &[("message", &message.to_string())],
@@ -119,9 +119,9 @@ pub(crate) fn deliver_data(link: &str, bytes: Vec<u8>) {
     if now > LINK_WINDOW_BYTES {
         // 对端不守约（在途字节超过了还给它的信用）。**出声并结束这条链路**，不涨内存。
         if let Some(slot) = g.remove(link) {
-            let _ = slot
-                .tx
-                .send(Piece::End(Some(copy_text("rsLinkMux.data.noCredit", &[]))));
+            let _ = slot.tx.send(Piece::End(Some(copy_core::backend_old(
+                &copy_core::local_machine(),
+            ))));
         }
         tracing::warn!("link_mux: 链路 {link} 超窗（{now} > {LINK_WINDOW_BYTES}），已判坏");
         return;

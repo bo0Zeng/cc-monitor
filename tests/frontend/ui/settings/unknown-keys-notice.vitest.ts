@@ -93,8 +93,9 @@ import {
 } from "../../../../src/frontend/ui/settings/unknown-keys-notice";
 import { __resetUnknownConfigKeysForTests } from "../../../../src/frontend/ui/config";
 import { SettingsPanel } from "../../../../src/frontend/ui/settings/panel";
-import { __setHostOsForTests } from "../../../../src/frontend/ui/settings/host-os";
+import { __setHostFactsForTests } from "../../../../src/frontend/ui/settings/host-os";
 import { __resetMachineContextForTests } from "../../../../src/frontend/ui/settings/machine-context";
+import { factsOn } from "../../../test-support/host-facts";
 
 /** 退役的那个落盘键。**逐字** —— 它出现时这条判据必须红。 */
 const RETIRED_KEY = "forceLegacyLaunchRenderer";
@@ -106,7 +107,7 @@ beforeEach(() => {
   store.readFails = false;
   __resetUnknownConfigKeysForTests();
   document.body.innerHTML = "";
-  __setHostOsForTests("linux");
+  __setHostFactsForTests(factsOn("linux"));
   __resetMachineContextForTests();
 });
 

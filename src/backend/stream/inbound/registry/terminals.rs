@@ -42,24 +42,22 @@ pub(super) const SPECS: &[CommandSpec] = &[
         }),
     },
     // 〔「待迁」最后一行〕**开终端那一串**：`{machine, saved?, jump?, prefer?, command}` ⇒ `{command}`（按本机终端方言的一行：
-    //   Windows `& ssh -t[ -J …] -p … [-i …] user@host -- '<bash -lic …>'`，别处同一组参数的 POSIX shell 一行）。组请求走 `dial/machine.rs::resolve`，本体 `dial/terminal.rs`。
-    //   纯函数：校验 ＋ quote，不拨号、不起进程、不碰盘 ⇒ 不进阻塞档（同 `ping` 那一形）。
+    //   Windows `& '<ssh 全路径>' -t[ -J …] -p … [-i …] user@host -- '<bash -lic …>'`，别处同一组参数的 POSIX shell 一行）。组请求走 `dial/machine.rs::resolve`，本体 `dial/terminal.rs`。
+    //   查几个文件找 ssh 客户端（`platform/ssh_client.rs`）⇒ 阻塞档；不拨号、不起进程。
     CommandSpec {
         name: "terminal-ssh",
         summary: "给一台远端开终端要跑的那一串",
-        codes: &["bad_args", "bad_jump", "refused"],
-        fields: &[both("command", "要在那台跑的命令；应答里是那一整行 PowerShell `& ssh -t … -- 'bash -lic …'`")],
+        codes: &["bad_args", "bad_jump", "refused", "no_ssh_client", "unobservable"],
+        fields: &[both("command", "要在那台跑的命令；应答里是那一整行 PowerShell `& '<ssh 全路径>' -t … -- 'bash -lic …'`")],
         takes_input: true,
-        run: Run::Async(|r| {
-            Box::pin(async move {
-                crate::dial::terminal::answer(&r.args)
-                    .map(Some)
-                    .map_err(|(c, m)| (c.to_string(), m))
-            })
+        run: Run::Blocking(|r| {
+            crate::dial::terminal::answer(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
     // 那台报来的终端 ⇒ 这台电脑上开着那条连接的进程链：`{terminals}` ⇒ `{chain:[{pid, name, start}…], why?, addr?}`
-    //   （`dial/terminal_processes.rs`）。阻塞档：直调系统接口读连接表 ＋ 进程表四格（每个进程开一次句柄问启动时刻）。只在被问时答。
+    //   （`dial/terminal_processes.rs`）。阻塞档：读连接表 ＋ 进程表四格（Windows 直调系统接口、每个进程开一次句柄问启动时刻 · Linux 读 `/proc`）。只在被问时答。
     CommandSpec {
         name: "terminal-processes",
         summary: "那台报来的终端连接是这台电脑上哪个进程开的",
@@ -92,7 +90,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "terminals-list",
         summary: "这台的终端名单（形状与宿主无关；这一版宿主是 tmux）",
         codes: &["bad_args", "unobservable", "child_timed_out"],
-        fields: &[out("agent", "`session` 里：哪一家（没标就缺）"), out("can", "这个调用方能做什么：`preview` · `input` · `end`，做不了的写成 `{no: 原因}`"), both("client", "请求里可选：自报的前端，决定每行的 `mine` / `can`；`started_by` 里：会话上的 `@ccm_client`（没声明 ⇒ `null`）"), out("clients", "此刻连着它的终端客户端，每项 `{kind, since, last_activity}`；空 ＝ 后台"), out("complete", "`false` ＝ 名单里有读不懂的行（画「部分」）"), out("cwd", "当前目录"), out("end", "能不能结束（`{no: \"not-yours\" | \"not-managed\" | \"other-windows\"}`）"), out("host", "终端宿主（这一版是 `tmux`）"), out("input", "输入方式：`shared`（tmux：各端都能打字）"), out("kind", "`clients` 一项：客户端种类（`terminal-window` …）"), out("last_activity", "最近动静（秒）"), out("mine", "这个调用方能不能送字 / 结束"), out("no", "做不了的原因"), out("preview", "能不能抓屏"), out("program", "前台程序名"), out("purpose", "`normal` …"), out("session", "里面跑着会话（`@ccm_sid`）时才有：`{sid, agent?}`"), out("sid", "`session` 里：会话 id"), out("since", "`clients` 一项：连上的时刻（秒）"), out("started_by", "谁起的：`{client, mine}`"), out("state", "`running` · `idle`（没会话、前台是 shell）· `program-exited`（有会话、前台是 shell）"), out("terminal", "名单里那一行的不透明句柄（前端不拼、不解析；送字 / 抓屏时交回）"), out("terminals", "终端名单（每行一个终端）"), out("title", "窗格标题"), out("tmux_name", "tmux 会话名")],
+        fields: &[out("agent", "`session` 里：哪一家（没标就缺）"), out("can", "这个调用方能做什么：`preview` · `input` · `end`，做不了的写成 `{no: 原因, said: 给人看的那一句}`"), both("client", "请求里可选：自报的前端，决定每行的 `mine` / `can`；`started_by` 里：会话上的 `@ccm_client`（没声明 ⇒ `null`）"), out("clients", "此刻连着它的终端客户端，每项 `{kind, since, last_activity}`；空 ＝ 后台"), out("complete", "`false` ＝ 名单里有读不懂的行（画「部分」）"), out("cwd", "当前目录"), out("end", "能不能结束（`{no: \"not-yours\" | \"not-managed\" | \"other-windows\"}`）"), out("host", "终端宿主（这一版是 `tmux`）"), out("input", "输入方式：`shared`（tmux：各端都能打字）"), out("kind", "`clients` 一项：客户端种类（`terminal-window` …）"), out("last_activity", "最近动静（秒）"), out("mine", "这个调用方能不能送字 / 结束"), out("no", "做不了的原因"), out("preview", "能不能抓屏"), out("program", "前台程序名"), out("purpose", "`normal` …"), out("session", "里面跑着会话（`@ccm_sid`）时才有：`{sid, agent?}`"), out("sid", "`session` 里：会话 id"), out("since", "`clients` 一项：连上的时刻（秒）"), out("started_by", "谁起的：`{client, mine}`"), out("state", "`running` · `idle`（没会话、前台是 shell）· `program-exited`（有会话、前台是 shell）"), out("terminal", "名单里那一行的不透明句柄（前端不拼、不解析；送字 / 抓屏时交回）"), out("terminals", "终端名单（每行一个终端）"), out("title", "窗格标题"), out("tmux_name", "tmux 会话名")],
         takes_input: true,
         run: Run::Blocking(|r| crate::control::terminals::list_for_inbound(&r.args).map(Some)),
     },
@@ -128,7 +126,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
             "unobservable",
             "child_timed_out",
         ],
-        fields: &[arg("client", "自报的前端（过「哪个前端的会话」那一维）"), arg("enter", "`text` 之后补一个回车；缺省 `true`"), arg("key", "送键：`esc` · `ctrl-c` · `ctrl-d` · `up` · `down` · `left` · `right` · `tab` · `shift-tab` · `enter` · `backspace` · `page-up` · `page-down`"), out("result", "`delivered` · `unsure`（不知道送没送到，别重发）· `refused`"), out("screen", "`screen-changed` 时带的新指纹"), arg("seen_screen", "送之前看到的那一屏的指纹；画面已经变了 ⇒ 不送、回 `refused` ＋ `screen-changed`"), arg("sid", "目标：会话 id（与 `terminal` 恰给一个）"), arg("take", "要不要先接管输入（tmux 上无所谓，各端都能打字）"), arg("terminal", "目标：名单里的不透明句柄（前端不拼、不解析）"), arg("text", "送字：字面字，原样送、不解释成键名；多行按粘贴送（与 `key` 恰给一个）"), out("why", "`refused` 的原因：`not-known` · `ambiguous` · `ended` · `not-yours` · `not-managed` · `screen-changed`")],
+        fields: &[arg("client", "自报的前端（过「哪个前端的会话」那一维）"), arg("enter", "`text` 之后补一个回车；缺省 `true`"), arg("key", "送键：`esc` · `ctrl-c` · `ctrl-d` · `up` · `down` · `left` · `right` · `tab` · `shift-tab` · `enter` · `backspace` · `page-up` · `page-down`"), out("result", "`delivered` · `unsure`（不知道送没送到，别重发）· `refused`"), out("said", "`refused` 时给人看的那一句（后端写好）"), out("screen", "`screen-changed` 时带的新指纹"), arg("seen_screen", "送之前看到的那一屏的指纹；画面已经变了 ⇒ 不送、回 `refused` ＋ `screen-changed`"), arg("sid", "目标：会话 id（与 `terminal` 恰给一个）"), arg("take", "要不要先接管输入（tmux 上无所谓，各端都能打字）"), arg("terminal", "目标：名单里的不透明句柄（前端不拼、不解析）"), arg("text", "送字：字面字，原样送、不解释成键名；多行按粘贴送（与 `key` 恰给一个）"), out("why", "`refused` 的原因：`not-known` · `ambiguous` · `ended` · `not-yours` · `not-managed` · `screen-changed`")],
         takes_input: true,
         run: Run::Blocking(|r| crate::control::terminals::input_for_inbound(&r.args).map(Some)),
     },
@@ -148,7 +146,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
             "unobservable",
             "child_timed_out",
         ],
-        fields: &[arg("sid", "目标：会话 id（与 `terminal` 恰给一个）"), arg("terminal", "目标：名单里的句柄（与 `sid` 恰给一个）"), arg("ticket", "订阅票（客户端铸的不透明串，至多 128 字节）；之后的 `terminal_screen` / `terminal_follow_end` 帧带它")],
+        fields: &[out("live", "失败时：实时那一格落在哪 —— `snapshot_only`（这台只能快照：没装 tmux · tmux 低于 3.2）· `stopped`（别的）"), arg("sid", "目标：会话 id（与 `terminal` 恰给一个）"), arg("terminal", "目标：名单里的句柄（与 `sid` 恰给一个）"), arg("ticket", "订阅票（客户端铸的不透明串，至多 128 字节，只用一次）；之后的 `terminal_screen` / `terminal_follow_end` 帧带它")],
         takes_input: true,
         // 本体 `control/terminal_follow.rs::Desk::follow`（`dispatch` 的硬臂带着本连接的票表调它；起 tmux ⇒ 登记在 `target_parity_guard::BUILTIN_HANDLER_FILE`）。
         run: Run::Builtin,
@@ -165,7 +163,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "terminal-unfollow",
         summary: "退订一个终端的画面（幂等，不发收尾帧）",
         codes: &["bad_args"],
-        fields: &[arg("ticket", "订阅票；退不在册的也回 `ok`")],
+        fields: &[arg("ticket", "订阅票；退不在册的也回 `ok`（记下它：订阅那一问若还在路上，到了也不起）")],
         takes_input: true,
         run: Run::Builtin,
     },
@@ -259,8 +257,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
             "start_failed",
             "child_timed_out",
             "launch_pending",
+            "no_such_rule",
         ],
-        fields: &[arg("account", "可缺 ＝ 跟随（分叉跟源会话上次的号；新起的 ⇒ 这台的默认号）· `{kind:\"base\"}` · `{kind:\"named\", name}`"), arg("agent", "哪一家（线上的 kind）"), both("cmd", "`open` 时界面要在终端里跑的那一行"), arg("command", "启动命令；空 / 缺 ⇒ 那一家的默认启动器"), out("configDir", "应答 `account` 里：那个号的配置目录"), arg("cwd", "工作目录（开头的 `~` 按这台的家目录读）"), out("field", "失败时不行的那一格（`agent` · `command` · `cwd` · `account` · `place` · `tmuxName`；整体的 ⇒ `null`）"), arg("forkFrom", "可缺"), both("kind", "`account` 的种类：`follow` · `base` · `named`"), arg("local", "发请求的界面就在这台上（开窗那一形本机与远端渲法不同）"), out("model", "应答 `account` 里：用的模型"), arg("models", "可缺"), both("name", "`account` 为 `named` 时的号名；应答 `account` 里是实际用的号"), out("outcome", "`started`（tmux 里起好了，`session` 是会话名）· `open`（界面开一个终端跑 `cmd`）"), arg("place", "`tmux`（在这台 tmux 里后台起，关终端不断）· `window`（开一个新终端窗口直接跑）"), out("session", "`started` 时的 tmux 会话名"), out("sid", "分叉出来的新会话 sid；新起的 ⇒ `null`（报到之前说不出）"), arg("ticket", "可缺：这一趟的票（界面每次点［新建］一张）；同一张票再问 ⇒ 起好了回原样那一份 · 还在起 ⇒ `launch_pending` · 没见过 / 没起成 ⇒ 照常起"), arg("tmuxName", "可缺 ⇒ 这台铸"), out("unavailable", "`account_unavailable` 时那一形，带替代号"), arg("uuid", "`forkFrom` 里：从哪条消息处分叉")],
+        fields: &[arg("rotation", "可缺：轮换来源。缺 / `\"follow\"` ＝ 跟随默认（不写）· `{rule: id}` ＝ 起之前这台先定好 sid（那一家起新会话认的旗标，如 `--session-id`）、按它把来源写成那条规则，回包 `sid` 就是它；规则不在 ⇒ `no_such_rule`；那一家不认先定 sid ⇒ `bad_args`"), arg("account", "可缺 ＝ 跟随（分叉跟源会话上次的号；新起的 ⇒ 这台的默认号）· `{kind:\"base\"}` · `{kind:\"named\", name}`"), arg("agent", "哪一家（线上的 kind）"), both("cmd", "`open` 时界面要在终端里跑的那一行"), arg("command", "启动命令；空 / 缺 ⇒ 那一家的默认启动器"), out("configDir", "应答 `account` 里：那个号的配置目录"), arg("cwd", "工作目录（开头的 `~` 按这台的家目录读）"), out("field", "失败时不行的那一格（`agent` · `command` · `cwd` · `account` · `place` · `tmuxName`；整体的 ⇒ `null`）"), arg("forkFrom", "可缺"), both("kind", "`account` 的种类：`follow` · `base` · `named`"), arg("local", "发请求的界面就在这台上（开窗那一形本机与远端渲法不同）"), out("model", "应答 `account` 里：用的模型"), arg("models", "可缺"), both("name", "`account` 为 `named` 时的号名；应答 `account` 里是实际用的号"), out("outcome", "`started`（tmux 里起好了，`session` 是会话名）· `open`（界面开一个终端跑 `cmd`）"), arg("place", "`tmux`（在这台 tmux 里后台起，关终端不断）· `window`（开一个新终端窗口直接跑）"), out("session", "`started` 时的 tmux 会话名"), out("sid", "分叉出来的新会话 sid；新起的 ⇒ `null`（报到之前说不出）"), arg("ticket", "可缺：这一趟的票（界面每次点［新建］一张）；同一张票再问 ⇒ 起好了回原样那一份 · 还在起 ⇒ `launch_pending` · 没见过 / 没起成 ⇒ 照常起"), arg("tmuxName", "可缺 ⇒ 这台铸"), out("unavailable", "`account_unavailable` 时那一形，带替代号"), arg("uuid", "`forkFrom` 里：从哪条消息处分叉")],
         takes_input: true,
         run: Run::BlockingData(|r| {
             crate::faces::session_new_face::answer(&r.args, &LocalFiles)

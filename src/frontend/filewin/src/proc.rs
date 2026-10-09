@@ -116,6 +116,7 @@ pub fn child_main() -> i32 {
         Ok(r) => r,
         Err(e) => return refuse(e, EXIT_BAD_SEED),
     };
+    super::source::set_local_line(&req.local_line);
     // 🔴 这个进程里要有一个 tokio 运行时 —— 窗口那一侧的每一次列目录 / 传输 / 搜索
     //    都是 `h.spawn(async …)`。**不给它就等于开一个什么都做不了的窗口**
     //    （`FileWindow` 在 `rt: None` 时会把「这个窗口没拿到运行时」画出来，

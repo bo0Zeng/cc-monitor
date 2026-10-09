@@ -16,6 +16,7 @@ import { button, buttonRow, setBusy, setButtonLabel, setDisabled } from "./butto
 import { banner } from "./banner";
 import { sayWithDetail } from "./detail";
 import { icon } from "./icon";
+import { radio } from "./switch";
 import { copyText } from "../copy-table";
 import s from "./dialog.module.css";
 
@@ -23,6 +24,16 @@ import s from "./dialog.module.css";
 export interface DialogRow {
   label: string;
   items: string[];
+  /** 这一项底下一组单选（删一条在用的规则 ⇒ 那些会话落到哪）：点一项即 `onPick`，框的结果仍只是做 / 不做。 */
+  choice?: DialogChoice;
+}
+
+export interface DialogChoice {
+  /** 同一组单选的名字。 */
+  name: string;
+  options: { value: string; label: string }[];
+  value: string;
+  onPick: (value: string) => void;
 }
 
 export interface ConfirmSpec {
@@ -87,6 +98,14 @@ function build(title: string, action: string, danger: boolean): Built {
   return { backdrop, panel, body, cancel, ok };
 }
 
+function choiceGroup(c: DialogChoice): HTMLElement {
+  const g = document.createElement("span");
+  g.className = s.dialogChoice;
+  g.setAttribute("role", "radiogroup");
+  for (const o of c.options) g.appendChild(radio(c.name, o.label, o.value === c.value, () => c.onPick(o.value)));
+  return g;
+}
+
 function fillBody(body: HTMLElement, spec: ConfirmSpec): void {
   if (spec.body) {
     const p = document.createElement("p");
@@ -108,6 +127,7 @@ function fillBody(body: HTMLElement, spec: ConfirmSpec): void {
       const v = document.createElement("span");
       v.className = s.dialogRowValue;
       v.textContent = r.items.join(copyText("kit.text.sep"));
+      if (r.choice) v.appendChild(choiceGroup(r.choice));
       row.append(k, v);
       table.appendChild(row);
     }

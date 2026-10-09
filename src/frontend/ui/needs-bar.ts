@@ -15,7 +15,8 @@ import { terminalFrontAvailable } from "./terminal-front";
 import { copyText } from "./copy-table";
 import { button } from "./kit/button";
 import { statusDot } from "./kit/status-dot";
-import { machineOf, needsOf, needsWord, sinceText, fullTitle } from "./session-face";
+import { machineOf, needsOf, sinceText, fullTitle } from "./session-face";
+import { needsWord } from "./session-words";
 import s from "./needs-bar.module.css";
 
 export interface NeedsBarHost {

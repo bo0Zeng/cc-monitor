@@ -24,8 +24,8 @@
 //! - 🔴 真远端（`DialRemote` 那一跳）· 真盘上上万份记录时的耗时。
 
 use super::*;
+use crate::dial::remote_ask::{Remote, Table as ReachTable};
 use crate::history::history_annotations::{Entry, Table};
-use crate::stream::remote_ask::{Remote, Table as ReachTable};
 use std::future::Future;
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -444,7 +444,7 @@ impl Remote for Far {
 }
 
 fn reach(table: &ReachTable, origin: &str) {
-    crate::stream::remote_ask::answer_reach_with(
+    crate::dial::remote_ask::answer_reach_with(
         &json!({"origin": origin, "dial": {"machine": {"host": "h", "port": 22, "user": "u", "keyPath": "/k"}}}),
         table,
     )
@@ -488,7 +488,7 @@ async fn a_remote_is_asked_raw_once_and_cached_until_fresh() {
         *far.seen.lock().unwrap(),
         vec![format!(
             "{} <stdin {{\"raw\":true}}>",
-            crate::stream::remote_ask::command_line(&["--history-list", "--stdin-line"])
+            crate::dial::remote_ask::command_line(&["--history-list", "--stdin-line"])
         )],
         "敲字搜索不该每次都去那台整份扫"
     );

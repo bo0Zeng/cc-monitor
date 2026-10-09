@@ -409,6 +409,7 @@ fn wire_req(it: &Item, b: &Batch, tmux: Option<&str>, cwd: bool) -> wire::CliRen
         models: b.models.clone(),
         launcher: b.launcher.clone(),
         default_launcher: b.default_launcher.clone(),
+        preset_args: Vec::new(),
     }
 }
 
@@ -424,6 +425,7 @@ fn local_req(it: &Item, b: &Batch, tmux: Option<String>) -> local::LocalLaunchRe
         account: Some(it.account.clone()),
         tmux_name: tmux,
         default_launcher: b.default_launcher.clone(),
+        preset_args: Vec::new(),
     }
 }
 

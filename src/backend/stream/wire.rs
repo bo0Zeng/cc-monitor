@@ -564,6 +564,8 @@ pub enum Frame {
     QuotaChanged,
 
     /// **这台某个会话的轮换或「账号」格变了**（换了号 · 记了一条 · 改了它的轮换 · 它跟随的默认轮换改了）。
+    /// 别的进程写的也推（命令行 `ccm -- --rotation-session-set` · quota-warm）：流那一路的后端盯着 `rotation.json`，
+    /// 盘上那一份变了且不是本进程写的 ⇒ 重读、比对、改到的会话各推一次。
     ///
     /// 只带 sid：客户端收到就重问一次 `rotation-session-read`（那一份的唯一出口仍是那条查询，同 `quota_changed`）。
     /// 走 tap 那条可丢的通道（轮换在盘上，丢了重问就补上）。旧 monitor / 仓外 aterm 不认这个 kind ⇒ 忽略（additive）。
@@ -571,6 +573,12 @@ pub enum Frame {
         /// 轮换或「账号」格变了的会话。
         sid: String,
     },
+
+    /// **这台的轮换规则表或默认指向变了**（新建 · 改 · 改名 · 删 · 设为默认；本进程或别的进程写的都推）。
+    ///
+    /// 无载荷：客户端收到就重问一次 `rotation-rules-read`。用着改到的规则的会话另各推一帧 `rotation_changed`。
+    /// 走 tap 那条可丢的通道（规则在盘上，丢了重问就补上）。旧 monitor / 仓外 aterm 不认这个 kind ⇒ 忽略（additive）。
+    RotationRulesChanged,
 
     /// **这台机器上某个会话的任务清单变了**（`<agent 家>/tasks/<sid>/` 里有动静）。
     ///
@@ -687,7 +695,7 @@ pub enum Frame {
     ///
     /// 常驻后端会发（中转住在它进程里，`relay::host`；本机远端同形）。
     /// 四样东西，**没有业务词**（字段名就是「tee 线上字段名住哪」的答案：住这里，serde 名）：
-    /// - `stream`：claude 自己请求头里带的会话标识（== 它的 sid，新开 / resume / 分叉同一形）；没带 ⇒ 空串。后端不解释它。
+    /// - `stream`：agent 自己请求头里带的会话标识（头名由适配层登记；== 它的 sid，新开 / resume / 分叉同一形）；没带 ⇒ 空串。后端不解释它。
     /// - `resp`：本进程第几个响应（跨响应单调，后端重启从 0 起）。
     /// - `n`：这一个响应里第几个事件，**从 0 连续**。后端每个事件先占号再投递 ⇒ 丢了的号不出现 ⇒
     ///   接收侧看 `n` 连不连得上就知道缺在哪（`Gap{from_seq,to_seq}` 那一形，原位、纯算术）。
@@ -699,7 +707,7 @@ pub enum Frame {
     Tap {
         /// 请求自带的会话标识头的值。
         stream: String,
-        /// 这段流归哪个子运行（主运行 ⇒ 不上线）。由后端归位（`run_route`）：请求自报了就定；没自报 ⇒ 没有在跑的子运行就归主，
+        /// 这段流归哪个子运行（主运行 ⇒ 不上线）。由后端归位（`run_route`）：请求自报了且不等于 `stream` 就定（等于 ⇒ 主运行）；没自报 ⇒ 没有在跑的子运行就归主，
         /// 有 ⇒ 先挂起、等记录对上对账键再放出来。
         #[serde(skip_serializing_if = "Option::is_none")]
         run: Option<String>,
@@ -746,8 +754,10 @@ pub enum Frame {
     TerminalFollowEnd {
         /// 订阅票。
         ticket: String,
-        /// 为什么停了。
+        /// 为什么停了（给程序认）。
         why: FollowEnd,
+        /// 给人看的那一句（后端写好，界面原样上屏）。
+        said: String,
     },
 }
 
@@ -958,6 +968,19 @@ impl Frame {
         }
     }
 
+    /// 硬臂那几条命令（`Run::Builtin`：链路 · 传输 · 终端订阅）就地被拒：详情里带命令名（同处理器回的失败）。
+    pub(crate) fn refused(id: &str, cmd: &str, code: &str, message: &str) -> Frame {
+        Frame::Reply {
+            id: id.to_string(),
+            ok: false,
+            code: Some(code.to_string()),
+            message: Some(message.to_string()),
+            detail: Some(crate::stream::detail::of(Some(cmd), code, None)),
+            data: None,
+        }
+    }
+
+    /// 协议级失败（还没落到哪条命令上：认不出 · 读不懂 · 收场中）：详情里没有命令那一项。
     pub(crate) fn err(id: &str, code: &str, message: &str) -> Frame {
         Frame::Reply {
             id: id.to_string(),
@@ -1022,6 +1045,8 @@ impl Frame {
             Frame::QuotaChanged => true,
             // 同上：轮换在盘上（`rotation-session-read` 随时重问得到）；也不走出方向那条通道。
             Frame::RotationChanged { .. } => true,
+            // 同上：规则表在盘上（`rotation-rules-read` 随时重问得到）；也不走出方向那条通道。
+            Frame::RotationRulesChanged => true,
             // 同上一行：一次变化的通知，丢了那个会话的任务面板就停在旧的（带身份 subject = sid，客户端可重问）。
             Frame::TasksChanged { .. } => false,
             // 一次性的标记，没有「下一次必然重发」⇒ 丢了客户端就一直停在「说不清」
@@ -1068,6 +1093,7 @@ impl Frame {
             Frame::ProfilesChanged => ("profiles_changed", None),
             Frame::QuotaChanged => ("quota_changed", None),
             Frame::RotationChanged { sid } => ("rotation_changed", Some(sid.clone())),
+            Frame::RotationRulesChanged => ("rotation_rules_changed", None),
             Frame::TasksChanged { sid } => ("tasks_changed", Some(sid.clone())),
             Frame::SessionsReplayed => ("sessions_replayed", None),
             Frame::SessionFileGone { session_id, .. } => {

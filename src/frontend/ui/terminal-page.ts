@@ -18,7 +18,8 @@ import { copyText } from "./copy-table";
 import { saidOfControl, machineName } from "./control-said";
 import { canResume, hasTerminal } from "./tab-session-state";
 import { terminalFrontAvailable } from "./terminal-front";
-import { dotLabel, dotOf, fullTitle, machineOf } from "./session-face";
+import { dotOf, fullTitle, machineOf } from "./session-face";
+import { dotLabel } from "./session-words";
 import { renderScreen, screenPre } from "./terminal-screen";
 import { startFollow, type Follow, type FollowEvents, type FollowStop } from "./terminal-follow";
 import { listTerminals, previewShot, sendToTerminal, type TerminalRow, type TerminalSend, type TerminalSent, type TerminalShot } from "./terminal-reads";
@@ -47,8 +48,13 @@ export const CHANNEL_READS: TerminalReads = {
   follow: (origin, terminal, events) => startFollow(origin, terminal, events),
 };
 
-/** 实时那一格：没订 · 正在接 · 实时中 · 停了（带原因）· 那台只能快照（带原因）。 */
-type Live = { at: "off" } | { at: "joining" } | { at: "on" } | { at: "stopped"; why: Extract<FollowStop, { kind: "stopped" }>["why"] } | { at: "snapOnly"; why: Extract<FollowStop, { kind: "snapshotOnly" }>["why"] };
+/** 实时那一格：没订 · 正在接 · 实时中 · 停了（那一句 ＋ 是不是那台断开）· 那台只能快照（那一句）。 */
+type Live = { at: "off" } | { at: "joining" } | { at: "on" } | { at: "stopped"; said: string; offline: boolean } | { at: "snapOnly"; said: string };
+
+/** 停了的那一格 ⇒ 实时那一格。 */
+function liveOf(why: FollowStop): Live {
+  return why.kind === "snapshotOnly" ? { at: "snapOnly", said: why.said } : { at: "stopped", said: why.said, offline: why.offline };
+}
 
 export interface TerminalPageHost {
   active(): Tab | null;
@@ -79,49 +85,6 @@ const KEYS: readonly { label: string; what: TerminalSend }[] = [
   { label: "2", what: { text: "2", enter: false } },
   { label: "3", what: { text: "3", enter: false } },
 ];
-
-/** 后端给的「送不了」原因码 ⇒ 一个词。 */
-function whyWord(code: string): string {
-  switch (code) {
-    case "not-yours":
-      return copyText("terminal.why.notYours");
-    case "not-managed":
-      return copyText("terminal.why.notManaged");
-    case "not-known":
-    case "ended":
-      return copyText("terminal.why.gone");
-    case "ambiguous":
-      return copyText("terminal.why.ambiguous");
-    default:
-      return copyText("terminal.why.other");
-  }
-}
-
-/** 实时停了的原因 ⇒ 一个词。 */
-function liveWhy(why: Extract<Live, { at: "stopped" }>["why"], machine: string): string {
-  switch (why) {
-    case "gone":
-      return copyText("terminal.why.gone");
-    case "tooBig":
-      return copyText("terminal.liveWhy.tooBig");
-    case "offline":
-      return copyText("terminal.liveWhy.offline", { machine });
-    case "lost":
-      return copyText("terminal.liveWhy.lost");
-  }
-}
-
-/** 只能快照的原因 ⇒ 悬停那一句。 */
-function snapWhy(why: Extract<Live, { at: "snapOnly" }>["why"], machine: string): string {
-  switch (why) {
-    case "old":
-      return copyText("terminal.head.snapshotOnlyOld", { machine });
-    case "tmux":
-      return copyText("terminal.head.snapshotOnlyTmux", { machine });
-    case "noTmux":
-      return copyText("terminal.head.snapshotOnlyNoTmux", { machine });
-  }
-}
 
 /** 送字那一步的结局一句：送到了（一会儿就走）· 没送成（可带重试）。 */
 type Note = { text: string; tone: "ok" | "error"; retry?: TerminalSend; detail?: string };
@@ -347,7 +310,7 @@ export class TerminalPage {
       if (hits.length > 1) {
         this.row = null;
         this.phase = "error";
-        this.error = whyWord("ambiguous");
+        this.error = copyText("terminal.why.ambiguous");
         this.errorDetail = "";
         this.paint();
         return;
@@ -385,7 +348,7 @@ export class TerminalPage {
       stop: (why) => {
         if (this.follow !== f && f !== null) return;
         this.follow = null;
-        this.live = why.kind === "snapshotOnly" ? { at: "snapOnly", why: why.why } : { at: "stopped", why: why.why };
+        this.live = liveOf(why);
         this.paint();
       },
     });
@@ -520,7 +483,7 @@ export class TerminalPage {
       void this.recapture();
       return false;
     }
-    this.showNote({ text: copyText("terminal.input.failed", { why: whyWord(why) }), tone: "error", retry: what });
+    this.showNote({ text: copyText("terminal.input.failed", { why: sent?.result === "refused" ? sent.said : copyText("terminal.why.other") }), tone: "error", retry: what });
     if (why === "not-known" || why === "ended") void this.refresh();
     return false;
   }
@@ -614,7 +577,7 @@ export class TerminalPage {
     this.liveTag.dataset.state = this.live.at;
     this.liveTag.textContent = this.live.at === "on" ? copyText("terminal.head.live") : copyText("terminal.head.joining");
     this.snapTag.hidden = this.live.at !== "snapOnly";
-    if (this.live.at === "snapOnly") this.snapTag.title = snapWhy(this.live.why, machineName(this.origin ?? ""));
+    if (this.live.at === "snapOnly") this.snapTag.title = this.live.said;
     this.frontBtn.style.display = terminalFrontAvailable() && hasTerminal(tab.state) ? "" : "none";
 
     const bars: HTMLElement[] = [];
@@ -624,7 +587,7 @@ export class TerminalPage {
       bars.push(line);
     }
     if (this.live.at === "stopped") {
-      bars.push(banner("warn", copyText("terminal.bar.liveStopped", { why: liveWhy(this.live.why, machineName(this.origin ?? "")) }), [button({ label: copyText("terminal.bar.liveRetry"), size: "compact", onClick: () => this.startLive() })]));
+      bars.push(banner("warn", copyText("terminal.bar.liveStopped", { why: this.live.said }), [button({ label: copyText("terminal.bar.liveRetry"), size: "compact", onClick: () => this.startLive() })]));
     }
     if (this.shotError !== null)
       bars.push(banner("warn", this.shotError, [button({ label: copyText("terminal.state.refresh"), size: "compact", onClick: () => void this.refresh() })], this.shotDetail));
@@ -637,8 +600,7 @@ export class TerminalPage {
 
     this.to.textContent = copyText("terminal.input.to", { title: fullTitle(tab), machine: machineOf(tab) });
     this.owner.textContent = row.clients > 0 && row.input === "shared" ? copyText("terminal.input.shared", { n: row.clients }) : row.clients === 0 ? copyText("terminal.input.nobody") : "";
-    const offline = this.live.at === "stopped" && this.live.why === "offline";
-    const no = row.inputNo !== null ? whyWord(row.inputNo) : offline ? copyText("terminal.liveWhy.offline", { machine: machineName(this.origin ?? "") }) : null;
+    const no = row.inputNo ?? (this.live.at === "stopped" && this.live.offline ? this.live.said : null);
     this.box.disabled = no !== null || this.sending;
     this.box.placeholder = no !== null ? copyText("terminal.input.readOnly", { why: no }) : copyText("terminal.input.placeholder");
     setDisabled(this.sendBtn, no);

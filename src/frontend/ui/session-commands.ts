@@ -4,7 +4,8 @@
  */
 import type { Command } from "./views/command-bar";
 import type { Tab } from "./tab-model";
-import { dotLabel, dotOf, needsOf, needsWord, titleParts } from "./session-face";
+import { dotOf, needsOf, titleParts } from "./session-face";
+import { dotLabel, needsWord } from "./session-words";
 import { isRemoteOrigin } from "./ipc/origin";
 import { copyText } from "./copy-table";
 

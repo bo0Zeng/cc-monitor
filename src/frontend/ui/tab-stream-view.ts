@@ -107,6 +107,12 @@ export class TabStreamView {
   };
   private static readonly TOP_TRIGGER_PX = 800;
   /**
+   * 切进来之后在眼前停多久才算「停下来看」（ms）：到点才要骨架索引 / 接骨架 / 刷大纲。
+   * 150：比键盘自动重复（30–40 ms 一下）与连点（台架 200 ms 一下的那一串也会停够）长、比人能察觉的延迟短 ——
+   * 首屏是已建好的尾巴，索引只管往上翻的占位，晚 150 ms 到看不出来。
+   */
+  private static readonly STAY_MS = 150;
+  /**
    * 往上翻那一问的期限：60 秒 —— 与它上一个住址（monitor `frame_query::PAGE_BUDGET`，
    * 一次 `read_session_lines` 各拿一份）同值。一件一问。
    */
@@ -127,6 +133,11 @@ export class TabStreamView {
    * `ensure` 只是把取正文的请求发出去，同步那一下去找卡必然落空。
    */
   private readonly rangeFetches = new WeakMap<Tab, Set<Promise<void>>>();
+  /**
+   * 索引回来时 tab 已经切走了 ⇒ 不在后台接骨架，账本停在这里，切回来的下一帧再接（`activate`）。
+   * 接骨架要插占位、量几何、补可见区 —— 在收起的 tab 里做是白干还逼排版；快速连切时一串旧切换的活全堆在后面。
+   */
+  private readonly parkedSkeletons = new WeakMap<Tab, SkeletonLedger>();
 
   constructor(
     private readonly store: TabStore,
@@ -222,6 +233,7 @@ export class TabStreamView {
     this.streamRootEl.appendChild(streamEl);
 
     const stream = new MessageStream(streamEl);
+    stream.park(true); // 新建的 tab 先收着（`.stream` 默认收起），切进来时 `showOnly` 翻出
     const branchFolder = new BranchFolder(stream.contentElement);
     const timeline = new RecordTimeline(stream);
 
@@ -249,17 +261,24 @@ export class TabStreamView {
       const t = this.store.tabs.get(sessionId);
       return t?.parentPath ? { origin: t.origin, jsonlPath: t.parentPath } : null;
     });
-    // 按轮折叠：一轮的边界与结论问后端（`history-turns`），路径同大纲每次现取。
-    const turnFold = new TurnFold(stream.contentElement, streamEl, () => {
-      const t = this.store.tabs.get(sessionId);
-      return t?.parentPath ? { origin: t.origin, jsonlPath: t.parentPath } : null;
-    });
+    // 按轮折叠：一轮的边界与结论问后端（`history-turns`），路径同大纲每次现取；占位里有没有下一轮开头问这个 tab 的骨架。
+    const turnFold = new TurnFold(
+      stream.contentElement,
+      streamEl,
+      () => {
+        const t = this.store.tabs.get(sessionId);
+        return t?.parentPath ? { origin: t.origin, jsonlPath: t.parentPath } : null;
+      },
+      undefined,
+      () => this.store.tabs.get(sessionId)?.skeleton ?? null,
+    );
     // 轮次刻度：同一份轮；跳与查找 / 大纲同一个住址（`jumpInTab`）。挂在流外（不随流滚），随 tab 同进同出。
     const turnRail = new TurnRail(streamEl, stream.contentElement, {
       turns: () => turnFold.all,
       waiting: () => this.store.tabs.get(sessionId)?.needs != null,
       speaker: () => speakerNameOf(this.store.tabs.get(sessionId)?.agent ?? null),
       jump: (uuid) => void this.jumpInTab(sessionId, streamEl, uuid),
+      inFront: () => this.store.activeId === sessionId,
     });
     turnFold.onTurns = () => turnRail.render();
     this.streamRootEl.appendChild(turnRail.el);
@@ -384,12 +403,14 @@ export class TabStreamView {
   showOnly(sessionId: string): void {
     for (const [sid, t] of this.store.tabs) {
       t.streamEl.classList.toggle("active", sid === sessionId);
+      t.stream.park(sid !== sessionId); // 收起期间几何不作数（`MessageStream.park`）
       // 面板与它那条流同进同出：漏掉的话所有 tab 的面板一起挂在屏幕上，点下去找的是别人的流。
       t.inputsEl.classList.toggle("active", sid === sessionId);
       // 切走的 tab 收起面板（出弹层栈）—— 不然 Esc 去关的是一块看不见的面板。
       if (sid !== sessionId) this.finds.get(sid)?.close();
       if (sid !== sessionId) t.turnFold.release(true); // 先没收的那一轮：切走了就收
       t.turnRail.el.classList.toggle("active", sid === sessionId);
+      if (sid === sessionId) t.turnRail.shown(); // 收起期间没量过 ⇒ 下一帧量一次
 
     }
   }
@@ -443,6 +464,11 @@ export class TabStreamView {
     return Promise.reject(new Error(copyText("tabStreamView.search.notReady")));
   }
 
+  /** 这个 tab 此刻还在眼前：是当前的、还是表里那一个（没被关掉 / 重来过）、它的流还挂在页上。排到后面的活到点先问这一句。 */
+  private inFront(tab: Tab): boolean {
+    return this.store.activeId === tab.sessionId && this.store.tabs.get(tab.sessionId) === tab && tab.streamEl.isConnected;
+  }
+
   /** 切进来的 tab：物化 / 哨兵 / 骨架索引 / 大纲 / 不可滚时踢一次补批（原是 `switchTo` 中段，逐字）。 */
   activate(next: Tab): void {
     // 上次按行号往下问失败了的，切进来时允许再问一次（失败不自动重问，见 `BelowState` 头注）。
@@ -453,16 +479,34 @@ export class TabStreamView {
     if (virginFill) this.materializeUntilFilled(next);
     // 切入即刷新哨兵（非 virgin 但账本非空的 tab 也要见到「还有 N 条」）
     if (next) this.updateSentinel(next);
-    // 〔骨架〕切进来的 tab 要索引（上面刚物化过尾段 ⇒ floor 已钉）
-    if (next) this.requestSkeleton(next);
-    if (next?.outline.needsFetch) this.refreshOutline(next); // 大纲：有新行才要
+    // 〔骨架〕要索引 / 接上次停着的那一份 / 刷大纲：都是给「停下来看」的人准备的（索引那一问是后端整份读那个会话的记录文件，
+    // 接骨架要插占位、量几何）—— 在眼前停住了（`STAY_MS`）才做；按住「下一个 tab」路过的一概不发、不接。
+    if (next) {
+      // 调度：一次性 —— 停留判定：到点时还是它在眼前（没被下一下切走）才要索引 / 接骨架 / 刷大纲
+      setTimeout(() => {
+        if (!this.inFront(next)) return;
+        const parked = this.parkedSkeletons.get(next);
+        if (parked) {
+          this.parkedSkeletons.delete(next);
+          this.attachSkeleton(next, parked);
+        }
+        this.requestSkeleton(next); // 上面刚物化过尾段 ⇒ floor 已钉；要过的不重要
+        if (next.outline.needsFetch) this.refreshOutline(next); // 大纲：有新行才要
+      }, TabStreamView.STAY_MS);
+    }
     // 账本有余却没满一屏的 tab 没有补批入口（不可滚的元素不产生 scroll 事件）⇒ 切入时踢一次，rAF 自链接管到满或账尽。
     // 账本空了但下面可能还有（`wantsBelow`）同样踢。「满没满」问真实布局（`contentReachesBottom`），不只看 `scrollHeight`（掺着估值）。
     // 刚为 virgin tab 跑过 `materializeUntilFilled`、账本还有余的不再踢：它补不满时自己排了下一帧的接续（一次同步调用要有界）。
+    // 「满没满」要读几何 ⇒ 挪到下一帧再问：同步段里一读，浏览器就得当场把刚翻出来的整个 tab 样式与布局算完（点击处理被拖长、这一帧更晚画出来）；
+    // 下一帧的回调里读，排的就是那一帧本来要排的那一份。期间又切走（`activeId` 守卫）⇒ 不补。
     const continuing = virginFill && next.window.pendingCount > 0;
     if (next && !continuing && (next.window.pendingCount > 0 || next.window.wantsBelow)) {
-      const el = next.streamEl;
-      if (el.scrollHeight - el.clientHeight <= 1 || !this.contentReachesBottom(next)) this.fillAbove(next);
+      // 调度：一次性 —— 切进来的下一帧问一次满没满，没满踢一脚补批（之后由补批自己的 rAF 自链接管）
+      requestAnimationFrame(() => {
+        if (!this.inFront(next)) return;
+        const el = next.streamEl;
+        if (el.scrollHeight - el.clientHeight <= 1 || !this.contentReachesBottom(next)) this.fillAbove(next);
+      });
     }
   }
 
@@ -698,6 +742,8 @@ export class TabStreamView {
    * 够不够一屏：最后一张卡的 `getBoundingClientRect().bottom` 有没有够到滚动容器的下沿（真实布局，不吃估值）。
    * 不用「滚得动吗」（`scrollHeight − clientHeight > 1`）：没渲染过的卡贡献的是估值，估高了看起来滚得动、屏幕仍是半屏。
    * 没有布局时（jsdom，rect 恒为 0）退回算术判据 —— 不然补批整条路在测试里被静默关掉。
+   * 「够到」把那张卡的下外边距与容器的下内边距算进去：贴底看时最后一张卡下面本来就留着这两截（真浏览器 28 ＋ 48px），
+   * 不算的话贴底的 tab 永远「没满」，每切进来一次补一批。
    */
   private contentReachesBottom(tab: Tab): boolean {
     const el = tab.streamEl;
@@ -709,7 +755,8 @@ export class TabStreamView {
     const last = tab.stream.contentElement.lastElementChild;
     if (!last) return false; // 一张卡都没有 ⇒ 肯定没满
     // 1px 容差：HiDPI 分数像素下 rect 是小数，卡刚好贴到下沿时会差零点几像素。
-    return last.getBoundingClientRect().bottom >= view.bottom - 1;
+    const gap = (parseFloat(getComputedStyle(last).marginBottom) || 0) + (parseFloat(getComputedStyle(el).paddingBottom) || 0);
+    return last.getBoundingClientRect().bottom + gap >= view.bottom - 1;
   }
 
   /**
@@ -828,6 +875,10 @@ export class TabStreamView {
           if (more.available) got.ledger.append(more.rows);
         }
         if (this.store.tabs.get(tab.sessionId) !== tab) return;
+        if (this.store.activeId !== tab.sessionId) {
+          this.parkedSkeletons.set(tab, got.ledger); // 已经切走：停着，切回来再接
+          return;
+        }
         this.attachSkeleton(tab, got.ledger);
       })
       .catch((e: unknown) => {
@@ -1224,21 +1275,42 @@ export class TabStreamView {
   materializeQueue: string[] = [];
   private materializeScheduled = false;
 
+  /** 后台空闲物化一截建几条（建完一截看一眼空闲期限还剩没剩）。 */
+  private static readonly IDLE_CHUNK = 20;
+  /** 没有 requestIdleCallback 的引擎（WebKitGTK）走 setTimeout 兜底：一次最多连着建这么久（ms）就让出来。 */
+  private static readonly IDLE_SLICE_MS = 8;
+  /** virgin 后台 tab 的尾段这一轮已经建了几条（分截建，凑满 `MATERIALIZE_TAIL_K` 为止）。 */
+  private readonly idleTaken = new WeakMap<Tab, number>();
+
   private scheduleIdleMaterialize(): void {
     if (this.materializeScheduled) return;
     const sid = this.materializeQueue.shift();
     if (sid === undefined) return;
     this.materializeScheduled = true;
-    const run = (): void => {
+    const run = (deadline?: IdleDeadline): void => {
       this.materializeScheduled = false;
       const tab = this.store.tabs.get(sid);
       // virgin 的物化尾段(switchTo 可能已同步物化过);二次 batch 开始则原样跳过,
       // 账本继续收纳,批结束会重新排队。
       // 钉过水位、账本有余、真实布局没满一屏的 ⇒ 补一批（`fillAbove`：带选区守卫与滚动补偿，
       // 后台 tab 不自链 —— 它的 rAF 复检有 `activeId` 守卫；切进来时 `activate` 那一脚接着补）。
+      // virgin 的尾段**分截建**：一截 `IDLE_CHUNK` 条，空闲期限用完（兜底那一路按 `IDLE_SLICE_MS`）就停、这个 tab 排回队首 ——
+      // 一口气建满 150 条就是开窗那几秒里的一串长任务（人一开窗就去点，点下去要等它跑完）。
       if (tab && !this.store.inBatch && tab.window.pendingCount > 0) {
-        if (tab.window.floorSeq === null) this.materializeTail(tab);
-        else if (!this.contentReachesBottom(tab)) this.fillAbove(tab);
+        const virgin = tab.window.floorSeq === null || this.idleTaken.has(tab);
+        if (virgin) {
+          const until = performance.now() + (deadline ? deadline.timeRemaining() : TabStreamView.IDLE_SLICE_MS);
+          let taken = this.idleTaken.get(tab) ?? 0;
+          do {
+            const before = tab.window.pendingCount;
+            this.materializeTail(tab, Math.min(TabStreamView.IDLE_CHUNK, TabStreamView.MATERIALIZE_TAIL_K - taken));
+            taken += before - tab.window.pendingCount;
+          } while (taken < TabStreamView.MATERIALIZE_TAIL_K && tab.window.pendingCount > 0 && performance.now() < until);
+          if (taken < TabStreamView.MATERIALIZE_TAIL_K && tab.window.pendingCount > 0) {
+            this.idleTaken.set(tab, taken);
+            this.materializeQueue.unshift(sid); // 没建完：下一个空闲期接着建它
+          } else this.idleTaken.delete(tab);
+        } else if (!this.contentReachesBottom(tab)) this.fillAbove(tab);
       }
       this.scheduleIdleMaterialize();
     };
@@ -1246,8 +1318,8 @@ export class TabStreamView {
       // 调度：自链 —— 后台标签页空闲物化队列：处理一个再排自己，队列空即停
       window.requestIdleCallback(run, { timeout: 2000 });
     } else {
-      // 调度：自链 —— 上面那条队列在没有 rIC 时的兜底，同一条链
-      window.setTimeout(run, 200);
+      // 调度：自链 —— 上面那条队列在没有 rIC 时的兜底，同一条链（接着建同一个 tab 的下一截只隔一帧，换下一个 tab 隔 200 ms）
+      window.setTimeout(() => run(), this.idleTaken.has(this.store.tabs.get(sid) as Tab) ? 16 : 200);
     }
   }
 

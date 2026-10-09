@@ -87,7 +87,7 @@ vi.mock("@tauri-apps/api/event", () => ({ emit: vi.fn() }));
 vi.mock("@tauri-apps/api/window", () => ({ getCurrentWindow: () => ({ close: vi.fn() }) }));
 
 import { SettingsPanel } from "../../../../src/frontend/ui/settings/panel";
-import { __setHostOsForTests } from "../../../../src/frontend/ui/settings/host-os";
+import { __setHostFactsForTests } from "../../../../src/frontend/ui/settings/host-os";
 import { __resetMachineContextForTests } from "../../../../src/frontend/ui/settings/machine-context";
 import {
   SKELETON_PX,
@@ -96,6 +96,7 @@ import {
   skeletonHeight,
   type SkeletonKey,
 } from "../../../../src/frontend/ui/settings/skeleton";
+import { factsOn } from "../../../test-support/host-facts";
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
 const sorted = (xs: Iterable<string>) => [...new Set(xs)].sort();
@@ -116,7 +117,7 @@ describe("：骨架与它替代的那块内容**同一个高度**（第一刀 ·
   beforeEach(() => {
     document.body.replaceChildren();
     __resetMachineContextForTests();
-    __setHostOsForTests("windows");
+    __setHostFactsForTests(factsOn("windows"));
   });
 
   it("🔴 量具自检：登记表非空，且屏幕上真扫得到骨架", async () => {

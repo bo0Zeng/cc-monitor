@@ -634,13 +634,16 @@
   overflow: hidden;
 }
 
-/* issue: 切 Tab 卡顿优化。
-   过去用 display:none/block 切换 active Tab —— 长对话 (上千卡片 / 上万 DOM 节点)
-   切回 display:block 触发整棵子树重建 layout tree，同步阻塞主线程 100-500ms。
-   改 visibility 后元素永久留在 layout tree 里，切 active 只改 attribute 0 reflow。
-   #message-stream 是 position:relative，所有 .stream 用 absolute inset:0 叠在一起，
-   单一 active 才显示。代价：所有 Tab 的 layout box 常驻内存，但 monitor 典型 < 10 tab
-   增量可控。 */
+/* 切 Tab：所有 .stream 用 absolute inset:0 叠在 #message-stream 里，当前那个 `.active`。
+   收起的用 `content-visibility: hidden`：浏览器跳过它整棵子树的样式 / 布局 / 绘制 / 命中测试，
+   切回来沿用收起前的渲染状态（滚动位置也留着）。
+   - 不用 display:none：切回 display:block 要整棵子树重建布局（长会话 100-500ms）。
+   - 不再用 visibility:hidden ＋ pointer-events:none：两样都是继承属性 —— WebKitGTK 每切一下把新旧两个 tab 的
+     整棵子树样式重算一遍；收起的 tab 还留在渲染树里，每一帧的可见性观察（下面卡片的 content-visibility:auto）·
+     命中测试 · 合成都按所有 tab 的节点总数算（性能台架 tests/shots/perf/：24 个 tab 时 Chromium 每帧 4-15ms 的交叉计算、
+     WebKitGTK 热切同步段 p50 68ms）。判据 tests/frontend/ui/tab-switch-cost.vitest.ts：切换只许翻不继承的属性。
+   - 收起的盒子还在原位（透明、内容不画）⇒ 当前那个靠层叠压在上面接点击与滚轮。
+   - 收起期间几何不可信（Chromium 读 scrollTop 得 0），流那一侧停放（stream.ts::park）。 */
 .stream {
   position: absolute;
   inset: 0;
@@ -663,13 +666,13 @@
   /* 宽内容(表格/公式/代码)各自局部滚动,流本身永不横滚 */
   overflow-x: hidden;
   padding: 24px 24px 48px;
-  visibility: hidden;
-  pointer-events: none;
+  content-visibility: hidden;
 }
 
 .stream.active {
-  visibility: visible;
-  pointer-events: auto;
+  content-visibility: visible;
+  /* 压在收起的那几个盒子上面（它们透明、但盒子还在，后来的兄弟会盖住先来的） */
+  z-index: var(--z-sticky);
 }
 
 /* 居中消息列 —— 仿 claude.ai 的窄消息流 */
@@ -1491,7 +1494,7 @@
   border-left: 2px solid var(--border-medium);
 }
 
-/* === 按轮折叠：完成的轮过程折成一行，28 高 === */
+/* === 大折叠（按轮）：两句人话之间的过程折成一行，28 高；正在跑的也折着 === */
 .proc-line {
   display: flex;
   align-items: center;
@@ -1526,6 +1529,65 @@
   color: var(--error);
 }
 
+.proc-line .proc-run {
+  display: inline-flex;
+  color: var(--success);
+}
+
+.proc-line .proc-now {
+  color: var(--text);
+}
+
+.proc-line .proc-need {
+  color: var(--warn);
+}
+
+.proc-line[data-phase="awaiting"] {
+  border-color: color-mix(in srgb, var(--warn) 55%, transparent);
+}
+
+/* 展开的过程：只多一层，缩进一格；左边一道细竖线（挂在过程行上、高度由 turn-fold.ts 按这一轮过程的跨度写）标出「这一段是过程」。 */
+.stream-content > [data-proc-of]:not(.proc-hidden) {
+  margin-left: 24px;
+}
+
+.stream-content > .proc-line {
+  position: relative;
+  content-visibility: visible;
+}
+
+.proc-rule {
+  position: absolute;
+  top: 100%;
+  left: 10px;
+  width: 2px;
+  background: var(--border-soft);
+  pointer-events: none;
+}
+
+/* 过程高过一屏时末尾那一行「‹ 收起这段过程」。 */
+.proc-tail {
+  display: block;
+  margin: 6px 0 12px 22px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-size: var(--font-size-small);
+  cursor: pointer;
+}
+
+.proc-tail:hover {
+  color: var(--text);
+}
+
+.proc-tail > svg {
+  margin-right: 4px;
+  vertical-align: -2px;
+  transform: rotate(180deg);
+}
+
 .proc-line .proc-span {
   flex: none;
   margin-left: auto;
@@ -1539,7 +1601,7 @@
 }
 
 /* === 轮次刻度：正文区右缘 16px 一列，每轮一格 3px 短线；当前那一轮 --accent 加长，在等你的那一轮琥珀。
-   挂在 #message-stream 上、不随流滚；与 .stream / .session-find 同一套：切 tab 只翻 visibility。 */
+   挂在 #message-stream 上、不随流滚；切 tab 翻 visibility（子树就几十格，翻继承属性的代价可以忽略；大的那棵 .stream 走 content-visibility）。 */
 .turn-rail {
   position: absolute;
   top: 12px;
@@ -2377,7 +2439,7 @@
 
 /* === 实时 tab 的会话内查找面板（搜索 / 大纲两个模式）：外框 ===
    锚在会话头下、正文区右上（`#message-stream` 是层叠上下文，`--z-float` 关在流里）；面板本体的长相在
-   `views/session-find.module.css`。🔴 `visibility` 而不是 `display` 翻 `.active`：与 `.stream` 同一套机制（切 tab 0 reflow），
+   `views/session-find.module.css`。🔴 `visibility` 而不是 `display` 翻 `.active`（切 tab 0 reflow；面板子树小，翻继承属性的代价可以忽略），
    整块一条 `display` 都不写（判据逐行查）。 */
 .session-find {
   position: absolute;
@@ -2394,15 +2456,14 @@
 }
 
 /* 复用 .stream 容器样式（滚动 + padding），但改 flex item 布局。
-   关键：`.stream` 基类默认 `visibility: hidden`（多 Tab 机制：只有 `.active`
-   的那个 tab stream 可见）。SessionViewer 是独立单一 stream，没有 `.active`
-   类，必须在这里显式恢复可见，否则消息全渲染进来却不可见（空白 bug 根因）。 */
+   关键：`.stream` 基类默认收起（`content-visibility: hidden`，多 Tab 机制：只有 `.active`
+   的那个 tab stream 翻出来）。SessionViewer / agent 窗口是独立单一 stream，没有 `.active`
+   类，必须在这里显式翻出来，否则消息全渲染进来却不可见（空白 bug 根因）。 */
 .session-viewer-stream {
   position: relative;
   flex: 1;
   inset: auto;
-  visibility: visible;
-  pointer-events: auto;
+  content-visibility: visible;
 }
 
 /* F54:工具卡里「在 SFTP 打开」远端文件链接(卡片 body 顶部) */

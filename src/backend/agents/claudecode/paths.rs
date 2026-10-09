@@ -50,6 +50,8 @@ pub(crate) fn settings_may_set_base_url(
 pub(crate) const SETTINGS_ENV: super::super::SettingsEnvFace = super::super::SettingsEnvFace {
     read: read_settings_base_url,
     snippet: settings_env_snippet,
+    merge: settings_env_merge,
+    slot: "env",
 };
 
 /// 读那份设置文件的上限（几 KB 的配置；超了按「读不了」说，不当没写）。
@@ -104,6 +106,16 @@ fn settings_base_url(raw: &str) -> super::super::SettingsBaseUrl {
 fn settings_env_snippet(url: &str) -> String {
     let v = serde_json::json!({ "env": { BASE_URL_ENV: url } });
     serde_json::to_string_pretty(&v).unwrap_or_default()
+}
+
+/// 那份设置文件现在的内容 ＋ 地址 ⇒ 合好的整份：`env.ANTHROPIC_BASE_URL` 就地设上，别的原样（JSON 就地改法住「要你动手」那一层）。
+fn settings_env_merge(now: &str, url: &str) -> Option<String> {
+    crate::footprint::chores::patch::set_member(
+        now,
+        &["env", BASE_URL_ENV],
+        &serde_json::json!(url),
+    )
+    .map(|p| p.whole)
 }
 
 /// 默认配置根在 `$HOME` 下的名字。

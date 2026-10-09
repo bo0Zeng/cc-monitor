@@ -34,9 +34,10 @@ import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
 import { copyText, type CopyKey } from "../../src/frontend/ui/copy-table.ts";
-import { productionRsFiles, productionTsFiles } from "../test-support/production-sources.ts";
+import { productionTsFiles } from "../test-support/production-sources.ts";
 import { REPO_ROOT } from "../test-support/repo-root.ts";
-import { loadTable, NAMED_PH, type Table } from "./copy-support.ts";
+import { loadTable, NAMED_PH, type Ref, type Table } from "./copy-support.ts";
+import { RS_DEFINITIONS, RS_HOME, rustRefsIn, rustRefsOfTree } from "./rust-refs.ts";
 
 // 第六档 aria：只进 aria-label 的无障碍名。
 const KINDS = new Set(["title", "control", "action", "body", "error", "aria"]);
@@ -110,12 +111,6 @@ export function tableProblems(table: Table): string[] {
   return p;
 }
 
-export interface Ref {
-  file: string;
-  key: string;
-  args: string[];
-}
-
 /** 用 TypeScript 编译器读一份源码里的全部 `copyText` 调用点。 */
 export function refsIn(file: string, text: string): { refs: Ref[]; problems: string[] } {
   const refs: Ref[] = [];
@@ -152,125 +147,6 @@ export function refsIn(file: string, text: string): { refs: Ref[]; problems: str
     ts.forEachChild(n, visit);
   };
   visit(sf);
-  return { refs, problems };
-}
-
-/** Rust 取文口自己住的文件：它里头的 `copy_text` 是定义，不是引用。 */
-const RS_HOME = "src/frontend/shell/src/copy_table.rs";
-const RS_FN = "copy_text";
-/** 同一个取文口的 `&'static str` 形（`copy-core` 的宏）。 */
-const RS_STATIC = "copy_static";
-/**
- * 取文口的**定义**住的两份文件：`copy-core` 的实现，与 monitor 那一层转发（`copy_core::copy_text(key, args)`，
- * key 不是字面量 —— 它是转发，不是引用）。它们不进「引用」一侧。
- */
-const RS_DEFINITIONS = new Set([RS_HOME, "src/common/copy-core/src/lib.rs"]);
-
-/** 剥掉 `//` 行注释（字符串里的 `//` 不算）。块注释本仓生产段不用来写代码，按行注释剥足够。 */
-function stripRustLineComments(text: string): string {
-  return text
-    .split("\n")
-    .map((line) => {
-      let inStr = false;
-      for (let i = 0; i < line.length; i++) {
-        const c = line[i];
-        if (c === "\\" && inStr) {
-          i++;
-          continue;
-        }
-        if (c === '"') inStr = !inStr;
-        if (!inStr && c === "/" && line[i + 1] === "/") return line.slice(0, i);
-      }
-      return line;
-    })
-    .join("\n");
-}
-
-/** 读一份 `.rs` 里的全部 `copy_text` 调用点（按调用形状，见头注「不判什么」）。 */
-export function rustRefsIn(file: string, text: string): { refs: Ref[]; problems: string[] } {
-  const refs: Ref[] = [];
-  const problems: string[] = [];
-  const code = stripRustLineComments(text);
-  const lineOf = (at: number): number => code.slice(0, at).split("\n").length;
-  const re = new RegExp(`\\b${RS_FN}\\b`, "g");
-  for (const m of code.matchAll(re)) {
-    const at = m.index ?? 0;
-    const before = code.slice(Math.max(0, at - 3), at);
-    const after = code.slice(at + RS_FN.length);
-    if (file === RS_HOME && before === "fn ") continue;
-    // 别人的同名**方法**（`ui.ctx().copy_text(…)`，egui 的剪贴板）不是我们的取文口。
-    if (before.endsWith(".")) continue;
-    // `\buse`：原先裸 `use\s` 把「OursFault::Misuse => copy_text(…)」这一行当成了 `use` 导入 ⇒ 那个调用点
-    //   从「引用」一侧漏掉、表里那条被报成死文案（现打逮到：filewin/source.rs 的 said.internal）。
-    if (/^\s*[;,}]/.test(after) || /^::/.test(after) || /\buse\s[^;]*$/.test(code.slice(code.lastIndexOf("\n", at) + 1, at))) {
-      if (/\buse\s[^;]*$/.test(code.slice(code.lastIndexOf("\n", at) + 1, at))) continue;
-      problems.push(`${file}:${lineOf(at)}：${RS_FN} 被当值用了（不是直接调用）`);
-      continue;
-    }
-    if (!after.startsWith("(")) {
-      problems.push(`${file}:${lineOf(at)}：${RS_FN} 后面不是调用`);
-      continue;
-    }
-    const km = /^\(\s*"([^"\\]*)"\s*(,|\))/.exec(after);
-    if (!km) {
-      problems.push(`${file}:${lineOf(at)}：${RS_FN} 的 key 不是字面量`);
-      continue;
-    }
-    const args: string[] = [];
-    if (km[2] === ",") {
-      const rest = after.slice(km[0].length);
-      const am = /^\s*&\[/.exec(rest);
-      if (!am) {
-        problems.push(`${file}:${lineOf(at)}：${RS_FN} 的参数不是 &[…] 数组字面量`);
-        continue;
-      }
-      // 取到与 `&[` 配对的 `]`。
-      let depth = 0;
-      let end = -1;
-      for (let i = am[0].length - 1; i < rest.length; i++) {
-        if (rest[i] === "[" || rest[i] === "(") depth++;
-        if (rest[i] === "]" || rest[i] === ")") {
-          depth--;
-          if (depth === 0) {
-            end = i;
-            break;
-          }
-        }
-      }
-      const body = rest.slice(am[0].length, end);
-      // 顶层每一项都必须是 `("名", …)`。
-      let d = 0;
-      let start = 0;
-      const items: string[] = [];
-      for (let i = 0; i <= body.length; i++) {
-        const c = body[i];
-        if (c === "(" || c === "[") d++;
-        if (c === ")" || c === "]") d--;
-        if ((c === "," && d === 0) || i === body.length) {
-          const item = body.slice(start, i).trim();
-          if (item) items.push(item);
-          start = i + 1;
-        }
-      }
-      for (const item of items) {
-        const nm = /^\(\s*"([A-Za-z][A-Za-z0-9]*)"\s*,/.exec(item);
-        if (nm) args.push(nm[1]);
-        else problems.push(`${file}:${lineOf(at)}：${RS_FN} 的参数项不是 ("名", 值)：${item}`);
-      }
-    }
-    refs.push({ file: `${file}:${lineOf(at)}`, key: km[1], args });
-  }
-  // `copy_static!("…")`：同一条文案给成 `&'static str`（后端几处类型刻意是 `&'static str`，
-  //   见 `copy-core` 那个宏的头注）。没有参数；key 必须是紧跟的字符串字面量，别的写法一律报「绕过」。
-  for (const m of code.matchAll(new RegExp(`\\b${RS_STATIC}!`, "g"))) {
-    const at = m.index ?? 0;
-    const km = /^\(\s*"([^"\\]*)"\s*\)/.exec(code.slice(at + RS_STATIC.length + 1));
-    if (!km) {
-      problems.push(`${file}:${lineOf(at)}：${RS_STATIC}! 的 key 不是字面量（或带了参数）`);
-      continue;
-    }
-    refs.push({ file: `${file}:${lineOf(at)}`, key: km[1], args: [] });
-  }
   return { refs, problems };
 }
 
@@ -314,24 +190,10 @@ describe("CP2a · 文案表 ↔ 生产代码引用", () => {
   const all = files
     .filter((f) => new RegExp(`\\b${FN}\\b`).test(f.text))
     .map((f) => refsIn(f.file, f.text));
-  // Rust 读口的调用点。
-  // 射程从 monitor crate 扩到常驻后端与子 crate（后端也读同一份表、自己出句子 ——
-  // 决定 2「一份文件，两侧各读，零转换」；理由住）。
-  //   取文实现本身住 `copy-core`，monitor 的 `copy_table.rs` 只剩转发 ⇒ 这两份是定义不是引用，不进人群。
-  const rsFiles = [
-    ...productionRsFiles("src/frontend/shell/src"),
-    ...productionRsFiles("src/frontend/filewin/src"), // 文件窗口独立成包（它的取文口调用点从前住上一棵）
-    ...productionRsFiles("src/backend"),
-    ...productionRsFiles("src/common"),
-    ...productionRsFiles("src/comms"), // 通信层那两个 crate（面 A · 面 B）
-  ];
-  const rsAll = rsFiles
-    .filter((f) => !RS_DEFINITIONS.has(f.file))
-    .filter((f) => new RegExp(`\\b(?:${RS_FN}\\b|${RS_STATIC}!)`).test(f.text))
-    .map((f) => rustRefsIn(f.file, f.text));
-  const rsRefs = rsAll.flatMap((x) => x.refs);
+  // Rust 读口的调用点（射程与读法住 `rust-refs.ts`：常驻后端 · 两个前端 · 子 crate；取文实现本身是定义，不进人群）。
+  const { files: rsFiles, refs: rsRefs, problems: rsProblems } = rustRefsOfTree();
   const refs = [...all.flatMap((x) => x.refs), ...rsRefs];
-  const problems = [...all.flatMap((x) => x.problems), ...rsAll.flatMap((x) => x.problems)];
+  const problems = [...all.flatMap((x) => x.problems), ...rsProblems];
 
   it("正控（Rust）：扫到了 .rs 生产源码、Rust 取文口自己，也读到了 Rust 调用点", () => {
     expect(rsFiles.length, "一个 .rs 都没扫到").toBeGreaterThan(100);

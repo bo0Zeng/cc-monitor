@@ -5,11 +5,14 @@
  *   第一帧不会落在没人收的时候。票由这里铸（不透明，后端只回填）。
  * - 一帧在途：后端推一屏之后等回执才推下一帧（有变化才推）。这里收一屏 ⇒ 交页面（同步画完）⇒ 回执那一帧的序号；
  *   **两次回执至少隔 {@link ACK_GAP_MS}**（约每秒 10 帧封顶，节奏归看的这一方，后端不起节拍）。回执时补一格 credit。
- * - 退订：撤流、发 `terminal-unfollow`（幂等，不等结局）；之后来的帧不交、排着的回执不发。
- * - 停了：后端说停（终端没了 · 看着它的路断了 · 一屏太大）· 流断了 · 订不上（那台只能快照 / 别的原因）⇒ 交一次 {@link FollowStop}，不自己重连。
+ * - 退订：撤流；之后来的帧不交、排着的回执不发。后端那张票由壳替界面退订（流撤了 · 页面重载 · 窗口没了都算，`terminal_screen_relay.rs`），
+ *   这里不发退订命令。
+ * - 停了：后端说停（那一句后端写好）· 流断了（那台断开）· 订不上（后端说「只能快照 / 停了」＋ 那一句）⇒ 交一次 {@link FollowStop}，不自己重连。
+ *   这里不按码挑词：只有通道这一层的事（那台断开 · 那台后端太旧不认这条命令 · 回的东西读不懂）由这里说。
  */
 import { chan, ChanError, type Item } from "../../comms/inward/chan";
-import { budgetWithin, jsonBody, refusalOf } from "./ipc/chan-caller";
+import { budgetWithin, jsonBody, machineName, refusalOf } from "./ipc/chan-caller";
+import { copyText } from "./copy-table";
 import { isObj } from "./ipc/decode";
 import type { Origin } from "./ipc/origin";
 import { decodeShot, type TerminalShot } from "./terminal-reads";
@@ -20,16 +23,14 @@ export const TERMINAL_SCREEN_KIND = "terminal-screen";
 /** 两次回执之间至少隔多久（ms）：实时画面的节奏上限。 */
 export const ACK_GAP_MS = 100;
 
-/** 订阅 · 回执 · 退订那几问的期限（订上要起几个 tmux；远端没连着还要握手）。 */
+/** 订阅 · 回执那两问的期限（订上要起几个 tmux；远端没连着还要握手）。 */
 const FOLLOW_BUDGET_MS = 15_000;
 
 /** 一开始给流几格 credit（一帧在途，再留一格给收尾帧）。 */
 const INITIAL_WANT = 2;
 
-/** 订阅停了：只能快照（那台不支持实时，带原因）· 停了（带原因）。 */
-export type FollowStop =
-  | { kind: "snapshotOnly"; why: "old" | "tmux" | "noTmux" }
-  | { kind: "stopped"; why: "gone" | "lost" | "tooBig" | "offline" };
+/** 订阅停了：只能快照（那台不支持实时）· 停了（`offline` ＝ 那台断开：输入框随之不可送）。`said` 是给人看的那一句，页面原样排。 */
+export type FollowStop = { kind: "snapshotOnly"; said: string } | { kind: "stopped"; said: string; offline: boolean };
 
 /** 页面收的两件事：一屏 · 停了（至多一次）。 */
 export interface FollowEvents {
@@ -42,7 +43,6 @@ export interface FollowPort {
   subscribe(origin: Origin, kind: string, want: number, sink: (items: Item[]) => void): Promise<{ want(more: number): void; stop(): void }>;
   follow(origin: Origin, args: { terminal: string; ticket: string }): Promise<unknown>;
   ack(origin: Origin, args: { ticket: string; seq: number }): Promise<unknown>;
-  unfollow(origin: Origin, args: { ticket: string }): Promise<unknown>;
 }
 
 export const CHANNEL_PORT: FollowPort = {
@@ -57,11 +57,6 @@ export const CHANNEL_PORT: FollowPort = {
     const budget = budgetWithin(FOLLOW_BUDGET_MS);
     return chan.call(origin, "terminal-follow-ack", body, budget);
   },
-  unfollow: (origin, args) => {
-    const body = jsonBody(args);
-    const budget = budgetWithin(FOLLOW_BUDGET_MS);
-    return chan.call(origin, "terminal-unfollow", body, budget);
-  },
 };
 
 export interface Follow {
@@ -71,41 +66,26 @@ export interface Follow {
 
 let tickets = 0;
 
-/** 订不上的那一问 ⇒ 停在哪。 */
-function stopOfStart(e: unknown): FollowStop {
-  if (e instanceof ChanError) {
-    const err = e.error;
-    if (err.layer === "peer" && err.why === "unsupported") return { kind: "snapshotOnly", why: "old" };
-    if (err.layer === "peer" && err.why === "refused") {
-      switch (refusalOf(err.body)?.code) {
-        case "tmux_too_old":
-          return { kind: "snapshotOnly", why: "tmux" };
-        case "no_tmux":
-          return { kind: "snapshotOnly", why: "noTmux" };
-        case "not_known":
-        case "ambiguous":
-          return { kind: "stopped", why: "gone" };
-        default:
-          return { kind: "stopped", why: "lost" };
-      }
-    }
-    if (err.layer === "hop") return { kind: "stopped", why: "offline" };
-  }
-  return { kind: "stopped", why: "lost" };
+/** 停了 · 那台断开（通道这一层的事）。 */
+const offline = (origin: Origin): FollowStop => ({ kind: "stopped", said: copyText("terminal.liveWhy.offline", { machine: machineName(origin) }), offline: true });
+/** 停了 · 读不懂那台说的（画面中断）。 */
+const lost = (): FollowStop => ({ kind: "stopped", said: copyText("terminal.liveWhy.lost"), offline: false });
+
+/** 订不上的那一问 ⇒ 停在哪：那台说了 ⇒ 照它说的（`data.live` ＋ 那一句）；通道这一层的 ⇒ 这里说。 */
+function stopOfStart(origin: Origin, e: unknown): FollowStop {
+  if (!(e instanceof ChanError)) return lost();
+  const err = e.error;
+  if (err.layer === "hop") return offline(origin);
+  if (err.layer === "peer" && err.why === "unsupported") return { kind: "snapshotOnly", said: copyText("terminal.head.snapshotOnlyOld", { machine: machineName(origin) }) };
+  if (err.layer !== "peer" || err.why !== "refused") return lost();
+  const r = refusalOf(err.body);
+  if (r === null || r.message.trim() === "") return lost();
+  return isObj(r.data) && r.data.live === "snapshot_only" ? { kind: "snapshotOnly", said: r.message } : { kind: "stopped", said: r.message, offline: false };
 }
 
-/** 收尾那一格的原因 ⇒ 停在哪。认不出 ⇒ `null`（当读不懂）。 */
-function stopOfEnd(end: unknown): FollowStop | null {
-  switch (end) {
-    case "gone":
-      return { kind: "stopped", why: "gone" };
-    case "lost":
-      return { kind: "stopped", why: "lost" };
-    case "too_big":
-      return { kind: "stopped", why: "tooBig" };
-    default:
-      return null;
-  }
+/** 收尾那一格（`{why, said}`）⇒ 停了，那一句原样；没有那一句 ⇒ `null`（当读不懂）。 */
+function stopOfEnd(cell: Record<string, unknown>): FollowStop | null {
+  return typeof cell.said === "string" && cell.said.trim() !== "" ? { kind: "stopped", said: cell.said, offline: false } : null;
 }
 
 /** 订 `origin` 上 `terminal` 那个终端的实时画面。 */
@@ -122,7 +102,7 @@ export function startFollow(origin: Origin, terminal: string, events: FollowEven
     ackTimer = null;
     sub?.stop();
   };
-  /** 停了（后端已经忘了这张票，或根本没订上）：交一次、撤流。 */
+  /** 停了：交一次、撤流（撤流即由壳替这里退订那张票）。 */
   const halt = (why: FollowStop): void => {
     if (over) return;
     close();
@@ -154,8 +134,8 @@ export function startFollow(origin: Origin, terminal: string, events: FollowEven
         } catch {
           cell = null;
         }
-        if (isObj(cell) && "end" in cell) {
-          halt(stopOfEnd(cell.end) ?? { kind: "stopped", why: "lost" });
+        if (isObj(cell) && "why" in cell) {
+          halt(stopOfEnd(cell) ?? lost());
           return;
         }
         let shot: TerminalShot;
@@ -163,15 +143,13 @@ export function startFollow(origin: Origin, terminal: string, events: FollowEven
           if (!isObj(cell) || typeof cell.seq !== "number") throw new Error("no seq");
           shot = decodeShot(origin, cell.view);
         } catch {
-          halt({ kind: "stopped", why: "lost" });
-          void port.unfollow(origin, { ticket }).catch(() => {});
+          halt(lost());
           return;
         }
         events.screen(shot);
         ack(cell.seq as number);
       } else if (it.t === "gap" || it.t === "closed" || it.t === "unseen") {
-        halt({ kind: "stopped", why: "offline" });
-        void port.unfollow(origin, { ticket }).catch(() => {});
+        halt(offline(origin));
         return;
       }
     }
@@ -187,15 +165,13 @@ export function startFollow(origin: Origin, terminal: string, events: FollowEven
     try {
       await port.follow(origin, { terminal, ticket });
     } catch (e) {
-      halt(stopOfStart(e));
+      halt(stopOfStart(origin, e));
     }
   })();
 
   return {
     stop: () => {
-      if (over) return;
-      close();
-      void port.unfollow(origin, { ticket }).catch(() => {});
+      if (!over) close();
     },
   };
 }

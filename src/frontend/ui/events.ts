@@ -129,7 +129,7 @@ export interface EventHandlers {
    * 某台的额度账变了（`quota`）/ 某几个会话的轮换 / 账号格变了（`sids`）/ 期间可能漏了（`all`：那台整台重问）。
    * 来自通道 `subscribe(origin, "quota-changed")`（`quota-stream.ts::quotaChangedItems` 读格）。
    */
-  onQuotaChanged?: (origin: Origin, change: { quota: boolean; sids: readonly string[]; all: boolean }) => void;
+  onQuotaChanged?: (origin: Origin, change: { quota: boolean; sids: readonly string[]; all: boolean; rules: boolean }) => void;
   /**
    * 会话红绿灯：后端只在 sessions/<PID>.json 的官方 status 变化时发（天然稀疏，当场派）。
    * "busy" = 运行中 / "idle"、"shell" = 等输入 / "waiting" = 等弹窗决定（waiting_for 细分原因）。
@@ -778,7 +778,7 @@ export async function bindEvents(
 
   // `quota-changed`：一批格 ⇒ 额度账 / 哪几个会话的轮换要重问（`quotaChangedItems` 答）；credit 同 `session-tasks`。
   const onQuotaItems = (origin: Origin, hold: StreamHold, items: Item[]): void => {
-    const { quota, sids, all, frames } = quotaChangedItems(items);
+    const { quota, sids, all, rules, frames } = quotaChangedItems(items);
     if (frames > 0) {
       if (hold.sub) {
         hold.sub.want(frames + hold.owed);
@@ -787,7 +787,7 @@ export async function bindEvents(
         hold.owed += frames;
       }
     }
-    if (quota || all || sids.length > 0) handlers.onQuotaChanged?.(origin, { quota, sids, all });
+    if (quota || all || rules || sids.length > 0) handlers.onQuotaChanged?.(origin, { quota, sids, all, rules });
   };
 
   // 会话流：起停那几个事件的监听都在了之后再订（订阅一登记，句柄就可能开始交格）。

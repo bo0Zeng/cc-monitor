@@ -54,6 +54,21 @@ const REGISTERED: &[(&str, &str, &str, &str)] = &[
              不是节拍器。（**2 → 1**：远端那条点 ↗ 时的现扫重试随窗口标题那一套删了。）",
     ),
     (
+        "src/platform/ewmh.rs",
+        "activate",
+        "wait-for-condition",
+        "↗ 在 X11 上的最后一跳：发了 `_NET_ACTIVE_WINDOW` 之后读回根窗口那一格，看窗口管理器答没答应，30ms 一步、≤600ms（调用方给的上限）；\
+             对上就停。**有上限**、只在点 ↗ 那一下跑，不是节拍器。（换成订根窗口的属性变更事件要一个带期限的事件等待，x11rb 不带，今天不做。）",
+    ),
+    (
+        "src/bind.rs",
+        "probe_tty_title",
+        "wait-for-condition",
+        "本机 bash / zsh 接入块那一份记录：在它的终端上挂记号标题之后等它传到窗口标题上，12×50ms（≤600ms，同握手那条）找到就停；\
+             每步重挂一次（shell 刚起来时提示符会把标题改回去）。**有次数上限**，只在 monitor 起来那一刻与新记录落地那一下跑，\
+             同一份没认上的这一趟不再认（`tty_tried`），不是节拍器。",
+    ),
+    (
         "src/ccm_probe.rs",
         "capture_full",
         "wait-for-condition",

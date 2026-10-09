@@ -26,8 +26,19 @@ pub(crate) fn answer(
     let fork =
         |sid: &str, uuid: &str| crate::control::fork_write::fork_for_launch(&home, sid, uuid);
     let user_home = crate::platform::paths::home_dir();
+    let ctx = super::rotation_face::Ctx::here();
+    let sid = crate::accounts::quota::rotation::new_session_id;
+    let write = |sid: &str, kind: &str, rule: &str| {
+        super::rotation_face::preset_with(&ctx, sid, kind, rule, crate::accounts::quota::now_unix())
+    };
+    let forget = |sid: &str| super::rotation_face::forget_preset_with(&ctx, sid);
+    let pre = session_new::PreRotation {
+        sid: &sid,
+        write: &write,
+        forget: &forget,
+    };
     super::session_batch_face::with_deps_as(None, agent_of(args), Some(files), |d| {
-        session_new::answer(args, d, &fork, user_home.as_deref())
+        session_new::answer(args, d, &fork, &pre, user_home.as_deref())
     })
 }
 

@@ -45,7 +45,7 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener, TcpStream};
 use std::sync::{mpsc, Arc, Mutex};
 
-/// 只听回环。**字面量**，不是拼出来的（同 `stream/listen.rs::LOOPBACK` 那条理由）。
+/// 只听回环。**字面量**，不是拼出来的（同 `common/net.rs::LOOPBACK` 那条理由）。
 const STUB_LOOPBACK: IpAddr = IpAddr::V4(Ipv4Addr::LOCALHOST);
 
 /// 假上游**一字不差**回这一串。响应体是一条 chunked 包着的 SSE 事件 ＋ 终止块。
@@ -377,7 +377,7 @@ fn spawn_relay(up: SocketAddr) -> (SocketAddr, TeeTap) {
             table,
             crate::accounts::upstream_select::Upstreams::from_env(&|_| None).expect("内置默认"),
         )),
-        super::key::key_tests::test_key(),
+        super::key::key_tests::test_keys(),
         TeeSink::to_port(Arc::new(FramingTap(Arc::clone(&buf), Mutex::new(tick)))),
         DOWNSTREAM_DEADLINE,
         UPSTREAM_DEADLINE,
@@ -499,6 +499,7 @@ fn tee_line(ev: &crate::relay::TapEvent) -> String {
     }
     let (data, end) = match &ev.body {
         crate::relay::TapBody::Data(d) => (Some(d.as_str()), None),
+        crate::relay::TapBody::Clipped { head, .. } => (Some(head.as_str()), Some("clipped")),
         crate::relay::TapBody::End { broken } => {
             (None, Some(if *broken { "broken" } else { "done" }))
         }

@@ -19,6 +19,7 @@ import { select, type SelectOption } from "./kit/select";
 import { tag } from "./kit/badge";
 import { toast } from "./kit/toast";
 import { copyText } from "./copy-table";
+import { readRules, type RulesRead } from "./quota-reads";
 import { commands } from "./ipc/commands";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { machineName } from "./control-said";
@@ -57,6 +58,9 @@ export interface NewSessionSpec {
 }
 
 /** 主窗口：起好了 ⇒ 长出占位标签页（`main.ts` 装一次；别的窗口没有它 ⇒ 等报到、说一句「已启动」）。 */
+/** 「轮换」那一行跟随默认那一项的值。 */
+const ROT_FOLLOW = "follow";
+
 let placeholder: ((spec: SlotSpec) => void) | null = null;
 export function setNewSessionPlaceholder(fn: ((spec: SlotSpec) => void) | null): void {
   placeholder = fn;
@@ -393,6 +397,37 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   accountRow.root.hidden = true;
   form.appendChild(accountRow.root);
 
+  // 轮换：跟随默认（默认那条的名字）· 那台的各条规则；没有「本会话」（新会话还没有自己那一份）。读不出那台的规则表 ⇒ 不出这一行。
+  const rotSel = select({ label: copyText("newSession.label.rot"), options: [] });
+  const rotRow = row(copyText("newSession.label.rot"), rotSel.el, false);
+  rotRow.root.hidden = true;
+  form.appendChild(rotRow.root);
+  let rotSeq = 0;
+  const paintRotation = async (): Promise<void> => {
+    const my = ++rotSeq;
+    let rules: RulesRead | null = null;
+    try {
+      rules = accounts === null ? null : await readRules(origin);
+    } catch {
+      rules = null;
+    }
+    if (my !== rotSeq) return;
+    rotRow.root.hidden = rules === null;
+    if (rules === null) return;
+    const def = rules.rules.find((r) => r.id === rules.defaultRule);
+    rotSel.setOptions(
+      [
+        { value: ROT_FOLLOW, label: copyText("rot.src.followOf", { name: def?.name ?? "" }) },
+        ...rules.rules.map((r) => ({
+          value: `rule:${r.id}`,
+          label: r.name,
+          note: r.isDefault ? copyText("rot.src.tagDefault") : undefined,
+        })),
+      ],
+      ROT_FOLLOW,
+    );
+  };
+
   // 运行于
   const places = el("div");
   places.className = s.nsPlaces;
@@ -475,6 +510,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     opts.push(...accounts.map(accountOption));
     accountSel.setOptions(opts, accountPick(fork !== null, forkAccount, accounts[0].name));
     paintAccountNote();
+    void paintRotation();
   };
 
   const checkDir = async (): Promise<void> => {
@@ -554,6 +590,8 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     if (!fork && place() === "tmux" && tmuxInput.value.trim() !== "") req.tmuxName = tmuxInput.value.trim();
     if (cmdInput.value.trim() !== "") req.command = cmdInput.value.trim();
     if (fork) req.forkFrom = { sid: fork.sid, uuid: fork.uuid };
+    const rot = rotRow.root.hidden ? ROT_FOLLOW : rotSel.value();
+    if (rot.startsWith("rule:")) req.rotation = { rule: rot.slice("rule:".length) };
     return req;
   };
 

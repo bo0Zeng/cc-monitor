@@ -765,17 +765,15 @@ fn bare_session_is_attributed_to_account_zero() {
 /// **当中**读回 **0 字节**（`platform/proc.rs` 那一支逐字记着它）。
 /// 也就是说：**窗口没关就读 ⇒ `c_ok` 为假 ⇒ 本条红在夹具上，不是红在产品上。**
 ///
-/// 发生率**现打**〔09-11，沙箱 `ccmon-devbox:latest`；量具
-/// `tests/evidence/K-R55-fixture-shape-probe.py` —— 照本条的夹具形状复刻一遍、
+/// 发生率**现打**〔09-11，沙箱 `ccmon-devbox:latest`；照本条的夹具形状复刻一遍、
 /// 只量丙那一格，不跑 Rust〕：**空载 200 趟 0 次 · 加载（`nproc`×4 条忙循环）200 趟 2 次**。
 /// ⇒ 这个窗口**确实开着**，且确实只在有负载时开。
 ///
 /// ## ② 而「它就是那 1/16」—— **没复现出来，所以判不了**
 ///
 /// 把下面那段屏障**整段摘掉**（`K-R55` 刀 D），在同一个沙箱里现打：
-/// · 点名单跑 + 满载忙循环，**400 趟红 0 趟**（`tests/evidence/K-R55-flaky-loop.py`）；
-/// · 照门禁的真实条件（全量并行的那个测试二进制）**连跑 32 趟，红 0 趟**
-///   （`tests/evidence/K-R55-fullsuite-loop.py`）。
+/// · 点名单跑 + 满载忙循环，**400 趟红 0 趟**；
+/// · 照门禁的真实条件（全量并行的那个测试二进制）**连跑 32 趟，红 0 趟**。
 /// ⇒ 缺口补上了，**但我没有把那条 flaky 复现出来一次** ⇒ 不许写成「根因找到了」。
 ///
 /// 🔴 **差什么才判得了**：那一趟红的 **panic 原文**（哪一格断言先红）。
@@ -2130,4 +2128,66 @@ fn app_exit_interrupts_follow_this_backends_own_exit_choice() {
         app_exit_product(true, &lines, 3),
         serde_json::json!({"relayedSessions":1,"relayedMaybe":0,"liveStreams":2,"forwards":3})
     );
+}
+
+/// ★ **活会话此刻在干什么**（轮换规则在用名单的状态，与主窗口标签页同一判）：pidfile 的活动态；在等你 ⇒ 配上记录里没结果的那一步判种类
+/// （同 `history-facts` 的 `needs`）；记录找不到 ⇒ 判不出（`unknown`），不猜；进程死了 ⇒ 不在表里。pidfile 照真 claude 的形状写。
+#[cfg(target_os = "linux")]
+#[test]
+fn live_doing_reads_activity_and_what_it_waits_for() {
+    use crate::agents::SessionActivity as A;
+    use crate::observe::facts_query::NeedsKind as K;
+    let home = tmpdir("doing");
+    let dir = home.join("projects").join("-n");
+    fs::create_dir_all(&dir).unwrap();
+    let ask = "dddddddd-1111-2222-3333-444444444444";
+    fs::write(
+        dir.join(format!("{ask}.jsonl")),
+        "{\"type\":\"assistant\",\"timestamp\":\"t1\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"id\":\"b1\",\"name\":\"Bash\",\"input\":{\"command\":\"ls\"}}]}}\n",
+    )
+    .unwrap();
+    let pids = crate::observe::watcher::pidfile_dir(&home);
+    fs::create_dir_all(&pids).unwrap();
+    let mut kids = Vec::new();
+    let mut put = |sid: &str, status: &str| {
+        let c = std::process::Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .unwrap();
+        let ticks = crate::platform::proc::proc_starttime(c.id()).expect("起始时刻");
+        fs::write(
+            pids.join(format!("{}.json", c.id())),
+            format!(r#"{{"pid":{},"sessionId":"{sid}","kind":"interactive","procStart":"{ticks}","status":"{status}","waitingFor":"permission prompt","statusUpdatedAt":1700000000000}}"#, c.id()),
+        )
+        .unwrap();
+        kids.push(c);
+    };
+    put("s-busy", "busy");
+    put("s-idle", "idle");
+    put(ask, "waiting");
+    put("s-norecord", "waiting");
+    put("s-dead", "busy");
+    let dead = kids.pop().unwrap();
+    let mut dead = dead;
+    let _ = dead.kill();
+    let _ = dead.wait();
+    let got = live_doing(&home);
+    for mut c in kids {
+        let _ = c.kill();
+        let _ = c.wait();
+    }
+    let _ = fs::remove_dir_all(&home);
+    let d = |activity, needs| Doing {
+        activity: Some(activity),
+        needs,
+    };
+    let want: std::collections::BTreeMap<String, Doing> = [
+        ("s-busy".to_string(), d(A::Working, None)),
+        ("s-idle".to_string(), d(A::Idle, None)),
+        (ask.to_string(), d(A::NeedsYou, Some(K::Approve))),
+        ("s-norecord".to_string(), d(A::NeedsYou, Some(K::Unknown))),
+    ]
+    .into_iter()
+    .collect();
+    assert_eq!(got, want);
 }

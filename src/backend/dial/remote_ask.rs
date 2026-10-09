@@ -1,0 +1,449 @@
+//! **本机后端问远端后端**的那一跳 —— 全后端**只此一处**。
+//!
+//! 「观测方沿它本来就拥有的那条连接去拉被观测方」（零新通道）。用它的：资产目录同步（[`command_line`] ＋ [`DialRemote`]）·
+//! 两台之间的枢纽 · 公钥 · 历史清单（[`ask_json`]）· 公钥与部署计划（[`capture_full`]）· 端口转发与探测（[`capped_line`] · [`REACH`]）。
+//!
+//! # 形状（乙：池里那条连接上多开一个 capture exec）
+//!
+//! ```text
+//!  monitor（宿主，只交事实） ── remote-reach {origin, dial} ──▶ 可达表（内存）
+//!  调用方 ── ask_json(machine, cmd, args, 表, 对面) ──▶ 查表 ──▶ DialRemote.run_coded(dial, "<落点> -- '--<cmd>' '--stdin-line'", stdin = args 一行)
+//!                                          └─ dial::uses::run（池里那条 SSH，多一个 exec 通道，不是新连接）
+//! ```
+//!
+//! # 为什么是 capture 一次性子命令，不起远端流模式
+//!
+//! 流模式一起来就往 tmux server 装**全局** hook（`control/tmux_hook.rs::install_hooks`，载荷里烤着
+//! **那个进程**的 pid）—— 一个用完就退的流会把 monitor 那条真流的 hook 盖成一个死 pid。
+//! 老后端不认子命令会进流模式、第一行是 hello ⇒ capture 带 `abort_marker`，见到就收工、报「太旧」。
+//!
+//! # 可达表（内存）
+//!
+//! `origin → {拨号请求, 对面的资产目录 id}`（后端路径恒是固定落点，不登记）：只在本进程里，后端重启就空（下次那台连上再填）。
+//! 拨号请求里只有路径（`key_path`），没有私钥本体（凭据面 `K11` 同 `dial_host::request`）。
+//! **写口只有 [`register`] 一个**：`remote-reach`（每台远端流握手时 monitor 无条件交）与 `assets-sync`
+//! （顺手登记）都调它。
+
+use copy_core::copy_text;
+use std::collections::BTreeMap;
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::Mutex;
+
+use serde_json::{json, Value};
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
+
+/// 拉回来那一份（远端 stdout）的上限。目录文件本身 16 MiB 封顶（`asset_catalog::CATALOG_MAX_BYTES`），这里取同一个数。
+pub const PULL_MAX_BYTES: usize = 16 * 1024 * 1024;
+
+/// 可达表的条数上限（有界资源；一个人配不出这么多台远端）。
+pub const MAX_REACH: usize = 256;
+
+/// 老后端不认一次性子命令会进流模式、第一行是 hello —— capture 看见它就收工（不让它装 hook、不挂住）。
+pub(crate) const HELLO_MARKER: &str = "\"kind\":\"hello\"";
+
+/// 那台不认这条命令 / 子命令：与帧协议里同一个码。
+const UNKNOWN_COMMAND: &str = "unknown_command";
+
+/// 对面：在那台上跑一条一次性命令，交回它的 stdout。生产 = [`DialRemote`]（经 `dial` 的 capture）；判据用替身。
+/// `stdin`= exec 之后写进那个进程 stdin 的字节（缺席 = 不写）；收的一侧用 CLI 面的「只读一行」入口。
+pub trait Remote: Send + Sync {
+    fn run<'a>(
+        &'a self,
+        dial: &'a Value,
+        command: String,
+        stdin: Option<String>,
+    ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + 'a>>;
+
+    /// 同 [`Self::run`]，失败时**连那台 CLI 信封里的码一起交回**（[`Said`]）——
+    /// 枢纽要把被写那台的 `stale` / `refused` / … 原码转给界面，不许压成一个。缺省实现：码缺席（替身不必各写一份）。
+    fn run_coded<'a>(
+        &'a self,
+        dial: &'a Value,
+        command: String,
+        stdin: Option<String>,
+    ) -> Pin<Box<dyn Future<Output = Result<String, Said>> + Send + 'a>> {
+        Box::pin(async move {
+            self.run(dial, command, stdin)
+                .await
+                .map_err(|message| Said {
+                    code: None,
+                    message,
+                })
+        })
+    }
+}
+
+/// 远端那一跳没成时的一句话 ＋ 那台 CLI 信封里的码（信封读得出来才有；拨号 / 链路坏了没有码）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Said {
+    pub code: Option<String>,
+    pub message: String,
+}
+
+/// 可达表的一行。
+#[derive(Clone, Debug, PartialEq)]
+pub struct Reach {
+    pub(crate) dial: Value,
+    pub(crate) peer: Option<String>,
+}
+
+/// 可达表（本进程一张）。
+pub type Table = Mutex<BTreeMap<String, Reach>>;
+
+pub(crate) static REACH: Table = Mutex::new(BTreeMap::new());
+
+pub(crate) fn lock(t: &Table) -> std::sync::MutexGuard<'_, BTreeMap<String, Reach>> {
+    t.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// 可达表**唯一的写口**：`{origin, dial}` 两格齐了才记（那台后端的路径不再由 monitor 交：落点恒是 `relay_route_core::BACKEND_LANDING_SHELL`）（`origin` 是 monitor 交来的名字，本后端只当不透明的键用）。
+/// 同一台再记一次 ⇒ 换新的拨号请求，`peer`（对面的资产目录 id）留着。
+/// `remote-reach` 与 `assets-sync` 都经它。
+pub(crate) fn register(table: &Table, args: &Value) -> Result<String, (&'static str, String)> {
+    let o = args.get("origin").and_then(Value::as_str).ok_or((
+        "bad_args",
+        crate::common::contract::malformed("missing `origin` (the machine name)"),
+    ))?;
+    if o.is_empty() {
+        return Err((
+            "bad_args",
+            crate::common::contract::malformed("`origin` is empty").into(),
+        ));
+    }
+    let dial = args.get("dial").filter(|d| d.is_object()).ok_or((
+        "bad_args",
+        crate::common::contract::malformed("`origin` given without `dial` (a dial request)"),
+    ))?;
+    let mut t = lock(table);
+    if !t.contains_key(o) && t.len() >= MAX_REACH {
+        return Err((
+            "bad_args",
+            copy_text(
+                "beRemoteAsk.register.full",
+                &[("max", &MAX_REACH.to_string())],
+            ),
+        ));
+    }
+    let peer = t.get(o).and_then(|r| r.peer.clone());
+    t.insert(
+        o.to_string(),
+        Reach {
+            dial: dial.clone(),
+            peer,
+        },
+    );
+    Ok(o.to_string())
+}
+
+/// 可达表现状的线上形状：`[{origin, machine}]`（`machine` = 对面的资产目录 id，没拉过 ⇒ `null`）。
+pub(crate) fn reach_rows(table: &Table) -> Vec<Value> {
+    lock(table)
+        .iter()
+        .map(|(o, r)| json!({ "origin": o, "machine": r.peer }))
+        .collect()
+}
+
+/// `remote-reach`：只登记、不做别的（monitor 在每台远端流握手那一刻交；老远端也登记）。回 `{origin, reach}`。
+pub fn answer_reach(args: &Value) -> Result<Value, (&'static str, String)> {
+    answer_reach_with(args, &REACH)
+}
+
+/// [`answer_reach`] 的可喂夹具那一半：可达表由调用方给。
+pub fn answer_reach_with(args: &Value, table: &Table) -> Result<Value, (&'static str, String)> {
+    let o = register(table, args)?;
+    Ok(json!({ "origin": o, "reach": reach_rows(table) }))
+}
+
+/// 远端上那条一次性命令的完整字面：`<落点> <argv…>`，argv 每一格都过 POSIX 单引号。
+/// 那台后端恒在固定落点（`relay_route_core::BACKEND_LANDING_SHELL`，可填的 `backendPath` 删了）。
+pub fn command_line(argv: &[&str]) -> String {
+    // `ccm -- <后端子命令…>`：打头的 `--` 让那台的 `ccm` 当后端用。
+    let mut s = format!("{} --", relay_route_core::BACKEND_LANDING_SHELL);
+    for a in argv {
+        s.push(' ');
+        s.push_str(&shell_quote_core::posix_quote(a));
+    }
+    s
+}
+
+/// 够不到那台时给的那句话（不猜、不回落）。
+pub(crate) fn unreachable_message(machine: &str) -> String {
+    copy_text(
+        "beRemoteAsk.unreachableMessage.say",
+        &[("machine", &machine.to_string())],
+    )
+}
+
+/// 问可达表里那一台跑一条**帧命令的 CLI 面**（`--<cmd> --stdin-line`），
+/// 参数（JSON 对象）一行写进它的 stdin，交回它 stdout 那一行 JSON（成品本身）。两台之间那几件的枢纽（`assets/hub.rs`）用它；
+/// 命令行里只有落点与两个旗标（同 `assets-sync` 推那一趟），载荷走 stdin（远端登录 shell 是什么都同读）。
+pub async fn ask_json(
+    machine: &str,
+    cmd: &str,
+    args: &Value,
+    table: &Table,
+    remote: &dyn Remote,
+) -> Result<Value, Said> {
+    let r = lock(table).get(machine).cloned().ok_or_else(|| Said {
+        code: Some("unreachable".to_string()),
+        message: unreachable_message(machine),
+    })?;
+    let flag = crate::cli_flag(cmd);
+    let line = command_line(&[&flag, crate::STDIN_LINE_FLAG]);
+    let out = remote
+        .run_coded(&r.dial, line, Some(format!("{args}\n")))
+        .await
+        .map_err(|s| match s.code.as_deref() {
+            Some(UNKNOWN_COMMAND) => Said {
+                code: s.code,
+                message: copy_core::backend_old(machine),
+            },
+            _ => s,
+        })?;
+    serde_json::from_str(out.trim()).map_err(|e| {
+        tracing::warn!("reply from {machine} is not JSON: {e}");
+        Said {
+            code: None,
+            message: copy_core::reply_unreadable(machine),
+        }
+    })
+}
+
+// ───────────────────────── 生产那一个对面：经 dial 的 capture ─────────────────────────
+
+/// 经本机常驻后端池里那条 SSH 连接跑 capture（`dial::uses::run`，与 monitor 开的链路同一条路，零新连接）。
+pub struct DialRemote;
+
+/// 读一行（带上限；超了是错，不截断）。
+pub(crate) async fn capped_line<R: tokio::io::AsyncBufRead + Unpin>(
+    r: &mut R,
+    cap: u64,
+) -> Result<Option<String>, String> {
+    let mut buf = Vec::new();
+    let n = r
+        .take(cap + 1)
+        .read_until(b'\n', &mut buf)
+        .await
+        .map_err(|e| {
+            copy_text(
+                "beRemoteAsk.cappedLine.readFailed",
+                &[("e", &e.to_string())],
+            )
+        })?;
+    if n == 0 {
+        return Ok(None);
+    }
+    if buf.len() as u64 > cap {
+        return Err(copy_text(
+            "beRemoteAsk.cappedLine.tooLong",
+            &[("cap", &cap.to_string())],
+        ));
+    }
+    Ok(Some(String::from_utf8_lossy(&buf).trim_end().to_string()))
+}
+
+/// 把可达表里那份拨号请求改成「capture 这一条命令」（纯；抽出来是为了判据 —— 载荷真进了 `capture.stdin`，不靠真 sshd 也验得动）。
+pub(crate) fn capture_request(
+    dial: &Value,
+    command: String,
+    stdin: Option<String>,
+) -> Result<crate::dial::DialRequest, String> {
+    let mut v = dial.clone();
+    let obj = v.as_object_mut().ok_or(crate::common::contract::malformed(
+        "dial request is not an object",
+    ))?;
+    obj.insert("use".into(), json!("capture"));
+    obj.insert("command".into(), json!(command));
+    obj.insert(
+        "capture".into(),
+        json!({ "max_bytes": PULL_MAX_BYTES, "abort_marker": HELLO_MARKER, "stdin": stdin }),
+    );
+    obj.insert("stages".into(), json!(false));
+    obj.insert("probe".into(), json!(false));
+    crate::dial::parse_request_value(&v).map_err(|(_, m)| m)
+}
+
+impl Remote for DialRemote {
+    fn run<'a>(
+        &'a self,
+        dial: &'a Value,
+        command: String,
+        stdin: Option<String>,
+    ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + 'a>> {
+        Box::pin(async move {
+            self.run_coded(dial, command, stdin)
+                .await
+                .map_err(|s| s.message)
+        })
+    }
+
+    fn run_coded<'a>(
+        &'a self,
+        dial: &'a Value,
+        command: String,
+        stdin: Option<String>,
+    ) -> Pin<Box<dyn Future<Output = Result<String, Said>> + Send + 'a>> {
+        Box::pin(async move {
+            let req = capture_request(dial, command, stdin).map_err(|message| Said {
+                code: None,
+                message,
+            })?;
+            pull_over_coded(move |up_r, mut down_w| async move {
+                let stages = crate::dial::StageSink::new(false);
+                crate::dial::uses::run(&req, &stages, up_r, &mut down_w).await;
+            })
+            .await
+        })
+    }
+}
+
+/// 一个 `spawn` 出去的任务，**句柄被丢 ⇒ 任务被收**。
+///
+/// tokio 的 `JoinHandle` 被丢是**脱钩**（任务照跑），不是收。本模块的内层任务手里攥着池里那条 SSH 连接的一格通道：
+/// 调用方帧期限到点 ⇒ monitor 补发 `cancel` ⇒ 后端打断的是**外层** future（`Run::Async` 那一档）——
+/// 句柄若只是被丢，内层那一格就**永远占着**（远端不答的那一形），红线说的正是这个。
+pub(crate) struct AbortOnDrop(pub(crate) tokio::task::JoinHandle<()>);
+
+impl Drop for AbortOnDrop {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
+/// 经一条内存链路跑一趟 capture：`serve` 拿上行读端与下行写端（生产 = `dial::uses::run`），这里读 ack 与结果那一行。
+/// **抽出来是为了判据**：「外层被丢 ⇒ 内层一起收」不需要真 SSH 就验得动（`remote_ask_tests` 喂一个永不答的 `serve`）。
+/// 失败时带上那台 CLI 信封里的码（`{code, message}` 读得出来才有）；只要话的调用方取 `.message`。
+pub(crate) async fn pull_over_coded<F, Fut>(serve: F) -> Result<String, Said>
+where
+    F: FnOnce(tokio::io::DuplexStream, tokio::io::DuplexStream) -> Fut,
+    Fut: Future<Output = ()> + Send + 'static,
+{
+    let got = pull_raw(serve).await.map_err(|message| Said {
+        code: None,
+        message,
+    })?;
+    settle_pulled(&got)
+}
+
+/// **原样收全**一条一次性命令（退出码 · stdout · stderr 三样都交回，不替调用方判退出码）：部署计划那两问
+/// （`uname` · 扫身份戳）要的正是这三样 —— `grep` 退出 1 是「一个都没有」，不是失败。拨号请求同 [`capture_request`]。
+///
+/// 连同那一趟的 **ack**（`DialAck` 原样那一行）一起交回：拨号在本机后端里发生，逐地址指纹要交 monitor 固化
+/// （`dial_host::settle_host_key`），不另写一份判定。
+pub(crate) async fn capture_full(
+    dial: &Value,
+    command: String,
+) -> Result<(crate::dial::Captured, Value), String> {
+    let req = capture_request(dial, command, None)?;
+    let (ack, got) = pull_acked(move |up_r, mut down_w| async move {
+        let stages = crate::dial::StageSink::new(false);
+        crate::dial::uses::run(&req, &stages, up_r, &mut down_w).await;
+    })
+    .await?;
+    let text = |k: &str| got.get(k).and_then(Value::as_str).unwrap_or("").to_string();
+    Ok((
+        crate::dial::Captured {
+            stdout: text("stdout"),
+            stderr: text("stderr"),
+            exit_status: got
+                .get("exit_status")
+                .and_then(Value::as_u64)
+                .and_then(|n| u32::try_from(n).ok()),
+        },
+        ack,
+    ))
+}
+
+/// 读 ack 与结果那一行，交回结果那一行（解过的 JSON）。
+async fn pull_raw<F, Fut>(serve: F) -> Result<Value, String>
+where
+    F: FnOnce(tokio::io::DuplexStream, tokio::io::DuplexStream) -> Fut,
+    Fut: Future<Output = ()> + Send + 'static,
+{
+    pull_acked(serve).await.map(|(_, got)| got)
+}
+
+/// 同 [`pull_raw`]，另把 ack 那一行（解过的 JSON）一起交回。
+async fn pull_acked<F, Fut>(serve: F) -> Result<(Value, Value), String>
+where
+    F: FnOnce(tokio::io::DuplexStream, tokio::io::DuplexStream) -> Fut,
+    Fut: Future<Output = ()> + Send + 'static,
+{
+    // 上行那根管子我们一个字节都不写（capture 不读上行）；留着不关，直到拿到结果。
+    let (_up_w, up_r) = tokio::io::duplex(1024);
+    let (down_w, down_r) = tokio::io::duplex(64 * 1024);
+    // 随本函数（的 future）一起死：正常答完 / 出错返回 / 被 `cancel` 打断，三种收法同一个 `Drop`。
+    let _task = AbortOnDrop(tokio::spawn(serve(up_r, down_w)));
+    let mut rd = BufReader::new(down_r);
+    let ack = capped_line(&mut rd, 64 * 1024)
+        .await?
+        .ok_or_else(|| copy_text("beRemoteAsk.run.droppedBeforeReady", &[]))?;
+    let ack: Value = serde_json::from_str(&ack)
+        .map_err(|e| crate::common::contract::malformed(&format!("unreadable ack: {e}")))?;
+    if ack.get("ok").and_then(Value::as_bool) != Some(true) {
+        return Err(copy_text(
+            "beRemoteAsk.run.unreachable",
+            &[(
+                "why",
+                &(ack
+                    .get("error")
+                    .and_then(Value::as_str)
+                    .unwrap_or(&copy_text("beRemoteAsk.run.noReason", &[])))
+                .to_string(),
+            )],
+        ));
+    }
+    let got = capped_line(&mut rd, (PULL_MAX_BYTES as u64) * 8)
+        .await?
+        .ok_or_else(|| copy_text("beRemoteAsk.run.droppedBeforeResult", &[]))?;
+    let got = serde_json::from_str(&got)
+        .map_err(|e| copy_text("beRemoteAsk.run.resultUnreadable", &[("e", &e.to_string())]))?;
+    Ok((ack, got))
+}
+
+/// 一次性子命令的结果那一行 → 它的 stdout（老后端 · 非 0 退出 · 超上限各是一句错）。
+/// 非 0 退出时把那台 CLI 信封里的码一起交回（[`Said`]）。
+fn settle_pulled(got: &Value) -> Result<String, Said> {
+    let plain = |message: String| Said {
+        code: None,
+        message,
+    };
+    let stdout = got.get("stdout").and_then(Value::as_str).unwrap_or("");
+    if stdout.contains(HELLO_MARKER) {
+        // 那台的后端不认这条子命令（掉进了流模式）：码同「不认这条命令」，话按码取；知道那台名字的调用方换成名字（[`ask`]）。
+        return Err(Said {
+            code: Some(UNKNOWN_COMMAND.to_string()),
+            message: copy_core::backend_old(&copy_core::peer_machine()),
+        });
+    }
+    if got.get("exit_status").and_then(Value::as_u64) != Some(0) {
+        let stderr = got.get("stderr").and_then(Value::as_str).unwrap_or("");
+        // 那台 CLI 面的失败信封（`cli_control::emit_err` 那一份）：读得出来就把码与原话都取出来。
+        #[derive(serde::Deserialize)]
+        struct Envelope {
+            code: Option<String>,
+            message: Option<String>,
+        }
+        // 那台答了一个错误 ⇒ 就说它那一句（码随 `Said.code` 走，不进话里）；不是信封的原样 stderr 才加一个短头。
+        let envelope = serde_json::from_str::<Envelope>(stderr.trim()).ok();
+        let code = envelope.as_ref().and_then(|e| e.code.clone());
+        let message = match envelope.and_then(|e| e.message) {
+            Some(m) if !m.trim().is_empty() => m,
+            _ if stderr.trim().is_empty() => copy_text("beRemoteAsk.run.failedNoReason", &[]),
+            _ => copy_text("beRemoteAsk.run.failed", &[("said", stderr.trim())]),
+        };
+        return Err(Said { code, message });
+    }
+    if stdout.len() >= PULL_MAX_BYTES {
+        return Err(plain(copy_text(
+            "beRemoteAsk.run.tooLarge",
+            &[("max", &PULL_MAX_BYTES.to_string())],
+        )));
+    }
+    Ok(stdout.to_string())
+}
+
+#[cfg(test)]
+#[path = "../../../tests/backend/stream/remote_ask_tests.rs"]
+mod tests;

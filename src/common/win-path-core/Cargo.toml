@@ -1,0 +1,14 @@
+[package]
+name = "win-path-core"
+version = "0.1.0"
+edition = "2021"
+workspace = "../../frontend/shell"
+description = "交给 Win32 文件 API 的路径（UTF-16 ＋ 长路径前缀）的唯一一份：后端 · monitor · 文件窗口 · creds-core 都从这里取，过 260 字符照样能用。"
+
+# **零依赖**。后端、monitor、文件窗口、creds-core 都链它，所以它只用标准库；
+# Windows 那一半（`win32_path`）只用 `std::os::windows`，不引 `windows` crate。
+[dependencies]
+
+[dev-dependencies]
+# 源码扫描的遍历口径只有一份（判据「只有本 crate 把路径编成 UTF-16」用）；只在 dev 侧。
+guard-core = { path = "../guard-core" }

@@ -113,9 +113,10 @@ vi.mock("@tauri-apps/api/event", () => ({ emit: vi.fn(), listen: vi.fn() }));
 import { SettingsPanel } from "../../../../src/frontend/ui/settings/panel";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { __setHostOsForTests } from "../../../../src/frontend/ui/settings/host-os";
+import { __setHostFactsForTests } from "../../../../src/frontend/ui/settings/host-os";
 import { __resetMachineContextForTests } from "../../../../src/frontend/ui/settings/machine-context";
 import { copyPattern } from "../../../test-support/copy-pattern";
+import { factsOn } from "../../../test-support/host-facts";
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
@@ -148,7 +149,7 @@ describe("ST1：设置窗关窗 ＝ 隐藏；〔ST2〕全即时：改了就落�
   beforeEach(() => {
     document.body.replaceChildren();
     __resetMachineContextForTests();
-    __setHostOsForTests("windows");
+    __setHostFactsForTests(factsOn("windows"));
     win.closeRequested = null;
     win.focus = null;
     for (const f of [win.hide, win.close, win.destroy, theme.save, theme.apply]) f.mockClear();
@@ -294,7 +295,7 @@ describe("〔W5-UI〕选 Claude 数据目录的窗口打不开 ⇒ 说出来", (
   beforeEach(() => {
     document.body.replaceChildren();
     __resetMachineContextForTests();
-    __setHostOsForTests("windows");
+    __setHostFactsForTests(factsOn("windows"));
   });
 
   it("插件抛 ⇒ 设置窗 banner 上说一句（原因原样）；插件正常返回取消 ⇒ 不说（正控）", async () => {

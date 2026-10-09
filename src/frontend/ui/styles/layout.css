@@ -19,7 +19,7 @@
      ⇒ **一个没认领格子的 grid item**，浏览器只好给它开一条**隐式行**。
      真引擎实测（Chromium 153，900×700）：插进去之后 `#app` 的 `grid-template-rows`
      从 `676px 24px` 变成 `641px 24px 35px` ⇒ ① `#message-stream` 被偷 35px；
-     ② 抽屉画在 y=665，**在状态栏下面**。读数见 `tests/evidence/S24-css-readings.md`。
+     ② 抽屉画在 y=665，**在状态栏下面**。
      ⇒ `main` 跨 `tabs`/`archive` 两行：抽屉开多高，消息流的高度都**一个像素不变**
        （被让出高度的是 tab 栏自己，它本来就 `overflow-y:auto`）。
      ⚠ 这条模板与 `tests/frontend/ui/app-grid-claims.vitest.ts` 绑着：`#app` 的每个 in-flow 直接

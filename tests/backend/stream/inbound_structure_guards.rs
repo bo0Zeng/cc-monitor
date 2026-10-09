@@ -286,8 +286,12 @@ fn every_registered_command_declares_its_run_kind() {
                 // 用某个号查一次额度：起官方客户端并等它退出（期限 30 秒）＋ 锁里写额度账。
                 | "quota-probe"
                 // 轮换：读 / 锁里原子写 `rotation.json`（同步文件 I/O）。
-                | "rotation-read"
-                | "rotation-set"
+                | "rotation-rules-read"
+                | "rotation-rule-save"
+                | "rotation-rule-rename"
+                | "rotation-rule-delete"
+                | "rotation-default-set"
+                | "rotation-plan"
                 | "rotation-session-read"
                 | "rotation-session-set"
                 // 功能侧只读查询：读一个目录 ＋ 每个文件各一次（同步文件 I/O）。
@@ -394,6 +398,8 @@ fn every_registered_command_declares_its_run_kind() {
                 | "history-last-accounts"
                 // 本机起会话那一行：核一次「新起」的目录在不在（stat）。
                 | "launch-local"
+                // 开终端那一串：查几个文件找本机 ssh 客户端（stat）。
+                | "terminal-ssh"
                 // 远端那一行：判号要读这台的账号清单与起会话账号记录（同步文件 I/O）。
                 | "launch-render-cli"
                 // 本机那一份放不放：读一遍落点那个文件（约 10 MB，同步文件 I/O）。
@@ -456,7 +462,7 @@ fn every_registered_command_declares_its_run_kind() {
         "resolve",
         // `ccm-probe`：拼 `--ccm-probe` 那几行，纯函数 ⇒ 不进阻塞档。
         "ccm-probe",
-        // `terminal-ssh`：开终端那一串，纯函数（校验 ＋ quote，不拨号不起进程）⇒ 不进阻塞档。
+        // `terminal-ssh`：开终端那一串，查几个文件找本机 ssh 客户端 ⇒ 阻塞档。
         "terminal-ssh",
         // `history-search-merge`：各台结果合一份，纯计算 ⇒ 不进阻塞档。
         "history-search-merge",
@@ -532,8 +538,12 @@ fn every_registered_command_declares_its_run_kind() {
         "exit-policy-set",
         "quota-read",
         "quota-probe",
-        "rotation-read",
-        "rotation-set",
+        "rotation-rules-read",
+        "rotation-rule-save",
+        "rotation-rule-rename",
+        "rotation-rule-delete",
+        "rotation-default-set",
+        "rotation-plan",
         "rotation-session-read",
         "rotation-session-set",
         "tasks-list",
@@ -981,7 +991,10 @@ fn the_files_read_family_is_online_exactly_as_it_is_declared() {
         //    喂空 `args` ⇒ 要么成功，要么落在这条能力自己声明的 code 上；
         //    落到 `unknown_capability` 就说明翻译或名字接错了。
         let out = crate::files::answer_wire(&online, &serde_json::json!({}));
-        if let Err((code, msg)) = out {
+        if let Err(crate::files::Refused {
+            code, said: msg, ..
+        }) = out
+        {
             assert_ne!(
                 code, "unknown_capability",
                 "`{online}` 经 `answer_wire` 够不到任何能力（{msg}）—— 线上那一跳是断的"

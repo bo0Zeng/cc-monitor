@@ -817,6 +817,7 @@ pub async fn read_text_at(
 ) -> Result<Option<Opened>, super::source::Failed> {
     let args = serde_json::json!({ "path": at.wire(), "max_bytes": MAX_EDIT_BYTES });
     opened_from_reply(
+        origin,
         super::source::ask_coded(line, origin, CMD_READ_TEXT, &args, READ_BUDGET).await,
     )
 }
@@ -833,6 +834,7 @@ pub struct Opened {
 /// 有文本却没有摘要（或形状不对）⇒ `Err`：没有它就存不回去（存盘必带「我打开时那一份」，后端不收不带的），
 /// 立起一个存不回去的编辑面比不打开更糟 —— 那句话说清是后端太旧。
 pub fn opened_from_reply(
+    origin: &super::source::Origin,
     r: Result<serde_json::Value, super::source::Failed>,
 ) -> Result<Option<Opened>, super::source::Failed> {
     let sha = r
@@ -845,7 +847,12 @@ pub fn opened_from_reply(
         return Ok(None);
     };
     let sha256 = sha.filter(|s| is_sha256_hex(s)).ok_or_else(|| {
-        super::source::Failed::from(copy_text("rsFilewinEditor.reply.noDigest", &[]))
+        super::source::Failed::here(
+            copy_core::backend_old(&origin.0),
+            origin,
+            CMD_READ_TEXT,
+            None,
+        )
     })?;
     Ok(Some(Opened { text, sha256 }))
 }

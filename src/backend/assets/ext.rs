@@ -898,8 +898,8 @@ pub(crate) fn answer_note(args: &Value, write: NoteWrite) -> Answer {
 }
 
 /// 可达表的一份快照：`(origin, 那台目录的 id)`。
-pub(crate) fn reach_of(table: &crate::stream::remote_ask::Table) -> Vec<(String, Option<String>)> {
-    crate::stream::remote_ask::lock(table)
+pub(crate) fn reach_of(table: &crate::dial::remote_ask::Table) -> Vec<(String, Option<String>)> {
+    crate::dial::remote_ask::lock(table)
         .iter()
         .map(|(o, r)| (o.clone(), r.peer.clone()))
         .collect()

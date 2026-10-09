@@ -36,7 +36,7 @@
  *   触发全靠宿主转来的 scroll / resize 事件，一次调用内有界地多跑几轮收敛。
  */
 import type { RecordTimeline } from "./record-timeline";
-import { SkeletonLedger } from "./live-window";
+import { SkeletonLedger, type TurnFolds } from "./live-window";
 import { initialColumnWidth, type SkeletonFacts } from "./height-estimate";
 import { copyText } from "./copy-table";
 
@@ -112,6 +112,15 @@ export class SkeletonView {
   /** 这个 seq 还在占位里（没物化）吗 —— 宿主据此决定迟到的行直接建卡还是收纳。 */
   isPending(seq: number): boolean {
     return this.gaps.some((g) => seq >= g.lo && seq < g.hi);
+  }
+
+  /**
+   * 〔大折叠〕折着的过程那几段（seq 半开区间）与过程行（`turn-fold.ts` 给）：账本把折着的按 0 高、开头那一行加一条过程行的高；
+   * 滚动物化时扣掉折着的那几段（留成 0 高的占位，展开了再照常物化）。变了 ⇒ 占位改高，视口钉法同 `applyRefined`。
+   */
+  setFolds(f: TurnFolds): void {
+    if (this.disposed || !this.ledger.setFolds(f)) return;
+    this.reheightPinned();
   }
 
   /** 占位里还有多少行 */
@@ -271,7 +280,13 @@ export class SkeletonView {
     const ranges: Array<[Gap, number, number]> = [];
     for (const g of this.gaps) {
       const r = g.el.getBoundingClientRect();
-      if (r.bottom <= top || r.top >= bottom || r.height <= 0) continue;
+      if (r.height <= 0) {
+        // 只剩不占高的行（并进工具组的工具结果 · 不建卡的行）：落在视口带里就整块物化，不然它永远留着（工具那一步缺结果）。
+        // 折着的过程那几段下面 `withoutFolded` 照样扣掉（藏起来的占位量出来也是 0 高，走的是这一支）。
+        if (r.top >= top && r.top <= bottom) ranges.push([g, g.lo, g.hi]);
+        continue;
+      }
+      if (r.bottom <= top || r.top >= bottom) continue;
       const y0 = Math.max(0, top - r.top);
       const y1 = Math.min(r.height, bottom - r.top);
       const i = this.ledger.seqAt(g.lo, g.hi, y0);
@@ -287,10 +302,28 @@ export class SkeletonView {
       }
       if (j > i) ranges.push([g, i, j]);
     }
-    return this.materializeRanges(ranges, true);
+    return this.materializeRanges(this.withoutFolded(ranges), true);
   }
 
-  private materializeRanges(ranges: Array<[Gap, number, number]>, compensate: boolean): number {
+  /** 每一段扣掉折着的过程（`[g, i, j)` 拆成不碰折着那几段的几小段）。 */
+  private withoutFolded(ranges: Array<[Gap, number, number]>): Array<[Gap, number, number]> {
+    const folded = this.ledger.foldedRanges;
+    if (folded.length === 0) return ranges;
+    const out: Array<[Gap, number, number]> = [];
+    for (const [g, i, j] of ranges) {
+      let at = i;
+      for (const [a, b] of folded) {
+        if (b <= at || a >= j) continue;
+        if (a > at) out.push([g, at, a]);
+        at = Math.max(at, b);
+        if (at >= j) break;
+      }
+      if (at < j) out.push([g, at, j]);
+    }
+    return out;
+  }
+
+  private materializeRanges(ranges: ReadonlyArray<readonly [Gap, number, number]>, compensate: boolean): number {
     if (ranges.length === 0) return 0;
     const el = this.scrollEl;
     const anchor = compensate ? this.visibleRenderedAnchor() : null;
@@ -298,7 +331,10 @@ export class SkeletonView {
     let n = 0;
     try {
       el.style.overflowAnchor = "none";
-      for (const [g, i, j] of ranges) {
+      for (const [, i, j] of ranges) {
+        // 同一块占位可能拆成几小段：前一段物化后它已经劈开了 ⇒ 现找覆盖 [i, j) 的那一块。
+        const g = this.gaps.find((x) => x.lo <= i && j <= x.hi);
+        if (!g) continue;
         this.host.materialize(i, j);
         this.splitGap(g, i, j);
         n += j - i;

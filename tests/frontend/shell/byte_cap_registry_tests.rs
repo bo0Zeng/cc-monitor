@@ -71,6 +71,18 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
         "**条数**不是字节：文件窗口删一整棵树时一趟让后端至多删几条（`filewin/writeops.rs`）；删够了后端停在两条之间、回还剩几条，窗口接着发下一趟，不限任何读写的体量。",
     ),
     (
+        "SEEN_REFRESH",
+        "**秒数**不是字节：轮换账本里「中转最后一次看见这个会话」隔多久才刷新一次（`accounts/quota/rotation.rs`，一天）；只决定多久写一次盘，不限任何读写的体量。",
+    ),
+    (
+        "EST_FRESH",
+        "**秒数**不是字节：额度账估「几点到上限」只看最近这么多秒里头一次看到的值（`accounts/quota/ledger.rs`，30 分钟）；决定给不给估，不限任何读写的体量。",
+    ),
+    (
+        "DROP_AFTER",
+        "**秒数**不是字节：轮换账本清旧会话的门槛（`accounts/quota/rotation.rs`，7 天没被看见的跟随默认 · 没换过号的会话）；决定哪几条被清，不限任何读写的体量。",
+    ),
+    (
         "STALE_AFTER",
         "**秒数**不是字节：额度显示态里「最后一次看到距今超过多久算数旧」（`accounts/quota/show.rs`，30 分钟）；只决定 `stale` 那一格，不限任何读写的体量。",
     ),
@@ -833,6 +845,13 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "`relay-optin` 读那台 `~/.claude/settings.json` 多大",
         "降级+说清",
     ),
+    // 同上，Codex 那一家：读那台 `~/.codex/config.toml` 多大。
+    (
+        "src/backend/agents/codex/relay.rs",
+        "CONFIG_CAP_BYTES",
+        "`relay-optin` 读那台 `~/.codex/config.toml` 多大",
+        "降级+说清",
+    ),
     // 资产目录那六个数（`agents/claudecode/assets.rs` · `asset_catalog.rs` · `asset_sync.rs`）。
     (
         "src/backend/agents/claudecode/assets.rs",
@@ -958,7 +977,7 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
     // 住址随「问远端那一跳」搬家（`asset_sync.rs` → `remote_ask.rs`，逻辑一字不改）；
     //   量从「拉回来的那一份目录」放宽成「经那一跳问回来的任何一份 stdout」（资产目录 · 历史项目 / 会话清单）。
     (
-        "src/backend/stream/remote_ask.rs",
+        "src/backend/dial/remote_ask.rs",
         "PULL_MAX_BYTES",
         "本机后端经池里那条 SSH 在远端跑一条一次性子命令、拿回来的 stdout（资产目录 · 历史清单；capture）",
         "拒收+回错",
@@ -1063,13 +1082,13 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "tee 侧解码缓冲攒着的那截（SSE 半行 / chunked 还没成形的块长度行）",
         "丢弃+带身份报告",
     ),
-    // tee 交给 tap 口的**一个 SSE 事件**的原文字节数。超了这一件不交、位置号照占 ⇒
-    // 接收侧看见 `n` 的缺口（身份 = 哪个响应的第几号）；下游的字节一个不少（tap 是抄一份）。
+    // tee 交给 tap 口的**一个 SSE 事件**的原文字节数。超了只交开头这么多、明标截断与原长（`TapBody::Clipped`）⇒
+    // 接收侧只从开头认类型与标识；下游的字节一个不少（tap 是抄一份）。
     (
         "src/comms/outward/tee.rs",
         "TAP_DATA_CAP",
         "tee 交给 tap 口的一个 SSE 事件（`data:` 后那段原文）的字节数",
-        "丢弃+带身份报告",
+        "截断+说清",
     ),
     // 续订阅号登录令牌那一发：令牌端点回包的头与体各自的上限（经中转的一问一答原语读，超了整发作错、不截断）。
     (

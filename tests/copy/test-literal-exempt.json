@@ -30,6 +30,7 @@
       { "text": "失败", "use": "词义" }
     ],
     "tests/backend/ratchet_guard.rs": [
+      { "text": "兜底", "use": "非文案" },
       { "text": "刷新", "use": "非文案" }
     ],
     "tests/common/guard-core/no_outside_refs_tests.rs": [
@@ -44,6 +45,7 @@
       { "text": "原话", "use": "输入" }
     ],
     "tests/frontend/filewin/editor_tests.rs": [
+      { "text": "上限", "use": "词义" },
       { "text": "原话", "use": "输入" }
     ],
     "tests/frontend/filewin/progress_tests.rs": [
@@ -66,6 +68,7 @@
       { "text": "全屏", "use": "非文案" }
     ],
     "tests/frontend/shell/command_home_registry_tests.rs": [
+      { "text": "开窗", "use": "词义" },
       { "text": "日志", "use": "非文案" }
     ],
     "tests/frontend/shell/diagnostics_report_tests.rs": [
@@ -100,7 +103,8 @@
     ],
     "tests/frontend/ui/config-persist-failure.vitest.ts": [
       { "text": "固定", "use": "用例名" },
-      { "text": "快捷键", "use": "用例名" }
+      { "text": "快捷键", "use": "用例名" },
+      { "text": "顺序", "use": "用例名" }
     ],
     "tests/frontend/ui/design-tokens.vitest.ts": [
       { "text": "颜色", "use": "非文案" }

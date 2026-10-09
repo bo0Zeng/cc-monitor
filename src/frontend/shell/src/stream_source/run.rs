@@ -488,6 +488,9 @@ async fn stream_loop(
             Some(InboundFrame::RotationChanged { sid }) => {
                 replay.quota_changed(&crate::origin::Origin(host_label.clone()), Some(&sid));
             }
+            Some(InboundFrame::RotationRulesChanged) => {
+                replay.rotation_rules_changed(&crate::origin::Origin(host_label.clone()));
+            }
             // 终端实时预览：这台推来的一屏 / 收尾 ⇒ 交订了这台 `terminal-screen/<票>` 的那条订阅（从不阻塞）。
             Some(
                 InboundFrame::TerminalScreen { ticket, cell }

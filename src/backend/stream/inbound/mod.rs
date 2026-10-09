@@ -48,15 +48,15 @@ pub(crate) mod spec;
 
 pub(crate) use caps::install as install_total;
 pub use cli_only::CLI_ONLY_DOCS;
-pub use doors::watch_account_mcp;
 pub(crate) use doors::LocalFiles;
+pub use doors::{watch_account_mcp, watch_rotation};
 pub use drain::{exit_after_drain, shutdown_listener, SHUTTING_DOWN};
 #[cfg(test)]
 use drain::{exit_after_drain_within, Drain};
 pub(crate) use drain::{DRAIN, DRAIN_DEADLINE};
 use sniff::sniff_id;
 pub use sniff::ID_SNIFF_BYTES;
-use spec::{BlockingHandler, BoxFut, DataHandler, Fail, Handler, Outcome};
+use spec::{BlockingHandler, BoxFut, DataFut, DataHandler, Fail, Handler, Outcome};
 pub(crate) use spec::{CommandSpec, Run};
 // 字段的向只有协议文档生成器读（测试档）。
 #[cfg(test)]
@@ -325,13 +325,13 @@ fn dispatch(
         // 链路四条：要碰**本连接的链路表**与应答通道 ⇒ 与 `cancel` 同一档（硬臂、就地做完）。
         // ★ `link-data` **必须就地**（不 `spawn`）：同一条链路的上行块按到达顺序进队，
         //   交给独立 task 就不再保序。它成功时的应答由上行泵在写进管子之后发（背压）。
-        "link-open" => Disposition::Reply(links.open(&req.id, &req.args)),
-        "link-data" => match links.data(&req.id, &req.args) {
+        "link-open" => Disposition::Reply(links.open(&req.cmd, &req.id, &req.args)),
+        "link-data" => match links.data(&req.cmd, &req.id, &req.args) {
             Some(f) => Disposition::Reply(f),
             None => Disposition::Done,
         },
-        "link-credit" => Disposition::Reply(links.credit(&req.id, &req.args)),
-        "link-close" => Disposition::Reply(links.close(&req.id, &req.args)),
+        "link-credit" => Disposition::Reply(links.credit(&req.cmd, &req.id, &req.args)),
+        "link-close" => Disposition::Reply(links.close(&req.cmd, &req.id, &req.args)),
         // 传输四条：要碰**本连接的票表**与应答通道（进度帧走应答通道）⇒ 同一档硬臂。
         //   开单 / 起跑 / 撤都是就地做完的记账（起跑那一下 `spawn` 两个任务，不 await）。
         // 测试连接：进度格走**本连接的应答通道**（不丢、与应答同序）⇒ 与传输四条同一档硬臂；
@@ -358,16 +358,23 @@ fn dispatch(
         // 终端实时预览三条：要碰**本连接的订阅票表**与应答通道（画面帧走应答通道）⇒ 同一档硬臂。
         //   订上那一下要起几个 tmux（名单 · 版本 · 控制模式客户端）⇒ 异步档里挪进阻塞线程池、带一份票表过去；
         //   回执与退订是就地做完的记账。
+        //   订不上 ⇒ 失败应答带 `data: {live}`（实时那一格落在「只能快照」还是「停了」，判在 `terminal_follow::live_after_refusal`）。
         crate::control::terminal_follow::FOLLOW => {
             let desk = follows.clone();
-            Disposition::Spawn(
+            Disposition::SpawnData(
                 req,
-                Box::new(move |r: Request| -> BoxFut {
+                Box::new(move |r: Request| -> DataFut {
                     Box::pin(async move {
                         desk.follow_off_worker(r.args)
                             .await
                             .map(|()| None)
-                            .map_err(|(c, m)| (c.to_string(), m))
+                            .map_err(|(c, m)| {
+                                let mut f = Fail::new(c, m);
+                                f.data = Some(serde_json::json!({
+                                    "live": crate::control::terminal_follow::live_after_refusal(c),
+                                }));
+                                f
+                            })
                     })
                 }),
             )
@@ -449,10 +456,8 @@ fn dispatch(
             None => Disposition::Reply(Frame::err(
                 &req.id,
                 "unknown_command",
-                &copy_text(
-                    "beInbound.dispatch.unknown",
-                    &[("other", &other.to_string())],
-                ),
+                // 说这句的就是那台不认的后端，它不知道 monitor 怎么称呼它 ⇒「该机」。
+                &copy_core::backend_old(&copy_core::peer_machine()),
             )),
         },
     }

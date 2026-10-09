@@ -66,6 +66,7 @@ pub mod claudecode;
 // 上游协议的流面（按协议分，不按 agent 分）。
 pub(crate) mod codex;
 pub(crate) mod sse_anthropic;
+pub(crate) mod sse_openai_responses;
 
 /// **夹具家** —— 本区验收件的最小假 agent。
 ///
@@ -162,6 +163,9 @@ pub(crate) struct LaunchFace {
     pub(crate) launcher_alias: Option<&'static str>,
     /// resume 那个字面量：`--` 开头 ＝ flag 形（`claude --resume <sid>`），否则 ＝ 子命令形（`codex resume <sid>`）。
     pub(crate) resume_token: &'static str,
+    /// 起**新**会话时先定好 sid 的那个旗标（`claude --session-id <uuid>`）：起会话框选了规则 ⇒ 后端起之前按这个 sid 写好来源。
+    /// 这一家不认 ⇒ `None`（那就不许起的时候带规则）。
+    pub(crate) preset_sid: Option<&'static str>,
     /// `ccm` 起这一家（新起与 resume）时垫在交给它的那一串最前面的参数。
     pub(crate) launch_args: &'static [&'static str],
     /// 起之前要清掉的嵌套会话标记（顺序决定载荷字节）。
@@ -758,6 +762,8 @@ pub(crate) struct ChildFace {
 #[derive(Clone, Copy)]
 pub(crate) struct StreamFace {
     pub(crate) fold: fn(&str) -> Vec<StreamEv>,
+    /// 一件被截断的事件（只有开头那一截）⇒ 只从开头认得出的那几格（类型 · 应答标识）；认不出 ⇒ 空。不许出字。
+    pub(crate) fold_clipped: fn(&str) -> Vec<StreamEv>,
 }
 
 /// 归一流事件（界面只收这个，不收任何一家的原始事件）。
@@ -1318,10 +1324,8 @@ pub(crate) struct DefaultUpstream {
     pub(crate) route_id: &'static str,
     /// 盖掉内置默认的环境变量名。**每家一个**（「每家一个」：不留「覆盖哪一家说不清」的全局旋钮）。
     pub(crate) env: &'static str,
-    /// 没配 `env` 时这一家发到哪儿。
-    pub(crate) fallback: &'static str,
-    /// 这一家进程读哪个环境变量找上游：`ccm` 起会话时中转地址经它注入，继承来的那一条（用户自己的端点 · 别的号的中转）也只看它。
-    pub(crate) base_url_env: &'static str,
+    /// 没配 `env` 时这一家发到哪儿（配了 ⇒ 一律发到那个值）。
+    pub(crate) fallback: Fallback,
     /// 这一家的请求里**它自己带着会话标识**的那个头（中转拿它给流打标签）。`None` = 说不出 ⇒ 流不带标签。
     pub(crate) session_header: Option<&'static str>,
     /// 这一家的上游说哪种流协议（归一流的折法）。`None` ＝ 它的流不折（活卡认不得）。
@@ -1352,6 +1356,9 @@ pub(crate) struct DefaultUpstream {
     pub(crate) login: Option<LoginFace>,
     /// 这一家自己认得的「用满」回包（轮换的硬上限用它：这一发不发上游、回这一份）。`None` ＝ 给不出 ⇒ 对它硬上限不成立、按软阈值办。
     pub(crate) limit_reply: Option<LimitReplyOf>,
+    /// 起会话时怎么把这一家指到中转（`ccm` 最终 exec 那一处照这一格做）。是 [`Inject::Env`] 的那一家，
+    /// 继承来的那一条地址（用户自己的端点 · 别的号的中转）也只看那个变量。
+    pub(crate) inject: Inject,
 }
 
 /// 一份「用满」回包：状态行里状态码那一截 · 头 · 体。
@@ -1397,6 +1404,50 @@ pub(crate) fn limit_reply_of(route_id: &str) -> Option<LimitReplyOf> {
         .filter_map(|a| a.upstream.as_ref())
         .find(|u| u.route_id == route_id)
         .and_then(|u| u.limit_reply)
+}
+
+/// 怎么把一家指到中转。地址都由上游选择给（不带钥匙）；钥匙只从钥匙文件进 agent 进程的环境，不进 argv。
+#[derive(Clone, Copy)]
+pub(crate) enum Inject {
+    /// 插上钥匙的地址放进这个环境变量。
+    Env(&'static str),
+    /// 地址拼成这几个参数（垫在透传之前）：地址只能经命令行参数交给它的那一家。计划里是不带钥匙的地址，
+    /// `ccm` exec 那一刻插上**只许直通那一把**钥匙（argv 同机别的用户读得到 ⇒ 不给全权那一把）。
+    Args(fn(&str) -> Vec<String>),
+}
+
+/// 某一家（wire 上的 kind）在给定注册表里怎么指到中转。认不出 / 没登记默认上游 ⇒ `None`。
+pub(crate) fn inject_among(registry: &[Adapter], kind: &str) -> Option<Inject> {
+    registry
+        .iter()
+        .find(|a| a.kind == kind)
+        .and_then(|a| a.upstream.as_ref())
+        .map(|u| u.inject)
+}
+
+/// 路由名（适配器 id）那一家怎么指到中转。没登记默认上游 ⇒ `None`。
+pub(crate) fn inject_of_route(route_id: &str) -> Option<Inject> {
+    REGISTRY
+        .iter()
+        .filter_map(|a| a.upstream.as_ref())
+        .find(|u| u.route_id == route_id)
+        .map(|u| u.inject)
+}
+
+/// [`inject_among`] 在生产注册表上。
+pub(crate) fn inject_of(kind: &str) -> Option<Inject> {
+    inject_among(REGISTRY, kind)
+}
+
+/// 一家的内置默认上游：一个，或按这一发自己带没带某个头二选一（同一家两种登录各有真上游时；只看头名、不看值）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Fallback {
+    One(&'static str),
+    ByHeader {
+        header: &'static str,
+        present: &'static str,
+        absent: &'static str,
+    },
 }
 
 /// 一家的订阅号登录的格式知识（读写与续期在账号域 `accounts/oauth/`，这里只有这一家的名字与地址）。
@@ -1552,6 +1603,10 @@ pub(crate) struct SettingsEnvFace {
     pub(crate) read: fn(&Path) -> (PathBuf, SettingsBaseUrl),
     /// 地址 → 要合并进那份文件的那一段。
     pub(crate) snippet: fn(&str) -> String,
+    /// （那份文件现在的内容, 地址）→ 合好的整份（只算不写；「要你动手」按它算 diff）。现在的内容读不懂 ⇒ `None`。
+    pub(crate) merge: fn(&str, &str) -> Option<String>,
+    /// 地址住那份文件里哪一格（「要你动手」那一件的位置行）。
+    pub(crate) slot: &'static str,
 }
 
 /// 设置文件里上游地址那一格读出来的样子。
@@ -1597,12 +1652,25 @@ pub(crate) fn default_upstreams() -> impl Iterator<Item = &'static DefaultUpstre
     REGISTRY.iter().filter_map(|a| a.upstream.as_ref())
 }
 
-/// 注册表里第一家声明了「直接敲的也走中转」那一格的：`(路由名, 那一格)`。没有 ⇒ `None`。
-pub(crate) fn settings_env_face() -> Option<(&'static str, SettingsEnvFace)> {
+/// 声明了「直接敲的也走中转」那一格的各家（注册表序）：（路由名, 给人看的名字, 那一格）。
+pub(crate) fn settings_env_families() -> Vec<(&'static str, &'static str, SettingsEnvFace)> {
+    REGISTRY
+        .iter()
+        .filter_map(|a| {
+            let u = a.upstream.as_ref()?;
+            let name = a.launch.map_or(u.route_id, |l| l.display_name);
+            Some((u.route_id, name, u.settings_env?))
+        })
+        .collect()
+}
+
+/// 路由名那一家「直接敲的也走中转」那一格。没登记 / 没有这一形 ⇒ `None`。
+pub(crate) fn settings_env_face(route_id: &str) -> Option<SettingsEnvFace> {
     REGISTRY
         .iter()
         .filter_map(|a| a.upstream.as_ref())
-        .find_map(|u| u.settings_env.map(|f| (u.route_id, f)))
+        .find(|u| u.route_id == route_id)
+        .and_then(|u| u.settings_env)
 }
 
 /// 各家登记的会话标识头（注册序、去重）：中转经上游选择拿到这份名单，按它从请求里认会话 —— 会话 id 归 agent 自己。
@@ -1824,8 +1892,7 @@ pub(crate) fn user_mcp_file(kind: &str) -> Option<PathBuf> {
 pub(crate) const REGISTRY: &[Adapter] = &[
     Adapter { kind: claudecode::AGENT_KIND, home: claudecode::home, account_env: Some(claudecode::paths::CONFIG_DIR_ENV), assets: Some(claudecode::ASSETS), history: None, upstream: Some(claudecode::UPSTREAM), mcp: Some(claudecode::MCP), footprint: Some(claudecode::footprint::FACE), accounts: Some(claudecode::accounts::FACE), records: Some(claudecode::RECORDS), processes: Some(claudecode::cards::PROCESS_NAMES), launch: Some(claudecode::LAUNCH), compact_request: Some(claudecode::COMPACT_REQUEST), local: Some(claudecode::LOCAL) },
     // codex 今天没有账号维度（`account_env: None`）：选号对它说不出，起法与 `ccm` 都明说不行。
-    // codex **刻意不登记**默认上游：它的默认上游是哪一个、认不认 base URL 覆盖，本仓零证据（`C7`）⇒ 未登记即拒（fail-closed）。
-    Adapter { kind: codex::AGENT_KIND,      home: codex::home,      account_env: None, assets: None, history: Some(codex::HISTORY), upstream: None, mcp: None, footprint: None, accounts: None, records: Some(codex::RECORDS), processes: None, launch: Some(codex::LAUNCH), compact_request: None, local: None },
+    Adapter { kind: codex::AGENT_KIND,      home: codex::home,      account_env: None, assets: None, history: Some(codex::HISTORY), upstream: Some(codex::relay::UPSTREAM), mcp: None, footprint: None, accounts: None, records: Some(codex::RECORDS), processes: None, launch: Some(codex::LAUNCH), compact_request: None, local: None },
 ];
 
 /// 某一家的账号载体（环境变量名）。认不出这家 ⇒ `None`。
@@ -1839,14 +1906,13 @@ pub(crate) fn account_env_of(kind: &str) -> Option<&'static str> {
         .and_then(|a| a.account_env)
 }
 
-/// 某一家找上游读的那个环境变量（[`DefaultUpstream::base_url_env`]）。认不出这家 / 这一家没登记上游 ⇒ `None`
-/// （`ccm` 对它不注入中转、也不清继承来的那一条）。
+/// 某一家找上游读的那个环境变量（注入格是 [`Inject::Env`] 的那个变量）。认不出这家 / 没登记上游 / 地址只能拼进参数 ⇒ `None`
+/// （`ccm` 对它不往环境里注入中转地址、也不清继承来的那一条）。
 pub(crate) fn base_url_env_of(kind: &str) -> Option<&'static str> {
-    REGISTRY
-        .iter()
-        .find(|a| a.kind == kind)
-        .and_then(|a| a.upstream.as_ref())
-        .map(|u| u.base_url_env)
+    match inject_of(kind) {
+        Some(Inject::Env(v)) => Some(v),
+        _ => None,
+    }
 }
 
 /// 某一家请求压缩上下文用的那一句（[`Adapter::compact_request`]）。认不出这家 / 这一家不支持 ⇒ `None`。

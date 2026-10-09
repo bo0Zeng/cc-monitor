@@ -10,6 +10,7 @@ const streams = vi.hoisted(() => ({ all: [] as { stuck: boolean; scrolled: numbe
 vi.mock("../../../src/frontend/ui/stream", () => ({
   MessageStream: class {
     contentElement = document.createElement("div");
+    park(): void {}
     trailerElement = document.createElement("div");
     stuck = true;
     scrolled = 0;

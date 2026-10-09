@@ -107,6 +107,11 @@ impl ScanMap {
         f
     }
 
+    /// 还没结果的工具调用（文件序；种类判「需要你」用）。
+    pub(crate) fn pending(&self) -> &[super::facts_query::PendingCall] {
+        &self.facts.pending
+    }
+
     /// 粗估常驻字节：每行一份定长 ＋ 里面的串长。
     fn estimate(&self) -> usize {
         let opt = |s: &Option<String>| s.as_ref().map_or(0, String::len);
@@ -129,7 +134,15 @@ impl ScanMap {
                     + t.end.len()
                     + t.said.len()
                     + t.reply.len()
-                    + t.conclusion.iter().map(|c| 24 + c.len()).sum::<usize>()
+                    + t.ending.iter().map(|c| 24 + c.len()).sum::<usize>()
+                    + t.parts.iter().map(|p| 24 + p.text.len()).sum::<usize>()
+                    + t.span.text.len()
+                    + t.pending
+                        .iter()
+                        .map(|p| {
+                            64 + p.id.len() + p.name.len() + p.what.as_ref().map_or(0, String::len)
+                        })
+                        .sum::<usize>()
             })
             .sum();
         self.starts.len() * 8 + index + inputs + turns + 1024

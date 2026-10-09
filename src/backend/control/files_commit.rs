@@ -224,24 +224,28 @@ pub fn commit_upload_in(
         .write(true)
         .create_new(true)
         .open(&dest)
-        .map_err(|e| {
-            WriteRefusal::io(
-                copy_text(
-                    "beFilesCommit.upload.exists",
-                    &[
-                        ("path", &dest.display().to_string()),
-                        ("why", &io_reason(e.kind())),
-                    ],
-                ),
-                &e,
-            )
-        })?;
+        .map_err(|e| placeholder_refused(&dest, &e))?;
     if let Err(fail) = land_staged(home, key, root, rel, &dest, cross_device) {
         // 撤掉自己那个 0 字节的占位（它是这一次刚建的，不是用户既有数据）；撤不掉要说出来，不然用户目录里留一份 0 字节文件、重试撞「目标已经在了」。
         let undo = std::fs::remove_file(&dest);
         return Err(move_failed(&dest, &fail, &undo));
     }
     Ok((dest, bytes))
+}
+
+/// 不覆盖那一形占位没成：目标已经在了 ⇒ 说已存在、给「先删掉它或换个名字」；别的原因（无权限 · 磁盘满 …）⇒ 只说占不了位 ＋ 原因词，
+/// 不配「已存在」那句建议。系统原话进复制详情。
+fn placeholder_refused(dest: &Path, e: &std::io::Error) -> WriteRefusal {
+    let path = dest.display().to_string();
+    let said = if e.kind() == std::io::ErrorKind::AlreadyExists {
+        copy_text("beFilesCommit.upload.exists", &[("path", &path)])
+    } else {
+        copy_text(
+            "beFilesCommit.upload.cantPlace",
+            &[("path", &path), ("why", &io_reason(e.kind()))],
+        )
+    };
+    WriteRefusal::io(said, e)
 }
 
 /// 把暂存件挪到 `dest`：先改名上位（同盘，原子）；回 `EXDEV` ⇒ 复制 ＋ 删：在目标同目录用 `O_EXCL` 建一个暂存旁名

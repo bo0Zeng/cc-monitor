@@ -155,6 +155,38 @@ impl Backends for InboundBackends {
         left: Duration,
         _cancel: CancelToken,
     ) -> BoxFuture<'static, Result<Body, CallError>> {
+        // 对端说「不行」⇒ 拒绝体里那份详情远端时补「本机」一行（主界面与文件窗口都经这一口，补一次、只在这里）。
+        let fut = self.call_raw(origin.clone(), op, payload, left);
+        Box::pin(async move {
+            fut.await
+                .map_err(|e| crate::detail::relay_refusal(&origin, e))
+        })
+    }
+
+    fn subscribe(
+        &self,
+        origin: Origin,
+        kind: Kind,
+        from: Option<Cursor>,
+    ) -> BoxStream<'static, Item> {
+        self.subscribe_raw(origin, kind, from)
+    }
+
+    /// 那台的能力事实 = 它那条长连接握手时交出的那一份（`inbound_client` 登记表里，一个家）。
+    fn offer(&self, origin: &Origin) -> Option<super::wire::Offer> {
+        inbound_client::client_for(origin.as_wire_str()).map(|c| c.offer())
+    }
+}
+
+impl InboundBackends {
+    /// `call` 的本体（拒绝体补「本机」之前）。
+    fn call_raw(
+        &self,
+        origin: Origin,
+        op: Op,
+        payload: Body,
+        left: Duration,
+    ) -> BoxFuture<'static, Result<Body, CallError>> {
         // 🔴**传输台那两条开单命令不按 `origin` 去那台机器的后端**：
         // 传输台住**本机**常驻后端（SFTP 与其它 SSH 同一条连接），由中继 `sftp_pool.rs` 转过去；
         //    其余一切照旧按 `origin` 去 `inbound_client`。
@@ -197,7 +229,7 @@ impl Backends for InboundBackends {
         })
     }
 
-    fn subscribe(
+    fn subscribe_raw(
         &self,
         origin: Origin,
         kind: Kind,
@@ -221,11 +253,6 @@ impl Backends for InboundBackends {
         Box::pin(futures::stream::iter([Item::Closed {
             by: By::Peer(Body(body)),
         }]))
-    }
-
-    /// 那台的能力事实 = 它那条长连接握手时交出的那一份（`inbound_client` 登记表里，一个家）。
-    fn offer(&self, origin: &Origin) -> Option<super::wire::Offer> {
-        inbound_client::client_for(origin.as_wire_str()).map(|c| c.offer())
     }
 }
 
@@ -360,7 +387,7 @@ async fn terminal_open(origin: Origin, payload: Body, left: Duration) -> Result<
             copy_text("rsChanHost.terminal.badReply", &[]),
         ));
     };
-    match crate::launch::open_terminal_window(line.to_string(), true).await {
+    match crate::launch::open_terminal_window(line.to_string()).await {
         Ok(crate::platform::terminal::TerminalOpen::Opened) => Ok(Body(b"{}".to_vec())),
         // 这台找不到终端：窗口那一侧把这句当原话画出来（说去设置里指定）。
         Ok(crate::platform::terminal::TerminalOpen::NoWindow) => Err(refused(

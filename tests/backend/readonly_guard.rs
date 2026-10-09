@@ -191,7 +191,12 @@ mod tests {
              写的只有目录本身（后端**自己的**状态，第四层登记，见 `OWN_STATE_MODULES`）—— 一个用户文件都不写",
         ),
         ("control", "控制面 —— 会改变世界，或产出改变世界的计划"),
-        ("dial", "`--dial` 代理进程：那条长连接流的 SSH 握手只此一处"),
+        (
+            "dial",
+            "`--dial` 代理进程：那条长连接流的 SSH 握手只此一处 · \
+             `remote_ask` —— 本机后端问远端后端的那一跳（池里那条 SSH 上 capture 一次性子命令）＋ 内存可达表，\
+             帧面 `remote-reach`。**零写盘**：可达表只在本进程内存里",
+        ),
         (
             "files",
             "`files-read` 这一族：常驻文件名索引 ＋ 一族**只读**能力 —— \
@@ -265,13 +270,10 @@ mod tests {
         ),
         (
             "stream",
-            "进后端的口 ① 帧面 ＋ 跨机问答原语（从 crate 根归进来，纯搬家），各自的理由原样： \
+            "进后端的口 ① 帧面（从 crate 根归进来，纯搬家），各自的理由原样： \
              `wire` —— 线上协议的帧定义与编解码 · \
              `inbound` —— 流连接上的入方向（信封 / 分派 / 取消） · \
              `listen` —— 常驻监听口的纯判定（接受循环在 main.rs） · \
-             `remote_ask` —— 本机后端问远端后端的那一跳（池里那条 SSH 上 capture 一次性子命令）＋ 内存可达表，\
-             帧面 `remote-reach`（跨机问答原语，归这里）。它归 backend-core 是因为 SSH 连接只住本机常驻后端（`dial/`）。**零写盘**：\
-             可达表只在本进程内存里 · \
              `tap` —— tee 的消费侧（后端这一半）：进程级 tap 口 ＋ 每条流连接一条有界通道 ＋ 事件 → `tap` 帧。\
              它归 backend-core 是因为中转住本机常驻后端这个进程，帧从这个进程的 wire 出去。\
              **零写盘**：只在内存里递事件",
@@ -1026,8 +1028,8 @@ mod tests {
         ),
         (
             "faces/rotation_face.rs",
-            "换号那一族的帧面宿主（`rotation-set` · `rotation-session-set` · `rotation-switch`）：前端改默认轮换、改会话轮换、\
-             现在就换，只有这一族命令（帧面与派生的 CLI 面共用）",
+            "换号那一族的帧面宿主（`rotation-rule-save` · `-rename` · `-delete` · `rotation-default-set` · `rotation-session-set` · `rotation-switch`）：\
+             前端存 / 改 / 删规则、设默认、改会话轮换、现在就换，只有这一族命令（帧面与派生的 CLI 面共用）",
         ),
         (
             "faces/quota_probe_face.rs",
@@ -5086,6 +5088,13 @@ mod g6_dependency_signoff {
             "上游 base URL 的形状 ＋ 明文只许回环（纯字符串判定）；仓内 crate、零依赖，现打 0 处写面、0 处 I/O",
         ),
         (
+            // 交给 Win32 的路径（长路径前缀）的唯一一份：不覆盖改名那一处用。
+            "win-path-core",
+            DEPS,
+            MEASURED_CLEAN,
+            "路径编成 UTF-16 并补长路径前缀（纯变换；Windows 那一半只取绝对路径）；仓内 crate、零依赖，现打 0 处写面、0 处 I/O",
+        ),
+        (
             // 部署那一族的契约（表 A 的键与行 · 戳格式 · 答话形状 · 路径）；判定那一半住 `control/deploy_plan.rs`。
             "deploy-contract",
             DEPS,
@@ -5224,8 +5233,10 @@ mod g6_dependency_signoff {
     /// 清单里那条依赖的 `path = "…"`（`None` = 它不是仓内 crate ⇒ 本尺子够不着它的源码）。
     fn dep_path_of(manifest_text: &str, name: &str) -> Option<String> {
         let line = dep_line(manifest_text, name)?;
-        let at = line.find("path")?;
-        let rest = line[at + "path".len()..].trim_start();
+        // 只在等号右边找：名字里也可能带 `path`（`win-path-core`）。
+        let (_, value) = line.split_once('=')?;
+        let at = value.find("path")?;
+        let rest = value[at + "path".len()..].trim_start();
         let rest = rest.strip_prefix('=')?.trim_start();
         let rest = rest.strip_prefix('"')?;
         let end = rest.find('"')?;

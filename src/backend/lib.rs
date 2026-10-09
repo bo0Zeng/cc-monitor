@@ -75,7 +75,7 @@ mod runs_guard; // 子运行：通用层只认「运行」（扫描 ＋ 假适�
 #[path = "../../tests/backend/single_stream_guard.rs"]
 mod single_stream_guard; // K-P1 KPY8：多客户按连接各一份 —— 「源码里恰好一份、按连接实例化」那几处的触发器（整体 #[cfg(test)]）
 pub mod stderr_log; // 脱离常驻那条载体的 stderr 落进一份有上限、滚动的文件（宿主交 `CCM_BACKEND_STDERR_LOG` 才接；第四层自有状态，写口只从 main.rs 进）
-pub mod stream; // 进后端的口 ① 帧面 ＋ 跨机问答原语：wire · inbound · listen · remote_ask · tap
+pub mod stream; // 进后端的口 ① 帧面：wire · inbound · listen · tap
 
 /// Streaming wire-protocol major version, reported as `v` in the `Hello` frame.
 /// Bump ONLY on a breaking wire change; additive forward-compatible frame kinds
@@ -681,7 +681,7 @@ pub const PROTO_VERSION: u32 = 1;
 ///
 /// ★★★ **p5u-one-data-home**（2026-09-29，DATA-HOME 合并那一拍）：行为 —— monitor 数据目录默认 `~/.cc-monitor/`（与后端的 `bin/` 等并排；API 号凭据 `apikey-credentials.json` 在它根上，两侧经同一个 `monitor_data_dir` 推，认 `CCM_DATA_DIR`）· monitor 日志在 `logs/monitor/` · 数据目录建出来只给本人 · PowerShell 别名块模板 v5（旧块判旧、提示重装）。子命令没变。
 ///
-/// ★★★ **p5v-plain-copy**（2026-09-29，COPY-R 合并那一拍）：文案 —— 用户看得到的文字只说现在是什么、能做什么：去掉演进叙事、内部名挪进句末括号或换成人话、删重复解释（文案表改 282 条；写进用户文件的别名块头注去掉版本沿革）· 后端 IO 错误按种类说人话（`files::io_kind_said`）。子命令没变。
+/// ★★★ **p5v-plain-copy**（2026-09-29，COPY-R 合并那一拍）：文案 —— 用户看得到的文字只说现在是什么、能做什么：去掉演进叙事、内部名挪进句末括号或换成人话、删重复解释（文案表改 282 条；写进用户文件的别名块头注去掉版本沿革）· 后端 IO 错误按种类说人话（今天全仓那一张表住 `copy_core::io_reason`）。子命令没变。
 ///
 /// ★★★ **p5w-readme-shots**（2026-09-29，SHOTS 合并那一拍）：行为 / 协议 —— 足迹行的现状多一档 `expected_absent`（旧版遗留认出就删的那一类不在 ＝ 该有的样子，由后端足迹那一处给结论；这一档后来随「认出旧装法并清掉」那条链删了）· 设置 → 机器那张表补样式 · README 配图 `docs/screenshots/`（合成数据渲染）。子命令没变。
 ///
@@ -874,7 +874,11 @@ pub const PROTO_VERSION: u32 = 1;
 /// p9m-copy-detail：失败应答多一格 detail（时刻 · 机器 · 命令 · 码 · 原话，排版只在 copy-core::detail）· 结束会话 / 读画面 / 送字 / cc-bus / 账号库「契约对不上」的码 → 句搬进后端 stream/said.rs、处理器原句进详情 · 批量停 / 起每项带 said 与详情 · 句子里不许接原话（C-W18）。
 ///
 /// p9n-transfer-detail：transfer 收场帧 state=failed 多一格可缺的 detail（why 只剩原因词）· transfer-upload 开单读不到本机那份带原话 · 文件写面失败统一 WriteFail（码 · 句 · 原话）· 后端 common::said::Said；终端那一路之后 Linux 通知 / 开终端、复制详情续做、瘦身五一并进来。
-pub const BUILD_ID: &str = "p9n-transfer-detail";
+///
+/// p9o-detail-everywhere：拨号应答 · files 链路失败应答 · backend_status.machine · 六条读答（unreadable）各多可缺 detail · 自有状态文件失败带原话 · 「那台不认这条命令」统一按码取一句、remote_ask 遇老后端回 unknown_command · Codex 中转（relay-optin 入参 agent · 426 / 403 key-scope · 直通钥匙 relay-pass-key）· Linux 单实例令牌转交 · 找 ssh 进后端。
+///
+/// p9p-rotation-rules：轮换规则（存规则 · 默认 · 一键套用 · 批量管理）与 rotation-plan 预览 / 时间轴；兜底等待（往兜底号切前等非兜底号 wait 分钟）；session-new 带 rotation（先定 sid）；终端订阅先占位、壳替界面退订；remote-probe 结局带 detail；复制详情拼法收进 copy_core。
+pub const BUILD_ID: &str = "p9p-rotation-rules";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
@@ -1007,9 +1011,14 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--quota-read",
     // 用某个号查一次额度（`inbound::REGISTRY` 的 `quota-probe`）派生的 CLI 面，入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     "--quota-probe",
-    // 换号那一族（`inbound::REGISTRY` 的 `rotation-*`）自动派生的 CLI 面；除 `--rotation-read` 外入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
-    "--rotation-read",
-    "--rotation-set",
+    // 换号那一族（`inbound::REGISTRY` 的 `rotation-*`）自动派生的 CLI 面；除 `--rotation-rules-read` 外入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    // `--rotation-read` / `--rotation-set` 随规则表删了（默认轮换 ＝ 默认规则，经 `--rotation-rules-read` · `--rotation-rule-save` · `--rotation-default-set`）。
+    "--rotation-rules-read",
+    "--rotation-rule-save",
+    "--rotation-rule-rename",
+    "--rotation-rule-delete",
+    "--rotation-default-set",
+    "--rotation-plan",
     "--rotation-session-read",
     "--rotation-session-set",
     "--rotation-switch",
@@ -2053,6 +2062,8 @@ pub const EMITS: &[&str] = &[
     "quota_changed",
     // 某个会话的轮换 / 「账号」格变了（换号那一路与帧面改轮换那一路真发，走 tap 那条可丢的通道；登记 = 承诺真发）。
     "rotation_changed",
+    // 这台的轮换规则表 / 默认指向变了（帧面写规则那一路与盯盘那一路真发，走 tap 那条可丢的通道；登记 = 承诺真发）。
+    "rotation_rules_changed",
     // 某个会话的任务清单变了（watcher 盯 `<agent 家>/tasks/`，登记 = 承诺真发，已接线）。
     "tasks_changed",
     // 活会话清单报完了（watch_loop Phase 1 走完那一刻发一次，登记 = 承诺真发，已接线）。

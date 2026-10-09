@@ -161,6 +161,13 @@ async function shootWeb() {
       await page.goto(`${base}/${s.page}.html?scene=${encodeURIComponent(s.id)}${s.query ? `&${s.query}` : ""}`);
       await page.waitFor("window.__shots && window.__shots.state !== 'booting'", 30_000);
       const h = await page.eval("({ state: window.__shots.state, error: window.__shots.error, unhandled: window.__shots.unhandled, layout: window.__shots.layout ?? [] })");
+      const pt = await page.eval("window.__shots.pointer ?? null");
+      if (pt) {
+        // 真鼠标停上去（CSS :hover 只认它），等过渡落定再量排版。
+        await page.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: pt.x, y: pt.y });
+        await sleep(400);
+        h.layout = await page.eval("window.__shots.remeasure()");
+      }
       if (h.state === "failed") {
         ok = false;
         note = h.error;

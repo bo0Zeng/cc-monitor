@@ -1,4 +1,4 @@
-//! 那几条命令被拒时**给人看的那一句**（从界面搬来的五张「码 → 句」表：结束会话 · 读画面 / 送字 · cc-bus 六条 · 账号库那几条）。
+//! 那几条命令被拒时**给人看的那一句**（从界面搬来的几张「码 → 句」表：结束会话 · 读画面 / 送字 · cc-bus 六条）。
 //!
 //! 后端这一端写好句子，界面原样上屏；处理器原来那句（里面带着下层原话）整句进「复制详情」的原话那一项。
 //! 句子里只有后端知道的对象（结束会话的会话名 · cc-bus 的收件人 / 被收掉的 id）；后端不知道界面怎么称呼的（终端的显示名 ·
@@ -19,6 +19,7 @@ pub(crate) fn reword(cmd: &str, args: &serde_json::Value, code: &str) -> Option<
         "kill" => kill(&arg("name"), code),
         "terminal-preview" => preview(code),
         "terminal-input" => copy_text("terminalReads.input.refused", &[]),
+        "terminal-follow" => return follow(code),
         "bus-list" => match code {
             "not_installed" => copy_text("ccBus.online.notInstalled", &[]),
             "timed_out" => copy_text("ccBus.online.timedOut", &[]),
@@ -55,10 +56,6 @@ pub(crate) fn reword(cmd: &str, args: &serde_json::Value, code: &str) -> Option<
             "bad_id" => copy_text("ccBus.read.badId", &[]),
             _ => copy_text("ccBus.read.otherCode", &[]),
         },
-        // 账号库那几条：契约对不上是两端版本不配；其余各档处理器已经说成人话了，照原样。
-        c if c.starts_with("accounts-") && code == "bad_args" => {
-            copy_text("accountOps.said.contract", &[])
-        }
         _ => return None,
     })
 }
@@ -89,6 +86,17 @@ fn preview(code: &str) -> String {
         "child_timed_out" => copy_text("terminalReads.preview.childTimedOut", &[]),
         _ => copy_text("terminalReads.preview.otherCode", &[]),
     }
+}
+
+/// 订实时画面被拒：太老的 tmux（带版本）与满了（带上限）处理器那句就是成品，照原样。
+fn follow(code: &str) -> Option<String> {
+    Some(match code {
+        "tmux_too_old" | "too_many_follows" => return None,
+        "no_tmux" => copy_text("beTermFollow.refuse.noTmux", &[]),
+        "not_known" => copy_text("beTermFollow.refuse.gone", &[]),
+        "ambiguous" => copy_text("beTermFollow.refuse.ambiguous", &[]),
+        _ => copy_text("beTermFollow.refuse.other", &[]),
+    })
 }
 
 fn bus_send(id: &str, code: &str) -> String {

@@ -40,39 +40,21 @@ fn every_terminal_window_backend_opens_carries_the_backend_path() {
         "剥完只剩 {} 字节 —— 剥过头了，本条会零命中地绿",
         prod.len()
     );
-    // 生产里 4 个：三个开窗点 + 一个 `where.exe` 探测（它不是开窗，不需要 env）。
-    // 🔴 〔`K-H2b` `D6` 第九拍，08-29〕**5 → 4**：POSIX 那条路上先前是两个 `Command::new(`
-    //    （开窗一个 · 无窗口回落一个），本轮把「谁被 spawn · 带哪些参数」抽成纯函数
-    //    `build_local_posix_spawn` 之后合并成**一个** —— 开窗点的**人数没变**，
-    //    变的是它们从两处 `Command::new(` 收成一处。
-    //    ⚠ 这不是「把上限调上去让今天好过」：这个数是**等号**、方向是**减少**，
-    //    三条断言（`carried == 3` · `helper == 2` · `where.exe` 那条身份）**一字未动**。
-    //    🔴 **订正〔`D7 阻-5`③，08-29〕：这里先前逐字写着「它守的那条不变式
-    //    （`spawns - carried == 1`，那 1 是 `where.exe` 探测）**逐字仍然成立**」——
-    //    那句话描述的是一个没有发生过的世界。** 现打 `26f53da`：`spawns == 5` ·
-    //    `carried == 3` ⇒ **差是 2，不是 1**（那时不带 env 的有两个：`where.exe` 探测
-    //    **+ POSIX 无窗口回落**）。⇒ `spawns - carried == 1` 是**这一改之后才第一次成立**的，
-    //    不是「仍然」。结论（收紧）没变，错的是那句话。
+    // 生产里 3 个，全是开窗点（POSIX 一个 · Windows `wt.exe` 与 conhost 兜底各一个），每个都带 env。
+    // 先前多一个不带 env 的 `where.exe` 探测；找 ssh 客户端挪进本机后端（只查文件）之后它没了 ⇒ 4 → 3，差额归零。
     assert_eq!(
-        spawns, 4,
-        "`launch.rs` 生产代码里的 `Command::new(` 从 4 变成了 {spawns}。\n\
+        spawns, 3,
+        "`launch.rs` 生产代码里的 `Command::new(` 从 3 变成了 {spawns}。\n\
              若新增的是**开终端窗口**，它必须也带上 `backend_bin_env_for_window(...)` 的 env，\n\
-             否则那条路上的 `ccm resume` 会**静默地**永远走本地（与名字打错同一族的静默失败）；\n\
-             若新增的只是探测进程（如 `where.exe`），把本条的数字与这句说明一起更新。"
+             否则那条路上的 `ccm resume` 会**静默地**永远走本地（与名字打错同一族的静默失败）。"
     );
     assert_eq!(
-        carried, 3,
-        "真的把 env 交给窗口的 spawn 点从 3 变成了 {carried} —— 有开窗点漏了，或有人删了它"
+        carried, spawns,
+        "真的把 env 交给窗口的 spawn 点 {carried} 个，开窗点 {spawns} 个 —— 有开窗点漏了 env"
     );
     assert_eq!(
         helper, 2,
         "解析本机后端路径的调用点从 2 变成了 {helper}（POSIX 一次 · Windows 一次给两个 spawn 共用）"
-    );
-    // 那个不带 env 的必须是探测，不是开窗：钉住它的身份，别让「探测」变成豁免借口。
-    assert!(
-        prod.contains("Command::new(\"where.exe\")"),
-        "唯一允许不带 backend env 的 `Command::new` 是 `where.exe` 探测；它不见了 ⇒ \n\
-             要么被改名，要么 4-3=1 这个差额现在对应的是一个**真开窗点**"
     );
 }
 
@@ -866,8 +848,7 @@ fn spawn_fake_terminal(
             Err(e) if spawn_error_is_etxtbsy(&e) => {
                 // 🔴 **出声**（本波派工单逐字要的那一格）：重试**不许静默** ——
                 //    静默的重试会让「这条前提今天被破了几次」变成一个**没人量得到的数**，
-                //    而那正是本件在治的病换个地方长。这一行同时是量具的读数来源
-                //   （`tests/evidence/K-R24-D7-load-axis-stress.py` 数的就是它）。
+                //    而那正是本件在治的病换个地方长。
                 eprintln!(
                     "[K-R24] 前提被破了一次：exec 假终端撞上 ETXTBSY（第 {} 次），\
                          上限 {tries} 次内重试；逐字：{e}",
@@ -1047,8 +1028,7 @@ fn the_terminal_we_hand_the_command_to_really_gets_the_relay_prefix() {
 ///
 /// - **它复现的不是真实那条时序**：真实成因是别的线程 fork 出来的子进程**短暂**继承了写 fd，
 ///   本条是**自己长时间攥着**。两者对 execve 是同一件事（都是「有人开着写」），
-///   但本条**不证明**那条 fork 竞态真的发生过 —— 那一格由病历里那两趟读数与
-///   `tests/evidence/K-R24-D7-load-axis-stress.py` 那份量具承重，如实登记。
+///   但本条**不证明**那条 fork 竞态真的发生过 —— 那一格由病历里那两趟读数承重，如实登记。
 /// - **不证明重试上限选得对**：上限是宽的，那是取舍，不是判据。
 #[cfg(not(windows))]
 #[test]

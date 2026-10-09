@@ -36,7 +36,7 @@ export interface TerminalRow {
   input: string;
   /** Claude 已退出、终端还开着。 */
   programExited: boolean;
-  /** 能不能送字 / 送键：`null` ＝ 能；否则后端给的原因码（`not-yours` · `not-managed` …）。 */
+  /** 能不能送字 / 送键：`null` ＝ 能；否则为什么不能（后端写好的那一句）。 */
   inputNo: string | null;
 }
 
@@ -78,12 +78,14 @@ export async function previewShot(origin: Origin, target: TerminalTarget, label:
   return decodeShot(origin, v);
 }
 
-/** `can.input` 那一格 ⇒ `null`（能）或原因码。 */
+/** 后端没给那一句（契约外）时落的那一个词：不按码猜。 */
+const noSaid = (): string => copyText("terminal.why.other");
+
+/** `can.input` 那一格 ⇒ `null`（能）或为什么不能（`{no, said}` 的 `said`）。 */
 function inputNoOf(can: unknown): string | null {
   const c = isObj(can) ? can.input : undefined;
   if (c === true) return null;
-  if (isObj(c) && typeof c.no === "string") return c.no;
-  return "unknown";
+  return isObj(c) && typeof c.said === "string" && c.said.trim() !== "" ? c.said : noSaid();
 }
 
 /** `terminals-list` 的成品 ⇒ 这边要的那几格（句柄与 tmux 名必有；别的格缺了按「没有」收）。 */
@@ -124,8 +126,8 @@ export async function previewByTmuxName(origin: Origin, tmuxName: string): Promi
 /** 送什么：一段字（`enter` ＝ 之后补一个回车）或一颗键（有限键表，后端定）。 */
 export type TerminalSend = { text: string; enter: boolean } | { key: string };
 
-/** 送字 / 送键的回话：送到了 · 不知道送没送到 · 被拒（原因码；画面变了时带新指纹）。 */
-export type TerminalSent = { result: "delivered" } | { result: "unsure" } | { result: "refused"; why: string; screen: string | null };
+/** 送字 / 送键的回话：送到了 · 不知道送没送到 · 被拒（原因码给程序认 · 那一句后端写好；画面变了时带新指纹）。 */
+export type TerminalSent = { result: "delivered" } | { result: "unsure" } | { result: "refused"; why: string; said: string; screen: string | null };
 
 /** 送字 / 送键的期限（与抓一屏同）。 */
 const INPUT_BUDGET_MS = 20_000;
@@ -140,7 +142,8 @@ export function decodeSent(origin: Origin, v: unknown): TerminalSent {
   const r = isObj(v) ? v.result : undefined;
   if (r === "delivered" || r === "unsure") return { result: r };
   if (r === "refused" && isObj(v)) {
-    return { result: "refused", why: typeof v.why === "string" ? v.why : "", screen: typeof v.screen === "string" ? v.screen : null };
+    const said = typeof v.said === "string" && v.said.trim() !== "" ? v.said : noSaid();
+    return { result: "refused", why: typeof v.why === "string" ? v.why : "", said, screen: typeof v.screen === "string" ? v.screen : null };
   }
   throw unreadable(origin, "terminal-input", "has no known `result`");
 }

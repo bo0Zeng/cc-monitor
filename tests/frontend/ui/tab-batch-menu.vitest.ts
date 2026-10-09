@@ -168,3 +168,64 @@ describe("批量菜单", () => {
     expect(calls(host.foundGroup)[0].slice(0, 2)).toEqual([["a", "b", "c"], "新组"]);
   });
 });
+
+describe("批量菜单 · 轮换规则 ▸", () => {
+  const RULES = {
+    state: "present" as const,
+    defaultRule: "r_daily",
+    rules: [
+      { id: "r_daily", name: "日常", isDefault: true },
+      { id: "r_night", name: "夜间", isDefault: false },
+    ],
+  };
+  /** 「轮换规则」那一级的子菜单（含「管理规则…」的那一个）里各项的字。 */
+  const sub = (): string[] => {
+    const menu = [...document.body.querySelectorAll<HTMLElement>('[role=menu][data-sub="true"]')].find((m) =>
+      [...m.querySelectorAll(":scope > [role^=menuitem]")].some((b) => labelOf(b) === copyText("rot.src.manage")),
+    );
+    return menu ? [...menu.querySelectorAll(":scope > [role^=menuitem]")].map(labelOf) : [];
+  };
+  const openSub = async (): Promise<HTMLButtonElement> => {
+    const b = buttons().find((x) => labelOf(x) === copyText("tabBatch.menu.rot", { n: 3 }))!;
+    expect(b, "多选菜单里有「轮换规则（3）」：同机可套用的个数").toBeDefined();
+    b.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+    b.click();
+    await flush();
+    return b;
+  };
+
+  it("子菜单：跟随默认（默认那条的名字）· 各条规则 · 管理规则…（没有「本会话」）；选一条 ⇒ 同机这几个会话一次写 {rule}，结果一条提示（做了几个 · 跳过各为什么）", async () => {
+    const rotate = vi.fn(async () => ({ a: { state: "done" }, b: { state: "skipped", code: "noRelay" }, c: { state: "done" } }));
+    const openRules = vi.fn();
+    host.rulesOf = vi.fn(() => RULES as never);
+    host.openRules = openRules;
+    run.rotate = rotate as never;
+    open();
+    await openSub();
+    expect(sub()).toEqual([
+      copyText("rot.src.followOf", { name: "日常" }),
+      "日常",
+      "夜间",
+      copyText("rot.src.manage"),
+    ]);
+    await press("夜间");
+    expect(rotate).toHaveBeenCalledWith(LOCAL_ORIGIN, ["a", "b", "c"], { rule: "r_night" });
+    expect(toastHead()).toBe(
+      copyText("tabBatch.result.done", {
+        action: copyText("tabBatch.action.rot", { src: copyText("rot.src.rule", { name: "夜间" }) }),
+        done: 2,
+      }),
+    );
+    expect(toastBody()).toContain(copyText("acct.reason.noRelay"));
+  });
+
+  it("跨机多选 ⇒「轮换规则」灰，第二行 账号按机器分开 · 仅同机批量", () => {
+    tabs[1] = { ...tabs[1], origin: originFromWire("devbox") } as Tab;
+    host.rulesOf = vi.fn(() => RULES as never);
+    run.rotate = vi.fn() as never;
+    open();
+    const b = buttons().find((x) => labelOf(x) === copyText("tabBatch.menu.rot", { n: 0 }))!;
+    expect(b.disabled).toBe(true);
+    expect(b.textContent).toContain(copyText("tabBatch.why.crossMachine"));
+  });
+});

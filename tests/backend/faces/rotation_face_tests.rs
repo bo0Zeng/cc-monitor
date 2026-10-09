@@ -29,6 +29,8 @@ struct Home {
     root: std::path::PathBuf,
     /// 此刻活着的会话（`saw` 记下的都活着，`end` 摘掉）。
     live: Arc<std::sync::Mutex<std::collections::BTreeSet<String>>>,
+    /// 活着的会话此刻在干什么（没写的 ＝ 说不清）。
+    doing: Arc<std::sync::Mutex<std::collections::BTreeMap<String, Doing>>>,
 }
 
 impl Home {
@@ -52,6 +54,7 @@ impl Home {
         Self {
             root,
             live: Arc::default(),
+            doing: Arc::default(),
         }
     }
 
@@ -83,6 +86,10 @@ impl Home {
                 let live = Arc::clone(&self.live);
                 Box::new(move || live.lock().expect("lock").clone())
             },
+            doing: {
+                let doing = Arc::clone(&self.doing);
+                Box::new(move || doing.lock().expect("lock").clone())
+            },
         }
     }
 
@@ -95,6 +102,31 @@ impl Home {
     fn end(&self, sid: &str) {
         self.live.lock().expect("lock").remove(sid);
     }
+}
+
+/// 改默认规则那一份（经 `rotation-rule-save`，名字照旧）；回那条规则（线上形状）。
+fn answer_set_with(ctx: &Ctx, args: &Value) -> Answer {
+    let rules = answer_rules_read_with(ctx);
+    let id = rules["defaultRule"].as_str().expect("default").to_string();
+    let name = rules["rules"]
+        .as_array()
+        .expect("rules")
+        .iter()
+        .find(|r| r["id"] == id.as_str())
+        .expect("default rule")["name"]
+        .clone();
+    let got = answer_rule_save_with(
+        ctx,
+        &json!({"id": id, "name": name, "rotation": args["rotation"]}),
+        now(),
+    )?;
+    assert_eq!(got["state"], "saved", "{got}");
+    Ok(got["rule"].clone())
+}
+
+/// 这个会话此刻的来源。
+fn source_of(ctx: &Ctx, sid: &str) -> Source {
+    ctx.hop.store.now().sessions[sid].source.clone()
 }
 
 impl Drop for Home {
@@ -115,9 +147,9 @@ fn the_default_rotation_is_written_whole_and_refused_whole() {
     .expect("ok");
     assert_eq!(
         got["rotation"],
-        json!({"order": [{"start": true}, "b", "c", "api"], "enabled": ["api", "b"], "when": {"threshold": {"n": 90}}, "atLimit": "continue"})
+        json!({"order": [{"start": true}, "b", "c", "api"], "enabled": ["api", "b"], "when": {"threshold": {"n": 90}}, "atLimit": "continue", "wait": 40})
     );
-    assert_eq!(got["state"], "present");
+    assert_eq!(got["isDefault"], true);
     let before = std::fs::read(home.root.join(rotation::FILE_NAME)).expect("read");
     let crate::stream::inbound::spec::Fail {
         code, message: msg, ..
@@ -228,7 +260,7 @@ fn a_session_can_go_custom_and_back_keeping_its_own() {
         json!({"state": "skipped", "code": "noRelay"})
     );
     let s = ctx.hop.store.now().sessions["s-1"].clone();
-    assert!(!s.follow);
+    assert_eq!(s.source, Source::Custom);
     assert_eq!(
         serde_json::to_value(&s.custom).expect("json")["order"],
         json!(["a", "b", "api"]),
@@ -237,10 +269,13 @@ fn a_session_can_go_custom_and_back_keeping_its_own() {
     answer_session_set_with(&ctx, &json!({"sids": ["s-1"], "rotation": "follow"}), now())
         .expect("ok");
     let s = ctx.hop.store.now().sessions["s-1"].clone();
-    assert!(s.follow && s.custom.is_some(), "切回跟随，自己那一份留着");
+    assert!(
+        s.source == Source::Follow && s.custom.is_some(),
+        "切回跟随，自己那一份留着"
+    );
     answer_session_set_with(&ctx, &json!({"sids": ["s-1"], "rotation": "custom"}), now())
         .expect("ok");
-    assert!(!ctx.hop.store.now().sessions["s-1"].follow);
+    assert_eq!(source_of(&ctx, "s-1"), Source::Custom);
     let bad = json!({"sids": ["s-1"], "rotation": {"custom": {"order": ["b", "b"], "enabled": [], "when": "full"}}});
     let before = ctx.hop.store.now();
     assert_eq!(
@@ -553,7 +588,7 @@ fn the_same_subscription_on_two_machines_gets_the_same_id() {
     assert_ne!(id(&here, "c"), id(&here, "b"));
 }
 
-/// ★ 默认轮换的 `followers`：跟随它、且此刻活着的会话（自定义的、已结束的不算）。
+/// ★ 默认规则的在用：跟随它、且此刻活着的会话（自定义的不算；已结束的另数）。
 #[test]
 fn followers_count_only_live_sessions_on_the_default() {
     let home = Home::new("followers");
@@ -564,7 +599,54 @@ fn followers_count_only_live_sessions_on_the_default() {
     home.end("s-2");
     answer_session_set_with(&ctx, &json!({"sids": ["s-3"], "rotation": "custom"}), now())
         .expect("ok");
-    assert_eq!(answer_read_with(&ctx)["followers"], 1);
+    let rules = answer_rules_read_with(&ctx);
+    assert_eq!(rules["rules"][0]["users"]["follow"], 1);
+    assert_eq!(rules["rules"][0]["users"]["live"], 1);
+    assert_eq!(rules["rules"][0]["users"]["ended"], 1);
+    // 设置里「在用」展开要列名单：活着的与已结束的各给 sid（已结束的折在「已结束 N」里）。
+    assert_eq!(rules["rules"][0]["users"]["sids"], json!(["s-1"]));
+    assert_eq!(rules["rules"][0]["users"]["endedSids"], json!(["s-2"]));
+}
+
+/// ★ 在用名单每个会话的状态由后端给（与主窗口标签页同一判）：运行中 · 空闲 · 在等你（等批准 / 等回答 / 判不出）· 已结束；
+/// 活着却说不清在干什么 ⇒ 运行中（主窗口那颗点同样画成在跑）。
+#[test]
+fn rule_users_carry_each_sessions_state() {
+    use crate::agents::SessionActivity as A;
+    use crate::observe::facts_query::NeedsKind as K;
+    let home = Home::new("doing");
+    let ctx = home.ctx();
+    for sid in ["s-run", "s-idle", "s-ask", "s-wait", "s-quiet", "s-gone"] {
+        home.saw(&ctx, sid);
+    }
+    home.end("s-gone");
+    {
+        let mut d = home.doing.lock().expect("lock");
+        let at = |activity, needs| Doing {
+            activity: Some(activity),
+            needs,
+        };
+        d.insert("s-run".into(), at(A::Working, None));
+        d.insert("s-idle".into(), at(A::Idle, None));
+        d.insert("s-ask".into(), at(A::NeedsYou, Some(K::Approve)));
+        d.insert("s-wait".into(), at(A::NeedsYou, None));
+        // 已结束的会话 pidfile 还留着说「在跑」：已结束为准。
+        d.insert("s-gone".into(), at(A::Working, None));
+    }
+    let rules = answer_rules_read_with(&ctx);
+    let doing = &rules["rules"][0]["users"]["doing"];
+    assert_eq!(
+        doing,
+        &json!({
+            "s-run": {"state": "working", "needs": null},
+            "s-idle": {"state": "idle", "needs": null},
+            "s-ask": {"state": "needsYou", "needs": "approve"},
+            "s-wait": {"state": "needsYou", "needs": "unknown"},
+            "s-quiet": {"state": "working", "needs": null},
+            "s-gone": {"state": "ended", "needs": null},
+        }),
+        "{rules}"
+    );
 }
 
 /// ★ 会话已结束 ⇒ `inPlace = ended`，不重启换跳过它（`skipped{ended}`）。
@@ -677,4 +759,836 @@ fn a_switch_records_the_baseline_and_the_session_read_says_how_much_this_stretch
     // 盘上那份重读（后端重启）：基线还在。
     let again = RotationStore::at(Some(home.root.join(rotation::FILE_NAME)));
     assert_eq!(again.now().sessions["s-1"].baseline["5h"].used, 0.30);
+}
+
+// ── 规则表：存取 · 逐格校验 · 版本 · 删 · 默认 · 链接 · 升级 ─────────────────────────────────
+
+fn rot_json(enabled: &[&str]) -> Value {
+    let mut order = vec![json!({"start": true})];
+    order.extend(enabled.iter().map(|a| json!(a)));
+    json!({"order": order, "enabled": enabled, "when": "full"})
+}
+
+fn new_rule(ctx: &Ctx, name: &str, enabled: &[&str]) -> String {
+    let got = answer_rule_save_with(
+        ctx,
+        &json!({"name": name, "rotation": rot_json(enabled)}),
+        now(),
+    )
+    .expect("ok");
+    assert_eq!(got["state"], "saved", "{got}");
+    got["rule"]["id"].as_str().expect("id").to_string()
+}
+
+fn errors_of(v: &Value) -> Vec<(String, String)> {
+    assert_eq!(v["state"], "refused", "{v}");
+    v["errors"]
+        .as_array()
+        .expect("errors")
+        .iter()
+        .map(|e| {
+            (
+                e["cell"].as_str().expect("cell").to_string(),
+                e["code"].as_str().expect("code").to_string(),
+            )
+        })
+        .collect()
+}
+
+/// ★ 没有文件：一条「默认」规则、是默认；新建一条读得回；带对的版本改 ⇒ 版本加一；带旧版本改 ⇒ `conflict`、不写。
+#[test]
+fn rules_round_trip_and_a_stale_rev_is_refused() {
+    let home = Home::new("rules");
+    let ctx = home.ctx();
+    let first = answer_rules_read_with(&ctx);
+    assert_eq!(first["rules"].as_array().expect("rules").len(), 1);
+    assert_eq!(
+        first["rules"][0]["name"],
+        copy_text("beRotation.rule.defaultName", &[])
+    );
+    assert_eq!(first["rules"][0]["isDefault"], true);
+    let id = new_rule(&ctx, "夜间", &["b"]);
+    let read = answer_rules_read_with(&ctx);
+    let night = read["rules"]
+        .as_array()
+        .expect("rules")
+        .iter()
+        .find(|r| r["id"] == id.as_str())
+        .cloned()
+        .expect("夜间");
+    assert_eq!(night["rev"], 1);
+    assert_eq!(night["isDefault"], false);
+    assert_eq!(night["rotation"]["enabled"], json!(["b"]));
+    let ok = answer_rule_save_with(
+        &ctx,
+        &json!({"id": id, "name": "夜间", "rotation": rot_json(&["b", "c"]), "ifRev": 1}),
+        now(),
+    )
+    .expect("ok");
+    assert_eq!(ok["rule"]["rev"], 2);
+    let before = ctx.hop.store.now();
+    let stale = answer_rule_save_with(
+        &ctx,
+        &json!({"id": id, "name": "夜间", "rotation": rot_json(&["c"]), "ifRev": 1}),
+        now(),
+    )
+    .expect("ok");
+    assert_eq!(stale, json!({"state": "conflict", "rev": 2}));
+    assert_eq!(ctx.hop.store.now(), before, "冲突一个字节不写");
+    assert_eq!(
+        answer_rule_save_with(
+            &ctx,
+            &json!({"id": "r_nothere", "name": "x", "rotation": rot_json(&[])}),
+            now()
+        )
+        .expect_err("不在")
+        .code,
+        "no_such_rule"
+    );
+}
+
+/// ★ 名称：空 · 超 24 字 · 与别的规则重名（去首尾空白、不分大小写）⇒ 逐格拒；改名同一套。
+#[test]
+fn rule_names_are_checked_by_the_backend() {
+    let home = Home::new("names");
+    let ctx = home.ctx();
+    let id = new_rule(&ctx, "Night", &["b"]);
+    let save = |name: &str| {
+        answer_rule_save_with(
+            &ctx,
+            &json!({"name": name, "rotation": rot_json(&[])}),
+            now(),
+        )
+        .expect("ok")
+    };
+    assert_eq!(errors_of(&save("  ")), [("name".into(), "empty".into())]);
+    assert_eq!(errors_of(&save(" night ")), [("name".into(), "dup".into())]);
+    assert_eq!(
+        errors_of(&save(&"长".repeat(25))),
+        [("name".into(), "tooLong".into())]
+    );
+    assert_eq!(save(&"长".repeat(24))["state"], "saved");
+    let renamed =
+        answer_rule_rename_with(&ctx, &json!({"id": id, "name": "夜间", "ifRev": 1}), now())
+            .expect("ok");
+    assert_eq!(renamed["rule"]["name"], "夜间");
+    assert_eq!(renamed["rule"]["rev"], 2);
+    assert_eq!(
+        renamed["rule"]["rotation"]["enabled"],
+        json!(["b"]),
+        "改名不动内容"
+    );
+}
+
+/// ★ `dedupe: true`（复制 · 复制到别的机器）：重名不拒，后端在名后加 ` 2` · ` 3` … 取第一个不重的；
+/// 不给它照旧拒 `dup`；加了后缀超长照旧拒 `tooLong`。
+#[test]
+fn a_copy_gets_the_first_free_numbered_name() {
+    let home = Home::new("dedupe");
+    let ctx = home.ctx();
+    let id = new_rule(&ctx, "夜间", &["b"]);
+    let copy = |name: &str| {
+        answer_rule_save_with(
+            &ctx,
+            &json!({"name": name, "from": id, "dedupe": true}),
+            now(),
+        )
+        .expect("ok")
+    };
+    let a = copy("夜间");
+    assert_eq!(a["rule"]["name"], "夜间 2", "{a}");
+    assert_eq!(a["rule"]["rotation"]["enabled"], json!(["b"]), "从那条拷");
+    assert_eq!(copy(" 夜间 ")["rule"]["name"], "夜间 3");
+    assert_eq!(
+        copy("夜间 副本")["rule"]["name"],
+        "夜间 副本",
+        "不重名就照原名"
+    );
+    assert_eq!(
+        copy(&"长".repeat(24))["state"],
+        "saved",
+        "不重名的 24 字照存"
+    );
+    assert_eq!(
+        errors_of(&copy(&"长".repeat(24))),
+        [("name".into(), "tooLong".into())],
+        "加了后缀超 24 字 ⇒ 照旧拒"
+    );
+    assert_eq!(
+        errors_of(
+            &answer_rule_save_with(&ctx, &json!({"name": "夜间", "from": id}), now()).expect("ok")
+        ),
+        [("name".into(), "dup".into())],
+        "不给 dedupe ⇒ 照旧拒"
+    );
+}
+
+/// ★ 封顶时段逐格判：重叠（含跨午夜）· 起止相同 · 时刻写错 · 上限越界；会话自己那份时段重叠同样整份拒。
+#[test]
+fn cap_slots_are_checked_cell_by_cell_including_overlap_across_midnight() {
+    let home = Home::new("slots");
+    let ctx = home.ctx();
+    let mut r = rot_json(&["b"]);
+    r["cap"] = json!({"b": {"*": [
+        {"at": "17:00-02:00", "n": 0},
+        {"at": "01:00-05:00", "n": 99},
+        {"at": "06:00-06:00", "n": 50},
+        {"at": "9:5-12:00", "n": 50},
+        {"at": "12:00-13:00", "n": 120}
+    ]}});
+    let got = answer_rule_save_with(&ctx, &json!({"name": "x", "rotation": r}), now()).expect("ok");
+    assert_eq!(
+        errors_of(&got),
+        [
+            ("cap.b.*[1]".into(), "overlap".into()),
+            ("cap.b.*[2]".into(), "same".into()),
+            ("cap.b.*[3]".into(), "time".into()),
+            ("cap.b.*[4]".into(), "range".into()),
+        ]
+    );
+    assert_eq!(got["errors"][0]["with"], 0, "与第 1 段（0 起）重叠");
+    let mut ok = rot_json(&["b"]);
+    ok["cap"] =
+        json!({"b": {"*": [{"at": "17:00-02:00", "n": 0}, {"at": "02:00-17:00", "n": 99}]}});
+    assert_eq!(
+        answer_rule_save_with(&ctx, &json!({"name": "y", "rotation": ok}), now()).expect("ok")
+            ["state"],
+        "saved",
+        "首尾相接不算重叠"
+    );
+    home.saw(&ctx, "s-1");
+    let mut own = rot_json(&["b"]);
+    own["cap"] =
+        json!({"b": {"5h": [{"at": "22:00-03:00", "n": 0}, {"at": "23:00-23:30", "n": 50}]}});
+    assert_eq!(
+        answer_session_set_with(
+            &ctx,
+            &json!({"sids": ["s-1"], "rotation": {"custom": own}}),
+            now()
+        )
+        .expect_err("重叠应拒")
+        .code,
+        "bad_args"
+    );
+}
+
+/// ★ 链接：会话用某条规则 ⇒ 它按那条走；改了那条 ⇒ 它立刻按新的走；指向的规则不在 ⇒ 落默认那条。
+#[test]
+fn a_session_on_a_rule_follows_its_edits() {
+    let home = Home::new("link");
+    let ctx = home.ctx();
+    let id = new_rule(&ctx, "夜间", &["b"]);
+    home.saw(&ctx, "s-1");
+    answer_session_set_with(
+        &ctx,
+        &json!({"sids": ["s-1"], "rotation": {"rule": id}}),
+        now(),
+    )
+    .expect("ok");
+    let pool = |ctx: &Ctx| {
+        let b = ctx.hop.store.now();
+        b.rotation_of(&b.sessions["s-1"]).pool("a")
+    };
+    assert_eq!(pool(&ctx), ["a", "b"]);
+    answer_rule_save_with(
+        &ctx,
+        &json!({"id": id, "name": "夜间", "rotation": rot_json(&["c"])}),
+        now(),
+    )
+    .expect("ok");
+    assert_eq!(pool(&ctx), ["a", "c"], "规则改了，用它的会话下一发就按新的");
+    let got = answer_session_read_with(&ctx, &json!({"sids": ["s-1"]}), now()).expect("ok");
+    assert_eq!(got["sessions"]["s-1"]["source"], json!({"rule": id}));
+    assert_eq!(got["sessions"]["s-1"]["ruleName"], "夜间");
+    assert!(got["sessions"]["s-1"]["explain"]
+        .as_str()
+        .is_some_and(|e| !e.is_empty()));
+    let mut b = ctx.hop.store.now();
+    b.sessions.get_mut("s-1").expect("s").source = Source::Rule("r_gone".into());
+    assert_eq!(
+        b.rotation_of(&b.sessions["s-1"]),
+        b.default_rotation(),
+        "指向不在的 ⇒ 默认那条"
+    );
+    assert_eq!(
+        answer_session_set_with(
+            &ctx,
+            &json!({"sids": ["s-1"], "rotation": {"rule": "r_gone"}}),
+            now()
+        )
+        .expect_err("不在")
+        .code,
+        "no_such_rule"
+    );
+}
+
+/// ★ 转为本会话（`detach`）照此刻生效的那条拷；`custom` 恢复上一份自己的（撤销用）。
+#[test]
+fn detach_copies_the_rule_and_custom_restores_the_own_one() {
+    let home = Home::new("detach");
+    let ctx = home.ctx();
+    let id = new_rule(&ctx, "夜间", &["b"]);
+    home.saw(&ctx, "s-1");
+    answer_session_set_with(
+        &ctx,
+        &json!({"sids": ["s-1"], "rotation": {"custom": rot_json(&["c"])}}),
+        now(),
+    )
+    .expect("ok");
+    answer_session_set_with(
+        &ctx,
+        &json!({"sids": ["s-1"], "rotation": {"rule": id}}),
+        now(),
+    )
+    .expect("ok");
+    answer_session_set_with(&ctx, &json!({"sids": ["s-1"], "rotation": "custom"}), now())
+        .expect("ok");
+    let s = ctx.hop.store.now().sessions["s-1"].clone();
+    assert_eq!(
+        (s.source, s.custom.expect("own").enabled),
+        (Source::Custom, vec!["c".to_string()]),
+        "恢复自己那份"
+    );
+    answer_session_set_with(
+        &ctx,
+        &json!({"sids": ["s-1"], "rotation": {"rule": id}}),
+        now(),
+    )
+    .expect("ok");
+    answer_session_set_with(&ctx, &json!({"sids": ["s-1"], "rotation": "detach"}), now())
+        .expect("ok");
+    let s = ctx.hop.store.now().sessions["s-1"].clone();
+    assert_eq!(
+        (s.source, s.custom.expect("own").enabled),
+        (Source::Custom, vec!["b".to_string()]),
+        "照规则拷"
+    );
+}
+
+/// ★ 删：默认那条不许删；在用的按 `then` 落（转为本会话 ＝ 照那条拷、行为不变 · 跟随默认）。
+#[test]
+fn deleting_a_rule_moves_its_sessions_as_told() {
+    let home = Home::new("delete");
+    let ctx = home.ctx();
+    let a = new_rule(&ctx, "甲", &["b"]);
+    let b = new_rule(&ctx, "乙", &["c"]);
+    for sid in ["s-1", "s-2"] {
+        home.saw(&ctx, sid);
+    }
+    answer_session_set_with(
+        &ctx,
+        &json!({"sids": ["s-1"], "rotation": {"rule": a}}),
+        now(),
+    )
+    .expect("ok");
+    answer_session_set_with(
+        &ctx,
+        &json!({"sids": ["s-2"], "rotation": {"rule": b}}),
+        now(),
+    )
+    .expect("ok");
+    let def = answer_rules_read_with(&ctx)["defaultRule"]
+        .as_str()
+        .expect("def")
+        .to_string();
+    assert_eq!(
+        answer_rule_delete_with(&ctx, &json!({"ids": [def], "then": "custom"}))
+            .expect_err("默认")
+            .code,
+        "is_default"
+    );
+    let got = answer_rule_delete_with(&ctx, &json!({"ids": [a], "then": "custom"})).expect("ok");
+    assert_eq!(got["moved"], json!({"s-1": "custom"}));
+    let s1 = ctx.hop.store.now().sessions["s-1"].clone();
+    assert_eq!(
+        (s1.source, s1.custom.expect("copy").enabled),
+        (Source::Custom, vec!["b".to_string()])
+    );
+    answer_rule_delete_with(&ctx, &json!({"ids": [b], "then": "follow"})).expect("ok");
+    assert_eq!(source_of(&ctx, "s-2"), Source::Follow);
+    assert_eq!(
+        answer_rules_read_with(&ctx)["rules"]
+            .as_array()
+            .expect("rules")
+            .len(),
+        1
+    );
+}
+
+/// ★ 设为默认：跟随默认的会话随之换；不在的规则拒。
+#[test]
+fn setting_the_default_moves_the_followers() {
+    let home = Home::new("defset");
+    let ctx = home.ctx();
+    let night = new_rule(&ctx, "夜间", &["b"]);
+    home.saw(&ctx, "s-1");
+    let got = answer_default_set_with(&ctx, &json!({"rule": night})).expect("ok");
+    assert_eq!(got, json!({"defaultRule": night, "followers": 1}));
+    let b = ctx.hop.store.now();
+    assert_eq!(b.rotation_of(&b.sessions["s-1"]).pool("a"), ["a", "b"]);
+    assert_eq!(
+        answer_default_set_with(&ctx, &json!({"rule": "r_gone"}))
+            .expect_err("不在")
+            .code,
+        "no_such_rule"
+    );
+}
+
+/// ★ 草稿逐格校验：不写盘；错的格照 `rule-save` 那一形回；对的回空。
+#[test]
+fn a_draft_is_checked_cell_by_cell_without_writing() {
+    let home = Home::new("plan");
+    let ctx = home.ctx();
+    let before = ctx.hop.store.now();
+    let mut r = rot_json(&["b"]);
+    r["cap"] = json!({"b": {"*": [{"at": "22:00-03:00", "n": 0}, {"at": "02:00-04:00", "n": 50}]}});
+    let got = answer_plan_with(&ctx, &json!({"rotation": r}), now()).expect("ok");
+    assert_eq!(
+        got["errors"],
+        json!([{"cell": "cap.b.*[1]", "code": "overlap", "with": 0}])
+    );
+    assert_eq!(
+        answer_plan_with(&ctx, &json!({"rotation": rot_json(&["b"])}), now()).expect("ok")
+            ["errors"],
+        json!([])
+    );
+    assert_eq!(
+        answer_plan_with(&ctx, &json!({"rotation": {"order": 3}}), now())
+            .expect_err("形状")
+            .code,
+        "bad_args"
+    );
+    assert_eq!(ctx.hop.store.now(), before, "一个字节不写");
+}
+
+/// ★ 预览：一条规则 / 一份草稿 / 一个会话此刻那一份，接下来会怎么走（`plan`）· 各号不能用的段（`lanes`）· 各格此刻取的上限与下一层（`effective`）。
+/// b 全天封顶 0 ⇒ 从头就换到起始账号（`threshold{n:0}`），b 那条泳道整段 `off`；视窗写错 ⇒ `bad_args`；规则不在 ⇒ `no_such_rule`。
+#[test]
+fn the_plan_says_who_runs_next_and_what_each_cell_takes() {
+    let home = Home::new("plan-view");
+    let ctx = home.ctx();
+    let t = now();
+    let draft = json!({"order": ["b", {"start": true}], "enabled": ["b"], "when": "full", "atLimit": "continue", "cap": {"b": {"*": 0}}});
+    let got = answer_plan_with(&ctx, &json!({"rotation": draft, "span": "6h"}), t).expect("ok");
+    let end = t + 6 * 3600;
+    assert_eq!(got["errors"], json!([]));
+    assert_eq!(
+        got["plan"]
+            .as_array()
+            .expect("plan")
+            .iter()
+            .map(|p| (
+                p["from"].clone(),
+                p["to"].clone(),
+                p["account"].clone(),
+                p["why"].clone()
+            ))
+            .collect::<Vec<_>>(),
+        vec![(
+            json!(t),
+            json!(end),
+            json!("0"),
+            json!({"threshold": {"n": 0}})
+        )],
+        "{got}"
+    );
+    assert!(got["plan"][0]["fromText"].is_string(), "时刻带写好的字");
+    assert_eq!(got["lanes"][0]["account"], "b");
+    assert_eq!(got["lanes"][0]["spans"][0]["state"], "off", "{got}");
+    assert_eq!(got["lanes"][0]["spans"][0]["to"], json!(end));
+    assert_eq!(
+        got["effective"]["b"]["*"],
+        json!({"v": 0, "layer": "all", "below": {"v": null, "layer": "none"}})
+    );
+    assert_eq!(
+        got["effective"]["b"]["5h"],
+        json!({"v": 0, "layer": "all", "below": {"v": 0, "layer": "all"}})
+    );
+    // 规则：默认那条（只有起始账号）⇒ 一整段起始账号。
+    let rules = answer_rules_read_with(&ctx);
+    let id = rules["defaultRule"].as_str().expect("id");
+    let got = answer_plan_with(&ctx, &json!({"rule": id}), t).expect("ok");
+    assert_eq!(got["plan"].as_array().expect("plan").len(), 1);
+    assert_eq!(got["plan"][0]["to"], json!(t + 12 * 3600), "缺省 12h");
+    // 会话：从它此刻的号起。
+    home.saw(&ctx, "s-1");
+    let got = answer_plan_with(&ctx, &json!({"sid": "s-1"}), t).expect("ok");
+    assert_eq!(got["plan"][0]["account"], "a");
+    assert_eq!(
+        answer_plan_with(&ctx, &json!({"rule": id, "span": "3h"}), t)
+            .expect_err("视窗")
+            .code,
+        "bad_args"
+    );
+    assert_eq!(
+        answer_plan_with(&ctx, &json!({"rule": "r_gone"}), t)
+            .expect_err("不在")
+            .code,
+        "no_such_rule"
+    );
+}
+
+/// 记一条换号（`from` → `to`，`at` 那一刻），会话此刻走 `to`。
+fn switched(ctx: &Ctx, sid: &str, from: &str, to: &str, at: u64, why: SwitchWhy) {
+    rotation::face_change(&ctx.hop.store, |b| {
+        let s = b.sessions.get_mut(sid).expect("session");
+        s.history.push(rotation::SwitchRecord {
+            at,
+            at_text: None,
+            from: from.into(),
+            to: to.into(),
+            why,
+            from_resets_at: None,
+            from_resets_at_text: None,
+        });
+        s.current = to.into();
+        s.since = at;
+    })
+    .expect("write");
+}
+
+/// ★ 时间轴那一问（`view`）：视窗前后各一截（24h ＝ 前 6h · 后 18h）· `past` 照这个会话的换号记录切段（换进那一段的原因带上）·
+/// 顶行 `head`（在用哪个号 · 卡人的窗口 · 用了多少 · 到 ≥N% 还差几点）· 每条泳道此刻的用量 `pct`。
+#[test]
+fn the_timeline_view_looks_back_and_says_who_runs_now() {
+    let home = Home::new("tl-session");
+    let ctx = home.ctx();
+    let t = now();
+    let mut r = rot_json(&["b"]);
+    r["when"] = json!({"threshold": {"n": 90}});
+    answer_set_with(&ctx, &json!({"rotation": r})).expect("set");
+    home.saw(&ctx, "s-1");
+    switched(
+        &ctx,
+        "s-1",
+        "a",
+        "b",
+        t - 3600,
+        SwitchWhy::Threshold { n: 90 },
+    );
+    seen(&ctx, "b", 0.63, None);
+    let got = answer_plan_with(&ctx, &json!({"sid": "s-1", "view": "24h"}), t).expect("ok");
+    assert_eq!(got["from"], json!(t - 6 * 3600), "{got}");
+    assert_eq!(got["until"], json!(t + 18 * 3600));
+    assert!(got["fromText"].is_string());
+    let past: Vec<_> = got["past"]
+        .as_array()
+        .expect("past")
+        .iter()
+        .map(|p| {
+            (
+                p["from"].clone(),
+                p["to"].clone(),
+                p["account"].clone(),
+                p["why"].clone(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        past,
+        vec![
+            (
+                json!(t - 6 * 3600),
+                json!(t - 3600),
+                json!("a"),
+                Value::Null
+            ),
+            (
+                json!(t - 3600),
+                json!(t),
+                json!("b"),
+                json!({"threshold": {"n": 90}})
+            ),
+        ],
+        "{got}"
+    );
+    assert_eq!(
+        got["head"],
+        json!({"account": "b", "w": "5h", "pct": 63, "toTrigger": 27}),
+        "{got}"
+    );
+    // 刻度：24h 一格 1h（按这台本地钟对齐），每 3h 一个轴上的字（`HH:MM`）；悬停 / 键盘按格走，每格带写好的字。
+    let grid = got["grid"].as_array().expect("grid");
+    assert!((24..=25).contains(&grid.len()), "{got}"); // 此刻正落在整点上 ⇒ 视窗两头都是格
+    assert!(grid
+        .windows(2)
+        .all(|w| w[1]["at"].as_u64().unwrap() - w[0]["at"].as_u64().unwrap() == 3600));
+    assert!(grid.iter().all(|g| g["atText"].is_string()));
+    let labels: Vec<&str> = grid.iter().filter_map(|g| g["label"].as_str()).collect();
+    assert!((8..=9).contains(&labels.len()), "{got}");
+    assert!(
+        labels.iter().all(|l| l.len() == 5 && l.ends_with(":00")),
+        "{labels:?}"
+    );
+    let week = answer_plan_with(&ctx, &json!({"sid": "s-1", "view": "7d"}), t).expect("ok");
+    assert_eq!(week["until"], json!(t + 6 * 86_400));
+    let last = week["plan"]
+        .as_array()
+        .expect("plan")
+        .last()
+        .expect("seg")
+        .clone();
+    assert_eq!(last["to"], json!(t + 86_400), "7d 的将来只画到 +1d：{week}");
+    let wl: Vec<&str> = week["grid"]
+        .as_array()
+        .expect("grid")
+        .iter()
+        .filter_map(|g| g["label"].as_str())
+        .collect();
+    assert!(
+        (6..=7).contains(&wl.len()) && wl.iter().all(|l| l.len() == 5 && l.as_bytes()[2] == b'-'),
+        "{wl:?}"
+    );
+    let lane_b = got["lanes"]
+        .as_array()
+        .expect("lanes")
+        .iter()
+        .find(|l| l["account"] == "b")
+        .expect("b");
+    assert_eq!(lane_b["pct"], json!(63));
+    // 不带 view ＝ 编辑器那一问：照旧从此刻起、没有 past。
+    let got = answer_plan_with(&ctx, &json!({"sid": "s-1"}), t).expect("ok");
+    assert_eq!(got["from"], json!(t));
+    assert!(got.get("past").is_none(), "{got}");
+    assert_eq!(
+        answer_plan_with(&ctx, &json!({"sid": "s-1", "view": "12h"}), t)
+            .expect_err("视窗")
+            .code,
+        "bad_args"
+    );
+}
+
+/// ★ 卡住：池里都被拒 ⇒ 顶行换成 `head.blocked`（最早回来的那个号 · 几点 · 哪个窗口重置）。
+#[test]
+fn the_timeline_head_says_when_the_earliest_one_comes_back() {
+    let home = Home::new("tl-blocked");
+    let ctx = home.ctx();
+    let t = now();
+    answer_set_with(&ctx, &json!({"rotation": rot_json(&["b"])})).expect("set");
+    home.saw(&ctx, "s-1");
+    seen(&ctx, "a", 0.0, Some(t + 7200));
+    seen(&ctx, "b", 0.0, Some(t + 3600));
+    let got = answer_plan_with(&ctx, &json!({"sid": "s-1", "view": "6h"}), t).expect("ok");
+    assert_eq!(got["from"], json!(t - 2 * 3600), "{got}");
+    assert_eq!(got["until"], json!(t + 4 * 3600));
+    assert_eq!(got["head"]["blocked"]["account"], "b", "{got}");
+    assert_eq!(got["head"]["blocked"]["at"], json!(t + 3600));
+    assert!(got["head"]["blocked"]["atText"].is_string());
+}
+
+/// ★ 设置里那一问（`{machine: true}`）：本机全部号各一条泳道（按默认规则判封顶）· 每号此刻有几个活着的会话在用（`usedBy`）· 没有本会话那几格。
+/// quota-warm 留了状态文件、进程还活着 ⇒ 泳道带下一次开窗的时刻（`warm`）；进程没了 ⇒ 整类不给。
+#[test]
+fn the_machine_timeline_lists_every_account_and_who_uses_it() {
+    let home = Home::new("tl-machine");
+    let ctx = home.ctx();
+    let t = now();
+    home.saw(&ctx, "s-1");
+    home.saw(&ctx, "s-2");
+    home.saw(&ctx, "s-3");
+    switched(&ctx, "s-3", "a", "b", t - 60, SwitchWhy::Preempt);
+    home.end("s-2");
+    let warm = home.root.join("quota-warm.json");
+    std::fs::write(
+        &warm,
+        json!({"pid": std::process::id(), "next": [{"account": "b", "at": t + 1800}]}).to_string(),
+    )
+    .expect("warm");
+    let got = answer_plan_with(&ctx, &json!({"machine": true, "view": "24h"}), t).expect("ok");
+    let lanes = got["lanes"].as_array().expect("lanes");
+    assert_eq!(
+        lanes
+            .iter()
+            .map(|l| l["account"].clone())
+            .collect::<Vec<_>>(),
+        vec![json!("a"), json!("b"), json!("c"), json!("api")],
+        "{got}"
+    );
+    let of = |a: &str| {
+        lanes
+            .iter()
+            .find(|l| l["account"] == a)
+            .expect("lane")
+            .clone()
+    };
+    assert_eq!(of("a")["usedBy"], json!(1), "s-2 已结束不算");
+    assert_eq!(of("b")["usedBy"], json!(1));
+    assert_eq!(of("c")["usedBy"], json!(0));
+    assert_eq!(
+        of("b")["warm"],
+        json!([{"at": t + 1800, "atText": of("b")["warm"][0]["atText"]}])
+    );
+    assert!(of("b")["warm"][0]["atText"].is_string());
+    assert!(of("a").get("warm").is_none(), "{got}");
+    assert!(
+        got.get("past").is_none() && got.get("head").is_none(),
+        "{got}"
+    );
+    std::fs::write(
+        &warm,
+        json!({"pid": u32::MAX - 7, "next": [{"account": "b", "at": t + 1800}]}).to_string(),
+    )
+    .expect("warm");
+    let got = answer_plan_with(&ctx, &json!({"machine": true, "view": "24h"}), t).expect("ok");
+    assert!(
+        got["lanes"]
+            .as_array()
+            .expect("lanes")
+            .iter()
+            .all(|l| l.get("warm").is_none()),
+        "{got}"
+    );
+}
+
+/// ★ 起会话框带规则：起之前给定好的 sid 记一条、来源 ＝ 那条规则；中转随后第一次看见它（起它的号对不上也一样）⇒ 来源不动；
+/// 规则不在 ⇒ `no_such_rule`；起不成撤掉（只撤还没换过号的）。
+#[test]
+fn a_preset_session_keeps_its_rule_when_the_relay_first_sees_it() {
+    let home = Home::new("preset");
+    let ctx = home.ctx();
+    let night = new_rule(&ctx, "夜间", &["b"]);
+    let sid = crate::accounts::quota::rotation::new_session_id();
+    assert!(shell_quote_core::session_id_ok(&sid), "{sid}");
+    assert_ne!(
+        sid,
+        crate::accounts::quota::rotation::new_session_id(),
+        "每次一个新的"
+    );
+    preset_with(&ctx, &sid, "claude", &night, now()).expect("preset");
+    home.saw(&ctx, &sid);
+    assert_eq!(source_of(&ctx, &sid), Source::Rule(night.clone()));
+    assert_eq!(
+        preset_with(&ctx, "s-x", "claude", "r_gone", now())
+            .expect_err("不在")
+            .0,
+        "no_such_rule"
+    );
+    forget_preset_with(&ctx, &sid);
+    assert!(!ctx.hop.store.now().sessions.contains_key(&sid));
+}
+
+/// 读不懂的 rotation.json 在各读答里是成功应答的一格：`reason` 只是那一句（不带解析器原话），原话进 `detail`（复制详情，命令名 · 码 `unreadable`）；
+/// 往读不懂的那份写（存规则）不覆盖，失败带原话（进应答详情）。
+#[test]
+fn an_unreadable_rotation_file_answers_a_sentence_and_a_detail() {
+    let home = Home::new("unreadable");
+    let ctx = home.ctx();
+    std::fs::write(home.root.join(rotation::FILE_NAME), b"{not json").expect("write");
+    let raw = "key must be a string";
+    let reads = [
+        ("rotation-rules-read", answer_rules_read_with(&ctx)),
+        (
+            "rotation-session-read",
+            answer_session_read_with(&ctx, &json!({"sids": ["s-1"]}), now()).expect("read"),
+        ),
+        (
+            "rotation-plan",
+            answer_plan_with(&ctx, &json!({"machine": true}), now()).expect("plan"),
+        ),
+    ];
+    for (cmd, v) in &reads {
+        assert_eq!(v["state"], "unreadable", "{cmd}: {v}");
+        let reason = v["reason"]
+            .as_str()
+            .unwrap_or_else(|| panic!("{cmd} 没有 reason：{v}"));
+        assert!(!reason.contains(raw), "{cmd}: 原话进了那一句：{reason}");
+        let detail = v["detail"]
+            .as_str()
+            .unwrap_or_else(|| panic!("{cmd} 没有 detail：{v}"));
+        assert!(
+            detail.contains(cmd) && detail.contains("unreadable") && detail.contains(raw),
+            "{cmd}: {detail}"
+        );
+    }
+    let fail = answer_rule_save_with(&ctx, &json!({"name": "night", "from": "blank"}), now())
+        .expect_err("读不懂的那份不覆盖");
+    assert_eq!(fail.code, "io_failed");
+    assert!(!fail.message.contains(raw), "{}", fail.message);
+    assert!(
+        fail.raw.as_deref().is_some_and(|r| r.contains(raw)),
+        "{:?}",
+        fail.raw
+    );
+    assert_eq!(
+        std::fs::read(home.root.join(rotation::FILE_NAME)).expect("read"),
+        b"{not json"
+    );
+    let fresh = Home::new("readable");
+    let ok = answer_rules_read_with(&fresh.ctx());
+    assert!(ok["detail"].is_null(), "不在那一形多出了详情：{ok}");
+    let _ = std::fs::remove_dir_all(&home.root);
+    let _ = std::fs::remove_dir_all(&fresh.root);
+}
+
+/// b 的 5h 窗口在 `at` 时用了 `used`（重置在 `resets`）。
+fn seen_at(ctx: &Ctx, account: &str, used: f64, at: u64, resets: u64) {
+    use crate::agents::{QuotaReading, QuotaStatus, QuotaWindow};
+    let r = QuotaReading {
+        status: Some(QuotaStatus::Allowed),
+        refused: false,
+        limiting: Some("five_hour".into()),
+        resets_at: Some(resets),
+        windows: vec![QuotaWindow {
+            name: "five_hour".into(),
+            used: Some(used),
+            resets_at: Some(resets),
+            warned_at: None,
+        }],
+        overage: None,
+    };
+    ledger::record_seen(&ctx.hop.quota, "claude-code", account, r, at);
+}
+
+/// ★ 顶行的「估」：此刻的号这一窗有两次不同的采样、最近 30 分钟在涨 ⇒ `est{at, pct, w}`，到的是这号这窗口此刻取的上限
+/// （封顶 → 触发 → 满）；只有一次采样 ⇒ 不给。
+#[test]
+fn the_timeline_head_estimates_when_the_account_reaches_its_limit_only_with_grounds() {
+    let home = Home::new("tl-est");
+    let ctx = home.ctx();
+    let t = now();
+    let mut r = rot_json(&["b"]);
+    r["when"] = json!({"threshold": {"n": 90}});
+    answer_set_with(&ctx, &json!({"rotation": r.clone()})).expect("set");
+    home.saw(&ctx, "s-1");
+    switched(
+        &ctx,
+        "s-1",
+        "a",
+        "b",
+        t - 3600,
+        SwitchWhy::Threshold { n: 90 },
+    );
+    let resets = t + 5 * 3600;
+    seen_at(&ctx, "b", 0.40, t - 900, resets);
+    let ask = json!({"sid": "s-1", "view": "24h"});
+    let got = answer_plan_with(&ctx, &ask, t).expect("ok");
+    assert!(
+        got["head"].get("est").is_none(),
+        "只有一次采样就给了估：{got}"
+    );
+    seen_at(&ctx, "b", 0.46, t - 300, resets);
+    let got = answer_plan_with(&ctx, &ask, t).expect("ok");
+    // 600 秒涨 6 点 ⇒ 到 90% 还差 44 点 ＝ 4400 秒。
+    let est = &got["head"]["est"];
+    assert_eq!(
+        (est["at"].clone(), est["pct"].clone(), est["w"].clone()),
+        (json!(t - 300 + 4_400), json!(90), json!("5h")),
+        "{got}"
+    );
+    assert!(est["atText"].is_string());
+    r["cap"] = json!({"b": {"5h": 70}});
+    answer_set_with(&ctx, &json!({"rotation": r})).expect("set");
+    let got = answer_plan_with(&ctx, &ask, t).expect("ok");
+    let est = &got["head"]["est"];
+    assert_eq!(
+        (est["at"].clone(), est["pct"].clone()),
+        (json!(t - 300 + 2_400), json!(70)),
+        "到的应是封顶：{got}"
+    );
+    assert!(
+        answer_plan_with(&ctx, &ask, t + 1_800).expect("ok")["head"]
+            .get("est")
+            .is_none(),
+        "涨在 30 分钟以前还给估"
+    );
 }

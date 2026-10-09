@@ -13,7 +13,16 @@ function sessionByPath(w: World, path: unknown): SessionSpec | undefined {
 }
 
 /** 记录行的字节布局（骨架 / 大纲按偏移读）：每条一行 JSON。 */
+const layouts = new WeakMap<JsonlRecord[], { at: { o: number; n: number }[]; end: number }>();
 function layout(records: JsonlRecord[]): { at: { o: number; n: number }[]; end: number } {
+  // 记一份（同一个数组只量一次）：长会话每问都整份 stringify 一遍，假后端自己就占掉页里一大截主线程（性能台架量的是产品）。
+  const had = layouts.get(records);
+  if (had && had.at.length === records.length) return had;
+  const fresh = layoutOnce(records);
+  layouts.set(records, fresh);
+  return fresh;
+}
+function layoutOnce(records: JsonlRecord[]): { at: { o: number; n: number }[]; end: number } {
   let o = 0;
   const at = records.map((r) => {
     const n = JSON.stringify(r).length + 1;
@@ -114,7 +123,27 @@ export function defaultOps(): Record<string, OpHandler> {
     ),
     // 额度与轮换：缺省世界里中转还没见过任何回包、任何会话（额度场景在 `scenes/acct.ts` 整条覆盖）。
     "quota-read": () => ({ state: "absent", reason: null, path: "/home/user/.cc-monitor/quota.json", now: Math.floor(Date.now() / 1000), accounts: [], unseen: [], usableNow: [], earliestReturn: null }),
-    "rotation-read": () => ({ state: "absent", reason: null, path: "/home/user/.cc-monitor/rotation.json", rotation: { order: [{ start: true }], enabled: [], when: "full", atLimit: "continue" }, followers: 0 }),
+    "rotation-rules-read": () => ({
+      state: "absent",
+      reason: null,
+      path: "/home/user/.cc-monitor/rotation.json",
+      defaultRule: "r_00000000",
+      rules: [
+        {
+          id: "r_00000000",
+          name: "日常",
+          rotation: { order: [{ start: true }], enabled: [], when: "full", atLimit: "continue", wait: 40 },
+          rev: 1,
+          updatedAt: 0,
+          isDefault: true,
+          users: { live: 0, ended: 0, follow: 0, doing: {}, sids: [], endedSids: [] },
+          summary: "起始 · 满",
+          explain: "起始账号先用 · 被拒才换 · 不主动换回 · 其余号 40m 内恢复则不切兜底",
+          missing: [],
+          atLimitApplies: false,
+        },
+      ],
+    }),
     "rotation-session-read": (_o, req) => ({
       state: "absent",
       reason: null,
@@ -163,15 +192,24 @@ export function defaultOps(): Record<string, OpHandler> {
       return { families: [{ family: "turn", names: [] }, ...(tasks.length ? [{ family: "task", names: tasks }] : [])] };
     },
     // 查看器整份读（按字节分页，这里一页交完）：历史页右边、只读查看器用它。
+    // 带 `until` ＝ 按字节取一段（骨架按偏移取正文）：照字节布局切 `[offset, until)` 那几条；不带 ＝ 从 `offset` 起到末尾。
     "history-page": (_o, req, w) => {
       const s = sessionByPath(w, req.path);
       const recs = s?.records ?? [];
       const path = String(req.path);
+      const { at, end } = layout(recs);
+      const off = Number(req.offset ?? 0);
+      const until = req.until === undefined ? end : Number(req.until);
+      let i0 = at.findIndex((a) => a.o >= off);
+      if (i0 < 0) i0 = recs.length;
+      let i1 = i0;
+      while (i1 < recs.length && at[i1].o < until) i1++;
+      const base = req.seq === undefined ? i0 : Number(req.seq);
       return {
-        lines: recs.map((message, i) => ({ session_id: s?.sid ?? "", path, seq: i, cwd: s?.cwd ?? null, message })),
-        next: Number(req.offset ?? 0) + 1,
-        nextSeq: recs.length,
-        eof: true,
+        lines: recs.slice(i0, i1).map((message, k) => ({ session_id: s?.sid ?? "", path, seq: base + k, cwd: s?.cwd ?? null, message })),
+        next: i1 < recs.length ? at[i1].o : end,
+        nextSeq: base + (i1 - i0),
+        eof: i1 >= recs.length || (i1 < recs.length && at[i1].o >= until),
       };
     },
     "history-lines": (_o, req, w) => {
@@ -215,19 +253,32 @@ export function defaultOps(): Record<string, OpHandler> {
           .map((r) => ({ uuid: r.uuid, excerpt: r.userText.text.slice(0, 120), timestamp: r.timestamp })),
       };
     },
-    // 一轮的摘要：照后端 `observe/turns.rs` 那几条口径（你说的一句起、到下一句；结论 ＝ 最后一次工具调用之后带正文的那几条）。
-    "history-turns": (_o, req, w) => {
+    // 一轮的摘要：照后端 `observe/turns.rs` 那几条口径（人说的一句起、到下一句；结尾 ＝ 最后一次工具调用之后带正文的那几条，没有 ⇒ 中断标记 / 报错卡；
+    // 派 agent 不算工具；后台任务通知不数交回过的那个子 agent；行上的字与右端那一截后端写好；最后一轮还在跑 ⇒ 按会话事实补「现在 / 等你」）。
+    "history-turns": (o, req, w) => {
       const recs = sessionByPath(w, req.path)?.records ?? [];
       const { at, end } = layout(recs);
-      type T = { at: number; uuid: string; start: string; end: string; startText: string; endText: string; said: string; tools: number; thinking: number; fails: number; conclusion: string[]; reply: string; done: boolean };
+      type Part = { text: string; tone: string };
+      type T = {
+        at: number; uuid: string; start: string; end: string; startText: string; endText: string; said: string;
+        tools: number; thinking: number; agents: number; background: number; retries: number; peers: number; fails: number;
+        ending: string[]; reply: string; done: boolean; phase: string; parts: Part[]; span: { text: string; from: number | null; to: number | null };
+      };
+      type Acc = { middles: number; compacts: number; stop: string | null; notices: { task: string | null; failed: boolean }[]; runs: string[]; agentCalls: string[]; pending: { id: string; name: string; what: string | null }[] };
       const turns: T[] = [];
+      const accs: Acc[] = [];
       let cur: T | null = null;
-      let afterTool: string[] = [];
-      const close = (t: T): void => {
-        t.conclusion = afterTool;
-        const texts = recs.filter((r): r is Extract<JsonlRecord, { type: "assistant" }> => r.type === "assistant" && afterTool.includes(r.uuid));
+      let acc: Acc | null = null;
+      const n = (key: Parameters<typeof copyText>[0], v: number): string => copyText(key, { n: String(v) });
+      const close = (t: T, x: Acc): void => {
+        for (const no of x.notices) {
+          if (!(no.task && x.runs.includes(no.task))) t.background++;
+          if (no.failed) t.fails++;
+        }
+        if (t.ending.length === 0 && x.stop) t.ending = [x.stop];
+        const texts = recs.filter((r): r is Extract<JsonlRecord, { type: "assistant" }> => r.type === "assistant" && t.ending.includes(r.uuid));
         const body = texts.flatMap((r) => ((r.message.content as { type: string; text?: string }[]).filter((b) => b.type === "text").map((b) => b.text ?? "")));
-        // 只取正文行：代码块整块不算；只有代码 ⇒「仅代码」（同后端 `turns.rs::close`）。
+        // 只取正文行：代码块整块不算；只有代码 ⇒「仅代码」（同后端 `turns.rs::reply_head`）。
         let fenced = false;
         let code = false;
         const prose = body.join("\n").split("\n").map((l) => l.trim()).filter((l) => {
@@ -239,37 +290,115 @@ export function defaultOps(): Record<string, OpHandler> {
           return !fenced && l !== "";
         }).map((l) => l.replace(/^[#>]+\s*/, "").replace(/\*\*|__|`/g, "")).filter((l) => l !== "");
         t.reply = prose.length === 0 && code ? copyText("rsTurns.reply.codeOnly") : prose.slice(0, 3).join("\n").slice(0, 120);
+        const counted: [Parameters<typeof copyText>[0], number][] = [
+          ["rsTurns.proc.tools", t.tools], ["rsTurns.proc.thinking", t.thinking], ["rsTurns.proc.agents", t.agents],
+          ["rsTurns.proc.background", t.background], ["rsTurns.proc.retries", t.retries], ["rsTurns.proc.peers", t.peers],
+        ];
+        const items = counted.reduce((s, [, v]) => s + v, 0) + x.middles + x.compacts;
+        if (items > 0 && !(items === x.compacts && x.compacts === 1)) {
+          t.parts = [{ text: copyText("rsTurns.proc.head"), tone: "plain" }, ...counted.filter(([, v]) => v > 0).map(([k, v]) => ({ text: n(k, v), tone: "plain" }))];
+          if (t.fails > 0) t.parts.push({ text: n("rsTurns.proc.fails", t.fails), tone: "fail" });
+        }
+        const when = t.startText === t.endText ? t.startText : copyText("rsTurns.span.range", { from: t.startText, to: t.endText });
+        const [a, b] = [Date.parse(t.start), Date.parse(t.end)];
+        t.span = b - a >= 1000 ? { text: copyText("rsTurns.span.done", { when, dur: "{dur}" }), from: a, to: b } : { text: when, from: null, to: null };
       };
       recs.forEach((r, i) => {
-        if (r.type === "user" && r.userText.speaker.kind === "human" && r.userText.text !== "" && r.uuid) {
-          if (cur) {
+        const sp = r.type === "user" ? r.userText.speaker : null;
+        const head = sp !== null && r.type === "user" && r.uuid && ((sp.kind === "human" && r.userText.text !== "") || sp.kind === "slashCommand" || sp.kind === "bashInput");
+        if (head && r.type === "user") {
+          if (cur && acc) {
             cur.done = true;
-            close(cur);
+            close(cur, acc);
           }
-          cur = { at: at[i].o, uuid: r.uuid, start: r.timestamp, end: r.timestamp, startText: hm(Date.parse(r.timestamp)), endText: hm(Date.parse(r.timestamp)), said: r.userText.text.split("\n")[0].slice(0, 50), tools: 0, thinking: 0, fails: 0, conclusion: [], reply: "", done: false };
+          const said = sp!.kind === "slashCommand" ? `${(sp as { name: string }).name} ${(sp as { args?: string }).args ?? ""}`.trim() : r.userText.text;
+          cur = {
+            at: at[i].o, uuid: r.uuid!, start: r.timestamp, end: r.timestamp, startText: hm(Date.parse(r.timestamp)), endText: hm(Date.parse(r.timestamp)), said: said.split("\n")[0].slice(0, 50),
+            tools: 0, thinking: 0, agents: 0, background: 0, retries: 0, peers: 0, fails: 0, ending: [], reply: "", done: false, phase: "idle", parts: [], span: { text: "", from: null, to: null },
+          };
+          acc = { middles: 0, compacts: 0, stop: null, notices: [], runs: [], agentCalls: [], pending: [] };
           turns.push(cur);
-          afterTool = [];
+          accs.push(acc);
           return;
         }
-        if (!cur || (r.type !== "user" && r.type !== "assistant")) return;
+        if (!cur || !acc) return;
+        const rr = r as { type: string; subtype?: string; timestamp?: string };
+        if (rr.type === "system" && rr.subtype === "api_error") {
+          cur.retries++;
+          return;
+        }
+        if (r.type !== "user" && r.type !== "assistant") return;
         cur.end = r.timestamp;
         cur.endText = hm(Date.parse(r.timestamp));
-        const content = Array.isArray(r.message.content) ? (r.message.content as { type: string; text?: string; is_error?: boolean }[]) : [];
+        const content = Array.isArray(r.message.content) ? (r.message.content as { type: string; id?: string; name?: string; text?: string; is_error?: boolean; tool_use_id?: string; input?: Record<string, unknown> }[]) : [];
         if (r.type === "assistant") {
+          acc.stop = null;
+          const kids = (r as { childRuns?: Record<string, unknown> }).childRuns ?? {};
+          let called = false;
           for (const b of content) {
             if (b.type === "tool_use") {
-              cur.tools++;
-              afterTool = [];
+              called = true;
+              if (b.id && b.id in kids) {
+                cur.agents++;
+                acc.agentCalls.push(b.id);
+              } else cur.tools++;
+              if (b.id && b.name) acc.pending.push({ id: b.id, name: b.name, what: typeof b.input?.pattern === "string" ? b.input.pattern : typeof b.input?.command === "string" ? b.input.command : typeof b.input?.file_path === "string" ? b.input.file_path : null });
+              acc.middles += cur.ending.length;
+              cur.ending = [];
             }
             if (b.type === "thinking") cur.thinking++;
           }
-          if (!(r as { isApiErrorMessage?: boolean }).isApiErrorMessage && content.some((b) => b.type === "text" && b.text?.trim())) afterTool.push(r.uuid);
+          const hasText = content.some((b) => b.type === "text" && b.text?.trim());
+          if ((r as { isApiErrorMessage?: boolean }).isApiErrorMessage) {
+            acc.stop = r.uuid;
+            cur.done = true;
+          } else if (called && hasText) acc.middles++;
+          else if (hasText) cur.ending.push(r.uuid);
           if (r.message.stop_reason === "end_turn") cur.done = true;
         } else {
-          cur.fails += content.filter((b) => b.type === "tool_result" && b.is_error).length;
+          for (const b of content) {
+            if (b.type !== "tool_result") continue;
+            acc.pending = acc.pending.filter((p) => p.id !== b.tool_use_id);
+            if (b.is_error) cur.fails++;
+          }
+          const k = r.userText.speaker as { kind: string; taskId?: string; status?: string; handback?: boolean; from?: string };
+          if (k.kind === "taskNotification") acc.notices.push({ task: k.taskId ?? null, failed: k.status === "failed" });
+          else if (k.kind === "agentMessage" && k.handback && k.from) acc.runs.push(k.from);
+          else if (k.kind === "agentMessage" || k.kind === "peerSession") cur.peers++;
+          else if (k.kind === "compactSummary") acc.compacts++;
+          else if (k.kind === "interrupt") {
+            acc.stop = r.uuid;
+            cur.done = true;
+            acc.pending = [];
+          }
         }
       });
-      if (cur) close(cur);
+      if (cur && acc) close(cur, acc);
+      // 最后一轮还没收尾：按会话事实补那一截（同后端 `turns.rs::dress_live`）。
+      const last = turns.at(-1);
+      const lastAcc = accs.at(-1);
+      if (last && lastAcc && !last.done) {
+        const f = (defaultOps()["history-facts"](o, { path: req.path }, w) as { needs: { kind: string; tool: string | null; what: string | null; sinceMs: number | null } | null; writers: number[] });
+        const step = (name: string, what: string | null): string => (what ? `${name} ${what}` : name);
+        // 假后端的会话时刻是固定的几天前 ⇒「起了多久」按「此刻往前 42 秒」画（真后端是这一轮你那句的时刻）。
+        const since = { text: copyText("rsTurns.span.since", { hm: last.startText, dur: "{dur}" }), from: Date.now() - 42_000, to: null };
+        if (f.needs) {
+          last.phase = "awaiting";
+          if (last.parts.length > 0) {
+            const nd = f.needs;
+            const text = (nd.kind === "approve" || nd.kind === "plan") && nd.tool ? copyText("rsTurns.proc.awaitApprove", { step: step(nd.tool, nd.what) }) : nd.kind === "answer" ? copyText("rsTurns.proc.awaitAnswer", { step: nd.what ?? nd.tool ?? "" }) : copyText("rsTurns.proc.awaitYou");
+            last.parts.push({ text, tone: "need" });
+            last.span = nd.sinceMs !== null ? { text: copyText("rsTurns.span.waited", { dur: "{dur}" }), from: nd.sinceMs, to: null } : since;
+          }
+        } else if (f.writers.length > 0) {
+          last.phase = "running";
+          if (last.parts.length > 0) {
+            const p = lastAcc.pending.at(-1);
+            if (p) last.parts.push({ text: copyText("rsTurns.proc.now", { step: step(p.name, p.what) }), tone: "now" });
+            last.span = since;
+          }
+        }
+      }
       return { from: 0, end, turns };
     },
     "history-facts": (_o, req, w) => {

@@ -32,6 +32,7 @@ const SINGLE_LINE: [string, string, string][] = [
   ["session-head.module.css", ".shDir", "会话头目录"],
   ["session-head.module.css", ".shState", "会话头状态一句"],
   ["styles.css", ".tab-title", "标签页名字"],
+  ["kit/fold.module.css", ".foldSummary", "折叠块标题行右侧那一句摘要"],
 ];
 
 /** ② 右侧按钮组：文件 · 选择器 · 是什么。 */
@@ -39,6 +40,7 @@ const FIXED_BUTTONS: [string, string, string][] = [
   ["session-head.module.css", ".shExtra", "会话头［恢复 ▾］那一格"],
   ["session-head.module.css", ".shActs", "会话头右侧按钮"],
   ["styles.css", ".tab-trail", "标签页行尾徽标"],
+  ["kit/fold.module.css", ".foldTitle", "折叠块标题（窄了让摘要先省略，标题不挤成竖排）"],
 ];
 
 describe("单行文字不压按钮", () => {

@@ -1,18 +1,4 @@
-//! 跨模块工具：时间换算 + procStart newtype。原子 JSON 写入与天数 ⇒ 公历在 `host_core`（两个前端共用的那一份）。
-//!
-//! ## procStart newtype（P1.1）
-//!
-//! `FileTime(u64)` = Win32 FILETIME（自 1601-01-01 UTC，100ns 单位）；
-//! 来源：Rust 端 `GetProcessTimes`、PS 端 `[Process].StartTime.ToFileTime()`。
-//! Claude Code 在 `sessions/<PID>.json` 里写的 `procStart` 是另一种单位（.NET 本地 ticks，自 0001-01-01）；
-//! monitor 今天不读那个字段，原先为它立的那个 newtype 与换算一个调用方都没有，删了。
-
-/// Win32 FILETIME (自 1601-01-01 UTC, 100ns 单位)。
-/// Rust 端 GetProcessTimes / PS 端 `[Process].StartTime.ToFileTime()` 都给这个。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct FileTime(pub u64);
-
-// 它的方法（`from_win32`，`cfg(windows)`）住 `platform/filetime.rs`。
+//! 跨模块工具：时间换算。原子 JSON 写入与天数 ⇒ 公历在 `host_core`（两个前端共用的那一份）。
 
 // === P3：时间换算（归并 history / subagent / bind 三处独立实现） ===
 

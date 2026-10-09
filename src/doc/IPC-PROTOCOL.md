@@ -47,7 +47,7 @@ monitor 只对 hello 里**声明了对应能力**（`capabilities`）的后端�
 ```text
 → {"id":"<不透明串>","cmd":"<命令名>","args":{…},"within_ms":10000}          一行一个；args 缺 ＝ null；within_ms 可缺
 ← {"kind":"reply","id":"…","ok":true,"data":{…}}                              无返回值时没有 data
-← {"kind":"reply","id":"…","ok":false,"code":"…","message":"…"}                少数码另带 data（形状见各命令）
+← {"kind":"reply","id":"…","ok":false,"code":"…","message":"…","detail":"…"}  少数码另带 data（形状见各命令）
 → {"id":"…","cmd":"cancel","args":{"target":"<要撤的 id>"}}
 ← {"kind":"cancelled","id":"<被撤的 id>"}
 ```
@@ -57,16 +57,19 @@ monitor 只对 hello 里**声明了对应能力**（`capabilities`）的后端�
 - **超时归客户端**：后端零定时器，不替客户端掐表；客户端的期限覆盖「写入 ＋ 等应答」两段，到点就撤单（`cancel`）。
 - **取消是一条普通命令**。撤一个不存在的 `id` 也回 `ok`。阻塞档的命令开跑之后打不断，`cancel` 回 `not_cancellable`（去等它自己的应答），不会回一条假的 `cancelled`。
 - **应答走独立的小通道**（256 条），与出方向的实时帧（10 000 条）分开：丢一条内容帧可恢复，丢一条应答客户端会永远等下去。writer 有界地优先应答。
+  同走这条通道的还有几种「丢了就停住」的帧：链路字节（`link_data` / `link_end`）· 传输进度（`transfer`）· 测试连接进度（`probe`）· 终端实时预览的画面与收尾（`terminal_screen` / `terminal_follow_end`）。
+  终端画面每条订阅至多一帧在途（客户端回执才推下一帧）、每条连接至多 8 条订阅，单帧至多 512 KiB，所以占不满这条通道。
 - **信任边界**：单行上限 1 MiB（超了整行丢、回 `line_too_long`，`id` 从行首至多 4 KiB 里尽力抠）· 坏 JSON 回 `bad_request` 并继续读 · 任何失败都不结束读循环、不结束进程。
 - **码分两层**：协议级码（闭集，见 IPC-COMMANDS.md 第 3 节）与命令无关、只有入方向那一层发得出；命令自己的码列在各命令下面。客户端拿到协议级码 ＝ 客户端代码写错了，别重试。
-- **文案归前端**：后端只回状态枚举、码与事实，句子由各前端照码说。
+- **失败应答三格**：`code` 给程序认（分支 · 重试判断）；`message` 是给人看的那一句（后端按共享文案表 `src/shared/copy/table.json` 写好，前端原样上屏）；
+  `detail` 是「复制详情」那几行（时刻 · 机器 · 命令 · 码 · 原话，排法只住 `copy_core::detail`），下层原话只进这里、不进 `message`。
 
 ## 5. 会话流：帧的先后与续传
 
 1. 连上：`hello` → 每个活会话一帧 `session_added`（宣告时带初始 `activity` / `waiting_for`；后台会话带 `background: true`）→ `sessions_replayed`（「清单报完了」：分清「还没说完」与「说完了、里面没有它」）。
 2. 内容：每条记录一帧 `line`，带成品 `message`（缺 ＝ 不进界面、照占号）、`seq`（本条流里按文件单调递增）与 `byte_offset`（这一行末尾在文件里的累计字节）。
    **续传用 `byte_offset`，不用 `seq`**：断线重连后拿它当偏移再读（`history-read` / `--read-session-from-offset`）。
-3. 状态：`session_status`（红绿灯变了才发，天然稀疏；`activity` ＝ `working` · `needs_you` · `idle`，后端适配层从那一家的进程状态翻过来，翻不出就不带）· `turn_end`（一轮结束）· `session_runs`（子运行表，整份）· `tasks_changed` / `rotation_changed` / `accounts_changed` / `quota_changed`（只带 sid 或不带载荷：客户端收到就重问那条查询，清单本身不在帧里）。
+3. 状态：`session_status`（红绿灯变了才发，天然稀疏；`activity` ＝ `working` · `needs_you` · `idle`，后端适配层从那一家的进程状态翻过来，翻不出就不带）· `turn_end`（一轮结束）· `session_runs`（子运行表，整份）· `tasks_changed` / `rotation_changed` / `rotation_rules_changed` / `accounts_changed` / `quota_changed`（只带 sid 或不带载荷：客户端收到就重问那条查询，清单本身不在帧里）。
 4. 离开：`session_removed`（`cause`：`gone` 真没了 · `superseded` 同一个 pidfile 原地换了 sid，后者客户端直接归档、别去查 tmux）→ `session_state`（这台后端自己裁：`reconnectable` 容器还在、接得回去 · `ended` 只能 resume）。
 5. 记录文件被动过：`session_file_gone`（不见了，不误判结束）· `session_file_reread`（被截短 / 改写过、已从头重读；紧排在重读出来的 `line` 之前）。
 6. 背压：实时通道满时丢帧，排空后发一帧 `overflow`（丢了几帧 ＋ 不可恢复的那些帧的身份 `lost`）。`line` / `turn_end` 丢了可以从记录文件补；`session_added` / `session_removed` / `session_status` / `session_state` / `tasks_changed` 这类一次性结论丢了别处没有，客户端按 `lost` 重同步。

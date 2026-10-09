@@ -16,7 +16,7 @@
           "present": false,
           "version": null
         },
-        "blockLines": 5,
+        "blockLines": 15,
         "exists": true,
         "path": "<HOME>/.bashrc",
         "policy": null,

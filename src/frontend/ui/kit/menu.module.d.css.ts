@@ -4,11 +4,14 @@ declare const classes: {
   readonly menuBody: string;
   readonly menuDetail: string;
   readonly menuDivider: string;
+  readonly menuEmpty: string;
+  readonly menuFilter: string;
   readonly menuHeading: string;
   readonly menuItem: string;
   readonly menuLabel: string;
   readonly menuLead: string;
   readonly menuNote: string;
+  readonly menuPeek: string;
   readonly menuWhy: string;
   readonly menuWrap: string;
 };

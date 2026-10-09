@@ -17,7 +17,8 @@ import { icon, type IconName } from "./kit/icon";
 import { statusDot, setDot } from "./kit/status-dot";
 import { attachTooltip } from "./kit/tooltip";
 import { button } from "./kit/button";
-import { dotLabel, dotOf, fullTitle, machineOf, stateLine } from "./session-face";
+import { dotOf, fullTitle, machineOf, stateLine } from "./session-face";
+import { dotLabel } from "./session-words";
 import s from "./session-head.module.css";
 
 export interface SessionHeadHost {

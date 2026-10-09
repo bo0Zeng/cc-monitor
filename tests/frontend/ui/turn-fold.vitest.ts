@@ -1,8 +1,10 @@
-// 按轮折叠：完成的轮过程折成一行、结论常显；正在跑的那一轮展开；点过程行这一轮单独记住；
+// 大折叠（按轮）：两句人话之间除结尾外全收进一行（后端给的结尾与行上的字，界面不按卡型猜）；正在跑的那一轮也折着；
+// 点过程行这一轮单独记住、跑完不收；跳卡 / 查找落在折着的过程里自动展开；点「失败 ×N」滚到第一处失败；
 // 默认开关（Ctrl+O）全部摊开 / 收回；骨架占位与 ESC 折叠段之后不再归轮（宁可不折）；续取从还没收尾的那一轮起、整轮替换。
 // 轮次刻度（§5.2.6）：一轮一格、超过 60 轮并格 · 当前那一轮 · 在等你的那一格琥珀 · 点了 / Alt+↑↓ 跳 · 悬停卡在左侧。
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { TurnFold, PROC_LINE_CLASS, setProcessExpandedDefault } from "../../../src/frontend/ui/turn-fold";
+import { TurnFold, PROC_LINE_CLASS, setProcessExpandedDefault, fillDur } from "../../../src/frontend/ui/turn-fold";
+import { revealCard } from "../../../src/frontend/ui/views/session-viewer";
 import { TurnRail, railGroups, RAIL_MAX_TICKS } from "../../../src/frontend/ui/turn-rail";
 import { placeFloat } from "../../../src/frontend/ui/kit/place";
 
@@ -26,10 +28,20 @@ const turn = (uuid: string, at: number, over: Partial<TurnSummary> = {}): TurnSu
   said: "改一下",
   tools: 2,
   thinking: 1,
+  agents: 0,
+  background: 0,
+  retries: 0,
+  peers: 0,
   fails: 0,
-  conclusion: [],
+  ending: [],
   reply: "",
   done: true,
+  phase: "idle",
+  parts: [
+    { text: "头", tone: "plain" },
+    { text: "工具 ×2", tone: "plain" },
+  ],
+  span: { text: "02:01–02:04 · {dur}", from: 0, to: 182_000 },
   ...over,
 });
 
@@ -55,45 +67,115 @@ const lines = (root: HTMLElement): HTMLElement[] => [...root.querySelectorAll<HT
 describe("按轮折叠", () => {
   beforeEach(() => setProcessExpandedDefault(false));
 
-  it("完成的轮：过程折成一行（紧跟你那句），结论与人说的、事件条常显", async () => {
+  it("完成的轮：开头之后、结尾以外的全收进一行（交回条 · 后台任务 · 压缩 · 报错卡也收），结尾与人说的常显；行上的字照后端写", async () => {
     const u1 = card("card-user", "u1");
     const a1 = card("card-assistant", "a1");
     const g1 = card("card-tool-group", "a2");
     const bar = card("card-speaker", "s1");
+    const notice = card("card-notice", "n1");
+    const compact = card("card-compact", "k1");
     const c1 = card("card-assistant", "a3");
     const u2 = card("card-user", "u2");
-    const live = card("card-assistant", "a4");
-    const { content, fold } = rig([u1, a1, g1, bar, c1, u2, live], [
-      { available: true, from: 0, end: 900, turns: [turn("u1", 0, { conclusion: ["a3"], fails: 1 }), turn("u2", 500, { done: false })] },
+    const parts = [
+      { text: "头", tone: "plain" as const },
+      { text: "agent ×2", tone: "plain" as const },
+      { text: "失败 ×1", tone: "fail" as const },
+    ];
+    const { content, fold } = rig([u1, a1, g1, bar, notice, compact, c1, u2], [
+      { available: true, from: 0, end: 900, turns: [turn("u1", 0, { ending: ["a3"], parts }), turn("u2", 500, { parts: [] })] },
     ]);
     await fold.refresh();
     expect(lines(content)).toHaveLength(1);
     expect(u1.nextElementSibling?.classList.contains(PROC_LINE_CLASS)).toBe(true);
-    expect([a1, g1].map(hidden)).toEqual([true, true]);
-    expect([u1, bar, c1, u2, live].map(hidden)).toEqual([false, false, false, false, false]);
+    expect([a1, g1, bar, notice, compact].map(hidden)).toEqual([true, true, true, true, true]);
+    expect([u1, c1, u2].map(hidden)).toEqual([false, false, false]);
     const line = lines(content)[0];
     expect(line.getAttribute("aria-expanded")).toBe("false");
-    expect(line.textContent).toContain(copyText("stream.proc.tools", { n: "2" }));
-    expect(line.textContent).toContain(copyText("stream.proc.thinking", { n: "1" }));
-    expect(line.querySelector(".proc-fails")?.textContent).toBe(copyText("stream.proc.fails", { n: "1" }));
+    expect(line.querySelector(".proc-text")?.textContent).toBe(["头", "agent ×2", "失败 ×1"].join(copyText("kit.text.sep")));
+    expect(line.querySelector(".proc-fails")?.textContent).toBe("失败 ×1");
+    expect(line.querySelector(".proc-span")?.textContent).toBe("02:01–02:04 · 3m02s");
   });
 
-  it("正在跑的那一轮：不出过程行、过程展开，工具组整组摊开", async () => {
+  it("正在跑的那一轮也折着：转圈 ＋「现在：…」；在等你 ⇒ 琥珀点；右端用时到现在", async () => {
     const g = card("card-tool-group", "a1") as HTMLDetailsElement;
-    const { content, fold } = rig([card("card-user", "u1"), g], [{ available: true, from: 0, end: 10, turns: [turn("u1", 0, { done: false })] }]);
-    await fold.refresh();
-    expect(lines(content)).toHaveLength(0);
-    expect(hidden(g)).toBe(false);
-    expect(g.open).toBe(true);
-    expect(g.dataset.procOf).toBe("u1");
-  });
-
-  it("没有工具也没有思考的轮不出过程行", async () => {
-    const { content, fold } = rig([card("card-user", "u1"), card("card-assistant", "a1")], [
-      { available: true, from: 0, end: 10, turns: [turn("u1", 0, { tools: 0, thinking: 0, conclusion: ["a1"] })] },
+    const live = { text: "现在：Grep x", tone: "now" as const };
+    const { content, fold } = rig([card("card-user", "u1"), g], [
+      { available: true, from: 0, end: 10, turns: [turn("u1", 0, { done: false, phase: "running", parts: [{ text: "头", tone: "plain" }, live], span: { text: "02:16 起 · {dur}", from: 0, to: null } })] },
+      { available: true, from: 0, end: 10, turns: [turn("u1", 0, { done: false, phase: "awaiting", parts: [{ text: "头", tone: "plain" }, { text: "等你批准：Bash x", tone: "need" }] })] },
     ]);
     await fold.refresh();
+    expect(hidden(g)).toBe(true);
+    const line = lines(content)[0];
+    expect(line.dataset.phase).toBe("running");
+    expect(line.querySelector(".proc-now")?.textContent).toBe("现在：Grep x");
+    expect(line.querySelector('[aria-hidden="true"]')).not.toBeNull();
+    await fold.refresh();
+    expect(lines(content)[0].dataset.phase).toBe("awaiting");
+    expect(lines(content)[0].querySelector(".proc-need")?.textContent).toBe("等你批准：Bash x");
+    expect(fillDur({ text: "02:16 起 · {dur}", from: 1000, to: null }, 43_000)).toBe("02:16 起 · 42s");
+    expect(fillDur({ text: "02:16", from: null, to: null }, 43_000)).toBe("02:16");
+  });
+
+  it("后端不给行（parts 空：过程是空的 / 只有一条压缩摘要）⇒ 不出过程行、一张不折", async () => {
+    const k = card("card-compact", "k1");
+    const { content, fold } = rig([card("card-user", "u1"), k], [{ available: true, from: 0, end: 10, turns: [turn("u1", 0, { parts: [] })] }]);
+    await fold.refresh();
     expect(lines(content)).toHaveLength(0);
+    expect(hidden(k)).toBe(false);
+  });
+
+  it("手动展开的正在跑那一轮：跑完不收；收起的也不再自己展开", async () => {
+    const a = card("card-assistant", "a1");
+    const { content, fold } = rig([card("card-user", "u1"), a], [
+      { available: true, from: 0, end: 10, turns: [turn("u1", 0, { done: false, phase: "running" })] },
+      { available: true, from: 0, end: 20, turns: [turn("u1", 0)] },
+    ]);
+    await fold.refresh();
+    lines(content)[0].click();
+    expect(hidden(a)).toBe(false);
+    await fold.refresh();
+    expect(hidden(a)).toBe(false);
+  });
+
+  it("跳卡 / 查找落在折着的过程里（revealCard）：展开那一轮再滚；工具组里的一步也找得到", async () => {
+    const g = card("card-tool-group", "a1") as HTMLDetailsElement;
+    const unit = document.createElement("div");
+    unit.dataset.memberUuid = "a2";
+    g.appendChild(unit);
+    const { content, fold } = rig([card("card-user", "u1"), g, card("card-assistant", "a3")], [
+      { available: true, from: 0, end: 10, turns: [turn("u1", 0, { ending: ["a3"] })] },
+    ]);
+    Element.prototype.scrollIntoView = vi.fn();
+    vi.stubGlobal("CSS", { escape: (x: string) => x });
+    await fold.refresh();
+    expect(hidden(g)).toBe(true);
+    expect(revealCard(content, "a2")).toBe(unit);
+    expect(hidden(g)).toBe(false);
+    expect(lines(content)[0].getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("点「失败 ×N」：展开并滚到第一处失败；点行别处 ＝ 开合", async () => {
+    const ok = card("card-tool-group", "a1");
+    const bad = card("card-tool-group", "a2");
+    const step = document.createElement("div");
+    step.className = "step-line";
+    step.dataset.state = "failed";
+    bad.appendChild(step);
+    const parts = [
+      { text: "头", tone: "plain" as const },
+      { text: "失败 ×1", tone: "fail" as const },
+    ];
+    const { content, fold } = rig([card("card-user", "u1"), ok, bad], [{ available: true, from: 0, end: 10, turns: [turn("u1", 0, { parts })] }]);
+    const scrolled = vi.fn();
+    step.scrollIntoView = scrolled;
+    await fold.refresh();
+    lines(content)[0].querySelector<HTMLElement>(".proc-fails")!.click();
+    expect([hidden(ok), hidden(bad)]).toEqual([false, false]);
+    expect(scrolled).toHaveBeenCalled();
+    lines(content)[0].querySelector<HTMLElement>(".proc-fails")!.click();
+    expect(hidden(bad)).toBe(false);
+    lines(content)[0].click();
+    expect(hidden(bad)).toBe(true);
   });
 
   it("点过程行：这一轮就地展开 / 收起；Ctrl+O 换默认、各轮单独记的作废", async () => {
@@ -128,6 +210,55 @@ describe("按轮折叠", () => {
     expect(hidden(p3)).toBe(true);
   });
 
+  it("骨架占位按账本（uuid→seq）认：里面没有哪一轮的开头 ⇒ 它属于这一轮的过程，折着就藏（不物化）、后面接着折；里面有 ⇒ 后面的卡归最后那个开头的轮（开头还没建 ⇒ 先不画行）；展开 ⇒ 露出并叫骨架物化", async () => {
+    const gapIn = document.createElement("div");
+    gapIn.className = "stream-skeleton-gap";
+    gapIn.dataset.skeletonLo = "3";
+    gapIn.dataset.skeletonHi = "9";
+    const after = card("card-assistant", "x1");
+    const gapCross = document.createElement("div");
+    gapCross.className = "stream-skeleton-gap";
+    gapCross.dataset.skeletonLo = "12";
+    gapCross.dataset.skeletonHi = "30";
+    const tail = card("card-assistant", "x2");
+    const content = document.createElement("div");
+    content.append(card("card-user", "u1"), gapIn, after, card("card-assistant", "e1"), gapCross, tail);
+    document.body.replaceChildren(content);
+    const fill = vi.fn(() => 0);
+    const seqs = new Map([["u1", 1], ["u2", 20]]);
+    const read = vi.fn(async (): Promise<TurnsResult> => ({ available: true, from: 0, end: 10, turns: [turn("u1", 0, { ending: ["e1"] }), turn("u2", 5)] }));
+    const fold = new TurnFold(content, content, () => ({ origin: "local" as never, jsonlPath: "/p/s.jsonl" }), read, () => ({ ledger: { uuidToSeq: seqs, endSeq: 40 }, fillVisible: fill, setFolds: vi.fn() }));
+    await fold.refresh();
+    expect([hidden(gapIn), hidden(after)]).toEqual([true, true]);
+    expect(gapIn.dataset.procOf).toBe("u1");
+    expect([hidden(gapCross), hidden(tail)]).toEqual([false, true]);
+    expect(tail.dataset.procOf).toBe("u2");
+    expect(lines(content)).toHaveLength(1);
+    lines(content)[0].click();
+    expect(hidden(gapIn)).toBe(false);
+    expect(fill).toHaveBeenCalled();
+  });
+
+  it("折着的轮把它的过程行（开头之后到下一轮开头 / 账本尾，扣掉结尾那几行）告诉骨架：按 0 高、不物化；带行的开头多一条行高；展开 ⇒ 撤掉", async () => {
+    const content = document.createElement("div");
+    content.append(card("card-user", "u1"), card("card-assistant", "e1"), card("card-user", "u2"), card("card-user", "u3"));
+    document.body.replaceChildren(content);
+    const setFolds = vi.fn();
+    const seqs = new Map([["u1", 1], ["e1", 10], ["u2", 12], ["u3", 30]]);
+    const read = vi.fn(async (): Promise<TurnsResult> => ({
+      available: true,
+      from: 0,
+      end: 10,
+      turns: [turn("u1", 0, { ending: ["e1"] }), turn("u2", 5), turn("u3", 9, { parts: [] })],
+    }));
+    const sk = { ledger: { uuidToSeq: seqs, endSeq: 40 }, fillVisible: vi.fn(() => 0), setFolds };
+    const fold = new TurnFold(content, content, () => ({ origin: "local" as never, jsonlPath: "/p/s.jsonl" }), read, () => sk);
+    await fold.refresh();
+    expect(setFolds).toHaveBeenLastCalledWith({ folded: [[2, 10], [11, 12], [13, 30]], lines: [1, 12], linePx: 40 });
+    lines(content)[0].click();
+    expect(setFolds.mock.lastCall?.[0].folded).toEqual([[13, 30]]);
+  });
+
   it("卡后到（上翻补批 / 骨架物化）：DOM 一变就重排", async () => {
     const { content, fold } = rig([card("card-user", "u1")], [{ available: true, from: 0, end: 10, turns: [turn("u1", 0)] }]);
     await fold.refresh();
@@ -158,16 +289,18 @@ describe("按轮折叠", () => {
     expect(fold.all.map((t) => t.uuid)).toEqual(["u1"]);
   });
 
-  it("收尾那一刻视口在它的过程里：先不收，滚出去 / 切走再收", async () => {
+  it("暂定结论被降级（又调了工具）：那一刻视口正落在它上面 ⇒ 先不收，滚出去 / 切走再收", async () => {
     const a = card("card-assistant", "a1");
-    const { content, fold } = rig([card("card-user", "u1"), a], [
-      { available: true, from: 0, end: 10, turns: [turn("u1", 0, { done: false })] },
-      { available: true, from: 0, end: 20, turns: [turn("u1", 0)] },
+    const g = card("card-tool-group", "a2");
+    const { content, fold } = rig([card("card-user", "u1"), a, g], [
+      { available: true, from: 0, end: 10, turns: [turn("u1", 0, { done: false, ending: ["a1"] })] },
+      { available: true, from: 0, end: 20, turns: [turn("u1", 0, { done: false, ending: [] })] },
     ]);
     const box = (top: number, bottom: number) => ({ top, bottom, height: bottom - top }) as DOMRect;
     content.getBoundingClientRect = () => box(0, 500);
     a.getBoundingClientRect = () => box(100, 200);
     await fold.refresh();
+    expect(hidden(a)).toBe(false);
     await fold.refresh();
     expect(hidden(a)).toBe(false);
     a.getBoundingClientRect = () => box(-300, -200);

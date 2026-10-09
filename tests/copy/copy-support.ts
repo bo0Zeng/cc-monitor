@@ -77,6 +77,15 @@ export interface Entry {
 }
 export type Table = Record<string, Entry>;
 
+/** 生产代码里一处取文调用：在哪 · 哪条 · 给了哪几个参数（Rust 那一侧另记哪几个参数喂的是原话，见 `rust-refs.ts`）。 */
+export interface Ref {
+  file: string;
+  key: string;
+  args: string[];
+  /** 值是下层原话（`e.to_string()` · `format!("{e}")`）的那几个参数名（只 Rust 那一侧记）。 */
+  raw?: string[];
+}
+
 /** 一条文案命中了哪几个限用词（对 `speech()` 跑：占位符名不算文字）。 */
 export function limitedHits(terms: Term[], zh: string): string[] {
   return terms

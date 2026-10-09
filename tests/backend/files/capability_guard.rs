@@ -399,7 +399,11 @@ fn every_declared_capability_is_reachable_through_the_single_entry_point() {
     let mut unreachable: Vec<&str> = Vec::new();
     for name in capability_names() {
         // 刻意不给参数：我们要分的是「这条能力压根没接线」与「参数不对」。
-        if let Err(("unknown_capability", _)) = answer(name, &serde_json::json!({})) {
+        if let Err(Refused {
+            code: "unknown_capability",
+            ..
+        }) = answer(name, &serde_json::json!({}))
+        {
             unreachable.push(name);
         }
     }
@@ -412,7 +416,10 @@ fn every_declared_capability_is_reachable_through_the_single_entry_point() {
     assert!(
         matches!(
             answer("files.delete", &serde_json::json!({})),
-            Err(("unknown_capability", _))
+            Err(Refused {
+                code: "unknown_capability",
+                ..
+            })
         ),
         "一个没声明的能力名被接受了 —— 那上面那一半就不是在证明什么"
     );
@@ -587,7 +594,13 @@ fn a_rebuild_on_an_unreadable_root_is_refused_without_touching_the_resident_inde
         &serde_json::json!({"path": nowhere.to_str().expect("ASCII")}),
     );
     assert!(
-        matches!(got, Err(("unreadable", _))),
+        matches!(
+            got,
+            Err(Refused {
+                code: "unreadable",
+                ..
+            })
+        ),
         "对一个打不开的根没有回 `unreadable`，回的是 {got:?}"
     );
     assert_eq!(
@@ -701,7 +714,7 @@ fn the_new_two_capabilities_declared_codes_are_not_ghosts() {
     ] {
         let got = answer(cap, &args);
         assert!(
-            matches!(got, Err((c, _)) if c == want),
+            matches!(got, Err(Refused { code: c, .. }) if c == want),
             "`{cap}` 对 {args:?} 该回 `{want}`，回的是 {got:?}"
         );
         let declared = CAPABILITIES
@@ -1583,7 +1596,13 @@ fn a_malformed_path_argument_is_refused_with_its_own_code() {
     ] {
         let got = answer(cap, &args);
         assert!(
-            matches!(got, Err(("bad_path", _))),
+            matches!(
+                got,
+                Err(Refused {
+                    code: "bad_path",
+                    ..
+                })
+            ),
             "`{cap}` 对 {args:?} 没有回 `bad_path`，回的是 {got:?}"
         );
     }
@@ -1591,7 +1610,10 @@ fn a_malformed_path_argument_is_refused_with_its_own_code() {
     assert!(
         matches!(
             answer("files.find", &serde_json::json!({})),
-            Err(("bad_args", _))
+            Err(Refused {
+                code: "bad_args",
+                ..
+            })
         ),
         "`files.find` 少了 `needle` 却没回 `bad_args`"
     );
@@ -1610,7 +1632,7 @@ fn the_declared_error_codes_are_not_ghosts() {
     for (cap, want) in [("files.ls", "not_found"), ("files.stat", "unreadable")] {
         let got = answer(cap, &arg);
         assert!(
-            matches!(got, Err((c, _)) if c == want),
+            matches!(got, Err(Refused { code: c, .. }) if c == want),
             "`{cap}` 对一个不存在的路径没有回 `{want}`，回的是 {got:?}"
         );
         let declared = CAPABILITIES
@@ -1635,9 +1657,30 @@ fn the_declared_error_codes_are_not_ghosts() {
         )
     };
     assert!(
-        matches!(ls(&base.join("f.txt")), Err(("not_dir", _))),
+        matches!(
+            ls(&base.join("f.txt")),
+            Err(Refused {
+                code: "not_dir",
+                ..
+            })
+        ),
         "给一份文件没回 `not_dir`"
     );
+    // 句子里只有原因词（全仓那一张表；「不是目录」这一种它说「原因不明」），系统原话进 `raw`、不进句子。
+    let e = ls(&base.join("f.txt")).unwrap_err();
+    assert_eq!(
+        e.said,
+        copy_core::copy_text(
+            "beFilesRead.ls.unreadable",
+            &[(
+                "kind",
+                &copy_core::io_reason(std::io::ErrorKind::NotADirectory)
+            )]
+        )
+    );
+    let raw = e.raw.clone().unwrap_or_default();
+    assert!(!raw.trim().is_empty(), "系统原话丢了：{e:?}");
+    assert!(!e.said.contains(raw.trim()), "原话进了句子：{e:?}");
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt as _;
@@ -1645,7 +1688,7 @@ fn the_declared_error_codes_are_not_ghosts() {
             .unwrap();
         // root 读得动一切 ⇒ 这一格在 root 下判不了（那时列得出来，读数照实）。
         match ls(&base.join("locked")) {
-            Err(("denied", _)) | Ok(_) => {}
+            Err(Refused { code: "denied", .. }) | Ok(_) => {}
             other => panic!("没权限没回 `denied`：{other:?}"),
         }
         std::fs::set_permissions(base.join("locked"), std::fs::Permissions::from_mode(0o755))
@@ -1728,7 +1771,11 @@ fn one_byte_over_the_cap_is_refused_whole_and_exactly_at_the_cap_is_not() {
         &serde_json::json!({ "path": path_json(&f), "max_bytes": 99 }),
     );
     match over {
-        Err(("too_large", m)) => assert!(
+        Err(Refused {
+            code: "too_large",
+            said: m,
+            ..
+        }) => assert!(
             copy_core::copy_matches_with("beFilesRead.text.tooLarge", &[("over", "1")], &m),
             "拒了，但那句话没说多了多少（用户据此知道要删掉多少）：{m}"
         ),
@@ -1786,7 +1833,7 @@ fn every_refusal_of_read_text_lands_on_its_own_declared_code() {
     for (args, want) in &cases {
         let got = answer("files.read.text", args);
         assert!(
-            matches!(got, Err((c, _)) if c == *want),
+            matches!(got, Err(Refused { code: c, .. }) if c == *want),
             "`files.read.text` 对 {args} 该回 `{want}`，回的是 {got:?}"
         );
         seen.insert(want);
@@ -1845,7 +1892,13 @@ fn home_is_given_when_the_environment_has_one_and_refused_otherwise() {
     ] {
         let got = super::home_from(h);
         assert!(
-            matches!(got, Err(("no_home", _))),
+            matches!(
+                got,
+                Err(Refused {
+                    code: "no_home",
+                    ..
+                })
+            ),
             "home 是「{what}」时没有回 `no_home`，回的是 {got:?} —— 那就是在猜一个起点"
         );
     }
@@ -1943,13 +1996,13 @@ fn a_non_utf8_file_is_read_back_chunk_by_chunk_byte_for_byte() {
         &serde_json::json!({ "path": at, "offset": 0, "len": READ_CHUNK_MAX_BYTES + 1 }),
     )
     .unwrap_err();
-    assert_eq!(e.0, "bad_args");
+    assert_eq!(e.code, "bad_args");
     let e = answer_wire(
         "files-read-chunk",
         &serde_json::json!({ "path": raw::to_json(raw::path_bytes(&dir)), "offset": 0, "len": 1 }),
     )
     .unwrap_err();
-    assert_eq!(e.0, "not_text");
+    assert_eq!(e.code, "not_text");
     std::fs::remove_dir_all(&dir).ok();
 }
 

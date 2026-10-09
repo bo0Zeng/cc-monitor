@@ -79,6 +79,11 @@ pub(super) fn hub_here() -> std::sync::Arc<dyn crate::assets::hub::Here> {
     std::sync::Arc::new(LocalFrames)
 }
 
+/// 流那一路的后端里盯这台的 `rotation.json`（别的进程写了也推 `rotation_changed`）。
+pub fn watch_rotation() {
+    crate::accounts::quota::rotation::watch_here();
+}
+
 /// 常驻后端里起「各号的配置文件一变就同步一趟用户级 MCP」那个监听器（写经 [`LocalFiles`]，与帧命令同一扇门）。
 pub fn watch_account_mcp() {
     crate::accounts::manage::mcp_share_watch::start(&LocalFiles);

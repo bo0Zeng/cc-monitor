@@ -243,6 +243,7 @@ pub(crate) async fn open_with(
         machines: machine_names(),
         work_area,
         theme,
+        local_line: crate::detail::local_line(),
     };
     // 🔴**起一个独立进程**；〔09-28 裁 3〕它先列第一屏、说一行，再开窗。
     //

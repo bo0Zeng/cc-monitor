@@ -65,7 +65,7 @@ import { stripComments } from "../../test-support/strip-comments.ts";
 type JudgmentId =
   | "J1" | "J2" | "J3" | "J4" | "J5" | "J6" | "J7"
   | "J9" | "J10" | "J11" | "J12" | "J13" | "J14" | "J15" | "J16"
-  | "J17" | "J18" | "J19" | "J20" | "J21" | "J22" | "J23" | "J24" | "J25";
+  | "J17" | "J18" | "J19" | "J20" | "J21" | "J22" | "J23" | "J24" | "J25" | "J26";
 
 /** TS 孪生的规则指纹：一段字面子串（在**剥过注释**的生产代码里数）。`file` 缺席 = 全体生产段合计。 */
 interface Needle {
@@ -469,8 +469,9 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   },
   J22: {
     what: "因对方版本说不成的两个码（版本旧 / 回的认不出）各取哪一句、本机怎么称呼",
-    // 两侧各一个取句口，取的是表里同两条键（`peerVersion.said.*`）与同一个本机称呼（`control.machine.local`）。
-    homes: ["copy-core::backend_old", "copy-core::reply_unreadable", "copy-core::local_machine"],
+    // 两侧各一个取句口，取的是表里同两条键（`peerVersion.said.*`）与同一个本机称呼（`control.machine.local`）；
+    // 说话那一层不知道名字时的称呼（`control.machine.peer`）只有 Rust 那一侧用（通信层兜底 · 后端自己答不认）。
+    homes: ["copy-core::backend_old", "copy-core::reply_unreadable", "copy-core::local_machine", "copy-core::peer_machine"],
     status: "mirror",
     defs: ["peerVersionSaid"],
     needles: [],
@@ -526,6 +527,19 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
       { text: "getSeconds", count: 0 },
     ],
   },
+  J26: {
+    what: "一行汇总底下几件各自的失败 ⇒ 复制出去的整段（主界面合流 ×N · 文件窗口进度那一行）",
+    homes: ["copy-core::many"],
+    // 认可的双读口（与 J24 同理）：复制出去的字由各自那一端拼（界面拼 toast / 消息的段，文件窗口拼进度行的段），排法一条规则，各对同一份金样。
+    status: "mirror",
+    defs: ["detailMany"],
+    needles: [],
+    parity: {
+      via: "tests/__fixtures__/detail-many.golden.json",
+      tests: ["tests/common/copy-core/detail_tests.rs", "tests/frontend/ui/kit/detail.vitest.ts"],
+    },
+    why: "复制详情条带 §5「合流 ×N 复制出全部段」—— 两个前端各拼自己那几段，排法同一条",
+  },
 };
 
 /** `NONE` = 登记时逐个读过规则、在 TS 生产段按规则搜过，没有孪生。 */
@@ -571,6 +585,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     format_duration: "J24",
     format_elapsed: "J24",
     local_machine: "J22",
+    peer_machine: "J22",
     reply_unreadable: "J22",
     TABLE_JSON: NONE,
     // 天数 ⇒ 公历（后端 · monitor · 文件窗口写日期与「复制详情」的时刻都经它）；界面那一份 TS 删了（J23 zero）。
@@ -579,8 +594,18 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     //   界面只把它接在屏上那句下面原样复制（`kit/detail.ts`），TS 侧没有孪生。
     ALL: NONE,
     RAW_CAP: NONE,
-    append: NONE,
+    block: NONE,
+    // 通道断了那一份（壳与文件窗口两个 Rust 端共用；界面不写通道详情，壳写好交它）。
+    channel: NONE,
+    has: NONE,
+    has_block: NONE,
+    insert: NONE,
     item: NONE,
+    many: "J26",
+    // 自己写的那一行里某一项的值 · 对端写好的那一整份（壳的日志与「放程序」那一口要原话；界面不取）。
+    parse: NONE,
+    value: NONE,
+    written: NONE,
     maybe: NONE,
     new: NONE,
     os_word: NONE,
@@ -680,17 +705,21 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     parse_px: NONE,
     parse_shadow: NONE,
   },
-  // 前端宿主原语（两个前端共用、后端不链）：自有状态文件的原子写（含交给 Win32 的长路径形）· 窗口夹进工作区；TS 侧零孪生。
+  // 前端宿主原语（两个前端共用、后端不链）：自有状态文件的原子写 · 窗口夹进工作区；TS 侧零孪生。
   "host-core": {
     atomic_write_json: NONE,
     fit_into_work_area: NONE,
     // 主窗 / 设置窗摆进工作区正中（宿主那一侧用；TS 侧没有孪生）。
     center_in_work_area: NONE,
-    win32_long_path: NONE,
     // 本机时区偏移 · 这一份编给的系统与架构（文件窗口画修改时间 · monitor 写「复制详情」的时刻与「本机」那一行）；TS 侧零孪生。
     local_offset_at: NONE,
     OS: NONE,
     ARCH: NONE,
+  },
+  // 交给 Win32 的路径（长路径前缀）：后端 · monitor · 文件窗口 · creds-core 共用那一份；TS 侧不碰 Win32。
+  "win-path-core": {
+    win32_long_path: NONE,
+    win32_path: NONE,
   },
   "relay-route-core": {
     // 后端住在 `~/.cc-monitor` 里的那几样的相对路径（后端各写者引它、monitor 数据位置页按它列）；TS 侧没有孪生。
@@ -728,6 +757,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     base_url: NONE,
     base_url_shape_ok: NONE,
     KEY_FILE_REL: "J14",
+    // 只许直通的那把钥匙住哪（中转的门 · ccm 起地址拼进参数的那一家 · 直接敲的也走中转）；TS 侧没有孪生。
+    PASS_KEY_FILE_REL: NONE,
     key_shape_ok: NONE,
     // 把钥匙插进中转地址（`split_keyed_base_url` 的逆，给用户自己贴的那一段用）；TS 侧没有孪生。
     keyed_base_url: NONE,
@@ -820,8 +851,8 @@ const CARGO_TOMLS_TOP = [
   "src/frontend/filewin/Cargo.toml",
   "src/backend/Cargo.toml",
 ];
-/** 那几份里 `guard-core = …` 依赖行的总数（恒等计数：今天 monitor · 文件窗口 · 后端 · creds-core 各一；4 → 5 多的是文件窗口包；5 → 4 少的是全景小程序那一份，随它整棵删了）。 */
-const GUARD_CORE_DEP_LINES = 4;
+/** 那几份里 `guard-core = …` 依赖行的总数（恒等计数：monitor · 文件窗口 · 后端 · creds-core · win-path-core 各一）。 */
+const GUARD_CORE_DEP_LINES = 5;
 
 const CRATES_ROOT = "src/common";
 

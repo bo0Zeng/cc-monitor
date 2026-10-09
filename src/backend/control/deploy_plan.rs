@@ -119,7 +119,7 @@ pub enum TargetBinary {
 /// stat 那两次取样的解释（纯函数，可单测）。
 ///
 /// 形状：**吃两次调用各自的结果，不吃会话**。拆出来的理由是一个具体缺陷，不是行数：解释这一半原先焊在 async 体里，
-/// 四个状态的映射规则因此一条判据都没有（`tests/evidence/K-W4b-readings.md`）。
+/// 四个状态的映射规则因此一条判据都没有。
 ///
 /// 入参就是两次调用**降解之后**的结果：
 /// - `metadata_size`：`None` = `metadata` 那次调用失败；`Some(inner)` = 成功，
@@ -416,7 +416,7 @@ impl DialFacing {
 
 impl Facing for DialFacing {
     fn exec(&self, command: String) -> Fut<'_, Result<(crate::dial::Captured, Value), String>> {
-        Box::pin(crate::stream::remote_ask::capture_full(&self.dial, command))
+        Box::pin(crate::dial::remote_ask::capture_full(&self.dial, command))
     }
 
     fn stat<'a>(

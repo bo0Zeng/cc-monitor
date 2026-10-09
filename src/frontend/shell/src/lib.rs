@@ -497,21 +497,18 @@ pub fn run() {
     // 闭包内同时 install_error_emitter（&self 借用）+ app.manage(clone)
     let logging_state = logging_state;
 
-    // issue #9：single-instance lock。**必须是第一个 plugin**（Tauri 官方 plugin 要求）。各平台都注册
-    // （Windows：user 级互斥量；Linux：会话总线上的名字）。第二个 cc-monitor 实例启动 → 触发本回调（在第一个实例里跑）
-    // → 把主窗口 unminimize + show + set_focus → 第二个实例立即退出（plugin 内部处理）。详 src/doc/INVARIANTS.md § 16。
+    // issue #9：single-instance lock。**必须是第一个 plugin**（第二个实例在别的插件起来之前就退）。各平台都注册
+    // （Windows / macOS：`tauri-plugin-single-instance`；Linux：自己占会话总线上的名字，连同激活令牌一起交 —— `platform/single_instance.rs`）。
+    // 第二个 cc-monitor 实例启动 → 本回调在第一个实例里跑 → 主窗口还原 · 显示 · 拉前（带令牌）→ 第二个实例立即退出。详 src/doc/INVARIANTS.md § 16。
     let mut builder = tauri::Builder::default();
-    builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+    builder = builder.plugin(crate::platform::single_instance::plugin(|app, second| {
         // 第二个实例若带 --background（开机自启竞态下偶发）→ 只 show 不抢焦点；普通双击照常置前。
-        let background = args.iter().any(|a| a == "--background");
-        tracing::info!("second cc-monitor instance detected (background={background})");
-        if let Some(win) = app.get_webview_window(MAIN_WINDOW_LABEL) {
-            let _ = win.unminimize();
-            let _ = win.show();
-            if !background {
-                let _ = win.set_focus();
-            }
-        }
+        let background = second.args.iter().any(|a| a == "--background");
+        tracing::info!(
+            "second cc-monitor instance detected (background={background}, token={})",
+            second.token.is_some()
+        );
+        crate::platform::window::raise_main(app, second.token, !background);
     }));
     // Windows 那一件（WebView2 最大化 / 全屏后内容错位的修复）住壳的平台层：别处原样返回。
     builder = crate::platform::window::desktop_fixes(builder);
@@ -527,6 +524,10 @@ pub fn run() {
         }
         use tauri::Manager;
         let app = window.app_handle();
+        // 窗口没了 ⇒ 它的订阅整份作废（终端画面流顺手替它向那台退订）。
+        if let Some(replay) = app.try_state::<Arc<event_replay::EventReplay>>() {
+            replay.drop_webview(window.label());
+        }
         let alive: Vec<String> = app.webview_windows().keys().cloned().collect();
         let alive: Vec<&str> = alive.iter().map(String::as_str).collect();
         for label in windows_to_destroy_after(window.label(), &alive) {
@@ -535,6 +536,24 @@ pub fn run() {
                     tracing::warn!("跟着主窗收掉 {label} 窗口失败：{e}");
                 }
             }
+        }
+    });
+
+    // 本机能力（↗ · shell 方言 · ccm 缓存）：每个 webview 起页时注入 `window.__CCM_HOST__`，判定只住 `platform/host_facts.rs`。
+    builder = builder.plugin(
+        tauri::plugin::Builder::<tauri::Wry>::new("host-facts")
+            .js_init_script(crate::platform::host_facts::init_script())
+            .build(),
+    );
+    // 页面重载（开发者工具刷新 · 窗口重建同一个 webview）：旧页面的订阅整份作废 —— 重载后编号从头来，
+    //   没被重订到的旧订阅（尤其终端画面流：后端那张票占着一个 tmux 客户端）不留成孤儿。
+    builder = builder.on_page_load(|webview, payload| {
+        if payload.event() != tauri::webview::PageLoadEvent::Started {
+            return;
+        }
+        use tauri::Manager;
+        if let Some(replay) = webview.try_state::<Arc<event_replay::EventReplay>>() {
+            replay.drop_webview(webview.label());
         }
     });
 
@@ -724,6 +743,8 @@ pub fn run() {
                 });
             }
             {
+                // 画面流撤掉 ⇒ 替界面向那台退订（后端那张票的寿命跟着这条流走，重载时界面没人能发）。
+                replay.on_screen_dropped(crate::terminal_screen_relay::unfollow);
                 let replay = replay.clone();
                 crate::terminal_screen_relay::install_sink(move |origin, ticket, cell| {
                     replay.on_terminal_screen(origin, ticket, cell)
@@ -947,7 +968,6 @@ pub fn run() {
             //    ⚠ 界面上点得到它的地方是旧 SFTP 面板的表头 —— 那块面板按 `§6.6 C`
             //    要退役，而在这个窗口真能替代它之前删掉旧的等于把功能拿走 ⇒ 这一刀不删。
             filewin::entry::open_file_window,
-            // `push_public_key`〔散文墓碑〕退役：界面经通道问本机后端 `pubkey-push`。
             // 远端 `ccm` 探针那条命令退役：渲染进了那台后端，能力问它自己。
             // 🔴 `K-R69` / `KR69D2`：本机 `ccm` 这一格（我们那一份 · PATH 上那一份 · 判词）。
             ccm_probe::local_ccm_entry_status,
@@ -1598,6 +1618,9 @@ async fn bring_terminal_to_front(
     let r: Result<bind::FrontOutcome, Said> = async move {
         let cache = cache.inner().clone();
         Ok(tokio::task::spawn_blocking(move || {
+            if let Some(o) = bind::front_refusal() {
+                return o;
+            }
             let Some(binding) = cache.lookup(&session_id) else {
                 return bind::FrontOutcome::Unbound;
             };

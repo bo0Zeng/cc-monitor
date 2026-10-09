@@ -10,7 +10,7 @@ import { FakeBackend } from "./backend";
 import { DEFAULT_STORAGE, sceneById } from "../scenes";
 import { layoutProblems } from "../scenes/layout-check";
 import type { ShotsHandle } from "./types";
-import { __setHostOsForTests } from "../../../src/frontend/ui/settings/host-os";
+import HOST_FACTS from "../../__fixtures__/host-facts.golden.json";
 
 const params = new URLSearchParams(location.search);
 const scene = sceneById(params.get("scene") ?? "");
@@ -21,7 +21,8 @@ const label = location.pathname.startsWith("/settings")
     : "main";
 
 const backend = new FakeBackend(scene.world());
-if (scene.hostOs) __setHostOsForTests(scene.hostOs);
+// 壳在每页起页时注入的本机能力（`platform/host_facts.rs`）：照场景要的系统（缺省 Linux，截图机就是 Linux）那一行注入。
+(window as { __CCM_HOST__?: unknown }).__CCM_HOST__ = (HOST_FACTS as Record<string, unknown>)[scene.hostOs ?? "linux"] ?? null;
 mockWindows(label);
 mockIPC((cmd, args) => backend.invoke(cmd, (args ?? {}) as Record<string, unknown>), { shouldMockEvents: true });
 backend.attachEmitter((event, payload) => emit(event, payload));
@@ -49,7 +50,12 @@ window.addEventListener("DOMContentLoaded", () => {
       await scene.act({ backend });
       // 让过渡动画落定再量（浮层出现 160ms 上移 4px）。
       await new Promise((r) => setTimeout(r, 250));
-      handle.layout = layoutProblems();
+      if (scene.pointer) {
+        const r = document.querySelector(scene.pointer)?.getBoundingClientRect();
+        if (!r) throw new Error(`要停鼠标的 ${scene.pointer} 不在页里`);
+        handle.pointer = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+        handle.remeasure = layoutProblems;
+      } else handle.layout = layoutProblems();
       handle.state = "done";
     } catch (e) {
       handle.error = e instanceof Error ? `${e.message}\n${e.stack ?? ""}` : String(e);

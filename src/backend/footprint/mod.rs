@@ -99,6 +99,7 @@ fn report_with(
     let home = crate::platform::paths::home_dir_from(&|k| get(k).map(Into::into))
         .ok_or(("failed", copy_text("beFootprint.env.noHome", &[])))?;
     let path_env = get("PATH");
+    let system_root = get("SystemRoot");
     let session_path = session_path();
     let own_meta = |p: &Path| meta_of(p);
     let own_list = |p: &Path| list_of(p);
@@ -112,6 +113,8 @@ fn report_with(
         fs: &own_fs,
         path_env: path_env.as_deref(),
         session_path: session_path.as_deref(),
+        system_root: system_root.as_deref(),
+        windows: cfg!(windows),
         vantage: if client.is_some() {
             Vantage::Monitor
         } else {
@@ -125,6 +128,8 @@ fn report_with(
         fs: &own_fs,
         path_env: c.path.as_deref(),
         session_path: session_path.as_deref(),
+        system_root: system_root.as_deref(),
+        windows: cfg!(windows),
         vantage: Vantage::Monitor,
     });
     let rows = build_rows(&own, c_env.as_ref());

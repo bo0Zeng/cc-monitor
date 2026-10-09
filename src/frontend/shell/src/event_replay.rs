@@ -152,7 +152,12 @@ struct Inner {
     seen: HashMap<String, bool>,
     /// 出口（`lib.rs` 起步时装；没装之前一格都不交）。
     sink: Option<Arc<dyn ItemSink>>,
+    /// 终端画面流（`terminal-screen/<票>`）撤掉时替界面退订的那一口（`lib.rs` 起步时装：向那台发退订）。
+    screen_dropped: Option<ScreenDropped>,
 }
+
+/// 终端画面流撤掉了：`(哪台, 票)`。
+type ScreenDropped = Arc<dyn Fn(&crate::origin::Origin, &str) + Send + Sync>;
 
 /// 一条订阅。
 struct Sub {
@@ -539,6 +544,7 @@ impl EventReplay {
                 ready_labels: HashSet::new(),
                 seen: HashMap::new(),
                 sink: None,
+                screen_dropped: None,
             }),
             credit_changed: tokio::sync::Notify::new(),
             book: crate::session_book::book(),
@@ -548,6 +554,51 @@ impl EventReplay {
     /// 装出口（`lib.rs` 起步时一次）。
     pub fn attach_sink(&self, sink: Arc<dyn ItemSink>) {
         self.inner.lock().sink = Some(sink);
+    }
+
+    /// 装「终端画面流撤掉了」那一口（`lib.rs` 起步时一次）。〔「退订挂在订阅上」〕后端那张票的寿命跟着这条流走：
+    /// 界面撤单 · 同一编号被重订 · 页面重载 / 窗口没了（[`EventReplay::drop_webview`]）都替界面向那台退订一次 ——
+    /// 界面那一侧不发退订，重载时也没人能发。本文件只交 `(哪台, 票)`，不知道退订是哪条命令。
+    pub fn on_screen_dropped(
+        &self,
+        f: impl Fn(&crate::origin::Origin, &str) + Send + Sync + 'static,
+    ) {
+        self.inner.lock().screen_dropped = Some(Arc::new(f));
+    }
+
+    /// 撤下来的那几条订阅里的终端画面流 ⇒ 替界面退订（锁外调）。
+    fn unfollow_dropped(&self, gone: Vec<Sub>) {
+        let gone: Vec<(String, String)> = gone
+            .into_iter()
+            .filter(|s| s.kind == SubKind::Screen)
+            .filter_map(|s| s.only.map(|t| (s.origin, t)))
+            .collect();
+        if gone.is_empty() {
+            return;
+        }
+        let Some(f) = self.inner.lock().screen_dropped.clone() else {
+            return;
+        };
+        for (origin, ticket) in gone {
+            f(&crate::origin::Origin(origin), &ticket);
+        }
+    }
+
+    /// 从订阅表里摘掉满足 `hit` 的那几条，交回摘下来的。
+    fn take_subs(inner: &mut Inner, hit: impl Fn(&Sub) -> bool) -> Vec<Sub> {
+        let (gone, keep): (Vec<Sub>, Vec<Sub>) = std::mem::take(&mut inner.subs)
+            .into_iter()
+            .partition(|s| hit(s));
+        inner.subs = keep;
+        gone
+    }
+
+    /// 一个 webview 的页面重载了 / 窗口没了（`lib.rs` 的页面载入与窗口销毁钩子调）：它的订阅整份作废
+    /// （重载后编号从头来，没被重订到的旧订阅不留成孤儿）。
+    pub fn drop_webview(&self, label: &str) {
+        let gone = Self::take_subs(&mut self.inner.lock(), |s| s.label == label);
+        self.credit_changed.notify_waiters();
+        self.unfollow_dropped(gone);
     }
 
     /// 行进重放缓冲的**唯一**入口：先进留存（[`hold`]），再**当场**交给每一条已过就绪点、订了它的订阅 ——
@@ -871,9 +922,9 @@ impl EventReplay {
             sink.deliver(label, id, vec![item]);
             return;
         }
-        let (first, job) = {
+        let (first, job, replaced) = {
             let mut inner = self.inner.lock();
-            inner.subs.retain(|s| !(s.label == label && s.id == id));
+            let replaced = Self::take_subs(&mut inner, |s| s.label == label && s.id == id);
             inner.generation += 1;
             let generation = inner.generation;
             let seen = inner.seen.get(origin).copied().unwrap_or(false);
@@ -914,8 +965,10 @@ impl EventReplay {
                     Some(seen_item(false, true))
                 },
                 job,
+                replaced,
             )
         };
+        self.unfollow_dropped(replaced);
         if let Some(item) = first {
             sink.deliver(label, id, vec![item]);
         }
@@ -1058,11 +1111,9 @@ impl EventReplay {
 
     /// 撤订阅（本地撤单）：之后一格都不再交；在等 credit 的重放随之停。
     pub fn stop(&self, label: &str, id: u64) {
-        self.inner
-            .lock()
-            .subs
-            .retain(|s| !(s.label == label && s.id == id));
+        let gone = Self::take_subs(&mut self.inner.lock(), |s| s.label == label && s.id == id);
         self.credit_changed.notify_waiters();
+        self.unfollow_dropped(gone);
     }
 
     /// 那台机器的内容流接上了 / 断了（`stream_source` 的连接与本机那条流的起落调它）⇒ 订了它的每条订阅
@@ -1128,6 +1179,15 @@ impl EventReplay {
         }
         .to_string()
         .into_bytes();
+        self.fan_out(SubKind::Quota, origin, None, Body(body));
+    }
+
+    /// 那台机器的后端说「轮换规则表 / 默认指向变了」（`rotation_rules_changed`）⇒ 订了那台 `quota-changed` 的每条订阅收一格
+    /// `{"rules":true}`（同上一条那一套）。界面收到就重问 `rotation-rules-read`。
+    pub fn rotation_rules_changed(&self, origin: &crate::origin::Origin) {
+        let body = serde_json::json!({ "rules": true })
+            .to_string()
+            .into_bytes();
         self.fan_out(SubKind::Quota, origin, None, Body(body));
     }
 

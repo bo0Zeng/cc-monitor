@@ -436,3 +436,157 @@ fn a_window_label_names_the_registered_shell_only_when_its_start_time_matches() 
         assert_eq!(labeled_registration(&ts(bad.clone()), reg), None, "{bad}");
     }
 }
+
+/// ★ 会话由环境认：说了 Wayland 或挂着 `$WAYLAND_DISPLAY` ⇒ Wayland（哪怕也有 `$DISPLAY`：那是 Xwayland）；只有 `$DISPLAY` ⇒ X11；都没有 / 空串 ⇒ 不支持。
+#[test]
+fn the_display_session_is_read_from_the_environment() {
+    use crate::platform::hwnd::{session_from, DisplaySession as S};
+    let wl = |d: &str| S::Wayland { desktop: d.into() };
+    assert_eq!(
+        session_from(Some("x11"), None, Some(":0"), Some("XFCE")),
+        S::X11
+    );
+    assert_eq!(session_from(None, None, Some(":100"), None), S::X11);
+    assert_eq!(
+        session_from(
+            Some("wayland"),
+            Some("wayland-0"),
+            Some(":0"),
+            Some("GNOME")
+        ),
+        wl("GNOME")
+    );
+    assert_eq!(
+        session_from(None, Some("wayland-1"), Some(":1"), Some("KDE")),
+        wl("KDE")
+    );
+    assert_eq!(session_from(Some("wayland"), None, None, None), wl(""));
+    assert_eq!(
+        session_from(Some("wayland"), None, None, Some("ubuntu:GNOME")),
+        wl("GNOME")
+    );
+    assert_eq!(
+        session_from(Some("tty"), Some(""), Some(""), None),
+        S::Unsupported
+    );
+    assert_eq!(session_from(None, None, None, None), S::Unsupported);
+}
+
+/// ★ Windows · X11 走得通；Wayland 照实说切不了（带桌面名）；别的不支持。
+#[test]
+fn each_session_kind_says_whether_front_can_work() {
+    use crate::platform::hwnd::DisplaySession as S;
+    assert_eq!(refusal_of(&S::Win32), None);
+    assert_eq!(refusal_of(&S::X11), None);
+    assert_eq!(
+        refusal_of(&S::Wayland {
+            desktop: "GNOME".into()
+        }),
+        Some(FrontOutcome::DesktopWontSwitch {
+            desktop: "GNOME".into()
+        })
+    );
+    assert_eq!(refusal_of(&S::Unsupported), Some(FrontOutcome::Unsupported));
+    assert_eq!(
+        serde_json::to_value(FrontOutcome::DesktopWontSwitch {
+            desktop: "GNOME".into()
+        })
+        .unwrap(),
+        serde_json::json!({ "kind": "desktop-wont-switch", "desktop": "GNOME" })
+    );
+}
+
+fn tty_rec(pid: u32, start: &str, tty: &str) -> TtyRecord {
+    serde_json::from_value(serde_json::json!({ "shell_pid": pid, "proc_start": start, "tty": tty }))
+        .unwrap()
+}
+
+/// ★ bash / zsh 接入块留下的那一份：那个 shell 还是它（起始时刻对得上）、还没登记 ⇒ 在它的终端上挂记号标题找窗口：
+/// 找到 ⇒ 一条登记（键是 shell 的进程号 ＋ 起始时刻，窗口属主与它的起始时刻现读）；没找到（那个标签页不在前面）⇒ 留着下次再认；
+/// shell 没了 / 进程号被复用 / 已经登记过 / 终端设备不像终端 ⇒ 扔掉，不去碰终端。
+#[test]
+fn a_shell_terminal_record_is_claimed_kept_or_dropped() {
+    let hit = || MarkerHit {
+        hwnd: 0x2a00004,
+        owner_pid: 4100,
+        title: "ccm-bind-x".into(),
+    };
+    let rec = tty_rec(4242, "987654", "/dev/pts/3");
+    let mut asked = Vec::new();
+    let got = claim_tty(
+        &rec,
+        Some(987654),
+        false,
+        |tty, marker| {
+            asked.push((tty.to_string(), marker.to_string()));
+            Some(hit())
+        },
+        |pid| if pid == 4100 { 55 } else { 0 },
+    );
+    let TtyClaim::Registered(e) = got else {
+        panic!("找到了应当登记：{got:?}")
+    };
+    assert_eq!(
+        (
+            e.ps_pid,
+            e.hwnd,
+            e.owner_pid,
+            e.owner_proc_start,
+            e.ps_proc_start.as_str()
+        ),
+        (4242, 0x2a00004, 4100, 55, "987654")
+    );
+    assert_eq!(asked.len(), 1);
+    assert_eq!(asked[0].0, "/dev/pts/3");
+    assert!(
+        asked[0].1.starts_with("ccm-bind-4242-"),
+        "记号带进程号：{:?}",
+        asked[0].1
+    );
+
+    assert_eq!(
+        claim_tty(&rec, Some(987654), false, |_, _| None, |_| 0),
+        TtyClaim::Keep,
+        "没找到 ⇒ 留着"
+    );
+    let never = |_: &str, _: &str| -> Option<MarkerHit> { panic!("不该去碰终端") };
+    assert_eq!(
+        claim_tty(&rec, Some(111), false, never, |_| 0),
+        TtyClaim::Drop,
+        "进程号被复用"
+    );
+    assert_eq!(
+        claim_tty(&rec, None, false, never, |_| 0),
+        TtyClaim::Drop,
+        "shell 没了"
+    );
+    assert_eq!(
+        claim_tty(&rec, Some(987654), true, never, |_| 0),
+        TtyClaim::Drop,
+        "已经登记过"
+    );
+    for bad in ["/tmp/x", "pts/3", "/dev/../etc/passwd", ""] {
+        assert_eq!(
+            claim_tty(
+                &tty_rec(4242, "987654", bad),
+                Some(987654),
+                false,
+                never,
+                |_| 0
+            ),
+            TtyClaim::Drop,
+            "{bad}"
+        );
+    }
+    assert_eq!(
+        claim_tty(
+            &tty_rec(4242, "x", "/dev/pts/3"),
+            Some(987654),
+            false,
+            never,
+            |_| 0
+        ),
+        TtyClaim::Drop,
+        "起始时刻认不出"
+    );
+}

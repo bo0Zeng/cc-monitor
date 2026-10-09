@@ -113,10 +113,10 @@ pub(crate) async fn upload_verified(
         // 删也没删成：那一句说清两件事，删那一步的详情（本机后端写的原话）跟着走。
         Err(e) => {
             let step = e.said.clone();
-            Said {
-                said: copy_text("rsSftp.upload.badKept", &[("bad", &bad.to_string())]),
-                detail: e.detail,
-            }
+            Said::restate(
+                copy_text("rsSftp.upload.badKept", &[("bad", &bad.to_string())]),
+                e,
+            )
             .with_item(copy_core::detail::Label::Hop, &step)
         }
     })
@@ -259,7 +259,9 @@ async fn ask_plan_for(
         .call(PLAN_CMD, args, PLAN_BUDGET)
         .await
         .map_err(|e| {
-            let said = match route_call_error(&e, |_code, message| message.to_string()) {
+            let said = match route_call_error(&e, &copy_core::local_machine(), |_code, message| {
+                message.to_string()
+            }) {
                 Routed::NoChannel(s) | Routed::Refused(s) => s,
             };
             Said::of_call(said, PLAN_CMD, &crate::origin::Origin::local(), &e)

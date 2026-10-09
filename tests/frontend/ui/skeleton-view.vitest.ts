@@ -219,6 +219,52 @@ describe("🔴 只物化可见区", () => {
   });
 });
 
+describe("大折叠：折着的过程不物化", () => {
+  it("账本说 [lo, hi) 折着 ⇒ 滚到那里只建它两边的行，它留成 0 高的占位；ensure（跳转）照样建", () => {
+    const s = setup(200, 190);
+    s.view.attach(190);
+    s.view.setFolds({ folded: [[3, 150]], lines: [], linePx: 0 });
+    s.layout.scrollTop = 0;
+    s.view.fillVisible();
+    const built = new Set(cardsIn(s.content).map((c) => Number((c as HTMLElement).dataset.seq)));
+    for (let q = 3; q < 150; q++) expect(built.has(q)).toBe(false);
+    expect([0, 1, 2, 150].every((q) => built.has(q))).toBe(true);
+    const folded = [...s.content.querySelectorAll<HTMLElement>(`.${SKELETON_GAP_CLASS}`)].find((g) => g.dataset.skeletonLo === "3");
+    expect(folded?.dataset.skeletonHi).toBe("150");
+    expect(parseFloat(folded!.style.height)).toBe(0);
+    s.view.ensure(80, 2);
+    expect(cardsIn(s.content).some((c) => (c as HTMLElement).dataset.seq === "80")).toBe(true);
+  });
+
+  it("只剩不占高的行（工具结果并进工具组那种）的占位落在视口里 ⇒ 照样物化（不因高 0 永远留着）；扣掉折着的那几段", () => {
+    const s = setup(30, 20);
+    const rows = Array.from({ length: 30 }, (_, i): SkeletonFacts => (i === 11 ? { o: 0, n: 1, t: "user", fd: 1 } : i === 10 ? { o: 0, n: 1, t: "assistant", fd: 1 } : asst(`u${i}`)));
+    const ledger = new SkeletonLedger(0, rows);
+    const view = new SkeletonView(ledger, s.scrollEl, s.timeline, s.host);
+    view.attach(20);
+    expect(ledger.heightOf(11, 12)).toBe(0);
+    view.setFolds({ folded: [[11, 12]], lines: [], linePx: 0 });
+    s.layout.scrollTop = 0;
+    view.fillVisible();
+    const built = () => new Set(cardsIn(s.content).map((c) => Number((c as HTMLElement).dataset.seq)));
+    expect(built().has(11)).toBe(false);
+    view.setFolds({ folded: [], lines: [], linePx: 0 });
+    view.fillVisible();
+    expect(built().has(11)).toBe(true);
+  });
+
+  it("setFolds 改了 ⇒ 占位改高（展开那一段 ⇒ 回到估高），视口钉住", () => {
+    const s = setup(200, 190);
+    s.view.attach(190);
+    const h0 = s.view.pendingHeight;
+    s.view.setFolds({ folded: [[20, 150]], lines: [], linePx: 0 });
+    expect(s.view.pendingHeight).toBeCloseTo(s.ledger.heightOf(0, 190));
+    expect(s.view.pendingHeight).toBeLessThan(h0);
+    s.view.setFolds({ folded: [], lines: [], linePx: 0 });
+    expect(s.view.pendingHeight).toBeCloseTo(h0);
+  });
+});
+
 describe("跳转与续传", () => {
   it("ensure(seq)：不在视口里也把它 ± radius 物化（给「大纲」跳转用）", () => {
     const s = setup(1000, 900);

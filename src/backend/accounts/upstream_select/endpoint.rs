@@ -2,9 +2,9 @@
 //!
 //! | 口 | 答什么 | 谁问 |
 //! |---|---|---|
-//! | [`relay_for_exec`] | 这个号这一发往 `ANTHROPIC_BASE_URL` 里写哪个中转地址（或不写；地址不随会话变，不带会话段）· 不在时拒还是直连 | `ccm` 在最终 exec 那一处（`control/ccm/plan.rs`）；别名预览走 [`relay_for_preview`] |
+//! | [`relay_for_exec`] | 这个号这一发指到哪个中转地址（或不指；地址不随会话变，不带会话段；怎么交给那一家由它的注入格定）· 不在时拒还是直连 | `ccm` 在最终 exec 那一处（`control/ccm/plan.rs`）；别名预览走 [`relay_for_preview`] |
 //! | `apikey-routing` | 这几个号在这台的表里有没有行 · 这台的中转在不在 | 界面经 `chan.call` 直接问（账号页徽章） |
-//! | `relay-optin` | 直接敲的那一家也走中转：这台那份用户级设置文件里写没写、对不对 ＋ 要贴的那一段（后端只读、不写那份文件） | 界面经 `chan.call` 直接问（机器页「终端」栏） |
+//! | `relay-optin` | 直接敲的那一家（入参 `agent`）也走中转：这台那份用户级设置文件里写没写、对不对 ＋ 要贴的那一段（后端只读、不写那份文件） | 界面经 `chan.call` 直接问（机器页「终端」栏） |
 //!
 //! 起会话只有 `ccm` 一处：环境、中转地址由那台机器上的 `ccm` 自己定，界面只交一行 `ccm …`。
 //!
@@ -19,7 +19,7 @@
 //! |---|---|---|
 //! | ① | agent 是凭据文件那一家、named 账号推出的 id 在表里 | `/s/<agent>/<id>`，中转不在 ⇒ **拒**（非它不可） |
 //! | ② | 全量注入开关关着（默认） | 不注入 |
-//! | ③ | agent 没在适配层登记默认上游（codex） | 不注入（注进去每一发都被中转拒，对用户与起不来同形） |
+//! | ③ | agent 没在适配层登记默认上游 | 不注入（注进去每一发都被中转拒，对用户与起不来同形） |
 //! | ④ | `/t/` 标签：named ⇒ id；账号 0 ⇒ [`BASE_ACCOUNT_SEGMENT`]；没表态 ⇒ [`UNDECLARED_ACCOUNT_SEGMENT`]；推不出 id ⇒ 不注入 | —— |
 //! | ⑤ | 标签与表里某一行同名 | 不注入（`/t/` 有行那一格会把这条会话自己的鉴权头送去那一行的上游） |
 //! | ⑥ | 其余 | `/t/<agent>/<标签>`，中转不在 ⇒ **直连**（有它更好） |
@@ -151,7 +151,7 @@ pub(crate) fn relay_port(get: &dyn Fn(&str) -> Option<String>) -> u16 {
         .unwrap_or(PORT)
 }
 
-/// **ccm 在最终 exec 那一处问的那一句**：这一发往 `ANTHROPIC_BASE_URL` 里写哪个地址（不带钥匙；`None` = 不注入）。
+/// **ccm 在最终 exec 那一处问的那一句**：这一发指到哪个中转地址（不带钥匙；`None` = 不注入）。
 /// ccm 是一次性进程，中转住同机的常驻后端里 ⇒「在不在」= 这台家目录下的钥匙读得到，且回环口连得上（连不上立刻被拒，不等）。
 /// 钥匙那一格先判：口上的是别人（同机另一个用户）的中转时，这个用户没有那一把，当它不在。
 pub(crate) fn relay_for_exec(
@@ -166,17 +166,41 @@ pub(crate) fn relay_for_exec(
         relay_port(&get),
         &super::file_face::machine_rows(),
         &|port, url| {
-            keyed_for_exec(url, &get).is_some()
+            keyed_for_exec(url, key_kind_of(agent), &get).is_some()
                 && std::net::TcpStream::connect(("127.0.0.1", port)).is_ok()
         },
     )
 }
 
-/// 一条不带钥匙的中转地址 ⇒ 插上这台盘上那把钥匙的那一形（agent 进程环境里要的就是它）。
+/// `ccm` exec 那一刻：认地址环境变量的那一家，插全权那一把（进 agent 进程环境）。
+pub(crate) fn keyed_for_env(url: &str, get: &dyn Fn(&str) -> Option<String>) -> Option<String> {
+    keyed_for_exec(url, crate::relay::KeyKind::Full, get)
+}
+
+/// `ccm` exec 那一刻：地址拼进参数的那一家，插只许直通那一把（argv 同机别的用户读得到）。
+pub(crate) fn keyed_for_args(url: &str, get: &dyn Fn(&str) -> Option<String>) -> Option<String> {
+    keyed_for_exec(url, crate::relay::KeyKind::Pass, get)
+}
+
+/// 一条不带钥匙的中转地址 ⇒ 插上这台盘上 `kind` 那把钥匙的那一形（agent 进程要的就是它）。
 /// 插钥匙只经中转那一处（`relay::keyed_with_key_on_disk`）；没有家目录 / 钥匙不在 / 地址不是构造口的产物 ⇒ `None`。只读。
-pub(crate) fn keyed_for_exec(url: &str, get: &dyn Fn(&str) -> Option<String>) -> Option<String> {
+pub(crate) fn keyed_for_exec(
+    url: &str,
+    kind: crate::relay::KeyKind,
+    get: &dyn Fn(&str) -> Option<String>,
+) -> Option<String> {
     let home = crate::platform::paths::home_dir_from(&|k| get(k).map(Into::into))?;
-    crate::relay::keyed_with_key_on_disk(&home, url)
+    crate::relay::keyed_with_key_on_disk(&home, url, kind)
+}
+
+/// 路由名那一家的地址插哪一把钥匙：地址只能经命令行参数交给它的那一家（注入格 `Inject::Args`）⇒ 只许直通那一把
+/// （argv 同机别的用户读得到、它也会写进自己的日志）；其余 ⇒ 全权那一把。起会话与「直接敲的也走中转」同一把，
+/// 两处贴出来的地址一模一样。
+pub(crate) fn key_kind_of(agent: &str) -> crate::relay::KeyKind {
+    match crate::agents::inject_of_route(agent) {
+        Some(crate::agents::Inject::Args(_)) => crate::relay::KeyKind::Pass,
+        _ => crate::relay::KeyKind::Full,
+    }
 }
 
 /// 同上，答的是常驻后端自己（别名预览 `ccm-print`）：中转就在本进程里，读本进程的监听状态。
@@ -205,8 +229,8 @@ pub(crate) fn relay_with(
     routed: &[String],
     listening: &dyn Fn(u16, &str) -> bool,
 ) -> Result<Option<String>, String> {
-    let registered = super::Upstreams::from_env(&|k| std::env::var(k).ok())
-        .is_some_and(|u| u.of(agent).is_some());
+    let registered =
+        super::Upstreams::from_env(&|k| std::env::var(k).ok()).is_some_and(|u| u.has(agent));
     match decide_launch(agent, account, all_sessions, port, routed, registered) {
         Endpoint::None => Ok(None),
         Endpoint::Inject { url, .. } if listening(port, &url) => Ok(Some(url)),
@@ -302,7 +326,7 @@ pub(crate) enum OptinState {
 }
 
 impl OptinState {
-    fn name(self) -> &'static str {
+    pub(crate) fn name(self) -> &'static str {
         match self {
             OptinState::Installed => "installed",
             OptinState::Stale => "stale",
@@ -330,17 +354,18 @@ pub(crate) fn optin_state(found: &SettingsBaseUrl, expected: Option<&str>) -> Op
     }
 }
 
-/// `relay-optin`：入参 `{}` → `{state, note, missing, source, snippet, listening}`。
+/// `relay-optin`：入参 `{agent}`（适配器 id）→ 那一家的 `{state, note, missing, source, snippet, listening}`。
 ///
 /// 该贴的那一条 ＝ 决策表里「没表态是哪个号」那一发（[`decide_launch`]，全量注入按「是」—— 贴这一段就是用户自己选了全量）插上这台的钥匙；
 /// 已装 ⇒ 不再带那一段（钥匙只在要贴的时候才出这台）。只读：那份文件由用户自己合并，后端一个字节不写。
-pub(crate) fn answer_optin(_args: &Value) -> EndpointAnswer {
+pub(crate) fn answer_optin(args: &Value) -> EndpointAnswer {
+    let agent = agent_arg(args)?;
     let home = crate::platform::paths::home_dir()
         .ok_or(("failed", copy_text("beUpstreamEndpoint.optin.noHome", &[])))?;
-    let (agent, face) = crate::agents::settings_env_face()
+    let face = crate::agents::settings_env_face(agent)
         .ok_or(("failed", copy_text("beUpstreamEndpoint.optin.noAgent", &[])))?;
-    let registered = super::Upstreams::from_env(&|k| std::env::var(k).ok())
-        .is_some_and(|u| u.of(agent).is_some());
+    let registered =
+        super::Upstreams::from_env(&|k| std::env::var(k).ok()).is_some_and(|u| u.has(agent));
     Ok(optin_at(
         &home,
         agent,
@@ -351,15 +376,43 @@ pub(crate) fn answer_optin(_args: &Value) -> EndpointAnswer {
     ))
 }
 
-/// [`answer_optin`] 的本体（家目录 · 那一家 · 表 · 已登记 · 中转在不在都是参数，判据喂夹具）。
-pub(crate) fn optin_at(
+/// 一家「直接敲的也走中转」此刻的样子（帧命令 `relay-optin` 与「要你动手」那一件同读这一份）。
+pub(crate) struct OptinReport {
+    pub(crate) state: OptinState,
+    /// 那份文件为什么读不了（`unreadable` 才有，其余空串）。
+    pub(crate) note: String,
+    /// 那一段为什么生成不了；已装 / 生成得了 ⇒ 空串。
+    pub(crate) missing: String,
+    pub(crate) source: std::path::PathBuf,
+    /// 要贴的那条地址（带钥匙）；已装或生成不了 ⇒ `None`。
+    pub(crate) url: Option<String>,
+}
+
+/// 这台、这一家的 [`OptinReport`]（家目录 · 表 · 已登记都按这台现取）。没有家目录 / 那一家没有这一形 ⇒ 拒的那一句。
+pub(crate) fn optin_report(agent: &str) -> Result<OptinReport, (&'static str, String)> {
+    let home = crate::platform::paths::home_dir()
+        .ok_or(("failed", copy_text("beUpstreamEndpoint.optin.noHome", &[])))?;
+    let face = crate::agents::settings_env_face(agent)
+        .ok_or(("failed", copy_text("beUpstreamEndpoint.optin.noAgent", &[])))?;
+    let registered =
+        super::Upstreams::from_env(&|k| std::env::var(k).ok()).is_some_and(|u| u.has(agent));
+    Ok(optin_report_at(
+        &home,
+        agent,
+        &face,
+        &super::file_face::machine_rows(),
+        registered,
+    ))
+}
+
+/// [`optin_report`] 的本体（家目录 · 那一家 · 表 · 已登记都是参数，判据喂夹具）。
+pub(crate) fn optin_report_at(
     home: &std::path::Path,
     agent: &str,
     face: &SettingsEnvFace,
     routed: &[String],
     registered: bool,
-    listening: &dyn Fn(u16) -> bool,
-) -> Value {
+) -> OptinReport {
     let (file, found) = (face.read)(home);
     let expected = match decide_launch(
         agent,
@@ -370,7 +423,7 @@ pub(crate) fn optin_at(
         registered,
     ) {
         Endpoint::Inject { url, .. } => Some(
-            crate::relay::keyed_with_key_on_disk(home, &url)
+            crate::relay::keyed_with_key_on_disk(home, &url, key_kind_of(agent))
                 .ok_or(copy_text("beUpstreamEndpoint.optin.noKey", &[])),
         ),
         Endpoint::None => None,
@@ -380,10 +433,10 @@ pub(crate) fn optin_at(
         .and_then(|e| e.as_ref().ok())
         .map(String::as_str);
     let state = optin_state(&found, current);
-    let snippet = (state != OptinState::Installed)
+    let url = (state != OptinState::Installed)
         .then_some(current)
         .flatten()
-        .map(|u| (face.snippet)(u));
+        .map(str::to_string);
     // 两句各说各的：`note` 说那份文件为什么读不了；`missing` 说那一段为什么生成不了（已装 / 生成得了 ⇒ 空）。
     let note = match &found {
         SettingsBaseUrl::Unreadable(SettingsUnreadable::BadShape) => {
@@ -409,12 +462,31 @@ pub(crate) fn optin_at(
         Some(Err(why)) => why,
         None => copy_text("beUpstreamEndpoint.optin.noRoute", &[]),
     };
+    OptinReport {
+        state,
+        note,
+        missing,
+        source: file,
+        url,
+    }
+}
+
+/// [`OptinReport`] ⇒ `relay-optin` 的成品（要贴的那一段按那一家的格式拼）。
+pub(crate) fn optin_at(
+    home: &std::path::Path,
+    agent: &str,
+    face: &SettingsEnvFace,
+    routed: &[String],
+    registered: bool,
+    listening: &dyn Fn(u16) -> bool,
+) -> Value {
+    let r = optin_report_at(home, agent, face, routed, registered);
     json!({
-        "state": state.name(),
-        "note": note,
-        "missing": missing,
-        "source": file.display().to_string(),
-        "snippet": snippet,
+        "state": r.state.name(),
+        "note": r.note,
+        "missing": r.missing,
+        "source": r.source.display().to_string(),
+        "snippet": r.url.as_deref().map(face.snippet),
         "listening": listening(PORT),
     })
 }

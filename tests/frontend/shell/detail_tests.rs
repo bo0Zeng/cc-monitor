@@ -205,3 +205,59 @@ fn the_named_command_goes_before_the_raw_words() {
         s.detail
     );
 }
+
+/// 原话里恰好有一行以项名打头（多行 stderr）：补「命令」照项名次序插在原话前面，不插进原话中间（不拆渲染好的字）。
+#[test]
+fn naming_does_not_split_raw_words_that_look_like_items() {
+    let raw = format!(
+        "line one\n{}：not a code\n{}：not a command\n{}：not a path",
+        label("detail.label.code"),
+        label("detail.label.command"),
+        label("detail.label.path")
+    );
+    let s = Said::with_raw("x".into(), &raw).named("open_log_dir");
+    let cmd = format!("{}：open_log_dir", label("detail.label.command"));
+    let raw_line = format!("{}：line one", label("detail.label.raw"));
+    let at = |w: &str| {
+        s.detail
+            .find(w)
+            .unwrap_or_else(|| panic!("缺「{w}」：{}", s.detail))
+    };
+    assert!(at(&cmd) < at(&raw_line), "{}", s.detail);
+    assert!(s.detail.ends_with(&raw), "原话被拆开了：{}", s.detail);
+}
+
+/// 通道宿主把对端的拒绝交出去之前（主界面与文件窗口同一口）：远端 ⇒ 体里那份详情补「本机」一行；本机 ⇒ 原样；别的层原样。
+#[test]
+fn a_relayed_refusal_gets_the_local_line_once_at_the_host() {
+    let wrote = format!("{}：io_failed", label("detail.label.code"));
+    let body = serde_json::to_vec(
+        &serde_json::json!({"code": "io_failed", "message": "m", "detail": wrote}),
+    )
+    .unwrap();
+    let refused = || w::err_from_wire(w::WireErr::Refused, body.clone());
+    let detail_of = |e: &w::CallError| match e {
+        w::CallError::Peer {
+            why: w::PeerFault::Refused { body },
+        } => of_refusal_body(&body.0),
+        other => panic!("不是拒绝：{other:?}"),
+    };
+    let far = relay_refusal(&Origin("devbox".into()), refused());
+    let d = detail_of(&far);
+    assert!(d.starts_with(&wrote), "{d}");
+    assert_eq!(
+        d.matches(&format!("{}：cc-monitor ", label("detail.label.local")))
+            .count(),
+        1,
+        "{d}"
+    );
+    assert_eq!(
+        detail_of(&relay_refusal(&Origin::local(), refused())),
+        wrote
+    );
+    let hop: w::CallError = w::OursFault::Broken.into();
+    assert_eq!(
+        format!("{:?}", relay_refusal(&Origin("devbox".into()), hop.clone())),
+        format!("{hop:?}")
+    );
+}

@@ -1,0 +1,36 @@
+// 由 `tests/frontend/ui/css-modules.vitest.ts` 对拍：本文件 == 从 `rot-timeline.module.css` 渲染出的规范文本（逐字）。
+declare const classes: {
+  readonly tl: string;
+  readonly tlCard: string;
+  readonly tlCursor: string;
+  readonly tlDiamond: string;
+  readonly tlGrid: string;
+  readonly tlLaneAcct: string;
+  readonly tlLaneName: string;
+  readonly tlLaneTrack: string;
+  readonly tlLegend: string;
+  readonly tlLegendItem: string;
+  readonly tlNoPlan: string;
+  readonly tlNow: string;
+  readonly tlNowText: string;
+  readonly tlOverlay: string;
+  readonly tlPct: string;
+  readonly tlReset5: string;
+  readonly tlReset7: string;
+  readonly tlRow: string;
+  readonly tlSeg: string;
+  readonly tlSegLayer: string;
+  readonly tlSegName: string;
+  readonly tlSpan: string;
+  readonly tlSwatch: string;
+  readonly tlTick: string;
+  readonly tlTicks: string;
+  readonly tlTrack: string;
+  readonly tlTrackSession: string;
+  readonly tlUsedBy: string;
+  readonly tlWarm: string;
+  readonly tlWhy: string;
+  readonly tlWhyLayer: string;
+  readonly tlWhyText: string;
+};
+export default classes;

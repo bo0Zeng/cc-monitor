@@ -1939,8 +1939,9 @@ body.settings-window-mode .settings-panel {
     width: 100%;
   }
 
-/* 账号栏自带表头（「X 上的账号 · 新会话默认 Y」）、「别名与配置文件」栏每行自带名字：块标题只留给读屏。 */
+/* 账号栏 · 轮换栏自带表头（「X 上的账号 · 新会话默认 Y」·「X 的规则 · 默认 Y」）、「别名与配置文件」栏每行自带名字：块标题只留给读屏。 */
 .settings-group:has(> .acct-page) > .settings-group-title,
+.settings-group:has(> [data-rules-page]) > .settings-group-title,
 .settings-group:has(> .cfg-page) > .settings-group-title {
   position: absolute;
   width: 1px;
@@ -1949,7 +1950,7 @@ body.settings-window-mode .settings-panel {
   clip-path: inset(50%);
 }
 
-/* 机器页「账号」栏：表头一行 · 就地展开的新建表单 · 一号一行（44 高）· 点开的详情 · 表下指路框。 */
+/* 机器页「账号」栏：表头一行 · 就地展开的新建表单 · 一号一行（44 高）· 点开的详情 · 表下「共用 MCP」一行。 */
 .acct-head {
   display: flex;
   align-items: baseline;
@@ -2222,15 +2223,6 @@ body.settings-window-mode .settings-panel {
   width: 240px;
 }
 
-.acct-pointer {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
-  border: 1px dashed var(--border-strong);
-  border-radius: var(--radius-m);
-}
-
 .acct-pointer-link {
   padding: 2px var(--space-3);
   border: 0;
@@ -2240,11 +2232,6 @@ body.settings-window-mode .settings-panel {
   font: inherit;
   font-size: var(--font-size-small);
   cursor: pointer;
-}
-
-.acct-pointer-text {
-  color: var(--text-2);
-  font-size: var(--font-size-small);
 }
 
 .acct-key-host {

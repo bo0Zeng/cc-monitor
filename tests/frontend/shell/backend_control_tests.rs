@@ -100,10 +100,10 @@ fn starting_reports_failure_as_failure_and_finished_streams_as_not_running() {
         )
     });
     assert!(
-        // 那句失败的话进了文案表：`Err(format!(…))` 换成了 `Err(copy_text(…))`，句子带详情时是 `Err(Said {…})`，都算「回 Err」。
+        // 那句失败的话进了文案表：`Err(format!(…))` 换成了 `Err(copy_text(…))`，句子带详情时是 `Err(Said::…)`，都算「回 Err」。
         body.contains("Err(format!")
             || body.contains("Err(copy_text(")
-            || body.contains("Err(Said {"),
+            || body.contains("Err(Said::"),
         "本机「起」的失败那一格不回 `Err` —— 那就是把失败说成了成功。"
     );
 }

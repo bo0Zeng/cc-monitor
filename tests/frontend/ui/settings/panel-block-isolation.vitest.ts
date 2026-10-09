@@ -145,16 +145,17 @@ vi.mock("@tauri-apps/api/window", () => ({
 }));
 
 import { SettingsPanel } from "../../../../src/frontend/ui/settings/panel";
-import { __setHostOsForTests } from "../../../../src/frontend/ui/settings/host-os";
+import { __setHostFactsForTests } from "../../../../src/frontend/ui/settings/host-os";
 import { setBehavior } from "../../../../src/frontend/ui/behavior";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { beforeEach, afterEach } from "vitest";
 import { copyPattern } from "../../../test-support/copy-pattern";
+import { factsOn } from "../../../test-support/host-facts";
 
 // S9：jsdom 的 UA 含 `linux`。从前非 Windows 上「终端集成」那块**根本不构造**，钉成 windows 为的是守完整那组；
 // 那块并进了「别名」、两个平台都构造 ⇒ 这一钉只是沿用本文件一直以来的 Windows 形态。
-beforeEach(() => __setHostOsForTests("windows"));
-afterEach(() => __setHostOsForTests(null));
+beforeEach(() => __setHostFactsForTests(factsOn("windows")));
+afterEach(() => __setHostFactsForTests(null));
 
 // **T07 审计阻塞 2：这些是行为测试，替掉原先那 4 条源码文本扫描。**
 //

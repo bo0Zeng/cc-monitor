@@ -108,8 +108,9 @@ vi.mock("@tauri-apps/api/window", () => ({ getCurrentWindow: () => ({ close: vi.
 
 import { SettingsPanel } from "../../../../src/frontend/ui/settings/panel";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
-import { __setHostOsForTests } from "../../../../src/frontend/ui/settings/host-os";
+import { __setHostFactsForTests } from "../../../../src/frontend/ui/settings/host-os";
 import { __resetMachineContextForTests } from "../../../../src/frontend/ui/settings/machine-context";
+import { factsOn } from "../../../test-support/host-facts";
 
 /** 那五种形状，一条规则一个名字（红的时候要说得出是哪一种）。 */
 const SHAPES: ReadonlyArray<{ name: string; re: RegExp; why: string }> = [
@@ -197,7 +198,7 @@ describe(" 文案纪律 ＋ `§8` #5：界面上零 markdown / 零源码住址",
     ipc.calls = [];
     document.body.replaceChildren();
     __resetMachineContextForTests();
-    __setHostOsForTests("windows");
+    __setHostFactsForTests(factsOn("windows"));
   });
 
   it("🔴 正控：五种形状，同一个 `violationsOf()` 一条不落地逮得到", () => {

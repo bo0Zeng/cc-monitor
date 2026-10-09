@@ -333,11 +333,12 @@ fn the_ok_line_is_one_valid_ndjson_line() {
 /// `tests/e2e/local-backend-supervise.sh` 的真进程用例兜。
 #[test]
 fn the_listen_address_is_loopback_and_it_is_a_literal() {
+    use crate::common::net::LOOPBACK;
+    use std::net::{IpAddr, Ipv4Addr};
     assert_eq!(LOOPBACK, IpAddr::V4(Ipv4Addr::LOCALHOST));
     assert!(!LOOPBACK.is_unspecified(), "0.0.0.0 = 全网可达");
-    let prod = crate::guard_support::production_code(include_str!(
-        "../../../src/backend/stream/listen.rs"
-    ));
+    let prod =
+        crate::guard_support::production_code(include_str!("../../../src/backend/common/net.rs"));
     assert!(
         prod.contains("IpAddr::V4(Ipv4Addr::LOCALHOST)"),
         "回环地址不再是一个**字面量**常量 —— 拼出来的地址源码扫描看不见"

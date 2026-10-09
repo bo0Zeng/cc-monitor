@@ -540,8 +540,8 @@ async fn blocking<T: Send + 'static>(
 pub async fn answer(args: Value) -> Result<Value, (&'static str, String)> {
     answer_with(
         args,
-        &crate::stream::remote_ask::REACH,
-        &crate::stream::remote_ask::DialRemote,
+        &crate::dial::remote_ask::REACH,
+        &crate::dial::remote_ask::DialRemote,
     )
     .await
 }
@@ -549,8 +549,8 @@ pub async fn answer(args: Value) -> Result<Value, (&'static str, String)> {
 /// [`answer`] 的可喂夹具那一半。
 pub async fn answer_with(
     args: Value,
-    table: &crate::stream::remote_ask::Table,
-    remote: &dyn crate::stream::remote_ask::Remote,
+    table: &crate::dial::remote_ask::Table,
+    remote: &dyn crate::dial::remote_ask::Remote,
 ) -> Result<Value, (&'static str, String)> {
     if args.get("raw").and_then(Value::as_bool) == Some(true) {
         return blocking(machine_listing).await;
@@ -584,8 +584,8 @@ pub async fn answer_with(
 async fn remote_listing(
     machine: &str,
     fresh: bool,
-    table: &crate::stream::remote_ask::Table,
-    remote: &dyn crate::stream::remote_ask::Remote,
+    table: &crate::dial::remote_ask::Table,
+    remote: &dyn crate::dial::remote_ask::Remote,
 ) -> Result<Value, (&'static str, String)> {
     let lock = || REMOTE_CACHE.lock().unwrap_or_else(|e| e.into_inner());
     if !fresh {
@@ -593,7 +593,7 @@ async fn remote_listing(
             return Ok(v.clone());
         }
     }
-    let v = crate::stream::remote_ask::ask_json(
+    let v = crate::dial::remote_ask::ask_json(
         machine,
         "history-list",
         &json!({"raw": true}),

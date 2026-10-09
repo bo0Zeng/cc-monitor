@@ -3,14 +3,15 @@
 // 后面的 Consolas / monospace 不再看 ⇒ 终端画面那几行不是等宽字。
 import { describe, it, expect, afterEach } from "vitest";
 import { readFileSync } from "node:fs";
-import { markHostOs, __setHostOsForTests } from "../../../../src/frontend/ui/settings/host-os";
+import { markHostOs, __setHostFactsForTests } from "../../../../src/frontend/ui/settings/host-os";
+import { factsOn } from "../../../test-support/host-facts";
 
-afterEach(() => __setHostOsForTests(null));
+afterEach(() => __setHostFactsForTests(null));
 
 describe("data-host-os", () => {
   it("按测出来的系统标在根元素上", () => {
     for (const os of ["linux", "windows", "macos", "unknown"] as const) {
-      __setHostOsForTests(os);
+      __setHostFactsForTests(factsOn(os));
       const root = document.createElement("html");
       markHostOs(root);
       expect(root.dataset.hostOs).toBe(os);

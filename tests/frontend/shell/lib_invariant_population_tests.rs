@@ -427,7 +427,7 @@ const QUOTE_SITES: &[QuoteRow] = &[
     ),
     // 〔§47〕路径那一格在 `register` 进门判；落点常量之后只跟本侧旗标。
     (
-        "src/backend/stream/remote_ask.rs",
+        "src/backend/dial/remote_ask.rs",
         &["command_line"],
         &[],
         "",

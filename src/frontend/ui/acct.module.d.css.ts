@@ -14,7 +14,6 @@ declare const classes: {
   readonly acctChipSwap: string;
   readonly acctChipValue: string;
   readonly acctChipWindow: string;
-  readonly acctDefPreview: string;
   readonly acctDropLine: string;
   readonly acctFoot: string;
   readonly acctFootLabel: string;
@@ -60,16 +59,13 @@ declare const classes: {
   readonly acctRowSlotVal: string;
   readonly acctRowUsage: string;
   readonly acctSpacer: string;
+  readonly acctSrcRow: string;
   readonly acctSwitchRow: string;
   readonly acctTag: string;
   readonly acctTimeline: string;
-  readonly acctTlLabel: string;
-  readonly acctTlMark5: string;
-  readonly acctTlMark7: string;
-  readonly acctTlName: string;
-  readonly acctTlRefused: string;
-  readonly acctTlRow: string;
-  readonly acctTlTrack: string;
+  readonly acctTlHead: string;
+  readonly acctTlHeadPart: string;
+  readonly acctTlTop: string;
   readonly acctTrigger: string;
   readonly acctTriggerLabel: string;
   readonly acctTriggerUnit: string;

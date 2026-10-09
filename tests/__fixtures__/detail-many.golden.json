@@ -1,0 +1,24 @@
+{
+  "说明": [
+    "一行汇总底下几件各自的失败 ⇒ 复制出去的整段（复制详情条带：合流 ×N 与文件窗口进度那一行同一排法）。",
+    "排法：首行是汇总那一句；下面每件一段「那件的那一句 ＋ 它的详情」，段间空一行；详情空的那件不出段；一件都没有详情 ⇒ null（不出按钮）。",
+    "两侧各写一份、读同一份金样：Rust `copy_core::detail::many`（tests/common/copy-core/detail_tests.rs）· 界面 `kit/detail.ts::detailMany`（tests/frontend/ui/kit/detail.vitest.ts）。内容是结构占位，不含真会话正文。"
+  ],
+  "cases": [
+    {
+      "head": "上传失败 · 2 项",
+      "segments": [["a.txt：被拒", "时刻：t1\n码：io_failed"], ["b.txt：被拒", ""]],
+      "body": "上传失败 · 2 项\n\na.txt：被拒\n时刻：t1\n码：io_failed"
+    },
+    {
+      "head": "读取失败 ×2",
+      "segments": [["读取失败", "时刻：t1\n码：x"], ["读取失败", "时刻：t2\n码：x"]],
+      "body": "读取失败 ×2\n\n读取失败\n时刻：t1\n码：x\n\n读取失败\n时刻：t2\n码：x"
+    },
+    {
+      "head": "删除失败 · 2 项",
+      "segments": [["a：被拒", "  "], ["b：被拒", ""]],
+      "body": null
+    }
+  ]
+}

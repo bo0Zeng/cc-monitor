@@ -226,6 +226,8 @@ async fn main() {
     // (b) Emit the Hello handshake FIRST, flushed, before anything else.
     let hello = build_hello(&agent_home);
 
+    // 别的进程（命令行 · quota-warm · AI 照 skill 调）写了这台的轮换 ⇒ 这一路也推 `rotation_changed`（广播通道是进程内的）。
+    inbound::watch_rotation();
     match listening {
         None => run_over_stdio(hello, agent_home, wants).await,
         Some((listener, port, token)) => {
@@ -581,7 +583,7 @@ async fn claim_then_log(
     let listen::Mode::Listen { port, token_file } = mode else {
         return Ok((None, install()));
     };
-    let addr = std::net::SocketAddr::new(listen::LOOPBACK, port);
+    let addr = std::net::SocketAddr::new(common::net::LOOPBACK, port);
     let listener = match tokio::net::TcpListener::bind(addr).await {
         Ok(l) => l,
         Err(e) => {
@@ -646,7 +648,7 @@ async fn serve_listening(
     agent_home: PathBuf,
     defaults: StreamWants,
 ) {
-    let addr = std::net::SocketAddr::new(listen::LOOPBACK, port);
+    let addr = std::net::SocketAddr::new(common::net::LOOPBACK, port);
     tracing::info!("常驻监听口已就位：{addr}（多条流 + 不限次「只读 hello 就走」）");
 
     // 「谁在听」由常驻后端自己记（本机远端同一个写者；起它的那一方不写）。

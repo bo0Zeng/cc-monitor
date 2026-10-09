@@ -259,7 +259,7 @@ describe(" preprocessMath 前置闸：快路必须与慢路逐字节相同", () 
    *
    * 复算：`W2_COST=1 npx vitest run tests/frontend/ui/render.vitest.ts`
    * 默认跳过 —— wall time 在 CI 上是噪声，**当断言用就是一条会自己红的假判据**。
-   * 它只产读数，读数落 `tests/evidence/W2-17s7-readings.md`。
+   * 它只产读数。
    */
   it.skipIf(!process.env.W2_COST)("读数：44 万字符无公式正文，慢路 vs 快路的 wall time", () => {
     // 结构照真的、内容合成（数据源纪律）：CJK 段落 + 代码围栏 + 表格，

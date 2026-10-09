@@ -2,7 +2,6 @@
  * `S30` —— **CSS 三条约定接进判据**（件 7 · 件 9）。
  *
  * 量具住 `tests/evidence/S30-css-conventions.ts`，**本文件只登记与判**（分家的理由写在那边）。
- * 读数住 `tests/evidence/S30-readings.md`。
  *
  * ## 与 `tests/frontend/ui/css-ledger.vitest.ts`（`S25`）的分工 —— 不是第二本账
  *
@@ -270,6 +269,8 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
     "填值框的错误句 `err`（`s.error`）—— 开时收起",
   "src/frontend/ui/kit/dialog.ts::failLine":
     "表单框提交没成那一行 `failLine`（`s.dlgFail`，自己不写 display）—— 没出错 / 改了一格时收起",
+  "src/frontend/ui/kit/menu.ts::b":
+    "筛选框按名字筛掉的菜单项 `b`（`s.menuItem`）—— 它写了 display:flex，CSS 里另有 `.menuItem[hidden]` 收住",
   "src/frontend/ui/kit/dock.ts::this.el":
     "底部抽屉网格那一格 `this.el`（`s.dockSlot`，自己不写 display；竖排的 flex 在里层 `s.dock`）—— 收着时 hidden",
   "src/frontend/ui/kit/fold.ts::body":
@@ -282,6 +283,8 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
     "占位标签页那一页 `this.panel`（`s.slotPanel`）—— 建时收起",
   "src/frontend/ui/new-session.ts::accountRow.root":
     "「账号」那一行 `accountRow.root`（`s.nsRow`）—— 建时收起",
+  "src/frontend/ui/new-session.ts::rotRow.root":
+    "「轮换」那一行 `rotRow.root`（`s.nsRow`）—— 建时收起，读到那台的规则表才出",
   "src/frontend/ui/new-session.ts::agentRow.root":
     "「agent」那一行 `agentRow.root`（`s.nsRow`）—— 建时收起（那台能起的多于一家才出）",
   "src/frontend/ui/new-session.ts::note":
@@ -507,6 +510,8 @@ const STATE_CLASS_UNRESOLVED: Readonly<Record<string, string>> = {
   "src/frontend/ui/kit/split-button.ts · classList.add(s.splitMain)":
     "CSS Modules（`split-button.module.css`）：给拆分按钮的两半（kit 按钮）挂拼接用的版位类；哈希过的类名，不是状态名",
   "src/frontend/ui/kit/split-button.ts · classList.add(s.splitMore)": "同上（▾ 那一半）",
+  "src/frontend/ui/rot-editor.ts · classList.add(s.rotFallback)":
+    "CSS Modules（`rot-editor.module.css`）：给 kit 按钮挂兜底开关的样子类；哈希过的类名，开 / 关走 `aria-pressed`，不是状态名",
 } as const;
 
 /** 名字形的已知违例（今天空：立格那一拍逮到的两处已改）。 */

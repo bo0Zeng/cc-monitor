@@ -5,7 +5,7 @@ import type { RotationSlot } from "./RotationSlot";
 import type { RotationWhen } from "./RotationWhen";
 
 /**
- * 一份轮换：顺序 · 勾了哪几个 · 缺省上限（`when`）· 每号上限 · 每号单段预算 · 前面的号回来就切回 · 到上限没号可换时怎么办。
+ * 一份轮换：顺序 · 勾了哪几个 · 缺省上限（`when`）· 每号上限 · 每号单段预算 · 前面的号回来就切回 · 到上限没号可换时怎么办 · 最多等几分钟。
  * 起始账号占位恒算勾上。后三格缺省（空 · 空 · 关）时不写出。
  */
 export type Rotation = { order: Array<RotationSlot>, enabled: Array<string>, when: RotationWhen, 
@@ -24,4 +24,13 @@ stint?: { [key in string]: { [key in string]: number } },
 /**
  * 排在此刻的号前面的号又能用了 ⇒ 下一发切回去。
  */
-preempt?: boolean, };
+preempt?: boolean, 
+/**
+ * 兜底的号（`order` 里具名的那几个）：只在别的号都用不了、又等不到它们回来时才切过去。没有 ⇒ 缺。
+ */
+fallback?: Array<string>, 
+/**
+ * 切兜底前最多等几分钟：要切到兜底号时，非兜底的号（含此刻的）有一个在这么多分钟内回来 ⇒ 先停着等它，不切兜底。
+ * 往非兜底号切照旧立刻切；没标兜底 ⇒ 这一格不起作用。`0` ＝ 不等。盘上缺 ⇒ 缺省 40。
+ */
+wait: number, };

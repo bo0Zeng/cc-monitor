@@ -64,6 +64,8 @@ fn monitor_vantage_population(home: &Path, with_client: bool) -> Vec<(String, St
         fs: &empty,
         path_env: None,
         session_path: None,
+        system_root: None,
+        windows: false,
         vantage: Vantage::Monitor,
     };
     let client = host_label(HostScope::Client);

@@ -44,6 +44,10 @@ pub struct OpenRequest {
     pub work_area: Option<host_core::WorkArea>,
     /// 窗口的样子：开窗那一刻主界面解析出来的那一套（含用户改过的）。窗口只照它画，不另有一份。
     pub theme: Theme,
+    /// 复制详情「本机」那一项的值（`cc-monitor 版本 (构建) · 系统 架构`，monitor 算好）：窗口自己写的那几份详情（通道断了 · 本侧的错）
+    /// 照主界面那样带上它。对端拒绝的那份由 monitor 的通道宿主补，不经这里。
+    #[serde(default)]
+    pub local_line: String,
 }
 
 /// 种子 → 字节。**纯函数**（判据两向对拍）。

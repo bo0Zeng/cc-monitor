@@ -70,6 +70,7 @@ async fn downstream_bytes_arrive_whole_and_in_order_then_the_link_ends() {
     let want = pattern(3 * LINK_CHUNK_BYTES + 123);
     let payload = want.clone();
     let r = table.install(
+        "link-open",
         "t",
         "L".to_string(),
         MAX_WINDOW,
@@ -115,6 +116,7 @@ async fn without_credit_exactly_one_window_goes_out() {
     let window = LINK_CHUNK_BYTES as u64 + 1000;
     let big = pattern(16 * LINK_CHUNK_BYTES);
     let r = table.install(
+        "link-open",
         "t",
         "W".to_string(),
         window,
@@ -133,7 +135,11 @@ async fn without_credit_exactly_one_window_goes_out() {
     );
     assert_eq!(ended(&first, "W"), None);
     let more = 777;
-    let r = table.credit("c", &serde_json::json!({"link": "W", "bytes": more}));
+    let r = table.credit(
+        "link-credit",
+        "c",
+        &serde_json::json!({"link": "W", "bytes": more}),
+    );
     assert!(matches!(r, Frame::Reply { ok: true, .. }));
     settle().await;
     let second = drain(&mut rx);
@@ -152,6 +158,7 @@ async fn a_stalled_link_does_not_block_another() {
     let window = LINK_CHUNK_BYTES as u64;
     let big = pattern(8 * LINK_CHUNK_BYTES);
     table.install(
+        "link-open",
         "t",
         "stuck".to_string(),
         window,
@@ -163,6 +170,7 @@ async fn a_stalled_link_does_not_block_another() {
     let want = pattern(5 * LINK_CHUNK_BYTES);
     let payload = want.clone();
     table.install(
+        "link-open",
         "t",
         "free".to_string(),
         MAX_WINDOW,
@@ -184,6 +192,7 @@ async fn upstream_blocks_are_written_in_order_and_acked_after_the_write() {
     let (tx, mut rx) = mpsc::channel::<Frame>(1024);
     let table = Table::new(tx);
     table.install(
+        "link-open",
         "t",
         "E".to_string(),
         MAX_WINDOW,
@@ -194,6 +203,7 @@ async fn upstream_blocks_are_written_in_order_and_acked_after_the_write() {
     let chunks: Vec<Vec<u8>> = (0..3).map(|i| pattern(1000 + i)).collect();
     for (i, c) in chunks.iter().enumerate() {
         let r = table.data(
+            "link-data",
             &format!("d{i}"),
             &serde_json::json!({"link": "E", "data": crate::stream::wire::b64_encode(c)}),
         );
@@ -224,12 +234,13 @@ async fn upstream_blocks_are_written_in_order_and_acked_after_the_write() {
 async fn an_upstream_flood_is_refused_as_busy() {
     let (tx, _rx) = mpsc::channel::<Frame>(1024);
     let table = Table::new(tx);
-    table.install("t", "B".to_string(), MAX_WINDOW, hang);
+    table.install("link-open", "t", "B".to_string(), MAX_WINDOW, hang);
     let block = crate::stream::wire::b64_encode(&[1u8; 8]);
     let codes: Vec<Option<String>> = (0..5)
         .map(|i| {
             table
                 .data(
+                    "link-data",
                     &format!("d{i}"),
                     &serde_json::json!({"link": "B", "data": block}),
                 )
@@ -253,6 +264,7 @@ async fn close_aborts_the_link_and_is_idempotent() {
     let table = Table::new(tx);
     let (drop_tx, mut drop_rx) = mpsc::channel::<()>(1);
     table.install(
+        "link-open",
         "t",
         "C".to_string(),
         MAX_WINDOW,
@@ -263,7 +275,7 @@ async fn close_aborts_the_link_and_is_idempotent() {
     );
     settle().await;
     assert_eq!(table.len(), 1);
-    let r = table.close("x", &serde_json::json!({"link": "C"}));
+    let r = table.close("link-close", "x", &serde_json::json!({"link": "C"}));
     assert!(matches!(r, Frame::Reply { ok: true, .. }));
     assert_eq!(table.len(), 0);
     settle().await;
@@ -272,7 +284,7 @@ async fn close_aborts_the_link_and_is_idempotent() {
         matches!(gone, Ok(None)),
         "关了链路 5 秒，serve 手里的东西还没被丢"
     );
-    let again = table.close("y", &serde_json::json!({"link": "C"}));
+    let again = table.close("link-close", "y", &serde_json::json!({"link": "C"}));
     assert!(
         matches!(again, Frame::Reply { ok: true, .. }),
         "再关一次不是幂等的"
@@ -288,6 +300,7 @@ async fn dropping_the_table_aborts_every_link() {
     for i in 0..3 {
         let d = drop_tx.clone();
         table.install(
+            "link-open",
             "t",
             format!("T{i}"),
             MAX_WINDOW,
@@ -321,17 +334,24 @@ async fn open_refuses_what_it_should_with_a_code() {
         _ => String::new(),
     };
     let dial = serde_json::json!({"machine": {"host":"127.0.0.1","port":1,"user":"u"}});
-    assert_eq!(code(table.open("a", &serde_json::json!({}))), "bad_args");
     assert_eq!(
-        code(table.open("a", &serde_json::json!({"link": ""}))),
+        code(table.open("link-open", "a", &serde_json::json!({}))),
         "bad_args"
     );
     assert_eq!(
-        code(table.open("a", &serde_json::json!({"link": "x"}))),
+        code(table.open("link-open", "a", &serde_json::json!({"link": ""}))),
         "bad_args"
     );
     assert_eq!(
-        code(table.open("a", &serde_json::json!({"link": "x", "dial": {"host": 1}}))),
+        code(table.open("link-open", "a", &serde_json::json!({"link": "x"}))),
+        "bad_args"
+    );
+    assert_eq!(
+        code(table.open(
+            "link-open",
+            "a",
+            &serde_json::json!({"link": "x", "dial": {"host": 1}})
+        )),
         "bad_args"
     );
     // 窗口：缺席 / 小于一块 / 大于上限 ⇒ 拒收＋回错（不替对端夹）。
@@ -342,6 +362,7 @@ async fn open_refuses_what_it_should_with_a_code() {
     ] {
         assert_eq!(
             code(table.open(
+                "link-open",
                 "a",
                 &serde_json::json!({"link": "w", "window": w, "dial": dial})
             )),
@@ -352,61 +373,97 @@ async fn open_refuses_what_it_should_with_a_code() {
     let mut sub = dial.clone();
     sub["use"] = "subsystem".into();
     assert_eq!(
-        code(table.open("a", &serde_json::json!({"link": "x", "dial": sub}))),
+        code(table.open(
+            "link-open",
+            "a",
+            &serde_json::json!({"link": "x", "dial": sub})
+        )),
         "unsupported_use",
         "子系统那一口该回 unsupported_use（留口不开）"
     );
     assert_eq!(table.len(), 0);
-    table.install("t", "dup".to_string(), MAX_WINDOW, hang);
+    table.install("link-open", "t", "dup".to_string(), MAX_WINDOW, hang);
     assert_eq!(
         code(table.open(
+            "link-open",
             "a",
             &serde_json::json!({"link": "dup", "window": MAX_WINDOW, "dial": dial})
         )),
         "duplicate_link"
     );
     for i in 1..MAX_LINKS_PER_CONNECTION {
-        table.install("t", format!("n{i}"), MAX_WINDOW, hang);
+        table.install("link-open", "t", format!("n{i}"), MAX_WINDOW, hang);
     }
     assert_eq!(table.len(), MAX_LINKS_PER_CONNECTION);
     assert_eq!(
         code(table.open(
+            "link-open",
             "a",
             &serde_json::json!({"link": "one-too-many", "window": MAX_WINDOW, "dial": dial})
         )),
         "too_many_links"
     );
     assert_eq!(
-        code(table.credit("a", &serde_json::json!({"link": "nope", "bytes": 1}))),
+        code(table.credit(
+            "link-credit",
+            "a",
+            &serde_json::json!({"link": "nope", "bytes": 1})
+        )),
         "no_such_link"
     );
     // 累计信用超过上限 ⇒ 拒收＋回错；恰好到上限 ⇒ 收。（表是满的，先腾一格。）
-    table.close("a", &serde_json::json!({"link": "n1"}));
-    let r = table.install("t", "cr".to_string(), LINK_CHUNK_BYTES as u64, hang);
+    table.close("link-close", "a", &serde_json::json!({"link": "n1"}));
+    let r = table.install(
+        "link-open",
+        "t",
+        "cr".to_string(),
+        LINK_CHUNK_BYTES as u64,
+        hang,
+    );
     assert!(
         matches!(r, Frame::Reply { ok: true, .. }),
         "腾了一格还是装不上：{r:?}"
     );
     let room = MAX_WINDOW - LINK_CHUNK_BYTES as u64;
     assert_eq!(
-        code(table.credit("a", &serde_json::json!({"link": "cr", "bytes": room + 1}))),
+        code(table.credit(
+            "link-credit",
+            "a",
+            &serde_json::json!({"link": "cr", "bytes": room + 1})
+        )),
         "bad_args",
         "多还一字节该被拒"
     );
     assert!(matches!(
-        table.credit("a", &serde_json::json!({"link": "cr", "bytes": room})),
+        table.credit(
+            "link-credit",
+            "a",
+            &serde_json::json!({"link": "cr", "bytes": room})
+        ),
         Frame::Reply { ok: true, .. }
     ));
-    let d = table.data("a", &serde_json::json!({"link": "nope", "data": "AAAA"}));
+    let d = table.data(
+        "link-data",
+        "a",
+        &serde_json::json!({"link": "nope", "data": "AAAA"}),
+    );
     assert_eq!(d.map(code).as_deref(), Some("no_such_link"));
-    let bad = table.data("a", &serde_json::json!({"link": "dup", "data": "A"}));
+    let bad = table.data(
+        "link-data",
+        "a",
+        &serde_json::json!({"link": "dup", "data": "A"}),
+    );
     assert_eq!(
         bad.map(code).as_deref(),
         Some("bad_args"),
         "坏 base64 没被拒"
     );
     let huge = crate::stream::wire::b64_encode(&vec![0u8; LINK_CHUNK_BYTES + 1]);
-    let too_big = table.data("a", &serde_json::json!({"link": "dup", "data": huge}));
+    let too_big = table.data(
+        "link-data",
+        "a",
+        &serde_json::json!({"link": "dup", "data": huge}),
+    );
     assert_eq!(too_big.map(code).as_deref(), Some("bad_args"), "超块没被拒");
 }
 
@@ -422,6 +479,7 @@ async fn a_real_dial_to_a_dead_port_answers_one_failed_ack_on_the_link() {
     let (tx, mut rx) = mpsc::channel::<Frame>(64);
     let table = Table::new(tx);
     let r = table.open(
+        "link-open",
         "o",
         &serde_json::json!({
             "link": "D",

@@ -142,7 +142,7 @@ mod upstream;
 
 /// 后端起中转那一侧用的：钥匙由后端读好交进来（[`Key`]）· 一条连接交给 [`serve_one`] ·
 /// 在途满了由后端回一声 [`refuse_busy`] · 接下连接先装下游期限（[`apply_downstream_deadline`]，值由后端给）。
-pub use door::{tokens_match, Key};
+pub use door::{tokens_match, Key, Keys};
 pub use server::{apply_downstream_deadline, refuse_busy, serve_one, Relay};
 
 /// tee 的第二个落点的口与它交出去的那件事（宿主 `stream::tap` 实现口、把事件转成 `tap` 帧）；
@@ -290,13 +290,15 @@ pub enum Destination<'a> {
     },
 }
 
-/// 这一发请求里中转交给上游选择看的那几样（只读）：流标签 ＋ 整份请求体。
+/// 这一发请求里中转交给上游选择看的那几样（只读）：流标签 ＋ 整份请求体 ＋ 请求头的名字。
 #[derive(Debug, Clone, Copy)]
 pub struct Ask<'a> {
     /// 请求头里取出的流标签（[`Destinations::stream_label_headers`]）；没有 ⇒ 空串。
     pub label: &'a str,
     /// 下游送来的整份请求体（中转先收全了才问去处）。
     pub body: &'a [u8],
+    /// 这一发带的请求头的**名字**（原样大小写，只有名字、没有值）：同一家按带没带某个头选上游时看它。
+    pub names: &'a [&'a str],
 }
 
 /// 上游回包头读完那一刻中转手里的东西。

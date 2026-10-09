@@ -173,7 +173,7 @@ const FRAMES: &[(&str, &str)] = &[
     ),
     (
         "terminal_follow_end",
-        r#"{"kind":"terminal_follow_end","ticket":"no-such-ticket","why":"gone"}"#,
+        r#"{"kind":"terminal_follow_end","ticket":"no-such-ticket","why":"gone","said":"x"}"#,
     ),
     // 中转抄出来的 SSE 事件 —— 不是会话内容（jsonl 才是），就地转给前端，不进内容通道。
     (
@@ -189,11 +189,12 @@ const FRAMES: &[(&str, &str)] = &[
 
 #[test]
 fn the_absorb_point_hands_back_exactly_the_content_and_lifecycle_frames() {
-    // 两向：表里的种类 ＋ 刻意不喂的那三种（认识但不消费）== parse_frame 的全部臂。
+    // 两向：表里的种类 ＋ 刻意不喂的那四种（认识但不消费）== parse_frame 的全部臂。
     let mut fed: BTreeSet<String> = FRAMES.iter().map(|(k, _)| k.to_string()).collect();
     fed.insert("turn_end".into());
     fed.insert("quota_changed".into());
     fed.insert("rotation_changed".into());
+    fed.insert("rotation_rules_changed".into());
     let all = crate::guard_support::parse_frame_kinds();
     assert_eq!(
         fed, all,

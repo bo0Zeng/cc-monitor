@@ -10,7 +10,19 @@ use serde_json::json;
 
 // 下面除末尾 POSIX 那一节外都量 PowerShell 那一形（Windows 上开终端的那一行）：按方言显式取，不随跑测试的这台机器变。
 fn answer(args: &Value) -> Result<Value, CmdErr> {
-    answer_in(args, true)
+    answer_in(args, true, &found())
+}
+
+/// 这台找到的 ssh 客户端（Windows 系统可选功能装的那一处）。
+const SSH: &str = r"C:\Windows\System32\OpenSSH\ssh.exe";
+
+fn found() -> SshClient {
+    SshClient::At(SSH.into())
+}
+
+/// 那一行打头的调用：PowerShell 的 `& ` ＋ ssh 客户端全路径的字面量。
+fn call() -> String {
+    format!("& {} ", ps_literal(SSH))
 }
 
 fn known_hosts_arg(p: Option<&std::path::Path>) -> String {
@@ -44,7 +56,7 @@ fn the_basic_shape_goes_through_the_agent_and_wraps_the_payload_only_twice() {
     let remote = "unset X; cd '/home/pi' && claude --resume s1";
     let got = run(machine("pi.local", "pi", 22, None), remote).unwrap();
     assert!(
-        got.starts_with(&format!("& ssh -t -p 22{} pi@pi.local -- ", kh())),
+        got.starts_with(&format!("{}-t -p 22{} pi@pi.local -- ", call(), kh())),
         "基本形态（agent 无 -i）: {got}"
     );
     let inner = unps(got.rsplit_once("-- ").unwrap().1);
@@ -70,7 +82,8 @@ fn a_key_and_a_port_render_as_flags_and_the_key_is_ps_quoted() {
     .unwrap();
     assert!(
         got.starts_with(&format!(
-            "& ssh -t -p 2222 -i 'C:\\Users\\z''s\\id_ed25519'{} u@192.0.2.2 -- ",
+            "{}-t -p 2222 -i 'C:\\Users\\z''s\\id_ed25519'{} u@192.0.2.2 -- ",
+            call(),
             kh()
         )),
         "{got}"
@@ -93,19 +106,21 @@ fn single_quotes_in_the_payload_survive_both_layers() {
 fn the_address_is_the_first_in_race_order_so_the_last_winner_is_used() {
     let m = json!({ "host": "lan.example", "user": "u", "port": 22, "label": "m", "addresses": ["192.0.2.9:2200"] });
     let plain = answer(&json!({ "machine": m, "command": "x" })).unwrap();
-    assert!(plain["command"]
-        .as_str()
-        .unwrap()
-        .starts_with(&format!("& ssh -t -p 22{} u@lan.example -- ", kh())));
+    assert!(plain["command"].as_str().unwrap().starts_with(&format!(
+        "{}-t -p 22{} u@lan.example -- ",
+        call(),
+        kh()
+    )));
     let won = answer(
         &json!({ "machine": m, "prefer": { "host": "192.0.2.9", "port": 2200 }, "command": "x" }),
     )
     .unwrap();
     assert!(
-        won["command"]
-            .as_str()
-            .unwrap()
-            .starts_with(&format!("& ssh -t -p 2200{} u@192.0.2.9 -- ", kh())),
+        won["command"].as_str().unwrap().starts_with(&format!(
+            "{}-t -p 2200{} u@192.0.2.9 -- ",
+            call(),
+            kh()
+        )),
         "上次赢的那条没排首：{won}"
     );
 }
@@ -117,16 +132,18 @@ fn the_jump_hop_renders_as_dash_j_and_a_missing_or_looping_jump_is_refused() {
         |port: u16| json!({ "host": "jump.local", "user": "pi", "port": port, "label": "bastion" });
     let got = answer(&json!({ "machine": m, "jump": j(22), "command": "x" })).unwrap();
     assert!(
-        got["command"]
-            .as_str()
-            .unwrap()
-            .starts_with(&format!("& ssh -t -J pi@jump.local -p 22{} u@t -- ", kh())),
+        got["command"].as_str().unwrap().starts_with(&format!(
+            "{}-t -J pi@jump.local -p 22{} u@t -- ",
+            call(),
+            kh()
+        )),
         "{got}"
     );
     let got = answer(&json!({ "machine": m, "jump": j(2222), "command": "x" })).unwrap();
     assert!(
         got["command"].as_str().unwrap().starts_with(&format!(
-            "& ssh -t -J pi@jump.local:2222 -p 22{} u@t -- ",
+            "{}-t -J pi@jump.local:2222 -p 22{} u@t -- ",
+            call(),
             kh()
         )),
         "{got}"
@@ -426,6 +443,7 @@ fn the_posix_line_hands_ssh_the_same_arguments_a_real_shell_would() {
     let line = answer_in(
         &json!({ "machine": m, "jump": jump, "command": cmd }),
         false,
+        &SshClient::At(fake.to_str().unwrap().into()),
     )
     .unwrap()["command"]
         .as_str()
@@ -478,6 +496,34 @@ fn the_posix_line_hands_ssh_the_same_arguments_a_real_shell_would() {
 #[test]
 fn only_the_powershell_line_refuses_double_quotes() {
     let args = json!({ "machine": machine("h", "u", 22, None), "command": r#"echo "a b""# });
-    assert_eq!(answer_in(&args, true).unwrap_err().0, "refused");
-    assert!(answer_in(&args, false).is_ok());
+    assert_eq!(answer_in(&args, true, &found()).unwrap_err().0, "refused");
+    assert!(answer_in(&args, false, &SshClient::At("/usr/bin/ssh".into())).is_ok());
+}
+
+/// 这台没装 ssh 客户端 ⇒ 不出那一行，照实说没装（按本机终端方言说怎么装）。
+#[test]
+fn no_ssh_client_here_says_so_instead_of_rendering_a_line_that_cannot_run() {
+    let args = json!({ "machine": machine("h", "u", 22, None), "command": "x" });
+    let (code, said) = answer_in(&args, true, &SshClient::Missing).unwrap_err();
+    assert_eq!(code, "no_ssh_client");
+    assert_eq!(said, copy_text("beTerminal.ssh.missingWindows", &[]));
+    let (code, said) = answer_in(&args, false, &SshClient::Missing).unwrap_err();
+    assert_eq!(code, "no_ssh_client");
+    assert_eq!(said, copy_text("beTerminal.ssh.missingPosix", &[]));
+}
+
+/// 查的时候出了错 ⇒ 说判不了（带原话），不说没装、不叫人去装。
+#[test]
+fn a_failed_check_says_it_cannot_tell_and_never_claims_missing() {
+    let args = json!({ "machine": machine("h", "u", 22, None), "command": "x" });
+    let why = "PATH not set or empty";
+    let (code, said) = answer_in(&args, true, &SshClient::Unknown(why.into())).unwrap_err();
+    assert_eq!(code, "unobservable");
+    assert_eq!(said, copy_text("beTerminal.ssh.unknown", &[("why", why)]));
+    for missing in [
+        "beTerminal.ssh.missingWindows",
+        "beTerminal.ssh.missingPosix",
+    ] {
+        assert_ne!(said, copy_text(missing, &[]));
+    }
 }

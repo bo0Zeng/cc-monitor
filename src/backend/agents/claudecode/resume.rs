@@ -20,6 +20,8 @@ pub(crate) const LAUNCHER_ALIAS: &str = "cc";
 
 /// resume 那个字面量：**flag 形**（`--` 开头）。[`resume_command`] 与画像表（`agents::LaunchFace`）同一份。
 pub(crate) const RESUME_TOKEN: &str = "--resume";
+/// 起新会话时先定好 sid 的旗标（`claude --session-id <uuid>`；起会话框带规则时后端按它先写好来源）。
+pub(crate) const SESSION_ID_FLAG: &str = "--session-id";
 
 /// 起会话 / resume 之前要清掉的嵌套会话标记（否则 claude 自认嵌套子会话、不注册 pidfile、不写 jsonl）。
 /// ⚠ **顺序不是随手排的**：载荷按这个序 unset（`launch_render`），它直接决定送到那台的那条命令的字节。

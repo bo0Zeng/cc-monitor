@@ -86,6 +86,10 @@ export interface World {
   terminalLive?: "live" | "lost" | "offline";
   /** 场景故意不答的那几条（演「后端比界面老」）：答不上照样按「不认」拒，只是不报。 */
   quiet?: string[];
+  /** 帧命令晚多少毫秒才答（按 op 名；不给 ⇒ 当场答）。性能台架用它演「后端读大文件 / 远端那一跳要时间」：快速连切时，切走之后才回来的那几问还干不干活。 */
+  opDelayMs?: Record<string, number>;
+  /** 重放时每个会话只交尾部这么多条（照真壳 `event_replay.rs::REPLAY_TAIL_KEEP`；更早的由骨架索引按偏移取）。不给 ⇒ 整份交。 */
+  replayTail?: number;
   /** Tauri 命令的答法（`load_config` 之类），按命令名；场景可以整条覆盖。 */
   commands: Record<string, (args: Record<string, unknown>, world: World) => unknown>;
 }
@@ -96,6 +100,9 @@ export interface ShotsHandle {
   unhandled: string[];
   /** 截之前量 DOM 外接框发现的排版问题（`scenes/layout-check.ts`）。 */
   layout: string[];
+  /** 场景要真鼠标停的那一点（页坐标）；截图工具停好之后调 `remeasure` 重量一遍排版。 */
+  pointer?: { x: number; y: number };
+  remeasure?: () => string[];
 }
 
 export interface SceneCtx {

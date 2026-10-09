@@ -321,8 +321,7 @@ async fn half_given_arguments_are_refused() {
     assert_eq!(e.0, "unreachable");
     assert!(fakes.seen.lock().unwrap().is_empty());
     // 正控：握手那一刻登记过（`remote-reach`）⇒ 只给 `origin` 就对那一台做一趟。
-    crate::stream::remote_ask::register(&table, &json!({"origin": "o", "dial": dial("x")}))
-        .unwrap();
+    crate::dial::remote_ask::register(&table, &json!({"origin": "o", "dial": dial("x")})).unwrap();
     let ok = answer_with(&json!({"origin": "o"}), local.fold(), &fakes, &table)
         .await
         .expect("登记过的也拒了");
@@ -378,7 +377,7 @@ fn the_push_command_line_carries_no_payload_and_the_payload_rides_stdin_as_one_l
     let cmd = push_command();
     assert_eq!(
         cmd,
-        crate::stream::remote_ask::command_line(&[PUSH_FLAG, crate::STDIN_LINE_FLAG]),
+        crate::dial::remote_ask::command_line(&[PUSH_FLAG, crate::STDIN_LINE_FLAG]),
         "推那一趟的命令行不是「后端路径 ＋ 两个旗标」"
     );
     // 命令行以固定落点打头（它自己带 `"$HOME"`）⇒ 查的是落点之后那一段。

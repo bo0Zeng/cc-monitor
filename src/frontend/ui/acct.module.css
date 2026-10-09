@@ -159,16 +159,6 @@
     gap: var(--space-4);
   }
 
-  .acctDefPreview {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-4);
-    padding: var(--space-4);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-m);
-    background: var(--bg-2);
-  }
-
   .acctBlockNote,
   .acctHint,
   .acctLead {
@@ -262,6 +252,19 @@
     gap: var(--space-5);
   }
 
+  /* 来源一行：`来源 [跟随默认 ▾] ⓘ`，下拉按内容宽（不撑满）。 */
+  .acctSrcRow {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+  }
+
+  .acctSrcRow > button {
+    width: auto;
+    min-width: 132px;
+    max-width: 260px;
+  }
+
   .acctSpacer {
     flex: 1;
   }
@@ -346,15 +349,31 @@
     touch-action: none;
   }
 
+  /* 一行挤了先截号名（头像已带缩写）；状态标签与行尾用量不缩、不折行；只读的封顶标签文字长，排在号名之后再缩。 */
   .acctRowName {
+    flex: 0 4 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     color: var(--text);
+  }
+
+  .acctRow > .acctTag {
+    flex: none;
+  }
+
+  .acctRow > .acctTag[data-cap] {
+    flex: 0 1 auto;
   }
 
   .acctRowUsage {
     display: inline-flex;
+    flex: none;
     gap: var(--space-5);
     margin-left: auto;
     color: var(--text-2);
+    white-space: nowrap;
   }
 
   .acctRowUsage[data-shade="refused"] {
@@ -426,62 +445,29 @@
     padding-top: var(--space-3);
   }
 
-  .acctTlRow {
+  .acctTlTop {
     display: flex;
     align-items: center;
     gap: var(--space-3);
-    padding-left: var(--space-2);
-    border-left: 2px solid transparent;
   }
 
-  .acctTlRow[data-inuse="true"] {
-    border-left-color: var(--accent);
-  }
-
-  .acctTlName {
-    width: 8ch;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .acctTlTrack {
-    position: relative;
+  .acctTlHead {
     flex: 1;
-    height: 12px;
-    border-bottom: 1px solid var(--border-soft);
+    min-width: 0;
+    font-size: var(--font-size-small);
   }
 
-  .acctTlMark5,
-  .acctTlMark7 {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    width: 2px;
-    background: var(--text-2);
+  /* 顶行一段整段换行；一段比整行还宽才在段内折。 */
+  .acctTlHeadPart {
+    display: inline-block;
+    max-width: 100%;
   }
 
-  .acctTlMark7 {
-    width: 6px;
-    height: 6px;
-    top: 3px;
-    background: var(--text);
-    transform: rotate(45deg);
-  }
-
-  .acctTlRefused {
-    position: absolute;
-    top: 4px;
-    left: 0;
-    height: 4px;
-    background: var(--error);
-  }
-
-  .acctTlLabel {
-    flex: none;
-    min-width: 10ch;
-    color: var(--text-2);
-    text-align: right;
+  /* 卡住：琥珀条（需要你留意几点能接着干）。 */
+  .acctTlHead[data-tl-head="blocked"] {
+    padding: var(--space-1) var(--space-2);
+    border: 1px solid var(--warn);
+    border-radius: var(--radius-s);
   }
 
   .acctSwitchRow {

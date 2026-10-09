@@ -536,6 +536,61 @@ pub(crate) fn session_wait(agent_home: &Path, sid: &str) -> Option<super::facts_
         .min_by_key(|w| w.since_ms.unwrap_or(u64::MAX))
 }
 
+/// 一个活会话此刻在干什么 —— 与主窗口标签页同一判：活动态（pidfile，适配层翻好的）· 在等你时等的是什么。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) struct Doing {
+    /// 说不清 ⇒ `None`（主窗口那颗点照「在跑」画）。
+    pub(crate) activity: Option<crate::agents::SessionActivity>,
+    /// 只在 `activity` 是在等你时有：配上记录里没结果的那一步判的种类（[`super::facts_query::needs_of`]）。
+    pub(crate) needs: Option<super::facts_query::NeedsKind>,
+}
+
+/// 这台此刻活着的每个会话在干什么（判活同 [`live_session_ids`]）。同一会话几个进程持着 ⇒ 在等你 ＞ 在跑 ＞ 空闲 ＞ 说不清。
+/// 在等你 ⇒ 读那条会话的记录（扫描图缓存）配上没结果的调用判种类；记录找不到 ⇒ 判不出（`Unknown`）。
+pub(crate) fn live_doing(agent_home: &Path) -> std::collections::BTreeMap<String, Doing> {
+    use crate::agents::SessionActivity as A;
+    let rank = |a: Option<A>| match a {
+        Some(A::NeedsYou) => 3,
+        Some(A::Working) => 2,
+        Some(A::Idle) => 1,
+        None => 0,
+    };
+    let mut out: std::collections::BTreeMap<String, Doing> = std::collections::BTreeMap::new();
+    for (pid, v) in pidfiles(agent_home) {
+        if !crate::platform::proc::session_alive(pid, parse_procstart_ticks(&v)) {
+            continue;
+        }
+        let Some(sid) = v
+            .get("sessionId")
+            .and_then(|x| x.as_str())
+            .filter(|s| !s.is_empty())
+        else {
+            continue;
+        };
+        let activity = crate::agents::pidfile_activity(&v);
+        let cell = out.entry(sid.to_string()).or_default();
+        if rank(activity) > rank(cell.activity) {
+            cell.activity = activity;
+        }
+    }
+    for (sid, cell) in out.iter_mut() {
+        if cell.activity != Some(A::NeedsYou) {
+            continue;
+        }
+        let pending = super::history_query::session_record(agent_home, sid)
+            .ok()
+            .and_then(|p| super::history_query::cold_scan(agent_home, &p.to_string_lossy()).ok())
+            .map(|m| m.pending().to_vec())
+            .unwrap_or_default();
+        let wait = session_wait(agent_home, sid).unwrap_or(super::facts_query::PidWait {
+            waiting_for: None,
+            since_ms: None,
+        });
+        cell.needs = super::facts_query::needs_of(&pending, Some(&wait)).map(|n| n.kind);
+    }
+    out
+}
+
 /// `--session-accounts`：扫 `<claude_dir>/sessions/<PID>.json`，每条一行。
 pub(crate) fn session_accounts(agent_home: &Path, accts_dir: &Path) -> Vec<String> {
     // 向注册表要「会话进程环境里该读哪两个键」只问这一次（账号 · 上游地址；账号库那一家的 `AccountsFace.session_env`）。

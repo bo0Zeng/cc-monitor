@@ -8,8 +8,7 @@
  * 也没有 `position`** ⇒ 一个**没认领格子的 grid item**，浏览器只好给它开一条**隐式行**。
  * （抽屉与这两个符号已整个删掉，；下面是病史。）
  *
- * 真引擎实测（Chromium 153 + WebKitGTK 2.52.6，900×700，读数见
- * `tests/evidence/S24-css-readings.md`）：
+ * 真引擎实测（Chromium 153 + WebKitGTK 2.52.6，900×700）：
  *
  * | | `#app` 的 `grid-template-rows` | `#message-stream` 高 | 抽屉落在哪 |
  * |---|---|---:|---|
@@ -51,7 +50,7 @@
  * - ⚠ 尺 A 只认得今天实际存在的四种插法（见 `APP_INSERT_SHAPES`）。有人用第五种形状
  *   （比如先把节点交给一个工具函数再插）把东西塞进 `#app`，这把尺子看不见。
  * - ⚠ 这是**静态对账**，不是渲染。它保证「每个 item 都认领了一个声明过的区域」，
- *   不保证那个区域的位置好看 —— 那一格靠 `tests/evidence/S24-css-readings.md` 的真引擎读数。
+ *   不保证那个区域的位置好看 —— 那一格靠真引擎实测。
  * - ⚠ 不管 `position: absolute` 的那几个画在哪：它们不是 grid item，不开隐式行，
  *   到此为止。
  *
