@@ -9,7 +9,7 @@
 import { icon, type IconName } from "./icon";
 import { spinner } from "./progress";
 import s from "./button.module.css";
-import { hideTooltipOf } from "./tooltip";
+import { dropAdopted, hideTooltipOf } from "./tooltip";
 
 export type ButtonKind = "primary" | "secondary" | "danger" | "danger-text" | "ghost" | "icon";
 export type ButtonSize = "regular" | "compact";
@@ -71,6 +71,7 @@ export function setDisabled(b: HTMLButtonElement, why: string | null): void {
     const hint = b.dataset.hint ?? "";
     delete b.dataset.hint;
     delete b.dataset.kitTitle;
+    dropAdopted(b);
     if (hint) b.title = hint;
     else b.removeAttribute("title");
     hideTooltipOf(b);

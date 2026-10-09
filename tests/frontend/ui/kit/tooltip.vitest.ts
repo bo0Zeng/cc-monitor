@@ -360,6 +360,63 @@ describe("接管 title 不丢读屏名、全文已显示就不重复出", () => 
     expect(focusable.map(accName)).toEqual(before);
   });
 
+  /** 可访问说明：`aria-description` → title（没被拿去当名字时）。 */
+  function accDesc(el: HTMLElement): string {
+    const d = el.getAttribute("aria-description");
+    if (d !== null) return d.trim();
+    const t = el.getAttribute("title")?.trim() ?? "";
+    return t !== "" && accName(el) !== t ? t : "";
+  }
+
+  /** 等接管那一圈（观察者回调 · 它自己挪走 title 引出的那一圈）都跑完。 */
+  const settle = async (): Promise<void> => {
+    for (let i = 0; i < 4; i++) await Promise.resolve();
+  };
+
+  it("★ 不等悬停：元素一挂上就接管 —— 已有可访问名的不覆盖、名字与说明不相同才挂说明；没名字的才拿说明当名字", async () => {
+    adoptNativeTitles(document);
+    const mk = (html: string): HTMLElement => {
+      const w = document.createElement("div");
+      w.innerHTML = html;
+      document.body.appendChild(w);
+      return w.firstElementChild as HTMLElement;
+    };
+    const cases: [HTMLElement, string, string][] = [
+      // 头上那枚标签（不可聚焦、有字）：名字是它的字，原因是说明。
+      [mk(`<span title="甲机的 tmux 低于 3.2">仅快照甲</span>`), "", "甲机的 tmux 低于 3.2"],
+      // 字与说明一样：不再挂说明（读屏不念两遍）。
+      [mk(`<button title="收起甲">收起甲</button>`), "收起甲", ""],
+      [mk(`<button title="看它的终端甲">看甲</button>`), "看甲", "看它的终端甲"],
+      [mk(`<button aria-label="设置甲" title="设置甲"><svg></svg></button>`), "设置甲", ""],
+      [mk(`<button aria-label="设置乙" title="打开设置乙"><svg></svg></button>`), "设置乙", "打开设置乙"],
+      [mk(`<textarea aria-label="回车送出甲" title="回车送出甲"></textarea>`), "回车送出甲", ""],
+      // 只有 title 能当名字的（图标按钮 · 可聚焦的一行）：说明挪成名字，不再另挂说明。
+      [mk(`<button title="历史甲"><svg></svg></button>`), "历史甲", ""],
+      [mk(`<div tabindex="0" title="整理笔记甲"><span>整理笔记甲</span><span>notes</span></div>`), "整理笔记甲", ""],
+    ];
+    await Promise.resolve();
+    for (const [el, name, desc] of cases) {
+      expect(el.hasAttribute("title"), `${el.outerHTML}：title 还在 ⇒ 系统提示照出、读屏照旧念`).toBe(false);
+      expect([accName(el), accDesc(el)], el.outerHTML).toEqual([name, desc]);
+    }
+  });
+
+  it("★ 代码后来改 title（按钮禁用 / 恢复）：说明跟着换；恢复后没有原说明 ⇒ 说明撤掉", async () => {
+    adoptNativeTitles(document);
+    const plain = button({ label: "甲钮" });
+    const hinted = button({ label: "乙", hint: "乙钮的说明" });
+    document.body.append(plain, hinted);
+    await settle();
+    expect([accName(hinted), accDesc(hinted)]).toEqual(["乙", "乙钮的说明"]);
+    for (const b of [plain, hinted]) setDisabled(b, "丙原因");
+    await settle();
+    expect([accDesc(plain), accDesc(hinted)]).toEqual(["丙原因", "丙原因"]);
+    for (const b of [plain, hinted]) setDisabled(b, null);
+    await settle();
+    expect([accName(plain), accDesc(plain)]).toEqual(["甲钮", ""]);
+    expect([accName(hinted), accDesc(hinted)]).toEqual(["乙", "乙钮的说明"]);
+  });
+
   it("全文已经完整显示（没被截断）⇒ 不再弹一遍；截断了 ⇒ 照出", () => {
     adoptNativeTitles(document);
     const row = document.createElement("div");
