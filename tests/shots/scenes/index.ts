@@ -11,6 +11,7 @@ import { KIT_SCENES } from "./kit";
 import { ACCT_SCENES } from "./acct";
 import { DRAWER_SCENES } from "./drawer";
 import { AGENT_SCENES } from "./agent";
+import { FOLDALL_SCENES } from "./foldall";
 
 export interface Scene {
   id: string;
@@ -41,7 +42,7 @@ export const DEFAULT_STORAGE: Record<string, string> = {
   "cc-monitor.cmdk-hint.seen": "1",
 };
 
-export const SCENES: Scene[] = [...MAIN_SCENES, ...PANEL_SCENES, ...FRONT_SCENES, ...DPI_SCENES, ...HISTORY_SCENES, ...SETTINGS_SCENES, ...KIT_SCENES, ...ACCT_SCENES, ...DRAWER_SCENES, ...AGENT_SCENES];
+export const SCENES: Scene[] = [...MAIN_SCENES, ...PANEL_SCENES, ...FRONT_SCENES, ...DPI_SCENES, ...HISTORY_SCENES, ...SETTINGS_SCENES, ...KIT_SCENES, ...ACCT_SCENES, ...DRAWER_SCENES, ...AGENT_SCENES, ...FOLDALL_SCENES];
 
 export function sceneById(id: string): Scene {
   return (

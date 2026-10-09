@@ -3186,34 +3186,16 @@
       "zh": "{who}：{text}",
       "args": ["who", "text"]
     },
-    "stream.proc.head": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "过程",
-      "args": []
-    },
-    "stream.proc.tools": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "工具 ×{n}",
-      "args": ["n"]
-    },
-    "stream.proc.thinking": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "思考 ×{n}",
-      "args": ["n"]
-    },
-    "stream.proc.fails": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "失败 ×{n}",
-      "args": ["n"]
-    },
     "stream.proc.toggle": {
       "kind": "control",
       "role": "标签",
       "zh": "过程默认展开",
+      "args": []
+    },
+    "stream.proc.collapseTail": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "收起这段过程",
       "args": []
     },
     "stream.step.rejected": {
@@ -11695,6 +11677,102 @@
       "role": "片段",
       "zh": "仅代码",
       "args": []
+    },
+    "rsTurns.proc.head": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "过程",
+      "args": []
+    },
+    "rsTurns.proc.tools": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "工具 ×{n}",
+      "args": ["n"]
+    },
+    "rsTurns.proc.thinking": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "思考 ×{n}",
+      "args": ["n"]
+    },
+    "rsTurns.proc.agents": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "agent ×{n}",
+      "args": ["n"]
+    },
+    "rsTurns.proc.background": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "后台任务 ×{n}",
+      "args": ["n"]
+    },
+    "rsTurns.proc.retries": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "重试 ×{n}",
+      "args": ["n"]
+    },
+    "rsTurns.proc.peers": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "来话 ×{n}",
+      "args": ["n"]
+    },
+    "rsTurns.proc.fails": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "失败 ×{n}",
+      "args": ["n"]
+    },
+    "rsTurns.proc.now": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "当前：{step}",
+      "args": ["step"]
+    },
+    "rsTurns.proc.awaitApprove": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "等你批准：{step}",
+      "args": ["step"]
+    },
+    "rsTurns.proc.awaitAnswer": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "等你回答：{step}",
+      "args": ["step"]
+    },
+    "rsTurns.proc.awaitYou": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "在等你",
+      "args": []
+    },
+    "rsTurns.span.range": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{from}–{to}",
+      "args": ["from", "to"]
+    },
+    "rsTurns.span.done": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{when} · {dur}",
+      "args": ["when", "dur"]
+    },
+    "rsTurns.span.since": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{hm} 起 · {dur}",
+      "args": ["hm", "dur"]
+    },
+    "rsTurns.span.waited": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "已等 {dur}",
+      "args": ["dur"]
     },
     "rsHooksDiag.diagnose.noSettings": {
       "kind": "body",

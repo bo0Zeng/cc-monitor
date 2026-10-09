@@ -126,16 +126,44 @@
     "from": 0,
     "turns": [
       {
+        "agents": 0,
         "at": 0,
-        "conclusion": [
-          "t-8"
-        ],
+        "background": 0,
         "done": true,
         "end": "t8",
         "endText": "",
+        "ending": [
+          "t-8"
+        ],
         "fails": 1,
+        "parts": [
+          {
+            "text": "过程",
+            "tone": "plain"
+          },
+          {
+            "text": "工具 ×2",
+            "tone": "plain"
+          },
+          {
+            "text": "思考 ×1",
+            "tone": "plain"
+          },
+          {
+            "text": "失败 ×1",
+            "tone": "fail"
+          }
+        ],
+        "peers": 0,
+        "phase": "idle",
         "reply": "r1\nr2\nr3",
+        "retries": 0,
         "said": "first line",
+        "span": {
+          "from": null,
+          "text": "",
+          "to": null
+        },
         "start": "t1",
         "startText": "",
         "thinking": 1,
@@ -143,14 +171,34 @@
         "uuid": "t-1"
       },
       {
+        "agents": 0,
         "at": 1089,
-        "conclusion": [],
+        "background": 0,
         "done": false,
         "end": "t10",
         "endText": "",
+        "ending": [],
         "fails": 0,
+        "parts": [
+          {
+            "text": "过程",
+            "tone": "plain"
+          },
+          {
+            "text": "工具 ×1",
+            "tone": "plain"
+          }
+        ],
+        "peers": 0,
+        "phase": "idle",
         "reply": "",
+        "retries": 0,
         "said": "next",
+        "span": {
+          "from": null,
+          "text": "",
+          "to": null
+        },
         "start": "t9",
         "startText": "",
         "thinking": 0,
