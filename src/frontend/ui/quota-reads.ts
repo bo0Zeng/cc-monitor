@@ -10,6 +10,7 @@ import type { Rotation } from "./generated/Rotation";
 import type { SessionRotationState } from "./generated/SessionRotationState";
 import type { RestartOutcome } from "./generated/RestartOutcome";
 import type { SwitchOutcome } from "./generated/SwitchOutcome";
+import type { CellError } from "./generated/CellError";
 import { exactKeys } from "./ipc/decode";
 
 /** 读一份额度账 / 轮换（读盘 ＋ 回程）。 */
@@ -175,6 +176,31 @@ export async function writeSessionRotation(origin: Origin, sids: string[], rotat
   const body = jsonBody({ sids, rotation });
   const budget = budgetWithin(READ_BUDGET_MS);
   return decodeOutcomes(readJson(await chan.call(origin, "rotation-session-set", body, budget)));
+}
+
+/** 存一条规则的结局：存成（那一条）· 逐格错 · 别处先改过（此刻的版本）。 */
+export type RuleSaved = { state: "saved"; rule: RuleRow } | { state: "refused"; errors: CellError[] } | { state: "conflict"; rev: number };
+
+export function decodeRuleSaved(v: unknown): RuleSaved {
+  const o = obj(v, "reply");
+  if (o.state === "saved") return { state: "saved", rule: decodeRuleRow(o.rule, "rule") };
+  if (o.state === "refused") return { state: "refused", errors: arr(o.errors, "errors") as CellError[] };
+  if (o.state === "conflict" && typeof o.rev === "number") return { state: "conflict", rev: o.rev };
+  return bad(`state ${JSON.stringify(o.state)}`);
+}
+
+/** 新建（不给 `id`）或整份改一条规则。 */
+export async function saveRule(origin: Origin, args: { id?: string; name: string; rotation?: Rotation; ifRev?: number; from?: string }): Promise<RuleSaved> {
+  const body = jsonBody(args);
+  const budget = budgetWithin(READ_BUDGET_MS);
+  return decodeRuleSaved(readJson(await chan.call(origin, "rotation-rule-save", body, budget)));
+}
+
+/** 一份草稿逐格校验（不写）：回逐格错（空 ＝ 没错）。 */
+export async function checkRotation(origin: Origin, rotation: Rotation): Promise<CellError[]> {
+  const body = jsonBody({ rotation });
+  const budget = budgetWithin(READ_BUDGET_MS);
+  return arr(obj(readJson(await chan.call(origin, "rotation-plan", body, budget)), "reply").errors, "errors") as CellError[];
 }
 
 /** 现在就换：热切换 `sessions` 是会话 id；重启切换每项是 `session-restart` 的入参（不带 `account`），`ms` 是这一趟的总期限（要等压缩 · 等报出）。 */

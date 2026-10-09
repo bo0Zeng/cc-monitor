@@ -21,6 +21,10 @@ export interface SelectOption {
   /** `false` ＝ 灰着不可选；为什么写进 `why`（面板右侧灰字）。 */
   enabled?: boolean;
   why?: string;
+  /** 框上画的字（缺 ⇒ `label`）：面板里只写名字、框上要带上它是哪一类时用（`夜间` ⇒ `规则 夜间`）。 */
+  shown?: string;
+  /** 面板里这一项右侧的灰字（摘要之类）。 */
+  detail?: string;
 }
 
 export interface SelectSpec {
@@ -31,6 +35,8 @@ export interface SelectSpec {
   onChange?: (value: string) => void;
   /** 合着时方向键做什么：`step`（缺省）↑↓ 直接换值 · `open` 只有 ↓ 展开、别的一概不做。 */
   closedKeys?: "step" | "open";
+  /** 开面板前再排一遍项（插组名 · 分隔 · 末尾几个动作）；缺 ⇒ 原样。 */
+  decorate?: (items: MenuItem[]) => MenuItem[];
 }
 
 export interface SelectHandle {
@@ -62,7 +68,7 @@ export function select(spec: SelectSpec): SelectHandle {
   const paint = (): void => {
     const o = current();
     lead.replaceChildren(...(o?.lead ? [o.lead()] : []));
-    text.textContent = o?.label ?? "";
+    text.textContent = o?.shown ?? o?.label ?? "";
     note.textContent = o?.note ?? "";
     el.dataset.value = value;
   };
@@ -80,10 +86,10 @@ export function select(spec: SelectSpec): SelectHandle {
       avatar: o.lead?.(),
       checked: o.value === value,
       enabled: o.enabled !== false,
-      detail: o.enabled === false ? o.why : undefined,
+      detail: o.enabled === false ? o.why : o.detail,
       onClick: () => pick(o.value),
     }));
-    openMenu({ el }, items, { label: spec.label, width: el.getBoundingClientRect().width, onClose: () => el.focus() });
+    openMenu({ el }, spec.decorate ? spec.decorate(items) : items, { label: spec.label, width: el.getBoundingClientRect().width, onClose: () => el.focus() });
   };
   const step = (dir: 1 | -1): void => {
     const live = options.filter((o) => o.enabled !== false);

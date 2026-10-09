@@ -23,10 +23,10 @@ pub(crate) const HISTORY_KEPT: usize = 32;
 pub(crate) const THRESHOLD_RANGE: std::ops::RangeInclusive<u8> = 1..=99;
 /// 每号覆盖的上限收哪些值：多一个 `0` ＝ 这个号（这一时段）不用，不管用量多少。
 pub(crate) const CAP_RANGE: std::ops::RangeInclusive<u8> = 0..=99;
-/// 「最多等几分钟」收哪些值：`0` ＝ 不等（往后换照旧）。
-pub(crate) const WAIT_RANGE: std::ops::RangeInclusive<u8> = 0..=60;
-/// 「最多等几分钟」缺省几分钟。
-pub(crate) const WAIT_DEFAULT: u8 = 10;
+/// 「切兜底前最多等几分钟」收哪些值：`0` ＝ 不等（要切兜底就立刻切）。
+pub(crate) const WAIT_RANGE: std::ops::RangeInclusive<u8> = 0..=120;
+/// 「切兜底前最多等几分钟」缺省几分钟。
+pub(crate) const WAIT_DEFAULT: u8 = 40;
 /// 规则名至多几个字（按字符数）。
 pub(crate) const RULE_NAME_MAX: usize = 24;
 
@@ -121,7 +121,7 @@ pub(crate) fn span_of(at: &str) -> Option<(u16, u16)> {
 /// 每号覆盖的上限：号 → 窗口键（或 `*` ＝ 这个号的所有窗口）→ 上限。
 pub type Caps = BTreeMap<String, BTreeMap<String, CapValue>>;
 
-/// 每号的单段预算：号 → 窗口键（或 `*`）→ 换进来之后再用几个点就想走。
+/// 每号的单段预算：号（或 `*` ＝ 所有号）→ 窗口键（或 `*`）→ 换进来之后再用几个点就想走。
 pub type Stints = BTreeMap<String, BTreeMap<String, u8>>;
 
 /// 一份轮换：顺序 · 勾了哪几个 · 缺省上限（`when`）· 每号上限 · 每号单段预算 · 前面的号回来就切回 · 到上限没号可换时怎么办 · 最多等几分钟。
@@ -149,8 +149,12 @@ pub struct Rotation {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     #[cfg_attr(test, ts(optional, as = "Option<bool>"))]
     pub preempt: bool,
-    /// 最多等几分钟：要往池里更靠后的号换时，排在它前面的号（含此刻的）有一个在这么多分钟内回来 ⇒ 先停着等它，不往后换。
-    /// `0` ＝ 不等。盘上缺 ⇒ 缺省 10。
+    /// 兜底的号（`order` 里具名的那几个）：只在别的号都用不了、又等不到它们回来时才切过去。没有 ⇒ 缺。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(test, ts(optional, as = "Option<Vec<String>>"))]
+    pub fallback: Vec<String>,
+    /// 切兜底前最多等几分钟：要切到兜底号时，非兜底的号（含此刻的）有一个在这么多分钟内回来 ⇒ 先停着等它，不切兜底。
+    /// 往非兜底号切照旧立刻切；没标兜底 ⇒ 这一格不起作用。`0` ＝ 不等。盘上缺 ⇒ 缺省 40。
     #[serde(default = "wait_default")]
     pub wait: u8,
 }
@@ -166,6 +170,7 @@ impl Default for Rotation {
             cap: Caps::new(),
             stint: Stints::new(),
             preempt: false,
+            fallback: Vec::new(),
             wait: WAIT_DEFAULT,
         }
     }
@@ -1228,7 +1233,7 @@ pub(crate) fn overlaps(a: &str, b: &str) -> bool {
 
 /// 读一份轮换：键 `order` · `enabled` · `when`，可选 `atLimit`（`"continue"` · `"stop"`，缺 ⇒ `continue`）·
 /// `cap`（`{号: {窗口键|"*": 0..=99 | [{at, n}]}}`，`0` ＝ 不用这个号；同一格的时段不许重叠）· `stint`（`{号: {窗口键|"*": 1..=99}}`）· `preempt`（布尔，缺 ⇒ 关）·
-/// `wait`（`0..=60` 分钟，缺 ⇒ 10）。`start_slots` ＝ 起始账号占位该有几个（默认恰好 1；会话自己那份 0 或 1）。
+/// `fallback`（兜底的号，须在 `order` 里具名）· `wait`（切兜底前最多等几分钟 `0..=120`，缺 ⇒ 40）。`start_slots` ＝ 起始账号占位该有几个（默认恰好 1；会话自己那份 0 或 1）。
 /// `account_ok(号)` 判这一格当得了轮换里的号；`is_api(号)` 判按量号；`prior` 是改之前那一份：**新勾上的按量号挪到 `order` 末尾**（订阅号用完才轮到它）。
 /// 不合法 ⇒ `Err(哪一格、为什么)`（英文诊断，不进文案表）。
 pub(crate) fn rotation_from(
@@ -1239,12 +1244,20 @@ pub(crate) fn rotation_from(
     prior: Option<&Rotation>,
 ) -> Result<Rotation, String> {
     let o = v.as_object().ok_or(
-        "rotation must be an object {order, enabled, when, atLimit?, cap?, stint?, preempt?, wait?}",
+        "rotation must be an object {order, enabled, when, atLimit?, cap?, stint?, preempt?, fallback?, wait?}",
     )?;
     if let Some(k) = o.keys().find(|k| {
         !matches!(
             k.as_str(),
-            "order" | "enabled" | "when" | "atLimit" | "cap" | "stint" | "preempt" | "wait"
+            "order"
+                | "enabled"
+                | "when"
+                | "atLimit"
+                | "cap"
+                | "stint"
+                | "preempt"
+                | "fallback"
+                | "wait"
         )
     }) {
         return Err(format!("unknown field `{k}`"));
@@ -1322,9 +1335,13 @@ pub(crate) fn rotation_from(
         Some(_) => return Err("`atLimit` must be \"continue\" or \"stop\"".into()),
     };
     let cap = per_account(o.get("cap"), "cap", account_ok, &cap_value)?;
-    let stint = per_account(o.get("stint"), "stint", account_ok, &|v, cell| {
-        pct_in_range(v).ok_or_else(|| format!("`{cell}` must be an integer 1..=99"))
-    })?;
+    // 单段预算多收一行 `"*"`（所有号）：换法「单段预算 N 点」写的就是 `{"*": {"*": n}}`。
+    let stint = per_account(
+        o.get("stint"),
+        "stint",
+        &|a| a == ALL_WINDOWS || account_ok(a),
+        &|v, cell| pct_in_range(v).ok_or_else(|| format!("`{cell}` must be an integer 1..=99")),
+    )?;
     let preempt = match o.get("preempt") {
         None => false,
         Some(Value::Bool(b)) => *b,
@@ -1332,8 +1349,22 @@ pub(crate) fn rotation_from(
     };
     let wait = match o.get("wait") {
         None => WAIT_DEFAULT,
-        Some(v) => in_range(v, &WAIT_RANGE).ok_or("`wait` must be an integer 0..=60")?,
+        Some(v) => in_range(v, &WAIT_RANGE).ok_or("`wait` must be an integer 0..=120")?,
     };
+    let mut fallback: Vec<String> = Vec::new();
+    if let Some(v) = o.get("fallback") {
+        let arr = v.as_array().ok_or("`fallback` must be an array")?;
+        for (i, item) in arr.iter().enumerate() {
+            let a = item
+                .as_str()
+                .filter(|a| named(a))
+                .ok_or_else(|| format!("`fallback[{i}]` must name an account listed in `order`"))?;
+            if fallback.iter().any(|f| f == a) {
+                return Err(format!("`fallback[{i}]` repeats an account"));
+            }
+            fallback.push(a.to_string());
+        }
+    }
     let was = |a: &str| prior.is_some_and(|p| p.enabled.iter().any(|e| e == a));
     let newly: Vec<RotationSlot> = enabled
         .iter()
@@ -1350,6 +1381,7 @@ pub(crate) fn rotation_from(
         cap,
         stint,
         preempt,
+        fallback,
         wait,
     })
 }

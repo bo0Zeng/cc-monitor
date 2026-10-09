@@ -291,6 +291,7 @@ fn every_registered_command_declares_its_run_kind() {
                 | "rotation-rule-rename"
                 | "rotation-rule-delete"
                 | "rotation-default-set"
+                | "rotation-plan"
                 | "rotation-session-read"
                 | "rotation-session-set"
                 // 功能侧只读查询：读一个目录 ＋ 每个文件各一次（同步文件 I/O）。
@@ -540,6 +541,7 @@ fn every_registered_command_declares_its_run_kind() {
         "rotation-rule-rename",
         "rotation-rule-delete",
         "rotation-default-set",
+        "rotation-plan",
         "rotation-session-read",
         "rotation-session-set",
         "tasks-list",

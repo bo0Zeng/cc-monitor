@@ -65,7 +65,7 @@ function baseAccounts(): Acct[] {
   ];
 }
 
-const ROT_CUSTOM = { order: [{ start: true }, "personal", "team", "api"], enabled: ["personal", "team"], when: { threshold: { n: 90 } }, atLimit: "continue", wait: 10 };
+const ROT_CUSTOM = { order: [{ start: true }, "personal", "team", "api"], enabled: ["personal", "team"], when: { threshold: { n: 90 } }, atLimit: "continue", wait: 40 };
 
 function swappedSess(over: Partial<Sess> = {}): Sess {
   return {
@@ -149,7 +149,7 @@ function acctOps(aw: AcctWorld, w: () => World): Record<string, OpHandler> {
       path: "/home/user/.cc-monitor/rotation.json",
       defaultRule: "r_daily",
       rules: [
-        ruleRow("r_daily", "日常", aw.default ?? { order: [{ start: true }], enabled: [], when: "full", atLimit: "continue", wait: 10 }, true, 4),
+        ruleRow("r_daily", "日常", aw.default ?? { order: [{ start: true }], enabled: [], when: "full", atLimit: "continue", wait: 40 }, true, 4),
         ...(aw.rules ?? []).map((r) => ruleRow(r.id, r.name, r.rotation, false, r.users ?? 0)),
       ],
     }),
@@ -167,7 +167,7 @@ function acctOps(aw: AcctWorld, w: () => World): Record<string, OpHandler> {
           agent: "claude-code",
           source: s.rule ? { rule: s.rule } : s.follow ? "follow" : "custom",
           ...(s.rule || s.follow ? { ruleName: (aw.rules ?? []).find((r) => r.id === s.rule)?.name ?? "日常" } : {}),
-          explain: "起始账号先用 · 到 90% 从头取首个可用 · 不主动换回 · 前面的号 10m 内恢复则停着等 · 都到上限仍发",
+          explain: "起始账号先用 · 到 90% 从头取首个可用 · 不主动换回 · 其余号 40m 内恢复则不切兜底 · 都到上限仍发",
           ...(s.custom ? { custom: s.custom } : {}),
           account: {
             start: s.start,
@@ -207,6 +207,8 @@ function acctOps(aw: AcctWorld, w: () => World): Record<string, OpHandler> {
       }
       return { sessions: out };
     },
+    "rotation-plan": () => ({ errors: [] }),
+    "rotation-rule-save": (_o, req) => ({ state: "refused", errors: [{ cell: "name", code: "dup" }], ...(req.name === "x" ? {} : {}) }),
     "rotation-switch": (_o, req) => {
       const out: Record<string, unknown> = {};
       for (const it of req.sessions as unknown[]) {
@@ -231,7 +233,7 @@ function acctOps(aw: AcctWorld, w: () => World): Record<string, OpHandler> {
 function world(build: (aw: AcctWorld) => void, base: () => World = defaultWorld): () => World {
   return () => {
     const w = base();
-    const aw: AcctWorld = { accounts: baseAccounts(), default: { order: [{ start: true }, "personal"], enabled: ["personal"], when: "full", atLimit: "continue", wait: 10 }, sessions: { 0: swappedSess() } };
+    const aw: AcctWorld = { accounts: baseAccounts(), default: { order: [{ start: true }, "personal"], enabled: ["personal"], when: "full", atLimit: "continue", wait: 40 }, sessions: { 0: swappedSess() } };
     build(aw);
     Object.assign(w.ops, acctOps(aw, () => w));
     return w;
@@ -292,7 +294,7 @@ async function jumpFromSettings(machine: string, anchor: "timeline" | "default-r
   await sleep(900);
 }
 
-const DEFAULT_WITH_CAP = { order: [{ start: true }, "personal", "team"], enabled: ["personal", "team"], when: { threshold: { n: 85 } }, atLimit: "stop", wait: 10, cap: { team: { "5h": [{ at: "01:00-20:00", n: 99 }] } } };
+const DEFAULT_WITH_CAP = { order: [{ start: true }, "personal", "team"], enabled: ["personal", "team"], when: { threshold: { n: 85 } }, atLimit: "stop", wait: 40, cap: { team: { "5h": [{ at: "01:00-20:00", n: 99 }] } } };
 
 export const ACCT_SCENES: Scene[] = [
   scene("acct-jump-default-custom", "从设置窗点「默认轮换」· 本会话用自己的", "分段照实停在「本会话」；轮换块下摊开只读的「默认轮换」（顺序 · 触发 · 封顶），顶上一行灰字；全程不写", async () => {
@@ -400,9 +402,32 @@ export const ACCT_SCENES: Scene[] = [
     await waitFor("[role=menu]");
     await sleep(400);
   }, world((aw) => {
-    aw.rules = [{ id: "r_night", name: "夜间", rotation: { order: [{ start: true }, "team", "personal"], enabled: ["team", "personal"], when: { threshold: { n: 90 } }, atLimit: "continue", wait: 10, preempt: true }, users: 2 }];
+    aw.rules = [{ id: "r_night", name: "夜间", rotation: { order: [{ start: true }, "team", "personal"], enabled: ["team", "personal"], when: { threshold: { n: 90 } }, atLimit: "continue", wait: 40, preempt: true }, users: 2 }];
     aw.sessions[0] = { ...swappedSess(), follow: false, rule: "r_night", custom: undefined };
   })),
+  scene("acct-rule-readonly", "面板 · 来源 ＝ 规则 夜间（只读）", "上方一行 规则 夜间 · 在用 2 会话 ［编辑规则…］［转为本会话］；触发灰、列表只读、personal 行尾封顶写成标签 17:00-02:00 停用", openPanel, world((aw) => {
+    aw.rules = [{ id: "r_night", name: "夜间", rotation: { order: [{ start: true }, "team", "personal"], enabled: ["team", "personal"], when: { threshold: { n: 90 } }, atLimit: "continue", wait: 40, preempt: true, cap: { personal: { "*": [{ at: "17:00-02:00", n: 0 }] } } }, users: 2 }];
+    aw.sessions[0] = { ...swappedSess(), follow: false, rule: "r_night", custom: undefined };
+  })),
+  scene("acct-custom-edit", "面板 · 本会话（可改）", "换法 按顺序 | 抢回 | 单段预算 · 最多等 10 分；每行行尾 封顶 按钮（team 设了 ≤80）；右上 存为规则…", openPanel, world((aw) => {
+    aw.sessions[0] = { ...swappedSess(), custom: { ...ROT_CUSTOM, cap: { team: { "*": 80 } } } };
+  })),
+  scene("acct-cap-pop", "面板 · 封顶浮层 · 按时段", "personal 行尾 封顶 ⇒ 浮层 personal · 全部窗口：不设 | 固定 | 按时段；两段 17:00–02:00 上限 0 · 02:00–17:00 上限 99；24h 色带（0 斜纹）", async () => {
+    await openPanel();
+    await click('aside[role="dialog"] [data-rot-cap-btn="personal"]');
+    await waitFor('[data-rot-cap="personal"]');
+    await sleep(400);
+  }, world((aw) => {
+    aw.sessions[0] = { ...swappedSess(), custom: { ...ROT_CUSTOM, cap: { personal: { "*": [{ at: "17:00-02:00", n: 0 }, { at: "02:00-17:00", n: 99 }] } } } };
+  })),
+  scene("acct-save-as", "面板 · 存为规则浮层 · 重名", "右上 存为规则… ⇒ 名称 夜间 · ☑ 本会话改用这条规则；按存 ⇒ 后端回重名，框下红字", async () => {
+    await openPanel();
+    await click('aside[role="dialog"] [data-acct-save-as]');
+    const input = await waitFor<HTMLInputElement>("[data-rot-save] input[type=text]");
+    input.value = "夜间";
+    await click("[data-rot-save-ok]");
+    await sleep(500);
+  }, world(() => {})),
   scene("acct-wait-record", "面板 · 记录 · 停着等前面的号", "personal 被拒、work 2 分钟后恢复（最多等 10m）⇒ 不换到 team：记录一行 等 work 恢复 · 不换到 team ↻…", async () => {
     await openPanel();
     await scrollPanelTo("记录");

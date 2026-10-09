@@ -140,7 +140,7 @@ fn the_default_rotation_is_written_whole_and_refused_whole() {
     .expect("ok");
     assert_eq!(
         got["rotation"],
-        json!({"order": [{"start": true}, "b", "c", "api"], "enabled": ["api", "b"], "when": {"threshold": {"n": 90}}, "atLimit": "continue", "wait": 10})
+        json!({"order": [{"start": true}, "b", "c", "api"], "enabled": ["api", "b"], "when": {"threshold": {"n": 90}}, "atLimit": "continue", "wait": 40})
     );
     assert_eq!(got["isDefault"], true);
     let before = std::fs::read(home.root.join(rotation::FILE_NAME)).expect("read");
@@ -1036,4 +1036,30 @@ fn setting_the_default_moves_the_followers() {
             .0,
         "no_such_rule"
     );
+}
+
+/// ★ 草稿逐格校验：不写盘；错的格照 `rule-save` 那一形回；对的回空。
+#[test]
+fn a_draft_is_checked_cell_by_cell_without_writing() {
+    let home = Home::new("plan");
+    let ctx = home.ctx();
+    let before = ctx.hop.store.now();
+    let mut r = rot_json(&["b"]);
+    r["cap"] = json!({"b": {"*": [{"at": "22:00-03:00", "n": 0}, {"at": "02:00-04:00", "n": 50}]}});
+    let got = answer_plan_with(&ctx, &json!({"rotation": r})).expect("ok");
+    assert_eq!(
+        got["errors"],
+        json!([{"cell": "cap.b.*[1]", "code": "overlap", "with": 0}])
+    );
+    assert_eq!(
+        answer_plan_with(&ctx, &json!({"rotation": rot_json(&["b"])})).expect("ok")["errors"],
+        json!([])
+    );
+    assert_eq!(
+        answer_plan_with(&ctx, &json!({"rotation": {"order": 3}}))
+            .expect_err("形状")
+            .0,
+        "bad_args"
+    );
+    assert_eq!(ctx.hop.store.now(), before, "一个字节不写");
 }

@@ -102,10 +102,10 @@ fn a_bad_rotation_is_refused_whole_naming_the_cell() {
         json!({"threshold": {"n": 90}}),
     );
     let r = rotation_from(&good, 1..=1, &ok, &none, None).expect("ok");
-    // 缺 `atLimit` ⇒ `continue`、缺 `wait` ⇒ 10，读回时照写出来。
+    // 缺 `atLimit` ⇒ `continue`、缺 `wait` ⇒ 40，读回时照写出来。
     let mut back = good.clone();
     back["atLimit"] = json!("continue");
-    back["wait"] = json!(10);
+    back["wait"] = json!(40);
     assert_eq!(serde_json::to_value(&r).expect("json"), back);
     let mut stop = good.clone();
     stop["atLimit"] = json!("stop");
@@ -259,7 +259,7 @@ fn the_new_cells_have_one_shape_each_and_read_back_as_written() {
         "cap": {"q": {"*": [{"at": "01:00-20:00", "n": 99}]}, "z": {"5h": 90, "7d:opus": 95}},
         "stint": {"b": {"5h": 5}},
         "preempt": true,
-        "wait": 10,
+        "wait": 40,
     }));
     let r = rotation_from(&v, 1..=1, &ok, &none, None).expect("ok");
     assert_eq!(serde_json::to_value(&r).expect("json"), v);
@@ -273,11 +273,11 @@ fn the_new_cells_have_one_shape_each_and_read_back_as_written() {
         }])
     );
     // 缺省（没有这三格）⇒ 读回也没有：今天的配置读进来、写回去一个字节不变（`wait` 恒写出）。
-    let plain = with(json!({"atLimit": "continue", "wait": 10}));
+    let plain = with(json!({"atLimit": "continue", "wait": 40}));
     let r = rotation_from(&plain, 1..=1, &ok, &none, None).expect("ok");
     assert_eq!(serde_json::to_value(&r).expect("json"), plain);
     let off =
-        with(json!({"atLimit": "continue", "preempt": false, "cap": {}, "stint": {}, "wait": 10}));
+        with(json!({"atLimit": "continue", "preempt": false, "cap": {}, "stint": {}, "wait": 40}));
     assert_eq!(
         serde_json::to_value(rotation_from(&off, 1..=1, &ok, &none, None).expect("ok"))
             .expect("json"),
@@ -635,4 +635,43 @@ fn todays_shape_upgrades_without_losing_a_cell() {
         Rotation::default(),
         "没有顶层 default ⇒ 缺省那一份"
     );
+}
+
+/// 单段预算收 `"*"`（所有号）那一行；每号上限不收（那一格只按号写）。
+#[test]
+fn a_stint_row_for_all_accounts_is_taken_and_a_cap_row_is_not() {
+    let r = rotation_from(
+        &with(json!({"stint": {"*": {"*": 10}}})),
+        1..=1,
+        &ok,
+        &none,
+        None,
+    )
+    .expect("ok");
+    assert_eq!(r.stint["*"]["*"], 10);
+    assert!(rotation_from(
+        &with(json!({"cap": {"*": {"*": 90}}})),
+        1..=1,
+        &|a| a != "*" && ok(a),
+        &none,
+        None
+    )
+    .is_err());
+}
+
+/// 兜底：只收 `order` 里具名的号、不许重复；读回同形；缺 ⇒ 不写出。
+#[test]
+fn fallback_names_accounts_in_order_and_reads_back() {
+    let v = with(json!({"fallback": ["b"], "wait": 40}));
+    let r = rotation_from(&v, 1..=1, &ok, &none, None).expect("ok");
+    assert_eq!(r.fallback, ["b"]);
+    assert_eq!(
+        serde_json::to_value(&r).expect("json")["fallback"],
+        json!(["b"])
+    );
+    for bad in [json!(["x"]), json!(["b", "b"]), json!("b")] {
+        let e = rotation_from(&with(json!({"fallback": bad})), 1..=1, &ok, &none, None)
+            .expect_err("应拒");
+        assert!(e.contains("fallback"), "{e}");
+    }
 }

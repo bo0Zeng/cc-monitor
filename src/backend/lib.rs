@@ -1014,6 +1014,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--rotation-rule-rename",
     "--rotation-rule-delete",
     "--rotation-default-set",
+    "--rotation-plan",
     "--rotation-session-read",
     "--rotation-session-set",
     "--rotation-switch",

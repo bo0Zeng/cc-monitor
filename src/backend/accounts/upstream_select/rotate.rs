@@ -240,6 +240,7 @@ impl Hop {
             stint: &rot.stint,
             preempt: rot.preempt,
             at_limit: at_limit_in_effect(&s.agent, rot.at_limit),
+            fallback: &rot.fallback,
             wait: rot.wait,
             can_hold: crate::agents::limit_reply_of(&s.agent).is_some(),
             current,

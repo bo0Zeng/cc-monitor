@@ -1,0 +1,111 @@
+/* 轮换的编辑件：换法 · 最多等 · 封顶浮层（不设 · 固定 · 按时段 ＋ 24h 色带）· 存为规则浮层。面板与规则编辑器同一份。 */
+@layer components {
+  .rotHow,
+  .rotCapRow,
+  .rotCheck {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-3);
+  }
+
+  .rotLabel,
+  .rotUnit {
+    color: var(--text-2);
+  }
+
+  .rotHint {
+    color: var(--text-2);
+    font-size: var(--font-size-xs);
+  }
+
+  .rotCheck {
+    flex-wrap: nowrap;
+    cursor: pointer;
+  }
+
+  .rotNum,
+  .rotTime {
+    padding: 0 var(--space-2);
+    border: 1px solid var(--field-border);
+    border-radius: var(--radius-s);
+    background: var(--field-bg);
+    color: var(--text);
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .rotNum {
+    width: 4ch;
+  }
+
+  .rotTime {
+    width: 6ch;
+  }
+
+  .rotNum[data-error="true"],
+  .rotTime[data-error="true"] {
+    border-color: var(--error);
+  }
+
+  .rotNum:disabled {
+    opacity: var(--state-disabled-opacity);
+  }
+
+  .rotErr {
+    color: var(--error-text);
+    font-size: var(--font-size-xs);
+  }
+
+  .rotCap,
+  .rotSave {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    width: 340px;
+    padding: var(--space-5);
+  }
+
+  .rotSave {
+    width: 300px;
+  }
+
+  .rotCapHead,
+  .rotCapFoot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+  }
+
+  .rotCapFoot {
+    justify-content: flex-end;
+  }
+
+  .rotCapTitle {
+    font-weight: var(--font-weight-strong);
+  }
+
+  /* 24h 色带：段内按上限着色，0 斜纹 ＝ 停用。 */
+  .rotBandBox {
+    padding-top: var(--space-2);
+  }
+
+  .rotBand {
+    position: relative;
+    height: 8px;
+    border-radius: var(--radius-s);
+    background: var(--bg-2);
+  }
+
+  .rotBandPiece {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    background: var(--text-faint);
+  }
+
+  .rotBandPiece[data-zero="true"] {
+    background: repeating-linear-gradient(135deg, var(--text-faint) 0 3px, transparent 3px 6px);
+  }
+}

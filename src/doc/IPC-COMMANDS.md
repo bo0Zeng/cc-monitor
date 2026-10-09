@@ -1121,7 +1121,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | `id` | → | 改哪条；不给 ＝ 新建 |
 | `ifRev` | → | 改之前读到的 `rev`；对不上 ⇒ `{state:"conflict", rev}`、不写 |
 | `name` | → | 规则名（1–24 字，这台不重名：去首尾空白、不分大小写） |
-| `rotation` | → | 整份 `{order, enabled, when, atLimit?, cap?, stint?, preempt?, wait?}` |
+| `rotation` | → | 整份 `{order, enabled, when, atLimit?, cap?, stint?, preempt?, fallback?, wait?}` |
 | `state` | ← | `"saved"`（带 `rule`，形状同 `rotation-rules-read` 的一项）· `"refused"`（带 `errors: [{cell, code, with?}]`：哪一格 · 短码 `empty` `dup` `tooLong` `range` `time` `same` `overlap` · 重叠时与第几段）· `"conflict"`（带 `rev`：此刻的版本） |
 
 码：`bad_args` · `io_failed` · `no_such_rule`
@@ -1168,6 +1168,19 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | `rule` | → | 设为默认的那条 |
 
 码：`bad_args` · `io_failed` · `no_such_rule`
+
+#### `rotation-plan`
+
+一份轮换草稿逐格校验（不写）。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-plan`
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `errors` | ← | 逐格错 `[{cell, code, with?}]`（形状同 `rotation-rule-save` 的 `refused`）；空 ＝ 没错 |
+| `rotation` | → | 草稿 `{order, enabled, when, atLimit?, cap?, stint?, preempt?, fallback?, wait?}` |
+
+码：`bad_args`
 
 #### `rotation-session-read`
 
@@ -3676,6 +3689,7 @@ cc-bus 钩子诊断。
 | `--resident-verdict` | ＝ 帧命令 `resident-verdict`：远端常驻后端要不要换一次 |
 | `--resolve` | ＝ 帧命令 `resolve`：按 `ResumeSpec` 推出恢复命令 `CommandPlan`（与一次性 `--resolve` 同一个函数） |
 | `--rotation-default-set` | ＝ 帧命令 `rotation-default-set`：设这台的默认规则 |
+| `--rotation-plan` | ＝ 帧命令 `rotation-plan`：一份轮换草稿逐格校验（不写） |
 | `--rotation-rule-delete` | ＝ 帧命令 `rotation-rule-delete`：删轮换规则 |
 | `--rotation-rule-rename` | ＝ 帧命令 `rotation-rule-rename`：给一条轮换规则改名 |
 | `--rotation-rule-save` | ＝ 帧命令 `rotation-rule-save`：新建或整份改一条轮换规则 |

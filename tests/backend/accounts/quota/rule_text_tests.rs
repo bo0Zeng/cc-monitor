@@ -35,18 +35,29 @@ fn the_explanation_follows_preempt() {
     assert!(!has(&on, "beRotation.explain.noPreempt", &[]));
 }
 
-/// 最多等几分钟：开着写出几分钟，关掉（0）不提；时段停用的号写出时段；有上限才说「都到上限即停 / 仍发」。
+/// 兜底：标了才说「b 兜底 · 其余号 40m 内恢复则不切兜底」，等待关掉（0）只说兜底；没标兜底不提等待。时段停用的号写出时段；
+/// 有上限才说「都到上限即停 / 仍发」。
 #[test]
 fn the_explanation_names_wait_off_slots_and_at_limit_only_when_they_apply() {
     let mut r = base();
-    let ten = copy_core::format_duration(600_000);
+    let forty = copy_core::format_duration(40 * 60_000);
+    assert!(
+        !explain(&r).contains(&copy_text("beRotation.explain.wait", &[("dur", &forty)])),
+        "没标兜底不提等待"
+    );
+    r.fallback = vec!["w".into()];
+    assert!(has(
+        &explain(&r),
+        "beRotation.explain.fallback",
+        &[("list", "w")]
+    ));
     assert!(has(
         &explain(&r),
         "beRotation.explain.wait",
-        &[("dur", &ten)]
+        &[("dur", &forty)]
     ));
     r.wait = 0;
-    assert!(!explain(&r).contains(&copy_text("beRotation.explain.wait", &[("dur", &ten)])));
+    assert!(!explain(&r).contains(&copy_text("beRotation.explain.wait", &[("dur", &forty)])));
     let mut cap = Caps::new();
     cap.entry("w".into()).or_default().insert(
         "*".into(),

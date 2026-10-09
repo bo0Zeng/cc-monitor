@@ -65,7 +65,8 @@ struct World {
     above: Vec<String>,
     now: u64,
     offset: i64,
-    /// 最多等几分钟（缺省 0 ＝ 不等：上面那些判据钉的是不等时的行为）。
+    /// 兜底的号与切兜底前最多等几分钟（缺省没有兜底 ⇒ 不等：上面那些判据钉的是不等时的行为）。
+    fallback: Vec<String>,
     wait: u8,
     can_hold: bool,
 }
@@ -86,6 +87,7 @@ impl World {
             above: Vec::new(),
             now: NOW,
             offset: 0,
+            fallback: Vec::new(),
             wait: 0,
             can_hold: true,
         }
@@ -135,6 +137,7 @@ impl World {
             stint: &self.stint,
             preempt: self.preempt,
             at_limit: self.at_limit,
+            fallback: &self.fallback,
             wait: self.wait,
             can_hold: self.can_hold,
             current,
@@ -922,7 +925,7 @@ fn a_cap_of_zero_keeps_an_account_out_for_its_slot_and_preempt_brings_it_back() 
     assert_eq!(w.with("z", None, &[], |f| super::back_at("q", f)), None);
 }
 
-// ── 最多等几分钟：前面的号很快回来就停着等，不为一两分钟换到后面的号 ───────────────────────
+// ── 切兜底前等一等：非兜底的号很快回来就停着等，不为几十分钟切到兜底号 ─────────────────────
 
 fn back_of(v: &Verdict) -> Option<(&str, u64, &str)> {
     match v {
@@ -933,25 +936,41 @@ fn back_of(v: &Verdict) -> Option<(&str, u64, &str)> {
     }
 }
 
-/// ★ 此刻的号被拒、1 分钟后就回来 ⇒ 停着等它（这一发不发上游），不换到 b；20 分钟后才回来 ⇒ 换到 b；不等（0）⇒ 今天的行为。
-#[test]
-fn a_refused_account_back_within_the_wait_is_waited_for_instead_of_switching() {
-    let mut w = World::new(&["a", "b"]);
-    w.wait = 10;
-    let soon = reading(true, 1.0, Some(NOW + 60));
-    let (v, _) = w.judge("a", Some(&soon), &["a"]);
-    assert_eq!(back_of(&v), Some(("a", NOW + 60, "b")), "{v:?}");
-    let late = reading(true, 1.0, Some(NOW + 1200));
-    assert_eq!(to_of(&w.judge("a", Some(&late), &["a"]).0), Some("b"));
-    w.wait = 0;
-    assert_eq!(to_of(&w.judge("a", Some(&soon), &["a"]).0), Some("b"));
+/// 用户那套：`[a, b]`，b 是兜底，等 40 分钟。
+fn with_fallback(pool: &[&str], fallback: &[&str]) -> World {
+    let mut w = World::new(pool);
+    w.fallback = fallback.iter().map(|s| s.to_string()).collect();
+    w.wait = 40;
+    w
 }
 
-/// 抢回开着也一样：不出现「换到 b → 一分钟后又切回」。
+/// ★ 非兜底的号 39 分钟后重置 ⇒ 不切兜底 b、停着等；41 分钟 ⇒ 切 b；不等（0）⇒ 立刻切。
 #[test]
-fn preempt_on_does_not_flip_to_the_fallback_for_a_minute() {
-    let mut w = World::new(&["a", "b"]);
-    w.wait = 10;
+fn a_non_fallback_account_back_within_the_wait_keeps_the_fallback_unused() {
+    let mut w = with_fallback(&["a", "b"], &["b"]);
+    let at39 = reading(true, 1.0, Some(NOW + 39 * 60));
+    let (v, _) = w.judge("a", Some(&at39), &["a"]);
+    assert_eq!(back_of(&v), Some(("a", NOW + 39 * 60, "b")), "{v:?}");
+    let at41 = reading(true, 1.0, Some(NOW + 41 * 60));
+    assert_eq!(to_of(&w.judge("a", Some(&at41), &["a"]).0), Some("b"));
+    w.wait = 0;
+    assert_eq!(to_of(&w.judge("a", Some(&at39), &["a"]).0), Some("b"));
+}
+
+/// ★ 往非兜底号切 ⇒ 不等（哪怕此刻的号 1 分钟后就回来）；没标兜底 ⇒ 等于不等（今天的行为）。
+#[test]
+fn switching_to_a_non_fallback_account_never_waits() {
+    let w = with_fallback(&["a", "c", "b"], &["b"]);
+    let soon = reading(true, 1.0, Some(NOW + 60));
+    assert_eq!(to_of(&w.judge("a", Some(&soon), &["a"]).0), Some("c"));
+    let none = with_fallback(&["a", "b"], &[]);
+    assert_eq!(to_of(&none.judge("a", Some(&soon), &["a"]).0), Some("b"));
+}
+
+/// 抢回开着也一样：不出现「切到兜底 → 一会儿又切回」。
+#[test]
+fn preempt_on_does_not_flip_to_the_fallback_for_a_while() {
+    let mut w = with_fallback(&["a", "b"], &["b"]);
     w.preempt = true;
     let soon = reading(true, 1.0, Some(NOW + 60));
     assert_eq!(
@@ -960,25 +979,24 @@ fn preempt_on_does_not_flip_to_the_fallback_for_a_minute() {
     );
 }
 
-/// 等的是排在候选前面的号，不只此刻的：已在 b 上、b 半小时后才回来，a 2 分钟后回来 ⇒ 等 a，不换到 c。
+/// 等的是任一非兜底的号，不只此刻的：已在 c 上、c 一小时后才回来，a 2 分钟后回来 ⇒ 等 a，不切兜底 b。
 #[test]
-fn any_account_ahead_of_the_candidate_counts() {
-    let mut w = World::new(&["a", "b", "c"]);
-    w.wait = 10;
+fn any_non_fallback_account_counts() {
+    let w = with_fallback(&["a", "c", "b"], &["b"]);
+    let mut w = w;
     w.seen
         .insert("a".into(), reading(true, 1.0, Some(NOW + 120)));
-    let b = reading(true, 1.0, Some(NOW + 1800));
+    let c = reading(true, 1.0, Some(NOW + 3600));
     assert_eq!(
-        back_of(&w.judge("b", Some(&b), &["b"]).0),
-        Some(("a", NOW + 120, "c"))
+        back_of(&w.judge("c", Some(&c), &["c"]).0),
+        Some(("a", NOW + 120, "b"))
     );
 }
 
-/// 此刻的号只是过了阈值（还发得出去）：软上限 ⇒ 留着照发（不换、也不停）；硬上限 ⇒ 停着等。
+/// 此刻的号只是过了阈值（还发得出去）：软上限 ⇒ 留着照发（不切、也不停）；硬上限 ⇒ 停着等。
 #[test]
 fn over_a_soft_threshold_stays_and_a_hard_one_waits() {
-    let mut w = World::new(&["a", "b"]);
-    w.wait = 10;
+    let mut w = with_fallback(&["a", "b"], &["b"]);
     w.when = RotationWhen::Threshold { n: 90 };
     w.seen
         .insert("a".into(), reading(false, 0.95, Some(NOW + 180)));
@@ -990,12 +1008,40 @@ fn over_a_soft_threshold_stays_and_a_hard_one_waits() {
     );
 }
 
-/// 这一家给不出「用满」回包 ⇒ 停不了，照旧换。
+/// 这一家给不出「用满」回包 ⇒ 停不了，照旧切。
 #[test]
 fn without_a_limit_reply_it_switches_as_before() {
-    let mut w = World::new(&["a", "b"]);
-    w.wait = 10;
+    let mut w = with_fallback(&["a", "b"], &["b"]);
     w.can_hold = false;
     let soon = reading(true, 1.0, Some(NOW + 60));
     assert_eq!(to_of(&w.judge("a", Some(&soon), &["a"]).0), Some("b"));
+}
+
+/// ★ 换法「单段预算 N 点」写成 `stint: {"*": {"*": n}}`：所有号都照它让位（号自己那一行优先）。
+#[test]
+fn a_stint_for_all_accounts_applies_to_whoever_is_current() {
+    let mut w = World::new(&["a", "b"]);
+    w.stint
+        .entry("*".into())
+        .or_default()
+        .insert("*".into(), 10);
+    w.base.insert(
+        "5h".into(),
+        crate::accounts::quota::rotation::Base {
+            used: 0.20,
+            resets_at: Some(NOW + 3600),
+        },
+    );
+    w.seen
+        .insert("b".into(), reading(false, 0.0, Some(NOW + 3600)));
+    w.seen
+        .insert("a".into(), reading(false, 0.31, Some(NOW + 3600)));
+    assert!(
+        matches!(w.judge("a", None, &[]).0, Verdict::Switch { ref to, why: SwitchWhy::Stint { n: 10, .. }, .. } if to == "b")
+    );
+    w.stint
+        .entry("a".into())
+        .or_default()
+        .insert("*".into(), 20);
+    assert_eq!(w.judge("a", None, &[]).0, Verdict::Stay, "号自己那一行优先");
 }

@@ -562,6 +562,30 @@ pub(crate) fn answer_default_set_with(ctx: &Ctx, args: &Value) -> Answer {
     Ok(json!({"defaultRule": id, "followers": followers}))
 }
 
+/// `rotation-plan`：这一份轮换（`{rotation}` 草稿，不写）逐格校验 —— 编辑器存之前问它，界面只照 `errors` 标红。
+/// 回 `{errors: [{cell, code, with?}]}`（空 ＝ 没错）。形状不对（`rotation_from` 整份拒）⇒ `bad_args`。
+pub(crate) fn answer_plan(args: &Value) -> Answer {
+    answer_plan_with(&Ctx::here(), args)
+}
+
+pub(crate) fn answer_plan_with(ctx: &Ctx, args: &Value) -> Answer {
+    let v = args
+        .get("rotation")
+        .ok_or_else(|| bad("missing `rotation`"))?;
+    let errors = rotation::cell_errors(v);
+    if errors.is_empty() {
+        rotation::rotation_from(
+            v,
+            0..=1,
+            &account_ok,
+            &|a| ctx.is_api(LIBRARY_AGENT, a),
+            None,
+        )
+        .map_err(|e| bad(&e))?;
+    }
+    Ok(json!({ "errors": errors }))
+}
+
 fn sids_of(args: &Value, key: &str) -> Result<Vec<String>, (&'static str, String)> {
     let arr = args
         .get(key)

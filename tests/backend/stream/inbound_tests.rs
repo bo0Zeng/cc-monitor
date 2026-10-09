@@ -564,6 +564,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "rotation-rule-rename",
         "rotation-rule-delete",
         "rotation-default-set",
+        "rotation-plan",
         "rotation-session-read",
         "rotation-session-set",
         // 功能侧只读查询：读一个目录 ＋ 每个文件各一次（同步文件 I/O）。
@@ -761,6 +762,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "rotation-rule-rename",
         "rotation-rule-delete",
         "rotation-default-set",
+        "rotation-plan",
         "rotation-session-read",
         "rotation-session-set",
         "tasks-list",

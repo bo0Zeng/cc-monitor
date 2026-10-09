@@ -28,6 +28,7 @@ import { closeMenu, openMenu, type MenuItem } from "./kit/menu";
 import { meter, type MeterState } from "./kit/meter";
 import { segmented } from "./kit/tabs";
 import { select } from "./kit/select";
+import { capButton, capTags, fallbackToggle, howControl, openSaveAsRule, waitControl } from "./rot-editor";
 import { toast } from "./kit/toast";
 import { attachTooltip } from "./kit/tooltip";
 import { ARRIVAL_BUDGET_MS } from "./launch-arrival";
@@ -414,17 +415,35 @@ function rotationBlock(o: Open, entry: SessionRotationEntry, read: Present, quot
 
   const bar = el("div", s.acctRotBar);
   const was = srcKeyOf(read.source);
-  const label = (k: SrcKey): string => (k === "follow" ? copyText("rot.src.follow") : k === "custom" ? copyText("rot.src.custom") : copyText("rot.src.rule", { name: rules?.rules.find((x) => `rule:${x.id}` === k)?.name ?? "" }));
+  const nameOf = (k: SrcKey): string => rules?.rules.find((x) => `rule:${x.id}` === k)?.name ?? "";
+  const label = (k: SrcKey): string => (k === "follow" ? copyText("rot.src.follow") : k === "custom" ? copyText("rot.src.custom") : copyText("rot.src.rule", { name: nameOf(k) }));
   // 来源：下拉，只有在面板里明确点一项才写（合着时方向键一概不做）；写成了 toast 带撤销。
+  // 项：跟随默认（灰字默认那条的名字）· 组名「规则」下每条一项（默认那条带「默认」、右侧摘要）· 本会话 · 分隔 · 存为规则… · 管理规则…
   const srcSel = select({
     label: copyText("rot.src.label"),
     options: [
       { value: "follow", label: copyText("rot.src.follow"), note: def?.name },
-      ...(rules?.rules ?? []).map((x) => ({ value: `rule:${x.id}`, label: copyText("rot.src.rule", { name: x.name }) })),
-      { value: "custom", label: copyText("rot.src.custom") },
+      ...(rules?.rules ?? []).map((x) => ({ value: `rule:${x.id}`, label: x.name, note: x.isDefault ? copyText("rot.src.tagDefault") : undefined, detail: x.summary, shown: copyText("rot.src.rule", { name: x.name }) })),
+      { value: "custom", label: copyText("rot.src.custom"), detail: copyText("rot.src.customNote") },
     ],
     value: was,
     closedKeys: "open",
+    decorate: (items) => {
+      const out: MenuItem[] = [];
+      let headed = false;
+      for (const it of items) {
+        if (it.id?.startsWith("rule:") && !headed) {
+          out.push({ label: copyText("rot.src.rules"), heading: true });
+          headed = true;
+        }
+        if (it.id === "custom" && !headed) out.push({ label: copyText("rot.src.noRules"), enabled: false });
+        out.push(it);
+      }
+      out.push({ label: "", divider: true });
+      out.push({ id: "saveAs", label: copyText("rot.src.saveAs"), onClick: () => saveAs() });
+      out.push({ id: "manage", label: copyText("rot.src.manage"), onClick: () => host.openSettings(o.origin) });
+      return out;
+    },
     onChange: (k) => void setSource(o, host, k as SrcKey, was, label),
   });
   const srcEl = srcSel.el;
@@ -437,17 +456,45 @@ function rotationBlock(o: Open, entry: SessionRotationEntry, read: Present, quot
   info.appendChild(icon("info", "compact"));
   attachTooltip(info, read.explain);
   srcRow.appendChild(info);
+  // 存为规则…：存的是此刻生效的那一份（从跟随 / 规则也能存，用于「在它基础上做一条新的」）。
+  const saveAs = (): void => {
+    if (!r) return;
+    openSaveAsRule(saveBtn, o.origin, r, (rule, link) => {
+      toast(copyText("rot.done.saved", { name: rule.name }), "", { level: "success" });
+      if (link) void save(o, host, { rule: rule.id });
+    });
+  };
+  const saveBtn = button({ label: copyText("rot.src.saveAs"), kind: "ghost", size: "compact", onClick: saveAs });
+  saveBtn.dataset.acctSaveAs = "true";
+  srcRow.append(el("span", s.acctSpacer), saveBtn);
   sec.content.appendChild(srcRow);
   if (r) bar.appendChild(triggerControls(o, host, r, follow, read.atLimit));
   sec.content.appendChild(bar);
+  if (r && own) {
+    const how = el("div", s.acctRotBar);
+    how.append(
+      howControl(r, false, (next) => void save(o, host, { custom: next })),
+      waitControl(r, false, (next) => void save(o, host, { custom: next })),
+    );
+    sec.content.appendChild(how);
+  }
 
   if (o.saveFailed) {
     const retry = button({ label: copyText("acct.now.retry"), kind: "ghost", size: "compact", onClick: () => void save(o, host, { custom: o.saveFailed as Rotation }) });
     sec.content.appendChild(banner("error", copyText("acct.rot.saveFail"), [retry]));
   }
-  if (follow) {
-    const lead = el("div", s.acctLead, copyText("acct.rot.leadFollow"));
-    lead.appendChild(button({ label: copyText("acct.rot.settings"), kind: "ghost", size: "compact", onClick: () => host.openSettings(o.origin) }));
+  if (follow && ruleRow) {
+    // `规则 日常 · 默认 · 在用 4 会话`（跟随时 `跟随默认 · 规则 日常`）＋［编辑规则…］［转为本会话］。列表只读：共享的规则去设置里改。
+    const parts = [src === "follow" ? copyText("rot.src.leadFollow", { name: ruleRow.name }) : copyText("rot.src.leadRule", { name: ruleRow.name })];
+    if (src !== "follow" && ruleRow.isDefault) parts.push(copyText("rot.src.tagDefault"));
+    if (ruleRow.users.live > 0) parts.push(copyText("rot.src.inUse", { n: ruleRow.users.live }));
+    const lead = el("div", s.acctLead);
+    lead.dataset.acctLead = "true";
+    lead.append(el("span", s.acctSpacer, parts.join(copyText("kit.text.sep"))));
+    lead.append(
+      button({ label: copyText("rot.src.edit"), kind: "secondary", size: "compact", onClick: () => host.openSettings(o.origin) }),
+      button({ label: copyText("rot.src.detach"), kind: "secondary", size: "compact", onClick: () => void detach(o, host, ruleRow.name, was) }),
+    );
     sec.content.appendChild(lead);
   }
   if (r) sec.content.appendChild(rotationList(o, host, read, r, quota, now, !follow));
@@ -469,26 +516,8 @@ function defaultPreview(o: Open, host: AcctPanelHost, read: Present, r: Rotation
   // 「实际照什么办」那一句只说本会话；这一块是默认那份自己写的。
   box.appendChild(triggerControls(o, host, r, true, r.atLimit, "default"));
   const list = rotationList(o, host, read, r, quota, now, false);
-  for (const row of list.querySelectorAll<HTMLElement>("[data-acct-row]")) {
-    const caps = capText(r, row.dataset.acctRow ?? "");
-    // 封顶贴在名字那一串后面、用量之前。
-    if (caps) row.insertBefore(tagEl(caps), row.lastElementChild);
-  }
   box.appendChild(list);
   return box;
-}
-
-/** 一个号的封顶（每个窗口一段，按时段的写出时段）；没有 ⇒ `null`。 */
-function capText(r: Rotation, account: string): string | null {
-  const per = r.cap?.[account];
-  if (!per) return null;
-  const parts: string[] = [];
-  for (const [win, v] of Object.entries(per)) {
-    const pre = win === "*" ? "" : `${slotLabel(win)} `;
-    if (typeof v === "number") parts.push(pre + copyText("acct.prev.cap", { n: v }));
-    else for (const c of v) parts.push(pre + copyText("acct.prev.capAt", { at: c.at, n: c.n }));
-  }
-  return parts.length > 0 ? parts.join(copyText("kit.text.sep")) : null;
 }
 
 /** `触发 (•)满 ( )≥[90]%` ＋ `无号可换 [继续跑 | 停]`（后者只在 `≥N%` 时有效）。 */
@@ -608,6 +637,13 @@ function rotationList(o: Open, host: AcctPanelHost, read: Present, r: Rotation, 
       if (q.login === "needsKey") line.appendChild(tagEl(copyText("acct.tag.key"), "error"));
       if (q.state === "overageInUse") line.appendChild(tagEl(copyText("acct.val.over"), "warn"));
     }
+    // 封顶：本会话那份可改（行尾一个小按钮开浮层，编的是这号全部窗口那一格）；只读的写成小标签。
+    // 兜底：本会话那份顺序里具名的号上一个开关；只读的写成标签。
+    const named = r.order.includes(row.account);
+    if (editable && named) line.appendChild(fallbackToggle(r, row.account, (next) => void save(o, host, { custom: next })));
+    else if ((r.fallback ?? []).includes(row.account)) line.appendChild(tagEl(copyText("rot.fallback.tag")));
+    if (editable && !row.start) line.appendChild(capButton(o.origin, r, row.account, (next) => void save(o, host, { custom: next })));
+    else for (const t of capTags(r, row.account)) line.appendChild(tagEl(t));
     line.appendChild(rowUsage(q, now, ledgerOf(quota, read.agent, row.account)?.reading));
     if (editable) {
       // 键盘：Alt+↑ / Alt+↓ 移位、空格勾（复选框自己管）。
@@ -694,6 +730,15 @@ async function save(o: Open, host: AcctPanelHost, w: SessionRotationWrite): Prom
     if (open === o) render(o, host);
   });
   return ok;
+}
+
+/** 转为本会话：照此刻生效的那条拷成本会话的（之后脱钩）；toast `orders · 本会话（从 日常 转来）[撤销]`，撤销 ＝ 写回原来源。 */
+async function detach(o: Open, host: AcctPanelHost, name: string, was: SrcKey): Promise<void> {
+  if (!(await save(o, host, "detach"))) return;
+  toast(copyText("rot.done.detach", { session: host.sessionTitle(o.sid), name }), "", {
+    level: "success",
+    action: { label: copyText("kit.toast.undo"), run: () => void save(o, host, srcWrite(was)) },
+  });
 }
 
 /** 换来源：写一次；成了 toast `orders · 跟随默认 [撤销]`，撤销 ＝ 写回原来源（本会话那份后端一直留着）。 */

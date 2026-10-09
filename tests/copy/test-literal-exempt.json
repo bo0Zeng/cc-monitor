@@ -30,6 +30,7 @@
       { "text": "失败", "use": "词义" }
     ],
     "tests/backend/ratchet_guard.rs": [
+      { "text": "兜底", "use": "非文案" },
       { "text": "刷新", "use": "非文案" }
     ],
     "tests/common/guard-core/no_outside_refs_tests.rs": [
@@ -44,6 +45,7 @@
       { "text": "原话", "use": "输入" }
     ],
     "tests/frontend/filewin/editor_tests.rs": [
+      { "text": "上限", "use": "词义" },
       { "text": "原话", "use": "输入" }
     ],
     "tests/frontend/filewin/progress_tests.rs": [

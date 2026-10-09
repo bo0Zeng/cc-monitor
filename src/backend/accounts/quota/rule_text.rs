@@ -1,7 +1,7 @@
 //! 一份轮换写成给人看的两句（界面照抄，不自己拼）：
 //! - [`explain`]：规则说明（面板 ⓘ · 编辑器头下那一行），按这一份**实际**的设置挑片段、` · ` 连 —— 抢回开着就说「前面的号恢复即切回」，
 //!   关着说「不主动换回」，不再一句写死。
-//! - [`summary`]：规则列表那一行摘要 `personal → work → team · ≥90% · 抢回 · 停 · 封顶 2`。
+//! - [`summary`]：规则列表那一行摘要 `personal → work → team · ≥90% · 抢回 · 兜底 b · 停 · 封顶 2`。
 //!
 //! 片段都在文案表（`beRotation.explain.*` · `beRotation.sum.*`），这里只挑、只连。
 
@@ -49,9 +49,13 @@ pub(crate) fn explain(r: &Rotation) -> String {
             &[("n", &n.to_string())],
         ));
     }
-    if r.wait > 0 {
-        let dur = copy_core::format_duration(u64::from(r.wait) * 60_000);
-        parts.push(copy_text("beRotation.explain.wait", &[("dur", &dur)]));
+    if !r.fallback.is_empty() {
+        let list = r.fallback.join(", ");
+        parts.push(copy_text("beRotation.explain.fallback", &[("list", &list)]));
+        if r.wait > 0 {
+            let dur = copy_core::format_duration(u64::from(r.wait) * 60_000);
+            parts.push(copy_text("beRotation.explain.wait", &[("dur", &dur)]));
+        }
     }
     for (acct, per) in &r.cap {
         for v in per.values() {
@@ -107,6 +111,10 @@ pub(crate) fn summary(r: &Rotation) -> String {
     }
     if let Some(n) = stint_all(r) {
         parts.push(copy_text("beRotation.sum.stint", &[("n", &n.to_string())]));
+    }
+    if !r.fallback.is_empty() {
+        let list = r.fallback.join(", ");
+        parts.push(copy_text("beRotation.sum.fallback", &[("list", &list)]));
     }
     if at_limit_applies(r) && r.at_limit == AtLimit::Stop {
         parts.push(copy_text("beRotation.sum.stop", &[]));
