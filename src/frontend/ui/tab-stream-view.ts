@@ -736,6 +736,8 @@ export class TabStreamView {
    * 够不够一屏：最后一张卡的 `getBoundingClientRect().bottom` 有没有够到滚动容器的下沿（真实布局，不吃估值）。
    * 不用「滚得动吗」（`scrollHeight − clientHeight > 1`）：没渲染过的卡贡献的是估值，估高了看起来滚得动、屏幕仍是半屏。
    * 没有布局时（jsdom，rect 恒为 0）退回算术判据 —— 不然补批整条路在测试里被静默关掉。
+   * 「够到」把那张卡的下外边距与容器的下内边距算进去：贴底看时最后一张卡下面本来就留着这两截（真浏览器 28 ＋ 48px），
+   * 不算的话贴底的 tab 永远「没满」，每切进来一次补一批。
    */
   private contentReachesBottom(tab: Tab): boolean {
     const el = tab.streamEl;
@@ -747,7 +749,8 @@ export class TabStreamView {
     const last = tab.stream.contentElement.lastElementChild;
     if (!last) return false; // 一张卡都没有 ⇒ 肯定没满
     // 1px 容差：HiDPI 分数像素下 rect 是小数，卡刚好贴到下沿时会差零点几像素。
-    return last.getBoundingClientRect().bottom >= view.bottom - 1;
+    const gap = (parseFloat(getComputedStyle(last).marginBottom) || 0) + (parseFloat(getComputedStyle(el).paddingBottom) || 0);
+    return last.getBoundingClientRect().bottom + gap >= view.bottom - 1;
   }
 
   /**

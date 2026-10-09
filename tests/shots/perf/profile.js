@@ -85,6 +85,23 @@ for (const [proto, k] of [
     },
   });
 }
+// 往收起的流里建卡的是谁（停放中的 MessageStream 上 insertNode / batchInsert）：记调用栈前几帧
+const hidden = new Map();
+try {
+  const { MessageStream } = await import("/src/frontend/ui/stream.ts");
+  for (const k of ["insertNode", "batchInsert"]) {
+    const f = MessageStream.prototype[k];
+    MessageStream.prototype[k] = function (...a) {
+      if (this.parked) {
+        const st = (new Error().stack ?? "").split("\n").slice(2, 9).map((l) => l.trim().replace(/\(?https?:\/\/[^/]+/, "").replace(/\?[^:]*:/, ":")).join(" ← ");
+        hidden.set(st, (hidden.get(st) ?? 0) + 1);
+      }
+      return f.apply(this, a);
+    };
+  }
+} catch {
+  // 没有这个模块（构建版）
+}
 const gcs = window.getComputedStyle;
 window.getComputedStyle = function (...a) {
   const t = performance.now();
@@ -95,7 +112,11 @@ window.getComputedStyle = function (...a) {
   }
 };
 window.__prof = {
-  reset: () => stats.clear(),
+  hidden: () => [...hidden.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12),
+  reset: () => {
+    stats.clear();
+    hidden.clear();
+  },
   dump: () =>
     [...stats.entries()]
       .sort((a, b) => b[1].ms - a[1].ms)

@@ -19,7 +19,10 @@ class NoopResizeObserver {
   constructor(readonly cb: (entries: { target: Element }[]) => void) {
     NoopResizeObserver.live.push(this);
   }
-  observe(): void {}
+  observed: Array<[Element, ResizeObserverOptions | undefined]> = [];
+  observe(t: Element, o?: ResizeObserverOptions): void {
+    this.observed.push([t, o]);
+  }
   unobserve(): void {}
   disconnect(): void {}
   /** 手动喂一次（jsdom 无布局 ⇒ 真 RO 不会自己响）。 */
@@ -113,5 +116,15 @@ describe("切走的 tab 那条流停放：收起期间的几何不作数", () =>
     s.park(false);
     await new Promise((r) => requestAnimationFrame(() => r(null)));
     expect(seen, "收起期间没变过就不补报").toHaveBeenCalledTimes(1);
+  });
+
+  it("容器那根轴按外框量：收起 / 翻出时滚动条没了又有了不算「视口变了」", () => {
+    const { root } = streamOf();
+    const ro = NoopResizeObserver.live[0];
+    const box = ro.observed.find(([t]) => t === root)?.[1]?.box;
+    expect(
+      box,
+      "按内容框量 ⇒ 经典滚动条（WebView2）一收一翻宽度就变 15px ⇒ 每切一下都当成拉了窗口：重估列宽、重排刻度、判「没满一屏」再建一批卡",
+    ).toBe("border-box");
   });
 });

@@ -139,6 +139,18 @@ if (args.shot) {
   writeFileSync(path.join(out, "tabs.txt"), info.join("\n"));
   await page.close();
 }
+if (args.eval) {
+  // 调试：开页、按一下「下一个 tab」，在那之后的第一个 rAF 里求一段表达式（看切进来那一帧的几何）
+  const page = await openPage();
+  for (let k = 0; k < Number(args.presses ?? 3); k++) {
+    await page.eval(`new Promise((res) => { window.__dbg = []; const ex = ${JSON.stringify(String(args.eval))}; requestAnimationFrame(() => {}); document.addEventListener('keydown', () => requestAnimationFrame(() => { try { window.__dbg.push(eval(ex)); } catch (e) { window.__dbg.push(String(e)); } }), { once: true }); res(0); })`);
+    await page.send("Input.dispatchKeyEvent", { type: "keyDown", key: "]", code: "BracketRight", windowsVirtualKeyCode: 221, nativeVirtualKeyCode: 221 });
+    await page.send("Input.dispatchKeyEvent", { type: "keyUp", key: "]", code: "BracketRight", windowsVirtualKeyCode: 221, nativeVirtualKeyCode: 221 });
+    await sleep(600);
+    console.log(JSON.stringify(await page.eval("window.__dbg")));
+  }
+  await page.close();
+}
 for (let r = 0; r < runs; r++) {
   if (only.has("switch")) result.switch.push(...(await benchSwitch(r)));
   if (only.has("rapid")) result.rapid.push(...(await benchRapid(r)));
@@ -394,6 +406,7 @@ async function benchRapid(run) {
 async function benchKeys(run) {
   const page = await openPage();
   const rows = [];
+  if (args.profile) await page.eval("window.__prof && window.__prof.reset()");
   for (let burst = 0; burst < 3; burst++) {
     await page.eval("__perf.quiet(500, 8000)");
     const m0 = await metrics(page);
@@ -434,7 +447,7 @@ async function benchKeys(run) {
       scriptMs: (m1.ScriptDuration - m0.ScriptDuration) * 1000,
     });
   }
-  if (args.profile) writeFileSync(path.join(out, "prof-keys.json"), JSON.stringify(await page.eval("window.__prof ? window.__prof.dump() : null"), null, 1));
+  if (args.profile) writeFileSync(path.join(out, "prof-keys.json"), JSON.stringify(await page.eval("window.__prof ? { top: window.__prof.dump(), hidden: window.__prof.hidden() } : null"), null, 1));
   await page.close();
   console.log(`  按住切 第 ${run + 1} 趟：3 串`);
   return rows;
@@ -668,7 +681,7 @@ function parseArgs(argv) {
     const a = argv[i];
     if (!a.startsWith("--")) continue;
     const k = a.slice(2);
-    if (["runs", "out", "only", "css", "merge", "profile"].includes(k)) o[k] = argv[++i];
+    if (["runs", "out", "only", "css", "merge", "profile", "eval", "presses"].includes(k)) o[k] = argv[++i];
     else if (k === "trace" && argv[i + 1] && !argv[i + 1].startsWith("--")) o[k] = argv[++i]; // `--trace`（热切那几下）/ `--trace keys`（按住切那一串）
     else o[k] = true;
   }

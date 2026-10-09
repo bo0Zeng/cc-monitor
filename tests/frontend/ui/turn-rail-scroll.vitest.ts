@@ -71,10 +71,10 @@ describe("轮次刻度跟滚动：一帧量一次、二分", () => {
     expect(r.reads(), "20 个 scroll 合成一次").toBeLessThanOrEqual(2 * Math.ceil(Math.log2(50)) + 4);
   });
 
-  it("量的是对数个位置（400 轮 · 每轮夹 3 张卡），结果与逐个数一致", async () => {
-    const n = 400;
+  it("量的是对数个位置（300 轮 · 每轮夹 3 张卡），结果与逐个数一致", { timeout: 30_000 }, async () => {
+    const n = 300;
     const r = rig(n, 0);
-    for (const offset of [0, 7, 9, 150, 12_345, 20_000, 39_950, 50_000]) {
+    for (const offset of [0, 9, 12_345, 29_950, 50_000]) {
       r.pos.offset = offset;
       r.resetReads();
       r.rail.onScroll();

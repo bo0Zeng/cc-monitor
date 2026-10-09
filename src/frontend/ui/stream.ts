@@ -73,7 +73,9 @@ export class MessageStream {
       }
     });
     this.resizeObserver.observe(this.contentEl);
-    this.resizeObserver.observe(this.scrollEl);
+    // 容器那根轴按外框量：滚动条算在外框里 —— 切 tab 时收起的流滚动条没了、翻出来又有了（经典滚动条一收一翻 15px），
+    // 按内容框量就每切一下都当成「视口变了」（宿主重估列宽、重排刻度、判没满一屏再建一批卡）。外框只在真拉了窗口 / 侧栏时变。
+    this.resizeObserver.observe(this.scrollEl, { box: "border-box" });
   }
 
   /**

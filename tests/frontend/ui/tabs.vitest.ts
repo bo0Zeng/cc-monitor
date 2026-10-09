@@ -974,6 +974,39 @@ describe("TabManager 生命周期", () => {
     expect(t.window.pendingCount, "下一帧那一脚照补（jsdom 无布局 ⇒ 判成没满一屏）").toBeLessThan(300);
   });
 
+  /**
+   * 贴着底看的长会话：最后一张卡的下沿离容器下沿还差底部内边距那一截（48px ＋ 卡的外边距，真浏览器量到 76px）——
+   * 那不是「没满一屏」。以前照「最后一张卡够没够到容器下沿」判 ⇒ 贴底的 tab 每切进来一次都判成没满、补一批 200 条
+   * （按住「下一个 tab」时每一下都在建卡，台架轨迹里补批占了一大半）。「够到」要把卡的下外边距与容器的下内边距算进去。
+   */
+  it("贴底看的 tab：最后一张卡下面只剩底部留白 ⇒ 算满一屏，切进来不补批", async () => {
+    await spyRender();
+    tm.onLine(mkContent("padA", 1, "pad-1")); // active
+    tm.onBatchStart();
+    for (let s = 1000; s < 1300; s++) tm.onLine(mkContent("padB", s, `pad-${s}`));
+    tm.onBatchEnd();
+    const t = home(tm).store.tabs.get("padB")!;
+    tm.switchTo("padB");
+    tm.switchTo("padA");
+    tm.onBatchStart();
+    for (let s = 100; s < 400; s++) tm.onLine(mkContent("padB", s, `pad-old-${s}`)); // 账本有余 300
+    tm.onBatchEnd();
+    // 真浏览器里量到的那一形：贴底（scrollTop 4284 = scrollHeight 5018 − clientHeight 734），最后一张卡下沿 698、容器下沿 774
+    Object.defineProperty(t.streamEl, "scrollHeight", { value: 5018, configurable: true });
+    Object.defineProperty(t.streamEl, "clientHeight", { value: 734, configurable: true });
+    Object.defineProperty(t.streamEl, "scrollTop", { value: 4284, configurable: true, writable: true });
+    t.streamEl.getBoundingClientRect = () => ({ top: 40, bottom: 774, height: 734, left: 0, right: 900, width: 900 }) as DOMRect;
+    t.streamEl.style.paddingBottom = "48px"; // `.stream` 的下内边距
+    const last = document.createElement("div");
+    last.style.marginBottom = "28px"; // 卡的下外边距
+    last.getBoundingClientRect = () => ({ top: 245, bottom: 698, height: 453, left: 0, right: 780, width: 780 }) as DOMRect;
+    t.stream.contentElement.appendChild(last);
+    tm.switchTo("padB");
+    await new Promise((r) => requestAnimationFrame(() => r(null)));
+    await new Promise((r) => requestAnimationFrame(() => r(null)));
+    expect(t.window.pendingCount, "贴底的 tab 被判成没满一屏 ⇒ 每切进来一次补一批").toBe(300);
+  });
+
   it("F40b：物化/补批 sink 不接 onRealUserInput(历史 user 卡不自动切 tab)", async () => {
     const spy = await spyRender();
     tm.onLine(mkContent("uaA", 1, "ua-1")); // active
