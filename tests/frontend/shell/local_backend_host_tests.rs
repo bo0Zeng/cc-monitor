@@ -2805,7 +2805,7 @@ fn every_test_that_starts_the_real_backend_demands_a_private_tmux() {
 /// ⇒ 前端 toast，A6 那次修就是为这个）；**自动起**那条（`lib.rs` 的 `setup`，
 /// 用户每天真正走的那条）回修前是 `tracing::info!` —— 连 `warn` 都不是。
 ///
-/// 触发场景不是理论：口按家目录算死（[`listen_port_for`]），`hello_verdict` 逐字比
+/// 触发场景不是理论：套接字按家目录算死（`relay_route_core::listen_socket_for`），`hello_verdict` 逐字比
 /// `BACKEND_BUILD_ID` ⇒ **升级 monitor 之后上一次脱离留下的那个后端还在听同一个口**
 /// ⇒ `Stranger` ⇒ `Adopt::Refused` ⇒ 本机后端起不来，而界面上什么都不说。
 /// ⚠ 这是**常驻带来的新场景**，是本件引入的：翻面之前 backend 153ms 就死了。
