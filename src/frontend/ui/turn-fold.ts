@@ -8,13 +8,20 @@
  *
  * - 顺着流的顶层子节点走：遇到 `data-uuid` 等于某一轮 `uuid` 的那张卡 ＝ 那一轮开头；之后的卡属于这一轮，直到下一轮开头。
  * - 这一轮有过程行（后端给的 `parts` 非空）⇒ 开头之后、结尾以外的顶层卡全收进去；没有 ⇒ 一张不折。
- * - 遇到骨架占位：按账本（uuid→seq）认里面有没有哪一轮的开头——没有 ⇒ 它整块是这一轮的过程，折着就藏（高 0、骨架不物化它）；
- *   有 ⇒ 后面的卡归里面最后那个开头的轮（开头那张还没建 ⇒ 行等它建出来再画）；骨架没接上认不出 ⇒ 之后不再归轮，
- *   直到认出下一轮开头。ESC 回退的折叠段同样不再归轮（宁可不折，不折错）。
+ * - 遇到骨架占位：归哪一轮、藏不藏不顺着 DOM 猜，按账本那一段认（`turnSpans`：开头之后、下一轮开头之前、结尾以外的行是过程）——
+ *   整块是某一轮的过程 ⇒ 折着就藏（高 0、骨架也不物化它，同一个口径交给骨架）；里面有哪一轮的开头 ⇒ 后面的卡归最后那个开头的轮
+ *   （开头那张还没建 ⇒ 行等它建出来再画）；骨架没接上认不出 ⇒ 之后不再归轮，直到认出下一轮开头。
+ * - ESC 回退的折叠段之后不再归轮（宁可不折，不折错；它后面的占位照样按账本认）。
  * - 过程行插在那一轮开头那张卡后面；它不是时间线条目（`RecordTimeline` 按后继锚插入，不受它影响），
  *   `BranchFolder` 认的是 `data-uuid`，过程行没有。
  * - 「暂定结论」被降级（露着的最后一段正文，Claude 又调了工具 ⇒ 它成了中间的话）：收尾那一刻视口正落在它上面 ⇒ 先不收，
  *   等滚出去（宿主转来的 scroll）或切走再收。
+ *
+ * # 折着的不建 DOM（骨架接上了的那一段历史）
+ *
+ * 折着的轮的过程行（`turnSpans` 的口径）交给骨架（`SkeletonView.setFolds`）：账本按 0 高、滚到那里也不物化，
+ * 带过程行的轮的开头多算一条过程行的高 ⇒ 滚动条按「人话 ＋ 一行 ＋ 结尾」估。展开 ⇒ 撤掉那一段、叫骨架物化露出来的部分。
+ * 已经建了的卡（尾部窗口直渲的 · 展开过又收起的）照样由本模块藏（`display:none`），收起后不拆。
  *
  * # 展开状态
  *
@@ -33,6 +40,7 @@ import { foldCaret } from "./kit/fold";
 import { spinner } from "./kit/progress";
 import { statusDot } from "./kit/status-dot";
 import { SKELETON_GAP_CLASS } from "./skeleton-view";
+import type { TurnFolds } from "./live-window";
 import { LS_KEYS, safeGet, safeSet } from "./local-storage";
 
 export const PROC_LINE_CLASS = "proc-line";
@@ -44,14 +52,23 @@ export const PROC_REVEAL_EVENT = "proc-reveal";
 const FOLD_WRAP_CLASS = "branch-fold-wrap";
 /** 过程里出了错的那一处（点「失败 ×N」滚到第一处）。 */
 const FAILED_SELECTOR = '.step-line[data-state="failed"], .card-api-error, [data-failed="1"]';
+/** 过程行占的高（还没建出一条可量时用）：稿上的 28 高 ＋ 12 下边距。 */
+const LINE_PX_FALLBACK = 40;
 /** 连续要不到几次就不再要（同大纲 / 事实的口径）。 */
 const MAX_FAILURES = 3;
 
 /** 这份会话在哪（路径要等首条行回填 ⇒ 每次现取；拿不到 ⇒ 这一趟不要）。 */
 export type TurnsWhere = () => { origin: Origin; jsonlPath: string } | null;
 type Read = (origin: Origin, path: string, from: number) => Promise<TurnsResult>;
-/** 这个 tab 的骨架（没接上 ⇒ `null`）：占位里有没有下一轮的开头按账本的 uuid→seq 认；展开一轮后叫它物化露出来的那段。 */
-export type TurnsSkeleton = () => { ledger: { uuidToSeq: ReadonlyMap<string, number> }; fillVisible(): number } | null;
+/**
+ * 这个 tab 的骨架（没接上 ⇒ `null`）：占位里有没有下一轮的开头按账本的 uuid→seq 认；折着的轮的过程那一段告诉它（按 0 高、不物化）；
+ * 展开一轮后叫它物化露出来的那段。
+ */
+export type TurnsSkeleton = () => {
+  ledger: { uuidToSeq: ReadonlyMap<string, number>; endSeq: number };
+  fillVisible(): number;
+  setFolds(f: TurnFolds): void;
+} | null;
 
 /** 「显示系统注入」这扇窗的开关（缺省不露）。 */
 export function injectedShownDefault(): boolean {
@@ -204,7 +221,8 @@ export class TurnFold {
     const lastOf = new Map<string, HTMLElement>();
     let cur: TurnSummary | null = null;
     let curEnding = new Set<string>();
-    const heads = this.headSeqs();
+    const spans = this.turnSpans();
+    const heads: Head[] | null = spans && spans.map((r) => ({ seq: r.head, uuid: r.turn.uuid }));
     for (const el of Array.from(this.content.children)) {
       if (!(el instanceof HTMLElement) || isOurs(el)) continue;
       const uuid = el.getAttribute("data-uuid");
@@ -219,17 +237,22 @@ export class TurnFold {
         this.unmark(el);
         continue;
       }
-      // 骨架占位：账本说里面没有哪一轮的开头 ⇒ 它整块是这一轮的过程（折着就藏、不物化）；有 ⇒ 后面的卡归里面最后那个开头的轮
-      // （开头那张还没建 ⇒ 行先不画，建出来再画）；骨架没接上认不出 ⇒ 之后不再归轮。
+      // 骨架占位：归哪一轮、藏不藏按账本那一段认（`turnSpans`，与交给骨架按 0 高的同一个口径），不顺着 DOM 猜：
+      // 整块落在某一轮的过程行里 ⇒ 它是那一轮的过程（折着就藏、骨架也不物化它）；里面有哪一轮的开头 ⇒ 后面的卡归最后那个开头的轮
+      // （开头那张还没建 ⇒ 行先不画，建出来再画）；含那一轮的结尾行 ⇒ 露着（结尾要物化出来）；骨架没接上认不出 ⇒ 之后不再归轮。
       if (el.classList.contains(SKELETON_GAP_CLASS)) {
+        const lo = Number(el.dataset.skeletonLo);
+        const hi = Number(el.dataset.skeletonHi);
         const inside = heads === null ? undefined : lastHeadIn(el, heads);
-        if (inside !== null) {
-          const t = inside === undefined ? null : this.byUuid.get(inside);
-          cur = t && hasLine(t) ? t : null;
-          curEnding = new Set(t?.ending ?? []);
-          this.unmark(el);
-          continue;
-        }
+        const owner = spans && inside === null ? spanAt(spans, lo) : null;
+        const t = inside === null ? owner?.turn : inside === undefined ? undefined : this.byUuid.get(inside);
+        cur = t && hasLine(t) ? t : null;
+        curEnding = new Set(t?.ending ?? []);
+        if (cur && owner && hi <= owner.next && !owner.endings.some((e) => e >= lo && e < hi)) {
+          this.mark(el, cur);
+          lastOf.set(cur.uuid, el);
+        } else this.unmark(el);
+        continue;
       }
       if (el.classList.contains(FOLD_WRAP_CLASS)) cur = null;
       if (!cur || (uuid !== null && curEnding.has(uuid))) {
@@ -247,6 +270,7 @@ export class TurnFold {
       this.lines.delete(uuid);
     }
     this.lastOf = lastOf;
+    this.foldSkeleton(spans);
     this.placeTails(lastOf);
     this.sizeRules();
     this.mo.takeRecords();
@@ -262,16 +286,53 @@ export class TurnFold {
     this.tails.clear();
   }
 
-  /** 各轮开头在账本里的 seq（升序）；骨架没接上 ⇒ `null`（认不出占位里有什么）。 */
-  private headSeqs(): Head[] | null {
+  /**
+   * **每一轮在账本里占哪几行**（骨架没接上 ⇒ `null`）：开头的 seq（升序）、到下一轮开头（没有 ⇒ 账本尾）为止、其中结尾是哪几行。
+   * 「哪几行是过程」只住这里：开头之后、下一轮开头之前、结尾以外的行。账本按 0 高的那几段（`foldSkeleton`）与占位藏不藏（`apply`）
+   * 都从它推出来 ⇒ 两边说法不会分家。
+   */
+  private turnSpans(): TurnSpanRow[] | null {
     const sk = this.skeleton();
     if (!sk) return null;
-    const out: Head[] = [];
-    for (const t of this.turns) {
-      const seq = sk.ledger.uuidToSeq.get(t.uuid);
-      if (seq !== undefined) out.push({ seq, uuid: t.uuid });
+    const seq = sk.ledger.uuidToSeq;
+    const rows: TurnSpanRow[] = [];
+    for (const turn of this.turns) {
+      const head = seq.get(turn.uuid);
+      if (head !== undefined) rows.push({ turn, head, next: 0, endings: [] });
     }
-    return out.sort((a, b) => a.seq - b.seq);
+    rows.sort((a, b) => a.head - b.head);
+    rows.forEach((r, i) => {
+      r.next = rows[i + 1]?.head ?? sk.ledger.endSeq;
+      r.endings = r.turn.ending
+        .map((u) => seq.get(u))
+        .filter((e): e is number => e !== undefined && e > r.head && e < r.next)
+        .sort((a, b) => a - b);
+    });
+    return rows;
+  }
+
+  /** 折着的轮的过程行（`turnSpans` 的口径）交给骨架：按 0 高、滚到那里也不物化；带过程行的开头多算一条行高。 */
+  private foldSkeleton(spans: readonly TurnSpanRow[] | null): void {
+    const sk = this.skeleton();
+    if (!sk || !spans) return;
+    const folded: Array<[number, number]> = [];
+    const lines: number[] = [];
+    for (const r of spans) {
+      if (!hasLine(r.turn)) continue;
+      lines.push(r.head);
+      if (!this.expanded(r.turn)) folded.push(...processRanges(r));
+    }
+    sk.setFolds({ folded, lines, linePx: this.linePx() });
+  }
+
+  /** 一条过程行在流里占多高（量第一条建出来的：盒高 ＋ 下边距；还没有 ⇒ 稿上的 28 ＋ 12）。 */
+  private linePx(): number {
+    const line = this.lines.values().next().value;
+    if (line?.isConnected) {
+      const h = line.getBoundingClientRect().height;
+      if (h > 0) return h + parseFloat(getComputedStyle(line).marginBottom || "0");
+    }
+    return LINE_PX_FALLBACK;
   }
 
   /** 这一轮从折着变成展开 ⇒ 露出来的占位要物化（没有 scroll 事件来叫）。 */
@@ -437,6 +498,39 @@ export class TurnFold {
 interface Head {
   seq: number;
   uuid: string;
+}
+
+/** 一轮在账本里：开头 · 下一轮开头（半开上界）· 结尾那几行（升序）。 */
+interface TurnSpanRow {
+  turn: TurnSummary;
+  head: number;
+  next: number;
+  endings: number[];
+}
+
+/** 这一轮的过程行：`(head, next)` 里扣掉结尾那几行。 */
+function processRanges(r: TurnSpanRow): Array<[number, number]> {
+  const out: Array<[number, number]> = [];
+  let at = r.head + 1;
+  for (const e of r.endings) {
+    if (e > at) out.push([at, e]);
+    at = Math.max(at, e + 1);
+  }
+  if (r.next > at) out.push([at, r.next]);
+  return out;
+}
+
+/** `seq` 落在哪一轮里（开头 < seq < 下一轮开头）；在第一轮开头之前 ⇒ `null`。 */
+function spanAt(spans: readonly TurnSpanRow[], seq: number): TurnSpanRow | null {
+  let l = 0;
+  let r = spans.length;
+  while (l < r) {
+    const m = (l + r) >>> 1;
+    if (spans[m].head < seq) l = m + 1;
+    else r = m;
+  }
+  const s = spans[l - 1];
+  return s !== undefined && seq < s.next ? s : null;
 }
 
 /** 占位 `[lo, hi)` 里最后一个开头是哪一轮（`heads` 按 seq 升序）：没有 ⇒ `null`；占位的区间读不出 ⇒ `undefined`（当作认不出）。 */

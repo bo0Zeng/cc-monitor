@@ -379,6 +379,13 @@ export class TailWindow {
  * - **截断重写**：后端的 jsonl 读者截断重读会换新 seq（INVARIANTS §25；本机远端同一个读者），那之后 seq 与行号不再相等，
  *   本账本对不上 —— 调用方见 `endSeq` 与实到的 seq 对不上时应当丢掉骨架（不许硬对）。
  */
+/** 〔大折叠〕账本要知道的折叠：折着的过程那几段（seq 半开区间）· 带过程行的轮的开头 · 过程行多高。 */
+export interface TurnFolds {
+  folded: ReadonlyArray<readonly [number, number]>;
+  lines: readonly number[];
+  linePx: number;
+}
+
 export class SkeletonLedger {
   readonly base: number;
   private rows: SkeletonFacts[] = [];
@@ -390,6 +397,11 @@ export class SkeletonLedger {
   /** 〔第二级〕Worker 精算回来的高（seq → px，当前列宽下）；有它就用它、没有用第一级。 */
   private refined = new Map<number, number>();
   private colW: number | undefined;
+  /** 〔大折叠〕折着的过程（seq 半开区间，升序不相交）：这些行按 0 高（不建卡、不占滚动条），展开了才回到估高。 */
+  private folded: ReadonlyArray<readonly [number, number]> = [];
+  /** 〔大折叠〕带过程行的轮的开头（seq）：那一行多算一条过程行的高（`linePx`）。 */
+  private lines = new Set<number>();
+  private linePx = 0;
   /** uuid → seq（无 uuid 的行不占） */
   readonly uuidToSeq = new Map<string, number>();
 
@@ -409,7 +421,7 @@ export class SkeletonLedger {
       this.rows.push(r);
       this.kinds.push(kind);
       this.est.push(h);
-      this.prefix.push(this.prefix[this.prefix.length - 1] + (this.refined.get(seq) ?? h));
+      this.prefix.push(this.prefix[this.prefix.length - 1] + this.rowHeight(seq, h));
       if (r.u) this.uuidToSeq.set(r.u, seq);
     }
   }
@@ -456,10 +468,56 @@ export class SkeletonLedger {
       lowest = Math.min(lowest, i);
     }
     if (lowest === Infinity) return false;
-    for (let i = lowest; i < this.rows.length; i++) {
-      this.prefix[i + 1] = this.prefix[i] + (this.refined.get(this.base + i) ?? this.est[i]);
-    }
+    this.rebuildFrom(lowest);
     return true;
+  }
+
+  /**
+   * 〔大折叠〕折着的过程那几段（seq 半开区间）与带过程行的轮的开头换成这一组：折着的行按 0 高，开头那一行多算 `linePx`
+   * （过程行本身的高）。从变动的最低那一行起重合前缀和。返回有没有变（同一组 ⇒ `false`，什么都不动）。
+   */
+  setFolds(f: TurnFolds): boolean {
+    const next = f.folded.filter(([a, b]) => b > a).map(([a, b]) => [a, b] as const).sort((x, y) => x[0] - y[0]);
+    const prev = this.folded;
+    const lines = new Set(f.lines);
+    const sameFold = next.length === prev.length && next.every(([a, b], i) => a === prev[i][0] && b === prev[i][1]);
+    const sameLines = f.linePx === this.linePx && lines.size === this.lines.size && [...lines].every((x) => this.lines.has(x));
+    if (sameFold && sameLines) return false;
+    const touched = [...next.map(([a]) => a), ...prev.map(([a]) => a)];
+    if (!sameLines) touched.push(...lines, ...this.lines);
+    this.folded = next;
+    this.lines = lines;
+    this.linePx = f.linePx;
+    this.rebuildFrom(touched.length === 0 ? 0 : Math.max(0, Math.min(...touched) - this.base));
+    return true;
+  }
+
+  /** 折着的那几段（`SkeletonView` 物化时扣掉它们）。 */
+  get foldedRanges(): ReadonlyArray<readonly [number, number]> {
+    return this.folded;
+  }
+
+  /** 一行算多高：折着 ⇒ 0；精算过 ⇒ 精算；否则第一级；带过程行的轮的开头再加一条过程行。 */
+  private rowHeight(seq: number, est: number): number {
+    if (this.isFolded(seq)) return 0;
+    return (this.refined.get(seq) ?? est) + (this.lines.has(seq) ? this.linePx : 0);
+  }
+
+  private isFolded(seq: number): boolean {
+    let l = 0;
+    let r = this.folded.length;
+    while (l < r) {
+      const m = (l + r) >>> 1;
+      if (this.folded[m][1] <= seq) l = m + 1;
+      else r = m;
+    }
+    return l < this.folded.length && this.folded[l][0] <= seq;
+  }
+
+  private rebuildFrom(lowest: number): void {
+    for (let i = lowest; i < this.rows.length; i++) {
+      this.prefix[i + 1] = this.prefix[i] + this.rowHeight(this.base + i, this.est[i]);
+    }
   }
 
   private lastCardKind(): SkeletonKind {
