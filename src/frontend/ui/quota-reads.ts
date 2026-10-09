@@ -358,38 +358,60 @@ export interface CapAt {
 }
 
 /** `rotation-plan` 的预览（后端照 `decide` 算好；界面只排版）。时刻都带写好的 `…Text`。 */
-export interface PlanRead {
-  errors: CellError[];
-  now: number;
-  nowText: string;
-  until: number;
-  plan: {
+/** 预览 / 时间轴里一段：`[from, to)` 用 `account`（`null` ＝ 停发）；`why` ＝ 那一段开头为什么换。 */
+export interface PlanSeg {
+  from: number;
+  fromText: string;
+  to: number;
+  toText: string;
+  account: string | null;
+  why: SwitchWhy | null;
+}
+
+/** 池里一个号的泳道：不能用的段 · 重置时刻 · 此刻卡人窗口用了多少 · 在用几个会话（设置那一问）· 下一次开窗（quota-warm 在跑时）。 */
+export interface PlanLane {
+  account: string;
+  spans: {
     from: number;
     fromText: string;
     to: number;
     toText: string;
-    account: string | null;
-    why: SwitchWhy | null;
+    state: "refused" | "capped" | "off" | "overage";
+    n: number | null;
   }[];
-  lanes: {
-    account: string;
-    spans: {
-      from: number;
-      fromText: string;
-      to: number;
-      toText: string;
-      state: "refused" | "capped" | "off" | "overage";
-      n: number | null;
-    }[];
-    resets: { w: string; at: number; atText: string }[];
-  }[];
+  resets: { w: string; at: number; atText: string }[];
+  pct?: number | null;
+  usedBy?: number;
+  warm?: { at: number; atText: string }[];
+}
+
+/** 时间轴顶行（后端判）：此刻用谁 · 卡人窗口与用量 · 距触发；或卡住时最早回来的号。 */
+export type PlanHead =
+  | { account?: string; w?: string; pct?: number; toTrigger?: number }
+  | { blocked: { account?: string; at?: number; atText?: string; w?: string } };
+
+export interface PlanRead {
+  errors: CellError[];
+  now: number;
+  nowText: string;
+  /** 视窗起（不带 `view` ＝ `now`）。 */
+  from?: number;
+  fromText?: string;
+  until: number;
+  plan: PlanSeg[];
+  lanes: PlanLane[];
   effective: Record<string, Record<string, CapAt & { below: CapAt }>>;
+  /** 带 `view` 时：按格的刻度（悬停 / 键盘按格走），`label` ＝ 轴上写的字。 */
+  grid?: { at: number; atText: string; label?: string }[];
+  head?: PlanHead;
+  /** `sid` ＋ `view`：这个会话走过的段。 */
+  past?: PlanSeg[];
 }
 
 /** 问哪一份：草稿 · 这台的一条规则 · 一个会话此刻那一份；视窗缺省 12h。 */
 export type PlanAsk = (
-  { rotation: Rotation } | { rule: string } | { sid: string }
-) & { span?: "6h" | "12h" | "24h" | "7d" };
+  { rotation: Rotation } | { rule: string } | { sid: string } | { machine: true }
+) & { span?: "6h" | "12h" | "24h" | "7d"; view?: "6h" | "24h" | "7d" };
 
 /** 草稿有错 ⇒ 只有 `errors`（其余几格空）。 */
 export function decodePlan(v: unknown): PlanRead {

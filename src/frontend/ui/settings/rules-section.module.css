@@ -46,6 +46,31 @@
     font: inherit;
   }
 
+  .rulesTimeline {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    margin-top: var(--space-5);
+  }
+
+  .rulesTlTop {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-3);
+  }
+
+  .rulesTlTitle {
+    font-weight: 600;
+  }
+
+  .rulesTlHead {
+    flex: 1;
+    min-width: 0;
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+  }
+
   .rulesBody {
     display: flex;
     flex-direction: column;

@@ -23,7 +23,11 @@ declare const classes: {
   readonly rulesSub: string;
   readonly rulesSum: string;
   readonly rulesTable: string;
+  readonly rulesTimeline: string;
   readonly rulesTitle: string;
+  readonly rulesTlHead: string;
+  readonly rulesTlTitle: string;
+  readonly rulesTlTop: string;
   readonly rulesUse: string;
   readonly rulesUseBtn: string;
   readonly rulesUser: string;

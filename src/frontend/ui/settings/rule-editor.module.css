@@ -17,9 +17,6 @@
   .edLine,
   .edRow,
   .edCapWho,
-  .edLaneName,
-  .edLegend,
-  .edLegendItem,
   .edCardTitle,
   .edCardExtra,
   .edSaved {
@@ -29,8 +26,7 @@
     min-width: 0;
   }
 
-  .edLine,
-  .edLegend {
+  .edLine {
     flex-wrap: wrap;
   }
 
@@ -292,130 +288,8 @@
     gap: var(--space-3);
   }
 
-  .edAxisGrid {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-    padding: var(--space-3);
-    border: 1px solid var(--border-soft);
-    border-radius: var(--radius-m);
-    background: var(--bg-2);
-  }
-
-  .edLane {
-    display: grid;
-    grid-template-columns: 96px minmax(0, 1fr);
-    gap: var(--space-3);
-    align-items: center;
-  }
-
-  .edTrack {
-    position: relative;
-    height: 14px;
-    border-bottom: 1px solid var(--border-soft);
-  }
-
-  .edPlanSeg,
-  .edLaneSpan {
-    position: absolute;
-    top: 2px;
-    bottom: 2px;
-    border-radius: var(--radius-s);
-  }
-
-  .edPlanSeg {
-    display: flex;
-    align-items: center;
-    box-shadow: inset -2px 0 0 var(--bg-2);
-  }
-
-  .edLane[data-ed-lane="rule"] .edTrack {
-    height: 20px;
-  }
-
-  .edSegName {
-    max-width: 100%;
-    padding: 0 var(--space-1);
-    overflow: hidden;
-    font-size: var(--font-size-xs);
-    line-height: 1;
-    white-space: nowrap;
-  }
-
-  .edSegName[data-fit="no"] {
-    display: none;
-  }
-
-  .edLane[data-ed-lane="rule"] {
-    margin-top: var(--space-4);
-  }
-
   .edSpanSel {
     width: 140px;
-  }
-
-  .edPlanSeg[data-held="true"] {
-    color: var(--text-2);
-    background: repeating-linear-gradient(135deg, var(--border-medium) 0 3px, transparent 3px 6px);
-  }
-
-  .edWhy {
-    position: absolute;
-    top: -13px;
-    left: 0;
-    color: var(--text-2);
-    font-size: var(--font-size-xs);
-    white-space: nowrap;
-  }
-
-  .edLaneSpan[data-state="refused"],
-  .edSwatch[data-state="refused"] {
-    background: repeating-linear-gradient(135deg, var(--error) 0 3px, transparent 3px 6px);
-  }
-
-  .edLaneSpan[data-state="capped"],
-  .edLaneSpan[data-state="overage"],
-  .edSwatch[data-state="capped"] {
-    background: repeating-linear-gradient(135deg, var(--warn) 0 3px, transparent 3px 6px);
-  }
-
-  .edLaneSpan[data-state="off"],
-  .edSwatch[data-state="off"] {
-    background: repeating-linear-gradient(135deg, var(--text-faint) 0 3px, transparent 3px 6px);
-  }
-
-  .edReset {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    width: 1px;
-    background: var(--text-2);
-  }
-
-  .edTicks {
-    display: flex;
-    justify-content: space-between;
-    margin-left: calc(96px + var(--space-3));
-    color: var(--text-2);
-    font-size: var(--font-size-xs);
-  }
-
-  .edSwatch {
-    width: 14px;
-    height: 8px;
-    border-radius: var(--radius-s);
-    background: var(--text-2);
-  }
-
-  .edSwatch[data-state="reset"] {
-    width: 1px;
-    height: 10px;
-    background: var(--text-2);
-  }
-
-  .edLegend {
-    color: var(--text-2);
-    font-size: var(--font-size-xs);
   }
 
   .edGone {
@@ -429,10 +303,6 @@
   @media (width < 640px) {
     .edBlock {
       grid-template-columns: minmax(0, 1fr);
-    }
-
-    .edLane {
-      grid-template-columns: 72px minmax(0, 1fr);
     }
 
     /* 封顶表 ⇒ 每号一张卡：表头那一行收起，四格竖排、各格前写列名（稿 §5.8）。 */
@@ -463,10 +333,6 @@
       display: block;
       color: var(--text-2);
       font-size: var(--font-size-small);
-    }
-
-    .edTicks {
-      margin-left: calc(72px + var(--space-3));
     }
   }
 }

@@ -1100,3 +1100,61 @@ describe("账号面板 · 重启切换", () => {
     }
   });
 });
+
+describe("账号面板 · 时间轴", () => {
+  const T = 50_000;
+  const tlPlan = (head: unknown) => ({
+    errors: [],
+    now: T,
+    nowText: "02:00",
+    from: T - 6 * 3600,
+    fromText: "20:00",
+    until: T + 18 * 3600,
+    past: [],
+    plan: [
+      { from: T, fromText: "02:00", to: T + 3600, toText: "03:00", account: "team", why: null },
+    ],
+    lanes: [],
+    effective: {},
+    grid: [{ at: T, atText: "02:00", label: "02:00" }],
+    head,
+  });
+  const settle = async (): Promise<void> => {
+    for (let i = 0; i < 6; i++) await new Promise((r) => setTimeout(r, 0));
+  };
+  const foldHead = (): HTMLElement =>
+    [...panel().querySelectorAll<HTMLElement>("[data-fold-head]")].find((h) =>
+      h.textContent?.includes(copyText("acct.tl.title")),
+    )!;
+
+  it("问 `{sid, view: 24h}`；折着时摘要 ＝ 后端那一句顶行；换视窗 ⇒ 按新视窗重问", async () => {
+    seed({}, { order: [{ start: true }, "team"], enabled: ["team"], when: "full", atLimit: "continue", wait: 40 });
+    readPlan.mockReset().mockResolvedValue(tlPlan({ account: "team", w: "5h", pct: 63, toTrigger: 27 }));
+    openAccountPanel("s1", "<local>", host);
+    await settle();
+    expect(readPlan).toHaveBeenLastCalledWith("<local>", { sid: "s1", view: "24h" });
+    expect(foldHead().getAttribute("aria-expanded")).toBe("false");
+    expect(foldHead().textContent).toContain(
+      [copyText("rot.tl.now", { acct: "team", w: "5h", pct: 63 }), copyText("rot.tl.toTrig", { n: 27 })].join(copyText("kit.text.sep")),
+    );
+    const calls = readPlan.mock.calls.length;
+    foldHead().click();
+    await settle();
+    expect(readPlan.mock.calls.length, "摊开不重问（同一把钥匙）").toBe(calls);
+    panel().querySelector<HTMLButtonElement>('[data-tl-view] button[data-key="6h"]')!.click();
+    await settle();
+    expect(readPlan).toHaveBeenLastCalledWith("<local>", { sid: "s1", view: "6h" });
+  });
+
+  it("卡住（后端 head.blocked）⇒ 自动摊开、顶行写成琥珀条那一形", async () => {
+    seed({}, { order: [{ start: true }, "team"], enabled: ["team"], when: "full", atLimit: "continue", wait: 40 });
+    readPlan.mockReset().mockResolvedValue(tlPlan({ blocked: { account: "team", at: T + 600, atText: "02:10", w: "5h" } }));
+    openAccountPanel("s1", "<local>", host);
+    await settle();
+    expect(foldHead().getAttribute("aria-expanded")).toBe("true");
+    const line = panel().querySelector<HTMLElement>("[data-tl-head]")!;
+    expect(line.dataset.tlHead).toBe("blocked");
+    expect(line.textContent).toContain(copyText("rot.tl.blocked", { acct: "team", at: "02:10", rel: "+10m" }));
+    expect(panel().querySelector("[data-tl]"), "轴画出来了").not.toBeNull();
+  });
+});

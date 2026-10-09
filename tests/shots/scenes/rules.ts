@@ -3,6 +3,7 @@
  * 假后端答 `rotation-rules-read`（三条规则，名字与摘要是编的）；会话标题取图集那份会话清单（`history-list`）。
  */
 import { emit } from "@tauri-apps/api/event";
+import { fakePlan } from "../fake/timeline";
 import type { Scene } from "./index";
 import type { World } from "../fake/types";
 import { defaultWorld } from "../fake/world";
@@ -62,6 +63,10 @@ const THREE: R[] = [
 function rulesWorld(list: R[] = THREE): () => World {
   return () => {
     const w = defaultWorld();
+    w.ops["rotation-plan"] = (_o, req) =>
+      req.machine
+        ? fakePlan({ view: (req.view as "6h" | "24h" | "7d") ?? "24h", session: false, warm: true })
+        : { errors: [] };
     w.ops["rotation-rules-read"] = () => ({
       state: "present",
       reason: null,
@@ -229,6 +234,8 @@ function editorWorld(): () => World {
       earliestReturn: null,
     });
     w.ops["rotation-plan"] = (_o, req) => {
+      if (req.machine)
+        return fakePlan({ view: (req.view as "6h" | "24h" | "7d") ?? "24h", session: false, warm: true });
       if (req.rotation)
         return {
           errors: [],
@@ -537,6 +544,38 @@ export const RULES_SCENES: Scene[] = [
     goRules,
     rulesWorld(),
     600,
+    620,
+  ),
+  scene(
+    "rules-timeline",
+    "设置 · 轮换 · 时间轴",
+    "规则列表下常开：这台全部号 · 行头 在用 N 会话（≥2 琥珀）· 无本会话轨 · 顶行 可用 … · 最早恢复 …；开窗 ○",
+    async () => {
+      await goRules();
+      document.querySelector("[data-rules-timeline]")?.scrollIntoView({ block: "start" });
+      await sleep(400);
+    },
+    () => {
+      const w = rulesWorld()();
+      const t = Math.floor(Date.now() / 1000);
+      const back = t + 2 * 3600;
+      const d = new Date(back * 1000);
+      w.ops["quota-read"] = () => ({
+        state: "present",
+        reason: null,
+        now: t,
+        accounts: [],
+        unseen: [],
+        usableNow: ["personal", "team", "lab", "api"],
+        earliestReturn: {
+          account: "work",
+          at: back,
+          atText: `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`,
+        },
+      });
+      return w;
+    },
+    960,
     620,
   ),
 ];

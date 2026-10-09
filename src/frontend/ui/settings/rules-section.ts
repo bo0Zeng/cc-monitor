@@ -45,6 +45,7 @@ import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
 import type { CellError } from "../generated/CellError";
 import { RuleEditor } from "./rule-editor";
 import s from "./rules-section.module.css";
+import { MachineTimeline } from "./rules-timeline";
 
 /** 推来的帧合并成一次重读的间隔。 */
 const PUSH_COALESCE_MS = 300;
@@ -89,6 +90,8 @@ export interface RulesSectionOptions {
 }
 
 export class RulesSection {
+  /** 规则列表下面那条时间轴（这台全部号）。 */
+  private readonly tl = new MachineTimeline();
   readonly element: HTMLElement;
   private readonly titleEl: HTMLElement;
   private readonly subEl: HTMLElement;
@@ -269,6 +272,7 @@ export class RulesSection {
       return;
     }
     this.read = got;
+    this.tl.load(origin);
     if (this.editor) {
       const id = this.editor.id;
       this.editor.update(got.rules.find((x) => x.id === id) ?? null);
@@ -414,6 +418,7 @@ export class RulesSection {
       hint.append(t, add);
       out.push(hint);
     }
+    out.push(this.tl.element);
     const focusRename = this.renaming !== null;
     this.body.replaceChildren(...out);
     if (focusRename) {

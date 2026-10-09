@@ -6,8 +6,9 @@
  *    浮层与展开着的子菜单都不许伸出窗口。
  * 2. 单行文字不压按钮：会话头标题 / 机器 / 目录 / 状态一句与右侧按钮不相交；标签页的名字与它行尾的徽标不相交。
  * 3. 折叠块标题行：标题与摘要各一行（窄了摘要省略，标题不被挤成竖排）。
- * 5. 规则编辑器：预览「这条规则」每段要么段里的号名全字可见、要么收起（不许露半截）；封顶表宽时一号一行、各格同一行，
- *    窄（窗 <640）时每号一张卡：表头那一行收起、各格竖排、每格前写着列名。
+ * 5. 时间轴（面板 · 设置 · 编辑器预览）：本会话轨每段要么段里的号名全字可见、要么收起（不许露半截），读屏名里有号名；
+ *    换号点（菱形 ＋ 原因短码）在段上面那一层，不压段里的号名（上下留缝），原因字彼此不叠；
+ *    规则编辑器封顶表宽时一号一行、各格同一行，窄（窗 <640）时每号一张卡：表头那一行收起、各格竖排、每格前写着列名。
  * 4. 账号面板轮换列表一行：每段字一行不折（重置时刻那种）；状态标签（在用 · 起始 …）全字可见、不被省略
  *    （号名可以省略，只读的封顶标签可以省略）；兜底开关开着 ⇒ 看得见、有底色；关着 ⇒ 所在行没悬停、没焦点时看不见。
  *
@@ -127,16 +128,26 @@ function acctRows(): string[] {
 
 function ruleEditor(): string[] {
   const out: string[] = [];
-  for (const n of document.querySelectorAll<HTMLElement>('[data-ed-lane="rule"] [data-ed-seg-name]')) {
+  for (const n of document.querySelectorAll<HTMLElement>("[data-tl-seg-name]")) {
     if (!visible(n)) continue;
     const seg = n.parentElement!;
-    if (n.scrollWidth > n.clientWidth + EPS) out.push(`预览：段 ${seg.dataset.edSeg} 的号名被截（${n.scrollWidth} > ${n.clientWidth}）`);
+    if (n.scrollWidth > n.clientWidth + EPS) out.push(`时间轴：段 ${seg.dataset.tlSeg} 的号名被截（${n.scrollWidth} > ${n.clientWidth}）`);
   }
-  for (const seg of document.querySelectorAll<HTMLElement>('[data-ed-lane="rule"] [data-ed-seg]')) {
+  for (const seg of document.querySelectorAll<HTMLElement>("[data-tl-seg]")) {
     if (!visible(seg)) continue;
-    const n = seg.querySelector<HTMLElement>("[data-ed-seg-name]");
-    if (!n || (!visible(n) && !seg.getAttribute("aria-label")?.includes(n.textContent ?? "\u0000"))) out.push(`预览：段 ${seg.dataset.edSeg} 读不出号名`);
+    const n = seg.querySelector<HTMLElement>("[data-tl-seg-name]");
+    if (!n || (!visible(n) && !seg.getAttribute("aria-label")?.includes(n.textContent ?? "\u0000"))) out.push(`时间轴：段 ${seg.dataset.tlSeg} 读不出号名`);
   }
+  const names = [...document.querySelectorAll<HTMLElement>("[data-tl-seg-name]")].filter(visible).map((n) => n.getBoundingClientRect());
+  const whys = [...document.querySelectorAll<HTMLElement>("[data-tl-why]")].filter(visible);
+  for (const m of whys) {
+    const r = m.getBoundingClientRect();
+    const grown = new DOMRect(r.left, r.top, r.width, r.height + 2);
+    if (names.some((n) => intersects(grown, n))) out.push(`时间轴：换号点 ${name(m)} 压着段里的号名（上下不到 2px）`);
+  }
+  const texts = whys.map((m) => m.querySelector<HTMLElement>("span:last-child")).filter((t): t is HTMLElement => t !== null && visible(t));
+  for (let i = 1; i < texts.length; i++)
+    if (intersects(texts[i - 1].getBoundingClientRect(), texts[i].getBoundingClientRect())) out.push(`时间轴：原因字 ${name(texts[i - 1])} 与 ${name(texts[i])} 叠在一起`);
   const narrow = innerWidth < 640;
   for (const row of document.querySelectorAll<HTMLElement>("[data-ed-cap-row]")) {
     if (!visible(row)) continue;

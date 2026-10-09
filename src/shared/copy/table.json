@@ -22181,36 +22181,6 @@
       "zh": "停发",
       "args": []
     },
-    "rot.pv.lgUse": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "将用",
-      "args": []
-    },
-    "rot.pv.lgRefused": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "被拒",
-      "args": []
-    },
-    "rot.pv.lgCapped": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "过封顶",
-      "args": []
-    },
-    "rot.pv.lgOff": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "时段停用",
-      "args": []
-    },
-    "rot.pv.lgReset": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "重置",
-      "args": []
-    },
     "rot.pv.seg": {
       "kind": "body",
       "role": "悬停",
@@ -22783,38 +22753,209 @@
         "C-W15": "命令面板项（标题与搜索词同一条）"
       }
     },
-    "acct.tl.title": {
-      "kind": "title",
-      "role": "标题",
-      "zh": "时间轴",
+    "rot.tl.track": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "本会话",
       "args": []
     },
-    "acct.tl.usable": {
+    "rot.tl.spanLabel": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "时间轴视窗",
+      "args": []
+    },
+    "rot.tl.axis": {
+      "kind": "aria",
+      "role": "读屏",
+      "zh": "时间轴 · 左右键按格走",
+      "args": []
+    },
+    "rot.tl.now": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "在用 {acct} {w} {pct}%",
+      "args": ["acct", "w", "pct"]
+    },
+    "rot.tl.nowBare": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "在用 {acct}",
+      "args": ["acct"]
+    },
+    "rot.tl.toTrig": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "距触发 {n} 点",
+      "args": ["n"]
+    },
+    "rot.tl.blocked": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "轮换内均不可用 · 最早 {acct} ↻{at} ({rel})",
+      "args": ["acct", "at", "rel"]
+    },
+    "rot.tl.blockedW": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{w} 重置",
+      "args": ["w"]
+    },
+    "rot.tl.blockedNone": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "轮换内均不可用",
+      "args": []
+    },
+    "rot.tl.usable": {
       "kind": "body",
       "role": "片段",
       "zh": "可用 {list}",
       "args": ["list"]
     },
-    "acct.tl.nextBack": {
+    "rot.tl.earliest": {
       "kind": "body",
-      "role": "说明",
-      "zh": "下一个恢复 {name} ↻{at}",
-      "args": ["name", "at"]
+      "role": "片段",
+      "zh": "最早恢复 {acct} ↻{at}",
+      "args": ["acct", "at"]
     },
-    "acct.tl.allOk": {
+    "rot.tl.allOk": {
       "kind": "body",
       "role": "片段",
       "zh": "全部可用",
       "args": []
     },
-    "acct.tl.legend": {
+    "rot.tl.unseen": {
       "kind": "body",
-      "role": "说明",
-      "zh": "| 5h 重置 · ◆ 7d 重置 · 红段 被拒区间",
-      "args": [],
-      "waive": {
-        "C-W1": "◆ 是时间线上同形的那个标记（图例）"
-      }
+      "role": "空态",
+      "zh": "— 无采样",
+      "args": []
+    },
+    "rot.tl.usedBy": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "在用 {n} 会话",
+      "args": ["n"]
+    },
+    "rot.tl.onlyUsed": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "只看在用的",
+      "args": []
+    },
+    "rot.tl.noPlan": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "—",
+      "args": []
+    },
+    "rot.tlLg.past": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "已用",
+      "args": []
+    },
+    "rot.tlLg.future": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "将用",
+      "args": []
+    },
+    "rot.tlLg.refused": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "被拒",
+      "args": []
+    },
+    "rot.tlLg.capped": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "过封顶",
+      "args": []
+    },
+    "rot.tlLg.off": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "时段停用",
+      "args": []
+    },
+    "rot.tlLg.r5": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "5h 重置",
+      "args": []
+    },
+    "rot.tlLg.r7": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "7d 重置",
+      "args": []
+    },
+    "rot.tlLg.warm": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "开窗",
+      "args": []
+    },
+    "rot.tlHover.use": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "用 {acct}",
+      "args": ["acct"]
+    },
+    "rot.tlHover.held": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "停发",
+      "args": []
+    },
+    "rot.tlSt.refused": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{acct} 被拒",
+      "args": ["acct"]
+    },
+    "rot.tlSt.capped": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{acct} 过封顶 {n}",
+      "args": ["acct", "n"]
+    },
+    "rot.tlSt.off": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{acct} 时段停用",
+      "args": ["acct"]
+    },
+    "rot.tlSt.overage": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{acct} 超额",
+      "args": ["acct"]
+    },
+    "rot.tlSt.until": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{what} 至 {at}",
+      "args": ["what", "at"]
+    },
+    "rot.tlMark.reset": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "{w} 重置 {at}",
+      "args": ["w", "at"]
+    },
+    "rot.tlMark.warm": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "开窗 {at}",
+      "args": ["at"]
+    },
+    "acct.tl.title": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "时间轴",
+      "args": []
     },
     "acct.usage.wv": {
       "kind": "body",
@@ -22845,12 +22986,6 @@
       "role": "读屏",
       "zh": "轮换规则说明",
       "args": []
-    },
-    "acct.tl.marks": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "{w} ↻{at}",
-      "args": ["w", "at"]
     },
     "acct.strip.arrow": {
       "kind": "body",

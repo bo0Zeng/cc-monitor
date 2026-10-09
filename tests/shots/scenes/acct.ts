@@ -6,6 +6,7 @@
  * 号名是编的。时刻按页里此刻的钟现算（「还有多久」只在画的那一刻算）。
  */
 import type { Scene } from "./index";
+import { fakePlan } from "../fake/timeline";
 import type { OpHandler, World } from "../fake/types";
 import { defaultWorld, LOCAL } from "../fake/world";
 import {
@@ -63,6 +64,8 @@ interface AcctWorld {
   sessions: Record<number, Sess>;
   /** 重启那一形 `rotation-switch` 每个会话答什么（形状照 `rotation-switch-restart` 金样）；不给 ⇒ 成了、开 `proj-cc`。 */
   restartReply?: Record<string, unknown>;
+  /** 时间轴：卡住（池里都被拒）· quota-warm 在跑。 */
+  tl?: { blocked?: boolean; warm?: boolean };
 }
 
 const now = (): number => Math.floor(Date.now() / 1000);
@@ -369,7 +372,15 @@ function acctOps(aw: AcctWorld, w: () => World): Record<string, OpHandler> {
       }
       return { sessions: out };
     },
-    "rotation-plan": () => ({ errors: [] }),
+    "rotation-plan": (_o, req) =>
+      req.view
+        ? fakePlan({
+            view: req.view as "6h" | "24h" | "7d",
+            session: true,
+            blocked: aw.tl?.blocked,
+            warm: aw.tl?.warm,
+          })
+        : { errors: [] },
     "rotation-rule-save": (_o, req) => ({
       state: "refused",
       errors: [{ cell: "name", code: "dup" }],
@@ -492,6 +503,17 @@ async function restartThroughConfirm(): Promise<void> {
   }
   await waitFor('#kit-toast-stack [role="alert"]');
   await sleep(500);
+}
+
+/** 开面板、摊开「时间轴」那一折、滚到它。 */
+async function openTimeline(): Promise<void> {
+  await openPanel();
+  await scrollPanelTo("轮换");
+  const head = await byText('aside[role="dialog"] [data-fold-head]', "时间轴").catch(() => null);
+  if (head) await click(head);
+  await sleep(900);
+  document.querySelector("[data-tl-head]")?.scrollIntoView({ block: "start" });
+  await sleep(300);
 }
 
 const scrollPanelTo = async (text: string): Promise<void> => {
@@ -1223,5 +1245,61 @@ export const ACCT_SCENES: Scene[] = [
         custom: { ...ROT_CUSTOM, when: "full" },
       };
     }),
+  ),
+  // ── 时间轴（稿 §5.7，截图 08）
+  scene(
+    "acct-timeline",
+    "面板 · 时间轴 · 平时（24h）",
+    "顶行 在用 personal 5h 63% · 距触发 27 点；本会话轨：过去实线（work → personal，换号点 ✕）、将来虚线（≥90% → team · 抢回 → work）；泳道 被拒 · 过封顶 · 时段停用 · 重置；现在竖线",
+    async () => {
+      await openTimeline();
+    },
+    world((aw) => {
+      aw.tl = { warm: true };
+    }),
+    [W, 1000],
+  ),
+  scene(
+    "acct-timeline-blocked",
+    "面板 · 时间轴 · 卡住（自动展开）",
+    "顶行琥珀条 轮换内均不可用 · 最早 team ↻… · 5h 重置；本会话轨此刻起一段停发（斜纹），之后接 team",
+    async () => {
+      await openPanel();
+      await scrollPanelTo("轮换");
+      await sleep(900);
+      document.querySelector("[data-tl-head]")?.scrollIntoView({ block: "start" });
+      await sleep(300);
+    },
+    world((aw) => {
+      aw.tl = { blocked: true };
+    }),
+    [W, 1000],
+  ),
+  scene(
+    "acct-timeline-hover",
+    "面板 · 时间轴 · 悬停一列",
+    "键盘进轴、→ 走三格：竖向细线 ＋ 卡「几点 · 用谁 · 谁不能用到几点」",
+    async () => {
+      await openTimeline();
+      const tl = await waitFor("[data-tl]");
+      (tl as HTMLElement).focus();
+      for (let i = 0; i < 3; i++)
+        tl.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+      await sleep(300);
+    },
+    world(() => {}),
+    [W, 1000],
+  ),
+  scene(
+    "acct-timeline-7d",
+    "面板 · 时间轴 · 7d",
+    "7d 视窗（前 1d · 后 6d）：本会话轨将来只画到 +1d，其后写 —；刻度写日期",
+    async () => {
+      await openTimeline();
+      await click(await byText("[data-tl-view] button", "7d"));
+      await sleep(900);
+    },
+    world(() => {}),
+    [W, 1000],
   ),
 ];

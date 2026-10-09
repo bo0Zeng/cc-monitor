@@ -61,6 +61,8 @@ import {
   type QuotaReadAccount,
 } from "./quota-lines";
 import {
+  readPlan,
+  type PlanRead,
   defaultRuleOf,
   switchHot,
   switchRestart,
@@ -68,6 +70,7 @@ import {
   type SessionRotationWrite,
 } from "./quota-reads";
 import { runRemoteAttach } from "./remote-launch-run";
+import { headLine, timelineAxis, viewSwitch, type TlView } from "./rot-timeline";
 import { standingOf } from "./sessions-where";
 import { startSettings } from "./tab-batch-run";
 import type { AtLimit } from "./generated/AtLimit";
@@ -112,6 +115,8 @@ interface Open {
   /** 轮换那一块的存失败（重试那一下要写的那一份）。 */
   saveFailed: Rotation | null;
   timelineOpen: boolean;
+  /** 时间轴：视窗 · 最后一趟回答 · 那一趟问的钥匙 · 第几趟（只认最后一趟）。 */
+  tl: { view: TlView; plan: PlanRead | null; key: string; seq: number };
   /** 正在拖 / 正在填：数据到了先不重画。 */
   hold: boolean;
   pending: boolean;
@@ -196,6 +201,7 @@ export function openAccountPanel(
     switchError: null,
     saveFailed: null,
     timelineOpen: false,
+    tl: { view: "24h", plan: null, key: "", seq: 0 },
     hold: false,
     pending: false,
     unsub: [],
@@ -685,7 +691,7 @@ function rotationBlock(
     sec.content.appendChild(
       rotationList(o, host, read, r, quota, now, !follow),
     );
-  const tl = timelineFold(o, read, r, quota, now);
+  const tl = timelineFold(o, host, read, quota);
   sec.content.appendChild(tl);
   return sec.root;
 }
@@ -1055,82 +1061,56 @@ async function setSource(
 
 // ─────────────────────────────── 时间轴（折在轮换下）
 
+/** 时间轴（稿 §5.7）：后端 `rotation-plan {sid, view}` 的回答照排；顶行 ＝ 后端那一句（卡住时琥珀条），右侧 `6h | 24h | 7d`。
+ * 回答按「这一刻的会话轮换 ＋ 额度账 ＋ 视窗」记一把钥匙：钥匙变了才重问，回来了重画（同一把钥匙不再问 ⇒ 不会画了又问）。 */
 function timelineFold(
   o: Open,
+  host: AcctPanelHost,
   read: Present,
-  r: Rotation | null,
   quota: QuotaRead | null,
-  now: number,
 ): HTMLElement {
-  const pool = r
-    ? rowsOf(r, read.account.start, quota, read.agent).filter((x) => x.on)
-    : [{ account: read.account.current, start: true, on: true }];
-  const usable = (quota?.usableNow ?? []).filter((a) =>
-    pool.some((p) => p.account === a),
-  );
-  const back = quota?.earliestReturn ?? null;
-  const parts: string[] = [];
-  if (usable.length > 0)
-    parts.push(
-      copyText("acct.tl.usable", { list: usable.map(accountLabel).join(", ") }),
+  const key = `${o.tl.view}|${JSON.stringify(read)}|${quota?.now ?? 0}`;
+  if (o.tl.key !== key) {
+    o.tl.key = key;
+    const seq = ++o.tl.seq;
+    readPlan(o.origin, { sid: o.sid, view: o.tl.view }).then(
+      (p) => {
+        if (open !== o || o.tl.seq !== seq) return;
+        o.tl.plan = p;
+        if (o.hold) o.pending = true;
+        else render(o, host);
+      },
+      () => {
+        if (open !== o || o.tl.seq !== seq) return;
+        o.tl.plan = null;
+      },
     );
-  if (back && pool.some((p) => p.account === back.account))
-    parts.push(
-      copyText("acct.tl.nextBack", {
-        name: accountLabel(back.account),
-        at: back.atText ?? "",
-      }),
-    );
-  const summary =
-    parts.length > 0
-      ? parts.join(copyText("kit.text.sep"))
-      : copyText("acct.tl.allOk");
-  const body = el("div", s.acctTimeline);
-  const span = 24 * 3600;
-  for (const p of pool) {
-    const q = quotaOf(quota, read.agent, p.account);
-    const line = el("div", s.acctTlRow);
-    if (p.account === read.account.current) line.dataset.inuse = "true";
-    line.append(
-      acctAvatar(p.account),
-      el("span", s.acctTlName, accountLabel(p.account)),
-    );
-    const track = el("span", s.acctTlTrack);
-    const marks: string[] = [];
-    for (const x of q?.slots ?? []) {
-      if (x.resetsAt === undefined) continue;
-      const d = x.resetsAt - now;
-      if (d <= 0 || d > span) continue;
-      const m = el("span", x.slot === "7d" ? s.acctTlMark7 : s.acctTlMark5);
-      m.style.left = `${(d / span) * 100}%`;
-      if (q?.limiting === x.slot && q.state === "refused") {
-        const seg = el("span", s.acctTlRefused);
-        seg.style.width = `${(d / span) * 100}%`;
-        track.appendChild(seg);
-      }
-      track.appendChild(m);
-      marks.push(
-        copyText("acct.tl.marks", {
-          w: slotLabel(x.slot),
-          at: x.resetsAtText ?? "",
-        }),
-      );
-    }
-    line.append(
-      track,
-      el("span", s.acctTlLabel, marks.join(copyText("kit.text.sep"))),
-    );
-    body.appendChild(line);
   }
-  body.appendChild(el("div", s.acctBlockNote, copyText("acct.tl.legend")));
-  const refusedHere = read.quota.state === "refused";
+  const p = o.tl.plan;
+  const head = p ? headLine(p) : null;
+  const body = el("div", s.acctTimeline);
+  const top = el("div", s.acctTlTop);
+  const line = el("span", s.acctTlHead, head?.text ?? "");
+  line.dataset.tlHead = head?.blocked ? "blocked" : "now";
+  top.append(
+    line,
+    viewSwitch(o.tl.view, (v) => {
+      o.tl.view = v;
+      render(o, host);
+    }),
+  );
+  body.appendChild(top);
+  if (p) body.appendChild(timelineAxis(p, { track: copyText("rot.tl.track"), compact: true }));
+  // 折着时摘要 ＝ 顶行那一句；摊开时顶行在里面，摘要不重写一遍。
+  const opened = o.timelineOpen || head?.blocked === true;
   return fold({
     title: copyText("acct.tl.title"),
-    summary,
-    open: o.timelineOpen || refusedHere,
+    summary: opened ? "" : (head?.text ?? ""),
+    open: opened,
     body,
     onToggle: (v) => {
       o.timelineOpen = v;
+      render(o, host);
     },
   });
 }

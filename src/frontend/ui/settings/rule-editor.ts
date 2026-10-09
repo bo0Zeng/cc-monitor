@@ -33,8 +33,8 @@ import {
   type How,
   type Row,
 } from "../rot-editor";
-import { accountAvatarEl, accountColorSlot } from "../account-color";
-import { whyOf } from "../acct-view";
+import { accountAvatarEl } from "../account-color";
+import { timelineAxis } from "../rot-timeline";
 import {
   accountLabel,
   slotLabel,
@@ -55,7 +55,6 @@ import { copyText } from "../copy-table";
 import type { Origin } from "../ipc/origin";
 import type { CapValue } from "../generated/CapValue";
 import type { Rotation } from "../generated/Rotation";
-import type { SwitchWhy } from "../generated/SwitchWhy";
 import type { CellError } from "../generated/CellError";
 import s from "./rule-editor.module.css";
 
@@ -87,50 +86,6 @@ function el<K extends keyof HTMLElementTagNameMap>(
   cls?.(e);
   if (text !== undefined) e.textContent = text;
   return e;
-}
-
-/** 换号点的原因短码（预览轴上方那一小格）。 */
-function whyText(w: SwitchWhy | null): string {
-  if (w === null) return "";
-  if (w === "preempt") return copyText("rot.why.preempt");
-  if (typeof w === "string") return "";
-  if ("threshold" in w)
-    return w.threshold.n === 0
-      ? copyText("rot.why.off")
-      : copyText("rot.why.trig", { n: w.threshold.n });
-  if ("full" in w) return copyText("rot.why.full");
-  if ("stint" in w) return copyText("rot.why.stint", { n: w.stint.n });
-  if ("held" in w) return copyText("rot.why.held");
-  if ("wait" in w)
-    return copyText("rot.why.wait", { acct: accountLabel(w.wait.account) });
-  return "";
-}
-
-/** 悬停 / 读屏那句里的「为什么换」：与换号记录同一套说法（`team ≥90%` · `lab ✕` …）；时段停用另说（触发 0 ＝ 那段封顶为 0）。 */
-function segWhy(
-  prev: string | null,
-  to: string | null,
-  w: SwitchWhy | null,
-): string {
-  if (w === null) return "";
-  const from = prev ?? to ?? "";
-  if (typeof w !== "string" && "threshold" in w && w.threshold.n === 0)
-    return copyText("rot.pv.whyOff", { acct: accountLabel(from) });
-  return whyOf({ at: 0, from, to: to ?? from, why: w }).why;
-}
-
-/** 段里的号名放不下（段比字窄）⇒ 收起那一格；轴变宽变窄时重量。没排版的环境（量不出宽）一律留着。 */
-function fitNames(track: HTMLElement): void {
-  const measure = (): void => {
-    for (const n of track.querySelectorAll<HTMLElement>("[data-ed-seg-name]")) {
-      const seg = n.parentElement!;
-      delete n.dataset.fit;
-      if (seg.clientWidth > 0 && n.scrollWidth > seg.clientWidth - 4)
-        n.dataset.fit = "no";
-    }
-  };
-  if (typeof ResizeObserver === "undefined") return;
-  new ResizeObserver(measure).observe(track);
 }
 
 function layerText(c: CapAt): string {
@@ -1052,115 +1007,7 @@ export class RuleEditor {
     box.appendChild(head);
     const p = this.plan;
     if (!p || p.plan.length === 0) return box;
-    const t0 = p.now;
-    const len = Math.max(1, p.until - t0);
-    const pos = (t: number): string =>
-      `${(((t - t0) / len) * 100).toFixed(3)}%`;
-    const wid = (a: number, b: number): string =>
-      `${(((b - a) / len) * 100).toFixed(3)}%`;
-    const grid = el("div", (e) => (e.className = s.edAxisGrid));
-    const track = (label: HTMLElement, id: string): HTMLElement => {
-      const row = el("div", (e) => (e.className = s.edLane));
-      row.dataset.edLane = id;
-      const t = el("div", (e) => (e.className = s.edTrack));
-      row.append(label, t);
-      grid.appendChild(row);
-      return t;
-    };
-    const ruleTrack = track(
-      el("span", (e) => (e.className = s.edLaneName), copyText("rot.pv.rule")),
-      "rule",
-    );
-    // 号色按号粘着（规范 V2），同一份规则里两号可能同色 ⇒ 不只靠颜色：段里写号名（放不下就收起，悬停 / 读屏照样念全句）。
-    let prev: string | null = null;
-    for (const seg of p.plan) {
-      const b = el("span", (e) => (e.className = s.edPlanSeg));
-      b.style.left = pos(seg.from);
-      b.style.width = wid(seg.from, seg.to);
-      b.dataset.edSeg = seg.account ?? "";
-      const acct =
-        seg.account === null
-          ? copyText("rot.pv.held")
-          : accountLabel(seg.account);
-      if (seg.account === null) b.dataset.held = "true";
-      else {
-        const slot = accountColorSlot(seg.account);
-        b.style.background = `var(--acct-c${slot})`;
-        b.style.color = `var(--acct-ink${slot})`;
-      }
-      const because = segWhy(prev, seg.account, seg.why);
-      const say = because
-        ? copyText("rot.pv.segWhy", {
-            from: seg.fromText,
-            to: seg.toText,
-            acct,
-            why: because,
-          })
-        : copyText("rot.pv.seg", { from: seg.fromText, to: seg.toText, acct });
-      b.setAttribute("role", "img");
-      b.setAttribute("aria-label", say);
-      attachTooltip(b, say);
-      const name = el("span", (e) => (e.className = s.edSegName), acct);
-      name.dataset.edSegName = "";
-      name.setAttribute("aria-hidden", "true");
-      b.appendChild(name);
-      prev = seg.account;
-      const why = whyText(seg.why);
-      if (why) {
-        const w = el("span", (e) => (e.className = s.edWhy), why);
-        w.dataset.edWhy = "";
-        b.appendChild(w);
-      }
-      ruleTrack.appendChild(b);
-    }
-    fitNames(ruleTrack);
-    for (const lane of p.lanes) {
-      const name = el("span", (e) => (e.className = s.edLaneName));
-      name.append(
-        accountAvatarEl(lane.account, { size: 14 }),
-        el("span", null, accountLabel(lane.account)),
-      );
-      const t = track(name, lane.account);
-      for (const sp of lane.spans) {
-        const b = el("span", (e) => (e.className = s.edLaneSpan));
-        b.style.left = pos(sp.from);
-        b.style.width = wid(sp.from, sp.to);
-        b.dataset.state = sp.state;
-        t.appendChild(b);
-      }
-      for (const r of lane.resets) {
-        const m = el("span", (e) => (e.className = s.edReset));
-        m.style.left = pos(r.at);
-        m.dataset.w = r.w;
-        attachTooltip(
-          m,
-          `${slotLabel(r.w)} ${copyText("rot.pv.lgReset")} ${r.atText}`,
-        );
-        t.appendChild(m);
-      }
-    }
-    const ticks = el("div", (e) => (e.className = s.edTicks));
-    ticks.append(
-      el("span", null, p.nowText),
-      el("span", null, p.plan[p.plan.length - 1].toText),
-    );
-    grid.appendChild(ticks);
-    box.appendChild(grid);
-    const lg = el("div", (e) => (e.className = s.edLegend));
-    for (const [text, state] of [
-      [copyText("rot.pv.lgUse"), ""],
-      [copyText("rot.pv.lgRefused"), "refused"],
-      [copyText("rot.pv.lgCapped"), "capped"],
-      [copyText("rot.pv.lgOff"), "off"],
-      [copyText("rot.pv.lgReset"), "reset"],
-    ] as const) {
-      const it = el("span", (e) => (e.className = s.edLegendItem));
-      const sw = el("span", (e) => (e.className = s.edSwatch));
-      sw.dataset.state = state;
-      it.append(sw, el("span", null, text));
-      lg.appendChild(it);
-    }
-    box.appendChild(lg);
+    box.appendChild(timelineAxis(p, { track: copyText("rot.pv.rule") }));
     return box;
   }
 }

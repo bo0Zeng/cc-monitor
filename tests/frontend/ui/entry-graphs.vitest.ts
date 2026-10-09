@@ -743,6 +743,7 @@ const MODULE_STACKING: Record<string, { stacked: boolean; why: string }> = {
   "src/frontend/ui/views/keys-overview.module.css": { stacked: false, why: "快捷键一览：外框是 kit 面板，里面全是自己的类" },
   "src/frontend/ui/views/session-find.module.css": { stacked: false, why: "会话内查找面板本体（外框 .session-find 只在 styles.css 管位置，不叠这些类）" },
   "src/frontend/ui/usage-hud.module.css": { stacked: false, why: "状态栏「上下文」chip 与它的浮层：只挂自己的哈希类（chip 本身叠在 kit chip 的哈希类上，不是全局类）" },
+  "src/frontend/ui/rot-timeline.module.css": { stacked: false, why: "轮换时间轴（面板 · 设置「轮换」栏 · 编辑器预览共用）：只挂自己的哈希类（挂法同 rot-editor；段的号色走内联 `--tl-c` / `var(--acct-inkN)`，不叠全局头像类）" },
   "src/frontend/ui/rot-editor.module.css": { stacked: false, why: "轮换编辑件（换法 · 最多等 · 封顶浮层 · 存为规则浮层 · 规则小卡）：只挂自己的哈希类（`el()` 的挂类写成 `(e) => (e.className = s.x)`，量具认得出）；主窗口与设置窗共用 ⇒ 进公共块，叠的话次序就坏" },
   "src/frontend/ui/settings/rules-section.module.css": { stacked: false, why: "设置「轮换」栏：只挂自己的哈希类（按钮 · 菜单 · 浮层是 kit 的）" },
   "src/frontend/ui/settings/rule-editor.module.css": { stacked: false, why: "规则编辑器：只挂自己的哈希类（挂法同 rot-editor；预览段的号色走内联 `var(--acct-cN)`，不叠全局头像类）" },

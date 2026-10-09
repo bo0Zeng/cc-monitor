@@ -411,11 +411,11 @@ describe("规则编辑器 · 封顶表与预览", () => {
     await settlePlan();
     const segs = [
       ...editor()!.querySelectorAll<HTMLElement>(
-        '[data-ed-lane="rule"] [data-ed-seg]',
+        '[data-tl-row="track"] [data-tl-seg]',
       ),
     ];
     expect(
-      segs.map((x) => x.querySelector("[data-ed-seg-name]")?.textContent),
+      segs.map((x) => x.querySelector("[data-tl-seg-name]")?.textContent),
     ).toEqual(["team", "lab", copyText("rot.pv.held")]);
     expect(segs.map((x) => x.getAttribute("aria-label"))).toEqual([
       copyText("rot.pv.seg", { from: "21:00", to: "22:00", acct: "team" }),
@@ -488,19 +488,26 @@ describe("规则编辑器 · 封顶表与预览", () => {
     )!;
     const segs = [
       ...pv.querySelectorAll<HTMLElement>(
-        '[data-ed-lane="rule"] [data-ed-seg]',
+        '[data-tl-row="track"] [data-tl-seg]',
       ),
     ];
-    expect(segs.map((x) => x.dataset.edSeg)).toEqual(["team", "lab", ""]);
-    expect(
-      segs.map((x) => x.querySelector("[data-ed-why]")?.textContent ?? ""),
-    ).toEqual(["", copyText("rot.why.off"), copyText("rot.why.held")]);
+    expect(segs.map((x) => x.dataset.tlSeg)).toEqual(["team", "lab", ""]);
+    // 换号点在段上面那一层（不与段里的号名叠）：头一段没有，其余各一个、摆在那一段的起点。
+    const whys = [...pv.querySelectorAll<HTMLElement>("[data-tl-why]")];
+    expect(whys.map((x) => x.textContent)).toEqual([
+      copyText("rot.why.off"),
+      copyText("rot.why.held"),
+    ]);
+    expect(whys.map((x) => x.style.left)).toEqual([
+      segs[1].style.left,
+      segs[2].style.left,
+    ]);
     expect(segs[2].dataset.held).toBe("true");
     expect(segs[1].style.left).toBe(
       `${((3600 / (12 * 3600)) * 100).toFixed(3)}%`,
     );
     const off = pv.querySelector<HTMLElement>(
-      '[data-ed-lane="team"] [data-state]',
+      '[data-tl-row="team"] [data-state]',
     )!;
     expect(off.dataset.state).toBe("off");
     pv.querySelector<HTMLButtonElement>("[data-ed-span]")!.click();

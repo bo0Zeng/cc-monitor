@@ -68,6 +68,7 @@
       { "text": "全屏", "use": "非文案" }
     ],
     "tests/frontend/shell/command_home_registry_tests.rs": [
+      { "text": "开窗", "use": "词义" },
       { "text": "日志", "use": "非文案" }
     ],
     "tests/frontend/shell/diagnostics_report_tests.rs": [

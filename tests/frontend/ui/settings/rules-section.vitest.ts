@@ -34,6 +34,9 @@ vi.mock("../../../../src/frontend/ui/quota-reads", () => ({
   deleteRules: (...a: unknown[]) => deleteRules(...a),
   setDefaultRule: (...a: unknown[]) => setDefaultRule(...a),
   writeSessionRotation: (...a: unknown[]) => writeSessionRotation(...a),
+  // 列表下那条时间轴：这里不量它（rules-timeline.vitest.ts 量），问了不回。
+  readPlan: () => new Promise(() => {}),
+  readQuota: () => new Promise(() => {}),
 }));
 vi.mock("../../../../src/frontend/ui/history-list-reads", () => ({
   fetchList: (...a: unknown[]) => fetchList(...a),

@@ -63,13 +63,8 @@ declare const classes: {
   readonly acctSwitchRow: string;
   readonly acctTag: string;
   readonly acctTimeline: string;
-  readonly acctTlLabel: string;
-  readonly acctTlMark5: string;
-  readonly acctTlMark7: string;
-  readonly acctTlName: string;
-  readonly acctTlRefused: string;
-  readonly acctTlRow: string;
-  readonly acctTlTrack: string;
+  readonly acctTlHead: string;
+  readonly acctTlTop: string;
   readonly acctTrigger: string;
   readonly acctTriggerLabel: string;
   readonly acctTriggerUnit: string;

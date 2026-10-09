@@ -445,62 +445,23 @@
     padding-top: var(--space-3);
   }
 
-  .acctTlRow {
+  .acctTlTop {
     display: flex;
     align-items: center;
     gap: var(--space-3);
-    padding-left: var(--space-2);
-    border-left: 2px solid transparent;
   }
 
-  .acctTlRow[data-inuse="true"] {
-    border-left-color: var(--accent);
-  }
-
-  .acctTlName {
-    width: 8ch;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .acctTlTrack {
-    position: relative;
+  .acctTlHead {
     flex: 1;
-    height: 12px;
-    border-bottom: 1px solid var(--border-soft);
+    min-width: 0;
+    font-size: var(--font-size-small);
   }
 
-  .acctTlMark5,
-  .acctTlMark7 {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    width: 2px;
-    background: var(--text-2);
-  }
-
-  .acctTlMark7 {
-    width: 6px;
-    height: 6px;
-    top: 3px;
-    background: var(--text);
-    transform: rotate(45deg);
-  }
-
-  .acctTlRefused {
-    position: absolute;
-    top: 4px;
-    left: 0;
-    height: 4px;
-    background: var(--error);
-  }
-
-  .acctTlLabel {
-    flex: none;
-    min-width: 10ch;
-    color: var(--text-2);
-    text-align: right;
+  /* 卡住：琥珀条（需要你留意几点能接着干）。 */
+  .acctTlHead[data-tl-head="blocked"] {
+    padding: var(--space-1) var(--space-2);
+    border: 1px solid var(--warn);
+    border-radius: var(--radius-s);
   }
 
   .acctSwitchRow {
