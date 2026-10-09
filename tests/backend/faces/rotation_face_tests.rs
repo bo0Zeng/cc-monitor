@@ -1319,6 +1319,14 @@ fn the_timeline_view_looks_back_and_says_who_runs_now() {
         "{labels:?}"
     );
     let week = answer_plan_with(&ctx, &json!({"sid": "s-1", "view": "7d"}), t).expect("ok");
+    assert_eq!(week["until"], json!(t + 6 * 86_400));
+    let last = week["plan"]
+        .as_array()
+        .expect("plan")
+        .last()
+        .expect("seg")
+        .clone();
+    assert_eq!(last["to"], json!(t + 86_400), "7d 的将来只画到 +1d：{week}");
     let wl: Vec<&str> = week["grid"]
         .as_array()
         .expect("grid")

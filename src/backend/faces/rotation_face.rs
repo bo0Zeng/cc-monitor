@@ -859,10 +859,16 @@ pub(crate) fn answer_plan_with(ctx: &Ctx, args: &Value, now: u64) -> Answer {
         )
     };
     let seg = |from: u64, to: u64, account: &Option<String>, why: &Option<SwitchWhy>| json!({"from": from, "fromText": text(from), "to": to, "toText": text(to), "account": account, "why": why});
+    // 7d 的时间轴：将来那一截只画到 +1d（再往后预测没有根据），其后界面写 `—`。
+    let plan_until = match view {
+        Some((before, _)) if before >= 86_400 => (now + 86_400).min(until),
+        _ => until,
+    };
     let plan: Vec<Value> = view_obj
         .steps
         .iter()
-        .map(|p| seg(p.from, p.to, &p.account, &p.why))
+        .filter(|p| p.from < plan_until)
+        .map(|p| seg(p.from, p.to.min(plan_until), &p.account, &p.why))
         .collect();
     let machine = matches!(asked, Asked::Machine);
     let live = if machine {
