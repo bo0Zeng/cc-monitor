@@ -36,6 +36,10 @@ export class MessageStream {
   private stickToBottom = true;
   /** 物化大批插卡期间暂停逐卡守卫 snap（见 batchInsert） */
   private snapSuspended = false;
+  /** 停放：这条流所在的 tab 切走了（`content-visibility: hidden` 收起）—— 收起期间几何不作数（见 `park`）。 */
+  private parked = false;
+  /** 停放期间容器尺寸变过（漏报给宿主的那一次）：翻出来的下一帧补报。 */
+  private missedResize = false;
   private resizeObserver: ResizeObserver;
   private scrollHandler: () => void;
   private disposed = false;
@@ -48,6 +52,7 @@ export class MessageStream {
     this.scrollEl.appendChild(this.contentEl);
 
     this.scrollHandler = () => {
+      if (this.parked) return; // 收起那一下的 scroll：读数是假的，粘不粘底照切走那一刻的
       const distFromBottom =
         this.scrollEl.scrollHeight -
         this.scrollEl.scrollTop -
@@ -61,11 +66,16 @@ export class MessageStream {
       // 视口自己变大也要有人管：拉高窗口、收起侧栏时变的是 `scrollEl` 自己，内容没动，
       // 而 `fillAbove` 挂在 scroll 事件上（不可滚的元素不产生 scroll）⇒ 观察 `scrollEl`，宿主自己决定补不补。
       if (this.onViewportResize && entries.some((e) => e.target === this.scrollEl)) {
-        this.onViewportResize();
+        // 停放期间不报：收起 / 翻出时滚动条没了又有了，容器宽就变一下 —— 每切一下新旧两个 tab 各来一次，
+        // 宿主去重估列宽、重排刻度就是逼浏览器排那棵被跳过的子树。记一笔，翻出来的下一帧补报。
+        if (this.parked) this.missedResize = true;
+        else this.onViewportResize();
       }
     });
     this.resizeObserver.observe(this.contentEl);
-    this.resizeObserver.observe(this.scrollEl);
+    // 容器那根轴按外框量：滚动条算在外框里 —— 切 tab 时收起的流滚动条没了、翻出来又有了（经典滚动条一收一翻 15px），
+    // 按内容框量就每切一下都当成「视口变了」（宿主重估列宽、重排刻度、判没满一屏再建一批卡）。外框只在真拉了窗口 / 侧栏时变。
+    this.resizeObserver.observe(this.scrollEl, { box: "border-box" });
   }
 
   /**
@@ -121,6 +131,25 @@ export class MessageStream {
     if (this.stickToBottom) this.snap();
   }
 
+  /**
+   * **停放 / 翻出**：这条流所在的 tab 切走（`park(true)`）/ 切回（`park(false)`）。切走的 tab 用 `content-visibility: hidden`
+   * 收起（`styles.css` 的 `.stream`）—— 浏览器跳过整棵子树的样式 / 布局 / 绘制、切回来沿用收起前的渲染状态；代价是收起期间
+   * 几何不可信（Chromium 读 `scrollTop` 得 0、`scrollHeight` 得视口高，翻出来才还原，收起那一下还来一次 `scroll`）。
+   * 停放期间：`scroll` 不改粘底状态，来新卡不贴底（往收起的容器里写 `scrollTop` 是白写，还逼浏览器当场排那棵子树）。
+   * 翻出时这里不贴底 —— 宿主切进来的下一帧按 `stuckToBottom` 决定（`tabs.ts::switchTo`）。
+   */
+  park(on: boolean): void {
+    if (this.parked === on) return;
+    this.parked = on;
+    if (!on && this.missedResize) {
+      this.missedResize = false;
+      // 调度：一次性 —— 翻出来的下一帧补报停放期间漏掉的那次尺寸变化（同步段不读几何）
+      requestAnimationFrame(() => {
+        if (!this.parked && !this.disposed) this.onViewportResize?.();
+      });
+    }
+  }
+
   /** 此刻是不是贴着底（用户往上翻过 ⇒ `false`）。切回一个 tab 时据它决定要不要贴底。 */
   get stuckToBottom(): boolean {
     return this.stickToBottom;
@@ -133,6 +162,7 @@ export class MessageStream {
   }
 
   private snap(): void {
+    if (this.parked) return;
     const el = this.scrollEl;
     // 只在确实落后底部 >1px 时才贴底。内容持续在视口上方插入时，原生 overflow-anchor
     // 已把 scrollTop 维持在底部，这里就不再每帧 scrollTop=scrollHeight 重钉 —— 那会在

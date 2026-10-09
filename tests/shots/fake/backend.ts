@@ -91,8 +91,12 @@ export class FakeBackend {
     const req = raw.length > 0 ? (JSON.parse(dec.decode(Uint8Array.from(raw))) as Record<string, unknown>) : {};
     try {
       const v = handler(origin, req, this.world);
-      return Promise.resolve(v).then(
-        (value) => Array.from(enc.encode(JSON.stringify(TIMED_OPS.has(op) ? withTexts(value) : value))),
+      const delay = this.world.opDelayMs?.[op] ?? 0;
+      const later = delay > 0 ? new Promise((r) => setTimeout(() => r(v), delay)) : Promise.resolve(v);
+      return later.then(
+        // 照真壳交原始字节（`tauri::ipc::Response` ⇒ 页里拿到 ArrayBuffer），不交数字数组：
+        // 长会话整份读那一问有几 MB，数字数组那一形光假后端自己造就占掉页里几百 ms（性能台架量的是产品）
+        (value) => enc.encode(JSON.stringify(TIMED_OPS.has(op) ? withTexts(value) : value)).buffer,
         (e: unknown) => Promise.reject(refusal(e, op)),
       );
     } catch (e) {
@@ -163,8 +167,9 @@ export class FakeBackend {
         },
       });
       frames.push({ container: { session_id: s.sid, container: s.container } });
-      s.records.forEach((message, seq) => {
-        frames.push({ line: { session_id: s.sid, cwd: s.cwd, path: `${s.cwd}/${s.sid}.jsonl`, seq, origin, message } });
+      const from = this.world.replayTail === undefined ? 0 : Math.max(0, s.records.length - this.world.replayTail);
+      s.records.slice(from).forEach((message, i) => {
+        frames.push({ line: { session_id: s.sid, cwd: s.cwd, path: `${s.cwd}/${s.sid}.jsonl`, seq: from + i, origin, message } });
       });
       if (s.runs.length > 0) frames.push({ runs: { session_id: s.sid, runs: s.runs, ended: [] } });
       frames.push({ activity: { session_id: s.sid, activity: s.activity, waiting_for: s.waitingFor } });

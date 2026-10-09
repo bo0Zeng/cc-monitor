@@ -120,6 +120,8 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllGlobals();
   indexStub.rows = null;
+  // 摘掉这一格的流：切进来之后排到后面的活（停留判定 · 下一帧那一脚）到点认「流还挂在页上」，不漏进下一格的计数
+  document.body.replaceChildren();
 });
 
 describe("SE1 清单问后端要：顺序是后端给的，前端不攒", () => {
@@ -467,6 +469,7 @@ describe("KR45D2 清单跟着 tab 走", () => {
     await settleOutline();
     vi.mocked(invoke).mockClear();
     tm.switchTo("s1");
+    await new Promise((r) => setTimeout(r, 200)); // 在眼前停住了才刷大纲（`TabStreamView.STAY_MS`：路过的 tab 不发这一问）
     await settleOutline();
     expect(outlineCalls().map((a) => (a as { jsonlPath: string }).jsonlPath)).toContain("/p/s1.jsonl");
   });

@@ -13,6 +13,7 @@ vi.mock("@tauri-apps/plugin-opener", () => ({ openPath: vi.fn().mockResolvedValu
 vi.mock("../../../src/frontend/ui/stream", () => ({
   MessageStream: class {
     contentElement = document.createElement("div");
+    park(): void {}
     trailerElement = document.createElement("div");
     get stuckToBottom(): boolean {
       return true;
