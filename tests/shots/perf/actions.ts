@@ -202,6 +202,21 @@ async function idle(ms = 5000): Promise<Record<string, unknown>> {
   return { name: "idle", wall: performance.now() - t0, running: anims.length, who: [...who.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12), mutations: timers, callbacks: cnt, dom: document.getElementsByTagName("*").length };
 }
 
+async function ioPrune(name: string, drop: (el: Element) => boolean): Promise<Record<string, unknown>> {
+  let total = 0;
+  let dropped = 0;
+  for (const io of (window.__perf as unknown as { ios: Array<IntersectionObserver & { __targets: Set<Element> }> }).ios) {
+    for (const el of [...io.__targets]) {
+      total++;
+      if (drop(el)) {
+        dropped++;
+        io.unobserve(el);
+      }
+    }
+  }
+  return { ...(await idle()), name, ioTargets: total, ioDropped: dropped };
+}
+
 async function awayIdle(): Promise<Record<string, unknown>> {
   await window.__perf.quiet(500, 10_000);
   const t0 = performance.now();
@@ -687,6 +702,14 @@ const ACTIONS: Record<string, () => Promise<Record<string, unknown>>> = {
   drawer,
   agents,
   "viewer-idle": () => idle(),
+  // 试一刀：页里所有 IntersectionObserver 都摘掉再量空闲（看 WebKit 上几百个等着滚进视口的目标是不是每帧都在算）
+  "viewer-noio-idle": async () => {
+    for (const io of (window.__perf as unknown as { ios: IntersectionObserver[] }).ios) io.disconnect();
+    return { ...(await idle()), name: "noio-idle" };
+  },
+  // 试一刀：只摘掉「里面没有等着补的代码块 / 公式」的那些目标 ／ 只摘掉没有几何（藏着）的那些目标，再量空闲
+  "viewer-iofilter-idle": () => ioPrune("iofilter-idle", (el) => el.querySelector(".code-block.code-pending, [data-math-pending]") === null),
+  "viewer-iohidden-idle": () => ioPrune("iohidden-idle", (el) => el.getClientRects().length === 0),
   // 窗口不在前台时空闲（呼吸点该停）：派一个窗口失焦、量空闲，再派得焦；记失焦 / 得焦那一下画完要多久
   "away-idle": awayIdle,
   "viewer-away-idle": awayIdle,

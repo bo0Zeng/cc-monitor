@@ -148,23 +148,24 @@ if (args.eval) {
   process.exit(0);
 }
 for (let run = 0; run < runs; run++) {
-  // 不在清单里的试验项（`overlay-probe` 之类）在主窗口跑
-  const extra = only ? [...only].filter((n) => !MAIN.includes(n) && !VIEWER.includes(n)) : [];
+  // 不在清单里的试验项（`overlay-probe` 之类）在主窗口跑；`viewer-` 打头的在查看窗 / agent 窗口跑
+  const extra = only ? [...only].filter((n) => !MAIN.includes(n) && !VIEWER.includes(n) && !n.startsWith("viewer-")) : [];
+  const vextra = only ? [...only].filter((n) => !VIEWER.includes(n) && n.startsWith("viewer-")) : [];
   if (!only || MAIN.some((n) => only.has(n)) || extra.length) {
     const { page, openMs } = await open("index.html?scene=perf-main");
     console.log(`主窗口开好 ${openMs} ms`);
     await runAll(page, [...MAIN, ...extra], run, "main");
     await page.close();
   }
-  if (!only || VIEWER.some((n) => only.has(n))) {
+  if (!only || VIEWER.some((n) => only.has(n)) || vextra.length) {
     const { page, openMs } = await open(`viewer.html?scene=perf-viewer&viewer=${LONGEST}`);
     console.log(`查看窗开好 ${openMs} ms`);
-    await runAll(page, VIEWER, run, "viewer");
+    await runAll(page, [...VIEWER, ...vextra], run, "viewer");
     await page.close();
     try {
       const a = await open(`viewer.html?scene=perf-agent&viewer=${LONGEST}&run=agent-p0`);
       console.log(`agent 窗口开好 ${a.openMs} ms`);
-      await runAll(a.page, VIEWER, run, "agent");
+      await runAll(a.page, [...VIEWER, ...vextra], run, "agent");
       await a.page.close();
     } catch (e) {
       result.rows.push({ run, where: "agent", name: "open", error: String(e).slice(0, 300) });
