@@ -102,7 +102,7 @@ export function decodeTerminals(origin: Origin, v: unknown): TerminalRow[] {
       sid: session,
       clients: Array.isArray(r.clients) ? r.clients.length : 0,
       input: typeof r.input === "string" ? r.input : "held",
-      programExited: r.state === "program-exited",
+      programExited: r.state === "program_exited",
       inputNo: inputNoOf(r.can),
     };
   });

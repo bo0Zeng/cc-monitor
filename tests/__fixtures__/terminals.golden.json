@@ -48,11 +48,11 @@
         {
           "can": {
             "end": {
-              "no": "not-yours",
+              "no": "not_yours",
               "said": "手机端内部会话"
             },
             "input": {
-              "no": "not-yours",
+              "no": "not_yours",
               "said": "手机端内部会话"
             },
             "preview": true
@@ -94,7 +94,7 @@
             "client": "mobile",
             "mine": true
           },
-          "state": "program-exited",
+          "state": "program_exited",
           "terminal": "tmux-2-2",
           "title": "bash",
           "tmux_name": "pipe-x"
@@ -187,7 +187,7 @@
       },
       {
         "result": "refused",
-        "why": "screen-changed",
+        "why": "screen_changed",
         "said": "画面已变",
         "screen": "0000000000000000"
       },

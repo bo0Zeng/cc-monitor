@@ -97,8 +97,10 @@ describe("抓一屏：金样与形状", () => {
     expect(rows[0]).toMatchObject({ terminal: "tmux-1-1", sid: "sid-a", clients: 1, input: "shared", programExited: false, inputNo: null });
     expect(rows[1]).toMatchObject({ terminal: "tmux-3", sid: null, clients: 0, inputNo: (LIST.reply.terminals as { can: { input: { said: string } } }[])[1].can.input.said });
     expect(rows[1].inputNo).not.toBe("");
+    // 有会话、前台已回到 shell 的那一行（金样第三行，`state` 是后端的码）⇒ 「程序已退出」。
+    expect(rows[2]).toMatchObject({ terminal: "tmux-2-2", programExited: true });
     // 那一句缺（契约外）⇒ 落「被拒」，不按码猜。
-    const bare = decodeTerminals("devbox", { terminals: [{ terminal: "t", tmux_name: "n", can: { input: { no: "not-yours" } } }] });
+    const bare = decodeTerminals("devbox", { terminals: [{ terminal: "t", tmux_name: "n", can: { input: { no: "not_yours" } } }] });
     expect(bare[0].inputNo).toBe(copyText("terminal.why.other"));
   });
 
@@ -109,7 +111,7 @@ describe("抓一屏：金样与形状", () => {
     const INPUT = golden["terminal-input"] as unknown as { replies: unknown[] };
     expect(INPUT.replies.map((r) => decodeSent("devbox", r))).toEqual([
       { result: "delivered" },
-      { result: "refused", why: "screen-changed", said: (INPUT.replies[1] as { said: string }).said, screen: "0000000000000000" },
+      { result: "refused", why: "screen_changed", said: (INPUT.replies[1] as { said: string }).said, screen: "0000000000000000" },
       { result: "unsure" },
     ]);
     expect(() => decodeSent("devbox", { result: "maybe" })).toThrow(copyPattern("peerVersion.said.unreadable"));

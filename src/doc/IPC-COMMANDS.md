@@ -2897,7 +2897,7 @@ cc-bus 钩子诊断。
 | `clients` | ← | 此刻连着它的终端客户端，每项 `{kind, since, last_activity}`；空 ＝ 后台 |
 | `complete` | ← | `false` ＝ 名单里有读不懂的行（画「部分」） |
 | `cwd` | ← | 当前目录 |
-| `end` | ← | 能不能结束（`{no: "not-yours" \| "not-managed" \| "other-windows"}`） |
+| `end` | ← | 能不能结束（`{no: "not_yours" \| "not_managed" \| "other_windows"}`） |
 | `host` | ← | 终端宿主（这一版是 `tmux`） |
 | `input` | ← | 输入方式：`shared`（tmux：各端都能打字） |
 | `kind` | ← | `clients` 一项：客户端种类（`terminal-window` …） |
@@ -2911,7 +2911,7 @@ cc-bus 钩子诊断。
 | `sid` | ← | `session` 里：会话 id |
 | `since` | ← | `clients` 一项：连上的时刻（秒） |
 | `started_by` | ← | 谁起的：`{client, mine}` |
-| `state` | ← | `running` · `idle`（没会话、前台是 shell）· `program-exited`（有会话、前台是 shell） |
+| `state` | ← | `running` · `idle`（没会话、前台是 shell）· `program_exited`（有会话、前台是 shell） |
 | `terminal` | ← | 名单里那一行的不透明句柄（前端不拼、不解析；送字 / 抓屏时交回） |
 | `terminals` | ← | 终端名单（每行一个终端） |
 | `title` | ← | 窗格标题 |
@@ -2958,13 +2958,13 @@ cc-bus 钩子诊断。
 | `key` | → | 送键：`esc` · `ctrl-c` · `ctrl-d` · `up` · `down` · `left` · `right` · `tab` · `shift-tab` · `enter` · `backspace` · `page-up` · `page-down` |
 | `result` | ← | `delivered` · `unsure`（不知道送没送到，别重发）· `refused` |
 | `said` | ← | `refused` 时给人看的那一句（后端写好） |
-| `screen` | ← | `screen-changed` 时带的新指纹 |
-| `seen_screen` | → | 送之前看到的那一屏的指纹；画面已经变了 ⇒ 不送、回 `refused` ＋ `screen-changed` |
+| `screen` | ← | `screen_changed` 时带的新指纹 |
+| `seen_screen` | → | 送之前看到的那一屏的指纹；画面已经变了 ⇒ 不送、回 `refused` ＋ `screen_changed` |
 | `sid` | → | 目标：会话 id（与 `terminal` 恰给一个） |
 | `take` | → | 要不要先接管输入（tmux 上无所谓，各端都能打字） |
 | `terminal` | → | 目标：名单里的不透明句柄（前端不拼、不解析） |
 | `text` | → | 送字：字面字，原样送、不解释成键名；多行按粘贴送（与 `key` 恰给一个） |
-| `why` | ← | `refused` 的原因：`not-known` · `ambiguous` · `ended` · `not-yours` · `not-managed` · `screen-changed` |
+| `why` | ← | `refused` 的原因：`not_known` · `ambiguous` · `ended` · `not_yours` · `not_managed` · `screen_changed` |
 
 码：`bad_target` · `bad_args` · `no_tmux` · `no_server` · `no_such_session` · `capture_failed` · `unobservable` · `child_timed_out`
 
