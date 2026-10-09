@@ -1,5 +1,5 @@
 /**
- * toast（C13）与撤销提示条（I11）：停留时长 · 出错不自己走 · 悬停停表 · 最多 3 条 ＋ 记录 · 同类合流 ×N 明细不丢 · 撤销 / 到点提交。
+ * toast 与撤销提示条：停留时长 · 出错不自己走 · 悬停停表 · 最多 3 条 ＋ 记录 · 同类合流 ×N 明细不丢 · 撤销 / 到点提交。
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
@@ -15,7 +15,7 @@ const countOf = (el: HTMLElement): string => {
 };
 const buttonsOf = (el: HTMLElement): HTMLButtonElement[] => [...el.querySelectorAll("button")];
 
-describe("toast（C13）", () => {
+describe("toast", () => {
   beforeEach(async () => {
     vi.useFakeTimers();
     document.body.innerHTML = "";
@@ -111,7 +111,7 @@ describe("toast（C13）", () => {
   });
 });
 
-describe("撤销提示条（I11）", () => {
+describe("撤销提示条", () => {
   beforeEach(async () => {
     vi.useFakeTimers();
     document.body.innerHTML = "";

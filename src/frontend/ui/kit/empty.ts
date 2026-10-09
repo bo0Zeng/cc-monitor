@@ -1,5 +1,6 @@
 /**
- * 空态（C16）：32px 线形图标 ＋ 一句 `无 X` ＋ 一句怎么让它有 ＋ 至多一颗次按钮。
+ * 空态：32px 线形图标 ＋ 一句 `无 X` ＋ 一句怎么让它有 ＋ 至多一颗次按钮。
+ * 判据：`tests/frontend/ui/kit/components.vitest.ts`「错误条 · 空态」那一节。
  */
 import { icon, type IconName } from "./icon";
 import s from "./empty.module.css";

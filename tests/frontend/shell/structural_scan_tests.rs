@@ -2638,8 +2638,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "cc_bus_install_state",
             1,
         ),
-        ("src/frontend/ui/ipc/commands.ts", "deploy_local_cc_bus", 1),
-        ("src/frontend/ui/ipc/commands.ts", "cc_bus_install_state", 1),
         (
             "tests/frontend/shell/frame_query_tests.rs",
             "deploy_local_cc_bus",
@@ -2696,11 +2694,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         // monitor 自己那台的探针（`with_monitor_probe`）随足迹判定进后端删了；两处散文点旧名。
         ("src/backend/footprint/rows.rs", "with_monitor_probe", 1),
         ("src/backend/footprint/rows.rs", "config_surface_report", 1),
-        (
-            "src/frontend/ui/ipc/commands.ts",
-            "config_surface_report",
-            1,
-        ),
         (
             "tests/frontend/shell/command_home_registry_tests.rs",
             "config_surface_report",
@@ -3152,11 +3145,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "list_plugin_marketplaces",
             1,
         ),
-        (
-            "src/frontend/ui/ipc/commands.ts",
-            "list_plugin_marketplaces",
-            1,
-        ),
         // 🔴 `accounts.ts` 那个 `"__local__"` 合进 `LOCAL_ORIGIN`，
         //    钉「两者刻意不同」的那条判据随之改成钉合了之后的形状；TS 那一节点它旧名讲来历 ⇒ 第②条出路。
         (
@@ -3273,11 +3261,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ("tests/frontend/shell/sftp_tests.rs", "acct_iso_deploy", 1),
         // `deploy_remote_acct_iso` 那条 Tauri 命令（与守它的判据文件 `acct_iso_deploy_tests`）删了：点旧名的散文挂墓碑。
         // `("src/frontend/ui/accounts.ts", "deploy_remote_acct_iso", 1)` 摘了：空态那句「只能在终端里做」的理由整条退役（新建由后端执行），墓碑随被守的那句一起走。
-        (
-            "src/frontend/ui/ipc/commands.ts",
-            "deploy_remote_acct_iso",
-            1,
-        ),
         (
             "tests/frontend/shell/frame_query_tests.rs",
             "acct_iso_deploy_tests",
@@ -4116,7 +4099,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "list_active_sessions",
             2,
         ), // ⑬ 会话生命周期并进会话流后退役
-        ("src/frontend/ui/account-reads.ts", "launch_agent_id", 1), // 起会话的计划与渲染搬进后端：墓碑随搬家换住址 / 点已删命令名的散文挂墓碑
         ("src/frontend/shell/README.md", "build_resume_ps_command", 1), // 起会话的计划与渲染搬进后端：墓碑随搬家换住址 / 点已删命令名的散文挂墓碑
         (
             "src/frontend/shell/src/ccm_probe.rs",
@@ -4619,7 +4601,6 @@ fn every_prose_tombstone_mark_is_registered() {
         // +3：§33b 产出方表 `session-backend.ts` 那格 · 三问表 ③ 那格 · 「删掉座的代价也换人了」那段 —— 点着随 TS 兜底一族删掉 / 改写的判据
         //   ⇒ 6（基）＋1（LOC1b）＋3（LR2）= 10
         // +1：别名那一块搬走时留的墓碑（`buildAccountAliasBlock`）。
-        ("src/frontend/ui/apikey-reads.ts", 2), // +1：`apikey_remote`整删，点它的那一处挂墓碑 // 写 key 改走通道：头注点旧命令名
         ("tests/backend/control/gate_tests.rs", 1),
         ("tests/backend/no_timer_guard.rs", 1),
         // 2 → 3：远端写那一层「今天一处远端写都没有」那条判据改写成
@@ -4682,8 +4663,6 @@ fn every_prose_tombstone_mark_is_registered() {
         //   点它们旧名的来历段各挂一块（包装层两段 · 新住址头注 · 骨架模块头注 · 判据替身头注）。
         // `src/frontend/shell/src/session_skeleton.rs` 出表：那份文件随记录解释进后端删了（或墓碑随被守的东西整轴退役）
         ("src/frontend/shell/src/snapshot_resume.rs", 1),
-        ("src/frontend/ui/ipc/commands.ts", 13), // 12 → 13：`config_surface_report` 包装删了那一句 // 11 → 12：点 `deploy_remote_acct_iso` 旧名那几处挂墓碑 // // +2：cc-bus 装 / 三态两条包装退役的墓碑 // // +1：别名六条包装退役那一行墓碑 // // −1：`list_mcp_project_dirs` 包装层删了，它头注那一块随之走 // // +1：远端项目目录旧名那句（原靠那个函数还在兜着） // 基数 6 ＋ LOC1b +1 ＋ HX2 +1 ⇒ 8。LOC1b 原注：基数 5 ＋ LOC1b +1（流式读会话那一行点的远端读会话函数删了）＋ CFG1 +1（整份写口 `save_config` 删了）⇒ 7 · 会话读面两段 ＋ 插件市场一段 ＋`replay_keep_tail_only` · `replay_session_to_window` 退役各一段 ｜ HX2 原注：主线 6 ＋ HX2 +1（写 key 那条包装退役） // +1：整份写口 `save_config` 删了，讲来历那一句挂墓碑 // 会话读面两段 ＋ 插件市场一段 ＋`replay_keep_tail_only` · `replay_session_to_window` 退役各一段
-        ("src/frontend/ui/session-reads.ts", 3), // +2：第四问（记录还在不在）头注点名它替掉的命令与发送端
         // 插件只读列表那两份（界面 ＋ 它的判据）整块删了，墓碑随被守的东西整轴退役 ⇒ 两行出表。
         ("tests/test-support/chan-fake.ts", 8), // 7 → 8 // 列 tmux 会话改走通道，旧命令名挂墓碑 6 → 7 // +1：起会话渲染那一节点六条旧命令名 // +1：cc-bus 驾驶舱那一节点五条旧命令名 // +1：tmux 控制类那一节点四条旧命令名 // +1：账号那两问的翻译节点名三条旧命令名 ·远端会话清单那个函数随历史清单搬进本机后端删了，点它的散文挂墓碑
         // SFTP 那一族收到只剩传输：删掉的命令 / 函数 / 判据名在这几份里逐处挂了墓碑。
@@ -4813,7 +4792,6 @@ fn every_prose_tombstone_mark_is_registered() {
         // `tests/frontend/shell/agent_dispatch_registry_tests.rs` 那一行摘了：那份判据随 monitor 适配表退役、文件删了。
         ("src/README.md", 1), // 新贴：点分叉那条旧命令名的散文挂墓碑
         ("src/backend/agents/claudecode/branch.rs", 2), // 住址随 branch-core 收进后端适配层；1 → 2：`is_plain_sid` 那个再导出删了，原处一块 // 新贴：删会话 / 分叉 / 钩子诊断的转交退役，点旧名的散文挂墓碑
-        ("src/frontend/ui/account-reads.ts", 1), // 起会话的计划与渲染搬进后端：墓碑随搬家换住址 / 点已删命令名的散文挂墓碑
         // `agent-profile.ts` 那一行摘了：适配器 id 那个导出零消费者、随起会话只交一行 `ccm …` 删了，它头注那块墓碑跟着走。
         // `upstream_select/endpoint.rs` 那一行摘了：头注重写成「中转地址只在 `ccm` 最终 exec 那一处定」，点旧命令名的那块随之走了。
         // `observe/accounts_query.rs` 那一行摘了：身份 token 双写点那段头注改写成今天的两侧（写侧是 `ccm`），点旧判据名的那块随之走了。

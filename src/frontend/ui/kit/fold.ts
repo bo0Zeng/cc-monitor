@@ -1,6 +1,7 @@
 /**
- * 折叠块（C9）：标题行 28，左侧箭头（右指收、下指开），右侧摘要。Enter / 空格切换，→ 展开、← 收起。
+ * 折叠块：标题行 28，左侧箭头（右指收、下指开），右侧摘要。Enter / 空格切换，→ 展开、← 收起。
  * 展开状态由调用方按对象记住（`open` 传进来），实时更新时不收起。
+ * 判据：`tests/frontend/ui/kit/components.vitest.ts`「折叠块」那一节；箭头一颗图、展开转 90° 由 `tests/frontend/ui/icons-one-source.vitest.ts` 钉。
  */
 import { icon } from "./icon";
 import s from "./fold.module.css";

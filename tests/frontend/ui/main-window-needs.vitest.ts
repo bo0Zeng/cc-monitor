@@ -1,7 +1,7 @@
 /**
  * 主窗口的标签页栏 · 「需要你」· 会话头：一个会话读成什么、谁在等你、去哪答。
  *
- * - `session-face.ts`：状态点（V10）· 状态句 · peek · 需要你（活动信号说不在等了 ⇒ 手上那份当场不认；说在等、种类没到 ⇒ 不猜）· `Ctrl+J` 的顺序；
+ * - `session-face.ts`：状态点 · 状态句 · peek · 需要你（活动信号说不在等了 ⇒ 手上那份当场不认；说在等、种类没到 ⇒ 不猜）· `Ctrl+J` 的顺序；
  * - 标签页栏：「需要你 N」只在 N ≥ 1 时出、点它跳等得最久的；机器离线条（`{machine} 离线 · N 会话状态不明`）＋［重新连接］；
  * - 钉条：种类 ＋ 工具 ＋ 那一句、去哪答（Windows ↗ / 远端 tmux / 都不行不给按钮）；窗口标题与系统通知；
  * - 会话头：按状态多一颗（已结束［恢复 ▾］· Claude 已退出（远端）［在终端里打开］· 状态不明［重新连接］）。
@@ -70,7 +70,7 @@ describe("一个会话读成什么（session-face）", () => {
     expect(needsOf(tab("a", { state: RECONNECTABLE, activity: waiting, needs: approve() })), "Claude 已退出：陈旧的在等不算").toBeNull();
   });
 
-  it("★ 状态点（V10）：颜色 ＝ 在干什么，形状 ＝ 进程在不在（状态不明不当已结束画）", () => {
+  it("★ 状态点：颜色 ＝ 在干什么，形状 ＝ 进程在不在（状态不明不当已结束画）", () => {
     const got = [
       tab("a", { activity: { doing: "working", waitingFor: null } }),
       tab("b", { activity: waiting }),
@@ -364,6 +364,7 @@ describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键�
     let shots = 0;
     const sent: { what: TerminalSend; seen: string | null }[] = [];
     let reply: () => Promise<TerminalSent> = async () => ({ result: "delivered" });
+    let shotFails: Error | null = null;
     const follows: FollowRig[] = [];
     const reads: TerminalReads = {
       follow: vi.fn((_o, terminal, events) => {
@@ -374,6 +375,7 @@ describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键�
       }),
       list: vi.fn(async () => rows),
       shot: vi.fn(async () => {
+        if (shotFails) throw shotFails;
         shots++;
         return { lines: [{ text: `屏 ${shots}`, spans: [] }], text: `屏 ${shots}`, screen: `fp${shots}`, atText: "22:13:20" };
       }),
@@ -386,7 +388,7 @@ describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键�
     const page = new TerminalPage(host, reads);
     document.body.appendChild(page.el);
     page.sessionChanged();
-    return { page, reads, host, sent, follows, shotCount: () => shots, setReply: (r: () => Promise<TerminalSent>) => (reply = r) };
+    return { page, reads, host, sent, follows, shotCount: () => shots, setReply: (r: () => Promise<TerminalSent>) => (reply = r), failShots: (e: Error | null) => (shotFails = e) };
   }
   const box = (p: TerminalPage): HTMLTextAreaElement => p.el.querySelector("textarea")!;
   const key = (el: HTMLElement, k: string, o: KeyboardEventInit = {}): void => void el.dispatchEvent(new KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true, ...o }));
@@ -610,6 +612,19 @@ describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键�
     expect(r.follows).toHaveLength(1);
     [...r.page.el.querySelectorAll("button")].find((b) => b.textContent?.includes(copyText("terminal.bar.liveRetry")))!.click();
     expect(r.follows).toHaveLength(2);
+  });
+
+  it("★ 抓屏失败 ⇒ 只出那一条错误条、不去订实时；点［刷新］抓到了 ⇒ 照常订上", async () => {
+    const r = rig([row("a")], { t: tab("a") }, "live");
+    r.failShots(new Error("no tmux server"));
+    r.page.setVisible(true);
+    await flush();
+    expect(r.follows, "抓屏都失败了还去订实时（订也会被拒，叠出第二条警告）").toHaveLength(0);
+    expect(r.page.el.textContent).not.toContain(copyText("terminal.bar.liveRetry"));
+    r.failShots(null);
+    [...r.page.el.querySelectorAll("button")].find((b) => b.textContent === copyText("terminal.state.refresh"))!.click();
+    await flush();
+    expect(r.follows.map((f) => f.terminal)).toEqual(["tmux-a"]);
   });
 
   it("★ 那台只能快照 ⇒「仅快照」，悬停说为什么；照旧有「画面几点 ＋ 重新看」、送完照旧重抓", async () => {

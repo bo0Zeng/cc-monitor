@@ -5,6 +5,7 @@ import { copyText } from "../../../src/frontend/ui/copy-table";
 import type { Scene } from "./index";
 import type { World } from "../fake/types";
 import { defaultWorld } from "../fake/world";
+import { PROFILE_ACCOUNTS } from "../fake/profiles";
 import { emit } from "@tauri-apps/api/event";
 import { byText, click, sleep, waitFor } from "./helpers";
 
@@ -403,7 +404,7 @@ export const SETTINGS_SCENES: Scene[] = [
     top(pf('.prof-trow[data-name="cct"]'));
     await sleep(300);
   }, defaultWorld, 860, 860),
-  settings("profiles-03-new", "设置 · 别名 · 03 新建", "＋ 新增别名：名字 bcct2 · 基于 cct · 账号 b；在哪起 / 按目录灰着写继承值；等于问后端", async () => {
+  settings("profiles-03-new", "设置 · 别名 · 03 新建", "＋ 新增别名：名字 bcct2 · 基于 cct · 账号 team；在哪起 / 按目录灰着写继承值；等于问后端", async () => {
     await profilesPage();
     await click(await byText(pf(".prof-head button"), "新增别名"));
     await sleep(500);
@@ -457,7 +458,8 @@ export const SETTINGS_SCENES: Scene[] = [
     await profilesPage();
     await click(pf('.prof-trow[data-name="teamcct"] .cfg-link'));
     await sleep(600);
-    await click(await byText(pf("[data-role=profile-form] .prof-segb"), "z"));
+    // 换成库里最后一个号（teamcct 原来是 team，换哪个都行，只要不是它）。
+    await click(await byText(pf("[data-role=profile-form] .prof-segb"), PROFILE_ACCOUNTS[PROFILE_ACCOUNTS.length - 1]));
     await sleep(500);
     await click(pf("[data-role=profile-form] [data-role=save]"));
     await sleep(700);

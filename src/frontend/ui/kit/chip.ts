@@ -1,6 +1,7 @@
 /**
- * chip（C6）：状态栏 / 筛选胶囊，紧凑档。只显示「现在是什么」，有事时才上色；没内容就不画（调用方不建）。
+ * chip：状态栏 / 筛选胶囊，紧凑档。只显示「现在是什么」，有事时才上色；没内容就不画（调用方不建）。
  * 点开浮层的 chip 是触发器：`aria-expanded` 跟着浮层开关。
+ * 判据：`tests/frontend/ui/kit/components.vitest.ts`「chip」那一节。
  */
 import { icon, type IconName } from "./icon";
 import s from "./chip.module.css";

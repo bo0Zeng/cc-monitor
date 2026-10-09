@@ -1,31 +1,22 @@
 /**
  * **会话读面上的三条一次性查询，经通道直接问那台机器的后端**：
  * 骨架索引（`history-index`）· 大纲清单（`history-user-inputs`）· 会话内查找（`history-find`）。
- *
- * # 它顶掉了什么
- *
- * 此前这三条是 monitor 的三条 Tauri 命令（`read_session_index` / `list_user_inputs` / `find_in_session`〔散文墓碑〕）：
- * 本机每问一次 exec 一个一次性后端进程、远端走帧面按行拿回「头 ＋ 行 ＋ 尾」，monitor 再核头尾、剥行、
- * 把失败分档 —— 那一份解释住在 monitor 中层（`frame_query_tests::HELD_BACK` 那三行）。
- * 今天后端的帧应答**就是成品**（`src/backend/faces/read_face.rs`：`{from,end,rows}` / `{from,end,entries}` / `{total,hits}`），
- * 本文件经 `chan.call` 直接问、按形状收；monitor 那一跳只搬字节，三条命令与那一份解释一起删了。
- * **本机与远端同一条路**（本机那台由 `<local>` 那条长连接答）。
+ * 后端的帧应答就是成品（`src/backend/faces/read_face.rs`：`{from,end,rows}` / `{from,end,entries}` / `{total,hits}`），
+ * 本文件经 `chan.call` 直接问、按形状收；monitor 那一跳只搬字节。本机与远端同一条路（本机那台由 `<local>` 那条长连接答）。
  *
  * # 本文件做的只有两件（都是调用方那一侧的事，不是通信层成员）
  *
  * 1. **按形状收**：字段类型不对 ⇒ 抛（不猜、不补默认值；哪一格不对只进日志）—— 这不是解释，是收货验形。
  * 2. **失败怎么说**（`§3.3.2`「说法归调用方」）：通道的三层错误折成界面那个 `available:false ＋ reason`；
- *    大纲另带种类（`oldBackend` 结构性 / 其余瞬时），那份分档**只在这里**（此前住 Rust `outline_kind`）。
+ *    大纲另带种类（`oldBackend` 结构性 / 其余瞬时），那份分档**只在这里**。
  *
  * # 期限
  *
- * 每一问 30 秒（`X6`：调用点显式给）—— 与它们上一个住址（monitor `frame_query::LINES_BUDGET`）同值；
- * 盖的是「那台后端扫一遍会话 ＋ 回程」，不含握手（长连接早就连着）。
+ * 每一问 30 秒（调用点显式给）：盖的是「那台后端扫一遍会话 ＋ 回程」，不含握手（长连接早就连着）。
  *
  * # 第五问：会话事实（`history-facts`）
  *
- * 分叉血缘 · 改动文件集 · agent 列表 · 最新 usage 四样由后端读一遍文件出成品（`observe/facts_query.rs`），
- * 此前是活 tab 在 `onLine` 旁路上一条一条攒的。续传令牌就是**上一份成品原样**
+ * 分叉血缘 · 改动文件集 · agent 列表 · 最新 usage 四样由后端读一遍文件出成品（`observe/facts_query.rs`）。续传令牌就是**上一份成品原样**
  * （[`readSessionFacts`] 的 `prior`）—— 本文件与调用方都不读它、不改它、不合并它，只原样交回去。
  */
 import { chan, ChanError, type CallError } from "../../comms/inward/chan";
@@ -550,11 +541,10 @@ export function decodeRecord(v: unknown): RecordProbe {
 /**
  * **resume 之前问那台机器：这条会话的记录还在不在**（最后一条）。本机与远端同一条路。
  *
- * 此前是 Tauri 命令 `probe_session_record`〔散文墓碑〕：它在 monitor 里只做「转一条 `history-record`、核两格」
- * （`frame_query::record` / `parse_record`〔散文墓碑〕）—— 后端早已出成品，那一跳一行解释都不该有 ⇒ 改成界面经通道直接问。
+ * 后端出成品（`history-record`），界面经通道直接问。
  *
  * **失败就抛**（不折成一个答案）：调用方（`tab-session-actions.ts::recordStillThere`）把「问不到」当「不知道」，
- * 与「不在」分开处置 —— 折成 `present:false` 会把一条接得上的 resume 拦掉。期限与上一个住址同值（30 秒）。
+ * 与「不在」分开处置 —— 折成 `present:false` 会把一条接得上的 resume 拦掉。期限 30 秒。
  */
 export async function probeSessionRecord(
   origin: Origin,

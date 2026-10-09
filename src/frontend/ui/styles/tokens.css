@@ -30,18 +30,18 @@
  */
 @layer tokens {
 :root {
-  /* === 面的四层（V1）：骨架 · 内容 · 凸起；交互叠层见 state- 族 === */
+  /* === 面的四层：骨架 · 内容 · 凸起；交互叠层见 state- 族 === */
   --bg: #2b2a27; /* 内容：消息流 · 设置内容区 · 列表 */
   --bg-2: #1f1e1b; /* 骨架：tab 栏 · 状态栏 · 工具条 · 侧栏 · 代码块 */
   --card: #393937; /* 凸起：用户气泡 · 展开的卡 · 所有浮层（菜单 · 下拉 · 对话框 · 抽屉 · toast） */
 
-  /* === 文字（V3：对比度见判据） === */
+  /* === 文字（对比度见 `tests/frontend/ui/design-tokens.vitest.ts`） === */
   --text: #e8e6e1;
   --text-2: #a8a39a; /* 次要信息 · 时间戳 · 提示 */
   --text-faint: #6b665e; /* 只给占位符 · 禁用态 · 装饰性分隔；不写要读的字 */
   --text-on-strong: #fff; /* 主按钮 / 危险按钮实心底上的字 */
 
-  /* === 颜色语义（V2：一个颜色一件事） === */
+  /* === 颜色语义（一个颜色一件事） === */
   --accent: #c96442; /* 当前 / 选中 · 焦点环 · 开关开 · 进度填充；不当字色 */
   --accent-strong: #b85c3c; /* 主按钮底 */
   --selected-bg: #c9644247; /* 选中行淡底（accent 28%） */
@@ -79,7 +79,7 @@
   --border-faint: #ffffff08;
   --border: var(--border-strong);
 
-  /* === 叠层与遮罩（V7） === */
+  /* === 叠层与遮罩 === */
   --overlay-hover: #ffffff06;
   --overlay-dim: #00000020;
   --overlay-deep: #00000040;
@@ -114,7 +114,7 @@
   --term-bright-cyan: #98d0dc;
   --term-bright-white: #f4f2ec;
 
-  /* === 字（V4：六档字号 · 400 / 600 两档字重） === */
+  /* === 字（六档字号 · 400 / 600 两档字重） === */
   --font-base: Inter, "Segoe UI", system-ui, sans-serif;
   --font-prose:
     "Source Serif 4", "Source Serif Pro", "Iowan Old Style", "PingFang SC",
@@ -132,7 +132,7 @@
   --line-height-prose: 1.65;
   --line-height-mono: 1.55;
 
-  /* === 间距（V5：4 为基） === */
+  /* === 间距（4 为基） === */
   --space-1: 2px;
   --space-2: 4px; /* 图标与字 · 徽标与数字 */
   --space-3: 6px;
@@ -142,13 +142,13 @@
   --space-7: 24px; /* 对话框内边距 · 节与节之间 */
   --space-8: 32px; /* 页面级留白 */
 
-  /* === 圆角（V6）；整圆只给状态点与开关拇指 === */
+  /* === 圆角；整圆只给状态点与开关拇指 === */
   --radius-s: 4px; /* 徽标 · 键帽 · 行内 code · 头像块 · 进度条 */
   --radius-m: 6px; /* 按钮 · 输入框 · 下拉 · chip · 选中底 · 菜单项 */
   --radius-l: 8px; /* 卡片 · 菜单面板 · 浮层 · toast · 代码块 */
   --radius-xl: 10px; /* 对话框 · 抽屉外角 */
 
-  /* === 控件（V8 两档）· 图标尺寸（V9）· 行高（V11）· 状态点（V10） === */
+  /* === 控件（两档）· 图标尺寸 · 行高 · 状态点 === */
   --control-h: 28px;
   --control-h-compact: 22px;
   --control-pad-x: 12px;
@@ -163,7 +163,7 @@
   --dot-size-compact: 6px;
   --focus-ring: 2px; /* 键盘焦点外环宽 · 偏移同值 */
 
-  /* === 动效（V12） === */
+  /* === 动效 === */
   --dur-press: 120ms; /* 悬停 / 按下 */
   --dur-expand: 200ms; /* 展开收起 · toast 进出 */
   --dur-float-in: 160ms; /* 浮层出现（淡入 ＋ 上移 4px）· 新出现的一行淡入 */

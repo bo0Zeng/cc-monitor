@@ -1,9 +1,10 @@
 /**
- * 下拉（C3）：外观同输入框 ＋ 右侧向下箭头，选项前可带一块身份（账号头像 · 机器标记）。面板就是弹出菜单（C12，`menu.ts`）：
+ * 下拉：外观同输入框 ＋ 右侧向下箭头，选项前可带一块身份（账号头像 · 机器标记）。面板就是弹出菜单（`menu.ts`）：
  * 宽同框、当前项左侧对勾、不可选的灰着并说为什么。
  *
  * - 键盘：焦点在框上 ↑↓ 直接换值不展开（跳过不可选）；Enter / 空格 / Alt+↓ 展开；面板里 ↑↓ 走、Enter 选、Esc 只收面板。
  * - 换值（点选或 ↑↓）⇒ `onChange(value)`；`setValue` 不回调。
+ * 判据：`tests/frontend/ui/kit/select.vitest.ts`。
  */
 import { icon } from "./icon";
 import { closeMenu, menuAnchoredOn, openMenu, type MenuItem } from "./menu";

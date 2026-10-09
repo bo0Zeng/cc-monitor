@@ -1,4 +1,4 @@
-/* 复制详情（条带 §5.1）。 */
+/* 复制详情。 */
 @layer components {
   .detailCopy {
     display: inline-flex;

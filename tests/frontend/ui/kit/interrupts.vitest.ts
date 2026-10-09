@@ -1,5 +1,5 @@
 /**
- * 「会打断什么」一问（I12）：2 秒上限 · 什么都没有就不问 · 重复按并进同一个框 · 一族名字多了写 ×n。
+ * 「会打断什么」一问：2 秒上限 · 什么都没有就不问 · 重复按并进同一个框 · 一族名字多了写 ×n。
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { askWithin, confirmInterrupts, familyLine, INTERRUPTS_WITHIN_MS } from "../../../../src/frontend/ui/kit/interrupts";
@@ -9,7 +9,7 @@ import { copyText } from "../../../../src/frontend/ui/copy-table";
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
 
-describe("I12 会打断什么", () => {
+describe("会打断什么", () => {
   it("2 秒没答 ⇒ null（当有东西在跑）；答了 ⇒ 原样；抛 ⇒ null", async () => {
     const late = askWithin(() => new Promise(() => {}));
     vi.advanceTimersByTime(INTERRUPTS_WITHIN_MS);

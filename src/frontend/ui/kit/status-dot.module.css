@@ -1,4 +1,4 @@
-/* 状态点（V10）。固定宽，状态变了不挤动旁边的字。 */
+/* 状态点。固定宽，状态变了不挤动旁边的字。 */
 @layer components {
   .dot {
     display: inline-block;

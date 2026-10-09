@@ -1,4 +1,4 @@
-/* 图标的三档尺寸（V9）；颜色随所在控件的 `color`。 */
+/* 图标的三档尺寸；颜色随所在控件的 `color`。 */
 @layer components {
   .icon {
     flex: none;

@@ -23,7 +23,7 @@ export function needsOf(tab: Tab): Needs | null {
   return tab.needs ?? { kind: "unknown", tool: null, call: null, what: null, sinceMs: null };
 }
 
-/** 状态点（V10）：颜色 ＝ 在干什么，形状 ＝ 进程还在不在。 */
+/** 状态点：颜色 ＝ 在干什么，形状 ＝ 进程还在不在。 */
 export function dotOf(tab: Tab): DotState {
   const s = tab.state;
   switch (s.liveness) {

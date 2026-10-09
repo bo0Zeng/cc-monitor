@@ -206,7 +206,7 @@ const backdropDown = (): void => {
 };
 const ask = (over: Partial<ConfirmSpec> = {}): Promise<boolean> => confirmDialog({ title: "结束会话 orders", action: "结束", ...over });
 
-describe("D2 · confirmDialog / askText 的结算语义（C10）", () => {
+describe("D2 · confirmDialog / askText 的结算语义", () => {
   beforeAll(() => {
     // 与主窗 / 设置窗启动时同一条路：Esc 经弹层栈到栈顶。
     dispatcher.applyOverrides({});

@@ -1,5 +1,5 @@
 /**
- * 对话框（C10）：全产品「要不要做 / 叫什么」只问这一处。只在要你做决定、不决定就不能往下走时用；告知类不用它。
+ * 对话框：全产品「要不要做 / 叫什么」只问这一处。只在要你做决定、不决定就不能往下走时用；告知类不用它。
  *
  * - 结构：标题（动宾、不带问号）· 正文（逐项 `中断` / `保留` / `改动`，或一段限高可滚的清单，超过 8 项只列前 8 ＋「另外 n 个」）·
  *   按钮行（右对齐，取消在左、确认在右，确认键写动作名）。
@@ -9,6 +9,7 @@
  * - 同一时刻只有一个：新开之前把旧的按取消结算（取消是安全方向）。
  * - 模态：压进弹层栈，开着时快捷键只放行 Esc。
  * - 不能用 `window.confirm`：真 app 里它被换成恒真的异步替身，从来不拦（判据钉生产代码零处原生 `confirm` / `prompt`）。
+ * 判据：`tests/frontend/ui/kit/dialog.vitest.ts`。
  */
 import { dispatcher, type OverlayHandle } from "../keybindings/registry";
 import { button, buttonRow, setBusy, setButtonLabel, setDisabled } from "./button";
@@ -359,7 +360,7 @@ export function formDialog(spec: FormSpec): FormHandle {
   if (spec.wide) b.panel.dataset.size = "wide";
   else if (spec.narrow) b.panel.dataset.size = "narrow";
   const errBox = document.createElement("div");
-  // 带复制详情的提交失败：按钮行上方一行红字句 ＋［复制详情］；改了任一格就消失（条带 §5.3「对话框」）。
+  // 带复制详情的提交失败：按钮行上方一行红字句 ＋［复制详情］；改了任一格就消失。
   const failLine = document.createElement("div");
   failLine.className = s.dlgFail;
   failLine.hidden = true;

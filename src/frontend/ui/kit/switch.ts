@@ -1,7 +1,8 @@
 /**
- * 开关与复选框（C4）：开关 ＝ 立刻生效的一个设置；复选框 ＝ 勾一批、最后点一颗按钮才做。不许混用。
+ * 开关与复选框：开关 ＝ 立刻生效的一个设置；复选框 ＝ 勾一批、最后点一颗按钮才做。不许混用。
  *
  * 等后端答复的开关：拇指先动、旁边转圈；后端拒了拇指退回原位（[`settle`]），出错句由调用方放在行下。
+ * 判据：`tests/frontend/ui/kit/components.vitest.ts`「开关 · 复选框」那一节。
  */
 import { spinner } from "./progress";
 import s from "./switch.module.css";

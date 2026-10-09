@@ -1,5 +1,5 @@
 /**
- * 复制详情（条带 §5.1–5.2）：一条报错旁边那颗［复制详情］。全产品只这一处；toast · 错误条 · 行内 · 浮层 · 对话框 都用它。
+ * 复制详情：一条报错旁边那颗［复制详情］。全产品只这一处；toast · 错误条 · 行内 · 浮层 · 对话框 都用它。
  *
  * - 详情（`detail`）由出错的那一端写好随帧回（后端 · 壳 · 文件窗口进程），这里只排版：复制出去的首行是屏上那一句，下面原样接详情。
  * - 详情是空的 ⇒ 不出按钮（本地校验这类）。
@@ -61,7 +61,7 @@ function copyKey(): string {
 }
 
 /**
- * 行内那一句（一行下面那句红字 · 一块里的状态行）：写进那一句，有详情 ⇒ 句子后面直接跟［复制详情］（条带 §5.3「行内」）。
+ * 行内那一句（一行下面那句红字 · 一块里的状态行）：写进那一句，有详情 ⇒ 句子后面直接跟［复制详情］。
  * 换掉 `el` 里原有的全部内容；复制不了时那块原文展开在 `el` 里。
  */
 export function sayWithDetail(el: HTMLElement, said: string, detail: string): void {
@@ -76,6 +76,29 @@ export function sayWithDetail(el: HTMLElement, said: string, detail: string): vo
 export interface CopyDetailOptions {
   /** 窄：只剩图标。 */
   iconOnly?: boolean;
+}
+
+/** 离 `el` 最近的那个能竖着滚的祖先。 */
+function scrollerOf(el: HTMLElement): HTMLElement | null {
+  for (let e = el.parentElement; e; e = e.parentElement) {
+    const y = getComputedStyle(e).overflowY;
+    if (y === "auto" || y === "scroll") return e;
+  }
+  return null;
+}
+
+/**
+ * 就地展开之后滚那一块所在的滚动区：出错那一块（条 / 行）的顶留在上沿之内，展开的原文框在此前提下尽量露全。
+ * 只动最近那一个滚动区，不连带外层。
+ */
+function keepInView(host: HTMLElement, box: HTMLElement): void {
+  const sc = scrollerOf(host);
+  if (!sc) return;
+  const view = sc.getBoundingClientRect();
+  const top = host.getBoundingClientRect().top;
+  const bottom = box.getBoundingClientRect().bottom;
+  if (top < view.top) sc.scrollTop -= view.top - top;
+  else if (bottom > view.bottom) sc.scrollTop += Math.min(bottom - view.bottom, top - view.top);
 }
 
 /**
@@ -155,10 +178,12 @@ export function copyDetailButton(said: string | (() => string), detail: string, 
     const host = wrap.closest<HTMLElement>("[data-detail-host]") ?? wrap.parentElement ?? wrap;
     host.appendChild(box);
     fallback = box;
-    area.focus();
+    // 焦点不自己滚（浏览器会把框底对齐、把出错那一块滚出视野）：由 `keepInView` 对准那一块。
+    area.focus({ preventScroll: true });
     area.select();
     // 全选会把框滚到底：滚回顶，首行看得全。
     area.scrollTop = 0;
+    keepInView(host, box);
   };
 
   const copy = async (): Promise<void> => {

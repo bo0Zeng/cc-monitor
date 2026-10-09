@@ -1,4 +1,4 @@
-/* 悬停提示（C20）。 */
+/* 悬停提示。 */
 @layer components {
   .tip {
     position: fixed;

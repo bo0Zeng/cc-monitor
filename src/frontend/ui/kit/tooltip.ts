@@ -1,10 +1,11 @@
 /**
- * 悬停提示（C20）：悬停或键盘焦点停 500ms 出现，同一组里移到下一个立刻换；离开即消。
+ * 悬停提示：悬停或键盘焦点停 500ms 出现，同一组里移到下一个立刻换；离开即消。
  *
  * - 第一行写这个东西是什么 / 现在怎样，第二行起才是补充；不放能点的东西。
  * - 挂 `document.body`（脱离带 `transform` 的祖先，`fixed` 才按视口算）、只在显示期间存在：
  *   宿主被销毁时提示本就不在 DOM 里；正显示着宿主没了 ⇒ 下一次显示前扫掉（残留上限 1 条）。
  * - 摆在哪由 `place.ts` 那一处算（缺省上方居中、卡式右侧顶对齐 / 左侧居中；放不下翻到另一侧，贴边内缩 8px）。
+ * 判据：`tests/frontend/ui/kit/tooltip.vitest.ts`。
  */
 import s from "./tooltip.module.css";
 import { placeFloat, putAt, type Align, type Side } from "./place";
@@ -194,7 +195,7 @@ export function delegateTooltip(root: HTMLElement, selector: string, content: (e
 }
 
 /**
- * 全产品的 `title` 属性改走本模块的悬停提示（C20）：系统自己画的那种提示（WebKitGTK 黑底白字 · WebView2 各版本各样）不跟主题、
+ * 全产品的 `title` 属性改走本模块的悬停提示：系统自己画的那种提示（WebKitGTK 黑底白字 · WebView2 各版本各样）不跟主题、
  * 不按 500ms 节奏、也不摆在宿主上方。指针 / 焦点进一个带 `title` 的元素那一刻，把它挪进 `data-kit-title`（系统提示就不出了），
  * 再按这里的节奏出提示；代码之后又写了 `title` ⇒ 下一次进来再挪。三个窗口的入口各装一次（`entry-common.ts`）。
  */

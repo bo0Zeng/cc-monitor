@@ -1,4 +1,4 @@
-/* 开关 · 复选框（C4）。 */
+/* 开关 · 复选框。 */
 @layer components {
   .swRow {
     display: flex;

@@ -129,9 +129,12 @@ export const DRAWER_SCENES: Scene[] = [
     },
     () => {
       const w = defaultWorld();
-      w.ops["terminal-preview"] = () => {
+      // 没有 tmux server：抓一屏与订实时画面两问一样被拒（订实时要先问名单认终端）。
+      const noServer = (): never => {
         throw new Refuse("no_server", copyText("terminalReads.preview.noServer"), undefined, "no server running on /tmp/tmux-1000/default");
       };
+      w.ops["terminal-preview"] = noServer;
+      w.ops["terminal-follow"] = noServer;
       return w;
     },
   ),

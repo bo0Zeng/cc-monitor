@@ -1,4 +1,4 @@
-/* 页内分栏（C5）· 分段按钮（C23）。 */
+/* 页内分栏 · 分段按钮。 */
 @layer components {
   .tabs {
     display: flex;

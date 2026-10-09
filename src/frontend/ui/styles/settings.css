@@ -1572,7 +1572,7 @@ body.settings-window-mode .settings-panel {
 }
 
   /* 设置「扩展」页：一张表 ＋ 一个抽屉（右侧）＋ 抽屉里每台一行的确认卡。 */
-  /* 抽屉浮在表右侧（C11），表不让位：列头是机器名，让位就挤掉了。 */
+  /* 抽屉浮在表右侧，表不让位：列头是机器名，让位就挤掉了。 */
   .ext-page {
     position: relative;
   }
