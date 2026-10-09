@@ -425,7 +425,7 @@ impl Hop {
                 b.clone()
             }) {
                 Ok(b) => book = b,
-                Err(e) => tracing::warn!("[rotate] {e}"),
+                Err(e) => tracing::warn!("[rotate] {}", e.logged()),
             }
         }
         let s = book.sessions.get(a.sid)?.clone();
