@@ -171,7 +171,9 @@ impl Env {
             relay: Some(crate::accounts::upstream_select::endpoint::relay_for_exec),
             inherited_parent: parent_from(&|k| std::env::var(k).ok()),
             origin_token: Some(mint_origin()),
-            relay_pass_key: crate::relay::pass_key_on_disk(std::path::Path::new(&home)),
+            relay_pass_key: crate::accounts::upstream_select::endpoint::pass_key_for_shell(
+                std::path::Path::new(&home),
+            ),
             home,
         }
     }

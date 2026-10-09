@@ -680,6 +680,9 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
   // monitor ↔ 文件窗口进程的契约：开窗种子 · 就绪行 · 开终端那一问 · 远端路径的两个切法（窗口与开窗入口共用；TS 侧不切远端路径 ⇒ 无孪生）。
   "filewin-contract": {
     BIN_ENV: NONE,
+    // 就绪那一行打头的记号与认它的那一判（窗口进程在 stderr 上说那一行）；TS 侧零孪生。
+    READY_MARK: NONE,
+    is_ready_line: NONE,
     TERMINAL_OPEN_OP: NONE,
     decode_ready: NONE,
     decode_request: NONE,

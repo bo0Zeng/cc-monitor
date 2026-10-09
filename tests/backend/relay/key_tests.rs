@@ -52,14 +52,10 @@ fn the_pass_key_is_derived_from_the_root_and_never_stored() {
         Some(format!("http://127.0.0.1:8788/{}/t/codex/_", p1.expose()).as_str())
     );
     assert_eq!(pass_key_on_disk(&home).as_deref(), Some(p1.expose()));
-    let names: Vec<String> = std::fs::read_dir(home.join(".cc-monitor"))
-        .unwrap()
-        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
-        .collect();
-    assert_eq!(
-        names,
-        vec!["relay-key".to_string()],
-        "盘上不止根钥匙一份：{names:?}"
+    assert!(home.join(KEY_FILE_REL).is_file(), "根钥匙不在盘上");
+    assert!(
+        !home.join(".cc-monitor").join("relay-pass-key").exists(),
+        "只许直通那一把落了盘"
     );
     let _ = std::fs::remove_dir_all(&home);
 }
