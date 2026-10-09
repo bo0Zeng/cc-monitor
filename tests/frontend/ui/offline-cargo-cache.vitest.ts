@@ -42,7 +42,8 @@
  *   卷是派生物（`.claude/devbox/gate` 从 `~/.cargo/registry` 播种），卷若比种子旧，本条看不见。
  */
 import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -74,6 +75,33 @@ function runMeter(): { report: Report | null; why: string } {
 }
 
 describe("S27 · 断网门禁的 crate 缓存", () => {
+  // 云端 CI（windows runner）上 python 的 stdout 默认 cp1252：量具在「本机没有缓存」那一形里要印汉字（structural_failures），
+  // 原先当场 UnicodeEncodeError 退出 ⇒ 每一趟都落进「量具跑不起来」，说的理由是假的（CI 37848630512 两趟日志都是这一形）。
+  // 这里把那一形在本机现造出来：CARGO_HOME 指一个空目录 ＋ stdout 强制 cp1252。
+  it("stdout 不是 UTF-8 时（windows runner 的默认）量具照样吐得出 JSON，落进「本机没有缓存」那一形", () => {
+    const empty = mkdtempSync(join(tmpdir(), "s27-nocache-"));
+    try {
+      let raw: string;
+      try {
+        raw = execFileSync("python3", [METER, "--json"], {
+          encoding: "utf8",
+          stdio: ["ignore", "pipe", "pipe"],
+          env: { ...process.env, CARGO_HOME: empty, PYTHONIOENCODING: "cp1252", PYTHONUTF8: "0" },
+        });
+      } catch (e) {
+        const err = e as { stdout?: string; stderr?: string; code?: string };
+        if (err.code === "ENOENT") return; // 这台机器没有 python3：下面那条会说「判不了」
+        raw = typeof err.stdout === "string" ? err.stdout : "";
+        expect(raw.trim().startsWith("{"), `量具没吐 JSON：${String(err.stderr ?? e).slice(-400)}`).toBe(true);
+      }
+      const report = JSON.parse(raw) as Report;
+      expect(report.cache_dirs).toEqual([]);
+      expect(report.structural_failures.join(" / ")).toContain("cargo registry 缓存目录");
+    } finally {
+      rmSync(empty, { recursive: true, force: true });
+    }
+  });
+
   it("量具本身在盘上（它是本条判据的全部内容，丢了就等于判据没了）", () => {
     expect(existsSync(METER)).toBe(true);
     expect(existsSync(join(HERE, "../../evidence", "S27-cache-manifest.md"))).toBe(true);

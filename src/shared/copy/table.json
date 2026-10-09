@@ -7755,7 +7755,7 @@
     "settingsPanel.behavior.showHiddenTasksHelp": {
       "kind": "body",
       "role": "说明",
-      "zh": "分身会话的标签页带齿轮图标 · 重启 cc-monitor 后生效",
+      "zh": "分身会话的标签页带层叠图标 · 重启 cc-monitor 后生效",
       "args": []
     },
     "settingsPanel.behavior.autoFront": {
