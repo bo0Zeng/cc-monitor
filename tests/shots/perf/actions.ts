@@ -12,6 +12,7 @@ import type { FakeBackend } from "../fake/backend";
 import type { SessionStreamFrame } from "../../../src/frontend/ui/generated/SessionStreamFrame";
 import { Convo } from "../fake/records";
 import { turn } from "./world";
+import { copyText } from "../../../src/frontend/ui/copy-table";
 
 interface Perf {
   lt: { s: number; d: number }[];
@@ -350,7 +351,8 @@ async function needs(): Promise<Record<string, unknown>> {
 /** 命令面板：Ctrl+K 开、逐字打「新建」「轮换」「设置」、Esc；三次。 */
 async function palette(): Promise<Record<string, unknown>> {
   return measure("palette", async (steps) => {
-    for (const word of ["新建会话", "轮换", "打开设置"]) {
+    // 打的词取文案表里的字（命令面板里那几条就叫这个）
+    for (const word of [copyText("newSession.title.plain"), copyText("acct.rot.title"), "打开设置"]) {
       await step(steps, "ctrl-k", () => key("k", { ctrl: true }));
       const input = await waitSel<HTMLInputElement>("[data-role=command-input]");
       for (let i = 1; i <= word.length; i++) {
@@ -389,7 +391,7 @@ async function newSession(): Promise<Record<string, unknown>> {
     for (let k = 0; k < 2; k++) {
       key("k", { ctrl: true });
       const input = await waitSel<HTMLInputElement>("[data-role=command-input]");
-      typeInto(input, "新建会话");
+      typeInto(input, copyText("newSession.title.plain"));
       await sleep(200);
       await step(steps, "enter", () => keyOn(input, "Enter", { code: "Enter" }));
       await waitSel('[role="dialog"] button[aria-label="账号"]:not([data-value=""])');
@@ -536,6 +538,77 @@ const ACTIONS: Record<string, () => Promise<Record<string, unknown>>> = {
   "viewer-idle": () => idle(),
   "viewer-scroll": viewerScroll,
   "viewer-find": viewerFind,
+  // 浮层开关慢在哪：几样最小动作各自逼一次样式 ＋ 布局要多久（同步段）
+  "overlay-probe": async () => {
+    const desc = (el: Element | null): string => (el ? `${el.tagName.toLowerCase()}${el.id ? "#" + el.id : ""}.${String((el as HTMLElement).className).split(" ")[0]} in ${el.closest(".stream") ? "stream" : el.closest("#tab-bar") ? "tab-bar" : el.closest("body > *")?.id ?? "?"}` : "null");
+    const focusedAtStart = desc(document.activeElement);
+    const t = (f: () => void): number => {
+      void document.body.offsetHeight;
+      const t0 = performance.now();
+      f();
+      void document.body.offsetHeight;
+      return performance.now() - t0;
+    };
+    const host = document.createElement("div");
+    host.style.cssText = "position:fixed;left:0;top:0;width:10px;height:10px";
+    document.body.appendChild(host);
+    const input = document.createElement("input");
+    host.appendChild(input);
+    const out: Record<string, number[]> = {};
+    const rec = (k: string, f: () => void): void => void (out[k] ??= []).push(t(f));
+    for (let k = 0; k < 3; k++) {
+      const d = document.createElement("div");
+      rec("body 尾巴加一个 div", () => document.body.appendChild(d));
+      rec("body 尾巴摘一个 div", () => d.remove());
+      const e = document.createElement("div");
+      rec("固定容器里加一个 div", () => host.appendChild(e));
+      rec("固定容器里摘一个 div", () => e.remove());
+      rec("根元素写自定义属性", () => document.documentElement.style.setProperty("--perf-probe", `${k}px`));
+      rec("根元素删自定义属性", () => document.documentElement.style.removeProperty("--perf-probe"));
+      rec("焦点进输入框", () => input.focus());
+      rec("焦点回 body", () => input.blur());
+      const tabEl = document.querySelector<HTMLElement>("#tab-bar .tab:not(.active)");
+      if (tabEl) {
+        rec("焦点到 tab 栏的一项", () => tabEl.focus());
+        rec("焦点从 tab 栏回 body", () => tabEl.blur());
+      }
+      const sEl = document.querySelector<HTMLElement>(".stream.active");
+      if (sEl) {
+        rec("焦点到当前流", () => sEl.focus());
+        rec("焦点从当前流回 body", () => sEl.blur());
+      }
+      rec("Ctrl+K 开命令面板", () => key("k", { ctrl: true }));
+      await sleep(150);
+      rec("Esc 关命令面板", () => key("Escape"));
+      await sleep(150);
+      rec("Ctrl+K 开命令面板（再）", () => key("k", { ctrl: true }));
+      const inp = document.querySelector<HTMLInputElement>("[data-role=command-input]");
+      if (inp) rec("命令面板里打字", () => typeInto(inp, copyText("newSession.title.plain")));
+      await sleep(150);
+      if (inp) rec("命令面板 ↓", () => keyOn(inp, "ArrowDown", { code: "ArrowDown" }));
+      if (inp) rec("Esc 关命令面板（打过字）", () => keyOn(inp, "Escape", { code: "Escape" }));
+      await sleep(150);
+      rec("body 写一个 data 属性", () => (document.body.dataset.perfProbe = String(k)));
+      rec("body 删 data 属性", () => delete document.body.dataset.perfProbe);
+      await sleep(200);
+    }
+    host.remove();
+    return { name: "overlay-probe", focusedAtStart, focusedAtEnd: desc(document.activeElement), probe: Object.fromEntries(Object.entries(out).map(([k, v]) => [k, v.map((x) => Math.round(x))])), dom: document.getElementsByTagName("*").length };
+  },
+  // 试一刀：账号面板开关时不往根元素上写自定义属性（看 WebKit 上那一下慢是不是它）
+  "acct-noroot": async () => {
+    const st = document.documentElement.style;
+    const set = st.setProperty.bind(st);
+    const rm = st.removeProperty.bind(st);
+    st.setProperty = (k: string, v: string | null, p?: string) => (k === "--kit-drawer-right" ? undefined : set(k, v, p));
+    st.removeProperty = (k: string) => (k === "--kit-drawer-right" ? "" : rm(k));
+    try {
+      return { ...(await acct()), name: "acct-noroot" };
+    } finally {
+      st.setProperty = set;
+      st.removeProperty = rm;
+    }
+  },
 };
 
 window.__pa = {

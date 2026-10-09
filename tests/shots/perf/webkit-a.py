@@ -182,7 +182,8 @@ def main():
         base = f"http://127.0.0.1:{port}"
         result = {"when": time.strftime("%Y-%m-%dT%H:%M:%S"), "engine": f"webkitgtk {WebKit2.get_major_version()}.{WebKit2.get_minor_version()}.{WebKit2.get_micro_version()}", "runs": args.runs, "load": {"start": list(os.getloadavg())}, "rows": []}
         for run in range(args.runs):
-            pages = [("main", f"{base}/index.html?scene=perf-main", MAIN), ("viewer", f"{base}/viewer.html?scene=perf-viewer&viewer={LONGEST}", VIEWER), ("agent", f"{base}/viewer.html?scene=perf-agent&viewer={LONGEST}&run=agent-p0", VIEWER)]
+            extra = [n for n in (only or []) if n not in MAIN and n not in VIEWER]  # 不在清单里的试验项（`overlay-probe` 之类）在主窗口跑
+            pages = [("main", f"{base}/index.html?scene=perf-main", MAIN + extra), ("viewer", f"{base}/viewer.html?scene=perf-viewer&viewer={LONGEST}", VIEWER), ("agent", f"{base}/viewer.html?scene=perf-agent&viewer={LONGEST}&run=agent-p0", VIEWER)]
             for where, url, names in pages:
                 if only and not any(n in only for n in names):
                     continue

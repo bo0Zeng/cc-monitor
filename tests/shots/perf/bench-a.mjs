@@ -148,10 +148,12 @@ if (args.eval) {
   process.exit(0);
 }
 for (let run = 0; run < runs; run++) {
-  if (!only || MAIN.some((n) => only.has(n))) {
+  // 不在清单里的试验项（`overlay-probe` 之类）在主窗口跑
+  const extra = only ? [...only].filter((n) => !MAIN.includes(n) && !VIEWER.includes(n)) : [];
+  if (!only || MAIN.some((n) => only.has(n)) || extra.length) {
     const { page, openMs } = await open("index.html?scene=perf-main");
     console.log(`主窗口开好 ${openMs} ms`);
-    await runAll(page, MAIN, run, "main");
+    await runAll(page, [...MAIN, ...extra], run, "main");
     await page.close();
   }
   if (!only || VIEWER.some((n) => only.has(n))) {
@@ -191,7 +193,7 @@ async function traced(page, name, fn) {
       }
     });
   });
-  await page.send("Tracing.start", { categories: "devtools.timeline,disabled-by-default-devtools.timeline,blink,v8.execute,disabled-by-default-devtools.timeline.frame,toplevel,disabled-by-default-v8.cpu_profiler", transferMode: "ReportEvents" });
+  await page.send("Tracing.start", { categories: "devtools.timeline,disabled-by-default-devtools.timeline,disabled-by-default-devtools.timeline.stack,blink,v8.execute,disabled-by-default-devtools.timeline.frame,toplevel,disabled-by-default-v8.cpu_profiler", transferMode: "ReportEvents" });
   const r = await fn();
   await page.send("Tracing.end");
   await done;

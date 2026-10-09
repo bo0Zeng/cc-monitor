@@ -7,6 +7,7 @@
 import { dispatcher, type OverlayHandle } from "../keybindings/registry";
 import { button } from "./button";
 import { confirmDialog } from "./dialog";
+import { setDrawerRight } from "./toast";
 import { copyText } from "../copy-table";
 import s from "./drawer.module.css";
 
@@ -39,7 +40,7 @@ export function openDrawer(spec: DrawerSpec): DrawerHandle {
   const width = Math.max(360, Math.min(480, spec.width ?? 440));
   panel.style.width = `${width}px`;
   // 开着时 toast 让到抽屉左边（不压抽屉的底栏）；关了还原。
-  document.documentElement.style.setProperty("--kit-drawer-right", `${width}px`);
+  setDrawerRight(width);
   if (spec.bottom !== undefined) {
     panel.style.bottom = `${spec.bottom}px`;
     dim.style.bottom = `${spec.bottom}px`;
@@ -76,7 +77,7 @@ export function openDrawer(spec: DrawerSpec): DrawerHandle {
     }
     closed = true;
     dispatcher.popOverlay(layer);
-    document.documentElement.style.removeProperty("--kit-drawer-right");
+    setDrawerRight(null);
     dim.remove();
     panel.remove();
     if (before instanceof HTMLElement && before.isConnected) before.focus();

@@ -2,7 +2,7 @@
 @layer components {
   .toastStack {
     position: fixed;
-    /* 右侧抽屉开着（`--kit-drawer-right` ＝ 它的宽）⇒ 让到它左边，不压它的底栏。 */
+    /* 右侧抽屉开着（`--kit-drawer-right` ＝ 它的宽，写在这一栏自己身上：`toast.ts::setDrawerRight`）⇒ 让到它左边，不压它的底栏。 */
     right: calc(var(--kit-drawer-right, 0px) + var(--space-6));
     bottom: var(--space-7);
     z-index: var(--z-toast);
