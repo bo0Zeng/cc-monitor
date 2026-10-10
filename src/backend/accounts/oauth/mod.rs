@@ -82,10 +82,11 @@ impl Unusable {
                 &[("account", account)],
             )),
             Unusable::Busy => plain(copy_text("beOauth.unusable.busy", &[("account", account)])),
-            Unusable::Refused(status) => plain(copy_text(
-                "beOauth.unusable.rejected",
-                &[("account", account), ("status", &status.to_string())],
-            )),
+            // 端点答的码是原话：进日志那一行，不上句子。
+            Unusable::Refused(status) => crate::common::said::Said::with_raw(
+                copy_text("beOauth.unusable.rejected", &[("account", account)]),
+                format!("HTTP {status}"),
+            ),
             Unusable::NotRenewed(why) => why.clone().wrap(|w| {
                 copy_text(
                     "beOauth.unusable.failed",
@@ -313,10 +314,10 @@ fn renew(
         return Err(if matches!(answer.status, 400 | 401) {
             Unusable::Refused(answer.status)
         } else {
-            Unusable::NotRenewed(crate::common::said::Said::from(copy_text(
-                "beOauth.refresh.status",
-                &[("status", &answer.status.to_string())],
-            )))
+            Unusable::NotRenewed(crate::common::said::Said::with_raw(
+                copy_text("beOauth.refresh.status", &[]),
+                format!("HTTP {}", answer.status),
+            ))
         });
     }
     let got: Map<String, Value> = match serde_json::from_slice(&answer.body) {

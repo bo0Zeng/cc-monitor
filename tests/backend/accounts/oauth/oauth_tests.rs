@@ -221,8 +221,12 @@ fn a_refused_refresh_says_log_in_again_and_leaves_the_file_as_it_was() {
     let r = access_token(&acct, &FACE, &endpoint_at(addr), NOW_MS, "q").map(|s| expose(&s));
     assert_eq!(r, Err(Unusable::Refused(400)));
     assert_eq!(on_disk(&acct), before);
-    let said = Unusable::Refused(400).said("q").said;
+    let s = Unusable::Refused(400).said("q");
+    let said = s.said;
     assert!(said.contains('q') && !said.contains("ref-old"), "{said}");
+    // 端点答的码是原话：不上句子，跟着 raw 进日志。
+    assert!(!said.contains("400"), "{said}");
+    assert_eq!(s.raw.as_deref(), Some("HTTP 400"));
     let _ = std::fs::remove_dir_all(&d);
 }
 

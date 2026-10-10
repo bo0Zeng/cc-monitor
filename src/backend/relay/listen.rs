@@ -157,7 +157,10 @@ fn prepare(
             let said = e.said.clone();
             let e = e.logged();
             eprintln!("[relay] refusing to listen without a relay key: {e}");
-            return Err(copy_text("beRelayListen.key.unavailable", &[("e", &said)]));
+            return Err(copy_text(
+                "beRelayListen.key.unavailable",
+                &[("why", &said)],
+            ));
         }
     };
     match listener.local_addr() {

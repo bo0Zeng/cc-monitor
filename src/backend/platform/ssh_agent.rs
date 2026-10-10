@@ -24,7 +24,9 @@ const OPENSSH_AGENT_PIPE: &str = r"\\.\pipe\openssh-ssh-agent";
 /// `sock` = 界面进程交过来的 agent 套接字路径（Unix）。常驻后端活得比任何一个界面都长，
 /// 自己身上那份 `SSH_AUTH_SOCK` 可能早就不指向活的 agent 了 ⇒ 给了就用给的；没给才读本进程的环境。
 /// Windows 上 agent 是固定的命名管道，这个参数不用。
-pub(crate) async fn connect(sock: Option<&str>) -> Result<Agent, String> {
+/// 连不上：那一句（不带原话）＋ 下层原话另带（调用方放进复制详情）。
+pub(crate) async fn connect(sock: Option<&str>) -> Result<Agent, copy_core::said::Said> {
+    use copy_core::said::Said;
     #[cfg(unix)]
     {
         match sock.map(str::trim).filter(|s| !s.is_empty()) {
@@ -32,15 +34,15 @@ pub(crate) async fn connect(sock: Option<&str>) -> Result<Agent, String> {
                 .await
                 .map(AgentClient::dynamic)
                 .map_err(|e| {
-                    copy_text(
-                        "beSshAgent.connect.givenSocket",
-                        &[("path", &path.to_string()), ("e", &e.to_string())],
+                    Said::with_raw(
+                        copy_text("beSshAgent.connect.givenSocket", &[("path", path)]),
+                        e,
                     )
                 }),
             None => AgentClient::connect_env()
                 .await
                 .map(AgentClient::dynamic)
-                .map_err(|e| copy_text("beSshAgent.connect.authSock", &[("e", &e.to_string())])),
+                .map_err(|e| Said::with_raw(copy_text("beSshAgent.connect.authSock", &[]), e)),
         }
     }
     #[cfg(windows)]
@@ -50,18 +52,15 @@ pub(crate) async fn connect(sock: Option<&str>) -> Result<Agent, String> {
             .await
             .map(AgentClient::dynamic)
             .map_err(|e| {
-                copy_text(
-                    "beSshAgent.connect.pipe",
-                    &[
-                        ("pipe", &OPENSSH_AGENT_PIPE.to_string()),
-                        ("e", &e.to_string()),
-                    ],
+                Said::with_raw(
+                    copy_text("beSshAgent.connect.pipe", &[("pipe", OPENSSH_AGENT_PIPE)]),
+                    e,
                 )
             })
     }
     #[cfg(not(any(unix, windows)))]
     {
         let _ = sock;
-        Err(copy_text("beSshAgent.connect.unsupported", &[]))
+        Err(Said::from(copy_text("beSshAgent.connect.unsupported", &[])))
     }
 }

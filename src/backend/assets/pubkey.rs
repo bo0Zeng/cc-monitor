@@ -240,9 +240,12 @@ impl Reach for Wire {
             let (got, _ack) = crate::dial::remote_ask::capture_full(dial, command).await?;
             match got.exit_status {
                 Some(0) => Ok(got.stdout),
-                _ => Err(copy_text(
-                    "bePubkey.exec.failed",
-                    &[("said", got.stderr.trim())],
+                // 那台 shell 的 stderr 是原话：记一行日志，句子只说没成（这一跳的失败形没有原话位）。
+                _ => Err(crate::common::said::IntoNote::into_note(
+                    crate::common::said::Said::with_raw(
+                        copy_text("bePubkey.exec.failed", &[]),
+                        got.stderr.trim(),
+                    ),
                 )),
             }
         })

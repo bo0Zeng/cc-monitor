@@ -9416,8 +9416,8 @@
     "bePubkey.exec.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "往该机 authorized_keys 追加公钥失败 · {said}",
-      "args": ["said"]
+      "zh": "往该机 authorized_keys 追加公钥失败 · 原因不明",
+      "args": []
     },
     "bePubkey.read.tooBig": {
       "kind": "error",
@@ -13366,15 +13366,15 @@
     "beSshConfig.host.sshGExit": {
       "kind": "error",
       "role": "报错",
-      "zh": "ssh -G {alias} 退出非 0 · {detail}",
-      "args": ["alias", "detail"],
+      "zh": "ssh -G {alias} 失败 · 原因不明",
+      "args": ["alias"],
       "limited": ["SSH"]
     },
     "beSshConfig.host.sshGFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "运行 ssh -G 失败 · {e}",
-      "args": ["e"],
+      "zh": "运行 ssh -G 失败 · {why}",
+      "args": ["why"],
       "limited": ["SSH"]
     },
     "beSshConfig.host.dashAlias": {
@@ -15642,22 +15642,22 @@
     "beSshAgent.connect.pipe": {
       "kind": "error",
       "role": "报错",
-      "zh": "连接 {pipe} 失败 · {e} · 查 SSH agent 是否在运行",
-      "args": ["pipe", "e"],
+      "zh": "连接 {pipe} 失败 · 原因不明 · 查 SSH agent 是否在运行",
+      "args": ["pipe"],
       "limited": ["SSH", "连接"]
     },
     "beSshAgent.connect.authSock": {
       "kind": "error",
       "role": "报错",
-      "zh": "连接 SSH agent 失败 · {e} · 查 SSH_AUTH_SOCK 是否已设、agent 是否在运行",
-      "args": ["e"],
+      "zh": "连接 SSH agent 失败 · 原因不明 · 查 SSH_AUTH_SOCK 是否已设、agent 是否在运行",
+      "args": [],
       "limited": ["SSH", "连接"]
     },
     "beSshAgent.connect.givenSocket": {
       "kind": "error",
       "role": "报错",
-      "zh": "连接 SSH agent {path} 失败 · {e} · 查它是否在运行",
-      "args": ["path", "e"],
+      "zh": "连接 SSH agent {path} 失败 · 原因不明 · 查它是否在运行",
+      "args": ["path"],
       "limited": ["SSH", "连接"]
     },
     "beFs.readRegularCapped.tooBig": {
@@ -15784,8 +15784,8 @@
     "beHistoryJoin.blocking.unfinished": {
       "kind": "error",
       "role": "原因格",
-      "zh": "本机查询未完成 · {e}",
-      "args": ["e"]
+      "zh": "本机查询未完成 · 程序出错",
+      "args": []
     },
     "beHistoryList.remote.unreadable": {
       "kind": "error",
@@ -15814,8 +15814,8 @@
     "beRemoteAsk.run.failed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "后端报错 · {said}",
-      "args": ["said"]
+      "zh": "后端报错",
+      "args": []
     },
     "beRemoteAsk.run.failedNoReason": {
       "kind": "error",
@@ -15826,8 +15826,8 @@
     "beRemoteAsk.run.resultUnreadable": {
       "kind": "error",
       "role": "原因格",
-      "zh": "对端交回的结果无法解析 · {e}",
-      "args": ["e"]
+      "zh": "对端交回的结果无法解析",
+      "args": []
     },
     "beRemoteAsk.run.droppedBeforeResult": {
       "kind": "error",
@@ -15864,8 +15864,8 @@
     "beRemoteAsk.cappedLine.readFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "连接读取中断 · {e}",
-      "args": ["e"],
+      "zh": "连接读取中断",
+      "args": [],
       "limited": ["连接"]
     },
     "beMachine.jump.loop": {
@@ -16088,8 +16088,8 @@
     "beInbound.handleLine.internal": {
       "kind": "error",
       "role": "报错",
-      "zh": "程序出错 · 命令未做完 · {e}",
-      "args": ["e"]
+      "zh": "程序出错 · 命令未做完",
+      "args": []
     },
     "beInbound.drain.shuttingDown": {
       "kind": "error",
@@ -16525,8 +16525,8 @@
     "beRelayListen.key.unavailable": {
       "kind": "error",
       "role": "报错",
-      "zh": "取中转钥匙失败 · {e} · 中转未起（无钥匙则谁都能用）",
-      "args": ["e"]
+      "zh": "取中转钥匙失败 · {why} · 中转未起（无钥匙则谁都能用）",
+      "args": ["why"]
     },
     "localResume.launch.failed": {
       "kind": "error",
@@ -18281,8 +18281,8 @@
     "beLink.gone.withError": {
       "kind": "error",
       "role": "原因格",
-      "zh": "与远端的连接已中断 · {e}",
-      "args": ["e"],
+      "zh": "与远端的连接已中断",
+      "args": [],
       "limited": ["连接"]
     },
     "beLink.gone.bug": {
@@ -20939,8 +20939,8 @@
     "beOauth.unusable.rejected": {
       "kind": "error",
       "role": "报错",
-      "zh": "账号 {account} 登录续期失败 · {status} · 要重新登录",
-      "args": ["account", "status"]
+      "zh": "账号 {account} 登录续期失败 · 被拒 · 要重新登录",
+      "args": ["account"]
     },
     "beOauth.unusable.failed": {
       "kind": "error",
@@ -20957,8 +20957,8 @@
     "beOauth.refresh.status": {
       "kind": "error",
       "role": "原因格",
-      "zh": "令牌端点返回 {status}",
-      "args": ["status"]
+      "zh": "令牌端点报错",
+      "args": []
     },
     "beOauth.refresh.notJson": {
       "kind": "error",
