@@ -12,6 +12,7 @@ import { defaultWorld, LOCAL } from "../fake/world";
 import {
   byText,
   click,
+  key,
   mainReady,
   openTab,
   rightClick,
@@ -1012,18 +1013,8 @@ export const ACCT_SCENES: Scene[] = [
     "账号面板开着、按快捷键翻一下自动跟随：右下角那条让到面板左边，不压面板底栏「新会话默认」那一行",
     async () => {
       await openPanel();
-      const t = document.activeElement as HTMLElement | null;
-      (t ?? document.body).dispatchEvent(
-        new KeyboardEvent("keydown", {
-          key: "J",
-          code: "KeyJ",
-          ctrlKey: true,
-          shiftKey: true,
-          bubbles: true,
-          cancelable: true,
-        }),
-      );
-      await sleep(700);
+      await key("J", { ctrl: true, shift: true, code: "KeyJ" });
+      await sleep(550);
     },
     world(
       () => {},
@@ -1160,18 +1151,9 @@ export const ACCT_SCENES: Scene[] = [
       await sleep(400);
       ctx.backend.pushQuota(LOCAL, { sid: ctx.backend.world.sessions[0].sid });
       await sleep(800);
-      document.dispatchEvent(
-        new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
-      );
-      document.body.dispatchEvent(
-        new KeyboardEvent("keydown", {
-          key: "Escape",
-          code: "Escape",
-          bubbles: true,
-          cancelable: true,
-        }),
-      );
-      await sleep(500);
+      await key("Escape");
+      await key("Escape");
+      await sleep(200);
       document
         .querySelector<HTMLElement>("[data-acct-strip]")
         ?.scrollIntoView({ block: "center" });
@@ -1298,8 +1280,7 @@ export const ACCT_SCENES: Scene[] = [
       await openTimeline();
       const tl = await waitFor("[data-tl]");
       (tl as HTMLElement).focus();
-      for (let i = 0; i < 3; i++)
-        tl.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+      for (let i = 0; i < 3; i++) await key("ArrowRight");
       await sleep(300);
     },
     world(() => {}),

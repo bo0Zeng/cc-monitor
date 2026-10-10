@@ -69,21 +69,37 @@ export async function hover(sel: string | Element): Promise<void> {
   await sleep(150);
 }
 
-/** 按一个键（`"k"` · `"Escape"` …），修饰键照给。发在当前焦点上（没有焦点 ⇒ body）。 */
+declare global {
+  interface Window {
+    /** 截图工具（`cdp.mjs`）在每一页上装的绑定：请它从调试口按一个真键。 */
+    __shotsKey?: (payload: string) => void;
+    /** 截图工具按完回这一声。 */
+    __shotsKeyDone?: (id: number, err: string | null) => void;
+  }
+}
+
+const keyWaits = new Map<number, { done: () => void; fail: (e: Error) => void }>();
+let keySeq = 0;
+
+/**
+ * 按一个键（`"k"` · `"Escape"` …），修饰键照给。**真按键**：经页上的绑定请截图工具从调试口发（`cdp.mjs` 的 `Page.key`），
+ * 落在当前焦点上 —— 与人按的同一条路，`:focus-visible` 照亮、按钮上的 Enter 照点、没修饰的字照进框。
+ * 不在截图工具开的页里（没有那条绑定）⇒ 抛，不退回合成事件（合成的证明不了焦点样式）。
+ */
 export async function key(k: string, mods: { ctrl?: boolean; shift?: boolean; alt?: boolean; meta?: boolean; code?: string } = {}): Promise<void> {
-  const target = (document.activeElement as HTMLElement | null) ?? document.body;
-  const init = {
-    key: k,
-    code: mods.code ?? (k.length === 1 ? `Key${k.toUpperCase()}` : k),
-    bubbles: true,
-    cancelable: true,
-    ctrlKey: mods.ctrl ?? false,
-    shiftKey: mods.shift ?? false,
-    altKey: mods.alt ?? false,
-    metaKey: mods.meta ?? false,
+  const send = window.__shotsKey;
+  if (!send) throw new Error("没有真按键通道（__shotsKey）：这一页不是截图工具开的");
+  window.__shotsKeyDone ??= (id, err) => {
+    const w = keyWaits.get(id);
+    keyWaits.delete(id);
+    if (err === null) w?.done();
+    else w?.fail(new Error(err));
   };
-  target.dispatchEvent(new KeyboardEvent("keydown", init));
-  target.dispatchEvent(new KeyboardEvent("keyup", init));
+  const id = ++keySeq;
+  await new Promise<void>((done, fail) => {
+    keyWaits.set(id, { done, fail });
+    send(JSON.stringify({ id, key: k, ...mods }));
+  });
   await sleep(150);
 }
 

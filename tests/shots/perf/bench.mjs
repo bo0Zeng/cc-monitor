@@ -158,8 +158,7 @@ if (args.eval) {
         document.addEventListener('keydown', () => { mo.observe(document.body, { subtree: true, childList: true, attributes: true, characterData: true }); setTimeout(() => { mo.disconnect(); window.__dbg.push(areas); }, 400); }, { once: true });
       } else document.addEventListener('keydown', () => requestAnimationFrame(() => { try { window.__dbg.push(eval(ex)); } catch (e) { window.__dbg.push(String(e)); } }), { once: true });
       res(0); })`);
-    await page.send("Input.dispatchKeyEvent", { type: "keyDown", key: "]", code: "BracketRight", windowsVirtualKeyCode: 221, nativeVirtualKeyCode: 221 });
-    await page.send("Input.dispatchKeyEvent", { type: "keyUp", key: "]", code: "BracketRight", windowsVirtualKeyCode: 221, nativeVirtualKeyCode: 221 });
+    await page.key("]");
     await sleep(600);
     console.log(JSON.stringify(await page.eval("window.__dbg")));
   }
@@ -463,8 +462,7 @@ async function benchKeys(run) {
     const press = async () => {
       for (let k = 0; k < 30; k++) {
         const t = Date.now();
-        await page.send("Input.dispatchKeyEvent", { type: "keyDown", key: "]", code: "BracketRight", windowsVirtualKeyCode: 221, nativeVirtualKeyCode: 221 });
-        await page.send("Input.dispatchKeyEvent", { type: "keyUp", key: "]", code: "BracketRight", windowsVirtualKeyCode: 221, nativeVirtualKeyCode: 221 });
+        await page.key("]");
         await sleep(Math.max(0, 40 - (Date.now() - t)));
       }
       return page.eval("__perf.quiet(300, 15000)");
