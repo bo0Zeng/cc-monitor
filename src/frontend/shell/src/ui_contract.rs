@@ -156,6 +156,11 @@ pub enum SessionStreamFrame {
     Runs(SessionRunsPayload),
     /// 一个会话的主线外清单（那台后端给，原样转）：清单里的那几条卡折成一段（ESC 回退掉的）。
     Branch(SessionBranchPayload),
+    /// 这个会话刚进了那台那条流的「在看」名单（`stream-watch` 应答的一格，壳原样转）：它的这份记录从第 `seq` 行起上流，
+    /// 之前没上流的那段由界面自己补（按行号 / 按骨架）。不进留存：留存在这一拍按它修成「连着的」（见 `event_replay::on_watch_from`）。
+    Watch(SessionWatchPayload),
+    /// 一轮结束（那台后端 `turn_end`，在不在看都发）：系统通知认它，不认行（没在看的会话行不上流）。
+    TurnEnd(SessionTurnEndPayload),
 }
 
 impl SessionStreamFrame {
@@ -176,7 +181,9 @@ impl SessionStreamFrame {
             | SessionStreamFrame::Listed(_)
             | SessionStreamFrame::SnapshotInflight(_)
             | SessionStreamFrame::Runs(_)
-            | SessionStreamFrame::Branch(_) => false,
+            | SessionStreamFrame::Branch(_)
+            | SessionStreamFrame::Watch(_)
+            | SessionStreamFrame::TurnEnd(_) => false,
         }
     }
 
@@ -202,6 +209,8 @@ impl SessionStreamFrame {
             SessionStreamFrame::Ended(p) => Some(&p.session_id),
             SessionStreamFrame::Runs(p) => Some(&p.session_id),
             SessionStreamFrame::Branch(p) => Some(&p.session_id),
+            SessionStreamFrame::Watch(p) => Some(&p.session_id),
+            SessionStreamFrame::TurnEnd(p) => Some(&p.session_id),
             SessionStreamFrame::Batch(_)
             | SessionStreamFrame::Unseen(_)
             | SessionStreamFrame::Listed(_)
@@ -230,6 +239,37 @@ pub struct SessionBranchPayload {
     pub session_id: String,
     #[cfg_attr(test, ts(type = "Array<string>"))]
     pub off: RecordBody,
+}
+
+/// [`SessionStreamFrame::Watch`] 的体：那台后端 `stream-watch` 应答 `from[]` 的一格（原样）。
+#[derive(Debug, Serialize, Clone, PartialEq, Eq)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
+pub struct SessionWatchPayload {
+    pub session_id: String,
+    /// 那份记录在那台机器上的绝对路径。
+    pub path: String,
+    /// 这条流从这一行起发它（与行的 `seq` 同一个行号空间）。
+    #[cfg_attr(test, ts(type = "number"))]
+    pub seq: u64,
+}
+
+/// 界面报「在看」的一格（Tauri 命令 `watch_sessions` 的入参）：哪台的哪个会话。
+#[derive(Debug, serde::Deserialize, Clone, PartialEq, Eq)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub struct WatchedSession {
+    pub origin: crate::origin::Origin,
+    pub session_id: String,
+}
+
+/// [`SessionStreamFrame::TurnEnd`] 的体。
+#[derive(Debug, Serialize, Clone, PartialEq, Eq)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
+pub struct SessionTurnEndPayload {
+    pub session_id: String,
 }
 
 /// [`SessionStreamFrame::SnapshotInflight`] 的体。

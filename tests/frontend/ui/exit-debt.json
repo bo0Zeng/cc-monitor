@@ -15,7 +15,7 @@
       "lang": "rs"
     }
   ],
-  "ceiling": 296,
+  "ceiling": 295,
   "entries": [
     {
       "file": "src/frontend/ui/account-chip.ts",
@@ -495,13 +495,6 @@
     },
     {
       "file": "src/frontend/ui/terminal-page.ts",
-      "rule": "clock",
-      "n": 1,
-      "kind": "第 3 批",
-      "why": "时长 / 时刻 / 大小那一族（时刻按看的人这台的钟；静态的由核心写 `…Text`、会走的走 `{dur}`、大小由核心写 `sizeText`）"
-    },
-    {
-      "file": "src/frontend/ui/turn-notify.ts",
       "rule": "clock",
       "n": 1,
       "kind": "第 3 批",

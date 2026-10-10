@@ -74,4 +74,22 @@ describe("跟着一个会话", () => {
     expect(got).toEqual([{ t: "lines", lines: [line("s1", 1), line("s1", 2)] }]);
     expect(streamFake.subscriptions[0]!.wants).toEqual([2]);
   });
+
+  it("上流点那一格（watch）⇒ 一件 {t: from, path, seq}；别的会话的 · 形状不对的不交；不吃 credit", async () => {
+    const got: FollowEvent[] = [];
+    const h = await followSession("devbox", "s1", (e) => got.push(e));
+    const rec = streamFake.subscriptions[0]!;
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    rec.sink([
+      frame(0, { watch: { session_id: "s1", path: "/p/s1.jsonl", seq: 40 } }),
+      frame(1, { watch: { session_id: "s9", path: "/p/s9.jsonl", seq: 7 } }),
+      frame(2, { watch: { session_id: "s1", path: "/p/s1.jsonl", seq: -1 } }),
+      frame(3, { turn_end: { session_id: "s1" } }),
+      frame(4, { line: line("s1", 40) }),
+    ]);
+    warn.mockRestore();
+    expect(got).toEqual([{ t: "lines", lines: [line("s1", 40)] }, { t: "from", path: "/p/s1.jsonl", seq: 40 }]);
+    expect(rec.wants, "watch · turn_end 不吃 credit：只还那一行").toEqual([1]);
+    h.stop();
+  });
 });

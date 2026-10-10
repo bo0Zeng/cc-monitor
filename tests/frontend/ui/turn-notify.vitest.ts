@@ -5,13 +5,9 @@ vi.mock("../../../src/frontend/ui/behavior", () => ({
   getBehavior: vi.fn().mockResolvedValue({ notifyTurnEnd: true }),
 }));
 
-import { TurnEndNotifier, type TurnNotifyPayload } from "../../../src/frontend/ui/turn-notify";
+import { TurnEndNotifier } from "../../../src/frontend/ui/turn-notify";
 
 const T0 = 1_700_000_000_000;
-
-function endTurnPayload(tsOffsetMs = 0): TurnNotifyPayload {
-  return { record: { t: "reply", at: new Date(T0 + tsOffsetMs).toISOString(), endsTurn: true } };
-}
 
 function makeNotifier(over?: {
   focused?: boolean;
@@ -34,62 +30,40 @@ async function flush(): Promise<void> {
   await Promise.resolve();
 }
 
+// 认的是会话流的 `turn_end` 格（在不在看都来），不是行：调用方（`TabManager.onTurnEnd`）只给 sid 与 tab 名。
 describe("F42 TurnEndNotifier", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("happy path:实时 end_turn + 失焦 → 通知(标题带 tab 名)", async () => {
+  it("happy path:一轮结束 + 失焦 → 通知(标题带 tab 名)", async () => {
     const { n, send } = makeNotifier();
-    n.observe("s1", "[devbox] 项目甲", endTurnPayload(), false);
+    n.observe("s1", "[devbox] 项目甲");
     await flush();
     expect(send).toHaveBeenCalledTimes(1);
     expect(send.mock.calls[0][0]).toContain("项目甲");
   });
 
-  it("批量重放(inBatch)→ 不通知", async () => {
-    const { n, send } = makeNotifier();
-    n.observe("s1", "t", endTurnPayload(), true);
-    await flush();
-    expect(send).not.toHaveBeenCalled();
-  });
-
   it("窗口聚焦 → 不通知", async () => {
     const { n, send } = makeNotifier({ focused: true });
-    n.observe("s1", "t", endTurnPayload(), false);
-    await flush();
-    expect(send).not.toHaveBeenCalled();
-  });
-
-  it("陈旧时间戳(>90s)/缺时间戳 → 不通知", async () => {
-    const { n, send } = makeNotifier();
-    n.observe("s1", "t", endTurnPayload(-120_000), false);
-    n.observe("s1", "t", { record: { t: "reply", endsTurn: true } }, false);
-    await flush();
-    expect(send).not.toHaveBeenCalled();
-  });
-
-  it("不是一轮结束 / 不是回复 → 不通知", async () => {
-    const { n, send } = makeNotifier();
-    n.observe("s1", "t", { record: { t: "reply", at: new Date(T0).toISOString(), endsTurn: false } }, false);
-    n.observe("s1", "t", { record: { t: "said", at: new Date(T0).toISOString() } }, false);
+    n.observe("s1", "t");
     await flush();
     expect(send).not.toHaveBeenCalled();
   });
 
   it("同会话 10s 防抖;不同会话互不影响", async () => {
     const { n, send, state } = makeNotifier();
-    n.observe("s1", "t", endTurnPayload(), false);
+    n.observe("s1", "t");
     state.now = T0 + 5_000;
-    n.observe("s1", "t", endTurnPayload(5_000), false); // 5s 内再来 → 抑制
-    n.observe("s2", "t2", endTurnPayload(5_000), false); // 另一会话不受影响
+    n.observe("s1", "t"); // 5s 内再来 → 抑制
+    n.observe("s2", "t2"); // 另一会话不受影响
     state.now = T0 + 11_000;
-    n.observe("s1", "t", endTurnPayload(11_000), false); // 过窗 → 放行
+    n.observe("s1", "t"); // 过窗 → 放行
     await flush();
     expect(send).toHaveBeenCalledTimes(3);
   });
 
   it("开关关 → 不通知(且不因判定链前段短路而误发)", async () => {
     const { n, send } = makeNotifier({ enabled: false });
-    n.observe("s1", "t", endTurnPayload(), false);
+    n.observe("s1", "t");
     await flush();
     expect(send).not.toHaveBeenCalled();
   });
@@ -97,7 +71,7 @@ describe("F42 TurnEndNotifier", () => {
   it("disable()(viewer 窗口)→ 永不通知", async () => {
     const { n, send } = makeNotifier();
     n.disable();
-    n.observe("s1", "t", endTurnPayload(), false);
+    n.observe("s1", "t");
     await flush();
     expect(send).not.toHaveBeenCalled();
   });
@@ -111,7 +85,7 @@ describe("F42 TurnEndNotifier", () => {
       send,
     });
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    n.observe("s1", "t", endTurnPayload(), false);
+    n.observe("s1", "t");
     await flush();
     expect(send).toHaveBeenCalled();
     expect(warn).toHaveBeenCalled();
@@ -119,10 +93,10 @@ describe("F42 TurnEndNotifier", () => {
   });
 });
 
-// 一轮结束的判定只在后端（`agents/<名>/turn.rs`，与帧 `turn_end` 同一个判定），随记录成品的 `endsTurn` 带来。
-// 界面这一份只读那一格：不许再自己认盘上的停止原因 / 报错标记（那是从前两份判定各自漂开的来源，audit-0805 F12）。
-describe("一轮结束只读后端的 endsTurn", () => {
-  it("turn-notify.ts 的实现区只认 endsTurn，不认盘上的格", async () => {
+// 一轮结束的判定只在后端（`agents/<名>/turn.rs`，帧 `turn_end`）。界面这一份连记录都不读：
+// 不许再自己认盘上的停止原因 / 报错标记，也不许回去认行上的 `endsTurn`（没在看的会话行不上流，认行就漏报）。
+describe("一轮结束只认后端的 turn_end", () => {
+  it("turn-notify.ts 的实现区不读记录", async () => {
     const { readFileSync } = await import("node:fs");
     const { resolve, dirname } = await import("node:path");
     const { fileURLToPath } = await import("node:url");
@@ -132,9 +106,8 @@ describe("一轮结束只读后端的 endsTurn", () => {
     const ts = stripComments(readFileSync(resolve(ROOT, "src/frontend/ui/turn-notify.ts"), "utf8"));
     const impl = ts.slice(ts.indexOf("observe("));
     expect(impl.length, "剥完注释连 observe( 之后都没了 —— 剥法坏了").toBeGreaterThan(200);
-    expect(impl).toContain("endsTurn");
-    for (const raw of ["stop_reason", "end_turn", "isApiErrorMessage", '"assistant"']) {
-      expect(impl, `实现区又在认盘上的 \`${raw}\`：一轮结束的判定只在后端`).not.toContain(raw);
+    for (const raw of ["endsTurn", "record", "stop_reason", "end_turn", "isApiErrorMessage", '"assistant"']) {
+      expect(impl, `实现区又在认记录里的 \`${raw}\`：一轮结束只认后端的 turn_end`).not.toContain(raw);
     }
   });
 });

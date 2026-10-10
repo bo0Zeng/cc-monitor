@@ -944,6 +944,10 @@ window.addEventListener("DOMContentLoaded", async () => {
     },
     // 那台机器的会话流丢了几格 ⇒ 那台的每个 tab 按行号补（`TabManager.onStreamGap`）。
     onStreamGap: (origin) => tabs.onStreamGap(origin),
+    // 一个会话刚进了那台那条流的「在看」名单 ⇒ 没在看那段没上流的补上（`TabManager.onSessionWatch`）。
+    onSessionWatch: (origin, p) => tabs.onSessionWatch(origin, p),
+    // 一轮结束（在不在看都来）⇒ 系统通知。
+    onTurnEnd: (origin, sid) => tabs.onTurnEnd(origin, sid),
   }, {
     streams: machines.map((origin) => ({ origin, kind: "session-lines" })),
     // 每台的中转都住那台的常驻后端 ⇒ 每台都订 tap（与会话行同一份机器清单）。

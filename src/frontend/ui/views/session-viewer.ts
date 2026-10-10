@@ -258,6 +258,11 @@ export class SessionViewer {
   private followSub: { stop(): void } | null = null;
   /** 读完之前流里先来的行（读完再按 `seq` 接上）。 */
   private followBuf: JsonlLinePayload[] = [];
+  /**
+   * 这个会话刚进了这条流的「在看」名单、从第几行起上流（`from` 那一格）；补齐 `[已有, 它)` 之前流里来的行先攒在 `followBuf`
+   * （追加是只往后接的，先接了后面的，前面那段就再也接不上）。
+   */
+  private watchFrom: number | null = null;
   /** 读完之前流里先来的主线外清单（比冷读那一份新：读完就用它）。 */
   private followOff: string[] | null = null;
   private loaded = false;
@@ -351,6 +356,7 @@ export class SessionViewer {
     this.loaded = false;
     this.syncEmpty();
     this.followBuf = [];
+    this.watchFrom = null;
     this.followOff = null;
     this.showNewPill(false);
     // 先订、再读：读的这段时间里写出来的行在流里等着，读完按 `seq` 接上（一行都不漏、重叠的去重）。
@@ -454,9 +460,13 @@ export class SessionViewer {
       requestAnimationFrame(() => void this.maybeFillAbove());
       // 读的这段时间里流里先来的行接上（索引里已经有的按 `seq` 去掉）。
       this.loaded = true;
-      const early = this.followBuf;
-      this.followBuf = [];
-      if (early.length > 0) this.appendLive(early);
+      if (this.watchFrom !== null) {
+        void this.fillToWatch(gen);
+      } else {
+        const early = this.followBuf;
+        this.followBuf = [];
+        if (early.length > 0) this.appendLive(early);
+      }
       this.syncEmpty();
     } catch (e) {
       if (this.loadGeneration !== gen) return;
@@ -566,10 +576,15 @@ export class SessionViewer {
   private onFollow(gen: number, e: FollowEvent): void {
     if (this.loadGeneration !== gen) return;
     if (e.t === "lines") {
-      if (this.loaded) this.appendLive(e.lines);
+      if (this.loaded && this.watchFrom === null) this.appendLive(e.lines);
       else this.followBuf.push(...e.lines);
     } else if (e.t === "gap") {
       if (this.loaded) void this.catchUp(gen);
+    } else if (e.t === "from") {
+      // 刚进了这条流的「在看」名单：从第 seq 行起上流 ⇒ 已有的最后一行之后到 seq 之前那段没上流，按行号补（还没读完 ⇒ 读完那一下补）。
+      if (e.path !== this.opts?.jsonlPath) return;
+      this.watchFrom = e.seq;
+      if (this.loaded) void this.fillToWatch(gen);
     } else if (e.t === "live") {
       if (this.live === e.live) return;
       this.live = e.live;
@@ -593,17 +608,30 @@ export class SessionViewer {
     return Math.max(this.liveLast, (this.skeleton?.ledger.endSeq ?? 0) - 1);
   }
 
-  /** 流里丢了行 / 断过 ⇒ 从已有的最后一行之后按行号读到末尾，接上。 */
-  private async catchUp(gen: number): Promise<void> {
+  /** 补齐上流点之下那段，再把期间攒着的流里的行接上。 */
+  private async fillToWatch(gen: number): Promise<void> {
+    const until = this.watchFrom;
+    if (until === null) return;
+    await this.catchUp(gen, until);
+    if (this.loadGeneration !== gen || this.watchFrom !== until) return; // 期间换了会话 / 又来了一个上流点（那一趟接着做）
+    this.watchFrom = null;
+    const early = this.followBuf;
+    this.followBuf = [];
+    if (early.length > 0) this.appendLive(early);
+  }
+
+  /** 流里丢了行 / 断过 ⇒ 从已有的最后一行之后按行号读到末尾（给了 `until` ⇒ 读到它为止，之后的流接着交），接上。 */
+  private async catchUp(gen: number, until?: number): Promise<void> {
     const o = this.opts;
     if (!o) return;
     let from = this.lastSeq() + 1;
+    if (until !== undefined && from >= until) return;
     try {
       for (;;) {
-        const page = await readLines(o.origin, o.jsonlPath, from, undefined, 15_000);
+        const page = await readLines(o.origin, o.jsonlPath, from, until, 15_000);
         if (this.loadGeneration !== gen || !this.stream) return;
         if (page.payloads.length > 0) this.appendLive(page.payloads);
-        if (page.eof || page.next <= from) return;
+        if (page.eof || page.next <= from || (until !== undefined && page.next >= until)) return;
         from = page.next;
       }
     } catch (e) {
@@ -777,6 +805,7 @@ export class SessionViewer {
     this.followSub = null;
     this.following = false;
     this.followBuf = [];
+    this.watchFrom = null;
     this.followOff = null;
     this.loaded = false;
     this.streamEl?.removeEventListener("scroll", this.onScrollFill);

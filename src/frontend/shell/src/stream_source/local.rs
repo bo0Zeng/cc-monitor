@@ -71,6 +71,8 @@ pub(crate) enum LocalStep {
     Remove { sid: String },
     /// 本机的某样东西变了 ⇒ 交重放缓冲那张订阅表（与远端同一个 `changed`）。
     Changed { topic: String, cell: String },
+    /// 一轮结束（交那台的会话流一格）。
+    TurnEnd { sid: String },
     /// 进 [`LineIntake::notice`]（冲掉残批、交一格出声）。
     Notice {
         sid: String,
@@ -245,6 +247,14 @@ pub(crate) fn local_step(
                 LocalStep::Notice { sid, path, change }
             }
         }
+        // 一轮结束：藏起来的 bg 会话照旧不出声。
+        LocalItem::Frame(InboundFrame::TurnEnd { sid }) => {
+            if hidden.contains(&sid) {
+                LocalStep::Skip
+            } else {
+                LocalStep::TurnEnd { sid }
+            }
+        }
         // 「X 变了」：与 bg 藏不藏无关（界面按主题 · key 取，藏起来的会话本来就没有 tab）。
         LocalItem::Frame(InboundFrame::Changed { topic, cell }) => {
             LocalStep::Changed { topic, cell }
@@ -330,6 +340,9 @@ pub(crate) async fn consume_local(
                 LocalStep::Notice { sid, path, change } => intake.notice(&sid, &path, change).await,
                 LocalStep::Changed { topic, cell } => {
                     replay.changed(&crate::origin::Origin(label.clone()), &topic, cell)
+                }
+                LocalStep::TurnEnd { sid } => {
+                    replay.on_turn_end(&crate::origin::Origin(label.clone()), sid)
                 }
                 LocalStep::Skip => {}
                 LocalStep::Lost => intake.lost().await,

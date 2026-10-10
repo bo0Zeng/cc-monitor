@@ -83,6 +83,22 @@ pub fn classify(v: &Value) -> CodexRecordKind {
     }
 }
 
+/// **一轮的结束**（注册表 `RecordFace.turn_end`，帧 `turn_end` 的判法；这一家只这一处）：`event_msg` 的 `task_complete`
+/// （旧名 `turn_complete`，[`classify`] 归一）⇒ 那一轮的 `turn_id`（帧里的 `uuid`，客户端按它去重）。
+/// 中止轮（`turn_aborted`）不算（静默，与 aterm 同一个决定）；没带 `turn_id` ⇒ 不报（没有去重键）。
+/// 先过子串闸：原文里连 `_complete` 都没有的行（绝大多数）零解析直接回。
+pub(crate) fn turn_end_id(raw: &str) -> Option<String> {
+    if !raw.contains("_complete") {
+        return None;
+    }
+    let v: Value = serde_json::from_str(raw).ok()?;
+    if classify(&v) != CodexRecordKind::TurnComplete {
+        return None;
+    }
+    let (_, payload) = unwrap_envelope(&v)?;
+    payload.get("turn_id")?.as_str().map(str::to_string)
+}
+
 // ─── 文本抽取助手（trap-critical，口径对齐 aterm CodexRecordParser.kt c03e46f）───
 
 /// **数组文本拍平**——Codex 的 `message.content` 与 `custom_tool_call_output.output` **真机恒数组**
