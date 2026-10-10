@@ -144,7 +144,7 @@ export interface RenderContext {
    * 没有 ⇒ 不画。
    */
   /** 这一步还没结果时的样子（会话事实 `pending[]` 里它那一条的 `state` · `why`）；事实里还没有它 ⇒ `undefined`（不画）。 */
-  stepWait?: (call: string) => Pick<PendingCall, "state" | "why"> | undefined;
+  stepWait?: (call: string) => Pick<PendingCall, "state" | "text" | "whyText"> | undefined;
   /** 一串重试的结局（会话事实 `retries`，按首条重试记录的 `id`）；事实里还没有 ⇒ `undefined`。 */
   retryOutcome?: (id: string) => RetryOutcome | undefined;
   needs?: { kind: string; call: string | null; waitedMs: number | null; receivedAt: number } | null;
@@ -601,7 +601,7 @@ function buildToolUseCard(
   // 会话事实已经说了这一步是什么样子 ⇒ 建出来就照画；还没说 ⇒ 不画状态，等事实（不按「没有结果」当在跑）。
   const w = ctx.stepWait?.(block.id);
   const n = ctx.needs;
-  if (w) paintWaiting(line, w.state, n?.call === block.id ? waitedNow(n, Date.now()) : null, n?.kind === "approve", w.why);
+  if (w) paintWaiting(line, w, n?.call === block.id ? waitedNow(n, Date.now()) : null, n?.kind === "approve");
 
   const wrap = document.createElement("div");
   wrap.className = "block-body-wrap";

@@ -605,11 +605,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "hooks-diag",
         // 手动对齐：等每份 watcher 做完（对表 ＋ 打标起 tmux），阻塞档。
         "resync",
-        // 上游选择那份凭据文件的两条：同步文件 I/O（读 / 原子写那一份）。
+        // 上游选择那份凭据文件的写口：同步文件 I/O（原子写那一份）。
         "apikey-key-set",
-        "apikey-read",
-        // 上游选择出的成品：读一份凭据文件 ＋ 装一次表，同步阻塞（「这一发注入什么」那一条随起会话只交一行 `ccm …` 删了）。
-        "apikey-routing",
         // 本机起会话那一行：核一次「新起」的目录在不在（stat），阻塞档。
         "launch-local",
         // 中转那两条（`relay-ensure` / `relay-status`）随脱离 `--relay` 一族删了。
@@ -820,9 +817,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "hooks-diag",         //
         "resync",             //
         "apikey-key-set",
-        "apikey-read",
-        "apikey-routing", //
-        "relay-optin",    // 读一份设置文件 ＋ 一份钥匙文件
+        "relay-optin", // 读一份设置文件 ＋ 一份钥匙文件
         // 起会话那一行：本机那条核一次目录（stat）⇒ 阻塞档；远端那条是纯函数 ⇒ 普通 spawn。
         "launch-local",
         "launch-render-cli",

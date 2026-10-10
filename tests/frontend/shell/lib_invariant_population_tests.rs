@@ -392,9 +392,10 @@ const QUOTE_SITES: &[QuoteRow] = &[
     // 〔§47〕cwd（绝对 · 无 `..` 段）· 启动器 · 透传参数 · 登记备注 · 继承来的三个变量 → 过 `free_text_gate` /
     //   `inherited_gate`（拒绝集只收 NUL / CR / LF，住 `shell_quote_core::free_text_ok`）。剩下的见第四列。
     // resume 接上已在跑的那一个（`Plan::Rejoin`）：名字是 tmux 自己在快照里报的（不是外部输入），只经这一处 quote（同 `Plan::Attach` 那一形）。
+    // 「等于」那一格的短形（`render_short`）只给人看、不进任何 shell：词与 `render_*` 同一份计划（已过上面两道放行判定），带空白的才 quote。
     (
         "src/backend/control/ccm/plan.rs",
-        &["build_among", "join_session", "qarg", "relay_word", "render", "render_container", "render_container_tail", "render_direct"],
+        &["build_among", "join_session", "qarg", "relay_word", "render", "render_container", "render_container_tail", "render_direct", "render_short"],
         &[
             ("src/backend/control/ccm/plan.rs", "validate_tmux_name"),
             ("src/backend/control/ccm/plan.rs", "free_text_gate"),

@@ -47,6 +47,7 @@ use crate::accounts::quota::rotation::{
 };
 use crate::accounts::quota::show;
 use crate::accounts::upstream_select::rotate::{account_ok, Hop};
+use crate::common::cells::Words;
 use crate::stream::inbound::spec::wire;
 use copy_core::copy_text;
 use serde_json::{json, Map, Value};
@@ -168,44 +169,16 @@ pub(crate) fn answer_quota_read(tz: &crate::Tz) -> Answer {
     answer_quota_read_with(&Ctx::here(), crate::accounts::quota::now_unix(), tz)
 }
 
-/// [`answer_quota_read`] 的本体（出口那几遍都在这里：时刻字 · 每号几行 · 开窗那一判 · 号名 / 位名）。
+/// [`answer_quota_read`] 的本体（出口在 [`crate::faces::quota_read::reply_of`]：时刻字按看的那一台的时区 · 每号几行 · 开窗那一判 · 号名 / 位名）。
 pub(crate) fn answer_quota_read_with(ctx: &Ctx, now: u64, tz: &crate::Tz) -> Answer {
-    let mut v = wire::<_, Fail>(&quota_read_with(ctx, now))?;
-    crate::common::time::with_texts_now(&mut v, now, tz);
-    crate::faces::quota_rows::with_rows(&mut v);
-    crate::faces::quota_rows::with_warm(&mut v, tz);
-    crate::accounts::quota::name_words::with_names(&mut v);
-    Ok(v)
+    wire::<_, Fail>(&quota_read_with(ctx, now, tz))
 }
 
-/// `quota-read` 的应答（各格的意思见注册表那一条；时刻旁的 `…Text` 由出口那一下添）。
-#[derive(serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct QuotaRead {
-    state: &'static str,
-    reason: Value,
-    detail: Value,
-    path: Option<String>,
-    now: u64,
-    /// 每条 ＝ 那一条账 ＋ 显示态（两份对象并成一份）。
-    accounts: Vec<Value>,
-    unseen: Vec<Value>,
-    usable_now: Vec<String>,
-    earliest_return: Option<EarliestReturn>,
-    /// 读不出 / 一个号都没有 ⇒ 那一句（`--text` 拼字时放最前）；否则 `null`（[`crate::faces::quota_rows::head_text`]）。
-    text: Option<crate::common::cells::Words>,
-    /// 读不出 ⇒「5h 那一格」写好的字（`5h 读不到`，[`crate::faces::quota_rows::head_five_hour`]）；否则 `null`（每号自己那一格）。
-    five_hour: Option<crate::common::cells::Words>,
-}
+pub(crate) use crate::faces::quota_read::QuotaRead;
 
-/// 被拒 / 超额在兜的号里最早回来的那个。
-#[derive(serde::Serialize)]
-pub(crate) struct EarliestReturn {
-    account: String,
-    at: u64,
-}
-
-pub(crate) fn quota_read_with(ctx: &Ctx, now: u64) -> QuotaRead {
+/// 读这台的额度账、给每个号判显示态，交出口写成成品（时刻字按这台此刻的本地钟）。
+pub(crate) fn quota_read_with(ctx: &Ctx, now: u64, tz: &crate::Tz) -> QuotaRead {
+    use crate::faces::quota_read::{reply_of, Base, Seen, UnseenHead};
     let base = ledger::answer_of(ctx.hop.quota.path(), now);
     let seen = &base.accounts;
     let lib = ctx.hop.library();
@@ -231,7 +204,7 @@ pub(crate) fn quota_read_with(ctx: &Ctx, now: u64) -> QuotaRead {
     };
     let mut usable: Vec<String> = Vec::new();
     let mut earliest: Option<(u64, String)> = None;
-    let mut rows: Vec<Value> = Vec::new();
+    let mut rows: Vec<Seen> = Vec::new();
     for o in seen {
         let sh = shown(&o.agent, &o.account, Some(o));
         if show::usable(&sh) {
@@ -242,49 +215,53 @@ pub(crate) fn quota_read_with(ctx: &Ctx, now: u64) -> QuotaRead {
                 earliest = Some((at, o.account.clone()));
             }
         }
-        let mut row = serde_json::to_value(o).unwrap_or_default();
-        if let (Some(r), Value::Object(m)) = (
-            row.as_object_mut(),
-            serde_json::to_value(&sh).unwrap_or_default(),
-        ) {
-            r.extend(m);
-        }
-        rows.push(row);
+        rows.push(Seen {
+            agent: o.agent.clone(),
+            account: o.account.clone(),
+            seen_at: o.seen_at,
+            reading: serde_json::to_value(&o.reading).unwrap_or(Value::Null),
+            windows_seen: (!o.windows_seen.is_empty())
+                .then(|| serde_json::to_value(&o.windows_seen).unwrap_or(Value::Null)),
+            show: sh,
+        });
     }
-    let unseen: Vec<Value> = lib
+    let unseen: Vec<UnseenHead> = lib
         .accounts
         .iter()
-        .filter(|a| !seen.iter().any(|o| o.agent == LIBRARY_AGENT && o.account == a.id))
+        .filter(|a| {
+            !seen
+                .iter()
+                .any(|o| o.agent == LIBRARY_AGENT && o.account == a.id)
+        })
         .map(|a| {
             let sh = shown(LIBRARY_AGENT, &a.id, None);
             if show::usable(&sh) {
                 usable.push(a.id.clone());
             }
-            let mut one = json!({"agent": LIBRARY_AGENT, "account": a.id, "kind": sh.kind, "login": sh.login});
-            if let Some(id) = sh.sub_id {
-                one["subId"] = json!(id);
+            UnseenHead {
+                agent: LIBRARY_AGENT.to_string(),
+                account: a.id.clone(),
+                kind: sh.kind,
+                login: sh.login,
+                sub_id: sh.sub_id,
+                usage: sh.usage.into(),
             }
-            one
         })
         .collect();
-    let text = crate::faces::quota_rows::head_text(
-        base.state,
-        rows.is_empty() && unseen.is_empty(),
-        base.reason.as_str(),
-    );
-    QuotaRead {
-        text,
-        five_hour: crate::faces::quota_rows::head_five_hour(base.state),
-        state: base.state,
-        reason: base.reason.clone(),
-        detail: base.detail.clone(),
-        path: base.path.clone(),
-        now: base.now,
-        accounts: rows,
+    reply_of(
+        Base {
+            state: base.state,
+            reason: base.reason.clone(),
+            detail: base.detail.clone(),
+            path: base.path.clone(),
+            now: base.now,
+            usable_now: usable,
+            earliest: earliest.map(|(at, account)| (account, at)),
+        },
+        rows,
         unseen,
-        usable_now: usable,
-        earliest_return: earliest.map(|(at, account)| EarliestReturn { account, at }),
-    }
+        &crate::common::time::TextClock::new(now, tz),
+    )
 }
 
 // ── 规则表：读 · 存 · 改名 · 删 · 设为默认 ────────────────────────────────────────────
@@ -357,7 +334,7 @@ fn doing_wire(d: Option<&Doing>) -> Value {
     use crate::agents::SessionActivity as A;
     use crate::observe::facts_query::{needs_words, NeedsKind};
     let activity = d.and_then(|d| d.activity);
-    let (text, tone) = crate::stream::wire::activity_cells(activity);
+    let (text, tone) = crate::stream::wire::ActivityFace::of(activity).words();
     match activity {
         Some(A::NeedsYou) => {
             let kind = d.and_then(|d| d.needs).unwrap_or(NeedsKind::Unknown);
@@ -390,8 +367,21 @@ pub(crate) struct RulesRead {
     detail: Value,
     path: Option<String>,
     default_rule: String,
+    /// 「跟随默认」那一项写好的字（[`follow_words`]）：新建会话面板 · 批量菜单照抄。
+    follow_text: Words,
     /// 每条一项，形状见 [`rule_wire`]。
     rules: Vec<Value>,
+}
+
+/// 「跟随默认」那一句（唯一一处）：默认那条没起名（名字空，或还是起始那条的名字）⇒「跟随默认」；起了名 ⇒「跟随默认（名字）」。
+fn follow_words(default_name: Option<&str>) -> Words {
+    let seed = copy_core::copy_text("beRotation.rule.defaultName", &[]);
+    Words(match default_name.map(str::trim) {
+        Some(n) if !n.is_empty() && n != seed => {
+            copy_core::copy_text("rot.src.followOf", &[("name", n)])
+        }
+        _ => copy_core::copy_text("rot.src.follow", &[]),
+    })
 }
 
 fn rules_wire(ctx: &Ctx) -> RulesRead {
@@ -415,6 +405,7 @@ fn rules_wire(ctx: &Ctx) -> RulesRead {
             .iter()
             .map(|(id, r)| rule_wire(ctx, &book, id, r, &live, &doing))
             .collect(),
+        follow_text: follow_words(book.rules.get(&book.default_rule).map(|r| r.name.as_str())),
         default_rule: book.default_rule,
     }
 }
@@ -1340,25 +1331,35 @@ fn sids_of(args: &Value, key: &str) -> Result<Vec<String>, Fail> {
 /// 出口那一下给每个时刻添好显示的字（同 [`answer_quota_read`]）。
 pub(crate) fn answer_session_read(args: &Value, tz: &crate::Tz) -> Answer {
     let now = crate::accounts::quota::now_unix();
-    let mut v = answer_session_read_with(&Ctx::here(), args, now)?;
+    let mut v = answer_session_read_with(&Ctx::here(), args, now, tz)?;
     crate::common::time::with_texts_now(&mut v, now, tz);
     Ok(v)
 }
 
-pub(crate) fn answer_session_read_with(ctx: &Ctx, args: &Value, now: u64) -> Answer {
+pub(crate) fn answer_session_read_with(
+    ctx: &Ctx,
+    args: &Value,
+    now: u64,
+    tz: &crate::Tz,
+) -> Answer {
     let sids = sids_of(args, "sids")?;
     let (state, why, book) = read_book(ctx);
     let (reason, detail) = crate::stream::detail::unreadable("rotation-session-read", why.as_ref());
     let live = (ctx.live)();
     let lineage = ctx.lineage.now();
+    let clock = crate::common::time::TextClock::new(now, tz);
     let mut sessions = Map::new();
     for sid in sids {
         let agent = book.sessions.get(&sid).map(|s| s.agent.clone());
         let row = |a: &str| agent.as_deref().and_then(|g| (ctx.rows)(g, a));
         let parent = lineage.parent_of(&sid);
-        let one = ctx
+        let mut one = ctx
             .hop
             .view(&book, &sid, parent, &row, &|x| live.contains(x), now);
+        // 此刻那个号的显示态：时刻字与用量那一格按这台此刻的本地钟写（同 `quota-read` 那一处）。
+        if let crate::accounts::quota::rotation::SessionRotationState::Present(p) = &mut one {
+            p.quota.stamp(&clock);
+        }
         sessions.insert(
             sid,
             serde_json::to_value(one).map_err(|e| ("failed", e.to_string()))?,

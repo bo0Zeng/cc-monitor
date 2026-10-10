@@ -737,6 +737,55 @@ pub(crate) const PRODUCTS: &[Product] = &[
         specimens: specimens::session_removed,
         frozen: Frozen::Cells(&["sid", "cause"]),
     },
+    // 额度账（`quota-read`）：手机照每号写好的几行 · 5h 那一格 · 开窗那一句与号名表读。
+    Product {
+        name: "quota_read",
+        tags: &[],
+        specimens: specimens::quota_read,
+        frozen: Frozen::Cells(&[
+            "state",
+            "text",
+            "detail",
+            "usableNow[]",
+            "names.accounts.*",
+            "names.slots.*",
+            "accounts[].account",
+            "accounts[].rows[][].text",
+            "accounts[].rows[][].tone",
+            "accounts[].fiveHour",
+            "accounts[].warm.act",
+            "accounts[].warm.at",
+            "accounts[].warm.text",
+            "unseen[].account",
+            "unseen[].rows[][].text",
+            "unseen[].rows[][].tone",
+            "unseen[].fiveHour",
+            "unseen[].warm.act",
+            "unseen[].warm.at",
+            "unseen[].warm.text",
+        ]),
+    },
+    // 历史清单（`history-list`）：手机照每行写好的标题 · 时刻 · 段头与注解三格读。
+    Product {
+        name: "history_list",
+        tags: &[],
+        specimens: specimens::history_list,
+        frozen: Frozen::Cells(&[
+            "rows[].sessionId",
+            "rows[].label",
+            "rows[].atText",
+            "rows[].sectionText",
+            "rows[].projectPath",
+            "rows[].jsonlPath",
+            "rows[].agent",
+            "rows[].agentTag",
+            "rows[].starred",
+            "rows[].customTitle",
+            "rows[].hidden",
+            "notice",
+            "truncated",
+        ]),
+    },
     Product {
         name: "cell_error",
         tags: &[],
@@ -778,7 +827,7 @@ mod specimens {
     };
     use crate::observe::history_query::IndexRow;
     use crate::stream::wire::{
-        activity_cells, Frame, RemovalCause, SessionContainer, SessionFate, TerminalHost,
+        ActivityFace, Frame, RemovalCause, SessionContainer, SessionFate, TerminalHost,
     };
     use std::collections::BTreeMap;
 
@@ -864,6 +913,8 @@ mod specimens {
                 lines: vec![s("+a")],
             }]),
             patch_truncated: true,
+            text: Words(s("t")),
+            timed: Some(Words(s("{dur}"))),
             preview: some("p"),
             chars: Some(1),
         }
@@ -933,6 +984,7 @@ mod specimens {
                             path: true,
                             note: some("n"),
                             known: true,
+                            text: Some(Words(s("t"))),
                             ask: Some(StepAsk::Questions {
                                 questions: vec![AskQuestion {
                                     header: some("h"),
@@ -954,6 +1006,7 @@ mod specimens {
                             path: true,
                             note: some("n"),
                             known: true,
+                            text: Some(Words(s("t"))),
                             ask: Some(StepAsk::Plan { text: s("p") }),
                         },
                     ),
@@ -1035,6 +1088,8 @@ mod specimens {
                         at_ms: Some(0),
                         state: StepWait::Unclear,
                         why: Some(UnclearWhy::NoWriter),
+                        text: Some(Words(s("t"))),
+                        why_text: Some(Words(s("w"))),
                     }],
                     last_say: Some(LastSay {
                         text: s("t"),
@@ -1048,6 +1103,8 @@ mod specimens {
                         what: some("ls"),
                         since_ms: Some(1),
                         text: Words(s("t")),
+                        head: Words(s("h")),
+                        head_code: some("ls"),
                         tone: crate::common::cells::Tone::Need,
                         rank: 1,
                         waited_ms: Some(1),
@@ -1129,6 +1186,14 @@ mod specimens {
         ))]
     }
 
+    pub(super) fn quota_read() -> Vec<Specimen> {
+        vec![node_of(&crate::faces::quota_read::specimen())]
+    }
+
+    pub(super) fn history_list() -> Vec<Specimen> {
+        vec![node_of(&crate::history::history_list::specimen())]
+    }
+
     pub(super) fn needs_row() -> Vec<Specimen> {
         vec![node_of(&crate::observe::accounts_query::NeedsRow {
             sid: s("s"),
@@ -1139,6 +1204,8 @@ mod specimens {
                 what: some("ls"),
                 since_ms: Some(1),
                 text: Words(s("t")),
+                head: Words(s("h")),
+                head_code: some("ls"),
                 tone: crate::common::cells::Tone::Need,
                 rank: 1,
                 waited_ms: Some(1),
@@ -1179,9 +1246,7 @@ mod specimens {
             name: some("n"),
             path: some("/p"),
             lines: Some(1),
-            activity: Some(activity),
-            activity_text: activity_cells(Some(activity)).0,
-            activity_tone: activity_cells(Some(activity)).1,
+            face: ActivityFace::of(Some(activity)),
             waiting_for: some("w"),
             container: Some(SessionContainer::Hosted {
                 host: TerminalHost::Tmux,
@@ -1208,9 +1273,7 @@ mod specimens {
             .map(|a| {
                 node_of(&Frame::SessionStatus {
                     sid: s("s"),
-                    activity: Some(a),
-                    activity_text: activity_cells(Some(a)).0,
-                    activity_tone: activity_cells(Some(a)).1,
+                    face: ActivityFace::of(Some(a)),
                     waiting_for: some("w"),
                     liveness_confidence: some("heuristic"),
                 })

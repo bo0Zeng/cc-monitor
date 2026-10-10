@@ -434,14 +434,20 @@ export function defaultOps(): Record<string, OpHandler> {
       }
       let needs: { kind: string; tool: string | null; call: string | null; what: string | null; sinceMs: number | null; text: string; tone: string; rank?: number } | null = null;
       // 字照后端 `facts_query::needs_of`（同一张文案表的 `beSession.needs.*`）。
-      const said = (kind: "approve" | "answer" | "plan" | "unknown") => ({ text: copyText(`beSession.needs.${kind}`), tone: "need" });
+      // 字照后端 `needs_words` · `needs_head`（钉条第一行：种类 ＋ 工具名；等宽那一段只批准 · 回答带）。
+      const said = (kind: "approve" | "answer" | "plan" | "unknown", tool: string | null = null, code: string | null = null) => ({
+        text: copyText(`beSession.needs.${kind}`),
+        head: copyText(`needs.bar.${kind}`, { tool: tool ?? "" }),
+        headCode: code,
+        tone: "need",
+      });
       if (s?.activity === "needs_you") {
         const ask = pending.find((p) => p.name === "AskUserQuestion");
         const plan = pending.find((p) => p.name === "ExitPlanMode");
         const sinceMs = s.waitingSinceMs ?? null;
-        if (ask) needs = { kind: "answer", tool: ask.name, call: ask.id, what: ask.what, sinceMs, ...said("answer") };
+        if (ask) needs = { kind: "answer", tool: ask.name, call: ask.id, what: ask.what, sinceMs, ...said("answer", ask.name, ask.what) };
         else if (plan) needs = { kind: "plan", tool: plan.name, call: plan.id, what: null, sinceMs, ...said("plan") };
-        else if (pending[0] && /permission/i.test(s.waitingFor ?? "")) needs = { kind: "approve", tool: pending[0].name, call: pending[0].id, what: pending[0].what, sinceMs, ...said("approve") };
+        else if (pending[0] && /permission/i.test(s.waitingFor ?? "")) needs = { kind: "approve", tool: pending[0].name, call: pending[0].id, what: pending[0].what, sinceMs, ...said("approve", pending[0].name, pending[0].what) };
         else needs = { kind: "unknown", tool: null, call: null, what: null, sinceMs, ...said("unknown") };
       }
       // 已等多久在那台算（同后端 `needs_of`：读 pidfile 那一刻减起点，字由时长那一处写）；没有起点 ⇒ 两格 null。

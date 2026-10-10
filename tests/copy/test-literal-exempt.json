@@ -105,8 +105,7 @@
       { "text": "命令", "use": "非文案" }
     ],
     "tests/frontend/ui/accounts.vitest.ts": [
-      { "text": "后端", "use": "词义" },
-      { "text": "本机", "use": "词义" }
+      { "text": "后端", "use": "词义" }
     ],
     "tests/frontend/ui/agent-window.vitest.ts": [
       { "text": "主会话", "use": "输入" }

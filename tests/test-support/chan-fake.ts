@@ -373,6 +373,8 @@ function productAccount(a: Record<string, unknown>): Record<string, unknown> {
   out.selectable = a.selectable ?? true;
   out.keyMasked = a.keyMasked ?? null;
   out.baseUrl = a.baseUrl ?? null;
+  // 徽章是那台后端写好的一枚（`accounts_query::badge_of`）：夹具不写 ⇒ 给一枚占位（字不当真，判徽章的判据自己写）。
+  out.badge = a.badge ?? { text: "badge", warn: false, title: "" };
   return out;
 }
 

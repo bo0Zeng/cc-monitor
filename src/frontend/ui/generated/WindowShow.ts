@@ -22,13 +22,21 @@ pct?: number,
  */
 resetsAt?: number, 
 /**
- * `resets_at` 写给人看的样子（回包出口 `common::time::with_texts` 添；内部与记账一律不填）。
+ * `resets_at` 写给人看的样子（出口那一下按钟写，[`WindowShow::stamp`]；内部与记账一律不填）。
  */
-resetsAtText?: string, seenAt: number, 
+resetsAtText?: string, 
 /**
- * `seen_at` 写给人看的样子（回包出口 `common::time::with_texts` 添；内部与记账一律不填）。
+ * `resets_at` 距今（同上，只在还没到时有）。
  */
-seenAtText?: string, from: QuotaSource, 
+resetsAtRelText?: string, seenAt: number, 
+/**
+ * `seen_at` 写给人看的样子（同上）。
+ */
+seenAtText?: string, 
+/**
+ * `seen_at` 距今（别台的钟走在前面时才有）。
+ */
+seenAtRelText?: string, from: QuotaSource, 
 /**
  * 重置时刻已过、之后没再看到：上次的数不再作数（用量当 0、窗口没开）。
  */
