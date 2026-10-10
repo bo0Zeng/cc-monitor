@@ -90,10 +90,12 @@ impl Rig {
             Ok(NEW.into())
         };
         let library = || {
-            la::Library::of_product(&json!({ "meta": {"enabled": true}, "accounts": [
-                { "name": "work", "configDir": "/h/.cc/work", "isDefault": true, "mode": "isolated", "exists": true, "authReady": true },
-                { "name": "gone", "configDir": "/h/.cc/gone", "isDefault": false, "mode": "isolated", "exists": false, "authReady": false },
-            ]}))
+            la::Library::of_product(
+                &json!({ "meta": {"enabled": true, "effectiveDefault": "work"}, "accounts": [
+                    { "name": "work", "configDir": "/h/.cc/work", "isDefault": true, "mode": "isolated", "exists": true, "authReady": true, "selectable": true },
+                    { "name": "gone", "configDir": "/h/.cc/gone", "isDefault": false, "mode": "isolated", "exists": false, "authReady": false, "selectable": false },
+                ]}),
+            )
         };
         let last_of = |_: &str| self.last.map(str::to_string);
         let accounts = la::Facts {

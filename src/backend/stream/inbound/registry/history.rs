@@ -67,12 +67,13 @@ pub(super) const SPECS: &[CommandSpec] = &[
     // ⚠ 全在 `Run::Blocking`：它们都做文件 I/O（`history-search` 扫全库）。代价同 `files-*`：
     //   `cancel` 命中时回 `not_cancellable`（不撒谎）。
     // **历史页的平铺清单**（`history_list.rs`）：跨项目一次出成品 —— 每行的状态与「能做什么」· 按项目的分组 · 搜标题 / 第一句 / 项目名。
-    //   远端那一支问那台的 CLI 面 `--history-list`（`raw`：那台自己判活、读上次的号），本进程记着、`fresh` 再问；并注解、筛、排都在这台。
+    //   远端那一份由界面经已开着的长连接问那台常驻 `raw`（那台热缓存）、带着交进来（`listing`），本进程记着给敲字用；并注解、筛、排都在这台。
+    //   这台不替界面去问那台（原先经 `remote_ask` 在那台起一次性进程冷扫）。
     CommandSpec {
         name: "history-list",
         summary: "历史页的平铺会话清单",
-        codes: &["bad_args", "failed", "unreachable"],
-        fields: &[arg("fresh", "可缺席：`true` ⇒ 远端那一台不用记着的、再问一次（开页 · 「刷新」）"), out("groups", "按项目看时的分组（只数 `rows` 里不是 `context` 的）：`key` · `agent` · `projectName` · `projectPath` · `projectDir` · `count` · `hasLive`（`null` = 有判不了活的、又没有确定在跑的）· `starred`（组里有星标的）· `lastActivity` · `order`（几台的组并成一列时的序，大的在前：档位 × 10¹⁴ ＋ 有星标 × 10¹³ ＋ 最后动过的毫秒；界面只按它并）· `failed`（读不了的那个记录目录 ⇒ 一组、`count` 0、带那一句；别的 ⇒ `null`）· `origin`"), arg("hidden", "可缺席：`true` ⇒ 隐藏的也出（默认不出）"), arg("limit", "可缺席：最多回几行（默认 2000，1–20000）；多出的不回、`truncated`"), out("notice", "注解没并上的那句话；`null` = 并上了"), arg("origin", "可缺席：那台的名字（可达表的键）"), arg("query", "可缺席：只留显示标题（`label`）· 第一句 · 项目名里含这几个字的（不分大小写，子串；不比路径、不搜内容 —— 内容走 `history-search`）"), arg("raw", "可缺席：`true` ⇒ 只回**这台自己**的清单 `{rows, failed}`（不并注解、不筛不排、不认别的入参）—— 远端那一支问的就是它"), out("rows", "每会话一行，按 `at` 倒序：`agent` · `agentTag`（行上那一家的小牌，对用户的叫法）· `atText`（行尾那一格）· `sectionText`（分段头）· `spanText`（内容头那一段）—— 这三格按这台本地钟写好，界面照抄"), arg("sort", "可缺席：`activity`（默认，按最后活动）· `created`（按开始）"), out("total", "筛完留下几个（截之前，不含 `context`）"), out("truncated", "`rows` 被 `limit` 截过"), arg("within_days", "可缺席：只留那个键（同 `sort`）落在最近 N 天里的（1–3650）")],
+        codes: &["bad_args", "failed", "no_listing"],
+        fields: &[out("groups", "按项目看时的分组（只数 `rows` 里不是 `context` 的）：`key` · `agent` · `projectName` · `projectPath` · `projectDir` · `count` · `hasLive`（`null` = 有判不了活的、又没有确定在跑的）· `starred`（组里有星标的）· `lastActivity` · `order`（几台的组并成一列时的序，大的在前：档位 × 10¹⁴ ＋ 有星标 × 10¹³ ＋ 最后动过的毫秒；界面只按它并）· `failed`（读不了的那个记录目录 ⇒ 一组、`count` 0、带那一句；别的 ⇒ `null`）· `origin`"), arg("hidden", "可缺席：`true` ⇒ 隐藏的也出（默认不出）"), arg("limit", "可缺席：最多回几行（默认 2000，1–20000）；多出的不回、`truncated`"), arg("listing", "可缺席：那一台（`origin`）自己答的 `raw` 清单原样（界面经长连接问那台常驻拿回来）；本进程记着、换掉旧的。缺 ⇒ 用记着的那份，没记着 ⇒ `no_listing`；不带 `origin` / 没有 `rows` 数组 ⇒ `bad_args`"), out("notice", "注解没并上的那句话；`null` = 并上了"), arg("origin", "可缺席：那台的名字（`listing` 是它的；行与组都标上它）"), arg("query", "可缺席：只留显示标题（`label`）· 第一句 · 项目名里含这几个字的（不分大小写，子串；不比路径、不搜内容 —— 内容走 `history-search`）"), arg("raw", "可缺席：`true` ⇒ 只回**这台自己**的清单 `{rows, failed}`（不并注解、不筛不排、不认别的入参）—— 远端那一份就是那台常驻答的它"), out("rows", "每会话一行，按 `at` 倒序：`agent` · `agentTag`（行上那一家的小牌，对用户的叫法）· `atText`（行尾那一格）· `sectionText`（分段头）· `spanText`（内容头那一段）—— 这三格按这台本地钟写好，界面照抄"), arg("sort", "可缺席：`activity`（默认，按最后活动）· `created`（按开始）"), out("total", "筛完留下几个（截之前，不含 `context`）"), out("truncated", "`rows` 被 `limit` 截过"), arg("within_days", "可缺席：只留那个键（同 `sort`）落在最近 N 天里的（1–3650）")],
         takes_input: true,
         run: Run::Async(|r| {
             Box::pin(async move {

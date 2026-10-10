@@ -1,0 +1,16 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>CyclomaticComplexMethod:ClaudeReadingPane.kt:@Composable private fun ToolCallCard</ID>
+    <ID>CyclomaticComplexMethod:HostScreens.kt:@Composable fun HostEditorScreen</ID>
+    <ID>IgnoredReturnValue:SessionTabManager.kt:SessionTabManager$remove(hostId to sessionId)</ID>
+    <ID>LongMethod:ClaudeReadingPane.kt:@Composable private fun ToolCallCard</ID>
+    <ID>LongMethod:ClaudeSampleData.kt:fun sampleRenderUnits: List&lt;RenderUnit&gt;</ID>
+    <ID>LongMethod:HostScreens.kt:@Composable fun HostEditorScreen</ID>
+    <ID>RedundantSuspendModifier:HostViewModel.kt:HostViewModel$suspend</ID>
+    <ID>RedundantSuspendModifier:ReadingPaneViewModel.kt:ReadingPaneViewModel$suspend</ID>
+    <ID>UnreachableCode:ReadingPaneViewModel.kt:ReadingPaneViewModel$_sessions.value = mergePinned(labeled.map { JsonlSession(it.path, it.title) })</ID>
+    <ID>UnsafeCallOnNullableType:SftpScreen.kt:context.contentResolver.openInputStream(uri)!!</ID>
+  </CurrentIssues>
+</SmellBaseline>

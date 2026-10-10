@@ -4,9 +4,9 @@
  * 数据源：那台机器的后端 `tasks-list`（本机与远端同一条路，按 `origin` 问）。
  * Tab 创建时**经通道直接问**（`chan.call(origin, "tasks-list")`），后端出成品 `{tasks}`，
  * 这里按形状严格收（{@link decodeTasks}；字段语义只住后端 `observe/tasks_query.rs::task_entry`）。
- * **变更推送本机远端同形**：那台后端自己盯任务目录，变了发 `tasks_changed{sid}` 帧；
- * monitor 交进通道 `subscribe(origin, "session-tasks")`（{@link SESSION_TASKS_KIND}），界面收到那个 sid 就重问一次
- * （{@link tasksChangedItems} 读那一批格）。monitor 自己那条 notify 与 `task-update` 事件删了。
+ * **变更推送本机远端同形**：那台后端自己盯任务目录，变了发 `changed {tasks, key: sid}` 帧；
+ * monitor 交进通道 `subscribe(origin, "changed/tasks")`（`changed-stream.ts`），界面收到那个 sid 就重问一次
+ * （`changed-stream.ts::changedItems` 读那一批格）。monitor 自己那条 notify 与 `task-update` 事件删了。
  * 「被切到的那一刻 / 抽屉开到这一页的那一刻」现问一次那条照旧（兜住订阅建立之前那一窗）。
  * sid → origin 由 {@link fetchSessionTasks} 记下（Tab 创建时那一次就带着 origin）。
  *
@@ -44,8 +44,6 @@ export type TaskEntry = {
   blockedBy: string[];
 };
 
-// `session-tasks` 那条流的串与读格函数住叶子模块 `src/frontend/ui/tasks-stream.ts`（`events.ts` 也要它，避免 import 成环）。
-export { SESSION_TASKS_KIND, SESSION_TASKS_WINDOW, tasksChangedItems } from "./tasks-stream";
 
 /** 一个任务行前面那颗图标（状态 ⇒ 图标名）。 */
 function statusIconName(status: string): IconName {

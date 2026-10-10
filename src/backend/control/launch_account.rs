@@ -26,7 +26,6 @@ pub(crate) enum Asked {
 pub(crate) struct Candidate {
     pub(crate) name: String,
     pub(crate) config_dir: Option<String>,
-    pub(crate) is_default: bool,
     /// 能拿来起会话：隔离模式 · 鉴权前提就绪 · 目录在 · 有账号目录（账号 0 恒不在此列）。
     pub(crate) usable: bool,
 }
@@ -36,6 +35,8 @@ pub(crate) struct Candidate {
 pub(crate) struct Library {
     pub(crate) known: bool,
     pub(crate) accounts: Vec<Candidate>,
+    /// 这台的默认号（成品 `meta.effectiveDefault`：规则住 `acct_core::effective_default`，这里不另判）。
+    pub(crate) default: Option<String>,
 }
 
 impl Library {
@@ -46,19 +47,22 @@ impl Library {
             .as_array()
             .map(|a| a.iter().filter_map(candidate_of).collect())
             .unwrap_or_default();
-        Library { known, accounts }
+        let default = v["meta"]["effectiveDefault"].as_str().map(str::to_string);
+        Library {
+            known,
+            accounts,
+            default,
+        }
     }
 
     fn usable(&self, name: &str) -> Option<&Candidate> {
         self.accounts.iter().find(|a| a.name == name && a.usable)
     }
 
-    /// 这台的默认号：manifest 里 `isDefault` 的第一个，没有 ⇒ 第一个。
+    /// 这台的默认号（成品写好的那一格）。
     fn default_one(&self) -> Option<&Candidate> {
-        self.accounts
-            .iter()
-            .find(|a| a.is_default)
-            .or_else(|| self.accounts.first())
+        let d = self.default.as_deref()?;
+        self.accounts.iter().find(|a| a.name == d)
     }
 
     /// 要的号选不了时给的那个显式替代：默认号（能用、且不是要的那个）；清单读不出 ⇒ 没有。
@@ -75,14 +79,11 @@ fn candidate_of(a: &Value) -> Option<Candidate> {
         .as_str()
         .filter(|d| !d.is_empty())
         .map(str::to_string);
-    let usable = a["mode"].as_str() == Some("isolated")
-        && a["authReady"].as_bool() == Some(true)
-        && a["exists"].as_bool() == Some(true)
-        && config_dir.is_some();
+    // 能不能用是成品写好的那一格（`acct_core::account_selectable`），这里不另判。
+    let usable = a["selectable"].as_bool() == Some(true) && config_dir.is_some();
     Some(Candidate {
         name,
         config_dir,
-        is_default: a["isDefault"].as_bool() == Some(true),
         usable,
     })
 }

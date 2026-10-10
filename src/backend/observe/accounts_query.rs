@@ -113,7 +113,7 @@ fn manifest_path(accts_dir: &Path) -> PathBuf {
     accts_dir.join(ACCOUNTS_MANIFEST_NAME)
 }
 
-/// **这台机器上**那份账号 manifest 在哪（与 `--list-accounts` 读的是同一份）。watcher 盯着它、变了发 `accounts_changed`。
+/// **这台机器上**那份账号 manifest 在哪（与 `--list-accounts` 读的是同一份）。watcher 盯着它、变了发 `changed {accounts}`。
 pub(crate) fn default_manifest_path() -> PathBuf {
     manifest_path(&resolve_accts_dir())
 }
@@ -282,7 +282,8 @@ fn scan_accounts(
                 updated_at: serde_json::Value,
                 shared_store: serde_json::Value,
                 count: usize,
-                err_text: serde_json::Value| {
+                err_text: serde_json::Value,
+                effective_default: serde_json::Value| {
         let mut m = serde_json::Map::new();
         m.insert("enabled".into(), enabled.into());
         m.insert("acctsDir".into(), accts_dir.to_string_lossy().into());
@@ -299,6 +300,8 @@ fn scan_accounts(
             "nextDefault".into(),
             json_str(next_default(accts_dir).as_deref()),
         );
+        // 这台的默认号是谁（标了的第一个，没标 ⇒ 第一个）：规则只住 `acct_core::effective_default`，界面与起会话都读这一格。
+        m.insert("effectiveDefault".into(), effective_default);
         m
     };
     match load_manifest(accts_dir) {
@@ -309,6 +312,7 @@ fn scan_accounts(
                 serde_json::Value::Null,
                 0,
                 e.into(),
+                serde_json::Value::Null,
             ),
             Vec::new(),
         ),
@@ -347,26 +351,35 @@ fn scan_accounts(
                     auth_kind_from_manifest(a.auth_kind.as_deref()),
                     in_apikey_table,
                 );
+                let mode = a.mode.clone().unwrap_or_else(|| "isolated".into());
+                let exists = match &probe_dir {
+                    Some(d) if a.config_dir.is_some() => d.is_dir(),
+                    _ => a.config_dir.is_none(),
+                };
+                let ready = auth_ready(auth_kind, credentials_present);
                 lines.push(serde_json::json!({
                         "name": a.name,
                         "email": a.email.clone().unwrap_or_default(),
                         "configDir": cfg_out,
                         "isDefault": a.is_default,
-                        "mode": a.mode.clone().unwrap_or_else(|| "isolated".into()),
+                        "mode": mode,
                         // 账号 0 恒 exists（「裸起」这个状态永远可达）；有 configDir 的看目录在不在。
-                        "exists": match &probe_dir {
-                            Some(d) if a.config_dir.is_some() => d.is_dir(),
-                            _ => a.config_dir.is_none(),
-                        },
+                        "exists": exists,
                         // 仅 stat `.credentials.json` 存在性，不代表凭据有效；可用性走 `authReady`。
                         "loggedIn": credentials_present,
                         // 订阅 / api-key。manifest 缺这个键 ⇒ 订阅。
                         "authKind": auth_kind,
                         // 鉴权方式这一维不阻塞它被选中；不等于真能连上（界面要把这个状态说出来）。
-                        "authReady": auth_ready(auth_kind, credentials_present),
+                        "authReady": ready,
+                        // 能拿来起会话 / 选为默认：规则只住 `acct_core::account_selectable`，界面与起会话都读这一格。
+                        "selectable": acct_core::account_selectable(&mode, ready, exists, a.config_dir.is_some()),
                 }));
             }
             let count = lines.len();
+            let effective_default = acct_core::effective_default(&lines, |a| {
+                a["isDefault"] == serde_json::Value::Bool(true)
+            })
+            .map_or(serde_json::Value::Null, |a| a["name"].clone());
             (
                 meta(
                     true,
@@ -374,6 +387,7 @@ fn scan_accounts(
                     json_str(m.shared_store.as_deref()),
                     count,
                     serde_json::Value::Null,
+                    effective_default,
                 ),
                 lines,
             )

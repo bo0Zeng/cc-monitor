@@ -4,10 +4,8 @@ import {
   mapWithLimit,
   collectAccountRows,
   createEventRefresher,
-  accountsChangedItems,
   type HostFetchers,
 } from "../../../src/frontend/ui/session-accounts-poll";
-import type { Item } from "../../../src/comms/inward/chan";
 import type { RemoteHostConfig } from "../../../src/frontend/ui/remote-config";
 import type { AccountsState, SessionAccount } from "../../../src/frontend/ui/accounts";
 
@@ -260,36 +258,6 @@ describe("createEventRefresher（C1：替掉 10 秒轮询）", () => {
     expect(r.failures).toBe(2);
     expect(errs.every((m) => m.includes("boom"))).toBe(true);
   });
-});
-
-/**
- * **账号那一格经通道订**（`accounts-changed`）—— 替掉裸事件 `remote-backend-ready`。
- * 订阅本身与会话行 · tap 同一处（`events.ts::bindEvents`，那一半的判据在 `events-tap.vitest.ts` 的 DL1 那组）；
- * 这里判「一批格是什么意思」（`accountsChangedItems`，纯函数）。读源码的两条（kind 串两侧对拍 · main.ts 零裸事件）
- * 住 `generated-boundary-guard.vitest.ts` 的 DL1 那组（扫描层，`test_tiers` 分区：本文件留在单元层）。
- *
- * 守的要求：「前端只有两个动作：`call` · `subscribe`」；（订阅不失败，看不见 ⇒ `unseen`）·
- * `§3.3.4`（丢必须说：`gap`）。期望手写。
- */
-describe("accountsChangedItems（DL1：remote-backend-ready 迁 subscribe）", () => {
-  const frame: Item = { t: "frame", seq: 0, body: '{"accounts_changed":true}' };
-  const seen: Item = { t: "seen", from: null };
-  const gap: Item = { t: "gap", fromSeq: 0, toSeq: 2 };
-  const unseen: Item = { t: "unseen", at: { idx: 1, tag: "read" }, why: "Dropped" };
-  const closed: Item = { t: "closed", by: { ours: "Broken" } };
-
-  it("★ seen / frame / gap ⇒ 要刷；unseen / closed ⇒ 不刷（两向）", () => {
-    for (const it of [seen, frame, gap]) expect(accountsChangedItems([it]).changed, it.t).toBe(true);
-    for (const it of [unseen, closed]) expect(accountsChangedItems([it]).changed, it.t).toBe(false);
-    expect(accountsChangedItems([])).toEqual({ changed: false, frames: 0 });
-  });
-
-  it("★ 一批里几格都只算一次「要刷」；只有 frame 占 credit", () => {
-    expect(accountsChangedItems([seen, frame, frame, gap, unseen])).toEqual({ changed: true, frames: 2 });
-    expect(accountsChangedItems([seen, gap])).toEqual({ changed: true, frames: 0 });
-    expect(accountsChangedItems([unseen, closed])).toEqual({ changed: false, frames: 0 });
-  });
-
 });
 
 describe("「上次用哪个号起的」每台各问一次那台，并起来", () => {

@@ -6,7 +6,7 @@
  * - `accounts-trust` ⇒ [`decodeTrust`]：`{trusted, known}`。
  *
  * 为什么单独一个文件：`tests/frontend/ui/account-availability-guard.vitest.ts`（KAY4）数着「生产段里谁在读账号的鉴权字段」——
- * 收成品那一格必须逐字段核类型（读到了才核得了），它是**收**，不是**判**：可用性仍只由 `accounts.ts::isSelectable` 答。
+ * 收成品那一格必须逐字段核类型（读到了才核得了），它是**收**，不是**判**：可用性由那台后端写好（`selectable`，规则住 `acct_core::account_selectable`）。
  * 放在这里、在那张登记表里单独一行，两件事分得开。
  * 跨语言金样 `tests/__fixtures__/accounts.golden.json` 钉着后端出的形状与这里收的形状（`tests/frontend/ui/accounts-decode.vitest.ts`）。
  */
@@ -37,7 +37,7 @@ export function decodeAccountsList(v: unknown): {
   const m = v.meta;
   if (
     !isObj(m) ||
-    !exactKeys(m, ["enabled", "acctsDir", "manifestPath", "updatedAt", "sharedStore", "count", "error", "unsupported", "nextDefault", "home"]) ||
+    !exactKeys(m, ["enabled", "acctsDir", "manifestPath", "updatedAt", "sharedStore", "count", "error", "unsupported", "nextDefault", "effectiveDefault", "home"]) ||
     typeof m.enabled !== "boolean" ||
     typeof m.acctsDir !== "string" ||
     typeof m.manifestPath !== "string" ||
@@ -47,6 +47,7 @@ export function decodeAccountsList(v: unknown): {
     !nullableStr(m.error) ||
     !nullableStr(m.unsupported) ||
     !nullableStr(m.nextDefault) ||
+    !nullableStr(m.effectiveDefault) ||
     !nullableStr(m.home)
   ) {
     return bad("meta");
@@ -66,6 +67,7 @@ export function decodeAccountsList(v: unknown): {
         "loggedIn",
         "authKind",
         "authReady",
+        "selectable",
         "keyMasked",
         "baseUrl",
       ]) ||
@@ -78,6 +80,7 @@ export function decodeAccountsList(v: unknown): {
       typeof a.loggedIn !== "boolean" ||
       !AUTH_KINDS.includes(a.authKind as AuthKind) ||
       typeof a.authReady !== "boolean" ||
+      typeof a.selectable !== "boolean" ||
       !nullableStr(a.keyMasked) ||
       !nullableStr(a.baseUrl)
     ) {
@@ -93,6 +96,7 @@ export function decodeAccountsList(v: unknown): {
       loggedIn: a.loggedIn,
       authKind: a.authKind as AuthKind,
       authReady: a.authReady,
+      selectable: a.selectable,
       keyMasked: a.keyMasked,
       baseUrl: a.baseUrl,
     };
@@ -107,6 +111,7 @@ export function decodeAccountsList(v: unknown): {
     error: m.error,
     unsupported: m.unsupported,
     nextDefault: m.nextDefault,
+    effectiveDefault: m.effectiveDefault,
     home: m.home,
   };
   return { meta, accounts, notice: v.notice };

@@ -65,7 +65,7 @@ export class TabStore {
   accountLastByS = new Map<string, string>();
   /** 账号可查询的远端 origin 集（available）。只有这些 origin 的会话才显徽章。 */
   accountReadyOrigins = new Set<string>();
-  /** origin → 当前账号名：会话账号 == 它 → 不挂徽章。只放 isSelectable 的账号（main.ts 过滤）：拿不可选的号说「你不一致」是假信息。 */
+  /** origin → 当前账号名：会话账号 == 它 → 不挂徽章。只放选得了的账号（`selectable`）（main.ts 过滤）：拿不可选的号说「你不一致」是假信息。 */
   currentByOrigin = new Map<string, string>();
   activeId: string | null = null;
   /** 是否在批模式（启动重放期间）：惰性高亮、旧记录收纳不建卡。 */

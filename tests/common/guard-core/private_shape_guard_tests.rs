@@ -7,7 +7,8 @@
 //! ③ `src/` 下的记忆链接 `[[小写-连字符-名字]]`；
 //! ④ 邮箱 —— 域名只许是保留给例子的（[`EXAMPLE_DOMAINS`] 或保留顶级域）。
 //!
-//! 人群：`git ls-files` 的全部文本文件，跳过锁文件、第三方许可汇编、`src/vendor/`（别人的代码，原样收）。
+//! 人群：`git ls-files` 的全部文本文件，跳过锁文件、第三方许可汇编、`src/vendor/`（别人的代码，原样收）、
+//! `src/mobile/libs/LICENSES/`（随仓放进来的第三方二进制的许可全文，原样收，里面是原作者的署名）。
 //! 点名的那份清单不在仓里：它住在门禁外面，由发版的人另跑。
 //!
 //! 买不到：不落在这几种形状上的私人信息（机器名、账号名本身没有形状可认）。
@@ -30,7 +31,7 @@ const FILE_EXTS: &[&str] = &["png", "svg", "jpg", "jpeg", "ico", "webp", "gif"];
 
 const LOCK_FILES: &[&str] = &["Cargo.lock", "package-lock.json"];
 const SKIP_FILES: &[&str] = &["THIRD-PARTY-NOTICES.txt"];
-const SKIP_DIRS: &[&str] = &["src/vendor/"];
+const SKIP_DIRS: &[&str] = &["src/vendor/", "src/mobile/libs/LICENSES/"];
 
 fn repo() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))

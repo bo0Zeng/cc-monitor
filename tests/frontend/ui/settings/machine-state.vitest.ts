@@ -93,7 +93,7 @@ describe("机器状态成品", () => {
 describe("列表那一行右侧那一句：这一次没问到 ⇒ 画上次的", () => {
   it("★ 没问到而有上次的 ⇒ 照上次的说；也没有上次的 ⇒ 空着", async () => {
     const { accountsSummary } = await import("../../../../src/frontend/ui/settings/remote-section");
-    const meta = { enabled: true, unsupported: false } as never;
+    const meta = { enabled: true, unsupported: false, effectiveDefault: "work" } as never;
     const acct = (name: string, isDefault: boolean) => ({ name, isDefault }) as never;
     const down = { origin: "gpu-01", available: false, error: "x", oldBackend: false, meta: null, accounts: [], notice: null };
     expect(accountsSummary({ ...down, last: { meta, accounts: [acct("work", true), acct("b", false)], atMs: 1 } }, "Linux")).toBe(

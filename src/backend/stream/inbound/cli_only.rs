@@ -8,7 +8,7 @@ pub const CLI_ONLY_DOCS: &[(&str, &str, &str)] = &[
     ("backend-probe", "", "能力探测：回 `{proto, buildId, commands}`，`commands` 是这台真能派发的 CLI 控制面子命令；不读 stdin"),
     ("find-in-session", "[--include-tools] [--limit <n>] --query <q> <jsonl>", "在一份会话里找一段文字：头 `{kind:\"session_find\",v:1}` · 每条命中 `{uuid, kind, before, matched, after, turn, tsMs, tsText}`（`tsText` ＝ 那条的时刻按这台本地钟写好） · 尾 `{kind:\"session_find_end\",count,total}`；`limit` 缺省 500、封顶 2000"),
     ("fork-session", "<args>", "从某条消息处分叉出一个新会话文件，出参 `ForkResult`（见下）"),
-    ("list-accounts", "", "账号清单：首行 `{kind:\"accounts-meta\", enabled, acctsDir, manifestPath, updatedAt, sharedStore, count, error, unsupported, nextDefault}`，其后每号一行 `{name, email, configDir, isDefault, mode, exists, loggedIn}`；没启用多账号 ⇒ `enabled:false`、退出 0"),
+    ("list-accounts", "", "账号清单：首行 `{kind:\"accounts-meta\", enabled, acctsDir, manifestPath, updatedAt, sharedStore, count, error, unsupported, nextDefault, effectiveDefault}`，其后每号一行 `{name, email, configDir, isDefault, mode, exists, loggedIn, authKind, authReady, selectable}`；没启用多账号 ⇒ `enabled:false`、退出 0"),
     ("list-projects", "", "项目清单：每行 `{dirName, projectPath, sessionCount, lastActivityMs}`；工作目录在 `~/.cc-monitor/autostart/` 下的会话不出"),
     ("list-sessions", "<project_dir>", "一个项目的会话：每行 `{sessionId, jsonlPath, startedAtMs, updatedAtMs, messageCountApprox, firstUserExcerpt, aiTitle, cwd}`"),
     ("list-user-inputs", "[--from <offset>] <jsonl>", "「你说过的话」：头 `{kind:\"user_inputs\",v:1,from}` · 每条 `{uuid, timestamp, excerpt}`（对话序）· 尾 `{kind:\"user_inputs_end\",count,end}`；`end` 是下次增量的 `--from`；`offset` 过了文件尾 ⇒ 退出 2"),

@@ -42,28 +42,14 @@ export CC_BUS_HOME="$SANDBOX/cc-bus"
 # 预信任会写这两个文件——重定向到沙箱，绝不碰真实用户配置。
 export CCM_CLAUDEJSON="$SANDBOX/claude.json"
 export CCM_CODEXTOML="$SANDBOX/codex-config.toml"
-# ★★ 🔴 〔`K-P2` `F` 拍 09-04；用@「**ccm不要管找不到, 统一走后端**」〕**本套件必须自带一份后端。**
-#
-# `cc-spawn` 起会话是**经 `ccm --tmux-base`** 的（这套件的正题就是那条上提）。
-# 而 `ccm` 的两条腿 —— **账号解析** 与 **`--tmux` 建会话** —— 从此都没有本地退路：
-# 问不到后端就 `exit 4`。不带后端的话，本套件 72 条里 41 条连锁失败（现打过），
-# 而它们红的原因（这台机器没装后端）与它们要测的东西（cc-spawn 有没有把活交给 ccm）**无关**。
-# ⇒ 与 `tmux` shim / 假 launcher 同一条既有纪律：**要测的变量之外的东西，套件自己钉住**。
-# ⚠ `tests/e2e/fake-backend.sh` 里的 `tmux` 走 **PATH** ⇒ 落在上面那个 `-L $SOCK` 的 shim 上，
-#   隔离面一格没变（它碰不到用户的 tmux server）。
+# 后端就是 `ccm` 本体（下面 `CCM_BIN` 钉住本工作树刚 build 出来的那一份），不再自带假后端。
 # ⚠ `HOME` 换成沙箱里一个空目录：账号库跟着家目录走（`<家>/.cc-monitor/accounts/`），空家目录 = 没有账号库
 #   ⇒ ccm 退化为基座启动器、不注入账号，本套件要测的那一面因此干净；同时**绝不摸**开发者真实的账号库。
-# `FAKE_BACKEND_TMUX_SOCK` 与本套件的 `-L $SOCK` **给同一个名字**（理由同上：那份假后端
-# 自带选择器且 fail-closed；shim 会再插一个，tmux 取最后一个）。
-export FAKE_BACKEND_TMUX_SOCK="$SOCK"
 REAL_HOME="$HOME"; export HOME="$SANDBOX/home"; mkdir -p "$HOME"
 
 # ★★ 🔴 `K-R48` 第二拍（09-11）：**`ccm` 就是后端二进制本体，`shared/ccm` 那个脚本删了。**
 #   〔用@09-11 `K33`〕逐字「后端**只有一个**…**不要有什么 bash 脚本**，**不要有什么单独的 ccm**」。
-#   ⇒ 上一行原来的 `export CCM_BACKEND_BIN="$REPO/tests/e2e/fake-backend.sh"`（给 bash `ccm` 一个
-#   跨进程问得到的后端）**整条删了**：今天没有那一跳，账号表由后端在家目录下直接读。
-#   ⇒ `cc-spawn` 的查找次序刻意**不认** `$CCM_BACKEND_BIN`（它在仓里指的是假后端），
-#   所以这里用 `CCM_BIN` 显式钉住本工作树刚 build 出来的那一份。
+#   ⇒ 今天没有「问另一个后端」那一跳，账号表由后端在家目录下直接读；这里用 `CCM_BIN` 显式钉住本工作树刚 build 出来的那一份。
 # 🔴 **fail-closed**：没 build 就响亮退出，不许静默回落到 PATH 上碰巧有的那一份。
 CCM_NATIVE="${CARGO_TARGET_DIR:-$REPO/.build/backend}/debug/cc-monitor-backend"
 [ -x "$CCM_NATIVE" ] || {
@@ -203,11 +189,6 @@ chmod +x "$BIN8/tmux"
 mkdir -p "$WORK/inh"
 (
   export PATH="$BIN8:$PATH"
-  # ⚠ **假后端那个 socket 也要跟着换**：它自带 `-L`（fail-closed，
-  #   见 `tests/e2e/fake-backend.sh` 头注），而 shim 插的 `-L` 在它**前面** ⇒ tmux 取最后一个
-  #   ⇒ 不换的话会话会落回 `$SOCK`，本格那个「现起一个 server」的前提当场不成立
-  #   （现打逮到过：本格两条一起红，而红的原因与它要测的东西无关）。
-  export FAKE_BACKEND_TMUX_SOCK="$SOCK8"
   # 该 socket 上尚无 server → 这次调用会**现起**一个，从而把 CC_BUS_ID 带进 server 全局环境
   CC_BUS_ID=STALEPARENT timeout 30 "$CCSPAWN" --tool codex "$WORK/inh" > "$WORK/out5.txt" 2>&1
 )

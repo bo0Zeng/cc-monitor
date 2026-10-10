@@ -97,7 +97,7 @@ fn extracting_cwd_from_a_jsonl_head_now_lives_in_exactly_one_place() {
 //   这里原先驱动 monitor 那一份实现的几组判据随被测函数一起退役，它们钉的性质各自在新家有判据（逐条对应）：
 //   - `K-R97` 本机清单来自后端那一行 · 本机判活答真值 · 远端只问一次（`the_local_project_list_is_whatever_the_backend_said` 那一组〔散文墓碑〕）
 //     ⇒ 后端 `tests/backend/history/history_list_tests.rs`（`the_machine_listing_carries_group_dir_failures_synth_and_last_accounts` ·
-//     `a_real_record_tree_becomes_the_machine_listing` · `a_remote_is_asked_raw_once_and_cached_until_fresh`）；
+//     `a_real_record_tree_becomes_the_machine_listing` · `a_remote_listing_is_handed_in_and_kept_for_typing`）；
 //     「本机后端不在 ≠ 一个项目都没有」⇒ 通道的失败层级（`src/frontend/ui/history-reads.ts` 抛、界面说「加载失败」），判据 `tests/frontend/ui/history-reads.vitest.ts`；
 //   - `K-R92` 分得开「不知道」与「真的是 0」· 「不知道」自成一档排序（`the_three_counts_can_say_i_do_not_know` 那两条〔散文墓碑〕）
 //     ⇒ 后端 `history_list_tests.rs`（`unreadable_annotations_say_so_and_the_rows_still_come` · `groups_rank_live_then_starred_then_recent_and_keep_failed_dirs`）；

@@ -107,7 +107,6 @@ const E2E_SUPPORT: &[&str] = &[
     "tests/e2e/assert-pass-floor.sh",
     "tests/e2e/backend-wrapper.sh",
     "tests/e2e/ccm-shim.sh", // 把编出来的后端二进制以 `ccm` 之名放上 PATH ＋ 沙箱 HOME（真跑那一行 `ccm …` 的几套 source 它）
-    "tests/e2e/fake-backend.sh",
     "tests/e2e/fake-claude",
     "tests/e2e/gen-idle-tmux.sh",
     "tests/e2e/launch-render-emit.sh", // 生产 Rust 渲染器给 e2e 的出口（`launch-render-driver.ts` 调它）

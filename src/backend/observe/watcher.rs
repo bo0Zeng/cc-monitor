@@ -56,7 +56,7 @@
 //! ★ 留这段话是因为**「未登记的缺陷」比「登记过的取舍」更难发现** ——
 //! 当时那条头注读起来完全像一条深思熟虑的取舍。
 
-use crate::stream::wire::{Frame, LostFrame, RemovalCause, RereadWhy, SeqCounter};
+use crate::stream::wire::{Frame, LostFrame, RemovalCause, RereadWhy, SeqCounter, Topic};
 use notify::RecursiveMode;
 use notify_debouncer_mini::{new_debouncer, DebounceEventResult};
 use std::collections::{HashMap, HashSet};
@@ -555,7 +555,7 @@ struct HomeEars {
     agent_home: PathBuf,
     projects: PathBuf,
     sessions: PathBuf,
-    /// `<agent 家>/tasks/`（递归）：会话的任务清单变了 ⇒ 一帧 `tasks_changed{sid}`。
+    /// `<agent 家>/tasks/`（递归）：会话的任务清单变了 ⇒ 一帧 `changed {tasks, key: sid}`。
     tasks: PathBuf,
     tasks_watched: bool,
     /// `agent_home` **本身**此刻挂上了没有。
@@ -899,7 +899,7 @@ fn arm_ears(
         }
     }
     watch_sock_dir_if_present(debouncer, sock_dir, sock_dir_watched);
-    // **账号清单变了 ⇒ 一帧 `accounts_changed`**。监视 manifest 所在目录
+    // **账号清单变了 ⇒ 一帧 `changed {accounts}`**。监视 manifest 所在目录
     // （NonRecursive；写 manifest 常是「写临时文件再 rename」，盯文件本身会在 rename 之后失聪）。
     // 目录起步不在 / 被删重建 ⇒ 由 `AccountsEar` 挂上一层等它、出现时重挂（原先这里失聪）。
     if let Some(ear) = accounts_ear {
@@ -1066,17 +1066,18 @@ fn watch_loop(
                     &accounts_manifest,
                 ) || dir_moved
                 {
-                    sink.send(Frame::AccountsChanged);
+                    sink.send(Frame::changed(Topic::Accounts, None, None, None));
                 }
-                // 配置文件动了 ⇒ 一帧 `profiles_changed`（批内合并）。
+                // 配置文件动了 ⇒ 一帧 `changed {profiles}`（批内合并）。
                 if let Some(ear) = profiles_ear.as_mut() {
                     if ear.touched(&mut debouncer, events.iter().map(|ev| ev.path.as_path())) {
-                        sink.send(Frame::ProfilesChanged);
+                        sink.send(Frame::changed(Topic::Profiles, None, None, None));
                     }
                 }
-                // 任务目录里的动静 ⇒ 每个动过的会话一帧 `tasks_changed`（批内合并）。
+                // 任务目录里的动静 ⇒ 每个动过的会话一帧 `changed {tasks, key: sid}`（批内合并）。
                 for sid in tasks_touched(events.iter().map(|ev| ev.path.as_path()), &ears.tasks) {
-                    sink.send(Frame::TasksChanged { sid });
+                    let body = crate::stream::topic_hook::body(Topic::Tasks, Some(&sid));
+                    sink.send(Frame::changed(Topic::Tasks, Some(sid), None, body));
                 }
                 // 记录文件的表先跟上这一批（同一批里 pidfile 先到、记录文件后到时，宣告也查得到它）。
                 for ev in &events {
@@ -1293,7 +1294,7 @@ fn watch_loop(
                     if let Some(ear) = profiles_ear.as_mut() {
                         ear.arm(&mut debouncer);
                     }
-                    sink.send(Frame::AccountsChanged);
+                    sink.send(Frame::changed(Topic::Accounts, None, None, None));
                 }
                 let got = resync_sessions(&sessions, &mut state, &mut sink, only.as_deref());
                 start_tmux_probe(&mut tmux_inflight, &events_tx, &mut sink);

@@ -575,7 +575,7 @@ fn the_machine_table_is_checked_on_every_identity_write() {
             "{what}：{got:?}"
         );
         assert_eq!(
-            tried.map(|f| f.said()),
+            tried.map(|f| f.refused_said()),
             Some(got.to_string()),
             "{what}：试算口与写口说的不一样"
         );
@@ -601,10 +601,7 @@ fn the_machine_table_is_checked_on_every_identity_write() {
     let same = insert(host("a", "2.2.2.2", "u", 22), "a");
     assert_eq!(
         machine_table_try_at(&path, std::slice::from_ref(&same)).unwrap(),
-        Some(MachineFault {
-            code: MachineFaultCode::NameTaken,
-            name: "a".into()
-        })
+        Some(MachineFault::new(MachineFaultCode::NameTaken, "a".into()))
     );
     assert!(matches!(
         patch_config_at(&path, &[same]),
@@ -659,4 +656,42 @@ fn a_disk_failure_says_the_reason_word_and_keeps_the_os_text_in_the_detail() {
         s.detail
     );
     let _ = std::fs::remove_dir_all(&base);
+}
+
+/// ★★ 机器表那一道没过的那一处带写好的那一句 `said`（落在那一格下面；添加机器框与机器卡照抄，不按码取字）。
+#[test]
+fn a_machine_fault_carries_its_written_sentence() {
+    let table = |hosts: Value| -> Map<String, Value> {
+        json!({ "remote": { "hosts": hosts } })
+            .as_object()
+            .unwrap()
+            .clone()
+    };
+    let cases = [
+        (
+            json!([{ "label": "a", "host": "", "user": "u" }]),
+            "addMachine.err.host",
+            vec![],
+        ),
+        (
+            json!([{ "label": "a", "host": "h", "user": "" }]),
+            "addMachine.err.user",
+            vec![],
+        ),
+        (
+            json!([{ "label": "a", "host": "h", "user": "u", "port": 0 }]),
+            "addMachine.err.port",
+            vec![],
+        ),
+        (
+            json!([{ "label": "a", "host": "h", "user": "u" }, { "label": "a", "host": "h2", "user": "u" }]),
+            "addMachine.err.taken",
+            vec![("name", "a")],
+        ),
+    ];
+    for (hosts, key, args) in cases {
+        let f = check_machine_table(&table(hosts)).expect("该有一处");
+        let v = serde_json::to_value(&f).unwrap();
+        assert_eq!(v["said"], json!(copy_text(key, &args)), "{key}");
+    }
 }

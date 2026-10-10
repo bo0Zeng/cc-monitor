@@ -138,55 +138,16 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 |---|---|---|
 | `id` | string | 被取消的那条命令的 `id` |
 
-### `accounts_changed`
+### `changed`
 
-**这台机器上的账号清单变了**（账号 manifest 被改写）。
-
-（无字段）
-
-### `profiles_changed`
-
-**这台机器上的配置文件（`~/.cc-monitor/profiles.toml`）变了**（别处改了它，或设置窗刚写了它）。
-
-（无字段）
-
-### `quota_changed`
-
-**这台的额度账显示得出来的那几格变了**（某个号的用量取整后的百分比 · 重置时刻 · 状态 · 被拒）。
-
-（无字段）
-
-### `rotation_changed`
-
-**这台某个会话的轮换或「账号」格变了**（换了号 · 记了一条 · 改了它的轮换 · 它跟随的默认轮换改了）。
+**这台的某样东西变了，客户端重读那一份**（账号清单 · 配置文件 · 额度账 · 会话轮换 · 规则表 · 计划 · 任务清单 —— 主题表 `Topic`）。
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| `sid` | string | 轮换或「账号」格变了的会话 |
-
-### `rotation_rules_changed`
-
-**这台的轮换规则表或默认指向变了**（新建 · 改 · 改名 · 删 · 设为默认；本进程或别的进程写的都推）。
-
-（无字段）
-
-### `plan_changed`
-
-**这台某个 pb 工作区的计划变了**（计划仓 `.planned-build/` 或工作区 `.env` 有动静，重跑 `pb dump` 后输出摘要或要你看的数变了；认可 / 撤销认可也推一帧新的数）。
-
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `workspace` | string | 工作区根 |
-| `rev` | string | 新的输出摘要（同 `plan-read` 的 `rev`） |
-| `needs` | number | 这个工作区此刻要你看的数（没认可的，不含 agent 问人那一种 —— 那一条由会话那一侧数；同 `plan-read` 的 `needCount`） |
-
-### `tasks_changed`
-
-**这台机器上某个会话的任务清单变了**（`<agent 家>/tasks/<sid>/` 里有动静）。
-
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `sid` | string | 任务清单变了的会话 |
+| `topic` | Topic | 哪一样变了 |
+| `key` | string? | 哪一个（会话 id · 工作区根）；主题不带 ⇒ 缺 |
+| `rev` | string? | 变成了哪一版；主题不带 ⇒ 缺 |
+| `body` | JSON? | 那一样的小成品；主题不带或超了上限 ⇒ 缺（客户端重问） |
 
 ### `sessions_replayed`
 
@@ -352,6 +313,18 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 - `needs_you` —— 在等人（批准 · 回答 · 弹窗）
 - `idle` —— 闲着，等下一句输入
 - `background_work` —— 一轮停了，它在后台起的命令还在跑（跑完多半会接着干）
+
+#### `Topic`
+
+推送主题（线上 `changed.topic`）。
+
+- `accounts` —— 这台的账号清单（账号 manifest 被改写）
+- `profiles` —— 这台的配置文件（`~/.cc-monitor/profiles.toml`）
+- `quota` —— 这台的额度账显示得出来的那几格
+- `rotation` —— 这台某个会话的轮换或「账号」格（`key` ＝ sid）
+- `rotation_rules` —— 这台的轮换规则表或默认指向
+- `plan` —— 这台某个 pb 工作区的计划（`key` ＝ 工作区根，`rev` ＝ 新的输出摘要，与手上那一份相同 ⇒ 不用问； `body` ＝ `{needs}`：这个工作区此刻要你看的数，没认可的、不含 agent 问人那一种，同 `plan-read` 的 `needCount`）
+- `tasks` —— 这台某个会话的任务清单（`key` ＝ sid）
 
 #### `Unavailable`
 
@@ -1097,6 +1070,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | `accounts` | ← | 每个号一条，按 `(agent, account)` 排：`agent` 路由第 1 段（哪一家）· `account` 路由第 2 段（哪个号 |
 | `detail` | ← | 只在 `unreadable` 时有：复制详情（时刻 · 机器 · 命令 · 码 · 原话；排法同失败应答），`reason` 那一句不带原话 |
 | `earliestReturn` | ← | 被拒 / 超额在兜的号里最早回来的那个 `{account, at}`；没有、或都说不出时刻 ⇒ `null` |
+| `fiveHour` | ← | 「5h 那一格」写好的字：顶上那一格只在 `unreadable` 时有（`5h 读不到`）、否则 `null`；`accounts[]` 每个出过数的订阅号一格（`5h 41%` · 卡着的照语义位的字），按量号 ⇒ `null`；`unseen[]` 恒 `null` |
 | `now` | ← | 这台此刻的 unix 秒（界面算「几分钟前看到的」「还有多久重置」都按这台的钟）；回包里每个时刻（`at` · `seenAt` · `resetsAt` · `fromResetsAt` · `since`）旁边有一格 `…Text`：出口按这台本地钟写好的字（当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年带年），还没到的再有一格 `…RelText`（距今 `+1h50m` · `+3d`），界面照抄、不换算；`slots[]` 每格带写好的 `text` 与 `tone`（plain · fail · warn） |
 | `path` | ← | 那份文件的绝对路径（家推不出来时 `null`） |
 | `reason` | ← | 只在 `unreadable` 时有：为什么读不出来；其余 `null` |
@@ -1337,9 +1311,9 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `accounts` | ← | 每账号一个对象，字段同 `--list-accounts` 的账号行 |
+| `accounts` | ← | 每账号一个对象，字段同 `--list-accounts` 的账号行；`selectable` ＝ 能拿来起会话 / 选为默认（`acct_core::account_selectable`） |
 | `agent` | → | 必填：这次起会话的是哪一家（适配器 id；空串 ⇒ 默认那一家，注册表里没有 ⇒ `bad_args`） |
-| `meta` | ← | `{enabled, acctsDir, manifestPath, updatedAt, sharedStore, count, error, unsupported, nextDefault, home}` |
+| `meta` | ← | `{enabled, acctsDir, manifestPath, updatedAt, sharedStore, count, error, unsupported, nextDefault, effectiveDefault, home}`；`effectiveDefault` ＝ 这台的默认号（标了的第一个，没标 ⇒ 第一个；`acct_core::effective_default`） |
 | `notice` | ← | 「能用但有缺」：启用了却一个账号 0 都没有（写清单的那一侧旧到不认账号 0）时的一句话；否则 `null` |
 
 码：`bad_args` · `too_large`
@@ -1680,21 +1654,21 @@ sid → 上次用哪个号起。
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `fresh` | → | 可缺席：`true` ⇒ 远端那一台不用记着的、再问一次（开页 · 「刷新」） |
 | `groups` | ← | 按项目看时的分组（只数 `rows` 里不是 `context` 的）：`key` · `agent` · `projectName` · `projectPath` · `projectDir` · `count` · `hasLive`（`null` = 有判不了活的、又没有确定在跑的）· `starred`（组里有星标的）· `lastActivity` · `order`（几台的组并成一列时的序，大的在前：档位 × 10¹⁴ ＋ 有星标 × 10¹³ ＋ 最后动过的毫秒；界面只按它并）· `failed`（读不了的那个记录目录 ⇒ 一组、`count` 0、带那一句；别的 ⇒ `null`）· `origin` |
 | `hidden` | → | 可缺席：`true` ⇒ 隐藏的也出（默认不出） |
 | `limit` | → | 可缺席：最多回几行（默认 2000，1–20000）；多出的不回、`truncated` |
+| `listing` | → | 可缺席：那一台（`origin`）自己答的 `raw` 清单原样（界面经长连接问那台常驻拿回来）；本进程记着、换掉旧的。缺 ⇒ 用记着的那份，没记着 ⇒ `no_listing`；不带 `origin` / 没有 `rows` 数组 ⇒ `bad_args` |
 | `notice` | ← | 注解没并上的那句话；`null` = 并上了 |
-| `origin` | → | 可缺席：那台的名字（可达表的键） |
+| `origin` | → | 可缺席：那台的名字（`listing` 是它的；行与组都标上它） |
 | `query` | → | 可缺席：只留显示标题（`label`）· 第一句 · 项目名里含这几个字的（不分大小写，子串；不比路径、不搜内容 —— 内容走 `history-search`） |
-| `raw` | → | 可缺席：`true` ⇒ 只回**这台自己**的清单 `{rows, failed}`（不并注解、不筛不排、不认别的入参）—— 远端那一支问的就是它 |
+| `raw` | → | 可缺席：`true` ⇒ 只回**这台自己**的清单 `{rows, failed}`（不并注解、不筛不排、不认别的入参）—— 远端那一份就是那台常驻答的它 |
 | `rows` | ← | 每会话一行，按 `at` 倒序：`agent` · `agentTag`（行上那一家的小牌，对用户的叫法）· `atText`（行尾那一格）· `sectionText`（分段头）· `spanText`（内容头那一段）—— 这三格按这台本地钟写好，界面照抄 |
 | `sort` | → | 可缺席：`activity`（默认，按最后活动）· `created`（按开始） |
 | `total` | ← | 筛完留下几个（截之前，不含 `context`） |
 | `truncated` | ← | `rows` 被 `limit` 截过 |
 | `within_days` | → | 可缺席：只留那个键（同 `sort`）落在最近 N 天里的（1–3650） |
 
-码：`bad_args` · `failed` · `unreachable`
+码：`bad_args` · `failed` · `no_listing`
 
 #### `history-search`
 
@@ -3762,7 +3736,7 @@ cc-bus 钩子诊断。
 
 #### `plan-ack`
 
-认可一条要你看（只记在 cc-monitor；键带条目版本，版本换了那一条再出）；推一帧 `plan_changed` 带新的数。
+认可一条要你看（只记在 cc-monitor；键带条目版本，版本换了那一条再出）；推一帧 `changed {plan}` 带新的数。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --plan-ack`
 
@@ -3779,7 +3753,7 @@ cc-bus 钩子诊断。
 
 #### `plan-unack`
 
-撤掉一条认可（没有也不算错）；推一帧 `plan_changed` 带新的数。
+撤掉一条认可（没有也不算错）；推一帧 `changed {plan}` 带新的数。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --plan-unack`
 
@@ -3929,7 +3903,7 @@ cc-bus 钩子诊断。
 | `--last-seen-write` | ＝ 帧命令 `last-seen-write`：记下一台这一次读成的那一份（或清掉那台） |
 | `--launch` | ＝ 帧命令 `launch`：建 tmux 会话并键入载荷，或键入一个已在的会话（远端执行面） |
 | `--launch-render-cli` | ＝ 帧命令 `launch-render-cli`：远端起会话那一行 `ccm …` |
-| `--list-accounts` | 账号清单：首行 `{kind:"accounts-meta", enabled, acctsDir, manifestPath, updatedAt, sharedStore, count, error, unsupported, nextDefault}`，其后每号一行 `{name, email, configDir, isDefault, mode, exists, loggedIn}`；没启用多账号 ⇒ `enabled:false`、退出 0 |
+| `--list-accounts` | 账号清单：首行 `{kind:"accounts-meta", enabled, acctsDir, manifestPath, updatedAt, sharedStore, count, error, unsupported, nextDefault, effectiveDefault}`，其后每号一行 `{name, email, configDir, isDefault, mode, exists, loggedIn, authKind, authReady, selectable}`；没启用多账号 ⇒ `enabled:false`、退出 0 |
 | `--list-projects` | 项目清单：每行 `{dirName, projectPath, sessionCount, lastActivityMs}`；工作目录在 `~/.cc-monitor/autostart/` 下的会话不出 |
 | `--list-sessions` `<project_dir>` | 一个项目的会话：每行 `{sessionId, jsonlPath, startedAtMs, updatedAtMs, messageCountApprox, firstUserExcerpt, aiTitle, cwd}` |
 | `--list-user-inputs` `[--from <offset>] <jsonl>` | 「你说过的话」：头 `{kind:"user_inputs",v:1,from}` · 每条 `{uuid, timestamp, excerpt}`（对话序）· 尾 `{kind:"user_inputs_end",count,end}`；`end` 是下次增量的 `--from`；`offset` 过了文件尾 ⇒ 退出 2 |
@@ -3943,14 +3917,14 @@ cc-bus 钩子诊断。
 | `--mcp-sync-source` | ＝ 帧命令 `mcp-sync-source`：装到别的机器时来源那一条 |
 | `--ping` | ＝ 帧命令 `ping`：问活：零载荷，回 `ok` |
 | `--place-verdict` | ＝ 帧命令 `place-verdict`：本机那一份放不放 |
-| `--plan-ack` | ＝ 帧命令 `plan-ack`：认可一条要你看（只记在 cc-monitor；键带条目版本，版本换了那一条再出）；推一帧 `plan_changed` 带新的数 |
+| `--plan-ack` | ＝ 帧命令 `plan-ack`：认可一条要你看（只记在 cc-monitor；键带条目版本，版本换了那一条再出）；推一帧 `changed {plan}` 带新的数 |
 | `--plan-cell-view` | ＝ 帧命令 `plan-cell-view`：一格的 agent 视角（agent 站在这一格时 pb 印给它的那一段，原样） |
 | `--plan-command` | ＝ 帧命令 `plan-command`：以人的身份代敲 pb 的用户命令：`continue` · `pause`（开关自动接着做，管整个工作区）· `view`（pb 画整张图写进系统临时目录，回页面路径） |
 | `--plan-files` | ＝ 帧命令 `plan-files`：文件窗口反查：这个目录落在哪一片的仓库里、每份文件归哪一格（只看读好过的工作区，不起 pb） |
 | `--plan-list` | ＝ 帧命令 `plan-list`：这台的 pb 工作区与片（目录 ＝ 活会话的工作目录 ∪ `dirs`，pb 自己往上找工作区） |
 | `--plan-read` | ＝ 帧命令 `plan-read`：一个工作区的成品（几片的图 · 状态 · 签收 · 块 · 判据；接手与签收人对到会话；不带 agent_view） |
 | `--plan-return` | ＝ 帧命令 `plan-return`：把人的话送给负责那一格的会话：后端拼「人 · {编号} {标题}：{原话}」，在等你 ⇒ 拒，已结束 / 认不出 ⇒ 只给复制，能送走 `terminal-input`；送到了记一条已退回 |
-| `--plan-unack` | ＝ 帧命令 `plan-unack`：撤掉一条认可（没有也不算错）；推一帧 `plan_changed` 带新的数 |
+| `--plan-unack` | ＝ 帧命令 `plan-unack`：撤掉一条认可（没有也不算错）；推一帧 `changed {plan}` 带新的数 |
 | `--powershell-policy-set` | ＝ 帧命令 `powershell-policy-set`：那一代 PowerShell 的执行策略设成当前用户 `RemoteSigned` |
 | `--profiles-bases` | ＝ 帧命令 `profiles-bases`：「基于」下拉能选的几段（选了不成圈） |
 | `--profiles-impact` | ＝ 帧命令 `profiles-impact`：这几处改动会让哪几段合下来变（改前改后） |

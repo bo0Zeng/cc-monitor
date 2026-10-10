@@ -155,8 +155,7 @@ emit({ name: "mem-start", ...mem(child.pid) });
 
 // —— 清单与会话路径 ——
 const list = await bench("history-list", "history-list", {}, REPS);
-await bench("history-list-fresh", "history-list", { fresh: true }, 3);
-const rows = (list?.data?.groups ?? []).flatMap((g) => g.rows ?? []);
+const rows = list?.data?.rows ?? [];
 emit({ name: "history-list-rows", n: rows.length });
 // 最大的那份会话（长会话）＋ 一份中等的
 const projects = join(home, ".claude", "projects");

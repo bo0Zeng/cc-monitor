@@ -2,7 +2,7 @@
 
 TypeScript ＋ Vite，原生 DOM，不引框架。界面只排版后端给的成品、收手势、开终端窗口：不判定、不拼命令串、不缓存业务数据（[ARCHITECTURE §2.1](doc/ARCHITECTURE.md)）。
 
-相关清单：壳（Rust）[`src/frontend/shell/README.md`](frontend/shell/README.md) · 后端 [`src/backend/README.md`](backend/README.md)。下表的文件名都相对 `src/frontend/ui/`；每份文件顶上的头注是那一份的说明，这里只按用途分组指路。
+相关清单：壳（Rust）[`src/frontend/shell/README.md`](frontend/shell/README.md) · 后端 [`src/backend/README.md`](backend/README.md) · 手机端 app（Android，Gradle）[`src/mobile/README.md`](mobile/README.md)。下表的文件名都相对 `src/frontend/ui/`；每份文件顶上的头注是那一份的说明，这里只按用途分组指路。
 
 ## 入口
 

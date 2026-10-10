@@ -71,7 +71,7 @@ import { openSettingsWindow } from "./settings/open-settings"; // 点「设置�
 import * as dest from "./settings-dest";
 import { collectAccountRows, createEventRefresher } from "./session-accounts-poll";
 import { lastAccounts } from "./history-reads";
-import { TasksPanel } from "./tasks-panel";
+import { decodeTasks, TasksPanel } from "./tasks-panel";
 import { AgentsPanel } from "./agents-panel";
 import { MainDrawer } from "./main-drawer";
 import { TerminalPage } from "./terminal-page";
@@ -85,6 +85,7 @@ import { getKeybindings } from "./keybindings/store";
 import { installGlobalClickDelegation } from "./entry-render-common";
 import { AccountChip } from "./account-chip";
 import { onQuotaChanged, refreshRules, syncSessions } from "./acct-center";
+import { planMoves, pushedProducts } from "./changed-stream";
 import { followActive, openSourcePicker, toggleAccountPanel, type AcctPanelHost } from "./acct-panel";
 import { acctSessionWiring } from "./acct-session";
 import { buildAccountCommands } from "./account-commands";
@@ -414,12 +415,12 @@ window.addEventListener("DOMContentLoaded", async () => {
   };
   // 刷新由事件驱动、零定时器（「会话 ↔ 账号」只在会话起停时变；理由在 `session-accounts-poll.ts` 头注）：
   //   · 某台的长连接握手完成（启动 / 重连）或那台账号清单变了 ⇒ 强制刷账号清单，
-  //     账号 chip 也在这一刻重取（在那之前问只会拿到「没有控制通道」）—— 经通道订的 `accounts-changed`；
+  //     账号 chip 也在这一刻重取（在那之前问只会拿到「没有控制通道」）—— 经通道订的 `changed/accounts`；
   //   · 远端 `live` 格 / `ended` 格：会话起停；
   //   · 本 UI 切号：上面 `onDefaultChanged`。
   const accountsRefresher = createEventRefresher(refreshSessionAccounts);
   accountsRefresher.request();
-  // 「某台长连接握手完成 / 那台账号清单变了」⇒ 强制刷账号清单 ＋ chip：经通道订每台的 `accounts-changed`（下面 `bindEvents` 的 `accounts` ＋ `onAccountsChanged`）。
+  // 「某台长连接握手完成 / 那台账号清单变了」⇒ 强制刷账号清单 ＋ chip：经通道订每台的 `changed/accounts`（下面 `bindEvents` 的 `changed` ＋ `onChanged`）。
   const onAccountsChanged = (): void => {
     accountsRefresher.request(true);
     void accountChip.refresh(true);
@@ -860,8 +861,6 @@ window.addEventListener("DOMContentLoaded", async () => {
     onSessionRuns: (p) => tabs.onSessionRuns(p),
     onSessionBranch: (p) => tabs.onSessionBranch(p),
     onSessionTapLost: (origin) => tabs.dropLiveCards(origin),
-    // 那台的长连接又通了 / 那台账号清单变了 ⇒ 强制刷账号清单 ＋ chip（`accounts-changed` 流）。
-    onAccountsChanged,
     // 记录文件不见了 / 被改过已从头重读 ⇒ 那个 tab 顶上说一句。
     onSessionFileNotice: (sessionId, change) => {
       tabs.onRecordFileReread(sessionId, change); // 从头重读 ⇒ tab 整份重来（先重来、再在新的流容器上说那一句）
@@ -892,14 +891,37 @@ window.addEventListener("DOMContentLoaded", async () => {
       e2eProbe?.stopReplayJitterProbe();
       tabs.onBatchEnd();
     },
-    // 那台后端说这几个会话的任务变了（或期间可能漏了）⇒ 重问 `tasks-list`。
-    onTasksChanged: (origin, sids, all) => tabs.refreshTasks(origin, sids, all),
-    // 那台的额度账 / 某个会话的轮换变了 ⇒ 重问（`acct-center.ts`；画的那几处订 store）。
-    onQuotaChanged,
-    // 那台某个 pb 工作区的计划变了 ⇒ 计划页开着就重问（摘要没变不问）。
-    onPlanChanged: (origin, change) => {
-      planView.onChanged(origin, change);
-      planNeeds.onChanged(origin, change);
+    // 那台的某样东西变了（主题表住后端）⇒ 各管各的重问：
+    //   账号清单 ⇒ 强制刷账号清单 ＋ chip（那台的长连接又通了也算）· 任务清单 ⇒ 重问 `tasks-list` ·
+    //   额度 / 会话轮换 / 规则表 ⇒ `acct-center.ts`（画的那几处订 store）· 计划 ⇒ 计划页开着就重问（摘要没变不问）与「需手动」那一侧。
+    onChanged: (origin, topic, change) => {
+      switch (topic) {
+        case "accounts":
+          onAccountsChanged();
+          break;
+        case "tasks": {
+          // 帧里带了那个会话的清单（同 `tasks-list` 的应答）⇒ 同一个解码器收、直接落账；没带 / 解不开 / 可能漏了 ⇒ 重问。
+          const p = pushedProducts(change, decodeTasks);
+          for (const [sid, list] of p.got) if (sid !== null) tabs.updateTasks(sid, list);
+          const ask = p.ask.filter((s): s is string => s !== null);
+          if (p.all || ask.length > 0 || p.ask.includes(null)) tabs.refreshTasks(origin, ask, p.all || p.ask.includes(null));
+          break;
+        }
+        case "quota":
+        case "rotation":
+        case "rotation_rules":
+          onQuotaChanged(origin, topic, change);
+          break;
+        case "plan": {
+          const moved = planMoves(change);
+          const plan = { moved, all: change.all || moved.length !== change.cells.length };
+          planView.onChanged(origin, plan);
+          planNeeds.onChanged(origin, plan);
+          break;
+        }
+        case "profiles":
+          break;
+      }
     },
     // 会话红绿灯（后端翻好的活动态）
     onSessionActivity: (e) =>
@@ -926,14 +948,13 @@ window.addEventListener("DOMContentLoaded", async () => {
     streams: machines.map((origin) => ({ origin, kind: "session-lines" })),
     // 每台的中转都住那台的常驻后端 ⇒ 每台都订 tap（与会话行同一份机器清单）。
     taps: machines,
-    // 每台一条 `accounts-changed`（替掉裸事件 `remote-backend-ready`）。
-    accounts: machines,
-    // 每台一条 `session-tasks`（替掉本机那个裸事件 `task-update`；远端第一次有推送）。
-    tasks: machines,
-    // 每台一条 `quota-changed`（额度账 · 会话轮换变了）。
-    quota: machines,
+    // 每台每个主题一条 `changed/<topic>`：账号清单（替掉裸事件 `remote-backend-ready`）· 任务清单（替掉本机那个裸事件 `task-update`）·
+    //   额度 · 会话轮换 · 规则表 · 计划。配置文件那一种只设置窗订。
+    changed: machines.flatMap((origin) =>
+      (["accounts", "tasks", "quota", "rotation", "rotation_rules", "plan"] as const).map((topic) => ({ origin, topic })),
+    ),
   });
-  // 账号那一格经通道订（每台一条 `accounts-changed`，上面 `bindEvents` 的 `accounts`）。
+  // 账号那一格经通道订（每台一条 `changed/accounts`，上面 `bindEvents` 的 `changed`）。
   //   订阅登记之前那一窗里连上的不会有 `seen`（句柄只在状态变时说）⇒ `bindEvents` 返回（订阅都登记好了）之后补刷一次 ——
   //   与「独立窗口的订阅本身就是它的就绪点」同一个道理。
   onAccountsChanged();

@@ -1,6 +1,6 @@
 // 多账号前端的账号模型（纯，零 IO）。账号 = 一个 CLAUDE_CONFIG_DIR。
 // 只装「一个账号长什么样、能不能选、该显示成什么」：形状（`Account` · `AccountsState` · `SessionAccount`）· 降级判定（`deriveUi`）·
-// 可用性唯一出口（`isSelectable`）· 徽章文案。起会话用哪个号由会话所在那台的后端判。
+// 可用性照后端写好的 `selectable`（`selectableAccounts`）· 徽章文案。起会话用哪个号由会话所在那台的后端判。
 // 别处：经通道读 ＋ 缓存 → `account-reads.ts`；每号模型偏好 → `account-prefs.ts`；起会话「要哪个号」→ `launch-account.ts`。
 import { machineName, peerVersionSaid } from "./ipc/chan-caller";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
@@ -37,6 +37,8 @@ export interface Account {
    * 订阅那一支只看 `.credentials.json` 在不在（凭据过期 / 被吊销看不出来）；api-key 那一支恒真，也不等于真能连上（徽章文案说出来）。
    */
   authReady: boolean;
+  /** 能拿来起会话 / 选为默认：规则住 `acct_core::account_selectable`，那台后端写好，界面只读。 */
+  selectable: boolean;
   /** API 号在那台 apikey 表里那一行的 key 掩码（只留末四位，那台后端遮好的）；订阅号 / 没配 ⇒ `null`。线上恒有这一格，本地造的夹具可以不写。 */
   keyMasked?: string | null;
   /** API 号那一行的端点（没写 ⇒ `null` ＝ 官方地址）。线上恒有这一格，本地造的夹具可以不写。 */
@@ -56,6 +58,8 @@ export interface AccountsMeta {
   unsupported?: string | null;
   /** 删掉默认号之后新会话默认谁（那台后端按删号同一条规则答；没有 ⇒ `null`）。线上恒有这一格，本地造的夹具可以不写。 */
   nextDefault?: string | null;
+  /** 那台的默认号（标了的第一个，没标 ⇒ 第一个；规则住 `acct_core::effective_default`）；清单空 ⇒ `null`。 */
+  effectiveDefault: string | null;
   /** 那台的家目录（界面把路径里的它缩成 `~`；推不出 ⇒ `null`）。线上恒有这一格，本地造的夹具可以不写。 */
   home?: string | null;
 }
@@ -127,15 +131,10 @@ export function deriveUi(state: AccountsState): AccountsUi {
   };
 }
 
-/** 那台的默认账号：清单里 `isDefault` 的那一个，没有就第一个（起会话跟随时那台判的是同一条，这里只为画）。 */
-export function effectiveDefault(state: AccountsState): Account | null {
-  if (state.accounts.length === 0) return null;
-  return state.accounts.find((a) => a.isDefault) ?? state.accounts[0];
-}
-
-/** 「当前账号」—— [`effectiveDefault`] 的语义别名（那台账号库清单里的默认号；设它走那台的 `accounts-set-default`）。 */
-export function currentWorkingAccount(state: AccountsState): Account | null {
-  return effectiveDefault(state);
+/** 那台的默认号：照那台后端写好的 `meta.effectiveDefault` 取那一行（判定住 `acct_core::effective_default`，这里不另判）。 */
+export function defaultAccount(state: AccountsState): Account | null {
+  const name = state.meta?.effectiveDefault ?? null;
+  return name === null ? null : (state.accounts.find((a) => a.name === name) ?? null);
 }
 
 /**
@@ -234,16 +233,9 @@ export function accountStatusBadge(
   return { text: copyText("accounts.badge.signedIn"), warn: false, title: "" };
 }
 
-/** 某账号是否可被选为默认 / 用来起会话。 */
-export function isSelectable(a: Account): boolean {
-  // 账号 0（mode "bare"）在这里天然落选（起它走 `--base`，不经选号）。
-  // 第二项是后端算好的 `authReady`：订阅号就是「凭据文件在不在」，api-key 号不用那个文件、恒真。
-  return a.mode === "isolated" && a.authReady && a.exists;
-}
-
-/** 可选账号列表（`isSelectable` 过滤）。休眠判据 / 计数一律走它，别各处再 filter 一遍。 */
+/** 可选账号列表（照那台后端写好的 `selectable`；判定住 `acct_core::account_selectable`）。休眠判据 / 计数一律走它。 */
 export function selectableAccounts(state: AccountsState): Account[] {
-  return state.accounts.filter(isSelectable);
+  return state.accounts.filter((a) => a.selectable);
 }
 
 /**
@@ -261,12 +253,12 @@ export function accountColorsActive(state: AccountsState): boolean {
 }
 
 /**
- * 真正可用的当前账号：`currentWorkingAccount` 再过一道 `isSelectable`。
+ * 真正可用的当前账号：默认号再看它选不选得了（那台写好的 `selectable`）。
  * 拿未过滤的值判「不一致」，徽章会指着一个永远不会被跟过去的号说「你不一致」。消费者：`tabs.ts::updateAccountBadge`。
  */
 export function currentAccountForBadge(state: AccountsState): Account | null {
-  const cur = currentWorkingAccount(state);
-  return cur && isSelectable(cur) ? cur : null;
+  const cur = defaultAccount(state);
+  return cur?.selectable ? cur : null;
 }
 
 /** 活会话账号是否与当前账号不一致（纯函数）：两者都确知且不同才 true；任一未知 ⇒ false（不误报）。 */

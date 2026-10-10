@@ -1,0 +1,27 @@
+# detekt 配置。buildUponDefaultConfig=true 继承默认规则集，本文件只覆写要调整的项。
+# 存量问题由 config/detekt/baseline-<module>*.xml 抑制，新代码受默认规则约束。
+#
+# 下面放宽几条在 Compose / Android 代码上大面积误报的规则：
+style:
+  MagicNumber:
+    active: false # UI dp/sp/color 字面量遍地，价值低
+  MaxLineLength:
+    active: false # 与 .editorconfig 的 ktlint max_line_length=off 一致：不设行长硬限（Compose 链、长字符串）
+  ReturnCount:
+    active: true
+    max: 4
+  UseOrEmpty:
+    active: false # `?: ""` / `?: emptyList()` 在本仓是惯用写法；逐点进 baseline 会随行移反复重排，所以整条关掉
+complexity:
+  LongParameterList:
+    active: false # Composable 参数天然多
+  TooManyFunctions:
+    active: false # Compose 文件多个 @Composable
+naming:
+  FunctionNaming:
+    # @Composable 约定 PascalCase（与 ktlint function-naming 关一致）；其余函数仍受规则约束。
+    ignoreAnnotated: ['Composable']
+coroutines:
+  # 低层 SSH / IO 直接用 Dispatchers.IO，刻意不做 dispatcher 注入。
+  InjectDispatcher:
+    active: false
