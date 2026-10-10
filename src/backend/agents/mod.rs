@@ -425,6 +425,9 @@ pub(crate) struct RecordFace {
     pub(crate) project_dir: Option<fn(&Path) -> Option<String>>,
     /// 一条已解析的记录 ⇒ 那一家在这一条里说的此刻各 MCP 服务器的样子（[`McpSaid`]）；不是这种记录 ⇒ `None`。
     pub(crate) mcp_said: Option<fn(&serde_json::Value) -> Option<McpSaid>>,
+    /// 这一家的会话在世期间，写记录的那个进程一直开着那份记录（不留 pidfile 的那一家判活就认它：有进程开着它写 ⇒ 活，
+    /// 那个进程退了或把它关了 ⇒ 走了；`platform::writers`）。`false` ＝ 这一家不这样判活（有 pidfile，或说不清）。
+    pub(crate) held_open: bool,
 }
 
 /// 一家的记录树：会话按项目目录分，住在家目录下的一棵树里。
@@ -1329,6 +1332,60 @@ pub(crate) fn record_tree_kind() -> Option<&'static str> {
 
 fn record_tree_kind_among(registry: &[Adapter]) -> Option<&'static str> {
     sole_kind_among(registry, |a| a.history.is_none() && a.records.is_some())
+}
+
+/// 流式 watcher 跟的一家：它的记录住哪个根 · 记录解释面 · 它的会话靠什么判活。
+#[derive(Clone)]
+pub(crate) struct Followed {
+    pub(crate) kind: &'static str,
+    /// 记录根（其下每份会话记录一个文件；子目录怎么分是那一家的事）。
+    pub(crate) root: PathBuf,
+    pub(crate) face: RecordFace,
+    pub(crate) live: LiveBy,
+}
+
+/// 一家的会话靠什么判活（流式 watcher 按它挑发现与摘除的那一路）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum LiveBy {
+    /// 每个活会话的进程在这个目录里留一份进程状态文件（pidfile）。
+    Pidfiles(PathBuf),
+    /// 没有 pidfile：有进程开着那份记录写 ⇒ 活（[`RecordFace::held_open`]）。
+    Writer,
+}
+
+/// 流式 watcher 跟的那几家（注册序）：家目录记录树那一家（[`record_tree_kind`]，`tree_home` 是它的家目录，判活认 pidfile）·
+/// 记录住在合成历史根下、会话在世期间一直开着记录写的那几家（判活认写者）。别的不跟。
+pub(crate) fn followed(tree_home: &Path) -> Vec<Followed> {
+    followed_among(REGISTRY, tree_home)
+}
+
+/// [`followed`] 的可喂夹具那一半。
+pub(crate) fn followed_among(registry: &[Adapter], tree_home: &Path) -> Vec<Followed> {
+    let tree_kind = record_tree_kind_among(registry);
+    registry
+        .iter()
+        .filter_map(|a| {
+            let face = a.records?;
+            if Some(a.kind) == tree_kind {
+                let local = a.local?;
+                return Some(Followed {
+                    kind: a.kind,
+                    root: (face.tree?.root)(tree_home),
+                    face,
+                    live: LiveBy::Pidfiles((local.pidfile_dir)(tree_home)),
+                });
+            }
+            if !face.held_open {
+                return None;
+            }
+            Some(Followed {
+                kind: a.kind,
+                root: (a.history?.root)()?,
+                face,
+                live: LiveBy::Writer,
+            })
+        })
+        .collect()
 }
 
 /// 找项目目录时记录开头至多读多少字节。带它的那一条实测在前一 KiB 内；上界是给几百 MB 的大会话的：不整读。

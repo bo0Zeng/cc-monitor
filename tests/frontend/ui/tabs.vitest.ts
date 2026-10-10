@@ -6350,6 +6350,24 @@ describe("〔stream-watch〕在看哪个会话 · 补上没上流的那段 · �
     tm.onTurnEnd(LOCAL_ORIGIN, "nobody");
     expect(vi.mocked(turnEndNotifier.observe).mock.calls).toEqual([["wt", t.title]]);
   });
+
+  it("Codex 样本（后端真走过 watcher 的那几帧，壳那一跳同一份金样）⇒ 它那个 tab 两轮各报一次通知", async () => {
+    const { turnEndNotifier } = await import("../../../src/frontend/ui/turn-notify");
+    vi.mocked(turnEndNotifier.observe).mockClear();
+    const frames = readFileSync(resolve(REPO_ROOT, "tests/__fixtures__/codex-session-stream.golden.jsonl"), "utf8")
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l) as { kind: string; sid?: string; session_id?: string; path?: string });
+    const announced = frames.filter((f) => f.kind === "session_added");
+    expect(announced).toHaveLength(1);
+    const codexSid = announced[0].sid!;
+    const tab = tm.ensureTab(codexSid, null, announced[0].path!, LOCAL_ORIGIN);
+    for (const f of frames.filter((f) => f.kind === "turn_end")) tm.onTurnEnd(LOCAL_ORIGIN, f.session_id!);
+    expect(vi.mocked(turnEndNotifier.observe).mock.calls).toEqual([
+      [codexSid, tab.title],
+      [codexSid, tab.title],
+    ]);
+  });
 });
 
 describe("SeqSet.maxBelow：见过的、比 x 小的最大行号", () => {

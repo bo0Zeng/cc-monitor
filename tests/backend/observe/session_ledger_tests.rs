@@ -25,7 +25,7 @@ fn listed() -> Ev {
 fn added(sid: &str) -> Ev {
     Frame::SessionAdded {
         sid: sid.into(),
-        agent_kind: None,
+        agent_kind: "claude".to_string(),
         liveness_confidence: None,
         background: false,
         attachable: None,
@@ -144,7 +144,7 @@ fn a_removal_waits_for_an_observation_and_asks_for_one() {
     let mut l = SessionLedger::new();
     l.on_frame(&Frame::SessionAdded {
         sid: "a".into(),
-        agent_kind: None,
+        agent_kind: "claude".to_string(),
         liveness_confidence: None,
         background: false,
         attachable: None,

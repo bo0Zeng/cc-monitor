@@ -406,12 +406,10 @@ pub enum Frame {
     SessionAdded {
         /// 会话 id。
         sid: String,
-        /// DG3（#2D，additive）：会话属哪 agent kind——`"codex"`（Codex 会话）。Claude 会话**省略**
-        /// （skip_if_none）→ 消费侧缺=claude（向后兼容、旧后端无此字段）。
-        #[serde(skip_serializing_if = "Option::is_none")]
-        agent_kind: Option<String>,
-        /// DG3（#2D，additive）：判活置信度——`"heuristic"`（Codex 无 pidfile、mtime/proc 启发）。
-        /// Claude（pidfile 权威）**省略**（skip_if_none）→ 消费侧缺=authoritative（向后兼容）。
+        /// 会话属哪一家（注册表里那一家的 kind：`"claude"` · `"codex"` …）。每条都带。
+        agent_kind: String,
+        /// 判活置信度：`"heuristic"` ＝ 「活着」是猜的（比如按修改时刻）。缺 ＝ 系统给的事实判的：pidfile ＋ pidfd，
+        /// 或「有进程开着它的记录写」＋ pidfd（`observe::watcher` 的「开着即活」那一路）—— 两路同一档。今天没有哪一路标它。
         #[serde(skip_serializing_if = "Option::is_none")]
         liveness_confidence: Option<String>,
         /// 是不是后台会话（不是人坐在终端里对话的那种）。适配层判（`agents::pidfile_background`），客户端只读这一格。
