@@ -36,8 +36,6 @@
     "C-W18": [
       "beContract.malformed.say",
       "credsPerm.currentUserSid.noToken",
-      "extPage.status.syncFailed",
-      "extPage.status.syncRow",
       "machineAliases.policy.setFailed",
       "machineAliases.policy.unknown",
       "machineCard.stage.authFailed",
@@ -46,17 +44,7 @@
       "rsBackendPolicy.death.brief",
       "rsBackendPolicy.status.exit",
       "rsChanHost.start.bindFailed",
-      "rsFilewinBookmarks.mutate.failed",
-      "rsFilewinBookmarks.read.failed",
-      "rsFilewinBookmarks.read.unreadable",
-      "rsFilewinCopy.outcome.failed",
-      "rsFilewinFind.refusal.line",
-      "rsFilewinFind.round.findFailed",
-      "rsFilewinFind.round.statusFailed",
-      "rsFilewinPreview.image.undecodable",
-      "rsFilewinProc.child.noRuntime",
       "rsFilewinProc.dialBack.failed",
-      "rsFilewinShell.window.openFailed",
       "rsLaunch.local.spawnFailed",
       "tabBatch.why.batchRefused"
     ]

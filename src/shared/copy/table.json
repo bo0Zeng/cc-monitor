@@ -9688,8 +9688,8 @@
     "rsFilewinShell.window.openFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "打开文件窗口失败 · {e}",
-      "args": ["e"]
+      "zh": "打开文件窗口失败 · 原因不明",
+      "args": []
     },
     "rsFilewinShell.menu.unavailableHere": {
       "kind": "error",
@@ -10249,20 +10249,20 @@
     "rsFilewinFind.round.findFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "搜索失败 · {e}",
-      "args": ["e"]
+      "zh": "搜索失败 · 程序出错",
+      "args": []
     },
     "rsFilewinFind.round.statusFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "读取文件清单状态失败 · {e}",
-      "args": ["e"]
+      "zh": "读取文件清单状态失败 · 程序出错",
+      "args": []
     },
     "rsFilewinFind.refusal.line": {
       "kind": "error",
       "role": "原因格",
-      "zh": "{hint} · {message}",
-      "args": ["hint", "message"]
+      "zh": "{hint} · {said}",
+      "args": ["hint", "said"]
     },
     "rsFilewinFind.refusal.other": {
       "kind": "error",
@@ -10417,20 +10417,20 @@
     "rsFilewinBookmarks.mutate.failed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "保存书签失败 · {e}",
-      "args": ["e"]
+      "zh": "保存书签失败 · {why}",
+      "args": ["why"]
     },
     "rsFilewinBookmarks.read.unreadable": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取书签文件 {file} 失败 · 内容无法解析 · {e}",
-      "args": ["file", "e"]
+      "zh": "读取书签文件 {file} 失败 · 内容无法解析",
+      "args": ["file"]
     },
     "rsFilewinBookmarks.read.failed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "读取书签失败 · {e}",
-      "args": ["e"]
+      "zh": "读取书签失败 · {why}",
+      "args": ["why"]
     },
     "rsFilewinTransfer.ui.redone": {
       "kind": "error",
@@ -10882,8 +10882,8 @@
     "rsFilewinCopy.outcome.failed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "复制失败 · {e}",
-      "args": ["e"]
+      "zh": "复制失败 · {said}",
+      "args": ["said"]
     },
     "rsFilewinCopy.outcome.skipped": {
       "kind": "body",
@@ -18624,8 +18624,8 @@
     "rsFilewinProc.child.noRuntime": {
       "kind": "error",
       "role": "报错",
-      "zh": "文件窗口启动失败 · 程序出错 · {e}",
-      "args": ["e"]
+      "zh": "文件窗口启动失败 · 程序出错",
+      "args": []
     },
     "beFilesWrite.rename.dirNoNoreplace": {
       "kind": "error",
@@ -18744,8 +18744,8 @@
     "extPage.status.syncRow": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取 {machine} 失败 · {e} · 该列为上次结果",
-      "args": ["machine", "e"]
+      "zh": "读取 {machine} 失败 · {said} · 该列为上次结果",
+      "args": ["machine", "said"]
     },
     "extPage.card.cancel": {
       "kind": "action",
@@ -19198,8 +19198,8 @@
     "extPage.status.syncFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取其他机器失败 · {e} · 表里为上次结果",
-      "args": ["e"]
+      "zh": "读取其他机器失败 · {said} · 表里为上次结果",
+      "args": ["said"]
     },
     "extPage.card.confirmRemove": {
       "kind": "action",
@@ -20071,8 +20071,8 @@
     "rsFilewinPreview.image.undecodable": {
       "kind": "error",
       "role": "原因格",
-      "zh": "图片无法解码 · {e}",
-      "args": ["e"]
+      "zh": "图片无法解码",
+      "args": []
     },
     "rsFilewinProps.box.title": {
       "kind": "title",

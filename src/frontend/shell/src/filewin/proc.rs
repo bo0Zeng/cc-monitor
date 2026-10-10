@@ -170,7 +170,7 @@ pub fn spawn_window(
 ) -> Result<(crate::spawn_managed::ManagedChild, StderrTail), ProcFail> {
     use crate::spawn_managed::{ConsolePolicy, Lifetime, StderrSink};
     let bin = resolve_window_bin()?;
-    let seed = encode_request(req).map_err(crashed)?;
+    let seed = encode_request(req).map_err(|s| crashed(s.logged()))?;
     // argv 上一个字都没有（理由住头注）；接 stdin（种子）与 stdout（就绪那一行）两根。stdout 一直有人读：
     // [`open_in_new_process`] 读那一行，之后 [`reap_later`] 把它读到 EOF（没人读的管子写满就会卡住窗口）。
     let mut cmd = std::process::Command::new(&bin);
@@ -422,7 +422,7 @@ pub fn read_ready(r: &mut impl std::io::BufRead) -> Result<Option<Ready>, String
     if n == 0 {
         return Ok(None);
     }
-    decode_ready(&line).map(Some)
+    decode_ready(&line).map(Some).map_err(|s| s.logged())
 }
 
 /// 收尸：`Lifetime::Detached` 不改变父子关系 ⇒ 不 `wait` 就留僵尸。

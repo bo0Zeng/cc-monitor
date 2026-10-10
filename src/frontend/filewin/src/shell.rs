@@ -106,6 +106,7 @@
 //!   住 [`super::transfer::run_drop`]；三段的顺序就是那个函数的结构，判据钉的是顺序与并行度。
 
 use copy_core::copy_text;
+use copy_core::said::Said;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -4998,7 +4999,7 @@ pub fn open_detached(
     source: Source,
     cwd: String,
     rt: Option<tokio::runtime::Handle>,
-) -> std::thread::JoinHandle<Result<(), String>> {
+) -> std::thread::JoinHandle<Result<(), Said>> {
     open_detached_seeded(
         source,
         cwd,
@@ -5047,7 +5048,7 @@ pub fn open_detached_seeded(
     work_area: Option<host_core::WorkArea>,
     // 窗口的样子（开窗种子带来的那一套；`None` ＝ 判据那一形，照 egui 当下的样子画）。
     theme: Option<filewin_contract::Theme>,
-) -> std::thread::JoinHandle<Result<(), String>> {
+) -> std::thread::JoinHandle<Result<(), Said>> {
     OPEN_REQUESTED.fetch_add(1, Ordering::SeqCst);
     std::thread::spawn(move || {
         let title = window_title(super::source::remote_basename(&cwd), &source.label());
@@ -5095,7 +5096,8 @@ pub fn open_detached_seeded(
                 }) as Box<dyn eframe::App>)
             }),
         )
-        .map_err(|e| copy_text("rsFilewinShell.window.openFailed", &[("e", &e.to_string())]))
+        // 句子只说没开成；eframe 的原话跟着走（窗口进程把它印上 stderr，monitor 接进日志与复制详情）。
+        .map_err(|e| Said::with_raw(copy_text("rsFilewinShell.window.openFailed", &[]), e))
     })
 }
 

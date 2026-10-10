@@ -161,8 +161,13 @@ fn a_seed_that_cannot_be_read_is_a_loud_failure_not_a_default_window() {
                                        那意味着某处在补默认值，而用户会看到一个开在别处的窗口"
             )
         });
-        assert!(!e.is_empty(), "{tag}：报了错但原因是空的");
+        assert!(!e.said.is_empty(), "{tag}：报了错但原因是空的");
     }
+    // 读不懂的那一形：句子只说「程序出错」，解析器的原话跟着走（上 stderr / 复制详情），不进句子。
+    let e = decode_request("{这不是 JSON").expect_err("坏种子");
+    let raw = e.raw.as_deref().expect("解析器的原话丢了");
+    assert!(!e.said.contains(raw), "原话进了句子：{}", e.said);
+    assert!(!e.said.contains("line 1"), "原话进了句子：{}", e.said);
     // ── 阴性对照：**合法的那一份必须过** ────────────────────────────
     //    少了它，一个「恒回 Err」的实现照样绿，而那时**每一次**开窗都失败。
     let ok = encode_request(&synthetic_request()).expect("序列化");
