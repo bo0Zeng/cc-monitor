@@ -17,6 +17,8 @@ export function defaultCommands(): Record<string, CommandHandler> {
     // 本机开一个终端窗口跑那一行：截图里不真开，当作开了。
     open_local_terminal: () => "opened",
     open_terminal_window: () => "opened",
+    // 在新窗口里看一个会话：截图里不真开窗。
+    open_session_in_new_window: () => null,
     // 设置 → 通用「终端」那一行的事实（Linux 桌面：自动挑到 ptyxis）。
     terminal_choices: () => ({ applies: true, auto: "ptyxis", found: ["ptyxis", "alacritty"], setting: "" }),
   };

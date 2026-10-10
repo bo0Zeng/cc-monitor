@@ -16,6 +16,7 @@
 
 use super::decide::{self, Kind};
 use crate::agents::{QuotaReading, QuotaStatus};
+use crate::common::cells::{Tone, Words};
 use serde::{Deserialize, Serialize};
 
 /// 没设「到 N% 换」时，「快满」的门槛（%）。
@@ -71,10 +72,86 @@ pub struct SlotShow {
     #[serde(skip_serializing_if = "Option::is_none", default)]
     #[cfg_attr(test, ts(optional))]
     pub resets_at_text: Option<String>,
+    /// `resets_at` 距今（`+1h50m`；回包出口 `common::time::with_texts` 添，只在还没到时有）。
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    #[cfg_attr(test, ts(optional))]
+    pub resets_at_rel_text: Option<String>,
     /// 用满：这个窗口用到 100%、还没重置（画 `✕`；被拒而没用满画「{pct}% · 被拒」）。没用满 ⇒ 缺。
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     #[cfg_attr(test, ts(optional, as = "Option<bool>"))]
     pub full: bool,
+    /// 这一格的字（唯一写法 [`slot_words`]：超额在兜 `超额` · 上一窗已过 / 没数 `—` · 用满 `✕` · 被拒没用满 `58% · 被拒` · 否则 `58%`）。
+    #[serde(default)]
+    #[cfg_attr(test, ts(type = "string"))]
+    pub text: Words,
+    /// 那一格的语气：用满 · 被拒 ⇒ `fail`；超额在兜 · 卡着的窗口快满 ⇒ `warn`；否则 `plain`。
+    #[serde(default = "plain")]
+    #[cfg_attr(test, ts(type = "\"plain\" | \"fail\" | \"warn\""))]
+    pub tone: Tone,
+}
+
+fn plain() -> Tone {
+    Tone::Plain
+}
+
+/// ★ 一个语义位那一格写成什么字、什么语气（唯一一处：额度每号几行 · 账号面板 · 规则编辑器 · 起会话菜单都读它）。
+/// `here` ＝ 它是卡人的那一格（[`QuotaShow::limiting`]）。
+pub(crate) fn slot_words(
+    state: QuotaState,
+    here: bool,
+    pct: Option<u32>,
+    full: bool,
+) -> (Words, Tone) {
+    if here && state == QuotaState::OverageInUse {
+        return (
+            Words(copy_core::copy_text("acct.val.over", &[])),
+            Tone::Warn,
+        );
+    }
+    if here && matches!(state, QuotaState::ResetSinceSeen | QuotaState::Unseen) {
+        return (
+            Words(copy_core::copy_text("acct.val.none", &[])),
+            Tone::Plain,
+        );
+    }
+    if full {
+        return (
+            Words(copy_core::copy_text("acct.val.full", &[])),
+            Tone::Fail,
+        );
+    }
+    if here && state == QuotaState::Refused {
+        return match pct {
+            Some(p) => (
+                Words(copy_core::copy_text(
+                    "acct.val.refusedPct",
+                    &[("pct", &p.to_string())],
+                )),
+                Tone::Fail,
+            ),
+            None => (
+                Words(copy_core::copy_text("acct.val.refusedOnly", &[])),
+                Tone::Fail,
+            ),
+        };
+    }
+    match pct {
+        None => (
+            Words(copy_core::copy_text("acct.val.none", &[])),
+            Tone::Plain,
+        ),
+        Some(p) => (
+            Words(copy_core::copy_text(
+                "acct.val.pct",
+                &[("pct", &p.to_string())],
+            )),
+            if here && state == QuotaState::Near {
+                Tone::Warn
+            } else {
+                Tone::Plain
+            },
+        ),
+    }
 }
 
 /// 一个号的显示态。
@@ -206,10 +283,13 @@ fn slots_of(
                 })?;
             Some(SlotShow {
                 resets_at_text: None,
+                resets_at_rel_text: None,
                 slot: (*s).to_string(),
                 pct: w.used.map(|u| (u * 100.0).round().max(0.0) as u32),
                 resets_at: w.resets_at,
                 full: full(w, now),
+                text: Words::default(),
+                tone: Tone::Plain,
             })
         })
         .collect()
@@ -275,6 +355,15 @@ pub(crate) fn show(
     } else {
         QuotaState::Ok
     };
+    let mut slots = slots;
+    for x in &mut slots {
+        (x.text, x.tone) = slot_words(
+            state,
+            limiting.as_deref() == Some(x.slot.as_str()),
+            x.pct,
+            x.full,
+        );
+    }
     QuotaShow {
         kind: facts.kind,
         state,

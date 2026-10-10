@@ -483,7 +483,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   J23: {
     what: "自 1970-01-01 起第几天 ⇒ 公历年月日",
     homes: ["copy-core::civil_from_days"],
-    // 删的是界面额度悬停卡排时刻那一份（`quota-lines.ts::civil` ＋ `fmtAt`）：时刻的字改由后端出口写好（回包里每个时刻旁边那一格 `…Text`），界面照抄。
+    // 删的是界面额度悬停卡排时刻那一份（`quota-lines.ts::civil` ＋ `fmtAt`，那份文件后来整个删了）：时刻的字改由后端出口写好（回包里每个时刻旁边那一格 `…Text`），界面照抄。
     status: "zero",
     defs: ["civil", "fmtAt"],
     needles: [

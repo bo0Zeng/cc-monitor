@@ -21359,12 +21359,6 @@
       "zh": "↻{at} 已过",
       "args": ["at"]
     },
-    "acct.seen.at": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "{at} · {machine}",
-      "args": ["at", "machine"]
-    },
     "acct.seen.none": {
       "kind": "body",
       "role": "空态",
@@ -21383,10 +21377,40 @@
       "zh": "读取失败 · 用量记录 · 原因不明",
       "args": []
     },
-    "acct.text.onlyQuota": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "--text 仅用于 --quota-read",
+    "acct.warm.unseen": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "无采样 · 发一句才知道",
+      "args": []
+    },
+    "acct.warm.refused": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "被拒（{w}）↻{at}",
+      "args": ["w", "at"]
+    },
+    "acct.warm.weekFull": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "7d 用满 ↻{at}",
+      "args": ["at"]
+    },
+    "acct.warm.ticking": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "5h {pct}% ↻{at}",
+      "args": ["pct", "at"]
+    },
+    "acct.warm.expired": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "5h 窗口已过期",
+      "args": []
+    },
+    "acct.warm.noWindow": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "无 5h 窗口",
       "args": []
     },
     "acct.slot.both": {

@@ -30,7 +30,7 @@ import { isSelectable, type Account } from "./accounts";
 import { accountAvatarEl } from "./account-color";
 import { appStore } from "./app-store";
 import { refreshQuota } from "./acct-center";
-import { fiveHourCell } from "./quota-lines";
+import { fiveHourCell } from "./acct-words";
 import { machineModels } from "./account-prefs";
 import { resumeCommandFor } from "./remote-config";
 import { configuredLauncherFor } from "./launch-requests";

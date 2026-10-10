@@ -10,7 +10,7 @@
  */
 import type { AccountsState, SessionAccount } from "./accounts";
 import { LOCAL_ORIGIN, type Origin } from "./ipc/origin";
-import type { QuotaRead } from "./quota-lines";
+import type { QuotaRead } from "./acct-words";
 import type { RulesRead } from "./quota-reads";
 import type { SessionRotationState } from "./generated/SessionRotationState";
 

@@ -7,4 +7,8 @@ export type AccountAt = { account: string, at: number,
 /**
  * `at` 写给人看的样子（回包出口 `common::time::with_texts` 添；内部与记账一律不填）。
  */
-atText?: string, };
+atText?: string, 
+/**
+ * `at` 距今（`+1h30m`；回包出口 `common::time::with_texts` 添，只在还没到时有）。
+ */
+atRelText?: string, };

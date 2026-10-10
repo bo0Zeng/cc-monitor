@@ -201,7 +201,7 @@ pub(crate) struct BgTask {
 pub(crate) struct Background {
     /// 「后台任务运行中 · make test-all · 12m」；命令拿不到 ⇒ 「后台任务运行中」。手机与 CLI 照抄、按节拍重问。
     pub(crate) text: Words,
-    /// 同一句、时长那一截留 `{dur}`：`{text, from}`，桌面填 现在 − `from`（`quota-lines.ts::fmtDur`，与 `copy_core::short_duration` 对同一份金样）。
+    /// 同一句、时长那一截留 `{dur}`：`{text, from}`，桌面填 现在 − `from`（`duration-format.ts::fmtDur`，与 `copy_core::short_duration` 对同一份金样）。
     /// 命令或起始时刻拿不到 ⇒ `null`。
     pub(crate) clock: Option<Clock>,
     /// 命令那一格（「make test-all」·「python train.py 等 2 条」）；拿不到 ⇒ `null`。

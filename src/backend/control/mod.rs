@@ -45,12 +45,12 @@ pub(crate) mod launch;
 pub(crate) mod launch_account;
 // 起会话的计划与渲染：本机起会话 · `ccm …` 调用行 · 载荷 ＋ 外层 tmux 三格。
 pub mod launch_render;
-pub(crate) mod quota_text;
 pub mod resident;
 pub mod resolve_query;
 pub(crate) mod session_batch;
 pub(crate) mod session_new;
-// 起新会话那一趟的票（期限到了再问一次 ⇒ 认出同一趟，不起第二个）。
+pub(crate) mod ship_text; // CLI `--text`：回包里写好的格（顶上 `text` · 每一处 `rows`）拼成字，所有命令通用
+                          // 起新会话那一趟的票（期限到了再问一次 ⇒ 认出同一趟，不起第二个）。
 pub(crate) mod session_new_ticket;
 // 换号重启：查号 → 先压缩（可选）→ 停旧 → 同一终端名用新号起 → 等报出（帧面宿主 `faces/session_restart_face.rs`）。
 pub(crate) mod session_restart;

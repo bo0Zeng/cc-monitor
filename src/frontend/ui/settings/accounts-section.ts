@@ -19,7 +19,7 @@ import { accountsAgentProfile, fetchAccounts, invalidateAccountsCache, launchAge
 import { setModelForAccount, getModelForAccount } from "../account-prefs";
 import { accountAvatarEl } from "../account-color";
 import { readQuota } from "../quota-reads";
-import { slotLabel, slotValue, type QuotaRead } from "../quota-lines";
+import { slotLabel, slotText, type QuotaRead } from "../acct-words";
 import type { QuotaShow } from "../generated/QuotaShow";
 import { readProfiles } from "../profiles-reads";
 import { writeApikeyKey } from "../apikey-reads";
@@ -867,7 +867,7 @@ function fillUsage(u5: HTMLElement, u7: HTMLElement, q: QuotaShow | null, now: n
   ] as const) {
     const x = q.slots.find((v) => v.slot === slot);
     const here = (q.limiting ?? "5h") === slot;
-    const parts = [slotLabel(slot), slotValue(q, slot)];
+    const parts = [slotLabel(slot), slotText(q, slot)];
     if (x?.resetsAt !== undefined && x.resetsAt > now && (slot === "5h" || (here && q.state === "refused"))) parts.push(copyText("acct.reset.at", { at: x.resetsAtText ?? "" }));
     cell.textContent = parts.join(" ");
     if (x?.full || (here && q.state === "refused")) cell.dataset.shade = "refused";

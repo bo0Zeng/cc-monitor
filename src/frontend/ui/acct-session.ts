@@ -16,7 +16,7 @@ import type { Origin } from "./ipc/origin";
 import { banner } from "./kit/banner";
 import { button } from "./kit/button";
 import { icon } from "./kit/icon";
-import { accountLabel } from "./quota-lines";
+import { accountLabel } from "./acct-words";
 import { switchHot } from "./quota-reads";
 import s from "./acct-session.module.css";
 
@@ -69,7 +69,7 @@ function paintBanner(sid: string, entry: SessionRotationEntry | undefined, host:
   const content = host.streamContentOf(sid);
   if (!content) return;
   let el = content.querySelector<HTMLElement>(`:scope > .${s.acctSessNotice}`);
-  const b = bannerOf(entry, Math.floor(Date.now() / 1000));
+  const b = bannerOf(entry);
   if (!b || !entry) {
     el?.remove();
     return;

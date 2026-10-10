@@ -1833,6 +1833,7 @@ impl Shaped for QuotaRead {
                 account: "b".into(),
                 at: 2,
             }),
+            text: Some("t".into()),
         }]
     }
 }

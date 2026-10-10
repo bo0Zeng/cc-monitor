@@ -6,6 +6,7 @@ import { copyText } from "../../../src/frontend/ui/copy-table";
 import { fmtDur } from "../../../src/frontend/ui/duration-format";
 import type { LineRecord } from "../../../src/frontend/ui/generated/LineRecord";
 import { usageOf } from "./records";
+import { fakePlan } from "./timeline";
 import type { OpHandler, SessionSpec, World } from "./types";
 
 export const jsonlPathOf = (s: SessionSpec): string => `${s.cwd}/${s.sid}.jsonl`;
@@ -51,6 +52,10 @@ export const ACCOUNTS = [
 
 export function defaultOps(): Record<string, OpHandler> {
   return {
+    // 计划清单：默认世界里没有计划（计划页的世界 `plan.ts::planWorld` 换掉这一条）。
+    "plan-list": () => ({ pb: { state: "ok", said: null }, workspaces: [] }),
+    // 轮换预览 / 时间轴：照稿那一份（场景要别的样子自己换掉这一条）。
+    "rotation-plan": (_o, req) => fakePlan({ view: (req.view as "6h" | "24h" | "7d" | undefined) ?? "24h", session: typeof req.sid === "string" && !req.machine }),
     "accounts-list": (origin) => ({
       accounts: ACCOUNTS.map((a) => ({
         name: a.name,

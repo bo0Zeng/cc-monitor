@@ -11,7 +11,7 @@
 import type { PlanHead, PlanLane, PlanRead, PlanSeg } from "./quota-reads";
 import type { SwitchWhy } from "./generated/SwitchWhy";
 import { accountAvatarEl, accountColorSlot } from "./account-color";
-import { accountLabel, fmtRel, slotLabel } from "./quota-lines";
+import { accountLabel, slotLabel } from "./acct-words";
 import { whyOf } from "./acct-view";
 import { attachTooltip } from "./kit/tooltip";
 import { segmented } from "./kit/tabs";
@@ -95,7 +95,7 @@ export function headLine(
       copyText("rot.tl.blocked", {
         acct: accountLabel(b.account),
         at: b.atText ?? "",
-        rel: fmtRel(b.at, p.now) ?? "",
+        rel: b.atRelText ?? "",
       }),
     ];
     if (b.w) parts.push(copyText("rot.tl.blockedW", { w: slotLabel(b.w) }));

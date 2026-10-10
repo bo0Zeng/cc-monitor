@@ -10,7 +10,7 @@ import { copyText } from "../../../src/frontend/ui/copy-table";
 import { copyPattern } from "../../test-support/copy-pattern";
 
 const NOW = 1_791_189_600;
-const entry = (history: SwitchRecord[], blocked?: { account: string; at: number }): SessionRotationEntry => ({
+const entry = (history: SwitchRecord[], blocked?: { account: string; at: number; atText?: string; atRelText?: string }): SessionRotationEntry => ({
   origin: "<local>",
   now: NOW,
   read: {
@@ -44,7 +44,7 @@ describe("换号条 · 提示条", () => {
     const content = document.createElement("div");
     content.appendChild(document.createElement("p"));
     const host = { streamContentOf: () => content, openPanel: () => {} };
-    onSessionEntry("s2", entry([], { account: "team", at: Math.floor(Date.now() / 1000) + 5400 }), host); // 提示条按画的那一刻算「还有多久」
+    onSessionEntry("s2", entry([], { account: "team", at: Math.floor(Date.now() / 1000) + 5400, atText: "13:30", atRelText: "+1h30m" }), host); // 「还有多久」照核心写好的距今
     expect(content.firstElementChild?.textContent).toMatch(copyPattern("acct.banner.allFull", { name: "team" }));
     onSessionEntry("s2", entry([]), host);
     expect(content.textContent).not.toMatch(copyText("acct.banner.allFullNoAt"));

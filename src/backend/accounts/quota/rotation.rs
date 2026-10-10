@@ -299,6 +299,10 @@ pub struct AccountAt {
     #[serde(skip_serializing_if = "Option::is_none", default)]
     #[cfg_attr(test, ts(optional))]
     pub at_text: Option<String>,
+    /// `at` 距今（`+1h30m`；回包出口 `common::time::with_texts` 添，只在还没到时有）。
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    #[cfg_attr(test, ts(optional))]
+    pub at_rel_text: Option<String>,
 }
 
 /// 这个会话发不出去了：轮换里没有能接的号；`earliest` ＝ 最早回来的那个（说不出 ⇒ 缺）。
