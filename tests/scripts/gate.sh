@@ -186,13 +186,14 @@ gate_vitest_share() { ( export GATE_VITEST_WORKERS="$GATE_VITEST_EACH"; "$@" ); 
 # ② **不按墙钟判的格让路**（`nice -n 10`：负载涨上来时 CPU 先给按墙钟判的那些）：
 #    · 按墙钟判（有期限、超时即红 ⇒ 普通优先级）—— `npm` · `coverage`（vitest 每条有期限）· `cargo` · `backend`
 #      · `comm-boundary` · `test-tiers`（`cargo test` 里有带期限 / 等待上限的用例；这两格的 `cargo test --no-run` 那一半让路，
-#      见 `gate_cargo_test_nonet`）· `ccbus-twophase`（真跑、带等待上限）· e2e 各套 · `env-sandbox` · `weak-net`；
+#      见 `gate_cargo_test_nonet`）· `ccbus-twophase`（真跑、带等待上限）· e2e 各套 · `env-sandbox` · `weak-net`
+#      · `mobile`（手机端的 JVM 单测里有带等待上限的进程与协程用例）；
 #    · 不按墙钟判（只看编得过 / 诊断零条 / 盘上文本 / 两份对得上 ⇒ 让路）—— 编译类 `deadcode` · `deadcode-backend` · `clippy`
 #      · `clippy-backend` · `appbuild` · `winchk` · `winchk-backend` · `winlink` · `muslbuild` · `tsc` · e2e 前置那趟 `cargo build`（`e2e-prep`）；
 #      读文本类 `worktree-clean` · `hooks` · `copy2` · `shellcheck` · `e2e-smoke` · `release-gate` · `platform` · `installface`
 #      · `fmt` · `fmt-backend` · `audit` · `generated` · `tmux-default`。
 #    两张表与盘上的格两向相等（同一个判据文件钉）：新加一格就得在这里归一边。
-GATE_WALL_CELLS=" npm coverage cargo backend comm-boundary test-tiers ccbus-twophase e2e env-sandbox weak-net "
+GATE_WALL_CELLS=" npm coverage cargo backend comm-boundary test-tiers ccbus-twophase e2e env-sandbox weak-net mobile "
 GATE_YIELD_CELLS=" deadcode deadcode-backend clippy clippy-backend appbuild winchk winchk-backend winlink muslbuild tsc e2e-prep worktree-clean hooks copy2 shellcheck e2e-smoke release-gate platform installface fmt fmt-backend audit generated tmux-default "
 gate_yields() { case "$GATE_YIELD_CELLS" in *" $1 "*) return 0 ;; esac; return 1; }
 # 只降调它所在的那个子 shell（`$BASHPID`）及其往后起的子进程；调用方负责把它放进子 shell 里。
@@ -713,7 +714,7 @@ run_gate copy2 '`evidence/*.py` 里 `shutil` 保元数据复制族（copy2 · co
 # 人群的唯一住址是下面这一行（CI 调本格）；`shell_lint_registry` 读它判每个 shell 脚本要么在人群里、要么登记豁免。
 # 本段不让任何注释行以 `#` ＋ 空格 ＋ 那个工具名开头：那是它的指令语法。
 # 反空真：展开出的份数 > 0 且本文件在里面；某组 glob 一个都不匹配由 `shell_lint_registry` 接住。本地与 CI 的二进制版本可能不同。
-GATE_SHELLCHECK_GLOBS='tests/e2e/*.sh src/shared/cc-bus/scripts/* src/shared/cc-bus/examples/cc-keepalive tests/e2e/fake-claude tests/e2e/weak-net/*.sh tests/e2e/local-backend-container/*.sh tests/evidence/*.sh tests/scripts/*.sh tests/hooks/* tests/shots/perf/*.sh'
+GATE_SHELLCHECK_GLOBS='tests/e2e/*.sh src/shared/cc-bus/scripts/* src/shared/cc-bus/examples/cc-keepalive tests/e2e/fake-claude tests/e2e/weak-net/*.sh tests/e2e/local-backend-container/*.sh tests/evidence/*.sh tests/scripts/*.sh tests/hooks/* tests/shots/perf/*.sh src/mobile/scripts/*.sh src/mobile/gradlew'
 gate_shellcheck() {
   local out rc n self=0 f
   command -v shellcheck >/dev/null 2>&1 || {
@@ -1264,6 +1265,35 @@ gate_weaknet() {
 }
 run_gate weak-net '台架跑完且 FAIL=0（四维网况 ＋ SSH，改前/改后两个读数）。⚠ 要 docker；只量容器里自建网络上的网况，真远端、真 Windows 一概不在' \
          gate_weaknet
+
+gate_lane 手机端
+
+# ── `mobile`：手机端 app（`src/mobile`，Gradle 多模块）的构建 ＋ JVM 单测 ──────────────────────────────
+# 工具链：外面给了 `JAVA_HOME` 与 `ANDROID_HOME` 就用（CI 的 setup-java / setup-android）；没给就 source
+#   `src/mobile/scripts/env.sh`（探 `$HOME/android-dev`，Gradle 缓存也隔离在那里），找不到按红记。
+# 跑：ktlint · detekt（带类型解析）· 各模块 JVM 单测（`:core-claude` · `:core-remote` 是纯 JVM 模块，要显式点）·
+#   release 构建（R8 不许误删反射 / 原生库要的类；没有签名配置就产未签名的包）· `bridge/` 的 Python 金样测试。
+# 判：Gradle 与 pytest 退出码都是 0 ＋ 这一趟 test-results 里的条数 > 0（先清掉旧的 test-results；build cache 命中时 Gradle 照样还原它）。
+# 不起模拟器：要设备的 androidTest 不在这里，入口是 `src/mobile/scripts/android-test.sh`。Android Lint（`:app:lintDebug`）也不在这里。
+# 不进无网沙箱：Gradle 头一趟要下依赖；单测里只起 `/bin/sh`、全落临时目录，不连任何口、不碰 tmux。
+gate_mobile() {
+  local out="$PWD/.build/mobile" n
+  (
+    cd src/mobile || exit 1
+    if [ -z "${JAVA_HOME:-}" ] || [ -z "${ANDROID_HOME:-}" ]; then
+      # shellcheck disable=SC1091  # 路径在仓里，shellcheck 不跟进
+      . ./scripts/env.sh >/dev/null || { printf 'mobile: 找不到 Android 工具链（JDK ＋ SDK）—— 判不了\n'; exit 1; }
+    fi
+    rm -rf "$out"/*/test-results
+    ./gradlew --no-daemon --console=plain ktlintCheck detektDebug testDebugUnitTest \
+      :core-claude:test :core-claude:detektMain :core-remote:test :core-remote:detektMain :app:assembleRelease || exit $?
+    PYTHONDONTWRITEBYTECODE=1 python3 -m pytest -q -p no:cacheprovider bridge/tests || exit $?
+  ) || return $?
+  n="$(cat "$out"/*/test-results/*/*.xml 2>/dev/null | grep -oE '<testsuite [^>]*tests="[0-9]+"' | grep -oE 'tests="[0-9]+"' | grep -oE '[0-9]+' | paste -sd+ - | bc 2>/dev/null)"
+  printf 'mobile: %s passed（Gradle 各模块 JVM 单测合计，读这一趟的 test-results；ktlint · detekt · release 构建 · bridge 金样也都绿）\n' "${n:-0}"
+}
+run_gate mobile '这一趟 Gradle test-results 里的单测条数（各模块合计）；同一格还跑 ktlint · detekt · release 构建（R8）· bridge 的 Python 金样，那几步只有绿/红。⚠ 不起模拟器：要设备的 androidTest 与 Android Lint 不在这里' \
+         gate_mobile
 
 # 各道同时起跑、等齐，再按上面的顺序逐格判。
 gate_lanes_run

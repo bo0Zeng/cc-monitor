@@ -1,0 +1,56 @@
+# Android / Gradle
+.gradle/
+build/
+**/build/
+local.properties
+captures/
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# Android Studio / IntelliJ
+.idea/
+*.iml
+.cxx/
+.externalNativeBuild/
+
+# Eclipse / Buildship（部分工具会生成；不入库）
+.project
+.settings/
+.classpath
+
+# Kotlin
+.kotlin/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+
+# Keys / secrets (never commit signing or SSH material)
+*.jks
+*.keystore
+keystore.properties
+secrets.properties
+# 本地 spike 测试用 SSH 私钥（绝不提交）
+**/androidTest/assets/test_key
+**/androidTest/assets/test_key.*
+
+# debug 播种用的设备私钥（assets，绝不提交）
+**/assets/dev_nanopi_key
+
+# 真实 Claude JSONL 测试样本（本地，含对话内容，不提交）
+**/test/resources/sample.jsonl
+
+# bridge/ 的 Python 产物
+__pycache__/
+*.pyc
+# record_vectors.py 录 auth-fail 时临时造的空 CLAUDE_CONFIG_DIR
+bridge/.tmp-emptycfg/
+
+# 开发机上 Claude Code 插件的运行期产物
+.claude/*-hook.md
+.claude/*/.hook-state.json
+.claude/*/*/.freeze.json
+.claude/*/*/.keepalive.json
