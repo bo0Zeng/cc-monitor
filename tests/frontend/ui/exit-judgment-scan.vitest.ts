@@ -50,7 +50,7 @@ function scan(): { got: Map<string, number>; files: Map<string, number> } {
     const srcs = lang === "ts" ? productionTsFiles(dir) : productionRsFiles(dir);
     files.set(dir, srcs.length);
     for (const s of srcs) {
-      const code = stripComments(s.text, lang);
+      const code = stripComments(s.text, lang === "rs" ? "rust" : "ts");
       for (const r of rulesOf(lang)) {
         const n = code.match(r.re)?.length ?? 0;
         if (n > 0) got.set(`${s.file} · ${r.id}`, n);
