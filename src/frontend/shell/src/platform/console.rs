@@ -13,6 +13,8 @@
 
 /// 控制台窗口 `console`（借不到 ⇒ `None`）⇒ 显示它的那个窗口：有属主 ⇒ 属主（Windows Terminal 的伪控制台窗口 ⇒ 终端窗口）；
 /// 没有 ⇒ 它自己（经典控制台）。那个窗口不可见 ⇒ 不算（隐藏的控制台不在任何人眼前）。读法是参数。
+/// 调用方只在 Windows 上（下面那一份）；判据在各平台喂替身判它。
+#[cfg(any(windows, test))]
 pub fn window_of_console(
     console: Option<isize>,
     owner_of: impl Fn(isize) -> isize,

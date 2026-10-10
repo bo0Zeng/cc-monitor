@@ -599,11 +599,6 @@ fn capped(v: Value) -> Answer {
     Ok(v)
 }
 
-/// 跑一个「往 `out` 里逐行写」的查询，收成 `{"lines": [...]}`。
-fn lines(f: impl FnOnce(&mut CappedBuf) -> Result<(), (&'static str, String)>) -> Answer {
-    Ok(json!({ "lines": rows(f)? }))
-}
-
 /// 跑一个「往 `out` 里逐行写」的查询，收成非空的那几行。
 fn rows(
     f: impl FnOnce(&mut CappedBuf) -> Result<(), (&'static str, String)>,
