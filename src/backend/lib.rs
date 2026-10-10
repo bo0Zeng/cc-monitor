@@ -903,7 +903,11 @@ pub const PROTO_VERSION: u32 = 1;
 /// 额度成品进核心：quota-read 每号（含 unseen）带 rows [[{text, tone}]] 与 warm {act, at?, text}（quota-warm 的开窗判定挪进核心），顶上多 text（读不出 · 一个号都没有那一句，照读答的原因说）；slots[] 每格带 text · tone；出口给还没到的时刻另添 <键>RelText（距今），rotation-plan 的 head.blocked 同带 atRelText；CLI --text 改成通用拼字、所有命令都收。
 /// 文案十四 14–16 批：契约错只回「请求格式不对」；powershell-policy-set 的 setError 与 aliases-read 候选 policy.error 由原话改为原因词；rotation-rules-read 的 reason / detail 收进界面；exit-policy-read 读不出时 said 带原因（盘上原值只进原话）；壳 spawn_blocking 没回来一律 crashed。aliases-read 候选的 block 删 manualCleanupHint（POSIX rc 裸行指名那一族删了，别名块现状只剩 present · conflictingFunctions）。
 /// 一次性 CLI 模式的 stderr 只剩协议：成功 0 字节、失败正好一行信封；tracing 诊断整行追加进那台后端的 stderr 诊断文件（宿主交的 CCM_BACKEND_STDERR_LOG，否则 ~/.cc-monitor/logs/backend/stderr.log），不写 stderr；契约错（malformed）只在真错那条路上记日志。子命令指纹没变（不加历史行）。
-pub const BUILD_ID: &str = "p9v-trigger-split-quota-rows";
+///
+/// p9w-history-listing-tail-mobile：history-list 换问法——入参 fresh 删、listing 加（界面经长连接问那台常驻 history-list {raw}，把那份原样交本机后端注解 · 筛 · 排；本机后端记着它给敲字用），码 unreachable 换 no_listing；本机后端不再经 remote_ask 在那台起一次性进程冷扫。
+/// 连上只拉尾段：旁路快照只读每会话最后 REPLAY_TAIL_KEEP 个可计行，头段由界面往上翻时按行号 / 偏移取回（壳侧 Read::Full 改名 Read::Tail，tail_seq 删）。
+/// 手机端 app 并进本仓 src/mobile（门禁 mobile 格 · CI mobile job · 第三方许可登记手机端二进制）；CI 认候选分支 next，winlink 那格加查 lib 测试程序带进程清单。
+pub const BUILD_ID: &str = "p9w-history-listing-tail-mobile";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
