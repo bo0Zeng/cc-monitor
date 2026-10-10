@@ -191,7 +191,7 @@ fn corpus(name: &str) -> Vec<Value> {
                 r#"{"type":"permission-mode","permissionMode":"default","sessionId":"s"}"#,
             );
             let face = crate::agents::claudecode::RECORDS;
-            let mut reader = crate::observe::record_page::Reader::new(&face, 0, &[], false);
+            let mut reader = crate::observe::record_page::Reader::new(&face, 0, &[]);
             crate::observe::record_page::rows_of(&mut reader, 0, page.as_bytes())
                 .into_iter()
                 .map(|r| serde_json::to_value(r).unwrap())

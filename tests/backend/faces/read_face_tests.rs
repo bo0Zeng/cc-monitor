@@ -1344,26 +1344,24 @@ fn find_hits_carry_their_time_text() {
     let _ = std::fs::remove_dir_all(&home);
 }
 
-/// ★ **`summaryOnly` 那一位真的接到了三条读记录命令上，而且两头都断。**
+/// ★ **「记录正文按需」那份声明真的作用在三条读记录命令上，而且两头都断。**
 ///
-/// 核那一层（剥哪几格 · 折起那一行要用的那几格一格不少）由
-/// `observe/record_page_tests.rs::the_summary_only_product_drops_every_body_cell_and_keeps_every_folded_cell`
-/// 逐标记两向钉着。本条钉的是**宿主这一跳**：三条命令各自把 `args` 里那一位读出来、原样递进核。
-/// 核那条判据单独立不住这件事 —— `read_face` 一行都不读那一位，它照样全绿。
+/// 挑格去格的本体（`faces/project.rs`）由 `project_tests` 逐格钉着；本条钉的是**这几条命令登记的成品住处**
+/// （`stream/inbound/views.rs::PLACES`）对得上它们真出的应答：照那一处投影之后，工具入参与工具结果正文一个不剩、
+/// 正文与推理一格不少、条数与 `next` / `eof` 一类的格不变。住处登记错了（`lines[].record` 写成 `rows[].record`），
+/// 投影就落空、应答原样 —— 前一头会红。
 ///
-/// 两头都断：置真 ⇒ 正文标记一个不剩且**条数不变**；缺席（= 今天的行为）⇒ 正文标记**必须**在。
-/// 只断前一头的话，宿主把成品整个弄空也能绿。
+/// 两头都断：不带声明 ⇒ 去掉的那几样**必须**在（夹具打到了）；带了 ⇒ 一个不剩，且只少了它们。
 #[test]
-fn the_three_record_reads_each_honour_summary_only_both_ways() {
-    let home = scratch("summary-only");
+fn the_three_record_reads_each_honour_the_body_on_demand_view_both_ways() {
+    let home = scratch("body-on-demand");
     let dir = home.join("projects").join("-p");
     std::fs::create_dir_all(&dir).unwrap();
     let p = dir.join("s.jsonl");
-    // 结构占位：`ZQBODY-*` 只住正文（思考 · 说的话 · 工具结果），`ZQKEEP-*` 另有一份住后端判好的 `userText`
-    //   —— 不采任何真会话正文。
+    // 结构占位：`ZQBODY-*` 只住工具入参与工具结果，`ZQKEEP-*` 住正文 · 推理 · 人说的话 —— 不采任何真会话正文。
     let body = [
         r#"{"type":"user","uuid":"u1","timestamp":"2026-01-02T03:04:05.000Z","message":{"role":"user","content":[{"type":"text","text":"ZQKEEP-asked"}]}}"#,
-        r#"{"type":"assistant","uuid":"a1","parentUuid":"u1","timestamp":"2026-01-02T03:04:06.000Z","message":{"role":"assistant","content":[{"type":"thinking","thinking":"ZQBODY-think"},{"type":"text","text":"ZQBODY-said"},{"type":"tool_use","id":"t1","name":"Read","input":{"file_path":"/w/f.txt"}}]}}"#,
+        r#"{"type":"assistant","uuid":"a1","parentUuid":"u1","timestamp":"2026-01-02T03:04:06.000Z","message":{"role":"assistant","content":[{"type":"thinking","thinking":"ZQKEEP-think"},{"type":"text","text":"ZQKEEP-said"},{"type":"tool_use","id":"t1","name":"Read","input":{"file_path":"/w/f.txt","zq_extra":"ZQBODY-input"}}]}}"#,
         r#"{"type":"user","uuid":"u2","parentUuid":"a1","timestamp":"2026-01-02T03:04:07.000Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"ZQBODY-result"}]}}"#,
     ]
     .iter()
@@ -1371,7 +1369,13 @@ fn the_three_record_reads_each_honour_summary_only_both_ways() {
     .collect::<String>();
     std::fs::write(&p, &body).unwrap();
     let path = p.to_string_lossy().to_string();
-    const GONE: &[&str] = &["ZQBODY-think", "ZQBODY-said", "ZQBODY-result"];
+    const GONE: &[&str] = &["ZQBODY-input", "ZQBODY-result"];
+    const KEPT: &[&str] = &["ZQKEEP-asked", "ZQKEEP-think", "ZQKEEP-said"];
+    let view = serde_json::json!({"omit": {"record": [
+        "blocks[type=tool_use].input",
+        "blocks[type=tool_result].content",
+        "results.*.patch",
+    ]}});
 
     // 三条各自的入参与装成品的那一格。
     let cases: [(&str, serde_json::Value, &str); 3] = [
@@ -1383,55 +1387,33 @@ fn the_three_record_reads_each_honour_summary_only_both_ways() {
             "lines",
         ),
     ];
-    for (cmd, base, key) in cases {
-        let ask = |summary_only: Option<bool>| {
-            let mut args = base.clone();
-            if let Some(b) = summary_only {
-                args[&"summaryOnly".to_string()] = serde_json::json!(b);
-            }
-            answer_at(&home, cmd, &args)
-                .unwrap_or_else(|(c, m)| panic!("`{cmd}` 答错了（{c}）：{m}"))
-        };
-        let full = ask(None);
-        let fold = ask(Some(true));
-        let off = ask(Some(false));
+    for (cmd, args, key) in cases {
+        let full = answer_at(&home, cmd, &args)
+            .unwrap_or_else(|(c, m)| panic!("`{cmd}` 答错了（{c}）：{m}"));
+        let plan = crate::stream::inbound::views::plan_for(cmd, &view)
+            .unwrap_or_else(|f| panic!("`{cmd}` 不收这份声明：{f:?}"));
+        let fold = plan.apply(Some(full.clone())).unwrap();
         let text = |v: &serde_json::Value| serde_json::to_string(&v[key]).unwrap();
         let count = |v: &serde_json::Value| v[key].as_array().map_or(0, Vec::len);
 
-        // ── 缺席（今天的行为）＋ 显式 false：正文**必须**在 ──
-        for (what, v) in [("缺席", &full), ("显式 false", &off)] {
-            let t = text(v);
-            for m in GONE {
-                assert!(
-                    t.contains(m),
-                    "`{cmd}`（`summaryOnly` {what}）的成品里没有正文标记 `{m}` —— \
-                     默认那一形变了，或者夹具没打到（下面那一半会恒绿）"
-                );
-            }
+        // ── 不带声明：去掉的那几样**必须**在 ──
+        let t = text(&full);
+        for m in GONE.iter().chain(KEPT) {
             assert!(
-                t.contains("ZQKEEP-asked"),
-                "`{cmd}`（{what}）连人说的话都没有"
+                t.contains(m),
+                "`{cmd}` 全量里没有 `{m}` —— 夹具没打到（下面那一半会恒绿）"
             );
         }
-        // ── 置真：正文一个不剩，条数一条不少 ──
+        // ── 带了：工具那几格一个不剩，正文一格不少，条数一条不少 ──
         let t = text(&fold);
         for m in GONE {
-            assert!(
-                !t.contains(m),
-                "`{cmd}` 收了 `summaryOnly: true` 还在给正文 `{m}`：{t}"
-            );
+            assert!(!t.contains(m), "`{cmd}` 照声明去过之后还在给 `{m}`：{t}");
         }
-        assert!(
-            t.contains("ZQKEEP-asked"),
-            "`{cmd}` 把折起那一行要显示的人说的话也剥掉了"
-        );
-        assert_eq!(
-            count(&fold),
-            count(&full),
-            "`{cmd}` 收了 `summaryOnly` 之后条数变了 —— 剥的该是内容，不是行"
-        );
+        for m in KEPT {
+            assert!(t.contains(m), "`{cmd}` 把正文 `{m}` 也去掉了");
+        }
+        assert_eq!(count(&fold), count(&full), "`{cmd}` 去的该是格，不是行");
         assert_eq!(count(&fold), 3, "`{cmd}` 的夹具三行都该出成品");
-        // 两形除了 `{key}` 那一格之外逐格相同（`next` / `eof` / `nextSeq` / `from` 不许受它影响）。
         let strip = |v: &serde_json::Value| {
             let mut o = v.as_object().unwrap().clone();
             o.remove(key);
@@ -1440,11 +1422,7 @@ fn the_three_record_reads_each_honour_summary_only_both_ways() {
         assert_eq!(
             strip(&fold),
             strip(&full),
-            "`{cmd}` 收了 `summaryOnly` 之后 `{key}` 之外的格也变了"
-        );
-        assert!(
-            t.len() < text(&full).len(),
-            "`{cmd}` 的折起那一形没比全文小"
+            "`{cmd}` 的 `{key}` 之外的格也变了"
         );
     }
     let _ = std::fs::remove_dir_all(&home);
@@ -1568,4 +1546,64 @@ impl crate::guard_support::Shaped for NeedsList {
             }],
         }]
     }
+}
+
+/// ★ **续算令牌不被投影弄残**：带声明去掉 `touchedFiles` 之后，下一问交回的是应答里那一格 `prior`（投影之前的整份），
+/// 续算出来的与不带声明那一路**逐字相同**（投影只是这一次不发）。拿去过格的应答本身当令牌 ⇒ 缺那一格 ⇒ 这里红。
+#[test]
+fn a_projected_facts_reply_still_continues_exactly_like_the_whole_one() {
+    let home = scratch("facts-token");
+    let dir = home.join("projects").join("-p");
+    std::fs::create_dir_all(&dir).unwrap();
+    let p = dir.join("s.jsonl");
+    let edit = |uuid: &str, file: &str| {
+        format!(
+            r#"{{"type":"assistant","uuid":"{uuid}","timestamp":"2026-01-02T03:04:06.000Z","message":{{"role":"assistant","model":"m","content":[{{"type":"tool_use","id":"t-{uuid}","name":"Edit","input":{{"file_path":"{file}","old_string":"a","new_string":"b"}}}}],"usage":{{"input_tokens":3,"output_tokens":4}}}}}}"#
+        ) + "\n"
+    };
+    std::fs::write(&p, edit("a1", "/w/one.txt")).unwrap();
+    let path = p.to_string_lossy().to_string();
+    let view = serde_json::json!({"omit": {"facts": ["touchedFiles"]}});
+    let plan = crate::stream::inbound::views::plan_for("history-facts", &view).unwrap();
+    let ask = |prior: Option<&serde_json::Value>| {
+        let mut args = serde_json::json!({ "path": path });
+        if let Some(p) = prior {
+            args["prior"] = p.clone();
+        }
+        answer_at(&home, "history-facts", &args).unwrap()
+    };
+
+    let whole1 = ask(None);
+    let seen1 = plan.apply(Some(whole1.clone())).unwrap();
+    assert!(seen1.get("touchedFiles").is_none(), "{seen1}");
+    assert_eq!(seen1["prior"], whole1, "令牌那一格该是投影之前的整份");
+    assert_eq!(
+        whole1["touchedFiles"],
+        serde_json::json!(["/w/one.txt"]),
+        "夹具没打到（下面那一半会恒绿）"
+    );
+
+    // 记录又长了一行，两路各自续算。
+    use std::io::Write as _;
+    std::fs::OpenOptions::new()
+        .append(true)
+        .open(&p)
+        .unwrap()
+        .write_all(edit("a2", "/w/two.txt").as_bytes())
+        .unwrap();
+    let whole2 = ask(Some(&whole1));
+    let seen2 = plan.apply(Some(ask(Some(&seen1["prior"])))).unwrap();
+    assert_eq!(
+        seen2["prior"], whole2,
+        "带声明那一路续算出来的整份与不带的不一样"
+    );
+    let mut want = whole2.clone();
+    want.as_object_mut().unwrap().remove("touchedFiles");
+    want["prior"] = whole2.clone();
+    assert_eq!(seen2, want);
+    assert_eq!(
+        whole2["touchedFiles"],
+        serde_json::json!(["/w/one.txt", "/w/two.txt"])
+    );
+    let _ = std::fs::remove_dir_all(&home);
 }

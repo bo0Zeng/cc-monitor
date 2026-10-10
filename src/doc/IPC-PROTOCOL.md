@@ -45,7 +45,7 @@ monitor 只对 hello 里**声明了对应能力**（`capabilities`）的后端�
 ## 4. 入方向：请求 · 应答 · 取消
 
 ```text
-→ {"id":"<不透明串>","cmd":"<命令名>","args":{…},"within_ms":10000}          一行一个；args 缺 ＝ null；within_ms 可缺
+→ {"id":"<不透明串>","cmd":"<命令名>","args":{…},"within_ms":10000,"view":{…}}   一行一个；args 缺 ＝ null；within_ms · view 可缺
 ← {"kind":"reply","id":"…","ok":true,"data":{…}}                              无返回值时没有 data
 ← {"kind":"reply","id":"…","ok":false,"code":"…","message":"…","detail":"…"}  少数码另带 data（形状见各命令）
 → {"id":"…","cmd":"cancel","args":{"target":"<要撤的 id>"}}
@@ -54,6 +54,16 @@ monitor 只对 hello 里**声明了对应能力**（`capabilities`）的后端�
 
 - **`id`** 由客户端发号、后端只回显（不解析、不校验）。monitor 的发法是 `<连接 nonce>-<单调序号>`，重连不撞号。同一个 `id` 的命令还在跑 ⇒ `duplicate_id`。
 - **`within_ms`**：发起方愿意等多久。后端从收到这一行起减 2 秒余量换成截止时刻，阻塞档命令里装总期限的各处都收紧到它（到点回 `child_timed_out`，见 §CLI 面「期限」那一条）。不是正整数 ⇒ 当没带。
+- **`view`**：出口的声明 —— 要哪几格、哪几格不要（缺 ＝ 全量）。词表今天两个：`cells: {<成品>: [<路径>…]}` 只要这几格（连同通往它们的那几层）·
+  `omit: {<成品>: [<路径>…]}` 这几格不要；同一件成品两个都给 ⇒ 先挑后去。成品名与路径照格目录（`cells-catalog`）：`a.b` 嵌套 · `a[]` 列表每项 ·
+  `a.*` 以 id 为键的表每项 · `a[k=v]` 列表里按判别格挑的那一种 · `a{k=v}` 非列表的那一种（根上写 `{k=v}`）；**不写挑法 ＝ 每一种都算**
+  （`blocks[type=tool_use].input` 同时管 `said` 与 `reply` 两类记录的 `blocks`）。点到某一格的上一层 ＝ 那一层整个；以 `a[]` / `a.*` 收尾 ＝ `a` 这一格整个；
+  去掉的格是**删掉**，不置空。认不出的词 · 成品 · 格（往透传的一团里再点格也算）· 或点了这条命令不出的成品 ⇒ 开跑之前就回 `bad_args`，
+  认不出的那几处写进 `detail`。今天出成品、收 `view` 的命令与成品住处：`history-read`（`rows[]` 是 `read_row`，其中 `record` 是 `record`）·
+  `history-page` / `history-lines`（`lines[].record`）· `history-run`（`rows[].record`）· `history-facts`（整份应答是 `facts`）；别的命令带 `view` 一律 `bad_args`。
+  投影只是「这一次不发」：成品与格目录（冻结的那几件也一样）一格不动。
+  应答下一问要原样交回接着算的（续算令牌：`history-facts` 的 `prior`）：带了 `view` 的那一问，应答里多一格 `prior` ＝ 投影之前的整份，这一格不受 `view` 管，
+  下一问交回它（交去过格的应答 ⇒ 形状不对、`bad_args`）。不带 `view` ⇒ 没有这一格，整份应答本身就是令牌。
 - **超时归客户端**：后端零定时器，不替客户端掐表；客户端的期限覆盖「写入 ＋ 等应答」两段，到点就撤单（`cancel`）。
 - **取消是一条普通命令**。撤一个不存在的 `id` 也回 `ok`。阻塞档的命令开跑之后打不断，`cancel` 回 `not_cancellable`（去等它自己的应答），不会回一条假的 `cancelled`。
 - **应答走独立的小通道**（256 条），与出方向的实时帧（10 000 条）分开：丢一条内容帧可恢复，丢一条应答客户端会永远等下去。writer 有界地优先应答。
@@ -121,7 +131,7 @@ monitor 只对 hello 里**声明了对应能力**（`capabilities`）的后端�
   `session_added` `sid` `path` `cwd` `name` `lines` `waiting_for` `agent_kind` `liveness_confidence` `attachable` ·
   `session_status` `sid` `waiting_for` `liveness_confidence` · `session_removed` `sid` `cause` · `overflow` `dropped` `lost` `lost_truncated` ·
   `turn_end` `session_id` `uuid` · `tap` `stream` `run` `resp` `n` `ev` · `reply` `id` `ok` `code` `message` `detail` `data` · `cancelled` `id` ·
-  请求信封 `id` `cmd` `args` `within_ms`（可缺）。
+  请求信封 `id` `cmd` `args` `within_ms`（可缺）`view`（可缺）。
 - 成品面：`line.record` 与 `history-read` 的 `rows`（`end` `hash` `record` `cwd`）—— 通用记录的公共格、五类各自的格、`who`、`error`、各种内容块逐格冻结（见下面「通用记录」一节）；
   `history-page` / `history-lines` / `history-run` 的 `record` 是同一形。冻结的就是格目录里 `frozen` 的那几件成品（`record` · `read_row`）：格只许加，新加一格随格目录金样重写（`cells_catalog_tests::the_golden_is_what_the_command_writes`，删 / 改名 / 换类型重写也不放行）。
   `line.raw` 逐字节等于记录文件里那一行，去掉行尾（`\n`；CRLF 行连 `\r` 一起去）。
@@ -165,7 +175,8 @@ monitor 只对 hello 里**声明了对应能力**（`capabilities`）的后端�
 内容块 `blocks[]`（两家共有的词，按 `type`）：`text {text}` · `thinking {text}` · `tool_use {id, name, input}` · `tool_result {for, content: [块], isError}` · `image {source}`。
 
 - **过程一行的主参数 `steps.*.arg` 是定长一行**：换行与连串空白压成一个空格，至多 200 字（按字符，不切半个字），截了以 `…` 收尾；两个前端都不再截。完整内容照旧在 `blocks` 的入参里。
-- 出口开关：`history-read` / `history-page` 的 `summaryOnly` 剥掉 `blocks` 与 `results` 里的 `patch` / `patchTruncated`，折起那一行要的格照给；`--with-raw` 才带 `line.raw`。
+- 要哪几格由出口交的声明定（请求信封的 `view`，见 §4）：折起那一行只要 `omit: {record: ["blocks", "results.*.patch", "results.*.patchTruncated"]}`；
+  正文按需（工具卡展开时再取那一行全文）交 `omit: {record: ["blocks[type=tool_use].input", "blocks[type=tool_result].content", "results.*.patch", "results.*.patchTruncated"]}`。`--with-raw` 才带 `line.raw`。
 - 主线外清单（ESC 回退掉的那几条记录的 `id`）不在记录上，单独给：实时帧 `session_branch`（整份）· 冷读 `history-branch`。没有链的那一家恒空。
 
 ## 8. CLI 一次性调用
@@ -179,6 +190,8 @@ monitor 只对 hello 里**声明了对应能力**（`capabilities`）的后端�
     同一个上限管整行；Windows 整行 ≤ 32767 个字符。超过系统那一道，后端根本起不来，调用方看到的是 shell / sshd 那一层的错（如 `Argument list too long`），不是下面的信封 ⇒ 更大的载荷走 stdin。
   - 两个都给（`--args-b64` 与 `--stdin-line`）· `--args-b64` 缺值 / 给两次 · 不收入参的命令带 `--args-b64` ⇒ `bad_args`；base64 坏 / 解出来不是 UTF-8 / 不是 JSON ⇒ `bad_request`；
     超上限（哪一个口都一样）⇒ `args_too_large`，拒收、不截断。
+- **声明**：`--view <声明>`（任意位置）与帧面请求信封的 `view` 同名同义、同一处解、同一处拒、同一处裁（§4）。值以 `{` 打头 ＝ JSON 原样，否则当 base64（标准字母表）解；
+  缺值 · 给两次 · 解不出 · 声明认不出 ⇒ `bad_args`，在读入参之前就拒。
 - **期限**：`--within-ms <毫秒>`（任意位置）与帧面请求信封的 `within_ms` 同名同义：减 2 秒余量换成截止时刻，装总期限的命令都收紧到它，到点回的码与帧面相同（`child_timed_out`）。
   哪几条装总期限、上限多少，协议参考里逐条写（「总期限上限 N 秒」）；没写的那几条不装，带了期限对它不起作用。到点只回 `child_timed_out` 这一个码，三条例外不整条失败：`aliases-read` · `powershell-policy-set` 落在成品的 `policy.error`，`ssh-config-import` 交已解析的那几个。
   缺值 · 给两次 ⇒ `bad_args`；值不是正整数 ⇒ 当没带（同帧面那一格）。

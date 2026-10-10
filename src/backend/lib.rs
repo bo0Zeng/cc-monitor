@@ -2233,6 +2233,11 @@ pub const TEXT_FLAG: &str = "--text";
 /// 住这里同 [`STDIN_LINE_FLAG`]：它是 [`SUBCOMMAND_OPTIONS`] 的一员。
 pub const WITHIN_MS_FLAG: &str = "--within-ms";
 
+/// **出口的声明口**：跟在 CLI 控制面那一族（`--<帧命令>`）后面、位置不限（`--history-read --args-b64 <…> --view <…>`）⇒ 与帧面请求信封的
+/// `view` 同名同义（要哪几格 · 哪几格不要，`faces/project.rs`）。值是声明的 JSON 原样（`{` 打头），或它的 base64（过哪一家登录 shell 都不变形，
+/// 同 [`ARGS_B64_FLAG`]）。住这里同 [`STDIN_LINE_FLAG`]：它是 [`SUBCOMMAND_OPTIONS`] 的一员。
+pub const VIEW_FLAG: &str = "--view";
+
 /// 帧命令名 → 它的 CLI 子命令（`launch` → `--launch`）。**唯一一处拼法**：本进程的 CLI 面（`control/cli_control.rs::flag_of`）
 /// 与问远端那台 CLI 面的那一跳（`remote_ask::ask_json`）都经它 —— 住这里而不住 `cli_control`，是为了让
 /// `remote_ask` 不必引 `control/`（引了，按文件画的引用图就把问远端的几条命令连到 tmux 上）。
@@ -2265,6 +2270,8 @@ pub const SUBCOMMAND_OPTIONS: &[&str] = &[
     // CLI 控制面那一族的「给人看」那一形（所有命令通用）。
     TEXT_FLAG,
     "--until",
+    // CLI 控制面那一族（`--<帧命令>`）的声明口（同帧面请求信封的 `view`）。⚠ 进指纹的 `#options` 段 ⇒ 逼出 `BUILD_ID` bump，本路不 bump。
+    VIEW_FLAG,
     // CLI 控制面那一族（`--<帧命令>`）的期限口（同帧面请求信封的 `within_ms`）。⚠ 进指纹的 `#options` 段 ⇒ 逼出 `BUILD_ID` bump，本路不 bump。
     WITHIN_MS_FLAG,
 ];
