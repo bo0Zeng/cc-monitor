@@ -5473,12 +5473,6 @@
       "zh": "读取远端历史失败",
       "args": []
     },
-    "remoteHealth.head.degraded": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "远端降级模式",
-      "args": []
-    },
     "remoteHealth.head.backendOld": {
       "kind": "body",
       "role": "片段",
@@ -13475,25 +13469,6 @@
       "role": "报错",
       "zh": "host 别名含不安全字符 · {alias}",
       "args": ["alias"]
-    },
-    "rsSshSource.health.degraded": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "远端后端要更新 · {build} · 当前 {expected} · 部分功能不可用\n后台会话看不见 · 历史加载易卡\n在设置里重装此机后端",
-      "args": ["build", "expected"]
-    },
-    "rsSshSource.health.degradedNoOwnBytes": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "远端后端版本不可比\n现为 {build} · 未带后端字节\n降级运行 · 后台会话不可见 · 历史易卡",
-      "args": ["build"]
-    },
-    "rsSshSource.upgrade.reconnect": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "后端已更新 · 重新连接一次",
-      "args": [],
-      "limited": ["连接"]
     },
     "rsSshSource.version.protoMismatch": {
       "kind": "body",

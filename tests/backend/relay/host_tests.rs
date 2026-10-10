@@ -400,8 +400,9 @@ fn main_hosts_the_relay_exactly_once_between_the_one_shot_dispatch_and_the_carri
     let prod = crate::guard_support::production_code(&raw);
     let call = guard_core::find_pinned(&prod, "accounts::upstream_select::host_relay(")
         .unwrap_or_else(|e| panic!("main.rs 生产段里那一处接线：{e}"));
-    let dispatch = guard_core::find_pinned(&prod, "if is_query_mode(&args) {")
-        .unwrap_or_else(|e| panic!("一次性分派那一行：{e}"));
+    let dispatch =
+        guard_core::find_pinned(&prod, "if is_query_mode(&args) || bad_view.is_some() {")
+            .unwrap_or_else(|e| panic!("一次性分派那一行：{e}"));
     let carrier = guard_core::find_pinned(&prod, "None => run_over_stdio(")
         .unwrap_or_else(|e| panic!("起载体那一行：{e}"));
     assert!(

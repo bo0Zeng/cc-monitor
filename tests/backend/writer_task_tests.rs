@@ -23,7 +23,6 @@ fn line(seq: u64) -> Frame {
         cwd: None,
         byte_offset: 0,
         rid: None,
-        raw: None,
     }
 }
 
@@ -54,7 +53,7 @@ async fn a_flooded_tap_never_costs_or_reorders_a_content_frame() {
     drop(tx); // 出方向关了 ⇒ 写者排完就寿终
     drop(tap_tx);
     let mut out: Vec<u8> = Vec::new();
-    writer_task(&mut out, rx, reply_rx, Fed(tap_rx), Default::default()).await;
+    writer_task(&mut out, rx, reply_rx, Fed(tap_rx), Default::default(), None).await;
     drop(reply_tx);
 
     let text = String::from_utf8(out).expect("utf8");
@@ -106,7 +105,7 @@ async fn pushed_frames_get_their_clock_faces_in_the_stream_zone() {
     drop(tx);
     let mut out: Vec<u8> = Vec::new();
     let sh = Tz::named("Asia/Shanghai").unwrap();
-    writer_task(&mut out, rx, reply_rx, Fed(tap_rx), sh).await;
+    writer_task(&mut out, rx, reply_rx, Fed(tap_rx), sh, None).await;
     drop(reply_tx);
     let text = String::from_utf8(out).unwrap();
     assert!(

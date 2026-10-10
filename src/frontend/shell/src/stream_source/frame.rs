@@ -5,7 +5,7 @@ use crate::copy_table::copy_text;
 use crate::session_book::Fate;
 
 /// 一行会话记录的成品 ＋ 它在那份文件里的行号（`seq`）—— 进 [`flush_lines`] 之前的形状。所有行都从后端的帧来（远端流 · 本机流 · 旁路快照）；
-/// `seq` 是后端给的行号（`--tail-only` 下与快照同处一个行号空间），前端按 `(session_id, seq)` 去重、按 `seq` 排序（`INVARIANTS §5` / `§9`）。
+/// `seq` 是后端给的行号（流不重放历史，与快照同处一个行号空间），前端按 `(session_id, seq)` 去重、按 `seq` 排序（`INVARIANTS §5` / `§9`）。
 #[derive(Debug, Clone)]
 pub struct JsonlLine {
     pub session_id: String,
@@ -72,9 +72,7 @@ pub enum InboundFrame {
         claude_dir: String,
         /// 远端各 agent 的 home 目录表（additive）。旧后端无此字段 ⇒ 空表 ⇒ 回退 `claude_dir`。非数组 / 元素缺字段一律滤掉，绝不 panic。
         homes: Vec<AgentHome>,
-        /// backend 声明的能力 token 集。旧后端无此字段 → 空集（按最小能力集待它，不发流模式 flag）；monitor 按此决定发 `--with-bg` / `--tail-only`。
-        capabilities: Vec<String>,
-        /// backend 声明接受哪些入方向命令（后端 `inbound::command_names`，从命令表派生）。`capabilities` 说出方向的流 flag，这一条说入方向 —— 两者正交。
+        /// backend 声明接受哪些入方向命令（后端 `inbound::command_names`，从命令表派生）。
         /// 旧后端无此字段 ⇒ 空集 ⇒ monitor 一条入方向命令都不发。
         commands: Vec<String>,
         /// `hello.unavailable`：这台接得下却做不到的 `(命令, 码)`。旧后端无此字段 ⇒ 空（没把握）。
@@ -417,7 +415,7 @@ pub fn parse_frame(line: &str) -> Result<InboundFrame, Unread> {
     let k = kind;
     Ok(match kind {
         "hello" => {
-            // `homes` / `capabilities` / `commands` 是可选格：缺 ⇒ 空；坏项逐项丢，不丢整帧。
+            // `homes` / `commands` 是可选格：缺 ⇒ 空；坏项逐项丢，不丢整帧。
             // `homes` 空 ⇒ 消费侧回落 `claude_dir`（[`claude_home_from_hello`]；今天后端恒发空表）。
             let homes: Vec<AgentHome> = obj
                 .get("homes")
@@ -452,7 +450,6 @@ pub fn parse_frame(line: &str) -> Result<InboundFrame, Unread> {
                 host_arch: req_str(obj, k, "host_arch")?,
                 claude_dir: req_str(obj, k, "claude_dir")?,
                 homes,
-                capabilities: strings("capabilities"),
                 commands: strings("commands"),
                 unavailable,
                 uncancellable,

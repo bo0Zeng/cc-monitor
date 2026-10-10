@@ -13,7 +13,7 @@ pub const CLI_ONLY_DOCS: &[(&str, &str, &str)] = &[
     ("list-sessions", "<project_dir>", "一个项目的会话：每行 `{sessionId, jsonlPath, startedAtMs, updatedAtMs, messageCountApprox, firstUserExcerpt, aiTitle, cwd}`"),
     ("list-user-inputs", "[--from <offset>] <jsonl>", "「你说过的话」：头 `{kind:\"user_inputs\",v:1,from}` · 每条 `{uuid, timestamp, excerpt}`（对话序）· 尾 `{kind:\"user_inputs_end\",count,end}`；`end` 是下次增量的 `--from`；`offset` 过了文件尾 ⇒ 退出 2"),
     ("read-session", "<jsonl>", "原样透传整份会话字节"),
-    ("read-session-from-offset", "[--index] [--until <end>] <jsonl> <offset>", "从字节 `offset` 续读：原样透传 `[offset, EOF)`（`--until` ⇒ `[offset, end)`）；`--index` ⇒ 出骨架索引：头 `{kind:\"session_index\",v:1,from}` · 每个可计行一条 `IndexRow`（见下）· 尾 `{kind:\"session_index_end\",count,end}`。续点用 `line` 帧的 `byte_offset`，别用 `seq`"),
+    ("read-session-from-offset", "[--until <end>] <jsonl> <offset>", "从字节 `offset` 续读：原样透传 `[offset, EOF)`（`--until` ⇒ `[offset, end)`）。骨架索引是 `--history-index`。续点用 `line` 帧的 `byte_offset`，别用 `seq`"),
     ("read-session-tail", "<jsonl> <N>", "尾部优先：首行 `{kind:\"snapshot_meta\",total,tail_from}`，随后原样输出最新 N 行 `[tail_from,total)`，再输出 `[0,tail_from)`"),
     ("resident-attach", "", "小中继：连这台家里常驻后端的套接字，stdin → 套接字、套接字 → stdout 原样对拷，任一边断就退；连不上 ⇒ stdout 一行 `{attach:\"refused\", reason: absent|unreachable}`、退出 2"),
     ("resident-ensure", "[--replace]", "确保这台的常驻后端在听：已在 ⇒ `{pid}`（在听那一位，读不到记录 ⇒ `null`）；没在 ⇒ 起一个脱离的自己、回 `{pid}`；`--replace` 先停掉在听那一位再起"),

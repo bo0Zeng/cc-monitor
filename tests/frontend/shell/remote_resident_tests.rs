@@ -143,23 +143,22 @@ fn the_ensure_answer_names_a_non_unix_remote_as_unsupported_and_never_falls_back
     assert!(parse_ensured(&serde_json::json!("7")).is_err());
 }
 
-/// attach 行是远端 `listen::attach_verdict` / `attach_flags` 读得懂的形状：「我要流」＋ 这条连接的旗标，没有钥匙。
+/// 远端那条流的 attach 行：「我要流」＋ 时区 ＋ 声明（`session_added.pid` 去掉）；没有旗标、没有钥匙。本机远端同一处拼（`local_backend_host::attach_line`）。
 #[test]
-fn the_attach_line_asks_for_the_stream_with_exactly_the_negotiated_flags() {
-    let l = attach_line((false, true), None);
+fn the_attach_line_asks_for_the_stream_with_the_remote_declaration() {
+    let l =
+        crate::local_backend_host::attach_line(Some("Asia/Shanghai"), Some(&remote_stream_view()));
     assert!(l.ends_with('\n'));
     let v: serde_json::Value = serde_json::from_str(l.trim()).unwrap();
     assert_eq!(
         v,
-        serde_json::json!({"attach": true, "flags": ["--tail-only"]})
+        serde_json::json!({"attach": true, "tz": "Asia/Shanghai", "view": {"omit": {"session_added": ["pid"]}}})
     );
-    // 看的这一台的时区跟在旁边一格（远端 `listen::attach_flags` 读 `tz`，不进 `flags`）。
-    let z: serde_json::Value =
-        serde_json::from_str(attach_line((true, false), Some("Asia/Shanghai")).trim()).unwrap();
-    assert_eq!(
-        z,
-        serde_json::json!({"attach": true, "flags": ["--with-bg"], "tz": "Asia/Shanghai"})
-    );
+    let src = guard_core::production_code(include_str!(
+        "../../../src/frontend/shell/src/remote_resident.rs"
+    ));
+    guard_core::find_pinned(&src, "Some(&remote_stream_view())")
+        .unwrap_or_else(|e| panic!("远端那一行没带声明：{e}"));
 }
 
 /// T4 **停的结局只认三个词**（本机远端同一个读法）：`graceful` · `killed` · `not_running` 各落一格、pid 原样；

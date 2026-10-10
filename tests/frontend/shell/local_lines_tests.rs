@@ -18,8 +18,8 @@
 //! | F8 | 真后端 × 生产 stdio 读循环 ⇒ 宣告带 `path`/`lines`、新行的 `seq` == 行号（`#[ignore]`，由 `tests/evidence/CF1-local-lines.py` 带二进制跑） | 两侧各是真实现 |
 
 use super::*;
-use crate::stream_source::{local_step, parse_frame, InboundFrame, LocalItem, LocalStep};
-use std::collections::{BTreeSet, HashSet};
+use crate::stream_source::{local_step, parse_frame, BgHide, InboundFrame, LocalItem, LocalStep};
+use std::collections::BTreeSet;
 
 // ─── 小工具：函数范围（rustfmt 保证收尾 `}` 与签名同缩进）───────────────────────────
 
@@ -265,6 +265,11 @@ fn frame(line: &str) -> LocalItem {
     LocalItem::Frame(parse_frame(line).expect("手写帧解不出来"))
 }
 
+/// `consume_local` 那一拍：先过 bg 那道门（[`BgHide::admit`]，远端那条流同一份），过得去的才分派；藏 ⇒ 记成 `Skip`。
+fn step(bg: &mut BgHide, item: LocalItem) -> LocalStep {
+    bg.admit(item).map(local_step).unwrap_or(LocalStep::Skip)
+}
+
 #[test]
 fn the_local_dispatch_core_matches_the_hand_written_table() {
     const LINE_A: &str = r#"{"kind":"line","session_id":"a","path":"/p/a.jsonl","seq":4,"record":{"x":1},"byte_offset":50}"#;
@@ -296,10 +301,10 @@ fn the_local_dispatch_core_matches_the_hand_written_table() {
     };
 
     // ① 显示 bg：一切照转。
-    let mut h = HashSet::new();
-    assert_eq!(local_step(frame(LINE_A), true, &mut h), line_a);
+    let mut h = BgHide::new(true);
+    assert_eq!(step(&mut h, frame(LINE_A)), line_a);
     assert_eq!(
-        local_step(frame(ADD_A), true, &mut h),
+        step(&mut h, frame(ADD_A)),
         LocalStep::Announce {
             sid: "a".into(),
             path: Some("/p/a.jsonl".into()),
@@ -307,61 +312,58 @@ fn the_local_dispatch_core_matches_the_hand_written_table() {
         }
     );
     assert_eq!(
-        local_step(frame(ADD_B_BG), true, &mut h),
+        step(&mut h, frame(ADD_B_BG)),
         LocalStep::Announce {
             sid: "b".into(),
             path: Some("/p/b.jsonl".into()),
             lines: Some(9)
         }
     );
-    assert_eq!(local_step(frame(LINE_B), true, &mut h), line_b);
+    assert_eq!(step(&mut h, frame(LINE_B)), line_b);
     assert_eq!(
-        local_step(frame(REM_B), true, &mut h),
+        step(&mut h, frame(REM_B)),
         LocalStep::Remove { sid: "b".into() }
     );
-    assert_eq!(local_step(frame(STATUS), true, &mut h), LocalStep::Skip);
-    assert!(h.is_empty());
+    assert_eq!(step(&mut h, frame(STATUS)), LocalStep::Skip);
 
     // ② 不显示 bg：bg 的宣告与它的行一律不进；交互 / 旧 CC（没写 kind）照转。
-    let mut h = HashSet::new();
-    assert_eq!(local_step(frame(ADD_B_BG), false, &mut h), LocalStep::Skip);
-    assert_eq!(local_step(frame(LINE_B), false, &mut h), LocalStep::Skip);
+    let mut h = BgHide::new(false);
+    assert_eq!(step(&mut h, frame(ADD_B_BG)), LocalStep::Skip);
+    assert_eq!(step(&mut h, frame(LINE_B)), LocalStep::Skip);
     assert_eq!(
-        local_step(frame(ADD_A_OLD_CC), false, &mut h),
+        step(&mut h, frame(ADD_A_OLD_CC)),
         LocalStep::Announce {
             sid: "a".into(),
             path: None,
             lines: None
         }
     );
-    assert_eq!(local_step(frame(LINE_A), false, &mut h), line_a);
-    // 退场：撤它；藏起来的集合要留到它的去向（`session_state`）那一帧才忘 —— 去向也照「藏」滤掉。
+    assert_eq!(step(&mut h, frame(LINE_A)), line_a);
+    // 退场：撤它；藏起来的要留到它的去向（`session_state`）那一帧才忘 —— 摘除那一帧就忘了 ⇒ 紧跟的去向会漏出去。
     assert_eq!(
-        local_step(frame(REM_B), false, &mut h),
+        step(&mut h, frame(REM_B)),
         LocalStep::Remove { sid: "b".into() }
     );
-    assert!(h.contains("b"), "摘除那一帧就忘了藏 ⇒ 紧跟的去向会漏出去");
     assert_eq!(
-        local_step(
+        step(
+            &mut h,
             frame(
                 r#"{"kind":"session_state","sid":"b","state":"ended","state_text":"t","state_hint":"h","state_tone":"plain"}"#
-            ),
-            false,
-            &mut h
+            )
         ),
         LocalStep::Skip
     );
-    assert!(h.is_empty(), "去向之后 bg 集合里还留着它：{h:?}");
-    assert_eq!(local_step(frame(LINE_B), false, &mut h), line_b);
-
-    // ③ 流结束：集合清空（下一条流会重新宣告）。
-    let mut h = HashSet::new();
-    let _ = local_step(frame(ADD_B_BG), false, &mut h);
     assert_eq!(
-        local_step(LocalItem::StreamEnded, false, &mut h),
-        LocalStep::StreamEnded
+        step(&mut h, frame(LINE_B)),
+        line_b,
+        "去向之后还藏着它（同一个 sid 再来是新的宣告）"
     );
-    assert!(h.is_empty());
+
+    // ③ 流结束照过那道门（`consume_local` 每条流换一道新门：下一条流会重新宣告）。
+    let mut h = BgHide::new(false);
+    let _ = step(&mut h, frame(ADD_B_BG));
+    assert_eq!(step(&mut h, LocalItem::StreamEnded), LocalStep::StreamEnded);
+    assert_eq!(step(&mut h, LocalItem::LineLost), LocalStep::Lost);
 }
 
 // ─── F3 ────────────────────────────────────────────────────────────────────
@@ -744,9 +746,8 @@ fn the_local_product_core_matches_the_hand_written_table() {
         r#"{"kind":"line","session_id":"a","path":"/p/a.jsonl","seq":0,"byte_offset":10}"#;
     let local = || "<local>".to_string();
 
-    let none = HashSet::new();
     assert_eq!(
-        local_product(&frame(ADD_A), crate::origin::LOCAL, true, &none),
+        local_product(&frame(ADD_A), crate::origin::LOCAL),
         Some(In::Live {
             origin: local(),
             sid: "a".into(),
@@ -770,7 +771,7 @@ fn the_local_product_core_matches_the_hand_written_table() {
         })
     );
     assert_eq!(
-        local_product(&frame(STATUS_A), crate::origin::LOCAL, true, &none),
+        local_product(&frame(STATUS_A), crate::origin::LOCAL),
         Some(In::Status {
             origin: local(),
             sid: "a".into(),
@@ -784,7 +785,7 @@ fn the_local_product_core_matches_the_hand_written_table() {
         })
     );
     assert_eq!(
-        local_product(&frame(LEFT_A), crate::origin::LOCAL, true, &none),
+        local_product(&frame(LEFT_A), crate::origin::LOCAL),
         Some(In::Left {
             origin: local(),
             sid: "a".into(),
@@ -798,44 +799,39 @@ fn the_local_product_core_matches_the_hand_written_table() {
         "去向原样交（后端裁的，连写好的字一起）"
     );
     assert_eq!(
-        local_product(&frame(REM_A), crate::origin::LOCAL, true, &none),
+        local_product(&frame(REM_A), crate::origin::LOCAL),
         None,
         "摘除本身只是内容流的边界"
     );
     assert_eq!(
-        local_product(&frame(LISTED), crate::origin::LOCAL, true, &none),
+        local_product(&frame(LISTED), crate::origin::LOCAL),
         Some(In::Listed { origin: local() })
     );
     assert_eq!(
-        local_product(&frame(LINE), crate::origin::LOCAL, true, &none),
+        local_product(&frame(LINE), crate::origin::LOCAL),
         None,
         "内容行不是起停成品"
     );
     assert_eq!(
-        local_product(&LocalItem::StreamEnded, crate::origin::LOCAL, true, &none),
+        local_product(&LocalItem::StreamEnded, crate::origin::LOCAL),
         Some(In::LinkLost { origin: local() })
     );
-    // 不显示 bg：bg 的宣告不进；已藏起来的 sid 的灯与去向也不进（同 `local_step` 的藏法）。
-    assert_eq!(
-        local_product(&frame(ADD_B_BG), crate::origin::LOCAL, false, &none),
-        None
+    // 不显示 bg：过那道门（[`BgHide::admit`]，同 `consume_local`）⇒ bg 的宣告不进；藏起来的 sid 的灯与去向也不进。
+    let product = |bg: &mut BgHide, item: LocalItem| {
+        bg.admit(item)
+            .and_then(|i| local_product(&i, crate::origin::LOCAL))
+    };
+    let mut off = BgHide::new(false);
+    assert_eq!(product(&mut off, frame(ADD_B_BG)), None);
+    assert_eq!(product(&mut off, frame(STATUS_B)), None);
+    assert_eq!(product(&mut off, frame(LEFT_B)), None);
+    assert!(
+        product(&mut off, frame(LEFT_B)).is_some(),
+        "正控：去向之后不再藏"
     );
     assert!(
-        local_product(&frame(ADD_B_BG), crate::origin::LOCAL, true, &none).is_some(),
+        product(&mut BgHide::new(true), frame(ADD_B_BG)).is_some(),
         "正控：显示 bg 时它进"
-    );
-    let hidden: HashSet<String> = ["b".to_string()].into_iter().collect();
-    assert_eq!(
-        local_product(&frame(STATUS_B), crate::origin::LOCAL, false, &hidden),
-        None
-    );
-    assert_eq!(
-        local_product(&frame(LEFT_B), crate::origin::LOCAL, false, &hidden),
-        None
-    );
-    assert!(
-        local_product(&frame(LEFT_B), crate::origin::LOCAL, false, &none).is_some(),
-        "正控：没藏的照进"
     );
 }
 
@@ -846,19 +842,19 @@ fn a_session_file_notice_is_dispatched_unless_the_session_is_hidden() {
     const REREAD_B: &str =
         r#"{"kind":"session_file_reread","session_id":"b","path":"/p/b.jsonl","why":"truncated"}"#;
     const ADD_B_BG: &str = r#"{"kind":"session_added","agent_kind":"claude","sid":"b","activity_text":"T","activity_tone":"now","activity_order":1,"session_kind":"bg","background":true}"#;
-    let mut h = HashSet::new();
+    let mut h = BgHide::new(false);
     assert_eq!(
-        local_step(frame(GONE), false, &mut h),
+        step(&mut h, frame(GONE)),
         LocalStep::Notice {
             sid: "a".into(),
             path: "/p/a.jsonl".into(),
             change: crate::stream_source::FileChange::Gone,
         }
     );
-    assert_eq!(local_step(frame(ADD_B_BG), false, &mut h), LocalStep::Skip);
-    assert_eq!(local_step(frame(REREAD_B), false, &mut h), LocalStep::Skip);
+    assert_eq!(step(&mut h, frame(ADD_B_BG)), LocalStep::Skip);
+    assert_eq!(step(&mut h, frame(REREAD_B)), LocalStep::Skip);
     assert_eq!(
-        local_step(frame(REREAD_B), true, &mut HashSet::new()),
+        step(&mut BgHide::new(true), frame(REREAD_B)),
         LocalStep::Notice {
             sid: "b".into(),
             path: "/p/b.jsonl".into(),

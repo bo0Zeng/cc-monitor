@@ -118,7 +118,7 @@ skipped() {
 
 mkdir -p "$WORK/claude/projects"
 mkfifo "$IN"
-CLAUDE_CONFIG_DIR="$WORK/claude" "$BACKEND" -- --tail-only <"$IN" >"$OUT" 2>"$ERR" &
+CLAUDE_CONFIG_DIR="$WORK/claude" "$BACKEND" -- --stream <"$IN" >"$OUT" 2>"$ERR" &
 BACKEND_PID=$!
 exec 3>"$IN"   # 持住写端，否则第一个写者退出即 EOF，入方向当场寿终
 

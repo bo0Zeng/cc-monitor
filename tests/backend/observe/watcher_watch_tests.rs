@@ -21,7 +21,7 @@ fn rig(
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     let (tx, rx) = tokio::sync::mpsc::channel::<Frame>(256);
-    let mut state = ReaderState::new(dir.clone(), false, false);
+    let mut state = ReaderState::new(dir.clone());
     state.active_sids.insert(A.to_string());
     state.active_sids.insert(B.to_string());
     (dir, state, FrameSink::new(tx), rx)

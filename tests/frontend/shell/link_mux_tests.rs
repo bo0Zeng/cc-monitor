@@ -49,7 +49,6 @@ fn rig() -> Rig {
         host_arch: "x86_64".into(),
         claude_dir: "/tmp".into(),
         homes: vec![],
-        capabilities: vec![],
         commands: ["link-open", "link-data", "link-credit", "link-close"]
             .iter()
             .map(|s| s.to_string())

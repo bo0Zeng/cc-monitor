@@ -15,7 +15,7 @@
       "lang": "rs"
     }
   ],
-  "ceiling": 247,
+  "ceiling": 246,
   "entries": [
     {
       "file": "src/frontend/ui/account-chip.ts",
@@ -195,7 +195,7 @@
     {
       "file": "src/frontend/ui/remote-health.ts",
       "rule": "caseWord",
-      "n": 8,
+      "n": 7,
       "kind": "第 7 批",
       "why": "远端健康事件 kind ⇒ 标题（版本三类 · overflow · deploy …）：壳判好的种类再由界面取字；壳那一侧的事件带写好的标题（与机器状态一起收）"
     },

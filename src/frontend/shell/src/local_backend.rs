@@ -42,7 +42,7 @@
 //! 拿走它之后 `Child` 仍可锁着共享 ⇒ 等待与 kill 互不打扰，零平台代码，零轮询。
 //!
 //! ⚠ **它的诚实边界**：如果子进程**关掉 stdout 但继续活着**，本模块会误判它死了。
-//! 被监护的对象是我们自己的后端（`--tail-only` 持续往 stdout 写帧），不会这么干；
+//! 被监护的对象是我们自己的后端（流模式持续往 stdout 写帧），不会这么干；
 //! 换成别的程序前要重新想。EOF 之后仍会 `wait()` 收尸（那时它已经死了，不阻塞）。
 //!
 //! # ⚠ 它只认安装包里那一份，**绝不扫仓库 dev 产物** —— 这是刻意的
@@ -891,7 +891,7 @@ pub fn supervise_with_stdio(
             // ① EOF（子进程真的走了）· ② stdout 读错误 · ③ 消费者 panic（被兜底外壳接住）。
             // ②③ 时**子进程还活着**，而它已经被从共享 `Mutex` 里摘走 ⇒
             // 并发的 `stop()` 看到 `None`，**一个字节的 kill 都不发**，却仍返回「本机后端已停」。
-            // 子进程要等到下一次写 stdout 拿 EPIPE 才死；`--tail-only` 空闲期那可以是很久，
+            // 子进程要等到下一次写 stdout 拿 EPIPE 才死；流空闲期那可以是很久，
             // 期间 `wait()` 还一直阻塞着本线程。
             //
             // ⇒ **消费者自己报原因**（[`ConsumerExit`]）：`Early` 才补一刀，让「take 出来再 wait」
@@ -1441,27 +1441,12 @@ fn decode_line(buf: Vec<u8>) -> (String, bool) {
     }
 }
 
-/// 本机后端的**流模式起参** —— 两条载体（stdio 监护 · 常驻脱离）共用这一份。
-///
-/// - `--tail-only`：连接不重放历史，历史由 monitor 经旁路快照拉（与远端同一套：`stream_source::LineIntake`）。
-///   本机内容消费者据此认定「这条流恒为 tail-only」（`stream_source::LOCAL_STREAM_TAIL_ONLY`）。
-/// - `--with-bg`：bg 会话也宣告、也发行 —— 本机会话内容从这条流来之后，少了它 bg 会话的内容就静默没了
-///   （monitor 的 `showBgSessions` 缺省是开的）。显示与否在 monitor 那一侧按 `session_kind` 定。
-///
-/// - `--with-pid`：`session_added` 带上 `pid`（`wire::Frame::SessionAdded::pid`）。本机判活改由本机后端的帧来之后，monitor 不再自己读 pidfile，
-///   本机 ↗ 点那一刻从 agent 进程往上找窗口（`bind::bring_local_window`）只能从这一格拿 pid。
-///
-/// 几个字面量都必须是后端 `lib.rs::STREAM_FLAGS` 的成员（后端据它剥旗标；不认的会被当成一次性查询跑完就退）——
-/// 由判据对拍后端源码。
+/// 本机后端的**流模式起参** —— 两条载体（stdio 监护 · 常驻脱离）共用这一份：只有「我是流模式」那个词。
+/// 这条流要什么由声明说（stdio 那条起参里的 `--view` · 常驻那条 attach 行的 `view`）；本机要全量（`session_added.pid` 给 ↗ 绑窗口），不交声明。
+/// 历史一律不重放（本机那条流的历史走旁路快照，与远端同一套：`stream_source::LineIntake`）；bg 会话照宣告，显示与否在 monitor 这一侧按 `session_added.background` 定。
 ///
 /// - [`STREAM_WORD`] 打头：后端就叫 `ccm` 之后零参数是「起会话」，流模式靠这个显式词。
-pub(crate) const LOCAL_STREAM_ARGS: &[&str] = &[
-    BACKEND_SEP,
-    STREAM_WORD,
-    "--tail-only",
-    "--with-bg",
-    "--with-pid",
-];
+pub(crate) const LOCAL_STREAM_ARGS: &[&str] = &[BACKEND_SEP, STREAM_WORD];
 
 /// 「我是流模式后端」的显式词（后端 `lib.rs::STREAM_FLAG_EXPLICIT`，由判据对拍后端源码）。
 /// monitor 起流的每一发（本机两条载体 · 远端流 · 测试连接探针）都以它打头。

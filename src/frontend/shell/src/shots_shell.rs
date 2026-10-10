@@ -14,8 +14,9 @@
 //! # 线上（标准输入 / 标准输出，一行一个 JSON）
 //! 收：`{"t":"machines","machines":[{"origin","argv":[…]}]}`（起各台后端）·
 //! `{"t":"sub","id","origin","kind","want"}` · `{"t":"want","id","more"}` · `{"t":"stop","id"}` · `{"t":"ready","priority_sid"}` ·
-//! `{"t":"call","n","origin","op","payload","left_ms"}`（`payload` 是请求体原文）· `{"t":"kill","origin"}`（那台后端当场杀掉：演「断了」）·
-//! `{"t":"offer","n","origin"}`（那台握上手没有；台架按它等各台起好，等法住台架那一侧）。
+//! `{"t":"call","n","origin","op","payload","view"?,"left_ms"}`（`payload` 是请求体原文）· `{"t":"kill","origin"}`（那台后端当场杀掉：演「断了」）·
+//! `{"t":"offer","n","origin"}`（那台握上手没有；台架按它等各台起好，等法住台架那一侧）·
+//! `{"t":"watch","sessions":[{"origin","sessionId"}]}`（主窗口在看哪几个，同 Tauri 命令 `watch_sessions`：各台的「在看」名单经产品那条 `stream_watch` 报给那台后端）。
 //! 发：`{"t":"items","sub","items"}`（同 `chan-items` 事件体）· `{"t":"reply","n","ok","body"|"fail"}` · `{"t":"offer","n","up"}` · `{"t":"health",…}`。
 
 use crate::chan::host::InboundBackends;
@@ -75,6 +76,9 @@ enum Cmd {
         n: u64,
         origin: crate::origin::Origin,
     },
+    Watch {
+        sessions: Vec<crate::ui_contract::WatchedSession>,
+    },
 }
 
 /// 标准输出：一行一个 JSON，一把锁（几条线程都往这里写）。
@@ -113,6 +117,8 @@ pub fn main() {
     let replay = Arc::new(EventReplay::new());
     replay.attach_sink(Arc::new(StdoutSink));
     crate::wire_replay_outlets(&replay);
+    // 各台的「在看」名单：主窗口报过（`watch`）才报给那台，没报过 ＝ 全看（产品那一份）。
+    crate::stream_watch::spawn(replay.clone());
     let health: crate::stream_source::HealthOut = Arc::new(|p| {
         say(serde_json::json!({ "t": "health", "payload": p }));
         Ok(())
@@ -149,6 +155,11 @@ pub fn main() {
                 let up = InboundBackends.offer(&origin).is_some();
                 say(serde_json::json!({ "t": "offer", "n": n, "up": up }));
             }
+            Cmd::Watch { sessions } => replay.set_main_watch(
+                sessions
+                    .into_iter()
+                    .map(|w| (w.origin.as_wire_str().to_string(), w.session_id)),
+            ),
             Cmd::Sub {
                 id,
                 origin,

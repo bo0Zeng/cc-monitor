@@ -649,7 +649,7 @@ mod tests {
             (
                 "observe/history_query.rs",
                 "IndexRow",
-                "一次性子命令 `--read-session-from-offset … --index` 的**出参行**（骨架索引），\
+                "骨架索引的一行（`history-index` 按列装运之前的那一形），\
                  不是流协议帧；形状登记在 `IPC-PROTOCOL.md` §10.3",
             ),
             (

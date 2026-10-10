@@ -483,7 +483,6 @@ pub(crate) fn walk(caps: &FakeCaps, fixture_home: &Path) -> Result<Vec<&'static 
         host_arch: "x86_64".into(),
         claude_dir: "/c".into(),
         homes: discovered.clone(),
-        capabilities: vec![],
         emits: vec![],
         commands: vec![],
         // 握手帧的「这台做不到」：第三家 agent 不带命令，空表 ⇒ 省略 ⇒ 下面那串期望字节不变。

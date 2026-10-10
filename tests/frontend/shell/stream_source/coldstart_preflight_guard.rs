@@ -91,27 +91,6 @@ fn the_memo_is_written_in_exactly_one_place() {
     );
 }
 
-/// ★ 跳过预检时，`confirmed_build` **必须**给「我这一版」。
-///
-/// 给 `None` 的话 caps 阶梯会掉进「③ 空集全降级」—— 省两条连接换来
-/// **一轮降级 + 一轮升级重连**，比不跳还糟。
-#[test]
-fn skipping_the_preflight_still_feeds_the_capability_ladder() {
-    let prod = prod();
-    // ⚠ 用 `pin_line`（整行相等）而不是 `find_pinned`（子串 + 标识符边界）〔08-06，§5 3u〕：
-    //   这个 needle 以 `)` 收尾 —— **不是标识符字符**，于是 `find_pinned` 的边界检查对它
-    //   根本不起作用。实测对照（同一处撑大 `.map(|s| s)`）：`find_pinned` **通过**，
-    //   `pin_line` **红**并报「没有任何一行 trim 之后等于…」。
-    //   生产段那一行整行就是这个串，所以整行相等是**能用且更强**的写法。
-    guard_core::pin_line(&prod, "mine.map(str::to_string)").unwrap_or_else(|e| {
-        panic!(
-            "跳过预检那一支没有把 `confirmed_build` 置成期望值：{e}\n\
-                     ★ 置 `None` 会让 caps 掉进「空集全降级」⇒ 省下两条连接、换来一轮降级\n\
-                     加一轮升级重连（`should_upgrade_reconnect`）—— **比不跳还糟**。"
-        )
-    });
-}
-
 /// ★ 失败路径必须抹记忆，而且**不止一处**（起流失败 + hello 身份不符）。
 #[test]
 fn every_failure_path_forgets_the_memo() {

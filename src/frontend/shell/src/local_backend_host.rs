@@ -413,19 +413,25 @@ fn read_handshake_line(mut sock: &own_chan::BlockingStream) -> Result<String, Sa
     }
 }
 
-/// attach 行：「我要流」＋ 看的这一台的时区（同远端那一条 `remote_resident::attach_line` 的 `tz`；`None` ⇒ 不带，后端按 UTC 写推来的钟面）。
-pub(crate) fn attach_line(tz: Option<&str>) -> String {
-    match tz {
-        Some(tz) => format!("{}\n", serde_json::json!({ "attach": true, "tz": tz })),
-        None => "{\"attach\":true}\n".to_string(),
+/// attach 行：「我要流」＋ 看的这一台的时区 ＋ 这条流的出口声明（后端 `listen::attach_flags` 的逆；本机远端同一处拼）。
+/// `tz` ＝ [`host_core::viewer_tz`]（`None` ⇒ 不带，后端按 UTC 写推来的钟面）；`view` ＝ 请求信封同一套词（`None` ⇒ 不带 ＝ 全量）。
+pub(crate) fn attach_line(tz: Option<&str>, view: Option<&serde_json::Value>) -> String {
+    let mut o = serde_json::Map::new();
+    o.insert("attach".into(), true.into());
+    if let Some(tz) = tz {
+        o.insert("tz".into(), tz.into());
     }
+    if let Some(v) = view {
+        o.insert("view".into(), v.clone());
+    }
+    format!("{}\n", serde_json::Value::Object(o))
 }
 
 /// 交 attach 行，换一句「可以」。门在连上那一刻（套接字只给本人 ＋ 对端 uid），这一行只是「我要流」。
 fn send_attach(sock: &own_chan::BlockingStream) -> Result<(), Said> {
     use std::io::Write;
     let mut w = sock;
-    w.write_all(attach_line(host_core::viewer_tz().as_deref()).as_bytes())
+    w.write_all(attach_line(host_core::viewer_tz().as_deref(), None).as_bytes())
         .and_then(|()| w.flush())
         .map_err(|e| {
             Said::with_raw(
@@ -492,8 +498,7 @@ fn spawn_detached(
     for (k, v) in extra_env {
         cmd.env(k, v);
     }
-    // 流模式起参与 stdio 那条载体共用一份（`local_backend::LOCAL_STREAM_ARGS`：`--tail-only --with-bg`；
-    // ＋ `--with-pid`，让 `session_added` 带 pid）。
+    // 流模式起参与 stdio 那条载体共用一份（`local_backend::LOCAL_STREAM_ARGS`：只有 `--stream`）。
     cmd.args(local_backend::LOCAL_STREAM_ARGS)
         // ★★ **`TMUX` 一律不继承**〔08-11 事故订正，与 `supervise_with_stdio` 同一条〕：
         //   tmux 客户端在 `TMUX` 有值时按它给的 socket 走，`TMUX_TMPDIR` 完全不起作用。

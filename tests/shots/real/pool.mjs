@@ -120,7 +120,7 @@ export function backendPool({ repo, sandbox }) {
       "--chdir", H,
       "--clearenv",
       ...Object.entries(env).flatMap(([k, v]) => ["--setenv", k, v]),
-      "/tmp/ccm-shots/cc-monitor-backend", "--", "--stream", "--tail-only", "--with-bg", "--with-pid",
+      "/tmp/ccm-shots/cc-monitor-backend", "--", "--stream",
     ];
     // 每台一条整命令（沙箱 ＋ 后端），交给无头壳去起（它拿着各台的标准输入输出，就像壳拿着本机后端那一条）。
     return { argv: ["bwrap", ...box], sleepers };

@@ -48,53 +48,47 @@ fn the_resident_switch_is_empty_one_or_refused() {
     );
 }
 
-/// attach 行可带这条连接的流模式旗标：缺 ⇒ 用进程默认；只认 `STREAM_FLAGS` 里那几个，别的一律当 malformed。
+/// attach 行定这条连接要什么：`tz` · `view` 两格（缺 ＝ UTC · 全量，不看进程起参）；别的键（旧的 `flags` 也算）· 声明认不出 ⇒ malformed。
 #[test]
-fn attach_flags_are_optional_closed_and_per_connection() {
-    assert_eq!(attach_flags(r#"{"attach":true}"#), Ok(None));
+fn attach_line_carries_tz_and_view_and_nothing_else() {
     assert_eq!(
-        attach_flags(r#"{"attach":true,"flags":["--tail-only","--with-pid","--with-raw"]}"#),
-        Ok(Some(crate::StreamWants {
-            with_bg: false,
-            tail_only: true,
-            with_pid: true,
-            with_raw: true,
-            tz: Default::default(),
-        }))
+        attach_flags(r#"{"attach":true}"#),
+        Ok(Some(crate::StreamWants::default()))
     );
-    // 看的那一台的时区跟在旁边一格（不进 `flags`）：认得 ⇒ 那个时区；认不得 ⇒ UTC。
+    // 看的那一台的时区：认得 ⇒ 那个时区；认不得 ⇒ UTC。
     let sh = crate::Tz::named("Asia/Shanghai").unwrap();
     assert_eq!(
-        attach_flags(r#"{"attach":true,"flags":[],"tz":"Asia/Shanghai"}"#).map(|w| w.map(|w| w.tz)),
+        attach_flags(r#"{"attach":true,"tz":"Asia/Shanghai"}"#).map(|w| w.map(|w| w.tz)),
         Ok(Some(sh))
     );
     assert_eq!(
-        attach_flags(r#"{"attach":true,"flags":[],"tz":"Nowhere/Atlantis"}"#)
-            .map(|w| w.map(|w| w.tz)),
+        attach_flags(r#"{"attach":true,"tz":"Nowhere/Atlantis"}"#).map(|w| w.map(|w| w.tz)),
         Ok(Some(crate::Tz::default()))
     );
-    assert_eq!(
-        attach_flags(r#"{"attach":true,"flags":[]}"#),
-        Ok(Some(crate::StreamWants::default())),
-        "空表 = 一个都不要（老后端那一形），不是「用默认」"
-    );
-    assert_eq!(
-        attach_flags(r#"{"attach":true,"flags":["--search"]}"#),
-        Err(())
-    );
-    assert_eq!(
-        attach_flags(r#"{"attach":true,"flags":"--tail-only"}"#),
-        Err(())
-    );
+    // 声明：与请求信封同一套词；只许点推送帧里住着的成品。
+    let viewed = attach_flags(r#"{"attach":true,"view":{"omit":{"session_added":["pid"]}}}"#)
+        .expect("认得的声明")
+        .expect("有这一行");
+    assert!(viewed.view.is_some(), "声明没进这条连接");
+    for bad in [
+        r#"{"attach":true,"flags":["--tail-only"]}"#,
+        r#"{"attach":true,"flags":[]}"#,
+        r#"{"attach":true,"view":{"omit":{"facts":["usage"]}}}"#,
+        r#"{"attach":true,"view":{"omit":{"session_added":["no_such_cell"]}}}"#,
+        r#"{"attach":true,"view":{"pick":{}}}"#,
+        r#"{"attach":true,"view":"x"}"#,
+    ] {
+        assert_eq!(attach_flags(bad), Err(()), "{bad}");
+    }
 }
 
-/// attach 行只判形状：`{"attach":true}`（可带 `flags`）才要流；钥匙串、数字、缺字段、不是 JSON 都是 malformed。
+/// attach 行只判形状：`{"attach":true}`（可带 `tz` · `view`）才要流；钥匙串、数字、缺字段、不是 JSON 都是 malformed。
 #[test]
 fn attach_verdicts_judge_the_shape_only() {
     assert_eq!(attach_verdict("{\"attach\":true}"), Verdict::Attach);
     assert_eq!(attach_verdict("{\"attach\":true}\n"), Verdict::Attach);
     assert_eq!(
-        attach_verdict("{\"attach\":true,\"flags\":[\"--tail-only\"]}"),
+        attach_verdict("{\"attach\":true,\"tz\":\"UTC\"}"),
         Verdict::Attach
     );
     for bad in [

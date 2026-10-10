@@ -1,26 +1,26 @@
-//! 〔骨架〕`--read-session-from-offset … --index [--until]` 的判据。
+//! 〔骨架〕骨架索引的扫描（帧面 `history-index` 用的那一个）与 `--read-session-from-offset` 选项解析的判据。
 //!
 //! 买到：索引与 seq 空间**逐行对齐**（与 `--read-session-tail` 那份计数同一口径、同一个 `line_counts`）·
 //! 偏移是绝对的、续传从 `end` 接得上 · 宽度无关料按块型分开数 · 选项解析拒写错的尾随参数。
 //! **买不到**：料「数得准不准」只对到原料层（前端最终建不建卡、建成哪种卡，这里不知道）；
-//! 老后端上 `--index` 被静默忽略这件事**只能在 monitor 侧认**（见那边的判据），这里测不到。
 
 use super::*;
 
+/// 扫一遍，排成「头 · 每行 · 尾」三段（头带 `from`，尾带 `count` · `end`），下面的判据照这三段读。
 fn index_of(data: &[u8], from: u64, until: Option<u64>) -> Vec<serde_json::Value> {
-    let mut out = Vec::new();
-    write_session_index(
+    let mut rows = vec![serde_json::json!({"kind": "session_index", "v": 1, "from": from})];
+    let (count, end) = scan_session_index(
         &data[from.min(data.len() as u64) as usize..],
         from,
         until,
-        &mut out,
+        |row| {
+            rows.push(serde_json::to_value(row).expect("每行都是 JSON"));
+            Ok(())
+        },
     )
     .expect("index ok");
-    String::from_utf8(out)
-        .unwrap()
-        .lines()
-        .map(|l| serde_json::from_str(l).expect("每行都是 JSON"))
-        .collect()
+    rows.push(serde_json::json!({"kind": "session_index_end", "count": count, "end": end}));
+    rows
 }
 
 /// 头一行、尾一行、中间是行 —— 形状本身。
@@ -194,27 +194,19 @@ fn from_offset_args_parse_strictly_and_in_any_order() {
         parse(&["/p.jsonl", "0"]).unwrap(),
         (FromOffsetOpts::default(), s(&["/p.jsonl", "0"]))
     );
-    // 选项在后
+    // 选项在后 · 在前都认
     assert_eq!(
-        parse(&["/p.jsonl", "5", "--index", "--until", "42"]).unwrap(),
-        (
-            FromOffsetOpts {
-                index: true,
-                until: Some(42)
-            },
-            s(&["/p.jsonl", "5"])
-        )
+        parse(&["/p.jsonl", "5", "--until", "42"]).unwrap(),
+        (FromOffsetOpts { until: Some(42) }, s(&["/p.jsonl", "5"]))
     );
-    // 🔴 选项在前（monitor 就这么发：老后端会把 `--index` 当路径、零字节失败）
     assert_eq!(
-        parse(&["--index", "/p.jsonl", "5"]).unwrap(),
-        (
-            FromOffsetOpts {
-                index: true,
-                until: None
-            },
-            s(&["/p.jsonl", "5"])
-        )
+        parse(&["--until", "42", "/p.jsonl", "5"]).unwrap(),
+        (FromOffsetOpts { until: Some(42) }, s(&["/p.jsonl", "5"]))
+    );
+    // 骨架索引不再是这条的选项（帧命令 `history-index`）
+    assert!(
+        parse(&["--index", "/p.jsonl", "5"]).is_err(),
+        "--index 已删"
     );
     assert!(
         parse(&["/p.jsonl", "0", "--until"]).is_err(),
@@ -232,20 +224,6 @@ fn from_offset_args_parse_strictly_and_in_any_order() {
         parse(&["/p.jsonl", "0", "extra"]).is_err(),
         "多余的位置参数必须报错"
     );
-}
-
-/// 入口走一遍（路径围栏与 `--read-session` 同一套）：projects 外拒、合法文件出头尾。
-#[test]
-fn session_index_entry_keeps_the_path_fence() {
-    let tmp = std::env::temp_dir().join(format!("ccm-hq-idx-{}", std::process::id()));
-    let dir = tmp.join("projects").join("p");
-    std::fs::create_dir_all(&dir).unwrap();
-    std::fs::write(dir.join("ok.jsonl"), "{\"type\":\"user\"}\n").unwrap();
-    let outside = tmp.join("secret.jsonl");
-    std::fs::write(&outside, "{}\n").unwrap();
-    assert!(session_index(&tmp, &outside.to_string_lossy(), 0, None).is_err());
-    assert!(session_index(&tmp, &dir.join("ok.jsonl").to_string_lossy(), 0, None).is_ok());
-    std::fs::remove_dir_all(&tmp).ok();
 }
 
 /// **跨 crate 的 seq 空间对拍**：后端索引读同一份夹具，逐行对同一份金标准。

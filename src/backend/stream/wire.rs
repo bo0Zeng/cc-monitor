@@ -213,7 +213,7 @@ pub use crate::stream::topic::Topic;
 ///
 /// # 它为什么是一张**负向**表（这一格是本结构最贵的判断，不是口味）
 ///
-/// 三条既有的能力面都是**正向**清单。正向在这里**结构上表达不了「我什么都做不到」**：
+/// 既有的两条面（`emits` · `commands`）都是**正向**清单。正向在这里**结构上表达不了「我什么都做不到」**：
 /// additive 要求空表省略（`skip_serializing_if`），而「省略」必须等于**旧后端的语义**。
 /// 于是正向表的空集只有两种读法，两种都坏：
 /// ① 空=「一条都做不到」⇒ 每台旧后端都变成「什么都不能干」，功能当场全消失；
@@ -303,29 +303,18 @@ pub enum Frame {
         /// `S5` 落地时往这里填，**不要再加第二个目录字段**。
         #[serde(skip_serializing_if = "Vec::is_empty")]
         homes: Vec<AgentHome>,
-        /// F66（#58③，additive）：本后端声明支持的**能力 token 集**（开放字符串，
-        /// 加法式）。monitor 按此声明决定发哪些流模式 flag（`--with-bg`/`--tail-only`），
-        /// **不再靠 build_id 精确匹配**——闭合 2026-07-09 那类「身份确认不了就全降级」事故。
-        /// 旧 monitor 忽略此字段（additive）；空/缺 = 按最小能力集待它。
-        /// **§26 死循环护栏**：只声明本 backend **会先剥离对应 flag** 的能力（老到不剥离
-        /// 未知 flag 的后端也老到不声明该能力，声明 = 自证认识该 flag）。
-        #[serde(skip_serializing_if = "Vec::is_empty")]
-        capabilities: Vec<String>,
-        /// phase②（backend-08，additive，与 `capabilities` **正交**）：本 backend **会发射的帧 kind 集**
+        /// phase②（backend-08，additive）：本 backend **会发射的帧 kind 集**
         /// （snake_case，如 "session_status"/"turn_end"）。aterm 据此**门控消费**（emits 含该 kind →
-        /// 期待/依赖该帧；不含 → 不依赖、回退 β/watchdog）。**区别于 `capabilities`**（后者=流 flag-strip
-        /// 能力、受 §26 死循环护栏 + `every_capability_token_is_strippable` 强制每 token 有可剥离 flag）——
-        /// `emits` 是纯发射声明、无对应 flag、**不受 §26**。空/缺 → 省略（旧 client 忽略，additive）。
+        /// 期待/依赖该帧；不含 → 不依赖、回退 β/watchdog）。纯发射声明、无对应旗标。空/缺 → 省略。
         #[serde(skip_serializing_if = "Vec::is_empty")]
         emits: Vec<String>,
         /// U6b-2（additive）：本 backend **接受的入方向命令集**。
         ///
-        /// 能力协商此前只有出方向那一半（`capabilities` 说「我认识哪些流 flag」）。
         /// 客户端得知道发什么过去才有人接，否则只能试错。
         /// 空/缺 = **这个后端不读 stdin**（U6b-1 之前的所有版本），客户端别发命令。
         #[serde(skip_serializing_if = "Vec::is_empty")]
         commands: Vec<String>,
-        /// `K-P4`（09-04，additive，**与上面三条都正交**）：本 backend **接得下、但在这台
+        /// `K-P4`（09-04，additive，**与上面两条都正交**）：本 backend **接得下、但在这台
         /// 机器上做不到**的命令，以及原因（`[{command, code}]`，见 [`Unavailable`]）。
         ///
         /// # 它买的是什么：**事前**那一半
@@ -333,22 +322,16 @@ pub enum Frame {
         /// `commands` 说的是「**我接这条命令**」，不是「**我做得到这件事**」。差额今天
         /// **只有调用之后**才知道：Windows 上没有 tmux，握手帧照样宣称接 `kill`/`launch`，
         /// 前端照样画按钮，点了才收到 `no_tmux`。用户 09-04 逐字裁「**事前协商是要的**」。
-        /// ⇒ 本字段是握手帧的第四条面，回答的是**「我做得到什么」**。
+        /// ⇒ 本字段是握手帧上回答**「我做得到什么」**的那一面。
         ///
-        /// # 三条既有面为什么都装不下它（每条都有各自的硬理由，不是嫌挤）
+        /// # 既有两条面为什么都装不下它（每条都有各自的硬理由，不是嫌挤）
         ///
-        /// · `capabilities`：受 §26 死循环护栏 + `every_capability_token_is_strippable` ——
-        ///   **每个 token 必须有一条能被 `split_stream_flags` 剥掉的流 flag**。「做得到 kill」
-        ///   没有对应的流 flag ⇒ 塞进去要么当场红，要么被迫编一个假 flag（更坏）。
-        ///   而且它的默认方向是相反的：缺 = 最小能力集（往下降级安全）；本字段缺 = **没有把握**
-        ///   （不许往下降级，否则能用的功能会消失）。**一个字段装两个方向的默认值**，
-        ///   正是本工作区最贵的那一类病。
         /// · `emits`：取值空间是**帧 kind**，语义是「我会发什么」。
         /// · `commands`：取值空间是**命令名**，语义是「我接什么」；而且它是正向表，
         ///   把做不到的从里面**摘掉**是错的 —— 那会让客户端 `accepts()` 直接拒发，
         ///   连「点了告诉你为什么」这条兜底路都没了，也让 `COMMANDS`/`REGISTRY` 双向相等
         ///   那条判据被迫按平台分叉。
-        /// ⇒ 本字段的键是 **(命令名 × 命令级 code)** 这个**对**，三条面没有一条是这个形状。
+        /// ⇒ 本字段的键是 **(命令名 × 命令级 code)** 这个**对**，两条面没有一条是这个形状。
         ///
         /// # 消费侧口径（三句，缺一句就会读错）
         ///
@@ -397,12 +380,10 @@ pub enum Frame {
     },
     /// 会话记录里的一行 —— 带的是**成品**：这一行在界面里是什么（`record`，通用记录 `agents::record::Record`；
     /// 缺 ＝ 不进界面、照占号）与它自己的 `cwd`。解释住后端适配层，monitor 只原样转交。
-    /// 原文 `raw` 是过渡格，只给发了 `--with-raw` 的客户端（逐字节等于记录里那一行，去掉行尾：`\n`，CRLF 行连 `\r` 一起去）；
-    /// 两个前端读的是 `record`，手机那一侧的缺格补齐之后 `raw` 删。
+    /// 不带原文：两个前端都读成品。
     ///
-    /// **两个前端共同的契约面**：`session_id` · `path` · `seq` · `byte_offset` · `raw` 五格在冻结表里（`wire_tests::the_shapes_the_second_frontend_reads_stay_put`）；
-    /// `record` 是格目录里冻结的成品，格只许加（`cells_catalog_tests::the_golden_is_what_the_command_writes`）。`raw` 逐字节等于那一行
-    /// （`watcher_tests::line_raw_is_the_record_line_byte_for_byte`）。
+    /// **两个前端共同的契约面**：`session_id` · `path` · `seq` · `byte_offset` 四格在冻结表里（`wire_tests::the_shapes_the_second_frontend_reads_stay_put`）；
+    /// `record` 是格目录里冻结的成品，格只许加（`cells_catalog_tests::the_golden_is_what_the_command_writes`）。
     Line {
         /// 会话 id。
         session_id: String,
@@ -428,11 +409,6 @@ pub enum Frame {
         /// 这一行的对账键（适配层 `RecordFace::response_id` 给；流的「开始」带同一个值）。没有 ⇒ 不上线。
         #[serde(skip_serializing_if = "Option::is_none")]
         rid: Option<String>,
-        /// 〔additive〕这一行记录的**原文**（去掉行尾：`\n`，CRLF 行连 `\r` 一起去）。只在客户端发了 `--with-raw` 时才带
-        /// （`ReaderState::with_raw`）。**过渡格**：两个前端都读核心的成品（`record`）；手机那一侧还缺的几格补齐之前它点着这一格，
-        /// 补齐（缺格清单清零）之后从它的声明里摘掉、这一格随之删。没索要的客户端收到的字节与本字段加进来之前一字不差。
-        #[serde(skip_serializing_if = "Option::is_none")]
-        raw: Option<String>,
     },
     /// A new session file appeared.
     ///
@@ -480,7 +456,7 @@ pub enum Frame {
         /// 天然从 tail 的 seq 0 起全量到达，无需快照。
         #[serde(skip_serializing_if = "Option::is_none")]
         path: Option<String>,
-        /// Batch8 审计 D-I2（additive）：tail-only 模式下 prime 时的完整行数 L
+        /// Batch8 审计 D-I2（additive）：宣告时 prime 的完整行数 L
         /// ——monitor 校验快照拉到的行数 ≥ L 才算成功（不足 = 中途断/backend
         /// 报错，触发重试；exit status 经 ChannelStream 拿不到，行数校验更强）。
         /// 全量模式 None。
@@ -498,15 +474,12 @@ pub enum Frame {
         /// 与本字段加进来之前一字不差。缺席的意思是「不知道」，**不是** `none`。
         #[serde(skip_serializing_if = "Option::is_none")]
         container: Option<SessionContainer>,
-        /// 〔additive〕那个 claude 进程的 **pid**。
+        /// 那个 claude 进程的 **pid**（恒在）。
         ///
         /// 给谁：本机 monitor 的「↗ 拉前」—— 本机判活改由本机后端的帧来之后（monitor 不再自己读 pidfile），
         /// 它在 ↗ 点那一刻从这个 pid 往上找窗口（`bind::bring_local_window`）只能从这一格拿 pid。
-        ///
-        /// 只在客户端发了 `--with-pid` 时才带（`ReaderState::with_pid`；只有本机那条流发）—— 没索要的客户端
-        /// 收到的字节与本字段加进来之前一字不差（仓外 aterm 那份按精确字节对的 fixture 因此不受影响，hello 也不变）。
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pid: Option<u32>,
+        /// 不要它的出口在声明里去掉（`omit: {session_added: ["pid"]}`）。
+        pid: u32,
     },
     /// Batch9-F27：会话 status 变化（pidfile modify diff；CC 仅状态转换时重写，
     /// 天然稀疏）。远端红绿灯数据源；旧 monitor 未知 kind 忽略（additive）。
@@ -1423,6 +1396,21 @@ pub fn to_line(frame: &Frame) -> serde_json::Result<String> {
     Ok(s)
 }
 
+/// [`to_line`] 照这条流的出口声明裁过（`crate::StreamView`；`None` ＝ 全量，字节与 [`to_line`] 同）。流的写者对每一帧调它。
+pub fn to_line_viewed(
+    frame: &Frame,
+    view: Option<&crate::StreamView>,
+) -> serde_json::Result<String> {
+    let Some(view) = view else {
+        return to_line(frame);
+    };
+    let mut v = serde_json::to_value(frame)?;
+    view.apply(&mut v);
+    let mut s = serde_json::to_string(&v)?;
+    s.push('\n');
+    Ok(s)
+}
+
 /// U6b-3：**Hello 已经写出并 flush 的见证。**
 ///
 /// # 为什么要一个类型
@@ -1542,11 +1530,10 @@ pub(crate) fn hello_summary(h: &serde_json::Value) -> String {
             .unwrap_or_default()
     };
     format!(
-        "v={} build={} arch={} home={home} caps={:?} cmds={:?}",
+        "v={} build={} arch={} home={home} cmds={:?}",
         h.get("v").and_then(Value::as_u64).unwrap_or(0),
         s("build_id"),
         s("host_arch"),
-        list("capabilities"),
         list("commands"),
     )
 }
