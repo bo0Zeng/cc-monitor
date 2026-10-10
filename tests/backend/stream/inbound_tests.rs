@@ -138,6 +138,7 @@ async fn one_line(input: &str) -> Vec<String> {
     let h = spawn(
         std::io::Cursor::new(input.as_bytes().to_vec()),
         tx,
+        crate::stream::inbound::WatchDesk::for_tests(),
         crate::stream::wire::HelloFlushed::for_tests(),
     );
     h.await.expect("reader task");
@@ -347,6 +348,7 @@ async fn an_oversized_line_does_not_grow_memory() {
                 nl_sent: false,
             },
             tx,
+            crate::stream::inbound::WatchDesk::for_tests(),
             crate::stream::wire::HelloFlushed::for_tests(),
         );
         h.await.expect("reader task");
@@ -417,7 +419,17 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
     let links = crate::dial::link::Table::new(tx.clone());
     let xfers = crate::control::transfer::Desk::new(tx.clone());
     let follows = crate::control::terminal_follow::Desk::new(tx.clone());
-    let d = |cmd: &str| dispatch(req("x", cmd), &tx, &running, &links, &xfers, &follows);
+    let d = |cmd: &str| {
+        dispatch(
+            req("x", cmd),
+            &tx,
+            &running,
+            &links,
+            &xfers,
+            &follows,
+            &WatchDesk::for_tests(),
+        )
+    };
 
     // `launch` 起进程、同步阻塞 ⇒ 必须是 SpawnBlocking（不占 tokio worker + 不可取消）。
     assert!(
@@ -897,6 +909,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "terminal-follow",
         "terminal-follow-ack",
         "terminal-unfollow",
+        // 流只发要看的会话：硬臂，交给 watcher 线程、等它一句回话（异步档）⇒ 不阻塞。
+        "stream-watch",
         // 计划七条：起 pb / 读改写小文件 / 起 tmux，阻塞档（上面逐条断）。
         "plan-list",
         "plan-read",
@@ -950,7 +964,7 @@ fn every_registered_command_is_reachable_through_the_real_dispatch() {
         .map(|spec| spec.name)
         .filter(|name| {
             matches!(
-                dispatch(req("x", name), &tx, &running, &links, &xfers, &follows),
+                dispatch(req("x", name), &tx, &running, &links, &xfers, &follows, &WatchDesk::for_tests()),
                 Disposition::Reply(Frame::Reply { code: Some(ref c), .. })
                     if c == "unknown_command"
             )
@@ -967,7 +981,7 @@ fn every_registered_command_is_reachable_through_the_real_dispatch() {
     // ★ 反向自检：这把尺子真的会说「够不到」—— 不然上面那一批是空真。
     assert!(
         matches!(
-            dispatch(req("x", "no-such-command-kr104"), &tx, &running, &links, &xfers, &follows),
+            dispatch(req("x", "no-such-command-kr104"), &tx, &running, &links, &xfers, &follows, &WatchDesk::for_tests()),
             Disposition::Reply(Frame::Reply { code: Some(ref c), .. }) if c == "unknown_command"
         ),
         "喂一个根本不存在的命令进去，本条居然认为它够得到 —— 那上面那一批证不了任何事"
@@ -988,7 +1002,15 @@ fn the_uncancellable_list_is_exactly_what_dispatch_runs_blocking() {
         .map(|spec| spec.name)
         .filter(|name| {
             matches!(
-                dispatch(req("x", name), &tx, &running, &links, &xfers, &follows),
+                dispatch(
+                    req("x", name),
+                    &tx,
+                    &running,
+                    &links,
+                    &xfers,
+                    &follows,
+                    &WatchDesk::for_tests()
+                ),
                 Disposition::SpawnBlocking(..)
             )
         })
@@ -1041,6 +1063,7 @@ async fn cancelling_a_blocking_command_says_not_cancellable_instead_of_lying() {
         &links,
         &xfers,
         &follows,
+        &WatchDesk::for_tests(),
     )
     .await;
 
@@ -1359,5 +1382,57 @@ fn the_handlers_own_sentence_moves_into_the_detail_raw_line() {
             copy_core::copy_text("detail.label.raw", &[])
         )),
         "{detail}"
+    );
+}
+
+/// `stream-watch`：名单原样交给这条连接的 watcher（整份），它答的「从第几行起」原样回；`sids` 不是串数组 ⇒ `bad_args`、不交。
+#[tokio::test]
+async fn stream_watch_hands_the_list_to_this_connections_watcher_and_returns_its_answer() {
+    let asked: Arc<Mutex<Vec<Vec<String>>>> = Arc::default();
+    let seen = asked.clone();
+    let desk = WatchDesk::new(move |sids| {
+        seen.lock().unwrap().push(sids);
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        let _ = tx.send(vec![crate::stream::wire::WatchFrom {
+            sid: "a".into(),
+            path: "/p/a.jsonl".into(),
+            seq: 7,
+        }]);
+        rx
+    });
+    let input = concat!(
+        r#"{"id":"w1","cmd":"stream-watch","args":{"sids":["a","b"]}}"#,
+        "\n",
+        r#"{"id":"w2","cmd":"stream-watch","args":{"sids":"a"}}"#,
+        "\n",
+        r#"{"id":"w3","cmd":"stream-watch","args":{}}"#,
+        "\n",
+    );
+    let (tx, mut rx) = chan();
+    let h = spawn(
+        std::io::Cursor::new(input.as_bytes().to_vec()),
+        tx,
+        desk,
+        crate::stream::wire::HelloFlushed::for_tests(),
+    );
+    h.await.expect("reader task");
+    let mut got = std::collections::BTreeMap::new();
+    while let Some(f) = rx.recv().await {
+        let v: serde_json::Value =
+            serde_json::from_str(crate::stream::wire::to_line(&f).unwrap().trim()).unwrap();
+        got.insert(v["id"].as_str().unwrap().to_string(), v);
+    }
+    assert_eq!(
+        got["w1"]["data"],
+        serde_json::json!({"from": [{"sid": "a", "path": "/p/a.jsonl", "seq": 7}]}),
+        "{}",
+        got["w1"]
+    );
+    for id in ["w2", "w3"] {
+        assert_eq!(got[id]["code"], "bad_args", "{id}: {}", got[id]);
+    }
+    assert_eq!(
+        *asked.lock().unwrap(),
+        vec![vec!["a".to_string(), "b".to_string()]]
     );
 }

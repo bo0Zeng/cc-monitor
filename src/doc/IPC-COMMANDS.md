@@ -417,6 +417,24 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 - `state: "failed"`，带 `why` string · `code` string? · `detail` string? —— 失败（那一句 ＋ 复制详情）
 - `state: "cancelled"` —— 撤了（`transfer-stop` / 本机流断了）
 
+#### `WatchFrom`
+
+`stream-watch` 应答里的一格：这个会话刚进了这条流的名单，它的这份记录从第 `seq` 行起上流（`seq` 与行帧同一个行号空间）；`[0, seq)` 那段客户端按骨架补（`history-index` 从上次的末端续）。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `sid` | string | 会话 id |
+| `path` | string | 这份会话记录在那台机器上的绝对路径 |
+| `seq` | number | 这条流从这一行起发它 |
+
+#### `WatchReply`
+
+`stream-watch` 的应答。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `from` | [WatchFrom] | 刚进名单的会话每份记录一格（先前就在名单里的不回） |
+
 #### `Request`
 
 **入方向**请求信封。
@@ -459,6 +477,22 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `target` | → | 要撤的那条命令的 `id` |
+
+#### `stream-watch`
+
+这条流此刻在看哪几个会话（整份换；从没报过 ＝ 全看）：不在名单里的会话，它的行 · 运行表 · 主线外清单不上这条流，宣告 · 状态 · 轮次边沿照发；回刚进名单的那几个从第几行起上流。
+
+收 `args` · 连接内就地做完 · 只在流上
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `sids` | → | 在看的会话 id（串数组；空 ＝ 一个都不看） |
+| `from` | ← | 刚进名单的会话每份记录一格 `{sid, path, seq}`（先前就在名单里的不回） |
+| `path` | ← | `from[]`：那份记录在那台机器上的绝对路径 |
+| `seq` | ← | `from[]`：这条流从这一行起发它（与行帧同一个行号空间）；`[0, seq)` 按骨架补 |
+| `sid` | ← | `from[]`：会话 id |
+
+码：`bad_args`
 
 #### `link-open`
 

@@ -1,6 +1,6 @@
 //! 命令表 · 连接本身：`cancel` · `ping` · 链路四条 · 传输四条（`Run::Builtin` 那几条的本体是 `dispatch` 的硬臂）。
 
-use crate::stream::inbound::spec::{arg, CommandSpec, Run};
+use crate::stream::inbound::spec::{arg, out, CommandSpec, Run};
 
 pub(super) const SPECS: &[CommandSpec] = &[
     CommandSpec {
@@ -8,6 +8,15 @@ pub(super) const SPECS: &[CommandSpec] = &[
         summary: "撤掉一条在跑的命令（`target` = 它的 `id`）；撤不存在的 id 也回 `ok`",
         codes: &[],
         fields: &[arg("target", "要撤的那条命令的 `id`")],
+        takes_input: true,
+        run: Run::Builtin,
+    },
+    // 流只发要看的会话：本连接那份 watcher 的名单 ⇒ **只在帧面**。
+    CommandSpec {
+        name: "stream-watch",
+        summary: "这条流此刻在看哪几个会话（整份换；从没报过 ＝ 全看）：不在名单里的会话，它的行 · 运行表 · 主线外清单不上这条流，宣告 · 状态 · 轮次边沿照发；回刚进名单的那几个从第几行起上流",
+        codes: &["bad_args"],
+        fields: &[arg("sids", "在看的会话 id（串数组；空 ＝ 一个都不看）"), out("from", "刚进名单的会话每份记录一格 `{sid, path, seq}`（先前就在名单里的不回）"), out("path", "`from[]`：那份记录在那台机器上的绝对路径"), out("seq", "`from[]`：这条流从这一行起发它（与行帧同一个行号空间）；`[0, seq)` 按骨架补"), out("sid", "`from[]`：会话 id")],
         takes_input: true,
         run: Run::Builtin,
     },

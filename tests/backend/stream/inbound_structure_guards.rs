@@ -455,6 +455,8 @@ fn every_registered_command_declares_its_run_kind() {
                 | "terminal-follow"
                 | "terminal-follow-ack"
                 | "terminal-unfollow"
+                // 流只发要看的会话：要碰本连接那份 watcher 的名单。
+                | "stream-watch"
         );
         assert_eq!(
             is_builtin, expected_builtin,
@@ -690,6 +692,8 @@ fn every_registered_command_declares_its_run_kind() {
         "terminal-follow",
         "terminal-follow-ack",
         "terminal-unfollow",
+        // 流只发要看的会话：内建（硬臂；交给本连接的 watcher 线程，等它一句回话）。
+        "stream-watch",
     ];
     let missing: Vec<&str> = super::REGISTRY
         .iter()
@@ -1143,6 +1147,12 @@ use typed_replies::*;
 /// 成功应答不带 `data`、只有失败信封带的（`terminal-follow`）⇒ 样本就是失败那一形。
 #[allow(clippy::type_complexity)]
 const TYPED: &[(&str, fn() -> Sampled, &[&str], &[(&str, &str)])] = &[
+    (
+        "stream-watch",
+        sampled::<crate::stream::wire::WatchReply>,
+        &["path", "seq", "sid"],
+        &[],
+    ),
     (
         "sessions-needs",
         sampled::<crate::faces::read_face::NeedsList>,

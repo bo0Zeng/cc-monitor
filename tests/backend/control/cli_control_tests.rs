@@ -58,6 +58,7 @@ const NOT_ON_CLI: &[(&str, &str)] = &[
         "订阅之后的画面帧（`terminal_screen`）是往发起它的那条流连接的应答通道推的，订阅活到退订 / 连接走；一次性进程没有那条通道，\
          回完应答就退、订阅当场没了 ⇒ 开 CLI 口只会回一个空应答。命令行看一眼画面用 `--terminal-preview`。",
     ),
+    ("stream-watch", "改的是某条流连接自己那份 watcher 的名单；一次性进程里没有流 ⇒ 只上帧面。"),
     ("terminal-follow-ack", "回执的是某条流连接上的那张票；一次性进程里没有票 ⇒ 同 `terminal-follow` 只上帧面。"),
     ("terminal-unfollow", "退订的是某条流连接上的那张票；一次性进程里没有票 ⇒ 同 `terminal-follow` 只上帧面。"),
     (
@@ -949,6 +950,7 @@ fn frame_reply(cmd: &str, args: &serde_json::Value, within_ms: Option<u64>) -> s
         crate::stream::inbound::spawn(
             std::io::Cursor::new(line.into_bytes()),
             tx,
+            crate::stream::inbound::WatchDesk::for_tests(),
             crate::stream::wire::HelloFlushed::for_tests(),
         )
         .await
