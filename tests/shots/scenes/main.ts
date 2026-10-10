@@ -185,10 +185,25 @@ function unreadWorld(): World {
   c.title("认不出的记录");
   c.user("把发布脚本里的版本号改成从标签读。");
   c.say("好，先看一下现在的发布脚本。");
-  c.unread("unread-unknown");
+  c.golden("unread-unknown");
   c.say("脚本里版本号写死在第 12 行，改成读 `git describe` 的结果。");
-  c.unread("unread-parse-failed");
+  c.golden("unread-parse-failed");
   c.user("可以，顺便把 CHANGELOG 也补一条。");
+  s.records = c.records;
+  return w;
+}
+
+/** 提问卡与计划卡：那一问一计划与它们的答都照核心金样（`steps[].ask` 由核心写，界面只照它建卡；假后端不算）。 */
+function askWorld(): World {
+  const w = defaultWorld();
+  const s = w.sessions[0];
+  const c = new Convo(s.sid, s.cwd, "2026-10-01T07:00:00Z");
+  c.title("提问与计划");
+  c.user("重试那一块先出个计划给我看。");
+  c.golden("reply-ask");
+  c.golden("said-ask-answered");
+  c.golden("said-plan-approved");
+  c.say("好，照计划开始改。");
   s.records = c.records;
   return w;
 }
@@ -505,9 +520,9 @@ export const MAIN_SCENES: Scene[] = [
   card("card-retry", "API 重试细条", "调用失败、CLI 正在重试（第 1/2 次）", async () => {
     await openCard(".card-api-retry", 0, "center");
   }),
-  card("card-ask", "提问卡与计划卡", "AskUserQuestion（已选）＋ ExitPlanMode 计划", async () => {
+  card("card-ask", "提问卡与计划卡", "AskUserQuestion（已选）＋ ExitPlanMode 计划：一问一计划与它们的答照核心记录金样", async () => {
     await openCard(".block-plan", 0, "center");
-  }),
+  }, askWorld),
   card("card-compact-error", "续接摘要 · 斜杠命令 · API 报错 · 打断", "一个会话里：/compact 续接摘要、斜杠命令卡、529 报错卡、重试细条、用户打断与打断时说的话", async () => {
     await mainReady(ALL_TABS);
     await scrollStream("top");
