@@ -682,7 +682,7 @@ export class TabManager {
     const { streamEl, stream, branchFolder, timeline, inputsEl, inputsPanel, outline, turnFold, turnRail } =
       this.view.mountTabDom(sessionId);
 
-    // 取一次初始任务快照；`session-tasks` 流那一路（`refreshTasks`）并行更新同一份，当前 tab 的同步推给面板。
+    // 取一次初始任务快照；`changed/tasks` 流那一路（`refreshTasks`）并行更新同一份，当前 tab 的同步推给面板。
     void fetchSessionTasks(sessionId, origin).then((tasks) => {
       this.store.tasksBySid.set(sessionId, tasks);
       if (this.store.activeId === sessionId) {

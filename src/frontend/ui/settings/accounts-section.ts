@@ -5,7 +5,7 @@
  * 判定全在那台后端：清单与登录态（`accounts-list`）· 删了默认号之后谁接（`meta.nextDefault`）· 用量（`quota-read`）·
  * 对不上的几处（`accounts-verify`，打开时顺手核一次）· 命令名（配置文件里认作这个号的那几段，`profiles-read` 的 `accountShape`）·
  * 能不能开终端窗口（壳那一处）。这里只排版、只认最后一趟回答（切机器快过读时，晚到的整份作废）。
- * 那台账号清单 / 凭据 / 用量一变，后端推一帧（`accounts-changed` · `quota-changed`），这一页自己重读。
+ * 那台账号清单 / 凭据 / 用量一变，后端推一帧（`changed {accounts}` · `changed {quota}`），这一页自己重读。
  */
 import { agoText } from "./ago";
 import { emit } from "@tauri-apps/api/event";
@@ -155,7 +155,7 @@ export class AccountsSection {
     return this.hosts;
   }
 
-  /** 每台订 `accounts-changed` ＋ `quota-changed`：一来就合并成一次重读（只重读此刻在看的那台）。 */
+  /** 每台订 `changed/accounts` ＋ `changed/quota`：一来就合并成一次重读（只重读此刻在看的那台）。 */
   private async subscribe(): Promise<void> {
     if (this.subscribed) return;
     this.subscribed = true;
@@ -170,7 +170,10 @@ export class AccountsSection {
       }, PUSH_COALESCE_MS);
     };
     try {
-      await bindEvents({ onLine: () => {}, onSessionEnded: () => {}, onAccountsChanged: pushed, onQuotaChanged: pushed }, { accounts: origins, quota: origins });
+      await bindEvents(
+        { onLine: () => {}, onSessionEnded: () => {}, onChanged: pushed },
+        { changed: origins.flatMap((origin) => (["accounts", "quota"] as const).map((topic) => ({ origin, topic }))) },
+      );
     } catch (e) {
       console.warn("[accounts] 订不上账号推送：", e);
     }

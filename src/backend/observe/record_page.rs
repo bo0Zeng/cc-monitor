@@ -5,9 +5,9 @@
 //! （注册表 `agents::record_face_of`，按那份文件落在谁的根下）· 配排队消息的打字时刻（[`TypedTimes`]，只认适配层给的
 //! [`crate::agents::QueueMark`]）· 装成品。**一行在界面里是什么**住适配层（`agents/<名>/` 的 `RecordFace.parse`，出通用记录）。
 //!
-//! 这里**只读通用记录里正文住的那几个键名**（[`fold_body`]，只在客户端索要折起那一形时），**一家自己的字段一个都不读**。
+//! 这里**一家自己的字段一个都不读**；出口要哪几格由登记处照它交的声明统一投影（`faces/project.rs`），不在这里。
 //!
-//! 三种成品（都经一个 [`Reader`]：它带着打字时刻表，也带着要不要折起那一形）：
+//! 三种成品（都经一个 [`Reader`]：它带着打字时刻表）：
 //! - **行摘要**（[`rows_of`]，给 monitor 旁路快照）：每个可计行 `{end, hash, record?, cwd?}` —— `end` 是这一行（含 `\n`）
 //!   之后那个字节的偏移（后端读的是原始字节 ⇒ 永远说得准；没 `\n` 收尾的残尾 ⇒ `null`），`hash` 是这一行正文的摘要
 //!   （续传前核「还是不是那一行」用，[`line_hash`]）。`record` 缺 ＝ 不进界面（照占号）。
@@ -74,21 +74,19 @@ pub(crate) fn lead_of(target: &Path, offset: u64) -> (u64, Vec<u8>) {
     }
 }
 
-/// 一页的读法：适配层 ＋ 打字时刻表（往回多看那一段已经喂过）＋ 要不要折起那一形。
+/// 一页的读法：适配层 ＋ 打字时刻表（往回多看那一段已经喂过）。要哪几格不归这里管：出口交的声明由登记处统一投影（`faces/project.rs`）。
 pub(crate) struct Reader<'a> {
     face: &'a RecordFace,
     typed: TypedTimes,
-    summary_only: bool,
 }
 
 impl<'a> Reader<'a> {
     /// `lead` ＝ 这一页起点之前那一段原始字节（[`QUEUE_LOOKBACK_BYTES`] 以内；从文件头读 ⇒ 空），`lead_at` 是它在文件里的起点。
     /// 只拿来配打字时刻：不出成品、不占号；开头那半截行（从行中间起的）解析不出，自然跳过。
-    pub(crate) fn new(face: &'a RecordFace, lead_at: u64, lead: &[u8], summary_only: bool) -> Self {
+    pub(crate) fn new(face: &'a RecordFace, lead_at: u64, lead: &[u8]) -> Self {
         let mut r = Self {
             face,
             typed: TypedTimes::default(),
-            summary_only,
         };
         for (body, start) in split_starts(lead_at, lead) {
             r.interpret(body, start); // 只为喂打字时刻表：成品不要
@@ -97,15 +95,11 @@ impl<'a> Reader<'a> {
     }
 
     /// 一行交适配层解释：解析不出（连 JSON 都不是）与不进界面同一个结局 —— 照占号、不出成品。
-    /// `summary_only` ⇒ 出成品之前先剥正文（[`fold_body`]）：进不进界面、行号怎么占**都不受它影响**。
     fn interpret(&mut self, body: &[u8], start: u64) -> Option<(Value, Option<String>)> {
         match (self.face.parse)(&String::from_utf8_lossy(body), start) {
             Ok(Some(mut t)) => {
                 self.typed.pass(&mut t);
-                let mut record = serde_json::to_value(t.record?).ok()?;
-                if self.summary_only {
-                    fold_body(&mut record);
-                }
+                let record = serde_json::to_value(t.record?).ok()?;
                 Some((record, t.cwd))
             }
             Ok(None) => None,
@@ -113,30 +107,6 @@ impl<'a> Reader<'a> {
                 tracing::debug!("record_page: 解析不出的一行（照占号、不出成品）: {e}");
                 None
             }
-        }
-    }
-}
-
-/// **剥掉通用记录里正文住的那几格** —— 客户端索要「折起那一行的成品」（`summaryOnly`）时走这一下。
-///
-/// 剥的是键名，按名字剥、不认记录类别：
-/// - `blocks` —— 正文 · 推理 · 工具入参 · 工具结果，**省流量的就是这一格**；
-/// - `results.*.patch` / `patchTruncated` —— 改动结果的逐段改动（折起那一行只要「+N −M」那一句）。
-///
-/// 剥完**剩下的正好是折起那一行要用的**：时刻 `timeText` · 谁说的 `who` · 一行人话 `steps` · 卡型 `cards`
-/// · 结果一句 `results`（去掉逐段改动）· 报错 `error` · 型号 `model`。
-///
-/// **剥 ≠ 置空**：这几格是**删掉**而不是给 `null` / `[]` —— 给个空值等于说「这一条没有正文」，那是假话；
-/// 删掉才说得准「这一帧里没有这一格」。要正文的客户端不置这个开关，一切照旧。
-fn fold_body(record: &mut Value) {
-    let Some(o) = record.as_object_mut() else {
-        return;
-    };
-    o.remove("blocks");
-    if let Some(results) = o.get_mut("results").and_then(Value::as_object_mut) {
-        for r in results.values_mut().filter_map(Value::as_object_mut) {
-            r.remove("patch");
-            r.remove("patchTruncated");
         }
     }
 }
@@ -156,7 +126,7 @@ pub(crate) struct ReadRow {
     pub(crate) end: Option<u64>,
     /// 这一行正文的摘要（[`line_hash`]）。
     pub(crate) hash: u64,
-    /// 通用记录（缺 ＝ 不进界面，照占号）。`summaryOnly` 时剥过正文，所以是原样的一团。
+    /// 通用记录（缺 ＝ 不进界面，照占号）。出口的声明可能去过格（`faces/project.rs`），所以是原样的一团。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) record: Option<Value>,
     /// 那一行记的工作目录（只在有记录时带）。
@@ -165,7 +135,6 @@ pub(crate) struct ReadRow {
 }
 
 /// **行摘要**（旁路快照那一页，`history-read`）：页里每个可计行一条，次序同文件。
-/// `summary_only`（建 [`Reader`] 时给）⇒ 每条的 `record` 剥掉正文（[`fold_body`]）；`end` / `hash` / `cwd` 与条数一格不变。
 /// 相邻的认不出那几条并进前一条（[`fold_unread`]）：被并掉的那一行照占号、不再带记录。
 pub(crate) fn rows_of(reader: &mut Reader<'_>, offset: u64, bytes: &[u8]) -> Vec<ReadRow> {
     let mut out: Vec<ReadRow> = Vec::new();

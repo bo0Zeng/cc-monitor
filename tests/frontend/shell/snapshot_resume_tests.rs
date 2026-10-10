@@ -1,7 +1,7 @@
 //! 续传的判据。
 //!
 //! 买到：续点在时**只读锚之后那一截、第一条发出去的行号恰好是续点**，每条发出去的行号与它的正文逐行对得上
-//! （夹具是一份自己数出行边界的假会话，期望值由夹具独立数出，不调被测函数）· 续点作废的三形都回整份 ·
+//! （夹具是一份自己数出行边界的假会话，期望值由夹具独立数出，不调被测函数）· 续点作废的三形都回「只读尾段」、尾段之外一个字节不读 ·
 //! 实时行不连续时续点不前推 · `fetch_snapshot` / `flush_lines` 真的走这一份（`find_pinned` 锚恰好一处）。
 //! **买不到**：真远端的重连（帧面那两问的真往返）；那一圈由 `frame_query` 自己的判据与真机读数管。
 
@@ -86,7 +86,7 @@ fn a_reconnect_resumes_from_the_cursor_not_from_line_zero() {
         upto,
     } = how
     else {
-        panic!("续点在、文件只长不短，却要整份重拉：{how:?}");
+        panic!("续点在、文件只长不短，却要从尾段重拉：{how:?}");
     };
     assert_eq!(
         (from_byte, first_seq, skip_below, upto),
@@ -130,31 +130,58 @@ fn the_nearer_of_the_two_anchors_is_used() {
         .all(|(seq, body)| rows[*seq as usize].1 == *body));
 }
 
-/// 续点作废的三形 ⇒ 整份（正控：整份那条也逐行对得上、覆盖 `0..total`）。
+/// 续点作废的三形 ⇒ 只读尾段（正控：尾段那条逐行对得上、恰好覆盖 `tail_from..total`）。
+/// ★ 连上（与 monitor 重启：续点全丢）只过线尾段 `[split_at, end)` 那几个字节，头段 `[0, split_at)` 一个字节都不读 ——
+/// 头段由界面往上翻时按行号 / 按偏移取回（`live-window.ts` 的 `BelowState`）。
 #[test]
-fn a_stale_cursor_falls_back_to_the_whole_file() {
+fn a_stale_cursor_falls_back_to_the_tail_only() {
     let (text, rows) = fixture(200);
     let plan = plan_of(&text, &rows, 50);
     // 没有续点
-    assert_eq!(plan_read(None, "/p.jsonl", &plan), Read::Full);
+    assert_eq!(plan_read(None, "/p.jsonl", &plan), Read::Tail);
     // 换了路径
     let c = cursor("/other.jsonl", 100, rows[100].0, 120);
-    assert_eq!(plan_read(Some(&c), "/p.jsonl", &plan), Read::Full);
+    assert_eq!(plan_read(Some(&c), "/p.jsonl", &plan), Read::Tail);
     // 文件变短（截断重写）：锚比现在的末字节还远 / 续点超过现在的总行数
     let c = cursor("/p.jsonl", 100, plan.end + 1, 120);
-    assert_eq!(plan_read(Some(&c), "/p.jsonl", &plan), Read::Full);
+    assert_eq!(plan_read(Some(&c), "/p.jsonl", &plan), Read::Tail);
     let c = cursor("/p.jsonl", 100, rows[100].0, 201);
-    assert_eq!(plan_read(Some(&c), "/p.jsonl", &plan), Read::Full);
-    // 整份：尾段先到、头段回填，行号覆盖 0..total 各一次、正文对得上
-    let (sent, walk) = run(&text, &Read::Full, &plan);
-    let mut seqs: Vec<u64> = sent.iter().map(|s| s.0).collect();
-    assert_eq!(seqs[0], 150, "尾段先到");
-    seqs.sort_unstable();
-    assert_eq!(seqs, (0..200).collect::<Vec<u64>>());
-    assert!(sent
-        .iter()
-        .all(|(seq, body)| rows[*seq as usize].1 == *body));
-    assert_eq!((walk.arrived(), walk.want()), (200, 200));
+    assert_eq!(plan_read(Some(&c), "/p.jsonl", &plan), Read::Tail);
+    // 只读尾段：过线的字节恰好是尾段，行号恰好 150..200 各一次、正文对得上
+    let (sent, walk) = run(&text, &Read::Tail, &plan);
+    let read: u64 = walk.segments().iter().map(|(f, u)| u - f).sum();
+    assert_eq!(
+        (read, walk.segments().to_vec()),
+        (plan.end - rows[150].0, vec![(rows[150].0, plan.end)]),
+        "连上的快照读了尾段之外的字节（头段又整份拉回来了）"
+    );
+    let want: Vec<(u64, String)> = (150..200).map(|i| (i as u64, rows[i].1.clone())).collect();
+    assert_eq!(sent, want, "发出去的应恰好是尾段、行号与正文逐行对得上");
+    assert_eq!(
+        (walk.arrived(), walk.want()),
+        (50, 50),
+        "完整性校验数的是尾段那几行"
+    );
+    // 整份都在尾段里（短会话）⇒ 尾段就是整份。
+    let (text, rows) = fixture(30);
+    let plan = plan_of(&text, &rows, 50);
+    let (sent, walk) = run(&text, &Read::Tail, &plan);
+    assert_eq!(sent.len(), 30);
+    assert_eq!(walk.segments().to_vec(), vec![(0, plan.end)]);
+}
+
+/// ★ 尾段几行只有一处口径：壳留存每会话留的那么多（`event_replay::REPLAY_TAIL_KEEP`）。
+/// 快照多拉的行进了留存也会被修回这个数（F5 那一屏看不到），只在界面账本里多占着、往上翻才用得上 ⇒ 不多拉。
+#[test]
+fn the_snapshot_tail_is_the_replay_keep() {
+    let prod = crate::guard_support::stream_source_production();
+    for anchor in [
+        "const SNAPSHOT_TAIL_LINES: u64 = crate::event_replay::REPLAY_TAIL_KEEP as u64;",
+        "SNAPSHOT_TAIL_LINES,",
+    ] {
+        guard_core::find_pinned(&prod, anchor)
+            .unwrap_or_else(|e| panic!("stream_source 生产段里 `{anchor}` 不是恰好一处：{e}"));
+    }
 }
 
 /// 续点只在**连续**到达时前推；立锚取「原有的」与 `total` 的大者；会话真结束就忘掉。
@@ -302,7 +329,7 @@ fn w5vis_the_witness_tells_an_append_from_a_rewrite_that_grew() {
     let read_back =
         |t: &str, w: &Witness| rows_of_page(w.start, &t[w.start as usize..w.end as usize]);
     for page in [64usize, 1_000, 1 << 20] {
-        let w = pick_over(&text, &Read::Full, &plan, page)
+        let w = pick_over(&text, &Read::Tail, &plan, page)
             .expect("末端那一段读到了可计行")
             .expect("末端说得准");
         let (_, last_body) = rows.last().unwrap();
@@ -402,21 +429,21 @@ fn w5vis_the_witness_is_kept_cleared_or_replaced_by_what_the_walk_saw() {
 }
 
 /// ④ 接线（剥注释后的 `stream_source` 生产段，锚各恰好一处）：续传之前先读回见证那一段并核（在 `Walk::new` 之前）；
-/// 对不上 ⇒ 续点作废、改整份、交「被改过」那一格；走读时挑见证、立锚之后记下。正控：缺核那一步的合成语料必须被认出。
+/// 对不上 ⇒ 续点作废、改读尾段、交「被改过」那一格；走读时挑见证、立锚之后记下。正控：缺核那一步的合成语料必须被认出。
 #[test]
 fn w5vis_fetch_snapshot_checks_the_witness_before_it_resumes() {
     fn wired(prod: &str) -> Result<(), String> {
         let at = |a: &str| guard_core::find_pinned(prod, a).map_err(|e| format!("`{a}`：{e}"));
         let check = at("crate::snapshot_resume::witness_holds(&w, &page.rows)")?;
         let walk = at("crate::snapshot_resume::Walk::new(&how, &plan)")?;
-        let full = at("how = crate::snapshot_resume::Read::Full;")?;
+        let full = at("how = crate::snapshot_resume::Read::Tail;")?;
         let told = at("change: FileChange::Rewritten.as_wire().to_string(),")?;
         let forgot = at("crate::snapshot_resume::forget(&origin, sid);")?;
         at("pick.see(upto, plan.end, row.hash, span);")?;
         let done = at("crate::snapshot_resume::note_snapshot_done(&origin, sid, path, &plan);")?;
         let noted = at("crate::snapshot_resume::note_witness(&origin, sid, pick.done());")?;
         if !(check < forgot && forgot < told && told < full && full < walk) {
-            return Err("核 → 作废 → 出声 → 改整份 → 走读 的次序不对".into());
+            return Err("核 → 作废 → 出声 → 改读尾段 → 走读 的次序不对".into());
         }
         if noted < done {
             return Err("见证在立锚之前就记了（立锚会带着旧的盖过去）".into());

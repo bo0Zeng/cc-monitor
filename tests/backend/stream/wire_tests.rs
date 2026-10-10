@@ -432,17 +432,15 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
             },
         ],
         both(Frame::Cancelled { id: s("q1") }),
-        both(Frame::AccountsChanged),
-        both(Frame::ProfilesChanged),
-        both(Frame::QuotaChanged),
-        both(Frame::RotationChanged { sid: s("s1") }),
-        both(Frame::RotationRulesChanged),
-        both(Frame::PlanChanged {
-            workspace: s("/w"),
-            rev: s("r1"),
-            needs: 2,
-        }),
-        both(Frame::TasksChanged { sid: s("s1") }),
+        [
+            Frame::changed(
+                Topic::Plan,
+                Some(s("/w")),
+                Some(s("r1")),
+                Some(serde_json::json!({"needs": 2})),
+            ),
+            Frame::changed(Topic::Accounts, None, None, None),
+        ],
         both(Frame::SessionsReplayed),
         both(Frame::SessionFileGone {
             session_id: s("s1"),
@@ -682,7 +680,7 @@ fn the_session_stream_golden_is_what_the_serializer_writes() {
     }
 }
 
-/// ★ W1：链路两帧 ＋ `accounts_changed` 的**逐字节**金标准。`link_end` 的 `error` 缺席时不上线（正常收尾）。
+/// ★ W1：链路两帧 ＋ `changed` 的**逐字节**金标准。`link_end` 的 `error` 缺席时不上线（正常收尾）。
 #[test]
 fn link_frames_have_exactly_these_bytes() {
     let cases = [
@@ -707,28 +705,26 @@ fn link_frames_have_exactly_these_bytes() {
             },
             "{\"kind\":\"link_end\",\"link\":\"m1.0-3\",\"error\":\"读链路下行失败\"}\n",
         ),
-        (Frame::AccountsChanged, "{\"kind\":\"accounts_changed\"}\n"),
-        (Frame::ProfilesChanged, "{\"kind\":\"profiles_changed\"}\n"),
-        (Frame::QuotaChanged, "{\"kind\":\"quota_changed\"}\n"),
         (
-            Frame::RotationChanged { sid: "s1".into() },
-            "{\"kind\":\"rotation_changed\",\"sid\":\"s1\"}\n",
+            Frame::changed(Topic::Accounts, None, None, None),
+            "{\"kind\":\"changed\",\"topic\":\"accounts\"}\n",
         ),
         (
-            Frame::RotationRulesChanged,
-            "{\"kind\":\"rotation_rules_changed\"}\n",
+            Frame::changed(Topic::RotationRules, None, None, None),
+            "{\"kind\":\"changed\",\"topic\":\"rotation_rules\"}\n",
         ),
         (
-            Frame::TasksChanged { sid: "s1".into() },
-            "{\"kind\":\"tasks_changed\",\"sid\":\"s1\"}\n",
+            Frame::changed(Topic::Tasks, Some("s1".into()), None, None),
+            "{\"kind\":\"changed\",\"topic\":\"tasks\",\"key\":\"s1\"}\n",
         ),
         (
-            Frame::PlanChanged {
-                workspace: "/w".into(),
-                rev: "0123abcd".into(),
-                needs: 2,
-            },
-            "{\"kind\":\"plan_changed\",\"workspace\":\"/w\",\"rev\":\"0123abcd\",\"needs\":2}\n",
+            Frame::changed(
+                Topic::Plan,
+                Some("/w".into()),
+                Some("0123abcd".into()),
+                Some(serde_json::json!({"needs": 2})),
+            ),
+            "{\"kind\":\"changed\",\"topic\":\"plan\",\"key\":\"/w\",\"rev\":\"0123abcd\",\"body\":{\"needs\":2}}\n",
         ),
     ];
     for (f, want) in cases {
@@ -1980,4 +1976,34 @@ fn session_frames_carry_the_state_written_and_toned() {
         assert_eq!(v["state_hint"], copy_core::copy_text(hint, &[]), "{f:?}");
         assert_eq!(v["state_tone"], "plain", "{f:?}");
     }
+}
+
+/// `changed` 的小成品超了主题表那一格的上限 ⇒ 不带（客户端重问）；主题不带小成品的给了也不带。
+#[test]
+fn a_changed_body_over_its_cap_is_left_off() {
+    let cap = Topic::Plan.spec().body_cap;
+    let big = serde_json::json!({ "needs": 1, "pad": "x".repeat(cap) });
+    match Frame::changed(Topic::Plan, Some("/w".into()), None, Some(big)) {
+        Frame::Changed { body, .. } => assert_eq!(body, None, "超了上限还带着"),
+        other => panic!("{other:?}"),
+    }
+    match Frame::changed(Topic::Accounts, None, None, Some(serde_json::json!({}))) {
+        Frame::Changed { body, .. } => assert_eq!(body, None, "不带小成品的主题带上了"),
+        other => panic!("{other:?}"),
+    }
+}
+
+/// `changed` 丢了能不能恢复照主题表答；丢了报的身份是 `changed` ＋ `主题[/key]`。
+#[test]
+fn changed_loss_follows_the_topic_table() {
+    for t in Topic::ALL {
+        let f = Frame::changed(t, None, None, None);
+        assert_eq!(f.loss_is_recoverable(), t.spec().lossy, "{t:?}");
+    }
+    let f = Frame::changed(Topic::Tasks, Some("s1".into()), None, None);
+    let id = f.loss_identity();
+    assert_eq!(
+        (id.kind, id.subject.as_deref()),
+        ("changed", Some("tasks/s1"))
+    );
 }

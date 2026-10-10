@@ -1,0 +1,13 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>CyclomaticComplexMethod:LineDiff.kt:LineDiff$fun diff: DiffResult</ID>
+    <ID>CyclomaticComplexMethod:MainBranch.kt:MainBranch$fun computeMainBranch: Set&lt;String&gt;</ID>
+    <ID>DoubleMutabilityForCollection:ToolGrouping.kt:var run = ArrayList&lt;RenderUnit.ToolCall&gt;()</ID>
+    <ID>LongMethod:LineDiff.kt:LineDiff$fun diff: DiffResult</ID>
+    <ID>LongMethod:MainBranch.kt:MainBranch$fun computeMainBranch: Set&lt;String&gt;</ID>
+    <ID>LoopWithTooManyJumpStatements:MainBranch.kt:MainBranch$while</ID>
+    <ID>ReturnCount:LineDiff.kt:LineDiff$fun diff: DiffResult</ID>
+  </CurrentIssues>
+</SmellBaseline>

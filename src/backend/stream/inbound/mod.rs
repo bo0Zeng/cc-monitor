@@ -45,6 +45,7 @@ mod doors;
 mod drain;
 mod sniff;
 pub(crate) mod spec;
+pub(crate) mod views;
 
 pub(crate) use caps::install as install_total;
 pub(crate) use caps::until_of;
@@ -228,15 +229,24 @@ async fn handle_line(
     };
     // 发起方期限从收到这一行起算：减余量换成截止时刻，这条命令里装总期限的各处都收紧到它。
     req.until = caps::until_of(req.within_ms);
+    // 出口的声明：开跑之前就解、就拒（认不出的格不静默放过）；成功的应答在回之前照它裁（`views.rs`，帧面与 CLI 面同一处）。
+    let plan = match views::plan_of(&req) {
+        Ok(p) => p,
+        Err(f) => {
+            let (id, cmd, args) = (req.id.clone(), req.cmd.clone(), req.args.clone());
+            send(replies, f.into_reply(id, &cmd, &args)).await;
+            return;
+        }
+    };
     match dispatch(req, replies, running, links, xfers, follows) {
         Disposition::Done => {}
         Disposition::Reply(f) => send(replies, f).await,
         Disposition::Spawn(req, run) => {
             let fut = move |r: Request| async move { run(r).await.map_err(Fail::from) };
-            spawn_handler(req, replies.clone(), running.clone(), fut, true).await
+            spawn_handler(req, replies.clone(), running.clone(), fut, true, plan).await
         }
         Disposition::SpawnData(req, run) => {
-            spawn_handler(req, replies.clone(), running.clone(), run, true).await
+            spawn_handler(req, replies.clone(), running.clone(), run, true, plan).await
         }
         // ★ 同步阻塞处理器：进 `spawn_blocking` 的专用线程池，**不占 tokio worker**。
         //   `cancellable: false` —— `spawn_blocking` 起的活 abort 不了，说实话。
@@ -272,7 +282,7 @@ async fn handle_line(
                     .with_raw(Some(&e.to_string()))),
                 }
             };
-            spawn_handler(req, replies.clone(), running.clone(), fut, false).await
+            spawn_handler(req, replies.clone(), running.clone(), fut, false, plan).await
         }
     }
 }
@@ -559,6 +569,7 @@ async fn spawn_handler<F, Fut>(
     running: Running,
     f: F,
     cancellable: bool,
+    plan: views::Plan,
 ) where
     F: FnOnce(Request) -> Fut + Send + 'static,
     Fut: std::future::Future<Output = Outcome> + Send,
@@ -615,7 +626,7 @@ async fn spawn_handler<F, Fut>(
                 code: None,
                 message: None,
                 detail: None,
-                data,
+                data: plan.apply(data),
             },
             Err(f) => f.into_reply(id_for_task.clone(), &cmd, &args),
         };

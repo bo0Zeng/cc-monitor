@@ -683,6 +683,20 @@ fn traits_of(spec: &CommandSpec) -> String {
             crate::stream::inbound::MARGIN_MS / 1000
         ));
     }
+    let places = crate::stream::inbound::views::places_of(spec.name);
+    if !places.is_empty() {
+        let at: Vec<String> = places
+            .iter()
+            .map(|(at, p)| {
+                if at.is_empty() {
+                    format!("整份是 `{p}`")
+                } else {
+                    format!("`{at}` 是 `{p}`")
+                }
+            })
+            .collect();
+        t.push(format!("收 `view`（{}）", at.join("，")));
+    }
     if crate::control::cli_control::cli_exposed(spec) {
         t.push(format!("CLI：`ccm -- {}`", crate::cli_flag(spec.name)));
     } else {

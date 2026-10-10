@@ -1,0 +1,31 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+[*.{kt,kts}]
+# ktlint 风格基线（V01）。采用官方风格集，但为 Compose 项目放开几条会大面积误报的规则。
+ktlint_code_style = ktlint_official
+# Composable 是 PascalCase（CounterScreen()），关掉 camelCase 函数名校验。
+ktlint_function_naming_ignore_when_annotated_with = Composable
+ktlint_standard_function-naming = disabled
+# 文件名常含多个顶层声明（ClipboardExt.kt / Migrations.kt），不强制文件名=单类名。
+ktlint_standard_filename = disabled
+# 行长不设硬限（Compose modifier 链 / 长字符串）。
+max_line_length = off
+# CompositionLocal / 常量等命名放开（如 LocalFoo、EXTRA_KEYS）。
+ktlint_standard_property-naming = disabled
+# 允许 trailing comma（ktlint 会自动补，diff 更稳）。
+ij_kotlin_allow_trailing_comma = true
+ij_kotlin_allow_trailing_comma_on_call_site = true
+
+[*.{yml,yaml,toml,json}]
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false

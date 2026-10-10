@@ -67,7 +67,8 @@ cc-monitor 是 Claude Code 会话的**观察者和启动器**：`claude` 跑在�
 - **大小分流**（`event_replay.rs::on_line_batch_awaited`）：小批逐行一格；大批（`claude --resume` 灌历史、重放）按 `CHUNK_SIZE = 600` 切块、末块先发，每块带 batch 边界，前端进 batch 模式（代码高亮延后）。
 - **启动序**：主窗口先经通道订好每台机器的会话流，再发 `frontend-ready`（带优先会话）——那就是这些订阅的就绪点。monitor 在 `event_replay.rs::ready_point` 里按会话分组切块、优先会话先交，并按活跃集补发 `session-ended`，归档落在全部重放行之后（INVARIANTS §24）。本机活会话的骨架 tab 也由这条流的起停帧给出。
 - **冷读也问那台后端**：历史清单、整页正文、按偏移读、按行号读、子 agent、全文搜索都是帧命令（`history-*`）。记录解释（一行 jsonl → 通用记录 `agents/record.rs`，各家的翻译表在 `agents/<名>/`）只在后端，界面按 `t` 与格排版；主线外清单（ESC 回退掉的那几条）也是后端给的成品（实时帧 `session_branch` · 冷读 `history-branch`）；多台的搜索结果由本机后端合并排序。
-- **Task 面板**：那台后端盯 `<agent 家>/tasks/`，一批事件按 sid 去重发 `tasks_changed`，界面订 `session-tasks`，收到就重问 `tasks-list`。
+- **「X 变了 ⇒ 重读」只一种帧** `changed {topic, key?, rev?, body?}`：主题表（名字 · 可不可丢 · 带不带小成品、上限）只住后端 `stream/topic.rs`，协议见 IPC-PROTOCOL「`changed` 主题表」。壳不认主题，按 `topic` 原样扇给订了 `changed/<topic>` 的界面订阅；界面按生成的 `Topic` 订、读，带了 `body` 就不重问。
+- **Task 面板**：那台后端盯 `<agent 家>/tasks/`，一批事件按 sid 去重发 `changed {tasks, key: sid}`，界面订 `changed/tasks`，收到就重问 `tasks-list`。
 
 ### 1.3 每条线的源头
 
@@ -200,7 +201,7 @@ monitor 里仍直读本机 agent 目录的地方逐处登记，条数以 `local_
  输入适配层（每家 agent 一个）        核心（后端，一处）                     输出适配层（每个出口一个）
  claudecode · codex · fake    ──▶  通用会话 / 记录模型                ──▶  桌面：帧 → 壳（只转运）→ 界面（只排版）
  盘上原始格式 ⇒ 通用模型              所有判定、所有成品只算一次              CLI：--json / --text
-                                     成品 ＝ 值 ＋ 写好的字 ＋ 语气            手机：经 CLI 面或流
+                                     成品 ＝ 值 ＋ 写好的字 ＋ 语气            手机（src/mobile）：经 CLI 面或流
                                                                             对端后端：扇出时问远端
 ```
 
@@ -208,7 +209,7 @@ monitor 里仍直读本机 agent 目录的地方逐处登记，条数以 `local_
 |---|---|---|
 | 输入适配层（`agents/<家>/`） | 把那一家的盘上格式翻成通用模型（`agents/record.rs::Record` · 会话活动 · 步骤结果的数）；申报那一家用了哪些文件 | 判定、写给人看的句子（给码 ＋ 原话，句子由核心写） |
 | 核心（`observe/` · `control/` · `accounts/` … 与出成品的 `faces/`） | 一切判定；每件成品出全量格：值 ＋ 写好的字 ＋ 语气 ＋ 时刻字 | 认「是哪个出口在问」；为某一个出口加开关 |
-| 输出适配层（壳 ＋ 界面 · CLI 面 · 手机仓 · 扇出那一处） | 挑格（要哪几格）、按核心算好的格筛 / 排、按预算截、装运（帧 / 一行 JSON / 文本） | 判定、写句子、格式化（时长 · 大小 · 百分比 · 按码取字） |
+| 输出适配层（壳 ＋ 界面 · CLI 面 · 手机端（在本仓 `src/mobile`）· 扇出那一处） | 挑格（要哪几格）、按核心算好的格筛 / 排、按预算截、装运（帧 / 一行 JSON / 文本） | 判定、写句子、格式化（时长 · 大小 · 百分比 · 按码取字） |
 
 **成品约定**（每件成品都是这几种格的组合，出口不需要认业务）：
 
@@ -230,9 +231,13 @@ monitor 里仍直读本机 agent 目录的地方逐处登记，条数以 `local_
 
 只读帧命令 `cells-catalog`（本体 `faces/cells_catalog.rs`）列出每件成品有哪些格（路径 · `value` / `text` / `tone` · 类型），出口据它就知道有没有那一格，不必读核心代码。目录不手写：每件成品登记一组用自己的 Rust 类型造的样本，经同一份 `Serialize` 走查出格路径。哪些成品已登记、格的路径写法、`pending`（判了要补、还没落地的格）与冻结规则，以命令本身的输出与 `tests/backend/faces/cells_catalog_tests.rs` 的头注为准；冻结的格（每格带 `frozen`：`record` · `read_row` 整件，会话三帧 `session_added` · `session_status` · `session_removed` 只冻手机读的那几格）不删、不改名、不换类型。
 
-#### 出口怎么挑格（今天）
+#### 出口怎么挑格：请求信封里的声明
 
-出口按需定形的声明（挑格 · 筛排 · 预算 · 装运）还没做；今天出口的形状靠这几样开关：流旗标 `--tail-only` · `--with-bg` · `--with-pid` · `--with-raw`，入参 `summaryOnly` · `whole` · `--index` · `raw`，`quota-read --text`。新的出口需求不再往核心里加开关，照下表判。
+出口在请求信封里交自己的声明 `view`（帧面那一格 · CLI 面 `--view`，同一份）：今天的词是 `cells`（只要这几格）与 `omit`（这几格不要），路径照格目录写。
+核心只一个通用投影（`faces/project.rs::project`）：声明先按格目录校验（认不出的词 · 成品 · 格 ⇒ `bad_args`，不静默放过），每条命令的应答里哪几处住着哪件成品登记一次
+（`stream/inbound/views.rs::PLACES`），成功的应答照声明裁好再装运；各命令不再自己认「要不要正文」一类的开关（`summaryOnly` 删了）。
+还靠开关定形的：流旗标 `--tail-only` · `--with-bg` · `--with-pid` · `--with-raw`，入参 `whole` · `--index` · `raw`，`quota-read --text` —— 收进声明是后面几刀。
+新的出口需求不再往核心里加开关，照下表判。
 
 #### 一个出口的新需求：只改出口，还是动核心
 

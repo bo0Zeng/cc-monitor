@@ -51,7 +51,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     // 审面三条也在阻塞档：认可读—改—写后端自己那份小文件（跨进程锁）；退回现读一次计划（起 pb）再走 `terminal-input` 的本体（起 tmux）。
     CommandSpec {
         name: "plan-ack",
-        summary: "认可一条要你看（只记在 cc-monitor；键带条目版本，版本换了那一条再出）；推一帧 `plan_changed` 带新的数",
+        summary: "认可一条要你看（只记在 cc-monitor；键带条目版本，版本换了那一条再出）；推一帧 `changed {plan}` 带新的数",
         codes: &["bad_args", "io_failed", "no_such_need", "not_ackable", "not_read", "review_unreadable"],
         fields: &[arg("key", "那一条的键（`plan-read` 里 `needs[].key`）"), arg("slice", "片名"), arg("workspace", "工作区根"), out("acked", "`true`"), out("key", "原样"), out("needCount", "这个工作区此刻要你看的数")],
         takes_input: true,
@@ -59,7 +59,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     },
     CommandSpec {
         name: "plan-unack",
-        summary: "撤掉一条认可（没有也不算错）；推一帧 `plan_changed` 带新的数",
+        summary: "撤掉一条认可（没有也不算错）；推一帧 `changed {plan}` 带新的数",
         codes: &["bad_args", "io_failed", "not_read", "review_unreadable"],
         fields: &[arg("key", "那一条的键"), arg("slice", "片名"), arg("workspace", "工作区根"), out("acked", "`false`"), out("key", "原样"), out("needCount", "这个工作区此刻要你看的数")],
         takes_input: true,

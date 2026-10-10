@@ -4,9 +4,7 @@ import { chan, type HopFault, type HopTag, type Item, type Sub } from "../../com
 import { isLocalOrigin, type Origin } from "./ipc/origin";
 import { copyText } from "./copy-table";
 import { toast } from "./kit/toast";
-import { ACCOUNTS_CHANGED_KIND, ACCOUNTS_CHANGED_WINDOW, accountsChangedItems } from "./session-accounts-poll";
-import { SESSION_TASKS_KIND, SESSION_TASKS_WINDOW, tasksChangedItems } from "./tasks-stream";
-import { QUOTA_CHANGED_KIND, QUOTA_CHANGED_WINDOW, quotaChangedItems, type PlanMoved } from "./quota-stream";
+import { CHANGED_WINDOW, changedItems, changedStream, type Changed, type Topic } from "./changed-stream";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 // 这几个 payload 类型从生成物 re-export（源：`src/frontend/shell/src/ui_contract.rs` 的 ts-rs 派生）。
 // 仍然 `export`：不缩小已经导出的表面（要用的话从这个枢纽拿）。
@@ -102,11 +100,6 @@ export interface EventHandlers {
    */
   onSessionTapLost?: (origin: Origin) => void;
   /**
-   * 某台机器的账号清单**可能**变了（`accounts-changed` 流里的 `seen` / `frame` / `gap`，
-   * 一批只叫一次）⇒ 强制刷账号清单与 chip。替掉裸 Tauri 事件 `remote-backend-ready`。
-   */
-  onAccountsChanged?: () => void;
-  /**
    * 活会话的记录文件不见了（`change` = `"gone"`）/ 被改过已从头重读（`"truncated"` / `"rewritten"`）。
    * 会话流里的一格（`{"file_notice": …}`），与行同序：重读出来的行排在它后面。
    */
@@ -127,20 +120,11 @@ export interface EventHandlers {
   /** 同一批的记录都处理完后调一次（多块时只在 300ms grace 真正到点时调）：TabManager 算主线 ＋ rebuild，切回 live。 */
   onBatchEnd?: () => void;
   /**
-   * 那台机器上这几个会话的任务清单变了（`sids`），或者期间可能漏了（`all`：那台又接上 / 丢了几格）⇒
-   * 调用方重问 `tasks-list`。来自通道 `subscribe(origin, "session-tasks")`（`tasks-panel.ts::tasksChangedItems` 读格）。
+   * 那台的某样东西变了（`topic`：账号清单 · 配置文件 · 额度 · 会话轮换 · 规则表 · 计划 · 任务清单；主题表住后端 `stream/topic.rs`）。
+   * `change.cells` 是变了的那几格（`key` · `rev` · `body`），`change.all` ＝ 期间可能漏了（那台又接上 / 丢了几格 / 格读不懂 ⇒ 那台这一样整份重问）。
+   * 来自通道 `subscribe(origin, "changed/<topic>")`（`changed-stream.ts::changedItems` 读格），一批叫一次。
    */
-  onTasksChanged?: (origin: Origin, sids: readonly string[], all: boolean) => void;
-  /**
-   * 某台的额度账变了（`quota`）/ 某几个会话的轮换 / 账号格变了（`sids`）/ 期间可能漏了（`all`：那台整台重问）。
-   * 来自通道 `subscribe(origin, "quota-changed")`（`quota-stream.ts::quotaChangedItems` 读格）。
-   */
-  onQuotaChanged?: (origin: Origin, change: { quota: boolean; sids: readonly string[]; all: boolean; rules: boolean }) => void;
-  /**
-   * 某台的这几个 pb 工作区的计划变了（`moved`：工作区 · 新摘要 · 要你看几条）/ 期间可能漏了（`all`：那台整台重问）。
-   * 与额度同一条流 `subscribe(origin, "quota-changed")`（`quota-stream.ts::quotaChangedItems` 读格）。
-   */
-  onPlanChanged?: (origin: Origin, change: { moved: readonly PlanMoved[]; all: boolean }) => void;
+  onChanged?: (origin: Origin, topic: Topic, change: Changed) => void;
   /**
    * 会话红绿灯：后端只在 sessions/<PID>.json 的官方 status 变化时发（天然稀疏，当场派）。
    * "busy" = 运行中 / "idle"、"shell" = 等输入 / "waiting" = 等弹窗决定（waiting_for 细分原因）。
@@ -359,20 +343,10 @@ export interface BindEventsOptions {
    */
   taps?: ReadonlyArray<Origin>;
   /**
-   * 要订 `accounts-changed` 的机器（那台的长连接又通了 / 那台后端说账号清单变了 ⇒ {@link EventHandlers.onAccountsChanged}）。
-   * 与会话行 · tap 同一条帧路、同一处 `chan.subscribe`；窗口是 `ACCOUNTS_CHANGED_WINDOW`。
+   * 要订的「那台某样东西变了」：每项一条 `changed/<topic>`（⇒ {@link EventHandlers.onChanged}）。
+   * 与会话行 · tap 同一处 `chan.subscribe`；窗口是 `CHANGED_WINDOW`。
    */
-  accounts?: ReadonlyArray<Origin>;
-  /**
-   * 要订 `session-tasks` 的机器（那台后端说某个会话的任务清单变了 ⇒ {@link EventHandlers.onTasksChanged}）。
-   * 与会话行 · tap · 账号同一处 `chan.subscribe`；窗口是 `SESSION_TASKS_WINDOW`。
-   */
-  tasks?: ReadonlyArray<Origin>;
-  /**
-   * 要订 `quota-changed` 的机器（那台的额度账 / 某个会话的轮换变了 ⇒ {@link EventHandlers.onQuotaChanged}）。
-   * 同一处 `chan.subscribe`；窗口是 `QUOTA_CHANGED_WINDOW`。
-   */
-  quota?: ReadonlyArray<Origin>;
+  changed?: ReadonlyArray<{ origin: Origin; topic: Topic }>;
 }
 
 /**
@@ -732,7 +706,7 @@ export async function bindEvents(
 
   // 会话起停 / 状态都是会话流里的格（上面 `onStreamItems`）：与行同一条流 ⇒「ended 必须与行同序」由构造保证。
 
-  // 任务变更走通道 `session-tasks`（见下面 `plan` 里那一种流）。
+  // 任务变更走通道 `changed/tasks`（见下面 `plan` 里那一种流）。
 
 
 
@@ -766,10 +740,10 @@ export async function bindEvents(
     if (used > 0) hold.sub?.want(used);
   };
 
-  // `accounts-changed`：一批格 ⇒ 要不要刷（`accountsChangedItems` 答）；`frame` 占的 credit 当场还
+  // `changed/<topic>`：一批格 ⇒ 变了的那几格 / 要不要整份重问（`changedItems` 答）；`frame` 占的 credit 当场还
   //   （格可能先于 `subscribe` 的返回到达 ⇒ 那时欠着，下一批一起还）。
-  const onAccountsItems = (_origin: Origin, hold: StreamHold, items: Item[]): void => {
-    const { changed, frames } = accountsChangedItems(items);
+  const onChangedItems = (origin: Origin, topic: Topic, hold: StreamHold, items: Item[]): void => {
+    const { cells, all, frames } = changedItems(items);
     if (frames > 0) {
       if (hold.sub) {
         hold.sub.want(frames + hold.owed);
@@ -778,36 +752,7 @@ export async function bindEvents(
         hold.owed += frames;
       }
     }
-    if (changed) handlers.onAccountsChanged?.();
-  };
-
-  // `session-tasks`：一批格 ⇒ 哪几个会话要重问（`tasksChangedItems` 答）；`frame` 占的 credit 当场还（订阅返回之前到的欠着）。
-  const onTasksItems = (origin: Origin, hold: StreamHold, items: Item[]): void => {
-    const { sids, all, frames } = tasksChangedItems(items);
-    if (frames > 0) {
-      if (hold.sub) {
-        hold.sub.want(frames + hold.owed);
-        hold.owed = 0;
-      } else {
-        hold.owed += frames;
-      }
-    }
-    if (all || sids.length > 0) handlers.onTasksChanged?.(origin, sids, all);
-  };
-
-  // `quota-changed`：一批格 ⇒ 额度账 / 哪几个会话的轮换要重问（`quotaChangedItems` 答）；credit 同 `session-tasks`。
-  const onQuotaItems = (origin: Origin, hold: StreamHold, items: Item[]): void => {
-    const { quota, sids, all, rules, plans, frames } = quotaChangedItems(items);
-    if (frames > 0) {
-      if (hold.sub) {
-        hold.sub.want(frames + hold.owed);
-        hold.owed = 0;
-      } else {
-        hold.owed += frames;
-      }
-    }
-    if (quota || all || rules || sids.length > 0) handlers.onQuotaChanged?.(origin, { quota, sids, all, rules });
-    if (all || plans.length > 0) handlers.onPlanChanged?.(origin, { moved: plans, all });
+    if (all || cells.length > 0) handlers.onChanged?.(origin, topic, { cells, all });
   };
 
   // 会话流：起停那几个事件的监听都在了之后再订（订阅一登记，句柄就可能开始交格）。
@@ -817,23 +762,11 @@ export async function bindEvents(
   const plan: { origin: Origin; kind: string; window: number; feed: typeof onStreamItems }[] = [
     ...(opts.streams ?? []).map(({ origin, kind }) => ({ origin, kind, window: STREAM_WINDOW, feed: onStreamItems })),
     ...(opts.taps ?? []).map((origin) => ({ origin, kind: "session-tap", window: TAP_WINDOW, feed: onTapItems })),
-    ...(opts.accounts ?? []).map((origin) => ({
+    ...(opts.changed ?? []).map(({ origin, topic }) => ({
       origin,
-      kind: ACCOUNTS_CHANGED_KIND,
-      window: ACCOUNTS_CHANGED_WINDOW,
-      feed: onAccountsItems,
-    })),
-    ...(opts.tasks ?? []).map((origin) => ({
-      origin,
-      kind: SESSION_TASKS_KIND,
-      window: SESSION_TASKS_WINDOW,
-      feed: onTasksItems,
-    })),
-    ...(opts.quota ?? []).map((origin) => ({
-      origin,
-      kind: QUOTA_CHANGED_KIND,
-      window: QUOTA_CHANGED_WINDOW,
-      feed: onQuotaItems,
+      kind: changedStream(topic),
+      window: CHANGED_WINDOW,
+      feed: (o: Origin, hold: StreamHold, items: Item[]) => onChangedItems(o, topic, hold, items),
     })),
   ];
   await Promise.all(

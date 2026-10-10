@@ -1,0 +1,7 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>SpreadOperator:DataModule.kt:(*ALL_MIGRATIONS)</ID>
+  </CurrentIssues>
+</SmellBaseline>

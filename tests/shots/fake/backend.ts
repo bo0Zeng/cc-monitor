@@ -1,38 +1,31 @@
 /**
- * 页里的假后端：答产品代码发出的 Tauri 命令（`load_config` …）、帧命令（`chan_call` 里的 op）与订阅（`chan_subscribe`）。
+ * 页里的假适配层：站在壳的位置答产品代码发出的 Tauri 命令（`load_config` …）、帧命令（`chan_call` 里的 op）与订阅（`chan_subscribe`）。
+ * `REAL_OPS` 那几条原样转给真后端（`../real/pool.mjs`：每台机器一个，读 `world.disk` 那几份原始文件）；其余的还是场景合成的。
  * 答不上的一律记进 `unhandled`（工具最后列出来），并按真后端「不认」那一形拒绝 —— 不悄悄给空。
  */
 import type { SessionStreamFrame } from "../../../src/frontend/ui/generated/SessionStreamFrame";
 import { Refuse, type World } from "./types";
 import { copyText } from "../../../src/frontend/ui/copy-table";
-import { quotaFace, relText, slotWords, usageCells } from "./quota-face";
+import type { MachineDisk } from "../disk";
+
+/**
+ * 交给真后端答的帧命令（`real/pool.mjs` 每台机器起的那一个，读 `world.disk` 那几份原始文件）。场景不许再替它们写答（`world.ops` 里有就报）。
+ * 其余的帧命令还是场景合成的；`tests/shots/fake/` 里不许写核心成品的字与判定（判据 `tests/shots/fake-no-core.vitest.ts`）。
+ */
+export const REAL_OPS = new Set([
+  "accounts-list",
+  "quota-read",
+  "rotation-rules-read",
+  "rotation-session-read",
+  "rotation-session-set",
+  "rotation-rule-save",
+  "rotation-plan",
+]);
+
+/** 真后端够不着的那几台：只有 Linux 编出来的后端，Windows 那台的 `cfg(windows)` 分支（例：账号库「Windows 不支持多账号」）演不出来。 */
+const WINDOWS_ONLY: Record<string, Set<string>> = { "win-laptop": new Set(["accounts-list"]) };
 
 type Emit = (event: string, payload: unknown) => unknown;
-
-/** 真后端出口给每个时刻添 `…Text` 的那两条（`common::time::with_texts`）。 */
-const TIMED_OPS = new Set(["quota-read", "rotation-session-read"]);
-const TIME_KEYS = ["at", "seenAt", "resetsAt", "fromResetsAt", "since"];
-
-/** 假后端替真后端出口写时刻的字（当天 `HH:MM` · 别的天 `MM-DD HH:MM` · 别的年带年；按截图机的本地钟）。 */
-function withTexts(v: unknown): unknown {
-  if (Array.isArray(v)) return v.map(withTexts);
-  if (v === null || typeof v !== "object") return v;
-  const out: Record<string, unknown> = {};
-  const now = new Date();
-  for (const [k, x] of Object.entries(v)) {
-    out[k] = withTexts(x);
-    if (TIME_KEYS.includes(k) && typeof x === "number") {
-      const d = new Date(x * 1000);
-      const p = (n: number) => String(n).padStart(2, "0");
-      const hm = `${p(d.getHours())}:${p(d.getMinutes())}`;
-      const md = `${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-      out[`${k}Text`] = d.toDateString() === now.toDateString() ? hm : d.getFullYear() === now.getFullYear() ? `${md} ${hm}` : `${d.getFullYear()}-${md} ${hm}`;
-      const r = relText(x, Math.floor(now.getTime() / 1000));
-      if (r !== null) out[`${k}RelText`] = r;
-    }
-  }
-  return out;
-}
 
 const enc = new TextEncoder();
 const dec = new TextDecoder();
@@ -51,7 +44,30 @@ export class FakeBackend {
   private readonly listedOrigins = new Set<string>();
   private screenSeq = 0;
 
-  constructor(readonly world: World) {}
+  /** 真后端那一屋子起好了（`/__ccm/world` 答了）。 */
+  private readonly ready: Promise<void>;
+  private readonly key = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+
+  constructor(readonly world: World) {
+    for (const op of REAL_OPS) {
+      if (op in world.ops && !Object.values(WINDOWS_ONLY).some((x) => x.has(op))) this.miss(`场景替真后端答了 ${op}（改写 world.disk）`);
+    }
+    const machines: Record<string, MachineDisk> = {};
+    for (const m of world.machines) machines[m] = world.disk[m] ?? { files: {}, live: [] };
+    this.ready = fetch("/__ccm/world", { method: "POST", body: JSON.stringify({ key: this.key, machines }) }).then(async (r) => {
+      if (!r.ok) throw new Error(`真后端起不来：${await r.text()}`);
+    });
+  }
+
+  /** 问真后端那一台：应答帧原样翻成壳交给页里的那一形（成 ⇒ 字节；拒 ⇒ `{err: "Refused", body, detail}`）。 */
+  private async real(origin: string, op: string, req: Record<string, unknown>): Promise<ArrayBuffer> {
+    await this.ready;
+    const r = await fetch("/__ccm/call", { method: "POST", body: JSON.stringify({ key: this.key, origin, op, args: req }) });
+    const f = (await r.json()) as { ok: boolean; data?: unknown; code?: string; message?: string; detail?: string };
+    if (f.ok) return enc.encode(JSON.stringify(f.data ?? null)).buffer;
+    const body = f.data === undefined ? { code: f.code, message: f.message } : { code: f.code, message: f.message, data: f.data };
+    throw { err: "Refused", body: Array.from(enc.encode(JSON.stringify(body))), detail: f.detail };
+  }
 
   attachEmitter(emit: Emit): void {
     this.emit = emit;
@@ -86,13 +102,17 @@ export class FakeBackend {
   private chanCall(args: Record<string, unknown>): unknown {
     const origin = String(args.origin);
     const op = String(args.op);
+    const raw = args.payload as number[];
+    const req = raw.length > 0 ? (JSON.parse(dec.decode(Uint8Array.from(raw))) as Record<string, unknown>) : {};
+    if (REAL_OPS.has(op) && !WINDOWS_ONLY[origin]?.has(op)) {
+      const delay = this.world.opDelayMs?.[op] ?? 0;
+      return new Promise((r) => setTimeout(r, delay)).then(() => this.real(origin, op, req));
+    }
     const handler = this.world.ops[op];
     if (!handler) {
       if (!this.world.quiet?.includes(op)) this.miss(`帧命令 ${op}`);
       return Promise.reject({ err: "Unsupported", body: [] });
     }
-    const raw = args.payload as number[];
-    const req = raw.length > 0 ? (JSON.parse(dec.decode(Uint8Array.from(raw))) as Record<string, unknown>) : {};
     try {
       const v = handler(origin, req, this.world);
       const delay = this.world.opDelayMs?.[op] ?? 0;
@@ -100,7 +120,7 @@ export class FakeBackend {
       return later.then(
         // 照真壳交原始字节（`tauri::ipc::Response` ⇒ 页里拿到 ArrayBuffer），不交数字数组：
         // 长会话整份读那一问有几 MB，数字数组那一形光假后端自己造就占掉页里几百 ms（性能台架量的是产品）
-        (value) => enc.encode(JSON.stringify(TIMED_OPS.has(op) ? (op === "quota-read" ? quotaFace(usageCells(withTexts(slotWords(value)))) : usageCells(withTexts(slotWords(value)))) : value)).buffer,
+        (value) => enc.encode(JSON.stringify(value)).buffer,
         (e: unknown) => Promise.reject(refusal(e, op)),
       );
     } catch (e) {
@@ -148,7 +168,7 @@ export class FakeBackend {
       setTimeout(() => this.send(sub, [{ t: "frame", seq: 0, body: JSON.stringify({ seq: 1, view }) }]), 200);
       if (mode === "lost") setTimeout(() => this.send(sub, [{ t: "frame", seq: 1, body: JSON.stringify({ end: "lost" }) }]), 500);
       if (mode === "offline") setTimeout(() => this.send(sub, [{ t: "unseen", idx: 1, tag: "read", why: "Dropped" }]), 500);
-    } else if (sub.kind === "session-tap" || sub.kind === "accounts-changed" || sub.kind === "profiles-changed" || sub.kind === "session-tasks" || sub.kind === "quota-changed") {
+    } else if (sub.kind === "session-tap" || sub.kind.startsWith("changed/")) {
       this.send(sub, [{ t: "seen", from: null }]);
     } else {
       this.miss(`订阅 ${sub.kind}`);
@@ -206,10 +226,10 @@ export class FakeBackend {
     }
   }
 
-  /** 场景在开页之后推一格 `quota-changed`（`{"quota":true}` / `{"sid": …}`）。 */
-  pushQuota(origin: string, body: unknown): void {
+  /** 场景在开页之后推一格 `changed/<topic>`（格体 `{key?, rev?, body?}`，同壳交的那一份）。 */
+  pushChanged(origin: string, topic: string, cell: unknown): void {
     for (const sub of this.subs.values()) {
-      if (sub.origin === origin && sub.kind === "quota-changed") this.send(sub, [{ t: "frame", seq: 0, body: JSON.stringify(body) }]);
+      if (sub.origin === origin && sub.kind === `changed/${topic}`) this.send(sub, [{ t: "frame", seq: 0, body: JSON.stringify(cell) }]);
     }
   }
 

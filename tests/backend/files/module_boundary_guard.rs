@@ -269,6 +269,21 @@ const OUTWARD: &[(&str, Kind, &str)] = &[
         "`files-stat` 的属主：uid → 用户名要问系统的用户库，只在平台层问",
     ),
     (
+        "platform::watch_file::watch",
+        Kind::Platform,
+        "浏览目录保鲜：在名单上的目录挂监听，经盯盘的唯一原语（一阵动静并成一次回调、交出动过的路径）",
+    ),
+    (
+        "platform::watch_file::Watching",
+        Kind::Platform,
+        "浏览目录保鲜：进程里那一份监听（名单跟着 `files-browse` 换）",
+    ),
+    (
+        "platform::watch_file::Dir",
+        Kind::Platform,
+        "浏览目录保鲜：名单的一项（目录 · 不递归）",
+    ),
+    (
         "platform::paths::link_target_of",
         Kind::Platform,
         "`files-stat` 的链接指向：路径本身是不是链接、指向哪（`readlink`），读系统的口住平台层",

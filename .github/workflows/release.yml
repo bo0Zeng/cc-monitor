@@ -143,7 +143,7 @@ jobs:
       - name: Require a green CI run on this exact commit
         # 🔴 只在「要发布」时才拦。理由：本门问的是「**发出去的这棵树测过没有**」——
         # 演练（`publish=false`）**什么都不发**，没有可发坏的东西；而演练又恰恰跑在
-        # 一个**没进过 main、因此没有 CI run** 的分支上（`ci.yml` 只在 main / PR / tag 上跑）
+        # 一个**没进过 main、也没推过候选分支 `next`、因此没有 CI run** 的分支上（`ci.yml` 只在 main · next / PR / tag 上跑）
         # ⇒ 不放它过，手工触发在构造上永远走不到第一个构建步骤，这个触发器就白加了。
         # ⚠ 反过来说死：`publish=true` 的手工触发**照样要过这道门**，与推 tag 一模一样。
         if: env.PUBLISH == 'true'

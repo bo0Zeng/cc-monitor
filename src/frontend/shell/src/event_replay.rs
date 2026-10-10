@@ -41,9 +41,9 @@
 //! | `session-lines` | `origin` 那台机器的全部会话 | **就绪点**（主界面的 `frontend-ready`）：宣告重发之后、对账之前 —— 顺序与原来 `replay_and_mark_ready`〔散文墓碑〕一致 |
 //! | `session-lines/<sid>` | 只那一个会话（独立窗口） | 订阅当场 |
 //! | `session-tap` | 那台机器上中转抄出来的 SSE 事件（见 [`SESSION_TAP_KIND`]） | 没有留存（不重放）；订阅当场就收实时的 |
-//! | `accounts-changed` | 那台机器上「账号清单可能变了」：`Seen`（长连接又通了、能问了）· `Frame`（那台后端说账号清单变了）· `Unseen` · `Gap` | 没有留存（不重放）；订阅当场就收实时的 |
+//! | `changed/<主题>` | 那台机器上「这一样东西变了」（主题表住后端 `stream/topic.rs`）：`Seen`（长连接又通了、能问了）· `Frame`（那台后端说变了，格体 `{key?, rev?, body?}`）· `Unseen` · `Gap` | 没有留存（不重放）；订阅当场就收实时的 |
 //!
-//! 〔「前端只有两个动作」〕`accounts-changed` 顶掉的是最后一个裸 Tauri 事件 `remote-backend-ready`
+//! 〔「前端只有两个动作」〕`changed/accounts` 顶掉的是最后一个裸 Tauri 事件 `remote-backend-ready`
 //! （原常量 `REMOTE_BACKEND_READY`〔散文墓碑〕，住 `ui_contract.rs` 的 `events`）。它与 `session-lines` 住同一张订阅表，因为「那台看不看得见」
 //! 只有一个家（下面的 `seen`）—— 另起一个句柄就得再养一份同样的表、在 `stream_source` 同样的几处再喂一遍。
 //!
@@ -86,21 +86,9 @@ pub const SESSION_LINES_KIND: &str = "session-lines";
 /// ③ 实时那一份照「有 credit 当场交、没 credit 丢、位置照占、原位 `Gap`」（级 2）—— tap 本来就可丢（SSE 只保快）。
 pub const SESSION_TAP_KIND: &str = "session-tap";
 
-/// 本文件认的另一个流标签：那台机器上「账号清单可能变了」（见头注那张表）。
-/// TS 那一侧的同一个串住 `src/frontend/ui/session-accounts-poll.ts::ACCOUNTS_CHANGED_KIND`（两侧对拍在 `session-accounts-poll.vitest.ts`）。
-pub const ACCOUNTS_CHANGED_KIND: &str = "accounts-changed";
-
-/// 本文件认的又一个流标签：那台机器上「配置文件（`profiles.toml`）变了」（格体同账号那一种，没有留存）。
-/// TS 那一侧的同一个串住 `src/frontend/ui/settings/profiles-reads.ts::PROFILES_CHANGED_KIND`。
-pub const PROFILES_CHANGED_KIND: &str = "profiles-changed";
-
-/// 本文件认的又一种流：那台机器上「某个会话的任务清单变了」（格体 `{"sid": …}`，没有留存）。
-/// TS 那一侧的同一个串住 `src/frontend/ui/tasks-stream.ts::SESSION_TASKS_KIND`（两侧对拍在 `tests/frontend/ui/events-tap.vitest.ts`）。
-pub const SESSION_TASKS_KIND: &str = "session-tasks";
-
-/// 又一种流：那台机器上「额度账变了」（格体 `{"quota":true}`）或「某个会话的轮换 / 账号格变了」（格体 `{"sid": …}`），没有留存。
-/// 界面收到就重问 `quota-read` / `rotation-session-read`。TS 那一侧的同一个串住 `src/frontend/ui/quota-stream.ts::QUOTA_CHANGED_KIND`。
-pub const QUOTA_CHANGED_KIND: &str = "quota-changed";
+/// 又一种流：那台机器上「某样东西变了」（`changed/<主题>`，格体是后端 `changed` 帧去掉 `kind` / `topic` 的那一份 `{key?, rev?, body?}`，没有留存）。
+/// 主题不在这里认：后端主题表（`stream/topic.rs`）是唯一一处，这里原样按主题扇出。TS 那一侧的同一个串住 `src/frontend/ui/changed-stream.ts::CHANGED_KIND`。
+pub const CHANGED_KIND: &str = "changed";
 
 /// 〔「测试连接的进度不许倒退」〕又一种流：本机后端里那一趟测试连接的进度（`probe-progress/<票>`，
 /// 格体是后端原样那一格 `{stage}` / `{reached}` / `{end}`，没有留存；只在 `<local>` 上有）。
@@ -112,12 +100,6 @@ pub const PROBE_PROGRESS_KIND: &str = "probe-progress";
 /// 本机远端都有（订了哪台就是哪台推）。TS 那一侧的同一个串住 `src/frontend/ui/terminal-follow.ts::TERMINAL_SCREEN_KIND`。
 /// 流名不叫命令名（命令是那台后端的 `terminal-follow`，monitor 生产段不许有它的字面量 —— 发送点只在界面）。
 pub const TERMINAL_SCREEN_KIND: &str = "terminal-screen";
-
-/// `accounts-changed` 流里那一格 `Frame` 的体（不透明于通道；前端只认「来了一格」，体给日志看）。
-const ACCOUNTS_CHANGED_BODY: &[u8] = br#"{"accounts_changed":true}"#;
-
-/// `profiles-changed` 流里那一格的体（同上，前端只认「来了一格」）。
-const PROFILES_CHANGED_BODY: &[u8] = br#"{"profiles_changed":true}"#;
 
 pub struct EventReplay {
     inner: Mutex<Inner>,
@@ -189,14 +171,8 @@ enum SubKind {
     Lines,
     /// `session-tap`：中转抄出来的 SSE 事件，没有留存。
     Tap,
-    /// `accounts-changed`：只收看得见 / 看不见与「那台账号清单变了」那一格，没有留存。
-    AccountsChanged,
-    /// `profiles-changed`：只收看得见 / 看不见与「那台配置文件变了」那一格，没有留存。
-    ProfilesChanged,
-    /// `session-tasks`：只收看得见 / 看不见与「那台某个会话的任务清单变了」那几格，没有留存。
-    Tasks,
-    /// `quota-changed`：只收看得见 / 看不见与「那台额度账 / 某个会话的轮换变了」那几格，没有留存。
-    Quota,
+    /// `changed/<主题>`（`only` = 那个主题）：只收看得见 / 看不见与「那台这一样东西变了」那几格，没有留存。
+    Changed,
     /// `probe-progress/<票>`：一趟测试连接的进度格（`only` = 那张票），没有留存。
     Probe,
     /// `terminal-screen/<票>`：一条终端订阅的画面与收尾（`only` = 那张票），没有留存。
@@ -472,21 +448,15 @@ enum Stream {
     Lines(Option<String>),
     /// `session-tap`。
     Tap,
-    /// `accounts-changed`。
-    AccountsChanged,
-    /// `profiles-changed`。
-    ProfilesChanged,
-    /// `session-tasks`。
-    Tasks,
-    /// `quota-changed`。
-    Quota,
+    /// `changed/<主题>`。
+    Changed(String),
     /// `probe-progress/<票>`。
     Probe(String),
     /// `terminal-screen/<票>`。
     Screen(String),
 }
 
-/// `kind` ⇒ 哪一种流（`session-tap` ⇒ [`Stream::Tap`]；`accounts-changed` ⇒ [`Stream::AccountsChanged`]）。认不出 ⇒ `Err`。
+/// `kind` ⇒ 哪一种流（`session-tap` ⇒ [`Stream::Tap`]；`changed/quota` ⇒ [`Stream::Changed`]）。认不出 ⇒ `Err`。
 fn parse_kind(kind: &str) -> Result<Stream, ()> {
     if kind == SESSION_LINES_KIND {
         return Ok(Stream::Lines(None));
@@ -494,17 +464,12 @@ fn parse_kind(kind: &str) -> Result<Stream, ()> {
     if kind == SESSION_TAP_KIND {
         return Ok(Stream::Tap);
     }
-    if kind == ACCOUNTS_CHANGED_KIND {
-        return Ok(Stream::AccountsChanged);
-    }
-    if kind == PROFILES_CHANGED_KIND {
-        return Ok(Stream::ProfilesChanged);
-    }
-    if kind == SESSION_TASKS_KIND {
-        return Ok(Stream::Tasks);
-    }
-    if kind == QUOTA_CHANGED_KIND {
-        return Ok(Stream::Quota);
+    if let Some(topic) = kind
+        .strip_prefix(CHANGED_KIND)
+        .and_then(|r| r.strip_prefix('/'))
+        .filter(|t| !t.is_empty() && !t.contains('/'))
+    {
+        return Ok(Stream::Changed(topic.to_string()));
     }
     if let Some(ticket) = kind
         .strip_prefix(PROBE_PROGRESS_KIND)
@@ -902,10 +867,7 @@ impl EventReplay {
         let (only, kind) = match parse_kind(kind) {
             Ok(Stream::Lines(o)) => (o, SubKind::Lines),
             Ok(Stream::Tap) => (None, SubKind::Tap),
-            Ok(Stream::AccountsChanged) => (None, SubKind::AccountsChanged),
-            Ok(Stream::ProfilesChanged) => (None, SubKind::ProfilesChanged),
-            Ok(Stream::Tasks) => (None, SubKind::Tasks),
-            Ok(Stream::Quota) => (None, SubKind::Quota),
+            Ok(Stream::Changed(topic)) => (Some(topic), SubKind::Changed),
             Ok(Stream::Probe(ticket)) => (Some(ticket), SubKind::Probe),
             Ok(Stream::Screen(ticket)) => (Some(ticket), SubKind::Screen),
             Err(()) => {
@@ -928,7 +890,7 @@ impl EventReplay {
             inner.generation += 1;
             let generation = inner.generation;
             let seen = inner.seen.get(origin).copied().unwrap_or(false);
-            // tap 没有留存 ⇒ 订阅当场就是实时的（没有就绪点要等）；`accounts-changed` 同理。
+            // tap 没有留存 ⇒ 订阅当场就是实时的（没有就绪点要等）；`changed/<主题>` 同理。
             let immediate =
                 kind != SubKind::Lines || only.is_some() || inner.ready_labels.contains(label);
             let sub = Sub {
@@ -1142,73 +1104,19 @@ impl EventReplay {
         }
     }
 
-    /// 那台机器的后端说「账号清单变了」（`accounts_changed` 帧）⇒ 订了那台 `accounts-changed` 的
-    /// 每条订阅收一格 `Frame`（有 credit 当场交；没有 ⇒ 丢、位置照占、下一次交之前原位 `Gap` —— 与实时行同一套）。
-    pub fn accounts_changed(&self, origin: &crate::origin::Origin) {
+    /// 那台机器的后端说「某样东西变了」（`changed` 帧；本机远端两条流同一个口）⇒ 订了那台 `changed/<topic>` 的每条订阅收一格 `cell`
+    /// （`{key?, rev?, body?}` 的文本，原样不解释；有 credit 当场交；没有 ⇒ 丢、位置照占、下一次交之前原位 `Gap` —— 与实时行同一套）。
+    pub fn changed(&self, origin: &crate::origin::Origin, topic: &str, cell: String) {
         self.fan_out(
-            SubKind::AccountsChanged,
+            SubKind::Changed,
             origin,
-            None,
-            Body(ACCOUNTS_CHANGED_BODY.to_vec()),
+            Some(topic),
+            Body(cell.into_bytes()),
         );
-    }
-
-    /// 那台机器的后端说「配置文件变了」（`profiles_changed` 帧）⇒ 订了那台 `profiles-changed` 的每条订阅收一格（同 `accounts-changed`）。
-    pub fn profiles_changed(&self, origin: &crate::origin::Origin) {
-        self.fan_out(
-            SubKind::ProfilesChanged,
-            origin,
-            None,
-            Body(PROFILES_CHANGED_BODY.to_vec()),
-        );
-    }
-
-    /// 那台机器的后端说「这个会话的任务清单变了」（`tasks_changed` 帧；本机那条流同一个口）⇒
-    /// 订了那台 `session-tasks` 的每条订阅收一格 `{"sid": …}`（credit 与 `Gap` 与 `accounts-changed` 同一套）。界面收到就重问 `tasks-list`。
-    pub fn tasks_changed(&self, origin: &crate::origin::Origin, sid: &str) {
-        let body = serde_json::json!({ "sid": sid }).to_string().into_bytes();
-        self.fan_out(SubKind::Tasks, origin, None, Body(body));
-    }
-
-    /// 那台机器的后端说「额度账变了」（`quota_changed`，`sid = None`）或「这个会话的轮换 / 账号格变了」（`rotation_changed`）⇒
-    /// 订了那台 `quota-changed` 的每条订阅收一格（体 `{"quota":true}` / `{"sid": …}`；credit 与 `Gap` 与 `session-tasks` 同一套）。
-    pub fn quota_changed(&self, origin: &crate::origin::Origin, sid: Option<&str>) {
-        let body = match sid {
-            Some(sid) => serde_json::json!({ "sid": sid }),
-            None => serde_json::json!({ "quota": true }),
-        }
-        .to_string()
-        .into_bytes();
-        self.fan_out(SubKind::Quota, origin, None, Body(body));
-    }
-
-    /// 那台机器的后端说「轮换规则表 / 默认指向变了」（`rotation_rules_changed`）⇒ 订了那台 `quota-changed` 的每条订阅收一格
-    /// `{"rules":true}`（同上一条那一套）。界面收到就重问 `rotation-rules-read`。
-    pub fn rotation_rules_changed(&self, origin: &crate::origin::Origin) {
-        let body = serde_json::json!({ "rules": true })
-            .to_string()
-            .into_bytes();
-        self.fan_out(SubKind::Quota, origin, None, Body(body));
-    }
-
-    /// 那台机器的后端说「这个工作区的计划变了」（`plan_changed`）⇒ 订了那台 `quota-changed` 的每条订阅收一格
-    /// `{"plan": {"workspace", "rev", "needs"}}`（同上几条那一套：「那台某样东西变了」只走这一条流，不另开）。界面收到就重问 `plan-read`。
-    pub fn plan_changed(
-        &self,
-        origin: &crate::origin::Origin,
-        workspace: &str,
-        rev: &str,
-        needs: u64,
-    ) {
-        let body =
-            serde_json::json!({ "plan": { "workspace": workspace, "rev": rev, "needs": needs } })
-                .to_string()
-                .into_bytes();
-        self.fan_out(SubKind::Quota, origin, None, Body(body));
     }
 
     /// 本机后端里那一趟测试连接推来一格（`probe_relay::deliver` 经 `lib.rs` 装的出口调）：**不进留存**，
-    /// 交给订了 `<local>` 上 `probe-progress/<那张票>` 的订阅（credit 与 `Gap` 与 `accounts-changed` 同一套；界面给的窗口远大于一趟的格数）。
+    /// 交给订了 `<local>` 上 `probe-progress/<那张票>` 的订阅（credit 与 `Gap` 与 `changed/<主题>` 同一套；界面给的窗口远大于一趟的格数）。
     pub fn on_probe(&self, ticket: &str, cell: String) {
         self.fan_out(
             SubKind::Probe,

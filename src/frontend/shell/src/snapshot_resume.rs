@@ -15,7 +15,10 @@
 //!
 //! 重连后快照照旧先问 `history-tail`（它本来就要问）。[`plan_read`] 从两个已知锚里
 //! （续点那份 `(total, end)` · 这一次的 `(tail_from, split_at)`）挑**行号不超过 `next`** 的最近一个，
-//! 只读 `[锚的字节, end)`，锚到 `next` 之间的行本地数掉、不发。续点对不上（换了路径 · 文件变短）⇒ 整份。
+//! 只读 `[锚的字节, end)`，锚到 `next` 之间的行本地数掉、不发。续点对不上（换了路径 · 文件变短）⇒ 只读尾段（[`Read::Tail`]，与冷连上同一形）。
+//!
+//! 冷连上 / monitor 重启（续点全丢）也只读尾段：头段不预拉，界面往上翻时按行号 / 按偏移取回 ——
+//! 原先整份拉回来，壳留存只留每会话最后 `REPLAY_TAIL_KEEP` 条、界面账本只留 2000 条，其余当场丢、往上翻时再要一遍（同一段走两趟）。
 //!
 //! ⚠ **不用骨架索引**（当时的 `read_session_index`〔散文墓碑〕）：它那时不在帧面（`frame_query::STILL_DIALED` 那一形）⇒
 //! 用它续传等于每次重连多拨一条 SSH，与 `C1`「去掉逐次拨号」方向相反。帧面的 `history-tail` ＋
@@ -25,10 +28,10 @@
 //! # 截断 / 改写检测：续传之前先核一行
 //!
 //! 「**截断检测**（远端 jsonl 在断连期间被截断/分叉，`(sid,seq)` 会指向不同的行而没有东西会发现）—— **仍开**（W5-VIS）」。
-//! 上面那条「文件比锚短 ⇒ 整份」只接住了**变短**；断线期间被**整份改写而且变长**（编辑器存盘整份覆盖、agent 按路径重建）的文件，
+//! 上面那条「文件比锚短 ⇒ 从尾段重来」只接住了**变短**；断线期间被**整份改写而且变长**（编辑器存盘整份覆盖、agent 按路径重建）的文件，
 //! 续传照接，前端已有的那几行与盘上不再是同一内容。
 //! ⇒ 续点旁边多记一格**见证**（[`Witness`]）：快照做完那一刻文件最后一个可计行的字节区间与内容摘要。续传之前先读回那一行
-//! （一次 `history-read`，一行大小）比一下（[`witness_holds`]）；对不上 ⇒ 当被改写：续点作废、**整份重读**，并交那个会话一格
+//! （一次 `history-read`，一行大小）比一下（[`witness_holds`]）；对不上 ⇒ 当被改写：续点作废、**从尾段重读**，并交那个会话一格
 //! 「记录文件被改过、已从头重读」（与 FW1 后端那一形同一句话、同一条前端路：`FileChange::Rewritten`）。
 //! 与 FW1「游标旁记末尾若干字节，续读前核」同形；它管后端实时读，本处管 monitor 的断线续传。
 //!
@@ -37,11 +40,11 @@
 //! - 见证只钉**锚那一行**：锚之后、续点之前那几条实时行被单独改掉（前缀原样、只改中段）看不见 —— 实时行没带字节偏移。
 //! - 见证那一行的字节位与摘要都由后端按原始字节给（原先 monitor 拿有损解码过的正文自己切、自己算，
 //!   碰到非 UTF-8 字节那一次就记不了见证）。
-//! - 改写之后整份重读出来的行，行号与旧行同号（远端 `seq` 是行号空间，`INVARIANTS §25a`）—— 前端怎么把两份收成一份不在本处。
+//! - 改写之后重读出来的行，行号与旧行同号（远端 `seq` 是行号空间，`INVARIANTS §25a`）—— 前端怎么把两份收成一份不在本处。
 //! - 实时行带着后端的 `byte_offset`（它的末端）⇒ 推续点时记下第 `next` 行的起点（`Cursor::next_byte`），
 //!   续传就从那一行读起、一行都不数掉。只剩「推的那一行说不准末端」（快照那一行是没收尾的残尾）
 //!   才退回挑锚、锚到续点那一截照样过线。
-//! - 进程重启续点全丢（本来就是进程内软状态：monitor 重启时界面状态本就没了，要的是整份）。
+//! - 进程重启续点全丢（本来就是进程内软状态）⇒ 回到冷连上那一形：只读尾段。
 
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
@@ -58,7 +61,7 @@ pub(crate) struct Cursor {
     pub(crate) anchor_total: u64,
     /// … 与那一刻最后一个完整行的末字节（= 第 `anchor_total` 行的起点）。
     pub(crate) anchor_end: u64,
-    /// 已有到哪：`[0, next)` 这些行号前端**确实**拿到过（发出去过）。
+    /// 已有到哪：`[tail_from, next)` 这些行号前端**确实**拿到过（发出去过）；尾段之下的由前端按需取回，不算缺。
     pub(crate) next: u64,
     /// 第 `next` 行从哪个字节起（推 `next` 的那一行带着它的末端）；说不准 ⇒ `None`（退回挑锚）。
     pub(crate) next_byte: Option<u64>,
@@ -96,7 +99,7 @@ pub(crate) fn row_spans(offset: u64, rows: &[crate::frame_query::Row]) -> Vec<Op
         .collect()
 }
 
-/// 走读时挑见证：**区间末端是 `plan.end` 的那一段**里、最后一个可计行（整份读时是尾段，续传时是唯一那一段）。
+/// 走读时挑见证：**区间末端是 `plan.end` 的那一段**里、最后一个可计行（只读尾段时是尾段，续传时是续读那一段）。
 /// 那一行的区间说不准 ⇒ 这一次不记。
 #[derive(Debug, Default)]
 pub(crate) struct WitnessPick {
@@ -127,8 +130,9 @@ impl WitnessPick {
 /// 这一次快照怎么读。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Read {
-    /// 整份：尾段 `[split_at, end)` 先到、头段 `[0, split_at)` 回填（今天的形状）。
-    Full,
+    /// 只读尾段 `[split_at, end)`（第 `tail_from` 行起）：连上、monitor 重启、续点作废都是这一形。
+    /// 头段 `[0, split_at)` 不预拉 —— 界面往上翻时按行号 / 按偏移取回（`live-window.ts` 的 `BelowState`）。
+    Tail,
     /// 续传：只读 `[from_byte, upto)`；那一段第一行的行号是 `first_seq`，行号 `< skip_below` 的数掉不发。
     Resume {
         from_byte: u64,
@@ -148,13 +152,13 @@ pub(crate) fn shrank(cursor: Option<&Cursor>, path: &str, plan: &TailPlan) -> bo
 
 /// **纯函数**：续点 × 这一次的尾段图 ⇒ 怎么读。
 ///
-/// 续点缺席 / 路径不同 / 文件比锚短（被截断重写过）/ `next` 超过这次的总行数 ⇒ [`Read::Full`]。
+/// 续点缺席 / 路径不同 / 文件比锚短（被截断重写过）/ `next` 超过这次的总行数 ⇒ [`Read::Tail`]（只读尾段）。
 pub(crate) fn plan_read(cursor: Option<&Cursor>, path: &str, plan: &TailPlan) -> Read {
     let Some(c) = cursor.filter(|c| c.path == path) else {
-        return Read::Full;
+        return Read::Tail;
     };
     if shrank(Some(c), path, plan) {
-        return Read::Full;
+        return Read::Tail;
     }
     // 确知第 `next` 行的起点 ⇒ 就从那里读：锚到续点之间那一截不再过线。
     if let Some(b) = c.next_byte.filter(|b| *b <= plan.end) {
@@ -173,7 +177,7 @@ pub(crate) fn plan_read(cursor: Option<&Cursor>, path: &str, plan: &TailPlan) ->
         .filter(|(seq, _)| *seq <= c.next)
         .max_by_key(|(seq, _)| *seq);
     let Some((first_seq, from_byte)) = pick else {
-        return Read::Full;
+        return Read::Tail;
     };
     Read::Resume {
         from_byte,
@@ -187,32 +191,33 @@ pub(crate) fn plan_read(cursor: Option<&Cursor>, path: &str, plan: &TailPlan) ->
 #[derive(Debug, Clone)]
 pub(crate) struct Walk {
     segments: Vec<(u64, u64)>,
-    /// `None` = 整份（行号走 `tail_seq` 那条两段映射）；`Some(b)` = 续传（行号 = b + 到达序）。
-    first_seq: Option<u64>,
+    /// 那一段第一行的行号（行号 = 它 ＋ 到达序）：只读尾段时是 `tail_from`，续传时是挑中的锚。
+    first_seq: u64,
     skip_below: u64,
     total: u64,
-    tail_from: u64,
     arrived: u64,
 }
 
 impl Walk {
     pub(crate) fn new(how: &Read, plan: &TailPlan) -> Self {
         let (segments, first_seq, skip_below) = match *how {
-            // 尾段先到（最新 N 行先就位），头段回填。
-            Read::Full => (vec![(plan.split_at, plan.end), (0, plan.split_at)], None, 0),
+            Read::Tail => (
+                vec![(plan.split_at, plan.end)],
+                plan.tail_from,
+                plan.tail_from,
+            ),
             Read::Resume {
                 from_byte,
                 upto,
                 first_seq,
                 skip_below,
-            } => (vec![(from_byte, upto)], Some(first_seq), skip_below),
+            } => (vec![(from_byte, upto)], first_seq, skip_below),
         };
         Walk {
             segments,
             first_seq,
             skip_below,
             total: plan.total,
-            tail_from: plan.tail_from,
             arrived: 0,
         }
     }
@@ -226,10 +231,7 @@ impl Walk {
     pub(crate) fn step(&mut self) -> Option<u64> {
         let k = self.arrived;
         self.arrived += 1;
-        let seq = match self.first_seq {
-            None => crate::stream_source::tail_seq(k, self.total, self.tail_from),
-            Some(base) => base + k,
-        };
+        let seq = self.first_seq + k;
         (seq >= self.skip_below).then_some(seq)
     }
 
@@ -238,9 +240,9 @@ impl Walk {
         self.arrived
     }
 
-    /// 这次应数到的可计行数：整份 = `total`；续传 = 锚之后那一截。
+    /// 这次应数到的可计行数：那一段第一行到 `total`（只读尾段 = 尾段几行；续传 = 锚之后那一截）。
     pub(crate) fn want(&self) -> u64 {
-        self.total - self.first_seq.unwrap_or(0)
+        self.total - self.first_seq
     }
 }
 
@@ -258,7 +260,7 @@ pub(crate) fn cursor_of(origin: &Origin, sid: &str) -> Option<Cursor> {
         .cloned()
 }
 
-/// 一次快照**完整**做完：`[0, plan.total)` 全到了 ⇒ 立锚。`next` 取「原有的」与 `total` 的大者 ——
+/// 一次快照**完整**做完：`[tail_from, plan.total)` 全到了（尾段之下的前端按需取回，不算缺）⇒ 立锚。`next` 取「原有的」与 `total` 的大者 ——
 /// 原有的只会是连续推上去的，不会越过真没拿到的行（见 [`note_flushed`]）。
 pub(crate) fn note_snapshot_done(origin: &Origin, sid: &str, path: &str, plan: &TailPlan) {
     let mut g = registry().lock().unwrap_or_else(|e| e.into_inner());
@@ -316,7 +318,7 @@ pub(crate) fn note_flushed<'a>(
     }
 }
 
-/// 会话真结束（后端报 `session_removed`）⇒ 续点作废：再宣告时整份拉（与今天同）。
+/// 会话真结束（后端报 `session_removed`）⇒ 续点作废：再宣告时只读尾段（与冷连上同）。
 pub(crate) fn forget(origin: &Origin, sid: &str) {
     registry()
         .lock()

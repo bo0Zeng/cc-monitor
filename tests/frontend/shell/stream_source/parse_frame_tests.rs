@@ -637,42 +637,59 @@ fn dispatch_over_a_frame_sequence() {
     assert!(matches!(parsed[5], Ok(InboundFrame::SessionRemoved { .. })));
 }
 
-/// `accounts_changed`：认得出（无载荷，多余字段忽略）；
-/// 远端流收到它 ⇒ 交给前端（恰好一处）。
-/// 〔「前端只有两个动作」〕交法从裸 Tauri 事件（`remote-backend-ready`）换成通道订阅：
-/// 那一臂调 `replay.accounts_changed`（订了这台 `accounts-changed` 的订阅收一格 `Frame`），且**整份** `stream_source/`
-/// 生产段里那个裸事件的常量名零处（零命中带正控：同一个找法认得出这一臂真在调的那个名字）。
+/// `changed`：认得出；主题原样（壳不认主题），格体 ＝ 帧去掉 `kind` / `topic`（`key` / `rev` 在就得是串、`body` 原样，多余字段不带）；
+/// 主题缺 / 空 / 带 `/` ⇒ 坏帧。远端流收到它 ⇒ 交给前端（恰好一处）。
+/// 〔「前端只有两个动作」〕交法是通道订阅（订了这台 `changed/<topic>` 的订阅收一格），且**整份** `stream_source/`
+/// 生产段里那个裸事件 `remote-backend-ready` 的常量名零处（零命中带正控：同一个找法认得出这一臂真在调的那个名字）。
 #[test]
-fn accounts_changed_is_recognised_and_reaches_the_frontend_as_ready() {
+fn changed_is_recognised_and_reaches_the_frontend_by_topic() {
+    let cell = |s: &str| match parse_frame(s) {
+        Ok(InboundFrame::Changed { topic, cell }) => (
+            topic,
+            serde_json::from_str::<serde_json::Value>(&cell).unwrap(),
+        ),
+        other => panic!("{s}: {other:?}"),
+    };
     assert_eq!(
-        parse_frame(r#"{"kind":"accounts_changed"}"#),
-        Ok(InboundFrame::AccountsChanged)
+        cell(r#"{"kind":"changed","topic":"accounts","future":1}"#),
+        ("accounts".to_string(), serde_json::json!({})),
+        "多余字段不带进格体（additive 照收）"
     );
     assert_eq!(
-        parse_frame(r#"{"kind":"accounts_changed","future":1}"#),
-        Ok(InboundFrame::AccountsChanged),
-        "多余字段该被忽略（additive）"
+        cell(r#"{"kind":"changed","topic":"plan","key":"/w","rev":"r1","body":{"needs":2}}"#),
+        (
+            "plan".to_string(),
+            serde_json::json!({"key": "/w", "rev": "r1", "body": {"needs": 2}})
+        )
     );
+    assert_eq!(
+        cell(r#"{"kind":"changed","topic":"some_new_topic"}"#).0,
+        "some_new_topic",
+        "壳不认主题：新主题原样交"
+    );
+    for bad in [
+        r#"{"kind":"changed"}"#,
+        r#"{"kind":"changed","topic":""}"#,
+        r#"{"kind":"changed","topic":"a/b"}"#,
+        r#"{"kind":"changed","topic":"tasks","key":1}"#,
+        r#"{"kind":"changed","topic":"plan","rev":null}"#,
+    ] {
+        assert!(parse_frame(bad).is_err(), "{bad}");
+    }
     let prod = crate::guard_support::stream_source_production();
-    let arm = guard_core::find_pinned(&prod, "Some(InboundFrame::AccountsChanged) =>")
-        .expect("流循环里不是恰好一条 accounts_changed 的臂");
-    // 臂体取到下一条 `Ok(InboundFrame::` 臂为止（按字符切，不按字节数切 —— 中文注释会切在字中间）。
-    let rest = &prod[arm + 1..];
-    let body = &prod[arm..arm + 1 + rest.find("Some(InboundFrame::").unwrap_or(rest.len())];
-    let code = guard_core::strip_comment_lines(body);
+    let code = guard_core::strip_comment_lines(&prod);
     assert_eq!(
-        code.matches("replay.accounts_changed(").count(),
-        1,
-        "accounts_changed 那一臂没经通道交给前端（`replay.accounts_changed` 不是恰好一处）"
+        code.matches("replay.changed(").count(),
+        2,
+        "远端流循环那一臂 ＋ 本机消费者那一臂，各一处交 `replay.changed`"
     );
     let dead = ["REMOTE", "BACKEND", "READY"].join("_");
-    let whole = guard_core::strip_comment_lines(&prod);
     assert!(
-        !guard_core::contains_word(&whole, &dead),
+        !guard_core::contains_word(&code, &dead),
         "`{dead}` 又出现在 stream_source 生产段里 —— 那个裸事件回来了"
     );
     assert!(
-        guard_core::contains_word(&whole, "accounts_changed"),
+        guard_core::contains_word(&code, "changed"),
         "正控失败：同一个找法认不出这一臂真在调的名字 —— 上面的零命中不可信"
     );
 }
@@ -977,22 +994,6 @@ fn the_session_file_frames_are_known_and_an_unknown_why_is_dropped() {
     ] {
         assert!(parse_frame(bad).is_err(), "{bad}");
     }
-}
-
-/// `tasks_changed`：认得出（带 sid；缺 sid ⇒ 坏帧），流循环那一臂交 `replay.tasks_changed`（恰好一处）。
-#[test]
-fn tasks_changed_is_recognised_and_reaches_the_frontend_stream() {
-    assert_eq!(
-        parse_frame(r#"{"kind":"tasks_changed","sid":"s1"}"#),
-        Ok(InboundFrame::TasksChanged { sid: "s1".into() })
-    );
-    assert!(parse_frame(r#"{"kind":"tasks_changed"}"#).is_err());
-    let prod = crate::guard_support::stream_source_production();
-    assert_eq!(
-        prod.matches("replay.tasks_changed(").count(),
-        2,
-        "远端流循环那一臂 ＋ 本机消费者那一臂，各一处交 `replay.tasks_changed`"
-    );
 }
 
 /// 版本那条健康信息的类别由壳判好（界面按类别挑标题，不自己猜）：那台旧 / 协议不兼容 ⇒ 要更新；

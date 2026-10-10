@@ -214,7 +214,7 @@ mod tests {
         (
             "plan",
             "计划（planned-build）的读面：找 pb、在工作区里起 `pb dump`（只读子命令，不带身份）、加工成界面排版的成品、\
-             盯计划仓推 `plan_changed`。它归 backend-core 是因为计划仓与 pb 都**在那台机器上**。\
+             盯计划仓推 `changed {plan}`。它归 backend-core 是因为计划仓与 pb 都**在那台机器上**。\
              **计划仓零写盘**：每个工作区上一次读好的那一份只在进程内存里；计划仓与工作区 `.env` 一个字节都不写\
              （`tests/backend/plan/book_tests.rs` 跑前跑后逐字节对拍）。认可与退回记在后端自己的 \
              `~/.cc-monitor/plan-review.json`（`plan/review.rs`，第四层逐份登记）",

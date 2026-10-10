@@ -608,6 +608,40 @@ fn the_argv_payload_answers_byte_for_byte_like_stdin() {
     );
 }
 
+/// ★ 声明口 `--view`（同帧面信封的 `view`，同一处解）：认不出的格 · 点了这条命令不出的成品 · 写坏了 ⇒ `bad_args`，
+/// 而且**在读入参之前**就拒（stdin 是空的也一样拒，不是等到命令自己说缺 `path`）。缺值 · 给两次同样是用法错。
+#[test]
+fn a_bad_view_on_the_cli_face_is_refused_before_the_command_runs() {
+    let refuse = |args: &[&str]| {
+        let (rc, out, err) = run_cli(&strs(args), std::io::empty());
+        assert_eq!((rc, out.as_str()), (2, ""), "{args:?}：该回失败信封");
+        err_code(&err)
+    };
+    let v = crate::VIEW_FLAG;
+    for bad in [
+        r#"{"omit":{"record":["blcoks"]}}"#,
+        r#"{"omit":{"facts":["touchedFiles"]}}"#,
+        r#"{"where":{}}"#,
+        r#"{"omit""#,
+        "!!!",
+    ] {
+        assert_eq!(refuse(&["--history-read", v, bad]), "bad_args", "{bad}");
+    }
+    // base64 的那一形与 JSON 原样同一处判
+    let b64 = crate::stream::wire::b64_encode(br#"{"omit":{"record":["blcoks"]}}"#);
+    assert_eq!(refuse(&["--history-read", v, &b64]), "bad_args");
+    assert_eq!(refuse(&["--history-read", v]), "bad_args");
+    assert_eq!(refuse(&["--history-read", v, "{}", v, "{}"]), "bad_args");
+    // 不出成品的命令带声明：拒
+    assert_eq!(
+        refuse(&["--cells-catalog", v, r#"{"omit":{"record":["id"]}}"#]),
+        "bad_args"
+    );
+    // 认得的声明：照常走到命令自己（EOF ⇒ 空入参 ⇒ 命令说缺 path，也是 bad_args —— 换一条不收入参的看它真放行）
+    let (rc, _, _) = run_cli(&strs(&["--cells-catalog", v, "{}"]), std::io::empty());
+    assert_eq!(rc, 0, "空声明 ＝ 全量，该放行");
+}
+
 /// ★ stdin 开着、一直不写：**立即回码**，不挂住（缺入参就说缺入参）；EOF 那一形照旧当 `{}` 交给命令自己判。
 #[test]
 fn a_silent_open_stdin_answers_at_once_instead_of_hanging() {

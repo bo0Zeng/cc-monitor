@@ -113,7 +113,7 @@ fn manifest_path(accts_dir: &Path) -> PathBuf {
     accts_dir.join(ACCOUNTS_MANIFEST_NAME)
 }
 
-/// **这台机器上**那份账号 manifest 在哪（与 `--list-accounts` 读的是同一份）。watcher 盯着它、变了发 `accounts_changed`。
+/// **这台机器上**那份账号 manifest 在哪（与 `--list-accounts` 读的是同一份）。watcher 盯着它、变了发 `changed {accounts}`。
 pub(crate) fn default_manifest_path() -> PathBuf {
     manifest_path(&resolve_accts_dir())
 }

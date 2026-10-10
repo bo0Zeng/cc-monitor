@@ -1,0 +1,10 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>CyclomaticComplexMethod:ClaudeReadingPane.kt:@Composable private fun ToolCallCard</ID>
+    <ID>CyclomaticComplexMethod:HostScreens.kt:@Composable fun HostEditorScreen</ID>
+    <ID>LongMethod:ClaudeReadingPane.kt:@Composable private fun ToolCallCard</ID>
+    <ID>LongMethod:HostScreens.kt:@Composable fun HostEditorScreen</ID>
+  </CurrentIssues>
+</SmellBaseline>

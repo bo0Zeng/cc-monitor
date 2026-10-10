@@ -1,0 +1,674 @@
+diff --git a/lib/api.txt b/lib/api.txt
+index 5dae100..d15af63 100644
+--- a/lib/api.txt
++++ b/lib/api.txt
+@@ -127,7 +127,7 @@ package org.connectbot.terminal {
+   }
+ 
+   public final class TerminalKt {
+-    method @KotlinOnly @androidx.compose.runtime.Composable public static void Terminal(org.connectbot.terminal.TerminalEmulator terminalEmulator, optional androidx.compose.ui.Modifier modifier, optional android.graphics.Typeface typeface, optional androidx.compose.ui.unit.TextUnit initialFontSize, optional androidx.compose.ui.unit.TextUnit minFontSize, optional androidx.compose.ui.unit.TextUnit maxFontSize, optional androidx.compose.ui.graphics.Color backgroundColor, optional androidx.compose.ui.graphics.Color foregroundColor, optional androidx.compose.ui.graphics.Color selectionBackgroundColor, optional androidx.compose.ui.graphics.Color selectionForegroundColor, optional boolean keyboardEnabled, optional boolean showSoftKeyboard, optional androidx.compose.ui.focus.FocusRequester focusRequester, optional kotlin.jvm.functions.Function0<kotlin.Unit> onTerminalTap, optional kotlin.jvm.functions.Function1<java.lang.Boolean,kotlin.Unit> onImeVisibilityChanged, optional kotlin.Pair<java.lang.Integer,java.lang.Integer>? forcedSize, optional org.connectbot.terminal.ModifierManager? modifierManager, optional kotlin.jvm.functions.Function1<org.connectbot.terminal.SelectionController,kotlin.Unit>? onSelectionControllerAvailable, optional kotlin.jvm.functions.Function1<java.lang.String,kotlin.Unit> onHyperlinkClick, optional kotlin.jvm.functions.Function1<org.connectbot.terminal.ComposeController,kotlin.Unit>? onComposeControllerAvailable, optional kotlin.jvm.functions.Function0<kotlin.Unit>? onPasteRequest, optional org.connectbot.terminal.RightAltMode rightAltMode, optional org.connectbot.terminal.DelKeyMode delKeyMode, optional kotlin.jvm.functions.Function1<androidx.compose.ui.input.key.KeyEvent,java.lang.Boolean>? onInterceptKey);
++    method @KotlinOnly @androidx.compose.runtime.Composable public static void Terminal(org.connectbot.terminal.TerminalEmulator terminalEmulator, optional androidx.compose.ui.Modifier modifier, optional android.graphics.Typeface typeface, optional androidx.compose.ui.unit.TextUnit initialFontSize, optional androidx.compose.ui.unit.TextUnit minFontSize, optional androidx.compose.ui.unit.TextUnit maxFontSize, optional androidx.compose.ui.graphics.Color backgroundColor, optional androidx.compose.ui.graphics.Color foregroundColor, optional androidx.compose.ui.graphics.Color selectionBackgroundColor, optional androidx.compose.ui.graphics.Color selectionForegroundColor, optional boolean keyboardEnabled, optional boolean showSoftKeyboard, optional androidx.compose.ui.focus.FocusRequester focusRequester, optional kotlin.jvm.functions.Function0<kotlin.Unit> onTerminalTap, optional kotlin.jvm.functions.Function1<androidx.compose.ui.unit.TextUnit,kotlin.Unit> onFontSizeChanged, optional kotlin.jvm.functions.Function1<java.lang.Boolean,kotlin.Unit> onImeVisibilityChanged, optional kotlin.Pair<java.lang.Integer,java.lang.Integer>? forcedSize, optional org.connectbot.terminal.ModifierManager? modifierManager, optional kotlin.jvm.functions.Function1<org.connectbot.terminal.SelectionController,kotlin.Unit>? onSelectionControllerAvailable, optional kotlin.jvm.functions.Function1<java.lang.String,kotlin.Unit> onHyperlinkClick, optional kotlin.jvm.functions.Function1<org.connectbot.terminal.ComposeController,kotlin.Unit>? onComposeControllerAvailable, optional kotlin.jvm.functions.Function0<kotlin.Unit>? onPasteRequest, optional org.connectbot.terminal.RightAltMode rightAltMode, optional org.connectbot.terminal.DelKeyMode delKeyMode, optional kotlin.jvm.functions.Function1<androidx.compose.ui.input.key.KeyEvent,java.lang.Boolean>? onInterceptKey);
+   }
+ 
+   public final class TerminalUrl {
+diff --git a/lib/build.gradle.kts b/lib/build.gradle.kts
+index c6e2949..83f62a2 100644
+--- a/lib/build.gradle.kts
++++ b/lib/build.gradle.kts
+@@ -66,6 +66,8 @@ val cmakeBuildHost by tasks.registering(Exec::class) {
+ android {
+     namespace = "org.connectbot.terminal"
+     compileSdk = 36
++    // Pin to the locally installed NDK so builds are reproducible on this machine.
++    ndkVersion = "27.3.13750724"
+ 
+     defaultConfig {
+         minSdk = 24
+diff --git a/lib/src/main/cpp/Terminal.cpp b/lib/src/main/cpp/Terminal.cpp
+index b727c1b..8068f8a 100644
+--- a/lib/src/main/cpp/Terminal.cpp
++++ b/lib/src/main/cpp/Terminal.cpp
+@@ -427,6 +427,26 @@ bool Terminal::dispatchCharacter(int modifiers, int codepoint) {
+     return true;
+ }
+ 
++// Mouse wheel input handler
++bool Terminal::mouseWheel(bool up, int row, int col) {
++    std::scoped_lock lock(mLock);
++
++    if (!mVt) {
++        return false;
++    }
++
++    // Update libvterm's notion of the pointer position, then report a wheel
++    // button press (button 4 = wheel-up, 5 = wheel-down). libvterm encodes the
++    // event according to the mouse protocol the application negotiated
++    // (X10/UTF-8/SGR/rxvt) and emits it via the output callback. When the
++    // application has not enabled mouse reporting, libvterm produces no output
++    // at all, so this is safe to call unconditionally. Wheel buttons do not
++    // report release events.
++    vterm_mouse_move(mVt, row, col, VTERM_MOD_NONE);
++    vterm_mouse_button(mVt, up ? 4 : 5, true, VTERM_MOD_NONE);
++    return true;
++}
++
+ // Cell run retrieval
+ int Terminal::getCellRun(JNIEnv* env, int row, int col, jobject runObject) {
+     std::scoped_lock lock(mLock);
+@@ -1224,6 +1244,13 @@ Java_org_connectbot_terminal_TerminalNative_nativeDispatchCharacter(JNIEnv* /* e
+     return term->dispatchCharacter(modifiers, character);
+ }
+ 
++JNIEXPORT jboolean JNICALL
++Java_org_connectbot_terminal_TerminalNative_nativeMouseWheel(JNIEnv* /* env */, jobject /* thiz */,
++                                                             jlong ptr, jboolean up, jint row, jint col) {
++    auto* term = reinterpret_cast<Terminal*>(ptr);
++    return term->mouseWheel(up != JNI_FALSE, row, col);
++}
++
+ JNIEXPORT jint JNICALL
+ Java_org_connectbot_terminal_TerminalNative_nativeGetCellRun(JNIEnv* env, jobject /* thiz */,
+                                                              jlong ptr, jint row, jint col, jobject runObject) {
+diff --git a/lib/src/main/cpp/Terminal.h b/lib/src/main/cpp/Terminal.h
+index 03010d9..e0e12b8 100644
+--- a/lib/src/main/cpp/Terminal.h
++++ b/lib/src/main/cpp/Terminal.h
+@@ -61,6 +61,10 @@ public:
+     bool dispatchKey(int modifiers, int key);
+     bool dispatchCharacter(int modifiers, int codepoint);
+ 
++    // Mouse input - reports a wheel event according to the mouse protocol
++    // negotiated by the application; no output when mouse reporting is off
++    bool mouseWheel(bool up, int row, int col);
++
+     // Cell data retrieval for rendering
+     int getCellRun(JNIEnv* env, int row, int col, jobject runObject);
+ 
+diff --git a/lib/src/main/java/org/connectbot/terminal/Terminal.kt b/lib/src/main/java/org/connectbot/terminal/Terminal.kt
+index bbf238d..f483093 100644
+--- a/lib/src/main/java/org/connectbot/terminal/Terminal.kt
++++ b/lib/src/main/java/org/connectbot/terminal/Terminal.kt
+@@ -116,6 +116,7 @@ import kotlinx.coroutines.coroutineScope
+ import kotlinx.coroutines.delay
+ import kotlinx.coroutines.flow.collectLatest
+ import kotlinx.coroutines.launch
++import kotlin.math.abs
+ import kotlin.math.ceil
+ import androidx.compose.ui.input.key.KeyEvent as ComposeKeyEvent
+ 
+@@ -296,6 +297,11 @@ private const val DOUBLE_UNDERLINE_SPACING = 2f
+  *                         Only applies when keyboardEnabled=true. Hardware keyboard always works when keyboardEnabled=true.
+  * @param focusRequester Focus requester for keyboard input (if enabled)
+  * @param onTerminalTap Callback for a simple tap event on the terminal (when no selection is active)
++ * @param onFontSizeChanged Callback invoked when a pinch-to-zoom gesture ends and the terminal
++ *                          font size has changed. Receives the new font size so the host can
++ *                          persist it and feed it back as [initialFontSize]. Not invoked in
++ *                          [forcedSize] mode, where the font size is derived from the forced
++ *                          dimensions.
+  * @param onImeVisibilityChanged Callback invoked when IME visibility changes (true = shown, false = hidden)
+  * @param forcedSize Force terminal to specific dimensions (rows, cols). When set, font size is calculated to fit.
+  * @param onSelectionControllerAvailable Optional callback providing access to the SelectionController for controlling selection mode
+@@ -324,6 +330,7 @@ fun Terminal(
+     showSoftKeyboard: Boolean = true,
+     focusRequester: FocusRequester = remember { FocusRequester() },
+     onTerminalTap: () -> Unit = {},
++    onFontSizeChanged: (TextUnit) -> Unit = {},
+     onImeVisibilityChanged: (Boolean) -> Unit = {},
+     forcedSize: Pair<Int, Int>? = null,
+     modifierManager: ModifierManager? = null,
+@@ -353,6 +360,7 @@ fun Terminal(
+         showSoftKeyboard = showSoftKeyboard,
+         focusRequester = focusRequester,
+         onTerminalTap = onTerminalTap,
++        onFontSizeChanged = onFontSizeChanged,
+         onImeVisibilityChanged = onImeVisibilityChanged,
+         forcedSize = forcedSize,
+         modifierManager = modifierManager,
+@@ -389,6 +397,7 @@ internal fun TerminalWithAccessibility(
+     showSoftKeyboard: Boolean = true,
+     focusRequester: FocusRequester = remember { FocusRequester() },
+     onTerminalTap: () -> Unit = {},
++    onFontSizeChanged: (TextUnit) -> Unit = {},
+     onImeVisibilityChanged: (Boolean) -> Unit = {},
+     forcedSize: Pair<Int, Int>? = null,
+     modifierManager: ModifierManager? = null,
+@@ -419,6 +428,7 @@ internal fun TerminalWithAccessibility(
+     val currentOnTerminalTap by rememberUpdatedState(onTerminalTap)
+     val currentOnHyperlinkClick by rememberUpdatedState(onHyperlinkClick)
+     val currentOnInterceptKey by rememberUpdatedState(onInterceptKey)
++    val currentOnFontSizeChanged by rememberUpdatedState(onFontSizeChanged)
+ 
+     val density = LocalDensity.current
+     val haptic = LocalHapticFeedback.current
+@@ -855,7 +865,10 @@ internal fun TerminalWithAccessibility(
+                 calculatedFontSize = optimalSize.sp
+             }
+         } else {
+-            // When not forcing size, reset the font size to the initial value.
++            // When not forcing size, reset the font size when the host changes
++            // initialFontSize. A pinch-to-zoom gesture updates calculatedFontSize
++            // directly (and reports it via onFontSizeChanged); that change persists
++            // until the host supplies a new initialFontSize.
+             LaunchedEffect(initialFontSize) {
+                 if (calculatedFontSize != initialFontSize) {
+                     calculatedFontSize = initialFontSize
+@@ -1077,6 +1090,11 @@ internal fun TerminalWithAccessibility(
+                         val multiTouchTimeout = down.uptimeMillis + WAIT_FOR_SECOND_TOUCH_MS
+                         var panAccumulator = Offset.Zero
+                         var initialScrollOffset = 0f
++                        // Accumulated vertical travel not yet translated into scroll
++                        // events while scrolling on the alternate screen (which has no
++                        // scrollback buffer). Whole char-rows are consumed as wheel or
++                        // arrow-key events; the remainder carries over.
++                        var altScrollAccumulator = 0f
+ 
+                         // 4. Main event loop
+                         try {
+@@ -1145,24 +1163,59 @@ internal fun TerminalWithAccessibility(
+                                     }
+ 
+                                     GestureType.Scroll -> {
+-                                        // Update scroll offset using total pan from the start of the gesture
+-                                        // to avoid stuttering from stale scrollOffset.value.
+-                                        val currentMaxScroll =
+-                                            screenState.snapshot.scrollback.size * baseCharHeight
+-                                        val newOffset = (initialScrollOffset + panAccumulator.y)
+-                                            .coerceIn(0f, currentMaxScroll)
+-
+-                                        // Cancel any ongoing scroll or fling and snap to the new position.
+-                                        // Using launch with cancel ensures the latest snap always wins.
+-                                        scrollJob?.cancel()
+-                                        scrollJob = launch {
+-                                            scrollOffset.snapTo(newOffset)
+-                                        }
++                                        val snapshot = screenState.snapshot
++                                        if (snapshot.isAltScreenActive) {
++                                            // The alternate screen (tmux/vim/less/full-screen apps)
++                                            // has no scrollback buffer, so translate vertical swipe
++                                            // travel into mouse wheel events - but ONLY when the
++                                            // application has enabled mouse tracking (libvterm then
++                                            // encodes them per the negotiated protocol and delivers
++                                            // them via onKeyboardInput). When mouse tracking is off we
++                                            // deliberately do nothing: there is no key sequence that a
++                                            // mouse-off full-screen app reliably interprets as "scroll"
++                                            // (e.g. arrow keys recall shell history in an inner prompt
++                                            // or edit a TUI's draft), and injecting input an app does
++                                            // not treat as scroll corrupts its state. Doing nothing is
++                                            // safe. One char-row of travel = one wheel event; swiping
++                                            // down shows earlier content, matching primary-screen
++                                            // scrollback.
++                                            altScrollAccumulator += dragAmount.y
++                                            val steps = scrollDeltaToWheelSteps(altScrollAccumulator, baseCharHeight)
++                                            if (steps != 0 && snapshot.mouseTrackingActive) {
++                                                altScrollAccumulator -= steps * baseCharHeight
++                                                val scrollUp = steps > 0
++                                                val eventCol = (change.position.x / baseCharWidth).toInt()
++                                                    .coerceIn(0, snapshot.cols - 1)
++                                                val eventRow = (change.position.y / baseCharHeight).toInt()
++                                                    .coerceIn(0, snapshot.rows - 1)
++                                                repeat(abs(steps)) {
++                                                    terminalEmulator.sendMouseWheel(scrollUp, eventRow, eventCol)
++                                                }
++                                            } else if (!snapshot.mouseTrackingActive) {
++                                                // Mouse tracking off: discard accumulated travel so it
++                                                // doesn't burst out if tracking is later enabled.
++                                                altScrollAccumulator = 0f
++                                            }
++                                        } else {
++                                            // Update scroll offset using total pan from the start of the gesture
++                                            // to avoid stuttering from stale scrollOffset.value.
++                                            val currentMaxScroll =
++                                                snapshot.scrollback.size * baseCharHeight
++                                            val newOffset = (initialScrollOffset + panAccumulator.y)
++                                                .coerceIn(0f, currentMaxScroll)
++
++                                            // Cancel any ongoing scroll or fling and snap to the new position.
++                                            // Using launch with cancel ensures the latest snap always wins.
++                                            scrollJob?.cancel()
++                                            scrollJob = launch {
++                                                scrollOffset.snapTo(newOffset)
++                                            }
+ 
+-                                        // Update terminal buffer scrollback position
+-                                        val scrolledLines =
+-                                            (newOffset / baseCharHeight).toInt()
+-                                        screenState.scrollBy(scrolledLines - screenState.scrollbackPosition)
++                                            // Update terminal buffer scrollback position
++                                            val scrolledLines =
++                                                (newOffset / baseCharHeight).toInt()
++                                            screenState.scrollBy(scrolledLines - screenState.scrollbackPosition)
++                                        }
+                                     }
+ 
+                                     else -> {}
+@@ -1212,8 +1265,24 @@ internal fun TerminalWithAccessibility(
+                                 }
+                             }
+ 
+-                            // Gesture ended - reset
++                            // Gesture ended - fold the accumulated zoom into a persistent
++                            // font size so pinch-to-zoom keeps its effect instead of
++                            // snapping back. Skipped in forcedSize mode, where the font
++                            // size is derived from the forced dimensions and must not be
++                            // overridden.
+                             isZooming = false
++                            if (forcedSize == null && zoomScale != 1f) {
++                                val newSizeSp = applyPinchZoomToFontSize(
++                                    currentSp = calculatedFontSize.value,
++                                    zoomScale = zoomScale,
++                                    minSp = minFontSize.value,
++                                    maxSp = maxFontSize.value,
++                                )
++                                if (newSizeSp != calculatedFontSize.value) {
++                                    calculatedFontSize = newSizeSp.sp
++                                    currentOnFontSizeChanged(calculatedFontSize)
++                                }
++                            }
+                             zoomScale = 1f
+                             zoomOffset = Offset.Zero
+ 
+@@ -1226,18 +1295,23 @@ internal fun TerminalWithAccessibility(
+ 
+                         when (gestureType) {
+                             GestureType.Scroll -> {
+-                                // Apply fling animation
+-                                val velocity = velocityTracker.calculateVelocity()
+-                                scrollJob?.cancel()
+-                                scrollJob = launch {
+-                                    scrollOffset.animateDecay(
+-                                        initialVelocity = velocity.y,
+-                                        animationSpec = splineBasedDecay(density),
+-                                    ) {
+-                                        // Update terminal buffer during animation
+-                                        val scrolledLines =
+-                                            (value / baseCharHeight).toInt()
+-                                        screenState.scrollBy(scrolledLines - screenState.scrollbackPosition)
++                                // Apply fling animation. Only for the primary screen's
++                                // scrollback: alt-screen scrolling sends discrete input
++                                // events to the application, and a fling would fire an
++                                // unbounded burst of them.
++                                if (!screenState.snapshot.isAltScreenActive) {
++                                    val velocity = velocityTracker.calculateVelocity()
++                                    scrollJob?.cancel()
++                                    scrollJob = launch {
++                                        scrollOffset.animateDecay(
++                                            initialVelocity = velocity.y,
++                                            animationSpec = splineBasedDecay(density),
++                                        ) {
++                                            // Update terminal buffer during animation
++                                            val scrolledLines =
++                                                (value / baseCharHeight).toInt()
++                                            screenState.scrollBy(scrolledLines - screenState.scrollbackPosition)
++                                        }
+                                     }
+                                 }
+                             }
+@@ -1934,6 +2008,41 @@ internal fun applyHandleDrag(
+     }
+ }
+ 
++/**
++ * Folds a completed pinch-to-zoom gesture into a persistent font size.
++ *
++ * The transient visual zoom scale accumulated during the gesture is applied to the
++ * current font size and clamped into the allowed range, producing the size the
++ * terminal should re-layout with once the gesture ends.
++ *
++ * @param currentSp Current font size in sp
++ * @param zoomScale Accumulated zoom scale at gesture end (1f = no change)
++ * @param minSp Minimum allowed font size in sp
++ * @param maxSp Maximum allowed font size in sp
++ */
++@VisibleForTesting
++internal fun applyPinchZoomToFontSize(
++    currentSp: Float,
++    zoomScale: Float,
++    minSp: Float,
++    maxSp: Float,
++): Float = (currentSp * zoomScale).coerceIn(minSp, maxSp)
++
++/**
++ * Converts accumulated vertical swipe distance into whole mouse-wheel clicks,
++ * one step per character-row of travel.
++ *
++ * Truncates toward zero so partial rows stay in the caller's accumulator and carry
++ * over into the next event. A positive result means the finger moved down, i.e. the
++ * content should scroll toward earlier output (wheel-up), matching the direction of
++ * primary-screen scrollback.
++ *
++ * @param accumulatedPx Accumulated vertical finger travel in pixels
++ * @param charHeightPx Height of one character row in pixels
++ */
++@VisibleForTesting
++internal fun scrollDeltaToWheelSteps(accumulatedPx: Float, charHeightPx: Float): Int = if (charHeightPx <= 0f) 0 else (accumulatedPx / charHeightPx).toInt()
++
+ /**
+  * Check if a touch position is near a selection handle.
+  * Returns (touchingStart, touchingEnd).
+diff --git a/lib/src/main/java/org/connectbot/terminal/TerminalEmulator.kt b/lib/src/main/java/org/connectbot/terminal/TerminalEmulator.kt
+index 0f4275e..d0ec4f8 100644
+--- a/lib/src/main/java/org/connectbot/terminal/TerminalEmulator.kt
++++ b/lib/src/main/java/org/connectbot/terminal/TerminalEmulator.kt
+@@ -342,6 +342,7 @@ internal class TerminalEmulatorImpl(
+     // Terminal properties
+     private var terminalTitle = ""
+     private var isAltScreenActive = false
++    private var mouseTrackingActive = false
+ 
+     // Scrollback buffer
+     private val scrollback = mutableListOf<TerminalLine>()
+@@ -448,6 +449,23 @@ internal class TerminalEmulatorImpl(
+         terminalNative.dispatchCharacter(modifiers, codepoint)
+     }
+ 
++    /**
++     * Send a mouse wheel event at the given cell position.
++     *
++     * The event is encoded by libvterm according to the mouse protocol the
++     * application negotiated (X10/UTF-8/SGR/rxvt) and delivered through the
++     * regular onKeyboardInput output path. When the application has not
++     * enabled mouse tracking, libvterm emits nothing, so this is safe to call
++     * unconditionally.
++     *
++     * @param up true for wheel-up (scroll toward earlier content), false for wheel-down
++     * @param row Cell row of the pointer (0-based)
++     * @param col Cell column of the pointer (0-based)
++     */
++    internal fun sendMouseWheel(up: Boolean, row: Int, col: Int) {
++        terminalNative.mouseWheel(up, row, col)
++    }
++
+     /**
+      * Clears the terminal emulator screen.
+      */
+@@ -579,8 +597,11 @@ internal class TerminalEmulatorImpl(
+         synchronized(damageLock) {
+             when (value) {
+                 is TerminalProperty.StringValue -> {
+-                    // Property 7 is VTERM_PROP_TITLE (from vterm.h line 257)
+-                    if (prop == 7) {
++                    // VTERM_PROP_TITLE has enum value 4 (vterm.h: CURSORVISIBLE=1,
++                    // CURSORBLINK=2, ALTSCREEN=3, TITLE=4). Was previously checked as
++                    // 7 (a header line offset, not the enum value), so title updates
++                    // never fired.
++                    if (prop == 4) {
+                         terminalTitle = value.value
+                         propertyChanged = true
+                     }
+@@ -609,21 +630,35 @@ internal class TerminalEmulatorImpl(
+                 }
+ 
+                 is TerminalProperty.IntValue -> {
+-                    // Property 6 is VTERM_PROP_CURSORSHAPE (from vterm.h line 260)
+-                    if (prop == 6) {
+-                        cursorShape = when (value.value) {
+-                            1 -> CursorShape.BLOCK
+-
+-                            // VTERM_PROP_CURSORSHAPE_BLOCK
+-                            2 -> CursorShape.UNDERLINE
+-
+-                            // VTERM_PROP_CURSORSHAPE_UNDERLINE
+-                            3 -> CursorShape.BAR_LEFT
++                    when (prop) {
++                        // VTERM_PROP_CURSORSHAPE has enum value 7 (vterm.h:
++                        // ...REVERSE=6, CURSORSHAPE=7, MOUSE=8). Was previously
++                        // checked as 6 (a header line offset, not the enum value),
++                        // so cursor-shape updates never fired.
++                        7 -> {
++                            cursorShape = when (value.value) {
++                                1 -> CursorShape.BLOCK
++
++                                // VTERM_PROP_CURSORSHAPE_BLOCK
++                                2 -> CursorShape.UNDERLINE
++
++                                // VTERM_PROP_CURSORSHAPE_UNDERLINE
++                                3 -> CursorShape.BAR_LEFT
++
++                                // VTERM_PROP_CURSORSHAPE_BAR_LEFT
++                                else -> CursorShape.BLOCK
++                            }
++                            propertyChanged = true
++                        }
+ 
+-                            // VTERM_PROP_CURSORSHAPE_BAR_LEFT
+-                            else -> CursorShape.BLOCK
++                        // VTERM_PROP_MOUSE has enum value 8. Non-zero means the
++                        // application enabled mouse tracking (DECSET 1000/1002/1003);
++                        // used to decide whether touch scrolling on the alternate
++                        // screen sends wheel events.
++                        8 -> {
++                            mouseTrackingActive = value.value != 0
++                            propertyChanged = true
+                         }
+-                        propertyChanged = true
+                     }
+                 }
+ 
+@@ -1118,6 +1153,8 @@ internal class TerminalEmulatorImpl(
+         // the lock here, the snapshot-building thread might see a stale reference.
+         val lines: List<TerminalLine>
+         val scrollbackCopy: List<TerminalLine>
++        val altScreenActive: Boolean
++        val mouseTracking: Boolean
+         synchronized(damageLock) {
+             if (scrollbackDirty) {
+                 scrollbackSnapshot = scrollback.toList()
+@@ -1125,6 +1162,8 @@ internal class TerminalEmulatorImpl(
+             }
+             lines = currentLines.toList() // Immutable copy (24 references)
+             scrollbackCopy = scrollbackSnapshot // Reuse cached immutable copy
++            altScreenActive = isAltScreenActive
++            mouseTracking = mouseTrackingActive
+         }
+ 
+         return TerminalSnapshot(
+@@ -1140,6 +1179,8 @@ internal class TerminalEmulatorImpl(
+             cols = cols,
+             timestamp = System.currentTimeMillis(),
+             sequenceNumber = sequenceNumber++,
++            isAltScreenActive = altScreenActive,
++            mouseTrackingActive = mouseTracking,
+         )
+     }
+ 
+diff --git a/lib/src/main/java/org/connectbot/terminal/TerminalNative.kt b/lib/src/main/java/org/connectbot/terminal/TerminalNative.kt
+index 4aa9178..f36d268 100644
+--- a/lib/src/main/java/org/connectbot/terminal/TerminalNative.kt
++++ b/lib/src/main/java/org/connectbot/terminal/TerminalNative.kt
+@@ -108,6 +108,23 @@ internal class TerminalNative(callbacks: TerminalCallbacks) : AutoCloseable {
+         return nativeDispatchCharacter(nativePtr, modifiers, character)
+     }
+ 
++    /**
++     * Send a mouse wheel event to the terminal.
++     * This generates a mouse report via onKeyboardInput() encoded according to
++     * the mouse protocol negotiated by the application (X10/UTF-8/SGR/rxvt).
++     * When the application has not enabled mouse tracking, no output is
++     * generated.
++     *
++     * @param up true for wheel-up, false for wheel-down
++     * @param row Cell row of the pointer (0-based)
++     * @param col Cell column of the pointer (0-based)
++     * @return true if handled
++     */
++    fun mouseWheel(up: Boolean, row: Int, col: Int): Boolean {
++        checkNotClosed()
++        return nativeMouseWheel(nativePtr, up, row, col)
++    }
++
+     /**
+      * Get a run of cells with identical formatting starting at the given position.
+      * This is the primary method for retrieving terminal content for rendering.
+@@ -213,6 +230,7 @@ internal class TerminalNative(callbacks: TerminalCallbacks) : AutoCloseable {
+     private external fun nativeResize(ptr: Long, rows: Int, cols: Int): Int
+     private external fun nativeDispatchKey(ptr: Long, modifiers: Int, key: Int): Boolean
+     private external fun nativeDispatchCharacter(ptr: Long, modifiers: Int, character: Int): Boolean
++    private external fun nativeMouseWheel(ptr: Long, up: Boolean, row: Int, col: Int): Boolean
+     private external fun nativeGetCellRun(ptr: Long, row: Int, col: Int, run: CellRun): Int
+     private external fun nativeSetPaletteColors(ptr: Long, colors: IntArray, count: Int): Int
+     private external fun nativeSetDefaultColors(ptr: Long, fgColor: Int, bgColor: Int): Int
+diff --git a/lib/src/main/java/org/connectbot/terminal/TerminalSnapshot.kt b/lib/src/main/java/org/connectbot/terminal/TerminalSnapshot.kt
+index c304cf6..50055fe 100644
+--- a/lib/src/main/java/org/connectbot/terminal/TerminalSnapshot.kt
++++ b/lib/src/main/java/org/connectbot/terminal/TerminalSnapshot.kt
+@@ -50,6 +50,10 @@ internal enum class CursorShape {
+  * @property cols Number of columns in the visible terminal
+  * @property timestamp Timestamp when this snapshot was created (System.currentTimeMillis())
+  * @property sequenceNumber Monotonically increasing sequence number for ordering snapshots
++ * @property isAltScreenActive Whether the alternate screen (full-screen apps) is active
++ *                             (VTERM_PROP_ALTSCREEN). The alternate screen has no scrollback.
++ * @property mouseTrackingActive Whether the application has enabled mouse tracking
++ *                               (VTERM_PROP_MOUSE != none, i.e. DECSET 1000/1002/1003)
+  */
+ internal data class TerminalSnapshot(
+     val lines: List<TerminalLine>,
+@@ -64,6 +68,8 @@ internal data class TerminalSnapshot(
+     val cols: Int,
+     val timestamp: Long,
+     val sequenceNumber: Long,
++    val isAltScreenActive: Boolean = false,
++    val mouseTrackingActive: Boolean = false,
+ ) {
+     companion object {
+         /**
+diff --git a/lib/src/test/java/org/connectbot/terminal/PinchZoomFontSizeTest.kt b/lib/src/test/java/org/connectbot/terminal/PinchZoomFontSizeTest.kt
+new file mode 100644
+index 0000000..6babfdf
+--- /dev/null
++++ b/lib/src/test/java/org/connectbot/terminal/PinchZoomFontSizeTest.kt
+@@ -0,0 +1,56 @@
++/*
++ * ConnectBot Terminal
++ * Copyright 2025 Kenny Root
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *     http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.connectbot.terminal
++
++import org.junit.Assert.assertEquals
++import org.junit.Test
++
++class PinchZoomFontSizeTest {
++
++    @Test
++    fun zoomIn_scalesFontSizeUp() {
++        assertEquals(20f, applyPinchZoomToFontSize(currentSp = 10f, zoomScale = 2f, minSp = 6f, maxSp = 30f), 0.001f)
++    }
++
++    @Test
++    fun zoomOut_scalesFontSizeDown() {
++        assertEquals(7f, applyPinchZoomToFontSize(currentSp = 14f, zoomScale = 0.5f, minSp = 6f, maxSp = 30f), 0.001f)
++    }
++
++    @Test
++    fun identityScale_keepsFontSize() {
++        assertEquals(13f, applyPinchZoomToFontSize(currentSp = 13f, zoomScale = 1f, minSp = 6f, maxSp = 30f), 0.001f)
++    }
++
++    @Test
++    fun zoomIn_clampsToMax() {
++        assertEquals(30f, applyPinchZoomToFontSize(currentSp = 20f, zoomScale = 3f, minSp = 6f, maxSp = 30f), 0.001f)
++    }
++
++    @Test
++    fun zoomOut_clampsToMin() {
++        assertEquals(6f, applyPinchZoomToFontSize(currentSp = 8f, zoomScale = 0.5f, minSp = 6f, maxSp = 30f), 0.001f)
++    }
++
++    @Test
++    fun currentAlreadyOutsideBounds_isPulledBackIntoRange() {
++        // Defensive: if the current size somehow ends up outside min/max, the
++        // fold-in result is still clamped into the valid range.
++        assertEquals(30f, applyPinchZoomToFontSize(currentSp = 40f, zoomScale = 1f, minSp = 6f, maxSp = 30f), 0.001f)
++        assertEquals(6f, applyPinchZoomToFontSize(currentSp = 2f, zoomScale = 1f, minSp = 6f, maxSp = 30f), 0.001f)
++    }
++}
+diff --git a/lib/src/test/java/org/connectbot/terminal/ScrollWheelStepsTest.kt b/lib/src/test/java/org/connectbot/terminal/ScrollWheelStepsTest.kt
+new file mode 100644
+index 0000000..d1ef4f5
+--- /dev/null
++++ b/lib/src/test/java/org/connectbot/terminal/ScrollWheelStepsTest.kt
+@@ -0,0 +1,73 @@
++/*
++ * ConnectBot Terminal
++ * Copyright 2025 Kenny Root
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *     http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.connectbot.terminal
++
++import org.junit.Assert.assertEquals
++import org.junit.Test
++
++// Steps drive alt-screen mouse-wheel reporting only; when the app has not enabled
++// mouse tracking the caller discards the accumulator and sends nothing (no arrow-key
++// fallback), so the step math below is used solely to pace wheel events.
++class ScrollWheelStepsTest {
++
++    @Test
++    fun lessThanOneRow_producesNoSteps() {
++        assertEquals(0, scrollDeltaToWheelSteps(accumulatedPx = 19.9f, charHeightPx = 20f))
++        assertEquals(0, scrollDeltaToWheelSteps(accumulatedPx = -19.9f, charHeightPx = 20f))
++    }
++
++    @Test
++    fun oneRowDown_producesOneStep() {
++        assertEquals(1, scrollDeltaToWheelSteps(accumulatedPx = 20f, charHeightPx = 20f))
++    }
++
++    @Test
++    fun oneRowUp_producesMinusOneStep() {
++        assertEquals(-1, scrollDeltaToWheelSteps(accumulatedPx = -20f, charHeightPx = 20f))
++    }
++
++    @Test
++    fun multipleRows_truncateTowardZero() {
++        assertEquals(3, scrollDeltaToWheelSteps(accumulatedPx = 79.9f, charHeightPx = 20f))
++        assertEquals(-3, scrollDeltaToWheelSteps(accumulatedPx = -79.9f, charHeightPx = 20f))
++    }
++
++    @Test
++    fun residualAfterConsumingSteps_carriesOver() {
++        // Simulates the gesture loop: consume whole steps, keep the remainder.
++        var accumulator = 0f
++        val charHeight = 20f
++        var events = 0
++        // Ten 7px drags = 70px total => 3 whole rows, 10px residual.
++        repeat(10) {
++            accumulator += 7f
++            val steps = scrollDeltaToWheelSteps(accumulator, charHeight)
++            if (steps != 0) {
++                accumulator -= steps * charHeight
++                events += steps
++            }
++        }
++        assertEquals(3, events)
++        assertEquals(10f, accumulator, 0.001f)
++    }
++
++    @Test
++    fun zeroOrNegativeCharHeight_isSafe() {
++        assertEquals(0, scrollDeltaToWheelSteps(accumulatedPx = 100f, charHeightPx = 0f))
++        assertEquals(0, scrollDeltaToWheelSteps(accumulatedPx = 100f, charHeightPx = -5f))
++    }
++}
