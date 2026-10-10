@@ -15,31 +15,13 @@
 //!
 //! 重装时找到 BEGIN/END 范围整块替换；卸载时整块删除。用户在块外的任何内容不动。
 //!
-//! ## 🔴 本模块从「PowerShell 专用」扩到**两种方言**
+//! ## 两种方言，一份实现
 //!
-//! 立件时现打的账（`K-R57` 摸底 →）：**本机 POSIX 那一格，装与查都缺。**
+//! 装进 POSIX rc 与 PowerShell `$PROFILE` 的内容来自同一个常量（[`CCM_WRAPPER_SNIPPET`] · 模板 `cc.ps1.tpl`），
+//! 合块与剥块走同一份实现（[`merge_profile_block`] / [`strip_profile_block`]），围栏各一对标记。
+//! 块外的内容一个字节都不动：围栏之外的行边界只有用户知道。
 //!
-//! | 面 | 本机 Windows | 本机 POSIX（本件之前） | 远端 POSIX |
-//! |---|---|---|---|
-//! | 装「别名块」 | [`install_to_profile`] | 🔴 **零口** | `sftp::install_remote_ccm_helper`〔散文墓碑〕（今天就是 [`install_to_profile`]，带远端 `origin`） |
-//! | 查「你 rc 里那几行是旧的」 | `scan_legacy_profiles`〔散文墓碑〕（删了：每份候选各带块的现状） | 🔴 **零口** | —— |
-//!
-//! 补法有两条硬边界，两条都是**这件事的一半价值**：
-//!
-//! 1. **不许变成第四套。** 装进本机 rc 的内容与远端那个口来自**同一个常量**
-//!    （[`CCM_WRAPPER_SNIPPET`]），合块与剥块走**同一份实现**
-//!    （[`merge_profile_block`] / [`strip_profile_block`]），围栏是**同一对标记**
-//!    （[`CCM_PROFILE_BEGIN`] / `..._END`）。这几样从前住 `sftp.rs`，今天住本模块尾部。本模块**一个字节的 snippet 都不生成**，
-//!    也**没有第二套 merge/strip** —— 见 [`plan_install`] / [`plan_uninstall`]。
-//! 2. **一个字节都不许删用户的行**（`K31` + 用户逐字「原本的配置要手动删除」）。
-//!    「查」这一半的产物是 [`render_manual_cleanup_hint`]：**逐行指名 + 一段让他自己动手的提示**，
-//!    产品自己不动手。理由不是保守，是**做不到**：那些行没有围栏，边界只有人知道
-//!    （`K-R57` 现打：用户机器上 10 个真使用者全是裸行）。
-//!
-//! ⚠ **方言不是「猜路径」。** 路径始终由界面上的人选（「其它文件」一直是产品特性）。
-//! `dialect.rs::Shell::of_target` 回答的是**另一个问题**：人选定了这份文件之后，往里写哪种语言。
-//! 把 `function cc { … }` 写进 `~/.bashrc` 在任何情形下都不是对的答案 ——
-//! 而本件之前这条路**只会**写 PowerShell。
+//! 方言不是「猜路径」：路径由界面上的人选；`dialect.rs::Shell::of_target` 答的是选定之后往里写哪种语言。
 
 use copy_core::copy_text;
 use serde::Serialize;
@@ -95,16 +77,6 @@ pub(crate) struct BlockState {
     pub present: bool,
     /// 块外自己定义的、与清单里某条同名的函数（只提醒，不替人改）。
     pub conflicting_functions: Vec<NameClash>,
-    /// 🔴 **「你 rc 里这几行是旧的」那段话。** 空串 = 没有要清的。
-    ///
-    /// 它是 [`render_manual_cleanup_hint`] 的产物：**逐行指名**（行号 + 原文）
-    /// 加一段给用户自己动手的说明。**产品一个字节都不删**（`K31` + 用户逐字
-    /// 「原本的配置要手动删除」）—— 那些行没有围栏，边界只有人知道。
-    ///
-    /// ⚠ **只对 [`Shell::Posix`] 有内容**：它找的是**根本没有围栏的裸行**。
-    /// 「整块装在了别的哪份里」是另一件事，今天由每份候选各自的 [`BlockState::present`] 照实答
-    /// （从前 PowerShell 那一侧另有一段只查 `profile.ps1` 两份的遗留扫描，随候选收成一份删了）。
-    pub manual_cleanup_hint: String,
 }
 
 /// **只读、纯函数**：一份启动文件的正文（盘上原样，BOM 在这里剥）→ 别名块的现状。
@@ -121,12 +93,6 @@ pub(crate) fn block_state(path: &Path, raw: &str, names: &[String]) -> BlockStat
                 c
             })
             .collect(),
-        manual_cleanup_hint: match flavor {
-            Shell::PowerShell => String::new(),
-            Shell::Posix => {
-                render_manual_cleanup_hint(&path.to_string_lossy(), &scan_legacy_rc_lines(content))
-            }
-        },
     }
 }
 
@@ -218,57 +184,10 @@ fn block_presence(flavor: Shell, content: &str) -> bool {
     }
 }
 
-/// rc 里**围栏之外**、指着 `ccm` 的一行是什么形状。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum LegacyRcKind {
-    /// `名字() { … ccm … }` —— **真使用者**（`K-R57` 现打：用户机器上那 14 行里的 10 行）。
-    Function,
-    /// 注释行（`#` 打头）。指名它只为让读的人知道「这几行也提到了 ccm」，不催他删。
-    Comment,
-    /// 其它（`alias cc=…` · `export PATH=…/ccm` · 直接调一次 …）。
-    Other,
-}
-
-/// rc 里**围栏之外**、指着 `ccm` 的一行。**原文原样带着**，因为产品要做的是指名，不是改写。
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct LegacyRcLine {
-    /// 1 起的行号 —— 「逐行指名」的那个「行」。
-    pub line_no: usize,
-    /// **一整行的原文**，一个字节都没动。
-    pub text: String,
-    /// 形状。
-    pub kind: LegacyRcKind,
-    /// 它定义的那个函数名（只有 [`LegacyRcKind::Function`] 有）。
-    pub name: Option<String>,
-}
-
-/// `ccm` 这三个字母在这一行里是不是**一个独立的词**。
-///
-/// ⚠ 要边界，不要裸 `contains`：`~/.cc-monitor/` 里没有 `ccm`，但 `ccmx` / `myccm` 有 ——
-/// 匹配单位比事实小正是本仓那条递减棘轮在数的东西。
-fn mentions_ccm(line: &str) -> bool {
-    let b = line.as_bytes();
-    let word = |c: u8| (c as char).is_ascii_alphanumeric() || c == b'_';
-    let mut from = 0usize;
-    while let Some(k) = line[from..].find("ccm") {
-        let at = from + k;
-        let left_ok = at == 0 || !word(b[at - 1]);
-        let right = at + 3;
-        let right_ok = right >= b.len() || !word(b[right]);
-        if left_ok && right_ok {
-            return true;
-        }
-        from = at + 3;
-    }
-    false
-}
-
 /// 这一行是不是 cc-monitor 自己的围栏标记（每一对都认）。
 ///
-/// 认的是**共同前缀** `# === cc-monitor`，而不是某一对 —— 今天是 `profile_installer` 的 `BEGIN_MARKER`
-/// 与 `sftp` 的 `CCM_PROFILE_BEGIN` 两对；从前还有 `account_aliases` 包 rc 里那一行 source 的第三对
-/// （那一步退役了，用户盘上可能还留着那一块 —— 共同前缀照样认得它是**我们的**边界，不当成用户的裸行）。
-/// 这一格问的是「这一行是不是**我们的**边界」，那个答案对每一对是同一个。
+/// 认的是共同前缀 `# === cc-monitor`（[`BEGIN_MARKER`] 与 `CCM_PROFILE_BEGIN` 两对都是它）：
+/// 这一格问的是「这一行是不是我们的边界」，那个答案对每一对是同一个。
 fn fence_marker(line: &str) -> Option<bool> {
     let l = line.trim_start();
     if !l.starts_with("# === cc-monitor") {
@@ -281,89 +200,6 @@ fn fence_marker(line: &str) -> Option<bool> {
     } else {
         None
     }
-}
-
-/// 🔴 `KR62D2` 的正题：**扫一份 POSIX rc 里围栏之外的裸行。**
-///
-/// # 为什么不是「给 `scan_legacy_profiles`〔散文墓碑〕的路径表加两行」
-///
-/// 那个函数（已删）认的是 [`has_block`]（**围栏**）。而 `K-R57` 现打用户本机：
-/// `~/.bashrc` 三种围栏**全部零命中**，那 14 行 ccm 相关**全是裸写的**
-/// ⇒ **加路径解决不了「够不着裸行」**，只会让读数看起来像做完了。
-/// ⇒ 这里换的是**判法**：按行走、跳过我们自己的围栏段、按**词**认 `ccm`。
-///
-/// # 它诚实的边界（写出来，别读大）
-///
-/// - 它认的是「**提到 ccm**」，不是「**这一行是旧的**」。一个在自己函数里调 `ccm` 的用户
-///   （`src/shared/ccm-aliases.sh` 头注逐字鼓励这么做）也会被指名 —— 所以产物是
-///   [`render_manual_cleanup_hint`] 那种「你自己定」的措辞，**不是** 「请删除」。
-/// - 形状按 `名字() {` 认函数（方言的 `declared_function`）。
-///   `function cc { … }` 这一写法会落进 [`LegacyRcKind::Other`] —— **漏的是分类，不是那一行**，
-///   它仍然被指名。
-pub(crate) fn scan_legacy_rc_lines(content: &str) -> Vec<LegacyRcLine> {
-    let mut out = Vec::new();
-    let mut inside = false;
-    for (i, line) in content.lines().enumerate() {
-        if let Some(open) = fence_marker(line) {
-            inside = open;
-            continue;
-        }
-        if inside || !mentions_ccm(line) {
-            continue;
-        }
-        let l = line.trim_start();
-        let (kind, name) = if l.starts_with('#') {
-            (LegacyRcKind::Comment, None)
-        } else if let Some(n) = Shell::Posix.dialect().declared_function(l) {
-            (LegacyRcKind::Function, Some(n))
-        } else {
-            (LegacyRcKind::Other, None)
-        };
-        out.push(LegacyRcLine {
-            line_no: i + 1,
-            text: line.to_string(),
-            kind,
-            name,
-        });
-    }
-    out
-}
-
-// 这里原来有 POSIX「`名字() {` ⇒ 名字」那一份认法 —— 定义函数的写法归方言，搬进
-//   （`platform/shell/dialect.rs` 的 `ShellDialect::declared_function`），本扫描与块外同名函数那一格共用那一份。
-
-/// 🔴 `KR62D2` 的产物：**一段让用户自己动手的提示。** 没有要清的就是空串。
-///
-/// **产品一个字节都不删**（`K31` + 用户逐字「原本的配置要手动删除」）。
-/// 措辞刻意不是「请删除」：见 [`scan_legacy_rc_lines`] 的诚实边界那一节。
-/// 「哪一行会和清单里的同名别名打架」是另一格（[`BlockState::conflicting_functions`]）。
-pub(crate) fn render_manual_cleanup_hint(what: &str, hits: &[LegacyRcLine]) -> String {
-    if hits.is_empty() {
-        return String::new();
-    }
-    let mut body = String::new();
-    for h in hits {
-        body.push_str(&copy_text(
-            "rsProfileInstaller.hint.line",
-            &[
-                ("lineNo", &h.line_no.to_string()),
-                ("text", &(h.text.trim_end()).to_string()),
-            ],
-        ));
-    }
-    let mut out = copy_text(
-        "rsProfileInstaller.hint.head",
-        &[
-            ("what", &what.to_string()),
-            ("count", &(hits.len()).to_string()),
-            ("lines", &body.to_string()),
-        ],
-    );
-    out.push_str(&copy_text(
-        "rsProfileInstaller.hint.whereToEdit",
-        &[("what", &what.to_string())],
-    ));
-    out
 }
 
 /// **路径围栏：profile 只能落在用户 home 之内**〔audit-0805 08-08，Phase G 第 86 件〕。

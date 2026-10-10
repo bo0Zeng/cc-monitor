@@ -2595,7 +2595,7 @@ cc-bus 钩子诊断。
 |---|---|---|
 | `home` | ← | 这台的家目录 |
 | `otherRc` | ← | `rcPath` 过了围栏之后的绝对路径 |
-| `rcCandidates` | ← | 启动文件候选（方言答列哪几份）：每份 `{path, sourced, exists, block, unreadable, policy, blockLines}`（`blockLines` = 把别名块装进这一份会写几行），`block` = 别名块现状 `{present, conflictingFunctions, manualCleanupHint}`（`conflictingFunctions` = 块外自己定义的、与配置文件里某一段同名的函数 `{name, line, wins}`；`wins` = 新开的终端里敲这个名字起的是哪一个：`yours`（你写的）· `list`（清单那条）· `unclear`（说不清）） |
+| `rcCandidates` | ← | 启动文件候选（方言答列哪几份）：每份 `{path, sourced, exists, block, unreadable, policy, blockLines}`（`blockLines` = 把别名块装进这一份会写几行），`block` = 别名块现状 `{present, conflictingFunctions}`（`conflictingFunctions` = 块外自己定义的、与配置文件里某一段同名的函数 `{name, line, wins}`；`wins` = 新开的终端里敲这个名字起的是哪一个：`yours`（你写的）· `list`（清单那条）· `unclear`（说不清）） |
 | `rcPath` | → | 人另指的那一份（`null` = 不指）：过围栏（只许落在 home 之内 · 符号链接不许跑出去）后并进候选 |
 | `shell` | → | `posix` / `powershell`（这台后端不在 Windows ⇒ `powershell` 拒） |
 

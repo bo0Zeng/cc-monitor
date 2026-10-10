@@ -694,10 +694,7 @@ fn pinned(hay: &str, needle: &str) -> bool {
     hay.lines().any(|l| l == needle)
 }
 
-/// 一份**只有裸行、一个围栏都没有**的 rc —— `K-R57` 现打用户 `~/.bashrc` 的形状。
-///
-/// 那 14 行里 10 行是真使用者，`名字() { ccm <修饰...> "$@"; }`，另 4 行是注释。
-/// 这里照抄那个形状（名字取同一批），**并且刻意一个 BEGIN/END 都不放**。
+/// 一份一个围栏都没有的 rc：用户自己写的几行（含几条调 `ccm` 的函数与一条无关的函数）。
 const BARE_RC: &str = "\
 # 我自己的一些设置
 export EDITOR=vim
@@ -890,145 +887,6 @@ fn the_flavour_follows_the_file_not_the_machine() {
     }
 }
 
-/// ★★ `KR62D2` 的正题：**一份没有任何围栏的 rc，那些裸行逐行指得出来。**
-///
-/// **死值验**：把查法换回「只认围栏」⇒ 这一条当场红。
-/// 本条自带那把反向尺子（下面第一段）：**围栏那条路在同一份输入上恒空** ——
-/// 所以「只加两条路径给 `scan_legacy_profiles`〔散文墓碑〕」在这里不可能变绿。
-#[test]
-fn bare_lines_with_no_fence_at_all_are_named_line_by_line() {
-    // ① 反向尺子：围栏那条路在这份输入上**什么都看不见**。
-    assert!(
-        !has_block(BARE_RC, BEGIN_MARKER),
-        "这份夹具里居然有围栏 —— 那它就证不了「够不着裸行」这件事"
-    );
-    assert_eq!(
-        super::super::fence::find_pair(
-            BARE_RC,
-            super::CCM_PROFILE_BEGIN,
-            super::CCM_PROFILE_END,
-            "夹具"
-        ),
-        Ok(None),
-        "围栏配对在这份输入上必须是「没有」—— 这正是 `K-R57` 现打用户机器的形状"
-    );
-
-    // ② 正题：逐行指名，行号与原文都要对。
-    let hits = scan_legacy_rc_lines(BARE_RC);
-    let got: Vec<(usize, &str)> = hits.iter().map(|h| (h.line_no, h.text.as_str())).collect();
-    assert_eq!(
-        got,
-        vec![
-            (4, "# ccm 启动器"),
-            (5, "cc()   { ccm \"$@\"; }"),
-            (6, "cct()  { ccm --ccm-tmux \"$@\"; }"),
-            (7, "oo()   { ccm --ccm-agent codex \"$@\"; }"),
-            (8, "workcc()  { ccm --account work \"$@\"; }"),
-            (9, "alias  ccx='ccm --base'"),
-            (11, "# 与 ccm 无关的一行"),
-        ],
-        "逐行指名对不上 —— 行号错一位，用户按着它去删就会删错行"
-    );
-
-    // ③ 分类：四条函数、两条注释、一条 alias。分类错了提示的措辞就会错。
-    let kinds: Vec<LegacyRcKind> = hits.iter().map(|h| h.kind).collect();
-    assert_eq!(
-        kinds,
-        vec![
-            LegacyRcKind::Comment,
-            LegacyRcKind::Function,
-            LegacyRcKind::Function,
-            LegacyRcKind::Function,
-            LegacyRcKind::Function,
-            LegacyRcKind::Other,
-            LegacyRcKind::Comment,
-        ]
-    );
-    assert_eq!(
-        hits.iter()
-            .filter_map(|h| h.name.clone())
-            .collect::<Vec<_>>(),
-        vec!["cc", "cct", "oo", "workcc"]
-    );
-
-    // ④ 与 ccm 无关的行一条都不许进来（`gs() { git status; }` 与 `export EDITOR=vim`）。
-    assert!(
-        !hits.iter().any(|h| h.text.contains("git status")),
-        "把与 ccm 无关的行也指名了 —— 那会让用户去删他自己的东西"
-    );
-}
-
-/// ★ `KR62D2`：**我们自己那一块不算「你的旧行」。**
-///
-/// 三对围栏都要认：`profile_installer` 的、`sftp` 的、`account_aliases` 的。
-/// 认漏一对 ⇒ 装完之后界面立刻回头指着我们自己刚写的那几行说「这是旧的」。
-#[test]
-fn our_own_fenced_block_is_never_reported_as_the_users_old_lines() {
-    let what = "/home/u/.bashrc";
-    let installed = plan_install(Shell::Posix, "export A=1\n", what, "/h").expect("装一次");
-    let hits = scan_legacy_rc_lines(&installed);
-    assert!(
-        hits.is_empty(),
-        "刚装完就把自己那一块指名成「你的旧行」了：{:?}",
-        hits.iter().map(|h| h.line_no).collect::<Vec<_>>()
-    );
-    // 另两对围栏同样要让开。
-    let mixed = format!(
-        "# === cc-monitor aliases BEGIN v1 ===\n\
-             if [ -r \"$HOME/.cc-monitor/account-aliases.sh\" ]; then . \"$HOME/.cc-monitor/account-aliases.sh\"; fi\n\
-             # === cc-monitor aliases END ===\n\
-             cc() {{ ccm \"$@\"; }}\n"
-    );
-    let hits = scan_legacy_rc_lines(&mixed);
-    assert_eq!(
-        hits.iter().map(|h| h.line_no).collect::<Vec<_>>(),
-        vec![4],
-        "围栏内外分不开 —— 只有第 4 行那条裸的才是用户自己的"
-    );
-}
-
-/// ★★ `KR62D2` 的产物：**一段让用户自己动手的提示，而产品一个字节都不删。**
-#[test]
-fn the_hint_names_every_line_and_the_product_deletes_nothing() {
-    let hits = scan_legacy_rc_lines(BARE_RC);
-    let hint = render_manual_cleanup_hint("/home/u/.bashrc", &hits);
-    assert!(!hint.is_empty(), "有裸行却生成了一段空提示");
-    for h in &hits {
-        assert!(
-            copy_core::copy_matches_with(
-                "rsProfileInstaller.hint.line",
-                &[("lineNo", &h.line_no.to_string())],
-                &hint
-            ),
-            "提示里没点名第 {} 行",
-            h.line_no
-        );
-        let line = copy_core::copy_text(
-            "rsProfileInstaller.hint.line",
-            &[
-                ("lineNo", &h.line_no.to_string()),
-                ("text", h.text.trim_end()),
-            ],
-        );
-        let line = line.trim_end_matches('\n');
-        assert!(
-            pinned(&hint, line) || hint.lines().any(|l| l.starts_with(line)),
-            "提示里那一行的原文被改写了 —— 用户要照着它去自己文件里认行"
-        );
-    }
-    // 措辞：**不许**是「请删除」。产品指名，不替人做决定。
-    assert!(
-        copy_core::copy_matches("rsProfileInstaller.hint.head", &hint),
-        "措辞必须把决定权留给用户 —— 我们够不着边界，猜一个边界去删是最坏的那条路"
-    );
-    assert!(
-        copy_core::copy_matches("rsProfileInstaller.hint.head", &hint),
-        "提示要明说产品不动手（`K31` + 用户逐字「原本的配置要手动删除」）"
-    );
-    // 没有裸行时是空串（界面靠它决定这一块出不出现）。
-    assert!(render_manual_cleanup_hint("/home/u/.bashrc", &[]).is_empty());
-}
-
 /// ★★ `K31`：**「查」这一路一个字节都不写。**
 ///
 /// 不是读注释读出来的：真落一份夹具、扫一遍、逐字节比 + 比 mtime，
@@ -1059,7 +917,6 @@ fn scanning_a_rc_changes_not_a_single_byte_on_disk() {
         .find(|c| c.path == p.display().to_string())
         .expect("候选里该有这份 rc")
         .block;
-    assert!(!scan.manual_cleanup_hint.is_empty(), "扫出来的提示是空的");
     assert!(!scan.present, "这份夹具里没有块");
     assert_eq!(
         scan.conflicting_functions,

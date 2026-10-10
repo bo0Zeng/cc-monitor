@@ -72,10 +72,10 @@
     },
     {
       "_": "接缝上两个以上空格是排版，照留。",
-      "key": "rsProfileInstaller.hint.line",
-      "zh": "  行 {lineNo}  {text}\n",
-      "args": { "lineNo": "三", "text": "甲" },
-      "want": "  行三  甲\n"
+      "key": "machineAliases.policy.confirm",
+      "zh": "改动  {ps} 执行策略 → RemoteSigned · 仅当前用户\n之后  本机脚本照常运行 · 网上下载的脚本须签名",
+      "args": { "ps": "甲" },
+      "want": "改动  甲执行策略 → RemoteSigned · 仅当前用户\n之后  本机脚本照常运行 · 网上下载的脚本须签名"
     }
   ]
 }

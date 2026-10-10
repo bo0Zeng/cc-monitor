@@ -1019,8 +1019,7 @@ pub const UNMANAGED_ENV: &[UnmanagedEnv] = &[
     //        profile_installer.rs::discover_profiles"`。
     //
     // 那句话今天是假的：`profile_installer::plan_install` 的 `PosixRc` 臂真装、
-    // `profile_installer::plan_uninstall` 真卸、`profile_installer::scan_legacy_rc_lines`
-    // 真查（而且够得着裸行 —— 围栏那条路够不着）。
+    // `profile_installer::plan_uninstall` 真卸。
     // ⇒ 它上面有了 `ToolSpec` ⇒ 档由 [`environment`] 读 `installable` 派生成
     // [`EnvTier::AppInstalls`]，**不再手写**。留这段墓碑是因为「它曾经在第三档」
     // 是这张表存在理由的最好例子：一个判断当初只能靠「进这张表」表达，

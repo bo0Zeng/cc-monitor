@@ -321,7 +321,7 @@ const DANGLING: readonly string[] = [
   "cc-bus-kill", "cc-bus-list", "cc-bus-meta", "cc-bus-msg", "cc-bus-msg-line", "cc-bus-online",
   "cc-bus-origin", "cc-bus-read", "cc-bus-row", "cc-bus-section", "cc-bus-send", "cc-bus-spawn",
   "cc-bus-spawn-acct", "cc-bus-spawn-dir", "cc-bus-spawn-go", "cc-bus-spawn-out", "cc-bus-spawn-task", "cc-bus-spawn-tool",
-  "cc-bus-status", "ccm-rc-block", "ccm-rc-block-legacy", "code-pending", "ctx-limits", "data-claude-dir",
+  "cc-bus-status", "ccm-rc-block", "code-pending", "ctx-limits", "data-claude-dir",
   "data-machine", "data-page", "data-pane", "diag-fallback", "diag-page", "has-unread",
   "history-search", "kind-ls", "machine-aliases", "machine-conn-fp", "machine-conn-toggle", "machine-page",
   "machine-page-local", "machine-page-sections", "machine-part-components", "machine-part-connection", "md", "paste-block-actions",

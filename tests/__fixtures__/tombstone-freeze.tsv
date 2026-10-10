@@ -48,10 +48,10 @@ REGISTERED	src/backend/agents/claudecode/paths.rs		4
 REGISTERED	tests/frontend/shell/history_tests.rs		10
 REGISTERED	tests/frontend/shell/write_site_registry_tests.rs		8
 REGISTERED	tests/backend/control/files_write_tests.rs		2
-REGISTERED	tests/backend/assets/aliases/block_tests.rs		6
+REGISTERED	tests/backend/assets/aliases/block_tests.rs		5
 REGISTERED	tests/backend/main_argv_table_guard.rs		1
 REGISTERED	src/frontend/shell/src/sftp.rs		11
-REGISTERED	src/backend/assets/aliases/block.rs		10
+REGISTERED	src/backend/assets/aliases/block.rs		7
 REGISTERED	tests/frontend/shell/remote_write_registry_tests.rs		18
 REGISTERED	tests/frontend/shell/local_backend_tests.rs		3
 REGISTERED	src/backend/assets/aliases/mod.rs		1
@@ -427,16 +427,14 @@ TOMBSTONED	tests/frontend/shell/parity_ledger_tests.rs	write_account_aliases	3
 TOMBSTONED	tests/backend/assets/aliases/aliases_tests.rs	validate_alias_line	1
 TOMBSTONED	tests/frontend/ui/settings/panel-deferred-io.vitest.ts	write_account_aliases	1
 TOMBSTONED	src/backend/assets/aliases/block.rs	legacy_profile_paths	1
-TOMBSTONED	src/backend/assets/aliases/block.rs	scan_legacy_profiles	3
+TOMBSTONED	src/backend/assets/aliases/block.rs	scan_legacy_profiles	1
 TOMBSTONED	tests/frontend/shell/parity_ledger_tests.rs	cc_integration_preview	1
 TOMBSTONED	tests/frontend/shell/parity_ledger_tests.rs	cc_integration_status	1
 TOMBSTONED	tests/backend/assets/aliases/block_tests.rs	cc_integration_install	1
 TOMBSTONED	tests/backend/assets/aliases/block_tests.rs	cc_integration_scan_path	1
 TOMBSTONED	tests/backend/assets/aliases/block_tests.rs	cc_integration_uninstall	1
-TOMBSTONED	tests/backend/assets/aliases/block_tests.rs	scan_legacy_profiles	1
 TOMBSTONED	src/frontend/shell/README.md	install_remote_ccm_helper	2
 TOMBSTONED	src/frontend/shell/src/local_backend.rs	install_remote_ccm_helper	1
-TOMBSTONED	src/backend/assets/aliases/block.rs	install_remote_ccm_helper	1
 TOMBSTONED	src/frontend/shell/src/sftp.rs	install_remote_ccm_helper	1
 TOMBSTONED	tests/frontend/shell/remote_write_registry_tests.rs	read_profile_text	2
 TOMBSTONED	tests/frontend/shell/sftp_tests.rs	interpret_profile_read	1

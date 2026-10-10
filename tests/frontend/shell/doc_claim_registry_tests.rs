@@ -1382,3 +1382,367 @@ fn every_invariants_section_cited_in_code_exists() {
         bad.join("\n  ")
     );
 }
+
+// ══════════════════════════════════════════════════════════════════════════════
+// 全部耐久文档：写全了的仓内路径 · 相对链接 · 代码文件名 · 帧命令名都得对得上今天的仓
+//
+// 上面两条只读 `src/doc/`、只认反引号里带目录的路径、按后缀比；10-09 的文档对账在壳的导览里
+// 查出九份早已不在的文件、在 `src/README.md` 里查出两份 —— 它们都不在那两条的人群里。
+// 下面两条的人群 = `src/doc/` ＋ 全仓入口 README（[`durable_docs`]），口径更严：
+// 写成 `src/…` / `tests/…` 的路径按仓根全路径比（不按后缀），文件或目录得在 `git ls-files` 里。
+// ══════════════════════════════════════════════════════════════════════════════
+
+/// 耐久文档的人群：`src/doc/` 下跟踪着的 `.md` ＋ 全仓入口 `README*.md`（不含 vendor 等）。
+///
+/// 不收的：`CHANGELOG.md`（每节是当时那一版的说法，按定义是历史）· `src/doc/IPC-COMMANDS.md`
+/// （从代码生成，`protocol_doc_gen` 逐字节比，不会腐）· `src/shared/*/SKILL.md`（装到用户机器上的说明，
+/// 里面的路径是用户机器上的）· `tests/evidence/` 下的取证记录（记的是当时的读数）。
+fn durable_docs() -> Vec<(String, String)> {
+    let root = repo_root();
+    let mut v: Vec<PathBuf> = doc_files();
+    v.extend(entry_readmes());
+    v.sort();
+    v.dedup();
+    let out: Vec<(String, String)> = v
+        .into_iter()
+        .filter_map(|p| {
+            let rel = p
+                .strip_prefix(&root)
+                .unwrap_or(&p)
+                .to_string_lossy()
+                .replace('\\', "/");
+            if rel == "src/doc/IPC-COMMANDS.md" {
+                return None;
+            }
+            let text = std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("读 {rel} 失败: {e}"));
+            Some((rel, text))
+        })
+        .collect();
+    // 正控：入口 README 与 `src/doc/` 两边都在人群里。
+    for must in [
+        "README.md",
+        "src/frontend/shell/README.md",
+        "tests/e2e/README.md",
+        "src/doc/ARCHITECTURE.md",
+    ] {
+        assert!(
+            out.iter().any(|(r, _)| r == must),
+            "耐久文档的人群里没有 `{must}` —— 口径坏了（收到 {} 份）",
+            out.len()
+        );
+    }
+    out
+}
+
+/// 跟踪着的文件全集 ＋ 它们的每一级目录（仓根相对、正斜杠，目录不带尾 `/`）。
+fn tracked_files_and_dirs() -> (
+    std::collections::BTreeSet<String>,
+    std::collections::BTreeSet<String>,
+) {
+    let files: std::collections::BTreeSet<String> = tracked_files().into_iter().collect();
+    let mut dirs = std::collections::BTreeSet::new();
+    for f in &files {
+        let mut cur = f.as_str();
+        while let Some(i) = cur.rfind('/') {
+            cur = &cur[..i];
+            dirs.insert(cur.to_string());
+        }
+    }
+    (files, dirs)
+}
+
+/// 一行里写全了的仓内路径：`src/` 或 `tests/` 打头（前面不是路径字符），收到路径字符为止。
+/// 带模板记号（`<…>` · `{…}` · `*`）的是写法示例，不是某一份文件，不收。
+fn full_repo_paths_in(line: &str) -> Vec<String> {
+    let b = line.as_bytes();
+    let is_path = |c: u8| c.is_ascii_alphanumeric() || b"_./-".contains(&c);
+    let mut out = Vec::new();
+    let mut i = 0usize;
+    while i < b.len() {
+        let rest = &line[i..];
+        let starts = rest.starts_with("src/") || rest.starts_with("tests/");
+        if starts && (i == 0 || !(is_path(b[i - 1]) || b"<{*".contains(&b[i - 1]))) {
+            let mut e = i;
+            while e < b.len() && (is_path(b[e]) || b"<>{}*".contains(&b[e])) {
+                e += 1;
+            }
+            let raw = &line[i..e];
+            let p = raw.trim_end_matches(['.', '-']);
+            if !p.contains(['<', '>', '{', '}', '*']) {
+                out.push(p.to_string());
+            }
+            i = e.max(i + 1);
+        } else {
+            i += rest.chars().next().map_or(1, char::len_utf8);
+        }
+    }
+    out
+}
+
+/// **耐久文档里写全了的仓内路径、相对链接、代码文件名必须在仓里。**
+///
+/// 三种形状：
+/// 1. `src/…` / `tests/…`（反引号里外都算）—— 按仓根全路径比，文件或目录；
+/// 2. Markdown 相对链接 `](../x/y.md)` —— 按那份文档所在目录解析；
+/// 3. 反引号里的裸代码文件名（`.rs` · `.ts` · `.mjs` · `.sh` · `.py` · `.css`）—— 全仓得有一份同名的。
+///
+/// 写成 crate 内相对（`src/lib.rs` 指壳的那一份）的一律改成仓根全路径：同一个 `src/lib.rs`
+/// 在壳、后端、各共享 crate 里各有一份，读的人分不出指哪一份。
+#[test]
+fn every_repo_path_in_the_durable_docs_exists() {
+    /// 允许名单：解析不到却是对的。每条写清为什么。
+    const ALLOWED: &[(&str, &str)] = &[(
+        "src/frontend/shell/gen/schemas/acl-manifests.json",
+        "tauri 构建生成物（gitignore）：构建过才在盘上，`git ls-files` 里恒没有；文档讲的正是去哪看这份生成物",
+    )];
+    let (files, dirs) = tracked_files_and_dirs();
+    let basenames: std::collections::BTreeSet<&str> = files
+        .iter()
+        .map(|f| f.rsplit('/').next().unwrap_or(f))
+        .collect();
+    let exists = |p: &str| {
+        let q = p.trim_end_matches('/');
+        files.contains(q) || dirs.contains(q)
+    };
+    let mut seen_allowed: std::collections::BTreeSet<&str> = Default::default();
+    let mut bad = Vec::new();
+    let mut checked = 0usize;
+    for (rel, text) in durable_docs() {
+        let doc_dir = rel.rsplit_once('/').map_or("", |(d, _)| d).to_string();
+        let mut in_fence = false;
+        for (i, line) in text.lines().enumerate() {
+            let ln = i + 1;
+            if line.trim_start().starts_with("```") {
+                in_fence = !in_fence;
+            }
+            // ① 写全了的仓内路径（代码块里的也算：文件树与命令示例里写错的一样误导人）
+            for p in full_repo_paths_in(line) {
+                checked += 1;
+                if let Some((a, _)) = ALLOWED.iter().find(|(a, _)| *a == p) {
+                    seen_allowed.insert(a);
+                    continue;
+                }
+                if !exists(&p) {
+                    bad.push(format!("{rel}:{ln}  `{p}` —— 仓里没有这份文件或目录"));
+                }
+            }
+            if in_fence {
+                continue;
+            }
+            // ② Markdown 相对链接
+            let mut from = 0usize;
+            while let Some(k) = line[from..].find("](") {
+                let s = from + k + 2;
+                let Some(e) = line[s..].find(')') else { break };
+                let target = line[s..s + e].split('#').next().unwrap_or("").trim();
+                from = s + e;
+                if target.is_empty()
+                    || target.contains("://")
+                    || target.starts_with("mailto:")
+                    || target.starts_with('/')
+                {
+                    continue;
+                }
+                checked += 1;
+                let mut parts: Vec<&str> = doc_dir.split('/').filter(|x| !x.is_empty()).collect();
+                let mut ok = true;
+                for seg in target.split('/') {
+                    match seg {
+                        "" | "." => {}
+                        ".." => ok &= parts.pop().is_some(),
+                        s => parts.push(s),
+                    }
+                }
+                let resolved = parts.join("/");
+                if !ok || !(exists(&resolved) || resolved.is_empty()) {
+                    bad.push(format!(
+                        "{rel}:{ln}  链接 `{target}` —— 解析成 `{resolved}`，仓里没有"
+                    ));
+                }
+            }
+            // ③ 反引号里的裸代码文件名
+            for chunk in line.split('`').skip(1).step_by(2) {
+                let c = chunk.split("::").next().unwrap_or("").trim();
+                let c = c.split(':').next().unwrap_or(c);
+                if c.contains('/') || c.contains(' ') || c.starts_with('.') {
+                    continue;
+                }
+                let Some((stem, ext)) = c.rsplit_once('.') else { continue };
+                if stem.is_empty()
+                    || !["rs", "ts", "mts", "mjs", "sh", "py", "css"].contains(&ext)
+                    || !c.chars().all(|ch| ch.is_ascii_alphanumeric() || "_.-".contains(ch))
+                {
+                    continue;
+                }
+                checked += 1;
+                if let Some((a, _)) = ALLOWED.iter().find(|(a, _)| *a == c) {
+                    seen_allowed.insert(a);
+                    continue;
+                }
+                if !basenames.contains(c) {
+                    bad.push(format!("{rel}:{ln}  `{c}` —— 全仓没有叫这个名字的文件"));
+                }
+            }
+        }
+    }
+    // 自检：抽取器在干活（今天上千处）；一条合成的悬空路径必须被认出。
+    assert!(checked > 300, "只核了 {checked} 处 —— 抽取器坏了");
+    let ghost = format!("见 `{}/no/such/probe.rs`", "src");
+    assert_eq!(full_repo_paths_in(&ghost), vec![format!("{}/no/such/probe.rs", "src")]);
+    assert!(full_repo_paths_in("`src/frontend/ui/<名>.ts`").is_empty(), "模板形该跳过");
+    // 允许名单保鲜：没人再写的那一条删掉。
+    for (a, why) in ALLOWED {
+        assert!(
+            seen_allowed.contains(a),
+            "允许名单里的 `{a}` 在耐久文档里已经没人写了 —— 删掉这一行（当初的理由：{why}）"
+        );
+    }
+    assert!(
+        bad.is_empty(),
+        "耐久文档点名了这些仓里没有的东西（共核 {checked} 处）：\n  {}\n\n\
+         ⇒ 照现状改：搬了家写新住址，删了的连那句说明一起删（只为旧版存在的说明不留）。\
+         真要留的（生成物这类）进本条的允许名单、写理由。",
+        bad.join("\n  ")
+    );
+}
+
+/// 协议参考里登记的入方向命令（`## 4.` 里的 `#### \`名\``）与出方向帧（`## 1.` 里的 `### \`kind\``）。
+///
+/// 读的是生成物 `IPC-COMMANDS.md`：它由后端 `protocol_doc_gen` 从命令注册表与帧类型逐字节生成、
+/// 并有判据对拍，所以它就是注册表的一份忠实副本；壳这边的判据够不着后端 crate 的注册表本身。
+fn registered_commands_and_frames() -> (
+    std::collections::BTreeSet<String>,
+    std::collections::BTreeSet<String>,
+) {
+    let text = std::fs::read_to_string(repo_root().join("src/doc/IPC-COMMANDS.md"))
+        .expect("读协议参考 IPC-COMMANDS.md");
+    let mut cmds = std::collections::BTreeSet::<String>::new();
+    let mut frames = std::collections::BTreeSet::<String>::new();
+    let mut sec = ' ';
+    for line in text.lines() {
+        if let Some(rest) = line.strip_prefix("## ") {
+            sec = rest.chars().next().unwrap_or(' ');
+            continue;
+        }
+        let head = line.trim_start_matches('#');
+        if head.len() == line.len() || !head.starts_with(" `") {
+            continue;
+        }
+        let Some(name) = head[2..].split('`').next() else { continue };
+        match sec {
+            '4' => {
+                cmds.insert(name.to_string());
+            }
+            '1' => {
+                frames.insert(name.to_string());
+            }
+            _ => {}
+        }
+    }
+    let (c, f) = (cmds, frames);
+    assert!(
+        c.contains("history-lines") && c.contains("cancel") && c.len() > 100,
+        "协议参考里认出的入方向命令只有 {} 条 —— 认法坏了",
+        c.len()
+    );
+    assert!(
+        f.contains("hello") && f.contains("line") && f.len() > 20,
+        "协议参考里认出的出方向帧只有 {} 种 —— 认法坏了",
+        f.len()
+    );
+    (c, f)
+}
+
+/// 「帧命令 `a` · `b`」「帧 `x`」后面紧跟的那一串反引号名（中间只隔 `·` `、` `/` `，` `或` `与` `和` `（` `）` 与空白）。
+/// 返回 (是不是帧命令, 名)。
+fn frame_names_in(line: &str) -> Vec<(bool, String)> {
+    let mut out = Vec::new();
+    let mut from = 0usize;
+    while let Some(k) = line[from..].find('帧') {
+        let mut i = from + k + '帧'.len_utf8();
+        let is_cmd = line[i..].starts_with("命令");
+        if is_cmd {
+            i += "命令".len();
+        }
+        loop {
+            let rest = &line[i..];
+            let skip: usize = rest
+                .chars()
+                .take_while(|c| c.is_whitespace() || "·、/，,或与和（）()…".contains(*c))
+                .map(char::len_utf8)
+                .sum();
+            let rest = &rest[skip..];
+            if !rest.starts_with('`') {
+                break;
+            }
+            let Some(e) = rest[1..].find('`') else { break };
+            let name = &rest[1..1 + e];
+            let shaped = !name.is_empty()
+                && name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_')
+                && name.chars().next().is_some_and(|c| c.is_ascii_lowercase());
+            if shaped {
+                out.push((is_cmd, name.to_string()));
+            }
+            i += skip + e + 2;
+        }
+        from = i.max(from + k + '帧'.len_utf8());
+    }
+    out
+}
+
+/// **耐久文档里写成「帧命令 `名`」的得在命令注册表里，写成「帧 `kind`」的得是登记过的出方向帧。**
+///
+/// 改名 / 删命令之后，文档里那句「界面经帧命令 `x` 问」照旧读得通，而没有东西会红。
+/// 只认紧跟在「帧命令」「帧」后面的那一串名字，口径窄、不误红：
+/// 订阅种类（`session-lines`）· 事件名（`monitor-error`）· 模式词写在别处时不进人群。
+#[test]
+fn every_frame_command_named_in_the_durable_docs_is_registered() {
+    /// 允许名单：写成「帧 / 帧命令」后面却不在注册表里、而且是对的。每条写清为什么。
+    const ALLOWED: &[(&str, &str)] = &[];
+    let (cmds, frames) = registered_commands_and_frames();
+    let mut seen_allowed: std::collections::BTreeSet<&str> = Default::default();
+    let mut bad = Vec::new();
+    let mut checked = 0usize;
+    for (rel, text) in durable_docs() {
+        for (i, line) in text.lines().enumerate() {
+            for (is_cmd, name) in frame_names_in(line) {
+                checked += 1;
+                if let Some((a, _)) = ALLOWED.iter().find(|(a, _)| *a == name) {
+                    seen_allowed.insert(a);
+                    continue;
+                }
+                let (ok, what) = if is_cmd {
+                    (cmds.contains(&name), "命令注册表里没有这条入方向命令")
+                } else {
+                    // 「帧 `x`」：出方向帧的 kind；写成连字符的是帧命令（「帧 `history-lines`」这种省写），两边都认。
+                    (
+                        frames.contains(&name) || cmds.contains(&name),
+                        "既不是登记过的出方向帧，也不是登记过的命令",
+                    )
+                };
+                if !ok {
+                    bad.push(format!("{rel}:{}  `{name}` —— {what}", i + 1));
+                }
+            }
+        }
+    }
+    // 自检：认法在干活，且一条合成的假命令会被认出。
+    assert!(checked > 30, "只认出 {checked} 处帧 / 帧命令 —— 认法坏了");
+    let ghost = format!("经帧命令 `{}` 与 `history-lines` 问", "no-such-probe");
+    assert_eq!(
+        frame_names_in(&ghost),
+        vec![(true, "no-such-probe".to_string()), (true, "history-lines".to_string())]
+    );
+    for (a, why) in ALLOWED {
+        assert!(
+            seen_allowed.contains(a),
+            "允许名单里的 `{a}` 已经没人写了 —— 删掉这一行（当初的理由：{why}）"
+        );
+    }
+    assert!(
+        bad.is_empty(),
+        "耐久文档里点名的这些帧 / 帧命令对不上注册表（共核 {checked} 处）：\n  {}\n\n\
+         ⇒ 照现状改成今天的名字；删了的连那句一起删。",
+        bad.join("\n  ")
+    );
+}
