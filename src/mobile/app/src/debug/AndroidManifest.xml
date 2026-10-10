@@ -12,11 +12,5 @@
             android:name=".ui.chat.ChatReplayActivity"
             android:exported="true"
             android:label="聊天面重放" />
-
-        <!-- 会话总览隐藏入口：不带 extra = 桩数据；-e host <id> -e daemon <路径> = 真 daemon -->
-        <activity
-            android:name=".ui.overview.SessionOverviewActivity"
-            android:exported="true"
-            android:label="会话总览" />
     </application>
 </manifest>

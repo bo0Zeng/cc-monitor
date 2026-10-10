@@ -59,6 +59,14 @@ export function productionRsFiles(subdir: string): ProductionSource[] {
 }
 
 /**
+ * 同一套遍历，收手机端（`src/mobile`）的生产 Kotlin：只要各模块 `src/main/` 下的（Gradle 的测试源在 `src/test/` · `src/androidTest/`，
+ * 文件名上分不出来，按目录分）。
+ */
+export function productionKtFiles(subdir = "src/mobile"): ProductionSource[] {
+  return collect(subdir, ".kt").filter((f) => f.file.includes("/src/main/"));
+}
+
+/**
  * 同一套遍历，收 `.css`（`bg-flat.vitest.ts` 要看「`.tab-bg` 在全部样式里零处」）。
  * CSS 里没有判据住着 ⇒ 读不到自己按构造成立；借这一个家是为了不在测试里另写一份目录遍历（`scanning-guard-registry` 那条棘轮）。
  */

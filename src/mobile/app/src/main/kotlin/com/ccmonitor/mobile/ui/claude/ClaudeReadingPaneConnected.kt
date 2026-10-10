@@ -1,7 +1,6 @@
 package com.ccmonitor.mobile.ui.claude
 
 import android.widget.Toast
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,7 +11,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -32,19 +30,14 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.claude.agent.AgentProfile
 import com.ccmonitor.mobile.core.claude.catalog.ClaudeSessionCatalog
-import com.ccmonitor.mobile.core.claude.catalog.SessionLight
 import com.ccmonitor.mobile.core.claude.model.AgentKind
 import com.ccmonitor.mobile.core.claude.model.RenderUnit
-import com.ccmonitor.mobile.core.claude.model.UsageSummary
-import com.ccmonitor.mobile.core.claude.model.contextLimitFor
 import com.ccmonitor.mobile.core.claude.model.searchableText
 import com.ccmonitor.mobile.core.remote.RemoteCommandChannel
 import com.ccmonitor.mobile.core.remote.RemoteExecutor
@@ -96,7 +89,6 @@ fun ClaudeReadingPaneConnected(
     // resume 目标是否活会话（pidfile 判活）：活则禁「▶ 续接」，对活会话再起 --resume 会让两个 Claude 双写同一 JSONL
     // （与历史页的 !live 守卫同义）。
     val liveSessionIds by vm.liveSessionIds.collectAsState()
-    val sessionLights by vm.sessionLights.collectAsState() // 每个 sid 的状态灯
     val resumeTargetLive = resumeTarget?.sessionId?.let { it in liveSessionIds } ?: false
 
     // 搜索状态与 listState 滚动强耦合，留在 Composable 里。
@@ -114,7 +106,6 @@ fun ClaudeReadingPaneConnected(
         ReadingPaneToolbar(
             search = search,
             sessions = sessions,
-            sessionLights = sessionLights,
             activePath = activePath,
             onSelectSession = { vm.selectSession(it) },
             matchIndices = matchIndices,
@@ -159,7 +150,6 @@ private class ReadingSearchState {
 private fun ReadingPaneToolbar(
     search: ReadingSearchState,
     sessions: List<JsonlSession>,
-    sessionLights: Map<String, SessionLight>,
     activePath: String?,
     onSelectSession: (String) -> Unit,
     matchIndices: List<Int>,
@@ -172,7 +162,6 @@ private fun ReadingPaneToolbar(
     val scope = rememberCoroutineScope()
     ReadingToolbar(
         sessions = sessions,
-        sessionLights = sessionLights,
         activePath = activePath,
         onSelectSession = onSelectSession,
         searching = search.searching,
@@ -267,7 +256,6 @@ private fun ReadingStateContent(
                         units = s.lastUnits,
                         path = s.lastPath ?: "",
                         windowed = s.windowed,
-                        usage = s.usage,
                         matchedKeys = matchedKeys,
                         listState = listState,
                         onCopyCode = onCopyCode,
@@ -296,7 +284,6 @@ private fun ReadingStateContent(
                     units = s.units,
                     path = s.path,
                     windowed = s.windowed,
-                    usage = s.usage,
                     matchedKeys = matchedKeys,
                     listState = listState,
                     onCopyCode = onCopyCode,
@@ -332,13 +319,12 @@ private fun DisconnectedBanner(
     }
 }
 
-/** Ready 渲染：底部跟随自动滚、跳最新、列表，顶部用量条。 */
+/** Ready 渲染：底部跟随自动滚、跳最新、列表。 */
 @Composable
 private fun ReadyContent(
     units: List<RenderUnit>,
     path: String,
     windowed: Boolean,
-    usage: UsageSummary?,
     matchedKeys: Set<String>,
     listState: LazyListState,
     onCopyCode: (String) -> Unit,
@@ -351,8 +337,6 @@ private fun ReadyContent(
     if (historyExhausted) {
         Text("已是最早", modifier = Modifier.fillMaxWidth().padding(8.dp))
     }
-    // 只读用量条（有 usage 记录才显），只读已有记录，不发命令。
-    usage?.takeIf { it.requests > 0 }?.let { UsageBar(it, windowed) }
     Box(Modifier.fillMaxWidth().weight(1f)) {
         val unitCount = units.size
         // 底部跟随：只有已在底部时新内容才自动滚（不打断向上翻阅）；末项很高时还要让它的底边滚入视口。
@@ -403,55 +387,10 @@ private fun ReadyContent(
     }
 }
 
-/** 只读用量条：tokens（in/out/缓存）与上下文窗占用。 */
-@Composable
-private fun UsageBar(
-    usage: UsageSummary,
-    windowed: Boolean,
-) {
-    Text(
-        usageSummaryText(usage, windowed),
-        style = monoSmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surfaceVariant)
-                .padding(horizontal = 12.dp, vertical = 4.dp),
-    )
-}
-
-/** token 数简写（K/M）。用 Locale.ROOT 定小数点，防逗号 locale 显成 `1,5K`。 */
-internal fun fmtTokens(n: Long): String =
-    when {
-        n >= 1_000_000 -> "%.1fM".format(java.util.Locale.ROOT, n / 1_000_000.0)
-        n >= 1_000 -> "%.1fK".format(java.util.Locale.ROOT, n / 1_000.0)
-        else -> n.toString()
-    }
-
-/** 用量汇总单行文本。窗口模式标「窗口内」（用量只覆盖已载窗口）。不显示花费。 */
-internal fun usageSummaryText(
-    usage: UsageSummary,
-    windowed: Boolean,
-): String {
-    // Codex 带真实上限 contextWindow（model_context_window）时优先用；Claude 为 null，走启发式 contextLimitFor。
-    val ctxLimit = usage.contextWindow?.takeIf { it > 0 } ?: contextLimitFor(usage.lastModel, usage.lastContextTokens)
-    // 钳到 100%：Codex 占用在 compact 前偶尔短暂超过 contextWindow。
-    val ctxPct = if (usage.lastContextTokens > 0) (usage.lastContextTokens * 100 / ctxLimit).coerceAtMost(100) else 0
-    val win = if (windowed) " · 窗口内" else ""
-    return "↑${fmtTokens(usage.input)} ↓${fmtTokens(usage.output)}" +
-        " · 缓存 ${fmtTokens(usage.cacheWrite5m + usage.cacheWrite1h)}写/${fmtTokens(usage.cacheRead)}读" +
-        " · 上下文 ${fmtTokens(usage.lastContextTokens)}/${fmtTokens(ctxLimit)} $ctxPct%" +
-        win
-}
-
 /** 阅读面顶部工具条：会话下拉、搜索切换与输入、命中导航。 */
 @Composable
 private fun ReadingToolbar(
     sessions: List<JsonlSession>,
-    sessionLights: Map<String, SessionLight> = emptyMap(), // sid → 状态灯
     activePath: String?,
     onSelectSession: (String) -> Unit,
     searching: Boolean,
@@ -488,30 +427,18 @@ private fun ReadingToolbar(
             var menuOpen by remember { mutableStateOf(false) }
             // label 是会话目录给的可读标题（活动会话优先；无 pidfile 兜底最近列表）。
             val label = sessions.firstOrNull { it.path == activePath }?.label ?: "最新会话"
-            // 当前会话状态灯（activePath → sid → 灯；没有或未写则不点）。
-            val activeLight = activePath?.let { sessionLights[ClaudeSessionCatalog.sessionIdOf(it)] } ?: SessionLight.Unknown
             Box(Modifier.weight(1f)) {
                 TextButton(onClick = { menuOpen = true }) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        SessionLightDot(activeLight)
-                        // 可读标题可长达约 120 字符，单行省略，防撑爆工具条。
-                        Text("会话: $label ▾", style = monoSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
+                    // 可读标题可长达约 120 字符，单行省略，防撑爆工具条。
+                    Text("会话: $label ▾", style = monoSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                     if (sessions.isEmpty()) {
                         DropdownMenuItem(text = { Text("（无会话）") }, onClick = { menuOpen = false })
                     }
                     sessions.forEach { sess ->
-                        // 下拉里每个会话一个状态灯，看清哪个在工作、等待或空闲。
-                        val light = sessionLights[ClaudeSessionCatalog.sessionIdOf(sess.path)] ?: SessionLight.Unknown
                         DropdownMenuItem(
-                            text = {
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    SessionLightDot(light)
-                                    Text(sess.label, style = monoSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                }
-                            },
+                            text = { Text(sess.label, style = monoSmall, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                             onClick = {
                                 onSelectSession(sess.path)
                                 menuOpen = false
@@ -529,23 +456,6 @@ private fun ReadingToolbar(
             TextButton(onClick = onToggleSearch) { Text("搜索") }
         }
     }
-}
-
-/**
- * 会话状态灯圆点，只给活会话点灯：Working 绿 / WaitingInput 琥珀 / Idle 灰 / Shell 蓝。
- * Stopped（非活、历史）与 Unknown（没有 status）不显点，下拉不被历史会话的灯刷屏。
- */
-@Composable
-private fun SessionLightDot(light: SessionLight) {
-    val color =
-        when (light) {
-            SessionLight.Working -> Color(0xFF3DDC84) // 绿=工作中
-            SessionLight.WaitingInput -> Color(0xFFFFB300) // 琥珀=等待输入
-            SessionLight.Idle -> Color(0xFF9AA0A6) // 灰=空闲
-            SessionLight.Shell -> Color(0xFF4C8DF6) // 蓝=shell
-            SessionLight.Stopped, SessionLight.Unknown -> return // 非活/未知 → 不显点
-        }
-    Box(Modifier.size(8.dp).clip(CircleShape).background(color))
 }
 
 @Composable

@@ -188,7 +188,6 @@ class SettingsEntriesTest {
      *
      * 滚动治的是「够得着」，但「终端那一节要往下翻多远」没有任何自动读数，节数一变，上一次的真机结论就作废。
      * 这个数一红：去真机走一遍（`uiautomator dump` 认得出那几行），确认那一节的入口点得到，再把它改过来。
-     * 同 `NewUiSettingsTest.theDefaultSourceIsPinnedSoAnyChangeGetsReVetted` 的用意：
      * 这条判据守的不是代码，是那次真机读数的有效期。
      */
     @Test
@@ -309,7 +308,7 @@ class SettingsEntriesTest {
          * 判别力边界：这条钉的是节数，不是内容高度。在一节内部增删行、把说明写长三倍，它全绿；
          * 它守的只是「加/减一整节时那次真机读数作废」这一件事。
          */
-        private const val PINNED_SECTION_HEADERS = 4
+        private const val PINNED_SECTION_HEADERS = 3
 
         /**
          * `Screen` 的每个 data object → 它的路由串。

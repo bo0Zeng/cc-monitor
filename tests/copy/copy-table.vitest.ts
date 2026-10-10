@@ -37,6 +37,7 @@ import { copyText, type CopyKey } from "../../src/frontend/ui/copy-table.ts";
 import { productionTsFiles } from "../test-support/production-sources.ts";
 import { REPO_ROOT } from "../test-support/repo-root.ts";
 import { loadTable, NAMED_PH, type Ref, type Table } from "./copy-support.ts";
+import { KT_HOME, kotlinRefsIn, kotlinRefsOfTree } from "./kotlin-refs.ts";
 import { RS_DEFINITIONS, RS_HOME, rustRefsIn, rustRefsOfTree } from "./rust-refs.ts";
 
 // 第六档 aria：只进 aria-label 的无障碍名。
@@ -192,8 +193,17 @@ describe("CP2a · 文案表 ↔ 生产代码引用", () => {
     .map((f) => refsIn(f.file, f.text));
   // Rust 读口的调用点（射程与读法住 `rust-refs.ts`：常驻后端 · 两个前端 · 子 crate；取文实现本身是定义，不进人群）。
   const { files: rsFiles, refs: rsRefs, problems: rsProblems } = rustRefsOfTree();
-  const refs = [...all.flatMap((x) => x.refs), ...rsRefs];
-  const problems = [...all.flatMap((x) => x.problems), ...rsProblems];
+  // 手机端 Kotlin 读口的调用点（射程与读法住 `kotlin-refs.ts`：`src/mobile/*/src/main/**.kt`）。
+  const { files: ktFiles, refs: ktRefs, problems: ktProblems } = kotlinRefsOfTree();
+  const refs = [...all.flatMap((x) => x.refs), ...rsRefs, ...ktRefs];
+  const problems = [...all.flatMap((x) => x.problems), ...rsProblems, ...ktProblems];
+
+  it("正控（Kotlin）：扫到了手机端生产源码、Kotlin 取文口自己，也读到了 Kotlin 调用点", () => {
+    expect(ktFiles.length, "一个手机端生产 .kt 都没扫到").toBeGreaterThan(100);
+    expect(ktFiles.map((f) => f.file)).toContain(KT_HOME);
+    expect(ktFiles.some((f) => f.file.includes("/src/test/")), "测试源混进了生产人群").toBe(false);
+    expect(ktRefs.length, "一个 copyText 调用点都没找到 —— 读口没接上，或者读法坏了").toBeGreaterThan(0);
+  });
 
   it("正控（Rust）：扫到了 .rs 生产源码、Rust 取文口自己，也读到了 Rust 调用点", () => {
     expect(rsFiles.length, "一个 .rs 都没扫到").toBeGreaterThan(100);
@@ -281,6 +291,22 @@ describe("CP2a · 文案表判据自己会不会死（正控）", () => {
     expect(rustRefsIn("x.rs", 'let w = copy_static!("a.b.c");').refs.map((r) => [r.key, r.args])).toEqual([["a.b.c", []]]);
     expect(rustRefsIn("x.rs", "copy_static!(KEY);").problems.join()).toMatch(/不是字面量/);
     expect(rustRefsIn("x.rs", 'copy_static!("a.b.c", x);').problems.join()).toMatch(/不是字面量/);
+  });
+
+  it("Kotlin 引用：真调用读得出 key 与参数；非字面 key / 非 \"名\" to 值 / 当值用 / 改名导入 各被逮住；注释里的不算", () => {
+    const ok = kotlinRefsIn(
+      "src/mobile/app/src/main/kotlin/X.kt",
+      'fun f() =\n    copyText(\n        "a.b.c",\n        "name" to n,\n        "os" to listOf(1, 2).size,\n    )\n// copyText("z.z.z")\n/** copyText("y.y.y") */\n',
+    );
+    expect(ok.problems).toEqual([]);
+    expect(ok.refs.map((r) => [r.key, r.args])).toEqual([["a.b.c", ["name", "os"]]]);
+    expect(kotlinRefsIn("x.kt", 'copyText("a.b.c")').refs.map((r) => [r.key, r.args])).toEqual([["a.b.c", []]]);
+    expect(kotlinRefsIn("x.kt", "copyText(key)").problems.join()).toMatch(/不是字面量/);
+    expect(kotlinRefsIn("x.kt", 'copyText("a.$k.c")').problems.join()).toMatch(/不是字面量/);
+    expect(kotlinRefsIn("x.kt", 'copyText("a.b.c", name to n)').problems.join()).toMatch(/参数项/);
+    expect(kotlinRefsIn("x.kt", "val f = ::copyText").problems.join()).toMatch(/当值用了/);
+    expect(kotlinRefsIn("x.kt", "import com.x.copyText as t").problems.join()).toMatch(/改名导入/);
+    expect(kotlinRefsIn("x.kt", "import com.x.copyText").problems).toEqual([]);
   });
 
   it("对拍：表里多一条 / 代码多引一条 / 参数给错 —— 各红一次", () => {

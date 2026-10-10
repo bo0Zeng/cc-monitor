@@ -1,19 +1,13 @@
 package com.ccmonitor.mobile.ui.nav
 
 import com.ccmonitor.mobile.core.claude.model.AgentKind
-import com.ccmonitor.mobile.core.claude.transport.DaemonConversationCatalog
-import com.ccmonitor.mobile.core.claude.transport.DaemonLocator
 import com.ccmonitor.mobile.ssh.PipeLauncher
 import com.ccmonitor.mobile.ssh.TmuxBackend
 import com.ccmonitor.mobile.testing.KotlinSourceScanner
-import com.ccmonitor.mobile.ui.common.Settled
-import com.ccmonitor.mobile.ui.overview.DEFAULT_SOURCE_PATH
-import com.ccmonitor.mobile.ui.overview.overviewSourceOrUnknown
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -22,12 +16,11 @@ import java.io.File
  * 「还不知道」不许写成一个合法值。
  *
  * 病型：一个还没读到真值的状态被初始化成一个合法值（`null` 当「不带这个参数」、
- * 回退值当「用户的选择」、`!= false` 把「还不知道」折成「开」），下游拿着假值先跑一趟。三处同形：
+ * 回退值当「用户的选择」、`!= false` 把「还不知道」折成「开」），下游拿着假值先跑一趟。两处同形：
  *
  * | # | 处 | 读数 |
  * |---|---|---|
  * | ① | `ui/nav/AppNavHost.kt` 的 `permissionMode` 采集初值 `null` | 不会起两趟管道（`startOnceCommand` 幂等吃掉第二趟）；代价是第一趟那个假值永久胜出，而且 `start()` 报成功（[theSecondPipeStartIsSwallowedSoTheFirstPermissionModeWinsForever]） |
- * | ② | `ui/overview/ConversationsRoute.kt` 的 `sourcePath` 采集 | 初值若是回退值，设过自定义来源的用户每进一次总览面多一条远端 exec，探的是一个已知不存在的占位名；采集必须走三值 |
  * | ③ | `ui/nav/AppNavHost.kt` 的 `newUi != false` | 写不进 `FLAG_OFF` ⇒ 真值恒为「开」⇒ 折下来的值与真值逐字相同，实际不可达（[thereIsNoWayToWriteTheOffFlagSoTheFoldedUnknownCannotDiverge] 是它的哨兵） |
  *
  * ### 判别力边界
@@ -99,81 +92,6 @@ class UnknownBeforeLoadedTest {
         assertTrue(
             "它必须整段落在 `$ELSE_SEP` 之后（= 只有「会话还不存在」才跑到）",
             realTrip.substringAfter(ELSE_SEP).contains("--permission-mode $REAL_MODE"),
-        )
-    }
-
-    // ---- ② 总览来源：三值三果 + 采集点字面 ------------------------------------
-
-    /**
-     * ②：三个输入给出三种结果，「还不知道」不许被折进任何一侧。
-     *
-     * 只造 `Unknown` 一格的话，一个「无论输入什么都回 null」的实现也全绿，
-     * 那等于总览面永远不建 VM、永远停在 loading。所以三值一次过完并断言互不相同。
-     */
-    @Test
-    fun theOverviewSourceHasThreeOutcomesAndUnknownDoesNothing() {
-        val unknown = overviewSourceOrUnknown(Settled.Unknown)
-        val unset = overviewSourceOrUnknown(Settled.Known(null))
-        val custom = overviewSourceOrUnknown(Settled.Known(CUSTOM_SOURCE))
-
-        assertNull("还没读到 ⇒ 不给路径（= 不建 VM、不发查询）。实得：$unknown", unknown)
-        assertEquals("读到了、用户没设过 ⇒ 回退值（那条行为逐字不变）", DEFAULT_SOURCE_PATH, unset)
-        assertEquals("用户设过 ⇒ 就用他设的，不许再被回退值盖掉", CUSTOM_SOURCE, custom)
-        assertNotEquals("「还不知道」与「没设过」必须给出不同的结果", unknown, unset)
-        assertNotEquals("前提：回退值与自定义值得真的不同，否则上面那条无话可说", unset, custom)
-    }
-
-    /**
-     * ②：采集初值必须是「还不知道」，不许是回退值。
-     *
-     * 上面那条是纯函数判据，它钉不住 composable 里初值写的是什么：
-     * 把那一行写成 `collectAsStateWithLifecycle(DEFAULT_SOURCE_PATH)`，上面那条全绿。
-     * 这条读 `ConversationsRoute.kt` 的源码字面接住那一半
-     * （同 `LaunchLandingTest.theLaunchFlagStartsOutUnknownInsteadOfPretendingItIsOff`）。
-     *
-     * 两头断：得真读到 `fun ConversationsRoute(`、得真找到三值采集那一句；
-     * `collectAsStateWithLifecycle(DEFAULT_SOURCE_PATH)` 这个形状一处都不许有。
-     *
-     * 它只认字面。换个等价写法（先 `val fallback = DEFAULT_SOURCE_PATH` 再采集它）
-     * 一样坏而本条全绿。它防的是手滑，不是防绕。
-     */
-    @Test
-    fun theOverviewSourceIsCollectedAsUnknownInsteadOfTheFallback() {
-        val code = codeOnly(readFile("app/src/main/kotlin/com/ccmonitor/mobile/ui/overview/ConversationsRoute.kt"))
-        assertTrue("前提：得真读到 ConversationsRoute.kt 的代码", code.contains("fun ConversationsRoute("))
-        assertTrue("前提：回退值常量得还在这个文件里", code.contains("const val DEFAULT_SOURCE_PATH"))
-
-        assertTrue(
-            "采集点必须走三值（`$SETTLED_COLLECT`）：找不到说明它被改掉了或者搬走了",
-            code.contains(SETTLED_COLLECT),
-        )
-        assertTrue("未知那一支必须真的接在判定表上（`$UNKNOWN_BRANCH`）", code.contains(UNKNOWN_BRANCH))
-        assertFalse(
-            "回退值不许当采集初值：那正是「用户设过自定义来源却先按默认探一次」的原形",
-            FALLBACK_AS_INITIAL.containsMatchIn(code),
-        )
-    }
-
-    /**
-     * ② 的害：那一趟多余的探测，探的是一个已知不存在的占位名，而且是真的发出去。
-     *
-     * `DaemonConversationReader` 不经 `DaemonLocator`，它把 `daemonPath` 直接 shell-quote 进命令串，
-     * 占位名就这么原样打到远端（`command -v cc-monitor-remote` 空、退出码 1）。
-     *
-     * 两头断：既断「命令里必须真有那个占位名与子命令」，
-     * 又断「这条命令里不该出现任何候选表的痕迹」（出现了说明它其实走了定位，这条读数作废）。
-     */
-    @Test
-    fun theFallbackSourceWouldHaveBeenProbedAsALiteralRemoteCommand() {
-        assertEquals("前提：回退值就是 DaemonLocator 那个占位名", DaemonLocator.UNSET_PLACEHOLDER, DEFAULT_SOURCE_PATH)
-        val cmd = DaemonConversationCatalog.projectsCommand(DEFAULT_SOURCE_PATH)
-        assertTrue("前提：得真造出一条命令，实得：$cmd", cmd.isNotBlank())
-        assertTrue("占位名原样进了命令串（= 真的打到远端），实得：$cmd", cmd.contains(DEFAULT_SOURCE_PATH))
-        assertTrue("前提：那条命令得真是 --list-projects，实得：$cmd", cmd.contains("--list-projects"))
-        assertFalse(
-            "它没有经过 DaemonLocator 的候选表（没有 `command -v` / `[ -x`）：" +
-                "出现了就说明这条读数作废，要重新量。实得：$cmd",
-            cmd.contains("command -v") || cmd.contains("[ -x"),
         )
     }
 
@@ -290,21 +208,10 @@ class UnknownBeforeLoadedTest {
         /** `tmuxStartOnceCommand` 里「已经在跑」与「建一条」的分界。 */
         private const val ELSE_SEP = "; else "
 
-        private const val CUSTOM_SOURCE = "/opt/aterm/bin/ccm"
-
         private const val HOST = "h1"
 
         /** `AppNavHost.kt` 那句 `newUi != false` 在 `newUi` 还是 null 时折出来的值。 */
         private const val FOLDED_UNKNOWN = true
-
-        /** 三值采集那一句的字面：认不出就前提断言先红。 */
-        private const val SETTLED_COLLECT = "rememberSettled(settings) { settings.overviewSourcePath() }"
-
-        /** 未知那一支真的接上了判定表。 */
-        private const val UNKNOWN_BRANCH = "overviewSourceOrUnknown(source)"
-
-        /** 竞态的原形：回退值当采集初值。 */
-        private val FALLBACK_AS_INITIAL = Regex("""collectAsStateWithLifecycle\(\s*DEFAULT_SOURCE_PATH""")
 
         private val DEFINE_REPO_WRITER = Regex("""fun\s+setNewUiEnabled\s*\(""")
         private val DEFINE_VM_WRITER = Regex("""fun\s+setNewUi\s*\(""")

@@ -26,6 +26,7 @@ import com.ccmonitor.mobile.core.claude.catalog.ClaudeSessionCatalog
 import com.ccmonitor.mobile.core.claude.catalog.SessionCatalog
 import com.ccmonitor.mobile.core.claude.model.AgentKind
 import com.ccmonitor.mobile.core.claude.transport.AlphaUnavailable
+import com.ccmonitor.mobile.core.claude.transport.DaemonLocator
 import com.ccmonitor.mobile.core.claude.transport.DaemonTurnEndSource
 import com.ccmonitor.mobile.core.claude.transport.JsonlFrame
 import com.ccmonitor.mobile.core.claude.transport.ResumeOffset
@@ -43,7 +44,6 @@ import com.ccmonitor.mobile.core.ssh.commandExecutor
 import com.ccmonitor.mobile.core.ssh.countsAsActive
 import com.ccmonitor.mobile.ssh.HostConnector
 import com.ccmonitor.mobile.ui.chat.ChatController
-import com.ccmonitor.mobile.ui.overview.DEFAULT_SOURCE_PATH
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -58,7 +58,6 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.filterIsInstance
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
@@ -405,11 +404,8 @@ class SshKeepAliveService : Service() {
         return outcome.notify
     }
 
-    /** α 要问的远端程序路径；没设过就用占位名，由 `DaemonLocator` 按候选表找。 */
-    private suspend fun daemonPath(): String =
-        runCatching { settingsRepo.overviewSourcePath().first() }
-            .onFailure { if (it is CancellationException) throw it }
-            .getOrNull() ?: DEFAULT_SOURCE_PATH
+    /** α 要问的远端程序：占位名 ⇒ `DaemonLocator` 按候选表找（这一条 α 流随「一轮完成」那一路换到常驻流上时删）。 */
+    private fun daemonPath(): String = DaemonLocator.UNSET_PLACEHOLDER
 
     /** 单调、算睡眠时间的时钟，arbiter 与 `DaemonTurnEndSource` 共用。 */
     private fun now(): Long = SystemClock.elapsedRealtime()

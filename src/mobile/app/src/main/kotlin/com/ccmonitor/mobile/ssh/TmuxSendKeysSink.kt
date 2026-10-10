@@ -4,7 +4,6 @@ import com.ccmonitor.mobile.core.claude.bridge.SendOutcome
 import com.ccmonitor.mobile.core.claude.bridge.SendRequest
 import com.ccmonitor.mobile.core.claude.bridge.UplinkLimits
 import com.ccmonitor.mobile.core.claude.bridge.UplinkSink
-import com.ccmonitor.mobile.core.claude.transport.WaitingCopy
 import com.ccmonitor.mobile.core.remote.RemoteCommandChannel
 import com.ccmonitor.mobile.ssh.TmuxCommands.MODAL_SENTINEL
 import com.ccmonitor.mobile.ssh.TmuxCommands.SENT_MARKER
@@ -96,9 +95,8 @@ class TmuxSendKeysSink(
                     SendOutcome.Rejected("这个 tmux 会话不归我们管（$trimmed）", retryable = false)
                 trimmed.startsWith(MODAL_SENTINEL) ->
                     SendOutcome.Rejected(
-                        // 屏幕原文原样带回给上层显示。前半句与聊天屏等待态共用同一个常量：同一件事的两个时刻
-                        // （发到一半才发现、发之前就知道），说成两句会被当成两种故障。
-                        "${WaitingCopy.SENDING_NOW_ANSWERS_THE_QUESTION}：\n" +
+                        // 屏幕原文原样带回给上层显示（这一句随送字换到核心那一路时删：需手动时不送由核心判）。
+                        "电脑上有个问题待答 · 现在发消息会被当成对它的回答：\n" +
                             trimmed.removePrefix(MODAL_SENTINEL).trim(),
                         retryable = false,
                     )

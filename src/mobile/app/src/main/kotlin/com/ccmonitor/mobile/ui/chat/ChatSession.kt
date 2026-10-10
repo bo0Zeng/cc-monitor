@@ -10,10 +10,6 @@ import com.ccmonitor.mobile.core.claude.bridge.TurnState
 import com.ccmonitor.mobile.core.claude.bridge.UplinkSink
 import com.ccmonitor.mobile.core.claude.model.DeliveryState
 import com.ccmonitor.mobile.core.claude.model.RenderUnit
-import com.ccmonitor.mobile.core.claude.transport.BlockedSignal
-import com.ccmonitor.mobile.core.claude.transport.RateLimitReading
-import com.ccmonitor.mobile.core.claude.transport.SessionSignals
-import com.ccmonitor.mobile.core.claude.transport.WaitingCopy
 import com.ccmonitor.mobile.core.claude.util.SmoothRelease
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -137,14 +133,6 @@ data class ChatUiState(
      * 它量的是状态，不是屏幕。不放进 `contentDescription`：TalkBack 会每拍念一次数字。
      */
     val revealedChars: Int = 0,
-    /** Claude 在等人回应。null = 没有等待态（含已作废、已过期）。来自 [SessionSignals]，见 [attachSignals]。 */
-    val waiting: WaitingNotice? = null,
-    /**
-     * 配额。null = 这条对话还没收到过 `rate_limit_event`。
-     *
-     * 注意：[RateLimitReading.windows] 为空时不许在屏上编百分比，有的远端版本根本不发 `unifiedWindows`。
-     */
-    val quota: RateLimitReading? = null,
     /**
      * 「它想做的一件事被挡住了」（下行 `system/permission_denied`），不是等待态。
      * 这条帧未在真实会话里复现过，帧不来就什么都不显示。
@@ -152,19 +140,11 @@ data class ChatUiState(
     val blocked: BlockedSignal? = null,
 )
 
-/**
- * 等待态在聊天屏上要说的话。
- *
- * 三件套：需手动条（[headline] + [detail]）、输入框禁用（[blocksSending]）、
- * 输入框上方那句（[WaitingCopy.SENDING_NOW_ANSWERS_THE_QUESTION]，与模态拒绝路径共用常量）。
- *
- * @param reason 拦或不拦的理由：哪条帧、什么时刻、什么值。供判据读，也是排查时唯一有用的东西。
- */
-data class WaitingNotice(
-    val headline: String,
-    val detail: String,
-    val blocksSending: Boolean,
-    val reason: String,
+/** 「它想做的一件事被挡住了」那一条（路 A 的 `system/permission_denied`）：工具名与远端那句原话。 */
+data class BlockedSignal(
+    val toolName: String?,
+    val humanText: String?,
+    val observedAtMs: Long,
 )
 
 /**
@@ -225,48 +205,8 @@ class ChatSession(
     /** 远端那一轮的停止进度。见 [RemoteStop]。 */
     private var remoteStop: RemoteStop = RemoteStop.None
 
-    // ---- 跨通路信号（SessionSignals）--------------------------------------------
-
-    /** 接上的信号汇。null = 没接，本类行为不受影响。 */
-    private var signals: SessionSignals? = null
-
-    /** 这条对话在信号汇里的 sid。与 [signals] 同生共死。 */
-    private var signalSessionId: String? = null
-
-    /** 盯着信号汇的协程。见 [attachSignals]。 */
-    private var signalJob: Job? = null
-
-    /**
-     * 按过「我知道，还是发」。
-     *
-     * 拦是「默认不发」，不是「不能发」。一旦立起就不再自动落下：等待态的读数可能是纯告知框、
-     * 也可能是停更的状态文件，自动落回会把人重新关进刚走出来的死胡同。
-     */
-    private var waitingOverridden = false
-
-    /** 最近一条配额读数。 */
-    private var quota: RateLimitReading? = null
-
     /** 最近一条「它被挡住了」（下行 `system/permission_denied`）。 */
     private var blocked: BlockedSignal? = null
-
-    /**
-     * 把这条对话接上跨通路信号汇。不接就没有，行为与不接时逐字相同。
-     *
-     * 等待态不是聊天这条通路产的：聊天屏起的 claude 的 pidfile 里没有 `status` / `waitingFor` /
-     * `statusUpdatedAt`，`status == "waiting"` 在本通路上不会出现。唯一产方是总览通路，本类只消费。
-     * 用进程级的信号汇而不是直接注入总览的数据源：避免点对点接线，也避免手机上多一条常连。
-     */
-    fun attachSignals(
-        bus: SessionSignals,
-        sessionId: String,
-    ) {
-        signalJob?.cancel()
-        signals = bus
-        signalSessionId = sessionId
-        // 信号变了要重算 UI 态；只存引用不收集的话，等待态只会在碰巧有别的 publish 时上屏。
-        signalJob = scope.launch { bus.signals.collect { publish() } }
-    }
 
     /**
      * 本地消息（乐观回显）。
@@ -569,32 +509,13 @@ class ChatSession(
     }
 
     /** 发送。乐观回显：点了就上屏，不等对端。没接 [UplinkSink] 时只上屏。 */
-    fun send(text: String) = submit(text, override = false)
+    fun send(text: String) = submit(text)
 
-    /**
-     * 「我知道，还是发」：等待态下随时能用的出路，不依赖等待态自己解除。
-     *
-     * 等待态读数可能误判（纯告知框也报 `dialog open`、没人检查 `statusUpdatedAt`、
-     * 状态文件停更分不清是没变化还是进程卡住），只靠「解除后自动恢复」会成为死胡同。
-     * 走这条发出去的消息照常按成功路径处理。按过一次后本对话不再拦，见 [waitingOverridden]。
-     */
-    fun sendAnyway(text: String) = submit(text, override = true)
-
-    private fun submit(
-        text: String,
-        override: Boolean,
-    ) {
+    private fun submit(text: String) {
         // 在飞门放在这里而不靠按钮 disabled：`send()` 是公开 API。
         // 用独立计数器而不扫 `localMessages`：`echoesBack=true` 时那条消息成功前不在列表里，
         // 扫列表什么都拦不住，`sending` 也会是 false（连停止键都不出现）。
-        // 两道门写在一个 if 里是 detekt `ReturnCount` 的要求。
         if (text.isBlank() || inFlight > 0) return
-        if (override) waitingOverridden = true
-        // 拦的是上行，不是屏幕：被拦的消息 `sink.send` 一次都不调。
-        if (blockedByWaiting() != null) {
-            rejectForWaiting(text)
-            return
-        }
         // 上一轮的停止结论不能挂到下一轮。清在按下发送时，不等下一个 `res`：从这一刻起「那一轮」已经不是它了。
         remoteStop = RemoteStop.None
         val sink = uplink
@@ -610,60 +531,13 @@ class ChatSession(
     }
 
     /**
-     * 此刻该不该拦上行。null = 不拦（没有等待态、已过期、已作废、按过「还是发」）。
-     *
-     * 判定条件是 `status == "waiting"`（信号汇里存的就是它），不是 `waitingFor != null`：
-     * 老版本 CC 不写 `waitingFor`，拿它当判据会恒不触发。
-     */
-    private fun blockedByWaiting(): WaitingNotice? = waitingNoticeNow()?.takeIf { it.blocksSending }
-
-    /**
-     * 把等待态算成屏上那几句话。null = 此刻没有等待态。
-     *
-     * [WaitingNotice.blocksSending] 为 false 时也要返回：「读数过期所以不拦」也得说出来。
-     */
-    private fun waitingNoticeNow(): WaitingNotice? {
-        val bus = signals ?: return null
-        val sid = signalSessionId ?: return null
-        val gate = bus.waitingGate(sid, clock())
-        val signal = gate.signal ?: return null
-        val blocks = gate.blocks && !waitingOverridden
-        val why =
-            when {
-                waitingOverridden -> OVERRIDDEN_WHY
-                gate.degradedWhy != null -> gate.degradedWhy
-                else -> BLOCKING_WHY
-            }
-        return WaitingNotice(
-            headline = WaitingCopy.headlineFor(signal.waitingFor),
-            detail = WaitingCopy.ANSWER_IT_ON_THE_COMPUTER,
-            blocksSending = blocks,
-            reason = "${signal.source}@${signal.observedAtMs} waitingFor=${signal.waitingFor} · $why",
-        )
-    }
-
-    /**
-     * 等待态下的那次发送：上屏、判失败、给理由，`sink.send` 一次都不调。
-     *
-     * 用可重试的 [DeliveryState.FAILED] 而不是 `FAILED_PERMANENT`：这是「现在别发」，不是「重试也没用」。
-     */
-    private fun rejectForWaiting(text: String) {
-        val msg = addLocal(text)
-        msg.delivery = DeliveryState.FAILED
-        // 与模态拒绝路径共用同一个文案常量：说两句不同的话会像两种故障。
-        msg.error = WaitingCopy.SENDING_NOW_ANSWERS_THE_QUESTION
-        publish()
-    }
-
-    /**
      * 重试一条失败的消息。用同一个 [LocalMessage.id]，key 不变，列表里不多出第二条
      * （重复 key 会让 `LazyColumn` 抛异常）。
      */
     fun retry(localId: String) {
         val sink = uplink ?: return
-        // 与 send() 同一道在飞门（并发的两次写入会让模态探测看不到对方正在写的屏），
-        // 也走同一道等待门（否则重试照样把话写上去）。合成一个 if 是 detekt `ReturnCount` 的要求。
-        if (inFlight > 0 || blockedByWaiting() != null) return
+        // 与 send() 同一道在飞门（并发的两次写入会让模态探测看不到对方正在写的屏）。
+        if (inFlight > 0) return
         val msg = localMessages.firstOrNull { it.id == localId } ?: return
         if (msg.delivery != DeliveryState.FAILED) return // 永久失败、正在发的不重试
         deliver(msg, sink)
@@ -768,46 +642,24 @@ class ChatSession(
             streamingKey = null
             confirmRemoteStopIfThisIsTheProof(frame)
         }
-        consumeCrossScreenSignals(frame)
+        noteBlocked(frame)
         schedulePublish()
     }
 
     /**
-     * 把聊天通路上产的跨屏信号投进信号汇。
-     *
-     * - 配额：`rate_limit_event` → [BridgeFrame.RateLimit]。
-     * - 「它被挡住了」：`system/permission_denied`，经帧编码器的兜底分支成为 `Event("system:permission_denied")`。
-     *   形状为 `{"type":"system","subtype":"permission_denied","tool_name":…,"tool_use_id":…,"message":…}`；
-     *   这条帧未在真实会话里复现过，帧不来就什么都不显示。
+     * 「它被挡住了」：`system/permission_denied`，经帧编码器的兜底分支成为 `Event("system:permission_denied")`。
+     * 形状为 `{"type":"system","subtype":"permission_denied","tool_name":…,"tool_use_id":…,"message":…}`；
+     * 这条帧未在真实会话里复现过，帧不来就什么都不显示。
      */
-    private fun consumeCrossScreenSignals(frame: BridgeFrame) {
-        val sid = signalSessionId
-        when {
-            frame is BridgeFrame.RateLimit -> {
-                val reading = RateLimitReading.parse(frame.raw, clock())
-                // 解不出来就不覆盖上一条真读数
-                if (reading != null) {
-                    quota = reading
-                    sid?.let { signals?.publishRateLimit(it, frame.raw, clock()) }
-                }
-            }
-
-            frame is BridgeFrame.Event && frame.k == EVENT_PERMISSION_DENIED -> {
-                val now = clock()
-                blocked =
-                    BlockedSignal(
-                        toolName = frame.raw?.get("tool_name") as? String,
-                        // 远端那句话原样带回：我们读不懂每一种拦截
-                        humanText = frame.raw?.get("message") as? String,
-                        observedAtMs = now,
-                    )
-                sid?.let {
-                    signals?.publishBlocked(it, blocked?.toolName, blocked?.humanText, now)
-                }
-            }
-
-            else -> Unit
-        }
+    private fun noteBlocked(frame: BridgeFrame) {
+        if (frame !is BridgeFrame.Event || frame.k != EVENT_PERMISSION_DENIED) return
+        blocked =
+            BlockedSignal(
+                toolName = frame.raw?.get("tool_name") as? String,
+                // 远端那句话原样带回：我们读不懂每一种拦截
+                humanText = frame.raw?.get("message") as? String,
+                observedAtMs = clock(),
+            )
     }
 
     /**
@@ -922,9 +774,6 @@ class ChatSession(
                 catalog = cachedCatalog(),
                 sending = inFlight > 0,
                 revealedChars = shownLen,
-                // 等待态来自跨通路信号汇（见 [attachSignals]）
-                waiting = waitingNoticeNow(),
-                quota = quota,
                 blocked = blocked,
                 // 判据是 `!ok`：`terminal_reason` 为空时 `why` 根本不在帧里，看 why 会把失败当正常结束。
                 failedWhy = failedWhyFor(done),
@@ -952,21 +801,12 @@ class ChatSession(
     fun close() {
         feedJob?.cancel()
         tickJob?.cancel()
-        // 信号汇是进程级的，对话收掉不把自己那条摘掉就是泄漏
-        signalJob?.cancel()
-        signalSessionId?.let { signals?.forget(it) }
         scope.cancel()
     }
 
     companion object {
         /** `system/permission_denied` 经帧编码器兜底分支之后的帧名。 */
         const val EVENT_PERMISSION_DENIED = "system:permission_denied"
-
-        /** [WaitingNotice.reason] 里「按过『我知道，还是发』所以不拦」那一格。 */
-        const val OVERRIDDEN_WHY = "用户按过「我知道，还是发」"
-
-        /** [WaitingNotice.reason] 里「读数够新、正在拦」那一格。 */
-        const val BLOCKING_WHY = "读数够新 ⇒ 拦上行"
 
         /**
          * 本地消息 key 的前缀。与 `ChatTurnAssembler.KEY_PREFIX`（`"f:"`）和 classifier 的
