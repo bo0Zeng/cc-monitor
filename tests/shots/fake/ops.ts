@@ -1,6 +1,7 @@
 /**
  * 帧命令的默认答法（按 op 名）。形状照后端的跨语言金样（`tests/__fixtures__/*.golden.json`）与界面那一侧的解码器。
  */
+import { packIndex } from "../../test-support/pack-index";
 import { hm } from "./clock";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { fmtDur } from "../../../src/frontend/ui/duration-format";
@@ -243,7 +244,7 @@ export function defaultOps(): Record<string, OpHandler> {
         if (isSaid(r) || isReply(r)) row.fd = r.blocks.filter((b) => b.type !== "text").length;
         return row;
       });
-      return { from: 0, end, rows };
+      return packIndex(0, end, rows);
     },
     "history-user-inputs": (_o, req, w) => {
       const recs = sessionByPath(w, req.path)?.records ?? [];

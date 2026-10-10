@@ -440,15 +440,72 @@ export function decodeTurns(v: unknown): { from: number; end: number; turns: Tur
   return { from: v.from, end: v.end, turns };
 }
 
-/** `history-index` 的成品 ⇒ `(from, end, rows)`。行本身**不解释**（只验「是对象、带偏移与行长」）。 */
+/**
+ * `history-index` 的成品 ⇒ `(from, end, rows)`。帧面上它**按列排**（后端 `read_face.rs::pack_index`：偏移是与上一行末尾的差、
+ * `t` 是 `classes` 里的号、稀疏的几格各一张小表、`at` 是行号差）；这里装回逐行，下游照旧读 [`SkeletonFacts`]。
+ * 行本身**不解释**；列长对不上 / 号越界 / 行号越界 ⇒ 抛（不猜、不补）。
+ */
 export function decodeIndex(v: unknown): { from: number; end: number; rows: SkeletonFacts[] } {
-  if (!isObj(v) || !isNum(v.from) || !isNum(v.end) || !Array.isArray(v.rows)) {
+  const bad = (): never => {
     throw new ShapeError("history-index", copyText("sessionReads.missing.index"));
+  };
+  const badRow = (): never => {
+    throw new ShapeError("history-index", copyText("sessionReads.missing.indexRow"));
+  };
+  if (!isObj(v) || !isNum(v.from) || !isNum(v.end) || !isNum(v.count) || !Array.isArray(v.classes)) return bad();
+  const count = v.count;
+  const col = (k: string): unknown[] => {
+    const c = v[k];
+    return Array.isArray(c) && c.length === count ? c : badRow();
+  };
+  const [o, n, t, fd, u] = [col("o"), col("n"), col("t"), col("fd"), col("u")];
+  const classes = v.classes as unknown[];
+  if (!classes.every(isStr)) return bad();
+  const rows: Array<SkeletonFacts & { x?: string; ts?: string }> = [];
+  let at = v.from;
+  for (let i = 0; i < count; i++) {
+    const [gap, len, k, f, id] = [o[i], n[i], t[i], fd[i], u[i]];
+    if (!isNum(gap) || !isNum(len) || !isNum(k) || k > classes.length || !isNum(f) || !(id === null || isStr(id))) return badRow();
+    const r: SkeletonFacts = { o: at + gap, n: len };
+    at = r.o + len;
+    if (k > 0) r.t = classes[k - 1] as SkeletonFacts["t"];
+    if (id !== null) r.u = id;
+    if (f > 0) r.fd = f;
+    rows.push(r);
   }
-  for (const r of v.rows) {
-    if (!isObj(r) || !isNum(r.o) || !isNum(r.n)) throw new ShapeError("history-index", copyText("sessionReads.missing.indexRow"));
-  }
-  return { from: v.from, end: v.end, rows: v.rows as SkeletonFacts[] };
+  /** 一张稀疏小表：`at` 是与上一项的行号差（第一项与 −1 比），其余每格一列、与 `at` 同长。 */
+  const sparse = (name: string, keys: string[], put: (r: SkeletonFacts & { x?: string; ts?: string }, vals: unknown[]) => void): void => {
+    const tv = v[name];
+    if (!isObj(tv) || !Array.isArray(tv.at)) return badRow();
+    const ats = tv.at;
+    const cols = keys.map((k) => (Array.isArray(tv[k]) && (tv[k] as unknown[]).length === ats.length ? (tv[k] as unknown[]) : badRow()));
+    let i = -1;
+    ats.forEach((g, j) => {
+      if (!isNum(g)) return badRow();
+      i += g + 1;
+      if (i >= count) return badRow();
+      put(rows[i], cols.map((c) => c[j]));
+    });
+  };
+  sparse("body", ["ch", "cj", "pl", "cb", "cl"], (r, vals) => {
+    if (!vals.every(isNum)) return badRow();
+    const [ch, cj, pl, cb, cl] = vals as number[];
+    if (ch > 0) r.ch = ch;
+    if (cj > 0) r.cj = cj;
+    if (pl > 0) r.pl = pl;
+    if (cb > 0) r.cb = cb;
+    if (cl > 0) r.cl = cl;
+  });
+  sparse("sp", ["v"], (r, [sp]) => {
+    if (!isStr(sp)) return badRow();
+    r.sp = sp;
+  });
+  sparse("inputs", ["x", "ts"], (r, [x, ts]) => {
+    if (!isStr(x) || !isStr(ts)) return badRow();
+    r.x = x;
+    if (ts !== "") r.ts = ts;
+  });
+  return { from: v.from, end: v.end, rows };
 }
 
 

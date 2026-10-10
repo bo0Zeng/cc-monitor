@@ -6,6 +6,7 @@
  * 各判据 mock 的是 `@tauri-apps/api/core` 的 `invoke` —— 本文件只帮它们造「那一跳会回什么」。
  */
 import { copyText } from "../../src/frontend/ui/copy-table";
+import { packIndex } from "./pack-index";
 
 /** `chan_call` 的实参（判据按 `op` 分派）。 */
 export interface ChanCallArgs {
@@ -205,7 +206,7 @@ export async function sessionReadReply(which: SessionRead, res: unknown): Promis
   }
   switch (which) {
     case "read_session_index":
-      return chanReply({ from: r.from, end: r.end, rows: r.rows });
+      return chanReply(packIndex(r.from as number, r.end as number, r.rows as Array<Record<string, unknown>>));
     case "list_user_inputs":
       return chanReply({ from: r.from, end: r.end, entries: r.entries });
     case "find_in_session":

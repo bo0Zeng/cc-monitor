@@ -287,7 +287,11 @@ fn index_and_user_input_answers_carry_the_rows_the_fixture_predicts() {
         &serde_json::json!({"path": path, "offset": 0}),
     )
     .unwrap();
-    assert_eq!(keys(&v), ["end", "from", "rows"], "骨架索引的成品形状变了");
+    assert_eq!(
+        keys(&v),
+        ["body", "classes", "count", "end", "fd", "from", "inputs", "n", "o", "sp", "t", "u"],
+        "骨架索引的成品形状变了"
+    );
     let mut o = 0u64;
     let want: Vec<(u64, u64)> = rows
         .iter()
@@ -298,9 +302,7 @@ fn index_and_user_input_answers_carry_the_rows_the_fixture_predicts() {
             (at, n)
         })
         .collect();
-    let got: Vec<(u64, u64)> = v["rows"]
-        .as_array()
-        .unwrap()
+    let got: Vec<(u64, u64)> = rows_of_index(&v)
         .iter()
         .map(|r| (r["o"].as_u64().unwrap(), r["n"].as_u64().unwrap()))
         .collect();
@@ -414,17 +416,22 @@ fn the_frame_products_carry_exactly_the_rows_the_cli_arm_prints() {
             }),
         ),
     ];
-    for (cmd, args, key, cli) in cases {
+    for (cmd, args, key, mut cli) in cases {
         let v = answer_at(&home, cmd, &args).unwrap();
         assert!(
             !cli.is_empty(),
             "`{cmd}` 的 CLI 臂中段是空的 —— 夹具没打到，本条会空真"
         );
-        assert_eq!(
-            v[key].as_array().unwrap(),
-            &cli,
-            "`{cmd}` 的成品条目 != CLI 臂中段"
-        );
+        // 骨架索引在帧面上按列排、不带 `sc`（`pack_index` 头注）⇒ 装回逐行、CLI 那一臂去掉 `sc` 再比。
+        let got = if cmd == "history-index" {
+            for r in &mut cli {
+                r.as_object_mut().unwrap().remove("sc");
+            }
+            rows_of_index(&v)
+        } else {
+            v[key].as_array().unwrap().clone()
+        };
+        assert_eq!(got, cli, "`{cmd}` 的成品条目 != CLI 臂中段");
     }
     let _ = std::fs::remove_dir_all(&home);
 }
@@ -1067,8 +1074,8 @@ fn lines_by_number_share_the_seq_space_with_tail_and_index() {
     let n = want.len() as u64;
     assert_eq!(tail["total"].as_u64(), Some(n), "history-tail 的 total");
     assert_eq!(
-        index["rows"].as_array().map(|r| r.len() as u64),
-        Some(n),
+        rows_of_index(&index).len() as u64,
+        n,
         "history-index 的行数"
     );
     // `history-lines` 出的是**记录行**（只装进界面的那些；这份结构占位语料一条都不进）⇒ 条数不再等于行数，
@@ -1612,4 +1619,91 @@ fn a_projected_facts_reply_still_continues_exactly_like_the_whole_one() {
         serde_json::json!(["/w/one.txt", "/w/two.txt"])
     );
     let _ = std::fs::remove_dir_all(&home);
+}
+
+/// 帧面骨架索引按列装回的逐行（判据用：帧面那一臂与 CLI 那一臂、与夹具逐行比）。
+/// 读法同界面 `session-reads.ts::decodeIndex`（那一侧的读者由跨语言金样钉）；`sc` 不上帧面（占位不用它）。
+fn rows_of_index(v: &serde_json::Value) -> Vec<serde_json::Value> {
+    let col = |k: &str| v[k].as_array().cloned().unwrap_or_default();
+    let (o, n, t, fd, u) = (col("o"), col("n"), col("t"), col("fd"), col("u"));
+    let classes = col("classes");
+    let mut at = v["from"].as_u64().unwrap();
+    let mut rows: Vec<serde_json::Map<String, serde_json::Value>> = (0
+        ..v["count"].as_u64().unwrap() as usize)
+        .map(|i| {
+            let mut r = serde_json::Map::new();
+            at += o[i].as_u64().unwrap();
+            r.insert("o".into(), at.into());
+            r.insert("n".into(), n[i].clone());
+            at += n[i].as_u64().unwrap();
+            let k = t[i].as_u64().unwrap() as usize;
+            if k > 0 {
+                r.insert("t".into(), classes[k - 1].clone());
+            }
+            if !u[i].is_null() {
+                r.insert("u".into(), u[i].clone());
+            }
+            if fd[i].as_u64() != Some(0) {
+                r.insert("fd".into(), fd[i].clone());
+            }
+            r
+        })
+        .collect();
+    let mut sparse =
+        |table: &str, keys: &[&str], skip: &dyn Fn(&str, &serde_json::Value) -> bool| {
+            let tv = &v[table];
+            let mut i: i64 = -1;
+            for (k, gap) in tv["at"].as_array().unwrap().iter().enumerate() {
+                i += gap.as_i64().unwrap() + 1;
+                for key in keys {
+                    let val = &tv[*key][k];
+                    if !skip(key, val) {
+                        rows[i as usize].insert((*key).into(), val.clone());
+                    }
+                }
+            }
+        };
+    sparse("body", &["ch", "cj", "pl", "cb", "cl"], &|_, x| {
+        x.as_u64() == Some(0)
+    });
+    sparse("sp", &["v"], &|_, _| false);
+    sparse("inputs", &["x", "ts"], &|k, x| {
+        k == "ts" && x.as_str() == Some("")
+    });
+    rows.into_iter()
+        .map(|mut r| {
+            if let Some(sp) = r.remove("v") {
+                r.insert("sp".into(), sp);
+            }
+            serde_json::Value::Object(r)
+        })
+        .collect()
+}
+
+/// ★ 骨架索引在帧面上**按列排**：每格一列（偏移是与上一行末尾的差，`t` 是本份 `classes` 里的号，0 ＝ 不进界面）；
+/// 稀疏的几格（正文那五个数 · 来源 · 用户输入的摘要与时刻）各一张小表，`at` 是与上一项的行号差（连着 ＝ 0）。`sc` 不上帧面。
+#[test]
+fn the_index_is_packed_by_column_with_offsets_as_differences() {
+    let rows = vec![
+        serde_json::json!({"o": 0, "n": 100, "t": "said", "u": "in-1", "ch": 14, "pl": 1, "x": "alpha", "ts": "t1"}),
+        serde_json::json!({"o": 100, "n": 194, "t": "reply", "u": "out-1", "fd": 2}),
+        serde_json::json!({"o": 300, "n": 10, "u": "m"}),
+        serde_json::json!({"o": 310, "n": 5, "t": "said", "sp": "system", "sc": true}),
+    ];
+    let v = pack_index(0, 315, &rows);
+    assert_eq!(
+        v,
+        serde_json::json!({
+            "from": 0, "end": 315, "count": 4,
+            "classes": ["said", "reply"],
+            "o": [0, 0, 6, 0], "n": [100, 194, 10, 5], "t": [1, 2, 0, 1], "fd": [0, 2, 0, 0],
+            "u": ["in-1", "out-1", "m", null],
+            "body": {"at": [0], "ch": [14], "cj": [0], "pl": [1], "cb": [0], "cl": [0]},
+            "sp": {"at": [3], "v": ["system"]},
+            "inputs": {"at": [0], "x": ["alpha"], "ts": ["t1"]},
+        })
+    );
+    let mut back = rows.clone();
+    back[3].as_object_mut().unwrap().remove("sc");
+    assert_eq!(rows_of_index(&v), back, "按列装回来与原来的逐行不一样");
 }

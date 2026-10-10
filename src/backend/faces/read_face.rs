@@ -332,7 +332,7 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
                     history_query::scan_session_index(r, offset, until, |row| rows.push(row));
                 rows.finish(scanned)?.1
             };
-            Ok(json!({ "from": offset, "end": end, "rows": rows.rows }))
+            Ok(pack_index(offset, end, &rows.rows))
         }
         "history-user-inputs" => {
             let path = str_arg(args, "path")?;
@@ -682,6 +682,99 @@ impl CappedRows {
         }
         res.map_err(|e| ("failed", format!("stream failed: {e}")))
     }
+}
+
+/// **骨架索引在帧面上按列排**（17 MB 的会话一份索引六千多行，逐行对象里键名占一大半）：
+///
+/// - 每行都有的几格各一列：`o`（与上一行末尾的字节差，第一行与 `from` 比；连着的行 ＝ 0）· `n` · `t`（本份 `classes` 里的号，
+///   从 1 起，0 ＝ 不进界面）· `fd`（0 ＝ 没有）· `u`（没有 ⇒ `null`）。
+/// - 稀疏的几格各一张小表，`at` 是与上一项的行号差（第一项与 −1 比；连着 ＝ 0）：`body`（正文那五个数 `ch` `cj` `pl` `cb` `cl`，
+///   五个全是 0 的行不进表）· `sp`（来源，`v`）· `inputs`（用户输入的摘要 `x` 与时刻 `ts`，没有时刻 ⇒ 空串）。
+/// - `sc` 不上帧面：占位不用它（CLI 那一臂照旧逐行出 [`crate::observe::history_query::IndexRow`]）。
+///
+/// 界面读法只在 `session-reads.ts::decodeIndex` 一处（装回逐行，下游照旧），跨语言金样钉两侧。
+pub(crate) fn pack_index(from: u64, end: u64, rows: &[Value]) -> Value {
+    let num = |r: &Value, k: &str| r.get(k).and_then(Value::as_u64).unwrap_or(0);
+    let mut classes: Vec<Value> = Vec::new();
+    let (mut o, mut n, mut t, mut fd, mut u): (
+        Vec<Value>,
+        Vec<Value>,
+        Vec<Value>,
+        Vec<Value>,
+        Vec<Value>,
+    ) = (vec![], vec![], vec![], vec![], vec![]);
+    #[derive(Default)]
+    struct Sparse {
+        last: i64,
+        at: Vec<Value>,
+        cols: Vec<(&'static str, Vec<Value>)>,
+    }
+    impl Sparse {
+        fn of(keys: &[&'static str]) -> Sparse {
+            Sparse {
+                last: -1,
+                at: vec![],
+                cols: keys.iter().map(|k| (*k, vec![])).collect(),
+            }
+        }
+        fn push(&mut self, i: usize, vals: Vec<Value>) {
+            let i = i as i64;
+            self.at.push((i - self.last - 1).into());
+            self.last = i;
+            for ((_, col), v) in self.cols.iter_mut().zip(vals) {
+                col.push(v);
+            }
+        }
+        fn into_value(self) -> Value {
+            let mut m = serde_json::Map::new();
+            m.insert("at".into(), Value::Array(self.at));
+            for (k, col) in self.cols {
+                m.insert(k.into(), Value::Array(col));
+            }
+            Value::Object(m)
+        }
+    }
+    const BODY: [&str; 5] = ["ch", "cj", "pl", "cb", "cl"];
+    let (mut body, mut sp, mut inputs) = (
+        Sparse::of(&BODY),
+        Sparse::of(&["v"]),
+        Sparse::of(&["x", "ts"]),
+    );
+    let mut prev_end = from;
+    for (i, r) in rows.iter().enumerate() {
+        let (at, len) = (num(r, "o"), num(r, "n"));
+        o.push(at.saturating_sub(prev_end).into());
+        n.push(len.into());
+        prev_end = at + len;
+        t.push(match r.get("t") {
+            Some(c) => {
+                let k = classes.iter().position(|x| x == c).unwrap_or_else(|| {
+                    classes.push(c.clone());
+                    classes.len() - 1
+                });
+                (k + 1).into()
+            }
+            None => 0.into(),
+        });
+        fd.push(num(r, "fd").into());
+        u.push(r.get("u").cloned().unwrap_or(Value::Null));
+        if BODY.iter().any(|k| num(r, k) != 0) {
+            body.push(i, BODY.iter().map(|k| num(r, k).into()).collect());
+        }
+        if let Some(v) = r.get("sp") {
+            sp.push(i, vec![v.clone()]);
+        }
+        if let Some(x) = r.get("x") {
+            let ts = r.get("ts").cloned().unwrap_or_else(|| json!(""));
+            inputs.push(i, vec![x.clone(), ts]);
+        }
+    }
+    json!({
+        "from": from, "end": end, "count": rows.len(),
+        "classes": classes,
+        "o": o, "n": n, "t": t, "fd": fd, "u": u,
+        "body": body.into_value(), "sp": sp.into_value(), "inputs": inputs.into_value(),
+    })
 }
 
 /// 有上限的内存出口。超了就报错（让查询函数停下），并记下「超了」—— 调用方据此回 `too_large`，
