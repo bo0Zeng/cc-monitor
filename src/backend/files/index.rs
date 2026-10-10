@@ -210,7 +210,7 @@ pub fn build_with(root: &Path, device_of: impl Fn(&Path) -> Option<u64>) -> Snap
         ends,
         kinds,
         root: super::raw::path_bytes(root).to_vec(),
-        built_at: SystemTime::now(),
+        built_at: crate::common::time::now(),
         unreadable_dirs,
         unreadable_paths,
         truncated,
@@ -628,7 +628,7 @@ fn strictly_under(a: &[u8], b: &[u8]) -> bool {
 /// ⚠ **它不重走、不阻塞**：拿的是手上这一份，并把它的年龄与「该不该重走、走哪个根」一起交回去。
 /// 要更新的一方自己发重走那条命令 —— 见本文件头注那个 🔴。
 pub fn find(args: &FindArgs<'_>) -> Result<FindResult, Superseded> {
-    let now = SystemTime::now();
+    let now = crate::common::time::now();
     let domain = args.under.or(args.home);
     let in_home = |d: &[u8]| args.home.is_some_and(|h| within(d, h));
     let fresh_root = |d: Option<&[u8]>| -> Option<Vec<u8>> {
@@ -765,7 +765,7 @@ pub struct Status {
 }
 
 pub fn status() -> Status {
-    let now = SystemTime::now();
+    let now = crate::common::time::now();
     with_resident(|snap| {
         let (missing, s, age) = match snap {
             Some(snap) => (false, snap.stats(), snap.age_secs(now)),

@@ -1086,13 +1086,13 @@ fn watch_loop(
     // 所有发送端都掉了就结束（等价于原来的 Disconnected 分支）。
     loop {
         // 每一拍（事件之后 · 到点）都按此刻把全部会话的「久未动静」判一遍，表变了的才发帧。
-        for f in state.book.due_frames(std::time::SystemTime::now()) {
+        for f in state.book.due_frames(crate::common::time::now()) {
             sink.send(f);
         }
         let event = match crate::observe::runs::next_event(
             &events_rx,
             state.book.next_due(),
-            std::time::SystemTime::now(),
+            crate::common::time::now(),
         ) {
             Ok(Some(e)) => e,
             Ok(None) if sink.is_closed() => break,

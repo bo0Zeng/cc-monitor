@@ -873,7 +873,7 @@ fn exec_or_spawn(cmd: Child, subject: &str, account: Option<&str>) -> i32 {
         let Some(home) = crate::platform::paths::data_home() else {
             return;
         };
-        let now = std::time::SystemTime::now()
+        let now = crate::common::time::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |d| d.as_secs());
         if let Err(e) = crate::control::launch_account::leave_note(&home, pid, name, now) {

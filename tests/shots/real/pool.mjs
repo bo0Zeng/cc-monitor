@@ -14,11 +14,11 @@
  *
  * 隔离：每台后端跑在 bwrap 里 —— 家目录挂成 `/home/user`（界面上看到的路径与机器无关）、断网（`--unshare-net`）、主机名 `shots`、
  * `/tmp` 是空的；白名单环境（PATH · HOME · LANG · TZ · TMUX_TMPDIR · XDG_RUNTIME_DIR 都指沙箱）；不起 claude、不碰用户的 tmux。
- * 后端二进制：`CCM_SHOTS_BACKEND`，不给就用本树 `.build/backend/debug/cc-monitor-backend`；无头壳：本树 `.build/shell/debug/examples/ccm-shots-shell`
+ * 后端二进制：`CCM_SHOTS_BACKEND`，不给就用本树 `.build/backend-shots/debug/cc-monitor-backend`（带特性 `shots` 编）；无头壳：本树 `.build/shell/debug/examples/ccm-shots-shell`
  * （两样都由 [`buildBins`] 编：`run.mjs` 起 vite 前调；无头壳只在特性 `shots` 下编，发版构建里没有它）。
  */
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { createInterface } from "node:readline";
 
@@ -27,9 +27,37 @@ const KEEP = 4;
 
 /**
  * 截图里每一台的时区（IANA 名）：各台后端 · 无头壳 · 浏览器（`run.mjs` 起它时同样给）一律按它，不随跑截图那台机器的设置走。
- * 「现在」还没给死：后端那一侧没有假钟的入口（要核心补），页面单方面拨钟会和后端算的「距今」对不上。
  */
 export const SHOTS_TZ = "Asia/Shanghai";
+
+/**
+ * 截图里的「现在」：每一页开头拨到这一刻（[`pinDateSource`]，经调试口在页里任何脚本之前装上），之后照真钟接着走；
+ * 页里起世界时把它那一刻的 `Date.now()` 交来（`/__ccm/world` 的 `now`），各台后端从同一刻接着走
+ * （带特性 `shots` 编的后端认 `CCM_SHOTS_NOW_MS`：`src/backend/common/time.rs::shots_clock`），盘上写的文件修改时刻也落在这一刻。
+ * 取整分（14:30:00）：一张图从开页到截下来不到一分钟，钟面那一格不会跨分。
+ */
+export const SHOTS_NOW_MS = Date.parse("2026-10-08T14:30:00+08:00");
+
+/** 页里拨钟的那一段（装在每一页的开头）：`Date.now()` 与无参的 `new Date()` 从 `now` 起照真钟接着走，别的照旧。 */
+export function pinDateSource(now = SHOTS_NOW_MS) {
+  return `(() => {
+  const Real = Date;
+  const shift = ${now} - Real.now();
+  function D(...a) {
+    if (!new.target) return new Real(Real.now() + shift).toString();
+    return a.length === 0 ? new Real(Real.now() + shift) : new Real(...a);
+  }
+  D.prototype = Real.prototype;
+  D.now = () => Real.now() + shift;
+  D.parse = Real.parse;
+  D.UTC = Real.UTC;
+  Object.setPrototypeOf(D, Real);
+  globalThis.Date = D;
+})();`;
+}
+
+/** 台架那一份后端的构建目录（带特性 `shots`）。 */
+const BACKEND_TARGET = (repo) => path.join(repo, ".build/backend-shots");
 
 /** 无头壳那一份：壳的包里一个只在特性 `shots` 下编的例子（判据 `tests/frontend/shell/shots_feature_guard_tests.rs`）。 */
 const SHELL_EXAMPLE = "ccm-shots-shell";
@@ -41,7 +69,8 @@ const SHELL_EXAMPLE = "ccm-shots-shell";
 export function buildBins({ repo, env }) {
   const jobs = { ...env, CARGO_BUILD_JOBS: env.CARGO_BUILD_JOBS ?? "4" };
   if (!process.env.CCM_SHOTS_BACKEND) {
-    const b = spawnSync("cargo", ["build", "--quiet"], { cwd: path.join(repo, "src/backend"), env: jobs, stdio: ["ignore", "inherit", "inherit"] });
+    // 带特性 `shots`（拨钟那一段只在这一档里编），另落一个目录：不和判据 / e2e 用的那份默认构建互相覆盖。
+    const b = spawnSync("cargo", ["build", "--quiet", "--features", "shots", "--target-dir", BACKEND_TARGET(repo)], { cwd: path.join(repo, "src/backend"), env: jobs, stdio: ["ignore", "inherit", "inherit"] });
     if (b.status !== 0) return `真后端没编出来（cargo 退出码 ${b.status}）`;
   }
   const s = spawnSync("cargo", ["build", "--quiet", "--features", "shots", "--example", SHELL_EXAMPLE], { cwd: path.join(repo, "src/frontend/shell"), env: jobs, stdio: ["ignore", "inherit", "inherit"] });
@@ -50,7 +79,7 @@ export function buildBins({ repo, env }) {
 }
 
 export function backendPool({ repo, sandbox }) {
-  const bin = process.env.CCM_SHOTS_BACKEND ?? path.join(repo, ".build/backend/debug/cc-monitor-backend");
+  const bin = process.env.CCM_SHOTS_BACKEND ?? path.join(BACKEND_TARGET(repo), "debug/cc-monitor-backend");
   const shellBin = path.join(repo, ".build/shell/debug/examples", SHELL_EXAMPLE);
   const worlds = new Map();
 
@@ -69,7 +98,7 @@ export function backendPool({ repo, sandbox }) {
     rmSync(w.dir, { recursive: true, force: true });
   }
 
-  function start(dir, origin, m) {
+  function start(dir, origin, m, now) {
     const home = path.join(dir, "home");
     mkdirSync(home, { recursive: true });
     for (const [rel, text] of Object.entries(m.files ?? {})) {
@@ -77,6 +106,7 @@ export function backendPool({ repo, sandbox }) {
       const p = path.join(home, rel);
       mkdirSync(path.dirname(p), { recursive: true });
       writeFileSync(p, text);
+      utimesSync(p, now / 1000, now / 1000);
     }
     // 活会话的替身进程：判活看 pid 在不在 ＋ 进程起始时刻对不对得上（`procStart`，/proc/<pid>/stat 第 22 格）。
     const sleepers = [];
@@ -87,7 +117,7 @@ export function backendPool({ repo, sandbox }) {
       const procStart = st.slice(st.lastIndexOf(")") + 2).split(" ")[19];
       const p = path.join(home, ".claude", "sessions", `${s.pid}.json`);
       mkdirSync(path.dirname(p), { recursive: true });
-      writeFileSync(p, JSON.stringify({ pid: s.pid, sessionId: l.sid, cwd: l.cwd, startedAt: l.startedAt ?? Date.now(), kind: l.kind ?? "interactive", procStart, ...(l.status ? { status: l.status } : {}), ...(l.waitingFor ? { waitingFor: l.waitingFor } : {}), ...(l.statusUpdatedAt ? { statusUpdatedAt: l.statusUpdatedAt } : {}) }));
+      writeFileSync(p, JSON.stringify({ pid: s.pid, sessionId: l.sid, cwd: l.cwd, startedAt: l.startedAt ?? now, kind: l.kind ?? "interactive", procStart, ...(l.status ? { status: l.status } : {}), ...(l.waitingFor ? { waitingFor: l.waitingFor } : {}), ...(l.statusUpdatedAt ? { statusUpdatedAt: l.statusUpdatedAt } : {}) }));
     }
     if (m.warm) {
       const s = spawn("sleep", ["3600"], { stdio: "ignore", env: { PATH: "/usr/bin:/bin" } });
@@ -106,6 +136,7 @@ export function backendPool({ repo, sandbox }) {
       XDG_RUNTIME_DIR: `${H}/.shots-run`,
       CCM_BACKEND_STDERR_LOG: "/tmp/stderr.log",
       TZ: SHOTS_TZ,
+      CCM_SHOTS_NOW_MS: String(Math.round(now)),
     };
     const box = [
       "--ro-bind", "/", "/",
@@ -190,15 +221,18 @@ export function backendPool({ repo, sandbox }) {
     if (!existsSync(bin)) throw new Error(`真后端二进制不在：${bin}（先 cd src/backend && cargo build）`);
     if (!existsSync(shellBin)) throw new Error(`无头壳不在：${shellBin}（先 cd src/frontend/shell && cargo build --features shots --example ${SHELL_EXAMPLE}）`);
     const { key, machines } = body;
+    // 页里那一刻（页开头拨过钟）；没给 ⇒ 台架那一刻。
+    const now = Number.isFinite(body.now) ? body.now : SHOTS_NOW_MS;
     kill(key);
     const dir = path.join(sandbox, "worlds", key.replace(/[^A-Za-z0-9_.-]/g, "_"));
     rmSync(dir, { recursive: true, force: true });
     mkdirSync(path.join(dir, "shell-home"), { recursive: true });
-    const w = { dir, homes: new Map(), sleepers: [], listeners: [], backlog: [], shell: null };
+    // 这屋子的钟比台架这一侧快多少（开页之后改的文件，修改时刻照这屋子的钟落）。
+    const w = { dir, homes: new Map(), sleepers: [], listeners: [], backlog: [], shell: null, shift: now - Date.now() };
     worlds.set(key, w);
     const list = Object.entries(machines).map(([origin, m], i) => {
       w.homes.set(origin, path.join(dir, `m${i}`, "home"));
-      const { argv, sleepers } = start(path.join(dir, `m${i}`), origin, m);
+      const { argv, sleepers } = start(path.join(dir, `m${i}`), origin, m, now);
       w.sleepers.push(...sleepers);
       return { origin, argv };
     });
@@ -231,6 +265,8 @@ export function backendPool({ repo, sandbox }) {
       if (!home || rel.startsWith("/") || rel.split("/").includes("..")) throw new Error(`改不了：${body.origin} · ${rel}`);
       mkdirSync(path.dirname(path.join(home, rel)), { recursive: true });
       writeFileSync(path.join(home, rel), String(body.text));
+      const at = (Date.now() + w.shift) / 1000;
+      utimesSync(path.join(home, rel), at, at);
     }
   }
 

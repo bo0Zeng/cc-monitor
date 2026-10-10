@@ -752,7 +752,7 @@ pub fn machine_label() -> String {
 }
 
 fn now_secs() -> u64 {
-    std::time::SystemTime::now()
+    crate::common::time::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0)
@@ -760,7 +760,7 @@ fn now_secs() -> u64 {
 
 /// 生成这台的 id：（家目录, 称呼, 纳秒, pid）的摘要。只在目录文件不存在时调一次。
 fn new_machine_id() -> String {
-    let nanos = std::time::SystemTime::now()
+    let nanos = crate::common::time::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_nanos())
         .unwrap_or(0);

@@ -530,7 +530,7 @@ fn edited_at(d: &dyn Door, store: &super::Store, path: &str, tz: &crate::Tz) -> 
     if !super::edited_since_written(d, store) {
         return None;
     }
-    let now = std::time::SystemTime::now()
+    let now = crate::common::time::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |x| x.as_secs());
     let at = modified_of(d, path).unwrap_or(now);

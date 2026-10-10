@@ -676,6 +676,14 @@ mod tests {
         "收窄人群",
         "续期锁不再按修改时刻判过期（或不再用 mkdir 锁）的那天。",
     ),
+    (
+        "common/time.rs",
+        "Duration::from_millis(ms)",
+        "截图台架的拨钟（`common::time::shots_clock`，只在特性 `shots` 下编）：台架交来的起点毫秒换成一个时刻，\
+         与头一回问钟那一刻的系统钟比一次、记下差。只是一次换算，不等、不睡、不让任何线程醒来。不是定时器。",
+        "收窄人群",
+        "截图台架不再拨后端的钟的那天（判据 `one_clock_guard::c2` 一起改）。",
+    ),
     ];
     // `relay/machine.rs` 那一行（差分探针的 socket 读写期限）摘了：「在不在」改由常驻后端进程内的状态答，探针删了。
 
@@ -1477,9 +1485,10 @@ mod g6_reach {
         // 10 → **11**：多的那一条是 `accounts/oauth/store.rs` 的续期锁过期门限（拿锁时比一次锁目录的修改时刻）。
         // 11 → **12**：多的那一条是 `control/cli_args.rs` 的 `STDIN_QUIET`（CLI 面读入参的静默窗，一次性进程里等一次；
         //   调用那一处另住 `REGISTERED_DEADLINE_WAKES`，cell `缩性质`）。
+        // 12 → **13**：多的那一条是 `common/time.rs` 的截图台架拨钟（只在特性 `shots` 下编，台架交的起点毫秒换成时刻、比一次系统钟）。
         assert_eq!(
-            registered, 12,
-            "登记表从 12 条变成 {registered} 条了 —— 这个数就是那条相等断言的分母，\
+            registered, 13,
+            "登记表从 13 条变成 {registered} 条了 —— 这个数就是那条相等断言的分母，\
              改它等于改判据的射程"
         );
     }

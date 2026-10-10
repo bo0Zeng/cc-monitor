@@ -48,7 +48,7 @@
   border-left: 1px solid var(--border-strong);
   box-shadow: -4px 0 12px var(--overlay-shadow);
   transform: translateX(100%);
-  transition: transform 0.22s ease;
+  transition: transform var(--dur-expand) ease;
   display: flex;
   flex-direction: column;
   z-index: var(--z-view);
@@ -375,7 +375,7 @@ body.settings-window-mode .settings-panel {
   width: 40%;
   border-radius: var(--radius-s);
   background: var(--accent);
-  animation: machine-bar 1.4s ease-in-out infinite;
+  animation: machine-bar var(--dur-sweep) ease-in-out infinite;
 }
 
 @keyframes machine-bar {
@@ -1027,9 +1027,9 @@ body.settings-window-mode .settings-panel {
   padding: 0;
   margin-left: 4px;
   transition:
-    color 120ms,
-    background 120ms,
-    border-color 120ms;
+    color var(--dur-press),
+    background var(--dur-press),
+    border-color var(--dur-press);
 }
 
 .settings-field-reset:hover {
