@@ -301,6 +301,29 @@ export const SETTINGS_SCENES: Scene[] = [
     await click(await byText(".settings-page:not([hidden]) button", copyText("machinePage.cc.title")));
     await sleep(800);
   }),
+  settings(
+    "settings-machine-local-cc-exit-unreadable",
+    "设置 · 本机 · 退出策略读不出",
+    "本机「这台上的 cc-monitor」：随退出停止那一行下，后端写好的那一句（读的哪份 · 原因词 · 按默认）＋［复制详情］",
+    async () => {
+      await go("machine:（本机）");
+      await click(await byText(".settings-page:not([hidden]) button", copyText("machinePage.cc.title")));
+      await sleep(800);
+    },
+    () => {
+      const w = defaultWorld();
+      const why = "读取 /home/user/.cc-monitor/exit-policy.json 失败 · 内容无法解析";
+      w.ops["exit-policy-read"] = () => ({
+        state: "unreadable",
+        killOnExit: false,
+        reason: why,
+        detail: "时刻 2026-10-10 01:00:00 +08:00\n机器 Linux x86_64 · 后端 fake\n命令 exit-policy-read\n码 unreadable\n原话 expected value at line 1 column 1",
+        path: "/home/user/.cc-monitor/exit-policy.json",
+        said: copyText("backendPolicy.exit.unreadable", { why }),
+      });
+      return w;
+    },
+  ),
   settings("settings-logs-restart", "设置 · 日志 · 改了要重启", "日志页拨「日志写入文件」：行内「重启 cc-monitor 后生效」＋ 顶上那条", async () => {
     await go("logs");
     const sw = [...document.querySelectorAll<HTMLLabelElement>(".settings-page:not([hidden]) label")].find((l) => l.textContent?.startsWith("日志写入文件"));

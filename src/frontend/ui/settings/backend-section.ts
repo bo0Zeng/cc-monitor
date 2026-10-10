@@ -35,7 +35,7 @@ import { readRecordDrift } from "../record-reads";
 import { ccRow } from "./cc-row";
 import { decodeMachineState, type MachineState } from "./machine-state";
 import { exactKeys, isObj } from "../ipc/decode";
-import { sayFailure } from "../kit/detail";
+import { sayFailure, sayWithDetail } from "../kit/detail";
 
 /** 「停」的结局说一句（三个词各一句，穷举 —— 多一个词 tsc 就红）；机器页那一行照它说。 */
 export function stopSaid(a: StopAnswer): string {
@@ -58,6 +58,8 @@ interface ExitAnswer {
   policy: ExitPolicyState;
   killOnExit: boolean;
   said: string;
+  /** 只在 `unreadable` 时有：复制详情（原话在这里，不在那一句）。 */
+  detail: string;
 }
 
 /** 从后端那份不透明 JSON 里取「退出行为」两格；缺一格 / 形状不对 ⇒ `null`（＝ 问不到，不替后端补缺省值）。 */
@@ -69,7 +71,7 @@ function readExitAnswer(raw: unknown): ExitAnswer | null {
   if (policy === null || typeof v.killOnExit !== "boolean") return null;
   // 成品那一句缺了 / 空了 ⇒ 当问不到（不替后端补一句）。
   if (typeof v.said !== "string" || v.said === "") return null;
-  return { policy, killOnExit: v.killOnExit, said: v.said };
+  return { policy, killOnExit: v.killOnExit, said: v.said, detail: typeof v.detail === "string" ? v.detail : "" };
 }
 
 /** 「退出行为」那两问的期限：10 秒。 */
@@ -501,7 +503,7 @@ export class BackendSection {
     el.dataset.exit = answer.policy;
     kill.input.removeAttribute("aria-disabled");
     kill.set(answer.killOnExit);
-    el.textContent = answer.said;
+    sayWithDetail(el, answer.said, answer.detail);
   }
 
   /**

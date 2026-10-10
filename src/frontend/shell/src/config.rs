@@ -449,7 +449,7 @@ pub async fn machine_table_try(edits: Vec<ConfigEdit>) -> Result<Option<MachineF
             machine_table_try_at(&path, &edits)
         })
         .await
-        .map_err(|e| e.to_string())??)
+        .map_err(Said::crashed)??)
     }
     .await;
     r.map_err(|s| s.named("machine_table_try"))

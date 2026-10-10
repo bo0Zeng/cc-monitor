@@ -29,8 +29,13 @@ fn the_resident_switch_is_empty_one_or_refused() {
         Mode::Listen
     );
     for bad in ["0", "yes", "true", "2"] {
-        let e = mode_from(&env_of(&[(ENV_RESIDENT, bad)])).unwrap_err();
-        assert!(e.contains(ENV_RESIDENT), "拒绝的理由没点名开关：{e}");
+        let (e, diag) = crate::common::contract::tests::diag(|| {
+            mode_from(&env_of(&[(ENV_RESIDENT, bad)])).unwrap_err()
+        });
+        assert!(
+            diag.contains(ENV_RESIDENT),
+            "拒绝的诊断没点名开关：{e} / {diag}"
+        );
     }
     assert_eq!(
         mode_from(&env_of(&[

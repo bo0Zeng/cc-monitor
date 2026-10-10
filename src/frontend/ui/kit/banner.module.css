@@ -1,4 +1,4 @@
-/* 错误条 · 警告条。 */
+/* 错误条 · 警告条 · 中性条。 */
 @layer components {
   .banner {
     display: flex;
@@ -24,6 +24,15 @@
 
   .banner[data-intent="warn"] > svg {
     color: var(--warn);
+  }
+
+  /* 中性：还没出错（正在进行），不涂状态色。 */
+  .banner[data-intent="info"] {
+    border-left-color: var(--text-2);
+  }
+
+  .banner[data-intent="info"] > svg {
+    color: var(--text-2);
   }
 
   /* 放得下就一行；窄到放不下一句 ＋ 按钮 ⇒ 按钮折到下一行（句子在上）。 */

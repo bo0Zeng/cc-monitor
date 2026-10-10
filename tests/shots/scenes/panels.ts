@@ -856,7 +856,7 @@ const LOCAL_EXITED = {
   key: "rsUiError.localExited.down",
   args: {},
   said: copyText("rsUiError.localExited.down"),
-  detail: "时刻：2026-10-09 13:39:41 -07:00\n本机：cc-monitor 4.1.6 · Linux x86_64\n码：退出码 1\n原话：[死亡账] origin=<local> 判定=崩溃 退出状态=退出码 1 —— 说过话之后异常终止",
+  detail: "时刻：2026-10-09 13:39:41 -07:00\n本机：cc-monitor 4.1.6 · Linux x86_64\n码：1\n原话：[死亡账] origin=<local> 判定=崩溃 退出状态=原因不明 码=1 —— 说过话之后异常终止",
   reconnect: "<local>",
   at: 0,
 };

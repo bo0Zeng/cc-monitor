@@ -1222,12 +1222,12 @@
         "earliestReturn": null,
         "now": 1791189600,
         "path": "/home/u/.cc-monitor/quota.json",
-        "reason": "not JSON",
+        "reason": "读取 /h/.cc-monitor/quota.json 失败 · 内容无法解析",
         "state": "unreadable",
         "unseen": [],
         "usableNow": []
       },
-      "text": "读取失败 · 用量记录 · 原因不明",
+      "text": "读取 /h/.cc-monitor/quota.json 失败 · 内容无法解析",
       "tzOffsetMin": 480
     }
   ],

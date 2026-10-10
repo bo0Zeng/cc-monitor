@@ -9,6 +9,8 @@ const replies = new Map<string, unknown>();
 let refusal: { op: string; code: string; message: string; data: unknown; detail?: string } | null = null;
 /** 接下来几次 `session-new` 没等到回话（期限到）。 */
 let hang = 0;
+/** 期限到之后那一次再核：`true` ⇒ 一直不回（停在「正在核实」那一拍）。 */
+let stall = false;
 let boom: Error | null = null;
 
 vi.mock("../../../src/comms/inward/chan", async (importOriginal) => {
@@ -22,6 +24,7 @@ vi.mock("../../../src/comms/inward/chan", async (importOriginal) => {
           hang--;
           throw new real.ChanError({ layer: "hop", at: { idx: 0, tag: "wait" }, reach: "Sent", why: "Overrun" }, "码：Overrun");
         }
+        if (stall && op === "session-new") await new Promise(() => {});
         if (refusal && refusal.op === op) {
           const r = refusal;
           refusal = null;
@@ -99,6 +102,7 @@ beforeEach(() => {
   replies.clear();
   refusal = null;
   hang = 0;
+  stall = false;
   boom = null;
   vi.mocked(commands.backend_status).mockImplementation(async () => ({ channel: true }) as never);
   vi.mocked(commands.backend_start).mockClear();
@@ -232,6 +236,19 @@ describe("点［新建］：交那台的那一份", () => {
     expect(newRequests()).toHaveLength(2);
     expect(document.querySelector('[role="dialog"]'), "起好了 ⇒ 框关上").toBeNull();
     expect(arrival.awaitArrival).toHaveBeenCalledWith(expect.objectContaining({ origin: "devbox", tmuxName: "orders-cc" }));
+  });
+
+  it("期限到、正在再核那一拍 ⇒ 框顶那一条是中性的（没出错：不用错误色、不当警报念）", async () => {
+    hang = 1;
+    void openNewSession({ origin: "devbox" });
+    await flush();
+    stall = true;
+    createBtn().click();
+    await flush();
+    const top = dialog().querySelector<HTMLElement>("[class*=nsTop]")!;
+    expect(top.textContent).toContain(copyText("newSession.timeout.checking", { machine: "devbox" }));
+    const bar = top.firstElementChild as HTMLElement;
+    expect([bar.dataset.intent, bar.getAttribute("role"), bar.querySelector("svg")?.dataset.icon]).toEqual(["info", "status", "info"]);
   });
 
   it("★ 再核也无应答 ⇒ 框顶「起没起未知」＋［再核一次］＋［复制详情］、没有［重试］；［再核一次］带同一张票，那台说起好了就落过去", async () => {

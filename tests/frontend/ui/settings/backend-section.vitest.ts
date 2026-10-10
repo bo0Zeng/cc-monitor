@@ -412,6 +412,7 @@ describe("P2s backend 开关区", () => {
       state: "unreadable",
       killOnExit: false,
       reason: "不是 JSON",
+      detail: "时刻 …\n原话 zz",
       path: "x",
       said: EXIT_UNREADABLE,
     };
@@ -421,7 +422,11 @@ describe("P2s backend 开关区", () => {
     let row = s.element.querySelector<HTMLElement>(".backend-row")!;
     expect(
       row.querySelector<HTMLElement>(".backend-row-exit")?.textContent,
-    ).toBe(EXIT_UNREADABLE);
+    ).toContain(EXIT_UNREADABLE);
+    expect(
+      row.querySelector<HTMLElement>('.backend-row-exit [data-part="copy-detail"]'),
+      "读不出那一句后面没有［复制详情］",
+    ).not.toBeNull();
     // 问不到（没连上 / 旧后端不认那条命令）：不替那台机器说话，也不画一个看起来能用的勾。
     exitAnswer = null;
     s = new BackendSection({ headless: true });

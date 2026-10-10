@@ -1,5 +1,7 @@
 //! 窗口这一族的平台差异：壳里平台 cfg 的唯一住址（同 [`super::fs`]）：[`desktop_fixes`]（`run()` 里那段 `cfg(windows)` 块）· [`bring_to_front`]（两个平台臂）。
 
+use crate::copy_table::copy_text;
+use crate::detail::Said;
 use tauri::Manager;
 
 /// nudge skip 判定的纯函数对。`pack_nudge_state`：终态物理尺寸 + fullscreen 位打包成一个可比较状态值。
@@ -190,7 +192,7 @@ pub fn desktop_fixes(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<taur
 /// Tauri 内部用 windows crate 0.61（HWND.0 = *mut c_void），我们 0.56
 /// （HWND.0 = isize）；用 `as isize` cast 跨版本兼容。
 #[cfg(windows)]
-pub async fn bring_to_front(app: tauri::AppHandle) -> Result<(), String> {
+pub async fn bring_to_front(app: tauri::AppHandle) -> Result<(), Said> {
     use windows::Win32::Foundation::HWND;
     use windows::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
     use windows::Win32::UI::Input::KeyboardAndMouse::{
@@ -208,13 +210,13 @@ pub async fn bring_to_front(app: tauri::AppHandle) -> Result<(), String> {
     // isize 跨线程，INVARIANTS § 19 跨 windows crate 版本约定。
     let win = app
         .get_webview_window("main")
-        .ok_or_else(|| "main window not found".to_string())?;
-    let tauri_hwnd = win.hwnd().map_err(|e| format!("hwnd: {e}"))?;
+        .ok_or_else(|| front_failed("main window not found"))?;
+    let tauri_hwnd = win.hwnd().map_err(|e| front_failed(format!("hwnd: {e}")))?;
     let hwnd_value = tauri_hwnd.0 as isize;
 
     // INVARIANTS § 10：Win32 同步调用必须 spawn_blocking，否则慢路径会让 Tauri
     // IPC 派发线程排队（v2.4 起 autoFollowUserActive 高频触发该 IPC）。
-    tokio::task::spawn_blocking(move || -> Result<(), String> {
+    tokio::task::spawn_blocking(move || -> Result<(), Said> {
         unsafe {
             let h = HWND(hwnd_value);
             tracing::info!("bring_monitor_to_front: monitor hwnd = {:#x}", hwnd_value);
@@ -279,22 +281,31 @@ pub async fn bring_to_front(app: tauri::AppHandle) -> Result<(), String> {
                 // 拉前真失败也 Z 序已被推顶，视觉上窗口浮起来了
                 // （只是焦点没抢到）。给前端 warn 但不视为 fatal。
                 tracing::warn!("bring_monitor_to_front: SetForegroundWindow rejected (window Z-order raised but no focus)");
-                Err("SetForegroundWindow rejected (window raised but not focused)".into())
+                Err(Said::with_raw(
+                    copy_text("rsWindow.front.refused", &[]),
+                    "SetForegroundWindow rejected (window raised but not focused)",
+                ))
             }
         }
     })
     .await
-    .map_err(|e| format!("spawn_blocking join error: {e}"))?
+    .map_err(Said::crashed)?
 }
 
 #[cfg(not(windows))]
-pub async fn bring_to_front(app: tauri::AppHandle) -> Result<(), String> {
+pub async fn bring_to_front(app: tauri::AppHandle) -> Result<(), Said> {
     let win = app
         .get_webview_window("main")
-        .ok_or_else(|| "main window not found".to_string())?;
+        .ok_or_else(|| front_failed("main window not found"))?;
     let _ = win.unminimize();
     let _ = win.show();
-    win.set_focus().map_err(|e| format!("set_focus: {e}"))
+    win.set_focus()
+        .map_err(|e| front_failed(format!("set_focus: {e}")))
+}
+
+/// 拉到前台没成（主窗口没了 · 拿不到句柄 · 抢焦点报错）：那一句是「程序出错」那一形，下层原话只进复制详情。
+fn front_failed(raw: impl std::fmt::Display) -> Said {
+    Said::with_raw(copy_text("rsWindow.front.failed", &[]), raw)
 }
 
 /// 把主窗口拉回来（第二次启动 · 点了通知）：最小化着就还原、藏着就显示；`focus` ⇒ 再拉到前面。

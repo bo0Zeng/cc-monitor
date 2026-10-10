@@ -28,6 +28,7 @@ import { bindEvents } from "../events";
 import { confirmDialog, type ConfirmFn, type ConfirmSpec } from "../kit/dialog";
 import { button, setDisabled } from "../kit/button";
 import { banner } from "../kit/banner";
+import { detailOf, failSaid } from "../kit/detail";
 import { foldCaret } from "../kit/fold";
 import { skeletonRows } from "../kit/skeleton";
 import { field } from "../kit/field";
@@ -251,12 +252,12 @@ export class RulesSection {
         size: "compact",
         onClick: () => void this.reload(),
       });
-      console.warn(`[rules] rotation-rules-read [${origin}] 失败：`, failed);
       this.body.replaceChildren(
         banner(
           "warn",
-          copyText("rot.list.unreadable", { machine: machineName(origin) }),
+          failSaid(copyText("rot.list.unreadable", { machine: machineName(origin) }), failed),
           [retry],
+          detailOf(failed),
         ),
       );
       return;
@@ -382,9 +383,12 @@ export class RulesSection {
       out.push(
         banner(
           "warn",
-          copyText("rot.list.unreadable", {
-            machine: machineName(this.origin),
-          }),
+          r.reason ??
+            copyText("rot.list.unreadable", {
+              machine: machineName(this.origin),
+            }),
+          [],
+          r.detail ?? "",
         ),
       );
     this.paintFilter(r);

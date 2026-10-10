@@ -251,8 +251,11 @@ pub(crate) fn quota_read_with(ctx: &Ctx, now: u64) -> QuotaRead {
             one
         })
         .collect();
-    let text =
-        crate::faces::quota_rows::head_text(base.state, rows.is_empty() && unseen.is_empty());
+    let text = crate::faces::quota_rows::head_text(
+        base.state,
+        rows.is_empty() && unseen.is_empty(),
+        base.reason.as_str(),
+    );
     QuotaRead {
         text,
         state: base.state,

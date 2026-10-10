@@ -84,16 +84,21 @@ pub fn read_at(path: &Path) -> Read {
     };
     match v.get(KEY_KILL_ON_EXIT) {
         Some(serde_json::Value::Bool(k)) => Read::Chosen(*k),
-        Some(other) => Read::Unreadable(
-            format!(
-                "{} 里 `{KEY_KILL_ON_EXIT}` 不是布尔（实得 {other}）",
-                path.display()
-            )
-            .into(),
-        ),
-        None => Read::Unreadable(
-            format!("{} 里没有 `{KEY_KILL_ON_EXIT}` 这一格", path.display()).into(),
-        ),
+        // 形状不对：那一句照读不懂 JSON 那一形（读的哪份 · 内容无法解析），盘上的原值只进原话（复制详情）。
+        Some(other) => Read::Unreadable(crate::common::said::Said::with_raw(
+            copy_text(
+                "beOwnState.read.notJson",
+                &[("path", &path.display().to_string())],
+            ),
+            format!("`{KEY_KILL_ON_EXIT}` is not a bool: {other}"),
+        )),
+        None => Read::Unreadable(crate::common::said::Said::with_raw(
+            copy_text(
+                "beOwnState.read.notJson",
+                &[("path", &path.display().to_string())],
+            ),
+            format!("no `{KEY_KILL_ON_EXIT}` field"),
+        )),
     }
 }
 
@@ -101,11 +106,7 @@ pub fn read_at(path: &Path) -> Read {
 pub fn read_now() -> Read {
     match policy_path() {
         Some(p) => read_at(&p),
-        None => Read::Unreadable(
-            "家目录解析不出来（HOME / USERPROFILE 都没有）"
-                .to_string()
-                .into(),
-        ),
+        None => Read::Unreadable(copy_text("beExitPolicy.read.noHome", &[]).into()),
     }
 }
 
@@ -175,7 +176,7 @@ fn resident_now() -> bool {
 /// 顺序承重：读不出来先说读不出来（不看套过缺省的 `killOnExit`）· 勾上 ⇒ 会结束 · 没勾 ⇒ 看是不是常驻。「无人监护」只许出现在常驻那一档。
 fn said(r: &Read, resident: bool) -> String {
     match r {
-        Read::Unreadable(_) => copy_text("backendPolicy.exit.unreadable", &[]),
+        Read::Unreadable(why) => copy_text("backendPolicy.exit.unreadable", &[("why", &why.said)]),
         _ if r.kill_on_exit() => copy_text("backendPolicy.exit.kills", &[]),
         _ if resident => copy_text("backendPolicy.exit.unattended", &[]),
         _ => copy_text("backendPolicy.exit.selfDies", &[]),

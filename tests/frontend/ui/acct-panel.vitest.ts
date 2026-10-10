@@ -128,6 +128,8 @@ function rulesOf(rotation: Rotation, more: RuleRow[] = []): RulesRead {
   });
   return {
     state: "present",
+    reason: null,
+    detail: null,
     defaultRule: "r_def",
     rules: [row("r_def", "日常", rotation, true), ...more],
   };
@@ -361,6 +363,19 @@ describe("账号面板", () => {
         wait: 40,
       },
     });
+  });
+
+  it("额度账读不出 ⇒「当前」那一块一条警告条：后端写好的那一句（读的哪份 · 原因词）＋［复制详情］", () => {
+    seed({}, undefined);
+    const why = "读取 /h/.cc-monitor/quota.json 失败 · 内容无法解析";
+    appStore.quota.set(
+      new Map([["<local>", { ...LEDGER, state: "unreadable", reason: why, detail: "时刻 …\n原话 zz", text: why, accounts: [] }]]),
+    );
+    openAccountPanel("s1", "<local>", host);
+    const bar = [...panel().querySelectorAll<HTMLElement>("[role=status]")].find((b) => b.textContent?.includes(why));
+    expect(bar, "读不出那一条没说原因").toBeTruthy();
+    expect(bar!.querySelector('[data-part="copy-detail"]'), "没有［复制详情］").not.toBeNull();
+    toggleAccountPanel("s1", "<local>", host);
   });
 
   it("切换：缺省选后端给的下一个；热切换 ⇒ rotation-switch hot", async () => {

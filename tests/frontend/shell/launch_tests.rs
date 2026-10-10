@@ -793,13 +793,12 @@ enum FakeTermSpawn {
 
 /// 一条 spawn 错误是不是 `ETXTBSY`。
 ///
-/// 🔴 **认的是 `os error 26` 那一半，不是 `Text file busy` 那一半**：
-/// 后半句由 C 库按 `LC_MESSAGES` 打（glibc 有中文翻译），拿它当判据等于给这条判据
-/// 再挂一条**隐式的 locale 前提** —— 而那正是本件在治的病。前半句是 errno 的十进制，
-/// 与 locale 无关。
+/// 🔴 **认的是类型，不是字串**：起进程那一下没成是 [`LaunchFail::Spawn`]，带着系统那个 `io::Error`，
+/// 它的种类是 `ExecutableFileBusy` 就是。不认 `Text file busy`（C 库按 `LC_MESSAGES` 打，glibc 有中文翻译），
+/// 也不认 `os error 26`（句子里早就不带原话了 —— 原话只进日志）。
 #[cfg(not(windows))]
-fn spawn_error_is_etxtbsy(err: &str) -> bool {
-    err.contains("os error 26")
+fn spawn_error_is_etxtbsy(err: &LaunchFail) -> bool {
+    matches!(err, LaunchFail::Spawn(e) if e.kind() == std::io::ErrorKind::ExecutableFileBusy)
 }
 
 /// 写一个「只记录、不执行」的假终端脚本，并**把前提真的建立起来**。
@@ -851,13 +850,13 @@ fn spawn_fake_terminal(
                 //    而那正是本件在治的病换个地方长。
                 eprintln!(
                     "[K-R24] 前提被破了一次：exec 假终端撞上 ETXTBSY（第 {} 次），\
-                         上限 {tries} 次内重试；逐字：{e}",
+                         上限 {tries} 次内重试；逐字：{e:?}",
                     i + 1
                 );
-                last = format!("撞了 {} 次，最后一次逐字：{e}", i + 1);
+                last = format!("撞了 {} 次，最后一次：{e:?}", i + 1);
                 std::thread::sleep(std::time::Duration::from_millis(20));
             }
-            Err(e) => return FakeTermSpawn::Broken(e),
+            Err(e) => return FakeTermSpawn::Broken(format!("{e:?}")),
         }
     }
     FakeTermSpawn::PremiseUnmet(last)
@@ -1076,10 +1075,8 @@ fn an_open_write_handle_reads_as_an_unmet_premise_not_as_a_broken_spawn() {
     let _ = std::fs::remove_dir_all(&dir);
 
     match got {
-        FakeTermSpawn::PremiseUnmet(m) => assert!(
-            m.contains("os error 26"),
-            "认成了「前提不成立」，可成因不是 `ETXTBSY` ⇒ 分类器认的是别的东西：{m}"
-        ),
+        // 认成「前提不成立」就是按类型认出了 `ETXTBSY`（[`spawn_error_is_etxtbsy`] 只认那一种）。
+        FakeTermSpawn::PremiseUnmet(_) => {}
         other => panic!(
             "\n★★ 有人攥着写 fd 时 execve 必是 `ETXTBSY`，而这条判据把它读成了 {other:?}\n\
                  ⇒ 「前提没建立」又和别的坏法共用一个读数了 —— 那正是 `K-R24` 的正题。"

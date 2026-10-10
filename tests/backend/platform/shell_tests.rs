@@ -66,7 +66,7 @@ fn which_execution_policies_load_a_local_unsigned_profile() {
     assert_eq!(loads("Signed"), None);
 }
 
-/// ★ 住址同上。三行（生效 · `MachinePolicy` · `UserPolicy`）读成现状：组策略任一档有值 ⇒ 钉着；行数不对 ⇒ 说认不出、带原话。
+/// ★ 住址同上。三行（生效 · `MachinePolicy` · `UserPolicy`）读成现状：组策略任一档有值 ⇒ 钉着；行数不对 ⇒ 「内容无法解析」，原话不随回（记日志）。
 #[test]
 fn the_policy_listing_reads_the_effective_policy_and_group_policy() {
     use super::powershell::read_policy_listing as read;
@@ -82,9 +82,10 @@ fn the_policy_listing_reads_the_effective_policy_and_group_policy() {
     );
     let c = read(PsHost::Desktop, "RemoteSigned\n");
     assert_eq!((c.effective, c.loads), (None, None));
-    assert!(
-        c.error.is_some_and(|e| e.contains("RemoteSigned")),
-        "认不出却没带原话"
+    assert_eq!(
+        c.error.as_deref(),
+        Some(copy_core::copy_text("reason.content.unparsable", &[]).as_str()),
+        "认不出却没说「内容无法解析」，或把原话带进了这一格"
     );
 }
 

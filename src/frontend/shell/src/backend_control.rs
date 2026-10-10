@@ -136,7 +136,7 @@ pub async fn backend_status(origin: String) -> Result<serde_json::Value, Said> {
         Ok(
             tauri::async_runtime::spawn_blocking(move || backend_status_now(origin))
                 .await
-                .map_err(|e| e.to_string())??,
+                .map_err(Said::crashed)??,
         )
     }
     .await;
@@ -225,7 +225,7 @@ pub async fn backend_start(origin: String) -> Result<String, Said> {
                 }
             })
             .await
-            .map_err(|e| e.to_string())??);
+            .map_err(Said::crashed)??);
         }
         let mut g = remotes()
             .lock()
@@ -264,7 +264,7 @@ pub async fn backend_stop(origin: String) -> Result<crate::remote_resident::Stop
             use tauri::async_runtime::spawn_blocking;
             return spawn_blocking(crate::local_backend_host::stop_local_backend)
                 .await
-                .map_err(|e| e.to_string())?;
+                .map_err(Said::crashed)?;
         }
         {
             let mut g = remotes().lock().map_err(|e| {

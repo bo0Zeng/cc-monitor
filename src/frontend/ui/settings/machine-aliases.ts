@@ -211,7 +211,8 @@ const linkBtn = (label: string, onClick: () => void, danger = false): HTMLButton
 function policyText(p: ExecPolicy | null): string {
   if (p === null || p.loads === true) return "";
   const ps = psName(p.host);
-  if (p.error !== null) return copyText("machineAliases.policy.unknown", { ps, e: p.error });
+  // `error` 是那台后端给的原因词（PowerShell 的原话只记它的日志）。
+  if (p.error !== null) return copyText("machineAliases.policy.unknown", { ps, why: p.error });
   if (p.loads === null) return copyText("machineAliases.policy.unclear", { ps, policy: p.effective ?? "" });
   if (p.groupPolicy) return copyText("machineAliases.policy.groupPolicy", { ps, policy: p.effective ?? "" });
   return copyText("machineAliases.policy.blocks", { ps, policy: p.effective ?? "" });
@@ -230,12 +231,12 @@ function afterRcText(verb: "install" | "remove", pol: ExecPolicy | null, shell: 
   return shell === "powershell" ? copyText("machineAliases.powershell.blockAfterInstall") : copyText("machineAliases.posix.blockAfterInstall");
 }
 
-/** 请那台设执行策略之后那一句（现状以它重问的为准）。 */
+/** 请那台设执行策略之后那一句（现状以它重问的为准）。没成的原因词：设的那一下的 → 重问那一下的 → 说不出（现状那一档由重读那一行说）。 */
 function allowResultText(ps: string, r: { policy: ExecPolicy; setError: string | null }): string {
   const now = r.policy.effective ?? "";
   if (r.policy.loads === true) return copyText("machineAliases.policy.setDone", { ps, policy: now });
   if (r.policy.groupPolicy) return copyText("machineAliases.policy.groupPolicy", { ps, policy: now });
-  return copyText("machineAliases.policy.setFailed", { ps, e: r.setError ?? r.policy.error ?? now });
+  return copyText("machineAliases.policy.setFailed", { ps, why: r.setError ?? r.policy.error ?? copyText("reason.io.unknown") });
 }
 
 /** 下拉里一份候选的字：路径 ＋（已接上 / 已被加载；不存在）。 */
@@ -591,14 +592,18 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
     if (!(await (opts.confirm ?? confirmDialog)(confirm))) return;
     allowBtn.disabled = true;
     let said: string;
+    let failed: unknown = null;
     try {
       said = allowResultText(ps, await allowLocalScripts(opts.origin(), host));
     } catch (e) {
-      said = copyText("machineAliases.policy.setFailed", { ps, e: String(e) });
+      // 这一趟没走通：句子只说没成；带详情的失败照常出［复制详情］（kit 那一件）。
+      failed = e;
+      said = copyText("machineAliases.policy.setFailed", { ps, why: copyText("reason.io.unknown") });
     }
     allowBtn.disabled = false;
     await readBack();
-    accessNote.textContent = said;
+    if (failed !== null) sayFailure(accessNote, said, failed);
+    else accessNote.textContent = said;
   };
 
   const onOpenRc = async (): Promise<void> => {

@@ -114,7 +114,10 @@ impl UiError {
                     detail: Detail::new()
                         .item(Label::At, crate::detail::now())
                         .item(Label::Local, crate::detail::local_line())
-                        .item(Label::Code, crate::backend_policy::exit_status(death))
+                        .maybe(
+                            Label::Code,
+                            crate::backend_policy::exit_code(death).as_deref(),
+                        )
                         .item(Label::Raw, ledger_line)
                         .render(),
                     reconnect,

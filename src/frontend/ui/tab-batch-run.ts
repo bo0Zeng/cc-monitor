@@ -90,8 +90,8 @@ function machineFailed(sids: readonly string[], e: unknown): BatchOutcome[] {
 /** 整批被那台拒了（命令级的码）怎么说。 */
 function batchRefusals(origin: Origin): Refusals {
   return {
-    byCode: (_code, detail) => copyText("tabBatch.why.batchRefused", { machine: machineName(origin), detail }),
-    noReason: () => copyText("tabBatch.why.batchRefused", { machine: machineName(origin), detail: "" }),
+    byCode: (_code, said) => copyText("tabBatch.why.batchRefused", { machine: machineName(origin), said }),
+    noReason: () => copyText("tabBatch.why.batchRefused", { machine: machineName(origin), said: copyText("reason.io.unknown") }),
   };
 }
 

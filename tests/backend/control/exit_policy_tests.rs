@@ -126,6 +126,37 @@ fn the_wire_shape_carries_the_three_states() {
     assert!(v["reason"].is_null());
 }
 
+/// 读不出来那一句带上原因（读的哪份 · 原因词），不再只说「读不出」；盘上的原值不上句子，只进复制详情。
+#[test]
+fn the_unreadable_said_names_the_reason_and_keeps_the_raw_value_off_the_line() {
+    let dir = temp_dir("why");
+    let path = dir.join(FILE_NAME);
+    std::fs::write(&path, "{\"killOnExit\":\"zz-raw-value\"}").unwrap();
+    let r = read_at(&path);
+    assert_eq!(r.state(), "unreadable");
+    let v = wire_as(&r, Some(&path), false);
+    let said = v["said"].as_str().unwrap();
+    let reason = v["reason"].as_str().unwrap();
+    assert!(said.contains(reason), "那一句没带原因：{said}");
+    assert!(
+        reason.contains(&path.display().to_string()),
+        "原因没说读的哪份：{reason}"
+    );
+    assert!(!said.contains("zz-raw-value"), "盘上的原值上了句子：{said}");
+    assert!(
+        v["detail"].as_str().unwrap().contains("zz-raw-value"),
+        "原值没进复制详情：{}",
+        v["detail"]
+    );
+    std::fs::write(&path, "{}").unwrap();
+    let v = wire_as(&read_at(&path), Some(&path), false);
+    assert!(v["said"]
+        .as_str()
+        .unwrap()
+        .contains(&path.display().to_string()));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// 线上形状**恰好**是登记的那几格 —— 两侧异源、按集合相等：
 ///
 /// - 一侧是**真跑出来的** JSON（三态 × 常驻 / 被监护各跑一遍 `wire_as`，取键的并集）；
@@ -193,9 +224,14 @@ fn the_said_line_is_exact_on_every_cell() {
         for resident in [false, true] {
             let v = wire_as(&r, None, resident);
             let key = want(r.state(), r.kill_on_exit(), resident);
+            let args: &[(&str, &str)] = if key == "backendPolicy.exit.unreadable" {
+                &[("why", "x")]
+            } else {
+                &[]
+            };
             assert_eq!(
                 v["said"],
-                copy_text(key, &[]),
+                copy_text(key, args),
                 "（{}/{}/常驻={resident}）说的不是 `{key}` 那一句",
                 r.state(),
                 r.kill_on_exit()
@@ -207,7 +243,7 @@ fn the_said_line_is_exact_on_every_cell() {
     for resident in [false, true] {
         assert_eq!(
             said(&Read::Unreadable("x".into()), resident),
-            copy_text("backendPolicy.exit.unreadable", &[])
+            copy_text("backendPolicy.exit.unreadable", &[("why", "x")])
         );
         cells += 1;
     }
@@ -223,7 +259,8 @@ fn the_said_line_is_exact_on_every_cell() {
         "backendPolicy.exit.unreadable",
     ] {
         assert!(
-            !copy_text(key, &[]).contains(copy_core::copy_static!("backendPolicy.exit.unattended")),
+            !copy_text(key, &[("why", "x")])
+                .contains(copy_core::copy_static!("backendPolicy.exit.unattended")),
             "`{key}` 承诺了无人监护 —— 那一档它不会继续跑"
         );
     }

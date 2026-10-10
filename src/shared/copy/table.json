@@ -4428,8 +4428,8 @@
     "tabBatch.why.batchRefused": {
       "kind": "error",
       "role": "报错",
-      "zh": "{machine} 未执行 · {detail}",
-      "args": ["machine", "detail"]
+      "zh": "{machine} 未执行 · {said}",
+      "args": ["machine", "said"]
     },
     "tabBatch.why.accountGone": {
       "kind": "error",
@@ -7018,8 +7018,8 @@
     "machineAliases.policy.unknown": {
       "kind": "body",
       "role": "说明",
-      "zh": "{ps} 执行策略未知 · 别名块是否生效未知 · {e}",
-      "args": ["ps", "e"]
+      "zh": "{ps} 执行策略未知 · 别名块是否生效未知 · {why}",
+      "args": ["ps", "why"]
     },
     "machineAliases.policy.unclear": {
       "kind": "body",
@@ -7052,8 +7052,8 @@
     "machineAliases.policy.setFailed": {
       "kind": "error",
       "role": "报错",
-      "zh": "改执行策略失败 · {ps} · {e}",
-      "args": ["ps", "e"]
+      "zh": "改执行策略失败 · {ps} · {why}",
+      "args": ["ps", "why"]
     },
     "machineAliases.policy.afterInstall": {
       "kind": "body",
@@ -7520,8 +7520,8 @@
     "machineCard.stage.authFailed": {
       "kind": "body",
       "role": "说明",
-      "zh": "登录失败 · {detail}",
-      "args": ["detail"]
+      "zh": "登录失败 · {said}",
+      "args": ["said"]
     },
     "machineCard.stage.authOk": {
       "kind": "body",
@@ -12684,6 +12684,30 @@
       "zh": "最外层不是一个对象",
       "args": []
     },
+    "rsWindow.front.failed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "拉到前台失败 · 程序出错",
+      "args": []
+    },
+    "rsWindow.front.refused": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "拉到前台失败 · 被拒",
+      "args": []
+    },
+    "rsLogging.level.invalid": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "切换日志级别失败 · 名称无效",
+      "args": []
+    },
+    "rsLogging.level.reloadFailed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "切换日志级别失败 · 程序出错",
+      "args": []
+    },
     "rsLogging.diagnostics.badConfig": {
       "kind": "error",
       "role": "报错",
@@ -12880,8 +12904,8 @@
     "rsLaunch.local.spawnFailed": {
       "kind": "error",
       "role": "原因格",
-      "zh": "启动本机命令失败 · {e}",
-      "args": ["e"]
+      "zh": "启动本机命令失败 · {why}",
+      "args": ["why"]
     },
     "rsLaunch.what.localCmd": {
       "kind": "body",
@@ -13140,8 +13164,10 @@
     "backendPolicy.exit.unreadable": {
       "kind": "body",
       "role": "说明",
-      "zh": "退出策略读不出 · 按默认（不停止）",
-      "args": []
+      "zh": "{why} · 退出策略按默认（不停止）",
+      "args": [
+        "why"
+      ]
     },
     "rsBackendPolicy.health.unknown": {
       "kind": "body",
@@ -13188,8 +13214,8 @@
     "rsBackendPolicy.death.brief": {
       "kind": "body",
       "role": "片段",
-      "zh": "{kind} · {status}",
-      "args": ["kind", "status"]
+      "zh": "{kind} · {ended}",
+      "args": ["kind", "ended"]
     },
     "rsBackendPolicy.status.misread": {
       "kind": "body",
@@ -13209,11 +13235,11 @@
       "zh": "信号 {sig}",
       "args": ["sig"]
     },
-    "rsBackendPolicy.status.exit": {
+    "rsBackendPolicy.death.accessViolation": {
       "kind": "body",
-      "role": "片段",
-      "zh": "退出码 {status}",
-      "args": ["status"]
+      "role": "说明",
+      "zh": "访问越界",
+      "args": []
     },
     "durationFormat.unit.ms": {
       "kind": "body",
@@ -13314,8 +13340,8 @@
     "rsBackendPolicy.call.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取退出策略失败 · {machine} · {message}",
-      "args": ["machine", "message"]
+      "zh": "读取退出策略失败 · {machine} · {said}",
+      "args": ["machine", "said"]
     },
     "beSshConfig.host.sshGExit": {
       "kind": "error",
@@ -15034,8 +15060,8 @@
     "beContract.malformed.say": {
       "kind": "error",
       "role": "原因格",
-      "zh": "请求格式不对 · {detail}",
-      "args": ["detail"]
+      "zh": "请求格式不对",
+      "args": []
     },
     "beArgv.validate.badCcmSid": {
       "kind": "error",
@@ -15674,6 +15700,12 @@
       "role": "报错",
       "zh": "结果过大 · {size} 字节 · 上限 {cap} · 未返回",
       "args": ["size", "cap"]
+    },
+    "beExitPolicy.read.noHome": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "找不到主目录（HOME 与 USERPROFILE 均未设） · 未读取",
+      "args": []
     },
     "beExitPolicy.answerSet.noHome": {
       "kind": "error",
@@ -16412,12 +16444,6 @@
       "role": "报错",
       "zh": "读取访问权限失败 · {why}",
       "args": ["why"]
-    },
-    "credsPerm.currentUserSid.noToken": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "读取当前 Windows 用户失败 · {e}",
-      "args": ["e"]
     },
     "credsPerm.createPrivate.unsupported": {
       "kind": "error",
@@ -18380,8 +18406,8 @@
     "resync.call.refused": {
       "kind": "error",
       "role": "报错",
-      "zh": "刷新被拒 · {detail}",
-      "args": ["detail"]
+      "zh": "刷新被拒 · {said}",
+      "args": ["said"]
     },
     "resync.call.noReason": {
       "kind": "error",
@@ -18651,12 +18677,6 @@
       "zh": "该机无 PowerShell · 无法查其内建别名",
       "args": [],
       "limited": ["PowerShell"]
-    },
-    "rsPsPolicy.listing.unreadable": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "读取执行策略失败 · 内容无法解析 · {out}",
-      "args": ["out"]
     },
     "rsProfileInstaller.preview.what": {
       "kind": "body",
@@ -21369,6 +21389,12 @@
       "kind": "body",
       "role": "片段",
       "zh": "被拒",
+      "args": []
+    },
+    "acct.val.unreadable": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "读不到",
       "args": []
     },
     "acct.val.none": {

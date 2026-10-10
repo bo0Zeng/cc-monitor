@@ -10,7 +10,7 @@
  */
 import { emit } from "@tauri-apps/api/event";
 import { formDialog } from "./kit/dialog";
-import { banner } from "./kit/banner";
+import { banner, type BannerTone } from "./kit/banner";
 import { button } from "./kit/button";
 import { fold } from "./kit/fold";
 import { icon } from "./kit/icon";
@@ -335,7 +335,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   let machines: MachineOpt[] = [{ origin, up: true }];
   let forkLine: HTMLElement | null = null;
   let dirSeq = 0;
-  let pendingTop: { text: string; acts: HTMLElement[]; detail: string } | null = null;
+  let pendingTop: { text: string; acts: HTMLElement[]; detail: string; tone: BannerTone } | null = null;
   // 这一趟的票：期限到了带同一张再问 ⇒ 那台认出同一趟，起好了回原样那一份、不起第二个。
   // 表单一格没改就再点［新建］⇒ 还是这一张（等于再核一次）；改过任一格 ⇒ 换一张（那是另一趟）。
   let ticket = crypto.randomUUID();
@@ -468,12 +468,12 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     } else if (factsFailed !== null) {
       top.appendChild(banner("error", factsFailed));
     } else if (pendingTop) {
-      top.appendChild(banner("error", pendingTop.text, pendingTop.acts, pendingTop.detail));
+      top.appendChild(banner(pendingTop.tone, pendingTop.text, pendingTop.acts, pendingTop.detail));
     }
   };
   /** 整体不行的那一句落在框顶。 */
-  const sayTop = (text: string, acts: HTMLElement[] = [], detail = ""): void => {
-    pendingTop = { text, acts, detail };
+  const sayTop = (text: string, acts: HTMLElement[] = [], detail = "", tone: BannerTone = "error"): void => {
+    pendingTop = { text, acts, detail, tone };
     paintTop();
   };
 
@@ -618,7 +618,8 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     let res = await askNew(origin, req);
     if (res.kind === "timeout") {
       // 结果未知：同一张票自己再核一次（那台认得出是不是同一趟 —— 起好了回原样那一份，落过去；不起第二个）。
-      sayTop(copyText("newSession.timeout.checking", { machine: machineName(origin) }), [spinner()], res.detail);
+      // 还没出错（正在再核）⇒ 中性那一档，不用错误色。
+      sayTop(copyText("newSession.timeout.checking", { machine: machineName(origin) }), [spinner()], res.detail, "info");
       res = await askNew(origin, req);
     }
     if (res.kind === "ok") {

@@ -41,7 +41,7 @@ export type PsHost = "powershell" | "pwsh";
 /** 加载这份 `$PROFILE` 的那一代 PowerShell 的执行策略（那台后端现问）。 */
 export interface ExecPolicy {
   host: PsHost;
-  /** 生效那一档的原词；问不到 ⇒ `null`，原话在 `error`。 */
+  /** 生效那一档的原词；问不到 ⇒ `null`，原因词在 `error`（原话只在那台后端的日志里）。 */
   effective: string | null;
   /** 这一档下它会不会跑我们装的块（本地、未签名）；说不清 ⇒ `null`。判在后端。 */
   loads: boolean | null;

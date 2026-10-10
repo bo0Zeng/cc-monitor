@@ -266,7 +266,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "powershell-policy-set",
         summary: "那一代 PowerShell 的执行策略设成当前用户 `RemoteSigned`",
         codes: &["bad_args", "refused"],
-        fields: &[arg("host", "哪一代：`powershell`（5.1）· `pwsh`（7）"), out("policy", "设完现问的那一份（形状同 `aliases-read` 候选里的 `policy`）"), out("setError", "设的那一下 PowerShell 的原话（组策略压着时它会报）；`null` = 没报")],
+        fields: &[arg("host", "哪一代：`powershell`（5.1）· `pwsh`（7）"), out("policy", "设完现问的那一份（形状同 `aliases-read` 候选里的 `policy`）"), out("setError", "设的那一下没成的原因词（组策略压着时 PowerShell 会报；它的原话只记后端日志）；`null` = 没报")],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::assets::aliases::answer_policy_set(&r.args)

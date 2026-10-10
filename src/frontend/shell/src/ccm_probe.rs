@@ -764,7 +764,7 @@ pub async fn local_ccm_entry_status(fresh: Option<bool>) -> Result<LocalCcmEntry
         Ok(
             tauri::async_runtime::spawn_blocking(move || local_ccm_entry_now(fresh))
                 .await
-                .map_err(|e| e.to_string())?,
+                .map_err(Said::crashed)?,
         )
     }
     .await;
