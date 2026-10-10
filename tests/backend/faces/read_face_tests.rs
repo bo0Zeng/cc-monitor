@@ -476,11 +476,11 @@ fn golden_session(home: &Path) -> String {
     std::fs::create_dir_all(&dir).unwrap();
     let p = dir.join("g.jsonl");
     let body = [
-        r#"{"type":"user","uuid":"in-1","timestamp":"t1","message":{"content":"alpha zqx beta"}}"#,
-        r#"{"type":"assistant","uuid":"out-1","timestamp":"t1a","parentUuid":"in-1","message":{"content":[{"type":"text","text":"gamma zqx"},{"type":"tool_use","name":"x","input":{}}]}}"#,
+        r#"{"type":"user","uuid":"in-1","timestamp":"t1","message":{"role":"user","content":"alpha zqx beta"}}"#,
+        r#"{"type":"assistant","uuid":"out-1","timestamp":"t1a","parentUuid":"in-1","message":{"role":"assistant","content":[{"type":"text","text":"gamma zqx"},{"type":"tool_use","name":"x","input":{}}]}}"#,
         "",
-        r#"{"type":"user","uuid":"meta-1","timestamp":"t1aa","parentUuid":"out-1","isMeta":true,"message":{"content":"meta"}}"#,
-        r#"{"type":"user","uuid":"in-2","parentUuid":"meta-1","timestamp":"t2","message":{"content":"delta"}}"#,
+        r#"{"type":"user","uuid":"meta-1","timestamp":"t1aa","parentUuid":"out-1","isMeta":true,"message":{"role":"user","content":"meta"}}"#,
+        r#"{"type":"user","uuid":"in-2","parentUuid":"meta-1","timestamp":"t2","message":{"role":"user","content":"delta"}}"#,
     ]
     .iter()
     .map(|r| format!("{r}\n"))

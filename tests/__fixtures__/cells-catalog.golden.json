@@ -1,11 +1,5 @@
 {
-  "pending": [
-    {
-      "kind": "value",
-      "path": "activity",
-      "product": "session_status"
-    }
-  ],
+  "pending": [],
   "products": [
     {
       "cells": [
@@ -68,91 +62,6 @@
           "kind": "value",
           "path": "{t=queued}.who.speaker.kind",
           "type": "enum"
-        },
-        {
-          "kind": "value",
-          "path": "{t=queued}.who.speaker{kind=agentMessage}.body",
-          "type": "string"
-        },
-        {
-          "kind": "value",
-          "path": "{t=queued}.who.speaker{kind=agentMessage}.from",
-          "type": "string"
-        },
-        {
-          "kind": "value",
-          "path": "{t=queued}.who.speaker{kind=agentMessage}.handback",
-          "type": "bool"
-        },
-        {
-          "kind": "value",
-          "path": "{t=queued}.who.speaker{kind=agentMessage}.name",
-          "type": "string"
-        },
-        {
-          "kind": "value",
-          "path": "{t=queued}.who.speaker{kind=bashInput}.command",
-          "type": "string"
-        },
-        {
-          "kind": "value",
-          "path": "{t=queued}.who.speaker{kind=bashOutput}.stderr",
-          "type": "string"
-        },
-        {
-          "kind": "value",
-          "path": "{t=queued}.who.speaker{kind=bashOutput}.stdout",
-          "type": "string"
-        },
-        {
-          "kind": "value",
-          "path": "{t=queued}.who.speaker{kind=coordinator}.body",
-          "type": "string"
-        },
-        {
-          "kind": "value",
-          "path": "{t=queued}.who.speaker{kind=peerSession}.body",
-          "type": "string"
-        },
-        {
-          "kind": "value",
-          "path": "{t=queued}.who.speaker{kind=peerSession}.from",
-          "type": "string"
-        },
-        {
-          "kind": "value",
-          "path": "{t=queued}.who.speaker{kind=slashCommand}.args",
-          "type": "string"
-        },
-        {
-          "kind": "value",
-          "path": "{t=queued}.who.speaker{kind=slashCommand}.name",
-          "type": "string"
-        },
-        {
-          "kind": "value",
-          "path": "{t=queued}.who.speaker{kind=system}.body",
-          "type": "string"
-        },
-        {
-          "kind": "value",
-          "path": "{t=queued}.who.speaker{kind=taskNotification}.status",
-          "type": "string"
-        },
-        {
-          "kind": "value",
-          "path": "{t=queued}.who.speaker{kind=taskNotification}.summary",
-          "type": "string"
-        },
-        {
-          "kind": "value",
-          "path": "{t=queued}.who.speaker{kind=taskNotification}.taskId",
-          "type": "string"
-        },
-        {
-          "kind": "value",
-          "path": "{t=queued}.who.speaker{kind=taskNotification}.toolUseId",
-          "type": "string"
         },
         {
           "kind": "value",
@@ -431,6 +340,91 @@
         },
         {
           "kind": "value",
+          "path": "{t=said}.who.speaker{kind=agentMessage}.body",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.who.speaker{kind=agentMessage}.from",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.who.speaker{kind=agentMessage}.handback",
+          "type": "bool"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.who.speaker{kind=agentMessage}.name",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.who.speaker{kind=bashInput}.command",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.who.speaker{kind=bashOutput}.stderr",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.who.speaker{kind=bashOutput}.stdout",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.who.speaker{kind=coordinator}.body",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.who.speaker{kind=peerSession}.body",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.who.speaker{kind=peerSession}.from",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.who.speaker{kind=slashCommand}.args",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.who.speaker{kind=slashCommand}.name",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.who.speaker{kind=system}.body",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.who.speaker{kind=taskNotification}.status",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.who.speaker{kind=taskNotification}.summary",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.who.speaker{kind=taskNotification}.taskId",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "{t=said}.who.speaker{kind=taskNotification}.toolUseId",
+          "type": "string"
+        },
+        {
+          "kind": "value",
           "path": "{t=said}.who.text",
           "type": "string"
         },
@@ -445,6 +439,7 @@
           "type": "string"
         }
       ],
+      "frozen": true,
       "name": "record"
     },
     {
@@ -745,6 +740,7 @@
           "type": "number"
         }
       ],
+      "frozen": false,
       "name": "facts"
     },
     {
@@ -802,7 +798,7 @@
         {
           "kind": "value",
           "path": "t",
-          "type": "string"
+          "type": "enum"
         },
         {
           "kind": "value",
@@ -820,7 +816,34 @@
           "type": "string"
         }
       ],
+      "frozen": false,
       "name": "index_row"
+    },
+    {
+      "cells": [
+        {
+          "kind": "value",
+          "path": "cwd",
+          "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "end",
+          "type": "number"
+        },
+        {
+          "kind": "value",
+          "path": "hash",
+          "type": "number"
+        },
+        {
+          "kind": "value",
+          "path": "record",
+          "type": "object"
+        }
+      ],
+      "frozen": true,
+      "name": "read_row"
     },
     {
       "cells": [
@@ -915,6 +938,7 @@
           "type": "string"
         }
       ],
+      "frozen": false,
       "name": "session_added"
     },
     {
@@ -955,6 +979,7 @@
           "type": "string"
         }
       ],
+      "frozen": false,
       "name": "session_status"
     },
     {
@@ -990,6 +1015,7 @@
           "type": "enum"
         }
       ],
+      "frozen": false,
       "name": "session_state"
     },
     {
@@ -1010,6 +1036,7 @@
           "type": "string"
         }
       ],
+      "frozen": false,
       "name": "session_removed"
     }
   ]

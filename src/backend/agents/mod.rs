@@ -372,6 +372,9 @@ pub(crate) struct RecordFace {
     pub(crate) tree: Option<RecordTree>,
     /// 这一行是不是一轮的结束 ⇒ 那条记录的 uuid（`turn_end` 帧）。`None` ＝ 这一家今天不报轮次边沿。
     pub(crate) turn_end: Option<fn(&str) -> Option<String>>,
+    /// 一条已解析的记录 ⇒ 它会翻成哪一类通用记录（不进界面 ⇒ `None`）：只看几格判别字段，不走整条翻译
+    /// （骨架索引每行一问，大会话上万行）。与 `parse` 出的记录的类逐条一致（各家对拍判据钉）。`None` ＝ 这一家不出骨架。
+    pub(crate) class: Option<fn(&serde_json::Value) -> Option<record::RecordClass>>,
     /// 一行原文 ⇒ 它在记录链上的事实（主线外清单由通用层 [`mainline`] 按它算）。`None` ＝ 这一家的记录没有链（清单恒空）。
     pub(crate) chain: Option<fn(&str) -> Option<mainline::ChainFact>>,
     /// 在这一家的记录树（`records_root`）下按 sid 找那份会话文件（原共享 crate `branch-core`）。`None` ＝ 这一家不按 sid 找。
@@ -955,6 +958,11 @@ pub(crate) fn run_faces(kind: &str) -> RunFaces {
 }
 
 /// `kind` 那一家的一条已解析记录在会话里属于哪个运行（主运行 ⇒ `None`）—— 通用层（大纲 · 骨架索引）判「这条是不是子运行的」的唯一入口。
+/// `kind` 那一家这条记录会翻成哪一类通用记录（骨架行的 `t`）；那一家答不了 ⇒ `None`。
+pub(crate) fn record_class_of(kind: &str, v: &serde_json::Value) -> Option<record::RecordClass> {
+    record_face(kind).and_then(|r| r.class).and_then(|f| f(v))
+}
+
 pub(crate) fn run_of_record(kind: &str, v: &serde_json::Value) -> Option<RunMark> {
     run_faces(kind).run_of(v)
 }

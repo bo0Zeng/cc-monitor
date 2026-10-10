@@ -51,15 +51,15 @@ beforeEach(() => invokeMock.mockReset());
 describe("〔C4b〕会话读面三问：按形状收", () => {
   it("★★ 金样：TS 解码器读得懂后端真出的三份成品（逐字段）", () => {
     const idx = decodeIndex(golden["history-index"]);
-    expect([idx.from, idx.end, idx.rows.length]).toEqual([0, 476, 4]);
-    expect(idx.rows.map((r) => [r.o, r.n, r.u])).toEqual([
-      [0, 86, "in-1"],
-      [86, 175, "out-1"],
-      [262, 115, "meta-1"],
-      [377, 99, "in-2"],
+    expect([idx.from, idx.end, idx.rows.length]).toEqual([0, 537, 4]);
+    expect(idx.rows.map((r) => [r.o, r.n, r.u, r.t])).toEqual([
+      [0, 100, "in-1", "said"],
+      [100, 194, "out-1", "reply"],
+      [295, 129, "meta-1", "said"],
+      [424, 113, "in-2", "said"],
     ]);
     const ui = decodeUserInputs(golden["history-user-inputs"]);
-    expect([ui.from, ui.end]).toEqual([0, 476]);
+    expect([ui.from, ui.end]).toEqual([0, 537]);
     expect(ui.entries).toEqual([
       { uuid: "in-1", excerpt: "alpha zqx beta", timestamp: "t1" },
       { uuid: "in-2", excerpt: "delta", timestamp: "t2" },
@@ -107,7 +107,7 @@ describe("〔C4b〕会话读面三问：经通道说对的帧命令", () => {
     invokeMock.mockResolvedValueOnce(chanReply(golden["history-index"]));
     const idx = await readSessionIndex("<local>", "/p/s.jsonl", 7);
     expect(sent()).toEqual(["<local>", "history-index", { path: "/p/s.jsonl", offset: 7 }]);
-    expect([idx.available, idx.end, idx.rows.length]).toEqual([true, 476, 4]);
+    expect([idx.available, idx.end, idx.rows.length]).toEqual([true, 537, 4]);
 
     invokeMock.mockReset().mockResolvedValueOnce(chanReply(golden["history-user-inputs"]));
     const ui = await listUserInputs("devbox", "/p/s.jsonl", 42);

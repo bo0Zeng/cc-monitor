@@ -139,7 +139,7 @@ impl ScanMap {
         let index: usize = self
             .index
             .iter()
-            .map(|r| 96 + opt(&r.t) + opt(&r.u) + opt(&r.x) + opt(&r.ts))
+            .map(|r| 96 + opt(&r.u) + opt(&r.x) + opt(&r.ts))
             .sum();
         let off: usize = self.off.iter().map(|o| 24 + o.len()).sum();
         let inputs: usize = off

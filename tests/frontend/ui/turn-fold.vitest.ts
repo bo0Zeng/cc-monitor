@@ -403,7 +403,7 @@ describe("系统注入的旁注细条", () => {
   });
 
   it("★ 估高跟着开关：关着 0、开着一条细条；它不是任何一类（前后的工具照样并成一组）", () => {
-    const f = { o: 0, n: 1, t: "user", sp: "system", ch: 200, pl: 9 } as never;
+    const f = { o: 0, n: 1, t: "said", sp: "system", ch: 200, pl: 9 } as never;
     expect(skeletonKind(f)).toBe("none");
     setInjectedShown(false);
     expect(estimateFromFacts(f, "tool")).toBe(0);

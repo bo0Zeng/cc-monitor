@@ -1226,9 +1226,10 @@ pub(crate) struct IndexRow {
     pub(crate) o: u64,
     /// 行字节长（**含**结尾 `\n`）。
     pub(crate) n: u64,
-    /// 记录 `type`；解析不出（非 JSON / 没有 type）⇒ 省略。
+    /// 这一行会翻成哪一类通用记录（`said` · `reply` · `retry` · `title` · `queued`，与读正文时那条记录的 `t` 同一个词）；
+    /// 不进界面（元数据 · 解析不出 · 认不出）⇒ 省略。判定在适配层（注册表 `RecordFace.class`，与它的翻译表对拍）。
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) t: Option<String>,
+    pub(crate) t: Option<crate::agents::record::RecordClass>,
     /// `uuid`（前端 `uuidToIdx` —— 跳转与对账的锚）。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) u: Option<String>,
@@ -1296,10 +1297,10 @@ pub(crate) fn index_row_of(v: Option<&serde_json::Value>, offset: u64, len: u64)
     let Some(v) = v else {
         return row;
     };
-    row.t = v.get("type").and_then(|t| t.as_str()).map(str::to_string);
     row.u = v.get("uuid").and_then(|u| u.as_str()).map(str::to_string);
     // 骨架索引读的是记录树那一家的记录。
     let kind = crate::agents::record_tree_kind().unwrap_or_default();
+    row.t = crate::agents::record_class_of(kind, v);
     row.sc = crate::agents::run_of_record(kind, &v).is_some();
     let said = crate::agents::user_text_of(kind, &v);
     row.sp = said

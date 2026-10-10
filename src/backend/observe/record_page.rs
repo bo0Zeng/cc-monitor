@@ -149,21 +149,37 @@ fn split_starts(offset: u64, bytes: &[u8]) -> Vec<(&[u8], u64)> {
         .collect()
 }
 
-/// **行摘要**（旁路快照那一页，`history-read`）：页里每个可计行一条，次序同文件 `{end, hash, record?, cwd?}`。
+/// 行摘要的一条（`history-read.rows[]`；成品 `read_row`，格目录里登记、冻结）。
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub(crate) struct ReadRow {
+    /// 这一行（含 `\n`）之后那个字节的偏移；没 `\n` 收尾的残尾 ⇒ `null`。
+    pub(crate) end: Option<u64>,
+    /// 这一行正文的摘要（[`line_hash`]）。
+    pub(crate) hash: u64,
+    /// 通用记录（缺 ＝ 不进界面，照占号）。`summaryOnly` 时剥过正文，所以是原样的一团。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) record: Option<Value>,
+    /// 那一行记的工作目录（只在有记录时带）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) cwd: Option<String>,
+}
+
+/// **行摘要**（旁路快照那一页，`history-read`）：页里每个可计行一条，次序同文件。
 /// `summary_only`（建 [`Reader`] 时给）⇒ 每条的 `record` 剥掉正文（[`fold_body`]）；`end` / `hash` / `cwd` 与条数一格不变。
-pub(crate) fn rows_of(reader: &mut Reader<'_>, offset: u64, bytes: &[u8]) -> Vec<Value> {
+pub(crate) fn rows_of(reader: &mut Reader<'_>, offset: u64, bytes: &[u8]) -> Vec<ReadRow> {
     split_lines_full(offset, bytes)
         .into_iter()
         .filter(|(body, _, _)| super::history_query::line_counts(body))
         .map(|(body, start, end)| {
-            let mut row = json!({ "end": end, "hash": line_hash(body) });
-            if let Some((record, cwd)) = reader.interpret(body, start) {
-                row["record"] = record;
-                if let Some(cwd) = cwd {
-                    row["cwd"] = Value::String(cwd);
-                }
+            let (record, cwd) = reader
+                .interpret(body, start)
+                .map_or((None, None), |(r, c)| (Some(r), c));
+            ReadRow {
+                end,
+                hash: line_hash(body),
+                record,
+                cwd,
             }
-            row
         })
         .collect()
 }

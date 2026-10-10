@@ -2830,7 +2830,7 @@ cc-bus 钩子诊断。
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `pending` | ← | 已判了要补、还没落地的格：`product` · `path` · `kind`（落地那一刻从这里挪进 `products`） |
-| `products` | ← | 每件成品一项：`name`（记录 `record` · 会话事实 `facts` · 骨架行 `index_row` · 会话帧按帧的 `kind`）· `cells`：每格 `path`（`a.b` 嵌套 · `a[]` 列表每项 · `a.*` 以 id 为键的表每项 · `a[t=x]` 列表里按判别格挑的那一种 · `a{t=x}` 非列表的那一种；每一种都有的格写在挑法外面）· `kind`（`value` 值 · `text` 核心写好的字 · `tone` 语气）· `type`（`string` · `number` · `bool` · `enum` 闭集的词 · `object` 原样透传的一团） |
+| `products` | ← | 每件成品一项：`name`（记录 `record` · 会话事实 `facts` · 骨架行 `index_row` · 行摘要 `read_row`（`history-read.rows[]`）· 会话帧按帧的 `kind`）· `frozen`（两个前端照它读的成品面：格只许加，不删不改名不换类型）· `cells`：每格 `path`（`a.b` 嵌套 · `a[]` 列表每项 · `a.*` 以 id 为键的表每项 · `a[t=x]` 列表里按判别格挑的那一种 · `a{t=x}` 非列表的那一种；每一种都有的格写在挑法外面）· `kind`（`value` 值 · `text` 核心写好的字 · `tone` 语气）· `type`（`string` · `number` · `bool` · `enum` 闭集的词 · `object` 原样透传的一团） |
 
 ### 4.9 终端与会话
 
@@ -3998,7 +3998,7 @@ stdout 出参（camelCase 对齐 aterm `ResumePlan`，另加 mode/capabilities�
 |---|---|---|
 | `o` | number | 行起点字节偏移（绝对，0-based）—— 按需取正文就是 `[o, o+n)` |
 | `n` | number | 行字节长（**含**结尾 `\n`） |
-| `t` | string? | 记录 `type`；解析不出（非 JSON / 没有 type）⇒ 省略 |
+| `t` | RecordClass? | 这一行会翻成哪一类通用记录（`said` · `reply` · `retry` · `title` · `queued`，与读正文时那条记录的 `t` 同一个词）；不进界面（元数据 · 解析不出 · 认不出）⇒ 省略 |
 | `u` | string? | `uuid`（前端 `uuidToIdx` —— 跳转与对账的锚） |
 | `sc` | bool? | 这条记录属于某个子运行（适配层 `RecordFace::run_of` 答得出） |
 | `sp` | string? | user 记录是谁说的（`Speaker` 的 `kind`），人说的与工具结果省略（那两种按正文 / 折叠单元就分得清） |

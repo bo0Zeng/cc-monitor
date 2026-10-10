@@ -239,11 +239,11 @@ monitor 里仍直读本机 agent 目录的地方逐处登记，条数以 `local_
 }
 ```
 
-- **成品**：`record`（通用记录）· `facts`（会话事实，`history-facts`）· `index_row`（骨架行，`history-index` 的 `rows[]`）· 会话帧按帧的 `kind`（`session_added` · `session_status` · `session_state` · `session_removed`）。其余成品随各批换形时登记进来。
+- **成品**：`record`（通用记录）· `facts`（会话事实，`history-facts`）· `index_row`（骨架行，`history-index` 的 `rows[]`）· `read_row`（行摘要，`history-read` 的 `rows[]`）· 会话帧按帧的 `kind`（`session_added` · `session_status` · `session_state` · `session_removed`）。其余成品随各批换形时登记进来。
 - **格**：`path` 的写法与出口声明里点格的写法同一种 —— `a.b` 嵌套 · `a[]` 列表每项 · `a.*` 以 id 为键的表每项 · `a[t=x]` 列表里按判别格挑的那一种 · `a{t=x}` 非列表的那一种；每一种都有的格写在挑法外面。`kind` 是 `value` · `text` · `tone`；`type` 是 `string` · `number` · `bool` · `enum`（闭集的词）· `object`（原样透传的一团，不再往里分格）。
 - **从哪来**：不手写第二份。每件成品登记一组**样本**（用成品自己的 Rust 类型造的值：可缺的格都填上、列表不空、每种变体各一个），目录 ＝ 样本经 serde 交给一个走查序列化器得到的格路径；`Words` / `Tone` 两个类型名就是 `text` / `tone` 的来源。线上的 `serde_json` 与它走的是同一份 `Serialize` 实现。
 - **`pending`**：已判了要补、还没落地的格。落地那一刻它进了 `products`，这一行就得删。判了不补的（如骨架行的时刻：手机改吃 `history-branch.off` 拿主线之后就没有用处）不登记，理由写在 `PENDING` 的头注里。
-- **判据**（`tests/backend/faces/cells_catalog_tests.rs`）：① 样本里没有 `None`、没有空列表；② 目录 ＝ 同一批样本经 `serde_json` 写出来的格（两向）；③ 目录对真代码写出来的跨语言金样两向相等（记录金样太薄，只查「金样里的格都在目录里」一向，登记在 `GOLDEN_TOO_THIN`）；④ 写好的字由类型说（同叫 `text`，原文是值）；⑤ `pending` 与目录不重；⑥ 帧命令出的就是目录。
+- **判据**（`tests/backend/faces/cells_catalog_tests.rs`）：① 样本里没有 `None`、没有空列表；② 目录 ＝ 同一批样本经 `serde_json` 写出来的格（两向）；③ 目录对真代码写出来的跨语言金样两向相等（记录金样每类全格 ＋ 最少格、说话人十四种都见到）；④ 写好的字由类型说（同叫 `text`，原文是值）；⑤ `pending` 与目录不重（表可以空）；⑥ 帧命令出的就是目录；⑦ **冻结**：两个前端都照它读的成品（`record` · `read_row`，`frozen: true`）格只许加 —— 对的是落盘的格目录金样，冻结成品的格在金样里有、目录里没了或换了样就红，重写金样也不放行。冻结表就是格目录的这一子集，不另立一份格清单。
 
 #### 出口声明
 

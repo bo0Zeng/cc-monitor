@@ -44,7 +44,7 @@ const index = (shift = 0) => ({
   end: ROWS * 10,
   rows: Array.from({ length: ROWS }, (_, s) =>
     s % 2 === 0
-      ? { o: s * 10, n: 10, t: "user", u: `u${s / 2 + shift}`, ch: 10, pl: 1 }
+      ? { o: s * 10, n: 10, t: "said", u: `u${s / 2 + shift}`, ch: 10, pl: 1 }
       : { o: s * 10, n: 10, t: "permission-mode" },
   ),
 });

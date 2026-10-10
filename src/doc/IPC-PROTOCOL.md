@@ -99,7 +99,7 @@ monitor 只对 hello 里**声明了对应能力**（`capabilities`）的后端�
   `turn_end` `session_id` `uuid` · `tap` `stream` `run` `resp` `n` `ev` · `reply` `id` `ok` `code` `message` `detail` `data` · `cancelled` `id` ·
   请求信封 `id` `cmd` `args` `within_ms`（可缺）。
 - 成品面：`line.record` 与 `history-read` 的 `rows`（`end` `hash` `record` `cwd`）—— 通用记录的公共格、五类各自的格、`who`、`error`、各种内容块逐格冻结（见下面「通用记录」一节）；
-  `history-page` / `history-lines` / `history-run` 的 `record` 是同一形。新加一格也得先登记进冻结表（`wire_tests::every_product_field_is_in_the_frozen_table`）。
+  `history-page` / `history-lines` / `history-run` 的 `record` 是同一形。冻结的就是格目录里 `frozen` 的那几件成品（`record` · `read_row`）：格只许加，新加一格随格目录金样重写（`cells_catalog_tests::the_golden_is_what_the_command_writes`，删 / 改名 / 换类型重写也不放行）。
   `line.raw` 逐字节等于记录文件里那一行，去掉行尾（`\n`；CRLF 行连 `\r` 一起去）。
 - 一次性子命令（叫法 · 位置参数个数 · 输出里它读的那几格）：`--list-projects`（`dirName` `projectPath` `sessionCount` `lastActivityMs`）·
   `--list-sessions <项目目录名>`（`sessionId` `aiTitle` `cwd` `jsonlPath` `messageCountApprox` `startedAtMs` `updatedAtMs` `isBg`）· `--read-session <路径>` ·
@@ -108,7 +108,7 @@ monitor 只对 hello 里**声明了对应能力**（`capabilities`）的后端�
   帧命令派生、入参走 stdin 的 `--ping` `--terminals-list` `--terminal-preview` `--terminal-input` `--history-page` `--history-facts`（这几条要真能派发，不只是串在表里）；
   会话 id 的校验规则（非空 · ≤128 · 只 `[0-9A-Za-z_-]`）同样不许改。
 - 会话是不是后台、此刻在干什么只看后端判好的 `background` · `activity`；那一家的原词（`session_kind` · `status`）10-09 起不再上线。
-- 判据：`wire_tests::the_shapes_the_second_frontend_reads_stay_put`（帧那张表，类型逐格对）· `wire_tests::the_record_shape_both_frontends_read_stays_put`（成品面那张）· `wire_tests::the_subcommands_the_second_frontend_calls_stay_put`（子命令那张）。
+- 判据：`wire_tests::the_shapes_the_second_frontend_reads_stay_put`（帧那张表，类型逐格对）· `cells_catalog_tests::the_golden_is_what_the_command_writes`（成品面：格目录里冻结的 `record` · `read_row`）· `wire_tests::the_subcommands_the_second_frontend_calls_stay_put`（子命令那张）。
 - 跨语言金样：`tests/__fixtures__/session-stream.golden.jsonl`，每种帧两行（「全格」与「最少格」），由后端真序列化器写；最少格里的格就是必填格。
   终端管理 `tests/__fixtures__/terminals.golden.json` · `--resolve` `tests/__fixtures__/resolve-contract.golden.json` · 换号重启 `tests/__fixtures__/rotation-switch-restart.golden.json`。
 - 部署：第二个前端从 GitHub Release 下后端字节（两个 musl 目标），按 `SHA256SUMS-linux.txt` 与字节里的身份戳校验；资产名登记在 [RELEASING.md](RELEASING.md)。

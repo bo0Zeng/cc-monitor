@@ -42,8 +42,6 @@ const isReply = (r: LineRecord): r is Reply => r.t === "reply";
 /** 回复里的正文块（按块）。 */
 const replyTexts = (r: Reply): string[] => r.blocks.flatMap((b) => (b.type === "text" ? [b.text] : []));
 const textOf = (r: LineRecord): string => (isSaid(r) ? r.who.text : isReply(r) ? replyTexts(r).join("\n") : "");
-/** 骨架索引的 `t` 是那一家记录原文的类别（Claude：user / assistant / system …）。 */
-const RAW_KIND: Record<LineRecord["t"], string> = { said: "user", reply: "assistant", retry: "system", title: "ai-title", queued: "queue-operation" };
 
 export const ACCOUNTS = [
   { name: "work", email: "work@example.com", authKind: "subscription", isDefault: true },
@@ -231,7 +229,7 @@ export function defaultOps(): Record<string, OpHandler> {
       const { at, end } = layout(recs);
       const rows = recs.map((r, i) => {
         const t = textOf(r);
-        const row: Record<string, unknown> = { o: at[i].o, n: at[i].n, t: RAW_KIND[r.t], ch: t.length, pl: t.split("\n").filter((l) => l.trim() !== "").length };
+        const row: Record<string, unknown> = { o: at[i].o, n: at[i].n, t: r.t, ch: t.length, pl: t.split("\n").filter((l) => l.trim() !== "").length };
         row.u = r.id;
         if (isSaid(r) && t) {
           row.x = t;

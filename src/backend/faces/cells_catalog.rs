@@ -591,6 +591,9 @@ pub(crate) struct Product {
     pub(crate) tags: &'static [(&'static str, &'static str)],
     /// 样本：每个可缺的格都填上、每个列表都不空、每种变体各一个。
     pub(crate) specimens: fn() -> Vec<Specimen>,
+    /// **冻结**：两个前端（桌面界面 · 手机）都照它读的成品面 —— 格只许加，删 / 改名 / 换类型 ⇒ 判据红
+    /// （对的是落盘的格目录金样：冻结成品的格在金样里有、目录里没了或换了样，重写金样也不放行）。
+    pub(crate) frozen: bool,
 }
 
 /// 一件成品的格（按路径排）＋ 样本里的洞。
@@ -614,11 +617,10 @@ pub(crate) struct Pending {
     pub(crate) kind: &'static str,
 }
 
-/// 还缺的格（手机端 10-09 缺格清单）。落地那一刻删掉这里那一行（判据两向钉）。
-///
-/// - G1 会话灯的 `shell` 一档：`activity` 的闭集加一个词（不是新格，登记成 `activity` 那一格）。
+/// 还缺的格（手机端 10-09 缺格清单）。落地那一刻删掉这里那一行（判据两向钉）。今天一条都不缺；机制留着，下一张缺格清单进这里。
 ///
 /// 已落地 / 不补的（这里不再登记）：
+/// - G1 会话灯「后台任务运行中」那一档 ⇒ `activity` 的闭集多了 `backgroundWork`（不是新格），字与语气在 `activity_text` · `activity_tone`。
 /// - G2 会话状态的字与语气 ⇒ `session_*.activity_text` · `activity_tone` · `session_state.state_text` …
 /// - G3 「在等什么」的字与先答哪个 ⇒ `facts.needs.text` · `facts.needs.rank`。那台 pidfile 的 `waitingFor` 六个原值由适配层翻成
 ///   [`WaitOn`](crate::agents::WaitOn)，再与记录里没结果的那一步一起在 `facts_query::needs_of` 判成八种 `needs.kind`（映射只在这两处）；
@@ -627,11 +629,7 @@ pub(crate) struct Pending {
 ///   `percent` · `contextTone` · `limitFromText`；上限只有核心一套判定（`facts_query::context_limit`），出口不再按型号猜。
 /// - G5 骨架行的时刻：**不补**（10-09 定走法甲）。时刻在骨架上唯一的用处是算「最新的那一支」，手机改吃 `history-branch.off`
 ///   拿主线之后这一用处没了；要画时刻的地方读正文时记录本身带 `at` · `timeText`。
-pub(crate) const PENDING: &[Pending] = &[Pending {
-    product: "session_status",
-    path: "activity",
-    kind: "value",
-}];
+pub(crate) const PENDING: &[Pending] = &[];
 
 /// 全部成品（目录的次序）。
 pub(crate) const PRODUCTS: &[Product] = &[
@@ -645,44 +643,57 @@ pub(crate) const PRODUCTS: &[Product] = &[
             ("answer", "kind"),
         ],
         specimens: specimens::record,
+        frozen: true,
     },
     Product {
         name: "facts",
         tags: &[],
         specimens: specimens::facts,
+        frozen: false,
     },
     Product {
         name: "index_row",
         tags: &[],
         specimens: specimens::index_row,
+        frozen: false,
+    },
+    Product {
+        name: "read_row",
+        tags: &[],
+        specimens: specimens::read_row,
+        frozen: true,
     },
     Product {
         name: "session_added",
         tags: &[],
         specimens: specimens::session_added,
+        frozen: false,
     },
     Product {
         name: "session_status",
         tags: &[],
         specimens: specimens::session_status,
+        frozen: false,
     },
     Product {
         name: "session_state",
         tags: &[],
         specimens: specimens::session_state,
+        frozen: false,
     },
     Product {
         name: "session_removed",
         tags: &[],
         specimens: specimens::session_removed,
+        frozen: false,
     },
 ];
 
-/// 帧面 `cells-catalog` 的应答（纯计算，不读盘）：`{products: [{name, cells: [{path, kind, type}]}], pending: [{product, path, kind}]}`。
+/// 帧面 `cells-catalog` 的应答（纯计算，不读盘）：`{products: [{name, frozen, cells: [{path, kind, type}]}], pending: [{product, path, kind}]}`。
 pub(crate) fn catalog() -> serde_json::Value {
     let products: Vec<serde_json::Value> = PRODUCTS
         .iter()
-        .map(|p| serde_json::json!({"name": p.name, "cells": cells_of(p).0}))
+        .map(|p| serde_json::json!({"name": p.name, "frozen": p.frozen, "cells": cells_of(p).0}))
         .collect();
     serde_json::json!({"products": products, "pending": PENDING})
 }
@@ -878,8 +889,17 @@ mod specimens {
             }),
         ];
         for sp in speakers() {
-            out.push(rec(Body::Queued { who: who(sp) }));
+            out.push(rec(Body::Said {
+                who: who(sp),
+                blocks: vec![Block::Text { text: s("t") }],
+                results: one("c", result(Answer::Approved)),
+                cwd: some("/w"),
+            }));
         }
+        // 排队的那一条只出人说的（`record_of`：别的来源排了队不进界面）。
+        out.push(rec(Body::Queued {
+            who: who(Speaker::Human),
+        }));
         out.iter().map(node_of).collect()
     }
 
@@ -974,11 +994,20 @@ mod specimens {
             .collect()
     }
 
+    pub(super) fn read_row() -> Vec<Specimen> {
+        vec![node_of(&crate::observe::record_page::ReadRow {
+            end: Some(1),
+            hash: 1,
+            record: Some(serde_json::json!({})),
+            cwd: some("/w"),
+        })]
+    }
+
     pub(super) fn index_row() -> Vec<Specimen> {
         let row = IndexRow {
             o: 0,
             n: 1,
-            t: some("user"),
+            t: Some(crate::agents::record::RecordClass::Said),
             u: some("u"),
             sc: true,
             sp: Some("system"),

@@ -365,9 +365,8 @@ pub enum Frame {
     /// 原文 `raw` 是过渡格，只给发了 `--with-raw` 的客户端（逐字节等于记录里那一行，去掉行尾：`\n`，CRLF 行连 `\r` 一起去）；
     /// 两个前端读的是 `record`，手机那一侧的缺格补齐之后 `raw` 删。
     ///
-    /// **两个前端共同的契约面**：`session_id` · `path` · `seq` · `byte_offset` · `raw` 五格与 `record` 的形状都在冻结表里，只增不改
-    /// （`wire_tests::the_shapes_the_second_frontend_reads_stay_put` · `the_record_shape_both_frontends_read_stays_put`；
-    /// 新加的格也得先登记，`every_product_field_is_in_the_frozen_table`）。`raw` 逐字节等于那一行
+    /// **两个前端共同的契约面**：`session_id` · `path` · `seq` · `byte_offset` · `raw` 五格在冻结表里（`wire_tests::the_shapes_the_second_frontend_reads_stay_put`）；
+    /// `record` 是格目录里冻结的成品，格只许加（`cells_catalog_tests::the_golden_is_what_the_command_writes`）。`raw` 逐字节等于那一行
     /// （`watcher_tests::line_raw_is_the_record_line_byte_for_byte`）。
     Line {
         /// 会话 id。

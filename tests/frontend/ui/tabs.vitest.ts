@@ -4044,7 +4044,7 @@ describe("骨架接入：索引 → 占位 → 门控 → 跳转", () => {
     rows: Array.from({ length: n }, (_, i) => ({
       o: i * 10,
       n: 10,
-      t: "assistant",
+      t: "reply",
       u: `u${i + shift}`,
       ch: 100,
       pl: 1,
