@@ -595,6 +595,28 @@ async fn claim_then_log(
     ),
     i32,
 > {
+    claim_then_log_as(
+        control::resident::unsupported_here(),
+        env,
+        account_home,
+        install,
+    )
+    .await
+}
+
+/// [`claim_then_log`] 的里子：「本平台有没有常驻」那一格是入参（`unsupported` = 没有时那一句），判据两形都量得到。
+async fn claim_then_log_as(
+    unsupported: Option<String>,
+    env: &dyn Fn(&str) -> Option<String>,
+    account_home: Option<&std::path::Path>,
+    install: impl FnOnce() -> stderr_log::Installed,
+) -> Result<
+    (
+        Option<(own_chan::Listener, own_chan::Held)>,
+        stderr_log::Installed,
+    ),
+    i32,
+> {
     let mode = match listen::mode_from(env) {
         Ok(m) => m,
         Err(e) => {
@@ -604,6 +626,11 @@ async fn claim_then_log(
     };
     if mode == listen::Mode::Stdio {
         return Ok((None, install()));
+    }
+    // 本平台没有常驻 ⇒ 先说「不支持」（与 `--resident-ensure` 同一句），家与门牌目录一个都不建。
+    if let Some(why) = unsupported {
+        tracing::error!("{why}");
+        return Err(listen::EXIT_BAD_LISTEN_CONFIG);
     }
     let Some(dh) = control::resident::data_home_from(env) else {
         tracing::error!("找不到这台的家 ⇒ 拒绝起常驻");

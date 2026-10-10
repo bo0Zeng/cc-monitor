@@ -290,6 +290,11 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         Trigger::Filter { by: "tests/frontend/filewin/shell_keys_tests.rs", needle: "shell::keys_tests::xvfb_worker_real_keys_on_the_window" },
     ),
     (
+        "tests/frontend/filewin/proc_tests.rs",
+        "worker_runs_the_real_child_main",
+        Trigger::Filter { by: "tests/frontend/filewin/proc_tests.rs", needle: "proc::tests::worker_runs_the_real_child_main" },
+    ),
+    (
         "tests/frontend/filewin/shell_tests.rs",
         "xvfb_worker_opens_a_real_window",
         Trigger::Filter { by: "tests/frontend/filewin/shell_tests.rs", needle: "shell::tests::xvfb_worker_opens_a_real_window" },
