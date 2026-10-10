@@ -131,10 +131,12 @@ pub(crate) fn plan_project_mcp(
 }
 
 fn str_arg<'a>(args: &'a Value, k: &str) -> Result<&'a str, (&'static str, String)> {
-    args.get(k).and_then(Value::as_str).ok_or((
-        "bad_args",
-        crate::common::contract::malformed(&format!("missing `{k}` (a string)")),
-    ))
+    args.get(k).and_then(Value::as_str).ok_or_else(|| {
+        (
+            "bad_args",
+            crate::common::contract::malformed(&format!("missing `{k}` (a string)")),
+        )
+    })
 }
 
 /// 读改写一趟：不留备份（`.mcp.json` 住用户的仓里）、不建父目录；回 `{path, changed}`。
@@ -158,10 +160,12 @@ fn edit_at(
 pub(crate) fn answer_put(d: &dyn Door, args: &Value) -> Answer {
     let dir = str_arg(args, "projectDir")?;
     let name = str_arg(args, "name")?.to_string();
-    let server = args.get("server").cloned().ok_or((
-        "bad_args",
-        crate::common::contract::malformed("missing `server`"),
-    ))?;
+    let server = args.get("server").cloned().ok_or_else(|| {
+        (
+            "bad_args",
+            crate::common::contract::malformed("missing `server`"),
+        )
+    })?;
     edit_at(d, dir, |v| {
         upsert_mcp_server_value(v, name.clone(), server.clone()).map(|()| true)
     })

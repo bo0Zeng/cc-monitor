@@ -17,18 +17,22 @@ fn texts_by_path(
     v: Option<&Value>,
     key: &str,
 ) -> Result<Map<String, Value>, crate::stream::inbound::spec::Fail> {
-    let arr = v.and_then(Value::as_array).ok_or((
-        "bad_args",
-        crate::common::contract::malformed(&format!(
-            "missing `{key}` (an array of {{path, text}})"
-        )),
-    ))?;
+    let arr = v.and_then(Value::as_array).ok_or_else(|| {
+        (
+            "bad_args",
+            crate::common::contract::malformed(&format!(
+                "missing `{key}` (an array of {{path, text}})"
+            )),
+        )
+    })?;
     let mut out = Map::new();
     for f in arr {
-        let p = f.get("path").and_then(Value::as_str).ok_or((
-            "bad_args",
-            crate::common::contract::malformed(&format!("`{key}[].path` must be a string")),
-        ))?;
+        let p = f.get("path").and_then(Value::as_str).ok_or_else(|| {
+            (
+                "bad_args",
+                crate::common::contract::malformed(&format!("`{key}[].path` must be a string")),
+            )
+        })?;
         out.insert(p.to_string(), f.clone());
     }
     Ok(out)
@@ -193,10 +197,12 @@ pub(crate) fn answer_uninstall(
     record: Record,
     args: &Value,
 ) -> Answer {
-    let dir = args.get("dir").and_then(Value::as_str).ok_or((
-        "bad_args",
-        crate::common::contract::malformed("missing `dir`"),
-    ))?;
+    let dir = args.get("dir").and_then(Value::as_str).ok_or_else(|| {
+        (
+            "bad_args",
+            crate::common::contract::malformed("missing `dir`"),
+        )
+    })?;
     let seen = texts_by_path(args.get("seen"), "seen")?;
     let ask = json!({ "dir": dir, "take": args.get("take"), "confirm": args.get("confirm") });
     let plan = crate::assets::skill_install::answer_uninstall_plan_at(ledger, &ask)?;

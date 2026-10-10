@@ -640,47 +640,40 @@ pub fn wire(cat: &Catalog, problems: &[String], changed: bool, path: Option<&Pat
 
 /// 线上 `catalog` → 各台快照（入参校验：缺格 / 类型不对 / 种类不在闭集 ⇒ `bad_args`，不猜）。
 pub fn machines_from_wire(v: &Value) -> Result<BTreeMap<String, Snapshot>, String> {
-    let arr =
-        v.get("machines")
-            .and_then(Value::as_array)
-            .ok_or(crate::common::contract::malformed(
-                "`catalog.machines` missing or not an array",
-            ))?;
+    let arr = v.get("machines").and_then(Value::as_array).ok_or_else(|| {
+        crate::common::contract::malformed("`catalog.machines` missing or not an array")
+    })?;
     let mut out = BTreeMap::new();
     for m in arr {
         let id = m
             .get("id")
             .and_then(Value::as_str)
             .filter(|s| !s.is_empty() && s.len() <= MAX_ID_BYTES)
-            .ok_or(crate::common::contract::malformed(
-                "a machine `id` is missing, empty or too long",
-            ))?;
-        let label =
-            m.get("label")
-                .and_then(Value::as_str)
-                .ok_or(crate::common::contract::malformed(
-                    "a machine `label` is missing or not a string",
-                ))?;
-        let gen =
-            m.get("gen")
-                .and_then(Value::as_u64)
-                .ok_or(crate::common::contract::malformed(
-                    "a machine `gen` is missing or not a non-negative integer",
-                ))?;
-        let seen_at =
-            m.get("seenAt")
-                .and_then(Value::as_u64)
-                .ok_or(crate::common::contract::malformed(
-                    "a machine `seenAt` is missing or not a non-negative integer",
-                ))?;
-        let assets: Vec<Asset> = serde_json::from_value(m.get("assets").cloned().ok_or(
-            crate::common::contract::malformed("a machine `assets` is missing"),
-        )?)
-        .map_err(|e| {
-            crate::common::contract::malformed(&format!(
-                "a machine `assets` has the wrong shape: {e}"
-            ))
+            .ok_or_else(|| {
+                crate::common::contract::malformed("a machine `id` is missing, empty or too long")
+            })?;
+        let label = m.get("label").and_then(Value::as_str).ok_or_else(|| {
+            crate::common::contract::malformed("a machine `label` is missing or not a string")
         })?;
+        let gen = m.get("gen").and_then(Value::as_u64).ok_or_else(|| {
+            crate::common::contract::malformed(
+                "a machine `gen` is missing or not a non-negative integer",
+            )
+        })?;
+        let seen_at = m.get("seenAt").and_then(Value::as_u64).ok_or_else(|| {
+            crate::common::contract::malformed(
+                "a machine `seenAt` is missing or not a non-negative integer",
+            )
+        })?;
+        let assets: Vec<Asset> =
+            serde_json::from_value(m.get("assets").cloned().ok_or_else(|| {
+                crate::common::contract::malformed("a machine `assets` is missing")
+            })?)
+            .map_err(|e| {
+                crate::common::contract::malformed(&format!(
+                    "a machine `assets` has the wrong shape: {e}"
+                ))
+            })?;
         let project_dirs: Vec<String> = match m.get("projectDirs") {
             None | Some(Value::Null) => Vec::new(),
             Some(v) => serde_json::from_value(v.clone()).map_err(|e| {
@@ -974,10 +967,12 @@ pub fn answer_catalog(_args: &Value) -> Result<Value, crate::stream::inbound::sp
 
 /// `assets-catalog-merge`：同上，再把 `args.catalog`（别的后端的整份）并进来。
 pub fn answer_merge(args: &Value) -> Result<Value, crate::stream::inbound::spec::Fail> {
-    let cat = args.get("catalog").ok_or((
-        "bad_args",
-        crate::common::contract::malformed("missing `catalog`"),
-    ))?;
+    let cat = args.get("catalog").ok_or_else(|| {
+        (
+            "bad_args",
+            crate::common::contract::malformed("missing `catalog`"),
+        )
+    })?;
     let incoming = machines_from_wire(cat).map_err(|e| ("bad_args", e))?;
     update_now(Some(incoming))
 }

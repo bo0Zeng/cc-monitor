@@ -988,12 +988,14 @@ pub use crate::files::{content_sha256, SHA256_HEX_LEN};
 
 /// 取**必给**的摘要形 `expect`：恰好 `{"sha256": "<64 位小写十六进制>"}`，多一个键、少一个键、串的形状不对都拒（不猜）。
 pub fn sha256_expect_of(args: &serde_json::Value) -> Result<String, (&'static str, String)> {
-    let v = args.get("expect").ok_or((
-        "bad_args",
-        crate::common::contract::malformed(
-            "missing `expect` ({\"sha256\": ...} handed out by the read)",
-        ),
-    ))?;
+    let v = args.get("expect").ok_or_else(|| {
+        (
+            "bad_args",
+            crate::common::contract::malformed(
+                "missing `expect` ({\"sha256\": ...} handed out by the read)",
+            ),
+        )
+    })?;
     let bad = || {
         (
             "bad_args",
@@ -2926,18 +2928,22 @@ fn path_of(
     args: &serde_json::Value,
     key: &str,
 ) -> Result<std::path::PathBuf, (&'static str, String)> {
-    let v = args.get(key).ok_or((
-        "bad_path",
-        crate::common::contract::malformed(&format!(
-            "missing `{key}` (a string or {{\"b16\": \"<hex>\"}})"
-        )),
-    ))?;
-    let bytes = crate::files::raw::from_json(v).ok_or((
-        "bad_path",
-        crate::common::contract::malformed(&format!(
-            "`{key}` must be a string or {{\"b16\": \"<hex>\"}}"
-        )),
-    ))?;
+    let v = args.get(key).ok_or_else(|| {
+        (
+            "bad_path",
+            crate::common::contract::malformed(&format!(
+                "missing `{key}` (a string or {{\"b16\": \"<hex>\"}})"
+            )),
+        )
+    })?;
+    let bytes = crate::files::raw::from_json(v).ok_or_else(|| {
+        (
+            "bad_path",
+            crate::common::contract::malformed(&format!(
+                "`{key}` must be a string or {{\"b16\": \"<hex>\"}}"
+            )),
+        )
+    })?;
     if bytes.is_empty() {
         return Err((
             "bad_path",
@@ -2959,12 +2965,14 @@ fn answer_create(args: &serde_json::Value) -> Answer {
     // 不给 `content` ⇒ 新建一份**空文件**（那正是「新建空文件」这件事的形状）。
     let bytes = match args.get("content") {
         None => Vec::new(),
-        Some(v) => crate::files::raw::from_json(v).ok_or((
-            "bad_args",
-            crate::common::contract::malformed(
-                "`content` must be a string or {\"b16\": \"<hex>\"}",
-            ),
-        ))?,
+        Some(v) => crate::files::raw::from_json(v).ok_or_else(|| {
+            (
+                "bad_args",
+                crate::common::contract::malformed(
+                    "`content` must be a string or {\"b16\": \"<hex>\"}",
+                ),
+            )
+        })?,
     };
     // 🔴 码由那个枚举自己答，**不在这里猜字符串前缀** —— 理由住 [`WriteRefusal`]。
     let landed = create_new_file(&root, &rel, &bytes).map_err(refusal)?;
@@ -2981,18 +2989,22 @@ fn answer_create(args: &serde_json::Value) -> Answer {
 /// （它拒空段、码是 `refused`），与此前的行为逐字相同。
 /// 码：缺了 / 形状不对 ⇒ `bad_args`（相对段这一格历来是这个码，与 `root` 的 `bad_path` 刻意不同）。
 fn rel_of(args: &serde_json::Value, key: &str) -> Result<PathBuf, (&'static str, String)> {
-    let v = args.get(key).ok_or((
-        "bad_args",
-        crate::common::contract::malformed(&format!(
-            "missing `{key}` (a string or {{\"b16\": \"<hex>\"}})"
-        )),
-    ))?;
-    let bytes = crate::files::raw::from_json(v).ok_or((
-        "bad_args",
-        crate::common::contract::malformed(&format!(
-            "`{key}` must be a string or {{\"b16\": \"<hex>\"}}"
-        )),
-    ))?;
+    let v = args.get(key).ok_or_else(|| {
+        (
+            "bad_args",
+            crate::common::contract::malformed(&format!(
+                "missing `{key}` (a string or {{\"b16\": \"<hex>\"}})"
+            )),
+        )
+    })?;
+    let bytes = crate::files::raw::from_json(v).ok_or_else(|| {
+        (
+            "bad_args",
+            crate::common::contract::malformed(&format!(
+                "`{key}` must be a string or {{\"b16\": \"<hex>\"}}"
+            )),
+        )
+    })?;
     Ok(crate::files::raw::to_path_buf(&bytes))
 }
 
@@ -3076,10 +3088,12 @@ fn answer_delete(args: &serde_json::Value) -> Answer {
     // 递归**显式**：不给 ⇒ 不递归（射程与此前一个字节不差）；给了就必须是布尔，不猜。
     let recursive = match args.get("recursive") {
         None => false,
-        Some(v) => v.as_bool().ok_or((
-            "bad_args",
-            crate::common::contract::malformed("`recursive` must be a boolean"),
-        ))?,
+        Some(v) => v.as_bool().ok_or_else(|| {
+            (
+                "bad_args",
+                crate::common::contract::malformed("`recursive` must be a boolean"),
+            )
+        })?,
     };
     // CAS **显式**：不给 ⇒ 射程与此前一个字节不差。给了 ⇒ 只删一份普通文件、盘上逐字节等于它才删。
     //   `null` 拒（删的前提就是它在 —— 「我读的时候它不在」没有可删的东西）；与 `recursive` 同给拒（CAS 只对一份文件）。
@@ -3108,10 +3122,12 @@ fn answer_delete(args: &serde_json::Value) -> Answer {
     // 递归删可带 `limit`：这一趟至多删几条，停在两条之间、回 `remaining`（还剩几条），调用方再发一趟接着删。
     let limit = match args.get("limit") {
         None => None,
-        Some(v) => Some(v.as_u64().map(|n| n as usize).ok_or((
-            "bad_args",
-            crate::common::contract::malformed("`limit` must be a non-negative integer"),
-        ))?),
+        Some(v) => Some(v.as_u64().map(|n| n as usize).ok_or_else(|| {
+            (
+                "bad_args",
+                crate::common::contract::malformed("`limit` must be a non-negative integer"),
+            )
+        })?),
     };
     let (done, removed, remaining) = if recursive {
         delete_tree_upto(&root, &rel, limit).map_err(refusal)?
@@ -3134,12 +3150,14 @@ fn answer_chmod(args: &serde_json::Value) -> Answer {
         .get("mode")
         .and_then(serde_json::Value::as_u64)
         .and_then(|m| u32::try_from(m).ok())
-        .ok_or((
-            "bad_args",
-            crate::common::contract::malformed(
-                "missing `mode` or not a non-negative integer (decimal, e.g. 420 = 0o644)",
-            ),
-        ))?;
+        .ok_or_else(|| {
+            (
+                "bad_args",
+                crate::common::contract::malformed(
+                    "missing `mode` or not a non-negative integer (decimal, e.g. 420 = 0o644)",
+                ),
+            )
+        })?;
     let (done, before) = change_mode_reporting(&root, &rel, mode).map_err(refusal)?;
     // `before`：改之前的低 12 位（撤销 ＝ 拿它再改一次）；读不到 ⇒ 不给这一格（不编一个数）。
     let mut out = serde_json::json!({ "path": path_json(&done), "mode": mode });
@@ -3156,10 +3174,12 @@ fn answer_copy(args: &serde_json::Value) -> Answer {
     // 覆盖策略**显式**：不给 ⇒ 不覆盖（`O_EXCL`）；给了就必须是布尔，不猜「1」「"yes"」。
     let overwrite = match args.get("overwrite") {
         None => false,
-        Some(v) => v.as_bool().ok_or((
-            "bad_args",
-            crate::common::contract::malformed("`overwrite` must be a boolean"),
-        ))?,
+        Some(v) => v.as_bool().ok_or_else(|| {
+            (
+                "bad_args",
+                crate::common::contract::malformed("`overwrite` must be a boolean"),
+            )
+        })?,
     };
     // 复制目录**显式**：不给 ⇒ 射程与此前一个字节不差；与 `overwrite: true` 同给 ⇒ 拒（目录复制不合并、不覆盖）。
     if flag_of(args, "recursive")? {
@@ -3189,14 +3209,20 @@ fn answer_write_text(args: &serde_json::Value) -> Answer {
     let root = path_of(args, "root")?;
     let rel = rel_of(args, "rel")?;
     // 🔴 这里**必须给** `content`：不给就把一份既有文件写成空的，那不是一个该有默认值的动作。
-    let v = args.get("content").ok_or((
-        "bad_args",
-        crate::common::contract::malformed("missing `content` (no default)"),
-    ))?;
-    let bytes = crate::files::raw::from_json(v).ok_or((
-        "bad_args",
-        crate::common::contract::malformed("`content` must be a string or {\"b16\": \"<hex>\"}"),
-    ))?;
+    let v = args.get("content").ok_or_else(|| {
+        (
+            "bad_args",
+            crate::common::contract::malformed("missing `content` (no default)"),
+        )
+    })?;
+    let bytes = crate::files::raw::from_json(v).ok_or_else(|| {
+        (
+            "bad_args",
+            crate::common::contract::malformed(
+                "`content` must be a string or {\"b16\": \"<hex>\"}",
+            ),
+        )
+    })?;
     // CAS **必给**：没有「不问就盖」这一形（同 `files-put`）。形状先判、再碰盘。
     let expect = sha256_expect_of(args)?;
     let done = overwrite_text_expecting(&root, &rel, &bytes, &expect).map_err(refusal)?;
@@ -3209,22 +3235,26 @@ fn answer_write_text(args: &serde_json::Value) -> Answer {
 
 /// 取一个**正文**参数（字符串或 `{"b16": …}`）。
 fn bytes_of(v: &serde_json::Value, key: &str) -> Result<Vec<u8>, (&'static str, String)> {
-    crate::files::raw::from_json(v).ok_or((
-        "bad_args",
-        crate::common::contract::malformed(&format!(
-            "`{key}` must be a string or {{\"b16\": \"<hex>\"}}"
-        )),
-    ))
+    crate::files::raw::from_json(v).ok_or_else(|| {
+        (
+            "bad_args",
+            crate::common::contract::malformed(&format!(
+                "`{key}` must be a string or {{\"b16\": \"<hex>\"}}"
+            )),
+        )
+    })
 }
 
 /// 取一个**可缺席的布尔**：不给 ⇒ `false`；给了就必须是布尔（不猜 `1` / `"yes"`）。
 fn flag_of(args: &serde_json::Value, key: &str) -> Result<bool, (&'static str, String)> {
     match args.get(key) {
         None => Ok(false),
-        Some(v) => v.as_bool().ok_or((
-            "bad_args",
-            crate::common::contract::malformed(&format!("`{key}` must be a boolean")),
-        )),
+        Some(v) => v.as_bool().ok_or_else(|| {
+            (
+                "bad_args",
+                crate::common::contract::malformed(&format!("`{key}` must be a boolean")),
+            )
+        }),
     }
 }
 
@@ -3242,10 +3272,12 @@ fn answer_peek(args: &serde_json::Value) -> Answer {
 fn answer_put(args: &serde_json::Value) -> Answer {
     let root = path_of(args, "root")?;
     let rel = rel_of(args, "rel")?;
-    let content = args.get("content").ok_or((
-        "bad_args",
-        crate::common::contract::malformed("missing `content` (no default)"),
-    ))?;
+    let content = args.get("content").ok_or_else(|| {
+        (
+            "bad_args",
+            crate::common::contract::malformed("missing `content` (no default)"),
+        )
+    })?;
     let content = bytes_of(content, "content")?;
     // 🔴 `expect` **必给**：`null` = 「我读的时候它不在」；字符串 / b16 = 「我读到的就是这一份」。
     //    缺席 ⇒ 拒 —— 没有「不问就盖」这一形（理由住本节头注）。
@@ -3287,10 +3319,15 @@ fn answer_delete_session(args: &serde_json::Value, sessions: &SessionPort) -> An
             )));
         }
     }
-    let sid = args.get("sid").and_then(serde_json::Value::as_str).ok_or((
-        "bad_args",
-        crate::common::contract::malformed("missing `sid` or not a string"),
-    ))?;
+    let sid = args
+        .get("sid")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| {
+            (
+                "bad_args",
+                crate::common::contract::malformed("missing `sid` or not a string"),
+            )
+        })?;
     let done = delete_session(sid, sessions).map_err(refusal)?;
     Ok(serde_json::json!({ "path": path_json(&done) }))
 }

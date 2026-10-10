@@ -407,10 +407,14 @@ pub(crate) fn names_arg(
         Some(Value::Array(a)) => a
             .iter()
             .map(|x| {
-                x.as_str().map(str::to_string).ok_or((
-                    "bad_args",
-                    crate::common::contract::malformed(&format!("`{key}` accepts strings only")),
-                ))
+                x.as_str().map(str::to_string).ok_or_else(|| {
+                    (
+                        "bad_args",
+                        crate::common::contract::malformed(&format!(
+                            "`{key}` accepts strings only"
+                        )),
+                    )
+                })
             })
             .collect::<Result<BTreeSet<_>, _>>()
             .map(Some),
@@ -428,12 +432,14 @@ pub(crate) fn answer(args: &Value) -> SyncAnswer {
 
 /// [`answer`] 的本体：事实是参数（判据拿临时目录与给定的 `PATH` 喂，不去改进程环境）。
 pub(crate) fn answer_with(facts: &dyn Facts, args: &Value) -> SyncAnswer {
-    let source = args.get("source").and_then(Value::as_str).ok_or((
-        "bad_args",
-        crate::common::contract::malformed(
-            "missing `source` (the copied text), or it is not a string",
-        ),
-    ))?;
+    let source = args.get("source").and_then(Value::as_str).ok_or_else(|| {
+        (
+            "bad_args",
+            crate::common::contract::malformed(
+                "missing `source` (the copied text), or it is not a string",
+            ),
+        )
+    })?;
     let target =
         match args.get("target") {
             None => return Err((

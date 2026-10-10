@@ -575,10 +575,12 @@ pub(crate) fn dir_answer(
     deps: &Deps,
     home: Option<&std::path::Path>,
 ) -> Result<Value, (&'static str, String)> {
-    let o = args.as_object().ok_or((
-        "bad_args",
-        crate::common::contract::malformed("args must be an object"),
-    ))?;
+    let o = args.as_object().ok_or_else(|| {
+        (
+            "bad_args",
+            crate::common::contract::malformed("args must be an object"),
+        )
+    })?;
     for k in o.keys() {
         if k != "cwd" && k != "forkOf" {
             return Err((
@@ -587,19 +589,23 @@ pub(crate) fn dir_answer(
             ));
         }
     }
-    let raw = o.get("cwd").and_then(Value::as_str).ok_or((
-        "bad_args",
-        crate::common::contract::malformed("missing string `cwd`"),
-    ))?;
+    let raw = o.get("cwd").and_then(Value::as_str).ok_or_else(|| {
+        (
+            "bad_args",
+            crate::common::contract::malformed("missing string `cwd`"),
+        )
+    })?;
     let fork_of = match o.get("forkOf") {
         None => None,
         Some(v) => Some(
             v.as_str()
                 .filter(|s| shell_quote_core::session_id_ok(s))
-                .ok_or((
-                    "bad_args",
-                    crate::common::contract::malformed("`forkOf` must be a session id"),
-                ))?,
+                .ok_or_else(|| {
+                    (
+                        "bad_args",
+                        crate::common::contract::malformed("`forkOf` must be a session id"),
+                    )
+                })?,
         ),
     };
     let cwd = expand_home(raw.trim(), home);

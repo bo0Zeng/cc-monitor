@@ -619,16 +619,20 @@ pub fn sweep_stale(home: &Path, now_secs: u64, keep: &str) -> Vec<String> {
 
 /// 取一个路径参数（字符串 或 `{"b16": …}`，与写面同一口径）。
 fn path_arg(args: &serde_json::Value, key: &str) -> Result<PathBuf, (&'static str, String)> {
-    let v = args.get(key).ok_or((
-        "bad_path",
-        crate::common::contract::malformed(&format!("missing `{key}`")),
-    ))?;
-    let raw = crate::files::raw::from_json(v).ok_or((
-        "bad_path",
-        crate::common::contract::malformed(&format!(
-            "`{key}` must be a string or {{\"b16\": \"<hex>\"}}"
-        )),
-    ))?;
+    let v = args.get(key).ok_or_else(|| {
+        (
+            "bad_path",
+            crate::common::contract::malformed(&format!("missing `{key}`")),
+        )
+    })?;
+    let raw = crate::files::raw::from_json(v).ok_or_else(|| {
+        (
+            "bad_path",
+            crate::common::contract::malformed(&format!(
+                "`{key}` must be a string or {{\"b16\": \"<hex>\"}}"
+            )),
+        )
+    })?;
     if raw.is_empty() {
         return Err((
             "bad_path",
@@ -640,10 +644,14 @@ fn path_arg(args: &serde_json::Value, key: &str) -> Result<PathBuf, (&'static st
 
 /// 取一个字符串参数。
 fn str_arg<'a>(args: &'a serde_json::Value, key: &str) -> Result<&'a str, (&'static str, String)> {
-    args.get(key).and_then(serde_json::Value::as_str).ok_or((
-        "bad_args",
-        crate::common::contract::malformed(&format!("missing `{key}` or not a string")),
-    ))
+    args.get(key)
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| {
+            (
+                "bad_args",
+                crate::common::contract::malformed(&format!("missing `{key}` or not a string")),
+            )
+        })
 }
 
 fn answer_commit(args: &serde_json::Value) -> Result<serde_json::Value, Fail> {
@@ -709,12 +717,16 @@ fn answer_commit_at(home: &Path, args: &serde_json::Value) -> Result<serde_json:
 
 /// 取一个非负整数参数。
 fn u64_arg(args: &serde_json::Value, key: &str) -> Result<u64, (&'static str, String)> {
-    args.get(key).and_then(serde_json::Value::as_u64).ok_or((
-        "bad_args",
-        crate::common::contract::malformed(&format!(
-            "missing `{key}` or not a non-negative integer"
-        )),
-    ))
+    args.get(key)
+        .and_then(serde_json::Value::as_u64)
+        .ok_or_else(|| {
+            (
+                "bad_args",
+                crate::common::contract::malformed(&format!(
+                    "missing `{key}` or not a non-negative integer"
+                )),
+            )
+        })
 }
 
 /// 这台后端的家（暂存区拼在它底下）。
@@ -727,14 +739,20 @@ fn home_dir() -> Result<PathBuf, (&'static str, String)> {
 fn answer_stage_at(home: &Path, args: &serde_json::Value) -> Answer {
     let key = str_arg(args, "key")?.to_string();
     let seq = u64_arg(args, "seq")?;
-    let v = args.get("content").ok_or((
-        "bad_args",
-        crate::common::contract::malformed("missing `content` (at least 1 byte)"),
-    ))?;
-    let bytes = crate::files::raw::from_json(v).ok_or((
-        "bad_args",
-        crate::common::contract::malformed("`content` must be a string or {\"b16\": \"<hex>\"}"),
-    ))?;
+    let v = args.get("content").ok_or_else(|| {
+        (
+            "bad_args",
+            crate::common::contract::malformed("missing `content` (at least 1 byte)"),
+        )
+    })?;
+    let bytes = crate::files::raw::from_json(v).ok_or_else(|| {
+        (
+            "bad_args",
+            crate::common::contract::malformed(
+                "`content` must be a string or {\"b16\": \"<hex>\"}",
+            ),
+        )
+    })?;
     if bytes.is_empty() {
         return Err(WriteFail::from((
             "bad_args",

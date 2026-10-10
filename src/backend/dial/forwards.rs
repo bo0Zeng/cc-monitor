@@ -96,9 +96,9 @@ pub(crate) fn parse_spec(args: &Value) -> Result<Spec, (&'static str, String)> {
 /// 把可达表里那份拨号请求改成「绑这个本机口、隧道到那个远端口」（纯；抽出来是为了判据）。
 pub(crate) fn forward_request(dial: &Value, spec: &Spec) -> Result<DialRequest, String> {
     let mut v = dial.clone();
-    let obj = v.as_object_mut().ok_or(crate::common::contract::malformed(
-        "dial request is not an object",
-    ))?;
+    let obj = v
+        .as_object_mut()
+        .ok_or_else(|| crate::common::contract::malformed("dial request is not an object"))?;
     obj.insert("use".into(), json!("forward"));
     obj.insert(
         "forward".into(),

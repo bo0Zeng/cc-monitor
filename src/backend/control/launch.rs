@@ -146,39 +146,49 @@ pub(crate) fn exact_target(name: &str) -> String {
 
 /// 从入方向的 `args` 解析 + **形状校验**。见模块头注：这不是安全边界。
 pub(crate) fn parse_request(args: &serde_json::Value) -> Result<LaunchRequest, CmdErr> {
-    let obj = args.as_object().ok_or((
-        "bad_args",
-        crate::common::contract::malformed("args must be an object"),
-    ))?;
+    let obj = args.as_object().ok_or_else(|| {
+        (
+            "bad_args",
+            crate::common::contract::malformed("args must be an object"),
+        )
+    })?;
 
     let get_str = |k: &str| -> Option<&str> { obj.get(k).and_then(|v| v.as_str()) };
 
-    let mode_raw = get_str("mode").ok_or((
-        "bad_args",
-        crate::common::contract::malformed("missing `mode` (create-or-attach / send-into)"),
-    ))?;
-    let mode = Mode::parse(mode_raw).ok_or((
-        "bad_args",
-        crate::common::contract::malformed(&format!(
-            "unknown mode `{mode_raw}`; expected create-or-attach / send-into"
-        )),
-    ))?;
+    let mode_raw = get_str("mode").ok_or_else(|| {
+        (
+            "bad_args",
+            crate::common::contract::malformed("missing `mode` (create-or-attach / send-into)"),
+        )
+    })?;
+    let mode = Mode::parse(mode_raw).ok_or_else(|| {
+        (
+            "bad_args",
+            crate::common::contract::malformed(&format!(
+                "unknown mode `{mode_raw}`; expected create-or-attach / send-into"
+            )),
+        )
+    })?;
 
     let name = get_str("name")
-        .ok_or((
-            "bad_args",
-            crate::common::contract::malformed("missing `name`"),
-        ))?
+        .ok_or_else(|| {
+            (
+                "bad_args",
+                crate::common::contract::malformed("missing `name`"),
+            )
+        })?
         .to_string();
     // 〔DUP3 §5 ⑦〕Gate 1 与结束 · 抓屏同一份（`kill::admit_existing_name` → `gate_rules`）；长度照旧。
     super::kill::admit_existing_name(&name)?;
     check_len("name", &name)?;
 
     let payload = get_str("payload")
-        .ok_or((
-            "bad_args",
-            crate::common::contract::malformed("missing `payload`"),
-        ))?
+        .ok_or_else(|| {
+            (
+                "bad_args",
+                crate::common::contract::malformed("missing `payload`"),
+            )
+        })?
         .to_string();
     // ★★ 🔴 **`create-or-attach` 的 `payload` 放行 `\n` / `\t`，
     //    别的模式一个字节不动。** 这是 `§19 裁六` 登记的那条「真搬那拍的硬前置」。

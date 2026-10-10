@@ -433,14 +433,18 @@ fn limit_of(args: &serde_json::Value) -> usize {
 }
 
 fn path_arg(args: &serde_json::Value) -> Result<std::path::PathBuf, (&'static str, String)> {
-    let v = args.get("path").ok_or((
-        "bad_path",
-        crate::common::contract::malformed("missing `path` (a string or {\"b16\": \"<hex>\"})"),
-    ))?;
-    let bytes = raw::from_json(v).ok_or((
-        "bad_path",
-        crate::common::contract::malformed("`path` must be a string or {\"b16\": \"<hex>\"}"),
-    ))?;
+    let v = args.get("path").ok_or_else(|| {
+        (
+            "bad_path",
+            crate::common::contract::malformed("missing `path` (a string or {\"b16\": \"<hex>\"})"),
+        )
+    })?;
+    let bytes = raw::from_json(v).ok_or_else(|| {
+        (
+            "bad_path",
+            crate::common::contract::malformed("`path` must be a string or {\"b16\": \"<hex>\"}"),
+        )
+    })?;
     if bytes.is_empty() {
         return Err((
             "bad_path",
@@ -462,26 +466,32 @@ fn path_arg(args: &serde_json::Value) -> Result<std::path::PathBuf, (&'static st
 /// 「少了 `dirs`」与「`dirs` 是空的」**是两件事**：前者是调用方漏了参数，
 /// 后者是它真的要卸掉全部 —— 静默地把前者当后者办，就是悄悄把 watch 全拆了。
 fn dirs_arg(args: &serde_json::Value) -> Result<Vec<std::path::PathBuf>, (&'static str, String)> {
-    let v = args.get("dirs").ok_or((
+    let v = args.get("dirs").ok_or_else(|| {
+        (
         "bad_args",
         crate::common::contract::malformed(
             "missing `dirs` (an array of strings or {\"b16\": \"<hex>\"}; empty array is valid)",
         ),
-    ))?;
-    let arr = v.as_array().ok_or((
-        "bad_args",
-        crate::common::contract::malformed(
-            "`dirs` must be an array (the whole current list, not a delta)",
-        ),
-    ))?;
+    )
+    })?;
+    let arr = v.as_array().ok_or_else(|| {
+        (
+            "bad_args",
+            crate::common::contract::malformed(
+                "`dirs` must be an array (the whole current list, not a delta)",
+            ),
+        )
+    })?;
     let mut out: Vec<std::path::PathBuf> = Vec::new();
     for (i, item) in arr.iter().enumerate() {
-        let bytes = raw::from_json(item).ok_or((
-            "bad_path",
-            crate::common::contract::malformed(&format!(
-                "`dirs[{i}]` must be a string or {{\"b16\": \"<hex>\"}}"
-            )),
-        ))?;
+        let bytes = raw::from_json(item).ok_or_else(|| {
+            (
+                "bad_path",
+                crate::common::contract::malformed(&format!(
+                    "`dirs[{i}]` must be a string or {{\"b16\": \"<hex>\"}}"
+                )),
+            )
+        })?;
         if bytes.is_empty() {
             return Err((
                 "bad_path",
@@ -681,26 +691,32 @@ fn answer_find(args: &serde_json::Value) -> Answer {
     let q = args
         .get("query")
         .and_then(serde_json::Value::as_str)
-        .ok_or((
-            "bad_args",
-            crate::common::contract::malformed("missing `query` (a string)"),
-        ))?;
+        .ok_or_else(|| {
+            (
+                "bad_args",
+                crate::common::contract::malformed("missing `query` (a string)"),
+            )
+        })?;
     let matcher = query::parse(q).map_err(|e| ("bad_query", e.said()))?;
     let under = match args.get("under") {
         None | Some(serde_json::Value::Null) => None,
-        Some(v) => Some(raw::from_json(v).filter(|b| !b.is_empty()).ok_or((
-            "bad_path",
-            crate::common::contract::malformed(
-                "`under` must be a non-empty string or {\"b16\": \"<hex>\"}",
-            ),
-        ))?),
+        Some(v) => Some(raw::from_json(v).filter(|b| !b.is_empty()).ok_or_else(|| {
+            (
+                "bad_path",
+                crate::common::contract::malformed(
+                    "`under` must be a non-empty string or {\"b16\": \"<hex>\"}",
+                ),
+            )
+        })?),
     };
     let seq = match args.get("seq") {
         None | Some(serde_json::Value::Null) => None,
-        Some(v) => Some(v.as_u64().ok_or((
-            "bad_args",
-            crate::common::contract::malformed("`seq` must be a non-negative integer"),
-        ))?),
+        Some(v) => Some(v.as_u64().ok_or_else(|| {
+            (
+                "bad_args",
+                crate::common::contract::malformed("`seq` must be a non-negative integer"),
+            )
+        })?),
     };
     let stream = args
         .get("stream")
@@ -723,20 +739,27 @@ fn answer_find(args: &serde_json::Value) -> Answer {
     let sort = index::Sort {
         key: match args.get("sort") {
             None | Some(serde_json::Value::Null) => index::SortKey::default(),
-            Some(v) => v.as_str().and_then(index::SortKey::from_wire).ok_or((
-                "bad_args",
-                crate::common::contract::malformed(&format!(
-                    "`sort` must be one of {}",
-                    index::SortKey::WIRE.join(" / ")
-                )),
-            ))?,
+            Some(v) => v
+                .as_str()
+                .and_then(index::SortKey::from_wire)
+                .ok_or_else(|| {
+                    (
+                        "bad_args",
+                        crate::common::contract::malformed(&format!(
+                            "`sort` must be one of {}",
+                            index::SortKey::WIRE.join(" / ")
+                        )),
+                    )
+                })?,
         },
         desc: match args.get("desc") {
             None | Some(serde_json::Value::Null) => false,
-            Some(v) => v.as_bool().ok_or((
-                "bad_args",
-                crate::common::contract::malformed("`desc` must be a boolean"),
-            ))?,
+            Some(v) => v.as_bool().ok_or_else(|| {
+                (
+                    "bad_args",
+                    crate::common::contract::malformed("`desc` must be a boolean"),
+                )
+            })?,
         },
     };
     // 「整台机器」：范围由这台自己定（文件系统的根），界面不猜平台。
@@ -1023,10 +1046,14 @@ fn answer_read_chunk(args: &serde_json::Value) -> Answer {
     use std::io::{Read as _, Seek as _};
     let path = path_arg(args)?;
     let num = |v: Option<&serde_json::Value>, k: &str| {
-        v.and_then(serde_json::Value::as_u64).ok_or((
-            "bad_args",
-            crate::common::contract::malformed(&format!("missing `{k}` (non-negative integer)")),
-        ))
+        v.and_then(serde_json::Value::as_u64).ok_or_else(|| {
+            (
+                "bad_args",
+                crate::common::contract::malformed(&format!(
+                    "missing `{k}` (non-negative integer)"
+                )),
+            )
+        })
     };
     let offset = num(args.get("offset"), "offset")?;
     let len = num(args.get("len"), "len")?;
@@ -1101,12 +1128,14 @@ fn answer_read_text(args: &serde_json::Value) -> Answer {
     let max = args
         .get("max_bytes")
         .and_then(serde_json::Value::as_u64)
-        .ok_or((
-            "bad_args",
-            crate::common::contract::malformed(
-                "missing `max_bytes` (non-negative integer, required every call)",
-            ),
-        ))?;
+        .ok_or_else(|| {
+            (
+                "bad_args",
+                crate::common::contract::malformed(
+                    "missing `max_bytes` (non-negative integer, required every call)",
+                ),
+            )
+        })?;
     if max == 0 || max > READ_TEXT_MAX_BYTES as u64 {
         return Err(Refused::from((
             "bad_args",
@@ -1234,10 +1263,14 @@ fn grep_args(
     args: &serde_json::Value,
 ) -> Result<(std::path::PathBuf, grep::GrepArgs), (&'static str, String)> {
     let path = path_arg(args)?;
-    let needle = args.get("needle").and_then(raw::from_json).ok_or((
-        "bad_args",
-        crate::common::contract::malformed("missing `needle` (a string or {\"b16\": \"<hex>\"})"),
-    ))?;
+    let needle = args.get("needle").and_then(raw::from_json).ok_or_else(|| {
+        (
+            "bad_args",
+            crate::common::contract::malformed(
+                "missing `needle` (a string or {\"b16\": \"<hex>\"})",
+            ),
+        )
+    })?;
     if needle.is_empty() || needle.len() > grep::NEEDLE_MAX_BYTES {
         return Err((
             "bad_args",

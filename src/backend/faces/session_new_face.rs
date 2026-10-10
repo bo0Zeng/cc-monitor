@@ -164,10 +164,12 @@ fn record_dirs(home: &std::path::Path) -> Vec<(String, i64)> {
 
 /// `session-new-facts`：`{forkOf?, at?}` ⇒ `{recent, tmux, agents, fork}`（`at` ＝ 从哪条消息处分叉：框顶说第几轮、几点）。
 pub(crate) fn facts(args: &Value) -> Answer {
-    let o = args.as_object().ok_or((
-        "bad_args",
-        crate::common::contract::malformed("args must be an object"),
-    ))?;
+    let o = args.as_object().ok_or_else(|| {
+        (
+            "bad_args",
+            crate::common::contract::malformed("args must be an object"),
+        )
+    })?;
     if let Some(k) = o
         .keys()
         .find(|k| k.as_str() != "forkOf" && k.as_str() != "at")
@@ -182,10 +184,12 @@ pub(crate) fn facts(args: &Value) -> Answer {
         Some(v) => Some(
             v.as_str()
                 .filter(|s| shell_quote_core::session_id_ok(s))
-                .ok_or((
-                    "bad_args",
-                    crate::common::contract::malformed("`forkOf` must be a session id"),
-                ))?,
+                .ok_or_else(|| {
+                    (
+                        "bad_args",
+                        crate::common::contract::malformed("`forkOf` must be a session id"),
+                    )
+                })?,
         ),
     };
     let at = match o.get("at") {
@@ -193,12 +197,14 @@ pub(crate) fn facts(args: &Value) -> Answer {
         Some(v) => Some(
             v.as_str()
                 .filter(|s| shell_quote_core::session_id_ok(s) && fork_of.is_some())
-                .ok_or((
-                    "bad_args",
-                    crate::common::contract::malformed(
-                        "`at` must be a message id, given with `forkOf`",
-                    ),
-                ))?,
+                .ok_or_else(|| {
+                    (
+                        "bad_args",
+                        crate::common::contract::malformed(
+                            "`at` must be a message id, given with `forkOf`",
+                        ),
+                    )
+                })?,
         ),
     };
     let home = crate::observe::history_query::agent_home();

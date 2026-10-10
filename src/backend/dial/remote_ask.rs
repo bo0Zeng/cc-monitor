@@ -101,20 +101,24 @@ pub(crate) fn lock(t: &Table) -> std::sync::MutexGuard<'_, BTreeMap<String, Reac
 /// 同一台再记一次 ⇒ 换新的拨号请求，`peer`（对面的资产目录 id）留着。
 /// `remote-reach` 与 `assets-sync` 都经它。
 pub(crate) fn register(table: &Table, args: &Value) -> Result<String, (&'static str, String)> {
-    let o = args.get("origin").and_then(Value::as_str).ok_or((
-        "bad_args",
-        crate::common::contract::malformed("missing `origin` (the machine name)"),
-    ))?;
+    let o = args.get("origin").and_then(Value::as_str).ok_or_else(|| {
+        (
+            "bad_args",
+            crate::common::contract::malformed("missing `origin` (the machine name)"),
+        )
+    })?;
     if o.is_empty() {
         return Err((
             "bad_args",
             crate::common::contract::malformed("`origin` is empty").into(),
         ));
     }
-    let dial = args.get("dial").filter(|d| d.is_object()).ok_or((
-        "bad_args",
-        crate::common::contract::malformed("`origin` given without `dial` (a dial request)"),
-    ))?;
+    let dial = args.get("dial").filter(|d| d.is_object()).ok_or_else(|| {
+        (
+            "bad_args",
+            crate::common::contract::malformed("`origin` given without `dial` (a dial request)"),
+        )
+    })?;
     let mut t = lock(table);
     if !t.contains_key(o) && t.len() >= MAX_REACH {
         return Err((
@@ -251,9 +255,9 @@ pub(crate) fn capture_request(
     stdin: Option<String>,
 ) -> Result<crate::dial::DialRequest, String> {
     let mut v = dial.clone();
-    let obj = v.as_object_mut().ok_or(crate::common::contract::malformed(
-        "dial request is not an object",
-    ))?;
+    let obj = v
+        .as_object_mut()
+        .ok_or_else(|| crate::common::contract::malformed("dial request is not an object"))?;
     obj.insert("use".into(), json!("capture"));
     obj.insert("command".into(), json!(command));
     obj.insert(

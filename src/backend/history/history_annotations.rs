@@ -176,10 +176,12 @@ struct Patch {
 const ALIASES: [&str; 2] = ["custom_title", "updated_at"];
 
 fn sid_arg(args: &Value) -> Result<&str, crate::stream::inbound::spec::Fail> {
-    let sid = args.get("sid").and_then(Value::as_str).ok_or((
-        "bad_args",
-        crate::common::contract::malformed("missing `sid` (a string)"),
-    ))?;
+    let sid = args.get("sid").and_then(Value::as_str).ok_or_else(|| {
+        (
+            "bad_args",
+            crate::common::contract::malformed("missing `sid` (a string)"),
+        )
+    })?;
     if sid.is_empty() || sid.len() > 256 || sid.chars().any(char::is_control) {
         return Err(crate::stream::inbound::spec::Fail::from((
             "bad_args",

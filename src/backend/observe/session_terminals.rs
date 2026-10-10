@@ -66,20 +66,24 @@ pub(crate) fn answer_at(home: &std::path::Path, args: &Value) -> Answer {
         .get("sid")
         .and_then(Value::as_str)
         .filter(|s| shell_quote_core::session_id_ok(s))
-        .ok_or((
-            "bad_args",
-            crate::common::contract::malformed("missing or malformed `sid`"),
-        ))?;
+        .ok_or_else(|| {
+            (
+                "bad_args",
+                crate::common::contract::malformed("missing or malformed `sid`"),
+            )
+        })?;
     let pid = crate::observe::watcher::running_sessions(home)
         .into_iter()
         .find(|(s, _)| s == sid)
         .map(|(_, pid)| pid)
-        .ok_or((
-            "no_such_session",
-            crate::common::contract::malformed(
-                "no running session with that `sid` on this machine",
-            ),
-        ))?;
+        .ok_or_else(|| {
+            (
+                "no_such_session",
+                crate::common::contract::malformed(
+                    "no running session with that `sid` on this machine",
+                ),
+            )
+        })?;
     crate::stream::inbound::spec::wire(&product(&shown_by(pid)?))
 }
 

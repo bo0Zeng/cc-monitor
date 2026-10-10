@@ -53,10 +53,12 @@ pub fn valid_rel(p: &str) -> bool {
 }
 
 fn name_arg(args: &Value) -> Result<String, crate::stream::inbound::spec::Fail> {
-    let name = args.get("name").and_then(Value::as_str).ok_or((
-        "bad_args",
-        crate::common::contract::malformed("missing `name` (skill directory name)"),
-    ))?;
+    let name = args.get("name").and_then(Value::as_str).ok_or_else(|| {
+        (
+            "bad_args",
+            crate::common::contract::malformed("missing `name` (skill directory name)"),
+        )
+    })?;
     if !valid_name(name) {
         return Err(crate::stream::inbound::spec::Fail::from((
             "bad_args",
@@ -302,10 +304,15 @@ struct SourceFile {
 fn source_arg(
     args: &Value,
 ) -> Result<BTreeMap<String, SourceFile>, crate::stream::inbound::spec::Fail> {
-    let arr = args.get("source").and_then(Value::as_array).ok_or((
-        "bad_args",
-        crate::common::contract::malformed("missing `source` or it is not an array"),
-    ))?;
+    let arr = args
+        .get("source")
+        .and_then(Value::as_array)
+        .ok_or_else(|| {
+            (
+                "bad_args",
+                crate::common::contract::malformed("missing `source` or it is not an array"),
+            )
+        })?;
     if arr.len() > MAX_FILES {
         return Err(crate::stream::inbound::spec::Fail::from((
             "too_large",
@@ -321,12 +328,14 @@ fn source_arg(
             .get("path")
             .and_then(Value::as_str)
             .filter(|p| valid_rel(p))
-            .ok_or((
-                "bad_args",
-                crate::common::contract::malformed(
-                    "a file `path` is missing or not a relative path inside the skill",
-                ),
-            ))?;
+            .ok_or_else(|| {
+                (
+                    "bad_args",
+                    crate::common::contract::malformed(
+                        "a file `path` is missing or not a relative path inside the skill",
+                    ),
+                )
+            })?;
         let text = match f.get("text") {
             Some(Value::String(t)) => Some(t.clone()),
             Some(Value::Null) => None,
@@ -552,10 +561,12 @@ fn on_disk_now(
 
 /// 卸的判定（被卸的那一台跑；`ext-uninstall-*` 经它判）：记录文件由调用方给。
 pub fn answer_uninstall_plan_at(ledger: &Path, args: &Value) -> Answer {
-    let dir = args.get("dir").and_then(Value::as_str).ok_or((
-        "bad_args",
-        crate::common::contract::malformed("missing `dir`"),
-    ))?;
+    let dir = args.get("dir").and_then(Value::as_str).ok_or_else(|| {
+        (
+            "bad_args",
+            crate::common::contract::malformed("missing `dir`"),
+        )
+    })?;
     let take = mcp_sync::names_arg(args.get("take"), "take")?;
     let confirm = mcp_sync::names_arg(args.get("confirm"), "confirm")?;
     if take.is_none() && confirm.is_some() {

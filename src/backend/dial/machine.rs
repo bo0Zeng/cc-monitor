@@ -228,10 +228,12 @@ pub(crate) fn resolve(v: &Value) -> Result<crate::dial::DialRequest, (&'static s
 pub(crate) fn from_args(
     args: &Value,
 ) -> Result<(Machine, Option<Machine>, Option<Machine>), (&'static str, String)> {
-    let m = args.get("machine").ok_or((
-        "bad_args",
-        crate::common::contract::malformed("missing `machine`"),
-    ))?;
+    let m = args.get("machine").ok_or_else(|| {
+        (
+            "bad_args",
+            crate::common::contract::malformed("missing `machine`"),
+        )
+    })?;
     let opt = |k: &str| -> Result<Option<Machine>, (&'static str, String)> {
         match args.get(k) {
             None | Some(Value::Null) => Ok(None),

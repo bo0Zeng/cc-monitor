@@ -23,10 +23,12 @@ pub(crate) fn answer(cmd: &str, args: &Value) -> Answer {
 fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answer {
     match cmd {
         "tasks-list" => {
-            let sid = args.get("sid").and_then(Value::as_str).ok_or((
-                "bad_args",
-                crate::common::contract::malformed("missing `sid` (a string)"),
-            ))?;
+            let sid = args.get("sid").and_then(Value::as_str).ok_or_else(|| {
+                (
+                    "bad_args",
+                    crate::common::contract::malformed("missing `sid` (a string)"),
+                )
+            })?;
             // 应答是成品 `{tasks: [...]}`。
             capped(json!({ "tasks": crate::observe::tasks_query::session_tasks(home, sid)? }))
         }

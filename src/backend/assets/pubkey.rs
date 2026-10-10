@@ -144,10 +144,12 @@ pub(crate) fn plan_authorized_keys(
 
 /// `authorized-keys-add {key}`（被写那台）：算 → 经这台自己的文件管理面写 → 收紧权限。
 pub(crate) fn answer_add(d: &dyn Door, args: &Value) -> Result<Value, (&'static str, String)> {
-    let raw = args.get("key").and_then(Value::as_str).ok_or((
-        "bad_args",
-        crate::common::contract::malformed("missing `key` (string)"),
-    ))?;
+    let raw = args.get("key").and_then(Value::as_str).ok_or_else(|| {
+        (
+            "bad_args",
+            crate::common::contract::malformed("missing `key` (string)"),
+        )
+    })?;
     let key = sanitize_public_key(raw).map_err(|e| ("refused", e))?;
     let home = door::home(d).map_err(|e| ("io_failed", e))?;
     let rel = format!("{SSH_DIR}/{AUTH_FILE}");

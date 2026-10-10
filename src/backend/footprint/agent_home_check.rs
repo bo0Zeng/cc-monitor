@@ -59,9 +59,9 @@ pub(crate) fn answer_check_with(
         .get("path")
         .and_then(Value::as_str)
         .filter(|s| !s.is_empty())
-        .ok_or(("bad_args", malformed("`path` must be a non-empty string")))?;
+        .ok_or_else(|| ("bad_args", malformed("`path` must be a non-empty string")))?;
     let path = if raw == "~" || raw.starts_with("~/") {
-        let home = home.ok_or(("bad_args", malformed("home directory unresolvable")))?;
+        let home = home.ok_or_else(|| ("bad_args", malformed("home directory unresolvable")))?;
         if raw == "~" {
             home
         } else {

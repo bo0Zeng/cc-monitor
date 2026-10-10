@@ -74,10 +74,12 @@ pub(crate) fn answer_set_at(path: &Path, args: &Value) -> FileFaceAnswer {
     //   那一跳随写 key 改走 `chan.call` 一起退了（前端一个字都不推账号 id：`KH2C1`）。不为旧形状留兼容：还给 `account` ⇒ 拒。
     let account_id = account_of(args)?;
     let account = account_id.as_str();
-    let plain = args.get("key").and_then(Value::as_str).ok_or((
-        "bad_args",
-        crate::common::contract::malformed("missing `key` (string)"),
-    ))?;
+    let plain = args.get("key").and_then(Value::as_str).ok_or_else(|| {
+        (
+            "bad_args",
+            crate::common::contract::malformed("missing `key` (string)"),
+        )
+    })?;
     let key = SecretKey::new(plain);
     // Base URL（加账号表单 apikey 那一支的第二格）：缺席 / null / 空串 = **不碰那一格**
     //   （只配 key 时已有端点原样留着）；给了就先过**与装表同一个谓词**（`upstream_url_core::usable`：
@@ -131,10 +133,15 @@ fn account_of(args: &Value) -> Result<String, Fail> {
             ),
         )));
     }
-    let config_dir = args.get("configDir").and_then(Value::as_str).ok_or((
-        "bad_args",
-        crate::common::contract::malformed("missing `configDir` (string)"),
-    ))?;
+    let config_dir = args
+        .get("configDir")
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            (
+                "bad_args",
+                crate::common::contract::malformed("missing `configDir` (string)"),
+            )
+        })?;
     let account = acct_core::apikey_account_id_of_dir(config_dir).ok_or((
         "bad_args",
         copy_text(
@@ -180,10 +187,12 @@ pub(crate) fn answer_restore(args: &Value) -> FileFaceAnswer {
 /// [`answer_restore`] 的本体，路径是参数。
 pub(crate) fn answer_restore_at(path: &Path, args: &Value) -> FileFaceAnswer {
     let account = account_of(args)?;
-    let from = args.get("from").and_then(Value::as_str).ok_or((
-        "bad_args",
-        crate::common::contract::malformed("missing `from` (string)"),
-    ))?;
+    let from = args.get("from").and_then(Value::as_str).ok_or_else(|| {
+        (
+            "bad_args",
+            crate::common::contract::malformed("missing `from` (string)"),
+        )
+    })?;
     let saved = read_doc(Path::new(from))?.unwrap_or_default();
     let has = saved
         .get(store::ACCOUNTS_FIELD)

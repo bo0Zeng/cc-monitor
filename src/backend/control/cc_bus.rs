@@ -422,18 +422,24 @@ fn refuse_bad_bus_id(v: &str, said: impl FnOnce(&str) -> String) -> Result<(), C
 /// ⚠ 与 `kill::parse_name` 同一条纪律：argv 直传不过 shell。`to` 的**形状**在这里判（[`refuse_bad_bus_id`]，§47 ①）；
 /// 收件人**是否存在**（成员资格）仍归 cc-bus —— 见 [`classify_send`]。
 fn parse_send(args: &serde_json::Value) -> Result<(String, String, Option<String>), CmdErr> {
-    let obj = args.as_object().ok_or((
-        "bad_args",
-        crate::common::contract::malformed("args must be an object"),
-    ))?;
-    let to = obj.get("to").and_then(|v| v.as_str()).ok_or((
-        "bad_args",
-        crate::common::contract::malformed("missing `to`"),
-    ))?;
-    let text = obj.get("text").and_then(|v| v.as_str()).ok_or((
-        "bad_args",
-        crate::common::contract::malformed("missing `text`"),
-    ))?;
+    let obj = args.as_object().ok_or_else(|| {
+        (
+            "bad_args",
+            crate::common::contract::malformed("args must be an object"),
+        )
+    })?;
+    let to = obj.get("to").and_then(|v| v.as_str()).ok_or_else(|| {
+        (
+            "bad_args",
+            crate::common::contract::malformed("missing `to`"),
+        )
+    })?;
+    let text = obj.get("text").and_then(|v| v.as_str()).ok_or_else(|| {
+        (
+            "bad_args",
+            crate::common::contract::malformed("missing `text`"),
+        )
+    })?;
     if to.trim().is_empty() {
         return Err((
             "bad_args",
@@ -1061,14 +1067,18 @@ pub(crate) fn send_reply(
 
 /// `bus-broadcast` 的入参 —— 纯函数。`text` 必须非空（空广播不是缺省）；`from` 可选（同 [`parse_send`]）。
 fn parse_broadcast(args: &serde_json::Value) -> Result<(String, Option<String>), CmdErr> {
-    let obj = args.as_object().ok_or((
-        "bad_args",
-        crate::common::contract::malformed("args must be an object"),
-    ))?;
-    let text = obj.get("text").and_then(|v| v.as_str()).ok_or((
-        "bad_args",
-        crate::common::contract::malformed("missing `text`"),
-    ))?;
+    let obj = args.as_object().ok_or_else(|| {
+        (
+            "bad_args",
+            crate::common::contract::malformed("args must be an object"),
+        )
+    })?;
+    let text = obj.get("text").and_then(|v| v.as_str()).ok_or_else(|| {
+        (
+            "bad_args",
+            crate::common::contract::malformed("missing `text`"),
+        )
+    })?;
     if text.trim().is_empty() {
         return Err((
             "bad_args",
@@ -1214,10 +1224,12 @@ pub(crate) struct SpawnArgs {
 /// `account` 与 `base:true` **恰好给一个**（都不给 ⇒ 拒：那是替用户选了默认号）·
 /// 给了 `account` 就先过形状判定（[`refuse_bad_bus_id`]，`§47` ①）。
 pub(crate) fn parse_spawn(args: &serde_json::Value) -> Result<SpawnArgs, CmdErr> {
-    let obj = args.as_object().ok_or((
-        "bad_args",
-        crate::common::contract::malformed("args must be an object"),
-    ))?;
+    let obj = args.as_object().ok_or_else(|| {
+        (
+            "bad_args",
+            crate::common::contract::malformed("args must be an object"),
+        )
+    })?;
     let s = |k: &str| obj.get(k).and_then(|v| v.as_str()).unwrap_or("").trim();
     // 哪一家问注册表（不写名字白名单）：认不出 ⇒ `bad_args`，那句话列出认得的几家；交给 cc-spawn 的是解析好的 kind。
     let (tool, _) = crate::agents::pick_kind(Some(s("tool"))).map_err(|say| ("bad_args", say))?;

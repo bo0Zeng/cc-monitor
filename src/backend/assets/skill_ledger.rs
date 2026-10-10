@@ -173,10 +173,16 @@ fn write_at(path: &Path, ledger: &Ledger) -> Result<(), crate::common::said::Sai
 fn files_arg(
     args: &Value,
 ) -> Result<BTreeMap<String, Recorded>, crate::stream::inbound::spec::Fail> {
-    let obj = args.get("files").and_then(Value::as_object).ok_or((
-        "bad_args",
-        crate::common::contract::malformed("missing `files` or it is not an object").to_string(),
-    ))?;
+    let obj = args
+        .get("files")
+        .and_then(Value::as_object)
+        .ok_or_else(|| {
+            (
+                "bad_args",
+                crate::common::contract::malformed("missing `files` or it is not an object")
+                    .to_string(),
+            )
+        })?;
     if obj.is_empty() {
         return Err(crate::stream::inbound::spec::Fail::from((
             "bad_args",
@@ -277,10 +283,12 @@ pub fn drop_paths(
 
 /// [`answer_record`] 的本体：记录文件路径与 skill 根都可喂（判据拿临时目录喂，不改进程环境）。
 pub fn record_at(path: &Path, skills_root: Option<&Path>, args: &Value) -> Answer {
-    let op = args.get("op").and_then(Value::as_str).ok_or((
-        "bad_args",
-        crate::common::contract::malformed("missing `op` (add, drop, mcp-add or mcp-drop)"),
-    ))?;
+    let op = args.get("op").and_then(Value::as_str).ok_or_else(|| {
+        (
+            "bad_args",
+            crate::common::contract::malformed("missing `op` (add, drop, mcp-add or mcp-drop)"),
+        )
+    })?;
     // 先建那一层目录（在就算了），再拿它的跨进程锁，锁住之后才读。
     let lock_dir = path.parent().ok_or((
         "io_failed",
@@ -315,12 +323,14 @@ pub fn record_at(path: &Path, skills_root: Option<&Path>, args: &Value) -> Answe
                 .get("name")
                 .and_then(Value::as_str)
                 .filter(|n| crate::assets::skill_install::valid_name(n))
-                .ok_or((
-                    "bad_args",
-                    crate::common::contract::malformed(
-                        "missing `name` or it is not a valid skill directory name",
-                    ),
-                ))?
+                .ok_or_else(|| {
+                    (
+                        "bad_args",
+                        crate::common::contract::malformed(
+                            "missing `name` or it is not a valid skill directory name",
+                        ),
+                    )
+                })?
                 .to_string();
             let files = files_arg(args)?;
             // 目录自己算：与 `skill-install-plan` 答 `dir` 的是同一个根（不收调用方给的路径）。
@@ -371,24 +381,30 @@ pub fn record_at(path: &Path, skills_root: Option<&Path>, args: &Value) -> Answe
             let dir = args
                 .get("dir")
                 .and_then(Value::as_str)
-                .ok_or((
-                    "bad_args",
-                    crate::common::contract::malformed("missing `dir`"),
-                ))?
+                .ok_or_else(|| {
+                    (
+                        "bad_args",
+                        crate::common::contract::malformed("missing `dir`"),
+                    )
+                })?
                 .to_string();
             let paths: Vec<String> = args
                 .get("paths")
                 .and_then(Value::as_array)
-                .ok_or((
-                    "bad_args",
-                    crate::common::contract::malformed("missing `paths` or it is not an array"),
-                ))?
+                .ok_or_else(|| {
+                    (
+                        "bad_args",
+                        crate::common::contract::malformed("missing `paths` or it is not an array"),
+                    )
+                })?
                 .iter()
                 .map(|p| {
-                    p.as_str().map(str::to_string).ok_or((
-                        "bad_args",
-                        crate::common::contract::malformed("`paths` must contain only strings"),
-                    ))
+                    p.as_str().map(str::to_string).ok_or_else(|| {
+                        (
+                            "bad_args",
+                            crate::common::contract::malformed("`paths` must contain only strings"),
+                        )
+                    })
                 })
                 .collect::<Result<_, _>>()?;
             let name = ledger
@@ -404,31 +420,37 @@ pub fn record_at(path: &Path, skills_root: Option<&Path>, args: &Value) -> Answe
                 .get("file")
                 .and_then(Value::as_str)
                 .filter(|f| Path::new(f).is_absolute())
-                .ok_or((
-                    "bad_args",
-                    crate::common::contract::malformed("missing `file` (an absolute path)"),
-                ))?
+                .ok_or_else(|| {
+                    (
+                        "bad_args",
+                        crate::common::contract::malformed("missing `file` (an absolute path)"),
+                    )
+                })?
                 .to_string();
             let name = args
                 .get("name")
                 .and_then(Value::as_str)
                 .filter(|n| !n.trim().is_empty())
-                .ok_or((
-                    "bad_args",
-                    crate::common::contract::malformed("missing `name`"),
-                ))?
+                .ok_or_else(|| {
+                    (
+                        "bad_args",
+                        crate::common::contract::malformed("missing `name`"),
+                    )
+                })?
                 .to_string();
             let changed = if op == "mcp-add" {
                 let digest = args
                     .get("digest")
                     .and_then(Value::as_str)
                     .filter(|d| valid_digest(d))
-                    .ok_or((
-                        "bad_args",
-                        crate::common::contract::malformed(
-                            "`digest` must be 16 lowercase hex digits",
-                        ),
-                    ))?;
+                    .ok_or_else(|| {
+                        (
+                            "bad_args",
+                            crate::common::contract::malformed(
+                                "`digest` must be 16 lowercase hex digits",
+                            ),
+                        )
+                    })?;
                 let slot = ledger.mcp.entry(file.clone()).or_default();
                 slot.insert(name.clone(), digest.to_string()) != Some(digest.to_string())
             } else {

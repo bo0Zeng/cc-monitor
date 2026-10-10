@@ -530,10 +530,12 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
         }
         "history-tail" => {
             let path = str_arg(args, "path")?;
-            let n = u64_arg(args, "n")?.ok_or((
-                "bad_args",
-                crate::common::contract::malformed("missing `n`"),
-            ))?;
+            let n = u64_arg(args, "n")?.ok_or_else(|| {
+                (
+                    "bad_args",
+                    crate::common::contract::malformed("missing `n`"),
+                )
+            })?;
             let plan =
                 history_query::tail_now(home, path, n as usize).map_err(|e| ("failed", e))?;
             wire(&plan)
@@ -572,10 +574,12 @@ fn record_face(
 ) -> Result<(std::path::PathBuf, crate::agents::RecordFace), (&'static str, String)> {
     let target =
         crate::observe::history_query::session_path_at(home, path).map_err(|e| ("refused", e))?;
-    let face = crate::agents::record_face_of(&target).ok_or((
-        "failed",
-        crate::common::contract::malformed("no adapter reads this record"),
-    ))?;
+    let face = crate::agents::record_face_of(&target).ok_or_else(|| {
+        (
+            "failed",
+            crate::common::contract::malformed("no adapter reads this record"),
+        )
+    })?;
     Ok((target, face))
 }
 
@@ -730,10 +734,12 @@ impl std::io::Write for CappedBuf {
 }
 
 fn str_arg<'a>(args: &'a Value, key: &str) -> Result<&'a str, (&'static str, String)> {
-    args.get(key).and_then(Value::as_str).ok_or((
-        "bad_args",
-        crate::common::contract::malformed(&format!("missing `{key}` (a string)")),
-    ))
+    args.get(key).and_then(Value::as_str).ok_or_else(|| {
+        (
+            "bad_args",
+            crate::common::contract::malformed(&format!("missing `{key}` (a string)")),
+        )
+    })
 }
 
 /// 可缺的串参数：缺 / `null` ⇒ `None`；在而不是串 ⇒ `bad_args`。
@@ -776,10 +782,14 @@ fn summary_only(args: &Value) -> bool {
 fn u64_arg(args: &Value, key: &str) -> Result<Option<u64>, (&'static str, String)> {
     match args.get(key) {
         None | Some(Value::Null) => Ok(None),
-        Some(v) => v.as_u64().map(Some).ok_or((
-            "bad_args",
-            crate::common::contract::malformed(&format!("`{key}` must be a non-negative integer")),
-        )),
+        Some(v) => v.as_u64().map(Some).ok_or_else(|| {
+            (
+                "bad_args",
+                crate::common::contract::malformed(&format!(
+                    "`{key}` must be a non-negative integer"
+                )),
+            )
+        }),
     }
 }
 
