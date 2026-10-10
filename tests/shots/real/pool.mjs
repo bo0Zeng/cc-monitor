@@ -4,7 +4,7 @@
  * 页里的帧命令与订阅经 vite 的这几个口原样交给无头壳。成品（额度行 · 时刻字 · 状态字 · 拒答的复制详情 …）一律是真后端与壳算的，台架不写。
  *
  *   POST /__ccm/world  {key, machines: {<origin>: {files: {<相对家目录的路径>: <内容>}}}}  ⇒ 造好家目录、起无头壳与各台后端、全部握上手再答
- *   POST /__ccm/call   {key, origin, op, args}                ⇒ 壳 `chan_call` 那一跳的结局：`{ok:true, body}` / `{ok:false, fail:{err, body, detail}}`
+ *   POST /__ccm/call   {key, origin, op, args, view?}         ⇒ 壳 `chan_call` 那一跳的结局：`{ok:true, body}` / `{ok:false, fail:{err, body, detail}}`
  *   POST /__ccm/sub    {key, id, origin, kind, want} · /__ccm/want {key, id, more} · /__ccm/stop {key, id} · /__ccm/ready {key, priority_sid}
  *   POST /__ccm/write  {key, origin, rel, text}             ⇒ 场景在开页之后改那台盘上的一份文件（相对家目录）
  *   GET  /__ccm/items?key=…                                  ⇒ 事件流（SSE）：一格一条 `{sub, items}`，同壳交给页的 `chan-items` 事件体
@@ -170,7 +170,7 @@ export function backendPool({ repo, sandbox }) {
         replies.set(id, resolve);
         send({ ...cmd, n: id });
       });
-    const call = (origin, op, args) => ask({ t: "call", origin, op, payload: JSON.stringify(args ?? {}), left_ms: 30_000 });
+    const call = (origin, op, args, view) => ask({ t: "call", origin, op, payload: JSON.stringify(args ?? {}), view: view ?? null, left_ms: 30_000 });
     /** 各台都握上手（壳那一侧的入方向通道登记了）：隔一会儿问一次，30 秒上限。 */
     const up = async (origins) => {
       const until = Date.now() + 30_000;
@@ -213,7 +213,7 @@ export function backendPool({ repo, sandbox }) {
   async function call(body) {
     const w = worlds.get(body.key);
     if (!w) return { ok: false, fail: { err: { Ours: "Misuse" }, body: [], detail: `没有这个世界：${body.key}` } };
-    return w.sh.call(body.origin, body.op, body.args);
+    return w.sh.call(body.origin, body.op, body.args, body.view);
   }
 
   /** 页里的订阅那几样原样交给无头壳（窗口只有一扇）。 */

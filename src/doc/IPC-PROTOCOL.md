@@ -31,6 +31,15 @@ monitor 只对 hello 里**声明了对应能力**（`capabilities`）的后端�
 | `--with-raw` | `line` 带 `raw`（那一行记录的原文）。**过渡格**：前端读的是成品 `record`，手机那一侧的缺格补齐之后删。默认关 |
 | `--tz <IANA 名>` | 看的那一台的时区（如 `Asia/Shanghai`）：这条流**推**出去的钟面（`line.record.timeText` · `session_runs.runs[].startedText`）按它写。缺 · 认不得 ⇒ UTC。常驻那条连接在 attach 行旁边带同名一格 `tz`（不进 `flags`）。见 §4「时刻按谁的钟」 |
 
+### 流只发要看的会话
+
+一条流用 `stream-watch {sids}` 报它此刻在看哪几个会话（整份换；从没报过 ＝ 全看）。不在名单里的会话，它的 `line` · `session_runs` · `session_branch` 不上这条流（后端照读照数，行号不断）；宣告 · 状态 · 去向 · `turn_end` · 文件重读 / 不在了 · `changed` 照发。
+应答 `from[]` 给刚进名单的会话每份记录一格 `{sid, path, seq}`：这条流从第 `seq` 行起发它，`[0, seq)` 由客户端按骨架补（`history-index` 从上次的末端续）；同时补发一帧整份的运行表与主线外清单。两段合起来不重复也不漏（重叠处按 `(sid, seq)` 去重）。
+
+桌面那一侧（monitor）：每台的名单 ＝ 主窗口当前那个 tab ∪ 开着查看窗跟着的会话；名单一变、或那台换了一条新连接（新连接 ＝ 没报过），就在那台的长连接上重报一次（`src/frontend/shell/src/stream_watch.rs`）。主窗口还没报过之前一台都不报（全看）。
+`from[]` 原样进会话流（`watch` 格，不吃 credit）：tab 与查看窗补上 `[已有, seq)`（缺得不多按行号取到 `seq`；缺得多 ⇒ tab 整份重来、只取 `seq` 之下一截尾巴，更早的往上翻再取）；壳的留存同一拍修成连着的一段（F5 重放不出洞）。
+一轮结束的系统通知认 `turn_end`（会话流的 `turn_end` 格），不认行。
+
 ## 3. hello：先读它，再说话
 
 连上之后后端先发一帧 `hello`，**客户端读到它之前不许写命令**（后端侧 reader 要一个只有 flush 过 hello 才拿得到的见证才起得来）。几个面各管一件事：
@@ -84,6 +93,16 @@ monitor 只对 hello 里**声明了对应能力**（`capabilities`）的后端�
 ## 5. 会话流：帧的先后与续传
 
 1. 连上：`hello` → 每个活会话一帧 `session_added`（宣告时带初始 `activity` / `waiting_for`；后台会话带 `background: true`）→ `sessions_replayed`（「清单报完了」：分清「还没说完」与「说完了、里面没有它」）。
+   `session_added.agent_kind` 每条都带（那一家的 kind）。哪几家进流、各自怎么判活由适配层说（`agents::followed`）：
+   - 有 pidfile 的那一家（Claude Code）：活会话 ＝ pidfile 在、进程在；`liveness_confidence` 缺。
+   - 没有 pidfile 的那一家（Codex）：活会话 ＝ **有进程开着它的那份记录写**（看 `/proc/<pid>/fdinfo` 的打开方式，不看进程名）；
+     那个进程退了（pidfd）或把记录写完关闭、复核已没人开着写 ⇒ `session_removed`（`gone`）。「开着它写」是系统给的事实、再加 pidfd 看守，
+     与 pidfile 那一路同一档 ⇒ `liveness_confidence` 同样缺（`"heuristic"` 只留给真靠猜的，比如按修改时刻）。
+     ⚠ 「Codex 在世期间一直开着这份 rollout」只读过源码（codex-rs 的 rollout 写者任务持有文件），**没在真机上实测过**。
+     它要是不成立（中途关了文件），后果是漏认 / 提早摘掉，不会把死的认成活的。
+     扫进程表只在三种时候：记录根下新建 / 打开了一份还没认的记录（按事件攒批：一次醒来读完的那一批里开了又关的当场抵掉，读的人不引出扫描）·
+     起步与「重新对齐」· 内核事件队列溢出。已知口子：一份很大的记录正被人读到一半时恰好赶上那一批，会多扫一趟、什么帧都不出（不误报）。
+     只在 Linux 上判得了；别的平台照实判不了，这一家的会话不宣告。
 2. 内容：每条记录一帧 `line`，带成品 `record`（通用记录，见下面「通用记录」一节；缺 ＝ 不进界面、照占号）、`seq`（本条流里按文件单调递增）与 `byte_offset`（这一行末尾在文件里的累计字节）。
    **续传用 `byte_offset`，不用 `seq`**：断线重连后拿它当偏移再读（`history-read` / `--read-session-from-offset`）。
 3. 状态：`session_status`（红绿灯变了才发，天然稀疏；`activity` ＝ `working` · `needs_you` · `idle` · `background_work`（一轮停了、它在后台起的命令还在跑），后端适配层从那一家的进程状态翻过来，翻不出就不带）· `turn_end`（一轮结束）· `session_runs`（子运行表，整份）· `changed`（「这台的某样东西变了」，下面「`changed` 主题表」）。

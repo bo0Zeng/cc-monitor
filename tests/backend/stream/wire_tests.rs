@@ -316,7 +316,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
         [
             Frame::SessionAdded {
                 sid: s("s1"),
-                agent_kind: Some(s("claude")),
+                agent_kind: s("claude"),
                 liveness_confidence: Some(s("pidfile")),
                 background: true,
                 attachable: Some(true),
@@ -343,7 +343,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
             },
             Frame::SessionAdded {
                 sid: s("s1"),
-                agent_kind: None,
+                agent_kind: "claude".to_string(),
                 liveness_confidence: None,
                 background: false,
                 attachable: None,
@@ -1286,7 +1286,7 @@ fn dg3_codex_fields_serialize_when_present() {
 
     let sa = to_line(&Frame::SessionAdded {
         sid: "s".into(),
-        agent_kind: Some("codex".into()),
+        agent_kind: "codex".to_string(),
         liveness_confidence: Some("heuristic".into()),
         background: false,
         attachable: None,
@@ -1352,7 +1352,7 @@ fn dg3_codex_fields_skipped_when_absent_claude_byte_equivalent() {
 
     let sa = to_line(&Frame::SessionAdded {
         sid: "s".into(),
-        agent_kind: None,
+        agent_kind: "claude".to_string(),
         liveness_confidence: None,
         background: false,
         attachable: None,
@@ -1370,8 +1370,8 @@ fn dg3_codex_fields_skipped_when_absent_claude_byte_equivalent() {
     })
     .unwrap();
     assert_eq!(
-        sa, "{\"kind\":\"session_added\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\"}\n",
-        "agent_kind(缺=claude)/liveness_confidence(缺=authoritative) 省略，字节等价旧形"
+        sa, "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\"}\n",
+        "agent_kind 每条都带；liveness_confidence 缺 ＝ pidfile 判的"
     );
 
     let ss = to_line(&Frame::SessionStatus {
@@ -1499,7 +1499,7 @@ fn session_added_container_is_an_object_with_host_and_terminal() {
     let frame = |c: Option<SessionContainer>| {
         to_line(&Frame::SessionAdded {
             sid: "s".into(),
-            agent_kind: None,
+            agent_kind: "claude".to_string(),
             liveness_confidence: None,
             background: false,
             attachable: None,
@@ -1521,18 +1521,18 @@ fn session_added_container_is_an_object_with_host_and_terminal() {
         host: TerminalHost::Tmux,
         terminal: t.map(str::to_string),
     };
-    assert_eq!(frame(None), "{\"kind\":\"session_added\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\"}\n");
+    assert_eq!(frame(None), "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\"}\n");
     assert_eq!(
         frame(Some(hosted(Some("tmux-3-7")))),
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"container\":{\"host\":\"tmux\",\"terminal\":\"tmux-3-7\"}}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"container\":{\"host\":\"tmux\",\"terminal\":\"tmux-3-7\"}}\n"
     );
     assert_eq!(
         frame(Some(hosted(None))),
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"container\":{\"host\":\"tmux\"}}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"container\":{\"host\":\"tmux\"}}\n"
     );
     assert_eq!(
         frame(Some(SessionContainer::None)),
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"container\":{\"host\":\"none\"}}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"container\":{\"host\":\"none\"}}\n"
     );
 }
 
@@ -1582,7 +1582,7 @@ fn loc1b_session_added_pid_is_additive() {
     let frame = |pid: Option<u32>| {
         to_line(&Frame::SessionAdded {
             sid: "s".into(),
-            agent_kind: None,
+            agent_kind: "claude".to_string(),
             liveness_confidence: None,
             background: false,
             attachable: None,
@@ -1600,10 +1600,10 @@ fn loc1b_session_added_pid_is_additive() {
         })
         .unwrap()
     };
-    assert_eq!(frame(None), "{\"kind\":\"session_added\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\"}\n");
+    assert_eq!(frame(None), "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\"}\n");
     assert_eq!(
         frame(Some(4242)),
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"pid\":4242}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"pid\":4242}\n"
     );
 }
 

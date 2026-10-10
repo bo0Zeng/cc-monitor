@@ -23,6 +23,7 @@
 //! - [`child`]：后端起子进程的唯一原语（期限必填 · 超时杀整组 / 整个 Job · 自有环境无条件摘 · 脱离起 · ccm 最终那一跳）
 //! - `win_proc`：Windows 上判活 / 起始时刻 / 等进程退出的 Win32 读法（只在 Windows 编译时存在，不写 intra-doc 链接）
 //! - [`shell`]：shell 方言与「把一串命令交给这台的 shell」那一跳
+//! - [`writers`]：谁开着哪份文件写（进程表一趟 · 新建 / 打开 / 写完关闭那道耳朵）—— 不留 pidfile 的那一家判活用它（Linux；别处判不了）
 //! - [`watch_file`]：盯盘的唯一原语（几个目录 · 路径过滤 · 一阵动静并成一次回调 · 名单换得动 · 踢得醒）—— 轮换 · 计划 · 一次性等待 · 各号同步 · 浏览保鲜都用它
 
 pub(crate) mod acct_view;
@@ -57,6 +58,7 @@ pub(crate) mod win_proc;
 pub(crate) mod win_tables;
 #[cfg(windows)]
 pub(crate) mod win_tz;
+pub(crate) mod writers;
 
 /// ↗ 那一问的系统事实（已建立的 TCP 连接表 ＋ 进程表，一行 JSON，两个平台同形）。Windows 直调系统接口 · Linux 读 `/proc`；
 /// 别的平台 ⇒ `Err`。`start` 只在同一台上比先后：Windows 是 FILETIME，Linux 是开机后的时钟滴答。

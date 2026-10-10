@@ -865,6 +865,7 @@ mod specimens {
             }]),
             patch_truncated: true,
             preview: some("p"),
+            chars: Some(1),
         }
     }
 
@@ -1169,7 +1170,7 @@ mod specimens {
     fn added(activity: SessionActivity) -> Frame {
         Frame::SessionAdded {
             sid: s("s"),
-            agent_kind: some("agent"),
+            agent_kind: "agent".to_string(),
             liveness_confidence: some("heuristic"),
             background: true,
             attachable: Some(true),

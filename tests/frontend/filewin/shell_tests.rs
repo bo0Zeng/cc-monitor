@@ -2028,7 +2028,10 @@ async fn a_second_open_while_one_is_still_reading_is_not_sent() {
         ),
     )
     .await;
+    let side = crate::find::testing::SideRt::new();
+    w.rt = Some(side.handle());
     w.attach_line(wired.line.clone());
+    side.idle().await;
     // a.txt 那一趟还在路上。
     w.edits.begin_open("/srv/data/a.txt");
     assert!(!w.begin_edit(1, None), "a.txt 还在读，b.txt 那一趟竟然发了");
@@ -2052,7 +2055,8 @@ async fn a_second_open_while_one_is_still_reading_is_not_sent() {
         !w.begin_edit(1, None),
         "a.txt 到货还没落地，b.txt 那一趟竟然发了"
     );
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    // 两次都拒在同步段里：没起往返（见 `SideRt`），线上也没有。
+    assert_eq!(side.in_flight(), 0, "回了「没发」却起了一趟往返");
     assert_eq!(sent(&wired.log, crate::editor::CMD_READ_TEXT), 0);
     assert!(w.settle_opened_edits());
     assert_eq!(w.editing().unwrap().path, "/srv/data/a.txt");
@@ -2073,10 +2077,13 @@ async fn a_second_save_while_one_is_in_flight_is_not_sent() {
     .await;
     w.attach_line(wired.line.clone());
     *w.editing_text_mut().unwrap() = "a=2\n".into();
+    let side = crate::find::testing::SideRt::new();
+    w.rt = Some(side.handle());
+    side.idle().await;
     w.edits.begin_save("/srv/data/app.conf");
     assert!(!w.save_edit(None), "上一趟还在路上，又存了一趟");
     assert!(!w.overwrite_edit(None), "上一趟还在路上，又覆盖了一趟");
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    assert_eq!(side.in_flight(), 0, "回了「没发」却起了一趟往返");
     assert_eq!(sent(&wired.log, "files-write-text"), 0);
 }
 

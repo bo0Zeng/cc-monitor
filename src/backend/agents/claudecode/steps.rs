@@ -216,6 +216,7 @@ pub(crate) fn result_of(block: &Value, tur: Option<&Value>) -> StepResult {
     let mut r = StepResult {
         ok: !is_error,
         preview: preview_of(&text),
+        chars: (!text.is_empty()).then(|| u32::try_from(text.chars().count()).unwrap_or(u32::MAX)),
         ..StepResult::default()
     };
     let tur_text = tur.and_then(Value::as_str).unwrap_or("");

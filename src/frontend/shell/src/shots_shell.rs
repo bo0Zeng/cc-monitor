@@ -64,6 +64,8 @@ enum Cmd {
         origin: crate::origin::Origin,
         op: String,
         payload: String,
+        /// 出口的声明（页里那一问带的 `view`），原样交 `call_via`；没带 ⇒ 全量。
+        view: Option<serde_json::Value>,
         left_ms: u64,
     },
     Kill {
@@ -166,6 +168,7 @@ pub fn main() {
                 origin,
                 op,
                 payload,
+                view,
                 left_ms,
             } => {
                 tauri::async_runtime::spawn(async move {
@@ -174,6 +177,7 @@ pub fn main() {
                         origin.clone(),
                         op.clone(),
                         payload.into_bytes(),
+                        view,
                         std::time::Duration::from_millis(left_ms),
                         None,
                     )

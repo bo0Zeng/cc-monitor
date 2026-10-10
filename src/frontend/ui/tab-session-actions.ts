@@ -430,6 +430,13 @@ export function forgetSession(sessionId: string): void {
   });
 }
 
+/** 报给壳「主窗口此刻在看这几个会话」（整份换；失败只记日志）：没在看的会话，它的行不上流（壳合成每台的名单）。 */
+export function reportWatching(sessions: { origin: Origin; sessionId: string }[]): void {
+  void commands.watch_sessions({ sessions }).catch((e: unknown) => {
+    console.warn("[tabs] 报「在看哪个会话」失败：", e);
+  });
+}
+
 /** 自动跟随时把 monitor 窗口拉到前台（失败只记日志）。 */
 export function bringMonitorToFront(): void {
   void commands.bring_monitor_to_front().catch((e) => {

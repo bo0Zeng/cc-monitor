@@ -349,13 +349,19 @@ fn cancelling_while_waiting_for_the_summary_stops_nothing_and_starts_nothing() {
         task.abort();
         assert!(task.await.unwrap_err().is_cancelled());
     });
+    // 撤完（`JoinError::Cancelled` 交回来时那个 future 已经丢了）：替身只剩本条手里这一份 ⇒
+    // 没有谁还够得着停 / 起 —— 后台另起一个接着等摘要的，会攥着它的一份。不歇、不赌它来得及。
+    assert_eq!(
+        Arc::strong_count(&rig),
+        1,
+        "撤了之后还有谁攥着那几样（后台有一截接着在等摘要）"
+    );
     // 撤了之后摘要才来：也没有谁接着做下去。
     let mut f = std::fs::OpenOptions::new()
         .append(true)
         .open(&rig.record)
         .unwrap();
     writeln!(f, "{SUMMARY}").unwrap();
-    std::thread::sleep(Duration::from_millis(800));
     assert_eq!(
         (rig.did("kill"), rig.did("ccm")),
         (0, 0),

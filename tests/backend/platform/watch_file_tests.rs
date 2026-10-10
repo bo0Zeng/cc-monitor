@@ -94,7 +94,18 @@ fn rearm_follows_the_list() {
     );
     seen.lock().unwrap().clear();
     std::fs::write(a.join("old"), "x").unwrap();
-    std::thread::sleep(std::time::Duration::from_millis(300));
+    // 不歇：卸掉的目录要是还在回调，它那一笔排在后写的这一笔前头（同一个监听、同一条收的线程按到达次序交；
+    // Linux 上两个目录共用一条 inotify 队列）⇒ 等到这一笔回来，a 那一笔该来就已经来了。
+    std::fs::write(b.join("after"), "x").unwrap();
+    assert!(
+        eventually(|| seen
+            .lock()
+            .unwrap()
+            .iter()
+            .flatten()
+            .any(|p| p.ends_with("after"))),
+        "还挂着的目录有动静，回调没来"
+    );
     assert!(
         !seen
             .lock()

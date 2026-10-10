@@ -214,8 +214,8 @@ pub enum InboundFrame {
     TerminalScreen { ticket: String, cell: String },
     /// 一条终端订阅停了（后端 `wire::Frame::TerminalFollowEnd`）。`cell` ＝ `{"why": 停因, "said": 那一句}`（同名原样，两格都得是串）。
     TerminalFollowEnd { ticket: String, cell: String },
-    /// 一轮对话收尾（`turn_end`）。认识但不消费：轮次边界由 `line` 帧自己推（它是发给仓外消费方的）。
-    TurnEnd,
+    /// 一轮对话收尾（`turn_end`；在不在看都发）⇒ 交那台的会话流一格（系统通知认它，不认行：没在看的会话行不上流）。
+    TurnEnd { sid: String },
 }
 
 /// 拥塞提示的措辞：有没有不可恢复的丢失，说法完全不同。抽成纯函数让措辞可判据（消费点要真 `AppHandle`、测不了）。
@@ -450,6 +450,8 @@ pub fn parse_frame(line: &str) -> Result<InboundFrame, Unread> {
         "line" => decode_line(line)?,
         "session_added" => {
             let opt = |key: &str| obj.get(key).and_then(|v| v.as_str()).map(str::to_string);
+            // 是哪一家（每条都带）：缺 ⇒ 形状不对。壳今天不按它分叉（tab 上的那一家小牌另排），只核它在。
+            req_str(obj, k, "agent_kind")?;
             InboundFrame::SessionAdded {
                 sid: req_str(obj, k, "sid")?,
                 background: opt_bool(obj, k, "background")?.unwrap_or(false),
@@ -685,11 +687,12 @@ pub fn parse_frame(line: &str) -> Result<InboundFrame, Unread> {
                 body,
             })
         }
-        // 认识但不消费：轮次边界由 `line` 帧自己推（它是发给仓外消费方的）。形状照样判。
+        // `uuid` 照样判形状（不用：一轮只报一次由后端保证，去抖在界面）。
         "turn_end" => {
-            req_str(obj, k, "session_id")?;
             req_str(obj, k, "uuid")?;
-            InboundFrame::TurnEnd
+            InboundFrame::TurnEnd {
+                sid: req_str(obj, k, "session_id")?,
+            }
         }
         _ => return Err(Unread::UnknownKind(kind.to_string())),
     })

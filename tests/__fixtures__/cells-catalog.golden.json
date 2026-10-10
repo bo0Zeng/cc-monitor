@@ -336,6 +336,12 @@
         {
           "frozen": true,
           "kind": "value",
+          "path": "{t=said}.results.*.chars",
+          "type": "number"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
           "path": "{t=said}.results.*.exitCode",
           "type": "number"
         },

@@ -255,7 +255,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "history-index",
         summary: "会话骨架索引",
         codes: &["bad_args", "failed", "too_large"],
-        fields: &[out("end", "最后一个完整行的末字节 ＝ 下一次续传该带的 `offset`"), out("from", "起点字节"), arg("offset", "从哪个字节起（缺省 0；续传带上次尾行的 `end`）"), arg("path", "jsonl 路径（围栏同 `history-read`）"), out("rows", "每个可计行一条 `IndexRow`（见第 6 节）"), arg("until", "可选：只收起点 `< until` 的行")], // 应答出成品：`lines` ⇒ `from` / `end` / `rows`
+        fields: &[out("body", "稀疏表：正文那五个数（`at` 行号差 · `ch` `cj` `pl` `cb` `cl`；五个全 0 的行不进表）"), out("classes", "本份里出现过的记录类（`t` 列的号从 1 起指它）"), out("count", "行数（每一列都这么长）"), out("end", "最后一个完整行的末字节 ＝ 下一次续传该带的 `offset`"), out("fd", "列：折叠单元数（0 ＝ 没有）"), out("from", "起点字节"), out("inputs", "稀疏表：用户输入的摘要 `x` 与时刻 `ts`（`at` 行号差；没有时刻 ⇒ 空串）"), out("n", "列：行字节长（含换行）"), out("o", "列：行起点与上一行末尾的字节差（第一行与 `from` 比；连着 ＝ 0）"), arg("offset", "从哪个字节起（缺省 0；续传带上次尾行的 `end`）"), arg("path", "jsonl 路径（围栏同 `history-read`）"), out("sp", "稀疏表：来源（`at` 行号差 · `v`）"), out("t", "列：记录类的号（0 ＝ 不进界面）"), out("u", "列：记录 id（没有 ⇒ null）"), arg("until", "可选：只收起点 `< until` 的行")], // 应答出成品：`lines` ⇒ `from` / `end` / `rows`
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::faces::read_face::answer(&r.cmd, &r.args, &r.tz)

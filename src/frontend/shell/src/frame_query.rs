@@ -145,7 +145,7 @@ impl Deadline {
 
 /// 发一条帧命令，拿 `data`。
 ///
-/// 今天的调用方都在本文件里。
+/// 今天的调用方都在本文件里。`view` ＝ 出口的声明（原样进请求信封；`None` ＝ 全量）。
 ///
 /// 期限是调用方给的**那一件事**的 [`Deadline`]：已经到点 ⇒ **一个字节都不发**（同 `src/comms/inward/chan.ts`
 /// 「已经过了 ⇒ 一个字节都不发」）；发出去之后到点 ⇒ `InboundClient` 补发 `cancel`，这里说「没在 N 秒内答完」。
@@ -153,6 +153,7 @@ pub(crate) async fn call(
     origin: &Origin,
     cmd: &str,
     args: Value,
+    view: Option<&Value>,
     deadline: Deadline,
 ) -> Result<Value, String> {
     let who = who(origin);
@@ -169,26 +170,27 @@ pub(crate) async fn call(
     if deadline.passed() {
         return Err(deadline.overdue(&who));
     }
-    let data = client
-        .call_until(cmd, args, deadline.until)
-        .await
-        .map_err(|e| {
-            if deadline.passed() {
-                return deadline.overdue(&who);
+    let answer = match view {
+        Some(v) => client.call_until_viewed(cmd, args, v, deadline.until).await,
+        None => client.call_until(cmd, args, deadline.until).await,
+    };
+    let data = answer.map_err(|e| {
+        if deadline.passed() {
+            return deadline.overdue(&who);
+        }
+        said(route_call_error(&e, &who, |code, message| {
+            // 码只进日志；给人看的是哪一问没成 ＋ 那台那一句（那台的原话在应答的 detail 里，不在这一格）。
+            tracing::warn!("frame query {cmd} refused ({code}): {message}");
+            if message.trim().is_empty() {
+                copy_text("rsFrameQuery.call.failedNoReason", &[("who", &who)])
+            } else {
+                copy_text(
+                    "rsFrameQuery.call.failed",
+                    &[("who", &who), ("said", &message.to_string())],
+                )
             }
-            said(route_call_error(&e, &who, |code, message| {
-                // 码只进日志；给人看的是哪一问没成 ＋ 那台那一句（那台的原话在应答的 detail 里，不在这一格）。
-                tracing::warn!("frame query {cmd} refused ({code}): {message}");
-                if message.trim().is_empty() {
-                    copy_text("rsFrameQuery.call.failedNoReason", &[("who", &who)])
-                } else {
-                    copy_text(
-                        "rsFrameQuery.call.failed",
-                        &[("who", &who), ("said", &message.to_string())],
-                    )
-                }
-            }))
-        })?;
+        }))
+    })?;
     data.ok_or_else(|| copy_core::reply_unreadable(&who))
 }
 
@@ -236,6 +238,7 @@ pub(crate) async fn tail(
         origin,
         "history-tail",
         json!({"path": path, "n": n}),
+        None,
         deadline,
     )
     .await?;
@@ -310,7 +313,17 @@ pub(crate) fn row_of(v: &Value) -> Option<Row> {
     })
 }
 
-/// 读 `[offset, until)` 的**一页**。
+/// 「折起那一行」那份声明（省掉工具入参 · 结果正文 · 逐段改动）：只住 `src/shared/views/folded-record.json` 一处，
+/// 界面 `record-reads.ts` 读同一份。旁路快照交给界面的行就是折起那一形，展开那一下界面按记录 id 取回全文。
+fn folded_view() -> &'static Value {
+    static V: std::sync::OnceLock<Value> = std::sync::OnceLock::new();
+    V.get_or_init(|| {
+        serde_json::from_str(include_str!("../../../shared/views/folded-record.json"))
+            .expect("src/shared/views/folded-record.json 是 JSON（判据 the_snapshot_page_carries_the_folded_view_from_the_shared_file 读同一份）")
+    })
+}
+
+/// 读 `[offset, until)` 的**一页**（交折起那一行的声明，[`folded_view`]）。
 ///
 /// ⚠ 续点必须**前进**：后端回一页零字节却说没到头 ⇒ 当场报错，调用方的循环不会空转。
 /// `deadline` 是**整件事**的（调用方在读第一页之前造一次，之后每一页传同一个）—— 本函数不重新计时。
@@ -325,7 +338,7 @@ pub(crate) async fn read_page(
     if let Some(u) = upto {
         args["until"] = json!(u);
     }
-    let data = call(origin, "history-read", args, deadline).await?;
+    let data = call(origin, "history-read", args, Some(folded_view()), deadline).await?;
     let who = who(origin);
     let rows = data
         .get("rows")

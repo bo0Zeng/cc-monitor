@@ -35,7 +35,8 @@ describe("刻度跳不过去", () => {
     expect(tick).not.toBeNull();
     tick!.click();
     dom.turnRail.step(-1);
-    await new Promise((r) => setTimeout(r, 20));
+    // 不按墙钟：没人接的 rejection 在它被拒的那一拍末尾报（这一路被拒是同步的 / 微任务里的）⇒ 过一个宏任务的界就该报到了。
+    await new Promise((r) => setImmediate(r));
     expect(seen).toEqual([]);
   });
 });
