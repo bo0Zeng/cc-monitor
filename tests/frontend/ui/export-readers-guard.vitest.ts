@@ -14,11 +14,14 @@
  */
 import { describe, expect, it } from "vitest";
 import ts from "typescript";
-import path from "node:path";
+import { execFileSync } from "node:child_process";
+import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { REPO_ROOT } from "../../test-support/repo-root.ts";
+import { TEST_HOOK, zeroReaderExports, type Found } from "../../test-support/zero-reader-exports.ts";
 
-/** 测试复位口：模块级状态在测试之间要清，产品不调（名字就是说明）。 */
-const TEST_HOOK = /^__\w+ForTests?$/;
+/** 量具（与正控用的同一份代码）：全仓那一趟另起一个 node 进程跑，见它的头注。 */
+const METER = pathToFileURL(resolve(REPO_ROOT, "tests", "test-support", "zero-reader-exports.ts")).href;
 
 /** 逐条豁免：`文件::导出名` → 为什么它没有产品读者也留着。 */
 const EXEMPT: Readonly<Record<string, string>> = {
@@ -31,89 +34,6 @@ const EXEMPT: Readonly<Record<string, string>> = {
   "src/frontend/ui/duration-format.ts::formatDuration": "与 Rust 读口 `copy_core::format_duration` 对等的时长格式化（文案规范 C-W6：时长走 {dur}）；今天带时长的句子都在 Rust 一侧出，界面一侧先备着，对拍金样钉住两侧同形",
   "src/frontend/ui/account-reads.ts::checkTrust": "界面里唯一一处问 `accounts-trust` 的口（帧命令两向登记要它）；那条帧命令留不留归「记录帧契约 / 手机端对账」那一刀",
 };
-
-interface Found {
-  key: string;
-  testReaders: number;
-}
-
-/**
- * ★ 量具：`program` 里 `isProd(文件)` 的那几份，每个自己声明的导出数产品读者；零个的交回（带测试里有几处读它）。
- */
-function zeroReaderExports(program: ts.Program, root: string, isProd: (rel: string) => boolean): Found[] {
-  const checker = program.getTypeChecker();
-  const rel = (f: string): string => path.relative(root, f).split(path.sep).join("/");
-  const orig = (s: ts.Symbol): ts.Symbol => {
-    let x = s;
-    while (x.flags & ts.SymbolFlags.Alias) {
-      const next = checker.getAliasedSymbol(x);
-      if (next === x) break;
-      x = next;
-    }
-    return x;
-  };
-  const modules = program
-    .getSourceFiles()
-    .filter((sf) => isProd(rel(sf.fileName)))
-    .map((sf) => ({ sf, mod: checker.getSymbolAtLocation(sf) }));
-  // 只解**可能**指向人群里某个导出的标识符：它的字面是某个导出的导出名 / 本地名，或者它是默认导入的那个名字。
-  //   别的文件要读一个导出，必经一处写着它导出名的地方（具名导入 · 再导出 · `ns.名` · 解构 `{ 名 }`），默认导出经导入子句的名字；
-  //   本文件里用到走它的本地名。⇒ 字面不在这张表里的标识符解出来不会落到人群里，不用问编译器。
-  //   原先全仓二十六万多个标识符逐个解（每解一个都牵动类型检查），空机 7 s、带覆盖率插桩近 20 s，压着负载撞 120 s 期限。
-  //   🔴 表若漏了一种读法，后果只会是「多报零读者」（吵闹的红），不会把真零读者放过去。
-  const names = new Set<string>();
-  for (const { mod } of modules) {
-    for (const e of mod ? checker.getExportsOfModule(mod) : []) {
-      names.add(e.name);
-      const o = orig(e);
-      names.add(o.name);
-      for (const d of o.declarations ?? []) {
-        const id = (d as ts.NamedDeclaration).name;
-        if (id && ts.isIdentifier(id)) names.add(id.text);
-      }
-    }
-  }
-  const maybeExport = (id: ts.Identifier): boolean =>
-    names.has(id.text) || ts.isImportClause(id.parent) || ts.isImportEqualsDeclaration(id.parent);
-  const prodReads = new Map<ts.Symbol, number>();
-  const testReads = new Map<ts.Symbol, number>();
-  for (const sf of program.getSourceFiles()) {
-    const r = rel(sf.fileName);
-    if (r.startsWith("..") || r.includes("node_modules/")) continue;
-    const m = isProd(r) || r.startsWith("src/") ? prodReads : testReads;
-    const read = (sym: ts.Symbol | undefined, at: ts.Node): void => {
-      if (!sym) return;
-      const o = orig(sym);
-      // 声明自己的名字不算读者。
-      if (!(o.declarations ?? []).some((d) => (d as ts.NamedDeclaration).name === at)) m.set(o, (m.get(o) ?? 0) + 1);
-    };
-    const visit = (n: ts.Node): void => {
-      if (ts.isIdentifier(n) && maybeExport(n)) read(checker.getSymbolAtLocation(n), n);
-      // `const { x } = await import("./m")`：按名字从模块对象上取 —— 标识符解到的是本地绑定，读的那一格要从被解构的类型上取。
-      if (ts.isBindingElement(n) && ts.isObjectBindingPattern(n.parent)) {
-        const key = n.propertyName ?? n.name;
-        if (ts.isIdentifier(key) && names.has(key.text)) read(checker.getTypeAtLocation(n.parent).getProperty(key.text), key);
-      }
-      ts.forEachChild(n, visit);
-    };
-    visit(sf);
-  }
-  const out: Found[] = [];
-  for (const { sf, mod } of modules) {
-    const r = rel(sf.fileName);
-    if (!mod) continue;
-    for (const e of checker.getExportsOfModule(mod)) {
-      const o = orig(e);
-      if (o.declarations?.[0]?.getSourceFile() !== sf) continue; // 再导出别人的，记在原处
-      if ((prodReads.get(o) ?? 0) > 0) continue;
-      out.push({ key: `${r}::${e.name}`, testReaders: testReads.get(o) ?? 0 });
-    }
-  }
-  return out.sort((a, b) => a.key.localeCompare(b.key));
-}
-
-const isProdFile = (rel: string): boolean =>
-  rel.startsWith("src/") && rel.endsWith(".ts") && !rel.endsWith(".d.ts") && !rel.endsWith(".d.css.ts") && !rel.includes("/generated/");
 
 const nameOf = (key: string): string => key.slice(key.indexOf("::") + 2);
 
@@ -149,15 +69,15 @@ describe("零读者导出：产品代码里每个导出都有产品读者", () =
   });
 
   it("★ 全仓：零读者导出 == 豁免（复位口 ＋ 逐条登记），两向相等", () => {
-    const cfg = ts.getParsedCommandLineOfConfigFile(path.join(REPO_ROOT, "tsconfig.json"), {}, {
-      ...ts.sys,
-      onUnRecoverableConfigFileDiagnostic: (d) => {
-        throw new Error(ts.flattenDiagnosticMessageText(d.messageText, "\n"));
-      },
-    });
-    if (!cfg) throw new Error("tsconfig.json 读不出来");
-    const program = ts.createProgram(cfg.fileNames, cfg.options);
-    const found = zeroReaderExports(program, REPO_ROOT, isProdFile);
+    const run = `const m = await import(${JSON.stringify(METER)}); process.stdout.write(JSON.stringify(m.zeroReaderExportsOfRepo()));`;
+    const found = JSON.parse(
+      execFileSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", run], {
+        cwd: REPO_ROOT,
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+        maxBuffer: 16 * 1024 * 1024,
+      }),
+    ) as Found[];
     expect(found.length, "一个零读者都没扫到 —— 量具多半坏了（复位口至少有十来个）").toBeGreaterThan(5);
     // 复位口只在真有测试用它时豁免（连测试都不用的复位口一样是死代码）。
     const unexplained = found.filter((f) => !(TEST_HOOK.test(nameOf(f.key)) && f.testReaders > 0) && !(f.key in EXEMPT)).map((f) => `${f.key}（测试里 ${f.testReaders} 处）`);
