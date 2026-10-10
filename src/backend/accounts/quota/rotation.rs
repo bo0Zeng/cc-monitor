@@ -1502,24 +1502,40 @@ pub(crate) fn rotation_from(
 }
 
 /// 编辑器里一格填错了：哪一格（`name` · `wait` · `cap.*.5h` · `cap.*.7d`（触发那一行）· `cap.<号>.<窗口键>` · `cap.<号>.<窗口键>[i]` · `stint.<号>.<窗口键>`）·
-/// 短码（`empty` · `dup` · `tooLong` · `range` · `time` · `same` · `overlap`）· 重叠时与第几段（0 起）。界面只照它标红、按短码取文案。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// 短码（`empty` · `dup` · `tooLong` · `range` · `time` · `same` · `overlap`）· 重叠时与第几段（0 起）· 那一格下面的那一句（`said`，核心写好）。
+/// 界面照 `cell` 标红、照抄 `said`，不按短码取字。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub struct CellError {
     pub cell: String,
     pub code: String,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional))]
     pub with: Option<usize>,
+    pub said: String,
 }
 
-fn cell_err(cell: String, code: &str, with: Option<usize>) -> CellError {
+/// 一格错（那一句照短码由核心写：名称那三种 · 封顶那四种）。
+pub(crate) fn cell_err(cell: String, code: &str, with: Option<usize>) -> CellError {
+    let said = match code {
+        "empty" => copy_text("rot.save.empty", &[]),
+        "dup" => copy_text("rot.save.dup", &[]),
+        "tooLong" => copy_text("rot.save.tooLong", &[]),
+        "same" => copy_text("rot.capErr.same", &[]),
+        "overlap" => copy_text(
+            "rot.capErr.overlap",
+            &[("i", &(with.unwrap_or(0) + 1).to_string())],
+        ),
+        "range" => copy_text("rot.capErr.range", &[]),
+        _ => copy_text("rot.capErr.time", &[]),
+    };
     CellError {
         cell,
         code: code.to_string(),
         with,
+        said,
     }
 }
 

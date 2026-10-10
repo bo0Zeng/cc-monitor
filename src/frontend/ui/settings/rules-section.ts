@@ -43,7 +43,7 @@ import { toast, failToast } from "../kit/toast";
 import { copyText } from "../copy-table";
 import { machineName } from "../ipc/chan-caller";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
-import type { CellError } from "../generated/CellError";
+import { nameError } from "../rot-editor";
 import { RuleEditor } from "./rule-editor";
 import s from "./rules-section.module.css";
 import { MachineTimeline } from "./rules-timeline";
@@ -1058,7 +1058,7 @@ export class RulesSection {
         if (got.state !== "saved")
           throw new Error(
             got.state === "refused"
-              ? cellsText(got.errors)
+              ? nameError(got.errors) // 那台拒了整条：照名称那格说，别的格写「未保存」
               : copyText("rot.fail.conflict"),
           );
         const miss = got.rule.missing;
@@ -1195,21 +1195,3 @@ export class RulesSection {
   }
 }
 
-/** 名称那一格的错照后端短码写（空 · 重名 · 超长）。 */
-function nameError(errors: CellError[]): string {
-  const e = errors.find((x) => x.cell === "name");
-  return e?.code === "dup"
-    ? copyText("rot.save.dup")
-    : e?.code === "tooLong"
-      ? copyText("rot.save.tooLong")
-      : e?.code === "empty"
-        ? copyText("rot.save.empty")
-        : copyText("rot.save.failed");
-}
-
-/** 那台拒了整条（它的账号库不认某格之类）：照名称那格说，别的格写「未保存」。 */
-function cellsText(errors: CellError[]): string {
-  return errors.some((x) => x.cell === "name")
-    ? nameError(errors)
-    : copyText("rot.save.failed");
-}

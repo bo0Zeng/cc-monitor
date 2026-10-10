@@ -341,7 +341,7 @@ describe("轮换栏 · 改名 · 复制 · 设为默认", () => {
     expect(document.activeElement).toBe(inp);
     renameRule.mockResolvedValueOnce({
       state: "refused",
-      errors: [{ cell: "name", code: "dup" }],
+      errors: [{ cell: "name", code: "dup", said: "那台写的那一句" }],
     });
     inp.value = "日常";
     inp.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
@@ -355,9 +355,8 @@ describe("轮换栏 · 改名 · 复制 · 设为默认", () => {
       '[data-rules-rename="r_night"]',
     )!;
     expect(again.dataset.error).toBe("true");
-    expect(rowOf(el, "r_night").textContent).toContain(
-      copyText("rot.save.dup"),
-    );
+    // 照抄核心写好的 `said`，不按短码取字。
+    expect(rowOf(el, "r_night").textContent).toContain("那台写的那一句");
   });
 
   it("改名：Esc 取消，不发命令", async () => {
@@ -692,7 +691,7 @@ describe("轮换栏 · 在用展开 · 新建", () => {
     expect(document.activeElement).toBe(inp);
     saveRule.mockResolvedValueOnce({
       state: "refused",
-      errors: [{ cell: "name", code: "dup" }],
+      errors: [{ cell: "name", code: "dup", said: copyText("rot.save.dup") }],
     });
     inp.value = "夜间";
     form.querySelector<HTMLButtonElement>("[data-rules-new-ok]")!.click();

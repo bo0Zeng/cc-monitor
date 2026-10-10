@@ -217,7 +217,7 @@ impl std::fmt::Display for ConfigWriteError {
             ConfigWriteError::ElementExists => {
                 f.write_str(&copy_text("rsConfig.write.elementExists", &[]))
             }
-            ConfigWriteError::BadMachine(m) => f.write_str(&m.said()),
+            ConfigWriteError::BadMachine(m) => f.write_str(&m.refused_said()),
             ConfigWriteError::BadEdit(m) => f.write_str(m),
             ConfigWriteError::Io(s) => f.write_str(&s.said),
         }
@@ -397,7 +397,7 @@ fn apply_and_check(
     Ok(applied)
 }
 
-/// 机器表那一道没过的那一处（闭集码 ＋ 那台的名字）；界面按码取那一句、落在那一格下面。
+/// 机器表那一道没过的那一处（闭集码 ＋ 那台的名字 ＋ 那一格下面的那一句）；界面照 `code` 挑落在哪一格、照抄 `said`。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
@@ -407,6 +407,8 @@ pub struct MachineFault {
     pub code: MachineFaultCode,
     /// 出问题的那台的名字（`label` 非空取它、否则 `host`）。
     pub name: String,
+    /// 那一格下面的那一句（添加机器框 · 机器卡同读）。
+    pub said: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -421,8 +423,19 @@ pub enum MachineFaultCode {
 }
 
 impl MachineFault {
-    /// 写口拒绝时的那一句。
-    pub fn said(&self) -> String {
+    /// 一处错（那一格下面的那一句照码写）。
+    pub fn new(code: MachineFaultCode, name: String) -> Self {
+        let said = match code {
+            MachineFaultCode::NoHost => copy_text("addMachine.err.host", &[]),
+            MachineFaultCode::NoUser => copy_text("addMachine.err.user", &[]),
+            MachineFaultCode::Port => copy_text("addMachine.err.port", &[]),
+            MachineFaultCode::NameTaken => copy_text("addMachine.err.taken", &[("name", &name)]),
+        };
+        Self { code, name, said }
+    }
+
+    /// 写口拒绝时的那一句（带那台的名字与「未保存」）。
+    pub fn refused_said(&self) -> String {
         match self.code {
             MachineFaultCode::NoHost => {
                 copy_text("rsConfig.machine.noHost", &[("name", &self.name)])
@@ -489,13 +502,13 @@ pub(crate) fn machine_table_try_at(
             ConfigEdit::InsertIn { path, r#where, .. }
                 if path.first().map(String::as_str) == Some("remote") =>
             {
-                Some(MachineFault {
-                    code: MachineFaultCode::NameTaken,
-                    name: r#where
+                Some(MachineFault::new(
+                    MachineFaultCode::NameTaken,
+                    r#where
                         .first()
                         .map(|k| k.equals.clone())
                         .unwrap_or_default(),
-                })
+                ))
             }
             _ => None,
         })),
@@ -520,12 +533,7 @@ pub(crate) fn check_machine_table(root: &Map<String, Value>) -> Option<MachineFa
         } else {
             text("label")
         };
-        let fault = |code| {
-            Some(MachineFault {
-                code,
-                name: name.to_string(),
-            })
-        };
+        let fault = |code| Some(MachineFault::new(code, name.to_string()));
         if text("host").is_empty() {
             return fault(MachineFaultCode::NoHost);
         }

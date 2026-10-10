@@ -1197,7 +1197,7 @@ fn a_draft_is_checked_cell_by_cell_without_writing() {
     let got = answer_plan_with(&ctx, &json!({"rotation": r}), now()).expect("ok");
     assert_eq!(
         got["errors"],
-        json!([{"cell": "cap.b.*[1]", "code": "overlap", "with": 0}])
+        json!([{"cell": "cap.b.*[1]", "code": "overlap", "with": 0, "said": copy_core::copy_text("rot.capErr.overlap", &[("i", "1")])}])
     );
     assert_eq!(
         answer_plan_with(&ctx, &json!({"rotation": rot_json(&["b"])}), now()).expect("ok")
@@ -1775,6 +1775,7 @@ fn cell_error() -> CellError {
         cell: "order".into(),
         code: "empty".into(),
         with: Some(1),
+        said: "said".into(),
     }
 }
 
@@ -1889,4 +1890,58 @@ impl Shaped for QuotaRead {
             text: Some("t".into()),
         }]
     }
+}
+
+/// ★★ 每一格错都带写好的那一句 `said`（界面照抄，不再按码取字）：名称的空 · 超长 · 重名，封顶时段的重叠（带「第几段」）· 起止相同 · 时刻 · 越界。
+#[test]
+fn every_cell_error_carries_its_written_sentence() {
+    let home = Home::new("said");
+    let ctx = home.ctx();
+    let said_of = |v: &Value| -> Vec<String> {
+        v["errors"]
+            .as_array()
+            .expect("errors")
+            .iter()
+            .map(|e| e["said"].as_str().unwrap_or("<缺 said>").to_string())
+            .collect()
+    };
+    let mut r = rot_json(&["b"]);
+    r["cap"] = json!({"b": {"*": [
+        {"at": "17:00-02:00", "n": 0},
+        {"at": "01:00-05:00", "n": 99},
+        {"at": "06:00-06:00", "n": 50},
+        {"at": "9:5-12:00", "n": 50},
+        {"at": "12:00-13:00", "n": 120}
+    ]}});
+    let got = answer_rule_save_with(&ctx, &json!({"name": "x", "rotation": r}), now()).expect("ok");
+    assert_eq!(
+        said_of(&got),
+        [
+            copy_core::copy_text("rot.capErr.overlap", &[("i", "1")]),
+            copy_core::copy_text("rot.capErr.same", &[]),
+            copy_core::copy_text("rot.capErr.time", &[]),
+            copy_core::copy_text("rot.capErr.range", &[]),
+        ]
+    );
+    let blank = answer_rule_save_with(
+        &ctx,
+        &json!({"name": "  ", "rotation": rot_json(&["b"])}),
+        now(),
+    )
+    .expect("ok");
+    assert_eq!(
+        said_of(&blank),
+        [copy_core::copy_text("rot.save.empty", &[])]
+    );
+    let long = "x".repeat(rotation::RULE_NAME_MAX + 1);
+    let got = answer_rule_save_with(
+        &ctx,
+        &json!({"name": long, "rotation": rot_json(&["b"])}),
+        now(),
+    )
+    .expect("ok");
+    assert_eq!(
+        said_of(&got),
+        [copy_core::copy_text("rot.save.tooLong", &[])]
+    );
 }

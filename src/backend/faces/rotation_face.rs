@@ -424,13 +424,9 @@ fn name_errors(book: &Book, id: Option<&str>, name: &str) -> Vec<CellError> {
     } else {
         None
     };
-    code.map(|c| CellError {
-        cell: "name".into(),
-        code: c.into(),
-        with: None,
-    })
-    .into_iter()
-    .collect()
+    code.map(|c| rotation::cell_err("name".into(), c, None))
+        .into_iter()
+        .collect()
 }
 
 /// 复制出来的那条取名：不重名照原名；重名 ⇒ 名后加 ` 2` · ` 3` … 取第一个不重的（超长照旧由 [`name_errors`] 拒）。

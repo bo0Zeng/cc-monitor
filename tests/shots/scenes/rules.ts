@@ -545,7 +545,7 @@ export const RULES_SCENES: Scene[] = [
       const w = editorWorld()();
       w.ops["rotation-rule-save"] = () => ({
         state: "refused",
-        errors: [{ cell: "cap.*.5h", code: "range" }],
+        errors: [{ cell: "cap.*.5h", code: "range", said: "0–99" }],
       });
       return w;
     },
