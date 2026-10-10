@@ -63,7 +63,7 @@ class BackendFeed(
 
     private val changeFlow = MutableSharedFlow<String>(extraBufferCapacity = BUFFER, onBufferOverflow = BufferOverflow.DROP_OLDEST)
 
-    /** 每来一帧发它的 `kind`：出口据此重问（`quota_changed` ⇒ 重问 `quota-read` …）。 */
+    /** 每来一帧发它的 `kind`：出口据此重问（`session_added` ⇒ 重问 `history-list` …）。 */
     val changes: SharedFlow<String> = changeFlow.asSharedFlow()
 
     private val turnEndFlow = MutableSharedFlow<TurnEnd>(extraBufferCapacity = BUFFER, onBufferOverflow = BufferOverflow.DROP_OLDEST)
