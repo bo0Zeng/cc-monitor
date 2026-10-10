@@ -8,8 +8,7 @@
 //! （rolling-latest + debounce(1200ms) `baselineByPath`：首见吞历史不通知、offset 续拉重放 uuid≤基线不通知）。
 //! backend 仍逐行转发每一条 Line（不因分类丢行）；turn-end 是在 raw 之外额外算的边沿信号，不替代、不过滤 Line。
 //!
-//! 改 `is_turn_end` 的合取项前先看这里：同一个判词在前端 `src/frontend/ui/turn-notify.ts` 还有第二份（通知那条路）。两份做不到「权威源恰好一个」
-//! ⇒ 跨语言对拍住在 `tests/frontend/ui/turn-notify.vitest.ts`：它从本函数的合取项派生人群，新加一条而不在那张登记表里说明 TS 侧怎么办 ⇒ 当场红。
+//! 判词只此一份：桌面与手机的完成通知都认 `TurnEnd` 帧（界面 `src/frontend/ui/turn-notify.ts` 不读记录，`tests/frontend/ui/turn-notify.vitest.ts` 钉着）。
 
 //!
 //! # 每行先过子串闸，再读窄探针

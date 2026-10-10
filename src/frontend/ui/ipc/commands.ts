@@ -53,6 +53,7 @@ import type { AutoLaunchConfig } from "../generated/AutoLaunchConfig";
 //（判据：`commands.vitest.ts` 末尾「TS 侧 origin 去 null」那一节）。
 import type { Origin } from "../generated/Origin";
 import type { FrontOutcome } from "../generated/FrontOutcome";
+import type { WatchedSession } from "../generated/WatchedSession";
 import type { LocalCcmEntry } from "../generated/LocalCcmEntry";
 import type { TerminalChoices } from "../generated/TerminalChoices";
 import type { ConfigEdit } from "../generated/ConfigEdit";
@@ -327,6 +328,9 @@ export const commands = {
   /** 关 tab 时让事件重放忘掉这个会话。**桶①**。 */
   forget_session: (args: { sessionId: string }) =>
     invoke<void>("forget_session", args),
+
+  /** 主窗口此刻在看的会话（整份换）：壳与查看窗跟着的合成每台的「在看」名单，报给那台那条长连接。**桶①**。 */
+  watch_sessions: (args: { sessions: WatchedSession[] }) => invoke<void>("watch_sessions", args),
 
   /** 把监控窗口拉到最前。**桶①**。 */
   bring_monitor_to_front: () => invoke<void>("bring_monitor_to_front"),

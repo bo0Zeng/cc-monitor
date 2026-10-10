@@ -65,6 +65,7 @@ import {
   e2eLog,
   frontOnce,
   forgetSession,
+  reportWatching,
 } from "./tab-session-actions";
 import { frontView, type FrontAct, type FrontResult, type FrontView } from "./front-result";
 import { updateBackendOf } from "./backend-deploy";
@@ -447,6 +448,29 @@ export class TabManager {
     }
   }
 
+  /** 那台一个会话一轮结束（会话流的 `turn_end` 格，在不在看都来）⇒ 系统通知（没有 tab 的会话不报）。 */
+  onTurnEnd(origin: Origin, sessionId: string): void {
+    const tab = this.store.tabs.get(sessionId);
+    if (!tab || tab.origin !== origin) return;
+    turnEndNotifier.observe(sessionId, tab.title);
+  }
+
+  /**
+   * 这个会话刚进了那台那条流的「在看」名单（`watch` 格）：它的这份记录从第 `seq` 行起上流 ⇒ 之前没上流的那段补上
+   * （`TabStreamView.catchUpTo`）。
+   */
+  onSessionWatch(origin: Origin, p: { session_id: string; path: string; seq: number }): void {
+    const tab = this.store.tabs.get(p.session_id);
+    if (!tab || tab.origin !== origin) return;
+    this.view.catchUpTo(tab, p.path, p.seq);
+  }
+
+  /** 报给壳「主窗口此刻在看哪个会话」（切 tab · 关掉当前 tab）：没在看的会话，它的行不上流（壳合成每台的名单）。 */
+  private reportWatching(): void {
+    const t = this.store.activeId === null ? undefined : this.store.tabs.get(this.store.activeId);
+    reportWatching(t ? [{ origin: t.origin, sessionId: t.sessionId }] : []);
+  }
+
   /** 收到一行记录：走 `renderStreamRecord`（时间线按 seq 定位 · 工具组看左邻居合并 · 标题与真用户输入走 sink）。 */
   onLine(payload: JsonlLinePayload): void {
     // 项目目录不从行里取（行上的 cwd 是那一刻的工作目录，会漂进子目录）：只认后端那一格（会话宣告 / 会话事实）。
@@ -465,9 +489,6 @@ export class TabManager {
 
     // 大纲：只记一笔「这份会话又长了」（清单问后端要，这里不判、不攒）。
     this.view.noteGrew(tab);
-
-    // 一轮结束的系统通知：在去重之后（重投行不重报）、渲染之前（与渲染互相独立）；批量重放短路。
-    turnEndNotifier.observe(payload.session_id, tab.title, payload, this.store.inBatch);
 
     // `onLine` 上只挂「真事件」（compact 完成 · 轮次结束），其余事实问后端要（判据 `online-bypass-ledger.vitest.ts`）。
 
@@ -1453,6 +1474,7 @@ export class TabManager {
         this.switchTo(fallbackId);
       } else {
         this.store.activeId = null;
+        this.reportWatching();
         // 关掉最后一个 ⇒ 任务面板进空态。
         this.tasksPanel?.setSession(null, []);
         this.agentsPanel?.setSession(null, []);
@@ -1730,6 +1752,7 @@ export class TabManager {
     const next = this.store.tabs.get(sessionId);
     if (next) next.unread = 0;
     this.store.activeId = sessionId;
+    this.reportWatching();
     if (next) this.view.activate(next);
     // 记住所在 tab ＋ 手动切的 5s 保护（`tab-router.ts::noteSwitched`）。
     this.router.noteSwitched(sessionId, source);

@@ -682,6 +682,9 @@ pub fn register(origin: &str, client: Arc<InboundClient>) {
         old.shutdown();
     }
     set_link(origin, Link::Up);
+    // 换了一条新连接 ⇒ 不论那台原先是不是 `Up`（新的先登记、旧的后摘时一直是）都醒一次订阅者：
+    //   `stream_watch` 据它给新连接重报「在看」名单（新连接 ＝ 没报过）。
+    lock(link_book()).tick.send_modify(|t| *t += 1);
     // 断线时按过、还没用掉的「重新连接」许可作废（见 [`kick`]）。
     lock(link_book()).kicks.remove(origin);
     // 本机那一台的状态成品看的就是这条通道在不在。
@@ -807,6 +810,14 @@ pub const LOCAL_ORIGIN: &str = "<local>";
 pub(crate) fn local_origin_test_lock() -> std::sync::MutexGuard<'static, ()> {
     static L: std::sync::Mutex<()> = std::sync::Mutex::new(());
     L.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// 此刻连着的每一台与它的客户端（`stream_watch` 据它给每条新连接报名单）。
+pub fn connected() -> Vec<(String, Arc<InboundClient>)> {
+    lock(registry())
+        .iter()
+        .map(|(o, c)| (o.clone(), c.clone()))
+        .collect()
 }
 
 /// 取某台主机当前的入方向客户端。没连上 / 还没收到 hello → `None`。

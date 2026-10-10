@@ -498,8 +498,10 @@ async fn stream_loop(
                 &ticket,
                 cell,
             ),
-            // 认识但不消费（理由在变体上）。
-            Some(InboundFrame::TurnEnd) => {}
+            // 一轮结束：在不在看都来 ⇒ 交这台的会话流一格（系统通知认它）。
+            Some(InboundFrame::TurnEnd { sid }) => {
+                replay.on_turn_end(&crate::origin::Origin(host_label.clone()), sid)
+            }
             // 不认识的种类 / 形状不对：`take` 已记账、每种说过一次；跳过，绝不中断流。
             None => {}
         }

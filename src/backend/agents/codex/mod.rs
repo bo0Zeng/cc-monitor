@@ -25,14 +25,15 @@ pub(crate) const HISTORY: crate::agents::HistoryFace = crate::agents::HistoryFac
     excerpt: history::first_user_excerpt,
     root: history::records_root,
 };
-/// 记录解释面（注册表 `Adapter.records` 那一格）。轮次边沿与漂移账这一家今天不报。
+/// 记录解释面（注册表 `Adapter.records` 那一格）。漂移账这一家今天不报。
 pub(crate) const RECORDS: crate::agents::RecordFace = crate::agents::RecordFace {
     parse: record::translated,
     sid: parse::codex_sid_from_path,
     is_session_file: history::is_session_file,
     // 会话按日期分、不住按项目分的记录树（历史由合成历史面并进来）。
     tree: None,
-    turn_end: None,
+    // 一轮结束：`task_complete` 那一行（判法只在 `record::turn_end_id`）。
+    turn_end: Some(record::turn_end_id),
     class: None,
     chain: None,
     // Codex 的会话不在按项目分的记录树里、今天也不分叉 ⇒ 这两格没有。

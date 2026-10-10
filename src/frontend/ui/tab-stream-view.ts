@@ -1083,37 +1083,72 @@ export class TabStreamView {
     tab.window.dropPending();
     this.updateSentinel(tab);
     if (!tab.parentPath || tab.seenSeqs.isEmpty || this.forwardFills.has(tab)) return;
-    const max = tab.seenSeqs.max;
     this.forwardFills.add(tab);
-    const jsonlPath = tab.parentPath;
+    this.readForward(tab, tab.parentPath, tab.seenSeqs.max + 1, undefined, () => this.forwardFills.delete(tab));
+  }
+
+  /**
+   * 上流点之下缺得比这还多 ⇒ 不往后接那一整段，tab 整份重来、只取上流点之下这么多行（一次开 tab 最多物化的条数，
+   * 与壳留存每会话留的同值），更早的往上翻时按行号 / 按骨架取回。
+   */
+  private static readonly WATCH_REFILL_MAX = TabStreamView.MATERIALIZE_TAIL_K * TabStreamView.MATERIALIZE_ROUNDS_PER_CALL;
+
+  /**
+   * **这个会话刚进了这条流的「在看」名单**（`TabManager.onSessionWatch`）：这份记录从第 `seq` 行起上流，
+   * 之前没在看的那段没上流 ⇒ 补上 `[已有, seq)`，之后的由流接着交（重叠处按 `(sid, seq)` 去重）：
+   *
+   * - 缺口不大（≤ {@link TabStreamView.WATCH_REFILL_MAX}）⇒ 从见过的、`seq` 之下最大的那一行之后按行号取到 `seq`；
+   * - 缺得多（没在看了很久）⇒ tab 整份重来（`restartContent`），只取 `seq` 之下那一截尾巴、一直取到末尾
+   *   （重来时丢掉的、已经到过的实时行也在里面）；取完它还在眼前 ⇒ 照切进来那样物化、接骨架（`activate`）；
+   * - `seq` 之下一行都没见过 ⇒ 同上，只是不用重来。
+   * 同一个会话的另一份记录（路径对不上）不归这个 tab。
+   */
+  catchUpTo(tab: Tab, path: string, seq: number): void {
+    if (tab.parentPath && tab.parentPath !== path) return;
+    const have = tab.seenSeqs.maxBelow(seq);
+    if (have + 1 >= seq) return;
+    if (have >= 0 && seq - (have + 1) <= TabStreamView.WATCH_REFILL_MAX) {
+      this.readForward(tab, path, have + 1, seq);
+      return;
+    }
+    const fresh = have >= 0 ? this.restartContent(tab) : tab;
+    // 取回来的进的是账本（批语义、不建卡）⇒ 取完了它还在眼前，就照切进来那样物化尾段、停下来看时接骨架。
+    this.readForward(fresh, path, Math.max(0, seq - TabStreamView.WATCH_REFILL_MAX), undefined, () => {
+      if (this.inFront(fresh)) this.activate(fresh);
+    });
+  }
+
+  /**
+   * **按行号往后读一段**（`[from, until)`，`until` 缺 ＝ 到末尾）喂进这个 tab：一段 ≤ 1 MiB，接着取到头；
+   * 取回的走 `feedHistoryRows`（批语义、不复活远端 tab），见过的由 `(sid, seq)` 去重吃掉。
+   * 是**一件事**：开头造一次期限（{@link TabStreamView.GAP_FILL_BUDGET_MS}），每一问交剩下的；到点了还没取完 ⇒ 停、记一行。
+   */
+  private readForward(tab: Tab, path: string, from: number, until: number | undefined, done: () => void = () => {}): void {
     const budget = budgetWithin(TabStreamView.GAP_FILL_BUDGET_MS);
-    const step = (from: number): void => {
+    const step = (at: number): void => {
       const leftMs = remaining(budget);
       if (leftMs <= 0) {
-        this.forwardFills.delete(tab);
-        console.warn(
-          `[tabs] 会话流丢格之后往后补没在期限内补完（${tab.sessionId.slice(0, 8)}，停在第 ${from} 行）`,
-        );
+        done();
+        console.warn(`[tabs] 按行号往后补没在期限内补完（${tab.sessionId.slice(0, 8)}，停在第 ${at} 行）`);
         return;
       }
-      void readLines(tab.origin, jsonlPath, from, undefined, leftMs)
+      void readLines(tab.origin, path, at, until, leftMs)
         .then((page) => {
-          if (this.store.tabs.get(tab.sessionId) !== tab) return this.forwardFills.delete(tab);
+          if (this.store.tabs.get(tab.sessionId) !== tab) return done();
           this.feedHistoryRows(
             tab,
             page.payloads.filter((p) => !tab.seenSeqs.has(p.seq)),
           );
           tab.seenSeqs.addRange(page.from, page.next); // 同上
-          if (page.eof || page.next <= from) return this.forwardFills.delete(tab);
+          if (page.eof || page.next <= at || (until !== undefined && page.next >= until)) return done();
           step(page.next);
-          return true;
         })
         .catch((e: unknown) => {
-          this.forwardFills.delete(tab);
-          console.warn(`[tabs] 会话流丢格之后往后补失败（${tab.sessionId.slice(0, 8)}，从第 ${from} 行）：`, e);
+          done();
+          console.warn(`[tabs] 按行号往后补失败（${tab.sessionId.slice(0, 8)}，从第 ${at} 行）：`, e);
         });
     };
-    step(max + 1);
+    step(from);
   }
 
   /**

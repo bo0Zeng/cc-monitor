@@ -190,6 +190,11 @@ const MONITOR_OWN: &[(&str, Own, &str)] = &[
     ),
     ("chan_offer", Own::Channel, "通信层面 A：`subscribe` 的续订"),
     ("chan_subscribe", Own::Channel, "通信层面 A：`subscribe`"),
+    (
+        "watch_sessions",
+        Own::Replay,
+        "主窗口在看的会话记进会话流句柄那张表（与查看窗的订阅合成每台的「在看」名单）",
+    ),
     ("chan_want", Own::Channel, "通信层面 A：credit"),
     ("chan_stop", Own::Channel, "通信层面 A：撤订"),
     (

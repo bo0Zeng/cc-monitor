@@ -483,3 +483,41 @@ fn codex_records_carry_the_clock_face_too() {
         assert_eq!(got.at.as_deref(), Some(ts), "{v}");
     }
 }
+
+/// Codex 一轮结束（`task_complete` / 旧名 `turn_complete`）⇒ 注册表里这一家的记录解释面答得出 `turn_end`（那一轮的 `turn_id`）——
+/// 流式 watcher 发 `turn_end` 帧问的就是这一格，桌面与手机的完成通知都认那一帧。中止轮 · 别的行 · 没带 `turn_id` 的不报。
+#[test]
+fn a_codex_turn_complete_answers_turn_end_through_the_registry() {
+    let face = crate::agents::record_face(super::super::AGENT_KIND).expect("Codex 有记录解释面");
+    let turn_end = face
+        .turn_end
+        .expect("Codex 的记录解释面不报一轮结束 ⇒ 它的会话收不到完成通知");
+    let line = |v: serde_json::Value| v.to_string();
+    let ev = |payload: serde_json::Value| {
+        line(json!({"timestamp": "t", "type": "event_msg", "payload": payload}))
+    };
+    assert_eq!(
+        turn_end(&ev(json!({"type": "task_complete", "turn_id": "t1"}))),
+        Some("t1".to_string())
+    );
+    assert_eq!(
+        turn_end(&ev(json!({"type": "turn_complete", "turn_id": "t2"}))),
+        Some("t2".to_string())
+    );
+    assert_eq!(
+        turn_end(&ev(json!({"type": "turn_aborted", "turn_id": "t3"}))),
+        None
+    );
+    assert_eq!(turn_end(&ev(json!({"type": "task_complete"}))), None);
+    assert_eq!(
+        turn_end(&ev(json!({"type": "task_started", "turn_id": "t4"}))),
+        None
+    );
+    assert_eq!(
+        turn_end(&line(
+            json!({"type": "response_item", "payload": {"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "task_complete"}]}})
+        )),
+        None
+    );
+    assert_eq!(turn_end("not json _complete"), None);
+}
