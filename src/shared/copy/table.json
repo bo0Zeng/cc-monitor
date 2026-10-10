@@ -3335,13 +3335,13 @@
     "record.unread.parseFailed": {
       "kind": "body",
       "role": "说明",
-      "zh": "记录形状变了 · {type}",
+      "zh": "记录格式有变 · {type}",
       "args": ["type"]
     },
     "record.unread.parseFailedMany": {
       "kind": "body",
       "role": "说明",
-      "zh": "记录形状变了 · {type} · {n} 条",
+      "zh": "记录格式有变 · {type} · {n} 条",
       "args": ["type", "n"]
     },
     "record.unread.noType": {
