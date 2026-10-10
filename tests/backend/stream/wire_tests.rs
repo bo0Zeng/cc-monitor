@@ -2330,7 +2330,11 @@ fn session_frames_carry_the_state_written_and_toned() {
         (A::Working, "beSession.activity.working", "now"),
         (A::NeedsYou, "beSession.activity.needsYou", "need"),
         (A::Idle, "beSession.activity.idle", "plain"),
-        (A::BackgroundWork, "beSession.activity.backgroundWork", "busy"),
+        (
+            A::BackgroundWork,
+            "beSession.activity.backgroundWork",
+            "busy",
+        ),
     ] {
         let v = status(Some(a));
         assert_eq!(v["activity_text"], copy_core::copy_text(key, &[]), "{a:?}");
