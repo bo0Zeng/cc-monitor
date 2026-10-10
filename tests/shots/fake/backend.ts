@@ -1,6 +1,7 @@
 /**
  * 页里的假适配层：站在壳的位置答产品代码发出的 Tauri 命令（`load_config` …）、帧命令（`chan_call` 里的 op）与订阅（`chan_subscribe`）。
- * `REAL_OPS` 那几条原样转给真后端（`../real/pool.mjs`：每台机器一个，读 `world.disk` 那几份原始文件）；其余的还是场景合成的。
+ * `REAL_OPS` 那几条与 `SHELL_KINDS` 那几种订阅原样交给壳的真代码（`../real/pool.mjs` 起的无头壳，后面每台机器一个真后端，读 `world.disk` 那几份原始文件）；
+ * 其余的还是场景合成的。
  * 答不上的一律记进 `unhandled`（工具最后列出来），并按真后端「不认」那一形拒绝 —— 不悄悄给空。
  */
 import type { SessionStreamFrame } from "../../../src/frontend/ui/generated/SessionStreamFrame";
@@ -22,6 +23,13 @@ export const REAL_OPS = new Set([
   "rotation-plan",
 ]);
 
+/**
+ * 交给无头壳的订阅（壳的 `event_replay` 交格，那几台后端推）。其余几种还是这里合成：会话流（等会话记录落盘那一刀）·
+ * `session-tap`（中转抄出来的事件，台架没有真流量，场景自己推）· `quota-changed`（场景演换号那一下自己推；换号那几条帧命令还是合成的）·
+ * 终端画面（要真 tmux）。看不见 / 被关掉的那几台（`unseenMachines` · `closedMachines`）是连接那一跳的事，照旧这里演。
+ */
+export const SHELL_KINDS = new Set(["accounts-changed", "profiles-changed", "session-tasks"]);
+
 /** 真后端够不着的那几台：只有 Linux 编出来的后端，Windows 那台的 `cfg(windows)` 分支（例：账号库「Windows 不支持多账号」）演不出来。 */
 const WINDOWS_ONLY: Record<string, Set<string>> = { "win-laptop": new Set(["accounts-list"]) };
 
@@ -42,6 +50,8 @@ export class FakeBackend {
   private readonly subs = new Map<number, Sub>();
   /** 报过「清单报完了」的那几台（壳那一侧「各台都报完」那一拍按机器表算，这里照样算）。 */
   private readonly listedOrigins = new Set<string>();
+  /** 交给无头壳的那几条订阅的编号。 */
+  private readonly shellSubs = new Set<number>();
   private screenSeq = 0;
 
   /** 真后端那一屋子起好了（`/__ccm/world` 答了）。 */
@@ -56,17 +66,23 @@ export class FakeBackend {
     for (const m of world.machines) machines[m] = world.disk[m] ?? { files: {}, live: [] };
     this.ready = fetch("/__ccm/world", { method: "POST", body: JSON.stringify({ key: this.key, machines }) }).then(async (r) => {
       if (!r.ok) throw new Error(`真后端起不来：${await r.text()}`);
+      // 无头壳交的格（同壳交给页的 `chan-items` 事件体），原样当事件发。
+      new EventSource(`/__ccm/items?key=${encodeURIComponent(this.key)}`).onmessage = (m) => void this.emit("chan-items", JSON.parse(m.data as string));
     });
   }
 
-  /** 问真后端那一台：应答帧原样翻成壳交给页里的那一形（成 ⇒ 字节；拒 ⇒ `{err: "Refused", body, detail}`）。 */
+  /** 交给壳 `chan_call` 那一跳：成 ⇒ 原样字节；不成 ⇒ 壳交给页的那一形（`{err, body, detail}`，原样抛）。 */
   private async real(origin: string, op: string, req: Record<string, unknown>): Promise<ArrayBuffer> {
     await this.ready;
     const r = await fetch("/__ccm/call", { method: "POST", body: JSON.stringify({ key: this.key, origin, op, args: req }) });
-    const f = (await r.json()) as { ok: boolean; data?: unknown; code?: string; message?: string; detail?: string };
-    if (f.ok) return enc.encode(JSON.stringify(f.data ?? null)).buffer;
-    const body = f.data === undefined ? { code: f.code, message: f.message } : { code: f.code, message: f.message, data: f.data };
-    throw { err: "Refused", body: Array.from(enc.encode(JSON.stringify(body))), detail: f.detail };
+    const f = (await r.json()) as { ok: boolean; body?: string; fail?: unknown };
+    if (f.ok) return enc.encode(f.body ?? "null").buffer;
+    throw f.fail;
+  }
+
+  /** 订阅那几样交给无头壳。 */
+  private tell(what: "sub" | "want" | "stop", body: Record<string, unknown>): void {
+    void this.ready.then(() => fetch(`/__ccm/${what}`, { method: "POST", body: JSON.stringify({ key: this.key, ...body }) }));
   }
 
   attachEmitter(emit: Emit): void {
@@ -88,7 +104,11 @@ export class FakeBackend {
         this.subscribe(args);
         return null;
       case "chan_want":
+        if (this.shellSubs.has(Number(args.id))) this.tell("want", { id: Number(args.id), more: Number(args.more) });
+        return null;
       case "chan_stop":
+        if (this.shellSubs.delete(Number(args.id))) this.tell("stop", { id: Number(args.id) });
+        return null;
       case "chan_cancel":
         return null;
     }
@@ -130,6 +150,11 @@ export class FakeBackend {
 
   private subscribe(args: Record<string, unknown>): void {
     const sub: Sub = { id: Number(args.id), origin: String(args.origin), kind: String(args.kind) };
+    if (SHELL_KINDS.has(sub.kind) && !this.world.unseenMachines.includes(sub.origin) && !this.world.closedMachines.includes(sub.origin)) {
+      this.shellSubs.add(sub.id);
+      this.tell("sub", { id: sub.id, origin: sub.origin, kind: sub.kind, want: Number(args.want ?? 0) });
+      return;
+    }
     this.subs.set(sub.id, sub);
     // 订阅登记好之后才交格（与真句柄一样：返回之后格才可能到）。
     setTimeout(() => this.deliver(sub), 0);
@@ -168,7 +193,7 @@ export class FakeBackend {
       setTimeout(() => this.send(sub, [{ t: "frame", seq: 0, body: JSON.stringify({ seq: 1, view }) }]), 200);
       if (mode === "lost") setTimeout(() => this.send(sub, [{ t: "frame", seq: 1, body: JSON.stringify({ end: "lost" }) }]), 500);
       if (mode === "offline") setTimeout(() => this.send(sub, [{ t: "unseen", idx: 1, tag: "read", why: "Dropped" }]), 500);
-    } else if (sub.kind === "session-tap" || sub.kind === "accounts-changed" || sub.kind === "profiles-changed" || sub.kind === "session-tasks" || sub.kind === "quota-changed") {
+    } else if (sub.kind === "session-tap" || sub.kind === "quota-changed" || SHELL_KINDS.has(sub.kind)) {
       this.send(sub, [{ t: "seen", from: null }]);
     } else {
       this.miss(`订阅 ${sub.kind}`);

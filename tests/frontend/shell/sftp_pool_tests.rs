@@ -52,7 +52,11 @@ pub(crate) fn rig(commands: &[&str]) -> Rig {
         let mut lines = tokio::io::BufReader::new(mon_r).lines();
         while let Ok(Some(l)) = lines.next_line().await {
             if let Ok(f) = parse_frame(&l) {
-                crate::local_backend::absorb_local_frame(f, Some(&c2));
+                crate::local_backend::absorb_local_frame(
+                    f,
+                    Some(&c2),
+                    crate::inbound_client::LOCAL_ORIGIN,
+                );
             }
         }
     });

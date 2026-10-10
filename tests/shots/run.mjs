@@ -12,7 +12,7 @@
  *
  * 浏览器：环境变量 `CCM_SHOTS_CHROME` 指定，不给就找 Playwright 缓存里的 Chrome for Testing。
  */
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync, statSync } from "node:fs";
 import net from "node:net";
 import os from "node:os";
@@ -21,6 +21,7 @@ import { fileURLToPath } from "node:url";
 import { Cdp, Page, sleep } from "./cdp.mjs";
 import { FILEWIN_SCENES, shootFilewin } from "./filewin.mjs";
 import { writeIndex } from "./index-page.mjs";
+import { buildBins } from "./real/pool.mjs";
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const args = parseArgs(process.argv.slice(2));
@@ -93,13 +94,11 @@ cleanup();
 process.exit(results.some((r) => !r.ok) || problems.length > 0 ? 1 : 0);
 
 async function shootWeb() {
-  // 真后端：本树那一份（增量编；编要真 HOME，别的照摘）。外面给了 `CCM_SHOTS_BACKEND` 就用那一份。
-  if (!process.env.CCM_SHOTS_BACKEND) {
-    const b = spawnSync("cargo", ["build", "--quiet"], { cwd: path.join(repo, "src/backend"), env: { ...scrubbedEnv(), CARGO_BUILD_JOBS: process.env.CARGO_BUILD_JOBS ?? "4" }, stdio: ["ignore", "inherit", "inherit"] });
-    if (b.status !== 0) {
-      problems.push(`真后端没编出来（cargo 退出码 ${b.status}）`);
-      return;
-    }
+  // 真后端与无头壳：本树那一份（增量编；编要真 HOME，别的照摘）。外面给了 `CCM_SHOTS_BACKEND` 就用那一份后端。
+  const broken = buildBins({ repo, env: scrubbedEnv() });
+  if (broken) {
+    problems.push(broken);
+    return;
   }
   const port = await freePort();
   const vite = spawn(process.execPath, [path.join(repo, "tests/shots/serve.mjs"), String(port)], {

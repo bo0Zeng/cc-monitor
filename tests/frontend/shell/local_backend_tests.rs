@@ -566,8 +566,13 @@ fn the_read_loop_really_calls_the_absorb_point() {
     ));
     // 吸收点从此把内容帧交回（`-> Option<InboundFrame>`），调用形去掉了行尾分号；
     //   「交回的帧真送进本机内容通道」由 `local_lines_tests` 另钉。
-    let at = guard_core::find_pinned(&prod, "absorb_local_frame(frame, registered.as_ref())")
-        .expect("读行循环里必须恰好有一处 `absorb_local_frame(frame, registered.as_ref())`");
+    let at = guard_core::find_pinned(
+        &prod,
+        "absorb_local_frame(frame, registered.as_ref(), &route.origin)",
+    )
+    .expect(
+        "读行循环里必须恰好有一处 `absorb_local_frame(frame, registered.as_ref(), &route.origin)`",
+    );
     let before = &prod[..at];
     assert!(
         before.contains("unread.take(&line"),
@@ -578,11 +583,13 @@ fn the_read_loop_really_calls_the_absorb_point() {
     let host = guard_core::production_code(include_str!(
         "../../../src/frontend/shell/src/local_backend_host.rs"
     ));
-    let at = guard_core::find_pinned(
-        &host,
-        "crate::local_backend::absorb_local_frame(f, Some(&client))",
-    )
-    .expect("常驻载体的读循环里必须恰好有一处吸收点调用");
+    let at = guard_core::find_pinned(&host, "crate::local_backend::absorb_local_frame(")
+        .expect("常驻载体的读循环里必须恰好有一处吸收点调用");
+    let flat: String = host.chars().filter(|c| !c.is_whitespace()).collect();
+    assert!(
+        flat.contains("absorb_local_frame(f,Some(&client),crate::inbound_client::LOCAL_ORIGIN"),
+        "常驻载体是本机那一台：吸收点交 tap / 画面时说 `<local>`"
+    );
     assert!(
         host[..at].contains("unread.take(line"),
         "常驻载体：吸收点必须排在解析出帧之后"
@@ -638,7 +645,7 @@ async fn a_local_reply_reaches_the_caller_through_the_absorb_point() {
         r#"{{"kind":"reply","id":{id:?},"ok":true,"data":{{"pong":1}}}}"#
     ))
     .unwrap();
-    absorb_local_frame(reply, Some(&client));
+    absorb_local_frame(reply, Some(&client), crate::inbound_client::LOCAL_ORIGIN);
     let got = call.await.unwrap().expect("应答没路由回来");
     assert_eq!(got, Some(serde_json::json!({"pong": 1})));
 }

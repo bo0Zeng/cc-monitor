@@ -107,16 +107,22 @@ mod contract_crate_guard;
 mod copy_table; // 对外文案表的 Rust 读口（与前端 `copyText` 同一份 `src/shared/copy/table.json`）
 mod creds_store; // 第三方 API key 那份文件：monitor 这一侧零读零写零交路径（本机常驻后端按家推、写、答）—— 只剩判据
 pub(crate) mod detail; // 壳这一端写的「复制详情」那几行 ＋ 壳命令失败的那一形 `Said`
+                       // 截图台架的无头壳（壳的真代码不带窗口跑；`tests/shots/`）：只在特性 `shots` 下编，发版构建里没有它。
 #[cfg(test)]
 mod guard_support; // 住址唯一源（仓根/源码树/测试树）——头注写着它为什么存在
 mod launch;
 mod local_backend_host; // P2s（C8）：本机后端的生命周期（起/停/状态）——命令不能与 IPC 命令清单同模块，理由见该模块头注
 mod local_origin_registry;
 mod logging;
-mod machine_state; // 每台机器的状态成品（连着 · 没连上与原因码 · 版本关系 · 修法），`backend_status` 的 `machine` 一格
-                   // `stop_grace`〔散文墓碑〕删：「请它收尾 → 等 → 强杀」搬进那台机器上的一次性子命令 `--resident-stop`（后端 `control/resident.rs`）。
-                   // `mod messages;` · `mod parser;` · `mod codex_record;`〔散文墓碑〕（记录解析）整族搬进了后端
-                   //   `agents/claudecode/`（`schema` · `parse`）与 `agents/codex/record.rs`：monitor 只把后端给的成品原样转交。
+mod machine_state;
+#[cfg(test)]
+#[path = "../../../../tests/frontend/shell/shots_feature_guard_tests.rs"]
+mod shots_feature_guard; // 截图台架那个无头壳只在台架编译时有（发版构建不带）
+#[cfg(feature = "shots")]
+pub mod shots_shell; // 每台机器的状态成品（连着 · 没连上与原因码 · 版本关系 · 修法），`backend_status` 的 `machine` 一格
+                     // `stop_grace`〔散文墓碑〕删：「请它收尾 → 等 → 强杀」搬进那台机器上的一次性子命令 `--resident-stop`（后端 `control/resident.rs`）。
+                     // `mod messages;` · `mod parser;` · `mod codex_record;`〔散文墓碑〕（记录解析）整族搬进了后端
+                     //   `agents/claudecode/`（`schema` · `parse`）与 `agents/codex/record.rs`：monitor 只把后端给的成品原样转交。
 mod platform; // C10：平台相关的 fs 原语的唯一住址，注入给平台无关的 backend
               // `plugins` 模块（P8a 的 marketplace 只读枚举，`list_plugin_marketplaces`〔散文墓碑〕）删了：
               //   后端 `plugins-marketplaces` 直接出成品，界面经通道问（`src/frontend/ui/settings/plugins-section.ts::fetchSurvey`）。
@@ -681,37 +687,9 @@ pub fn run() {
             //   ↗ 点那一刻现读进程链（`bind.rs`），不缓存会话 ↔ 窗口。
             let bind_registry = bind::BindRegistry::spawn(monitor_data_dir.clone());
 
-            // 会话起停的成品（后端裁：活 / 状态灯 / 可重连 / 已结束 / 清单报完了）由两条流交 `session_book`，
-            //   这里装它的出口：一条有序通道，下面那**一个** emitter 收（本机远端同一个）。
-            //   〔LOC1b 之前这里起 monitor 自己的判活（`SessionMap::load_with_changes`〔散文墓碑〕）；MIG-1 之前是两个 emitter 各自裁。〕
-            let (book_tx, book_rx) = std::sync::mpsc::channel::<session_book::Out>();
-            session_book::install_sink(book_tx);
+            // 重放缓冲那几个出口（会话成品 · tap · 测试连接进度 · 终端画面）：与截图台架的无头壳（`shots_shell`）同一份接线。
+            wire_replay_outlets(&replay);
 
-            // 本机会话内容**不再**由 monitor 自己 watch：它是本机后端的 `line` 帧，
-            // 经 `local_lines` → `stream_source::consume_local` → 与远端同一个 `LineIntake`。
-            // 原来这里起 monitor 自己的 jsonl watcher（`watcher.rs`，已删：第二套游标与 seq）、
-            // 还有那条「会话后到 ⇒ 强制重扫」的兜底通道 —— 后端宣告会话时先 prime、历史走旁路快照，那个竞态不在了。
-
-            // `session_tap` 的出口：本机后端的 `tap` 帧交给会话流的句柄（`EventReplay::on_tap`），
-            //   订了 `session-tap` 的那几条订阅按 credit 收（一条帧路 ＋ `subscribe`，不开裸事件）。
-            {
-                let replay = replay.clone();
-                crate::session_tap::install_sink(move |payload| replay.on_tap(payload));
-            }
-            {
-                let replay = replay.clone();
-                crate::probe_relay::install_sink(move |ticket, cell| {
-                    replay.on_probe(&ticket, cell)
-                });
-            }
-            {
-                // 画面流撤掉 ⇒ 替界面向那台退订（后端那张票的寿命跟着这条流走，重载时界面没人能发）。
-                replay.on_screen_dropped(crate::terminal_screen_relay::unfollow);
-                let replay = replay.clone();
-                crate::terminal_screen_relay::install_sink(move |origin, ticket, cell| {
-                    replay.on_terminal_screen(origin, ticket, cell)
-                });
-            }
             // host key 自动固化 / 各地址不一 ⇒ 经既有的 `remote-health` 告知（机器页据此刷新）。
             {
                 let handle = app.handle().clone();
@@ -738,26 +716,6 @@ pub fn run() {
                     }
                 });
             }
-            // 会话成品的**唯一**出口线程（本机远端同一个）：monitor 自己那几样副作用（拉前绑定）＋
-            //   原样交会话流（`EventReplay::on_lifecycle`：`subscribe(origin, "session-lines")` 里的格，不吃 credit、不丢）。
-            //   不裁决（可重连 / 已结束由那台后端裁）；原先这里是本机 / 远端两个 emitter，各自裁、发 9 个 Tauri 事件。
-            {
-                let replay = replay.clone();
-                let spawned = std::thread::Builder::new()
-                    .name("session-book-emitter".into())
-                    .spawn(move || {
-                        while let Ok(out) = book_rx.recv() {
-                            replay.on_lifecycle(out.origin(), out.frames());
-                        }
-                    });
-                if let Err(e) = spawned {
-                    tracing::error!(
-                        "failed to spawn session-book-emitter thread: {e}; \
-                         会话起停事件将丢失，Tab 不会自动归档 / 新会话可能丢首屏"
-                    );
-                }
-            }
-
             // 远端是在本机那条流之外**额外**的数据源（本地 + 远端会话同时显示）；机器表里每台要连的起一条。
             // 远端那几条流：启动时与之后每次改机器表（`remote_reconcile`）走同一条对齐路。
             if REMOTE_CTX
@@ -1034,6 +992,59 @@ pub(crate) fn remote_health_out(app: tauri::AppHandle) -> stream_source::HealthO
         app.emit(ui_contract::events::REMOTE_HEALTH, payload)
             .map_err(|e| e.to_string())
     })
+}
+
+/// 重放缓冲（[`event_replay::EventReplay`]）收东西的那几个口：会话成品（`session_book` 的出口线程 → `on_lifecycle`）·
+/// 中转抄出来的 tap · 测试连接进度 · 终端画面。产品在 setup 里调一次；截图台架的无头壳（`shots_shell`）也调这一份，不另接一遍。
+pub(crate) fn wire_replay_outlets(replay: &Arc<event_replay::EventReplay>) {
+    // 会话起停的成品（后端裁：活 / 状态灯 / 可重连 / 已结束 / 清单报完了）由两条流交 `session_book`，
+    //   这里装它的出口：一条有序通道，下面那**一个** emitter 收（本机远端同一个）。
+    //   〔LOC1b 之前这里起 monitor 自己的判活（`SessionMap::load_with_changes`〔散文墓碑〕）；MIG-1 之前是两个 emitter 各自裁。〕
+    let (book_tx, book_rx) = std::sync::mpsc::channel::<session_book::Out>();
+    session_book::install_sink(book_tx);
+
+    // 本机会话内容**不再**由 monitor 自己 watch：它是本机后端的 `line` 帧，
+    // 经 `local_lines` → `stream_source::consume_local` → 与远端同一个 `LineIntake`。
+    // 原来这里起 monitor 自己的 jsonl watcher（`watcher.rs`，已删：第二套游标与 seq）、
+    // 还有那条「会话后到 ⇒ 强制重扫」的兜底通道 —— 后端宣告会话时先 prime、历史走旁路快照，那个竞态不在了。
+
+    // `session_tap` 的出口：本机后端的 `tap` 帧交给会话流的句柄（`EventReplay::on_tap`），
+    //   订了 `session-tap` 的那几条订阅按 credit 收（一条帧路 ＋ `subscribe`，不开裸事件）。
+    {
+        let replay = replay.clone();
+        crate::session_tap::install_sink(move |payload| replay.on_tap(payload));
+    }
+    {
+        let replay = replay.clone();
+        crate::probe_relay::install_sink(move |ticket, cell| replay.on_probe(&ticket, cell));
+    }
+    {
+        // 画面流撤掉 ⇒ 替界面向那台退订（后端那张票的寿命跟着这条流走，重载时界面没人能发）。
+        replay.on_screen_dropped(crate::terminal_screen_relay::unfollow);
+        let replay = replay.clone();
+        crate::terminal_screen_relay::install_sink(move |origin, ticket, cell| {
+            replay.on_terminal_screen(origin, ticket, cell)
+        });
+    }
+    // 会话成品的**唯一**出口线程（本机远端同一个）：monitor 自己那几样副作用（拉前绑定）＋
+    //   原样交会话流（`EventReplay::on_lifecycle`：`subscribe(origin, "session-lines")` 里的格，不吃 credit、不丢）。
+    //   不裁决（可重连 / 已结束由那台后端裁）；原先这里是本机 / 远端两个 emitter，各自裁、发 9 个 Tauri 事件。
+    {
+        let replay = replay.clone();
+        let spawned = std::thread::Builder::new()
+            .name("session-book-emitter".into())
+            .spawn(move || {
+                while let Ok(out) = book_rx.recv() {
+                    replay.on_lifecycle(out.origin(), out.frames());
+                }
+            });
+        if let Err(e) = spawned {
+            tracing::error!(
+                "failed to spawn session-book-emitter thread: {e}; \
+                 会话起停事件将丢失，Tab 不会自动归档 / 新会话可能丢首屏"
+            );
+        }
+    }
 }
 
 /// 起远端流要的两样上下文（启动时放进来，热加载时取用）。

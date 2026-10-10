@@ -223,7 +223,9 @@ fn the_absorb_point_hands_back_exactly_the_content_and_lifecycle_frames() {
     for (kind, line) in FRAMES {
         let f = parse_frame(line)
             .unwrap_or_else(|e| panic!("手写的 `{kind}` 帧 parse_frame 解不出来（{e}）：{line}"));
-        if let Some(back) = crate::local_backend::absorb_local_frame(f, None) {
+        if let Some(back) =
+            crate::local_backend::absorb_local_frame(f, None, crate::inbound_client::LOCAL_ORIGIN)
+        {
             // 交回的就是喂进去的那一种（不是别的东西）。
             let same = matches!(
                 (kind, &back),
@@ -405,8 +407,8 @@ fn both_read_loops_hand_content_frames_to_the_local_channel_exactly_once() {
         (
             "stdio 载体（local_backend·rs）",
             &stdio,
-            "crate::local_lines::deliver_blocking(f);",
-            "crate::local_lines::stream_ended_blocking();",
+            "route.out.deliver(f);",
+            "route.out.stream_ended();",
             "crate::local_lines::deliver(",
         ),
         (
@@ -414,7 +416,7 @@ fn both_read_loops_hand_content_frames_to_the_local_channel_exactly_once() {
             &host,
             "crate::local_lines::deliver(f).await;",
             "crate::local_lines::stream_ended().await;",
-            "crate::local_lines::deliver_blocking(",
+            "route.out.deliver(",
         ),
     ] {
         let d = guard_core::find_pinned(src, deliver)
@@ -512,10 +514,19 @@ fn only_remote_snapshots_compensate_with_a_session_ended() {
         compensates_on_cancel(&Origin("devbox".into())),
         "远端快照被撤时不补 ⇒ 已 flush 的那一块把刚归档的远端 tab 见行复活（D-B1 僵尸）"
     );
-    // 消费者给本机收口的名字就是本机那个 origin（否则上面那一格判的不是它）。
-    let prod = crate::guard_support::stream_source_production();
-    guard_core::find_pinned(&prod, "let label = crate::origin::LOCAL.to_string();")
-        .unwrap_or_else(|e| panic!("本机消费者的收口名字不是 `origin::LOCAL`：{e}"));
+    // 产品起本机消费者时给的收口名字就是本机那个 origin（否则上面那一格判的不是它）。
+    let prod: String = guard_core::production_code(include_str!(
+        "../../../src/frontend/shell/src/local_lines.rs"
+    ))
+    .chars()
+    .filter(|c| !c.is_whitespace())
+    .collect();
+    assert_eq!(
+        prod.matches("crate::stream_source::consume_local(crate::origin::LOCAL.to_string(),")
+            .count(),
+        1,
+        "本机消费者的收口名字不是 `origin::LOCAL`"
+    );
 }
 
 // ─── F7 ────────────────────────────────────────────────────────────────────
@@ -640,8 +651,13 @@ fn a_real_backend_feeds_local_lines_through_the_production_read_loop() {
         .expect("起不了后端");
     reap.0.push(child.id());
     let (stdin, stdout) = (child.stdin.take().unwrap(), child.stdout.take().unwrap());
-    let reader =
-        std::thread::spawn(move || crate::local_backend::local_stdio_consumer(stdin, stdout));
+    let reader = std::thread::spawn(move || {
+        crate::local_backend::local_stdio_consumer(
+            &crate::local_backend::StdioRoute::local(),
+            stdin,
+            stdout,
+        )
+    });
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_time()
         .build()
@@ -715,7 +731,7 @@ fn a_real_backend_feeds_local_lines_through_the_production_read_loop() {
     assert_eq!(seq, 2);
     let m = message.expect("后端没给那一行的成品");
     assert!(
-        m.0.get().contains("\"uuid\":\"u2\""),
+        m.0.get().contains("\"id\":\"u2\""),
         "成品不是那一行：{}",
         m.0.get()
     );
@@ -758,7 +774,7 @@ fn the_local_product_core_matches_the_hand_written_table() {
 
     let none = HashSet::new();
     assert_eq!(
-        local_product(&frame(ADD_A), true, &none),
+        local_product(&frame(ADD_A), crate::origin::LOCAL, true, &none),
         Some(In::Live {
             origin: local(),
             sid: "a".into(),
@@ -779,7 +795,7 @@ fn the_local_product_core_matches_the_hand_written_table() {
         })
     );
     assert_eq!(
-        local_product(&frame(STATUS_A), true, &none),
+        local_product(&frame(STATUS_A), crate::origin::LOCAL, true, &none),
         Some(In::Status {
             origin: local(),
             sid: "a".into(),
@@ -790,7 +806,7 @@ fn the_local_product_core_matches_the_hand_written_table() {
         })
     );
     assert_eq!(
-        local_product(&frame(LEFT_A), true, &none),
+        local_product(&frame(LEFT_A), crate::origin::LOCAL, true, &none),
         Some(In::Left {
             origin: local(),
             sid: "a".into(),
@@ -804,34 +820,43 @@ fn the_local_product_core_matches_the_hand_written_table() {
         "去向原样交（后端裁的，连写好的字一起）"
     );
     assert_eq!(
-        local_product(&frame(REM_A), true, &none),
+        local_product(&frame(REM_A), crate::origin::LOCAL, true, &none),
         None,
         "摘除本身只是内容流的边界"
     );
     assert_eq!(
-        local_product(&frame(LISTED), true, &none),
+        local_product(&frame(LISTED), crate::origin::LOCAL, true, &none),
         Some(In::Listed { origin: local() })
     );
     assert_eq!(
-        local_product(&frame(LINE), true, &none),
+        local_product(&frame(LINE), crate::origin::LOCAL, true, &none),
         None,
         "内容行不是起停成品"
     );
     assert_eq!(
-        local_product(&LocalItem::StreamEnded, true, &none),
+        local_product(&LocalItem::StreamEnded, crate::origin::LOCAL, true, &none),
         Some(In::LinkLost { origin: local() })
     );
     // 不显示 bg：bg 的宣告不进；已藏起来的 sid 的灯与去向也不进（同 `local_step` 的藏法）。
-    assert_eq!(local_product(&frame(ADD_B_BG), false, &none), None);
+    assert_eq!(
+        local_product(&frame(ADD_B_BG), crate::origin::LOCAL, false, &none),
+        None
+    );
     assert!(
-        local_product(&frame(ADD_B_BG), true, &none).is_some(),
+        local_product(&frame(ADD_B_BG), crate::origin::LOCAL, true, &none).is_some(),
         "正控：显示 bg 时它进"
     );
     let hidden: HashSet<String> = ["b".to_string()].into_iter().collect();
-    assert_eq!(local_product(&frame(STATUS_B), false, &hidden), None);
-    assert_eq!(local_product(&frame(LEFT_B), false, &hidden), None);
+    assert_eq!(
+        local_product(&frame(STATUS_B), crate::origin::LOCAL, false, &hidden),
+        None
+    );
+    assert_eq!(
+        local_product(&frame(LEFT_B), crate::origin::LOCAL, false, &hidden),
+        None
+    );
     assert!(
-        local_product(&frame(LEFT_B), false, &none).is_some(),
+        local_product(&frame(LEFT_B), crate::origin::LOCAL, false, &none).is_some(),
         "正控：没藏的照进"
     );
 }
@@ -903,6 +928,7 @@ async fn local_quota_and_rotation_pushes_reach_the_ui_subscription() {
     let (tx, rx) = tokio::sync::mpsc::channel::<LocalItem>(16);
     let health: crate::stream_source::HealthOut = std::sync::Arc::new(|_| Ok(()));
     let consumer = tokio::spawn(crate::stream_source::consume_local(
+        crate::origin::LOCAL.to_string(),
         rx,
         replay.clone(),
         health,
@@ -913,7 +939,9 @@ async fn local_quota_and_rotation_pushes_reach_the_ui_subscription() {
         r#"{"kind":"rotation_rules_changed"}"#,
     ] {
         let f = parse_frame(line).expect("手写帧解不出来");
-        if let Some(f) = crate::local_backend::absorb_local_frame(f, None) {
+        if let Some(f) =
+            crate::local_backend::absorb_local_frame(f, None, crate::inbound_client::LOCAL_ORIGIN)
+        {
             tx.send(LocalItem::Frame(f)).await.unwrap();
         }
     }

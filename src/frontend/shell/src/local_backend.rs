@@ -1506,6 +1506,7 @@ pub(crate) const BACKEND_SEP: &str = "--";
 pub(crate) fn absorb_local_frame(
     frame: crate::stream_source::InboundFrame,
     client: Option<&std::sync::Arc<crate::inbound_client::InboundClient>>,
+    origin: &str,
 ) -> Option<crate::stream_source::InboundFrame> {
     use crate::stream_source::InboundFrame;
     match frame {
@@ -1546,14 +1547,12 @@ pub(crate) fn absorb_local_frame(
         // 终端实时预览：本机后端推来的一屏 / 收尾 ⇒ 交订了 `<local>` 上 `terminal-screen/<票>` 的那条订阅（从不阻塞、不进内容通道）。
         InboundFrame::TerminalScreen { ticket, cell }
         | InboundFrame::TerminalFollowEnd { ticket, cell } => crate::terminal_screen_relay::deliver(
-            &crate::origin::Origin::local(),
+            &crate::origin::Origin(origin.to_string()),
             &ticket,
             cell,
         ),
         // 中转住本机常驻后端：它抄出来的 SSE 事件原样转前端（`session_tap::deliver`，从不阻塞、不进内容通道）。
-        InboundFrame::Tap(t) => {
-            crate::session_tap::deliver(crate::inbound_client::LOCAL_ORIGIN, t)
-        }
+        InboundFrame::Tap(t) => crate::session_tap::deliver(origin, t),
         // 内容三种（`session_added` 在上面那一臂记完容器也交回）：交回读循环，送进本机内容通道。
         // 起停另两种（`session_status` 红绿灯 · `sessions_replayed` 清单报完了）也交回：
         //   本机会话的起停改由本机后端的帧来（`session_map` 的本机活会话表），与内容走同一条有序通道 ——
@@ -1587,6 +1586,27 @@ pub(crate) fn absorb_local_frame(
 
 // 本机收割器那三个函数（`local_reaper_state`〔散文墓碑〕· `local_idle_retirements`〔散文墓碑〕· `local_tmux_closed`〔散文墓碑〕）
 //   删了：收割搬进本机后端的会话账本（`src/backend/observe/session_ledger.rs`），与远端同一份。
+
+/// stdio 读循环这一条是哪台、交到哪。产品只有 [`StdioRoute::local`]（本机后端 ⇒ `local_lines` 那一个消费者）；
+/// 截图台架的无头壳（`shots_shell`）每台机器一条，各带自己的通道。
+pub(crate) struct StdioRoute {
+    /// 入方向通道登记在哪个名下、吸收点交 tap / 画面时说哪台。
+    pub origin: String,
+    /// 解不出来的帧进健康信息时说「哪台」那一格。
+    pub place: String,
+    pub out: crate::local_lines::StdioOut,
+}
+
+impl StdioRoute {
+    /// 本机那一条。
+    pub(crate) fn local() -> Self {
+        StdioRoute {
+            origin: crate::inbound_client::LOCAL_ORIGIN.to_string(),
+            place: copy_text("rsLocalBackend.place.thisMachine", &[]),
+            out: crate::local_lines::StdioOut::Local,
+        }
+    }
+}
 
 /// # 诚实边界 10a + 10e：通道**通了**，但没人往里发命令，也没验命令真能执行
 ///
@@ -1625,6 +1645,7 @@ pub(crate) fn absorb_local_frame(
 ///
 /// 逐行读、读完即弃。backend 是持续产帧的，攒任何东西都是无界增长。
 pub(crate) fn local_stdio_consumer(
+    route: &StdioRoute,
     stdin: std::process::ChildStdin,
     stdout: std::process::ChildStdout,
 ) -> ConsumerReport {
@@ -1668,16 +1689,13 @@ pub(crate) fn local_stdio_consumer(
     // 这条载体上跳过了几帧认不出的、几行不是合法 UTF-8 —— 记账，流结束出总账。
     let mut tally = crate::frame_tally::FrameTally::new("本机后端（stdio 载体）");
     // 解不出来的帧每种说一次（日志 ＋ 本机的健康信息）。
-    let mut unread = crate::stream_source::UnreadNotes::new(
-        crate::inbound_client::LOCAL_ORIGIN,
-        copy_text("rsLocalBackend.place.thisMachine", &[]),
-    );
+    let mut unread = crate::stream_source::UnreadNotes::new(&route.origin, route.place.clone());
     loop {
         let line =
             match read_capped_line_sync(&mut rd, crate::stream_source::BACKEND_FRAME_LINE_CAP) {
                 Ok(Some(None)) => {
                     // 超长整行丢了 ⇒ 原位说出来（与远端 / 常驻载体同形：订阅收一格 `Gap`）。
-                    crate::local_lines::line_lost_blocking();
+                    route.out.line_lost();
                     continue;
                 }
                 Ok(Some(Some((l, lossy)))) => {
@@ -1717,8 +1735,8 @@ pub(crate) fn local_stdio_consumer(
         };
         let Some(witness) = witness else {
             // 交回来的内容帧送进本机内容通道 —— 这是裸线程 ⇒ `_blocking` 那一形。
-            if let Some(f) = absorb_local_frame(frame, registered.as_ref()) {
-                crate::local_lines::deliver_blocking(f);
+            if let Some(f) = absorb_local_frame(frame, registered.as_ref(), &route.origin) {
+                route.out.deliver(f);
             }
             continue;
         };
@@ -1735,11 +1753,11 @@ pub(crate) fn local_stdio_consumer(
             .take()
             .expect("上面刚判过 is_some")
             .into_client(witness);
-        crate::inbound_client::register(crate::inbound_client::LOCAL_ORIGIN, client.clone());
+        crate::inbound_client::register(&route.origin, client.clone());
         registered = Some(client);
         tracing::info!(
             "本机入方向通道已登记：origin={} build_id={build_id} commands={commands:?}",
-            crate::inbound_client::LOCAL_ORIGIN
+            route.origin
         );
     }
 
@@ -1750,7 +1768,7 @@ pub(crate) fn local_stdio_consumer(
         crate::sftp_pool::fail_owned_by(mine, &copy_text("rsLocalBackend.stdio.broken", &[]));
     }
     // 告诉本机内容消费者这条流结束了（冲掉残批、下一条流换新的收口）。
-    crate::local_lines::stream_ended_blocking();
+    route.out.stream_ended();
     // ★ `K-P3b`：**「它跟我们说过话没有」的唯一变真处就是上面那一行 `registered = Some(client)`**
     //   —— 而那一行只在 `BackendHello::from_hello_frame` 给出见证之后才跑得到。
     //   ⇒ 这一维是**观测**，不是默认值：把它在这里读一次，别在别处猜。
@@ -1761,7 +1779,7 @@ pub(crate) fn local_stdio_consumer(
     };
     // 流结束 ⇒ 摘掉登记，别在表里留一个写不进去的 client。
     if let Some(mine) = registered {
-        crate::inbound_client::unregister(crate::inbound_client::LOCAL_ORIGIN, &mine);
+        crate::inbound_client::unregister(&route.origin, &mine);
     }
     // 流结束时清本机 tmux 原文那一步（`forget_tmux_raw`〔散文墓碑〕）随那本账一起删了：monitor 不再存 tmux 快照，
     //   本机的成品由 `consume_local` 收到流断那一件时整份作废（`session_book::In::LinkLost`）。
@@ -1800,7 +1818,7 @@ fn local_stdio_consumer_guarded(
     stdout: std::process::ChildStdout,
 ) -> ConsumerReport {
     let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
-        local_stdio_consumer(stdin, stdout)
+        local_stdio_consumer(&StdioRoute::local(), stdin, stdout)
     }));
     if let Ok(report) = r {
         return report;

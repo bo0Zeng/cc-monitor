@@ -895,7 +895,11 @@ fn attach_stream(sock: own_chan::BlockingStream, hello_line: &str) -> Result<(),
             // 本机的 tmux 帧（`P3` 刀 1）·应答 · 链路帧 —— 与 stdio 那条载体**同一个吸收点**，
             // 理由与前置条件写在 `local_backend::absorb_local_frame` 的头注上，这里不再抄一份散文。
             // 交回来的内容帧送进本机内容通道 —— 这是 tokio 任务 ⇒ `.await` 那一形（满了就停读：级 1 回推）。
-            if let Some(f) = crate::local_backend::absorb_local_frame(f, Some(&client)) {
+            if let Some(f) = crate::local_backend::absorb_local_frame(
+                f,
+                Some(&client),
+                crate::inbound_client::LOCAL_ORIGIN,
+            ) {
                 crate::local_lines::deliver(f).await;
             }
         }

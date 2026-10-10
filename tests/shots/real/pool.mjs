@@ -1,18 +1,22 @@
 /**
  * 截图台架的真后端池：每个场景一屋子盘上原始格式的家目录（页里交来的 `DiskWorld`），每台机器一个真后端进程（stdio 载体），
- * 页里的帧命令经 vite 的这两个口原样问它。成品（额度行 · 时刻字 · 状态字 …）一律是真后端算的，台架不写。
+ * 前面站着壳的真代码（无头壳 `ccm-shots-shell`：`src/frontend/shell/src/shots_shell.rs`，本机那条读循环 → 会话账 → 重放缓冲 → 通道交格）。
+ * 页里的帧命令与订阅经 vite 的这几个口原样交给无头壳。成品（额度行 · 时刻字 · 状态字 · 拒答的复制详情 …）一律是真后端与壳算的，台架不写。
  *
- *   POST /__ccm/world  {key, machines: {<origin>: {files: {<相对家目录的路径>: <内容>}}}}  ⇒ 造好家目录、起后端、读到 hello 再答
- *   POST /__ccm/call   {key, origin, op, args}                                             ⇒ 那台后端的应答帧原样
+ *   POST /__ccm/world  {key, machines: {<origin>: {files: {<相对家目录的路径>: <内容>}}}}  ⇒ 造好家目录、起无头壳与各台后端、全部握上手再答
+ *   POST /__ccm/call   {key, origin, op, args}                ⇒ 壳 `chan_call` 那一跳的结局：`{ok:true, body}` / `{ok:false, fail:{err, body, detail}}`
+ *   POST /__ccm/sub    {key, id, origin, kind, want} · /__ccm/want {key, id, more} · /__ccm/stop {key, id} · /__ccm/ready {key, priority_sid}
+ *   GET  /__ccm/items?key=…                                  ⇒ 事件流（SSE）：一格一条 `{sub, items}`，同壳交给页的 `chan-items` 事件体
  *
  *   世界里的 `warm`（quota-warm 在跑）：同样配一个替身进程，写 `.cc-monitor/quota-warm.json` 带它的 pid。
  *   世界里的 `live`（活会话）：每个配一个 `sleep` 进程当 claude 的替身，写 `.claude/sessions/<pid>.json`（带 `procStart`，判活照真的那一套）。
  *
  * 隔离：每台后端跑在 bwrap 里 —— 家目录挂成 `/home/user`（界面上看到的路径与机器无关）、断网（`--unshare-net`）、主机名 `shots`、
  * `/tmp` 是空的；白名单环境（PATH · HOME · LANG · TZ · TMUX_TMPDIR · XDG_RUNTIME_DIR 都指沙箱）；不起 claude、不碰用户的 tmux。
- * 后端二进制：`CCM_SHOTS_BACKEND`，不给就用本树 `.build/backend/debug/cc-monitor-backend`（`run.mjs` 起 vite 前先编好）。
+ * 后端二进制：`CCM_SHOTS_BACKEND`，不给就用本树 `.build/backend/debug/cc-monitor-backend`；无头壳：本树 `.build/shell/debug/examples/ccm-shots-shell`
+ * （两样都由 [`buildBins`] 编：`run.mjs` 起 vite 前调；无头壳只在特性 `shots` 下编，发版构建里没有它）。
  */
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { createInterface } from "node:readline";
@@ -20,23 +24,41 @@ import { createInterface } from "node:readline";
 /** 同时留着的世界数（截图是一页一页串着截的；多留几份给预热页与下一页交接）。 */
 const KEEP = 4;
 
+/** 无头壳那一份：壳的包里一个只在特性 `shots` 下编的例子（判据 `tests/frontend/shell/shots_feature_guard_tests.rs`）。 */
+const SHELL_EXAMPLE = "ccm-shots-shell";
+
+/**
+ * 编真后端与无头壳（增量编）。`env` 是编译用的环境（要真 HOME 找工具链，别的已摘）。回失败的那一句，成了回 `null`。
+ * 外面给了 `CCM_SHOTS_BACKEND` 就不编后端。
+ */
+export function buildBins({ repo, env }) {
+  const jobs = { ...env, CARGO_BUILD_JOBS: env.CARGO_BUILD_JOBS ?? "4" };
+  if (!process.env.CCM_SHOTS_BACKEND) {
+    const b = spawnSync("cargo", ["build", "--quiet"], { cwd: path.join(repo, "src/backend"), env: jobs, stdio: ["ignore", "inherit", "inherit"] });
+    if (b.status !== 0) return `真后端没编出来（cargo 退出码 ${b.status}）`;
+  }
+  const s = spawnSync("cargo", ["build", "--quiet", "--features", "shots", "--example", SHELL_EXAMPLE], { cwd: path.join(repo, "src/frontend/shell"), env: jobs, stdio: ["ignore", "inherit", "inherit"] });
+  if (s.status !== 0) return `无头壳没编出来（cargo 退出码 ${s.status}）`;
+  return null;
+}
+
 export function backendPool({ repo, sandbox }) {
   const bin = process.env.CCM_SHOTS_BACKEND ?? path.join(repo, ".build/backend/debug/cc-monitor-backend");
+  const shellBin = path.join(repo, ".build/shell/debug/examples", SHELL_EXAMPLE);
   const worlds = new Map();
 
   function kill(key) {
     const w = worlds.get(key);
     if (!w) return;
     worlds.delete(key);
-    for (const m of w.machines.values()) {
-      for (const pid of [-m.child.pid, ...m.child.sleepers.map((c) => c.pid)]) {
-        try {
-          process.kill(pid, "SIGKILL");
-        } catch {
-          // 已经退了
-        }
+    for (const pid of [-w.shell.pid, ...w.sleepers.map((c) => c.pid)]) {
+      try {
+        process.kill(pid, "SIGKILL");
+      } catch {
+        // 已经退了
       }
     }
+    for (const res of w.listeners) res.end();
     rmSync(w.dir, { recursive: true, force: true });
   }
 
@@ -93,17 +115,27 @@ export function backendPool({ repo, sandbox }) {
       ...Object.entries(env).flatMap(([k, v]) => ["--setenv", k, v]),
       "/tmp/ccm-shots/cc-monitor-backend", "--", "--stream", "--tail-only", "--with-bg", "--with-pid",
     ];
-    // 自成一个进程组：收场时整组杀（bwrap 先死时 `--die-with-parent` 不一定带得走后端）。
-    const child = spawn("bwrap", box, { detached: true, env: { PATH: "/usr/bin:/bin" }, stdio: ["pipe", "pipe", process.env.CCM_SHOTS_DEBUG ? "inherit" : "ignore"] });
-    child.sleepers = sleepers;
-    const waiting = new Map();
-    let nid = 0;
-    const hello = new Promise((resolve, reject) => {
+    // 每台一条整命令（沙箱 ＋ 后端），交给无头壳去起（它拿着各台的标准输入输出，就像壳拿着本机后端那一条）。
+    return { argv: ["bwrap", ...box], sleepers };
+  }
+
+  /** 无头壳：一行一个 JSON 进出（`shots_shell.rs` 头注）。 */
+  function startShell(dir, w) {
+    // 自成一个进程组：收场时整组杀（各台后端是它的子进程）。
+    const child = spawn(shellBin, [], {
+      detached: true,
+      cwd: dir,
+      env: { PATH: "/usr/bin:/bin", HOME: path.join(dir, "shell-home"), LANG: "C.UTF-8", ...(process.env.TZ ? { TZ: process.env.TZ } : {}) },
+      stdio: ["pipe", "pipe", process.env.CCM_SHOTS_DEBUG ? "inherit" : "ignore"],
+    });
+    const replies = new Map();
+    let n = 0;
+    const up = new Promise((resolve, reject) => {
       child.on("error", reject);
       child.on("exit", (code) => {
-        reject(new Error(`${origin} 的后端退了（${code}）`));
-        for (const w of waiting.values()) w({ kind: "reply", ok: false, code: "shots_backend_gone", message: `后端退了（${code}）`, detail: "" });
-        waiting.clear();
+        reject(new Error(`无头壳退了（${code}）`));
+        for (const r of replies.values()) r({ ok: false, fail: { err: { Ours: "Broken" }, body: [], detail: `无头壳退了（${code}）` } });
+        replies.clear();
       });
       createInterface({ input: child.stdout, crlfDelay: Infinity }).on("line", (line) => {
         let f;
@@ -112,43 +144,66 @@ export function backendPool({ repo, sandbox }) {
         } catch {
           return;
         }
-        if (f.kind === "hello") resolve(f);
-        if (f.kind === "reply" && waiting.has(f.id)) {
-          const w = waiting.get(f.id);
-          waiting.delete(f.id);
-          w(f);
+        if (f.t === "up") resolve();
+        else if (f.t === "reply" && replies.has(f.n)) {
+          const r = replies.get(f.n);
+          replies.delete(f.n);
+          r(f);
+        } else if (f.t === "items") {
+          const msg = `data: ${JSON.stringify({ sub: f.sub, items: f.items })}\n\n`;
+          if (w.listeners.length === 0) w.backlog.push(msg);
+          for (const res of w.listeners) res.write(msg);
         }
       });
     });
-    const call = (cmd, args) =>
+    const send = (cmd) => child.stdin.write(JSON.stringify(cmd) + "\n");
+    const call = (origin, op, args) =>
       new Promise((resolve) => {
-        const id = `s${++nid}`;
-        waiting.set(id, resolve);
-        child.stdin.write(JSON.stringify({ id, cmd, args: args ?? null, within_ms: 30_000 }) + "\n");
+        const id = ++n;
+        replies.set(id, resolve);
+        send({ t: "call", n: id, origin, op, payload: JSON.stringify(args ?? {}), left_ms: 30_000 });
       });
-    return { child, hello, call };
+    return { child, up, send, call };
   }
 
   async function makeWorld(body) {
     if (!existsSync(bin)) throw new Error(`真后端二进制不在：${bin}（先 cd src/backend && cargo build）`);
+    if (!existsSync(shellBin)) throw new Error(`无头壳不在：${shellBin}（先 cd src/frontend/shell && cargo build --features shots --example ${SHELL_EXAMPLE}）`);
     const { key, machines } = body;
     kill(key);
     const dir = path.join(sandbox, "worlds", key.replace(/[^A-Za-z0-9_.-]/g, "_"));
     rmSync(dir, { recursive: true, force: true });
-    const w = { dir, machines: new Map() };
+    mkdirSync(path.join(dir, "shell-home"), { recursive: true });
+    const w = { dir, sleepers: [], listeners: [], backlog: [], shell: null };
     worlds.set(key, w);
-    Object.entries(machines).forEach(([origin, m], i) => {
-      w.machines.set(origin, start(path.join(dir, `m${i}`), origin, m));
+    const list = Object.entries(machines).map(([origin, m], i) => {
+      const { argv, sleepers } = start(path.join(dir, `m${i}`), origin, m);
+      w.sleepers.push(...sleepers);
+      return { origin, argv };
     });
-    await Promise.all([...w.machines.values()].map((m) => m.hello));
+    const sh = startShell(dir, w);
+    w.shell = sh.child;
+    w.sh = sh;
+    sh.send({ t: "machines", machines: list });
+    await sh.up;
     while (worlds.size > KEEP) kill(worlds.keys().next().value);
   }
 
   async function call(body) {
     const w = worlds.get(body.key);
-    const m = w?.machines.get(body.origin);
-    if (!m) return { kind: "reply", ok: false, code: "shots_no_world", message: `没有这台：${body.origin}`, detail: "" };
-    return m.call(body.op, body.args);
+    if (!w) return { ok: false, fail: { err: { Ours: "Misuse" }, body: [], detail: `没有这个世界：${body.key}` } };
+    return w.sh.call(body.origin, body.op, body.args);
+  }
+
+  /** 页里的订阅那几样原样交给无头壳（窗口只有一扇）。 */
+  function tell(url, body) {
+    const w = worlds.get(body.key);
+    if (!w) return;
+    if (url === "/__ccm/sub") w.sh.send({ t: "sub", id: body.id, origin: body.origin, kind: body.kind, want: body.want });
+    else if (url === "/__ccm/want") w.sh.send({ t: "want", id: body.id, more: body.more });
+    else if (url === "/__ccm/stop") w.sh.send({ t: "stop", id: body.id });
+    else if (url === "/__ccm/ready") w.sh.send({ t: "ready", priority_sid: body.priority_sid ?? null });
+    else if (url === "/__ccm/kill") w.sh.send({ t: "kill", origin: body.origin });
   }
 
   const readBody = (req) =>
@@ -160,11 +215,29 @@ export function backendPool({ repo, sandbox }) {
       req.on("error", reject);
     });
 
+  const TELL = new Set(["/__ccm/sub", "/__ccm/want", "/__ccm/stop", "/__ccm/ready", "/__ccm/kill"]);
+
   async function serve(req, res, next) {
-    if (req.method !== "POST" || !(req.url === "/__ccm/world" || req.url === "/__ccm/call")) return next();
+    if (req.method === "GET" && req.url?.startsWith("/__ccm/items?")) {
+      const w = worlds.get(new URL(req.url, "http://x").searchParams.get("key"));
+      if (!w) {
+        res.statusCode = 404;
+        return res.end();
+      }
+      res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive" });
+      res.write(":\n\n");
+      for (const msg of w.backlog.splice(0)) res.write(msg);
+      w.listeners.push(res);
+      req.on("close", () => (w.listeners = w.listeners.filter((x) => x !== res)));
+      return;
+    }
+    if (req.method !== "POST" || !(req.url === "/__ccm/world" || req.url === "/__ccm/call" || TELL.has(req.url))) return next();
     try {
       const body = JSON.parse(await readBody(req));
-      const out = req.url === "/__ccm/world" ? (await makeWorld(body), { ok: true }) : await call(body);
+      let out = { ok: true };
+      if (req.url === "/__ccm/world") await makeWorld(body);
+      else if (req.url === "/__ccm/call") out = await call(body);
+      else tell(req.url, body);
       res.setHeader("content-type", "application/json");
       res.end(JSON.stringify(out));
     } catch (e) {
