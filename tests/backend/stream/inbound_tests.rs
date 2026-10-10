@@ -396,6 +396,7 @@ fn req(id: &str, cmd: &str) -> Request {
         args: serde_json::Value::Null,
         within_ms: None,
         view: serde_json::Value::Null,
+        tz: Default::default(),
         until: None,
     }
 }

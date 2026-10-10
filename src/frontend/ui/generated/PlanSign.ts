@@ -11,6 +11,6 @@ export type PlanSign = {
  */
 at: string | null, 
 /**
- * 那一刻写成给人看的字（那台本地钟）；读不出时刻 ⇒ 没有。
+ * 那一刻写成给人看的字（按看的那一台的时区）；读不出时刻 ⇒ 没有。
  */
 atText?: string, by: PlanWho | null, reason: string | null, refs: Array<PlanRef>, };

@@ -187,6 +187,7 @@ async function openNight(el: HTMLElement): Promise<HTMLElement> {
 const saved = (rot: Rotation, p: Partial<RuleRow> = {}) => ({
   state: "saved",
   rule: { ...NIGHT, rotation: rot, rev: NIGHT.rev + 1, ...p },
+  savedAtText: "04:30",
 });
 
 beforeEach(() => {
@@ -278,8 +279,8 @@ describe("规则编辑器 · 每格改完即存", () => {
         },
       ],
     ]);
-    expect(editor()!.querySelector("[data-ed-saved]")!.textContent).toMatch(
-      /^已存 \d\d:\d\d/,
+    expect(editor()!.querySelector("[data-ed-saved]")!.textContent, "钟面照抄后端写好的那一格（界面不读钟）").toMatch(
+      /^已存 04:30/,
     );
     expect(editor()!.querySelector("[data-ed-impact]")!.textContent).toBe(
       copyText("rot.ed.impact", { n: 2 }),

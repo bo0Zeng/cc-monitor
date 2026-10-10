@@ -35,7 +35,7 @@
 import { readTurns, type TurnSummary, type TurnsResult, type TurnSpan } from "./session-reads";
 import type { Origin } from "./ipc/origin";
 import { copyText } from "./copy-table";
-import { fmtStepDur } from "./cards/step-line";
+import { clockNow } from "./duration-format";
 import { foldCaret } from "./kit/fold";
 import { spinner } from "./kit/progress";
 import { statusDot } from "./kit/status-dot";
@@ -610,8 +610,7 @@ function lastHeadIn(gap: HTMLElement, heads: readonly Head[]): string | null | u
 
 /** 右端那一截：后端写好的字，`{dur}` 填用时（`to` 缺 ⇒ 到 `now`）。 */
 export function fillDur(span: TurnSpan, now: number): string {
-  if (!span.text.includes("{dur}") || span.from === null) return span.text;
-  return span.text.replace("{dur}", fmtStepDur((span.to ?? now) - span.from));
+  return span.from === null ? span.text : clockNow({ text: span.text, from: span.from, to: span.to }, now);
 }
 
 /** 每条过程行上一次画的是什么（`paintLine` 据此跳过没变的）。 */

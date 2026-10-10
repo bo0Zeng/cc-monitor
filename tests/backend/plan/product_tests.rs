@@ -211,14 +211,14 @@ fn time_fields_get_their_text_beside_them_and_cell_ids_do_not() {
             "cells": [{"signs": [{"at": "2026-01-02T00:00:00Z"}], "returned": {"at": now - 3_600_000}}]
         }]
     });
-    with_time_texts(&mut v, now, 0);
+    with_time_texts(&mut v, now, &Default::default());
     assert_eq!(v["readAtText"], "03:09");
     assert_eq!(v["stale"]["sinceText"], "01-01 03:10");
     assert_eq!(v["slices"][0]["cells"][0]["signs"][0]["atText"], "00:00");
     assert_eq!(v["slices"][0]["cells"][0]["returned"]["atText"], "02:10");
     assert!(v["slices"][0]["blocks"][0].get("atText").is_none());
-    // 时区偏移照算（东八区）。
+    // 按看的那一台的时区（东八区）。
     let mut w = serde_json::json!({"readAt": now});
-    with_time_texts(&mut w, now, 480);
+    with_time_texts(&mut w, now, &crate::Tz::named("Asia/Shanghai").unwrap());
     assert_eq!(w["readAtText"], "11:10");
 }

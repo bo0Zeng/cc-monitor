@@ -1,7 +1,7 @@
 //! **通用记录**：线上「这一行在界面里是什么」的那一形（两个前端共吃的契约面）。各家的盘上格式只住它自己的适配层，
 //! 适配层把一行翻成这里的 [`Record`]；通用层与界面只认它（字段名不带任何一家的写法）。
 //!
-//! 公共四格 ＋ 时刻字：`agent`（哪一家）· `id`（会话内非空、唯一）· `at`（记录时刻）· `timeText`（这台本地钟的 `HH:MM`，界面照抄）· `t`（哪一类）。
+//! 公共四格 ＋ 时刻字：`agent`（哪一家）· `id`（会话内非空、唯一）· `at`（记录时刻）· `timeText`（看的那一台钟上的 `HH:MM`，出口那一下写，界面照抄）· `t`（哪一类）。
 //! `t` 的闭集：`said`（人那一侧说的）· `reply`（代理的回复）· `retry`（一次要重试的上游失败）· `title`（会话标题）· `queued`（插进正在跑那一轮的一句）·
 //! `unread`（这一家的这一行适配层认不出：写好的一句 ＋ 原文摘录）。
 //! 内容块 [`Block`] 是两家共有的词：正文 · 推理 · 工具调用 · 工具结果 · 图片。
@@ -33,13 +33,33 @@ pub struct Record {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional))]
     pub at: Option<String>,
-    /// `at` 在这台本地钟上的钟面 `HH:MM`（界面照抄、不换算）；没有时刻 / 解不出 ⇒ 缺。
+    /// `at` 在看的那一台钟上的钟面 `HH:MM`（出口那一下按请求 / 流带来的时区写，[`Record::stamp`]；界面照抄、不换算）；没有时刻 / 解不出 ⇒ 缺。
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional, as = "Option<String>"))]
     pub time_text: Option<crate::common::cells::Words>,
+    /// `at` 的毫秒（自 1970；出口那一下随钟面一起写）：界面算「两条记录之间多久」只用这一格（交那一个读口），不自己解析 `at`；解不出 ⇒ 缺。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional, type = "number"))]
+    pub at_ms: Option<i64>,
     /// 哪一类与它自己的格。
     #[serde(flatten)]
     pub body: Body,
+}
+
+impl Record {
+    /// 出口那一下（推 `line` 帧 · 回按页读的那几条）按看的那一台的时区写钟面：`timeText` ＝ `at` 的 `HH:MM`。
+    /// 解析那一层不写它：同一份记录可能推给几个时区不同的看的人。
+    pub(crate) fn stamp(&mut self, tz: &crate::common::time::Tz) {
+        self.at_ms = self
+            .at
+            .as_deref()
+            .and_then(crate::common::time::parse_iso8601_ms);
+        self.time_text = self
+            .at
+            .as_deref()
+            .and_then(|a| crate::common::time::iso_hm(a, tz))
+            .map(crate::common::cells::Words);
+    }
 }
 
 /// [`Record`] 的类别（`t`）与各自的格。
@@ -295,7 +315,7 @@ impl TypedTimes {
     /// 表的上界（条数）。
     pub(crate) const CAP: usize = 200;
 
-    /// 这一行过一遍表：打字那一刻 ⇒ 记下；被插进那一轮的那一条 ⇒ `at` / `timeText` 换成打字时刻（配不上 ⇒ 原样）。
+    /// 这一行过一遍表：打字那一刻 ⇒ 记下；被插进那一轮的那一条 ⇒ `at` 换成打字时刻（钟面随它，出口那一下写）（配不上 ⇒ 原样）。
     pub(crate) fn pass(&mut self, t: &mut super::Translated) {
         match &t.queue {
             Some(super::QueueMark::Typed { text, at }) => {
@@ -308,8 +328,6 @@ impl TypedTimes {
             Some(super::QueueMark::Taken { text }) => {
                 let typed = self.seen.iter().rev().find(|(k, _)| k == text);
                 if let (Some((_, at)), Some(r)) = (typed, t.record.as_mut()) {
-                    r.time_text =
-                        crate::common::time::iso_hm_here(at).map(crate::common::cells::Words);
                     r.at = Some(at.clone());
                 }
             }

@@ -14,7 +14,7 @@ fn claude() -> RecordFace {
 
 /// 从文件头读的那一种读法（没有往回看的那一段）。
 fn rd(face: &RecordFace) -> Reader<'_> {
-    Reader::new(face, 0, &[])
+    Reader::new(face, 0, &[], Default::default())
 }
 
 const USER: &str = r#"{"type":"user","uuid":"u1","timestamp":"t","cwd":"/w","message":{"role":"user","content":"q"}}"#;
@@ -324,12 +324,12 @@ fn a_queued_line_carries_the_moment_it_was_typed() {
     // 打字那一行在这一页之前：往回看的那一段交进来就配得上。
     let lead = format!("{{\"torn\": 1}}\n{ENQ}\n");
     let tail = format!("{REM}\n");
-    let mut r = Reader::new(&face, 40, lead.as_bytes());
+    let mut r = Reader::new(&face, 40, lead.as_bytes(), Default::default());
     let (lines, _) = record_lines_of_page(&mut r, at, 9, 40 + lead.len() as u64, tail.as_bytes());
     assert_eq!(queued_at(&lines), ["2026-01-02T03:00:00.000Z"]);
     let (rows_with, rows_without) = (
         rows_v(
-            &mut Reader::new(&face, 40, lead.as_bytes()),
+            &mut Reader::new(&face, 40, lead.as_bytes(), Default::default()),
             99,
             tail.as_bytes(),
         ),

@@ -67,7 +67,8 @@ import {
 } from "./tab-session-actions";
 import { frontView, type FrontAct, type FrontResult, type FrontView } from "./front-result";
 import { updateBackendOf } from "./backend-deploy";
-import { waitedNow, paintWaiting } from "./cards/step-line";
+import { paintWaiting } from "./cards/step-line";
+import { waitedNow } from "./duration-format";
 import { machineName } from "./control-said";
 import { closeFrontResult, flashFrontDone, setFrontBusy, showFrontResult } from "./front-pop";
 import { CHANNEL_ACTS, LaunchSlots, type SlotSpec } from "./launch-slot";

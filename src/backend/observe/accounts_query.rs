@@ -1065,7 +1065,8 @@ pub(crate) fn trust_cli(
 }
 
 /// 查询模式入口。返回进程退出码（0 ok / 2 err），同 `history_query::run` 约定。
-pub fn run(agent_home: &Path, args: &[String]) -> i32 {
+/// `tz` ＝ 看的那一台的时区（`--tz`）：失败详情那一行时刻按它填。
+pub fn run(agent_home: &Path, args: &[String], tz: &crate::Tz) -> i32 {
     let accts_dir = resolve_accts_dir();
     match args.first().map(String::as_str) {
         Some("--list-accounts") => {
@@ -1086,7 +1087,7 @@ pub fn run(agent_home: &Path, args: &[String]) -> i32 {
                 println!("{line}");
                 0
             }
-            Err(f) => f.emit(),
+            Err(f) => f.emit(tz),
         },
         other => {
             eprintln!("cc-monitor-backend accounts error: unknown argument: {other:?}");

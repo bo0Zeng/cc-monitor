@@ -413,11 +413,19 @@ fn read_handshake_line(mut sock: &own_chan::BlockingStream) -> Result<String, Sa
     }
 }
 
+/// attach 行：「我要流」＋ 看的这一台的时区（同远端那一条 `remote_resident::attach_line` 的 `tz`；`None` ⇒ 不带，后端按 UTC 写推来的钟面）。
+pub(crate) fn attach_line(tz: Option<&str>) -> String {
+    match tz {
+        Some(tz) => format!("{}\n", serde_json::json!({ "attach": true, "tz": tz })),
+        None => "{\"attach\":true}\n".to_string(),
+    }
+}
+
 /// 交 attach 行，换一句「可以」。门在连上那一刻（套接字只给本人 ＋ 对端 uid），这一行只是「我要流」。
 fn send_attach(sock: &own_chan::BlockingStream) -> Result<(), Said> {
     use std::io::Write;
     let mut w = sock;
-    w.write_all(b"{\"attach\":true}\n")
+    w.write_all(attach_line(host_core::viewer_tz().as_deref()).as_bytes())
         .and_then(|()| w.flush())
         .map_err(|e| {
             Said::with_raw(

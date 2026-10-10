@@ -926,7 +926,7 @@ describe("账号面板 · 规则（来源下拉 · 用规则时只读 · 本会�
       name: "夜间2",
       isDefault: false,
     };
-    saveRule.mockResolvedValueOnce({ state: "saved", rule });
+    saveRule.mockResolvedValueOnce({ state: "saved", rule, savedAtText: "04:30" });
     input.value = "夜间2";
     [...pop().querySelectorAll<HTMLButtonElement>("button")]
       .find((b) => b.textContent === copyText("rot.save.ok"))!

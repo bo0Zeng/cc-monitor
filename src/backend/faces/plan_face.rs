@@ -101,13 +101,20 @@ fn review_now() -> crate::plan::review::Review {
     crate::plan::review::current(crate::plan::review::review_path().as_deref())
 }
 
-/// 给本子出的成品标上认可 · 要你看的数 · 退回的状态（每次答之前现读那份记录，本子里存的是没标的）。
-/// 时刻也在这里写成给人看的字（这台此刻的本地钟）。
-pub(crate) fn annotated(mut doc: Value) -> Value {
+/// 给本子出的成品标上认可 · 要你看的数 · 退回的状态（每次答之前现读那份记录，本子里存的是没标的）。不写时刻的字（[`annotated`] 写）。
+pub(crate) fn marked(mut doc: Value) -> Value {
     review_now().annotate(&mut doc);
-    let now = now_ms();
-    let tz_min = crate::platform::local_tz::offset_secs(now / 1000).unwrap_or(0) / 60;
-    crate::plan::product::with_time_texts(&mut doc, i64::try_from(now).unwrap_or(i64::MAX), tz_min);
+    doc
+}
+
+/// [`marked`] ＋ 时刻写成给人看的字（按请求带来的看的那一台的时区）：要交出去的那一份走它。
+pub(crate) fn annotated(doc: Value, tz: &crate::Tz) -> Value {
+    let mut doc = marked(doc);
+    crate::plan::product::with_time_texts(
+        &mut doc,
+        i64::try_from(now_ms()).unwrap_or(i64::MAX),
+        tz,
+    );
     doc
 }
 
@@ -144,7 +151,7 @@ fn arm(entry: &Path, ws: &Path) {
     });
     let last = book::book()
         .last(&ws.to_string_lossy())
-        .map(annotated)
+        .map(marked)
         .as_ref()
         .and_then(seen_of);
     watch::arm(ws, last, reread);
@@ -159,9 +166,11 @@ pub(crate) fn seen_of(v: &Value) -> Option<watch::Seen> {
 }
 
 /// 现读一个工作区（起 pb）并标好；计划审面送退回之前用它拿此刻的接手与状态。
-pub(crate) fn read_fresh(ws: &str) -> Result<Value, Fail> {
+pub(crate) fn read_fresh(ws: &str, tz: &crate::Tz) -> Result<Value, Fail> {
     let entry = entry()?;
-    read_dir(&entry, Path::new(ws)).map(annotated).map_err(miss)
+    read_dir(&entry, Path::new(ws))
+        .map(|d| annotated(d, tz))
+        .map_err(miss)
 }
 
 /// 出口过一遍线上类型（[`crate::plan::wire::checked`]）；对不上是拼的那一侧的错 ⇒ `failed`。
@@ -182,15 +191,16 @@ fn miss(m: book::Miss) -> Fail {
 }
 
 /// 帧面入口：命令名从 `r.cmd` 来。
-pub(crate) fn answer(cmd: &str, args: &Value) -> Answer {
+/// `tz` ＝ 看的那一台的时区（请求信封带来的）：成品里的时刻字按它写。
+pub(crate) fn answer(cmd: &str, args: &Value, tz: &crate::Tz) -> Answer {
     match cmd {
-        "plan-list" => list(args),
+        "plan-list" => list(args, tz),
         "plan-read" => {
             let ws = args
                 .get("workspace")
                 .and_then(Value::as_str)
                 .ok_or_else(|| bad("missing `workspace` (a string)"))?;
-            read_fresh(ws).and_then(wired::<wire::PlanRead>)
+            read_fresh(ws, tz).and_then(wired::<wire::PlanRead>)
         }
         "plan-cell-view" => {
             let get = |k: &str| {
@@ -205,7 +215,7 @@ pub(crate) fn answer(cmd: &str, args: &Value) -> Answer {
                 .ok_or_else(|| Fail::new("no_view", copy_text("bePlan.face.noView", &[])))
         }
         "plan-command" => command(args),
-        "plan-files" => files(args),
+        "plan-files" => files(args, tz),
         other => Err(Fail::new(
             "bad_args",
             crate::common::contract::malformed(&format!("unknown command `{other}`")),
@@ -233,7 +243,7 @@ fn command(args: &Value) -> Answer {
 
 /// `plan-files {dir}`：文件窗口反查（稿 06）。只看读好过的工作区（主窗口与需手动的账起来就问过 `plan-list`）——
 /// 不为文件窗口走到的每个目录起一次 pb；目录在最深的那个工作区里才算。不在任何一片的仓库里 ⇒ `slice: null`（文件窗口什么都不多）。
-fn files(args: &Value) -> Answer {
+fn files(args: &Value, tz: &crate::Tz) -> Answer {
     let dir = args
         .get("dir")
         .and_then(Value::as_str)
@@ -248,7 +258,9 @@ fn files(args: &Value) -> Answer {
                 .is_some_and(|r| r.is_empty() || r.starts_with('/'))
         })
         .max_by_key(String::len);
-    let doc = ws.and_then(|w| b.last(w.as_str())).map(annotated);
+    let doc = ws
+        .and_then(|w| b.last(w.as_str()))
+        .map(|d| annotated(d, tz));
     let out = match doc {
         Some(d) => crate::plan::owners::of_dir(&d, dir),
         None => {
@@ -258,7 +270,7 @@ fn files(args: &Value) -> Answer {
     wired::<wire::PlanFiles>(out)
 }
 
-fn list(args: &Value) -> Answer {
+fn list(args: &Value, tz: &crate::Tz) -> Answer {
     let fresh = args.get("fresh").and_then(Value::as_bool).unwrap_or(false);
     let mut dirs: Vec<String> =
         crate::observe::accounts_query::live_cwds(&crate::observe::history_query::agent_home());
@@ -303,7 +315,7 @@ fn list(args: &Value) -> Answer {
             Some(v) => Ok(v),
             None => read_dir(&entry, dir),
         };
-        match got.map(annotated) {
+        match got.map(|d| annotated(d, tz)) {
             Ok(v) => {
                 let ws = v
                     .get("workspace")

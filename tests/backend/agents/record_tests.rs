@@ -8,6 +8,7 @@ fn the_common_fields_are_camel_case_and_the_kind_is_t() {
         id: "i".into(),
         at: None,
         time_text: Some("09:30".into()),
+        at_ms: None,
         body: Body::Title {
             text: "x".into(),
             by: TitleBy::User,

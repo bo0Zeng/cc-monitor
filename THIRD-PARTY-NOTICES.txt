@@ -3342,6 +3342,9 @@ Used by:
     crate: aho-corasick 1.1.4
     crate: byteorder 1.5.0
     crate: byteorder-lite 0.1.0
+    crate: jiff 0.2.37
+    crate: jiff-core 0.1.1
+    crate: jiff-tzdb 0.1.8
     crate: memchr 2.8.1
     crate: termcolor 1.4.1
     crate: walkdir 2.5.0

@@ -1021,7 +1021,7 @@ fn the_files_read_family_is_online_exactly_as_it_is_declared() {
         // ④ 真的调一次：`run` 必须**够得到**那条能力。
         //    喂空 `args` ⇒ 要么成功，要么落在这条能力自己声明的 code 上；
         //    落到 `unknown_capability` 就说明翻译或名字接错了。
-        let out = crate::files::answer_wire(&online, &serde_json::json!({}));
+        let out = crate::files::answer_wire(&online, &serde_json::json!({}), &Default::default());
         if let Err(crate::files::Refused {
             code, said: msg, ..
         }) = out

@@ -67,24 +67,33 @@ fn tasks_list_answers_the_product_and_refuses_a_missing_sid() {
         r#"{"id":"1","subject":"占位","status":"pending"}"#,
     )
     .unwrap();
-    let v = answer_at(&h, "tasks-list", &json!({"sid": "s"})).unwrap();
+    let v = answer_at(&h, "tasks-list", &json!({"sid": "s"}), &Default::default()).unwrap();
     // 应答是成品 `{tasks}`，不再是原样对象的 `lines`。
     let rows = v["tasks"].as_array().expect("tasks");
     assert_eq!(rows.len(), 1);
     assert!(v.get("lines").is_none(), "还在回原始行：{v}");
     // 反向：缺 sid ⇒ bad_args；sid 走出任务根 ⇒ bad_args（围栏在本体里，这里只证它透得上来）。
     assert_eq!(
-        answer_at(&h, "tasks-list", &json!({})).unwrap_err().0,
-        "bad_args"
-    );
-    assert_eq!(
-        answer_at(&h, "tasks-list", &json!({"sid": "../s"}))
+        answer_at(&h, "tasks-list", &json!({}), &Default::default())
             .unwrap_err()
             .0,
         "bad_args"
     );
     assert_eq!(
-        answer_at(&h, "no-such", &json!({})).unwrap_err().0,
+        answer_at(
+            &h,
+            "tasks-list",
+            &json!({"sid": "../s"}),
+            &Default::default()
+        )
+        .unwrap_err()
+        .0,
+        "bad_args"
+    );
+    assert_eq!(
+        answer_at(&h, "no-such", &json!({}), &Default::default())
+            .unwrap_err()
+            .0,
         "bad_args"
     );
 }
@@ -111,7 +120,7 @@ fn the_tasks_product_matches_the_cross_language_golden() {
         )
         .unwrap();
     }
-    let got = answer_at(&h, "tasks-list", &g["request"]).unwrap();
+    let got = answer_at(&h, "tasks-list", &g["request"], &Default::default()).unwrap();
     assert_eq!(got, g["product"], "成品与金样对不上");
 }
 
@@ -189,7 +198,7 @@ fn the_mcp_marks_are_written_once_on_the_backend() {
     let say = McpSay {
         failed: &failed,
         now_s: ms("2026-10-09T12:00:00Z") / 1000,
-        tz_min: 0,
+        tz: Default::default(),
         login_command: "/mcp",
     };
     assert_eq!(mcp_reply(&read, &say), g["marked"]);

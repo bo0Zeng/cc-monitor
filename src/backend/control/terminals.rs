@@ -687,7 +687,7 @@ fn parse_line(raw: &str, style: &mut Style) -> (String, Vec<Value>) {
 }
 
 /// `terminal-preview` 的成品构造器（纯）：抓回来的原文 ＋ 尺寸光标 ⇒ 回话。
-/// `captured_text` ＝ `captured_at` 在这台本地钟上的 `HH:MM:SS`（调用方按这台写好；界面照抄、不换算）。
+/// `captured_text` ＝ `captured_at` 在看的那一台钟上的（请求的 `tz`） `HH:MM:SS`（调用方按这台写好；界面照抄、不换算）。
 pub(crate) fn preview_reply(
     view: &View,
     color: bool,
@@ -751,7 +751,8 @@ fn not_known(why: &str) -> CmdErr {
 }
 
 /// 帧面 / CLI 面入口：`terminal-preview`。入 `{terminal | sid, color?: true, scrollback?: 0}`。只读、不过身份门。
-pub(crate) fn preview_on(on: On<'_>, args: &Value) -> Result<Value, CmdErr> {
+/// `tz` ＝ 看的那一台的时区：抓屏时刻 `atText` 按它写。
+pub(crate) fn preview_on(on: On<'_>, args: &Value, tz: &crate::Tz) -> Result<Value, CmdErr> {
     let target = target_of(args)?;
     let color = bool_arg(args, "color", true)?;
     let asked = match args.get("scrollback") {
@@ -784,7 +785,7 @@ pub(crate) fn preview_on(on: On<'_>, args: &Value) -> Result<Value, CmdErr> {
         color,
         asked > u64::from(MAX_SCROLLBACK),
         at,
-        &crate::common::time::secs_hms_here(i64::try_from(at).unwrap_or(i64::MAX)),
+        &crate::common::time::secs_hms(i64::try_from(at).unwrap_or(i64::MAX), tz),
     ))
 }
 
@@ -821,7 +822,7 @@ pub(crate) fn follow_target_on(on: On<'_>, args: &Value) -> Result<FollowTarget,
 }
 
 /// 这一刻那一屏（带颜色、不往回要）：与 `terminal-preview` 同一份成品（实时预览每一帧就是它）。
-pub(crate) fn screen_view_on(on: On<'_>, target: &str) -> Result<Value, CmdErr> {
+pub(crate) fn screen_view_on(on: On<'_>, target: &str, tz: &crate::Tz) -> Result<Value, CmdErr> {
     let view = view_on(on, target, true, 0)?;
     let at = now_secs();
     Ok(preview_reply(
@@ -829,7 +830,7 @@ pub(crate) fn screen_view_on(on: On<'_>, target: &str) -> Result<Value, CmdErr> 
         true,
         false,
         at,
-        &crate::common::time::secs_hms_here(i64::try_from(at).unwrap_or(i64::MAX)),
+        &crate::common::time::secs_hms(i64::try_from(at).unwrap_or(i64::MAX), tz),
     ))
 }
 
@@ -986,8 +987,8 @@ pub(crate) fn list_for_inbound(args: &Value) -> Result<Value, CmdErr> {
     list_on(On::default(), args)
 }
 
-pub(crate) fn preview_for_inbound(args: &Value) -> Result<Value, CmdErr> {
-    preview_on(On::default(), args)
+pub(crate) fn preview_for_inbound(args: &Value, tz: &crate::Tz) -> Result<Value, CmdErr> {
+    preview_on(On::default(), args, tz)
 }
 
 pub(crate) fn input_for_inbound(args: &Value) -> Result<Value, CmdErr> {

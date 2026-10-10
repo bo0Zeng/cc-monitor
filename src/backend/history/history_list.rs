@@ -367,14 +367,14 @@ fn hits(v: &Value, q: &str) -> bool {
 }
 
 /// 一台的清单（`raw` 那一形，远端的已补 `origin`）＋ 注解 ＋ 入参 ⇒ 成品。`now_ms` 由调用方给（时间筛的「现在」）；
-/// `local` 把 unix 秒按那一刻的偏移排成本地钟秒数（生产里是这台的 [`crate::common::time::local_secs`]）：每行的行尾 · 分段 · 时间段三格按它写好。
+/// `tz` ＝ 看的那一台的时区（请求信封带来的）：每行的行尾 · 分段 · 时间段三格按它写好（偏移按各自那一刻）。
 pub(crate) fn answer_from(
     listing: &Value,
     origin: Option<&str>,
     ann: Result<&Table, String>,
     ask: &Ask,
     now_ms: i64,
-    local: &dyn Fn(i64) -> i64,
+    tz: &crate::Tz,
 ) -> Value {
     let t = ann.as_ref().ok().copied();
     let all: Vec<Value> = listing["rows"]
@@ -425,7 +425,7 @@ pub(crate) fn answer_from(
     }
     for v in &mut out {
         v["at"] = json!(key(v));
-        crate::common::time::history_texts(v, now_ms, local);
+        crate::common::time::history_texts(v, now_ms, tz);
     }
     out.sort_by(|a, b| {
         key(b)
@@ -564,8 +564,8 @@ async fn blocking<T: Send + 'static>(
     })?
 }
 
-/// 帧面 `history-list`。
-pub async fn answer(args: Value) -> Result<Value, (&'static str, String)> {
+/// 帧面 `history-list`（`tz` ＝ 看的那一台的时区：行上那几格时刻字按它写）。
+pub async fn answer(args: Value, tz: crate::Tz) -> Result<Value, (&'static str, String)> {
     if args.get("raw").and_then(Value::as_bool) == Some(true) {
         return blocking(machine_listing).await;
     }
@@ -601,7 +601,7 @@ pub async fn answer(args: Value) -> Result<Value, (&'static str, String)> {
             ann.as_ref().map_err(Clone::clone),
             &ask,
             now_ms(),
-            &crate::common::time::local_secs,
+            &tz,
         ))
     })
     .await

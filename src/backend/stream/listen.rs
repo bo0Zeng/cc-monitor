@@ -158,7 +158,7 @@ pub fn attach_verdict(line: &str) -> Verdict {
     }
 }
 
-/// attach 行里这条连接要的流模式旗标（`{"attach":…,"flags":["--tail-only",…]}`）。
+/// attach 行里这条连接要的流模式旗标（`{"attach":…,"flags":["--tail-only",…],"tz":"Asia/Shanghai"}`）。
 /// 缺 ⇒ `Ok(None)`（用进程起参那一份）；有但不是串数组、或含 `lib::STREAM_FLAGS` 以外的 ⇒ `Err`（当 malformed 拒）。
 /// 回这条连接索要了什么：每个客户各按自己的能力协商（monitor `decide_stream_flags`）。
 pub fn attach_flags(line: &str) -> Result<Option<crate::StreamWants>, ()> {
@@ -175,7 +175,10 @@ pub fn attach_flags(line: &str) -> Result<Option<crate::StreamWants>, ()> {
         }
         words.push(w.to_string());
     }
-    Ok(Some(crate::split_stream_flags(words).1))
+    let mut wants = crate::split_stream_flags(words).1;
+    // 看的那一台的时区跟在旁边一格（值不是旗标表里的词，不进 `flags`）：同 [`crate::TZ_FLAG`]，认不得 ⇒ UTC。
+    wants.tz = v.get("tz").map(crate::Tz::of).unwrap_or_default();
+    Ok(Some(wants))
 }
 
 /// 拒绝那一行。`reason` 只许是本模块的常量。

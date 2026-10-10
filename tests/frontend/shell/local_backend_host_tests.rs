@@ -3242,8 +3242,17 @@ fn the_host_never_writes_the_resident_dir_and_carries_no_key() {
             );
         }
     }
-    guard_core::find_pinned(&body_of(&host, "fn send_attach("), r#"{\"attach\":true}\n"#)
+    guard_core::find_pinned(&body_of(&host, "fn attach_line("), r#"{\"attach\":true}\n"#)
         .expect("attach 行不是「我要流」那一形（恰好一处）");
+    assert_eq!(
+        crate::local_backend_host::attach_line(None),
+        "{\"attach\":true}\n"
+    );
+    assert_eq!(
+        crate::local_backend_host::attach_line(Some("Asia/Shanghai")),
+        "{\"attach\":true,\"tz\":\"Asia/Shanghai\"}\n",
+        "看的这一台的时区跟在旁边一格（后端 `listen::attach_flags` 读 `tz`）"
+    );
     for w in ["token", "LISTEN_TOKEN"] {
         assert!(
             !guard_core::contains_word(&host, w),

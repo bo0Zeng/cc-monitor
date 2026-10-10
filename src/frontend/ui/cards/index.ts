@@ -30,12 +30,13 @@ import type { ToolCard } from "../generated/ToolCard";
 import type { ChildRunTag } from "../generated/ChildRunTag";
 import type { ToolStep } from "../generated/ToolStep";
 import type { StepResult } from "../generated/StepResult";
-import { waitedNow, buildStepLine, buildThinkingLine, durBetween, paintWaiting, settleStepLine } from "./step-line";
+import { buildStepLine, buildThinkingLine, durBetween, paintWaiting, settleStepLine } from "./step-line";
+import { waitedNow } from "../duration-format";
 import type { PendingCall, RetryOutcome } from "../session-reads";
 import { buildApiErrorCard, buildApiRetryCard } from "./api-error";
 import { buildUnreadLine } from "./unread";
 import { LS_KEYS, safeGet, safeSet } from "../local-storage";
-import { firstLineOf, jsonPrefix } from "../format";
+import { firstLineOf, jsonPrefix, sizeText } from "../format";
 import { openFileWindow } from "../file-window";
 import { resolveRemoteConfigByOrigin } from "../remote-config";
 import { toast } from "../kit/toast";
@@ -48,21 +49,21 @@ import { isRemoteOrigin, type Origin } from "../ipc/origin";
 export interface ToolUseSeen {
   name: string;
   card: ToolCard | undefined;
-  /** 后端给的一行人话（`steps`）与发出那条记录的时刻（结果到了相减成耗时）。 */
+  /** 后端给的一行人话（`steps`）与发出那条记录的时刻（后端解好的毫秒；结果到了交那一个读口写耗时）。 */
   step?: ToolStep;
-  at?: string;
+  atMs?: number;
 }
 
 /** 一条记录带来的、过程那一行要的成品：reply 的 `steps` · said 的 `results` · 记录时刻。 */
 interface StepFacts {
   steps: Readonly<Record<string, ToolStep>>;
   results: Readonly<Record<string, StepResult>>;
-  at: string;
+  atMs: number | undefined;
 }
-const NO_FACTS: StepFacts = Object.freeze({ steps: Object.freeze({}), results: Object.freeze({}), at: "" });
+const NO_FACTS: StepFacts = Object.freeze({ steps: Object.freeze({}), results: Object.freeze({}), atMs: undefined });
 function stepFactsOf(rec: LineRecord): StepFacts {
-  if (rec.t === "reply") return { steps: rec.steps ?? NO_FACTS.steps, results: NO_FACTS.results, at: rec.at ?? "" };
-  if (rec.t === "said") return { steps: NO_FACTS.steps, results: rec.results ?? NO_FACTS.results, at: rec.at ?? "" };
+  if (rec.t === "reply") return { steps: rec.steps ?? NO_FACTS.steps, results: NO_FACTS.results, atMs: rec.atMs };
+  if (rec.t === "said") return { steps: NO_FACTS.steps, results: rec.results ?? NO_FACTS.results, atMs: rec.atMs };
   return NO_FACTS;
 }
 
@@ -484,7 +485,7 @@ function renderBlock(
       // 记下 id → 名字与卡型，给下一条消息的 tool_result 反查用
       const card = cards[block.id];
       const step = facts.steps[block.id];
-      ctx.toolUseNames.set(block.id, { name: block.name, card, step, at: facts.at || undefined });
+      ctx.toolUseNames.set(block.id, { name: block.name, card, step, atMs: facts.atMs });
 
       // 卡型是那台后端判的（`cards`）；派出子运行的那次调用 → 派出卡（卡头点了开那个子运行自己的窗口）
       if (card === "agent") {
@@ -773,9 +774,9 @@ function injectOrBuildToolResult(
       // 渲染模式 toolbar + body (lazy build 首次展开时再实际产生 DOM)
       buildResultBody(resultEl, text, toolName, mdByDefault);
 
-      // 同步那一步的一行：状态图标与右侧小字（后端给的结果一句 ＋ 两条记录的时刻相减）。再来一次结果就再改一次。
+      // 同步那一步的一行：状态图标与右侧小字（后端给的结果一句 ＋ 两条记录之间多久，交那一个读口）。再来一次结果就再改一次。
       const line = host.querySelector<HTMLElement>(":scope > .block-summary > .step-line");
-      if (line) settleStepLine(line, seen?.step, facts.results[block.for], block.isError === true, durBetween(seen?.at, facts.at));
+      if (line) settleStepLine(line, seen?.step, facts.results[block.for], block.isError === true, durBetween(seen?.atMs, facts.atMs));
     }
     return null;
   }
@@ -1033,7 +1034,7 @@ function buildTextBlock(text: string, lazy: boolean | undefined): HTMLElement {
   more.type = "button";
   more.className = "block-body-show-full";
   const restChars = text.length - pieces[0].length;
-  more.textContent = copyText("cards.markdown.showRest", { kb: (restChars / 1024).toFixed(0) });
+  more.textContent = copyText("cards.markdown.showRest", { size: sizeText(restChars) });
   more.addEventListener(
     "click",
     () => {
@@ -1069,8 +1070,7 @@ function buildTextBody(text: string): HTMLElement {
     const expand = document.createElement("button");
     expand.type = "button";
     expand.className = "block-body-show-full";
-    const sizeKb = (text.length / 1024).toFixed(0);
-    expand.textContent = copyText("cards.text.showAll", { kb: sizeKb });
+    expand.textContent = copyText("cards.text.showAll", { size: sizeText(text.length) });
     expand.addEventListener(
       "click",
       () => {
@@ -1103,8 +1103,7 @@ function buildMarkdownBody(text: string): HTMLElement {
     const expand = document.createElement("button");
     expand.type = "button";
     expand.className = "block-body-show-full";
-    const sizeKb = (cleaned.length / 1024).toFixed(0);
-    expand.textContent = copyText("cards.text.showAll", { kb: sizeKb });
+    expand.textContent = copyText("cards.text.showAll", { size: sizeText(cleaned.length) });
     expand.addEventListener(
       "click",
       () => {
@@ -1289,10 +1288,10 @@ function truncate(s: string, n: number): string {
 
 function approximateSize(content: readonly Block[]): string {
   if (content.every((b) => b.type === "text")) {
-    return `${textOf(content).length} chars`;
+    return sizeText(textOf(content).length);
   }
   try {
-    return `${JSON.stringify(content).length} chars`;
+    return sizeText(JSON.stringify(content).length);
   } catch {
     return "";
   }

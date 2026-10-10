@@ -3014,14 +3014,14 @@
     "cards.markdown.showRest": {
       "kind": "action",
       "role": "按钮",
-      "zh": "展开 {kb} KB",
-      "args": ["kb"]
+      "zh": "展开 {size}",
+      "args": ["size"]
     },
     "cards.text.showAll": {
       "kind": "action",
       "role": "按钮",
-      "zh": "展开 {kb} KB",
-      "args": ["kb"]
+      "zh": "展开 {size}",
+      "args": ["size"]
     },
     "cards.result.markdown": {
       "kind": "action",
@@ -13239,6 +13239,78 @@
       "role": "说明",
       "zh": "访问越界",
       "args": []
+    },
+    "sizeFormat.unit.b": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{n} B",
+      "args": ["n"]
+    },
+    "sizeFormat.unit.kb": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{n} KB",
+      "args": ["n"]
+    },
+    "sizeFormat.unit.mb": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{n} MB",
+      "args": ["n"]
+    },
+    "sizeFormat.unit.gb": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{n} GB",
+      "args": ["n"]
+    },
+    "sizeFormat.unit.tb": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{n} TB",
+      "args": ["n"]
+    },
+    "durationFormat.short.under": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "<1s",
+      "args": []
+    },
+    "durationFormat.short.sec": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{n}s",
+      "args": ["n"]
+    },
+    "durationFormat.short.min": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{n}m",
+      "args": ["n"]
+    },
+    "durationFormat.short.hour": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{n}h",
+      "args": ["n"]
+    },
+    "durationFormat.short.hourMin": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{h}h{m}m",
+      "args": ["h", "m"]
+    },
+    "durationFormat.short.day": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{n}d",
+      "args": ["n"]
+    },
+    "durationFormat.rel.ahead": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "+{dur}",
+      "args": ["dur"]
     },
     "durationFormat.unit.ms": {
       "kind": "body",
@@ -27090,24 +27162,6 @@
       "role": "报错",
       "zh": "打不开账号目录",
       "args": []
-    },
-    "acctPage.ago.minutes": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "{n}m",
-      "args": ["n"]
-    },
-    "acctPage.ago.hours": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "{n}h",
-      "args": ["n"]
-    },
-    "acctPage.ago.days": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "{n}d",
-      "args": ["n"]
     },
     "sessionFind.box.modes": {
       "kind": "title",

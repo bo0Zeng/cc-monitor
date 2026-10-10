@@ -10,7 +10,7 @@ import { TurnEndNotifier, type TurnNotifyPayload } from "../../../src/frontend/u
 const T0 = 1_700_000_000_000;
 
 function endTurnPayload(tsOffsetMs = 0): TurnNotifyPayload {
-  return { record: { t: "reply", at: new Date(T0 + tsOffsetMs).toISOString(), endsTurn: true } };
+  return { record: { t: "reply", at: new Date(T0 + tsOffsetMs).toISOString(), atMs: T0 + tsOffsetMs, endsTurn: true } };
 }
 
 function makeNotifier(over?: {

@@ -146,12 +146,19 @@ fn the_ensure_answer_names_a_non_unix_remote_as_unsupported_and_never_falls_back
 /// attach 行是远端 `listen::attach_verdict` / `attach_flags` 读得懂的形状：「我要流」＋ 这条连接的旗标，没有钥匙。
 #[test]
 fn the_attach_line_asks_for_the_stream_with_exactly_the_negotiated_flags() {
-    let l = attach_line((false, true));
+    let l = attach_line((false, true), None);
     assert!(l.ends_with('\n'));
     let v: serde_json::Value = serde_json::from_str(l.trim()).unwrap();
     assert_eq!(
         v,
         serde_json::json!({"attach": true, "flags": ["--tail-only"]})
+    );
+    // 看的这一台的时区跟在旁边一格（远端 `listen::attach_flags` 读 `tz`，不进 `flags`）。
+    let z: serde_json::Value =
+        serde_json::from_str(attach_line((true, false), Some("Asia/Shanghai")).trim()).unwrap();
+    assert_eq!(
+        z,
+        serde_json::json!({"attach": true, "flags": ["--with-bg"], "tz": "Asia/Shanghai"})
     );
 }
 

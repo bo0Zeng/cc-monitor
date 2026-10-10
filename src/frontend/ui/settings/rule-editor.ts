@@ -233,7 +233,8 @@ export class RuleEditor {
     this.errors = [];
     this.lineDraft = {};
     this.undo = isUndo ? null : rule.rotation;
-    this.savedAt = new Date().toTimeString().slice(0, 5);
+    // 「已保存 HH:MM」：后端写成那一刻按看的这一台的时区写好的钟面（界面不读钟）。
+    this.savedAt = got.savedAtText;
     if (!this.touched) {
       this.touched = true;
       this.impact = true;

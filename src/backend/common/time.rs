@@ -1,5 +1,6 @@
 //! 公历换算（Howard Hinnant 的 `days_from_civil` / `civil_from_days`，前推公历、负年按 `div_euclid`）与 Claude 记录里的 ISO8601 时刻。
 //! 后端各处要「天数 ⇄ 年月日」、解一个 `YYYY-MM-DDTHH:MM:SS(.fff)?Z`、或把一个时刻写成给人看的样子（[`fmt_at`]）都调这里。
+//! 给人看的时刻一律按**看的那一台**的时区（[`Tz`]，请求带来的），不按这台后端自己的钟。
 
 /// 公历 (年, 月, 日) ⇒ 自 1970-01-01 起第几天。
 pub(crate) fn days_from_civil(y: i64, m: u32, d: u32) -> i64 {
@@ -48,12 +49,136 @@ pub(crate) fn parse_iso8601_ms(s: &str) -> Option<i64> {
 
 const DAY: i64 = 86_400;
 
-/// 一个时刻（unix 秒）按此刻与时区偏移（分钟，东正）写给人看：当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年 `YYYY-MM-DD HH:MM`。
+/// **看的那一台的时区**（请求信封 `tz` · CLI `--tz` · 流开头的 `--tz`，值是 IANA 名，如 `Asia/Shanghai`）。
+/// 写「几点」「今天 / 昨天」的那几处都按它排，不按这台后端自己的钟：远端回的时刻字是给看的人看的。
+/// 偏移按**那一刻**算（夏令时跟着那一刻）；时区库随二进制带（jiff 的 `tzdb-bundle-always`），各平台同一份。
+/// 没带 · 不是字符串 · 库里没有这个名 ⇒ UTC（[`Tz::default`]，协议里写明）。
+/// 另认一个词 [`TZ_HERE`]：看的人就在答话这一台上（终端里敲的 `ccm -- --… --text`、本机脚本）⇒ 按这台系统的钟（夏令时同样按那一刻）。
+#[derive(Clone, Debug)]
+pub struct Tz(Zone);
+
+#[derive(Clone, Debug)]
+enum Zone {
+    Named(jiff::tz::TimeZone),
+    Here,
+}
+
+/// 「看的人就在这台上」那个词（`--tz local`）。
+pub const TZ_HERE: &str = "local";
+
+/// 同一个时区 ⇔ 同一个 IANA 名（UTC 与 UTC 相等）；「这一台」只等于「这一台」。
+impl PartialEq for Tz {
+    fn eq(&self, other: &Self) -> bool {
+        match (&self.0, &other.0) {
+            (Zone::Named(a), Zone::Named(b)) => a.iana_name() == b.iana_name(),
+            (Zone::Here, Zone::Here) => true,
+            _ => false,
+        }
+    }
+}
+
+impl Default for Tz {
+    fn default() -> Self {
+        Self(Zone::Named(jiff::tz::TimeZone::UTC))
+    }
+}
+
+impl Tz {
+    /// 按 IANA 名找（或 [`TZ_HERE`]）；找不到 ⇒ `None`（调用方当没带 ⇒ UTC）。
+    pub fn named(name: &str) -> Option<Self> {
+        if name == TZ_HERE {
+            return Some(Self(Zone::Here));
+        }
+        jiff::tz::TimeZone::get(name)
+            .ok()
+            .map(|z| Self(Zone::Named(z)))
+    }
+
+    /// 只认 IANA 名（不认 [`TZ_HERE`]）：存进盘的时区（轮换规则的 `tz`）按它读，判出来的不随后端那台变。
+    pub fn iana(name: &str) -> Option<Self> {
+        jiff::tz::TimeZone::get(name)
+            .ok()
+            .map(|z| Self(Zone::Named(z)))
+    }
+
+    /// 存得进盘的那个名（IANA；UTC ⇒ `UTC`）；「这一台」没有名 ⇒ `None`。
+    pub fn iana_name(&self) -> Option<String> {
+        match &self.0 {
+            Zone::Named(z) => Some(z.iana_name().unwrap_or("UTC").to_string()),
+            Zone::Here => None,
+        }
+    }
+
+    /// 信封那一格的读法（帧面 `tz` · CLI `--tz` · 流开头 `--tz` 同一处读）：是串且认得 ⇒ 那个时区，别的 ⇒ UTC。
+    pub fn of(v: &serde_json::Value) -> Self {
+        v.as_str().and_then(Self::named).unwrap_or_default()
+    }
+
+    /// 时刻 `t`（unix 秒）那一刻比 UTC 快几秒。
+    pub fn offset_secs(&self, t: i64) -> i64 {
+        match &self.0 {
+            Zone::Named(z) => {
+                jiff::Timestamp::from_second(t).map_or(0, |ts| i64::from(z.to_offset(ts).seconds()))
+            }
+            Zone::Here => u64::try_from(t)
+                .ok()
+                .and_then(crate::platform::local_tz::offset_secs)
+                .unwrap_or(0),
+        }
+    }
+
+    /// 时刻 `t`（unix 秒）在这个时区的钟上是第几秒（[`hm`] · [`section_text`] 那几格的入参）。
+    pub fn local(&self, t: i64) -> i64 {
+        t + self.offset_secs(t)
+    }
+}
+
+/// **复制详情里那一行时刻的空位**：详情在答话那台深处拼好（那一层不知道看的人是谁），时刻先写成这个空位，
+/// 出去那一下（流的写者 · CLI 的出口）按看的那一台的时区填成 `YYYY-MM-DD HH:MM:SS ±HH:MM`（[`fill_at`]）。
+/// 漏填一处 ⇒ 看的人看得见这个空位，不会悄悄按哪台的钟写错。
+const AT_OPEN: &str = "⟦at:";
+const AT_CLOSE: char = '⟧';
+
+/// 时刻 `t`（unix 秒）的空位。
+pub(crate) fn at_slot(t: i64) -> String {
+    format!("{AT_OPEN}{t}{AT_CLOSE}")
+}
+
+/// 把一段字里的时刻空位（[`at_slot`]）按看的那一台的时区填好（带偏移，`copy_core::detail::stamp`）；没有空位 ⇒ 原样。
+/// 填进去的只有数字 · `-` · `:` · `+` · 空格，放进 JSON 串里不用转义（流的写者对整行调它）。
+pub(crate) fn fill_at<'a>(s: &'a str, tz: &Tz) -> std::borrow::Cow<'a, str> {
+    if !s.contains(AT_OPEN) {
+        return std::borrow::Cow::Borrowed(s);
+    }
+    let mut out = String::with_capacity(s.len());
+    let mut rest = s;
+    while let Some(i) = rest.find(AT_OPEN) {
+        out.push_str(&rest[..i]);
+        let after = &rest[i + AT_OPEN.len()..];
+        match after
+            .find(AT_CLOSE)
+            .and_then(|j| Some((j, after[..j].parse::<i64>().ok()?)))
+        {
+            Some((j, t)) => {
+                out.push_str(&copy_core::detail::stamp(t, tz.offset_secs(t)));
+                rest = &after[j + AT_CLOSE.len_utf8()..];
+            }
+            None => {
+                out.push_str(AT_OPEN);
+                rest = after;
+            }
+        }
+    }
+    out.push_str(rest);
+    std::borrow::Cow::Owned(out)
+}
+
+/// 一个时刻（unix 秒）按此刻与看的那一台的时区写给人看：当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年 `YYYY-MM-DD HH:MM`。
 /// 界面与终端要显示的时刻都由后端经它写好再交出去（界面零换算）。
-pub(crate) fn fmt_at(t: i64, now: i64, tz_min: i64) -> String {
-    let local = t + tz_min * 60;
+pub(crate) fn fmt_at(t: i64, now: i64, tz: &Tz) -> String {
+    let local = tz.local(t);
     let day = local.div_euclid(DAY);
-    let today = (now + tz_min * 60).div_euclid(DAY);
+    let today = tz.local(now).div_euclid(DAY);
     let secs = local - day * DAY;
     let hm = format!("{:02}:{:02}", secs / 3600, (secs % 3600) / 60);
     if day == today {
@@ -71,30 +196,15 @@ pub(crate) fn fmt_at(t: i64, now: i64, tz_min: i64) -> String {
 pub(crate) const TIME_KEYS: &[&str] = &["at", "seenAt", "resetsAt", "fromResetsAt", "since"];
 
 /// 距今（只写未来）：`+12m` · `+1h50m` · `+2h` · `+3d`（满 24h 只写天）；已过 ⇒ `None`。分钟向上取整。
+/// 写法只住 `copy_core::rel_duration` 一处（短时长那一套，同一份金样）。
 pub(crate) fn fmt_rel(t: i64, now: i64) -> Option<String> {
-    let d = t - now;
-    if d <= 0 {
-        return None;
-    }
-    if d >= DAY {
-        return Some(format!("+{}d", d / DAY));
-    }
-    let mins = (d + 59) / 60;
-    if mins < 60 {
-        return Some(format!("+{mins}m"));
-    }
-    let (h, m) = (mins / 60, mins % 60);
-    Some(if m == 0 {
-        format!("+{h}h")
-    } else {
-        format!("+{h}h{m}m")
-    })
+    copy_core::rel_duration(t.saturating_sub(now).saturating_mul(1_000))
 }
 
 /// **回包出口那一遍**：走遍整份回包，每个对象里认得的时刻格（[`TIME_KEYS`]，值是整数）旁边添一格 `<键>Text`
-/// ＝ [`fmt_at`] 按 `now` 与 `tz_min` 写好的字；还没到的时刻再添一格 `<键>RelText` ＝ 距今（[`fmt_rel`]，发出那一刻的字，
+/// ＝ [`fmt_at`] 按 `now` 与看的那一台的时区写好的字；还没到的时刻再添一格 `<键>RelText` ＝ 距今（[`fmt_rel`]，发出那一刻的字，
 /// 要它跟着走就按节拍重问）。界面只照这几格排，不换算。
-pub(crate) fn with_texts(v: &mut serde_json::Value, now: i64, tz_min: i64) {
+pub(crate) fn with_texts(v: &mut serde_json::Value, now: i64, tz: &Tz) {
     match v {
         serde_json::Value::Object(m) => {
             let adds: Vec<(String, String)> = TIME_KEYS
@@ -105,35 +215,25 @@ pub(crate) fn with_texts(v: &mut serde_json::Value, now: i64, tz_min: i64) {
                         .map(|t| (*k, t))
                 })
                 .flat_map(|(k, t)| {
-                    std::iter::once((format!("{k}Text"), fmt_at(t, now, tz_min)))
+                    std::iter::once((format!("{k}Text"), fmt_at(t, now, tz)))
                         .chain(fmt_rel(t, now).map(|r| (format!("{k}RelText"), r)))
                 })
                 .collect();
             for x in m.values_mut() {
-                with_texts(x, now, tz_min);
+                with_texts(x, now, tz);
             }
             for (k, t) in adds {
                 m.insert(k, serde_json::Value::String(t));
             }
         }
-        serde_json::Value::Array(a) => a.iter_mut().for_each(|x| with_texts(x, now, tz_min)),
+        serde_json::Value::Array(a) => a.iter_mut().for_each(|x| with_texts(x, now, tz)),
         _ => {}
     }
 }
 
-/// [`with_texts`] 按这台此刻的本地钟（帧面答 `quota-read` · `rotation-session-read` 那一下）。
-pub(crate) fn with_texts_here(v: &mut serde_json::Value, now: u64) {
-    let tz_min = crate::platform::local_tz::offset_secs(now).unwrap_or(0) / 60;
-    with_texts(v, i64::try_from(now).unwrap_or(i64::MAX), tz_min);
-}
-
-/// 一个时刻（unix 秒）在这台本地钟上的秒数：偏移按**那一刻**算（夏令时跟着那一刻）；问不到时区 ⇒ 按 UTC。
-pub(crate) fn local_secs(t: i64) -> i64 {
-    let off = u64::try_from(t)
-        .ok()
-        .and_then(crate::platform::local_tz::offset_secs)
-        .unwrap_or(0);
-    t + off
+/// [`with_texts`] 按此刻（帧面答 `quota-read` · `rotation-session-read` 那一下）。
+pub(crate) fn with_texts_now(v: &mut serde_json::Value, now: u64, tz: &Tz) {
+    with_texts(v, i64::try_from(now).unwrap_or(i64::MAX), tz);
 }
 
 /// 本地钟秒数 ⇒ 钟面 `HH:MM`（不写日子）。
@@ -153,19 +253,26 @@ pub(crate) fn hms(local: i64) -> String {
     )
 }
 
-/// 秒时刻 ⇒ 这台本地钟的 `HH:MM:SS`。
-pub(crate) fn secs_hms_here(t: i64) -> String {
-    hms(local_secs(t))
+/// 秒时刻 ⇒ 看的那一台钟上的 `HH:MM:SS`。
+pub(crate) fn secs_hms(t: i64, tz: &Tz) -> String {
+    hms(tz.local(t))
 }
 
-/// 记录里写着的 ISO 时刻 ⇒ 这台本地钟的 `HH:MM`（记录卡 · 轮次起止 · 分叉那一轮）。解不出 ⇒ `None`。
-pub(crate) fn iso_hm_here(iso: &str) -> Option<String> {
-    parse_iso8601_ms(iso).map(ms_hm_here)
+/// 记录里写着的 ISO 时刻 ⇒ 看的那一台钟上的 `HH:MM`（记录卡 · 轮次起止 · 分叉那一轮）。解不出 ⇒ `None`。
+pub(crate) fn iso_hm(iso: &str, tz: &Tz) -> Option<String> {
+    parse_iso8601_ms(iso).map(|ms| ms_hm(ms, tz))
 }
 
-/// 毫秒时刻 ⇒ 这台本地钟的 `HH:MM`（子运行开始 · 终端快照那几处）。
-pub(crate) fn ms_hm_here(ms: i64) -> String {
-    hm(local_secs(ms.div_euclid(1_000)))
+/// 毫秒时刻 ⇒ 看的那一台钟上的 `HH:MM`（子运行开始 · 终端快照那几处）。
+pub(crate) fn ms_hm(ms: i64, tz: &Tz) -> String {
+    hm(tz.local(ms.div_euclid(1_000)))
+}
+
+/// 此刻（unix 秒）。
+pub(crate) fn now_secs() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX))
 }
 
 /// 文件的修改时间（本地钟秒数；`today` ＝ 本地今天是第几天）⇒ `(列里那一格, 完整那一格)`：
@@ -183,13 +290,10 @@ pub(crate) fn mtime_texts(local: i64, today: i64) -> (String, String) {
     (short, format!("{y:04}-{m:02}-{d:02} {}", hms(local)))
 }
 
-/// [`mtime_texts`] 按这台此刻的本地钟（`files-ls` · `files-stat` 回包那一下）。
-pub(crate) fn mtime_texts_here(secs: u64) -> (String, String) {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| d.as_secs() as i64);
-    let today = local_secs(now).div_euclid(DAY);
-    mtime_texts(local_secs(i64::try_from(secs).unwrap_or(i64::MAX)), today)
+/// [`mtime_texts`] 按此刻与看的那一台的时区（`files-ls` · `files-stat` 回包那一下）。
+pub(crate) fn mtime_texts_now(secs: u64, tz: &Tz) -> (String, String) {
+    let today = tz.local(now_secs()).div_euclid(DAY);
+    mtime_texts(tz.local(i64::try_from(secs).unwrap_or(i64::MAX)), today)
 }
 
 // ───────── 历史页那几格（入参都是本地钟秒数：调用方先按各自那一刻的偏移排过）─────────
@@ -277,21 +381,18 @@ pub(crate) fn hit_time(at: i64, now: i64) -> String {
     }
 }
 
-/// 会话内查找命中的时刻按这台此刻的本地钟写（[`hit_time`]）；读不出（`0`）⇒ 空串。
-pub(crate) fn hit_text_here(ts_ms: i64) -> String {
+/// 会话内查找命中的时刻按此刻与看的那一台的时区写（[`hit_time`]）；读不出（`0`）⇒ 空串。
+pub(crate) fn hit_text(ts_ms: i64, tz: &Tz) -> String {
     if ts_ms <= 0 {
         return String::new();
     }
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| d.as_secs() as i64);
-    hit_time(local_secs(ts_ms.div_euclid(1_000)), local_secs(now))
+    hit_time(tz.local(ts_ms.div_euclid(1_000)), tz.local(now_secs()))
 }
 
 /// **历史页回包出口那一遍**（一行）：`at` ⇒ 行尾 `atText` ＋ 分段 `sectionText`；`startedAt` → `updatedAt` ⇒ 内容头 `spanText`。
-/// 时刻是毫秒；`local` 把 unix 秒按那一刻的偏移排成本地钟秒数（生产里是 [`local_secs`]）。缺哪一格就不添哪一格。
-pub(crate) fn history_texts(row: &mut serde_json::Value, now_ms: i64, local: &dyn Fn(i64) -> i64) {
-    let l = |ms: i64| local(ms.div_euclid(1_000));
+/// 时刻是毫秒；按看的那一台的时区排（偏移按各自那一刻）。缺哪一格就不添哪一格。
+pub(crate) fn history_texts(row: &mut serde_json::Value, now_ms: i64, tz: &Tz) {
+    let l = |ms: i64| tz.local(ms.div_euclid(1_000));
     let now = l(now_ms);
     let ms = |k: &str| row.get(k).and_then(serde_json::Value::as_i64);
     let (at, from, to) = (ms("at"), ms("startedAt"), ms("updatedAt"));

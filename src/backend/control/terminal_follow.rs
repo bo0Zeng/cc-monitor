@@ -213,9 +213,9 @@ impl Desk {
     }
 
     /// 三条命令之一 ⇒ 一帧应答（判据与 CLI 式调用用；帧面分派里 `terminal-follow` 走阻塞线程池，见 [`Desk::follow`]）。
-    pub(crate) fn answer_wire(&self, cmd: &str, id: &str, args: &Value) -> Frame {
+    pub(crate) fn answer_wire(&self, cmd: &str, id: &str, args: &Value, tz: &crate::Tz) -> Frame {
         let r = match cmd {
-            FOLLOW => self.follow(args),
+            FOLLOW => self.follow(args, tz),
             FOLLOW_ACK => self.ack(args),
             UNFOLLOW => self.unfollow(args),
             other => Err(CmdErr::from((
@@ -231,11 +231,12 @@ impl Desk {
 
     /// 订上：占位 · 认终端（问一次名单）· 看 tmux 版本 · 起控制模式客户端 · 登记 · 起订阅线程（它当场推第一帧）。
     /// 会起几个 tmux ⇒ 帧面放进阻塞线程池。这张票退过 ⇒ 什么都不起、回 `Ok`。
-    pub(crate) fn follow(&self, args: &Value) -> Result<(), CmdErr> {
+    /// `tz` ＝ 看的那一台的时区（订阅那一问带来的）：之后推的每一帧的抓屏时刻按它写。
+    pub(crate) fn follow(&self, args: &Value, tz: &crate::Tz) -> Result<(), CmdErr> {
         let Some(seat) = self.reserve(args)? else {
             return Ok(());
         };
-        let r = self.take_seat(&seat, args);
+        let r = self.take_seat(&seat, args, tz);
         if r.is_err() {
             self.release(&seat);
         }
@@ -278,7 +279,7 @@ impl Desk {
     }
 
     /// 凭占位起：认终端 · 看版本 · 起控制模式客户端，再把占位换成真的；占位已经被退订摘掉 ⇒ 收掉刚起的客户端、回 `Ok`。
-    fn take_seat(&self, seat: &Seat, args: &Value) -> Result<(), CmdErr> {
+    fn take_seat(&self, seat: &Seat, args: &Value, tz: &crate::Tz) -> Result<(), CmdErr> {
         let me = &self.0;
         let on = On {
             socket: me.socket.as_deref(),
@@ -352,14 +353,15 @@ impl Desk {
             replies: me.replies.clone(),
             tickets: Arc::clone(&me.tickets),
             pending,
+            tz: tz.clone(),
         };
         std::thread::spawn(move || worker.run(rx, proc));
         Ok(())
     }
 
     /// 帧面那一口：[`Desk::follow`] 挪进阻塞线程池做（起 tmux 那几下不占 worker，同换号重启那几步）。
-    pub(crate) async fn follow_off_worker(self, args: Value) -> Result<(), CmdErr> {
-        tokio::task::spawn_blocking(move || self.follow(&args))
+    pub(crate) async fn follow_off_worker(self, args: Value, tz: crate::Tz) -> Result<(), CmdErr> {
+        tokio::task::spawn_blocking(move || self.follow(&args, &tz))
             .await
             .unwrap_or_else(|e| {
                 Err(CmdErr::new(
@@ -497,6 +499,8 @@ struct Worker {
     replies: mpsc::Sender<Frame>,
     tickets: Tickets,
     pending: Arc<AtomicBool>,
+    /// 看的那一台的时区（订阅那一问带来的）。
+    tz: crate::Tz,
 }
 
 /// 一次抓屏之后怎么走。
@@ -542,7 +546,11 @@ impl Worker {
                     let on = On {
                         socket: self.socket.as_deref(),
                     };
-                    Step::End(end_of(&terminals::screen_view_on(on, &self.target)))
+                    Step::End(end_of(&terminals::screen_view_on(
+                        on,
+                        &self.target,
+                        &self.tz,
+                    )))
                 }
                 Ok(Ev::Stop) | Err(_) => Step::Quit,
             };
@@ -574,7 +582,7 @@ impl Worker {
         let on = On {
             socket: self.socket.as_deref(),
         };
-        let view = match terminals::screen_view_on(on, &self.target) {
+        let view = match terminals::screen_view_on(on, &self.target, &self.tz) {
             Ok(v) => v,
             seen @ Err(_) => return Step::End(end_of(&seen)),
         };

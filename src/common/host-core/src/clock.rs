@@ -8,3 +8,14 @@ pub fn local_offset_at(secs: i64) -> i64 {
         .single()
         .map_or(0, |t| i64::from(t.offset().fix().local_minus_utc()))
 }
+
+/// 看的这一台的时区（IANA 名，如 `Asia/Shanghai`）：请求信封与起流旗标里的 `tz` 那一格（后端按它写「几点」「今天 / 昨天」）。
+/// 问不到 · 长过 [`TZ_ROOM`] ⇒ `None`（不带那一格，后端按 UTC 写）。
+pub fn viewer_tz() -> Option<String> {
+    iana_time_zone::get_timezone()
+        .ok()
+        .filter(|n| !n.is_empty() && n.len() <= TZ_ROOM)
+}
+
+/// 信封里 `tz` 那一格最长几个字节（IANA 名今天最长三十出头）：量一行请求有多长的那几处按它留位子。
+pub const TZ_ROOM: usize = 64;

@@ -286,6 +286,9 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # 配置文件（`~/.cc-monitor/profiles.toml`）的读与按条目改：保留用户手写的注释与排版（`assets/profiles`）。
 toml_edit = { version = "0.25", default-features = false, features = ["parse", "display"] }
+# 时刻按看的人那一台的时区写（请求信封 `tz` 是 IANA 名）：时区库随二进制带（`tzdb-bundle-always`），
+# 不读这台的 `/usr/share/zoneinfo`、Windows 上也是同一份 ⇒ 远端后端按看的那一台的钟写字、夏令时按那一刻算。纯 Rust、无构建脚本。
+jiff = { version = "0.2", default-features = false, features = ["std", "tzdb-bundle-always"] }
 
 # ── 远端 musl 版的全局分配器：mimalloc（`main.rs` 那一处 `#[global_allocator]`，判据 `allocator_guard`）──
 # musl 自带的分配器放掉的内存不还给系统：680 MB 合成世界里热完全文搜索索引就常驻 350–490 MB（glibc 同一世界 117 MB），

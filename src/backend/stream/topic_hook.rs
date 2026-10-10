@@ -3,8 +3,8 @@
 
 use super::topic::Topic;
 
-/// 现算一个主题的小成品（`key` ＝ 帧里那一格）。
-pub type Bodies = fn(Topic, Option<&str>) -> Option<serde_json::Value>;
+/// 现算一个主题的小成品（`key` ＝ 帧里那一格；`tz` ＝ 这条连接看的那一台的时区，成品里的时刻字按它写，同客户端带 `tz` 重问）。
+pub type Bodies = fn(Topic, Option<&str>, &crate::Tz) -> Option<serde_json::Value>;
 
 static HOOK: std::sync::OnceLock<Bodies> = std::sync::OnceLock::new();
 
@@ -14,6 +14,6 @@ pub fn install(f: Bodies) {
 }
 
 /// 现算；没装 ⇒ `None`。
-pub(crate) fn body(topic: Topic, key: Option<&str>) -> Option<serde_json::Value> {
-    HOOK.get().and_then(|f| f(topic, key))
+pub(crate) fn body(topic: Topic, key: Option<&str>, tz: &crate::Tz) -> Option<serde_json::Value> {
+    HOOK.get().and_then(|f| f(topic, key, tz))
 }
