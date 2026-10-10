@@ -68,17 +68,17 @@ export function fakePlan(o: FakePlanOpts): Record<string, unknown> {
   const plan = o.fallback
     ? [
         { ...span(0, 1.6 * H), account: "personal", why: null },
-        { ...span(1.6 * H, 3 * H), account: "team", why: { threshold: { n: 90 } } },
+        { ...span(1.6 * H, 3 * H), account: "team", why: { threshold: { n: 90, w: "5h" } } },
         { ...span(3 * H, cut(after)), account: "personal", why: "leaveFallback" },
       ].filter((x) => x.to > x.from)
     : o.blocked
     ? [
-        { ...span(0, 0.63 * H), account: null, why: { held: { n: 90 } } },
+        { ...span(0, 0.63 * H), account: null, why: { held: { n: 90, w: "5h" } } },
         { ...span(0.63 * H, cut(after)), account: "team", why: "preempt" },
       ]
     : [
         { ...span(0, 1.6 * H), account: "personal", why: null },
-        { ...span(1.6 * H, cut(6 * H)), account: "team", why: { threshold: { n: 90 } } },
+        { ...span(1.6 * H, cut(6 * H)), account: "team", why: { threshold: { n: 90, w: "5h" } } },
         { ...span(cut(6 * H), cut(after)), account: "work", why: "preempt" },
       ].filter((x) => x.to > x.from);
   const lanes = [
@@ -87,7 +87,7 @@ export function fakePlan(o: FakePlanOpts): Record<string, unknown> {
       pct: o.blocked ? 100 : 63,
       spans: o.blocked
         ? [{ ...span(0, 1.8 * H), state: "refused", n: null }]
-        : [{ ...span(1.6 * H, 2.2 * H), state: "capped", n: 90 }],
+        : [{ ...span(1.6 * H, 2.2 * H), state: "capped", n: 90, w: "5h" }],
       resets: [{ w: "5h", at: t + 2.2 * H, atText: hm(t + 2.2 * H) }],
       ...(o.session ? {} : { usedBy: 2 }),
     },
@@ -107,7 +107,10 @@ export function fakePlan(o: FakePlanOpts): Record<string, unknown> {
     {
       account: "team",
       pct: 22,
-      spans: o.blocked ? [{ ...span(0, 0.63 * H), state: "refused", n: null }] : [],
+      // 此刻 7d 到线（列表行尾「7d 到线」那一枚签照它）；1.2h 后 7d 那一窗的线放宽（时段）、又能接。
+      spans: o.blocked
+        ? [{ ...span(0, 0.63 * H), state: "refused", n: null }]
+        : [{ ...span(0, 1.2 * H), state: "capped", n: 90, w: "7d" }],
       resets: [{ w: "5h", at: t + 4 * H, atText: hm(t + 4 * H) }],
       ...(o.session ? {} : { usedBy: 1 }),
       ...(o.warm ? { warm: [{ at: t + 2.5 * H, atText: hm(t + 2.5 * H) }] } : {}),
@@ -134,7 +137,7 @@ export function fakePlan(o: FakePlanOpts): Record<string, unknown> {
     out.past = pastSegs;
     out.head = o.blocked
       ? { blocked: { account: "team", at: t + 0.63 * H, atText: hm(t + 0.63 * H), w: "5h" } }
-      : { account: "personal", w: "5h", pct: 63, toTrigger: 27, est: { at: t + 1.6 * H, atText: hm(t + 1.6 * H), pct: 90, w: "5h" } };
+      : { account: "personal", w: "5h", pct: 63, toLine: { w: "5h", n: 27 }, est: { at: t + 1.6 * H, atText: hm(t + 1.6 * H), pct: 90, w: "5h" } };
   }
   return out;
 }

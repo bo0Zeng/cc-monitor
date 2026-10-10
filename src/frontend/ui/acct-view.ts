@@ -136,6 +136,12 @@ export function sessionHoverRows(entry: SessionRotationEntry | undefined, fallba
     ? seenBlock(seen, now, machineLabel(entry.origin))
     : unseenBlock({ agent: read.agent, account: cur, kind: read.quota.kind, login: read.quota.login });
   const rows = block.rows.map((r) => [...r]);
+  // 到了这号这一窗此刻的线的那一窗（后端按本会话那一份判）：那一行行尾写「到线」。
+  for (const sl of read.quota.slots) {
+    if (!sl.atLine) continue;
+    const row = rows.find((r) => r[0] === slotLabel(sl.slot));
+    if (row) row.push(copyText("acct.hover.atLine"));
+  }
   const from = swappedFrom(read);
   if (from) rows[0].push(copyText("acct.hover.from", { at: from.at, name: accountLabel(from.from) }));
   if (read.quota.kind === "sub") {
@@ -181,8 +187,15 @@ export function whyOf(h: SwitchRecord): { why: string; reset: string | null } {
     }
   }
   if ("full" in w) return { why: w.full.w ? copyText("acct.hist.full", { name: from, w: slotLabel(w.full.w) }) : copyText("acct.hist.fullAny", { name: from }), reset };
-  if ("threshold" in w) return { why: copyText("acct.hist.pct", { name: from, n: w.threshold.n }), reset };
-  if ("held" in w) return { why: copyText("acct.hist.held", { name: from, n: w.held.n }), reset };
+  if ("threshold" in w) {
+    const t = w.threshold;
+    return { why: t.w ? copyText("acct.hist.pct", { name: from, w: slotLabel(t.w), n: t.n }) : copyText("acct.hist.pctAny", { name: from, n: t.n }), reset };
+  }
+  if ("off" in w) return { why: copyText("rot.pv.whyOff", { acct: from }), reset };
+  if ("held" in w) {
+    const t = w.held;
+    return { why: t.w ? copyText("acct.hist.held", { name: from, w: slotLabel(t.w), n: t.n }) : copyText("acct.hist.heldAny", { name: from, n: t.n }), reset };
+  }
   if ("stint" in w) return { why: copyText("acct.hist.stint", { w: slotLabel(w.stint.w), n: w.stint.n }), reset: null };
   if ("wait" in w) return { why: copyText("acct.hist.wait", { name: accountLabel(w.wait.account), instead: accountLabel(w.wait.instead) }), reset };
   if ("skipped" in w) return { why: copyText("acct.hist.skipped", { name: accountLabel(w.skipped.account), reason: unreadyLabel(w.skipped.reason, w.skipped.account) }), reset: null };
@@ -249,7 +262,10 @@ export function bannerOf(entry: SessionRotationEntry | undefined, nowSecs: numbe
   if (rel === null) return { text: copyText("acct.banner.back", { name, at }), tone: "neutral" };
   const last = read.account.history[read.account.history.length - 1];
   if (last && typeof last.why === "object" && "held" in last.why) {
-    return { text: copyText("acct.banner.held", { n: last.why.held.n, name, at, rel: rel.slice(1) }), tone: "warn" };
+    // 横幅说的是最早回来的那个号卡在哪一窗（后端随 `blocked.earliest` 给）。
+    const w = e.w;
+    const text = w ? copyText("acct.banner.held", { name, w: slotLabel(w), at, rel: rel.slice(1) }) : copyText("acct.banner.heldAny", { name, at, rel: rel.slice(1) });
+    return { text, tone: "warn" };
   }
   if (e.account === read.account.current) {
     const w = slotLabel(read.quota.limiting ?? "5h");

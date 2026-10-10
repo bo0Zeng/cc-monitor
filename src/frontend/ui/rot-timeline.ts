@@ -39,10 +39,14 @@ export function whyShort(w: SwitchWhy | null): string {
   if (w === "preempt") return copyText("rot.why.preempt");
   if (w === "leaveFallback") return copyText("rot.why.leave");
   if (typeof w === "string") return "";
+  if ("off" in w) return copyText("rot.why.off");
   if ("threshold" in w)
-    return w.threshold.n === 0
-      ? copyText("rot.why.off")
-      : copyText("rot.why.trig", { n: w.threshold.n });
+    return w.threshold.w === undefined
+      ? copyText("rot.why.trigAny", { n: w.threshold.n })
+      : copyText("rot.why.trig", {
+          w: slotLabel(w.threshold.w),
+          n: w.threshold.n,
+        });
   if ("full" in w) return copyText("rot.why.full");
   if ("stint" in w) return copyText("rot.why.stint", { n: w.stint.n });
   if ("held" in w) return copyText("rot.why.held");
@@ -51,7 +55,7 @@ export function whyShort(w: SwitchWhy | null): string {
   return "";
 }
 
-/** 悬停 / 读屏那句里的「为什么换」：与换号记录同一套说法（`team ≥90%` · `lab ✕` …）；时段停用另说（触发 0 ＝ 那段封顶为 0）。 */
+/** 悬停 / 读屏那句里的「为什么换」：与换号记录同一套说法（`team 5h ≥90%` · `lab ✕` · `work 时段停用` …）。 */
 export function whyLong(
   prev: string | null,
   to: string | null,
@@ -59,8 +63,6 @@ export function whyLong(
 ): string {
   if (w === null) return "";
   const from = prev ?? to ?? "";
-  if (typeof w !== "string" && "threshold" in w && w.threshold.n === 0)
-    return copyText("rot.pv.whyOff", { acct: accountLabel(from) });
   return whyOf({ at: 0, from, to: to ?? from, why: w }).why;
 }
 
@@ -79,7 +81,7 @@ function segSay(seg: PlanSeg, prev: string | null): string {
     : copyText("rot.pv.seg", { from: seg.fromText, to: seg.toText, acct });
 }
 
-/** 顶行那一句（后端给的 `head`）：卡住 ⇒ 琥珀条那一句；否则「在用 … · 距触发 … · 估 几点 到 N%」。`parts` ＝ 各段（排版时段内不折行）。没有 ⇒ `null`。 */
+/** 顶行那一句（后端给的 `head`）：卡住 ⇒ 琥珀条那一句；否则「在用 … · 距 5h 线 … 点 · 估 几点 到 N%」。`parts` ＝ 各段（排版时段内不折行）。没有 ⇒ `null`。 */
 export function headLine(
   p: PlanRead,
 ): { text: string; parts: string[]; blocked: boolean } | null {
@@ -111,8 +113,10 @@ export function headLine(
         })
       : copyText("rot.tl.nowBare", { acct: accountLabel(h.account) }),
   ];
-  if (h.toTrigger !== undefined)
-    parts.push(copyText("rot.tl.toTrig", { n: h.toTrigger }));
+  if (h.toLine !== undefined)
+    parts.push(
+      copyText("rot.tl.toLine", { w: slotLabel(h.toLine.w), n: h.toLine.n }),
+    );
   if (h.est) parts.push(copyText("rot.tl.est", { at: h.est.atText, pct: h.est.pct }));
   return { text: parts.join(copyText("kit.text.sep")), parts, blocked: false };
 }
@@ -149,7 +153,9 @@ function laneSay(l: PlanLane, at: number): string | null {
     sp.state === "refused"
       ? copyText("rot.tlSt.refused", { acct })
       : sp.state === "capped"
-        ? copyText("rot.tlSt.capped", { acct, n: sp.n ?? "" })
+        ? sp.w
+          ? copyText("rot.tlSt.capped", { acct, w: slotLabel(sp.w), n: sp.n ?? "" })
+          : copyText("acct.hist.pctAny", { name: acct, n: sp.n ?? "" })
         : sp.state === "off"
           ? copyText("rot.tlSt.off", { acct })
           : copyText("rot.tlSt.overage", { acct });

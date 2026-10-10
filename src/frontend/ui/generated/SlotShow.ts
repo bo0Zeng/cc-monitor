@@ -11,4 +11,8 @@ resetsAtText?: string,
 /**
  * 用满：这个窗口用到 100%、还没重置（画 `✕`；被拒而没用满画「{pct}% · 被拒」）。没用满 ⇒ 缺。
  */
-full?: boolean, };
+full?: boolean, 
+/**
+ * 到线：这一窗用到这号这一窗此刻的线、还没重置（没线 ⇒ 不出）。
+ */
+atLine?: boolean, };

@@ -106,7 +106,7 @@ function baseAccounts(): Acct[] {
       limiting: "5h",
       slots: [
         { slot: "5h", pct: 4, resetsAt: 1.5 * H1 },
-        { slot: "7d", pct: 12, resetsAt: 110 * H1 },
+        { slot: "7d", pct: 91, resetsAt: 110 * H1 },
       ],
     },
     { account: "api", kind: "api", state: "ok", slots: [] },
@@ -116,7 +116,7 @@ function baseAccounts(): Acct[] {
 const ROT_CUSTOM = {
   order: [{ start: true }, "personal", "team", "api"],
   enabled: ["personal", "team"],
-  when: { threshold: { n: 90 } },
+  cap: { "*": { "5h": 90 } },
   atLimit: "continue",
   wait: 40,
 };
@@ -190,7 +190,7 @@ function ruleRow(
       : "team → personal · ≥90% · 抢回",
     explain: "起始账号先用 · 被拒才换 · 不主动换回",
     missing: [],
-    atLimitApplies: rotation.when !== "full",
+    atLimitApplies: Object.keys(rotation.cap ?? {}).length > 0,
   };
 }
 
@@ -279,7 +279,6 @@ function acctOps(aw: AcctWorld, w: () => World): Record<string, OpHandler> {
           aw.default ?? {
             order: [{ start: true }],
             enabled: [],
-            when: "full",
             atLimit: "continue",
             wait: 40,
           },
@@ -442,7 +441,6 @@ function world(
       default: {
         order: [{ start: true }, "personal"],
         enabled: ["personal"],
-        when: "full",
         atLimit: "continue",
         wait: 40,
       },
@@ -794,12 +792,11 @@ export const ACCT_SCENES: Scene[] = [
           rotation: {
             order: [{ start: true }, "team", "personal"],
             enabled: ["team", "personal"],
-            when: { threshold: { n: 90 } },
             atLimit: "continue",
             wait: 40,
             preempt: true,
             fallback: ["personal"],
-            cap: { team: { "*": [{ at: "17:00-02:00", n: 0 }] } },
+            cap: { "*": { "5h": 90 }, team: { "*": [{ at: "17:00-02:00", n: 0 }] } },
           },
           users: 2,
         },
@@ -824,7 +821,7 @@ export const ACCT_SCENES: Scene[] = [
           rotation: {
             order: [{ start: true }, "team", "personal"],
             enabled: ["team", "personal"],
-            when: { threshold: { n: 90 } },
+            cap: { "*": { "5h": 90 } },
             atLimit: "continue",
             wait: 40,
             preempt: true,
@@ -853,12 +850,11 @@ export const ACCT_SCENES: Scene[] = [
           rotation: {
             order: [{ start: true }, "team", "personal"],
             enabled: ["team", "personal"],
-            when: { threshold: { n: 90 } },
             atLimit: "continue",
             wait: 40,
             preempt: true,
             fallback: ["team"],
-            cap: { personal: { "*": [{ at: "17:00-02:00", n: 0 }] } },
+            cap: { "*": { "5h": 90 }, personal: { "*": [{ at: "17:00-02:00", n: 0 }] } },
           },
           users: 2,
         },
@@ -889,7 +885,6 @@ export const ACCT_SCENES: Scene[] = [
           rotation: {
             order: [{ start: true }, "team", "personal"],
             enabled: ["team", "personal"],
-            when: "full",
             atLimit: "continue",
             wait: 40,
             preempt: true,
@@ -914,7 +909,6 @@ export const ACCT_SCENES: Scene[] = [
           rotation: {
             order: [{ start: true }, "team", "personal"],
             enabled: ["team", "personal"],
-            when: "full",
             atLimit: "continue",
             wait: 40,
             preempt: true,
@@ -934,7 +928,7 @@ export const ACCT_SCENES: Scene[] = [
     world((aw) => {
       aw.sessions[0] = {
         ...swappedSess(),
-        custom: { ...ROT_CUSTOM, cap: { team: { "*": 80 } } },
+        custom: { ...ROT_CUSTOM, cap: { ...ROT_CUSTOM.cap, team: { "*": 80 } } },
       };
     }),
   ),
@@ -1003,7 +997,7 @@ export const ACCT_SCENES: Scene[] = [
           ],
           enabled: ["research-shared-pool-01", "personal", "team"],
           fallback: ["team"],
-          cap: { personal: { "*": 99 } },
+          cap: { ...ROT_CUSTOM.cap, personal: { "*": 99 } },
         },
       };
     }),
@@ -1025,6 +1019,7 @@ export const ACCT_SCENES: Scene[] = [
         custom: {
           ...ROT_CUSTOM,
           cap: {
+            ...ROT_CUSTOM.cap,
             personal: {
               "*": [
                 { at: "17:00-02:00", n: 0 },
@@ -1072,6 +1067,26 @@ export const ACCT_SCENES: Scene[] = [
             why: { wait: { account: "work", instead: "team" } },
             fromResetsAt: 0.03 * H1,
           },
+        ],
+      };
+    }),
+  ),
+  scene(
+    "acct-hist-lines",
+    "面板 · 记录 · 触发带窗口",
+    "到线那几种写清是哪一窗：work 7d ≥90% ↻… · personal 5h ≥90% ↻… · team 时段停用（不写成 ≥0%）· work 5h ≥90% · 停发",
+    async () => {
+      await openPanel();
+      await scrollPanelTo("记录");
+    },
+    world((aw) => {
+      aw.sessions[0] = {
+        ...swappedSess(),
+        history: [
+          { at: -5 * H1, from: "team", to: "personal", why: { off: {} } },
+          { at: -3.4 * H1, from: "personal", to: "work", why: { threshold: { n: 90, w: "5h" } }, fromResetsAt: 1.2 * H1 },
+          { at: -0.9 * H1, from: "work", to: "personal", why: { threshold: { n: 90, w: "7d" } }, fromResetsAt: 60 * H1 },
+          { at: -0.1 * H1, from: "personal", to: "personal", why: { held: { n: 90, w: "5h" } }, fromResetsAt: 0.6 * H1 },
         ],
       };
     }),
@@ -1294,7 +1309,7 @@ export const ACCT_SCENES: Scene[] = [
     world((aw) => {
       aw.sessions[0] = {
         ...swappedSess(),
-        custom: { ...ROT_CUSTOM, when: "full" },
+        custom: { ...ROT_CUSTOM, cap: undefined },
       };
     }),
   ),

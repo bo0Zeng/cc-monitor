@@ -145,12 +145,12 @@ fn the_default_rotation_is_written_whole_and_refused_whole() {
     let ctx = home.ctx();
     let got = answer_set_with(
         &ctx,
-        &json!({"rotation": {"order": [{"start": true}, "api", "b", "c"], "enabled": ["api", "b"], "when": {"threshold": {"n": 90}}}}),
+        &json!({"rotation": {"order": [{"start": true}, "api", "b", "c"], "enabled": ["api", "b"], "cap": {"*": {"5h": 90, "7d": 90}}}}),
     )
     .expect("ok");
     assert_eq!(
         got["rotation"],
-        json!({"order": [{"start": true}, "b", "c", "api"], "enabled": ["api", "b"], "when": {"threshold": {"n": 90}}, "atLimit": "continue", "wait": 40})
+        json!({"order": [{"start": true}, "b", "c", "api"], "enabled": ["api", "b"], "cap": {"*": {"5h": 90, "7d": 90}}, "atLimit": "continue", "wait": 40})
     );
     assert_eq!(got["isDefault"], true);
     let before = std::fs::read(home.root.join(rotation::FILE_NAME)).expect("read");
@@ -158,14 +158,14 @@ fn the_default_rotation_is_written_whole_and_refused_whole() {
         code, message: msg, ..
     } = answer_set_with(
         &ctx,
-        &json!({"rotation": {"order": [{"start": true}, "b"], "enabled": ["x"], "when": "full"}}),
+        &json!({"rotation": {"order": [{"start": true}, "b"], "enabled": ["x"]}}),
     )
     .expect_err("应拒");
     assert_eq!(code, "bad_args");
     assert!(msg.contains("enabled[0]"), "{msg}");
     let crate::stream::inbound::spec::Fail { code, message: msg, .. } = answer_set_with(
         &ctx,
-        &json!({"rotation": {"order": [{"start": true}, "b"], "enabled": ["b"], "when": "full", "atLimit": "halt"}}),
+        &json!({"rotation": {"order": [{"start": true}, "b"], "enabled": ["b"], "atLimit": "halt"}}),
     )
     .expect_err("应拒");
     assert_eq!(code, "bad_args");
@@ -183,7 +183,7 @@ fn a_batch_read_answers_every_session_and_marks_the_unknown() {
     let ctx = home.ctx();
     answer_set_with(
         &ctx,
-        &json!({"rotation": {"order": [{"start": true}, "c", "b"], "enabled": ["c", "b"], "when": "full"}}),
+        &json!({"rotation": {"order": [{"start": true}, "c", "b"], "enabled": ["c", "b"]}}),
     )
     .expect("ok");
     home.saw(&ctx, "s-1");
@@ -216,7 +216,7 @@ fn next_skips_an_account_without_login_and_one_refused_without_a_reset() {
     let ctx = home.ctx();
     answer_set_with(
         &ctx,
-        &json!({"rotation": {"order": [{"start": true}, "b", "c", "api"], "enabled": ["b", "c", "api"], "when": "full"}}),
+        &json!({"rotation": {"order": [{"start": true}, "b", "c", "api"], "enabled": ["b", "c", "api"]}}),
     )
     .expect("ok");
     home.saw(&ctx, "s-1");
@@ -250,7 +250,7 @@ fn a_session_can_go_custom_and_back_keeping_its_own() {
     let home = Home::new("session");
     let ctx = home.ctx();
     home.saw(&ctx, "s-1");
-    let custom = json!({"order": ["a", "api", "b"], "enabled": ["a", "b", "api"], "when": "full"});
+    let custom = json!({"order": ["a", "api", "b"], "enabled": ["a", "b", "api"]});
     let got = answer_session_set_with(
         &ctx,
         &json!({"sids": ["s-1", "s-9"], "rotation": {"custom": custom}}),
@@ -279,7 +279,8 @@ fn a_session_can_go_custom_and_back_keeping_its_own() {
     answer_session_set_with(&ctx, &json!({"sids": ["s-1"], "rotation": "custom"}), now())
         .expect("ok");
     assert_eq!(source_of(&ctx, "s-1"), Source::Custom);
-    let bad = json!({"sids": ["s-1"], "rotation": {"custom": {"order": ["b", "b"], "enabled": [], "when": "full"}}});
+    let bad =
+        json!({"sids": ["s-1"], "rotation": {"custom": {"order": ["b", "b"], "enabled": []}}});
     let before = ctx.hop.store.now();
     assert_eq!(
         answer_session_set_with(&ctx, &bad, now())
@@ -545,7 +546,7 @@ fn quota_read_adds_the_display_state_and_the_machine_summary() {
     // 默认轮换改成「到 90% 换」⇒ 86% 不再算快满。
     answer_set_with(
         &ctx,
-        &json!({"rotation": {"order": [{"start": true}], "enabled": [], "when": {"threshold": {"n": 90}}}}),
+        &json!({"rotation": {"order": [{"start": true}], "enabled": [], "cap": {"*": {"5h": 90, "7d": 90}}}}),
     )
     .expect("ok");
     let got = serde_json::to_value(quota_read_with(&ctx, now())).expect("json");
@@ -692,7 +693,7 @@ fn a_session_shows_its_current_account_by_its_own_n() {
     assert_eq!(state(&ctx), "near");
     answer_session_set_with(
         &ctx,
-        &json!({"sids": ["s-1"], "rotation": {"custom": {"order": [{"start": true}], "enabled": [], "when": {"threshold": {"n": 90}}}}}),
+        &json!({"sids": ["s-1"], "rotation": {"custom": {"order": [{"start": true}], "enabled": [], "cap": {"*": {"5h": 90, "7d": 90}}}}}),
         now(),
     )
     .expect("ok");
@@ -735,7 +736,7 @@ fn a_switch_records_the_baseline_and_the_session_read_says_how_much_this_stretch
     let ctx = home.ctx();
     let set = answer_set_with(
         &ctx,
-        &json!({"rotation": {"order": [{"start": true}, "b"], "enabled": ["b"], "when": "full",
+        &json!({"rotation": {"order": [{"start": true}, "b"], "enabled": ["b"],
                              "stint": {"b": {"5h": 5}}, "preempt": true}}),
     )
     .expect("ok");
@@ -776,7 +777,7 @@ fn a_switch_records_the_baseline_and_the_session_read_says_how_much_this_stretch
 fn rot_json(enabled: &[&str]) -> Value {
     let mut order = vec![json!({"start": true})];
     order.extend(enabled.iter().map(|a| json!(a)));
-    json!({"order": order, "enabled": enabled, "when": "full"})
+    json!({"order": order, "enabled": enabled})
 }
 
 fn new_rule(ctx: &Ctx, name: &str, enabled: &[&str]) -> String {
@@ -930,6 +931,35 @@ fn a_copy_gets_the_first_free_numbered_name() {
         ),
         [("name".into(), "dup".into())],
         "不给 dedupe ⇒ 照旧拒"
+    );
+}
+
+/// ★ 触发那一行（`cap["*"]`）逐格判 1–99：错的那一格回 `cap.*.5h` · `cap.*.7d`，不写盘；另一格照收。
+/// 落下来的值带是哪一窗（`trigger` 那一层 ＋ `w`）。
+#[test]
+fn the_trigger_line_is_checked_per_window() {
+    let home = Home::new("trig-cells");
+    let ctx = home.ctx();
+    let mut r = rot_json(&["b"]);
+    r["cap"] = json!({"*": {"5h": 120, "7d": 0}});
+    let got = answer_rule_save_with(&ctx, &json!({"name": "x", "rotation": r}), now()).expect("ok");
+    assert_eq!(
+        errors_of(&got),
+        [
+            ("cap.*.5h".into(), "range".into()),
+            ("cap.*.7d".into(), "range".into())
+        ]
+    );
+    r["cap"] = json!({"*": {"5h": 90}});
+    let got = answer_plan_with(&ctx, &json!({"rotation": r}), now()).expect("ok");
+    assert_eq!(
+        got["effective"]["b"]["5h"],
+        json!({"v": 90, "layer": "trigger", "w": "5h", "below": {"v": 90, "layer": "trigger", "w": "5h"}}),
+        "{got}"
+    );
+    assert_eq!(
+        got["effective"]["b"]["7d"]["layer"], "none",
+        "7d 空着 ⇒ 不封顶"
     );
 }
 
@@ -1172,13 +1202,13 @@ fn a_draft_is_checked_cell_by_cell_without_writing() {
 }
 
 /// ★ 预览：一条规则 / 一份草稿 / 一个会话此刻那一份，接下来会怎么走（`plan`）· 各号不能用的段（`lanes`）· 各格此刻取的上限与下一层（`effective`）。
-/// b 全天封顶 0 ⇒ 从头就换到起始账号（`threshold{n:0}`），b 那条泳道整段 `off`；视窗写错 ⇒ `bad_args`；规则不在 ⇒ `no_such_rule`。
+/// b 全天封顶 0 ⇒ 从头就换到起始账号（`off`，不借「到 0% 换」），b 那条泳道整段 `off`；视窗写错 ⇒ `bad_args`；规则不在 ⇒ `no_such_rule`。
 #[test]
 fn the_plan_says_who_runs_next_and_what_each_cell_takes() {
     let home = Home::new("plan-view");
     let ctx = home.ctx();
     let t = now();
-    let draft = json!({"order": ["b", {"start": true}], "enabled": ["b"], "when": "full", "atLimit": "continue", "cap": {"b": {"*": 0}}});
+    let draft = json!({"order": ["b", {"start": true}], "enabled": ["b"], "atLimit": "continue", "cap": {"b": {"*": 0}}});
     let got = answer_plan_with(&ctx, &json!({"rotation": draft, "span": "6h"}), t).expect("ok");
     let end = t + 6 * 3600;
     assert_eq!(got["errors"], json!([]));
@@ -1194,21 +1224,26 @@ fn the_plan_says_who_runs_next_and_what_each_cell_takes() {
                 p["why"].clone()
             ))
             .collect::<Vec<_>>(),
-        vec![(
-            json!(t),
-            json!(end),
-            json!("0"),
-            json!({"threshold": {"n": 0}})
-        )],
+        vec![(json!(t), json!(end), json!("0"), json!({"off": {}}))],
         "{got}"
     );
     assert!(got["plan"][0]["fromText"].is_string(), "时刻带写好的字");
     assert_eq!(got["lanes"][0]["account"], "b");
     assert_eq!(got["lanes"][0]["spans"][0]["state"], "off", "{got}");
     assert_eq!(got["lanes"][0]["spans"][0]["to"], json!(end));
+    // 全部窗口那一格下面是两窗各一条线：两窗此刻各取多少、这一格不算时各取多少，各一句（后端拼）。
+    let line = |w: &str, n: &str| copy_text("beRotation.eff.line", &[("w", w), ("n", n)]);
+    let none = |w: &str| copy_text("beRotation.eff.none", &[("w", w)]);
+    let sep = copy_text("kit.text.sep", &[]);
+    let (h5, d7) = (
+        copy_text("acct.slot.fiveHour", &[]),
+        copy_text("acct.slot.sevenDay", &[]),
+    );
     assert_eq!(
         got["effective"]["b"]["*"],
-        json!({"v": 0, "layer": "all", "below": {"v": null, "layer": "none"}})
+        json!({"v": 0, "layer": "all", "below": {"v": null, "layer": "none"},
+               "list": ([line(&h5, "0"), line(&d7, "0")].join(&sep)),
+               "belowList": ([none(&h5), none(&d7)].join(&sep))})
     );
     assert_eq!(
         got["effective"]["b"]["5h"],
@@ -1265,7 +1300,7 @@ fn the_timeline_view_looks_back_and_says_who_runs_now() {
     let ctx = home.ctx();
     let t = now();
     let mut r = rot_json(&["b"]);
-    r["when"] = json!({"threshold": {"n": 90}});
+    r["cap"] = json!({"*": {"5h": 90, "7d": 90}});
     answer_set_with(&ctx, &json!({"rotation": r})).expect("set");
     home.saw(&ctx, "s-1");
     switched(
@@ -1274,7 +1309,10 @@ fn the_timeline_view_looks_back_and_says_who_runs_now() {
         "a",
         "b",
         t - 3600,
-        SwitchWhy::Threshold { n: 90 },
+        SwitchWhy::Threshold {
+            n: 90,
+            w: Some("5h".into()),
+        },
     );
     seen(&ctx, "b", 0.63, None);
     let got = answer_plan_with(&ctx, &json!({"sid": "s-1", "view": "24h"}), t).expect("ok");
@@ -1307,14 +1345,14 @@ fn the_timeline_view_looks_back_and_says_who_runs_now() {
                 json!(t - 3600),
                 json!(t),
                 json!("b"),
-                json!({"threshold": {"n": 90}})
+                json!({"threshold": {"n": 90, "w": "5h"}})
             ),
         ],
         "{got}"
     );
     assert_eq!(
         got["head"],
-        json!({"account": "b", "w": "5h", "pct": 63, "toTrigger": 27}),
+        json!({"account": "b", "w": "5h", "pct": 63, "toLine": {"w": "5h", "n": 27}}),
         "{got}"
     );
     // 刻度：24h 一格 1h（按这台本地钟对齐），每 3h 一个轴上的字（`HH:MM`）；悬停 / 键盘按格走，每格带写好的字。
@@ -1591,7 +1629,7 @@ fn the_timeline_head_estimates_when_the_account_reaches_its_limit_only_with_grou
     let ctx = home.ctx();
     let t = now();
     let mut r = rot_json(&["b"]);
-    r["when"] = json!({"threshold": {"n": 90}});
+    r["cap"] = json!({"*": {"5h": 90, "7d": 90}});
     answer_set_with(&ctx, &json!({"rotation": r.clone()})).expect("set");
     home.saw(&ctx, "s-1");
     switched(
@@ -1600,7 +1638,10 @@ fn the_timeline_head_estimates_when_the_account_reaches_its_limit_only_with_grou
         "a",
         "b",
         t - 3600,
-        SwitchWhy::Threshold { n: 90 },
+        SwitchWhy::Threshold {
+            n: 90,
+            w: Some("5h".into()),
+        },
     );
     let resets = t + 5 * 3600;
     seen_at(&ctx, "b", 0.40, t - 900, resets);

@@ -9,6 +9,7 @@ import type { SessionRotationEntry } from "../../../src/frontend/ui/app-store.ts
 import type { QuotaRead } from "../../../src/frontend/ui/quota-lines.ts";
 import type { QuotaShow } from "../../../src/frontend/ui/generated/QuotaShow.ts";
 import type { SessionRotation } from "../../../src/frontend/ui/generated/SessionRotation.ts";
+import type { SwitchRecord } from "../../../src/frontend/ui/generated/SwitchRecord.ts";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { copyPattern } from "../../test-support/copy-pattern";
 
@@ -87,6 +88,12 @@ describe("状态栏账号按钮：各态", () => {
 });
 
 describe("悬停卡：会话补上的两样", () => {
+  it("★ 到了这号这一窗此刻的线的那一窗（后端按本会话那一份判 `atLine`）⇒ 那一行行尾「到线」；别的窗不写", () => {
+    const e = entry({}, { slots: [{ slot: "5h", pct: 22 }, { slot: "7d", pct: 91, atLine: true }] });
+    const rows = sessionHoverRows(e, null, LEDGER)!;
+    expect(rows.find((r) => r[0] === "7d")!.at(-1)).toBe(copyText("acct.hover.atLine"));
+    expect(rows.find((r) => r[0] === "5h")).not.toContain(copyText("acct.hover.atLine"));
+  });
   it("首行尾 `⇄ 时刻 ← 原号`；`下一个  team  5h 4%` 插在采样之前", () => {
     const e = entry({
       account: { start: "work", current: "personal", since: NOW - 600, sinceText: "11:50", history: [{ at: NOW - 600, atText: "11:50", from: "work", to: "personal", why: { full: { w: "5h" } } }], inPlace: "ok" },
@@ -110,7 +117,15 @@ describe("记录 · 提示条 · 标签页", () => {
     expect(whyOf({ at: NOW, atText: "12:00", from: "work", to: "personal", why: { full: { w: "5h" } }, fromResetsAt: NOW + 3600, fromResetsAtText: "13:00" })).toEqual({ why: "work 5h ✕", reset: copyText("acct.reset.at", { at: "13:00" }) });
     expect(whyOf({ at: NOW, atText: "12:00", from: "a", to: "b", why: "manualHot" }).why).toBe(copyText("acct.hist.manualHot"));
     expect(whyOf({ at: NOW, atText: "12:00", from: "a", to: "a", why: { skipped: { account: "team", reason: "needsLogin" } } }).why).toBe(copyText("acct.hist.skipped", { name: "team", reason: copyText("acct.reason.needsLogin", { name: "team" }) }));
-    expect(whyOf({ at: NOW, atText: "12:00", from: "a", to: "a", why: { held: { n: 90 } } }).why).toBe(copyText("acct.hist.held", { name: "a", n: "90" }));
+    expect(whyOf({ at: NOW, atText: "12:00", from: "a", to: "a", why: { held: { n: 90, w: "5h" } } }).why).toBe(copyText("acct.hist.held", { name: "a", w: "5h", n: "90" }));
+  });
+  it("★ 原因带窗口：到线 `work 7d ≥90%` · 停发 `work 5h ≥90% · 停发` · 说不出窗口落回 `work ≥90%` · 时段停用 `team 时段停用`（不写成 ≥0%）", () => {
+    const why = (w: SwitchRecord["why"]) => whyOf({ at: NOW, atText: "12:00", from: "work", to: "personal", why: w }).why;
+    expect(why({ threshold: { n: 90, w: "7d" } })).toBe("work 7d ≥90%");
+    expect(why({ threshold: { n: 90 } })).toBe("work ≥90%");
+    expect(why({ held: { n: 90, w: "5h" } })).toBe("work 5h ≥90% · 停发");
+    expect(why({ off: {} })).toBe(copyText("rot.pv.whyOff", { acct: "work" }));
+    expect(why({ off: { w: "5h" } })).not.toContain("0%");
   });
   it("原因：段预算用完 `5h 段预算 +5`；前面的号回来 `z 已恢复`（名是换去的那个号）", () => {
     expect(whyOf({ at: NOW, atText: "12:00", from: "b", to: "c", why: { stint: { w: "5h", n: 5 } } })).toEqual({ why: copyText("acct.hist.stint", { w: "5h", n: "5" }), reset: null });
@@ -125,8 +140,10 @@ describe("记录 · 提示条 · 标签页", () => {
     expect(bannerOf(single, NOW)?.text).toMatch(/^personal 5h ✕ ↻\d\d:\d\d \(\+1h30m\)$/);
     const all = entry({ blocked: { earliest: { account: "team", at: NOW + 5400, atText: "13:30" } } }, { state: "refused" });
     expect(bannerOf(all, NOW)?.text).toMatch(copyPattern("acct.banner.allFull", { name: "team", rel: "1h30m" }, { whole: true }));
-    const held = entry({ blocked: { earliest: { account: "team", at: NOW + 600, atText: "12:10" } }, account: { start: "personal", current: "personal", since: NOW, sinceText: "12:00", history: [{ at: NOW, atText: "12:00", from: "personal", to: "personal", why: { held: { n: 90 } } }], inPlace: "ok" } });
-    expect(bannerOf(held, NOW)?.text).toMatch(copyPattern("acct.banner.held", { n: 90, name: "team" }, { whole: true }));
+    const held = entry({ blocked: { earliest: { account: "team", at: NOW + 600, atText: "12:10", w: "5h" } }, account: { start: "personal", current: "personal", since: NOW, sinceText: "12:00", history: [{ at: NOW, atText: "12:00", from: "personal", to: "personal", why: { held: { n: 90, w: "7d" } } }], inPlace: "ok" } });
+    expect(bannerOf(held, NOW)?.text, "横幅写最早回来那个号卡着的那一窗，不写一个 N").toMatch(copyPattern("acct.banner.held", { name: "team", w: "5h" }, { whole: true }));
+    const heldAny = entry({ blocked: { earliest: { account: "team", at: NOW + 600, atText: "12:10" } }, account: { start: "personal", current: "personal", since: NOW, sinceText: "12:00", history: [{ at: NOW, atText: "12:00", from: "personal", to: "personal", why: { held: { n: 90 } } }], inPlace: "ok" } });
+    expect(bannerOf(heldAny, NOW)?.text).toMatch(copyPattern("acct.banner.heldAny", { name: "team" }, { whole: true }));
     expect(bannerOf(all, NOW + 6000)).toEqual({ text: expect.stringMatching(copyPattern("acct.banner.back", { name: "team" }, { whole: true })), tone: "neutral" });
   });
   it("标签页：被卡 ⇒ `✕ 5h` ＋ 悬停一行；能发 ⇒ 不出", () => {

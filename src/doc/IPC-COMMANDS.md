@@ -1146,13 +1146,13 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `dedupe` | → | 可缺席：`true` ⇒ 重名不拒，名后加 ` 2` · ` 3` … 取第一个不重的（复制 · 复制到别的机器） |
-| `errors` | ← | 只在 `refused` 时有：`[{cell, code, with?}]`：哪一格 · 短码 `empty` `dup` `tooLong` `range` `time` `same` `overlap` · 重叠时与第几段 |
+| `errors` | ← | 只在 `refused` 时有：`[{cell, code, with?}]`：哪一格（触发那一行是 `cap.*.5h` · `cap.*.7d`）· 短码 `empty` `dup` `tooLong` `range` `time` `same` `overlap` · 重叠时与第几段 |
 | `from` | → | 新建时不给 `rotation`：从哪条规则拷（`"blank"` ＝ 只有起始账号） |
 | `id` | → | 改哪条；不给 ＝ 新建 |
 | `ifRev` | → | 改之前读到的 `rev`；对不上 ⇒ `{state:"conflict", rev}`、不写 |
 | `name` | → | 规则名（1–24 字，这台不重名：去首尾空白、不分大小写） |
 | `rev` | ← | 只在 `conflict` 时有：此刻的版本 |
-| `rotation` | → | 整份 `{order, enabled, when, atLimit?, cap?, stint?, preempt?, fallback?, wait?}` |
+| `rotation` | → | 整份 `{order, enabled, atLimit?, cap?, stint?, preempt?, fallback?, wait?}`（规则一级的线在 `cap["*"]`：只收 `5h` · `7d`，`1..=99` 或按时段；一格空着 ＝ 那一窗满了才换） |
 | `rule` | ← | 只在 `saved` 时有：写成的那一条（形状同 `rotation-rules-read` 的一项） |
 | `state` | ← | `"saved"`（写成了）· `"refused"`（逐格错，没写）· `"conflict"`（读到之后别处改过，没写） |
 
@@ -1213,13 +1213,13 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `detail` | ← | 同 `rotation-rules-read` |
-| `effective` | ← | 号 → 窗口键（`5h` · `7d` · `*` ＝ 全部窗口 · 封顶里写过的别的键）→ `{v, layer, below: {v, layer}}`：此刻实际取的上限（`v` 为 `null` ＝ 不封顶）与来自哪一层（`window` 这号这窗口 · `all` 这号全部窗口 · `trigger` 触发 · `none`），`below` ＝ 这一格不算时往下一层取到的（封顶浮层「其余时段 ＝ …」） |
+| `effective` | ← | 号 → 封顶表那一列（`5h` · `7d` · `*` ＝ 全部窗口）→ `{v, layer, w?, below: {v, layer, w?}}`：此刻实际取的上限（`v` 为 `null` ＝ 不封顶）与来自哪一层（`window` 这号这窗口 · `all` 这号全部窗口 · `trigger` 触发那一行 · `none`；`trigger` 时 `w` ＝ 哪一窗），`below` ＝ 这一格不算时往下一层取到的（封顶浮层「其余时段 ＝ …」）；`*` 那一格另带 `list` · `belowList`：两窗此刻各取多少 · 这号全部窗口那一格不算时各取多少（写好的一句） |
 | `errors` | ← | 逐格错 `[{cell, code, with?}]`（形状同 `rotation-rule-save` 的 `refused`）；空 ＝ 没错；草稿有错 ⇒ 只回这一格 |
 | `from` | ← | 视窗起：带 `view` ⇒ 此刻之前那一截的起点；不带 ⇒ ＝ `now` |
 | `fromText` | ← | `from` 按这台本地钟写好的字 |
 | `grid` | ← | 只在带 `view` 时有：刻度 `[{at, atText, label?}]`，按这台本地钟对齐（`6h` 一格 15m · `24h` 1h · `7d` 6h；悬停与键盘按格走），轴上写字的那几格带 `label`（`6h` 每小时 · `24h` 每 3h 写 `HH:MM`；`7d` 每天零点写 `MM-DD`） |
-| `head` | ← | 只在带 `view`、问的不是 `machine` 时有：时间轴顶行。`{account, w?, pct?, toTrigger?, est?}`（此刻用的号 · 卡人的窗口与用了多少 % · 触发是 ≥N% 时还差几点 · `est` ＝ 按目前涨法几点用到这号这窗口此刻取的上限 `{at, atText, pct, w}`：只在额度账上这一窗有两次不同的采样、最近 30 分钟在涨时给，按这两点的斜率外推，到之前先重置就不给）；池里此刻都不能用（被拒 · 过封顶 · 时段停用）或预览说停发 ⇒ `{blocked: {account, at, atText, w?}}`（最早回来的号 · 几点 · 哪个窗口重置） |
-| `lanes` | ← | 池里每个号一条（按池序；`machine` ⇒ 这台全部号）：`{account, spans: [{from, to, state, n}], resets: [{w, at}], pct, usedBy?, warm?}`；`pct` ＝ 此刻卡人的那个窗口用了多少 %（没出过数 ⇒ `null`）；`usedBy` 只在 `machine` 时有：此刻活着、走这个号的会话数；`warm` ＝ quota-warm 下一次开窗 `[{at, atText}]`（只在带 `view`、读得到它的状态文件且它还在跑时有）；`state` 是不能用的样子 `refused` · `capped`（`n` ＝ 那个上限）· `off`（时段停用）· `overage`；`resets` ＝ 视窗里的重置时刻（`w` ＝ 语义位 `5h` / `7d`，没有 ⇒ 窗口键） |
+| `head` | ← | 只在带 `view`、问的不是 `machine` 时有：时间轴顶行。`{account, w?, pct?, toLine?: {w, n}, est?}`（此刻用的号 · 卡人的窗口与用了多少 % · 离线最近的那一窗还差几点：各窗按这号这窗此刻取的线算，取差得最少的那一窗，都没线 ⇒ 缺 · `est` ＝ 按目前涨法几点用到这号这窗口此刻取的上限 `{at, atText, pct, w}`：只在额度账上这一窗有两次不同的采样、最近 30 分钟在涨时给，按这两点的斜率外推，到之前先重置就不给）；池里此刻都不能用（被拒 · 过封顶 · 时段停用）或预览说停发 ⇒ `{blocked: {account, at, atText, w?}}`（最早回来的号 · 几点 · 哪个窗口重置） |
+| `lanes` | ← | 池里每个号一条（按池序；`machine` ⇒ 这台全部号）：`{account, spans: [{from, to, state, n, w}], resets: [{w, at}], pct, usedBy?, warm?}`；`pct` ＝ 此刻卡人的那个窗口用了多少 %（没出过数 ⇒ `null`）；`usedBy` 只在 `machine` 时有：此刻活着、走这个号的会话数；`warm` ＝ quota-warm 下一次开窗 `[{at, atText}]`（只在带 `view`、读得到它的状态文件且它还在跑时有）；`state` 是不能用的样子 `refused` · `capped`（`n` ＝ 那条线 · `w` ＝ 那一窗的语义位）· `off`（时段停用）· `overage`；`resets` ＝ 视窗里的重置时刻（`w` ＝ 语义位 `5h` / `7d`，没有 ⇒ 窗口键） |
 | `now` | ← | 这台此刻的 unix 秒 |
 | `nowText` | ← | `now` 按这台本地钟写好的字 |
 | `past` | ← | 只在 `sid` ＋ `view` 时有：`[{from, to, account, why}]`，这个会话在视窗起到此刻走过哪几个号（照换号记录切段，`why` ＝ 换进那一段的原因，头一段 `null`） |
@@ -1228,7 +1228,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | `state` | ← | 那份文件的三态（同 `rotation-rules-read`）；`unreadable` 时照缺省那一份算 |
 | `until` | ← | 视窗止（unix 秒） |
 | `machine` | → | `true`：这台全部号（设置里的时间轴），按默认规则判封顶 |
-| `rotation` | → | 草稿 `{order, enabled, when, atLimit?, cap?, stint?, preempt?, fallback?, wait?}`（从池里排第一的号起）；与 `rule` · `sid` · `machine` 四选一 |
+| `rotation` | → | 草稿 `{order, enabled, atLimit?, cap?, stint?, preempt?, fallback?, wait?}`（规则一级的线在 `cap["*"]`：只收 `5h` · `7d`，`1..=99` 或按时段；一格空着 ＝ 那一窗满了才换）（从池里排第一的号起）；与 `rule` · `sid` · `machine` 四选一 |
 | `rule` | → | 这台的一条规则 id（从池里排第一的号起） |
 | `sid` | → | 一个会话：此刻生效的那一份，从它此刻的号起 |
 | `span` | → | 可缺：视窗 `6h` · `12h`（缺省）· `24h` · `7d`（从此刻起；带 `view` 时不看） |

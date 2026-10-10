@@ -140,7 +140,6 @@ function seed(p: Partial<SessionRotation>, custom: Rotation | undefined): void {
         rulesOf({
           order: [{ start: true }],
           enabled: [],
-          when: "full",
           atLimit: "continue",
           wait: 40,
         }),
@@ -206,7 +205,6 @@ describe("账号面板", () => {
       {
         order: [{ start: true }, "team"],
         enabled: ["team"],
-        when: "full",
         atLimit: "continue",
         wait: 40,
       },
@@ -227,7 +225,6 @@ describe("账号面板", () => {
       custom: {
         order: [{ start: true }, "team", "api"],
         enabled: ["team", "api"],
-        when: "full",
         atLimit: "continue",
         wait: 40,
       },
@@ -249,7 +246,6 @@ describe("账号面板", () => {
         {
           order: ["team", "work"],
           enabled: ["team", "work"],
-          when: "full",
           atLimit: "continue",
           wait: 40,
         },
@@ -267,7 +263,6 @@ describe("账号面板", () => {
         {
           order: ["team", "work"],
           enabled: ["team", "work"],
-          when: "full",
           atLimit: "continue",
           wait: 40,
         },
@@ -285,7 +280,6 @@ describe("账号面板", () => {
         {
           order: [{ start: true }, "team", "work"],
           enabled: ["team", "work"],
-          when: "full",
           atLimit: "continue",
           wait: 40,
         },
@@ -303,7 +297,6 @@ describe("账号面板", () => {
         {
           order: ["team", "work"],
           enabled: ["team", "work"],
-          when: "full",
           atLimit: "continue",
           wait: 40,
         },
@@ -329,7 +322,6 @@ describe("账号面板", () => {
       {
         order: [{ start: true }],
         enabled: [],
-        when: "full",
         atLimit: "continue",
         wait: 40,
       },
@@ -350,7 +342,7 @@ describe("账号面板", () => {
       {
         order: [{ start: true }],
         enabled: [],
-        when: { threshold: { n: 90 } },
+        cap: { "*": { "5h": 90 } },
         atLimit: "continue",
         wait: 40,
       },
@@ -362,7 +354,7 @@ describe("账号面板", () => {
       custom: {
         order: [{ start: true }],
         enabled: [],
-        when: { threshold: { n: 90 } },
+        cap: { "*": { "5h": 90 } },
         atLimit: "stop",
         wait: 40,
       },
@@ -447,7 +439,6 @@ describe("账号面板 · 来源下拉（19:52 那件：分段一按方向键就
       {
         order: [{ start: true }, "team"],
         enabled: ["team"],
-        when: "full",
         atLimit: "continue",
         wait: 40,
       },
@@ -476,7 +467,6 @@ describe("账号面板 · 来源下拉（19:52 那件：分段一按方向键就
       {
         order: [{ start: true }, "team"],
         enabled: ["team"],
-        when: "full",
         atLimit: "continue",
         wait: 40,
       },
@@ -536,7 +526,6 @@ describe("账号面板 · 规则（来源下拉 · 用规则时只读 · 本会�
   const NIGHT: Rotation = {
     order: [{ start: true }, "team"],
     enabled: ["team"],
-    when: "full",
     atLimit: "continue",
     wait: 40,
     cap: { team: { "*": [{ at: "17:00-02:00", n: 0 }] } },
@@ -708,7 +697,6 @@ describe("账号面板 · 规则（来源下拉 · 用规则时只读 · 本会�
       {
         order: [{ start: true }, "team"],
         enabled: ["team"],
-        when: "full",
         atLimit: "continue",
         wait: 40,
       },
@@ -734,7 +722,6 @@ describe("账号面板 · 规则（来源下拉 · 用规则时只读 · 本会�
       {
         order: [{ start: true }, "team"],
         enabled: ["team"],
-        when: "full",
         atLimit: "continue",
         wait: 40,
       },
@@ -773,12 +760,12 @@ describe("账号面板 · 规则（来源下拉 · 用规则时只读 · 本会�
     const r: Rotation = {
       order: [{ start: true }, "team"],
       enabled: ["team"],
-      when: { threshold: { n: 90 } },
+      cap: { "*": { "5h": 90 } },
       atLimit: "continue",
       wait: 40,
     };
     seed({}, r);
-    const below = (b: { v: number | null; layer: string }) => ({
+    const below = (b: { v: number | null; layer: string; w?: string }) => ({
       errors: [],
       now: 0,
       nowText: "",
@@ -787,7 +774,7 @@ describe("账号面板 · 规则（来源下拉 · 用规则时只读 · 本会�
       lanes: [],
       effective: { team: { "*": { v: 90, layer: "trigger", below: b } } },
     });
-    readPlan.mockResolvedValue(below({ v: 90, layer: "trigger" }));
+    readPlan.mockResolvedValue(below({ v: 90, layer: "trigger", w: "5h" }));
     openAccountPanel("s1", "<local>", host);
     panel()
       .querySelector<HTMLButtonElement>('[data-rot-cap-btn="team"]')!
@@ -801,7 +788,7 @@ describe("账号面板 · 规则（来源下拉 · 用规则时只读 · 本会�
     expect(readPlan).toHaveBeenCalledWith("<local>", { rotation: r });
     expect(cap().querySelector("[data-rot-rest]")!.textContent).toBe(
       copyText("rot.cap.rest", {
-        what: copyText("rot.cap.restTrig", { n: 90 }),
+        what: copyText("rot.cap.restTrig", { w: "5h", n: 90 }),
       }),
     );
     readPlan.mockResolvedValue(below({ v: null, layer: "none" }));
@@ -821,7 +808,7 @@ describe("账号面板 · 规则（来源下拉 · 用规则时只读 · 本会�
       "开浮层时问一次（下一层不归这一格管，切分段不重问）",
     ).toBe(
       copyText("rot.cap.rest", {
-        what: copyText("rot.cap.restTrig", { n: 90 }),
+        what: copyText("rot.cap.restTrig", { w: "5h", n: 90 }),
       }),
     );
   });
@@ -832,7 +819,6 @@ describe("账号面板 · 规则（来源下拉 · 用规则时只读 · 本会�
       {
         order: [{ start: true }, "team", "personal"],
         enabled: ["team", "personal"],
-        when: "full",
         atLimit: "continue",
         wait: 40,
         fallback: ["personal"],
@@ -893,7 +879,6 @@ describe("账号面板 · 规则（来源下拉 · 用规则时只读 · 本会�
       {
         order: [{ start: true }, "team"],
         enabled: ["team"],
-        when: "full",
         atLimit: "continue",
         wait: 40,
       },
@@ -935,7 +920,6 @@ describe("账号面板 · 规则（来源下拉 · 用规则时只读 · 本会�
         rotation: {
           order: [{ start: true }, "team"],
           enabled: ["team"],
-          when: "full",
           atLimit: "continue",
           wait: 40,
         },
@@ -1129,15 +1113,60 @@ describe("账号面板 · 时间轴", () => {
       h.textContent?.includes(copyText("acct.tl.title")),
     )!;
 
+  it("★ 轮换列表：后端预览里此刻过线的号 ⇒ 行尾「7d 到线」、用量那格改显那一窗；判定照后端泳道，界面不比数", async () => {
+    seed({}, { order: [{ start: true }, "team"], enabled: ["team"], atLimit: "continue", wait: 40 });
+    const p = tlPlan({ account: "work", w: "5h", pct: 63 });
+    readPlan.mockReset().mockResolvedValue({
+      ...p,
+      lanes: [
+        { account: "team", spans: [{ from: T - 60, fromText: "01:59", to: T + 3600, toText: "03:00", state: "capped", n: 90, w: "7d" }], resets: [] },
+        { account: "work", spans: [], resets: [] },
+      ],
+    });
+    openAccountPanel("s1", "<local>", host);
+    await settle();
+    const team = panel().querySelector<HTMLElement>('[data-acct-row="team"]')!;
+    expect(team.textContent).toContain(copyText("acct.tag.atLine", { w: "7d" }));
+    expect(team.textContent).toContain("7d");
+    const work = panel().querySelector<HTMLElement>('[data-acct-row="work"]')!;
+    expect(work.textContent).not.toContain(copyText("acct.tag.atLine", { w: "5h" }));
+  });
+
+  it("★ 触发两格（本会话）：先交后端逐格校验，错的格框红、不写；界面不另判范围（面板那份前端自判的 50–99 删了：40 也交后端）", async () => {
+    seed({}, { order: [{ start: true }, "team"], enabled: ["team"], atLimit: "continue", wait: 40 });
+    openAccountPanel("s1", "<local>", host);
+    await settle();
+    const cell = (w: string) =>
+      panel().querySelector<HTMLInputElement>(`[data-rot-line-num="${w}"]`)!;
+    checkRotation.mockResolvedValueOnce([{ cell: "cap.*.7d", code: "range" }]);
+    cell("7d").focus();
+    cell("7d").value = "120";
+    cell("7d").dispatchEvent(new Event("change"));
+    cell("7d").blur();
+    await settle();
+    expect(checkRotation.mock.calls[0][1].cap).toEqual({ "*": { "7d": 120 } });
+    expect(writeSessionRotation, "后端说错 ⇒ 不写").not.toHaveBeenCalled();
+    expect(cell("7d").dataset.error).toBe("true");
+    expect(cell("7d").value).toBe("120");
+    cell("5h").focus();
+    cell("5h").value = "40";
+    cell("5h").dispatchEvent(new Event("change"));
+    cell("5h").blur();
+    await settle();
+    expect(writeSessionRotation).toHaveBeenCalledWith("<local>", ["s1"], {
+      custom: { order: [{ start: true }, "team"], enabled: ["team"], atLimit: "continue", wait: 40, cap: { "*": { "5h": 40 } } },
+    });
+  });
+
   it("问 `{sid, view: 24h}`；折着时摘要 ＝ 后端那一句顶行；换视窗 ⇒ 按新视窗重问", async () => {
-    seed({}, { order: [{ start: true }, "team"], enabled: ["team"], when: "full", atLimit: "continue", wait: 40 });
-    readPlan.mockReset().mockResolvedValue(tlPlan({ account: "team", w: "5h", pct: 63, toTrigger: 27 }));
+    seed({}, { order: [{ start: true }, "team"], enabled: ["team"], atLimit: "continue", wait: 40 });
+    readPlan.mockReset().mockResolvedValue(tlPlan({ account: "team", w: "5h", pct: 63, toLine: { w: "5h", n: 27 } }));
     openAccountPanel("s1", "<local>", host);
     await settle();
     expect(readPlan).toHaveBeenLastCalledWith("<local>", { sid: "s1", view: "24h" });
     expect(foldHead().getAttribute("aria-expanded")).toBe("false");
     expect(foldHead().textContent).toContain(
-      [copyText("rot.tl.now", { acct: "team", w: "5h", pct: 63 }), copyText("rot.tl.toTrig", { n: 27 })].join(copyText("kit.text.sep")),
+      [copyText("rot.tl.now", { acct: "team", w: "5h", pct: 63 }), copyText("rot.tl.toLine", { w: "5h", n: 27 })].join(copyText("kit.text.sep")),
     );
     const calls = readPlan.mock.calls.length;
     foldHead().click();
@@ -1149,7 +1178,7 @@ describe("账号面板 · 时间轴", () => {
   });
 
   it("卡住（后端 head.blocked）⇒ 自动摊开、顶行写成琥珀条那一形", async () => {
-    seed({}, { order: [{ start: true }, "team"], enabled: ["team"], when: "full", atLimit: "continue", wait: 40 });
+    seed({}, { order: [{ start: true }, "team"], enabled: ["team"], atLimit: "continue", wait: 40 });
     readPlan.mockReset().mockResolvedValue(tlPlan({ blocked: { account: "team", at: T + 600, atText: "02:10", w: "5h" } }));
     openAccountPanel("s1", "<local>", host);
     await settle();
@@ -1161,9 +1190,9 @@ describe("账号面板 · 时间轴", () => {
   });
 
   it("摊开时顶行按段排（窄了在段与段之间换行）：估那一段整段在一个框里", async () => {
-    seed({}, { order: [{ start: true }, "team"], enabled: ["team"], when: "full", atLimit: "continue", wait: 40 });
+    seed({}, { order: [{ start: true }, "team"], enabled: ["team"], atLimit: "continue", wait: 40 });
     const est = { at: T + 2400, atText: "02:40", pct: 90, w: "5h" };
-    readPlan.mockReset().mockResolvedValue(tlPlan({ account: "team", w: "5h", pct: 63, toTrigger: 27, est }));
+    readPlan.mockReset().mockResolvedValue(tlPlan({ account: "team", w: "5h", pct: 63, toLine: { w: "5h", n: 27 }, est }));
     openAccountPanel("s1", "<local>", host);
     await settle();
     foldHead().click();
@@ -1171,7 +1200,7 @@ describe("账号面板 · 时间轴", () => {
     const line = panel().querySelector<HTMLElement>("[data-tl-head]")!;
     expect([...line.children].map((c) => c.textContent)).toEqual([
       copyText("rot.tl.now", { acct: "team", w: "5h", pct: 63 }),
-      copyText("rot.tl.toTrig", { n: 27 }),
+      copyText("rot.tl.toLine", { w: "5h", n: 27 }),
       copyText("rot.tl.est", { at: "02:40", pct: 90 }),
     ]);
     expect(line.textContent).toBe(

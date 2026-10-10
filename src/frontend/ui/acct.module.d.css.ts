@@ -44,7 +44,6 @@ declare const classes: {
   readonly acctMiniFill: string;
   readonly acctModes: string;
   readonly acctPanel: string;
-  readonly acctPct: string;
   readonly acctPick: string;
   readonly acctPickName: string;
   readonly acctPickUsage: string;
@@ -68,7 +67,6 @@ declare const classes: {
   readonly acctTlTop: string;
   readonly acctTrigger: string;
   readonly acctTriggerLabel: string;
-  readonly acctTriggerUnit: string;
   readonly acctTriggerWrap: string;
   readonly acctWho: string;
   readonly acctWhoFrom: string;

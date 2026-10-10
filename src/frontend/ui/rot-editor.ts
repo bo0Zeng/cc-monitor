@@ -13,12 +13,14 @@ import { field } from "./kit/field";
 import { closePopover, openPopover } from "./kit/popover";
 import { segmented } from "./kit/tabs";
 import { accountLabel, slotLabel } from "./quota-lines";
+import { attachTooltip } from "./kit/tooltip";
 import { accountAvatarEl } from "./account-color";
 import {
   checkRotation,
   readPlan,
   saveRule,
   type CapAt,
+  type PlanRead,
   type RuleRow,
 } from "./quota-reads";
 import type { CapValue } from "./generated/CapValue";
@@ -126,6 +128,189 @@ export function move<T>(xs: T[], from: number, to: number): T[] {
   const [x] = out.splice(from, 1);
   out.splice(to, 0, x);
   return out;
+}
+
+// ─────────────────────────────── 触发（规则一级的线：`cap["*"]` 的 5h · 7d 两格；面板与规则编辑器同一组件）
+
+/** 触发那一行的两窗。 */
+export const LINE_WINDOWS = ["5h", "7d"] as const;
+export type LineWindow = (typeof LINE_WINDOWS)[number];
+
+/** 触发那一行的两格（`cap["*"]`）；没设的那一窗不在里面。 */
+export function linesOf(r: Rotation): Partial<Record<LineWindow, CapValue>> {
+  const row = r.cap?.[ALL] ?? {};
+  const out: Partial<Record<LineWindow, CapValue>> = {};
+  for (const w of LINE_WINDOWS) {
+    const v = row[w];
+    if (v !== undefined) out[w] = v;
+  }
+  return out;
+}
+
+/** 触发这一行此刻是不是「到线」（有一格设了）。 */
+export function atLineMode(r: Rotation): boolean {
+  return Object.keys(linesOf(r)).length > 0;
+}
+
+/** 两格都清掉（「满」）。 */
+function withoutLines(r: Rotation): Rotation {
+  let out = r;
+  for (const w of LINE_WINDOWS) out = withCap(out, ALL, w, undefined);
+  return out;
+}
+
+export interface TriggerOpts {
+  /** 单选组的名（同一页里唯一）。 */
+  name: string;
+  readonly: boolean;
+  /** 后端回的逐格错（`cap.*.5h` · `cap.*.7d` 那两格标红）。 */
+  errors: CellError[];
+  /** 填错那一格上次填的字（后端拒了、盘上没变 ⇒ 照原样画回去、框红）。 */
+  draft?: Partial<Record<LineWindow, string>>;
+  origin: Origin;
+  write: (r: Rotation) => void;
+  /** 记下这一格填的字（交后端之前）。 */
+  onDraft?: (w: LineWindow, text: string) => void;
+  /** 格子拿到 / 交出焦点（面板据此在编辑时不重画）。 */
+  onFocus?: () => void;
+  onBlur?: () => void;
+}
+
+/**
+ * `触发 (•)满 ( )到线  5h [90] %  7d [—] %`：单选由两格推出来（有一格设了 ＝ 到线），不另存。
+ * 点「到线」且两格都空 ⇒ 5h 预填 90 写盘；点「满」⇒ 两格清掉写盘。格子 Enter / 失焦即写、Esc 还原；空 ＝ 那一窗满了才换。
+ * 范围由后端判（1–99），错的那一格框红 ＋ 行尾红字。盘上是按时段的那一格画成按钮，点开封顶浮层（与封顶表同一浮层）。
+ */
+export function triggerLine(r: Rotation, o: TriggerOpts): HTMLElement {
+  const box = el("span", (e) => (e.className = s.rotTrigger));
+  box.dataset.rotTrigger = "";
+  const lines = linesOf(r);
+  const on = atLineMode(r);
+  const radio = (
+    checked: boolean,
+    label: string,
+    key: string,
+    pick: () => void,
+  ): HTMLLabelElement => {
+    const l = el("label", (e) => (e.className = s.rotCheck));
+    const i = document.createElement("input");
+    i.type = "radio";
+    i.name = o.name;
+    i.checked = checked;
+    i.disabled = o.readonly;
+    i.dataset.rotTrig = key;
+    i.addEventListener("change", pick);
+    l.append(i, document.createTextNode(label));
+    return l;
+  };
+  const radios = el("span", (e) => (e.className = s.rotHow));
+  radios.append(
+    radio(!on, copyText("acct.rot.trigFull"), "full", () => {
+      if (on) o.write(withoutLines(r));
+    }),
+    radio(on, copyText("acct.rot.trigLine"), "line", () => {
+      if (!on) o.write(withCap(r, ALL, "5h", 90));
+    }),
+  );
+  const cells = el("span", (e) => (e.className = s.rotTrigger));
+  cells.dataset.rotLines = "";
+  let bad = false;
+  for (const w of LINE_WINDOWS) {
+    const v = lines[w];
+    const cell = el("span", (e) => (e.className = s.rotCheck));
+    cell.dataset.rotLine = w;
+    cell.appendChild(
+      el("span", (e) => (e.className = s.rotLabel), slotLabel(w)),
+    );
+    const wrong = o.errors.some((e) => e.cell === `cap.${ALL}.${w}`);
+    if (wrong) bad = true;
+    if (Array.isArray(v)) {
+      // 按时段（只有命令行 / AI 写得出）：画成按钮，点开即封顶浮层；界面不另开入口去写时段。
+      const b = button({
+        label: copyText("rot.cap.slotsN", { n: v.length }),
+        kind: "secondary",
+        size: "compact",
+        onClick: () => openCapEditor(b, o.origin, r, ALL, w, o.write),
+      });
+      b.disabled = o.readonly;
+      b.dataset.rotLineSlots = w;
+      cell.appendChild(b);
+    } else {
+      const saved = v === undefined ? "" : String(v);
+      const shown = wrong && o.draft?.[w] !== undefined ? o.draft[w] : saved;
+      const i = numInput(0, "");
+      i.setAttribute("aria-label", copyText("acct.rot.lineAria", { w: slotLabel(w) }));
+      i.value = shown ?? "";
+      i.placeholder = copyText("rot.list.useNone");
+      i.disabled = o.readonly;
+      i.dataset.rotLineNum = w;
+      if (wrong) i.dataset.error = "true";
+      if (v === undefined) {
+        const empty = copyText("acct.rot.lineEmpty", { w: slotLabel(w) });
+        i.setAttribute("aria-description", empty);
+        attachTooltip(i, empty);
+      }
+      let cancelled = false;
+      const commit = (): void => {
+        if (cancelled) {
+          cancelled = false;
+          return;
+        }
+        const t = i.value.trim();
+        if (t === saved && !wrong) return;
+        o.onDraft?.(w, t);
+        if (t === "") {
+          if (v !== undefined) o.write(withCap(r, ALL, w, undefined));
+          return;
+        }
+        // 写错的数也交后端（它回 range、框红），这里不另判范围。
+        const n = /^\d{1,3}$/.test(t) ? Number(t) : -1;
+        o.write(withCap(r, ALL, w, n));
+      };
+      i.addEventListener("focus", () => {
+        cancelled = false;
+        o.onFocus?.();
+      });
+      i.addEventListener("change", commit);
+      i.addEventListener("blur", () => o.onBlur?.());
+      i.addEventListener("keydown", (ev) => {
+        if (ev.isComposing) return;
+        if (ev.key === "Enter") i.blur();
+        if (ev.key === "Escape") {
+          i.value = saved;
+          cancelled = true;
+          ev.stopPropagation();
+          i.blur();
+        }
+      });
+      cell.appendChild(i);
+    }
+    cell.appendChild(
+      el("span", (e) => (e.className = s.rotUnit), copyText("acct.rot.pctUnit")),
+    );
+    cells.appendChild(cell);
+  }
+  box.append(radios, cells);
+  if (bad) {
+    const e = el(
+      "span",
+      (e) => (e.className = s.rotErr),
+      copyText("rot.ed.pctErr"),
+    );
+    e.dataset.rotLineErr = "";
+    box.appendChild(e);
+  }
+  return box;
+}
+
+/** 后端预览里这个号此刻那一格是「过线」⇒ 过线的那一窗（语义位）；不是 ⇒ `null`（列表行尾「7d 到线」那一枚签，界面不比数）。 */
+export function lineNow(plan: PlanRead | null, account: string): string | null {
+  if (!plan) return null;
+  const lane = plan.lanes.find((l) => l.account === account);
+  const sp = lane?.spans.find(
+    (x) => x.from <= plan.now && plan.now < x.to && x.state === "capped",
+  );
+  return sp?.w ?? null;
 }
 
 // ─────────────────────────────── 换法
@@ -390,7 +575,7 @@ export function restText(c: CapAt): string {
       : c.layer === "all"
         ? copyText("rot.cap.restAll", { n: c.v })
         : c.layer === "trigger"
-          ? copyText("rot.cap.restTrig", { n: c.v })
+          ? copyText("rot.cap.restTrig", { w: slotLabel(c.w ?? ""), n: c.v })
           : copyText("rot.cap.fixedShort", { n: c.v });
   return copyText("rot.cap.rest", { what });
 }
@@ -441,7 +626,11 @@ export function openCapEditor(
     (p) => {
       const c = p.effective[account]?.[w];
       if (!c) return;
-      rest = restText(c.below);
+      // 全部窗口那一格下面是两窗各一条线：其余时段照后端那一句两窗各取多少。
+      rest =
+        c.belowList !== undefined
+          ? copyText("rot.cap.rest", { what: c.belowList })
+          : restText(c.below);
       if (mode === "slots" && root.isConnected) paint();
     },
     (e: unknown) => console.warn("[rot] rotation-plan 失败：", e),
@@ -469,7 +658,7 @@ export function openCapEditor(
         "span",
         (e) => (e.className = s.rotCapTitle),
         copyText("rot.cap.title", {
-          acct: account,
+          acct: account === ALL ? copyText("acct.rot.trigger") : account,
           w: w === ALL ? copyText("rot.cap.colAll") : slotLabel(w),
         }),
       ),

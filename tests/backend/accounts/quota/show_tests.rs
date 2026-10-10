@@ -1,7 +1,7 @@
-//! 额度显示态：每一态一条（假额度账 ＋ 假时钟）；「快满」跟着给的 N 走、没设落 80%；数旧 30 分钟边界两侧各一条；订阅标识不含原值。
+//! 额度显示态：每一态一条（假额度账 ＋ 假时钟）；「快满」按窗跟着这号这一窗的线走、没线落 80%；数旧 30 分钟边界两侧各一条；订阅标识不含原值。
 
 use super::*;
-use crate::accounts::quota::rotation::RotationWhen;
+use crate::accounts::quota::rotation::{CapValue, Caps};
 use crate::agents::{QuotaOverage, QuotaReading, QuotaStatus, QuotaWindow};
 
 const NOW: u64 = 1_800_000_000;
@@ -45,23 +45,38 @@ fn facts(kind: Kind) -> Facts {
     }
 }
 
-fn state_of(r: &QuotaReading, kind: Kind, n: u8) -> QuotaState {
-    show(Some((r, NOW)), facts(kind), n, NOW, &slot).state
+/// 没有线（满了才换）：「快满」落 80%。
+fn no_line(_: &str) -> Option<u8> {
+    None
+}
+
+fn key(w: &str) -> Option<String> {
+    crate::agents::claudecode::quota::key_of(w)
+}
+
+fn state_of(r: &QuotaReading, kind: Kind, line: &dyn Fn(&str) -> Option<u8>) -> QuotaState {
+    show(Some((r, NOW)), facts(kind), line, NOW, &slot).state
 }
 
 /// ★ 每一态各一条。
 #[test]
 fn every_state_comes_out_of_its_own_facts() {
     assert_eq!(
-        show(None, facts(Kind::Sub), 80, NOW, &slot).state,
+        show(None, facts(Kind::Sub), &no_line, NOW, &slot).state,
         QuotaState::Unseen
     );
-    assert_eq!(state_of(&sub(0.63, LATER), Kind::Sub, 80), QuotaState::Ok);
-    assert_eq!(state_of(&sub(0.86, LATER), Kind::Sub, 80), QuotaState::Near);
+    assert_eq!(
+        state_of(&sub(0.63, LATER), Kind::Sub, &no_line),
+        QuotaState::Ok
+    );
+    assert_eq!(
+        state_of(&sub(0.86, LATER), Kind::Sub, &no_line),
+        QuotaState::Near
+    );
     let mut refused = sub(1.0, LATER);
     refused.refused = true;
     refused.status = Some(QuotaStatus::Rejected);
-    assert_eq!(state_of(&refused, Kind::Sub, 80), QuotaState::Refused);
+    assert_eq!(state_of(&refused, Kind::Sub, &no_line), QuotaState::Refused);
     let mut overage = sub(1.0, LATER);
     overage.status = Some(QuotaStatus::Rejected);
     overage.overage = Some(QuotaOverage {
@@ -70,15 +85,18 @@ fn every_state_comes_out_of_its_own_facts() {
         disabled: None,
         in_use: true,
     });
-    assert_eq!(state_of(&overage, Kind::Sub, 80), QuotaState::OverageInUse);
     assert_eq!(
-        state_of(&sub(0.63, EARLIER), Kind::Sub, 80),
+        state_of(&overage, Kind::Sub, &no_line),
+        QuotaState::OverageInUse
+    );
+    assert_eq!(
+        state_of(&sub(0.63, EARLIER), Kind::Sub, &no_line),
         QuotaState::ResetSinceSeen,
         "按钮那个窗口看到之后已重置"
     );
     refused.resets_at = Some(EARLIER);
     assert_eq!(
-        state_of(&refused, Kind::Sub, 80),
+        state_of(&refused, Kind::Sub, &no_line),
         QuotaState::Near,
         "被拒到的那一刻已过、窗口还没重置 ⇒ 不再画被拒，照窗口的数判"
     );
@@ -86,7 +104,7 @@ fn every_state_comes_out_of_its_own_facts() {
     over.refused = true;
     over.resets_at = Some(EARLIER);
     assert_eq!(
-        state_of(&over, Kind::Sub, 80),
+        state_of(&over, Kind::Sub, &no_line),
         QuotaState::ResetSinceSeen,
         "被拒到的那一刻与卡着的窗口都已过"
     );
@@ -99,40 +117,73 @@ fn every_state_comes_out_of_its_own_facts() {
         windows: Vec::new(),
         overage: None,
     };
-    let s = show(Some((&api_refused, NOW)), facts(Kind::Api), 80, NOW, &slot);
+    let s = show(
+        Some((&api_refused, NOW)),
+        facts(Kind::Api),
+        &no_line,
+        NOW,
+        &slot,
+    );
     assert_eq!(
         (s.state, s.limiting, s.slots.len()),
         (QuotaState::Refused, None, 0)
     );
     // 说不出回来时刻的旧账（适配层今天不再出这一形）⇒ 不算被拒，与轮换同一个判法。
     api_refused.resets_at = None;
-    assert_eq!(state_of(&api_refused, Kind::Api, 80), QuotaState::Ok);
+    assert_eq!(state_of(&api_refused, Kind::Api, &no_line), QuotaState::Ok);
 }
 
-/// ★ 「快满」跟着给的 N 走；轮换没设 N（满了才换）⇒ 80%。回包说越过了预警线也算。
+/// ★ 「快满」按窗判：那一窗用到这号这一窗此刻的线（与轮换同一处取线）；那一窗没线 ⇒ 80%。回包说越过了预警线也算。
+/// 到了线的那一窗另带 `atLine`（悬停卡写「到线」）；没线的窗不出。
 #[test]
-fn near_follows_the_given_n_and_falls_back_to_eighty() {
-    assert_eq!(near_of(RotationWhen::Full), 80);
-    assert_eq!(near_of(RotationWhen::Threshold { n: 90 }), 90);
+fn near_is_judged_per_window_against_its_own_line() {
     let r = sub(0.86, LATER);
     assert_eq!(
-        state_of(&r, Kind::Sub, near_of(RotationWhen::Full)),
+        state_of(&r, Kind::Sub, &no_line),
+        QuotaState::Near,
+        "没线 ⇒ 80"
+    );
+    // 触发只设 7d 95：5h 那一窗没线 ⇒ 落 80 ⇒ 86% 仍快满。
+    let mut cap = Caps::new();
+    cap.entry("*".into())
+        .or_default()
+        .insert("7d".into(), CapValue::N(95));
+    assert_eq!(
+        state_of(&r, Kind::Sub, &lines_of(&cap, "a", NOW, 0, &key, &slot)),
         QuotaState::Near
     );
+    // 触发 5h 90：86% 不到线、也不落 80 ⇒ ok。
+    cap.entry("*".into())
+        .or_default()
+        .insert("5h".into(), CapValue::N(90));
     assert_eq!(
-        state_of(&r, Kind::Sub, near_of(RotationWhen::Threshold { n: 90 })),
+        state_of(&r, Kind::Sub, &lines_of(&cap, "a", NOW, 0, &key, &slot)),
         QuotaState::Ok
+    );
+    // 这号自己 7d ≤40：7d 41% 到线 ⇒ 快满，7d 那一格 atLine，5h 那一格不。
+    cap.entry("a".into())
+        .or_default()
+        .insert("7d".into(), CapValue::N(40));
+    let lines = lines_of(&cap, "a", NOW, 0, &key, &slot);
+    let s = show(Some((&r, NOW)), facts(Kind::Sub), &lines, NOW, &slot);
+    assert_eq!(s.state, QuotaState::Near);
+    assert_eq!(
+        s.slots
+            .iter()
+            .map(|x| (x.slot.as_str(), x.at_line))
+            .collect::<Vec<_>>(),
+        vec![("5h", false), ("7d", true)]
     );
     let mut warned = sub(0.5, LATER);
     warned.status = Some(QuotaStatus::Warning);
-    assert_eq!(state_of(&warned, Kind::Sub, 80), QuotaState::Near);
+    assert_eq!(state_of(&warned, Kind::Sub, &no_line), QuotaState::Near);
 }
 
 /// ★ 数旧：看到距今恰好 30 分钟不旧，多一秒就旧；与态叠着出。
 #[test]
 fn stale_flips_one_second_past_thirty_minutes() {
     let r = sub(0.63, NOW + 7_200);
-    let at = |dt: u64| show(Some((&r, NOW)), facts(Kind::Sub), 80, NOW + dt, &slot);
+    let at = |dt: u64| show(Some((&r, NOW)), facts(Kind::Sub), &no_line, NOW + dt, &slot);
     assert!(!at(STALE_AFTER).stale);
     let s = at(STALE_AFTER + 1);
     assert!(s.stale);
@@ -145,7 +196,7 @@ fn slots_are_rounded_and_named_by_their_semantic_position() {
     let s = show(
         Some((&sub(0.625, LATER), NOW)),
         facts(Kind::Sub),
-        80,
+        &no_line,
         NOW,
         &slot,
     );
@@ -159,6 +210,7 @@ fn slots_are_rounded_and_named_by_their_semantic_position() {
                 pct: Some(63),
                 resets_at: Some(LATER),
                 full: false,
+                at_line: false,
             },
             SlotShow {
                 resets_at_text: None,
@@ -166,6 +218,7 @@ fn slots_are_rounded_and_named_by_their_semantic_position() {
                 pct: Some(41),
                 resets_at: Some(NOW + 5 * 86_400),
                 full: false,
+                at_line: false,
             },
         ]
     );
@@ -178,7 +231,7 @@ fn full_is_a_window_at_a_hundred_not_a_refusal() {
         let mut r = sub(used, resets);
         r.refused = refused;
         r.resets_at = Some(LATER);
-        show(Some((&r, NOW)), facts(Kind::Sub), 80, NOW, &slot).slots[0].clone()
+        show(Some((&r, NOW)), facts(Kind::Sub), &no_line, NOW, &slot).slots[0].clone()
     };
     let s = full_of(1.0, LATER, true);
     assert_eq!((s.full, full_of(1.0, LATER, true).pct), (true, Some(100)));

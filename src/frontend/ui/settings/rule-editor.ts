@@ -2,7 +2,7 @@
  * 设置 → 机器 →「轮换」栏里一条规则的编辑器（同一栏里的子页，面包屑 `‹ 轮换 / 名字` 回列表；稿 `轮换规则.md` §5.6、截图 06 · 07）。
  *
  * 从上到下：头（名字点即就地改 · 默认标 · 在用 N 会话 · ⋯）＋ 后端那句说明 · 顺序（与面板同一套：拖 / Alt+↑↓ · 勾 · 封顶 · 兜底）·
- * 触发（满 / ≥N%）· 换法三张卡（各带一条示意小轴）· 无号可换 ＋ 兜底前最多等 · 按号封顶表（5h · 7d · 全部窗口 · 单段）· 预览。
+ * 触发（满 / 到线：5h · 7d 各一格，空 ＝ 那一窗满了才换）· 换法三张卡（各带一条示意小轴）· 无号可换 ＋ 兜底前最多等 · 按号封顶表（5h · 7d · 全部窗口 · 单段）· 预览。
  *
  * - 每格改完即存（`rotation-rule-save`，带读到的版本）；不弹 toast，顶上一行 `已存 HH:MM · [撤销上一处]`；头一次改动出影响条（5 秒）。
  * - 判定全在那台后端：名字对不对 · 触发范围 · 封顶时段 · 版本冲突 · 说明那一句 · 「无号可换」作不作数 · 预览怎么走 · 每格此刻取的上限。
@@ -23,12 +23,15 @@ import {
   capShort,
   fallbackToggle,
   howOf,
+  lineNow,
   moved,
   openCapEditor,
   rowsOf,
   stintAll,
   toggled,
+  triggerLine,
   waitControl,
+  type LineWindow,
   withHow,
   type How,
   type Row,
@@ -95,11 +98,25 @@ function layerText(c: CapAt): string {
       ? copyText("rot.capT.layerWindow")
       : c.layer === "all"
         ? copyText("rot.capT.layerAll")
-        : copyText("rot.capT.layerTrigger");
+        : copyText("rot.capT.layerTrigger", { w: slotLabel(c.w ?? "") });
   return copyText("rot.capT.effective", {
     v: copyText("rot.cap.fixedShort", { n: c.v }),
     layer,
   });
+}
+
+/** 封顶表一格的悬停：全部窗口那一格 ⇒ 后端那一句两窗各取多少；别的格 ⇒ 此刻取的值与来自哪一层。 */
+function cellHover(c: CapAt & { list?: string }): string {
+  return c.list !== undefined
+    ? copyText("rot.capT.effectiveAll", { list: c.list })
+    : layerText(c);
+}
+
+/** 没设的那一格画什么：5h · 7d 两列写落下来的值（灰「≤90」）；全部窗口那一列与不封顶写「—」。 */
+function fallenText(c: CapAt | undefined, w: string): string {
+  if (w === ALL || c?.v === undefined || c.v === null)
+    return copyText("rot.list.useNone");
+  return copyText("rot.cap.fixedShort", { n: c.v });
 }
 
 export class RuleEditor {
@@ -120,6 +137,8 @@ export class RuleEditor {
   private touched = false;
   private conflict = false;
   private errors: CellError[] = [];
+  /** 触发那两格上次填的字（后端拒了时照原样画回去）。 */
+  private lineDraft: Partial<Record<LineWindow, string>> = {};
   private renaming: { error: string | null } | null = null;
   private usersOpen = false;
   private uncheckedOpen = false;
@@ -211,6 +230,7 @@ export class RuleEditor {
       return;
     }
     this.errors = [];
+    this.lineDraft = {};
     this.undo = isUndo ? null : rule.rotation;
     this.savedAt = new Date().toTimeString().slice(0, 5);
     if (!this.touched) {
@@ -564,8 +584,16 @@ export class RuleEditor {
     if (!q) return u;
     if (q.kind === "api") u.textContent = copyText("acct.val.noLimit");
     else {
-      const slot = q.limiting ?? "5h";
+      // 此刻过线的那一窗（后端预览泳道此刻那一格）⇒ 改显那一窗、行尾带「7d 到线」；被拒照今天优先。
+      const at =
+        q.state === "refused" ? null : lineNow(this.plan, row.account);
+      const slot = at ?? q.limiting ?? "5h";
       u.textContent = `${slotLabel(slot)} ${slotValue(q, slot)}`;
+      if (at) {
+        const t = tag(copyText("acct.tag.atLine", { w: slotLabel(at) }));
+        t.dataset.edAtLine = at;
+        u.append(" ", t);
+      }
     }
     return u;
   }
@@ -600,68 +628,17 @@ export class RuleEditor {
     window.addEventListener("pointerup", onUp);
   }
 
-  /** `(•)满 ( )≥[90]%`：范围后端判（1–99），错了框红 ＋ 下一行红字。 */
+  /** `触发 (•)满 ( )到线 5h [90]% 7d [—]%`：与面板同一组件（`rot-editor.ts::triggerLine`）；范围后端判（1–99），错了框红 ＋ 行尾红字。 */
   private trigger(r: Rotation, write: (r: Rotation) => void): HTMLElement {
-    const box = el("div", (e) => (e.className = s.edLine));
-    const pct = r.when !== "full";
-    const n = r.when === "full" ? 90 : r.when.threshold.n;
-    const name = `ed-trigger-${this.rule?.id ?? ""}`;
-    const radio = (
-      on: boolean,
-      label: string,
-      pick: () => void,
-    ): HTMLLabelElement => {
-      const l = el("label", (e) => (e.className = s.edRadio));
-      const i = document.createElement("input");
-      i.type = "radio";
-      i.name = name;
-      i.checked = on;
-      i.addEventListener("change", pick);
-      l.append(i, document.createTextNode(label));
-      return l;
-    };
-    const num = document.createElement("input");
-    num.type = "text";
-    num.inputMode = "numeric";
-    num.className = s.edNum;
-    num.value = String(n);
-    num.dataset.edPct = "true";
-    num.setAttribute("aria-label", copyText("acct.rot.trigPct"));
-    const bad = this.errors.some((e) => e.cell.startsWith("when"));
-    if (bad) num.dataset.error = "true";
-    const commit = (): void => {
-      const v = Number(num.value.trim());
-      if (pct && v === n) return;
-      // 写错的数也交后端（它回 range、框红），这里不另判范围。
-      write({
-        ...r,
-        when: { threshold: { n: Number.isFinite(v) ? Math.trunc(v) : -1 } },
-      });
-    };
-    num.addEventListener("change", commit);
-    num.addEventListener("keydown", (ev) => {
-      if (ev.key === "Enter" && !ev.isComposing) num.blur();
+    return triggerLine(r, {
+      name: `ed-trigger-${this.rule?.id ?? ""}`,
+      readonly: false,
+      errors: this.errors,
+      draft: this.lineDraft,
+      origin: this.origin,
+      write,
+      onDraft: (w, t) => (this.lineDraft = { ...this.lineDraft, [w]: t }),
     });
-    box.append(
-      radio(!pct, copyText("acct.rot.trigFull"), () =>
-        write({ ...r, when: "full" }),
-      ),
-      radio(pct, copyText("acct.rot.trigPct"), () =>
-        write({ ...r, when: { threshold: { n } } }),
-      ),
-      num,
-      el("span", (e) => (e.className = s.edUnit), copyText("acct.rot.pctUnit")),
-    );
-    if (bad) {
-      const e = el(
-        "span",
-        (e) => (e.className = s.edErr),
-        copyText("rot.ed.pctErr"),
-      );
-      e.dataset.edPctErr = "true";
-      box.appendChild(e);
-    }
-    return box;
   }
 
   /** 换法三张单选卡（各一行说明 ＋ 一条示意小轴）；单段预算那张带点数与「同时抢回」。 */
@@ -869,15 +846,17 @@ export class RuleEditor {
       row.appendChild(who);
       for (const c of cols) {
         const v: CapValue | undefined = r.cap?.[a]?.[c.w];
+        const eff = this.plan?.effective[a]?.[c.w];
         const b = button({
-          label: v === undefined ? copyText("rot.list.useNone") : capShort(v),
+          label: v === undefined ? fallenText(eff, c.w) : capShort(v),
           kind: "secondary",
           size: "compact",
           onClick: () => openCapEditor(b, this.origin, r, a, c.w, write),
         });
         b.dataset.edCap = `${a}.${c.w}`;
-        const eff = this.plan?.effective[a]?.[c.w];
-        if (eff) attachTooltip(b, layerText(eff));
+        // 没设的格写落下来的值、灰着（点它 ＝ 给这号这窗口单独设；浮层里「不设」就是回到灰值）。
+        if (v === undefined) b.dataset.fallen = "true";
+        if (eff) attachTooltip(b, cellHover(eff));
         row.appendChild(cell(c.label, b));
       }
       if (stint) {

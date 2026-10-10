@@ -9,6 +9,14 @@
     gap: var(--space-3);
   }
 
+  /* 触发那一行：单选一组 ＋ 两格一组，窄了两格整组换到下一行。 */
+  .rotTrigger {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-3) var(--space-5);
+  }
+
   .rotLabel,
   .rotUnit {
     color: var(--text-2);

@@ -20,7 +20,7 @@ pub(crate) const FILE_NAME: &str = relay_route_core::file_name_of(relay_route_co
 /// 每个会话至多留几条换号记录（最早的先丢）。
 pub(crate) const HISTORY_KEPT: usize = 32;
 
-/// 「到 N% 换」的 N 与单段预算收哪些值。
+/// 触发那一行（`cap["*"]`）的线与单段预算收哪些值。
 pub(crate) const THRESHOLD_RANGE: std::ops::RangeInclusive<u8> = 1..=99;
 /// 每号覆盖的上限收哪些值：多一个 `0` ＝ 这个号（这一时段）不用，不管用量多少。
 pub(crate) const CAP_RANGE: std::ops::RangeInclusive<u8> = 0..=99;
@@ -35,23 +35,13 @@ fn wait_default() -> u8 {
     WAIT_DEFAULT
 }
 
-/// 每号那一格里「这个号的所有窗口」的键。
+/// 每号那一格里「这个号的所有窗口」的键；也是 `cap` · `stint` 里「所有号」那一行的键。
 pub(crate) const ALL_WINDOWS: &str = "*";
 
-/// 换号时机。
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub enum RotationWhen {
-    /// 上游拒了才换（缺省）。
-    #[default]
-    Full,
-    /// 用量到 `n`% 就换（下一发起）。
-    Threshold { n: u8 },
-}
+/// 规则一级的线（`cap["*"]` 那一行）收哪几个语义位：5 小时一格、7 天一格（7 天那一格管所有 7 天窗口，含分档的）。
+pub(crate) const LINE_SLOTS: [&str; 2] = ["5h", "7d"];
 
-/// 阈值模式下此刻的号到了 N%、池里没有 N% 以下的号可换时怎么办。
+/// 此刻的号到了线、池里没有线下的号可换时怎么办。
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -119,13 +109,14 @@ pub(crate) fn span_of(at: &str) -> Option<(u16, u16)> {
     (from < 24 * 60 && from != to).then_some((from, to))
 }
 
-/// 每号覆盖的上限：号 → 窗口键（或 `*` ＝ 这个号的所有窗口）→ 上限。
+/// 每号的上限（线）：号 → 窗口键（或 `*` ＝ 这个号的所有窗口）→ 上限；号那一格是 `*` 的那一行 ＝ 所有号（规则一级的「触发」），
+/// 只收语义位 `5h` · `7d`、值 `1..=99` 或按时段。没有那一窗的线 ＝ 那一窗满了才换。
 pub type Caps = BTreeMap<String, BTreeMap<String, CapValue>>;
 
 /// 每号的单段预算：号（或 `*` ＝ 所有号）→ 窗口键（或 `*`）→ 换进来之后再用几个点就想走。
 pub type Stints = BTreeMap<String, BTreeMap<String, u8>>;
 
-/// 一份轮换：顺序 · 勾了哪几个 · 缺省上限（`when`）· 每号上限 · 每号单段预算 · 前面的号回来就切回 · 到上限没号可换时怎么办 · 最多等几分钟。
+/// 一份轮换：顺序 · 勾了哪几个 · 线（触发那一行 ＋ 每号上限，都在 `cap`）· 每号单段预算 · 前面的号回来就切回 · 到上限没号可换时怎么办 · 最多等几分钟。
 /// 起始账号占位恒算勾上。后三格缺省（空 · 空 · 关）时不写出。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -134,11 +125,10 @@ pub type Stints = BTreeMap<String, BTreeMap<String, u8>>;
 pub struct Rotation {
     pub order: Vec<RotationSlot>,
     pub enabled: Vec<String>,
-    pub when: RotationWhen,
     /// 盘上缺 ⇒ `continue`。
     #[serde(default)]
     pub at_limit: AtLimit,
-    /// 每号覆盖的上限：`{号: {窗口键|"*": n | [{at, n}]}}`（盖过 `when`；时段外落回下一层）。
+    /// 线：`{号|"*": {窗口键|"*": n | [{at, n}]}}`；层次 这号这窗口 → 这号这语义位 → 这号全部窗口 → 所有号这语义位（`"*"` 那一行），时段外落回下一层。
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     #[cfg_attr(test, ts(optional, as = "Option<Caps>"))]
     pub cap: Caps,
@@ -166,7 +156,6 @@ impl Default for Rotation {
         Self {
             order: vec![RotationSlot::Start(StartSlot { start: true })],
             enabled: Vec::new(),
-            when: RotationWhen::Full,
             at_limit: AtLimit::Continue,
             cap: Caps::new(),
             stint: Stints::new(),
@@ -221,8 +210,19 @@ pub enum SwitchWhy {
         #[cfg_attr(test, ts(optional))]
         w: Option<String>,
     },
-    /// 原号用量到了阈值。
-    Threshold { n: u8 },
+    /// 原号用量到了线：`n` 那条线 · `w` 那一窗的语义位（卡得最久的那一窗，与 `fromResetsAt` 同一窗；说不出 ⇒ 缺）。
+    Threshold {
+        n: u8,
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        #[cfg_attr(test, ts(optional))]
+        w: Option<String>,
+    },
+    /// 原号此刻那一格上限取到 0（时段停用）；`w` 那一格的语义位，整号停用或说不出 ⇒ 缺。
+    Off {
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        #[cfg_attr(test, ts(optional))]
+        w: Option<String>,
+    },
     /// 用户「现在就换」，不重启。
     ManualHot,
     /// 用户「现在就换」，重启。
@@ -231,8 +231,13 @@ pub enum SwitchWhy {
     Skipped { account: String, reason: Unready },
     /// 订阅号都满了，留在原号的付费超额上。
     ToOverage,
-    /// 硬上限：池里没有 `n`% 以下的号，这一发没发上游（`fromResetsAt` ＝ 池里最早回到 `n`% 以下的那一刻）。
-    Held { n: u8 },
+    /// 硬上限：池里没有线下的号，这一发没发上游（`fromResetsAt` ＝ 池里最早回到线下的那一刻）；`n` · `w` ＝ 卡着的那条线与那一窗（说不出 ⇒ `w` 缺）。
+    Held {
+        n: u8,
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        #[cfg_attr(test, ts(optional))]
+        w: Option<String>,
+    },
     /// 这一段在原号上用完了单段预算：`w` 那个窗口（窗口键）换进来之后又用了 `n` 个点。
     Stint { w: String, n: u8 },
     /// 前面的号又能用了（`preempt`）⇒ 切回去。
@@ -299,6 +304,10 @@ pub struct AccountAt {
     #[serde(skip_serializing_if = "Option::is_none", default)]
     #[cfg_attr(test, ts(optional))]
     pub at_text: Option<String>,
+    /// 这个号此刻是过线卡着的 ⇒ 过线的那一窗（语义位；停发横幅「最早 team 5h ↻…」）；不是过线 · 说不出 ⇒ 缺。
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    #[cfg_attr(test, ts(optional))]
+    pub w: Option<String>,
 }
 
 /// 这个会话发不出去了：轮换里没有能接的号；`earliest` ＝ 最早回来的那个（说不出 ⇒ 缺）。
@@ -1338,8 +1347,8 @@ pub(crate) fn overlaps(a: &str, b: &str) -> bool {
         .any(|(f1, t1)| pieces(b).iter().any(|(f2, t2)| f1 < t2 && f2 < t1))
 }
 
-/// 读一份轮换：键 `order` · `enabled` · `when`，可选 `atLimit`（`"continue"` · `"stop"`，缺 ⇒ `continue`）·
-/// `cap`（`{号: {窗口键|"*": 0..=99 | [{at, n}]}}`，`0` ＝ 不用这个号；同一格的时段不许重叠）· `stint`（`{号: {窗口键|"*": 1..=99}}`）· `preempt`（布尔，缺 ⇒ 关）·
+/// 读一份轮换：键 `order` · `enabled`，可选 `atLimit`（`"continue"` · `"stop"`，缺 ⇒ `continue`）·
+/// `cap`（`{号: {窗口键|"*": 0..=99 | [{at, n}]}}`，`0` ＝ 不用这个号；同一格的时段不许重叠；号那一格写 `"*"` ＝ 所有号（触发那一行），只收 `5h` · `7d`、`1..=99`）· `stint`（`{号: {窗口键|"*": 1..=99}}`）· `preempt`（布尔，缺 ⇒ 关）·
 /// `fallback`（兜底的号，须在 `order` 里具名）· `wait`（切兜底前最多等几分钟 `0..=120`，缺 ⇒ 40）。`start_slots` ＝ 起始账号占位该有几个（默认恰好 1；会话自己那份 0 或 1）。
 /// `account_ok(号)` 判这一格当得了轮换里的号；`is_api(号)` 判按量号；`prior` 是改之前那一份：**新勾上的按量号挪到 `order` 末尾**（订阅号用完才轮到它）。
 /// 不合法 ⇒ `Err(哪一格、为什么)`（英文诊断，不进文案表）。
@@ -1351,20 +1360,12 @@ pub(crate) fn rotation_from(
     prior: Option<&Rotation>,
 ) -> Result<Rotation, String> {
     let o = v.as_object().ok_or(
-        "rotation must be an object {order, enabled, when, atLimit?, cap?, stint?, preempt?, fallback?, wait?}",
+        "rotation must be an object {order, enabled, atLimit?, cap?, stint?, preempt?, fallback?, wait?}",
     )?;
     if let Some(k) = o.keys().find(|k| {
         !matches!(
             k.as_str(),
-            "order"
-                | "enabled"
-                | "when"
-                | "atLimit"
-                | "cap"
-                | "stint"
-                | "preempt"
-                | "fallback"
-                | "wait"
+            "order" | "enabled" | "atLimit" | "cap" | "stint" | "preempt" | "fallback" | "wait"
         )
     }) {
         return Err(format!("unknown field `{k}`"));
@@ -1420,28 +1421,32 @@ pub(crate) fn rotation_from(
         }
         enabled.push(a.to_string());
     }
-    let when = match o.get("when") {
-        Some(Value::String(s)) if s == "full" => RotationWhen::Full,
-        Some(Value::Object(m)) if m.len() == 1 && m.contains_key("threshold") => {
-            let n = m["threshold"]
-                .as_object()
-                .filter(|t| t.len() == 1)
-                .and_then(|t| t.get("n"))
-                .and_then(Value::as_u64)
-                .and_then(|n| u8::try_from(n).ok())
-                .filter(|n| THRESHOLD_RANGE.contains(n))
-                .ok_or("`when.threshold.n` must be an integer 1..=99")?;
-            RotationWhen::Threshold { n }
-        }
-        _ => return Err("`when` must be \"full\" or {\"threshold\":{\"n\":1..=99}}".into()),
-    };
     let at_limit = match o.get("atLimit") {
         None => AtLimit::Continue,
         Some(Value::String(s)) if s == "continue" => AtLimit::Continue,
         Some(Value::String(s)) if s == "stop" => AtLimit::Stop,
         Some(_) => return Err("`atLimit` must be \"continue\" or \"stop\"".into()),
     };
-    let cap = per_account(o.get("cap"), "cap", account_ok, &cap_value)?;
+    let cap = per_account(
+        o.get("cap"),
+        "cap",
+        &|a| a == ALL_WINDOWS || account_ok(a),
+        &cap_value,
+    )?;
+    if let Some(row) = cap.get(ALL_WINDOWS) {
+        for (k, v) in row {
+            if !LINE_SLOTS.contains(&k.as_str()) {
+                return Err(format!("`cap.*.{k}` must be one of `5h` · `7d`"));
+            }
+            let zero = match v {
+                CapValue::N(n) => *n == 0,
+                CapValue::Slots(s) => s.iter().any(|x| x.n == 0),
+            };
+            if zero {
+                return Err(format!("`cap.*.{k}` must be 1..=99"));
+            }
+        }
+    }
     // 单段预算多收一行 `"*"`（所有号）：换法「单段预算 N 点」写的就是 `{"*": {"*": n}}`。
     let stint = per_account(
         o.get("stint"),
@@ -1483,7 +1488,6 @@ pub(crate) fn rotation_from(
     Ok(Rotation {
         order,
         enabled,
-        when,
         at_limit,
         cap,
         stint,
@@ -1493,7 +1497,7 @@ pub(crate) fn rotation_from(
     })
 }
 
-/// 编辑器里一格填错了：哪一格（`name` · `when` · `wait` · `cap.<号>.<窗口键>` · `cap.<号>.<窗口键>[i]` · `stint.<号>.<窗口键>`）·
+/// 编辑器里一格填错了：哪一格（`name` · `wait` · `cap.*.5h` · `cap.*.7d`（触发那一行）· `cap.<号>.<窗口键>` · `cap.<号>.<窗口键>[i]` · `stint.<号>.<窗口键>`）·
 /// 短码（`empty` · `dup` · `tooLong` · `range` · `time` · `same` · `overlap`）· 重叠时与第几段（0 起）。界面只照它标红、按短码取文案。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1531,15 +1535,6 @@ pub(crate) fn cell_errors(v: &Value) -> Vec<CellError> {
     let Some(o) = v.as_object() else {
         return out;
     };
-    if let Some(n) = o
-        .get("when")
-        .and_then(|w| w.get("threshold"))
-        .and_then(|t| t.get("n"))
-    {
-        if pct_in_range(n).is_none() {
-            out.push(cell_err("when".into(), "range", None));
-        }
-    }
     if let Some(w) = o.get("wait") {
         if in_range(w, &WAIT_RANGE).is_none() {
             out.push(cell_err("wait".into(), "range", None));
@@ -1560,6 +1555,12 @@ pub(crate) fn cell_errors(v: &Value) -> Vec<CellError> {
     };
     for (a, w, x) in rows("cap") {
         let cell = format!("cap.{a}.{w}");
+        // 触发那一行不收 0（空着那一窗就是满了才换）。
+        let range = if a == ALL_WINDOWS {
+            THRESHOLD_RANGE
+        } else {
+            CAP_RANGE
+        };
         match &x {
             Value::Array(items) => {
                 let mut ok: Vec<(usize, String)> = Vec::new();
@@ -1580,16 +1581,12 @@ pub(crate) fn cell_errors(v: &Value) -> Vec<CellError> {
                         }
                         _ => out.push(cell_err(here.clone(), "time", None)),
                     }
-                    if item
-                        .get("n")
-                        .and_then(|n| in_range(n, &CAP_RANGE))
-                        .is_none()
-                    {
+                    if item.get("n").and_then(|n| in_range(n, &range)).is_none() {
                         out.push(cell_err(here, "range", None));
                     }
                 }
             }
-            n if in_range(n, &CAP_RANGE).is_none() => out.push(cell_err(cell, "range", None)),
+            n if in_range(n, &range).is_none() => out.push(cell_err(cell, "range", None)),
             _ => {}
         }
     }

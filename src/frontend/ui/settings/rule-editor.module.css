@@ -251,6 +251,11 @@
     display: none;
   }
 
+  /* 没设的格写落下来的值：灰字（设了的照旧亮色）。 */
+  .edCapCell [data-fallen="true"] {
+    color: var(--text-faint);
+  }
+
   .edCapHead {
     display: flex;
     align-items: center;
@@ -303,6 +308,11 @@
   @media (width < 640px) {
     .edBlock {
       grid-template-columns: minmax(0, 1fr);
+    }
+
+    /* 触发那一行：两格换到单选下一行（行头仍「触发」）。 */
+    .edBlock [data-rot-trigger] > [data-rot-lines] {
+      flex-basis: 100%;
     }
 
     /* 封顶表 ⇒ 每号一张卡：表头那一行收起，四格竖排、各格前写列名。 */
