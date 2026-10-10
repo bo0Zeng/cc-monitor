@@ -52,13 +52,13 @@ pub(crate) mod ssh_client;
 pub(crate) mod stderr_fd;
 pub(crate) mod tcp_rtt;
 pub(crate) mod watch_file;
-pub(crate) mod writers;
 #[cfg(windows)]
 pub(crate) mod win_proc;
 #[cfg(windows)]
 pub(crate) mod win_tables;
 #[cfg(windows)]
 pub(crate) mod win_tz;
+pub(crate) mod writers;
 
 /// ↗ 那一问的系统事实（已建立的 TCP 连接表 ＋ 进程表，一行 JSON，两个平台同形）。Windows 直调系统接口 · Linux 读 `/proc`；
 /// 别的平台 ⇒ `Err`。`start` 只在同一台上比先后：Windows 是 FILETIME，Linux 是开机后的时钟滴答。

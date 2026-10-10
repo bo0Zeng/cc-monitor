@@ -1078,7 +1078,10 @@ fn quiet_runs_are_judged_on_their_own_deadline_not_on_a_beat() {
         "期限 ＝ 最早那个在跑的 seen + 阈值"
     );
     assert!(
-        track.book.due_frames(d1 - Duration::from_millis(1)).is_empty(),
+        track
+            .book
+            .due_frames(d1 - Duration::from_millis(1))
+            .is_empty(),
         "期限之前不判"
     );
     let frames = track.book.due_frames(d1);

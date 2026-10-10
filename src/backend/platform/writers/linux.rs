@@ -81,8 +81,15 @@ pub(crate) struct OpenEar {
 impl Drop for OpenEar {
     fn drop(&mut self) {
         let b = [1u8];
-        // SAFETY：`stop` 是本结构独占的管子写端；写一个字节、不解引用别的指针。写不进（对端已退）无妨。
-        let _ = unsafe { libc::write(self.stop.as_raw_fd(), b.as_ptr().cast(), 1) };
+        // SAFETY：`stop` 是本结构独占的管子写端；写一个字节、不解引用别的指针。
+        let n = unsafe { libc::write(self.stop.as_raw_fd(), b.as_ptr().cast(), 1) };
+        if n < 0 {
+            // 写不进多半是收的那一头已经退了（管子读端随线程关掉）—— 那正是要的结局，只留一行。
+            tracing::debug!(
+                "writers-ear 停机信号没写进去: {}",
+                std::io::Error::last_os_error()
+            );
+        }
     }
 }
 

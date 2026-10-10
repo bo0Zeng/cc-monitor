@@ -450,6 +450,8 @@ pub fn parse_frame(line: &str) -> Result<InboundFrame, Unread> {
         "line" => decode_line(line)?,
         "session_added" => {
             let opt = |key: &str| obj.get(key).and_then(|v| v.as_str()).map(str::to_string);
+            // 是哪一家（每条都带）：缺 ⇒ 形状不对。壳今天不按它分叉（tab 上的那一家小牌另排），只核它在。
+            req_str(obj, k, "agent_kind")?;
             InboundFrame::SessionAdded {
                 sid: req_str(obj, k, "sid")?,
                 background: opt_bool(obj, k, "background")?.unwrap_or(false),
