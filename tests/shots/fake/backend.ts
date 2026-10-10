@@ -77,9 +77,9 @@ export class FakeBackend {
   }
 
   /** 交给壳 `chan_call` 那一跳：成 ⇒ 原样字节；不成 ⇒ 壳交给页的那一形（`{err, body, detail}`，原样抛）。 */
-  private async real(origin: string, op: string, req: Record<string, unknown>): Promise<ArrayBuffer> {
+  private async real(origin: string, op: string, req: Record<string, unknown>, view: unknown): Promise<ArrayBuffer> {
     await this.ready;
-    const r = await fetch("/__ccm/call", { method: "POST", body: JSON.stringify({ key: this.key, origin, op, args: req }) });
+    const r = await fetch("/__ccm/call", { method: "POST", body: JSON.stringify({ key: this.key, origin, op, args: req, view: view ?? null }) });
     const f = (await r.json()) as { ok: boolean; body?: string; fail?: unknown };
     if (f.ok) return enc.encode(f.body ?? "null").buffer;
     throw f.fail;
@@ -138,7 +138,7 @@ export class FakeBackend {
     const req = raw.length > 0 ? (JSON.parse(dec.decode(Uint8Array.from(raw))) as Record<string, unknown>) : {};
     if (REAL_OPS.has(op) && !WINDOWS_ONLY[origin]?.has(op)) {
       const delay = this.world.opDelayMs?.[op] ?? 0;
-      return new Promise((r) => setTimeout(r, delay)).then(() => this.real(origin, op, req));
+      return new Promise((r) => setTimeout(r, delay)).then(() => this.real(origin, op, req, args.view));
     }
     const handler = this.world.ops[op];
     if (!handler) {
