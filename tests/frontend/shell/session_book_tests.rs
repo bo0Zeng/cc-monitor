@@ -24,6 +24,7 @@ fn left(o: &str, s: &str, fate: Fate) -> In {
         origin: o.into(),
         sid: s.into(),
         fate,
+        words: None,
     }
 }
 
@@ -110,7 +111,9 @@ fn the_f5_plan_puts_skeletons_first_and_judges_bufferless_nothing() {
         v.iter()
             .map(|o| match o {
                 Out::Live { origin, sid, .. } => format!("live {origin}/{sid}"),
-                Out::Left { origin, sid, fate } => format!("left {origin}/{sid} {fate:?}"),
+                Out::Left {
+                    origin, sid, fate, ..
+                } => format!("left {origin}/{sid} {fate:?}"),
                 Out::Listed { origin, all } => {
                     format!("listed {origin}{}", if *all { " all" } else { "" })
                 }

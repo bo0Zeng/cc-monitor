@@ -356,6 +356,7 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
         "rotation-rules-read", // 这台的规则表（纯读、不收输入）
         // `ccm-probe`：无入参（CLI 面没有，但「收不收输入」按帧面声明判）。
         "ccm-probe",
+        "cells-catalog", // 格目录（纯计算、不收输入）
         // `apikey-read`：这台机器上那份凭据文件的状态，无入参。
         // 同族 `apikey-key-set` 要输入（`account` / `key`，key 从 stdin 进），不在表里。
         "apikey-read",
@@ -877,12 +878,21 @@ fn the_raw_words_go_into_the_detail_not_a_field_of_their_own() {
     assert!(v.get("raw").is_none(), "信封又多了一格 raw：{v}");
     let raw_label = copy_core::copy_text("detail.label.raw", &[]);
     assert!(
-        f.detail.contains(&format!("{raw_label}：Permission denied (os error 13)")),
+        f.detail
+            .contains(&format!("{raw_label}：Permission denied (os error 13)")),
         "原话没进复制详情：{}",
         f.detail
     );
-    let without = failed_of("resident-ensure", "no_home", copy_core::said::Said::from("那一句".to_string()));
-    assert!(!without.detail.contains(&format!("{raw_label}：")), "没有原话也写了原话那一项：{}", without.detail);
+    let without = failed_of(
+        "resident-ensure",
+        "no_home",
+        copy_core::said::Said::from("那一句".to_string()),
+    );
+    assert!(
+        !without.detail.contains(&format!("{raw_label}：")),
+        "没有原话也写了原话那一项：{}",
+        without.detail
+    );
 }
 
 /// 帧面跑一条命令，取它那一帧应答（JSON）。`within_ms` 照帧面信封那一格原样带。

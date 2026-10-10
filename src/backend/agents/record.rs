@@ -34,8 +34,8 @@ pub struct Record {
     pub at: Option<String>,
     /// `at` 在这台本地钟上的钟面 `HH:MM`（界面照抄、不换算）；没有时刻 / 解不出 ⇒ 缺。
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub time_text: Option<String>,
+    #[cfg_attr(test, ts(optional, as = "Option<String>"))]
+    pub time_text: Option<crate::common::cells::Words>,
     /// 哪一类与它自己的格。
     #[serde(flatten)]
     pub body: Body,
@@ -194,7 +194,8 @@ impl TypedTimes {
             Some(super::QueueMark::Taken { text }) => {
                 let typed = self.seen.iter().rev().find(|(k, _)| k == text);
                 if let (Some((_, at)), Some(r)) = (typed, t.record.as_mut()) {
-                    r.time_text = crate::common::time::iso_hm_here(at);
+                    r.time_text =
+                        crate::common::time::iso_hm_here(at).map(crate::common::cells::Words);
                     r.at = Some(at.clone());
                 }
             }

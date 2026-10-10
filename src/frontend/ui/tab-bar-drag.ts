@@ -31,8 +31,7 @@ import { sayCollectionRefusal, type TabBarPrefs } from "./tab-bar-prefs";
 import { copyText } from "./copy-table";
 import { dispatcher, type OverlayHandle } from "./keybindings/registry";
 import { statusDot } from "./kit/status-dot";
-import { dotOf, titleParts } from "./session-face";
-import { dotLabel } from "./session-words";
+import { dotOf, stateWord, titleParts } from "./session-face";
 import s from "./tab-group.module.css";
 
 /** 拖拽要宿主做的三件事。 */
@@ -335,7 +334,7 @@ export class TabBarDrag {
     const tab = d.group === null ? this.store.tabs.get(d.sid) : undefined;
     if (tab) {
       const dot = dotOf(tab);
-      ghost.appendChild(statusDot(dot, dotLabel(dot), "compact"));
+      ghost.appendChild(statusDot(dot, stateWord(tab), "compact"));
     }
     const text = document.createElement("span");
     ghost.appendChild(text);

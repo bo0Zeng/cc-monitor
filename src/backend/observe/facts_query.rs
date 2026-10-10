@@ -38,6 +38,7 @@
 //! 工具结果那一大类（常是整份文件内容）连解析都不做。**只省时间、不改结果**：
 //! 能改动事实的记录必然带着那几个键名（Claude Code 写 JSON 不转义 ASCII 字母），由判据逐行对拍「过滤 / 不过滤」两向相等。
 
+use crate::common::cells::Words;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -182,7 +183,7 @@ pub(crate) struct TokenUse {
     /// 算进来的请求数。
     pub(crate) requests: u64,
     /// 写好的串（输入 · 输出 · 读缓存 · 写缓存）。
-    pub(crate) text: String,
+    pub(crate) text: Words,
     /// 上一次请求（续传时同一次请求的后一条要替掉它）：键 · 那一次的五个数。
     pub(crate) last: Option<LastRequest>,
 }
@@ -201,7 +202,7 @@ pub(crate) struct LastRequest {
 pub(crate) struct Cost {
     pub(crate) micros: u64,
     pub(crate) partial: bool,
-    pub(crate) text: String,
+    pub(crate) text: Words,
 }
 
 /// 一串相邻的 API 重试。
@@ -321,6 +322,10 @@ pub(crate) struct Needs {
     pub(crate) what: Option<String>,
     /// 何时起等（那台 pidfile 的 `statusUpdatedAt`，epoch ms）；没有 ⇒ `null`。
     pub(crate) since_ms: Option<u64>,
+    /// 写好的字（等批准 · 等回答 · 需手动），出口照抄。
+    pub(crate) text: Words,
+    /// 语气（恒 `need`）。
+    pub(crate) tone: crate::common::cells::Tone,
 }
 
 /// 那台 pidfile 说「在等」（`observe::accounts_query::session_wait`）。
@@ -358,12 +363,24 @@ pub(crate) fn needs_of(pending: &[PendingCall], wait: Option<&PidWait>) -> Optio
         Some(W::Goal) => (NeedsKind::Goal, None),
         Some(W::Dialog) => (NeedsKind::Choose, None),
     };
+    let text = match kind {
+        NeedsKind::Approve => copy_core::copy_text("beSession.needs.approve", &[]),
+        NeedsKind::Answer => copy_core::copy_text("beSession.needs.answer", &[]),
+        NeedsKind::Plan => copy_core::copy_text("beSession.needs.plan", &[]),
+        NeedsKind::Network => copy_core::copy_text("beSession.needs.network", &[]),
+        NeedsKind::Worker => copy_core::copy_text("beSession.needs.worker", &[]),
+        NeedsKind::Goal => copy_core::copy_text("beSession.needs.goal", &[]),
+        NeedsKind::Choose => copy_core::copy_text("beSession.needs.choose", &[]),
+        NeedsKind::Unknown => copy_core::copy_text("beSession.needs.unknown", &[]),
+    };
     Some(Needs {
         kind,
         tool: call.map(|c| c.name.clone()),
         call: call.map(|c| c.id.clone()),
         what: call.and_then(|c| c.what.clone()),
         since_ms: wait.since_ms,
+        text: Words(text),
+        tone: crate::common::cells::Tone::Need,
     })
 }
 
@@ -517,7 +534,7 @@ pub(crate) fn prior_from(v: &Value) -> Result<SessionFacts, String> {
     if !v["needs"].is_null() {
         exact_keys(
             &v["needs"],
-            &["call", "kind", "sinceMs", "tool", "what"],
+            &["call", "kind", "sinceMs", "text", "tone", "tool", "what"],
             "prior.needs",
         )?;
     }
@@ -914,7 +931,7 @@ fn note_tokens(f: &mut SessionFacts, v: &Value) {
     }
     add(true, &tokens);
     s.last = Some(LastRequest { id, tokens });
-    s.text = copy_core::copy_text(
+    s.text = Words(copy_core::copy_text(
         "beSpend.tokens.line",
         &[
             ("input", &short_tokens(s.input)),
@@ -922,7 +939,7 @@ fn note_tokens(f: &mut SessionFacts, v: &Value) {
             ("read", &short_tokens(s.cache_read)),
             ("write", &short_tokens(s.cache_write5m + s.cache_write1h)),
         ],
-    );
+    ));
 }
 
 /// 花费那一条（`totalCostUSD` 是到此刻为止的全会话总数；`hasUnknownModelCost` 为真 ⇒ 有型号定不了价、数只是下限）。
@@ -945,7 +962,7 @@ fn note_cost(f: &mut SessionFacts, v: &Value) {
     f.cost = Some(Cost {
         micros,
         partial,
-        text,
+        text: Words(text),
     });
 }
 

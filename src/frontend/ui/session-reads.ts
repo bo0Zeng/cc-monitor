@@ -211,6 +211,10 @@ export interface Needs {
   what: string | null;
   /** 何时起等（epoch ms）；没有 ⇒ `null`。 */
   sinceMs: number | null;
+  /** 核心写好的字（等批准 · 等回答 · 需手动），照抄。 */
+  text: string;
+  /** 语气（恒 `need`）。 */
+  tone: string;
 }
 
 const NEEDS_KIND: ReadonlySet<string> = new Set<NeedsKind>(["approve", "answer", "plan", "network", "worker", "goal", "choose", "unknown"]);
@@ -453,8 +457,8 @@ export function decodeFacts(v: unknown): SessionFacts {
   let needs: Needs | null = null;
   if (v.needs !== null) {
     const n = v.needs;
-    if (!isObj(n) || !exactKeys(n, ["call", "kind", "sinceMs", "tool", "what"]) || !(isStr(n.kind) && NEEDS_KIND.has(n.kind)) || !strOrNull(n.tool) || !strOrNull(n.call) || !strOrNull(n.what) || !(n.sinceMs === null || isNum(n.sinceMs))) return bad();
-    needs = { kind: n.kind as NeedsKind, tool: n.tool, call: n.call, what: n.what, sinceMs: n.sinceMs as number | null };
+    if (!isObj(n) || !exactKeys(n, ["call", "kind", "sinceMs", "text", "tone", "tool", "what"]) || !(isStr(n.kind) && NEEDS_KIND.has(n.kind)) || !strOrNull(n.tool) || !strOrNull(n.call) || !strOrNull(n.what) || !(n.sinceMs === null || isNum(n.sinceMs)) || !isStr(n.text) || !isStr(n.tone)) return bad();
+    needs = { kind: n.kind as NeedsKind, tool: n.tool, call: n.call, what: n.what, sinceMs: n.sinceMs as number | null, text: n.text, tone: n.tone };
   }
   if (!Array.isArray(v.writers) || !v.writers.every(isNum)) return bad();
   if (!isNum(v.end) || !(v.forkedFrom === null || isStr(v.forkedFrom))) return bad();

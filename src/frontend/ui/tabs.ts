@@ -24,7 +24,6 @@ import { toast, undoToast } from "./kit/toast";
 import { detailOf } from "./kit/detail";
 import { copyText } from "./copy-table";
 import { fullTitle, needsOf } from "./session-face";
-import { needsWord } from "./session-words";
 import { SeqSet, TailWindow } from "./live-window";
 import type { AgentsPanel } from "./agents-panel";
 import { turnEndNotifier } from "./turn-notify";
@@ -979,7 +978,7 @@ export class TabManager {
   needsWordOf(sessionId: string): string | null {
     const tab = this.store.tabs.get(sessionId);
     const n = tab ? needsOf(tab) : null;
-    return n ? needsWord(n.kind) : null;
+    return n ? n.text : null;
   }
 
   /**
@@ -1261,8 +1260,10 @@ export class TabManager {
     sessionId: string,
     doing: SessionActivity | null,
     waitingFor: string | null,
+    text: string | null,
+    tone: string | null,
   ): void {
-    const act = doing === null ? null : { doing, waitingFor };
+    const act = doing === null ? null : { doing, waitingFor, text, tone };
     const tab = this.store.tabs.get(sessionId);
     if (!tab) {
       if (act) this.store.pendingActivity.set(sessionId, act);
@@ -1275,7 +1276,8 @@ export class TabManager {
     const clearedIdle = act !== null && this.applyState(tab, "activity");
     if (
       tab.activity?.doing === act?.doing &&
-      tab.activity?.waitingFor === act?.waitingFor
+      tab.activity?.waitingFor === act?.waitingFor &&
+      tab.activity?.text === act?.text
     ) {
       if (clearedIdle) this.refreshTabBar();
       return;

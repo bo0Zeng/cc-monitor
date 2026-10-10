@@ -451,6 +451,8 @@ fn known_kind_with_extra_fields_still_parses() {
             path: None,
             lines: None,
             activity: None,
+            activity_text: None,
+            activity_tone: None,
             waiting_for: None,
             container: None,
             pid: None,
@@ -475,6 +477,8 @@ fn session_added_metadata_parses() {
             path: Some("/home/u/.claude/projects/p/s-bg.jsonl".to_string()),
             lines: Some(42),
             activity: Some(SessionActivity::NeedsYou),
+            activity_text: None,
+            activity_tone: None,
             waiting_for: None,
             container: None,
             pid: None,
@@ -491,6 +495,8 @@ fn session_status_frame_parses() {
         Ok(InboundFrame::SessionStatus {
             sid: "s-1".to_string(),
             activity: Some(SessionActivity::NeedsYou),
+            activity_text: None,
+            activity_tone: None,
             waiting_for: Some("permission prompt".to_string()),
         })
     );
@@ -500,6 +506,8 @@ fn session_status_frame_parses() {
         Ok(InboundFrame::SessionStatus {
             sid: "s-2".to_string(),
             activity: None,
+            activity_text: None,
+            activity_tone: None,
             waiting_for: None,
         })
     );
@@ -537,21 +545,34 @@ fn parses_session_removed() {
 /// 不认识的取值 / 缺格 ⇒ 整帧坏帧（`None`，不猜成哪一种）。
 #[test]
 fn session_state_reads_two_literals_and_anything_else_is_a_bad_frame() {
-    use crate::session_book::Fate;
+    use crate::session_book::{Fate, FateWords};
+    let words = || FateWords {
+        text: "t".into(),
+        hint: "h".into(),
+        tone: "plain".into(),
+    };
     assert_eq!(
-        parse_frame(r#"{"kind":"session_state","sid":"abc","state":"reconnectable"}"#),
+        parse_frame(
+            r#"{"kind":"session_state","sid":"abc","state":"reconnectable","state_text":"t","state_hint":"h","state_tone":"plain"}"#
+        ),
         Ok(InboundFrame::SessionState {
             sid: "abc".into(),
-            state: Fate::Reconnectable
+            state: Fate::Reconnectable,
+            words: words(),
         })
     );
     assert_eq!(
-        parse_frame(r#"{"kind":"session_state","sid":"abc","state":"ended"}"#),
+        parse_frame(
+            r#"{"kind":"session_state","sid":"abc","state":"ended","state_text":"t","state_hint":"h","state_tone":"plain"}"#
+        ),
         Ok(InboundFrame::SessionState {
             sid: "abc".into(),
-            state: Fate::Ended
+            state: Fate::Ended,
+            words: words(),
         })
     );
+    // 写好的字是必有格：缺 ⇒ 形状不对（核心与壳同版发，不猜）。
+    assert!(parse_frame(r#"{"kind":"session_state","sid":"abc","state":"ended"}"#).is_err());
     assert!(parse_frame(r#"{"kind":"session_state","sid":"abc","state":"idle"}"#).is_err());
     assert!(parse_frame(r#"{"kind":"session_state","sid":"abc"}"#).is_err());
 }

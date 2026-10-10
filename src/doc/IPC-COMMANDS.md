@@ -58,6 +58,8 @@ A new session file appeared。
 | `path` | string? | 该会话 jsonl 的远端绝对路径（同 sid 多文件时取 mtime 最新者）——monitor 旁路快照（`--read-session`）用 |
 | `lines` | number? | Batch8 审计 D-I2（additive）：tail-only 模式下 prime 时的完整行数 L ——monitor 校验快照拉到的行数 ≥ L 才算成功（不足 = 中途断/backend 报错，触发重试；exit status 经 ChannelStream 拿不到，行数校验更强） |
 | `activity` | SessionActivity? | 宣告时此刻在干什么（适配层翻好的，`SessionActivity`） |
+| `activity_text` | Words? | `activity` 那一态写好的字（`activity_cells`）；没有 `activity` ⇒ 不上线 |
+| `activity_tone` | Tone? | `activity` 那一态的语气（同上） |
 | `waiting_for` | string? | 宣告时在等什么（同 `session_status`） |
 | `container` | SessionContainer? | 这条会话住在什么容器里（见 `SessionContainer`） |
 | `pid` | number? | 那个 claude 进程的 **pid** |
@@ -70,6 +72,8 @@ A new session file appeared。
 |---|---|---|
 | `sid` | string | 会话 id |
 | `activity` | SessionActivity? | 此刻在干什么（同 `session_added.activity`） |
+| `activity_text` | Words? | 同 `session_added.activity_text` |
+| `activity_tone` | Tone? | 同 `session_added.activity_tone` |
 | `waiting_for` | string? | 在等什么（pidfile 里的 `waitingFor`） |
 | `liveness_confidence` | string? | 判活置信度（同 SessionAdded；状态变化时带） |
 
@@ -81,6 +85,9 @@ A new session file appeared。
 |---|---|---|
 | `sid` | string | 会话 id |
 | `state` | SessionFate | 离开「活」之后的去向 |
+| `state_text` | Words | 那一种写好的短名（`SessionFate::cells`） |
+| `state_hint` | Words | 悬停那一句 |
+| `state_tone` | Tone | 语气 |
 
 ### `session_removed`
 
@@ -2810,7 +2817,20 @@ cc-bus 钩子诊断。
 
 码：`bad_args` · `bad_id` · `not_installed` · `timed_out` · `failed`
 
-### 4.8 终端与会话
+### 4.8 成品的格
+
+#### `cells-catalog`
+
+每件成品有哪些格。
+
+不收 `args` · 可撤 · CLI：`ccm -- --cells-catalog`
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `pending` | ← | 已判了要补、还没落地的格：`product` · `path` · `kind`（落地那一刻从这里挪进 `products`） |
+| `products` | ← | 每件成品一项：`name`（记录 `record` · 会话事实 `facts` · 骨架行 `index_row` · 会话帧按帧的 `kind`）· `cells`：每格 `path`（`a.b` 嵌套 · `a[]` 列表每项 · `a.*` 以 id 为键的表每项 · `a[t=x]` 列表里按判别格挑的那一种 · `a{t=x}` 非列表的那一种；每一种都有的格写在挑法外面）· `kind`（`value` 值 · `text` 核心写好的字 · `tone` 语气）· `type`（`string` · `number` · `bool` · `enum` 闭集的词 · `object` 原样透传的一团） |
+
+### 4.9 终端与会话
 
 #### `launch-local`
 
@@ -3276,7 +3296,7 @@ cc-bus 钩子诊断。
 
 码：`bad_args` · `no_tmux` · `no_such_session` · `wrong_owner` · `create_failed` · `typed_unconfirmed` · `child_timed_out`
 
-### 4.9 机器
+### 4.10 机器
 
 #### `ccm-print`
 
@@ -3615,7 +3635,7 @@ cc-bus 钩子诊断。
 
 码：`bad_args`
 
-### 4.10 计划
+### 4.11 计划
 
 #### `plan-list`
 
@@ -3768,6 +3788,7 @@ cc-bus 钩子诊断。
 | `--bus-state` | ＝ 帧命令 `bus-state`：总线名单 ＋ spawn 台账一次回全 |
 | `--cc-bus-install` | ＝ 帧命令 `cc-bus-install`：把这台二进制带着的 cc-bus 装到这台 |
 | `--cc-bus-install-state` | ＝ 帧命令 `cc-bus-install-state`：装 cc-bus 到这台之前看一眼 |
+| `--cells-catalog` | ＝ 帧命令 `cells-catalog`：每件成品有哪些格 |
 | `--chores-mark` | ＝ 帧命令 `chores-mark`：记下「待办」里的一个选择 |
 | `--data-report` | ＝ 帧命令 `data-report`：「文件与数据」那一份成品 |
 | `--deploy-plan` | ＝ 帧命令 `deploy-plan`：那台的后端要不要换、换成哪一格 |

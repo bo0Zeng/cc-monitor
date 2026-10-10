@@ -521,7 +521,9 @@ fn needs_is_decided_from_the_wait_and_the_pending_call() {
             tool: Some("Bash".into()),
             call: Some("b".into()),
             what: Some("rm -rf build/".into()),
-            since_ms: Some(42)
+            since_ms: Some(42),
+            text: crate::common::cells::Words(copy_core::copy_text("beSession.needs.approve", &[])),
+            tone: crate::common::cells::Tone::Need,
         })
     );
     // 批准框里是提问 ⇒ 回答；是计划 ⇒ 批准计划；那台没说是哪种框时同样认这两个工具。
@@ -666,6 +668,8 @@ fn a_product_that_is_waiting_on_you_round_trips_as_prior() {
             call: Some("b1".into()),
             what: None,
             since_ms: Some(1),
+            text: crate::common::cells::Words(copy_core::copy_text("beSession.needs.approve", &[])),
+            tone: crate::common::cells::Tone::Need,
         }),
         ..SessionFacts::default()
     };
@@ -848,7 +852,7 @@ fn tokens_count_each_request_once_with_two_cache_write_tiers() {
         (17, 57, 1000, 1100, 200, 3)
     );
     assert_eq!(
-        t.text,
+        t.text.0,
         copy_core::copy_text(
             "beSpend.tokens.line",
             &[
@@ -883,12 +887,15 @@ fn cost_is_the_last_cost_record_as_written() {
         Some(Cost {
             micros: 1_234_000,
             partial: false,
-            text: copy_core::copy_text("beSpend.cost.exact", &[("usd", "1.23")])
+            text: crate::common::cells::Words(copy_core::copy_text(
+                "beSpend.cost.exact",
+                &[("usd", "1.23")]
+            ))
         })
     );
     let f = scan_all(&jsonl(&[cost(2.0, true)]));
     assert_eq!(
-        f.cost.as_ref().map(|c| c.text.clone()),
+        f.cost.as_ref().map(|c| c.text.0.clone()),
         Some(copy_core::copy_text(
             "beSpend.cost.about",
             &[("usd", "2.00")]
@@ -896,7 +903,7 @@ fn cost_is_the_last_cost_record_as_written() {
     );
     let f = scan_all(&jsonl(&[cost(0.001, false)]));
     assert_eq!(
-        f.cost.map(|c| c.text),
+        f.cost.map(|c| c.text.0),
         Some(copy_core::copy_text("beSpend.cost.tiny", &[]))
     );
 }
@@ -937,5 +944,75 @@ fn every_permission_mode_value_passes_through_as_written() {
         let text =
             jsonl(&[json!({"type": "permission-mode", "permissionMode": m, "sessionId": "s"})]);
         assert_eq!(scan_all(&text).permission_mode.as_deref(), Some(m));
+    }
+}
+
+/// 〔G2〕「需手动」带写好的字与语气：八种各一句（等批准 / 等回答 / 等批准（计划）/ 等放行 / 等批准（协作请求）/ 等确认 / 等选择 / 需手动）；语气恒 `need`。出口照抄。
+#[test]
+fn needs_carries_its_words_and_tone() {
+    use crate::agents::WaitOn as W;
+    let call = |name: &str| PendingCall {
+        id: "c".into(),
+        name: name.into(),
+        what: None,
+        at: None,
+        state: StepWait::Running,
+        why: None,
+    };
+    let wait = |w: Option<W>| PidWait {
+        waiting_for: w,
+        since_ms: None,
+    };
+    let cases = [
+        (
+            vec![call("Bash")],
+            Some(W::Permission),
+            NeedsKind::Approve,
+            "beSession.needs.approve",
+        ),
+        (
+            vec![call("AskUserQuestion")],
+            None,
+            NeedsKind::Answer,
+            "beSession.needs.answer",
+        ),
+        (
+            vec![call("ExitPlanMode")],
+            None,
+            NeedsKind::Plan,
+            "beSession.needs.plan",
+        ),
+        (
+            vec![call("Bash")],
+            Some(W::Network),
+            NeedsKind::Network,
+            "beSession.needs.network",
+        ),
+        (
+            vec![],
+            Some(W::Worker),
+            NeedsKind::Worker,
+            "beSession.needs.worker",
+        ),
+        (
+            vec![],
+            Some(W::Goal),
+            NeedsKind::Goal,
+            "beSession.needs.goal",
+        ),
+        (
+            vec![],
+            Some(W::Dialog),
+            NeedsKind::Choose,
+            "beSession.needs.choose",
+        ),
+        (vec![], None, NeedsKind::Unknown, "beSession.needs.unknown"),
+    ];
+    for (pending, w, kind, key) in cases {
+        let n = needs_of(&pending, Some(&wait(w))).unwrap();
+        assert_eq!(n.kind, kind);
+        let v = serde_json::to_value(&n).unwrap();
+        assert_eq!(v["text"], copy_core::copy_text(key, &[]), "{kind:?}");
+        assert_eq!(v["tone"], "need", "{kind:?}");
     }
 }

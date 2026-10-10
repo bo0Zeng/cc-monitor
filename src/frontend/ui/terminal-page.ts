@@ -19,8 +19,7 @@ import { copyText } from "./copy-table";
 import { saidOfControl, machineName } from "./control-said";
 import { canResume, hasTerminal } from "./tab-session-state";
 import { terminalFrontAvailable } from "./terminal-front";
-import { dotOf, fullTitle, machineOf } from "./session-face";
-import { dotLabel } from "./session-words";
+import { dotOf, fullTitle, machineOf, stateWord } from "./session-face";
 import { renderScreen, screenPre } from "./terminal-screen";
 import { startFollow, type Follow, type FollowEvents, type FollowStop } from "./terminal-follow";
 import { listTerminals, previewShot, sendToTerminal, type TerminalRow, type TerminalSend, type TerminalSent, type TerminalShot } from "./terminal-reads";
@@ -578,7 +577,7 @@ export class TerminalPage {
     }
     const row = this.row as TerminalRow;
     const d = dotOf(tab);
-    setDot(this.dot, d, dotLabel(d));
+    setDot(this.dot, d, stateWord(tab));
     this.title.textContent = fullTitle(tab);
     this.where.textContent = tab.projectDir ? copyText("terminal.head.where", { dir: tab.projectDir, machine: machineOf(tab) }) : machineOf(tab);
     this.tag.textContent = row.tmuxName !== "" ? copyText("terminal.tag.tmux", { name: row.tmuxName }) : "";

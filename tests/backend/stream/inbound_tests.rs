@@ -693,6 +693,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "terminal-ssh",
         // `history-search-merge`：纯计算，普通 spawn。
         "history-search-merge",
+        // `cells-catalog`：格目录，纯计算，普通 spawn。
+        "cells-catalog",
         "assets-sync",
         "ext-hub-preview",
         "ext-hub-apply",

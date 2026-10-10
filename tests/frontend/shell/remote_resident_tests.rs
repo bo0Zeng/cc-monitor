@@ -77,14 +77,25 @@ fn the_ensure_answer_names_a_non_unix_remote_as_unsupported_and_never_falls_back
     };
     // 脱离不了（非 unix）⇒ 句子由这边说「远端只支持 Unix」；那台的那一句（它就是系统原话）与那台的详情都进复制详情。
     match parse_answer(
-        &exec("", &envelope("unsupported", "不是 unix", &wrote("unsupported", "")), Some(2)),
+        &exec(
+            "",
+            &envelope("unsupported", "不是 unix", &wrote("unsupported", "")),
+            Some(2),
+        ),
         "devbox",
     ) {
         Err(AttachErr::Unsupported(s, code)) => {
             assert_eq!(code, crate::machine_state::NOT_UNIX);
-            assert_eq!(s.said, copy_text("rsRemoteResident.ensure.unsupported", &[]));
+            assert_eq!(
+                s.said,
+                copy_text("rsRemoteResident.ensure.unsupported", &[])
+            );
             assert!(s.detail.contains("不是 unix"), "{}", s.detail);
-            assert!(s.detail.contains("resident-ensure"), "那台写的那份没带上：{}", s.detail);
+            assert!(
+                s.detail.contains("resident-ensure"),
+                "那台写的那份没带上：{}",
+                s.detail
+            );
         }
         other => panic!("{other:?}"),
     }
@@ -92,14 +103,22 @@ fn the_ensure_answer_names_a_non_unix_remote_as_unsupported_and_never_falls_back
     match parse_answer(
         &exec(
             "",
-            &envelope("spawn_failed", "x", &wrote("spawn_failed", "Permission denied (os error 13)")),
+            &envelope(
+                "spawn_failed",
+                "x",
+                &wrote("spawn_failed", "Permission denied (os error 13)"),
+            ),
             Some(2),
         ),
         "devbox",
     ) {
         Err(AttachErr::Failed(s)) => {
             assert_eq!(s.said, "x");
-            assert!(s.detail.contains("Permission denied (os error 13)"), "{}", s.detail);
+            assert!(
+                s.detail.contains("Permission denied (os error 13)"),
+                "{}",
+                s.detail
+            );
             assert!(
                 s.detail.contains(&copy_text("detail.label.local", &[])),
                 "远端那份没补「本机」一行：{}",

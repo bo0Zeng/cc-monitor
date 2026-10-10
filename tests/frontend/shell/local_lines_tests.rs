@@ -126,7 +126,7 @@ const FRAMES: &[(&str, &str)] = &[
     // 后端会话账本的成品（去向）—— 进内容通道（去向必须排在那个会话的行之后）。
     (
         "session_state",
-        r#"{"kind":"session_state","sid":"s1","state":"ended"}"#,
+        r#"{"kind":"session_state","sid":"s1","state":"ended","state_text":"t","state_hint":"h","state_tone":"plain"}"#,
     ),
     ("overflow", r#"{"kind":"overflow","dropped":3}"#),
     (
@@ -361,7 +361,9 @@ fn the_local_dispatch_core_matches_the_hand_written_table() {
     assert!(h.contains("b"), "摘除那一帧就忘了藏 ⇒ 紧跟的去向会漏出去");
     assert_eq!(
         local_step(
-            frame(r#"{"kind":"session_state","sid":"b","state":"ended"}"#),
+            frame(
+                r#"{"kind":"session_state","sid":"b","state":"ended","state_text":"t","state_hint":"h","state_tone":"plain"}"#
+            ),
             false,
             &mut h
         ),
@@ -741,8 +743,8 @@ fn the_local_product_core_matches_the_hand_written_table() {
         r#"{"kind":"session_status","sid":"a","status":"idle","activity":"idle"}"#;
     const STATUS_B: &str =
         r#"{"kind":"session_status","sid":"b","status":"idle","activity":"idle"}"#;
-    const LEFT_A: &str = r#"{"kind":"session_state","sid":"a","state":"reconnectable"}"#;
-    const LEFT_B: &str = r#"{"kind":"session_state","sid":"b","state":"ended"}"#;
+    const LEFT_A: &str = r#"{"kind":"session_state","sid":"a","state":"reconnectable","state_text":"t","state_hint":"h","state_tone":"plain"}"#;
+    const LEFT_B: &str = r#"{"kind":"session_state","sid":"b","state":"ended","state_text":"t","state_hint":"h","state_tone":"plain"}"#;
     const REM_A: &str = r#"{"kind":"session_removed","sid":"a"}"#;
     const LISTED: &str = r#"{"kind":"sessions_replayed"}"#;
     const LINE: &str =
@@ -775,6 +777,8 @@ fn the_local_product_core_matches_the_hand_written_table() {
             origin: local(),
             sid: "a".into(),
             activity: Some(crate::session_book::SessionActivity::Idle),
+            activity_text: None,
+            activity_tone: None,
             waiting_for: None
         })
     );
@@ -783,9 +787,14 @@ fn the_local_product_core_matches_the_hand_written_table() {
         Some(In::Left {
             origin: local(),
             sid: "a".into(),
-            fate: Fate::Reconnectable
+            fate: Fate::Reconnectable,
+            words: Some(crate::session_book::FateWords {
+                text: "t".into(),
+                hint: "h".into(),
+                tone: "plain".into(),
+            }),
         }),
-        "去向原样交（后端裁的）"
+        "去向原样交（后端裁的，连写好的字一起）"
     );
     assert_eq!(
         local_product(&frame(REM_A), true, &none),

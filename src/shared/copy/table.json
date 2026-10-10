@@ -1723,13 +1723,15 @@
       "kind": "error",
       "role": "报错",
       "zh": "连接入口路径过长 · {len}/{max} 字节 · {path}",
-      "args": ["path", "len", "max"]
+      "args": ["path", "len", "max"],
+      "limited": ["连接"]
     },
     "beResident.claim.bindFailed": {
       "kind": "error",
       "role": "报错",
       "zh": "后端无法打开连接入口 {path} · {why}",
-      "args": ["path", "why"]
+      "args": ["path", "why"],
+      "limited": ["连接"]
     },
     "beResident.sandbox.realHome": {
       "kind": "error",
@@ -12594,7 +12596,8 @@
       "kind": "body",
       "role": "说明",
       "zh": "常驻后端的连接入口 · 后端运行时用 · 删后要重启后端",
-      "args": []
+      "args": [],
+      "limited": ["连接"]
     },
     "rsDataPaths.backend.policy": {
       "kind": "body",
@@ -14995,7 +14998,8 @@
       "kind": "error",
       "role": "原因格",
       "zh": "连接失败 · {path} · {why}",
-      "args": ["path", "why"]
+      "args": ["path", "why"],
+      "limited": ["连接"]
     },
     "rsLocalBackendHost.hello.buildMismatch": {
       "kind": "error",
@@ -17459,6 +17463,72 @@
       "kind": "body",
       "role": "片段",
       "zh": "不到 $0.01",
+      "args": []
+    },
+    "beSession.activity.working": {
+      "kind": "body",
+      "role": "进度",
+      "zh": "运行中",
+      "args": []
+    },
+    "beSession.activity.needsYou": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "需手动",
+      "args": []
+    },
+    "beSession.activity.idle": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "空闲",
+      "args": []
+    },
+    "beSession.needs.approve": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "等批准",
+      "args": []
+    },
+    "beSession.needs.answer": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "等回答",
+      "args": []
+    },
+    "beSession.needs.plan": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "等批准",
+      "args": []
+    },
+    "beSession.needs.network": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "等放行",
+      "args": []
+    },
+    "beSession.needs.worker": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "等批准",
+      "args": []
+    },
+    "beSession.needs.goal": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "等确认",
+      "args": []
+    },
+    "beSession.needs.choose": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "等选择",
+      "args": []
+    },
+    "beSession.needs.unknown": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "需手动",
       "args": []
     },
     "beSpend.tokens.line": {
