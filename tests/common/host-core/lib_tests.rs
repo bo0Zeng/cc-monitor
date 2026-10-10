@@ -168,3 +168,44 @@ fn a_placeholder_outer_size_smaller_than_the_inner_does_not_shrink_the_window() 
         None
     );
 }
+
+/// 看的这一台的时区名：环境里给了 `TZ`（IANA 名，可带 POSIX 的 `:` 前缀）⇒ 按它（同 C 库与浏览器：`TZ` 盖过系统那一份，偏移 [`local_offset_at`] 也是这么认的）；
+/// 不像 IANA 名（POSIX 偏移串 · 文件路径 · 过长 · 空）⇒ 回落系统那一份。
+#[test]
+fn viewer_tz_follows_the_tz_variable_before_the_system_zone() {
+    let sys = || Some("Europe/Berlin".to_string());
+    assert_eq!(
+        clock::viewer_tz_from(Some("Asia/Shanghai"), sys).as_deref(),
+        Some("Asia/Shanghai")
+    );
+    assert_eq!(
+        clock::viewer_tz_from(Some(":America/New_York"), sys).as_deref(),
+        Some("America/New_York")
+    );
+    assert_eq!(
+        clock::viewer_tz_from(Some("UTC"), sys).as_deref(),
+        Some("UTC")
+    );
+    for odd in [
+        "",
+        ":",
+        "CST-8",
+        "/etc/localtime",
+        "a b/c",
+        &"X/".repeat(40),
+    ] {
+        assert_eq!(
+            clock::viewer_tz_from(Some(odd), sys).as_deref(),
+            Some("Europe/Berlin"),
+            "{odd:?}"
+        );
+    }
+    assert_eq!(
+        clock::viewer_tz_from(None, sys).as_deref(),
+        Some("Europe/Berlin")
+    );
+    assert_eq!(
+        clock::viewer_tz_from(None, || Some("x".repeat(TZ_ROOM + 1))),
+        None
+    );
+}
