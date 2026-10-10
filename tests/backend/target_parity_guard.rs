@@ -1015,6 +1015,10 @@ const NO_HANDLER_PATH: &[(&str, &str)] = &[
     ),
     ("terminal-unfollow", "同上（退订：摘票、递「停」），不起 tmux"),
     (
+        "stream-watch",
+        "`Run::Builtin`：名单交给本连接那份 watcher 线程（`observe/watcher.rs::watch_sessions` 只改名单、补两帧、读游标），不起 tmux",
+    ),
+    (
         "remote-probe",
         "`inbound::dispatch` 的硬臂（进度格要拿本连接的应答通道）；本体 `dial::probe` 只拨 SSH、读 hello、发一次 ping，不起 tmux",
     ),

@@ -108,6 +108,46 @@ pub fn command_names() -> Vec<&'static str> {
     names
 }
 
+/// 这条连接的「在看哪几个会话」那一口（`stream-watch`）：交给这条连接自己那份 watcher（`main` 接线），回刚进名单的那几个从第几行起上流。
+/// 只是一个口子，不认 watcher 的类型（本目录不碰 `observe::`）。
+#[derive(Clone)]
+pub struct WatchDesk(
+    Arc<
+        dyn Fn(Vec<String>) -> tokio::sync::oneshot::Receiver<Vec<crate::stream::wire::WatchFrom>>
+            + Send
+            + Sync,
+    >,
+);
+
+impl WatchDesk {
+    /// 接上这条连接的 watcher（入参就是它的 `watch` 口）。
+    pub fn new(
+        f: impl Fn(Vec<String>) -> tokio::sync::oneshot::Receiver<Vec<crate::stream::wire::WatchFrom>>
+            + Send
+            + Sync
+            + 'static,
+    ) -> Self {
+        WatchDesk(Arc::new(f))
+    }
+}
+
+#[cfg(test)]
+impl WatchDesk {
+    /// 测试里的连接：没有 watcher，`stream-watch` 回空。
+    pub(crate) fn for_tests() -> Self {
+        WatchDesk::new(|_| tokio::sync::oneshot::channel::<Vec<crate::stream::wire::WatchFrom>>().1)
+    }
+}
+
+/// `stream-watch` 的入参：`sids` 是串数组（整份换；空 ＝ 一个都不看）。别的形状 ⇒ `bad_args`。
+fn watch_sids(args: &serde_json::Value) -> Option<Vec<String>> {
+    args.get("sids")?
+        .as_array()?
+        .iter()
+        .map(|v| v.as_str().map(str::to_string))
+        .collect()
+}
+
 /// 在跑的命令登记表：`id` → 取消句柄。
 ///
 /// `id` 是客户端给的**不透明串**——backend 不解析、不校验格式、只当 map 的键和回显值。
@@ -132,6 +172,7 @@ struct InFlight {
 pub fn spawn<R>(
     stdin: R,
     replies: mpsc::Sender<Frame>,
+    watch: WatchDesk,
     _hello_flushed: crate::stream::wire::HelloFlushed,
 ) -> tokio::task::JoinHandle<()>
 where
@@ -200,7 +241,7 @@ where
                 .await;
                 overflowed = false;
             } else {
-                handle_line(&buf, &replies, &running, &links, &xfers, &follows).await;
+                handle_line(&buf, &replies, &running, &links, &xfers, &follows, &watch).await;
             }
             buf.clear();
         }
@@ -215,6 +256,7 @@ async fn handle_line(
     links: &crate::dial::link::Table,
     xfers: &crate::control::transfer::Desk,
     follows: &crate::control::terminal_follow::Desk,
+    watch: &WatchDesk,
 ) {
     if raw.is_empty() {
         return; // 空行（含 CRLF 的裸 \r 之后）静默跳过
@@ -238,7 +280,7 @@ async fn handle_line(
             return;
         }
     };
-    match dispatch(req, replies, running, links, xfers, follows) {
+    match dispatch(req, replies, running, links, xfers, follows, watch) {
         Disposition::Done => {}
         Disposition::Reply(f) => send(replies, f).await,
         Disposition::Spawn(req, run) => {
@@ -336,8 +378,31 @@ fn dispatch(
     links: &crate::dial::link::Table,
     xfers: &crate::control::transfer::Desk,
     follows: &crate::control::terminal_follow::Desk,
+    watch: &WatchDesk,
 ) -> Disposition {
     match req.cmd.as_str() {
+        "stream-watch" => {
+            let Some(sids) = watch_sids(&req.args) else {
+                return Disposition::Reply(Frame::err(
+                    &req.id,
+                    "bad_args",
+                    &crate::common::contract::malformed(
+                        "stream-watch: `sids` must be an array of strings",
+                    ),
+                ));
+            };
+            let answer = (watch.0)(sids);
+            Disposition::SpawnData(
+                req,
+                Box::new(move |_r: Request| -> DataFut {
+                    Box::pin(async move {
+                        // watcher 已停（这条流正在收场）⇒ 没有可答的，回空。
+                        let from = answer.await.unwrap_or_default();
+                        Ok(serde_json::to_value(crate::stream::wire::WatchReply { from }).ok())
+                    })
+                }),
+            )
+        }
         // 链路四条：要碰**本连接的链路表**与应答通道 ⇒ 与 `cancel` 同一档（硬臂、就地做完）。
         // ★ `link-data` **必须就地**（不 `spawn`）：同一条链路的上行块按到达顺序进队，
         //   交给独立 task 就不再保序。它成功时的应答由上行泵在写进管子之后发（背压）。

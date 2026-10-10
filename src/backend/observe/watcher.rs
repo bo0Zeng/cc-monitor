@@ -140,6 +140,11 @@ enum WatchEvent {
         only: Option<String>,
         done: std::sync::mpsc::Sender<Reconciled>,
     },
+    /// 这条流报了它此刻在看哪几个会话（`stream-watch`，整份换）：回刚进名单的那几个从第几行起上流（[`watch_sessions`]）。
+    Watch {
+        sids: Vec<String>,
+        done: tokio::sync::oneshot::Sender<Vec<crate::stream::wire::WatchFrom>>,
+    },
 }
 
 /// P2：把 debouncer 的事件转投进统一 channel（零额外线程——`notify` 本来就在自己的
@@ -791,6 +796,16 @@ impl WatcherPoke {
     pub fn shutdown(&self) {
         let _ = self.0.send(WatchEvent::Shutdown);
     }
+
+    /// 这条流此刻在看哪几个会话（整份换）；回刚进名单的那几个从第几行起上流。watcher 已停 ⇒ 回的那一头直接断。
+    pub fn watch(
+        &self,
+        sids: Vec<String>,
+    ) -> tokio::sync::oneshot::Receiver<Vec<crate::stream::wire::WatchFrom>> {
+        let (done, rx) = tokio::sync::oneshot::channel::<Vec<crate::stream::wire::WatchFrom>>();
+        let _ = self.0.send(WatchEvent::Watch { sids, done });
+        rx
+    }
 }
 
 pub fn spawn(
@@ -1280,6 +1295,9 @@ fn watch_loop(
                 }
             }
             // 与起步同一套：耳朵重挂 · 账号清单重读（整机时）· pidfile 对表（顺手对账标签）· 重探 tmux。
+            WatchEvent::Watch { sids, done } => {
+                let _ = done.send(watch_sessions(sids, &mut state, &mut sink));
+            }
             WatchEvent::Resync { only, done } => {
                 if only.is_none() {
                     // 整机重对表：记录文件的表作废，下一次宣告整棵走一遍重建（事件可能丢过）。
@@ -1923,6 +1941,49 @@ fn process_jsonl(path: &Path, state: &mut ReaderState, sink: &mut FrameSink) -> 
         sink.send(branch_frame(state, &session_id, path));
     }
     n
+}
+
+/// **流只发要看的会话**：这条流报了它此刻在看 `sids`（整份换）。
+///
+/// 刚进名单的会话（先前报过、又不在里面的；没报过 ＝ 全在流上，谁都不算刚进）：补一帧运行表 ＋ 每份记录一帧主线外清单（整份；
+/// 不在看的那段时间里它们变了也没上流），并回它的每份记录从第几行起上流 —— 号取游标此刻的值：之前读过的那些没上流，
+/// 之后读到的（含已落盘、还没读到的）都上流 ⇒ 客户端按骨架补 `[0, seq)`、接实时 `[seq, …)`，不重复也不漏。
+/// 在看的会话照读照数（行号与运行表、链索引都照常推进），只是那几种帧不上这条流（拦在 [`FrameSink::send`]）。
+fn watch_sessions(
+    sids: Vec<String>,
+    state: &mut ReaderState,
+    sink: &mut FrameSink,
+) -> Vec<crate::stream::wire::WatchFrom> {
+    let next: HashSet<String> = sids.into_iter().collect();
+    let fresh: Vec<String> = match &sink.watching {
+        None => Vec::new(),
+        Some(old) => {
+            let mut v: Vec<String> = next.difference(old).cloned().collect();
+            v.sort_unstable();
+            v
+        }
+    };
+    sink.watching = Some(next);
+    let mut from = Vec::new();
+    for sid in fresh {
+        let mut mine: Vec<PathBuf> = state
+            .offsets
+            .keys()
+            .filter(|k| file_stem_str(k).as_deref() == Some(sid.as_str()))
+            .cloned()
+            .collect();
+        mine.sort();
+        sink.send(state.runs.frame(&sid));
+        for p in &mine {
+            sink.send(branch_frame(state, &sid, p));
+            from.push(crate::stream::wire::WatchFrom {
+                sid: sid.clone(),
+                path: p.to_string_lossy().into_owned(),
+                seq: state.seqs.peek(&p.to_string_lossy()),
+            });
+        }
+    }
+    from
 }
 
 /// 这份记录此刻的主线外清单那一帧（整份）。
@@ -3008,6 +3069,9 @@ struct FrameSink {
     /// 它补发可重连 / 已结束的成品帧、压住 `sessions_replayed` 直到第一份 tmux 快照。生产由 [`watch_loop`] 装上；
     /// 夹具走 [`FrameSink::new`] 不装（它们钉的是 watcher 自己发的帧）。
     ledger: Option<crate::observe::session_ledger::SessionLedger>,
+    /// 这条流此刻在看哪几个会话（`stream-watch` 报的）：`None` ＝ 没报过 ＝ 全看。
+    /// 不在名单里的会话，它的整行帧（[`Frame::content_of`]）在这里拦下，别的帧不挑。
+    watching: Option<HashSet<String>>,
 }
 
 /// 丢帧身份表的上限〔audit-0805 F03，定框 **E5**：上限与超限语义成对定义〕。
@@ -3029,6 +3093,7 @@ impl FrameSink {
             lost: Vec::new(),
             lost_truncated: false,
             ledger: None,
+            watching: None,
         }
     }
 
@@ -3065,6 +3130,11 @@ impl FrameSink {
 
     /// 发一帧：先过会话账本（有的话）—— 它决定这一帧自己发不发、紧跟着补发哪几帧。
     fn send(&mut self, frame: Frame) {
+        if let (Some(w), Some(sid)) = (&self.watching, frame.content_of()) {
+            if !w.contains(sid) {
+                return;
+            }
+        }
         let (pass, extra) = match self.ledger.as_mut() {
             Some(l) => l.on_frame(&frame),
             None => (true, Vec::new()),
@@ -3166,3 +3236,7 @@ mod tests;
 #[cfg(test)]
 #[path = "../../../tests/backend/observe/watcher_lines_tests.rs"]
 mod lines_tests;
+
+#[cfg(test)]
+#[path = "../../../tests/backend/observe/watcher_watch_tests.rs"]
+mod watch_tests;

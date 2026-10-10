@@ -381,13 +381,17 @@ async fn run_over_stdio(hello: Frame, agent_home: PathBuf, wants: StreamWants) -
     // ⚠ 而**状态增量帧**丢了别处没有 —— 那半靠 `Overflow.lost` 带身份让客户端重同步（audit-0805 F03），
     // 丢一条应答会让客户端永远等下去。混在一个通道里，实时行的洪峰会把应答挤掉。
     let (reply_tx, reply_rx) = tokio::sync::mpsc::channel::<Frame>(inbound::REPLY_CHANNEL_CAPACITY);
-    let inbound_task = inbound::spawn(tokio::io::stdin(), reply_tx.clone(), hello_flushed);
-
     // (c) Start the watcher reader; it returns the receiving half of the
     // bounded frame channel.
     // 运行簿：这条连接的 watcher 写、tap 那一路的流归位读（一条连接一本）。
     let book = observe::runs::RunBook::shared();
     let (rx, poke) = observe::watcher::spawn(agent_home, wants, book.clone());
+    let inbound_task = inbound::spawn(
+        tokio::io::stdin(),
+        reply_tx.clone(),
+        watch_desk(&poke),
+        hello_flushed,
+    );
 
     // (c2) **P4：SIGUSR1 = 「tmux 那边有事，赶紧重探一次」。**
     //
@@ -434,6 +438,12 @@ async fn run_over_stdio(hello: Frame, agent_home: PathBuf, wants: StreamWants) -
     inbound_task.abort();
     drop(reply_tx);
     inbound::exit_after_drain("对端走了（写不出去）", None::<std::future::Ready<()>>).await
+}
+
+/// 这条连接的 `stream-watch` 口接到它自己那份 watcher 上。
+fn watch_desk(poke: &observe::watcher::WatcherPoke) -> inbound::WatchDesk {
+    let poke = poke.clone();
+    inbound::WatchDesk::new(move |sids| poke.watch(sids))
 }
 
 /// **P4：SIGUSR1 = 「tmux 那边有事，赶紧重探一次」。**
@@ -746,7 +756,8 @@ async fn serve_listening(
                 // 应答走**独立通道**：出方向丢一条内容帧可恢复，丢一条应答会让客户端永远等下去。
                 let (reply_tx, reply_rx) =
                     tokio::sync::mpsc::channel::<Frame>(inbound::REPLY_CHANNEL_CAPACITY);
-                let mut inbound_task = inbound::spawn(reader, reply_tx.clone(), hello_flushed);
+                let mut inbound_task =
+                    inbound::spawn(reader, reply_tx.clone(), watch_desk(&poke), hello_flushed);
                 // 这条流连接的 tap 接收端（hub 扇出：每条连接一条）。
                 let tap_rx = tap::attach(book);
                 let done = done_tx.clone();

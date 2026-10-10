@@ -73,6 +73,7 @@ async fn the_frame_face_refuses_a_bad_view_before_running_the_command() {
     let h = super::super::spawn(
         std::io::Cursor::new(input.as_bytes().to_vec()),
         tx,
+        crate::stream::inbound::WatchDesk::for_tests(),
         crate::stream::wire::HelloFlushed::for_tests(),
     );
     h.await.unwrap();
