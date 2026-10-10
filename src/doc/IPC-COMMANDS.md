@@ -1691,7 +1691,7 @@ sid → 上次用哪个号起。
 | `notice` | ← | 注解没并上的那句话；`null` = 并上了 |
 | `origin` | → | 可缺席：那台的名字（可达表的键） |
 | `query` | → | 可缺席：只留显示标题（`label`）· 第一句 · 项目名里含这几个字的（不分大小写，子串；不比路径、不搜内容 —— 内容走 `history-search`） |
-| `raw` | → | 可缺席：`true` ⇒ 只回**这台自己**的清单 `{rows, failed}`（不并注解、不筛不排、不认别的入参）—— 远端那一支问的就是它 |
+| `raw` | → | 可缺席：`true` ⇒ 只回**这台自己**的清单 `{rows, failed, annotations \| annotationsNotice}`（不筛不排、不认别的入参；`annotations` 是这台自己那份注解 sid ⇒ `{starred, customTitle, hidden, updatedAt}`，读不到 ⇒ `annotationsNotice` 一句为什么）—— 远端那一支问的就是它；注解跟着会话住在那台，本机代问时照那台带来的并、不拿本机那份去盖 |
 | `rows` | ← | 每会话一行，按 `at` 倒序：`agent` · `agentTag`（行上那一家的小牌，对用户的叫法）· `atText`（行尾那一格）· `sectionText`（分段头）· `spanText`（内容头那一段）—— 这三格按这台本地钟写好，界面照抄 |
 | `sort` | → | 可缺席：`activity`（默认，按最后活动）· `created`（按开始） |
 | `total` | ← | 筛完留下几个（截之前，不含 `context`） |

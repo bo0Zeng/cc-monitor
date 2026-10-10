@@ -678,3 +678,62 @@ fn asking_by_sid_scans_one_session_and_answers_the_same() {
     std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
     let _ = std::fs::remove_dir_all(&home);
 }
+
+/// ★ 注解跟着会话住在那台：一个远端会话，桌面经本机后端（`chan.call(那台, history-annotate)`）标星 ⇒ 写进**那台**的注解文件；
+/// 再读：直连那台的 history-list（`origin` 缺席）与本机后端代问那台的 history-list（`origin` = 那台）读到的是同一个星。
+/// 并的那张表只从清单自己带来的那份取（[`listing_annotations`]）：那台没标的 S2 读出来就是没标。
+#[test]
+fn a_remote_sessions_annotation_lives_on_that_machine() {
+    let dir = std::env::temp_dir().join(format!("ccm-hl-ann-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let there = dir.join("history-metadata.json");
+    crate::history::history_annotations::answer_annotate_at(
+        &there,
+        &json!({"sid": S1, "patch": {"starred": true}}),
+        5,
+    )
+    .expect("那台写下");
+    // 那台出自己的清单（raw 那一形）：自己并上自己那份注解。
+    let mut raw = listing();
+    with_own_annotations(
+        &mut raw,
+        &crate::history::history_annotations::load_at(&there),
+    );
+    let starred = |v: &Value, sid: &str| {
+        v["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|r| r["sessionId"] == sid)
+            .map(|r| r["starred"].clone())
+    };
+    let direct = answer_from(
+        &raw,
+        None,
+        listing_annotations(&raw).as_ref().map_err(Clone::clone),
+        &ask(json!({})),
+        1_000,
+        &|t| t,
+    );
+    let via_here = answer_from(
+        &raw,
+        Some("devbox"),
+        listing_annotations(&raw).as_ref().map_err(Clone::clone),
+        &ask(json!({})),
+        1_000,
+        &|t| t,
+    );
+    assert_eq!(starred(&direct, S1), Some(json!(true)), "直连那台读到星");
+    assert_eq!(
+        starred(&via_here, S1),
+        starred(&direct, S1),
+        "经本机后端读到的与直连那台一样"
+    );
+    assert_eq!(
+        starred(&via_here, S2),
+        Some(json!(false)),
+        "那台没标的就是没标"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}

@@ -51,6 +51,23 @@ pub(crate) fn annotations(loaded: &Loaded) -> Result<&Table, String> {
     }
 }
 
+/// **这台的注解并进它自己那份清单**（`raw` 那一形也带）：读到了 ⇒ `annotations` ＝ 那张表（sid ⇒ 注解）；读不到 ⇒
+/// `annotationsNotice` 一句为什么。注解跟着会话住在那台：每台只并自己那份，本机后端代问远端清单时照那台带来的出、不拿本机那份去盖。
+pub(crate) fn with_own_annotations(listing: &mut Value, loaded: &Loaded) {
+    match annotations(loaded) {
+        Ok(t) => listing["annotations"] = serde_json::to_value(t).unwrap_or(Value::Null),
+        Err(why) => listing["annotationsNotice"] = json!(why),
+    }
+}
+
+/// 一份清单带来的那台的注解（[`with_own_annotations`] 那两格）；两格都没有（那台没并）⇒ 空表。
+pub(crate) fn listing_annotations(listing: &Value) -> Result<Table, String> {
+    if let Some(why) = listing["annotationsNotice"].as_str() {
+        return Err(why.to_string());
+    }
+    Ok(serde_json::from_value(listing["annotations"].clone()).unwrap_or_default())
+}
+
 /// 路径最后一段（`/` 与 `\` 都认）；空 ⇒ `None`。
 fn last_segment(p: &str) -> Option<&str> {
     p.rsplit(['/', '\\']).next().filter(|s| !s.is_empty())
@@ -173,7 +190,9 @@ fn machine_listing_for(only: Option<&str>) -> Result<Value, (&'static str, Strin
         .ok()
         .and_then(|v| v.get("accounts").cloned())
         .unwrap_or(Value::Null);
-    Ok(listing_from(tree.unwrap_or_default(), &synth, &live, &last))
+    let mut listing = listing_from(tree.unwrap_or_default(), &synth, &live, &last);
+    with_own_annotations(&mut listing, &crate::history::history_annotations::load());
+    Ok(listing)
 }
 
 /// [`machine_listing`] 的可喂夹具那一半（记录树分好的目录 · 合成历史 · 判活 · 上次的号由调用方给）。
@@ -577,11 +596,12 @@ pub async fn answer_with(
         Some(o) => remote_listing(o, fresh, table, remote).await?,
     };
     blocking(move || {
-        let loaded = crate::history::history_annotations::load();
+        // 并的是清单自己带来的那台的注解（本机的那份只并本机会话；远端那台自己并好了它那份）。
+        let ann = listing_annotations(&listing);
         Ok(answer_from(
             &listing,
             origin.as_deref(),
-            annotations(&loaded),
+            ann.as_ref().map_err(Clone::clone),
             &ask,
             now_ms(),
             &crate::common::time::local_secs,
