@@ -614,39 +614,24 @@ pub(crate) struct Pending {
     pub(crate) kind: &'static str,
 }
 
-/// 还缺的格（手机端 10-09 缺格清单 G1 · G3 · G4 · G5；G2 已落地）。落地那一刻删掉这里那一行（判据两向钉）。
+/// 还缺的格（手机端 10-09 缺格清单）。落地那一刻删掉这里那一行（判据两向钉）。
 ///
 /// - G1 会话灯的 `shell` 一档：`activity` 的闭集加一个词（不是新格，登记成 `activity` 那一格）。
-/// - G3 `waitingFor` 的字 ＋ 危险度序（两格，名字待那一批定）。
-/// - G4 上下文占比的字（上限口径待定）。
-/// - G5 骨架行的时刻（条件的，待手机端定走法）。
-pub(crate) const PENDING: &[Pending] = &[
-    Pending {
-        product: "session_status",
-        path: "activity",
-        kind: "value",
-    },
-    Pending {
-        product: "session_status",
-        path: "waitingForText",
-        kind: "text",
-    },
-    Pending {
-        product: "session_status",
-        path: "waitingForRank",
-        kind: "value",
-    },
-    Pending {
-        product: "facts",
-        path: "usage.contextText",
-        kind: "text",
-    },
-    Pending {
-        product: "index_row",
-        path: "at",
-        kind: "value",
-    },
-];
+///
+/// 已落地 / 不补的（这里不再登记）：
+/// - G2 会话状态的字与语气 ⇒ `session_*.activity_text` · `activity_tone` · `session_state.state_text` …
+/// - G3 「在等什么」的字与先答哪个 ⇒ `facts.needs.text` · `facts.needs.rank`。那台 pidfile 的 `waitingFor` 六个原值由适配层翻成
+///   [`WaitOn`](crate::agents::WaitOn)，再与记录里没结果的那一步一起在 `facts_query::needs_of` 判成八种 `needs.kind`（映射只在这两处）；
+///   字与序跟着种类走，不另挂在 `session_status` 上。
+/// - G4 上下文的字 ⇒ `facts.usage.contextText`（判得出上限写百分比、判不出只写用了多少）· `limitText` · `promptTokensText` ·
+///   `percent` · `contextTone` · `limitFromText`；上限只有核心一套判定（`facts_query::context_limit`），出口不再按型号猜。
+/// - G5 骨架行的时刻：**不补**（10-09 定走法甲）。时刻在骨架上唯一的用处是算「最新的那一支」，手机改吃 `history-branch.off`
+///   拿主线之后这一用处没了；要画时刻的地方读正文时记录本身带 `at` · `timeText`。
+pub(crate) const PENDING: &[Pending] = &[Pending {
+    product: "session_status",
+    path: "activity",
+    kind: "value",
+}];
 
 /// 全部成品（目录的次序）。
 pub(crate) const PRODUCTS: &[Product] = &[
@@ -912,13 +897,12 @@ mod specimens {
                     end: 1,
                     forked_from: some("src"),
                     touched_files: vec![s("/f")],
-                    usage: Some(UsageFact {
-                        prompt_tokens: 1,
-                        model: some("m"),
-                        peak_prompt_tokens: 1,
-                        limit: 200_000,
-                        limit_from: LimitFrom::Observed,
-                    }),
+                    usage: Some(UsageFact::new(
+                        1,
+                        some("m"),
+                        1,
+                        (200_000, LimitFrom::Observed),
+                    )),
                     project_dir: some("/w"),
                     agent: some("agent"),
                     writers: vec![1],
@@ -942,6 +926,7 @@ mod specimens {
                         since_ms: Some(1),
                         text: Words(s("t")),
                         tone: crate::common::cells::Tone::Need,
+                        rank: 1,
                     }),
                     handed_back: vec![s("a")],
                     retries: vec![RetryRun {

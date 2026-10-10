@@ -33,7 +33,6 @@ import { attachTooltip, delegateTooltip, TOOLTIP_DELAY_MS } from "./kit/tooltip"
 import { closeMenu, menuAnchoredOn, openMenu, type MenuAnchor, type MenuItem } from "./kit/menu";
 import { foldCaret } from "./kit/fold";
 import { abbrOf, dotOf, fullTitle, groupSummary, machineOf, needsOf, needsOrder, nextNeeds, peekLine, stateLine, stateWord, titleParts, sinceText } from "./session-face";
-import { dotLabel } from "./session-words";
 
 /** TabButton 的 DOM 引用：refreshTabBar 局部更新依赖这些 ref 避免重新创建 button */
 export interface TabButtonRefs {
@@ -820,9 +819,9 @@ export class TabBarView {
   private paintGroupHead(g: GroupEls, col: TabCollection): void {
     const members = [...this.store.tabs.values()].filter((t) => t.group === col.id);
     const collapsed = col.collapsed === true;
-    const sum = collapsed ? groupSummary(members) : { needs: 0, running: 0 };
+    const sum = collapsed ? groupSummary(members) : { needs: 0, running: 0, needsWord: "", runningWord: "" };
     const current = collapsed && members.some((t) => t.sessionId === this.store.activeId);
-    const drawn = `${col.name}\u0000${members.length}\u0000${collapsed ? 1 : 0}\u0000${sum.needs}\u0000${sum.running}\u0000${current ? 1 : 0}`;
+    const drawn = `${col.name}\u0000${members.length}\u0000${collapsed ? 1 : 0}\u0000${sum.needs}\u0000${sum.running}\u0000${sum.needsWord}\u0000${sum.runningWord}\u0000${current ? 1 : 0}`;
     if (g.drawn === drawn) return;
     g.drawn = drawn;
     if (g.name.textContent !== col.name) g.name.textContent = col.name;
@@ -833,11 +832,12 @@ export class TabBarView {
     g.wrap.classList.toggle("is-collapsed", collapsed);
     g.head.classList.toggle("is-current", current);
     const chips: HTMLElement[] = [];
+    const word = (dot: "needs-you" | "running"): string => (dot === "needs-you" ? sum.needsWord : sum.runningWord);
     const chip = (dot: "needs-you" | "running", text: string): HTMLElement => {
       const c = document.createElement("span");
       c.className = "tab-group-chip";
       c.dataset.dot = dot;
-      c.append(statusDot(dot, dotLabel(dot), "compact"), document.createTextNode(text));
+      c.append(statusDot(dot, word(dot), "compact"), document.createTextNode(text));
       return c;
     };
     if (sum.needs > 0) chips.push(chip("needs-you", copyText("tabBar.group.sumNeeds", { n: sum.needs })));
@@ -845,7 +845,7 @@ export class TabBarView {
     g.sum.replaceChildren(...chips);
     // 窄栏只放得下一个点：有等你的画琥珀，否则有在跑的画绿。
     const urgent = sum.needs > 0 ? "needs-you" : sum.running > 0 ? "running" : null;
-    g.mini.replaceChildren(...(urgent ? [statusDot(urgent, dotLabel(urgent), "compact")] : []));
+    g.mini.replaceChildren(...(urgent ? [statusDot(urgent, word(urgent), "compact")] : []));
   }
 
   /** 收起 / 展开一个组（落盘）。 */
@@ -1120,7 +1120,7 @@ export class TabBarView {
     const pinned = tab.pinned;
     const hasCwd = !!tab.projectDir;
     const remote = isRemoteOrigin(tab.origin);
-    const lightClass = isLive(tab.state) ? activityFace(tab.activity?.doing ?? null).light : "";
+    const lightClass = isLive(tab.state) ? activityFace(tab.activity?.tone ?? null).light : "";
     const reconnectable = view.reconnectable;
     const dot = dotOf(tab);
     const n = needsOf(tab);

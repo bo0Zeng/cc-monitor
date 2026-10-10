@@ -198,7 +198,7 @@ describe("P2 ＋ P7 ＋ P1：整刷改成差量刷", () => {
   it("一个 tab 的红绿灯变了 ⇒ 恰好 3 条记录、全落在那颗按钮上（类 · 状态点的样子 · 状态点的读屏名；两向：别的按钮 0 条）", () => {
     const r = make(20, 4);
     r.take();
-    (r.store.tabs.get("s7") as { activity: unknown }).activity = { doing: "idle", waitingFor: null };
+    (r.store.tabs.get("s7") as { activity: unknown }).activity = { doing: "idle", waitingFor: null, text: "核心·空闲", tone: "plain" };
     r.view.refresh();
     const recs = r.take();
     expect(recs.map((x) => ownerSid(r, x))).toEqual(["s7", "s7", "s7"]);
@@ -225,7 +225,7 @@ describe("P4：启动 N 个会话各报一次红绿灯 ⇒ DOM 写总数是 3N�
     const r = make(n);
     r.take();
     for (const sid of r.store.orderedIds) {
-      (r.store.tabs.get(sid) as { activity: unknown }).activity = { doing: "idle", waitingFor: null };
+      (r.store.tabs.get(sid) as { activity: unknown }).activity = { doing: "idle", waitingFor: null, text: "核心·空闲", tone: "plain" };
       r.view.refresh();
     }
     return r.take().length;

@@ -84,21 +84,15 @@ export interface Tab {
    */
   group: string | null;
   /**
-   * 红绿灯（与 `state` 正交）：此刻在干什么（后端翻好的）＋ 在等什么。null = 说不清 → 默认绿点。
+   * 红绿灯（与 `state` 正交）：此刻在干什么（后端翻好的；`doing` 为 null ＝ 那一家没说）＋ 在等什么 ＋ 核心写好的字与语气（说不清也有）。null ＝ 还没收到。
    */
-  activity: { doing: SessionActivity; waitingFor: string | null; text: string | null; tone: string | null } | null;
+  activity: { doing: SessionActivity | null; waitingFor: string | null; text: string; tone: string } | null;
   // 「claude 已退但 tmux 会话还在」是 `state` 的 `RECONNECTABLE`（死 ＋ 容器还在）。
   /** 本会话写类工具（Edit / Write / MultiEdit / NotebookEdit）碰过的文件路径（原样、去重、近因序）。
    * 后端出成品（`history-facts` 的 `touchedFiles`），供监控板 peek 列最近改过的文件。纯内存、不落盘（守 §28）。 */
   touchedFiles: Set<string>;
-  /** 本会话最新一条带 usage 的 assistant 记录的 prompt token（input ＋ cache 合计）与 model，供 HUD 算 context 占用%。
-   *  后端按文件序取最后一条（成品的 `usage`）。null = 还没有（或事实还没到）。 */
-  latestPromptTokens: number | null;
-  latestModel: string | null;
-  /** 这份会话的上下文上限（后端定的，见 `session-reads.ts::UsageFact`）；判不出 ⇒ `null`（只写用了多少）。与上两格同一份成品。 */
-  latestContextLimit: number | null;
-  /** 上限从哪来（与上一格同一份成品；`assumed` ＝ 判不出）。 */
-  latestLimitFrom: UsageFact["limitFrom"];
+  /** 本会话最新一轮的用量与上下文（后端 `history-facts` 的 `usage`：数 ＋ 写好的字，HUD 与监控板照抄）。null = 还没有（或事实还没到）。 */
+  usage: UsageFact | null;
   /** 需要你（后端 `history-facts` 的 `needs`：种类 · 那一句 · 何时起等）；不在等 ⇒ `null`。与 `activity` 对不上时以后者为准（见 `tab-needs.ts`）。 */
   needs: Needs | null;
   /** 还没有结果的工具调用（后端 `pending`，文件序）：悬停卡「在做什么」。 */

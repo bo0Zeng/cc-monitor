@@ -83,8 +83,8 @@ function rule(id: string, name: string, p: Partial<RuleRow> = {}): RuleRow {
   };
 }
 
-const W = { state: "working", needs: null } as const;
-const E = { state: "ended", needs: null } as const;
+const W = { state: "working", needs: null, text: "核心·运行中", tone: "now" } as const;
+const E = { state: "ended", needs: null, text: "核心·已结束", tone: "plain" } as const;
 const DAILY = rule("r_daily", "日常", {
   isDefault: true,
   users: {
@@ -540,8 +540,8 @@ describe("轮换栏 · 在用展开 · 新建", () => {
         (x) => x.textContent,
       ),
     ).toEqual([
-      `orders${copyText("sessionFace.dot.running")}`,
-      `billing${copyText("sessionFace.dot.running")}`,
+      "orders核心·运行中",
+      "billing核心·运行中",
     ]);
     expect(box.querySelector("[data-rules-ended]")!.textContent).toBe(
       copyText("sessionState.rotUsers.ended", { n: 1 }),
@@ -565,18 +565,18 @@ describe("轮换栏 · 在用展开 · 新建", () => {
     );
   });
 
-  it("名单每个会话的状态照后端给的（与主窗口标签页同一套）：运行中 · 空闲 · 等批准 · 等回答 · 需要你 · 已结束；点与读屏名同一句", async () => {
+  it("★ 名单每个会话的字照抄核心写的（与主窗口同一处写）、点的颜色按核心的语气、已结束画空心；后台在跑按核心的字，不写成「运行中」", async () => {
     const users = {
       live: 5,
       ended: 1,
       follow: 0,
       doing: {
-        "s-a": { state: "working", needs: null },
-        "s-b": { state: "idle", needs: null },
-        "s-d": { state: "needsYou", needs: "approve" },
-        "s-x": { state: "needsYou", needs: "answer" },
-        "s-y": { state: "needsYou", needs: "unknown" },
-        "s-c": { state: "ended", needs: null },
+        "s-a": { state: "working", needs: null, text: "核心·运行中", tone: "now" },
+        "s-b": { state: "idle", needs: null, text: "核心·空闲", tone: "plain" },
+        "s-d": { state: "needsYou", needs: "approve", text: "核心·等批准", tone: "need" },
+        "s-x": { state: "needsYou", needs: "answer", text: "核心·等回答", tone: "need" },
+        "s-y": { state: "working", needs: null, text: "核心·后台在跑", tone: "plain" },
+        "s-c": { state: "ended", needs: null, text: "核心·已结束", tone: "plain" },
       },
       sids: ["s-a", "s-b", "s-d", "s-x", "s-y"],
       endedSids: ["s-c"],
@@ -619,12 +619,12 @@ describe("轮换栏 · 在用展开 · 新建", () => {
       ),
     ];
     const want: Record<string, [string, string]> = {
-      "s-a": ["running", copyText("sessionFace.dot.running")],
-      "s-b": ["idle", copyText("sessionFace.dot.idle")],
-      "s-d": ["needs-you", copyText("tabBar.needsKind.approve")],
-      "s-x": ["needs-you", copyText("tabBar.needsKind.answer")],
-      "s-y": ["needs-you", copyText("tabBar.needsKind.unknown")],
-      "s-c": ["ended", copyText("sessionState.ended.name")],
+      "s-a": ["running", "核心·运行中"],
+      "s-b": ["idle", "核心·空闲"],
+      "s-d": ["needs-you", "核心·等批准"],
+      "s-x": ["needs-you", "核心·等回答"],
+      "s-y": ["idle", "核心·后台在跑"],
+      "s-c": ["ended", "核心·已结束"],
     };
     expect(lines.map((l) => l.dataset.sid)).toEqual([
       "s-a",

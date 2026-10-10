@@ -1123,8 +1123,8 @@ fn mig1_the_credit_exemption_is_exactly_the_registered_lifecycle_frames() {
         F::Activity(b::SessionActivityPayload {
             session_id: sid(),
             activity: None,
-            activity_text: None,
-            activity_tone: None,
+            activity_text: "T".into(),
+            activity_tone: "now".into(),
             waiting_for: None,
         }),
         F::Container(b::SessionContainerPayload {

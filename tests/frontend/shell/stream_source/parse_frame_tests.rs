@@ -437,7 +437,7 @@ fn garbage_non_json_returns_none() {
 /// 已知 kind + 额外未知字段：仍正常解析，多余字段被忽略（不 fail）。
 #[test]
 fn known_kind_with_extra_fields_still_parses() {
-    let line = r#"{"kind":"session_added","sid":"s-9","extra":"ignored","nested":{"a":1}}"#;
+    let line = r#"{"kind":"session_added","sid":"s-9","activity_text":"T","activity_tone":"now","extra":"ignored","nested":{"a":1}}"#;
     let frame = parse_frame(line).expect("session_added with extras must parse");
     assert_eq!(
         frame,
@@ -451,8 +451,8 @@ fn known_kind_with_extra_fields_still_parses() {
             path: None,
             lines: None,
             activity: None,
-            activity_text: None,
-            activity_tone: None,
+            activity_text: "T".into(),
+            activity_tone: "now".into(),
             waiting_for: None,
             container: None,
             pid: None,
@@ -463,7 +463,7 @@ fn known_kind_with_extra_fields_still_parses() {
 /// session_added 附加元信息正确解析：读后端判好的 `background` / `activity`，不读 pidfile 原词（`session_kind` · `status`）。
 #[test]
 fn session_added_metadata_parses() {
-    let line = r#"{"kind":"session_added","sid":"s-bg","session_kind":"interactive","background":true,"status":"busy","activity":"needs_you","cwd":"/proj/x","project_dir":"/proj","name":"评估任务","path":"/home/u/.claude/projects/p/s-bg.jsonl","lines":42}"#;
+    let line = r#"{"kind":"session_added","sid":"s-bg","activity_text":"T","activity_tone":"now","session_kind":"interactive","background":true,"status":"busy","activity":"needs_you","cwd":"/proj/x","project_dir":"/proj","name":"评估任务","path":"/home/u/.claude/projects/p/s-bg.jsonl","lines":42}"#;
     let frame = parse_frame(line).expect("must parse");
     assert_eq!(
         frame,
@@ -477,8 +477,8 @@ fn session_added_metadata_parses() {
             path: Some("/home/u/.claude/projects/p/s-bg.jsonl".to_string()),
             lines: Some(42),
             activity: Some(SessionActivity::NeedsYou),
-            activity_text: None,
-            activity_tone: None,
+            activity_text: "T".into(),
+            activity_tone: "now".into(),
             waiting_for: None,
             container: None,
             pid: None,
@@ -489,25 +489,25 @@ fn session_added_metadata_parses() {
 /// session_status 帧：读 `activity`（不读原词 `status`）；缺 ⇒ 说不清。
 #[test]
 fn session_status_frame_parses() {
-    let line = r#"{"kind":"session_status","sid":"s-1","status":"busy","activity":"needs_you","waiting_for":"permission prompt"}"#;
+    let line = r#"{"kind":"session_status","sid":"s-1","activity_text":"T","activity_tone":"now","status":"busy","activity":"needs_you","waiting_for":"permission prompt"}"#;
     assert_eq!(
         parse_frame(line),
         Ok(InboundFrame::SessionStatus {
             sid: "s-1".to_string(),
             activity: Some(SessionActivity::NeedsYou),
-            activity_text: None,
-            activity_tone: None,
+            activity_text: "T".into(),
+            activity_tone: "now".into(),
             waiting_for: Some("permission prompt".to_string()),
         })
     );
-    let line = r#"{"kind":"session_status","sid":"s-2","status":"busy"}"#;
+    let line = r#"{"kind":"session_status","sid":"s-2","activity_text":"T","activity_tone":"now","status":"busy"}"#;
     assert_eq!(
         parse_frame(line),
         Ok(InboundFrame::SessionStatus {
             sid: "s-2".to_string(),
             activity: None,
-            activity_text: None,
-            activity_tone: None,
+            activity_text: "T".into(),
+            activity_tone: "now".into(),
             waiting_for: None,
         })
     );
@@ -517,9 +517,9 @@ fn session_status_frame_parses() {
 #[test]
 fn session_judgments_off_contract_are_bad_shape() {
     for line in [
-        r#"{"kind":"session_status","sid":"s","activity":"busy"}"#,
-        r#"{"kind":"session_added","sid":"s","activity":"waiting"}"#,
-        r#"{"kind":"session_added","sid":"s","background":"true"}"#,
+        r#"{"kind":"session_status","sid":"s","activity_text":"T","activity_tone":"now","activity":"busy"}"#,
+        r#"{"kind":"session_added","sid":"s","activity_text":"T","activity_tone":"now","activity":"waiting"}"#,
+        r#"{"kind":"session_added","sid":"s","activity_text":"T","activity_tone":"now","background":"true"}"#,
     ] {
         assert!(parse_frame(line).is_err(), "认了一帧契约外的：{line}");
     }
@@ -688,7 +688,7 @@ fn session_added_container_is_an_open_union() {
     };
     assert_eq!(
         get(
-            r#"{"kind":"session_added","sid":"s","container":{"host":"tmux","terminal":"tmux-3-7"}}"#
+            r#"{"kind":"session_added","sid":"s","activity_text":"T","activity_tone":"now","container":{"host":"tmux","terminal":"tmux-3-7"}}"#
         ),
         Some(SessionContainer::Hosted {
             host: TerminalHost::Tmux,
@@ -696,27 +696,27 @@ fn session_added_container_is_an_open_union() {
         })
     );
     assert_eq!(
-        get(r#"{"kind":"session_added","sid":"s","container":{"host":"tmux"}}"#),
+        get(r#"{"kind":"session_added","sid":"s","activity_text":"T","activity_tone":"now","container":{"host":"tmux"}}"#),
         Some(SessionContainer::Hosted {
             host: TerminalHost::Tmux,
             terminal: None
         })
     );
     assert_eq!(
-        get(r#"{"kind":"session_added","sid":"s","container":{"host":"none"}}"#),
+        get(r#"{"kind":"session_added","sid":"s","activity_text":"T","activity_tone":"now","container":{"host":"none"}}"#),
         Some(SessionContainer::None)
     );
-    assert_eq!(get(r#"{"kind":"session_added","sid":"s"}"#), None);
+    assert_eq!(get(r#"{"kind":"session_added","sid":"s","activity_text":"T","activity_tone":"now"}"#), None);
     assert_eq!(
-        get(r#"{"kind":"session_added","sid":"s","container":{"host":"hosted","terminal":"h-1"}}"#),
+        get(r#"{"kind":"session_added","sid":"s","activity_text":"T","activity_tone":"now","container":{"host":"hosted","terminal":"h-1"}}"#),
         Some(SessionContainer::Other {
             host: "hosted".into()
         })
     );
     for bad in [
-        r#"{"kind":"session_added","sid":"s","container":"tmux"}"#,
-        r#"{"kind":"session_added","sid":"s","container":{"terminal":"t"}}"#,
-        r#"{"kind":"session_added","sid":"s","container":{"host":"tmux","terminal":1}}"#,
+        r#"{"kind":"session_added","sid":"s","activity_text":"T","activity_tone":"now","container":"tmux"}"#,
+        r#"{"kind":"session_added","sid":"s","activity_text":"T","activity_tone":"now","container":{"terminal":"t"}}"#,
+        r#"{"kind":"session_added","sid":"s","activity_text":"T","activity_tone":"now","container":{"host":"tmux","terminal":1}}"#,
     ] {
         assert!(
             matches!(parse_frame(bad), Err(Unread::BadShape { .. })),
@@ -904,20 +904,20 @@ fn loc1b_the_pid_on_session_added_is_read_only_when_it_is_a_real_pid() {
         other => panic!("解不出 session_added：{other:?}"),
     };
     assert_eq!(
-        pid_of(r#"{"kind":"session_added","sid":"s","pid":4242}"#),
+        pid_of(r#"{"kind":"session_added","sid":"s","activity_text":"T","activity_tone":"now","pid":4242}"#),
         Some(4242)
     );
-    assert_eq!(pid_of(r#"{"kind":"session_added","sid":"s"}"#), None);
+    assert_eq!(pid_of(r#"{"kind":"session_added","sid":"s","activity_text":"T","activity_tone":"now"}"#), None);
     assert_eq!(
-        pid_of(r#"{"kind":"session_added","sid":"s","pid":-1}"#),
+        pid_of(r#"{"kind":"session_added","sid":"s","activity_text":"T","activity_tone":"now","pid":-1}"#),
         None
     );
     assert_eq!(
-        pid_of(r#"{"kind":"session_added","sid":"s","pid":"42"}"#),
+        pid_of(r#"{"kind":"session_added","sid":"s","activity_text":"T","activity_tone":"now","pid":"42"}"#),
         None
     );
     assert_eq!(
-        pid_of(r#"{"kind":"session_added","sid":"s","pid":4294967296}"#),
+        pid_of(r#"{"kind":"session_added","sid":"s","activity_text":"T","activity_tone":"now","pid":4294967296}"#),
         None
     );
 }

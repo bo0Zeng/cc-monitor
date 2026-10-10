@@ -201,7 +201,19 @@ describe("〔STC〕第五问：会话事实", () => {
       end: 1633,
       forkedFrom: "src-0",
       touchedFiles: ["/w/a.ts"],
-      usage: { promptTokens: 6, model: "m-g", peakPromptTokens: 6, limit: 1_000_000, limitFrom: "assumed" },
+      usage: {
+        promptTokens: 6,
+        model: "m-g",
+        peakPromptTokens: 6,
+        limit: 1_000_000,
+        limitFrom: "assumed",
+        percent: null,
+        contextText: "6",
+        contextTone: "plain",
+        promptTokensText: "6",
+        limitText: "1M",
+        limitFromText: null,
+      },
       agent: "claude",
       projectDir: "/g/proj",
       writers: [],
@@ -243,12 +255,15 @@ describe("〔STC〕第五问：会话事实", () => {
     expect(() => decodeFacts({ ...good, usage: { ...u, limitFrom: "guess" } }), "上限来路只认那五种").toThrow(ReplyUnreadable);
     expect(decodeFacts({ ...good, usage: { ...u, limitFrom: "relay" } }).usage?.limitFrom).toBe("relay");
     expect(() => decodeFacts({ ...good, usage: { ...u, limit: "1M" } })).toThrow(ReplyUnreadable);
+    expect(() => decodeFacts({ ...good, usage: { ...u, contextTone: "red" } }), "语气只认闭集").toThrow(ReplyUnreadable);
+    expect(() => decodeFacts({ ...good, usage: { ...u, contextText: undefined } }), "缺写好的字").toThrow(ReplyUnreadable);
+    expect(() => decodeFacts({ ...good, needs: { kind: "approve", tool: null, call: null, what: null, sinceMs: null, text: "t", tone: "need" } }), "缺先答哪个的序").toThrow(ReplyUnreadable);
     expect(() => decodeFacts({ ...good, projectDir: 1 })).toThrow(ReplyUnreadable);
     expect(() => decodeFacts({ ...good, writers: ["4711"] }), "pid 只收数").toThrow(ReplyUnreadable);
     expect(decodeFacts({ ...good, writers: [11, 12] }).writers).toEqual([11, 12]);
     expect(decodeFacts({ ...good, usage: null, forkedFrom: null, projectDir: null }).usage).toBeNull(); // null 是合法的「没有」
     // 需要你：种类只认那四种，三格恰好；没结果的调用逐条恰好四格。
-    const needs = { kind: "approve", tool: "Bash", call: "toolu_1", what: "rm -rf build/", sinceMs: 42, text: copyText("beSession.needs.approve"), tone: "need" };
+    const needs = { kind: "approve", tool: "Bash", call: "toolu_1", what: "rm -rf build/", sinceMs: 42, text: copyText("beSession.needs.approve"), tone: "need", rank: 1 };
     expect(decodeFacts({ ...good, needs }).needs).toEqual(needs);
     expect(() => decodeFacts({ ...good, needs: { ...needs, text: undefined } }), "缺写好的字").toThrow(ReplyUnreadable);
     expect(() => decodeFacts({ ...good, needs: { ...needs, kind: "guess" } }), "种类只认那四种").toThrow(ReplyUnreadable);

@@ -167,7 +167,7 @@ import {
   withSessionReads,
   recordReadCalls,
 } from "../../test-support/chan-fake";
-import type { SessionFacts } from "../../../src/frontend/ui/session-reads";
+import type { SessionFacts, UsageFact } from "../../../src/frontend/ui/session-reads";
 import { invalidateAccountsCache } from "../../../src/frontend/ui/account-reads";
 import { failToast, silentUndo, toast as showActionFailureToast, undoToast } from "../../../src/frontend/ui/kit/toast";
 import { __setHostFactsForTests, type HostOs } from "../../../src/frontend/ui/settings/host-os";
@@ -225,12 +225,18 @@ import { peerVersionSaid } from "../../../src/frontend/ui/ipc/chan-caller";
 import { recordFileWiring } from "../../../src/frontend/ui/record-file-notice";
 
 /** 会话事实里的一格 usage（上限由后端定：这里按「判不出 ⇒ 1M」那一形造）。 */
-const usageOf = (promptTokens: number, model: string | null) => ({
+const usageOf = (promptTokens: number, model: string | null): UsageFact => ({
   promptTokens,
   model,
   peakPromptTokens: promptTokens,
   limit: 1_000_000,
-  limitFrom: "assumed" as const,
+  limitFrom: "assumed",
+  percent: null,
+  contextText: `核心·${promptTokens}`,
+  contextTone: "plain",
+  promptTokensText: `核心·${promptTokens}`,
+  limitText: "核心·1M",
+  limitFromText: null,
 });
 import { applyConfigEdits, type Edit } from "./config-patch-fake";
 import { dispatcher } from "../../../src/frontend/ui/keybindings/registry";
@@ -2101,7 +2107,7 @@ describe("F91b TabManager.peekSession（监控板内容 peek 纯读派生）", (
   it("运行中 subagent 排在前，同档保插入序；model / 改过的文件透传", () => {
     const tm = makeTM();
     const tab = tm.ensureTab("s1", "/proj", "/p/s1.jsonl", LOCAL_ORIGIN);
-    tab.latestModel = "claude-opus-4-8";
+    tab.usage = usageOf(1, "claude-opus-4-8");
     tab.touchedFiles.add("/proj/a.ts");
     tab.touchedFiles.add("/proj/b.ts");
     // 运行表（后端的成品）序：done, running, stopped, running —— 期望 running 提前、组内保表序
@@ -2527,7 +2533,7 @@ describe("过程里还没结果的那几步照会话事实画（后端 pending[]
       tab.needs = needs;
       (tm as unknown as { paintStepWaits(t: Tab): void }).paintStepWaits(tab);
     };
-    const approve = (c: string) => ({ kind: "approve" as const, tool: "Bash", call: c, what: c, sinceMs: Date.now() - 125_000, text: copyText("beSession.needs.approve"), tone: "need" });
+    const approve = (c: string) => ({ kind: "approve" as const, tool: "Bash", call: c, what: c, sinceMs: Date.now() - 125_000, text: copyText("beSession.needs.approve"), tone: "need", rank: 1 });
     paint([call("b1", "awaiting"), call("b2", "running")], approve("b1"));
     expect([b1.dataset.state, b2.dataset.state]).toEqual(["awaiting", "running"]);
     expect(b1.querySelector(".step-right")?.textContent, "右侧已等多久").toBe("2m05s");
@@ -5306,7 +5312,7 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
 
   it("F88b usage：active 的成品一到就推给 HUD；后台 tab 不推；切过去时推那一格", async () => {
     const seen: [string | null, number | null][] = [];
-    tm.active.subscribe((a) => seen.push([a.model, a.promptTokens])); // 订阅 store（原先是回调）
+    tm.active.subscribe((a) => seen.push([a.usage?.model ?? null, a.usage?.promptTokens ?? null])); // 订阅 store（原先是回调）
     answerFacts((path) =>
       facts({ usage: path.includes("u1") ? usageOf(42, "m-a") : usageOf(7, null) }),
     );
@@ -5318,7 +5324,7 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     expect(seen.some(([, t]) => t === 7)).toBe(false); // 后台 tab 的事实到了不推
     tm.switchTo("u2");
     await vi.waitFor(() => expect(seen.at(-1)).toEqual([null, 7]));
-    expect(home(tm).store.tabs.get("u2")!.latestPromptTokens).toBe(7); // 监控板那一格读的也是它（`snapshotSessions`）
+    expect(home(tm).store.tabs.get("u2")!.usage?.promptTokens).toBe(7); // 监控板那一格读的也是它（`snapshotSessions`）
     expect(tm.peekSession("u1")!.model).toBe("m-a");
   });
 
@@ -5328,14 +5334,14 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     tm.onLine(line("v1", 0));
     tm.onLine(line("v2", 0));
     await settle();
-    await vi.waitFor(() => expect(tm.active.get().promptTokens).toBe(5));
+    await vi.waitFor(() => expect(tm.active.get().usage?.promptTokens).toBe(5));
     const seen: unknown[] = [];
     tm.active.subscribe((a) => seen.push(a));
     (tm as unknown as { onFactsAvailability(sid: string): void }).onFactsAvailability("v1");
     expect(seen, "值没变却通知了").toEqual([]);
     tm.switchTo("v2");
     await vi.waitFor(() => expect(seen.length).toBe(1));
-    expect(seen).toEqual([{ sid: "v2", model: null, promptTokens: null, contextLimit: null, limitFrom: "assumed", unavailable: null, projectDir: null }]);
+    expect(seen).toEqual([{ sid: "v2", usage: null, unavailable: null, projectDir: null }]);
   });
 
   it("要不到（老后端不认这条命令）⇒ active 的 HUD 出声（原因非空）、此后不再问；可用 ⇒ 说 null", async () => {

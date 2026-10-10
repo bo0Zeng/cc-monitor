@@ -26,7 +26,8 @@ impl From<String> for Words {
     }
 }
 
-/// 一格字的语气（闭集）：常规 · 失败 · 现在在做的那一步 · 需手动。出口按它选颜色，不按业务码自己判。
+/// 一格字的语气（闭集）：常规 · 失败 · 现在在做的那一步 · 需手动 · 该留意了（还没出错，如上下文快满）。
+/// 出口按它选颜色，不按业务码自己判。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Tone {
@@ -34,6 +35,7 @@ pub enum Tone {
     Fail,
     Now,
     Need,
+    Warn,
 }
 
 /// 格目录认这两个类型名（序列化时 serde 交给序列化器的名字）。
