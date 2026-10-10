@@ -13,9 +13,13 @@
     {
       "dir": "src/frontend/shell/src",
       "lang": "rs"
+    },
+    {
+      "dir": "src/mobile",
+      "lang": "kt"
     }
   ],
-  "ceiling": 267,
+  "ceiling": 276,
   "entries": [
     {
       "file": "src/frontend/ui/account-chip.ts",
@@ -492,6 +496,27 @@
       "n": 1,
       "kind": "留",
       "why": "复制详情里的原话（`raw`：「试了几次 × 每次等多久」那一行诊断），不是给人看的句子；原话照原样进详情、不上句子（同 C-W18）"
+    },
+    {
+      "file": "src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/session/ButtonEditDialog.kt",
+      "rule": "caseWord",
+      "n": 6,
+      "kind": "留",
+      "why": "自定义按钮编辑框按按钮类型（text · escape · keycode · builtin · switch）出说明与预览：类型是手机自己存的按钮配置，不是后端码，后端不认这几样"
+    },
+    {
+      "file": "src/mobile/core-ssh/src/main/kotlin/com/ccmonitor/mobile/core/ssh/SshConnection.kt",
+      "rule": "durUnit",
+      "n": 2,
+      "kind": "手机",
+      "why": "SSH 那层自己的超时句（开终端通道 · 一次命令）硬写了秒 / ms：手机自己的操作、核心看不见，但字要进文案表、时长走 DurationFormat（同核心金样）"
+    },
+    {
+      "file": "src/mobile/core-ssh/src/main/kotlin/com/ccmonitor/mobile/core/ssh/SshConnectionManager.kt",
+      "rule": "durUnit",
+      "n": 1,
+      "kind": "手机",
+      "why": "同上：握手超时那一句硬写 ms"
     }
   ]
 }

@@ -176,3 +176,34 @@ describe("E75：Rust 字符字面量", () => {
     expect(out).not.toContain("这才是注释");
   });
 });
+
+/**
+ * 手机端（`src/mobile`）的 Kotlin：出口扫描（`exit-judgment-scan.vitest.ts`）读它。
+ * 两种 Kotlin 才有的字面量会把状态机带跑：`"""…"""` 里的 `"` 与 `//`、`'"'` 字符字面量（同 E75）。
+ */
+describe("Kotlin", () => {
+  it("★ `\"\"\"…\"\"\"` 原始字符串里的 `\"` 与 `//` 不算：之后的注释照剥、代码照留", () => {
+    const src = [`val q = """x " // 不是注释"""`, `// 这一行是注释`, `fun tail() {}`].join("\n");
+    const out = stripComments(src, "kotlin");
+    expect(out, "原始字符串里的 // 被当成注释").toContain("// 不是注释");
+    expect(out).not.toContain("这一行是注释");
+    expect(out).toContain("fun tail() {}");
+  });
+
+  it("★ `'\"'` 字符字面量之后的注释照剥（不开幻影字符串）", () => {
+    for (const lit of [`'"'`, `'\\''`, `'\\n'`, `'\\u0041'`, `'a'`]) {
+      const out = stripComments(`val c = ${lit}\n// 注释\nfun tail() {}`, "kotlin");
+      expect(out, `${lit} 之后注释没剥`).not.toContain("注释");
+      expect(out).toContain("fun tail() {}");
+    }
+  });
+
+  it("KDoc 与行尾注释剥掉、行结构不变", () => {
+    const src = ["/** 文档 */", "val a = 1 // 尾注", "val b = \"x\""].join("\n");
+    const out = stripComments(src, "kotlin");
+    expect(out.split("\n")).toHaveLength(3);
+    expect(out).not.toContain("文档");
+    expect(out).not.toContain("尾注");
+    expect(out).toContain('val b = "x"');
+  });
+});
