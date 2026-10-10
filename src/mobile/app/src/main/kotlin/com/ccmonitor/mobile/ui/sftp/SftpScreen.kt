@@ -50,6 +50,7 @@ import com.ccmonitor.mobile.core.data.db.Bookmark
 import com.ccmonitor.mobile.core.data.repo.BookmarkRepository
 import com.ccmonitor.mobile.core.ssh.SftpEntry
 import com.ccmonitor.mobile.core.ssh.SshConnectionManager
+import com.ccmonitor.mobile.core.ui.copy.SizeFormat
 import com.ccmonitor.mobile.core.ui.feedback.LocalAppSnackbar
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
@@ -62,7 +63,6 @@ import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
 import org.koin.core.parameter.parametersOf
 import java.io.File
-import java.util.Locale
 import java.util.UUID
 
 /** 当前打开的对话框（长按菜单/重命名/删除/新建目录/预览）。 */
@@ -635,16 +635,9 @@ private fun SftpRow(
     ) {
         Text(if (e.isDir) "📁" else "📄")
         Text(e.name, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurface)
-        if (!e.isDir) Text(humanSize(e.size), style = monoSmall, color = tokens.textFaint)
+        if (!e.isDir) Text(SizeFormat.text(e.size), style = monoSmall, color = tokens.textFaint)
     }
 }
-
-private fun humanSize(bytes: Long): String =
-    when {
-        bytes < 1024 -> "$bytes B"
-        bytes < 1024 * 1024 -> "${bytes / 1024} KB"
-        else -> "${"%.1f".format(Locale.ROOT, bytes / 1024.0 / 1024.0)} MB" // Locale.ROOT：防逗号小数点的 locale
-    }
 
 private fun queryDisplayName(
     context: android.content.Context,

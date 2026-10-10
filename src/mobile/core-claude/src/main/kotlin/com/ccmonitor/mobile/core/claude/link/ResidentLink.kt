@@ -7,7 +7,6 @@ import kotlinx.coroutines.CoroutineScope
 sealed interface LinkOutcome {
     data class Up(
         val client: FrameClient,
-        val catalog: CellsCatalog,
     ) : LinkOutcome
 
     /** 门槛没过（另一版 · 没装 · 问不成）。 */
@@ -29,17 +28,12 @@ sealed interface LinkOutcome {
     data class HelloDiffers(
         val theirs: String?,
     ) : LinkOutcome
-
-    /** 格目录问不成或缺手机要读的格：两端契约对不上。 */
-    data class Contract(
-        val missing: List<CellsCatalog.Cell>,
-        val reply: Reply?,
-    ) : LinkOutcome
 }
 
 /**
  * 连一台：门槛（同一个 `BUILD_ID`）→ `--resident-ensure`（常驻不在就起）→ 长 exec `--resident-attach`
- * 接常驻流 → 读格目录核手机要的格。和桌面连远端是同一条路（`IPC-PROTOCOL.md` 载体表「常驻套接字」）。
+ * 接常驻流。和桌面连远端是同一条路（`IPC-PROTOCOL.md` 载体表「常驻套接字」）。
+ * 两端对不对得上只核 `BUILD_ID` 这一处（改了冻结的格同加子命令一样要打版本号），不另问格目录。
  * C 通道（[OneShot]）只在接流之前用这两次；之后一切都经 [FrameClient]。
  */
 class ResidentLink(
@@ -49,6 +43,8 @@ class ResidentLink(
     suspend fun open(
         scope: CoroutineScope,
         nonce: String,
+        /** 看的这一台的时区（IANA 名，`ZoneId.systemDefault().id`）。 */
+        tz: String,
         timeouts: Timeouts,
         onBreak: (String) -> Unit,
     ): LinkOutcome {
@@ -56,33 +52,20 @@ class ResidentLink(
         if (gate != GateVerdict.Same) return LinkOutcome.Gate(gate)
         val ensured = oneShot.run(ENSURE)
         if (ensured !is OneShotOutcome.Ok) return LinkOutcome.Ensure(ensured)
-        val attached = FrameClient.attach(duplex.open(BackendBin.command(ATTACH)), FLAGS, scope, timeouts.handshakeMs, nonce, onBreak)
-        return if (attached is AttachOutcome.Attached) checked(attached.client, timeouts) else LinkOutcome.Attach(attached)
+        val attached = FrameClient.attach(duplex.open(BackendBin.command(ATTACH)), FLAGS, scope, timeouts.handshakeMs, nonce, tz, onBreak)
+        return if (attached is AttachOutcome.Attached) checked(attached.client) else LinkOutcome.Attach(attached)
     }
 
-    /** 接上之后再核两件：hello 自报的身份 · 格目录里有没有手机要读的格。不过 ⇒ 关流。 */
-    private suspend fun checked(
-        client: FrameClient,
-        timeouts: Timeouts,
-    ): LinkOutcome {
+    /** 接上之后再对一次 hello 自报的身份（门槛问过之后那台可能被换过）。不对 ⇒ 关流。 */
+    private fun checked(client: FrameClient): LinkOutcome {
         val theirs = client.hello.str("build_id")
-        val reply = if (theirs == EmbeddedBuild.ID) client.call(CellsCatalog.COMMAND, null, timeouts.callMs) else null
-        val catalog = (reply as? Reply.Ok)?.let { CellsCatalog.of(it.data) }
-        val missing = catalog?.missing(MobileCells.READS).orEmpty()
-        val outcome =
-            when {
-                reply == null -> LinkOutcome.HelloDiffers(theirs)
-                catalog == null -> LinkOutcome.Contract(emptyList(), reply)
-                missing.isNotEmpty() -> LinkOutcome.Contract(missing, null)
-                else -> LinkOutcome.Up(client, catalog)
-            }
-        if (outcome !is LinkOutcome.Up) client.close()
-        return outcome
+        if (theirs == EmbeddedBuild.ID) return LinkOutcome.Up(client)
+        client.close()
+        return LinkOutcome.HelloDiffers(theirs)
     }
 
     data class Timeouts(
         val handshakeMs: Long,
-        val callMs: Long,
     )
 
     companion object {

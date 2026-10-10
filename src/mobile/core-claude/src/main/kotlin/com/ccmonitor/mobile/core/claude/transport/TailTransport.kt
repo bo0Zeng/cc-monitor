@@ -5,7 +5,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 
 /**
- * β 传输：`tail -c +<startOffset+1> -F <jsonlPath>` 读单个会话文件，经 [LineFramer] 切行 → [JsonlFrame.Line]。
+ * 自读原文的传输：`tail -c +<startOffset+1> -F <jsonlPath>` 读单个会话文件，经 [LineFramer] 切行 → [JsonlFrame.Line]。
  * Flow 被取消时，[RemoteCommandChannel] 负责杀远端 tail。
  *
  * 字节偏移续传：[startOffsetBytes] = 0 → `-c +1`（全量历史）；> 0 → `-c +<N+1>`（只取第 N 字节之后），
@@ -29,13 +29,13 @@ class TailTransport(
 
     override fun frames(): Flow<JsonlFrame> =
         flow {
-            emit(JsonlFrame.Hello())
+            emit(JsonlFrame.Hello)
             var seq = 0L
             val command = tailCommand(jsonlPath, startOffsetBytes)
             channel.exec(command).collect { chunk ->
                 for (framed in framer.feedFramed(chunk)) {
                     currentOffset = startOffsetBytes + framed.endOffset // 先推进到本行行尾，再 emit
-                    // byteOffset 随行携带（= 本行行尾累计字节 = resume 锚点），与 α 的 Line.byte_offset 同义。
+                    // byteOffset 随行携带（= 本行行尾累计字节 = resume 锚点）。
                     emit(JsonlFrame.Line(sessionId, jsonlPath, seq++, framed.raw, currentOffset))
                 }
             }

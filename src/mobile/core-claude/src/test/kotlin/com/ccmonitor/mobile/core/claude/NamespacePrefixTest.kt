@@ -4,8 +4,6 @@ import com.ccmonitor.mobile.core.claude.bridge.PipeSession
 import com.ccmonitor.mobile.core.claude.command.ChatAttachment
 import com.ccmonitor.mobile.core.claude.command.ClaudeInvocation
 import com.ccmonitor.mobile.core.claude.command.PipeCommands
-import com.ccmonitor.mobile.core.claude.transport.DaemonCommands
-import com.ccmonitor.mobile.core.claude.transport.DaemonLocator
 import com.ccmonitor.mobile.core.remote.RemoteCommandChannel
 import kotlinx.coroutines.flow.emptyFlow
 import org.junit.Assert.assertEquals
@@ -34,7 +32,7 @@ import org.junit.Test
  *
  * 两种合法写法都不当红：`shellQuote` 无条件加单引号，被引用的值里 `~` / `$HOME` 不会展开。
  * 于是 `ATERM_HOME` 是相对家目录的 `.aterm`（`mkdir -p .aterm/…` 在登录 shell 的家目录下跑），
- * 而 `DaemonLocator.HOME_PREFIX` 是 `"$HOME"/`（双引号，交远端 shell 展开）。
+ * 而 `BackendBin.PATH_WORD` 是 `"$HOME"/…`（双引号，交远端 shell 展开）。
  * 这里只认「前缀是不是我们的名字空间」，不对这两种写法之一表态。
  */
 class NamespacePrefixTest {
@@ -82,26 +80,6 @@ class NamespacePrefixTest {
     }
 
     /**
-     * 碰 cc-monitor 名字空间的那条路，真实输出里一个字节都没写。
-     *
-     * `DaemonLocator.candidates` 是唯一合法提到 `.cc-monitor` 的地方。这条把候选表真的渲染成远端命令，
-     * 问它写了什么：除了 `/dev/null` 什么都没有（`command -v` 那两条把噪声丢进去），
-     * 即只有 `[ -x … ]` 与 `command -v --` 这两种纯探测。
-     *
-     * 不替代 `DaemonCommands.presence` 自己那条逐字节判据（「绝不执行候选」），这里只答名字空间那一问。
-     */
-    @Test
-    fun theDaemonLocatorCandidatesOnlyProbeAndNeverWrite() {
-        val cands = DaemonLocator.candidates(null)
-        assertTrue("前提：默认候选表得是非空的（空表 ⇒ 本条恒绿）", cands.size >= 2)
-        val locate = DaemonCommands.locate(cands.mapIndexed { i, c -> DaemonCommands.presence(i, c.rendered, c.byName) })
-        assertTrue("前提：这就该是碰 `$CC_MONITOR` 的那条路；不含它 ⇒ 量错东西了：\n$locate", locate.contains(CC_MONITOR))
-        for (t in writeTargets(locate)) {
-            assertTrue("cc-monitor 名字空间那条路只许读，却往 `$t` 写了东西：\n$locate", t in ALLOWED_SINKS)
-        }
-    }
-
-    /**
      * 常量本身仍是那个前缀。
      *
      * [everyWriteCommandLandsUnderOurNamespace] 刻意用手写定值当期望，「常量被改」那一刀落在这里。
@@ -139,7 +117,7 @@ class NamespacePrefixTest {
     /**
      * 把一条 shell 命令串切成词，单引号内的空白不切（`shellQuote` 出来的路径可能带空格）。
      *
-     * 只认单引号：所有路径都经 `shellQuote`（无条件单引号）。双引号那几条（`DaemonLocator.HOME_PREFIX`、
+     * 只认单引号：所有路径都经 `shellQuote`（无条件单引号）。双引号那几条（`BackendBin.PATH_WORD`、
      * `-c "$cwd"`）是读或用户值，不在射程里。`;` 与 `|` 在引号外也是分词符，否则
      * `touch 'b/2'; mv …` 抠出来的落点会挂着个分号。
      *
@@ -219,8 +197,7 @@ class NamespacePrefixTest {
         private const val CC_MONITOR = ".cc-monitor"
 
         /**
-         * 允许出现的非路径写落点，只有一个：`/dev/null`（丢弃噪声，
-         * 见 `DaemonCommands.presence` 的 `command -v … >/dev/null 2>&1`）。
+         * 允许出现的非路径写落点，只有一个：`/dev/null`（丢弃噪声，如 `2>/dev/null`）。
          * 它不属于任何人的名字空间，也不留下任何东西。
          */
         private val ALLOWED_SINKS = setOf("/dev/null")

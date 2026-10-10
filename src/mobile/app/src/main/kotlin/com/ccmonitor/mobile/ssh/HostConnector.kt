@@ -6,13 +6,17 @@ import com.ccmonitor.mobile.core.data.repo.IdentityRepository
 import com.ccmonitor.mobile.core.ssh.SshConnectEvent
 import com.ccmonitor.mobile.core.ssh.SshConnectionManager
 import com.ccmonitor.mobile.core.ssh.SshTransport
+import com.ccmonitor.mobile.core.ssh.countsAsActive
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 
 /**
  * 主机连接的生与死都经这里，别处只拿句柄。
  *
  * - 生：[connect]，解析认证、跳板、多地址，再交给 [SshConnectionManager.connect]（同主机 single-flight）。
  * - 持有与放手：[retain] / [release]。holder token 由调用方自己铸，本类不持状态。
- * - 句柄：[connection]。
+ * - 句柄：[connection]；可观测的那一份：[linkOf]（重连过就换一条）。
+ * - 探活：[probeStale]（常驻流断了时叫）。
  * - 强制全断：[disconnectAll]。
  *
  * 不提供单机强断 `disconnect(id)`：生产代码里没人要。
@@ -80,6 +84,16 @@ class HostConnector(
      * 会骗人约 75 秒。
      */
     fun connection(hostId: String): SshTransport? = manager.connection(hostId)
+
+    /**
+     * 这台此刻的活连接，可观测：名义状态是「连着」时给那条 transport，否则 `null`。值换了（按身份）＝ SSH 重连过、换了一条。
+     * 常驻流跟着它重接（`BackendFeed`）。
+     */
+    fun linkOf(hostId: String): Flow<SshTransport?> =
+        manager.sessions.map { m -> if (m[hostId]?.countsAsActive() == true) manager.connection(hostId) else null }
+
+    /** 叫 SSH 那层探一次活（死了的就重连，[linkOf] 随之换一条）。常驻流断了先问它：多半是 SSH 先死了。 */
+    fun probeStale() = manager.probeAndReconnectStale()
 
     /**
      * 不管持有者，断开全部连接：清持有者集、纪元加一作废在飞的 connect，物理 `close` 派到后台。

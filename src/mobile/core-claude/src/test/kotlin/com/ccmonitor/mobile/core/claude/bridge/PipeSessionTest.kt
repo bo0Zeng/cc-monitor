@@ -1,7 +1,6 @@
 package com.ccmonitor.mobile.core.claude.bridge
 
 import com.ccmonitor.mobile.core.claude.command.PipeCommands
-import com.ccmonitor.mobile.core.claude.transport.DaemonCommands
 import com.ccmonitor.mobile.core.remote.RemoteCommandChannel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -225,7 +224,7 @@ class PipeSessionTest {
     /**
      * 要肯定的成功证据：没标记就不算写进去了（`exec` 拿不到退出码）。
      *
-     * 两道标记都要：`DaemonCommands` 那道说「shell 跑成了」，`ATERM_UP_ADD`/`ATERM_UP_DUP` 那道说
+     * 两道标记都要：`PipeCommands.guarded` 那道说「shell 跑成了」，`ATERM_UP_ADD`/`ATERM_UP_DUP` 那道说
      * 「跑成的是哪一档」。只有前一道 ⇒ 认不出哪一档 ⇒ 判失败（二义的 stdout 不是证据）。
      */
     @Test
@@ -234,7 +233,7 @@ class PipeSessionTest {
             val session = PipeSession(FakeChannel { "" }, sid)
             val ok =
                 PipeUplinkSink(
-                    FakeChannel { "${PipeCommands.APPENDED_MARKER}\n\n${DaemonCommands.QUERY_OK_MARKER}\n" },
+                    FakeChannel { "${PipeCommands.APPENDED_MARKER}\n\n${PipeCommands.OK_MARKER}\n" },
                     session,
                     LISTENING,
                 )
@@ -246,7 +245,7 @@ class PipeSessionTest {
             assertTrue("空 stdout 不算成功", outcome.retryable)
 
             // shell 跑成了、但哨兵认不出来 ⇒ 仍然不算成功
-            val mute = PipeUplinkSink(FakeChannel { "\n${DaemonCommands.QUERY_OK_MARKER}\n" }, session, LISTENING)
+            val mute = PipeUplinkSink(FakeChannel { "\n${PipeCommands.OK_MARKER}\n" }, session, LISTENING)
             assertTrue(
                 "认不出哪一档必须判失败",
                 mute.sendReporting(SendRequest("l1", "hi")) is UplinkAppendOutcome.Failed,
