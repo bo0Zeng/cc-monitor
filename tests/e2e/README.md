@@ -1,4 +1,4 @@
-# E2E 套件(Batch13-F40 起)
+# E2E 套件
 
 无 devtools/eval 通道(生产与 `CCM_NO_DEVTOOLS=1` 下 webview 不可注入)——断言数据
 全部走 **DEV 探针 → 后端日志**:
@@ -60,65 +60,20 @@ canary 例外：它问的正是用户那台默认 server）。
 08-12 实测两套：`restart-suite` **24 过/0 败**、`resume-suite` **17 过/0 败**，
 真实 server 跑前跑后**均为 9 个会话、逐字未变**，私有 server 均已收。
 
-## 一次全量真跑的台账（08-13）
+## 全链套件的台架
 
-本机（Linux + tmux 3.6）把**所有不需要 GUI/Windows 的套件**跑了一遍，每套都对照用户真实
-tmux server（跑前跑后 `tmux -L default ls` 逐字对比，**9 个会话，每次都没变**）：
+GUI 那几套（`graylight-suite` · `f40-suite`）的台架用脚本搭，不手搓（手搓容易让后端用真 `~/.claude` 起来）：
 
-| 套件 | 读数 | 备注 |
-|---|---|---|
-| `restart-suite` | 24 过 / 0 败 | |
-| `resume-suite` | 17 过 / 0 败 | |
-| `inbound-backend-frames` | 32 过 / 0 败 | |
-| `resume-backend-frames` | 7 过 / 0 败 | |
-| `graylight-backend-frames` | 12 过 / 0 败 | |
-| `backend-gate2-acceptance` | 35 过 / 0 败 | ★ 修了它自己开的方子（登记豁免），此前每跑必 RC=1 |
-| `local-backend-supervise` | 7 过 / 0 败 | ★ 修前 7/1 —— 那条 `#[ignore]` 首跑就红，见 `P3 §0h-2` |
-| ~~`usage-probe-acceptance`~~ | — | 🔴 **整套删了**：用量 ②③ 两轴整轴退役 ⇒ 被测对象没了（不是断言变少了）。CI 里那条 `assert-pass-floor.sh` 的通过下限同拍**整条**摘掉（地板值的家在 `ci.yml` 的调用行，这里不存副本）|
-| `ccm-print-parity` | 12 过 / 0 败 | |
-| `ccm-contract-parity` | 61 过 / 0 败 | |
-| `tmux-target-acceptance` | 26 过 / 0 败 | |
-| `backend-fork-session` | 10 过 / 0 败 | |
-| `p3t-local-tmux` | 10 过 / 0 败 | |
-| `cc-spawn-uplift` | **72 过 / 0 败**（08-13 更新） | ★ 修前 19/2 —— 它还在测 `P4b` 删掉的行为；`C15` 收编后 +10 条；08-13 再 +7（地址簿不许被抹 · 敲门不许打进别人屏幕） |
-| `exec-bit-guard` | RC=0 | ⚠ 打了非阻断警告：`src/shared/cc-bus` 与 `~/.claude/skills/cc-bus` **已漂移** |
-| `backend-sessions-rewatch` | 4 过 / 0 败 | ★ 08-13 新增（`P0b-Y2`）：`sessions/` 被换 inode / 起初不存在 / 重建后立刻写 |
-| `backend-tmux-late-server` | 2 过 / 0 败 | ★ 08-13 新增（`P0b-Y2`）：**后端起得比 tmux server 早**（`#60` 现象 1 的根因） |
-| `cc-bus-queue-drain` | 43 过 / 0 败 | ★ 08-13 新增：`cc-send` **消息没到时必须有人说话**——滞留队列没人管 + 收件人根本不存在。**本套不用 tmux** |
-| `backend-cc-bus` | 50 过 / 0 败 | ★ 08-13 新增（`P4f`）：后端的 `--bus-list` / `--bus-send` 真跑（含身份空间对账三态）。`CLAUDE_CONFIG_DIR` 与 `CC_BUS_HOME` 双沙箱；用到 tmux 的那格经 shim 强制 `-L` |
-| **`graylight-suite`** | **3 过 / 0 败**（08-13） | ★★ 它**不再是「跑不了」的** —— 跑法见下方 `§ 全链套件怎么跑` |
-
-🔴 **2026-09-18 更新：台架有脚本了 —— `tests/e2e/tier2-rig.sh`。**
-下面那份散文配方仍留着当说明，但**不要照着手搓** —— 手搓会踩它自己列的第 2 条坑
-（`.build_id` 名字写错 ⇒ 后端用**真** `~/.claude` 起来）。本仓定框 E12：散文纪律等于没有纪律。
-
-```
+```bash
 bash tests/e2e/tier2-rig.sh setup     # 沙箱 ＋ config.json ＋ Xvfb（会自证 loopback ssh / 后端二进制 / build_id）
 bash tests/e2e/tier2-rig.sh dev &     # dev 实例（HOME 指沙箱）
 bash tests/e2e/tier2-rig.sh run       # graylight-suite ＋ f40-suite
 bash tests/e2e/tier2-rig.sh teardown  # 按 pid 收 dev ＋ vite ＋ Xvfb
 ```
 
-台架跑起来之后**逮到两件**：
+没有窗口管理器时 `xdotool getmouselocation` 报 `window:0`（指针与窗口关联不上），装 `openbox` 再跑。
 
-1. 🔴 **本套件的 gate 乙 一直是陈旧的** —— 它匹配日志文本 `claude_dir=`，而那行的字段名被
-   `17924e9e`（「S4：协议去 agent 名」）改成了 `claude_home=`（wire 上的 JSON 仍叫 `claude_dir`，
-   人读那行打的是派生值）。⇒ 本格**恒 ABORT**，而 ABORT 长得像「台架没搭好」、不像
-   「判据过期了」，于是它在 ABORT 里藏了下来。**锚在日志文案上，改文案即失效。**已修。
-2. 🟡 **`f40-suite` 4 格里过 3 格，第 4 格是仪器不是产品** —— 「中键点状态栏触发快照」这一步
-   在本机**完全不触发**（`[e2e] snapshot` 零行）。已排除的：窗口在且 `IsViewable`（1100x800）·
-   指针确实落在 app 的子窗口里 · 装了 openbox 之后指针与窗口关联正常 · 探针模块已加载
-   （`[e2e] jitter` 有 3 行）· 试过 4 个底边偏移 ＋ 先左键取焦点。
-   ⚠ **没验证的一个猜测**：`window.addEventListener("auxclick")` 在当前 WebKitGTK（2.52.6）上
-   可能不再收中键 —— 要改成 `mousedown` 判 `button===1` 才收。**这只是猜测，没有证据**，
-   验它要动 `src/frontend/ui/e2e-probe.ts` 再重建。⇒ 这一格今天的状态是**「判不了」**，不是「产品坏了」。
-
-⚠ 另记：**这份配方没提窗口管理器，而没有 WM 时 `xdotool getmouselocation` 报 `window:0`**
-（指针与窗口关联不上）。装 `openbox` 才正常。08-13 那次能跑，说明当时的环境有 WM 或
-WebKitGTK 行为不同 —— **成因没查清，不编说法**。
-⚠ `graylight-suite` **08-13 起不在这一行里了** —— 它跑通了（3 过 / 0 败），跑法见下。
-
-## 全链套件（`graylight-suite`）怎么跑〔08-13 实测记录〕
+## 全链套件（`graylight-suite`）手跑
 
 ```
 Xvfb :80 -screen 0 1400x900x24 &
@@ -166,16 +121,13 @@ CI 的 e2e job 就是调门禁（`GATE_ONLY=e2e`），不另记一份名单。
 > ★ **套数与地板值一律不抄在这里** —— 套件名单的唯一住址是门禁里那些 `run_e2e` 行；
 > 每套断言几条只住在套件自己的输出里，门禁与 CI 都不钉这个数（几路同时加断言时不再撞数）。
 
-> `tmux-guarded-acceptance.sh` **整套删了**：它的输入源是 `tmux.rs` 那两条
-> 桌面侧 SSH 回落的 builder，回落删净之后它连命令串都取不到 ⇒ 跑不起来。三道门的真机覆盖
-> 转由 `backend-gate2-acceptance.sh` 承担（真后端二进制 + 真 tmux server，用例逐行来自
-> 同一张 `gate2-golden.tsv`）。
+> tmux 三道门的真机覆盖在 `backend-gate2-acceptance.sh`（真后端二进制 ＋ 真 tmux server，用例逐行来自
+> `gate2-golden.tsv`）。
 
 **这些套件刻意都不进本地 `npm test`**（`gate-integrity` 开放问题 1 的决定）：
 `npm test` 要保持「不需要 tmux / 不需要后端就能跑」，否则每个开发动作都变重。
 
-> **代价，如实写在这里**：**本地改了 `shared/ccm`（已删，见 `e8f9e08e`；今天是后端的 `ccm`）（或 `src/remote-launch.ts` 这类
-> 被上面套件驱动的真源）时，`npm test` 不会有任何反应。**
+> **代价**：本地改了后端的 `ccm`（或别的被上面套件驱动的真源）时，`npm test` 不会有任何反应。
 > 要拿到信号得手跑，例如 `npm run test:restart` / `npm run test:ccm-cli`；
 > 想连门禁那套判法一起验就 `bash tests/e2e/assert-pass-floor.sh restart`。
 > ~~不手跑的话，**第一次发现是在 CI 上**。~~
@@ -200,30 +152,9 @@ CI 的 e2e job 就是调门禁（`GATE_ONLY=e2e`），不另记一份名单。
 >
 > **它也喂不进 `assert-pass-floor.sh`**：该脚本抓的是 `合计 PASS=<n>` 那行，而 f40 不打印这行
 > （`grep -n '合计 PASS' tests/e2e/f40-suite.sh` 无命中）。它的断言数还随环境分支变（多组 `ok`/`bad`
-> 互斥），**所以这里刻意不写一个具体条数** —— 本文件正文刚因为「抄来的数字过期」被订正过两次。
+> 互斥），**所以这里刻意不写一个具体条数**。
 
-> **它此前是 `tests/e2e/*.sh` 里唯一一个连 npm 脚本都没有的套件** —— 只能 `bash tests/e2e/f40-suite.sh` 裸跑，
-> 于是 `src/`src/doc/RELEASING.md`:21`「动过滚动/渲染管线就跑一遍」那条 checklist 在肌肉记忆上比别的都难执行。
-> U0 补了 `npm run test:f40`。**补脚本 ≠ 进 CI**：它仍然是手动套件，前置照旧。
-
-### tmux 隔离（E41 已解，2026-07-30）
-
-`graylight-*` / `restart-*` / `resume-*` 六套此前**裸调 tmux**，会直接操作开发者默认
-socket 上的真实会话（BACKLOG E41）。现在每套开头都钉住自己的 server：
-
-```bash
-unset TMUX TMUX_PANE
-TMUX_TMPDIR="$(mktemp -d /tmp/e2e-sock.XXXXXX)"; export TMUX_TMPDIR
-```
-
-**两件事缺一不可**（实测）：
-- **`unset TMUX`** —— 从一个 tmux 会话里跑套件时，`$TMUX` 会让客户端连**外层那台
-  server** 并**完全忽略 `TMUX_TMPDIR`**。这才是 E41 的实质，不是「没写 `-L`」。
-- **`TMUX_TMPDIR` 必须是短路径** —— unix socket 路径上限 108 字节，长目录会报
-  `File name too long`。
-
-收尾只用 `-S <私有 socket> kill-server` 收自己那台；**绝不裸 `kill-server`**
-（万一隔离没生效，裸的那个会打到开发者的 server 上）。
+> 手跑：`npm run test:f40`（手动套件，不进 CI；`src/doc/RELEASING.md` 发版清单里「动过滚动 / 渲染管线就跑一遍」指的就是它）。
 
 **单实例串行**:fixture 目录/cwd 固定名(`-tmp-e2e-fork`)且 `touch src/frontend/ui/main.ts` 会触发
 全窗口 reload——并发跑两个套件会互删 fixture、互触发重放,结果不可信。

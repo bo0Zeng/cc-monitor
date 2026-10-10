@@ -196,7 +196,7 @@ ccm -- --ccm-help                 # 全部选项
 - Windows 上会话暂不能放后台、接回、看画面、往里送字；本机后端在 Windows 上随界面一起退出。
 - macOS 不在支持范围内，当本机、当远端机器都不行；Linux arm64 只能当远端机器。
 - 多账号目前只支持 Linux 机器，Windows 本机上不能建账号库。
-- 4.0.6 与 4.1.0 改的 Windows 那一侧（↗ 找窗口、PowerShell 接入、文件窗口）只经过交叉编译和自动化测试，没在真实 Windows 上跑过，见 [CHANGELOG](CHANGELOG.md)。
+- Windows 那一侧在 Windows 11 虚拟机上做过回归（复制详情 · 图标 · 终端抽屉 · 文件窗口等）；之后改成「按控制台找窗口」的 ↗ 还没在真 Windows 上跑过，系统通知在虚拟机里判不了。
 - ↗ 只能切到窗口，切不到 Windows Terminal 里的具体标签页；经跳板机或端口转换连过去的终端对不上。
 
 ---

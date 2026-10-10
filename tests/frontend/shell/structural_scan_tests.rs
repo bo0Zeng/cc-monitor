@@ -2392,9 +2392,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         //    ⇒ 散文里这几处（README 1 · 本表下一行 1；流来源那份的两处随拆目录删了）全是**病史与墓碑**，该留；
         //      「代码里没有这个名字」这件事该由本表说出来，而不是靠一处夹具替它遮着。
         //    ⚠ 这正是本条头注那句话的又一个实例：一个名字「在代码里出现过」不等于它活着。
-        ("src/frontend/shell/README.md", "daemonless_stream_loop", 1),
         // 登记表里几段改数史 / 已结账的核实表删了 —— 那些字符串一直替下面这几处散文遮着「还活着」。
-        ("src/backend/README.md", "proc_claude_config_dir", 1),
         (
             "tests/backend/agent_boundary_guard.rs",
             "proc_claude_config_dir",
@@ -2408,7 +2406,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         // `("src/doc/ARCHITECTURE.md", "lookup_by_foreground_pid", 1)` 摘了：开发文档按 4.0.0 重写，「刻意不做的」那一节只讲理由、不再点那个旧名。
         // `("src/doc/CONTRIBUTING.md", "list_active_session_ids", 1)` 摘了：那段示例改写成读本机活会话表，不再点那个说明性的名字。
         // `("src/doc/INVARIANTS.md", "path_shell_safe", 1)` 摘了：那一句改成点 `acct-core::config_dir_posix_ok`，不再点外部脚本里的旧名。
-        ("src/doc/INVARIANTS.md", "snapshot_announced_by_origin", 1),
         (
             "src/backend/agents/claudecode/accounts.rs",
             "trust_of_claude_json",
@@ -2572,13 +2569,9 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         // 现打核实：这四个名字在 `src/` 与 `tests/` 里**定义数都是 0**（真死名）
         // ⇒ 如实记账，而不是给它们编一个「还活着」的说法。
         // `classify_capture_output` 那一行（README 两处）摘掉：README 里抓屏那两处改写成「迁到界面」，旧名不再点。
-        ("src/frontend/shell/README.md", "drain_complete_lines", 1),
-        ("src/frontend/shell/README.md", "exec_on_session", 1),
-        ("src/frontend/shell/README.md", "plan_file_read", 1),
         // 同一份 README 那一行（`stream_source/` 的旧功能表）里的跳板函数名：界面侧最后一份
         //   （`inproc_dial.rs` 里 SFTP 用的那一个）随界面进程零 SSH 整份删了，后端那份改了名 ⇒ 真死名，如实记账；
         //   那一行同时点着上面四个死名，不给整行贴墓碑（贴了会把它们一起改记成「墓碑」，账就错了）。
-        ("src/frontend/shell/README.md", "connect_via_jump", 1),
         // 🔴 〔搬树 2026-09-18〕**这里删掉了 6 行**，逐条点名：
         //   `INVARIANTS.md`/`guard-core/src/lib.rs`  `every_monitor_file_strips_clean`
         //   `accounts_query.rs`/`local_backend_host.rs`     `every_comment_stripping_transformer_is_registered`
@@ -2735,20 +2728,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "is_process_alive",
             1,
         ),
-        ("src/doc/INVARIANTS.md", "classify_tmux_observation", 1),
-        ("src/doc/INVARIANTS.md", "find_tmux_origin_for_sid", 1),
-        ("src/doc/INVARIANTS.md", "is_process_alive", 1),
-        (
-            "src/doc/INVARIANTS.md",
-            "observation_tokens_double_write_point_stays_in_sync",
-            1,
-        ),
-        (
-            "src/doc/INVARIANTS.md",
-            "remote_idle_single_writer_guard",
-            1,
-        ),
-        ("src/doc/INVARIANTS.md", "tmux_origin_for_sid", 1),
         (
             "tests/frontend/shell/inbound_client_tests.rs",
             "removal_cause_wire_literal_stays_in_sync",
@@ -2781,7 +2760,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "claude_data_fence",
             1,
         ),
-        ("src/doc/INVARIANTS.md", "claude_data_fence", 1),
         (
             "tests/frontend/shell/write_site_registry_tests.rs",
             "write_skill_file",
@@ -2819,12 +2797,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         // 远端 `ccm` 探针那几行摘了：主线里 `probe_ccm_cli` 这个名字还活在一份测试替身的字符串里
         //   （`remote-launch-run.vitest.ts`），不算死名 ⇒ 挂在它上面的墓碑不进本表。
         // 删会话 · 分叉 · 钩子诊断三件转交退役（界面经通道直说那台后端）：散文里点那几个旧名讲来历的，逐处挂墓碑。
-        ("src/README.md", "create_branch_session", 1),
-        (
-            "src/frontend/shell/README.md",
-            "delete_remote_history_session",
-            2,
-        ),
         (
             "src/backend/agents/claudecode/branch.rs", // 住址随 branch-core 收进后端适配层
             "create_branch_session",
@@ -2832,8 +2804,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ),
         // ARCHITECTURE 那两行（`create_branch_session` 2 · `create_remote_branch_session` 1）摘了：零侵入那一段按 4.0.0 重写，只讲今天的写口；
         //   那块墓碑本身（`validate_branch_source`）照留，只是同一行不再捎带这两个旧名。
-        ("src/doc/INVARIANTS.md", "delete_remote_history_session", 1),
-        ("src/doc/INVARIANTS.md", "validate_delete_target", 1),
         (
             "tests/frontend/shell/frame_query_tests.rs",
             "remote_branch_tests",
@@ -2878,13 +2848,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         // U8c-3「前提触发器」改写成只管 `create-or-attach` 两棵树、改了名；两处散文点它的原名讲沿革。
         // 读一整份会话本机远端合成一条（`history·rs::stream_read_session_jsonl`），远端那一支的函数删了；
         //   点它旧名讲来历的散文逐处挂墓碑。
-        (
-            "src/frontend/shell/README.md",
-            "stream_read_remote_session",
-            2,
-        ),
         // monitor `search.rs` 删了 ⇒ 它体里还提着的旧名 `search_remote_all` 全仓只剩散文（remote_history.rs 那块 C4a 墓碑）。
-        ("src/doc/INVARIANTS.md", "is_session_active", 1), // §6 那一格搬去后端
         // 只为本机读盘服务的适配器门面删了；按本机根前缀判种类的那一个只剩散文（换成按文件名形态判）。
         // `adapter.rs` 的 `kind_of_path` 那一行摘了：那份文件删了。
         (
@@ -2968,7 +2932,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             1,
         ),
         // `history.rs` · `remote_branch.rs` 那两行摘了：前者那段点它的来历随删会话 / 分叉转交一起删了，后者整份删了。
-        ("src/doc/INVARIANTS.md", "interpret_fork_exec", 1),
         (
             "src/frontend/shell/src/cross_half_edge_registry.rs",
             "local_failure_kind",
@@ -3329,7 +3292,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             1,
         ),
         // 本机用户文件的原子写原语随「用户文件改经后端写」删了（`$PROFILE` / `.mcp.json`）。
-        ("src/frontend/shell/README.md", "atomic_write_string", 1),
         // 本机分叉那份实现交给后端之后删掉的两个函数名。
         (
             "tests/frontend/shell/history_tests.rs",
@@ -3354,9 +3316,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "is_protected_session_path",
             1,
         ),
-        ("src/frontend/shell/README.md", "is_safe_remote_jsonl", 1),
         ("src/frontend/shell/src/sftp.rs", "is_safe_remote_jsonl", 1),
-        ("src/doc/INVARIANTS.md", "is_safe_remote_jsonl", 1),
         (
             "src/backend/assets/aliases/block.rs",
             "atomic_write_string",
@@ -3427,11 +3387,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ),
         // 远端「装/卸 ccm 助手」两条命令改名成 `install_remote_alias_block` /
         //    `uninstall_remote_alias_block`（推入口那一半并进 `deploy_remote_backend`）。
-        (
-            "src/frontend/shell/README.md",
-            "install_remote_ccm_helper",
-            2,
-        ),
         (
             "src/frontend/shell/src/local_backend.rs",
             "install_remote_ccm_helper",
@@ -3549,9 +3504,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         //    `gate_guard_expr`）与两条判据在散文里被逐字点着 —— 而那些句子说的正是
         //    **「这个东西为什么不在了 / 它守的性质今天住哪」**，删掉的是线索不是病。
         //    ⇒ 按第②条出路：贴 `PROSE_NAME_TOMBSTONE` ＋ 在这里记一笔账。
-        ("src/doc/INVARIANTS.md", "build_kill_session_cmd", 1),
-        ("src/doc/INVARIANTS.md", "build_send_keys_remote_cmd", 1),
-        ("src/doc/INVARIANTS.md", "gate_guard_expr", 1),
         (
             "tests/frontend/shell/tmux_backend_gate_guard_tests.rs",
             "build_kill_session_cmd",
@@ -3599,7 +3551,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         //    （入参从路径收成 sid，找那一步走 `branch_core::find_session_file`，两侧同一份）。
         //    这两句散文说的正是**「那道门原先长什么样、为什么今天不需要它了」** ——
         //    删掉的是线索不是病 ⇒ 按第②条出路：贴 `PROSE_NAME_TOMBSTONE` ＋ 在这里记一笔账。
-        ("src/doc/ARCHITECTURE.md", "validate_branch_source", 1),
         // ARCHITECTURE 那张「monitor 侧四层落地」进度表退役：那四格的落地探针与反向自检删了，原处留墓碑。
         (
             "tests/frontend/shell/doc_claim_registry_tests.rs",
@@ -3616,7 +3567,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "the_capability_line_landing_probe_actually_bites",
             1,
         ),
-        ("src/doc/INVARIANTS.md", "validate_branch_source", 1),
         // 🔴 同一形，第四件：**cc-bus 三条与抓屏改走后端原语之后，
         //    它们各自那个 shell 命令构造器整块删了**（`build_broadcast_cmd` /
         //    `build_kill_cmd` / `build_capture_pane_cmd`；`build_online_cmd` 不在这里 ——
@@ -3631,11 +3581,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         (
             "tests/frontend/shell/capability_registry_tests.rs",
             "emit_usage_probe_frames_for_e2e",
-            1,
-        ),
-        (
-            "src/frontend/shell/README.md",
-            "aggregate_remote_usage_all",
             1,
         ),
         // `inbound_client_tests.rs` 里 `the_two_tmux_primitive_arg_builders_…` 那一行摘掉：那条判据（它的后继）
@@ -3659,15 +3604,8 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         //   广播整条迁走（组合进后端 `bus-broadcast`、说法进界面），monitor 里写面整轴退役。
         // `cc_bus.rs` · `build_kill_cmd` 那一行摘了：monitor 那份 `cc_bus.rs` 整份收成两句共用说法，点它的墓碑段随之删了。
         // 驾驶舱 shell 读退役：两份登记表里点那条本机读的散文、以及原靠 monitor 那份墓碑兜着的旧构造器名，就地挂墓碑。
-        // `list_remote_mcp_project_dirs`（原是 `list_mcp_project_dirs` 的远端分支，本机远端同一条 `mcp-read` 之后删了）：点它的散文就地挂墓碑。
-        (
-            "src/frontend/shell/README.md",
-            "list_remote_mcp_project_dirs",
-            1,
-        ), // 2 → 1：IPC 清单里 MCP 那一段整段删了（命令进了那台后端）
+        // `list_remote_mcp_project_dirs`（原是 `list_mcp_project_dirs` 的远端分支，本机远端同一条 `mcp-read` 之后删了）：点它的散文就地挂墓碑。 // 2 → 1：IPC 清单里 MCP 那一段整段删了（命令进了那台后端）
         // `mcp.rs` 删了之后，模块表里 sftp.rs 那一行留着的两处旧守卫名 ＋ 一处落点函数名成了死名（那几句本来就带墓碑）。
-        ("src/frontend/shell/README.md", "is_safe_remote_mcp_json", 2),
-        ("src/frontend/shell/README.md", "mcp_json_path", 1),
         // `src/frontend/shell/src/mcp.rs` 那一行随文件删了（MCP 读写进了那台后端）。
         // `src/frontend/ui/ipc/commands.ts` 那一行摘了：点它的那段注释随 `list_mcp_project_dirs` 包装层一起删了。
         (
@@ -3739,8 +3677,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         //   点它的那句在 `K-R112` 那条「写面只经后端原语」的退役判据里，monitor 里写面整轴退役。
         // 池子那十二条 Tauri 命令 ＋ 挂在它们名下的函数 / 判据删了；
         //   留下的散文说的正是「它们为什么不在了」⇒ 第②条出路：贴墓碑 ＋ 记账。
-        ("src/frontend/shell/README.md", "sftp_cancel_transfer", 1),
-        ("src/frontend/shell/README.md", "sftp_read_text_for_edit", 2),
         (
             "src/frontend/filewin/src/editor.rs",
             "sftp_read_text_for_edit",
@@ -3908,12 +3844,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "tests/frontend/shell/history_tests.rs",
             "truncate_chars_unicode",
             1,
-        ), // 历史清单与注解搬进本机常驻后端，点 monitor 旧实现 / 退役判据的散文挂墓碑
-        (
-            "src/frontend/shell/README.md",
-            "stream_remote_history_sessions",
-            1,
-        ), // 远端会话清单那个函数随历史清单搬进本机后端删了，点它的散文挂墓碑
+        ), // 历史清单与注解搬进本机常驻后端，点 monitor 旧实现 / 退役判据的散文挂墓碑 // 远端会话清单那个函数随历史清单搬进本机后端删了，点它的散文挂墓碑
         (
             "tests/comms/inward/origin_tests.rs",
             "stream_remote_history_sessions",
@@ -4000,8 +3931,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "under_the_name_ccm_only_backend_first_words_reach_the_backend",
             1,
         ),
-        ("src/frontend/shell/README.md", "list_active_sessions", 1), // ⑬ 会话生命周期并进会话流后退役
-        ("src/frontend/shell/README.md", "list_session_activity", 1), // ⑬ 会话生命周期并进会话流后退役
         (
             "src/frontend/shell/src/ui_contract.rs",
             "list_active_sessions",
@@ -4019,7 +3948,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ), // ⑬ 会话生命周期并进会话流后退役
         ("src/frontend/shell/src/lib.rs", "list_active_sessions", 1), // ⑬ 会话生命周期并进会话流后退役
         ("src/frontend/shell/src/lib.rs", "list_session_activity", 1), // ⑬ 会话生命周期并进会话流后退役
-        ("src/doc/ARCHITECTURE.md", "list_active_sessions", 1), // ⑬ 会话生命周期并进会话流后退役
         (
             "tests/frontend/shell/event_replay_tests.rs",
             "buffered_local_session_ids",
@@ -4045,7 +3973,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "list_active_sessions",
             2,
         ), // ⑬ 会话生命周期并进会话流后退役
-        ("src/frontend/shell/README.md", "build_resume_ps_command", 1), // 起会话的计划与渲染搬进后端：墓碑随搬家换住址 / 点已删命令名的散文挂墓碑
         (
             "src/frontend/shell/src/ccm_probe.rs",
             "build_local_posix_command",
@@ -4513,7 +4440,6 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/frontend/ui/settings/panel-deferred-io.vitest.ts", 1),
         ("src/backend/stream/wire.rs", 2), // 1 → 2：会话 / tmux 账本搬进后端，原处墓碑与点旧名的散文 //
         // +2：`install_remote_ccm_helper` 改名那两行。
-        ("src/frontend/shell/README.md", 15), // 列 tmux 会话那一行改写（不再点旧名）⇒ 与前一拍同数 // 主线 13 ＋ MIG-1 本路增量 ⇒ 15（盘上现打） // −1：IPC 清单 MCP 那一段整段删了（带墓碑的那句注释随之走） // +2：mcp.rs 那一行（读面改问后端）· 远端项目目录旧名那句 // +1：远端读会话函数（本机远端合成一条）· 3 → 6（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）· 6 → 8：`atomic_write_string` 那一节 ＋ 远端删会话那道结构守卫 ·README 历史那一段重写（历史清单搬进本机后端），用量那句旧线索留着 // 11 → 13
         // 6 → 10：派生改走 `bus-spawn` 原语，删了 SSH 那条构造器与对 `<local>` 的公共拒绝
         //   ⇒ 两块整段墓碑 ＋ 两处订正行（`cc_bus_send` 头注 · `kill_via_backend` 头注里那句旧拒绝）。
         ("src/frontend/shell/src/cc_bus.rs", 1), // 19 → 1：驾驶舱读面迁走、整份收成两句共用说法，旧墓碑段随之删，新头注一处 // 11 → 19：−1 点杀会话发送端那条理由的一处随收掉命令删了；＋9 写面五条迁到界面，原处两块墓碑 ＋ 更早几块墓碑里「换了住址」指向的住址也走了、逐行补标 // +1：点 monitor 杀会话发送端那条读 `killed` 的理由，发送端迁到界面
@@ -4541,8 +4467,6 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/frontend/shell/src/local_origin_registry.rs", 4),
         ("src/frontend/shell/src/spawn_managed.rs", 5), // 6 → 5：`LifetimeGuard` 的 Drop 那一块随平台原语搬进 `platform/spawn.rs`（那边 +1） // 两边各自贴的墓碑相加，按盘上现数（跑出来核过） 4 → 6 // +2：一次性本机查询那一格删了，点旧名的散文挂墓碑
         ("src/frontend/shell/src/structural_scan.rs", 1),
-        ("src/doc/ARCHITECTURE.md", 3), // 两边各自贴的墓碑相加，按盘上现数（跑出来核过） 2 → 3 // +1：本机一次性 exec / 任务行解释 / 分叉 exec 那几条路删了，点旧名的散文挂墓碑
-        ("src/doc/INVARIANTS.md", 17), // 28 → 17：§33b 压成现状（八处随沿革删）· `build_local_ps_command` 那处改成现状说法 · 另两处随 §33b 走 // 27 → 28：§33b 三问 ② 的原文留档点的外层渲染函数随载荷那一层删了，就地挂墓碑 // 25 → 27：§33b「变严的代价」那句点的载荷那一层配置目录判定 · 只绑 Windows 的 §36 点的本机后端那份 PowerShell 渲染函数，两处随那一层删了挂墓碑 // 两边各自贴的墓碑相加，按盘上现数（跑出来核过） 19 → 25 // 两边各自贴的墓碑相加，按盘上现数（跑出来核过） // 基数 12 ＋ MIG-3a +2 ＋ 主线 +4 ⇒ 18 // +2：U8c-1「变严的代价」那一节补一句「收口了，收法是删」·「本地路径借 IR 做校验」那一节记 `validateLocalLaunch` 删了 // +1：§6 探活双重校验那一格搬去后端，点 monitor 旧函数名那句挂一块 // +2：§1 例外 3 那道远端删会话守卫 · 例外 1 本机那道路径守卫（`validate_delete_target`） // 12 → 16
         // +3：§33b 产出方表 `session-backend.ts` 那格 · 三问表 ③ 那格 · 「删掉座的代价也换人了」那段 —— 点着随 TS 兜底一族删掉 / 改写的判据
         //   ⇒ 6（基）＋1（LOC1b）＋3（LR2）= 10
         // +1：别名那一块搬走时留的墓碑（`buildAccountAliasBlock`）。
@@ -4733,7 +4657,6 @@ fn every_prose_tombstone_mark_is_registered() {
         // `history.rs` 的 `up_to_message_id` · `read_jsonl_values` · `write_branch_file` 三行摘了：点它们的那段（分叉转交的来历）随命令删了。
         ("src/frontend/shell/src/parity_ledger.rs", 1), // 新贴：点远端 `ccm` 探针旧命令名
         // `tests/frontend/shell/agent_dispatch_registry_tests.rs` 那一行摘了：那份判据随 monitor 适配表退役、文件删了。
-        ("src/README.md", 1), // 新贴：点分叉那条旧命令名的散文挂墓碑
         ("src/backend/agents/claudecode/branch.rs", 2), // 住址随 branch-core 收进后端适配层；1 → 2：`is_plain_sid` 那个再导出删了，原处一块 // 新贴：删会话 / 分叉 / 钩子诊断的转交退役，点旧名的散文挂墓碑
         // `agent-profile.ts` 那一行摘了：适配器 id 那个导出零消费者、随起会话只交一行 `ccm …` 删了，它头注那块墓碑跟着走。
         // `upstream_select/endpoint.rs` 那一行摘了：头注重写成「中转地址只在 `ccm` 最终 exec 那一处定」，点旧命令名的那块随之走了。

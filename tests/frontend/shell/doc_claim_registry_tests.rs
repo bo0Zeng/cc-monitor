@@ -175,11 +175,7 @@ fn the_doc_scan_actually_reads_the_durable_docs() {
 fn every_code_symbol_named_in_the_docs_still_resolves() {
     /// 例外表：**每条都写清「为什么它解析不到却是对的」**。
     /// 下面有一条自检把「已经不需要的例外」揪出来 —— 例外表自己也会腐。
-    const EXCEPTIONS: &[(&str, &str)] = &[(
-        "run_tmux_reconcile_poller",
-        "`INVARIANTS.md` 那句逐字写着它**已删**（audit-fixes F03.2）—— 历史句，\
-                 删掉反而丢掉「为什么今天没有 poller」的解释",
-    )];
+    const EXCEPTIONS: &[(&str, &str)] = &[];
     const KW: &[&str] = &[
         "fn", "struct", "enum", "const", "static", "trait", "mod", "type",
     ];
@@ -384,83 +380,10 @@ fn every_code_symbol_named_in_the_docs_still_resolves() {
 #[test]
 fn every_repo_path_named_in_the_docs_still_resolves() {
     /// 例外：**解析不到却是对的**。三种形状，每种都在本仓真实出现过。
-    const EXCEPTIONS: &[(&str, &str)] = &[
-        (
-            "src/frontend/shell/gen/schemas/acl-manifests.json",
-            "tauri 构建生成物 + gitignore：磁盘上有、`git ls-files` 里没有，且不同环境有无不定",
-        ),
-        (
-            "shared/ccm-wrapper.sh",
-            "**历史句**：原文逐字写着「取代已删除的 …」——删掉它反而丢掉「今天为什么没有 wrapper」",
-        ),
-        (
-            "tests/e2e/tmux-guarded-acceptance.sh",
-            "**历史句**：`INVARIANTS §34` 那一段逐字在说「这套 e2e 的输入源是\
-                 那个已被删掉的 builder ⇒ 整套删了」——它点这个路径正是为了说清**哪一套没了**；\
-                 删掉这句话，读的人只会看见「三道门少了一层真机验收」而不知道为什么",
-        ),
-        (
-            "src/launch-render-cli.ts",
-            "**历史句**：`INVARIANTS §33` 背景段逐字讲「F03 当时有两个渲染器、\
-                 各住哪」—— TS 那份 CLI 渲染器已删，§33 末尾的 LR1 更新段给了今天的住址\
-                 （`ccm_invocation.rs`）。改写背景段会丢掉「这条铁律当初是对着哪一份立的」",
-        ),
-        (
-            "tests/launch-render-cli.test.ts",
-            "**历史句**：`INVARIANTS §33` 三处「验证」逐字记着当时那几刀下在\
-                 哪套测试上（R04① · #76 防线）。套件随 TS 渲染器删了，今天的验证住址逐条写在\
-                 §33 末尾的 LR1 更新段",
-        ),
-        // 下面四条：TS 兜底一族（座 · 兜底渲染器）与它们的两份套件按删了。
-        //   `INVARIANTS §31 / §31a / §33 / §33b` 与 `CONTRIBUTING` 那一节点它们的句子都是**沿革**
-        //   （「阶段①问前端座」「门禁腐过一次」「四处同源」「双渲染器」），每处旁边都补了那句今天的住址；
-        //   删掉路径，读的人就不知道今天那条规矩当初是对着哪一份立的。
-        (
-            "src/session-backend.ts",
-            "**历史句**：TS 座，已删（外层三格今天只在 `payload.rs`）",
-        ),
-        (
-            "src/launch-render-fallback.ts",
-            "**历史句**：TS 兜底渲染器，已删",
-        ),
-        // 下面五条：载荷那一层（裸载荷 · 外层 tmux 三格）与前端那份 IR 随「起会话只交一行 `ccm …`」删了。
-        //   `INVARIANTS §33 / §33b / §39` 与只绑 Windows 的 §36 点它们的句子都是**沿革**（当时那条规矩对着哪一份立、当时由哪套测试钉），
-        //   每处旁边都补了今天的住址（§33 末尾「今天」那一段 · 只绑 Windows 的 §36 末尾「今天」那一段）。
-        (
-            "src/frontend/ui/launch-plan.ts",
-            "**历史句**：`LaunchPlan` IR 当年的家（§33 背景 · §39 · 本机走 IR 那一节），已删",
-        ),
-        (
-            "src/frontend/ui/launch-dimensions.ts",
-            "**历史句**：维度注册表当年的家（§33 背景），已删",
-        ),
-        (
-            "tests/test-support/launch-payload-golden.ts",
-            "**历史句**：载荷那一份夹具的用例表（§33 LR2 更新 · U8c-3 后一半），已删",
-        ),
-        (
-            "tests/test-support/launch-tmux-outer-golden.ts",
-            "**历史句**：外层 tmux 三格那一份夹具的用例表（§33 LR2 更新 · U8c-3 后一半），已删",
-        ),
-        (
-            "tests/frontend/ui/launch-requests.vitest.ts",
-            "**历史句**：只绑 Windows 的 §36 当时那几格的验证住址（维度注册表在本机下的行为），随 IR 删了；今天的验证写在那一节末尾「今天」那一段",
-        ),
-        (
-            "tests/session-backend-gate.vitest.ts",
-            "**历史句**：`§31` 第①条的旧机检，已由 `tests/frontend/ui/launch-no-shell-in-ts.vitest.ts` 接替",
-        ),
-        // `tests/session-backend.test.ts` 那一行摘了：唯一点它的 CONTRIBUTING 沿革段随重写删了。
-        // `src/frontend/ui/cards/memory-recall.ts` 那一行摘了：CONTRIBUTING 的示例改成「写在 `cards/` 下」，不再点那个占位文件名。
-        (
-            "code-picture/doc/agents/claude-code.md",
-            "**跨仓引用**：另一个仓的语料，本仓解析不到是正常的",
-        ),
-        ("agents/claude-code.md", "同上（同一句里的简写形）"),
-        // `account-ux/` · `unify-launch/` 两行摘了：`doc/` 里点它们的出处删了之后没人再这样写。
-        // 账号切换那份计划仓设计稿那一行摘了：INVARIANTS 那一段改写成现状之后 `doc/` 里没人再指它。
-        // `/.mcp.json` 那一行摘了：INVARIANTS 那两处改写之后 `doc/` 里没人再这样写。
-    ];
+    const EXCEPTIONS: &[(&str, &str)] = &[(
+        "src/frontend/shell/gen/schemas/acl-manifests.json",
+        "tauri 构建生成物 + gitignore：磁盘上有、`git ls-files` 里没有，且不同环境有无不定",
+    )];
     const EXTS: &[&str] = &["rs", "ts", "sh", "mjs", "json", "yml", "toml", "md", "py"];
 
     // 解析口径：跟踪着的文件（自检在 [`tracked_files`] 里：清单太短 ⇒ 口径坏了）。
@@ -498,7 +421,7 @@ fn every_repo_path_named_in_the_docs_still_resolves() {
         }
     }
     // ★ 自检 2：锚点必须在场，人群换了就当场红。
-    const CANARY: &str = "src/session-backend.ts";
+    const CANARY: &str = "tests/backend/protocol_doc_gen.rs";
     assert!(
         refs.iter().any(|(_, _, c)| c == CANARY),
         "抽到了 {} 条，但**锚点 `{CANARY}` 不在里面** —— 收的多半不是「带目录的仓内路径」这一类了。\n\
@@ -1491,10 +1414,24 @@ fn full_repo_paths_in(line: &str) -> Vec<String> {
 #[test]
 fn every_repo_path_in_the_durable_docs_exists() {
     /// 允许名单：解析不到却是对的。每条写清为什么。
-    const ALLOWED: &[(&str, &str)] = &[(
-        "src/frontend/shell/gen/schemas/acl-manifests.json",
-        "tauri 构建生成物（gitignore）：构建过才在盘上，`git ls-files` 里恒没有；文档讲的正是去哪看这份生成物",
-    )];
+    const ALLOWED: &[(&str, &str)] = &[
+        (
+            "src/frontend/shell/gen/schemas/acl-manifests.json",
+            "tauri 构建生成物（gitignore）：构建过才在盘上，`git ls-files` 里恒没有；文档讲的正是去哪看这份生成物",
+        ),
+        (
+            "src/frontend/shell/embedded-backends/",
+            "发版铺内嵌后端字节的落点（gitignore）：干净 clone 里没有，构建文档讲的正是往这里铺",
+        ),
+        (
+            "src/frontend/shell/native-backend/",
+            "发版铺本机后端与文件窗口二进制的落点（gitignore），同上",
+        ),
+        (
+            "aliases.sh",
+            "`~/.cc-monitor/` 里照别名配置生成的那份文件的名字（INVARIANTS §2.1 的数据文件表），不是仓里的脚本",
+        ),
+    ];
     let (files, dirs) = tracked_files_and_dirs();
     let basenames: std::collections::BTreeSet<&str> = files
         .iter()
@@ -1727,7 +1664,7 @@ fn every_frame_command_named_in_the_durable_docs_is_registered() {
         }
     }
     // 自检：认法在干活，且一条合成的假命令会被认出。
-    assert!(checked > 30, "只认出 {checked} 处帧 / 帧命令 —— 认法坏了");
+    assert!(checked > 15, "只认出 {checked} 处帧 / 帧命令 —— 认法坏了");
     let ghost = format!("经帧命令 `{}` 与 `history-lines` 问", "no-such-probe");
     assert_eq!(
         frame_names_in(&ghost),
