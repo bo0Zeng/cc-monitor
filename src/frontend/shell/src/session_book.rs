@@ -107,6 +107,8 @@ pub enum SessionActivity {
     NeedsYou,
     /// 闲着，等下一句输入。
     Idle,
+    /// 一轮停了，它在后台起的命令还在跑。
+    BackgroundWork,
 }
 
 impl SessionActivity {
@@ -116,6 +118,7 @@ impl SessionActivity {
             "working" => Some(Self::Working),
             "needs_you" => Some(Self::NeedsYou),
             "idle" => Some(Self::Idle),
+            "background_work" => Some(Self::BackgroundWork),
             _ => None,
         }
     }

@@ -90,6 +90,14 @@ describe("复制详情按钮", () => {
     for (const c of g.cases) expect(detailMany(c.head, c.segments), c.head).toBe(c.body);
   });
 
+  it("★ 一件失败的整段：与 Rust `copy_core::detail::one`（CLI `--text` 的失败那一形）读同一份金样的 `one`", () => {
+    const g = JSON.parse(readFileSync(resolve(REPO_ROOT, "tests/__fixtures__/detail-many.golden.json"), "utf8")) as {
+      one: { said: string; detail: string; body: string }[];
+    };
+    expect(g.one.length).toBeGreaterThanOrEqual(2);
+    for (const c of g.one) expect(detailBody([[c.said, c.detail]]), c.said).toBe(c.body);
+  });
+
   it("取详情：带字符串 detail 的错才有，别的一律空", () => {
     const e = Object.assign(new Error("s"), { detail: "码：x" });
     expect(detailOf(e)).toBe("码：x");

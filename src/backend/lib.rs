@@ -2211,6 +2211,11 @@ pub const ARGS_B64_FLAG: &str = "--args-b64";
 /// 只给这一条；别的子命令带它 ⇒ `bad_args`。缺省仍是 JSON 进 JSON 出。住这里同 [`STDIN_LINE_FLAG`]：它是 [`SUBCOMMAND_OPTIONS`] 的一员。
 pub const TEXT_FLAG: &str = "--text";
 
+/// **期限口**：跟在 CLI 控制面那一族（`--<帧命令>`）后面、位置不限（`--terminals-list --within-ms 10000`）⇒ 与帧面请求信封的 `within_ms`
+/// 同名同义：发起方这一发愿意等多久（毫秒），减余量换成截止时刻，装总期限的命令都收紧到它；值不是正整数 ⇒ 当没带（同帧面那一格的宽读）。
+/// 住这里同 [`STDIN_LINE_FLAG`]：它是 [`SUBCOMMAND_OPTIONS`] 的一员。
+pub const WITHIN_MS_FLAG: &str = "--within-ms";
+
 /// 帧命令名 → 它的 CLI 子命令（`launch` → `--launch`）。**唯一一处拼法**：本进程的 CLI 面（`control/cli_control.rs::flag_of`）
 /// 与问远端那台 CLI 面的那一跳（`remote_ask::ask_json`）都经它 —— 住这里而不住 `cli_control`，是为了让
 /// `remote_ask` 不必引 `control/`（引了，按文件画的引用图就把问远端的几条命令连到 tmux 上）。
@@ -2243,6 +2248,8 @@ pub const SUBCOMMAND_OPTIONS: &[&str] = &[
     // `--quota-read` 的「给人看」那一形（只给这一条）。
     TEXT_FLAG,
     "--until",
+    // CLI 控制面那一族（`--<帧命令>`）的期限口（同帧面请求信封的 `within_ms`）。⚠ 进指纹的 `#options` 段 ⇒ 逼出 `BUILD_ID` bump，本路不 bump。
+    WITHIN_MS_FLAG,
 ];
 
 /// 从 argv 剥离流模式 flag，返回（剩余参数, 这条流索要了什么）。

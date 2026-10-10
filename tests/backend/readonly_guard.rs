@@ -4569,13 +4569,8 @@ mod error_envelope_registry {
              （`ResolveError` ＋ `Serialize`）的一份，并且**多一条兜底**：序列化失败时手写一行 JSON。\
              ⇒ 它与另三份**不同形**，收成一份要么砍掉这条兜底、要么把它摊给另三份。",
         ),
-        (
-            "control/cli_control.rs",
-            "let mut body = serde_json::json!",
-            "一次性 CLI 入口的 `emit_err`（信封拼在 `err_body`）",
-            "签名收 `impl Into<Said>`（调用点既传 `&str` / `String`，也传带下层原话的 `Said`）\
-             ⇒ 比另几份多一格可缺的 `raw`（下层原话，读的那一方放进复制详情）。它是**入口层**的出口：命令本体回什么，由它翻成信封。",
-        ),
+        // `control/cli_control.rs` 那一行（一次性 CLI 入口的 `emit_err`）删了：信封改由 `stream::detail::Failed` 序列化，
+        //   与帧面失败应答同一份（`{code, message, detail, data?}`），不再手拼键。
         (
             "control/fork_write.rs",
             "let env = serde_json::json!",
@@ -4609,14 +4604,7 @@ mod error_envelope_registry {
              与 CLI 信封同一对键是刻意的（读的人少记一种形状），但它住 `dial/`、成功那一形是别的键 \
              ⇒ 收进 `control/` 那几份出口要先让 `dial/` 反向引 `control/`，不划算。",
         ),
-        (
-            "observe/history_query.rs",
-            "serde_json::json!({ \"code\": code, \"message\": said })",
-            "`--list-projects` 在「记录树根不在」时的带码信封（`no_record_tree`）",
-            "同 `accounts_query` 那一行的理由：它落在 observe 层，`control/` 的 `emit_err` 按 `layering_guard` 的边引不到\
-             （引了还会把 `cli_control` 可达的 tmux 带进三十来条帧命令的 `no_tmux` 判定）；只这一处、只这一个码，\
-             认码的是问它的那一方（`remote_ask::settle_pulled` 把码交回调用方）。",
-        ),
+        // `observe/history_query.rs` 那一行（`--list-projects` 的 `no_record_tree` 信封）删了：同上，改由 `Failed` 序列化。
     ];
 
     /// 一行里 `code` 这个键出现几次（两种写法都算）—— [`envelope_sites`] 的**纯函数那一半**。
@@ -4660,12 +4648,12 @@ mod error_envelope_registry {
         out
     }
 
-    /// ★ 反空真：人群不许静默塌掉（现打 09-13：12 处 / 7 份文件，地板留了余量）。
+    /// ★ 反空真：人群不许静默塌掉（现打 09-13：12 处 / 7 份文件；10-09 CLI 控制面与 `--list-projects` 两处收进同一份失败载体后 7 处，地板留了余量）。
     #[test]
     fn the_envelope_scan_is_not_silently_empty() {
         let sites = envelope_sites();
         assert!(
-            sites.len() >= 8,
+            sites.len() >= 5,
             "全树只扫到 {} 处错误信封 —— 扫坏了，下面几条此刻在空转",
             sites.len()
         );
@@ -4673,7 +4661,7 @@ mod error_envelope_registry {
         files.sort_unstable();
         files.dedup();
         assert!(
-            files.len() >= 5,
+            files.len() >= 4,
             "这些信封只来自 {} 份文件 —— 遍历塌了",
             files.len()
         );
@@ -4752,8 +4740,9 @@ mod error_envelope_registry {
     #[test]
     fn every_signed_row_says_why_it_is_its_own_copy() {
         // 8 → 7：抓屏那条 CLI 面（`--capture-pane`）删了，它的 `emit_err` 随之没了。
+        // 7 → 5：CLI 控制面与 `--list-projects` 那两份收进同一份失败载体（`stream::detail::Failed`，与帧面同一份）。
         assert!(
-            SIGNED.len() >= 7,
+            SIGNED.len() >= 5,
             "`SIGNED` 只剩 {} 行 —— 它在缩水",
             SIGNED.len()
         );

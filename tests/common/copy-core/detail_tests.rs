@@ -120,6 +120,19 @@ fn many_segments_follow_the_cross_language_golden() {
     }
 }
 
+/// 一件失败复制出去的整段（CLI 的 `--text` 失败那一形）：与界面 `detailBody` 的单件那一支读同一份金样的 `one`。
+#[test]
+fn one_failure_follows_the_cross_language_golden() {
+    let g: serde_json::Value =
+        serde_json::from_str(include_str!("../../__fixtures__/detail-many.golden.json")).unwrap();
+    let cases = g["one"].as_array().unwrap();
+    assert!(cases.len() >= 2);
+    for c in cases {
+        let got = one(c["said"].as_str().unwrap(), c["detail"].as_str().unwrap());
+        assert_eq!(Some(got.as_str()), c["body"].as_str(), "{c}");
+    }
+}
+
 #[test]
 fn stamp_writes_local_time_with_offset() {
     // 2026-10-08 06:32:07 UTC

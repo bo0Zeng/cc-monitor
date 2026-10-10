@@ -973,41 +973,41 @@ impl Frame {
         }
     }
 
-    /// 协议级失败应答（还没落到哪条命令上）：码 ＋ 一句话 ＋ 详情。
+    /// 失败应答：那一份失败（[`crate::stream::detail::Failed`]，CLI 面的信封出自同一份）装进 `reply`。
+    pub(crate) fn failed(id: String, f: crate::stream::detail::Failed) -> Frame {
+        Frame::Reply {
+            id,
+            ok: false,
+            code: Some(f.code),
+            message: Some(f.message),
+            detail: Some(f.detail),
+            data: f.data,
+        }
+    }
+
     /// 一条命令当场失败、带下层原话的那一种应答（原话进复制详情，句子 `message` 里没有它）。
     pub(crate) fn err_raw(id: &str, cmd: &str, code: &str, message: &str, raw: &str) -> Frame {
-        Frame::Reply {
-            id: id.to_string(),
-            ok: false,
-            code: Some(code.to_string()),
-            message: Some(message.to_string()),
-            detail: Some(crate::stream::detail::of(Some(cmd), code, Some(raw))),
-            data: None,
-        }
+        let f = crate::stream::detail::Failed::new(
+            Some(cmd),
+            code,
+            message.to_string(),
+            Some(raw),
+            None,
+        );
+        Frame::failed(id.to_string(), f)
     }
 
     /// 硬臂那几条命令（`Run::Builtin`：链路 · 传输 · 终端订阅）就地被拒：详情里带命令名（同处理器回的失败）。
     pub(crate) fn refused(id: &str, cmd: &str, code: &str, message: &str) -> Frame {
-        Frame::Reply {
-            id: id.to_string(),
-            ok: false,
-            code: Some(code.to_string()),
-            message: Some(message.to_string()),
-            detail: Some(crate::stream::detail::of(Some(cmd), code, None)),
-            data: None,
-        }
+        let f =
+            crate::stream::detail::Failed::new(Some(cmd), code, message.to_string(), None, None);
+        Frame::failed(id.to_string(), f)
     }
 
     /// 协议级失败（还没落到哪条命令上：认不出 · 读不懂 · 收场中）：详情里没有命令那一项。
     pub(crate) fn err(id: &str, code: &str, message: &str) -> Frame {
-        Frame::Reply {
-            id: id.to_string(),
-            ok: false,
-            code: Some(code.to_string()),
-            message: Some(message.to_string()),
-            detail: Some(crate::stream::detail::of(None, code, None)),
-            data: None,
-        }
+        let f = crate::stream::detail::Failed::new(None, code, message.to_string(), None, None);
+        Frame::failed(id.to_string(), f)
     }
 
     /// **丢了还能不能恢复**。
@@ -1251,7 +1251,12 @@ pub struct Request {
 /// `within_ms` 的宽读：只认正整数，别的（字符串 · 负数 · 小数 · 零 · null）一律当没带。
 fn lenient_ms<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<u64>, D::Error> {
     let v = serde_json::Value::deserialize(d)?;
-    Ok(v.as_u64().filter(|&n| n > 0))
+    Ok(within_ms_of(&v))
+}
+
+/// `within_ms` 那一格的读法（帧面信封 · CLI 面的期限口同一处读）：只认正整数，别的当没带。
+pub(crate) fn within_ms_of(v: &serde_json::Value) -> Option<u64> {
+    v.as_u64().filter(|&n| n > 0)
 }
 
 /// Serialize a frame to its compact one-line wire form with a trailing `\n`.

@@ -287,16 +287,24 @@ pub(crate) struct LastSay {
     pub(crate) at: Option<String>,
 }
 
-/// 「需手动」的种类。判不出 ⇒ `Unknown`（只说在等你，不猜）。
+/// 「需手动」的种类（要人做哪种事）。判不出 ⇒ `Unknown`（只说在等人，不猜）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) enum NeedsKind {
-    /// 批准一个工具调用。
+    /// 批准一个工具调用（或别的批准框）。
     Approve,
-    /// 回答一个问题。
+    /// 回答一个问题 / 填那一侧要的输入。
     Answer,
     /// 批准计划。
     Plan,
+    /// 放行沙箱里的命令联网。
+    Network,
+    /// 批准协作的另一个运行发来的请求。
+    Worker,
+    /// 确认它提的会话目标。
+    Goal,
+    /// 在开着的对话框里选一项。
+    Choose,
     Unknown,
 }
 
@@ -318,16 +326,19 @@ pub(crate) struct Needs {
 /// 那台 pidfile 说「在等」（`observe::accounts_query::session_wait`）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct PidWait {
-    /// `waitingFor` 原样（`permission prompt` · `dialog open` …）。
-    pub(crate) waiting_for: Option<String>,
+    /// 在等什么框（适配层翻好的 [`crate::agents::WaitOn`]）；没说 / 说不清 ⇒ `None`。
+    pub(crate) waiting_for: Option<crate::agents::WaitOn>,
     pub(crate) since_ms: Option<u64>,
 }
 
-/// **「需手动」的唯一判定**：那台说在等 ＋ 记录里最早一个还没结果的调用。
-/// - 那个调用是提问工具 ⇒ 回答（问题原文）；是计划工具 ⇒ 批准计划；
-/// - 别的工具、且那台说是批准框（`waitingFor` 带 `permission`）⇒ 批准（那一步的主参数）；
-/// - 其余（没有没结果的调用 · 说不出是哪种框）⇒ 判不出，不猜。
+/// **「需手动」的唯一判定**：那台说在等什么框 ＋ 记录里最早一个还没结果的调用。
+/// - 批准框（或没说是哪种框）：那个调用是提问工具 ⇒ 回答（问题原文）；是计划工具 ⇒ 批准计划；
+///   批准框里别的工具 ⇒ 批准（那一步的主参数）；没说是哪种框且不是那两种工具 ⇒ 判不出，不猜；
+/// - 要填 / 要答 ⇒ 回答；联网 ⇒ 放行（那一步多半就是要联网的那条命令）；
+/// - 协作请求 · 会话目标 · 别的对话框 ⇒ 各一种，不挂记录里的哪一步（那一步不在这份记录里 / 不是一步工具调用）。
+///   这几种是顶上那个框：底下就算有提问 / 计划，也是先答它。
 pub(crate) fn needs_of(pending: &[PendingCall], wait: Option<&PidWait>) -> Option<Needs> {
+    use crate::agents::WaitOn as W;
     let wait = wait?;
     let first = pending.first();
     let asks = pending
@@ -336,18 +347,16 @@ pub(crate) fn needs_of(pending: &[PendingCall], wait: Option<&PidWait>) -> Optio
     let plan = pending
         .iter()
         .find(|p| PLAN_TOOLS.contains(&p.name.as_str()));
-    let permission = wait
-        .waiting_for
-        .as_deref()
-        .is_some_and(|w| w.to_ascii_lowercase().contains("permission"));
-    let (kind, call) = if let Some(a) = asks {
-        (NeedsKind::Answer, Some(a))
-    } else if let Some(p) = plan {
-        (NeedsKind::Plan, Some(p))
-    } else if let (Some(p), true) = (first, permission) {
-        (NeedsKind::Approve, Some(p))
-    } else {
-        (NeedsKind::Unknown, None)
+    let (kind, call) = match wait.waiting_for {
+        Some(W::Permission) | None if asks.is_some() => (NeedsKind::Answer, asks),
+        Some(W::Permission) | None if plan.is_some() => (NeedsKind::Plan, plan),
+        Some(W::Permission) => (NeedsKind::Approve, first),
+        None => (NeedsKind::Unknown, None),
+        Some(W::Input) => (NeedsKind::Answer, asks.or(first)),
+        Some(W::Network) => (NeedsKind::Network, first),
+        Some(W::Worker) => (NeedsKind::Worker, None),
+        Some(W::Goal) => (NeedsKind::Goal, None),
+        Some(W::Dialog) => (NeedsKind::Choose, None),
     };
     Some(Needs {
         kind,

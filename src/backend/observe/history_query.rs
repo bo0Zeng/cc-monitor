@@ -153,10 +153,17 @@ pub(crate) fn list_projects_to(
 /// `--list-projects` 在「记录树根不在」时信封里的码（生产方住这里；问它的那一方认码，不认话）。
 pub(crate) const NO_RECORD_TREE: &str = "no_record_tree";
 
-/// 带码的那一行：CLI 错误信封（`{code, message}`，与 `cli_control::emit_err` 同一对键；那边读信封的是 `remote_ask::settle_pulled`）。
+/// 带码的那一行：CLI 错误信封（与 CLI 控制面同一份失败载体 `stream::detail::Failed`：`{code, message, detail}`；读信封的是 `remote_ask::settle_pulled`）。
 /// 不调 `emit_err`：观测层不往控制层伸手（`layering_guard`）。
 fn coded_failure(code: &str, said: &str) -> i32 {
-    eprintln!("{}", serde_json::json!({ "code": code, "message": said }));
+    let f = crate::stream::detail::Failed::new(
+        Some("list-projects"),
+        code,
+        said.to_string(),
+        None,
+        None,
+    );
+    eprintln!("{}", serde_json::to_string(&f).unwrap_or_else(|_| f.text()));
     2
 }
 

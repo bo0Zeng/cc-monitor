@@ -63,37 +63,46 @@ fn exec(stdout: &str, stderr: &str, code: Option<u32>) -> crate::stream_source::
 fn the_ensure_answer_names_a_non_unix_remote_as_unsupported_and_never_falls_back() {
     let ok = parse_answer(&exec(r#"{"pid":7}"#, "", Some(0)), "devbox").unwrap();
     assert_eq!(parse_ensured(&ok), Ok(()));
-    assert_eq!(
-        parse_answer(
-            &exec(
-                "",
-                r#"{"code":"unsupported","message":"不是 unix"}"#,
-                Some(2)
-            ),
-            "devbox"
-        ),
-        Err(AttachErr::Unsupported(
-            Said::with_raw(
-                copy_text("rsRemoteResident.ensure.unsupported", &[]),
-                "不是 unix"
-            ),
-            crate::machine_state::NOT_UNIX
-        ))
-    );
-    // 那台带了原话（`raw`）⇒ 句子照那台那一句，原话进复制详情、不上句子。
+    // 那台的失败信封只有一种（`{code, message, detail, data?}`）：`detail` 是那台写好的一整份复制详情，原样转交（补「本机」一行）。
+    use copy_core::detail::{Detail, Label};
+    let wrote = |code: &str, raw: &str| {
+        Detail::new()
+            .item(Label::Command, "resident-ensure")
+            .item(Label::Code, code)
+            .item(Label::Raw, raw)
+            .render()
+    };
+    let envelope = |code: &str, message: &str, detail: &str| {
+        serde_json::json!({"code": code, "message": message, "detail": detail}).to_string()
+    };
+    // 脱离不了（非 unix）⇒ 句子由这边说「远端只支持 Unix」；那台的那一句（它就是系统原话）与那台的详情都进复制详情。
+    match parse_answer(
+        &exec("", &envelope("unsupported", "不是 unix", &wrote("unsupported", "")), Some(2)),
+        "devbox",
+    ) {
+        Err(AttachErr::Unsupported(s, code)) => {
+            assert_eq!(code, crate::machine_state::NOT_UNIX);
+            assert_eq!(s.said, copy_text("rsRemoteResident.ensure.unsupported", &[]));
+            assert!(s.detail.contains("不是 unix"), "{}", s.detail);
+            assert!(s.detail.contains("resident-ensure"), "那台写的那份没带上：{}", s.detail);
+        }
+        other => panic!("{other:?}"),
+    }
+    // 别的失败 ⇒ 句子照那台那一句；那台的详情（含下层原话）整份进复制详情，句子里没有原话。
     match parse_answer(
         &exec(
             "",
-            r#"{"code":"spawn_failed","message":"x","raw":"Permission denied (os error 13)"}"#,
+            &envelope("spawn_failed", "x", &wrote("spawn_failed", "Permission denied (os error 13)")),
             Some(2),
         ),
         "devbox",
     ) {
         Err(AttachErr::Failed(s)) => {
             assert_eq!(s.said, "x");
+            assert!(s.detail.contains("Permission denied (os error 13)"), "{}", s.detail);
             assert!(
-                s.detail.contains("Permission denied (os error 13)"),
-                "{}",
+                s.detail.contains(&copy_text("detail.label.local", &[])),
+                "远端那份没补「本机」一行：{}",
                 s.detail
             );
         }

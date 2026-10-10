@@ -71,7 +71,7 @@ impl AttachErr {
     }
 }
 
-/// 读 `--resident-ensure` / `--resident-stop` 那一趟的结果（纯函数）：退出 0 ⇒ stdout 那一行；退出 2 ⇒ stderr 的 `{code,message}`。
+/// 读 `--resident-ensure` / `--resident-stop` 那一趟的结果（纯函数）：退出 0 ⇒ stdout 那一行；退出 2 ⇒ stderr 的 `{code, message, detail, data?}`。
 /// `unsupported`（那台脱离不了，非 unix）明说「远端只支持 Unix」；老后端 ⇒ 「太旧」—— 都是失败，没有回落。
 /// `machine` 是那台给人看的称呼（老后端 ⇒「{machine} 后端要更新」）。
 pub(crate) fn parse_answer(
@@ -103,20 +103,22 @@ pub(crate) fn parse_answer(
                     );
                     copy_text("rsRemoteResident.ensure.noReason", &[])
                 });
-            // 那台带了下层原话（`raw`）⇒ 进复制详情，不上句子。
-            let raw = err["raw"].as_str().filter(|r| !r.trim().is_empty());
+            // 那台的失败信封只有一种（`{code, message, detail, data?}`）：`detail` 是那台写好的一整份复制详情（下层原话在里面），
+            //   原样当一块转交、补「本机」一行；老后端没写 ⇒ 只有那一句。
+            let wrote = err["detail"].as_str().filter(|d| !d.trim().is_empty());
             if err["code"] == "unsupported" {
                 // 那台的 `message` 这一格就是它的原话（脱离不了的系统报错）：句子由这边说，原话进详情。
+                let said = copy_text("rsRemoteResident.ensure.unsupported", &[]);
                 Err(AttachErr::Unsupported(
-                    Said::with_raw(
-                        copy_text("rsRemoteResident.ensure.unsupported", &[]),
-                        raw.unwrap_or(&msg),
-                    ),
+                    match wrote {
+                        Some(d) => Said::relayed_from(said, d, Some(&msg)),
+                        None => Said::with_raw(said, &msg),
+                    },
                     crate::machine_state::NOT_UNIX,
                 ))
             } else {
-                Err(AttachErr::Failed(match raw {
-                    Some(r) => Said::with_raw(msg, r),
+                Err(AttachErr::Failed(match wrote {
+                    Some(d) => Said::relayed_from(msg, d, None),
                     None => msg.into(),
                 }))
             }

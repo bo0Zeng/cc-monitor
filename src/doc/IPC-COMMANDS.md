@@ -344,6 +344,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 - `working` —— 一轮在跑
 - `needs_you` —— 在等人（批准 · 回答 · 弹窗）
 - `idle` —— 闲着，等下一句输入
+- `background_work` —— 一轮停了，它在后台起的命令还在跑（跑完多半会接着干）
 
 #### `Unavailable`
 
@@ -1261,7 +1262,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `mode` | → | `hot`（不重启，下一发起就走它）· `restart`（换号重启） |
-| `sessions` | → | `hot`：会话 id；`restart`：每项是 `session-restart` 的入参（不带 `account`）；应答里是逐个结果 |
+| `sessions` | → ← | `hot`：会话 id；`restart`：每项是 `session-restart` 的入参（不带 `account`）；应答里是逐个结果 |
 | `target` | → | 换到哪个号 |
 
 码：`bad_args` · `failed`
@@ -1726,7 +1727,7 @@ sid → 上次用哪个号起。
 | `parent` | → | 父会话的记录路径（读会话那道围栏照旧；越界 ⇒ `path_refused`） |
 | `path` | ← | 那份子运行记录（不透明，给查看器整份打开用） |
 | `rows` | ← | 这一页里每一条进界面的记录：`record` 通用记录（与主会话同一形）· `rid` 它的对账键（没有 ⇒ 省略） |
-| `run` | → | 子运行标识（运行表 `session_runs` 里那一格）；与 `tool` 至少给一个，都给以它为准 |
+| `run` | → ← | 子运行标识（运行表 `session_runs` 里那一格）；与 `tool` 至少给一个，都给以它为准 |
 | `tool` | → | 派出它的那次工具调用的 id：后端在父记录里找那次调用的派出链接（适配层 `child_link`）；还没对上（前台子运行跑完才写明是哪一个）⇒ `not_found` |
 
 码：`bad_args` · `failed` · `not_found` · `path_refused` · `refused` · `too_large`
@@ -1755,7 +1756,7 @@ sid → 上次用哪个号起。
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `eof` | ← | 读到了最后一个完整行之后 |
-| `from` | → | 第一行的行号（缺省 0） |
+| `from` | → ← | 第一行的行号（缺省 0） |
 | `lines` | ← | **记录行**（形状同 `history-page` 的 `lines`）：`[from, next)` 里进界面的那些，第 k 个可计行的行号是 `from + k`（不进界面的照占号、不出现） |
 | `next` | ← | 下一段从这一行起（恒 ＝ `from` ＋ 这一段的可计行数） |
 | `path` | → | jsonl 路径，围栏同 `history-read`（越界 ⇒ `refused`） |
@@ -1812,7 +1813,7 @@ sid → 上次用哪个号起。
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `end` | ← | 最后一个完整行的末字节（残尾不计） |
-| `from` | → | 可选，缺 ⇒ 0：从这个字节起扫 |
+| `from` | → ← | 可选，缺 ⇒ 0：从这个字节起扫 |
 | `path` | → | jsonl 路径（围栏同 `history-read`） |
 | `turns` | ← | 这一段里的每一轮，文件序；起止（`start` · `end`）旁边各有一格 `startText` · `endText`：这台本地钟的 `HH:MM`（界面照抄、不换算；解不出 ⇒ 空串） |
 
@@ -1827,16 +1828,20 @@ sid → 上次用哪个号起。
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `agent` | ← | 这份记录是哪一家的（线上的 kind，适配层按记录认）；认不出 ⇒ `null` |
+| `cost` | ← | 全会话花费（记录里那一家自己记的那一条，最后一条为准）`{micros, partial, text}`（`text` 写好）；记录里没有 ⇒ `null`（不按定价自己算） |
 | `end` | ← | 最后一个完整行的末字节 |
 | `forkedFrom` | ← | 源会话 sid：首条带 `forkedFrom`（`sessionId` 与 `messageUuid` 都是串）的 user / assistant 记录；不是分叉来的 ⇒ `null` |
 | `handedBack` | ← | 交回了的子运行 id（按「谁说的」认），去重、文件序 |
 | `lastSay` | ← | 最后一段正文的头一行 `{text, at}`；没有 ⇒ `null` |
-| `needs` | ← | 那台说在等你 ⇒ `{kind, tool, call, what, sinceMs}`（`kind`：approve · answer · plan · unknown）；不在等 ⇒ `null` |
+| `limits` | → | 可选：设置里的上下文上限表 `{<模型名子串>: 正整数}`（最长匹配的子串胜）；缺 / `null` ⇒ 空表；形状不对 ⇒ `bad_args` |
+| `needs` | ← | 那台说在等人 ⇒ `{kind, tool, call, what, sinceMs}`（`kind`：approve 批准 · answer 回答 · plan 批准计划 · network 放行联网 · worker 批准协作请求 · goal 确认会话目标 · choose 在对话框里选 · unknown 判不出）；不在等 ⇒ `null` |
 | `path` | → | jsonl 路径（围栏同 `history-read`） |
 | `pending` | ← | 还没结果的工具调用 `{id, name, what, at, state, why}`：`state` 在跑 running · 在等你 awaiting · 状态不明 unclear（每次现判）；`why` 只在 unclear 时给：noWriter（没有活进程持着这条会话）· untracked（这一家不留 pidfile，判不了活） |
+| `permissionMode` | ← | 此刻的许可档（最后一条许可档记录写的那一档，原样）；没有 ⇒ `null` |
 | `prior` | → | 可选：**上一次应答的 `data` 原样**（续传令牌） |
 | `projectDir` | ← | 会话起在哪个目录（记录开头）；还没读到 ⇒ `null` |
 | `retries` | ← | 一串相邻的 API 重试按首条的 `uuid` 记一件 `{id, outcome}`：retrying（还没下文）· recovered（后面来了正常回复）· failed（来了报错那条）· interrupted（人发了一句 / 打断）；文件序，至多 200 件 |
+| `tokens` | ← | 全会话用量（按请求去重）`{input, output, cacheRead, cacheWrite5m, cacheWrite1h, requests, text, last}`（写缓存分 5 分钟 / 1 小时两档；`text` 写好）；一条带用量的回复都没有 ⇒ `null` |
 | `touchedFiles` | ← | 写类工具（Edit / Write / MultiEdit → `file_path`，NotebookEdit → `notebook_path`）碰过的文件，原样、去重、近因序（最近碰的在末尾），至多 1000 条（超 ⇒ 丢最久没碰的） |
 | `usage` | ← | 文件序最后一条 `input_tokens + cache_creation_input_tokens + cache_read_input_tokens > 0` 的 assistant 记录 ⇒ `{promptTokens, model, peakPromptTokens, limit, limitFrom}`（`model` 缺 ⇒ `null`）；一条都没有 ⇒ `null` |
 | `writers` | ← | 此刻持着这条会话的活进程 pid（这台的 pidfile），升序；不留 pidfile 的那一家恒空 |
@@ -1901,7 +1906,7 @@ sid → 上次用哪个号起。
 |---|---|---|
 | `end` | ← | 最后一个完整行的末字节 ＝ 下一次增量该带的 `from` |
 | `entries` | ← | 每条用户输入 `{uuid, timestamp, excerpt}`（对话序；与 `--list-user-inputs` 的中段逐行相同） |
-| `from` | → | 增量起点（缺省 0；传上次尾行的 `end`） |
+| `from` | → ← | 增量起点（缺省 0；传上次尾行的 `end`） |
 | `path` | → | jsonl 路径（围栏同 `history-read`） |
 
 码：`bad_args` · `failed` · `too_large`
@@ -2004,7 +2009,11 @@ sid → 上次用哪个号起。
 
 | 字段 | 向 | 说明 |
 |---|---|---|
+| `agent_home` | ← | 解析基准：这台那一家的家目录（展示用） |
 | `client` | → | 可选 |
+| `home` | ← | 这台的家目录 |
+| `rows` | ← | 每个足迹一行（落在哪 · 是谁写的 · 怎么收） |
+| `settings_scopes` | ← | 各层设置文件（用户 · 项目 · 本地）的读法与先后 |
 
 码：`bad_args` · `failed`
 
@@ -2574,6 +2583,7 @@ cc-bus 钩子诊断。
 | `path` | ← | 配置文件的路径 |
 | `profiles` | ← | 每段 `{name, from, own: [{key, slot, vals, line}], agent, usable, problem: {line, message} \| null, kind: link/function, functionWhy, functionLine, said, form, accountShape}`：`accountShape` 是「账号那一形」`{account, tmux}`（自己只写了号、可再加 tmux，按合并下来的算；其余 `null`）：`said` 是树里那一行（自己写的几项，「标签 值」）；`form` 是表单回填（没写的格 `null` ＝ 继承）；`problem` 的原话与终端里敲这个名字得到的同一句 |
 | `seed` | ← | 配置文件不在时首建那两条的预览（同 `profiles` 一条的形状；在 ⇒ `[]`） |
+| `tmux` | ← | 这台有没有 tmux（「在哪起」那一格选不选得了 tmux 看它）；探不出 ⇒ `null` |
 
 码：`refused`
 
@@ -2590,7 +2600,7 @@ cc-bus 钩子诊断。
 | `edit` | → | 未存的表单（同 `profiles-read` 一段的 `form`；`null` ＝ 按盘上那份算） |
 | `line` | ← | 这台后端算的「等于」那一行（同 `ccm @名 -- --ccm-print`）；算不出 ⇒ `null` |
 | `lineError` | ← | 算不出那一行时 ccm 的原话 |
-| `name` | → ← | 哪一段（带 `edit` 时是正在改的那一段原来的名字，新增写表单里的名字） |
+| `name` | → | 哪一段（带 `edit` 时是正在改的那一段原来的名字，新增写表单里的名字） |
 | `problem` | ← | 合不下来 ⇒ 那一句（同终端里敲这个名字）；否则 `null` |
 | `rows` | ← | 合并表 `[{key, slot, label, vals, said, from, overriddenBy}]`：父 → 子、层内照写的顺序；被后来那一层盖掉的也在，`overriddenBy` 是盖掉它的那一段 |
 
@@ -2735,7 +2745,7 @@ cc-bus 钩子诊断。
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `from` | → | **可选** |
+| `from` | → ← | **可选**：自报的发件人；应答里回显实际用的那个 |
 | `live` | ← | 那个会话今天活着吗，与 `bus-list` 同一套三态 |
 | `registered` | ← | 在总线名单里吗 |
 | `sent` | ← | 投出去了 |
@@ -2790,7 +2800,7 @@ cc-bus 钩子诊断。
 |---|---|---|
 | `class` | ← | 消息类别（cc-bus 原样） |
 | `from` | ← | 发件人 |
-| `id` | → ← | 必给；交给 `cc-log` 之前先过 `bus_id_ok`，不过 ⇒ `bad_id`、一个进程都不起 |
+| `id` | → | 必给；交给 `cc-log` 之前先过 `bus_id_ok`，不过 ⇒ `bad_id`、一个进程都不起 |
 | `lines` | → | 可缺席，1..=2000，缺省 200 |
 | `messages` | ← | 逐行解析，只取 `from` · `ts` · `text` · `class`；`from` 与 `text` 都空的行不算消息 |
 | `skipped` | ← | 读不懂的行数 |

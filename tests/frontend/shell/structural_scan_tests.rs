@@ -4588,7 +4588,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/frontend/shell/backend_client_guard_tests.rs", 3), // 新行：头注里三块（旧文件名 · 旧登记表 · 旧层判据文件）
         ("tests/frontend/shell/byte_cap_registry_tests.rs", 6),
         // `hooks_diag.rs` 那一行随文件删了（钩子诊断整轴进后端，那块墓碑守的「远端拨号 shell」一起没了）。
-        ("src/backend/footprint/rows.rs", 3), // 1 → 3：`claude_config_dir` · `config_surface_report` · `with_monitor_probe` 三处删了点旧名 // 新贴：`claude_config_dir` · `resolves_on_path` 从 `hooks_diag.rs` 挪来，点旧住址
+        ("src/backend/footprint/rows.rs", 2), // 3 → 2：成品那一格改名 `agent_home` 之后旧名彻底死了，点它的那句改成现状。1 → 3：`claude_config_dir` · `config_surface_report` · `with_monitor_probe` 三处删了点旧名 // 新贴：`claude_config_dir` · `resolves_on_path` 从 `hooks_diag.rs` 挪来，点旧住址
         // `tests/frontend/shell/acct_iso_deploy_tests.rs` 那一行随整份判据文件删了（它守的围栏与部署命令一起退役）。
         ("tests/frontend/shell/capability_registry_tests.rs", 1),
         ("tests/frontend/shell/ccm_cli_contract_tests.rs", 1),

@@ -7,6 +7,8 @@ describe("activityFace", () => {
     expect(activityFace("working")).toEqual({ dot: "running", light: "" });
     expect(activityFace("needs_you")).toEqual({ dot: "needs-you", light: "act-waiting" });
     expect(activityFace("idle")).toEqual({ dot: "idle", light: "act-idle" });
+    // 后台命令还在跑：样子没出稿 ⇒ 先照空闲画。
+    expect(activityFace("background_work")).toEqual({ dot: "idle", light: "act-idle" });
   });
   it("说不清 ⇒ 默认：在运行的点、不叠灯", () => {
     expect(activityFace(null)).toEqual({ dot: "running", light: "" });
