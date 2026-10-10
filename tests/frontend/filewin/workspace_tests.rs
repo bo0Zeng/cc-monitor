@@ -1484,7 +1484,7 @@ fn an_editor_on_the_right_side_stays_in_the_right_side() {
     let whole = egui::Rect::from_min_size(egui::Pos2::ZERO, SCREEN);
     assert!(whole.contains_rect(area), "编辑页 {area:?} 出了窗口");
     // 左栏那一行最右那一格（大小）：编辑面的左沿在它右边 ⇒ 没越过两栏的分界。
-    let mut sizes = rects_of(&painted, &crate::rows::human_size(10));
+    let mut sizes = rects_of(&painted, &copy_core::size_text(10));
     sizes.sort_by(|a, b| a.left().total_cmp(&b.left()));
     assert_eq!(
         sizes.len(),

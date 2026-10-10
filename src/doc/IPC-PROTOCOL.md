@@ -29,6 +29,7 @@ monitor 只对 hello 里**声明了对应能力**（`capabilities`）的后端�
 | `--tail-only` | 不重放历史：各文件从当前行数起只尾随新行；历史由客户端另取（`history-read` / `--read-session-tail`） |
 | `--with-pid` | `session_added` 带 `pid`（只本机那条流发；默认关，关时字节与加它之前一字不差） |
 | `--with-raw` | `line` 带 `raw`（那一行记录的原文）。**过渡格**：前端读的是成品 `record`，手机那一侧的缺格补齐之后删。默认关 |
+| `--tz <IANA 名>` | 看的那一台的时区（如 `Asia/Shanghai`）：这条流**推**出去的钟面（`line.record.timeText` · `session_runs.runs[].startedText`）按它写。缺 · 认不得 ⇒ UTC。常驻那条连接在 attach 行旁边带同名一格 `tz`（不进 `flags`）。见 §4「时刻按谁的钟」 |
 
 ### 流只发要看的会话
 
@@ -54,7 +55,7 @@ monitor 只对 hello 里**声明了对应能力**（`capabilities`）的后端�
 ## 4. 入方向：请求 · 应答 · 取消
 
 ```text
-→ {"id":"<不透明串>","cmd":"<命令名>","args":{…},"within_ms":10000,"view":{…}}   一行一个；args 缺 ＝ null；within_ms · view 可缺
+→ {"id":"<不透明串>","cmd":"<命令名>","args":{…},"within_ms":10000,"tz":"Asia/Shanghai","view":{…}}   一行一个；args 缺 ＝ null；within_ms · tz · view 可缺
 ← {"kind":"reply","id":"…","ok":true,"data":{…}}                              无返回值时没有 data
 ← {"kind":"reply","id":"…","ok":false,"code":"…","message":"…","detail":"…"}  少数码另带 data（形状见各命令）
 → {"id":"…","cmd":"cancel","args":{"target":"<要撤的 id>"}}
@@ -73,6 +74,12 @@ monitor 只对 hello 里**声明了对应能力**（`capabilities`）的后端�
   投影只是「这一次不发」：成品与格目录（冻结的那几件也一样）一格不动。
   应答下一问要原样交回接着算的（续算令牌：`history-facts` 的 `prior`）：带了 `view` 的那一问，应答里多一格 `prior` ＝ 投影之前的整份，这一格不受 `view` 管，
   下一问交回它（交去过格的应答 ⇒ 形状不对、`bad_args`）。不带 `view` ⇒ 没有这一格，整份应答本身就是令牌。
+- **`tz`（时刻按谁的钟）**：看的那一台（桌面 · 手机）的时区，IANA 名。回包里写成字的时刻（`…Text` · `timeText` · `tsText` · `startText` · `mtime_text` · 今天 / 昨天那几格）**一律按它写**，不按答话那台后端自己的钟；远端那一跳（这台替看的人问另一台）回来的原始时刻也由这台按它写。
+  不是串 · 时区库里没有这个名 · 没带 ⇒ **UTC**（不拒）。偏移按**那一刻**算（夏令时跟着那一刻，冬天看夏天的记录照样对）；时区库随后端二进制带，各平台同一份。
+  为什么是 IANA 名而不是偏移：偏移只说得准「此刻」，历史页 · 记录里的时刻一跨夏令时就差一小时；看的那一台本来就叫得出自己的名（`Intl` · `ZoneId` · 系统设置），给名不多花一个字节的心思。
+  原始时刻（`at` · `resetsAt` · `tsMs` · `mtime_secs` …）照旧是数，要它跟着走的「已经多久」由出口按此刻自己走字（见 §7 的时长约定）。
+  复制详情（`detail`）里那一行时刻同样按它写，并带偏移（`2026-10-10 04:30:15 +08:00`，跟哪台的日志都对得上）：详情在深处拼好时先留空位，出去那一下（流的写者按这条连接看的那一台的时区 · CLI 按 `--tz`）填。
+  轮换规则「按时段的上限」按**规则自己的时区**判：写规则那一下（`rotation-rule-save` · `rotation-session-set` 的本会话那一份）后端把请求的 `tz` 盖进规则（`rotation.tz`，IANA 名；`local` 盖不进来），判的时候按它，跟后端那台在哪个时区、此刻有没有人在看都无关；盘上缺 ⇒ UTC。入参里带的 `tz` 不认。
 - **超时归客户端**：后端零定时器，不替客户端掐表；客户端的期限覆盖「写入 ＋ 等应答」两段，到点就撤单（`cancel`）。
 - **取消是一条普通命令**。撤一个不存在的 `id` 也回 `ok`。阻塞档的命令开跑之后打不断，`cancel` 回 `not_cancellable`（去等它自己的应答），不会回一条假的 `cancelled`。
 - **应答走独立的小通道**（256 条），与出方向的实时帧（10 000 条）分开：丢一条内容帧可恢复，丢一条应答客户端会永远等下去。writer 有界地优先应答。
@@ -136,22 +143,18 @@ monitor 只对 hello 里**声明了对应能力**（`capabilities`）的后端�
 
 桌面端（monitor）与第二个前端（手机端）吃同一个后端。第二个前端按下面这些格读，缺一格就把整帧当坏帧丢 ⇒ 它们**冻结**：不许改名、删、换类型，只许加新字段；非改不可就两边同拍。
 
-- 帧：`hello` `v` `build_id` `host_arch` `claude_dir` `capabilities` `emits` · `line` `session_id` `path` `seq` `byte_offset` `raw`（`--with-raw`）·
-  `session_added` `sid` `path` `cwd` `name` `lines` `waiting_for` `agent_kind` `liveness_confidence` `attachable` ·
-  `session_status` `sid` `waiting_for` `liveness_confidence` · `session_removed` `sid` `cause` · `overflow` `dropped` `lost` `lost_truncated` ·
-  `turn_end` `session_id` `uuid` · `tap` `stream` `run` `resp` `n` `ev` · `reply` `id` `ok` `code` `message` `detail` `data` · `cancelled` `id` ·
-  请求信封 `id` `cmd` `args` `within_ms`（可缺）`view`（可缺）。
-- 成品面：`line.record` 与 `history-read` 的 `rows`（`end` `hash` `record` `cwd`）—— 通用记录的公共格、五类各自的格、`who`、`error`、各种内容块逐格冻结（见下面「通用记录」一节）；
-  `history-page` / `history-lines` / `history-run` 的 `record` 是同一形。冻结的就是格目录里 `frozen` 的那几件成品（`record` · `read_row`）：格只许加，新加一格随格目录金样重写（`cells_catalog_tests::the_golden_is_what_the_command_writes`，删 / 改名 / 换类型重写也不放行）。
+- 帧：`hello` `v` `build_id` `host_arch` `claude_dir` `capabilities` `emits` · `line` `session_id` `path` `seq` `byte_offset` `raw`（`--with-raw`）`record` ·
+  `overflow` `dropped` `lost` `lost_truncated` · `turn_end` `session_id` `uuid` · `tap` `stream` `run` `resp` `n` `ev` ·
+  `reply` `id` `ok` `code` `message` `detail` `data` · `cancelled` `id` · 请求信封 `id` `cmd` `args` `within_ms`（可缺）`tz`（可缺）`view`（可缺）。
+- 会话三帧与成品面在格目录里：每格带 `frozen`。`session_added`（`sid` `path` `cwd` `name` `lines` `waiting_for` `agent_kind` `liveness_confidence` `attachable` `activity` `activity_text` `activity_tone` `background`）·
+  `session_status`（`sid` `waiting_for` `liveness_confidence` `activity` `activity_text` `activity_tone`）· `session_removed`（`sid` `cause`）只冻这几格；
+  `line.record` 与 `history-read` 的 `rows`（`end` `hash` `record` `cwd`）整件冻结 —— 通用记录的公共格、六类各自的格、`who`、`error`、各种内容块逐格冻结（见下面「通用记录」一节）；
+  `history-page` / `history-lines` / `history-run` 的 `record` 是同一形。新加一格随格目录金样重写（`cells_catalog_tests::the_golden_is_what_the_command_writes`，删 / 改名 / 换类型 / 解冻重写也不放行）。
   `line.raw` 逐字节等于记录文件里那一行，去掉行尾（`\n`；CRLF 行连 `\r` 一起去）。
-- 一次性子命令（叫法 · 位置参数个数 · 输出里它读的那几格）：`--list-projects`（`dirName` `projectPath` `sessionCount` `lastActivityMs`）·
-  `--list-sessions <项目目录名>`（`sessionId` `aiTitle` `cwd` `jsonlPath` `messageCountApprox` `startedAtMs` `updatedAtMs` `isBg`）· `--read-session <路径>` ·
-  `--read-session-tail <路径> <N>` · `--read-session-from-offset <路径> <偏移>` · `--search <查询串>` · `--fork-session <会话 id> <消息 uuid>` · `--resolve`（stdin 或 `--args-b64`）·
-  `--backend-probe` · `--find-in-session --query <q> <路径>` · `--list-user-inputs <路径>` ·
-  帧命令派生、入参走 stdin 的 `--ping` `--terminals-list` `--terminal-preview` `--terminal-input` `--history-page` `--history-facts`（这几条要真能派发，不只是串在表里）；
-  会话 id 的校验规则（非空 · ≤128 · 只 `[0-9A-Za-z_-]`）同样不许改。
+- **改了冻结的格就得打版本号**（同加子命令）：`build_id_guard` 的指纹带一行冻结格的摘要 ⇒ 第二个前端连上只核 `BUILD_ID` 这一处，不用读 `cells-catalog` 逐格核。
+- 一次性子命令：第二个前端只调 `--backend-probe` · `--resident-ensure`（可带 `--replace`）· `--resident-attach`，其余都走常驻流上的帧命令。
 - 会话是不是后台、此刻在干什么只看后端判好的 `background` · `activity`；那一家的原词不上线。
-- 判据：`wire_tests::the_shapes_the_second_frontend_reads_stay_put`（帧那张表，类型逐格对）· `cells_catalog_tests::the_golden_is_what_the_command_writes`（成品面：格目录里冻结的 `record` · `read_row`）· `wire_tests::the_subcommands_the_second_frontend_calls_stay_put`（子命令那张）。
+- 判据：`wire_tests::the_shapes_the_second_frontend_reads_stay_put`（帧那张表，类型逐格对）· `cells_catalog_tests::the_golden_is_what_the_command_writes`（格目录里冻结的格）· `build_id_guard::tests::adding_a_subcommand_forces_a_build_id_bump`（子命令集或冻结格变了 ⇒ 打版本号）· `wire_tests::the_subcommands_the_second_frontend_calls_stay_put`（子命令那三条）。
 - 跨语言金样：`tests/__fixtures__/session-stream.golden.jsonl`，每种帧两行（「全格」与「最少格」），由后端真序列化器写；最少格里的格就是必填格。
   终端管理 `tests/__fixtures__/terminals.golden.json` · `--resolve` `tests/__fixtures__/resolve-contract.golden.json` · 换号重启 `tests/__fixtures__/rotation-switch-restart.golden.json`。
 - 部署：第二个前端从 GitHub Release 下后端字节（两个 musl 目标），按 `SHA256SUMS-linux.txt` 与字节里的身份戳校验；资产名登记在 [RELEASING.md](RELEASING.md)。
@@ -169,7 +172,7 @@ monitor 只对 hello 里**声明了对应能力**（`capabilities`）的后端�
 | `id` | string | 这条记录在本会话里的身份：**不透明串**（非空、会话内唯一；主线外清单、分叉、跳转都按它认），前端不解析、不拼。那一家的记录自己有身份就用它（Claude 的 `uuid`）；没有的合成「`@<这一行起点的字节偏移>`」 |
 | `at` | string? | 记录时刻（ISO-8601 原样）；插进正在跑的那一轮的 `queued` 是打字那一刻 |
 | `timeText` | string? | `at` 在那台本地钟上的钟面 `HH:MM`（界面照抄、不换算） |
-| `t` | string | 类别：`said` · `reply` · `retry` · `title` · `queued` |
+| `t` | string | 类别：`said` · `reply` · `retry` · `title` · `queued` · `unread` |
 
 各类的格：
 
@@ -180,6 +183,7 @@ monitor 只对 hello 里**声明了对应能力**（`capabilities`）的后端�
 | `retry`（上游失败、将重试） | `reason`（同上闭集）· `attempt?` · `max?` |
 | `title`（会话标题） | `text` · `by`（`agent` 代理起的 · `user` 人起的） |
 | `queued`（人在一轮跑着时插进去的一句） | `who`（同 `said`） |
+| `unread`（这一家的这一行认不出：没见过的类型 · 见过的类型形状变了） | `why`（闭集 `unknownType` `parseFailed`）· `type`（那一行自己说的类型原样，只当标签、出口不按它取字；没有 ⇒ `null`）· `text`（写好的一句）· `tone`（恒 `warn`）· `excerpt`（原文截到 400 字节、按字符截，给［复制详情］，出口照抄不解析）· `count`（并了几条：出记录页那一遍把相邻、原因与类型都一样的并成一条；实时 `line` 帧每行一条、恒 1） |
 
 内容块 `blocks[]`（两家共有的词，按 `type`）：`text {text}` · `thinking {text}` · `tool_use {id, name, input}` · `tool_result {for, content: [块], isError}` · `image {source}`。
 
@@ -201,6 +205,8 @@ monitor 只对 hello 里**声明了对应能力**（`capabilities`）的后端�
     超上限（哪一个口都一样）⇒ `args_too_large`，拒收、不截断。
 - **声明**：`--view <声明>`（任意位置）与帧面请求信封的 `view` 同名同义、同一处解、同一处拒、同一处裁（§4）。值以 `{` 打头 ＝ JSON 原样，否则当 base64（标准字母表）解；
   缺值 · 给两次 · 解不出 · 声明认不出 ⇒ `bad_args`，在读入参之前就拒。
+- **时区**：`--tz <IANA 名>`（任意位置）与帧面请求信封的 `tz` 同名同义：回包里写成字的时刻按看的那一台的时区写；缺值 · 认不得 · 没带 ⇒ UTC。
+  另认一个词 `local`：看的人就在答话这一台上（终端里敲的 `ccm -- --<命令> --text`、本机脚本）⇒ 按这台系统的钟（帧面信封的 `tz` 同样认它）。
 - **期限**：`--within-ms <毫秒>`（任意位置）与帧面请求信封的 `within_ms` 同名同义：减 2 秒余量换成截止时刻，装总期限的命令都收紧到它，到点回的码与帧面相同（`child_timed_out`）。
   哪几条装总期限、上限多少，协议参考里逐条写（「总期限上限 N 秒」）；没写的那几条不装，带了期限对它不起作用。到点只回 `child_timed_out` 这一个码，三条例外不整条失败：`aliases-read` · `powershell-policy-set` 落在成品的 `policy.error`，`ssh-config-import` 交已解析的那几个。
   缺值 · 给两次 ⇒ `bad_args`；值不是正整数 ⇒ 当没带（同帧面那一格）。

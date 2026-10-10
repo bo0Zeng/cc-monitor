@@ -5145,6 +5145,14 @@ mod g6_dependency_signoff {
             "日志门面：它自己不选落点，落点由 subscriber 那一条决定",
         ),
         (
+            "jiff",
+            DEPS,
+            UNMEASURED,
+            "时刻按看的那一台的时区写字（`common/time.rs::Tz`：IANA 名 ⇒ 那一刻的偏移）：缺省 feature 关了，只开 `std` 与 `tzdb-bundle-always`，\
+             时区库编进二进制（`jiff-tzdb`，一份静态字节），**不开** `tz-system` ⇒ 不读 `/usr/share/zoneinfo`、不读 `TZ`、不读 Windows 注册表。\
+             写不写盘：本 crate 对它的用法只有 `TimeZone::get`（查内嵌那份表）与 `to_offset`（纯计算），不碰盘、不起进程（用法签字，没扫它的源码）",
+        ),
+        (
             "toml_edit",
             DEPS,
             UNMEASURED,

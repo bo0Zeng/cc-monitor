@@ -16,8 +16,7 @@ import { isLive } from "./tab-session-state";
 import { isRemoteOrigin } from "./ipc/origin";
 import { copyText } from "./copy-table";
 import { dotLabel } from "./session-words";
-import { fmtDur } from "./duration-format";
-import { waitedNow } from "./cards/step-line";
+import { clockNow, spanNow, waitedNow } from "./duration-format";
 
 /** 此刻在等你（活着 ＋ 活动信号说在等人）⇒ 等的是什么；不在等 ⇒ `null`。会话事实还没到 ⇒ 种类判不出，字照抄活动信号带来的那个。 */
 export function needsOf(tab: Tab): Needs | null {
@@ -39,17 +38,14 @@ export function dotOf(tab: Tab): DotState {
   return sessionDot(tab.state, tab.activity?.tone ?? null);
 }
 
-/** 后台任务运行中那一句此刻的字：有会走的那一句 ⇒ 时长那一截按此刻填（`fmtDur`，与核心对同一份金样）；否则照抄核心写好的那一句。 */
+/** 后台任务运行中那一句此刻的字：有会走的那一句 ⇒ 时长那一截按此刻填（那一个读口，与核心对同一份金样）；否则照抄核心写好的那一句。 */
 export function backgroundLine(b: BackgroundWork, now: number): string {
-  return b.clock ? b.clock.text.replace("{dur}", fmtDur((now - b.clock.from) / 1000)) : b.text;
+  return b.clock ? clockNow(b.clock, now) : b.text;
 }
 
-/** 时刻（ISO / epoch ms）⇒ 距 `now` 多久（`fmtDur`）；读不出 ⇒ `null`。 */
-export function sinceText(at: string | number | null, now: number): string | null {
-  if (at === null) return null;
-  const t = typeof at === "number" ? at : Date.parse(at);
-  if (!Number.isFinite(t)) return null;
-  return fmtDur((now - t) / 1000);
+/** 时刻（毫秒，后端解好的）⇒ 距 `now` 多久（那一个读口）；没有 ⇒ `null`。 */
+export function sinceText(atMs: number | null, now: number): string | null {
+  return atMs === null ? null : spanNow(atMs, now);
 }
 
 /** 这个会话在哪台：本机写「本机」，远端写机器名。 */
@@ -72,7 +68,7 @@ export function stateLine(tab: Tab, now: number): { text: string; needs: boolean
     case "running": {
       const p = tab.pending[0];
       if (!p) return { text: stateWord(tab), needs: false };
-      const dur = sinceText(p.at, now);
+      const dur = sinceText(p.atMs, now);
       return { text: dur ? copyText("sessionFace.state.runningFor", { tool: p.name, dur }) : copyText("sessionFace.state.running", { tool: p.name }), needs: false };
     }
     case "background": {
@@ -81,7 +77,7 @@ export function stateLine(tab: Tab, now: number): { text: string; needs: boolean
       return { text: b ? backgroundLine(b, now) : stateWord(tab), needs: false };
     }
     case "idle": {
-      const ago = sinceText(tab.lastSay?.at ?? null, now);
+      const ago = sinceText(tab.lastSay?.atMs ?? null, now);
       if (!ago) return { text: stateWord(tab), needs: false };
       return { text: tab.unread > 0 ? copyText("sessionFace.state.idleUnseen", { ago }) : copyText("sessionFace.state.idleSeen", { ago }), needs: false };
     }

@@ -1025,7 +1025,7 @@ fn the_files_read_family_is_online_exactly_as_it_is_declared() {
         // ④ 真的调一次：`run` 必须**够得到**那条能力。
         //    喂空 `args` ⇒ 要么成功，要么落在这条能力自己声明的 code 上；
         //    落到 `unknown_capability` 就说明翻译或名字接错了。
-        let out = crate::files::answer_wire(&online, &serde_json::json!({}));
+        let out = crate::files::answer_wire(&online, &serde_json::json!({}), &Default::default());
         if let Err(crate::files::Refused {
             code, said: msg, ..
         }) = out
@@ -1219,7 +1219,15 @@ const TYPED: &[(&str, fn() -> Sampled, &[&str], &[(&str, &str)])] = &[
         &[],
         &[],
     ),
-    ("quota-read", sampled::<rf::QuotaRead>, &[], &[]),
+    (
+        "quota-read",
+        sampled::<rf::QuotaRead>,
+        &[],
+        &[(
+            "names",
+            "出口那一遍添的号名 / 位名表（`accounts::quota::name_words::with_names`），不在结构体里",
+        )],
+    ),
     (
         "session-terminals",
         sampled::<crate::observe::session_terminals::Showing>,
@@ -1325,16 +1333,35 @@ const TYPED: &[(&str, fn() -> Sampled, &[&str], &[(&str, &str)])] = &[
         &[],
     ),
     ("rotation-default-set", sampled::<rf::DefaultSet>, &[], &[]),
-    ("rotation-plan", sampled::<rf::PlanReply>, &[], &[]),
+    (
+        "rotation-plan",
+        sampled::<rf::PlanReply>,
+        &[],
+        &[(
+            "names",
+            "出口那一遍添的号名 / 位名表（`accounts::quota::name_words::with_names`），不在结构体里",
+        )],
+    ),
     ("rotation-rule-delete", sampled::<rf::RuleDeleted>, &[], &[]),
     ("rotation-rule-rename", sampled::<rf::RuleSaved>, &[], &[]),
     ("rotation-rule-save", sampled::<rf::RuleSaved>, &[], &[]),
-    ("rotation-rules-read", sampled::<rf::RulesRead>, &[], &[]),
+    (
+        "rotation-rules-read",
+        sampled::<rf::RulesRead>,
+        &[],
+        &[(
+            "names",
+            "出口那一遍添的号名 / 位名表（`accounts::quota::name_words::with_names`），不在结构体里",
+        )],
+    ),
     (
         "rotation-session-read",
         sampled::<rf::SessionRead>,
         &[],
-        &[],
+        &[(
+            "names",
+            "出口那一遍添的号名 / 位名表（`accounts::quota::name_words::with_names`），不在结构体里",
+        )],
     ),
     ("rotation-session-set", sampled::<rf::SessionSet>, &[], &[]),
 ];

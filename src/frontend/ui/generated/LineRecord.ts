@@ -7,6 +7,7 @@ import type { StepResult } from "./StepResult";
 import type { TitleBy } from "./TitleBy";
 import type { ToolCard } from "./ToolCard";
 import type { ToolStep } from "./ToolStep";
+import type { UnreadWhy } from "./UnreadWhy";
 import type { UserText } from "./UserText";
 
 /**
@@ -26,9 +27,13 @@ id: string,
  */
 at?: string, 
 /**
- * `at` 在这台本地钟上的钟面 `HH:MM`（界面照抄、不换算）；没有时刻 / 解不出 ⇒ 缺。
+ * `at` 在看的那一台钟上的钟面 `HH:MM`（出口那一下按请求 / 流带来的时区写，[`Record::stamp`]；界面照抄、不换算）；没有时刻 / 解不出 ⇒ 缺。
  */
-timeText?: string, } & ({ "t": "said", 
+timeText?: string, 
+/**
+ * `at` 的毫秒（自 1970；出口那一下随钟面一起写）：界面算「两条记录之间多久」只用这一格（交那一个读口），不自己解析 `at`；解不出 ⇒ 缺。
+ */
+atMs?: number, } & ({ "t": "said", 
 /**
  * 谁说的、要显示的正文（判定只在适配层）。
  */
@@ -68,4 +73,24 @@ runs?: { [key in string]: ChildRunTag },
 /**
  * 这条是上游最终失败写的报错（报错正文在 `blocks` 的正文里）。不是 ⇒ 缺。
  */
-error?: ReplyError, } | { "t": "retry", reason: ApiReason, attempt?: number, max?: number, } | { "t": "title", text: string, by: TitleBy, } | { "t": "queued", who: UserText, });
+error?: ReplyError, } | { "t": "retry", reason: ApiReason, attempt?: number, max?: number, } | { "t": "title", text: string, by: TitleBy, } | { "t": "queued", who: UserText, } | { "t": "unread", why: UnreadWhy, 
+/**
+ * 那一行自己说的类型原样（标签，出口不许按它取字）；没有 ⇒ `null`。
+ */
+type: string | null, 
+/**
+ * 写好的一句（[`unread_text`]）。
+ */
+text: string, 
+/**
+ * 恒 `warn`。
+ */
+tone: "warn", 
+/**
+ * 原文截到 [`EXCERPT_BYTES`]（按字符截，不截半个字）：给［复制详情］，出口照抄、不解析。
+ */
+excerpt: string, 
+/**
+ * 并了几条（适配层每行给 1）。
+ */
+count: number, });

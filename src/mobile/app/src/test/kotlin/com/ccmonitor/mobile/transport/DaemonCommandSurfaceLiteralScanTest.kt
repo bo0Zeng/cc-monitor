@@ -17,9 +17,8 @@ import java.io.File
  * 没有 fallback 分支：没有 `--` ⇒ 整行交给 claude；零参数 ⇒ 默默起一个 claude 进程。
  * 一条绕过网关的命令不会响亮地失败，它会在用户机器上起一个 claude。
  *
- * 网关之外合法的命中只有两处：`DaemonConversationCatalog.kt` 的 `--list-sessions`（它是
- * `DaemonCommands.query(…)` 的实参，门由 `query()` 加），以及 debug 源集里 `SessionOverviewActivity`
- * 的假后端（它匹配命令、不产出命令）。
+ * 网关之外合法的命中：`link/` 里接常驻流之前那几步的子命令名（门槛 `--backend-probe` · `--resident-ensure` ·
+ * `--resident-attach`，命令一律经 `BackendBin.command` 拼、`--` 门在那里加）。
  *
  * ### 三个网关是并列的，别把另外两个的串当违规
  *
@@ -160,23 +159,23 @@ class DaemonCommandSurfaceLiteralScanTest {
     @Test
     fun theScannerReadsLiteralsAndSkipsCommentsBothWays() {
         // ① 正向：真字面必须认出来（单引号串 / 三引号串都要）。
-        assertEquals("普通字面里的锚点必须认出", 1, countOccurrences(backendLiteralsOf("val x = \"--list-projects\""), LIVE_ANCHOR))
+        assertEquals("普通字面里的锚点必须认出", 1, countOccurrences(backendLiteralsOf("val x = \"--resident-attach\""), LIVE_ANCHOR))
         assertEquals(
             "三引号字面里的锚点也必须认出（golden / 桩数据常用这个形）",
             1,
-            countOccurrences(backendLiteralsOf("val x = \"\"\"--list-projects\"\"\""), LIVE_ANCHOR),
+            countOccurrences(backendLiteralsOf("val x = \"\"\"--resident-attach\"\"\""), LIVE_ANCHOR),
         )
 
         // ② 反向：注释里的引文是资料不是调用，一个都不许算。
         val commented =
-            "// 行注释里的 --list-projects 不算\n" +
-                "/* 块注释里的 --list-projects 也不算 */\n" +
-                "/* 嵌套 /* 再来一层 --list-projects */ 仍在注释里 --list-projects */\n" +
+            "// 行注释里的 --resident-attach 不算\n" +
+                "/* 块注释里的 --resident-attach 也不算 */\n" +
+                "/* 嵌套 /* 再来一层 --resident-attach */ 仍在注释里 --resident-attach */\n" +
                 "val a = 1\n"
         assertEquals("注释（含嵌套块注释）里的锚点一个都不许算：${backendLiteralsOf(commented)}", 0, countOccurrences(backendLiteralsOf(commented), LIVE_ANCHOR))
 
         // ③ 正则版 codeOnly 栽的那一格：字面里的「星号-斜杠」不许吃掉后面的代码。
-        val starSlashTrap = "val a = \"*/\"\nval b = \"--list-projects\"\n"
+        val starSlashTrap = "val a = \"*/\"\nval b = \"--resident-attach\"\n"
         assertEquals(
             "字面里的「星号-斜杠」把后面的代码当注释吃掉了：这正是正则版 codeOnly 的那个坑",
             1,
@@ -184,7 +183,7 @@ class DaemonCommandSurfaceLiteralScanTest {
         )
 
         // ④ 字符字面量里的引号不许把后面全带偏（否则整份语料错位、判据恒绿）。
-        val charLiteral = "val q = '\"'\nval b = \"--list-projects\"\n"
+        val charLiteral = "val q = '\"'\nval b = \"--resident-attach\"\n"
         assertEquals("字符字面量里的引号不许让后面错位", 1, countOccurrences(backendLiteralsOf(charLiteral), LIVE_ANCHOR))
 
         // ⑤ 相邻两个字面量之间不许「粘」出一个假命中（隔断符必须是锚点里不可能有的字符）。
@@ -232,10 +231,8 @@ class DaemonCommandSurfaceLiteralScanTest {
     /**
      * 扫描面：`app` ＋ 每个 `core-…` 模块的 `src/main/kotlin` 与 `src/debug/kotlin` 下的全部 `.kt`。
      *
-     * 比 `TmuxSurfaceLiteralScanTest` 多收了 `src/debug`，是有意的：那里住着
-     * `SessionOverviewActivity` 的假后端（它按子命令字面分流吐桩数据），
-     * 而「临时在 debug 里内联拼一条真命令」恰恰是这类代码最可能长出来的地方。
-     * 代价是白名单里多一个文件（连次数一起钉）。
+     * 比 `TmuxSurfaceLiteralScanTest` 多收了 `src/debug`，是有意的：「临时在 debug 里内联拼一条真命令」
+     * 恰恰是这类代码最可能长出来的地方。
      *
      * `src/test` / `androidTest` 不在扫描面内：测试里拿子命令当 fixture 是正常的。
      */
@@ -256,15 +253,15 @@ class DaemonCommandSurfaceLiteralScanTest {
         private val SOURCE_SETS = listOf("src/main/kotlin", "src/debug/kotlin")
 
         private const val GATEWAY = "core-claude/src/main/kotlin/com/ccmonitor/mobile/core/claude/transport/DaemonCommands.kt"
-        private const val CATALOG = "core-claude/src/main/kotlin/com/ccmonitor/mobile/core/claude/transport/DaemonConversationCatalog.kt"
-        private const val FAKE_BACKEND = "app/src/debug/kotlin/com/ccmonitor/mobile/ui/overview/SessionOverviewActivity.kt"
+        private const val GATE = "core-claude/src/main/kotlin/com/ccmonitor/mobile/core/claude/link/BackendGate.kt"
+        private const val RESIDENT = "core-claude/src/main/kotlin/com/ccmonitor/mobile/core/claude/link/ResidentLink.kt"
 
         /**
          * 扫描器自检的靶子：今天还活着、而且真在生产代码里的那个子命令。
          *
          * 换锚点表时这一条必须跟着换成一个仍有正向命中的 —— 它是「扫描器没瞎」的唯一证据。
          */
-        private const val LIVE_ANCHOR = "--list-projects"
+        private const val LIVE_ANCHOR = "--resident-attach"
 
         /**
          * 「那道门紧挨着一个后端词」这个形。
@@ -294,17 +291,18 @@ class DaemonCommandSurfaceLiteralScanTest {
                 // ── 流模式那一面（全部住网关） ──
                 "--stream" to mapOf(GATEWAY to 1),
                 "--with-bg" to mapOf(GATEWAY to 1),
-                "--tail-only" to mapOf(GATEWAY to 1),
-                // ── 一次性查询：真在发的两条 ──
-                // GATEWAY：`listProjects` 的子命令名。FAKE_BACKEND：debug 假后端匹配它（不产出）。
-                "--list-projects" to mapOf(FAKE_BACKEND to 1, GATEWAY to 1),
-                // CATALOG：`DaemonCommands.query(daemonPath, "--list-sessions", dirName)` 的实参
-                //   门由 `query()` 加，而 `query()` 本身在 `DaemonCommandsTest` 的普查里。
-                "--list-sessions" to mapOf(FAKE_BACKEND to 1, CATALOG to 1),
+                // RESIDENT：常驻流 attach 行里这条连接要的旗标。
+                "--tail-only" to mapOf(GATEWAY to 1, RESIDENT to 1),
+                // ── 接常驻流（R）之前那几步：门槛 · 起常驻 · 接流（命令经 `BackendBin.command` 拼） ──
+                "--backend-probe" to mapOf(GATE to 1),
+                "--resident-ensure" to mapOf(RESIDENT to 1),
+                "--resident-attach" to mapOf(RESIDENT to 1),
+                // ── 旧一次性查询面：清单改读 `history-list` 之后只剩网关里那个函数（随 α / Q 那一套一起删） ──
+                "--list-projects" to mapOf(GATEWAY to 1),
+                "--list-sessions" to emptyMap(),
                 // ── 后端有、我们不发的那几条：必须保持零 ──
                 "--read-session" to emptyMap(),
                 "--resolve" to emptyMap(),
-                "--backend-probe" to emptyMap(),
                 "--daemon-probe" to emptyMap(),
                 "--fork-session" to emptyMap(),
                 "--search" to emptyMap(),

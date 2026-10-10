@@ -2543,6 +2543,7 @@ name = "host-core"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "iana-time-zone",
  "serde",
  "serde_json",
  "win-path-core",

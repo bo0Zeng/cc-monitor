@@ -475,7 +475,8 @@ pub(crate) fn translated(raw: &str, start: u64) -> Result<Option<Translated>, St
 /// | `response_item.message`（user / developer 角色，或别家来信）· `agent_message` · `inter_agent_communication` | `said`（谁说的本家判，[`message_said`]） |
 /// | `response_item.message`（assistant 角色）· `reasoning` · 工具调用 | `reply`（`autoReply` 恒假：没考据到等价物；`endsTurn` 恒假：一轮的结束是另一条事件） |
 /// | 工具调用的输出 | `said`（工具结果） |
-/// | 事件 · 元记录 · 认不出的 | 无记录 |
+/// | 认不出的顶层类型 · 认不出的 `response_item` 子型 | `unread`（写好的一句 ＋ 原文摘录） |
+/// | 事件 · 元记录 | 无记录 |
 ///
 /// `id`：`payload.id`；没有（user / developer / 工具输出常没有）⇒ 按这一行的起点字节偏移合成（[`crate::agents::line_id`]）。
 pub fn record_of(v: &Value, start: u64) -> Option<Record> {
@@ -516,6 +517,19 @@ pub fn record_of(v: &Value, start: u64) -> Option<Record> {
                 is_error: false,
             }],
         ),
+        // 认不出的顶层类型 · 认不出的 response_item 子型：每行一条 `unread`（相邻同类由出记录页那一遍并）。
+        K::Other => {
+            let top = v.get("type").and_then(Value::as_str);
+            let kind = match top {
+                Some("response_item") => payload.get("type").and_then(Value::as_str),
+                t => t,
+            };
+            Body::unread(
+                crate::agents::record::UnreadWhy::UnknownType,
+                kind.map(str::to_string),
+                &v.to_string(),
+            )
+        }
         _ => return None,
     };
     let at = super::parse::envelope_ts(v).map(String::from);
@@ -526,10 +540,9 @@ pub fn record_of(v: &Value, start: u64) -> Option<Record> {
             .and_then(Value::as_str)
             .filter(|id| !id.is_empty())
             .map_or_else(|| crate::agents::line_id(start), str::to_string),
-        time_text: at
-            .as_deref()
-            .and_then(crate::common::time::iso_hm_here)
-            .map(crate::common::cells::Words),
+        // 钟面按看的那一台的时区，出口那一下写（[`Record::stamp`]）。
+        time_text: None,
+        at_ms: None,
         at,
         body,
     })

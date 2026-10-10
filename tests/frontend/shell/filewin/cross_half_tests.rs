@@ -48,6 +48,7 @@ fn the_measured_save_line_is_byte_for_byte_the_line_that_is_sent() {
                 &args,
                 Some(LONGEST_WITHIN),
                 None,
+                Some(&"Z".repeat(host_core::TZ_ROOM)),
             );
             assert!(sent.ends_with('\n'));
             assert_eq!(
@@ -79,6 +80,7 @@ fn chunks_reassemble_exactly_each_fits_one_line_and_each_is_filled() {
             &stage_args(key, u64::MAX, chunk),
             Some(LONGEST_WITHIN),
             None,
+            Some(&"Z".repeat(host_core::TZ_ROOM)),
         )
         .len()
             - 1

@@ -89,7 +89,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         fields: &[out("activity", "最近动静（Unix 秒；不在 tmux 里 ⇒ `null`）"), out("clientAddr", "对面地址"), out("clientPort", "对面端口"), out("serverAddr", "本机地址"), out("serverPort", "本机端口"), out("ssh", "那个终端的 `SSH_CONNECTION` 四段；不是经 ssh 连的 ⇒ `null`"), out("terminals", "此刻显示它的终端，每格 `{ssh, activity}`，最近动静在前，最多 16 格"), out("why", "一个都没有时：`detached` · `no-terminal` · `unreadable`")],
         takes_input: true,
         run: Run::Blocking(|r| {
-            crate::faces::feature_face::answer(&r.cmd, &r.args)
+            crate::faces::feature_face::answer(&r.cmd, &r.args, &r.tz)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
@@ -119,9 +119,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
             "unobservable",
             "child_timed_out",
         ],
-        fields: &[out("capped", "要的比上限多、截到了上限"), out("captured_at", "抓屏时刻（秒）"), out("captured_at_text", "抓屏时刻在这台本地钟上的 `HH:MM:SS`（界面照抄、不换算）"), arg("color", "要不要颜色；缺省 `true`"), out("cols", "列数"), out("cursor", "光标 `{x, y, visible}`"), out("lines", "自上而下的行，每行 `{text, spans?}`（往回要的在最前）"), out("rows", "行数"), out("screen", "这一屏的指纹（16 位十六进制）：内容一变就变，送字时带回来"), arg("scrollback", "往回多要几行；缺省 0、上限 2000"), out("scrollback_lines", "实际往回给了几行"), arg("sid", "目标：会话 id（与 `terminal` 恰给一个）"), out("spans", "着色段 `{from, to, fg?, bg?, bold?, dim?, italic?, underline?, inverse?}`；`color:false` ⇒ 不给"), arg("terminal", "目标：名单里的句柄（与 `sid` 恰给一个）"), out("text", "`lines` 一项：那一行的文字")],
+        fields: &[out("capped", "要的比上限多、截到了上限"), out("captured_at", "抓屏时刻（秒）"), out("captured_at_text", "抓屏时刻在看的那一台钟上的（请求的 `tz`） `HH:MM:SS`（界面照抄、不换算）"), arg("color", "要不要颜色；缺省 `true`"), out("cols", "列数"), out("cursor", "光标 `{x, y, visible}`"), out("lines", "自上而下的行，每行 `{text, spans?}`（往回要的在最前）"), out("rows", "行数"), out("screen", "这一屏的指纹（16 位十六进制）：内容一变就变，送字时带回来"), arg("scrollback", "往回多要几行；缺省 0、上限 2000"), out("scrollback_lines", "实际往回给了几行"), arg("sid", "目标：会话 id（与 `terminal` 恰给一个）"), out("spans", "着色段 `{from, to, fg?, bg?, bold?, dim?, italic?, underline?, inverse?}`；`color:false` ⇒ 不给"), arg("terminal", "目标：名单里的句柄（与 `sid` 恰给一个）"), out("text", "`lines` 一项：那一行的文字")],
         takes_input: true,
-        run: Run::BlockingData(|r| crate::control::terminals::preview_for_inbound(&r.args).map(Some)),
+        run: Run::BlockingData(|r| crate::control::terminals::preview_for_inbound(&r.args, &r.tz).map(Some)),
     },
     CommandSpec {
         name: "terminal-input",
@@ -282,10 +282,10 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "session-new-facts",
         summary: "起新会话那个框要的事实：最近目录 · 有没有 tmux · 有哪几家 agent · 分叉时原会话的起法",
         codes: &["bad_args", "fork_failed"],
-        fields: &[arg("agent", "哪一家（线上的 kind）"), out("agents", "这台能起的几家（注册表里由我们起的、默认启动器在这台 `PATH` 上找得到的；注册表序）"), arg("at", "可缺（随 `forkOf`）"), arg("cwd", "工作目录（开头的 `~` 按这台的家目录读）"), out("fork", "没给 `forkOf` ⇒ `null`"), arg("forkOf", "可缺"), out("lastMs", "`recent` 一项：那个目录最近一次会话的修改时刻（毫秒）"), out("launch", "`fork` 里：起分叉会话要的三格（同 `session-fork` 的 `launch`）"), out("recent", "这台最近用过的工作目录（各家记录里的，新的在前、同一个目录一次、最多 8 个；`lastMs` 是那个目录最近一次会话的修改时刻）"), out("startText", "`fork` 里：那一轮你那句在这台本地钟上的钟面 `HH:MM`（界面照抄；说不出 ⇒ `null`）"), out("tmux", "这台有没有 tmux（`false` ⇒ 只能开终端窗口）"), out("turn", "`fork` 里：`at` 那一条在第几轮")],
+        fields: &[arg("agent", "哪一家（线上的 kind）"), out("agents", "这台能起的几家（注册表里由我们起的、默认启动器在这台 `PATH` 上找得到的；注册表序）"), arg("at", "可缺（随 `forkOf`）"), arg("cwd", "工作目录（开头的 `~` 按这台的家目录读）"), out("fork", "没给 `forkOf` ⇒ `null`"), arg("forkOf", "可缺"), out("lastMs", "`recent` 一项：那个目录最近一次会话的修改时刻（毫秒）"), out("launch", "`fork` 里：起分叉会话要的三格（同 `session-fork` 的 `launch`）"), out("recent", "这台最近用过的工作目录（各家记录里的，新的在前、同一个目录一次、最多 8 个；`lastMs` 是那个目录最近一次会话的修改时刻）"), out("startText", "`fork` 里：那一轮你那句在看的那一台钟上的（请求的 `tz`）钟面 `HH:MM`（界面照抄；说不出 ⇒ `null`）"), out("tmux", "这台有没有 tmux（`false` ⇒ 只能开终端窗口）"), out("turn", "`fork` 里：`at` 那一条在第几轮")],
         takes_input: true,
         run: Run::Blocking(|r| {
-            crate::faces::session_new_face::facts(&r.args)
+            crate::faces::session_new_face::facts(&r.args, &r.tz)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
@@ -311,7 +311,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         fields: &[out("families", "按族的清单，空族不出现；一族都没有 ⇒ `[]`（界面直接做，不问）"), out("family", "`turn`（那个会话有一轮在跑：活着的会话进程状态说在干活）· `agent`（它派出去还在跑的子运行）· `task`（它任务表里 `in_progress` 的）"), out("names", "显示名：子运行的标签（无标签用种类 / 运行号）· 任务主题；`turn` 那一族为空表"), arg("sid", "会话 id（空 / 缺 ⇒ `bad_args`）")],
         takes_input: true,
         run: Run::Blocking(|r| {
-            crate::faces::feature_face::answer(&r.cmd, &r.args)
+            crate::faces::feature_face::answer(&r.cmd, &r.args, &r.tz)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),

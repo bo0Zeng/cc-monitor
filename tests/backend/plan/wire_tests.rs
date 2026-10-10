@@ -16,7 +16,7 @@ fn ran(doc: &Value) -> Ran {
 fn out(v: Value) -> Value {
     let mut v = v;
     crate::plan::review::current(None).annotate(&mut v);
-    crate::plan::product::with_time_texts(&mut v, 2_000, 0);
+    crate::plan::product::with_time_texts(&mut v, 2_000, &Default::default());
     v
 }
 

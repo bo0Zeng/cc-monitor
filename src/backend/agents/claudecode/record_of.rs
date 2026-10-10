@@ -7,10 +7,11 @@
 //! | `system` · `subtype == "api_error"` | `retry` |
 //! | `ai-title` / `custom-title` | `title{by: agent / user}` |
 //! | `queue-operation` · `remove` · 人说的 | `queued` |
-//! | 其余（别的 `system` · `attachment` · 看不懂的 · 元数据） | 无记录（链上那一半由 [`super::chain`] 给） |
+//! | 看不懂的（`Unrecognized`：没见过的类型 · 形状变了） | `unread`（写好的一句 ＋ 原文摘录） |
+//! | 其余（别的 `system` · `attachment` · 状态行 · 元数据） | 无记录（链上那一半由 [`super::chain`] 给） |
 
 use super::schema::JsonlRecord;
-use crate::agents::record::{Block, Body, Record, RecordClass, ReplyError, TitleBy};
+use crate::agents::record::{Block, Body, Record, RecordClass, ReplyError, TitleBy, UnreadWhy};
 use serde_json::Value;
 
 /// 这一家在线上的 `agent` 值。
@@ -57,7 +58,7 @@ pub(crate) fn class_of(v: &Value) -> Option<RecordClass> {
 
 /// 一条解析好的盘上记录 ⇒ 通用记录；不进界面 ⇒ `None`。没有身份的那几类（标题 · 排队）`id` 用 `fallback_id`（调用方给，会话内唯一）。
 pub(crate) fn record_of(rec: JsonlRecord, fallback_id: &str) -> Option<Record> {
-    let rec_of = |id: String, at: Option<String>, time_text: Option<String>, body: Body| Record {
+    let rec_of = |id: String, at: Option<String>, body: Body| Record {
         agent: AGENT.to_string(),
         id: if id.is_empty() {
             fallback_id.to_string()
@@ -65,14 +66,15 @@ pub(crate) fn record_of(rec: JsonlRecord, fallback_id: &str) -> Option<Record> {
             id
         },
         at,
-        time_text: time_text.map(crate::common::cells::Words),
+        // 钟面按看的那一台的时区，出口那一下写（[`Record::stamp`]）。
+        time_text: None,
+        at_ms: None,
         body,
     };
     match rec {
         JsonlRecord::User {
             uuid,
             timestamp,
-            time_text,
             message,
             cwd,
             user_text,
@@ -81,7 +83,6 @@ pub(crate) fn record_of(rec: JsonlRecord, fallback_id: &str) -> Option<Record> {
         } => Some(rec_of(
             uuid,
             Some(timestamp),
-            time_text,
             Body::Said {
                 who: user_text,
                 blocks: blocks_of(&message.content),
@@ -92,7 +93,6 @@ pub(crate) fn record_of(rec: JsonlRecord, fallback_id: &str) -> Option<Record> {
         JsonlRecord::Assistant {
             uuid,
             timestamp,
-            time_text,
             message,
             is_api_error_message,
             api_error_status,
@@ -112,7 +112,6 @@ pub(crate) fn record_of(rec: JsonlRecord, fallback_id: &str) -> Option<Record> {
             Some(rec_of(
                 uuid,
                 Some(timestamp),
-                time_text,
                 Body::Reply {
                     blocks: blocks_of(&message.content),
                     model: message.model.filter(|m| m != AUTO_REPLY_MODEL),
@@ -128,7 +127,6 @@ pub(crate) fn record_of(rec: JsonlRecord, fallback_id: &str) -> Option<Record> {
         JsonlRecord::System {
             subtype,
             timestamp,
-            time_text,
             uuid,
             retry_attempt,
             max_retries,
@@ -137,7 +135,6 @@ pub(crate) fn record_of(rec: JsonlRecord, fallback_id: &str) -> Option<Record> {
         } if subtype.as_deref() == Some("api_error") => Some(rec_of(
             uuid.unwrap_or_default(),
             Some(timestamp),
-            time_text,
             Body::Retry {
                 reason: api_reason.unwrap_or(crate::agents::ApiReason::Unknown),
                 attempt: retry_attempt,
@@ -147,7 +144,6 @@ pub(crate) fn record_of(rec: JsonlRecord, fallback_id: &str) -> Option<Record> {
         JsonlRecord::AiTitle { ai_title, .. } => Some(rec_of(
             String::new(),
             None,
-            None,
             Body::Title {
                 text: ai_title,
                 by: TitleBy::Agent,
@@ -155,7 +151,6 @@ pub(crate) fn record_of(rec: JsonlRecord, fallback_id: &str) -> Option<Record> {
         )),
         JsonlRecord::CustomTitle { custom_title, .. } => Some(rec_of(
             String::new(),
-            None,
             None,
             Body::Title {
                 text: custom_title,
@@ -165,17 +160,32 @@ pub(crate) fn record_of(rec: JsonlRecord, fallback_id: &str) -> Option<Record> {
         JsonlRecord::QueueOperation {
             operation,
             timestamp,
-            time_text,
             user_text: Some(who),
             ..
         } if operation.as_deref() == Some("remove")
             && matches!(who.speaker, crate::agents::Speaker::Human) =>
         {
+            Some(rec_of(String::new(), timestamp, Body::Queued { who }))
+        }
+        // 认不出（没见过的类型 · 见过的类型形状变了）：每行一条 `unread`；相邻同类并成一条是出记录页那一遍的事。
+        JsonlRecord::Unrecognized {
+            uuid,
+            timestamp,
+            original_type,
+            raw,
+            reason,
+            ..
+        } => {
+            // 连 `type` 都没有的一行算「没见过的类型」（serde 报的是缺判别格，不是认识的类型形状变了）。
+            let why = if reason == "unknown-type" || original_type.is_none() {
+                UnreadWhy::UnknownType
+            } else {
+                UnreadWhy::ParseFailed
+            };
             Some(rec_of(
-                String::new(),
+                uuid.unwrap_or_default(),
                 timestamp,
-                time_text,
-                Body::Queued { who },
+                Body::unread(why, original_type, &raw),
             ))
         }
         _ => None,

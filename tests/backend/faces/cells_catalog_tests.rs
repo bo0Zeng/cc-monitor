@@ -129,6 +129,7 @@ fn corpus(name: &str) -> Vec<Value> {
                 name: "Bash".into(),
                 what: Some("ls".into()),
                 at: None,
+                at_ms: None,
                 state: crate::observe::facts_query::StepWait::Running,
                 why: None,
             }];
@@ -158,6 +159,7 @@ fn corpus(name: &str) -> Vec<Value> {
                 name: "Bash".into(),
                 what: Some("ls".into()),
                 at: None,
+                at_ms: None,
                 state: crate::observe::facts_query::StepWait::Running,
                 why: None,
             }];
@@ -207,7 +209,8 @@ fn corpus(name: &str) -> Vec<Value> {
                 r#"{"type":"permission-mode","permissionMode":"default","sessionId":"s"}"#,
             );
             let face = crate::agents::claudecode::RECORDS;
-            let mut reader = crate::observe::record_page::Reader::new(&face, 0, &[]);
+            let mut reader =
+                crate::observe::record_page::Reader::new(&face, 0, &[], Default::default());
             crate::observe::record_page::rows_of(&mut reader, 0, page.as_bytes())
                 .into_iter()
                 .map(|r| serde_json::to_value(r).unwrap())
@@ -348,8 +351,8 @@ const REGEN: &str = "CCM_REGEN_CELLS_CATALOG";
 /// ★ 格目录的金样 ＝ 帧命令真写出来的那一份（出口不起后端也能读；注册表出参对拍也用它）。改了成品就重写：
 /// `CCM_REGEN_CELLS_CATALOG=1 cargo test --lib -- cells_catalog`。
 ///
-/// 冻结的成品（[`Product::frozen`]）只许加格：金样里它有的每一格，目录里还得在、类别与类型不变 —— 先于重写判，
-/// 所以删 / 改名 / 换类型重写金样也不放行（要删得先手改金样，那是一次有意的协议变化）。
+/// 冻结的格（[`Product::frozen`]，目录里每格的 `frozen`）不许删、改名、换类别或类型：金样里标了冻结的每一格，
+/// 目录里还得在、还冻结 —— 先于重写判，所以重写金样也不放行（要解冻得先手改金样，那是一次有意的协议变化）。
 #[test]
 fn the_golden_is_what_the_command_writes() {
     let now = catalog();
@@ -367,26 +370,87 @@ fn the_golden_is_what_the_command_writes() {
             .and_then(|p| p["cells"].as_array().cloned())
             .unwrap_or_default()
     };
-    let frozen: Vec<&Product> = PRODUCTS.iter().filter(|p| p.frozen).collect();
-    assert!(!frozen.is_empty(), "一件冻结的成品都没有 —— 本条在空转");
-    for p in frozen {
-        let kept = cells(&had, p.name);
-        assert!(
-            !kept.is_empty(),
-            "冻结的成品 {} 在落盘的金样里一格都没有 —— 先把它连同格写进金样",
-            p.name
-        );
+    let mut kept_any = 0;
+    for p in PRODUCTS {
+        let kept: Vec<Value> = cells(&had, p.name)
+            .into_iter()
+            .filter(|c| c["frozen"] == true)
+            .collect();
+        kept_any += kept.len();
         let now = cells(&now, p.name);
         let lost: Vec<&Value> = kept.iter().filter(|c| !now.contains(c)).collect();
         assert!(
             lost.is_empty(),
-            "冻结的成品 {} 少了格或格换了样（两个前端在读，只许加）：{lost:#?}",
+            "成品 {} 冻结的格少了、换了样或解冻了（两个前端在读）：{lost:#?}",
             p.name
         );
     }
+    assert!(
+        kept_any >= 20,
+        "落盘的金样里冻结的格只有 {kept_any} 个 —— 本条在空转"
+    );
     if std::env::var_os(REGEN).is_some() {
         std::fs::write(&path, &got).unwrap();
     }
     let want = std::fs::read_to_string(&path).unwrap_or_default();
     assert!(got == want, "格目录与金样不一致（{REGEN}=1 重写）");
+}
+
+/// 注册表里叫 `needs` 的出参（`history-facts` · `sessions-needs`）说明里点得出它的每一格 —— 第二个前端照说明读，
+/// 说「同一份」不算点名（协议文档是它唯一不读核心代码就看得到的地方）。
+#[test]
+fn every_needs_out_field_names_each_needs_cell() {
+    let cells: Vec<String> = catalog_of("facts")
+        .into_keys()
+        .filter_map(|p| p.strip_prefix("needs.").map(str::to_string))
+        .collect();
+    assert!(
+        cells.len() >= 8,
+        "needs 只有 {} 格 —— 本条在空转",
+        cells.len()
+    );
+    let mut seen = 0;
+    for spec in crate::stream::inbound::REGISTRY {
+        for f in spec.fields.iter().filter(|f| f.name == "needs") {
+            seen += 1;
+            // 反引号里出现过的词（`{kind, tool}` 那种一口气列的也算）。
+            let named: BTreeSet<&str> = f
+                .doc
+                .split('`')
+                .skip(1)
+                .step_by(2)
+                .flat_map(|span| span.split(|ch: char| !ch.is_ascii_alphanumeric()))
+                .collect();
+            let missing: Vec<&String> = cells
+                .iter()
+                .filter(|c| !named.contains(c.as_str()))
+                .collect();
+            assert!(
+                missing.is_empty(),
+                "{} 的 `needs` 说明没点这几格：{missing:?}",
+                spec.name
+            );
+        }
+    }
+    assert!(seen >= 2, "叫 needs 的出参只找到 {seen} 个 —— 本条在空转");
+}
+
+/// 只冻结几格的成品：点名的每一格都得是目录里真有的格（写错路径 ＝ 以为冻住了、其实什么也没冻）。
+#[test]
+fn every_named_frozen_cell_is_in_the_catalog() {
+    let mut named = 0;
+    for p in PRODUCTS {
+        if let Frozen::Cells(list) = p.frozen {
+            let cat = catalog_of(p.name);
+            for c in list {
+                named += 1;
+                assert!(
+                    cat.contains_key(*c),
+                    "{} 冻结了一格目录里没有的 `{c}`",
+                    p.name
+                );
+            }
+        }
+    }
+    assert!(named >= 10, "按格冻结的只有 {named} 格 —— 本条在空转");
 }

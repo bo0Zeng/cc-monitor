@@ -4,26 +4,21 @@ import android.util.Log
 import com.ccmonitor.mobile.core.claude.agent.AgentProfile
 import com.ccmonitor.mobile.core.claude.bridge.UplinkSink
 import com.ccmonitor.mobile.core.claude.model.AgentKind
-import com.ccmonitor.mobile.core.claude.transport.DaemonConversationReader
-import com.ccmonitor.mobile.core.claude.transport.DaemonHistoryReader
-import com.ccmonitor.mobile.core.claude.transport.DaemonSessionSource
-import com.ccmonitor.mobile.core.claude.transport.SessionSignals
-import com.ccmonitor.mobile.core.remote.RemoteCommandChannel
 import com.ccmonitor.mobile.core.remote.RemoteExecutor
 import com.ccmonitor.mobile.core.ssh.KnownHostStore
 import com.ccmonitor.mobile.dev.DevSeeder
+import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.ssh.HostConnector
 import com.ccmonitor.mobile.ssh.KnownHostDaoStore
 import com.ccmonitor.mobile.ui.chat.ChatController
 import com.ccmonitor.mobile.ui.chat.ChatSessionKey
 import com.ccmonitor.mobile.ui.chat.ChatViewModel
-import com.ccmonitor.mobile.ui.chat.ClaudeSessionId
 import com.ccmonitor.mobile.ui.chat.ConnectionHolder
 import com.ccmonitor.mobile.ui.chat.HostId
 import com.ccmonitor.mobile.ui.claude.ReadingPaneViewModel
 import com.ccmonitor.mobile.ui.host.HostViewModel
 import com.ccmonitor.mobile.ui.identity.IdentityViewModel
-import com.ccmonitor.mobile.ui.overview.SessionOverviewViewModel
+import com.ccmonitor.mobile.ui.overview.ConversationsViewModel
 import com.ccmonitor.mobile.ui.session.SessionTabManager
 import com.ccmonitor.mobile.ui.session.SessionViewModel
 import com.ccmonitor.mobile.ui.settings.ButtonSettingsViewModel
@@ -50,8 +45,6 @@ val appModule =
                     uplink = it.getOrNull<UplinkSink>(),
                     // 带上主机，对话才持有得住那条连接
                     hostId = it.getOrNull<HostId>()?.value,
-                    // 跨通路信号汇按 Claude 自己的对话编号索引，不是上面那个 `key`
-                    claudeSessionId = it.getOrNull<ClaudeSessionId>()?.value,
                 ),
             )
         }
@@ -79,27 +72,13 @@ val appModule =
                 onEvicted = { key, total ->
                     Log.w("ChatController", "对话数超过 ${ChatController.MAX_SESSIONS}，收掉最旧的一个（key=$key，累计 $total）")
                 },
-                // 跨通路信号汇，进程级，两个屏共用一个。
-                signals = get(),
             )
         }
 
-        // 跨通路信号汇：聊天通路和总览通路之间的桥。聊天通路投配额与「被挡住了」，总览通路每收到一份 daemon 快照
-        // 投一次等待态。必须是 single：两个屏拿到不同实例时，投进去的信号在另一边永远看不见。
-        single { SessionSignals() }
-        // 会话总览。参数按类型取；daemon 路径由调用方给。
-        viewModel {
-            val channel = it.get<RemoteCommandChannel>()
-            val daemonPath = it.get<String>()
-            SessionOverviewViewModel(
-                source = DaemonSessionSource(channel, daemonPath),
-                // 上面那个 single，与聊天屏共用。
-                signals = get(),
-                // 分叉来源（`forkedFrom`）走批量投影探针，是裸 shell 的 `for f in …`，不经 daemon，只要 channel。
-                history = DaemonHistoryReader(channel),
-                // 列表来源是 daemon 的一次性查询面：流上宣告的只是一小部分会话，而且流量大得多。
-                conversations = DaemonConversationReader(channel, daemonPath),
-            )
+        // 每台一条常驻流（进程级）；「对话」一屏与抽屉「最近」共用同一个清单 VM。参数顺序 = `parametersOf(hostId, machine)`。
+        single { HostBackends(get()) }
+        viewModel { params ->
+            ConversationsViewModel(backend = get<HostBackends>().of(params.get(0)), machine = params.get(1))
         }
         viewModel { IdentityViewModel(get()) }
         viewModel { SettingsViewModel(get()) }

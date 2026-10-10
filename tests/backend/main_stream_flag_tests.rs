@@ -44,29 +44,29 @@ fn flags_are_stripped_and_detected() {
             StreamWants {
                 with_bg: true,
                 tail_only: true,
-                ..none
+                ..none.clone()
             },
         ),
         (
             v(&["--tail-only"]),
             StreamWants {
                 tail_only: true,
-                ..none
+                ..none.clone()
             },
         ),
-        (v(&[]), none),
+        (v(&[]), none.clone()),
         (
             v(&["--with-pid"]),
             StreamWants {
                 with_pid: true,
-                ..none
+                ..none.clone()
             },
         ),
         (
             v(&["--with-raw"]),
             StreamWants {
                 with_raw: true,
-                ..none
+                ..none.clone()
             },
         ),
         (
@@ -74,7 +74,7 @@ fn flags_are_stripped_and_detected() {
             StreamWants {
                 tail_only: true,
                 with_raw: true,
-                ..none
+                ..none.clone()
             },
         ),
     ] {
@@ -82,6 +82,42 @@ fn flags_are_stripped_and_detected() {
         assert!(rest.is_empty(), "{args:?} 没被剥干净 → §26 死循环");
         assert_eq!(got, want, "{args:?}");
     }
+}
+
+/// 看的那一台的时区 `--tz <IANA 名>`：任意位置、连值一起剥掉（不剥 ⇒ 当查询参数 / 当位置参数）；认得的名 ⇒ 那个时区，
+/// 缺值 · 认不得 ⇒ UTC（不拒）。一次性 CLI 面与流模式同一个旗标。
+#[test]
+fn the_viewer_time_zone_flag_is_stripped_with_its_value() {
+    use super::{StreamWants, Tz};
+    let sh = Tz::named("Asia/Shanghai").expect("时区库里有上海");
+    let (rest, got) = split_stream_flags(v(&["--tail-only", "--tz", "Asia/Shanghai"]));
+    assert!(rest.is_empty(), "{rest:?}");
+    assert_eq!(
+        got,
+        StreamWants {
+            tail_only: true,
+            tz: sh.clone(),
+            ..Default::default()
+        }
+    );
+    let (rest, got) = split_stream_flags(v(&["--quota-read", "--tz", "Asia/Shanghai", "--text"]));
+    assert_eq!(
+        rest,
+        v(&["--quota-read", "--text"]),
+        "值不许留下来当位置参数"
+    );
+    assert_eq!(got.tz, sh);
+    let (rest, got) = split_stream_flags(v(&["--quota-read", "--tz", "Nowhere/Atlantis"]));
+    assert_eq!(rest, v(&["--quota-read"]));
+    assert_eq!(got.tz, Tz::default(), "认不得 ⇒ UTC");
+    let (rest, got) = split_stream_flags(v(&["--quota-read", "--tz", "--text"]));
+    assert_eq!(
+        rest,
+        v(&["--quota-read", "--text"]),
+        "缺值：下一个旗标不是它的值"
+    );
+    assert_eq!(got.tz, Tz::default());
+    assert_ne!(sh, Tz::default(), "反空真：上海不等于 UTC");
 }
 
 /// 查询参数与流 flag 互不干扰：查询参数原样保留（顺带守住"flag 混进查询

@@ -14,7 +14,7 @@
 //! ## 物理删除
 //!
 //! 用户明确选了「物理删除」。前端二次确认后经通道直说那台机器的后端 `files-delete-session`（monitor 那条转交删了）；
-//! 删完那条注解由界面交本机后端 `history-forget` 连带删。Claude Code 自己也不再能 resume 这个会话。
+//! 删完那条注解由界面交会话所在那台的后端 `history-forget` 连带删（注解跟着会话住在那台）。Claude Code 自己也不再能 resume 这个会话。
 
 // === 历史清单与注解搬进了本机常驻后端 ===
 //

@@ -1396,8 +1396,24 @@ fn extra_cells_scenario(shape: &Shape) {
     );
     assert_eq!(
         info_of(&book, "g6").started_text,
-        at(135).map(|ms| crate::common::time::ms_hm_here(ms as i64)),
-        "[{}] 开始那一刻的钟面跟着开始取早的那个（这台本地钟，界面照抄）",
+        None,
+        "[{}] 运行表里不写钟面（推出去那一下按这条流的时区写）",
+        shape.name
+    );
+    let sh = crate::Tz::named("Asia/Shanghai").unwrap();
+    let mut f = crate::stream::wire::Frame::SessionRuns {
+        sid: "s".into(),
+        runs: vec![info_of(&book, "g6")],
+        ended: Vec::new(),
+    };
+    f.stamp(&sh);
+    let crate::stream::wire::Frame::SessionRuns { runs, .. } = f else {
+        unreachable!()
+    };
+    assert_eq!(
+        runs[0].started_text,
+        at(135).map(|ms| crate::common::time::ms_hm(ms as i64, &sh)),
+        "[{}] 开始那一刻的钟面跟着开始取早的那个（推出去那一下按看的那一台的时区写，界面照抄）",
         shape.name
     );
     let Some(Frame::SessionRuns { runs, .. }) = track.retire(SID) else {

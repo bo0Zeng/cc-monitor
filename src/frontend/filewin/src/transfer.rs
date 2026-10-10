@@ -906,7 +906,7 @@ impl DropBoard {
         }
         // 修改时间那一段：「这台」是这台盘上的文件（这台的钟排）；「那台」照抄那台后端写好的 `mtime_text`。
         let side = |size: Option<u64>, when: Option<String>| {
-            let size = size.map(super::rows::human_size);
+            let size = size.map(copy_core::size_text);
             [size, when]
                 .into_iter()
                 .flatten()

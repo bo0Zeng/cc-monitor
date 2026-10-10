@@ -1028,8 +1028,8 @@ export class HistoryView {
 
   private async star(r: HistoryRow): Promise<void> {
     try {
-      await annotate(r.sessionId, { starred: !r.starred });
-      this.refresh(false, keyOf(r.origin));
+      await annotate(r.origin ?? LOCAL_ORIGIN, r.sessionId, { starred: !r.starred });
+      this.refresh(Boolean(r.origin), keyOf(r.origin));
     } catch (e) {
       failToast(copyText("history.star.failed"), e);
     }
@@ -1038,10 +1038,10 @@ export class HistoryView {
   private async hide(r: HistoryRow): Promise<void> {
     const to = !r.hidden;
     try {
-      await annotate(r.sessionId, { hidden: to });
-      this.refresh(false, keyOf(r.origin));
+      await annotate(r.origin ?? LOCAL_ORIGIN, r.sessionId, { hidden: to });
+      this.refresh(Boolean(r.origin), keyOf(r.origin));
       if (to)
-        undoToast(copyText("history.hide.done", { label: labelOf(r) }), () => void annotate(r.sessionId, { hidden: false }).then(() => this.refresh(false, keyOf(r.origin))), () => {});
+        undoToast(copyText("history.hide.done", { label: labelOf(r) }), () => void annotate(r.origin ?? LOCAL_ORIGIN, r.sessionId, { hidden: false }).then(() => this.refresh(Boolean(r.origin), keyOf(r.origin))), () => {});
     } catch (e) {
       failToast(copyText("history.hide.failed"), e);
     }
@@ -1057,9 +1057,9 @@ export class HistoryView {
     if (next === null) return;
     const before = r.customTitle;
     try {
-      await annotate(r.sessionId, { customTitle: next.trim() });
-      this.refresh(false, keyOf(r.origin));
-      undoToast(copyText("history.rename.done"), () => void annotate(r.sessionId, { customTitle: before ?? "" }).then(() => this.refresh(false, keyOf(r.origin))), () => {});
+      await annotate(r.origin ?? LOCAL_ORIGIN, r.sessionId, { customTitle: next.trim() });
+      this.refresh(Boolean(r.origin), keyOf(r.origin));
+      undoToast(copyText("history.rename.done"), () => void annotate(r.origin ?? LOCAL_ORIGIN, r.sessionId, { customTitle: before ?? "" }).then(() => this.refresh(Boolean(r.origin), keyOf(r.origin))), () => {});
     } catch (e) {
       failToast(copyText("history.rename.failed"), e);
     }
@@ -1084,13 +1084,13 @@ export class HistoryView {
       failToast(copyText("history.delete.failed", { label }), e);
       return;
     }
-    void forgetAnnotation(r.sessionId);
+    void forgetAnnotation(r.origin ?? LOCAL_ORIGIN, r.sessionId);
     if (this.shown === rowKey(r)) {
       this.disposeViewer();
       this.showPlaceholder();
     }
     toast(copyText("history.delete.done", { label }), "", { level: "success" });
-    this.refresh(false, keyOf(r.origin));
+    this.refresh(Boolean(r.origin), keyOf(r.origin));
   }
 }
 

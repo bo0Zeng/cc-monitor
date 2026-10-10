@@ -12,7 +12,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         codes: &["bad_args"],
         fields: &[arg("dirs", "可选：另要问的目录（串的数组）"), arg("fresh", "可选布尔：`true` ⇒ 认过的目录也重问"), out("pb", "`{state: ok|missing|unsupported, said, version}`：pb 装没装、认不认得它的输出"), out("workspaces", "每个工作区一格 `{workspace, repo, auto, rev, stale, needCount, bySession, slices: [{name, domain, current, progress, needCount, error, stale}]}`")],
         takes_input: true,
-        run: Run::BlockingData(|r| crate::faces::plan_face::answer(&r.cmd, &r.args).map(Some)),
+        run: Run::BlockingData(|r| crate::faces::plan_face::answer(&r.cmd, &r.args, &r.tz).map(Some)),
     },
     CommandSpec {
         name: "plan-read",
@@ -20,7 +20,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         codes: &["bad_args", "failed", "no_pb", "not_workspace", "pb_unsupported"],
         fields: &[arg("workspace", "工作区根（`plan-list` 给的那个）"), out("rev", "这一份输出的摘要：变了才算计划变了"), out("readAt", "读到的时刻（epoch ms）"), out("needCount", "这个工作区要你看的数（没认可的，不含 agent 问人那一种）"), out("bySession", "会话 ⇒ 它接手的那一块 `{slice, block, cell, title, top, phase, at, atTitle, via: session|subagent}`（子 agent 接的记在父会话名下；自己接的优先）"), out("slices", "每片一格：读不成 ⇒ `error`；这一刻读不成但读好过 ⇒ 上一次那一份 ＋ `stale {said, since}`；`needs: [{key, kind: top|red|ended|ask, block, cell, sid, acked}]` · `needCount`；每格 `returned`：退回过 ⇒ `{at, to, state: returned|unsure|landed, by: child|body, child}`，没有 ⇒ `null`；顶块（`project`）那一次记在片上的 `returned`"), out("stale", "整次读不成、给的是上一次那一份 ⇒ `{said, raw, since}`；否则 `null`")],
         takes_input: true,
-        run: Run::BlockingData(|r| crate::faces::plan_face::answer(&r.cmd, &r.args).map(Some)),
+        run: Run::BlockingData(|r| crate::faces::plan_face::answer(&r.cmd, &r.args, &r.tz).map(Some)),
     },
     CommandSpec {
         name: "plan-cell-view",
@@ -28,7 +28,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         codes: &["bad_args", "no_view"],
         fields: &[arg("id", "格的编号"), arg("slice", "片名"), out("view", "原样那一段"), arg("workspace", "工作区根")],
         takes_input: true,
-        run: Run::BlockingData(|r| crate::faces::plan_face::answer(&r.cmd, &r.args).map(Some)),
+        run: Run::BlockingData(|r| crate::faces::plan_face::answer(&r.cmd, &r.args, &r.tz).map(Some)),
     },
     // 代敲也在阻塞档：起一次 pb（`view` 要画整张图）。写盘的是 pb（`.env` 的 auto · 系统临时目录里那一页），本族不写。
     CommandSpec {
@@ -37,7 +37,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         codes: &["bad_args", "failed", "no_pb", "not_workspace", "pb_unsupported", "refused"],
         fields: &[arg("cmd", "`continue` · `pause` · `view`"), arg("workspace", "工作区根"), out("rc", "pb 的退出码（成了才回，恒 0）"), out("said", "pb 说的第一句"), out("path", "`view` 写的那一页（那台机器上的路径）；别的 ⇒ `null`")],
         takes_input: true,
-        run: Run::BlockingData(|r| crate::faces::plan_face::answer(&r.cmd, &r.args).map(Some)),
+        run: Run::BlockingData(|r| crate::faces::plan_face::answer(&r.cmd, &r.args, &r.tz).map(Some)),
     },
     // 反查只读本子里那一份（不起 pb），照样放阻塞档（读认可那份小文件）。
     CommandSpec {
@@ -46,7 +46,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         codes: &["bad_args", "failed"],
         fields: &[arg("dir", "那台机器上的绝对路径（串）"), out("workspace", "工作区根；不在任何工作区 ⇒ `null`"), out("slice", "片名；不在任何一片的仓库（`<工作区>/<片名>/`）里 ⇒ `null`"), out("unreadable", "那一片此刻读不成的那一句（条目空）"), out("entries", "每份声明过的文件 `{name, id, title, statusCode, status, block, signAtText, fileState, fileNote, dup: [{id, title}]}`（被几格声明 ⇒ 先声明的作主、其余进 `dup`）"), out("unowned", "无主的那几份（要 pb 给；没给 ⇒ `null`）")],
         takes_input: true,
-        run: Run::BlockingData(|r| crate::faces::plan_face::answer(&r.cmd, &r.args).map(Some)),
+        run: Run::BlockingData(|r| crate::faces::plan_face::answer(&r.cmd, &r.args, &r.tz).map(Some)),
     },
     // 审面三条也在阻塞档：认可读—改—写后端自己那份小文件（跨进程锁）；退回现读一次计划（起 pb）再走 `terminal-input` 的本体（起 tmux）。
     CommandSpec {

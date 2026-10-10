@@ -32,18 +32,10 @@ pub fn parse_line(raw: &str) -> Result<Option<JsonlRecord>, serde_json::Error> {
                     .unwrap_or(""),
                 Some(trimmed),
             );
-            Ok(Some(
-                salvage(&v, trimmed, "unknown-type".to_string()).with_time_text(),
-            ))
+            Ok(Some(salvage(&v, trimmed, "unknown-type".to_string())))
         }
         // user 记录带上注入噪声规则的成品；assistant 记录带上每个 tool_use 的卡型。
-        Ok(record) => Ok(Some(
-            record
-                .with_user_text()
-                .with_tool_cards()
-                .with_steps()
-                .with_time_text(),
-        )),
+        Ok(record) => Ok(Some(record.with_user_text().with_tool_cards().with_steps())),
         Err(e) => match serde_json::from_str::<serde_json::Value>(trimmed) {
             // 合法 JSON，但 schema 认不出（已知 type 缺必填字段 / 字段形状变了）→ 照样抢救身份，不丢链。这一类值得警惕（多半是 Claude 改了已知类型的格式），
             // 故 warn 一条（罕见，不刷屏）；unknown-type 那一支不 warn（预期内，会刷屏）。
@@ -57,9 +49,7 @@ pub fn parse_line(raw: &str) -> Result<Option<JsonlRecord>, serde_json::Error> {
                         .unwrap_or(""),
                     Some(trimmed),
                 );
-                Ok(Some(
-                    salvage(&v, trimmed, format!("parse-failed: {e}")).with_time_text(),
-                ))
+                Ok(Some(salvage(&v, trimmed, format!("parse-failed: {e}"))))
             }
             // 连 JSON 都不是 → 真畸形，没东西可救，保持既有 Err 契约。
             Err(_) => Err(e),
@@ -124,7 +114,6 @@ fn salvage(v: &serde_json::Value, raw: &str, reason: String) -> JsonlRecord {
         uuid: s("uuid"),
         parent_uuid: s("parentUuid"),
         timestamp: s("timestamp"),
-        time_text: None,
         original_type: s("type"),
         raw: raw.to_owned(),
         reason,

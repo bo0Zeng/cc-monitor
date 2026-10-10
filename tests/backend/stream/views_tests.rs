@@ -108,6 +108,7 @@ async fn the_frame_face_projects_a_successful_reply() {
         args: serde_json::Value::Null,
         within_ms: None,
         view: serde_json::Value::Null,
+        tz: Default::default(),
         until: None,
     };
     req.args = json!({});

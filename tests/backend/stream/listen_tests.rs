@@ -59,7 +59,19 @@ fn attach_flags_are_optional_closed_and_per_connection() {
             tail_only: true,
             with_pid: true,
             with_raw: true,
+            tz: Default::default(),
         }))
+    );
+    // 看的那一台的时区跟在旁边一格（不进 `flags`）：认得 ⇒ 那个时区；认不得 ⇒ UTC。
+    let sh = crate::Tz::named("Asia/Shanghai").unwrap();
+    assert_eq!(
+        attach_flags(r#"{"attach":true,"flags":[],"tz":"Asia/Shanghai"}"#).map(|w| w.map(|w| w.tz)),
+        Ok(Some(sh))
+    );
+    assert_eq!(
+        attach_flags(r#"{"attach":true,"flags":[],"tz":"Nowhere/Atlantis"}"#)
+            .map(|w| w.map(|w| w.tz)),
+        Ok(Some(crate::Tz::default()))
     );
     assert_eq!(
         attach_flags(r#"{"attach":true,"flags":[]}"#),

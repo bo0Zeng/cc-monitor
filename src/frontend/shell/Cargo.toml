@@ -114,6 +114,17 @@ path = "src/main.rs"
 name = "cc-monitor-filewin"
 path = "src/filewin/win_main.rs"
 
+# 截图台架的无头壳（`src/shots_shell.rs`）：只在这个特性下编，发版构建（`tauri build` · `cargo build --release`）不开它。
+# 台架那一处（`tests/shots/real/pool.mjs`）按 `cargo build --features shots --example ccm-shots-shell` 编；判据 `shots_feature_guard_tests.rs` 钉着。
+[features]
+shots = []
+
+# 不是 `[[bin]]`：打包器会把每个 bin 都装进安装包（见上）。例子不进包。
+[[example]]
+name = "ccm-shots-shell"
+path = "../../../tests/shots/real/shell_main.rs"
+required-features = ["shots"]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 # 内嵌字节自报的身份：界标与扫法用契约 crate 那一份（后端拼戳 · 运行期扫字节同一份）。

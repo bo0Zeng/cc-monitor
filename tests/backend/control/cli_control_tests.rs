@@ -113,10 +113,6 @@ const NOT_ON_CLI: &[(&str, &str)] = &[
         "派生名 `--ccm-print` 是 ccm 自己的诊断口；二进制叫 `ccm` 时后端按 `SUBCOMMANDS` 分流，占了它就把 `ccm --ccm-print` 抢进后端。",
     ),
     (
-        "launch-endpoint",
-        "同 `apikey-routing`：一次性进程里只能答 `listening: false`（`cli_control::STREAM_ONLY`）。",
-    ),
-    (
         "transfer-stop",
         "它撤的是**同一条连接上**在册的一趟传输；一次性进程里没有在册的票，只会回一条什么也没撤的 `ok`。",
     ),
@@ -244,6 +240,15 @@ fn every_wire_command_is_either_on_the_cli_or_has_a_written_reason() {
             why.chars().count()
         );
     }
+    // ③ 理由表里每一条都得是帧面上还在的命令：命令删了、理由还留着 ⇒ 读的人以为它还在（第二个前端照这张表判「哪条只有帧面」）。
+    let gone: Vec<&&str> = reasons
+        .iter()
+        .filter(|n| !exposed.contains(n) && !withheld.contains(n))
+        .collect();
+    assert!(
+        gone.is_empty(),
+        "理由表里这些命令帧面上已经没有了：{gone:?} —— 连同理由删掉"
+    );
 }
 
 /// ★ P4d-Y1 的另一半：**CLI 入口不许自己实现命令**。
@@ -514,6 +519,7 @@ fn run_cli<R: std::io::Read + Send + 'static>(args: &[String], stdin: R) -> (i32
         .unwrap();
     let rc = rt.block_on(run_io(
         args,
+        &Default::default(),
         stdin,
         std::time::Duration::from_millis(300),
         &mut out,

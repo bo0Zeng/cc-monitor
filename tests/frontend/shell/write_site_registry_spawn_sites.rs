@@ -18,6 +18,10 @@ use std::path::{Path, PathBuf};
 /// 两种三元组）。它接得住的是「某个落点改了策略而账本没跟」「策略名被改掉」
 /// 这两族，接不住同文件内的对调。别把它读成更强的东西。
 const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
+    ("shots_shell.rs", "start", "截图台架给的整条命令（bwrap 沙箱里的真后端）",
+     "截图台架的无头壳：只在特性 `shots` 下编（例子 `ccm-shots-shell`，不进安装包，判据 `shots_feature_guard_tests.rs`），\
+          不在用户机器上跑。每台机器起一个真后端、两根管子交产品那条本机读循环 —— 台架要的就是壳的真代码接真后端。",
+     "Hidden · JobKillOnClose · Inherit（台架看后端的 stderr）"),
     // 构建期（`build.rs`）那一行（vendor 新鲜度自检起 `git`）随 vendored 引擎整棵删了。
     ("ccm_probe.rs", "probe_with", "`bash -lic <常量探测串>`",
      "P3t-Y2：本机 ccm 的**能力集**探测。命令串是 `CCM_PROBE_CMD` —— 与远端那条**逐字同一个常量**，\

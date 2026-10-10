@@ -1,5 +1,6 @@
 package com.ccmonitor.mobile.core.ssh
 
+import com.ccmonitor.mobile.core.remote.RemoteDuplex
 import com.ccmonitor.mobile.core.remote.RemoteExecutor
 import kotlinx.coroutines.flow.Flow
 import java.io.Closeable
@@ -41,6 +42,9 @@ interface SshTransport :
     ): ShellChannel
 
     fun execStream(command: String): Flow<ByteArray>
+
+    /** 双向长 exec：stdin 写得进、stdout 读得出（常驻流 `--resident-attach` 用它）。 */
+    suspend fun execDuplex(command: String): RemoteDuplex
 
     suspend fun sftpList(path: String = "."): List<SftpEntry>
 

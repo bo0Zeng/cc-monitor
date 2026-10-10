@@ -402,7 +402,7 @@ fn every_declared_capability_is_reachable_through_the_single_entry_point() {
         if let Err(Refused {
             code: "unknown_capability",
             ..
-        }) = answer(name, &serde_json::json!({}))
+        }) = answer(name, &serde_json::json!({}), &Default::default())
         {
             unreachable.push(name);
         }
@@ -415,7 +415,7 @@ fn every_declared_capability_is_reachable_through_the_single_entry_point() {
     // 反向那半：没声明的名字必须**被拒**（否则这条判据对一切都绿）。
     assert!(
         matches!(
-            answer("files.delete", &serde_json::json!({})),
+            answer("files.delete", &serde_json::json!({}), &Default::default()),
             Err(Refused {
                 code: "unknown_capability",
                 ..
@@ -465,7 +465,12 @@ fn every_capability_states_its_contract_surface() {
 #[test]
 fn the_status_fields_match_what_the_call_really_returns() {
     let _lock = resident_lock();
-    let v = answer("files.index.status", &serde_json::json!({})).expect("status 不该失败");
+    let v = answer(
+        "files.index.status",
+        &serde_json::json!({}),
+        &Default::default(),
+    )
+    .expect("status 不该失败");
     let got: std::collections::BTreeSet<String> = v
         .as_object()
         .expect("status 回的该是一个对象")
@@ -492,6 +497,7 @@ fn the_find_fields_match_what_the_call_really_returns() {
     let v = answer(
         "files.find",
         &serde_json::json!({"query": "nothing-matches-this"}),
+        &Default::default(),
     )
     .expect("find 不该失败");
     let got: std::collections::BTreeSet<String> = v
@@ -528,6 +534,7 @@ fn the_index_rebuild_fields_match_what_the_call_really_returns() {
     let v = answer(
         "files.index.rebuild",
         &serde_json::json!({"path": fx.root.to_str().expect("夹具路径是 ASCII")}),
+        &Default::default(),
     )
     .expect("rebuild 不该失败");
     let got: std::collections::BTreeSet<String> = v
@@ -582,6 +589,7 @@ fn a_rebuild_on_an_unreadable_root_is_refused_without_touching_the_resident_inde
     answer(
         "files.index.rebuild",
         &serde_json::json!({"path": fx.root.to_str().expect("夹具路径是 ASCII")}),
+        &Default::default(),
     )
     .expect("先建一份好的");
     let before = index::status().entries;
@@ -592,6 +600,7 @@ fn a_rebuild_on_an_unreadable_root_is_refused_without_touching_the_resident_inde
     let got = answer(
         "files.index.rebuild",
         &serde_json::json!({"path": nowhere.to_str().expect("ASCII")}),
+        &Default::default(),
     );
     assert!(
         matches!(
@@ -622,6 +631,7 @@ fn the_browse_fields_match_what_the_call_really_returns() {
     let v = answer(
         "files.browse",
         &serde_json::json!({"dirs": [one.to_str().expect("夹具路径是 ASCII")]}),
+        &Default::default(),
     )
     .expect("browse 不该失败");
     let got: std::collections::BTreeSet<String> = v
@@ -659,7 +669,12 @@ fn the_browse_fields_match_what_the_call_really_returns() {
         "回参里那个上限不是后端真用的那个 —— 调用方按它决定该少送几个"
     );
     // ★ 空数组：**全卸**，而且它不是「少了 `dirs`」。
-    let v2 = answer("files.browse", &serde_json::json!({"dirs": []})).expect("空数组是合法的");
+    let v2 = answer(
+        "files.browse",
+        &serde_json::json!({"dirs": []}),
+        &Default::default(),
+    )
+    .expect("空数组是合法的");
     assert_eq!(
         (
             v2.get("added").and_then(serde_json::Value::as_u64),
@@ -712,7 +727,7 @@ fn the_new_two_capabilities_declared_codes_are_not_ghosts() {
             "bad_path",
         ),
     ] {
-        let got = answer(cap, &args);
+        let got = answer(cap, &args, &Default::default());
         assert!(
             matches!(got, Err(Refused { code: c, .. }) if c == want),
             "`{cap}` 对 {args:?} 该回 `{want}`，回的是 {got:?}"
@@ -986,8 +1001,8 @@ fn every_declared_arg_is_really_read_by_the_parser() {
             "`{cap}` / `{arg}` 那一对入参差的不止那一个键：{diff:?}\n\
              ⇒ 答案不同可能是**别的键**造成的，这一对证不了 `{arg}` 被读了"
         );
-        let ra = format!("{:?}", answer(cap, a));
-        let rb = format!("{:?}", answer(cap, b));
+        let ra = format!("{:?}", answer(cap, a, &Default::default()));
+        let rb = format!("{:?}", answer(cap, b, &Default::default()));
         assert_ne!(
             ra, rb,
             "\n🔴 `{cap}` 的参数 `{arg}` **改了也不起作用** —— 两趟只差这一个键，答案却一模一样。\n\
@@ -1026,8 +1041,8 @@ fn every_declared_arg_is_really_read_by_the_parser() {
     let base = serde_json::json!({ "path": p(&fx.root) });
     let with_ghost = serde_json::json!({ "path": p(&fx.root), "ignore_ascii_case": true });
     assert_eq!(
-        format!("{:?}", answer("files.ls", &base)),
-        format!("{:?}", answer("files.ls", &with_ghost)),
+        format!("{:?}", answer("files.ls", &base, &Default::default())),
+        format!("{:?}", answer("files.ls", &with_ghost, &Default::default())),
         "喂一个**没声明**的参数进去，答案居然变了 —— 那上面那一批「不同」证不了任何事\n\
          （要么这把尺子坏了，要么 `files.ls` 偷偷长出了一个没登记的参数）"
     );
@@ -1411,7 +1426,12 @@ fn the_rewalk_interval_is_part_of_the_declared_surface_and_is_really_queryable()
         "重走周期不在 `files.index.status` 的字段表里 —— 那它就只活在代码里了"
     );
     // ② 它在**真的回出去**的那个 JSON 里，而且等于声明的那个常量。
-    let v = answer("files.index.status", &serde_json::json!({})).expect("status 不该失败");
+    let v = answer(
+        "files.index.status",
+        &serde_json::json!({}),
+        &Default::default(),
+    )
+    .expect("status 不该失败");
     assert_eq!(
         v.get("rewalk_interval_secs").and_then(|x| x.as_u64()),
         Some(crate::files::index::REWALK_INTERVAL_SECS),
@@ -1446,7 +1466,12 @@ fn the_cold_first_build_estimate_is_its_own_declared_and_queryable_number() {
         status_cap.fields.contains(&"cold_first_build_secs"),
         "冷启动首建那个数不在 `files.index.status` 的字段表里 —— 那它就只活在代码里了"
     );
-    let v = answer("files.index.status", &serde_json::json!({})).expect("status 不该失败");
+    let v = answer(
+        "files.index.status",
+        &serde_json::json!({}),
+        &Default::default(),
+    )
+    .expect("status 不该失败");
     assert_eq!(
         v.get("cold_first_build_secs").and_then(|x| x.as_u64()),
         Some(crate::files::index::COLD_FIRST_BUILD_SECS),
@@ -1566,6 +1591,7 @@ fn the_kind_names_are_a_closed_set_with_one_home() {
     let v = answer(
         "files.ls",
         &serde_json::json!({"path": fx.root.to_str().expect("夹具路径是 ASCII")}),
+        &Default::default(),
     )
     .expect("ls 不该失败");
     let rows = v
@@ -1594,7 +1620,7 @@ fn a_malformed_path_argument_is_refused_with_its_own_code() {
         ("files.stat", serde_json::json!({"path": ""})),
         ("files.ls", serde_json::json!({"path": {"b16": "zz"}})),
     ] {
-        let got = answer(cap, &args);
+        let got = answer(cap, &args, &Default::default());
         assert!(
             matches!(
                 got,
@@ -1609,7 +1635,7 @@ fn a_malformed_path_argument_is_refused_with_its_own_code() {
     // `find` 那一侧是另一个码 —— 两条路的诊断不许混成一句。
     assert!(
         matches!(
-            answer("files.find", &serde_json::json!({})),
+            answer("files.find", &serde_json::json!({}), &Default::default()),
             Err(Refused {
                 code: "bad_args",
                 ..
@@ -1630,7 +1656,7 @@ fn the_declared_error_codes_are_not_ghosts() {
     std::fs::remove_dir_all(&nowhere).ok();
     let arg = serde_json::json!({"path": nowhere.to_str().expect("ASCII")});
     for (cap, want) in [("files.ls", "not_found"), ("files.stat", "unreadable")] {
-        let got = answer(cap, &arg);
+        let got = answer(cap, &arg, &Default::default());
         assert!(
             matches!(got, Err(Refused { code: c, .. }) if c == want),
             "`{cap}` 对一个不存在的路径没有回 `{want}`，回的是 {got:?}"
@@ -1654,6 +1680,7 @@ fn the_declared_error_codes_are_not_ghosts() {
         answer(
             "files.ls",
             &serde_json::json!({"path": p.to_str().unwrap()}),
+            &Default::default(),
         )
     };
     assert!(
@@ -1724,6 +1751,7 @@ fn a_text_under_the_cap_comes_back_whole_and_its_keys_are_the_declared_fields() 
     let v = answer(
         "files.read.text",
         &serde_json::json!({ "path": path_json(&f), "max_bytes": 4096 }),
+        &Default::default(),
     )
     .expect("一份放得下的 UTF-8 文本被拒了");
     assert_eq!(
@@ -1763,12 +1791,14 @@ fn one_byte_over_the_cap_is_refused_whole_and_exactly_at_the_cap_is_not() {
     let at = answer(
         "files.read.text",
         &serde_json::json!({ "path": path_json(&f), "max_bytes": 100 }),
+        &Default::default(),
     )
     .expect("恰好等于上限的那一份被拒了 —— 上限是「最多」，不是「少于」");
     assert_eq!(at["bytes"].as_u64(), Some(100));
     let over = answer(
         "files.read.text",
         &serde_json::json!({ "path": path_json(&f), "max_bytes": 99 }),
+        &Default::default(),
     );
     match over {
         Err(Refused {
@@ -1831,7 +1861,7 @@ fn every_refusal_of_read_text_lands_on_its_own_declared_code() {
     ];
     let mut seen: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
     for (args, want) in &cases {
-        let got = answer("files.read.text", args);
+        let got = answer("files.read.text", args, &Default::default());
         assert!(
             matches!(got, Err(Refused { code: c, .. }) if c == *want),
             "`files.read.text` 对 {args} 该回 `{want}`，回的是 {got:?}"
@@ -1842,7 +1872,8 @@ fn every_refusal_of_read_text_lands_on_its_own_declared_code() {
     assert!(
         answer(
             "files.read.text",
-            &serde_json::json!({ "path": path_json(&big), "max_bytes": ceiling })
+            &serde_json::json!({ "path": path_json(&big), "max_bytes": ceiling }),
+            &Default::default()
         )
         .is_ok(),
         "`max_bytes` 恰好等于天花板被拒了"
@@ -1904,7 +1935,8 @@ fn home_is_given_when_the_environment_has_one_and_refused_otherwise() {
     }
     #[cfg(unix)]
     {
-        let live = answer("files.home", &serde_json::json!({})).expect("本机这台后端说不出 home");
+        let live = answer("files.home", &serde_json::json!({}), &Default::default())
+            .expect("本机这台后端说不出 home");
         let p = live["path"].as_str().expect("本机 home 是 UTF-8");
         assert!(p.starts_with('/'), "本机答出来的 home 不是绝对路径：{p}");
     }
@@ -1936,8 +1968,12 @@ fn gp1_stat_reports_the_declared_fields_and_the_real_mode_bits() {
         .collect();
     for want in [0o640_u32, 0o4755] {
         std::fs::set_permissions(&f, std::fs::Permissions::from_mode(want)).expect("设权限");
-        let v = answer("files.stat", &serde_json::json!({ "path": path_json(&f) }))
-            .expect("stat 一个在的文件不该失败");
+        let v = answer(
+            "files.stat",
+            &serde_json::json!({ "path": path_json(&f) }),
+            &Default::default(),
+        )
+        .expect("stat 一个在的文件不该失败");
         let got: std::collections::BTreeSet<String> =
             v.as_object().expect("对象").keys().cloned().collect();
         assert_eq!(got, declared, "`files.stat` 真回的键与声明对不上");
@@ -1969,6 +2005,7 @@ fn a_non_utf8_file_is_read_back_chunk_by_chunk_byte_for_byte() {
         let v = answer_wire(
             "files-read-chunk",
             &serde_json::json!({ "path": at, "offset": off, "len": 4096 }),
+            &Default::default(),
         )
         .expect("读一块被拒");
         assert_eq!(v["size"], body.len());
@@ -1985,6 +2022,7 @@ fn a_non_utf8_file_is_read_back_chunk_by_chunk_byte_for_byte() {
     let past = answer_wire(
         "files-read-chunk",
         &serde_json::json!({ "path": at, "offset": 99_999, "len": 10 }),
+        &Default::default(),
     )
     .unwrap();
     assert_eq!(
@@ -1994,12 +2032,14 @@ fn a_non_utf8_file_is_read_back_chunk_by_chunk_byte_for_byte() {
     let e = answer_wire(
         "files-read-chunk",
         &serde_json::json!({ "path": at, "offset": 0, "len": READ_CHUNK_MAX_BYTES + 1 }),
+        &Default::default(),
     )
     .unwrap_err();
     assert_eq!(e.code, "bad_args");
     let e = answer_wire(
         "files-read-chunk",
         &serde_json::json!({ "path": raw::to_json(raw::path_bytes(&dir)), "offset": 0, "len": 1 }),
+        &Default::default(),
     )
     .unwrap_err();
     assert_eq!(e.code, "not_text");
@@ -2018,7 +2058,12 @@ fn ls_says_which_symlinks_point_at_directories() {
     std::os::unix::fs::symlink(&target, d.join("to-dir")).expect("链接到目录");
     std::os::unix::fs::symlink(d.join("plain.txt"), d.join("to-file")).expect("链接到文件");
     std::os::unix::fs::symlink(d.join("nowhere"), d.join("dangling")).expect("断链");
-    let v = answer("files.ls", &serde_json::json!({ "path": path_json(&d) })).expect("ls 不该失败");
+    let v = answer(
+        "files.ls",
+        &serde_json::json!({ "path": path_json(&d) }),
+        &Default::default(),
+    )
+    .expect("ls 不该失败");
     let mut got: Vec<(String, String, Option<bool>)> = v["entries"]
         .as_array()
         .expect("entries 该是数组")
@@ -2069,7 +2114,11 @@ fn a_directory_entry_that_cannot_be_read_is_counted_not_skipped() {
     let dir = std::env::temp_dir().join(format!("ccm-ls-unreadable-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(dir.join("a"), b"").unwrap();
-    let v = answer_ls(&serde_json::json!({ "path": dir.to_string_lossy() })).unwrap();
+    let v = answer_ls(
+        &serde_json::json!({ "path": dir.to_string_lossy() }),
+        &Default::default(),
+    )
+    .unwrap();
     assert_eq!(v["unreadable"], serde_json::json!(0));
     std::fs::remove_dir_all(&dir).ok();
 }
@@ -2085,11 +2134,12 @@ fn ls_and_stat_carry_mtime_texts_written_by_this_machine() {
     let ls = answer(
         "files.ls",
         &serde_json::json!({"path": dir.to_string_lossy()}),
+        &Default::default(),
     )
     .expect("ls");
     let e = &ls["entries"][0];
     let t = e["mtime_secs"].as_u64().expect("这一项有修改时间");
-    let (short, full) = crate::common::time::mtime_texts_here(t);
+    let (short, full) = crate::common::time::mtime_texts_now(t, &crate::Tz::default());
     assert_eq!(
         (e["mtime_text"].as_str(), e["mtime_full"].as_str()),
         (Some(short.as_str()), Some(full.as_str()))
@@ -2097,6 +2147,7 @@ fn ls_and_stat_carry_mtime_texts_written_by_this_machine() {
     let st = answer(
         "files.stat",
         &serde_json::json!({"path": f.to_string_lossy()}),
+        &Default::default(),
     )
     .expect("stat");
     assert_eq!(

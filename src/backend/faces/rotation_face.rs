@@ -75,6 +75,8 @@ pub(crate) struct Ctx {
     pub(crate) rows: Rows,
     pub(crate) live: Live,
     pub(crate) doing: DoingRead,
+    /// 看的那一台的时区（请求信封的 `tz`）：写规则那一下盖进规则（[`Rotation::stamped`]）。
+    pub(crate) tz: crate::Tz,
 }
 
 impl Ctx {
@@ -109,7 +111,14 @@ impl Ctx {
                     &crate::observe::history_query::agent_home(),
                 )
             }),
+            tz: crate::Tz::default(),
         }
+    }
+
+    /// 这一问看的那一台的时区（写规则的那几问用）。
+    pub(crate) fn viewing(mut self, tz: &crate::Tz) -> Self {
+        self.tz = tz.clone();
+        self
     }
 
     fn is_api(&self, agent: &str, a: &str) -> bool {
@@ -153,14 +162,19 @@ const LIBRARY_AGENT: &str = crate::accounts::upstream_select::CREDENTIALS_FILE_A
 
 /// `quota-read`：这台的额度账，每条带上显示态（「快满」按这台默认轮换的 N）；另给账号库里从没出过数的号、
 /// 此刻发得出去的号、最早回来的那个。
-/// 出口那一下给每个时刻添好显示的字（`common::time::with_texts`，按这台的本地钟）、每号添好几行（`faces/quota_rows.rs`）
+/// 出口那一下给每个时刻添好显示的字（`common::time::with_texts`，按请求带来的看的那一台的时区）、每号添好几行（`faces/quota_rows.rs`）
 /// 与开窗那一判（`warm`：quota-warm 照它发一句 / 睡到几点）。
-pub(crate) fn answer_quota_read() -> Answer {
-    let now = crate::accounts::quota::now_unix();
-    let mut v = wire::<_, Fail>(&quota_read_with(&Ctx::here(), now))?;
-    crate::common::time::with_texts_here(&mut v, now);
+pub(crate) fn answer_quota_read(tz: &crate::Tz) -> Answer {
+    answer_quota_read_with(&Ctx::here(), crate::accounts::quota::now_unix(), tz)
+}
+
+/// [`answer_quota_read`] 的本体（出口那几遍都在这里：时刻字 · 每号几行 · 开窗那一判 · 号名 / 位名）。
+pub(crate) fn answer_quota_read_with(ctx: &Ctx, now: u64, tz: &crate::Tz) -> Answer {
+    let mut v = wire::<_, Fail>(&quota_read_with(ctx, now))?;
+    crate::common::time::with_texts_now(&mut v, now, tz);
     crate::faces::quota_rows::with_rows(&mut v);
-    crate::faces::quota_rows::with_warm(&mut v);
+    crate::faces::quota_rows::with_warm(&mut v, tz);
+    crate::accounts::quota::name_words::with_names(&mut v);
     Ok(v)
 }
 
@@ -196,7 +210,7 @@ pub(crate) fn quota_read_with(ctx: &Ctx, now: u64) -> QuotaRead {
     let seen = &base.accounts;
     let lib = ctx.hop.library();
     let rot = ctx.hop.store.now().default_rotation();
-    let offset = crate::accounts::upstream_select::rotate::local_offset(now);
+    let offset = rot.offset_at(now);
     let shown = |agent: &str, account: &str, o: Option<&ledger::Observed>| {
         let slot = crate::agents::window_slot_of(agent);
         let key = crate::agents::window_key_of(agent);
@@ -411,7 +425,9 @@ pub(crate) fn answer_rules_read() -> Answer {
 }
 
 pub(crate) fn answer_rules_read_with(ctx: &Ctx) -> Answer {
-    wire(&rules_wire(ctx))
+    let mut v = wire::<_, Fail>(&rules_wire(ctx))?;
+    crate::accounts::quota::name_words::with_names(&mut v);
+    Ok(v)
 }
 
 /// 名称那一格的错：空 · 超长 · 与这台别的规则重名（不分大小写、去首尾空白）。
@@ -453,8 +469,12 @@ fn free_name(book: &Book, id: Option<&str>, name: &str) -> String {
 #[derive(serde::Serialize)]
 #[serde(tag = "state", rename_all = "camelCase")]
 pub(crate) enum RuleSaved {
-    /// 写成了：那一条（形状同 `rotation-rules-read` 的一项）。
-    Saved { rule: Value },
+    /// 写成了：那一条（形状同 `rotation-rules-read` 的一项）· 写成那一刻按看的那一台的时区写好的钟面（编辑器「已保存 HH:MM」）。
+    Saved {
+        rule: Value,
+        #[serde(rename = "savedAtText")]
+        saved_at_text: String,
+    },
     /// 逐格错，没写。
     Refused { errors: Vec<CellError> },
     /// 读到之后别处改过：此刻的版本，没写。
@@ -502,8 +522,10 @@ fn saved(ctx: &Ctx, id: &str) -> Answer {
         .get(id)
         .ok_or_else(|| ("failed", format!("rule {id} vanished after write")))?;
     let doing = (ctx.doing)();
+    let now = crate::common::time::now_secs();
     wire(&RuleSaved::Saved {
         rule: rule_wire(ctx, &book, id, r, &live, &doing),
+        saved_at_text: crate::common::time::hm(ctx.tz.local(now)),
     })
 }
 
@@ -512,8 +534,12 @@ fn saved(ctx: &Ctx, id: &str) -> Answer {
 /// 重名不拒、名后加 ` 2` · ` 3` … 取第一个不重的。
 /// 回 `{state: "saved", rule}` · `{state: "refused", errors: [{cell, code, with?}]}`（逐格，界面照它标红）·
 /// `{state: "conflict", rev}`（别处先改过了）。形状不对 ⇒ `bad_args`；改的那条不在 ⇒ `no_such_rule`。
-pub(crate) fn answer_rule_save(args: &Value) -> Answer {
-    answer_rule_save_with(&Ctx::here(), args, crate::accounts::quota::now_unix())
+pub(crate) fn answer_rule_save(args: &Value, tz: &crate::Tz) -> Answer {
+    answer_rule_save_with(
+        &Ctx::here().viewing(tz),
+        args,
+        crate::accounts::quota::now_unix(),
+    )
 }
 
 pub(crate) fn answer_rule_save_with(ctx: &Ctx, args: &Value, now: u64) -> Answer {
@@ -568,6 +594,8 @@ pub(crate) fn answer_rule_save_with(ctx: &Ctx, args: &Value, now: u64) -> Answer
     if !errors.is_empty() {
         return refused(errors);
     }
+    // 写的那一下盖上看的那一台的时区：按时段的上限按它判（拷来的 · 照旧的也一样重盖）。
+    let rot = rot.stamped(&ctx.tz);
     let name = name.trim().to_string();
     let wrote = rotation::face_change(&ctx.hop.store, |b| -> Result<String, u64> {
         match id.clone() {
@@ -780,8 +808,8 @@ pub(crate) fn forget_preset_with(ctx: &Ctx, sid: &str) {
 /// `{rule}`（这台的一条规则）· `{sid}`（这个会话此刻生效的那一份，从它此刻的号起）；`span`：`6h` · `12h`（缺省）· `24h` · `7d`。
 /// 回 `{errors, now, plan, lanes, effective}`：用量只按此刻的算（以后涨多快没根据，不预测），结论只在重置 · 时段起止时变。
 /// 形状不对（`rotation_from` 整份拒）⇒ `bad_args`；规则 / 会话不在 ⇒ `no_such_rule` / `bad_args`。
-pub(crate) fn answer_plan(args: &Value) -> Answer {
-    answer_plan_with(&Ctx::here(), args, crate::accounts::quota::now_unix())
+pub(crate) fn answer_plan(args: &Value, tz: &crate::Tz) -> Answer {
+    answer_plan_with(&Ctx::here(), args, crate::accounts::quota::now_unix(), tz)
 }
 
 /// 预览的视窗（秒）。
@@ -829,11 +857,7 @@ fn lines_text(each: &[(&'static str, crate::accounts::quota::decide::CapAt)]) ->
 }
 
 fn slot_label(w: &str) -> String {
-    match w {
-        "5h" => copy_text("acct.slot.fiveHour", &[]),
-        "7d" => copy_text("acct.slot.sevenDay", &[]),
-        other => other.to_string(),
-    }
+    crate::accounts::quota::name_words::slot_text(w)
 }
 
 /// 时间轴的视窗（此刻之前, 之后，秒）：`6h` ＝ 前 2h · 后 4h；`24h` ＝ 前 6h · 后 18h；`7d` ＝ 前 1d · 后 6d。不给 ⇒ `None`（编辑器那一问：从此刻起）。
@@ -935,7 +959,15 @@ fn warm_of(ctx: &Ctx) -> std::collections::BTreeMap<String, Vec<u64>> {
     out
 }
 
-pub(crate) fn answer_plan_with(ctx: &Ctx, args: &Value, now: u64) -> Answer {
+/// `tz` ＝ 看的那一台的时区：每段起止的字（`fromText` · `toText`）按它写。
+pub(crate) fn answer_plan_with(ctx: &Ctx, args: &Value, now: u64, tz: &crate::Tz) -> Answer {
+    let mut v = plan_with(ctx, args, now, tz)?;
+    crate::accounts::quota::name_words::with_names(&mut v);
+    Ok(v)
+}
+
+/// [`answer_plan_with`] 的本体（号名 / 位名那一遍之前）。
+fn plan_with(ctx: &Ctx, args: &Value, now: u64, tz: &crate::Tz) -> Answer {
     let view = view_secs(args)?;
     let (from, until) = match view {
         Some((before, after)) => (now.saturating_sub(before), now + after),
@@ -1027,12 +1059,11 @@ pub(crate) fn answer_plan_with(ctx: &Ctx, args: &Value, now: u64) -> Answer {
         now,
         until,
     );
-    let tz_min = crate::platform::local_tz::offset_secs(now).unwrap_or(0) / 60;
     let text = |t: u64| {
         crate::common::time::fmt_at(
             i64::try_from(t).unwrap_or(i64::MAX),
             i64::try_from(now).unwrap_or(i64::MAX),
-            tz_min,
+            tz,
         )
     };
     let seg = |from: u64, to: u64, account: &Option<String>, why: &Option<SwitchWhy>| json!({"from": from, "fromText": text(from), "to": to, "toText": text(to), "account": account, "why": why});
@@ -1112,7 +1143,8 @@ pub(crate) fn answer_plan_with(ctx: &Ctx, args: &Value, now: u64) -> Answer {
             (a.clone(), Value::Object(m))
         })
         .collect();
-    let grid = view.map(|(before, _)| grid_of(before, from, until, tz_min * 60, &text));
+    let off = tz.offset_secs(i64::try_from(now).unwrap_or(i64::MAX));
+    let grid = view.map(|(before, _)| grid_of(before, from, until, off, &text));
     let head = (view.is_some() && !machine).then(|| head_of(ctx, &agent, &view_obj, now, &text));
     let past = match (view, &asked) {
         (Some(_), Asked::Session(sid)) => Some(
@@ -1177,7 +1209,7 @@ pub(crate) struct Plan {
     past: Option<Vec<Value>>,
 }
 
-/// 时间轴的刻度：按这台本地钟对齐的格（6h 视窗一格 15m · 24h 1h · 7d 6h；悬停与键盘按格走，每格带写好的字），
+/// 时间轴的刻度：按看的那一台的时区对齐的格（6h 视窗一格 15m · 24h 1h · 7d 6h；悬停与键盘按格走，每格带写好的字），
 /// 轴上写字的那几格另带 `label`（6h 每小时 · 24h 每 3h：`HH:MM`；7d 每天零点：`MM-DD`）。
 fn grid_of(before: u64, from: u64, until: u64, off: i64, text: &dyn Fn(u64) -> String) -> Value {
     let (step, major): (i64, i64) = match before {
@@ -1306,10 +1338,10 @@ fn sids_of(args: &Value, key: &str) -> Result<Vec<String>, Fail> {
 
 /// `rotation-session-read`：一批会话各自的那一份（`{sids}`）；这台没见过的照实标 `absent`，不整批失败。
 /// 出口那一下给每个时刻添好显示的字（同 [`answer_quota_read`]）。
-pub(crate) fn answer_session_read(args: &Value) -> Answer {
+pub(crate) fn answer_session_read(args: &Value, tz: &crate::Tz) -> Answer {
     let now = crate::accounts::quota::now_unix();
     let mut v = answer_session_read_with(&Ctx::here(), args, now)?;
-    crate::common::time::with_texts_here(&mut v, now);
+    crate::common::time::with_texts_now(&mut v, now, tz);
     Ok(v)
 }
 
@@ -1332,13 +1364,15 @@ pub(crate) fn answer_session_read_with(ctx: &Ctx, args: &Value, now: u64) -> Ans
             serde_json::to_value(one).map_err(|e| ("failed", e.to_string()))?,
         );
     }
-    wire(&SessionRead {
+    let mut v = wire::<_, Fail>(&SessionRead {
         state,
         reason,
         detail,
         now,
         sessions,
-    })
+    })?;
+    crate::accounts::quota::name_words::with_names(&mut v);
+    Ok(v)
 }
 
 /// `rotation-session-read` 的应答。
@@ -1356,8 +1390,12 @@ pub(crate) struct SessionRead {
 /// `"custom"`（恢复上一份自己的，没有就照此刻生效的那份拷）· `"detach"`（照此刻生效的那份拷成本会话的 ＝「转为本会话」）·
 /// `{"custom": {order, enabled, cap?, …}}`）。这台没见过的会话要另给 `agent` 与 `start`（起它的号）才记得下。
 /// 回每个会话的结果。指向的规则不在 ⇒ `no_such_rule`（整批不写）。
-pub(crate) fn answer_session_set(args: &Value) -> Answer {
-    answer_session_set_with(&Ctx::here(), args, crate::accounts::quota::now_unix())
+pub(crate) fn answer_session_set(args: &Value, tz: &crate::Tz) -> Answer {
+    answer_session_set_with(
+        &Ctx::here().viewing(tz),
+        args,
+        crate::accounts::quota::now_unix(),
+    )
 }
 
 /// 要写成什么样。
@@ -1450,7 +1488,7 @@ pub(crate) fn answer_session_set_with(ctx: &Ctx, args: &Value, now: u64) -> Answ
                 Source::Custom,
                 Some(s.and_then(|s| s.custom.clone()).unwrap_or(effective)),
             ),
-            Want::Detach => (Source::Custom, Some(effective)),
+            Want::Detach => (Source::Custom, Some(effective.stamped(&ctx.tz))),
             Want::Custom(v) => (
                 Source::Custom,
                 Some(
@@ -1461,7 +1499,8 @@ pub(crate) fn answer_session_set_with(ctx: &Ctx, args: &Value, now: u64) -> Answ
                         &|a| ctx.is_api(&g, a),
                         Some(&effective),
                     )
-                    .map_err(|e| bad(&e))?,
+                    .map_err(|e| bad(&e))?
+                    .stamped(&ctx.tz),
                 ),
             ),
         };

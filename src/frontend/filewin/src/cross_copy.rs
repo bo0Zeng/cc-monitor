@@ -94,7 +94,7 @@ pub fn outcome_text(o: &Outcome) -> String {
                 ("name", name),
                 ("machine", machine),
                 ("path", path),
-                ("human", &super::rows::human_size(*bytes)),
+                ("human", &copy_core::size_text(*bytes)),
             ],
         ),
         Outcome::Skipped { name, path } => copy_text(

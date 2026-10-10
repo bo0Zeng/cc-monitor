@@ -78,15 +78,23 @@ pub(crate) fn lead_of(target: &Path, offset: u64) -> (u64, Vec<u8>) {
 pub(crate) struct Reader<'a> {
     face: &'a RecordFace,
     typed: TypedTimes,
+    /// 看的那一台的时区（请求带来的）：成品的钟面按它写（[`crate::agents::record::Record::stamp`]）。
+    tz: crate::common::time::Tz,
 }
 
 impl<'a> Reader<'a> {
     /// `lead` ＝ 这一页起点之前那一段原始字节（[`QUEUE_LOOKBACK_BYTES`] 以内；从文件头读 ⇒ 空），`lead_at` 是它在文件里的起点。
     /// 只拿来配打字时刻：不出成品、不占号；开头那半截行（从行中间起的）解析不出，自然跳过。
-    pub(crate) fn new(face: &'a RecordFace, lead_at: u64, lead: &[u8]) -> Self {
+    pub(crate) fn new(
+        face: &'a RecordFace,
+        lead_at: u64,
+        lead: &[u8],
+        tz: crate::common::time::Tz,
+    ) -> Self {
         let mut r = Self {
             face,
             typed: TypedTimes::default(),
+            tz,
         };
         for (body, start) in split_starts(lead_at, lead) {
             r.interpret(body, start); // 只为喂打字时刻表：成品不要
@@ -99,7 +107,9 @@ impl<'a> Reader<'a> {
         match (self.face.parse)(&String::from_utf8_lossy(body), start) {
             Ok(Some(mut t)) => {
                 self.typed.pass(&mut t);
-                let record = serde_json::to_value(t.record?).ok()?;
+                let mut rec = t.record?;
+                rec.stamp(&self.tz);
+                let record = serde_json::to_value(rec).ok()?;
                 Some((record, t.cwd))
             }
             Ok(None) => None,
@@ -135,25 +145,64 @@ pub(crate) struct ReadRow {
 }
 
 /// **行摘要**（旁路快照那一页，`history-read`）：页里每个可计行一条，次序同文件。
+/// 相邻的认不出那几条并进前一条（[`fold_unread`]）：被并掉的那一行照占号、不再带记录。
 pub(crate) fn rows_of(reader: &mut Reader<'_>, offset: u64, bytes: &[u8]) -> Vec<ReadRow> {
-    split_lines_full(offset, bytes)
+    let mut out: Vec<ReadRow> = Vec::new();
+    let mut last: Option<usize> = None;
+    for (body, start, end) in split_lines_full(offset, bytes)
         .into_iter()
         .filter(|(body, _, _)| super::history_query::line_counts(body))
-        .map(|(body, start, end)| {
-            let (record, cwd) = reader
-                .interpret(body, start)
-                .map_or((None, None), |(r, c)| (Some(r), c));
-            ReadRow {
-                end,
-                hash: line_hash(body),
-                record,
-                cwd,
+    {
+        let (mut record, mut cwd) = reader
+            .interpret(body, start)
+            .map_or((None, None), |(r, c)| (Some(r), c));
+        if let (Some(r), Some(i)) = (&record, last) {
+            if let Some(prev) = out[i].record.as_mut() {
+                if fold_unread(prev, r) {
+                    (record, cwd) = (None, None);
+                }
             }
-        })
-        .collect()
+        }
+        if record.is_some() {
+            last = Some(out.len());
+        }
+        out.push(ReadRow {
+            end,
+            hash: line_hash(body),
+            record,
+            cwd,
+        });
+    }
+    out
 }
 
-/// **记录行**：`lines` 里第 k 个可计行的行号是 `seq + k`；只出进界面的那些。`lines` 每条带它的起点字节偏移。回 `(成品, 下一个行号)`。
+/// **相邻的认不出那几条并成一条**（适配层每行给一条 `unread`，并是出成品这一遍的事）：`into` 与 `next` 都是 `unread`、
+/// 原因与类型都一样 ⇒ `count` 加上、`text` 照新的数重写（[`crate::agents::record::unread_text`]），回 `true`；否则不动、回 `false`。
+/// 只看通用记录的格，不认哪一家。
+pub(crate) fn fold_unread(into: &mut Value, next: &Value) -> bool {
+    use crate::agents::record::{unread_text, UnreadWhy};
+    let same = |k: &str| into.get(k) == next.get(k);
+    if into.get("t").and_then(Value::as_str) != Some("unread")
+        || !same("t")
+        || !same("why")
+        || !same("type")
+    {
+        return false;
+    }
+    let why = match into.get("why").and_then(Value::as_str) {
+        Some("unknownType") => UnreadWhy::UnknownType,
+        Some("parseFailed") => UnreadWhy::ParseFailed,
+        _ => return false,
+    };
+    let n = |v: &Value| v.get("count").and_then(Value::as_u64).unwrap_or(1);
+    let count = u32::try_from(n(into) + n(next)).unwrap_or(u32::MAX);
+    let kind = into.get("type").and_then(Value::as_str).map(str::to_string);
+    into["count"] = json!(count);
+    into["text"] = json!(unread_text(why, kind.as_deref(), count).0);
+    true
+}
+
+/// **记录行**：`lines` 里第 k 个可计行的行号是 `seq + k`；只出进界面的那些；相邻的认不出那几条并进前一条（[`fold_unread`]，行号是前一条的）。`lines` 每条带它的起点字节偏移。回 `(成品, 下一个行号)`。
 pub(crate) fn record_lines<'b>(
     reader: &mut Reader<'_>,
     path: &Path,
@@ -171,6 +220,11 @@ pub(crate) fn record_lines<'b>(
         let at = next;
         next += 1;
         if let Some((record, cwd)) = reader.interpret(body, start) {
+            if let Some(prev) = out.last_mut().and_then(|l: &mut Value| l.get_mut("record")) {
+                if fold_unread(prev, &record) {
+                    continue;
+                }
+            }
             out.push(json!({
                 "session_id": sid,
                 "path": path_str,
@@ -195,23 +249,31 @@ pub(crate) fn record_lines_of_page(
 }
 
 /// 一页子运行记录（`history-run`，`offset` 是这一页在文件里的起点）：出了记录的每一条给 `{record, rid?}`；
-/// `rid` 是它的对账键（界面拿它撤那个子运行的活卡）。解析不出 / 不进界面的行跳过。
+/// `rid` 是它的对账键（界面拿它撤那个子运行的活卡）。解析不出 / 不进界面的行跳过；相邻的认不出那几条并成一条（[`fold_unread`]）。
 pub(crate) fn run_rows(reader: &mut Reader<'_>, offset: u64, bytes: &[u8]) -> Vec<Value> {
     let faces = crate::agents::RunFaces::of(reader.face);
-    split_starts(offset, bytes)
-        .into_iter()
-        .filter_map(|(body, start)| {
-            let (record, _) = reader.interpret(body, start)?;
+    let mut out: Vec<Value> = Vec::new();
+    for (body, start) in split_starts(offset, bytes) {
+        let Some((record, _)) = reader.interpret(body, start) else {
+            continue;
+        };
+        if let Some(prev) = out.last_mut().and_then(|l| l.get_mut("record")) {
+            if fold_unread(prev, &record) {
+                continue;
+            }
+        }
+        out.push({
             let text = String::from_utf8_lossy(body);
             let rid = serde_json::from_str::<Value>(text.trim_start_matches('\u{feff}').trim())
                 .ok()
                 .and_then(|v| faces.response_id(&v));
-            Some(match rid {
+            match rid {
                 Some(rid) => json!({ "record": record, "rid": rid }),
                 None => json!({ "record": record }),
-            })
-        })
-        .collect()
+            }
+        });
+    }
+    out
 }
 
 #[cfg(test)]

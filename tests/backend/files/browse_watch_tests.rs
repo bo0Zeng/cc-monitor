@@ -302,8 +302,12 @@ fn files_browse_keeps_a_live_watcher_that_follows_the_list() {
     let fx = make_tree("livewatch", 2, 1, 0);
     let dir = fx.root.join("d0000");
     let p = |x: &std::path::Path| serde_json::Value::String(x.to_string_lossy().to_string());
-    let v = crate::files::answer_wire("files-browse", &serde_json::json!({ "dirs": [p(&dir)] }))
-        .expect("files-browse 被拒");
+    let v = crate::files::answer_wire(
+        "files-browse",
+        &serde_json::json!({ "dirs": [p(&dir)] }),
+        &Default::default(),
+    )
+    .expect("files-browse 被拒");
     assert_eq!(
         (
             v["watching"].as_u64(),
@@ -327,7 +331,11 @@ fn files_browse_keeps_a_live_watcher_that_follows_the_list() {
         found,
         "登记之后新建的文件 5 秒内没进 overlay —— 没有人在后端进程里持有那个监听器"
     );
-    let v = crate::files::answer_wire("files-browse", &serde_json::json!({ "dirs": [] }))
-        .expect("空名单被拒");
+    let v = crate::files::answer_wire(
+        "files-browse",
+        &serde_json::json!({ "dirs": [] }),
+        &Default::default(),
+    )
+    .expect("空名单被拒");
     assert_eq!(v["watching"].as_u64(), Some(0), "空名单之后还挂着：{v}");
 }

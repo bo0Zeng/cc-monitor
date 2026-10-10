@@ -3,7 +3,7 @@
  * 与本机那一块同一套行（名字 · 是什么 · 删了会怎样 · 大小 · 打开），打开 ＝ 在文件窗口里打开。只给位置、不给删。
  */
 import { copyText } from "../copy-table";
-import { formatBytes } from "../format";
+import { sizeText } from "../format";
 import { describeDataClass } from "./data-section";
 import type { OwnItem } from "./data-reads";
 
@@ -99,7 +99,7 @@ export function remoteOwnBlock(items: readonly OwnItem[], home: string, open: ((
     cls.textContent = describeDataClass(o.class);
     const meta = document.createElement("span");
     meta.className = "settings-data-item-meta";
-    meta.textContent = !o.exists ? copyText("data.item.notCreated") : o.size !== null ? formatBytes(o.size) : copyText("data.item.created");
+    meta.textContent = !o.exists ? copyText("data.item.notCreated") : o.size !== null ? sizeText(o.size) : copyText("data.item.created");
     const actions = document.createElement("span");
     actions.className = "settings-data-item-actions";
     const b = document.createElement("button");

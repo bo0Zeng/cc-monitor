@@ -72,7 +72,7 @@ pub(crate) struct PlanRefs {
 pub(crate) struct PlanSign {
     /// pb 的 ISO 时刻。
     pub at: Option<String>,
-    /// 那一刻写成给人看的字（那台本地钟）；读不出时刻 ⇒ 没有。
+    /// 那一刻写成给人看的字（按看的那一台的时区）；读不出时刻 ⇒ 没有。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional))]
     pub at_text: Option<String>,

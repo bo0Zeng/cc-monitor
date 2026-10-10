@@ -91,10 +91,10 @@ fn endpoint_at(addr: SocketAddr) -> TokenEndpoint {
 
 /// 没人在听的端点：一旦去续就会失败（没过期那一条要它证明「根本没去续」）。
 fn nowhere() -> TokenEndpoint {
-    let l = TcpListener::bind("127.0.0.1:0").expect("bind");
-    let addr = l.local_addr().expect("addr");
-    drop(l);
-    endpoint_at(addr)
+    endpoint_at(std::net::SocketAddr::from((
+        [127, 0, 0, 1],
+        crate::refusing_port::refusing_port(),
+    )))
 }
 
 fn expose(s: &SecretKey) -> String {

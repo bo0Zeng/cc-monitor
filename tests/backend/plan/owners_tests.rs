@@ -16,7 +16,7 @@ fn doc(d: Value) -> Value {
         )
         .unwrap();
     // 时刻成字与生产同一处（`plan_face::annotated` 也调它）。
-    crate::plan::product::with_time_texts(&mut v, 1_767_400_000_000, 0);
+    crate::plan::product::with_time_texts(&mut v, 1_767_400_000_000, &Default::default());
     v
 }
 

@@ -101,7 +101,7 @@ export interface Tab {
   /** 还没有结果的工具调用（后端 `pending`，文件序）：悬停卡「在做什么」。 */
   pending: PendingCall[];
   /** 最后一段正文的头一行（后端 `lastSay`）：悬停卡「它最后一句」。 */
-  lastSay: { text: string; at: string | null } | null;
+  lastSay: { text: string; at: string | null; atMs: number | null } | null;
   /** 一串一串重试的结局（后端 `retries`：首条重试记录的 uuid → 结局）：消息流里的重试细条按它画。 */
   retries: ReadonlyMap<string, RetryOutcome>;
   /**

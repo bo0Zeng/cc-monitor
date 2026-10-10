@@ -84,7 +84,7 @@
         ]
       },
       "text": "personal  订阅\n  5h    63%  ↻18:30        +1h50m\n  7d    41%  ↻10-09 09:00  +3d\n  超额  —\n  采样  16:38",
-      "tzOffsetMin": 480
+      "tz": "Asia/Shanghai"
     },
     {
       "blocks": [
@@ -170,7 +170,7 @@
         ]
       },
       "text": "personal  订阅\n  5h    86%  ↻18:30        +1h50m\n  7d    41%  ↻10-09 09:00  +3d\n  超额  —\n  采样  16:38",
-      "tzOffsetMin": 480
+      "tz": "Asia/Shanghai"
     },
     {
       "blocks": [
@@ -261,7 +261,7 @@
         "usableNow": []
       },
       "text": "work  订阅\n  5h    ✕    ↻19:00        +2h20m\n  7d    78%  ↻10-07 09:00  +1d\n  超额  —\n  采样  16:38",
-      "tzOffsetMin": 480
+      "tz": "Asia/Shanghai"
     },
     {
       "blocks": [
@@ -351,7 +351,7 @@
         "usableNow": []
       },
       "text": "work  订阅\n  5h    58% · 被拒  ↻19:00        +2h20m\n  7d    78%         ↻10-07 09:00  +1d\n  超额  —\n  采样  16:38",
-      "tzOffsetMin": 480
+      "tz": "Asia/Shanghai"
     },
     {
       "blocks": [
@@ -442,7 +442,7 @@
         "usableNow": []
       },
       "text": "work  订阅\n  5h    超额    ↻19:00        +2h20m\n  7d    78%     ↻10-07 09:00  +1d\n  超额  使用中  另计费\n  采样  16:38",
-      "tzOffsetMin": 480
+      "tz": "Asia/Shanghai"
     },
     {
       "blocks": [
@@ -524,7 +524,7 @@
         ]
       },
       "text": "team  订阅\n  5h    —    ↻13:10 已过\n  7d    12%  ↻10-11 08:00  +5d\n  超额  —\n  采样  09:02 · 旧",
-      "tzOffsetMin": 480
+      "tz": "Asia/Shanghai"
     },
     {
       "blocks": [
@@ -599,7 +599,7 @@
         "usableNow": []
       },
       "text": "work  订阅\n  5h    —\n  7d    —\n  状态  被拒  ↻17:25  +45m\n  超额  —\n  采样  16:38",
-      "tzOffsetMin": 480
+      "tz": "Asia/Shanghai"
     },
     {
       "blocks": [
@@ -681,7 +681,7 @@
         "usableNow": []
       },
       "text": "old  订阅  需登录\n  5h    30%  ↻20:00  +3h20m\n  7d    ✕\n  超额  —\n  采样  16:38",
-      "tzOffsetMin": 480
+      "tz": "Asia/Shanghai"
     },
     {
       "blocks": [
@@ -768,7 +768,7 @@
         ]
       },
       "text": "~/.claude  订阅  未指定账号\n  5h    31%  ↻18:40  +2h\n  7d    9%   ↻17:25  +45m\n  超额  —\n  采样  16:31",
-      "tzOffsetMin": 480
+      "tz": "Asia/Shanghai"
     },
     {
       "blocks": [
@@ -908,7 +908,7 @@
         ]
       },
       "text": "api  按量\n  5h/7d  —  无限额\n  采样   16:30\n\napi2  按量\n  状态  被拒  ↻16:52  +12m\n  采样  16:30\n\napi4  按量  需 key\n  5h/7d  —  无限额\n  采样   16:30",
-      "tzOffsetMin": 480
+      "tz": "Asia/Shanghai"
     },
     {
       "blocks": [
@@ -1051,7 +1051,7 @@
         ]
       },
       "text": "personal  订阅\n  5h    4%   ↻18:10        +1h30m\n  7d    12%  ↻10-10 09:00  +4d\n  超额  —\n  采样  16:38\n\nteam  订阅  需登录\n  5h  —  无采样\n  7d  —\n\napi  按量\n  5h/7d  —  无采样",
-      "tzOffsetMin": 480
+      "tz": "Asia/Shanghai"
     },
     {
       "blocks": [
@@ -1194,7 +1194,7 @@
         ]
       },
       "text": "team  订阅\n  5h    —    ↻13:10 已过\n  7d    12%  ↻2027-01-03 09:00  +2d\n  超额  —\n  采样  09:02\n\ncold  订阅\n  5h    —   ↻01-01 03:00 已过\n  7d    5%  ↻01-06 09:00 已过\n  超额  —\n  采样  2025-12-31 23:50 · 旧",
-      "tzOffsetMin": 480
+      "tz": "Asia/Shanghai"
     },
     {
       "blocks": [],
@@ -1211,7 +1211,7 @@
         "usableNow": []
       },
       "text": "无采样",
-      "tzOffsetMin": 480
+      "tz": "Asia/Shanghai"
     },
     {
       "blocks": [],
@@ -1228,11 +1228,11 @@
         "usableNow": []
       },
       "text": "读取 /h/.cc-monitor/quota.json 失败 · 内容无法解析",
-      "tzOffsetMin": 480
+      "tz": "Asia/Shanghai"
     }
   ],
   "说明": [
-    "额度每号几行的金样：quota-read 一份回包（原数与显示态；语义位那一格的字由 show.rs::slot_words 写，时刻的字 …Text 与距今 …RelText 由出口 with_texts 按 tzOffsetMin 写）⇒ 每号一段 blocks（rows：首行 名 · 类型 · 标签，其余每行一组格 键 · 值 · ↻ · 距今；warm：开窗那一判）＋ --text 拼出来的整段字 text。",
+    "额度每号几行的金样：quota-read 一份回包（原数与显示态；语义位那一格的字由 show.rs::slot_words 写，时刻的字 …Text 与距今 …RelText 由出口 with_texts 按每格的 tz（看的那一台的 IANA 时区名）写）⇒ 每号一段 blocks（rows：首行 名 · 类型 · 标签，其余每行一组格 键 · 值 · ↻ · 距今；warm：开窗那一判）＋ --text 拼出来的整段字 text。",
     "唯一的消费方判据：tests/backend/faces/quota_rows_tests.rs（行模型住 src/backend/faces/quota_rows.rs，拼字住 control/ship_text.rs）。界面 · 手机 · skill 照抄 rows / warm，不另排。",
     "采样那一格只写几点（数旧带「旧」）：哪台采的是出口自己的事；machine 一格留作出口在悬停卡上接的那台名。回包只采结构，号名是编的。",
     "text 的排法：顶上那一句先出；每号一段、段间空一行；首行各格隔两个空格；其余行缩进两格，非末格按本段同列最宽补齐（汉字记 2 宽），格间两个空格。"

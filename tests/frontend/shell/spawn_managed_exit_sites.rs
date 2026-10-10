@@ -68,6 +68,14 @@ use std::path::PathBuf;
 /// ＋「为什么非它自己造不可」（本列，逐条）一起说清。一句总述盖不住十四处。
 const SITES: &[(&str, &str, &str, &str)] = &[
     (
+        "shots_shell.rs",
+        "start",
+        "spawn_managed_cmd",
+        "截图台架的无头壳（只在特性 `shots` 下编、不进安装包）起各台后端：命令是台架给的整条（沙箱 ＋ 后端），\
+         stdin / stdout 要 piped —— 它们交给产品那条本机读循环（`local_backend::local_stdio_consumer`），\
+         出口只回答三条策略、不回答「跑什么」与这两根管子 ⇒ `Command` 由这里装好再递进去。",
+    ),
+    (
         "filewin/proc.rs",
         "spawn_window",
         "spawn_managed_cmd",

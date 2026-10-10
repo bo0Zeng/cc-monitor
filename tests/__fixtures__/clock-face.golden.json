@@ -1,0 +1,14 @@
+{
+  "_": "钟面 HH:MM 的对拍金样：Rust 后端 common/time.rs::hm（核心写所有「几点」的那一处）与 TS clock-face.ts::clockFace（界面自己出的事——状态栏提示——的那一个钟面读口）各自读这一份。输入是毫秒时刻与那一刻的偏移（分钟，东正）；秒舍去，跨午夜按偏移后的日子。",
+  "cases": [
+    { "ms": 0, "offsetMin": 0, "want": "00:00" },
+    { "ms": 59999, "offsetMin": 0, "want": "00:00" },
+    { "ms": 60000, "offsetMin": 0, "want": "00:01" },
+    { "ms": 1791405015123, "offsetMin": 0, "want": "20:30" },
+    { "ms": 1791405015123, "offsetMin": 480, "want": "04:30" },
+    { "ms": 1791405015123, "offsetMin": -420, "want": "13:30" },
+    { "ms": 1791405015123, "offsetMin": 330, "want": "02:00" },
+    { "ms": 86399000, "offsetMin": 0, "want": "23:59" },
+    { "ms": 0, "offsetMin": -60, "want": "23:00" }
+  ]
+}

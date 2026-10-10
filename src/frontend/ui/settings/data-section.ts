@@ -9,7 +9,7 @@ import { commands } from "../ipc/commands";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { failToast } from "../kit/toast";
 import { enumeratePrefix } from "../local-storage";
-import { formatBytes } from "../format";
+import { sizeText } from "../format";
 import { holdSkeletonHeight, makeSkeleton } from "./skeleton";
 import { revealInFolder } from "../reveal-in-folder";
 
@@ -236,7 +236,7 @@ export class DataSection {
     if (info.exists) {
       // `sizeBytes` 是 number：Rust 侧 `#[ts(type = "number")]` 的显式决定（JSON IPC 到 TS 侧本来就是 number），见 `data_paths.rs`。
       meta.textContent =
-        info.sizeBytes !== undefined ? formatBytes(info.sizeBytes) : copyText("data.item.created");
+        info.sizeBytes !== undefined ? sizeText(info.sizeBytes) : copyText("data.item.created");
     } else {
       meta.textContent = copyText("data.item.notCreated");
     }

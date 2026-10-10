@@ -87,12 +87,16 @@ async function dragTo(from: HTMLElement, x: number, y: number): Promise<void> {
   }
 }
 
-/** 指针停在 (x, y) 附近来回抖 5px（不让停留计时攒满）：截「只插不建组」的那一刻用。截完页就关，计时器不用收。 */
+/**
+ * 指针停在 (x, y) 附近抖 5px（不让停留计时攒满）：截「只插不建组」的那一刻用。截完页就关，计时器不用收。
+ * 每一拍在同一个任务里先挪出去、再挪回原处：抖动照样打断停留计时，而两拍之间画出来的影子恒在 (x, y)——
+ * 从前一拍在 x、一拍在 x+5，截到哪一拍看截图那一刻落在哪儿（tg-05 那张影子横移的来路）。
+ */
 function keepMoving(x: number, y: number): void {
-  let k = 0;
+  const move = (cx: number): boolean => document.dispatchEvent(new MouseEvent("mousemove", { bubbles: true, cancelable: true, clientX: cx, clientY: y, button: 0, buttons: 1 }));
   window.setInterval(() => {
-    k++;
-    document.dispatchEvent(new MouseEvent("mousemove", { bubbles: true, cancelable: true, clientX: x + (k % 2 ? 5 : 0), clientY: y, button: 0, buttons: 1 }));
+    move(x + 5);
+    move(x);
   }, 60);
 }
 

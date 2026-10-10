@@ -2528,7 +2528,7 @@ describe("过程里还没结果的那几步照会话事实画（后端 pending[]
     };
     const [b1, b2] = [step("b1"), step("b2")];
     expect([b1.dataset.state, b2.dataset.state], "事实到之前不画").toEqual(["pending", "pending"]);
-    const call = (id: string, state: "running" | "awaiting" | "unclear", why: "noWriter" | "untracked" | null = null) => ({ id, name: "Bash", what: id, at: null, state, why });
+    const call = (id: string, state: "running" | "awaiting" | "unclear", why: "noWriter" | "untracked" | null = null) => ({ id, name: "Bash", what: id, at: null, atMs: null, state, why });
     const paint = (pending: Tab["pending"], needs: Tab["needs"]): void => {
       tab.pending = pending;
       tab.needs = needs;
@@ -2543,7 +2543,7 @@ describe("过程里还没结果的那几步照会话事实画（后端 pending[]
     paint([call("b2", "unclear", "noWriter")], null);
     expect([b1.dataset.state, b2.dataset.state]).toEqual(["unclear", "unclear"]);
     expect(b2.querySelector<HTMLElement>(".step-right")?.title, "原因是后端给的码").toBe(copyText("stream.step.unclearNoWriter"));
-    settleStepLine(b1, undefined, { ok: true } as never, false, 10);
+    settleStepLine(b1, undefined, { ok: true } as never, false, "0s");
     paint([call("b1", "running")], null);
     expect(b1.dataset.state, "结果到了的不动").toBe("ok");
   });

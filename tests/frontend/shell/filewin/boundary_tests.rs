@@ -361,6 +361,8 @@ const WINDOW_SIDE: &[(&str, Kind)] = &[
     ("copy_core::io_reason", Kind::Copy),
     // 那台不认这条命令 ⇒ 全产品那一句（按名字取，与 monitor · 后端同一份）。
     ("copy_core::backend_old", Kind::Copy),
+    // 大小那一格（列表 · 属性 · 进度 · 预览上限）：写法只住核心一处（与后端 · 界面同一份金样 size-text.golden.json）。
+    ("copy_core::size_text", Kind::Copy),
     // ── 窗口几何（开窗第一拍夹进种子带来的工作区）──
     // `WorkArea` · `fit_into_work_area` 两行摘了：类型与判定搬进 `host_core`（Tauri 那几扇窗与文件窗口共用那一份）。
 ];

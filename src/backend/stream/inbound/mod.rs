@@ -438,7 +438,7 @@ fn dispatch(
                 req,
                 Box::new(move |r: Request| -> DataFut {
                     Box::pin(async move {
-                        desk.follow_off_worker(r.args)
+                        desk.follow_off_worker(r.args, r.tz)
                             .await
                             .map(|()| None)
                             .map_err(|mut f| {
@@ -453,7 +453,7 @@ fn dispatch(
             )
         }
         crate::control::terminal_follow::FOLLOW_ACK | crate::control::terminal_follow::UNFOLLOW => {
-            Disposition::Reply(follows.answer_wire(&req.cmd, &req.id, &req.args))
+            Disposition::Reply(follows.answer_wire(&req.cmd, &req.id, &req.args, &req.tz))
         }
         "cancel" => {
             let target = req
