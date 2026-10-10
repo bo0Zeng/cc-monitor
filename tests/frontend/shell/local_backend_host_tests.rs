@@ -498,7 +498,9 @@ fn the_local_backend_host_can_be_stopped_and_started_again() {
             local_backend::CrashLimits::default(),
             now(),
             Arc::new(|e| println!("[P2s 实测] {e:?}")),
-            Some(Arc::new(local_backend::local_stdio_consumer)),
+            Some(Arc::new(|i, o| {
+                local_backend::local_stdio_consumer(&local_backend::StdioRoute::local(), i, o)
+            })),
             crate::spawn_managed::local_backend_supervised(),
         )
     };
@@ -4217,7 +4219,9 @@ fn three_fake_backends_land_in_three_different_cells() {
         once,
         Arc::new(|| 0),
         backend_supervise_events(),
-        Some(Arc::new(local_backend::local_stdio_consumer)),
+        Some(Arc::new(|i, o| {
+            local_backend::local_stdio_consumer(&local_backend::StdioRoute::local(), i, o)
+        })),
         crate::spawn_managed::local_backend_supervised(),
     );
     let a = wait_for("崩了", &|h| {
@@ -4240,7 +4244,9 @@ fn three_fake_backends_land_in_three_different_cells() {
         once,
         Arc::new(|| 0),
         backend_supervise_events(),
-        Some(Arc::new(local_backend::local_stdio_consumer)),
+        Some(Arc::new(|i, o| {
+            local_backend::local_stdio_consumer(&local_backend::StdioRoute::local(), i, o)
+        })),
         crate::spawn_managed::local_backend_supervised(),
     );
     let b = wait_for("被拒了", &|h| {
@@ -4641,7 +4647,9 @@ fn stopping_the_supervised_local_backend_is_not_recorded_as_a_crash() {
         local_backend::CrashLimits::default(),
         Arc::new(|| 0),
         backend_supervise_events(),
-        Some(Arc::new(local_backend::local_stdio_consumer)),
+        Some(Arc::new(|i, o| {
+            local_backend::local_stdio_consumer(&local_backend::StdioRoute::local(), i, o)
+        })),
         crate::spawn_managed::local_backend_supervised(),
     );
     for _ in 0..200 {

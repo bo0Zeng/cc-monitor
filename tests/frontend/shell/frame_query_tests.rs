@@ -1025,7 +1025,10 @@ fn local_queries_reach_the_running_resident_backend_not_a_file_beside_the_exe() 
                 .chars()
                 .filter(|c| !c.is_whitespace())
                 .collect();
+            // stdio 那条载体登记在它那一条路的名下（`StdioRoute`）；产品那一条（`StdioRoute::local`）就是 `<local>`。
             flat.contains("register(crate::inbound_client::LOCAL_ORIGIN")
+                || (flat.contains("register(route.origin.as_wire_str()")
+                    && flat.contains("origin:crate::origin::Origin::local()"))
         })
         .collect();
     let want: std::collections::BTreeSet<String> = [

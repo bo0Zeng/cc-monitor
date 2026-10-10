@@ -7,9 +7,9 @@ import { defaultOps } from "./ops";
 import { defaultCommands } from "./commands";
 import { historyOps } from "./history";
 import { machineCommands, machineOps } from "./machine";
-import { profilesOps } from "./profiles";
 import { ACCOUNTS } from "./ops";
 import { blankDisk, putAccounts, type LiveSession, type MachineDisk } from "../disk";
+import { putProfiles } from "../disk/profiles";
 
 export const LOCAL = "<local>";
 export const REMOTES = ["devbox", "gpu-01", "win-laptop"];
@@ -215,7 +215,7 @@ export function defaultWorld(): World {
     staleMachines: [],
     config: defaultConfig(),
     sessions,
-    ops: { ...defaultOps(), ...historyOps(), ...machineOps(), ...profilesOps() },
+    ops: { ...defaultOps(), ...historyOps(), ...machineOps() },
     commands: { ...defaultCommands(), ...machineCommands() },
   };
 }
@@ -241,6 +241,8 @@ export function defaultDisk(machines: string[], sessions: SessionSpec[]): Record
       const d = blankDisk();
       putAccounts(d, ACCOUNTS.map((a) => ({ name: a.name, kind: a.authKind === "api-key" ? "api" : "sub", email: a.email || undefined, isDefault: a.isDefault, baseUrl: a.baseUrl })));
       d.live = sessions.filter((s) => s.origin === m && !s.ended && !s.idle).map((s) => liveOf(s));
+      // 设置窗「别名与配置文件」那一页（devbox）：照设计稿那台的配置文件。
+      if (m === "devbox") putProfiles(d, "normal");
       return [m, d];
     }),
   );

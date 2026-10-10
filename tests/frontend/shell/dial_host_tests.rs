@@ -215,7 +215,13 @@ async fn loopback_roundtrip_through_the_resident_backend() {
         .spawn()
         .expect("起不了后端");
     let (stdin, stdout) = (child.stdin.take().unwrap(), child.stdout.take().unwrap());
-    std::thread::spawn(move || crate::local_backend::local_stdio_consumer(stdin, stdout));
+    std::thread::spawn(move || {
+        crate::local_backend::local_stdio_consumer(
+            &crate::local_backend::StdioRoute::local(),
+            stdin,
+            stdout,
+        )
+    });
     let cfg = RemoteConfig {
         host: v["host"].as_str().unwrap().into(),
         label: "sr1a-loopback".into(),

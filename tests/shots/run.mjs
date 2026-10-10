@@ -12,8 +12,8 @@
  *
  * 浏览器：环境变量 `CCM_SHOTS_CHROME` 指定，不给就找 Playwright 缓存里的 Chrome for Testing。
  */
-import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync, statSync } from "node:fs";
+import { spawn } from "node:child_process";
+import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync, statSync } from "node:fs";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -21,6 +21,7 @@ import { fileURLToPath } from "node:url";
 import { Cdp, Page, sleep } from "./cdp.mjs";
 import { FILEWIN_SCENES, shootFilewin } from "./filewin.mjs";
 import { writeIndex } from "./index-page.mjs";
+import { buildBins, SHOTS_TZ } from "./real/pool.mjs";
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const args = parseArgs(process.argv.slice(2));
@@ -60,9 +61,9 @@ function scrubbedEnv(extra = {}) {
   return env;
 }
 
-/** 起浏览器 / vite / 文件窗口那几个子进程用：再把 HOME 换成沙箱、XDG 那几格与桌面会话总线摘掉（测试不碰用户的桌面会话）。 */
+/** 起浏览器 / vite / 文件窗口那几个子进程用：再把 HOME 换成沙箱、XDG 那几格与桌面会话总线摘掉（测试不碰用户的桌面会话），时区给死（`SHOTS_TZ`）。 */
 function isolatedEnv(extra = {}) {
-  const env = scrubbedEnv({ HOME: path.join(sandbox, "home"), ...extra });
+  const env = scrubbedEnv({ HOME: path.join(sandbox, "home"), TZ: SHOTS_TZ, ...extra });
   for (const k of ["XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_DATA_HOME", "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS"]) delete env[k];
   return env;
 }
@@ -93,13 +94,11 @@ cleanup();
 process.exit(results.some((r) => !r.ok) || problems.length > 0 ? 1 : 0);
 
 async function shootWeb() {
-  // 真后端：本树那一份（增量编；编要真 HOME，别的照摘）。外面给了 `CCM_SHOTS_BACKEND` 就用那一份。
-  if (!process.env.CCM_SHOTS_BACKEND) {
-    const b = spawnSync("cargo", ["build", "--quiet"], { cwd: path.join(repo, "src/backend"), env: { ...scrubbedEnv(), CARGO_BUILD_JOBS: process.env.CARGO_BUILD_JOBS ?? "4" }, stdio: ["ignore", "inherit", "inherit"] });
-    if (b.status !== 0) {
-      problems.push(`真后端没编出来（cargo 退出码 ${b.status}）`);
-      return;
-    }
+  // 真后端与无头壳：本树那一份（增量编；编要真 HOME，别的照摘）。外面给了 `CCM_SHOTS_BACKEND` 就用那一份后端。
+  const broken = buildBins({ repo, env: scrubbedEnv() });
+  if (broken) {
+    problems.push(broken);
+    return;
   }
   const port = await freePort();
   const vite = spawn(process.execPath, [path.join(repo, "tests/shots/serve.mjs"), String(port)], {
@@ -142,7 +141,7 @@ async function shootWeb() {
     { env: isolatedEnv(), stdio: ["ignore", "ignore", "pipe"] },
   );
   children.push(browser);
-  const wsUrl = await devtoolsUrl(profile);
+  const wsUrl = await devtoolsUrl(browser);
   const cdp = await Cdp.connect(wsUrl);
 
   // 清单
@@ -224,16 +223,32 @@ function findChrome() {
   return found[0];
 }
 
-async function devtoolsUrl(profile) {
-  const file = path.join(profile, "DevToolsActivePort");
-  for (let i = 0; i < 200; i++) {
-    if (existsSync(file)) {
-      const [port, p] = readFileSync(file, "utf8").split("\n");
-      if (port && p) return `ws://127.0.0.1:${port}${p}`;
-    }
-    await sleep(100);
-  }
-  throw new Error("浏览器没报出调试口");
+/**
+ * 浏览器报出的调试口：等它在标准错误上打的那一行（`DevTools listening on ws://…`），或者等它退出（退出码 ＋ 最后几行原话）。
+ * 按事件等，不按轮数：机器忙时起浏览器要多久说不准，而它真起不来的时候会退出、会说为什么。
+ * 两样都没等到才算超时（2 分钟，只为不永远挂着），超时那一句说清楚在等哪两样。
+ */
+function devtoolsUrl(browser) {
+  return new Promise((resolve, reject) => {
+    let tail = "";
+    const done = (f) => {
+      clearTimeout(timer);
+      browser.stderr.off("data", onData);
+      browser.off("exit", onExit);
+      // 之后它照样往标准错误写：接着放掉，别让管子写满把浏览器卡住。
+      browser.stderr.resume();
+      f();
+    };
+    const onData = (d) => {
+      tail = (tail + String(d)).slice(-4000);
+      const m = /DevTools listening on (ws:\/\/\S+)/.exec(tail);
+      if (m) done(() => resolve(m[1]));
+    };
+    const onExit = (code, sig) => done(() => reject(new Error(`浏览器没报出调试口就退了（退出码 ${code}${sig ? ` · 信号 ${sig}` : ""}）：\n${tail.trim().split("\n").slice(-8).join("\n")}`)));
+    const timer = setTimeout(() => done(() => reject(new Error(`等了 120 秒：浏览器既没在标准错误上报出调试口那一行，也没退出`))), 120_000);
+    browser.stderr.on("data", onData);
+    browser.on("exit", onExit);
+  });
 }
 
 function freePort() {

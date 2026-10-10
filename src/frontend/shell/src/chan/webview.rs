@@ -46,7 +46,7 @@ pub struct Fail {
     detail: String,
 }
 
-fn fail(origin: &crate::origin::Origin, op: &str, e: CallError) -> Fail {
+pub(crate) fn fail(origin: &crate::origin::Origin, op: &str, e: CallError) -> Fail {
     let detail = match &e {
         CallError::Peer {
             why: super::wire::PeerFault::Refused { body },
