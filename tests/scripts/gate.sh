@@ -905,12 +905,68 @@ run_gate appbuild '不是数出来的数：`cargo build`（dev）只有绿/红�
 run_gate winchk '不是数出来的数：`cargo check --all-targets --target x86_64-pc-windows-gnu` 只有绿/红两态。射程 = `-p monitor` 与文件窗口包 `-p cc-monitor-filewin` 两个包的生产段 ＋ test 档（与 `winchk-backend` 同一个面）；`src/backend` 与 `creds-core` 的 `--features harden` 本行盖不到' \
          bash -c 'cd src/frontend/shell && cargo check --locked --all-targets -p monitor -p cc-monitor-filewin --target x86_64-pc-windows-gnu 2>&1 && echo "winchk: 1 passed"'
 
-# ── `winlink`：monitor 在 Windows 上链不链得起来 ──
+# ── `winlink`：monitor 在 Windows 上链不链得起来，lib 的测试程序带不带进程清单 ──
 # `winchk` 只 check 不链接。这里 `-p monitor` 的两个二进制（`cc-monitor` · `cc-monitor-filewin`）在 `x86_64-pc-windows-gnu` 上
 #   真走一趟链接器（dev）。`[lib]` 只产 `rlib`；有人把 `cdylib` 加回来 ⇒ 红在 `export ordinal too large`。
+# 再编出 lib 的测试程序（`cargo test --lib --no-run`，只编不跑），用 `llvm-readobj --coff-resources` 读它的资源表：
+#   必须有 MANIFEST（资源类型 ID 24），且那份清单里点名 `Microsoft.Windows.Common-Controls`（通用控件 v6）。
+#   为什么：mg38 推上去 CI 的 Windows job 里壳的 lib 测试程序 `0xc0000139` 起不来 —— 它经 Tauri 导入 comctl32 里只有 v6 才按名字导出的
+#   `TaskDialogIndirect` 一族，而清单当时只进 `[[bin]]`。本机不在 Windows 上跑测试程序，这一类只能从资源表里看出来（`build.rs::manifest_for_every_artifact`）。
 # 只链不跑；`-gnu` 不是 `-msvc`；release 档不链；内嵌后端字节不在（`native-backend/` 没铺），链的是不带后端那一形。
-run_gate winlink '不是数出来的数：`cargo build --bins --target x86_64-pc-windows-gnu`（dev）只有绿/红两态。射程 = `-p monitor` 的两个二进制（`cc-monitor` · `cc-monitor-filewin`）**真链接**一趟；⚠ 只链不跑（起不起得来要真机）· `-gnu` 不是 `-msvc` · release 那一档不链 · test 档不链（那一半归 `winchk` 的 `check`）' \
-         bash -c 'cd src/frontend/shell && cargo build --locked -p monitor --bins --target x86_64-pc-windows-gnu 2>&1 && echo "winlink: 1 passed"'
+# 判资源表的那段 python 读 `llvm-readobj` 的输出（stdin），$1 是给人看的名字；绿时印一行 `清单 ok`，红时说缺什么并退 1。
+GATE_PE_MANIFEST_PY='
+import re, sys
+label, dump = sys.argv[1], sys.stdin.read()
+m = re.search(r"^(\s*)Type: [^\n]*\(ID 24\) \[\n(.*?)^\1\]", dump, re.M | re.S)
+if not m:
+    head = next((l for l in dump.splitlines() if l.startswith("File:")), "（读不到 File: 行）")
+    print("%s：资源表里没有 MANIFEST（资源类型 ID 24）—— 测试程序没有进程清单，在 Windows 上会 0xc0000139 起不来。%s" % (label, head))
+    sys.exit(1)
+raw = bytes.fromhex("".join("".join(re.findall(r"\b[0-9A-F]{2,8}\b", l.split("|")[0].split(":", 1)[1]))
+                            for l in m.group(2).splitlines() if re.match(r"\s*[0-9A-F]{4}: ", l)))
+if b"Microsoft.Windows.Common-Controls" not in raw:
+    print("%s：有 MANIFEST，但清单里没点名 Microsoft.Windows.Common-Controls（%d 字节）—— 通用控件 v6 那一族的按名导出解析不到" % (label, len(raw)))
+    sys.exit(1)
+print("%s：清单 ok（MANIFEST %d 字节，含 Common-Controls）" % (label, len(raw)))
+'
+gate_pe_manifest_judge() { python3 -c "$GATE_PE_MANIFEST_PY" "$1"; }
+gate_winlink() {
+  local t=x86_64-pc-windows-gnu js exe
+  ( cd src/frontend/shell && cargo build --locked -p monitor --bins --target "$t" 2>&1 ) || return $?
+  js="$(cd src/frontend/shell && cargo test --locked -p monitor --lib --no-run --target "$t" --message-format=json 2>/dev/null)" || {
+    ( cd src/frontend/shell && cargo test --locked -p monitor --lib --no-run --target "$t" 2>&1 | tail -40 )
+    echo "winlink: monitor 的 lib 测试程序编不出来（$t）"; return 1; }
+  exe="$(printf '%s\n' "$js" | python3 -c '
+import json, sys
+for l in sys.stdin:
+    try: m = json.loads(l)
+    except ValueError: continue
+    if m.get("reason") == "compiler-artifact" and m.get("executable") and m["target"]["name"] == "monitor_lib" and m["profile"]["test"]:
+        print(m["executable"])')"
+  [ -n "$exe" ] && [ -f "$exe" ] || { echo "winlink: cargo 的输出里没有 monitor_lib 的测试程序 —— 判不了清单，按红记"; return 1; }
+  command -v llvm-readobj >/dev/null 2>&1 || { echo "winlink: 这台机器上没有 llvm-readobj（装 llvm）—— 判不了测试程序的清单，按红记"; return 1; }
+  llvm-readobj --coff-resources "$exe" | gate_pe_manifest_judge "monitor lib 测试程序" || return 1
+  echo "winlink: 1 passed"
+}
+run_gate winlink '不是数出来的数：`cargo build --bins --target x86_64-pc-windows-gnu`（dev）＋ lib 测试程序的资源表，只有绿/红两态。射程 = `-p monitor` 的两个二进制（`cc-monitor` · `cc-monitor-filewin`）**真链接**一趟 ＋ `-p monitor` 的 lib 测试程序编出来（`--no-run`）、资源表里有 MANIFEST（ID 24）且点名 Common-Controls；⚠ 只链不跑（起不起得来要真机）· `-gnu` 不是 `-msvc` · release 那一档不链 · 文件窗口包的测试程序不查（它不链 Tauri）' \
+         gate_winlink
+# 探针⑪ · 清单那条还在判：喂两份合成的 `llvm-readobj` 输出 —— 一份没有 ID 24、一份有 ID 24 却不含 Common-Controls；
+#   其余（链接、编出测试程序）对探针不存在，判的就是资源表那一步。
+gate_probe_no_manifest() {
+  printf 'File: GATE-PROBE-K.exe\nResources [\n  Type: ICON (ID 3) [\n  ]\n]\n' | gate_pe_manifest_judge 探针 && echo "1 passed"
+}
+gate_probe_manifest_without_cc() {
+  printf 'File: x.exe\nResources [\n  Type: MANIFEST (ID 24) [\n          Data (\n            0000: 3C617373 656D626C 793E0A00  |<assembly>..|\n          )\n  ]\n]\n' |
+    gate_pe_manifest_judge GATE-PROBE-L && echo "1 passed"
+}
+gate_selftest_winlink() {
+  local GATE_PROBE=1 probe
+  probe="$(run_gate 自检⑪ - gate_probe_no_manifest 2>&1)"
+  gate_assert_judged 自检⑪ "$probe" GATE-PROBE-K "winlink 的「测试程序没有清单 ⇒ 红」"
+  probe="$(run_gate 自检⑫ - gate_probe_manifest_without_cc 2>&1)"
+  gate_assert_judged 自检⑫ "$probe" GATE-PROBE-L "winlink 的「清单里没有 Common-Controls ⇒ 红」"
+}
+gate_selftest_winlink
 
 # ── 真机 e2e：每一套一行 `run_e2e <套件>` ─────────────────────────────────────────
 # 判法复用 `tests/e2e/assert-pass-floor.sh`：退出码 0 ＋ 收尾 `合计 PASS=<n> FAIL=0` ＋ `n > 0`；跑在无网沙箱里。
@@ -1262,7 +1318,7 @@ GATE_BLIND=(
   "windows-runner|Windows runner 上才犯的那一族 —— 本门禁的 npm / tsc / e2e 全跑在 Linux 上，路径分隔符恒是 /，这一形本机在构造上红不了"
   "ci-job-shape|.github/workflows/*.yml 里那些 job 自己的形状 —— 装了哪条工具链、runner 是谁、缓存与 needs 怎么连、每一步的 if 条件。Linux 那几个 job 的命令就是调本脚本（GATE_ONLY），命令只住这里；但 job 的环境（apt 装了什么、runner 是谁）本门禁不判。release-gate 割走了 release.yml 的一部分（触发器、发布闸、产字节那条路、BUILD_ID 的抠法、工具链版本），上传清单与校验和算哪几份也对上了资产登记表；其余每一步（打包 · artifact 传递）仍然没人看；那些切片买的也只是「盘上这份文本满足这几条」"
   "msvc-abi|MSVC ABI 专属的那一类跨平台编译问题 —— 两格 Windows 交叉检查用的都是 -gnu（沙箱里没有 zig，ring 的 build script 缺 lib.exe）。只在 msvc 上才犯的毛病本门禁盖不到"
-  "did-ci-actually-run|云端那条流水线到底跑没跑、绿没绿 —— 本门禁一次 gh run view 都不做。GATE: OK 说的是这棵树在本机这几格上的样子，不是它在云端的样子。ci.yml 的触发器只有 push(main/v*) 与 pull_request，而本仓不推送 ⇒ 那几个 job 在 GitHub runner 上从未起过；tests/hooks/pre-push 同理"
+  "did-ci-actually-run|云端那条流水线到底跑没跑、绿没绿 —— 本门禁一次 gh run view 都不做。GATE: OK 说的是这棵树在本机这几格上的样子，不是它在云端的样子。ci.yml 的触发器是 push(main · 候选分支 next · v*) 与 pull_request；「先推候选分支、CI 全绿了才快进 main」那一步在推送时做，不在本门禁里"
 )
 gate_print_blind() {
   printf 'GATE: 射程 —— 上面那行只对它自己那几格负责；下面这 %s 件事**本门禁不看**：\n' "${#GATE_BLIND[@]}"
