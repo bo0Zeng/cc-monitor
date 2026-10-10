@@ -1858,6 +1858,7 @@ impl Shaped for RuleSaved {
         vec![
             RuleSaved::Saved {
                 rule: json!({"id": "r1"}),
+                saved_at_text: "04:30".into(),
             },
             RuleSaved::Refused {
                 errors: vec![cell_error()],

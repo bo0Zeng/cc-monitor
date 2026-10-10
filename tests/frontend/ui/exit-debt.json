@@ -15,7 +15,7 @@
       "lang": "rs"
     }
   ],
-  "ceiling": 296,
+  "ceiling": 279,
   "entries": [
     {
       "file": "src/frontend/ui/account-chip.ts",
@@ -123,27 +123,6 @@
       "why": "V9：步骤右侧那一句自己拼（步骤结果带 text）；时长那一截归第 3 批"
     },
     {
-      "file": "src/frontend/ui/cards/step-line.ts",
-      "rule": "durUnit",
-      "n": 4,
-      "kind": "第 3 批",
-      "why": "时长 / 时刻 / 大小那一族（V9：步骤右侧那一句自己拼（步骤结果带 text）；时长那一截归第 3 批）"
-    },
-    {
-      "file": "src/frontend/ui/cards/step-line.ts",
-      "rule": "clock",
-      "n": 2,
-      "kind": "第 3 批",
-      "why": "时长 / 时刻 / 大小那一族（V9：步骤右侧那一句自己拼（步骤结果带 text）；时长那一截归第 3 批）"
-    },
-    {
-      "file": "src/frontend/ui/cards/step-line.ts",
-      "rule": "toFixed",
-      "n": 1,
-      "kind": "第 3 批",
-      "why": "时长 / 时刻 / 大小那一族（时刻按看的人这台的钟；静态的由核心写 `…Text`、会走的走 `{dur}`、大小由核心写 `sizeText`）"
-    },
-    {
       "file": "src/frontend/ui/cc-bus-hooks-reads.ts",
       "rule": "caseWord",
       "n": 5,
@@ -156,13 +135,6 @@
       "n": 2,
       "kind": "待分",
       "why": "按码取字 / 自己判，未逐条分（界面骨架词表 · 后端码 ⇒ 字 两种都有，下一路逐条分开）"
-    },
-    {
-      "file": "src/frontend/ui/duration-format.ts",
-      "rule": "durUnit",
-      "n": 6,
-      "kind": "留",
-      "why": "桌面秒级走字唯一读口 `fmtDur`（DUP1 J28 登记的镜像，与 Rust `short_duration` 对同一份金样）"
     },
     {
       "file": "src/frontend/ui/e2e-probe.ts",
@@ -347,13 +319,6 @@
       "why": "V7：状态一句自己拼（核心写这一句，会走的那一截走 `{dur}`）"
     },
     {
-      "file": "src/frontend/ui/session-face.ts",
-      "rule": "clock",
-      "n": 1,
-      "kind": "第 3 批",
-      "why": "时长 / 时刻 / 大小那一族（V7：状态一句自己拼（核心写这一句，会走的那一截走 `{dur}`））"
-    },
-    {
       "file": "src/frontend/ui/session-words.ts",
       "rule": "caseWord",
       "n": 9,
@@ -445,13 +410,6 @@
       "why": "规则编辑器按层码取字；时刻那两处（`savedAt` 等）归第 3 批"
     },
     {
-      "file": "src/frontend/ui/settings/rule-editor.ts",
-      "rule": "clock",
-      "n": 2,
-      "kind": "第 3 批",
-      "why": "时长 / 时刻 / 大小那一族（规则编辑器按层码取字；时刻那两处（`savedAt` 等）归第 3 批）"
-    },
-    {
       "file": "src/frontend/ui/status-messages.ts",
       "rule": "clock",
       "n": 2,
@@ -495,13 +453,6 @@
     },
     {
       "file": "src/frontend/ui/terminal-page.ts",
-      "rule": "clock",
-      "n": 1,
-      "kind": "第 3 批",
-      "why": "时长 / 时刻 / 大小那一族（时刻按看的人这台的钟；静态的由核心写 `…Text`、会走的走 `{dur}`、大小由核心写 `sizeText`）"
-    },
-    {
-      "file": "src/frontend/ui/turn-notify.ts",
       "rule": "clock",
       "n": 1,
       "kind": "第 3 批",

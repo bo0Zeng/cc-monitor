@@ -47,26 +47,40 @@ pub fn format_elapsed(d: std::time::Duration) -> String {
     format_duration(u64::try_from(d.as_millis()).unwrap_or(u64::MAX))
 }
 
-/// 短时长（文案规范 N5 那一种写法）：`45s` · `6m` · `1h50m` · `2h` · `3d`（满 24 小时只写天）；秒以下舍去、分钟以下舍去。
-/// 会话状态一句里那一截（「后台任务运行中 · make test-all · 12m」）由它出；桌面秒级走字的那一个读口是
-/// `quota-lines.ts::fmtDur`，两侧各对金样 `tests/__fixtures__/short-duration.golden.json`。
+/// 短时长（文案规范 N5 那一种写法）：`45s` · `6m` · `1h50m` · `2h` · `3d`（满 24 小时只写天）；秒以下舍去、分钟以下舍去。单位格住表里 `durationFormat.short.*`。
+/// **会走的钟与距今都只经它写**：会话状态一句里那一截（「后台任务运行中 · make test-all · 12m」）· 已等多久 `waitedText` · 距今 `…RelText`（[`rel_duration`]）；
+/// 出口那一侧的读口（桌面 `duration-format.ts::fmtDur` · 手机端 `DurationFormat.short`）与它各对金样 `tests/__fixtures__/short-duration.golden.json`。
 pub fn short_duration(ms: u64) -> String {
     let d = ms / 1000;
     if d < 60 {
-        return format!("{d}s");
+        return copy_text("durationFormat.short.sec", &[("n", &d.to_string())]);
     }
     let days = d / (24 * 3600);
     if days > 0 {
-        return format!("{days}d");
+        return copy_text("durationFormat.short.day", &[("n", &days.to_string())]);
     }
     let mins = d / 60;
     if mins < 60 {
-        return format!("{mins}m");
+        return copy_text("durationFormat.short.min", &[("n", &mins.to_string())]);
     }
     let (h, m) = (mins / 60, mins % 60);
     if m == 0 {
-        format!("{h}h")
+        copy_text("durationFormat.short.hour", &[("n", &h.to_string())])
     } else {
-        format!("{h}h{m}m")
+        copy_text(
+            "durationFormat.short.hourMin",
+            &[("h", &h.to_string()), ("m", &m.to_string())],
+        )
     }
+}
+
+/// 距今（只写将来）：`+12m` · `+1h50m` · `+3d` —— 短时长（[`short_duration`]）向上取整到分钟，前面加 `+`（`durationFormat.rel.ahead`）。
+/// 已到 / 已过 ⇒ `None`。
+pub fn rel_duration(ms_ahead: i64) -> Option<String> {
+    let ms = u64::try_from(ms_ahead).ok().filter(|&m| m > 0)?;
+    let up = ms.div_ceil(60_000) * 60_000;
+    Some(copy_text(
+        "durationFormat.rel.ahead",
+        &[("dur", &short_duration(up))],
+    ))
 }

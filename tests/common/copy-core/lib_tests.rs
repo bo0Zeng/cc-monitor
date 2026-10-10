@@ -230,3 +230,24 @@ fn the_shared_short_duration_golden_agrees_with_this_reader() {
         .collect();
     assert!(wrong.is_empty(), "短时长与金样不符：{wrong:?}");
 }
+
+/// **距今的对拍**：同一份金样的 `rel` 段喂给 [`rel_duration`]（核心写 `…RelText` 的那一处）。
+#[test]
+fn the_shared_rel_golden_agrees_with_this_reader() {
+    let golden: serde_json::Value = serde_json::from_str(include_str!(
+        "../../__fixtures__/short-duration.golden.json"
+    ))
+    .unwrap();
+    let cases = golden["rel"].as_array().expect("金样缺 rel");
+    assert!(cases.len() >= 8, "rel 只有 {} 条（反空真）", cases.len());
+    let wrong: Vec<String> = cases
+        .iter()
+        .filter_map(|c| {
+            let ms = c["aheadMs"].as_i64().expect("aheadMs");
+            let want = c["want"].as_str().map(str::to_string);
+            let got = crate::rel_duration(ms);
+            (got != want).then(|| format!("{ms}: {got:?} ≠ {want:?}"))
+        })
+        .collect();
+    assert!(wrong.is_empty(), "距今与金样不符：{wrong:?}");
+}

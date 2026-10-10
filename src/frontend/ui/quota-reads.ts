@@ -271,14 +271,14 @@ export async function writeSessionRotation(
 
 /** 存一条规则的结局：存成（那一条）· 逐格错 · 别处先改过（此刻的版本）。 */
 export type RuleSaved =
-  | { state: "saved"; rule: RuleRow }
+  | { state: "saved"; rule: RuleRow; savedAtText: string }
   | { state: "refused"; errors: CellError[] }
   | { state: "conflict"; rev: number };
 
 export function decodeRuleSaved(v: unknown): RuleSaved {
   const o = obj(v, "reply");
   if (o.state === "saved")
-    return { state: "saved", rule: decodeRuleRow(o.rule, "rule") };
+    return { state: "saved", rule: decodeRuleRow(o.rule, "rule"), savedAtText: typeof o.savedAtText === "string" ? o.savedAtText : bad("savedAtText") };
   if (o.state === "refused")
     return { state: "refused", errors: arr(o.errors, "errors") as CellError[] };
   if (o.state === "conflict" && typeof o.rev === "number")

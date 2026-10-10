@@ -315,7 +315,7 @@ describe("cc-monitor 放了什么", () => {
     [...page.element.querySelectorAll<HTMLButtonElement>(".data-chip")].find((b) => b.textContent === "devbox")!.click();
     const pane = page.element.querySelector<HTMLElement>('[data-pane="placed"]')!;
     expect(pane.textContent).toContain("~/.zshrc");
-    expect(pane.textContent).toContain(copyText("dataPage.placed.stale", { machine: "devbox", ago: copyText("acctPage.ago.minutes", { n: 0 }) }));
+    expect(pane.textContent).toContain(copyText("dataPage.placed.stale", { machine: "devbox", ago: copyText("durationFormat.short.sec", { n: 0 }) }));
     expect(pane.querySelectorAll(".data-remote-only [data-own]").length).toBe(3);
     expect([...pane.querySelectorAll<HTMLButtonElement>(".data-remote-only [data-own] button")].every((b) => b.disabled), "连不上的那台打不开文件窗口 ⇒ 置灰").toBe(true);
     // 从没读成过的那台照旧说读不到。

@@ -21,7 +21,7 @@ import { findHostByOrigin, hostKey, readRemoteConfig } from "../remote-config";
 import { noteMachineTmux } from "../resume-defaults";
 import { markChore, readDataReport, recallDataReport, type Chore, type ChoreState, type DataReport } from "./data-reads";
 import { remoteOwnBlock } from "./remote-own";
-import { agoText } from "./ago";
+import { spanNow } from "../duration-format";
 import { choreRow } from "./chore-row";
 import { countTags } from "./chore-tags";
 import { fold } from "../kit/fold";
@@ -428,7 +428,7 @@ export class DataPage {
     const name = this.machines.find((m) => m.origin === this.picked)?.name ?? this.picked;
     this.offlineBar.hidden = !(r && !r.ok);
     if (r && !r.ok) {
-      const said = r.last ? copyText("dataPage.placed.stale", { machine: name, ago: agoText(Date.now() - r.last.atMs) }) : copyText("dataPage.placed.offline", { machine: name });
+      const said = r.last ? copyText("dataPage.placed.stale", { machine: name, ago: spanNow(r.last.atMs, Date.now()) }) : copyText("dataPage.placed.offline", { machine: name });
       this.offlineBar.replaceChildren(
         banner("warn", said, [button({ label: copyText("dataPage.placed.retry"), size: "compact", onClick: () => void this.refresh() })]),
       );

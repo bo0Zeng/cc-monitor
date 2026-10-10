@@ -196,24 +196,9 @@ pub(crate) fn fmt_at(t: i64, now: i64, tz: &Tz) -> String {
 pub(crate) const TIME_KEYS: &[&str] = &["at", "seenAt", "resetsAt", "fromResetsAt", "since"];
 
 /// 距今（只写未来）：`+12m` · `+1h50m` · `+2h` · `+3d`（满 24h 只写天）；已过 ⇒ `None`。分钟向上取整。
+/// 写法只住 `copy_core::rel_duration` 一处（短时长那一套，同一份金样）。
 pub(crate) fn fmt_rel(t: i64, now: i64) -> Option<String> {
-    let d = t - now;
-    if d <= 0 {
-        return None;
-    }
-    if d >= DAY {
-        return Some(format!("+{}d", d / DAY));
-    }
-    let mins = (d + 59) / 60;
-    if mins < 60 {
-        return Some(format!("+{mins}m"));
-    }
-    let (h, m) = (mins / 60, mins % 60);
-    Some(if m == 0 {
-        format!("+{h}h")
-    } else {
-        format!("+{h}h{m}m")
-    })
+    copy_core::rel_duration(t.saturating_sub(now).saturating_mul(1_000))
 }
 
 /// **回包出口那一遍**：走遍整份回包，每个对象里认得的时刻格（[`TIME_KEYS`]，值是整数）旁边添一格 `<键>Text`

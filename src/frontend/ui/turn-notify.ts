@@ -21,7 +21,7 @@ import { copyText } from "./copy-table";
  * 子运行的记录不走主会话的行（它们进运行表），这里见到的全是主运行的记录。
  */
 export interface TurnNotifyPayload {
-  record?: { t?: string; at?: string; endsTurn?: boolean };
+  record?: { t?: string; at?: string; atMs?: number; endsTurn?: boolean };
 }
 
 export interface TurnNotifyDeps {
@@ -68,8 +68,9 @@ export class TurnEndNotifier {
     const rec = payload?.record;
     if (!rec || rec.t !== "reply" || rec.endsTurn !== true) return;
     const now = this.deps.now();
-    const ts = rec.at ? Date.parse(rec.at) : NaN;
-    if (!Number.isFinite(ts) || Math.abs(now - ts) > FRESH_MS) return;
+    // 那条记录的时刻：后端解好的毫秒（`atMs`），界面不解析 `at`。
+    const ts = rec.atMs;
+    if (ts === undefined || Math.abs(now - ts) > FRESH_MS) return;
     const last = this.lastNotify.get(sid) ?? 0;
     if (now - last < DEBOUNCE_MS) return;
     if (this.deps.isFocused()) return;

@@ -1157,6 +1157,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | `rev` | ← | 只在 `conflict` 时有：此刻的版本 |
 | `rotation` | → | 整份 `{order, enabled, atLimit?, cap?, stint?, preempt?, fallback?, wait?}`（规则一级的线在 `cap["*"]`：只收 `5h` · `7d`，`1..=99` 或按时段；一格空着 ＝ 那一窗满了才换） |
 | `rule` | ← | 只在 `saved` 时有：写成的那一条（形状同 `rotation-rules-read` 的一项） |
+| `savedAtText` | ← | 只在 `saved` 时有：写成那一刻的钟面 `HH:MM`（按请求的 `tz`；编辑器「已保存」照抄） |
 | `state` | ← | `"saved"`（写成了）· `"refused"`（逐格错，没写）· `"conflict"`（读到之后别处改过，没写） |
 
 码：`bad_args` · `io_failed` · `no_such_rule`
@@ -1175,6 +1176,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | `name` | → | 新名字 |
 | `rev` | ← | 同 `rotation-rule-save` |
 | `rule` | ← | 同 `rotation-rule-save` |
+| `savedAtText` | ← | 同 `rotation-rule-save` |
 | `state` | ← | 同 `rotation-rule-save` |
 
 码：`bad_args` · `io_failed` · `no_such_rule`

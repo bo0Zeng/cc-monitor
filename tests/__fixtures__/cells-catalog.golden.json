@@ -15,6 +15,11 @@
         },
         {
           "kind": "value",
+          "path": "atMs",
+          "type": "number"
+        },
+        {
+          "kind": "value",
           "path": "id",
           "type": "string"
         },
@@ -536,6 +541,11 @@
         },
         {
           "kind": "value",
+          "path": "lastSay.atMs",
+          "type": "number"
+        },
+        {
+          "kind": "value",
           "path": "lastSay.text",
           "type": "string"
         },
@@ -613,6 +623,11 @@
           "kind": "value",
           "path": "pending[].at",
           "type": "string"
+        },
+        {
+          "kind": "value",
+          "path": "pending[].atMs",
+          "type": "number"
         },
         {
           "kind": "value",

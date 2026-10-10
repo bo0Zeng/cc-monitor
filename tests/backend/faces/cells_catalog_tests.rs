@@ -129,6 +129,7 @@ fn corpus(name: &str) -> Vec<Value> {
                 name: "Bash".into(),
                 what: Some("ls".into()),
                 at: None,
+                at_ms: None,
                 state: crate::observe::facts_query::StepWait::Running,
                 why: None,
             }];
@@ -158,6 +159,7 @@ fn corpus(name: &str) -> Vec<Value> {
                 name: "Bash".into(),
                 what: Some("ls".into()),
                 at: None,
+                at_ms: None,
                 state: crate::observe::facts_query::StepWait::Running,
                 why: None,
             }];

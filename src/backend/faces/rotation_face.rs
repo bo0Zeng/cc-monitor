@@ -462,8 +462,12 @@ fn free_name(book: &Book, id: Option<&str>, name: &str) -> String {
 #[derive(serde::Serialize)]
 #[serde(tag = "state", rename_all = "camelCase")]
 pub(crate) enum RuleSaved {
-    /// 写成了：那一条（形状同 `rotation-rules-read` 的一项）。
-    Saved { rule: Value },
+    /// 写成了：那一条（形状同 `rotation-rules-read` 的一项）· 写成那一刻按看的那一台的时区写好的钟面（编辑器「已保存 HH:MM」）。
+    Saved {
+        rule: Value,
+        #[serde(rename = "savedAtText")]
+        saved_at_text: String,
+    },
     /// 逐格错，没写。
     Refused { errors: Vec<CellError> },
     /// 读到之后别处改过：此刻的版本，没写。
@@ -511,8 +515,10 @@ fn saved(ctx: &Ctx, id: &str) -> Answer {
         .get(id)
         .ok_or_else(|| ("failed", format!("rule {id} vanished after write")))?;
     let doing = (ctx.doing)();
+    let now = crate::common::time::now_secs();
     wire(&RuleSaved::Saved {
         rule: rule_wire(ctx, &book, id, r, &live, &doing),
+        saved_at_text: crate::common::time::hm(ctx.tz.local(now)),
     })
 }
 

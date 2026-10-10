@@ -820,6 +820,7 @@ mod specimens {
             id: s("r"),
             at: some("2026-10-09T00:00:00Z"),
             time_text: Some(Words(s("08:00"))),
+            at_ms: Some(1_791_504_000_000),
             body,
         }
     }
@@ -943,12 +944,14 @@ mod specimens {
                         name: s("Bash"),
                         what: some("ls"),
                         at: some("t"),
+                        at_ms: Some(0),
                         state: StepWait::Unclear,
                         why: Some(UnclearWhy::NoWriter),
                     }],
                     last_say: Some(LastSay {
                         text: s("t"),
                         at: some("t"),
+                        at_ms: Some(0),
                     }),
                     needs: Some(Needs {
                         kind,

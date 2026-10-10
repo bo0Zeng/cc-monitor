@@ -13210,6 +13210,42 @@
       "zh": "访问越界",
       "args": []
     },
+    "durationFormat.short.sec": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{n}s",
+      "args": ["n"]
+    },
+    "durationFormat.short.min": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{n}m",
+      "args": ["n"]
+    },
+    "durationFormat.short.hour": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{n}h",
+      "args": ["n"]
+    },
+    "durationFormat.short.hourMin": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{h}h{m}m",
+      "args": ["h", "m"]
+    },
+    "durationFormat.short.day": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{n}d",
+      "args": ["n"]
+    },
+    "durationFormat.rel.ahead": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "+{dur}",
+      "args": ["dur"]
+    },
     "durationFormat.unit.ms": {
       "kind": "body",
       "role": "片段",
@@ -27060,24 +27096,6 @@
       "role": "报错",
       "zh": "打不开账号目录",
       "args": []
-    },
-    "acctPage.ago.minutes": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "{n}m",
-      "args": ["n"]
-    },
-    "acctPage.ago.hours": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "{n}h",
-      "args": ["n"]
-    },
-    "acctPage.ago.days": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "{n}d",
-      "args": ["n"]
     },
     "sessionFind.box.modes": {
       "kind": "title",

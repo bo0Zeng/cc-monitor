@@ -294,6 +294,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 record: Some(crate::agents::record::Record {
                     at: Some(s("2026-10-09T01:30:00.000Z")),
                     time_text: Some(crate::common::cells::Words(s("09:30"))),
+                    at_ms: Some(1_791_509_400_000),
                     ..said_record("u1", "q")
                 }),
                 cwd: Some(s("/w")),
@@ -1067,6 +1068,7 @@ fn said_record(id: &str, text: &str) -> crate::agents::record::Record {
         id: id.into(),
         at: None,
         time_text: None,
+        at_ms: None,
         body: Body::Said {
             who: crate::agents::UserText {
                 speaker: crate::agents::Speaker::Human,
