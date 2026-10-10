@@ -12,12 +12,14 @@
 //!   截图台架覆盖不到 ssh 那条路。窗口只有一个（订阅都记在 [`LABEL`] 名下）。
 //!
 //! # 线上（标准输入 / 标准输出，一行一个 JSON）
-//! 收：`{"t":"machines","machines":[{"origin","argv":[…]}]}`（起各台后端；全部握上手后回 `{"t":"up"}`）·
+//! 收：`{"t":"machines","machines":[{"origin","argv":[…]}]}`（起各台后端）·
 //! `{"t":"sub","id","origin","kind","want"}` · `{"t":"want","id","more"}` · `{"t":"stop","id"}` · `{"t":"ready","priority_sid"}` ·
-//! `{"t":"call","n","origin","op","payload","left_ms"}`（`payload` 是请求体原文）· `{"t":"kill","origin"}`（那台后端当场杀掉：演「断了」）。
-//! 发：`{"t":"items","sub","items"}`（同 `chan-items` 事件体）· `{"t":"reply","n","ok","body"|"fail"}` · `{"t":"health",…}` · `{"t":"up"}`。
+//! `{"t":"call","n","origin","op","payload","left_ms"}`（`payload` 是请求体原文）· `{"t":"kill","origin"}`（那台后端当场杀掉：演「断了」）·
+//! `{"t":"offer","n","origin"}`（那台握上手没有；台架按它等各台起好，等法住台架那一侧）。
+//! 发：`{"t":"items","sub","items"}`（同 `chan-items` 事件体）· `{"t":"reply","n","ok","body"|"fail"}` · `{"t":"offer","n","up"}` · `{"t":"health",…}`。
 
 use crate::chan::host::InboundBackends;
+use crate::chan::router::Backends as _;
 use crate::event_replay::{EventReplay, ItemSink};
 use crate::local_backend::StdioRoute;
 use crate::local_lines::StdioOut;
@@ -67,6 +69,10 @@ enum Cmd {
     Kill {
         origin: String,
     },
+    Offer {
+        n: u64,
+        origin: String,
+    },
 }
 
 /// 标准输出：一行一个 JSON，一把锁（几条线程都往这里写）。
@@ -95,13 +101,13 @@ impl ItemSink for StdoutSink {
 
 /// 例子 `ccm-shots-shell` 的入口。
 pub fn main() {
-    let _ = tracing_subscriber::fmt()
+    tracing_subscriber::fmt()
         .with_writer(std::io::stderr)
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_env("CCM_SHOTS_LOG")
                 .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn")),
         )
-        .try_init();
+        .init();
     let replay = Arc::new(EventReplay::new());
     replay.attach_sink(Arc::new(StdoutSink));
     crate::wire_replay_outlets(&replay);
@@ -110,7 +116,7 @@ pub fn main() {
         Ok(())
     });
     crate::stream_source::install_local_health(health.clone());
-    let children: Arc<Mutex<HashMap<String, std::process::Child>>> = Arc::default();
+    let children: Arc<Mutex<HashMap<String, crate::spawn_managed::ManagedChild>>> = Arc::default();
 
     for line in std::io::stdin().lock().lines() {
         let Ok(line) = line else { break };
@@ -129,19 +135,16 @@ pub fn main() {
                 crate::session_book::machines_changed(
                     machines.iter().map(|m| m.origin.clone()).collect(),
                 );
-                let origins: Vec<String> = machines.iter().map(|m| m.origin.clone()).collect();
                 for m in machines {
                     start(&m, &replay, &health, &children);
                 }
-                tauri::async_runtime::spawn(async move {
-                    while !origins
-                        .iter()
-                        .all(|o| crate::inbound_client::client_for(o).is_some())
-                    {
-                        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-                    }
-                    say(serde_json::json!({ "t": "up" }));
-                });
+            }
+            Cmd::Offer { n, origin } => {
+                // 那台握上手没有（入方向通道登记了没有）：台架按它等各台起好。
+                let up = InboundBackends
+                    .offer(&crate::origin::Origin(origin))
+                    .is_some();
+                say(serde_json::json!({ "t": "offer", "n": n, "up": up }));
             }
             Cmd::Sub {
                 id,
@@ -193,14 +196,18 @@ pub fn main() {
                     .unwrap_or_else(|e| e.into_inner())
                     .remove(&origin)
                 {
-                    let _ = c.kill();
+                    if let Err(e) = c.kill() {
+                        tracing::warn!("shots_shell：杀 {origin} 的后端没杀成：{e}");
+                    }
                 }
             }
         }
     }
     // 台架关了标准输入 ⇒ 各台后端一起收。
-    for (_, mut c) in children.lock().unwrap_or_else(|e| e.into_inner()).drain() {
-        let _ = c.kill();
+    for (origin, mut c) in children.lock().unwrap_or_else(|e| e.into_inner()).drain() {
+        if let Err(e) = c.kill() {
+            tracing::warn!("shots_shell：收场时杀 {origin} 的后端没杀成：{e}");
+        }
     }
 }
 
@@ -209,19 +216,22 @@ fn start(
     m: &Machine,
     replay: &Arc<EventReplay>,
     health: &crate::stream_source::HealthOut,
-    children: &Arc<Mutex<HashMap<String, std::process::Child>>>,
+    children: &Arc<Mutex<HashMap<String, crate::spawn_managed::ManagedChild>>>,
 ) {
     let Some((prog, args)) = m.argv.split_first() else {
         tracing::error!("shots_shell：{} 没给命令", m.origin);
         return;
     };
-    let mut child = match std::process::Command::new(prog)
-        .args(args)
+    let mut cmd = std::process::Command::new(prog);
+    cmd.args(args)
         .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::inherit())
-        .spawn()
-    {
+        .stdout(std::process::Stdio::piped());
+    let mut child = match crate::spawn_managed::spawn_managed_cmd(
+        &mut cmd,
+        crate::spawn_managed::ConsolePolicy::Hidden,
+        crate::spawn_managed::Lifetime::JobKillOnClose,
+        crate::spawn_managed::StderrSink::Inherit,
+    ) {
         Ok(c) => c,
         Err(e) => {
             tracing::error!("shots_shell：{} 的后端起不来：{e}", m.origin);

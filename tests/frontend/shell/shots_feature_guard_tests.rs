@@ -27,7 +27,7 @@ fn manifest_sections() -> Vec<(String, Vec<(String, String)>)> {
     let mut out: Vec<(String, Vec<(String, String)>)> = Vec::new();
     for l in read(&crate_root().join("Cargo.toml")).lines() {
         let t = l.trim();
-        if t.is_empty() || t.starts_with('#') {
+        if t.is_empty() {
             continue;
         }
         if t.starts_with('[') {
@@ -121,16 +121,16 @@ fn s2_the_module_is_declared_only_under_the_feature() {
     );
     // 生产源码里别处不提它（提了就是默认构建也要它）。
     let mut hits = Vec::new();
-    for f in walk(&crate_src_root()) {
-        let rel = f
-            .strip_prefix(crate_src_root())
-            .unwrap()
-            .to_string_lossy()
-            .replace('\\', "/");
+    let mut seen = 0;
+    for (f, src) in guard_core::scan_tree!(&crate_src_root(), &["rs"]) {
+        let Ok(rel) = f.strip_prefix(crate_src_root()) else {
+            continue;
+        };
+        seen += 1;
+        let rel = rel.to_string_lossy().replace('\\', "/");
         if rel == "lib.rs" || rel == format!("{MODULE}.rs") {
             continue;
         }
-        let src = read(&f);
         if src
             .lines()
             .any(|l| !l.trim_start().starts_with("//") && l.contains(&format!("{MODULE}::")))
@@ -138,20 +138,8 @@ fn s2_the_module_is_declared_only_under_the_feature() {
             hits.push(rel);
         }
     }
+    assert!(seen > 100, "人群不空（本包源码读到了 {seen} 份）");
     assert!(hits.is_empty(), "生产源码里别处引了 `{MODULE}`：{hits:?}");
-}
-
-fn walk(dir: &Path) -> Vec<std::path::PathBuf> {
-    let mut out = Vec::new();
-    for e in std::fs::read_dir(dir).unwrap().flatten() {
-        let p = e.path();
-        if p.is_dir() {
-            out.extend(walk(&p));
-        } else if p.extension().is_some_and(|x| x == "rs") {
-            out.push(p);
-        }
-    }
-    out
 }
 
 #[test]
@@ -161,14 +149,8 @@ fn s3_only_the_screenshot_rig_builds_with_the_feature() {
     let mut scanned = 0;
     let mut bad = Vec::new();
     for dir in [".github/workflows", "tests/scripts"] {
-        for e in std::fs::read_dir(root.join(dir)).unwrap().flatten() {
-            let p = e.path();
-            if !p.is_file() {
-                continue;
-            }
-            let Ok(src) = std::fs::read_to_string(&p) else {
-                continue;
-            };
+        for (p, src) in guard_core::scan_tree!(&root.join(dir), &["yml", "yaml", "sh", "py", "mjs"])
+        {
             scanned += 1;
             for (i, l) in src.lines().enumerate() {
                 let feat = l.contains("--features") && l.contains(FEATURE);

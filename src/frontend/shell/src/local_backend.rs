@@ -1375,7 +1375,7 @@ pub fn extraction_failure_reason(dir: &Path, err: Said) -> Said {
 /// # 返回
 ///
 /// `Ok(None)` = EOF（**判死信号**）· `Ok(Some(Some(s)))` = 一行 ·
-/// `Ok(Some(None))` = 超限、整行丢了（调用方原位说出来，`local_lines::line_lost_blocking`）·
+/// `Ok(Some(None))` = 超限、整行丢了（调用方原位说出来，`local_lines::StdioOut::line_lost`）·
 /// `Err` = 真的读错误。
 ///
 /// ⚠ **字节转字符串走 `from_utf8_lossy`**〔D 阶段补审 08-11 修〕：

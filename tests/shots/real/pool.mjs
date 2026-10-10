@@ -130,10 +130,11 @@ export function backendPool({ repo, sandbox }) {
     });
     const replies = new Map();
     let n = 0;
-    const up = new Promise((resolve, reject) => {
-      child.on("error", reject);
+    let gone = null;
+    const exited = new Promise((resolve) => {
+      child.on("error", (e) => resolve((gone = e)));
       child.on("exit", (code) => {
-        reject(new Error(`无头壳退了（${code}）`));
+        resolve((gone = new Error(`无头壳退了（${code}）`)));
         for (const r of replies.values()) r({ ok: false, fail: { err: { Ours: "Broken" }, body: [], detail: `无头壳退了（${code}）` } });
         replies.clear();
       });
@@ -144,8 +145,7 @@ export function backendPool({ repo, sandbox }) {
         } catch {
           return;
         }
-        if (f.t === "up") resolve();
-        else if (f.t === "reply" && replies.has(f.n)) {
+        if ((f.t === "reply" || f.t === "offer") && replies.has(f.n)) {
           const r = replies.get(f.n);
           replies.delete(f.n);
           r(f);
@@ -157,12 +157,25 @@ export function backendPool({ repo, sandbox }) {
       });
     });
     const send = (cmd) => child.stdin.write(JSON.stringify(cmd) + "\n");
-    const call = (origin, op, args) =>
+    const ask = (cmd) =>
       new Promise((resolve) => {
         const id = ++n;
         replies.set(id, resolve);
-        send({ t: "call", n: id, origin, op, payload: JSON.stringify(args ?? {}), left_ms: 30_000 });
+        send({ ...cmd, n: id });
       });
+    const call = (origin, op, args) => ask({ t: "call", origin, op, payload: JSON.stringify(args ?? {}), left_ms: 30_000 });
+    /** 各台都握上手（壳那一侧的入方向通道登记了）：隔一会儿问一次，30 秒上限。 */
+    const up = async (origins) => {
+      const until = Date.now() + 30_000;
+      for (const origin of origins) {
+        for (;;) {
+          if (gone) throw gone;
+          if ((await Promise.race([ask({ t: "offer", origin }), exited])).up === true) break;
+          if (Date.now() > until) throw new Error(`${origin} 的后端 30 秒没握上手`);
+          await new Promise((r) => setTimeout(r, 20));
+        }
+      }
+    };
     return { child, up, send, call };
   }
 
@@ -185,7 +198,7 @@ export function backendPool({ repo, sandbox }) {
     w.shell = sh.child;
     w.sh = sh;
     sh.send({ t: "machines", machines: list });
-    await sh.up;
+    await sh.up(list.map((m) => m.origin));
     while (worlds.size > KEEP) kill(worlds.keys().next().value);
   }
 
