@@ -4473,6 +4473,12 @@ mod g6_scope_pins {
 
 /// **CLI 错误信封：那几份实现是有意共存的，而它们的形状从今天起有人钉着。**
 ///
+/// # 10-09 现状（下面 09-13 那段是当时的读数）
+///
+/// CLI 控制面 · `--list-projects` · `--fork-session` · `--account-trust*` 的失败都经 `stream::detail::Failed::emit_to` **一处**投出
+/// （`{code, message, detail, data?}`，与帧面失败应答同一份）；这张表只剩不走它的两份：`--resolve`（与手机端仓冻结着同一份金样）·
+/// 部署链路那一行应答（不是 CLI 出口）。
+///
 /// # 它从哪来：`K-R87` 交回时问的是「本 crate 第 4 份同形 `emit_err` 要不要收成一份」
 ///
 /// 🔴 **答案是不收** —— 而理由不是「懒得动」，是三条现打的读数（09-13，量于本 crate `src/` 生产段）：
@@ -4554,29 +4560,9 @@ mod error_envelope_registry {
         ),
         // `control/cli_control.rs` 那一行（一次性 CLI 入口的 `emit_err`）删了：信封改由 `stream::detail::Failed` 序列化，
         //   与帧面失败应答同一份（`{code, message, detail, data?}`），不再手拼键。
-        (
-            "control/fork_write.rs",
-            "let env = serde_json::json!",
-            "`--fork-session` 的 `fail`",
-            "🔴 **它不叫 `emit_err`，叫 `fail`** —— 按名字数的那把尺子看不见它。\
-             这一行就是「按份数判合并」那种做法为什么买不到东西的活体：\
-             把 4 份 `emit_err` 收干净，这一份照旧是第 5 份。",
-        ),
-        (
-            "observe/accounts_query.rs",
-            "json!({\"code\": code, \"message\": message})",
-            "账号一族的**内联**信封（两处：`--account-trust` / `--account-trust-zero`）",
-            "🔴 **没有函数包着** —— 直接内联在分派臂里。它落在 observe 层，\
-             而 `control/` 那几份出口按 `layering_guard` 的边它**引不到**（反向边不许）\
-             ⇒ 「收成一份」在这里不是重构，是要先动分层。",
-        ),
-        (
-            "observe/accounts_query.rs",
-            "\"bad_args\"",
-            "账号一族的**用法错**信封（两处）",
-            "同上一行，另一档：参数不齐那一支。它与 `message` 分在两行上\
-             ⇒ 键集那条判据的窗口必须够得着下一行（见 `every_envelope_carries_both_keys`）。",
-        ),
+        // `control/fork_write.rs`（`--fork-session` 的 `fail`）与 `observe/accounts_query.rs` 两行（`--account-trust*` 的内联信封 ·
+        //   用法错那一档）删了：10-09 改由 `stream::detail::Failed::emit` 投出，与帧面失败应答同一份；
+        //   观测层引 `stream::` 不是反向边（`--list-projects` 早就这么走），当初「要先动分层」那条理由不成立。
         // `accounts/iso.rs` 那一行（本机 `cc-acct-iso` 两问的 argv 形失败信封）删了：
         //   两问上了帧面，失败走帧面的 `(code, message)` 应答，iso.rs 里不再自己拼信封。
         (
@@ -4631,12 +4617,14 @@ mod error_envelope_registry {
         out
     }
 
-    /// ★ 反空真：人群不许静默塌掉（现打 09-13：12 处 / 7 份文件；10-09 CLI 控制面与 `--list-projects` 两处收进同一份失败载体后 7 处，地板留了余量）。
+    /// ★ 反空真：人群不许静默塌掉（现打 09-13：12 处 / 7 份文件；10-09 CLI 控制面 · `--list-projects` · `--fork-session` · `--account-trust*`
+    /// 收进同一份失败载体后 2 处 / 2 份文件，地板贴着现数）。
     #[test]
     fn the_envelope_scan_is_not_silently_empty() {
         let sites = envelope_sites();
+        // 10-09 又收两份（`--fork-session` · `--account-trust*`）⇒ 剩 `--resolve` 那份的兜底一行与部署链路那一行：2 处 / 2 份文件。
         assert!(
-            sites.len() >= 5,
+            sites.len() >= 2,
             "全树只扫到 {} 处错误信封 —— 扫坏了，下面几条此刻在空转",
             sites.len()
         );
@@ -4644,7 +4632,7 @@ mod error_envelope_registry {
         files.sort_unstable();
         files.dedup();
         assert!(
-            files.len() >= 4,
+            files.len() >= 2,
             "这些信封只来自 {} 份文件 —— 遍历塌了",
             files.len()
         );
@@ -4724,8 +4712,9 @@ mod error_envelope_registry {
     fn every_signed_row_says_why_it_is_its_own_copy() {
         // 8 → 7：抓屏那条 CLI 面（`--capture-pane`）删了，它的 `emit_err` 随之没了。
         // 7 → 5：CLI 控制面与 `--list-projects` 那两份收进同一份失败载体（`stream::detail::Failed`，与帧面同一份）。
+        // 5 → 2：`--fork-session` 与 `--account-trust*`（两行）也收进去了。
         assert!(
-            SIGNED.len() >= 5,
+            SIGNED.len() >= 2,
             "`SIGNED` 只剩 {} 行 —— 它在缩水",
             SIGNED.len()
         );

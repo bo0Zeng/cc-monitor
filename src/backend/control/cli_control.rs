@@ -282,16 +282,9 @@ pub fn emit_err(cmd: &str, code: &str, message: impl Into<String>) -> i32 {
     emit_failed(&mut std::io::stderr(), &f, false)
 }
 
-/// 失败那一份投到 CLI 面：stderr 一行 `{code, message, detail, data?}`（与帧面失败应答同一份 [`Failed`]），退出 2。
-/// `text`（[`crate::TEXT_FLAG`]，给人看那一形）⇒ 那一句 ＋ 下面原样接复制详情，不是 JSON。
+/// 失败那一份投到 CLI 面（[`Failed::emit_to`]：与别的 CLI 出口同一处）。
 fn emit_failed(err: &mut dyn Write, f: &Failed, text: bool) -> i32 {
-    let line = if text {
-        f.text()
-    } else {
-        serde_json::to_string(f).unwrap_or_else(|_| f.text())
-    };
-    let _ = writeln!(err, "{line}");
-    2
+    f.emit_to(err, text)
 }
 
 /// 能力探测：`{proto, buildId, commands}`。`commands` 必须派生：手抄一份，探测口就会说谎，而 skill 按它的话决定走不走新路。

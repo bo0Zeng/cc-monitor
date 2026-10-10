@@ -875,6 +875,32 @@ pub(crate) fn trust_product_at(
     }
 }
 
+/// `--account-trust <configDir> <cwd>` / `--account-trust-zero <cwd>` 的 CLI 一趟：成 ⇒ 那一行 `{trusted, known, error}`；
+/// 败 ⇒ 那一份失败（与帧面失败应答同一种信封 [`crate::stream::detail::Failed`]；拒绝码原样，详情的「命令」那一项是这条 CLI 的名字）。
+pub(crate) fn trust_cli(
+    accts_dir: &Path,
+    args: &[String],
+) -> Result<String, crate::stream::detail::Failed> {
+    let flag = args.first().map(String::as_str).unwrap_or_default();
+    let cmd = flag.trim_start_matches("--");
+    let got = match (flag, args.get(1), args.get(2)) {
+        ("--account-trust", Some(cfg), Some(cwd)) => account_trust(accts_dir, cfg, cwd),
+        ("--account-trust-zero", Some(cwd), _) => account_trust_zero(cwd),
+        _ => Err((
+            "bad_args".to_string(),
+            if flag == "--account-trust" {
+                "--account-trust requires <configDir> <cwd>"
+            } else {
+                "--account-trust-zero requires <cwd>"
+            }
+            .to_string(),
+        )),
+    };
+    got.map_err(|(code, message)| {
+        crate::stream::detail::Failed::new(Some(cmd), &code, message, None, None)
+    })
+}
+
 /// 查询模式入口。返回进程退出码（0 ok / 2 err），同 `history_query::run` 约定。
 pub fn run(agent_home: &Path, args: &[String]) -> i32 {
     let accts_dir = resolve_accts_dir();
@@ -891,50 +917,13 @@ pub fn run(agent_home: &Path, args: &[String]) -> i32 {
             }
             0
         }
-        Some("--account-trust") => match (args.get(1), args.get(2)) {
-            (Some(cfg), Some(cwd)) => match account_trust(&accts_dir, cfg, cwd) {
-                Ok(line) => {
-                    println!("{line}");
-                    0
-                }
-                Err((code, message)) => {
-                    // 结构化错误：stderr 纯 JSON，客户端可整段 parse（同 --resolve 约定）
-                    eprintln!("{}", serde_json::json!({"code": code, "message": message}));
-                    2
-                }
-            },
-            _ => {
-                eprintln!(
-                    "{}",
-                    serde_json::json!({
-                        "code": "bad_args",
-                        "message": "--account-trust requires <configDir> <cwd>"
-                    })
-                );
-                2
+        Some("--account-trust") | Some("--account-trust-zero") => match trust_cli(&accts_dir, args)
+        {
+            Ok(line) => {
+                println!("{line}");
+                0
             }
-        },
-        Some("--account-trust-zero") => match args.get(1) {
-            Some(cwd) => match account_trust_zero(cwd) {
-                Ok(line) => {
-                    println!("{line}");
-                    0
-                }
-                Err((code, message)) => {
-                    eprintln!("{}", serde_json::json!({"code": code, "message": message}));
-                    2
-                }
-            },
-            None => {
-                eprintln!(
-                    "{}",
-                    serde_json::json!({
-                        "code": "bad_args",
-                        "message": "--account-trust-zero requires <cwd>"
-                    })
-                );
-                2
-            }
+            Err(f) => f.emit(),
         },
         other => {
             eprintln!("cc-monitor-backend accounts error: unknown argument: {other:?}");

@@ -163,8 +163,7 @@ fn coded_failure(code: &str, said: &str) -> i32 {
         None,
         None,
     );
-    eprintln!("{}", serde_json::to_string(&f).unwrap_or_else(|_| f.text()));
-    2
+    f.emit()
 }
 
 /// 一次性查询失败的那一行（无码的旧形）。
